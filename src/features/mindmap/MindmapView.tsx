@@ -1671,15 +1671,26 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         // 测量框宽优先：重挂载/过渡帧的实际框宽可能与 n.width-30 脱节，
         // 按 实测框宽×textHeight 计算面积才不会把“窄框巨高”误判为巨面积
         // （曾导致静态化瞬间宽度被一次性推到 465 并因只增不减永久固化）。
-        const colWNow = Math.max(60, d.boxW && d.boxW > 1 ? Math.min(d.boxW, n.width) : n.width - 30);
-        const area = colWNow * d.textHeight;
-        const fitColW = d.textHeight > 0 ? Math.ceil(area / (MAX_AUTO_H * 0.97)) : 0;
+        // 纯文字度量：探针的 textHeight(scrollHeight)/boxW(clientWidth) 都
+        // 包含 26/30px 内边距 —— 面积与估高前必须剥掉，否则边距被双计
+        // （每层多 +26），高度永远虚高一截（1 字节点 111 而非 56 的根因）。
+        const boxWNow = d.boxW && d.boxW > 1 ? Math.min(d.boxW, n.width) : n.width;
+        const colNow = Math.max(30, boxWNow - 30);
+        const thPure = Math.max(0, d.textHeight - 26);
+        const area = colNow * thPure;
+        const fitColW = thPure > 0 ? Math.ceil(area / (MAX_AUTO_H * 0.97)) : 0;
         const adaptiveW = Math.min(Math.max(fitColW, PREFERRED_TEXT_W), MAX_TEXT_W);
-        const estH = adaptiveW > 0 ? area / adaptiveW : d.textHeight;
-        // d.textWidth 已被钳在首选列宽 —— 超长文时以加宽后的列宽为准
+        // d.textWidth 为自然单行宽（≤ MAX_TEXT_W 时贴合不换行；超长段落
+        // 已在探针侧回退首选列宽）—— fitW 直接用 列宽+30。
         const fitW = fitColW > PREFERRED_TEXT_W
           ? adaptiveW + 30
-          : Math.min(d.textWidth + 30, PREFERRED_TEXT_W + 30);
+          : Math.min(d.textWidth + 30, MAX_TEXT_W + 30);
+        // 高度必须按“目标列宽”估算：单行贴合路径的列宽 = fitW-30（可能远
+        // 大于首选 280）。若仍按 280 估高，宽框里的单行文字会被误算成多行
+        // 巨高（面积守恒 ÷ 错误列宽）。两条旧路径（段落 280 / 面积加宽
+        // adaptiveW）下 targetCol 与原公式完全一致，长文契约不变。
+        const targetCol = Math.max(60, fitW - 30);
+        const estH = area > 0 ? area / targetCol : thPure;
         // 宽度回缩（滞回 1.5×）：内容变短后框宽立即贴合文字，不再卡在历史
         // 最大列宽（“框比文字宽好多”）。锁定/自由变形的手动框被豁免；普通
         // 手动加宽若与内容严重失配（>1.5×）也回贴合 —— 需要固定尺寸请锁定。

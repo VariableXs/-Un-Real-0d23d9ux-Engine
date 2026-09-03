@@ -7,7 +7,7 @@ import { openContextMenu } from "../../components/ContextMenu";
 import type { MindNode } from "../../lib/types";
 import { highlightCode } from "../../lib/codehighlight";
 import { looksLikeMarkdown, mdToNodeHtml } from "../../lib/nodemarkdown";
-import { PREFERRED_TEXT_W, centroidOf, inscribedRect, sanitizeDims, shapePoints } from "./geometry";
+import { MAX_TEXT_W, PREFERRED_TEXT_W, centroidOf, inscribedRect, sanitizeDims, shapePoints } from "./geometry";
 
 interface Props {
   node: MindNode;
@@ -58,13 +58,17 @@ export function MindNodeView(props: Props): React.ReactElement {
       const el = contentRef.current;
       if (!el) return;
       // 先横后纵：先探测文本的自然单行需求宽度（临时 width:max-content，
-      // 同帧恢复，不产生中间绘制），封顶 PREFERRED_TEXT_W；高度再由换行后
-      // 的 scrollHeight 决定 —— 框架始终完整包住文字，不截断。
+      // 同帧恢复，不产生中间绘制）；高度再由换行后的 scrollHeight 决定 ——
+      // 框架始终完整包住文字，不截断。
+      // 贴合契约（用户：“无论多少字数下完整的长度和宽度贴合”）：单行自然
+      // 宽度 ≤ MAX_TEXT_W 时完全尊重 —— 不强制换行，框宽贴合文字长度；
+      // 超过 MAX_TEXT_W 的属于段落级长文，回退首选列宽 280 换行（长文
+      // 契约 P2/P5/P12/P13 不变），由消费方按面积守恒继续加宽。
       const prev = el.style.width;
       el.style.width = "max-content";
       const naturalW = el.scrollWidth;
       el.style.width = prev;
-      const textW = Math.min(naturalW, PREFERRED_TEXT_W);
+      const textW = naturalW > MAX_TEXT_W ? PREFERRED_TEXT_W : naturalW;
       const textH = el.scrollHeight;
       // 携带本次测量的真实框宽：重挂载/过渡帧里框宽可能与节点宽度脱节
       // （窄框测出的 th 巨大），消费方按 实测框宽×th 算面积才不会虚高。
@@ -201,6 +205,13 @@ export function MindNodeView(props: Props): React.ReactElement {
     void navigator.clipboard?.writeText(text).catch(() => {});
     document.execCommand("delete");
   }
+  /** 纯文本 → 可插入 HTML：转义实体并把换行转为 <br>（HTML 折叠空白，
+   *  直接 insertText 会把多行文本压成一行）。 */
+  function textToHtml(s: string): string {
+    return s.replace(/\r\n?/g, "\n").split("\n")
+      .map((ln) => ln.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"))
+      .join("<br>");
+  }
   /** 菜单/兜底粘贴：优先 text/html（与 onPaste 行为一致），回退纯文本。 */
   async function pasteFromClipboard(): Promise<void> {
     ensureFocus();
@@ -217,7 +228,8 @@ export function MindNodeView(props: Props): React.ReactElement {
         }
       }
       const text = await navigator.clipboard.readText();
-      if (text) document.execCommand("insertText", false, text);
+      // 纯文本换行必须转 <br>：HTML 折叠空白，insertText 会把多行压成一行。
+      if (text) document.execCommand("insertHTML", false, textToHtml(text));
     } catch { /* 剪贴板不可用时静默放弃 */ }
   }
 
@@ -610,7 +622,9 @@ export function MindNodeView(props: Props): React.ReactElement {
             // Markdown 智能解析：保留标题/加粗/列表/代码块等基本排版。
             document.execCommand("insertHTML", false, sanitizeLite(mdToNodeHtml(text)));
           } else if (text) {
-            document.execCommand("insertText", false, text);
+            // 纯文本换行必须转 <br>：HTML 折叠空白，insertText 会把多行
+            // 压成一行（“第一行\n第二行”丢失分行 —— 贴入即单行）。
+            document.execCommand("insertHTML", false, textToHtml(text));
           }
         }}
         dangerouslySetInnerHTML={editing ? undefined : { __html: node.textHtml || "" }}
