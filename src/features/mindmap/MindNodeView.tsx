@@ -66,6 +66,9 @@ export function MindNodeView(props: Props): React.ReactElement {
       el.style.width = prev;
       const textW = Math.min(naturalW, PREFERRED_TEXT_W);
       const textH = el.scrollHeight;
+      // 携带本次测量的真实框宽：重挂载/过渡帧里框宽可能与节点宽度脱节
+      // （窄框测出的 th 巨大），消费方按 实测框宽×th 算面积才不会虚高。
+      const boxW = el.clientWidth;
       // 瞬态复核：形状切换/重挂载的过渡帧可能读到骤缩框宽下的巨量换行
       // 高度（真实但瞬时失真）。数值变化时延迟一帧复核，连续两次一致
       // 才上报 —— 单帧尖峰被直接丢弃。
@@ -77,7 +80,7 @@ export function MindNodeView(props: Props): React.ReactElement {
         return;
       }
       window.dispatchEvent(new CustomEvent("variable:mm-autogrow", {
-        detail: { id: node.id, textWidth: textW, textHeight: textH },
+        detail: { id: node.id, textWidth: textW, textHeight: textH, boxW },
       }));
     };
     const onInput = () => {

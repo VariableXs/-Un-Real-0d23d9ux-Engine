@@ -44,6 +44,7 @@ function AppInner(): React.ReactElement {
   const editingTimer = useRef<number>(0);
   const mode = useUi((s) => s.mode);
   const focusMode = useUi((s) => s.focusMode);
+  const immersive = useUi((s) => s.immersive);
   const currentDocId = useUi((s) => s.currentDocId);
 
   // track editor typing for background degradation
@@ -173,6 +174,15 @@ function AppInner(): React.ReactElement {
       });
     };
     window.addEventListener("variable:mind-defaults-patch", onMindPatch);
+    // 沉浸模式开关（Ctrl+Shift+H）：用捕获阶段注册 —— 节点编辑框等子层会
+    // stopPropagation 冒泡事件，捕获阶段永远先到达，编辑中也能一键进出。
+    const onImmersiveKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        uiStore.setState((s) => ({ immersive: !s.immersive }));
+      }
+    };
+    window.addEventListener("keydown", onImmersiveKey, true);
     const onKey = async (e: KeyboardEvent): Promise<void> => {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -201,6 +211,7 @@ function AppInner(): React.ReactElement {
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onImmersiveKey, true);
       window.removeEventListener("variable:mind-defaults-patch", onMindPatch);
     };
   }, [settings]);
@@ -237,8 +248,19 @@ function AppInner(): React.ReactElement {
         editing={editing || closePhase !== "idle"}
         customBg={settings.customBg}
       />
-      <div id="app-root" className={`app-root theme-${settings.theme} ${focusMode ? "focus" : ""}`}>
-        <TitleBar onCloseRequested={() => void requestClose()} closePhase={closePhase} />
+      <div id="app-root" className={`app-root theme-${settings.theme} ${focusMode ? "focus" : ""} ${immersive ? "immersive" : ""}`}>
+        {!immersive && <TitleBar onCloseRequested={() => void requestClose()} closePhase={closePhase} />}
+        {immersive && (
+          <button
+            type="button"
+            className="immersive-exit"
+            aria-label={i18n.lang === "zh" ? "退出沉浸模式 (Ctrl+Shift+H)" : "Exit immersive (Ctrl+Shift+H)"}
+            title={i18n.lang === "zh" ? "退出沉浸模式 (Ctrl+Shift+H)" : "Exit immersive (Ctrl+Shift+H)"}
+            onClick={() => uiStore.setState({ immersive: false })}
+          >
+            ⤢
+          </button>
+        )}
         <div className="main-row">
           <Sidebar />
           <div className="content-area">

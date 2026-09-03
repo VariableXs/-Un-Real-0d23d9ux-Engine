@@ -6,7 +6,7 @@ import { save as saveDialog, open as openFileDialog } from "@tauri-apps/plugin-d
 import {
   MousePointer2, Hand, Plus, Grid3X3, Magnet, Maximize2, Crosshair,
   Undo2, Redo2, ZoomIn, ZoomOut, Search, Map as MiniMapIcon, Save, FileDown,
-  FolderOpen,
+  FolderOpen, MoreHorizontal, Expand, Network, Share2,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -30,6 +30,7 @@ import { EdgePopover } from "./EdgePopover";
 import { SelectionOpsBar } from "./SelectionOpsBar";
 import { Minimap } from "./Minimap";
 import { InspectorPanel } from "./InspectorPanel";
+import { RadialFab } from "./RadialFab";
 import { DockBar } from "./DockBar";
 // 项目结构可视化引擎（规范一~八章）
 import { ingestProject } from "../projectviz/ingest";
@@ -87,6 +88,7 @@ export const NODE_PRESETS = ["", "tech", "modern", "minimal", "handdrawn", "pixe
 export function MindmapView(props: { settings: Settings }): React.ReactElement {
   const { t, lang } = useI18n();
   const currentMapId = useUi((s) => s.currentMapId);
+  const immersive = useUi((s) => s.immersive);
   const [map, setMap] = useState<Mindmap | null>(null);
   const [mapsList, setMapsList] = useState<{ id: string; name: string }[]>([]);
   const [chooserOpen, setChooserOpen] = useState(false);
@@ -103,6 +105,19 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
   const [menuAnchor, setMenuAnchor] = useState<{ id: string } | null>(null);
   const [edgePop, setEdgePop] = useState<{ id: string } | null>(null);
   const [quickFind, setQuickFind] = useState(false);
+  // 顶部工具条“更多”弹层（次要按钮默认收纳于此，画布视角零遮挡）
+  const [tbMore, setTbMore] = useState(false);
+  // 弹层点外收起：任何落在工具条之外的指针按下都关闭弹层
+  useEffect(() => {
+    if (!tbMore) return;
+    const onDown = (e: PointerEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.(".mm-toolbar")) return;
+      setTbMore(false);
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [tbMore]);
   const [quickQuery, setQuickQuery] = useState("");
   const [restoredNote, setRestoredNote] = useState(false);
   const [guides, setGuides] = useState<GuideLine[] | null>(null);
@@ -934,7 +949,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
   const OVERLAY_SELECTOR = [
     ".mm-toolbar", ".card-pop", ".inspector", ".minimap", ".quick-find",
     ".dock-wrap", ".node-menu", ".edge-pop", ".confirm-bubble", ".node-actions",
-    ".mm-status", ".mm-map-name",
+    ".mm-status", ".mm-map-name", ".radial-fab",
   ].join(",");
 
   /** Module-0: CanvasRoot-level global pointer-down (spec: 全局空白点击监听).
@@ -1634,7 +1649,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       void openLocalMindmapFile(d.path);
     };
     const onAutogrow = (ev: Event): void => {
-      const d = (ev as CustomEvent<{ id: string; textWidth: number; textHeight: number }>).detail;
+      const d = (ev as CustomEvent<{ id: string; textWidth: number; textHeight: number; boxW?: number }>).detail;
       const n = nodesRef.current.find((x) => x.id === d.id);
       if (!n) return;
       // Module-2 text-first sizing + module-3 reverse dilation: polygons grow
@@ -1643,7 +1658,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       // touch a slanted edge. allowShrink: 稳定实测远超内容需要时回缩贴合
       // （自由变形/锁定的节点除外 —— 它们的尺寸是用户明确意志）。
       const mayShrink = !n.locked && !n.collapsed && !freeTransformRef.current.has(n.id);
-      let { width, height } = growDimsForText(n.shape, n.width, n.height, d.textWidth, d.textHeight, mayShrink);
+      let { width, height } = growDimsForText(n.shape, n.width, n.height, d.textWidth, d.textHeight, mayShrink, d.boxW ?? 0);
       const isBox = n.shape === "rect" || n.shape === "rounded" || n.shape === "circle";
       if (isBox) {
         // 增长式自适应（编辑/静态态统一）：“先横后纵” —— 宽度向文本自然需求
@@ -1652,7 +1667,10 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         // ≈5 万字整体容纳在 ≤20000px 框内；超出绝对上限的部分由框内右侧
         // 滚动条兜底。宽度只增不减（手动加宽是用户意志）；高度在远超内容
         // 需要（>1.5×，滞回）时一步回缩贴合，消除过渡期测量的永久性推过头。
-        const colWNow = Math.max(60, n.width - 30); // 当前文本列宽（去内边距）
+        // 测量框宽优先：重挂载/过渡帧的实际框宽可能与 n.width-30 脱节，
+        // 按 实测框宽×textHeight 计算面积才不会把“窄框巨高”误判为巨面积
+        // （曾导致静态化瞬间宽度被一次性推到 465 并因只增不减永久固化）。
+        const colWNow = Math.max(60, d.boxW && d.boxW > 1 ? Math.min(d.boxW, n.width) : n.width - 30);
         const area = colWNow * d.textHeight;
         const fitColW = d.textHeight > 0 ? Math.ceil(area / (MAX_AUTO_H * 0.97)) : 0;
         const adaptiveW = Math.min(Math.max(fitColW, PREFERRED_TEXT_W), MAX_TEXT_W);
@@ -2609,6 +2627,10 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
 
   return (
     <div className={`mindmap-view${editingId ? " editing-focus" : ""}`} tabIndex={0} onPointerDown={onCanvasRootPointerDown}>
+      {/* 精简工具条：仅保留高频主按钮（工具切换/新建/缩放/沉浸）；次要按钮
+          （网格/吸附/撤销/重做/保存/回正/搜索）默认收纳进 ⋯ 弹层，画布视角
+          零遮挡。沉浸模式下整条隐藏（见 immersive 分支）。 */}
+      {!immersive && (
       <div className="mm-toolbar">
         <div className="seg">
           <button type="button" className={tool === "pan" ? "on" : ""} data-tip={lang === "zh" ? "拖拽平移画布" : "Drag to pan"} aria-label="pan tool" onClick={() => setTool("pan")}><Hand size={14} /></button>
@@ -2624,25 +2646,43 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         >
           <Plus size={14} />
         </button>
-        <span className="tb-sep" />
-        <button type="button" className={`icon-btn tiny ${map?.gridEnabled ? "active" : ""}`} data-tip={t("gridToggle")} aria-label={t("gridToggle")} onClick={toggleGrid}><Grid3X3 size={14} /></button>
-        <button type="button" className={`icon-btn tiny ${map?.snapEnabled ? "active" : ""}`} data-tip={t("snapToggle")} aria-label={t("snapToggle")} onClick={toggleSnap}><Magnet size={14} /></button>
-        <span className="tb-sep" />
-        <button type="button" className="icon-btn tiny" data-tip={t("mmUndo")} aria-label={t("undo")} disabled={history.current.past.length === 0} onClick={undo}><Undo2 size={14} /></button>
-        <button type="button" className="icon-btn tiny" data-tip={t("mmRedo")} aria-label={t("redo")} disabled={history.current.future.length === 0} onClick={redo}><Redo2 size={14} /></button>
-        <span className="tb-sep" />
-        <button type="button" className={`icon-btn tiny ${linkedNow ? "active" : ""}`} data-tip={t("mmSaveFile")} aria-label={t("mmSaveFile")} onClick={() => void saveToFile()}><Save size={14} /></button>
-        <button type="button" className="icon-btn tiny" data-tip={t("mmSaveAs")} aria-label={t("mmSaveAs")} onClick={() => void saveMapAs()}><FileDown size={14} /></button>
+        <button type="button" className={`icon-btn tiny ${tbMore ? "active" : ""}`} data-tip={lang === "zh" ? "更多工具" : "More tools"} aria-label={lang === "zh" ? "更多工具" : "More tools"} onClick={() => setTbMore((v) => !v)}>
+          <MoreHorizontal size={14} />
+        </button>
+        {tbMore && (
+          <div className="tb-more-pop card-pop" onPointerDown={(e) => e.stopPropagation()}>
+            <button type="button" className={`icon-btn tiny ${map?.gridEnabled ? "active" : ""}`} data-tip={t("gridToggle")} aria-label={t("gridToggle")} onClick={() => { setTbMore(false); toggleGrid(); }}><Grid3X3 size={14} /></button>
+            <button type="button" className={`icon-btn tiny ${map?.snapEnabled ? "active" : ""}`} data-tip={t("snapToggle")} aria-label={t("snapToggle")} onClick={() => { setTbMore(false); toggleSnap(); }}><Magnet size={14} /></button>
+            <span className="tb-sep" />
+            <button type="button" className="icon-btn tiny" data-tip={t("mmUndo")} aria-label={t("undo")} disabled={history.current.past.length === 0} onClick={() => { setTbMore(false); undo(); }}><Undo2 size={14} /></button>
+            <button type="button" className="icon-btn tiny" data-tip={t("mmRedo")} aria-label={t("redo")} disabled={history.current.future.length === 0} onClick={() => { setTbMore(false); redo(); }}><Redo2 size={14} /></button>
+            <span className="tb-sep" />
+            <button type="button" className={`icon-btn tiny ${linkedNow ? "active" : ""}`} data-tip={t("mmSaveFile")} aria-label={t("mmSaveFile")} onClick={() => { setTbMore(false); void saveToFile(); }}><Save size={14} /></button>
+            <button type="button" className="icon-btn tiny" data-tip={t("mmSaveAs")} aria-label={t("mmSaveAs")} onClick={() => { setTbMore(false); void saveMapAs(); }}><FileDown size={14} /></button>
+            <span className="tb-sep" />
+            <button type="button" className="icon-btn tiny" data-tip={t("home")} aria-label={t("home")} onClick={() => { setTbMore(false); homeCenter(); }}><Crosshair size={14} /></button>
+            <button type="button" className="icon-btn tiny" data-tip={t("quickFind")} aria-label={t("quickFind")} onClick={() => { setTbMore(false); setQuickFind(true); }}><Search size={14} /></button>
+          </div>
+        )}
         <span className="flex-1" />
         <span className="zoom-pill">{Math.round(vp.zoom * 100)}%</span>
         <button type="button" className="icon-btn tiny" data-tip={t("zoomOut")} aria-label={t("zoomOut")} onClick={() => zoomAt(1 / 1.15)}><ZoomOut size={14} /></button>
         <button type="button" className="icon-btn tiny" data-tip={t("zoomIn")} aria-label={t("zoomIn")} onClick={() => zoomAt(1.15)}><ZoomIn size={14} /></button>
         <button type="button" className="icon-btn tiny" data-tip={t("fitAll")} aria-label={t("fitAll")} onClick={() => fitAll(false)}><Maximize2 size={14} /></button>
-        <button type="button" className="icon-btn tiny" data-tip={t("home")} aria-label={t("home")} onClick={homeCenter}><Crosshair size={14} /></button>
-        <button type="button" className="icon-btn tiny" data-tip={t("quickFind")} aria-label={t("quickFind")} onClick={() => setQuickFind(true)}><Search size={14} /></button>
+        <span className="tb-sep" />
+        <button
+          type="button"
+          className="icon-btn tiny"
+          data-tip={lang === "zh" ? "沉浸模式 (Ctrl+Shift+H)" : "Immersive (Ctrl+Shift+H)"}
+          aria-label={lang === "zh" ? "沉浸模式" : "Immersive"}
+          onClick={() => uiStore.setState({ immersive: true })}
+        >
+          <Expand size={14} />
+        </button>
       </div>
+      )}
 
-      {map && (
+      {map && !immersive && (
         <div className="mm-map-name" data-tip={t("rename")}
           onDoubleClick={() =>
             void askPrompt({ title: t("rename"), initial: map.name }).then(async (v) => {
@@ -2860,6 +2900,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         )}
 
         {/* viewport status strip (zoom / coords / selection / tool) */}
+        {!immersive && (
         <div className="mm-status card-pop">
           <span>{Math.round(vp.zoom * 100)}%</span>
           <span className="sep">·</span>
@@ -2874,7 +2915,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
             <MiniMapIcon size={13} />
           </button>
         </div>
+        )}
 
+        {!immersive && (
         <SelectionOpsBar
           count={selection.size}
           ops={{
@@ -2892,8 +2935,55 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
             deleteSel: () => void deleteSelectionBubble(),
           }}
         />
+        )}
+
+        {/* 悬浮径向菜单：常用操作按需展开；容器 pointer-events:none，
+            圆形按钮之外的区域完全不拦截画布拖拽/缩放（沉浸模式下保留，
+            作为必要快捷操作入口）。 */}
+        <RadialFab
+          fabLabel={lang === "zh" ? "快捷操作" : "Quick actions"}
+          items={[
+            {
+              label: t("newTextbox"),
+              icon: <Plus size={16} />,
+              onClick: () => {
+                const r = containerRef.current?.getBoundingClientRect();
+                const c = toWorld((r?.left ?? 0) + (r?.width ?? 800) / 2, (r?.top ?? 0) + (r?.height ?? 600) / 2);
+                createNodeAt(c.x - 115, c.y - 36);
+              },
+            },
+            {
+              label: t("quickFind"),
+              icon: <Search size={16} />,
+              onClick: () => setQuickFind(true),
+            },
+            {
+              label: lang === "zh" ? "树状布局" : "Tree layout",
+              icon: <Network size={16} />,
+              onClick: () => autoLayout("tree"),
+              disabled: nodes.length === 0,
+            },
+            {
+              label: lang === "zh" ? "整理连接线" : "Tidy edges",
+              icon: <Share2 size={16} />,
+              onClick: tidyEdges,
+              disabled: edges.length === 0,
+            },
+            {
+              label: t("mmSaveFile"),
+              icon: <Save size={16} />,
+              onClick: () => void saveToFile(),
+            },
+            {
+              label: t("mmSaveAs"),
+              icon: <FileDown size={16} />,
+              onClick: () => void saveMapAs(),
+            },
+          ]}
+        />
 
         {/* hidden bottom dock (spec 5.1) */}
+        {!immersive && (
         <DockBar
           hasSel={selection.size > 0}
           count={selection.size}
@@ -2920,6 +3010,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
             openContextMenu(window.innerWidth / 2 - 120, window.innerHeight - 150, nodeMenuItems(nodeById.get(Array.from(selection)[0]!)!));
           }}
         />
+        )}
 
         {quickFind && (
           <div className="quick-find card-pop">
@@ -2972,7 +3063,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
           />
         )}
 
-        {minimapOpen && map && (
+        {minimapOpen && map && !immersive && (
           <Minimap
             nodes={nodes.filter((n) => !n.hidden)}
             selectionIds={selection}
@@ -2982,7 +3073,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
           />
         )}
 
-        {!menuAnchor && selection.size === 1 && nodeById.get(Array.from(selection)[0]!) !== undefined && (() => {
+        {!immersive && !menuAnchor && selection.size === 1 && nodeById.get(Array.from(selection)[0]!) !== undefined && (() => {
           const selNode = nodeById.get(Array.from(selection)[0]!)!;
           return (
             <InspectorPanel

@@ -387,3 +387,44 @@
 }
 .mindmap-view .mm-node { transition: opacity .28s ease, filter .28s ease, box-shadow .12s; }
 .mindmap-view .edge-layer { transition: opacity .28s ease, filter .28s ease; }
+
+/* ---------- 精简工具条：次要按钮收纳弹层 ---------- */
+.tb-more-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+  display: flex; align-items: center; gap: 3px; padding: 5px 8px;
+  background: var(--panel); backdrop-filter: blur(14px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0,0,0,.35);
+  animation: pin-pop .14s ease;
+}
+
+/* ---------- 悬浮径向快捷菜单 ---------- */
+/* 容器 pointer-events:none：44px 之外的区域不拦截画布拖拽/滚轮缩放；
+   只有主按钮与展开项本身可点。 */
+.radial-fab {
+  position: absolute; right: 20px; bottom: 168px; z-index: 75;
+  width: 44px; height: 44px; pointer-events: none;
+}
+.fab-main {
+  position: absolute; right: 0; bottom: 0; width: 44px; height: 44px;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: var(--accent-soft); color: var(--text); cursor: pointer;
+  pointer-events: auto; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35);
+  transition: transform .18s ease, background .18s ease;
+}
+.fab-main:hover { transform: scale(1.07); background: var(--accent); color: #fff; }
+.fab-plus { font-size: 21px; line-height: 1; font-weight: 600; transition: transform .22s ease; }
+.fab-plus.rot { transform: rotate(45deg); }
+.radial-item {
+  position: absolute; right: 4px; bottom: 4px; width: 36px; height: 36px;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: var(--panel-solid); color: var(--text-dim); cursor: pointer;
+  pointer-events: none; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: translate(0, 0) scale(.25);
+  transition: transform .24s cubic-bezier(.34,1.45,.64,1), opacity .16s ease, color .15s, border-color .15s;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3);
+}
+.radial-fab.open .radial-item { pointer-events: auto; }
+.radial-item:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.radial-item:disabled { opacity: .3 !important; cursor: default; }

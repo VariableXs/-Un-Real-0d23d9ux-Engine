@@ -97,13 +97,28 @@ export function inscribedRect(shape: NodeShape, w: number, h: number): InscRect 
     let lo = h * 1e-3;
     // Half-height is bounded by BOTH box halves around the centroid.
     let hi = Math.max(lo, Math.min(h / 2, c.y, h - c.y));
-    for (let i = 0; i < 42; i++) {
-      const m1 = lo + (hi - lo) / 3;
-      const m2 = hi - (hi - lo) / 3;
-      if (maxHalfW(m1) * m1 < maxHalfW(m2) * m2) lo = m1;
-      else hi = m2;
+    // 粗网格全局扫描：细高多边形（如 631×7553 的五边形）的“面积-半高”函数
+    // 是双峰的 —— 肩部一个宽扁局部极大，躯干一个高瘦全局极大。纯三分搜索
+    // 会卡死在宽扁峰上（内接框高度与 h 无关），文字增长回路因此永不收敛、
+    // 高度直冲 MAX_AUTO_H。先网格定位全局盆地，再在盆地内三分精化。
+    let bestB = lo;
+    let bestA = 0;
+    const STEPS = 24;
+    for (let i = 1; i <= STEPS; i++) {
+      const b = lo + ((hi - lo) * i) / (STEPS + 1);
+      const a = maxHalfW(b) * b;
+      if (a > bestA) { bestA = a; bestB = b; }
     }
-    const b = Math.max(h * 1e-3, Math.min((lo + hi) / 2, h - c.y, c.y));
+    const span = (hi - lo) / (STEPS + 1);
+    let lo2 = Math.max(lo, bestB - span);
+    let hi2 = Math.min(hi, bestB + span);
+    for (let i = 0; i < 42; i++) {
+      const m1 = lo2 + (hi2 - lo2) / 3;
+      const m2 = hi2 - (hi2 - lo2) / 3;
+      if (maxHalfW(m1) * m1 < maxHalfW(m2) * m2) lo2 = m1;
+      else hi2 = m2;
+    }
+    const b = Math.max(h * 1e-3, Math.min((lo2 + hi2) / 2, h - c.y, c.y));
     const a = maxHalfW(b);
     out = { x: c.x - a, y: c.y - b, w: 2 * a, h: 2 * b };
   }
@@ -258,12 +273,16 @@ export function growDimsForText(
   textW: number,
   textH: number,
   allowShrink = false,
+  /** 测量发生时的真实框宽（重挂载/过渡帧可能与当前内接宽脱节）；
+   *  以实测宽计算文字面积，避免“窄框巨高”被误当成大面积。 */
+  measuredAtW = 0,
 ): Dim {
   let cur = clampDims(width, height);
   const tw = Math.max(0, Number.isFinite(textW) ? textW : 0);
   const th = Math.max(0, Number.isFinite(textH) ? textH : 0);
   // Wrap width the caller's textH was measured at (≥1 guards degenerate frames).
-  const baseW = Math.max(1, inscribedRect(shape, cur.width, cur.height).w);
+  const inscW = inscribedRect(shape, cur.width, cur.height).w;
+  const baseW = Math.max(1, measuredAtW > 1 ? Math.min(measuredAtW, inscW * 1.35) : inscW);
   // 自适应列宽（面积守恒）：文字面积（baseW×th）若在 280 首选列宽下会超过
   // MAX_AUTO_H，则按面积反推加宽列宽（上限 MAX_TEXT_W），让超长文（≈5 万
   // 字）无需滚动即可整体容纳在框内；短文仍用 280 可读列宽。
@@ -381,13 +400,13 @@ export function shapePoints(shape: NodeShape, w: number, h: number): Pt[] {
       const rx = (w / 2) * 0.98;
       const ry = (h / 2) * 0.98;
       const pts: Pt[] = [];
-      // Circumradius fit: use min(rx, ry) so polygons stay regular-ish inside box.
-      const r = Math.min(rx, ry);
-      const scx = cx;
-      const scy = cy;
+      // 椭圆映射顶点：正多边形按包围盒两轴各自拉伸（rx/ry 分别作用于
+      // cos/sin）。方盒时与正多边形完全一致；细高/扁宽盒时形状充满包围
+      // 盒 —— 旧的 min(rx,ry) 正多边形在细高盒里只是中央一小团，内接
+      // 矩形高度与盒高无关，长文自适应回路因此永不收敛、高度直冲上限。
       for (let i = 0; i < n; i++) {
         const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-        pts.push({ x: scx + r * Math.cos(angle), y: scy + r * Math.sin(angle) });
+        pts.push({ x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) });
       }
       return pts;
     }

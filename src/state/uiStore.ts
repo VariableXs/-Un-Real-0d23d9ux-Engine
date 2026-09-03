@@ -15,6 +15,9 @@ export interface UiState {
   settingsOpen: boolean;
   settingsTab: string;
   focusMode: boolean;
+  /** 沉浸模式：一键隐藏全部 UI 外壳（标题栏/侧栏/画布工具层），
+   *  仅保留画布与悬浮快捷入口；会话级状态，不入库。 */
+  immersive: boolean;
   currentDocId: string | null;
   currentMapId: string | null;
   saveStatuses: Record<string, SaveStatus>;
@@ -40,6 +43,7 @@ export const uiStore = createStore<UiState>({
   settingsOpen: false,
   settingsTab: "appearance",
   focusMode: false,
+  immersive: false,
   currentDocId: null,
   currentMapId: null,
   saveStatuses: {},
