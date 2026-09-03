@@ -130,9 +130,11 @@ export function inscribedRect(shape: NodeShape, w: number, h: number): InscRect 
 
 // ---------- dimension guards (module-1/2/3/4 rev 3) ----------
 
-/** Hard minimum frame size — no polygon may ever be squeezed below this. */
-export const MIN_NODE_W = 120;
-export const MIN_NODE_H = 80;
+/** Hard minimum frame size — no polygon may ever be squeezed below this.
+ *  贴合模式（用户契约：长度和宽度正好贴合文字）：地板仅保证可点击/可拖拽
+ *  的最小人机尺寸，短标签不再被撑出大片空白。 */
+export const MIN_NODE_W = 96;
+export const MIN_NODE_H = 56;
 /** Extreme-elongation guard: either axis may never exceed 3× the other. */
 export const MAX_ASPECT = 3;
 /** Safety padding the drawn edge keeps beyond the text box (module-3). */

@@ -323,7 +323,7 @@ describe("sanitizeDims 渲染归一化（文本优先，不做长宽比钳制）
   it("损坏尺寸（NaN/过小）依然被修复", () => {
     const { dim, repaired } = sanitizeDims(NaN, 40);
     expect(repaired).toBe(true);
-    expect(dim.width).toBeGreaterThanOrEqual(120);
-    expect(dim.height).toBeGreaterThanOrEqual(80);
+    expect(dim.width).toBeGreaterThanOrEqual(MIN_NODE_W);
+    expect(dim.height).toBeGreaterThanOrEqual(MIN_NODE_H);
   });
 });
