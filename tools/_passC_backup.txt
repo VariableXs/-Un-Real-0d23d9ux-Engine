@@ -1,0 +1,186 @@
+// ---------- Pass C: translucent volumetric aurora curtains ----------
+// Output is PREMULTIPLIED alpha — the renderer blends with (ONE, 1-SRC_ALPHA).
+// Trajectory law: the luminous bottom edge launches from the LOWER-LEFT,
+// climbs a smooth concave parabola past the upper-middle and dissolves off
+// the upper-right corner — the central workspace keeps open deep sky.
+
+export const AURORA_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 outColor;
+uniform vec2 uRes;
+uniform float uTime;
+uniform float uAurora;     // curtain count ladder 0..3
+uniform float uFlow;       // silk flowing animation
+uniform float uDetail;     // L10 inner fold detail
+uniform vec2  uCam;
+uniform float uDpr;
+${NOISE_GLSL}
+
+// Strict cold-spectrum ladder: moon-white core → electric ice cyan → gem
+// royal blue → deep cold violet, with a faint ice-crystal pink reserved
+// ONLY for the weak dissipating tips (chromatic watercolor fringe).
+// No red / yellow / amber anywhere — the output filter below also guards.
+vec3 auroraRamp(float e, float alt, float violetAmt, float pinkAmt) {
+  vec3 royal = vec3(0x3b, 0x82, 0xf6) / 255.0; // #3B82F6 gem royal blue
+  vec3 vio   = vec3(0x8b, 0x5c, 0xf6) / 255.0; // #8B5CF6 deep cold violet
+  vec3 ice   = vec3(0x38, 0xbd, 0xf8) / 255.0; // #38BDF8 electric ice cyan
+  vec3 moon  = vec3(0xf0, 0xf6, 0xff) / 255.0; // #F0F6FF moon-white core
+  vec3 rose  = vec3(0xf4, 0x72, 0xb6) / 255.0; // #F472B6 ice pink (tips only)
+  vec3 col = mix(royal, vio, smoothstep(0.04, 0.38, e) * (0.30 + 0.70 * violetAmt)
+                 * mix(0.35, 1.0, smoothstep(0.04, 0.30, alt)));
+  col = mix(col, ice, smoothstep(0.34, 0.72, e));
+  col = mix(col, moon, smoothstep(0.68, 0.96, e));
+  col = mix(col, rose, pinkAmt * 0.72 * smoothstep(0.28, 0.06, e) * smoothstep(0.12, 0.42, alt));
+  return col;
+}
+
+// Sweeping celestial arc: 0.27 + 0.61·x^0.60 — a steep, elegant launch from
+// the lower-left edge that flattens toward the upper-right corner (y ≈ 0.67
+// at mid-screen, 0.88 at the corner), so the bright edge never crosses the
+// screen centre. Macro breathing keeps ~20 s / ~11 s periods; residual
+// undulation is tiny — ONE graceful parabola, never a symmetric S-ribbon.
+float arcPath(float x, float t, float seed, float flow) {
+  float xs = clamp(x, 0.0, 1.0);
+  float y = 0.27 + 0.61 * pow(xs, 0.60);
+  y += 0.024 * sin(xs * 2.7 + seed * 5.1 + t * 0.31 * flow);  // ~20 s breath
+  y += 0.011 * sin(xs * 5.1 - seed * 2.3 - t * 0.57 * flow);  // ~11 s drift
+  y += (fbm3(vec3(xs * 1.8, seed * 7.3, t * 0.028)) - 0.5) * 0.026;
+  return y;
+}
+
+// Analytic slope of the parabola + sway (the slow fbm ridge contributes
+// almost nothing — skipping it keeps this branch cheap for ray fanning).
+float arcSlope(float x, float t, float seed, float flow) {
+  float xs = clamp(x, 0.0, 1.0);
+  float s = 0.366 * pow(max(xs, 1e-3), -0.40);
+  s += 0.0648 * cos(xs * 2.7 + seed * 5.1 + t * 0.31 * flow);
+  s += 0.0561 * cos(xs * 5.1 - seed * 2.3 - t * 0.57 * flow);
+  return s;
+}
+
+// One aurora curtain: bottom-tension, top-fanning, open toward deep space.
+// The BOTTOM edge is a hair-thin white-hot field-line arc wrapped in a soft
+// white-blue halo; above it, vertically-stretched ray shafts lean off the
+// arc normal and diverge with height, dissolving with a purely exponential
+// atmospheric falloff — no upper boundary anywhere, so it never reads as a
+// closed pipe. Returns premultiplied color.
+vec4 curtain(vec2 uv, float t, float seed, float flow, float detail,
+             float lift, float alphaIn, float violet, float pink) {
+  float d = uv.y - arcPath(uv.x, t, seed, flow) - lift;
+  if (d < -0.28 || d > 1.05) return vec4(0.0); // coherent early-out, no seam
+  float ad = abs(d);
+  float above = max(d, 0.0);
+
+  // Luminous bottom field-line + white-blue bloom hugging both sides.
+  float line = exp(-ad * 120.0);
+  float halo = exp(-ad * 13.0) * exp(-max(-d, 0.0) * 3.2);
+
+  // Per-column curtain height: some shafts tower, others vanish (organic).
+  float fall = mix(4.0, 8.2, fbm(vec2(uv.x * 3.1 + seed * 4.7, seed * 2.9)));
+  // Rays fan out: the sampling coordinate leans off the arc normal and
+  // diverges with height, plus a noise-driven spread per column.
+  float slope = arcSlope(uv.x, t, seed, flow);
+  float fanN = fbm(vec2(uv.x * 5.0 + seed * 13.0, seed * 1.7)) - 0.5;
+  float sx = uv.x - above * (slope * 0.34 + fanN * 0.16);
+
+  // Vertically-stretched ray field: high x-frequency, LOW y-frequency.
+  float n = fbm(vec2(sx * 16.0 + seed * 9.0 + t * 0.06 * flow, above * 2.6 - t * 0.015));
+  float fil = pow(clamp(1.0 - abs(n * 2.0 - 1.0), 0.0, 1.0), 2.0);
+  // Ray contrast is height-graded: hugging the line the curtain is a
+  // continuous luminous band, distinct rays with dark gaps only open up
+  // higher — otherwise the gaps expose naked sky as dirty smudges.
+  float rayMix = smoothstep(0.05, 0.40, above);
+  float ray = mix(0.80, 0.12, rayMix) + mix(0.50, 1.15, rayMix) * fil;
+  // Fast 1.5 s pulse — high-energy particles colliding with the atmosphere.
+  ray *= 1.0 + 0.22 * sin(t * 4.19 + n * 27.0 + seed * 8.0);
+  // Mid 6 s folds travelling along the arc: brightness + width breathe.
+  ray *= 0.72 + 0.34 * sin(1.0472 * t - sx * 5.5 + seed * 9.4);
+  if (detail > 0.5) {
+    // L10 counter-drifting micro-folds double the silk texture.
+    float n2 = fbm(vec2(sx * 30.0 - t * 0.14 + seed * 3.0, above * 4.5));
+    ray *= 0.84 + 0.32 * pow(clamp(1.0 - abs(n2 * 2.0 - 1.0), 0.0, 1.0), 2.0);
+  }
+
+  // Bottom-tension envelope: exponential atmospheric thinning, extra
+  // feathering as the shafts climb, last wisps dying far up — a dissolve,
+  // not a cap.
+  float env = exp(-above * fall);
+  env *= 1.0 - 0.38 * smoothstep(0.10, 0.46, above);
+  env *= 1.0 - smoothstep(0.38, 0.78, above);
+  // Bottom-tension: energy piles up gently right over the field-line.
+  env *= 1.0 + 0.26 * exp(-above * 7.0);
+  float body = env * ray * smoothstep(-0.010, 0.012, d);
+
+  float e = body * 0.92 + halo * (0.34 + 0.24 * body) + line * 1.35;
+  e = 1.0 - exp(-1.6 * e); // soft HDR shoulder — no flat white blocks
+  vec3 c = auroraRamp(e, above, violet, pink);
+  float a = clamp(e * alphaIn, 0.0, 0.55);
+  return vec4(c * a, a); // premultiplied
+}
+
+// Floating cosmic light dust: tiny sparks hugging the luminous line and
+// riding up inside the curtain, drifting in slow pseudo-Brownian motion
+// and fading in/out over their life cycle.
+vec4 lightDust(vec2 uv, float t, float seed, float flow, float violet, float pink) {
+  float cx = arcPath(uv.x, t, seed, flow);
+  float above = uv.y - cx;
+  float near = exp(-abs(above) * 6.0) + exp(-max(above, 0.0) * 3.0) * 0.30 * step(0.0, above);
+  vec4 acc = vec4(0.0);
+  for (int k = 0; k < 2; k++) {
+    float fk = float(k);
+    vec2 g = uv * vec2(54.0, 32.0) + fk * 17.3 + seed * 4.0;
+    vec2 cell = floor(g);
+    vec2 f = fract(g);
+    float h = hash12(cell + fk * 7.77);
+    vec2 pos = vec2(hash12(cell + 3.1), hash12(cell + 9.4));
+    // Brownian wander: layered noise fields push each mote around slowly.
+    pos += 0.30 * vec2(fbm(cell * 0.37 + t * 0.055 * flow),
+                       fbm(cell * 0.37 + 5.0 - t * 0.045 * flow)) - 0.15;
+    float dist = length(f - pos);
+    // Life cycle: gentle fade-in → hold → fade-out, ~14-28 s, desynced.
+    float life = fract(t * (0.036 + 0.036 * h) * flow + h * 7.0);
+    float pulse = sin(life * 6.2831853);
+    float bright = smoothstep(0.0, 0.30, pulse) * smoothstep(1.0, 0.70, pulse);
+    float mote = smoothstep(0.13, 0.0, dist) * bright;
+    vec3 c = mix(vec3(0.88, 0.95, 1.0), vec3(0.72, 0.86, 1.0), step(0.5, h));
+    c = mix(c, vec3(0.96, 0.82, 0.90), step(0.85, h) * (0.35 + 0.65 * pink));
+    acc += vec4(c * mote, mote) * 0.26;
+  }
+  return acc * near;
+}
+
+void main() {
+  vec2 uv = vUv + uCam * uDpr / uRes;
+  float t = uTime;
+  vec4 acc = vec4(0.0);
+  if (uAurora > 0.5) {
+    float flow = uFlow > 0.5 ? 1.0 : 0.12;
+    // Primary celestial curtain — lower-left launch → upper-right dome.
+    acc += curtain(uv, t, 0.00, flow, uDetail, 0.000, 0.40, 0.0, 0.40);
+    acc += lightDust(uv, t, 0.00, flow, 0.0, 0.60);
+    if (uAurora > 1.5) {
+      // Violet sister curtain rides just above the main arc.
+      acc += curtain(uv, t * 0.94, 0.37, flow * 0.85, uDetail, 0.032, 0.26, 1.0, 0.0);
+      acc += lightDust(uv, t * 1.06, 0.37, flow * 0.85, 1.0, 0.0);
+    }
+    if (uAurora > 2.5) {
+      acc += curtain(uv, t * 1.08, 0.71, flow * 1.15, uDetail, -0.026, 0.18, 0.5, 1.0);
+      acc += curtain(uv, t * 0.82, 0.53, flow * 0.70, uDetail, 0.060, 0.13, 1.0, 0.35);
+    }
+  }
+  // Output-side cold filter on the composited aurora energy.
+  vec3 rgb = acc.rgb;
+  float warm = step(0.8, rgb.r) * step(0.7, rgb.g);
+  if (warm > 0.0) {
+    float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
+    rgb = mix(rgb, vec3(lum * 0.70, lum * 0.84, min(1.0, lum * 1.30 + 0.06)), warm);
+  }
+  // Total curtain translucency stays ≈0.15-0.5 so the starfield physically
+  // shines through the silk (3D depth integration). A SOFT shoulder (no
+  // hard clamp) saturates the 4-layer overlap smoothly — a hard clamp with
+  // rgb rescale once "bit" dark jagged ridges out of the hottest line zone.
+  float a = min(acc.a, 0.34) + max(acc.a - 0.34, 0.0) * 0.32;
+  outColor = vec4(rgb, min(a, 0.55));
+}`;
+

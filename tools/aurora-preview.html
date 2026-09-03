@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- Standalone harness: renders the exact starfield pipeline (Pass A sky →
+     Pass B stars → Pass C aurora → bloom composite) with no Tauri deps, so
+     the aurora art direction can be verified in a plain browser. -->
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>Aurora Preview</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070f; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #info { position: fixed; left: 8px; top: 8px; color: #9fb6d8; font: 12px/1.6 monospace; z-index: 2; text-shadow: 0 1px 2px #000; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">aurora preview — L10 tier</div>
+<script type="module">
+  import { generateStars, makeStarfieldMask, TIER_SPECS } from "/src/features/background/starfield/math";
+  import { createGpu } from "/src/features/background/starfield/renderer";
+
+  const canvas = document.getElementById("c");
+  const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance" });
+  if (!gl) { document.getElementById("info").textContent = "WebGL2 unavailable"; throw new Error("no webgl2"); }
+  const gpu = createGpu(gl);
+  if (!gpu) { document.getElementById("info").textContent = "shader compile failed"; throw new Error("no gpu"); }
+
+  const q = new URLSearchParams(location.search);
+  const tierIdx = Math.min(9, Math.max(0, (parseInt(q.get("tier") ?? "10", 10) || 10) - 1));
+  const base = TIER_SPECS[tierIdx]; // default L10: aurora 3 + bloom + flow + detail
+  let spec = base.level >= 8 && q.get("flow") === "0" ? { ...base, auroraFlow: false } : base;
+  const cur = q.get("curtains");
+  if (cur !== null) spec = { ...spec, aurora: Math.max(0, Math.min(3, parseInt(cur, 10) || 0)) };
+  document.getElementById("info").textContent =
+    "aurora preview — L" + spec.level + " tier"
+    + (spec !== base ? ` (flow=${spec.auroraFlow ? 1 : 0}, curtains=${spec.aurora})` : "");
+  const margin = 320;
+  const SEED = 20260826;
+
+  function viewSize() {
+    return { w: Math.max(320, window.innerWidth), h: Math.max(240, window.innerHeight) };
+  }
+  function buildStars() {
+    const { w, h } = viewSize();
+    const spanW = w + margin * 2;
+    const spanH = h + margin * 2;
+    const { data } = generateStars({
+      viewWidth: w, viewHeight: h, margin, seed: SEED,
+      mask: makeStarfieldMask(SEED, spanW, spanH),
+      targetCount: spec.starBudget,
+    });
+    gpu.uploadStars(data);
+    return { spanW, spanH };
+  }
+  let span = buildStars();
+
+  function frame(nowMs) {
+    const { w, h } = viewSize();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) * spec.dprScale;
+    const cw = Math.max(1, Math.round(w * dpr));
+    const ch = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+    gpu.draw({
+      time: (nowMs - t0) / 1000, dpr, camX: 0, camY: 0,
+      spanW: span.spanW, spanH: span.spanH, margin,
+      motion: 1, cursorX: -9999, cursorY: -9999, zoomVel: 0,
+      centerDim: false, tier: spec, cursorActive: false, fastMove: false,
+    });
+    requestAnimationFrame(frame);
+  }
+  const t0 = performance.now();
+  window.addEventListener("resize", () => { span = buildStars(); });
+  requestAnimationFrame(frame);
+</script>
+</body>
+</html>

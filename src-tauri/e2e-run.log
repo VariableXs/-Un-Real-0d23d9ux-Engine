@@ -1,0 +1,36 @@
+﻿cargo :    Compiling variable v1.0.0 (D:\2\1\src-tauri)
+所在位置 行:1 字符: 1
++ cargo test --test commands_e2e 2>&1 | Out-File e2e-run.log -Encoding  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling va...\2\1\src-tauri):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.75s
+     Running tests\commands_e2e.rs (target\debug\deps\commands_e2e-a84e3eb962e6b536.exe)
+
+running 7 tests
+test recovery_file_to_document ... ok
+test mindmap_flow_with_frame_extras_and_edges ... ok
+test media_import_reference_relocate_and_cleanup ... FAILED
+test workspace_export_import_roundtrip ... ok
+test backup_restore_roundtrip_preserves_data ... ok
+test folders_and_documents_flow ... ok
+test exports_and_settings_and_textfile ... ok
+
+failures:
+
+---- media_import_reference_relocate_and_cleanup stdout ----
+
+thread 'media_import_reference_relocate_and_cleanup' (39236) panicked at tests\commands_e2e.rs:279:5:
+assertion `left == right` failed
+  left: 4
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    media_import_reference_relocate_and_cleanup
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+error: test failed, to rerun pass `--test commands_e2e`
