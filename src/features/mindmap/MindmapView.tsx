@@ -19,7 +19,7 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { parseMindmapFile } from "../../lib/mindmapFile";
 import type { Settings } from "../../lib/settings";
 import {
-  boxIntersectsRect, clampDims, computeGuides, growDimsForText, MIN_NODE_H,
+  boxIntersectsRect, boxShapeExempt, clampDims, computeGuides, growDimsForText, MIN_NODE_H,
   MIN_NODE_W, PREFERRED_TEXT_W, sanitizeDims, shapeCollapsed, vertexDragSigns,
   type GuideLine,
 } from "./geometry";
@@ -50,7 +50,7 @@ const MIN_H = MIN_NODE_H;
 function healNodeDims(list: MindNode[]): MindNode[] {
   let fixed = 0;
   const out = list.map((nd) => {
-    const { dim, repaired } = sanitizeDims(nd.width, nd.height);
+    const { dim, repaired } = sanitizeDims(nd.width, nd.height, nd.shape);
     if (!repaired) return nd;
     fixed++;
     return { ...nd, ...dim };
@@ -1110,6 +1110,11 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       let x = o.x, y = o.y, w = o.w, h = o.h;
       const hnd = d.handle;
       const target = nodesRef.current.find((n) => n.id === d.id);
+      // Box frames (rect/rounded) are free-form writing containers: the manual
+      // height cap is lifted to the same ceiling the auto-grow path uses, so a
+      // long-text column can also be shaped by hand. Polygons/circles keep the
+      // tight 1200 cap (elongation breaks their geometry).
+      const maxDragH = target && boxShapeExempt(target.shape) ? 20000 : 1200;
       // Convert screen-space deltas into the node's local axes when rotated.
       const rot = target?.rotation ?? 0;
       let dx = sdx, dy = sdy;
@@ -1127,7 +1132,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
           if (sx < 0) x = o.x + (o.w - w);
         }
         if (sy !== 0) {
-          h = clamp(o.h + sy * dy, MIN_H, 1200);
+          h = clamp(o.h + sy * dy, MIN_H, maxDragH);
           if (sy < 0) y = o.y + (o.h - h);
         }
         // Module-1 vertex safety lock: reject any pending geometry that has
@@ -1138,14 +1143,15 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         }
       } else {
         if (hnd.includes("e")) w = clamp(o.w + dx, MIN_W, MAX_W);
-        if (hnd.includes("s")) h = clamp(o.h + dy, MIN_H, 1200);
+        if (hnd.includes("s")) h = clamp(o.h + dy, MIN_H, maxDragH);
         if (hnd.includes("w")) { w = clamp(o.w - dx, MIN_W, MAX_W); x = o.x + (o.w - w); }
-        if (hnd.includes("n")) { h = clamp(o.h - dy, MIN_H, 1200); y = o.y + (o.h - h); }
+        if (hnd.includes("n")) { h = clamp(o.h - dy, MIN_H, maxDragH); y = o.y + (o.h - h); }
       }
       // Module-1 aspect-ratio guard: pull the long side back to ≤3× the short
       // one (equivalent to force-expanding the short side). Anchor
       // compensation re-glues a grabbed west/north edge to the cursor.
-      const cd = clampDims(w, h);
+      // Box frames pass their shape so the guard is skipped for them.
+      const cd = clampDims(w, h, target?.shape);
       if (cd.width !== w && (hnd.includes("w") || (d.vs?.sx ?? 0) < 0)) x = o.x + (o.w - cd.width);
       if (cd.height !== h && (hnd.includes("n") || (d.vs?.sy ?? 0) < 0)) y = o.y + (o.h - cd.height);
       w = cd.width; h = cd.height;
@@ -1649,7 +1655,8 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
     };
     const onRepairNode = (ev: Event): void => {
       const d = (ev as CustomEvent<{ id: string; width: number; height: number }>).detail;
-      const cd = clampDims(d.width, d.height);
+      const shape = nodesRef.current.find((x) => x.id === d.id)?.shape;
+      const cd = clampDims(d.width, d.height, shape);
       patchNode(d.id, cd);
       console.warn(`[mindmap] repaired corrupt dims of node ${d.id} → ${cd.width}x${cd.height}`);
       void ipc.log("warn", `repaired node dims ${d.id} -> ${cd.width}x${cd.height}`).catch(() => {});
@@ -2235,9 +2242,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
     return {
       ...base,
       // Module-1: imports run through the same hard dimension clamps as
-      // interactive resizes (mins + aspect guard).
+      // interactive resizes (mins + aspect guard — box frames exempt).
       ...((n.width !== undefined || n.height !== undefined)
-        ? clampDims(numOr(n.width, base.width), numOr(n.height, base.height))
+        ? clampDims(numOr(n.width, base.width), numOr(n.height, base.height), n.shape ?? base.shape)
         : {}),
       ...(n.shape !== undefined ? { shape: n.shape } : {}),
       ...(n.borderRadius !== undefined ? { borderRadius: n.borderRadius } : {}),

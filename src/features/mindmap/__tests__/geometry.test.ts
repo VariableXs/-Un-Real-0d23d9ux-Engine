@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  anchorsFor, circleDiameter, clampDims, computeEdge, distributedAnchor,
+  anchorsFor, boxShapeExempt, circleDiameter, clampDims, computeEdge, distributedAnchor,
   growDimsForText, inscribedRect, MAX_ASPECT, MIN_NODE_H, MIN_NODE_W,
   nearestAnchor, pathD, pointInShape, polygonArea, sanitizeDims,
   shapeCollapsed, shapePoints, vertexDragSigns,
@@ -214,5 +214,55 @@ describe("growDimsForText (module-3 reverse dilation)", () => {
 describe("polygonArea", () => {
   it("computes the triangle area exactly", () => {
     expect(polygonArea([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 0, y: 100 }])).toBeCloseTo(5000, 6);
+  });
+});
+
+/**
+ * 回归测试：「节点文字严重溢出边框」BUG。
+ *
+ * 根因：clampDims/sanitizeDims 的 MAX_ASPECT=3 长宽比守卫（为防止多边形
+ * 拉成针状而设计）被无差别应用到了 rect/rounded 文本框上——宽 280px 的
+ * 写作列无论存了多少文字，渲染高度被硬钳制在 840px，超出部分全部被裁切。
+ * 修复后守卫按形状豁免：rect/rounded 任意长宽比，多边形/圆形保留守卫。
+ */
+describe("clampDims 形状感知长宽比守卫（溢出 BUG 回归）", () => {
+  it("rect/rounded 文本框：高可以任意超过宽的 3 倍（长文写作列）", () => {
+    expect(clampDims(280, 4400, "rect")).toEqual({ width: 280, height: 4400 });
+    expect(clampDims(280, 4400, "rounded").height).toBe(4400);
+  });
+
+  it("多边形/圆形：长宽比守卫仍然生效（防针状退化）", () => {
+    expect(clampDims(280, 4400, "triangle").height).toBeLessThanOrEqual(280 * MAX_ASPECT + 1);
+    expect(clampDims(2000, 200, "diamond").width).toBeLessThanOrEqual(200 * MAX_ASPECT + 1);
+    expect(clampDims(2400, 200, "circle").width).toBeLessThanOrEqual(200 * MAX_ASPECT + 1);
+  });
+
+  it("绝对上下限对所有形状一致：宽 120–1400，高 80–20000", () => {
+    expect(clampDims(1, 1, "rect")).toEqual({ width: MIN_NODE_W, height: MIN_NODE_H });
+    expect(clampDims(99999, 99999, "triangle").width).toBe(1400);
+    expect(clampDims(280, 99999, "rect").height).toBe(20000);
+    expect(clampDims(NaN, NaN, "rect")).toEqual({ width: MIN_NODE_W, height: MIN_NODE_H });
+  });
+
+  it("boxShapeExempt：只有 rect/rounded 豁免", () => {
+    expect(boxShapeExempt("rect")).toBe(true);
+    expect(boxShapeExempt("rounded")).toBe(true);
+    for (const s of ["circle", "triangle", "diamond", "pentagon", "hexagon", "heptagon"] as const) {
+      expect(boxShapeExempt(s)).toBe(false);
+    }
+    expect(boxShapeExempt(undefined)).toBe(false);
+  });
+});
+
+describe("sanitizeDims 渲染归一化（形状感知）", () => {
+  it("rect 长文节点：渲染尺寸不再被 3:1 钳制（溢出 BUG 的直接回归）", () => {
+    // 宽 280 的框 + 4440px 高的文字 → 修复前渲染高度被钳到 840
+    const { dim, repaired } = sanitizeDims(280, 4440, "rect");
+    expect(repaired).toBe(false);
+    expect(dim).toEqual({ width: 280, height: 4440 });
+  });
+
+  it("三角形：归一化依旧应用守卫", () => {
+    expect(sanitizeDims(280, 4440, "triangle").dim.height).toBeLessThanOrEqual(280 * MAX_ASPECT + 1);
   });
 });

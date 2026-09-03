@@ -210,7 +210,7 @@ export function MindNodeView(props: Props): React.ReactElement {
   // from corrupt dims — NaN / Infinity / sub-minimum values are replaced by a
   // sane standard ratio before any SVG path is computed, and the repair is
   // reported once so the store persists the healed size.
-  const sane = sanitizeDims(node.width, node.height);
+  const sane = sanitizeDims(node.width, node.height, node.shape);
   useEffect(() => {
     if (!sane.repaired) return;
     window.dispatchEvent(new CustomEvent("variable:mm-repair-node", {

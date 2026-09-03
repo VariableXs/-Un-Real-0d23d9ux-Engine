@@ -131,20 +131,35 @@ export interface Dim {
 }
 
 /**
+ * Free-form writing frames: rect/rounded boxes are plain text containers and
+ * may take ANY aspect ratio — a tall narrow writing column is a legitimate
+ * layout, so the MAX_ASPECT elongation guard never applies to them. The guard
+ * exists to keep polygons/circles from degenerating into needles or slivers.
+ */
+export function boxShapeExempt(shape: NodeShape | undefined): boolean {
+  return shape === "rect" || shape === "rounded";
+}
+
+/**
  * Hard dimension clamps applied on EVERY resize path (handles, vertex drags,
  * imports, autogrow): absolute minimums first, then the aspect-ratio guard —
  * when one axis exceeds MAX_ASPECT × the other, the LONG side is pulled back
  * to exactly the limit (equivalent to force-expanding the short side), so a
- * polygon can never be stretched into a needle or a line.
+ * polygon can never be stretched into a needle or a line. Box frames
+ * (rect/rounded) are exempt via `shape` — their text column may grow
+ * arbitrarily tall without the frame silently clamping and clipping the
+ * content (the "text overflows the border" regression).
  * Non-finite input falls back to the matching minimum (NaN/∞ poison guard).
  */
-export function clampDims(width: number, height: number): Dim {
+export function clampDims(width: number, height: number, shape?: NodeShape): Dim {
   let w = Number.isFinite(width) ? width : MIN_NODE_W;
   let h = Number.isFinite(height) ? height : MIN_NODE_H;
   w = Math.max(MIN_NODE_W, Math.min(1400, w));
   h = Math.max(MIN_NODE_H, Math.min(20000, h));
-  if (w > h * MAX_ASPECT) w = Math.round(h * MAX_ASPECT);
-  if (h > w * MAX_ASPECT) h = Math.round(w * MAX_ASPECT);
+  if (!boxShapeExempt(shape)) {
+    if (w > h * MAX_ASPECT) w = Math.round(h * MAX_ASPECT);
+    if (h > w * MAX_ASPECT) h = Math.round(w * MAX_ASPECT);
+  }
   return { width: Math.round(w), height: Math.round(h) };
 }
 
@@ -184,13 +199,18 @@ export function shapeCollapsed(shape: NodeShape, w: number, h: number): boolean 
  * flagged so callers log/heal exactly once. clampDims also silently repairs
  * aspect violations on load.
  */
-export function sanitizeDims(width: number, height: number): { dim: Dim; repaired: boolean } {
+export function sanitizeDims(
+  width: number,
+  height: number,
+  shape?: NodeShape,
+): { dim: Dim; repaired: boolean } {
   const bad =
     !Number.isFinite(width) || !Number.isFinite(height) ||
     width < MIN_NODE_W || height < MIN_NODE_H;
   const dim = clampDims(
     Number.isFinite(width) ? width : 230,
     Number.isFinite(height) ? height : 88,
+    shape,
   );
   return { dim, repaired: bad };
 }
@@ -209,7 +229,7 @@ export function growDimsForText(
   textW: number,
   textH: number,
 ): Dim {
-  let cur = clampDims(width, height);
+  let cur = clampDims(width, height, shape);
   const needW = Math.max(0, Number.isFinite(textW) ? textW : 0) + TEXT_PAD * 2;
   const needH = Math.max(0, Number.isFinite(textH) ? textH : 0) + TEXT_PAD * 2;
   for (let i = 0; i < 12; i++) {
@@ -220,7 +240,7 @@ export function growDimsForText(
     const kw = dw > 0 && insc.w > 1 ? dw / insc.w : 0;
     const kh = dh > 0 && insc.h > 1 ? dh / insc.h : 0;
     const k = Math.max(kw, kh) + 0.02; // small overshoot → converge faster
-    cur = clampDims(cur.width * (1 + k), cur.height * (1 + k));
+    cur = clampDims(cur.width * (1 + k), cur.height * (1 + k), shape);
   }
   return cur;
 }
