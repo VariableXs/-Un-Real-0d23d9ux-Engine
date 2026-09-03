@@ -1665,8 +1665,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         // 扩展（首选 280 列宽），高度随换行行数增长。超长文（面积在 280 列宽
         // 下超过 MAX_AUTO_H）按面积守恒反推加宽列宽（至 MAX_TEXT_W），让
         // ≈5 万字整体容纳在 ≤20000px 框内；超出绝对上限的部分由框内右侧
-        // 滚动条兜底。宽度只增不减（手动加宽是用户意志）；高度在远超内容
-        // 需要（>1.5×，滞回）时一步回缩贴合，消除过渡期测量的永久性推过头。
+        // 滚动条兜底。宽/高在远超内容需要（宽 >2.2×、高 >1.35×，滞回）时
+        // 一步回缩贴合，消除过渡期测量/历史编辑造成的永久性推过头；回缩
+        // 落点（宽 ×1.15、高 ×1.18）都低于触发阈值，不会振荡。
         // 测量框宽优先：重挂载/过渡帧的实际框宽可能与 n.width-30 脱节，
         // 按 实测框宽×textHeight 计算面积才不会把“窄框巨高”误判为巨面积
         // （曾导致静态化瞬间宽度被一次性推到 465 并因只增不减永久固化）。
@@ -1676,12 +1677,18 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         const adaptiveW = Math.min(Math.max(fitColW, PREFERRED_TEXT_W), MAX_TEXT_W);
         const estH = adaptiveW > 0 ? area / adaptiveW : d.textHeight;
         // d.textWidth 已被钳在首选列宽 —— 超长文时以加宽后的列宽为准
-        const targetW = fitColW > PREFERRED_TEXT_W
+        const fitW = fitColW > PREFERRED_TEXT_W
           ? adaptiveW + 30
           : Math.min(d.textWidth + 30, PREFERRED_TEXT_W + 30);
-        width = clamp(Math.max(n.width, targetW), MIN_W, MAX_TEXT_W + 30);
+        // 宽度回缩（滞回 2.2×，比高度的 1.35× 宽松）：内容大幅变短后框宽
+        // 不再永久卡在历史最大列宽（“框比文字宽好多”）；阈值放宽到 2.2×
+        // 是为了让手动加宽的合理宽框（如 640 宽的标题框）在普通编辑后
+        // 保留 —— 只有严重超配（>2.2×）才一步回缩贴合。自由变形/锁定豁免。
+        width = mayShrink && n.width > fitW * 2.2
+          ? clamp(fitW * 1.15, MIN_W, MAX_TEXT_W + 30)
+          : clamp(Math.max(n.width, fitW), MIN_W, MAX_TEXT_W + 30);
         const fitH = Math.min(estH + 26, MAX_AUTO_H);
-        height = mayShrink && n.height > fitH * 1.5
+        height = mayShrink && n.height > fitH * 1.35
           ? clamp(fitH * 1.18, MIN_H, 20000)
           : clamp(Math.max(n.height, fitH), MIN_H, 20000);
         if (n.shape === "circle") {

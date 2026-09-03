@@ -37,7 +37,14 @@ export function InspectorPanel(props: Props): React.ReactElement {
       window.addEventListener("mousedown", onDown);
     }, 0);
     const onDown = (e: MouseEvent): void => {
-      if (!ref.current?.contains(e.target as Node)) dismiss();
+      if (ref.current?.contains(e.target as Node)) return;
+      // 节点点击不视为“点外关闭”：选中另一个节点时面板应切换目标而非关闭。
+      // 同时消除打开竞态 —— 面板由 pointerdown 选中触发挂载，而同一次物理
+      // 点击的 mousedown 紧随其后（setTimeout(0) 抢先注册了本监听），若不
+      // 豁免节点点击，面板会被“打开它的那次点击”立刻关闭、选中被清空。
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.(".mm-node")) return;
+      dismiss();
     };
     return () => {
       window.clearTimeout(timer);
