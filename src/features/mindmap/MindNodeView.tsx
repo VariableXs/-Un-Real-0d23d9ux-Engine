@@ -50,6 +50,7 @@ export function MindNodeView(props: Props): React.ReactElement {
   // editing and static mode — the stored height may lag behind the content
   // (e.g. after a commit, a fontSize change or an image load), and anything
   // the frame cannot hold gets clipped / scrolled away.
+  const lastMeasure = useRef("");
   useEffect(() => {
     if (node.collapsed || !contentRef.current) return;
     let raf = 0;
@@ -64,8 +65,19 @@ export function MindNodeView(props: Props): React.ReactElement {
       const naturalW = el.scrollWidth;
       el.style.width = prev;
       const textW = Math.min(naturalW, PREFERRED_TEXT_W);
+      const textH = el.scrollHeight;
+      // 瞬态复核：形状切换/重挂载的过渡帧可能读到骤缩框宽下的巨量换行
+      // 高度（真实但瞬时失真）。数值变化时延迟一帧复核，连续两次一致
+      // 才上报 —— 单帧尖峰被直接丢弃。
+      const key = `${textW}|${textH}`;
+      if (lastMeasure.current !== key) {
+        lastMeasure.current = key;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(measure);
+        return;
+      }
       window.dispatchEvent(new CustomEvent("variable:mm-autogrow", {
-        detail: { id: node.id, textWidth: textW, textHeight: el.scrollHeight },
+        detail: { id: node.id, textWidth: textW, textHeight: textH },
       }));
     };
     const onInput = () => {

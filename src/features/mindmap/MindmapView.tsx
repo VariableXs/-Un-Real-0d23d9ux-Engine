@@ -19,7 +19,7 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { parseMindmapFile } from "../../lib/mindmapFile";
 import type { Settings } from "../../lib/settings";
 import {
-  boxIntersectsRect, boxShapeExempt, clampDims, clampInteractive, computeGuides, growDimsForText, MAX_AUTO_H, MIN_NODE_H,
+  boxIntersectsRect, boxShapeExempt, clampDims, clampInteractive, computeGuides, growDimsForText, MAX_AUTO_H, MAX_TEXT_W, MIN_NODE_H,
   MIN_NODE_W, PREFERRED_TEXT_W, sanitizeDims, shapeCollapsed, vertexDragSigns,
   type GuideLine,
 } from "./geometry";
@@ -109,6 +109,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
   const [minimapOpen, setMinimapOpen] = useState(true);
   const [draggingNode, setDraggingNode] = useState(false);
   const [freeTransform, setFreeTransform] = useState<Set<string>>(new Set());
+  // 自适应回缩的豁免名单镜像：window 级监听器（一次性注册）需要最新值。
+  const freeTransformRef = useRef<Set<string>>(new Set());
+  useEffect(() => { freeTransformRef.current = freeTransform; }, [freeTransform]);
   const [cursorWorld, setCursorWorld] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   /** Nodes whose selection glow/handles are playing the forced fade-out
    *  animation after a blank-canvas dismissal (module-0 protocol). */
@@ -1113,8 +1116,11 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       // Box frames (rect/rounded) are free-form writing containers: the manual
       // height cap is lifted to the same ceiling the auto-grow path uses, so a
       // long-text column can also be shaped by hand. Polygons/circles keep the
-      // tight 1200 cap (elongation breaks their geometry).
-      const maxDragH = target && boxShapeExempt(target.shape) ? 20000 : 1200;
+      // tight 1200 cap (elongation breaks their geometry). Caps are floored at
+      // the drag-start size so a manually resized frame never SNAPS BACK below
+      // what auto-grow (or the user) already gave it.
+      const maxDragH = Math.max(target && boxShapeExempt(target.shape) ? 20000 : 1200, o.h);
+      const maxDragW = Math.max(MAX_W, o.w);
       // Convert screen-space deltas into the node's local axes when rotated.
       const rot = target?.rotation ?? 0;
       let dx = sdx, dy = sdy;
@@ -1128,7 +1134,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
         // edge handle (e/w/n/s) derived from that vertex's side of the center.
         const { sx, sy } = d.vs;
         if (sx !== 0) {
-          w = clamp(o.w + sx * dx, MIN_W, MAX_W);
+          w = clamp(o.w + sx * dx, MIN_W, maxDragW);
           if (sx < 0) x = o.x + (o.w - w);
         }
         if (sy !== 0) {
@@ -1142,9 +1148,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
           w = o.w; h = o.h; x = o.x; y = o.y;
         }
       } else {
-        if (hnd.includes("e")) w = clamp(o.w + dx, MIN_W, MAX_W);
+        if (hnd.includes("e")) w = clamp(o.w + dx, MIN_W, maxDragW);
         if (hnd.includes("s")) h = clamp(o.h + dy, MIN_H, maxDragH);
-        if (hnd.includes("w")) { w = clamp(o.w - dx, MIN_W, MAX_W); x = o.x + (o.w - w); }
+        if (hnd.includes("w")) { w = clamp(o.w - dx, MIN_W, maxDragW); x = o.x + (o.w - w); }
         if (hnd.includes("n")) { h = clamp(o.h - dy, MIN_H, maxDragH); y = o.y + (o.h - h); }
       }
       // Module-1 aspect-ratio guard: pull the long side back to ≤3× the short
@@ -1634,16 +1640,32 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       // Module-2 text-first sizing + module-3 reverse dilation: polygons grow
       // proportionally until their centroid-inscribed rectangle fits the
       // measured text plus a TEXT_PAD margin on every side — text can never
-      // touch a slanted edge.
-      let { width, height } = growDimsForText(n.shape, n.width, n.height, d.textWidth, d.textHeight);
+      // touch a slanted edge. allowShrink: 稳定实测远超内容需要时回缩贴合
+      // （自由变形/锁定的节点除外 —— 它们的尺寸是用户明确意志）。
+      const mayShrink = !n.locked && !n.collapsed && !freeTransformRef.current.has(n.id);
+      let { width, height } = growDimsForText(n.shape, n.width, n.height, d.textWidth, d.textHeight, mayShrink);
       const isBox = n.shape === "rect" || n.shape === "rounded" || n.shape === "circle";
       if (isBox) {
         // 增长式自适应（编辑/静态态统一）：“先横后纵” —— 宽度向文本自然需求
-        // 扩展（封顶 PREFERRED_TEXT_W，且永不小于用户手动设定宽度），高度随
-        // 换行行数增长；超过 MAX_AUTO_H 后停止增长、框内右侧滚动条兜底，
-        // 框架始终完整包住内容，只放大不回缩，避免抖动。
-        width = clamp(Math.max(n.width, Math.min(d.textWidth + 30, PREFERRED_TEXT_W)), MIN_W, MAX_W);
-        height = clamp(Math.max(n.height, Math.min(d.textHeight + 26, MAX_AUTO_H)), MIN_H, 20000);
+        // 扩展（首选 280 列宽），高度随换行行数增长。超长文（面积在 280 列宽
+        // 下超过 MAX_AUTO_H）按面积守恒反推加宽列宽（至 MAX_TEXT_W），让
+        // ≈5 万字整体容纳在 ≤20000px 框内；超出绝对上限的部分由框内右侧
+        // 滚动条兜底。宽度只增不减（手动加宽是用户意志）；高度在远超内容
+        // 需要（>1.5×，滞回）时一步回缩贴合，消除过渡期测量的永久性推过头。
+        const colWNow = Math.max(60, n.width - 30); // 当前文本列宽（去内边距）
+        const area = colWNow * d.textHeight;
+        const fitColW = d.textHeight > 0 ? Math.ceil(area / (MAX_AUTO_H * 0.97)) : 0;
+        const adaptiveW = Math.min(Math.max(fitColW, PREFERRED_TEXT_W), MAX_TEXT_W);
+        const estH = adaptiveW > 0 ? area / adaptiveW : d.textHeight;
+        // d.textWidth 已被钳在首选列宽 —— 超长文时以加宽后的列宽为准
+        const targetW = fitColW > PREFERRED_TEXT_W
+          ? adaptiveW + 30
+          : Math.min(d.textWidth + 30, PREFERRED_TEXT_W + 30);
+        width = clamp(Math.max(n.width, targetW), MIN_W, MAX_TEXT_W + 30);
+        const fitH = Math.min(estH + 26, MAX_AUTO_H);
+        height = mayShrink && n.height > fitH * 1.5
+          ? clamp(fitH * 1.18, MIN_H, 20000)
+          : clamp(Math.max(n.height, fitH), MIN_H, 20000);
         if (n.shape === "circle") {
           const dia = Math.max(width, height);
           width = dia; height = dia;

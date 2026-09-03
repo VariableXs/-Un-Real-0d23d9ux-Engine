@@ -231,32 +231,43 @@ describe("growDimsForText (module-3 reverse dilation)", () => {
       expect(insc.w * insc.h).toBeGreaterThanOrEqual(baseW * th * 0.98);
     }
   });
-  it("文本优先：多边形按文字需求增长，超长文封顶后框内滚动", () => {
+  it("文本优先：多边形按文字需求增长，极限文封顶后框内滚动", () => {
     // 修复前：多边形被 1400 宽 + 3:1 守卫钳死，长文必然被裁切
     const cur = growDimsForText("triangle", 240, 88, 280, 5300);
     const insc = inscribedRect("triangle", cur.width, cur.height);
     expect(insc.w).toBeGreaterThanOrEqual(280 + 32 - 2);
-    // 文字驱动的增长止于 MAX_AUTO_H（显示限高），超出部分由框内滚动条兜底
-    expect(cur.height).toBe(MAX_AUTO_H);
-    // 中等长文（不触顶）：面积守恒契约 —— 重排后的文字必须放得下
-    const mid = growDimsForText("triangle", 240, 88, 280, 800);
-    const midInsc = inscribedRect("triangle", mid.width, mid.height);
+    expect(cur.height).toBeLessThanOrEqual(MAX_AUTO_H);
+    // 面积守恒：重排后的文字（更矮）必须放得下
     const baseW = inscribedRect("triangle", 240, 88).w;
-    expect(midInsc.w * midInsc.h).toBeGreaterThanOrEqual(baseW * 800 * 0.98);
-    expect(mid.height).toBeLessThanOrEqual(MAX_AUTO_H);
+    expect(insc.w * insc.h).toBeGreaterThanOrEqual(baseW * 5300 * 0.98);
+    // 极端长文（面积远超上限）：高度封顶 MAX_AUTO_H，宽度不再无谓扩张
+    const big = growDimsForText("triangle", 240, 88, 280, 300000);
+    expect(big.height).toBe(MAX_AUTO_H);
+    expect(big.width).toBeLessThanOrEqual(1400);
+  });
+  it("自适应列宽：超长文加宽文本列以塞进限高（≈5 万字全可见）", () => {
+    // 面积 240×64000=15.36M px²，在 280 列宽下高约 5.5 万 px —— 列宽按面积
+    // 反推加宽到 ~790，高度回到 ~1.9 万 px，无需滚动即可整体容纳。
+    const cur = growDimsForText("rounded", 240, 88, 280, 64000);
+    expect(cur.width).toBeGreaterThan(400); // 列宽已加宽
+    expect(cur.width).toBeLessThanOrEqual(1200 + 32);
+    expect(cur.height).toBeLessThanOrEqual(MAX_AUTO_H);
+    const insc = inscribedRect("rounded", cur.width, cur.height);
+    expect(insc.w * insc.h).toBeGreaterThanOrEqual(240 * 64000 * 0.98); // 面积装得下
   });
   it("按轴独立增长：扁平节点 + 长文不再把宽度竞速到上限", () => {
     // 修复前：统一比例放大让高度亏欠比（巨量）拖动宽度一起暴涨至 MAX_W
     const cur = growDimsForText("diamond", 240, 88, 280, 4000);
     expect(cur.width).toBeLessThan(1000); // 只需 ~2×(280+32)，远够放文字
-    expect(cur.height).toBe(MAX_AUTO_H); // 高度触顶 → 框内滚动
+    expect(cur.height).toBeLessThanOrEqual(MAX_AUTO_H);
     const insc = inscribedRect("diamond", cur.width, cur.height);
     expect(insc.w).toBeGreaterThanOrEqual(280 + 32 - 2);
   });
-  it("宽度已足时只增高（至限高），不放大宽度", () => {
+  it("宽度已足时只增高，不放大宽度", () => {
     const cur = growDimsForText("diamond", 900, 200, 280, 2600);
     expect(cur.width).toBe(900); // 内接宽 450 ≥ 312，宽度无需增长
-    expect(cur.height).toBe(MAX_AUTO_H); // 原始测量未变宽 → 触顶后框内滚动
+    expect(cur.height).toBeGreaterThan(2600); // 原始测量宽度未变，直接信任
+    expect(cur.height).toBeLessThanOrEqual(MAX_AUTO_H);
   });
   it("never returns below the hard minimums", () => {
     const g = growDimsForText("circle", 400, 400, 0, 0);

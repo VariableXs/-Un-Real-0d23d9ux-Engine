@@ -125,11 +125,20 @@ export const TEXT_PAD = 16;
 /** Text-first typography: default preferred wrap width in px (module-2). */
 export const PREFERRED_TEXT_W = 280;
 /**
- * Auto-grow display cap: content-driven growth stops here and anything
- * taller scrolls INSIDE the frame (right-edge embedded scrollbar). Manual
- * resize stays free up to MAX_NODE_H — the cap only bounds autogrow.
+ * Auto-grow display cap: content-driven growth may use the FULL absolute
+ * height range (20000px) — a 50000-char text stays entirely visible (zoom
+ * out to view). Only content beyond this cap scrolls INSIDE the frame
+ * (right-edge embedded scrollbar). Manual resize shares the ceiling.
  */
-export const MAX_AUTO_H = 720;
+export const MAX_AUTO_H = 20000;
+/**
+ * Widest auto text column: when a text's area would overflow MAX_AUTO_H at
+ * the preferred 280px column, the column widens (area conservation) up to
+ * this width so huge texts (≈50k chars) fit inside the frame without
+ * scrolling. Node-side padding puts the frame at MAX_TEXT_W + 30 ≈ 1230,
+ * inside the 1400 absolute bound.
+ */
+export const MAX_TEXT_W = 1200;
 
 export interface Dim {
   width: number;
@@ -248,13 +257,20 @@ export function growDimsForText(
   height: number,
   textW: number,
   textH: number,
+  allowShrink = false,
 ): Dim {
   let cur = clampDims(width, height);
   const tw = Math.max(0, Number.isFinite(textW) ? textW : 0);
   const th = Math.max(0, Number.isFinite(textH) ? textH : 0);
-  const needW = tw + TEXT_PAD * 2;
   // Wrap width the caller's textH was measured at (≥1 guards degenerate frames).
   const baseW = Math.max(1, inscribedRect(shape, cur.width, cur.height).w);
+  // 自适应列宽（面积守恒）：文字面积（baseW×th）若在 280 首选列宽下会超过
+  // MAX_AUTO_H，则按面积反推加宽列宽（上限 MAX_TEXT_W），让超长文（≈5 万
+  // 字）无需滚动即可整体容纳在框内；短文仍用 280 可读列宽。
+  const fitColW = th > 0 ? Math.ceil((baseW * th) / (MAX_AUTO_H * 0.97)) : 0;
+  const colW = Math.min(Math.max(fitColW, PREFERRED_TEXT_W), MAX_TEXT_W);
+  // tw 已被调用方钳在首选列宽 —— 超长文时以加宽后的列宽为准
+  const needW = (fitColW > PREFERRED_TEXT_W ? colW : Math.min(tw, PREFERRED_TEXT_W)) + TEXT_PAD * 2;
   for (let i = 0; i < 14; i++) {
     const insc = inscribedRect(shape, cur.width, cur.height);
     // Projected wrap width: the wider of the preferred column and the current
@@ -292,6 +308,23 @@ export function growDimsForText(
     }
     if (Math.abs(cand.width - cur.width) < 0.5 && Math.abs(cand.height - cur.height) < 0.5) break;
     cur = cand;
+  }
+  if (allowShrink) {
+    // 自适应回缩：形状切换/重挂载瞬间的空洞测量可能把尺寸一次性推过头，
+    // 只增不减策略会把它永久固化。稳定实测若显示框架远超内容需要
+    // （高度 >1.5× / 宽度 >1.8×，滞回防抖动），一步回缩到贴合值。
+    const insc = inscribedRect(shape, cur.width, cur.height);
+    const targetW = Math.max(needW, insc.w);
+    const estH = TEXT_PAD * 2 + (baseW >= targetW ? th : th * (baseW / targetW));
+    if (insc.h > estH * 1.5) {
+      const hFit = cur.height * ((estH * 1.18) / insc.h);
+      cur = clampDims(cur.width, Math.max(MIN_NODE_H, hFit));
+    }
+    const insc2 = inscribedRect(shape, cur.width, cur.height);
+    if (insc2.w > needW * 1.8) {
+      const wFit = cur.width * ((needW * 1.3) / insc2.w);
+      cur = clampDims(Math.max(MIN_NODE_W, wFit), cur.height);
+    }
   }
   return cur;
 }
