@@ -124,6 +124,12 @@ export const MAX_ASPECT = 3;
 export const TEXT_PAD = 16;
 /** Text-first typography: default preferred wrap width in px (module-2). */
 export const PREFERRED_TEXT_W = 280;
+/**
+ * Auto-grow display cap: content-driven growth stops here and anything
+ * taller scrolls INSIDE the frame (right-edge embedded scrollbar). Manual
+ * resize stays free up to MAX_NODE_H — the cap only bounds autogrow.
+ */
+export const MAX_AUTO_H = 720;
 
 export interface Dim {
   width: number;
@@ -141,26 +147,37 @@ export function boxShapeExempt(shape: NodeShape | undefined): boolean {
 }
 
 /**
- * Hard dimension clamps applied on EVERY resize path (handles, vertex drags,
- * imports, autogrow): absolute minimums first, then the aspect-ratio guard —
- * when one axis exceeds MAX_ASPECT × the other, the LONG side is pulled back
- * to exactly the limit (equivalent to force-expanding the short side), so a
- * polygon can never be stretched into a needle or a line. Box frames
- * (rect/rounded) are exempt via `shape` — their text column may grow
- * arbitrarily tall without the frame silently clamping and clipping the
- * content (the "text overflows the border" regression).
- * Non-finite input falls back to the matching minimum (NaN/∞ poison guard).
+ * Hard ABSOLUTE dimension bounds applied on every persistence path (store,
+ * render, load-heal, import, autogrow): minimums, maximums and the
+ * NaN/∞ poison guard. Deliberately NO aspect-ratio logic here — text-driven
+ * growth must never be blocked (a tall narrow frame is a legitimate layout
+ * for long writing), and stored dims are the source of truth at render time.
+ * The MAX_ASPECT needle guard lives in `clampInteractive` (manual drags only).
  */
-export function clampDims(width: number, height: number, shape?: NodeShape): Dim {
+export function clampDims(width: number, height: number): Dim {
   let w = Number.isFinite(width) ? width : MIN_NODE_W;
   let h = Number.isFinite(height) ? height : MIN_NODE_H;
   w = Math.max(MIN_NODE_W, Math.min(1400, w));
   h = Math.max(MIN_NODE_H, Math.min(20000, h));
+  return { width: Math.round(w), height: Math.round(h) };
+}
+
+/**
+ * Interactive-resize clamp (handle / vertex drags): absolute bounds plus the
+ * MAX_ASPECT elongation guard. The guard exists to keep polygons/circles
+ * from being dragged into degenerate needles or slivers; free-form writing
+ * frames (rect/rounded) are exempt — a tall text column is legitimate.
+ * When one axis exceeds MAX_ASPECT × the other, the LONG side is pulled back
+ * to exactly the limit (equivalent to force-expanding the short side).
+ */
+export function clampInteractive(width: number, height: number, shape?: NodeShape): Dim {
+  const d = clampDims(width, height);
+  let { width: w, height: h } = d;
   if (!boxShapeExempt(shape)) {
     if (w > h * MAX_ASPECT) w = Math.round(h * MAX_ASPECT);
     if (h > w * MAX_ASPECT) h = Math.round(w * MAX_ASPECT);
   }
-  return { width: Math.round(w), height: Math.round(h) };
+  return { width: w, height: h };
 }
 
 /** Shoelace area of a polygon (absolute value). */
@@ -199,28 +216,31 @@ export function shapeCollapsed(shape: NodeShape, w: number, h: number): boolean 
  * flagged so callers log/heal exactly once. clampDims also silently repairs
  * aspect violations on load.
  */
-export function sanitizeDims(
-  width: number,
-  height: number,
-  shape?: NodeShape,
-): { dim: Dim; repaired: boolean } {
+export function sanitizeDims(width: number, height: number): { dim: Dim; repaired: boolean } {
   const bad =
     !Number.isFinite(width) || !Number.isFinite(height) ||
     width < MIN_NODE_W || height < MIN_NODE_H;
   const dim = clampDims(
     Number.isFinite(width) ? width : 230,
     Number.isFinite(height) ? height : 88,
-    shape,
   );
   return { dim, repaired: bad };
 }
 
 /**
- * Module-3 reverse dilation: smallest node size whose centroid-centered
- * inscribed rectangle contains textW × textH plus a TEXT_PAD margin on every
- * side. The node grows proportionally around its current size and iterates on
- * the cached inscribed solve until the text fits (or caps are hit, where the
- * content falls back to internal scrolling).
+ * Module-3 reverse dilation: node size whose centroid-centered inscribed
+ * rectangle contains the text plus a TEXT_PAD margin on every side.
+ *
+ * The caller's textH is measured at the CURRENT inscribed width (baseW).
+ * Once the frame widens, the text re-wraps and gets proportionally shorter —
+ * area conservation (baseW × textH ≈ targetW × textH′). Estimating the
+ * height need that way and growing each axis INDEPENDENTLY (instead of the
+ * old uniform scale, which let a flat node's huge height deficit race the
+ * width straight into MAX_W) keeps content-driven growth minimal:
+ * width only grows to the preferred column, height only as tall as the
+ * re-wrapped text needs. Text-first: absolute bounds only — the elongation
+ * guard never blocks content-driven growth (it stays active on manual
+ * handle drags). Anything beyond the caps falls back to internal scrolling.
  */
 export function growDimsForText(
   shape: NodeShape,
@@ -229,18 +249,49 @@ export function growDimsForText(
   textW: number,
   textH: number,
 ): Dim {
-  let cur = clampDims(width, height, shape);
-  const needW = Math.max(0, Number.isFinite(textW) ? textW : 0) + TEXT_PAD * 2;
-  const needH = Math.max(0, Number.isFinite(textH) ? textH : 0) + TEXT_PAD * 2;
-  for (let i = 0; i < 12; i++) {
+  let cur = clampDims(width, height);
+  const tw = Math.max(0, Number.isFinite(textW) ? textW : 0);
+  const th = Math.max(0, Number.isFinite(textH) ? textH : 0);
+  const needW = tw + TEXT_PAD * 2;
+  // Wrap width the caller's textH was measured at (≥1 guards degenerate frames).
+  const baseW = Math.max(1, inscribedRect(shape, cur.width, cur.height).w);
+  for (let i = 0; i < 14; i++) {
     const insc = inscribedRect(shape, cur.width, cur.height);
-    const dw = needW - insc.w;
-    const dh = needH - insc.h;
-    if (dw <= 0 && dh <= 0) break;
-    const kw = dw > 0 && insc.w > 1 ? dw / insc.w : 0;
-    const kh = dh > 0 && insc.h > 1 ? dh / insc.h : 0;
-    const k = Math.max(kw, kh) + 0.02; // small overshoot → converge faster
-    cur = clampDims(cur.width * (1 + k), cur.height * (1 + k), shape);
+    // Projected wrap width: the wider of the preferred column and the current
+    // inscribed width. The height need is re-based from the measurement width
+    // to the projected one via area conservation (text re-wraps wider → gets
+    // proportionally shorter; never taller than the raw measurement).
+    const targetW = Math.max(needW, insc.w);
+    const estH = TEXT_PAD * 2 + (baseW >= targetW ? th : th * (baseW / targetW));
+    if (insc.w >= needW - 0.5 && insc.h >= estH - 0.5) break;
+    // Per-axis growth: width only to the preferred column, height only as
+    // tall as the re-wrapped text needs — axis-decoupled shapes (a diamond's
+    // inscribed rect is exactly w/2 × h/2) stay minimal instead of racing a
+    // flat start's huge height deficit into the width cap.
+    const gw = needW > insc.w && insc.w > 1 ? (needW / insc.w) * 1.01 : 1;
+    const gh = estH > insc.h && insc.h > 1 ? (estH / insc.h) * 1.01 : 1;
+    if (gw <= 1 && gh <= 1) break;
+    let cand = clampDims(cur.width * gw, cur.height * gh);
+    // 显示限高：高度需求在 MAX_AUTO_H 内无法满足时冻结高度（框内滚动条
+    // 兜底），宽度继续按需增长 —— 否则“高度无法达标”会被误判为耦合停滞，
+    // 等比回退把宽度竞速到上限。
+    const capped = cand.height >= MAX_AUTO_H;
+    if (capped) cand = { width: cand.width, height: MAX_AUTO_H };
+    const candInsc = inscribedRect(shape, cand.width, cand.height);
+    // Coupled shapes (e.g. a flat hexagon): widening the frame alone does not
+    // widen the inscribed rect — the slanted edges eat it. Detect the stall
+    // and fall back to UNIFORM scaling: similar figures scale their inscribed
+    // rect exactly, so a single step satisfies both axes. Never for a capped
+    // height (it cannot grow — uniform scaling would only race the width).
+    const wStall = gw > 1 && candInsc.w < needW - 0.5 && candInsc.w < insc.w * gw * 0.9;
+    const hStall = gh > 1 && !capped && candInsc.h < estH - 0.5 && candInsc.h < insc.h * gh * 0.9;
+    if (wStall || hStall) {
+      const s = Math.max(needW / Math.max(1, insc.w), estH / Math.max(1, insc.h)) * 1.01;
+      cand = clampDims(cur.width * s, cur.height * s);
+      if (cand.height >= MAX_AUTO_H) cand = { width: cand.width, height: MAX_AUTO_H };
+    }
+    if (Math.abs(cand.width - cur.width) < 0.5 && Math.abs(cand.height - cur.height) < 0.5) break;
+    cur = cand;
   }
   return cur;
 }

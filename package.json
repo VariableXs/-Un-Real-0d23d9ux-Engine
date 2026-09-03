@@ -13,6 +13,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.0.3",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
     "@tiptap/extension-color": "^2.6.6",
     "@tiptap/extension-image": "^2.6.6",
     "@tiptap/extension-placeholder": "^2.6.6",
@@ -22,8 +24,7 @@
     "@tiptap/pm": "^2.6.6",
     "@tiptap/react": "^2.6.6",
     "@tiptap/starter-kit": "^2.6.6",
-    "@tauri-apps/api": "^2.0.3",
-    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "katex": "^0.18.5",
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  anchorsFor, boxShapeExempt, circleDiameter, clampDims, computeEdge, distributedAnchor,
-  growDimsForText, inscribedRect, MAX_ASPECT, MIN_NODE_H, MIN_NODE_W,
+  anchorsFor, boxShapeExempt, circleDiameter, clampDims, clampInteractive, computeEdge,
+  distributedAnchor, growDimsForText, inscribedRect, MAX_ASPECT, MAX_AUTO_H, MIN_NODE_H, MIN_NODE_W,
   nearestAnchor, pathD, pointInShape, polygonArea, sanitizeDims,
   shapeCollapsed, shapePoints, vertexDragSigns,
 } from "../geometry";
@@ -132,7 +132,7 @@ describe("pointInShape hit tests", () => {
   });
 });
 
-describe("clampDims (module-1 hard bounds + aspect guard)", () => {
+describe("clampDims (持久化路径的绝对硬边界)", () => {
   it("enforces the absolute minimums", () => {
     expect(clampDims(10, 10)).toEqual({ width: MIN_NODE_W, height: MIN_NODE_H });
   });
@@ -142,14 +142,39 @@ describe("clampDims (module-1 hard bounds + aspect guard)", () => {
     expect(Number.isFinite(d.height)).toBe(true);
     expect(d.height).toBe(MIN_NODE_H); // Infinity is non-finite → minimum
   });
-  it("caps extreme landscape ratio at 3:1", () => {
-    expect(clampDims(600, MIN_NODE_H)).toEqual({ width: MIN_NODE_H * MAX_ASPECT, height: MIN_NODE_H });
-  });
-  it("caps extreme portrait ratio at 1:3 (needle guard)", () => {
-    expect(clampDims(MIN_NODE_W, 900)).toEqual({ width: MIN_NODE_W, height: MIN_NODE_W * MAX_ASPECT });
+  it("enforces the absolute maximums", () => {
+    expect(clampDims(99999, 99999)).toEqual({ width: 1400, height: 20000 });
   });
   it("leaves sane sizes untouched", () => {
     expect(clampDims(240, 88)).toEqual({ width: 240, height: 88 });
+  });
+  it("文本优先：任何长宽比都不被钳制（溢出 BUG 回归）", () => {
+    // 修复前：3:1 守卫把宽 280 的框钳在 840px 高，长文被裁切
+    expect(clampDims(280, 4400)).toEqual({ width: 280, height: 4400 });
+    // 多边形的长文尺寸同样完整保留（存储值即渲染值）
+    expect(clampDims(1400, 10800)).toEqual({ width: 1400, height: 10800 });
+  });
+});
+
+describe("clampInteractive (手动拖拽缩放：长宽比守卫仅在此生效)", () => {
+  it("caps extreme landscape ratio at 3:1 for polygons", () => {
+    expect(clampInteractive(600, MIN_NODE_H, "triangle"))
+      .toEqual({ width: MIN_NODE_H * MAX_ASPECT, height: MIN_NODE_H });
+  });
+  it("caps extreme portrait ratio at 1:3 (needle guard) for polygons", () => {
+    expect(clampInteractive(MIN_NODE_W, 900, "diamond"))
+      .toEqual({ width: MIN_NODE_W, height: MIN_NODE_W * MAX_ASPECT });
+  });
+  it("box frames (rect/rounded) are exempt — tall text columns allowed", () => {
+    expect(clampInteractive(280, 4400, "rect")).toEqual({ width: 280, height: 4400 });
+    expect(clampInteractive(280, 4400, "rounded")).toEqual({ width: 280, height: 4400 });
+  });
+  it("circle keeps the guard (degenerate ellipses are meaningless)", () => {
+    expect(clampInteractive(MIN_NODE_W, 900, "circle").height)
+      .toBeLessThanOrEqual(MIN_NODE_W * MAX_ASPECT + 1);
+  });
+  it("undefined shape keeps the guard (defensive default)", () => {
+    expect(clampInteractive(MIN_NODE_W, 900).height).toBe(MIN_NODE_W * MAX_ASPECT);
   });
 });
 
@@ -189,7 +214,9 @@ describe("growDimsForText (module-3 reverse dilation)", () => {
   it("grows a box frame when text exceeds it, honoring padding", () => {
     const g = growDimsForText("rounded", MIN_NODE_W, MIN_NODE_H, 260, 120);
     expect(g.width).toBeGreaterThanOrEqual(260 + 32 - 2); // TEXT_PAD*2 margin
-    expect(g.height).toBeGreaterThanOrEqual(120 + 32 - 2);
+    // th=120 是在 120px 宽度下测得的；宽度增长后文字重排变矮（面积守恒），
+    // 框架只需容纳 120×120 的文字面积。
+    expect(g.width * g.height).toBeGreaterThanOrEqual(120 * 120 * 0.98);
   });
   it("grows polygons until the INSCRIBED rect fits text + padding", () => {
     for (const shape of ["triangle", "diamond", "hexagon"] as const) {
@@ -198,11 +225,38 @@ describe("growDimsForText (module-3 reverse dilation)", () => {
       const cur = growDimsForText(shape, 240, 88, tw, th);
       const insc = inscribedRect(shape, cur.width, cur.height);
       expect(insc.w).toBeGreaterThanOrEqual(tw + 32 - 2);
-      expect(insc.h).toBeGreaterThanOrEqual(th + 32 - 2);
-      // result must still respect the aspect guard
-      expect(cur.width / cur.height).toBeLessThanOrEqual(MAX_ASPECT + 0.01);
-      expect(cur.height / cur.width).toBeLessThanOrEqual(MAX_ASPECT + 0.01);
+      // 文本优先（面积守恒）：textH 是在旧内接宽度下测得的；框变宽后文字
+      // 重排变矮，因此最终只需容纳 baseW×th 的文字面积，而非原始 th。
+      const baseW = inscribedRect(shape, 240, 88).w;
+      expect(insc.w * insc.h).toBeGreaterThanOrEqual(baseW * th * 0.98);
     }
+  });
+  it("文本优先：多边形按文字需求增长，超长文封顶后框内滚动", () => {
+    // 修复前：多边形被 1400 宽 + 3:1 守卫钳死，长文必然被裁切
+    const cur = growDimsForText("triangle", 240, 88, 280, 5300);
+    const insc = inscribedRect("triangle", cur.width, cur.height);
+    expect(insc.w).toBeGreaterThanOrEqual(280 + 32 - 2);
+    // 文字驱动的增长止于 MAX_AUTO_H（显示限高），超出部分由框内滚动条兜底
+    expect(cur.height).toBe(MAX_AUTO_H);
+    // 中等长文（不触顶）：面积守恒契约 —— 重排后的文字必须放得下
+    const mid = growDimsForText("triangle", 240, 88, 280, 800);
+    const midInsc = inscribedRect("triangle", mid.width, mid.height);
+    const baseW = inscribedRect("triangle", 240, 88).w;
+    expect(midInsc.w * midInsc.h).toBeGreaterThanOrEqual(baseW * 800 * 0.98);
+    expect(mid.height).toBeLessThanOrEqual(MAX_AUTO_H);
+  });
+  it("按轴独立增长：扁平节点 + 长文不再把宽度竞速到上限", () => {
+    // 修复前：统一比例放大让高度亏欠比（巨量）拖动宽度一起暴涨至 MAX_W
+    const cur = growDimsForText("diamond", 240, 88, 280, 4000);
+    expect(cur.width).toBeLessThan(1000); // 只需 ~2×(280+32)，远够放文字
+    expect(cur.height).toBe(MAX_AUTO_H); // 高度触顶 → 框内滚动
+    const insc = inscribedRect("diamond", cur.width, cur.height);
+    expect(insc.w).toBeGreaterThanOrEqual(280 + 32 - 2);
+  });
+  it("宽度已足时只增高（至限高），不放大宽度", () => {
+    const cur = growDimsForText("diamond", 900, 200, 280, 2600);
+    expect(cur.width).toBe(900); // 内接宽 450 ≥ 312，宽度无需增长
+    expect(cur.height).toBe(MAX_AUTO_H); // 原始测量未变宽 → 触顶后框内滚动
   });
   it("never returns below the hard minimums", () => {
     const g = growDimsForText("circle", 400, 400, 0, 0);
@@ -220,31 +274,18 @@ describe("polygonArea", () => {
 /**
  * 回归测试：「节点文字严重溢出边框」BUG。
  *
- * 根因：clampDims/sanitizeDims 的 MAX_ASPECT=3 长宽比守卫（为防止多边形
- * 拉成针状而设计）被无差别应用到了 rect/rounded 文本框上——宽 280px 的
- * 写作列无论存了多少文字，渲染高度被硬钳制在 840px，超出部分全部被裁切。
- * 修复后守卫按形状豁免：rect/rounded 任意长宽比，多边形/圆形保留守卫。
+ * 根因：MAX_ASPECT=3 长宽比守卫（为防止多边形被拖成针状而设计）曾被
+ * 无差别应用到所有尺寸路径——宽 280px 的写作列无论存了多少文字，渲染
+ * 高度被硬钳制在 840px，超出部分全部被裁切。
+ *
+ * 最终架构（文本优先）：
+ * - 持久化路径（存储/渲染/加载/导入/自动增长）只做绝对边界钳制，
+ *   不做长宽比钳制——容器永远跟随文字内容；
+ * - 长宽比守卫只在手动拖拽缩放（clampInteractive）生效，且
+ *   rect/rounded 写作框豁免。
  */
-describe("clampDims 形状感知长宽比守卫（溢出 BUG 回归）", () => {
-  it("rect/rounded 文本框：高可以任意超过宽的 3 倍（长文写作列）", () => {
-    expect(clampDims(280, 4400, "rect")).toEqual({ width: 280, height: 4400 });
-    expect(clampDims(280, 4400, "rounded").height).toBe(4400);
-  });
-
-  it("多边形/圆形：长宽比守卫仍然生效（防针状退化）", () => {
-    expect(clampDims(280, 4400, "triangle").height).toBeLessThanOrEqual(280 * MAX_ASPECT + 1);
-    expect(clampDims(2000, 200, "diamond").width).toBeLessThanOrEqual(200 * MAX_ASPECT + 1);
-    expect(clampDims(2400, 200, "circle").width).toBeLessThanOrEqual(200 * MAX_ASPECT + 1);
-  });
-
-  it("绝对上下限对所有形状一致：宽 120–1400，高 80–20000", () => {
-    expect(clampDims(1, 1, "rect")).toEqual({ width: MIN_NODE_W, height: MIN_NODE_H });
-    expect(clampDims(99999, 99999, "triangle").width).toBe(1400);
-    expect(clampDims(280, 99999, "rect").height).toBe(20000);
-    expect(clampDims(NaN, NaN, "rect")).toEqual({ width: MIN_NODE_W, height: MIN_NODE_H });
-  });
-
-  it("boxShapeExempt：只有 rect/rounded 豁免", () => {
+describe("boxShapeExempt：只有 rect/rounded 豁免长宽比守卫", () => {
+  it("rect/rounded 为 true，其余形状为 false", () => {
     expect(boxShapeExempt("rect")).toBe(true);
     expect(boxShapeExempt("rounded")).toBe(true);
     for (const s of ["circle", "triangle", "diamond", "pentagon", "hexagon", "heptagon"] as const) {
@@ -254,15 +295,24 @@ describe("clampDims 形状感知长宽比守卫（溢出 BUG 回归）", () => {
   });
 });
 
-describe("sanitizeDims 渲染归一化（形状感知）", () => {
+describe("sanitizeDims 渲染归一化（文本优先，不做长宽比钳制）", () => {
   it("rect 长文节点：渲染尺寸不再被 3:1 钳制（溢出 BUG 的直接回归）", () => {
     // 宽 280 的框 + 4440px 高的文字 → 修复前渲染高度被钳到 840
-    const { dim, repaired } = sanitizeDims(280, 4440, "rect");
+    const { dim, repaired } = sanitizeDims(280, 4440);
     expect(repaired).toBe(false);
     expect(dim).toEqual({ width: 280, height: 4440 });
   });
 
-  it("三角形：归一化依旧应用守卫", () => {
-    expect(sanitizeDims(280, 4440, "triangle").dim.height).toBeLessThanOrEqual(280 * MAX_ASPECT + 1);
+  it("多边形长文节点：存储尺寸原样通过渲染归一化", () => {
+    const { dim, repaired } = sanitizeDims(1400, 10800);
+    expect(repaired).toBe(false);
+    expect(dim).toEqual({ width: 1400, height: 10800 });
+  });
+
+  it("损坏尺寸（NaN/过小）依然被修复", () => {
+    const { dim, repaired } = sanitizeDims(NaN, 40);
+    expect(repaired).toBe(true);
+    expect(dim.width).toBeGreaterThanOrEqual(120);
+    expect(dim.height).toBeGreaterThanOrEqual(80);
   });
 });

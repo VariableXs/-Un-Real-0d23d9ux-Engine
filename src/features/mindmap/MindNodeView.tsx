@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { Copy, Link2, MoreHorizontal, Pencil, FileText, Trash2 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { openContextMenu } from "../../components/ContextMenu";
 import type { MindNode } from "../../lib/types";
+import { highlightCode } from "../../lib/codehighlight";
+import { looksLikeMarkdown, mdToNodeHtml } from "../../lib/nodemarkdown";
 import { PREFERRED_TEXT_W, centroidOf, inscribedRect, sanitizeDims, shapePoints } from "./geometry";
 
 interface Props {
@@ -88,6 +92,53 @@ export function MindNodeView(props: Props): React.ReactElement {
     }
   }, [editing, focusedViaAction]);
 
+  // ---------- 静态态富渲染（仅显示层，绝不入库） ----------
+  // ``` 代码段做语法高亮；$…$ / $$…$$ 用 KaTeX 排版。两者都是显示态产物：
+  // 存储的 node.textHtml 永远保留原始文本，因此再次编辑从源码起步，且
+  // sanitize 白名单无需接纳生成标记。
+  useEffect(() => {
+    if (editing || !contentRef.current) return;
+    const el = contentRef.current;
+    el.querySelectorAll<HTMLPreElement>("pre.mm-code").forEach((pre) => {
+      if (pre.dataset.hl === "1") return;
+      pre.dataset.hl = "1";
+      const src = pre.textContent ?? "";
+      pre.innerHTML = highlightCode(src, pre.getAttribute("data-lang") ?? "");
+    });
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => {
+        const p = n.parentElement;
+        if (!p || p.closest("pre, code, .mm-math")) return NodeFilter.FILTER_REJECT;
+        return /\$[^$]+\$/.test(n.nodeValue ?? "") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    const targets: Text[] = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) targets.push(n as Text);
+    for (const t of targets) {
+      const raw = t.nodeValue ?? "";
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      const re = /\$\$([^$]+)\$\$|\$([^$\n]+)\$/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(raw)) !== null) {
+        if (m.index > last) frag.appendChild(document.createTextNode(raw.slice(last, m.index)));
+        const span = document.createElement("span");
+        span.className = "mm-math";
+        const tex = m[1] ?? m[2] ?? "";
+        try {
+          katex.render(tex, span, { throwOnError: false, displayMode: m[1] !== undefined });
+        } catch {
+          span.textContent = m[0]; // 渲染失败时保留原文
+        }
+        frag.appendChild(span);
+        last = m.index + m[0].length;
+      }
+      if (last < raw.length) frag.appendChild(document.createTextNode(raw.slice(last)));
+      t.replaceWith(frag);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, node.textHtml, node.fontSize]);
+
   // Seed the editable with existing HTML exactly once per edit session.
   useEffect(() => {
     if (editing && contentRef.current) {
@@ -155,6 +206,88 @@ export function MindNodeView(props: Props): React.ReactElement {
     } catch { /* 剪贴板不可用时静默放弃 */ }
   }
 
+  // ---------- 智能提交与 ``` 代码段（编辑态） ----------
+  /** 提交前把代码段规整为纯文本（innerText 把 <br> 折算成 \n）。 */
+  function commitHtml(): string {
+    const el = contentRef.current;
+    if (!el) return "";
+    el.querySelectorAll("pre.mm-code").forEach((pre) => {
+      const txt = (pre as HTMLPreElement).innerText.replace(/\n+$/, "");
+      pre.replaceChildren(document.createTextNode(txt));
+    });
+    return el.innerHTML;
+  }
+  /** 光标所在逻辑行、光标之前的文本（null=光标不在文本节点上）。 */
+  function caretLineBefore(sel: Selection): string | null {
+    if (sel.rangeCount === 0) return null;
+    const r = sel.getRangeAt(0);
+    if (!r.collapsed || r.startContainer.nodeType !== Node.TEXT_NODE) return null;
+    const text = r.startContainer.textContent ?? "";
+    const before = text.slice(0, r.startOffset);
+    const nl = before.lastIndexOf("\n");
+    return nl === -1 ? before : before.slice(nl + 1);
+  }
+  /** 删除光标所在行从行首到光标的文本。 */
+  function deleteLineBefore(sel: Selection): void {
+    if (sel.rangeCount === 0) return;
+    const r = sel.getRangeAt(0);
+    if (r.startContainer.nodeType !== Node.TEXT_NODE) return;
+    const text = r.startContainer.textContent ?? "";
+    const before = text.slice(0, r.startOffset);
+    const nl = before.lastIndexOf("\n");
+    const lineStart = nl === -1 ? 0 : nl + 1;
+    if (lineStart >= r.startOffset) return;
+    const del = document.createRange();
+    del.setStart(r.startContainer, lineStart);
+    del.setEnd(r.startContainer, r.startOffset);
+    del.deleteContents();
+  }
+  function caretContainerEl(sel: Selection): HTMLElement | null {
+    if (sel.rangeCount === 0) return null;
+    const n = sel.getRangeAt(0).startContainer;
+    return (n.nodeType === Node.TEXT_NODE ? n.parentElement : (n as HTMLElement)) ?? null;
+  }
+  /**
+   * ```lang + Enter：把当前行变成嵌入式代码段并把光标移入；
+   * 代码段内 ``` + Enter：关闭代码段，回到普通段落。
+   */
+  function openCodeFence(sel: Selection, lang: string): void {
+    deleteLineBefore(sel);
+    const code = document.createElement("pre");
+    code.className = "mm-code";
+    if (lang) code.setAttribute("data-lang", lang);
+    // 只在内容根的内部块（div/p/h*/li/blockquote）上定位；绝不能把
+    // closest("div") 匹配到 .mm-content 根自身 —— 那会 replaceWith 掉
+    // React 拥有的根节点导致整棵树崩溃。
+    const root = contentRef.current;
+    let block = caretContainerEl(sel)?.closest("div, p, h1, h2, h3, h4, li, blockquote") ?? null;
+    if (!root || !block || block === root || !root.contains(block)) block = null;
+    const host = block ?? root;
+    if (!host) return;
+    if (block) {
+      if ((block.textContent ?? "").trim()) block.after(code);
+      else block.replaceWith(code);
+    } else {
+      host.appendChild(code);
+    }
+    const r = document.createRange();
+    r.setStart(code, 0);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  function closeCodeFence(sel: Selection, pre: Element): void {
+    deleteLineBefore(sel);
+    const p = document.createElement("div");
+    p.innerHTML = "<br>";
+    pre.after(p);
+    const r = document.createRange();
+    r.setStart(p, 0);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
   // ---------- 鼠标拖拽框选文字（编辑态） ----------
   // 用 caretRangeFromPoint 自绘选区：起点为按下位置，拖动过程中实时重设
   // selection，超出输入框边界时钳制到框内（拖到末尾即选到末尾）。松开鼠标
@@ -210,7 +343,7 @@ export function MindNodeView(props: Props): React.ReactElement {
   // from corrupt dims — NaN / Infinity / sub-minimum values are replaced by a
   // sane standard ratio before any SVG path is computed, and the repair is
   // reported once so the store persists the healed size.
-  const sane = sanitizeDims(node.width, node.height, node.shape);
+  const sane = sanitizeDims(node.width, node.height);
   useEffect(() => {
     if (!sane.repaired) return;
     window.dispatchEvent(new CustomEvent("variable:mm-repair-node", {
@@ -362,8 +495,8 @@ export function MindNodeView(props: Props): React.ReactElement {
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
+            alignItems: "safe center",
+            justifyContent: "safe center",
             textAlign: "center",
             padding: "4px 6px",
           } : {
@@ -376,7 +509,7 @@ export function MindNodeView(props: Props): React.ReactElement {
           overflowWrap: "break-word",
         }}
         onBlur={() => {
-          if (editing && contentRef.current) props.onCommitText(contentRef.current.innerHTML);
+          if (editing && contentRef.current) props.onCommitText(commitHtml());
         }}
         onMouseDown={beginDragSelect}
         onKeyDown={(e) => {
@@ -394,9 +527,38 @@ export function MindNodeView(props: Props): React.ReactElement {
             }, 220);
             return;
           }
-          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-            if (contentRef.current) props.onCommitText(contentRef.current.innerHTML);
+          // 智能提交：Enter 自动换行；Shift+Enter / Ctrl+Enter 保存并退出编辑。
+          if (e.key === "Enter" && (e.shiftKey || mod)) {
+            e.preventDefault();
+            props.onCommitText(commitHtml());
             return;
+          }
+          if (e.key === "Enter" && !e.shiftKey && !mod) {
+            const sel = window.getSelection();
+            const inCode = sel ? caretContainerEl(sel)?.closest("pre.mm-code") : null;
+            if (sel && inCode) {
+              e.preventDefault();
+              // 代码段内 ``` + Enter → 关闭代码段
+              const line = caretLineBefore(sel);
+              if (line !== null && line.trim() === "```") {
+                closeCodeFence(sel, inCode);
+                return;
+              }
+              // 代码段内 Enter → 字面换行（保持纯文本源码形态）。
+              // 必须走 execCommand 原生路径：手写 Range 插入 \n 文本节点时，
+              // Chrome 会把光标规范化回上一行尾（pre-wrap 尾部换行陷阱），
+              // 后续输入会错误并入前一文本节点；原生路径用 <br> 承载换行，
+              // 光标稳定，commitHtml 的 innerText 规整会折算回 \n。
+              document.execCommand("insertText", false, "\n");
+              return;
+            }
+            // ```lang + Enter → 开启嵌入式代码段
+            const m = (sel ? caretLineBefore(sel) : null)?.match(/^\s*```([A-Za-z0-9+#._-]*)\s*$/) ?? null;
+            if (m && sel) {
+              e.preventDefault();
+              openCodeFence(sel, m[1] ?? "");
+              return;
+            }
           }
           if (e.key === "Escape") {
             // Discard the in-progress edits; parent clears editingId and the
@@ -420,9 +582,18 @@ export function MindNodeView(props: Props): React.ReactElement {
           e.preventDefault();
           const html = e.clipboardData.getData("text/html");
           const text = e.clipboardData.getData("text/plain");
+          // 代码段内只粘纯文本，保持源码形态。
+          const sel = window.getSelection();
+          if (sel && caretContainerEl(sel)?.closest("pre.mm-code")) {
+            if (text) document.execCommand("insertText", false, text);
+            return;
+          }
           if (html) {
             const clean = sanitizeLite(html);
             document.execCommand("insertHTML", false, clean);
+          } else if (text && looksLikeMarkdown(text)) {
+            // Markdown 智能解析：保留标题/加粗/列表/代码块等基本排版。
+            document.execCommand("insertHTML", false, sanitizeLite(mdToNodeHtml(text)));
           } else if (text) {
             document.execCommand("insertText", false, text);
           }

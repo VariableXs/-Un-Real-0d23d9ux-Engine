@@ -4,7 +4,7 @@
  * dangerous URLs so only safe local content reaches the DOM.
  */
 const ALLOWED_TAGS: ReadonlySet<string> = new Set([
-  "p", "br", "hr", "h1", "h2", "h3", "strong", "b", "em", "i", "u", "s", "del",
+  "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "b", "em", "i", "u", "s", "del",
   "ul", "ol", "li", "blockquote", "code", "pre", "span", "img", "video",
 ]);
 
@@ -17,7 +17,15 @@ const DANGEROUS_CONTAINERS: ReadonlySet<string> = new Set([
 const ALLOWED_ATTRS = new Map<string, ReadonlySet<string>>([
   ["img", new Set(["src", "alt"])],
   ["video", new Set(["src", "controls"])],
+  // Embedded code segments keep their language + mm-code identity; spans may
+  // carry a limited class vocabulary (highlight/math/typography markers).
+  ["pre", new Set(["class", "data-lang"])],
+  ["code", new Set(["class"])],
+  ["span", new Set(["class"])],
 ]);
+
+/** Class vocabulary allowed on sanitized span/code/pre elements. */
+const SAFE_CLASSES = /^(?:mm-[\w-]+|tok-[\w-]+|katex[\w-]*)$/;
 
 export function isSafeMediaSrc(src: string): boolean {
   const s = src.trim().toLowerCase();
@@ -86,6 +94,8 @@ export function sanitizeHtml(input: string): string {
         if (an === "src") {
           if (!isSafeMediaSrc(av)) continue;
           kept.push(`${an}="${escapeAttr(av)}"`);
+        } else if (an === "class" && !SAFE_CLASSES.test(av.trim())) {
+          continue; // unknown class vocabulary → drop the attribute
         } else {
           kept.push(`${an}="${escapeAttr(av)}"`);
         }

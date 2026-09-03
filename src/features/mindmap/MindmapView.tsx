@@ -19,7 +19,7 @@ import { sanitizeHtml } from "../../lib/sanitize";
 import { parseMindmapFile } from "../../lib/mindmapFile";
 import type { Settings } from "../../lib/settings";
 import {
-  boxIntersectsRect, boxShapeExempt, clampDims, computeGuides, growDimsForText, MIN_NODE_H,
+  boxIntersectsRect, boxShapeExempt, clampDims, clampInteractive, computeGuides, growDimsForText, MAX_AUTO_H, MIN_NODE_H,
   MIN_NODE_W, PREFERRED_TEXT_W, sanitizeDims, shapeCollapsed, vertexDragSigns,
   type GuideLine,
 } from "./geometry";
@@ -50,7 +50,7 @@ const MIN_H = MIN_NODE_H;
 function healNodeDims(list: MindNode[]): MindNode[] {
   let fixed = 0;
   const out = list.map((nd) => {
-    const { dim, repaired } = sanitizeDims(nd.width, nd.height, nd.shape);
+    const { dim, repaired } = sanitizeDims(nd.width, nd.height);
     if (!repaired) return nd;
     fixed++;
     return { ...nd, ...dim };
@@ -1150,8 +1150,9 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       // Module-1 aspect-ratio guard: pull the long side back to ≤3× the short
       // one (equivalent to force-expanding the short side). Anchor
       // compensation re-glues a grabbed west/north edge to the cursor.
-      // Box frames pass their shape so the guard is skipped for them.
-      const cd = clampDims(w, h, target?.shape);
+      // MANUAL DRAGS ONLY — box frames are exempt; text-driven autogrow never
+      // passes through here (stored dims are rendered as-is).
+      const cd = clampInteractive(w, h, target?.shape);
       if (cd.width !== w && (hnd.includes("w") || (d.vs?.sx ?? 0) < 0)) x = o.x + (o.w - cd.width);
       if (cd.height !== h && (hnd.includes("n") || (d.vs?.sy ?? 0) < 0)) y = o.y + (o.h - cd.height);
       w = cd.width; h = cd.height;
@@ -1639,9 +1640,10 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
       if (isBox) {
         // 增长式自适应（编辑/静态态统一）：“先横后纵” —— 宽度向文本自然需求
         // 扩展（封顶 PREFERRED_TEXT_W，且永不小于用户手动设定宽度），高度随
-        // 换行行数增长；框架始终完整包住内容，只放大不回缩，避免抖动。
+        // 换行行数增长；超过 MAX_AUTO_H 后停止增长、框内右侧滚动条兜底，
+        // 框架始终完整包住内容，只放大不回缩，避免抖动。
         width = clamp(Math.max(n.width, Math.min(d.textWidth + 30, PREFERRED_TEXT_W)), MIN_W, MAX_W);
-        height = clamp(Math.max(n.height, d.textHeight + 26), MIN_H, 20000);
+        height = clamp(Math.max(n.height, Math.min(d.textHeight + 26, MAX_AUTO_H)), MIN_H, 20000);
         if (n.shape === "circle") {
           const dia = Math.max(width, height);
           width = dia; height = dia;
@@ -1655,8 +1657,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
     };
     const onRepairNode = (ev: Event): void => {
       const d = (ev as CustomEvent<{ id: string; width: number; height: number }>).detail;
-      const shape = nodesRef.current.find((x) => x.id === d.id)?.shape;
-      const cd = clampDims(d.width, d.height, shape);
+      const cd = clampDims(d.width, d.height);
       patchNode(d.id, cd);
       console.warn(`[mindmap] repaired corrupt dims of node ${d.id} → ${cd.width}x${cd.height}`);
       void ipc.log("warn", `repaired node dims ${d.id} -> ${cd.width}x${cd.height}`).catch(() => {});
@@ -2241,10 +2242,11 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
     const base = makeNode(numOr(n.x, 0) + dx, numOr(n.y, 0) + dy, html);
     return {
       ...base,
-      // Module-1: imports run through the same hard dimension clamps as
-      // interactive resizes (mins + aspect guard — box frames exempt).
+      // Module-1: imports run through the same hard ABSOLUTE dimension clamps
+      // as every persistence path (mins/maxes, poison guard) — aspect is not
+      // enforced here so legitimately tall text frames survive a round-trip.
       ...((n.width !== undefined || n.height !== undefined)
-        ? clampDims(numOr(n.width, base.width), numOr(n.height, base.height), n.shape ?? base.shape)
+        ? clampDims(numOr(n.width, base.width), numOr(n.height, base.height))
         : {}),
       ...(n.shape !== undefined ? { shape: n.shape } : {}),
       ...(n.borderRadius !== undefined ? { borderRadius: n.borderRadius } : {}),
@@ -2584,7 +2586,7 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
   const linkedNow = !!(map && linkedPaths[map.id]);
 
   return (
-    <div className="mindmap-view" tabIndex={0} onPointerDown={onCanvasRootPointerDown}>
+    <div className={`mindmap-view${editingId ? " editing-focus" : ""}`} tabIndex={0} onPointerDown={onCanvasRootPointerDown}>
       <div className="mm-toolbar">
         <div className="seg">
           <button type="button" className={tool === "pan" ? "on" : ""} data-tip={lang === "zh" ? "拖拽平移画布" : "Drag to pan"} aria-label="pan tool" onClick={() => setTool("pan")}><Hand size={14} /></button>

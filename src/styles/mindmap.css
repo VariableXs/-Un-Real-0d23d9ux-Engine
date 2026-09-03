@@ -285,3 +285,105 @@
 
 .mm-collapsed-title { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; padding: 5px 10px; height: 34px; overflow: hidden; }
 .mm-collapsed-title .ellipsis { flex: 1; }
+
+/* ============ 富文本节点：限高滚动 / 排版 / 代码段 / 公式 / 聚焦编辑 ============ */
+
+/* 框内右侧嵌入式滚动条 —— 宽度收紧在边框内，不外溢、不占位抖动 */
+.mm-content {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160,180,215,.35) transparent;
+}
+.mm-content::-webkit-scrollbar { width: 7px; height: 7px; }
+.mm-content::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+.mm-content::-webkit-scrollbar-thumb {
+  background: rgba(160,180,215,.30);
+  background-clip: content-box;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.mm-content::-webkit-scrollbar-thumb:hover { background: rgba(160,180,215,.5); background-clip: content-box; }
+.mm-content::-webkit-scrollbar-corner { background: transparent; }
+
+/* 自动文字排版：舒适的行高与段落间距，渐进增强的换行排版 */
+.mm-content { line-height: 1.62; text-wrap: pretty; }
+.mm-content > div + div, .mm-content > p + p { margin-top: .42em; }
+.mm-content h1, .mm-content h2, .mm-content h3,
+.mm-content h4, .mm-content h5, .mm-content h6 {
+  margin: .5em 0 .25em; line-height: 1.3; font-weight: 700;
+  text-wrap: balance;
+}
+.mm-content h1 { font-size: 1.5em; }
+.mm-content h2 { font-size: 1.3em; }
+.mm-content h3 { font-size: 1.15em; }
+.mm-content h4, .mm-content h5, .mm-content h6 { font-size: 1.05em; }
+.mm-content ul, .mm-content ol { margin: .35em 0; padding-left: 1.45em; }
+.mm-content li { margin: .14em 0; }
+.mm-content blockquote {
+  margin: .45em 0; padding: .25em .8em;
+  border-left: 3px solid rgba(140,170,255,.5);
+  color: var(--text-dim, #aab6c8);
+  background: rgba(140,170,255,.06);
+  border-radius: 0 6px 6px 0;
+}
+.mm-content hr { border: none; border-top: 1px solid rgba(160,180,215,.25); margin: .6em 0; }
+.mm-content code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: .92em;
+  background: rgba(10,16,28,.55);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.mm-content u { text-underline-offset: 2px; }
+
+/* 嵌入式代码段（``` 开启） */
+.mm-content pre.mm-code {
+  margin: .5em 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.09);
+  background: rgba(8,13,24,.66);
+  font-family: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+  font-size: .92em;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+  text-align: left;
+  color: #dbe5f4;
+}
+.mm-content pre.mm-code code {
+  background: none; padding: 0; font-size: inherit; border-radius: 0;
+}
+.mm-content pre.mm-code::before {
+  content: attr(data-lang);
+  display: block;
+  float: right;
+  margin: -3px -4px 0 0;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(140,170,255,.55);
+  user-select: none;
+}
+/* 语法高亮 token */
+.mm-content .tok-kw  { color: #c792ea; }
+.mm-content .tok-str { color: #a5e075; }
+.mm-content .tok-com { color: #7d8799; font-style: italic; }
+.mm-content .tok-num { color: #f78c6c; }
+.mm-content .tok-fn  { color: #82aaff; }
+.mm-content .tok-type{ color: #ffcb6b; }
+
+/* LaTeX 公式（$…$ / $$…$$） */
+.mm-content .mm-math { padding: 0 1px; white-space: nowrap; }
+.mm-content .mm-math .katex { font-size: 1.06em; color: var(--text, #e8eef7); }
+.mm-content .mm-math .katex-display { margin: .4em 0; overflow-x: auto; overflow-y: hidden; }
+
+/* 聚焦编辑模式：编辑中的节点保持醒目，画布其余部分自动变暗 */
+.mindmap-view.editing-focus .mm-node:not(.editing),
+.mindmap-view.editing-focus .edge-layer {
+  opacity: .32;
+  filter: saturate(.55) brightness(.8);
+  pointer-events: none;
+  transition: opacity .28s ease, filter .28s ease;
+}
+.mindmap-view .mm-node { transition: opacity .28s ease, filter .28s ease, box-shadow .12s; }
+.mindmap-view .edge-layer { transition: opacity .28s ease, filter .28s ease; }
