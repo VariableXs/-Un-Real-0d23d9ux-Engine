@@ -1,0 +1,9 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/check-*.log
+build-log.txt
+npm-*.log
+*.log
+*.local
+.DS_Store

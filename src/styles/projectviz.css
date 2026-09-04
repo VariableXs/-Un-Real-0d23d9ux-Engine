@@ -1,0 +1,884 @@
+/* 项目结构可视化引擎（规范第五~七章）— 面板与浮层样式 */
+
+/* ---------- 7.1 导入进度浮层 / 意图卡容器 ---------- */
+.pv-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 18, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.pv-overlay-card {
+  width: min(560px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(127, 155, 217, 0.35);
+  background: rgba(13, 20, 38, 0.94);
+  color: var(--fg, #dce4ec);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.pv-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.pv-overlay-head strong {
+  flex: 1;
+}
+
+.pv-root-path {
+  margin: 8px 0 10px;
+  font-size: 12px;
+  opacity: 0.65;
+  word-break: break-all;
+}
+
+.pv-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(127, 155, 217, 0.18);
+  overflow: hidden;
+}
+
+.pv-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #4f709c, #a5f3fc);
+  transition: width 0.25s ease;
+}
+
+.pv-detail {
+  margin: 10px 0;
+  font-size: 12.5px;
+  opacity: 0.8;
+  word-break: break-all;
+}
+
+.pv-spin {
+  animation: pv-rotate 1.1s linear infinite;
+  color: #a5f3fc;
+}
+
+.pv-ok { color: #86efac; }
+.pv-warn { color: #e8b4a0; }
+.pv-warn-text { color: #e8b4a0; }
+
+@keyframes pv-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- 5.2 文件信息卡 ---------- */
+.pv-info-card {
+  position: fixed;
+  right: 18px;
+  top: 76px;
+  z-index: 620;
+  width: min(380px, 92vw);
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(165, 243, 252, 0.28);
+  background: rgba(13, 20, 38, 0.95);
+  color: var(--fg, #dce4ec);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+
+.pv-info-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(127, 155, 217, 0.22);
+  color: #a5f3fc;
+}
+
+.pv-info-head strong {
+  color: var(--fg, #dce4ec);
+  font-size: 13.5px;
+}
+
+.pv-rel {
+  flex: 1;
+  font-size: 11px;
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.pv-info-body {
+  padding: 10px 14px;
+  overflow: auto;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.pv-info-body h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  color: #8fb0ff;
+  font-weight: 600;
+}
+
+.pv-info-body section:first-child h4 {
+  margin-top: 2px;
+}
+
+.pv-list {
+  margin: 2px 0;
+  padding-left: 18px;
+}
+
+.pv-list li {
+  margin: 3px 0;
+}
+
+.pv-term {
+  opacity: 0.75;
+}
+
+.pv-teach {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.pv-info-foot {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(127, 155, 217, 0.22);
+}
+
+/* ---------- 第六章 意图卡 ---------- */
+.pv-intent-card {
+  width: min(680px, 94vw);
+}
+
+.pv-intent-input {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.35);
+  background: rgba(4, 8, 18, 0.6);
+  color: inherit;
+  font-size: 13px;
+}
+
+.pv-intent-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pv-intent-result h4 {
+  margin: 12px 0 6px;
+  font-size: 13.5px;
+  color: #86efac;
+}
+
+.pv-steps li {
+  margin: 4px 0;
+}
+
+.pv-code {
+  margin: 10px 0 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(4, 8, 18, 0.75);
+  border: 1px solid rgba(165, 243, 252, 0.18);
+  overflow: auto;
+  max-height: 280px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: #cfe6ff;
+}
+
+/* ---------- 0.2 顶部入口按钮（文件夹+放大镜 · 冰蓝） ---------- */
+.pv-entry { color: #a8c8e8; }
+.pv-entry.active, .pv-entry:hover { color: #cfe4f8; }
+
+/* ---------- 独立项目分析空间（第七章） ---------- */
+.project-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(127, 155, 217, 0.18);
+  background: var(--panel, rgba(10, 15, 28, 0.72));
+  z-index: 20;
+}
+
+.pv-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #a8c8e8;
+  margin-right: 4px;
+}
+
+.pv-crumb {
+  font-size: 12px;
+  opacity: 0.6;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-canvas {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.pv-canvas:active { cursor: grabbing; }
+
+.pv-welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #a8c8e8;
+  text-align: center;
+  padding: 24px;
+}
+
+.pv-welcome h3 { margin: 0; font-size: 18px; color: var(--fg, #dce4ec); }
+.pv-welcome p { max-width: 480px; }
+
+.pv-world { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+
+.pv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+}
+
+.pv-edge {
+  fill: none;
+  stroke-width: 1.6;
+  opacity: 0.55;
+}
+
+.pv-edge-anim {
+  stroke-dasharray: 7 9;
+  animation: pv-edge-flow 1.4s linear infinite;
+}
+
+.pv-edge-hot { opacity: 1; stroke-width: 2.4; }
+
+@keyframes pv-edge-flow {
+  to { stroke-dashoffset: -32; }
+}
+
+.pv-node {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1.4px solid #7f9bd9;
+  background: rgba(13, 20, 38, 0.9);
+  color: var(--fg, #dce4ec);
+  font-size: 12.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.pv-node p { margin: 0; }
+.pv-node.k-root { border-width: 2px; box-shadow: 0 0 22px rgba(79, 112, 156, 0.45); }
+.pv-node.k-intent { box-shadow: 0 0 18px rgba(245, 198, 216, 0.3); }
+.pv-node.sel { box-shadow: 0 0 0 2px rgba(168, 200, 232, 0.55), 0 6px 22px rgba(0, 0, 0, 0.45); }
+.pv-node:hover { filter: brightness(1.12); }
+.pv-node pre { white-space: pre-wrap; word-break: break-all; }
+
+.pv-status {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(127, 155, 217, 0.22);
+  background: var(--panel, rgba(10, 15, 28, 0.72));
+  font-size: 11.5px;
+  opacity: 0.9;
+  max-width: 60vw;
+}
+
+.pv-status .sep { opacity: 0.4; }
+
+.pv-refs {
+  position: absolute;
+  right: 14px;
+  top: 60px;
+  z-index: 60;
+  width: min(340px, 90vw);
+  max-height: 50vh;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(245, 198, 216, 0.3);
+  background: rgba(13, 20, 38, 0.95);
+}
+
+.pv-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(127, 155, 217, 0.12);
+}
+
+.pv-ref-row span:first-of-type { flex: 1; }
+
+.pv-ref-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.pv-ref-btn { color: #f5c6d8; border-color: rgba(245, 198, 216, 0.45); }
+
+/* ============================================================
+   沉浸式工作区重构（第八/三章）：三栏布局 · 无弹窗
+   ============================================================ */
+
+/* ---------- 第八章：顶栏微进度条 ---------- */
+.pv-progress-strip {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 200, 232, 0.3);
+  background: rgba(13, 20, 38, 0.88);
+  font-size: 11.5px;
+  max-width: 70vw;
+  pointer-events: auto;
+}
+
+.pv-progress-strip.err { border-color: rgba(232, 180, 160, 0.5); }
+
+.pv-strip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+
+.pv-strip-bar {
+  width: 90px;
+  height: 4px;
+  flex: none;
+  border-radius: 3px;
+  background: rgba(127, 155, 217, 0.18);
+  overflow: hidden;
+}
+
+.pv-strip-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f709c, #a8c8e8);
+  transition: width 0.25s ease;
+}
+
+/* ---------- 3.2 三栏布局 ---------- */
+.pv-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ---------- 四：左侧文件树 ---------- */
+.pv-tree {
+  width: 250px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(127, 155, 217, 0.16);
+  background: rgba(10, 15, 28, 0.5);
+  z-index: 15;
+}
+
+.pv-tree-head { padding: 8px; }
+
+.pv-tree-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.3);
+  background: rgba(4, 8, 18, 0.5);
+  color: inherit;
+  font-size: 12px;
+}
+
+.pv-tree-list {
+  flex: 1;
+  overflow: auto;
+  padding: 2px 4px;
+}
+
+.pv-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.pv-tree-row:hover { background: rgba(127, 155, 217, 0.1); }
+.pv-tree-row.sel { background: rgba(127, 155, 217, 0.18); border-color: rgba(168, 200, 232, 0.35); }
+.pv-tree-name { flex: 1; }
+
+.pv-tag {
+  flex: none;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgba(168, 200, 232, 0.18);
+  color: #a8c8e8;
+}
+
+.pv-tree-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid rgba(127, 155, 217, 0.14);
+}
+
+/* ---------- 右：详情舱（FileInfoCard 落位为面板而非浮窗） ---------- */
+.pv-pod {
+  width: min(400px, 38vw);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(127, 155, 217, 0.16);
+  background: rgba(10, 15, 28, 0.55);
+  z-index: 15;
+  min-height: 0;
+}
+
+.pv-pod .pv-info-card {
+  position: static;
+  width: 100%;
+  max-height: none;
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: 0;
+}
+
+.pv-intent-pod {
+  border-left-color: rgba(245, 198, 216, 0.25);
+}
+
+/* ---------- 5.1 空状态：轻量一行 + 虚线放置区（无模态） ---------- */
+.pv-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: rgba(220, 228, 236, 0.72);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.pv-empty .btn { pointer-events: auto; border-style: dashed; }
+
+.pv-canvas.drop-hover { outline: 2px dashed rgba(168, 200, 232, 0.45); outline-offset: -10px; }
+.pv-empty.hot { color: #a8c8e8; }
+
+/* ---------- 5.1 意图 = 画布工具模式 ---------- */
+.pv-canvas.intent-mode { cursor: copy; }
+
+.pv-intent-editor {
+  min-height: 1.4em;
+  outline: none;
+  border-bottom: 1px dashed rgba(245, 198, 216, 0.5);
+}
+
+.pv-intent-hint {
+  margin-top: 4px;
+  font-size: 10.5px;
+  opacity: 0.55;
+}
+
+/* ============================================================
+   逐行解剖 / 推理链 / 内联意图条（第一~四章）
+   ============================================================ */
+
+.pv-anatomy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  animation: pv-fade-in 0.22s ease;
+  z-index: 5;
+}
+
+@keyframes pv-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pv-crumb-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(10, 15, 28, 0.5);
+  border-bottom: 1px solid rgba(127, 155, 217, 0.14);
+  z-index: 10;
+}
+
+.pv-crumb-bar .pv-crumb { max-width: 55vw; }
+
+.pv-anatomy-col {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 90px;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pv-anatomy-col > .pv-vlist { flex: 1; }
+
+.pv-anatomy-hint {
+  font-size: 12px;
+  opacity: 0.6;
+  margin: 4px 0 12px;
+}
+
+/* 8.1 逐行代码节点：同一设计语言，等宽字体，冷调高亮 */
+.pv-line-node {
+  display: flex;
+  gap: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 200, 232, 0.35);
+  background: rgba(13, 20, 38, 0.88);
+  margin-bottom: 10px;
+  overflow: hidden;
+  cursor: context-menu;
+}
+
+.pv-line-node:hover { border-color: rgba(168, 200, 232, 0.7); }
+
+.pv-line-code {
+  width: 46%;
+  flex: none;
+  padding: 8px 10px;
+  font-family: "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cfe6ff;
+  background: rgba(4, 8, 18, 0.55);
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-right: 1px solid rgba(127, 155, 217, 0.16);
+}
+
+.pv-line-code .pv-kw { color: #7fb3ff; }
+.pv-line-code .pv-str { color: #9fe8e0; }
+
+.pv-ln {
+  display: inline-block;
+  width: 34px;
+  opacity: 0.45;
+  user-select: none;
+}
+
+.pv-line-explain {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.pv-line-explain p { margin: 0 0 3px; }
+.pv-line-explain .why { opacity: 0.8; }
+.pv-line-explain .impact { color: #a8c8e8; font-size: 11.5px; }
+
+.pv-badge {
+  display: inline-block;
+  padding: 0 6px;
+  margin-right: 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  background: rgba(168, 200, 232, 0.16);
+  color: #a8c8e8;
+}
+
+.pv-badge.warn { background: rgba(232, 180, 160, 0.18); color: #e8b4a0; }
+
+/* 8.4 写入成功的樱粉高光（2 秒淡出） */
+@keyframes pv-pink-flash {
+  0% { box-shadow: 0 0 0 3px rgba(248, 212, 228, 0.95); border-color: #f8d4e4; }
+  100% { box-shadow: 0 0 0 0 rgba(248, 212, 228, 0); }
+}
+
+.pv-line-node.pv-flash,
+.pv-node.pv-flash {
+  animation: pv-pink-flash 2s ease-out;
+}
+
+/* 4.3 内联意图条 */
+.pv-inline-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(760px, 92vw);
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(168, 200, 232, 0.4);
+  background: rgba(13, 20, 38, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.pv-inline-bar input {
+  flex: 1;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.35);
+  background: rgba(4, 8, 18, 0.6);
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.pv-inline-preview {
+  flex: none;
+  max-width: 34%;
+  font-size: 11px;
+  color: #a8c8e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono { font-family: Consolas, monospace; opacity: 0.8; }
+
+/* ============================================================
+   一、真实光影极光背景层（WebGL2）· 三章 虚拟滚动 · 四章 反写
+   ============================================================ */
+
+.pv-aurora {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.project-view > .pv-toolbar,
+.project-view > .pv-body,
+.project-view > .pv-progress-strip {
+  position: relative;
+  z-index: 10;
+}
+
+/* 二章 · 大文件虚拟化视口 */
+.pv-vlist {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid rgba(127, 155, 217, 0.14);
+  border-radius: 12px;
+  background: rgba(4, 8, 18, 0.25);
+}
+
+.pv-line-node.sym { cursor: pointer; border-color: rgba(127, 155, 217, 0.5); }
+.pv-line-node.sym:hover { border-color: #a8c8e8; }
+.pv-line-node.more {
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.pv-fold {
+  display: inline-block;
+  width: 16px;
+  color: #a8c8e8;
+  user-select: none;
+}
+
+/* 四章 · 写入源文件按钮（有待写改动时出现在顶栏右上） */
+.pv-save-btn {
+  margin-left: 4px;
+  box-shadow: 0 0 12px rgba(245, 198, 216, 0.35);
+}
+
+/* 一.3 · 交互反馈：hover/active/focus 态明确；拖画布时降级动效 */
+.pv-empty button:hover,
+.pv-empty button:focus-visible {
+  border-color: #a8c8e8;
+  color: #cfe4f8;
+  background: rgba(168, 200, 232, 0.12);
+}
+
+.pv-empty button:active {
+  transform: scale(0.97);
+}
+
+.pv-canvas.panning .pv-edge {
+  animation: none;
+}
+
+.pv-canvas.panning .pv-node {
+  box-shadow: none;
+}
+
+/* 二.2 · 小地图 */
+.pv-minimap {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 158px;
+  height: 104px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 155, 217, 0.3);
+  background: rgba(4, 8, 18, 0.72);
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 30;
+}
+
+.pv-minimap-vp {
+  position: absolute;
+  border: 1.5px solid rgba(232, 180, 160, 0.85);
+  background: rgba(245, 198, 216, 0.10);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* 九.5 · 逐行个人注释 */
+.pv-note-chip {
+  color: #f5c6d8;
+  font-size: 11.5px;
+}
+
+/* 十二.1 · 节点悬停呼吸光晕 + 选中樱粉描边 */
+.pv-node {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.pv-node:hover {
+  animation: pv-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes pv-breathe {
+  0%, 100% { box-shadow: 0 0 8px rgba(168, 200, 232, 0.25); }
+  50% { box-shadow: 0 0 24px rgba(168, 200, 232, 0.55); }
+}
+
+.pv-node.sel {
+  border-color: #f8d4e4;
+  box-shadow: 0 0 0 1.5px rgba(248, 212, 228, 0.5), 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* 6.2 · 可点面包屑 */
+.pv-crumb-bar .btn { color: #a8c8e8; }
+
+/* 2.5 · 通俗风格切换 */
+.pv-style-select {
+  padding: 3px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.35);
+  background: rgba(4, 8, 18, 0.6);
+  color: inherit;
+  font-size: 11.5px;
+}
+
+/* 四.2 · 信息卡内嵌源码预览 */
+.pv-code-preview {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.2);
+  background: rgba(4, 8, 18, 0.65);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #cfe6ff;
+  overflow: auto;
+}
+
+.pv-code-preview-row { white-space: pre-wrap; word-break: break-all; }
+
+/* ---------- 全流程细分树 + 二进制解剖 ---------- */
+.pv-flow-tree { font-size: 12px; max-height: 240px; overflow-y: auto; }
+.pv-flow-row {
+  display: flex; align-items: center; gap: 5px;
+  padding: 2px 4px; border-radius: 6px; cursor: default;
+}
+.pv-flow-row:hover { background: rgba(127, 168, 214, 0.12); }
+.pv-flow-leaf { width: 11px; flex: none; }
+.pv-flow-kind { flex: none; font-size: 10px; padding: 1px 5px; border-radius: 6px; background: rgba(127,168,214,0.18); color: #cfe0ff; }
+.pv-flow-kind.k-loop { background: rgba(143,224,192,0.2); }
+.pv-flow-kind.k-switch, .pv-flow-kind.k-match { background: rgba(200,168,255,0.2); }
+.pv-flow-kind.k-guard { background: rgba(255,216,143,0.2); }
+.pv-flow-label { flex: 1 1 auto; min-width: 0; color: #e6efff; font-family: ui-monospace, monospace; }
+.pv-flow-ln { flex: none; }

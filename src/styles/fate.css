@@ -1,0 +1,354 @@
+/* ============================================================
+   命运推演空间（FTPE）— 与主软件同一套冰蓝极光视觉语言
+   ============================================================ */
+
+.fate-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fate-toolbar { z-index: 20; }
+
+.fate-entry { color: #cfe4f8; }
+.fate-entry.active, .fate-entry:hover { color: #f8d4e4; }
+
+.ft-name {
+  width: 140px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.3);
+  background: rgba(4, 8, 18, 0.5);
+  color: inherit;
+  font-size: 12px;
+}
+
+.ft-run { box-shadow: 0 0 14px rgba(127, 168, 214, 0.4); }
+
+/* ---------- 六域编辑面板 ---------- */
+.ft-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px;
+  border-bottom: 1px solid rgba(127, 155, 217, 0.14);
+}
+
+.ft-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--fg, #dce4ec);
+  font-size: 11.5px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.ft-tab.on { background: rgba(127, 155, 217, 0.2); opacity: 1; color: #cfe4f8; }
+
+.ft-entry { padding: 0 4px; }
+
+.ft-cat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* 6.3 单条特质编辑子空间 */
+.ft-trait-editor {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(168, 200, 232, 0.25);
+  background: rgba(4, 8, 18, 0.5);
+}
+
+.ft-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ft-slider { flex: 1; accent-color: #7fa8d6; }
+
+.ft-val {
+  font-variant-numeric: tabular-nums;
+  color: #cfe4f8;
+  min-width: 38px;
+  text-align: right;
+}
+
+.ft-weights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ft-params { padding: 8px; }
+
+.ft-param {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+/* ---------- 命运树节点 ---------- */
+.ft-node {
+  position: absolute;
+  box-sizing: border-box;
+  width: 190px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1.4px solid #8babc6;
+  background: rgba(13, 20, 38, 0.9);
+  color: var(--fg, #dce4ec);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.ft-node p { margin: 0; }
+.ft-node-head { display: flex; align-items: baseline; gap: 6px; justify-content: space-between; }
+
+.ft-node.root {
+  width: 200px;
+  border-width: 2px;
+  border-color: #dff0ff;
+  box-shadow: 0 0 22px rgba(240, 246, 255, 0.35);
+}
+
+/* 12.3 结局印章：圆形轮廓 + 樱粉/冰蓝双重光晕 */
+.ft-node.ending {
+  border-radius: 50%;
+  width: 130px;
+  height: 130px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-color: #f8d4e4;
+  box-shadow: 0 0 0 3px rgba(127, 168, 214, 0.35), 0 0 26px rgba(248, 212, 228, 0.45);
+}
+
+.ft-node.ending .ft-node-head { flex-direction: column; gap: 2px; }
+
+.fate-canvas { cursor: grab; }
+.fate-canvas:active { cursor: grabbing; }
+
+/* ---------- v2.0 补充 ---------- */
+.ft-del { opacity: 0.55; }
+.ft-del:hover { opacity: 1; color: #f8d4e4; }
+
+/* 12.2 概率越高的连线越明亮 */
+.pv-edge { fill: none; }
+.pv-edge-anim { stroke-dasharray: 6 5; animation: fateEdgeFlow 1.4s linear infinite; }
+@keyframes fateEdgeFlow { to { stroke-dashoffset: -22; } }
+
+/* 12.1 阅读对比度契约：命运节点文字永远浅色（深蓝星空之下） */
+.ft-node, .ft-node strong { color: #e8eef7; }
+.ft-node .dim { color: #9db8d9; }
+.ft-node.ending strong { color: #ffe9f2; }
+
+/* ================= v3.0 ================= */
+
+/* 1.1 双轨输入：透明无边框数值框 */
+.ft-numrow { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.ft-num {
+  width: 74px; background: transparent; border: none; outline: none;
+  border-bottom: 1px solid rgba(127, 155, 217, 0.35);
+  color: #cfe4f8; font-size: 13px; font-variant-numeric: tabular-nums; padding: 2px 4px;
+}
+.ft-num:focus { border-bottom-color: #7fa8d6; }
+.ft-num-hint { opacity: 0.55; }
+/* number 输入框去掉上下箭头（无级手感的延续） */
+.ft-num::-webkit-outer-spin-button, .ft-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ft-num[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* 1.2 中央舞台推演动画（Stage of Fate） */
+.fate-stage {
+  position: absolute; inset: 0; z-index: 900;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.fate-stage-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 46%, rgba(4, 8, 18, 0.30) 8%, rgba(4, 8, 18, 0.90) 70%);
+  animation: stageVeil 2.7s ease forwards;
+}
+@keyframes stageVeil {
+  0% { opacity: 0; } 18% { opacity: 1; }
+  78% { opacity: 1; } 100% { opacity: 0; }
+}
+.fate-stage-beams { position: absolute; inset: 0; overflow: hidden; }
+.fate-beam {
+  position: absolute; left: 50%; top: 46%; width: 46vmax; height: 2px;
+  transform-origin: 0 0; opacity: 0;
+  background: linear-gradient(90deg, rgba(240, 246, 255, 0.95), rgba(127, 168, 214, 0.55) 55%, transparent);
+  filter: drop-shadow(0 0 8px rgba(127, 168, 214, 0.8));
+  animation: stageBeam 2.6s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+.fate-beam-0 { --deg: 8deg; }
+.fate-beam-1 { --deg: 76deg; }
+.fate-beam-2 { --deg: 150deg; }
+.fate-beam-3 { --deg: 212deg; }
+.fate-beam-4 { --deg: 292deg; }
+@keyframes stageBeam {
+  0% { opacity: 0; transform: rotate(var(--deg, 0deg)) scaleX(0); }
+  22% { opacity: 0.95; }
+  62% { opacity: 0.85; transform: rotate(var(--deg, 0deg)) scaleX(1); }
+  82% { opacity: 1; filter: drop-shadow(0 0 18px rgba(248, 212, 228, 0.5)); }
+  100% { opacity: 0; transform: rotate(var(--deg, 0deg)) scaleX(1.25); }
+}
+.fate-stage-core { position: relative; text-align: center; animation: stageCore 2.7s ease forwards; }
+.fate-stage-icon { color: #dff0ff; filter: drop-shadow(0 0 14px rgba(127, 168, 214, 0.9)); }
+.fate-stage-title {
+  margin-top: 10px; font-size: 14px; letter-spacing: 0.35em; color: #dff0ff;
+  text-shadow: 0 0 18px rgba(127, 168, 214, 0.75);
+}
+@keyframes stageCore {
+  0% { opacity: 0; transform: scale(0.86); } 20% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1.04); } 100% { opacity: 0; transform: scale(1.6); }
+}
+.fate-stage-keywords {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; pointer-events: none;
+}
+.fate-kw {
+  position: absolute; font-size: 12.5px; color: #f8d4e4; opacity: 0;
+  text-shadow: 0 0 12px rgba(248, 212, 228, 0.55), 0 0 22px rgba(127, 168, 214, 0.4);
+  animation: stageKw 1.5s ease forwards;
+}
+/* deterministic scatter around the core (same seed → same stage) */
+.fate-kw:nth-child(5n + 1) { left: calc(50% - 28vw); top: 34%; }
+.fate-kw:nth-child(5n + 2) { left: calc(50% + 22vw); top: 40%; }
+.fate-kw:nth-child(5n + 3) { left: calc(50% - 12vw); top: 62%; }
+.fate-kw:nth-child(5n + 4) { left: calc(50% + 14vw); top: 64%; }
+.fate-kw:nth-child(5n)     { left: 50%; top: 26%; margin-left: -3em; }
+@keyframes stageKw {
+  0% { opacity: 0; transform: translateY(6px); filter: blur(4px); }
+  25% { opacity: 0.92; transform: translateY(0); filter: blur(0); }
+  70% { opacity: 0.75; }
+  100% { opacity: 0; transform: translateY(-10px); filter: blur(6px); }
+}
+
+/* ---------- 行为树总结框架（模块一）：停靠在字典面板与画布交界的纵向缝隙 ----------
+   极简玻璃拟态：无边框、高透明、无投影，只做一条安静的竖向长条，绝不压迫主视野。 */
+.ft-summary {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 196px;
+  display: flex;
+  flex-direction: column;
+  z-index: 24;
+  border: none;
+  border-radius: 0;
+  background: linear-gradient(90deg, rgba(12, 18, 32, 0.34), rgba(12, 18, 32, 0.10) 78%, transparent);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+  box-shadow: none;
+  pointer-events: auto;
+}
+.ft-summary.folded { width: 26px; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.ft-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px;
+  cursor: pointer;
+  user-select: none;
+  color: rgba(207, 224, 255, 0.8);
+  font-size: 12px;
+  border-bottom: none;
+}
+.ft-summary.folded .ft-summary-head { padding: 8px 5px; justify-content: center; }
+.ft-summary-list {
+  overflow-y: auto;
+  padding: 2px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  scrollbar-width: thin;
+}
+.ft-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: rgba(127, 168, 214, 0.06);
+  border: 1px solid transparent;
+}
+.ft-summary-row:hover { background: rgba(127, 168, 214, 0.14); }
+.ft-sum-name { flex: 1 1 auto; min-width: 0; color: #e6efff; }
+.ft-sum-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #8fb0ff; }
+.ft-sum-dot.k-character { background: #f0a8c0; }
+.ft-sum-dot.k-ideology { background: #8fe0c0; }
+.ft-sum-dot.k-event { background: #ffd88f; }
+.ft-sum-dot.k-random { background: #c8a8ff; }
+.ft-move { opacity: 0.55; }
+.ft-entry:hover .ft-move, .pv-tree-row:hover .ft-move { opacity: 1; }
+
+/* ---------- 模块二：横向布局的交互增强 ---------- */
+/* 选中节点高亮：柔和描边，不加重视觉负担 */
+.ft-node.sel { box-shadow: 0 0 0 2px rgba(127, 168, 214, 0.55), 0 4px 18px rgba(0, 0, 0, 0.35); }
+/* 连线加宽透明命中区（svg 内 path 级 pointer-events） */
+.pv-edges { pointer-events: none; }
+.pv-edges .pv-edge-hit { pointer-events: stroke; }
+.pv-edge.sel { opacity: 0.95 !important; }
+
+/* 就地编辑浮窗：与总结框架同套玻璃语言 */
+.ft-node-edit {
+  position: absolute;
+  width: 208px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(143, 176, 255, 0.25);
+  background: rgba(10, 16, 30, 0.72);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3);
+  z-index: 40;
+}
+.ft-edit-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.ft-edit-name { flex: 1; width: auto; }
+.ft-edit-actions { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+
+/* ---------- 模块三：增益（buff）开关网格 ---------- */
+.ft-buff-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 3px;
+}
+.ft-buff-chip {
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(127, 155, 217, 0.28);
+  background: rgba(4, 8, 18, 0.4);
+  color: #9db8d9;
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+.ft-buff-chip:hover { border-color: rgba(168, 200, 232, 0.5); color: #cfe4f8; }
+.ft-buff-chip.on {
+  border-color: rgba(248, 212, 228, 0.55);
+  background: rgba(127, 168, 214, 0.22);
+  color: #ffe9f2;
+  box-shadow: 0 0 10px rgba(127, 168, 214, 0.35);
+}
