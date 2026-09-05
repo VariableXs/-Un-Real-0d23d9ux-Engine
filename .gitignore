@@ -12,3 +12,6 @@ npm-*.log
 .mimosa/
 src-tauri/.mimosa/
 archive-*/
+
+# editor/tool artifacts
+docs/Typora_Hook_Log.txt
