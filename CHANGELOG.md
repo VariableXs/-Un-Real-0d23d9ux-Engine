@@ -5,6 +5,17 @@
 
 ## [Unreleased] — 1.0sno9u.vxe 工作线
 
+### 已落地（2026-09-06 会话，M0 收口 + M2 起步）
+
+- **B-1 性能基准基线**：`tools/bench.cjs` 四项基准（冷启动/万文件索引/VWM 打开/
+  内存水位，VWM 项如实 SKIPPED 待 GUI 插桩），首份基线归档 `docs/bench/2026-09-06.md`；
+  `--check` 支持 >10% 回归门禁；
+- **B-2 容器层骨架**：`src-tauri` 升级为 Cargo workspace，新建 `container` crate
+  ——冻结 `StorageBackend` trait（蓝图 7.1 契约）+ `DirBackend`（原子写/路径沙箱/
+  快照恢复）+ 8 项测试桩；
+- 工程卫生：新增 `.gitattributes`（LF 归一化，消除 CRLF 幻影 diff）、清理未使用
+  截图；本机补齐 Rust 工具链（rustup stable-msvc）。
+
 ### 已落地（2026-09-05 会话）
 
 - **embed 嵌入子系统加固**：窗口捕获改为启动进程树匹配（Toolhelp32，覆盖

@@ -389,6 +389,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "container"
+version = "0.1.0"
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4173,6 +4177,7 @@ name = "variable"
 version = "1.0.0"
 dependencies = [
  "aes-gcm",
+ "container",
  "hmac",
  "pbkdf2",
  "rand",

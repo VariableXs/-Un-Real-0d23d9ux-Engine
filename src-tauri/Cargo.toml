@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "crates/container"]
+
 [package]
 name = "variable"
 version = "1.0.0"
@@ -13,6 +16,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 批次 B-2：存储容器层骨架（StorageBackend trait + DirBackend）
+container = { path = "crates/container" }
 tauri = { version = "2", features = ["protocol-asset", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"

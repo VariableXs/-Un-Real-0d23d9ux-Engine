@@ -260,8 +260,8 @@ M7 应用生态 2.0(搬迁向导/图标) ──► M8 网络层(白名单/代理
 
 **M0 工程底盘**
 
-- [ ] **B-1** 文档基线入库（蓝图/本计划/基准目录）＋ `tools/bench.cjs` 四项基准首跑
-- [ ] **B-2** `container` crate 骨架：`StorageBackend` trait + `DirBackend` 包装 + 测试桩
+- [x] **B-1** 文档基线入库（蓝图/本计划/基准目录）＋ `tools/bench.cjs` 四项基准首跑
+- [x] **B-2** `container` crate 骨架：`StorageBackend` trait + `DirBackend` 包装 + 测试桩
 
 **M1 执行档与凭据**
 
@@ -643,8 +643,8 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 
 | 批次 | 主题 | 状态 | 证据 / 备注 |
 | --- | --- | --- | --- |
-| B-1 | 文档基线 + bench.cjs | 🟡 | 文档四件套已入库（2026-09-05）；`tools/bench.cjs` 未建——**缺口：bench 脚本与首份基线** |
-| B-2 | container crate 骨架 | ☐ | |
+| B-1 | 文档基线 + bench.cjs | ✅ | 文档四件套入库（2026-09-05）；bench.cjs 四项基准 + 首份基线 `docs/bench/2026-09-06.md`（coldStart 571ms / fileIndex 1591ms / memory 32MB；vwmOpen 如实 SKIPPED 待 GUI 插桩）（2026-09-06） |
+| B-2 | container crate 骨架 | ✅ | workspace 化 + `src-tauri/crates/container`：StorageBackend trait（蓝图 7.1）+ DirBackend + 8 测试桩全绿（2026-09-06） |
 | B-3 | PortableProfile 模型 + apps.json v2 | ☐ | |
 | B-4 | spawn_profiled 执行档执行器 | ☐ | |
 | B-5 | 重定向模板库 v1 + 设置页 | ☐ | |
@@ -684,7 +684,7 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-39 | 包签名与分发 | ☐ | |
 | B-40 | 扩展审计面 | ☐ | |
 
-**当前进度：0 ✅ / 1 🟡 / 39 ☐ —— 下一个动作：完成 B-1 缺口（bench.cjs），随后 B-3/B-4（执行档，M1 核心）。**
+**当前进度：2 ✅ / 0 🟡 / 38 ☐ —— 下一个动作：B-3/B-4（执行档，M1 核心，关键路径起点）。**
 
 ---
 

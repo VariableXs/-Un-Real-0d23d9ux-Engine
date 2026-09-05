@@ -1,3 +1,34 @@
+## 批次 B-1（2026-09-06）完成 — 性能基准基线（M0 收尾）
+- 新建 tools/bench.cjs：四项基准对齐 BLUEPRINT 3.14 预算表——coldStart（拉起
+  variable.exe 轮询主窗口句柄）、fileIndex（临时树 10000 文件遍历+首块读取）、
+  vwmOpen（如实标 SKIPPED，需 GUI 插桩，随 VWM 2.0 批接入）、memory（全部
+  variable 进程 WorkingSet 之和）。--check 与最近归档基线对比，>10% 回归退出码 1。
+- 首份基线入库 docs/bench/2026-09-06.md：coldStart 571ms ✅ / fileIndex 1591ms ✅ /
+  memory 32MB ✅ / vwmOpen SKIPPED。
+- 口径已写进报告：memory 不含宿主共享的 msedgewebview2 渲染子进程（已知边界）；
+  coldStart 为窗口句柄首次出现时刻，非"可交互"时刻。
+- 教训：报告日期初版用 toISOString()（UTC）比本地慢一天；GUI 指标单进程口径会
+  严重低估内存（32MB vs 实际含 WebView2 的数百 MB）——基准数字必须连同口径写进
+  归档报告，否则后续回归对比建立误导性基线。
+
+## 批次 B-2（2026-09-06）完成 — container crate 骨架（M2 地基）
+- src-tauri/Cargo.toml 升级为 workspace（members = [".", "crates/container"]）；
+  新建 src-tauri/crates/container：冻结 StorageBackend trait（BLUEPRINT 7.1 签名：
+  open/stat/read/write/list/mkdir/rm/rename/copy/snapshot/restore/gc/seal）+
+  第一个后端 DirBackend（现状数据目录包装）。
+- 关键设计：VPath 类型层拒绝 `..`/盘符/绝对前缀，DirBackend::resolve 逐段再校验
+  （纵深防御）；write 走临时文件+rename 原子写；snapshot=整目录拷贝至
+  .snapshots/<label>/（Uxv 后端 B-13/B-26 替换为 journal+COW）；seal 为唯一强制
+  刷盘点（运行中绝不逐事务全刷，附录 A 14.1）。
+- 测试桩 8 项全绿：VPath 拒绝逃逸、原子读写往返、list/rename/rm 流、树拷贝、
+  快照恢复往返、open 前操作报 NotImplemented、seal 语义。cargo check --workspace
+  通过（variable 主 crate 既有 13 个警告与本批无关，未触碰）。
+- 环境注记：本机原本无 Rust 工具链（target/ 系随仓库包携带），经 winget 安装
+  rustup + stable-msvc（MSVC Build Tools 已在）；PATH 需新 shell 才生效。
+- 教训：升级 workspace 后务必 cargo check 全 workspace 而非单包——单包绿不代表
+  主 crate 集成不破；container 依赖目前尚未被主 crate 真实调用，首个调用点在
+  B-3/B-4 执行档批次接入。
+
 ## 批次 E-18（2026-09-05）完成 — 键位最终方案：双 Esc 切环境/Windows，Del+Backspace 真退出
 - 双 Shift 功能按用户要求删除；新键位（kbdhook.rs 重写为 envtoggle 轮询线程，30ms
   GetAsyncKeyState，全局状态与焦点/可见性无关）：

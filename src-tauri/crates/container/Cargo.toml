@@ -1,0 +1,8 @@
+[package]
+name = "container"
+version = "0.1.0"
+description = "Un-Real 0d23d9ux Engine — L1 存储与容器层（BLUEPRINT 3.1 / 7.1）"
+authors = ["VariableXs"]
+edition = "2021"
+
+[dependencies]
