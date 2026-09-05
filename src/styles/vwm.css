@@ -1,0 +1,207 @@
+/* ============================================================
+   虚拟窗口管理器（VWM）— 桌面层内托管的软件虚拟窗口
+   层级：壁纸(0) < 桌面图标(1) < VWM 窗口层(15) < 红绿灯(20) < 任务栏(40)
+   ============================================================ */
+
+.vwm-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none; /* 空白处透传给桌面图标层 */
+}
+
+.vwm-window {
+  pointer-events: auto;
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-width: 820px;
+  min-height: 540px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel-solid, #0c1322);
+  border: 1px solid var(--border, rgb(159 192 255 / 0.22));
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.55);
+  /* 建立包含块：窗口内 position:fixed 的背景（星空/极光）与弹层被约束在本窗口内 */
+  transform: translateZ(0);
+  opacity: 1;
+  transition: opacity 0.16s ease, box-shadow 0.2s ease;
+}
+
+.vwm-window.focused {
+  border-color: rgb(159 192 255 / 0.38);
+  box-shadow: 0 18px 56px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(127 168 214 / 0.25);
+}
+
+.vwm-window.minimized {
+  display: none; /* 最小化：保持挂载、状态零丢失，任务栏图标恢复 */
+}
+
+/* ---- 标题栏（拖拽区 + 右上角 Mac 风格红绿灯） ---- */
+.vwm-titlebar {
+  flex: none;
+  height: 38px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px 0 13px;
+  background: linear-gradient(180deg, rgb(127 168 214 / 0.10), rgb(127 168 214 / 0.04));
+  border-bottom: 1px solid var(--border, rgb(159 192 255 / 0.16));
+  cursor: default;
+  user-select: none;
+}
+
+.vwm-window:not(.focused) .vwm-titlebar { opacity: 0.75; }
+
+.vwm-app-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent, #7fa8d6);
+  opacity: 0.9;
+}
+
+.vwm-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--text, #dfe8f5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vwm-titlebar-space { flex: 1; }
+
+.vwm-lights {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* 复用 global.css 的 .win-btn / .win-dot 视觉；非聚焦窗口红绿灯降饱和 */
+.vwm-window:not(.focused) .vwm-lights .win-dot { filter: saturate(0.35) brightness(0.8); }
+
+/* ---- 内容区（软件视图原样挂载） ---- */
+.vwm-content {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: transparent;
+}
+
+.vwm-app {
+  position: absolute;
+  inset: 0;
+}
+
+.vwm-app .app-root { height: 100%; }
+
+/* ---- 系统窗口（文件管理器/回收站）内嵌：铺满内容区，无壳层自带上边距 ----
+   .ex-window 原为 position:fixed; inset:0（独立 OS 窗口语义），在 VWM 窗口内
+   会连标题栏一起盖住 → 内嵌时降级为内容区内的绝对定位。 */
+.vwm-app.vwm-sys {
+  background: var(--panel-solid, #0c1322);
+}
+.vwm-app.vwm-sys .ex-window {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.vwm-app.vwm-sys .ex-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- 八向缩放手柄 ---- */
+.vwm-rz {
+  position: absolute;
+  z-index: 6;
+}
+.vwm-rz.n { top: -3px; left: 10px; right: 10px; height: 7px; cursor: n-resize; }
+.vwm-rz.s { bottom: -3px; left: 10px; right: 10px; height: 7px; cursor: s-resize; }
+.vwm-rz.e { right: -3px; top: 10px; bottom: 10px; width: 7px; cursor: e-resize; }
+.vwm-rz.w { left: -3px; top: 10px; bottom: 10px; width: 7px; cursor: w-resize; }
+.vwm-rz.ne { top: -3px; right: -3px; width: 14px; height: 14px; cursor: ne-resize; }
+.vwm-rz.nw { top: -3px; left: -3px; width: 14px; height: 14px; cursor: nw-resize; }
+.vwm-rz.se { bottom: -3px; right: -3px; width: 14px; height: 14px; cursor: se-resize; }
+.vwm-rz.sw { bottom: -3px; left: -3px; width: 14px; height: 14px; cursor: sw-resize; }
+
+/* ---- 拖拽贴靠预览 ---- */
+.vwm-snap-preview {
+  position: absolute;
+  z-index: 999999;
+  border: 1px solid rgb(120 170 255 / 0.9);
+  background: rgb(79 124 255 / 0.18);
+  border-radius: 8px;
+  pointer-events: none;
+  transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+}
+
+/* ---- 专注模式：焦点在虚拟窗口内时由应用自身样式接管，壳层无需干预 ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .vwm-window,
+  .vwm-snap-preview { transition: none; }
+}
+
+/* ==================== 批次E-14：窗口动效 ==================== */
+
+/* 打开/恢复：从任务栏方向弹出（微回弹弹簧曲线） */
+@keyframes vwm-in {
+  from { opacity: 0; scale: 0.92; translate: 0 26px; }
+  to { opacity: 1; scale: 1; translate: 0 0; }
+}
+.vwm-window {
+  animation: vwm-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+/* 专注动画期间保持 transform: translateZ(0) 包含块不被覆盖：使用独立 scale/translate 属性 */
+
+/* 关闭仪式：缩小淡出（170ms 后由状态机真正卸载） */
+.vwm-window.closing {
+  opacity: 0;
+  scale: 0.9;
+  translate: 0 14px;
+  transition: opacity 0.17s ease-in, scale 0.17s ease-in, translate 0.17s ease-in;
+  pointer-events: none;
+}
+
+/* 最小化飞行：飞向任务栏方向（窗口属主位置由 .flying 简化为底部收拢） */
+.vwm-window.flying {
+  opacity: 0;
+  scale: 0.35;
+  translate: 0 32vh;
+  transition: opacity 0.2s cubic-bezier(0.5, 0, 0.8, 0.4),
+    scale 0.2s cubic-bezier(0.5, 0, 0.8, 0.4),
+    translate 0.2s cubic-bezier(0.5, 0, 0.8, 0.4);
+  pointer-events: none;
+}
+
+/* 拖拽中：半透明 + 抬起阴影（像被捏起） */
+.vwm-window.dragging {
+  opacity: 0.88;
+  box-shadow: 0 26px 70px rgb(0 0 0 / 0.75);
+  cursor: grabbing;
+}
+.vwm-window.dragging .vwm-titlebar { cursor: grabbing; }
+
+/* 贴靠/最大化：平滑滑入（left/top/width/height 过渡一拍） */
+.vwm-window.snapping {
+  transition: left 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
+    top 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
+    width 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
+    height 0.22s cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vwm-window { animation: none; }
+  .vwm-window.closing, .vwm-window.flying { transition: none; }
+}
+
+/* 批次E-16：第三方应用占位（原生窗口浮于其上，这里保持透明） */
+.vwm-tp { background: rgb(6 10 18 / 0.35); }

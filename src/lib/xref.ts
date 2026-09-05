@@ -11,8 +11,16 @@
  * 跳转经 Event Bus：目标窗口监听 `xref://focus`。零网络。
  */
 import { emit } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ipc } from "./ipc";
 import { openAppWindow, appWindowLabel } from "../system/windows/appWindows";
+import { openVwmApp } from "../system/windows/vwm";
+
+/** 跳转目标软件：桌面窗口（VWM 宿主）内走虚拟窗口；遗留 OS 软件窗口走拆窗路径。 */
+async function openTargetApp(app: "write" | "mindmap"): Promise<void> {
+  if (getCurrentWindow().label === "desktop") openVwmApp(app);
+  else await openAppWindow(app);
+}
 
 export type XrefKind = "mind-node" | "write-doc" | "code-file";
 
@@ -75,12 +83,12 @@ export function isStale(x: Xref, sourceVer: number): boolean {
 /** 点击跳转：打开目标软件窗口并发送聚焦事件（由目标窗口的监听方落地）。 */
 export async function openXref(x: Xref): Promise<void> {
   if (x.kind === "mind-node") {
-    await openAppWindow("mindmap");
+    await openTargetApp("mindmap");
     await emit(FOCUS_EVENT, { kind: x.kind, id: x.id }).catch(() => {});
     return;
   }
   if (x.kind === "write-doc") {
-    await openAppWindow("write");
+    await openTargetApp("write");
     await emit(FOCUS_EVENT, { kind: x.kind, id: x.id }).catch(() => {});
     return;
   }

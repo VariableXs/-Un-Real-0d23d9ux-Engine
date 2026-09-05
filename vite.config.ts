@@ -25,6 +25,14 @@ export default defineConfig({
         "app-fate": html("app-fate"),
         explorer: html("explorer"),
       },
+      output: {
+        // 性能：vendor 与图标库拆为稳定命名 chunk —— 跨窗口共享缓存、
+        // 业务代码改动不再使整包 971KB 失效，首屏解析明显提速。
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "scheduler"],
+          "vendor-icons": ["lucide-react"],
+        },
+      },
     },
   },
 });

@@ -13,6 +13,7 @@ import { errMessage, ipc, type ExCopyMode, type ExEntry, type ExListing, type Ex
 import { beginXDrag } from "../../lib/xflow";
 import { pushToast } from "../../state/uiStore";
 import { openExplorerWindow, trackSelfGeom } from "../windows/appWindows";
+import { openVwmSystem } from "../windows/vwm";
 import { RecycleView } from "../recycle/RecycleView";
 
 /**
@@ -120,16 +121,31 @@ const VIDEO_EXTS = new Set(["mp4", "mkv", "avi", "mov", "webm", "wmv", "flv", "m
 
 // ---------- 外壳 ----------
 
-export function ExplorerWindow(props: { initialView?: SysView }): React.ReactElement {
+export function ExplorerWindow(props: {
+  initialView?: SysView;
+  /** VWM 内嵌模式：标题栏/几何记忆/全局宿主由桌面壳层接管，只渲染视图本体。 */
+  embedded?: boolean;
+  /** 初始定位路径（内嵌模式传入；独立窗口走 ?path= URL 参数）。 */
+  initialPath?: string;
+}): React.ReactElement {
   const view: SysView = props.initialView ?? "explorer";
 
-  // 窗口几何记忆（label 与 WebviewWindow label 一致）
+  // 窗口几何记忆（label 与 WebviewWindow label 一致；内嵌模式由 VWM 负责）
   useEffect(() => {
+    if (props.embedded) return;
     const un = trackSelfGeom(view);
     return () => {
       void un.then((f) => f()).catch(() => {});
     };
-  }, [view]);
+  }, [view, props.embedded]);
+
+  if (props.embedded) {
+    return (
+      <div className="ex-window ex-embedded" data-view={view}>
+        {view === "recycle" ? <RecycleShell embedded /> : <ExplorerShell embedded initialPath={props.initialPath} />}
+      </div>
+    );
+  }
 
   return (
     <div className="ex-window" data-view={view}>
@@ -151,8 +167,9 @@ function ExTitlebar(props: { title: string }): React.ReactElement {
   );
 }
 
-/** 本窗口是独立入口，全局宿主需在此挂载。 */
-function ExHosts(): ReactNode {
+/** 本窗口是独立入口，全局宿主需在此挂载。内嵌模式下桌面壳层已挂载同名宿主，跳过防重复。 */
+function ExHosts(embedded = false): ReactNode {
+  if (embedded) return null;
   return (
     <>
       <ToastHost />
@@ -166,15 +183,16 @@ function ExHosts(): ReactNode {
 
 // ---------- 回收站窗口 ----------
 
-function RecycleShell(): React.ReactElement {
+function RecycleShell(props?: { embedded?: boolean }): React.ReactElement {
   const { t } = useI18n();
+  const embedded = props?.embedded ?? false;
   return (
     <>
-      <ExTitlebar title={t("recycleBin")} />
+      {!embedded && <ExTitlebar title={t("recycleBin")} />}
       <div className="ex-body">
         <RecycleView />
       </div>
-      <ExHosts />
+      {ExHosts(embedded)}
     </>
   );
 }
@@ -183,8 +201,9 @@ function RecycleShell(): React.ReactElement {
 
 let nextTabId = 1;
 
-function ExplorerShell(): React.ReactElement {
+function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): React.ReactElement {
   const { t, lang } = useI18n();
+  const embedded = props?.embedded ?? false;
   const bootTabId = useRef(nextTabId++);
   const [tabs, setTabs] = useState<Tab[]>(() => [{ id: bootTabId.current, history: [""], hi: 0 }]);
   const [activeId, setActiveId] = useState<number>(bootTabId.current);
@@ -299,8 +318,8 @@ function ExplorerShell(): React.ReactElement {
   useEffect(() => {
     alive.current = true;
     void (async () => {
-      // ?path= 初始定位（桌面文件架/Ctrl+N 传入），失败回退 home
-      const initial = new URLSearchParams(window.location.search).get("path") ?? "";
+      // ?path= / props.initialPath（VWM 内嵌）初始定位，失败回退 home
+      const initial = props?.initialPath ?? new URLSearchParams(window.location.search).get("path") ?? "";
       let h = "C:\\";
       try {
         h = await ipc.exHome();
@@ -695,7 +714,9 @@ function ExplorerShell(): React.ReactElement {
         closeTab(activeId);
       } else if (ctrl && !e.shiftKey && k === "n") {
         e.preventDefault();
-        void openExplorerWindow(pathRef.current);
+        // VWM 内嵌时 Ctrl+N 开新的虚拟窗口实例（留在环境内）；独立窗口走 OS 拆窗
+        if (embedded) openVwmSystem("explorer", pathRef.current);
+        else void openExplorerWindow(pathRef.current);
       } else if (ctrl && e.shiftKey && k === "n") {
         e.preventDefault();
         void mkdir();
@@ -844,7 +865,7 @@ function ExplorerShell(): React.ReactElement {
 
   return (
     <>
-      <ExTitlebar title={title} />
+      {!embedded && <ExTitlebar title={title} />}
       <div className="ex-body">
         <div className="ex-explorer">
           {/* 标签页（规格 7.7） */}
@@ -1269,7 +1290,7 @@ function ExplorerShell(): React.ReactElement {
         </div>
       )}
 
-      <ExHosts />
+      {ExHosts(embedded)}
     </>
   );
 }

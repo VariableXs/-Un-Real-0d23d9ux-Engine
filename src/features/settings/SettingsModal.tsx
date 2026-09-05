@@ -10,7 +10,7 @@ import type { Lang } from "../../i18n/dictionaries";
 import {
   errMessage, ipc,
   type AuditFinding, type FileCheck, type PackProgress, type UsbStatus,
-  type VaultItem, type VaultStatus, type WpMonitor,
+  type VaultItem, type VaultStatus, type WpEngineItem, type WpMonitor,
 } from "../../lib/ipc";
 import { DEFAULT_SETTINGS, type CustomBg, type MindDefaults, type Settings, type ThemeId } from "../../lib/settings";
 import { formatBytes, clamp } from "../../lib/format";
@@ -19,6 +19,7 @@ import { askConfirm } from "../../components/Modal";
 import { Modal } from "../../components/Modal";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
+import { toAssetUrl } from "../../features/background/CosmicBackground";
 import { SHORTCUT_ACTIONS, findConflicts, normalizeAccel } from "../../lib/shortcuts";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
@@ -53,6 +54,8 @@ export function SettingsModal(props: {
   const [usbBad, setUsbBad] = useState<FileCheck[] | null>(null);
   // 批次E-6：多显示器 / 批次E-7：保险箱与自检 / U 盘向导
   const [monitors, setMonitors] = useState<WpMonitor[] | null>(null);
+  // 批次E-12：Wallpaper Engine 壁纸项目列表（null = 未扫描）
+  const [wpEngine, setWpEngine] = useState<WpEngineItem[] | null>(null);
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
   const [vaultPw, setVaultPw] = useState("");
@@ -83,6 +86,17 @@ export function SettingsModal(props: {
     };
   }, []);
 
+  // ---- 批次E（规格 4.7）快捷键自定义：编辑态（accel 文本）+ 冲突检测 + 导入/导出 ----
+  // 注意：所有 hooks 必须在 `if (!isOpen) return null` 之前声明（React #310）。
+  const [bindDraft, setBindDraft] = useState<Record<string, string> | null>(null);
+  // 批次E-8：关于页版本号（tauri.conf.json version，惰性读取）
+  const [aboutVersion, setAboutVersion] = useState<string>("?");
+  useEffect(() => {
+    if (tab !== "about" || aboutVersion !== "?") return;
+    void getVersion().then(setAboutVersion).catch(() => {});
+  }, [tab, aboutVersion]);
+  const binds = bindDraft ?? (s.shortcutBinds ?? {});
+
   if (!isOpen) return null;
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => props.onChange({ [key]: value } as Partial<Settings>);
@@ -98,16 +112,6 @@ export function SettingsModal(props: {
     { id: "data", label: t("data") },
     { id: "about", label: t("aboutVariable") },
   ];
-
-  // ---- 批次E（规格 4.7）快捷键自定义：编辑态（accel 文本）+ 冲突检测 + 导入/导出 ----
-  const [bindDraft, setBindDraft] = useState<Record<string, string> | null>(null);
-  // 批次E-8：关于页版本号（tauri.conf.json version，惰性读取）
-  const [aboutVersion, setAboutVersion] = useState<string>("?");
-  useEffect(() => {
-    if (tab !== "about" || aboutVersion !== "?") return;
-    void getVersion().then(setAboutVersion).catch(() => {});
-  }, [tab, aboutVersion]);
-  const binds = bindDraft ?? (s.shortcutBinds ?? {});
   const fullBinds = SHORTCUT_ACTIONS.map((a) => ({ action: a.id, accel: binds[a.id] ?? a.accel }));
   const conflicts = findConflicts(fullBinds);
   const invalidBinds = fullBinds.filter((b) => normalizeAccel(b.accel) === null).map((b) => b.action);
@@ -265,6 +269,22 @@ export function SettingsModal(props: {
     }
   }
 
+  // ---- 批次E-12：Wallpaper Engine 壁纸导入 ----
+
+  async function scanWpEngine(root: string): Promise<void> {
+    try {
+      setWpEngine(await ipc.wpEngineScan(root));
+    } catch (e) {
+      pushToast("error", t("wpEngineTitle"), errMessage(e).message);
+    }
+  }
+
+  async function scanWpEnginePick(): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    await scanWpEngine(dir);
+  }
+
   // ---- 批次E-6：多显示器壁纸 + 每日缓存目录 ----
 
   async function pickPoolDir(): Promise<void> {
@@ -318,6 +338,8 @@ export function SettingsModal(props: {
                   <option value="image">{t("wpImage")}</option>
                   <option value="video">{t("wpVideo")}</option>
                   <option value="hybrid">{t("wpHybrid")}</option>
+                  <option value="web">{t("wpWeb")}</option>
+                  <option value="system">{t("wpSystem")}</option>
                 </select>
               </Field>
               <Field label={t("iconSize")}>
@@ -439,6 +461,79 @@ export function SettingsModal(props: {
                   <span className="dim small">{t("wpMonitorHint")}</span>
                 </Field>
               )}
+              {/* 批次E-12：Wallpaper Engine 壁纸导入（本机 Steam 创意工坊/项目，零网络） */}
+              <Field label={t("wpEngineTitle")}>
+                <div className="row gap8 wrap">
+                  <button type="button" className="btn ghost" onClick={() => void scanWpEngine("")}>
+                    <FolderOpen size={13} /> {t("wpEngineScan")}
+                  </button>
+                  <button type="button" className="btn ghost tiny" onClick={() => void scanWpEnginePick()}>
+                    {t("wpEnginePickDir")}
+                  </button>
+                </div>
+                <span className="dim small">{t("wpEngineDesc")}</span>
+                {wpEngine !== null && wpEngine.length === 0 && (
+                  <span className="dim small">{t("wpEngineEmpty")}</span>
+                )}
+                {wpEngine !== null && wpEngine.length > 0 && (
+                  <div className="wp-engine-list">
+                    {wpEngine.map((it) => (
+                      <button
+                        key={`${it.source}-${it.id}`}
+                        type="button"
+                        className="wp-engine-item"
+                        title={it.supported ? t("wpEngineImported") : t("wpEngineOpenWe")}
+                        onClick={() => {
+                          // 批次E-15：video/image 内嵌导入；web 内嵌 iframe 渲染；
+                          // scene/application 交给 Wallpaper Engine 本体（官方控制接口）
+                          if (it.kind === "web" && it.supported && it.file) {
+                            props.onChange({
+                              wallpaperMode: "web",
+                              customBg: { ...s.customBg, htmlPath: it.file },
+                            });
+                            pushToast("success", t("wpEngineImported"), it.title);
+                            return;
+                          }
+                          if (!it.supported || !it.file) {
+                            // scene/application：交给 WE 本体应用到系统桌面；
+                            // Variable 切"系统桌面"模式并让位（隐藏到托盘），托盘 V 图标返回
+                            void ipc
+                              .wpEngineOpen(it.id, it.source)
+                              .then(() => {
+                                props.onChange({ wallpaperMode: "system" });
+                                return ipc.winHideToTray();
+                              })
+                              .then(() => pushToast("success", t("wpEngineOpenWe"), t("wpSystemHint")))
+                              .catch((e) => pushToast("error", t("wpEngineTitle"), errMessage(e).message));
+                            return;
+                          }
+                          const isVideo = it.kind === "video";
+                          props.onChange({
+                            wallpaperMode: isVideo ? "video" : "image",
+                            customBg: isVideo
+                              ? { ...s.customBg, type: "video", videoPath: it.file, playVideo: true }
+                              : { ...s.customBg, type: "image", imagePath: it.file },
+                          });
+                          pushToast("success", t("wpEngineImported"), it.title);
+                        }}
+                      >
+                        {it.preview ? (
+                          <img src={toAssetUrl(it.preview)} alt="" className="wp-engine-thumb" draggable={false} />
+                        ) : (
+                          <span className="wp-engine-thumb wp-engine-thumb-empty" aria-hidden />
+                        )}
+                        <span className="wp-engine-meta">
+                          <span className="wp-engine-name ellipsis">{it.title}</span>
+                          <span className="dim small">
+                            {it.kind}
+                            {it.supported ? "" : ` · ${t("wpEngineOpenWe")}`}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
               {/* 批次E-6：Win+Tab 多窗口切换器（可选） */}
               <Field label={t("winTabTitle")}>
                 <Check label={t("winTabTitle")} checked={s.winTabSwitcher} onChange={(v) => set("winTabSwitcher", v)} />

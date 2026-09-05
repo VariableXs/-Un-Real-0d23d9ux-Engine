@@ -14,6 +14,12 @@ export interface BackgroundProps {
   customBg: CustomBg;
   /** 桌面混合壁纸模式：在自定义媒体之上叠加星空引擎（默认 false，四软件行为不变）。 */
   starfieldOverlay?: boolean;
+  /**
+   * 桌面壁纸原样渲染（批次E-13）：不叠加模糊/暗罩/暗角 —— blur、mask 是给
+   * 应用内文字背景设计的，桌面壁纸应 1:1 清晰显示。仅桌面壁纸层传入，
+   * 四款软件内部背景不经过这里，光影零变化。
+   */
+  plainMedia?: boolean;
 }
 
 function effectiveMotion(props: BackgroundProps): number {
@@ -156,7 +162,9 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
   const isStaticTheme = props.theme === "paper" || props.theme === "minimal-black";
   const overlay = props.starfieldOverlay === true && props.theme === "custom" && useCustomMedia;
   const showCanvas = props.theme === "deep-space" || overlay;
-  const filters = `blur(${cb.blur}px) brightness(${cb.brightness}) saturate(${cb.saturation})`;
+  const filters = props.plainMedia
+    ? undefined
+    : `blur(${cb.blur}px) brightness(${cb.brightness}) saturate(${cb.saturation})`;
 
   return (
     <div className={`bg-root theme-${props.theme}`} aria-hidden>
@@ -191,8 +199,8 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
       {/* The WebGL starfield already bakes its own vignette + edit-dim
           (chapter 2.4 / 6.1); the DOM overlays only assist at half strength
           so the scene is not double-darkened. */}
-      <div className="bg-mask" style={{ opacity: cb.maskOpacity * (showCanvas ? 0.45 : 1) }} />
-      <div className="bg-vignette" style={{ opacity: cb.vignette * (showCanvas ? 0.5 : 1) }} />
+      <div className="bg-mask" style={{ opacity: props.plainMedia ? 0 : cb.maskOpacity * (showCanvas ? 0.45 : 1) }} />
+      <div className="bg-vignette" style={{ opacity: props.plainMedia ? 0 : cb.vignette * (showCanvas ? 0.5 : 1) }} />
       {bgMissing && (
         <div className="bg-missing-note">
           背景文件缺失 / Missing background file:

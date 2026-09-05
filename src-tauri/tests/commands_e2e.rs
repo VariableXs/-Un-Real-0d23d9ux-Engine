@@ -478,7 +478,7 @@ fn exports_and_settings_and_textfile() {
     let mut m = std::collections::HashMap::new();
     m.insert("theme".to_string(), "paper".to_string());
     m.insert("lastMindmapId".to_string(), "xyz".to_string());
-    settings_cmd::set_settings(st.clone(), m).await.unwrap();
+    settings_cmd::set_settings_inner(&st, m).unwrap();
     let all = settings_cmd::get_all_settings(st.clone()).unwrap();
     assert_eq!(all.get("theme").unwrap(), "paper");
     settings_cmd::reset_ui_settings(st.clone()).unwrap();

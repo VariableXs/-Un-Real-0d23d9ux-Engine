@@ -43,7 +43,7 @@ fn registry_path(st: &AppState) -> PathBuf {
     st.data_dir.join("apps.json")
 }
 
-fn load_registry(st: &AppState) -> Vec<ThirdApp> {
+pub(crate) fn load_registry(st: &AppState) -> Vec<ThirdApp> {
     let Ok(bytes) = fs::read(registry_path(st)) else {
         return Vec::new();
     };
@@ -55,7 +55,7 @@ pub fn registry_snapshot(st: &AppState) -> Vec<ThirdApp> {
     load_registry(st)
 }
 
-fn save_registry(st: &AppState, apps: &[ThirdApp]) -> CmdResult<()> {
+pub(crate) fn save_registry(st: &AppState, apps: &[ThirdApp]) -> CmdResult<()> {
     let bytes = serde_json::to_vec_pretty(apps)
         .map_err(|e| AppError::io(format!("序列化登记表失败 / Serialize registry failed: {e}")))?;
     fs::write(registry_path(st), bytes)
@@ -322,16 +322,14 @@ pub fn tp_rename(st: tauri::State<AppState>, id: String, name: String) -> CmdRes
     Ok(out)
 }
 
-/// 启动：独立 OS 进程（DETACHED），更新 last_launch。
-/// 批次0：桌面窗口默认置顶覆盖（规格 10.1），启动第三方软件时暂时撤销置顶，
-/// 让其窗口浮于桌面之上（规格 10.3）；用户回到桌面时由 on_window_event 自动恢复。
-#[tauri::command]
-pub fn tp_launch(
-    st: tauri::State<AppState>,
-    app: tauri::AppHandle,
+/// 启动核心（embed_launch 复用）：返回新启动进程的根 pid
+/// （embed 按子进程树匹配窗口用；取不到 pid 不影响启动本身，返回 None）。
+pub(crate) fn tp_launch_inner(
+    st: &tauri::State<'_, AppState>,
+    app: &tauri::AppHandle,
     id: String,
-) -> CmdResult<()> {
-    let mut apps = load_registry(&st);
+) -> CmdResult<Option<u32>> {
+    let mut apps = load_registry(st);
     let app_item = apps
         .iter_mut()
         .find(|a| a.id == id)
@@ -343,24 +341,29 @@ pub fn tp_launch(
             "目标文件不存在，可能已被移动或卸载 / Target missing (moved or uninstalled?)",
         ));
     }
-    let mut cmd = if p
+    let root_pid = if p
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
         .unwrap_or(false)
     {
-        // .lnk 需经 shell 解析
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", "", &app_item.path]);
-        c
+        // .lnk 经 Shell 直接解析启动（不经 cmd 拼接），并取回目标进程 pid
+        #[cfg(windows)]
+        {
+            shell_launch_lnk(&p).map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = &app_item;
+            None
+        }
     } else {
         let mut c = std::process::Command::new(&p);
         if let Some(parent) = p.parent() {
             c.current_dir(parent);
         }
-        c
+        spawn_detached(&mut c)
+            .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
     };
-    spawn_detached(&mut cmd)
-        .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?;
 
     // 撤销桌面置顶，让第三方窗口浮于桌面之上（回到桌面自动恢复，见 lib.rs）
     {
@@ -373,23 +376,119 @@ pub fn tp_launch(
     if let Some(slot) = apps.iter_mut().find(|a| a.id == id) {
         slot.last_launch = Some(now_ms());
     }
-    save_registry(&st, &apps)?;
-    Ok(())
+    save_registry(st, &apps)?;
+    Ok(root_pid)
 }
 
+/// 启动：独立 OS 进程（DETACHED），更新 last_launch。
+/// 批次0：桌面窗口默认置顶覆盖（规格 10.1），启动第三方软件时暂时撤销置顶，
+/// 让其窗口浮于桌面之上（规格 10.3）；用户回到桌面时由 on_window_event 自动恢复。
+#[tauri::command]
+pub fn tp_launch(
+    st: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+) -> CmdResult<()> {
+    tp_launch_inner(&st, &app, id).map(|_| ())
+}
+
+/// 直接启动用户登记的 exe（参数列表方式，不经 shell 拼接）；返回新进程 pid。
 #[cfg(windows)]
-fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
+fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
     cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
-        .map(|_| ())
+        .map(|c| Some(c.id()))
 }
 
 #[cfg(not(windows))]
-fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<()> {
-    cmd.spawn().map(|_| ())
+fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
+    cmd.spawn().map(|c| Some(c.id()))
+}
+
+/// .lnk 经 ShellExecuteExW 启动（无 cmd 中间壳），取回目标进程 pid
+/// （启动器型软件如 Wallpaper Engine 的子进程窗口匹配依赖此 pid）。
+#[cfg(windows)]
+fn shell_launch_lnk(lnk: &Path) -> std::io::Result<Option<u32>> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Threading::GetProcessId;
+    use windows::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file: Vec<u16> = lnk.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect();
+    let dir: Vec<u16> = lnk
+        .parent()
+        .map(|d| d.as_os_str().to_string_lossy().encode_utf16().collect())
+        .unwrap_or_default();
+    let mut info = SHELLEXECUTEINFOW::default();
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOASYNC | SEE_MASK_NOCLOSEPROCESS;
+    info.lpFile = PCWSTR(file.as_ptr());
+    info.lpDirectory = if dir.is_empty() {
+        PCWSTR::null()
+    } else {
+        PCWSTR(dir.as_ptr())
+    };
+    info.nShow = SW_SHOWNORMAL.0;
+    let ok = unsafe { ShellExecuteExW(&mut info) }.is_ok();
+    if !ok {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "ShellExecuteExW failed",
+        ));
+    }
+    let pid = if info.hProcess.is_invalid() {
+        0
+    } else {
+        unsafe {
+            let id = GetProcessId(info.hProcess);
+            let _ = windows::Win32::Foundation::CloseHandle(info.hProcess);
+            id
+        }
+    };
+    Ok((pid != 0).then_some(pid))
+}
+
+/// 以管理员身份启动（ShellExecuteW lpVerb="runas"，无 shell 拼接；UAC 弹窗
+/// 由系统展示，用户取消 → 如实报错）。
+#[cfg(windows)]
+fn shell_launch_elevated(exe: &Path) -> std::io::Result<()> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file: Vec<u16> = exe.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect();
+    let dir: Vec<u16> = exe
+        .parent()
+        .map(|d| d.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect())
+        .unwrap_or_else(|| vec![0]);
+    let verb: Vec<u16> = "runas ".encode_utf16().collect();
+    // SE_ERR_CANCELLED / ERROR_CANCELED = 用户在 UAC 取消
+    const SE_ERR_CANCELLED: i32 = 11;
+    const ERROR_CANCELED: i32 = 1223;
+    let h = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR(dir.as_ptr()),
+            SW_SHOWNORMAL,
+        )
+    };
+    let code = h.0 as i32;
+    if code <= 32 {
+        return Err(std::io::Error::from_raw_os_error(if code == SE_ERR_CANCELLED {
+            ERROR_CANCELED
+        } else {
+            2
+        }));
+    }
+    Ok(())
 }
 
 // ---------- 批次B：自定义图标 / 管理员运行 ----------
@@ -636,10 +735,17 @@ fn portableize_inner(st: &AppState, id: &str) -> CmdResult<ThirdApp> {
 /// 读取图标为 data URL（前端用：文件架等 UI 层图标；不落盘）。
 #[tauri::command]
 pub fn icon_dataurl(path: String) -> CmdResult<String> {
-    encode_icon(&path)
+    // 批次E-17：.lnk 先解析目标（快捷方式的图标在目标 exe 里）
+    let p = PathBuf::from(&path);
+    let resolved = if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) {
+        resolve_lnk(&p).unwrap_or(p)
+    } else {
+        p
+    };
+    encode_icon(resolved.to_string_lossy().as_ref())
 }
 
-/// 以管理员身份运行（Windows：PowerShell Start-Process -Verb RunAs，弹 UAC）。
+/// 以管理员身份运行（ShellExecuteW runas，弹 UAC）。
 /// .lnk 不支持 RunAs（诚实报错）；用户取消 UAC → 报错提示。
 #[tauri::command]
 pub fn tp_launch_admin(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
@@ -664,17 +770,8 @@ pub fn tp_launch_admin(st: tauri::State<AppState>, id: String) -> CmdResult<()> 
     }
     #[cfg(windows)]
     {
-        let mut cmd = std::process::Command::new("powershell");
-        cmd.args([
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            &format!("Start-Process -FilePath '{}' -Verb RunAs", app_item.path.replace('\'', "''")),
-        ]);
-        cmd.spawn()
-            .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?;
-        Ok(())
+        shell_launch_elevated(Path::new(&app_item.path))
+            .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))
     }
     #[cfg(not(windows))]
     {

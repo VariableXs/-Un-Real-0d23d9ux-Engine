@@ -16,6 +16,7 @@
         "title": "Variable — Private Desktop Environment",
         "url": "desktop.html",
         "fullscreen": true,
+        "transparent": false,
         "alwaysOnTop": true,
         "minWidth": 960,
         "minHeight": 640,

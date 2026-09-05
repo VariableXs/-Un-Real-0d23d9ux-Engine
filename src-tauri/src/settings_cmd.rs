@@ -6,6 +6,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use tauri::Emitter;
 
 #[tauri::command]
 pub fn get_all_settings(st: tauri::State<AppState>) -> CmdResult<HashMap<String, String>> {
@@ -21,9 +22,30 @@ pub fn get_all_settings(st: tauri::State<AppState>) -> CmdResult<HashMap<String,
     })
 }
 
-/// Upsert multiple settings in a single transaction.
+/// Upsert multiple settings in a single transaction, then broadcast the change
+/// to every webview window so cross-window UI (desktop wallpaper etc.) stays
+/// in sync. The sender's own window filters the echo out on the frontend.
 #[tauri::command]
-pub async fn set_settings(st: tauri::State<'_, AppState>, entries: HashMap<String, String>) -> CmdResult<()> {
+pub async fn set_settings(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    st: tauri::State<'_, AppState>,
+    entries: HashMap<String, String>,
+) -> CmdResult<()> {
+    let keys: Vec<String> = entries.keys().cloned().collect();
+    set_settings_inner(&st, entries)?;
+    let _ = app.emit(
+        "settings://changed",
+        serde_json::json!({ "origin": window.label(), "keys": keys }),
+    );
+    Ok(())
+}
+
+/// 纯 DB 部分（测试可直接调用，无需 AppHandle/Window）。
+pub fn set_settings_inner(
+    st: &AppState,
+    entries: HashMap<String, String>,
+) -> CmdResult<()> {
     if entries.is_empty() {
         return Ok(());
     }

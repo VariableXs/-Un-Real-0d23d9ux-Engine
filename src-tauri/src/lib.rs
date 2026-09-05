@@ -49,27 +49,12 @@ pub fn run() {
             if let Err(e) = shell::tray::init(app.handle()) {
                 eprintln!("tray init failed: {e}");
             }
-            // M6/批次C：全局快捷键 → 文件管理器 / 快捷面板分区 / 勿扰。
-            // 被系统/他方占用时逐项注册失败，诚实降级为任务栏/开始菜单入口，仅记录日志。
-            {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                let st = app.state::<AppState>();
-                for (accel, name) in [
-                    ("super+e", "Win+E"),
-                    ("ctrl+alt+b", "Ctrl+Alt+B"),
-                    ("ctrl+alt+o", "Ctrl+Alt+O"),
-                    ("super+n", "Win+N"),
-                    ("ctrl+shift+m", "Ctrl+Shift+M"),
-                ] {
-                    match app.global_shortcut().register(accel) {
-                        Ok(()) => log_line(&st, &format!("global shortcut {name} registered")),
-                        Err(e) => {
-                            log_line(&st, &format!("global shortcut {name} UNAVAILABLE (degraded)"));
-                            eprintln!("{name} register failed: {e}");
-                        }
-                    }
-                }
-            }
+            // M6/批次E：全局快捷键统一走 winman::init_shortcuts（默认表）。
+            // 此前这里是第二份硬编码表（super+e / ctrl+alt+o / super+n），与默认表
+            // 不一致且含 Windows 保留键，导致启动日志一直报 register failed。
+            shell::winman::init_shortcuts(app.handle());
+            // 批次E-18：双击 Esc 切环境/Windows；Del+Backspace 真正退出
+            shell::kbdhook::spawn_env_monitor(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -221,6 +206,13 @@ pub fn run() {
             shell::wallpaper::wp_monitors,
             shell::wallpaper::wp_set_monitor,
             shell::wallpaper::wp_pick_daily,
+            shell::wallpaper::wp_engine_scan,
+            shell::wallpaper::wp_engine_open,
+            shell::embed::embed_launch,
+            shell::embed::embed_bounds,
+            shell::embed::embed_visible,
+            shell::embed::embed_close,
+            shell::embed::embed_focus,
             shell::privacy::vault_status,
             shell::privacy::vault_init,
             shell::privacy::vault_unlock,

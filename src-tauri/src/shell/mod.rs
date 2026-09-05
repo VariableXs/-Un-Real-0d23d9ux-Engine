@@ -9,9 +9,11 @@
 //! - xflow.rs    跨软件数据流：跨窗口拖拽光标跟踪（批次 C 规格 5.7）
 
 pub mod appman;
+pub mod embed;
 pub mod explorer;
 pub mod imwatch;
 pub mod hardware;
+pub mod kbdhook;
 pub mod launcher;
 pub mod netconsent;
 pub mod privacy;

@@ -4,6 +4,10 @@
  * 全局快捷键表（批次E，规格 4.7）：
  * 与 src-tauri/src/shell/winman.rs default_binds() 保持一致。
  * 自定义只存增量（settings.shortcutBinds），整表 = 默认 + 覆盖。
+ *
+ * 注意：Win11 系统保留 Win+E / Win+D / Win+M / Win+N / Win+数字 / Win+方向键，
+ * RegisterHotKey 全部失败（"被系统或其他软件占用"）。默认表一律使用
+ * ctrl+alt+* 组合；super+* 仍允许用户在设置页自定义（占用时诚实降级）。
  */
 
 export interface ShortcutAction {
@@ -15,23 +19,23 @@ export interface ShortcutAction {
 }
 
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
-  { id: "explorer", labelKey: "scActExplorer", accel: "super+e", group: "system" },
+  { id: "explorer", labelKey: "scActExplorer", accel: "ctrl+alt+e", group: "system" },
   { id: "explorerCtrl", labelKey: "scActExplorerCtrl", accel: "ctrl+e", group: "system" },
-  { id: "showDesktop", labelKey: "scActShowDesktop", accel: "super+d", group: "window" },
+  { id: "showDesktop", labelKey: "scActShowDesktop", accel: "ctrl+alt+d", group: "window" },
   { id: "toggleHide", labelKey: "scActToggleHide", accel: "ctrl+shift+d", group: "window" },
-  { id: "minimizeAll", labelKey: "scActMinimizeAll", accel: "super+m", group: "window" },
-  { id: "snapLeft", labelKey: "scActSnapLeft", accel: "super+left", group: "window" },
-  { id: "snapRight", labelKey: "scActSnapRight", accel: "super+right", group: "window" },
-  { id: "snapUp", labelKey: "scActSnapUp", accel: "super+up", group: "window" },
-  { id: "snapDown", labelKey: "scActSnapDown", accel: "super+down", group: "window" },
-  { id: "notifyCenter", labelKey: "scActNotify", accel: "super+n", group: "panel" },
+  { id: "minimizeAll", labelKey: "scActMinimizeAll", accel: "ctrl+alt+m", group: "window" },
+  { id: "snapLeft", labelKey: "scActSnapLeft", accel: "ctrl+alt+left", group: "window" },
+  { id: "snapRight", labelKey: "scActSnapRight", accel: "ctrl+alt+right", group: "window" },
+  { id: "snapUp", labelKey: "scActSnapUp", accel: "ctrl+alt+up", group: "window" },
+  { id: "snapDown", labelKey: "scActSnapDown", accel: "ctrl+alt+down", group: "window" },
+  { id: "notifyCenter", labelKey: "scActNotify", accel: "ctrl+alt+n", group: "panel" },
   { id: "quickBluetooth", labelKey: "scActQuickBt", accel: "ctrl+alt+b", group: "panel" },
-  { id: "quickAudio", labelKey: "scActQuickAudio", accel: "ctrl+alt+o", group: "panel" },
+  { id: "quickAudio", labelKey: "scActQuickAudio", accel: "ctrl+alt+k", group: "panel" },
   { id: "dnd", labelKey: "scActDnd", accel: "ctrl+shift+m", group: "panel" },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `launch${i + 1}`,
     labelKey: "scActLaunchN",
-    accel: `super+${i + 1}`,
+    accel: `ctrl+alt+${i + 1}`,
     group: "launch" as const,
   })),
 ];

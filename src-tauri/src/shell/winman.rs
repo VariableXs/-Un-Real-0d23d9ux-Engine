@@ -18,7 +18,10 @@ static SHORTCUT_MAP: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 /// action → 前端事件分发（与旧批次C/D 事件名保持一致，前端零迁移）。
 fn dispatch_action(app: &AppHandle, action: &str) {
     match action {
-        "explorer" => crate::shell::tray::open_system_window(app, "explorer"),
+        // 系统窗口交由桌面窗口内的 VWM 打开虚拟窗口（不再另开 OS 窗口）
+        "explorer" | "explorerCtrl" => {
+            let _ = app.emit_to("desktop", "sys://open-system", "explorer");
+        }
         "quickBluetooth" => {
             let _ = app.emit_to("desktop", "quickpanel://open", "bluetooth");
         }
@@ -70,31 +73,33 @@ pub fn dispatch_action_pub(app: &AppHandle, action: &str) {
 }
 
 /// 默认快捷键表（action, accel）。
+/// 默认表避开 Windows 系统保留组合（Win+E/D/M/N/数字/方向键 RegisterHotKey
+/// 必然失败），统一用 ctrl+alt+*；super+* 仍可由用户自定义（占用时降级）。
 pub fn default_binds() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("explorer", "super+e"),
+        ("explorer", "ctrl+alt+e"),
         ("explorerCtrl", "ctrl+e"),
         ("quickBluetooth", "ctrl+alt+b"),
-        ("quickAudio", "ctrl+alt+o"),
-        ("notifyCenter", "super+n"),
+        ("quickAudio", "ctrl+alt+k"),
+        ("notifyCenter", "ctrl+alt+n"),
         ("dnd", "ctrl+shift+m"),
-        ("showDesktop", "super+d"),
+        ("showDesktop", "ctrl+alt+d"),
         ("toggleHide", "ctrl+shift+d"),
-        ("minimizeAll", "super+m"),
+        ("minimizeAll", "ctrl+alt+m"),
         ("wintab", "super+tab"),
-        ("snapLeft", "super+left"),
-        ("snapRight", "super+right"),
-        ("snapUp", "super+up"),
-        ("snapDown", "super+down"),
-        ("launch1", "super+1"),
-        ("launch2", "super+2"),
-        ("launch3", "super+3"),
-        ("launch4", "super+4"),
-        ("launch5", "super+5"),
-        ("launch6", "super+6"),
-        ("launch7", "super+7"),
-        ("launch8", "super+8"),
-        ("launch9", "super+9"),
+        ("snapLeft", "ctrl+alt+left"),
+        ("snapRight", "ctrl+alt+right"),
+        ("snapUp", "ctrl+alt+up"),
+        ("snapDown", "ctrl+alt+down"),
+        ("launch1", "ctrl+alt+1"),
+        ("launch2", "ctrl+alt+2"),
+        ("launch3", "ctrl+alt+3"),
+        ("launch4", "ctrl+alt+4"),
+        ("launch5", "ctrl+alt+5"),
+        ("launch6", "ctrl+alt+6"),
+        ("launch7", "ctrl+alt+7"),
+        ("launch8", "ctrl+alt+8"),
+        ("launch9", "ctrl+alt+9"),
     ]
 }
 

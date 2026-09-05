@@ -16,7 +16,7 @@ import { SHELF_COLORS, type DesktopLayout, type ShelfColor } from "./layout";
 export interface FlyItem {
   id: string;
   label: string;
-  icon: typeof Folder; // LucideIcon
+  icon: React.ElementType; // Lucide 或风格化 SVG 字形
   img?: string | null;
   hue: number;
   kind: "sys" | "app" | "third" | "shelf";

@@ -475,10 +475,10 @@ const T = (level: number, fpsTarget: number, dprScale: number, feats: Partial<Ti
 /** Level 1 → Level 10, index 0-based externally via TIER_SPECS[level-1]. */
 export const TIER_SPECS: readonly TierSpec[] = Object.freeze([
   T(1, 30, 0.6, { continuous: false, starBudget: 200 }),
-  T(2, 60, 0.66, { globalPulse: true, starBudget: 500 }),
-  T(3, 75, 0.75, { twoLayerDepth: true, squarePoints: true, aurora: 1, starBudget: 1000 }),
-  T(4, 80, 0.85, { twoLayerDepth: true, squarePoints: true, independentTwinkle: true, aurora: 1, starBudget: 2500 }),
-  T(5, 90, 0.9, { twoLayerDepth: true, independentTwinkle: true, screentone: true, aurora: 2, starBudget: 5000 }),
+  T(2, 100, 0.66, { globalPulse: true, starBudget: 500 }),
+  T(3, 100, 0.75, { twoLayerDepth: true, squarePoints: true, aurora: 1, starBudget: 1000 }),
+  T(4, 100, 0.85, { twoLayerDepth: true, squarePoints: true, independentTwinkle: true, aurora: 1, starBudget: 2500 }),
+  T(5, 100, 0.9, { twoLayerDepth: true, independentTwinkle: true, screentone: true, aurora: 2, starBudget: 5000 }),
   T(6, 100, 1.0, { independentTwinkle: true, screentone: true, flare: true, aurora: 2, starBudget: 10000 }),
   T(7, 120, 1.0, {
     independentTwinkle: true, screentone: true, flare: true, bokehDispersion: true,

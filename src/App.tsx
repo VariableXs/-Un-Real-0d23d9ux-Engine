@@ -9,7 +9,8 @@ import { loadSettings, saveSetting, type Settings } from "./lib/settings";
 import { uiStore, pushToast, resetGlobalCanvasInteraction, useUi } from "./state/uiStore";
 import type { AppMode } from "./state/uiStore";
 import { isTauriRuntime } from "./entries/runtime";
-import { appWindowLabel, openAppWindow, trackSelfGeom } from "./system/windows/appWindows";
+import { appWindowLabel, trackSelfGeom } from "./system/windows/appWindows";
+import { openVwmApp } from "./system/windows/vwm";
 import type { BootstrapInfo } from "./lib/types";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -17,6 +18,9 @@ import { TitleBar, type ClosePhase } from "./components/TitleBar";
 import { ToastHost } from "./components/ToastHost";
 import { ContextMenuHost } from "./components/ContextMenu";
 import { ConfirmBubbleHost, ChoiceHost, ConfirmHost, NetConsentHost, PromptHost, Modal } from "./components/Modal";
+// 桌面分支宿主清单见下方 DesktopShell 兄弟节点：ConfirmHost / ChoiceHost / PromptHost /
+// ConfirmBubbleHost / NetConsentHost 缺一不可 —— askConfirm/askChoice/askPrompt 的
+// promise 由对应 Host 组件resolve，缺宿主 = 按钮"点击无反应"（红灯退出、新建、重命名）。
 import { CosmicBackground } from "./features/background/CosmicBackground";
 import { BootScreen, type BootStats } from "./system/boot/BootScreen";
 import { DesktopShell } from "./system/desktop/DesktopShell";
@@ -94,6 +98,32 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     return () => un?.();
   }, [appType]);
 
+  // ---------- cross-window settings sync ----------
+  // 其他窗口（软件窗口设置页 / 桌面设置）改了设置并落库后，后端广播
+  // settings://changed；本窗口若不是发起者，则重载设置驱动壁纸等 UI 更新。
+  useEffect(() => {
+    if (!isTauriRuntime() || appType !== "desktop") return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const selfLabel = getCurrentWindow().label;
+    const sub = listen<{ origin: string }>("settings://changed", (ev) => {
+      if (ev.payload.origin === selfLabel) return;
+      void loadSettings().then((s) => {
+        if (!disposed) setSettingsState(s);
+      });
+    });
+    void sub
+      .then((u) => {
+        if (disposed) u();
+        else un = u;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, [appType]);
+
   // track editor typing for background degradation
   useEffect(() => {
     const onDown = (e: KeyboardEvent): void => {
@@ -109,6 +139,37 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     window.addEventListener("keydown", onDown, true);
     return () => window.removeEventListener("keydown", onDown, true);
   }, []);
+
+  // 批次E-17：左右 Shift 同时按住 = 隐藏环境（可见时；重新打开由 Rust 键盘钩子负责，
+  // 因为隐藏后键盘事件不再进入本窗口）
+  useEffect(() => {
+    if (appType !== "desktop") return;
+    let l = false;
+    let r = false;
+    let fired = false;
+    const reset = (): void => {
+      if (!l || !r) fired = false;
+    };
+    const onDown = (e: KeyboardEvent): void => {
+      if (e.repeat) return;
+      if (e.code === "ShiftLeft") l = true;
+      if (e.code === "ShiftRight") r = true;
+      if (l && r && !fired) {
+        fired = true;
+        void ipc.winHideToTray().catch(() => {});
+      }
+    };
+    const onUp = (e: KeyboardEvent): void => {
+      if (e.code === "ShiftLeft") { l = false; reset(); }
+      if (e.code === "ShiftRight") { r = false; reset(); }
+    };
+    window.addEventListener("keydown", onDown, true);
+    window.addEventListener("keyup", onUp, true);
+    return () => {
+      window.removeEventListener("keydown", onDown, true);
+      window.removeEventListener("keyup", onUp, true);
+    };
+  }, [appType]);
 
   // ---------- module-0 global capture guard (Click Outside, unblockable) ----------
   // CAPTURE-phase pointerDown runs BEFORE any bubbling stopPropagation in the
@@ -278,6 +339,27 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     }
   }, [appType]);
 
+  // 批次E-18：Del+Backspace（Rust 侧检测）→ 真正退出：直接走保存冲刷+关闭
+  useEffect(() => {
+    if (appType !== "desktop" || !isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const sub = listen("sys://quit-request", () => {
+      if (!disposed) void requestClose();
+    });
+    void sub
+      .then((u) => {
+        if (disposed) u();
+        else un = u;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appType, requestClose]);
+
   // beforeunload best-effort recovery write is handled in EditorView via flush event.
 
   // ---------- 启动仪式 + 阶段4/5 退出编排 ----------
@@ -295,7 +377,7 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
               bootStats={bootStats}
               closePhase={closePhase}
               onCloseRequested={() => void requestClose()}
-              onOpenApp={(app) => openAppWindow(app)}
+              onOpenApp={(app) => openVwmApp(app)}
               onOpenSettings={() => uiStore.setState({ settingsOpen: true, settingsTab: "appearance", startOpen: false })}
               onPatchSettings={patchSettings}
             />
@@ -304,6 +386,9 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <ToastHost />
             <ContextMenuHost />
             <ConfirmHost />
+            <ChoiceHost />
+            <PromptHost />
+            <ConfirmBubbleHost />
             <NetConsentHost />
           </I18nContext.Provider>
         ) : bootPhase !== "done" || !settings || !ready ? (

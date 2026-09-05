@@ -22,7 +22,11 @@ interface Geom {
 
 export function appWindowLabel(app: AppMode): string {
   // mind 的窗口/入口名是 app-mind（vite 入口、托盘、桌面图标一致），而非 app-mindmap
-  return app === "mindmap" ? "app-mind" : `app-${app}`;
+  // code 的 vite 入口/窗口 label 是 app-code（AppMode 叫 project）——
+  // 此前映射成 app-project.html 导致 "asset not found"。
+  if (app === "mindmap") return "app-mind";
+  if (app === "project") return "app-code";
+  return `app-${app}`;
 }
 
 function loadGeom(label: string): Geom | null {

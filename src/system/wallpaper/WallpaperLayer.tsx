@@ -1,4 +1,4 @@
-import { CosmicBackground } from "../../features/background/CosmicBackground";
+import { CosmicBackground, toAssetUrl } from "../../features/background/CosmicBackground";
 import type { CustomBg, Settings } from "../../lib/settings";
 
 /**
@@ -18,8 +18,27 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
   const s = props.settings;
   const mode = s.wallpaperMode;
 
+  // 批次E-15b："系统桌面"模式 —— WE 壁纸渲染在系统桌面上，Variable 让位
+  // （应用该模式时由调用方自动隐藏到托盘，托盘 V 图标一键返回）。
+  // 注：WebView2 透明窗口会让 video 等媒体层停止渲染，"窗口透明透出"不可行，
+  // 此处仅渲染纯黑底作为让位前的兜底。
+  if (mode === "system") {
+    return <div className="wallpaper wallpaper-solid" aria-hidden />;
+  }
+
   if (mode === "solid") {
     return <div className="wallpaper wallpaper-solid" aria-hidden />;
+  }
+
+  // 批次E-15：网页壁纸（Wallpaper Engine web 型项目，本地 html 内嵌渲染）
+  if (mode === "web") {
+    return (
+      <div className="wallpaper wallpaper-web" aria-hidden>
+        {s.customBg.htmlPath ? (
+          <iframe src={toAssetUrl(s.customBg.htmlPath)} title="wallpaper" allow="autoplay" />
+        ) : null}
+      </div>
+    );
   }
 
   const theme = mode === "gravity" ? "deep-space" : "custom";
@@ -35,6 +54,8 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
         editing={false}
         customBg={customBg}
         starfieldOverlay={mode === "hybrid"}
+        // 批次E-13：桌面壁纸 1:1 清晰渲染（无模糊玻璃感）；应用内背景不走这里
+        plainMedia
       />
     </div>
   );

@@ -3,15 +3,12 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   AppWindow,
   Folder,
-  FolderSearch,
-  Map as MapIcon,
   Monitor,
-  PenLine,
-  Sparkles,
   Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
+import { WriteGlyph, MindGlyph, CodeGlyph, FateGlyph } from "../../components/AppGlyphs";
 import { openContextMenu, type MenuItem } from "../../components/ContextMenu";
 import { askConfirm, askPrompt } from "../../components/Modal";
 import { errMessage, ipc, type ThirdApp } from "../../lib/ipc";
@@ -20,7 +17,8 @@ import { useI18n } from "../../i18n";
 import { pushToast, uiStore, type AppMode } from "../../state/uiStore";
 import { launchThirdApp, reloadThirdApps, useThirdApps } from "../launcher/thirdApps";
 import { useUninstalledOfficial } from "../launcher/official";
-import { openSystemWindow } from "../windows/appWindows";
+import { openVwmSystem } from "../windows/vwm";
+import { type AppGlyph } from "../../components/AppGlyphs";
 import { ShelfFlyout, type FlyItem } from "./ShelfFlyout";
 import {
   allShelfMembers,
@@ -62,7 +60,8 @@ import {
 interface AppIconDef {
   id: string;
   app: AppMode;
-  icon: LucideIcon;
+  /** 批次E-14：风格化 SVG 图标（每款一个独立视觉语言）。 */
+  icon: AppGlyph;
   hue: number; // 图标底座色相（低饱和冷调）
 }
 
@@ -97,19 +96,19 @@ const GRID_PAD = 14;
 const DRAG_THRESHOLD = 5;
 const LONG_PRESS_MS = 600;
 
-/** 三档图标大小（规格 4.2.4）→ 网格/底座/线条尺寸。 */
+/** 三档图标大小（对齐 Windows 桌面习惯：图标字形 ≈ 标称尺寸，Windows 中图标 ≈ 48px 字形）。 */
 const SIZE_TIERS: Record<IconSize, { w: number; h: number; tile: number; icon: number }> = {
-  32: { w: 78, h: 92, tile: 40, icon: 20 },
-  48: { w: 94, h: 106, tile: 56, icon: 26 },
-  64: { w: 112, h: 122, tile: 72, icon: 34 },
+  32: { w: 84, h: 98, tile: 44, icon: 30 },
+  48: { w: 100, h: 114, tile: 58, icon: 46 },
+  64: { w: 118, h: 132, tile: 76, icon: 62 },
 };
 
 export function desktopIconDefs(): AppIconDef[] {
   return [
-    { id: "app-write", app: "write", icon: PenLine, hue: 224 },
-    { id: "app-mind", app: "mindmap", icon: MapIcon, hue: 192 },
-    { id: "app-code", app: "project", icon: FolderSearch, hue: 258 },
-    { id: "app-fate", app: "fate", icon: Sparkles, hue: 206 },
+    { id: "app-write", app: "write", icon: WriteGlyph, hue: 216 },
+    { id: "app-mind", app: "mindmap", icon: MindGlyph, hue: 190 },
+    { id: "app-code", app: "project", icon: CodeGlyph, hue: 258 },
+    { id: "app-fate", app: "fate", icon: FateGlyph, hue: 42 },
   ];
 }
 
@@ -162,6 +161,28 @@ export function DesktopIcons(props: {
   const [propsFor, setPropsFor] = useState<string | null>(null);
   const [about, setAbout] = useState(false);
   const [rows, setRows] = useState(6);
+  // 批次E-14：右键"刷新" → 图标按入场节奏重排一遍（视觉反馈，非静默重载）
+  const [refreshing, setRefreshing] = useState(false);
+  // 批次E-16：隐藏图标（Windows"查看 → 显示桌面图标"习惯；持久化）
+  const [iconsHidden, setIconsHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("variable:icons:hidden") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleIconsHidden = (): void => {
+    setIconsHidden((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("variable:icons:hidden", next ? "1" : "0");
+      } catch {
+        /* storage blocked → 不持久化 */
+      }
+      return next;
+    });
+  };
+  const refreshTimer = useRef(0);
 
   const dragRef = useRef(drag);
   dragRef.current = drag;
@@ -896,6 +917,13 @@ export function DesktopIcons(props: {
   const refresh = (): void => {
     setLayout(loadDesktopLayout());
     setSelected(new Set());
+    setRefreshing(false);
+    window.clearTimeout(refreshTimer.current);
+    // 下一帧再挂类，保证 animation 从头重放
+    window.requestAnimationFrame(() => {
+      setRefreshing(true);
+      refreshTimer.current = window.setTimeout(() => setRefreshing(false), 700);
+    });
   };
 
   // 批次E-6：右键"下一张壁纸" —— 本地缓存池随机取一张（零网络）并立即应用
@@ -920,16 +948,69 @@ export function DesktopIcons(props: {
       .catch((e) => pushToast("error", t("wpNext"), errMessage(e).message));
   };
 
+  /** 右键"切换壁纸"：媒体类壁纸（图片/视频/混合）未选过文件时直接弹文件选择框，
+   *  选完即用 —— 否则切了模式却没有图，看起来就是"点了没反应"。 */
+  const switchWallpaper = async (w: WallpaperMode): Promise<void> => {
+    if (w === "solid" || w === "gravity") {
+      props.onPatchSettings({ wallpaperMode: w });
+      return;
+    }
+    if (w === "system") {
+      props.onPatchSettings({ wallpaperMode: w });
+      void ipc.winHideToTray().catch(() => {});
+      pushToast("info", t("wpSystem"), t("wpSystemHint"));
+      return;
+    }
+    if (w === "web") {
+      if (!props.customBg.htmlPath) {
+        pushToast("info", t("wpWeb"), t("wpEngineTitle"));
+        props.onOpenSettings();
+        return;
+      }
+      props.onPatchSettings({ wallpaperMode: w });
+      return;
+    }
+    const needImage = w === "image" || (w === "hybrid" && !props.customBg.imagePath && !props.customBg.videoPath);
+    const needVideo = w === "video" && !props.customBg.videoPath;
+    if (!needImage && !needVideo) {
+      props.onPatchSettings({ wallpaperMode: w });
+      return;
+    }
+    try {
+      const picked = await openFileDialog({
+        multiple: false,
+        filters: needVideo
+          ? [{ name: "Video", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }]
+          : [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }],
+      });
+      if (typeof picked !== "string" || !picked) return; // 取消 → 保持原模式
+      const check = await ipc.checkPaths([picked]).catch(() => []);
+      if (!check[0]?.exists) {
+        pushToast("error", t("wallpaperSwitch"));
+        return;
+      }
+      props.onPatchSettings(
+        needVideo
+          ? { wallpaperMode: w, customBg: { ...props.customBg, type: "video", videoPath: picked, playVideo: true } }
+          : { wallpaperMode: w, customBg: { ...props.customBg, type: "image", imagePath: picked } },
+      );
+    } catch (e) {
+      pushToast("error", t("wallpaperSwitch"), errMessage(e).message);
+    }
+  };
+
   const openDesktopMenu = (e: React.MouseEvent): void => {
     if (e.button !== 0) e.preventDefault();
     const sizes: IconSize[] = [32, 48, 64];
-    const walls = ["solid", "gravity", "image", "video", "hybrid"] as const;
+    const walls = ["solid", "gravity", "image", "video", "hybrid", "web", "system"] as const;
     const wallKeys: Record<(typeof walls)[number], string> = {
       solid: "wpSolid",
       gravity: "wpGravity",
       image: "wpImage",
       video: "wpVideo",
       hybrid: "wpHybrid",
+      web: "wpWeb",
+      system: "wpSystem",
     };
     const items: MenuItem[] = [
       {
@@ -964,7 +1045,7 @@ export function DesktopIcons(props: {
           ...walls.map((w) => ({
             label: t(wallKeys[w]),
             checked: props.wallpaperMode === w,
-            onClick: () => props.onPatchSettings({ wallpaperMode: w }),
+            onClick: () => void switchWallpaper(w),
           })),
           { separator: true },
           // 批次E-6：右键快捷换一张（本地缓存池随机；未配置缓存目录时弹设置提示）
@@ -973,6 +1054,7 @@ export function DesktopIcons(props: {
         ],
       },
       { separator: true },
+      { label: iconsHidden ? t("showIcons") : t("hideIcons"), onClick: toggleIconsHidden },
       { label: t("autoArrange"), checked: layout.autoArrange, onClick: toggleAutoArrange },
       { label: t("refreshDesktop"), onClick: refresh },
       { label: t("personalize"), onClick: props.onOpenSettings },
@@ -995,7 +1077,7 @@ export function DesktopIcons(props: {
     if ("shelfId" in d && d.shelf.linkedPath) {
       items.push({
         label: t("shelfOpenInExplorer"),
-        onClick: () => void openSystemWindow("explorer", d.shelf.linkedPath),
+        onClick: () => void openVwmSystem("explorer", d.shelf.linkedPath),
       });
     }
     items.push({ separator: true });
@@ -1083,7 +1165,7 @@ export function DesktopIcons(props: {
   return (
     <div
       ref={containerRef}
-      className={`desktop-icons${edit ? " edit-mode" : ""}`}
+      className={`desktop-icons${edit ? " edit-mode" : ""}${refreshing ? " refreshing" : ""}`}
       onKeyDown={onKeyDown}
       tabIndex={-1}
       onPointerDown={onContainerPointerDown}
@@ -1093,7 +1175,7 @@ export function DesktopIcons(props: {
         if (e.target === e.currentTarget) openDesktopMenu(e);
       }}
     >
-      {visibleDefs.map((d, idx) => {
+      {!iconsHidden && visibleDefs.map((d, idx) => {
         const cell = placed.get(d.id);
         if (!cell) return null;
         const isDragging = drag?.moved === true && d.id === drag.primary;
@@ -1200,7 +1282,7 @@ export function DesktopIcons(props: {
             const d = defById.get(id);
             if (d && "third" in d) void removeThird(d.third);
           }}
-          onOpenExplorer={(path) => void openSystemWindow("explorer", path)}
+          onOpenExplorer={(path) => void openVwmSystem("explorer", path)}
           onRename={(id) => void renameShelf(id)}
           onChangeIcon={(id) => {
             const d = defById.get(id);

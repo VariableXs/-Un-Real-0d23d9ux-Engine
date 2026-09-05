@@ -3,6 +3,7 @@ import {
   Code2, Database, Network, PenLine, ShieldCheck, Sparkles, Usb, WifiOff,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
+import { CloseLight } from "../../components/CloseLight";
 import type { Settings, WallpaperMode } from "../../lib/settings";
 
 /**
@@ -12,13 +13,15 @@ import type { Settings, WallpaperMode } from "../../lib/settings";
  * 所有文案走词典（zh/en），零网络、数据仅本机。
  */
 
-const WALL_MODES: WallpaperMode[] = ["solid", "gravity", "image", "video", "hybrid"];
+const WALL_MODES: WallpaperMode[] = ["solid", "gravity", "image", "video", "hybrid", "web"];
 const WALL_LABEL_KEYS: Record<WallpaperMode, string> = {
   solid: "wpSolid",
   gravity: "wpGravity",
   image: "wpImage",
   video: "wpVideo",
   hybrid: "wpHybrid",
+  web: "wpWeb",
+  system: "wpSystem",
 };
 
 export function WelcomeWizard(props: {
@@ -34,6 +37,9 @@ export function WelcomeWizard(props: {
   return (
     <div className="wizard-overlay" role="dialog" aria-modal aria-label={t("wizHello")}>
       <div className="wizard-card">
+        <div className="wizard-lights">
+          <CloseLight onClose={finish} />
+        </div>
         <div className="wizard-dots" aria-hidden>
           {[0, 1, 2, 3].map((i) => (
             <span key={i} className={i === step ? "on" : ""} />

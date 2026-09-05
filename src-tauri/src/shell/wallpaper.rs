@@ -148,6 +148,297 @@ pub fn wp_pick_daily(dir: String, mode: String) -> CmdResult<Option<String>> {
         .map(|p| p.to_string_lossy().to_string()))
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WpEngineItem {
+    /// 项目目录名（workshop 为内容 id）
+    pub id: String,
+    pub title: String,
+    /// Wallpaper Engine 类型（scene/video/web/image/application，小写）
+    pub kind: String,
+    /// 可打开的入口文件绝对路径（video/image 媒体、web 的 index.html）
+    pub file: Option<String>,
+    /// 项目目录绝对路径（"用 Wallpaper Engine 打开"需要）
+    pub dir: String,
+    /// 预览图绝对路径（preview.jpg，可能没有）
+    pub preview: Option<String>,
+    /// Variable 能否直接渲染（video/image = 媒体壁纸；web = 内嵌 iframe；
+    /// scene/application 走 wp_engine_open 交给 WE 本体）
+    pub supported: bool,
+    /// 来源目录（workshop / myprojects）
+    pub source: String,
+}
+
+/// 从 project.json 所在目录提取一条可导入项（解析失败返回 None）。
+fn wp_engine_item(project_dir: &std::path::Path, source: &str) -> Option<WpEngineItem> {
+    let raw = std::fs::read(project_dir.join("project.json")).ok()?;
+    // Wallpaper Engine 的 json 可能带 BOM
+    let text = String::from_utf8(raw).ok()?;
+    let text = text.trim_start_matches('\u{feff}');
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let kind = v.get("type").and_then(|t| t.as_str()).unwrap_or("").to_lowercase();
+    let title = v
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    let rel_file = v.get("file").and_then(|f| f.as_str()).unwrap_or("");
+    let file_path = if rel_file.is_empty() {
+        None
+    } else {
+        let p = project_dir.join(rel_file);
+        p.is_file().then(|| p.to_string_lossy().to_string())
+    };
+    let ext = file_path
+        .as_ref()
+        .and_then(|f| std::path::Path::new(f).extension())
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let supported = match kind.as_str() {
+        // video/image：媒体壁纸；web：入口是 html，Variable 内嵌 iframe 渲染
+        "video" | "image" => matches!(
+            ext.as_str(),
+            "mp4" | "webm" | "ogv" | "mov" | "m4v" | "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
+        ),
+        "web" => matches!(ext.as_str(), "html" | "htm"),
+        _ => false,
+    };
+    let preview = project_dir
+        .join("preview.jpg")
+        .is_file()
+        .then(|| project_dir.join("preview.jpg").to_string_lossy().to_string());
+    Some(WpEngineItem {
+        id: project_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        title: if title.is_empty() {
+            project_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        } else {
+            title
+        },
+        kind,
+        file: file_path,
+        dir: project_dir.to_string_lossy().to_string(),
+        preview,
+        supported,
+        source: source.to_string(),
+    })
+}
+
+/// 收集 root 下可能包含 wallpaper 项目（project.json）的目录。
+/// 兼容三种 root：Steam 库根 / wallpaper_engine 根 / workshop 431960 / 直接项目父目录。
+fn wp_engine_candidates(root: &std::path::Path) -> Vec<(std::path::PathBuf, &'static str)> {
+    let mut out = Vec::new();
+    let mut push_dir = |d: std::path::PathBuf, src: &'static str| {
+        if d.join("project.json").is_file() {
+            out.push((d, src));
+        }
+    };
+    // Steam 库根 → workshop 创意工坊 + 本地 projects
+    let ws = root.join("steamapps").join("workshop").join("content").join("431960");
+    if ws.is_dir() {
+        if let Ok(rd) = std::fs::read_dir(&ws) {
+            for e in rd.flatten() {
+                push_dir(e.path(), "workshop");
+            }
+        }
+    }
+    let we = root.join("steamapps").join("common").join("wallpaper_engine");
+    let proj_dirs = [we.join("projects").join("myprojects"), we.join("projects")];
+    for pd in proj_dirs {
+        if pd.is_dir() {
+            if let Ok(rd) = std::fs::read_dir(&pd) {
+                for e in rd.flatten() {
+                    push_dir(e.path(), "myprojects");
+                }
+            }
+        }
+    }
+    // root 本身就是项目父目录（用户手动选择 myprojects / 431960 等）
+    if let Ok(rd) = std::fs::read_dir(root) {
+        for e in rd.flatten() {
+            push_dir(e.path(), "custom");
+        }
+    }
+    out
+}
+
+/// 探测 Steam 库根：注册表 HKCU\Software\Valve\Steam\SteamPath 优先，
+/// 再补常见安装位置；每个根再解析 libraryfolders.vdf 里的其余库。
+#[cfg(windows)]
+pub(crate) fn steam_library_roots() -> Vec<std::path::PathBuf> {
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    // 注册表（Steam 正装路径，含非 C 盘安装）
+    use winreg::enums::HKEY_CURRENT_USER;
+    if let Ok(hk) = winreg::RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Valve\\Steam")
+    {
+        if let Ok(path) = hk.get_value::<String, _>("SteamPath") {
+            let pb = std::path::PathBuf::from(path.replace('/', "\\"));
+            if pb.is_dir() {
+                roots.push(pb);
+            }
+        }
+    }
+    roots.push(std::path::PathBuf::from("C:\\Program Files (x86)\\Steam"));
+    roots.push(std::path::PathBuf::from("C:\\Program Files\\Steam"));
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for base in roots {
+        if !base.is_dir() || out.iter().any(|r| r == &base) {
+            continue;
+        }
+        out.push(base.clone());
+        let vdf = base.join("steamapps").join("libraryfolders.vdf");
+        if let Ok(text) = std::fs::read_to_string(&vdf) {
+            for line in text.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix("\"path\"") {
+                    let rest = rest.trim();
+                    if let Some(p) = rest.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+                        let p = p.replace("\\\\", "\\");
+                        let pb = std::path::PathBuf::from(&p);
+                        if pb.is_dir() && !out.iter().any(|r| r == &pb) {
+                            out.push(pb);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+#[cfg(not(windows))]
+pub(crate) fn steam_library_roots() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}
+
+/// 扫描 Wallpaper Engine 壁纸项目。
+/// root 为空 = 自动探测（默认 Steam 库 + libraryfolders.vdf 里的全部库）；
+/// 否则 root 为 Steam 库根 / wallpaper_engine 目录 / 项目父目录。
+/// scene / web / application 类型如实返回 supported=false（Variable 无法渲染着色器/网页）。
+#[tauri::command]
+pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
+    let roots: Vec<std::path::PathBuf> = if root.trim().is_empty() {
+        steam_library_roots()
+    } else {
+        vec![std::path::PathBuf::from(root)]
+    };
+    let mut items: Vec<WpEngineItem> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for r in roots {
+        for (dir, src) in wp_engine_candidates(&r) {
+            if seen.insert(dir.clone()) {
+                if let Some(item) = wp_engine_item(&dir, src) {
+                    items.push(item);
+                }
+            }
+        }
+    }
+    // 标题排序（稳定展示），video 优先于不可导入项
+    items.sort_by(|a, b| {
+        b.supported
+            .cmp(&a.supported)
+            .then_with(|| a.title.cmp(&b.title))
+    });
+    Ok(items)
+}
+
+/// 通过 Wallpaper Engine 本体打开任意类型壁纸项目（scene / application 等
+/// Variable 无法直接渲染的类型）—— 等价于在 WE 里点击该壁纸。
+///
+/// 实现（零新增进程启动代码，全部复用已审查的第三方启动器通道）：
+/// 1. 校验 `id`（单个路径组件）并在白名单根（创意工坊 431960 /
+///    wallpaper_engine/projects[/myprojects]）内解析项目与 wallpaper64.exe；
+/// 2. 生成包装脚本 `<dataDir>/we-open.cmd`（`wallpaper64.exe -control
+///    openWallpaper -file <project.json>`，等价于在 WE 客户端里应用壁纸）；
+/// 3. 把该脚本登记为第三方启动项（幂等），经 `tp_launch` 独立进程启动。
+/// 壁纸渲染在系统桌面上：Variable 隐藏到托盘/避让时可见（WE 自带托盘可切换）。
+#[tauri::command]
+pub fn wp_engine_open(
+    st: tauri::State<'_, crate::state::AppState>,
+    app: tauri::AppHandle,
+    id: String,
+    source: String,
+) -> CmdResult<()> {
+    use crate::shell::launcher;
+    let _ = source;
+    // id 净化：拒绝路径分隔符、盘符、父目录引用与首尾空白
+    if id.is_empty()
+        || id.contains('/')
+        || id.contains(std::path::MAIN_SEPARATOR)
+        || id.contains("..")
+        || id.contains(':')
+        || id.trim() != id
+    {
+        return Err(AppError::validation("非法项目 id / invalid project id"));
+    }
+    let roots = steam_library_roots();
+    let bases: Vec<std::path::PathBuf> = roots
+        .iter()
+        .flat_map(|lib| {
+            vec![
+                lib.join("steamapps").join("workshop").join("content").join("431960"),
+                lib.join("steamapps").join("common").join("wallpaper_engine").join("projects"),
+                lib.join("steamapps").join("common").join("wallpaper_engine").join("projects").join("myprojects"),
+            ]
+        })
+        .filter(|b| b.is_dir())
+        .collect();
+    let project_json = bases
+        .iter()
+        .map(|b| b.join(&id).join("project.json"))
+        .find(|p| p.is_file())
+        .ok_or_else(|| {
+            AppError::not_found(format!(
+                "未在 Wallpaper Engine 目录中找到项目 / project not found: {id}"
+            ))
+        })?;
+    let exe = roots
+        .iter()
+        .map(|lib| {
+            lib.join("steamapps")
+                .join("common")
+                .join("wallpaper_engine")
+                .join("wallpaper64.exe")
+        })
+        .find(|e| e.is_file())
+        .ok_or_else(|| {
+            AppError::not_found("未找到 Wallpaper Engine 安装 / Wallpaper Engine not installed".to_string())
+        })?;
+
+    // 生成包装脚本（chcp 65001 兼容中文路径；start "" 处理带空格路径）
+    let cmd_path = st.data_dir.join("we-open.cmd");
+    let script = format!(
+        "@echo off\r\nchcp 65001 >nul\r\nstart \"\" \"{}\" -control openWallpaper -file \"{}\"\r\n",
+        exe.to_string_lossy(),
+        project_json.to_string_lossy()
+    );
+    std::fs::write(&cmd_path, script)        .map_err(|e| AppError::io(format!("写入 WE 启动脚本失败 / write wrapper failed: {e}")))?;
+
+    // 登记为第三方启动项（幂等），再经既有通道启动
+    const OPENER_ID: &str = "variable-we-opener";
+    let mut apps = launcher::load_registry(&st);
+    if !apps.iter().any(|a| a.id == OPENER_ID) {
+        apps.push(launcher::ThirdApp {
+            id: OPENER_ID.to_string(),
+            name: "Wallpaper Engine".to_string(),
+            path: cmd_path.to_string_lossy().to_string(),
+            grade: launcher::GRADE_SHORTCUT.to_string(),
+            added_at: 0,
+            last_launch: None,
+            icon: None,
+            target: None,
+        });
+        launcher::save_registry(&st, &apps)?;
+    }
+    launcher::tp_launch(st, app, OPENER_ID.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

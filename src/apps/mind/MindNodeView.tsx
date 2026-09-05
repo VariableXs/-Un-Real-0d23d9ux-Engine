@@ -240,6 +240,12 @@ export function MindNodeView(props: Props): React.ReactElement {
       : [];
   const collapsedH = 36;
 
+  // Contract-4: the action bar is hidden until the pointer enters the lower
+  // half of the frame (or the bar itself); it fades out on leave.
+  // 注意：hooks 必须在 `if (node.hidden) return` 之前（React #310）。
+  const [actionsHot, setActionsHot] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
   if (node.hidden) return <></>;
 
   const renderW = node.collapsed ? Math.max(150, Math.min(dispW, 260)) : dispW;
@@ -253,10 +259,6 @@ export function MindNodeView(props: Props): React.ReactElement {
   const insc = !isBoxShape && !node.collapsed ? inscribedRect(node.shape, renderW, renderH) : null;
   const centroid = isPolyShape || isCircle ? centroidOf(node.shape, renderW, renderH) : null;
 
-  // Contract-4: the action bar is hidden until the pointer enters the lower
-  // half of the frame (or the bar itself); it fades out on leave.
-  const [actionsHot, setActionsHot] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
   function updateActionsHot(e: React.MouseEvent): void {
     const el = rootRef.current;
     if (!el) return;

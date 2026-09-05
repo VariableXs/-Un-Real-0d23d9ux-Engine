@@ -19,3 +19,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ExplorerWindow initialView={view} />
   </React.StrictMode>,
 );
+
+// 首帧渲染后移除 boot-splash（此前从未移除，窗口永远停在启动屏）
+requestAnimationFrame(() => {
+  const splash = document.getElementById("boot-splash");
+  splash?.classList.add("done");
+  window.setTimeout(() => splash?.remove(), 400);
+});

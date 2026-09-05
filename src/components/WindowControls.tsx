@@ -77,11 +77,11 @@ export function WindowControls(props: {
       <button
         type="button"
         className="win-btn"
-        aria-label={t("minimize")}
-        title={t("minimize")}
-        onClick={() => void win.minimize().catch(() => {})}
+        aria-label={t("close")}
+        title={t("close")}
+        onClick={props.onCloseRequested}
       >
-        <span className="win-dot yellow" />
+        <span className="win-dot green" />
       </button>
       <button
         type="button"
@@ -90,14 +90,14 @@ export function WindowControls(props: {
         title={maximized ? t("restore") : t("maximize")}
         onClick={() => void win.toggleMaximize().catch(() => {})}
       >
-        <span className="win-dot green" />
+        <span className="win-dot yellow" />
       </button>
       <button
         type="button"
         className="win-btn"
-        aria-label={t("close")}
-        title={t("close")}
-        onClick={props.onCloseRequested}
+        aria-label={t("minimize")}
+        title={t("minimize")}
+        onClick={() => void win.minimize().catch(() => {})}
       >
         <span className="win-dot red" />
       </button>

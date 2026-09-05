@@ -1375,6 +1375,7 @@ button.qp-net-row.as-btn.connected { background: rgb(126 164 255 / 0.12); }
   animation: wizard-in 0.35s ease both;
 }
 .wizard-card {
+  position: relative;
   width: min(600px, 92vw);
   border-radius: 16px;
   padding: 26px 34px 22px;
@@ -2188,3 +2189,30 @@ button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
 }
 .start-search input::placeholder { color: rgb(255 255 255 / 0.4); }
 .start-search .icon-btn { flex: none; }
+
+/* ==================== 批次E-14：图标底座立体感 + 刷新动画 ==================== */
+
+/* 图标底座：内高光 + 底部投影，像立在桌面上的小铭牌 */
+.desktop-icon-tile {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25),
+    0 3px 8px rgb(0 0 0 / 0.35);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.desktop-icon:hover .desktop-icon-tile {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25),
+    0 7px 16px rgb(0 0 0 / 0.45);
+}
+.desktop-icon:active .desktop-icon-tile {
+  transform: translateY(0) scale(0.96);
+}
+
+/* 右键"刷新"：图标按入场动画重排一遍 */
+.desktop-icons.refreshing .desktop-icon {
+  animation: icon-in 0.45s ease both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}

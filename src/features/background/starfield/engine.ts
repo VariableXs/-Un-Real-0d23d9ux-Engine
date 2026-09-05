@@ -1,4 +1,4 @@
-﻿import { generateStars, makeStarfieldMask, TIER_SPECS } from "./math";
+import { generateStars, makeStarfieldMask, TIER_SPECS } from "./math";
 import { createGpu } from "./renderer";
 
 /**
@@ -11,7 +11,7 @@ export interface EngineOptions {
   motion: number;
   /** Legacy pointer-parallax strength px (kept subtle next to cam parallax). */
   mouseParallax: number;
-  /** 1..10 fixed tier; 0 = smart monitor keeps 80 FPS within L4..L10. */
+  /** 1..10 fixed tier; 0 = smart monitor keeps 100 FPS within L4..L10. */
   tier: number;
   /** While typing: dim starlight 30% inside the center 400px (chapter 6.1). */
   editing: boolean;
@@ -261,10 +261,11 @@ function createMainThreadEngine(
     frameN = 0;
     const fps = 1000 / Math.max(avg, 1e-3);
     if (o.tier !== 0) return; // manual lock — monitor only in auto mode
-    if (fps < 80 && activeLevel > 4) {
+    if (fps < 100 && activeLevel > 4) {
+      // 目标 ≥100 FPS（高刷屏）：跌破 100 降档，回升越过 130 升档。
       activeLevel--;
       cooldown = 90;
-    } else if (fps > 112 && activeLevel < 10) {
+    } else if (fps > 130 && activeLevel < 10) {
       activeLevel++;
       cooldown = 180;
     }

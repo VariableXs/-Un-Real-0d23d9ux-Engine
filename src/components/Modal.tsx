@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useI18n } from "../i18n";
 import { createStore, useStore } from "../lib/store";
+import { CloseLight } from "./CloseLight";
 
 export function Modal(props: {
   open: boolean;
@@ -32,6 +33,9 @@ export function Modal(props: {
         {props.title !== undefined && (
           <div className="modal-head">
             <h3>{props.title}</h3>
+            <span className="flex-1" />
+            {/* 批次E-12：所有弹窗统一补绿灯（关闭），方便退出 */}
+            <CloseLight onClose={props.onClose} />
             <button type="button" className="icon-btn small" aria-label={t("close")} data-tip={t("close")} onClick={props.onClose}>
               <X size={15} />
             </button>

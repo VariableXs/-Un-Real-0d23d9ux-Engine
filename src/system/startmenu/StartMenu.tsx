@@ -12,7 +12,7 @@ import { askConfirm } from "../../components/Modal";
 import { desktopIconDefs, desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { launchThirdApp, useThirdApps } from "../launcher/thirdApps";
 import { useUninstalledOfficial } from "../launcher/official";
-import { openSystemWindow } from "../windows/appWindows";
+import { openVwmSystem } from "../windows/vwm";
 import { pushRecent, useRecent } from "./recent";
 
 /**
@@ -122,7 +122,7 @@ export function StartMenu(props: {
       onClick: () => {
         pushRecent("sys", "explorer", t("explorerWin"));
         props.onClose();
-        void openSystemWindow("explorer");
+        openVwmSystem("explorer");
       },
       title: t("explorerWin"),
     },
@@ -150,7 +150,7 @@ export function StartMenu(props: {
       onClick: () => {
         pushRecent("sys", "recycle", t("recycleBin"));
         props.onClose();
-        void openSystemWindow("recycle");
+        openVwmSystem("recycle");
       },
       title: t("recycleBin"),
     },
@@ -264,7 +264,7 @@ export function StartMenu(props: {
                       void launchThirdApp(r.id, r.name);
                     } else if (r.kind === "sys") {
                       props.onClose();
-                      void openSystemWindow(r.id as "explorer" | "recycle");
+                      openVwmSystem(r.id as "explorer" | "recycle");
                     } else {
                       props.onClose();
                     }

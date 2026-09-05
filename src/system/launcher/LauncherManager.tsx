@@ -7,6 +7,7 @@ import { formatBytes } from "../../lib/format";
 import { useI18n } from "../../i18n";
 import { pushToast, uiStore, useUi, type AppMode } from "../../state/uiStore";
 import { closeAppWindows } from "../windows/appWindows";
+import { closeVwmApp } from "../windows/vwm";
 import { desktopAppLabel, desktopIconDefs } from "../desktop-icons/DesktopIcons";
 import {
   markOfficialInstalled,
@@ -231,6 +232,7 @@ export function LauncherManager(): React.ReactElement | null {
     }
     try {
       await closeAppWindows(app); // 规格5.6.3：自动关闭全部运行窗口
+      closeVwmApp(app); // VWM 虚拟窗口实例一并关闭
       markOfficialUninstalled(app); // 记录时间 → 24h 恢复窗口；入口即刻隐藏
       pushToast("success", t("officialUninstalledToast", { name: desktopAppLabel(app) }));
       setUninstallTarget(null);

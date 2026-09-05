@@ -15,8 +15,31 @@ export async function reloadThirdApps(): Promise<void> {
   try {
     const apps = await ipc.tpList();
     tpStore.setState({ apps });
+    // 批次E-16：未自定义图标的第三方应用自动提取 Windows 原生图标
+    // （exe 资源里的 HICON → data URL），与系统里看到的一致
+    void fillNativeIcons(apps);
   } catch (e) {
     console.warn("[launcher] tp_list failed", errMessage(e).message);
+  }
+}
+
+/** 为缺少图标的登记项提取 Windows 原生图标（exe/lnk 目标；失败静默跳过）。 */
+async function fillNativeIcons(apps: ThirdApp[]): Promise<void> {
+  for (const a of apps) {
+    if (a.icon) continue;
+    // .lnk 也直接传：Rust 端 icon_dataurl 会先解析快捷方式目标再提取
+    const target = a.target ?? a.path;
+    if (!target) continue;
+    try {
+      const url = await ipc.iconDataurl(target);
+      if (!url) continue;
+      const cur = tpStore.getState().apps;
+      tpStore.setState({
+        apps: cur.map((x) => (x.id === a.id ? { ...x, icon: url } : x)),
+      });
+    } catch {
+      /* 提取失败（非 exe/图标缺失）→ 保持占位图标 */
+    }
   }
 }
 
@@ -29,10 +52,23 @@ export function getThirdApps(): ThirdApp[] {
   return tpStore.getState().apps;
 }
 
+/**
+ * 批次E-16：第三方应用一律在环境内打开 —— 先开虚拟窗口（占位），
+ * 再由后端启动并把原生窗口 SetParent 嵌进来（从任务栏/Alt+Tab 消失）。
+ * 无法嵌入（UWP/管理员权限等）→ 如实回退独立窗口并关闭占位窗口。
+ */
 export async function launchThirdApp(id: string, name: string): Promise<void> {
+  const { openVwmApp, closeVwmApp } = await import("../windows/vwm");
+  const tpApp = `tp:${id}` as Parameters<typeof openVwmApp>[0];
+  openVwmApp(tpApp);
   try {
-    await ipc.tpLaunch(id);
+    const r = await ipc.embedLaunch(id);
+    if (!r.attached) {
+      closeVwmApp(tpApp);
+      pushToast("info", name, r.reason || "已按独立窗口运行");
+    }
   } catch (e) {
+    closeVwmApp(tpApp);
     pushToast("error", name, errMessage(e).message);
   }
 }

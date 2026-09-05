@@ -5,7 +5,7 @@ export type ThemeId = "deep-space" | "paper" | "minimal-black" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
 export type BgType = "nebula" | "color" | "gradient" | "image" | "video";
 /** 桌面环境壁纸模式（M2）：纯黑 / 3D 引力场 / 视频 / 图片 / 混合（媒体+星空叠加）。 */
-export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "hybrid";
+export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "hybrid" | "web" | "system";
 /**
  * 启动动画（批次A，规格 14.2.1）：控制真实加载完成后的过渡编排。
  * - full：字母落位任务栏 + 任务栏展开 + 图标淡入（阶段4/5 完整编排）
@@ -36,6 +36,8 @@ export interface CustomBg {
   dynamicStrength: number; // 0..1
   parallaxStrength: number; // 0..1
   playVideo: boolean;
+  /** 批次E-15：网页壁纸（Wallpaper Engine web 型项目）入口 html 绝对路径。 */
+  htmlPath: string;
 }
 
 export type GridMode = "dot" | "grid" | "iso" | "none";
@@ -140,6 +142,7 @@ export const DEFAULT_SETTINGS: Settings = {
     dynamicStrength: 0.5,
     parallaxStrength: 0.4,
     playVideo: true,
+    htmlPath: "",
   },
   mindDefaults: {
     gridEnabled: true,

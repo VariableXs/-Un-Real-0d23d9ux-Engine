@@ -7,6 +7,7 @@ import { formatDateTime } from "../../../i18n";
 import { pushToast, uiStore, useUi } from "../../../state/uiStore";
 import { useUninstalledOfficial } from "../../../system/launcher/official";
 import { matchPinyin, isAsciiQuery } from "../../../lib/pinyin";
+import { CloseLight } from "../../../components/CloseLight";
 
 /** Global search across documents, folders, maps and node text. */
 export function SearchOverlay(): React.ReactElement | null {
@@ -112,6 +113,7 @@ export function SearchOverlay(): React.ReactElement | null {
     <div className="modal-overlay search-overlay" onMouseDown={(e) => e.target === e.currentTarget && uiStore.setState({ searchOpen: false })}>
       <div className="search-panel card-pop" role="dialog" aria-label={t("globalSearch")}>
         <div className="search-head">
+          <CloseLight onClose={() => uiStore.setState({ searchOpen: false })} />
           <Search size={17} className="dim" />
           <input
             ref={inputRef}

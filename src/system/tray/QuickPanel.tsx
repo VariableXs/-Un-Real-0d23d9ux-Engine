@@ -4,6 +4,7 @@ import {
   Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
+import { CloseLight } from "../../components/CloseLight";
 import type { QuickSection } from "../../state/uiStore";
 import { pushToast } from "../../state/uiStore";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -117,6 +118,7 @@ export function QuickPanel(props: {
     >
       <div className="quick-panel" role="dialog" aria-label={t("trayQuick")}>
         <div className="qp-head">
+          <CloseLight onClose={props.onClose} />
           <span>{t("trayQuick")}</span>
           <button type="button" className="qp-close" aria-label={t("close")} onClick={props.onClose}>
             <X size={14} />

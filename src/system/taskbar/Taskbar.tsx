@@ -12,7 +12,8 @@ import { errMessage, ipc, type SysBrief, type SysDisk, type ThirdApp } from "../
 import { useDnd } from "../../state/notifyStore";
 import { desktopAppLabel, desktopIconDefs } from "../desktop-icons/DesktopIcons";
 import { openContextMenu, type MenuItem } from "../../components/ContextMenu";
-import { openSystemWindow } from "../windows/appWindows";
+import { closeVwmWin, openVwmApp, taskbarClickVwm, vwmStore } from "../windows/vwm";
+import { useStore } from "../../lib/store";
 import {
   launchThirdApp, openLauncherManager, reloadThirdApps, toggleTaskbarPin,
   useTaskbarPins, useThirdApps,
@@ -50,6 +51,8 @@ export function Taskbar(props: {
   const quickSection = useUi((s) => s.quickSection);
   const [officialRunning, setOfficialRunning] = useState<Set<AppMode>>(new Set());
   const [tpRunning, setTpRunning] = useState<Set<string>>(new Set());
+  // 虚拟窗口管理器：运行态与多开计数（VWM 内托管的软件窗口）
+  const vwmWins = useStore(vwmStore, (s) => s.wins);
   const wifi = useHw((s) => s.wifi);
   const bluetooth = useHw((s) => s.bluetooth);
   const audio = useHw((s) => s.audio);
@@ -74,7 +77,11 @@ export function Taskbar(props: {
         const wins = await getAllWindows();
         const apps = new Set<AppMode>();
         for (const w of wins) {
-          if (w.label.startsWith("app-")) apps.add(w.label.slice(4) as AppMode);
+          // OS 拆窗 label → AppMode（app-write/app-mind/app-code/app-fate；code 即 project）
+          if (w.label.startsWith("app-")) {
+            const a = w.label.slice(4);
+            apps.add((a === "code" ? "project" : a) as AppMode);
+          }
         }
         if (alive) setOfficialRunning(apps);
       } catch {
@@ -146,6 +153,8 @@ export function Taskbar(props: {
   };
 
   const defs = desktopIconDefs().filter((d) => uninstalled[d.app] === undefined);
+  // 文件管理器运行态（VWM 虚拟窗口；explorer/recycle 均算文件管理器家族）
+  const explorerRunning = vwmWins.some((w) => w.app === "explorer");
   // 批次C：任务栏显示的第三方 = 固定的 ∪ 运行中的
   const pinnedSet = new Set(pins);
   const taskbarThirds = thirds.filter((a) => pinnedSet.has(a.id) || tpRunning.has(a.id));
@@ -181,6 +190,14 @@ export function Taskbar(props: {
     setHover(null);
   };
   const closeOfficial = async (app: AppMode): Promise<void> => {
+    // VWM 虚拟窗口优先：关闭该软件最上层实例（多开时逐个关）
+    const mine = vwmStore.getState().wins.filter((w) => w.app === app);
+    if (mine.length > 0) {
+      const top = mine.reduce((a, b) => (a.z >= b.z ? a : b));
+      closeVwmWin(top.id);
+      setHover(null);
+      return;
+    }
     try {
       const w = await getAllWindows();
       const target = w.find((x) => x.label === `app-${app}`);
@@ -389,25 +406,30 @@ export function Taskbar(props: {
           <Search size={19} strokeWidth={1.7} />
         </button>
         <span className="tb-sep" aria-hidden />
-        {/* M6：文件管理器（系统级入口，Win11 任务栏习惯位置） */}
+        {/* M6：文件管理器（系统级入口，Win11 任务栏习惯位置）
+            VWM 化后：运行态 = 虚拟窗口存在；点击 = 打开/聚焦/最小化切换 */}
         <button
           type="button"
-          className="tb-btn"
+          className={`tb-btn${explorerRunning ? " running" : ""}`}
           aria-label={t("explorerWin")}
           title={t("explorerWin")}
           onClick={() => {
             pushRecent("sys", "explorer", t("explorerWin"));
-            void openSystemWindow("explorer");
+            if (explorerRunning) taskbarClickVwm("explorer");
+            else openVwmApp("explorer");
           }}
         >
           <span className="tb-app-icon" style={{ ["--hue" as string]: "210" }}>
             <FolderOpen size={19} strokeWidth={1.7} />
           </span>
+          {explorerRunning && <span className="tb-dot" aria-hidden />}
         </button>
-        {/* 批次C：官方四软件（卸载后不显示；运行中带指示点；批次E：悬停预览/中键关窗） */}
+        {/* 批次C：官方四软件（卸载后不显示；运行中带指示点；批次E：悬停预览/中键关窗）
+            VWM 化后：运行态 = 虚拟窗口存在；点击 = 打开/聚焦/最小化切换；中键 = 新开实例（多开） */}
         {defs.map((d) => {
           const Icon = d.icon;
-          const running = officialRunning.has(d.app);
+          const vwins = vwmWins.filter((w) => w.app === d.app);
+          const running = officialRunning.has(d.app) || vwins.length > 0;
           return (
             <button
               key={d.id}
@@ -417,11 +439,12 @@ export function Taskbar(props: {
               title={desktopAppLabel(d.app)}
               onClick={() => {
                 pushRecent("app", d.app, desktopAppLabel(d.app));
-                props.onOpenApp(d.app);
+                if (vwins.length > 0) taskbarClickVwm(d.app);
+                else props.onOpenApp(d.app);
               }}
               onAuxClick={(e) => {
-                // 批次E：中键 = 运行中关窗（Windows 习惯：中键新实例；官方单实例 → 关窗等价回桌面）
-                if (e.button === 1 && running) void closeOfficial(d.app);
+                // Windows 习惯：中键任务栏图标 = 新开一个实例（同软件多开）
+                if (e.button === 1) openVwmApp(d.app, { forceNew: true });
               }}
               onMouseEnter={() => hoverEnter(d.id, desktopAppLabel(d.app), running, d.app)}
               onMouseLeave={hoverLeave}

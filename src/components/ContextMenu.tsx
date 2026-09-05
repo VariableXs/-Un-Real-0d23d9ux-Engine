@@ -165,11 +165,14 @@ function MenuLevel(props: {
           </button>
         ),
       )}
-      {subOpen && subPos && (
+      {subOpen && (
         <div
           ref={subRef}
           className="ctx-menu ctx-sub"
-          style={{ left: subPos.x, top: subPos.y }}
+          // 先渲染（屏幕外）→ useLayoutEffect 量测尺寸 → subPos 定位。
+          // 此前 `subOpen && subPos &&` 是死锁：子菜单要 subPos 才渲染，
+          // subPos 又要子菜单渲染后才有 ref 可量测 → 子菜单永远无法展开。
+          style={{ left: subPos?.x ?? -9999, top: subPos?.y ?? -9999, visibility: subPos ? undefined : "hidden" }}
           role="menu"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}

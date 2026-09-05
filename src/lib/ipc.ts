@@ -252,6 +252,23 @@ export const ipc = {
   wpSetMonitor: (monitor: string, path: string) => invoke<void>("wp_set_monitor", { monitor, path }),
   wpPickDaily: (dir: string, mode: "date" | "next") =>
     invoke<string | null>("wp_pick_daily", { dir, mode }),
+  /** 批次E-12：扫描 Wallpaper Engine 壁纸项目（root 空 = 自动探测 Steam 库）。 */
+  wpEngineScan: (root = "") => invoke<Shell.WpEngineItem[]>("wp_engine_scan", { root }),
+  /**
+   * 批次E-15：通过 Wallpaper Engine 本体打开任意类型项目
+   * （scene/application 等不可内嵌渲染的类型；调 WE 官方 -control openWallpaper）。
+   */
+  wpEngineOpen: (id: string, source = "") => invoke<void>("wp_engine_open", { id, source }),
+
+  // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
+  /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */
+  embedLaunch: (id: string) =>
+    invoke<{ attached: boolean; reason: string }>("embed_launch", { id }),
+  embedBounds: (x: number, y: number, w: number, h: number) =>
+    invoke<void>("embed_bounds", { x, y, w, h }),
+  embedVisible: (visible: boolean) => invoke<void>("embed_visible", { visible }),
+  embedClose: () => invoke<void>("embed_close"),
+  embedFocus: () => invoke<void>("embed_focus"),
 
   // ---- 批次E-7: 数据隐私（保险箱 AES-256-GCM / 焚毁 / 自检，全部本机） ----
   vaultStatus: () => invoke<Shell.VaultStatus>("vault_status"),
@@ -366,6 +383,16 @@ namespace Shell {
     y: number;
     width: number;
     height: number;
+  }
+  /** 批次E-12：Wallpaper Engine 壁纸项目（scene/web 类型如实 supported=false）。 */
+  export interface WpEngineItem {
+    id: string;
+    title: string;
+    kind: string;
+    file: string | null;
+    preview: string | null;
+    supported: boolean;
+    source: string;
   }
   /** 批次E-7：隐私保险箱状态。 */
   export interface VaultStatus {
@@ -485,6 +512,7 @@ export type OfficialUsage = Shell.OfficialUsage;
 export type SysBrief = Shell.SysBrief;
 export type SysDisk = Shell.SysDisk;
 export type WpMonitor = Shell.WpMonitor;
+export type WpEngineItem = Shell.WpEngineItem;
 export type VaultStatus = Shell.VaultStatus;
 export type VaultItem = Shell.VaultItem;
 export type AuditFinding = Shell.AuditFinding;

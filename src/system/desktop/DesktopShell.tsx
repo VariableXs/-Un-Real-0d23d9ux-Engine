@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
-import { HardDrive, Minus, X } from "lucide-react";
-import { askChoice, askConfirm } from "../../components/Modal";
+import { HardDrive, X } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { Settings } from "../../lib/settings";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -21,7 +20,8 @@ import { PrivacyBanner } from "../tray/PrivacyBanner";
 import { LauncherManager } from "../launcher/LauncherManager";
 import { WelcomeWizard } from "../welcome/WelcomeWizard";
 import { getThirdApps, launchThirdApp, reloadThirdApps } from "../launcher/thirdApps";
-import { openAppWindow, openSystemWindow } from "../windows/appWindows";
+import { openVwmApp, openVwmSystem } from "../windows/vwm";
+import { VirtualWindowManager } from "../windows/VirtualWindowManager";
 import { applySnap, SnapPreviewHost } from "../windows/snap";
 import { pushRecent } from "../startmenu/recent";
 import { effectiveBinds } from "../../lib/shortcuts";
@@ -36,10 +36,10 @@ import { effectiveBinds } from "../../lib/shortcuts";
  * 图标交错淡入、红绿灯由暗态激活；挂载 ~1.7s 后推送一次"本地数据就绪"
  * 通知（数字来自真实 BootStats）。首次启动（wizardDone=false）显示欢迎向导。
  *
- * 红绿灯行为（桌面窗口）：
- * - 黄 = 最小化 Variable（Alt+Tab 可返回）
- * - 绿 = M3+ 与任务栏联动后开放（本阶段隐藏，不提供假功能）
- * - 红 = 确认后退出 Variable（未保存记录先走既有保存冲刷流程）
+ * 红绿灯行为（桌面窗口，需求指定 绿|黄|红 顺序）：
+ * - 🟢 = 退出 Variable（选择框：隐藏到托盘 / 完全退出，未保存记录先走保存冲刷）
+ * - 🟡 = 全屏（最大化-还原；避让任务栏时还原为全覆盖）
+ * - 🔴 = 最小化 Variable（Alt+Tab 可返回）
  */
 export function DesktopShell(props: {
   settings: Settings;
@@ -62,56 +62,20 @@ export function DesktopShell(props: {
   const [fsApp, setFsApp] = useState(false);
   const [usbRemoved, setUsbRemoved] = useState(false);
 
-  const exitDesktop = async (): Promise<void> => {
-    const ok = await askConfirm({
-      title: t("exitVariable"),
-      body: t("exitConfirmBody"),
-      danger: true,
-      okLabel: t("exitVariable"),
-    });
-    if (ok) props.onCloseRequested();
-  };
-
-  // 批次D（规格 4.3.4）：🔴 选择框 —— 隐藏到托盘（Variable 继续运行）/ 完全退出
-  const redMenu = async (): Promise<void> => {
-    const v = await askChoice({
-      title: t("exitVariable"),
-      body: t("redChoiceBody"),
-      options: [
-        { value: "tray", label: t("hideToTray") },
-        { value: "exit", label: t("exitVariable"), danger: true },
-      ],
-    });
-    if (v === "tray") {
-      await ipc.winHideToTray().catch((e) => pushToast("error", t("hideToTray"), errMessage(e).message));
-    } else if (v === "exit") {
-      await exitDesktop();
-    }
-  };
-
-  // 批次D（规格 4.3.4）：🟢 覆盖 / 避让 Windows 任务栏切换
-  const toggleAvoid = async (): Promise<void> => {
-    const next = !props.settings.avoidTaskbar;
-    try {
-      await ipc.winSetAvoidTaskbar(next);
-      props.onPatchSettings({ avoidTaskbar: next });
-      pushToast("success", t("winControlsToggle"), next ? t("avoidTaskbar") : t("coverTaskbar"));
-    } catch (e) {
-      pushToast("error", t("winControlsToggle"), errMessage(e).message);
-    }
-  };
+  // 退出不再弹确认框：所有入口（红绿灯/开始菜单/托盘）直接走保存冲刷 + 关闭。
+  const exitDesktop = (): void => props.onCloseRequested();
 
   // 批次D（规格 4.4.3）：Win+数字 → 任务栏第 n 位（文件管理器 / 四软件 / 第三方）
   const launchIndex = (n: number): void => {
     if (n === 1) {
-      void openSystemWindow("explorer");
+      openVwmSystem("explorer");
       return;
     }
     const apps: AppMode[] = ["write", "mindmap", "project", "fate"];
     const idx = n - 2;
     if (idx < apps.length) {
       const app = apps[idx];
-      if (app) void openAppWindow(app);
+      if (app) openVwmApp(app);
       return;
     }
     const a = getThirdApps()[n - 6];
@@ -274,12 +238,18 @@ export function DesktopShell(props: {
       const dir = e.payload;
       if (dir === "left" || dir === "right" || dir === "up" || dir === "down") void applySnap(dir);
     });
+    // 批次E-9：后端快捷键（ctrl+alt+e 等）→ 系统窗口进 VWM 虚拟窗口（不再开 OS 窗口）
+    const unSys = listen<string>("sys://open-system", (e) => {
+      const kind = e.payload;
+      if (kind === "explorer" || kind === "recycle") openVwmSystem(kind);
+    });
     return () => {
       void unShow.then((f) => f()).catch(() => {});
       void unHide.then((f) => f()).catch(() => {});
       void unWin.then((f) => f()).catch(() => {});
       void unIdx.then((f) => f()).catch(() => {});
       void unSnap.then((f) => f()).catch(() => {});
+      void unSys.then((f) => f()).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win]);
@@ -343,7 +313,7 @@ export function DesktopShell(props: {
       <WallpaperLayer settings={props.settings} />
       <DesktopIcons
         onOpenApp={onOpenApp}
-        onOpenSystem={(kind) => void openSystemWindow(kind)}
+        onOpenSystem={(kind) => openVwmSystem(kind)}
         onOpenSettings={props.onOpenSettings}
         iconSize={props.settings.iconSize}
         wallpaperMode={props.settings.wallpaperMode}
@@ -380,63 +350,12 @@ export function DesktopShell(props: {
       {/* 批次E-6：Win+Tab 多窗口切换器（可选开关关闭时不启用） */}
       {props.settings.winTabSwitcher && <WintabSwitcher />}
 
-      {/* 批次D（规格 4.3）：红绿灯补全 —— 🔴 选择框 / 🟡 最小化 / 🟢 覆盖-避让切换；
-          winControls=windows 时渲染 Windows 风格右上角控件。 */}
-      {props.settings.winControls === "windows" ? (
-        <div className="desktop-lights win-style" role="group" aria-label="Window controls">
-          <button
-            type="button"
-            className="winctl-btn"
-            aria-label={t("minimize")}
-            title={t("minimize")}
-            onClick={() => void win.minimize().catch(() => {})}
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            type="button"
-            className="winctl-btn winctl-close"
-            aria-label={t("exitVariable")}
-            title={t("exitVariable")}
-            onClick={() => void redMenu()}
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ) : (
-        <div className="desktop-lights" role="group" aria-label="Window controls">
-          <button
-            type="button"
-            className="win-btn"
-            aria-label={t("exitVariable")}
-            title={t("exitVariable")}
-            onClick={() => void redMenu()}
-          >
-            <span className="win-dot red" />
-          </button>
-          <button
-            type="button"
-            className="win-btn"
-            aria-label={t("minimize")}
-            title={t("minimize")}
-            onClick={() => void win.minimize().catch(() => {})}
-          >
-            <span className="win-dot yellow" />
-          </button>
-          <button
-            type="button"
-            className="win-btn"
-            aria-label={props.settings.avoidTaskbar ? t("coverTaskbar") : t("avoidTaskbar")}
-            title={props.settings.avoidTaskbar ? t("coverTaskbar") : t("avoidTaskbar")}
-            onClick={() => void toggleAvoid()}
-          >
-            <span className="win-dot green" />
-          </button>
-        </div>
-      )}
-
-      {/* 批次D（规格 4.5）：拖拽贴靠预览浮层 */}
+      {/* 批次E-16：桌面红绿灯已按需求移除 —— 退出改为连按两次 Esc（确认框保留） */}
       <SnapPreviewHost />
+
+      {/* 虚拟窗口管理器：四款软件以虚拟窗口托管于桌面层内
+          （Z 序 / 聚焦 / 拖拽 / 贴靠 / 最小化到任务栏 / 右上角 Mac 红绿灯 / 同软件多开） */}
+      <VirtualWindowManager settings={props.settings} />
 
       <StartMenu
         open={startOpen}
