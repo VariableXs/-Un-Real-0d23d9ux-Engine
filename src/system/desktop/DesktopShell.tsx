@@ -18,6 +18,7 @@ import { Taskbar } from "../taskbar/Taskbar";
 import { StartMenu } from "../startmenu/StartMenu";
 import { PrivacyBanner } from "../tray/PrivacyBanner";
 import { LauncherManager } from "../launcher/LauncherManager";
+import { AIHub } from "../ai/AIHub";
 import { WelcomeWizard } from "../welcome/WelcomeWizard";
 import { getThirdApps, launchThirdApp, reloadThirdApps } from "../launcher/thirdApps";
 import { openVwmApp, openVwmSystem } from "../windows/vwm";
@@ -388,6 +389,9 @@ export function DesktopShell(props: {
 
       {/* M7 第三方软件管理器（模态） */}
       <LauncherManager />
+
+      {/* 批次B-9（M3）：AI Hub（终端与云 AI 矩阵统一入口） */}
+      <AIHub />
 
       {/* 批次A：首次启动欢迎向导（exit 编排结束后出现；完成/跳过后不再显示） */}
       {!props.settings.wizardDone && !props.entering && (

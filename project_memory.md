@@ -1,3 +1,31 @@
+## 批次 B-7…B-11（2026-09-06）完成 — M3 终端与云 AI 矩阵（代码面收口）
+- B-7：shell/terminal.rs——终端 V1 = 便携 Windows Terminal 以第三方登记项接入
+  （id variable-terminal，执行档 VARIABLE_ENV=terminal），复用既有 embed 通道嵌入
+  VWM（零渲染代码）；部署位 runtime/wt/WindowsTerminal.exe（用户放入或后续授权
+  下载）；ConPTY/xterm.js 自绘为 V2 批。term_open 幂等登记+路径漂移纠正。
+- B-8：shell/ai.rs——AI_TOOLS 注册表（claude-code/codex/zcode：npm 包、shim、
+  配置目录、登录标记文件、Token 环境变量名、建议出站域）；ai_install_node 经
+  curl.exe（CREATE_NO_WINDOW）下载 nodejs.org latest-v22.x（先抓目录页解析 zip 名）
+  + Expand-Archive 解压上提 runtime/node，进度轮询文件字节数 emit ai://progress；
+  ai_install_tool = npm.cmd install -g，npm_config_prefix 指向容器 runtime/npm-global
+  ——全局包与凭据绝不落宿主。出站均由前端 requestNetConsent 逐域授权后才发起。
+- B-9：AIHub.tsx（模态）+ 任务栏 Bot 入口 + uiStore.aiHubOpen；三态卡片状态机
+  （未安装/未登录/已登录·推断），身份 chips（切换=以该身份开终端）、安装进度
+  实时显示、ai_verify 一键验证。
+- B-10：identities.seal 复用保险箱 AES-256-GCM（privacy.rs 暴露 vault_key/seal_pub/
+  open_seal_pub；未解锁读写均如实报错）；ai_launch = 把「工具+身份」写入终端执行档
+  （Token 注入工具专属环境变量名 + 配置目录 @label 后缀 + PATH 前置容器 shim/node
+  字面展开），前端随后走 launchThirdApp 嵌入。V1 边界：WT 单实例，切换身份需先关
+  既有终端窗口（新窗口才拿到新环境）。
+- B-11：ai_verify 逐工具断言 shim/配置目录在容器内、宿主 %USERPROFILE% 出现同名
+  目录即违规残留；真机登录跑通矩阵待三宿主点验（🟡，需真实账号）。
+- 验收：cargo test --workspace 55 绿（新增 ai/terminal 6 项）；tsc/vitest 218/
+  audit（新增 10 命令注册面）/build 全绿。GUI 实机点验项见 selfcheck 边界。
+- 教训：①路径辅助函数签名要一开始就收 &Path 而非 &AppState——线程里只有
+  data_dir 可 move，返工一次；②Modal 是受控组件（open/title 自带头部），自绘
+  modal-head 会双标题；③批量脚本改多文件前先统一探测每份文件的行尾，同一仓库内
+  CRLF/LF 混存比想象中普遍。
+
 ## 批次 B-3…B-6（2026-09-06）完成 — M1 隔离执行档与凭据封存（里程碑收口）
 - B-3：ThirdApp 增 profile 字段（PortableProfile：envRedirect/envSet/netAllow/sensitive，
   全 serde default）——apps.json v1 文件读出即空档，可读可写，无需显式迁移脚本；

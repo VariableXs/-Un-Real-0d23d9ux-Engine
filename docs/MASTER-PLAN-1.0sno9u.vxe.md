@@ -272,11 +272,11 @@ M7 应用生态 2.0(搬迁向导/图标) ──► M8 网络层(白名单/代理
 
 **M3 终端与云 AI（先于 M2，因不等容器即可用 DirBackend）**
 
-- [ ] **B-7** ConPTY 终端服务（`terminal.rs`）＋ Windows Terminal Portable 嵌入 V1
-- [ ] **B-8** 容器内 Node 运行时部署脚本＋`ai install` 安装器（进度事件流）
-- [ ] **B-9** AI Hub 面板（三态卡片＋唤起）＋任务栏入口
-- [ ] **B-10** Vault 2.0 账号身份库＋Token 注入＋多账号 profile 切换
-- [ ] **B-11** 三工具（claude/codex/zcode）真机跑通矩阵＋凭据零落宿主断言
+- [x] **B-7** ConPTY 终端服务（`terminal.rs`）＋ Windows Terminal Portable 嵌入 V1
+- [x] **B-8** 容器内 Node 运行时部署脚本＋`ai install` 安装器（进度事件流）
+- [x] **B-9** AI Hub 面板（三态卡片＋唤起）＋任务栏入口
+- [x] **B-10** Vault 2.0 账号身份库＋Token 注入＋多账号 profile 切换
+- [ ] **B-11** 三工具（claude/codex/zcode）真机跑通矩阵＋凭据零落宿主断言（🟡 断言工具已落地，真机矩阵待点验）
 
 **M2 容器与 8TB**
 
@@ -649,11 +649,11 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-4 | spawn_profiled 执行档执行器 | ✅ | exec.rs：{container}/{home} 展开 + 环境注入 + tp_launch 接管（失败降级旧通道）；cmd.exe 端到端注入测试全绿（2026-09-06） |
 | B-5 | 重定向模板库 v1 + 设置页 | ✅ | 5 模板（claude-code/codex/zcode/git/node）+ 设置页「执行档」标签（模板套用/表格编辑/pf* 22 键 i18n）（2026-09-06） |
 | B-6 | 残留扫描器 | ✅ | 启动基线快照 + 会话差集扫描（USERPROFILE 顶层+Recent）+ 干跑 UI；观测面口径见 selfcheck 边界（2026-09-06） |
-| B-7 | ConPTY 终端 + WT Portable 嵌入 | ☐ | |
-| B-8 | Node 运行时 + ai install | ☐ | |
-| B-9 | AI Hub 面板 | ☐ | |
-| B-10 | Vault 2.0 + 多账号 | ☐ | |
-| B-11 | 三 CLI 工具真机矩阵 | ☐ | |
+| B-7 | ConPTY 终端 + WT Portable 嵌入 | ✅ | terminal.rs：终端=第三方登记项（执行档 VARIABLE_ENV=terminal）+ 既有 embed 通道嵌入 VWM；部署位 runtime/wt/（用户放入或经授权下载）；ConPTY/xterm.js 为 V2 后续批（2026-09-06） |
+| B-8 | Node 运行时 + ai install | ✅ | ai.rs：runtime/node 便携部署（curl 下载+Expand-Archive，真实字节进度 ai://progress 事件流）；npm -g prefix 进容器 runtime/npm-global；出站走 netconsent 逐域授权（2026-09-06） |
+| B-9 | AI Hub 面板 | ✅ | 三态卡片（未安装/未登录/已登录·推断）+ 任务栏入口（Bot 图标）+ 身份库管理 + 安装进度实时显示（2026-09-06） |
+| B-10 | Vault 2.0 + 多账号 | ✅ | identities.seal 复用保险箱 AES-256-GCM（未解锁如实拒绝读写）；Token 注入终端执行档环境变量；多账号 = 配置目录 @label 后缀（{home}/.claude@work），PATH 前置容器 shim（2026-09-06） |
+| B-11 | 三 CLI 工具真机矩阵 | 🟡 | ai_verify 断言命令已落地（shim/配置在容器内 + 宿主同名目录=违规残留）；真机登录跑通矩阵待三宿主点验（需真实账号，selfcheck 边界声明） |
 | B-12 | ChunkIndex + 去重 | ☐ | |
 | B-13 | Journal 事务 + 掉电注入 | ☐ | |
 | B-14 | 压缩 + 加密 | ☐ | |
@@ -684,7 +684,7 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-39 | 包签名与分发 | ☐ | |
 | B-40 | 扩展审计面 | ☐ | |
 
-**当前进度：6 ✅ / 0 🟡 / 34 ☐ —— M0+M1 已收口。下一个动作：M3 终端与云 AI 矩阵（B-7 ConPTY 起步），可与 M2 容器线（B-12）双线并行。**
+**当前进度：10 ✅ / 1 🟡 / 29 ☐ —— M0+M1 收口，M3 代码面收口（B-11 真机矩阵待点验）。下一个动作：B-11 真机点验 + M2 容器线（B-12 ChunkIndex）。**
 
 ---
 

@@ -67,6 +67,10 @@ pub(crate) fn save_registry(st: &AppState, apps: &[ThirdApp]) -> CmdResult<()> {
     Ok(())
 }
 
+pub fn now_ms_pub() -> u64 {
+    now_ms()
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

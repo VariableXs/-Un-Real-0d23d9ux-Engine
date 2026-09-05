@@ -227,6 +227,20 @@ export const ipc = {
   profileDryrun: (id: string) => invoke<Shell.ProfileDryRun>("profile_dryrun", { id }),
   residueScan: () => invoke<Shell.ResidueEntry[]>("residue_scan"),
 
+  // ---- 批次B-7…B-11（M3 终端与云 AI 矩阵） ----
+  termStatus: () => invoke<Shell.TerminalStatus>("term_status"),
+  termOpen: () => invoke<string>("term_open"),
+  aiToolStatus: () => invoke<Shell.AiToolStatus[]>("ai_tool_status"),
+  aiInstallNode: () => invoke<void>("ai_install_node"),
+  aiInstallTool: (toolId: string) => invoke<void>("ai_install_tool", { toolId }),
+  identityList: () => invoke<Shell.AiIdentityView[]>("identity_list"),
+  identityAdd: (tool: string, label: string, token: string, note: string) =>
+    invoke<Shell.AiIdentityView>("identity_add", { tool, label, token, note }),
+  identityRemove: (id: string) => invoke<void>("identity_remove", { id }),
+  aiLaunch: (toolId: string, identityId?: string) =>
+    invoke<string>("ai_launch", { toolId, identityId: identityId ?? null }),
+  aiVerify: () => invoke<Shell.AiVerifyRow[]>("ai_verify"),
+
   // ---- 批次C: 运行态检测 + 预装软件卸载（规格 5.5-5.6） ----
   tpRunning: () => invoke<string[]>("tp_running"),
   officialUsage: (app: string) => invoke<Shell.OfficialUsage>("official_usage", { app }),
@@ -478,6 +492,49 @@ namespace Shell {
     size: number;
     modifiedMs: number;
   }
+  /** 批次B-7：终端就绪状态。 */
+  export interface TerminalStatus {
+    deployed: boolean;
+    path: string | null;
+    registered: boolean;
+  }
+  /** 批次B-9：AI 工具三态卡片数据源。 */
+  export interface AiToolStatus {
+    id: string;
+    name: string;
+    npmPackage: string;
+    nodeInstalled: boolean;
+    installed: boolean;
+    /** 登录态为容器配置标记推断，非读取凭据本体。 */
+    loggedIn: boolean;
+    lastActivityMs: number | null;
+    domains: string[];
+  }
+  /** 批次B-8：安装进度事件载荷。 */
+  export interface AiProgress {
+    tool: string;
+    phase: "node-download" | "node-extract" | "npm-install" | "done" | "error";
+    done: number;
+    total: number;
+    message: string;
+  }
+  /** 批次B-10：身份条目视图（凭据只回显尾 4 位）。 */
+  export interface AiIdentityView {
+    id: string;
+    tool: string;
+    label: string;
+    note: string;
+    createdAt: number;
+    tokenTail: string;
+  }
+  /** 批次B-11：凭据零落宿主断言行。 */
+  export interface AiVerifyRow {
+    id: string;
+    name: string;
+    shimInContainer: boolean;
+    configInContainer: boolean;
+    hostResidue: string[];
+  }
   export interface UsbStatus {
     portable: boolean;
     dataDir: string;
@@ -549,6 +606,11 @@ export type PortableProfile = Shell.PortableProfile;
 export type ProfileTemplateDto = Shell.ProfileTemplateDto;
 export type ProfileDryRun = Shell.ProfileDryRun;
 export type ResidueEntry = Shell.ResidueEntry;
+export type TerminalStatus = Shell.TerminalStatus;
+export type AiToolStatus = Shell.AiToolStatus;
+export type AiProgress = Shell.AiProgress;
+export type AiIdentityView = Shell.AiIdentityView;
+export type AiVerifyRow = Shell.AiVerifyRow;
 export type UsbStatus = Shell.UsbStatus;
 export type FileCheck = Shell.FileCheck;
 export type PackProgress = Shell.PackProgress;

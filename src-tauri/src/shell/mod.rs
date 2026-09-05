@@ -8,6 +8,7 @@
 //! - netconsent.rs 联网确认策略存储（默认零联网；任何联网前必须用户明确授权）
 //! - xflow.rs    跨软件数据流：跨窗口拖拽光标跟踪（批次 C 规格 5.7）
 
+pub mod ai;
 pub mod appman;
 pub mod embed;
 pub mod explorer;
@@ -19,6 +20,7 @@ pub mod netconsent;
 pub mod privacy;
 pub mod recycle;
 pub mod sysinfo;
+pub mod terminal;
 pub mod tray;
 pub mod usb;
 pub mod wallpaper;

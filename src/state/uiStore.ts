@@ -25,6 +25,8 @@ export interface UiState {
   quickSection: QuickSection | null;
   /** 第三方软件管理器（M7 launcher）。 */
   launcherOpen: boolean;
+  /** 批次B-9（M3）：AI Hub 面板。 */
+  aiHubOpen: boolean;
   /** 批次C：软件管理器当前页（第三方 / 已安装软件，规格 5.6）。 */
   launcherTab: "third" | "installed";
   settingsOpen: boolean;
@@ -57,6 +59,7 @@ export const uiStore = createStore<UiState>({
   quickSection: null,
   launcherOpen: false,
   launcherTab: "third",
+  aiHubOpen: false,
   settingsOpen: false,
   settingsTab: "appearance",
   focusMode: false,

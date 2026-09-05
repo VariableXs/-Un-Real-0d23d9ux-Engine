@@ -129,6 +129,21 @@ fn open_seal(key: &[u8; 32], blob: &[u8]) -> CmdResult<Vec<u8>> {
         .map_err(|_| AppError::validation("解密失败（口令错误或密文损坏）/ decrypt failed"))
 }
 
+/// 批次B-10（Vault 2.0）：身份库等扩展读取当前解锁密钥（None = 未解锁）。
+pub fn vault_key() -> CmdResult<Option<[u8; 32]>> {
+    Ok(**&vault_available()?)
+}
+
+/// 批次B-10：身份库加密（复用保险箱 AES-256-GCM 通道）。
+pub fn seal_pub(key: &[u8; 32], plain: &[u8]) -> CmdResult<Vec<u8>> {
+    seal(key, plain)
+}
+
+/// 批次B-10：身份库解密。
+pub fn open_seal_pub(key: &[u8; 32], blob: &[u8]) -> CmdResult<Vec<u8>> {
+    open_seal(key, blob)
+}
+
 fn vault_available() -> CmdResult<std::sync::MutexGuard<'static, Option<[u8; 32]>>> {
     VAULT_KEY
         .lock()

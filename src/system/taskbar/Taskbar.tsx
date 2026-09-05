@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { getAllWindows } from "@tauri-apps/api/window";
 import {
+  Bot,
   AppWindow, Bell, Bluetooth, ChevronLeft, ChevronRight, ChevronUp, FolderOpen, Moon, Pin, PinOff,
   Play, Search, Trash2, Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { AppMode } from "../../state/uiStore";
 import type { TaskbarPos } from "../../lib/settings";
-import { closeQuickPanel, openQuickPanel, pushToast, useUi } from "../../state/uiStore";
+import { closeQuickPanel, openQuickPanel, pushToast, useUi, uiStore } from "../../state/uiStore";
 import { errMessage, ipc, type SysBrief, type SysDisk, type ThirdApp } from "../../lib/ipc";
 import { useDnd } from "../../state/notifyStore";
 import { desktopAppLabel, desktopIconDefs } from "../desktop-icons/DesktopIcons";
@@ -423,6 +424,21 @@ export function Taskbar(props: {
             <FolderOpen size={19} strokeWidth={1.7} />
           </span>
           {explorerRunning && <span className="tb-dot" aria-hidden />}
+        </button>
+        {/* 批次B-9（M3）：AI Hub 入口（终端与云 AI 矩阵） */}
+        <button
+          type="button"
+          className="tb-btn"
+          aria-label={t("aiTitle")}
+          title={t("aiTitle")}
+          onClick={() => {
+            pushRecent("sys", "aihub", t("aiTitle"));
+            uiStore.setState({ aiHubOpen: true });
+          }}
+        >
+          <span className="tb-app-icon" style={{ ["--hue" as string]: "265" }}>
+            <Bot size={19} strokeWidth={1.7} />
+          </span>
         </button>
         {/* 批次C：官方四软件（卸载后不显示；运行中带指示点；批次E：悬停预览/中键关窗）
             VWM 化后：运行态 = 虚拟窗口存在；点击 = 打开/聚焦/最小化切换；中键 = 新开实例（多开） */}
