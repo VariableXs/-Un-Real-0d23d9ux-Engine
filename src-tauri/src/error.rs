@@ -70,4 +70,10 @@ impl From<tauri::Error> for AppError {
     }
 }
 
+impl From<serde_json::Error> for AppError {
+    fn from(e: serde_json::Error) -> Self {
+        AppError::io(e.to_string())
+    }
+}
+
 pub type CmdResult<T> = Result<T, AppError>;

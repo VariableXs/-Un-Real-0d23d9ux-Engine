@@ -1,0 +1,195 @@
+/* 启动仪式（真实事件驱动）— Variable Private Desktop Environment
+   进度、日志、字母描边全部由后端 boot://event 真实事件驱动，无预设时间线。 */
+
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #05070d;
+  color: #dfe7f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.boot-screen[data-exit="simple"],
+.boot-screen[data-exit="none"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.boot-screen[data-exit="simple"] { transition: opacity 0.5s ease; }
+.boot-screen[data-exit="none"] { transition: none; }
+
+/* ---- 阶段4（full 编排）：真实 ready 后字母落位任务栏 ----
+   进度条/日志/统计淡出 → 背景透出桌面 → 字母缩小落向底部任务栏 V 位置并溶解。
+   时序由真实 ready 事件触发（BootScreen.finish），此处仅描述视觉过渡。 */
+.boot-screen[data-exit="full"] {
+  background: transparent;
+  pointer-events: none;
+  transition: background 0.5s ease 0.4s;
+}
+.boot-screen[data-exit="full"] .boot-bar,
+.boot-screen[data-exit="full"] .boot-progress-row,
+.boot-screen[data-exit="full"] .boot-log,
+.boot-screen[data-exit="full"] .boot-stats-row,
+.boot-screen[data-exit="full"] .boot-summary,
+.boot-screen[data-exit="full"] .boot-hint,
+.boot-screen[data-exit="full"] .boot-skip {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.boot-screen[data-exit="full"] .boot-letter-fill {
+  fill: #cfe0ff;
+  transition: fill 0.5s ease;
+}
+.boot-screen[data-exit="full"] .boot-letter-stroke {
+  stroke: #eaf2ff;
+  transition: stroke 0.5s ease;
+}
+.boot-screen[data-exit="full"] .boot-letters {
+  animation: boot-land 1.15s cubic-bezier(0.6, 0.02, 0.32, 1) 0.42s both;
+}
+@keyframes boot-land {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  62% { transform: translateY(28vh) scale(0.52); opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateY(46.5vh) scale(0.16); opacity: 0; }
+}
+
+.boot-stage {
+  width: min(760px, 86vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ---- VARIABLE 字母（描边追随真实进度，每字母 12.5% 区间） ---- */
+.boot-letters { display: flex; gap: 4px; }
+.boot-letter { width: 64px; height: 88px; overflow: visible; }
+.boot-letter text {
+  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-size: 84px;
+  font-weight: 300;
+  letter-spacing: 0;
+}
+.boot-letter-fill { fill: #1a1f2e; }
+.boot-letter-stroke {
+  fill: none;
+  stroke: #9fc0ff;
+  stroke-width: 1.4;
+  transition: none; /* 描边由 JS 逐帧驱动，禁止 CSS 过渡造成假平滑 */
+}
+
+/* ---- 进度条（真实进度） ---- */
+.boot-bar {
+  width: 100%;
+  height: 2px;
+  margin-top: 26px;
+  background: rgba(159, 192, 255, 0.12);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.boot-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4f7cff, #9fc0ff);
+  border-radius: 1px;
+}
+.boot-progress-row {
+  width: 100%;
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
+  color: #7f97c4;
+}
+.boot-percent { color: #9fc0ff; font-variant-numeric: tabular-nums; }
+
+/* ---- 日志区（真实文件名与真实操作） ---- */
+.boot-log {
+  width: 100%;
+  margin-top: 22px;
+  min-height: 172px;
+  font: 12px/1.75 Consolas, "Cascadia Mono", monospace;
+  color: #7f97c4;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.boot-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.boot-line.is-warn { color: #d9b96c; }
+.boot-line.is-error { color: #e07070; }
+.boot-line-latest { color: #dfe7f5; }
+.boot-line-path { color: #54679a; padding-left: 22px; }
+.boot-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 1.5px solid #54679a;
+  border-top-color: #9fc0ff;
+  border-radius: 50%;
+  animation: boot-spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+
+/* ---- 实时统计（真实数据） ---- */
+.boot-stats-row {
+  width: 100%;
+  margin-top: 8px;
+  font: 12px/1.6 Consolas, "Cascadia Mono", monospace;
+  color: #54679a;
+  display: flex;
+  gap: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---- 完成摘要 ---- */
+.boot-summary {
+  width: 100%;
+  margin-top: 14px;
+  font: 13px/1.8 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #9fc0ff;
+  text-align: center;
+  letter-spacing: 0.06em;
+}
+
+.boot-hint {
+  margin-top: 14px;
+  font: 12px/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #d9b96c;
+}
+
+.boot-skip {
+  position: fixed;
+  right: 26px;
+  bottom: 22px;
+  font: 11px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #54679a;
+  letter-spacing: 0.08em;
+}
+.boot-denied {
+  position: fixed;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border: 1px solid rgba(217, 185, 108, 0.4);
+  border-radius: 8px;
+  background: rgba(20, 18, 10, 0.9);
+  color: #d9b96c;
+  font: 13px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-screen { transition: none; }
+  .boot-spinner { animation: none; opacity: 0.6; }
+  .boot-screen[data-exit="full"] .boot-letters { animation: none; opacity: 0; transition: opacity 0.3s ease; }
+  .boot-screen[data-exit="simple"] { transition: none; }
+}

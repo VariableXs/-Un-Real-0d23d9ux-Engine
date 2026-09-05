@@ -1,4 +1,5 @@
 ﻿pub mod backup;
+pub mod boot;
 pub mod db;
 pub mod error;
 pub mod export;
@@ -8,6 +9,7 @@ pub mod mindmap;
 pub mod models;
 pub mod project_scan;
 pub mod settings_cmd;
+pub mod shell;
 pub mod state;
 pub mod system;
 pub mod workspace;
@@ -18,10 +20,56 @@ use tauri::Manager;
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    // 批次E（规格 4.7）：accel → SHORTCUT_MAP 查表 → dispatch_action。
+                    // 快捷键表由 init_shortcuts（默认）/ shortcuts_apply（用户自定义）统一维护。
+                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        let accel = shortcut.into_string();
+                        if let Some(action) = shell::winman::shortcut_action(&accel) {
+                            shell::winman::dispatch_action_pub(app, &action);
+                        }
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let st = AppState::bootstrap()?;
-            log_line(&st, "app bootstrap ok");
+            log_line(&st, "app bootstrap dirs ok");
             app.manage(st);
+            // Real loading happens here and is streamed to the UI as
+            // `boot://event` progress events (no synthetic timeline).
+            boot::spawn_boot_loader(app.handle().clone());
+            // M8 拔出保护：仅便携模式生效（内部自行判断），1s 轮询数据卷 + 周期 WAL checkpoint
+            shell::usb::spawn_removal_watcher(app.handle().clone());
+            // 批次E-8：通讯软件未读提醒（微信/QQ/钉钉/飞书…，仅窗口标题，不读消息内容）
+            shell::imwatch::spawn_im_watcher(app.handle().clone());
+            // OS 系统托盘（M5）：图标 + 菜单，失败不阻断启动。
+            if let Err(e) = shell::tray::init(app.handle()) {
+                eprintln!("tray init failed: {e}");
+            }
+            // M6/批次C：全局快捷键 → 文件管理器 / 快捷面板分区 / 勿扰。
+            // 被系统/他方占用时逐项注册失败，诚实降级为任务栏/开始菜单入口，仅记录日志。
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let st = app.state::<AppState>();
+                for (accel, name) in [
+                    ("super+e", "Win+E"),
+                    ("ctrl+alt+b", "Ctrl+Alt+B"),
+                    ("ctrl+alt+o", "Ctrl+Alt+O"),
+                    ("super+n", "Win+N"),
+                    ("ctrl+shift+m", "Ctrl+Shift+M"),
+                ] {
+                    match app.global_shortcut().register(accel) {
+                        Ok(()) => log_line(&st, &format!("global shortcut {name} registered")),
+                        Err(e) => {
+                            log_line(&st, &format!("global shortcut {name} UNAVAILABLE (degraded)"));
+                            eprintln!("{name} register failed: {e}");
+                        }
+                    }
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -32,10 +80,16 @@ pub fn run() {
             match event {
                 tauri::WindowEvent::CloseRequested { .. } => log_line(&st, "window close REQUESTED"),
                 tauri::WindowEvent::Destroyed => log_line(&st, "window DESTROYED"),
+                // 批次0（规格 10.1）：桌面窗口获得焦点 → 自动恢复置顶覆盖。
+                // 启动第三方软件时会暂时撤销置顶让其浮于桌面之上，回到桌面即恢复。
+                tauri::WindowEvent::Focused(true) if window.label() == "desktop" => {
+                    let _ = window.set_always_on_top(true);
+                }
                 _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
+            boot::boot_replay,
             system::app_bootstrap,
             system::open_path,
             system::reveal_path,
@@ -54,6 +108,7 @@ pub fn run() {
             project_scan::project_read_file,
             project_scan::project_read_bytes,
             project_scan::read_text_file,
+    project_scan::write_text_file,
             library::list_folders,
             library::create_folder,
             library::rename_folder,
@@ -106,7 +161,88 @@ pub fn run() {
             export::export_documents,
             export::export_mindmap_json,
             export::export_workspace,
-            export::import_workspace
+            export::import_workspace,
+            shell::hardware::privacy_usage,
+            shell::hardware::audio_get,
+            shell::hardware::audio_set,
+            shell::hardware::audio_devices,
+            shell::hardware::audio_set_default,
+            shell::hardware::wifi_get,
+            shell::hardware::wifi_scan,
+            shell::hardware::wifi_disconnect,
+            shell::hardware::wifi_set,
+            shell::hardware::bluetooth_get,
+            shell::hardware::bluetooth_set,
+            shell::hardware::bt_devices,
+            shell::hardware::bt_connect,
+            shell::hardware::bt_disconnect,
+            shell::hardware::battery_get,
+            shell::hardware::brightness_get,
+            shell::hardware::brightness_set,
+            shell::explorer::ex_home,
+            shell::explorer::ex_drives,
+            shell::explorer::ex_variable_dirs,
+            shell::explorer::ex_list,
+            shell::explorer::ex_mkdir,
+            shell::explorer::ex_rename,
+            shell::explorer::ex_move,
+            shell::explorer::ex_copy,
+            shell::explorer::ex_trash,
+            shell::explorer::ex_search,
+            shell::explorer::ex_conflicts,
+            shell::explorer::ex_purge,
+            shell::explorer::ex_fav_list,
+            shell::explorer::ex_fav_add,
+            shell::explorer::ex_fav_remove,
+            shell::explorer::ex_thumbnail,
+            shell::recycle::rec_list,
+            shell::recycle::rec_restore,
+            shell::recycle::rec_purge,
+            shell::recycle::rec_empty,
+            shell::recycle::rec_count,
+            shell::launcher::tp_add,
+            shell::launcher::tp_list,
+            shell::launcher::tp_remove,
+            shell::launcher::tp_purge,
+            shell::launcher::tp_set_grade,
+            shell::launcher::tp_rename,
+            shell::launcher::tp_launch,
+            shell::launcher::tp_set_icon,
+            shell::launcher::tp_scan_start_menu,
+            shell::launcher::tp_portableize,
+            shell::launcher::tp_launch_admin,
+            shell::launcher::icon_dataurl,
+            shell::appman::tp_running,
+            shell::appman::official_usage,
+            shell::appman::official_purge,
+            shell::usb::usb_status,
+            shell::usb::usb_pack,
+            shell::usb::usb_verify,
+            shell::wallpaper::wp_monitors,
+            shell::wallpaper::wp_set_monitor,
+            shell::wallpaper::wp_pick_daily,
+            shell::privacy::vault_status,
+            shell::privacy::vault_init,
+            shell::privacy::vault_unlock,
+            shell::privacy::vault_lock,
+            shell::privacy::vault_import,
+            shell::privacy::vault_list,
+            shell::privacy::vault_export,
+            shell::privacy::vault_destroy,
+            shell::privacy::privacy_shred,
+            shell::privacy::privacy_audit,
+            shell::netconsent::net_consent_check,
+            shell::netconsent::net_consent_set,
+            shell::winman::win_set_avoid_taskbar,
+    shell::winman::win_hide_to_tray,
+    shell::winman::power_action,
+    shell::winman::shortcuts_apply,
+    shell::sysinfo::sys_brief,
+    shell::sysinfo::sys_disks,
+    shell::sysinfo::sys_user,
+    shell::sysinfo::net_ip,
+            mindmap::nodes_versions,
+            shell::xflow::drag_track
         ])
         .run(tauri::generate_context!());
     if let Err(e) = app {

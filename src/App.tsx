@@ -1,50 +1,98 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
+import { listen } from "@tauri-apps/api/event";
 import { useI18n, I18nContext, makeT } from "./i18n";
+import type { Lang } from "./i18n/dictionaries";
 import { ipc, errMessage } from "./lib/ipc";
 import { loadSettings, saveSetting, type Settings } from "./lib/settings";
 import { uiStore, pushToast, resetGlobalCanvasInteraction, useUi } from "./state/uiStore";
+import type { AppMode } from "./state/uiStore";
+import { isTauriRuntime } from "./entries/runtime";
+import { appWindowLabel, openAppWindow, trackSelfGeom } from "./system/windows/appWindows";
 import type { BootstrapInfo } from "./lib/types";
 
-/** True only inside the real Tauri webview — the dev-mode stub in main.tsx
- *  marks itself so `vite dev` in a plain browser never reports IPC failures. */
-function isTauriRuntime(): boolean {
-  const internals = (window as { __TAURI_INTERNALS__?: { __variableDevStub?: boolean } }).__TAURI_INTERNALS__;
-  return typeof window !== "undefined" && !!internals && internals.__variableDevStub !== true;
-}
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TitleBar, type ClosePhase } from "./components/TitleBar";
 import { ToastHost } from "./components/ToastHost";
 import { ContextMenuHost } from "./components/ContextMenu";
-import { ConfirmBubbleHost, ConfirmHost, PromptHost, Modal } from "./components/Modal";
+import { ConfirmBubbleHost, ChoiceHost, ConfirmHost, NetConsentHost, PromptHost, Modal } from "./components/Modal";
 import { CosmicBackground } from "./features/background/CosmicBackground";
-import { StartupAnimation } from "./features/startup/StartupAnimation";
-import { Sidebar } from "./features/folders/Sidebar";
-import { EditorView } from "./features/editor/EditorView";
-import { MindmapView } from "./features/mindmap/MindmapView";
-import { ProjectAnalysisView } from "./features/projectviz/ProjectAnalysisView";
-import { FateView } from "./features/fate/FateView";
-import { SearchOverlay } from "./features/search/SearchOverlay";
+import { BootScreen, type BootStats } from "./system/boot/BootScreen";
+import { DesktopShell } from "./system/desktop/DesktopShell";
+import { Sidebar } from "./apps/write/folders/Sidebar";
+import { EditorView } from "./apps/write/editor/EditorView";
+import { MindmapView } from "./apps/mind/MindmapView";
+import { ProjectAnalysisView } from "./apps/code/ProjectAnalysisView";
+import { CodeXrefPanel } from "./apps/code/XrefPanel";
+import { FateView } from "./apps/fate/FateView";
+import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
 
-export default function App(): React.ReactElement {
+export type AppEntryType = "desktop" | AppMode;
+
+export default function App(props: { appType: AppEntryType }): React.ReactElement {
   return (
     <ErrorBoundary>
-      <AppInner />
+      <AppInner appType={props.appType} />
     </ErrorBoundary>
   );
 }
 
-function AppInner(): React.ReactElement {
+function AppInner(props: { appType: AppEntryType }): React.ReactElement {
+  const appType = props.appType;
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [boot, setBoot] = useState<BootstrapInfo | null>(null);
   const [closePhase, setClosePhase] = useState<ClosePhase>("idle");
   const [ready, setReady] = useState(false);
+  // 启动仪式门控（仅桌面窗口）：真实加载（boot://event）完成前不进入应用、不发 IPC。
+  // 软件窗口按需创建、轻量秒开，不重播启动仪式；浏览器 dev 模式直接跳过。
+  // 批次A：loading → exit（字母落位编排，桌面 shell 在其下挂载）→ done。
+  const [bootPhase, setBootPhase] = useState<"loading" | "exit" | "done">(
+    !isTauriRuntime() || appType !== "desktop" ? "done" : "loading",
+  );
+  const [bootStats, setBootStats] = useState<BootStats | null>(null);
   const [editing, setEditing] = useState(false);
   const editingTimer = useRef<number>(0);
   const mode = useUi((s) => s.mode);
   const focusMode = useUi((s) => s.focusMode);
   const currentDocId = useUi((s) => s.currentDocId);
+
+  // M4 拆窗：软件窗口内视图由 appType 锁定（mode 变化不影响渲染，仅作内部状态）。
+  const view: AppMode | "desktop" = appType === "desktop" ? mode : appType;
+
+  // 批次C（规格 5.7.3）：Write 窗口常驻监听引用跳转 —— Code 面板/其他位置
+  // 引用某篇 Write 文档时，打开（或聚焦）Write 并切到该文档。
+  useEffect(() => {
+    if (appType !== "write" || !isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ kind: string; id: string }>("xref://focus", (ev) => {
+      if (ev.payload.kind !== "write-doc") return;
+      uiStore.setState({ currentDocId: ev.payload.id, mode: "write" });
+    });
+    void p
+      .then((u) => {
+        if (disposed) u();
+        else un = u;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, [appType]);
+
+  // 软件窗口：注册内部 mode + 挂载几何持久化（位置/尺寸记忆）。
+  useEffect(() => {
+    if (appType === "desktop") return;
+    uiStore.setState({ mode: appType });
+    let un: (() => void) | undefined;
+    void trackSelfGeom(appWindowLabel(appType)).then((f) => {
+      un = f;
+    });
+    return () => un?.();
+  }, [appType]);
 
   // track editor typing for background degradation
   useEffect(() => {
@@ -82,13 +130,14 @@ function AppInner(): React.ReactElement {
     return () => window.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
 
-  // ---------- boot ----------
+  // ---------- boot (runs only after the real loading sequence finished) ----------
   useEffect(() => {
+    if (bootPhase === "loading") return;
     (async () => {
       try {
         const s = await loadSettings();
         setSettingsState(s);
-        document.documentElement.lang = s.language === "en" ? "en" : "zh-CN";
+        document.documentElement.lang = s.language === "en" ? "en" : s.language === "zh-TW" ? "zh-TW" : "zh-CN";
         const info = await ipc.bootstrap().catch((e) => {
           // Browser dev mode (`npm run dev`) has no Tauri IPC backend — that is
           // expected, not an error. Only surface real failures inside Tauri.
@@ -97,19 +146,21 @@ function AppInner(): React.ReactElement {
           return null;
         });
         setBoot(info);
-        // restore last opened doc
+        // restore last opened doc (Write 窗口语义；其余窗口非致命)
         try {
           const raw = await ipc.getSettings();
           const lastDoc = raw["lastDocId"];
-          if (lastDoc) {
+          if (lastDoc && appType !== "desktop") {
             const d = await ipc.getDocument(lastDoc).catch(() => null);
             if (d && !d.deletedAt) uiStore.setState({ currentDocId: d.id });
           }
         } catch { /* non-fatal */ }
         // recovery files?
         try {
-          const rec = await ipc.listRecoveryFiles();
-          if (rec.length > 0) uiStore.setState({ recoveryPrompt: rec });
+          if (appType !== "desktop") {
+            const rec = await ipc.listRecoveryFiles();
+            if (rec.length > 0) uiStore.setState({ recoveryPrompt: rec });
+          }
         } catch { /* non-fatal */ }
       } finally {
         setReady(true);
@@ -118,7 +169,7 @@ function AppInner(): React.ReactElement {
         setTimeout(() => splash?.remove(), 500);
       }
     })();
-  }, []);
+  }, [bootPhase, appType]);
 
   const patchSettings = useCallback((patch: Partial<Settings>) => {
     setSettingsState((prev) => {
@@ -135,7 +186,7 @@ function AppInner(): React.ReactElement {
   const i18n = useMemo(
     () => ({
       lang: settings?.language ?? "zh",
-      setLang: (l: "zh" | "en") => patchSettings({ language: l }),
+      setLang: (l: Lang) => patchSettings({ language: l }),
       t: makeT(settings?.language ?? "zh"),
     }),
     [settings?.language, patchSettings],
@@ -185,17 +236,17 @@ function AppInner(): React.ReactElement {
       } else if (mod && k === ",") {
         e.preventDefault();
         uiStore.setState({ settingsOpen: true });
-      } else if (mod && e.shiftKey && k === "m") {
+      } else if (mod && e.shiftKey && k === "m" && appType === "desktop") {
+        // 拆窗后 write↔mindmap 切换仅是桌面窗口的过渡残留（M4 后桌面窗口不会进入应用视图）。
         e.preventDefault();
         uiStore.setState((s) => ({ mode: s.mode === "write" ? "mindmap" : "write" }));
       } else if (e.key === "F11") {
+        // 桌面环境常驻全屏：F11 仅切换专注模式（隐藏 UI 元素），不再退出全屏。
         e.preventDefault();
         const next = !uiStore.getState().focusMode;
         uiStore.setState({ focusMode: next });
-        void getCurrentWindow().setFullscreen(next).catch(() => {});
       } else if (e.key === "Escape" && uiStore.getState().focusMode) {
         uiStore.setState({ focusMode: false });
-        void getCurrentWindow().setFullscreen(false).catch(() => {});
       }
     };
     window.addEventListener("keydown", onKey);
@@ -203,9 +254,10 @@ function AppInner(): React.ReactElement {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("variable:mind-defaults-patch", onMindPatch);
     };
-  }, [settings]);
+  }, [settings, appType]);
 
   // ---------- guarded close flow ----------
+  // 桌面窗口 = 退出整个 Variable（先关全部软件窗口）；软件窗口红灯 = 只关自己。
   const requestClose = useCallback(async () => {
     setClosePhase("flushing");
     try {
@@ -213,14 +265,60 @@ function AppInner(): React.ReactElement {
       // give the editor's flush handler a moment to complete its IPC round-trip
       await new Promise((r) => setTimeout(r, 350));
       setClosePhase("idle");
+      if (appType === "desktop") {
+        const wins = await getAllWebviewWindows();
+        await Promise.all(
+          wins.filter((w) => w.label.startsWith("app-")).map((w) => w.destroy().catch(() => {})),
+        );
+      }
       await getCurrentWindow().destroy();
     } catch (e) {
       console.error("close flow failed", e);
       setClosePhase("failed");
     }
-  }, []);
+  }, [appType]);
 
   // beforeunload best-effort recovery write is handled in EditorView via flush event.
+
+  // ---------- 启动仪式 + 阶段4/5 退出编排 ----------
+  // BootScreen 全程保持挂载（同一 fragment 子位），不重挂、不重播；
+  // exit 期桌面 shell 在其下提前挂载（字母落位与任务栏展开交叠）。
+  if (view === "desktop" || bootPhase !== "done") {
+    const desktopReady = Boolean(settings && ready) && view === "desktop";
+    return (
+      <>
+        {desktopReady && settings ? (
+          <I18nContext.Provider value={i18n}>
+            <DesktopShell
+              settings={settings}
+              entering={bootPhase === "exit"}
+              bootStats={bootStats}
+              closePhase={closePhase}
+              onCloseRequested={() => void requestClose()}
+              onOpenApp={(app) => openAppWindow(app)}
+              onOpenSettings={() => uiStore.setState({ settingsOpen: true, settingsTab: "appearance", startOpen: false })}
+              onPatchSettings={patchSettings}
+            />
+            <SearchOverlay />
+            <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+            <ToastHost />
+            <ContextMenuHost />
+            <ConfirmHost />
+            <NetConsentHost />
+          </I18nContext.Provider>
+        ) : bootPhase !== "done" || !settings || !ready ? (
+          <div className="boot-hold" aria-busy="true" />
+        ) : null}
+        {bootPhase !== "done" && (
+          <BootScreen
+            onExitStart={() => setBootPhase((p) => (p === "loading" ? "exit" : p))}
+            onStats={setBootStats}
+            onDone={() => setBootPhase("done")}
+          />
+        )}
+      </>
+    );
+  }
 
   if (!settings || !ready) {
     return <div className="boot-hold" aria-busy="true" />;
@@ -238,11 +336,15 @@ function AppInner(): React.ReactElement {
         customBg={settings.customBg}
       />
       <div id="app-root" className={`app-root theme-${settings.theme} ${focusMode ? "focus" : ""}`}>
-        <TitleBar onCloseRequested={() => void requestClose()} closePhase={closePhase} />
+        <TitleBar
+          onCloseRequested={() => void requestClose()}
+          closePhase={closePhase}
+          appType={appType}
+        />
         <div className="main-row">
           <Sidebar />
           <div className="content-area">
-            {mode === "write" ? (
+            {view === "write" ? (
               <EditorView
                 key={currentDocId ?? "empty"}
                 settings={{
@@ -255,9 +357,13 @@ function AppInner(): React.ReactElement {
                   showStatusBar: settings.showStatusBar,
                 }}
               />
-            ) : mode === "project" ? (
-              <ProjectAnalysisView settings={settings} />
-            ) : mode === "fate" ? (
+            ) : view === "project" ? (
+              <>
+                <ProjectAnalysisView settings={settings} />
+                {/* 批次C（规格 5.7.3）：Code 引用 Write 技术文档的面板 */}
+                <CodeXrefPanel />
+              </>
+            ) : view === "fate" ? (
               <FateView />
             ) : (
               <MindmapView settings={settings} />
@@ -286,10 +392,10 @@ function AppInner(): React.ReactElement {
         <ContextMenuHost />
         <ConfirmBubbleHost />
         <ConfirmHost />
+        <ChoiceHost />
         <PromptHost />
         <ToastHost />
       </div>
-      <StartupAnimation enabled={settings.launchAnim && !settings.safeMode && !settings.reduceMotion} />
     </I18nContext.Provider>
   );
 }
@@ -307,9 +413,9 @@ function RecoveryPromptHost(): React.ReactElement | null {
     try {
       const docId = await ipc.recoverToDocument(first.id);
       uiStore.setState({ recoveryPrompt: null, currentDocId: docId, mode: "write" });
-      pushToast("success", lang === "zh" ? "已恢复为记录" : "Recovered as a record");
+      pushToast("success", lang !== "en" ? "已恢复为记录" : "Recovered as a record");
     } catch (e) {
-      pushToast("error", lang === "zh" ? "恢复失败" : "Recover failed", errMessage(e).message);
+      pushToast("error", lang !== "en" ? "恢复失败" : "Recover failed", errMessage(e).message);
     }
   }
 
@@ -334,9 +440,9 @@ function RecoveryPromptHost(): React.ReactElement | null {
         <span className="dim"> — {t("recoveredAt")} {new Date(first.savedAt).toLocaleString()}</span>
       </p>
       <p className="dim small ellipsis-2">{first.preview || "…"}</p>
-      {entries.length > 1 && <p className="dim small">{lang === "zh" ? `还有 ${entries.length - 1} 个恢复文件，可稍后处理。` : `${entries.length - 1} more recovery file(s) remain.`}</p>}
+      {entries.length > 1 && <p className="dim small">{lang !== "en" ? `还有 ${entries.length - 1} 个恢复文件，可稍后处理。` : `${entries.length - 1} more recovery file(s) remain.`}</p>}
       <button type="button" className="btn tiny ghost" onClick={() => void ipc.readRecoveryFile(first.id).then((c) => setDetail({ title: c.title, html: c.contentHtml })).catch(() => {})}>
-        {lang === "zh" ? "预览内容" : "Preview"}
+        {lang !== "en" ? "预览内容" : "Preview"}
       </button>
       {detail && (
         <div className="recovery-preview" dangerouslySetInnerHTML={{ __html: detail.html.slice(0, 4000) }} />

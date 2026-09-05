@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+﻿﻿import { useEffect } from "react";
 import {
-  Map as MapIcon, PenLine, ListFilter, Search, FilePlus2, Languages, Settings2,
-  FolderSearch, Sparkles,
+  ListFilter, Search, FilePlus2, Languages, Settings2, House,
 } from "lucide-react";
 import { useI18n } from "../i18n";
-import { uiStore, setSaveStatus, useUi, type SaveStatus } from "../state/uiStore";
+import { uiStore, setSaveStatus, useUi, type AppMode, type SaveStatus } from "../state/uiStore";
+import { focusDesktop } from "../system/windows/appWindows";
+import { beginDragSnap } from "../system/windows/snap";
 import { WindowControls } from "./WindowControls";
 
 export type ClosePhase = "idle" | "flushing" | "failed";
@@ -12,9 +13,14 @@ export type ClosePhase = "idle" | "flushing" | "failed";
 export function TitleBar(props: {
   onCloseRequested: () => void;
   closePhase: ClosePhase;
+  /** M4 拆窗：本窗口承载的软件（缺省 desktop = 桌面环境窗口，过渡期兼容）。 */
+  appType?: "desktop" | AppMode;
+  /** 批次D（规格 4.3.5）：窗口控制按钮风格（缺省 mac）。 */
+  controlStyle?: "mac" | "windows";
 }): React.ReactElement {
   const { t, lang, setLang } = useI18n();
-  const mode = useUi((s) => s.mode);
+  const appType = props.appType ?? "desktop";
+  const standalone = appType !== "desktop";
   const focusMode = useUi((s) => s.focusMode);
   const currentDocId = useUi((s) => s.currentDocId);
   const sidebarOpen = useUi((s) => s.sidebarOpen);
@@ -34,7 +40,7 @@ export function TitleBar(props: {
       <>
         <div className="titlebar hidden" />
         <div className="focus-controls">
-          <WindowControls onCloseRequested={props.onCloseRequested} />
+          <WindowControls onCloseRequested={props.onCloseRequested} style={props.controlStyle} />
         </div>
       </>
     );
@@ -73,54 +79,57 @@ export function TitleBar(props: {
     />
   );
 
+  const chipLabel =
+    appType === "write"
+      ? (lang !== "en" ? "写作" : "Write")
+      : appType === "mindmap"
+        ? (lang !== "en" ? "导图" : "Mind")
+        : appType === "project"
+          ? (lang !== "en" ? "项目" : "Code")
+          : (lang !== "en" ? "命运" : "Fate");
+
   return (
-    <header className="titlebar" data-tauri-drag-region>
+    <header
+      className="titlebar"
+      data-tauri-drag-region
+      onPointerDown={(e) => {
+        // 批次D（规格 4.5）：标题栏拖动 → 贴靠跟踪（左键、非交互控件区）
+        if (e.button !== 0) return;
+        const t = e.target as HTMLElement | null;
+        if (t?.closest("button, input, select, a")) return;
+        beginDragSnap();
+      }}
+    >
       <div className="tb-left" data-tauri-drag-region>
+        <button
+          type="button"
+          className="icon-btn"
+          data-tip={t("backDesktop")}
+          aria-label={t("backDesktop")}
+          onClick={() => (standalone ? focusDesktop() : uiStore.setState({ mode: "desktop" }))}
+        >
+          <House size={16} />
+        </button>
         <span className="logo" aria-hidden>V</span>
         <span className="app-name">Variable</span>
-        <span className="mode-chip">
-          {mode === "write"
-            ? (lang === "zh" ? "写作" : "Write")
-            : mode === "project"
-              ? (lang === "zh" ? "项目" : "Project")
-              : mode === "fate"
-                ? (lang === "zh" ? "命运" : "Fate")
-                : (lang === "zh" ? "导图" : "Map")}
-        </span>
+        <span className="mode-chip">{chipLabel}</span>
         {statusDot}
         {closePhase === "failed" && <span className="close-error">{t("closeSaveFailed")}</span>}
       </div>
 
       <div className="tb-right">
-        <button
-          type="button"
-          className="icon-btn"
-          data-tip={mode === "write" ? t("mindmapMode") : t("writingMode")}
-          aria-label={mode === "write" ? t("mindmapMode") : t("writingMode")}
-          onClick={() => uiStore.setState({ mode: mode === "write" ? "mindmap" : "write" })}
-        >
-          {mode === "write" ? <MapIcon size={17} /> : <PenLine size={17} />}
-        </button>
-        {/* 0.2 独立入口：项目分析空间（文件夹+放大镜，冰蓝色调） */}
-        <button
-          type="button"
-          className={`icon-btn pv-entry ${mode === "project" ? "active" : ""}`}
-          data-tip={lang === "zh" ? "项目分析 (Project)" : "Project analysis"}
-          aria-label={lang === "zh" ? "项目分析" : "Project analysis"}
-          onClick={() => uiStore.setState({ mode: mode === "project" ? "write" : "project" })}
-        >
-          <FolderSearch size={17} />
-        </button>
-        {/* 序章：命运推演空间入口（分叉星芒 · 冰蓝） */}
-        <button
-          type="button"
-          className={`icon-btn fate-entry ${mode === "fate" ? "active" : ""}`}
-          data-tip={lang === "zh" ? "命运推演 (Fate)" : "Fate tree"}
-          aria-label={lang === "zh" ? "命运推演" : "Fate tree"}
-          onClick={() => uiStore.setState({ mode: mode === "fate" ? "write" : "fate" })}
-        >
-          <Sparkles size={17} />
-        </button>
+        {/* M4 拆窗：跨软件切换按钮已移除 —— 每个窗口就是一个独立软件。 */}
+        {appType === "write" && (
+          <button
+            type="button"
+            className="icon-btn"
+            data-tip={t("newRecord")}
+            aria-label={t("newRecord")}
+            onClick={() => window.dispatchEvent(new CustomEvent("variable:new-doc"))}
+          >
+            <FilePlus2 size={17} />
+          </button>
+        )}
         <button
           type="button"
           className={`icon-btn ${sidebarOpen ? "active" : ""}`}
@@ -142,18 +151,9 @@ export function TitleBar(props: {
         <button
           type="button"
           className="icon-btn"
-          data-tip={t("newRecord")}
-          aria-label={t("newRecord")}
-          onClick={() => window.dispatchEvent(new CustomEvent("variable:new-doc"))}
-        >
-          <FilePlus2 size={17} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
           data-tip={t("language")}
           aria-label={t("language")}
-          onClick={() => setLang(lang === "zh" ? "en" : "zh")}
+          onClick={() => setLang(lang !== "en" ? "en" : "zh")}
         >
           <Languages size={17} />
         </button>

@@ -882,3 +882,126 @@
 .pv-flow-kind.k-guard { background: rgba(255,216,143,0.2); }
 .pv-flow-label { flex: 1 1 auto; min-width: 0; color: #e6efff; font-family: ui-monospace, monospace; }
 .pv-flow-ln { flex: none; }
+
+/* ── 批次C（规格 5.7.3）Code 引用面板（引用 Write 技术文档） ── */
+.xp-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel, #fff);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.xp-fab:hover { border-color: var(--accent); color: var(--accent); }
+.xp-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 60;
+  width: 340px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+.xp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+.xp-title { display: inline-flex; align-items: center; gap: 6px; }
+.xp-spacer { flex: 1; }
+.xp-iconbtn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+}
+.xp-iconbtn:hover { background: rgba(127, 127, 127, 0.12); color: var(--text); }
+.xp-iconbtn.danger:hover { background: rgba(220, 80, 80, 0.14); color: var(--danger, #c2554f); }
+.xp-iconbtn:disabled { opacity: 0.5; cursor: default; }
+.xp-iconbtn .spin { animation: xp-spin 0.9s linear infinite; }
+@keyframes xp-spin { to { transform: rotate(360deg); } }
+.xp-add { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.xp-select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text);
+}
+.xp-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.xp-addbtn:disabled { opacity: 0.45; cursor: default; }
+.xp-addbtn:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+.xp-empty { padding: 22px 16px; font-size: 12px; color: var(--text-dim, #888); text-align: center; }
+.xp-list { overflow-y: auto; padding: 6px; }
+.xp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 3px 4px 3px 6px;
+}
+.xp-row:hover { background: rgba(127, 127, 127, 0.08); }
+.xp-main {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12.5px;
+  padding: 5px 2px;
+  text-align: left;
+}
+.xp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xp-badge {
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+.xp-badge.stale { background: #e6a23c; color: #fff; }
+.xp-badge.missing { background: rgba(194, 85, 79, 0.16); color: var(--danger, #c2554f); }
+.xp-actions { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; }

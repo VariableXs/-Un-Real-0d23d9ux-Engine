@@ -344,6 +344,20 @@ pub fn read_text_file(path: String) -> CmdResult<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// 批次E：通用文本写入（仅用于设置导入/导出等用户显式选择的路径）。
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> CmdResult<()> {
+    // 防误写：仅允许 .json/.txt 后缀（导入导出场景）
+    let ok_ext = std::path::Path::new(&path)
+        .extension()
+        .map(|e| e == "json" || e == "txt" || e == "lang")
+        .unwrap_or(false);
+    if !ok_ext {
+        return Err(AppError::validation("仅允许写入 .json/.txt / Only .json/.txt allowed"));
+    }
+    fs::write(&path, contents.as_bytes()).map_err(AppError::from)
+}
+
 /// 规范 5.2 / 8.2：信息卡与下钻的按需单文件读取（延迟重解析用）。
 #[tauri::command]
 pub fn project_read_file(root: String, rel_path: String) -> CmdResult<SourceFile> {

@@ -1,6 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
+const html = (name: string): string => fileURLToPath(new URL(`./${name}.html`, import.meta.url));
+
+// M4 拆窗：MPA 多入口 —— 每个窗口一个 html（desktop + 四款软件），独立 bundle。
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
@@ -12,5 +16,15 @@ export default defineConfig({
     target: "chrome110",
     minify: "esbuild",
     sourcemap: false,
+    rollupOptions: {
+      input: {
+        desktop: html("desktop"),
+        "app-write": html("app-write"),
+        "app-mind": html("app-mind"),
+        "app-code": html("app-code"),
+        "app-fate": html("app-fate"),
+        explorer: html("explorer"),
+      },
+    },
   },
 });

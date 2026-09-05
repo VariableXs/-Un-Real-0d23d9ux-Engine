@@ -1,9 +1,25 @@
-﻿import { errMessage, ipc } from "./ipc";
+import { errMessage, ipc } from "./ipc";
 import type { Lang } from "../i18n/dictionaries";
 
 export type ThemeId = "deep-space" | "paper" | "minimal-black" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
 export type BgType = "nebula" | "color" | "gradient" | "image" | "video";
+/** 桌面环境壁纸模式（M2）：纯黑 / 3D 引力场 / 视频 / 图片 / 混合（媒体+星空叠加）。 */
+export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "hybrid";
+/**
+ * 启动动画（批次A，规格 14.2.1）：控制真实加载完成后的过渡编排。
+ * - full：字母落位任务栏 + 任务栏展开 + 图标淡入（阶段4/5 完整编排）
+ * - simple：快速交叉淡入
+ * - none：直接进入桌面
+ * 进度/日志本身始终是真实事件，此设置只影响 ready 之后的过渡形式。
+ */
+export type BootAnim = "full" | "simple" | "none";
+/** 桌面图标三档大小（批次B，规格 4.2.4）：像素为图标底座边长。 */
+export type IconSize = 32 | 48 | 64;
+/** 窗口控制按钮位置（批次D，规格 4.3.5）：Mac 圆点（默认）/ Windows 风格。 */
+export type WinControls = "mac" | "windows";
+/** 任务栏停靠位置（批次E，规格 4.4）：底（默认）/ 左 / 右 / 顶。 */
+export type TaskbarPos = "bottom" | "left" | "right" | "top";
 
 export interface CustomBg {
   type: BgType;
@@ -41,8 +57,29 @@ export interface MindDefaults {
 export interface Settings {
   language: Lang;
   theme: ThemeId;
+  /** 桌面壁纸模式（桌面环境 L0 显示层；与四软件内部主题互不影响）。 */
+  wallpaperMode: WallpaperMode;
+  /** 启动动画过渡形式（真实加载完成后的阶段4/5 编排开关）。 */
+  bootAnim: BootAnim;
+  /** 桌面图标大小三档（32/48/64）。 */
+  iconSize: IconSize;
+  /** 窗口控制按钮位置（桌面红绿灯 + 软件窗口控制条，规格 4.3.5）。 */
+  winControls: WinControls;
+  /** 任务栏停靠位置（批次E，规格 4.4）。 */
+  taskbarPos: TaskbarPos;
+  /** 快捷键自定义（批次E，规格 4.7）：action → accel；空 = 全默认。冲突检测在前端设置页。 */
+  shortcutBinds: Record<string, string>;
+  /** 🟢 绿灯状态（批次D，规格 4.3.4）：true = 避让 Windows 任务栏。 */
+  avoidTaskbar: boolean;
+  /** 首次启动欢迎向导已完成（完成后不再显示）。 */
+  wizardDone: boolean;
+  /** 批次E-6：每日自动换壁纸（本地缓存目录按日期取图，零网络）。 */
+  wallpaperDaily: boolean;
+  /** 批次E-6：壁纸本地缓存目录（Bing 缓存等自备图片文件夹）。 */
+  wallpaperPoolDir: string;
+  /** 批次E-6：Win+Tab 多窗口切换器开关（true = Variable 接管 Win+Tab）。 */
+  winTabSwitcher: boolean;
   perfMode: PerfMode;
-  launchAnim: boolean;
   showStatusBar: boolean;
   editorWidthPct: number; // 58..72
   editorAlign: "center" | "left" | "right";
@@ -64,8 +101,18 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   language: "zh",
   theme: "deep-space",
+  wallpaperMode: "gravity",
+  bootAnim: "full",
+  iconSize: 48,
+  winControls: "mac",
+  taskbarPos: "bottom",
+  shortcutBinds: {},
+  avoidTaskbar: false,
+  wizardDone: false,
+  wallpaperDaily: false,
+  wallpaperPoolDir: "",
+  winTabSwitcher: true,
   perfMode: "high",
-  launchAnim: true,
   showStatusBar: true,
   editorWidthPct: 64,
   editorAlign: "center",
@@ -112,10 +159,26 @@ export const DEFAULT_SETTINGS: Settings = {
 function coerce(raw: Record<string, string>): Settings {
   const s: Settings = structuredClone(DEFAULT_SETTINGS);
   try {
-    if (raw["language"]) s.language = raw["language"] === "en" ? "en" : "zh";
+    if (raw["language"] === "en" || raw["language"] === "zh-TW" || raw["language"] === "zh") {
+      s.language = raw["language"];
+    }
     if (raw["theme"]) s.theme = raw["theme"] as ThemeId;
+    if (raw["wallpaperMode"]) s.wallpaperMode = raw["wallpaperMode"] as WallpaperMode;
+    if (raw["bootAnim"]) {
+      const v = raw["bootAnim"];
+      s.bootAnim = v === "simple" || v === "none" ? v : v === "full" ? "full" : s.bootAnim;
+    }
+    if (raw["iconSize"]) {
+      const n = Number(raw["iconSize"]);
+      s.iconSize = n === 32 || n === 64 ? (n as IconSize) : n === 48 ? 48 : s.iconSize;
+    }
+    if (raw["wizardDone"] !== undefined) s.wizardDone = raw["wizardDone"] === "1";
+    if (raw["winControls"]) s.winControls = raw["winControls"] === "windows" ? "windows" : "mac";
+    if (raw["avoidTaskbar"] !== undefined) s.avoidTaskbar = raw["avoidTaskbar"] === "1";
+    if (raw["wallpaperDaily"] !== undefined) s.wallpaperDaily = raw["wallpaperDaily"] === "1";
+    if (raw["wallpaperPoolDir"]) s.wallpaperPoolDir = raw["wallpaperPoolDir"];
+    if (raw["winTabSwitcher"] !== undefined) s.winTabSwitcher = raw["winTabSwitcher"] !== "0";
     if (raw["perfMode"]) s.perfMode = raw["perfMode"] as PerfMode;
-    if (raw["launchAnim"] !== undefined) s.launchAnim = raw["launchAnim"] === "1";
     if (raw["showStatusBar"] !== undefined) s.showStatusBar = raw["showStatusBar"] === "1";
     if (raw["reduceMotion"] !== undefined) s.reduceMotion = raw["reduceMotion"] === "1";
     if (raw["safeMode"] !== undefined) s.safeMode = raw["safeMode"] === "1";

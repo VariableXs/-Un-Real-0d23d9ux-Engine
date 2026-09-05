@@ -12,10 +12,13 @@ export interface BackgroundProps {
   safeMode: boolean;
   editing: boolean; // typing → degrade animation
   customBg: CustomBg;
+  /** 桌面混合壁纸模式：在自定义媒体之上叠加星空引擎（默认 false，四软件行为不变）。 */
+  starfieldOverlay?: boolean;
 }
 
 function effectiveMotion(props: BackgroundProps): number {
-  if (props.theme !== "deep-space") return 0;
+  const starfieldActive = props.theme === "deep-space" || (props.theme === "custom" && props.starfieldOverlay === true);
+  if (!starfieldActive) return 0;
   if (props.safeMode || props.reduceMotion) return 0;
   const modeFactor: Record<PerfMode, number> = { high: 1, balanced: 0.7, eco: 0.35, static: 0, auto: 0.7 };
   let f = modeFactor[props.perfMode];
@@ -70,9 +73,10 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
     };
   }, [useCustomMedia, cb.imagePath, cb.videoPath, cb.type]);
 
-  // WebGL lifecycle for deep-space theme.
+  // WebGL lifecycle for deep-space theme (or desktop hybrid overlay).
   useEffect(() => {
-    if (props.theme !== "deep-space") return;
+    const starfieldActive = props.theme === "deep-space" || (props.theme === "custom" && props.starfieldOverlay === true);
+    if (!starfieldActive) return;
     const canvas = canvasRef.current;
     if (!canvas || props.safeMode || props.reduceMotion || props.perfMode === "static") {
       handleRef.current?.dispose();
@@ -150,12 +154,15 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
   }, [props.perfMode, props.bgTier, props.editing, cb.dynamicStrength, cb.parallaxStrength, props.reduceMotion, props.safeMode]);
 
   const isStaticTheme = props.theme === "paper" || props.theme === "minimal-black";
-  const showCanvas = props.theme === "deep-space";
+  const overlay = props.starfieldOverlay === true && props.theme === "custom" && useCustomMedia;
+  const showCanvas = props.theme === "deep-space" || overlay;
   const filters = `blur(${cb.blur}px) brightness(${cb.brightness}) saturate(${cb.saturation})`;
 
   return (
     <div className={`bg-root theme-${props.theme}`} aria-hidden>
-      {showCanvas && !webglFailed && <canvas ref={canvasRef} className="bg-canvas" />}
+      {showCanvas && !webglFailed && (
+        <canvas ref={canvasRef} className={`bg-canvas${overlay ? " bg-canvas-overlay" : ""}`} />
+      )}
       {showCanvas && webglFailed && (
         <div className="bg-fallback-nebula">
           {/* Static CSS fallback when WebGL2 is unavailable */}

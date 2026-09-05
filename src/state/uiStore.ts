@@ -2,8 +2,14 @@ import { createStore, useStore } from "../lib/store";
 
 export type SaveStatus = "saved" | "saving" | "dirty" | "error";
 
+export type AppMode = "write" | "mindmap" | "project" | "fate";
+
+/** 批次C：快捷面板聚焦分区（规格 6.1/6.2/6.3 快捷键与托盘图标入口）。 */
+export type QuickSection = "wifi" | "bluetooth" | "audio";
+
 export interface UiState {
-  mode: "write" | "mindmap" | "project" | "fate";
+  /** "desktop" = 桌面环境 shell；其余为四款独立软件内部视图（M4 拆窗前的过渡形态）。 */
+  mode: AppMode | "desktop";
   /** Pending .project archive to open when the project space mounts (ch.12.2). */
   pvPendingOpen: string | null;
   /** Pending local file (e.g. .fatetree) to open when the fate space mounts. */
@@ -12,6 +18,15 @@ export interface UiState {
   writePendingOpen: string | null;
   sidebarOpen: boolean;
   searchOpen: boolean;
+  /** 开始菜单展开状态（桌面环境 L1，M3）。 */
+  startOpen: boolean;
+  /** 批次C：快捷面板展开状态 + 聚焦分区（null = 无聚焦，通知中心入口）。 */
+  quickOpen: boolean;
+  quickSection: QuickSection | null;
+  /** 第三方软件管理器（M7 launcher）。 */
+  launcherOpen: boolean;
+  /** 批次C：软件管理器当前页（第三方 / 已安装软件，规格 5.6）。 */
+  launcherTab: "third" | "installed";
   settingsOpen: boolean;
   settingsTab: string;
   focusMode: boolean;
@@ -31,12 +46,17 @@ export interface UiState {
 }
 
 export const uiStore = createStore<UiState>({
-  mode: "write",
+  mode: "desktop",
   pvPendingOpen: null,
   fatePendingOpen: null,
   writePendingOpen: null,
   sidebarOpen: false,
   searchOpen: false,
+  startOpen: false,
+  quickOpen: false,
+  quickSection: null,
+  launcherOpen: false,
+  launcherTab: "third",
   settingsOpen: false,
   settingsTab: "appearance",
   focusMode: false,
@@ -83,6 +103,20 @@ export function bumpDocList(): void {
 
 export function bumpMapList(): void {
   uiStore.setState((s) => ({ mapListVersion: s.mapListVersion + 1 }));
+}
+
+/** 打开/切换快捷面板（批次C：Ctrl+Alt+B/O、Win+N 与托盘图标共用）。 */
+export function openQuickPanel(section: QuickSection | null): void {
+  const s = uiStore.getState();
+  if (s.quickOpen && s.quickSection === section) {
+    uiStore.setState({ quickOpen: false, quickSection: null });
+  } else {
+    uiStore.setState({ quickOpen: true, quickSection: section, startOpen: false });
+  }
+}
+
+export function closeQuickPanel(): void {
+  uiStore.setState({ quickOpen: false, quickSection: null });
 }
 
 // ---------- toasts ----------

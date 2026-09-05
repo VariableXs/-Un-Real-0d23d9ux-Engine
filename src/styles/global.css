@@ -236,3 +236,17 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
 .trash-head { padding-bottom: 8px; }
 .drop-zone { position: absolute; inset: 0; }
 
+
+/* ---- 批次C（规格 5.7）跨软件数据流：拖放落点高亮 + 拖拽中源元素 ---- */
+.xf-hot {
+  outline: 2px solid rgb(108 156 255 / 0.85);
+  outline-offset: -2px;
+  border-radius: 8px;
+  background: rgb(108 156 255 / 0.06);
+}
+.xf-dragging, .xf-dragging * {
+  cursor: grabbing !important;
+}
+.xf-dragging .mm-canvas, .xf-dragging .doc-row {
+  transition: opacity 0.15s ease;
+}

@@ -102,3 +102,55 @@
 .save-text.error { color: var(--danger); }
 
 .recovery-preview { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-top: 10px; font-size: 13px; user-select: text; }
+
+/* ── 批次C（规格 5.7.3）跨软件引用 ─────────────────────────────
+   xref:<kind>/<id>/<ver> 锚点；过期引用原地显示"已更新"徽标。 */
+.prose-host a.xref-link {
+  color: #5b7fd4;
+  text-decoration: none;
+  border-bottom: 1px dashed #9db4d8;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.prose-host a.xref-link:hover { background: rgba(91, 127, 212, 0.12); }
+.prose-host a.xref-stale {
+  background: rgba(230, 162, 60, 0.16);
+  padding: 0 2px;
+}
+.prose-host a.xref-stale::after {
+  content: attr(data-xref-stale);
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #e6a23c;
+  color: #fff;
+  font-size: 11px;
+  line-height: 17px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.xref-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 7px 12px;
+  border: 1px solid rgba(230, 162, 60, 0.45);
+  background: rgba(230, 162, 60, 0.1);
+  color: #a4700f;
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.xref-banner .xb-text { flex: 1; }
+.xref-banner .xb-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.xref-banner .xb-close:hover { background: rgba(230, 162, 60, 0.18); }

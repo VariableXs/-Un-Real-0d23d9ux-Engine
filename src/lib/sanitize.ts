@@ -6,6 +6,8 @@
 const ALLOWED_TAGS: ReadonlySet<string> = new Set([
   "p", "br", "hr", "h1", "h2", "h3", "strong", "b", "em", "i", "u", "s", "del",
   "ul", "ol", "li", "blockquote", "code", "pre", "span", "img", "video",
+  // 批次C（规格 5.7.3）：跨软件引用锚点（仅限 xref:/# href，见下方属性规则）
+  "a",
 ]);
 
 const VOID_TAGS: ReadonlySet<string> = new Set(["br", "hr", "img"]);
@@ -79,6 +81,18 @@ export function sanitizeHtml(input: string): string {
       if (an === "style" && (name === "span" || name === "p" || name === "video" || name === "img")) {
         const safeStyle = sanitizeStyle(av);
         if (safeStyle) kept.push(`style="${safeStyle}"`);
+        continue;
+      }
+      // 批次C：a 只保留安全的 xref:/# 引用链接与引用样式类，杜绝 javascript: 等
+      if (name === "a") {
+        if (an === "href" && /^(xref:|#)/i.test(av.trim())) {
+          kept.push(`href="${escapeAttr(av)}"`);
+          continue;
+        }
+        if (an === "class" && av.split(/\s+/).every((c) => c === "xref-link")) {
+          kept.push(`class="${escapeAttr(av)}"`);
+          continue;
+        }
         continue;
       }
       const allowed = ALLOWED_ATTRS.get(name);

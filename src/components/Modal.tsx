@@ -91,6 +91,110 @@ export function ConfirmHost(): ReactNode {
   );
 }
 
+// ---------- choice（批次D：红灯选择框等多选项确认） ----------
+
+export interface ChoiceOption {
+  value: string;
+  label: string;
+  danger?: boolean;
+}
+
+interface ChoiceState {
+  title: string;
+  body?: string;
+  options: ChoiceOption[];
+  resolve: (v: string | null) => void;
+}
+
+const choiceStore = createStore<{ current: ChoiceState | null }>({ current: null });
+
+export function askChoice(opts: { title: string; body?: string; options: ChoiceOption[] }): Promise<string | null> {
+  const existing = choiceStore.getState().current;
+  existing?.resolve(null);
+  return new Promise<string | null>((resolve) => {
+    choiceStore.setState({ current: { ...opts, resolve } });
+  });
+}
+
+export function ChoiceHost(): ReactNode {
+  const current = useStore(choiceStore, (s) => s.current);
+  const done = (v: string | null) => {
+    current?.resolve(v);
+    choiceStore.setState({ current: null });
+  };
+  if (!current) return null;
+  return (
+    <Modal open title={current.title} onClose={() => done(null)} width={440}>
+      {current.body && <p className="confirm-body">{current.body}</p>}
+      <div className="col gap8">
+        {current.options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            autoFocus={o.danger}
+            className={`btn ${o.danger ? "danger" : "ghost"}`}
+            onClick={() => done(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------- net consent（批次0：任何联网前必须用户明确授权，规格 12.2.2） ----------
+
+export type NetConsentDecision = "once" | "always" | "deny";
+
+interface NetConsentState {
+  target: string;
+  purpose: string;
+  resolve: (d: NetConsentDecision) => void;
+}
+
+const netConsentStore = createStore<{ current: NetConsentState | null }>({ current: null });
+
+export function askNetConsent(opts: { target: string; purpose: string }): Promise<NetConsentDecision> {
+  const existing = netConsentStore.getState().current;
+  existing?.resolve("deny");
+  return new Promise<NetConsentDecision>((resolve) => {
+    netConsentStore.setState({ current: { ...opts, resolve } });
+  });
+}
+
+export function NetConsentHost(): ReactNode {
+  const current = useStore(netConsentStore, (s) => s.current);
+  const { t } = useI18n();
+  const done = (d: NetConsentDecision) => {
+    current?.resolve(d);
+    netConsentStore.setState({ current: null });
+  };
+  if (!current) return null;
+  return (
+    <Modal open title={t("netConsentTitle")} onClose={() => done("deny")} width={480}>
+      <p className="small" style={{ wordBreak: "break-all" }}>
+        <span className="dim">{t("netConsentTarget")}</span> {current.target}
+      </p>
+      <p className="small">
+        <span className="dim">{t("netConsentPurpose")}</span> {current.purpose}
+      </p>
+      <p className="dim small">{t("netConsentNote")}</p>
+      <div className="row end gap8">
+        <button type="button" className="btn ghost" onClick={() => done("deny")}>
+          {t("netDeny")}
+        </button>
+        <button type="button" className="btn ghost" onClick={() => done("once")}>
+          {t("netOnce")}
+        </button>
+        <button type="button" autoFocus className="btn primary" onClick={() => done("always")}>
+          {t("netAlways")}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ---------- non-modal confirm bubble ----------
 
 interface BubbleState {

@@ -12,13 +12,13 @@
   "app": {
     "windows": [
       {
-        "label": "main",
-        "title": "Variable — Private Space",
-        "width": 1440,
-        "height": 900,
+        "label": "desktop",
+        "title": "Variable — Private Desktop Environment",
+        "url": "desktop.html",
+        "fullscreen": true,
+        "alwaysOnTop": true,
         "minWidth": 960,
         "minHeight": 640,
-        "center": true,
         "resizable": true,
         "decorations": false,
         "dragDropEnabled": true

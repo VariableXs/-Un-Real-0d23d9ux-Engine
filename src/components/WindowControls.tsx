@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Minus, Square, X } from "lucide-react";
 import { useI18n } from "../i18n";
 
 /**
@@ -9,8 +10,15 @@ import { useI18n } from "../i18n";
  * zoom/DPI/background-clip quirks) with NO glyph inside (-, □, ×): identity
  * comes from color + tooltip/aria-label only. Hover feedback is a pure
  * brightness/scale change on the dot.
+ *
+ * 批次D（规格 4.3.5）：新增 Windows 风格（右上角标准控件）——
+ * 由设置 winControls 切换；mac 风格保持默认不变。
  */
-export function WindowControls(props: { onCloseRequested: () => void }): React.ReactElement {
+export function WindowControls(props: {
+  onCloseRequested: () => void;
+  /** 批次D：控件风格（缺省 mac = 原红绿灯不变）。 */
+  style?: "mac" | "windows";
+}): React.ReactElement {
   const { t } = useI18n();
   const [maximized, setMaximized] = useState(false);
   const win = getCurrentWindow();
@@ -29,6 +37,40 @@ export function WindowControls(props: { onCloseRequested: () => void }): React.R
     });
     return () => un?.();
   }, [win]);
+
+  if (props.style === "windows") {
+    return (
+      <div className="window-controls shown win-style">
+        <button
+          type="button"
+          className="winctl-btn"
+          aria-label={t("minimize")}
+          title={t("minimize")}
+          onClick={() => void win.minimize().catch(() => {})}
+        >
+          <Minus size={14} />
+        </button>
+        <button
+          type="button"
+          className="winctl-btn"
+          aria-label={maximized ? t("restore") : t("maximize")}
+          title={maximized ? t("restore") : t("maximize")}
+          onClick={() => void win.toggleMaximize().catch(() => {})}
+        >
+          <Square size={11} />
+        </button>
+        <button
+          type="button"
+          className="winctl-btn winctl-close"
+          aria-label={t("close")}
+          title={t("close")}
+          onClick={props.onCloseRequested}
+        >
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="window-controls shown">

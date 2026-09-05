@@ -1,4 +1,4 @@
-﻿use crate::db::{gen_id, now_ms};
+use crate::db::{gen_id, now_ms};
 use crate::error::{AppError, CmdResult};
 use crate::models::*;
 use crate::state::AppState;
@@ -271,6 +271,38 @@ pub fn trash_mindmap(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
         conn.execute("UPDATE mindmaps SET deleted_at=?1 WHERE id=?2", params![now_ms(), id])
             .map_err(AppError::from)?;
         Ok(())
+    })
+}
+
+/// 批次C（规格 5.7.3 引用协议）：按 id 批量查节点版本（updated_at），
+/// 供 Write 端校验跨软件引用是否"内容已更新"。不存在的 id 不返回。
+#[derive(serde::Serialize)]
+pub struct NodeVersion {
+    pub id: String,
+    pub updated_at: i64,
+}
+
+#[tauri::command]
+pub fn nodes_versions(st: tauri::State<AppState>, ids: Vec<String>) -> CmdResult<Vec<NodeVersion>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    st.with_conn(|conn| {
+        let mut stmt = conn
+            .prepare("SELECT id, updated_at FROM nodes WHERE id = ?1")
+            .map_err(AppError::from)?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in &ids {
+            let rows = stmt
+                .query_map(params![id], |r| {
+                    Ok(NodeVersion { id: r.get::<_, String>(0)?, updated_at: r.get::<_, i64>(1)? })
+                })
+                .map_err(AppError::from)?;
+            for v in rows.flatten() {
+                out.push(v);
+            }
+        }
+        Ok(out)
     })
 }
 

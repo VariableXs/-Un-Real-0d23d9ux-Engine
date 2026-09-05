@@ -98,6 +98,10 @@
 .ctx-icon { display: inline-flex; color: var(--text-dim); }
 .ctx-check { margin-left: auto; color: var(--accent); }
 .ctx-sep { border: none; border-top: 1px solid var(--border); margin: 4px 6px; }
+/* 批次B：子菜单（悬停展开、边缘翻转、键盘高亮） */
+.ctx-sub-arrow { margin-left: auto; color: var(--text-dim); font-size: 11px; }
+.ctx-item.hl { background: var(--accent-soft); }
+.ctx-sub { position: fixed; min-width: 180px; animation: toast-in .14s ease; }
 
 /* ---------- toast ---------- */
 .toast-host { position: fixed; right: 16px; bottom: 16px; z-index: 800; display: flex; flex-direction: column; gap: 8px; max-width: 380px; }
