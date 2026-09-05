@@ -9,14 +9,30 @@ for (const m of ipcSrc.matchAll(/invoke<[^>]*>\(\s*'([a-z_]+)'/g)) invoked.add(m
 
 const libSrc = fs.readFileSync("src-tauri/src/lib.rs", "utf8");
 const registered = new Set();
-for (const m of libSrc.matchAll(/([a-z_]+)::([a-z_]+),/g)) registered.add(m[2]);
+for (const m of libSrc.matchAll(/generate_handler!\[([^\]]*)\]/gs)) {
+  for (const line of m[1].split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("//")) continue;
+    const mm = t.match(/^(?:[a-z_]+\s*::\s*)*([a-z_]+)\s*,?\s*$/);
+    if (mm) registered.add(mm[1]);
+  }
+}
 
 const cmdAttrs = [];
-const cmdFiles = fs.readdirSync("src-tauri/src").filter((f) => f.endsWith(".rs"));
+function walkRs(dir, out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fp = path.join(dir, e.name);
+    if (e.isDirectory()) walkRs(fp, out);
+    else if (e.name.endsWith(".rs")) out.push(fp);
+  }
+  return out;
+}
+const cmdFiles = walkRs("src-tauri/src");
 for (const f of cmdFiles) {
-  const src = fs.readFileSync(path.join("src-tauri/src", f), "utf8");
-  for (const m of src.matchAll(/#\[tauri::command\]\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z_]+)/g)) {
-    cmdAttrs.push({ file: f, name: m[1] });
+  const src = fs.readFileSync(f, "utf8");
+  // #[tauri::command] 与 fn 之间允许夹带其它属性行（#[cfg(windows)] 等）
+  for (const m of src.matchAll(/#\[tauri::command\]((?:\s*#\[[^\]]+\])*)\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z_]+)/g)) {
+    cmdAttrs.push({ file: path.relative("src-tauri/src", f), name: m[2] });
   }
 }
 const attrNames = new Set(cmdAttrs.map((c) => c.name));
@@ -36,8 +52,8 @@ else console.log("OK: every command registered");
 const dictSrc = fs.readFileSync("src/i18n/dictionaries.ts", "utf8");
 const zhBlock = dictSrc.slice(dictSrc.indexOf("const zh"), dictSrc.indexOf("const en"));
 const enBlock = dictSrc.slice(dictSrc.indexOf("const en"), dictSrc.indexOf("export const dictionaries"));
-const zhKeys = new Set([...zhBlock.matchAll(/^\s{2}([A-Za-z0-9_]+):/gm)].map((m) => m[1]));
-const enKeys = new Set([...enBlock.matchAll(/^\s{2}([A-Za-z0-9_]+):/gm)].map((m) => m[1]));
+const zhKeys = new Set([...zhBlock.matchAll(/([A-Za-z0-9_]+)\s*:/gm)].map((m) => m[1]));
+const enKeys = new Set([...enBlock.matchAll(/([A-Za-z0-9_]+)\s*:/gm)].map((m) => m[1]));
 
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
