@@ -1185,5 +1185,18 @@ Variable 采用小批次演进，每个批次都有明确的验收与教训记�
 
 ---
 
+## 附录 D：项目文档索引
+
+| 文档 | 面向 | 内容一句话 |
+| --- | --- | --- |
+| 本 README | 使用者 | 现有能力的完整产品手册 |
+| [project_memory.md](project_memory.md) | 协作者 | 逐批次开发日志与教训（工程记忆） |
+| [docs/BLUEPRINT-1.0sno9u.vxe.md](docs/BLUEPRINT-1.0sno9u.vxe.md) | 协作者/架构评审 | v1.0sno9u.vxe 目标形态：六层架构、子系统规格、契约、坑位与边界 |
+| [docs/MASTER-PLAN-1.0sno9u.vxe.md](docs/MASTER-PLAN-1.0sno9u.vxe.md) | 协作者/实施 | 已做/待做矩阵、里程碑 M0–M9、批次 Checklist、验收与应急演练 |
+
+> 演进规则：契约以 BLUEPRINT 为准；进度以 MASTER-PLAN 状态矩阵为准；两者随每批次同步修订，冲突时以最新批次日志（project_memory.md）为准。
+
+---
+
 *Variable — Private Space · v1.0.0 · 完全离线的私人桌面环境、虚拟窗口管理器
 与四重空间。*

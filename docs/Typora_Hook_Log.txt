@@ -1,0 +1,520 @@
+[2026年9月6日 上午12:40:49] [Log] -------------------------------------------
+------------------
+[2026年9月6日 上午12:40:49] [Log] crypto.publicDecrypt called
+------------------
+[2026年9月6日 上午12:40:49] [Log] Key: -----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7nVoGCHqIMJyqgALEUrc
+5JJhap0+HtJqzPE04pz4y+nrOmY7/12f3HvZyyoRsxKdXTZbO0wEHFIh0cRqsuaJ
+PyaOOPbA0BsalofIAY3mRhQQ3vSf+rn3g+w0S+udWmKV9DnmJlpWqizFajU4T/E4
+5ZgMNcXt3E1ips32rdbTR0Nnen9PVITvrbJ3l6CI2BFBImZQZ2P8N+LsqfJsqyVV
+wDkt3mHAVxV7FZbfYWG+8FDSuKQHaCmvgAtChx9hwl3J6RekkqDVa6GIV13D23LS
+qdk0Jb521wFJi/V6QAK6SLBiby5gYN6zQQ5RQpjXtR53MwzTdiAzGEuKdOtrY2Me
+DwIDAQAB
+-----END PUBLIC KEY-----
+
+
+------------------
+[2026年9月6日 上午12:40:49] [Log] Buffer (Hex): 75736572406578616d706c652e636f6d
+------------------
+[2026年9月6日 上午12:40:49] [Log] BrowserWindow created
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\11\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\MASTER-PLAN-1.0sno9u.vxe.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("setting.put") args: ["useTreeStyle",false]
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"MASTER-PLAN-1.0sno9u.vxe.md","path":"D:\\2\\11\\-Un-Real-0d23d9ux-Engine-main\\docs\\MASTER-PLAN-1.0sno9u.vxe.md","date":1788626449048},{"name":"AI18.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI18.md","date":1788505706094},{"name":"Code Analysis1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis1.md","date":1788505702117},{"name":"Typora_Hook_Log.txt","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Typora_Hook_Log.txt","date":1788505701386},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1788505700627},{"name":"Code Analysis.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis.md","date":1788505698863},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1788505696413},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1788505675148},{"name":"AI10.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI10.md","date":1788502402417},{"name":"AI12.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI12.md","date":1788502401910},{"name":"AI11.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI11.md","date":1788502401629},{"name":"AI9.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI9.md","date":1788502401053},{"name":"AI8.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI8.md","date":1788502399856},{"name":"AI7.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI7.md","date":1788502399544},{"name":"AI6.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI6.md","date":1788502399239},{"name":"AI5.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI5.md","date":1788502398908},{"name":"AI4.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI4.md","date":1788502398166},{"name":"AI3.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI3.md","date":1788502397720},{"name":"AI2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI2.md","date":1788502397198},{"name":"AI1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI1.md","date":1788502388289},{"name":"C^2 Courage (Un)Real Variable START.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\Language\\C^2 Courage (Un)Real Variable START.md","date":1788196574467},{"name":"README.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\(Un)Real 0d23d9ux# Engine\\README.md","date":1788196393097}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:40:49] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["MASTER-PLAN-1.0sno9u.vxe.md"]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-05T16:40:50.062Z"]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.setTitle") args: ["MASTER-PLAN-1.0sno9u.vxe.md - Typora"]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月6日 上午12:40:50] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月6日 上午12:40:55] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月6日 上午12:40:55] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] -------------------------------------------
+------------------
+[2026年9月6日 上午12:41:12] [Log] crypto.publicDecrypt called
+------------------
+[2026年9月6日 上午12:41:12] [Log] Key: -----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7nVoGCHqIMJyqgALEUrc
+5JJhap0+HtJqzPE04pz4y+nrOmY7/12f3HvZyyoRsxKdXTZbO0wEHFIh0cRqsuaJ
+PyaOOPbA0BsalofIAY3mRhQQ3vSf+rn3g+w0S+udWmKV9DnmJlpWqizFajU4T/E4
+5ZgMNcXt3E1ips32rdbTR0Nnen9PVITvrbJ3l6CI2BFBImZQZ2P8N+LsqfJsqyVV
+wDkt3mHAVxV7FZbfYWG+8FDSuKQHaCmvgAtChx9hwl3J6RekkqDVa6GIV13D23LS
+qdk0Jb521wFJi/V6QAK6SLBiby5gYN6zQQ5RQpjXtR53MwzTdiAzGEuKdOtrY2Me
+DwIDAQAB
+-----END PUBLIC KEY-----
+
+
+------------------
+[2026年9月6日 上午12:41:12] [Log] Buffer (Hex): 75736572406578616d706c652e636f6d
+------------------
+[2026年9月6日 上午12:41:12] [Log] BrowserWindow created
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\11\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\WORKSTATION_BLUEPRINT.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.put") args: ["useTreeStyle",false]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"WORKSTATION_BLUEPRINT.md","path":"D:\\2\\11\\-Un-Real-0d23d9ux-Engine-main\\docs\\WORKSTATION_BLUEPRINT.md","date":1788626472007},{"name":"MASTER-PLAN-1.0sno9u.vxe.md","path":"D:\\2\\11\\-Un-Real-0d23d9ux-Engine-main\\docs\\MASTER-PLAN-1.0sno9u.vxe.md","date":1788626449048},{"name":"AI18.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI18.md","date":1788505706094},{"name":"Code Analysis1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis1.md","date":1788505702117},{"name":"Typora_Hook_Log.txt","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Typora_Hook_Log.txt","date":1788505701386},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1788505700627},{"name":"Code Analysis.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis.md","date":1788505698863},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1788505696413},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1788505675148},{"name":"AI10.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI10.md","date":1788502402417},{"name":"AI12.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI12.md","date":1788502401910},{"name":"AI11.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI11.md","date":1788502401629},{"name":"AI9.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI9.md","date":1788502401053},{"name":"AI8.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI8.md","date":1788502399856},{"name":"AI7.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI7.md","date":1788502399544},{"name":"AI6.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI6.md","date":1788502399239},{"name":"AI5.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI5.md","date":1788502398908},{"name":"AI4.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI4.md","date":1788502398166},{"name":"AI3.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI3.md","date":1788502397720},{"name":"AI2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI2.md","date":1788502397198},{"name":"AI1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI1.md","date":1788502388289},{"name":"C^2 Courage (Un)Real Variable START.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\Language\\C^2 Courage (Un)Real Variable START.md","date":1788196574467},{"name":"README.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\(Un)Real 0d23d9ux# Engine\\README.md","date":1788196393097}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["WORKSTATION_BLUEPRINT.md"]
+------------------
+[2026年9月6日 上午12:41:12] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-05T16:41:12.709Z"]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("window.setTitle") args: ["WORKSTATION_BLUEPRINT.md - Typora"]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月6日 上午12:41:13] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月6日 上午12:41:16] [Log] [IPC] .invoke("app.onCloseWin") args: [null]
+------------------
+[2026年9月6日 上午12:41:16] [Log] [IPC] .handle("app.onCloseWin") result: 
+------------------
+[2026年9月6日 上午12:41:21] [Log] -------------------------------------------
+------------------
+[2026年9月6日 上午12:41:21] [Log] crypto.publicDecrypt called
+------------------
+[2026年9月6日 上午12:41:21] [Log] Key: -----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7nVoGCHqIMJyqgALEUrc
+5JJhap0+HtJqzPE04pz4y+nrOmY7/12f3HvZyyoRsxKdXTZbO0wEHFIh0cRqsuaJ
+PyaOOPbA0BsalofIAY3mRhQQ3vSf+rn3g+w0S+udWmKV9DnmJlpWqizFajU4T/E4
+5ZgMNcXt3E1ips32rdbTR0Nnen9PVITvrbJ3l6CI2BFBImZQZ2P8N+LsqfJsqyVV
+wDkt3mHAVxV7FZbfYWG+8FDSuKQHaCmvgAtChx9hwl3J6RekkqDVa6GIV13D23LS
+qdk0Jb521wFJi/V6QAK6SLBiby5gYN6zQQ5RQpjXtR53MwzTdiAzGEuKdOtrY2Me
+DwIDAQAB
+-----END PUBLIC KEY-----
+
+
+------------------
+[2026年9月6日 上午12:41:21] [Log] Buffer (Hex): 75736572406578616d706c652e636f6d
+------------------
+[2026年9月6日 上午12:41:21] [Log] BrowserWindow created
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("document.loadData") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("document.loadData") result: "{\"snap\":null,\"filePath\":\"D:\\\\2\\\\11\\\\-Un-Real-0d23d9ux-Engine-main\\\\docs\\\\MASTER-PLAN-1.0sno9u.vxe.md\",\"backups\":null,\"shouldReadFromDisk\":false,\"windowCounts\":1}"
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.put") args: ["useTreeStyle",false]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.put") args: ["sidebar_tab","file-list"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.getRecentFiles") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.getRecentFiles") result: {"files":[{"name":"MASTER-PLAN-1.0sno9u.vxe.md","path":"D:\\2\\11\\-Un-Real-0d23d9ux-Engine-main\\docs\\MASTER-PLAN-1.0sno9u.vxe.md","date":1788626481782},{"name":"WORKSTATION_BLUEPRINT.md","path":"D:\\2\\11\\-Un-Real-0d23d9ux-Engine-main\\docs\\WORKSTATION_BLUEPRINT.md","date":1788626472007},{"name":"AI18.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI18.md","date":1788505706094},{"name":"Code Analysis1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis1.md","date":1788505702117},{"name":"Typora_Hook_Log.txt","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Typora_Hook_Log.txt","date":1788505701386},{"name":"Code Analysis2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis2.md","date":1788505700627},{"name":"Code Analysis.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\Code Analysis.md","date":1788505698863},{"name":"C^2 Courage (Un)Real Variable.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable.md","date":1788505696413},{"name":"AI20.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI20.md","date":1788505675148},{"name":"AI10.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI10.md","date":1788502402417},{"name":"AI12.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI12.md","date":1788502401910},{"name":"AI11.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI11.md","date":1788502401629},{"name":"AI9.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI9.md","date":1788502401053},{"name":"AI8.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI8.md","date":1788502399856},{"name":"AI7.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI7.md","date":1788502399544},{"name":"AI6.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI6.md","date":1788502399239},{"name":"AI5.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI5.md","date":1788502398908},{"name":"AI4.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI4.md","date":1788502398166},{"name":"AI3.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI3.md","date":1788502397720},{"name":"AI2.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI2.md","date":1788502397198},{"name":"AI1.md","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable\\AI1.md","date":1788502388289},{"name":"C^2 Courage (Un)Real Variable START.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\Language\\C^2 Courage (Un)Real Variable START.md","date":1788196574467},{"name":"README.md","path":"D:\\C^2 Courage (Un)Real Variable\\Language Engine\\(Un)Real 0d23d9ux# Engine\\README.md","date":1788196393097}],"folders":[{"name":"C^2 Courage (Un)Real Variable","path":"D:\\C^2 Courage (Un)Real Variable\\C^2 Courage (Un)Real Variable","date":"2026-09-04T04:52:03.699Z"}]}
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("document.getSnapWithValidation") args: [null]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("document.getSnapWithValidation") result: "{\"snap\":null,\"shouldReadFromDisk\":false}"
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.getDownloadingDicts") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.getDownloadingDicts") result: "[]"
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.getUserDictionaryPath") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.getUserDictionaryPath") result: "C:\\Users\\varia\\AppData\\Roaming\\Typora\\typora-dictionaries"
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.getUserDict") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.getUserDict") result: "{}"
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("document.hasDuplicateName") args: ["MASTER-PLAN-1.0sno9u.vxe.md"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("document.hasDuplicateName") result: false
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("document.setLastSync") args: ["2026-09-05T16:41:22.490Z"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("document.setLastSync") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.setTitle") args: ["MASTER-PLAN-1.0sno9u.vxe.md - Typora"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("theme.setThemeSource") args: ["system"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("theme.setThemeSource") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.put") args: ["backgroundColor","#FFFFFF"]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("setting.put") args: ["isDarkMode",false]
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("setting.put") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.updateMenuForIsAlwaysOnTop") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.updateMenuForIsAlwaysOnTop") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("menu.updateCustomZoom") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("menu.updateCustomZoom") result: 
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .invoke("window.checkAsFocus") args: []
+------------------
+[2026年9月6日 上午12:41:22] [Log] [IPC] .handle("window.checkAsFocus") result: 
+------------------
+[2026年9月6日 上午12:41:23] [Log] [IPC] .invoke("setting.getKeyBinding") args: []
+------------------
+[2026年9月6日 上午12:41:23] [Log] [IPC] .handle("setting.getKeyBinding") result: {"_useLowerCase":true}
+------------------
+[2026年9月6日 上午12:47:37] [Log] [IPC] .invoke("window.setTitle") args: [null,true]
+------------------
+[2026年9月6日 上午12:47:37] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
+[2026年9月6日 上午12:47:37] [Log] [IPC] .invoke("window.setTitle") args: [null,false]
+------------------
+[2026年9月6日 上午12:47:37] [Log] [IPC] .handle("window.setTitle") result: 
+------------------
