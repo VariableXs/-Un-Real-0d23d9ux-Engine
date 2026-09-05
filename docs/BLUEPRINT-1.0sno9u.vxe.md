@@ -984,4 +984,51 @@ Runbook 验收：附录每一条都在三宿主矩阵中演练过一次（对应
 
 ---
 
+---
+
+## 24. 附录 K：仓库布局导航（协作者第一分钟）
+
+```
+-Un-Real-0d23d9ux-Engine/
+├─ README.md                  产品手册（使用者视角，现状能力）
+├─ CHANGELOG.md               版本变更日志（发布物视角）
+├─ project_memory.md          批次开发日志与教训（工程记忆，逐批追加）
+├─ docs/
+│  ├─ BLUEPRINT-1.0sno9u.vxe.md    目标架构 + 契约（接口/事件/设置/扩展包）
+│  ├─ MASTER-PLAN-1.0sno9u.vxe.md  实施计划 + 状态仪表（28 节）+ 闭合定义（24 节）
+│  ├─ ACCEPTANCE_CHECKLIST.md      v1.0.0 安装/功能手测清单
+│  ├─ selfcheck/YYYY-MM-DD.md      自检报告归档（每次发版/里程碑）
+│  ├─ bench/                       性能基准报告归档（B-1 起）
+│  └─ acceptance/                  三宿主矩阵证据
+├─ .github/workflows/ci.yml   推送即验证（五层栈无人值守形态）
+├─ src/                       前端（桌面 shell/VWM/四空间，见 BLUEPRINT 2.4）
+├─ src-tauri/
+│  ├─ src/shell/              桌面环境集成（launcher/embed/kbdhook/wallpaper/...）
+│  ├─ tests/commands_e2e.rs   命令面端到端测试
+│  └─ tauri.conf.json         窗口/打包/版本配置
+├─ tools/
+│  ├─ audit.cjs               静态审计（IPC/i18n/契约目录三面）
+│  └─ bench.cjs               性能基准（B-1 交付）
+├─ build-windows.bat          打包入口（nsis/msi/portable/demo）
+└─ .gitignore                 产物排除（含 .mimosa/、archive-*/、编辑器日志）
+```
+
+**找东西的规则**：想知道"某功能怎么用" → README；"某功能为什么这样设计/边界在哪" → BLUEPRINT；"某功能做没做/什么时候做" → MASTER-PLAN 28 节仪表；"某批次当时怎么踩的坑" → project_memory。
+
+## 25. 补充：契约变更的快速判定表
+
+改代码前先对号入座，命中任意一行就必须同批改文档（第 26 节变更三同步）：
+
+| 我要… | 触发的同步 |
+| --- | --- |
+| 新增/修改一个 tauri command | 蓝图 7.x 接口清单 + MASTER 批次证据 |
+| 新增一个 emit/listen 事件 | 附录 H 事件目录 |
+| 新增一个设置键 | 附录 H 设置目录（含默认值/迁移语义） |
+| 新增第三方工具支持 | 执行档模板（3.3）+ 若需出站 → netconsent 白名单（H.2） |
+| 改容器格式 | 附录 C 迁移协议（schemaVersion+1，快照先行） |
+| 新增扩展类型 | 附录 I 清单 Schema（uxpack 版本 +1） |
+| 改快捷键 | README 二十三章 + shortcuts.ts/Rust 双端表 + 冲突检测 |
+
+---
+
 *Un-Real 0d23d9ux Engine · 架构蓝图 · v1.0sno9u.vxe · 实施计划见 MASTER-PLAN。*
