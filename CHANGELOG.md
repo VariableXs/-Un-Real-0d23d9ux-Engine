@@ -15,6 +15,11 @@
   快照恢复）+ 8 项测试桩；
 - 工程卫生：新增 `.gitattributes`（LF 归一化，消除 CRLF 幻影 diff）、清理未使用
   截图；本机补齐 Rust 工具链（rustup stable-msvc）。
+- **M1 隔离执行档与凭据封存收口（B-3…B-6）**：受管进程一律经 `spawn_profiled`
+  启动，HOME/凭据目录等环境变量强制重定向进容器（端到端测试证明）；apps.json v2
+  （旧文件平滑升级）；五套重定向模板（Claude Code/Codex/ZCode/Git/Node）+ 设置页
+  「执行档」标签（套用/编辑/干跑验证）；残留扫描器（会话差集，宿主零残留可验证）。
+  详见 `docs/selfcheck/2026-09-06.md`。
 
 ### 已落地（2026-09-05 会话）
 

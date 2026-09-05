@@ -218,6 +218,15 @@ export const ipc = {
   tpLaunchAdmin: (id: string) => invoke<void>("tp_launch_admin", { id }),
   iconDataurl: (path: string) => invoke<string>("icon_dataurl", { path }),
 
+  // ---- 批次B-5/B-6（M1 执行档）：模板套用 / 手工编辑 / 干跑 / 残留扫描 ----
+  profileTemplates: () => invoke<Shell.ProfileTemplateDto[]>("profile_templates"),
+  profileApply: (id: string, templateId: string) =>
+    invoke<Shell.ThirdApp>("profile_apply", { id, templateId }),
+  profileSet: (id: string, envRedirect: Record<string, string>, envSet: Record<string, string>, sensitive: boolean) =>
+    invoke<Shell.ThirdApp>("profile_set", { id, envRedirect, envSet, sensitive }),
+  profileDryrun: (id: string) => invoke<Shell.ProfileDryRun>("profile_dryrun", { id }),
+  residueScan: () => invoke<Shell.ResidueEntry[]>("residue_scan"),
+
   // ---- 批次C: 运行态检测 + 预装软件卸载（规格 5.5-5.6） ----
   tpRunning: () => invoke<string[]>("tp_running"),
   officialUsage: (app: string) => invoke<Shell.OfficialUsage>("official_usage", { app }),
@@ -435,6 +444,39 @@ namespace Shell {
     icon: string | null;
     /** 批次E（规格 5.9.4）：.lnk 解析出的目标 exe；非 lnk 登记为 null。 */
     target: string | null;
+    /** 批次B-3（M1）：隔离执行档（apps.json v2；v1 文件读出为空档）。 */
+    profile: PortableProfile;
+  }
+  /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
+  export interface PortableProfile {
+    envRedirect: Record<string, string>;
+    envSet: Record<string, string>;
+    /** 出站白名单建议（M8 网络层启用前仅登记）。 */
+    netAllow: string[];
+    sensitive: boolean;
+  }
+  /** 批次B-5：重定向模板（.uxpack AI 提供方包雏形）。 */
+  export interface ProfileTemplateDto {
+    id: string;
+    name: string;
+    description: string;
+    envRedirect: Record<string, string>;
+    envSet: Record<string, string>;
+    netAllow: string[];
+    sensitive: boolean;
+  }
+  /** 批次B-6：干跑结果（「验证重定向」）。 */
+  export interface ProfileDryRun {
+    id: string;
+    name: string;
+    sensitive: boolean;
+    envRedirect: Record<string, string>;
+  }
+  /** 批次B-6：宿主残留条目。 */
+  export interface ResidueEntry {
+    path: string;
+    size: number;
+    modifiedMs: number;
   }
   export interface UsbStatus {
     portable: boolean;
@@ -503,6 +545,10 @@ export type RecSource = Shell.RecSource;
 export type RecItem = Shell.RecItem;
 export type TpGrade = Shell.TpGrade;
 export type ThirdApp = Shell.ThirdApp;
+export type PortableProfile = Shell.PortableProfile;
+export type ProfileTemplateDto = Shell.ProfileTemplateDto;
+export type ProfileDryRun = Shell.ProfileDryRun;
+export type ResidueEntry = Shell.ResidueEntry;
 export type UsbStatus = Shell.UsbStatus;
 export type FileCheck = Shell.FileCheck;
 export type PackProgress = Shell.PackProgress;

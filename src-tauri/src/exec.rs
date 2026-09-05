@@ -1,0 +1,495 @@
+//! L2 隔离执行档（Isolation Profile，批次 B-4/B-5/B-6，BLUEPRINT 3.3 / 7.2）：
+//! - 一切受管进程经 `spawn_profiled` 启动：环境变量重定向进容器（{container}/{home} 占位符展开）
+//! - 凭据零落宿主的统一底座：HOME/USERPROFILE/各工具 CONFIG_DIR 指向容器内镜像
+//! - 模板库 v1：Claude Code / Codex / ZCode / Git / Node（B-5）
+//! - 残留扫描器：会话基线差集，验证「宿主零残留」承诺（B-6）
+//! - 如实边界：执行档 = 环境变量级隔离；对不走 Command 通道的 .lnk（ShellExecute）
+//!   无法注入环境，该路径维持旧行为并在 UI 标注（见 launcher::tp_launch_inner）。
+
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+use crate::error::{AppError, CmdResult};
+use crate::state::AppState;
+
+// ---------- 执行档模型（B-3 登记 v2 的核心结构） ----------
+
+/// 隔离执行档：登记表 apps.json v2 新增字段（全部 serde default，v1 文件平滑升级）。
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableProfile {
+    /// 强制重定向表（值支持 {container}/{home} 占位符），对子进程递归生效
+    #[serde(default)]
+    pub env_redirect: BTreeMap<String, String>,
+    /// 附加设置（不重定向宿主值，直接注入）
+    #[serde(default)]
+    pub env_set: BTreeMap<String, String>,
+    /// 出站白名单建议（M8 网络层启用前仅登记，不执行）
+    #[serde(default)]
+    pub net_allow: Vec<String>,
+    /// 敏感档：残留扫描/剪贴板策略联动标记
+    #[serde(default)]
+    pub sensitive: bool,
+}
+
+impl PortableProfile {
+    pub fn is_empty(&self) -> bool {
+        self.env_redirect.is_empty() && self.env_set.is_empty() && self.net_allow.is_empty() && !self.sensitive
+    }
+}
+
+/// spawn 时的执行档视图（BLUEPRINT 7.2 ExecProfile 的运行时形态）。
+#[derive(Clone, Debug, Default)]
+pub struct ExecProfile {
+    pub id: String,
+    pub env_redirect: BTreeMap<String, String>,
+    pub env_set: BTreeMap<String, String>,
+    pub net_allow: Vec<String>,
+    pub sensitive: bool,
+}
+
+impl ExecProfile {
+    pub fn is_empty(&self) -> bool {
+        self.env_redirect.is_empty() && self.env_set.is_empty() && self.net_allow.is_empty() && !self.sensitive
+    }
+}
+
+impl From<(&str, PortableProfile)> for ExecProfile {
+    fn from((id, p): (&str, PortableProfile)) -> Self {
+        ExecProfile {
+            id: id.to_string(),
+            env_redirect: p.env_redirect,
+            env_set: p.env_set,
+            net_allow: p.net_allow,
+            sensitive: p.sensitive,
+        }
+    }
+}
+
+// ---------- 占位符展开 ----------
+
+/// `{container}` = 数据目录（Uxv 容器落地后的容器根）；`{home}` = {container}/home。
+pub fn expand_placeholders(raw: &str, container_root: &Path) -> String {
+    raw.replace("{container}", &container_root.to_string_lossy())
+        .replace("{home}", &container_root.join("home").to_string_lossy())
+}
+
+/// 计算将要注入的完整环境表（干跑「验证重定向」与真实 spawn 共用同一实现）。
+pub fn env_map(profile: &ExecProfile, container_root: &Path) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for (k, v) in &profile.env_redirect {
+        out.insert(k.clone(), expand_placeholders(v, container_root));
+    }
+    for (k, v) in &profile.env_set {
+        out.insert(k.clone(), expand_placeholders(v, container_root));
+    }
+    out
+}
+
+/// 校验环境变量名：非空、不含 `=`/NUL（键值都不能带控制字符）。
+pub fn valid_env_pair(k: &str, v: &str) -> bool {
+    !k.is_empty() && !k.contains(['=', '\0']) && !v.contains('\0')
+}
+
+/// 注入执行档并启动（唯一受管进程入口）。失败如实上抛，由调用方降级旧通道。
+pub fn spawn_profiled(
+    container_root: &Path,
+    profile: &ExecProfile,
+    program: &Path,
+    args: &[String],
+) -> std::io::Result<Option<u32>> {
+    let mut c = std::process::Command::new(program);
+    // 仅在有目录前缀时设置工作目录；"cmd.exe" 这类裸程序名的 parent() 是空路径，
+    // 设置空 cwd 会在 CreateProcess 报 InvalidFilename（端到端测试抓到的真实 bug）
+    if let Some(parent) = program.parent() {
+        if !parent.as_os_str().is_empty() {
+            c.current_dir(parent);
+        }
+    }
+    for (k, v) in env_map(profile, container_root) {
+        if valid_env_pair(&k, &v) {
+            c.env(k, v);
+        }
+    }
+    for a in args {
+        c.arg(a);
+    }
+    crate::shell::launcher::spawn_detached(&mut c)
+}
+
+// ---------- 模板库 v1（B-5，蓝图 3.3.4；14.2：HOME 与 USERPROFILE 指向不同镜像防互踩） ----------
+
+pub struct ProfileTemplate {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub env_redirect: &'static [(&'static str, &'static str)],
+    pub env_set: &'static [(&'static str, &'static str)],
+    /// 建议出站白名单（M8 前仅登记）
+    pub net_allow: &'static [&'static str],
+    pub sensitive: bool,
+}
+
+/// 模板是「首个官方 .uxpack 包」的雏形（附录 I：AI 提供方包，B-37 迁移）。
+pub const TEMPLATES: &[ProfileTemplate] = &[
+    ProfileTemplate {
+        id: "claude-code",
+        name: "Claude Code CLI",
+        description: "凭据与会话进容器 home/.claude，出站 api.anthropic.com",
+        env_redirect: &[
+            ("HOME", "{home}"),
+            ("USERPROFILE", "{home}"),
+            ("CLAUDE_CONFIG_DIR", "{home}/.claude"),
+            ("npm_config_cache", "{container}/cache/npm"),
+        ],
+        env_set: &[("VARIABLE_ENV", "claude-code")],
+        net_allow: &["api.anthropic.com"],
+        sensitive: true,
+    },
+    ProfileTemplate {
+        id: "codex",
+        name: "Codex CLI",
+        description: "凭据与会话进容器 home/.codex，出站 api.openai.com",
+        env_redirect: &[
+            ("HOME", "{home}"),
+            ("USERPROFILE", "{home}"),
+            ("CODEX_HOME", "{home}/.codex"),
+            ("npm_config_cache", "{container}/cache/npm"),
+        ],
+        env_set: &[("VARIABLE_ENV", "codex")],
+        net_allow: &["api.openai.com"],
+        sensitive: true,
+    },
+    ProfileTemplate {
+        id: "zcode",
+        name: "ZCode CLI",
+        description: "凭据与会话进容器 home/.zcode，出站 api.z.ai",
+        env_redirect: &[
+            ("HOME", "{home}"),
+            ("USERPROFILE", "{home}"),
+            ("ZCODE_CONFIG_DIR", "{home}/.zcode"),
+            ("npm_config_cache", "{container}/cache/npm"),
+        ],
+        env_set: &[("VARIABLE_ENV", "zcode")],
+        net_allow: &["api.z.ai"],
+        sensitive: true,
+    },
+    ProfileTemplate {
+        id: "git",
+        name: "Git",
+        description: "全局配置与凭据进容器（HOME 走 msys 镜像，防与 Node 系互踩）",
+        env_redirect: &[
+            ("HOME", "{home}/msys"),
+            ("USERPROFILE", "{home}"),
+            ("GIT_CONFIG_GLOBAL", "{home}/.gitconfig"),
+        ],
+        env_set: &[("VARIABLE_ENV", "git")],
+        net_allow: &[],
+        sensitive: true,
+    },
+    ProfileTemplate {
+        id: "node",
+        name: "Node.js",
+        description: "npm 缓存进容器 cache/npm，全局安装随容器走",
+        env_redirect: &[
+            ("HOME", "{home}"),
+            ("USERPROFILE", "{home}"),
+            ("npm_config_cache", "{container}/cache/npm"),
+            ("npm_config_prefix", "{container}/runtime/npm-global"),
+        ],
+        env_set: &[("VARIABLE_ENV", "node")],
+        net_allow: &[],
+        sensitive: false,
+    },
+];
+
+fn template_by_id(id: &str) -> Option<&'static ProfileTemplate> {
+    TEMPLATES.iter().find(|t| t.id == id)
+}
+
+fn template_dto(t: &ProfileTemplate) -> serde_json::Value {
+    serde_json::json!({
+        "id": t.id,
+        "name": t.name,
+        "description": t.description,
+        "envRedirect": t.env_redirect.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>(),
+        "envSet": t.env_set.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect::<BTreeMap<_, _>>(),
+        "netAllow": t.net_allow,
+        "sensitive": t.sensitive,
+    })
+}
+
+// ---------- 命令面（B-5/B-6） ----------
+
+/// 模板列表（设置页「执行档」标签下拉用）。
+#[tauri::command]
+pub fn profile_templates() -> CmdResult<Vec<serde_json::Value>> {
+    Ok(TEMPLATES.iter().map(template_dto).collect())
+}
+
+/// 套用模板：整体覆写该登记项的执行档（UI 已有确认）。
+#[tauri::command]
+pub fn profile_apply(st: tauri::State<AppState>, id: String, template_id: String) -> CmdResult<crate::shell::launcher::ThirdApp> {
+    let tpl = template_by_id(&template_id).ok_or_else(|| {
+        AppError::validation(format!("未知模板 / Unknown template: {template_id}"))
+    })?;
+    let mut apps = crate::shell::launcher::load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.profile = PortableProfile {
+        env_redirect: tpl.env_redirect.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        env_set: tpl.env_set.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        net_allow: tpl.net_allow.iter().map(|s| s.to_string()).collect(),
+        sensitive: tpl.sensitive,
+    };
+    let out = app.clone();
+    crate::shell::launcher::save_registry(&st, &apps)?;
+    Ok(out)
+}
+
+/// 手工编辑执行档（重定向表/附加表/敏感标记）。
+#[tauri::command]
+pub fn profile_set(
+    st: tauri::State<AppState>,
+    id: String,
+    env_redirect: BTreeMap<String, String>,
+    env_set: BTreeMap<String, String>,
+    sensitive: bool,
+) -> CmdResult<crate::shell::launcher::ThirdApp> {
+    for (k, v) in env_redirect.iter().chain(env_set.iter()) {
+        if !valid_env_pair(k, v) {
+            return Err(AppError::validation(format!("非法环境变量名 / Invalid env key: {k}")));
+        }
+    }
+    let mut apps = crate::shell::launcher::load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.profile = PortableProfile { env_redirect, env_set, net_allow: app.profile.net_allow.clone(), sensitive };
+    let out = app.clone();
+    crate::shell::launcher::save_registry(&st, &apps)?;
+    Ok(out)
+}
+
+/// 干跑：列出将被注入的环境变量（「验证重定向」按钮）。
+#[tauri::command]
+pub fn profile_dryrun(st: tauri::State<AppState>, id: String) -> CmdResult<serde_json::Value> {
+    let apps = crate::shell::launcher::load_registry(&st);
+    let app = apps
+        .iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    let profile = ExecProfile::from((app.id.as_str(), app.profile.clone()));
+    let root = st.data_dir.clone();
+    Ok(serde_json::json!({
+        "id": id,
+        "name": app.name,
+        "sensitive": profile.sensitive,
+        "envRedirect": env_map(&profile, &root),
+    }))
+}
+
+// ---------- 残留扫描器（B-6，BLUEPRINT 3.3.3 / 10.4） ----------
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ResidueEntry {
+    pub path: String,
+    pub size: u64,
+    pub modified_ms: u64,
+}
+
+/// 会话基线：环境启动时对宿主观测面（%USERPROFILE% 顶层 + Recent）做快照。
+static RESIDUE_BASELINE: OnceLock<Mutex<HashMap<String, (u64, u64)>>> = OnceLock::new();
+
+fn baseline() -> &'static Mutex<HashMap<String, (u64, u64)>> {
+    RESIDUE_BASELINE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 观测面：仅顶层文件名与 Recent（已知落盘点），不递归、不读内容——性能与隐私双保守。
+fn residue_targets() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(up) = std::env::var("USERPROFILE") {
+        dirs.push(PathBuf::from(up));
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        dirs.push(PathBuf::from(appdata).join("Microsoft").join("Windows").join("Recent"));
+    }
+    dirs
+}
+
+fn snapshot_dir(dir: &Path, out: &mut HashMap<String, (u64, u64)>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        if meta.is_dir() {
+            continue; // 顶层只观测文件；目录级观测误报高（系统自身波动）
+        }
+        let size = meta.len();
+        let modified_ms = meta
+            .modified()
+            .ok()
+            .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        out.insert(entry.path().to_string_lossy().into_owned(), (size, modified_ms));
+    }
+}
+
+fn residue_snapshot() -> HashMap<String, (u64, u64)> {
+    let mut out = HashMap::new();
+    for dir in residue_targets() {
+        snapshot_dir(&dir, &mut out);
+    }
+    out
+}
+
+/// 环境启动时调用（lib.rs setup）。已有基线则覆盖（重开环境=新会话）。
+pub fn residue_baseline_take() {
+    let snap = residue_snapshot();
+    if let Ok(mut guard) = baseline().lock() {
+        *guard = snap;
+    }
+}
+
+/// 差集：本次会话在宿主观测面的新增/变化文件（预期为空）。
+pub fn residue_scan() -> Vec<ResidueEntry> {
+    let now = residue_snapshot();
+    let mut hits = Vec::new();
+    if let Ok(guard) = baseline().lock() {
+        for (path, (size, mtime)) in &now {
+            let is_new_or_changed = match guard.get(path) {
+                None => true,
+                Some((bsize, bmtime)) => bsize != size || bmtime != mtime,
+            };
+            if is_new_or_changed {
+                hits.push(ResidueEntry { path: path.clone(), size: *size, modified_ms: *mtime });
+            }
+        }
+    }
+    hits.sort_by(|a, b| a.path.cmp(&b.path));
+    hits
+}
+
+#[tauri::command]
+pub fn residue_scan_cmd() -> CmdResult<Vec<ResidueEntry>> {
+    Ok(residue_scan())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholders_expand_to_container_paths() {
+        let root = std::env::temp_dir();
+        let root = root.as_path();
+        let expected_home = format!("{}{}", root.join("home").to_string_lossy(), "/.claude");
+        assert_eq!(expand_placeholders("{home}/.claude", root), expected_home);
+        // {container} 是纯字符串替换（不追加主分隔符）——这正是模板值可写
+        // "{home}/.claude" 这类带 / 后缀路径的原因
+        let expected_cache = format!("{}/cache", root.display());
+        assert_eq!(expand_placeholders("{container}/cache", root), expected_cache);
+        assert_eq!(expand_placeholders("plain", root), "plain");
+    }
+
+    #[test]
+    fn env_map_expands_both_sections() {
+        let mut redirect = BTreeMap::new();
+        redirect.insert("HOME".to_string(), "{home}".to_string());
+        let mut set = BTreeMap::new();
+        set.insert("VARIABLE_ENV".to_string(), "x".to_string());
+        let p = ExecProfile {
+            id: "t".into(),
+            env_redirect: redirect,
+            env_set: set,
+            net_allow: vec![],
+            sensitive: false,
+        };
+        let root = Path::new("/c");
+        let m = env_map(&p, root);
+        // {home} 经 join 追加主分隔符（Windows 下为 \），与实现一致
+        assert_eq!(m.get("HOME").unwrap(), &root.join("home").to_string_lossy().to_string());
+        assert_eq!(m.get("VARIABLE_ENV").unwrap(), "x");
+    }
+
+    #[test]
+    fn v1_registry_json_upgrades_with_default_profile() {
+        // apps.json v1（无 profile 字段）→ 反序列化得到空执行档 = 平滑迁移
+        let v1 = r#"[{"id":"tp-1","name":"Old","path":"C:/x/app.exe","grade":"standalone","addedAt":1,"lastLaunch":null,"icon":null,"target":null}]"#;
+        let apps: Vec<crate::shell::launcher::ThirdApp> = serde_json::from_str(v1).unwrap();
+        assert_eq!(apps.len(), 1);
+        assert!(apps[0].profile.is_empty());
+        // v2 roundtrip
+        let v2 = serde_json::to_string(&apps).unwrap();
+        let back: Vec<crate::shell::launcher::ThirdApp> = serde_json::from_str(&v2).unwrap();
+        assert_eq!(back[0].profile, apps[0].profile);
+    }
+
+    #[test]
+    fn templates_have_valid_keys_and_unique_ids() {
+        let mut ids = std::collections::BTreeSet::new();
+        for t in TEMPLATES {
+            assert!(ids.insert(t.id), "duplicate template id {}", t.id);
+            for (k, v) in t.env_redirect.iter().chain(t.env_set.iter()) {
+                assert!(valid_env_pair(k, v), "bad env pair {}={}", k, v);
+                assert!(v.contains("{home}") || v.contains("{container}") || v.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'), "unexpected literal value {}={}", k, v);
+            }
+        }
+        assert!(template_by_id("claude-code").is_some());
+        assert!(template_by_id("nope").is_none());
+    }
+
+    #[test]
+    fn invalid_env_names_rejected() {
+        assert!(!valid_env_pair("", "x"));
+        assert!(!valid_env_pair("A=B", "x"));
+        assert!(valid_env_pair("HOME", "{home}"));
+    }
+
+    /// 端到端（M1 验收核心断言）：经 spawn_profiled 启动的真实子进程，
+    /// 其环境里 {home} 已展开为容器路径——凭据落盘隔离的机制证明。
+    #[test]
+    #[cfg(windows)]
+    fn spawn_profiled_injects_environment() {
+        let tmp = std::env::temp_dir().join(format!("exec-e2e-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        let mut redirect = BTreeMap::new();
+        redirect.insert("VARIABLE_TEST_HOME".to_string(), "{home}".to_string());
+        let profile = ExecProfile {
+            id: "e2e".into(),
+            env_redirect: redirect,
+            env_set: Default::default(),
+            net_allow: vec![],
+            sensitive: false,
+        };
+        let out = tmp.join("out.txt");
+        // 不加引号：cmd /c 以单参数接收时嵌套引号会被拆坏；temp 路径无空格
+        let script = format!("set VARIABLE_TEST_HOME>{}", out.display());
+        let pid = spawn_profiled(&tmp, &profile, Path::new("cmd.exe"), &["/c".to_string(), script])
+            .expect("spawn failed");
+        assert!(pid.is_some());
+
+        let expected = format!("VARIABLE_TEST_HOME={}", tmp.join("home").display());
+        let mut content = String::new();
+        for _ in 0..50 {
+            if let Ok(c) = fs::read_to_string(&out) {
+                content = c;
+                if content.contains("VARIABLE_TEST_HOME=") {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        assert!(content.contains(&expected), "injected env mismatch; got: {content:?}; expected: {expected:?}");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}

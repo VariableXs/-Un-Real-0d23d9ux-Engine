@@ -35,6 +35,10 @@ pub struct ThirdApp {
     /// （exe/bat/cmd 直接登记时为 None）。运行态匹配与便携化都以此为准。
     #[serde(default)]
     pub target: Option<String>,
+    /// 批次B-3（M1 执行档，BLUEPRINT 3.3）：隔离执行档。serde default 使
+    /// apps.json v1（无 profile 字段）平滑升级为 v2——旧文件可读可写。
+    #[serde(default)]
+    pub profile: crate::exec::PortableProfile,
 }
 
 // ---------- 登记表持久化 ----------
@@ -227,6 +231,7 @@ pub fn tp_add(
         last_launch: None,
         icon: None,
         target,
+        profile: Default::default(),
     };
     apps.push(app.clone());
     save_registry(&st, &apps)?;
@@ -346,7 +351,9 @@ pub(crate) fn tp_launch_inner(
         .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
         .unwrap_or(false)
     {
-        // .lnk 经 Shell 直接解析启动（不经 cmd 拼接），并取回目标进程 pid
+        // .lnk 经 Shell 直接解析启动（不经 cmd 拼接），并取回目标进程 pid。
+        // 如实边界（BLUEPRINT 14.2）：ShellExecute 通道无法注入环境变量，
+        // .lnk 登记项不经过执行档重定向——残留扫描兜底告警。
         #[cfg(windows)]
         {
             shell_launch_lnk(&p).map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
@@ -357,12 +364,30 @@ pub(crate) fn tp_launch_inner(
             None
         }
     } else {
-        let mut c = std::process::Command::new(&p);
-        if let Some(parent) = p.parent() {
-            c.current_dir(parent);
+        // 批次B-4（M1）：受管进程一律经执行档启动（环境重定向进容器）。
+        // 失败如实降级旧通道（MASTER-PLAN M1 回滚策略），并写入日志。
+        let profile = crate::exec::ExecProfile::from(
+            (app_item.id.as_str(), app_item.profile.clone()),
+        );
+        match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &[]) {
+            Ok(pid) => pid,
+            Err(profile_err) => {
+                if profile.is_empty() {
+                    // 无执行档配置时失败即真失败，不再多试一次
+                    return Err(AppError::io(format!("启动失败 / Launch failed: {profile_err}")));
+                }
+                crate::state::append_log(
+                    &st.logs_dir,
+                    &format!("[exec] profile spawn failed for {} ({}), falling back to legacy channel: {profile_err}", app_item.id, app_item.name),
+                );
+                let mut c = std::process::Command::new(&p);
+                if let Some(parent) = p.parent() {
+                    c.current_dir(parent);
+                }
+                spawn_detached(&mut c)
+                    .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
+            }
         }
-        spawn_detached(&mut c)
-            .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
     };
 
     // 撤销桌面置顶，让第三方窗口浮于桌面之上（回到桌面自动恢复，见 lib.rs）
@@ -394,7 +419,7 @@ pub fn tp_launch(
 
 /// 直接启动用户登记的 exe（参数列表方式，不经 shell 拼接）；返回新进程 pid。
 #[cfg(windows)]
-fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -404,7 +429,7 @@ fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32
 }
 
 #[cfg(not(windows))]
-fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
     cmd.spawn().map(|c| Some(c.id()))
 }
 
@@ -839,6 +864,7 @@ mod tests {
             last_launch: None,
             icon: None,
             target: None,
+            profile: Default::default(),
         };
         apps.push(app.clone());
         save_registry(&st, &apps).unwrap();
@@ -884,6 +910,7 @@ mod tests {
             last_launch: None,
             icon: None,
             target: None,
+            profile: Default::default(),
         });
         save_registry(&st, &apps).unwrap();
         tp_purge_inner(&st, "p1").unwrap();
@@ -906,6 +933,7 @@ mod tests {
             last_launch: None,
             icon: None,
             target: None,
+            profile: Default::default(),
         });
         save_registry(&st, &apps).unwrap();
         assert!(tp_purge_inner(&st, "p2").is_err(), "数据目录外应拒绝");
@@ -944,6 +972,7 @@ mod tests {
                 last_launch: None,
                 icon: None,
             target: None,
+            profile: Default::default(),
             };
             apps.push(app.clone());
             save_registry(&st, &apps).unwrap();

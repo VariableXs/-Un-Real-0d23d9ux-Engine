@@ -433,6 +433,7 @@ pub fn wp_engine_open(
             last_launch: None,
             icon: None,
             target: None,
+            profile: Default::default(),
         });
         launcher::save_registry(&st, &apps)?;
     }

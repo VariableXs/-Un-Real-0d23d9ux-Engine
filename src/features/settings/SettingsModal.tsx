@@ -9,7 +9,8 @@ import { useI18n } from "../../i18n";
 import type { Lang } from "../../i18n/dictionaries";
 import {
   errMessage, ipc,
-  type AuditFinding, type FileCheck, type PackProgress, type UsbStatus,
+  type AuditFinding, type FileCheck, type PackProgress, type ProfileDryRun, type ProfileTemplateDto,
+  type ResidueEntry, type ThirdApp, type UsbStatus,
   type VaultItem, type VaultStatus, type WpEngineItem, type WpMonitor,
 } from "../../lib/ipc";
 import { DEFAULT_SETTINGS, type CustomBg, type MindDefaults, type Settings, type ThemeId } from "../../lib/settings";
@@ -108,6 +109,7 @@ export function SettingsModal(props: {
     { id: "editor", label: t("editorTab") },
     { id: "mindmap", label: t("mindmapTab") },
     { id: "general", label: t("general") },
+    { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "data", label: t("data") },
     { id: "about", label: t("aboutVariable") },
@@ -667,6 +669,7 @@ export function SettingsModal(props: {
           )}
 
           {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
+          {tab === "profiles" && <ProfilesTab />}
           {tab === "shortcuts" && (
             <>
               <p className="dim small">{t("scHint")}</p>
@@ -1050,5 +1053,247 @@ function Check(props: { label: string; checked: boolean; disabled?: boolean; onC
       <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
+  );
+}
+
+/**
+ * 批次B-5/B-6（M1 执行档）：模板套用 / 重定向表编辑 / 干跑验证 / 残留扫描。
+ * 自包含数据加载（仅本标签激活时挂载），不触碰 SettingsModal 的 hook 顺序敏感区。
+ */
+type VarRow = { k: string; v: string };
+
+function ProfilesTab(): React.ReactElement {
+  const { t } = useI18n();
+  const [apps, setApps] = useState<ThirdApp[]>([]);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<ProfileTemplateDto[]>([]);
+  const [tplId, setTplId] = useState("");
+  const [redirect, setRedirect] = useState<VarRow[]>([]);
+  const [envSet, setEnvSet] = useState<VarRow[]>([]);
+  const [sensitive, setSensitive] = useState(false);
+  const [dry, setDry] = useState<ProfileDryRun | null>(null);
+  const [residue, setResidue] = useState<ResidueEntry[] | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await ipc.tpList();
+        setApps(list);
+      } catch (e) {
+        pushToast("error", t("pfTitle"), errMessage(e).message);
+      }
+      try {
+        setTemplates(await ipc.profileTemplates());
+      } catch {
+        /* 模板加载失败不阻断（旧后端兼容） */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sel = apps.find((a) => a.id === selId) ?? null;
+
+  function selectApp(a: ThirdApp): void {
+    setSelId(a.id);
+    setDirty(false);
+    setDry(null);
+    setRedirect(Object.entries(a.profile.envRedirect).map(([k, v]) => ({ k, v })));
+    setEnvSet(Object.entries(a.profile.envSet).map(([k, v]) => ({ k, v })));
+    setSensitive(a.profile.sensitive);
+    // 模板识别：重定向表逐项一致才算套用了该模板
+    const match = templates.find(
+      (tpl) =>
+        Object.keys(tpl.envRedirect).length === Object.keys(a.profile.envRedirect).length &&
+        Object.entries(tpl.envRedirect).every(([k, v]) => a.profile.envRedirect[k] === v),
+    );
+    setTplId(match?.id ?? "");
+  }
+
+  function editRows(rows: VarRow[], setRows: (r: VarRow[]) => void, index: number, patch: Partial<VarRow>): void {
+    setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDirty(true);
+  }
+
+  async function saveProfile(): Promise<void> {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const toMap = (rows: VarRow[]) =>
+        Object.fromEntries(rows.filter((r) => r.k.trim() !== "").map((r) => [r.k.trim(), r.v]));
+      const updated = await ipc.profileSet(sel.id, toMap(redirect), toMap(envSet), sensitive);
+      setApps((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+      setDirty(false);
+      pushToast("success", t("pfSaved"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyTemplate(): Promise<void> {
+    if (!sel || !tplId) return;
+    setBusy(true);
+    try {
+      const updated = await ipc.profileApply(sel.id, tplId);
+      setApps((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+      selectApp(updated);
+      pushToast("success", t("pfApplied"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dryrun(): Promise<void> {
+    if (!sel) return;
+    try {
+      setDry(await ipc.profileDryrun(sel.id));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    }
+  }
+
+  async function scanResidue(): Promise<void> {
+    setBusy(true);
+    try {
+      setResidue(await ipc.residueScan());
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const varTable = (rows: VarRow[], setRows: (r: VarRow[]) => void, ariaLabel: string) => (
+    <div className="backup-list">
+      {rows.map((r, i) => (
+        <div key={i} className="backup-row" style={{ gap: 6 }}>
+          <input
+            className="small"
+            style={{ width: "38%" }}
+            aria-label={`${ariaLabel} ${t("pfKey")}`}
+            value={r.k}
+            onChange={(e) => editRows(rows, setRows, i, { k: e.target.value })}
+          />
+          <input
+            className="small flex-1"
+            aria-label={`${ariaLabel} ${t("pfValue")}`}
+            value={r.v}
+            onChange={(e) => editRows(rows, setRows, i, { v: e.target.value })}
+          />
+          <button
+            type="button"
+            className="icon-btn tiny danger-hover"
+            aria-label={t("pfKey") + " ✕"}
+            onClick={() => {
+              setRows(rows.filter((_, j) => j !== i));
+              setDirty(true);
+            }}
+          >✕</button>
+        </div>
+      ))}
+      <div className="row gap8" style={{ marginTop: 6 }}>
+        <button type="button" className="btn ghost" onClick={() => { setRows([...rows, { k: "", v: "" }]); setDirty(true); }}>
+          + {t("pfAddVar")}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <h4>{t("pfTitle")}</h4>
+      <p className="dim small">{t("pfHint")}</p>
+      <div className="row gap8" style={{ alignItems: "flex-start" }}>
+        <div className="backup-list" style={{ width: 240, flexShrink: 0 }}>
+          {apps.length === 0 && <p className="dim small">{t("pfNoApps")}</p>}
+          {apps.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`backup-row ${a.id === selId ? "on" : ""}`}
+              style={{ textAlign: "left", cursor: "pointer" }}
+              onClick={() => selectApp(a)}
+            >
+              <span className="ellipsis">{a.icon ? <img src={a.icon} width={14} height={14} alt="" style={{ verticalAlign: -2, marginRight: 6 }} /> : null}{a.name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" style={{ minWidth: 0 }}>
+          {!sel && <p className="dim small">{t("pfSelectApp")}</p>}
+          {sel && (
+            <>
+              {sel.path.toLowerCase().endsWith(".lnk") && <p className="dim small">⚠ {t("pfLnkNote")}</p>}
+              <Field label={t("pfTemplate")}>
+                <div className="row gap8">
+                  <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ minWidth: 0, flex: 1 }}>
+                    <option value="">{t("pfTemplateCustom")}</option>
+                    {templates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn ghost" disabled={busy || !tplId} onClick={() => void applyTemplate()}>
+                    {t("pfApply")}
+                  </button>
+                </div>
+              </Field>
+              <Check label={t("pfSensitive")} checked={sensitive} onChange={(v) => { setSensitive(v); setDirty(true); }} />
+              <h4>{t("pfRedirect")}</h4>
+              {varTable(redirect, setRedirect, t("pfRedirect"))}
+              <h4>{t("pfEnvSet")}</h4>
+              {varTable(envSet, setEnvSet, t("pfEnvSet"))}
+              <div className="row gap8" style={{ marginTop: 10 }}>
+                <button type="button" className="btn primary" disabled={busy || !dirty} onClick={() => void saveProfile()}>
+                  {t("pfSave")}
+                </button>
+                <button type="button" className="btn ghost" disabled={busy} onClick={() => void dryrun()}>
+                  {t("pfDryrun")}
+                </button>
+              </div>
+              {dry && (
+                <div className="backup-list" style={{ marginTop: 10 }}>
+                  <p className="dim small">{t("pfDryrunTitle")}</p>
+                  {Object.entries(dry.envRedirect).map(([k, v]) => (
+                    <div key={k} className="backup-row">
+                      <code className="small">{k}</code>
+                      <span className="flex-1" />
+                      <code className="small dim">{v}</code>
+                    </div>
+                  ))}
+                  {Object.keys(dry.envRedirect).length === 0 && <p className="dim small">—</p>}
+                </div>
+              )}
+            </>
+          )}
+          <h4 style={{ marginTop: 14 }}>{t("pfResidueScan")}</h4>
+          <div className="row gap8">
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void scanResidue()}>
+              <ShieldCheck size={13} /> {t("pfResidueScan")}
+            </button>
+          </div>
+          {residue !== null && (
+            residue.length === 0 ? (
+              <p className="dim small" style={{ marginTop: 8 }}>{t("pfResidueClean")}</p>
+            ) : (
+              <>
+                <p className="dim small" style={{ marginTop: 8 }}>{t("pfResidueFound").replace("{n}", String(residue.length))}</p>
+                <div className="backup-list">
+                  {residue.map((r) => (
+                    <div key={r.path} className="backup-row">
+                      <span className="ellipsis small" title={r.path}>{r.path}</span>
+                      <span className="dim small">{formatBytes(r.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          )}
+        </div>
+      </div>
+    </>
   );
 }

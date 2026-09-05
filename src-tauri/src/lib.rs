@@ -1,7 +1,8 @@
-﻿pub mod backup;
+pub mod backup;
 pub mod boot;
 pub mod db;
 pub mod error;
+pub mod exec;
 pub mod export;
 pub mod library;
 pub mod media;
@@ -37,6 +38,8 @@ pub fn run() {
         .setup(|app| {
             let st = AppState::bootstrap()?;
             log_line(&st, "app bootstrap dirs ok");
+            // 批次B-6（M1）：残留扫描基线——环境启动即对宿主观测面快照（会话差集用）
+            exec::residue_baseline_take();
             app.manage(st);
             // Real loading happens here and is streamed to the UI as
             // `boot://event` progress events (no synthetic timeline).
@@ -225,6 +228,11 @@ pub fn run() {
             shell::privacy::privacy_audit,
             shell::netconsent::net_consent_check,
             shell::netconsent::net_consent_set,
+            exec::profile_templates,
+            exec::profile_apply,
+            exec::profile_set,
+            exec::profile_dryrun,
+            exec::residue_scan_cmd,
             shell::winman::win_set_avoid_taskbar,
     shell::winman::win_hide_to_tray,
     shell::winman::power_action,

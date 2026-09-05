@@ -265,10 +265,10 @@ M7 应用生态 2.0(搬迁向导/图标) ──► M8 网络层(白名单/代理
 
 **M1 执行档与凭据**
 
-- [ ] **B-3** `PortableProfile` 模型 + apps.json v1→v2 迁移（serde default 兼容）
-- [ ] **B-4** `exec.rs::spawn_profiled`：占位符展开、环境注入、tp_launch 接管；失败降级旧通道
-- [ ] **B-5** 模板库 v1（Claude Code/Codex/ZCode/Git/Node）＋设置页「执行档」标签
-- [ ] **B-6** 残留扫描器（会话差集）＋「验证重定向」干跑 UI
+- [x] **B-3** `PortableProfile` 模型 + apps.json v1→v2 迁移（serde default 兼容）
+- [x] **B-4** `exec.rs::spawn_profiled`：占位符展开、环境注入、tp_launch 接管；失败降级旧通道
+- [x] **B-5** 模板库 v1（Claude Code/Codex/ZCode/Git/Node）＋设置页「执行档」标签
+- [x] **B-6** 残留扫描器（会话差集）＋「验证重定向」干跑 UI
 
 **M3 终端与云 AI（先于 M2，因不等容器即可用 DirBackend）**
 
@@ -645,10 +645,10 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | --- | --- | --- | --- |
 | B-1 | 文档基线 + bench.cjs | ✅ | 文档四件套入库（2026-09-05）；bench.cjs 四项基准 + 首份基线 `docs/bench/2026-09-06.md`（coldStart 571ms / fileIndex 1591ms / memory 32MB；vwmOpen 如实 SKIPPED 待 GUI 插桩）（2026-09-06） |
 | B-2 | container crate 骨架 | ✅ | workspace 化 + `src-tauri/crates/container`：StorageBackend trait（蓝图 7.1）+ DirBackend + 8 测试桩全绿（2026-09-06） |
-| B-3 | PortableProfile 模型 + apps.json v2 | ☐ | |
-| B-4 | spawn_profiled 执行档执行器 | ☐ | |
-| B-5 | 重定向模板库 v1 + 设置页 | ☐ | |
-| B-6 | 残留扫描器 | ☐ | |
+| B-3 | PortableProfile 模型 + apps.json v2 | ✅ | ThirdApp.profile（serde default 平滑升级）+ v1→v2 迁移测试（2026-09-06，selfcheck/2026-09-06.md） |
+| B-4 | spawn_profiled 执行档执行器 | ✅ | exec.rs：{container}/{home} 展开 + 环境注入 + tp_launch 接管（失败降级旧通道）；cmd.exe 端到端注入测试全绿（2026-09-06） |
+| B-5 | 重定向模板库 v1 + 设置页 | ✅ | 5 模板（claude-code/codex/zcode/git/node）+ 设置页「执行档」标签（模板套用/表格编辑/pf* 22 键 i18n）（2026-09-06） |
+| B-6 | 残留扫描器 | ✅ | 启动基线快照 + 会话差集扫描（USERPROFILE 顶层+Recent）+ 干跑 UI；观测面口径见 selfcheck 边界（2026-09-06） |
 | B-7 | ConPTY 终端 + WT Portable 嵌入 | ☐ | |
 | B-8 | Node 运行时 + ai install | ☐ | |
 | B-9 | AI Hub 面板 | ☐ | |
@@ -684,7 +684,7 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-39 | 包签名与分发 | ☐ | |
 | B-40 | 扩展审计面 | ☐ | |
 
-**当前进度：2 ✅ / 0 🟡 / 38 ☐ —— 下一个动作：B-3/B-4（执行档，M1 核心，关键路径起点）。**
+**当前进度：6 ✅ / 0 🟡 / 34 ☐ —— M0+M1 已收口。下一个动作：M3 终端与云 AI 矩阵（B-7 ConPTY 起步），可与 M2 容器线（B-12）双线并行。**
 
 ---
 

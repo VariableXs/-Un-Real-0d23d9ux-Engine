@@ -1,3 +1,28 @@
+## 批次 B-3…B-6（2026-09-06）完成 — M1 隔离执行档与凭据封存（里程碑收口）
+- B-3：ThirdApp 增 profile 字段（PortableProfile：envRedirect/envSet/netAllow/sensitive，
+  全 serde default）——apps.json v1 文件读出即空档，可读可写，无需显式迁移脚本；
+  迁移正确性有专项测试（v1 JSON → 反序列化 → v2 回写 roundtrip）。
+- B-4：新建 src-tauri/src/exec.rs——expand_placeholders（{container}=数据目录、
+  {home}=容器 home）、env_map（干跑与真实注入共用同一实现）、spawn_profiled
+  （唯一受管进程入口）；tp_launch_inner 改经执行档启动，失败时如实降级旧通道并
+  写日志（MASTER-PLAN M1 回滚策略）；.lnk 走 ShellExecute 无法注入环境（蓝图 14.2
+  如实边界），UI 标注 + 残留扫描兜底。
+- B-5：模板库 v1 五件套（claude-code/codex/zcode/git/node；HOME 与 USERPROFILE
+  按 14.2 指向不同镜像防互踩，Git 用 {home}/msys）；命令面 profile_templates/
+  profile_apply/profile_set/profile_dryrun；设置页新增「执行档」标签（自包含
+  ProfilesTab 组件，避免触碰 SettingsModal 的 hook 顺序敏感区）。
+- B-6：残留扫描器——环境启动时（lib.rs setup）对 %USERPROFILE% 顶层 + Recent
+  快照基线，residue_scan 输出会话新增/变化差集；观测面不递归不读内容（误报与
+  隐私双保守，取舍写进 selfcheck 边界）。
+- 验收：cargo test --workspace 50 绿（含端到端注入证明：spawn_profiled 拉起真实
+  cmd.exe，子进程环境里 {home} 已展开为容器路径）；tsc/vitest 218/audit/build/bench
+  全绿；报告 docs/selfcheck/2026-09-06.md。GUI 实机点验项（登记真实 Claude Code →
+  残留为 0）按三宿主矩阵在里程碑验收时执行。
+- 教训：①裸程序名（cmd.exe）的 parent() 是空路径，current_dir("") 会让
+  CreateProcess 报 InvalidFilename——没有端到端测试就永远发现不了，机制类改动必须
+  有真实子进程级测试；②cmd /c 单参数接收时嵌套引号会被拆坏，重定向测试要用无引号
+  写法；③Python 批量改 Rust 源码前必须先探测 CRLF/BOM，三份文件的行尾各不相同。
+
 ## 批次 B-1（2026-09-06）完成 — 性能基准基线（M0 收尾）
 - 新建 tools/bench.cjs：四项基准对齐 BLUEPRINT 3.14 预算表——coldStart（拉起
   variable.exe 轮询主窗口句柄）、fileIndex（临时树 10000 文件遍历+首块读取）、
