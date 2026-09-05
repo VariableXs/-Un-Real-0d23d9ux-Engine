@@ -853,4 +853,135 @@ Runbook 验收：附录每一条都在三宿主矩阵中演练过一次（对应
 
 ---
 
+---
+
+## 21. 附录 H：事件与设置契约目录（Event & Settings Catalog）
+
+> 拓展性的第一原则：**所有跨模块通信必须登记在案**。新增事件/设置键不入册 = 审计红。本目录是「项目闭合」的契约面之一，与蓝图 7.x 接口清单同级。
+
+### H.1 事件目录（既有 + 规划）
+
+| 事件 | 载荷 | 方向 | 状态 | 说明 |
+| --- | --- | --- | --- | --- |
+| `boot://event` | `{stage, progress, label?}` | R→F | ✅ | 启动仪式真实进度流 |
+| `settings://changed` | `{origin, keys[]}` | R→F 广播 | ✅ | 设置变更跨窗口同步，前端按 origin 滤回声 |
+| `sys://wintab` | 无 | R→F | ✅ | Win+Tab 切换器唤起 |
+| `sys://open-system` | `{kind, path?}` | R→F | ✅ | 快捷键打开 VWM 系统窗口 |
+| `sys://quit-request` | 无 | R→F | ✅ | Del+Backspace 真退出（kbdhook） |
+| `sys://im-msg` | `{app, count}` | R→F | ✅ | 通讯软件未读提醒 |
+| `sys://toggle-hide` | 无 | R→F | ☐ 已退役 | E-17 双 Shift 链路，被 kbdhook 轮询取代 |
+| `tray://quit` | 无 | R→F | ✅ | 托盘菜单退出 |
+| `embed://exited` / `embed://hung` | — | R→F | ☐ 已退役 | 守护子系统按需求移除（v1.0.0） |
+| `container://health` | `{level, message}` | R→F | 规划 M2 | 容器健康（journal 重放/GC/水位警告） |
+| `net://verdict` | `{domain, verdict, profile}` | R→F | 规划 M8 | 出站裁决实时横幅 |
+| `exec://residue` | `{paths[]}` | R→F | 规划 M1 | 执行档宿主残留告警 |
+| `env://switched` | `{from, to}` | R→F | 规划 M6 | 子环境切换完成广播 |
+| `copy://progress` | `{queueId, done, total}` | R→F | 规划 M5 批 | 文件总线进度流 |
+
+**规则**：事件名必须带命名空间前缀（`<域>://<动作>`）；载荷必须是可 JSON 序列化的扁平对象；破坏性载荷变更 = 版本号新事件（`v2` 后缀）+ 旧事件一个版本的退役期。
+
+### H.2 设置键目录（增补规划键）
+
+既有键沿用现状（`theme/language/perfMode/customBg/wallpaperMode/wpMonitors/avoidTaskbar/bgTier/reduceMotion/uiZoom/...`）。规划新增（按里程碑首次出现即登记）：
+
+| 键 | 类型 | 默认 | 里程碑 | 说明 |
+| --- | --- | --- | --- | --- |
+| `storageBackend` | `dir\|vhdx\|uxv` | `dir` | M2 | 存储后端选择 |
+| `envProfiles` | object | `{}` | M1 | 执行档重定向表（apps.json v2 双轨） |
+| `netAllowlist` | array | `[]` | M8 | 域名白名单（域/端口/对象/有效期） |
+| `netKillSwitch` | bool | `false` | M8 | 一键全断 |
+| `proxyConfig` | object | `null` | M8 | HTTP/SOCKS5 + 远端 DNS |
+| `envStack` | array | `[]` | M6 | 子环境栈与活动档 |
+| `aiTools` | object | `{}` | M3 | AI Hub 工具注册与账号引用 |
+| `layoutPresets` | object | `{}` | M4 批 | VWM 布局快照 |
+| `clipboardPolicy` | object | `互通` | M5 批 | 跨子环境剪贴板策略 |
+
+**规则**：设置键 ≤100 字符、值 ≤1MB（既有校验不变）；新增键必须带默认值与迁移语义（删除走双版本退役期，见附录 C）。
+
+### H.3 审计闭合
+
+`tools/audit.cjs` 扩展第三个校验面：**事件/设置目录一致性**——代码中 emit/listen 的事件、读写前列的设置键，都必须在本目录出现；目录中标「已退役」的不得再被代码引用。这使契约文档从"描述性"变成"可执行约束"。
+
+## 22. 附录 I：扩展包协议（`.uxpack.json`）
+
+> 拓展性的落点：壁纸、AI 提供方、应用模板、语言工具链四类生态内容，全部走**同一个声明式扩展包**格式进环境——不写代码也能扩展。
+
+### I.1 包结构
+
+```
+<包名>.uxpack/
+├─ uxpack.json          清单（唯一契约入口）
+├─ assets/              壁纸/图标/截图
+├─ templates/           执行档模板 / 工具链部署脚本
+└─ wallpapers/frag/     着色器壁纸（.frag + 元数据）
+```
+
+### I.2 清单 Schema（v1）
+
+```jsonc
+{
+  "uxpack": 1,
+  "id": "com.example.devpack",
+  "name": "Example Dev Pack",
+  "version": "1.0.0",
+  "engine": ">=1.2",                     // 引擎 semver 区间
+  "kind": ["wallpapers", "ai-providers", "app-templates", "toolchains"],
+  "wallpapers": [
+    { "type": "image|video|web|shader", "entry": "assets/x.jpg",
+      "name": {"zh": "星河", "en": "Galaxy"} }
+  ],
+  "aiProviders": [
+    { "id": "claude-code", "displayName": "Claude Code",
+      "runtime": "node", "install": "npm i -g @anthropic-ai/claude-code",
+      "env": { "CLAUDE_CONFIG_DIR": "{home}/.claude" },
+      "net": ["api.anthropic.com"],      // 请求的出站白名单（安装时弹授权）
+      "auth": "token|oauth-browser" }
+  ],
+  "appTemplates": [
+    { "name": {"zh": "..."}, "exec": {...}, "envRedirect": {...}, "icon": "assets/i.png" }
+  ],
+  "toolchains": [ { "id": "python", "deploy": "templates/py.ps1", "pathAdd": "{root}/runtime/py" } ]
+}
+```
+
+### I.3 安装与信任模型
+
+- **安装** = 解包进容器 `extensions/<id>/` + 清单登记 + **逐项授权**（出站域名走 netconsent 白名单弹窗；执行档模板展示重定向表供确认）；
+- **签名**：v1 可未签名（本地自建包），分发包要求 Ed25519 签名（公钥内置于引擎；密钥轮换走双公钥过渡）；
+- **卸载** = 删目录 + 登记回收 + 该包申请的白名单域自动撤销（闭合！扩展的权限随卸载消失）；
+- **审计**：扩展清单键面纳入 `tools/audit.cjs`（未知 kind/字段 → 红）。
+
+### I.4 生态位对照
+
+| 包类型 | 对应蓝图章节 | 首个里程碑 |
+| --- | --- | --- |
+| 壁纸包（含 shader） | 3.9 | M7 后 B-36 |
+| AI 提供方包 | 3.6 | M3（内置三模板即首个"官方包"） |
+| 应用模板包 | 3.3/3.5 | M1（模板库即首个官方包） |
+| 语言工具链包 | 3.8 | M5（自研语言 = 第一个第三方包用户） |
+
+## 23. 附录 J：规模上限与可访问性承诺
+
+### J.1 规模上限表（实用性的硬承诺，超限行为 = 如实降级提示）
+
+| 维度 | 上限 | 超限行为 |
+| --- | --- | --- |
+| 同屏 VWM 虚拟窗口 | 16（建议 ≤8） | 提示性能降级，不阻止 |
+| 同窗口标签页 | 24 | 新开虚拟窗口引导 |
+| 嵌套子环境深度 | 3 | 按钮置灰 + 原因（已定） |
+| 第三方登记项 | 512 | 开始菜单扫描分页 |
+| 单容器打开句柄流 | 256 | 流式句柄 LRU 淘汰 |
+| 单文件大小 | 容器容量（流式，无 4GB 限制） | — |
+| 执行档环境变量注入 | 单档 64 条 / 值 32KB | 模板校验拒绝 |
+| 通知中心未读 | 500（自动折叠归档） | 归档可查 |
+
+### J.2 可访问性与本地化承诺（如实、渐进）
+
+- **键盘可达**：全部新界面（AI Hub/命令面板/切换器/拷贝队列）必须全程键盘可操作（Tab 序 + 焦点环 + Esc 关闭）——纳入冒烟清单第 7 条的扩展；
+- **缩放**：沿用 `uiZoom` 全局缩放；VWM 虚拟窗口内容随窗口缩放（WebView 文本缩放天然支持）；
+- **屏幕阅读器**：WebView2 层的 ARIA 语义"尽力保留"，如实声明当前不做专项适配（不假装支持）；
+- **对比度**：新增 UI 沿用语义色板并过 WCAG AA（4.5:1）校验工具检查（tools/ 加色板比对脚本，M4 批）。
+
+---
+
 *Un-Real 0d23d9ux Engine · 架构蓝图 · v1.0sno9u.vxe · 实施计划见 MASTER-PLAN。*
