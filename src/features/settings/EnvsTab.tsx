@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
+import { formatBytes } from "../../lib/format";
 import { askConfirm } from "../../components/Modal";
 import type { Settings } from "../../lib/settings";
 
@@ -136,6 +137,38 @@ export function EnvsTab(props: { settings: Settings; onPatch: (p: Partial<Settin
                   {t("evSwitch")}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() =>
+                  void withBusy(async () => {
+                    try {
+                      const r = await ipc.envClone(e.id, `${e.name} 2`);
+                      await refresh();
+                      pushToast("success", t("evCloned"), `${r.cloneName || r.cloneId} · ${formatBytes(r.bytesCopied)}`);
+                    } catch (err) {
+                      pushToast("error", t("evCloneFail"), errMessage(err).message);
+                    }
+                  })
+                }
+              >
+                {t("evClone")}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void withBusy(async () => {
+                    try {
+                      await ipc.envNested(e.id);
+                      pushToast("success", t("evNestedOk"), e.name);
+                    } catch (err) {
+                      pushToast("error", t("evNestedFail"), errMessage(err).message);
+                    }
+                  })
+                }
+                title={t("evNestedTip")}
+              >
+                {t("evNested")}
+              </button>
               {e.id !== "main" && (
                 <button type="button" className="danger" onClick={() => remove(e)}>
                   {t("evDelete")}

@@ -395,3 +395,10 @@
 - 测试：create/switch/delete 全流程 + 快照写入旧环境 + {envhome} 解析 + main 回退，2 项；workspace 116 全绿；tsc/audit/vitest/build 全绿。
 - 已知边界（如实）：工作区文件与 apps.json 登记表跨环境共享——完全剖面隔离随 B-25/B-26 快照克隆评估；切换的"启动仪式短版"目前=设置联动重载。
 - 教训：①audit.cjs 的 i18n 检查 exit code 恒 0，MISSING ZH/EN 只打印不设退出码——"exit 0"不等于"审计通过"，必须读输出；②向 dict 插键的去重检查必须限定在该 dict 段内（全文本检查会把 zh 已有键误判 en 已有）；③文件含 CRLF/LF 混排时，'\n};' 定位要用 \r?\n 正则或行扫描。
+
+## 批次 B-26 + B-25（2026-09-06）完成 — 环境快照克隆与嵌套实例（M6 代码面收口）
+- B-26：env_clone——剖面目录（home/workspaces）全量复制 + 条目/设置快照复制；bytes_copied 进报告。Uxv chunk 后端的 COW 零拷贝由 M2 快照机制提供（"克隆 10GB < 2s"属 Uxv 容器 + H1 实机口径）；目录剖面 V1 物理为全量复制（安全 > 快，硬链接会被两端写穿透）。
+- B-25：env_nested——spawn 当前 exe + VARIABLE_DATA_ROOT（独立数据根，嵌套互斥：绝不同一容器互踩 journal）+ VARIABLE_NEST_DEPTH（上限 3）+ VARIABLE_PARENT_ENV；state.rs bootstrap 优先读该环境变量。白名单继承 V1=子实例独立 netconsent 库（父白名单透传接口已预留，B-28 白名单库落地后改为显式子集注入）。V1 嵌入回退：子实例为独立 OS 窗口（与嵌入失败路径"不杀进程"哲学一致），嵌 VWM 属后续批。
+- 前端：环境行新增「克隆」「嵌套启动」按钮 + 报告 toast（克隆带 bytes）。
+- 测试：envs 4 项（roundtrip/depth/env 构造/嵌套根隔离）+ 回归全绿（workspace 118）；tsc/audit/vitest/build 全绿。M6 代码面收口。
+- 教训：①嵌套互斥的正确解法是"独立数据根"而非"共享容器加锁"——后者把并发问题引进了 journal；②深度限制要在父进程判定（depth>=3 拒绝），子进程再判只是兜底——防御要放在发起侧。

@@ -222,6 +222,8 @@ pub fn run() {
             shell::envs::env_create,
             shell::envs::env_switch,
             shell::envs::env_delete,
+            shell::envs::env_clone,
+            shell::envs::env_nested,
             shell::launcher::tp_add,
             shell::launcher::tp_list,
             shell::launcher::tp_remove,

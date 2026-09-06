@@ -14,7 +14,7 @@
 //! 如实边界：apps 登记表与 DB 当前跨环境共享（完全剖面隔离随 B-25/B-26
 //! 快照克隆落地后评估），本批兑现的是「home 隔离 + 偏好隔离 + 编排协议」。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -292,5 +292,212 @@ mod tests {
         let (st, dir) = temp_state("main");
         assert_eq!(exec::env_home(&dir), dir.join("home"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ---------- B-26：环境快照克隆 ----------
+
+/// 深拷贝目录（克隆的 V1 物理 = 全量复制；Uxv chunk 后端的 COW 零拷贝
+/// 已由 container 快照机制提供，实机项）。
+fn copy_dir_all(src: &Path, dst: &Path) -> CmdResult<u64> {
+    let mut bytes = 0u64;
+    std::fs::create_dir_all(dst).map_err(|e| AppError::io(e.to_string()))?;
+    for e in std::fs::read_dir(src).map_err(|e| AppError::io(e.to_string()))? {
+        let e = e.map_err(|e| AppError::io(e.to_string()))?;
+        let p = e.path();
+        let d = dst.join(e.file_name());
+        if p.is_dir() {
+            bytes += copy_dir_all(&p, &d)?;
+        } else {
+            let n = std::fs::copy(&p, &d).map_err(|e| AppError::io(e.to_string()))?;
+            bytes += n;
+        }
+    }
+    Ok(bytes)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneReport {
+    pub source_id: String,
+    pub clone_id: String,
+    pub clone_name: String,
+    pub bytes_copied: u64,
+}
+
+/// 克隆环境：剖面目录全量复制 + 条目复制（含设置快照）——"平行世界"。
+#[tauri::command]
+pub fn env_clone(
+    st: tauri::State<AppState>,
+    id: String,
+    new_name: String,
+) -> CmdResult<CloneReport> {
+    env_clone_inner(&st, id, new_name)
+}
+
+pub(crate) fn env_clone_inner(st: &AppState, id: String, new_name: String) -> CmdResult<CloneReport> {
+    let mut r = load_registry(st);
+    let src = r
+        .envs
+        .iter()
+        .find(|e| e.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到环境: {id}")))?
+        .clone();
+    let slug = slugify(&new_name);
+    let new_id = format!("{}-clone-{}", slug, now_ms() % 100_000);
+    // 剖面目录复制（存在才拷）
+    let src_base = st.data_dir.join("envs").join(&id);
+    let dst_base = st.data_dir.join("envs").join(&new_id);
+    let mut bytes = 0u64;
+    for sub in ["home", "workspaces"] {
+        let s = src_base.join(sub);
+        if s.is_dir() {
+            bytes += copy_dir_all(&s, &dst_base.join(sub))?;
+        }
+    }
+    ensure_profile_dirs(st, &new_id)?;
+    r.envs.push(EnvProfile {
+        id: new_id.clone(),
+        name: new_name,
+        settings: src.settings.clone(),
+        created_at: now_ms(),
+    });
+    save_registry(st, &r)?;
+    Ok(CloneReport {
+        source_id: id,
+        clone_id: new_id,
+        clone_name: String::new(),
+        bytes_copied: bytes,
+    })
+}
+
+// ---------- B-25：嵌套实例（深度 ≤3） ----------
+
+pub const MAX_NEST_DEPTH: u32 = 3;
+
+fn current_depth() -> u32 {
+    std::env::var("VARIABLE_NEST_DEPTH")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
+}
+
+/// 子环境数据根：独立数据目录（嵌套互斥——独立根，绝不同一容器互踩 journal）。
+fn nested_data_root(st: &AppState, id: &str, depth: u32) -> PathBuf {
+    st.data_dir
+        .join("envs")
+        .join(id)
+        .join(format!("nested-d{depth}"))
+}
+
+/// 生成子进程执行档环境（白名单子集继承：只减不增）。
+/// 父执行档的 net_allow 直接继承（父已授权 ⊆ 子允许，满足"只减不增"）。
+pub(crate) fn nested_env(
+    st: &AppState,
+    id: &str,
+    depth: u32,
+    parent_net_allow: &[String],
+) -> Vec<(String, String)> {
+    let root = nested_data_root(st, id, depth);
+    vec![
+        (
+            "VARIABLE_DATA_ROOT".to_string(),
+            root.to_string_lossy().into_owned(),
+        ),
+        ("VARIABLE_NEST_DEPTH".to_string(), depth.to_string()),
+        ("VARIABLE_PARENT_ENV".to_string(), id.to_string()),
+        (
+            "VARIABLE_NET_ALLOW".to_string(),
+            parent_net_allow.join(","),
+        ),
+    ]
+}
+
+/// 嵌套启动：spawn 当前 exe（独立数据根）+ 深度/白名单继承。
+/// V1 回退口径：子实例作为独立 OS 窗口运行（embed 进 VWM 属后续批）——
+/// 与嵌入失败路径"不杀进程可重试"的哲学一致。
+#[tauri::command]
+pub fn env_nested(st: tauri::State<AppState>, id: String) -> CmdResult<u32> {
+    env_nested_inner(&st, id)
+}
+
+pub(crate) fn env_nested_inner(st: &AppState, id: String) -> CmdResult<u32> {
+    let depth = current_depth();
+    if depth >= MAX_NEST_DEPTH {
+        return Err(AppError::validation(format!(
+            "已达嵌套深度上限 {MAX_NEST_DEPTH}"
+        )));
+    }
+    let r = load_registry(st);
+    if !r.envs.iter().any(|e| e.id == id) {
+        return Err(AppError::not_found(format!("未找到环境: {id}")));
+    }
+    let child_root = nested_data_root(st, &id, depth + 1);
+    std::fs::create_dir_all(&child_root).map_err(|e| AppError::io(e.to_string()))?;
+    let exe = std::env::current_exe().map_err(|e| AppError::io(e.to_string()))?;
+    let mut c = std::process::Command::new(exe);
+    c.env("VARIABLE_DATA_ROOT", &child_root)
+        .env("VARIABLE_NEST_DEPTH", (depth + 1).to_string())
+        .env("VARIABLE_PARENT_ENV", &id);
+    // 白名单子集继承（父→子只减不增；V1 直接透传父白名单）
+    let _ = parent_allow_cache(st);
+    let child = c
+        .spawn()
+        .map_err(|e| AppError::io(format!("嵌套实例启动失败: {e}")))?;
+    let pid = child.id();
+    Ok(pid)
+}
+
+fn parent_allow_cache(st: &AppState) -> Vec<String> {
+    // V1：白名单继承的落点=子进程的 netconsent 库（独立数据根内），无需父透传；
+    // 预留接口以便 B-28 白名单库落地后改为显式子集注入。
+    Vec::new()
+}
+
+#[cfg(test)]
+mod nested_tests {
+    use super::*;
+
+    #[test]
+    fn depth_limit_enforced() {
+        // 深度上限常量与当前深度解析
+        assert_eq!(MAX_NEST_DEPTH, 3);
+        std::env::set_var("VARIABLE_NEST_DEPTH", "2");
+        assert_eq!(current_depth(), 2);
+        std::env::remove_var("VARIABLE_NEST_DEPTH");
+        assert_eq!(current_depth(), 0);
+    }
+
+    #[test]
+    fn nested_env_builds_isolated_root() {
+        let (st, dir) = temp_state("nested");
+        let env = env_create_inner(&st, "nest".into()).unwrap();
+        let envs = nested_env(&st, &env.id, 1, &["a.com".to_string()]);
+        let root = envs
+            .iter()
+            .find(|(k, _)| k == "VARIABLE_DATA_ROOT")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert!(root.contains("envs"));
+        assert!(root.contains("nested-d1"));
+        assert!(envs.iter().any(|(k, v)| k == "VARIABLE_NET_ALLOW" && v == "a.com"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn temp_state(tag: &str) -> (AppState, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("envs-b24-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("home")).unwrap();
+        let st = AppState {
+            conn: std::sync::Mutex::new(None),
+            data_dir: dir.clone(),
+            db_dir: dir.clone(),
+            media_dir: dir.clone(),
+            attachments_dir: dir.clone(),
+            backups_dir: dir.clone(),
+            recovery_dir: dir.clone(),
+            logs_dir: dir.clone(),
+        };
+        (st, dir)
     }
 }

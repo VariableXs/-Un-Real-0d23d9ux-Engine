@@ -274,6 +274,9 @@ export const ipc = {
   envSwitch: (id: string, currentSettings?: Record<string, unknown>) =>
     invoke<unknown>("env_switch", { id, currentSettings: currentSettings ?? null }),
   envDelete: (id: string) => invoke<void>("env_delete", { id }),
+  envClone: (id: string, newName: string) =>
+    invoke<Shell.EnvCloneReport>("env_clone", { id, newName }),
+  envNested: (id: string) => invoke<number>("env_nested", { id }),
 
   // ---- B-22 Git 面板（只读）+ SSH 金库 ----
   gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
@@ -604,6 +607,13 @@ namespace Shell {
     name: string;
     active: boolean;
     createdAt: number;
+  }
+  /** B-26：环境克隆报告。 */
+  export interface EnvCloneReport {
+    sourceId: string;
+    cloneId: string;
+    cloneName: string;
+    bytesCopied: number;
   }
   /** B-23：搜索/大文件。 */
   export interface SearchReport {

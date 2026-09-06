@@ -948,6 +948,13 @@ const zh: Dict = {
   evDeleted: "已删除",
   evDeleteFail: "删除失败",
   evIsolationNote: "边界：当前隔离面为执行档 HOME 与偏好快照；工作区文件与登记表跨环境共享，完全剖面随快照克隆落地。",
+  evClone: "克隆",
+  evCloned: "克隆完成",
+  evCloneFail: "克隆失败",
+  evNested: "嵌套启动",
+  evNestedOk: "嵌套实例已启动（独立数据根）",
+  evNestedFail: "嵌套启动失败（深度上限 3？）",
+  evNestedTip: "以该环境的独立数据根启动一个嵌套 Variable 实例（深度上限 3）",
 };
 
 /**
@@ -1987,6 +1994,13 @@ const en: Dict = {
   evDeleted: "Deleted",
   evDeleteFail: "Delete failed",
   evIsolationNote: "Boundary: current isolation covers exec HOME and preference snapshots; workspace files and the app registry are shared across environments — full profiles land with snapshot clones.",
+  evClone: "Clone",
+  evCloned: "Cloned",
+  evCloneFail: "Clone failed",
+  evNested: "Nested start",
+  evNestedOk: "Nested instance started (own data root)",
+  evNestedFail: "Nested start failed (depth cap 3?)",
+  evNestedTip: "Start a nested Variable instance with this environment's own data root (depth cap 3)",
 
   tcOfflineNote: "Offline hosts: place the corresponding package at runtime/<id>-download.(zip|exe) and deploy skips the download.",
 };

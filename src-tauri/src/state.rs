@@ -48,6 +48,12 @@ impl AppState {
     /// a progress event. Fails loudly with actionable messages when directories
     /// cannot be created.
     pub fn bootstrap() -> CmdResult<AppState> {
+        // B-25 嵌套实例：独立数据根由父进程经环境变量指定（优先级最高）。
+        if let Ok(root) = std::env::var("VARIABLE_DATA_ROOT") {
+            if !root.trim().is_empty() {
+                return Self::bootstrap_dirs_at(PathBuf::from(root));
+            }
+        }
         let base = match portable_base() {
             Some(b) => b.join("data"),
             None => dirs_app_data().ok_or_else(|| {
