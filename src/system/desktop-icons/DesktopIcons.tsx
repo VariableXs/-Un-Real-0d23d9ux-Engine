@@ -955,12 +955,6 @@ export function DesktopIcons(props: {
       props.onPatchSettings({ wallpaperMode: w });
       return;
     }
-    if (w === "system") {
-      props.onPatchSettings({ wallpaperMode: w });
-      void ipc.winHideToTray().catch(() => {});
-      pushToast("info", t("wpSystem"), t("wpSystemHint"));
-      return;
-    }
     if (w === "web") {
       if (!props.customBg.htmlPath) {
         pushToast("info", t("wpWeb"), t("wpEngineTitle"));
@@ -1002,7 +996,9 @@ export function DesktopIcons(props: {
   const openDesktopMenu = (e: React.MouseEvent): void => {
     if (e.button !== 0) e.preventDefault();
     const sizes: IconSize[] = [32, 48, 64];
-    const walls = ["solid", "gravity", "image", "video", "hybrid", "web", "system"] as const;
+    // "系统桌面（Wallpaper Engine）"入口已移除：选中即隐藏 Variable 并渲染纯黑，
+    // WE 未接管时表现为整屏黑屏（实机反馈）。壁纸全部在本地环境内打开。
+    const walls = ["solid", "gravity", "image", "video", "hybrid", "web"] as const;
     const wallKeys: Record<(typeof walls)[number], string> = {
       solid: "wpSolid",
       gravity: "wpGravity",
@@ -1010,7 +1006,6 @@ export function DesktopIcons(props: {
       video: "wpVideo",
       hybrid: "wpHybrid",
       web: "wpWeb",
-      system: "wpSystem",
     };
     const items: MenuItem[] = [
       {

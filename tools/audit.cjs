@@ -47,6 +47,10 @@ if (missingBackend.length) console.log("MISSING BACKEND:", missingBackend);
 else console.log("OK: every invoke has a backend command");
 if (notRegisteredInHandler.length) console.log("NOT IN generate_handler:", notRegisteredInHandler);
 else console.log("OK: every command registered");
+// 双向 diff 的反向冗余（M4 顺手项）：后端已定义但前端零 invoke 的命令。
+// 多数是历史遗留/仅 CLI 使用，报出来人工确认后删除，防止 surface 腐化。
+if (unusedBackend.length) console.log("UNUSED BACKEND (no frontend invoke):", unusedBackend);
+else console.log("OK: no unused backend commands");
 
 // ---- 2. i18n keys audit ----
 const dictSrc = fs.readFileSync("src/i18n/dictionaries.ts", "utf8");

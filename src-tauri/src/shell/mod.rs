@@ -29,6 +29,7 @@ pub mod recovery;
 pub mod recycle;
 pub mod search;
 pub mod security;
+pub mod single_instance;
 pub mod sysinfo;
 pub mod terminal;
 pub mod toolchains;

@@ -66,7 +66,9 @@ export function GitPanel(props: { repoDir: string }) {
             {status.headCommit ? ` @ ${status.headCommit}` : ""}
             {status.ahead > 0 || status.behind > 0
               ? ` · ↑${status.ahead} ↓${status.behind}`
-              : ""}
+              : !status.hasUpstream
+                ? ` · ${t("gitNoUpstream")}`
+                : ""}
           </span>
         ) : null}
       </div>

@@ -394,11 +394,6 @@ export const ipc = {
     invoke<string | null>("wp_pick_daily", { dir, mode }),
   /** 批次E-12：扫描 Wallpaper Engine 壁纸项目（root 空 = 自动探测 Steam 库）。 */
   wpEngineScan: (root = "") => invoke<Shell.WpEngineItem[]>("wp_engine_scan", { root }),
-  /**
-   * 批次E-15：通过 Wallpaper Engine 本体打开任意类型项目
-   * （scene/application 等不可内嵌渲染的类型；调 WE 官方 -control openWallpaper）。
-   */
-  wpEngineOpen: (id: string, source = "") => invoke<void>("wp_engine_open", { id, source }),
 
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
   /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */
@@ -760,6 +755,7 @@ namespace Shell {
     entries: GitEntry[];
     ahead: number;
     behind: number;
+    hasUpstream: boolean;
     isRepo: boolean;
   }
   export interface GitEntry {

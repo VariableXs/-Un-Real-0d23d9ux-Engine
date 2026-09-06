@@ -26,6 +26,10 @@ pub fn run() {
             std::process::exit(code);
         }
     }
+    // 单实例守卫：双开时第二实例的全局快捷键整表注册必然失败
+    // （RegisterHotKey 是系统级，第一实例已占用 ctrl+alt+*，表现为
+    // "注册失败（被系统或其他软件占用）"全量弹窗 —— 实机反馈）。
+    shell::single_instance::enforce();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -279,7 +283,6 @@ pub fn run() {
             shell::wallpaper::wp_set_monitor,
             shell::wallpaper::wp_pick_daily,
             shell::wallpaper::wp_engine_scan,
-            shell::wallpaper::wp_engine_open,
             shell::embed::embed_launch,
             shell::embed::embed_bounds,
             shell::embed::embed_visible,

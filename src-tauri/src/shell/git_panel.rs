@@ -51,6 +51,8 @@ pub struct GitStatusView {
     pub entries: Vec<GitEntry>,
     pub ahead: usize,
     pub behind: usize,
+    /// 当前分支是否配置了 upstream（false 时 ahead/behind 恒为 0，UI 据此提示）
+    pub has_upstream: bool,
     pub is_repo: bool,
 }
 
@@ -122,6 +124,7 @@ pub(crate) fn git_status_inner(st: &AppState, repo_path: &str) -> CmdResult<GitS
         entries: Vec::new(),
         ahead: 0,
         behind: 0,
+        has_upstream: false,
         is_repo: true,
     };
     if let Ok(head) = repo.head() {
@@ -137,6 +140,7 @@ pub(crate) fn git_status_inner(st: &AppState, repo_path: &str) -> CmdResult<GitS
             if let Some(shorthand) = head.shorthand() {
                 if let Ok(local_branch) = repo.find_branch(shorthand, git2::BranchType::Local) {
                     if let Ok(upstream) = local_branch.upstream() {
+                        view.has_upstream = true;
                         if let (Some(local_oid), Some(up_oid)) =
                             (head.target(), upstream.get().target())
                         {

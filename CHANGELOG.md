@@ -4,6 +4,41 @@
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
 ## [Unreleased] — 1.0sno9u.vxe
+
+## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话：壁纸三修复 + 小项三清）
+
+> 实机使用反馈修复（H1 家用机），壁纸路径全部本地化收口。
+
+### 壁纸实机修复（H1 反馈）
+
+- **scene/应用型壁纸全部本地打开**：点击不再调 `wp_engine_open` 拉起 Wallpaper
+  Engine 本体 + 隐藏窗口，改为项目 preview.jpg 本地图片壁纸渲染（无预览图如实
+  报错）；三种语言词条同步（wpEngineLocal / wpEngineNoPreview）；
+- **「系统桌面（Wallpaper Engine）」模式下线**：该模式渲染纯黑并让位隐藏，WE 未
+  接管时整屏黑屏——右键菜单与设置页下拉均移除入口；历史设置残留 system 值由
+  WallpaperLayer 兜底落入图片/媒体渲染路径，不再黑屏；
+- **`wp_engine_open` 整链删除**（Rust 命令 + generate_handler + ipc.ts）：宿主侧
+  不再启动 wallpaper64.exe，攻击面收窄。
+
+### 快捷键双开防护
+
+- 新增 `shell/single_instance.rs` 单实例守卫（命名互斥体 OpenMutexW，零新依赖）：
+  双开时第二实例弹系统消息框并退出——此前双开导致全局快捷键整表注册全部失败
+  （"注册失败（被系统或其他软件占用）"全量弹窗）的根因即在此。
+
+### 小项三清
+
+- **B-22 upstream 提示**：GitStatusView 新增 `has_upstream`，Git 面板在无
+  upstream 时提示「在终端 git push -u 后显示 ↑↓」；
+- **audit.cjs 双向 diff**：unusedBackend 此前已计算但从未输出——现打印
+  `UNUSED BACKEND` 段（首跑即抓出 4 个历史冗余命令待人工确认）；
+- **B-33 `--revoke-list` GUI 入口核实已存在**（设置页「吊销清单」按钮），清单项划掉。
+
+### 验证
+
+- `cargo test` 77 全绿（63+7+7）；`tsc --noEmit` 无错误；
+- `tools/audit.cjs`：233 invoke 全有后端、237 命令全注册、无新增反向冗余。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-06 会话，M2…M9 + 辅助批次代码面全部收口）
 
 > 状态仪表见 MASTER-PLAN 第 28 节：**33✅ / 1🟡（B-11 真机矩阵）/ 6☐（B-30 三宿主发版门禁 + 1.x 扩展生态）**。

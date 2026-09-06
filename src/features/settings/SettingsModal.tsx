@@ -356,7 +356,6 @@ export function SettingsModal(props: {
                   <option value="video">{t("wpVideo")}</option>
                   <option value="hybrid">{t("wpHybrid")}</option>
                   <option value="web">{t("wpWeb")}</option>
-                  <option value="system">{t("wpSystem")}</option>
                 </select>
               </Field>
               <Field label={t("iconSize")}>
@@ -499,7 +498,7 @@ export function SettingsModal(props: {
                         key={`${it.source}-${it.id}`}
                         type="button"
                         className="wp-engine-item"
-                        title={it.supported ? t("wpEngineImported") : t("wpEngineOpenWe")}
+                        title={it.supported ? t("wpEngineImported") : t("wpEngineLocal")}
                         onClick={() => {
                           // 批次E-15：video/image 内嵌导入；web 内嵌 iframe 渲染；
                           // scene/application 交给 Wallpaper Engine 本体（官方控制接口）
@@ -512,16 +511,18 @@ export function SettingsModal(props: {
                             return;
                           }
                           if (!it.supported || !it.file) {
-                            // scene/application：交给 WE 本体应用到系统桌面；
-                            // Variable 切"系统桌面"模式并让位（隐藏到托盘），托盘 V 图标返回
-                            void ipc
-                              .wpEngineOpen(it.id, it.source)
-                              .then(() => {
-                                props.onChange({ wallpaperMode: "system" });
-                                return ipc.winHideToTray();
-                              })
-                              .then(() => pushToast("success", t("wpEngineOpenWe"), t("wpSystemHint")))
-                              .catch((e) => pushToast("error", t("wpEngineTitle"), errMessage(e).message));
+                            // scene/application：着色器/应用型无法在引擎内渲染，
+                            // 全部在本地打开 —— 用项目预览图作为本地图片壁纸；
+                            // 不再交给 Wallpaper Engine 本体、不再隐藏窗口（避免黑屏）
+                            if (it.preview) {
+                              props.onChange({
+                                wallpaperMode: "image",
+                                customBg: { ...s.customBg, type: "image", imagePath: it.preview },
+                              });
+                              pushToast("info", t("wpEngineLocal"), it.title);
+                            } else {
+                              pushToast("error", it.title, t("wpEngineNoPreview"));
+                            }
                             return;
                           }
                           const isVideo = it.kind === "video";
@@ -543,7 +544,7 @@ export function SettingsModal(props: {
                           <span className="wp-engine-name ellipsis">{it.title}</span>
                           <span className="dim small">
                             {it.kind}
-                            {it.supported ? "" : ` · ${t("wpEngineOpenWe")}`}
+                            {it.supported ? "" : ` · ${t("wpEngineLocal")}`}
                           </span>
                         </span>
                       </button>
