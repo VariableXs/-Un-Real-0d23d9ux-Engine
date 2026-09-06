@@ -20,7 +20,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bplustree::{BPlusTree, HashKey, TreeVal};
+use crate::bplustree::{BPlusTree, HashKey, TreeKey as _, TreeVal};
 use crate::{sanitize_label, CmdResult, ContainerError, GcReport, OpenCfg, SnapshotId, StatInfo, StorageBackend, VPath};
 
 /// 大文件流式切分尺寸（蓝图 3.1：4MiB）。
@@ -339,6 +339,14 @@ impl UxvBackend {
             .encode();
             f.write_all(&footer)?; // 副本 A
             f.write_all(&footer)?; // 副本 B
+            // Footer 落盘后，SuperBlock 指针最后翻转（原子发布点）。
+            let footer_offset = index_offset + blob.len() as u64;
+            let mut sb = [0u8; SUPERBLOCK_LEN as usize];
+            sb[0..8].copy_from_slice(MAGIC);
+            sb[8..12].copy_from_slice(&SCHEMA_VERSION.to_le_bytes());
+            sb[12..20].copy_from_slice(&footer_offset.to_le_bytes());
+            f.seek(SeekFrom::Start(0))?;
+            f.write_all(&sb)?;
             f.flush()?;
             f.sync_all()?; // FlushFileBuffers 语义（附录 A 14.1）
         }
@@ -352,12 +360,24 @@ impl UxvBackend {
         f: &mut File,
     ) -> CmdResult<(u64, BPlusTree<String, FileInfo>, BPlusTree<HashKey, ChunkLoc>)> {
         let len = f.metadata()?.len();
-        if len < SUPERBLOCK_LEN + FOOTER_LEN as u64 * 2 {
+        // Footer 位置由 SuperBlock 持久指针提供（journal 在 Footer 之后追加，
+        // "文件末尾 = Footer" 在 B-13 后不再成立）。
+        f.seek(SeekFrom::Start(0))?;
+        let mut sb = [0u8; SUPERBLOCK_LEN as usize];
+        f.read_exact(&mut sb)?;
+        if &sb[0..8] != MAGIC {
+            return Err(ContainerError::Corrupted("SuperBlock 魔数不符".into()));
+        }
+        let footer_offset = u64::from_le_bytes(sb[12..20].try_into().expect("定长"));
+        if footer_offset == 0
+            || footer_offset < SUPERBLOCK_LEN
+            || footer_offset + FOOTER_LEN as u64 * 2 > len
+        {
             return Err(ContainerError::Corrupted(
-                "容器缺少 Footer（未正常 seal；journal 恢复属 B-13）".into(),
+                "容器无有效 checkpoint（会话未 seal 即中断；自动恢复点属 B-33）".into(),
             ));
         }
-        f.seek(SeekFrom::End(-(FOOTER_LEN as i64) * 2))?;
+        f.seek(SeekFrom::Start(footer_offset))?;
         let mut both = [0u8; FOOTER_LEN * 2];
         f.read_exact(&mut both)?;
         // 副本 B（后写）优先，副本 A 兜底——任一完整可读即可定位索引。
@@ -398,7 +418,209 @@ impl UxvBackend {
             .ok_or_else(|| ContainerError::Corrupted("文件表解码失败".into()))?;
         let chunks = BPlusTree::<HashKey, ChunkLoc>::decode(&blob[8 + files_len..])
             .ok_or_else(|| ContainerError::Corrupted("ChunkIndex 解码失败".into()))?;
-        Ok((footer.index_offset, files, chunks))
+        // 逻辑尾 = Footer 双副本之后（新追加永不覆盖当前 checkpoint 的 blob）。
+        Ok((
+            footer.index_offset + footer.index_len + FOOTER_LEN as u64 * 2,
+            files,
+            chunks,
+        ))
+    }
+
+    // ---------- Journal 事务（B-13） ----------
+
+    const JN_PUT: u8 = 1;
+    const JN_REMOVE: u8 = 2;
+    const JN_RENAME: u8 = 3;
+    const JN_COMMIT: u8 = 4;
+    const JN_MAGIC: [u8; 4] = *b"JNL1";
+    const JN_HDR: usize = 41; // magic(4) + kind(1) + len(4) + blake3(32)
+
+    /// 追加一条 journal 记录：[type u8][len u32][blake3][payload]。
+    fn journal_append(&mut self, kind: u8, payload: &[u8]) -> CmdResult<()> {
+        let tail = self.data_tail;
+        {
+            let f = self.handle()?;
+            let mut f = f.borrow_mut();
+            f.seek(SeekFrom::Start(tail))?;
+            f.write_all(&Self::JN_MAGIC)?; // 魔数：与数据 chunk 记录（len≤4MiB）无歧义
+            f.write_all(&[kind])?;
+            f.write_all(&(payload.len() as u32).to_le_bytes())?;
+            f.write_all(blake3::hash(payload).as_bytes())?;
+            f.write_all(payload)?;
+        }
+        self.data_tail = tail + Self::JN_HDR as u64 + payload.len() as u64;
+        Ok(())
+    }
+
+    /// 事务提交：先记操作，再记 COMMIT。CRASH 时未遇 COMMIT 的尾部记录被忽略。
+    fn journal_commit(&mut self, kind: u8, payload: &[u8]) -> CmdResult<()> {
+        self.journal_append(kind, payload)?;
+        self.journal_append(Self::JN_COMMIT, &[])
+    }
+
+    fn encode_put(path: &str, info: &FileInfo, locs: &[ChunkLoc]) -> Vec<u8> {
+        let mut p = Vec::new();
+        path.to_string().encode(&mut p);
+        info.encode(&mut p);
+        for l in locs {
+            l.encode(&mut p);
+        }
+        p
+    }
+
+    fn encode_paths(paths: &[String]) -> Vec<u8> {
+        let mut p = (paths.len() as u32).to_le_bytes().to_vec();
+        for s in paths {
+            s.encode(&mut p);
+        }
+        p
+    }
+
+    fn encode_rename(from: &str, to: &str) -> Vec<u8> {
+        let mut p = Vec::new();
+        from.to_string().encode(&mut p);
+        to.to_string().encode(&mut p);
+        p
+    }
+
+    /// 从 journal_base 起扫描重放已提交事务；遇到残缺记录（掉电撕裂）即止，
+    /// 逻辑尾停在第一个无效记录处（后续新事务从该处覆盖写入）。
+    fn journal_replay(
+        f: &mut File,
+        journal_base: u64,
+        len: u64,
+        files: &mut BPlusTree<String, FileInfo>,
+        chunks: &mut BPlusTree<HashKey, ChunkLoc>,
+    ) -> CmdResult<u64> {
+        let mut pos = journal_base;
+        let mut pending: Vec<(u8, Vec<u8>)> = Vec::new();
+        while pos + Self::JN_HDR as u64 <= len {
+            f.seek(SeekFrom::Start(pos))?;
+            // 数据 chunk 记录（事务内先行写入）：[len u32][codec u8][blake3 32B][payload]
+            // 其 LE 长度 ≤ 4MiB，前 4 字节不可能等于 JN_MAGIC，据此无歧义分流。
+            let mut probe = [0u8; 4];
+            if f.read_exact(&mut probe).is_err() {
+                break;
+            }
+            if probe != Self::JN_MAGIC {
+                let clen = u32::from_le_bytes(probe) as u64;
+                if f.seek(SeekFrom::Start(pos + 37 + clen)).is_err() {
+                    break;
+                }
+                pos += 37 + clen;
+                continue;
+            }
+            let mut hdr = [0u8; Self::JN_HDR - 4];
+            if f.read_exact(&mut hdr).is_err() {
+                break;
+            }
+            let kind = hdr[0];
+            let plen = u32::from_le_bytes(hdr[1..5].try_into().expect("定长")) as usize;
+            let expect: [u8; 32] = hdr[5..37].try_into().expect("定长");
+            if pos + Self::JN_HDR as u64 + plen as u64 > len {
+                break; // 撕裂尾
+            }
+            let mut payload = vec![0u8; plen];
+            if f.read_exact(&mut payload).is_err() {
+                break;
+            }
+            if blake3::hash(&payload).as_bytes() != &expect {
+                break; // 校验失败 = 撕裂/损坏，视为事务边界
+            }
+            pos += Self::JN_HDR as u64 + plen as u64;
+            if kind == Self::JN_COMMIT {
+                for (k, p) in &pending {
+                    match *k {
+                        Self::JN_PUT => Self::apply_put(p, files, chunks)?,
+                        Self::JN_REMOVE => Self::apply_remove(p, files, chunks),
+                        Self::JN_RENAME => Self::apply_rename(p, files)?,
+                        _ => {}
+                    }
+                }
+                pending.clear();
+            } else {
+                pending.push((kind, payload));
+            }
+        }
+        Ok(pos)
+    }
+
+    fn apply_put(
+        payload: &[u8],
+        files: &mut BPlusTree<String, FileInfo>,
+        chunks: &mut BPlusTree<HashKey, ChunkLoc>,
+    ) -> CmdResult<()> {
+        let mut pos = 0usize;
+        let path = String::decode(payload, &mut pos)
+            .ok_or_else(|| ContainerError::Corrupted("journal PUT 路径解码失败".into()))?;
+        let info = FileInfo::decode(payload, &mut pos)
+            .ok_or_else(|| ContainerError::Corrupted("journal PUT 文件条目解码失败".into()))?;
+        // 旧版本解引用
+        if let Some(old) = files.get(&path) {
+            for c in &old.chunks {
+                Self::journal_unref(chunks, *c);
+            }
+        }
+        for c in &info.chunks {
+            let k = HashKey(*c);
+            match chunks.get_mut(&k) {
+                Some(l) => l.refs += 1,
+                None => {
+                    let mut loc = ChunkLoc::decode(payload, &mut pos).ok_or_else(|| {
+                        ContainerError::Corrupted("journal PUT chunk 位置解码失败".into())
+                    })?;
+                    loc.refs = 1;
+                    chunks.insert(k, loc);
+                }
+            }
+        }
+        files.insert(path, info);
+        Ok(())
+    }
+
+    fn apply_remove(payload: &[u8], files: &mut BPlusTree<String, FileInfo>, chunks: &mut BPlusTree<HashKey, ChunkLoc>) {
+        let mut pos = 0usize;
+        let n = u32::from_le_bytes(payload.get(0..4).expect("定长").try_into().expect("定长")) as usize;
+        pos = 4;
+        for _ in 0..n {
+            let path = match String::decode(payload, &mut pos) {
+                Some(p) => p,
+                None => return,
+            };
+            if let Some(info) = files.get(&path) {
+                for c in &info.chunks {
+                    Self::journal_unref(chunks, *c);
+                }
+                files.remove(&path);
+            }
+        }
+    }
+
+    fn apply_rename(payload: &[u8], files: &mut BPlusTree<String, FileInfo>) -> CmdResult<()> {
+        let mut pos = 0usize;
+        let from = String::decode(payload, &mut pos)
+            .ok_or_else(|| ContainerError::Corrupted("journal RENAME 源路径解码失败".into()))?;
+        let to = String::decode(payload, &mut pos)
+            .ok_or_else(|| ContainerError::Corrupted("journal RENAME 目标路径解码失败".into()))?;
+        if let Some(info) = files.get(&from) {
+            files.insert(to, info);
+            files.remove(&from);
+        }
+        Ok(())
+    }
+
+    /// 重放专用解引用：chunk 不在索引即忽略（PUT 记录的 locs 已含全部新 chunk）。
+    fn journal_unref(chunks: &mut BPlusTree<HashKey, ChunkLoc>, hash: [u8; 32]) {
+        let zeroed = match chunks.get_mut(&HashKey(hash)) {
+            Some(l) => {
+                l.refs -= 1;
+                l.refs == 0
+            }
+            None => return,
+        };
+        if zeroed {
+            chunks.remove(&HashKey(hash));
+        }
     }
 }
 
@@ -437,10 +659,13 @@ impl StorageBackend for UxvBackend {
             Self::load_index(&mut f)?
         };
         self.path = Some(cfg.root.clone());
-        self.file = Some(std::cell::RefCell::new(f));
         self.files = files;
         self.chunks = chunks;
         self.data_tail = data_tail;
+        // B-13：重放最后一次 checkpoint 之后已提交的 journal 事务。
+        let len = f.metadata()?.len();
+        self.data_tail = Self::journal_replay(&mut f, data_tail, len, &mut self.files, &mut self.chunks)?;
+        self.file = Some(std::cell::RefCell::new(f));
         Ok(())
     }
 
@@ -541,31 +766,41 @@ impl StorageBackend for UxvBackend {
     fn write(&mut self, path: &VPath, data: &[u8]) -> CmdResult<()> {
         // 1) 切 chunk 写入；去重命中则仅引用 +1。
         let mut new_chunks = Vec::new();
+        let mut new_locs = Vec::new();
         for piece in data.chunks(CHUNK_SIZE) {
             let hash = *blake3::hash(piece).as_bytes();
             if let Some(loc) = self.chunks.get_mut(&HashKey(hash)) {
                 loc.refs += 1;
+                new_locs.push(None); // 已有 chunk：重放时按索引现值 +1
             } else {
                 let loc = self.append_chunk(hash, piece)?;
+                new_locs.push(Some(loc.clone()));
                 self.chunks.insert(HashKey(hash), loc);
             }
             new_chunks.push(hash);
         }
-        // 2) 旧版本 chunk 解引用。
+        // 2) 事务日志：操作记录 + COMMIT（数据 chunk 已先落，重放时引用必然齐备）。
+        let info = FileInfo {
+            size: data.len() as u64,
+            mtime_ms: Self::now_ms(),
+            chunks: new_chunks.clone(),
+        };
+        let locs: Vec<ChunkLoc> = new_locs
+            .iter()
+            .zip(new_chunks.iter())
+            .filter_map(|(slot, h)| {
+                slot.clone().or_else(|| self.chunks.get(&HashKey(*h)))
+            })
+            .collect();
+        let payload = Self::encode_put(path.as_str(), &info, &locs);
+        self.journal_commit(Self::JN_PUT, &payload)?;
+        // 3) 内存态：旧版本解引用 + 文件表指向新 chunk 序列。
         if let Some(old) = self.files.get(path.as_str()) {
             for c in &old.chunks {
                 self.unref_chunk(*c);
             }
         }
-        // 3) 文件表指向新 chunk 序列。
-        self.files.insert(
-            path.as_str().to_string(),
-            FileInfo {
-                size: data.len() as u64,
-                mtime_ms: Self::now_ms(),
-                chunks: new_chunks,
-            },
-        );
+        self.files.insert(path.as_str().to_string(), info);
         Ok(())
     }
 
@@ -601,32 +836,32 @@ impl StorageBackend for UxvBackend {
 
     fn rm(&mut self, path: &VPath) -> CmdResult<()> {
         let key = path.as_str().to_string();
-        if self.files.contains(&key) {
-            let info = self.files.get(&key).expect("contains 已判定存在");
+        let victims: Vec<String> = if self.files.contains(&key) {
+            vec![key.clone()]
+        } else {
+            // 目录：前缀删除。
+            let prefix = format!("{key}/");
+            let found: Vec<String> = self
+                .files
+                .iter()
+                .into_iter()
+                .map(|(p, _)| p)
+                .filter(|p| p.starts_with(&prefix))
+                .collect();
+            if found.is_empty() {
+                return Err(ContainerError::NotFound(path.to_string()));
+            }
+            found
+        };
+        // 事务：一次 rm（无论单文件还是目录）= 一条记录 + COMMIT。
+        let payload = Self::encode_paths(&victims);
+        self.journal_commit(Self::JN_REMOVE, &payload)?;
+        for v in &victims {
+            let info = self.files.get(v).expect("victims 即现有文件条目");
             for c in &info.chunks {
                 self.unref_chunk(*c);
             }
-            self.files.remove(&key);
-            return Ok(());
-        }
-        // 目录：前缀删除。
-        let prefix = format!("{key}/");
-        let victims: Vec<String> = self
-            .files
-            .iter()
-            .into_iter()
-            .map(|(p, _)| p)
-            .filter(|p| p.starts_with(&prefix))
-            .collect();
-        if victims.is_empty() {
-            return Err(ContainerError::NotFound(path.to_string()));
-        }
-        for v in victims {
-            let info = self.files.get(&v).expect("来源即现有文件条目");
-            for c in &info.chunks {
-                self.unref_chunk(*c);
-            }
-            self.files.remove(&v);
+            self.files.remove(v);
         }
         Ok(())
     }
@@ -635,6 +870,8 @@ impl StorageBackend for UxvBackend {
         let src = from.as_str().to_string();
         let dst = to.as_str().to_string();
         if self.files.contains(&src) {
+            let payload = Self::encode_rename(&src, &dst);
+            self.journal_commit(Self::JN_RENAME, &payload)?;
             let info = self.files.get(&src).expect("contains 已判定存在");
             self.files.insert(dst, info);
             self.files.remove(&src);
@@ -651,11 +888,24 @@ impl StorageBackend for UxvBackend {
         if victims.is_empty() {
             return Err(ContainerError::NotFound(from.to_string()));
         }
-        for v in victims {
+        // 目录改名 = 逐条 PUT（新路径）+ REMOVE（旧路径）单事务。
+        let mut moves: Vec<(String, String, FileInfo)> = Vec::new();
+        for v in &victims {
             let rest = v[prefix.len()..].to_string();
-            let info = self.files.get(&v).expect("来源即现有文件条目");
-            self.files.insert(format!("{dst}/{rest}"), info);
-            self.files.remove(&v);
+            let info = self.files.get(v).expect("来源即现有文件条目");
+            moves.push((v.clone(), format!("{dst}/{rest}"), info));
+        }
+        // 目录改名 = REMOVE（旧路径）+ 逐条 PUT（新路径）相邻事务；
+        // 两次 COMMIT 之间掉电 ⇒ 目录留在旧名（非原子，如实边界）。
+        self.journal_commit(Self::JN_REMOVE, &Self::encode_paths(&victims))?;
+        for (_old, new, info) in &moves {
+            self.journal_commit(Self::JN_PUT, &Self::encode_put(new, info, &[]))?;
+            self.files.insert(new.clone(), info.clone());
+        }
+        for (old, _, _) in &moves {
+            let info = self.files.get(old).expect("来源即现有文件条目");
+            let _ = info;
+            self.files.remove(old);
         }
         Ok(())
     }
@@ -711,9 +961,11 @@ impl StorageBackend for UxvBackend {
                 }
             }
         }
-        self.data_tail = st.data_tail;
+        // data_tail 保持在当前物理尾（快照后的 chunk 记录仍在，覆盖即毁）；
+        // 立即 checkpoint：把回退后的索引落为新 checkpoint，journal 重放时代随之重置。
         self.files = files;
         self.chunks = chunks;
+        self.checkpoint()?;
         Ok(())
     }
 
@@ -897,5 +1149,156 @@ mod tests {
         }
         let avg = t0.elapsed().as_secs_f64() * 1000.0 / n as f64;
         assert!(avg < 20.0, "热 chunk 随机读平均 {avg:.3}ms ≥ 20ms");
+    }
+}
+
+#[cfg(test)]
+mod journal_tests {
+    use super::*;
+    use crate::{OpenCfg as Cfg, StorageBackend as Backend};
+    use std::collections::BTreeMap;
+
+    fn opened(tag: &str) -> (UxvBackend, PathBuf) {
+        let path = std::env::temp_dir().join(format!("uxv-b13-{tag}-{}.uxv", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: path.clone() }).unwrap();
+        (be, path)
+    }
+
+    #[test]
+    fn probe_journal_bytes() {
+        let path = std::env::temp_dir().join(format!("uxv-probe-{}.uxv", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open(&OpenCfg { root: path.clone() }).unwrap();
+        be.write(&VPath::new("seed").unwrap(), b"base").unwrap();
+        be.seal().unwrap();
+        println!("after seal: data_tail={}", be.data_tail);
+        be.write(&VPath::new("w/x").unwrap(), b"hello-journal").unwrap();
+        println!("after tx: data_tail={}", be.data_tail);
+        drop(be);
+        let bytes = std::fs::read(&path).unwrap();
+        println!("file len={}", bytes.len());
+        let j = &bytes[599usize.min(bytes.len())..];
+        println!("journal head 48B: {:02x?}", &j[..48.min(j.len())]);
+        let mut be2 = UxvBackend::new();
+        be2.open(&OpenCfg { root: path.clone() }).unwrap();
+        println!("reopen: data_tail={} files={:?}", be2.data_tail, be2.files.iter().len());
+        for (p, i) in be2.files.iter() {
+            println!("  file {p} size={} chunks={}", i.size, i.chunks.len());
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn blob(n: usize, seed: u8) -> Vec<u8> {
+        (0..n).map(|i| (i as u8).wrapping_mul(seed).wrapping_add(seed)).collect()
+    }
+
+    /// 验收：journal 重放 100 次掉电注入，0 数据丢失。
+    /// 注入模型 = 随机若干事务后直接 drop（未 seal），重开必须恢复到最后一次事务后状态。
+    #[test]
+    fn crash_injection_100_rounds_zero_data_loss() {
+        let mut rng: u64 = 0xC0FFEE;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        for round in 0..100u32 {
+            let (mut be, path) = opened("injection");
+            // 基线 + 一次 seal（journal 时代建立）
+            be.write(&VPath::new("seed/a").unwrap(), &blob(1000, round as u8)).unwrap();
+            be.seal().unwrap();
+            let mut oracle: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+            oracle.insert("seed/a".into(), blob(1000, round as u8));
+            // 随机 1..5 个事务（写/覆盖/删/改路径），每个事务内部即时提交
+            let txs = 1 + (next() % 5);
+            for _ in 0..txs {
+                let key = format!("w/{}", next() % 7);
+                let op = next() % 4;
+                match op {
+                    0 | 1 => {
+                        let d = blob((next() % 3000 + 1) as usize, (next() % 250) as u8);
+                        be.write(&VPath::new(&key).unwrap(), &d).unwrap();
+                        oracle.insert(key.clone(), d);
+                    }
+                    2 => {
+                        be.rm(&VPath::new(&key).unwrap()).unwrap_or(()); // 可能不存在
+                        oracle.remove(&key);
+                    }
+                    _ => {
+                        let dst = format!("w/moved-{}", next() % 7);
+                        if let Some(d) = oracle.remove(&key) {
+                            be.rename(&VPath::new(&key).unwrap(), &VPath::new(&dst).unwrap()).unwrap();
+                            oracle.insert(dst, d);
+                        } else {
+                            let _ = be.rename(&VPath::new(&key).unwrap(), &VPath::new(&dst).unwrap());
+                        }
+                    }
+                }
+            }
+            // 掉电：不 seal 直接 drop
+            drop(be);
+            // 重开 → journal 重放必须完全恢复 oracle
+            let mut be = UxvBackend::new();
+            be.open(&Cfg { root: path.clone() }).unwrap();
+            let live: Vec<(String, FileInfo)> = be.files.iter();
+            assert_eq!(live.len(), oracle.len(), "第 {round} 轮文件数不符");
+            for (p, info) in &live {
+                let expect = oracle.get(p).unwrap_or_else(|| panic!("第 {round} 轮多出文件 {p}"));
+                assert_eq!(info.size as usize, expect.len(), "第 {round} 轮 {p} 尺寸不符");
+                let got = be.read(&VPath::new(p).unwrap()).unwrap();
+                assert_eq!(got, *expect, "第 {round} 轮 {p} 内容不符");
+            }
+            // 重开后可继续写（data_tail 指向撕裂点之后的正确位置）
+            be.write(&VPath::new("post/ok").unwrap(), b"after-recovery").unwrap();
+            be.seal().unwrap();
+            drop(be);
+            let mut be = UxvBackend::new();
+            be.open(&Cfg { root: path }).unwrap();
+            assert_eq!(be.read(&VPath::new("post/ok").unwrap()).unwrap(), b"after-recovery");
+            let _ = std::fs::remove_file(be.path.as_ref().unwrap());
+        }
+    }
+
+    /// 撕裂记录：journal 尾部被半写/损坏 → 重放止步于最后一个 COMMIT，
+    /// 该事务丢失但容器其余部分完好（崩在前：最少丢一个未提交事务）。
+    #[test]
+    fn torn_tail_transaction_is_dropped() {
+        let (mut be, path) = opened("torn");
+        be.write(&VPath::new("keep").unwrap(), b"kept").unwrap();
+        be.seal().unwrap(); // 建立检查点：此后的事务才属于 journal 重放域
+        be.write(&VPath::new("lost").unwrap(), b"doomed").unwrap();
+        // 直接模拟：最后一条记录被撕裂（覆盖其 COMMIT 与部分 payload）
+        let f_path = path.clone();
+        drop(be);
+        {
+            let mut f = std::fs::OpenOptions::new().read(true).write(true).open(&f_path).unwrap();
+            let len = f.metadata().unwrap().len();
+            // 末尾 40 字节 = COMMIT 记录 + 部分 PUT payload 尾部 → 破坏其哈希
+            f.seek(SeekFrom::Start(len - 40)).unwrap();
+            f.write_all(&[0xFFu8; 40]).unwrap();
+        }
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: f_path }).unwrap();
+        assert_eq!(be.read(&VPath::new("keep").unwrap()).unwrap(), b"kept");
+        assert!(matches!(
+            be.read(&VPath::new("lost").unwrap()),
+            Err(ContainerError::NotFound(_)) | Err(ContainerError::Corrupted(_))
+        ));
+    }
+
+    /// 掉电发生在"未建立过任何 checkpoint"的首会话 → 无 journal 基线可重放，
+    /// 如实报 Corrupted（此边界由 seal 前自动 checkpoint 消除属 B-33 恢复模式）。
+    #[test]
+    fn never_sealed_first_session_reports_corrupted() {
+        let (mut be, path) = opened("fresh-crash");
+        be.write(&VPath::new("f").unwrap(), b"x").unwrap();
+        drop(be);
+        let mut be = UxvBackend::new();
+        let err = be.open(&Cfg { root: path }).unwrap_err();
+        assert!(matches!(err, ContainerError::Corrupted(_)));
     }
 }
