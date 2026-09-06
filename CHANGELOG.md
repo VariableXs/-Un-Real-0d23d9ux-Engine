@@ -3,7 +3,94 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
-## [Unreleased] — 1.0sno9u.vxe 工作线
+## [Unreleased] — 1.0sno9u.vxe
+## [Unreleased] — 1.0sno9u.vxe（2026-09-06 会话，M2…M9 + 辅助批次代码面全部收口）
+
+> 状态仪表见 MASTER-PLAN 第 28 节：**33✅ / 1🟡（B-11 真机矩阵）/ 6☐（B-30 三宿主发版门禁 + 1.x 扩展生态）**。
+
+### M2 容器与 8TB（B-12…B-17 + B-31）
+
+- **Uxv 单文件容器**：自研格式 `[SuperBlock][追加区 chunk 记录][Footer 双副本]`——
+  4MiB 定长切分 + BLAKE3 内容寻址去重 + 引用计数；B+ 树索引（oracle 差分测试）；
+  read_range/stream 大文件通道；热 chunk 随机读实测远低于 20ms 口径；
+- **掉电安全**：journal 事务（JNL1 魔数 + COMMIT）+ SuperBlock 指针原子发布 +
+  重放撕裂截断——掉电注入 100 轮 0 数据丢失；
+- **Schema 迁移协议**：惰性探测 / pre-migrate 快照 / 逐级升版 / 失败回滚 / 只升不降；
+- **压缩与加密**：LZ4/Zstd-19 分级（不可压缩回 RAW）+ Argon2id/XChaCha20-Poly1305
+  全容器加密（chunk/索引/journal 三层）+ 解码 LRU；
+- **多卷条带与 GC**：主卷元数据 + 数据卷条带轮转（ChunkLoc.volume，schema v2 走迁移协议）；
+  GC 标记/走查/最差卷单卷压实（停顿 <100ms）；
+- **VHDX 快速档与迁移向导**：管理员/Mount-VHD 探测不可用如实降级 Uxv；
+  数据目录→容器逐文件 BLAKE3 校验、失败源目录原样保留；
+- **容器仪表与冷热分层**：水位线/写放大/规模统计 + freeze/unfreeze（冷层键空间分离）。
+
+### M4 浏览器矩阵（B-18/B-19）
+
+- 五款浏览器检测（App Paths + 路径兜底）+ 家族便携模板（--user-data-dir / -profile
+  全指向容器）+ Profile 管理器（新建/克隆/焚毁删除）+ 设置页「浏览器」标签；
+- 首次导入（书签 HTML / 密码 CSV 复制进容器，绝不读宿主浏览器运行数据）+
+  任务栏按 profile 分组（pid 存活探测）。
+
+### M5 大型编码体系（B-20…B-23）
+
+- **VS Code Portable 一键部署**（离线 zip 降级 / data 模式全容器化 / 幂等登记）+
+  嵌入启动复用整条 embed 通道；
+- **工具链**：Python(embeddable)/Go(zip)/Rust(rustup 容器化 CARGO_HOME) 三通道 +
+  PATH 统一注入（spawn_profiled 单点，冻结顺序）；
+- **Git 只读面板**（git2：状态/分支/历史，仓库限容器内）+ **SSH 金库代理**
+  （ed25519 生成封存 vault/ssh + GIT_SSH_COMMAND 注入，私钥不落宿主）；
+- **并行全库搜索**（8 路线程池，跳依赖/二进制/>8MB）+ 大文件分块查看器 +
+  PVCCE→VS Code `--goto` 行级跳转。
+
+### M6 子环境系统（B-24…B-26）
+
+- **环境档**：envs.json + envs/<id>/ 剖面 + `{envhome}` 执行档隔离（browsers/code/ai
+  全部接入）——凭据与登录态按环境隔离；切换编排 4 步（快照/翻转/应用/重载）；
+- **嵌套实例**（深度 ≤3）：独立数据根（VARIABLE_DATA_ROOT）+ 白名单继承接口 +
+  嵌套回退独立窗口；**环境克隆**（剖面复制 + 设置快照）。
+
+### M7 应用生态 2.0（B-27）
+
+- 可移植性评估向导（目录可写/卸载注册表/本地配置三类启发式 → 绿黄红建议卡）+
+  搬迁执行器（整拷 apps/ + portable.reg 快照 + 登记）；
+- **Steam 库扫描**（libraryfolders.vdf + appmanifest）与 steam:// 协议直通 +
+  商店 AUMID 启动 + 文件关联表（无关联宿主兜底打开）。
+
+### M8 网络层（B-28）
+
+- **环回 HTTP 代理**：CONNECT 隧道域名裁决 / 绝对式改写 / 默认拒绝（默认零出站落地）；
+  受管进程经执行档自动注入 HTTP(S)_PROXY；
+- 域名白名单规则库（子域通配 + 发起执行档记录）+ **kill-switch**（覆盖一切）+
+  流量仪表（放行/拒绝/字节）；直连逃逸计数+标记（硬断网属防火墙，如实边界）。
+
+### M9 安全分析工作台（B-29）
+
+- 纯 Rust 手写 **PE 静态解析**（节表熵 >7.0 加壳标记 / 导入表 / 证书签名 /
+  14 项可疑 API 命中 / 字符串提取）+ **iced-x86 入口反汇编只读查看器**；
+- Windows Sandbox 探测与 .wsb 生成（样本映射只读+断网）+ 安全子环境预设
+  （白名单清空 + kill-switch）+ Markdown 报告导出（不含样本字节）；
+- 铁律：样本绝不在宿主执行。
+
+### 辅助批次（B-31…B-35）
+
+- **B-31** 容器 Schema 迁移协议（快照/升版/回滚，v1→v2 实走）；
+- **B-32** OOBE 首次初始化向导（介质体检/口令建卷/三模板/60 秒导览）；
+- **B-33** 应急能力包：CLI 四命令（--export-rescue / --repair / --force-raster /
+  --revoke-list，无需 GUI 抢救容器）+ 紧急吊销清单导出 + 软件渲染开关（--force-raster
+  → safeMode）；修复 residue_scan 前后端命令名不匹配的运行时必炸缺陷；
+- **B-34** 诊断包导出（四节脱敏 Markdown，不含数据/凭据）+ 演示胶囊模板；
+- **B-35** 发布合规：docs/false-positive.md（≤48h 闭环流程）+ docs/licenses.md
+  许可清单归档。
+
+### 验证基线
+
+- cargo test --workspace **129**（container 52 含掉电注入 100 轮/代理端到端/手工 PE 构造）；
+- vitest **218** / tsc 零错 / audit IPC+ i18n zh+en 全覆盖 / vite build 全绿；
+- 历次自检归档：`docs/selfcheck/2026-09-06.md`（六个批次附录）。
+
+
+### 已落地（2026-09-06 早段会话，M0 收口 + M1/M3 起步）
+
 
 ### 已落地（2026-09-06 会话，M0 收口 + M2 起步）
 
