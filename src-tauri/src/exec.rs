@@ -75,6 +75,29 @@ impl From<(&str, PortableProfile)> for ExecProfile {
 pub fn expand_placeholders(raw: &str, container_root: &Path) -> String {
     raw.replace("{container}", &container_root.to_string_lossy())
         .replace("{home}", &container_root.join("home").to_string_lossy())
+        .replace("{envhome}", &env_home(container_root).to_string_lossy())
+}
+
+/// B-24：当前活动环境档的 home 根。无 envs.json / active=main / 缺目录时
+/// 回退容器全局 home——默认环境行为与 B-3…B-23 完全一致。
+pub fn env_home(container_root: &Path) -> PathBuf {
+    let registry = container_root.join("envs.json");
+    let Ok(bytes) = std::fs::read(&registry) else {
+        return container_root.join("home");
+    };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return container_root.join("home");
+    };
+    let active = v.get("active").and_then(|x| x.as_str()).unwrap_or("main");
+    if active == "main" {
+        return container_root.join("home");
+    }
+    let dir = container_root.join("envs").join(active).join("home");
+    if dir.is_dir() {
+        dir
+    } else {
+        container_root.join("home")
+    }
 }
 
 /// 计算将要注入的完整环境表（干跑「验证重定向」与真实 spawn 共用同一实现）。

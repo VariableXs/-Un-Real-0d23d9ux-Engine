@@ -443,8 +443,8 @@ pub fn browser_profile_launch(
     let container_root = st.data_dir.clone();
     let mut env_redirect = std::collections::BTreeMap::new();
     // 执行档语义：HOME/USERPROFILE 镜像容器（与 M1 模板库一致）
-    env_redirect.insert("HOME".to_string(), "{home}".to_string());
-    env_redirect.insert("USERPROFILE".to_string(), "{home}".to_string());
+    env_redirect.insert("HOME".to_string(), "{envhome}".to_string());
+    env_redirect.insert("USERPROFILE".to_string(), "{envhome}".to_string());
     let profile = ExecProfile {
         id: id.clone(),
         env_redirect,

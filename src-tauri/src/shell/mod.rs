@@ -13,6 +13,7 @@ pub mod appman;
 pub mod browsers;
 pub mod code;
 pub mod embed;
+pub mod envs;
 pub mod explorer;
 pub mod imwatch;
 pub mod hardware;

@@ -386,3 +386,12 @@
 - 前端：Code「项目」视图 ⌕ 按钮 → 搜索浮层（结果按文件分组 + 行号 + 分块查看 pager + →跳转按钮）。
 - 测试：搜索（命中/大小写/跳过口径 4+3+1 断言）/空查询拒绝/分块读窗口与越界 4 项；workspace 114 全绿；tsc/audit/i18n/vitest/build 全绿。
 - 教训：①scoped threads 里共享计数只能用 AtomicUsize（&mut 跨线程 N 个闭包必炸，编译器逐个指出）；②测试期望值要跟实现口径走（node_modules 整目录跳过 = 文件数从清单里就没有，不是"扫描了但跳过"）。
+
+## 批次 B-24（2026-09-06）完成 — 子环境档模型 + 存储剖面 + 切换编排
+- envs.json：{active, envs:[{id,name,settings,created_at}]}；main 常驻且行为与单环境完全一致；剖面目录 envs/<id>/home + /workspaces。
+- 执行档新增 {envhome} 占位符：解析活动环境 home（envs.json 缺失/active=main/目录缺失三级回退到容器 home）；browsers/code/ai(多账号配置目录) 全部从 {home} 切到 {envhome}——凭据与登录态按环境隔离。
+- 切换编排 4 步：①当前偏好快照随请求写入旧环境 → ②active 翻转 → ③返回目标环境快照 → ④前端 patchSettings 应用（短版重载）。同环境幂等、活动环境不可删、main 不可删。
+- UI：设置页「环境」标签（列表/当前徽标/创建/切换/删除）；i18n zh/en 36 键。
+- 测试：create/switch/delete 全流程 + 快照写入旧环境 + {envhome} 解析 + main 回退，2 项；workspace 116 全绿；tsc/audit/vitest/build 全绿。
+- 已知边界（如实）：工作区文件与 apps.json 登记表跨环境共享——完全剖面隔离随 B-25/B-26 快照克隆评估；切换的"启动仪式短版"目前=设置联动重载。
+- 教训：①audit.cjs 的 i18n 检查 exit code 恒 0，MISSING ZH/EN 只打印不设退出码——"exit 0"不等于"审计通过"，必须读输出；②向 dict 插键的去重检查必须限定在该 dict 段内（全文本检查会把 zh 已有键误判 en 已有）；③文件含 CRLF/LF 混排时，'\n};' 定位要用 \r?\n 正则或行扫描。

@@ -20,6 +20,7 @@ import { askConfirm } from "../../components/Modal";
 import { Modal } from "../../components/Modal";
 import { StorageRecoveryTab } from "./StorageRecoveryTab";
 import { BrowsersTab } from "./BrowsersTab";
+import { EnvsTab } from "./EnvsTab";
 import { CodeDeployCard } from "./CodeDeployCard";
 import { ToolchainsCard } from "./ToolchainsCard";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
@@ -113,6 +114,7 @@ export function SettingsModal(props: {
     { id: "editor", label: t("editorTab") },
     { id: "mindmap", label: t("mindmapTab") },
     { id: "general", label: t("general") },
+    { id: "envs", label: t("evTitle") },
     { id: "browsers", label: t("brTitle") },
     { id: "code", label: t("cdTitle") },
     { id: "profiles", label: t("pfTitle") },
@@ -676,6 +678,7 @@ export function SettingsModal(props: {
           )}
 
           {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
+          {tab === "envs" && <EnvsTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "browsers" && <BrowsersTab />}
           {tab === "code" && (
             <>

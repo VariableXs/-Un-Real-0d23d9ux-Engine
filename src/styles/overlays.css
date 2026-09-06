@@ -309,3 +309,16 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .sr-slice-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .sr-slice-body { max-height: 260px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 .sr-slice-nav { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ---- B-24 环境档 ---- */
+.ev-tab { display: flex; flex-direction: column; gap: 10px; }
+.ev-add { display: flex; gap: 8px; }
+.ev-add input { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.ev-list { display: flex; flex-direction: column; gap: 6px; }
+.ev-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--border, #2a2f3a); border-radius: 8px; }
+.ev-row.active { border-color: #3ecf8e; }
+.ev-name { font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.ev-badge { font-size: 11px; color: #3ecf8e; border: 1px solid #3ecf8e; border-radius: 999px; padding: 1px 8px; }
+.ev-ops { display: flex; gap: 6px; }
+.ev-ops button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.ev-ops button.danger { border-color: #b36060; color: #ff9a9a; }

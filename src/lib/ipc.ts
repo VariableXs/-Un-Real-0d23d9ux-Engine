@@ -268,6 +268,13 @@ export const ipc = {
   codeRegister: () => invoke<void>("code_register"),
   codeLaunch: () => invoke<{ attached: boolean; reason: string }>("code_launch"),
 
+  // ---- B-24 子环境档 ----
+  envList: () => invoke<Shell.EnvView[]>("env_list"),
+  envCreate: (name: string) => invoke<Shell.EnvView>("env_create", { name }),
+  envSwitch: (id: string, currentSettings?: Record<string, unknown>) =>
+    invoke<unknown>("env_switch", { id, currentSettings: currentSettings ?? null }),
+  envDelete: (id: string) => invoke<void>("env_delete", { id }),
+
   // ---- B-22 Git 面板（只读）+ SSH 金库 ----
   gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
   gitLog: (repo: string, limit?: number) =>
@@ -590,6 +597,13 @@ namespace Shell {
     note: string;
     createdAt: number;
     tokenTail: string;
+  }
+  /** B-24：环境档。 */
+  export interface EnvView {
+    id: string;
+    name: string;
+    active: boolean;
+    createdAt: number;
   }
   /** B-23：搜索/大文件。 */
   export interface SearchReport {

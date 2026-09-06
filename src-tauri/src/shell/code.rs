@@ -200,8 +200,8 @@ pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
             target: None,
             profile: crate::exec::PortableProfile {
                 env_redirect: [
-                    ("HOME".to_string(), "{home}".to_string()),
-                    ("USERPROFILE".to_string(), "{home}".to_string()),
+                    ("HOME".to_string(), "{envhome}".to_string()),
+                    ("USERPROFILE".to_string(), "{envhome}".to_string()),
                 ]
                 .into_iter()
                 .collect(),

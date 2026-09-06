@@ -457,7 +457,7 @@ pub fn ai_launch(st: tauri::State<AppState>, tool_id: String, identity_id: Optio
         }
         env_set.insert(tool.token_env.to_string(), ident.token.clone());
         let cfg_key = config_dir_env(tool);
-        env_set.insert(cfg_key, format!("{{home}}/{}@{}", tool.config_dir, ident.label));
+        env_set.insert(cfg_key, format!("{{envhome}}/{}@{}", tool.config_dir, ident.label));
     }
 
     // PATH 前置容器内 shim 与 node 目录（展开为字面值；其余继承当前进程）
