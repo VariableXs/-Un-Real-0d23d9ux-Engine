@@ -5,6 +5,32 @@
 
 ## [Unreleased] — 1.0sno9u.vxe
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话 2：原生图标 + 壁纸预览回退）
+
+> 实机使用反馈第二轮（H1 家用机）。
+
+### 环境内图标与 Windows 一致
+
+- **exe 内嵌图标提取**：`icon_dataurl` 此前只认 `.ico/.png` 文件，第三方 exe
+  登记项永远是通用占位图标（实机截图：Blender 显示绿块）。现链路
+  SHGetFileInfoW(HICON) → GetIconInfo → GetDIBits(32bpp BGRA→RGBA，
+  无 alpha 图标兜底不透明) → **手写 PNG 编码器**（CRC32 + stored deflate +
+  Adler32，零新依赖）。前端 `fillNativeIcons` 流程不变，登记即自动补真图标；
+- 顺手修复 launcher.rs 中 `"runas\x00"` 裸 NUL 字节导致的二进制误判（改为
+  转义写法，文件恢复文本可维护）。
+
+### scene 壁纸本地打开不再报错
+
+- **预览图回退扫描**：scene 项目常缺 preview.jpg（实机三连报错）。现回退扫描
+  项目目录取最大图片（WE scene 的 textures 贴图几乎必有图片，跳过 <20KB
+  小图标，递归限 4000 项防拖慢）——绝大多数 scene 项目可直接本地静态渲染；
+  真正一张图都没有的项目仍如实报错（不伪造）。
+
+### 验证
+
+- `cargo test` 79 全绿（65+7+7，含新增 PNG 编码器与预览回退 2 个单测）；
+- `tsc --noEmit` 无错误；`tools/audit.cjs` 233/237 全对齐。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话：壁纸三修复 + 小项三清）
 
 > 实机使用反馈修复（H1 家用机），壁纸路径全部本地化收口。

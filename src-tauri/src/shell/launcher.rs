@@ -495,7 +495,7 @@ fn shell_launch_elevated(exe: &Path) -> std::io::Result<()> {
         .parent()
         .map(|d| d.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect())
         .unwrap_or_else(|| vec![0]);
-    let verb: Vec<u16> = "runas ".encode_utf16().collect();
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
     // SE_ERR_CANCELLED / ERROR_CANCELED = 用户在 UAC 取消
     const SE_ERR_CANCELLED: i32 = 11;
     const ERROR_CANCELED: i32 = 1223;
@@ -771,7 +771,197 @@ pub fn icon_dataurl(path: String) -> CmdResult<String> {
     } else {
         p
     };
+    // 实机反馈：环境内图标要与 Windows 一致 —— exe 内嵌图标直接提取，
+    // 不再只认 .ico/.png 文件（此前 exe 登记项永远是通用占位图标）
+    let is_exe = resolved
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+        .unwrap_or(false);
+    if is_exe {
+        return exe_icon_dataurl(&resolved);
+    }
     encode_icon(resolved.to_string_lossy().as_ref())
+}
+
+/// exe 内嵌图标 → PNG data URL。链路：SHGetFileInfoW(HICON) → GetIconInfo
+/// → GetDIBits(32bpp BGRA) → 手写 PNG 编码（stored deflate，零新依赖）。
+/// 仅 Windows 有真实行为；其余平台诚实报错（与 hardware.rs 同策略）。
+fn exe_icon_dataurl(exe: &Path) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let (w, h, rgba) = extract_icon_rgba(exe)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = exe;
+        Err(AppError::validation(
+            "仅 Windows 支持 exe 图标提取 / Windows only",
+        ))
+    }
+}
+
+// ---------- Windows：HICON → 32bpp RGBA ----------
+
+#[cfg(windows)]
+fn extract_icon_rgba(exe: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, BITMAPINFO, BITMAPINFOHEADER,
+        BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
+    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+
+    let wide: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
+    unsafe {
+        let mut sfi = SHFILEINFOW::default();
+        let ok = SHGetFileInfoW(
+            PCWSTR(wide.as_ptr()),
+            FILE_ATTRIBUTE_NORMAL,
+            Some(&mut sfi),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+        if ok == 0 || sfi.hIcon.is_invalid() {
+            return Err(AppError::not_found(
+                "未能从 exe 提取图标 / no icon in exe",
+            ));
+        }
+        let result = (|| -> Result<(u32, u32, Vec<u8>), AppError> {
+            let mut info = ICONINFO::default();
+            GetIconInfo(sfi.hIcon, &mut info)
+                .map_err(|e| AppError::io(format!("GetIconInfo 失败 / failed: {e}")))?;
+            let hbm = info.hbmColor;
+            let out = (|| -> Result<(u32, u32, Vec<u8>), AppError> {
+                if hbm.is_invalid() {
+                    return Err(AppError::not_found("图标无彩色位图 / icon has no color bitmap"));
+                }
+                let hdc = CreateCompatibleDC(None);
+                let mut bmi = BITMAPINFO::default();
+                bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+                // 首次调用仅取尺寸（lpvBits=None）
+                if GetDIBits(hdc, hbm, 0, 0, None, &mut bmi, DIB_RGB_COLORS) == 0 {
+                    return Err(AppError::io("GetDIBits(尺寸) 失败 / size query failed".to_string()));
+                }
+                let w = bmi.bmiHeader.biWidth.max(0) as u32;
+                let h = bmi.bmiHeader.biHeight.unsigned_abs().max(1);
+                // top-down + 32bpp，保证行序与 alpha 语义确定
+                bmi.bmiHeader.biHeight = -(h as i32);
+                bmi.bmiHeader.biPlanes = 1;
+                bmi.bmiHeader.biBitCount = 32;
+                bmi.bmiHeader.biCompression = BI_RGB.0;
+                let mut buf = vec![0u8; w as usize * h as usize * 4];
+                let got = GetDIBits(
+                    hdc,
+                    hbm,
+                    0,
+                    h,
+                    Some(buf.as_mut_ptr() as *mut _),
+                    &mut bmi,
+                    DIB_RGB_COLORS,
+                );
+                let _ = DeleteDC(hdc);
+                if got == 0 {
+                    return Err(AppError::io("GetDIBits(像素) 失败 / pixel read failed".to_string()));
+                }
+                // BGRA → RGBA；旧式无 alpha 图标（alpha 全 0）→ 视为不透明
+                let mut any_alpha = false;
+                for px in buf.chunks_exact_mut(4) {
+                    px.swap(0, 2);
+                    if px[3] != 0 {
+                        any_alpha = true;
+                    }
+                }
+                if !any_alpha {
+                    for px in buf.chunks_exact_mut(4) {
+                        px[3] = 255;
+                    }
+                }
+                Ok((w, h, buf))
+            })();
+            let _ = DeleteObject(hbm);
+            let _ = DeleteObject(info.hbmMask);
+            out
+        })();
+        let _ = DestroyIcon(sfi.hIcon);
+        result
+    }
+}
+
+// ---------- 手写 PNG 编码（零依赖）：CRC32 + stored deflate + Adler32 ----------
+
+#[cfg(windows)]
+fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    fn crc32(data: &[u8]) -> u32 {
+        let mut table = [0u32; 256];
+        for (i, t) in table.iter_mut().enumerate() {
+            let mut c = i as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+            *t = c;
+        }
+        let mut c = 0xFFFF_FFFFu32;
+        for &b in data {
+            c = table[((c ^ b as u32) & 0xFF) as usize] ^ (c >> 8);
+        }
+        c ^ 0xFFFF_FFFF
+    }
+    fn adler32(data: &[u8]) -> u32 {
+        let (mut a, mut b) = (1u32, 0u32);
+        for &byte in data {
+            a = (a + byte as u32) % 65521;
+            b = (b + a) % 65521;
+        }
+        (b << 16) | a
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(data);
+        let mut crc_input = Vec::with_capacity(4 + data.len());
+        crc_input.extend_from_slice(kind);
+        crc_input.extend_from_slice(data);
+        out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+    }
+
+    // 每行前置 filter 字节 0（None）
+    let stride = width as usize * 4;
+    let mut raw = Vec::with_capacity(height as usize * (stride + 1));
+    for y in 0..height as usize {
+        raw.push(0u8);
+        raw.extend_from_slice(&rgba[y * stride..(y + 1) * stride]);
+    }
+    // zlib 容器 + stored deflate 块（无压缩，合法流，解码端零感知）
+    let mut idat = vec![0x78u8, 0x01];
+    if raw.is_empty() {
+        idat.extend_from_slice(&[0x01, 0x00, 0x00, 0xFF, 0xFF]);
+    }
+    let mut iter = raw.chunks(65535).peekable();
+    while let Some(part) = iter.next() {
+        let last = iter.peek().is_none();
+        idat.push(if last { 1 } else { 0 });
+        idat.extend_from_slice(&(part.len() as u16).to_le_bytes());
+        idat.extend_from_slice(&(!(part.len() as u16)).to_le_bytes());
+        idat.extend_from_slice(part);
+    }
+    idat.extend_from_slice(&adler32(&raw).to_be_bytes());
+
+    let mut out = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut ihdr = Vec::with_capacity(13);
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8bit RGBA，无隔行
+    chunk(&mut out, b"IHDR", &ihdr);
+    chunk(&mut out, b"IDAT", &idat);
+    chunk(&mut out, b"IEND", &[]);
+    out
 }
 
 /// 以管理员身份运行（ShellExecuteW runas，弹 UAC）。
@@ -816,6 +1006,21 @@ pub fn tp_launch_admin(st: tauri::State<AppState>, id: String) -> CmdResult<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn png_encoder_produces_valid_signature_and_chunks() {
+        // 2x1 纯色 RGBA → PNG：签名/IHDR/IDAT/IEND 结构自洽，尺寸写入 IHDR
+        let png = encode_png(2, 1, &[255, 0, 0, 255, 0, 128, 255, 255]);
+        assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        // IHDR 长度恒 13
+        assert_eq!(&png[8..12], b"\x00\x00\x00\x0d");
+        assert_eq!(&png[12..16], b"IHDR");
+        assert_eq!(&png[16..20], &2u32.to_be_bytes());
+        assert_eq!(&png[20..24], &1u32.to_be_bytes());
+        // 尾部 IEND
+        assert_eq!(&png[png.len() - 8..png.len() - 4], b"IEND");
+    }
 
     #[test]
     fn grade_detection_three_tiers() {
@@ -999,3 +1204,4 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
     }
 }
+

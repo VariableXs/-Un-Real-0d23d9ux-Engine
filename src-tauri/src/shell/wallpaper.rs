@@ -169,6 +169,49 @@ pub struct WpEngineItem {
     pub source: String,
 }
 
+/// 实机反馈：scene 项目常缺 preview.jpg —— 回退扫描项目目录里最大的图片
+/// （WE scene 的 textures/meshes 贴图几乎必有图片），保证"本地打开"不再报错。
+/// 跳过 <20KB 的小图（图标/角标）；递归限深防巨型目录拖慢扫描。
+fn find_fallback_preview(project_dir: &std::path::Path) -> Option<String> {
+    let mut best: Option<(u64, std::path::PathBuf)> = None;
+    let mut stack = vec![project_dir.to_path_buf()];
+    let mut visited = 0usize;
+    while let Some(dir) = stack.pop() {
+        if visited > 4000 {
+            break;
+        }
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            visited += 1;
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            let is_img = p
+                .extension()
+                .map(|e| {
+                    let e = e.to_string_lossy().to_lowercase();
+                    matches!(e.as_str(), "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif")
+                })
+                .unwrap_or(false);
+            if !is_img {
+                continue;
+            }
+            let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+            if size < 20 * 1024 {
+                continue;
+            }
+            if best.as_ref().map(|(s, _)| size > *s).unwrap_or(true) {
+                best = Some((size, p));
+            }
+        }
+    }
+    best.map(|(_, p)| p.to_string_lossy().to_string())
+}
+
 /// 从 project.json 所在目录提取一条可导入项（解析失败返回 None）。
 fn wp_engine_item(project_dir: &std::path::Path, source: &str) -> Option<WpEngineItem> {
     let raw = std::fs::read(project_dir.join("project.json")).ok()?;
@@ -206,7 +249,8 @@ fn wp_engine_item(project_dir: &std::path::Path, source: &str) -> Option<WpEngin
     let preview = project_dir
         .join("preview.jpg")
         .is_file()
-        .then(|| project_dir.join("preview.jpg").to_string_lossy().to_string());
+        .then(|| project_dir.join("preview.jpg").to_string_lossy().to_string())
+        .or_else(|| find_fallback_preview(project_dir));
     Some(WpEngineItem {
         id: project_dir
             .file_name()
@@ -355,6 +399,26 @@ pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fallback_preview_picks_largest_image_and_skips_tiny() {
+        let base = std::env::temp_dir().join(format!("variable-wp-fb-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let tex = base.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        // 小图标应被跳过；textures 里的最大贴图应胜出
+        std::fs::write(base.join("icon.png"), vec![0u8; 1024]).unwrap();
+        std::fs::write(tex.join("small.jpg"), vec![0u8; 30 * 1024]).unwrap();
+        std::fs::write(tex.join("big.png"), vec![0u8; 200 * 1024]).unwrap();
+        std::fs::write(tex.join("data.txt"), b"skip").unwrap();
+        let picked = find_fallback_preview(&base).unwrap();
+        assert!(picked.ends_with("big.png"));
+        // 空目录 → None
+        let empty = base.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(find_fallback_preview(&empty).is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn pick_daily_is_stable_per_day_and_next_is_random_path() {
