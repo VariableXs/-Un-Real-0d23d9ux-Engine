@@ -1204,7 +1204,7 @@ export function DesktopIcons(props: {
             title={labelOf(d)}
           >
             <span
-              className="desktop-icon-tile"
+              className={`desktop-icon-tile${img ? " has-img" : ""}`}
               style={{ ["--hue" as string]: String(d.hue), ["--tile" as string]: `${tier.tile}px`, ["--icon" as string]: `${tier.icon}px` }}
             >
               {img ? <img src={img} alt="" draggable={false} /> : <Icon size={tier.icon} strokeWidth={1.6} />}
