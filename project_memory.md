@@ -417,3 +417,9 @@
 - 命令面七条：net_status/proxy_start/proxy_stop/kill_switch/rules_list/rule_grant/rule_revoke；设置页「网络」标签（代理启停/kill-switch/仪表/规则增删）。
 - 测试：classify（规则/子域/kill-switch 覆盖）+ 域名尾点容忍 + 代理端到端（本地假 HTTP 服务：白名单 200 / 未授权 403）3 项；workspace 125 全绿；tsc/audit/vitest/build 全绿。
 - 教训：①Arc<(A,B,C)> 的字段 Clone 要整体 clone Arc 再解构（对字段做 Arc::clone 会 auto-deref 到原子类型报错连环）；②并发计数器一律 Arc + fetch_add，&mut 跨线程编译期就拦——Rust 借检在多线程场景是最强的架构评审员；③原子类型均无 Copy，闭包 move 后再 fetch_add 是经典 E0382——先 clone Arc 再用。
+
+## 批次 B-29（2026-09-06）完成 — 安全分析工作台（M9）
+- shell/security.rs：纯 Rust 手写 PE 解析（DOS/PE/COFF/可选头/节表 + 每节 Shannon 熵 >7.0 标记疑似加壳 + 导入表 IID 走查（RVA→文件偏移映射）+ 证书表签名存在性）+ 可疑 API 命中（VirtualAlloc/CreateRemoteThread/WriteProcessMemory 等 14 项注入面）+ 字符串提取 + iced-x86（纯 Rust）入口反汇编只读查看器 + Windows Sandbox 探测（reg 特性键，不可用如实标注）+ .wsb 生成（映射样本只读+断网）+ 安全子环境预设（白名单清空+kill-switch 开）+ Markdown 报告导出（不含样本字节）。
+- 铁律兑现：分析器对样本只读——绝不在宿主执行样本或其代码路径；>64MB 样本如实截断标注。
+- 测试：手工构造最小 PE32+（DOS/PE/COFF/可选头/节表字节级拼装）验头/节/熵/签名 + iced-x86 入口反汇编（push rbp）+ 高熵节加壳标记 + 非 PE 如实报告，4 项；workspace 129 全绿。
+- 教训：①手写字节级解析器时，测试构造器与解析器共享同一份偏移常量表才是根治"两边各写一遍必然漂移"的正解（本轮 COFF 20B/PE32+ 可选头偏移漂移连坑三次）；②Rust 字面量 '\t' 与真实 tab 在文件写入层会被"规范化"，跨层写测试样例时用 chr(9) 构造；③entropy 直接调用 vs 经 analyze 结果不一致 = 数据流断点定位的最快手段。

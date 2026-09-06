@@ -1789,6 +1789,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "iced-x86"
+version = "1.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "ico"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4741,9 +4750,11 @@ name = "variable"
 version = "1.0.0"
 dependencies = [
  "aes-gcm",
+ "blake3",
  "container",
  "git2",
  "hmac",
+ "iced-x86",
  "pbkdf2",
  "rand",
  "rusqlite",

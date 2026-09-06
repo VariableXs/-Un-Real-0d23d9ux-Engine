@@ -343,3 +343,9 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .nt-add input { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
 .nt-rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--border, #2a2f3a); border-radius: 6px; }
 .nt-rule button { background: transparent; border: none; color: #ff8a8a; cursor: pointer; }
+
+/* ---- B-29 安全工作台 ---- */
+.sec-tab { display: flex; flex-direction: column; gap: 10px; }
+.sec-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sec-report { border: 1px solid var(--border, #2a2f3a); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.sec-disasm { max-height: 260px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; background: rgba(127,127,127,0.08); border-radius: 8px; padding: 8px; }

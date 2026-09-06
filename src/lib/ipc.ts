@@ -282,6 +282,16 @@ export const ipc = {
     invoke<Shell.FileAssoc | null>("file_assoc_resolve", { ext }),
   fileAssocRemove: (ext: string) => invoke<void>("file_assoc_remove", { ext }),
 
+  // ---- B-29 安全工作台 ----
+  peAnalyze: (path: string) => invoke<Shell.PeAnalysis>("pe_analyze", { path }),
+  disasmEntry: (path: string, count: number) =>
+    invoke<Shell.DisasmLine[]>("disasm_entry", { path, count }),
+  sandboxProbe: () => invoke<Shell.SandboxProbe>("sandbox_probe"),
+  sandboxWsbGenerate: (sample: string) => invoke<string>("sandbox_wsb_generate", { sample }),
+  securityReportExport: (path: string, out: string) =>
+    invoke<string>("security_report_export", { path, out }),
+  securityEnvPreset: () => invoke<string>("security_env_preset"),
+
   // ---- B-24 子环境档 ----
   envList: () => invoke<Shell.EnvView[]>("env_list"),
   envCreate: (name: string) => invoke<Shell.EnvView>("env_create", { name }),
@@ -676,6 +686,28 @@ namespace Shell {
     ext: string;
     appId: string;
     appName: string;
+  }
+  /** B-29：PE 静态分析。 */
+  export interface PeAnalysis {
+    isPe: boolean;
+    machine: string;
+    entryRva: number;
+    sections: { name: string; rawSize: number; entropy: number; suspiciousEntropy: boolean }[];
+    imports: { dll: string; functions: number }[];
+    signed: boolean;
+    suspiciousHits: string[];
+    blake3: string;
+    stringsTop: string[];
+    sampleNote: string;
+  }
+  export interface DisasmLine {
+    rva: number;
+    bytesHex: string;
+    text: string;
+  }
+  export interface SandboxProbe {
+    available: boolean;
+    detail: string;
   }
   /** B-26：环境克隆报告。 */
   export interface EnvCloneReport {

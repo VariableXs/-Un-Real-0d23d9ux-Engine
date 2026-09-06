@@ -23,7 +23,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 git2 = { version = "0.19", default-features = false }
+blake3 = "1"
 ssh-key = { version = "0.6", features = ["ed25519", "std"] }
+iced-x86 = "1.21"
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
