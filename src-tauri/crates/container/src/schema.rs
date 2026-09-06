@@ -166,7 +166,7 @@ mod tests {
         let p = std::env::temp_dir().join(format!("uxv-b31-{tag}-{}.uxv", std::process::id()));
         let _ = std::fs::remove_file(&p);
         let mut be = UxvBackend::new();
-        be.open(&OpenCfg { root: p.clone() }).unwrap();
+        be.open(&OpenCfg { root: p.clone(), extra_volumes: Vec::new() }).unwrap();
         be.write(&VPath::new("f").unwrap(), b"data").unwrap();
         be.seal().unwrap();
         p
@@ -201,7 +201,7 @@ mod tests {
         assert!(report.backup_path.is_some());
         // 迁移后容器完整可用，数据未动
         let mut be = UxvBackend::new();
-        be.open(&OpenCfg { root: p.clone() }).unwrap();
+        be.open(&OpenCfg { root: p.clone(), extra_volumes: Vec::new() }).unwrap();
         assert_eq!(be.read(&VPath::new("f").unwrap()).unwrap(), b"data");
         let _ = std::fs::remove_file(&p);
         let _ = std::fs::remove_file(report.backup_path.unwrap());

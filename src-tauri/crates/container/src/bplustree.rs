@@ -335,6 +335,25 @@ impl<K: TreeKey, V: TreeVal> BPlusTree<K, V> {
         }
     }
 
+    /// 有序可变遍历（GC 重定位等原地修正用）。
+    pub fn for_each_mut<F: FnMut(&K, &mut V)>(&mut self, mut f: F) {
+        fn walk<K: TreeKey, V: TreeVal, F: FnMut(&K, &mut V)>(n: &mut Node<K, V>, f: &mut F) {
+            match n {
+                Node::Leaf { keys, vals } => {
+                    for (k, v) in keys.iter_mut().zip(vals.iter_mut()) {
+                        f(k, v);
+                    }
+                }
+                Node::Internal { children, .. } => {
+                    for c in children {
+                        walk(c, f);
+                    }
+                }
+            }
+        }
+        walk(&mut self.root, &mut f);
+    }
+
     pub fn get<Q: ?Sized + Ord>(&self, k: &Q) -> Option<V>
     where
         K: std::borrow::Borrow<Q>,

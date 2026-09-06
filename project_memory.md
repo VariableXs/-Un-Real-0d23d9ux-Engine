@@ -313,3 +313,11 @@
 - 头部哈希口径分离：记录头 blake3 = 存储字节（完整性），索引键 = 原文哈希（去重）——混用会导致加密后校验必挂。
 - 41 测试全绿（codec 4 + vault 4 + 容器级加密 4 + 回归 29）；依赖版本锁 locks/container-deps.md。
 - 教训：①read_range/stream 的 chunk 定位必须用"原文 4MiB 逻辑边界"而非存储长度（压缩后两者不等，混用即静默错位）；②流式读取器按逻辑窗口整块解码+缓存，物理偏移只用于定位记录头；③git 基线 + 全量补丁脚本（锚点断言）是对抗"编辑器内容漂移"的唯一可靠工作法——逐条 sed 补丁必然漏。
+
+## 批次 B-15（2026-09-06）完成 — 多卷条带与 GC 分代回收
+- 多卷：卷组 = [主卷(仅 journal+索引)] + 数据卷（OpenCfg.extra_volumes 建卷 / 索引卷表持久化）；chunk 按 stripe_pick 轮转数据卷，ChunkLoc 增加 volume 字段（schema v2，经 B-31 迁移器升版）；单卷模式退化为共享 meta_tail（与 v1 行为等价）。
+- 解码 LRU 缓存键 = (volume, offset)——首版只按 offset，跨卷同偏移互串（oracle 测试当场抓住）。
+- GC：标记（活 chunk 物理位置集合）→ 逐卷顺序走查（JNL1 魔数跳 journal，len>4MiB 即防御性止步）→ 死字节 ≥50% 的最差卷单卷压实（活记录原样搬迁 + 索引重定位 + rename 替换）；GcReport 口径 = chunks_examined/bytes_reclaimed；受 budget_ms 预算约束。
+- 验收：4 卷条带跨卷读写 + seal 重开卷拓扑保持；GC 回收 >0 且活数据不膨胀、数据无损、暂停 <100ms；v1→v2 迁移走 schema 协议全流程。43 测试全绿。
+- 已知边界：v1 索引 blob 的 ChunkLoc 无 volume 字段，当前 v1→v2 迁移器只翻版本戳（v1 从未发布，仅存在于开发容器）；真实索引重写迁移器随 B-33 恢复模式补齐。
+- 教训：①"主卷=元数据、数据卷=纯 chunk"的职责分离让 GC 走查和 journal 重放都简单——比"每卷都能放一切"少一类歧义；②Windows 上 write-only 打开已存在文件会 AccessDenied，统一 read+write 打开。

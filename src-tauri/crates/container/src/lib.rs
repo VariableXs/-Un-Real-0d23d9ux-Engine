@@ -108,6 +108,8 @@ impl std::fmt::Display for VPath {
 #[derive(Debug, Clone)]
 pub struct OpenCfg {
     pub root: PathBuf,
+    /// 额外数据卷（B-15 多卷条带；仅对新容器生效，已有容器以索引卷表为准）。
+    pub extra_volumes: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -414,7 +416,7 @@ mod tests {
     fn opened(tag: &str) -> (DirBackend, PathBuf) {
         let root = temp_root(tag);
         let mut be = DirBackend::new();
-        be.open(&OpenCfg { root: root.clone() }).unwrap();
+        be.open(&OpenCfg { root: root.clone(), extra_volumes: Vec::new() }).unwrap();
         (be, root)
     }
 
@@ -503,7 +505,7 @@ mod tests {
         let mut be = DirBackend::new();
         assert!(be.seal().is_err());
         let root = temp_root("seal");
-        be.open(&OpenCfg { root }).unwrap();
+        be.open(&OpenCfg { root, extra_volumes: Vec::new() }).unwrap();
         assert!(be.seal().is_ok());
     }
 }
