@@ -268,6 +268,20 @@ export const ipc = {
   codeRegister: () => invoke<void>("code_register"),
   codeLaunch: () => invoke<{ attached: boolean; reason: string }>("code_launch"),
 
+  // ---- B-27 应用生态 2.0 ----
+  portabilityAssess: (exe: string) => invoke<Shell.PortabilityCard>("portability_assess", { exe }),
+  ecosystemMigrate: (exe: string, name: string) =>
+    invoke<Shell.MigrateReport>("ecosystem_migrate", { exe, name }),
+  steamLibraryScan: () => invoke<Shell.SteamGame[]>("steam_library_scan"),
+  steamLaunch: (appId: string) => invoke<void>("steam_launch", { appId }),
+  aumidLaunch: (aumid: string) => invoke<void>("aumid_launch", { aumid }),
+  fileAssocList: () => invoke<Shell.FileAssoc[]>("file_assoc_list"),
+  fileAssocSet: (ext: string, appId: string, appName: string) =>
+    invoke<void>("file_assoc_set", { ext, appId, appName }),
+  fileAssocResolve: (ext: string) =>
+    invoke<Shell.FileAssoc | null>("file_assoc_resolve", { ext }),
+  fileAssocRemove: (ext: string) => invoke<void>("file_assoc_remove", { ext }),
+
   // ---- B-24 子环境档 ----
   envList: () => invoke<Shell.EnvView[]>("env_list"),
   envCreate: (name: string) => invoke<Shell.EnvView>("env_create", { name }),
@@ -607,6 +621,33 @@ namespace Shell {
     name: string;
     active: boolean;
     createdAt: number;
+  }
+  /** B-27：可移植性评估卡。 */
+  export interface PortabilityCard {
+    verdict: "green" | "yellow" | "red" | string;
+    reasons: string[];
+    exeSizeBytes: number;
+    dirWritable: boolean;
+    uninstallEntry: string | null;
+  }
+  /** B-27：搬迁报告。 */
+  export interface MigrateReport {
+    appId: string;
+    destExe: string;
+    bytesCopied: number;
+    portableReg: string | null;
+    registered: boolean;
+  }
+  /** B-27：Steam 游戏。 */
+  export interface SteamGame {
+    appId: string;
+    name: string;
+  }
+  /** B-27：文件关联。 */
+  export interface FileAssoc {
+    ext: string;
+    appId: string;
+    appName: string;
   }
   /** B-26：环境克隆报告。 */
   export interface EnvCloneReport {

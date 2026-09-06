@@ -402,3 +402,10 @@
 - 前端：环境行新增「克隆」「嵌套启动」按钮 + 报告 toast（克隆带 bytes）。
 - 测试：envs 4 项（roundtrip/depth/env 构造/嵌套根隔离）+ 回归全绿（workspace 118）；tsc/audit/vitest/build 全绿。M6 代码面收口。
 - 教训：①嵌套互斥的正确解法是"独立数据根"而非"共享容器加锁"——后者把并发问题引进了 journal；②深度限制要在父进程判定（depth>=3 拒绝），子进程再判只是兜底——防御要放在发起侧。
+
+## 批次 B-27（2026-09-06）完成 — 应用生态 2.0（M7）
+- shell/ecosystem.rs：可移植性评估（三类启发式：目录可写/卸载注册表痕迹/本地配置形态 → 绿黄红建议卡，结论逐条理由如实）+ 搬迁执行器（目录整拷 apps/<id>/ + reg export portable.reg 快照 + ThirdApp 登记）+ Steam 库扫描（HKCU SteamPath → libraryfolders.vdf 解析 → appmanifest_*.acf）+ steam://rungameid 协议直通 + AUMID 启动（shell:AppsFolder）+ 文件关联表（fileAssociations.json，解析不到即宿主兜底打开）。
+- UI：设置页「生态」标签（评估卡/搬迁/Steam 扫描启动/关联登记）。
+- 测试：评估卡（可写+本地配置=绿/至少非红、缺 exe 报错）、VDF 解析（新旧两种键格式）、slug 防注入，4 项；workspace 122 全绿；tsc/audit/vitest/build 全绿。
+- 如实边界：评估卡是启发式（运行时监控才可判定）；真实搬迁 7-Zip 与 Steam 启动属 H1 实机项；反作弊游戏默认独立窗口（不嵌入）。
+- 教训：①VDF 新旧两种键格式（"path" vs 数字键）都要兼容——取"最后一个 tab 字段且值含盘符"的启发式比精确匹配键名更稳；②heredoc 里的 \t 与文件里真实 tab 是两种东西，字符码构造替换串是抗漂移的最后一招。

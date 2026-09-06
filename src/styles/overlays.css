@@ -322,3 +322,12 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .ev-ops { display: flex; gap: 6px; }
 .ev-ops button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
 .ev-ops button.danger { border-color: #b36060; color: #ff9a9a; }
+
+/* ---- B-27 应用生态 ---- */
+.eco-tab { display: flex; flex-direction: column; gap: 10px; }
+.eco-card { border: 1px solid var(--border, #2a2f3a); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.eco-verdict { font-weight: 700; letter-spacing: 1px; }
+.eco-games, .eco-game { display: flex; flex-direction: column; gap: 4px; }
+.eco-game { flex-direction: row; align-items: center; justify-content: space-between; }
+.eco-assoc-add { display: flex; gap: 6px; }
+.eco-assoc-add input { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
