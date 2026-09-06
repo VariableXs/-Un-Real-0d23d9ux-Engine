@@ -676,8 +676,8 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-29 | 安全分析工作台 | ☐ | |
 | B-30 | 三宿主验收 + 发版收口 | ☐ | |
 | B-31 | 容器 Schema 迁移协议 | ✅ | probe 惰性探测 + pre-migrate 字节级快照 + 逐级升版 + 失败回滚 + 只升不降；v1→v2 已实走（前置于 B-15 ✓）（2026-09-06） |
-| B-32 | OOBE 首次初始化向导 | ☐ | |
-| B-33 | 应急能力包（--repair/吊销清单） | ☐ | |
+| B-32 | OOBE 首次初始化向导 | ✅ | OobeWizard 四步（介质体检/口令建卷/三模板/60 秒导览）+ OobeGate 首启门控 + Settings 四字段；container_init/vhdx_probe 命令（2026-09-06） |
+| B-33 | 应急能力包（--repair/吊销清单） | 🟡 | M2 半包 ✅：salvage 两级救援内核 + diag/repair/rescue_export/stats 四命令 + 设置页「存储与恢复」+ 修 residue_scan 命令名缺陷；M3 半包（吊销清单 UI、--export-rescue CLI、软件渲染开关）待 GUI 批次（2026-09-06） |
 | B-34 | 诊断包 + 演示胶囊 | ☐ | |
 | B-35 | 发布流水线合规（签名/杀软） | ☐ | |
 | B-36 | .uxpack 壁纸包 | ☐ | |
