@@ -385,7 +385,7 @@ export const ipc = {
     invoke<void>("power_action", { action }),
   // 批次E（规格 4.7）：整表应用快捷键（unregister_all → 重注册），返回注册失败的 accel
   shortcutsApply: (binds: { action: string; accel: string }[]) =>
-    invoke<string[]>("shortcuts_apply", { binds }),
+    invoke<{ failed: string[]; remapped: { from: string; to: string }[] }>("shortcuts_apply", { binds }),
 
   // ---- 批次E-6: 壁纸细节（IDesktopWallpaper 多显示器 + 本地缓存每日换，零网络） ----
   wpMonitors: () => invoke<Shell.WpMonitor[]>("wp_monitors"),
@@ -394,6 +394,8 @@ export const ipc = {
     invoke<string | null>("wp_pick_daily", { dir, mode }),
   /** 批次E-12：扫描 Wallpaper Engine 壁纸项目（root 空 = 自动探测 Steam 库）。 */
   wpEngineScan: (root = "") => invoke<Shell.WpEngineItem[]>("wp_engine_scan", { root }),
+  /** 实机反馈：scene 着色器壁纸本地渲染 —— 读主片元着色器并递归展开 #include。 */
+  wpSceneShader: (entry: string) => invoke<string>("wp_scene_shader", { entry }),
 
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
   /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */

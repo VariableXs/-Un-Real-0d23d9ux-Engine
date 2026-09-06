@@ -356,6 +356,7 @@ export function SettingsModal(props: {
                   <option value="video">{t("wpVideo")}</option>
                   <option value="hybrid">{t("wpHybrid")}</option>
                   <option value="web">{t("wpWeb")}</option>
+                  <option value="shader">{t("wpShader")}</option>
                 </select>
               </Field>
               <Field label={t("iconSize")}>
@@ -501,7 +502,8 @@ export function SettingsModal(props: {
                         title={it.supported ? t("wpEngineImported") : t("wpEngineLocal")}
                         onClick={() => {
                           // 批次E-15：video/image 内嵌导入；web 内嵌 iframe 渲染；
-                          // scene/application 交给 Wallpaper Engine 本体（官方控制接口）
+                          // scene 着色器型 → WebGL 本地渲染（实机反馈：全本地、不靠 WE 本体）；
+                          // 其余（application/合成 scene）→ 预览图静态壁纸，绝不报错黑屏
                           if (it.kind === "web" && it.supported && it.file) {
                             props.onChange({
                               wallpaperMode: "web",
@@ -510,8 +512,20 @@ export function SettingsModal(props: {
                             pushToast("success", t("wpEngineImported"), it.title);
                             return;
                           }
+                          if (it.kind === "scene" && it.supported && it.file) {
+                            props.onChange({
+                              wallpaperMode: "shader",
+                              customBg: {
+                                ...s.customBg,
+                                shaderPath: it.file,
+                                imagePath: it.preview ?? "",
+                              },
+                            });
+                            pushToast("success", t("wpEngineImported"), `${it.title} · ${t("wpEngineShaderLocal")}`);
+                            return;
+                          }
                           if (!it.supported || !it.file) {
-                            // scene/application：着色器/应用型无法在引擎内渲染，
+                            // application/合成 scene：无法在引擎内直接渲染，
                             // 全部在本地打开 —— 用项目预览图作为本地图片壁纸；
                             // 不再交给 Wallpaper Engine 本体、不再隐藏窗口（避免黑屏）
                             if (it.preview) {

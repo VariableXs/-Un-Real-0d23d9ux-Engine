@@ -21,6 +21,7 @@ const WALL_LABEL_KEYS: Record<WallpaperMode, string> = {
   video: "wpVideo",
   hybrid: "wpHybrid",
   web: "wpWeb",
+  shader: "wpShader",
   system: "wpSystem",
 };
 

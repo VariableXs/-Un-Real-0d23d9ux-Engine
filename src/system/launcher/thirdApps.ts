@@ -37,8 +37,9 @@ async function fillNativeIcons(apps: ThirdApp[]): Promise<void> {
       tpStore.setState({
         apps: cur.map((x) => (x.id === a.id ? { ...x, icon: url } : x)),
       });
-    } catch {
-      /* 提取失败（非 exe/图标缺失）→ 保持占位图标 */
+    } catch (e) {
+      /* 提取失败（Rust 端已尽力：exe 内嵌 → shell 项 GetImage → .ico/.png）→ 占位图标，留痕便于排查 */
+      console.warn("[launcher] native icon failed", target, errMessage(e).message);
     }
   }
 }

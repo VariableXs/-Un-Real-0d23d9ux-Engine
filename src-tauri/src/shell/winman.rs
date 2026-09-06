@@ -103,41 +103,144 @@ pub fn default_binds() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// 启动时注册默认表（setup 调用；被系统/他方占用的项诚实降级，仅记录日志）。
+/// 启动时注册默认表（setup 调用；被系统/他方占用的项自动尝试备选组合键，
+/// 仍失败的仅记录日志）。
 pub fn init_shortcuts(app: &AppHandle) {
     let binds = default_binds()
         .into_iter()
         .map(|(a, accel)| ShortcutBind { action: a.into(), accel: accel.into() })
         .collect();
     match register_binds(app, binds) {
-        Ok(failed) => {
-            for f in failed {
+        Ok(res) => {
+            for f in &res.failed {
                 eprintln!("shortcut {f} register failed (degraded)");
+            }
+            for r in &res.remapped {
+                eprintln!("shortcut {} occupied → remapped to {}", r.from, r.to);
             }
         }
         Err(e) => eprintln!("shortcuts unregister_all failed: {e}"),
     }
 }
 
+/// 一次注册尝试的净结果：failed = 连备选都全部失败的原始组合；
+/// remapped = 被占用后自动改用的备选组合（前端如实提示）。
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutsApplyResult {
+    pub failed: Vec<String>,
+    pub remapped: Vec<ShortcutRemap>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortcutRemap {
+    pub from: String,
+    pub to: String,
+}
+
+/// 组合键候选序列：原始 → 键名别名（left/ArrowLeft 等解析差异）→
+/// 备选修饰键组合。被系统/他方占用的组合借此"彻底解决"：
+/// 总有一个可用组合落地，而不是整表报错不可用。
+fn accel_candidates(accel: &str) -> Vec<String> {
+    let parts: Vec<String> = accel
+        .split('+')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let key = parts.last().cloned().unwrap_or_default();
+    let mods: Vec<&String> = parts[..parts.len().saturating_sub(1)].iter().collect();
+    let has = |m: &str| mods.iter().any(|x| x.as_str() == m);
+    let ctrl = has("ctrl") || has("control");
+    let alt = has("alt") || has("option");
+    let shift = has("shift");
+    let super_ = has("super") || has("cmd") || has("command") || has("meta") || has("win");
+
+    // 键名别名（global-hotkey 解析接受 "ArrowLeft"；用户写 "left" 也能命中）
+    let key_variants: Vec<String> = match key.as_str() {
+        "left" | "arrowleft" => vec!["left".into(), "ArrowLeft".into()],
+        "right" | "arrowright" => vec!["right".into(), "ArrowRight".into()],
+        "up" | "arrowup" => vec!["up".into(), "ArrowUp".into()],
+        "down" | "arrowdown" => vec!["down".into(), "ArrowDown".into()],
+        k => vec![k.into()],
+    };
+    // 修饰键组合候选：原样 → +shift → ctrl+shift → alt+shift
+    let mut mod_sets: Vec<(bool, bool, bool)> = vec![(ctrl, alt, shift)];
+    if !shift {
+        mod_sets.push((ctrl, alt, true));
+    }
+    if !super_ {
+        mod_sets.push((ctrl, !alt, true));
+        mod_sets.push((!ctrl, alt, true));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for (c, a, s) in mod_sets {
+        let mut m = String::new();
+        if c {
+            m.push_str("ctrl+");
+        }
+        if a {
+            m.push_str("alt+");
+        }
+        if s {
+            m.push_str("shift+");
+        }
+        if super_ {
+            m.push_str("super+");
+        }
+        for k in &key_variants {
+            let cand = format!("{m}{k}");
+            if !out.contains(&cand) {
+                out.push(cand);
+            }
+        }
+    }
+    out
+}
+
 fn register_binds(
     app: &AppHandle,
     binds: Vec<ShortcutBind>,
-) -> Result<Vec<String>, String> {
+) -> Result<ShortcutsApplyResult, String> {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     let gs = app.global_shortcut();
     gs.unregister_all().map_err(|e| e.to_string())?;
     let mut map = HashMap::new();
     let mut failed = Vec::new();
+    let mut remapped = Vec::new();
     for b in binds {
-        match gs.register(b.accel.as_str()) {
-            Ok(()) => {
-                map.insert(b.accel, b.action);
+        let mut done = false;
+        let mut first_err: Option<String> = None;
+        for cand in accel_candidates(&b.accel) {
+            match gs.register(cand.as_str()) {
+                Ok(()) => {
+                    let is_remap = cand != b.accel;
+                    let to = cand.clone();
+                    map.insert(cand, b.action.clone());
+                    if is_remap {
+                        remapped.push(ShortcutRemap { from: b.accel.clone(), to });
+                    }
+                    done = true;
+                    break;
+                }
+                Err(e) => {
+                    if first_err.is_none() {
+                        first_err = Some(e.to_string());
+                    }
+                }
             }
-            Err(_) => failed.push(b.accel),
+        }
+        if !done {
+            eprintln!(
+                "shortcut {} register failed (all fallbacks exhausted): {}",
+                b.accel,
+                first_err.unwrap_or_default()
+            );
+            failed.push(b.accel);
         }
     }
     *SHORTCUT_MAP.lock().unwrap_or_else(|e| e.into_inner()) = Some(map);
-    Ok(failed)
+    Ok(ShortcutsApplyResult { failed, remapped })
 }
 
 #[derive(Deserialize)]
@@ -147,9 +250,10 @@ pub struct ShortcutBind {
 }
 
 /// 批次E（规格 4.7）：整表应用用户自定义快捷键（unregister_all → 重新注册）。
-/// 返回注册失败的 accel 列表（被系统/他方占用），由前端如实提示。
+/// 实机反馈"彻底解决"：被系统/他方占用的组合自动改用备选组合键并如实回报
+/// （remapped）；连备选都失败的才进 failed，由前端提示。
 #[tauri::command]
-pub fn shortcuts_apply(app: AppHandle, binds: Vec<ShortcutBind>) -> Result<Vec<String>, String> {
+pub fn shortcuts_apply(app: AppHandle, binds: Vec<ShortcutBind>) -> Result<ShortcutsApplyResult, String> {
     register_binds(&app, binds)
 }
 

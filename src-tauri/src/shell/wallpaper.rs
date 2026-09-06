@@ -163,7 +163,7 @@ pub struct WpEngineItem {
     /// 预览图绝对路径（preview.jpg，可能没有）
     pub preview: Option<String>,
     /// Variable 能否直接渲染（video/image = 媒体壁纸；web = 内嵌 iframe；
-    /// scene/application 走 wp_engine_open 交给 WE 本体）
+    /// scene = 着色器型走前端 WebGL 本地渲染；其余回退预览图静态壁纸）
     pub supported: bool,
     /// 来源目录（workshop / myprojects）
     pub source: String,
@@ -238,12 +238,15 @@ fn wp_engine_item(project_dir: &std::path::Path, source: &str) -> Option<WpEngin
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
     let supported = match kind.as_str() {
-        // video/image：媒体壁纸；web：入口是 html，Variable 内嵌 iframe 渲染
+        // video/image：媒体壁纸；web：入口是 html，Variable 内嵌 iframe 渲染；
+        // scene：着色器型（project.json 的 file 直接指向 GLSL 片元着色器）
+        // 由前端 WebGL 引擎本地渲染（实机反馈：必须全本地，不靠 WE 本体）
         "video" | "image" => matches!(
             ext.as_str(),
             "mp4" | "webm" | "ogv" | "mov" | "m4v" | "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
         ),
         "web" => matches!(ext.as_str(), "html" | "htm"),
+        "scene" => matches!(ext.as_str(), "frag" | "glsl" | "fs" | "fsh"),
         _ => false,
     };
     let preview = project_dir
@@ -364,7 +367,7 @@ pub(crate) fn steam_library_roots() -> Vec<std::path::PathBuf> {
 /// 扫描 Wallpaper Engine 壁纸项目。
 /// root 为空 = 自动探测（默认 Steam 库 + libraryfolders.vdf 里的全部库）；
 /// 否则 root 为 Steam 库根 / wallpaper_engine 目录 / 项目父目录。
-/// scene / web / application 类型如实返回 supported=false（Variable 无法渲染着色器/网页）。
+/// scene 着色器型 / web / application 类型按实际能力返回 supported（其余回退预览图）。
 #[tauri::command]
 pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
     let roots: Vec<std::path::PathBuf> = if root.trim().is_empty() {
@@ -395,6 +398,70 @@ pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
 /// （已移除 wp_engine_open：实机反馈场景/应用型壁纸交给 WE 本体 + 隐藏窗口
 /// 会出现整屏黑屏，前端已改为全部本地打开 —— 预览图静态渲染；
 /// 通道下线后宿主侧不再启动 wallpaper64.exe，攻击面同步收窄。）
+
+/// 实机反馈：scene 着色器壁纸本地 WebGL 渲染 —— 读取主片元着色器并递归展开
+/// `#include "x"`（相对主文件目录；PathBuf 拼接、限深 8、防环；只读零网络）。
+/// 只允许读文件（拒绝目录/不存在），内容原样返回由前端编译。
+#[tauri::command]
+pub fn wp_scene_shader(entry: String) -> CmdResult<String> {
+    let root = std::path::PathBuf::from(&entry);
+    if !root.is_file() {
+        return Err(AppError::not_found("着色器文件不存在 / Shader file missing"));
+    }
+    let mut out = String::new();
+    expand_shader_includes(&root, 0, &mut std::collections::HashSet::new(), &mut out)?;
+    Ok(out)
+}
+
+const SHADER_INCLUDE_MAX_DEPTH: u8 = 8;
+
+fn expand_shader_includes(
+    file: &std::path::Path,
+    depth: u8,
+    seen: &mut std::collections::HashSet<std::path::PathBuf>,
+    out: &mut String,
+) -> Result<(), AppError> {
+    if depth > SHADER_INCLUDE_MAX_DEPTH {
+        out.push_str("// [variable] include depth limit\n");
+        return Ok(());
+    }
+    let key = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    if !seen.insert(key) {
+        out.push_str("// [variable] include cycle skipped\n");
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(file)
+        .map_err(|e| AppError::io(format!("读取着色器失败 / Read shader failed: {e}")))?;
+    let text = text.trim_start_matches('\u{feff}');
+    let dir = file.parent().map(|p| p.to_path_buf());
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let rel = trimmed
+            .strip_prefix("#include")
+            .or_else(|| trimmed.strip_prefix("#include ".trim_end()))
+            .and_then(|rest| rest.trim().strip_prefix('"'))
+            .and_then(|rest| rest.split('"').next());
+        match rel {
+            Some(rel) if !rel.is_empty() => {
+                let rel_n = rel.replace('\\', "/");
+                let target = dir.as_ref().map(|d| d.join(&rel_n)).unwrap_or_else(|| std::path::PathBuf::from(&rel_n));
+                match target.is_file() {
+                    true => {
+                        out.push_str(&format!("// [variable] begin include {rel}\n"));
+                        expand_shader_includes(&target, depth + 1, seen, out)?;
+                        out.push_str(&format!("// [variable] end include {rel}\n"));
+                    }
+                    false => out.push_str(&format!("// [variable] include not found: {rel}\n")),
+                }
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {

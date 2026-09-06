@@ -283,6 +283,7 @@ pub fn run() {
             shell::wallpaper::wp_set_monitor,
             shell::wallpaper::wp_pick_daily,
             shell::wallpaper::wp_engine_scan,
+            shell::wallpaper::wp_scene_shader,
             shell::embed::embed_launch,
             shell::embed::embed_bounds,
             shell::embed::embed_visible,

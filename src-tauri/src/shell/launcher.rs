@@ -762,25 +762,64 @@ fn portableize_inner(st: &AppState, id: &str) -> CmdResult<ThirdApp> {
 }
 
 /// 读取图标为 data URL（前端用：文件架等 UI 层图标；不落盘）。
+/// 实机反馈二轮：仍有应用（.lnk 解析不出 exe 目标 / 图标挂在 lnk 自身 /
+/// UWP 等）落到绿色占位图 —— 加 Explorer 同款兜底
+/// SHCreateItemFromParsingName + IShellItemImageFactory::GetImage(64px)，
+/// 对任意 shell 项（lnk/exe/文件夹/UWP 快捷方式）都能取到与资源管理器
+/// 一致的图标。链路：exe 内嵌提取 → shell 项 GetImage → .ico/.png 文件。
 #[tauri::command]
 pub fn icon_dataurl(path: String) -> CmdResult<String> {
-    // 批次E-17：.lnk 先解析目标（快捷方式的图标在目标 exe 里）
     let p = PathBuf::from(&path);
-    let resolved = if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) {
-        resolve_lnk(&p).unwrap_or(p)
+    let is_lnk = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+        .unwrap_or(false);
+    // 批次E-17：.lnk 先解析目标（快捷方式的图标通常在目标 exe 里）
+    let resolved = if is_lnk {
+        resolve_lnk(&p).unwrap_or_else(|| p.clone())
     } else {
-        p
+        p.clone()
     };
-    // 实机反馈：环境内图标要与 Windows 一致 —— exe 内嵌图标直接提取，
-    // 不再只认 .ico/.png 文件（此前 exe 登记项永远是通用占位图标）
     let is_exe = resolved
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase() == "exe")
         .unwrap_or(false);
     if is_exe {
-        return exe_icon_dataurl(&resolved);
+        if let Ok(url) = exe_icon_dataurl(&resolved) {
+            return Ok(url);
+        }
     }
+    // 兜底 1：shell 项图标（与资源管理器显示一致；lnk 用原路径，图标位置才准确）
+    if is_lnk {
+        if let Ok(url) = shell_item_icon_dataurl(&p) {
+            return Ok(url);
+        }
+    }
+    if let Ok(url) = shell_item_icon_dataurl(&resolved) {
+        return Ok(url);
+    }
+    // 兜底 2：独立的 .ico/.png 图标文件
     encode_icon(resolved.to_string_lossy().as_ref())
+}
+
+/// Explorer 同款兜底：IShellItemImageFactory::GetImage → 32bpp RGBA。
+/// 仅 Windows 有真实行为；其余平台诚实报错（与 exe_icon_dataurl 同策略）。
+fn shell_item_icon_dataurl(path: &Path) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let (w, h, rgba) = extract_shell_item_image_rgba(path)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(AppError::validation(
+            "仅 Windows 支持 shell 项图标提取 / Windows only",
+        ))
+    }
 }
 
 /// exe 内嵌图标 → PNG data URL。链路：SHGetFileInfoW(HICON) → GetIconInfo
@@ -810,10 +849,7 @@ fn exe_icon_dataurl(exe: &Path) -> CmdResult<String> {
 fn extract_icon_rgba(exe: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
-    use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, BITMAPINFO, BITMAPINFOHEADER,
-        BI_RGB, DIB_RGB_COLORS,
-    };
+    use windows::Win32::Graphics::Gdi::DeleteObject;
     use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
     use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
     use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
@@ -838,59 +874,96 @@ fn extract_icon_rgba(exe: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
             GetIconInfo(sfi.hIcon, &mut info)
                 .map_err(|e| AppError::io(format!("GetIconInfo 失败 / failed: {e}")))?;
             let hbm = info.hbmColor;
-            let out = (|| -> Result<(u32, u32, Vec<u8>), AppError> {
-                if hbm.is_invalid() {
-                    return Err(AppError::not_found("图标无彩色位图 / icon has no color bitmap"));
-                }
-                let hdc = CreateCompatibleDC(None);
-                let mut bmi = BITMAPINFO::default();
-                bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-                // 首次调用仅取尺寸（lpvBits=None）
-                if GetDIBits(hdc, hbm, 0, 0, None, &mut bmi, DIB_RGB_COLORS) == 0 {
-                    return Err(AppError::io("GetDIBits(尺寸) 失败 / size query failed".to_string()));
-                }
-                let w = bmi.bmiHeader.biWidth.max(0) as u32;
-                let h = bmi.bmiHeader.biHeight.unsigned_abs().max(1);
-                // top-down + 32bpp，保证行序与 alpha 语义确定
-                bmi.bmiHeader.biHeight = -(h as i32);
-                bmi.bmiHeader.biPlanes = 1;
-                bmi.bmiHeader.biBitCount = 32;
-                bmi.bmiHeader.biCompression = BI_RGB.0;
-                let mut buf = vec![0u8; w as usize * h as usize * 4];
-                let got = GetDIBits(
-                    hdc,
-                    hbm,
-                    0,
-                    h,
-                    Some(buf.as_mut_ptr() as *mut _),
-                    &mut bmi,
-                    DIB_RGB_COLORS,
-                );
-                let _ = DeleteDC(hdc);
-                if got == 0 {
-                    return Err(AppError::io("GetDIBits(像素) 失败 / pixel read failed".to_string()));
-                }
-                // BGRA → RGBA；旧式无 alpha 图标（alpha 全 0）→ 视为不透明
-                let mut any_alpha = false;
-                for px in buf.chunks_exact_mut(4) {
-                    px.swap(0, 2);
-                    if px[3] != 0 {
-                        any_alpha = true;
-                    }
-                }
-                if !any_alpha {
-                    for px in buf.chunks_exact_mut(4) {
-                        px[3] = 255;
-                    }
-                }
-                Ok((w, h, buf))
-            })();
+            let out = hbitmap_to_rgba(hbm);
             let _ = DeleteObject(hbm);
             let _ = DeleteObject(info.hbmMask);
             out
         })();
         let _ = DestroyIcon(sfi.hIcon);
         result
+    }
+}
+
+/// HBITMAP（32bpp BGRA）→ (w, h, RGBA)。旧式无 alpha 图标（alpha 全 0）→ 视为不透明。
+#[cfg(windows)]
+fn hbitmap_to_rgba(
+    hbm: windows::Win32::Graphics::Gdi::HBITMAP,
+) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, GetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS,
+    };
+    if hbm.is_invalid() {
+        return Err(AppError::not_found("图标无彩色位图 / icon has no color bitmap"));
+    }
+    let hdc = unsafe { CreateCompatibleDC(None) };
+    let mut bmi = BITMAPINFO::default();
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    // 首次调用仅取尺寸（lpvBits=None）
+    if unsafe { GetDIBits(hdc, hbm, 0, 0, None, &mut bmi, DIB_RGB_COLORS) } == 0 {
+        let _ = unsafe { DeleteDC(hdc) };
+        return Err(AppError::io("GetDIBits(尺寸) 失败 / size query failed".to_string()));
+    }
+    let w = bmi.bmiHeader.biWidth.max(0) as u32;
+    let h = bmi.bmiHeader.biHeight.unsigned_abs().max(1);
+    // top-down + 32bpp，保证行序与 alpha 语义确定
+    bmi.bmiHeader.biHeight = -(h as i32);
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB.0;
+    let mut buf = vec![0u8; w as usize * h as usize * 4];
+    let got = unsafe {
+        GetDIBits(
+            hdc,
+            hbm,
+            0,
+            h,
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        )
+    };
+    let _ = unsafe { DeleteDC(hdc) };
+    if got == 0 {
+        return Err(AppError::io("GetDIBits(像素) 失败 / pixel read failed".to_string()));
+    }
+    // BGRA → RGBA；旧式无 alpha 图标（alpha 全 0）→ 视为不透明
+    let mut any_alpha = false;
+    for px in buf.chunks_exact_mut(4) {
+        px.swap(0, 2);
+        if px[3] != 0 {
+            any_alpha = true;
+        }
+    }
+    if !any_alpha {
+        for px in buf.chunks_exact_mut(4) {
+            px[3] = 255;
+        }
+    }
+    Ok((w, h, buf))
+}
+
+/// Explorer 同款图标提取：SHCreateItemFromParsingName →
+/// IShellItemImageFactory::GetImage(64px, RESIZETOFIT)。对 .lnk / .exe /
+/// 文件夹 / UWP 快捷方式等任意 shell 项都能取到资源管理器所显示的图标。
+#[cfg(windows)]
+fn extract_shell_item_image_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::SIZE;
+    use windows::Win32::UI::Shell::{SHCreateItemFromParsingName, IShellItemImageFactory, SIIGBF_BIGGERSIZEOK, SIIGBF_RESIZETOFIT};
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    unsafe {
+        let factory: IShellItemImageFactory =
+            SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
+                .map_err(|e| AppError::not_found(format!("SHCreateItem 失败 / failed: {e}")))?;
+        let hbm = factory
+            .GetImage(SIZE { cx: 64, cy: 64 }, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)
+            .map_err(|e| AppError::not_found(format!("GetImage 失败 / failed: {e}")))?;
+        let out = hbitmap_to_rgba(hbm);
+        let _ = windows::Win32::Graphics::Gdi::DeleteObject(hbm);
+        out
     }
 }
 

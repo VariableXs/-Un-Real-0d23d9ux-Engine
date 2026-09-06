@@ -223,6 +223,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   display: block;
 }
 
+/* 实机反馈：scene 着色器壁纸（WebGL canvas / 回退预览图）满屏填充 */
+.wallpaper-canvas-fill { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wallpaper-media-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
 /* 批次E-15b：系统桌面透出模式占位（本身透明，仅语义占位） */
 .wallpaper-system { position: absolute; inset: 0; background: transparent; }
 

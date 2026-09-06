@@ -1,4 +1,5 @@
 import { CosmicBackground, toAssetUrl } from "../../features/background/CosmicBackground";
+import { SceneShaderWallpaper } from "./SceneShaderWallpaper";
 import type { CustomBg, Settings } from "../../lib/settings";
 
 /**
@@ -32,6 +33,21 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
         {s.customBg.htmlPath ? (
           <iframe src={toAssetUrl(s.customBg.htmlPath)} title="wallpaper" allow="autoplay" />
         ) : null}
+      </div>
+    );
+  }
+
+  // 实机反馈：scene 着色器壁纸 —— WebGL 本地渲染（WE 全局变量兼容），
+  // 编译失败自动回退预览图静态壁纸，绝不黑屏
+  if (mode === "shader") {
+    return (
+      <div className="wallpaper wallpaper-web" aria-hidden>
+        <SceneShaderWallpaper
+          shaderPath={s.customBg.shaderPath}
+          fallbackImage={s.customBg.imagePath || undefined}
+          reduceMotion={s.reduceMotion}
+          perfMode={s.perfMode}
+        />
       </div>
     );
   }
@@ -70,5 +86,5 @@ function effectiveCustomBg(mode: Settings["wallpaperMode"], cb: CustomBg): Custo
 
 /** 壁纸模式是否依赖用户选择的媒体文件（设置页据此显示选择器）。 */
 export function wallpaperUsesMedia(mode: Settings["wallpaperMode"]): boolean {
-  return mode === "image" || mode === "video" || mode === "hybrid";
+  return mode === "image" || mode === "video" || mode === "hybrid" || mode === "shader";
 }
