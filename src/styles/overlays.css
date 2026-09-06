@@ -331,3 +331,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .eco-game { flex-direction: row; align-items: center; justify-content: space-between; }
 .eco-assoc-add { display: flex; gap: 6px; }
 .eco-assoc-add input { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+
+/* ---- B-28 网络层 ---- */
+.nt-tab { display: flex; flex-direction: column; gap: 10px; }
+.nt-row { display: flex; align-items: center; justify-content: space-between; font-size: 14px; }
+.nt-row button { padding: 5px 14px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.nt-row button.on { border-color: #3ecf8e; color: #3ecf8e; }
+.nt-row.kill button.on { border-color: #ff8a8a; color: #ff8a8a; }
+.nt-stats { display: flex; gap: 16px; font-size: 12.5px; font-family: ui-monospace, monospace; }
+.nt-add { display: flex; gap: 6px; }
+.nt-add input { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.nt-rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--border, #2a2f3a); border-radius: 6px; }
+.nt-rule button { background: transparent; border: none; color: #ff8a8a; cursor: pointer; }

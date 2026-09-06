@@ -24,6 +24,7 @@ import { EnvsTab } from "./EnvsTab";
 import { CodeDeployCard } from "./CodeDeployCard";
 import { ToolchainsCard } from "./ToolchainsCard";
 import { EcoTab } from "./EcoTab";
+import { NetworkTab } from "./NetworkTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
@@ -119,6 +120,7 @@ export function SettingsModal(props: {
     { id: "browsers", label: t("brTitle") },
     { id: "code", label: t("cdTitle") },
     { id: "eco", label: t("ecoTitle") },
+    { id: "net", label: t("ntTitle") },
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "storage", label: t("stTitle") },
@@ -683,6 +685,7 @@ export function SettingsModal(props: {
           {tab === "envs" && <EnvsTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "browsers" && <BrowsersTab />}
           {tab === "eco" && <EcoTab />}
+          {tab === "net" && <NetworkTab />}
           {tab === "code" && (
             <>
               <CodeDeployCard />

@@ -292,6 +292,16 @@ export const ipc = {
     invoke<Shell.EnvCloneReport>("env_clone", { id, newName }),
   envNested: (id: string) => invoke<number>("env_nested", { id }),
 
+  // ---- B-28 网络层 ----
+  netStatus: () => invoke<Shell.NetStatusView>("net_status"),
+  netProxyStart: () => invoke<number>("net_proxy_start"),
+  netProxyStop: () => invoke<void>("net_proxy_stop"),
+  netKillSwitch: (on: boolean) => invoke<Shell.KillSwitchResult>("net_kill_switch", { on }),
+  netRulesList: () => invoke<Shell.NetRule[]>("net_rules_list"),
+  netRuleGrant: (domain: string, profile: string) =>
+    invoke<Shell.NetRule[]>("net_rule_grant", { domain, profile }),
+  netRuleRevoke: (domain: string) => invoke<Shell.NetRule[]>("net_rule_revoke", { domain }),
+
   // ---- B-22 Git 面板（只读）+ SSH 金库 ----
   gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
   gitLog: (repo: string, limit?: number) =>
@@ -621,6 +631,24 @@ namespace Shell {
     name: string;
     active: boolean;
     createdAt: number;
+  }
+  /** B-28：网络层状态。 */
+  export interface NetStatusView {
+    proxyRunning: boolean;
+    proxyPort: number;
+    killSwitch: boolean;
+    ruleCount: number;
+    bytesRelayed: number;
+    connsAllowed: number;
+    connsDenied: number;
+  }
+  export interface KillSwitchResult {
+    on: boolean;
+  }
+  export interface NetRule {
+    domain: string;
+    profile: string;
+    grantedAt: number;
   }
   /** B-27：可移植性评估卡。 */
   export interface PortabilityCard {

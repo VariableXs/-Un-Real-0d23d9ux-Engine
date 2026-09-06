@@ -143,6 +143,12 @@ pub fn spawn_profiled(
         let inherited = std::env::var("PATH").unwrap_or_default();
         c.env("PATH", format!("{prefix};{inherited}"));
     }
+    // B-28：代理运行中时注入 HTTP(S)_PROXY——受管出站汇聚环回代理（白名单执行点）
+    if let Some(proxy) = crate::shell::network::proxy_env_value() {
+        for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"] {
+            c.env(k, &proxy);
+        }
+    }
     for a in args {
         c.arg(a);
     }

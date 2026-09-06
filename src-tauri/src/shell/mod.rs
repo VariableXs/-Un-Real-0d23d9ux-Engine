@@ -22,6 +22,7 @@ pub mod kbdhook;
 pub mod git_panel;
 pub mod launcher;
 pub mod netconsent;
+pub mod network;
 pub mod privacy;
 pub mod recovery;
 pub mod recycle;

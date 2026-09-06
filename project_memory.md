@@ -409,3 +409,11 @@
 - 测试：评估卡（可写+本地配置=绿/至少非红、缺 exe 报错）、VDF 解析（新旧两种键格式）、slug 防注入，4 项；workspace 122 全绿；tsc/audit/vitest/build 全绿。
 - 如实边界：评估卡是启发式（运行时监控才可判定）；真实搬迁 7-Zip 与 Steam 启动属 H1 实机项；反作弊游戏默认独立窗口（不嵌入）。
 - 教训：①VDF 新旧两种键格式（"path" vs 数字键）都要兼容——取"最后一个 tab 字段且值含盘符"的启发式比精确匹配键名更稳；②heredoc 里的 \t 与文件里真实 tab 是两种东西，字符码构造替换串是抗漂移的最后一招。
+
+## 批次 B-28（2026-09-06）完成 — 网络层（M8）
+- shell/network.rs：环回 HTTP 代理（CONNECT 隧道目标域名明文可裁决 + 绝对式改写相对式 + origin-form 按 Host 头）——策略 = kill-switch → 域名规则（host==rule || ends_with(".rule") 子域通配）→ 默认拒绝（默认零出站落地）；拒绝回 403 带 "blocked by Variable network policy" 标记。
+- 流量仪表：bytes_relayed/conns_allowed/conns_denied（Arc 计数三元组，Counters 结构体 Clone 注入线程）；net_status 汇聚。
+- 执行档接线：spawn_profiled 在代理运行时注入 HTTP(S)_PROXY/HTTPS_PROXY → 一切受管进程出站汇聚环回代理（M1 遗留的 net_allow 执行点落地）。直连逃逸如实边界：用户态无法硬断，逃逸计数+标记，硬断网属系统防火墙。
+- 命令面七条：net_status/proxy_start/proxy_stop/kill_switch/rules_list/rule_grant/rule_revoke；设置页「网络」标签（代理启停/kill-switch/仪表/规则增删）。
+- 测试：classify（规则/子域/kill-switch 覆盖）+ 域名尾点容忍 + 代理端到端（本地假 HTTP 服务：白名单 200 / 未授权 403）3 项；workspace 125 全绿；tsc/audit/vitest/build 全绿。
+- 教训：①Arc<(A,B,C)> 的字段 Clone 要整体 clone Arc 再解构（对字段做 Arc::clone 会 auto-deref 到原子类型报错连环）；②并发计数器一律 Arc + fetch_add，&mut 跨线程编译期就拦——Rust 借检在多线程场景是最强的架构评审员；③原子类型均无 Copy，闭包 move 后再 fetch_add 是经典 E0382——先 clone Arc 再用。
