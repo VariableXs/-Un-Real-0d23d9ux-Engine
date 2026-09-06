@@ -20,6 +20,7 @@ import { askConfirm } from "../../components/Modal";
 import { Modal } from "../../components/Modal";
 import { StorageRecoveryTab } from "./StorageRecoveryTab";
 import { BrowsersTab } from "./BrowsersTab";
+import { CodeDeployCard } from "./CodeDeployCard";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
@@ -112,6 +113,7 @@ export function SettingsModal(props: {
     { id: "mindmap", label: t("mindmapTab") },
     { id: "general", label: t("general") },
     { id: "browsers", label: t("brTitle") },
+    { id: "code", label: t("cdTitle") },
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "storage", label: t("stTitle") },
@@ -674,6 +676,7 @@ export function SettingsModal(props: {
 
           {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
           {tab === "browsers" && <BrowsersTab />}
+          {tab === "code" && <CodeDeployCard />}
           {tab === "profiles" && <ProfilesTab />}
           {tab === "shortcuts" && (
             <>

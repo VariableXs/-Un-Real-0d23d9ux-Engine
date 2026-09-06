@@ -262,6 +262,12 @@ export const ipc = {
       passwordCsv: passwordCsv ?? null,
     }),
 
+  // ---- B-20 VS Code Portable ----
+  codeStatus: () => invoke<Shell.CodeStatus>("code_status"),
+  codeDeploy: () => invoke<void>("code_deploy"),
+  codeRegister: () => invoke<void>("code_register"),
+  codeLaunch: () => invoke<{ attached: boolean; reason: string }>("code_launch"),
+
   // ---- B-33 应急能力包（M2 半包）+ B-17 仪表 + B-32 OOBE 建卷 ----
   containerDiag: (path: string) => invoke<Shell.ContainerDiag>("container_diag", { path }),
   containerRepair: (path: string, passphrase?: string) =>
@@ -563,6 +569,13 @@ namespace Shell {
     note: string;
     createdAt: number;
     tokenTail: string;
+  }
+  /** B-20：VS Code Portable 状态。 */
+  export interface CodeStatus {
+    deployed: boolean;
+    exe: string;
+    registered: boolean;
+    portableData: boolean;
   }
   /** B-18：检测到的本机浏览器。 */
   export interface DetectedBrowser {

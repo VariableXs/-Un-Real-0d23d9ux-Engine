@@ -11,6 +11,7 @@
 pub mod ai;
 pub mod appman;
 pub mod browsers;
+pub mod code;
 pub mod embed;
 pub mod explorer;
 pub mod imwatch;

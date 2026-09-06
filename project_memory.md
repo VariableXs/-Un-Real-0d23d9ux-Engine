@@ -355,3 +355,11 @@
 - "分组"语义定版：每 profile 一个独立任务栏项（同浏览器多 profile 不合并）——数据目录即隔离边界，与"Chrome 自带多 profile 合并为一个窗口组"的宿主行为刻意不同。
 - JSX 插入教训：往大组件 return 里插块必须先读清闭合层级（第一次插在按钮容器 </div> 后导致 JSX 断裂，TSC 立即抓出）。
 - 至此 B-18/B-19 全部收口，M4 浏览器矩阵代码面完成。
+
+## 批次 B-20（2026-09-06）完成 — VS Code Portable 一键部署
+- shell/code.rs：code_deploy（curl 字节进度 code://progress 事件流 + Expand-Archive 内层目录上提 + data/ 目录进 Portable 模式——user-data/extensions 全在容器）；code_register（幂等 upsert ThirdApp id=vscode，执行档 HOME/USERPROFILE 镜像容器）；code_launch（复用 embed_launch 整条通道——Electron 嵌入回归由"零新增嵌入代码"保证）；code_status（deployed/portableData/registered 如实三态）。
+- 离线降级：runtime/vscode-download.zip 已存在即跳过下载（离线宿主手动放置官方 zip 即可）。
+- 前端：设置页「编码」标签（CodeDeployCard：状态/部署进度条/登记/嵌入启动）；登记后 VS Code 自动出现在启动器/任务栏（复用 thirds 生态，无新增任务栏代码）。
+- 测试：portable 布局契约 + 状态诚实性 2 项 + 回归全绿（workspace 105）；tsc/audit/i18n/vitest/build 全绿。
+- 教训：①集成型批次的最强回归保证是"复用而非新写"——VS Code 是 Electron 应用（嵌入最易翻车的类别），但整条 embed 通道零改动，风险面收敛为"部署本身"；②Tauri emit 需要 Emitter trait 显式导入（v2 与 v1 的隐蔽差异）。
+- 如实边界：真实下载/嵌入启动属 H1 实机项（内网/离线开发环境无法验证 update.code.visualstudio.com 可达性）。

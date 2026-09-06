@@ -272,3 +272,10 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .br-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .br-ops button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
 .br-ops button.danger { border-color: #b36060; color: #ff9a9a; }
+
+/* ---- B-20 VS Code Portable 部署卡 ---- */
+.cd-card { display: flex; flex-direction: column; gap: 10px; }
+.cd-status { display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
+.cd-progress { position: relative; height: 14px; border-radius: 7px; background: rgba(127,127,127,0.15); overflow: hidden; }
+.cd-progress-bar { height: 100%; background: #6ea8ff; transition: width .4s; }
+.cd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
