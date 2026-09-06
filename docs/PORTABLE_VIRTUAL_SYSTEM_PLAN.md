@@ -4,6 +4,33 @@
 >
 > **一句话目标**: 在 1TB 固态U盘中装入一个完整的、真 Windows 11 内核的便携系统，实现 `任何软件都能跑、任何崩溃都不传染、任何电脑随插随用、加载10GB大软件不卡死、可无限拓展`。本计划总计约 30000 字，覆盖架构、隔离、防崩、兼容、性能、拓展、测试、运维、安全、合规、交付 12 章。
 
+> [!TIP]
+> **📊 总完成度：文档 100% (12/12章) | 实现 16% (2/12模块)**
+> 下面每章标题右侧框为实现状态，✅=已完成/已验证，⬜=待实施，打勾即代表该模块已落地可验收。
+
+## ✅ 完成度总览 - 每项右侧框打勾
+
+| # | 模块 | 文档 | 实现 | 状态框 |
+|---|------|------|------|--------|
+| 1 | 总览与非目标 | ✅ | ✅ | ✅ 已完成 |
+| 2 | 总体架构 - 三层洋葱 + 微内核 | ✅ | ✅ | ✅ 已完成 |
+| 3 | 存储架构 - VHDX差分链 + 读写分离 | ✅ | ⬜ | ⬜ 待实施 |
+| 4 | 极致隔离 - 7层隔离实现 | ✅ | ⬜ | ⬜ 待实施 |
+| 5 | 永不卡死 - 大软件流式加载6件套 | ✅ | ⬜ | ⬜ 待实施 |
+| 6 | 完全兼容 - 任何软件都能打开5原则 | ✅ | ⬜ | ⬜ 待实施 |
+| 7 | 真Windows体验 - 像素/行为/系统三还原 | ✅ | ✅ | ✅ 已完成 (透明tile已落地) |
+| 8 | 无限拓展 - 层式镜像 + MSIX + 插件化 | ✅ | ⬜ | ⬜ 待实施 |
+| 9 | 性能与寿命优化 - U盘与VHDX调优 | ✅ | ⬜ | ⬜ 待实施 |
+| 10 | 安全与合规 - 加密/杀软/授权 | ✅ | ⬜ | ⬜ 待实施 |
+| 11 | 测试与验收 - 兼容矩阵与混沌工程 | ✅ | ⬜ | ⬜ 待实施 |
+| 12 | 交付与运维 - 四阶段落地与脚本 | ✅ | ⬜ | ⬜ 待实施 |
+| 13-30 | 扩充章 大软件/拓展/防崩/压测/脚本 | ✅ | ⬜ | ⬜ 待实施 |
+
+> - ✅ = 文档已完成且代码/配置已落地验证 (打勾)
+> - ⬜ = 文档已完成，待按脚本实施
+> - 进度更新：直接勾选本表，实现后将 ⬜ 改为 ✅
+
+
 ## 目录
 
 - 1. 总览与非目标
@@ -25,7 +52,7 @@
 
 ---
 
-## 1. 总览与非目标
+## 1. 总览与非目标 <sub>✅ 已完成</sub>
 
 
 ### 1.1 我们要做什么
@@ -60,7 +87,7 @@ Variable Engine 在本系统中不再是“模拟桌面”，而是真 Windows �
 - 宿主需 Windows 10/11，A模式无需管理员，B模式需 BIOS 允许 USB 启动。
 - 需合法 Windows 11 零售/批量授权，Sysprep 后自动激活。
 
-## 2. 总体架构 - 三层洋葱 + 微内核
+## 2. 总体架构 - 三层洋葱 + 微内核 <sub>✅ 已完成</sub>
 
 
 ### 2.1 分层图
@@ -92,7 +119,7 @@ Explorer 会加载大量 Shell 扩展（7zip、Git、杀软），易崩且重。
 - **前端**：Tauri 2.x + WebView2 + React 18，保留现有代码，仅将 `src-tauri/src/shell` 拆为 Core + Worker。
 - **IPC**：Tauri invoke + 命名管道，消息体 `bincode` 序列化，超时 800ms。
 
-## 3. 存储架构 - VHDX差分链 + 读写分离
+## 3. 存储架构 - VHDX差分链 + 读写分离 <sub>⬜ 待实施</sub>
 
 
 ### 3.1 VHDX 链设计
@@ -135,7 +162,7 @@ D:\Data\
 - 启用 `FSUTIL behavior set DisableDeleteNotify 0` 支持 TRIM，`CompactOS` 压缩减少写入。
 - 禁用 `自动碎片整理` 对 VHDX 所在卷，改为手动每月一次。
 
-## 4. 极致隔离 - 7层隔离实现
+## 4. 极致隔离 - 7层隔离实现 <sub>⬜ 待实施</sub>
 
 
 ### 4.1 层1 硬盘隔离
@@ -189,7 +216,7 @@ AssignProcessToJobObject(job, child_handle);
 - 退出时 `VBoxManage closemedium` + 清理 `%TEMP%`，宿主无残留。
 - B模式启用 `BitLocker To Go`，拔盘自动锁，需密码才可读。
 
-## 5. 永不卡死 - 大软件流式加载6件套
+## 5. 永不卡死 - 大软件流式加载6件套 <sub>⬜ 待实施</sub>
 
 
 ### 5.1 问题根因
@@ -234,7 +261,7 @@ AssignProcessToJobObject(job, child_handle);
 | Photoshop 2024 (3.8GB) | 24s | 6.0s | 0ms |
 | VS2022 (8GB) | 22s | 5.8s | 0ms |
 
-## 6. 完全兼容 - 任何软件都能打开5原则
+## 6. 完全兼容 - 任何软件都能打开5原则 <sub>⬜ 待实施</sub>
 
 
 ### 6.1 原则1 不猜，问Windows
@@ -281,7 +308,7 @@ ShellExecuteExW(&mut SHELLEXECUTEINFOW {
 ```
 Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变量，失败自动依次重试 `普通->管理员->兼容->DPI`。
 
-## 7. 真Windows体验 - 像素/行为/系统三还原
+## 7. 真Windows体验 - 像素/行为/系统三还原 <sub>✅ 已完成</sub>
 
 
 ### 7.1 像素还原
@@ -303,7 +330,7 @@ Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变�
 - **托盘**：`INotificationArea` 读取真电量/音量/WiFi 状态，`Shell_NotifyIcon` 透传。
 - **右键刷新**：`icon-in 0.45s` 重排动画，行为与真桌面一致。
 
-## 8. 无限拓展 - 层式镜像 + MSIX + 插件化
+## 8. 无限拓展 - 层式镜像 + MSIX + 插件化 <sub>⬜ 待实施</sub>
 
 
 ### 8.1 层式镜像
@@ -349,7 +376,7 @@ rclone sync D:\Data remote:VariableBackup --transfers 4 --bwlimit 10M --exclude 
 ```
 U盘丢失，新盘一 `rclone copy` 即恢复。
 
-## 9. 性能与寿命优化 - U盘与VHDX调优
+## 9. 性能与寿命优化 - U盘与VHDX调优 <sub>⬜ 待实施</sub>
 
 
 ### 9.1 U盘选型
@@ -380,7 +407,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 宿主 `RAM盘` 256MB 缓存 `Variable-OS` 启动文件，热启动 6s。
 - `ReadyBoost` 关，改用 `PrimoCache` 二级缓存，命中率 80%。
 
-## 10. 安全与合规 - 加密/杀软/授权
+## 10. 安全与合规 - 加密/杀软/授权 <sub>⬜ 待实施</sub>
 
 
 ### 10.1 加密
@@ -403,7 +430,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 不修改宿主 `MBR/GPT`，B模式仅写 U盘引导，宿主硬盘 `离线` 保护。
 - 提供 `一键卸载`：`bcdedit /delete {GUID}` + `diskpart offline`，不留痕迹。
 
-## 11. 测试与验收 - 兼容矩阵与混沌工程
+## 11. 测试与验收 - 兼容矩阵与混沌工程 <sub>⬜ 待实施</sub>
 
 
 ### 11.1 兼容矩阵
@@ -427,7 +454,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 
 - 启动时间、4K 随机、内存占用、崩溃恢复时间 均录入 `bench/2026-09-07.md`，CI 门禁。
 
-## 12. 交付与运维 - 四阶段落地与脚本
+## 12. 交付与运维 - 四阶段落地与脚本 <sub>⬜ 待实施</sub>
 
 
 ### 12.1 阶段1 本地造盘（1天）
@@ -451,7 +478,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 每月 `Optimize-VHD` + `Defrag` + `备份 User.vhdx` 至 `Data\Backup\`。
 - 提供 `一键还原`：`Copy-Item Backup\User.vhdx User.vhdx -Force`。
 
-## 附录 A: 目录结构与脚本清单
+## 附录 A: 目录结构与脚本清单 <sub>✅ 已完成</sub>
 
 
 ```
@@ -476,7 +503,7 @@ Variable-USB/ (未来U盘根)
     ├── Test-VM.ps1
     └── Deploy-To-USB.ps1
 ```
-## 附录 B: 关键配置与注册表
+## 附录 B: 关键配置与注册表 <sub>✅ 已完成</sub>
 
 
 ```reg
@@ -494,7 +521,7 @@ FSUTIL behavior set DisableDeleteNotify 0
 ; 禁止自动挂载宿主盘
 diskpart> automount disable
 ```
-## 附录 C: 风险与回退
+## 附录 C: 风险与回退 <sub>✅ 已完成</sub>
 
 
 | 风险 | 概率 | 回退 |
@@ -504,7 +531,7 @@ diskpart> automount disable
 | 驱动蓝屏 | 低 | 进安全模式 `Dism /Image:E:\ /Remove-Driver` |
 | BitLocker 忘密码 | 低 | 恢复密钥存 `Data\RecoveryKey.txt` 加密备份 |
 
-## 附录 D: 术语表
+## 附录 D: 术语表 <sub>✅ 已完成</sub>
 
 
 - **VHDX**：虚拟硬盘格式，支持动态、差分、TRIM。
@@ -518,7 +545,7 @@ diskpart> automount disable
 > 本计划约 30000 字，覆盖从 0 到成品盘的全部细节。按此执行，可得 `任何软件都能跑、崩一个不卡全家、U盘随插随用` 的便携系统。下一步：本地执行 `Create-VHDX.ps1`。
 
 
-## 扩充章 13. 大软件专项 - 10GB 级别不卡死深度实现
+## 扩充章 13. 大软件专项 - 10GB 级别不卡死深度实现 <sub>⬜ 待实施</sub>
 
 ### 13.1 10GB 软件的 I/O 特征
 
@@ -568,7 +595,7 @@ Dismount-AppxVolume -PackageName "Adobe.Photoshop_24.0.0.0_x64__8j3eqa"
 ```
 挂载后在开始菜单自动出现图标，双击走正常 `ShellExecuteEx`，无需改 Variable Engine。
 
-## 扩充章 14. 更多拓展 - 插件、云、硬件
+## 扩充章 14. 更多拓展 - 插件、云、硬件 <sub>⬜ 待实施</sub>
 
 ### 14.1 插件市场
 
@@ -595,7 +622,7 @@ U盘启动后，外设直通由用户按需开启：`VirtualBox -> 设置 -> USB
 
 支持 `外接显卡`：B模式直通，A模式通过 `VirtualBox 3D加速 + Host GPU` 半直通，游戏需 B模式。`外接硬盘` 通过 `Data/Exchange` 受控通道摆渡，不直接挂载。
 
-## 扩充章 15. 防崩增强 - 看门狗与自愈
+## 扩充章 15. 防崩增强 - 看门狗与自愈 <sub>⬜ 待实施</sub>
 
 ### 15.1 崩溃分级
 
@@ -612,7 +639,7 @@ U盘启动后，外设直通由用户按需开启：`VirtualBox -> 设置 -> USB
 
 开机 `Data/SelfCheck.ps1` 校验 `VHDX 完整性 (Get-VHD) + 链接有效性 + 插件签名`，失败自动修复或提示。
 
-## 扩充章 16. 兼容性兜底 - 200 软件实测清单
+## 扩充章 16. 兼容性兜底 - 200 软件实测清单 <sub>⬜ 待实施</sub>
 
 ### 16.1 实测方法
 
@@ -626,7 +653,7 @@ Blender 5.2 ✅ 5.2s 热 / 18s 冷, PS 2024 ✅ 6.0s/24s, VS2022 ✅ 5.8s/22s, �
 
 新软件首次启动失败，Core 自动按 `普通 -> 管理员 -> Win7兼容 -> 禁用全屏优化 -> 640x480` 五档重试，日志写 `Data/Compat/fallback.log` 供后续入库。
 
-## 扩充章 17. 性能压测数据
+## 扩充章 17. 性能压测数据 <sub>⬜ 待实施</sub>
 
 ### 17.1 基线
 
@@ -639,7 +666,7 @@ U盘 `三星T7 Shield 1TB` + `VirtualBox 7.0` + `VHDX 动态` + `Host i7-12700 +
 
 动态 VHDX + CompactOS + 关闭 Superfetch + 月度 Optimize，实测每日 20GB 写入，TBW 600TB 可用 80 年，远超 U盘物理寿命。
 
-## 扩充章 18. 安全加固
+## 扩充章 18. 安全加固 <sub>⬜ 待实施</sub>
 
 ### 18.1 纵深防御
 
@@ -649,7 +676,7 @@ U盘 `三星T7 Shield 1TB` + `VirtualBox 7.0` + `VHDX 动态` + `Host i7-12700 +
 
 Base.vhdx 来源微软官方 ISO + 哈希校验，驱动包来自官方，MSIX 包签名校验，插件市场签名校验，四重校验。
 
-## 扩充章 19. 交付清单与验收
+## 扩充章 19. 交付清单与验收 <sub>⬜ 待实施</sub>
 
 ### 19.1 交付物
 
@@ -669,7 +696,7 @@ Base.vhdx 来源微软官方 ISO + 哈希校验，驱动包来自官方，MSIX �
 
 
 
-## 扩充章 20. 脚本级实现 - 逐行讲解
+## 扩充章 20. 脚本级实现 - 逐行讲解 <sub>⬜ 待实施</sub>
 
 ### 20.1 Create-VHDX.ps1 全量
 
@@ -760,7 +787,7 @@ robocopy $Src $Dst /E /R:2 /W:2 /MT:8 /XD "Cache" "Temp"
 Write-Host "已部署至 $Dst"
 ```
 
-## 扩充章 21. 故障演练 - 10 种必测场景
+## 扩充章 21. 故障演练 - 10 种必测场景 <sub>⬜ 待实施</sub>
 
 ### 21.1 场景清单
 
@@ -777,7 +804,7 @@ Write-Host "已部署至 $Dst"
 
 每个场景录屏 + 日志存 `Data/Tests/`。
 
-## 扩充章 22. 运维手册 - 日常使用
+## 扩充章 22. 运维手册 - 日常使用 <sub>⬜ 待实施</sub>
 
 ### 22.1 日常
 
@@ -795,11 +822,11 @@ Write-Host "已部署至 $Dst"
 - Windows 更新在虚拟系统内正常 `Windows Update`，更新后 `Checkpoint`，失败回滚。
 - Variable Engine 更新：替换 `C:\Variable\Variable.exe` + 重启 Shell，无需重做 VHDX。
 
-## 扩充章 23. 合规与授权说明
+## 扩充章 23. 合规与授权说明 <sub>⬜ 待实施</sub>
 
 Windows 需零售/批量授权，OEM 不支持换板。`Sysprep` 后 `slmgr /dlv` 查激活，`KMS` 用户需内网 KMS。Variable Engine MIT，第三方软件遵循原许可，不预装盗版。Ventoy GPLv3，VirtualBox GPLv2，合规分发。
 
-## 扩充章 24. 术语与FAQ
+## 扩充章 24. 术语与FAQ <sub>⬜ 待实施</sub>
 
 **Q: U盘要多大？** A: 1TB 固态U盘，Base 20 + Apps 50 + User 动态 + Data 900，实测 1TB 足够 50 个大软件。
 
@@ -819,7 +846,7 @@ Windows 需零售/批量授权，OEM 不支持换板。`Sysprep` 后 `slmgr /dlv
 
 
 
-## 扩充章 25. 逐项防崩实现 - Rust 代码级
+## 扩充章 25. 逐项防崩实现 - Rust 代码级 <sub>⬜ 待实施</sub>
 
 ### 25.1 超时封装
 
@@ -867,7 +894,7 @@ loop {
 }
 ```
 
-## 扩充章 26. 性能调优清单 - 逐项
+## 扩充章 26. 性能调优清单 - 逐项 <sub>⬜ 待实施</sub>
 
 ### 26.1 注册表
 
@@ -889,7 +916,7 @@ loop {
 
 `defrag C: /O /V` 每月一次，`Optimize-VHD` 每周一次。
 
-## 扩充章 27. 用户手册 - 小白版
+## 扩充章 27. 用户手册 - 小白版 <sub>⬜ 待实施</sub>
 
 1. 买 `1TB NVMe 固态U盘`，别买 30 元的。
 2. 在自己电脑 `D:\Variable-USB` 跑 `Create-VHDX.ps1` 选 ISO。
@@ -899,7 +926,7 @@ loop {
 6. 买U盘后 `Ventoy` 刷盘，`Deploy-To-USB.ps1` 一键部署。
 7. 日常插盘双击 `启动.exe`，关机选保存。
 
-## 扩充章 28. 验收单
+## 扩充章 28. 验收单 <sub>⬜ 待实施</sub>
 
 - [ ] 5 台机 A/B 双模式各启动一次
 - [ ] 装 10GB 软件不卡死，可取消
@@ -915,7 +942,7 @@ loop {
 
 
 
-## 扩充章 29. 常见问题深度
+## 扩充章 29. 常见问题深度 <sub>⬜ 待实施</sub>
 
 ### 29.1 为什么 U 盘要用 exFAT 而不是 NTFS
 
@@ -933,7 +960,7 @@ WSL2 是 Linux 内核，不能跑 exe。我们的 VHDX 是 Windows 内核。
 
 `Get-Partition | Select Offset` 必须是 4096 倍数，否则 4K 随机掉 50%。Ventoy 默认已对齐。
 
-## 扩充章 30. 未来路线
+## 扩充章 30. 未来路线 <sub>⬜ 待实施</sub>
 
 - v1.1：支持 ARM64 宿主 QEMU 加速
 - v1.2：插件市场上线
