@@ -665,7 +665,7 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-18 | 浏览器模板 + Profile 管理器 | ✅ | shell/browsers.rs：五款浏览器检测（App Paths 三键+路径兜底）+ 家族模板（--user-data-dir/-profile）+ Profile CRUD（克隆=整拷贝、删除可焚毁）+ 设置页「浏览器」标签（2026-09-06） |
 | B-19 | 任务栏分组 + 导入向导 | ✅ | 导入向导 ✅ + 任务栏按 profile 分组 ✅（browser_running pid 存活探测，每 profile 独立任务栏项，3s 轮询并入既有节拍）——M4 代码面完成（2026-09-06） |
 | B-20 | VS Code Portable 集成 | ✅ | code.rs：一键部署（curl 进度事件/离线 zip 降级/Portable data 模式）+ 幂等登记 ThirdApp + 启动复用 embed 通道；设置页「编码」标签（2026-09-06）；Electron 实嵌属 H1 实机项 |
-| B-21 | 工具链模板 | ☐ | |
+| B-21 | 工具链模板 | ✅ | toolchains.rs：Python(embeddable)/Go(zip)/Rust(rustup 容器化 CARGO_HOME) 三通道 + PATH 统一注入（spawn_profiled 单点，冻结顺序）+ 设置页工具链卡片 + locks/toolchains.md（2026-09-06）；真实下载属 H1 实机项 |
 | B-22 | Git 面板 + SSH 金库代理 | ☐ | |
 | B-23 | 并行搜索 + 大文件 + 行级跳转 | ☐ | |
 | B-24 | 环境档 + 切换编排 | ☐ | |

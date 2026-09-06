@@ -24,6 +24,7 @@ pub mod recovery;
 pub mod recycle;
 pub mod sysinfo;
 pub mod terminal;
+pub mod toolchains;
 pub mod tray;
 pub mod usb;
 pub mod wallpaper;

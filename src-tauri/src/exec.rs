@@ -114,10 +114,40 @@ pub fn spawn_profiled(
             c.env(k, v);
         }
     }
+    // B-21：容器工具链 PATH 注入——存在的 runtime 目录前置到 PATH，
+    // 终端/AI CLI/浏览器等一切受管进程天然继承容器工具链。
+    if let Some(prefix) = runtime_path_prefix(container_root) {
+        let inherited = std::env::var("PATH").unwrap_or_default();
+        c.env("PATH", format!("{prefix};{inherited}"));
+    }
     for a in args {
         c.arg(a);
     }
     crate::shell::launcher::spawn_detached(&mut c)
+}
+
+/// 容器 runtime 工具链目录（存在者才入 PATH 前缀；B-21 冻结顺序）。
+pub(crate) fn runtime_path_prefix(container_root: &Path) -> Option<String> {
+    const REL: &[&str] = &[
+        "runtime/npm-global",
+        "runtime/node",
+        "runtime/python",
+        "runtime/python/Scripts",
+        "runtime/go/bin",
+        "runtime/cargo/bin",
+        "runtime/vscode/bin",
+    ];
+    let dirs: Vec<String> = REL
+        .iter()
+        .map(|r| container_root.join(r))
+        .filter(|p| p.is_dir())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    if dirs.is_empty() {
+        None
+    } else {
+        Some(dirs.join(";"))
+    }
 }
 
 // ---------- 模板库 v1（B-5，蓝图 3.3.4；14.2：HOME 与 USERPROFILE 指向不同镜像防互踩） ----------
@@ -380,6 +410,32 @@ pub fn residue_snapshot_diff() -> Vec<ResidueEntry> {
 #[tauri::command]
 pub fn residue_scan() -> CmdResult<Vec<ResidueEntry>> {
     Ok(residue_snapshot_diff())
+}
+
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn runtime_path_prefix_only_existing_dirs() {
+        let root = std::env::temp_dir().join(format!("exec-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // 无 runtime 目录 → None
+        assert!(runtime_path_prefix(&root).is_none());
+        // 建 node 与 go/bin → 两个目录入前缀，且顺序符合冻结清单
+        std::fs::create_dir_all(root.join("runtime/node")).unwrap();
+        std::fs::create_dir_all(root.join("runtime/go/bin")).unwrap();
+        let p = runtime_path_prefix(&root).unwrap();
+        let node = root.join("runtime/node").to_string_lossy().into_owned();
+        let gobin = root.join("runtime/go/bin").to_string_lossy().into_owned();
+        assert!(p.contains(&node), "prefix={p}");
+        assert!(p.contains(&gobin), "prefix={p}");
+        assert!(p.find(&node).unwrap() < p.find(&gobin).unwrap(), "冻结顺序：npm-global/node 在前");
+        // python 未建 → 不出现
+        assert!(!p.contains("runtime/python"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]

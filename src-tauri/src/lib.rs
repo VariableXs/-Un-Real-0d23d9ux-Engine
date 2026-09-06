@@ -207,6 +207,8 @@ pub fn run() {
             shell::code::code_deploy,
             shell::code::code_register,
             shell::code::code_launch,
+            shell::toolchains::toolchain_status,
+            shell::toolchains::toolchain_deploy,
             shell::launcher::tp_add,
             shell::launcher::tp_list,
             shell::launcher::tp_remove,

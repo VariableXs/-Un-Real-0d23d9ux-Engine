@@ -363,3 +363,11 @@
 - 测试：portable 布局契约 + 状态诚实性 2 项 + 回归全绿（workspace 105）；tsc/audit/i18n/vitest/build 全绿。
 - 教训：①集成型批次的最强回归保证是"复用而非新写"——VS Code 是 Electron 应用（嵌入最易翻车的类别），但整条 embed 通道零改动，风险面收敛为"部署本身"；②Tauri emit 需要 Emitter trait 显式导入（v2 与 v1 的隐蔽差异）。
 - 如实边界：真实下载/嵌入启动属 H1 实机项（内网/离线开发环境无法验证 update.code.visualstudio.com 可达性）。
+
+## 批次 B-21（2026-09-06）完成 — 工具链模板与 PATH 注入
+- shell/toolchains.rs：python（官方 embeddable zip + _pth 解禁 site-packages）/ go（zip 内层上提）/ rust（rustup-init -y --no-modify-path，CARGO_HOME/RUSTUP_HOME 全在容器）三条部署通道；版本锁 locks/toolchains.md；离线降级 runtime/<id>-download.(zip|exe)。
+- PATH 注入收口到 exec::spawn_profiled 统一处理：runtime_path_prefix 收集存在的 runtime 目录（冻结顺序 npm-global→node→python→python/Scripts→go/bin→cargo/bin→vscode/bin），前置到 PATH 再拼继承值——终端/AI CLI/浏览器/VS Code 一切受管进程天然继承容器工具链，零散注入从此绝迹。
+- 前端：设置页「编码」标签下 ToolchainsCard（状态列表 + 部署按钮 + toolchain://progress 事件）。
+- 测试：PATH 前缀（存在性过滤 + 冻结顺序）+ 工具链路径口径 + 回归全绿（workspace 108）；tsc/audit/i18n/vitest/build 全绿。
+- 教训：①PATH 注入从"每个启动点自己拼"收敛为 spawn_profiled 单点，是"同一件事只能有一个实现"纪律的典型案例；②版本锁文件与代码常量必须同提交，否则升版时必漏一处。
+- 如实边界：python.org/go.dev/rust-lang.org 真实下载属 H1 实机项；rustup 首次安装需稳定出站（断网场景降级离线放置）。

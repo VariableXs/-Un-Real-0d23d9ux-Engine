@@ -268,6 +268,10 @@ export const ipc = {
   codeRegister: () => invoke<void>("code_register"),
   codeLaunch: () => invoke<{ attached: boolean; reason: string }>("code_launch"),
 
+  // ---- B-21 工具链 ----
+  toolchainStatus: () => invoke<Shell.ToolchainStatusView[]>("toolchain_status"),
+  toolchainDeploy: (id: string) => invoke<void>("toolchain_deploy", { id }),
+
   // ---- B-33 应急能力包（M2 半包）+ B-17 仪表 + B-32 OOBE 建卷 ----
   containerDiag: (path: string) => invoke<Shell.ContainerDiag>("container_diag", { path }),
   containerRepair: (path: string, passphrase?: string) =>
@@ -569,6 +573,12 @@ namespace Shell {
     note: string;
     createdAt: number;
     tokenTail: string;
+  }
+  /** B-21：工具链状态。 */
+  export interface ToolchainStatusView {
+    id: string;
+    deployed: boolean;
+    home: string;
   }
   /** B-20：VS Code Portable 状态。 */
   export interface CodeStatus {

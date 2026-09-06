@@ -21,6 +21,7 @@ import { Modal } from "../../components/Modal";
 import { StorageRecoveryTab } from "./StorageRecoveryTab";
 import { BrowsersTab } from "./BrowsersTab";
 import { CodeDeployCard } from "./CodeDeployCard";
+import { ToolchainsCard } from "./ToolchainsCard";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
@@ -676,7 +677,12 @@ export function SettingsModal(props: {
 
           {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
           {tab === "browsers" && <BrowsersTab />}
-          {tab === "code" && <CodeDeployCard />}
+          {tab === "code" && (
+            <>
+              <CodeDeployCard />
+              <ToolchainsCard />
+            </>
+          )}
           {tab === "profiles" && <ProfilesTab />}
           {tab === "shortcuts" && (
             <>
