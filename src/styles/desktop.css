@@ -52,6 +52,12 @@
   justify-content: center;
   border-radius: 12px;
   color: hsl(var(--hue, 220) 55% 78%);
+  /* 默认透明，完全贴合 Windows 原生观感；仅官方 4 款 app 用 .brand 保留设计底座 */
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+.desktop-icon-tile.brand {
   background:
     radial-gradient(120% 120% at 30% 20%,
       hsl(var(--hue, 220) 40% 30% / 0.85),
@@ -2228,23 +2234,29 @@ button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
 
 /* ==================== 批次E-14：图标底座立体感 + 刷新动画 ==================== */
 
-/* 图标底座：内高光 + 底部投影，像立在桌面上的小铭牌 */
-.desktop-icon-tile {
+/* 图标底座：仅官方 4 款 .brand 保留立体感，其余（Windows 原生图标/系统/文件夹）保持平面透明，完全贴合真实桌面 */
+.desktop-icon-tile.brand {
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.14),
     inset 0 -1px 0 rgb(0 0 0 / 0.25),
     0 3px 8px rgb(0 0 0 / 0.35);
   transition: box-shadow 0.15s ease, transform 0.15s ease;
 }
-.desktop-icon:hover .desktop-icon-tile {
+.desktop-icon:hover .desktop-icon-tile.brand {
   transform: translateY(-2px);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.18),
     inset 0 -1px 0 rgb(0 0 0 / 0.25),
     0 7px 16px rgb(0 0 0 / 0.45);
 }
-.desktop-icon:active .desktop-icon-tile {
+.desktop-icon:active .desktop-icon-tile.brand {
   transform: translateY(0) scale(0.96);
+}
+.desktop-icon-tile:not(.brand) {
+  transition: filter 0.12s ease;
+}
+.desktop-icon:hover .desktop-icon-tile:not(.brand) {
+  filter: brightness(1.08);
 }
 
 /* 右键"刷新"：图标按入场动画重排一遍 */
