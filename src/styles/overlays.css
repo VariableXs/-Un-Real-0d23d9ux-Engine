@@ -295,3 +295,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .git-log code { font-family: ui-monospace, monospace; color: #6ea8ff; margin-right: 6px; }
 .git-key-btn { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
 .git-pop { width: min(420px, 80vw); max-height: 60vh; overflow: auto; }
+
+/* ---- B-23 搜索 / 大文件 ---- */
+.sr-pop { width: min(520px, 84vw); max-height: 64vh; overflow: auto; }
+.sr-panel { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.sr-bar { display: flex; gap: 6px; }
+.sr-bar input { flex: 1; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.sr-file { border: 1px solid var(--border, #2a2f3a); border-radius: 8px; padding: 6px 8px; }
+.sr-file-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sr-lines { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sr-lines code { color: #6ea8ff; margin-right: 6px; font-family: ui-monospace, monospace; }
+.sr-slice { position: relative; margin-top: 6px; }
+.sr-slice-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.sr-slice-body { max-height: 260px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+.sr-slice-nav { display: flex; gap: 8px; justify-content: flex-end; }

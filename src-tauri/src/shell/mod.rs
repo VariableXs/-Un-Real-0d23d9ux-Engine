@@ -23,6 +23,7 @@ pub mod netconsent;
 pub mod privacy;
 pub mod recovery;
 pub mod recycle;
+pub mod search;
 pub mod sysinfo;
 pub mod terminal;
 pub mod toolchains;

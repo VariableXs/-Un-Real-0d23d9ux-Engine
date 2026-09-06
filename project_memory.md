@@ -379,3 +379,10 @@
 - UI：Code 应用「项目」视图工具条新增 ⎇ 按钮 → Git 面板浮层（变更分类着色/分支/历史/SSH 密钥生成），5s 轮询。
 - 测试：git2 搭真实临时仓库（init→commit→改文件）验状态/日志 + 容器外仓库拒绝 + GIT_SSH_COMMAND 注入格式，3 项；workspace 111 全绿；tsc/audit/i18n/vitest/build 全绿。
 - 教训：①ssh-key 0.6 的 API：Ed25519Keypair::random(&mut rng)、PublicKey 从 PrivateKey::public_key() 取、序列化是 to_openssh 不是 openssh——按记忆写 API 必错，cargo 错误信息里给的正确签名才是真相；②grep 在部分大文件上静默失败，python 逐字符搜索是对的抗漂移手段。
+
+## 批次 B-23（2026-09-06）完成 — 并行搜索/大文件分块/行级跳转
+- shell/search.rs：workspace_search——目录树收集（跳 node_modules/.git/target/__pycache__，文件数 2 万截断）+ std scoped threads 8 路并行读文件；大小写不敏感、命中行裁剪（前后 80 字符）、单文件 20 行/全局 500 行/60 文件上限、NUL 探测跳二进制、>8MB 跳过（随机写介质保护）；跳过计数用 AtomicUsize（多线程 &mut 必炸，编译器把着教）。
+- bigfile_slice：按 offset/len 读窗口（100MB 打开 <1.5s 口径由"只读当前页"达成）；editor_goto：VS Code `--goto file:line`（未部署如实报错）——PVCCE ↔ VS Code 行级跳转的 VS Code 侧。
+- 前端：Code「项目」视图 ⌕ 按钮 → 搜索浮层（结果按文件分组 + 行号 + 分块查看 pager + →跳转按钮）。
+- 测试：搜索（命中/大小写/跳过口径 4+3+1 断言）/空查询拒绝/分块读窗口与越界 4 项；workspace 114 全绿；tsc/audit/i18n/vitest/build 全绿。
+- 教训：①scoped threads 里共享计数只能用 AtomicUsize（&mut 跨线程 N 个闭包必炸，编译器逐个指出）；②测试期望值要跟实现口径走（node_modules 整目录跳过 = 文件数从清单里就没有，不是"扫描了但跳过"）。

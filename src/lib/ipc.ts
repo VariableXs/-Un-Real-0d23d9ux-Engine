@@ -277,6 +277,14 @@ export const ipc = {
   sshKeyGenerate: (label: string) => invoke<Shell.SshKeyView>("ssh_key_generate", { label }),
   sshKeyDelete: (id: string) => invoke<void>("ssh_key_delete", { id }),
 
+  // ---- B-23 搜索/大文件/行级跳转 ----
+  workspaceSearch: (root: string, query: string) =>
+    invoke<Shell.SearchReport>("workspace_search", { root, query }),
+  bigfileSlice: (path: string, offset: number, len: number) =>
+    invoke<Shell.FileSlice>("bigfile_slice", { path, offset, len }),
+  editorGoto: (path: string, line: number) =>
+    invoke<string>("editor_goto", { path, line }),
+
   // ---- B-21 工具链 ----
   toolchainStatus: () => invoke<Shell.ToolchainStatusView[]>("toolchain_status"),
   toolchainDeploy: (id: string) => invoke<void>("toolchain_deploy", { id }),
@@ -582,6 +590,21 @@ namespace Shell {
     note: string;
     createdAt: number;
     tokenTail: string;
+  }
+  /** B-23：搜索/大文件。 */
+  export interface SearchReport {
+    filesScanned: number;
+    filesSkippedBinary: number;
+    filesSkippedSize: number;
+    truncated: boolean;
+    hits: { path: string; lines: { lineNo: number; text: string }[] }[];
+    elapsedMs: number;
+  }
+  export interface FileSlice {
+    offset: number;
+    size: number;
+    total: number;
+    textLossy: string;
   }
   /** B-22：Git 只读面板。 */
   export interface GitStatusView {

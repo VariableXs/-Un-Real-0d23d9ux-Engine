@@ -614,6 +614,18 @@ const zh: Dict = {
   tcDeployDone: "工具链就绪",
   tcDeployFail: "部署失败",
   tcOfflineNote: "离线宿主：把对应安装包放到 runtime/<id>-download.(zip|exe)，部署时自动跳过下载。",
+  // ---- B-23 搜索/大文件/行级跳转 ----
+  srPlaceholder: "搜索词（大小写不敏感）",
+  srSearch: "搜索",
+  srFail: "搜索失败",
+  srSummary: "{f} 个文件命中 · 扫描 {n} 个文件 · {ms}ms",
+  srTruncated: "结果已达上限（截断）",
+  srView: "分块查看",
+  srGoto: "在 VS Code 打开此行",
+  srGotoOk: "已在 VS Code 定位",
+  srGotoFail: "跳转失败（VS Code 未部署？）",
+  srPrev: "上一块",
+  srNext: "下一块",
   // ---- B-22 Git 面板 ----
   gitTitle: "Git 面板（只读）",
   gitChanges: "变更",
