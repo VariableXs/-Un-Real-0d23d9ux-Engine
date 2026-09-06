@@ -304,3 +304,12 @@
 - 布局事实：SuperBlock = [magic 8B][version 4B][footer 指针 8B]，版本 @ sb[8..12]；Footer 双副本位置由 sb[12..20] 指针给出。
 - 4 测试全绿（总数 29）：探测、旧版本就地升版+数据完好、新版本拒绝降级、迁移失败自动回滚。
 - 教训：①schema 探测模块必须复用同一 SUPERBLOCK 布局常量，两处手写魔数/偏移必然漂移（本次 magic 写成 4B 版被 oracle 测试立刻抓住）；②迁移事务的回滚测试和正向测试同样重要——"失败也要回到迁移前"才是事务。
+
+## 批次 B-14（2026-09-06）完成 — 压缩与加密
+- codec.rs：LZ4 优先；≥256KB 且 LZ4 比率 <1.25 时比选 Zstd-19；不可压缩回存 RAW（codec 字段 0/1/2）。
+- vault.rs：Argon2id（m=19MiB,t=2,p=1）派生 + 16B 随机盐；验证器 = key 的 BLAKE3 前 16B 恒时比对；XChaCha20-Poly1305 每记录独立 24B 随机 nonce（流密码 nonce 复用 = 灾难，测试断言同明文密文必异）。
+- 全容器加密态：chunk 载荷、索引 blob（文件名不可枚举）、journal payload 三层全部 [nonce|AEAD]；SuperBlock [20] 标志位 + 盐/验证器持久化；open_with_passphrase 创建/解锁，trait open 对加密容器如实报 Auth。
+- 解码 LRU 缓存（8×4MiB）支撑"热 chunk 随机读 <20ms"——debug 下每读解压 4MiB 会到 20.7ms，缓存后 200 次随机读仅 4 次解码。
+- 头部哈希口径分离：记录头 blake3 = 存储字节（完整性），索引键 = 原文哈希（去重）——混用会导致加密后校验必挂。
+- 41 测试全绿（codec 4 + vault 4 + 容器级加密 4 + 回归 29）；依赖版本锁 locks/container-deps.md。
+- 教训：①read_range/stream 的 chunk 定位必须用"原文 4MiB 逻辑边界"而非存储长度（压缩后两者不等，混用即静默错位）；②流式读取器按逻辑窗口整块解码+缓存，物理偏移只用于定位记录头；③git 基线 + 全量补丁脚本（锚点断言）是对抗"编辑器内容漂移"的唯一可靠工作法——逐条 sed 补丁必然漏。

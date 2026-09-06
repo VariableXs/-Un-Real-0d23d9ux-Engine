@@ -33,6 +33,12 @@ const MAGIC: &[u8; 8] = b"UXVSTR01";
 pub const SCHEMA_VERSION: u32 = 1;
 /// codec 0 = 原样存储（B-14 扩展 LZ4/Zstd/XChaCha20 编号）。
 pub const CODEC_RAW: u8 = 0;
+pub const CODEC_LZ4: u8 = 1;
+pub const CODEC_ZSTD: u8 = 2;
+/// SuperBlock 标志：vault 启用（sb[20]）；盐 [24..40]；验证器 [40..56]。
+const SB_FLAG_VAULT: usize = 20;
+const SB_SALT: std::ops::Range<usize> = 24..40;
+const SB_VERIFIER: std::ops::Range<usize> = 40..56;
 
 // ---------- 索引值类型 ----------
 
@@ -144,9 +150,41 @@ impl<T: Read + Seek> ReadSeek for T {}
 
 struct ChunkStreamReader {
     file: File,
+    /// 每逻辑窗口（原文 4MiB 定长，末尾可短）对应的 chunk 位置。
     chunks: Vec<ChunkLoc>,
+    vault: Option<crate::vault::Vault>,
+    /// 当前已解码窗口缓存（跨读复用）。
+    window: Vec<u8>,
+    window_idx: Option<usize>,
     logical: u64,
     size: u64,
+}
+
+impl ChunkStreamReader {
+    fn ensure_window(&mut self) -> std::io::Result<()> {
+        let idx = (self.logical / CHUNK_SIZE as u64) as usize;
+        if self.window_idx == Some(idx) {
+            return Ok(());
+        }
+        let loc = self.chunks.get(idx).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "chunk 清单越界")
+        })?;
+        let f = &mut self.file;
+        f.seek(SeekFrom::Start(loc.offset))?;
+        let mut hdr = [0u8; CHUNK_HDR_LEN];
+        f.read_exact(&mut hdr)?;
+        let mut stored = vec![0u8; loc.len as usize];
+        f.read_exact(&mut stored)?;
+        if let Some(v) = &self.vault {
+            stored = v
+                .open_bytes(&stored)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        }
+        self.window = crate::codec::decompress(loc.codec, &stored)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        self.window_idx = Some(idx);
+        Ok(())
+    }
 }
 
 impl Read for ChunkStreamReader {
@@ -154,17 +192,13 @@ impl Read for ChunkStreamReader {
         if self.logical >= self.size || buf.is_empty() {
             return Ok(0);
         }
-        let chunk_idx = (self.logical / CHUNK_SIZE as u64) as usize;
+        self.ensure_window()?;
         let within = (self.logical % CHUNK_SIZE as u64) as usize;
-        let loc = self.chunks.get(chunk_idx).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "chunk 清单越界")
-        })?;
         let want = buf
             .len()
-            .min(loc.len as usize - within)
+            .min(self.window.len() - within)
             .min((self.size - self.logical) as usize);
-        self.file.seek(SeekFrom::Start(loc.offset + CHUNK_HDR_LEN as u64 + within as u64))?;
-        self.file.read_exact(&mut buf[..want])?;
+        buf[..want].copy_from_slice(&self.window[within..within + want]);
         self.logical += want as u64;
         Ok(want)
     }
@@ -184,6 +218,36 @@ impl Seek for ChunkStreamReader {
 
 // ---------- 后端本体 ----------
 
+/// 迷你 LRU：容量 = chunk 数（每块 ≤4MiB 原文）。tick 淘汰，O(n) 扫描但 n 极小。
+struct DecodeCache {
+    map: std::collections::HashMap<u64, (Vec<u8>, u64)>,
+    cap: usize,
+    tick: u64,
+}
+
+impl DecodeCache {
+    fn new(cap: usize) -> Self {
+        DecodeCache { map: std::collections::HashMap::new(), cap, tick: 0 }
+    }
+    fn get(&mut self, k: u64) -> Option<Vec<u8>> {
+        self.tick += 1;
+        let t = self.tick;
+        self.map.get_mut(&k).map(|(v, tick)| {
+            *tick = t;
+            v.clone()
+        })
+    }
+    fn put(&mut self, k: u64, v: Vec<u8>) {
+        self.tick += 1;
+        if self.map.len() >= self.cap {
+            if let Some(oldest) = self.map.iter().min_by_key(|(_, (_, t))| *t).map(|(k, _)| *k) {
+                self.map.remove(&oldest);
+            }
+        }
+        self.map.insert(k, (v, self.tick));
+    }
+}
+
 pub struct UxvBackend {
     path: Option<PathBuf>,
     file: Option<std::cell::RefCell<File>>,
@@ -191,6 +255,12 @@ pub struct UxvBackend {
     files: BPlusTree<String, FileInfo>,
     chunks: BPlusTree<HashKey, ChunkLoc>,
     snapshots: std::collections::HashMap<String, SnapshotState>,
+    /// 加密金库（B-14）：Some = 全容器加密态。
+    vault: Option<crate::vault::Vault>,
+    /// 持久化元数据：(salt, verifier)，随 SuperBlock 落盘。
+    vault_meta: Option<([u8; 16], [u8; 16])>,
+    /// 已解码 chunk 缓存（LRU，按存储记录偏移为键；蓝图"热 chunk 随机读 <20ms"支撑）。
+    decode_cache: std::cell::RefCell<DecodeCache>,
 }
 
 #[derive(Clone)]
@@ -209,6 +279,9 @@ impl UxvBackend {
             files: BPlusTree::new(),
             chunks: BPlusTree::new(),
             snapshots: std::collections::HashMap::new(),
+            vault: None,
+            vault_meta: None,
+            decode_cache: std::cell::RefCell::new(DecodeCache::new(8)),
         }
     }
 
@@ -219,22 +292,32 @@ impl UxvBackend {
     }
 
     /// 追加一个 chunk（头部 + 载荷），返回其位置。
+    /// chunk 落盘：先压缩分级（LZ4/Zstd-19），vault 开启则整体加密。
+    /// 记录头 [len u32][codec u8][blake3 32B]：头部哈希 = 最终存储字节（完整性），
+    /// 索引键 = 原文内容哈希（去重），两者口径不同。
     fn append_chunk(&mut self, hash: [u8; 32], payload: &[u8]) -> CmdResult<ChunkLoc> {
+        let (codec, mut stored) = crate::codec::compress(payload);
+        if let Some(v) = &self.vault {
+            stored = v.seal_bytes(&stored);
+        }
         let offset = self.data_tail;
         {
             let f = self.handle()?;
             let mut f = f.borrow_mut();
             f.seek(SeekFrom::Start(offset))?;
-            f.write_all(&(payload.len() as u32).to_le_bytes())?;
-            f.write_all(&[CODEC_RAW])?;
-            f.write_all(&hash)?;
-            f.write_all(payload)?;
+            f.write_all(&(stored.len() as u32).to_le_bytes())?;
+            f.write_all(&[codec])?;
+            f.write_all(blake3::hash(&stored).as_bytes())?;
+            f.write_all(&stored)?;
         }
-        self.data_tail += CHUNK_HDR_LEN as u64 + payload.len() as u64;
-        Ok(ChunkLoc { offset, len: payload.len() as u32, codec: CODEC_RAW, refs: 1 })
+        self.data_tail += CHUNK_HDR_LEN as u64 + stored.len() as u64;
+        Ok(ChunkLoc { offset, len: stored.len() as u32, codec, refs: 1 })
     }
 
     fn read_chunk_payload(&self, loc: &ChunkLoc) -> CmdResult<Vec<u8>> {
+        if let Some(hit) = self.decode_cache.borrow_mut().get(loc.offset) {
+            return Ok(hit);
+        }
         let f = self.handle()?;
         let mut f = f.borrow_mut();
         f.seek(SeekFrom::Start(loc.offset))?;
@@ -249,9 +332,10 @@ impl UxvBackend {
                 loc.offset
             )));
         }
-        let mut payload = vec![0u8; len as usize];
-        f.read_exact(&mut payload)?;
-        let got = blake3::hash(&payload);
+        let mut stored = vec![0u8; len as usize];
+        f.read_exact(&mut stored)?;
+        drop(f);
+        let got = blake3::hash(&stored);
         if got.as_bytes() != &expect {
             return Err(ContainerError::Corrupted(format!(
                 "chunk 校验失败（off={}，期望 {}，实际 {got}）",
@@ -259,7 +343,12 @@ impl UxvBackend {
                 HashKey(expect)
             )));
         }
-        Ok(payload)
+        if let Some(v) = &self.vault {
+            stored = v.open_bytes(&stored)?;
+        }
+        let plain = crate::codec::decompress(loc.codec, &stored)?;
+        self.decode_cache.borrow_mut().put(loc.offset, plain.clone());
+        Ok(plain)
     }
 
     /// 引用减一；归零即摘除索引项（物理空间由 GC/B-15 回收，本批已知取舍）。
@@ -323,6 +412,10 @@ impl UxvBackend {
         let mut blob = (files_blob.len() as u64).to_le_bytes().to_vec();
         blob.extend_from_slice(&files_blob);
         blob.extend_from_slice(&self.chunks.encode());
+        // vault 态：索引 blob 整体加密（文件名不可枚举），nonce 前置。
+        if let Some(v) = &self.vault {
+            blob = v.seal_bytes(&blob);
+        }
         let hash = blake3::hash(&blob);
         let index_offset = self.data_tail;
         {
@@ -345,6 +438,14 @@ impl UxvBackend {
             sb[0..8].copy_from_slice(MAGIC);
             sb[8..12].copy_from_slice(&SCHEMA_VERSION.to_le_bytes());
             sb[12..20].copy_from_slice(&footer_offset.to_le_bytes());
+            match (&self.vault, self.vault_meta) {
+                (Some(v), Some((salt, verifier))) => {
+                    sb[SB_FLAG_VAULT] = 1;
+                    sb[SB_SALT].copy_from_slice(&salt);
+                    sb[SB_VERIFIER].copy_from_slice(&verifier);
+                }
+                _ => sb[SB_FLAG_VAULT] = 0,
+            }
             f.seek(SeekFrom::Start(0))?;
             f.write_all(&sb)?;
             f.flush()?;
@@ -358,6 +459,7 @@ impl UxvBackend {
     /// 返回 (索引起点 = 容器逻辑尾, 文件表, ChunkIndex)。
     fn load_index(
         f: &mut File,
+        vault: Option<&crate::vault::Vault>,
     ) -> CmdResult<(u64, BPlusTree<String, FileInfo>, BPlusTree<HashKey, ChunkLoc>)> {
         let len = f.metadata()?.len();
         // Footer 位置由 SuperBlock 持久指针提供（journal 在 Footer 之后追加，
@@ -404,6 +506,9 @@ impl UxvBackend {
         if blake3::hash(&blob).as_bytes() != &footer.index_hash {
             return Err(ContainerError::Corrupted("索引 blob 校验失败".into()));
         }
+        if let Some(v) = vault {
+            blob = v.open_bytes(&blob)?;
+        }
         let files_len = {
             let mut b8 = [0u8; 8];
             b8.copy_from_slice(blob.get(0..8).ok_or_else(|| {
@@ -437,6 +542,12 @@ impl UxvBackend {
 
     /// 追加一条 journal 记录：[type u8][len u32][blake3][payload]。
     fn journal_append(&mut self, kind: u8, payload: &[u8]) -> CmdResult<()> {
+        // vault 态：journal payload 一并加密（blake3 覆盖最终存储字节）。
+        let stored = match &self.vault {
+            Some(v) => v.seal_bytes(payload),
+            None => payload.to_vec(),
+        };
+        let payload: &[u8] = &stored;
         let tail = self.data_tail;
         {
             let f = self.handle()?;
@@ -491,6 +602,7 @@ impl UxvBackend {
         len: u64,
         files: &mut BPlusTree<String, FileInfo>,
         chunks: &mut BPlusTree<HashKey, ChunkLoc>,
+        vault: Option<&crate::vault::Vault>,
     ) -> CmdResult<u64> {
         let mut pos = journal_base;
         let mut pending: Vec<(u8, Vec<u8>)> = Vec::new();
@@ -528,6 +640,10 @@ impl UxvBackend {
                 break; // 校验失败 = 撕裂/损坏，视为事务边界
             }
             pos += Self::JN_HDR as u64 + plen as u64;
+            let payload = match vault {
+                Some(v) => v.open_bytes(&payload)?,
+                None => payload,
+            };
             if kind == Self::JN_COMMIT {
                 for (k, p) in &pending {
                     match *k {
@@ -630,8 +746,14 @@ impl Default for UxvBackend {
     }
 }
 
-impl StorageBackend for UxvBackend {
-    fn open(&mut self, cfg: &OpenCfg) -> CmdResult<()> {
+impl UxvBackend {
+    /// 带口令打开/创建：空文件 + 口令 = 创建加密容器；
+    /// 已加密容器必须走本入口，trait `open` 对加密容器如实报错。
+    pub fn open_with_passphrase(&mut self, cfg: &OpenCfg, passphrase: &[u8]) -> CmdResult<()> {
+        self.open_inner(cfg, Some(passphrase))
+    }
+
+    fn open_inner(&mut self, cfg: &OpenCfg, passphrase: Option<&[u8]>) -> CmdResult<()> {
         let mut f = OpenOptions::new()
             .read(true)
             .write(true)
@@ -643,6 +765,16 @@ impl StorageBackend for UxvBackend {
             let mut sb = [0u8; SUPERBLOCK_LEN as usize];
             sb[0..8].copy_from_slice(MAGIC);
             sb[8..12].copy_from_slice(&SCHEMA_VERSION.to_le_bytes());
+            if let Some(pass) = passphrase {
+                let (vault, salt, verifier) = crate::vault::Vault::create(pass);
+                sb[SB_FLAG_VAULT] = 1;
+                sb[SB_SALT].copy_from_slice(&salt);
+                sb[SB_VERIFIER].copy_from_slice(&verifier);
+                self.vault = Some(vault);
+                self.vault_meta = Some((salt, verifier));
+            } else {
+                sb[SB_FLAG_VAULT] = 0;
+            }
             f.write_all(&sb)?;
             f.sync_all()?;
             (SUPERBLOCK_LEN, BPlusTree::new(), BPlusTree::new())
@@ -656,7 +788,19 @@ impl StorageBackend for UxvBackend {
                     cfg.root.display()
                 )));
             }
-            Self::load_index(&mut f)?
+            if sb[SB_FLAG_VAULT] == 1 {
+                let salt: [u8; 16] = sb[SB_SALT].try_into().expect("定长");
+                let verifier: [u8; 16] = sb[SB_VERIFIER].try_into().expect("定长");
+                let pass = passphrase.ok_or_else(|| {
+                    ContainerError::Auth("容器已加密：请用 open_with_passphrase 解锁".into())
+                })?;
+                let vault = crate::vault::Vault::unlock(pass, &salt, &verifier)?;
+                self.vault = Some(vault);
+                self.vault_meta = Some((salt, verifier));
+            } else if passphrase.is_some() {
+                return Err(ContainerError::Auth("容器未加密，口令多余".into()));
+            }
+            Self::load_index(&mut f, self.vault.as_ref())?
         };
         self.path = Some(cfg.root.clone());
         self.files = files;
@@ -664,9 +808,22 @@ impl StorageBackend for UxvBackend {
         self.data_tail = data_tail;
         // B-13：重放最后一次 checkpoint 之后已提交的 journal 事务。
         let len = f.metadata()?.len();
-        self.data_tail = Self::journal_replay(&mut f, data_tail, len, &mut self.files, &mut self.chunks)?;
+        self.data_tail = Self::journal_replay(
+            &mut f,
+            data_tail,
+            len,
+            &mut self.files,
+            &mut self.chunks,
+            self.vault.as_ref(),
+        )?;
         self.file = Some(std::cell::RefCell::new(f));
         Ok(())
+    }
+}
+
+impl StorageBackend for UxvBackend {
+    fn open(&mut self, cfg: &OpenCfg) -> CmdResult<()> {
+        self.open_inner(cfg, None)
     }
 
     fn stat(&self, path: &VPath) -> CmdResult<StatInfo> {
@@ -720,12 +877,13 @@ impl StorageBackend for UxvBackend {
         let end = (off + len).min(info.size);
         let mut out = Vec::with_capacity((end - off) as usize);
         for (i, c) in info.chunks.iter().enumerate() {
+            // 逻辑边界按原文 4MiB 定长切分（存储长度经压缩/加密后 ≠ 原文长度）。
             let chunk_start = i as u64 * CHUNK_SIZE as u64;
+            let chunk_end = ((i + 1) as u64 * CHUNK_SIZE as u64).min(info.size);
             let loc = self
                 .chunks
                 .get(&HashKey(*c))
                 .ok_or_else(|| ContainerError::Corrupted(format!("{path} 引用的 chunk 缺失")))?;
-            let chunk_end = chunk_start + loc.len as u64;
             let from = off.max(chunk_start);
             let to = end.min(chunk_end);
             if from < to {
@@ -758,6 +916,9 @@ impl StorageBackend for UxvBackend {
         Ok(Box::new(ChunkStreamReader {
             file,
             chunks,
+            vault: self.vault.clone(),
+            window: Vec::new(),
+            window_idx: None,
             logical: 0,
             size: info.size,
         }))
@@ -1300,5 +1461,87 @@ mod journal_tests {
         let mut be = UxvBackend::new();
         let err = be.open(&Cfg { root: path }).unwrap_err();
         assert!(matches!(err, ContainerError::Corrupted(_)));
+    }
+}
+
+#[cfg(test)]
+mod vault_tests {
+    use super::*;
+    use crate::{OpenCfg as Cfg, StorageBackend as Backend};
+
+    fn path_of(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("uxv-b14-{tag}-{}.uxv", std::process::id()))
+    }
+
+    #[test]
+    fn encrypted_container_roundtrip_and_unlock() {
+        let path = path_of("enc");
+        let _ = std::fs::remove_file(&path);
+        let big: Vec<u8> = (0..5 * 1024 * 1024usize).map(|i| (i % 251) as u8).collect();
+        {
+            let mut be = UxvBackend::new();
+            be.open_with_passphrase(&Cfg { root: path.clone() }, b"pass-1234").unwrap();
+            be.write(&VPath::new("secret/k.txt").unwrap(), b"top-secret").unwrap();
+            be.write(&VPath::new("secret/big.bin").unwrap(), &big).unwrap();
+            be.seal().unwrap();
+        }
+        // 口令错误 → 拒绝
+        let mut be = UxvBackend::new();
+        assert!(be.open_with_passphrase(&Cfg { root: path.clone() }, b"wrong").is_err());
+        // 正确口令 → 全量恢复（含跨 chunk 大文件与加密索引）
+        let mut be = UxvBackend::new();
+        be.open_with_passphrase(&Cfg { root: path.clone() }, b"pass-1234").unwrap();
+        assert_eq!(be.read(&VPath::new("secret/k.txt").unwrap()).unwrap(), b"top-secret");
+        assert_eq!(be.read(&VPath::new("secret/big.bin").unwrap()).unwrap(), big);
+        let items = be.list(&VPath::new("secret").unwrap()).unwrap();
+        assert_eq!(items.len(), 2);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn encrypted_container_requires_passphrase_via_trait_open() {
+        let path = path_of("locked");
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut be = UxvBackend::new();
+            be.open_with_passphrase(&Cfg { root: path.clone() }, b"pw").unwrap();
+            be.write(&VPath::new("f").unwrap(), b"x").unwrap();
+            be.seal().unwrap();
+        }
+        let mut be = UxvBackend::new();
+        let err = be.open(&Cfg { root: path.clone() }).unwrap_err();
+        assert!(matches!(err, ContainerError::Auth(_)), "trait open 必须对加密容器报 Auth");
+        let mut be = UxvBackend::new();
+        be.open_with_passphrase(&Cfg { root: path }, b"pw").unwrap();
+    }
+
+    #[test]
+    fn plaintext_container_rejects_pointless_passphrase() {
+        let path = path_of("plain");
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: path.clone() }).unwrap();
+        drop(be);
+        let mut be = UxvBackend::new();
+        let err = be.open_with_passphrase(&Cfg { root: path }, b"pw").unwrap_err();
+        assert!(matches!(err, ContainerError::Auth(_)));
+    }
+
+    /// vault 态下掉电注入仍须成立（journal payload 加密不影响重放）。
+    #[test]
+    fn encrypted_journal_replays_after_crash() {
+        let path = path_of("enc-crash");
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open_with_passphrase(&Cfg { root: path.clone() }, b"pw").unwrap();
+        be.write(&VPath::new("base").unwrap(), b"b").unwrap();
+        be.seal().unwrap();
+        be.write(&VPath::new("t1").unwrap(), b"one").unwrap();
+        be.write(&VPath::new("t2").unwrap(), b"two").unwrap();
+        drop(be); // 未 seal
+        let mut be = UxvBackend::new();
+        be.open_with_passphrase(&Cfg { root: path }, b"pw").unwrap();
+        assert_eq!(be.read(&VPath::new("t1").unwrap()).unwrap(), b"one");
+        assert_eq!(be.read(&VPath::new("t2").unwrap()).unwrap(), b"two");
     }
 }

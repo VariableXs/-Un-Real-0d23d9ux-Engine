@@ -13,11 +13,14 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 mod bplustree;
+mod codec;
 mod schema;
 mod uxv;
+mod vault;
 
 pub use bplustree::{HashKey as BTreeHashKey, TreeKey as BTreeKey, TreeVal as BTreeVal};
 pub use schema::{migrate_to_current, probe as schema_probe, MigrationReport, SchemaInfo};
+pub use vault::Vault;
 pub use uxv::{ReadSeek, UxvBackend, SCHEMA_VERSION};
 
 /// 后端统一错误。后续批次扩展为细分错误（journal/加密/卷表）时保持本枚举向后兼容。
@@ -27,6 +30,8 @@ pub enum ContainerError {
     InvalidPath(String),
     /// 内容校验失败 / 结构损坏（journal 重放与恢复模式属 B-13/B-33）。
     Corrupted(String),
+    /// 口令不符 / 未解锁即访问加密内容（B-14）。
+    Auth(String),
     Io(io::Error),
     NotImplemented(&'static str),
 }
@@ -37,6 +42,7 @@ impl std::fmt::Display for ContainerError {
             ContainerError::NotFound(p) => write!(f, "路径不存在: {p}"),
             ContainerError::InvalidPath(p) => write!(f, "非法路径（越界或含保留段）: {p}"),
             ContainerError::Corrupted(w) => write!(f, "容器损坏: {w}"),
+            ContainerError::Auth(w) => write!(f, "鉴权失败: {w}"),
             ContainerError::Io(e) => write!(f, "IO 错误: {e}"),
             ContainerError::NotImplemented(what) => write!(f, "未实现（后端骨架）: {what}"),
         }
