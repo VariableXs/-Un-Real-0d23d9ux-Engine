@@ -17,6 +17,49 @@ use crate::error::AppError;
 use crate::exec::{expand_placeholders, ExecProfile};
 use crate::state::AppState;
 
+/// 本次会话内经 browser_profile_launch 启动的 pid（profile_id → pids）。
+/// 任务栏运行态判定 = 登记的 pid 在进程快照中仍存活。
+static LAUNCHED: std::sync::Mutex<Option<std::collections::HashMap<String, Vec<u32>>>> =
+    std::sync::Mutex::new(None);
+
+fn record_pid(profile_id: &str, pid: u32) {
+    let mut g = LAUNCHED.lock().unwrap();
+    g.get_or_insert_with(Default::default)
+        .entry(profile_id.to_string())
+        .or_default()
+        .push(pid);
+}
+
+/// 任务栏运行态（B-19 分组）：每个存活 profile 是独立分组项。
+#[tauri::command]
+pub fn browser_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
+    let g = LAUNCHED.lock().unwrap();
+    let map = match g.as_ref() {
+        Some(m) => m,
+        None => return Ok(Vec::new()),
+    };
+    let mut out = Vec::new();
+    for (id, pids) in map {
+        if pids.iter().any(|p| pid_alive(*p)) {
+            out.push(id.clone());
+        }
+    }
+    Ok(out)
+}
+
+fn pid_alive(pid: u32) -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    unsafe {
+        if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+            let _ = CloseHandle(h);
+            true
+        } else {
+            false
+        }
+    }
+}
+
 type CmdResult<T> = Result<T, AppError>;
 
 // ---------- 已知浏览器定义 ----------
@@ -422,6 +465,7 @@ pub fn browser_profile_launch(
     )
     .map_err(|e| AppError::io(e.to_string()))?
     .ok_or_else(|| AppError::new("SPAWN", "进程启动失败（返回空 pid）"))?;
+    record_pid(&id, pid);
     Ok(pid)
 }
 

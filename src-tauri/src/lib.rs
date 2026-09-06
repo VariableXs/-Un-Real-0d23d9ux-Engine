@@ -202,6 +202,7 @@ pub fn run() {
             shell::browsers::browser_profile_delete,
             shell::browsers::browser_profile_launch,
             shell::browsers::browser_import,
+            shell::browsers::browser_running,
             shell::launcher::tp_add,
             shell::launcher::tp_list,
             shell::launcher::tp_remove,

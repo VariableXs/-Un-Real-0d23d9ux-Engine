@@ -27,7 +27,7 @@ fn norm_path(p: &str) -> String {
 /// 判定某个进程是否对应一个登记项：
 /// - 完整镜像路径可查询（OpenProcess 成功）→ 以路径为准，名字相同路径不同不算
 /// - 查询不到路径（系统进程等）→ 回退 exe 文件名匹配
-fn process_matches(app_path: &str, proc_image: Option<&str>, proc_name: &str) -> bool {
+pub(crate) fn process_matches(app_path: &str, proc_image: Option<&str>, proc_name: &str) -> bool {
     let target = norm_path(app_path);
     match proc_image {
         Some(img) => norm_path(img) == target,

@@ -14,6 +14,8 @@ import { useDnd } from "../../state/notifyStore";
 import { desktopAppLabel, desktopIconDefs } from "../desktop-icons/DesktopIcons";
 import { openContextMenu, type MenuItem } from "../../components/ContextMenu";
 import { closeVwmWin, openVwmApp, taskbarClickVwm, vwmStore } from "../windows/vwm";
+import { Globe } from "lucide-react";
+import type { BrowserProfileDto } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
 import {
   launchThirdApp, openLauncherManager, reloadThirdApps, toggleTaskbarPin,
@@ -52,6 +54,9 @@ export function Taskbar(props: {
   const quickSection = useUi((s) => s.quickSection);
   const [officialRunning, setOfficialRunning] = useState<Set<AppMode>>(new Set());
   const [tpRunning, setTpRunning] = useState<Set<string>>(new Set());
+  // B-19：浏览器 profile 分组（每个 profile = 独立任务栏项，运行态按 pid 存活）
+  const [browserProfiles, setBrowserProfiles] = useState<BrowserProfileDto[]>([]);
+  const [brRunning, setBrRunning] = useState<Set<string>>(new Set());
   // 虚拟窗口管理器：运行态与多开计数（VWM 内托管的软件窗口）
   const vwmWins = useStore(vwmStore, (s) => s.wins);
   const wifi = useHw((s) => s.wifi);
@@ -91,6 +96,15 @@ export function Taskbar(props: {
       try {
         const ids = await ipc.tpRunning();
         if (alive) setTpRunning(new Set(ids));
+      } catch {
+        /* backend busy — keep previous */
+      }
+      try {
+        const [bps, br] = await Promise.all([ipc.browserProfiles(), ipc.browserRunning()]);
+        if (alive) {
+          setBrowserProfiles(bps);
+          setBrRunning(new Set(br));
+        }
       } catch {
         /* backend busy — keep previous */
       }
@@ -517,7 +531,6 @@ export function Taskbar(props: {
         })}
       </div>
 
-      {/* 批次E：悬停 2s 预览浮层（名称 + 运行态 + 官方关窗按钮，零截图依赖） */}
       {hover && (
         <div className="tb-hover-pop card-pop" role="tooltip" onMouseEnter={hoverLeave}>
           <span className="tb-hover-name">{hover.label}</span>
@@ -676,6 +689,30 @@ export function Taskbar(props: {
           </div>
         </div>
       )}
+
+      {/* B-19：浏览器 profile 分组项（每 profile 独立任务栏项，数据目录即隔离边界） */}
+      {browserProfiles.map((p) => {
+        const running = brRunning.has(p.id);
+        return (
+          <button
+            key={`br-${p.id}`}
+            type="button"
+            className={`tb-btn${running ? " running" : ""}`}
+            aria-label={`${p.name} · ${p.browserId}`}
+            title={`${p.name} · ${p.browserId}`}
+            onClick={() => {
+              void ipc
+                .browserProfileLaunch(p.id)
+                .catch((e) => pushToast("error", t("brLaunchFail"), errMessage(e).message));
+            }}
+          >
+            <span className="tb-app-icon" style={{ ["--hue" as string]: "212" }}>
+              <Globe size={19} strokeWidth={1.7} />
+            </span>
+            {running && <span className="tb-dot" aria-hidden />}
+          </button>
+        );
+      })}
 
       <button
         type="button"

@@ -348,3 +348,10 @@
 - 工程手法：Tauri State 不能在测试里凭空造——命令一律拆 inner(st: &AppState)，测试直打 inner；AppState 测试构造只需全 PathBuf 字段 + Mutex<Option<Connection>> 置 None（这些命令不碰 DB）。
 - 测试：后端 4 项（模板参数分流/书签计数/slugify 防注入/CRUD 全流程含焚毁）+ 回归全绿；tsc/audit/i18n/vitest 218/build 全绿。
 - 教训：①tauri::State 是编译期包装，业务逻辑沉到 inner(st:&AppState) 是可测性与命令面的双赢；②reg query 解析 App Paths 要按 "REG_SZ" 行尾倒序取值——注册表输出的对齐空格不可靠。
+
+## 批次 B-19 收口（2026-09-06，同日第七批）— 任务栏按 profile 分组
+- 后端：browser_running 命令——launch 时登记 pid（LAUNCHED 静态表），运行态 = pid 经 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) 存活探测；每个存活 profile 是独立分组项。
+- 前端：Taskbar 在第三方区后渲染浏览器分组项（Globe 图标 + 212 色相徽标 + 运行点），3s 轮询并入既有 tpRunning 轮询（Promise.all 一并取 browserProfiles/browserRunning）；点击 = 再次以该 profile 启动。
+- "分组"语义定版：每 profile 一个独立任务栏项（同浏览器多 profile 不合并）——数据目录即隔离边界，与"Chrome 自带多 profile 合并为一个窗口组"的宿主行为刻意不同。
+- JSX 插入教训：往大组件 return 里插块必须先读清闭合层级（第一次插在按钮容器 </div> 后导致 JSX 断裂，TSC 立即抓出）。
+- 至此 B-18/B-19 全部收口，M4 浏览器矩阵代码面完成。

@@ -254,6 +254,7 @@ export const ipc = {
     invoke<void>("browser_profile_delete", { id, shred }),
   browserProfileLaunch: (id: string, url?: string) =>
     invoke<number>("browser_profile_launch", { id, url: url ?? null }),
+  browserRunning: () => invoke<string[]>("browser_running"),
   browserImport: (id: string, bookmarkHtml?: string, passwordCsv?: string) =>
     invoke<Shell.BrowserImportReport>("browser_import", {
       id,
