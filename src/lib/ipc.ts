@@ -397,6 +397,12 @@ export const ipc = {
   /** 实机反馈：scene 着色器壁纸本地渲染 —— 读主片元着色器并递归展开 #include。 */
   wpSceneShader: (entry: string) => invoke<string>("wp_scene_shader", { entry }),
 
+  // ---- 兼容层：Wallpaper Engine 冲突检测与缓解（libcef 0x80000003） ----
+  compatCheck: () =>
+    invoke<Shell.CompatStatus>("compat_check"),
+  compatApply: () => invoke<Shell.CompatStatus>("compat_apply"),
+  compatRestore: () => invoke<Shell.CompatStatus>("compat_restore"),
+
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
   /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */
   embedLaunch: (id: string) =>
@@ -520,6 +526,14 @@ namespace Shell {
     y: number;
     width: number;
     height: number;
+  }
+  /** 兼容层：Wallpaper Engine 共存状态。 */
+  export interface CompatStatus {
+    wallpaperEngineRunning: boolean;
+    processes: string[];
+    compatActive: boolean;
+    recommendation: string;
+    severity: "none" | "high" | "mitigated" | string;
   }
   /** 批次E-12：Wallpaper Engine 壁纸项目（scene/web 类型如实 supported=false）。 */
   export interface WpEngineItem {
@@ -958,6 +972,7 @@ export type OfficialUsage = Shell.OfficialUsage;
 export type SysBrief = Shell.SysBrief;
 export type SysDisk = Shell.SysDisk;
 export type WpMonitor = Shell.WpMonitor;
+export type CompatStatus = Shell.CompatStatus;
 export type WpEngineItem = Shell.WpEngineItem;
 export type VaultStatus = Shell.VaultStatus;
 export type VaultItem = Shell.VaultItem;

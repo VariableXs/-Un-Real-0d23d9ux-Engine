@@ -69,6 +69,9 @@ pub fn run() {
             shell::winman::init_shortcuts(app.handle());
             // 批次E-18：双击 Esc 切环境/Windows；Del+Backspace 真正退出
             shell::kbdhook::spawn_env_monitor(app.handle().clone());
+            // 兼容层：Wallpaper Engine 冲突检测与自动缓解（libcef 0x80000003 根因）
+            shell::compat::apply_if_needed_at_startup(app.handle());
+            shell::compat::spawn_compat_watcher(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -81,8 +84,12 @@ pub fn run() {
                 tauri::WindowEvent::Destroyed => log_line(&st, "window DESTROYED"),
                 // 批次0（规格 10.1）：桌面窗口获得焦点 → 自动恢复置顶覆盖。
                 // 启动第三方软件时会暂时撤销置顶让其浮于桌面之上，回到桌面即恢复。
+                // 兼容态（Wallpaper Engine 运行中）不动置顶，避免与 WorkerW 抢合成器
+                // 导致 libcef 0x80000003 与 DWM 卡死。
                 tauri::WindowEvent::Focused(true) if window.label() == "desktop" => {
-                    let _ = window.set_always_on_top(true);
+                    if !shell::compat::is_compat_active() {
+                        let _ = window.set_always_on_top(true);
+                    }
                 }
                 _ => {}
             }
@@ -320,6 +327,9 @@ pub fn run() {
     shell::winman::win_hide_to_tray,
     shell::winman::power_action,
     shell::winman::shortcuts_apply,
+            shell::compat::compat_check,
+            shell::compat::compat_apply,
+            shell::compat::compat_restore,
     shell::sysinfo::sys_brief,
     shell::sysinfo::sys_disks,
     shell::sysinfo::sys_user,

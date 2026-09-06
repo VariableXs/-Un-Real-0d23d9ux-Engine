@@ -17,6 +17,7 @@ import { DesktopIcons } from "../desktop-icons/DesktopIcons";
 import { Taskbar } from "../taskbar/Taskbar";
 import { StartMenu } from "../startmenu/StartMenu";
 import { PrivacyBanner } from "../tray/PrivacyBanner";
+import { CompatBanner } from "../compat/CompatBanner";
 import { LauncherManager } from "../launcher/LauncherManager";
 import { AIHub } from "../ai/AIHub";
 import { WelcomeWizard } from "../welcome/WelcomeWizard";
@@ -331,6 +332,8 @@ export function DesktopShell(props: {
 
       {/* M5 隐私核心：摄像头/麦克风被占用时顶部横幅（本机 ConsentStore 检测） */}
       <PrivacyBanner />
+      {/* 兼容层：Wallpaper Engine 共存横幅（libcef 0x80000003 冲突缓解） */}
+      <CompatBanner />
 
       {/* 批次E-7：U 盘意外拔出 —— 常驻横幅（数据卷消失后每秒都在风险中，必须显式确认） */}
       {usbRemoved && (
