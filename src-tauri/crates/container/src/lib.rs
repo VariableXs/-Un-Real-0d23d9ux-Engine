@@ -13,10 +13,12 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 mod bplustree;
+mod schema;
 mod uxv;
 
 pub use bplustree::{HashKey as BTreeHashKey, TreeKey as BTreeKey, TreeVal as BTreeVal};
-pub use uxv::{ReadSeek, UxvBackend};
+pub use schema::{migrate_to_current, probe as schema_probe, MigrationReport, SchemaInfo};
+pub use uxv::{ReadSeek, UxvBackend, SCHEMA_VERSION};
 
 /// 后端统一错误。后续批次扩展为细分错误（journal/加密/卷表）时保持本枚举向后兼容。
 #[derive(Debug)]

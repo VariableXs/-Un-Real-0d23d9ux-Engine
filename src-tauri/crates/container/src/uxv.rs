@@ -25,8 +25,8 @@ use crate::{sanitize_label, CmdResult, ContainerError, GcReport, OpenCfg, Snapsh
 
 /// 大文件流式切分尺寸（蓝图 3.1：4MiB）。
 pub const CHUNK_SIZE: usize = 4 * 1024 * 1024;
-const SUPERBLOCK_LEN: u64 = 64;
-const FOOTER_LEN: usize = 96;
+pub(crate) const SUPERBLOCK_LEN: u64 = 64;
+pub(crate) const FOOTER_LEN: usize = 96;
 const CHUNK_HDR_LEN: usize = 37; // len(4) + codec(1) + blake3(32)
 const MAGIC: &[u8; 8] = b"UXVSTR01";
 /// schemaVersion（B-31 迁移协议在此字段上演进）。

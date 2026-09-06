@@ -290,3 +290,17 @@
 - 快照：追加区不可变 ⇒ 索引状态拷贝即时间点快照，restore 零成本（chunk 位置以快照留存的 ChunkLoc 重建 refcount）。
 - 21 测试全绿：oracle 差分 4000 步、seal/reopen 持久化、未 seal 打开报 Corrupted（journal 属 B-13）、篡改字节哈希校验、热 chunk 随机读（200 次 @16MiB 容器实测 << 20ms 口径）。
 - 教训：①流式读必须 +37B 跳过 chunk 头——"位置=头部起点"的偏移语义要跨层对齐；②B+ 树等值路由与分隔键留存位置强耦合，改二分方向必须同时改 insert/get/remove 三处。
+
+## 批次 B-13（2026-09-06）完成 — Journal 事务与掉电安全
+- 事务协议：事务内先写 chunk 数据记录，随后 [JNL1][kind][len][blake3] 操作记录 + COMMIT；COMMIT 未落即掉电 = 事务整体丢弃。
+- 重放：打开时从 SuperBlock 持久指针定位最近 checkpoint，魔数区分 chunk/记录双布局无歧义分流；撕裂尾自动截断，data_tail 停在第一个无效记录处。
+- 三个关键修复：①Footer 定位从"文件末尾"改为 SuperBlock 指针（journal 在 Footer 之后追加后，末尾语义失效）；②checkpoint 的 SuperBlock 翻转作为原子发布点（Footer 先落盘再翻指针）；③restore 后立即 checkpoint 重置 journal 时代（否则重放会把回滚前的事务重新套上）。
+- 验收：掉电注入 100 轮（随机写/覆盖/删/改名 + 未 seal drop + 重开比对 oracle）0 数据丢失；撕裂尾事务正确丢弃、其余完好；首会话未 seal 即中断如实报 Corrupted（自动恢复点属 B-33）。25 测试全绿。
+- 教训：①二进制记录流里"首字节高位做标记"不可靠——chunk 长度字段同样可能高位为 1，必须用独立魔数；②持久化格式里每个定位手段（末尾/偏移/指针）都是隐式契约，追加任何新记录类型前先审所有定位假设。
+
+## 批次 B-31（2026-09-06）完成 — Schema 版本与迁移协议
+- schema.rs：probe() 只读 SuperBlock 即报版本（零开销惰性检查）；migrate_to_current() = 字节级 pre-migrate 快照（.migrate-bak-vN）→ 逐级升版（当前全部为版本戳迁移，数据重排型 Migrator 函数表随 B-15 多卷表登记）→ 校验；任一步失败自动回滚快照。
+- 只升不降：容器版本 > 引擎版本拒绝打开并提示升级引擎，绝不降级改写；数据段与索引 blob 不重写，迁移耗时与资产量无关。
+- 布局事实：SuperBlock = [magic 8B][version 4B][footer 指针 8B]，版本 @ sb[8..12]；Footer 双副本位置由 sb[12..20] 指针给出。
+- 4 测试全绿（总数 29）：探测、旧版本就地升版+数据完好、新版本拒绝降级、迁移失败自动回滚。
+- 教训：①schema 探测模块必须复用同一 SUPERBLOCK 布局常量，两处手写魔数/偏移必然漂移（本次 magic 写成 4B 版被 oracle 测试立刻抓住）；②迁移事务的回滚测试和正向测试同样重要——"失败也要回到迁移前"才是事务。
