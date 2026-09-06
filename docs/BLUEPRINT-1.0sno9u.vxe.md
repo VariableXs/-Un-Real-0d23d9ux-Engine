@@ -496,7 +496,8 @@ pub trait StorageBackend: Send {
     fn stat(&self, path: &VPath) -> CmdResult<StatInfo>;
     fn read(&self, path: &VPath, range: Option<(u64, u64)>) -> CmdResult<Vec<u8>>;
     fn write(&mut self, path: &VPath, data: &[u8]) -> CmdResult<()>;         // 事务
-    fn stream(&self, path: &VPath) -> CmdResult<StreamHandle>;               // 大文件
+    fn read_range(&self, path: &VPath, off: u64, len: u64) -> CmdResult<Vec<u8>>; // 区间读（B-12 冻结）
+    fn stream(&self, path: &VPath) -> CmdResult<Box<dyn ReadSeek + '_>>;     // 大文件（B-12 冻结）
     fn list(&self, dir: &VPath) -> CmdResult<Vec<StatInfo>>;
     fn mkdir/rm/rename/copy(...) -> CmdResult<()>;                            // 文件总线语义
     fn snapshot(&mut self, label: &str) -> CmdResult<SnapshotId>;

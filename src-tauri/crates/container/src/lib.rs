@@ -12,11 +12,19 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+mod bplustree;
+mod uxv;
+
+pub use bplustree::{HashKey as BTreeHashKey, TreeKey as BTreeKey, TreeVal as BTreeVal};
+pub use uxv::{ReadSeek, UxvBackend};
+
 /// 后端统一错误。后续批次扩展为细分错误（journal/加密/卷表）时保持本枚举向后兼容。
 #[derive(Debug)]
 pub enum ContainerError {
     NotFound(String),
     InvalidPath(String),
+    /// 内容校验失败 / 结构损坏（journal 重放与恢复模式属 B-13/B-33）。
+    Corrupted(String),
     Io(io::Error),
     NotImplemented(&'static str),
 }
@@ -26,6 +34,7 @@ impl std::fmt::Display for ContainerError {
         match self {
             ContainerError::NotFound(p) => write!(f, "路径不存在: {p}"),
             ContainerError::InvalidPath(p) => write!(f, "非法路径（越界或含保留段）: {p}"),
+            ContainerError::Corrupted(w) => write!(f, "容器损坏: {w}"),
             ContainerError::Io(e) => write!(f, "IO 错误: {e}"),
             ContainerError::NotImplemented(what) => write!(f, "未实现（后端骨架）: {what}"),
         }
@@ -87,7 +96,7 @@ impl std::fmt::Display for VPath {
     }
 }
 
-/// 打开配置。`root` 对 DirBackend 是数据目录；对 Uxv 后端（后续批次）是容器文件路径。
+/// 打开配置。`root` 对 DirBackend 是数据目录；对 Uxv 后端是 .uxv 容器文件路径。
 #[derive(Debug, Clone)]
 pub struct OpenCfg {
     pub root: PathBuf,
@@ -121,6 +130,16 @@ pub trait StorageBackend: Send {
     fn open(&mut self, cfg: &OpenCfg) -> CmdResult<()>;
     fn stat(&self, path: &VPath) -> CmdResult<StatInfo>;
     fn read(&self, path: &VPath) -> CmdResult<Vec<u8>>;
+    /// 区间读（蓝图 7.1 range；B-12 起为冻结签名的一部分）。
+    fn read_range(&self, path: &VPath, offset: u64, len: u64) -> CmdResult<Vec<u8>> {
+        let _ = (path, offset, len);
+        Err(ContainerError::NotImplemented("read_range"))
+    }
+    /// 大文件流（视频等；返回的句柄从 0 起始，Read+Seek 双能力）。
+    fn stream(&self, path: &VPath) -> CmdResult<Box<dyn crate::uxv::ReadSeek + '_>> {
+        let _ = path;
+        Err(ContainerError::NotImplemented("stream"))
+    }
     fn write(&mut self, path: &VPath, data: &[u8]) -> CmdResult<()>;
     fn list(&self, dir: &VPath) -> CmdResult<Vec<StatInfo>>;
     fn mkdir(&mut self, dir: &VPath) -> CmdResult<()>;
@@ -210,6 +229,26 @@ impl StorageBackend for DirBackend {
             return Err(ContainerError::InvalidPath(path.to_string()));
         }
         fs::read(&target).map_err(|_| ContainerError::NotFound(path.to_string()))
+    }
+
+    fn read_range(&self, path: &VPath, off: u64, len: u64) -> CmdResult<Vec<u8>> {
+        use std::io::{Read, Seek, SeekFrom};
+        let target = self.resolve(path)?;
+        let mut f = fs::File::open(&target).map_err(|_| ContainerError::NotFound(path.to_string()))?;
+        let size = f.metadata()?.len();
+        if off >= size || len == 0 {
+            return Ok(Vec::new());
+        }
+        f.seek(SeekFrom::Start(off))?;
+        let mut buf = vec![0u8; len.min(size - off) as usize];
+        f.read_exact(&mut buf)?;
+        Ok(buf)
+    }
+
+    fn stream(&self, path: &VPath) -> CmdResult<Box<dyn crate::uxv::ReadSeek + '_>> {
+        let target = self.resolve(path)?;
+        let f = fs::File::open(&target).map_err(|_| ContainerError::NotFound(path.to_string()))?;
+        Ok(Box::new(f))
     }
 
     fn write(&mut self, path: &VPath, data: &[u8]) -> CmdResult<()> {
@@ -323,7 +362,7 @@ impl StorageBackend for DirBackend {
     }
 }
 
-fn sanitize_label(label: &str) -> String {
+pub(crate) fn sanitize_label(label: &str) -> String {
     let cleaned: String = label
         .chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })

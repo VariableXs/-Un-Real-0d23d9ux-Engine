@@ -6,3 +6,4 @@ authors = ["VariableXs"]
 edition = "2021"
 
 [dependencies]
+blake3 = "1"
