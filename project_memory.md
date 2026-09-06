@@ -283,3 +283,10 @@
 - E-8e 验收实测：NSIS Variable_1.0.0_x64-setup.exe（3.6MB）+ MSI Variable_1.0.0_x64_en-US.msi（5.1MB）打包成功；手测清单 docs/ACCEPTANCE_CHECKLIST.md。
 - Lang 类型扩散修复：narrate.ts/engine.ts/dictionaries.ts(code,两处 DictContext)/english.ts/ingest.ts/intent.ts/ProjectVizPanels/App.tsx/WintabSwitcher 统一接受 "zh"|"zh-TW"|"en"（ternary on "en" 天然兼容）。
 - 教训：pinyin.ts/s2t.ts 重复键、StartMenu 重复 useState 由 IDE 旧缓冲区回退反复出现，需多次重试并立即 tsc 验证；关掉未保存标签页是根治办法。
+
+## 批次 B-12（2026-09-06）完成 — Uxv chunk 层
+- B+ 树（container crate）：阶 32，插入分裂/删除收缩（不做合并，登记 B-15）；等值键路由用 lower_bound——分隔键留存于左叶，upper_bound 会让等值键重复插入，oracle 差分测试抓出。
+- UxvBackend 单文件容器 v1：[SuperBlock 64B][追加区 chunk 记录+索引 checkpoint blob][Footer 双副本]；4MiB 定长切分 + BLAKE3 内容寻址去重 + refcount；read_range/stream 大文件通道；seal=索引落盘+sync_all。
+- 快照：追加区不可变 ⇒ 索引状态拷贝即时间点快照，restore 零成本（chunk 位置以快照留存的 ChunkLoc 重建 refcount）。
+- 21 测试全绿：oracle 差分 4000 步、seal/reopen 持久化、未 seal 打开报 Corrupted（journal 属 B-13）、篡改字节哈希校验、热 chunk 随机读（200 次 @16MiB 容器实测 << 20ms 口径）。
+- 教训：①流式读必须 +37B 跳过 chunk 头——"位置=头部起点"的偏移语义要跨层对齐；②B+ 树等值路由与分隔键留存位置强耦合，改二分方向必须同时改 insert/get/remove 三处。
