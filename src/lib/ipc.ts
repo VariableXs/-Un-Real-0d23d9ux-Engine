@@ -241,6 +241,26 @@ export const ipc = {
     invoke<string>("ai_launch", { toolId, identityId: identityId ?? null }),
   aiVerify: () => invoke<Shell.AiVerifyRow[]>("ai_verify"),
 
+  // ---- B-18/B-19 浏览器矩阵 ----
+  browserDetect: () => invoke<Shell.DetectedBrowser[]>("browser_detect"),
+  browserProfiles: () => invoke<Shell.BrowserProfileDto[]>("browser_profiles"),
+  browserProfileAdd: (browserId: string, exe: string, name: string) =>
+    invoke<Shell.BrowserProfileDto>("browser_profile_add", { browserId, exe, name }),
+  browserProfileRename: (id: string, name: string) =>
+    invoke<void>("browser_profile_rename", { id, name }),
+  browserProfileClone: (id: string, newName: string) =>
+    invoke<Shell.BrowserProfileDto>("browser_profile_clone", { id, newName }),
+  browserProfileDelete: (id: string, shred: boolean) =>
+    invoke<void>("browser_profile_delete", { id, shred }),
+  browserProfileLaunch: (id: string, url?: string) =>
+    invoke<number>("browser_profile_launch", { id, url: url ?? null }),
+  browserImport: (id: string, bookmarkHtml?: string, passwordCsv?: string) =>
+    invoke<Shell.BrowserImportReport>("browser_import", {
+      id,
+      bookmarkHtml: bookmarkHtml ?? null,
+      passwordCsv: passwordCsv ?? null,
+    }),
+
   // ---- B-33 应急能力包（M2 半包）+ B-17 仪表 + B-32 OOBE 建卷 ----
   containerDiag: (path: string) => invoke<Shell.ContainerDiag>("container_diag", { path }),
   containerRepair: (path: string, passphrase?: string) =>
@@ -543,6 +563,29 @@ namespace Shell {
     createdAt: number;
     tokenTail: string;
   }
+  /** B-18：检测到的本机浏览器。 */
+  export interface DetectedBrowser {
+    id: string;
+    name: string;
+    exe: string;
+    family: "chrome" | "firefox";
+  }
+  /** B-18：浏览器 profile（数据目录在容器 browsers/ 下）。 */
+  export interface BrowserProfileDto {
+    id: string;
+    browserId: string;
+    name: string;
+    exe: string;
+    family: "chrome" | "firefox";
+    dataDir: string;
+    createdAt: number;
+  }
+  /** B-19：导入报告（书签/密码文件复制进容器）。 */
+  export interface BrowserImportReport {
+    bookmarks: number;
+    passwords: number;
+    copiedFiles: string[];
+  }
   /** B-33：容器诊断（恢复模式入口判定）。 */
   export interface ContainerDiag {
     exists: boolean;
@@ -670,6 +713,9 @@ export type AiProgress = Shell.AiProgress;
 export type AiIdentityView = Shell.AiIdentityView;
 export type AiVerifyRow = Shell.AiVerifyRow;
 export type ContainerDiag = Shell.ContainerDiag;
+export type DetectedBrowser = Shell.DetectedBrowser;
+export type BrowserProfileDto = Shell.BrowserProfileDto;
+export type BrowserImportReport = Shell.BrowserImportReport;
 export type ContainerRepairReport = Shell.ContainerRepairReport;
 export type ContainerRescueReport = Shell.ContainerRescueReport;
 export type ContainerStatsView = Shell.ContainerStatsView;

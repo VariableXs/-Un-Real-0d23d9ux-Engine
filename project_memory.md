@@ -341,3 +341,10 @@
 - 设置页新增「存储与恢复」标签（StorageRecoveryTab）：诊断/修复/救援/仪表四按钮 + 口令输入 + 诊断与水位线展示；i18n zh/en 47 键（zh-TW convertDict 继承）。
 - 顺手修掉一个上线必炸的遗留缺陷：前端调 residue_scan、后端注册 residue_scan_cmd——运行时 invoke 必报 command not found（拆分为内部纯函数 residue_snapshot_diff + 命令包装）。
 - 教训：①audit 只断言"前端 invoke ⊆ 后端注册"，反向冗余不报红——名字拼写类缺陷靠的是这次 IPC 面核对而非工具（audit 可增强为双向 diff，登记 M4 顺手项）；②救援工具的设计原则是"不信任主路径"——独立解析器 + 只读容器，即使与主实现格式漂移也能自救。
+
+## 批次 B-18 + B-19（2026-09-06）— 浏览器矩阵
+- B-18 ✅：shell/browsers.rs——检测（App Paths 注册表三级 + ProgramFiles/LocalAppData 路径兜底，chrome/edge/brave/vivaldi/firefox 五款）；便携模板按家族分流（Chrome 系 --user-data-dir / Firefox -profile -no-remote）；Profile CRUD（新建即建容器目录、克隆=整目录拷贝含登录态、删除可焚毁=单次覆写后删，标准级擦除属磁盘层职责如实边界）；启动走 exec::spawn_profiled（HOME/USERPROFILE 镜像容器 + VARIABLE_PROFILE_ID 标记）。UI=设置页「浏览器」标签（BrowsersTab）。
+- B-19 🟡：导入向导已做（书签 HTML/密码 CSV 文件复制进容器 imports/ + 书签计数解析，绝不读宿主浏览器运行数据，UI 两段式选文件）；**任务栏按 profile 分组未做**（winman 分组键扩展，登记 B-19 收口项）。
+- 工程手法：Tauri State 不能在测试里凭空造——命令一律拆 inner(st: &AppState)，测试直打 inner；AppState 测试构造只需全 PathBuf 字段 + Mutex<Option<Connection>> 置 None（这些命令不碰 DB）。
+- 测试：后端 4 项（模板参数分流/书签计数/slugify 防注入/CRUD 全流程含焚毁）+ 回归全绿；tsc/audit/i18n/vitest 218/build 全绿。
+- 教训：①tauri::State 是编译期包装，业务逻辑沉到 inner(st:&AppState) 是可测性与命令面的双赢；②reg query 解析 App Paths 要按 "REG_SZ" 行尾倒序取值——注册表输出的对齐空格不可靠。

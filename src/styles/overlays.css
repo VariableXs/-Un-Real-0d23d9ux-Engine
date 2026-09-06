@@ -258,3 +258,17 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   background: rgba(127, 127, 127, 0.08); border-radius: 8px; padding: 8px 10px;
   display: flex; flex-direction: column; gap: 3px; word-break: break-all;
 }
+
+/* ---- B-18/B-19 浏览器矩阵 ---- */
+.br-tab { display: flex; flex-direction: column; gap: 10px; }
+.br-detected { display: flex; gap: 8px; flex-wrap: wrap; }
+.br-detected button { padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.br-detected button.on { border-color: #6ea8ff; color: #6ea8ff; }
+.br-add { display: flex; gap: 8px; }
+.br-add input { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.br-profiles { display: flex; flex-direction: column; gap: 6px; }
+.br-profile { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border, #2a2f3a); border-radius: 8px; }
+.br-name { font-size: 14px; }
+.br-ops { display: flex; gap: 6px; flex-wrap: wrap; }
+.br-ops button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.br-ops button.danger { border-color: #b36060; color: #ff9a9a; }

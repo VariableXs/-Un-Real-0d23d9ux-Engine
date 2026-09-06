@@ -662,8 +662,8 @@ CI = 自检栈 22.1 的 L1–L5 的**无人值守形态**；冒烟清单（22.2�
 | B-15 | 多卷 + GC | ✅ | 卷组=[主卷元数据]+数据卷条带轮转，ChunkLoc.volume（schema v2 走 B-31 迁移）；GC=标记/走查/最差卷单卷压实，预算内停顿 <100ms；4×2TB 拓扑测试通过（2026-09-06） |
 | B-16 | VHDX 档 + 迁移向导 | ✅ | probe（管理员+Mount-VHD）不可用如实降级 Uxv；VhdxBackend=挂载点委托 DirBackend；迁移向导内核逐文件 BLAKE3 校验、失败源目录原样保留（2026-09-06）；10GB 实数据/实挂属 H1 实机项 |
 | B-17 | 容器仪表 + 冷热分层 | ✅ | stats()（每卷水位/声明容量/写放大/规模）+ freeze/unfreeze（冷层 Zstd-19 强制，冷层键=blake3(内容哈希) 独立命名空间）；IPC/水位线 UI 为主 crate 接线点（2026-09-06） |
-| B-18 | 浏览器模板 + Profile 管理器 | ☐ | |
-| B-19 | 任务栏分组 + 导入向导 | ☐ | |
+| B-18 | 浏览器模板 + Profile 管理器 | ✅ | shell/browsers.rs：五款浏览器检测（App Paths 三键+路径兜底）+ 家族模板（--user-data-dir/-profile）+ Profile CRUD（克隆=整拷贝、删除可焚毁）+ 设置页「浏览器」标签（2026-09-06） |
+| B-19 | 任务栏分组 + 导入向导 | 🟡 | 导入向导 ✅（书签 HTML/密码 CSV 复制进容器 imports/ + 计数解析，绝不读宿主浏览器运行数据）；任务栏按 profile 分组待 winman 分组键扩展（收口项）（2026-09-06） |
 | B-20 | VS Code Portable 集成 | ☐ | |
 | B-21 | 工具链模板 | ☐ | |
 | B-22 | Git 面板 + SSH 金库代理 | ☐ | |
