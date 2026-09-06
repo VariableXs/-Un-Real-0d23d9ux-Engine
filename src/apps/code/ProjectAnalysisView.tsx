@@ -37,6 +37,7 @@ import { EditHistory, backupPath } from "./writeEngine";
 import { buildDrillDown, routeEdge, CROSS_REF_COLOR, CROSS_REF_NODE, KIND_BORDER, type ProjectModel } from "./generate";
 import { AuroraCanvas } from "./AuroraCanvas";
 import { ProjectImportOverlay, FileInfoCard } from "./ProjectVizPanels";
+import { GitPanel } from "../../features/settings/GitPanel";
 import type { FileAnalysis, GenNode, IntentPlan, LangId, ProjectArchive, ProjectDetect } from "./types";
 import type { Settings } from "../../lib/settings";
 import type { MindNode } from "../../lib/types";
@@ -103,6 +104,7 @@ export function ProjectAnalysisView(props: { settings: Settings }): React.ReactE
   const [treeSel, setTreeSel] = useState<Set<string>>(new Set());
   const [dropHover, setDropHover] = useState(false);
   const [refsOpen, setRefsOpen] = useState(false);
+  const [gitOpen, setGitOpen] = useState(false);
   const [pvImport, setPvImport] = useState<{ root: string; progress?: import("./ingest").IngestProgress; error?: string } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1434,6 +1436,9 @@ export function ProjectAnalysisView(props: { settings: Settings }): React.ReactE
             <Save size={12} /> {lang !== "en" ? "写入源文件" : "Write to source"}
           </button>
         )}
+        <button type="button" className={`icon-btn tiny ${gitOpen ? "active" : ""}`} data-tip={lang === "en" ? "Git panel" : "Git 面板"} disabled={!archive} onClick={() => setGitOpen(!gitOpen)}>
+          ⎇
+        </button>
         <button type="button" className={`icon-btn tiny ${refsOpen ? "active" : ""}`} data-tip={lang === "en" ? "Cross references" : "雙向引用"} disabled={!archive} onClick={() => setRefsOpen(!refsOpen)}>
           <Link2 size={14} />
         </button>
@@ -1644,6 +1649,15 @@ export function ProjectAnalysisView(props: { settings: Settings }): React.ReactE
           )}
 
           {/* ---------- 引用面板 ---------- */}
+          {archive && gitOpen && (
+            <div className="pv-refs card-pop git-pop">
+              <div className="pv-info-head">
+                <strong>{lang !== "en" ? "Git 面板（只读）" : "Git panel (read-only)"}</strong>
+                <button type="button" className="icon-btn tiny pv-close" aria-label="close" onClick={() => setGitOpen(false)}>✕</button>
+              </div>
+              <GitPanel repoDir={archive.root} />
+            </div>
+          )}
           {archive && refsOpen && (
             <div className="pv-refs card-pop">
               <div className="pv-info-head">

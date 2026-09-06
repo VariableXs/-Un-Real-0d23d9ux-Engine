@@ -17,6 +17,7 @@ pub mod explorer;
 pub mod imwatch;
 pub mod hardware;
 pub mod kbdhook;
+pub mod git_panel;
 pub mod launcher;
 pub mod netconsent;
 pub mod privacy;

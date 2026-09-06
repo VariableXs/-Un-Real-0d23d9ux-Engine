@@ -371,3 +371,11 @@
 - 测试：PATH 前缀（存在性过滤 + 冻结顺序）+ 工具链路径口径 + 回归全绿（workspace 108）；tsc/audit/i18n/vitest/build 全绿。
 - 教训：①PATH 注入从"每个启动点自己拼"收敛为 spawn_profiled 单点，是"同一件事只能有一个实现"纪律的典型案例；②版本锁文件与代码常量必须同提交，否则升版时必漏一处。
 - 如实边界：python.org/go.dev/rust-lang.org 真实下载属 H1 实机项；rustup 首次安装需稳定出站（断网场景降级离线放置）。
+
+## 批次 B-22（2026-09-06）完成 — Git 深度面板（只读）+ SSH 金库代理
+- git2 只读层（default-features=false 免 openssl 系统依赖）：git_status（分支/HEAD/变更分类 wt_*/index_*/conflicted/ahead-behind）/ git_log（限时 revwalk）/ git_branches；ensure_in_container 强制仓库在容器数据目录内（canonicalize 防逃逸）。
+- SSH 金库代理：ssh-key crate 生成 ed25519 对，私钥封存 vault/ssh/（金库未解锁即拒绝，与 identities.seal 同口径）；"代理"= 执行档注入 GIT_SSH_COMMAND（ssh -i + IdentitiesOnly=yes），不另起 ssh-agent 进程（进程面缩减；agent 转发如实边界）。
+- 职责边界（刻意）：面板零写操作——暂存/提交/push 在终端完成，写路径 = 终端 = 既有审查过的通道，避免"面板一个按钮 = 一条新进程/网络面"。
+- UI：Code 应用「项目」视图工具条新增 ⎇ 按钮 → Git 面板浮层（变更分类着色/分支/历史/SSH 密钥生成），5s 轮询。
+- 测试：git2 搭真实临时仓库（init→commit→改文件）验状态/日志 + 容器外仓库拒绝 + GIT_SSH_COMMAND 注入格式，3 项；workspace 111 全绿；tsc/audit/i18n/vitest/build 全绿。
+- 教训：①ssh-key 0.6 的 API：Ed25519Keypair::random(&mut rng)、PublicKey 从 PrivateKey::public_key() 取、序列化是 to_openssh 不是 openssh——按记忆写 API 必错，cargo 错误信息里给的正确签名才是真相；②grep 在部分大文件上静默失败，python 逐字符搜索是对的抗漂移手段。

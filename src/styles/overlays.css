@@ -279,3 +279,19 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .cd-progress { position: relative; height: 14px; border-radius: 7px; background: rgba(127,127,127,0.15); overflow: hidden; }
 .cd-progress-bar { height: 100%; background: #6ea8ff; transition: width .4s; }
 .cd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- B-22 Git 面板 ---- */
+.git-panel { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.git-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.git-head h4 { margin: 0; }
+.git-err { color: #ff9a9a; }
+.git-section h5 { margin: 0 0 4px; font-size: 12.5px; }
+.git-entries, .git-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow: auto; }
+.git-state { font-size: 11px; padding: 1px 6px; border-radius: 5px; background: rgba(127,127,127,0.15); margin-right: 6px; font-family: ui-monospace, monospace; }
+.git-new, .git-wt_new, .git-index_new { color: #7ddc9a; }
+.git-modified, .git-wt_modified, .git-index_modified { color: #ffd479; }
+.git-deleted, .git-wt_deleted, .git-index_deleted { color: #ff8a8a; }
+.git-path { font-family: ui-monospace, monospace; }
+.git-log code { font-family: ui-monospace, monospace; color: #6ea8ff; margin-right: 6px; }
+.git-key-btn { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.git-pop { width: min(420px, 80vw); max-height: 60vh; overflow: auto; }

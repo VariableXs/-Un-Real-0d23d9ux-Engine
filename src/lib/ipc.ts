@@ -268,6 +268,15 @@ export const ipc = {
   codeRegister: () => invoke<void>("code_register"),
   codeLaunch: () => invoke<{ attached: boolean; reason: string }>("code_launch"),
 
+  // ---- B-22 Git 面板（只读）+ SSH 金库 ----
+  gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
+  gitLog: (repo: string, limit?: number) =>
+    invoke<Shell.GitCommitView[]>("git_log", { repo, limit: limit ?? null }),
+  gitBranches: (repo: string) => invoke<string[]>("git_branches", { repo }),
+  sshKeys: () => invoke<Shell.SshKeyView[]>("ssh_keys"),
+  sshKeyGenerate: (label: string) => invoke<Shell.SshKeyView>("ssh_key_generate", { label }),
+  sshKeyDelete: (id: string) => invoke<void>("ssh_key_delete", { id }),
+
   // ---- B-21 工具链 ----
   toolchainStatus: () => invoke<Shell.ToolchainStatusView[]>("toolchain_status"),
   toolchainDeploy: (id: string) => invoke<void>("toolchain_deploy", { id }),
@@ -574,6 +583,30 @@ namespace Shell {
     createdAt: number;
     tokenTail: string;
   }
+  /** B-22：Git 只读面板。 */
+  export interface GitStatusView {
+    headBranch: string;
+    headCommit: string | null;
+    entries: GitEntry[];
+    ahead: number;
+    behind: number;
+    isRepo: boolean;
+  }
+  export interface GitEntry {
+    path: string;
+    state: string;
+  }
+  export interface GitCommitView {
+    id: string;
+    summary: string;
+    author: string;
+    timeMs: number;
+  }
+  export interface SshKeyView {
+    id: string;
+    label: string;
+    publicKey: string;
+  }
   /** B-21：工具链状态。 */
   export interface ToolchainStatusView {
     id: string;
@@ -737,6 +770,10 @@ export type AiProgress = Shell.AiProgress;
 export type AiIdentityView = Shell.AiIdentityView;
 export type AiVerifyRow = Shell.AiVerifyRow;
 export type ContainerDiag = Shell.ContainerDiag;
+export type GitStatusView = Shell.GitStatusView;
+export type GitCommitView = Shell.GitCommitView;
+export type SshKeyView = Shell.SshKeyView;
+export type GitEntry = Shell.GitEntry;
 export type DetectedBrowser = Shell.DetectedBrowser;
 export type BrowserProfileDto = Shell.BrowserProfileDto;
 export type BrowserImportReport = Shell.BrowserImportReport;
