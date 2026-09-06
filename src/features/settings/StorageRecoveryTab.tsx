@@ -61,6 +61,14 @@ export function StorageRecoveryTab() {
     if (r) pushToast("info", t("stRevDone"), `${r.entries} · ${r.out}`);
   };
 
+  const runDiagExport = async () => {
+    const r = await guard(
+      () => ipc.diagnosticExport("diagnostic-report.md"),
+      "stDiagExportDone",
+    );
+    if (r) pushToast("info", t("stDiagExportDone"), `${r.sections} sections · ${r.out}`);
+  };
+
   const runStats = async () => {
     const s = await guard(() => ipc.containerStats(path, pass || undefined), "stStatsDone");
     if (s) setStats(s);
@@ -87,6 +95,9 @@ export function StorageRecoveryTab() {
         </button>
         <button type="button" disabled={busy} onClick={runRescue}>
           {t("stRescue")}
+        </button>
+        <button type="button" disabled={busy} onClick={runDiagExport}>
+          {t("stDiagExport")}
         </button>
         <button type="button" disabled={busy} onClick={runStats}>
           {t("stStats")}

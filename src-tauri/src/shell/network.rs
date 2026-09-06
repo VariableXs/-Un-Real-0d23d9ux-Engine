@@ -330,6 +330,11 @@ pub struct NetStatus {
 
 #[tauri::command]
 pub fn net_status(st: tauri::State<AppState>) -> CmdResult<NetStatus> {
+    net_status_snapshot(&st)
+}
+
+/// 诊断包用：&AppState 版本。
+pub(crate) fn net_status_snapshot(st: &AppState) -> CmdResult<NetStatus> {
     let cfg = load_config(&st);
     let g = PROXY.lock().unwrap_or_else(|e| e.into_inner());
     Ok(NetStatus {

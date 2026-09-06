@@ -430,3 +430,10 @@
 - 软件渲染开关：--force-raster 写 force-raster.flag → App 启动时 diagFlags 读取 → safeMode 强制开启（复用 AuroraCanvas 既有静态帧降级）。
 - workspace 129 全绿；tsc/audit/vitest/build 全绿。
 - 教训：①GUI 命令拆 inner(st:&AppState) 的纪律在 CLI 复用时直接受益——run_cli 零新逻辑全靠 inner 复用；②跨 crate 引用 trait 方法（StorageBackend::open/seal）必须显式 import trait，Rust 不会自动推导。
+
+## 批次 B-34 + B-35（2026-09-06）完成 — 诊断包/演示胶囊 + 发布合规
+- B-34：diagnostic.rs——诊断包导出（宿主环境/容器 schemaVersion 元信息/网络层状态/数据目录结构四节，scrub 脱敏用户名与主目录路径；不含数据 chunk/凭据/token/文档内容）+ demo_capsule 空容器模板（OOBE 前置物，build-windows.bat demo 目标 --bundles none）。
+- B-35：docs/false-positive.md 开张（误报处理流程 ≤48h + 提报记录表 + 预防条款）+ docs/licenses.md 许可清单归档（权威来源 = Cargo.lock/package-lock.json，零遥测承诺重申）。
+- 前端：存储恢复页新增「导出诊断包」按钮。
+- 测试：workspace 129 全绿；tsc/audit（zh/en 全覆盖）/vitest/build 全绿。
+- 教训：B-34 的核心是"脱敏规则可审计"——scrub 只做两件事（用户名→<user>、主目录→<home>），规则越少越可审计； diagnostic 包不打包 zip 而出 Markdown 也是同理（人可读 = 可自查）。

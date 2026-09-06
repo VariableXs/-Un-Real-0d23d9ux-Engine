@@ -81,6 +81,7 @@ if not exist src-tauri\icons\icon.ico (
 
 set "BUNDLE_ARGS=build --bundles nsis"
 if /I "%MODE%"=="msi" set "BUNDLE_ARGS=build --bundles nsis,msi"
+if /I "%MODE%"=="demo" set "BUNDLE_ARGS=build --bundles none"
 
 echo [..] running tauri %BUNDLE_ARGS% ...
 call npx tauri %BUNDLE_ARGS%

@@ -317,6 +317,10 @@ export const ipc = {
     invoke<Shell.RevocationReportView>("revocation_list_export", { out }),
   diagFlags: () => invoke<Shell.DiagFlags>("diag_flags"),
 
+  // ---- B-34 诊断包 ----
+  diagnosticExport: (out: string) => invoke<Shell.DiagReport>("diagnostic_export", { out }),
+  demoCapsule: () => invoke<string>("demo_capsule"),
+
   // ---- B-22 Git 面板（只读）+ SSH 金库 ----
   gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
   gitLog: (repo: string, limit?: number) =>
@@ -646,6 +650,11 @@ namespace Shell {
     name: string;
     active: boolean;
     createdAt: number;
+  }
+  /** B-34：诊断包。 */
+  export interface DiagReport {
+    out: string;
+    sections: number;
   }
   /** B-28：网络层状态。 */
   export interface NetStatusView {

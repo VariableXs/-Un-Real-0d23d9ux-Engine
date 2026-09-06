@@ -970,6 +970,8 @@ const zh: Dict = {
   stRev: "导出吊销清单",
   stRevDone: "吊销清单已导出",
   stRevFail: "吊销清单导出失败",
+  stDiagExport: "导出诊断包",
+  stDiagExportDone: "诊断包已导出（脱敏，不含数据与凭据）",
   // ---- B-29 安全工作台 ----
   secTitle: "安全工作台",
   secHint: "静态优先、只读、零出站：PE 节熵/导入表/可疑 API/签名/字符串 + 入口反汇编（iced-x86）。样本绝不在宿主执行。",
@@ -2082,6 +2084,8 @@ const en: Dict = {
   stRev: "Export revocation list",
   stRevDone: "Revocation list exported",
   stRevFail: "Revocation list export failed",
+  stDiagExport: "Export diagnostic package",
+  stDiagExportDone: "Diagnostic package exported (scrubbed, no data or credentials)",
   // ---- B-29 security workbench ----
   secTitle: "Security workbench",
   secHint: "Static-first, read-only, zero outbound: PE section entropy / imports / suspicious APIs / signature / strings + entry disassembly (iced-x86). The sample is never executed on the host.",

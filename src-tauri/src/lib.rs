@@ -233,6 +233,8 @@ pub fn run() {
             shell::envs::env_delete,
             shell::envs::env_clone,
             shell::envs::env_nested,
+            shell::diagnostic::diagnostic_export,
+            shell::diagnostic::demo_capsule,
             shell::ecosystem::portability_assess,
             shell::ecosystem::ecosystem_migrate,
             shell::ecosystem::steam_library_scan,
