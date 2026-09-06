@@ -10,6 +10,7 @@ pub mod mindmap;
 pub mod models;
 pub mod project_scan;
 pub mod settings_cmd;
+pub mod cli;
 pub mod shell;
 pub mod state;
 pub mod system;
@@ -19,6 +20,12 @@ use state::AppState;
 use tauri::Manager;
 
 pub fn run() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() && args[0].starts_with("--") {
+        if let Some(code) = crate::cli::run_cli(&args) {
+            std::process::exit(code);
+        }
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -194,6 +201,8 @@ pub fn run() {
             shell::recovery::container_init,
             shell::recovery::container_stats,
             shell::recovery::vhdx_probe,
+            shell::recovery::revocation_list_export,
+            shell::recovery::diag_flags,
             shell::browsers::browser_detect,
             shell::browsers::browser_profiles,
             shell::browsers::browser_profile_add,

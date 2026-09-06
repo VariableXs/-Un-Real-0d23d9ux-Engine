@@ -53,6 +53,14 @@ export function StorageRecoveryTab() {
     if (r) pushToast("info", t("stRescueMode"), String(r.mode));
   };
 
+  const runRev = async () => {
+    const r = await guard(
+      () => ipc.revocationListExport("revocation-list.md"),
+      "stRevDone",
+    );
+    if (r) pushToast("info", t("stRevDone"), `${r.entries} · ${r.out}`);
+  };
+
   const runStats = async () => {
     const s = await guard(() => ipc.containerStats(path, pass || undefined), "stStatsDone");
     if (s) setStats(s);
@@ -82,6 +90,9 @@ export function StorageRecoveryTab() {
         </button>
         <button type="button" disabled={busy} onClick={runStats}>
           {t("stStats")}
+        </button>
+        <button type="button" disabled={busy} onClick={() => void runRev()}>
+          {t("stRev")}
         </button>
       </div>
 

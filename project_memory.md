@@ -423,3 +423,10 @@
 - 铁律兑现：分析器对样本只读——绝不在宿主执行样本或其代码路径；>64MB 样本如实截断标注。
 - 测试：手工构造最小 PE32+（DOS/PE/COFF/可选头/节表字节级拼装）验头/节/熵/签名 + iced-x86 入口反汇编（push rbp）+ 高熵节加壳标记 + 非 PE 如实报告，4 项；workspace 129 全绿。
 - 教训：①手写字节级解析器时，测试构造器与解析器共享同一份偏移常量表才是根治"两边各写一遍必然漂移"的正解（本轮 COFF 20B/PE32+ 可选头偏移漂移连坑三次）；②Rust 字面量 '\t' 与真实 tab 在文件写入层会被"规范化"，跨层写测试样例时用 chr(9) 构造；③entropy 直接调用 vs 经 analyze 结果不一致 = 数据流断点定位的最快手段。
+
+## 批次 B-33 M3 半包（2026-09-06）完成 — CLI 应急通道 + 吊销清单
+- src-tauri/src/cli.rs：run_cli 四命令——--export-rescue（文件级→chunk 级自动降级）/ --repair（journal 重放+固化）/ --force-raster（写标记文件，下次启动生效）/ --revoke-list；main 进入 GUI 前优先分流（-- 开头即 CLI）。VARIABLE_DATA_ROOT 环境变量支持嵌套实例数据根。
+- 紧急吊销清单：revocation_list_export——从金库身份快照生成 Markdown（tool/label/凭据尾 4 位 + 各平台吊销 URL 映射 + 通用动作清单），凭据本体绝不写入；GUI 入口=设置「存储与恢复」按钮。
+- 软件渲染开关：--force-raster 写 force-raster.flag → App 启动时 diagFlags 读取 → safeMode 强制开启（复用 AuroraCanvas 既有静态帧降级）。
+- workspace 129 全绿；tsc/audit/vitest/build 全绿。
+- 教训：①GUI 命令拆 inner(st:&AppState) 的纪律在 CLI 复用时直接受益——run_cli 零新逻辑全靠 inner 复用；②跨 crate 引用 trait 方法（StorageBackend::open/seal）必须显式 import trait，Rust 不会自动推导。

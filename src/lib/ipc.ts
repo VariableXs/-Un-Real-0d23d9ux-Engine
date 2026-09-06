@@ -312,6 +312,11 @@ export const ipc = {
     invoke<Shell.NetRule[]>("net_rule_grant", { domain, profile }),
   netRuleRevoke: (domain: string) => invoke<Shell.NetRule[]>("net_rule_revoke", { domain }),
 
+  // ---- B-33：吊销清单 + 诊断标记 ----
+  revocationListExport: (out: string) =>
+    invoke<Shell.RevocationReportView>("revocation_list_export", { out }),
+  diagFlags: () => invoke<Shell.DiagFlags>("diag_flags"),
+
   // ---- B-22 Git 面板（只读）+ SSH 金库 ----
   gitStatus: (repo: string) => invoke<Shell.GitStatusView>("git_status", { repo }),
   gitLog: (repo: string, limit?: number) =>
@@ -659,6 +664,14 @@ namespace Shell {
     domain: string;
     profile: string;
     grantedAt: number;
+  }
+  /** B-33：吊销清单导出。 */
+  export interface RevocationReportView {
+    out: string;
+    entries: number;
+  }
+  export interface DiagFlags {
+    forceRaster: boolean;
   }
   /** B-27：可移植性评估卡。 */
   export interface PortabilityCard {

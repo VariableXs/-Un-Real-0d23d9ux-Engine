@@ -967,6 +967,9 @@ const zh: Dict = {
   ntRuleGranted: "域名已授权",
   ntRuleFail: "规则操作失败",
   ntEscapeNote: "如实边界：直连型进程可绕过用户态代理——逃逸会计数并标记不受信；硬断网请用系统防火墙。",
+  stRev: "导出吊销清单",
+  stRevDone: "吊销清单已导出",
+  stRevFail: "吊销清单导出失败",
   // ---- B-29 安全工作台 ----
   secTitle: "安全工作台",
   secHint: "静态优先、只读、零出站：PE 节熵/导入表/可疑 API/签名/字符串 + 入口反汇编（iced-x86）。样本绝不在宿主执行。",
@@ -2076,6 +2079,9 @@ const en: Dict = {
   ntRuleGranted: "Domain granted",
   ntRuleFail: "Rule operation failed",
   ntEscapeNote: "Honest boundary: direct-connect processes can bypass a user-space proxy — escapes are counted and flagged; hard blocking requires the system firewall.",
+  stRev: "Export revocation list",
+  stRevDone: "Revocation list exported",
+  stRevFail: "Revocation list export failed",
   // ---- B-29 security workbench ----
   secTitle: "Security workbench",
   secHint: "Static-first, read-only, zero outbound: PE section entropy / imports / suspicious APIs / signature / strings + entry disassembly (iced-x86). The sample is never executed on the host.",

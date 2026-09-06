@@ -233,6 +233,15 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     })();
   }, [bootPhase, appType]);
 
+  // B-33：--force-raster 标记 → 强制软件渲染（safeMode）
+  useEffect(() => {
+    ipc
+      .diagFlags()
+      .then((f) => {
+        if (f.forceRaster) setSettingsState((prev) => (prev && !prev.safeMode ? { ...prev, safeMode: true } : prev));
+      })
+      .catch(() => {});
+  }, []);
   const patchSettings = useCallback((patch: Partial<Settings>) => {
     setSettingsState((prev) => {
       if (!prev) return prev;

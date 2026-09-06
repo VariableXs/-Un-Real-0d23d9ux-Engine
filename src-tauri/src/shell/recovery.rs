@@ -10,7 +10,7 @@
 //!
 //! 错误约定：ContainerError → AppError("CONTAINER")，前端 errMessage 直读 message。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -265,4 +265,80 @@ pub fn vhdx_probe() -> CmdResult<VhdxProbeView> {
         mount_vhd_available: p.mount_vhd_available,
         usable: p.usable,
     })
+}
+
+
+// ---------- B-33：紧急吊销清单 ----------
+
+/// 已登录服务 → 吊销入口（凭据本体绝不写入清单）。
+const REVOKE_URLS: &[(&str, &str)] = &[
+    ("claude-code", "https://claude.ai/settings"),
+    ("codex", "https://platform.openai.com"),
+    ("zcode", "https://z.ai"),
+    ("openai", "https://platform.openai.com"),
+    ("anthropic", "https://console.anthropic.com"),
+    ("github", "https://github.com/settings/security"),
+];
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevocationReport {
+    pub out: String,
+    pub entries: usize,
+}
+
+#[tauri::command]
+pub fn revocation_list_export(st: tauri::State<AppState>, out: String) -> CmdResult<RevocationReport> {
+    revocation_list_export_inner(&st, std::path::Path::new(&out))
+}
+
+pub(crate) fn revocation_list_export_inner(st: &AppState, out: &std::path::Path) -> CmdResult<RevocationReport> {
+    // 身份清单（金库内）：tool → label（凭据尾 4 位可辨识但不回显本体）
+    let identities = crate::shell::ai::identity_list_snapshot(st);
+    let mut md = String::from("# 紧急吊销清单
+
+");
+    md.push_str("> 疑似凭据泄露或公用机用毕后，逐项登录以下平台吊销会话。
+
+");
+    let mut entries = 0usize;
+    if identities.is_empty() {
+        md.push_str("- （无已登记身份）
+");
+    }
+    for id in &identities {
+        let url = REVOKE_URLS
+            .iter()
+            .find(|(k, _)| id.tool.to_lowercase().contains(k))
+            .map(|(_, u)| *u)
+            .unwrap_or("（请到对应平台设置页吊销）");
+        md.push_str(&format!(
+            "- **{}**（{}，凭据尾 {}）→ 吊销入口: {}
+",
+            id.tool, id.label, id.token_tail, url
+        ));
+        entries += 1;
+    }
+    md.push_str("
+## 通用动作
+
+");
+    md.push_str("- 修改所有在此环境登录过的平台密码
+");
+    md.push_str("- 吊销 SSH 密钥（托管平台 → SSH Keys）
+");
+    md.push_str("- 检查 Settings → 网络 → 白名单是否有未知域名
+");
+    std::fs::create_dir_all(out.parent().unwrap_or(Path::new(".")))
+        .map_err(|e| AppError::io(e.to_string()))?;
+    std::fs::write(out, md).map_err(|e| AppError::io(e.to_string()))?;
+    Ok(RevocationReport { out: out.to_string_lossy().into_owned(), entries })
+}
+
+/// 前端启动时读取软件渲染标记（--force-raster 写入的 flag 文件）。
+#[tauri::command]
+pub fn diag_flags(st: tauri::State<AppState>) -> CmdResult<serde_json::Value> {
+    Ok(serde_json::json!({
+        "forceRaster": st.data_dir.join("force-raster.flag").is_file()
+    }))
 }

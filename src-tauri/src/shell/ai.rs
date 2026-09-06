@@ -363,13 +363,13 @@ fn save_identities(st: &AppState, items: &[AiIdentity]) -> CmdResult<()> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiIdentityView {
-    id: String,
-    tool: String,
-    label: String,
-    note: String,
-    created_at: u64,
+    pub id: String,
+    pub tool: String,
+    pub label: String,
+    pub note: String,
+    pub created_at: u64,
     /// 凭据尾 4 位（供 UI 识别，不回显本体）
-    token_tail: String,
+    pub token_tail: String,
 }
 
 #[tauri::command]
@@ -605,4 +605,21 @@ mod tests {
         assert_eq!(config_dir_env(&AI_TOOLS[1]), "CODEX_HOME");
         assert_eq!(config_dir_env(&AI_TOOLS[2]), "ZCODE_CONFIG_DIR");
     }
+}
+
+
+/// 吊销清单用：身份快照（不含凭据本体）。
+pub(crate) fn identity_list_snapshot(st: &AppState) -> Vec<AiIdentityView> {
+    load_identities(st)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|i| AiIdentityView {
+            id: i.id,
+            tool: i.tool,
+            label: i.label,
+            note: String::new(),
+            created_at: i.created_at,
+            token_tail: i.token.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect::<String>(),
+        })
+        .collect()
 }
