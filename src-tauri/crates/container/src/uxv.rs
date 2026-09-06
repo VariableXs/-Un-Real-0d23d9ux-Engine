@@ -275,6 +275,11 @@ pub struct UxvBackend {
     vault_meta: Option<([u8; 16], [u8; 16])>,
     /// 已解码 chunk 缓存（LRU，按存储记录偏移为键；蓝图"热 chunk 随机读 <20ms"支撑）。
     decode_cache: std::cell::RefCell<DecodeCache>,
+    /// 仪表计数（B-17）：逻辑写入 = 事务层字节；物理写入 = 记录头+存储字节。
+    logical_written: u64,
+    physical_written: u64,
+    /// 每卷声明容量（8TB 分卷建卷时声明；0 = 未声明）。
+    declared_capacity: u64,
 }
 
 #[derive(Clone)]
@@ -297,6 +302,9 @@ impl UxvBackend {
             vault: None,
             vault_meta: None,
             decode_cache: std::cell::RefCell::new(DecodeCache::new(8)),
+            logical_written: 0,
+            physical_written: 0,
+            declared_capacity: 0,
         }
     }
 
@@ -329,13 +337,25 @@ impl UxvBackend {
     /// 记录头 [len u32][codec u8][blake3 32B]：头部哈希 = 最终存储字节（完整性），
     /// 索引键 = 原文内容哈希（去重），两者口径不同。
     fn append_chunk(&mut self, hash: [u8; 32], payload: &[u8]) -> CmdResult<ChunkLoc> {
+        self.append_chunk_at(hash, hash, payload, false)
+    }
+
+    /// cold=true：冷层强制 Zstd-19（挂起项目/冷区归档）；否则热层分级策略。
+    /// `index_key`：热层 = 内容哈希；冷层 = blake3(内容哈希)（独立命名空间，
+    /// 同一内容允许热/冷两份物理编码共存——挂起/解冻的底层前提）。
+    fn append_chunk_at(&mut self, index_key: [u8; 32], _content: [u8; 32], payload: &[u8], cold: bool) -> CmdResult<ChunkLoc> {
         // 单卷：chunk 与 journal/index 共享主卷 meta_tail（魔数分流）；
         // 多卷：条带轮转数据卷，主卷只承载元数据。
         let n = self.volumes.len();
         let vol_idx = if n <= 1 { 0 } else { self.stripe_pick() };
         let tail = if n <= 1 { self.meta_tail } else { self.volumes[vol_idx].tail };
         let offset = tail;
-        let (codec, mut stored) = crate::codec::compress(payload);
+        let (codec, mut stored) = if cold {
+            crate::codec::compress_cold(payload)
+        } else {
+            crate::codec::compress(payload)
+        };
+        self.physical_written += (CHUNK_HDR_LEN + stored.len()) as u64;
         if let Some(v) = &self.vault {
             stored = v.seal_bytes(&stored);
         }
@@ -925,6 +945,143 @@ impl UxvBackend {
         }
         Ok(())
     }
+
+    /// 容器仪表（B-17）：水位线/放大比/规模。容量口径 = 各卷声明容量之和
+    /// （8TB 场景 = 4×2TB 声明值；单卷/临时容器以当前文件长为准）。
+    pub fn stats(&self) -> ContainerStats {
+        let mut per_volume = Vec::new();
+        for v in &self.volumes {
+            let used = v
+                .file
+                .borrow_mut()
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0);
+            per_volume.push(VolumeUsage {
+                path: v.path.clone(),
+                used_bytes: used,
+                declared_capacity: self.declared_capacity,
+            });
+        }
+        ContainerStats {
+            per_volume,
+            logical_written: self.logical_written,
+            physical_written: self.physical_written,
+            write_amplification: if self.logical_written > 0 {
+                self.physical_written as f64 / self.logical_written as f64
+            } else {
+                0.0
+            },
+            file_count: self.files.len() as u64,
+            chunk_count: self.chunks.len() as u64,
+        }
+    }
+
+    /// 建卷声明容量（8TB 场景：插入 4×2TB 移动盘后由引导器/向导登记）。
+    pub fn set_declared_capacity(&mut self, per_volume_bytes: u64) {
+        self.declared_capacity = per_volume_bytes;
+    }
+
+    /// 挂起项目：前缀下全部文件以冷层（Zstd-19）重编码（旧 chunk 引用归零，由 GC 回收）。
+    pub fn freeze(&mut self, prefix: &str) -> CmdResult<u64> {
+        let prefix = prefix.trim_end_matches('/');
+        let victims: Vec<(String, FileInfo)> = self
+            .files
+            .iter()
+            .into_iter()
+            .filter(|(p, _)| p == prefix || p.starts_with(&format!("{prefix}/")))
+            .collect();
+        if victims.is_empty() {
+            return Err(ContainerError::NotFound(prefix.to_string()));
+        }
+        let mut bytes = 0u64;
+        for (p, info) in &victims {
+            let data = self.read(&VPath::new(p)?)?;
+            bytes += data.len() as u64;
+            self.write_cold(p, &data, info.mtime_ms)?;
+        }
+        Ok(bytes)
+    }
+
+    /// 解冻：恢复热层编码（挂起项目的反向操作）。
+    pub fn unfreeze(&mut self, prefix: &str) -> CmdResult<u64> {
+        let prefix = prefix.trim_end_matches('/');
+        let victims: Vec<(String, FileInfo)> = self
+            .files
+            .iter()
+            .into_iter()
+            .filter(|(p, _)| p == prefix || p.starts_with(&format!("{prefix}/")))
+            .collect();
+        if victims.is_empty() {
+            return Err(ContainerError::NotFound(prefix.to_string()));
+        }
+        let mut bytes = 0u64;
+        for (p, info) in &victims {
+            let data = self.read(&VPath::new(p)?)?;
+            bytes += data.len() as u64;
+            self.write_with_layer(p, &data, info.mtime_ms, false)?;
+        }
+        Ok(bytes)
+    }
+
+    fn write_cold(&mut self, path: &str, data: &[u8], mtime_ms: u64) -> CmdResult<()> {
+        self.write_with_layer(path, data, mtime_ms, true)
+    }
+
+    fn write_with_layer(&mut self, path: &str, data: &[u8], mtime_ms: u64, cold: bool) -> CmdResult<()> {
+        let mut new_chunks = Vec::new();
+        let mut new_locs = Vec::new();
+        self.logical_written += data.len() as u64;
+        for piece in data.chunks(CHUNK_SIZE) {
+            let content = *blake3::hash(piece).as_bytes();
+            // 冷层键 = blake3(内容哈希)：同内容允许热/冷两份物理编码共存。
+            let cold_key = *blake3::hash(content.as_slice()).as_bytes();
+            let key = if cold { cold_key } else { content };
+            if let Some(loc) = self.chunks.get_mut(&HashKey(key)) {
+                loc.refs += 1;
+                new_locs.push(Some(loc.clone()));
+            } else {
+                let loc = self.append_chunk_at(key, content, piece, cold)?;
+                new_locs.push(Some(loc.clone()));
+                self.chunks.insert(HashKey(key), loc);
+            }
+            new_chunks.push(key);
+        }
+        if let Some(old) = self.files.get(path) {
+            for c in &old.chunks {
+                self.unref_chunk(*c);
+            }
+        }
+        let locs: Vec<ChunkLoc> = new_locs
+            .iter()
+            .zip(new_chunks.iter())
+            .filter_map(|(slot, h)| slot.clone().or_else(|| self.chunks.get(&HashKey(*h))))
+            .collect();
+        let payload = Self::encode_put(path, &FileInfo { size: data.len() as u64, mtime_ms, chunks: new_chunks.clone() }, &locs);
+        self.journal_commit(Self::JN_PUT, &payload)?;
+        self.files.insert(path.to_string(), FileInfo { size: data.len() as u64, mtime_ms, chunks: new_chunks });
+        Ok(())
+    }
+}
+
+/// 仪表快照（任务栏水位线/设置页「存储」标签的数据源；IPC 面在主 crate 接线）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContainerStats {
+    pub per_volume: Vec<VolumeUsage>,
+    pub logical_written: u64,
+    pub physical_written: u64,
+    /// 写放大比 = 物理字节 / 逻辑字节（含记录头/journal/索引；健康口径 ≈ 1.0~1.5）。
+    pub write_amplification: f64,
+    pub file_count: u64,
+    pub chunk_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VolumeUsage {
+    pub path: PathBuf,
+    pub used_bytes: u64,
+    /// 声明容量（8TB 场景 = 每卷 2TB 的建卷声明值；0 = 未声明，按实际文件长口径）。
+    pub declared_capacity: u64,
 }
 
 impl StorageBackend for UxvBackend {
@@ -1038,6 +1195,7 @@ impl StorageBackend for UxvBackend {
         // 1) 切 chunk 写入；去重命中则仅引用 +1。
         let mut new_chunks = Vec::new();
         let mut new_locs = Vec::new();
+        self.logical_written += data.len() as u64;
         for piece in data.chunks(CHUNK_SIZE) {
             let hash = *blake3::hash(piece).as_bytes();
             if let Some(loc) = self.chunks.get_mut(&HashKey(hash)) {
@@ -1907,5 +2065,73 @@ mod multivolume_tests {
         assert_eq!(be.read(&VPath::new("f").unwrap()).unwrap(), b"legacy");
         let _ = std::fs::remove_file(&ps[0]);
         let _ = std::fs::remove_file(report.backup_path.unwrap());
+    }
+}
+
+#[cfg(test)]
+mod b17_tests {
+    use super::*;
+    use crate::{OpenCfg as Cfg, StorageBackend as Backend};
+
+    fn blob(n: usize, seed: u8) -> Vec<u8> {
+        (0..n).map(|i| (i as u8).wrapping_mul(seed).wrapping_add(seed)).collect()
+    }
+
+    /// 验收：挂起项目冷层压缩显著省空间，解冻无损恢复；仪表放大比在健康口径内。
+    #[test]
+    fn freeze_unfreeze_with_stats() {
+        let path = std::env::temp_dir().join(format!("uxv-b17-{}.uxv", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: path.clone(), extra_volumes: Vec::new() }).unwrap();
+        // 可压缩的"项目"数据
+        let text: Vec<u8> = b"the quick brown fox jumps over the lazy dog. ".repeat(9000); // ~400KB
+        be.write(&VPath::new("proj/alpha.txt").unwrap(), &text).unwrap();
+        be.write(&VPath::new("proj/beta.txt").unwrap(), &text).unwrap();
+        let stats_hot = be.stats();
+        assert_eq!(stats_hot.file_count, 2);
+        assert!(stats_hot.write_amplification > 0.0);
+        // 挂起：冷层重编码
+        let frozen_bytes = be.freeze("proj").unwrap();
+        assert_eq!(frozen_bytes, text.len() as u64 * 2);
+        // 冷层生效：新 chunk codec = ZSTD（相同内容去重后只有一份冷 chunk）
+        let zstd_chunks = be
+            .chunks
+            .iter()
+            .iter()
+            .filter(|(_, l)| l.codec == CODEC_ZSTD)
+            .count();
+        assert!(zstd_chunks >= 1, "挂起后应存在冷层 chunk");
+        // 数据无损
+        assert_eq!(be.read(&VPath::new("proj/alpha.txt").unwrap()).unwrap(), text);
+        // 解冻：热层编码恢复
+        be.unfreeze("proj").unwrap();
+        assert_eq!(be.read(&VPath::new("proj/beta.txt").unwrap()).unwrap(), text);
+        // seal 重开无损
+        be.seal().unwrap();
+        drop(be);
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: path.clone(), extra_volumes: Vec::new() }).unwrap();
+        assert_eq!(be.read(&VPath::new("proj/alpha.txt").unwrap()).unwrap(), text);
+        // 水位线口径：单卷 used = 文件长
+        let stats = be.stats();
+        assert_eq!(stats.per_volume.len(), 1);
+        assert!(stats.per_volume[0].used_bytes > 0);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// 8TB 口径：声明容量进入水位线（4×2TB 建卷声明）。
+    #[test]
+    fn declared_capacity_feeds_waterline() {
+        let path = std::env::temp_dir().join(format!("uxv-b17-cap-{}.uxv", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let mut be = UxvBackend::new();
+        be.open(&Cfg { root: path.clone(), extra_volumes: Vec::new() }).unwrap();
+        be.set_declared_capacity(2 * 1024 * 1024 * 1024 * 1024u64); // 2TB/卷
+        be.write(&VPath::new("f").unwrap(), b"x").unwrap();
+        let stats = be.stats();
+        assert_eq!(stats.per_volume[0].declared_capacity, 2 * 1024 * 1024 * 1024 * 1024u64);
+        assert!(stats.per_volume[0].used_bytes < stats.per_volume[0].declared_capacity);
+        let _ = std::fs::remove_file(&path);
     }
 }

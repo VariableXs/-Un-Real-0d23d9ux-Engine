@@ -25,6 +25,14 @@ pub fn compress(data: &[u8]) -> (u8, Vec<u8>) {
     (CODEC_LZ4, lz4)
 }
 
+/// 冷层强制 Zstd-19（挂起项目/冷区归档）。
+pub fn compress_cold(data: &[u8]) -> (u8, Vec<u8>) {
+    match zstd::bulk::compress(data, 19) {
+        Ok(z) if z.len() < data.len() => (CODEC_ZSTD, z),
+        _ => (CODEC_RAW, data.to_vec()),
+    }
+}
+
 pub fn decompress(codec: u8, stored: &[u8]) -> CmdResult<Vec<u8>> {
     match codec {
         CODEC_RAW => Ok(stored.to_vec()),
