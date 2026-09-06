@@ -18,6 +18,7 @@ import { formatBytes, clamp } from "../../lib/format";
 import { pushToast, uiStore, useUi } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
 import { Modal } from "../../components/Modal";
+import { StorageRecoveryTab } from "./StorageRecoveryTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
@@ -111,6 +112,7 @@ export function SettingsModal(props: {
     { id: "general", label: t("general") },
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
+    { id: "storage", label: t("stTitle") },
     { id: "data", label: t("data") },
     { id: "about", label: t("aboutVariable") },
   ];
@@ -779,6 +781,7 @@ export function SettingsModal(props: {
             </>
           )}
 
+          {tab === "storage" && <StorageRecoveryTab />}
           {tab === "data" && (
             <>
               <Field label={t("dataDir")}>

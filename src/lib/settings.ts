@@ -75,6 +75,14 @@ export interface Settings {
   avoidTaskbar: boolean;
   /** 首次启动欢迎向导已完成（完成后不再显示）。 */
   wizardDone: boolean;
+  /** B-32 OOBE 首次初始化向导已完成（口令/三模板/介质体检/导览）。 */
+  oobeDone: boolean;
+  /** B-32：OOBE 建卷的容器文件路径（空 = 未创建）。 */
+  oobeContainerPath: string;
+  /** B-32：OOBE 容器是否启用口令加密。 */
+  oobeContainerEncrypted: boolean;
+  /** B-32：OOBE 选择的 AI 工具模板（claude-code/codex/zcode）。 */
+  oobeTools: string[];
   /** 批次E-6：每日自动换壁纸（本地缓存目录按日期取图，零网络）。 */
   wallpaperDaily: boolean;
   /** 批次E-6：壁纸本地缓存目录（Bing 缓存等自备图片文件夹）。 */
@@ -111,6 +119,10 @@ export const DEFAULT_SETTINGS: Settings = {
   shortcutBinds: {},
   avoidTaskbar: false,
   wizardDone: false,
+  oobeDone: false,
+  oobeContainerPath: "",
+  oobeContainerEncrypted: false,
+  oobeTools: [],
   wallpaperDaily: false,
   wallpaperPoolDir: "",
   winTabSwitcher: true,
@@ -176,6 +188,12 @@ function coerce(raw: Record<string, string>): Settings {
       s.iconSize = n === 32 || n === 64 ? (n as IconSize) : n === 48 ? 48 : s.iconSize;
     }
     if (raw["wizardDone"] !== undefined) s.wizardDone = raw["wizardDone"] === "1";
+    if (raw["oobeDone"] !== undefined) s.oobeDone = raw["oobeDone"] === "1";
+    if (raw["oobeContainerPath"] !== undefined) s.oobeContainerPath = raw["oobeContainerPath"];
+    if (raw["oobeContainerEncrypted"] !== undefined) s.oobeContainerEncrypted = raw["oobeContainerEncrypted"] === "1";
+    if (raw["oobeTools"] !== undefined) {
+      try { s.oobeTools = JSON.parse(raw["oobeTools"]) as string[]; } catch { /* 保留默认 */ }
+    }
     if (raw["winControls"]) s.winControls = raw["winControls"] === "windows" ? "windows" : "mac";
     if (raw["avoidTaskbar"] !== undefined) s.avoidTaskbar = raw["avoidTaskbar"] === "1";
     if (raw["wallpaperDaily"] !== undefined) s.wallpaperDaily = raw["wallpaperDaily"] === "1";

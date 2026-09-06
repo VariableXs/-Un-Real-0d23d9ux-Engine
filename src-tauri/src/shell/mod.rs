@@ -18,6 +18,7 @@ pub mod kbdhook;
 pub mod launcher;
 pub mod netconsent;
 pub mod privacy;
+pub mod recovery;
 pub mod recycle;
 pub mod sysinfo;
 pub mod terminal;

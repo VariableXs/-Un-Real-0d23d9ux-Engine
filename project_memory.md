@@ -333,3 +333,11 @@
 - 挂起项目：freeze = 前缀下全文件冷层（Zstd-19 强制）重编码；解冻反向。冷层键 = blake3(内容哈希) 独立命名空间——同内容允许热/冷两份物理编码共存，这是挂起/解冻的底层前提（内容寻址去重会挡住"同内容重编码"，首版测试当场暴露）。
 - 49 测试全绿（仪表 2 + 回归 47）。M2 容器线代码批次（B-12…B-17 + B-31）全部收口。
 - 教训：内容寻址与"同一内容的多份物理编码"天然冲突——引入冷热分层时必须先把键空间分层，而不是在编码层硬绕。
+
+## 批次 B-32 + B-33（2026-09-06）完成 — OOBE 向导与应急能力包（M2 半包）
+- container crate rescue.rs：两级救援内核——salvage_files（索引有效 → 整树导出，list_all 快照）+ salvage_chunks（Footer 失效 → 独立解析器走查记录流，JNL1 魔数跳过/len>4MiB 重对齐/blake3 逐条校验）；救援只读容器、只写输出目录；safe_join 双保险防路径逃逸。52 测试全绿（救援 3）。
+- 主 crate shell/recovery.rs 六命令：container_diag（版本/魔数/可开性，恢复模式判定）/ container_repair（journal 重放 UI 化：打开即重放 + 立即 checkpoint 固化）/ container_rescue_export（文件级失败自动降级 chunk 级）/ container_init（OOBE 建卷，可选口令加密，拒绝覆盖非空）/ container_stats（B-17 仪表数据源）/ vhdx_probe（介质体检）。响应结构统一 serde camelCase。
+- B-32 OOBE：src/features/oobe/OobeWizard.tsx 四步向导（介质体检 → 口令建卷 → 三模板多选 → 60 秒导览）；OobeGate 由 settings.oobeDone 门控，App 两渲染分支接入；Settings 增 oobeDone/oobeContainerPath/oobeContainerEncrypted/oobeTools 四字段。
+- 设置页新增「存储与恢复」标签（StorageRecoveryTab）：诊断/修复/救援/仪表四按钮 + 口令输入 + 诊断与水位线展示；i18n zh/en 47 键（zh-TW convertDict 继承）。
+- 顺手修掉一个上线必炸的遗留缺陷：前端调 residue_scan、后端注册 residue_scan_cmd——运行时 invoke 必报 command not found（拆分为内部纯函数 residue_snapshot_diff + 命令包装）。
+- 教训：①audit 只断言"前端 invoke ⊆ 后端注册"，反向冗余不报红——名字拼写类缺陷靠的是这次 IPC 面核对而非工具（audit 可增强为双向 diff，登记 M4 顺手项）；②救援工具的设计原则是"不信任主路径"——独立解析器 + 只读容器，即使与主实现格式漂移也能自救。

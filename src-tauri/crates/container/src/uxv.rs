@@ -977,6 +977,11 @@ impl UxvBackend {
         }
     }
 
+    /// 文件表全量快照（救援/诊断用）。
+    pub fn list_all(&self) -> Vec<String> {
+        self.files.iter().into_iter().map(|(p, _)| p).collect()
+    }
+
     /// 建卷声明容量（8TB 场景：插入 4×2TB 移动盘后由引导器/向导登记）。
     pub fn set_declared_capacity(&mut self, per_volume_bytes: u64) {
         self.declared_capacity = per_volume_bytes;

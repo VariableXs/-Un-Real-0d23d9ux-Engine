@@ -32,6 +32,7 @@ import { CodeXrefPanel } from "./apps/code/XrefPanel";
 import { FateView } from "./apps/fate/FateView";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { OobeGate } from "./features/oobe/OobeWizard";
 
 export type AppEntryType = "desktop" | AppMode;
 
@@ -383,6 +384,9 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             />
             <SearchOverlay />
             <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+            {settings && boot && (
+              <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
+            )}
             <ToastHost />
             <ContextMenuHost />
             <ConfirmHost />
@@ -457,6 +461,9 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
         </div>
         <SearchOverlay />
         <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+        {settings && boot && (
+          <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
+        )}
         {closePhase === "failed" && (
           <Modal
             open

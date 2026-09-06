@@ -359,7 +359,7 @@ pub fn residue_baseline_take() {
 }
 
 /// 差集：本次会话在宿主观测面的新增/变化文件（预期为空）。
-pub fn residue_scan() -> Vec<ResidueEntry> {
+pub fn residue_snapshot_diff() -> Vec<ResidueEntry> {
     let now = residue_snapshot();
     let mut hits = Vec::new();
     if let Ok(guard) = baseline().lock() {
@@ -378,8 +378,8 @@ pub fn residue_scan() -> Vec<ResidueEntry> {
 }
 
 #[tauri::command]
-pub fn residue_scan_cmd() -> CmdResult<Vec<ResidueEntry>> {
-    Ok(residue_scan())
+pub fn residue_scan() -> CmdResult<Vec<ResidueEntry>> {
+    Ok(residue_snapshot_diff())
 }
 
 #[cfg(test)]

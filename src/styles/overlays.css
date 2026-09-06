@@ -225,3 +225,36 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 /* 批次E-15b：系统桌面透出模式占位（本身透明，仅语义占位） */
 .wallpaper-system { position: absolute; inset: 0; background: transparent; }
+
+/* ---- B-32 OOBE 首次初始化向导 ---- */
+.oobe-overlay {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(4, 6, 12, 0.92);
+  display: flex; align-items: center; justify-content: center;
+}
+.oobe-card {
+  width: min(560px, 92vw); max-height: 84vh; overflow: auto;
+  background: var(--panel, #12151d); border: 1px solid var(--border, #2a2f3a);
+  border-radius: 14px; padding: 24px 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.oobe-steps { display: flex; gap: 8px; flex-wrap: wrap; }
+.oobe-step { font-size: 12px; opacity: 0.55; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border, #2a2f3a); }
+.oobe-step.on { opacity: 1; border-color: #6ea8ff; color: #6ea8ff; }
+.oobe-step.done { opacity: 0.85; border-color: #3ecf8e; color: #3ecf8e; }
+.oobe-probe, .oobe-tour { margin: 6px 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.oobe-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.oobe-field input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.oobe-tool { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.oobe-error { color: #ff7a7a; font-size: 13px; margin: 0; }
+
+/* ---- B-33 设置页「存储与恢复」 ---- */
+.st-recovery { display: flex; flex-direction: column; gap: 10px; }
+.st-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.st-field input { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.st-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.st-diag {
+  font-size: 12.5px; font-family: ui-monospace, monospace;
+  background: rgba(127, 127, 127, 0.08); border-radius: 8px; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 3px; word-break: break-all;
+}

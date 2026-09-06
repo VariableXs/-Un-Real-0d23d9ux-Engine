@@ -241,6 +241,22 @@ export const ipc = {
     invoke<string>("ai_launch", { toolId, identityId: identityId ?? null }),
   aiVerify: () => invoke<Shell.AiVerifyRow[]>("ai_verify"),
 
+  // ---- B-33 应急能力包（M2 半包）+ B-17 仪表 + B-32 OOBE 建卷 ----
+  containerDiag: (path: string) => invoke<Shell.ContainerDiag>("container_diag", { path }),
+  containerRepair: (path: string, passphrase?: string) =>
+    invoke<Shell.ContainerRepairReport>("container_repair", { path, passphrase: passphrase ?? null }),
+  containerRescueExport: (path: string, outDir: string, passphrase?: string) =>
+    invoke<Shell.ContainerRescueReport>("container_rescue_export", {
+      path,
+      outDir,
+      passphrase: passphrase ?? null,
+    }),
+  containerInit: (path: string, passphrase?: string) =>
+    invoke<Shell.ContainerRepairReport>("container_init", { path, passphrase: passphrase ?? null }),
+  containerStats: (path: string, passphrase?: string) =>
+    invoke<Shell.ContainerStatsView>("container_stats", { path, passphrase: passphrase ?? null }),
+  vhdxProbe: () => invoke<Shell.VhdxProbeView>("vhdx_probe"),
+
   // ---- 批次C: 运行态检测 + 预装软件卸载（规格 5.5-5.6） ----
   tpRunning: () => invoke<string[]>("tp_running"),
   officialUsage: (app: string) => invoke<Shell.OfficialUsage>("official_usage", { app }),
@@ -527,6 +543,48 @@ namespace Shell {
     createdAt: number;
     tokenTail: string;
   }
+  /** B-33：容器诊断（恢复模式入口判定）。 */
+  export interface ContainerDiag {
+    exists: boolean;
+    magicOk: boolean;
+    containerVersion: number;
+    engineVersion: number;
+    needsMigration: boolean;
+    downgradeRequired: boolean;
+    sizeBytes: number;
+    openable: boolean;
+    openError: string | null;
+  }
+  /** B-33：journal 重放固化 / 建卷报告。 */
+  export interface ContainerRepairReport {
+    repaired: boolean;
+    message: string;
+    fileCount: number;
+    chunkCount: number;
+  }
+  /** B-33：两级救援导出报告。 */
+  export interface ContainerRescueReport {
+    mode: "files" | "chunks" | string;
+    filesRescued: string[];
+    chunksRescued: number;
+    bytesRescued: number;
+    errors: string[];
+  }
+  /** B-17：容器仪表快照。 */
+  export interface ContainerStatsView {
+    volumes: { path: string; usedBytes: number; declaredCapacity: number }[];
+    writeAmplification: number;
+    fileCount: number;
+    chunkCount: number;
+    logicalWritten: number;
+    physicalWritten: number;
+  }
+  /** B-32：介质体检（VHDX 快速档能力）。 */
+  export interface VhdxProbeView {
+    isAdmin: boolean;
+    mountVhdAvailable: boolean;
+    usable: boolean;
+  }
   /** 批次B-11：凭据零落宿主断言行。 */
   export interface AiVerifyRow {
     id: string;
@@ -611,6 +669,11 @@ export type AiToolStatus = Shell.AiToolStatus;
 export type AiProgress = Shell.AiProgress;
 export type AiIdentityView = Shell.AiIdentityView;
 export type AiVerifyRow = Shell.AiVerifyRow;
+export type ContainerDiag = Shell.ContainerDiag;
+export type ContainerRepairReport = Shell.ContainerRepairReport;
+export type ContainerRescueReport = Shell.ContainerRescueReport;
+export type ContainerStatsView = Shell.ContainerStatsView;
+export type VhdxProbeView = Shell.VhdxProbeView;
 export type UsbStatus = Shell.UsbStatus;
 export type FileCheck = Shell.FileCheck;
 export type PackProgress = Shell.PackProgress;
