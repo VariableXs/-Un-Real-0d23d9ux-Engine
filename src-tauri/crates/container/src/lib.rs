@@ -14,13 +14,17 @@ use std::time::SystemTime;
 
 mod bplustree;
 mod codec;
+mod migrate;
+mod vhdx;
 mod schema;
 mod uxv;
 mod vault;
 
 pub use bplustree::{HashKey as BTreeHashKey, TreeKey as BTreeKey, TreeVal as BTreeVal};
-pub use schema::{migrate_to_current, probe as schema_probe, MigrationReport, SchemaInfo};
+pub use schema::{migrate_to_current, probe as schema_probe, SchemaInfo};
+pub use migrate::{migrate_dir_into, FileMigrated, MigrationReport};
 pub use vault::Vault;
+pub use vhdx::{probe as vhdx_probe, VhdxBackend, VhdxProbe};
 pub use uxv::{ReadSeek, UxvBackend, SCHEMA_VERSION};
 
 /// 后端统一错误。后续批次扩展为细分错误（journal/加密/卷表）时保持本枚举向后兼容。

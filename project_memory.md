@@ -321,3 +321,9 @@
 - 验收：4 卷条带跨卷读写 + seal 重开卷拓扑保持；GC 回收 >0 且活数据不膨胀、数据无损、暂停 <100ms；v1→v2 迁移走 schema 协议全流程。43 测试全绿。
 - 已知边界：v1 索引 blob 的 ChunkLoc 无 volume 字段，当前 v1→v2 迁移器只翻版本戳（v1 从未发布，仅存在于开发容器）；真实索引重写迁移器随 B-33 恢复模式补齐。
 - 教训：①"主卷=元数据、数据卷=纯 chunk"的职责分离让 GC 走查和 journal 重放都简单——比"每卷都能放一切"少一类歧义；②Windows 上 write-only 打开已存在文件会 AccessDenied，统一 read+write 打开。
+
+## 批次 B-16（2026-09-06）完成 — VHDX 快速档 + 迁移向导
+- vhdx.rs：probe()（管理员 whoami 完整性级 + Get-Command Mount-VHD 探测，两次子进程 ≤300ms 预算）→ 不可用如实报 NotImplemented 并降级 Uxv（风险表第 1 行）；VhdxBackend = 挂载点上委托 DirBackend（同接口同行为）；open 登记卸载责任、seal 时 Dismount；with_premounted 供测试/引导器注入已解析挂载点（跳过 probe 门禁但不登记 dismount）。
+- migrate.rs：迁移向导内核——逐文件复制进后端 + 回读 BLAKE3 比对（验收口径），任一失败如实上抛且源目录原样保留；跳过 .tmp-bench/data.migrated-backup 产物；目录改名 data.migrated-backup 属 UI 层（文件系统原子操作）。
+- 47 测试全绿（vhdx 2 + migrate 2 + 回归 43）。真实 10GB 媒体迁移与 VHDX 实挂属三宿主实机项（H1 必测）。
+- 教训：①"谁登记卸载责任谁执行"——premounted 路径误登记 vhdx 会让 seal 去 Dismount 一个目录（错误信息里 PowerShell 乱码是 GBK 输出未按 UTF-8 解码，属观测噪音）；②测试期望值要跟字节口径走（7 字节 JSON 写成 8），断言数字突变先问口径。
