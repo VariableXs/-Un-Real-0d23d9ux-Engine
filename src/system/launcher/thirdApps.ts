@@ -57,20 +57,29 @@ export function getThirdApps(): ThirdApp[] {
 /**
  * 批次E-16：第三方应用一律在环境内打开 —— 先开虚拟窗口（占位），
  * 再由后端启动并把原生窗口 SetParent 嵌进来（从任务栏/Alt+Tab 消失）。
+ * 批次W-1：占位窗口实例 id 作为 embed_id 传给后端注册中心（多嵌入并发，
+ * 每次启动独立进程一一对应新虚拟窗口）。
  * 无法嵌入（UWP/管理员权限等）→ 如实回退独立窗口并关闭占位窗口。
  */
-export async function launchThirdApp(id: string, name: string): Promise<void> {
-  const { openVwmApp, closeVwmApp } = await import("../windows/vwm");
-  const tpApp = `tp:${id}` as Parameters<typeof openVwmApp>[0];
-  openVwmApp(tpApp);
+export async function launchThirdApp(id: string, name: string, arg?: string): Promise<void> {
+  const { openVwmTpNew, closeVwmWin } = await import("../windows/vwm");
+  const { setEmbedSessionState, setEmbedMeta } = await import("../windows/embedState");
+  const tpApp = `tp:${id}` as Parameters<typeof openVwmTpNew>[0];
+  const winId = openVwmTpNew(tpApp);
   try {
-    const r = await ipc.embedLaunch(id);
-    if (!r.attached) {
-      closeVwmApp(tpApp);
+    // 批次B-27：arg = 文件关联「打开方式」传入的文件路径（普通启动为空）
+    const r = await ipc.embedLaunch(id, winId, arg);
+    if (r.attached) {
+      setEmbedMeta(winId, { tpId: id, rootPid: r.rootPid ?? 0 });
+    } else {
+      // 批次C-2：捕获失败不再直接关占位窗 —— 保留占位卡（failed 态），
+      // 提供「框选窗口」手动收编兜底；应用已在系统桌面独立运行。
+      setEmbedMeta(winId, { tpId: id, rootPid: r.rootPid ?? 0 });
+      setEmbedSessionState(winId, "failed");
       pushToast("info", name, r.reason || "已按独立窗口运行");
     }
   } catch (e) {
-    closeVwmApp(tpApp);
+    closeVwmWin(winId);
     pushToast("error", name, errMessage(e).message);
   }
 }

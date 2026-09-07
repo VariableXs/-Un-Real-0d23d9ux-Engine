@@ -15,6 +15,9 @@ pub mod shell;
 pub mod state;
 pub mod system;
 pub mod workspace;
+// L-1/V-1：VM 内 agent（仅引导器编排的 VM 档启用）
+#[cfg(feature = "vm-agent")]
+pub mod vm_agent;
 
 use state::AppState;
 use tauri::Manager;
@@ -69,9 +72,38 @@ pub fn run() {
             shell::winman::init_shortcuts(app.handle());
             // 批次E-18：双击 Esc 切环境/Windows；Del+Backspace 真正退出
             shell::kbdhook::spawn_env_monitor(app.handle().clone());
+            // 批次C-5：L4 智能让位 —— 独占全屏前台监测（让位/恢复）+ 反作弊进程
+            // 看护（kbdhook 主动停用 + 前端横幅；进程与数据通道全保留）。
+            shell::winman::spawn_fullscreen_watcher(app.handle().clone());
+            shell::winman::spawn_anticheat_watcher(app.handle().clone());
+            // 批次W-5：显示器热切换看护（分屏记忆 + 出屏窗口吸附回主屏）
+            shell::winman::spawn_display_watcher(app.handle().clone());
+            // D-3：全域软件接管看门狗（逃逸窗口探测；ask/auto/off 策略，
+            // 维护模式暂停；白名单先于逻辑执行，默认「询问」不自动回收）
+            shell::shell_watch::spawn_watchdog(
+                app.handle().clone(),
+                &app.state::<AppState>().inner(),
+            );
+            // S-1 防截屏看护线程：开启期间周期补打新窗口（含嵌入窗口）
+            shell::privacy_shield::spawn_watcher(app.handle().clone());
+            // F-6：计划备份定时器（daily/weekly；启动时补跑错过的任务）
+            shell::sysmaint::start_scheduler(app.handle().clone());
             // 兼容层：Wallpaper Engine 冲突检测与自动缓解（libcef 0x80000003 根因）
             shell::compat::apply_if_needed_at_startup(app.handle());
             shell::compat::spawn_compat_watcher(app.handle().clone());
+            // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
+            #[cfg(feature = "vm-agent")]
+            vm_agent::spawn();
+            // D-1：VM 档 Shell 模式（Winlogon Shell=Variable.exe）——拉起隐藏 explorer 服务进程兜底
+            #[cfg(windows)]
+            if shell::shellmode::is_shell_mode() {
+                shell::shellmode::ensure_explorer_service();
+            }
+            // D-2：直跑档 Shell 崩溃自检（连续 3 次 60s 内启动 → 自动回退 explorer）
+            #[cfg(windows)]
+            if let Some(true) = shell::directshell::boot_selfcheck() {
+                log_line(&app.state::<AppState>(), "D-2 selfcheck: shell crash >3, reverted to explorer");
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -81,7 +113,11 @@ pub fn run() {
             let st = window.app_handle().state::<AppState>();
             match event {
                 tauri::WindowEvent::CloseRequested { .. } => log_line(&st, "window close REQUESTED"),
-                tauri::WindowEvent::Destroyed => log_line(&st, "window DESTROYED"),
+                tauri::WindowEvent::Destroyed => {
+                    log_line(&st, "window DESTROYED");
+                    // X-1 扩展崩溃隔离：宿主 webview 死亡只标记扩展卡，主进程无感
+                    shell::extensions::mark_crashed(window.label());
+                }
                 // 批次0（规格 10.1）：桌面窗口获得焦点 → 自动恢复置顶覆盖。
                 // 启动第三方软件时会暂时撤销置顶让其浮于桌面之上，回到桌面即恢复。
                 // 兼容态（Wallpaper Engine 运行中）不动置顶，避免与 WorkerW 抢合成器
@@ -169,6 +205,11 @@ pub fn run() {
             export::export_workspace,
             export::import_workspace,
             shell::hardware::privacy_usage,
+            shell::tools::tool_data_read,
+            shell::tools::tool_data_write,
+            shell::tools::tool_secure_read,
+            shell::tools::tool_secure_write,
+            shell::tools::snapshot_capture,
             shell::hardware::audio_get,
             shell::hardware::audio_set,
             shell::hardware::audio_devices,
@@ -183,6 +224,29 @@ pub fn run() {
             shell::hardware::bt_connect,
             shell::hardware::bt_disconnect,
             shell::hardware::battery_get,
+            shell::sysenv::sysenv_overview,
+            shell::sysenv::sysenv_display_set,
+            shell::taskman::proc_list,
+            shell::taskman::proc_kill,
+            shell::taskman::perf_cpu,
+            shell::taskman::startup_list,
+            shell::taskman::startup_disable,
+            shell::taskman::service_list,
+            shell::taskman::service_set,
+            shell::fsindex::fsindex_status,
+            shell::fsindex::fsindex_query,
+            shell::sysmaint::backup_schedule_get,
+            shell::sysmaint::backup_schedule_set,
+            shell::sysmaint::backup_run_now,
+            shell::sysmaint::update_scan,
+            shell::sysmaint::update_apply,
+            shell::sysmaint::maintain_selfcheck,
+            shell::audioime::mixer_list,
+            shell::audioime::mixer_set,
+            shell::audioime::ime_status,
+            shell::audioime::ime_list,
+            shell::audioime::ime_switch,
+            shell::audioime::media_status,
             shell::hardware::brightness_get,
             shell::hardware::brightness_set,
             shell::explorer::ex_home,
@@ -244,6 +308,9 @@ pub fn run() {
             shell::envs::env_delete,
             shell::envs::env_clone,
             shell::envs::env_nested,
+            shell::envs::env_diff,
+            shell::envs::env_discard,
+            shell::envs::env_merge,
             shell::diagnostic::diagnostic_export,
             shell::diagnostic::demo_capsule,
             shell::ecosystem::portability_assess,
@@ -254,6 +321,9 @@ pub fn run() {
             shell::ecosystem::file_assoc_list,
             shell::ecosystem::file_assoc_set,
             shell::ecosystem::file_assoc_resolve,
+            shell::shell_watch::watch_get_settings,
+            shell::shell_watch::watch_set_settings,
+            shell::shell_watch::watch_dismiss,
             shell::ecosystem::file_assoc_remove,
             shell::network::net_status,
             shell::network::net_proxy_start,
@@ -273,6 +343,7 @@ pub fn run() {
             shell::launcher::tp_remove,
             shell::launcher::tp_purge,
             shell::launcher::tp_set_grade,
+            shell::launcher::tp_set_dpi_fix,
             shell::launcher::tp_rename,
             shell::launcher::tp_launch,
             shell::launcher::tp_set_icon,
@@ -280,6 +351,7 @@ pub fn run() {
             shell::launcher::tp_portableize,
             shell::launcher::tp_launch_admin,
             shell::launcher::icon_dataurl,
+            shell::launcher::icon_jumbo_dataurl,
             shell::appman::tp_running,
             shell::appman::official_usage,
             shell::appman::official_purge,
@@ -292,10 +364,15 @@ pub fn run() {
             shell::wallpaper::wp_engine_scan,
             shell::wallpaper::wp_scene_shader,
             shell::embed::embed_launch,
+            shell::embed::embed_adopt,
+            shell::embed::embed_pick_window,
+            shell::compat_probe::compat_set_override,
             shell::embed::embed_bounds,
             shell::embed::embed_visible,
             shell::embed::embed_close,
+            shell::embed::embed_close_all,
             shell::embed::embed_focus,
+            shell::embed::embed_input,
             shell::privacy::vault_status,
             shell::privacy::vault_init,
             shell::privacy::vault_unlock,
@@ -306,6 +383,25 @@ pub fn run() {
             shell::privacy::vault_destroy,
             shell::privacy::privacy_shred,
             shell::privacy::privacy_audit,
+            shell::privacy_shield::shield_set,
+            shell::privacy_shield::shield_get,
+            shell::extensions::ext_list,
+            shell::extensions::ext_rescan,
+            shell::extensions::ext_set_enabled,
+            shell::extensions::ext_open_web,
+            shell::extensions::ext_close,
+            shell::extensions::ext_invoke,
+            shell::extensions::ext_audit,
+            shell::extensions::ext_install_example,
+            shell::extensions::ext_market_list,
+            shell::extensions::ext_market_import,
+            shell::extensions::ext_market_install,
+            shell::extensions::ext_market_remove,
+            shell::ext_plugin::ext_plugin_load,
+            shell::ext_plugin::ext_plugin_unload,
+            shell::ext_plugin::ext_daemon_start,
+            shell::ext_plugin::ext_daemon_status,
+            shell::ext_plugin::ext_daemon_example,
             shell::netconsent::net_consent_check,
             shell::netconsent::net_consent_set,
             shell::terminal::term_status,
@@ -323,6 +419,16 @@ pub fn run() {
             exec::profile_set,
             exec::profile_dryrun,
             exec::residue_scan,
+            exec::residue_resolve,
+            exec::residue_whitelist_add,
+            exec::residue_whitelist_list,
+            exec::exit_prepare,
+            shell::installer::install_mode_launch,
+            shell::installer::install_list,
+            shell::installer::install_analyze,
+            shell::installer::install_commit,
+            shell::installer::install_discard,
+            shell::installer::profile_infer,
             shell::winman::win_set_avoid_taskbar,
     shell::winman::win_hide_to_tray,
     shell::winman::power_action,
@@ -336,15 +442,34 @@ pub fn run() {
             shell::compat::shell_context_menu,
             shell::compat::shell_forward_gesture,
     shell::sysinfo::sys_brief,
+    shell::sysinfo::sys_disk_health,
     shell::sysinfo::sys_disks,
     shell::sysinfo::sys_user,
     shell::sysinfo::net_ip,
+    shell::directshell::directshell_status,
+    shell::directshell::directshell_set,
             mindmap::nodes_versions,
             shell::xflow::drag_track
         ])
-        .run(tauri::generate_context!());
-    if let Err(e) = app {
-        eprintln!("Variable failed to start: {e}");
+        .build(tauri::generate_context!());
+    match app {
+        Ok(app) => {
+            app.run(|_app, event| {
+                // L-1：VM 档引擎退出 → 通知宿主引导器安全卸盘
+                #[cfg(feature = "vm-agent")]
+                if let tauri::RunEvent::Exit = event {
+                    vm_agent::notify_host_exit();
+                }
+                // D-1：Shell 模式下回收 explorer 服务进程（零残留）
+                #[cfg(windows)]
+                if let tauri::RunEvent::Exit = event {
+                    shell::shellmode::cleanup_explorer_service();
+                }
+                #[cfg(not(all(feature = "vm-agent", windows)))]
+                let _ = &event;
+            });
+        }
+        Err(e) => eprintln!("Variable failed to start: {e}"),
     }
 }
 

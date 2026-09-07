@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::sync::Mutex;
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")] // TS Shell.SysBrief 口径（memUsed/memTotal/runtimeMode）
 pub struct SysBrief {
     /// 全局 CPU 占用百分比（0-100，两位小数）
     cpu: f64,
@@ -13,6 +14,31 @@ pub struct SysBrief {
     mem_used: u64,
     /// 总内存（字节）
     mem_total: u64,
+    /// L-3 运行档（vm=Hyper-V/VBox 完整 VM；light=轻量直跑；direct=普通安装/便携模式）
+    runtime_mode: &'static str,
+}
+
+/// L-3 运行档判定：引导器注入 VAR_RUNTIME_MODE 优先；否则 CPUID hypervisor 位。
+pub fn runtime_mode() -> &'static str {
+    match std::env::var("VAR_RUNTIME_MODE").as_deref() {
+        Ok("vm") | Ok("vbox") => "vm",
+        Ok("light") => "light",
+        _ => {
+            #[cfg(target_arch = "x86_64")]
+            {
+                let r = std::arch::x86_64::__cpuid(1);
+                if (r.ecx >> 31) & 1 == 1 {
+                    "vm"
+                } else {
+                    "direct"
+                }
+            }
+            #[cfg(not(target_arch = "x86_64"))]
+            {
+                "direct"
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -28,6 +54,20 @@ pub struct SysDisk {
 }
 
 static SYS: Mutex<Option<sysinfo::System>> = Mutex::new(None);
+
+/// X-3 扩展 API `hardware.status`（hardware:read 权限）：只读硬件摘要，零网络。
+pub fn hardware_summary() -> crate::error::CmdResult<serde_json::Value> {
+    let b = sys_brief();
+    let disks = sys_disks();
+    Ok(serde_json::json!({
+        "cpuPercent": b.cpu,
+        "memUsed": b.mem_used,
+        "memTotal": b.mem_total,
+        "disks": disks.iter().map(|d| serde_json::json!({
+            "mount": d.path, "total": d.total, "free": d.free
+        })).collect::<Vec<_>>()
+    }))
+}
 
 /// 本机用户名（开始菜单底栏显示；仅读环境变量，零网络）。
 #[tauri::command]
@@ -96,6 +136,7 @@ pub fn sys_brief() -> SysBrief {
         cpu: ((cpu.max(0.0) as f64) * 100.0).round() / 100.0,
         mem_used: sys.used_memory(),
         mem_total: sys.total_memory(),
+        runtime_mode: runtime_mode(),
     }
 }
 
@@ -129,4 +170,76 @@ pub fn sys_disks() -> Vec<SysDisk> {
     }
     out.sort_by(|a, b| a.letter.cmp(&b.letter));
     out
+}
+
+/// V-3：磁盘磨损/健康读数（硬件面板「运行环境」页按需拉取；PowerShell 一次性调用，
+/// 结果由调用方缓存，不做轮询）。无计数器的设备 wear/temp 为 null（诚实上报）。
+#[tauri::command]
+pub fn sys_disk_health() -> Result<Vec<DiskHealth>, String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                &format!(
+                    "Get-PhysicalDisk | ForEach-Object {{ $r = $_ | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue; [pscustomobject]@{{ name=$($_.FriendlyName); media=$($_.MediaType); bus=$($_.BusType); health=$($_.HealthStatus); wear=$($r.Wear); temp=$($r.Temperature); hours=$($r.PowerOnHours) }} }} | ConvertTo-Json -Compress"
+                ),
+            ])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| format!("PowerShell 启动失败: {e}"))?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            name: Option<String>,
+            media: Option<String>,
+            bus: Option<String>,
+            health: Option<String>,
+            wear: Option<f64>,
+            temp: Option<f64>,
+            hours: Option<f64>,
+        }
+        let raws: Vec<Raw> = if stdout.trim_start().starts_with('[') {
+            serde_json::from_str(stdout.trim()).map_err(|e| e.to_string())?
+        } else if stdout.trim_start().starts_with('{') {
+            vec![serde_json::from_str(stdout.trim()).map_err(|e| e.to_string())?]
+        } else {
+            Vec::new()
+        };
+        Ok(raws
+            .into_iter()
+            .map(|r| DiskHealth {
+                name: r.name.unwrap_or_default(),
+                media: r.media.unwrap_or_default(),
+                bus: r.bus.unwrap_or_default(),
+                health: r.health.unwrap_or_default(),
+                wear_pct: r.wear.map(|v| v as u32),
+                temp_c: r.temp.map(|v| v as i32),
+                power_on_hours: r.hours.map(|v| v as u64),
+            })
+            .collect())
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskHealth {
+    pub name: String,
+    pub media: String,
+    pub bus: String,
+    pub health: String,
+    /// 磨损百分比（无计数器 = null，诚实上报）
+    pub wear_pct: Option<u32>,
+    pub temp_c: Option<i32>,
+    pub power_on_hours: Option<u64>,
 }

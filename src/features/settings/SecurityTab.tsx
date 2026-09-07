@@ -1,8 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
+import { saveSetting } from "../../lib/settings";
 import { pushToast } from "../../state/uiStore";
 
 /**
@@ -46,6 +47,30 @@ export function SecurityTab() {
   const [disasmLines, setDisasmLines] = useState<DisasmLine[] | null>(null);
   const [sandbox, setSandbox] = useState<{ available: boolean; detail: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shield, setShield] = useState(false);
+  const [tagged, setTagged] = useState<number | null>(null);
+
+  // S-1：初始态从 Rust 取（真实开关，含托盘已切换的情况）
+  useEffect(() => {
+    ipc
+      .shieldGet()
+      .then(setShield)
+      .catch(() => {});
+  }, []);
+
+  const toggleShield = () =>
+    void (async () => {
+      const next = !shield;
+      try {
+        const st = await ipc.shieldSet(next);
+        setShield(st.on);
+        setTagged(st.tagged);
+        void saveSetting("privacyShield", st.on);
+        pushToast("info", st.on ? t("shieldOn") : t("shieldOff"), `${t("shieldTagged")}: ${st.tagged}`);
+      } catch (e) {
+        pushToast("error", t("shieldFail"), errMessage(e).message);
+      }
+    })();
 
   const analyze = () =>
     void (async () => {
@@ -113,6 +138,17 @@ export function SecurityTab() {
 
   return (
     <div className="sec-tab">
+      <div className="sec-shield">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <strong>🛡 {t("shieldTitle")}</strong>
+          <button type="button" onClick={toggleShield}>
+            {shield ? "ON" : "OFF"}
+          </button>
+          {tagged !== null && <span className="dim small">{t("shieldTagged")}: {tagged}</span>}
+        </div>
+        <p className="dim small">{t("shieldDesc")}</p>
+        <p className="small" style={{ color: "var(--warn, #e6b455)" }}>⚠ {t("shieldBoundary")}</p>
+      </div>
       <p className="dim small">{t("secHint")}</p>
       <div className="sec-actions">
         <button type="button" disabled={busy} onClick={analyze}>

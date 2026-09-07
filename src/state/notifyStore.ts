@@ -12,6 +12,16 @@ export interface NotifyItem {
   title: string;
   body: string;
   read: boolean;
+  /** F-5.1：通知动作按钮（最多 2 个，规格 21.5）；无则不渲染按钮区。 */
+  actions?: NotifyAction[];
+}
+
+/** F-5.1：通知动作 —— open-app（VWM 应用）/ open-third（登记的第三方软件）/ open-path（VWM 文件管理器）/ dismiss（忽略）。 */
+export interface NotifyAction {
+  label: string;
+  type: "open-app" | "open-third" | "open-path" | "dismiss";
+  /** open-app = VwmToolApp/AppMode；open-third = 第三方软件名；open-path = 容器内绝对路径。 */
+  data?: string;
 }
 
 interface NotifyState {
@@ -44,12 +54,32 @@ export function useUnreadCount(): number {
   return useStore(notifyStore, (s) => s.items.reduce((n, it) => n + (it.read ? 0 : 1), 0));
 }
 
-export function pushNotify(kind: NotifyItem["kind"], title: string, body = ""): void {
+export function pushNotify(
+  kind: NotifyItem["kind"],
+  title: string,
+  body = "",
+  actions?: NotifyAction[],
+): void {
   const id = notifyStore.getState().nextId;
   notifyStore.setState((s) => ({
-    items: [...s.items, { id, time: Date.now(), kind, title, body, read: false }].slice(-MAX_ITEMS),
+    items: [...s.items, { id, time: Date.now(), kind, title, body, read: false, actions }].slice(-MAX_ITEMS),
     nextId: id + 1,
   }));
+  // A-4：通知横幅音（勿扰自动静音；音量/静音读设置，失败静默——声音是增益不是依赖）
+  void (async () => {
+    try {
+      const { playSound } = await import("../lib/sounds");
+      const s = await import("../lib/settings").then((m) => m.loadSettings());
+      playSound("notify", { volume: s.soundVolume, muted: s.soundMuted, dnd: notifyStore.getState().dnd });
+    } catch {
+      /* 静默 */
+    }
+  })();
+}
+
+/** F-5.1：内置动作执行 —— 分发全局事件，DesktopShell 统一接住（open-app/open-path）。 */
+export function fireNotifyAction(action: NotifyAction): void {
+  window.dispatchEvent(new CustomEvent("variable:notify-action", { detail: action }));
 }
 
 export function markAllRead(): void {

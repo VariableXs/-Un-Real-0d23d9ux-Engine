@@ -354,7 +354,7 @@ pub fn profile_dryrun(st: tauri::State<AppState>, id: String) -> CmdResult<serde
     }))
 }
 
-// ---------- 残留扫描器（B-6，BLUEPRINT 3.3.3 / 10.4） ----------
+// ---------- 残留扫描器（B-6，BLUEPRINT 3.3.3 / 10.4；E-2 深度扩展） ----------
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -362,25 +362,66 @@ pub struct ResidueEntry {
     pub path: String,
     pub size: u64,
     pub modified_ms: u64,
+    /// E-2：file = 文件落盘；reg = HKCU\Software 新增键（只读 diff）
+    #[serde(default = "default_kind")]
+    pub kind: String,
 }
 
-/// 会话基线：环境启动时对宿主观测面（%USERPROFILE% 顶层 + Recent）做快照。
+fn default_kind() -> String {
+    "file".to_string()
+}
+
+/// 会话基线：环境启动时对宿主观测面（%USERPROFILE% 顶层 + Recent +
+/// AppData\Local\Temp + HKCU\Software 顶层子键）做快照。
 static RESIDUE_BASELINE: OnceLock<Mutex<HashMap<String, (u64, u64)>>> = OnceLock::new();
 
 fn baseline() -> &'static Mutex<HashMap<String, (u64, u64)>> {
     RESIDUE_BASELINE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// 观测面：仅顶层文件名与 Recent（已知落盘点），不递归、不读内容——性能与隐私双保守。
+/// 观测面：仅顶层文件名与 Recent/Temp（已知落盘点），不递归、不读内容——
+/// 性能与隐私双保守。注册表只记录 HKCU\Software 顶层子键名（只读 diff）。
 fn residue_targets() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(up) = std::env::var("USERPROFILE") {
-        dirs.push(PathBuf::from(up));
+        dirs.push(PathBuf::from(&up));
     }
     if let Ok(appdata) = std::env::var("APPDATA") {
-        dirs.push(PathBuf::from(appdata).join("Microsoft").join("Windows").join("Recent"));
+        dirs.push(PathBuf::from(&appdata).join("Microsoft").join("Windows").join("Recent"));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        dirs.push(PathBuf::from(&local).join("Temp"));
     }
     dirs
+}
+
+/// E-2：已知无害项差集白名单（默认内置 + 用户自定义，落盘 residue-whitelist.json）。
+const BUILTIN_WHITELIST: &[&str] = &[
+    // Windows 自身会话波动（thumbcache/图标缓存/最近跳表）
+    "thumbcache",
+    "iconcache",
+    "recentcustomitems",
+    "usbstor",
+];
+
+fn whitelist_path(st: &AppState) -> PathBuf {
+    st.data_dir.join("residue-whitelist.json")
+}
+
+fn load_whitelist(st: &AppState) -> Vec<String> {
+    let mut out: Vec<String> = BUILTIN_WHITELIST.iter().map(|s| s.to_string()).collect();
+    if let Ok(bytes) = std::fs::read(whitelist_path(st)) {
+        if let Ok(v) = serde_json::from_slice::<Vec<String>>(&bytes) {
+            out.extend(v);
+        }
+    }
+    out
+}
+
+/// 白名单命中：路径/键名包含任一模式（大小写不敏感）即视为已知无害。
+fn whitelist_hit(st: &AppState, path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    load_whitelist(st).iter().any(|w| !w.is_empty() && lower.contains(&w.to_ascii_lowercase()))
 }
 
 fn snapshot_dir(dir: &Path, out: &mut HashMap<String, (u64, u64)>) {
@@ -401,11 +442,25 @@ fn snapshot_dir(dir: &Path, out: &mut HashMap<String, (u64, u64)>) {
     }
 }
 
+/// E-2：HKCU\Software 顶层子键快照（只读 diff；键名以 reg: 前缀入图，值为占位）。
+#[cfg(windows)]
+fn snapshot_hkcu_software(out: &mut HashMap<String, (u64, u64)>) {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+    let hk = winreg::RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(software) = hk.open_subkey_with_flags("Software", KEY_READ) {
+        for name in software.enum_keys().flatten() {
+            out.insert(format!("reg:HKCU\\Software\\{name}"), (0, 0));
+        }
+    }
+}
+
 fn residue_snapshot() -> HashMap<String, (u64, u64)> {
     let mut out = HashMap::new();
     for dir in residue_targets() {
         snapshot_dir(&dir, &mut out);
     }
+    #[cfg(windows)]
+    snapshot_hkcu_software(&mut out);
     out
 }
 
@@ -417,19 +472,37 @@ pub fn residue_baseline_take() {
     }
 }
 
-/// 差集：本次会话在宿主观测面的新增/变化文件（预期为空）。
-pub fn residue_snapshot_diff() -> Vec<ResidueEntry> {
+/// E-2 差集：本次会话在宿主观测面的新增/变化（文件 + HKCU 新键），
+/// 已知无害项（内置 + 用户白名单）不报。
+pub fn residue_snapshot_diff_st(st: &AppState) -> Vec<ResidueEntry> {
     let now = residue_snapshot();
-    let mut hits = Vec::new();
     if let Ok(guard) = baseline().lock() {
-        for (path, (size, mtime)) in &now {
-            let is_new_or_changed = match guard.get(path) {
-                None => true,
-                Some((bsize, bmtime)) => bsize != size || bmtime != mtime,
-            };
-            if is_new_or_changed {
-                hits.push(ResidueEntry { path: path.clone(), size: *size, modified_ms: *mtime });
-            }
+        residue_diff(&guard, &now, st)
+    } else {
+        Vec::new()
+    }
+}
+
+/// 可测纯函数：baseline → now 的差集（新增或 size/mtime 变化，白名单过滤）。
+fn residue_diff(
+    guard: &HashMap<String, (u64, u64)>,
+    now: &HashMap<String, (u64, u64)>,
+    st: &AppState,
+) -> Vec<ResidueEntry> {
+    let mut hits = Vec::new();
+    for (path, (size, mtime)) in now {
+        let is_new_or_changed = match guard.get(path) {
+            None => true,
+            Some((bsize, bmtime)) => bsize != size || bmtime != mtime,
+        };
+        if is_new_or_changed && !whitelist_hit(st, path) {
+            let kind = if path.starts_with("reg:") { "reg" } else { "file" };
+            hits.push(ResidueEntry {
+                path: path.clone(),
+                size: *size,
+                modified_ms: *mtime,
+                kind: kind.to_string(),
+            });
         }
     }
     hits.sort_by(|a, b| a.path.cmp(&b.path));
@@ -437,8 +510,148 @@ pub fn residue_snapshot_diff() -> Vec<ResidueEntry> {
 }
 
 #[tauri::command]
-pub fn residue_scan() -> CmdResult<Vec<ResidueEntry>> {
-    Ok(residue_snapshot_diff())
+pub fn residue_scan(st: tauri::State<AppState>) -> CmdResult<Vec<ResidueEntry>> {
+    Ok(residue_snapshot_diff_st(&st))
+}
+
+/// E-2：清理单条残留。文件 → 删除；注册表 → 删除 HKCU\Software 新增子键
+/// （只允许清 diff 里出现的键，且只删顶层——用户已确认，不递归值）。
+#[tauri::command]
+pub fn residue_resolve(st: tauri::State<AppState>, path: String) -> CmdResult<()> {
+    if whitelist_hit(&st, &path) {
+        return Err(AppError::validation("该项在白名单内，无需清理"));
+    }
+    if let Some(sub) = path.strip_prefix("reg:HKCU\\Software\\") {
+        // 防误删：只允许一级子键名，且必须是基线中不存在的新键
+        if sub.contains('\\') || sub.contains('/') || sub.is_empty() {
+            return Err(AppError::validation("只允许清理 HKCU\\Software 顶层新增键"));
+        }
+        if baseline().lock().map(|g| g.contains_key(&path)).unwrap_or(false) {
+            return Err(AppError::validation("该键在会话基线中已存在，不属于本次会话残留"));
+        }
+        #[cfg(windows)]
+        {
+            use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
+            let hk = winreg::RegKey::predef(HKEY_CURRENT_USER);
+            let software = hk
+                .open_subkey_with_flags("Software", KEY_WRITE)
+                .map_err(|e| AppError::io(format!("打开注册表失败: {e}")))?;
+            software
+                .delete_subkey(sub)
+                .map_err(|e| AppError::io(format!("删除注册表键失败: {e}")))?;
+        }
+        return Ok(());
+    }
+    // 文件残留：只删除，不改名不移动；失败如实上抛
+    let p = PathBuf::from(&path);
+    if p.is_file() {
+        fs::remove_file(&p).map_err(|e| AppError::io(format!("删除残留文件失败: {e}")))?;
+        Ok(())
+    } else {
+        Err(AppError::not_found(format!("残留项已不存在或类型不支持: {path}")))
+    }
+}
+
+/// E-2：把路径/键名片段加入用户白名单（内置白名单不可移除，如实声明）。
+fn residue_whitelist_add_inner(st: &AppState, pattern: &str) -> CmdResult<Vec<String>> {
+    let pattern = pattern.trim().to_string();
+    if pattern.len() < 3 {
+        return Err(AppError::validation("白名单片段太短（≥3 字符），避免误放行"));
+    }
+    let mut user: Vec<String> = std::fs::read(whitelist_path(st))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    if !user.iter().any(|w| w.eq_ignore_ascii_case(&pattern)) {
+        user.push(pattern);
+        let bytes = serde_json::to_vec_pretty(&user)
+            .map_err(|e| AppError::io(format!("序列化白名单失败: {e}")))?;
+        fs::write(whitelist_path(st), bytes)
+            .map_err(|e| AppError::io(format!("写入白名单失败: {e}")))?;
+    }
+    Ok(user)
+}
+
+#[tauri::command]
+pub fn residue_whitelist_add(st: tauri::State<AppState>, pattern: String) -> CmdResult<Vec<String>> {
+    residue_whitelist_add_inner(&st, &pattern)
+}
+
+/// E-2：当前生效的白名单（内置 + 用户）。
+#[tauri::command]
+pub fn residue_whitelist_list(st: tauri::State<AppState>) -> CmdResult<serde_json::Value> {
+    let user: Vec<String> = std::fs::read(whitelist_path(&st))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    Ok(serde_json::json!({
+        "builtin": BUILTIN_WHITELIST,
+        "user": user,
+    }))
+}
+
+// ---------- E-3 退出总时序（蓝图 11.4；16.3） ----------
+//
+// 后端负责「容器 checkpoint → 断代理 → 残留扫描」三步（广播保存 / VWM 冲刷 /
+// 嵌入应用 WM_CLOSE 由前端 requestClose 既有编排先行）；每步超时/失败只记录
+// 不中断——退出路径绝不因清理失败而被卡死（跳过路径：用户可对残留报告点
+// 「我知道风险」后仍退出）。
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExitStepReport {
+    pub step: String,
+    pub ok: bool,
+    pub detail: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExitPrepReport {
+    pub steps: Vec<ExitStepReport>,
+    /// 非空 = 有宿主残留（前端弹报告；用户可跳过退出）
+    pub residues: Vec<ResidueEntry>,
+}
+
+/// E-3 退出前置：逐步执行并如实回报。前端在关窗前调用；
+/// 返回后由前端决定「弹残留报告（可跳过）」或直接关壳。
+#[tauri::command]
+pub fn exit_prepare(st: tauri::State<AppState>) -> CmdResult<ExitPrepReport> {
+    let mut steps = Vec::new();
+
+    // 1) 容器 checkpoint：WAL 固化（数据落盘一致；失败不阻塞退出）
+    let ckpt = st.with_conn(|conn| {
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(AppError::from)
+    });
+    steps.push(ExitStepReport {
+        step: "checkpoint".into(),
+        ok: ckpt.is_ok(),
+        detail: match ckpt {
+            Ok(()) => "WAL 已固化".into(),
+            Err(e) => format!("checkpoint 失败（已跳过）: {e}"),
+        },
+    });
+
+    // 2) 断代理：停环回代理 + 清注入环境（失败不阻塞退出）
+    let proxy = crate::shell::network::net_proxy_stop();
+    steps.push(ExitStepReport {
+        step: "net-off".into(),
+        ok: proxy.is_ok(),
+        detail: match proxy {
+            Ok(()) => "代理已停止".into(),
+            Err(e) => format!("停止代理失败（已跳过）: {e}"),
+        },
+    });
+
+    // 3) 残留扫描：0 残留静默通过；非零交前端弹报告（可跳过）
+    let residues = residue_snapshot_diff_st(&st);
+    steps.push(ExitStepReport {
+        step: "residue-scan".into(),
+        ok: true,
+        detail: if residues.is_empty() { "零残留".into() } else { format!("{} 项残留", residues.len()) },
+    });
+
+    Ok(ExitPrepReport { steps, residues })
 }
 
 
@@ -575,6 +788,66 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         assert!(content.contains(&expected), "injected env mismatch; got: {content:?}; expected: {expected:?}");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // ---- E-2 残留差集（可测纯函数）----
+
+    fn st_at(dir: &Path) -> crate::state::AppState {
+        crate::state::AppState::bootstrap_at(dir.to_path_buf()).expect("bootstrap test state")
+    }
+
+    #[test]
+    fn residue_diff_reports_new_changed_and_filters_whitelist() {
+        let tmp = std::env::temp_dir().join(format!("residue-diff-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let st = st_at(&tmp);
+
+        let base = HashMap::new();
+        let mut now = HashMap::new();
+        now.insert(
+            format!("{}\\AppData\\Local\\Temp\\thumbcache_1.db", tmp.display()),
+            (10u64, 1u64),
+        );
+        now.insert(format!("{}\\AppData\\Local\\Temp\\leftover.cfg", tmp.display()), (5, 2));
+        now.insert("reg:HKCU\\Software\\FakeVendor".to_string(), (0, 0));
+
+        let hits = residue_diff(&base, &now, &st);
+        let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+        // thumbcache 命中内置白名单不报；leftover + 注册表新键均报，kind 如实
+        assert_eq!(paths.len(), 2, "hits: {paths:?}");
+        let leftover = hits.iter().find(|h| h.path.ends_with("leftover.cfg")).unwrap();
+        assert_eq!(leftover.kind, "file");
+        let reg = hits.iter().find(|h| h.path.starts_with("reg:")).unwrap();
+        assert_eq!(reg.kind, "reg");
+
+        // 基线相同条目（size/mtime 一致）不报
+        let mut base2 = now.clone();
+        base2.insert(format!("{}\\AppData\\Local\\Temp\\leftover.cfg", tmp.display()), (5, 2));
+        let hits2 = residue_diff(&base2, &now, &st);
+        assert!(hits2.is_empty(), "unchanged entries must not be reported: {:?}", hits2);
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn residue_whitelist_roundtrip_and_min_length() {
+        let tmp = std::env::temp_dir().join(format!("residue-wl-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let st = st_at(&tmp);
+
+        assert!(residue_whitelist_add_inner(&st, "ab").is_err(), "short pattern rejected");
+        let user = residue_whitelist_add_inner(&st, "fakevendor").unwrap();
+        assert!(user.iter().any(|w| w.eq_ignore_ascii_case("fakevendor")));
+        // 幂等
+        let user2 = residue_whitelist_add_inner(&st, "FakeVendor").unwrap();
+        assert_eq!(user2.iter().filter(|w| w.eq_ignore_ascii_case("fakevendor")).count(), 1);
+        // 生效白名单 = 内置 + 用户
+        let all = load_whitelist(&st);
+        assert!(all.iter().any(|w| w == "thumbcache"));
+        assert!(all.iter().any(|w| w.eq_ignore_ascii_case("fakevendor")));
         let _ = fs::remove_dir_all(&tmp);
     }
 }

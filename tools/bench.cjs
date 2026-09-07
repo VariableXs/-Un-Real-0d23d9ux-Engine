@@ -7,6 +7,8 @@
  *   2. fileIndex   万文件索引（预算：10000 文件 < 3s）
  *   3. vwmOpen     VWM 打开延迟（预算 <50ms）——需 GUI 插桩，当前如实标注 SKIPPED
  *   4. memory      应用待机内存水位（预算 ≤600MB）
+ *   5. captureE2E  L3 画面捕获端到端延迟（预算 P95 <50ms，C-4）——需真机 L3 嵌入
+ *                 会话：高帧率计时器（ms 计刷新）点击 → 像素变化打点，当前如实标注 SKIPPED
  *
  * 用法：
  *   node tools/bench.cjs             # 跑全部可跑项，报告写入 docs/bench/
@@ -221,6 +223,7 @@ function regressionCheck(current, prev) {
     `| coldStart | ${fmt(current.coldStart, ' ms')} | ≤3000 ms | ${current.coldStart == null ? '⏭ 跳过' : current.coldStart <= 3000 ? '✅' : '⛔'} |`,
     `| fileIndex | ${fmt(current.fileIndex, ' ms')}（${idx.files} 文件） | <3000 ms | ${current.fileIndex <= 3000 ? '✅' : '⛔'} |`,
     `| vwmOpen | — | <50 ms | ⏭ SKIPPED（需 GUI 插桩，计划随 VWM 2.0 批接入 input→像素打点） |`,
+    `| captureE2E | — | P95 <50 ms | ⏭ SKIPPED（C-4：需真机 L3 嵌入会话——被捕获窗口内跑 ms 计高帧率计时器，SendInput 点击→像素变化打点，本环境无 GUI 嵌入会话，如实跳过） |`,
     `| memory | ${fmt(current.memory, ' MB')} | ≤600 MB | ${current.memory == null ? '⏭ 跳过' : current.memory <= 600 ? '✅' : '⛔'} |`,
     '',
     '> 口径说明：memory 为全部 `variable` 进程 WorkingSet 之和（不含宿主共享的 msedgewebview2 渲染子进程，属已知边界）；coldStart 为窗口句柄首次出现时刻，非「可交互」时刻（启动仪式进度未纳入）。',

@@ -1,0 +1,16 @@
+# residue-check 报告  2026-09-07T15:23:38.671Z
+宿主: variable  用户: varia
+
+发现 12 项残留:
+  [file] USERPROFILE-top: C:\Users\varia\Variableuniverse/
+  [file] APPDATA-top: C:\Users\varia\AppData\Roaming\app.variable.private/
+  [file] APPDATA-top: C:\Users\varia\AppData\Roaming\com.variable.app/
+  [file] APPDATA-top: C:\Users\varia\AppData\Roaming\com.variable.private/
+  [file] APPDATA-top: C:\Users\varia\AppData\Roaming\com.variable.privatespace/
+  [file] APPDATA-top: C:\Users\varia\AppData\Roaming\space.variable.private/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\app.variable.private/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\com.variable.app/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\com.variable.private/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\com.variable.privatespace/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\space.variable.private/
+  [file] LOCALAPPDATA-top: C:\Users\varia\AppData\Local\Variable/

@@ -1,3 +1,20 @@
+## 批次 E-1（2026-09-07）AI-1 进行中 — 执行档覆盖任意 exe + 安装模式
+- 后端 shell/installer.rs：install_mode_launch（HOME/USERPROFILE/APPDATA/LOCALAPPDATA/
+  PROGRAMFILES/PROGRAMFILES(X86)/TMP/TEMP → data/staging/<id>/{home,appdata,local,pf,pf86,tmp}，
+  msi/bat/cmd 分流包装）/ install_analyze（逐区统计 + 浅层 exe 候选）/ install_commit
+  （pf*→apps/<slug>/，home/appdata/local 合并进环境 home，登记 ThirdApp grade=portable +
+  generic_redirect_profile）/ install_discard / profile_infer（默认值推断）。index.json 持久化
+  支持崩溃恢复。命令已注册 lib.rs；前端 ProfilesTab 增「安装模式」区 + 「推断默认值」按钮，
+  ipc.ts 新增 6 个 install*/profileInfer 绑定与 3 个 DTO（i18n 键 pfInst* / pfInfer 双语）。
+- 跨路冲突（给并行 AI 的协作约定）：① privacy_shield 模块文件在 shell/ 下，mod 声明应写
+  shell/mod.rs 并以 crate::shell::privacy_shield 引用（勿在 lib.rs 根重复声明）；
+  ② ipc.ts / SettingsModal.tsx 是共享热点文件，整文件重写会抹掉他路新增——请增改时保留
+  「E-1：安装模式执行档（AI-1 批次，勿删）」标记段；③ embed.rs 的 current_embed_hwnds、
+  sysenv.rs 的 System::Time / ENUM_DISPLAY_SETTINGS_FLAGS 修复系本路代为 rebase。
+- 教训（25.1-10）：实测覆盖 PROGRAMFILES 环境变量后，cmd 内建 mkdir/redirect 会误报
+  Access denied（Windows 怪癖，与 ACL 无关、字面量路径正常）——重定向值一律反斜杠拼接，
+  cmd 假安装器测试改用直接 fs 落盘。
+
 ## 批次 B-7…B-11（2026-09-06）完成 — M3 终端与云 AI 矩阵（代码面收口）
 - B-7：shell/terminal.rs——终端 V1 = 便携 Windows Terminal 以第三方登记项接入
   （id variable-terminal，执行档 VARIABLE_ENV=terminal），复用既有 embed 通道嵌入
@@ -454,3 +471,27 @@
 - 复核发现的真实缺陷：①分工表容量口径算错——1TB 实得 929.9GiB，「150+800GB」超 20.1GiB，定版 150+780GB；②原型与扩充 20.1 的 `-Filter "*.wim"` 会先命中 `sources\boot.wim`（字母序在前），会展开引导镜像而非安装镜像；③「回收后 <20GB 实占」对普通固定盘不成立（实占恒=虚拟大小），只有 NTFS 稀疏固定盘或动态盘能达标；④exFAT 卷无重解析点，Junction/硬链接不可用，只能 SymbolicLink。
 - 验证：CI（windows-latest）frontend + backend 全绿；5 支脚本经自写 PowerShell 词法级结构检查器全 OK（先用仓库既有 4 支 .ps1 做基线确认无误报）；一致性检查 ALL PASS（12 个主计划条目覆盖 / 13 处路径引用存在 / 字数 / 打勾断言）。**如实边界**：沙箱 Linux 且 GitHub release 资源域不可达 → `pwsh` 装不上，PowerShell 解析器与 Windows cmdlet 一次未执行，真机数据待 1TB 盘到货。
 - 教训：①无解析器可用时，先拿仓库既有「已知能跑」的同类脚本做基线，才能区分"检查器有效"与"检查器只会说 OK"；②字符串统计类判定别用 `-match 'ok'` 这种子串匹配——`'broken'` 里就含 `'ok'`，坏链会被算成成功，改成逐条显式 `Status` 字段才可证；③文档里的技术断言要回头对着源文件核一遍——本轮「原型未指定簇大小」「无 esd 回退」两条初稿断言都是错的（原型其实有 64KB 与 esd 回退），真缺陷反而是 `boot.wim` 误选。
+
+## 批次 S-1（2026-09-07）完成 — 防截屏模式（AI-4 智能路）
+- `shell/privacy_shield.rs`：`SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` 打标 Variable 全部顶层窗口（`app.webview_windows()`，桌面+四软件+explorer 等全量）+ 嵌入的第三方窗口（复用 W-1 的 `embed::current_embed_hwnds()` 多嵌入注册中心）；2s 看护线程补打新窗口；**关闭即恢复**：对所有窗口 `WDA_NONE` 立即恢复可截（验收项"关闭后立即恢复可截"）。
+- tauri 依赖的 windows crate 版本与本 crate 不同，HWND 一律按裸指针 `HWND(h.0)` 跨类型构造（编译期实测两版 HWND 不互认）。
+- 入口：设置页「安全」标签盾形卡片开关（SecurityTab，ON/OFF + 打标窗口数 + 双语说明）+ 托盘菜单「防截屏模式 ✓」快捷开关（toggle 同步菜单文字 + tooltip 加 🛡 + `shield://changed` 事件回推前端落库）。
+- 持久化：`settings.privacyShield`（settings.ts/coerce），开机 boot effect 恢复 `shield_set(true)`；托盘切换与设置页切换双向同步（事件 + saveSetting）。
+- 边界如实声明（UI 双语文案）：仅防 Win32 截屏/截窗 API；物理拍摄、内核级捕获、宿主键盘记录无法防御；VM 档 VMConnect 打标仅影响宿主侧截屏、VM 内截屏不受影响——双层语义分开声明。
+- 验证：cargo check EXIT=0、tsc --noEmit 0 错误。**如实边界**：Win+Shift+S/OBS 黑块断言需 Windows 实机人工点验（本沙盒无显示器/截屏 API）。
+- 教训：多 AI 并行编辑同一仓库时 Edit 工具竞态会静默互相覆盖（本轮 settings.ts/embed.rs/privacy_shield.rs 三处被覆盖后重写），关键批次收尾应整文件 Write 原子落盘并立即 rg 复核；embed.rs 勿再挂单窗口 accessor，一律走 W-1 的注册中心多嵌入接口。
+
+## 批次 E-1…E-4（2026-09-07）完成 — AI-1 执行档全量化与零残留退出
+- E-1 安装模式执行档：installer.rs（launch/analyze/commit/discard/profile_infer）端到端测试通过；归位后 exe 相对路径断言修正为实际容器结构（apps/<slug>/FakeApp/fake.exe）。
+- E-2 残留扫描器深度：HKCU\Software 顶层子键只读 diff 重新接回 residue_snapshot（前会话改动曾丢失）；diff 抽纯函数 residue_diff 可测；新增 2 测试（差集/白名单 roundtrip），90 全过。UI 三按钮（清理/加白/忽略）已有。
+- E-3 退出总时序：exec.rs exit_prepare（WAL checkpoint → 断代理 net_proxy_stop → 残留扫描，逐步如实回报、失败不阻塞退出）；App.tsx requestClose 接入——非零残留弹报告 Modal，「我知道风险」二次确认跳过（exitResidueBypassRef）、「返回」中止；i18n 双语 exitResidue* 三键。
+- E-4 零残留验收：新建 tools/residue-check.cjs（USERPROFILE/APPDATA/LOCALAPPDATA/Temp 顶层 + Recent.lnk + HKCU\Software reg query，--expect-clean 断言 + --json + --out 归档）；实测清掉 Temp 内 170+ 个 variable-test-*/variable-usb-test-* 测试残留；证据归档 docs/acceptance/e4-residue-check-20260907.txt。
+- 如实边界：报告剩余 12 项为本机开发态应用数据（com.variable.* 等）与用户目录 Variableuniverse——非本次会话残留，未动；三宿主 + 三工具/VSCode/浏览器/Git 全套 --expect-clean 需真实 VM 矩阵，属后续人工验收。
+- 跨 AI 竞态教训：embed.rs 被并发写覆盖两轮（测试初始化缺 root_pid/pids 字段、ensure_event_hook 未定义），只能反复最小补丁解锁编译；同轮 Edit 并行三连发会互相踩（改用单发顺序）。cargo check --lib 与 cargo test 的 test-cfg 错误集不同，验收必须跑 test。
+
+## AI-1 批次审计与 B-26 收口（2026-09-07 续）
+- 审计结论：B-12…B-17 代码早落地但附录 A 未打勾（container 52 测试全绿佐证）；B-24/B-25 已落地；B-26 缺「试验档 diff 报告 + 丢弃/合并」。
+- B-26 补齐（envs.rs）：克隆写入 .clone-base.json 基线（blake3 清单）；env_diff 三方比对（added/changed/deleted/conflict，主档独删不算试验档变更）；env_discard（active 弹回主档）；env_merge(keep_clone)（冲突逐个裁决，试验档侧删除裁决也会删主档文件；合并后基线重写）。EnvProfile 增 parent 字段（serde default 平滑升级）。
+- 前端：EnvsTab 增 Diff 报告面板 + 冲突勾选裁决 + 丢弃/合并按钮；ipc.ts 增 envDiff/envDiscard/envMerge；i18n 双语 evDiff*/evDiscard*/evMerge* 19 键。envs 5 测试 + container 52 + 主 crate 94 全绿；typecheck 我方文件零错。
+- 文档收口：附录 A P2/P8/P14 打勾、里程碑 M2/M6 标注代码落地、能力现状表三行更新（如实注明 E-4 三宿主矩阵随 B-30）。
+- 再次教训：并行 Edit 同文件三连发必踩（本轮 M2/M6 行又被冲掉一次；EnvsTab 接口块被并发写覆盖一次）——同文件多处改动必须单发顺序执行。

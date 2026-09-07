@@ -208,6 +208,12 @@ export const ipc = {
   tpRemove: (id: string) => invoke<void>("tp_remove", { id }),
   tpPurge: (id: string) => invoke<void>("tp_purge", { id }),
   tpSetGrade: (id: string, grade: string) => invoke<Shell.ThirdApp>("tp_set_grade", { id, grade }),
+  /** 批次W-2：登记/取消 DPI 例外（不响应 DPI 消息的应用，按主屏渲染）。 */
+  tpSetDpiFix: (id: string, dpiFix: boolean) =>
+    invoke<Shell.ThirdApp>("tp_set_dpi_fix", { id, dpiFix }),
+  /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
+  compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
+    invoke<void>("compat_set_override", { id, tier }),
   tpRename: (id: string, name: string) => invoke<Shell.ThirdApp>("tp_rename", { id, name }),
   tpLaunch: (id: string) => invoke<void>("tp_launch", { id }),
   // 批次B：自定义图标（.ico/.png ≤512KB → base64 dataURL 存登记表）+ 以管理员运行
@@ -226,6 +232,22 @@ export const ipc = {
     invoke<Shell.ThirdApp>("profile_set", { id, envRedirect, envSet, sensitive }),
   profileDryrun: (id: string) => invoke<Shell.ProfileDryRun>("profile_dryrun", { id }),
   residueScan: () => invoke<Shell.ResidueEntry[]>("residue_scan"),
+  // E-1：安装模式执行档 + 默认值推断（AI-1 批次，勿删）
+  profileInfer: (id: string) => invoke<Shell.ProfileInfer>("profile_infer", { id }),
+  installModeLaunch: (exe: string, name: string | null) =>
+    invoke<Shell.InstallSession>("install_mode_launch", { exe, name }),
+  installList: () => invoke<Shell.InstallSession[]>("install_list"),
+  installAnalyze: (id: string) => invoke<Shell.InstallReport>("install_analyze", { id }),
+  installCommit: (id: string, appName: string, entry: string | null) =>
+    invoke<Shell.ThirdApp>("install_commit", { id, appName, entry }),
+  installDiscard: (id: string) => invoke<void>("install_discard", { id }),
+  // E-2：残留清理与白名单
+  residueResolve: (path: string) => invoke<void>("residue_resolve", { path }),
+  residueWhitelistAdd: (pattern: string) => invoke<string[]>("residue_whitelist_add", { pattern }),
+  residueWhitelistList: () => invoke<{ builtin: string[]; user: string[] }>("residue_whitelist_list"),
+  // E-3：退出总时序——checkpoint → 断代理 → 残留扫描（AI-1 批次，勿删）
+  exitPrepare: () =>
+    invoke<{ steps: { step: string; ok: boolean; detail: string }[]; residues: Shell.ResidueEntry[] }>("exit_prepare"),
 
   // ---- 批次B-7…B-11（M3 终端与云 AI 矩阵） ----
   termStatus: () => invoke<Shell.TerminalStatus>("term_status"),
@@ -272,6 +294,8 @@ export const ipc = {
   portabilityAssess: (exe: string) => invoke<Shell.PortabilityCard>("portability_assess", { exe }),
   ecosystemMigrate: (exe: string, name: string) =>
     invoke<Shell.MigrateReport>("ecosystem_migrate", { exe, name }),
+  /** 批次B-27：256px Jumbo 图标（资源管理器大图标同源）→ PNG data URL（调用方缓存）。 */
+  iconJumboDataurl: (path: string) => invoke<string>("icon_jumbo_dataurl", { path }),
   steamLibraryScan: () => invoke<Shell.SteamGame[]>("steam_library_scan"),
   steamLaunch: (appId: string) => invoke<void>("steam_launch", { appId }),
   aumidLaunch: (aumid: string) => invoke<void>("aumid_launch", { aumid }),
@@ -292,6 +316,31 @@ export const ipc = {
     invoke<string>("security_report_export", { path, out }),
   securityEnvPreset: () => invoke<string>("security_env_preset"),
 
+  // ---- S-1 防截屏模式 ----
+  shieldSet: (on: boolean) => invoke<{ on: boolean; tagged: number }>("shield_set", { on }),
+  shieldGet: () => invoke<boolean>("shield_get"),
+
+  // ---- X-1…X-3 扩展生态 ----
+  extList: () => invoke<Shell.ExtView[]>("ext_list"),
+  extRescan: () => invoke<Shell.ExtView[]>("ext_rescan"),
+  extSetEnabled: (id: string, on: boolean) => invoke<void>("ext_set_enabled", { id, on }),
+  extOpenWeb: (id: string) => invoke<string>("ext_open_web", { id }),
+  extClose: (id: string) => invoke<void>("ext_close", { id }),
+  extAudit: () => invoke<{ lines: string[] }>("ext_audit"),
+  extInstallExample: () => invoke<string>("ext_install_example"),
+  // X-6 分发与商店
+  extMarketList: () => invoke<Shell.MarketPackView[]>("ext_market_list"),
+  extMarketImport: (path: string) => invoke<string>("ext_market_import", { path }),
+  extMarketInstall: (file: string) => invoke<string>("ext_market_install", { file }),
+  extMarketRemove: (file: string) => invoke<void>("ext_market_remove", { file }),
+  // X-4/X-5 插件与守护进程
+  extPluginLoad: (id: string, libPath: string) => invoke<string>("ext_plugin_load", { id, libPath }),
+  extPluginUnload: (id: string) => invoke<void>("ext_plugin_unload", { id }),
+  extDaemonStart: (id: string, cmd: string, args: string[]) =>
+    invoke<number>("ext_daemon_start", { id, cmd, args }),
+  extDaemonStatus: () => invoke<{ id: string; port: number; stopped: boolean; restarts: number }[]>("ext_daemon_status"),
+  extDaemonExample: () => invoke<string>("ext_daemon_example"),
+
   // ---- B-24 子环境档 ----
   envList: () => invoke<Shell.EnvView[]>("env_list"),
   envCreate: (name: string) => invoke<Shell.EnvView>("env_create", { name }),
@@ -301,6 +350,12 @@ export const ipc = {
   envClone: (id: string, newName: string) =>
     invoke<Shell.EnvCloneReport>("env_clone", { id, newName }),
   envNested: (id: string) => invoke<number>("env_nested", { id }),
+  // B-26：试验档 diff / 丢弃 / 合并（三方冲突裁决）
+  envDiff: (id: string) =>
+    invoke<{ cloneId: string; parentId: string; clean: boolean; entries: { path: string; status: string }[] }>("env_diff", { id }),
+  envDiscard: (id: string) => invoke<void>("env_discard", { id }),
+  envMerge: (id: string, keepClone: string[]) =>
+    invoke<{ merged: number; deleted: number; conflictsResolved: number; conflictsKeptMain: number }>("env_merge", { id, keepClone }),
 
   // ---- B-28 网络层 ----
   netStatus: () => invoke<Shell.NetStatusView>("net_status"),
@@ -376,10 +431,67 @@ export const ipc = {
   winSetAvoidTaskbar: (avoid: boolean) => invoke<void>("win_set_avoid_taskbar", { avoid }),
   winHideToTray: () => invoke<void>("win_hide_to_tray"),
   sysBrief: () => invoke<Shell.SysBrief>("sys_brief"),
+  /** V-3：磁盘磨损/健康读数（按需拉取，无计数器字段为 null）。 */
+  sysDiskHealth: () => invoke<Shell.DiskHealth[]>("sys_disk_health"),
+  /** D-2：直跑档用户级 Shell 覆盖（实验性，默认关闭）。 */
+  directShellStatus: () => invoke<Shell.DirectShellStatus>("directshell_status"),
+  directShellSet: (enable: boolean) => invoke<void>("directshell_set", { enable }),
   sysDisks: () => invoke<Shell.SysDisk[]>("sys_disks"),
 
   // ---- 批次E: 任务栏/开始菜单增强（本机用户名 + 电源操作，零网络） ----
   sysUser: () => invoke<string>("sys_user"),
+  // ---- F-1 系统设置中心：环境系统数据源（运行档/显示器/时区/电源计划） ----
+  sysenvOverview: () => invoke<Shell.SysEnvOverview>("sysenv_overview"),
+  sysenvDisplaySet: (device: string, width: number, height: number, hz: number) =>
+    invoke<string>("sysenv_display_set", { device, width, height, hz }),
+  // ---- F-2 实用工具集：工具数据落盘（tools/<name>.json）+ DPAPI 加密 + 截屏 ----
+  toolDataRead: (name: string) => invoke<string | null>("tool_data_read", { name }),
+  toolDataWrite: (name: string, content: string) => invoke<void>("tool_data_write", { name, content }),
+  toolSecureRead: (name: string) => invoke<string | null>("tool_secure_read", { name }),
+  toolSecureWrite: (name: string, content: string) => invoke<void>("tool_secure_write", { name, content }),
+  /** 抓取虚拟屏，返回 BMP 字节（base64 data URL 供 canvas 加载；区域裁剪在前端）。 */
+  snapshotCapture: () => invoke<number[]>("snapshot_capture"),
+  // ---- F-3 任务管理器增强：进程/启动项/服务（护栏见 taskman.rs） ----
+  procList: () => invoke<Shell.ProcInfo[]>("proc_list"),
+  procKill: (pid: number, force: boolean) => invoke<string>("proc_kill", { pid, force }),
+  perfCpu: () => invoke<number[]>("perf_cpu"),
+  startupList: () => invoke<Shell.StartupItem[]>("startup_list"),
+  startupDisable: (item: Shell.StartupItem) => invoke<void>("startup_disable", { item }),
+  serviceList: () => invoke<Shell.ServiceItem[]>("service_list"),
+  serviceSet: (name: string, start: boolean) => invoke<string>("service_set", { name, start }),
+  // ---- F-4 全局文件搜索：容器内文件名索引（内存快照 + 1.2s 轮询增量重建） ----
+  fsIndexStatus: () => invoke<Shell.FsIndexStatus>("fsindex_status"),
+  fsIndexQuery: (opts: {
+    query: string;
+    ext?: string;
+    kind?: "all" | "file" | "dir";
+    minSize?: number;
+    newerDays?: number;
+    limit?: number;
+  }) =>
+    invoke<Shell.FsHit[]>("fsindex_query", {
+      query: opts.query,
+      ext: opts.ext ?? null,
+      kind: opts.kind ?? "all",
+      minSize: opts.minSize ?? 0,
+      newerDays: opts.newerDays ?? null,
+      limit: opts.limit ?? 500,
+    }),
+  // ---- F-5 音量合成器 + IME 指示 + 媒体控制（audioime.rs） ----
+  mixerList: () => invoke<Shell.MixerSession[]>("mixer_list"),
+  mixerSet: (pid: number, volume: number, muted: boolean) => invoke<void>("mixer_set", { pid, volume, muted }),
+  imeStatus: () => invoke<Shell.ImeStatus>("ime_status"),
+  imeList: () => invoke<Shell.ImeLayout[]>("ime_list"),
+  imeSwitch: (langId: string) => invoke<void>("ime_switch", { langId }),
+  mediaStatus: () => invoke<Shell.MediaStatus | null>("media_status"),
+  // ---- F-6 计划备份 + 自更新 + 自检扩展（sysmaint.rs） ----
+  backupScheduleGet: () => invoke<Shell.BackupSchedule>("backup_schedule_get"),
+  backupScheduleSet: (freq: "none" | "daily" | "weekly", hour: number) =>
+    invoke<Shell.BackupSchedule>("backup_schedule_set", { freq, hour }),
+  backupRunNow: () => invoke<string>("backup_run_now"),
+  updateScan: () => invoke<Shell.UpdateCandidate | null>("update_scan"),
+  updateApply: () => invoke<string>("update_apply"),
+  maintainSelfcheck: () => invoke<Shell.MaintainFinding[]>("maintain_selfcheck"),
   netIp: () => invoke<string | null>("net_ip"),
   powerAction: (action: "lock" | "logoff" | "reboot" | "shutdown") =>
     invoke<void>("power_action", { action }),
@@ -423,14 +535,43 @@ export const ipc = {
     invoke<void>("shell_forward_gesture", { gesture }),
 
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
-  /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */
-  embedLaunch: (id: string) =>
-    invoke<{ attached: boolean; reason: string }>("embed_launch", { id }),
-  embedBounds: (x: number, y: number, w: number, h: number) =>
-    invoke<void>("embed_bounds", { x, y, w, h }),
-  embedVisible: (visible: boolean) => invoke<void>("embed_visible", { visible }),
-  embedClose: () => invoke<void>("embed_close"),
-  embedFocus: () => invoke<void>("embed_focus"),
+  // 批次W-1：多嵌入并发 —— embedId = VWM 虚拟窗口实例 id；缺省映射 "0" 兼容旧单嵌。
+  /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行（rootPid 供框选收编）。
+   *  批次C-4：capture=true = L3 画面捕获会话（前端经 embed-frame 事件合成 + embedInput 转发）。 */
+  embedLaunch: (id: string, embedId: string, arg?: string) =>
+    invoke<{ attached: boolean; reason: string; rootPid?: number; capture?: boolean }>("embed_launch", { id, embedId, arg }),
+  /** 批次C-1：收编同进程树新弹出的主窗口（WinEventHook 探测 → 前端开占位窗后调用）。 */
+  embedAdopt: (tpId: string, hwnd: number, rootPid: number, embedId: string) =>
+    invoke<boolean>("embed_adopt", { tpId, hwnd, rootPid, embedId }),
+  /** 批次C-2：手动框选窗口（等待左键按下取光标下根窗口；null = 超时未选中）。 */
+  embedPick: (timeoutMs?: number) =>
+    invoke<number | null>("embed_pick_window", { timeoutMs: timeoutMs ?? null }),
+  // ---- D-3 全域软件接管看门狗 ----
+  watchGetSettings: () =>
+    invoke<{ enabled: boolean; policy: string; ignored: string[] }>("watch_get_settings"),
+  watchSetSettings: (enabled: boolean, policy: string) =>
+    invoke<void>("watch_set_settings", { enabled, policy }),
+  /** 询问卡处置回执：once（本次保持在桌面）| always（总是忽略该软件）。 */
+  watchDismiss: (image: string, action: "once" | "always") =>
+    invoke<void>("watch_dismiss", { image, action }),
+  embedBounds: (embedId: string, x: number, y: number, w: number, h: number) =>
+    invoke<void>("embed_bounds", { embedId, x, y, w, h }),
+  embedVisible: (embedId: string, visible: boolean) =>
+    invoke<void>("embed_visible", { embedId, visible }),
+  embedClose: (embedId: string) => invoke<void>("embed_close", { embedId }),
+  /** W-1 退出会话：全部嵌入窗口发 WM_CLOSE（30s 超时者留在桌面，绝不强杀）。 */
+  embedCloseAll: () => invoke<number>("embed_close_all"),
+  embedFocus: (embedId: string) => invoke<void>("embed_focus", { embedId }),
+  /** 批次C-4：L3 输入转发 —— 归一化坐标(0..1) PostMessage 直注屏外真实窗口。 */
+  embedInput: (
+    embedId: string,
+    kind: "move" | "down" | "up" | "dbl" | "wheel" | "key" | "char",
+    x: number,
+    y: number,
+    button?: string,
+    key?: number,
+    delta?: number,
+  ) => invoke<void>("embed_input", { embedId, kind, x, y, button, key, delta }),
 
   // ---- 批次E-7: 数据隐私（保险箱 AES-256-GCM / 焚毁 / 自检，全部本机） ----
   vaultStatus: () => invoke<Shell.VaultStatus>("vault_status"),
@@ -448,7 +589,7 @@ export const ipc = {
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
-namespace Shell {
+export namespace Shell {
   export interface DeviceUsage {
     kind: "microphone" | "webcam";
     app: string;
@@ -603,6 +744,33 @@ namespace Shell {
     level: "pass" | "warn";
     detail: string;
   }
+  /** F-1：显示器显示模式。 */
+  export interface SysDisplayMode {
+    width: number;
+    height: number;
+    bits: number;
+    hz: number;
+  }
+  /** F-1：显示器（当前模式 + 可用刷新率/分辨率集合）。 */
+  export interface SysDisplay {
+    device: string;
+    name: string;
+    primary: boolean;
+    current: SysDisplayMode | null;
+    refresh_rates: number[];
+    resolutions: [number, number][];
+  }
+  /** F-1：环境系统总览（vm = VM 档真实可写；否则只读如实降级）。 */
+  export interface SysEnvOverview {
+    vm: boolean;
+    vm_reason: string;
+    displays: SysDisplay[];
+    timezone: string;
+    utc_offset_minutes: number;
+    power_scheme: string;
+    power_scheme_name: string;
+    username: string;
+  }
   /** 批次E（规格 7.2）：Variable 数据目录侧栏节点。 */
   /** 批次E（规格 5.9.2）：开始菜单扫描候选。 */
   export interface TpScanCandidate {
@@ -627,7 +795,21 @@ namespace Shell {
     target: string | null;
     /** 批次B-3（M1）：隔离执行档（apps.json v2；v1 文件读出为空档）。 */
     profile: PortableProfile;
+    /** 批次W-2：DPI 例外（不响应 WM_DPICHANGED 的应用按主屏渲染）。 */
+    dpiFix: boolean;
+    /** 批次C-6：兼容分级（自动探测 + 用户覆盖；旧 apps.json 读出为缺省档）。 */
+    compat: {
+      tier: CompatTier | null;
+      overrideTier: CompatTier | null;
+      probedAt: number | null;
+      evidence: Record<string, unknown>;
+      /** 批次C-5：L4 让位归因（"fullscreen" | "anticheat" | null = 非 L4）。 */
+      hint: string | null;
+      exeMtime: number | null;
+    };
   }
+  /** 批次C-6：四层兼容层级。 */
+  export type CompatTier = "L1" | "L2" | "L3" | "L4" | "Native";
   /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
   export interface PortableProfile {
     envRedirect: Record<string, string>;
@@ -658,6 +840,31 @@ namespace Shell {
     path: string;
     size: number;
     modifiedMs: number;
+    /** E-2：file = 文件落盘；reg = HKCU\Software 新增键 */
+    kind?: "file" | "reg";
+  }
+  /** E-1：默认值推断建议。 */
+  export interface ProfileInfer {
+    id: string;
+    name: string;
+    envRedirect: Record<string, string>;
+    note: string;
+  }
+  /** E-1：安装模式暂存会话。 */
+  export interface InstallSession {
+    id: string;
+    name: string;
+    exe: string;
+    createdAt: number;
+  }
+  /** E-1：落点分析报告。 */
+  export interface InstallReport {
+    id: string;
+    areas: { area: string; files: number; bytes: number }[];
+    exeCandidates: string[];
+    totalFiles: number;
+    totalBytes: number;
+    empty: boolean;
   }
   /** 批次B-7：终端就绪状态。 */
   export interface TerminalStatus {
@@ -780,6 +987,33 @@ namespace Shell {
   export interface SandboxProbe {
     available: boolean;
     detail: string;
+  }
+  /** X-1…X-3：扩展包视图。 */
+  export interface ExtView {
+    id: string;
+    name: string;
+    version: string;
+    kind: string;
+    permissions: string[];
+    description: string | null;
+    enabled: boolean;
+    signed: boolean;
+    crashed: boolean;
+    running: boolean;
+    csp: string | null;
+  }
+  /** X-6：市场 .uxpack 包视图。 */
+  export interface MarketPackView {
+    file: string;
+    id: string;
+    name: string;
+    version: string;
+    kind: string;
+    description: string | null;
+    permissions: string[];
+    installed: boolean;
+    signed: boolean;
+    sizeBytes: number;
   }
   /** B-26：环境克隆报告。 */
   export interface EnvCloneReport {
@@ -945,11 +1179,12 @@ namespace Shell {
     bytes: number | null;
     purgeable: boolean;
   }
-  /** 批次D：CPU/内存简报（sys_brief；cpu=百分比，mem 为字节）。 */
+  /** 批次D：CPU/内存简报（sys_brief；cpu=百分比，mem 为字节）。L-3：runtimeMode 运行档。 */
   export interface SysBrief {
     cpu: number;
     memUsed: number;
     memTotal: number;
+    runtimeMode: "vm" | "light" | "direct";
   }
   /** 批次D：本地盘符容量（sys_disks）。 */
   export interface SysDisk {
@@ -957,6 +1192,104 @@ namespace Shell {
     path: string;
     total: number;
     free: number;
+  }
+  /** V-3：磁盘磨损/健康读数（按需拉取，无计数器字段为 null）。 */
+  export interface DiskHealth {
+    name: string;
+    media: string;
+    bus: string;
+    health: string;
+    wearPct: number | null;
+    tempC: number | null;
+    powerOnHours: number | null;
+  }
+  /** D-2：直跑档 Shell 覆盖状态 + 一键还原脚本路径。 */
+  export interface DirectShellStatus {
+    enabled: boolean;
+    restoreScript: string | null;
+  }
+  /** F-3：进程快照（family=variable 引擎家族 / host 宿主；critical=系统关键禁结束）。 */
+  export interface ProcInfo {
+    pid: number;
+    ppid: number | null;
+    name: string;
+    mem: number;
+    cpu: number;
+    family: "variable" | "host";
+    critical: boolean;
+  }
+  /** F-3：启动项（注册表 Run 键）。 */
+  export interface StartupItem {
+    name: string;
+    cmd: string;
+    hive: "HKCU" | "HKLM";
+  }
+  /** F-3：服务（VM 档 PowerShell）。 */
+  export interface ServiceItem {
+    name: string;
+    display: string;
+    status: string;
+    startType: string;
+  }
+  /** F-4：文件索引命中（容器内文件名/路径索引）。 */
+  export interface FsHit {
+    name: string;
+    path: string;
+    isDir: boolean;
+    size: number;
+    mtime: number;
+  }
+  /** F-4：索引状态（count=条数；building=后台重建中；containerOnly=仅容器内）。 */
+  export interface FsIndexStatus {
+    count: number;
+    builtAt: number;
+    building: boolean;
+    containerOnly: boolean;
+  }
+  /** F-5.2：合成器会话（pid + 进程名；volume 0-1）。 */
+  export interface MixerSession {
+    pid: number;
+    name: string;
+    volume: number;
+    muted: boolean;
+  }
+  /** F-5.3：IME 状态（langId 如 "0804"；chinese null = 无法读取）。 */
+  export interface ImeStatus {
+    langId: string;
+    chinese: boolean | null;
+  }
+  /** F-5.3：键盘布局项。 */
+  export interface ImeLayout {
+    langId: string;
+    name: string;
+  }
+  /** F-5.4：媒体会话（null = 探测不到，前端简化）。 */
+  export interface MediaStatus {
+    title: string;
+    artist: string;
+    positionSec: number;
+    durationSec: number;
+    status: "playing" | "paused" | "other";
+  }
+  /** F-6：计划备份配置。 */
+  export interface BackupSchedule {
+    freq: "none" | "daily" | "weekly" | string;
+    hour: number;
+    lastRunMs: number;
+    lastSource: string;
+    missed: boolean;
+  }
+  /** F-6：本地更新包候选（null = 无更新包）。 */
+  export interface UpdateCandidate {
+    version: string;
+    files: number;
+    minVersion: string | null;
+  }
+  /** F-6：自检发现（ok/warn/info）。 */
+  export interface MaintainFinding {
+    id: string;
+    level: string;
+    message: string;
   }
 }
 
@@ -968,6 +1301,9 @@ export type BluetoothState = Shell.BluetoothState;
 export type BtDevice = Shell.BtDevice;
 export type WifiNetwork = Shell.WifiNetwork;
 export type AudioDeviceInfo = Shell.AudioDeviceInfo;
+export type FileAssoc = Shell.FileAssoc;
+export type InstallSession = Shell.InstallSession;
+export type InstallReport = Shell.InstallReport;
 export type BatteryState = Shell.BatteryState;
 export type BrightnessState = Shell.BrightnessState;
 export type ExEntry = Shell.ExEntry;
@@ -1013,6 +1349,9 @@ export type SysDisk = Shell.SysDisk;
 export type WpMonitor = Shell.WpMonitor;
 export type CompatStatus = Shell.CompatStatus;
 export type ShellExecuteResult = Shell.ShellExecuteResult;
+export type SysDisplayMode = Shell.SysDisplayMode;
+export type SysDisplay = Shell.SysDisplay;
+export type SysEnvOverview = Shell.SysEnvOverview;
 export type ShellIconResult = Shell.ShellIconResult;
 export type ShellContextMenuResult = Shell.ShellContextMenuResult;
 export type WindowsShellGesture = Shell.WindowsShellGesture;

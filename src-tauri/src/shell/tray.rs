@@ -56,6 +56,29 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+static SHIELD_ITEM: std::sync::Mutex<Option<MenuItem<tauri::Wry>>> = std::sync::Mutex::new(None);
+
+/// S-1：托盘一键切换防截屏，同步菜单文字与 tooltip（盾徽提示）。
+pub fn toggle_shield(app: &AppHandle) {
+    let on = !crate::shell::privacy_shield::is_on();
+    let _ = crate::shell::privacy_shield::shield_set(on);
+    if let Ok(g) = SHIELD_ITEM.lock() {
+        if let Some(item) = g.as_ref() {
+            let _ = item.set_text(if on { "防截屏模式 ✓" } else { "防截屏模式" });
+        }
+    }
+    if let Some(tray) = app.tray_by_id("variable-tray") {
+        let _ = tray.set_tooltip(Some(if on {
+            "Variable — Private Desktop Environment 🛡防截屏"
+        } else {
+            "Variable — Private Desktop Environment"
+        }));
+    }
+    // 通知前端同步设置页开关状态
+    use tauri::Emitter;
+    let _ = app.emit("shield://changed", on);
+}
+
 fn focus_desktop(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("desktop") {
         // 批次D（规格 4.3.4）：红灯"隐藏到托盘"后窗口不可见 —— 左键托盘先 show 再聚焦

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Battery, BatteryCharging, Bluetooth, Lock, Mic, Moon, RefreshCw, Speaker,
   Volume2, VolumeX, Wifi, WifiOff, X,
@@ -7,6 +7,7 @@ import { useI18n } from "../../i18n";
 import { CloseLight } from "../../components/CloseLight";
 import type { QuickSection } from "../../state/uiStore";
 import { pushToast } from "../../state/uiStore";
+import { fireNotifyAction } from "../../state/notifyStore";
 import { errMessage, ipc } from "../../lib/ipc";
 import {
   clearNotifications,
@@ -392,6 +393,9 @@ export function QuickPanel(props: {
           </div>
         </div>
 
+        {/* F-5.2 音量合成器：会话级音量/静音（Variable 家族高亮） */}
+        <MixerSection />
+
         <div className="qp-notif-head">
           <span>{t("notifyCenter")}</span>
           {items.length > 0 && (
@@ -419,6 +423,21 @@ export function QuickPanel(props: {
                       <span className="qp-notif-time dim small">
                         {new Date(n.time).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                       </span>
+                      {/* F-5.1：通知动作按钮（最多 2 个；点击即执行内置动作） */}
+                      {n.actions && n.actions.length > 0 && (
+                        <div className="qp-notif-actions" role="group" aria-label={t("notifyActions")}>
+                          {n.actions.slice(0, 2).map((a, i) => (
+                            <button
+                              key={`${n.id}-${i}`}
+                              type="button"
+                              className="qp-notif-act"
+                              onClick={() => fireNotifyAction(a)}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -434,4 +453,94 @@ export function QuickPanel(props: {
 /** 通知中心未读数（Taskbar 铃铛角标用）。 */
 export function useNotifyBadge(): number {
   return useUnreadCount();
+}
+
+/** F-5.2 音量合成器区块：面板展开时加载会话列表，拖杆/静音即时生效。 */
+function MixerSection(): React.ReactElement {
+  const { t } = useI18n();
+  const [sessions, setSessions] = useState<import("../../lib/ipc").Shell.MixerSession[] | null>(null);
+  const [local, setLocal] = useState<Record<number, number>>({});
+
+  const load = useCallback((): void => {
+    void ipc
+      .mixerList()
+      .then(setSessions)
+      .catch(() => setSessions([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <div className="qp-sec">
+      <div className="qp-sec-head">
+        <Volume2 size={15} strokeWidth={1.8} />
+        <span>{t("mixerTitle")}</span>
+        <span className="qp-sec-val dim">
+          {sessions === null ? t("hwUnknown") : `${sessions.length}`}
+        </span>
+      </div>
+      <div className="qp-sec-body">
+        {sessions === null && (
+          // A-3.4 加载态：骨架屏（不用转圈）
+          <div className="skeleton-list" aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="qp-mixer-row">
+                <span className="skeleton qp-mute" />
+                <span className="skeleton qp-net-name" style={{ width: "42%" }} />
+                <span className="skeleton" style={{ flex: 1, height: 14 }} />
+                <span className="skeleton qp-row-value" style={{ width: 30 }} />
+              </div>
+            ))}
+          </div>
+        )}
+        {sessions !== null && sessions.length === 0 && (
+          <p className="dim small qp-hint">{t("mixerEmpty")}</p>
+        )}
+        {(sessions ?? []).map((s) => {
+          const v = local[s.pid] ?? Math.round(s.volume * 100);
+          return (
+            <div key={s.pid} className="qp-mixer-row" title={`${s.name} (${s.pid})`}>
+              <button
+                type="button"
+                className="qp-mute"
+                aria-label={s.muted ? t("unmuteAction") : t("muteAction")}
+                onClick={() => {
+                  void ipc
+                    .mixerSet(s.pid, s.volume, !s.muted)
+                    .then(load)
+                    .catch((e) => pushToast("error", t("mixerTitle"), errMessage(e).message));
+                }}
+              >
+                {s.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+              </button>
+              <span className={`qp-net-name${s.name.includes("variable") ? " fam" : ""}`}>{s.name}</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={v}
+                aria-label={`${s.name} ${t("volume")}`}
+                onChange={(e) => setLocal((m) => ({ ...m, [s.pid]: Number(e.target.value) }))}
+                onPointerUp={() => {
+                  void ipc
+                    .mixerSet(s.pid, v / 100, s.muted)
+                    .then(load)
+                    .catch((e) => pushToast("error", t("mixerTitle"), errMessage(e).message));
+                }}
+                onKeyUp={() => {
+                  void ipc
+                    .mixerSet(s.pid, v / 100, s.muted)
+                    .then(load)
+                    .catch((e) => pushToast("error", t("mixerTitle"), errMessage(e).message));
+                }}
+              />
+              <span className="qp-row-value dim small">{v}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }

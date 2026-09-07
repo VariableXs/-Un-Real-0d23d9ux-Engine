@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$IsoPath,
   [string]$OutDir = "D:\Variable-USB",
   [int]$SizeGB = 150,

@@ -1,16 +1,14 @@
 import { useState } from "react";
-import {
-  Code2, Database, Network, PenLine, ShieldCheck, Sparkles, Usb, WifiOff,
-} from "lucide-react";
+import { Database, ShieldCheck, Usb, WifiOff } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { CloseLight } from "../../components/CloseLight";
-import type { Settings, WallpaperMode } from "../../lib/settings";
+import type { Settings, TaskbarPos, ThemeId, WallpaperMode } from "../../lib/settings";
 
 /**
- * 批次A：首次启动欢迎向导（仅桌面窗口，wizardDone=false 时显示）。
- * 四步：欢迎 → 隐私承诺 → 壁纸选择（实时预览：选完立即生效，向导卡片半透明可看到桌面）
- * → 就绪。随时可跳过；完成或跳过都会写入 wizardDone，之后不再出现。
- * 所有文案走词典（zh/en），零网络、数据仅本机。
+ * A-5 首次体验精修（蓝图 23.5）：向导收敛为三步，总时长 ≤ 90s——
+ *   0 隐私契约卡逐条确认 → 1 壁纸/主题选择（即时预览 + 5 套一键换装预设）
+ *   → 2 布局偏好 + 就绪。随时可跳过；完成或跳过都会写入 wizardDone。
+ * 换装资源全部本地化（零联网）；删减说明：星图叙事/多主题启动动画已弃用。
  */
 
 const WALL_MODES: WallpaperMode[] = ["solid", "gravity", "image", "video", "hybrid", "web"];
@@ -25,13 +23,41 @@ const WALL_LABEL_KEYS: Record<WallpaperMode, string> = {
   system: "wpSystem",
 };
 
+/** A-5 五套一键换装预设 = 壁纸 + 主题 + 字号 + 任务栏方位（资源全本地）。 */
+export interface DressPreset {
+  id: string;
+  theme: ThemeId;
+  wallpaperMode: WallpaperMode;
+  fontSize: number;
+  taskbarPos: TaskbarPos;
+}
+
+export const DRESS_PRESETS: DressPreset[] = [
+  { id: "nebula", theme: "deep-space", wallpaperMode: "hybrid", fontSize: 16, taskbarPos: "bottom" },
+  { id: "sunlight", theme: "paper", wallpaperMode: "solid", fontSize: 17, taskbarPos: "bottom" },
+  { id: "inkstone", theme: "minimal-black", wallpaperMode: "solid", fontSize: 16, taskbarPos: "left" },
+  { id: "clarity", theme: "high-contrast", wallpaperMode: "solid", fontSize: 17, taskbarPos: "bottom" },
+  { id: "focus", theme: "deep-space", wallpaperMode: "web", fontSize: 15, taskbarPos: "top" },
+];
+
+const POSITIONS: TaskbarPos[] = ["bottom", "left", "right", "top"];
+const POS_KEYS: Record<TaskbarPos, string> = {
+  bottom: "tbPosBottom",
+  left: "tbPosLeft",
+  right: "tbPosRight",
+  top: "tbPosTop",
+};
+
 export function WelcomeWizard(props: {
   currentWallpaper: WallpaperMode;
   onPatch: (patch: Partial<Settings>) => void;
 }): React.ReactElement {
   const { t } = useI18n();
   const [step, setStep] = useState(0);
-  const last = step === 3;
+  // 隐私契约逐条确认（步骤 0 的四条全部勾选才可继续）
+  const [ok, setOk] = useState<boolean[]>([false, false, false, false]);
+  const allOk = ok.every(Boolean);
+  const last = step === 2;
 
   const finish = (): void => props.onPatch({ wizardDone: true });
 
@@ -42,7 +68,7 @@ export function WelcomeWizard(props: {
           <CloseLight onClose={finish} />
         </div>
         <div className="wizard-dots" aria-hidden>
-          {[0, 1, 2, 3].map((i) => (
+          {[0, 1, 2].map((i) => (
             <span key={i} className={i === step ? "on" : ""} />
           ))}
         </div>
@@ -50,31 +76,32 @@ export function WelcomeWizard(props: {
         {step === 0 && (
           <section className="wizard-step">
             <div className="wizard-brand">VARIABLE</div>
-            <h2>{t("wizHello")}</h2>
-            <p className="dim">{t("wizIntro")}</p>
-            <ul className="wizard-list">
-              <li><PenLine size={15} /> {t("wizAppWrite")}</li>
-              <li><Network size={15} /> {t("wizAppMind")}</li>
-              <li><Code2 size={15} /> {t("wizAppCode")}</li>
-              <li><Sparkles size={15} /> {t("wizAppFate")}</li>
-            </ul>
-          </section>
-        )}
-
-        {step === 1 && (
-          <section className="wizard-step">
             <h2>{t("wizPrivacyTitle")}</h2>
-            <ul className="wizard-list">
-              <li><WifiOff size={15} /> {t("wizP1")}</li>
-              <li><Database size={15} /> {t("wizP2")}</li>
-              <li><ShieldCheck size={15} /> {t("wizP3")}</li>
-              <li><Usb size={15} /> {t("wizP4")}</li>
+            <ul className="wizard-list" style={{ listStyle: "none", paddingLeft: 0 }}>
+              {[
+                { icon: <WifiOff size={15} />, text: t("wizP1") },
+                { icon: <Database size={15} />, text: t("wizP2") },
+                { icon: <ShieldCheck size={15} />, text: t("wizP3") },
+                { icon: <Usb size={15} />, text: t("wizP4") },
+              ].map((item, i) => (
+                <li key={i}>
+                  <label className="wizard-contract">
+                    <input
+                      type="checkbox"
+                      checked={ok[i]}
+                      onChange={(e) => setOk((p) => p.map((v, j) => (j === i ? e.target.checked : v)))}
+                    />
+                    {item.icon}
+                    <span>{item.text}</span>
+                  </label>
+                </li>
+              ))}
             </ul>
             <p className="dim small">{t("wizPrivacyNote")}</p>
           </section>
         )}
 
-        {step === 2 && (
+        {step === 1 && (
           <section className="wizard-step">
             <h2>{t("wizWallTitle")}</h2>
             <p className="dim small">{t("wizWallHint")}</p>
@@ -91,13 +118,39 @@ export function WelcomeWizard(props: {
                 </button>
               ))}
             </div>
+            {/* A-5：5 套一键换装（即时预览，一键应用全套） */}
+            <h3 className="wizard-sub">{t("wizDressTitle")}</h3>
+            <div className="wizard-walls">
+              {DRESS_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`wizard-wall${props.currentWallpaper === p.wallpaperMode ? " on" : ""}`}
+                  title={t(`dress_${p.id}`)}
+                  onClick={() =>
+                    props.onPatch({ theme: p.theme, wallpaperMode: p.wallpaperMode, fontSize: p.fontSize, taskbarPos: p.taskbarPos })
+                  }
+                >
+                  <span className={`wizard-wall-chip wp-${p.wallpaperMode}`} aria-hidden />
+                  {t(`dress_${p.id}`)}
+                </button>
+              ))}
+            </div>
           </section>
         )}
 
-        {step === 3 && (
+        {step === 2 && (
           <section className="wizard-step">
-            <div className="wizard-brand small">VARIABLE</div>
-            <h2>{t("wizDoneTitle")}</h2>
+            <h2>{t("wizLayoutTitle")}</h2>
+            <p className="dim small">{t("wizLayoutHint")}</p>
+            <div className="wizard-walls" role="group" aria-label={t("taskbarPos")}>
+              {POSITIONS.map((p) => (
+                <button key={p} type="button" className="wizard-wall" onClick={() => props.onPatch({ taskbarPos: p })}>
+                  {t(POS_KEYS[p])}
+                </button>
+              ))}
+            </div>
+            <div className="wizard-brand small" style={{ marginTop: 18 }}>VARIABLE</div>
             <p className="dim">{t("wizDoneBody")}</p>
           </section>
         )}
@@ -117,8 +170,14 @@ export function WelcomeWizard(props: {
                 {t("wizEnter")}
               </button>
             ) : (
-              <button type="button" className="btn primary" autoFocus onClick={() => setStep((s) => s + 1)}>
-                {t("wizNext")}
+              <button
+                type="button"
+                className="btn primary"
+                autoFocus
+                disabled={step === 0 && !allOk}
+                onClick={() => setStep((s) => s + 1)}
+              >
+                {step === 0 ? t("wizAgreeNext") : t("wizNext")}
               </button>
             )}
           </div>

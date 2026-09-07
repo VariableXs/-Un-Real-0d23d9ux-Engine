@@ -36,6 +36,13 @@ aes-gcm = "0.10"
 pbkdf2 = "0.12"
 hmac = "0.12"
 rand = "0.8"
+# X-1 扩展桥：base64（签名/资产路径）+ url（asset 协议 URL）
+base64 = "0.22"
+url = "2"
+# 批次C-2：窗口标题正则兜底匹配（登记可选）
+regex = "1"
+# X-4 插件扩展：动态库加载（计划指定 libloading）
+libloading = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
@@ -60,6 +67,8 @@ windows = { version = "0.58", features = [
   "Win32_System_WindowsProgramming",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_Registry",
+  "Win32_System_Time",
+  "Win32_System_LibraryLoader",
         "Win32_System_Threading",
   "Win32_System_Shutdown",
   "Win32_System_Power",
@@ -69,10 +78,32 @@ windows = { version = "0.58", features = [
   "Win32_UI_Shell",
   "Win32_UI_Shell_PropertiesSystem",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Controls",
+  "Win32_Graphics_Dwm",
+  "Win32_Storage_Packaging_Appx",
   "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Input_Ime",
+  "Media_Control",
+  "Win32_UI_Accessibility",
+  "Win32_UI_HiDpi",
   "Win32_System_JobObjects",
+  "Win32_System_Memory",
   "Win32_Security",
+  "Win32_Security_Cryptography",
+  "Graphics_Capture",
+  "Graphics_DirectX",
+  "Graphics_DirectX_Direct3D11",
+  "Win32_System_WinRT_Direct3D11",
+  "Win32_System_WinRT_Graphics_Capture",
+  "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11",
+  "Win32_Graphics_Dxgi",
+  "Win32_Graphics_Dxgi_Common",
 ] }
+
+[features]
+# L-1：VM 档引擎内 agent（心跳 47631 + 退出通知宿主卸盘）。VM 镜像构建时启用。
+vm-agent = []
 
 [profile.release]
 opt-level = 3

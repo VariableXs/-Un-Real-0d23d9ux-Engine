@@ -263,6 +263,18 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
   display: flex; flex-direction: column; gap: 3px; word-break: break-all;
 }
 
+/* ---- F-6 系统维护分区 ---- */
+.st-sysmaint { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border, #2a2f3a); border-radius: 10px; padding: 12px; }
+.st-sec-title { margin: 2px 0 0; font-size: 13px; font-weight: 600; }
+.st-field-inline { display: inline-flex; align-items: center; gap: 6px; }
+.st-field-inline select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; }
+.st-sysmaint .st-actions button { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--border, #2a2f3a); background: transparent; color: inherit; cursor: pointer; }
+.st-sysmaint .st-actions button.sel { border-color: #6ea8ff; color: #6ea8ff; }
+.st-warn { color: #e6c07b; margin: 0; }
+.st-findings { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.sm-finding-warn { color: #e6c07b; }
+.sm-finding-ok { color: #7ee2a0; }
+
 /* ---- B-18/B-19 浏览器矩阵 ---- */
 .br-tab { display: flex; flex-direction: column; gap: 10px; }
 .br-detected { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -353,3 +365,226 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .sec-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .sec-report { border: 1px solid var(--border, #2a2f3a); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .sec-disasm { max-height: 260px; overflow: auto; font-family: ui-monospace, monospace; font-size: 12px; background: rgba(127,127,127,0.08); border-radius: 8px; padding: 8px; }
+
+/* ---- F-1 系统设置中心：环境系统 ---- */
+.settings-nav .nav-group {
+  margin: 8px 0 2px;
+  padding: 4px 10px 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #8b93a7);
+  border-top: 1px solid var(--border, #2a2f3a);
+}
+.cap-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  vertical-align: middle;
+}
+.cap-badge.full { background: rgba(64, 200, 128, 0.16); color: #58d68d; }
+.cap-badge.ro { background: rgba(255, 176, 64, 0.14); color: #f0b357; }
+.sys-ovline { margin: 0 0 10px; }
+.night-light-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  background: #ff9a3c;
+  mix-blend-mode: multiply;
+}
+
+/* ============================================================
+   F-4 全局文件搜索：内容/文件双页 + 筛选条
+   ============================================================ */
+
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.search-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dim, rgba(255, 255, 255, 0.6));
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.search-tab:hover { color: var(--fg, #fff); }
+
+.search-tab.active {
+  color: var(--fg, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.search-filters input.fs-ext,
+.search-filters select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: inherit;
+  font-size: 12px;
+  padding: 3px 8px;
+  outline: none;
+}
+
+.search-filters input.fs-ext { width: 150px; }
+
+.search-filters .dim { margin-left: auto; }
+
+/* ============================================================
+   F-5 通知动作按钮 + 音量合成器 + 输入法指示器
+   ============================================================ */
+
+.qp-notif-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.qp-notif-act {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.qp-notif-act:hover { background: rgba(255, 255, 255, 0.12); }
+
+.qp-mixer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.qp-mixer-row input[type="range"] { flex: 1; min-width: 80px; }
+
+.qp-mixer-row .qp-net-name {
+  width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.qp-mixer-row .qp-net-name.fam { color: #7ee2a0; }
+
+/* IME 指示器（任务栏时钟左侧） */
+.ime-ind { position: relative; }
+
+.ime-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ime-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ime-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  min-width: 180px;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  z-index: 30;
+}
+
+.ime-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ime-row:hover { background: rgba(255, 255, 255, 0.08); }
+.ime-row.sel { background: rgba(79, 140, 255, 0.2); }
+
+.ime-note { margin: 0 0 6px; }
+
+/* F-5.4 媒体控制指示（任务栏，探测不到则不渲染） */
+.tb-media {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tb-media-icon {
+  display: inline-flex;
+  color: #7ee2a0;
+}
+
+.tb-media-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.tb-media-title,
+.tb-media-artist {
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tb-media-bar {
+  display: block;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+
+.tb-media-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #7ee2a0;
+  transition: width 1.5s linear;
+}
+
+.tb-media-time { white-space: nowrap; }
+

@@ -1,0 +1,11 @@
+D:\2\13\-Un-Real-0d23d9ux-Engine-main\launcher\target\debug\deps\winreg-888bf532efe4e0ed.d: C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\lib.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\common.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\enums.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key_metadata.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_value.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\types.rs
+
+D:\2\13\-Un-Real-0d23d9ux-Engine-main\launcher\target\debug\deps\libwinreg-888bf532efe4e0ed.rmeta: C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\lib.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\common.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\enums.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key_metadata.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_value.rs C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\types.rs
+
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\lib.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\common.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\enums.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_key_metadata.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\reg_value.rs:
+C:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\winreg-0.52.0\src\types.rs:

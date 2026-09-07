@@ -18,8 +18,25 @@ import type { TaskbarPos } from "../../lib/settings";
  * （停靠位置四向由 settings.taskbarPos 决定）。
  */
 
-/** VWM 托管对象：四款官方软件 + 系统窗口（explorer / recycle）+ 第三方应用（tp:<id>）。 */
-export type VwmApp = AppMode | "explorer" | "recycle" | `tp:${string}`;
+/** VWM 托管对象：四款官方软件 + 系统窗口（explorer / recycle）+ 第三方应用（tp:<id>）+ 实用工具（F-2）。 */
+export type VwmToolApp = "calc" | "notes" | "calendar" | "snapshot" | "clipboard";
+export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp;
+
+/** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。 */
+export const VWM_TOOLS: readonly VwmToolApp[] = ["calc", "notes", "calendar", "snapshot", "clipboard"];
+
+export function isVwmTool(app: VwmApp): app is VwmToolApp {
+  return VWM_TOOLS.includes(app as VwmToolApp);
+}
+
+/** 工具窗口默认几何（计算器/便签类比文档窗口小得多，不再套 1180×760）。 */
+const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
+  calc: { w: 660, h: 560 },
+  notes: { w: 380, h: 460 },
+  calendar: { w: 520, h: 600 },
+  snapshot: { w: 760, h: 560 },
+  clipboard: { w: 620, h: 640 },
+};
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
 export function isTpApp(app: VwmApp): app is `tp:${string}` {
@@ -47,6 +64,10 @@ export interface VwmWin {
   z: number;
   /** 最大化/贴靠前的还原几何（null = 无，取当前几何）。 */
   restore: { x: number; y: number; w: number; h: number } | null;
+  /** 批次W-5 标签页化：所属标签组 id（null = 未分组）。 */
+  group: string | null;
+  /** 批次W-5 标签页化：是否为组内当前显示的标签。 */
+  groupActive: boolean;
 }
 
 export interface VwmRect {
@@ -121,13 +142,16 @@ export function computeWorkArea(pos: TaskbarPos, vw: number, vh: number): VwmRec
   return { x: 0, y: 0, w: vw, h: Math.max(200, vh - TB_MAIN) };
 }
 
-function clampRect(r: VwmRect, wa: VwmRect): VwmRect {
-  const w = Math.min(Math.max(r.w, MIN_W), Math.max(MIN_W, wa.w));
-  const h = Math.min(Math.max(r.h, MIN_H), Math.max(MIN_H, wa.h));
+function clampRect(r: VwmRect, wa: VwmRect, minW = MIN_W, minH = MIN_H): VwmRect {
+  const w = Math.min(Math.max(r.w, minW), Math.max(minW, wa.w));
+  const h = Math.min(Math.max(r.h, minH), Math.max(minH, wa.h));
   const x = Math.min(Math.max(r.x, wa.x - w + 120), Math.max(wa.x, wa.x + wa.w - 120));
   const y = Math.min(Math.max(r.y, wa.y), Math.max(wa.y, wa.y + wa.h - 48));
   return { x, y, w, h };
 }
+
+/** 工具窗口最小几何（仍满足拖拽/贴靠的可操作性）。 */
+const TOOL_MIN_SIZE = { w: 300, h: 280 };
 
 // ---------- actions ----------
 
@@ -152,7 +176,7 @@ export function openVwmApp(app: VwmApp, opts?: { forceNew?: boolean }): void {
  * - 回收站：单实例（已存在 → 聚焦）
  * - 文件管理器：无 path → 已有实例聚焦（Windows 习惯）；带 path → 新开实例定位
  */
-export function openVwmSystem(kind: "explorer" | "recycle", path?: string): void {
+export function openVwmSystem(kind: "explorer" | "recycle" | "taskman", path?: string): void {
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === kind);
   if (mine.length > 0 && (kind === "recycle" || !path)) {
@@ -163,19 +187,24 @@ export function openVwmSystem(kind: "explorer" | "recycle", path?: string): void
   openVwmInstance(kind, path ?? null);
 }
 
-function openVwmInstance(app: VwmApp, path: string | null): void {
+function openVwmInstance(app: VwmApp, path: string | null): string {
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === app);
   const wa = s.workArea;
   const saved = loadGeomMap()[app];
+  const toolSize = isVwmTool(app) ? TOOL_DEFAULT_SIZE[app] : null;
+  const minW = toolSize ? TOOL_MIN_SIZE.w : MIN_W;
+  const minH = toolSize ? TOOL_MIN_SIZE.h : MIN_H;
+  const defW = toolSize ? Math.min(toolSize.w, wa.w) : DEFAULT_W;
+  const defH = toolSize ? Math.min(toolSize.h, wa.h) : DEFAULT_H;
   const n = mine.length;
   const base: VwmRect = saved
-    ? clampRect(saved, wa)
+    ? clampRect(saved, wa, minW, minH)
     : {
-        x: wa.x + Math.max(24, Math.round((wa.w - DEFAULT_W) / 2)),
-        y: wa.y + Math.max(16, Math.round((wa.h - DEFAULT_H) / 2.4)),
-        w: Math.min(DEFAULT_W, wa.w),
-        h: Math.min(DEFAULT_H, wa.h),
+        x: wa.x + Math.max(24, Math.round((wa.w - defW) / 2)),
+        y: wa.y + Math.max(16, Math.round((wa.h - defH) / 2.4)),
+        w: Math.min(defW, wa.w),
+        h: Math.min(defH, wa.h),
       };
   // 级联偏移：同软件多开 / 未记忆几何时错位摆放
   const off = (n % 6) * CASCADE;
@@ -185,12 +214,22 @@ function openVwmInstance(app: VwmApp, path: string | null): void {
   patch((st) => ({
     wins: [
       ...st.wins,
-      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null },
+      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false },
     ],
     topZ: z,
     focusedId: id,
     seq: st.seq + 1,
   }));
+  return id;
+}
+
+/**
+ * 批次W-1：第三方应用强制新开实例并返回窗口实例 id（= 嵌入注册中心的 embed_id）。
+ * 第三方每次启动都是独立进程，必须一一对应新虚拟窗口（复用既有实例会把
+ * 新进程的窗口错嵌到旧占位上）。
+ */
+export function openVwmTpNew(app: `tp:${string}`): string {
+  return openVwmInstance(app, null);
 }
 
 function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {
@@ -432,11 +471,115 @@ export function setVwmWorkArea(wa: VwmRect): void {
 export function vwmWindowTitle(app: VwmApp): string {
   if (app === "explorer") return "Variable 文件管理器";
   if (app === "recycle") return "Variable 回收站";
+  if (app === "taskman") return "任务管理器";
   if (isTpApp(app)) {
     const id = tpIdOf(app);
     return (
       getThirdApps().find((a) => a.id === id)?.name ?? `应用 ${id}`
     );
   }
+  // F-2 实用工具窗口标题
+  if (isVwmTool(app)) {
+    const labels: Record<VwmToolApp, string> = {
+      calc: "计算器",
+      notes: "便签",
+      calendar: "日历与时钟",
+      snapshot: "截图工具",
+      clipboard: "剪贴板历史",
+    };
+    return labels[app];
+  }
   return desktopAppLabel(app);
+}
+
+// ---------- 批次W-5：标签页化（可选开启） ----------
+
+const TABS_KEY = "variable:vwm:tabs";
+
+/** 标签页化是否开启（设置→外观；默认关，localStorage 持久）。 */
+export function tabsEnabled(): boolean {
+  try {
+    return localStorage.getItem(TABS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setTabsEnabled(v: boolean): void {
+  try {
+    localStorage.setItem(TABS_KEY, v ? "1" : "0");
+  } catch {
+    /* storage blocked → 本次会话内开关不持久 */
+  }
+}
+
+/** 同应用 ≥ 2 窗口：把 dragId 拖到 targetId 标题栏上 → 合并为一个标签组。 */
+export function groupVwmWins(dragId: string, targetId: string): void {
+  const s = vwmStore.getState();
+  const a = s.wins.find((w) => w.id === dragId);
+  const b = s.wins.find((w) => w.id === targetId);
+  if (!a || !b || a.id === b.id || a.app !== b.app) return;
+  const gid = b.group ?? `vwm-g-${Date.now().toString(36)}`;
+  patch((st) => ({
+    wins: st.wins.map((w) => {
+      if (w.id === dragId || w.id === targetId) return { ...w, group: gid, groupActive: w.id === targetId };
+      if (w.group === gid) return { ...w, groupActive: false };
+      return w;
+    }),
+    focusedId: targetId,
+  }));
+}
+
+/** 拖出标签 = 拆分：该窗口脱离标签组（几何保留原窗口位置）。 */
+export function ungroupVwmWin(id: string): void {
+  patch((st) => ({
+    wins: st.wins.map((w) => (w.id === id ? { ...w, group: null, groupActive: true } : w)),
+  }));
+}
+
+/** 点击标签：切换组内显示（保活语义——非显示成员仅隐藏不卸载业务数据）。 */
+export function activateVwmTab(id: string): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w?.group) return;
+  patch((st) => ({
+    wins: st.wins.map((x) => (x.group === w.group ? { ...x, groupActive: x.id === id } : x)),
+    focusedId: id,
+  }));
+}
+
+/** 关闭组内某个标签（红绿灯只关当前标签；其它成员保活语义不变）。 */
+export function closeVwmTab(id: string): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w?.group) {
+    closeVwmWin(id);
+    return;
+  }
+  const members = s.wins.filter((x) => x.group === w.group);
+  if (members.length <= 2) {
+    // 组只剩两个：关闭一个后另一个自动拆组
+    closeVwmWin(id);
+    patch((st) => ({
+      wins: st.wins.map((x) => (x.group === w.group ? { ...x, group: null, groupActive: true } : x)),
+    }));
+    return;
+  }
+  closeVwmWin(id);
+  // 关闭的是显示中的标签 → 让给相邻成员
+  if (w.groupActive) {
+    const others = members.filter((x) => x.id !== id);
+    const next = others[others.length - 1];
+    if (next) activateVwmTab(next.id);
+  }
+}
+
+/** 组内成员（按 z 序，稳定显示顺序）。 */
+export function groupMembersOf(wins: VwmWin[], group: string): VwmWin[] {
+  return wins.filter((w) => w.group === group).sort((a, b) => a.z - b.z);
+}
+
+/** 窗口是否可见渲染（未分组 / 组内激活成员）。 */
+export function isVwmWinVisible(w: VwmWin): boolean {
+  return !w.group || w.groupActive;
 }

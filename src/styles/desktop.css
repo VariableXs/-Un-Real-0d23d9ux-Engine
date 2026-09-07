@@ -1336,6 +1336,20 @@ button.qp-net-row.as-btn.connected { background: rgb(126 164 255 / 0.12); }
   gap: 4px;
 }
 
+/* 批次C-5：L4 让位归因徽标（AC=反作弊 / FS=独占全屏；悬停看完整说明） */
+.tp-l4-hint {
+  align-self: center;
+  border: 1px solid var(--warn, #d9a441);
+  border-radius: 4px;
+  color: var(--warn, #d9a441);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: help;
+  user-select: none;
+}
+
 /* ---- 批次C · 软件管理器双页签 + 预装软件卸载（规格 5.6） ---- */
 .tp-tabs {
   margin: 0 0 12px;
@@ -1466,6 +1480,27 @@ button.qp-net-row.as-btn.connected { background: rgb(126 164 255 / 0.12); }
   margin: 6px 0 2px;
 }
 .wizard-brand.small { font-size: 20px; }
+/* A-5：隐私契约逐条确认 + 换装预设小标题 */
+.wizard-contract {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: rgb(231 238 251 / 0.9);
+}
+.wizard-contract input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex: none;
+}
+.wizard-contract svg { flex: none; opacity: 0.8; }
+.wizard-sub {
+  margin: 18px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .wizard-list {
   list-style: none;
   margin: 8px 0 0;
@@ -2276,4 +2311,22 @@ button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
 }
 .desktop-icon:active .desktop-icon-tile.has-img {
   transform: none !important;
+}
+
+/* ===== D-4 幕布切换语义（双 Esc 切换 Variable ↔ Windows 桌面，220ms 曲线） ===== */
+@keyframes varCurtainOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.94); }
+}
+@keyframes varCurtainIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.var-curtain-out {
+  animation: varCurtainOut 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: 50% 50%;
+}
+.var-curtain-in {
+  animation: varCurtainIn 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: 50% 50%;
 }

@@ -13,9 +13,12 @@ import {
   type VwmRect,
 } from "./vwm";
 import { useStore } from "../../lib/store";
+import { useI18n } from "../../i18n";
+import { askChoice } from "../../components/Modal";
 import { VirtualWindowFrame } from "./VirtualWindowFrame";
 import { VwmAppContent } from "./VwmAppContent";
-import { isTpApp, type VwmWin } from "./vwm";
+import { isTpApp, closeVwmWin, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
+import { setEmbedSessionState, clearEmbedSessionState, bumpEmbedResync, embedStateStore } from "./embedState";
 import { ipc } from "../../lib/ipc";
 
 /**
@@ -27,6 +30,7 @@ import { ipc } from "../../lib/ipc";
  * - 最小化窗口保持挂载（display:none），恢复零重载、状态零丢失
  */
 export function VirtualWindowManager(props: { settings: Settings }): React.ReactElement | null {
+  const { t } = useI18n();
   const wins = useStore(vwmStore, (s) => s.wins);
   const focusedId = useStore(vwmStore, (s) => s.focusedId);
   const snapPreview = useStore(vwmStore, (s) => s.snapPreview);
@@ -104,11 +108,130 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
     };
   }, []);
 
+  // 批次W-3 + C-1：嵌入监护上报（embed://state）→ 占位卡状态机。
+  // exited/orphaned = 占位卡；running = 自动重嵌成功 → 清占位卡 + 边界重同步。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ embedId: string; state: "exited" | "orphaned" | "running" }>("embed://state", (e) => {
+      if (e.payload.state === "running") {
+        clearEmbedSessionState(e.payload.embedId);
+        bumpEmbedResync(e.payload.embedId);
+      } else {
+        setEmbedSessionState(e.payload.embedId, e.payload.state);
+      }
+    });
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
+  // 批次C-1：同进程树新主窗口（如 Chrome 设置页）自动收编为新嵌入会话：
+  // WinEventHook 探测 → embed://popup → 开新占位窗（embed_id）→ embed_adopt 重父化登记。
+  // adopt 失败（窗口已销毁）→ 关闭刚开的占位窗，不伪造成功。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ origin: string; tpId: string; hwnd: number; rootPid: number }>(
+      "embed://popup",
+      (e) => {
+        const { tpId, hwnd, rootPid } = e.payload;
+        const embedId = openVwmTpNew(`tp:${tpId}`);
+        void ipc
+          .embedAdopt(tpId, hwnd, rootPid, embedId)
+          .then((ok) => {
+            if (!ok) closeVwmWinSafe(embedId);
+          })
+          .catch(() => closeVwmWinSafe(embedId));
+      },
+    );
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
+  // D-3 全域软件接管看门狗：逃逸窗口事件 → auto 策略直接收编；
+  // ask 策略弹询问卡（收进 Variable / 本次保持在桌面 / 总是忽略）。
+  // 后端已排除白名单、L4 全屏让位与维护模式；默认「询问」不自动回收。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{
+      hwnd: number;
+      rootPid: number;
+      title: string;
+      image: string;
+      auto: boolean;
+    }>("watch://escape", (e) => {
+      const { hwnd, rootPid, title, image, auto } = e.payload;
+      const adopt = (): void => {
+        const embedId = openVwmTpNew(`tp:${image.replace(/\.exe$/i, "") || "watch"}`);
+        void ipc
+          .embedAdopt(image, hwnd, rootPid, embedId)
+          .then((ok) => {
+            if (!ok) closeVwmWinSafe(embedId);
+          })
+          .catch(() => closeVwmWinSafe(embedId));
+      };
+      if (auto) {
+        adopt();
+        return;
+      }
+      void (async () => {
+        const choice = await askChoice({
+          title: t("watchAskTitle"),
+          body: `${t("watchAskBody")} ${title || image}`,
+          options: [
+            { value: "adopt", label: t("watchAdopt") },
+            { value: "once", label: t("watchKeepOnce") },
+            { value: "always", label: t("watchIgnoreAlways") },
+          ],
+        });
+        if (!choice || choice === "once") {
+          void ipc.watchDismiss(image, "once").catch(() => {});
+          return;
+        }
+        if (choice === "always") {
+          void ipc.watchDismiss(image, "always").catch(() => {});
+          return;
+        }
+        adopt();
+      })();
+    });
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
   if (wins.length === 0) return null;
 
   return (
     <div className="vwm-layer" role="presentation">
-      {wins.map((w) => (
+      {wins.filter(isVwmWinVisible).map((w) => (
         <VirtualWindowFrame
           key={w.id}
           win={w}
@@ -121,7 +244,7 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
         </VirtualWindowFrame>
       ))}
       {wins.map((w) => (
-        <EmbedBridge key={`bridge-${w.id}`} win={w} />
+        <EmbedBridge key={`bridge-${w.id}`} win={w} focused={w.id === focusedId} visible={isVwmWinVisible(w)} />
       ))}
       {snapPreview && snapPreview.w > 0 && (
         <div
@@ -138,34 +261,82 @@ function snapPreviewStyle(r: VwmRect): React.CSSProperties {
   return { left: r.x, top: r.y, width: r.w, height: r.h };
 }
 
+/** 批次C-1：adopt 失败时收掉刚开的占位窗（容错，不影响其它窗口）。 */
+function closeVwmWinSafe(id: string): void {
+  try {
+    closeVwmWin(id);
+  } catch {
+    /* 窗口已不存在 */
+  }
+}
+
+// ---------- 批次W-2：每显示器 DPI 感知 ----------
+/** 多屏 API 结构（Chromium window-management；WebView2 需权限，可能拿不到）。 */
+type ScreenDetails = {
+  screens: Array<{ left: number; top: number; width: number; height: number; devicePixelRatio: number }>;
+};
+let screenDetails: ScreenDetails | null | undefined; // undefined=未探测 null=不可用
+
+/** 窗口中心所在显示器的 devicePixelRatio（混合 DPI 双屏关键）；拿不到 → 主屏值回退。 */
+function monitorDprAt(cx: number, cy: number): number {
+  if (screenDetails === undefined) {
+    screenDetails = null;
+    const g = (window as unknown as { getScreenDetails?: () => Promise<ScreenDetails> })
+      .getScreenDetails;
+    if (g) void g().then((d) => (screenDetails = d)).catch(() => {});
+  }
+  if (screenDetails) {
+    for (const s of screenDetails.screens) {
+      if (cx >= s.left && cx < s.left + s.width && cy >= s.top && cy < s.top + s.height) {
+        return s.devicePixelRatio || 1;
+      }
+    }
+  }
+  return window.devicePixelRatio || 1;
+}
+
 /**
  * 批次E-16：第三方应用嵌入窗口的边界同步桥。
  * 原生子窗口恒渲染在 webview 之上，位置跟随虚拟窗口（内容区 = 标题栏以下）；
- * 最小化=隐藏、恢复=显示；卸载（关闭完成）= 关闭嵌入窗口。
+ * 最小化=隐藏、恢复=显示；卸载（关闭完成）= 关闭该会话的嵌入窗口。
+ * 批次W-1：多嵌入并发 —— 所有调用携带 embedId（= VWM 窗口实例 id）；
+ * 焦点仲裁：Z 序顶（聚焦）的嵌入窗口获得原生键盘焦点。
  */
-function EmbedBridge({ win }: { win: VwmWin }): null {
+function EmbedBridge({ win, focused, visible = true }: { win: VwmWin; focused: boolean; visible?: boolean }): null {
+  const embedId = win.id;
+  // 批次C-1：自动重嵌成功后（running 事件）→ 重发边界/显示，恢复画面跟随
+  const resync = useStore(embedStateStore, (s) => s.resync[embedId] ?? 0);
   useEffect(() => {
     if (!isTpApp(win.app)) return;
-    const dpr = window.devicePixelRatio || 1;
-    if (win.minimized) {
-      void ipc.embedVisible(false).catch(() => {});
+    // 批次W-2：按窗口中心所在显示器的实际 DPR 换算物理像素（混合 DPI 双屏）
+    const dpr = monitorDprAt(win.x + win.w / 2, win.y + win.h / 2);
+    // 批次W-5：标签组非显示成员 → 隐藏原生嵌入窗口（保活，不关闭会话）
+    if (win.minimized || !visible) {
+      void ipc.embedVisible(embedId, false).catch(() => {});
       return;
     }
     void ipc
       .embedBounds(
+        embedId,
         Math.round(win.x * dpr),
         Math.round((win.y + 38) * dpr),
         Math.round(win.w * dpr),
         Math.round((win.h - 38) * dpr),
       )
-      .then(() => ipc.embedVisible(true))
+      .then(() => ipc.embedVisible(embedId, true))
       .catch(() => {});
-  }, [win.app, win.x, win.y, win.w, win.h, win.minimized]);
+  }, [win.app, win.x, win.y, win.w, win.h, win.minimized, visible, embedId, resync]);
+  // W-1 焦点仲裁：点击非顶嵌入窗口 → 前端先置顶（pointerFocusVwm）→ 本效应移交原生焦点
+  // 批次W-5：标签组非显示成员不参与焦点仲裁
+  useEffect(() => {
+    if (!isTpApp(win.app) || !focused || win.minimized || !visible) return;
+    void ipc.embedFocus(embedId).catch(() => {});
+  }, [win.app, win.minimized, focused, visible, embedId]);
   useEffect(() => {
     const tp = isTpApp(win.app);
     return () => {
-      if (tp) void ipc.embedClose().catch(() => {});
+      if (tp) void ipc.embedClose(embedId).catch(() => {});
     };
-  }, [win.app]);
+  }, [win.app, embedId]);
   return null;
 }

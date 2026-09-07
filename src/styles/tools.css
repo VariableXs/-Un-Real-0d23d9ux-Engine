@@ -1,0 +1,748 @@
+/* ============================================================
+   F-2 实用工具集（VWM 虚拟窗口应用）样式
+   计算器 / 便签 / 日历时钟 / 截图 / 剪贴板历史
+   设计语言沿用 desktop.css 的变量与控件基线。
+   ============================================================ */
+
+/* ---------- 通用：工具窗口内边距与标签页 ---------- */
+.vwm-tool {
+  overflow: hidden;
+  background: var(--surface, rgba(18, 20, 28, 0.86));
+}
+
+.calc-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.calc-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.calc-tab:hover { color: var(--fg, #fff); }
+
+.calc-tab.active {
+  color: var(--fg, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 计算器 ---------- */
+.calc-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 10px 12px;
+  gap: 8px;
+}
+
+.calc-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
+.calc-left {
+  flex: 1.5;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calc-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calc-expr {
+  width: 100%;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-result {
+  min-height: 22px;
+  text-align: right;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent, #7aa2f7);
+  font-variant-numeric: tabular-nums;
+}
+
+.calc-sci-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.calc-pad {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  flex: 1;
+}
+
+.calc-key {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--fg, #fff);
+  border-radius: 8px;
+  font-size: 15px;
+  min-height: 40px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calc-key:hover { background: rgba(255, 255, 255, 0.1); }
+.calc-key:active { transform: translateY(1px); }
+
+.calc-key-wide { grid-column: span 2; }
+
+.calc-key-fn { color: var(--dim, rgba(255, 255, 255, 0.7)); font-size: 13px; }
+
+.calc-key-op { background: rgba(122, 162, 247, 0.16); }
+
+.calc-key-eq {
+  background: var(--accent, #7aa2f7);
+  color: #0c0f16;
+  font-weight: 700;
+}
+
+.calc-history {
+  flex: 1;
+  min-width: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.calc-hist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
+}
+
+.calc-hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.calc-hist-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 6px 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: right;
+}
+
+.calc-hist-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+.calc-hist-res { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* 程序员模式 */
+.calc-prog {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.calc-prog-bases {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 换算模式 */
+.calc-conv {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.calc-conv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 8px;
+  max-width: 460px;
+}
+
+.calc-conv-result {
+  align-self: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent, #7aa2f7);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+/* ---------- 便签 ---------- */
+.notes-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  flex-wrap: wrap;
+}
+
+.notes-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  padding: 0;
+}
+
+.notes-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px;
+  width: 150px;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notes-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 6px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.notes-item:hover, .notes-item.active { background: rgba(255, 255, 255, 0.07); }
+
+.notes-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+.notes-editor {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.6;
+  outline: none;
+}
+
+/* ---------- 日历与时钟 ---------- */
+.cal-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-bottom: 10px;
+}
+
+.cal-month, .cal-world, .cal-center, .cal-alarm {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+
+.cal-wd { padding: 2px 0; }
+
+.cal-cell {
+  padding: 6px 0;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-today {
+  background: var(--accent, #7aa2f7);
+  color: #0c0f16;
+  font-weight: 700;
+}
+
+.cal-world { list-style: none; margin: 0; }
+
+.cal-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cal-zone-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.cal-center { align-items: center; justify-content: center; flex: 1; }
+
+.cal-bigtime {
+  font-size: 44px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.cal-alarm-list { list-style: none; margin: 0; padding: 0; }
+
+/* ---------- 截图工具 ---------- */
+.shot-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shot-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  flex-wrap: wrap;
+}
+
+.shot-canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8px;
+}
+
+.shot-canvas {
+  max-width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.shot-editing { cursor: crosshair; }
+
+/* ---------- 剪贴板历史 ---------- */
+.clip-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.clip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 10px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.clip-body {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+
+.clip-body:hover { color: var(--accent, #7aa2f7); }
+
+.clip-kind {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(122, 162, 247, 0.18);
+}
+
+.clip-kind-file { background: rgba(187, 247, 208, 0.18); }
+.clip-kind-text { background: rgba(255, 255, 255, 0.1); }
+
+.clip-thumb {
+  width: 56px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: none;
+}
+
+/* ---------- F-2.6 快速预览 ---------- */
+.qprev-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(4, 6, 12, 0.72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.qprev-card {
+  width: min(760px, 90vw);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, rgba(10, 15, 28, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.qprev-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+.qprev-head > span:first-child { flex: 1; }
+
+.qprev-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.qprev-media {
+  max-width: 100%;
+  max-height: 60vh;
+  border-radius: 6px;
+}
+
+.qprev-text {
+  width: 100%;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: transparent;
+  font-family: Consolas, monospace;
+  max-height: 58vh;
+  overflow: auto;
+}
+
+.qprev-frame {
+  width: 100%;
+  height: 58vh;
+  border: none;
+  background: #fff;
+  border-radius: 6px;
+}
+
+/* ============================================================
+   F-3 任务管理器（VWM 系统窗口 .vwm-taskman）
+   ============================================================ */
+
+.tman-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--surface, rgba(18, 20, 28, 0.92));
+  color: var(--fg, #fff);
+}
+
+.tman-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tman-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tman-tab:hover { color: var(--fg, #fff); }
+
+.tman-tab.active {
+  color: var(--fg, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 进程页 ---------- */
+.tman-proc, .tman-startup, .tman-service {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tman-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.tman-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 4px 8px;
+  min-width: 200px;
+}
+
+.tman-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font-size: 12px;
+  flex: 1;
+}
+
+.tman-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ==================== A-3.4 状态设计：骨架屏（shimmer，代替转圈） ==================== */
+.skeleton-list { min-height: 40px; }
+.skeleton {
+  display: inline-block;
+  border-radius: var(--r-chip, 4px);
+  background: linear-gradient(
+    100deg,
+    rgb(255 255 255 / 0.06) 40%,
+    rgb(255 255 255 / 0.13) 50%,
+    rgb(255 255 255 / 0.06) 60%
+  );
+  background-size: 240% 100%;
+  animation: skeleton-shimmer 1.4s var(--ease-standard, ease) infinite;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 120% 0; }
+  100% { background-position: -120% 0; }
+}
+/* reduceMotion / 低档位：shimmer 降为静态占位 */
+[data-reduce-motion="true"] .skeleton { animation: none; }
+
+.tman-table {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+
+.tman-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.6fr) 70px 64px 84px 110px 36px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.tman-startup .tman-row { grid-template-columns: minmax(100px, 0.9fr) minmax(160px, 2fr) 70px 36px; }
+.tman-service .tman-row { grid-template-columns: minmax(110px, 1fr) minmax(140px, 1.6fr) 100px 36px; }
+
+.tman-row:not(.tman-head):hover { background: rgba(255, 255, 255, 0.05); }
+.tman-row.sel { background: rgba(79, 140, 255, 0.18); }
+.tman-row.fam .tman-badge { color: #7ee2a0; }
+
+.tman-head {
+  position: sticky;
+  top: 0;
+  background: var(--surface, rgba(18, 20, 28, 0.98));
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-size: 11px;
+  z-index: 1;
+}
+
+.tman-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.tman-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  white-space: nowrap;
+}
+
+.tman-badge.fam { background: rgba(60, 200, 120, 0.16); color: #7ee2a0; }
+.tman-badge.host { background: rgba(255, 255, 255, 0.08); }
+
+.tman-act { text-align: right; }
+.tman-act .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.tman-note {
+  padding: 6px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 0;
+}
+
+/* ---------- 性能页 ---------- */
+.tman-perf { padding: 12px; overflow: auto; }
+
+.tman-perf-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 12px;
+}
+
+.tman-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.tman-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin: 0 0 8px;
+}
+
+.tman-chart {
+  width: 100%;
+  height: 140px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tman-cores {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  align-items: flex-end;
+  height: 64px;
+  flex-wrap: wrap;
+}
+
+.tman-core {
+  width: 16px;
+  height: 56px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  text-align: center;
+}
+
+.tman-core-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, #4f8cff, #2b5fd9);
+  border-radius: 4px 4px 0 0;
+}
+
+.tman-core span {
+  position: absolute;
+  bottom: -14px;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  color: var(--dim, rgba(255, 255, 255, 0.5));
+}
+
+.tman-big { font-size: 20px; font-weight: 600; margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
+
+.tman-membar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.tman-membar > div {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4f8cff, #7ee2a0);
+  transition: width 0.6s ease;
+}

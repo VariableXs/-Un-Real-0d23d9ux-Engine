@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowRight, ArrowUp, File as FileIcon, Folder, FolderOpen, FolderPlus,
   HardDrive, Image as ImageIcon, LayoutGrid, List, RefreshCw, Search, Share2, Star, Trash2, X,
 } from "lucide-react";
-import { askConfirm, askPrompt, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
+import { askChoice, askConfirm, askPrompt, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
 import { ContextMenuHost, openContextMenu, type MenuItem } from "../../components/ContextMenu";
 import { ToastHost } from "../../components/ToastHost";
 import { WindowControls } from "../../components/WindowControls";
@@ -13,9 +13,11 @@ import { errMessage, ipc, type ExCopyMode, type ExEntry, type ExListing, type Ex
 import { beginXDrag } from "../../lib/xflow";
 import { pushToast } from "../../state/uiStore";
 import { openExplorerWindow, trackSelfGeom } from "../windows/appWindows";
+import { getThirdApps } from "../launcher/thirdApps";
 import { openVwmSystem } from "../windows/vwm";
 import { RecycleView } from "../recycle/RecycleView";
 import { showNativeContextMenu } from "../compat/ShellProxy";
+import { QuickPreview, type QuickPreviewTarget } from "./QuickPreview";
 
 /**
  * 批次C 系统窗口：文件管理器完整版（explorer.html，?view=recycle 时载入回收站）。
@@ -211,6 +213,8 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   const [listing, setListing] = useState<ExListing | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // F-2.6 空格快速预览
+  const [preview, setPreview] = useState<QuickPreviewTarget | null>(null);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState<ExSearchResult | null>(null);
   const [searching, setSearching] = useState(false);
@@ -430,11 +434,53 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
 
   const openEntry = useCallback(
     (e: ExEntry): void => {
-      if (e.kind === "dir") nav(e.path);
-      else
-        void ipc.openPath(e.path).catch((err) => {
-          pushToast("error", t("openFailed"), errMessage(err).message);
+      if (e.kind === "dir") {
+        nav(e.path);
+        return;
+      }
+      // 批次B-27 环境内文件关联表：有记忆默认 → 直接以登记软件打开
+      //（嵌入通道复用 C-*）；未知格式 → 「打开方式」选择器（已登记软件 + 用宿主打开），
+      // 选择后记忆默认。容器内文件用宿主打开 = open_path（宿主默认程序）。
+      void (async () => {
+        const dot = e.path.lastIndexOf(".");
+        const ext = dot > 0 ? e.path.slice(dot + 1).toLowerCase() : "";
+        try {
+          if (ext) {
+            const assoc = await ipc.fileAssocResolve(ext);
+            if (assoc) {
+              const { launchThirdApp } = await import("../launcher/thirdApps");
+              await launchThirdApp(assoc.appId, assoc.appName, e.path);
+              return;
+            }
+          }
+        } catch {
+          /* 关联表不可用 → 走选择器 */
+        }
+        const apps = getThirdApps();
+        const options = [
+          ...apps.slice(0, 12).map((a) => ({ value: `app:${a.id}`, label: a.name })),
+          { value: "host", label: t("assocHostOpen") },
+        ];
+        const choice = await askChoice({
+          title: t("assocTitle"),
+          body: `${t("assocBody")} ${e.path.split(/[\\/]/).pop() ?? e.path}`,
+          options,
         });
+        if (!choice) return;
+        if (choice === "host") {
+          await ipc.openPath(e.path).catch((err) => pushToast("error", t("openFailed"), errMessage(err).message));
+          return;
+        }
+        const id = choice.slice(4);
+        const app = apps.find((a) => a.id === id);
+        try {
+          if (ext) await ipc.fileAssocSet(ext, id, app?.name ?? id);
+        } catch {
+          /* 记忆失败不影响本次打开 */
+        }
+        const { launchThirdApp } = await import("../launcher/thirdApps");
+        await launchThirdApp(id, app?.name ?? id, e.path);
+      })();
     },
     [nav, t],
   );
@@ -739,7 +785,16 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         e.preventDefault();
         openEntry(selEntry);
       } else if (e.key === "Escape") {
+        setPreview(null); // F-2.6 空格预览优先关闭，其次取消选择
         setSelected(null);
+      } else if (e.code === "Space" && selEntry) {
+        // F-2.6 快速预览：空格呼出（焦点在输入框/文本域时不触发）
+        const ae = document.activeElement;
+        const typing = ae instanceof HTMLElement && (ae.isContentEditable || ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
+        if (!typing) {
+          e.preventDefault();
+          setPreview({ name: selEntry.name, path: selEntry.path, kind: selEntry.kind, ext: selEntry.ext, size: selEntry.size });
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -874,6 +929,9 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   return (
     <>
       {!embedded && <ExTitlebar title={title} />}
+      {preview && (
+        <QuickPreview target={preview} onClose={() => setPreview(null)} />
+      )}
       <div className="ex-body">
         <div className="ex-explorer">
           {/* 标签页（规格 7.7） */}

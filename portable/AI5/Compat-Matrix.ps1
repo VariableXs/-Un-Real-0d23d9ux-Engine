@@ -1,5 +1,5 @@
 ﻿param(
-  [ValidateSet("List", "Run", "Report", "Fill-ExeHint")]
+  [ValidateSet("List", "Run", "Report", "Fill-ExeHint", "Run-Embed", "Report-Embed")]
   [string]$Action = "List",
   [string]$MatrixFile = "$PSScriptRoot\Data\compat-matrix.json",
   [string]$Category = "",                 # 只跑某一类: office/design/dev/tools/game
@@ -18,9 +18,15 @@
 #   .\Compat-Matrix.ps1 -Action Run -Category office       # 真机实测：逐项启动计时（只测已安装项）
 #   .\Compat-Matrix.ps1 -Action Run -Filter Blender -Limit 3
 #   .\Compat-Matrix.ps1 -Action Report                     # 由结果生成 Markdown 报告
+#   .\Compat-Matrix.ps1 -Action Run-Embed -Filter Notepad  # C-8 嵌入验证：tier/captureMs/crash 自动采，inputOk/dpiOk 真机人工回填
+#   .\Compat-Matrix.ps1 -Action Report-Embed                # 由嵌入验证结果生成 Markdown 报告
 # 说明:
 #   * Run 只测「在 Data\Apps 下找得到主程序」的条目，找不到的记 skip，不臆造结果；
 #   * 未安装条目保持 todo，等真机装好后重跑即可增量回填。
+#   * Run-Embed（批次C-8，主计划 7.8）：启动 → 等主窗口 → 窗口样式探测分层
+#     （决策树镜像 compat_probe.rs）。tier/captureMs/crash 为脚本实测；
+#     inputOk/dpiOk 需在 Variable 真机嵌入会话中人工观察后改 "todo" 为
+#     true/false（本脚本不臆造）。
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "AI5-Lib.ps1")
@@ -239,11 +245,182 @@ function Invoke-Report {
   return 0
 }
 
+# ---------- 批次C-8：嵌入验证（主计划 7.8） ----------
+# tier 决策树镜像 src-tauri/src/shell/compat_probe.rs（优先级顺序一致）：
+# UWP 类名 → L3；DWM cloaked → L3；独占全屏/反作弊类名 → L4；
+# 标准标题栏 + 非客户区 ≥8px → L1；有标题栏但边框极薄（自绘）→ L2；其余 → L2。
+if (-not ("Variable.CompatProbe" -as [type])) {
+  Add-Type -Namespace Variable -Name CompatProbe -MemberDefinition @"
+    [DllImport("user32.dll")] public static extern int GetWindowLong(System.IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] public static extern int GetClassName(System.IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(System.IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern bool GetClientRect(System.IntPtr hWnd, out RECT lpRect);
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(System.IntPtr hwnd, int attr, out int attrValue, int attrSize);
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+"@
+}
+
+function Get-EmbedTier {
+  param([Parameter(Mandatory = $true)][System.IntPtr]$Hwnd)
+  $style   = [Variable.CompatProbe]::GetWindowLong($Hwnd, -16)      # GWL_STYLE
+  $exStyle = [Variable.CompatProbe]::GetWindowLong($Hwnd, -20)      # GWL_EXSTYLE
+  $sb = New-Object System.Text.StringBuilder 256
+  [void][Variable.CompatProbe]::GetClassName($Hwnd, $sb, 256)
+  $class = $sb.ToString()
+  $wr = New-Object Variable.CompatProbe+RECT
+  $cr = New-Object Variable.CompatProbe+RECT
+  [void][Variable.CompatProbe]::GetWindowRect($Hwnd, [ref]$wr)
+  [void][Variable.CompatProbe]::GetClientRect($Hwnd, [ref]$cr)
+  $ncW = ($wr.Right - $wr.Left) - ($cr.Right - $cr.Left)
+  $ncH = ($wr.Bottom - $wr.Top) - ($cr.Bottom - $cr.Top)
+  $cloaked = 0
+  [void][Variable.CompatProbe]::DwmGetWindowAttribute($Hwnd, 14, [ref]$cloaked, 4)  # DWMWA_CLOAKED
+  $hasCaption = (($style -band 0x00C00000) -ne 0)                    # WS_CAPTION
+  $lower = $class.ToLowerInvariant()
+  $markers = @("unrealwindow", "easyanticheat", "beservice", "eaclaunchservice", "startup", "buriedscene")
+  $reason = ""
+  if ($lower -like "*windows.ui.core.corewindow*" -or $lower -eq "applicationframewindow") {
+    $tier = "L3"; $reason = "uwp window"
+  } elseif ($cloaked -ne 0) {
+    $tier = "L3"; $reason = "dwm cloaked"
+  } elseif (@($markers | Where-Object { $lower.Contains($_) }).Count -gt 0) {
+    $tier = "L4"; $reason = "exclusive/anticheat class"
+  } elseif ($hasCaption -and $ncW -ge 8 -and $ncH -ge 8) {
+    $tier = "L1"; $reason = "standard caption + nonclient frame"
+  } elseif ($hasCaption -and ($ncW -lt 8 -or $ncH -lt 8)) {
+    $tier = "L2"; $reason = "custom-drawn frame"
+  } else {
+    $tier = "L2"; $reason = "borderless/self-drawn window"
+  }
+  return @{ tier = $tier; reason = $reason; className = $class; style = $style; exStyle = $exStyle; nonClientW = $ncW; nonClientH = $ncH; cloaked = $cloaked }
+}
+
+function Measure-AppEmbed {
+  param([Parameter(Mandatory = $true)][string]$ExePath)
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $p = $null
+  try {
+    $p = Start-Process -FilePath $ExePath -PassThru -ErrorAction Stop
+    $hwnd = [System.IntPtr]::Zero
+    while ($sw.Elapsed.TotalSeconds -lt 30) {
+      $p.Refresh()
+      if ($p.HasExited) { break }
+      if ($p.MainWindowHandle -ne [System.IntPtr]::Zero) { $hwnd = $p.MainWindowHandle; break }
+      Start-Sleep -Milliseconds 100
+    }
+    $sw.Stop()
+    $crash = $false
+    if ($null -ne $p) { $p.Refresh(); $crash = $p.HasExited }
+    $captureMs = $null
+    $probe = $null
+    if ($hwnd -ne [System.IntPtr]::Zero -and -not $crash) {
+      $captureMs = [math]::Round($sw.Elapsed.TotalMilliseconds, 0)
+      $probe = Get-EmbedTier -Hwnd $hwnd
+    }
+    # 收尾：友好关闭，失败再强杀（只影响本次被测进程）
+    if ($null -ne $p -and -not $p.HasExited) {
+      try { $p.CloseMainWindow() | Out-Null; Start-Sleep -Milliseconds 500 } catch { }
+      if (-not $p.HasExited) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch { } }
+    }
+    return @{ ok = $true; error = ""; captureMs = $captureMs; crash = $crash; probe = $probe }
+  } catch {
+    if ($sw.IsRunning) { $sw.Stop() }
+    if ($null -ne $p -and -not $p.HasExited) { try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch { } }
+    return @{ ok = $false; error = $_.Exception.Message; captureMs = $null; crash = $false; probe = $null }
+  }
+}
+
+function Invoke-RunEmbed {
+  $m = Get-Matrix
+  New-Ai5Directory -Path $OutDir | Out-Null
+  $rows = @()
+  Write-Ai5 "C-8 嵌入验证开始（$($m.apps.Count) 条；tier/captureMs/crash 脚本实测，inputOk/dpiOk 留真机人工回填）" "Step"
+  $i = 0
+  foreach ($a in $m.apps) {
+    $i++
+    $exe = Find-AppExe -App $a
+    if (-not $exe) {
+      Write-Ai5 ("[{0}/{1}] {2} 未找到主程序 -> skip" -f $i, $m.apps.Count, $a.name) "Warn"
+      $rows += [pscustomobject]@{ id = $a.id; name = $a.name; category = $a.categoryName; tier = ""; captureMs = $null; crash = $null; inputOk = "todo"; dpiOk = "todo"; reason = "主程序未找到（未安装或未放入 Data\Apps）" }
+      continue
+    }
+    Write-Ai5 ("[{0}/{1}] {2} -> {3}" -f $i, $m.apps.Count, $a.name, $exe) "Step"
+    $r = Measure-AppEmbed -ExePath $exe
+    if (-not $r.ok) {
+      $rows += [pscustomobject]@{ id = $a.id; name = $a.name; category = $a.categoryName; tier = ""; captureMs = $null; crash = $null; inputOk = "todo"; dpiOk = "todo"; reason = "启动失败: $($r.error)" }
+      continue
+    }
+    $tier = ""; $reason = ""
+    if ($null -ne $r.probe) { $tier = $r.probe.tier; $reason = $r.probe.reason }
+    if ($r.crash) { $reason = "进程在窗口出现前/后即退出" }
+    $rows += [pscustomobject]@{
+      id = $a.id; name = $a.name; category = $a.categoryName
+      tier = $tier; captureMs = $r.captureMs; crash = $r.crash
+      inputOk = "todo"; dpiOk = "todo"
+      reason = $reason
+    }
+    Write-Ai5 ("    tier={0} capture={1}ms crash={2}" -f $tier, $(if ($null -ne $r.captureMs) { "$($r.captureMs)" } else { "—" }), $r.crash) "Ok"
+  }
+  $result = [pscustomobject]@{
+    tool    = "Compat-Matrix.ps1"
+    planRef = "7.8 (C-8)"
+    at      = (Get-Date -Format "o")
+    host    = $env:COMPUTERNAME
+    counts  = @{
+      total = $rows.Count
+      l1    = @($rows | Where-Object { $_.tier -eq "L1" }).Count
+      l2    = @($rows | Where-Object { $_.tier -eq "L2" }).Count
+      l3    = @($rows | Where-Object { $_.tier -eq "L3" }).Count
+      l4    = @($rows | Where-Object { $_.tier -eq "L4" }).Count
+      skip  = @($rows | Where-Object { $_.tier -eq "" }).Count
+    }
+    rows = $rows
+  }
+  $out = Join-Path $OutDir "compat-embed-results.json"
+  Save-Ai5Json -Object $result -Path $out | Out-Null
+  Write-Ai5 "结果已写入 $out" "Ok"
+  Write-Ai5 ("L1={0} L2={1} L3={2} L4={3} skip={4}" -f $result.counts.l1, $result.counts.l2, $result.counts.l3, $result.counts.l4, $result.counts.skip)
+  return 0
+}
+
+function Invoke-ReportEmbed {
+  $in = Join-Path $OutDir "compat-embed-results.json"
+  if (-not (Test-Path -LiteralPath $in)) {
+    Write-Ai5 "没有结果文件 $in，先跑 -Action Run-Embed" "Warn"; return 1
+  }
+  $r = Get-Ai5Json -Path $in
+  $rp = $ReportPath
+  if (-not $rp) { $rp = Join-Path $OutDir "compat-embed-report.md" }
+
+  $L = @()
+  $L += "# C-8 嵌入验证报告（主计划 7.8 兼容矩阵实测回填）"
+  $L += ""
+  $L += "- 生成时间: $($r.at)  主机: $($r.host)"
+  $L += "- 实测 $($r.counts.total) 条：L1=$($r.counts.l1) L2=$($r.counts.l2) L3=$($r.counts.l3) L4=$($r.counts.l4) skip=$($r.counts.skip)"
+  $L += "- 口径：tier/captureMs/crash 为脚本实测（决策树镜像 compat_probe.rs）；"
+  $L += "  inputOk/dpiOk 一律 todo，需在 Variable 真机嵌入会话人工观察后回填。"
+  $L += ""
+  $L += "| ID | 应用 | 类别 | tier | captureMs | crash | inputOk | dpiOk | 归因 |"
+  $L += "|---|---|---|---|---|---|---|---|---|"
+  foreach ($row in $r.rows) {
+    $cm = $(if ($null -ne $row.captureMs) { "$($row.captureMs)" } else { "—" })
+    $cr = $(if ($null -ne $row.crash) { "$($row.crash)" } else { "—" })
+    $L += "| $($row.id) | $($row.name) | $($row.category) | $($row.tier) | $cm | $cr | $($row.inputOk) | $($row.dpiOk) | $($row.reason) |"
+  }
+  $L += ""
+  $L += "> 不通过项归因表：见上方「归因」列；缺证据项保持 todo，不许打 ✅。"
+  Save-Ai5Text -Lines $L -Path $rp | Out-Null
+  Write-Ai5 "报告已写入 $rp" "Ok"
+  return 0
+}
+
 $exit = 0
 switch ($Action) {
   "List"         { Show-List }
   "Fill-ExeHint" { $exit = Invoke-FillExeHint }
   "Run"          { $exit = Invoke-Run }
   "Report"       { $exit = Invoke-Report }
+  "Run-Embed"    { $exit = Invoke-RunEmbed }
+  "Report-Embed" { $exit = Invoke-ReportEmbed }
 }
 exit $exit

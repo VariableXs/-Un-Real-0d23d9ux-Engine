@@ -17,6 +17,21 @@ interface EnvView {
   name: string;
   active: boolean;
   createdAt: number;
+  /** B-26：克隆试验档标记 */
+  isClone?: boolean;
+}
+
+interface DiffEntry {
+  path: string;
+  /** added | changed | deleted | conflict */
+  status: string;
+}
+
+interface DiffReport {
+  cloneId: string;
+  parentId: string;
+  clean: boolean;
+  entries: DiffEntry[];
 }
 
 /** 随环境快照的偏好子集（写操作隔离从这批偏好开始）。 */
@@ -34,6 +49,9 @@ export function EnvsTab(props: { settings: Settings; onPatch: (p: Partial<Settin
   const [envs, setEnvs] = useState<EnvView[]>([]);
   const [newName, setNewName] = useState("");
   const [busy, setBusy] = useState(false);
+  // B-26：当前展开 diff 的试验档 + 冲突裁决勾选（勾 = 采用试验档版本）
+  const [diffFor, setDiffFor] = useState<DiffReport | null>(null);
+  const [keepClone, setKeepClone] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -110,6 +128,54 @@ export function EnvsTab(props: { settings: Settings; onPatch: (p: Partial<Settin
       }
     });
 
+  // ---- B-26：试验档 diff / 丢弃 / 合并 ----
+
+  const openDiff = (e: EnvView) =>
+    void withBusy(async () => {
+      try {
+        const rep = await ipc.envDiff(e.id);
+        setDiffFor(rep);
+        setKeepClone([]);
+      } catch (err) {
+        pushToast("error", t("evDiffFail"), errMessage(err).message);
+      }
+    });
+
+  const discard = (e: EnvView) =>
+    void withBusy(async () => {
+      const ok = await askConfirm({
+        title: t("evDiscardTitle"),
+        body: `${e.name} · ${t("evDiscardWarn")}`,
+        danger: true,
+        okLabel: t("evDiscardOk"),
+      });
+      if (!ok) return;
+      try {
+        await ipc.envDiscard(e.id);
+        setDiffFor(null);
+        await refresh();
+        pushToast("success", t("evDiscarded"), e.name);
+      } catch (err) {
+        pushToast("error", t("evDiscardFail"), errMessage(err).message);
+      }
+    });
+
+  const merge = (e: EnvView) =>
+    void withBusy(async () => {
+      try {
+        const r = await ipc.envMerge(e.id, keepClone);
+        setDiffFor(null);
+        await refresh();
+        pushToast(
+          "success",
+          t("evMerged"),
+          `${r.merged} · ${t("evMergeResolved")} ${r.conflictsResolved} · ${t("evMergeKeptMain")} ${r.conflictsKeptMain}`,
+        );
+      } catch (err) {
+        pushToast("error", t("evMergeFail"), errMessage(err).message);
+      }
+    });
+
   return (
     <div className="ev-tab">
       <p className="dim small">{t("evHint")}</p>
@@ -174,10 +240,68 @@ export function EnvsTab(props: { settings: Settings; onPatch: (p: Partial<Settin
                   {t("evDelete")}
                 </button>
               )}
+              {e.isClone && (
+                <button type="button" onClick={() => openDiff(e)}>
+                  {t("evDiff")}
+                </button>
+              )}
+              {e.isClone && (
+                <button type="button" className="danger" onClick={() => discard(e)} title={t("evDiscardWarn")}>
+                  {t("evDiscard")}
+                </button>
+              )}
             </span>
           </div>
         ))}
       </div>
+      {/* B-26：试验档 diff 报告 + 冲突裁决（勾选 = 采用试验档版本） */}
+      {diffFor && (
+        <div className="ev-diff">
+          <p className="small">
+            <strong>{t("evDiffTitle")}</strong>{" "}
+            <span className="dim">{envs.find((x) => x.id === diffFor.cloneId)?.name ?? diffFor.cloneId}</span>
+          </p>
+          {diffFor.entries.length === 0 ? (
+            <p className="dim small">{t("evDiffClean")}</p>
+          ) : (
+            <div className="ev-diff-list">
+              {diffFor.entries.map((d) => (
+                <div key={d.path} className="backup-row" style={{ gap: 6 }}>
+                  <span className={`dim small ev-status-${d.status}`}>{d.status}</span>
+                  <span className="ellipsis small" title={d.path}>{d.path}</span>
+                  {d.status === "conflict" && (
+                    <label className="small" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={keepClone.includes(d.path)}
+                        onChange={(ev) =>
+                          setKeepClone((cur) =>
+                            ev.target.checked ? [...cur, d.path] : cur.filter((p) => p !== d.path),
+                          )
+                        }
+                      />
+                      {t("evUseClone")}
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+            <button type="button" onClick={() => setDiffFor(null)}>{t("evDiffClose")}</button>
+            <button
+              type="button"
+              disabled={diffFor.entries.length === 0}
+              onClick={() => {
+                const e = envs.find((x) => x.id === diffFor.cloneId);
+                if (e) void merge(e);
+              }}
+            >
+              {t("evMerge")}
+            </button>
+          </div>
+        </div>
+      )}
       <p className="dim small">{t("evIsolationNote")}</p>
     </div>
   );

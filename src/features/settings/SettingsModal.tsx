@@ -9,7 +9,8 @@ import { useI18n } from "../../i18n";
 import type { Lang } from "../../i18n/dictionaries";
 import {
   errMessage, ipc,
-  type AuditFinding, type FileCheck, type PackProgress, type ProfileDryRun, type ProfileTemplateDto,
+  type AuditFinding, type FileCheck, type InstallReport, type InstallSession, type PackProgress,
+  type ProfileDryRun, type ProfileTemplateDto,
   type ResidueEntry, type ThirdApp, type UsbStatus,
   type VaultItem, type VaultStatus, type WpEngineItem, type WpMonitor,
 } from "../../lib/ipc";
@@ -26,6 +27,10 @@ import { ToolchainsCard } from "./ToolchainsCard";
 import { EcoTab } from "./EcoTab";
 import { NetworkTab } from "./NetworkTab";
 import { SecurityTab } from "./SecurityTab";
+import { ExtensionsTab } from "./ExtensionsTab";
+import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
+import { SystemCenterTab } from "./SystemCenterTab";
+import type { SysSection } from "./SystemCenterTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
@@ -73,6 +78,15 @@ export function SettingsModal(props: {
   const [usbWizardDir, setUsbWizardDir] = useState<string | null>(null); // null=关闭, ""=待选择, 非空=打包中/校验
   const [wizardVerify, setWizardVerify] = useState<FileCheck[] | null>(null);
   const s = props.settings;
+  // L-2：当前自动档位（只读展示；手动选择 bgTier≥1 时自动档被抑制）
+  const [autoTierLabel, setAutoTierLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    import("../../system/perf/autoTier").then(({ detectAutoTier }) => {
+      const r = detectAutoTier(s.safeMode);
+      setAutoTierLabel(`${r.tier}（${r.reason}）`);
+    }).catch(() => setAutoTierLabel(null));
+  }, [isOpen, s.safeMode]);
 
   useEffect(() => {
     if (isOpen && tab === "data") {
@@ -112,7 +126,8 @@ export function SettingsModal(props: {
   const setBg = (patch: Partial<CustomBg>) => props.onChange({ customBg: { ...s.customBg, ...patch } });
   const setMind = (patch: Partial<MindDefaults>) => props.onChange({ mindDefaults: { ...s.mindDefaults, ...patch } });
 
-  const tabs: { id: string; label: string }[] = [
+  // F-1：顶层两域 —— 「Variable 引擎」（应用级 + 生态扩展）与「环境系统」（系统级八节）
+  const engineTabs: { id: string; label: string }[] = [
     { id: "appearance", label: t("appearance") },
     { id: "editor", label: t("editorTab") },
     { id: "mindmap", label: t("mindmapTab") },
@@ -128,6 +143,16 @@ export function SettingsModal(props: {
     { id: "storage", label: t("stTitle") },
     { id: "data", label: t("data") },
     { id: "about", label: t("aboutVariable") },
+  ];
+  const sysTabs: { id: string; label: string }[] = [
+    { id: "sys-display", label: t("sysDispTitle") },
+    { id: "sys-sound", label: t("sysSound") },
+    { id: "sys-net", label: t("sysNet") },
+    { id: "sys-account", label: t("sysAccount") },
+    { id: "sys-time", label: t("sysTime") },
+    { id: "sys-apps", label: t("sysApps") },
+    { id: "sys-power", label: t("sysPower") },
+    { id: "sys-access", label: t("sysAccess") },
   ];
   const fullBinds = SHORTCUT_ACTIONS.map((a) => ({ action: a.id, accel: binds[a.id] ?? a.accel }));
   const conflicts = findConflicts(fullBinds);
@@ -336,7 +361,13 @@ export function SettingsModal(props: {
     <Modal open onClose={() => uiStore.setState({ settingsOpen: false })} title={t("settings")} width={760}>
       <div className="settings-layout">
         <nav className="settings-nav">
-          {tabs.map((tb) => (
+          {engineTabs.map((tb) => (
+            <button key={tb.id} type="button" className={tab === tb.id ? "on" : ""} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
+              {tb.label}
+            </button>
+          ))}
+          <div className="nav-group">{t("sysGroup")}</div>
+          {sysTabs.map((tb) => (
             <button key={tb.id} type="button" className={tab === tb.id ? "on" : ""} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
               {tb.label}
             </button>
@@ -399,6 +430,7 @@ export function SettingsModal(props: {
                   <option value="deep-space">{t("themeDeepSpace")}</option>
                   <option value="paper">{t("themePaper")}</option>
                   <option value="minimal-black">{t("themeMinimalBlack")}</option>
+                  <option value="high-contrast">{t("themeHighContrast")}</option>
                   <option value="custom">{t("themeCustom")}</option>
                 </select>
               </Field>
@@ -587,10 +619,21 @@ export function SettingsModal(props: {
                     <option key={i + 1} value={i + 1}>L{i + 1} · {(lang !== "en" ? TIER_LABELS : TIER_LABELS_EN)[i]}</option>
                   ))}
                 </select>
+                {/* L-2：显示当前自动档位（手动覆盖优先） */}
+                {s.bgTier === 0 && (
+                  <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                    {t("autoTierNow")}: {autoTierLabel ?? "…"}
+                  </div>
+                )}
               </Field>
+              {/* 批次W-4：布局快照管理（列表/保存/恢复/重命名/删除/导出导入） */}
+              <SnapshotManager />
+              {/* 批次W-5：标签页化开关（可选开启） */}
+              <VwmTabsToggle />
+              {/* D-3：全域软件接管看门狗（策略/开关） */}
+              <WatchdogToggle />
             </>
           )}
-
           {tab === "editor" && (
             <>
               <Slider label={t("editorWidth")} min={58} max={72} value={s.editorWidthPct} suffix="%" onChange={(v) => set("editorWidthPct", v)} />
@@ -675,7 +718,11 @@ export function SettingsModal(props: {
               <p className="dim small" style={{ margin: "-6px 0 0" }}>{t("bootAnimHint")}</p>
               <Check label={t("reduceMotion")} checked={s.reduceMotion} onChange={(v) => set("reduceMotion", v)} />
               <Check label={t("safeMode")} checked={s.safeMode} onChange={(v) => set("safeMode", v)} />
-              <Slider label={t("uiZoom")} min={85} max={130} value={Math.round(s.uiZoom * 100)} suffix="%" onChange={(v) => set("uiZoom", v / 100)} />
+              <Slider label={t("uiZoom")} min={80} max={150} value={Math.round(s.uiZoom * 100)} suffix="%" onChange={(v) => set("uiZoom", v / 100)} />
+              <hr />
+              {/* A-4 声音设计：全局静音 + 音量（6 音合成，勿扰自动静音） */}
+              <Check label={t("soundMutedLabel")} checked={s.soundMuted} onChange={(v) => set("soundMuted", v)} />
+              <Slider label={t("soundVolumeLabel")} min={0} max={100} value={Math.round(s.soundVolume * 100)} suffix="%" onChange={(v) => set("soundVolume", v / 100)} />
               <hr />
               <button
                 type="button"
@@ -704,6 +751,7 @@ export function SettingsModal(props: {
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}
           {tab === "security" && <SecurityTab />}
+          {tab === "exts" && <ExtensionsTab />}
           {tab === "code" && (
             <>
               <CodeDeployCard />
@@ -821,6 +869,10 @@ export function SettingsModal(props: {
           )}
 
           {tab === "storage" && <StorageRecoveryTab />}
+          {/* F-1 环境系统八节（sys-display…sys-access） */}
+          {tab.startsWith("sys-") && (
+            <SystemCenterTab section={tab as SysSection} settings={props.settings} onChange={props.onChange} />
+          )}
           {tab === "data" && (
             <>
               <Field label={t("dataDir")}>
@@ -1057,6 +1109,18 @@ export function SettingsModal(props: {
                 </div>
               </div>
               <p className="dim small offline-note" style={{ marginTop: 12 }}>{t("offlineNote")}</p>
+
+              {/* D-5：接管边界诚实清单（做不到的事，与 README 21.5 同源） */}
+              <h4 style={{ marginTop: 16 }}>{t("bndTitle")}</h4>
+              <ul className="backup-list" style={{ flexDirection: "column", gap: 6 }}>
+                {(["bnd1", "bnd2", "bnd3", "bnd4", "bnd5"] as const).map((k) => (
+                  <li key={k} className="small" style={{ display: "flex", gap: 8 }}>
+                    <span aria-hidden>·</span>
+                    <span className="dim" style={{ whiteSpace: "pre-line" }}>{t(k)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="dim small" style={{ marginTop: 8 }}>{t("bndNote")}</p>
             </>
           )}
         </div>
@@ -1115,6 +1179,7 @@ function ProfilesTab(): React.ReactElement {
   const [sensitive, setSensitive] = useState(false);
   const [dry, setDry] = useState<ProfileDryRun | null>(null);
   const [residue, setResidue] = useState<ResidueEntry[] | null>(null);
+  const [residueIgnored, setResidueIgnored] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -1199,10 +1264,127 @@ function ProfilesTab(): React.ReactElement {
     }
   }
 
+  // E-1：默认值推断——通用重定向建议回填编辑表（不自动保存，用户确认后点保存）
+  async function inferProfile(): Promise<void> {
+    if (!sel) return;
+    try {
+      const inf = await ipc.profileInfer(sel.id);
+      setRedirect(Object.entries(inf.envRedirect).map(([k, v]) => ({ k, v })));
+      setDirty(true);
+      pushToast("info", t("pfTitle"), inf.note);
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    }
+  }
+
+  // E-1：安装模式执行档
+  const [instSessions, setInstSessions] = useState<InstallSession[]>([]);
+  const [instReport, setInstReport] = useState<InstallReport | null>(null);
+  const [instEntry, setInstEntry] = useState<string>("");
+  const [instName, setInstName] = useState<string>("");
+  const [installerPath, setInstallerPath] = useState<string>("");
+
+  async function pickInstaller(): Promise<void> {
+    const file = await open({ multiple: false, filters: [{ name: "Installer", extensions: ["exe", "msi", "bat", "cmd"] }] });
+    if (typeof file === "string") setInstallerPath(file);
+  }
+
+  async function launchInstaller(): Promise<void> {
+    if (!installerPath.trim()) return;
+    setBusy(true);
+    try {
+      await ipc.installModeLaunch(installerPath.trim(), instName.trim() || null);
+      setInstSessions(await ipc.installList());
+      pushToast("success", t("pfInstLaunched"));
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function analyzeInstall(id: string): Promise<void> {
+    setBusy(true);
+    try {
+      const rep = await ipc.installAnalyze(id);
+      setInstReport(rep);
+      setInstEntry(rep.exeCandidates[0] ?? "");
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitInstall(id: string): Promise<void> {
+    if (!instName.trim()) { pushToast("error", t("pfInstTitle"), t("pfInstNameNeeded")); return; }
+    setBusy(true);
+    try {
+      const app = await ipc.installCommit(id, instName.trim(), instEntry || null);
+      setApps((cur) => (cur.some((a) => a.id === app.id) ? cur : [...cur, app]));
+      setInstSessions(await ipc.installList());
+      setInstReport(null);
+      pushToast("success", t("pfInstCommitted").replace("{n}", app.name));
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardInstall(id: string): Promise<void> {
+    const ok = await askConfirm({ title: t("pfInstTitle"), body: t("pfInstDiscardConfirm") });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await ipc.installDiscard(id);
+      setInstSessions(await ipc.installList());
+      setInstReport(null);
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void ipc.installList().then(setInstSessions).catch(() => { /* 旧后端兼容 */ });
+  }, []);
+
   async function scanResidue(): Promise<void> {
     setBusy(true);
     try {
       setResidue(await ipc.residueScan());
+      setResidueIgnored([]);
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // E-2：逐条处理——清理 / 加入白名单 / 本次忽略
+  async function resolveResidue(path: string): Promise<void> {
+    const ok = await askConfirm({ title: t("pfResidueClean1"), body: t("pfResidueCleanConfirm"), danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await ipc.residueResolve(path);
+      setResidue((cur) => (cur ? cur.filter((r) => r.path !== path) : cur));
+      pushToast("success", t("pfResidueCleaned"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function whitelistResidue(path: string): Promise<void> {
+    setBusy(true);
+    try {
+      await ipc.residueWhitelistAdd(path);
+      setResidue((cur) => (cur ? cur.filter((r) => r.path !== path) : cur));
+      pushToast("success", t("pfResidueWhitelisted"));
     } catch (e) {
       pushToast("error", t("pfTitle"), errMessage(e).message);
     } finally {
@@ -1292,6 +1474,9 @@ function ProfilesTab(): React.ReactElement {
                 <button type="button" className="btn primary" disabled={busy || !dirty} onClick={() => void saveProfile()}>
                   {t("pfSave")}
                 </button>
+                <button type="button" className="btn ghost" disabled={busy} onClick={() => void inferProfile()}>
+                  {t("pfInfer")}
+                </button>
                 <button type="button" className="btn ghost" disabled={busy} onClick={() => void dryrun()}>
                   {t("pfDryrun")}
                 </button>
@@ -1311,6 +1496,72 @@ function ProfilesTab(): React.ReactElement {
               )}
             </>
           )}
+          {/* E-1：安装模式执行档——安装器落点重定向暂存区 → 落点分析 → 归位容器 */}
+          <h4 style={{ marginTop: 14 }}>{t("pfInstTitle")}</h4>
+          <p className="dim small">{t("pfInstHint")}</p>
+          <div className="row gap8">
+            <button type="button" className="btn ghost" onClick={() => void pickInstaller()}>…</button>
+            <input
+              className="small flex-1"
+              placeholder={t("pfInstPathPh")}
+              value={installerPath}
+              onChange={(e) => setInstallerPath(e.target.value)}
+            />
+            <input
+              className="small"
+              style={{ width: 130 }}
+              placeholder={t("pfInstNamePh")}
+              value={instName}
+              onChange={(e) => setInstName(e.target.value)}
+            />
+            <button type="button" className="btn primary" disabled={busy || !installerPath.trim()} onClick={() => void launchInstaller()}>
+              {t("pfInstLaunch")}
+            </button>
+          </div>
+          {instSessions.length > 0 && (
+            <div className="backup-list" style={{ marginTop: 8 }}>
+              {instSessions.map((s) => (
+                <div key={s.id} className="backup-row" style={{ gap: 6 }}>
+                  <span className="ellipsis small" title={s.exe}>{s.name}</span>
+                  <span className="flex-1" />
+                  <button type="button" className="btn ghost tiny" disabled={busy} onClick={() => void analyzeInstall(s.id)}>
+                    {t("pfInstAnalyze")}
+                  </button>
+                  <button type="button" className="btn ghost tiny" disabled={busy || !instReport || instReport.id !== s.id} onClick={() => void commitInstall(s.id)}>
+                    {t("pfInstCommit")}
+                  </button>
+                  <button type="button" className="btn ghost tiny danger-hover" disabled={busy} onClick={() => void discardInstall(s.id)}>
+                    {t("pfInstDiscard")}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {instReport && (
+            instReport.empty ? (
+              <p className="dim small" style={{ marginTop: 8 }}>{t("pfInstEmpty")}</p>
+            ) : (
+              <div className="backup-list" style={{ marginTop: 8 }}>
+                {instReport.areas.map((a) => (
+                  <div key={a.area} className="backup-row">
+                    <code className="small">{a.area}</code>
+                    <span className="flex-1" />
+                    <span className="dim small">{a.files} · {formatBytes(a.bytes)}</span>
+                  </div>
+                ))}
+                {instReport.exeCandidates.length > 0 && (
+                  <div className="row gap8" style={{ marginTop: 6 }}>
+                    <span className="dim small">{t("pfInstEntry")}</span>
+                    <select value={instEntry} onChange={(e) => setInstEntry(e.target.value)} style={{ minWidth: 0, flex: 1 }}>
+                      {instReport.exeCandidates.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )
+          )}
           <h4 style={{ marginTop: 14 }}>{t("pfResidueScan")}</h4>
           <div className="row gap8">
             <button type="button" className="btn ghost" disabled={busy} onClick={() => void scanResidue()}>
@@ -1324,10 +1575,13 @@ function ProfilesTab(): React.ReactElement {
               <>
                 <p className="dim small" style={{ marginTop: 8 }}>{t("pfResidueFound").replace("{n}", String(residue.length))}</p>
                 <div className="backup-list">
-                  {residue.map((r) => (
+                  {residue.filter((r) => !residueIgnored.includes(r.path)).map((r) => (
                     <div key={r.path} className="backup-row">
                       <span className="ellipsis small" title={r.path}>{r.path}</span>
                       <span className="dim small">{formatBytes(r.size)}</span>
+                      <button type="button" className="icon-btn tiny danger-hover" aria-label={t("pfResidueClean")} onClick={() => void resolveResidue(r.path)}>✕</button>
+                      <button type="button" className="icon-btn tiny" aria-label={t("pfResidueWhitelist")} onClick={() => void whitelistResidue(r.path)}>✓</button>
+                      <button type="button" className="icon-btn tiny" aria-label={t("pfResidueIgnore")} onClick={() => setResidueIgnored((cur) => [...cur, r.path])}>—</button>
                     </div>
                   ))}
                 </div>

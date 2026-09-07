@@ -77,6 +77,12 @@ export async function applySnap(dir: SnapDir): Promise<void> {
     restore.push({ x: pos.x, y: pos.y, width: size.width, height: size.height });
     if (restore.length > 4) restore.shift();
     await applyRect(win, target);
+    // A-4：贴靠吸附音（静音矩阵由 playSound 处理，失败静默）
+    void import("../../lib/sounds").then(({ playSound }) => {
+      void import("../../lib/settings").then(({ loadSettings }) =>
+        loadSettings().then((s) => playSound("snap", { volume: s.soundVolume, muted: s.soundMuted })).catch(() => {}),
+      ).catch(() => {});
+    }).catch(() => {});
   } catch {
     /* window gone / API unavailable */
   }

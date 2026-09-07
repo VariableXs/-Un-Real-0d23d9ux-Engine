@@ -1,7 +1,7 @@
 import { errMessage, ipc } from "./ipc";
 import type { Lang } from "../i18n/dictionaries";
 
-export type ThemeId = "deep-space" | "paper" | "minimal-black" | "custom";
+export type ThemeId = "deep-space" | "paper" | "minimal-black" | "high-contrast" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
 export type BgType = "nebula" | "color" | "gradient" | "image" | "video";
 /** 桌面环境壁纸模式（M2）：纯黑 / 3D 引力场 / 视频 / 图片 / 混合（媒体+星空叠加）。 */
@@ -92,6 +92,8 @@ export interface Settings {
   wallpaperPoolDir: string;
   /** 批次E-6：Win+Tab 多窗口切换器开关（true = Variable 接管 Win+Tab）。 */
   winTabSwitcher: boolean;
+  /** S-1 防截屏模式（WDA_EXCLUDEFROMCAPTURE；仅防系统截屏 API，边界见设置页声明）。 */
+  privacyShield: boolean;
   perfMode: PerfMode;
   showStatusBar: boolean;
   editorWidthPct: number; // 58..72
@@ -101,8 +103,13 @@ export interface Settings {
   lineHeight: number; // 1.5..2.2
   autosaveDelayMs: number; // 400..3000
   uiZoom: number; // 0.85..1.3
+  /** F-1 夜灯模式：0 = 关闭；10..70 = 色温遮罩强度（遮罩层，不动系统色温）。 */
+  nightLight: number;
   reduceMotion: boolean;
   safeMode: boolean;
+  /** A-4 声音设计：系统音音量 0-1；全局静音。 */
+  soundVolume: number;
+  soundMuted: boolean;
   /** Anime starfield performance tier: 1..10 fixed, 0 = smart auto monitor. */
   bgTier: number;
   /** 8.2 用户教学式词典：大白话解释，key 为小写术语。 */
@@ -123,12 +130,15 @@ export const DEFAULT_SETTINGS: Settings = {
   avoidTaskbar: false,
   wizardDone: false,
   oobeDone: false,
+  soundVolume: 0.5,
+  soundMuted: false,
   oobeContainerPath: "",
   oobeContainerEncrypted: false,
   oobeTools: [],
   wallpaperDaily: false,
   wallpaperPoolDir: "",
   winTabSwitcher: true,
+  privacyShield: false,
   perfMode: "high",
   showStatusBar: true,
   editorWidthPct: 64,
@@ -138,6 +148,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lineHeight: 1.75,
   autosaveDelayMs: 1200,
   uiZoom: 1,
+  nightLight: 0,
   reduceMotion: false,
   safeMode: false,
   bgTier: 0,
@@ -213,7 +224,10 @@ function coerce(raw: Record<string, string>): Settings {
     if (raw["fontSize"]) s.fontSize = clamp(Number(raw["fontSize"]) || 16, 12, 26);
     if (raw["lineHeight"]) s.lineHeight = clamp(Number(raw["lineHeight"]) || 1.75, 1.3, 2.4);
     if (raw["autosaveDelayMs"]) s.autosaveDelayMs = clamp(Number(raw["autosaveDelayMs"]) || 1200, 300, 5000);
-    if (raw["uiZoom"]) s.uiZoom = clamp(Number(raw["uiZoom"]) || 1, 0.85, 1.3);
+    if (raw["uiZoom"]) s.uiZoom = clamp(Number(raw["uiZoom"]) || 1, 0.8, 1.5);
+    if (raw["soundVolume"] !== undefined) s.soundVolume = clamp(Number(raw["soundVolume"]) || 0, 0, 1);
+    if (raw["soundMuted"] !== undefined) s.soundMuted = raw["soundMuted"] === "1";
+    if (raw["nightLight"] !== undefined) s.nightLight = clamp(Number(raw["nightLight"]) || 0, 0, 70);
     if (raw["bgTier"] !== undefined) s.bgTier = clamp(Number(raw["bgTier"]) || 0, 0, 17);
     if (raw["pvzDictOverrides"]) {
       const parsed = JSON.parse(raw["pvzDictOverrides"]) as unknown;

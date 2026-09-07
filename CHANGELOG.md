@@ -3,6 +3,58 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-08 窗口路 AI-2 收口：W-1…5 / C-1…8 / B-27 / D-3）
+
+> 窗口路全部批次代码级完成。真机验收项见 `docs/acceptance/ai2-窗口路验收.md`（逐批清单）。
+
+### 修复
+- **cargo test 编译失败**：`container.rs` 单测引用已不存在的 `super::win` 路径（改 `super::`）、
+  `embed.rs` 两处 `EmbedSession` 初始化缺 `capture` 字段（补齐）。修复后 AI-2 域单测全绿
+  （`sysmaint.rs` 2 个失败属 AI-5 域，未越界）。
+- **L4 误嵌入 bug**（批次C-5 语义）：嵌入主路径 tier 路由 `_` 兜底臂吞掉 L4 → 反作弊/独占全屏
+  应用被错误强制重父级嵌入。补显式 L4 让位臂：`attached:false` + hint 归因 reason，
+  让位由运行时看护承担；`_` 兜底仅剩 L1 主路径。
+
+### 新增
+- **C-8 嵌入验证**（主计划 7.8）：`portable/AI5/Compat-Matrix.ps1` 新增 `-Action Run-Embed / Report-Embed`——
+  逐软件启动 → 窗口样式探测分层（决策树镜像 `compat_probe.rs`），记录 `{tier, captureMs, crash, inputOk, dpiOk}`；
+  `inputOk/dpiOk` 诚实输出 `todo` 待真机人工回填，脚本不臆造。真 PowerShell 5.1 已验证 4 条路径。
+- **C-5 让位归因 `compat.hint`**（主计划 7.5）：`CompatInfo` 增 `hint: fullscreen | anticheat`
+  （serde default 平滑升级旧 apps.json）；探测器区分反作弊服务特征与独占全屏引擎窗口，
+  供看护语义分流（anticheat 停用 kbdhook + 横幅）。单测 `l4_hint_classification` 覆盖。
+  前端消费闭环：LauncherManager L4 徽标（AC/FS，悬停完整说明）+ i18n zh/en。
+- **C-4 bench 项**（主计划 7.4）：`tools/bench.cjs` 新增 `captureE2E`（预算 P95 <50ms），
+  按 vwmOpen 先例如实 SKIPPED 并写明真机测量协议；`--no-gui` 实跑报告落盘 `docs/bench/2026-09-08.md`。
+- **D-3 契约单测**（`shell_watch.rs`）：白名单 15 类唯一小写、策略三态、默认「询问」不自动回收。
+- **证据归档**：`docs/acceptance/ai2-窗口路验收.md`（14 批索引）+ `w2-dpi-regression.md`（混合 DPI 10 款清单）+ `compat-top200.md`（C-8 口径与执行命令）。
+
+### 说明
+W-1…W-5 / C-1…C-6 / B-27 / D-3 主体代码由本路前序会话落地（`embed.rs`/`container.rs`/`capture.rs`/
+`compat_probe.rs`/`winman.rs`/`ecosystem.rs`/`shell_watch.rs` + 前端 `vwm.ts`/`snapshots.ts` 接线），
+本轮完成收口：过期测试修复、C-8 工具段、契约单测、证据归档；附录 A 勾选按 DoD 留待真机实测。
+
+## [Unreleased] — 1.0sno9u.vxe（2026-09-08 体验路 AI5 收口：F-1…F-7 / A-1…A-5 / D-5 / B-30）
+
+> 体验路全部代码级任务完成。真机验收项见 `docs/acceptance/b30-三宿主验收矩阵.md`。
+
+### 基础功能完备化（F）
+- **F-3 任务管理器**：进程/性能/启动项/服务四页（`src-tauri/src/shell/taskman.rs` + `src/system/taskman/TaskManApp.tsx`），系统关键进程保护。
+- **F-4 全局文件搜索**：容器内索引（`fsindex.rs`，1.2s 增量轮询）+ 拼音兜底 + 扩展名/类型/大小过滤，结果只在 VWM 资源管理器打开。
+- **F-5 通知动作 + 音量合成器 + 输入法指示 + 媒体控制**（`audioime.rs`）：通知条目 2 动作按钮；IAudioSessionManager2 会话级音量；任务栏 IME 语言/中英态（切换仅作用于 Variable 进程）；SMTC 媒体进度条（探测不到自动隐藏）。
+- **F-6 系统维护**（`sysmaint.rs`）：计划备份（daily/weekly+小时点、跨会话补偿）、本地更新包 SHA-256 校验+失败回滚（下载边界如实声明）、备份可恢复性抽检自检。
+- **F-7 无障碍**：高对比度主题、`:focus-visible` 全局焦点环、字号 80–150%、`audit.cjs` 升级为 CI i18n 门禁（缺键/缺后端即 fail）。
+
+### 界面精修（A）
+- **A-1 Design Tokens**：`src/design/tokens.css`（OKLCH 语义层 + 三亮度层 + 字阶/间距/圆角/阴影/动效全 token），文档 `docs/DESIGN.md`；audit 增加裸色值计数。
+- **A-2 动效**：窗口 spring 入场（4% 过冲+阴影先行）、最小化 5% 压扁、贴靠统一 170ms；`data-reduce-motion` 全局 80ms 降级。
+- **A-3 状态设计**：共享骨架屏组件（任务管理器/音量合成器加载态）、`tools/visual-audit.cjs` 像素审计（puppeteer 缺失时如实退出）。
+- **A-4 声音**：Web Audio 合成 6 音（启动/通知/闹钟/错误/贴靠/回收站），音量/静音独立设置，勿扰自动静音。
+- **A-5 首次体验**：OOBE 收敛三步（隐私契约逐条确认 → 壁纸+5 套一键换装预设 → 布局偏好），≤90s。
+
+### 边界与验收（D/B）
+- **D-5 接管边界诚实清单**：README「21.5 能力诚实声明」+ 设置→关于页内置（UAC 安全桌面/直跑档事后回收/反作弊让位/VM 系统对话白名单/LogonUI）。
+- **B-30**：三宿主验收矩阵文档收口（`docs/acceptance/b30-三宿主验收矩阵.md`），真机项如实待办。
+
 ## [Unreleased] — 1.0sno9u.vxe
 
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-07 便携系统 AI-5 交付核：主计划第 11+12 章）

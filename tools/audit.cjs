@@ -93,4 +93,31 @@ if (enOnly.length) console.log("EN ONLY:", enOnly);
 const kindKeys = ["kindDocument", "kindFolder", "kindMindmap", "kindNode"];
 console.log("\nkind* present:", kindKeys.every((k) => zhKeys.has(k) && enKeys.has(k)));
 
-process.exit(0);
+// ---- 3.5 A-1 裸色值检测（信息输出；迁移完成后可升级为门禁）----
+// 扫描 src/styles 与 src/design 之外的所有 CSS：裸 hex/rgb() 不计 token 迁移率。
+(function bareColorAudit() {
+  const fs = require("fs");
+  const path = require("path");
+  let bare = 0;
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (!p.includes("design")) walk(p); continue; }
+      if (!/\.(css|tsx?)$/.test(e.name)) continue;
+      const text = fs.readFileSync(p, "utf8");
+      const hex = text.match(/#[0-9a-fA-F]{3,8}\b/g);
+      bare += hex ? hex.filter((h) => !/^#(fff|000)$/i.test(h)).length : 0;
+    }
+  };
+  if (fs.existsSync(path.join(__dirname, "..", "src", "styles"))) walk(path.join(__dirname, "..", "src", "styles"));
+  console.log("\nA-1 bare color values (info, migration in progress):", bare);
+})();
+
+// ---- 4. CI 门禁（F-7.5）：i18n 键完整性不达标时以非零码退出 ----
+// 仅对「t() 用到但词典缺失」与 IPC 缺后端判定失败（真实缺陷）；
+// zh/en 全量 parity 与 UNUSED 报告保留为信息输出（历史遗留键人工确认）。
+let failed = false;
+if (missingBackend.length) failed = true;
+if (missingZh.length || missingEn.length) failed = true;
+console.log(failed ? "\nAUDIT FAILED" : "\nAUDIT PASSED");
+process.exit(failed ? 1 : 0);

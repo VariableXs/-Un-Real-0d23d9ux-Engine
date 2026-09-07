@@ -1,4 +1,4 @@
-//! L3 shell — 终端服务（批次 B-7，BLUEPRINT 3.7）：
+﻿//! L3 shell — 终端服务（批次 B-7，BLUEPRINT 3.7）：
 //! V1 = 嵌入 Windows Terminal Portable（复用 embed 通道，零渲染代码）。
 //! 终端以第三方登记项形式注册（执行档：VARIABLE_ENV=terminal），与四软件平级；
 //! V2 自绘 xterm.js + ConPTY 会话保活为后续批次（本模块预留 session 登记位）。
@@ -65,6 +65,8 @@ pub fn ensure_terminal_registered(st: &AppState) -> CmdResult<()> {
         return Ok(());
     }
     apps.push(crate::shell::launcher::ThirdApp {
+        dpi_fix: false,
+        compat: Default::default(),
         id: TERMINAL_ID.to_string(),
         name: TERMINAL_NAME.to_string(),
         path: exe.to_string_lossy().into_owned(),

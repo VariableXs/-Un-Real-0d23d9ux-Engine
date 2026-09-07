@@ -1,4 +1,4 @@
-//! VS Code Portable 一键部署（B-20，BLUEPRINT 3.7 / M5）。
+﻿//! VS Code Portable 一键部署（B-20，BLUEPRINT 3.7 / M5）。
 //!
 //! - 部署：下载 win32-x64 系统 zip（curl 真实字节进度事件，出站走 netconsent
 //!   授权口径，与 B-8 Node 部署同款）→ Expand-Archive → runtime/vscode/ →
@@ -211,6 +211,8 @@ pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
                 net_allow: Vec::new(),
                 sensitive: false,
             },
+            dpi_fix: false,
+            compat: Default::default(),
         });
     }
     crate::shell::launcher::save_registry(&st, &apps)
@@ -228,7 +230,9 @@ pub fn code_launch(
     if !registered {
         code_register(st.clone())?;
     }
-    crate::shell::embed::embed_launch(st, app, VSCODE_ID.into())
+    // W-1：缺省 embed_id → "0" 兼容槽位（设置卡直启无 VWM 占位窗口；
+    // 经启动器 tp:vscode 打开时走 launchThirdApp 的独立 embed_id）
+    crate::shell::embed::embed_launch(st, app, VSCODE_ID.into(), None, None)
 }
 
 #[cfg(test)]

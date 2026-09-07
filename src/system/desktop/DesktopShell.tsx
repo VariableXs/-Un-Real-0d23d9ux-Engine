@@ -9,6 +9,7 @@ import { errMessage, ipc } from "../../lib/ipc";
 import { pushToast, uiStore, useUi, type AppMode, type QuickSection } from "../../state/uiStore";
 import { openQuickPanel } from "../../state/uiStore";
 import { pushNotify, toggleDnd } from "../../state/notifyStore";
+import type { NotifyAction } from "../../state/notifyStore";
 import type { ClosePhase } from "../../components/TitleBar";
 import type { BootStats } from "../boot/BootScreen";
 import { WallpaperLayer } from "../wallpaper/WallpaperLayer";
@@ -22,6 +23,8 @@ import { LauncherManager } from "../launcher/LauncherManager";
 import { AIHub } from "../ai/AIHub";
 import { WelcomeWizard } from "../welcome/WelcomeWizard";
 import { getThirdApps, launchThirdApp, reloadThirdApps } from "../launcher/thirdApps";
+import { autosaveSnapshot } from "../windows/snapshots";
+import { handleDisplayChanged, initDisplayMemory } from "../windows/snapshots";
 import { openVwmApp, openVwmSystem } from "../windows/vwm";
 import { VirtualWindowManager } from "../windows/VirtualWindowManager";
 import { applySnap, SnapPreviewHost } from "../windows/snap";
@@ -63,9 +66,49 @@ export function DesktopShell(props: {
   // 批次E-6：全屏应用运行中（任务栏/红绿灯自动避让）；U 盘拔出横幅
   const [fsApp, setFsApp] = useState(false);
   const [usbRemoved, setUsbRemoved] = useState(false);
+  // X-3：扩展推送的桌面小组件（widgets.register）与主题局部 token
+  const [extWidgets, setExtWidgets] = useState<{ extId: string; slot: string; title: string }[]>([]);
 
   // 退出不再弹确认框：所有入口（红绿灯/开始菜单/托盘）直接走保存冲刷 + 关闭。
-  const exitDesktop = (): void => props.onCloseRequested();
+  const exitDesktop = (): void => {
+    // 批次W-4：退出前自动保存一份窗口布局快照（__autosave__，覆盖旧档）
+    try {
+      autosaveSnapshot();
+    } catch {
+      /* 快照失败不阻断退出流程 */
+    }
+    props.onCloseRequested();
+  };
+
+  // X-3 扩展事件面：notify.create → 系统通知；widgets.register → 桌面小组件条；
+  // theme.patch → 仅接受 CSS 变量形式的局部 token（key 必须以 -- 开头）。
+  useEffect(() => {
+    let disposed = false;
+    const uns: Array<() => void> = [];
+    const reg = (p: Promise<() => void>): void => {
+      void p.then((u) => {
+        if (disposed) u();
+        else uns.push(u);
+      }).catch(() => {});
+    };
+    reg(listen<{ title: string; body: string; extId: string }>("ext://notify", (ev) => {
+      pushNotify("system", `[扩展] ${ev.payload.title}`, ev.payload.body);
+    }));
+    reg(listen<{ extId: string; slot: string; title: string }>("ext://widget-registered", (ev) => {
+      setExtWidgets((prev) => [...prev.filter((w) => w.extId !== ev.payload.extId), ev.payload]);
+    }));
+    reg(listen<{ tokens: Record<string, unknown> }>("ext://theme-patch", (ev) => {
+      for (const [k, v] of Object.entries(ev.payload.tokens ?? {})) {
+        if (k.startsWith("--") && (typeof v === "string" || typeof v === "number")) {
+          document.documentElement.style.setProperty(k, String(v));
+        }
+      }
+    }));
+    return () => {
+      disposed = true;
+      uns.forEach((u) => u());
+    };
+  }, []);
 
   // 批次D（规格 4.4.3）：Win+数字 → 任务栏第 n 位（文件管理器 / 四软件 / 第三方）
   const launchIndex = (n: number): void => {
@@ -118,7 +161,15 @@ export function DesktopShell(props: {
   // 入场编排收尾：~1.5s 后移除 .entering → 红绿灯激活为完整颜色（CSS 过渡）。
   useEffect(() => {
     if (!props.entering) return undefined;
-    const id = window.setTimeout(() => setEntered(true), 1500);
+    const id = window.setTimeout(() => {
+      setEntered(true);
+      // A-4：启动落定音（静音/勿扰矩阵由 playSound 处理，失败静默）
+      void import("../../lib/sounds").then(({ playSound }) => {
+        void import("../../lib/settings").then(({ loadSettings }) =>
+          loadSettings().then((s) => playSound("boot", { volume: s.soundVolume, muted: s.soundMuted })).catch(() => {}),
+        ).catch(() => {});
+      }).catch(() => {});
+    }, 1500);
     return () => window.clearTimeout(id);
   }, [props.entering]);
 
@@ -162,23 +213,92 @@ export function DesktopShell(props: {
   }, [t]);
 
   // 批次E-6（规格 8.x）：全屏应用检测 → 任务栏/红绿灯自动避让（退出即恢复）
+  // 批次C-5：L4 智能让位 —— 独占全屏命中时桌面层主动最小化（托盘态，
+  // 进程与数据通道全保留）；前台退出 2s 内全量恢复（show + unminimize + focus）。
   useEffect(() => {
-    const un = listen<boolean>("sys://fullscreen", (e) => setFsApp(e.payload === true));
+    const un = listen<boolean>("sys://fullscreen", (e) => {
+      const hit = e.payload === true;
+      setFsApp(hit);
+      if (hit) void win.minimize().catch(() => {});
+      else {
+        void win.show().catch(() => {});
+        void win.unminimize().catch(() => {});
+        void win.setFocus().catch(() => {});
+      }
+    });
+    return () => {
+      void un.then((f) => f()).catch(() => {});
+    };
+  }, [win]);
+
+  // 批次C-5：反作弊进程运行 → 横幅声明（kbdhook 已在 Rust 侧主动停用，
+  // 不注入/不读取任何键盘状态；进程与数据通道全保留），退出自动解除。
+  useEffect(() => {
+    const un = listen<boolean>("sys://anticheat", (e) => {
+      const hit = e.payload === true;
+      if (hit) {
+        pushToast("error", t("acTitle"), t("acBody"));
+        pushNotify("system", t("acTitle"), t("acBody"));
+      } else {
+        pushToast("info", t("acTitle"), t("acClear"));
+      }
+    });
+    return () => {
+      void un.then((f) => f()).catch(() => {});
+    };
+  }, [t]);
+
+  // 批次W-5：显示器热切换 —— 旧屏布局自动存档，新屏有分屏记忆则整体恢复，
+  // 否则出屏窗口吸附回主屏最近合法位置（拔插 HDMI 零丢窗）。
+  useEffect(() => {
+    initDisplayMemory();
+    const un = listen("sys://display-changed", () => {
+      handleDisplayChanged();
+    });
     return () => {
       void un.then((f) => f()).catch(() => {});
     };
   }, []);
 
   // 批次E-8（规格 45 边界）：通讯软件未读提醒 —— 仅窗口标题信号，不读消息内容
+  // F-5.1：附「打开应用 / 忽略」动作按钮（内置动作）
   useEffect(() => {
     const un = listen<{ app: string; title: string }>("sys://im-msg", (e) => {
       const { app, title } = e.payload;
-      pushNotify("system", app, title);
+      pushNotify("system", app, title, [
+        { label: t("notifyOpenApp"), type: "open-third", data: app },
+        { label: t("notifyDismiss"), type: "dismiss" },
+      ]);
       pushToast("info", app, t("imNewMsgBody", { app }));
     });
     return () => {
       void un.then((f) => f()).catch(() => {});
     };
+  }, [t]);
+
+  // F-5.1：通知动作统一处理 —— open-app/open-third 尽力打开，open-path 走 VWM 文件管理器
+  useEffect(() => {
+    const onAction = (ev: Event): void => {
+      const a = (ev as CustomEvent<NotifyAction>).detail;
+      if (!a) return;
+      if (a.type === "open-app" && a.data) {
+        openVwmApp(a.data as Parameters<typeof openVwmApp>[0]);
+      } else if (a.type === "open-third" && a.data) {
+        const found = getThirdApps().find((x) => x.name === a.data);
+        if (found) {
+          void launchThirdApp(found.id, found.name).catch((e) =>
+            pushToast("error", a.data ?? "", errMessage(e).message),
+          );
+        } else {
+          pushToast("info", a.data, t("notifyThirdMissing"));
+        }
+      } else if (a.type === "open-path" && a.data) {
+        openVwmSystem("explorer", a.data);
+      }
+      // dismiss：仅忽略，无额外动作
+    };
+    window.addEventListener("variable:notify-action", onAction);
+    return () => window.removeEventListener("variable:notify-action", onAction);
   }, [t]);
 
   // 批次E-6：每日自动换壁纸 —— 本地缓存目录按当天日期取一张（零网络），启动时应用一次
@@ -212,11 +332,17 @@ export function DesktopShell(props: {
       const dnd = toggleDnd();
       pushToast("info", t("dndTitle"), dnd ? t("dndOn") : t("dndOff"));
     });
+    // F-1：设置中心快捷键呼出（ctrl+alt+i，Rust winman 分发）
+    const unSet = listen("sys://open-settings", () => props.onOpenSettings());
+    // F-2：剪贴板历史快捷键呼出（ctrl+alt+v，Rust winman 分发）
+    const unClip = listen("sys://open-clipboard", () => openVwmApp("clipboard"));
     return () => {
       void unQp.then((f) => f()).catch(() => {});
       void unDnd.then((f) => f()).catch(() => {});
+      void unSet.then((f) => f()).catch(() => {});
+      void unClip.then((f) => f()).catch(() => {});
     };
-  }, [t]);
+  }, [t, props.onOpenSettings]);
 
   // 批次D（规格 4.3/4.4）：Win+D / Ctrl+Shift+D / 裸 Win 键 / Win+数字 / Win+方向键
   useEffect(() => {
@@ -245,6 +371,17 @@ export function DesktopShell(props: {
       const kind = e.payload;
       if (kind === "explorer" || kind === "recycle") openVwmSystem(kind);
     });
+    // D-4 幕布语义：双 Esc 切换时 220ms scale+fade（out 收起 / in 展开）
+    const unCurtain = listen<string>("sys://curtain", (e) => {
+      const dir = e.payload;
+      const root = document.documentElement;
+      root.classList.remove("var-curtain-out", "var-curtain-in");
+      if (dir === "out" || dir === "in") {
+        void root.offsetWidth; // 强制重排，确保动画重放
+        root.classList.add(dir === "out" ? "var-curtain-out" : "var-curtain-in");
+        window.setTimeout(() => root.classList.remove("var-curtain-out", "var-curtain-in"), 240);
+      }
+    });
     return () => {
       void unShow.then((f) => f()).catch(() => {});
       void unHide.then((f) => f()).catch(() => {});
@@ -252,6 +389,7 @@ export function DesktopShell(props: {
       void unIdx.then((f) => f()).catch(() => {});
       void unSnap.then((f) => f()).catch(() => {});
       void unSys.then((f) => f()).catch(() => {});
+      void unCurtain.then((f) => f()).catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win]);
@@ -319,6 +457,47 @@ export function DesktopShell(props: {
       data-fullscreen={fsApp || undefined}
     >
       <WallpaperLayer settings={props.settings} />
+      {/* X-3：扩展小组件条（widgets.register；slot=desktop-top-right） */}
+      {extWidgets.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            top: 52,
+            right: 16,
+            zIndex: 40,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            pointerEvents: "none",
+          }}
+        >
+          {extWidgets.map((w) => (
+            <div
+              key={w.extId}
+              style={{
+                background: "rgba(10,16,30,.72)",
+                border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 12,
+                padding: "8px 14px",
+                color: "#e8eefc",
+                fontSize: 12,
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <div style={{ opacity: 0.65, fontSize: 10, marginBottom: 2 }}>🧩 {w.title}</div>
+              <div>小组件由扩展 {w.extId} 提供（时钟等自绘内容见扩展窗口）</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* F-1 夜灯模式：暖色遮罩层（覆盖全部内容之上、交互之下；强度 0 = 关闭） */}
+      {props.settings.nightLight > 0 && (
+        <div
+          className="night-light-overlay"
+          style={{ opacity: props.settings.nightLight / 100 }}
+          aria-hidden
+        />
+      )}
       <DesktopIcons
         onOpenApp={onOpenApp}
         onOpenSystem={(kind) => openVwmSystem(kind)}

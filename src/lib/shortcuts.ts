@@ -1,4 +1,4 @@
-﻿﻿import type { Lang } from "../i18n/dictionaries";
+﻿import type { Lang } from "../i18n/dictionaries";
 
 /**
  * 全局快捷键表（批次E，规格 4.7）：
@@ -20,6 +20,11 @@ export interface ShortcutAction {
 
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "explorer", labelKey: "scActExplorer", accel: "ctrl+alt+e", group: "system" },
+  // F-1：设置中心呼出（Win+I 被系统保留 → ctrl+alt+i 降级口径）
+  { id: "settingsCenter", labelKey: "scActSettings", accel: "ctrl+alt+i", group: "system" },
+  // F-2：剪贴板历史呼出（Win+V 被系统保留 → ctrl+alt+v 降级口径）
+  { id: "clipboardHistory", labelKey: "scActClipboard", accel: "ctrl+alt+v", group: "panel" },
+  { id: "wintab", labelKey: "scActWintab", accel: "super+tab", group: "system" },
   { id: "explorerCtrl", labelKey: "scActExplorerCtrl", accel: "ctrl+e", group: "system" },
   { id: "showDesktop", labelKey: "scActShowDesktop", accel: "ctrl+alt+d", group: "window" },
   { id: "toggleHide", labelKey: "scActToggleHide", accel: "ctrl+shift+d", group: "window" },

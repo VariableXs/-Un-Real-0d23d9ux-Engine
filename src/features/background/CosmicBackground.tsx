@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { createAnimeStarfield, type AnimeStarfieldHandle } from "./starfield/engine";
 import type { CustomBg, PerfMode } from "../../lib/settings";
+import {
+  detectAutoTier,
+  persistDowngrade,
+  resolveAutoTier,
+  tierToBgTier,
+  applyTierHints,
+  type AutoTier,
+} from "../../system/perf/autoTier";
 
 export interface BackgroundProps {
   theme: string;
@@ -33,9 +41,10 @@ function effectiveMotion(props: BackgroundProps): number {
   return props.customBg.dynamicStrength * f;
 }
 
-/** Perf-mode presets map onto the ten-tier matrix; bgTier overrides. */
-function resolveTier(props: BackgroundProps): number {
-  if (props.bgTier >= 1) return Math.min(10, Math.round(props.bgTier));
+/** Perf-mode presets map onto the ten-tier matrix; manual bgTier / L-2 auto tier override. */
+function resolveTier(props: BackgroundProps, effTier: number | null): number {
+  // L-2：手动覆盖优先（bgTier ≥1），否则自动档位；null = 既有 smart FPS monitor
+  if (effTier !== null && effTier >= 0) return Math.min(10, Math.max(0, Math.round(effTier)));
   const byMode: Record<PerfMode, number> = {
     static: 1,
     eco: 3,
@@ -59,6 +68,35 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
   const [webglFailed, setWebglFailed] = useState(false);
   const [bgMissing, setBgMissing] = useState<{ path: string } | null>(null);
   const cb = props.customBg;
+
+  // L-2 硬件自动分级：手动覆盖（bgTier≥1 / reduceMotion）优先，否则自动档；
+  // 渲染首帧 >3s 看门狗降档一次并按 GPU 哈希持久记忆。
+  const [autoTier, setAutoTier] = useState<AutoTier | null>(null);
+  useEffect(() => {
+    const res = resolveAutoTier(props.safeMode, props.bgTier, props.reduceMotion);
+    applyTierHints(res.tier);
+    setAutoTier(res.tier);
+    // 探测只做一次（档位变化由降档/手动覆盖驱动）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.safeMode]);
+
+  const effTier =
+    props.bgTier >= 1
+      ? props.bgTier // 手动覆盖优先，不再被自动改
+      : autoTier !== null
+        ? tierToBgTier(autoTier)
+        : null;
+  const downgradeTier = (): void => {
+    if (!autoTier || autoTier === "C") return;
+    const order: AutoTier[] = ["C", "B", "A", "S"];
+    const idx = Math.max(0, order.indexOf(autoTier) - 1);
+    const next: AutoTier = order[idx] ?? "C";
+    const det = detectAutoTier(props.safeMode);
+    persistDowngrade(det.gpuHash, next);
+    applyTierHints(next);
+    setAutoTier(next);
+  };
+
   const useCustomMedia = props.theme === "custom" && (cb.type === "image" || cb.type === "video");
   void setBgMissing;
 
@@ -100,7 +138,7 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
     void createAnimeStarfield(canvas, {
       motion: effectiveMotion(props),
       mouseParallax: cb.parallaxStrength * 30,
-      tier: resolveTier(props),
+      tier: resolveTier(props, effTier),
       editing: props.editing,
       // Worker/GL died after the canvas was transferred → CSS fallback.
       onFailed: () => setWebglFailed(true),
@@ -115,6 +153,18 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
       }
       handleRef.current = handle;
       handle.start();
+      // L-2 首帧看门狗：>3s 未出帧 → 降档一次并持久记忆（仅自动模式）
+      let firstFrame = false;
+      const markFirst = (): void => {
+        firstFrame = true;
+      };
+      const watchdog = window.setTimeout(() => {
+        if (!firstFrame && props.bgTier === 0) downgradeTier();
+      }, 3000);
+      requestAnimationFrame(() => {
+        window.clearTimeout(watchdog);
+        markFirst();
+      });
 
       // Mindmap canvas viewport drives depth parallax + zoom bokeh.
       onViewport = (e: Event): void => {
@@ -141,7 +191,7 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
       handleRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.theme, props.safeMode, props.reduceMotion, props.perfMode === "static"]);
+  }, [props.theme, props.safeMode, props.reduceMotion, props.perfMode === "static", effTier]);
 
   // Live option updates without recreating the context.
   useEffect(() => {
@@ -151,13 +201,13 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
     h.setOptions({
       motion,
       mouseParallax: cb.parallaxStrength * 30,
-      tier: resolveTier(props),
+      tier: resolveTier(props, effTier),
       editing: props.editing,
     });
     if (motion <= 0) h.stop();
     else h.start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.perfMode, props.bgTier, props.editing, cb.dynamicStrength, cb.parallaxStrength, props.reduceMotion, props.safeMode]);
+  }, [props.perfMode, props.bgTier, props.editing, cb.dynamicStrength, cb.parallaxStrength, props.reduceMotion, props.safeMode, effTier]);
 
   const isStaticTheme = props.theme === "paper" || props.theme === "minimal-black";
   const overlay = props.starfieldOverlay === true && props.theme === "custom" && useCustomMedia;

@@ -14,6 +14,10 @@ use tauri::Manager;
 
 static APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
+/// 批次C-5：反作弊进程运行期旗标（winman 看护线程置位）——
+/// 期间本监控线程完全停用（不读键盘状态、不派发动作），配合前端横幅。
+pub static ANTICHEAT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 const VK_ESCAPE: i32 = 0x1B;
 const VK_DELETE: i32 = 0x2E;
 const VK_BACK: i32 = 0x08;
@@ -34,6 +38,13 @@ fn poll_loop() {
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(30));
+        // 批次C-5：反作弊进程运行 → 主动停用（不注入/不读取任何键盘状态）
+        if ANTICHEAT.load(std::sync::atomic::Ordering::Relaxed) {
+            prev_esc = false;
+            esc_last_down = None;
+            quit_fired = false;
+            continue;
+        }
         let esc = unsafe { GetAsyncKeyState(VK_ESCAPE) as u16 & 0x8000 != 0 };
         let del = unsafe { GetAsyncKeyState(VK_DELETE) as u16 & 0x8000 != 0 };
         let back = unsafe { GetAsyncKeyState(VK_BACK) as u16 & 0x8000 != 0 };
@@ -45,17 +56,28 @@ fn poll_loop() {
                 Some(t) if now.duration_since(t) <= std::time::Duration::from_millis(500) => {
                     if !dbl_fired {
                         dbl_fired = true;
-                        eprintln!("[env] double-Esc -> toggle environment");
+                        eprintln!("[env] double-Esc -> toggle environment (curtain)");
                         if let Some(a) = APP.get() {
                             if let Some(w) = a.get_webview_window("desktop") {
+                                use tauri::Emitter;
                                 match w.is_visible() {
                                     Ok(true) => {
+                                        // D-4 幕布语义：220ms 收起（scale+fade）后再隐藏
+                                        let _ = a.emit("sys://curtain", "out");
+                                        std::thread::sleep(std::time::Duration::from_millis(220));
                                         let _ = w.hide();
+                                        let _ = a.emit("sys://curtain", "reset");
+                                        // D-3：切到 Windows 桌面 = 维护模式，看门狗暂停回收
+                                        crate::shell::shell_watch::set_maintenance(true);
                                     }
                                     _ => {
                                         let _ = w.show();
                                         let _ = w.unminimize();
                                         let _ = w.set_focus();
+                                        // D-4 幕布语义：展开动画（从收起态反放）
+                                        let _ = a.emit("sys://curtain", "in");
+                                        // D-3：回到 Variable，恢复回收
+                                        crate::shell::shell_watch::set_maintenance(false);
                                     }
                                 }
                             }

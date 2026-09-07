@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { PackagePlus, Play, RotateCcw, Search, Trash2 } from "lucide-react";
+import { PackagePlus, Play, RotateCcw, ScanEye, Search, Trash2 } from "lucide-react";
 import { askConfirm, askPrompt, Modal } from "../../components/Modal";
 import { errMessage, ipc, type OfficialUsage, type TpGrade, type TpScanCandidate, type ThirdApp } from "../../lib/ipc";
 import { formatBytes } from "../../lib/format";
@@ -29,6 +29,8 @@ import { launchThirdApp, reloadThirdApps, useThirdApps } from "./thirdApps";
 const EXE_FILTERS = [{ name: "程序文件 / Programs", extensions: ["exe", "lnk", "bat", "cmd"] }];
 
 const GRADE_OPTIONS: TpGrade[] = ["portable", "standalone", "shortcut"];
+/** 批次C-6：兼容层级覆盖选项（缺省空 = 跟随自动探测）。 */
+const TIER_OPTIONS = ["L1", "L2", "L3", "L4", "Native"] as const;
 
 export function LauncherManager(): React.ReactElement | null {
   const { t } = useI18n();
@@ -107,6 +109,17 @@ export function LauncherManager(): React.ReactElement | null {
     try {
       await ipc.tpSetGrade(a.id, grade);
       await reloadThirdApps();
+    } catch (e) {
+      pushToast("error", t("launcherTitle"), errMessage(e).message);
+    }
+  };
+
+  /** 批次W-2：DPI 例外切换（不响应 DPI 消息的应用按主屏渲染，如实标注轻微模糊）。 */
+  const setDpiFix = async (a: ThirdApp): Promise<void> => {
+    try {
+      await ipc.tpSetDpiFix(a.id, !a.dpiFix);
+      await reloadThirdApps();
+      pushToast("info", a.name, !a.dpiFix ? t("tpDpiFixOn") : t("tpDpiFixOff"));
     } catch (e) {
       pushToast("error", t("launcherTitle"), errMessage(e).message);
     }
@@ -326,6 +339,55 @@ export function LauncherManager(): React.ReactElement | null {
                     ))}
                   </select>
                   <div className="tp-actions">
+                    {/* 批次C-6：兼容层级（自动探测 + 用户覆盖；缺省 = 跟随自动探测） */}
+                    <select
+                      className="text-input small tp-tier"
+                      value={a.compat?.overrideTier ?? ""}
+                      aria-label={t("compatTierTitle")}
+                      title={
+                        a.compat?.tier
+                          ? `${t("compatTierTitle")}：${a.compat.overrideTier ?? a.compat.tier}`
+                          : t("compatTierTitle")
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        void ipc
+                          .compatSetOverride(a.id, v === "" ? null : (v as "L1" | "L2" | "L3" | "L4" | "Native"))
+                          .then(() => reloadThirdApps())
+                          .catch((err: unknown) => pushToast("error", a.name, errMessage(err).message));
+                      }}
+                    >
+                      <option value="">{t("compatTierAuto")}</option>
+                      {TIER_OPTIONS.map((x) => (
+                        <option key={x} value={x}>
+                          {x}
+                        </option>
+                      ))}
+                    </select>
+                    {/* 批次C-5：L4 让位归因徽标（compat.hint：fullscreen/anticheat） */}
+                    {a.compat?.hint === "fullscreen" || a.compat?.hint === "anticheat" ? (
+                      <span
+                        className="tp-l4-hint"
+                        title={
+                          a.compat.hint === "anticheat"
+                            ? t("compatHintAnticheat")
+                            : t("compatHintFullscreen")
+                        }
+                      >
+                        {a.compat.hint === "anticheat" ? "AC" : "FS"}
+                      </span>
+                    ) : null}
+                    {/* 批次W-2：DPI 例外开关（按下态 = 已登记 dpiFix） */}
+                    <button
+                      type="button"
+                      className={`icon-btn small${a.dpiFix ? " active" : ""}`}
+                      aria-label={t("tpDpiFixTitle")}
+                      aria-pressed={a.dpiFix}
+                      title={t("tpDpiFixTitle")}
+                      onClick={() => void setDpiFix(a)}
+                    >
+                      <ScanEye size={14} />
+                    </button>
                     <button
                       type="button"
                       className="icon-btn small"

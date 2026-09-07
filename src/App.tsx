@@ -1,4 +1,4 @@
-﻿﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
@@ -125,6 +125,28 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     };
   }, [appType]);
 
+  // S-1：托盘切换防截屏 → 同步本地设置状态并落库（跨窗口由 settings://changed 广播）
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const sub = listen<boolean>("shield://changed", (ev) => {
+      if (disposed) return;
+      void saveSetting("privacyShield", ev.payload);
+      setSettingsState((prev) => (prev ? { ...prev, privacyShield: ev.payload } : prev));
+    });
+    void sub
+      .then((u) => {
+        if (disposed) u();
+        else un = u;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
   // track editor typing for background degradation
   useEffect(() => {
     const onDown = (e: KeyboardEvent): void => {
@@ -199,6 +221,10 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
       try {
         const s = await loadSettings();
         setSettingsState(s);
+        // S-1：开机恢复防截屏模式（Rust 侧看护线程负责补打新窗口）
+        if (s.privacyShield && isTauriRuntime()) {
+          await ipc.shieldSet(true).catch(() => {});
+        }
         document.documentElement.lang = s.language === "en" ? "en" : s.language === "zh-TW" ? "zh-TW" : "zh-CN";
         const info = await ipc.bootstrap().catch((e) => {
           // Browser dev mode (`npm run dev`) has no Tauri IPC backend — that is
@@ -262,12 +288,16 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     }),
     [settings?.language, patchSettings],
   );
+  // E-3 残留报告文案（Provider 在渲染期才包裹，本组件内直接取 context 值）
+  const tI18n = useI18n().t;
 
   // ---------- apply theme/ui CSS variables ----------
   useEffect(() => {
     if (!settings) return;
     const root = document.documentElement;
     root.dataset.theme = settings.theme;
+    // A-2.3：reduceMotion / 性能低档位 → 全部动效降级 80ms（动效是增益不是依赖）
+    root.dataset.reduceMotion = String(!!settings.reduceMotion);
     root.style.setProperty("--editor-font", settings.fontFamily);
     root.style.setProperty("--editor-font-size", `${settings.fontSize}px`);
     root.style.setProperty("--editor-line-height", String(settings.lineHeight));
@@ -329,7 +359,11 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
 
   // ---------- guarded close flow ----------
   // 桌面窗口 = 退出整个 Variable（先关全部软件窗口）；软件窗口红灯 = 只关自己。
-  const requestClose = useCallback(async () => {
+  // 批次E-3：desktop 退出前先走 exit_prepare（checkpoint → 断代理 → 残留扫描）；
+  // 非零残留弹报告，用户可「我知道风险」跳过（二次确认）或返回。
+  const exitResidueBypassRef = useRef(false);
+  const [exitResidues, setExitResidues] = useState<{ path: string; kind: string; size: number }[] | null>(null);
+  const requestClose = useCallback(async (bypassResidueCheck = false) => {
     setClosePhase("flushing");
     try {
       window.dispatchEvent(new CustomEvent("variable:flush-save"));
@@ -337,6 +371,17 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
       await new Promise((r) => setTimeout(r, 350));
       setClosePhase("idle");
       if (appType === "desktop") {
+        // 批次W-1 退出会话：全部嵌入窗口先收 WM_CLOSE（应用自行退出，30s
+        // 超时者由后端脱离留在桌面，绝不强杀），再关壳层窗口
+        await ipc.embedCloseAll().catch(() => {});
+        // 批次E-3：容器 checkpoint → 断代理 → 残留扫描；0 残留静默通过
+        if (!bypassResidueCheck && !exitResidueBypassRef.current) {
+          const prep = await ipc.exitPrepare().catch(() => null);
+          if (prep && prep.residues.length > 0) {
+            setExitResidues(prep.residues.map((r) => ({ path: r.path, kind: r.kind ?? "file", size: r.size ?? 0 })));
+            return; // 暂停退出，等用户在报告里决定
+          }
+        }
         const wins = await getAllWebviewWindows();
         await Promise.all(
           wins.filter((w) => w.label.startsWith("app-")).map((w) => w.destroy().catch(() => {})),
@@ -348,6 +393,14 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
       setClosePhase("failed");
     }
   }, [appType]);
+
+  // E-3 残留报告：继续退出（跳过扫描）或返回
+  const exitResidueProceed = useCallback(() => {
+    exitResidueBypassRef.current = true;
+    setExitResidues(null);
+    void requestClose(true);
+  }, [requestClose]);
+  const exitResidueCancel = useCallback(() => setExitResidues(null), []);
 
   // 批次E-18：Del+Backspace（Rust 侧检测）→ 真正退出：直接走保存冲刷+关闭
   useEffect(() => {
@@ -403,6 +456,27 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <PromptHost />
             <ConfirmBubbleHost />
             <NetConsentHost />
+            {/* 批次E-3：退出残留报告（非零残留才出现；可跳过=「我知道风险」） */}
+            {exitResidues && (
+              <Modal open onClose={exitResidueCancel} title={tI18n("exitResidueTitle")} width={560}>
+                <div className="backup-list" style={{ maxHeight: 260, overflowY: "auto", marginBottom: 12 }}>
+                  {exitResidues.map((r) => (
+                    <div key={r.path} className="backup-row" style={{ gap: 6 }}>
+                      <span className="dim small">{r.kind === "reg" ? "🔑" : "📄"}</span>
+                      <span className="ellipsis small" title={r.path}>{r.path}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" className="btn ghost" onClick={exitResidueCancel}>
+                    {tI18n("exitResidueReturn")}
+                  </button>
+                  <button type="button" className="btn danger" onClick={exitResidueProceed}>
+                    {tI18n("exitResidueSkip")}
+                  </button>
+                </div>
+              </Modal>
+            )}
           </I18nContext.Provider>
         ) : bootPhase !== "done" || !settings || !ready ? (
           <div className="boot-hold" aria-busy="true" />

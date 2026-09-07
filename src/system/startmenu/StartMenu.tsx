@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AppWindow, FolderOpen, Lock, LogOut, PackagePlus, Power, RotateCcw,
-  Settings as SettingsIcon, Search, Trash2, X,
+  Activity, AppWindow, Calculator, CalendarClock, Camera, ClipboardList, FolderOpen,
+  Lock, LogOut, PackagePlus, Power, RotateCcw,
+  Settings as SettingsIcon, Search, StickyNote, Trash2, X,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -12,7 +13,7 @@ import { askConfirm } from "../../components/Modal";
 import { desktopIconDefs, desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { launchThirdApp, useThirdApps } from "../launcher/thirdApps";
 import { useUninstalledOfficial } from "../launcher/official";
-import { openVwmSystem } from "../windows/vwm";
+import { openVwmApp, openVwmSystem, VWM_TOOLS, type VwmToolApp } from "../windows/vwm";
 import { pushRecent, useRecent } from "./recent";
 
 /**
@@ -26,6 +27,15 @@ import { pushRecent, useRecent } from "./recent";
  */
 
 const ORDER_KEY = "variable:start:order:v1";
+
+/** F-2 工具集：标题词典 key 与图标（开始菜单/VWM 共用语义）。 */
+const TOOL_DEFS: Record<VwmToolApp, { key: string; icon: React.ReactElement }> = {
+  calc: { key: "toolCalc", icon: <Calculator size={22} strokeWidth={1.6} /> },
+  notes: { key: "toolNotes", icon: <StickyNote size={22} strokeWidth={1.6} /> },
+  calendar: { key: "toolCalendar", icon: <CalendarClock size={22} strokeWidth={1.6} /> },
+  snapshot: { key: "toolSnapshot", icon: <Camera size={22} strokeWidth={1.6} /> },
+  clipboard: { key: "toolClipboard", icon: <ClipboardList size={22} strokeWidth={1.6} /> },
+};
 
 function loadOrder(): string[] {
   try {
@@ -154,6 +164,31 @@ export function StartMenu(props: {
       },
       title: t("recycleBin"),
     },
+    {
+      id: "sys-taskman",
+      label: t("tmTitle"),
+      hue: "16",
+      icon: <Activity size={22} strokeWidth={1.6} />,
+      onClick: () => {
+        pushRecent("sys", "taskman", t("tmTitle"));
+        props.onClose();
+        openVwmSystem("taskman");
+      },
+      title: t("tmTitle"),
+    },
+    // F-2 实用工具集（VWM 虚拟窗口应用：贴靠/保活/多开语义与四软件一致）
+    ...VWM_TOOLS.map((tool) => ({
+      id: `tool-${tool}`,
+      label: t(TOOL_DEFS[tool].key),
+      hue: "268",
+      icon: TOOL_DEFS[tool].icon,
+      onClick: () => {
+        pushRecent("sys", `tool-${tool}`, t(TOOL_DEFS[tool].key));
+        props.onClose();
+        openVwmApp(tool);
+      },
+      title: t(TOOL_DEFS[tool].key),
+    })),
     {
       id: "sys-launcher",
       label: t("launcherTitle"),

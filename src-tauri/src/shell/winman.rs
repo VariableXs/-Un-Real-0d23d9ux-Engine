@@ -22,6 +22,14 @@ fn dispatch_action(app: &AppHandle, action: &str) {
         "explorer" | "explorerCtrl" => {
             let _ = app.emit_to("desktop", "sys://open-system", "explorer");
         }
+        // F-1：设置中心呼出（Win+I 被系统保留，默认 ctrl+alt+i）
+        "settingsCenter" => {
+            let _ = app.emit_to("desktop", "sys://open-settings", ());
+        }
+        // F-2：剪贴板历史呼出（Win+V 被系统保留，默认 ctrl+alt+v）
+        "clipboardHistory" => {
+            let _ = app.emit_to("desktop", "sys://open-clipboard", ());
+        }
         "quickBluetooth" => {
             let _ = app.emit_to("desktop", "quickpanel://open", "bluetooth");
         }
@@ -83,6 +91,8 @@ pub fn dispatch_action_pub(app: &AppHandle, action: &str) {
 pub fn default_binds() -> Vec<(&'static str, &'static str)> {
     vec![
         ("explorer", "ctrl+alt+e"),
+        ("settingsCenter", "ctrl+alt+i"),
+        ("clipboardHistory", "ctrl+alt+v"),
         ("explorerCtrl", "ctrl+e"),
         ("quickBluetooth", "ctrl+alt+b"),
         ("quickAudio", "ctrl+alt+k"),
@@ -433,6 +443,38 @@ fn win_key_thread(app: AppHandle) {
     }
 }
 
+// ---------- 批次W-5：显示器热切换看护 ----------
+
+/// 显示器热切换看护：2s 轮询主屏分辨率 + 逻辑显示器数（等效 WM_DISPLAYCHANGE，
+/// 无需消息窗口，天然 2s 防抖）。签名变化 → `sys://display-changed`
+/// （payload = 新签名 "宽x高"）→ 前端分屏记忆恢复 / 出屏窗口吸附回主屏。
+pub fn spawn_display_watcher(app: AppHandle) {
+    #[cfg(windows)]
+    {
+        std::thread::spawn(move || {
+            use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+            let sign = || -> String {
+                let w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+                let h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+                format!("{w}x{h}")
+            };
+            let mut last = sign();
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let cur = sign();
+                if cur != last {
+                    last = cur.clone();
+                    let _ = app.emit("sys://display-changed", cur);
+                }
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
 // ---------- 批次E-6：全屏应用检测（自动避让） ----------
 
 /// 全屏检测线程：2s 轮询前台窗口是否铺满其所在显示器。
@@ -500,4 +542,82 @@ fn fullscreen_foreground(app: &AppHandle) -> bool {
         && wr.top == mi.rcMonitor.top
         && wr.right == mi.rcMonitor.right
         && wr.bottom == mi.rcMonitor.bottom
+}
+
+// ---------- 批次C-5：L4 反作弊看护（kbdhook 停用 + 前端横幅） ----------
+
+/// 反作弊/守护服务进程名（小写）。命中任一 → Variable 停用全局键监控并横幅声明，
+/// 进程与数据通道全保留（不注入、不结束、不干预）。
+#[cfg(windows)]
+const ANTICHEAT_PROCESSES: &[&str] = &[
+    "easyanticheat.exe",
+    "easyanticheat_eos.exe",
+    "beservice.exe",
+    "beservice_x64.exe",
+    "vanguard.exe",
+    "vgc.exe",
+    "faceitclient.exe",
+    "eseaclient.exe",
+    "rainbowsix_vc.exe",
+];
+
+/// 反作弊看护线程：3s 轮询进程快照 → 状态变化时置位 kbdhook::ANTICHEAT
+/// 并发 `sys://anticheat`（bool）→ 前端横幅；退出恢复（桌面 2s 内全量回来）。
+pub fn spawn_anticheat_watcher(app: AppHandle) {
+    #[cfg(windows)]
+    {
+        std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            let mut last = false;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let hit = anticheat_running();
+                if hit != last {
+                    last = hit;
+                    crate::shell::kbdhook::ANTICHEAT.store(hit, Ordering::Relaxed);
+                    let _ = app.emit("sys://anticheat", hit);
+                }
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+    }
+}
+
+/// 当前是否有反作弊进程在运行（ToolHelp 进程快照，只读）。
+#[cfg(windows)]
+fn anticheat_running() -> bool {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return false;
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut found = false;
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                let name = String::from_utf16_lossy(
+                    &entry.szExeFile[..entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(0)],
+                )
+                .to_lowercase();
+                if ANTICHEAT_PROCESSES.contains(&name.as_str()) {
+                    found = true;
+                    break;
+                }
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snap);
+        found
+    }
 }

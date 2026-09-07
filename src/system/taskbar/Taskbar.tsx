@@ -24,6 +24,8 @@ import {
 import { useUninstalledOfficial } from "../launcher/official";
 import { startHardwarePolling, useHw } from "../tray/hardware";
 import { QuickPanel, useNotifyBadge } from "../tray/QuickPanel";
+import { ImeIndicator } from "./ImeIndicator";
+import { MediaControl } from "./MediaControl";
 import { pushRecent } from "../startmenu/recent";
 
 /**
@@ -637,6 +639,12 @@ export function Taskbar(props: {
           {unread > 0 && <span className="tb-badge" aria-hidden>{unread > 9 ? "9+" : unread}</span>}
         </button>
       </div>
+
+      {/* F-5.3 输入法指示器（中英态 1s 轮询；点击弹语言列表） */}
+      <ImeIndicator />
+
+      {/* F-5.4 媒体控制指示（探测不到则不渲染） */}
+      <MediaControl />
 
       {/* 批次D：时钟点击弹日历（本地时区，零网络） */}
       <button

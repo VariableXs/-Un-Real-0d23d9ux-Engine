@@ -10,8 +10,8 @@
 //! - 索引：文件表（VPath → FileInfo）与 ChunkIndex（HashKey → ChunkLoc）两棵 B+ 树，
 //!   seal/checkpoint 时序列化为 blob 追加，Footer 双副本记录位置与 BLAKE3 校验；
 //! - 快照：追加区永不覆盖 ⇒ 索引状态拷贝即时间点快照，restore 零成本（chunk 仍在）；
-//! - 如实边界（B-13 补齐）：写路径尚无 journal——未 seal 即断电会丢失最近一次
-//!   checkpoint 之后的事务，打开时报 Corrupted；压缩/加密由 B-14 扩展 codec 字段。
+//! - B-13 已补齐：写路径 journal（[type][len][blake3][payload] 帧 + COMMIT 对），
+//!   重放/掉电撕裂截断见 journal_replay + journal_tests；压缩/加密由 B-14 扩展 codec 字段。
 //!
 //! 契约纪律：trait 签名 = BLUEPRINT 7.1（本批新增 read_range/stream，与蓝图同提交）。
 

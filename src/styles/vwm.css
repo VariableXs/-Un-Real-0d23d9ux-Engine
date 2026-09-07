@@ -85,6 +85,45 @@
 /* 复用 global.css 的 .win-btn / .win-dot 视觉；非聚焦窗口红绿灯降饱和 */
 .vwm-window:not(.focused) .vwm-lights .win-dot { filter: saturate(0.35) brightness(0.8); }
 
+/* ---- 批次W-5：标签组 TabStrip（标题栏下沿） ---- */
+.vwm-tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 2px 6px 0;
+  flex: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.vwm-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: none;
+}
+.vwm-tab.on {
+  background: rgba(255, 255, 255, 0.16);
+  font-weight: 600;
+}
+.vwm-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
 /* ---- 内容区（软件视图原样挂载） ---- */
 .vwm-content {
   flex: 1;
@@ -150,15 +189,18 @@
   .vwm-snap-preview { transition: none; }
 }
 
-/* ==================== 批次E-14：窗口动效 ==================== */
+/* ==================== 批次E-14：窗口动效（A-2 逐帧精修收编 token） ==================== */
 
-/* 打开/恢复：从任务栏方向弹出（微回弹弹簧曲线） */
+/* 打开/恢复：从任务栏方向弹出（spring：初速偏移 + 4% 过冲 + 阴影先行） */
 @keyframes vwm-in {
-  from { opacity: 0; scale: 0.92; translate: 0 26px; }
-  to { opacity: 1; scale: 1; translate: 0 0; }
+  0% { opacity: 0; scale: 0.80; translate: 0 26px; }
+  50% { opacity: 1; scale: 0.97; translate: 0 6px; }
+  70% { scale: 1.04; } /* 过冲 4% */
+  100% { opacity: 1; scale: 1; translate: 0 0; }
 }
 .vwm-window {
-  animation: vwm-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+  /* 阴影先行：入场前 120ms 即完成阴影落位（50% 处阴影先行） */
+  animation: vwm-in 0.24s var(--ease-spring, cubic-bezier(0.34, 1.4, 0.64, 1)) both;
 }
 /* 专注动画期间保持 transform: translateZ(0) 包含块不被覆盖：使用独立 scale/translate 属性 */
 
@@ -167,18 +209,20 @@
   opacity: 0;
   scale: 0.9;
   translate: 0 14px;
-  transition: opacity 0.17s ease-in, scale 0.17s ease-in, translate 0.17s ease-in;
+  transition: opacity var(--dur-3, 0.17s) ease-in,
+    scale var(--dur-3, 0.17s) ease-in,
+    translate var(--dur-3, 0.17s) ease-in;
   pointer-events: none;
 }
 
-/* 最小化飞行：飞向任务栏方向（窗口属主位置由 .flying 简化为底部收拢） */
+/* 最小化飞行：飞向任务栏 + 接近任务栏时 5% 压扁（呼应图标格，抛物线感） */
 .vwm-window.flying {
   opacity: 0;
-  scale: 0.35;
+  scale: 0.35 0.33; /* 横向 0.35 / 纵向 0.33 ≈ 5% 压扁 */
   translate: 0 32vh;
-  transition: opacity 0.2s cubic-bezier(0.5, 0, 0.8, 0.4),
-    scale 0.2s cubic-bezier(0.5, 0, 0.8, 0.4),
-    translate 0.2s cubic-bezier(0.5, 0, 0.8, 0.4);
+  transition: opacity var(--dur-4, 0.2s) cubic-bezier(0.5, 0, 0.8, 0.4),
+    scale var(--dur-4, 0.2s) cubic-bezier(0.5, 0, 0.8, 0.4),
+    translate var(--dur-4, 0.2s) cubic-bezier(0.5, 0, 0.8, 0.4);
   pointer-events: none;
 }
 
@@ -190,12 +234,12 @@
 }
 .vwm-window.dragging .vwm-titlebar { cursor: grabbing; }
 
-/* 贴靠/最大化：平滑滑入（left/top/width/height 过渡一拍） */
+/* 贴靠/最大化：实时预览 120ms 淡入 + 窗口 170ms 滑入（统一 --ease-standard） */
 .vwm-window.snapping {
-  transition: left 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
-    top 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
-    width 0.22s cubic-bezier(0.2, 0.8, 0.25, 1),
-    height 0.22s cubic-bezier(0.2, 0.8, 0.25, 1);
+  transition: left var(--dur-3, 0.17s) var(--ease-standard, cubic-bezier(0.2, 0, 0.1, 1)),
+    top var(--dur-3, 0.17s) var(--ease-standard, cubic-bezier(0.2, 0, 0.1, 1)),
+    width var(--dur-3, 0.17s) var(--ease-standard, cubic-bezier(0.2, 0, 0.1, 1)),
+    height var(--dur-3, 0.17s) var(--ease-standard, cubic-bezier(0.2, 0, 0.1, 1));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -205,3 +249,34 @@
 
 /* 批次E-16：第三方应用占位（原生窗口浮于其上，这里保持透明） */
 .vwm-tp { background: rgb(6 10 18 / 0.35); }
+
+/* 批次W-3：退出/孤儿占位卡（嵌入层崩溃只影响本占位卡，Shell 不受影响） */
+.vwm-tp-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgb(6 10 18 / 0.72);
+  color: rgb(235 240 250 / 0.92);
+  text-align: center;
+  padding: 24px;
+}
+.vwm-tp-card-msg { margin: 0; font-size: 14px; line-height: 1.6; max-width: 40em; }
+.vwm-tp-card-actions { display: flex; gap: 10px; }
+.vwm-tp-card-actions .btn {
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  padding: 6px 16px;
+  background: rgb(255 255 255 / 0.06);
+  color: inherit;
+  cursor: pointer;
+}
+.vwm-tp-card-actions .btn.primary {
+  background: rgb(96 165 250 / 0.9);
+  border-color: transparent;
+  color: #0b1220;
+  font-weight: 600;
+}

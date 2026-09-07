@@ -5,7 +5,10 @@ import { appAccent } from "../../components/AppGlyphs";
 import { isTpApp } from "./vwm";
 import { ipc } from "../../lib/ipc";
 import {
-  closeVwmWin,
+  activateVwmTab,
+  closeVwmTab,
+  groupMembersOf,
+  groupVwmWins,
   minimizeVwmWin,
   moveVwmWin,
   pointerFocusVwm,
@@ -14,7 +17,9 @@ import {
   settleVwmWin,
   snapVwmRect,
   snapZoneForVwm,
+  tabsEnabled,
   toggleMaxVwmWin,
+  ungroupVwmWin,
   unmaxVwmTo,
   vwmStore,
   vwmWindowTitle,
@@ -121,11 +126,21 @@ export function VirtualWindowFrame(props: {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-    const onUp = (): void => {
+    const onUp = (ev?: PointerEvent): void => {
       if (pendingZone) {
         playSnap();
         if (pendingZone === "up") toggleMaxVwmWin(win.id);
         else snapVwmRect(win.id, snapZoneForVwm(pendingZone, vwmStore.getState().workArea));
+      } else if (ev && tabsEnabled()) {
+        // 批次W-5 标签页化：拖到同应用另一窗口标题栏上松手 → 合并为标签组
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        const bar = el?.closest?.(".vwm-titlebar") as HTMLElement | null;
+        const targetId = bar?.dataset?.winid;
+        if (targetId && targetId !== win.id) {
+          const s = vwmStore.getState();
+          const target = s.wins.find((x) => x.id === targetId);
+          if (target && target.app === win.app) groupVwmWins(win.id, targetId);
+        }
       }
       settleVwmWin(win.id);
       setVwmSnapPreview(null);
@@ -176,13 +191,14 @@ export function VirtualWindowFrame(props: {
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: props.zIndex }}
       onPointerDown={() => {
         pointerFocusVwm(win.id);
-        if (isTpApp(win.app)) void ipc.embedFocus().catch(() => {});
+        if (isTpApp(win.app)) void ipc.embedFocus(win.id).catch(() => {});
       }}
       role="dialog"
       aria-label={title}
     >
       <div
         className="vwm-titlebar"
+        data-winid={win.id}
         onPointerDown={onTitlePointerDown}
         onDoubleClick={() => { playSnap(); toggleMaxVwmWin(win.id); }}
       >
@@ -199,8 +215,9 @@ export function VirtualWindowFrame(props: {
             title={t("close")}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => {
-              if (isTpApp(win.app)) void ipc.embedClose().catch(() => {});
-              closeVwmWin(win.id);
+              if (isTpApp(win.app)) void ipc.embedClose(win.id).catch(() => {});
+              // 批次W-5：组内红绿灯只关当前标签（其它成员保活），未分组原样关窗
+              closeVwmTab(win.id);
             }}
           >
             <span className="win-dot green" />
@@ -227,6 +244,47 @@ export function VirtualWindowFrame(props: {
           </button>
         </div>
       </div>
+
+      {/* 批次W-5 标签组：标题栏下沿 TabStrip（仅组内窗口渲染）。
+          点击切换显示；按住拖出 24px = 拆分（脱离标签组）。 */}
+      {win.group && (
+        <div className="vwm-tabstrip" role="tablist">
+          {groupMembersOf(vwmStore.getState().wins, win.group).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={m.id === win.id}
+              className={`vwm-tab${m.id === win.id ? " on" : ""}`}
+              onClick={() => activateVwmTab(m.id)}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                const sx = e.clientX;
+                const sy = e.clientY;
+                let split = false;
+                const onMove = (ev: PointerEvent): void => {
+                  if (split) return;
+                  if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 24) {
+                    split = true;
+                    ungroupVwmWin(m.id);
+                  }
+                };
+                const onUp = (): void => {
+                  window.removeEventListener("pointermove", onMove);
+                  window.removeEventListener("pointerup", onUp);
+                  window.removeEventListener("pointercancel", onUp);
+                };
+                window.addEventListener("pointermove", onMove);
+                window.addEventListener("pointerup", onUp);
+                window.addEventListener("pointercancel", onUp);
+              }}
+            >
+              <span className="vwm-tab-dot" aria-hidden style={{ background: appAccent(m.app) }} />
+              {vwmWindowTitle(m.app)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="vwm-content">{props.children}</div>
 

@@ -39,6 +39,13 @@ pub struct ThirdApp {
     /// apps.json v1（无 profile 字段）平滑升级为 v2——旧文件可读可写。
     #[serde(default)]
     pub profile: crate::exec::PortableProfile,
+    /// 批次W-2 DPI 例外清单：不响应 WM_DPICHANGED 的应用登记 true
+    /// （嵌入时按主屏渲染不转发 DPI 变更，如实标注轻微模糊）。
+    #[serde(default)]
+    pub dpi_fix: bool,
+    /// 批次C-6：兼容分级探测结果（tier + 证据 + 用户覆盖）。
+    #[serde(default)]
+    pub compat: crate::shell::compat_probe::CompatInfo,
 }
 
 // ---------- 登记表持久化 ----------
@@ -236,6 +243,8 @@ pub fn tp_add(
         icon: None,
         target,
         profile: Default::default(),
+        dpi_fix: false,
+        compat: Default::default(),
     };
     apps.push(app.clone());
     save_registry(&st, &apps)?;
@@ -314,6 +323,20 @@ pub fn tp_set_grade(st: tauri::State<AppState>, id: String, grade: String) -> Cm
     Ok(out)
 }
 
+/// 批次W-2：登记/取消 DPI 例外（不响应 DPI 消息的应用，按主屏渲染）。
+#[tauri::command]
+pub fn tp_set_dpi_fix(st: tauri::State<AppState>, id: String, dpi_fix: bool) -> CmdResult<ThirdApp> {
+    let mut apps = load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.dpi_fix = dpi_fix;
+    let out = app.clone();
+    save_registry(&st, &apps)?;
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn tp_rename(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<ThirdApp> {
     let trimmed = name.trim();
@@ -337,6 +360,7 @@ pub(crate) fn tp_launch_inner(
     st: &tauri::State<'_, AppState>,
     app: &tauri::AppHandle,
     id: String,
+    arg: Option<&str>,
 ) -> CmdResult<Option<u32>> {
     let mut apps = load_registry(st);
     let app_item = apps
@@ -381,7 +405,10 @@ pub(crate) fn tp_launch_inner(
             crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?
                 .process_id
         } else {
-            match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &[]) {
+            // B-27：arg = 文件关联「打开方式」的目标文件路径，作为单个参数
+            // 原样传给目标程序（不经 shell 拼接；空 = 普通启动）。
+            let args: Vec<String> = arg.map(|a| vec![a.to_string()]).unwrap_or_default();
+            match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &args) {
                 Ok(pid) => pid,
                 Err(profile_err) => {
                     crate::state::append_log(
@@ -419,7 +446,7 @@ pub fn tp_launch(
     app: tauri::AppHandle,
     id: String,
 ) -> CmdResult<()> {
-    tp_launch_inner(&st, &app, id).map(|_| ())
+    tp_launch_inner(&st, &app, id, None).map(|_| ())
 }
 
 /// 直接启动用户登记的 exe（参数列表方式，不经 shell 拼接）；返回新进程 pid。
@@ -803,6 +830,29 @@ pub fn icon_dataurl(path: String) -> CmdResult<String> {
     encode_icon(resolved.to_string_lossy().as_ref())
 }
 
+/// 批次B-27：256px Jumbo 图标提取（SHIL_JUMBO 等效：IShellItemImageFactory
+/// GetImage(256) + SIIGBF_BIGGERSIZEOK，资源管理器大图标同源）→ PNG data URL。
+/// 调用方（前端）负责缓存 data URL（localStorage），此处只读不落盘。
+#[tauri::command]
+pub fn icon_jumbo_dataurl(path: String) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let p = PathBuf::from(&path);
+        let (w, h, rgba) = extract_shell_item_image_rgba_sized(&p, 256)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(AppError::validation(
+            "仅 Windows 支持 Jumbo 图标提取 / Windows only",
+        ))
+    }
+}
+
 /// Explorer 同款兜底：IShellItemImageFactory::GetImage → 32bpp RGBA。
 /// 仅 Windows 有真实行为；其余平台诚实报错（与 exe_icon_dataurl 同策略）。
 fn shell_item_icon_dataurl(path: &Path) -> CmdResult<String> {
@@ -949,6 +999,12 @@ fn hbitmap_to_rgba(
 /// 文件夹 / UWP 快捷方式等任意 shell 项都能取到资源管理器所显示的图标。
 #[cfg(windows)]
 fn extract_shell_item_image_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
+    extract_shell_item_image_rgba_sized(path, 64)
+}
+
+/// 指定边长的 shell 项图标提取（64 = 既有兜底；256 = B-27 Jumbo）。
+#[cfg(windows)]
+fn extract_shell_item_image_rgba_sized(path: &Path, size: i32) -> Result<(u32, u32, Vec<u8>), AppError> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::SIZE;
@@ -960,7 +1016,7 @@ fn extract_shell_item_image_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), App
             SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
                 .map_err(|e| AppError::not_found(format!("SHCreateItem 失败 / failed: {e}")))?;
         let hbm = factory
-            .GetImage(SIZE { cx: 64, cy: 64 }, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)
+            .GetImage(SIZE { cx: size, cy: size }, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)
             .map_err(|e| AppError::not_found(format!("GetImage 失败 / failed: {e}")))?;
         let out = hbitmap_to_rgba(hbm);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(hbm);
@@ -1127,6 +1183,17 @@ mod tests {
     }
 
     #[test]
+    fn third_app_dpi_fix_defaults_false_for_v2_json() {
+        // 批次W-2：apps.json v2 无 dpiFix 字段 → 平滑升级，缺省 false
+        let json = r#"{"id":"a","name":"A","path":"C:/a.exe","grade":"standalone","addedAt":1,"lastLaunch":null,"icon":null,"target":null}"#;
+        let app: ThirdApp = serde_json::from_str(json).unwrap();
+        assert!(!app.dpi_fix);
+        let with_fix = r#"{"id":"a","name":"A","path":"C:/a.exe","grade":"standalone","addedAt":1,"lastLaunch":null,"icon":null,"target":null,"dpiFix":true}"#;
+        let app: ThirdApp = serde_json::from_str(with_fix).unwrap();
+        assert!(app.dpi_fix);
+    }
+
+    #[test]
     fn registry_roundtrip_and_idempotent_add() {
         let tmp = std::env::temp_dir().join(format!("variable-launcher-test-{}", std::process::id()));
         // 造一个真实存在的假 exe（is_file 校验需要）
@@ -1148,6 +1215,8 @@ mod tests {
             icon: None,
             target: None,
             profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
         };
         apps.push(app.clone());
         save_registry(&st, &apps).unwrap();
@@ -1194,6 +1263,8 @@ mod tests {
             icon: None,
             target: None,
             profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
         });
         save_registry(&st, &apps).unwrap();
         tp_purge_inner(&st, "p1").unwrap();
@@ -1217,6 +1288,8 @@ mod tests {
             icon: None,
             target: None,
             profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
         });
         save_registry(&st, &apps).unwrap();
         assert!(tp_purge_inner(&st, "p2").is_err(), "数据目录外应拒绝");
@@ -1254,8 +1327,10 @@ mod tests {
                 added_at: now_ms(),
                 last_launch: None,
                 icon: None,
-            target: None,
-            profile: Default::default(),
+                target: None,
+                dpi_fix: false,
+                profile: Default::default(),
+                compat: Default::default(),
             };
             apps.push(app.clone());
             save_registry(&st, &apps).unwrap();

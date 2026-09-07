@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     假启动壳：50–100 ms 内弹出可取消进度，真进程在 Job 语义下由 isolation.rs 启动。
 

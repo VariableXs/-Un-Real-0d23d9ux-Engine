@@ -1,9 +1,162 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
-import type { ContainerDiag, ContainerStatsView } from "../../lib/ipc";
+import type { ContainerDiag, ContainerStatsView, Shell } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
 import { formatBytes } from "../../lib/format";
+
+/**
+ * F-6 系统维护分区：计划备份（daily/weekly + 立即备份 + 错过补偿提示）、
+ * 引擎自更新（本地更新包 SHA-256 校验 + 失败回滚，历史保留 2 份）、
+ * 数据自检扩展（备份可恢复性 / 索引一致性 / 媒体孤儿引用）。
+ * 边界：增量包下载走白名单下载器；此处只做校验、应用与回滚（如实展示）。
+ */
+function SysMaintSection(): React.ReactElement {
+  const { t } = useI18n();
+  const [sched, setSched] = useState<Shell.BackupSchedule | null>(null);
+  const [update, setUpdate] = useState<Shell.UpdateCandidate | null>(null);
+  const [findings, setFindings] = useState<Shell.MaintainFinding[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadSched = (): void => {
+    void ipc.backupScheduleGet().then(setSched).catch(() => setSched(null));
+  };
+
+  useEffect(() => {
+    loadSched();
+  }, []);
+
+  const setFreq = (freq: "none" | "daily" | "weekly"): void => {
+    const hour = sched?.hour ?? 3;
+    void ipc
+      .backupScheduleSet(freq, hour)
+      .then(setSched)
+      .catch((e) => pushToast("error", t("smBackupTitle"), errMessage(e).message));
+  };
+
+  const setHour = (hour: number): void => {
+    const freq = (sched?.freq ?? "none") as "none" | "daily" | "weekly";
+    void ipc
+      .backupScheduleSet(freq, hour)
+      .then(setSched)
+      .catch((e) => pushToast("error", t("smBackupTitle"), errMessage(e).message));
+  };
+
+  const run = async (fn: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      pushToast("error", t("smTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="st-sysmaint">
+      <h4 className="st-sec-title">{t("smBackupTitle")}</h4>
+      <div className="st-actions">
+        {(["none", "daily", "weekly"] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            className={sched?.freq === f ? "sel" : undefined}
+            aria-pressed={sched?.freq === f}
+            onClick={() => setFreq(f)}
+          >
+            {t(`smFreq_${f}`)}
+          </button>
+        ))}
+        <label className="st-field-inline small">
+          {t("smHour")}
+          <select
+            value={sched?.hour ?? 3}
+            disabled={sched?.freq === "none"}
+            onChange={(e) => setHour(Number(e.target.value))}
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run(async () => {
+            const name = await ipc.backupRunNow();
+            pushToast("success", t("smBackupNow"), name);
+            loadSched();
+          })}
+        >
+          {t("smBackupNow")}
+        </button>
+      </div>
+      {sched?.missed && (
+        <p className="st-warn small">⚠ {t("smMissed")}</p>
+      )}
+      {sched && sched.lastRunMs > 0 && (
+        <p className="dim small">
+          {t("smLastRun")}: {new Date(sched.lastRunMs).toLocaleString()} · {sched.lastSource}
+        </p>
+      )}
+
+      <h4 className="st-sec-title">{t("smUpdateTitle")}</h4>
+      <div className="st-actions">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run(async () => {
+            const c = await ipc.updateScan();
+            setUpdate(c);
+            pushToast(c ? "info" : "info", t("smUpdateScan"), c ? `v${c.version} · ${c.files} files` : t("smUpdateNone"));
+          })}
+        >
+          {t("smUpdateScan")}
+        </button>
+        <button
+          type="button"
+          disabled={busy || !update}
+          onClick={() => void run(async () => {
+            const msg = await ipc.updateApply();
+            pushToast("success", t("smUpdateApply"), msg);
+            setUpdate(null);
+          })}
+        >
+          {t("smUpdateApply")}
+        </button>
+      </div>
+      {update && (
+        <p className="dim small">
+          {t("smUpdateFound")}: v{update.version} · {update.files} {t("smFiles")}
+        </p>
+      )}
+      <p className="dim small">{t("smUpdateBoundary")}</p>
+
+      <h4 className="st-sec-title">{t("smCheckTitle")}</h4>
+      <div className="st-actions">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void run(async () => {
+            setFindings(await ipc.maintainSelfcheck());
+          })}
+        >
+          {t("smCheckRun")}
+        </button>
+      </div>
+      {findings && (
+        <ul className="st-findings small">
+          {findings.map((f) => (
+            <li key={f.id} className={`sm-finding-${f.level}`}>
+              {f.level === "ok" ? "✅" : f.level === "warn" ? "⚠" : "·"} {f.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * B-33 M2 半包：设置页「存储与恢复」分区。
@@ -76,6 +229,8 @@ export function StorageRecoveryTab() {
 
   return (
     <div className="st-recovery">
+      {/* F-6 系统维护：计划备份 / 自更新 / 自检扩展 */}
+      <SysMaintSection />
       <p className="dim small">{t("stHint")}</p>
       <label className="st-field">
         {t("stContainerPath")}

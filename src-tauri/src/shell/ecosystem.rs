@@ -1,4 +1,4 @@
-//! 应用生态 2.0（B-27，M7；BLUEPRINT 3.5 / 3.5a）。
+﻿//! 应用生态 2.0（B-27，M7；BLUEPRINT 3.5 / 3.5a）。
 //!
 //! - 可移植性评估向导：绿/黄/红评估卡（目录可写性、卸载注册表痕迹、
 //!   配置文件形态三类启发式，理由逐条如实列出）；
@@ -214,6 +214,8 @@ pub fn ecosystem_migrate(
     let registered = !apps.iter().any(|a| a.id == app_id);
     let mut all = apps;
     all.push(crate::shell::launcher::ThirdApp {
+        dpi_fix: false,
+        compat: Default::default(),
         id: app_id.clone(),
         name,
         path: dest_exe.to_string_lossy().into_owned(),
