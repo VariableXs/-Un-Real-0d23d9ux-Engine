@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Setup", "Sync", "Restore", "Schedule", "Diff", "Status")]
   [string]$Action = "Status",
   [string]$Local = "D:\Data",

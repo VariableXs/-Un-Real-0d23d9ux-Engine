@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("List", "Plan", "Run", "Report")]
   [string]$Action = "List",
   [string]$ScenariosFile = "$PSScriptRoot\Data\chaos-scenarios.json",

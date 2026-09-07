@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Preflight", "Stage1", "Stage2", "Stage3", "Stage4", "Deploy", "Verify", "All")]
   [string]$Action = "Preflight",
   [string]$Src = "D:\Variable-USB",

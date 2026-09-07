@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Preflight", "Report", "Run-All")]
   [string]$Action = "Preflight",
   [string]$DataDrive = "D:",

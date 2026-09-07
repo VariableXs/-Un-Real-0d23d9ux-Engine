@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Variable OS · AI-1 存储核 —— 3.3 / 9.3 每月维护：Optimize-VHD + ReTrim + 碎片率体检
 

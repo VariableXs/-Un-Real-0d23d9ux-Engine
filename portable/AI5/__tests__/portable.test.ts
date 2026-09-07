@@ -139,7 +139,9 @@ describe("AI-5 PowerShell 套件自检 (真 pwsh 执行)", () => {
     "Run-PortableTests.ps1 在真 PowerShell 上通过（AST 语法 + 数据不变量 + 只读动作）",
     () => {
       const shells = ["pwsh", "powershell"];
-      let lastErr = "";
+      // 逐个 shell 记录失败原因。旧实现只用 lastErr 覆盖，导致 pwsh(7) 的真实报错
+      // 被 powershell(5.1) 的报错顶掉——排障时看到的是最后一个 shell，而不是根因。
+      const failures: string[] = [];
       for (const sh of shells) {
         try {
           execFileSync(sh, ["-NoProfile", "-NonInteractive", "-File", selfTest], {
@@ -150,10 +152,14 @@ describe("AI-5 PowerShell 套件自检 (真 pwsh 执行)", () => {
           return; // 任一 PowerShell 跑通即通过
         } catch (e) {
           const err = e as { stdout?: string; stderr?: string; message?: string };
-          lastErr = [err.stdout, err.stderr, err.message].filter(Boolean).join("\n");
+          const detail = [err.stdout, err.stderr, err.message].filter(Boolean).join("\n");
+          failures.push(`--- ${sh} 失败 ---\n${detail}`);
         }
       }
-      throw new Error(`PowerShell 自检未通过：\n${lastErr.slice(-4000)}`);
+      throw new Error(
+        `PowerShell 自检在所有可用 shell 上均未通过（${shells.length} 个）：\n\n` +
+          failures.join("\n\n").slice(-6000),
+      );
     },
     600_000,
   );

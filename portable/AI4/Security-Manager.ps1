@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Apply", "BitLocker", "Defender", "License", "Compliance", "SelfCheck", "Cleanup", "Status")]
   [string]$Action = "Status",
   [string]$DataDrive = "D:",

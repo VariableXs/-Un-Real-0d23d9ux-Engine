@@ -1,4 +1,4 @@
-param([string]$Vhdx="D:\Variable-USB\Variable-OS.vhdx")
+﻿param([string]$Vhdx="D:\Variable-USB\Variable-OS.vhdx")
 # 隔离测试 - 三桥全关 + 限额 + NAT
 $vmName="VariableOS-TEST"
 if (Get-VM -Name $vmName -ErrorAction SilentlyContinue) { Remove-VM -Name $vmName -Force -ErrorAction SilentlyContinue }

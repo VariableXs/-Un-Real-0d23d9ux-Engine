@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Apply", "Mount-Registry", "Unmount-Registry", "Apply-Env", "Status")]
   [string]$Action = "Status",
   [string]$DataDrive = "D:",

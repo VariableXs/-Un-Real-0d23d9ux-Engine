@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Variable OS · AI-1 存储核 —— VHDX 造盘定版脚本（1TB / 1000MB/s 双接口盘）
 

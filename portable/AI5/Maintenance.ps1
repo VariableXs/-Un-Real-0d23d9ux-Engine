@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Status", "Optimize", "Backup", "Restore", "Schedule", "Tune")]
   [string]$Action = "Status",
   [string]$VhdxDir = "D:\Variable-USB",

@@ -11,6 +11,23 @@
 > AI-3（第 6+7 章）、AI-4（第 8+10 章）此前已合入；本次补上测试验收与交付运维。
 > 实现进度：主计划 12 章中 10 章已落地（1/2/3/6/7/8/9/10/11/12），仅余第 4/5 章（AI-2 隔离核）。
 
+### CI 修复：PowerShell 脚本编码（windows-latest 首次真机解析）
+
+- **根因**：`portable/**/*.ps1` 全部是「UTF-8 无 BOM」。Windows PowerShell 5.1 对无 BOM
+  文件按系统 ANSI 代码页（CP1252）解码，而汉字「应」的 UTF-8 末字节是 `0x94`，
+  在 CP1252 中正是 `U+201D ”`；**PowerShell 把智能引号当作字符串定界符**，于是字符串被
+  提前闭合，后面的 `)` 失去配对的 `(`，报 `Missing closing ')' in expression`。
+  CI 报错的 `Run-PortableTests.ps1:160/168` 两行，其上一行恰好都含「应」字。
+- **修复**：为全部 26 个 `.ps1` 加 UTF-8 BOM，使 PS 5.1 与 PS 7 都按 UTF-8 解码。
+  同时把 `Run-PortableTests.ps1` 的 18 处反引号续行合并为单行，消除续行的额外脆弱性。
+  注：BOM 变更也落到 `AI1/`、`AI4/` 的文件上——这是字节级编码前缀，不改动任何逻辑，
+  属跨核同步必需的修复。
+- **排障改进**：`portable.test.ts` 原先只保留最后一个 shell 的错误（`lastErr` 被覆盖），
+  导致 `pwsh`(7) 的真实报错被 `powershell`(5.1) 的报错顶掉。现改为逐个 shell 记录并全部输出。
+- **检查工具**：新增 `ps_lex_check.py` 真正的 PowerShell 词法器（注释/单双引号/here-string/
+  反引号续行/`$( )` 子表达式/智能引号定界）。旧的 `ps_struct_check.py` 只是括号计数器，
+  曾对本缺陷给出 26/26 通过的误报；新词法器可复现该缺陷（修复前 3 处错误，修复后 0 处）。
+
 ### 测试与验收（第 11 章）
 
 - **兼容矩阵 Top200**：`portable/AI5/Compat-Matrix.ps1` + `Data/compat-matrix.json`，

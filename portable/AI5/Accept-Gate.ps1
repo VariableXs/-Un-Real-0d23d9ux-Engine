@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Report", "Check", "Init")]
   [string]$Action = "Report",
   [string]$DataDrive = "D:",

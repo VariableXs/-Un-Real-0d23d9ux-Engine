@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$PluginRoot = "D:\Data\Plugins",
   [string]$MarketFile = "$PSScriptRoot\Config\plugin-market.json",
   [string]$PermissionsFile = "D:\Data\Config\permissions.json",

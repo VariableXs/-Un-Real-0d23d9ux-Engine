@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Run", "Gate", "Report", "Manifest")]
   [string]$Action = "Manifest",
   [string]$TestDrive = "",                # 被测卷，默认取 $DataDrive 所在卷；例: E:\

@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Init", "Add", "Remove", "List", "Verify", "Install")]
   [string]$Action = "List",
   [string]$Id = "",

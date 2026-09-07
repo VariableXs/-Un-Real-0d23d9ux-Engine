@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("List", "Run", "Report", "Fill-ExeHint")]
   [string]$Action = "List",
   [string]$MatrixFile = "$PSScriptRoot\Data\compat-matrix.json",
