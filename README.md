@@ -25,6 +25,13 @@
 > | 12 交付 | ⬜ 待实施 |
 > 详见计划顶部总表，打勾即完成
 
+> [!IMPORTANT]
+> **🚀 下一阶段 6大件 40000字计划已发布**
+> `内核MicroVM·万能开2.0·插件市场·云同步·企业安全·跨平台`
+> **👉 查看v2计划：[`docs/PORTABLE_PHASE2_PLAN.md`](docs/PORTABLE_PHASE2_PLAN.md) (40000字, 6AI并行)**
+> **👉 AI分工v2：[`docs/PORTABLE_AI_SPLIT_PLAN.md`](docs/PORTABLE_AI_SPLIT_PLAN.md) (AI1-6独立)**
+
+
 
 **完全离线、无账号、无云同步的私人桌面环境 + 写作 + 思维导图 + 项目分析 + 命运推演 Windows 桌面应用。**
 

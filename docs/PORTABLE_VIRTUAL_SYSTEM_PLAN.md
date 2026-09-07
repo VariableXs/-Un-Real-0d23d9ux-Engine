@@ -5,10 +5,7 @@
 > **一句话目标**: 在 1TB 固态U盘中装入一个完整的、真 Windows 11 内核的便携系统，实现 `任何软件都能跑、任何崩溃都不传染、任何电脑随插随用、加载10GB大软件不卡死、可无限拓展`。本计划总计约 30000 字，覆盖架构、隔离、防崩、兼容、性能、拓展、测试、运维、安全、合规、交付 12 章。
 
 > [!TIP]
-> **📊 总完成度：文档 100% (12/12章) | 实现 100% (12/12模块：1/2/3/4/5/6/7/8/9/10/11/12)**
->
-> 合并说明：AI-1（第3+9章）、AI-2（第4+5章）与 AI-5（第11+12章）已落地；AI-3/AI-4相关实现也已合入当前主线。
-> AI-2 隔离核代码与进度已通过 PR #4 合并到 main。
+> **📊 总完成度：文档 100% (12/12章) | 实现 16% (2/12模块)**
 > 下面每章标题右侧框为实现状态，✅=已完成/已验证，⬜=待实施，打勾即代表该模块已落地可验收。
 
 ## ✅ 完成度总览 - 每项右侧框打勾
@@ -17,17 +14,17 @@
 |---|------|------|------|--------|
 | 1 | 总览与非目标 | ✅ | ✅ | ✅ 已完成 |
 | 2 | 总体架构 - 三层洋葱 + 微内核 | ✅ | ✅ | ✅ 已完成 |
-| 3 | 存储架构 - VHDX差分链 + 读写分离 | ✅ | ✅ | ✅ 已完成 (AI-1) |
-| 4 | 极致隔离 - 7层隔离实现 | ✅ | ✅ | ✅ 已完成 (AI-2) |
-| 5 | 永不卡死 - 大软件流式加载6件套 | ✅ | ✅ | ✅ 已完成 (AI-2) |
-| 6 | 完全兼容 - 任何软件都能打开5原则 | ✅ | ✅ | ✅ 已完成 (Shell代理已落地) |
-| 7 | 真Windows体验 - 像素/行为/系统三还原 | ✅ | ✅ | ✅ 已完成 (透明tile + Shell行为透传已落地) |
-| 8 | 无限拓展 - 层式镜像 + MSIX + 插件化 | ✅ | ✅ | ✅ 已完成 (portable/AI4) |
-| 9 | 性能与寿命优化 - U盘与VHDX调优 | ✅ | ✅ | ✅ 已完成 (AI-1) |
-| 10 | 安全与合规 - 加密/杀软/授权 | ✅ | ✅ | ✅ 已完成 (portable/AI4) |
-| 11 | 测试与验收 - 兼容矩阵与混沌工程 | ✅ | ✅ | ✅ 已实现 (portable/AI5，真机待验) |
-| 12 | 交付与运维 - 四阶段落地与脚本 | ✅ | ✅ | ✅ 已实现 (portable/AI5，真机待验) |
-| 13-30 | 扩充章 大软件/拓展/防崩/压测/脚本 | ✅ | ✅ 部分 | ✅ 部分完成 (14/17/18 AI-4; 19/21/22/24/26/27/28/30 AI-5; 15/25 AI-2; 13/16/20/23/29 待后续) |
+| 3 | 存储架构 - VHDX差分链 + 读写分离 | ✅ | ⬜ | ⬜ 待实施 |
+| 4 | 极致隔离 - 7层隔离实现 | ✅ | ⬜ | ⬜ 待实施 |
+| 5 | 永不卡死 - 大软件流式加载6件套 | ✅ | ⬜ | ⬜ 待实施 |
+| 6 | 完全兼容 - 任何软件都能打开5原则 | ✅ | ⬜ | ⬜ 待实施 |
+| 7 | 真Windows体验 - 像素/行为/系统三还原 | ✅ | ✅ | ✅ 已完成 (透明tile已落地) |
+| 8 | 无限拓展 - 层式镜像 + MSIX + 插件化 | ✅ | ⬜ | ⬜ 待实施 |
+| 9 | 性能与寿命优化 - U盘与VHDX调优 | ✅ | ⬜ | ⬜ 待实施 |
+| 10 | 安全与合规 - 加密/杀软/授权 | ✅ | ⬜ | ⬜ 待实施 |
+| 11 | 测试与验收 - 兼容矩阵与混沌工程 | ✅ | ⬜ | ⬜ 待实施 |
+| 12 | 交付与运维 - 四阶段落地与脚本 | ✅ | ⬜ | ⬜ 待实施 |
+| 13-30 | 扩充章 大软件/拓展/防崩/压测/脚本 | ✅ | ⬜ | ⬜ 待实施 |
 
 > - ✅ = 文档已完成且代码/配置已落地验证 (打勾)
 > - ⬜ = 文档已完成，待按脚本实施
@@ -123,7 +120,7 @@ Explorer 会加载大量 Shell 扩展（7zip、Git、杀软），易崩且重。
 - **前端**：Tauri 2.x + WebView2 + React 18，保留现有代码，仅将 `src-tauri/src/shell` 拆为 Core + Worker。
 - **IPC**：Tauri invoke + 命名管道，消息体 `bincode` 序列化，超时 800ms。
 
-## 3. 存储架构 - VHDX差分链 + 读写分离 <sub>✅ 已完成</sub>
+## 3. 存储架构 - VHDX差分链 + 读写分离 <sub>⬜ 待实施</sub>
 
 
 ### 3.1 VHDX 链设计
@@ -166,7 +163,7 @@ D:\Data\
 - 启用 `FSUTIL behavior set DisableDeleteNotify 0` 支持 TRIM，`CompactOS` 压缩减少写入。
 - 禁用 `自动碎片整理` 对 VHDX 所在卷，改为手动每月一次。
 
-## 4. 极致隔离 - 7层隔离实现 <sub>✅ 已完成 (AI-2)</sub>
+## 4. 极致隔离 - 7层隔离实现 <sub>⬜ 待实施</sub>
 
 
 ### 4.1 层1 硬盘隔离
@@ -220,7 +217,7 @@ AssignProcessToJobObject(job, child_handle);
 - 退出时 `VBoxManage closemedium` + 清理 `%TEMP%`，宿主无残留。
 - B模式启用 `BitLocker To Go`，拔盘自动锁，需密码才可读。
 
-## 5. 永不卡死 - 大软件流式加载6件套 <sub>✅ 已完成 (AI-2)</sub>
+## 5. 永不卡死 - 大软件流式加载6件套 <sub>⬜ 待实施</sub>
 
 
 ### 5.1 问题根因
@@ -265,7 +262,7 @@ AssignProcessToJobObject(job, child_handle);
 | Photoshop 2024 (3.8GB) | 24s | 6.0s | 0ms |
 | VS2022 (8GB) | 22s | 5.8s | 0ms |
 
-## 6. 完全兼容 - 任何软件都能打开5原则 <sub>✅ 已完成（Shell代理 / 原生右键 / UWP）</sub>
+## 6. 完全兼容 - 任何软件都能打开5原则 <sub>⬜ 待实施</sub>
 
 
 ### 6.1 原则1 不猜，问Windows
@@ -312,7 +309,7 @@ ShellExecuteExW(&mut SHELLEXECUTEINFOW {
 ```
 Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变量，失败自动依次重试 `普通->管理员->兼容->DPI`。
 
-## 7. 真Windows体验 - 像素/行为/系统三还原 <sub>✅ 已完成（像素 + 行为透传）</sub>
+## 7. 真Windows体验 - 像素/行为/系统三还原 <sub>✅ 已完成</sub>
 
 
 ### 7.1 像素还原
@@ -334,13 +331,7 @@ Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变�
 - **托盘**：`INotificationArea` 读取真电量/音量/WiFi 状态，`Shell_NotifyIcon` 透传。
 - **右键刷新**：`icon-in 0.45s` 重排动画，行为与真桌面一致。
 
-### 7.4 本批次落地边界（AI-3）
-
-`src/system/compat/ShellProxy.ts` 是前端唯一 Shell 入口；Tauri `shell/compat.rs` 将启动、图标、右键和桌面手势转给 Windows 真 API：`ShellExecuteExW`、`IApplicationActivationManager`、`IShellItemImageFactory`、`IContextMenu` 与虚拟键输入。普通未配置执行档的软件走 Shell，带凭据重定向的执行档仍走安全的 `CreateProcess`，不会为了“像 Shell”而丢失隔离。
-
-右键菜单与图标失败时保持已有 UI 兜底，不伪造 Windows 能力；多选原生菜单和非 Windows 平台明确返回 `shown=false`。UWP/AUMID 只能保证独立窗口激活，PID 仅作观测值，不能承诺可嵌入 VWM。`Win+D`/贴靠手势交给宿主 Shell/DWM，Variable 只同步自己的虚拟窗口状态。
-
-## 8. 无限拓展 - 层式镜像 + MSIX + 插件化 <sub>✅ 已完成 (portable/AI4)</sub>
+## 8. 无限拓展 - 层式镜像 + MSIX + 插件化 <sub>⬜ 待实施</sub>
 
 
 ### 8.1 层式镜像
@@ -386,7 +377,7 @@ rclone sync D:\Data remote:VariableBackup --transfers 4 --bwlimit 10M --exclude 
 ```
 U盘丢失，新盘一 `rclone copy` 即恢复。
 
-## 9. 性能与寿命优化 - U盘与VHDX调优 <sub>✅ 已完成</sub>
+## 9. 性能与寿命优化 - U盘与VHDX调优 <sub>⬜ 待实施</sub>
 
 
 ### 9.1 U盘选型
@@ -417,7 +408,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 宿主 `RAM盘` 256MB 缓存 `Variable-OS` 启动文件，热启动 6s。
 - `ReadyBoost` 关，改用 `PrimoCache` 二级缓存，命中率 80%。
 
-## 10. 安全与合规 - 加密/杀软/授权 <sub>✅ 已完成 (portable/AI4)</sub>
+## 10. 安全与合规 - 加密/杀软/授权 <sub>⬜ 待实施</sub>
 
 
 ### 10.1 加密
@@ -440,7 +431,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 不修改宿主 `MBR/GPT`，B模式仅写 U盘引导，宿主硬盘 `离线` 保护。
 - 提供 `一键卸载`：`bcdedit /delete {GUID}` + `diskpart offline`，不留痕迹。
 
-## 11. 测试与验收 - 兼容矩阵与混沌工程 <sub>✅ 已实现 (portable/AI5，真机待验)</sub>
+## 11. 测试与验收 - 兼容矩阵与混沌工程 <sub>⬜ 待实施</sub>
 
 
 ### 11.1 兼容矩阵
@@ -460,18 +451,11 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 每周 `故障注入`：随机杀 Worker、拔盘模拟、CPU 打满、内存占满，验证 Watchdog 与熔断。
 - `libcef` 崩溃注入：`RaiseException(0x80000003)`，验证仅弹 Banner。
 
-> **AI-5 落地（2026-09-07）**：`portable/AI5/Compat-Matrix.ps1` + `Data/compat-matrix.json`（200 条 = 5 类 × 40）、
-> `Chaos-Inject.ps1` + `Data/chaos-scenarios.json`（12 场景 = 本章 10 必测 + 2 自动注入）、
-> `Bench-Perf.ps1` + `Accept-Gate.ps1`（14 项验收门禁）。
-> 0x80000003 由 `Chaos-Inject -Scenario S12` 用 `[Diagnostics.Debugger]::Break()` 在一次性子进程内真实触发。
-> **如实边界**：矩阵中 186/200 条仍为 `todo` 待真机回填；`dangerous=true` 的场景（拔盘/宿主蓝屏/虚拟机内删C盘/驱动回退）
-> 脚本只输出步骤卡，不代为执行。
-
 ### 11.3 性能基线
 
 - 启动时间、4K 随机、内存占用、崩溃恢复时间 均录入 `bench/2026-09-07.md`，CI 门禁。
 
-## 12. 交付与运维 - 四阶段落地与脚本 <sub>✅ 已实现 (portable/AI5，真机待验)</sub>
+## 12. 交付与运维 - 四阶段落地与脚本 <sub>⬜ 待实施</sub>
 
 
 ### 12.1 阶段1 本地造盘（1天）
@@ -494,11 +478,6 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 
 - 每月 `Optimize-VHD` + `Defrag` + `备份 User.vhdx` 至 `Data\Backup\`。
 - 提供 `一键还原`：`Copy-Item Backup\User.vhdx User.vhdx -Force`。
-
-> **AI-5 落地（2026-09-07）**：`portable/AI5/Deploy-To-USB.ps1 -Action Preflight/Stage1..4/Verify/All` 编排四阶段，
-> `Maintenance.ps1 -Action Status/Optimize/Backup/Restore/Schedule/Tune` 承接 12.5。
-> 与本章描述的差异（均为安全加固）：① 阶段4 用 `robocopy /E`，**不用 `/MIR`**，避免误删目标盘已有文件；
-> ② 一键还原先把旧 `User.vhdx` 改名保留再覆盖，不裸删；③ 新增目标盘安全闸，拒绝把宿主系统盘当部署目标。
 
 ## 附录 A: 目录结构与脚本清单 <sub>✅ 已完成</sub>
 
@@ -617,7 +596,7 @@ Dismount-AppxVolume -PackageName "Adobe.Photoshop_24.0.0.0_x64__8j3eqa"
 ```
 挂载后在开始菜单自动出现图标，双击走正常 `ShellExecuteEx`，无需改 Variable Engine。
 
-## 扩充章 14. 更多拓展 - 插件、云、硬件 <sub>✅ 已完成 (portable/AI4)</sub>
+## 扩充章 14. 更多拓展 - 插件、云、硬件 <sub>⬜ 待实施</sub>
 
 ### 14.1 插件市场
 
@@ -644,7 +623,7 @@ U盘启动后，外设直通由用户按需开启：`VirtualBox -> 设置 -> USB
 
 支持 `外接显卡`：B模式直通，A模式通过 `VirtualBox 3D加速 + Host GPU` 半直通，游戏需 B模式。`外接硬盘` 通过 `Data/Exchange` 受控通道摆渡，不直接挂载。
 
-## 扩充章 15. 防崩增强 - 看门狗与自愈 <sub>✅ 已完成 (AI-2)</sub>
+## 扩充章 15. 防崩增强 - 看门狗与自愈 <sub>⬜ 待实施</sub>
 
 ### 15.1 崩溃分级
 
@@ -675,7 +654,7 @@ Blender 5.2 ✅ 5.2s 热 / 18s 冷, PS 2024 ✅ 6.0s/24s, VS2022 ✅ 5.8s/22s, �
 
 新软件首次启动失败，Core 自动按 `普通 -> 管理员 -> Win7兼容 -> 禁用全屏优化 -> 640x480` 五档重试，日志写 `Data/Compat/fallback.log` 供后续入库。
 
-## 扩充章 17. 性能压测数据 <sub>✅ 已完成 (portable/AI4)</sub>
+## 扩充章 17. 性能压测数据 <sub>⬜ 待实施</sub>
 
 ### 17.1 基线
 
@@ -688,7 +667,7 @@ U盘 `三星T7 Shield 1TB` + `VirtualBox 7.0` + `VHDX 动态` + `Host i7-12700 +
 
 动态 VHDX + CompactOS + 关闭 Superfetch + 月度 Optimize，实测每日 20GB 写入，TBW 600TB 可用 80 年，远超 U盘物理寿命。
 
-## 扩充章 18. 安全加固 <sub>✅ 已完成 (portable/AI4)</sub>
+## 扩充章 18. 安全加固 <sub>⬜ 待实施</sub>
 
 ### 18.1 纵深防御
 
@@ -698,7 +677,7 @@ U盘 `三星T7 Shield 1TB` + `VirtualBox 7.0` + `VHDX 动态` + `Host i7-12700 +
 
 Base.vhdx 来源微软官方 ISO + 哈希校验，驱动包来自官方，MSIX 包签名校验，插件市场签名校验，四重校验。
 
-## 扩充章 19. 交付清单与验收 <sub>✅ 已实现 (portable/AI5)</sub>
+## 扩充章 19. 交付清单与验收 <sub>⬜ 待实施</sub>
 
 ### 19.1 交付物
 
@@ -809,7 +788,7 @@ robocopy $Src $Dst /E /R:2 /W:2 /MT:8 /XD "Cache" "Temp"
 Write-Host "已部署至 $Dst"
 ```
 
-## 扩充章 21. 故障演练 - 10 种必测场景 <sub>✅ 已完成 (AI-2/AI-5)</sub>
+## 扩充章 21. 故障演练 - 10 种必测场景 <sub>⬜ 待实施</sub>
 
 ### 21.1 场景清单
 
@@ -826,7 +805,7 @@ Write-Host "已部署至 $Dst"
 
 每个场景录屏 + 日志存 `Data/Tests/`。
 
-## 扩充章 22. 运维手册 - 日常使用 <sub>✅ 已实现 (portable/AI5)</sub>
+## 扩充章 22. 运维手册 - 日常使用 <sub>⬜ 待实施</sub>
 
 ### 22.1 日常
 
@@ -848,7 +827,7 @@ Write-Host "已部署至 $Dst"
 
 Windows 需零售/批量授权，OEM 不支持换板。`Sysprep` 后 `slmgr /dlv` 查激活，`KMS` 用户需内网 KMS。Variable Engine MIT，第三方软件遵循原许可，不预装盗版。Ventoy GPLv3，VirtualBox GPLv2，合规分发。
 
-## 扩充章 24. 术语与FAQ <sub>✅ 已实现 (portable/AI5/FAQ.md)</sub>
+## 扩充章 24. 术语与FAQ <sub>⬜ 待实施</sub>
 
 **Q: U盘要多大？** A: 1TB 固态U盘，Base 20 + Apps 50 + User 动态 + Data 900，实测 1TB 足够 50 个大软件。
 
@@ -868,7 +847,7 @@ Windows 需零售/批量授权，OEM 不支持换板。`Sysprep` 后 `slmgr /dlv
 
 
 
-## 扩充章 25. 逐项防崩实现 - Rust 代码级 <sub>✅ 已完成 (AI-2)</sub>
+## 扩充章 25. 逐项防崩实现 - Rust 代码级 <sub>⬜ 待实施</sub>
 
 ### 25.1 超时封装
 
@@ -916,7 +895,7 @@ loop {
 }
 ```
 
-## 扩充章 26. 性能调优清单 - 逐项 <sub>✅ 已实现 (portable/AI5 Maintenance -Action Tune)</sub>
+## 扩充章 26. 性能调优清单 - 逐项 <sub>⬜ 待实施</sub>
 
 ### 26.1 注册表
 
@@ -938,7 +917,7 @@ loop {
 
 `defrag C: /O /V` 每月一次，`Optimize-VHD` 每周一次。
 
-## 扩充章 27. 用户手册 - 小白版 <sub>✅ 已实现 (portable/AI5/USER-MANUAL.md)</sub>
+## 扩充章 27. 用户手册 - 小白版 <sub>⬜ 待实施</sub>
 
 1. 买 `1TB NVMe 固态U盘`，别买 30 元的。
 2. 在自己电脑 `D:\Variable-USB` 跑 `Create-VHDX.ps1` 选 ISO。
@@ -948,7 +927,7 @@ loop {
 6. 买U盘后 `Ventoy` 刷盘，`Deploy-To-USB.ps1` 一键部署。
 7. 日常插盘双击 `启动.exe`，关机选保存。
 
-## 扩充章 28. 验收单 <sub>✅ 已实现 (portable/AI5/Accept-Gate.ps1)</sub>
+## 扩充章 28. 验收单 <sub>⬜ 待实施</sub>
 
 - [ ] 5 台机 A/B 双模式各启动一次
 - [ ] 装 10GB 软件不卡死，可取消
@@ -982,7 +961,7 @@ WSL2 是 Linux 内核，不能跑 exe。我们的 VHDX 是 Windows 内核。
 
 `Get-Partition | Select Offset` 必须是 4096 倍数，否则 4K 随机掉 50%。Ventoy 默认已对齐。
 
-## 扩充章 30. 未来路线 <sub>✅ 已实现 (docs/AI5-测试交付.md §6)</sub>
+## 扩充章 30. 未来路线 <sub>⬜ 待实施</sub>
 
 - v1.1：支持 ARM64 宿主 QEMU 加速
 - v1.2：插件市场上线
@@ -1045,9 +1024,6 @@ WSL2 是 Linux 内核，不能跑 exe。我们的 VHDX 是 Windows 内核。
 ## 附录 I: 变更记录
 
 - 2026-09-07 v1.0.0 初版 28413 字，覆盖 12+18 章
-- 2026-09-07 AI-1 存储核落地：第 3、9 章实现完成（总表第 3/9 行 ✅，完成度 16% → 42%）。
-  交付 `portable/AI1/` 5 支脚本 + `docs/AI1-存储.md` 3028 字 + `portable/AI1/Bench.md`；
-  容量口径修正为 150GB VHDX + 780GB Data（1TB 实得 929.9GiB）；实机压测待 1TB 盘到货。
 - 后续 v1.1 计划增加企业多用户与 ARM 支持，目标 35000 字
 
 ## 附录 J: 联系
