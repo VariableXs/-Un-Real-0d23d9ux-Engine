@@ -5,6 +5,42 @@
 
 ## [Unreleased] — 1.0sno9u.vxe
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-07 便携系统 AI-1 存储核：主计划第 3+9 章）
+
+> 多 AI 并行分工（`docs/PORTABLE_AI_SPLIT_PLAN.md`）的存储核批次；
+> 详细实现说明见 `docs/AI1-存储.md`，压测口径见 `portable/AI1/Bench.md`。
+
+### portable/AI1 存储脚本（5 支）
+
+- **`Create-VHDX.ps1`**：1TB 1000MB/s 定版造盘 —— 固定 150GB VHDX + GPT + NTFS 64KB 簇 +
+  4K 对齐校验 + Data 七目录 + 离线 CompactOS 与注册表调优（关 SysMain/WSearch/DiagTrack、
+  开 LongPaths、关 LastAccess）；`-Sparse` 稀疏固定盘、`-Chain` 三级差分链（Base→Apps→User）；
+- **`Tune-Guest.ps1`**：系统内一次性调优，逐项回读实测值 —— CompactOS always、TRIM、
+  关休眠、待机/硬盘超时置 0、WinSxS `ResetBase`、RAM 盘缓存契约 `ramcache.json`；
+- **`Link-DataApps.ps1`**：3.2 读写分离 —— 按 `linkmap.json` 建/校验/搬迁/卸载符号链接，
+  幂等；探测 Data 卷文件系统，exFAT 自动回退 SymbolicLink（Junction 需 NTFS 目标卷）；
+- **`Bench-Storage.ps1`**：9.1 选盘判定 —— 顺序写（WriteThrough 直写）/ 顺序读 /
+  4K 随机（IOPS）/ 簇大小 / 4K 对齐 / TRIM / VHDX 膨胀率与碎片，一键出 Markdown 报告；
+- **`Maintain-VHDX.ps1`**：每月维护 —— `Optimize-VHD -Mode Full` + 宿主卷 ReTrim +
+  碎片率 <5% 体检 + 可选 `Merge-VHD` 扁平化。
+
+### 复核发现并修正
+
+- 分工表容量口径算错：1TB 实得 929.9GiB，「150GB + 800GB」超 20.1GiB → 定版 **Data 780GB**；
+- 原型脚本 `-Filter "*.wim"` 会先命中 `sources\boot.wim`（字母序在前）→ 改 `install.wim`；
+- 「回收后 <20GB 实占」对普通固定盘不成立（实占恒 = 虚拟大小）→ 新增 `-Sparse` 路径；
+- 扩充 20.1 脚本 8 处修正：引号传参 / 返回码校验 / 分区复用 / `boot.wim` 误选 /
+  4K 对齐 / 簇大小回读 / `Index` 参数化 / try-finally 卸载。
+
+### 验证
+
+- CI（windows-latest）`frontend` + `backend` 全绿；
+- PowerShell 脚本经词法级结构检查（括号/引号/here-string/`$()` 配对）5/5 OK，
+  基线：仓库既有 4 支 `.ps1` 同样 OK（确认无误报）；
+- **如实边界**：沙箱为 Linux 且 `pwsh` 不可安装，PowerShell 解析器与 Windows cmdlet
+  （`New-VHD`/`dism`/`fsutil`/`powercfg`）一次未执行，真机数据待 1TB 盘到货补入
+  `Bench.md` 第 4 节（未编造任何压测数字）。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话 2：原生图标 + 壁纸预览回退）
 
 > 实机使用反馈第二轮（H1 家用机）。
