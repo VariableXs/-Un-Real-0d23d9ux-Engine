@@ -13,6 +13,11 @@
 
 ### CI 修复：PowerShell 脚本编码（windows-latest 首次真机解析）
 
+> **结果：CI 已双绿**（`backend` + `frontend`，run 34094563831），
+> `Run-PortableTests.ps1` 在真 PowerShell 上 **74 项检查全过**。
+> 首次真机执行共暴露 5 个真实缺陷（下表 1 个编码 + 4 个运行时），全部已修复。
+> 明细见 `docs/AI5-测试交付.md` §4.1。
+
 - **根因**：`portable/**/*.ps1` 全部是「UTF-8 无 BOM」。Windows PowerShell 5.1 对无 BOM
   文件按系统 ANSI 代码页（CP1252）解码，而汉字「应」的 UTF-8 末字节是 `0x94`，
   在 CP1252 中正是 `U+201D ”`；**PowerShell 把智能引号当作字符串定界符**，于是字符串被
@@ -27,6 +32,23 @@
 - **检查工具**：新增 `ps_lex_check.py` 真正的 PowerShell 词法器（注释/单双引号/here-string/
   反引号续行/`$( )` 子表达式/智能引号定界）。旧的 `ps_struct_check.py` 只是括号计数器，
   曾对本缺陷给出 26/26 通过的误报；新词法器可复现该缺陷（修复前 3 处错误，修复后 0 处）。
+- **运行时缺陷 2／数组 splatting 是位置绑定**：`& $p @ScriptArgs` 语法合法，但数组
+  splatting 按**位置**传参，于是 `"-Action"` 这个字符串本身成了 `-Action` 的值
+  （`The argument "-Action" does not belong to the set ...`）。改为**哈希表** splatting
+  做命名绑定，开关参数映射 `$true`，`[int]` 参数去引号，共 16 处。
+- **运行时缺陷 3／`Write-Host` 走信息流**：各脚本统一用 `Write-Ai5 -> Write-Host`，
+  输出在信息流(6) 上，而 `2>&1 | Out-String` 只并入 stderr，捕获结果恒为空，
+  导致所有 `-ExpectText` 断言必然失败。改用 `*>&1` 合并全部输出流。
+- **运行时缺陷 4／变量名大小写不敏感**：`Accept-Gate.ps1` 的脚本级 `$Evidence`
+  （证据根目录）与循环内每行的 `$evidence`（结论字段）在 PowerShell 里是**同一个变量**，
+  循环开头 `$evidence = ""` 会把 `$Evidence` 一并清空，随后 `Join-Path $Evidence ...`
+  收到空串。脚本级变量改名 `$EvidenceDir`。
+- **运行时缺陷 5／Mandatory 数组逐元素校验**：`Save-Ai5Text` 的
+  `[Parameter(Mandatory = $true)][string[]]$Lines` 会校验每个元素非空，而验收报告的
+  Markdown 本就含空行（`$L += ""`）。加 `[AllowEmptyString()]`。
+- **新增检查工具** `ps_case_collision_check.py`：扫描同一脚本内仅大小写不同的变量名
+  （函数参数新建作用域，默认排除）。对修复前的 `Accept-Gate.ps1` 能报出风险并退出 1，
+  对修复后的全仓 26 个脚本退出 0。
 
 ### 测试与验收（第 11 章）
 

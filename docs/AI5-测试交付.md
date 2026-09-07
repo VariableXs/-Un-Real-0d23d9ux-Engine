@@ -196,11 +196,32 @@
 | 9 个新增 `.ps1` 结构完整性（括号/字符串/here-string/续行） | `python3 ps_struct_check.py portable/AI5 portable/tests` | 9/9 通过 |
 | 两个数据文件是合法 JSON | `python3 -c json.load(...)` | 通过 |
 | 矩阵不变量（200 条 / 5 类 × 40 / 名称唯一 / 点名条目在列） | 生成脚本内 `assert` | 通过 |
-| **真 PowerShell AST 语法 + 只读动作执行** | `portable/tests/Run-PortableTests.ps1` | **本沙箱无法执行**（Linux，且 PowerShell 二进制下载域名被网络策略阻断） |
+| **真 PowerShell AST 语法 + 只读动作执行** | `portable/tests/Run-PortableTests.ps1` | ✅ **已由 CI 在 windows-latest 真机执行通过（74 项检查全过）** |
+| PowerShell 词法（注释/引号/here-string/续行/`$( )`/智能引号） | `python3 ps_lex_check.py portable` | 26/26 通过 |
+| 变量大小写同名冲突（PowerShell 变量名大小写不敏感） | `python3 ps_case_collision_check.py portable` | 通过 |
 
 **未验证的部分（明确声明）**：本会话在 Linux 沙箱内**没有执行过任何 PowerShell**
 （PowerShell 二进制的所有下载域名被网络策略阻断，仅 npm/PyPI 可达）。
 因此 PowerShell 的语法正确性与运行时行为改由 CI 在真 PowerShell 上验证 —— 已接通，方式见下。
+
+### 4.1 CI 真机验证结果（PR #6，windows-latest）
+
+自检脚本在真 PowerShell 上**首次执行即暴露 4 个真实缺陷**，全部已修复并复验通过：
+
+| # | 缺陷 | 根因 | 修复 |
+|---|---|---|---|
+| 1 | `Missing closing ')' in expression`（脚本根本无法解析） | `.ps1` 是 UTF-8 无 BOM，Windows PowerShell 5.1 按 CP1252 误读；汉字「应」的 UTF-8 末字节 `0x94` 在 CP1252 中是 `U+201D ”`，而 **PowerShell 把智能引号当字符串定界符**，字符串被提前闭合 | 26 个 `.ps1` 全部加 UTF-8 BOM |
+| 2 | `The argument "-Action" does not belong to the set ...` | `& $p @ScriptArgs` 是**数组** splatting，按**位置**传参，于是 `"-Action"` 这个字符串本身成了 `-Action` 的值 | 改为**哈希表** splatting（命名绑定），开关映射 `$true` |
+| 3 | 所有 `-ExpectText` 断言必然失败 | 各脚本用 `Write-Host`（信息流 6），而 `2>&1` 只并入 stderr，捕获结果为空 | 改用 `*>&1` 合并全部输出流 |
+| 4 | `Cannot bind argument to parameter 'Path' because it is an empty string` | **PowerShell 变量名大小写不敏感**：脚本级 `$Evidence`（证据根目录）被循环内每行的 `$evidence = ""` 覆盖 | 脚本级变量改名 `$EvidenceDir` |
+| 5 | `Cannot bind argument to parameter 'Lines' because it is an empty string` | Mandatory 参数会**逐个校验数组元素非空**，而 Markdown 报告本就含空行 | `Save-Ai5Text` 加 `[AllowEmptyString()]` |
+
+> **教训（已固化为工具）**：`ps_struct_check.py` 只是括号计数器，对上述第 1 项给出过
+> **26/26 通过的误报**。新增的 `ps_lex_check.py` 是真正的词法器，能复现该缺陷
+> （修复前 3 处错误 / 修复后 0 处）；`ps_case_collision_check.py` 则针对第 4 项那类问题。
+> 结构检查通过**不等于**能被 PowerShell 解析。
+
+最终结果：**`PORTABLE SELFTEST PASS`，74 项检查全过；CI `backend` 与 `frontend` 双绿。**
 
 **验证接线（已落地，不需要 `workflows` 权限）**：本会话的 GitHub App 令牌无法修改
 `.github/workflows/ci.yml`（推送被远端拒绝），但**现有 CI 的 `frontend` 作业本来就在
