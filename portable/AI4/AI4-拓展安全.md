@@ -129,3 +129,61 @@
 - `Merge-VHD`、`Mount-AppxVolume`、`manage-bde` 需管理员 + 对应 Hyper-V / 桌面体验功能；真实 BitLocker/MSIX 验收需在真盘/虚拟机上执行。
 - 与 AI-1/AI-2/AI-5 的接口约定：路径固定为 `D:\Variable-USB\*.vhdx` 与 `D:\Data\...`；AI-5 部署后本模块脚本从 `portable/AI4/` 复制到系统内即可。
 - 插件 `market.json` 的 placeholder 哈希/指纹需在实际安装后由 `Plugin-Manager -Action Install` 或 `-Action Verify` 更新。
+
+---
+
+## 6. v1.1 加固：缺陷修复 + 计划缺口补全（2026-09-07）
+
+> v1.0 交付后，结合 GitHub 上 AI-2/AI-5 已合并的静态检查工具（`tools/portable/`）与
+> AI-5 联调契约（`AI-Integration.ps1` Preflight 核对 AI-4 的 9 脚本 + `Data/` + `Config/` + 2 文档）
+> 做了一轮"真 PowerShell 语义"级复审，修复 4 处上线必炸缺陷，并补齐主计划第 8+10 章点名
+> 但 v1.0 缺失的能力。**范围仍限定在 `portable/AI4/`。**
+
+### 6.1 缺陷修复（每条都有复现路径）
+
+| # | 缺陷 | 后果 | 修复 |
+|---|---|---|---|
+| F1 | `Cloud-Sync.ps1` 给 `$args` 赋值 | `$args` 是 PowerShell 只读自动变量，`-Action Sync/Restore` 一运行即抛 `Cannot overwrite variable Args`，第 8.5 章云同步完全不可用 | 重命名为 `$rArgs` |
+| F2 | `MSIX-Attach.ps1` 读 `Get-AppxVolume` 结果的 `PackageFullName` 属性 | AppxVolume 对象无此属性，`Set-StrictMode -Version Latest` 下直接 PropertyNotFoundException；且 `Mount-AppxVolume -PackagePath/-VolumePath` 参数不存在 | 改按真实 API：卷按 `MountPoint` 识别；`Add-AppxVolume -Path` 建卷 → `Add-AppxPackage -Volume` Stage → `Mount-AppxVolume -Volume` 挂载；Dismount/Uninstall 同步修正 |
+| F3 | `Data-Init.ps1` 把 `User.dat` 建成空文件 | 空 Hive 非法，`reg load`/`RegLoadKey` 必失败，第 8.4 章"配置随盘走"从未真正可用 | 用 `reg save HKCU\VariableHiveSeed` 生成**合法最小 Hive**（`regf` 魔数），并对已存在的非法占位文件自动补种 |
+| F4 | `Plugin-Host.ps1` 的 `-VerifyOnly` 声明了但从未实现 | 文档承诺"只校验不加载"，实际照常 LoadLibrary；且校验路径会触发网络授权交互 | 主流程接入 `$VerifyOnly`：校验通过即标记 `[verified]` 返回；另对齐 AI-5 的 `AI5_NONINTERACTIVE=1` 约定，非交互环境网络插件一律默认拒绝 |
+| F5 | `Security-Manager.ps1` 的 `-DataDrive E:` 不生效于子路径 | `AppsExclude/ExchangeForce/RecoveryFile/VhdxDir` 默认值写死 `D:\...`，换盘符后安全边界指错盘 | 未显式覆盖时按 `-DataDrive` 重排默认值 |
+| F6 | `Merge-Apps.ps1` Status 读 `$_.Target`；`New-Partition` 后不刷新盘符 | PS 5.1 无 `Target` 属性，建过 Junction 后 StrictMode 必炸；新建分区偶发误报"未获得盘符" | `PSObject.Properties` 守卫 + 盘符重查 |
+
+### 6.2 计划缺口补全（主计划点名、v1.0 未落地）
+
+| 计划出处 | 缺口 | v1.1 实现 |
+|---|---|---|
+| 8.5「离线+增量+**加密**」 | Cloud-Sync 无加密 | `-Action Setup -Crypt`：自动生成 32 字节随机密钥、`rclone config create` 出 crypt 包装 remote（文件名+内容双重加密），密钥落 `Data\Sync\crypt.key` 并提示离线抄存；Sync/Restore/Diff 自动走密文通道 |
+| 14.3「保留 7 天版本」 | 无版本保留 | Sync 加 `--backup-dir remote:_archive/<日期>`，被覆盖/删除文件自动归档；`-Action Prune` 按 `$RetentionDays`(默认7) 清理过期版本 |
+| 14.3「User.vhdx 每日备份保留 3 份」 | 无 | `-Action Backup`：拷 `User.vhdx → Data\Backup\User-YYYYMMDD.vhdx`，记 SHA256 到 `backup-log.csv`，按名保留最新 `$KeepBackups`(默认3) 份；缺源退出码 1（对齐 AI-5 语义） |
+| 10.2「Exchange **强制扫描**后放行」 | 只写了策略文本，没有真扫描 | `-Action Scan-Exchange`：`Start-MpScan -ScanType CustomScan -ScanPath Exchange` + `Get-MpThreatDetection` 检出即**退出码 1 并 BLOCKED**；结果（verdict=clean/blocked/defender-unavailable + 文件清单）落 `Data\Security\exchange-scan-log.json`；`Apply` 与 `SelfCheck` 纳入此环节 |
+| 8.1「哈希校验防篡改」/ 18.2「供应链四重校验」 | 无 VHDX 链校验 | `-Action Verify-Chain`：对 Base/Apps/User 三层 VHDX + MSIX 包 + 插件清单建 SHA256 基线（`-Force` 重建），校验发现篡改/基线内缺失 → 退出码 1；基线落 `Data\Security\chain-manifest.sha256` |
+| 14.1「权限按 **JobObject** 限额」 | 插件直接 LoadLibrary 进宿主进程 | `Plugin-Host -Sandbox`：插件改在 `rundll32` 子进程解析入口，子进程挂 JobObject（`PROCESS_MEMORY_LIMIT` 512MB 可调 + `KILL_ON_JOB_CLOSE`），10s 超时熔断，崩溃不传染宿主——与 AI-2 `isolation.rs` 同一套语义 |
+
+### 6.3 其他增强
+
+- `Config/path.env` 支持 `${DATA_ROOT}` 随盘相对写法，`Config-Runtime.ps1` 按 `-DataDrive` 展开——换宿主盘符不再要改 env 文件。
+- `Config-Runtime.ps1` 挂载幂等（已挂载跳过）、卸载幂等、`Status` 显示 Hive 魔数与挂载态。
+- `Benchmark.ps1` 压测面扩展：Exchange 通道就绪（10.2）、Verify-Chain 探测（18.2）入 CSV；Manifest 增至 9 项。
+- 新增 `SelfTest.ps1`：三段自检（AST 语法 + Config 数据 + 临时目录可逆执行），其中包含**真篡改用例**——建基线 → 改 1 字节 → 校验必须 exit 1 → 还原 → 必须通过。CI（windows-latest）或真机均可直接跑，风格对齐 `portable/tests/Run-PortableTests.ps1`，并已遵守 AI-5 的 `AI5_NONINTERACTIVE` 约定。
+
+### 6.4 验证记录（本仓库 Linux 环境可执行的静态部分）
+
+| 工具（来自 AI-2/AI-5 的 `tools/portable/`） | 结果 |
+|---|---|
+| `ps_lex_check.py portable/AI4` | ✅ 10/10 词法通过 |
+| `ps_struct_check.py portable/AI4` | ✅ 10/10 结构完整 |
+| `ps_case_collision_check.py portable/AI4` | ✅ 无大小写同名冲突 |
+| `xref_check.py` | ⚠️ `MSIX-Attach.ps1` 报 `Get-AppxVolume/Remove-AppxVolume` 未定义 —— **误报**：二者是 Windows Appx 模块真实 cmdlet（与白名单内 `Mount/Dismount-AppxVolume` 同族），建议 AI-5 联调时把这两个名字加进 `tools/portable/xref_check.py` 白名单（该文件归 AI-5，本核不越界修改） |
+| 全部 .ps1 UTF-8 BOM | ✅（AI-5 §4.1 的 CP1252 教训已吸收，含中文注释的脚本全部带 BOM） |
+| 真 PowerShell 语义 | CI 在 windows-latest 上经 `portable/AI5/__tests__/portable.test.ts → Run-PortableTests.ps1` 对全部 `portable/**/*.ps1` 做官方 AST 解析；本核另交付 `SelfTest.ps1` 供联调深跑 |
+
+### 6.5 仍需真机验收（沿袭 v1.0，非本核可闭环）
+
+- BitLocker 拔盘即锁（需真 U 盘 + 管理员）；
+- MSIX App Attach 完整链（需 Win10 2004+/Win11 企业特性）；
+- rclone crypt 上云后云端确为密文（需云账号）；
+- 五机 A/B 启动联调（AI-5 统一安排）。
+
+> 主计划/分工总表的 ⬜→✅ 打勾，按分工规范由 AI-5 合并时统一同步，本核未越界改动两份计划文档。

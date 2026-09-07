@@ -64,6 +64,23 @@ function Test-CloudDryRun {
   return $true
 }
 
+function Test-ChainVerify {
+  # 18.2 供应链校验探测: 有 VHDX/MSIX 目标才真正执行, 否则视为环境未初始化
+  $sec = Join-Path $PSScriptRoot "Security-Manager.ps1"
+  if (-not (Test-Path $sec)) { return $false }
+  $vhdx = Join-Path $DataDrive "Variable-USB"
+  $hasTarget = (Test-Path (Join-Path $vhdx "Base.vhdx")) -or (Test-Path "$DataDrive\Data\MSIX") -or (Test-Path "$DataDrive\Data\Plugins")
+  if (-not $hasTarget) { Write-Host "    无链路目标(未造盘), 跳过实际校验" -ForegroundColor Yellow; return $null }
+  $out = & $sec -Action Verify-Chain -DataDrive $DataDrive 2>&1 | Out-String
+  Write-Host "    $($out.Trim() -split "`n" | Select-Object -Last 1)" -ForegroundColor DarkGray
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Test-ExchangeScanProbe {
+  # 10.2 Exchange 强制扫描探测(只探测通道就绪, 不强制真扫; 真扫用 Security-Manager -Action Scan-Exchange)
+  return (Test-Path (Join-Path $DataDrive "Data\Exchange"))
+}
+
 function Run-Bench {
   $root = Get-BenchRoot
   New-Item -ItemType Directory -Force -Path $root | Out-Null
@@ -92,6 +109,14 @@ function Run-Bench {
   $cloudOk = Test-CloudDryRun $root
   Write-Host "    结果: $cloudOk" -ForegroundColor Green
 
+  Write-Host "6. Exchange 受控通道就绪 (10.2)" -ForegroundColor Cyan
+  $exOk = Test-ExchangeScanProbe
+  Write-Host "    结果: $exOk" -ForegroundColor Green
+
+  Write-Host "7. 供应链链路哈希校验探测 (18.2)" -ForegroundColor Cyan
+  $chainOk = Test-ChainVerify
+  Write-Host "    结果: $chainOk" -ForegroundColor Green
+
   $row = [pscustomobject]@{
     Timestamp   = (Get-Date -Format o)
     DataDrive   = $DataDrive
@@ -100,6 +125,8 @@ function Run-Bench {
     MsixAttach  = $msixOk
     PluginLoad  = $pluginOk
     CloudTool   = $cloudOk
+    Exchange    = $exOk
+    ChainVerify = $chainOk
   }
   $csvExists = Test-Path $OutFile
   $row | Export-Csv -Path $OutFile -Append -NoTypeInformation
@@ -113,7 +140,10 @@ function Show-Manifest {
   Write-Host "3  MSIX App Attach 挂载                       期望 <5s"
   Write-Host "4  插件 LoadLibrary(GET entropy)              期望 <200ms"
   Write-Host "5  rclone dry-run                             期望 <1s"
-  Write-Host "6  BitLocker 状态                             期望 XTS-AES256 保护On"
+  Write-Host "6  Exchange 通道就绪 + Scan-Exchange          期望 verdict=clean"
+  Write-Host "7  Verify-Chain 三层链哈希基线校验            期望 0 篡改"
+  Write-Host "8  BitLocker 状态                             期望 XTS-AES256 保护On (拔盘即锁)"
+  Write-Host "9  云加密: Setup -Crypt 后 Sync               期望云端为密文"
   Write-Host "全链路验收 = 第10章安全自检 + 第8章拓展链路均通过" -ForegroundColor Yellow
 }
 

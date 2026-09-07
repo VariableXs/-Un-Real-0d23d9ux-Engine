@@ -1,26 +1,40 @@
 ﻿param(
-  [ValidateSet("Apply", "BitLocker", "Defender", "License", "Compliance", "SelfCheck", "Cleanup", "Status")]
+  [ValidateSet("Apply", "BitLocker", "Defender", "Scan-Exchange", "Verify-Chain", "License", "Compliance", "SelfCheck", "Cleanup", "Status")]
   [string]$Action = "Status",
   [string]$DataDrive = "D:",
   [string]$AppsExclude = "D:\Data\Apps",
   [string]$ExchangeForce = "D:\Data\Exchange",
   [string]$RecoveryFile = "D:\Data\Security\BitLocker-Recovery.txt",
   [string]$BackupPath = "",
+  [string]$VhdxDir = "D:\Variable-USB",        # 8.1 三层链位置 (Base/Apps/User.vhdx)
+  [string]$ChainManifest = "",                 # 18.2 供应链哈希清单
+  [switch]$UsedSpaceOnly,                      # 10.1 只加密已用空间(To Go 提速)
   [switch]$NoAutoUnlock,
   [switch]$Force
 )
-# AI-4 拓展核 / 第10章 安全与合规 + 扩充14.3 云备份 + 扩充18 纵深防御
+# AI-4 拓展核 / 第10章 安全与合规 + 第8.1章 哈希校验防篡改 + 扩充14.3 云备份 + 扩充18 纵深防御
 # 用法:
 #   .\Security-Manager.ps1 -Action Status
 #   .\Security-Manager.ps1 -Action Apply -DataDrive D:
-#   .\Security-Manager.ps1 -Action BitLocker -DataDrive E:      # 开启 XTS-AES256
+#   .\Security-Manager.ps1 -Action BitLocker -DataDrive E:      # 开启 XTS-AES256 (拔盘即锁)
+#   .\Security-Manager.ps1 -Action BitLocker -DataDrive E: -UsedSpaceOnly
 #   .\Security-Manager.ps1 -Action Defender -DataDrive D:
+#   .\Security-Manager.ps1 -Action Scan-Exchange -DataDrive D:  # Exchange 受控通道强制 Defender 扫描(10.2)
+#   .\Security-Manager.ps1 -Action Verify-Chain -DataDrive D: -Force  # 建立/刷新三层链哈希基线(18.2)
+#   .\Security-Manager.ps1 -Action Verify-Chain -DataDrive D:         # 校验(被篡改/缺失则退出码1)
 #   .\Security-Manager.ps1 -Action License
 #   .\Security-Manager.ps1 -Action Compliance -BackupPath E:\backup.bcd
 #   .\Security-Manager.ps1 -Action Cleanup -BackupPath E:\backup.bcd
 #   .\Security-Manager.ps1 -Action SelfCheck
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# 未显式覆盖子路径时, 以 -DataDrive 为基准重排默认值
+# (否则 -DataDrive E: 时仍排除/扫描 D:\Data\Apps, 安全边界指错盘)
+if ($AppsExclude -eq "D:\Data\Apps")            { $AppsExclude  = Join-Path $DataDrive "Data\Apps" }
+if ($ExchangeForce -eq "D:\Data\Exchange")      { $ExchangeForce = Join-Path $DataDrive "Data\Exchange" }
+if ($RecoveryFile -eq "D:\Data\Security\BitLocker-Recovery.txt") { $RecoveryFile = Join-Path $DataDrive "Data\Security\BitLocker-Recovery.txt" }
+if ($VhdxDir -eq "D:\Variable-USB")             { $VhdxDir      = Join-Path $DataDrive "Variable-USB" }
 
 function Test-Admin {
   return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -51,12 +65,14 @@ function Enable-BitLocker {
     Write-Host ">>> $Drive 加密进行中" -ForegroundColor Yellow
     return
   }
-  Write-Host ">>> 启用 BitLocker (XTS-AES 256) on $Drive" -ForegroundColor Cyan
+  Write-Host ">>> 启用 BitLocker (XTS-AES 256) on $Drive $(if($UsedSpaceOnly){'(仅已用空间, To Go 提速)'})" -ForegroundColor Cyan
   if (-not $NoAutoUnlock) {
     # 先关闭自动解锁, 保证拔盘即锁; 宿主无密码时 To Go 只读。
     manage-bde.exe -autounlock -off $Drive 2>$null | Out-Null
   }
-  $proc = Start-Process -FilePath "manage-bde.exe" -ArgumentList @("-on", $Drive, "-EncryptionMethod", "XTS-AES256", "-RecoveryPassword") -NoNewWindow -PassThru -Wait
+  $bdeArgs = @("-on", $Drive, "-EncryptionMethod", "XTS-AES256", "-RecoveryPassword")
+  if ($UsedSpaceOnly) { $bdeArgs += "-UsedSpaceOnly" }
+  $proc = Start-Process -FilePath "manage-bde.exe" -ArgumentList $bdeArgs -NoNewWindow -PassThru -Wait
   if ($proc.ExitCode -ne 0) { throw "manage-bde -on 失败, 退出码 $($proc.ExitCode)" }
   # 保存恢复密钥
   $out = manage-bde.exe -protectors -get $Drive -type RecoveryPassword 2>$null | Out-String
@@ -130,6 +146,119 @@ function Uninstall-Cleanup {
   Write-Host ">>> 已完成提示式清理(未实际修改, 避免误删宿主引导)。" -ForegroundColor Green
 }
 
+function Scan-ExchangeChannel {
+  # 10.2 受控通道: Data\Exchange 内文件必须先过 Defender 全扫描才可放行至宿主。
+  # 退出码: 0=干净/Defender不可用(降级) 1=发现威胁
+  $logDir = Join-Path $DataDrive "Data\Security"
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+  $logFile = Join-Path $logDir "exchange-scan-log.json"
+  if (-not (Test-Path $ExchangeForce)) {
+    Write-Warning "交换目录不存在: $ExchangeForce (先运行 Data-Init.ps1)"
+    exit 1
+  }
+  $files = @(Get-ChildItem $ExchangeForce -File -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne ".scan-policy.txt" })
+  Write-Host "===== Exchange 受控通道强制扫描 (10.2) =====" -ForegroundColor Cyan
+  Write-Host "目录: $ExchangeForce  待检文件: $($files.Count) 个" -ForegroundColor Cyan
+  $threats = @()
+  $defenderOk = $true
+  try {
+    if (-not (Get-MpComputerStatus -ErrorAction Stop).AntivirusEnabled) { $defenderOk = $false }
+  } catch { $defenderOk = $false }
+  if (-not $defenderOk) {
+    Write-Warning "Defender 不可用, 按策略不允许放行(仅登记待检清单)。"
+  } else {
+    Write-Host ">>> Start-MpScan -ScanType CustomScan -ScanPath $ExchangeForce" -ForegroundColor Cyan
+    try { Start-MpScan -ScanType CustomScan -ScanPath $ExchangeForce -ErrorAction Stop }
+    catch { Write-Warning "扫描调用失败: $($_.Exception.Message)"; $defenderOk = $false }
+    if ($defenderOk) {
+      # 取近1小时该目录的威胁检出
+      try {
+        $threats = @(Get-MpThreatDetection -ErrorAction SilentlyContinue |
+          Where-Object { $_.InitialDetectionTime -gt (Get-Date).AddHours(-1) } |
+          Where-Object { ($_.Resources -join ";") -match [regex]::Escape($ExchangeForce) })
+      } catch { $threats = @() }
+    }
+  }
+  $result = [ordered]@{
+    at        = (Get-Date -Format o)
+    path      = $ExchangeForce
+    files     = $files.Count
+    defender  = $defenderOk
+    threats   = @($threats | ForEach-Object { $_.ThreatID }) -join ","
+    verdict   = if (-not $defenderOk) { "defender-unavailable" } elseif ($threats.Count) { "blocked" } else { "clean" }
+    filesList = @($files | Select-Object -ExpandProperty Name)
+  }
+  $result | ConvertTo-Json -Depth 4 | Set-Content -Path $logFile -Encoding UTF8
+  Write-Host ">>> 结果已写入 $logFile" -ForegroundColor Green
+  if ($threats.Count) {
+    Write-Warning ">>> 发现 $($threats.Count) 个威胁, Exchange 通道 BLOCKED, 文件不得放行至宿主!"
+    exit 1
+  }
+  if (-not $defenderOk) { Write-Host ">>> Defender 不可用: 未放行, 请在装 Defender 的环境重扫" -ForegroundColor Yellow; return }
+  Write-Host ">>> 扫描通过, $($files.Count) 个文件可放行" -ForegroundColor Green
+}
+
+function Verify-ChainHash {
+  # 8.1 哈希校验防篡改 + 18.2 供应链四重校验的落地一环:
+  # 对 Base/Apps/User 三层 VHDX + MSIX 包 + 插件清单文件 建 SHA256 基线并校验。
+  # -Force: (重)建基线;  无 -Force: 校验, 发现篡改/缺失 -> 退出码 1。
+  $manifest = if ($ChainManifest) { $ChainManifest } else { Join-Path $DataDrive "Data\Security\chain-manifest.sha256" }
+  $manifestDir = Split-Path $manifest -Parent
+  New-Item -ItemType Directory -Force -Path $manifestDir | Out-Null
+
+  $targets = @()
+  foreach ($v in @("Base.vhdx", "Apps.vhdx", "User.vhdx")) {
+    $p = Join-Path $VhdxDir $v
+    if (Test-Path $p) { $targets += $p }
+  }
+  foreach ($m in @("$DataDrive\Data\MSIX\*.msix", "$DataDrive\Data\MSIX\*.msixbundle")) {
+    $targets += @(Get-ChildItem $m -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  }
+  foreach ($mk in @("$DataDrive\Data\Plugins\installed\*.dll", "$DataDrive\Data\Config\plugin-market.json")) {
+    $targets += @(Get-ChildItem $mk -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  }
+
+  Write-Host "===== 供应链链路哈希校验 (8.1/18.2) =====" -ForegroundColor Cyan
+  Write-Host "清单: $manifest  目标: $($targets.Count) 个文件" -ForegroundColor Cyan
+  if (-not $targets.Count) {
+    Write-Warning "未找到任何可校验目标 (VHDX/MSIX/插件)。请先造盘或初始化 Data。"
+    exit 1
+  }
+
+  if ($Force) {
+    Write-Host ">>> 建立基线 ($(Get-Date -Format o))" -ForegroundColor Cyan
+    $lines = foreach ($t in $targets) {
+      $h = (Get-FileHash -Path $t -Algorithm SHA256).Hash
+      "{0}  {1}" -f $h, $t
+    }
+    $lines | Set-Content -Path $manifest -Encoding ASCII
+    Write-Host ">>> 基线已写入 $manifest ($($targets.Count) 条)" -ForegroundColor Green
+    return
+  }
+
+  if (-not (Test-Path $manifest)) {
+    Write-Warning "基线不存在: $manifest ; 请先运行 -Action Verify-Chain -Force 建立"
+    exit 1
+  }
+  $baseline = @{}
+  foreach ($line in (Get-Content $manifest)) {
+    if ($line -match "^([A-F0-9]{64})\s+(.+)$") { $baseline[$Matches[2]] = $Matches[1] }
+  }
+  $bad = @(); $missing = @(); $newFiles = @()
+  foreach ($t in $targets) {
+    $h = (Get-FileHash -Path $t -Algorithm SHA256).Hash
+    if (-not $baseline.ContainsKey($t)) { $newFiles += $t; continue }
+    if ($baseline[$t] -ne $h) { $bad += $t }
+  }
+  $targetSet = @($targets)
+  foreach ($k in $baseline.Keys) { if ($targetSet -notcontains $k) { $missing += $k } }
+  if ($bad.Count)   { Write-Warning ">>> 篡改 $($bad.Count) 个: $($bad -join ', ')"; exit 1 }
+  if ($missing.Count) { Write-Warning ">>> 基线内缺失 $($missing.Count) 个: $($missing -join ', ')"; exit 1 }
+  if ($newFiles.Count) { Write-Warning ">>> 基线外新增 $($newFiles.Count) 个 (用 -Force 刷新基线): $($newFiles -join ', ')" }
+  Write-Host ">>> 链路校验通过: $($targetSet.Count) 个文件未被篡改" -ForegroundColor Green
+}
+
 function SelfCheck {
   Write-Host "===== AI-4 安全自检 =====" -ForegroundColor Cyan
   $ok = $true
@@ -152,6 +281,16 @@ function SelfCheck {
     $st = (manage-bde.exe -status $DataDrive 2>$null | Out-String)
     if ($st -match "保护已启用|Protection On|Fully Encrypted") { Write-Host "OK BitLocker: $DataDrive 已保护" -ForegroundColor Green } else { Write-Warning "BitLocker 未启用 $DataDrive"; $ok = $false }
   } else { Write-Warning "manage-bde 不可用(精简系统)" }
+  # 6 供应链基线(18.2) 与 Exchange 扫描日志(10.2)
+  $chainFile = Join-Path $DataDrive "Data\Security\chain-manifest.sha256"
+  if (Test-Path $chainFile) { Write-Host "OK 供应链哈希基线: $chainFile" -ForegroundColor Green }
+  else { Write-Host "WARN 未建链路哈希基线 (Verify-Chain -Force)" -ForegroundColor Yellow }
+  $scanLog = Join-Path $DataDrive "Data\Security\exchange-scan-log.json"
+  if (Test-Path $scanLog) {
+    $sl = Get-Content $scanLog -Raw | ConvertFrom-Json
+    if ($sl.verdict -eq "clean") { Write-Host "OK Exchange 通道最近扫描: clean" -ForegroundColor Green }
+    else { Write-Warning "Exchange 通道最近扫描: $($sl.verdict) (须为 clean 才可放行)"; $ok = $false }
+  } else { Write-Host "WARN Exchange 通道尚无扫描记录 (Scan-Exchange)" -ForegroundColor Yellow }
   Write-Host ""
   if ($ok) { Write-Host ">>> 安全自检通过" -ForegroundColor Green } else { Write-Host ">>> 存在待办项, 请按上方警告处理" -ForegroundColor Yellow }
 }
@@ -173,12 +312,14 @@ function Show-Status {
 }
 
 switch ($Action) {
-  "Apply"      { Enable-BitLocker $DataDrive; Apply-Defender $DataDrive; Show-Compliance }
-  "BitLocker"  { Enable-BitLocker $DataDrive }
-  "Defender"   { Apply-Defender $DataDrive }
-  "License"    { Apply-LicenseStatus }
-  "Compliance" { Show-Compliance $BackupPath }
-  "SelfCheck"  { SelfCheck }
-  "Cleanup"    { Uninstall-Cleanup $BackupPath }
-  "Status"     { Show-Status }
+  "Apply"         { Enable-BitLocker $DataDrive; Apply-Defender $DataDrive; Scan-ExchangeChannel; Show-Compliance }
+  "BitLocker"     { Enable-BitLocker $DataDrive }
+  "Defender"      { Apply-Defender $DataDrive }
+  "Scan-Exchange" { Scan-ExchangeChannel }
+  "Verify-Chain"  { Verify-ChainHash }
+  "License"       { Apply-LicenseStatus }
+  "Compliance"    { Show-Compliance $BackupPath }
+  "SelfCheck"     { SelfCheck }
+  "Cleanup"       { Uninstall-Cleanup $BackupPath }
+  "Status"        { Show-Status }
 }

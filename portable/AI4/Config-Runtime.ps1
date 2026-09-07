@@ -34,33 +34,39 @@ function Get-EnvMap {
   return $map
 }
 
+function Test-HiveMounted {
+  & reg.exe query "HKU\$KeyName" 2>$null | Out-Null
+  return ($LASTEXITCODE -eq 0)
+}
+
 function Mount-RegistryHive {
-  if (-not (Test-Path $UserHive)) { Write-Warning "用户配置 Hive 不存在: $UserHive ; 先用 Data-Init 生成"; return }
+  if (-not (Test-Path $UserHive)) { Write-Warning "用户配置 Hive 不存在: $UserHive ; 先用 Data-Init.ps1 生成合法 Hive"; return }
+  if (Test-HiveMounted) { Write-Host ">>> HKEY_USERS\$KeyName 已挂载, 跳过" -ForegroundColor Yellow; return }
   Write-Host ">>> RegLoadKey HKEY_USERS\$KeyName <- $UserHive" -ForegroundColor Cyan
   # PowerShell 无直接 RegLoadKey cmdlet, 用 REG.EXE LOAD(仅 Win 可用, 需要时可换成 P/Invoke)
   & reg.exe load "HKU\$KeyName" $UserHive 2>&1 | Out-Null
   if ($LASTEXITCODE -ne 0) {
-    Write-Warning "reg.exe load 失败(该 key 可能已挂载或系统限制); 继续但保留警告"
+    Write-Warning "reg.exe load 失败(需要管理员/SeBackupPrivilege, 或 Hive 非法; 空文件不行, 用 Data-Init.ps1 重生成)"
   } else {
     Write-Host "    已挂载: HKEY_USERS\$KeyName" -ForegroundColor Green
   }
 }
 
 function Unmount-RegistryHive {
+  if (-not (Test-HiveMounted)) { Write-Host ">>> HKU\$KeyName 未挂载, 跳过" -ForegroundColor Yellow; return }
   Write-Host ">>> 卸载 HKU\$KeyName" -ForegroundColor Cyan
   & reg.exe unload "HKU\$KeyName" 2>&1 | Out-Null
-  if ($LASTEXITCODE -ne 0) { Write-Warning "卸载失败或未挂载" } else { Write-Host "    已卸载" -ForegroundColor Green }
+  if ($LASTEXITCODE -ne 0) { Write-Warning "卸载失败(可能有句柄占用; reg unload 会自动落盘到 .dat)" } else { Write-Host "    已卸载(配置已写回随盘 Hive)" -ForegroundColor Green }
 }
 
 function Apply-EnvVars {
   $map = Get-EnvMap
   if (-not $map.Count) { Write-Host "无 path.env 配置"; return }
-  Write-Host ">>> 写入环境变量(当前进程)" -ForegroundColor Cyan
+  $dataRoot = "$DataDrive\Data"
+  Write-Host ">>> 写入环境变量(当前进程, \${DATA_ROOT} -> $dataRoot)" -ForegroundColor Cyan
   foreach ($k in $map.Keys) {
-    $v = $map[$k]
-    if ($v -like 'D:\*') {
-      # 保留绝对路径; 其他相对值留给 Core 按 DataRoot 展开
-    }
+    # 支持随盘相对写法: ${DATA_ROOT}\Tools -> D:\Data\Tools (换宿主盘符只改 -DataDrive)
+    $v = $map[$k] -replace '\$\{DATA_ROOT\}', $dataRoot
     try {
       Set-Item -Path "Env:\$k" -Value $v -ErrorAction Stop
       Write-Host "    $k = $v" -ForegroundColor Green
@@ -92,6 +98,15 @@ function Show-Status {
   Write-Host "===== 配置随盘状态 =====" -ForegroundColor Cyan
   Write-Host "EnvFile:  $EnvFile  $(if(Test-Path $EnvFile){'存在'}else{'缺失'})"
   Write-Host "UserHive: $UserHive  $(if(Test-Path $UserHive){'存在'}else{'缺失'})"
+  if (Test-Path $UserHive) {
+    $fs = [IO.File]::OpenRead($UserHive)
+    try {
+      $magic = New-Object byte[] 4
+      [void]$fs.Read($magic, 0, 4)
+    } finally { $fs.Close() }
+    Write-Host "Hive 魔数: $([Text.Encoding]::ASCII.GetString($magic))  $(if([Text.Encoding]::ASCII.GetString($magic) -eq 'regf'){'合法(可挂载)'}else{'非法(用 Data-Init.ps1 重生成)'})"
+    Write-Host "挂载状态: $(if (Test-HiveMounted) {"HKEY_USERS\$KeyName 已挂载"} else {'未挂载'})"
+  }
   Write-Host "Shortcuts: $ShortcutsFile  $(if(Test-Path $ShortcutsFile){'存在'}else{'缺失'})"
   $envMap = Get-EnvMap
   Write-Host "已载入环境变量: $($envMap.Keys -join ', ')"
