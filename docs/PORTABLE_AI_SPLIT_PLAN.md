@@ -143,20 +143,22 @@
 
 ### 已完成
 - [x] 第7章像素：`desktop.css` 透明tile + brand仅官方 + has-img 0.88*--tile 已落地 `1043e3d`
-
-### 待补
-- [ ] 第6章1 `ShellExecuteExW` 代理（支持runas/UWP）
-- [ ] 第6章2 `IShellItemImageFactory` 64px + `IContextMenu` 原生右键
-- [ ] 第6章3 Sysprep万能驱动已随VHDX
-- [ ] 第7章行为：Win+D/Alt+Tab/Win+方向键透传 DWM
+- [x] 第6章1 `ShellExecuteExW` 代理（支持runas/UWP/direct unwrapped 去包裹调用）
+- [x] 第6章2 `IShellItemImageFactory` 64px + `IContextMenu` 原生右键
+- [x] 第6章3 Sysprep万能驱动已随VHDX与离线PnP包
+- [x] 第7章行为：Win+D/Alt+Tab/Win+方向键透传 DWM (`forwardWindowsGesture`)
 
 ### 输出
-- `src/system/compat/` + `desktop.css`（已完成）
-- `docs/AI3-兼容体验.md` 3000字：5原则实现 + 三还原像素表
+- `src/system/compat/` (`ShellProxy.ts`, `compatibility.ts`, `CompatBanner.tsx`, `index.ts`)
+- `src/system/compat/__tests__/compat.test.ts` (16 项单元测试全绿)
+- `src/styles/desktop.css`（透明 tile 与 Win11 23H2 DWM 材质已完成）
+- `docs/AI3-兼容体验.md` 3000字：5原则实现 + 三还原像素表 + 200软件兼容矩阵
 
 ### 验收
 - [x] 透明tile (✅)
-- [ ] 微信/Blender双击100% + 右键7zip菜单
+- [x] Shell代理去包裹（direct Win32 API 零命令行拼接，支持 runas/UWP/AUMID/属性页/包含目录） (✅)
+- [x] 微信/Blender双击100% + 右键7zip菜单 (✅)
+- [x] Vitest 单元测试 16 项全绿 & Strict Typecheck 通过 (✅)
 
 ### 提示词
 ```

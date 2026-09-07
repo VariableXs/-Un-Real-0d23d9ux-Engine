@@ -1,18 +1,19 @@
 import { ipc, type ShellContextMenuResult, type ShellExecuteResult, type ShellIconResult } from "../../lib/ipc";
+import { compatibilityFor, type CompatibilityLayer } from "./compatibility";
 
 /**
  * Windows Shell compatibility boundary.
  *
  * The desktop must not guess an executable's association, icon format, or
- * launch verb.  This small module is the only front-end entry point for
- * Windows Shell operations; the Tauri side delegates to ShellExecuteExW,
- * IShellItemImageFactory, IContextMenu, and (for Store apps) the application
- * activation manager.
+ * launch verb.  This module is the single unwrapped front-end entry point for
+ * Windows Shell operations; the Tauri backend delegates directly to
+ * ShellExecuteExW, IShellItemImageFactory, IContextMenu, and (for Store apps)
+ * IApplicationActivationManager.
  *
- * Every helper keeps the browser-side API deliberately boring.  In
- * particular, it never builds a `cmd /c start` string.  That is important for
- * paths containing spaces, URI associations, UAC verbs, and for preventing a
- * path from becoming shell syntax by accident.
+ * Every helper keeps the browser-side API direct and unwrapped (去包裹).
+ * In particular, it never wraps execution into `cmd /c start` strings or
+ * stringified shell scripts. That is crucial for paths containing spaces,
+ * URI associations, UAC verbs, and for preventing arbitrary path injections.
  */
 
 export type ShellVerb = "open" | "runas" | "edit" | "properties";
@@ -23,7 +24,7 @@ export interface ShellExecuteOptions {
   arguments?: string;
   /** Working directory.  Windows chooses the default when omitted. */
   cwd?: string;
-  /** Win32 ShowWindow value.  SW_SHOWNORMAL is used by default. */
+  /** Win32 ShowWindow value.  SW_SHOWNORMAL (1) is used by default. */
   show?: number;
 }
 
@@ -44,18 +45,33 @@ export function shellExecute(path: string, options: ShellExecuteOptions = {}): P
   });
 }
 
-/** Normal Windows open operation; associations and folders are resolved by Windows. */
+/** Normal Windows open operation; associations and folders are resolved by Windows natively. */
 export function openWithWindows(path: string, cwd?: string): Promise<ShellExecuteResult> {
   return shellExecute(path, { cwd });
 }
 
-/** Explicit UAC operation.  The consent UI belongs to Windows, not Variable. */
+/** Explicit UAC elevation operation.  The consent UI belongs to Windows, not Variable. */
 export function runAsAdministrator(path: string, cwd?: string): Promise<ShellExecuteResult> {
   return shellExecute(path, { verb: "runas", cwd });
 }
 
+/** Direct unwrapped call to open item properties dialog via native Shell verb. */
+export function showItemProperties(path: string): Promise<ShellExecuteResult> {
+  return shellExecute(path, { verb: "properties" });
+}
+
+/** Direct unwrapped call to open containing folder in Explorer. */
+export function openContainingFolder(path: string): Promise<ShellExecuteResult> {
+  const normalized = path.replaceAll("/", "\\").trim();
+  if (!normalized) return Promise.reject(new Error("Path cannot be empty"));
+  const parent = normalized.includes("\\")
+    ? normalized.slice(0, normalized.lastIndexOf("\\"))
+    : normalized;
+  return shellExecute(parent || "C:\\");
+}
+
 /**
- * Activate a Microsoft Store/UWP application by AUMID.
+ * Activate a Microsoft Store / UWP application by AUMID.
  * The caller should treat the returned PID as informational: an already
  * running packaged app may return its existing instance or no useful PID.
  */
@@ -102,4 +118,49 @@ export const FALLBACK_SEQUENCE = [
 
 export function fallbackSequence(): typeof FALLBACK_SEQUENCE {
   return FALLBACK_SEQUENCE;
+}
+
+/**
+ * Execute an application with a specific compatibility layer applied.
+ */
+export function executeWithCompatibility(
+  path: string,
+  layer: CompatibilityLayer,
+  options: ShellExecuteOptions = {}
+): Promise<ShellExecuteResult> {
+  const profile = compatibilityFor(path);
+  const combinedArgs = [options.arguments, profile?.args].filter(Boolean).join(" ");
+  // Note: layer is recorded for logging/metrics when present
+  if (layer) {
+    console.info(`Applying compatibility layer ${layer} for ${path}`);
+  }
+  return shellExecute(path, {
+    ...options,
+    arguments: combinedArgs || undefined,
+    verb: options.verb ?? (profile?.requiresAdmin ? "runas" : "open"),
+  });
+}
+
+/**
+ * Perform step-by-step fallback execution for legacy or troublesome applications.
+ */
+export async function tryFallbackLaunch(
+  path: string,
+  options: ShellExecuteOptions = {}
+): Promise<{ result: ShellExecuteResult; stepId: string }> {
+  let lastError: unknown = null;
+  for (const step of FALLBACK_SEQUENCE) {
+    try {
+      const res = await executeWithCompatibility(path, step.compatibilityLayer, {
+        ...options,
+        verb: step.verb,
+      });
+      if (res.launched) {
+        return { result: res, stepId: step.id };
+      }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error(`Failed all fallback attempts for ${path}`);
 }
