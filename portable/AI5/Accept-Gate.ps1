@@ -22,7 +22,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "AI5-Lib.ps1")
 
-$Evidence = if ($EvidenceRoot) { $EvidenceRoot } else { Get-Ai5EvidenceRoot -DataDrive $DataDrive }
+# 注意：PowerShell 变量名大小写不敏感，此变量不可命名为 $Evidence ——
+# 那会与循环内的每行字段 $evidence 同名互相覆盖（曾导致 Join-Path 收到空串）。
+$EvidenceDir = if ($EvidenceRoot) { $EvidenceRoot } else { Get-Ai5EvidenceRoot -DataDrive $DataDrive }
 
 # 主计划 1.3 + 扩充28 的验收项定义
 $Gate = @(
@@ -65,7 +67,7 @@ function Invoke-Init {
 
 function Get-Verdicts {
   $compat = Read-IfExists (Join-Path $OutDir "compat-results.json")
-  $chaos = Read-IfExists (Join-Path $Evidence "chaos-results.json")
+  $chaos = Read-IfExists (Join-Path $EvidenceDir "chaos-results.json")
   $bench = Read-IfExists (Join-Path $OutDir "bench-results.json")
   $manual = $null
   if ($ManualResults) { $manual = Read-IfExists $ManualResults }
@@ -103,7 +105,7 @@ function Get-Verdicts {
           $c = $chaos.counts
           $status = $(if ($c.fail -gt 0) { "fail" } elseif (($c.pass + $c.warn) -eq 0) { "todo" } else { "warn" })
           $detail = "pass=$($c.pass) warn=$($c.warn) fail=$($c.fail) manual待做=$($c.todo)"
-          $evidence = Join-Path $Evidence "chaos-results.json"
+          $evidence = Join-Path $EvidenceDir "chaos-results.json"
         }
       }
       "bench" {
@@ -118,23 +120,23 @@ function Get-Verdicts {
         }
       }
       "bitlocker" {
-        $s8 = Read-IfExists (Join-Path $Evidence "S08-bitlocker.json")
+        $s8 = Read-IfExists (Join-Path $EvidenceDir "S08-bitlocker.json")
         if ($s8) {
           $on = $s8.rows | Where-Object { $_.k -eq "protectionOn" } | Select-Object -First 1
           $k48 = $s8.rows | Where-Object { $_.k -eq "digits48" } | Select-Object -First 1
           if ($on -and $on.v -eq $true -and (-not $k48 -or $k48.v -eq $true)) { $status = "pass"; $detail = "加密已启用且恢复密钥格式正确" }
           elseif ($k48 -and $k48.v -eq $false) { $status = "fail"; $detail = "恢复密钥格式不正确" }
           else { $status = "warn"; $detail = "未检测到 BitLocker 已启用" }
-          $evidence = Join-Path $Evidence "S08-bitlocker.json"
+          $evidence = Join-Path $EvidenceDir "S08-bitlocker.json"
         }
       }
       "align" {
-        $s9 = Read-IfExists (Join-Path $Evidence "S09-alignment.json")
+        $s9 = Read-IfExists (Join-Path $EvidenceDir "S09-alignment.json")
         if ($s9) {
           $bad = @($s9.partitions | Where-Object { $_.aligned -eq $false })
           $status = $(if ($bad.Count -eq 0) { "pass" } else { "fail" })
           $detail = "分区 $(@($s9.partitions).Count) 个，未对齐 $($bad.Count) 个"
-          $evidence = Join-Path $Evidence "S09-alignment.json"
+          $evidence = Join-Path $EvidenceDir "S09-alignment.json"
         }
       }
       "restore" {
