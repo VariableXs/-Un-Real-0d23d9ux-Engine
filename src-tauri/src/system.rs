@@ -67,27 +67,11 @@ fn validate_open_target(p: &str) -> CmdResult<std::path::PathBuf> {
 #[tauri::command]
 pub fn open_path(_st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     let p = validate_open_target(&path)?;
-    if p.is_dir() {
-        std::process::Command::new("explorer")
-            .arg(&p)
-            .spawn()
-            .map_err(|e| AppError::io(format!("无法打开文件夹 / Cannot open folder: {e}")))?;
-    } else {
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            std::process::Command::new("cmd")
-                .raw_arg("/C")
-                .raw_arg(format!("start \"\" \"{}\"", p.to_string_lossy()))
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .spawn()
-                .map_err(|e| AppError::io(format!("无法打开文件 / Cannot open file: {e}")))?;
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::process::Command::new("xdg-open").arg(&p).spawn().ok();
-        }
-    }
+    // One Shell boundary for both folders and files.  Do not use `cmd /C
+    // start`: it loses the caller's environment and turns a path into shell
+    // syntax.  ShellExecuteExW lets Windows resolve associations, .lnk,
+    // AppX, and folder navigation exactly as Explorer does.
+    crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?;
     Ok(())
 }
 
