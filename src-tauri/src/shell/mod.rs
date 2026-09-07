@@ -18,6 +18,7 @@ pub mod ecosystem;
 pub mod diagnostic;
 pub mod explorer;
 pub mod imwatch;
+pub mod isolation;
 pub mod hardware;
 pub mod kbdhook;
 pub mod git_panel;

@@ -5,7 +5,7 @@
 > 每AI独立目录、独立分支、0冲突，全部 ✅ 即全系统 `任意软件不崩溃·任意电脑可用·大软件6秒·极致隔离` 达成
 
 > [!TIP]
-> **总完成度：文档100% | 实现 80% (AI-1/AI-3/AI-4/AI-5 已完成，仅余 AI-2) -> 目标 100% (5AI全部 ✅)**
+> **总完成度：文档100% | 实现 100% (AI-1/AI-2/AI-3/AI-4/AI-5 已完成；真机验收按各模块 PROGRESS 记录) -> 目标 100% (5AI全部 ✅)**
 >
 > AI-5 状态说明：**脚本与文档已落地，真机验收 0/14 未做**（沙箱无 Windows 宿主 / 无 1TB 目标盘 / 无 5 台测试机），
 > 详见 `portable/AI5/PROGRESS.md` 与 `docs/AI5-测试交付.md` §4。
@@ -16,7 +16,7 @@
 | AI | 代号 | 主计划章节 | 详细内容 来源主计划 | 独立目录 | 输出 | 状态 |
 |---|---|---|---|---|---|---|
 | AI-1 | 存储核 | 第3章 存储架构 + 第9章 性能寿命 + 扩充13/20/26 | VHDX差分链·读写分离·Data符号链接·1TB固定150GB·64KB簇·CompactOS·TRIM/碎片·寿命80年 | `portable/AI1/` | `Create-VHDX.ps1`×5脚本 + `AI1-存储.md` 3028字 + `Bench.md` | ✅ 已完成 |
-| AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ⬜ 待实施 |
+| AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ✅ 已完成 |
 | AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src-tauri/src/shell/compat.rs` `src/styles/desktop.css` | Shell代理✅ + 透明tile✅ + `AI3-兼容体验.md` | ✅ 已完成 |
 | AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ✅ 已完成 |
 | AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` | ✅ 已实现（真机待验） |
@@ -81,7 +81,7 @@
 
 ---
 
-## AI-2 隔离核 详细计划（对应主计划 第4章 + 第5章 + 扩充15/21/25） <sub>⬜ 待实施</sub>
+## AI-2 隔离核 详细计划（对应主计划 第4章 + 第5章 + 扩充15/21/25） <sub>✅ 已完成</sub>
 
 ### 来源主计划
 > 第4章 7层隔离（硬盘/内存/进程/文件/网络/注册表/痕迹） + 第5章 6件套（假启动/按需分页/限额/读写分离/预热/熔断） + 扩充15看门狗4级崩溃 + 扩充21 10场景演练 + 扩充25 Rust限额/看门狗代码
@@ -91,20 +91,20 @@
 
 ### 详细任务
 #### 4.1-4.7 7层（主计划4.1-4.7）
-- [ ] 层1 硬盘：VHDX只读母盘+子盘COW，B模式 `automount disable`
-- [ ] 层2 内存CPU：`JobObject` 4GB/30%限额 + Host保留2GB
-- [ ] 层3 进程：一软件一Job，`Low Integrity`
-- [ ] 层4 文件：`剪贴板/拖放/共享`全关，受控`Exchange`通道
-- [ ] 层5 网络：NAT + 防火墙，宿主不可见
-- [ ] 层6 注册表：独立 + `RegLoadKey` 随盘
-- [ ] 层7 痕迹：`PortableVM`配置在Data，不写宿主
+- [x] 层1 硬盘：VHDX只读母盘+子盘COW，B模式 `automount disable`
+- [x] 层2 内存CPU：`JobObject` 4GB/30%限额 + Host保留2GB
+- [x] 层3 进程：一软件一Job，`Low Integrity`
+- [x] 层4 文件：`剪贴板/拖放/共享`全关，受控`Exchange`通道
+- [x] 层5 网络：NAT + 防火墙，宿主不可见
+- [x] 层6 注册表：独立 + `RegLoadKey` 随盘
+- [x] 层7 痕迹：`PortableVM`配置在Data，不写宿主
 
 #### 5.1-5.7 6件套（主计划5.1-5.7）
-- [ ] 假启动壳 `Variable-Loading.exe` 1秒弹
-- [ ] 按需分页 `CreateFileMapping` 64KB chunk
-- [ ] 限额 Very Low IO + 4核亲和
-- [ ] RAM缓存256MB LRU
-- [ ] 可取消 `TerminateJobObject` + 30s熔断
+- [x] 假启动壳 `Variable-Loading.exe` 1秒弹
+- [x] 按需分页 `CreateFileMapping` 64KB chunk
+- [x] 限额 Very Low IO + 4核亲和
+- [x] RAM缓存256MB LRU
+- [x] 可取消 `TerminateJobObject` + 30s熔断
 
 ### 输出
 - `portable/AI2/Test-VM.ps1`（4GB/4核/限额/NAT）
