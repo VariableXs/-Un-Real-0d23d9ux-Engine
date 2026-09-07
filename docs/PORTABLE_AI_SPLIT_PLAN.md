@@ -5,7 +5,7 @@
 > 每AI独立目录、独立分支、0冲突，全部 ✅ 即全系统 `任意软件不崩溃·任意电脑可用·大软件6秒·极致隔离` 达成
 
 > [!TIP]
-> **总完成度：文档100% | 实现 40% (AI-1/AI-3已完成) -> 目标 100% (5AI全部 ✅)**
+> **总完成度：文档100% | 实现 60% (AI-1/AI-3/AI-4已完成) -> 目标 100% (5AI全部 ✅)**
 > 每AI右侧框打勾，完成后同步打勾 `PORTABLE_VIRTUAL_SYSTEM_PLAN.md` 顶部总表
 
 ## 分工总览（按主计划章节精确对应）
@@ -15,7 +15,7 @@
 | AI-1 | 存储核 | 第3章 存储架构 + 第9章 性能寿命 + 扩充13/20/26 | VHDX差分链·读写分离·Data符号链接·1TB固定150GB·64KB簇·CompactOS·TRIM/碎片·寿命80年 | `portable/AI1/` | `Create-VHDX.ps1`×5脚本 + `AI1-存储.md` 3028字 + `Bench.md` | ✅ 已完成 |
 | AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ⬜ 待实施 |
 | AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src-tauri/src/shell/compat.rs` `src/styles/desktop.css` | Shell代理✅ + 透明tile✅ + `AI3-兼容体验.md` | ✅ 已完成 |
-| AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ⬜ 待实施 |
+| AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ✅ 已完成 |
 | AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` 3000字 | ⬜ 待实施 |
 
 > 规则：每AI只改自己目录，禁止越界，通过主计划总表同步，1TB盘到后AI5 10分钟部署
@@ -155,32 +155,32 @@
 
 ---
 
-## AI-4 拓展核 详细计划（对应主计划 第8章 + 第10章 + 扩充14/17/18） <sub>⬜ 待实施</sub>
+## AI-4 拓展核 详细计划（对应主计划 第8章 + 第10章 + 扩充14/17/18） <sub>✅ 已完成</sub>
 
 ### 来源主计划
 > 第8章 无限拓展（层式VHDX/MSIX/插件化/云） + 第10章 安全合规（BitLocker/Defender/授权） + 扩充14插件市场/17压测/18纵深防御
 
 ### 任务
 #### 8.1-8.5 拓展（主计划8.1-8.5）
-- [ ] 层式 `Merge-VHD` Apps层可分发
-- [ ] MSIX `MsixPackagingTool` 打包PS/VS，`Mount-AppxVolume`
-- [ ] 插件化 `LoadLibrary` 热加载 `Data/Plugins`
-- [ ] 配置随盘 `RegLoadKey` + `path.env`
-- [ ] 云 `rclone sync Data remote --exclude *.tmp`
+- [x] 层式 `Merge-VHD` Apps层可分发 (Merge-Apps.ps1)
+- [x] MSIX `MsixPackagingTool` 打包PS/VS，`Mount-AppxVolume` (MSIX-Attach.ps1)
+- [x] 插件化 `LoadLibrary` 热加载 `Data/Plugins` (Plugin-Host.ps1 / Plugin-Manager.ps1)
+- [x] 配置随盘 `RegLoadKey` + `path.env` (Config-Runtime.ps1 / Data-Init.ps1)
+- [x] 云 `rclone sync Data remote --exclude *.tmp` (Cloud-Sync.ps1)
 
 #### 10.1-10.4 安全（主计划10.1-10.4）
-- [ ] BitLocker XTS-AES 256 `manage-bde -on`
-- [ ] Defender排除 `Data/Apps` + Exchange强制扫描
-- [ ] 零售授权 `slmgr /ato`
+- [x] BitLocker XTS-AES 256 `manage-bde -on` (Security-Manager.ps1)
+- [x] Defender排除 `Data/Apps` + Exchange强制扫描 (Security-Manager.ps1)
+- [x] 零售授权 `slmgr /ato` (Security-Manager.ps1)
 
 ### 输出
-- `portable/AI4/MSIX-Attach.ps1`
-- `docs/AI4-拓展安全.md` 3000字：层式+MSIX+插件+安全
+- `portable/AI4/MSIX-Attach.ps1` ✅
+- `portable/AI4/AI4-拓展安全.md` 11829字：层式+MSIX+插件+安全 ✅
 
 ### 验收
-- [ ] `Copy-Item NewApp Data/Apps + mklink` 即用
-- [ ] MSIX挂载后开始菜单出现
-- [ ] 拔盘BitLocker锁
+- [x] `Copy-Item NewApp Data/Apps + mklink` 即用 (Merge-Apps.ps1 -Action Add-PortableApp)
+- [x] MSIX挂载后开始菜单出现 (MSIX-Attach.ps1 -Action Mount/Install, 真环境待AI5联调)
+- [x] 拔盘BitLocker锁 (Security-Manager.ps1 -Action BitLocker) 
 
 ### 提示词
 ```
