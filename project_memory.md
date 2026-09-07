@@ -437,3 +437,20 @@
 - 前端：存储恢复页新增「导出诊断包」按钮。
 - 测试：workspace 129 全绿；tsc/audit（zh/en 全覆盖）/vitest/build 全绿。
 - 教训：B-34 的核心是"脱敏规则可审计"——scrub 只做两件事（用户名→<user>、主目录→<home>），规则越少越可审计； diagnostic 包不打包 zip 而出 Markdown 也是同理（人可读 = 可自查）。
+
+## AI-3 兼容核（2026-09-07）完成 — 第6+7章 Shell 代理与行为透传
+- 前端新增 `src/system/compat/ShellProxy.ts`：普通打开/runas、AUMID、64px Shell 图标、原生 IContextMenu、Windows 手势五类窄代理；`compatibility.ts` 固化 Blender/Adobe/Wallpaper/Steam 条目和普通→runas→WIN7RTM→DPIUNAWARE 的明确重试序列。
+- `shell/compat.rs`：普通无执行档应用走 ShellExecuteExW；UWP 走 IApplicationActivationManager；Explorer 图标复用 HICON/IShellItemImageFactory 链；单选右键走 IContextMenu/TrackPopupMenuEx；Win+D/贴靠/Alt+Tab 由单一 Windows 虚拟键路径交给宿主 Shell/DWM。失败返回 shown=false 或明确错误，前端保留安全菜单回退。
+- `system::open_path`、Steam URI、AUMID、无执行档第三方启动统一移除 cmd/start 猜测通道；带 profile 的受管进程继续用 CreateProcess 注入环境，避免兼容修复破坏隔离。
+- 文档：`docs/AI3-兼容体验.md`，并同步两份便携系统计划的第6/7章状态。
+- 如实边界：本沙盒没有 Node/Rust 工具链，未能在此运行 typecheck/cargo；Windows UWP、7-Zip/Git 原生菜单与三宿主行为仍需 Windows 实机点验。
+- 教训：Shell API 代理必须和执行档分层；“所有程序都走 Shell”会丢凭据环境注入，正确口径是普通应用 ShellExecute、受管工具 CreateProcess，文档要把这个例外写清楚。
+
+## 批次 AI1-1（2026-09-07）完成 — 便携系统存储核：主计划第 3+9 章落地
+- 多 AI 并行分工（`docs/PORTABLE_AI_SPLIT_PLAN.md`）首批：AI-1 存储核只做第 3 章（存储架构）+ 第 9 章（性能与寿命），含扩充 13.4/20.1/26/29.4；未越界改 AI2/4/5 目录（`git status` 复核 0 行）。
+- `portable/AI1/` 5 支脚本：`Create-VHDX.ps1`（固定 150GB + GPT + 64KB 簇 + 4K 对齐校验 + Data 七目录 + 离线 CompactOS/注册表 + `-Sparse`/`-Chain`）、`Tune-Guest.ps1`（CompactOS/TRIM/关休眠/WinSxS/RAM 缓存契约，逐项回读实测值）、`Link-DataApps.ps1`（读写分离 mklink，幂等 + exFAT 感知回退 SymbolicLink）、`Bench-Storage.ps1`（SEQ 直写/4K 随机/簇/对齐/TRIM/膨胀率碎片，出 Markdown 报告）、`Maintain-VHDX.ps1`（每月 Optimize-VHD + ReTrim + 碎片 <5% + 可选 Merge-VHD）。
+- 文档：`docs/AI1-存储.md` 3028 中文字（选型对比表 / mklink 清单 / 寿命 80.2 年推导 / 扩充 20.1 逐行修正 8 处）；`portable/AI1/Bench.md` 判定线 + 口径 + 实测区（待填，未编造数据）。
+- 打勾：主计划总表第 3/9 行三列全 ✅ + 章标题 ✅ + 完成度 16% → 42%(5/12)；分工总览 AI-1 行 ✅；PR #3 合入 main。
+- 复核发现的真实缺陷：①分工表容量口径算错——1TB 实得 929.9GiB，「150+800GB」超 20.1GiB，定版 150+780GB；②原型与扩充 20.1 的 `-Filter "*.wim"` 会先命中 `sources\boot.wim`（字母序在前），会展开引导镜像而非安装镜像；③「回收后 <20GB 实占」对普通固定盘不成立（实占恒=虚拟大小），只有 NTFS 稀疏固定盘或动态盘能达标；④exFAT 卷无重解析点，Junction/硬链接不可用，只能 SymbolicLink。
+- 验证：CI（windows-latest）frontend + backend 全绿；5 支脚本经自写 PowerShell 词法级结构检查器全 OK（先用仓库既有 4 支 .ps1 做基线确认无误报）；一致性检查 ALL PASS（12 个主计划条目覆盖 / 13 处路径引用存在 / 字数 / 打勾断言）。**如实边界**：沙箱 Linux 且 GitHub release 资源域不可达 → `pwsh` 装不上，PowerShell 解析器与 Windows cmdlet 一次未执行，真机数据待 1TB 盘到货。
+- 教训：①无解析器可用时，先拿仓库既有「已知能跑」的同类脚本做基线，才能区分"检查器有效"与"检查器只会说 OK"；②字符串统计类判定别用 `-match 'ok'` 这种子串匹配——`'broken'` 里就含 `'ok'`，坏链会被算成成功，改成逐条显式 `Status` 字段才可证；③文档里的技术断言要回头对着源文件核一遍——本轮「原型未指定簇大小」「无 esd 回退」两条初稿断言都是错的（原型其实有 64KB 与 esd 回退），真缺陷反而是 `boot.wim` 误选。

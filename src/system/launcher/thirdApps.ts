@@ -1,6 +1,7 @@
 import { errMessage, ipc, type ThirdApp } from "../../lib/ipc";
 import { pushToast, uiStore } from "../../state/uiStore";
 import { createStore, useStore } from "../../lib/store";
+import { getShellIcon } from "../compat/ShellProxy";
 
 /**
  * M7 第三方软件登记（桌面窗口内共享状态）：
@@ -31,11 +32,11 @@ async function fillNativeIcons(apps: ThirdApp[]): Promise<void> {
     const target = a.target ?? a.path;
     if (!target) continue;
     try {
-      const url = await ipc.iconDataurl(target);
-      if (!url) continue;
+      const icon = await getShellIcon(target);
+      if (!icon.dataUrl) continue;
       const cur = tpStore.getState().apps;
       tpStore.setState({
-        apps: cur.map((x) => (x.id === a.id ? { ...x, icon: url } : x)),
+        apps: cur.map((x) => (x.id === a.id ? { ...x, icon: icon.dataUrl } : x)),
       });
     } catch (e) {
       /* 提取失败（Rust 端已尽力：exe 内嵌 → shell 项 GetImage → .ico/.png）→ 占位图标，留痕便于排查 */

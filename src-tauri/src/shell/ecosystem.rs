@@ -328,21 +328,20 @@ pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
 /// steam:// 协议直通（rungameid / store 前台由 Steam 自管）。
 #[tauri::command]
 pub fn steam_launch(app_id: String) -> CmdResult<()> {
+    if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(AppError::validation("Steam AppID 必须是数字 / Steam AppID must be numeric"));
+    }
     let url = format!("steam://rungameid/{app_id}");
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn()
-        .map_err(|e| AppError::io(e.to_string()))?;
+    // URI associations belong to Windows Shell; cmd/start is intentionally
+    // not used because it breaks quoting and profile environment semantics.
+    crate::shell::compat::shell_execute_path(Path::new(&url), Some("open"), None, None, None)?;
     Ok(())
 }
 
-/// 商店应用 AUMID 启动（shell:AppsFolder 直通）。
+/// 商店应用 AUMID 启动（IApplicationActivationManager）。
 #[tauri::command]
 pub fn aumid_launch(aumid: String) -> CmdResult<()> {
-    std::process::Command::new("explorer.exe")
-        .arg(format!("shell:AppsFolder\\{aumid}"))
-        .spawn()
-        .map_err(|e| AppError::io(e.to_string()))?;
+    crate::shell::compat::shell_activate_application(aumid)?;
     Ok(())
 }
 
