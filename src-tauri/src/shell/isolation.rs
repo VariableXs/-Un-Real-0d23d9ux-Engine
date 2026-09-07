@@ -1423,6 +1423,14 @@ mod tests {
     }
 
     #[test]
+    fn registry_hive_rejects_escape() {
+        let root = PathBuf::from("Data");
+        assert!(registry_hive_path(&root, "User.dat").is_ok());
+        assert!(registry_hive_path(&root, "../Host.dat").is_err());
+        assert!(registry_hive_path(&root, "no-suffix").is_err());
+    }
+
+    #[test]
     fn circuit_opens_after_three_timeouts() {
         let circuit = CircuitBreaker::new(3, Duration::from_secs(60));
         for _ in 0..3 {

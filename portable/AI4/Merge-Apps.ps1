@@ -51,6 +51,8 @@ function New-AppLayer {
     Initialize-Disk -Number $disk.Number -PartitionStyle GPT -PassThru | Out-Null
     $part = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
   }
+  # New-Partition 拿到的对象可能尚未带盘符, 重新查询一次
+  if (-not $part.DriveLetter) { $part = Get-Partition -DiskNumber $disk.Number | Select-Object -First 1 }
   if (-not $part.DriveLetter) {
     throw "Apps.vhdx 分区未获得盘符"
   }
@@ -149,7 +151,9 @@ function Show-LayerStatus {
   }
   if (Test-Path "C:\Program Files") {
     Get-ChildItem "C:\Program Files" -Force | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } | ForEach-Object {
-      "$($_.FullName) -> $($_.Target)"
+      # PS5.1 的 FileSystemInfo 无 Target 属性(PS6+ 才有), StrictMode 下直接取会抛异常
+      $target = if ($_.PSObject.Properties.Name -contains "Target" -and $_.Target) { $_.Target } else { "(用 fsutil reparsepoint query 查看目标)" }
+      "$($_.FullName) -> $target"
     }
   }
 }
