@@ -104,13 +104,13 @@ if ($SkipExec) {
   # $ExpectExit = -1 表示「不校验退出码」：这些脚本的退出码取决于硬件是否达标
   # （例如 CI 的磁盘达不到 900MB/s 预算，Gate 就该返回 1），只要不抛异常即视为脚本可用。
   function Invoke-ReadOnly {
-    param([string]$Name, [string]$Script, [string[]]$ScriptArgs, [int]$ExpectExit = 0, [string]$ExpectText = "")
+    param([string]$Name, [string]$Script, [hashtable]$ScriptArgs, [int]$ExpectExit = 0, [string]$ExpectText = "")
     $p = Join-Path $PortableRoot $Script
     if (-not (Test-Path -LiteralPath $p)) { Add-Check -Name $Name -Ok $false -Detail "脚本不存在 $Script"; return }
     $txt = ""
     $code = 0
     try {
-      $txt = (& $p @ScriptArgs 2>&1 | Out-String)
+      $txt = (& $p @ScriptArgs *>&1 | Out-String)
       $code = $LASTEXITCODE
       if ($null -eq $code) { $code = 0 }
     } catch {
@@ -127,35 +127,35 @@ if ($SkipExec) {
     }
   }
 
-  Invoke-ReadOnly -Name "Compat-Matrix -Action List" -Script "AI5\Compat-Matrix.ps1"  -ScriptArgs @("-Action", "List") -ExpectExit 0 -ExpectText "兼容矩阵"
-  Invoke-ReadOnly -Name "Chaos-Inject -Action List" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @("-Action", "List", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit 0 -ExpectText "S01"
-  Invoke-ReadOnly -Name "Chaos-Inject -Action Plan -Scenario S07" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @("-Action", "Plan", "-Scenario", "S07", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit 0 -ExpectText "安全模式"
-  Invoke-ReadOnly -Name "Bench-Perf -Action Manifest" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @("-Action", "Manifest") -ExpectExit 0 -ExpectText "seqReadMBps"
-  Invoke-ReadOnly -Name "Bench-Perf -Action Run (真实读写 $WorkDir)" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @("-Action", "Run", "-TestDrive", $WorkDir, "-OutDir", $out, "-SeqMB", "64", "-RandMB", "16", "-StartRounds", "2") -ExpectExit -1
+  Invoke-ReadOnly -Name "Compat-Matrix -Action List" -Script "AI5\Compat-Matrix.ps1"  -ScriptArgs @{ Action = "List" } -ExpectExit 0 -ExpectText "兼容矩阵"
+  Invoke-ReadOnly -Name "Chaos-Inject -Action List" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @{ Action = "List"; DataDrive = $dd; EvidenceRoot = $ev } -ExpectExit 0 -ExpectText "S01"
+  Invoke-ReadOnly -Name "Chaos-Inject -Action Plan -Scenario S07" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @{ Action = "Plan"; Scenario = "S07"; DataDrive = $dd; EvidenceRoot = $ev } -ExpectExit 0 -ExpectText "安全模式"
+  Invoke-ReadOnly -Name "Bench-Perf -Action Manifest" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @{ Action = "Manifest" } -ExpectExit 0 -ExpectText "seqReadMBps"
+  Invoke-ReadOnly -Name "Bench-Perf -Action Run (真实读写 $WorkDir)" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @{ Action = "Run"; TestDrive = $WorkDir; OutDir = $out; SeqMB = 64; RandMB = 16; StartRounds = 2 } -ExpectExit -1
   Add-Check -Name "Bench 结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $out "bench-results.json"))
   # Gate 的退出码取决于本机磁盘是否达标（CI 磁盘通常达不到 900MB/s 预算），故不校验码
-  Invoke-ReadOnly -Name "Bench-Perf -Action Gate" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @("-Action", "Gate", "-OutDir", $out) -ExpectExit -1
-  Invoke-ReadOnly -Name "Chaos-Inject -Action Run (auto 场景)" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @("-Action", "Run", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit -1
+  Invoke-ReadOnly -Name "Bench-Perf -Action Gate" -Script "AI5\Bench-Perf.ps1"  -ScriptArgs @{ Action = "Gate"; OutDir = $out } -ExpectExit -1
+  Invoke-ReadOnly -Name "Chaos-Inject -Action Run (auto 场景)" -Script "AI5\Chaos-Inject.ps1"  -ScriptArgs @{ Action = "Run"; DataDrive = $dd; EvidenceRoot = $ev } -ExpectExit -1
   Add-Check -Name "混沌结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $ev "chaos-results.json"))
   # Preflight 在 CI 上必然报缺件（Data 结构未初始化 / 无 Hyper-V），退出码 1 是正确行为
-  Invoke-ReadOnly -Name "Deploy-To-USB / Preflight" -Script "AI5\Deploy-To-USB.ps1"  -ScriptArgs @("-Action", "Preflight", "-Src", $WorkDir, "-Dst", "$dd\", "-DataDrive", $dd, "-AllowFixedTarget", "-MinFreeGB", "0", "-EvidenceRoot", $ev) -ExpectExit -1
+  Invoke-ReadOnly -Name "Deploy-To-USB / Preflight" -Script "AI5\Deploy-To-USB.ps1"  -ScriptArgs @{ Action = "Preflight"; Src = $WorkDir; Dst = "$dd\"; DataDrive = $dd; AllowFixedTarget = $true; MinFreeGB = 0; EvidenceRoot = $ev } -ExpectExit -1
   Add-Check -Name "预检结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $ev "preflight.json"))
-  Invoke-ReadOnly -Name "Deploy-To-USB -Action Stage1 -DryRun" -Script "AI5\Deploy-To-USB.ps1"  -ScriptArgs @("-Action", "Stage1", "-IsoPath", "$env:SystemRoot\notepad.exe", "-Src", $WorkDir, "-DryRun") -ExpectExit 0
-  Invoke-ReadOnly -Name "Maintenance -Action Tune" -Script "AI5\Maintenance.ps1"  -ScriptArgs @("-Action", "Tune") -ExpectExit 0 -ExpectText "powercfg"
-  Invoke-ReadOnly -Name "Maintenance / Status" -Script "AI5\Maintenance.ps1"  -ScriptArgs @("-Action", "Status", "-VhdxDir", $WorkDir, "-DataDrive", $dd) -ExpectExit 0
-  Invoke-ReadOnly -Name "Maintenance / Backup without source exits 1" -Script "AI5\Maintenance.ps1"  -ScriptArgs @("-Action", "Backup", "-VhdxDir", $WorkDir, "-DataDrive", $dd) -ExpectExit 1
-  Invoke-ReadOnly -Name "Accept-Gate -Action Init" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @("-Action", "Init", "-DataDrive", $dd, "-OutDir", $out) -ExpectExit 0
+  Invoke-ReadOnly -Name "Deploy-To-USB -Action Stage1 -DryRun" -Script "AI5\Deploy-To-USB.ps1"  -ScriptArgs @{ Action = "Stage1"; IsoPath = "$env:SystemRoot\notepad.exe"; Src = $WorkDir; DryRun = $true } -ExpectExit 0
+  Invoke-ReadOnly -Name "Maintenance -Action Tune" -Script "AI5\Maintenance.ps1"  -ScriptArgs @{ Action = "Tune" } -ExpectExit 0 -ExpectText "powercfg"
+  Invoke-ReadOnly -Name "Maintenance / Status" -Script "AI5\Maintenance.ps1"  -ScriptArgs @{ Action = "Status"; VhdxDir = $WorkDir; DataDrive = $dd } -ExpectExit 0
+  Invoke-ReadOnly -Name "Maintenance / Backup without source exits 1" -Script "AI5\Maintenance.ps1"  -ScriptArgs @{ Action = "Backup"; VhdxDir = $WorkDir; DataDrive = $dd } -ExpectExit 1
+  Invoke-ReadOnly -Name "Accept-Gate -Action Init" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @{ Action = "Init"; DataDrive = $dd; OutDir = $out } -ExpectExit 0
   Add-Check -Name "人工实测模板生成" -Ok (Test-Path -LiteralPath (Join-Path $out "manual-results.json"))
-  Invoke-ReadOnly -Name "Accept-Gate -Action Report" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @("-Action", "Report", "-DataDrive", $dd, "-OutDir", $out, "-EvidenceRoot", $ev) -ExpectExit 0
+  Invoke-ReadOnly -Name "Accept-Gate -Action Report" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @{ Action = "Report"; DataDrive = $dd; OutDir = $out; EvidenceRoot = $ev } -ExpectExit 0
   Add-Check -Name "Accept-Gate / Report" -Ok (Test-Path -LiteralPath (Join-Path $out "acceptance-report.md"))
-  Invoke-ReadOnly -Name "Accept-Gate / Check without evidence exits 1" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @("-Action", "Check", "-DataDrive", $dd, "-OutDir", $out, "-EvidenceRoot", $ev, "-Strict") -ExpectExit 1
+  Invoke-ReadOnly -Name "Accept-Gate / Check without evidence exits 1" -Script "AI5\Accept-Gate.ps1"  -ScriptArgs @{ Action = "Check"; DataDrive = $dd; OutDir = $out; EvidenceRoot = $ev; Strict = $true } -ExpectExit 1
   # AI-1/AI-2 尚未交付，Preflight 报缺件退出码 1 是正确行为，不该让自检因此变红
-  Invoke-ReadOnly -Name "AI-Integration -Action Preflight" -Script "AI5\AI-Integration.ps1"  -ScriptArgs @("-Action", "Preflight", "-DataDrive", $dd, "-OutDir", $out) -ExpectExit -1
+  Invoke-ReadOnly -Name "AI-Integration -Action Preflight" -Script "AI5\AI-Integration.ps1"  -ScriptArgs @{ Action = "Preflight"; DataDrive = $dd; OutDir = $out } -ExpectExit -1
   Add-Check -Name "联调预检结果生成" -Ok (Test-Path -LiteralPath (Join-Path $out "integration-preflight.json"))
 
   # 负向用例：目标盘写成宿主系统盘时必须被拒绝
   $sysDrive = ([System.IO.Path]::GetPathRoot($env:SystemRoot)).TrimEnd('\')
-  $neg = (& (Join-Path $PortableRoot "AI5\Deploy-To-USB.ps1") -Action "Verify" -Dst "$sysDrive\" -DataDrive $dd -EvidenceRoot $ev 2>&1 | Out-String)
+  $neg = (& (Join-Path $PortableRoot "AI5\Deploy-To-USB.ps1") -Action "Verify" -Dst "$sysDrive\" -DataDrive $dd -EvidenceRoot $ev *>&1 | Out-String)
   Add-Check -Name "负向: Verify 指向系统盘仍安全（不因缺交付物而误判通过）" -Ok ($neg -match "缺|❌|不存在")
 
   Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
