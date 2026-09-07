@@ -69,7 +69,9 @@ function Save-Ai5Json {
 }
 
 function Save-Ai5Text {
-  param([Parameter(Mandatory = $true)][string[]]$Lines, [Parameter(Mandatory = $true)][string]$Path)
+  # [AllowEmptyString()] 是必需的：Mandatory 参数会逐个校验数组元素非空，
+  # 而 Markdown 报告本来就含空行（$L += ""），不加这个特性会绑定失败。
+  param([Parameter(Mandatory = $true)][AllowEmptyString()][string[]]$Lines, [Parameter(Mandatory = $true)][string]$Path)
   New-Ai5Directory -Path (Split-Path -Parent $Path) | Out-Null
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllLines($Path, [string[]]$Lines, $utf8NoBom)
