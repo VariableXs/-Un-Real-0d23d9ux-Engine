@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     AI-2 隔离核的 Hyper-V 验证器：只读母盘 + COW 子盘 + 4 GB/4 vCPU/NAT。
 
@@ -42,15 +42,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ScenarioTable = @(
-    [pscustomobject]@{ Id = 1; Name = "安装中拔盘"; Expected = "差分子盘可丢弃，母盘哈希不变；提示重新安装" }
-    [pscustomobject]@{ Id = 2; Name = "宿主蓝屏/强制掉电"; Expected = "下次启动不复用未完成快照，母盘仍只读" }
-    [pscustomobject]@{ Id = 3; Name = "Guest 删除 C 盘"; Expected = "只损坏子盘；重建子盘后恢复" }
-    [pscustomobject]@{ Id = 4; Name = "宿主恶意软件"; Expected = "无桥接、NAT 入站阻断；Guest Defender 仍需人工检查" }
-    [pscustomobject]@{ Id = 5; Name = "Data 空间低于 5 GB"; Expected = "Core 产生低空间事件，不自动删除用户数据" }
-    [pscustomobject]@{ Id = 6; Name = "反作弊软件"; Expected = "检测到虚拟化后提示改用 B 模式，不伪造兼容结果" }
-    [pscustomobject]@{ Id = 7; Name = "驱动不兼容"; Expected = "安全模式/Checkpoint 回退，不在宿主卸载驱动" }
-    [pscustomobject]@{ Id = 8; Name = "BitLocker 忘记密码"; Expected = "只接受恢复密钥；不把密钥写入日志" }
-    [pscustomobject]@{ Id = 9; Name = "4K 对齐"; Expected = "起始偏移是 4096 的倍数，否则阻止验收" }
+    [pscustomobject]@{ Id = 1; Name = "安装中拔盘"; Expected = "差分子盘可丢弃，母盘哈希不变；提示重新安装" },
+    [pscustomobject]@{ Id = 2; Name = "宿主蓝屏/强制掉电"; Expected = "下次启动不复用未完成快照，母盘仍只读" },
+    [pscustomobject]@{ Id = 3; Name = "Guest 删除 C 盘"; Expected = "只损坏子盘；重建子盘后恢复" },
+    [pscustomobject]@{ Id = 4; Name = "宿主恶意软件"; Expected = "无桥接、NAT 入站阻断；Guest Defender 仍需人工检查" },
+    [pscustomobject]@{ Id = 5; Name = "Data 空间低于 5 GB"; Expected = "Core 产生低空间事件，不自动删除用户数据" },
+    [pscustomobject]@{ Id = 6; Name = "反作弊软件"; Expected = "检测到虚拟化后提示改用 B 模式，不伪造兼容结果" },
+    [pscustomobject]@{ Id = 7; Name = "驱动不兼容"; Expected = "安全模式/Checkpoint 回退，不在宿主卸载驱动" },
+    [pscustomobject]@{ Id = 8; Name = "BitLocker 忘记密码"; Expected = "只接受恢复密钥；不把密钥写入日志" },
+    [pscustomobject]@{ Id = 9; Name = "4K 对齐"; Expected = "起始偏移是 4096 的倍数，否则阻止验收" },
     [pscustomobject]@{ Id = 10; Name = "五台宿主切换"; Expected = "逐台记录 PnP/启动时间，不共享宿主注册表" }
 )
 
@@ -233,7 +233,7 @@ function Write-ScenarioReport {
         "|---:|---|---|---|"
     )
     foreach ($scenario in $ScenarioTable) {
-        $lines += "| $($scenario.Id) | $($scenario.Name) | $($scenario.Expected) | [ ] |")
+        $lines += "| $($scenario.Id) | $($scenario.Name) | $($scenario.Expected) | [ ] |"
     }
     Set-Content -LiteralPath $out -Value $lines -Encoding UTF8
     Write-Host "[AI-2] 十场景清单已写入 $out" -ForegroundColor Cyan
