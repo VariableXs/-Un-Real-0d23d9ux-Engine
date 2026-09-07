@@ -29,7 +29,7 @@
   属跨核同步必需的修复。
 - **排障改进**：`portable.test.ts` 原先只保留最后一个 shell 的错误（`lastErr` 被覆盖），
   导致 `pwsh`(7) 的真实报错被 `powershell`(5.1) 的报错顶掉。现改为逐个 shell 记录并全部输出。
-- **检查工具**：新增 `ps_lex_check.py` 真正的 PowerShell 词法器（注释/单双引号/here-string/
+- **检查工具**（均已入库 `tools/portable/`）：新增 `ps_lex_check.py` 真正的 PowerShell 词法器（注释/单双引号/here-string/
   反引号续行/`$( )` 子表达式/智能引号定界）。旧的 `ps_struct_check.py` 只是括号计数器，
   曾对本缺陷给出 26/26 通过的误报；新词法器可复现该缺陷（修复前 3 处错误，修复后 0 处）。
 - **运行时缺陷 2／数组 splatting 是位置绑定**：`& $p @ScriptArgs` 语法合法，但数组
@@ -46,7 +46,7 @@
 - **运行时缺陷 5／Mandatory 数组逐元素校验**：`Save-Ai5Text` 的
   `[Parameter(Mandatory = $true)][string[]]$Lines` 会校验每个元素非空，而验收报告的
   Markdown 本就含空行（`$L += ""`）。加 `[AllowEmptyString()]`。
-- **新增检查工具** `ps_case_collision_check.py`：扫描同一脚本内仅大小写不同的变量名
+- **新增检查工具** `tools/portable/ps_case_collision_check.py`：扫描同一脚本内仅大小写不同的变量名
   （函数参数新建作用域，默认排除）。对修复前的 `Accept-Gate.ps1` 能报出风险并退出 1，
   对修复后的全仓 26 个脚本退出 0。
 
