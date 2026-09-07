@@ -7,6 +7,8 @@
 - `Test-VM.ps1`：Hyper-V 隔离验证器。默认创建只读母盘的 COW 差分子盘，4 GB 动态内存上限、4 vCPU、30% CPU、NAT、单网卡，并关闭增强会话/剪贴板/共享文件夹/USB 直通。已有 VM 不会自动删除；丢弃必须显式使用 `-Action Discard`。
 - `src-tauri/src/shell/isolation.rs`：Rust 进程隔离底座，包含 Job Object 限额、Low Integrity、可取消 `LimitedChild`、800 ms 熔断、3 秒看门狗、64 KiB `CreateFileMappingW` 按需读取、256 MiB LRU、随盘环境/注册表护栏。
 - `docs/AI2-隔离防崩.md`：7 层隔离、永不卡死组件、四级故障恢复和十场景验收说明。
+- `Fake-Start.ps1`：假启动壳进度/取消/30s 熔断（不杀宿主进程）。
+- `Chaos-Scenarios.ps1`：扩充 21 清单；拒绝自动破坏性执行。
 
 ## 快速验证
 

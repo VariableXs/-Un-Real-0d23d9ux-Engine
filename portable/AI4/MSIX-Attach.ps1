@@ -19,6 +19,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Test-Admin {
+  return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Find-Tool {
   param([string]$Name, [string[]]$FallbackPaths)
   $cmd = Get-Command $Name -ErrorAction SilentlyContinue
@@ -104,35 +108,89 @@ function Install-MsixApp {
 function Mount-MsixVolume {
   if (-not $PackagePath) { throw "-PackagePath 必填" }
   if (-not (Test-Path $PackagePath)) { throw "包不存在: $PackagePath" }
-  New-Item -ItemType Directory -Force -Path $MountDir | Out-Null
   $ext = Get-MsixExtension $PackagePath
   if ($ext -notin @("msix", "msixbundle", "appx", "appxbundle")) { throw "仅支持 MSIX/AppX 包" }
   Test-MsixSignature $PackagePath | Out-Null
-  Write-Host ">>> 挂载 AppxVolume to $MountDir (不安装、不写C盘)" -ForegroundColor Cyan
-  Mount-AppxVolume -PackagePath $PackagePath -VolumePath $MountDir -ErrorAction Stop
-  Write-Host "    已挂载, 可在 $MountDir 看到内容, 开始菜单可启动" -ForegroundColor Green
+  Write-Host ">>> MSIX App Attach -> $MountDir (不安装到C盘, 不写注册表)" -ForegroundColor Cyan
+
+  # 1) 取/建 AppxVolume (真实 API: 卷按 MountPoint 识别)
+  $vol = Get-AppxVolume -ErrorAction SilentlyContinue | Where-Object { $_.MountPoint -eq $MountDir } | Select-Object -First 1
+  if (-not $vol) {
+    New-Item -ItemType Directory -Force -Path $MountDir | Out-Null
+    try {
+      Write-Host "    注册 AppxVolume: Add-AppxVolume -Path $MountDir" -ForegroundColor Cyan
+      $vol = Add-AppxVolume -Path $MountDir -ErrorAction Stop
+    } catch {
+      throw "Add-AppxVolume 失败($($_.Exception.Message))。需要 Win10 2004+/Win11 且目录在 NTFS 卷上。"
+    }
+    if (-not $vol) { $vol = Get-AppxVolume -ErrorAction SilentlyContinue | Where-Object { $_.MountPoint -eq $MountDir } | Select-Object -First 1 }
+    if (-not $vol) { throw "AppxVolume 注册后未找到: $MountDir" }
+  }
+
+  # 2) Stage 包到该卷 (Add-AppxPackage -Volume)
+  try {
+    Write-Host "    Staging: Add-AppxPackage -Path $PackagePath -Volume $($vol.MountPoint)" -ForegroundColor Cyan
+    Add-AppxPackage -Path $PackagePath -Volume $vol -ErrorAction Stop
+  } catch {
+    if ($Force) {
+      Write-Warning "    Stage 失败($($_.Exception.Message)), -Force 重试一次"
+      try { Add-AppxPackage -Path $PackagePath -Volume $vol -ErrorAction Stop }
+      catch { throw "MSIX App Attach stage 重试仍失败: $($_.Exception.Message)" }
+    } else {
+      Write-Warning "    Stage 失败: $($_.Exception.Message)"
+      Write-Host "    提示: App Attach 需 Win10 2004+ 企业版; 若不可用请改用 -Action Install (Add-AppxPackage 常规安装)。" -ForegroundColor Yellow
+      throw "MSIX App Attach stage 失败"
+    }
+  }
+
+  # 3) 挂载卷 (真实参数: Mount-AppxVolume -Volume <path|id>; 计划文中 -PackagePath/-VolumePath 为伪码)
+  Write-Host "    挂载卷: Mount-AppxVolume -Volume $($vol.MountPoint)" -ForegroundColor Cyan
+  Mount-AppxVolume -Volume $vol -ErrorAction Stop
+  Write-Host "    已挂载, 可在 $MountDir 看到内容, 开始菜单可启动。" -ForegroundColor Green
 }
 
 function Dismount-MsixVolume {
   if (-not $PackagePath) { throw "-PackagePath 必填" }
-  if (-not (Test-Path $PackagePath)) { throw "包不存在: $PackagePath" }
-  Write-Host ">>> 卸载 AppxVolume (Dismount-AppxVolume)" -ForegroundColor Cyan
-  $vol = Get-AppxVolume | Where-Object { $_.PackageFullName -like "*$([IO.Path]::GetFileNameWithoutExtension($PackagePath))*" } | Select-Object -First 1
-  if ($vol) { Dismount-AppxVolume -Volume $vol.PackageFullName | Out-Null }
-  else { Get-AppxVolume | Where-Object { $_.PackageFullName -like "*$([IO.Path]::GetFileNameWithoutExtension($PackagePath))*" } | Dismount-AppxVolume -ErrorAction SilentlyContinue }
-  Write-Host "    已卸载。删除文件即卸载。" -ForegroundColor Green
+  Write-Host ">>> 卸载 MSIX App Attach 卷 ($MountDir)" -ForegroundColor Cyan
+  # 按 MountPoint 找卷 (AppxVolume 对象无 PackageFullName 属性, 不可按包名查卷)
+  $vols = @(Get-AppxVolume -ErrorAction SilentlyContinue | Where-Object { $_.MountPoint -eq $MountDir })
+  if ($vols.Count -eq 0) {
+    Write-Warning "未找到挂载点为 $MountDir 的 AppxVolume。当前卷:" -WarningAction Continue
+    Get-AppxVolume -ErrorAction SilentlyContinue | Select-Object MountPoint, IsOffline, IsSystemVolume | Format-Table -AutoSize
+    return
+  }
+  foreach ($v in $vols) {
+    Write-Host "    Dismount-AppxVolume -Volume $($v.MountPoint)" -ForegroundColor Cyan
+    Dismount-AppxVolume -Volume $v -ErrorAction Stop
+  }
+  Write-Host "    已卸载。删除 $PackagePath 文件即彻底卸载。" -ForegroundColor Green
 }
 
 function Uninstall-MsixApp {
   if (-not $PackagePath) { throw "-PackagePath 必填" }
   $name = [IO.Path]::GetFileNameWithoutExtension($PackagePath)
-  Write-Host ">>> 卸载 $name (Remove-AppxPackage + Dismount)" -ForegroundColor Cyan
-  Get-AppxPackage -Name $name -AllUsers -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "    移除 $($_.PackageFullName)" -ForegroundColor Yellow
-    Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue
+  Write-Host ">>> 卸载 $name (Remove-AppxPackage + 可选移除卷)" -ForegroundColor Cyan
+  $pkgs = @(Get-AppxPackage -Name "*$name*" -ErrorAction SilentlyContinue)
+  if ($pkgs.Count -eq 0 -and (Test-Admin)) { $pkgs = @(Get-AppxPackage -Name "*$name*" -AllUsers -ErrorAction SilentlyContinue) }
+  foreach ($p in $pkgs) {
+    Write-Host "    移除 $($p.PackageFullName)" -ForegroundColor Yellow
+    if (Test-Admin) { Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction SilentlyContinue }
+    else { Remove-AppxPackage -Package $p.PackageFullName -ErrorAction SilentlyContinue }
   }
-  $vols = Get-AppxVolume -ErrorAction SilentlyContinue | Where-Object { $_.PackageFullName -like "*$name*" }
-  if ($vols) { Dismount-AppxVolume -Volume $vols.PackageFullName | Out-Null }
+  if (-not $pkgs) { Write-Warning "未找到已安装包 *$name*" }
+  # 可选: 卷已空且 -Force -> 连卷一起移除, Data\MSIX\Mount 目录即可删除
+  if ($Force) {
+    $vol = Get-AppxVolume -ErrorAction SilentlyContinue | Where-Object { $_.MountPoint -eq $MountDir } | Select-Object -First 1
+    if ($vol) {
+      $left = @(Get-AppxPackage -Volume $vol -ErrorAction SilentlyContinue)
+      if ($left.Count -eq 0) {
+        Write-Host "    卷 $($vol.MountPoint) 已空, Remove-AppxVolume" -ForegroundColor Yellow
+        Remove-AppxVolume -Volume $vol -ErrorAction SilentlyContinue
+      } else {
+        Write-Warning "卷 $($vol.MountPoint) 仍有 $($left.Count) 个包, 保留卷"
+      }
+    }
+  }
   Write-Host "    完成, 删除 $PackagePath 即彻底清理" -ForegroundColor Green
 }
 
@@ -140,10 +198,10 @@ function Show-MsixStatus {
   Write-Host "===== MSIX App Attach 状态 =====" -ForegroundColor Cyan
   Write-Host "-- 已安装 Appx 包(当前用户, 含MSIX) --" -ForegroundColor Cyan
   Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.IsFramework -eq $false } | Select-Object Name, Version, Architecture, InstallLocation | Format-Table -AutoSize
-  Write-Host "-- 已挂载 AppxVolume --" -ForegroundColor Cyan
+  Write-Host "-- AppxVolume (挂载点/状态) --" -ForegroundColor Cyan
   $vols = Get-AppxVolume -ErrorAction SilentlyContinue
-  if ($vols) { $vols | Select-Object PackageFullName, PackageFamilyName, MountPoint, PackageLocation | Format-Table -AutoSize }
-  else { "无挂载卷" }
+  if ($vols) { $vols | Select-Object MountPoint, BasePath, IsOffline, IsSystemVolume | Format-Table -AutoSize }
+  else { "无 AppxVolume" }
   Write-Host "-- Data\MSIX 文件 (仅列出最近10个) --" -ForegroundColor Cyan
   if (Test-Path $OutDir) { Get-ChildItem $OutDir -File | Sort-Object LastWriteTime -Descending | Select-Object -First 10 Name, Length, LastWriteTime | Format-Table -AutoSize }
 }

@@ -16,7 +16,7 @@
 | AI | 代号 | 主计划章节 | 详细内容 来源主计划 | 独立目录 | 输出 | 状态 |
 |---|---|---|---|---|---|---|
 | AI-1 | 存储核 | 第3章 存储架构 + 第9章 性能寿命 + 扩充13/20/26 | VHDX差分链·读写分离·Data符号链接·1TB固定150GB·64KB簇·CompactOS·TRIM/碎片·寿命80年 | `portable/AI1/` | `Create-VHDX.ps1` + `AI1-存储.md` 3000字 | ⬜ 待实施 |
-| AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ⬜ 待实施 |
+| AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ✅ 已完成 |
 | AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src/styles/desktop.css` | 透明tile✅ + `AI3-兼容体验.md` 3000字 | ✅ 已完成 |
 | AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ⬜ 待实施 |
 | AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` 3000字 | ⬜ 待实施 |
@@ -84,7 +84,7 @@
 
 ---
 
-## AI-2 隔离核 详细计划（对应主计划 第4章 + 第5章 + 扩充15/21/25） <sub>⬜ 待实施</sub>
+## AI-2 隔离核 详细计划（对应主计划 第4章 + 第5章 + 扩充15/21/25） <sub>✅ 已完成</sub>
 
 ### 来源主计划
 > 第4章 7层隔离（硬盘/内存/进程/文件/网络/注册表/痕迹） + 第5章 6件套（假启动/按需分页/限额/读写分离/预热/熔断） + 扩充15看门狗4级崩溃 + 扩充21 10场景演练 + 扩充25 Rust限额/看门狗代码

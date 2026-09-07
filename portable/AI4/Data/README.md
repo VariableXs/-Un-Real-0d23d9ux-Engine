@@ -13,7 +13,7 @@ D:\Data\
 ├── Dumps\       崩溃 dmp
 ├── Config\      permissions.json / shortcuts.json / plugin-market.json
 ├── Env\         path.env（随盘环境变量）
-├── Registry\    User.dat（Core RegLoadKey 挂载）
+├── Registry\    User.dat（合法最小 Hive, regf 头; Core/Config-Runtime reg load 挂载）
 ├── Backup\      User.vhdx 每日备份
 ├── Security\    BitLocker 恢复密钥（需另存离线）
 ├── Sync\        rclone.conf / 云同步配置
@@ -23,3 +23,4 @@ D:\Data\
 
 - `.gitkeep` 仅用于保留目录结构，部署时无需复制到 `D:\Data`。
 - 脚本约定路径：`D:\Data`（可由 `-DataDrive` 改）。
+- `Registry\User.dat` 由 `Data-Init.ps1` 用 `reg save` 生成**合法最小 Hive**（文件头 `regf`），`reg load` / `RegLoadKey` 可直接挂载；空的占位文件无法被挂载。
