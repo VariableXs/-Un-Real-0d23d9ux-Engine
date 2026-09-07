@@ -4,6 +4,7 @@ param(
   [string]$ScenariosFile = "$PSScriptRoot\Data\chaos-scenarios.json",
   [string]$Scenario = "",                 # 指定场景 id，如 S05
   [string]$DataDrive = "D:",
+  [string]$EvidenceRoot = "",             # 证据目录，留空取 <DataDrive>\Data\Tests
   [switch]$AllowFill,                     # S05 才需要：允许真实占用磁盘空间
   [int]$FillMaxMB = 512,                  # S05 填充上限（安全阀，默认 512MB）
   [switch]$Yes                            # 跳过交互确认（仅限自动化，破坏性动作仍受 AI5_NONINTERACTIVE 约束）
@@ -23,7 +24,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "AI5-Lib.ps1")
 
-$Evidence = Get-Ai5EvidenceRoot -DataDrive $DataDrive
+$Evidence = if ($EvidenceRoot) { $EvidenceRoot } else { Get-Ai5EvidenceRoot -DataDrive $DataDrive }
 
 function Get-Scenarios {
   $doc = Get-Ai5Json -Path $ScenariosFile
@@ -201,9 +202,9 @@ function Invoke-S09 {
 
 function Invoke-S11 {
   # 看门狗 L1/L2 模拟：只杀本脚本自己启动的一次性子进程
-  $marker = "ai5-chaos-s11-" + (Get-Ai5Timestamp)
-  $cmd = "`$Host.UI.RawUI.WindowTitle='$marker'; Start-Sleep -Seconds 30"
-  $p = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-NonInteractive", "-Command", $cmd) -PassThru -WindowStyle Hidden
+  $child = "powershell.exe"
+  $cmd = "Start-Sleep -Seconds 30"
+  $p = Start-Process -FilePath $child -ArgumentList @("-NoProfile", "-NonInteractive", "-Command", $cmd) -PassThru -WindowStyle Hidden
   Start-Sleep -Milliseconds 600
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { }
@@ -215,12 +216,14 @@ function Invoke-S11 {
   }
   $sw.Stop()
   $detect = [math]::Round($sw.Elapsed.TotalSeconds, 2)
+  $exitCode = $null
+  try { $p.Refresh(); $exitCode = $p.ExitCode } catch { }
   $status = if ($dead) { "pass" } else { "fail" }
-  $detail = "自启动子进程 PID=$($p.Id) 标记=$marker；发现死亡耗时 ${detect}s（看门狗阈值 3s）"
+  $detail = "自启动子进程 PID=$($p.Id)；发现死亡耗时 ${detect}s（看门狗阈值 3s）"
   Save-Ai5Json -Object ([pscustomobject]@{
-      scenario = "S11"; at = (Get-Date -Format "o"); pid = $p.Id; marker = $marker
-      detectSec = $detect; watchdogSec = 3; exited = $dead; exitCode = $p.ExitCode
-      note = "只操作本脚本自己启动的进程，未触碰用户已运行进程"
+      scenario = "S11"; at = (Get-Date -Format "o"); pid = $p.Id
+      detectSec = $detect; watchdogSec = 3; exited = $dead; exitCode = $exitCode
+      note = "只操作本脚本自己启动的一次性 powershell 子进程，未枚举或触碰用户已运行进程"
     }) -Path (Join-Path $Evidence "S11-watchdog.json") | Out-Null
   return @{ id = "S11"; name = "进程被杀（看门狗模拟）"; status = $status; detail = $detail }
 }

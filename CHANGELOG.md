@@ -5,6 +5,56 @@
 
 ## [Unreleased] — 1.0sno9u.vxe
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-07 便携系统 AI-5 交付核：主计划第 11+12 章）
+
+> 多 AI 并行拆分（`docs/PORTABLE_AI_SPLIT_PLAN.md`）的 AI-5 交付核落地。
+> AI-3（第 6+7 章）、AI-4（第 8+10 章）此前已合入；本次补上测试验收与交付运维。
+> 实现进度：主计划 12 章中 6 章已落地（2/7/8/10/11/12）。
+
+### 测试与验收（第 11 章）
+
+- **兼容矩阵 Top200**：`portable/AI5/Compat-Matrix.ps1` + `Data/compat-matrix.json`，
+  办公/设计/开发/工具/游戏 各 40 条、名称全局唯一。判定枚举仅 `pass/warn/fail/todo`，
+  其中只有主计划 11.1 与 16.2 点名过的 14 条带既有结论，**其余 186 条保持 `todo` 待真机回填**，
+  不因软件知名就打 ✅。`Run` 只测 `Data\Apps` 下能定位到主程序的条目，找不到记 `skip`。
+- **混沌工程 12 场景**：`Chaos-Inject.ps1` + `Data/chaos-scenarios.json`（扩充 21 的 10 个必测场景
+  + 主计划 11.2 的看门狗与 `0x80000003` 两项）。`0x80000003` 由 `[Diagnostics.Debugger]::Break()`
+  在一次性子进程内真实触发。
+- **性能基线**：`Bench-Perf.ps1`（顺序 / 4K 随机 / 冷热启动 / 内存）+ `-Action Gate` 门禁；
+  报告归档 `docs/bench/2026-09-07-portable.md`（加 `-portable` 后缀，避免与 `tools/bench.cjs`
+  的前端基线同名互相覆盖）。
+- **验收门禁**：`Accept-Gate.ps1` 14 项（主计划 1.3 + 扩充 28 的 7 项全部纳入并扩展）。
+  状态只有三种来源：自动脚本实测 / 人工实测录入 / 明确 `todo`。
+
+### 交付与运维（第 12 章）
+
+- **四阶段编排**：`Deploy-To-USB.ps1 -Action Preflight/Stage1..4/Verify/All`，复用 AI-1 的
+  `Create-VHDX.ps1` 与 `Test-VM.ps1`，不复制造盘逻辑。
+- **运维**：`Maintenance.ps1 -Action Status/Optimize/Backup/Restore/Schedule/Tune`，
+  月度 `Optimize-VHD`、每日 `User.vhdx` 备份保留 3 份、一键还原、计划任务、调优清单。
+- **联调**：`AI-Integration.ps1` 核验 AI1-5 交付物齐套性；AI-1/AI-2 尚未交付时如实标红，不代做。
+
+### 安全加固（写进代码，不只是文档承诺）
+
+- 危险场景（拔盘 / 宿主蓝屏 / 虚拟机内删 C 盘 / 驱动回退）标 `manual`，脚本**只出步骤卡不代为执行**；
+  自检会把「`dangerous=true` 却是 `auto`」判为失败。
+- 填盘演练默认 dry-run，真写需 `-AllowFill` 且受 512MB 上限 + `finally` 自动清理保护。
+- 看门狗演练只杀脚本自己启动的一次性子进程，不枚举用户进程。
+- 目标盘安全闸：拒绝宿主系统盘、拒绝固定磁盘、拒绝非法文件系统。
+- 上盘用 `robocopy /E` 而非 `/MIR`，不镜像删除目标盘已有文件。
+- 一键还原先把旧 `User.vhdx` 改名保留再覆盖。
+
+### 验证（如实）
+
+- 21 个 `.ps1` 结构完整（括号/字符串/here-string/续行）；2 个数据文件为合法 JSON，
+  矩阵不变量（200 条 / 5 类 × 40 / 名称唯一 / 点名条目在列）全部通过。
+- **PowerShell 语法与运行时未在真 PowerShell 上验证**：沙箱为 Linux，且 PowerShell 二进制
+  下载域名被网络策略阻断（仅 npm/PyPI 可达）。补验入口：
+  `pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1`
+  （官方 AST 解析全部 `.ps1` + 数据不变量 + 只读动作执行 + 一个负向用例）。
+- CI 接入待有 `workflows` 权限者提交，YAML 片段见 `portable/tests/README.md`。
+- 真机验收 14 项全部保持 ⬜：无 Windows 宿主、无 1TB 目标盘、无 5 台测试机。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话 2：原生图标 + 壁纸预览回退）
 
 > 实机使用反馈第二轮（H1 家用机）。

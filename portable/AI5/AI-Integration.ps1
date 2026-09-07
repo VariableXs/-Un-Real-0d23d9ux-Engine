@@ -17,65 +17,68 @@ $ErrorActionPreference = "Stop"
 
 $PortableDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$VhdxDirForRun = "D:\Variable-USB"
 
 # 每个 AI 的交付物清单（按 PORTABLE_AI_SPLIT_PLAN.md 分工表）
+# files/dirs = 相对 portable/；docs = 相对 portable/；repoDocs = 相对仓库根
 $Cores = @(
   [pscustomobject]@{
     core = "AI-1 存储核"; chapter = "第3+9章"; status = "⬜ 待实施"
-    files = @("Create-VHDX.ps1"); dirs = @(); docs = @("AI1-存储.md")
+    files = @("Create-VHDX.ps1"); dirs = @(); docs = @(); repoDocs = @("docs\AI1-存储.md")
   }
   [pscustomobject]@{
     core = "AI-2 隔离核"; chapter = "第4+5章"; status = "⬜ 待实施"
-    files = @("Test-VM.ps1"); dirs = @(); docs = @("AI2-隔离防崩.md")
-    extra = @("src-tauri\src\shell\isolation.rs")
+    files = @("Test-VM.ps1"); dirs = @(); docs = @(); repoDocs = @("docs\AI2-隔离防崩.md", "src-tauri\src\shell\isolation.rs")
   }
   [pscustomobject]@{
     core = "AI-3 兼容核"; chapter = "第6+7章"; status = "✅ 已完成"
-    files = @(); dirs = @("src\system\compat"); docs = @("AI3-兼容体验.md")
-    extra = @("src-tauri\src\shell\compat.rs")
+    files = @(); dirs = @(); docs = @(); repoDocs = @("docs\AI3-兼容体验.md", "src-tauri\src\shell\compat.rs")
   }
   [pscustomobject]@{
     core = "AI-4 拓展核"; chapter = "第8+10章"; status = "✅ 已完成"
     files = @("AI4\Merge-Apps.ps1", "AI4\MSIX-Attach.ps1", "AI4\Plugin-Host.ps1", "AI4\Plugin-Manager.ps1",
       "AI4\Config-Runtime.ps1", "AI4\Security-Manager.ps1", "AI4\Cloud-Sync.ps1", "AI4\Data-Init.ps1", "AI4\Benchmark.ps1")
-    dirs = @("AI4\Data", "AI4\Config"); docs = @("AI4\AI4-拓展安全.md")
+    dirs = @("AI4\Data", "AI4\Config"); docs = @("AI4\AI4-拓展安全.md", "AI4\README.md"); repoDocs = @()
   }
   [pscustomobject]@{
-    core = "AI-5 交付核"; chapter = "第11+12章"; status = "✅ 已完成"
+    core = "AI-5 交付核"; chapter = "第11+12章"; status = "✅ 已实现（真机待验）"
     files = @("AI5\Compat-Matrix.ps1", "AI5\Chaos-Inject.ps1", "AI5\Bench-Perf.ps1", "AI5\Accept-Gate.ps1",
-      "AI5\Deploy-To-USB.ps1", "AI5\Maintenance.ps1", "AI5\AI-Integration.ps1")
-    dirs = @("AI5\Data"); docs = @("AI5\AI5-测试交付.md", "AI5\USER-MANUAL.md")
+      "AI5\Deploy-To-USB.ps1", "AI5\Maintenance.ps1", "AI5\AI-Integration.ps1", "AI5\AI5-Lib.ps1",
+      "tests\Run-PortableTests.ps1")
+    dirs = @("AI5\Data"); data = @("AI5\Data\compat-matrix.json", "AI5\Data\chaos-scenarios.json")
+    docs = @("AI5\USER-MANUAL.md", "AI5\FAQ.md", "AI5\README.md")
+    repoDocs = @("docs\AI5-测试交付.md", "docs\bench\2026-09-07-portable.md")
   }
 )
 
 function Test-CoreArtifacts {
   param([Parameter(Mandatory = $true)]$Core)
   $rows = @(); $missing = 0
-  foreach ($f in $Core.files) {
-    $p = Join-Path $PortableDir $f
-    $ok = Test-Path -LiteralPath $p
+  $props = $Core.PSObject.Properties.Name
+  foreach ($f in $(if ($props -contains "files") { $Core.files } else { @() })) {
+    $ok = Test-Path -LiteralPath (Join-Path $PortableDir $f)
     $rows += [pscustomobject]@{ kind = "脚本"; path = $f; ok = $ok }
     if (-not $ok) { $missing++ }
   }
-  foreach ($d in $Core.dirs) {
-    $p = if ($d -like "src*") { Join-Path $RepoRoot $d } else { Join-Path $PortableDir $d }
-    $ok = Test-Path -LiteralPath $p
+  foreach ($d in $(if ($props -contains "dirs") { $Core.dirs } else { @() })) {
+    $ok = Test-Path -LiteralPath (Join-Path $PortableDir $d)
     $rows += [pscustomobject]@{ kind = "目录"; path = $d; ok = $ok }
     if (-not $ok) { $missing++ }
   }
-  foreach ($doc in $Core.docs) {
-    $p = if ($doc -like "AI?-*") { Join-Path $RepoRoot (Join-Path "docs" $doc) } else { Join-Path $PortableDir $doc }
-    $ok = Test-Path -LiteralPath $p
+  foreach ($doc in $(if ($props -contains "docs") { $Core.docs } else { @() })) {
+    $ok = Test-Path -LiteralPath (Join-Path $PortableDir $doc)
     $rows += [pscustomobject]@{ kind = "文档"; path = $doc; ok = $ok }
     if (-not $ok) { $missing++ }
   }
-  if ($Core.PSObject.Properties.Name -contains "extra") {
-    foreach ($x in $Core.extra) {
-      $p = Join-Path $RepoRoot $x
-      $ok = Test-Path -LiteralPath $p
-      $rows += [pscustomobject]@{ kind = "关联"; path = $x; ok = $ok }
-      if (-not $ok) { $missing++ }
-    }
+  foreach ($d in $(if ($props -contains "data") { $Core.data } else { @() })) {
+    $ok = Test-Path -LiteralPath (Join-Path $PortableDir $d)
+    $rows += [pscustomobject]@{ kind = "数据"; path = $d; ok = $ok }
+    if (-not $ok) { $missing++ }
+  }
+  foreach ($doc in $(if ($props -contains "repoDocs") { $Core.repoDocs } else { @() })) {
+    $ok = Test-Path -LiteralPath (Join-Path $RepoRoot $doc)
+    $rows += [pscustomobject]@{ kind = "仓库文档"; path = $doc; ok = $ok }
+    if (-not $ok) { $missing++ }
   }
   return @{ rows = $rows; missing = $missing }
 }
@@ -130,7 +133,8 @@ function Invoke-RunAll {
     if (-not (Test-Path -LiteralPath $p)) { Write-Ai5 "缺脚本 $($s.file)" "Err"; $failed++; continue }
     Write-Ai5 "→ $($s.name)" "Step"
     try {
-      & $p @($s.args) | Out-Host
+      $callArgs = $s.args
+      & $p @callArgs | Out-Host
       if ($LASTEXITCODE -ne 0) { Write-Ai5 "  退出码 $LASTEXITCODE" "Warn" }
     } catch {
       Write-Ai5 "  执行异常: $($_.Exception.Message)" "Err"; $failed++
@@ -170,7 +174,6 @@ function Invoke-Report {
   return 0
 }
 
-$VhdxDirForRun = "D:\Variable-USB"
 $exit = 0
 switch ($Action) {
   "Preflight" { $exit = Invoke-Preflight }

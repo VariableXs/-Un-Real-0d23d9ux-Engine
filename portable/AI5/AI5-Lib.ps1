@@ -5,9 +5,6 @@
 #   2. 写盘/破坏性动作必须显式开关 + 二次确认，且拒绝在宿主系统盘上执行；
 #   3. 环境缺能力(无 Hyper-V / 无 manage-bde / 非 Windows)一律降级提示，不静默失败。
 
-$script:Ai5Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $script:Ai5Root) { $script:Ai5Root = $PSScriptRoot }
-
 function Write-Ai5 {
   param([string]$Message, [string]$Level = "Info")
   $color = "Gray"
@@ -28,10 +25,6 @@ function Test-Ai5Admin {
     $pr = New-Object Security.Principal.WindowsPrincipal($id)
     return $pr.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
   } catch { return $false }
-}
-
-function Test-Ai5Windows {
-  return ($PSVersionTable.PSVersion.Major -ge 6 -and $IsWindows) -or ($PSVersionTable.PSVersion.Major -le 5)
 }
 
 function Test-Ai5Command {
@@ -84,27 +77,6 @@ function Save-Ai5Text {
 }
 
 function Get-Ai5Timestamp { return (Get-Date -Format "yyyyMMdd-HHmmss") }
-
-# 结果行构造：所有测试脚本共用同一形状，方便 Accept-Gate 汇总
-function New-Ai5Result {
-  param(
-    [Parameter(Mandatory = $true)][string]$Id,
-    [Parameter(Mandatory = $true)][string]$Name,
-    [Parameter(Mandatory = $true)][ValidateSet("pass", "warn", "fail", "skip", "todo")][string]$Status,
-    [string]$Detail = "",
-    $Value = $null,
-    [string]$PlanRef = ""
-  )
-  return [pscustomobject]@{
-    id      = $Id
-    name    = $Name
-    status  = $Status
-    detail  = $Detail
-    value   = $Value
-    planRef = $(if ($PlanRef) { $PlanRef } else { "" })
-    at      = (Get-Date -Format "o")
-  }
-}
 
 function Get-Ai5VerdictIcon {
   param([string]$Status)

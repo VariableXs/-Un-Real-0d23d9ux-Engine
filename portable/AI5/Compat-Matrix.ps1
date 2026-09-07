@@ -73,13 +73,12 @@ function Measure-AppStart {
     $p = $null
     try {
       $p = Start-Process -FilePath $ExePath -PassThru -ErrorAction Stop
-      # 等到主窗口出现或超时（GUI 应用的"可用"口径）；无窗口的 CLI 会立即退出
-      $deadline = $sw.Elapsed.AddSeconds(60)
-      while ($sw.Elapsed -lt [TimeSpan]::FromSeconds(60)) {
+      # 等到主窗口出现或超时（GUI 应用的"可用"口径）；无窗口的 CLI 会立即退出。
+      # 超时只看 $sw.Elapsed —— 不要拿 TimeSpan 和 DateTime 比。
+      while ($sw.Elapsed.TotalSeconds -lt 60) {
         $p.Refresh()
         if ($p.HasExited) { break }
         if ($p.MainWindowHandle -ne [IntPtr]::Zero) { break }
-        if ((Get-Date) -gt $deadline) { break }
         Start-Sleep -Milliseconds 100
       }
       $sw.Stop()

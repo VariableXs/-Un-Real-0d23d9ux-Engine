@@ -5,7 +5,7 @@
 > **一句话目标**: 在 1TB 固态U盘中装入一个完整的、真 Windows 11 内核的便携系统，实现 `任何软件都能跑、任何崩溃都不传染、任何电脑随插随用、加载10GB大软件不卡死、可无限拓展`。本计划总计约 30000 字，覆盖架构、隔离、防崩、兼容、性能、拓展、测试、运维、安全、合规、交付 12 章。
 
 > [!TIP]
-> **📊 总完成度：文档 100% (12/12章) | 实现 33% (4/12模块: 2/7/8/10)**
+> **📊 总完成度：文档 100% (12/12章) | 实现 50% (6/12模块: 2/7/8/10/11/12)**
 > 下面每章标题右侧框为实现状态，✅=已完成/已验证，⬜=待实施，打勾即代表该模块已落地可验收。
 
 ## ✅ 完成度总览 - 每项右侧框打勾
@@ -22,9 +22,9 @@
 | 8 | 无限拓展 - 层式镜像 + MSIX + 插件化 | ✅ | ✅ | ✅ 已完成 (portable/AI4) |
 | 9 | 性能与寿命优化 - U盘与VHDX调优 | ✅ | ⬜ | ⬜ 待实施 |
 | 10 | 安全与合规 - 加密/杀软/授权 | ✅ | ✅ | ✅ 已完成 (portable/AI4) |
-| 11 | 测试与验收 - 兼容矩阵与混沌工程 | ✅ | ⬜ | ⬜ 待实施 |
-| 12 | 交付与运维 - 四阶段落地与脚本 | ✅ | ⬜ | ⬜ 待实施 |
-| 13-30 | 扩充章 大软件/拓展/防崩/压测/脚本 | ✅ | ✅ 部分 | ✅ 部分完成 (14/17/18 已落地 AI-4; 其余待 AI-1/2/5) |
+| 11 | 测试与验收 - 兼容矩阵与混沌工程 | ✅ | ✅ | ✅ 已实现 (portable/AI5，真机待验) |
+| 12 | 交付与运维 - 四阶段落地与脚本 | ✅ | ✅ | ✅ 已实现 (portable/AI5，真机待验) |
+| 13-30 | 扩充章 大软件/拓展/防崩/压测/脚本 | ✅ | ✅ 部分 | ✅ 部分完成 (14/17/18 AI-4; 19/21/22/24/26/27/28/30 AI-5; 13/15/16/20/23/25/29 待 AI-1/2) |
 
 > - ✅ = 文档已完成且代码/配置已落地验证 (打勾)
 > - ⬜ = 文档已完成，待按脚本实施
@@ -437,7 +437,7 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 不修改宿主 `MBR/GPT`，B模式仅写 U盘引导，宿主硬盘 `离线` 保护。
 - 提供 `一键卸载`：`bcdedit /delete {GUID}` + `diskpart offline`，不留痕迹。
 
-## 11. 测试与验收 - 兼容矩阵与混沌工程 <sub>⬜ 待实施</sub>
+## 11. 测试与验收 - 兼容矩阵与混沌工程 <sub>✅ 已实现 (portable/AI5，真机待验)</sub>
 
 
 ### 11.1 兼容矩阵
@@ -457,11 +457,18 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 - 每周 `故障注入`：随机杀 Worker、拔盘模拟、CPU 打满、内存占满，验证 Watchdog 与熔断。
 - `libcef` 崩溃注入：`RaiseException(0x80000003)`，验证仅弹 Banner。
 
+> **AI-5 落地（2026-09-07）**：`portable/AI5/Compat-Matrix.ps1` + `Data/compat-matrix.json`（200 条 = 5 类 × 40）、
+> `Chaos-Inject.ps1` + `Data/chaos-scenarios.json`（12 场景 = 本章 10 必测 + 2 自动注入）、
+> `Bench-Perf.ps1` + `Accept-Gate.ps1`（14 项验收门禁）。
+> 0x80000003 由 `Chaos-Inject -Scenario S12` 用 `[Diagnostics.Debugger]::Break()` 在一次性子进程内真实触发。
+> **如实边界**：矩阵中 186/200 条仍为 `todo` 待真机回填；`dangerous=true` 的场景（拔盘/宿主蓝屏/虚拟机内删C盘/驱动回退）
+> 脚本只输出步骤卡，不代为执行。
+
 ### 11.3 性能基线
 
 - 启动时间、4K 随机、内存占用、崩溃恢复时间 均录入 `bench/2026-09-07.md`，CI 门禁。
 
-## 12. 交付与运维 - 四阶段落地与脚本 <sub>⬜ 待实施</sub>
+## 12. 交付与运维 - 四阶段落地与脚本 <sub>✅ 已实现 (portable/AI5，真机待验)</sub>
 
 
 ### 12.1 阶段1 本地造盘（1天）
@@ -484,6 +491,11 @@ U盘丢失，新盘一 `rclone copy` 即恢复。
 
 - 每月 `Optimize-VHD` + `Defrag` + `备份 User.vhdx` 至 `Data\Backup\`。
 - 提供 `一键还原`：`Copy-Item Backup\User.vhdx User.vhdx -Force`。
+
+> **AI-5 落地（2026-09-07）**：`portable/AI5/Deploy-To-USB.ps1 -Action Preflight/Stage1..4/Verify/All` 编排四阶段，
+> `Maintenance.ps1 -Action Status/Optimize/Backup/Restore/Schedule/Tune` 承接 12.5。
+> 与本章描述的差异（均为安全加固）：① 阶段4 用 `robocopy /E`，**不用 `/MIR`**，避免误删目标盘已有文件；
+> ② 一键还原先把旧 `User.vhdx` 改名保留再覆盖，不裸删；③ 新增目标盘安全闸，拒绝把宿主系统盘当部署目标。
 
 ## 附录 A: 目录结构与脚本清单 <sub>✅ 已完成</sub>
 
@@ -683,7 +695,7 @@ U盘 `三星T7 Shield 1TB` + `VirtualBox 7.0` + `VHDX 动态` + `Host i7-12700 +
 
 Base.vhdx 来源微软官方 ISO + 哈希校验，驱动包来自官方，MSIX 包签名校验，插件市场签名校验，四重校验。
 
-## 扩充章 19. 交付清单与验收 <sub>⬜ 待实施</sub>
+## 扩充章 19. 交付清单与验收 <sub>✅ 已实现 (portable/AI5)</sub>
 
 ### 19.1 交付物
 
@@ -794,7 +806,7 @@ robocopy $Src $Dst /E /R:2 /W:2 /MT:8 /XD "Cache" "Temp"
 Write-Host "已部署至 $Dst"
 ```
 
-## 扩充章 21. 故障演练 - 10 种必测场景 <sub>⬜ 待实施</sub>
+## 扩充章 21. 故障演练 - 10 种必测场景 <sub>✅ 已实现 (portable/AI5)</sub>
 
 ### 21.1 场景清单
 
@@ -811,7 +823,7 @@ Write-Host "已部署至 $Dst"
 
 每个场景录屏 + 日志存 `Data/Tests/`。
 
-## 扩充章 22. 运维手册 - 日常使用 <sub>⬜ 待实施</sub>
+## 扩充章 22. 运维手册 - 日常使用 <sub>✅ 已实现 (portable/AI5)</sub>
 
 ### 22.1 日常
 
@@ -833,7 +845,7 @@ Write-Host "已部署至 $Dst"
 
 Windows 需零售/批量授权，OEM 不支持换板。`Sysprep` 后 `slmgr /dlv` 查激活，`KMS` 用户需内网 KMS。Variable Engine MIT，第三方软件遵循原许可，不预装盗版。Ventoy GPLv3，VirtualBox GPLv2，合规分发。
 
-## 扩充章 24. 术语与FAQ <sub>⬜ 待实施</sub>
+## 扩充章 24. 术语与FAQ <sub>✅ 已实现 (portable/AI5/FAQ.md)</sub>
 
 **Q: U盘要多大？** A: 1TB 固态U盘，Base 20 + Apps 50 + User 动态 + Data 900，实测 1TB 足够 50 个大软件。
 
@@ -901,7 +913,7 @@ loop {
 }
 ```
 
-## 扩充章 26. 性能调优清单 - 逐项 <sub>⬜ 待实施</sub>
+## 扩充章 26. 性能调优清单 - 逐项 <sub>✅ 已实现 (portable/AI5 Maintenance -Action Tune)</sub>
 
 ### 26.1 注册表
 
@@ -923,7 +935,7 @@ loop {
 
 `defrag C: /O /V` 每月一次，`Optimize-VHD` 每周一次。
 
-## 扩充章 27. 用户手册 - 小白版 <sub>⬜ 待实施</sub>
+## 扩充章 27. 用户手册 - 小白版 <sub>✅ 已实现 (portable/AI5/USER-MANUAL.md)</sub>
 
 1. 买 `1TB NVMe 固态U盘`，别买 30 元的。
 2. 在自己电脑 `D:\Variable-USB` 跑 `Create-VHDX.ps1` 选 ISO。
@@ -933,7 +945,7 @@ loop {
 6. 买U盘后 `Ventoy` 刷盘，`Deploy-To-USB.ps1` 一键部署。
 7. 日常插盘双击 `启动.exe`，关机选保存。
 
-## 扩充章 28. 验收单 <sub>⬜ 待实施</sub>
+## 扩充章 28. 验收单 <sub>✅ 已实现 (portable/AI5/Accept-Gate.ps1)</sub>
 
 - [ ] 5 台机 A/B 双模式各启动一次
 - [ ] 装 10GB 软件不卡死，可取消
@@ -967,7 +979,7 @@ WSL2 是 Linux 内核，不能跑 exe。我们的 VHDX 是 Windows 内核。
 
 `Get-Partition | Select Offset` 必须是 4096 倍数，否则 4K 随机掉 50%。Ventoy 默认已对齐。
 
-## 扩充章 30. 未来路线 <sub>⬜ 待实施</sub>
+## 扩充章 30. 未来路线 <sub>✅ 已实现 (docs/AI5-测试交付.md §6)</sub>
 
 - v1.1：支持 ARM64 宿主 QEMU 加速
 - v1.2：插件市场上线

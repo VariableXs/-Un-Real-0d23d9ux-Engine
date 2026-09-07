@@ -4,6 +4,7 @@ param(
   [string]$Src = "D:\Variable-USB",
   [string]$Dst = "E:\",
   [string]$DataDrive = "D:",
+  [string]$EvidenceRoot = "",             # 证据目录，留空取 <DataDrive>\Data\Tests
   [string]$IsoPath = "",
   [int]$SizeGB = 150,
   [switch]$Fixed,
@@ -33,6 +34,7 @@ $ErrorActionPreference = "Stop"
 
 $PortableDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$Evidence = if ($EvidenceRoot) { $EvidenceRoot } else { Get-Ai5EvidenceRoot -DataDrive $DataDrive }
 
 function Get-ResolvedVhdx {
   if ($VhdxPath) { return $VhdxPath }
@@ -90,7 +92,7 @@ function Invoke-Preflight {
     if (-not $r.ok) { $bad++ }
   }
   Save-Ai5Json -Object ([pscustomobject]@{ tool = "Deploy-To-USB.ps1"; action = "Preflight"; at = (Get-Date -Format "o"); rows = $rows }) `
-    -Path (Join-Path (Get-Ai5EvidenceRoot -DataDrive $DataDrive) "preflight.json") | Out-Null
+    -Path (Join-Path $Evidence "preflight.json") | Out-Null
   if ($bad -gt 0) { Write-Ai5 "预检有 $bad 项待处理" "Err"; return 1 }
   Write-Ai5 "预检通过，可以进入四阶段" "Ok"
   return 0
@@ -232,7 +234,7 @@ function Invoke-Verify {
     Write-Ai5 ("VHDX 实占 {0}GB" -f [math]::Round($len / 1GB, 2))
   }
   Save-Ai5Json -Object ([pscustomobject]@{ tool = "Deploy-To-USB.ps1"; action = "Verify"; at = (Get-Date -Format "o"); dst = $Dst; rows = $rows }) `
-    -Path (Join-Path (Get-Ai5EvidenceRoot -DataDrive $DataDrive) "deliver-verify.json") | Out-Null
+    -Path (Join-Path $Evidence "deliver-verify.json") | Out-Null
   if ($bad -gt 0) { Write-Ai5 "缺 $bad 项交付物" "Err"; return 1 }
   Write-Ai5 "成品盘核验通过：A 模式双击 PortableVM\启动.exe，B 模式重启按 F12 选 U 盘" "Ok"
   return 0

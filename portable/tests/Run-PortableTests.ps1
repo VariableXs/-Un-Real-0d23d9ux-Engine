@@ -37,7 +37,8 @@ function Add-Check {
 
 # ---------------- 1. 语法（官方 PowerShell AST 解析器） ----------------
 Write-Host "== 1. PowerShell 语法解析 ==" -ForegroundColor Cyan
-$ps1 = @(Get-ChildItem -Path $PortableRoot -Recurse -Filter "*.ps1" -File | Where-Object { $_.FullName -notlike "*\tests\*" })
+# 含本自检脚本自己与 AI-1..AI-5 全部脚本；AI-4 的脚本若存在语法问题也会在这里如实暴露
+$ps1 = @(Get-ChildItem -Path $PortableRoot -Recurse -Filter "*.ps1" -File)
 foreach ($f in $ps1) {
   $tokens = $null; $errors = $null
   [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
@@ -98,8 +99,12 @@ if ($SkipExec) {
   $env:AI5_NONINTERACTIVE = "1"
   $dd = (Split-Path -Qualifier $WorkDir)          # 例: C:
   $out = Join-Path $WorkDir "Tests"
+  $ev = Join-Path $WorkDir "Evidence"
   New-Item -ItemType Directory -Force -Path $out | Out-Null
+  New-Item -ItemType Directory -Force -Path $ev | Out-Null
 
+  # $ExpectExit = -1 表示「不校验退出码」：这些脚本的退出码取决于硬件是否达标
+  # （例如 CI 的磁盘达不到 900MB/s 预算，Gate 就该返回 1），只要不抛异常即视为脚本可用。
   function Invoke-ReadOnly {
     param([string]$Name, [string]$Script, [string[]]$ScriptArgs, [int]$ExpectExit = 0, [string]$ExpectText = "")
     $p = Join-Path $PortableRoot $Script
@@ -114,8 +119,11 @@ if ($SkipExec) {
       Add-Check -Name $Name -Ok $false -Detail "异常: $($_.Exception.Message)"
       return
     }
-    $okExit = ($code -eq $ExpectExit)
-    Add-Check -Name "$Name (exit=$code)" -Ok $okExit -Detail "期望退出码 $ExpectExit"
+    if ($ExpectExit -lt 0) {
+      Add-Check -Name "$Name (exit=$code, 退出码随硬件而定)" -Ok $true
+    } else {
+      Add-Check -Name "$Name (exit=$code)" -Ok ($code -eq $ExpectExit) -Detail "期望退出码 $ExpectExit"
+    }
     if ($ExpectText) {
       Add-Check -Name "$Name 输出含 '$ExpectText'" -Ok ($txt -match [regex]::Escape($ExpectText))
     }
@@ -124,20 +132,24 @@ if ($SkipExec) {
   Invoke-ReadOnly -Name "Compat-Matrix -Action List" -Script "AI5\Compat-Matrix.ps1" `
     -ScriptArgs @("-Action", "List") -ExpectExit 0 -ExpectText "兼容矩阵"
   Invoke-ReadOnly -Name "Chaos-Inject -Action List" -Script "AI5\Chaos-Inject.ps1" `
-    -ScriptArgs @("-Action", "List", "-DataDrive", $dd) -ExpectExit 0 -ExpectText "S01"
+    -ScriptArgs @("-Action", "List", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit 0 -ExpectText "S01"
   Invoke-ReadOnly -Name "Chaos-Inject -Action Plan -Scenario S07" -Script "AI5\Chaos-Inject.ps1" `
-    -ScriptArgs @("-Action", "Plan", "-Scenario", "S07", "-DataDrive", $dd) -ExpectExit 0 -ExpectText "安全模式"
+    -ScriptArgs @("-Action", "Plan", "-Scenario", "S07", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit 0 -ExpectText "安全模式"
   Invoke-ReadOnly -Name "Bench-Perf -Action Manifest" -Script "AI5\Bench-Perf.ps1" `
     -ScriptArgs @("-Action", "Manifest") -ExpectExit 0 -ExpectText "seqReadMBps"
   Invoke-ReadOnly -Name "Bench-Perf -Action Run (真实读写 $WorkDir)" -Script "AI5\Bench-Perf.ps1" `
-    -ScriptArgs @("-Action", "Run", "-TestDrive", $WorkDir, "-OutDir", $out, "-SeqMB", "64", "-RandMB", "16", "-StartRounds", "2") -ExpectExit 0
+    -ScriptArgs @("-Action", "Run", "-TestDrive", $WorkDir, "-OutDir", $out, "-SeqMB", "64", "-RandMB", "16", "-StartRounds", "2") -ExpectExit -1
   Add-Check -Name "Bench 结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $out "bench-results.json"))
+  # Gate 的退出码取决于本机磁盘是否达标（CI 磁盘通常达不到 900MB/s 预算），故不校验码
   Invoke-ReadOnly -Name "Bench-Perf -Action Gate" -Script "AI5\Bench-Perf.ps1" `
-    -ScriptArgs @("-Action", "Gate", "-OutDir", $out)
+    -ScriptArgs @("-Action", "Gate", "-OutDir", $out) -ExpectExit -1
   Invoke-ReadOnly -Name "Chaos-Inject -Action Run (auto 场景)" -Script "AI5\Chaos-Inject.ps1" `
-    -ScriptArgs @("-Action", "Run", "-DataDrive", $dd) 
+    -ScriptArgs @("-Action", "Run", "-DataDrive", $dd, "-EvidenceRoot", $ev) -ExpectExit -1
+  Add-Check -Name "混沌结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $ev "chaos-results.json"))
+  # Preflight 在 CI 上必然报缺件（Data 结构未初始化 / 无 Hyper-V），退出码 1 是正确行为
   Invoke-ReadOnly -Name "Deploy-To-USB -Action Preflight" -Script "AI5\Deploy-To-USB.ps1" `
-    -ScriptArgs @("-Action", "Preflight", "-Src", $WorkDir, "-Dst", "$dd\", "-DataDrive", $dd, "-AllowFixedTarget", "-MinFreeGB", "0")
+    -ScriptArgs @("-Action", "Preflight", "-Src", $WorkDir, "-Dst", "$dd\", "-DataDrive", $dd, "-AllowFixedTarget", "-MinFreeGB", "0", "-EvidenceRoot", $ev) -ExpectExit -1
+  Add-Check -Name "预检结果文件生成" -Ok (Test-Path -LiteralPath (Join-Path $ev "preflight.json"))
   Invoke-ReadOnly -Name "Deploy-To-USB -Action Stage1 -DryRun" -Script "AI5\Deploy-To-USB.ps1" `
     -ScriptArgs @("-Action", "Stage1", "-IsoPath", "$env:SystemRoot\notepad.exe", "-Src", $WorkDir, "-DryRun") -ExpectExit 0
   Invoke-ReadOnly -Name "Maintenance -Action Tune" -Script "AI5\Maintenance.ps1" `
@@ -150,17 +162,18 @@ if ($SkipExec) {
     -ScriptArgs @("-Action", "Init", "-DataDrive", $dd, "-OutDir", $out) -ExpectExit 0
   Add-Check -Name "人工实测模板生成" -Ok (Test-Path -LiteralPath (Join-Path $out "manual-results.json"))
   Invoke-ReadOnly -Name "Accept-Gate -Action Report" -Script "AI5\Accept-Gate.ps1" `
-    -ScriptArgs @("-Action", "Report", "-DataDrive", $dd, "-OutDir", $out) -ExpectExit 0
+    -ScriptArgs @("-Action", "Report", "-DataDrive", $dd, "-OutDir", $out, "-EvidenceRoot", $ev) -ExpectExit 0
   Add-Check -Name "验收报告生成" -Ok (Test-Path -LiteralPath (Join-Path $out "acceptance-report.md"))
   Invoke-ReadOnly -Name "Accept-Gate -Action Check (无证据时不应通过 -Strict)" -Script "AI5\Accept-Gate.ps1" `
-    -ScriptArgs @("-Action", "Check", "-DataDrive", $dd, "-OutDir", $out, "-Strict") -ExpectExit 1
+    -ScriptArgs @("-Action", "Check", "-DataDrive", $dd, "-OutDir", $out, "-EvidenceRoot", $ev, "-Strict") -ExpectExit 1
+  # AI-1/AI-2 尚未交付，Preflight 报缺件退出码 1 是正确行为，不该让自检因此变红
   Invoke-ReadOnly -Name "AI-Integration -Action Preflight" -Script "AI5\AI-Integration.ps1" `
-    -ScriptArgs @("-Action", "Preflight", "-DataDrive", $dd, "-OutDir", $out)
+    -ScriptArgs @("-Action", "Preflight", "-DataDrive", $dd, "-OutDir", $out) -ExpectExit -1
   Add-Check -Name "联调预检结果生成" -Ok (Test-Path -LiteralPath (Join-Path $out "integration-preflight.json"))
 
   # 负向用例：目标盘写成宿主系统盘时必须被拒绝
   $sysDrive = ([System.IO.Path]::GetPathRoot($env:SystemRoot)).TrimEnd('\')
-  $neg = (& (Join-Path $PortableRoot "AI5\Deploy-To-USB.ps1") -Action "Verify" -Dst "$sysDrive\" -DataDrive $dd 2>&1 | Out-String)
+  $neg = (& (Join-Path $PortableRoot "AI5\Deploy-To-USB.ps1") -Action "Verify" -Dst "$sysDrive\" -DataDrive $dd -EvidenceRoot $ev 2>&1 | Out-String)
   Add-Check -Name "负向: Verify 指向系统盘仍安全（不因缺交付物而误判通过）" -Ok ($neg -match "缺|❌|不存在")
 
   Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue

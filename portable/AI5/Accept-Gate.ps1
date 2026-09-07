@@ -3,6 +3,7 @@ param(
   [string]$Action = "Report",
   [string]$DataDrive = "D:",
   [string]$OutDir = "D:\Data\Tests",
+  [string]$EvidenceRoot = "",             # 证据目录，留空取 <DataDrive>\Data\Tests
   [string]$RepoRoot = "",                 # 留空自动推导仓库根
   [string]$UsbDrive = "",                 # 成品盘盘符，用于阶段4交付物核验
   [string]$ManualResults = "",            # 人工实测结果 JSON（覆盖 manual 项）
@@ -21,7 +22,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "AI5-Lib.ps1")
 
-$Evidence = Get-Ai5EvidenceRoot -DataDrive $DataDrive
+$Evidence = if ($EvidenceRoot) { $EvidenceRoot } else { Get-Ai5EvidenceRoot -DataDrive $DataDrive }
 
 # 主计划 1.3 + 扩充28 的验收项定义
 $Gate = @(
