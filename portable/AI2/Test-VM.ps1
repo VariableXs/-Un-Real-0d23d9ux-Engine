@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     AI-2 隔离核的 Hyper-V 验证器：只读母盘 + COW 子盘 + 4 GB/4 vCPU/NAT。
 
@@ -233,7 +233,7 @@ function Write-ScenarioReport {
         "|---:|---|---|---|"
     )
     foreach ($scenario in $ScenarioTable) {
-        $lines += "| $($scenario.Id) | $($scenario.Name) | $($scenario.Expected) | [ ] |")
+        $lines += "| $($scenario.Id) | $($scenario.Name) | $($scenario.Expected) | [ ] |"
     }
     Set-Content -LiteralPath $out -Value $lines -Encoding UTF8
     Write-Host "[AI-2] 十场景清单已写入 $out" -ForegroundColor Cyan
