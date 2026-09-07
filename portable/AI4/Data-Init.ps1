@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$DataDrive = "D:",
   [switch]$FixLinks
 )

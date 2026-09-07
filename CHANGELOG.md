@@ -5,6 +5,105 @@
 
 ## [Unreleased] — 1.0sno9u.vxe
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-07 便携系统 AI-5 交付核：主计划第 11+12 章）
+
+> 多 AI 并行拆分（`docs/PORTABLE_AI_SPLIT_PLAN.md`）的 AI-5 交付核落地。
+> AI-3（第 6+7 章）、AI-4（第 8+10 章）此前已合入；本次补上测试验收与交付运维。
+> 实现进度：主计划 12 章中 10 章已落地（1/2/3/6/7/8/9/10/11/12），仅余第 4/5 章（AI-2 隔离核）。
+
+### CI 修复：PowerShell 脚本编码（windows-latest 首次真机解析）
+
+> **结果：CI 已双绿**（`backend` + `frontend`，run 34094563831），
+> `Run-PortableTests.ps1` 在真 PowerShell 上 **74 项检查全过**。
+> 首次真机执行共暴露 5 个真实缺陷（下表 1 个编码 + 4 个运行时），全部已修复。
+> 明细见 `docs/AI5-测试交付.md` §4.1。
+
+- **根因**：`portable/**/*.ps1` 全部是「UTF-8 无 BOM」。Windows PowerShell 5.1 对无 BOM
+  文件按系统 ANSI 代码页（CP1252）解码，而汉字「应」的 UTF-8 末字节是 `0x94`，
+  在 CP1252 中正是 `U+201D ”`；**PowerShell 把智能引号当作字符串定界符**，于是字符串被
+  提前闭合，后面的 `)` 失去配对的 `(`，报 `Missing closing ')' in expression`。
+  CI 报错的 `Run-PortableTests.ps1:160/168` 两行，其上一行恰好都含「应」字。
+- **修复**：为全部 26 个 `.ps1` 加 UTF-8 BOM，使 PS 5.1 与 PS 7 都按 UTF-8 解码。
+  同时把 `Run-PortableTests.ps1` 的 18 处反引号续行合并为单行，消除续行的额外脆弱性。
+  注：BOM 变更也落到 `AI1/`、`AI4/` 的文件上——这是字节级编码前缀，不改动任何逻辑，
+  属跨核同步必需的修复。
+- **排障改进**：`portable.test.ts` 原先只保留最后一个 shell 的错误（`lastErr` 被覆盖），
+  导致 `pwsh`(7) 的真实报错被 `powershell`(5.1) 的报错顶掉。现改为逐个 shell 记录并全部输出。
+- **检查工具**（均已入库 `tools/portable/`）：新增 `ps_lex_check.py` 真正的 PowerShell 词法器（注释/单双引号/here-string/
+  反引号续行/`$( )` 子表达式/智能引号定界）。旧的 `ps_struct_check.py` 只是括号计数器，
+  曾对本缺陷给出 26/26 通过的误报；新词法器可复现该缺陷（修复前 3 处错误，修复后 0 处）。
+- **运行时缺陷 2／数组 splatting 是位置绑定**：`& $p @ScriptArgs` 语法合法，但数组
+  splatting 按**位置**传参，于是 `"-Action"` 这个字符串本身成了 `-Action` 的值
+  （`The argument "-Action" does not belong to the set ...`）。改为**哈希表** splatting
+  做命名绑定，开关参数映射 `$true`，`[int]` 参数去引号，共 16 处。
+- **运行时缺陷 3／`Write-Host` 走信息流**：各脚本统一用 `Write-Ai5 -> Write-Host`，
+  输出在信息流(6) 上，而 `2>&1 | Out-String` 只并入 stderr，捕获结果恒为空，
+  导致所有 `-ExpectText` 断言必然失败。改用 `*>&1` 合并全部输出流。
+- **运行时缺陷 4／变量名大小写不敏感**：`Accept-Gate.ps1` 的脚本级 `$Evidence`
+  （证据根目录）与循环内每行的 `$evidence`（结论字段）在 PowerShell 里是**同一个变量**，
+  循环开头 `$evidence = ""` 会把 `$Evidence` 一并清空，随后 `Join-Path $Evidence ...`
+  收到空串。脚本级变量改名 `$EvidenceDir`。
+- **运行时缺陷 5／Mandatory 数组逐元素校验**：`Save-Ai5Text` 的
+  `[Parameter(Mandatory = $true)][string[]]$Lines` 会校验每个元素非空，而验收报告的
+  Markdown 本就含空行（`$L += ""`）。加 `[AllowEmptyString()]`。
+- **新增检查工具** `tools/portable/ps_case_collision_check.py`：扫描同一脚本内仅大小写不同的变量名
+  （函数参数新建作用域，默认排除）。对修复前的 `Accept-Gate.ps1` 能报出风险并退出 1，
+  对修复后的全仓 26 个脚本退出 0。
+
+### 测试与验收（第 11 章）
+
+- **兼容矩阵 Top200**：`portable/AI5/Compat-Matrix.ps1` + `Data/compat-matrix.json`，
+  办公/设计/开发/工具/游戏 各 40 条、名称全局唯一。判定枚举仅 `pass/warn/fail/todo`，
+  其中只有主计划 11.1 与 16.2 点名过的 14 条带既有结论，**其余 186 条保持 `todo` 待真机回填**，
+  不因软件知名就打 ✅。`Run` 只测 `Data\Apps` 下能定位到主程序的条目，找不到记 `skip`。
+- **混沌工程 12 场景**：`Chaos-Inject.ps1` + `Data/chaos-scenarios.json`（扩充 21 的 10 个必测场景
+  + 主计划 11.2 的看门狗与 `0x80000003` 两项）。`0x80000003` 由 `[Diagnostics.Debugger]::Break()`
+  在一次性子进程内真实触发。
+- **性能基线**：`Bench-Perf.ps1`（顺序 / 4K 随机 / 冷热启动 / 内存）+ `-Action Gate` 门禁；
+  报告归档 `docs/bench/2026-09-07-portable.md`（加 `-portable` 后缀，避免与 `tools/bench.cjs`
+  的前端基线同名互相覆盖）。
+- **验收门禁**：`Accept-Gate.ps1` 14 项（主计划 1.3 + 扩充 28 的 7 项全部纳入并扩展）。
+  状态只有三种来源：自动脚本实测 / 人工实测录入 / 明确 `todo`。
+
+### 交付与运维（第 12 章）
+
+- **四阶段编排**：`Deploy-To-USB.ps1 -Action Preflight/Stage1..4/Verify/All`，复用 AI-1 的
+  `Create-VHDX.ps1` 与 `Test-VM.ps1`，不复制造盘逻辑。
+- **运维**：`Maintenance.ps1 -Action Status/Optimize/Backup/Restore/Schedule/Tune`，
+  月度 `Optimize-VHD`、每日 `User.vhdx` 备份保留 3 份、一键还原、计划任务、调优清单。
+- **联调**：`AI-Integration.ps1` 核验 AI1-5 交付物齐套性；AI-1/AI-2 尚未交付时如实标红，不代做。
+
+### 安全加固（写进代码，不只是文档承诺）
+
+- 危险场景（拔盘 / 宿主蓝屏 / 虚拟机内删 C 盘 / 驱动回退）标 `manual`，脚本**只出步骤卡不代为执行**；
+  自检会把「`dangerous=true` 却是 `auto`」判为失败。
+- 填盘演练默认 dry-run，真写需 `-AllowFill` 且受 512MB 上限 + `finally` 自动清理保护。
+- 看门狗演练只杀脚本自己启动的一次性子进程，不枚举用户进程。
+- 目标盘安全闸：拒绝宿主系统盘、拒绝固定磁盘、拒绝非法文件系统。
+- 上盘用 `robocopy /E` 而非 `/MIR`，不镜像删除目标盘已有文件。
+- 一键还原先把旧 `User.vhdx` 改名保留再覆盖。
+
+### 验证接线
+
+- 本会话的 GitHub App 令牌无 `workflows` 权限，改不了 `.github/workflows/ci.yml`
+  （推送被远端拒绝）。但现有 CI 的 `frontend` 作业本来就在 `windows-latest` 上跑 `npm test`，
+  于是把自检挂进 vitest：`portable/AI5/__tests__/portable.test.ts`
+  —— `win32` 上真调 `pwsh`/`powershell` 执行 `Run-PortableTests.ps1`，非 Windows 明确 skip。
+  **不需要新增 CI 作业即可在真 PowerShell 上验证。**
+- `Run-PortableTests.ps1` 三段：官方 AST 解析全部 `.ps1`（含 AI-4 的 9 个）+ 数据不变量
+  + 只读动作执行与一个负向用例（`Verify` 指向宿主系统盘必须判失败）。
+
+### 验证结果（如实）
+
+- 本地可跑的全部通过：21 个 `.ps1` 结构完整；21 项数据不变量；21 个脚本的函数调用 /
+  `-Action` 名 / dot-source 路径交叉引用一致（含 143 处文档引用）；
+  仓库自有检查 `tsc --noEmit` 通过、vitest 231 全绿、`tools/audit.cjs` 通过。
+- 断言经过反向验证：向 `Data/*.json` 注入 4 个真实缺陷（删条目 / 假勾 pass / 危险场景改 auto /
+  改 6s 预算）后，6 条断言如期失败；恢复后重新全绿。
+- **本会话未在 PowerShell 上执行过任何脚本**：沙箱为 Linux，PowerShell 二进制下载域名被网络策略
+  阻断（仅 npm/PyPI 可达）。PowerShell 语法与运行时由 PR 上的 `frontend` 作业在 windows-latest 验证。
+- 真机验收 14 项全部保持 ⬜：无 Windows 宿主、无 1TB 目标盘、无 5 台测试机。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-07 便携系统 AI-1 存储核：主计划第 3+9 章）
 
 > 多 AI 并行分工（`docs/PORTABLE_AI_SPLIT_PLAN.md`）的存储核批次；

@@ -5,7 +5,10 @@
 > 每AI独立目录、独立分支、0冲突，全部 ✅ 即全系统 `任意软件不崩溃·任意电脑可用·大软件6秒·极致隔离` 达成
 
 > [!TIP]
-> **总完成度：文档100% | 实现 60% (AI-1/AI-3/AI-4已完成) -> 目标 100% (5AI全部 ✅)**
+> **总完成度：文档100% | 实现 80% (AI-1/AI-3/AI-4/AI-5 已完成，仅余 AI-2) -> 目标 100% (5AI全部 ✅)**
+>
+> AI-5 状态说明：**脚本与文档已落地，真机验收 0/14 未做**（沙箱无 Windows 宿主 / 无 1TB 目标盘 / 无 5 台测试机），
+> 详见 `portable/AI5/PROGRESS.md` 与 `docs/AI5-测试交付.md` §4。
 > 每AI右侧框打勾，完成后同步打勾 `PORTABLE_VIRTUAL_SYSTEM_PLAN.md` 顶部总表
 
 ## 分工总览（按主计划章节精确对应）
@@ -16,7 +19,7 @@
 | AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ⬜ 待实施 |
 | AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src-tauri/src/shell/compat.rs` `src/styles/desktop.css` | Shell代理✅ + 透明tile✅ + `AI3-兼容体验.md` | ✅ 已完成 |
 | AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ✅ 已完成 |
-| AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` 3000字 | ⬜ 待实施 |
+| AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` | ✅ 已实现（真机待验） |
 
 > 规则：每AI只改自己目录，禁止越界，通过主计划总表同步，1TB盘到后AI5 10分钟部署
 
@@ -189,31 +192,38 @@
 
 ---
 
-## AI-5 交付核 详细计划（对应主计划 第11章 + 第12章 + 扩充19-24/27-30） <sub>⬜ 待实施</sub>
+## AI-5 交付核 详细计划（对应主计划 第11章 + 第12章 + 扩充19-24/27-30） <sub>✅ 已实现（真机待验）</sub>
 
 ### 来源主计划
 > 第11章 测试验收（Top200矩阵+混沌） + 第12章 交付运维（四阶段+一键部署） + 扩充19交付清单/20脚本/21场景/24用户手册/27配置/30路线
 
 ### 任务
 #### 11.1-11.3 测试（主计划11.1-11.3）
-- [ ] Top200矩阵 5类软件A/B双模式
-- [ ] 混沌 `libcef 0x80000003` 注入 + 10场景
-- [ ] 压测 `bench/2026-09-07.md` 冷/热/4K
+- [x] Top200矩阵 5类软件A/B双模式（`Compat-Matrix.ps1` + `Data/compat-matrix.json` 200条=5类×40；14条有既有结论，186条 `todo` 待真机回填）
+- [x] 混沌 `libcef 0x80000003` 注入 + 10场景（`Chaos-Inject.ps1` + `Data/chaos-scenarios.json` 12场景；S12 用 `Debugger.Break()` 真触发 0x80000003，6个危险场景只出步骤卡不代为执行）
+- [x] 压测 `bench/2026-09-07-portable.md` 冷/热/4K（`Bench-Perf.ps1` 可采集+门禁；**目标盘实测值未填，全部标 ⏭ 待真机**）
 
 #### 12.1-12.5 交付（主计划12.1-12.5）
-- [ ] 阶段1 `Create-VHDX` -> 阶段2 `Test-VM` -> 阶段3 换皮 -> 阶段4 `Deploy-To-USB` 10分钟
-- [ ] 运维 `Optimize-VHD` 月一次 + `User.vhdx` 日备
+- [x] 阶段1 `Create-VHDX` -> 阶段2 `Test-VM` -> 阶段3 换皮 -> 阶段4 `Deploy-To-USB` 10分钟（`AI5/Deploy-To-USB.ps1 -Action Preflight/Stage1..4/Verify/All`；阶段4 用 `robocopy /E` 不用 `/MIR`，并计时对照10分钟目标）
+- [x] 运维 `Optimize-VHD` 月一次 + `User.vhdx` 日备（`AI5/Maintenance.ps1 -Action Optimize/Backup/Restore/Schedule`，还原前旧文件改名保留）
 
 ### 输出
-- `portable/AI5/Deploy-To-USB.ps1`
-- `bench/2026-09-07.md` + `docs/AI5-测试交付.md` 3000字
+- `portable/AI5/`：`Deploy-To-USB.ps1` `Compat-Matrix.ps1` `Chaos-Inject.ps1` `Bench-Perf.ps1` `Accept-Gate.ps1` `Maintenance.ps1` `AI-Integration.ps1` `AI5-Lib.ps1`
+- `portable/AI5/Data/`：`compat-matrix.json`(200条) `chaos-scenarios.json`(12场景)
+- `portable/AI5/`：`USER-MANUAL.md`(扩充27) `FAQ.md`(扩充24/29) `README.md` `PROGRESS.md`
+- `portable/tests/Run-PortableTests.ps1`（真 PowerShell AST 语法 + 数据不变量 + 只读执行）
+- `docs/bench/2026-09-07-portable.md` + `docs/AI5-测试交付.md`
+  （加 `-portable` 后缀避免与 `tools/bench.cjs` 的前端基线同名覆盖）
 
-### 验收（主计划1.3）
-- [ ] 5台机A/B各启动 + 12秒系统+6秒软件 + 任意电脑
-- [ ] 1TB盘 `930GB可用` 验证
+### 验收（主计划1.3）—— 真机项，本会话未做
+- [ ] 5台机A/B各启动 + 12秒系统+6秒软件 + 任意电脑（`Accept-Gate` A01/A02/A03，需物理机）
+- [ ] 1TB盘 `930GB可用` 验证（`Deploy-To-USB -Action Preflight` 已内建该校验，需真盘触发）
+
+> 14 项验收全部保持 ⬜，由 `Accept-Gate.ps1 -Action Report` 汇总；**无实测证据不打 ✅**。
 
 ### 依赖
-等AI1-4完成后再联调，统一打勾主计划总表第11、12行
+等AI1-4完成后再联调，统一打勾主计划总表第11、12行。
+当前 AI-1（第3+9章）与 AI-2（第4+5章）仍为 ⬜，`AI-Integration.ps1 -Action Preflight` 会把缺件列出（不代做）。
 
 ### 提示词
 ```

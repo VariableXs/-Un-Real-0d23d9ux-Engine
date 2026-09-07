@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Variable OS · AI-1 存储核 —— 9.1 选盘验证 + SEQ/4K/膨胀率 压测（零依赖，纯 PowerShell）
 

@@ -39,9 +39,14 @@
 - `portable/AI4/README.md` — 快速上手
 - `portable/AI4/Data/README.md` — `D:\Data` 目录模板说明
 
-## 下一步（交给 AI-5 交付核）
+## 下一步（AI-5 交付核已接手，2026-09-07）
 
-- [ ] 五机 A/B 启动联调
-- [ ] BitLocker 真盘解锁/拔盘锁验收
-- [ ] MSIX 挂载后开始菜单出现验收
+AI-5 已交付联调与验收工具，AI-4 的"真机验收"现在有了执行入口：
+
+- [x] 交付物齐套性预检 → `portable/AI5/AI-Integration.ps1 -Action Preflight`（会逐项核验 AI-4 的 9 个脚本 + `Data/`、`Config/`、两份文档）
+- [x] BitLocker 拔盘即锁的只读校验 → `portable/AI5/Chaos-Inject.ps1 -Action Run -Scenario S08`（查恢复密钥 48 位格式 + 保护状态 + autounlock 已关）
+- [ ] 五机 A/B 启动联调 → 需物理机，步骤卡见 `Chaos-Inject.ps1 -Action Plan -Scenario S10`
+- [ ] MSIX 挂载后开始菜单出现验收 → 需真环境，步骤见 `AI4/MSIX-Attach.ps1 -Action Mount` + `-Action Status`
 - [ ] 统一合并到 `main` 后完成总表全 ✅
+
+> AI-5 不改 AI-4 的任何文件；缺件时只在联调报告里标红，不代做。

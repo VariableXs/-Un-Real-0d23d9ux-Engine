@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Variable OS · AI-1 存储核 —— 3.2 读写分离 / 扩充 13.4 Data 分区符号链接
 

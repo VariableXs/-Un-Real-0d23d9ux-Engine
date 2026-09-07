@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Merge", "Create", "Status", "Add-PortableApp")]
   [string]$Action = "Status",
   [string]$AppsVhdx   = "D:\Variable-USB\Apps.vhdx",

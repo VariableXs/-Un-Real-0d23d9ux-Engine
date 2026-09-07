@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet("Package", "Install", "Mount", "Dismount", "Uninstall", "Status")]
   [string]$Action = "Status",
   [string]$PackagePath = "",          # 源目录或 .msix/.appx 路径
