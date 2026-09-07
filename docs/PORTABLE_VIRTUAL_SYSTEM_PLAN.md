@@ -8,7 +8,6 @@
 > **📊 总完成度：文档 100% (12/12章) | 实现 16% (2/12模块)**
 > 下面每章标题右侧框为实现状态，✅=已完成/已验证，⬜=待实施，打勾即代表该模块已落地可验收。
 > **多AI并行：** 已拆为5AI独立完成，见 [`PORTABLE_AI_SPLIT_PLAN.md`](PORTABLE_AI_SPLIT_PLAN.md) + v2 [`PORTABLE_PHASE2_PLAN.md`](PORTABLE_PHASE2_PLAN.md)，每AI右侧框打勾
-> **架构图：** ![架构图](portable_arch.png)
 
 ## ✅ 完成度总览 - 每项右侧框打勾
 
