@@ -23,8 +23,10 @@ $VhdxDirForRun = "D:\Variable-USB"
 # files/dirs = 相对 portable/；docs = 相对 portable/；repoDocs = 相对仓库根
 $Cores = @(
   [pscustomobject]@{
-    core = "AI-1 存储核"; chapter = "第3+9章"; status = "⬜ 待实施"
-    files = @("Create-VHDX.ps1"); dirs = @(); docs = @(); repoDocs = @("docs\AI1-存储.md")
+    core = "AI-1 存储核"; chapter = "第3+9章"; status = "✅ 已完成（已合入 main）"
+    files = @("AI1\Create-VHDX.ps1", "AI1\Tune-Guest.ps1", "AI1\Link-DataApps.ps1",
+      "AI1\Bench-Storage.ps1", "AI1\Maintain-VHDX.ps1")
+    dirs = @(); docs = @("AI1\Bench.md", "AI1\README.md"); repoDocs = @("docs\AI1-存储.md")
   }
   [pscustomobject]@{
     core = "AI-2 隔离核"; chapter = "第4+5章"; status = "⬜ 待实施"

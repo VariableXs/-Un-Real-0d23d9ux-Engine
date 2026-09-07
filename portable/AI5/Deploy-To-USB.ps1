@@ -46,8 +46,11 @@ function Invoke-Preflight {
   $rows = @()
 
   # 1 造盘脚本
-  $cv = Join-Path $PortableDir "Create-VHDX.ps1"
-  $rows += [pscustomobject]@{ item = "Create-VHDX.ps1"; ok = (Test-Path -LiteralPath $cv); detail = $cv }
+  $cv1 = Join-Path $PortableDir "AI1\Create-VHDX.ps1"
+  $cv0 = Join-Path $PortableDir "Create-VHDX.ps1"
+  $hasCv = (Test-Path -LiteralPath $cv1) -or (Test-Path -LiteralPath $cv0)
+  $rows += [pscustomobject]@{ item = "造盘脚本"; ok = $hasCv;
+      detail = $(if (Test-Path -LiteralPath $cv1) { "AI1\Create-VHDX.ps1（定版）" } elseif ($hasCv) { "根目录原型 Create-VHDX.ps1" } else { "缺失" }) }
   $tv = Join-Path $PortableDir "Test-VM.ps1"
   $rows += [pscustomobject]@{ item = "Test-VM.ps1"; ok = (Test-Path -LiteralPath $tv); detail = $tv }
 
@@ -102,8 +105,15 @@ function Invoke-Stage1 {
   Write-Ai5 "阶段1 本地造盘（主计划 12.1）" "Step"
   if (-not $IsoPath) { Write-Ai5 "需要 -IsoPath 指向 Win11 ISO" "Err"; return 1 }
   if (-not (Test-Path -LiteralPath $IsoPath)) { Write-Ai5 "ISO 不存在: $IsoPath" "Err"; return 1 }
-  $cv = Join-Path $PortableDir "Create-VHDX.ps1"
-  if (-not (Test-Path -LiteralPath $cv)) { Write-Ai5 "缺 $cv" "Err"; return 1 }
+  # 优先用 AI-1 的 1TB 1000MB/s 定版造盘脚本；不在则回退根目录原型
+  $cv = Join-Path $PortableDir "AI1\Create-VHDX.ps1"
+  if (-not (Test-Path -LiteralPath $cv)) {
+    $cv = Join-Path $PortableDir "Create-VHDX.ps1"
+    if (-not (Test-Path -LiteralPath $cv)) { Write-Ai5 "缺造盘脚本（AI1\Create-VHDX.ps1 与根目录原型都不在）" "Err"; return 1 }
+    Write-Ai5 "未找到 AI1\Create-VHDX.ps1，回退根目录原型 Create-VHDX.ps1" "Warn"
+  } else {
+    Write-Ai5 "使用 AI-1 定版造盘脚本: $cv"
+  }
   $a = @("-IsoPath", $IsoPath, "-OutDir", $Src, "-SizeGB", "$SizeGB")
   if ($Fixed) { $a += "-Fixed" }
   if ($DryRun) {
