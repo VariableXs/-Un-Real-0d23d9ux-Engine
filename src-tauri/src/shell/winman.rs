@@ -35,6 +35,10 @@ fn dispatch_action(app: &AppHandle, action: &str) {
             let _ = app.emit_to("desktop", "dnd://toggle", ());
         }
         "showDesktop" => {
+            // Delegate the host gesture to the Windows shell first; the
+            // desktop event only keeps Variable's own virtual windows in
+            // sync.  No custom desktop bitmap is drawn here.
+            let _ = crate::shell::compat::shell_forward_gesture("showDesktop".into());
             let _ = app.emit_to("desktop", "sys://show-desktop", ());
         }
         "toggleHide" => {
@@ -42,6 +46,7 @@ fn dispatch_action(app: &AppHandle, action: &str) {
         }
         "snapLeft" | "snapRight" | "snapUp" | "snapDown" => {
             let dir = action.trim_start_matches("snap").to_lowercase();
+            let _ = crate::shell::compat::shell_forward_gesture(action.to_string());
             let _ = app.emit("sys://snap", dir);
         }
         "minimizeAll" => {

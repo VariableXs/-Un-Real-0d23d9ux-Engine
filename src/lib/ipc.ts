@@ -403,6 +403,25 @@ export const ipc = {
   compatApply: () => invoke<Shell.CompatStatus>("compat_apply"),
   compatRestore: () => invoke<Shell.CompatStatus>("compat_restore"),
 
+  // ---- AI-3：Windows Shell 代理（真实 ShellExecute / Shell item / IContextMenu） ----
+  shellExecute: (
+    path: string,
+    options?: { verb?: string; arguments?: string | null; cwd?: string | null; show?: number | null },
+  ) => invoke<Shell.ShellExecuteResult>("shell_execute", {
+    path,
+    verb: options?.verb ?? "open",
+    arguments: options?.arguments ?? null,
+    cwd: options?.cwd ?? null,
+    show: options?.show ?? null,
+  }),
+  shellActivateApplication: (aumid: string) =>
+    invoke<Shell.ShellExecuteResult>("shell_activate_application", { aumid }),
+  shellItemIcon: (path: string) => invoke<Shell.ShellIconResult>("shell_item_icon", { path }),
+  shellContextMenu: (paths: string[], x: number, y: number) =>
+    invoke<Shell.ShellContextMenuResult>("shell_context_menu", { paths, x, y }),
+  shellForwardGesture: (gesture: Shell.WindowsShellGesture) =>
+    invoke<void>("shell_forward_gesture", { gesture }),
+
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
   /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行。 */
   embedLaunch: (id: string) =>
@@ -535,6 +554,26 @@ namespace Shell {
     recommendation: string;
     severity: "none" | "high" | "mitigated" | string;
   }
+  /** AI-3 ShellExecuteExW result. A missing PID is valid for URI/UWP launches. */
+  export interface ShellExecuteResult {
+    launched: boolean;
+    processId: number | null;
+    backend: "shellExecuteEx" | "applicationActivationManager" | "fallback" | string;
+    errorCode: number | null;
+  }
+  /** Explorer-compatible 64px shell icon returned as a PNG data URL. */
+  export interface ShellIconResult {
+    dataUrl: string;
+    size: number;
+    source: "shellItemImageFactory" | "embeddedIcon" | "fallback" | string;
+  }
+  /** Native IContextMenu is modal by design; false means the caller should use its safe fallback menu. */
+  export interface ShellContextMenuResult {
+    shown: boolean;
+    invoked: boolean;
+    commandId: number | null;
+  }
+  export type WindowsShellGesture = "showDesktop" | "altTab" | "snapLeft" | "snapRight" | "snapUp" | "snapDown";
   /** 批次E-12：Wallpaper Engine 壁纸项目（scene/web 类型如实 supported=false）。 */
   export interface WpEngineItem {
     id: string;
@@ -973,6 +1012,10 @@ export type SysBrief = Shell.SysBrief;
 export type SysDisk = Shell.SysDisk;
 export type WpMonitor = Shell.WpMonitor;
 export type CompatStatus = Shell.CompatStatus;
+export type ShellExecuteResult = Shell.ShellExecuteResult;
+export type ShellIconResult = Shell.ShellIconResult;
+export type ShellContextMenuResult = Shell.ShellContextMenuResult;
+export type WindowsShellGesture = Shell.WindowsShellGesture;
 export type WpEngineItem = Shell.WpEngineItem;
 export type VaultStatus = Shell.VaultStatus;
 export type VaultItem = Shell.VaultItem;
