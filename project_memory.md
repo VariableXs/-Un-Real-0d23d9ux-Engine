@@ -437,3 +437,11 @@
 - 前端：存储恢复页新增「导出诊断包」按钮。
 - 测试：workspace 129 全绿；tsc/audit（zh/en 全覆盖）/vitest/build 全绿。
 - 教训：B-34 的核心是"脱敏规则可审计"——scrub 只做两件事（用户名→<user>、主目录→<home>），规则越少越可审计； diagnostic 包不打包 zip 而出 Markdown 也是同理（人可读 = 可自查）。
+
+## AI-3 兼容核（2026-09-07）完成 — 第6+7章 Shell 代理与行为透传
+- 前端新增 `src/system/compat/ShellProxy.ts`：普通打开/runas、AUMID、64px Shell 图标、原生 IContextMenu、Windows 手势五类窄代理；`compatibility.ts` 固化 Blender/Adobe/Wallpaper/Steam 条目和普通→runas→WIN7RTM→DPIUNAWARE 的明确重试序列。
+- `shell/compat.rs`：普通无执行档应用走 ShellExecuteExW；UWP 走 IApplicationActivationManager；Explorer 图标复用 HICON/IShellItemImageFactory 链；单选右键走 IContextMenu/TrackPopupMenuEx；Win+D/贴靠/Alt+Tab 由单一 Windows 虚拟键路径交给宿主 Shell/DWM。失败返回 shown=false 或明确错误，前端保留安全菜单回退。
+- `system::open_path`、Steam URI、AUMID、无执行档第三方启动统一移除 cmd/start 猜测通道；带 profile 的受管进程继续用 CreateProcess 注入环境，避免兼容修复破坏隔离。
+- 文档：`docs/AI3-兼容体验.md`，并同步两份便携系统计划的第6/7章状态。
+- 如实边界：本沙盒没有 Node/Rust 工具链，未能在此运行 typecheck/cargo；Windows UWP、7-Zip/Git 原生菜单与三宿主行为仍需 Windows 实机点验。
+- 教训：Shell API 代理必须和执行档分层；“所有程序都走 Shell”会丢凭据环境注入，正确口径是普通应用 ShellExecute、受管工具 CreateProcess，文档要把这个例外写清楚。

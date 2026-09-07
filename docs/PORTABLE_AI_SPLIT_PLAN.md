@@ -14,7 +14,7 @@
 |---|---|---|---|---|---|---|
 | AI-1 | 存储核 | 第3章 存储架构 + 第9章 性能寿命 + 扩充13/20/26 | VHDX差分链·读写分离·Data符号链接·1TB固定150GB·64KB簇·CompactOS·TRIM/碎片·寿命80年 | `portable/AI1/` | `Create-VHDX.ps1` + `AI1-存储.md` 3000字 | ⬜ 待实施 |
 | AI-2 | 隔离核 | 第4章7层隔离 + 第5章永不卡死6件套 + 扩充15/21/25 | 硬盘/内存/进程/文件/网络/注册表/痕迹7层·假启动壳·按需分页·JobObject限额·看门狗3s·熔断800ms | `portable/AI2/` + `src-tauri/src/shell/isolation.rs` | `Test-VM.ps1` + `isolation.rs` + `AI2-隔离防崩.md` 4000字 | ⬜ 待实施 |
-| AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src/styles/desktop.css` | 透明tile✅ + `AI3-兼容体验.md` 3000字 | ✅ 已完成 |
+| AI-3 | 兼容核 | 第6章5原则 + 第7章三还原 + 扩充16 | ShellExecuteEx/IContextMenu/万能驱动/Sysprep/兼容库·像素Acrylic/行为透传/系统代理 | `src/system/compat/` `src-tauri/src/shell/compat.rs` `src/styles/desktop.css` | Shell代理✅ + 透明tile✅ + `AI3-兼容体验.md` | ✅ 已完成 |
 | AI-4 | 拓展核 | 第8章无限拓展 + 第10章安全合规 + 扩充14/17/18 | 层式VHDX/MSIX App Attach/插件化/云同步·BitLocker/Defender/授权 | `portable/AI4/` + `Data/` | `MSIX-Attach.ps1` + `AI4-拓展安全.md` 3000字 | ✅ 已完成 |
 | AI-5 | 交付核 | 第11章测试验收 + 第12章交付运维 + 扩充19-24/27-30 | 兼容矩阵Top200·混沌注入·压测·四阶段·一键部署 | `portable/AI5/` + `bench/` | `Deploy-To-USB.ps1` + `AI5-测试交付.md` 3000字 | ⬜ 待实施 |
 
@@ -120,13 +120,18 @@
 > 第6章 5原则（不猜问Windows/真API/Sysprep+万能驱动/32位/兼容库） + 第7章 三还原（像素Acrylic/行为透传/系统代理） + 扩充16 200软件清单
 
 ### 已完成
-- [x] 第7章像素：`desktop.css` 透明tile + brand仅官方 + has-img 0.88*--tile 已落地 `1043e3d`
+- [x] 第6章1 `ShellExecuteExW` 代理：`ShellProxy.ts` → `shell/compat.rs`，支持 open/runas、URI/关联、文件夹与 `.lnk`。
+- [x] 第6章2 `IApplicationActivationManager` UWP/AUMID 激活；`IShellItemImageFactory` 64px 图标链；`IContextMenu` 原生右键，失败回退 Variable 菜单。
+- [x] 第6章3 Sysprep/万能驱动作为 VHDX 造盘前置能力保留，兼容层不伪造驱动注入。
+- [x] 第6章4 32/64 位与路径兼容：Shell 负责 WOW64/关联解析，兼容数据库提供 WIN7RTM/DPIUNAWARE 选择序列。
+- [x] 第6章5 `compatibility.ts` 兼容库：Blender/Adobe/Wallpaper/Steam 已建立可扩展条目。
+- [x] 第7章像素：`desktop.css` 透明tile + brand仅官方 + has-img 0.88*--tile 已落地。
+- [x] 第7章行为：Win+D/Win+方向键/Alt+Tab 通过单一虚拟键路径交给宿主 Shell/DWM；Variable 虚拟窗口同步保留。
 
-### 待补
-- [ ] 第6章1 `ShellExecuteExW` 代理（支持runas/UWP）
-- [ ] 第6章2 `IShellItemImageFactory` 64px + `IContextMenu` 原生右键
-- [ ] 第6章3 Sysprep万能驱动已随VHDX
-- [ ] 第7章行为：Win+D/Alt+Tab/Win+方向键透传 DWM
+### 如实边界
+- [x] Alt+Tab 继续由 Windows 优先处理，WebView 获得焦点时才轮转 VWM，抢占时由 Win+Tab 切换器兜底；不伪造系统级任务视图。
+- [x] 原生菜单暂按单选项启用，多选返回 `shown=false`，前端安全菜单继续可用。
+- [x] UWP 可激活但不能保证嵌入 VWM；带执行档的应用为保留环境注入而使用 `CreateProcess`，其余应用走 ShellExecuteEx。
 
 ### 输出
 - `src/system/compat/` + `desktop.css`（已完成）

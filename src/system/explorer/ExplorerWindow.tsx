@@ -1,4 +1,4 @@
-﻿﻿import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft, ArrowRight, ArrowUp, File as FileIcon, Folder, FolderOpen, FolderPlus,
@@ -15,6 +15,7 @@ import { pushToast } from "../../state/uiStore";
 import { openExplorerWindow, trackSelfGeom } from "../windows/appWindows";
 import { openVwmSystem } from "../windows/vwm";
 import { RecycleView } from "../recycle/RecycleView";
+import { showNativeContextMenu } from "../compat/ShellProxy";
 
 /**
  * 批次C 系统窗口：文件管理器完整版（explorer.html，?view=recycle 时载入回收站）。
@@ -761,10 +762,17 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     openContextMenu(ev.clientX, ev.clientY, items);
   };
 
-  const openRowMenu = (ev: React.MouseEvent, e: ExEntry): void => {
+  const openRowMenu = async (ev: React.MouseEvent, e: ExEntry): Promise<void> => {
     ev.preventDefault();
     ev.stopPropagation();
     setSelected(e.path);
+
+    // Let Explorer and installed shell extensions (7-Zip/Git/Tortoise/etc.)
+    // own the menu first.  Non-Windows and unsupported shell items return
+    // shown=false and keep the existing safe Variable menu as a fallback.
+    const native = await showNativeContextMenu([e.path], { x: ev.screenX, y: ev.screenY }).catch(() => null);
+    if (native?.shown) return;
+
     const isFav = favs.includes(e.path);
     const items: MenuItem[] = [
       { label: t("exOpen"), onClick: () => openEntry(e) },
