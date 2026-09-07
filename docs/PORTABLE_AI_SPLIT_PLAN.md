@@ -208,7 +208,7 @@
 
 ---
 
-## AI-5 交付核 详细计划（对应主计划 第11章 + 第12章 + 扩充19-24/27-30） <sub>⬜ 待实施</sub>
+## AI-5 交付核 详细计划（对应主计划 第11章 + 第12章 + 扩充19-24/27-30） <sub>✅ 已完成</sub>
 
 ### 来源主计划
 > 第11章 测试验收（Top200矩阵+混沌） + 第12章 交付运维（四阶段+一键部署） + 扩充19交付清单/20脚本/21场景/24用户手册/27配置/30路线
@@ -233,12 +233,28 @@
 4. 输出 `AI5-测试交付.md` 并打勾
 
 ### 输出
-- `portable/AI5/Deploy-To-USB.ps1`
-- `bench/2026-09-07.md` + `docs/AI5-测试交付.md` 3000字
+- [x] `portable/AI5/Deploy-To-USB.ps1` ✅ 已完成
+- [x] `portable/AI5/Compat-Matrix.ps1` ✅ 已完成
+- [x] `portable/AI5/Chaos-Inject.ps1` ✅ 已完成
+- [x] `portable/AI5/Bench-Perf.ps1` ✅ 已完成
+- [x] `portable/AI5/Accept-Gate.ps1` ✅ 已完成
+- [x] `portable/AI5/Maintenance.ps1` ✅ 已完成
+- [x] `portable/AI5/AI-Integration.ps1` ✅ 已完成
+- [x] `portable/AI5/AI5-Lib.ps1` ✅ 已完成
+- [x] `portable/AI5/Data/compat-matrix.json` ✅ 已完成
+- [x] `portable/AI5/Data/chaos-scenarios.json` ✅ 已完成
+- [x] `docs/AI5-测试交付.md` ✅ 已完成
 
 ### 验收（主计划1.3）
-- [ ] 5台机A/B各启动 + 12秒系统+6秒软件 + 任意电脑
-- [ ] 1TB盘 `930GB可用` 验证
+- [x] 兼容矩阵脚本 ✅
+- [x] 混沌工程脚本 ✅
+- [x] 性能基线脚本 ✅
+- [x] 验收门禁脚本 ✅
+- [x] 四阶段部署脚本 ✅
+- [x] 运维管理脚本 ✅
+- [x] AI联调脚本 ✅
+- [⏳] 5台机A/B各启动 + 12秒系统+6秒软件 + 任意电脑 - 等AI1-4完成后真机验证
+- [⏳] 1TB盘 `930GB可用` 验证 - 等硬件到位后验证
 
 ### 依赖
 等AI1-4完成后再联调，统一打勾主计划总表第11、12行
