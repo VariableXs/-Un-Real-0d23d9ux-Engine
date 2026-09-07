@@ -28,8 +28,7 @@
 > [!IMPORTANT]
 > **🚀 下一阶段 6大件 40000字计划已发布**
 > `内核MicroVM·万能开2.0·插件市场·云同步·企业安全·跨平台`
-> **👉 查看v2计划：[`docs/PORTABLE_PHASE2_PLAN.md`](docs/PORTABLE_PHASE2_PLAN.md) (40000字, 6AI并行)**
-> **👉 AI分工v2：[`docs/PORTABLE_AI_SPLIT_PLAN.md`](docs/PORTABLE_AI_SPLIT_PLAN.md) (AI1-6独立)**
+> **👉 AI工作内容与步骤：[`docs/PORTABLE_AI_SPLIT_PLAN.md`](docs/PORTABLE_AI_SPLIT_PLAN.md) (5AI独立)**
 
 
 

@@ -1,6 +1,9 @@
-# Variable OS - 多AI并行独立完成计划（按主计划详细拆解）
+# Variable OS - AI工作内容与步骤（按40000字主计划详细拆解）
 
-> 基于 `docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md` 30486字 12主章+18扩充章，按1TB 1000MB/s双接口盘 任意电脑可用 目标拆为5AI并行
+> **AI专用**：本文为唯一AI分工文件，每个AI独立目录独立分支，按此执行即完成主计划40000字
+
+
+> 基于 `docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md` 40000字 12主章+18扩充章，按1TB 1000MB/s双接口盘 任意电脑可用 目标拆为5AI并行
 >
 > 每AI独立目录、独立分支、0冲突，全部 ✅ 即全系统 `任意软件不崩溃·任意电脑可用·大软件6秒·极致隔离` 达成
 
@@ -54,6 +57,16 @@
 - [ ] 禁用 `SysMain/WSearch` 对VHDX
 - [ ] RAM盘256MB缓存启动文件
 
+### 工作内容
+- 按主计划第3章实现VHDX差分链、读写分离；按第9章实现性能寿命调优
+- 1TB 1000MB/s双接口任意电脑适配
+
+### 步骤
+1. `CrystalDiskMark` 验证 SEQ≥900 4K≥20
+2. `Create-VHDX.ps1 -SizeGB 150 -Fixed` 造盘 64KB簇 CompactOS
+3. `mklink /D` 读写分离验证
+4. 输出 `AI1-存储.md` 并打勾
+
 ### 输出
 - `portable/AI1/Create-VHDX.ps1`（已提供150GB固定版，需按1TB 1000MB/s最终调优）
 - `docs/AI1-存储.md` 3000字：含VHDX选型对比表、mklink清单、寿命计算
@@ -95,6 +108,15 @@
 - [ ] 限额 Very Low IO + 4核亲和
 - [ ] RAM缓存256MB LRU
 - [ ] 可取消 `TerminateJobObject` + 30s熔断
+
+### 工作内容
+- 按第4章实现7层隔离，按第5章实现6件套防崩
+
+### 步骤
+1. `Test-VM.ps1` 4GB/4核/NAT 三桥全关
+2. `isolation.rs` JobObject限额熔断看门狗
+3. 10场景混沌演练
+4. 输出 `AI2-隔离防崩.md` 并打勾
 
 ### 输出
 - `portable/AI2/Test-VM.ps1`（4GB/4核/限额/NAT）
@@ -161,6 +183,15 @@
 - [ ] Defender排除 `Data/Apps` + Exchange强制扫描
 - [ ] 零售授权 `slmgr /ato`
 
+### 工作内容
+- 按第8章层式/MSIX/插件化/云，按第10章安全
+
+### 步骤
+1. `MSIX-Attach.ps1` 挂载
+2. `market.json` 轻市场
+3. BitLocker 验证
+4. 输出 `AI4-拓展安全.md` 并打勾
+
 ### 输出
 - `portable/AI4/MSIX-Attach.ps1`
 - `docs/AI4-拓展安全.md` 3000字：层式+MSIX+插件+安全
@@ -191,6 +222,15 @@
 #### 12.1-12.5 交付（主计划12.1-12.5）
 - [ ] 阶段1 `Create-VHDX` -> 阶段2 `Test-VM` -> 阶段3 换皮 -> 阶段4 `Deploy-To-USB` 10分钟
 - [ ] 运维 `Optimize-VHD` 月一次 + `User.vhdx` 日备
+
+### 工作内容
+- 按第11章测试+第12章交付，四阶段联调
+
+### 步骤
+1. 等AI1-4完成
+2. `Deploy-To-USB.ps1` 10分钟部署
+3. 5台机A/B测试
+4. 输出 `AI5-测试交付.md` 并打勾
 
 ### 输出
 - `portable/AI5/Deploy-To-USB.ps1`
