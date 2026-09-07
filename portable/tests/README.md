@@ -26,9 +26,20 @@ pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1 -SkipExec
 
 ## 接入 CI
 
-本会话的 GitHub App 令牌**没有 `workflows` 权限**，无法代为提交 `.github/workflows/ci.yml`
-（推送时被远端拒绝：`refusing to allow a GitHub App to create or update workflow ... without workflows permission`）。
-需要有权限的人把下面这段加进 `ci.yml`（与现有 `frontend` / `backend` 作业同级）：
+本会话的 GitHub App 令牌**没有 `workflows` 权限**，推送 `.github/workflows/ci.yml` 会被远端拒绝
+（`refusing to allow a GitHub App to create or update workflow ... without workflows permission`）。
+
+所以改用一条不需要该权限的路：**现有 CI 的 `frontend` 作业已经在 `windows-latest` 上跑 `npm test`**，
+于是把自检挂进 vitest —— `portable/AI5/__tests__/portable.test.ts`：
+
+- 数据不变量用例：任何平台都跑，直接读仓库里的 `Data/*.json` 断言（读的是交付物本身，不是替身）；
+- PowerShell 用例：`process.platform === "win32"` 时真调 `pwsh`/`powershell` 执行
+  `portable/tests/Run-PortableTests.ps1`，超时 10 分钟；非 Windows 明确 `skip` 并说明原因。
+
+因此**不需要改 `ci.yml`**，PR 上的 `frontend` 作业就会在真 PowerShell 上执行本自检。
+`windows-latest` 自带 PowerShell 7（`pwsh`），无需额外安装步骤。
+
+如果后续有人有 `workflows` 权限，也可以额外加一个独立作业（可选，不是必需）：
 
 ```yaml
   portable:
@@ -37,21 +48,5 @@ pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1 -SkipExec
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: PowerShell 版本
-        run: $PSVersionTable | Out-String | Write-Host
-      - name: AI-5 套件自检（官方 AST 语法 + 数据不变量 + 只读动作执行）
-        run: pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1
-      - name: AI-5 验收汇总（只读，未实测项如实标注 todo）
-        if: always()
-        run: pwsh -NoProfile -File portable/AI5/Accept-Gate.ps1 -Action Report -DataDrive $env:SystemDrive -OutDir $env:RUNNER_TEMP\ai5
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ai5-acceptance
-          path: ${{ runner.temp }}/ai5
-          retention-days: 14
-          if-no-files-found: warn
+      - run: pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1
 ```
-
-`windows-latest` 自带 PowerShell 7（`pwsh`），无需额外安装步骤。
-`Accept-Gate` 在 CI 上会如实报告 14 项里哪些是 ⬜ 待真机 —— 这是设计行为，不是失败。

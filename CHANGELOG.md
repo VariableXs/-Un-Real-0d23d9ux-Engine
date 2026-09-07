@@ -44,15 +44,25 @@
 - 上盘用 `robocopy /E` 而非 `/MIR`，不镜像删除目标盘已有文件。
 - 一键还原先把旧 `User.vhdx` 改名保留再覆盖。
 
-### 验证（如实）
+### 验证接线
 
-- 21 个 `.ps1` 结构完整（括号/字符串/here-string/续行）；2 个数据文件为合法 JSON，
-  矩阵不变量（200 条 / 5 类 × 40 / 名称唯一 / 点名条目在列）全部通过。
-- **PowerShell 语法与运行时未在真 PowerShell 上验证**：沙箱为 Linux，且 PowerShell 二进制
-  下载域名被网络策略阻断（仅 npm/PyPI 可达）。补验入口：
-  `pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1`
-  （官方 AST 解析全部 `.ps1` + 数据不变量 + 只读动作执行 + 一个负向用例）。
-- CI 接入待有 `workflows` 权限者提交，YAML 片段见 `portable/tests/README.md`。
+- 本会话的 GitHub App 令牌无 `workflows` 权限，改不了 `.github/workflows/ci.yml`
+  （推送被远端拒绝）。但现有 CI 的 `frontend` 作业本来就在 `windows-latest` 上跑 `npm test`，
+  于是把自检挂进 vitest：`portable/AI5/__tests__/portable.test.ts`
+  —— `win32` 上真调 `pwsh`/`powershell` 执行 `Run-PortableTests.ps1`，非 Windows 明确 skip。
+  **不需要新增 CI 作业即可在真 PowerShell 上验证。**
+- `Run-PortableTests.ps1` 三段：官方 AST 解析全部 `.ps1`（含 AI-4 的 9 个）+ 数据不变量
+  + 只读动作执行与一个负向用例（`Verify` 指向宿主系统盘必须判失败）。
+
+### 验证结果（如实）
+
+- 本地可跑的全部通过：21 个 `.ps1` 结构完整；21 项数据不变量；21 个脚本的函数调用 /
+  `-Action` 名 / dot-source 路径交叉引用一致（含 143 处文档引用）；
+  仓库自有检查 `tsc --noEmit` 通过、vitest 231 全绿、`tools/audit.cjs` 通过。
+- 断言经过反向验证：向 `Data/*.json` 注入 4 个真实缺陷（删条目 / 假勾 pass / 危险场景改 auto /
+  改 6s 预算）后，6 条断言如期失败；恢复后重新全绿。
+- **本会话未在 PowerShell 上执行过任何脚本**：沙箱为 Linux，PowerShell 二进制下载域名被网络策略
+  阻断（仅 npm/PyPI 可达）。PowerShell 语法与运行时由 PR 上的 `frontend` 作业在 windows-latest 验证。
 - 真机验收 14 项全部保持 ⬜：无 Windows 宿主、无 1TB 目标盘、无 5 台测试机。
 
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-06 实机反馈会话 2：原生图标 + 壁纸预览回退）

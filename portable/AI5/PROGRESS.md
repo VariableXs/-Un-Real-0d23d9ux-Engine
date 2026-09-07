@@ -14,7 +14,7 @@
 | 结构校验 | ✅ 通过 | 9/9 个 `.ps1` 括号/字符串/here-string/续行完整；2/2 JSON 合法 |
 | **PowerShell 语法与运行时验证** | ⬜ **未执行** | 沙箱是 Linux 且 PowerShell 下载域名被网络策略阻断；须在 Windows 上跑自检 |
 | 真机验收（14 项） | ⬜ 0/14 | 无 Windows 宿主 / 无 1TB 目标盘 / 无 5 台测试机 |
-| CI 接入 | ⏳ 待有权限者 | GitHub App 无 `workflows` 权限，YAML 片段已写在 `../tests/README.md` |
+| CI 接入 | ✅ 已接通 | 借现有 `npm test`（windows-latest）跑 `portable/AI5/__tests__/portable.test.ts`，无需 `workflows` 权限 |
 
 ## 已实现（第11章 · 测试与验收）
 
@@ -57,8 +57,8 @@
 
 ## 下一步（需真机 / 需权限）
 
-- [ ] 在 Windows 上跑 `pwsh -File portable/tests/Run-PortableTests.ps1`，把语法与运行时问题清零
-- [ ] 有 `workflows` 权限的人把 `../tests/README.md` 里的 YAML 加进 `.github/workflows/ci.yml`
+- [x] 接通 CI：`portable/AI5/__tests__/portable.test.ts` 在 windows-latest 上真调 pwsh 跑自检
+- [ ] 看 PR 上 `frontend` 作业的 PowerShell 自检结果，把语法/运行时问题清零
 - [ ] 1TB 固态U盘到位后：`Bench-Perf -Action Run -WriteRepo` 回填 `docs/bench/2026-09-07-portable.md`
 - [ ] 5 台机 A/B 双模式启动，人工实测录入 `manual-results.json`，跑 `Accept-Gate -Action Check`
 - [ ] 等 AI-1（第3+9章）与 AI-2（第4+5章）交付后重跑 `AI-Integration -Action Preflight`

@@ -198,22 +198,23 @@
 | 矩阵不变量（200 条 / 5 类 × 40 / 名称唯一 / 点名条目在列） | 生成脚本内 `assert` | 通过 |
 | **真 PowerShell AST 语法 + 只读动作执行** | `portable/tests/Run-PortableTests.ps1` | **本沙箱无法执行**（Linux，且 PowerShell 二进制下载域名被网络策略阻断） |
 
-**未验证的部分（明确声明）**：所有脚本的 PowerShell 语法正确性与运行时行为，**尚未在真正的 PowerShell 上执行过**。
-补验方式（任选其一，都是跑本仓库自己的脚本，不是替身）：
+**未验证的部分（明确声明）**：本会话在 Linux 沙箱内**没有执行过任何 PowerShell**
+（PowerShell 二进制的所有下载域名被网络策略阻断，仅 npm/PyPI 可达）。
+因此 PowerShell 的语法正确性与运行时行为改由 CI 在真 PowerShell 上验证 —— 已接通，方式见下。
+
+**验证接线（已落地，不需要 `workflows` 权限）**：本会话的 GitHub App 令牌无法修改
+`.github/workflows/ci.yml`（推送被远端拒绝），但**现有 CI 的 `frontend` 作业本来就在
+`windows-latest` 上跑 `npm test`**，于是把自检挂进 vitest：`portable/AI5/__tests__/portable.test.ts`
+
+- 数据不变量用例：任何平台都跑，直接读仓库里的 `Data/*.json` 断言（读交付物本身，不是替身）；
+- PowerShell 用例：`win32` 上真调 `pwsh`/`powershell` 执行 `Run-PortableTests.ps1`（超时 10 分钟），
+  非 Windows 明确 `skip` 并注明原因。
+
+所以 PR 上的 `frontend` 作业就会在真 PowerShell 上跑完整自检，无需新增 CI 作业。
+本地手工补验同样可以：
 
 ```powershell
-# 本地 Windows / 任意 Windows 机器
 pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1
-```
-
-```yaml
-# 或者把这段加进 .github/workflows/ci.yml（本会话的 GitHub App 令牌无 workflows 权限，无法代为提交）
-  portable:
-    runs-on: windows-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - run: pwsh -NoProfile -File portable/tests/Run-PortableTests.ps1
 ```
 
 `Run-PortableTests.ps1` 做三件事，全部作用于**本仓库真实文件**：
