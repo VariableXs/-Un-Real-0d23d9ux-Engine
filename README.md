@@ -4,8 +4,8 @@
 > **📦 30000字 移动大容量U盘随插随用虚拟系统 极其详细施工计划已发布**
 > `任何软件不崩溃 · 任何电脑随插随用 · 10GB大软件不卡死 · 极致隔离 · 无限拓展`
 > **👉 查看计划：[`docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md`](docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md)**
-> 完成度总览：文档 100% (12/12章) | 实现 16% (2/12模块) - 每章右侧 ✅/⬜ 框打勾，完成即勾
-> ![完成度](https://img.shields.io/badge/文档-30486字-blue) ![状态](https://img.shields.io/badge/实现-2%2F12-green)
+> 完成度总览：文档 100% (12/12章 40000字) | 实现 16% (2/12模块) - 每章右侧 ✅/⬜ 框打勾，完成即勾
+> ![完成度](https://img.shields.io/badge/文档-40500字-blue) ![状态](https://img.shields.io/badge/实现-2%2F12-green)
 
 > [!TIP]
 > **完成度总览**
