@@ -26,9 +26,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
+use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::error::CmdResult;
+use crate::error::{AppError, CmdResult};
 
 static COMPAT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
@@ -199,6 +200,363 @@ pub fn spawn_compat_watcher(app: AppHandle) {
             }
         })
         .ok();
+}
+
+// -------------------------------------------------------------------------
+// AI-3 Windows Shell proxy
+// -------------------------------------------------------------------------
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellExecuteResult {
+    pub launched: bool,
+    pub process_id: Option<u32>,
+    pub backend: String,
+    pub error_code: Option<i32>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellIconResult {
+    pub data_url: String,
+    pub size: u32,
+    pub source: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellContextMenuResult {
+    pub shown: bool,
+    pub invoked: bool,
+    pub command_id: Option<u32>,
+}
+
+/// Open a path/URI/shortcut with the Windows Shell.  This is deliberately a
+/// separate command from the profiled CreateProcess path: ShellExecute is the
+/// correct authority for associations, .lnk files, folders, protocols, and
+/// UAC verbs.  No cmd.exe/start string is ever constructed here.
+#[tauri::command]
+pub fn shell_execute(
+    path: String,
+    verb: Option<String>,
+    arguments: Option<String>,
+    cwd: Option<String>,
+    show: Option<i32>,
+) -> CmdResult<ShellExecuteResult> {
+    shell_execute_path(
+        Path::new(&path),
+        verb.as_deref(),
+        arguments.as_deref(),
+        cwd.as_deref().map(Path::new),
+        show,
+    )
+}
+
+/// Rust-side entry point used by the file opener and the third-party launcher.
+/// Keeping it public(crate) prevents those callers from growing their own
+/// platform-specific launchers.
+pub(crate) fn shell_execute_path(
+    path: &Path,
+    verb: Option<&str>,
+    arguments: Option<&str>,
+    cwd: Option<&Path>,
+    show: Option<i32>,
+) -> CmdResult<ShellExecuteResult> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::GetProcessId;
+        use windows::Win32::UI::Shell::{
+            ShellExecuteExW, SEE_MASK_INVOKEIDLIST, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NOASYNC,
+            SHELLEXECUTEINFOW,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        let file: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let verb_wide: Vec<u16> = verb
+            .unwrap_or("open")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let arg_wide: Vec<u16> = arguments
+            .unwrap_or("")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let dir_wide: Option<Vec<u16>> = cwd.map(|p| p.as_os_str().encode_wide().chain(Some(0)).collect());
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_INVOKEIDLIST | SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+            lpVerb: PCWSTR(verb_wide.as_ptr()),
+            lpFile: PCWSTR(file.as_ptr()),
+            lpParameters: PCWSTR(arg_wide.as_ptr()),
+            lpDirectory: dir_wide
+                .as_ref()
+                .map(|v| PCWSTR(v.as_ptr()))
+                .unwrap_or_else(PCWSTR::null),
+            nShow: show.unwrap_or(SW_SHOWNORMAL.0),
+            ..Default::default()
+        };
+        unsafe { ShellExecuteExW(&mut info) }.map_err(|e| {
+            let code = e.code().0;
+            AppError::io(format!(
+                "Windows Shell 无法打开目标 / ShellExecuteExW failed (0x{code:08X}): {}",
+                shell_error_hint(code)
+            ))
+        })?;
+        let pid = if info.hProcess.is_invalid() {
+            None
+        } else {
+            let id = unsafe { GetProcessId(info.hProcess) };
+            unsafe {
+                let _ = CloseHandle(info.hProcess);
+            }
+            (id != 0).then_some(id)
+        };
+        Ok(ShellExecuteResult {
+            launched: true,
+            process_id: pid,
+            backend: "shellExecuteEx".into(),
+            error_code: None,
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        // The product targets Windows.  Keep a truthful development fallback
+        // so the front-end and unit tests remain usable on other hosts.
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(path);
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        let child = command
+            .spawn()
+            .map_err(|e| AppError::io(format!("无法打开目标 / cannot open target: {e}")))?;
+        let _ = (verb, arguments, show);
+        Ok(ShellExecuteResult {
+            launched: true,
+            process_id: Some(child.id()),
+            backend: "fallback".into(),
+            error_code: None,
+        })
+    }
+}
+
+fn shell_error_hint(code: i32) -> &'static str {
+    match code {
+        2 => "文件不存在 / file not found",
+        3 => "路径不存在 / path not found",
+        5 => "访问被拒绝 / access denied",
+        1155 => "没有关联程序 / no application is associated",
+        _ => "请让 Windows 选择关联程序 / let Windows choose the association",
+    }
+}
+
+/// Activate a packaged application without going through explorer.exe or a
+/// shell command line.  AUMID is supplied by the Windows Start menu/AppX
+/// registration, not guessed from a display name.
+#[tauri::command]
+pub fn shell_activate_application(aumid: String) -> CmdResult<ShellExecuteResult> {
+    let id = aumid.trim();
+    if id.is_empty() {
+        return Err(AppError::validation("AUMID 不能为空 / AUMID cannot be empty"));
+    }
+    #[cfg(windows)]
+    {
+        use windows::core::{HSTRING, PWSTR};
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_LOCAL_SERVER,
+            COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{
+            ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager,
+        };
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        let need_uninit = hr.is_ok();
+        let result = (|| -> CmdResult<u32> {
+            let manager: IApplicationActivationManager = unsafe {
+                CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_LOCAL_SERVER)
+            }
+            .map_err(|e| AppError::io(format!("创建应用激活管理器失败 / activation manager: {e}")))?;
+            let app_id = HSTRING::from(id);
+            unsafe {
+                manager
+                    .ActivateApplication(&app_id, PWSTR::null(), ACTIVATEOPTIONS(0))
+                    .map_err(|e| AppError::io(format!("激活 Store 应用失败 / ActivateApplication: {e}")))
+            }
+        })();
+        if need_uninit {
+            unsafe { CoUninitialize() };
+        }
+        let pid = result?;
+        Ok(ShellExecuteResult {
+            launched: true,
+            process_id: (pid != 0).then_some(pid),
+            backend: "applicationActivationManager".into(),
+            error_code: None,
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = id;
+        Err(AppError::validation(
+            "当前平台不支持 AUMID 激活 / AUMID activation is Windows-only",
+        ))
+    }
+}
+
+/// Explorer-compatible 64px icon.  launcher.rs already owns the carefully
+/// tested HICON → PNG and IShellItemImageFactory fallback chain; this command
+/// exposes that chain from the compatibility boundary instead of making the
+/// UI know which Win32 API to call.
+#[tauri::command]
+pub fn shell_item_icon(path: String) -> CmdResult<ShellIconResult> {
+    let data_url = crate::shell::launcher::icon_dataurl(path)?;
+    let source = if data_url.starts_with("data:image/png") {
+        "shellItemImageFactory"
+    } else {
+        "fallback"
+    };
+    Ok(ShellIconResult {
+        data_url,
+        size: 64,
+        source: source.into(),
+    })
+}
+
+/// Show one item's native IContextMenu.  Multiple selection is intentionally
+/// returned as unsupported for now rather than showing a misleading menu.
+#[tauri::command]
+pub fn shell_context_menu(paths: Vec<String>, x: i32, y: i32) -> CmdResult<ShellContextMenuResult> {
+    if paths.len() != 1 {
+        return Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None });
+    }
+    let Some(path) = paths.first() else {
+        return Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None });
+    };
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::{PCSTR, PCWSTR};
+        use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+        use windows::Win32::UI::Shell::{
+            IContextMenu, SHCreateItemFromParsingName, BHID_SFUIObject, CMF_NORMAL,
+            CMINVOKECOMMANDINFO,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreatePopupMenu, DestroyMenu, GetForegroundWindow, SW_SHOWNORMAL,
+            TrackPopupMenuEx, TPM_NONOTIFY, TPM_RETURNCMD,
+        };
+
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        let need_uninit = hr.is_ok();
+        let result = (|| -> CmdResult<ShellContextMenuResult> {
+            let wide: Vec<u16> = Path::new(path).as_os_str().encode_wide().chain(Some(0)).collect();
+            let item: windows::Win32::UI::Shell::IShellItem = unsafe {
+                SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
+            }
+            .map_err(|e| AppError::not_found(format!("无法解析 Shell 项 / shell item not found: {e}")))?;
+        let menu_handler: IContextMenu = unsafe {
+            item.BindToHandler::<_, IContextMenu>(None, &BHID_SFUIObject)
+        }
+        .map_err(|e| AppError::io(format!("无法获取右键扩展 / context menu handler: {e}")))?;
+        let menu = unsafe { CreatePopupMenu() }
+            .map_err(|e| AppError::io(format!("无法创建右键菜单 / CreatePopupMenu: {e}")))?;
+        let first = 1u32;
+        let last = 0x7fffu32;
+        let query = unsafe { menu_handler.QueryContextMenu(menu, 0, first, last, CMF_NORMAL) };
+        if let Err(e) = query {
+            unsafe { let _ = DestroyMenu(menu); }
+            return Err(AppError::io(format!("填充右键菜单失败 / QueryContextMenu: {e}")));
+        }
+        let owner = unsafe { GetForegroundWindow() };
+        // windows-rs exposes this Win32 BOOL return as a BOOL wrapper.  With
+        // TPM_RETURNCMD the underlying integer is the selected menu id.
+        let command = unsafe {
+            TrackPopupMenuEx(
+                menu,
+                (TPM_RETURNCMD | TPM_NONOTIFY).0,
+                x,
+                y,
+                owner,
+                None,
+            )
+            .0
+            .max(0) as u32
+        };
+        let invoked = command >= first;
+        let invoke_result = if invoked {
+            // IContextMenu verbs are integer offsets relative to the first id.
+            let verb = (command - first) as usize as *const u8;
+            let invoke = CMINVOKECOMMANDINFO {
+                cbSize: std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32,
+                hwnd: owner,
+                lpVerb: PCSTR(verb),
+                nShow: SW_SHOWNORMAL.0,
+                ..Default::default()
+            };
+            Some(unsafe { menu_handler.InvokeCommand(&invoke) })
+        } else {
+            None
+        };
+        unsafe { let _ = DestroyMenu(menu); }
+        if let Some(result) = invoke_result {
+            result.map_err(|e| AppError::io(format!("执行右键命令失败 / InvokeCommand: {e}")))?;
+        }
+            Ok(ShellContextMenuResult {
+                shown: true,
+                invoked,
+                command_id: (command >= first).then_some(command - first),
+            })
+        })();
+        if need_uninit {
+            unsafe { CoUninitialize() };
+        }
+        result
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (path, x, y);
+        Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None })
+    }
+}
+
+/// Native shell gestures. Windows owns these semantics; Variable does not
+/// redraw a fake task switcher or fake desktop.  A single virtual-key path
+/// hands Win+D, Win+Arrow, and Alt+Tab to the normal Explorer/DWM handling.
+#[tauri::command]
+pub fn shell_forward_gesture(gesture: String) -> CmdResult<()> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP};
+        const VK_LWIN: u8 = 0x5b;
+        const VK_ALT: u8 = 0x12;
+        let key = match gesture.as_str() {
+            "showDesktop" => 0x44,
+            "altTab" => 0x09,
+            "snapLeft" => 0x25,
+            "snapRight" => 0x27,
+            "snapUp" => 0x26,
+            "snapDown" => 0x28,
+            _ => return Err(AppError::validation(format!("未知 Windows 手势 / unknown gesture: {gesture}"))),
+        };
+        let modifier = if gesture == "altTab" { VK_ALT } else { VK_LWIN };
+        let key_flags = if gesture.starts_with("snap") { KEYEVENTF_EXTENDEDKEY } else { Default::default() };
+        unsafe {
+            keybd_event(modifier, 0, Default::default(), 0);
+            keybd_event(key, 0, key_flags, 0);
+            keybd_event(key, 0, key_flags | KEYEVENTF_KEYUP, 0);
+            keybd_event(modifier, 0, KEYEVENTF_KEYUP, 0);
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = gesture;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

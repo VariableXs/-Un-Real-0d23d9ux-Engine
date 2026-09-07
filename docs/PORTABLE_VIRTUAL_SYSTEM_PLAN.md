@@ -5,7 +5,7 @@
 > **一句话目标**: 在 1TB 固态U盘中装入一个完整的、真 Windows 11 内核的便携系统，实现 `任何软件都能跑、任何崩溃都不传染、任何电脑随插随用、加载10GB大软件不卡死、可无限拓展`。本计划总计约 30000 字，覆盖架构、隔离、防崩、兼容、性能、拓展、测试、运维、安全、合规、交付 12 章。
 
 > [!TIP]
-> **📊 总完成度：文档 100% (12/12章) | 实现 42% (5/12模块)**
+> **📊 总完成度：文档 100% (12/12章) | 实现 50% (6/12模块：1/2/3/6/7/9)**
 > 下面每章标题右侧框为实现状态，✅=已完成/已验证，⬜=待实施，打勾即代表该模块已落地可验收。
 
 ## ✅ 完成度总览 - 每项右侧框打勾
@@ -17,8 +17,8 @@
 | 3 | 存储架构 - VHDX差分链 + 读写分离 | ✅ | ✅ | ✅ 已完成 (AI-1) |
 | 4 | 极致隔离 - 7层隔离实现 | ✅ | ⬜ | ⬜ 待实施 |
 | 5 | 永不卡死 - 大软件流式加载6件套 | ✅ | ⬜ | ⬜ 待实施 |
-| 6 | 完全兼容 - 任何软件都能打开5原则 | ✅ | ⬜ | ⬜ 待实施 |
-| 7 | 真Windows体验 - 像素/行为/系统三还原 | ✅ | ✅ | ✅ 已完成 (透明tile已落地) |
+| 6 | 完全兼容 - 任何软件都能打开5原则 | ✅ | ✅ | ✅ 已完成 (Shell代理已落地) |
+| 7 | 真Windows体验 - 像素/行为/系统三还原 | ✅ | ✅ | ✅ 已完成 (透明tile + Shell行为透传已落地) |
 | 8 | 无限拓展 - 层式镜像 + MSIX + 插件化 | ✅ | ⬜ | ⬜ 待实施 |
 | 9 | 性能与寿命优化 - U盘与VHDX调优 | ✅ | ✅ | ✅ 已完成 (AI-1) |
 | 10 | 安全与合规 - 加密/杀软/授权 | ✅ | ⬜ | ⬜ 待实施 |
@@ -262,7 +262,7 @@ AssignProcessToJobObject(job, child_handle);
 | Photoshop 2024 (3.8GB) | 24s | 6.0s | 0ms |
 | VS2022 (8GB) | 22s | 5.8s | 0ms |
 
-## 6. 完全兼容 - 任何软件都能打开5原则 <sub>⬜ 待实施</sub>
+## 6. 完全兼容 - 任何软件都能打开5原则 <sub>✅ 已完成（Shell代理 / 原生右键 / UWP）</sub>
 
 
 ### 6.1 原则1 不猜，问Windows
@@ -309,7 +309,7 @@ ShellExecuteExW(&mut SHELLEXECUTEINFOW {
 ```
 Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变量，失败自动依次重试 `普通->管理员->兼容->DPI`。
 
-## 7. 真Windows体验 - 像素/行为/系统三还原 <sub>✅ 已完成</sub>
+## 7. 真Windows体验 - 像素/行为/系统三还原 <sub>✅ 已完成（像素 + 行为透传）</sub>
 
 
 ### 7.1 像素还原
@@ -330,6 +330,12 @@ Core 启动前查表，自动加 `__COMPAT_LAYER=WIN7RTM DPIUNAWARE` 环境变�
 - **通知中心**：监听 `INotificationListener`，宿主通知镜像至虚拟系统。
 - **托盘**：`INotificationArea` 读取真电量/音量/WiFi 状态，`Shell_NotifyIcon` 透传。
 - **右键刷新**：`icon-in 0.45s` 重排动画，行为与真桌面一致。
+
+### 7.4 本批次落地边界（AI-3）
+
+`src/system/compat/ShellProxy.ts` 是前端唯一 Shell 入口；Tauri `shell/compat.rs` 将启动、图标、右键和桌面手势转给 Windows 真 API：`ShellExecuteExW`、`IApplicationActivationManager`、`IShellItemImageFactory`、`IContextMenu` 与虚拟键输入。普通未配置执行档的软件走 Shell，带凭据重定向的执行档仍走安全的 `CreateProcess`，不会为了“像 Shell”而丢失隔离。
+
+右键菜单与图标失败时保持已有 UI 兜底，不伪造 Windows 能力；多选原生菜单和非 Windows 平台明确返回 `shown=false`。UWP/AUMID 只能保证独立窗口激活，PID 仅作观测值，不能承诺可嵌入 VWM。`Win+D`/贴靠手势交给宿主 Shell/DWM，Variable 只同步自己的虚拟窗口状态。
 
 ## 8. 无限拓展 - 层式镜像 + MSIX + 插件化 <sub>⬜ 待实施</sub>
 

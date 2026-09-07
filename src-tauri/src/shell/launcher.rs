@@ -373,23 +373,24 @@ pub(crate) fn tp_launch_inner(
         let profile = crate::exec::ExecProfile::from(
             (app_item.id.as_str(), app_item.profile.clone()),
         );
-        match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &[]) {
-            Ok(pid) => pid,
-            Err(profile_err) => {
-                if profile.is_empty() {
-                    // 无执行档配置时失败即真失败，不再多试一次
-                    return Err(AppError::io(format!("启动失败 / Launch failed: {profile_err}")));
+        if profile.is_empty() {
+            // Principle 1: an unprofiled app is opened by Windows itself.
+            // This preserves file associations, AppX/URI handling and the
+            // user's normal Shell verb semantics.  Profiled tools still use
+            // CreateProcess so their environment can be redirected safely.
+            crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?
+                .process_id
+        } else {
+            match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &[]) {
+                Ok(pid) => pid,
+                Err(profile_err) => {
+                    crate::state::append_log(
+                        &st.logs_dir,
+                        &format!("[exec] profile spawn failed for {} ({}), falling back to ShellExecute: {profile_err}", app_item.id, app_item.name),
+                    );
+                    crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?
+                        .process_id
                 }
-                crate::state::append_log(
-                    &st.logs_dir,
-                    &format!("[exec] profile spawn failed for {} ({}), falling back to legacy channel: {profile_err}", app_item.id, app_item.name),
-                );
-                let mut c = std::process::Command::new(&p);
-                if let Some(parent) = p.parent() {
-                    c.current_dir(parent);
-                }
-                spawn_detached(&mut c)
-                    .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
             }
         }
     };
