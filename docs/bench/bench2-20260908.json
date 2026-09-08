@@ -1,0 +1,43 @@
+{
+  "takenAt": "2026-09-08T15:03:04.126Z",
+  "storm": {
+    "latestDeliveredPct": 100,
+    "loopMs": 0.42
+  },
+  "io": {
+    "bytes": 67108864,
+    "writeMs": 44.8,
+    "mbPerSec": 1428.7
+  },
+  "slice": {
+    "totalMs": 0,
+    "maxSliceMs": 0.03,
+    "ok": false
+  },
+  "memory": {
+    "heapUsedMb": 5,
+    "rssMb": 50,
+    "externalMb": 3
+  },
+  "assertions": [
+    {
+      "id": "maxSliceMs",
+      "ok": true,
+      "value": 0.03,
+      "budget": 12
+    },
+    {
+      "id": "stormLoopMs",
+      "ok": true,
+      "value": 0.42,
+      "budget": 500
+    },
+    {
+      "id": "ioMbPerSec",
+      "ok": true,
+      "value": 1428.7,
+      "budget": 50
+    }
+  ],
+  "pass": true
+}
