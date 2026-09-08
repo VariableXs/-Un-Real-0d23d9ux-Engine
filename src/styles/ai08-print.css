@@ -1,0 +1,101 @@
+/* ============================================================
+   AI-08 · V-98 打印队列查看器（PrintQueueApp）
+   深色玻璃面板风格，变量复用 global.css :root。
+   ============================================================ */
+
+.pq-app {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pq-spacer {
+  flex: 1;
+}
+
+.pq-printer-select {
+  max-width: 220px;
+}
+
+.pq-err,
+.pq-empty {
+  margin: 8px 12px;
+  text-align: center;
+}
+
+.pq-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pq-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(90px, 1fr) 70px 130px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12.5px;
+}
+
+.pq-row:last-child {
+  border-bottom: none;
+}
+
+.pq-head {
+  position: sticky;
+  top: 0;
+  background: rgba(16, 22, 38, 0.95);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+
+.pq-doc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.pq-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
+.pq-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+.pq-dot-paused { background: var(--warn); }
+.pq-dot-error,
+.pq-dot-offline,
+.pq-dot-paper-out { background: var(--danger); }
+.pq-dot-printed,
+.pq-dot-printing,
+.pq-dot-spooling { background: var(--ok); }
+
+.pq-pages,
+.pq-time {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.pq-actions {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+}

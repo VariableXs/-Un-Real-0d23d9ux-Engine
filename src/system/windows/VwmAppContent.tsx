@@ -32,6 +32,13 @@ import { RenameApp } from "../tools/RenameApp";
 import { DupeApp } from "../tools/DupeApp";
 import { SpaceApp } from "../tools/SpaceApp";
 import { ChecksumApp } from "../tools/ChecksumApp";
+// AI-08 基础工具组六件（Z-22 时钟中心 / Z-24 Emoji / Z-25 放大镜 / Z-26 换算 / Z-27 系统信息 / V-98 打印队列）
+import { ClockHubApp } from "../tools/ClockHubApp";
+import { EmojiPanelApp } from "../tools/EmojiPanelApp";
+import { MagnifierApp } from "../tools/MagnifierApp";
+import { ConverterApp } from "../tools/ConverterApp";
+import { SysInfoApp } from "../tools/SysInfoApp";
+import { PrintQueueApp } from "../tools/PrintQueueApp";
 import { TaskManApp } from "../taskman/TaskManApp";
 import { L3CaptureView } from "./L3CaptureView";
 
@@ -124,6 +131,13 @@ export function VwmAppContent(props: {
         {app === "dupe" && <DupeApp winId={props.winId} />}
         {app === "space" && <SpaceApp winId={props.winId} />}
         {app === "checksum" && <ChecksumApp winId={props.winId} />}
+        {/* AI-08 基础工具组六件（Z-22/Z-24/Z-25/Z-26/Z-27/V-98） */}
+        {app === "clockhub" && <ClockHubApp winId={props.winId} />}
+        {app === "emoji" && <EmojiPanelApp winId={props.winId} />}
+        {app === "magnifier" && <MagnifierApp winId={props.winId} />}
+        {app === "convert" && <ConverterApp winId={props.winId} />}
+        {app === "sysinfo" && <SysInfoApp winId={props.winId} />}
+        {app === "printqueue" && <PrintQueueApp winId={props.winId} />}
       </div>
     );
   }

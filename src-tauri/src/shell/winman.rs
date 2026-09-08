@@ -30,6 +30,11 @@ fn dispatch_action(app: &AppHandle, action: &str) {
         "clipboardHistory" => {
             let _ = app.emit_to("desktop", "sys://open-clipboard", ());
         }
+        // AI-08 Z-28：运行对话框呼出（Win+R 被系统保留 → ctrl+alt+r 降级口径；
+        // 真正的 Win+R 转译属 Z-09 系统组合键让位协议（键位纪律组）领地）
+        "runDialog" => {
+            let _ = app.emit_to("desktop", "sys://open-run", ());
+        }
         "quickBluetooth" => {
             let _ = app.emit_to("desktop", "quickpanel://open", "bluetooth");
         }

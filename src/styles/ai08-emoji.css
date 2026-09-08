@@ -1,0 +1,205 @@
+/* ============================================================
+   Z-24 字符与 Emoji 面板（AI-08 基础工具组）
+   类名前缀 em-，设计语言沿用 tools.css / global.css 的变量与控件基线。
+   ============================================================ */
+
+.em-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+/* ---------- 顶部搜索条 ---------- */
+.em-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px 8px;
+  flex: none;
+}
+
+.em-search {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- 主体：侧栏 + 内容 ---------- */
+.em-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 分类侧栏 */
+.em-cats {
+  display: flex;
+  flex-direction: column;
+  width: 108px;
+  flex: none;
+  overflow-y: auto;
+  padding: 0 6px 8px 10px;
+  gap: 2px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.em-cat {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  font-size: 12px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.em-cat:hover {
+  color: var(--fg, #fff);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.em-cat.active {
+  color: var(--fg, #fff);
+  background: rgba(122, 162, 247, 0.18);
+}
+
+.em-cat-icon {
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+}
+
+.em-cat-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.em-cats-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 4px 4px;
+}
+
+/* 主内容滚动区 */
+.em-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 区块标题（最近使用 / 分类名 / 符号子标签行） */
+.em-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.em-section-title {
+  font-size: 11.5px;
+  color: var(--dim, rgba(255, 255, 255, 0.55));
+  flex: none;
+}
+
+/* ---------- emoji 网格（固定 10 列，配合键盘方向键移动） ---------- */
+.em-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+}
+
+.em-item {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 19px;
+  line-height: 1;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.em-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.em-item:focus-visible {
+  border-color: var(--accent, #7aa2f7);
+  background: rgba(122, 162, 247, 0.16);
+  outline: none;
+}
+
+/* 符号（非彩色 emoji）字号略小，避免基线跳动感 */
+.em-item.is-symbol {
+  font-size: 16px;
+}
+
+/* 最近使用行横向紧凑 */
+.em-recent-grid {
+  grid-template-columns: repeat(12, 1fr);
+}
+
+.em-recent-grid .em-item {
+  min-height: 28px;
+  font-size: 17px;
+}
+
+/* ---------- 符号区子标签（数学 / 货币 / 箭头 / 制表） ---------- */
+.em-sym-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.em-sym-tab {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.em-sym-tab:hover {
+  color: var(--fg, #fff);
+}
+
+.em-sym-tab.active {
+  color: var(--fg, #fff);
+  border-color: var(--accent, #7aa2f7);
+  background: rgba(122, 162, 247, 0.14);
+}
+
+/* ---------- 空态 ---------- */
+.em-empty {
+  margin: auto;
+  text-align: center;
+  padding: 0 12px;
+  color: var(--dim, rgba(255, 255, 255, 0.55));
+  font-size: 12.5px;
+}
+
+/* ---------- 键盘可达提示 ---------- */
+.em-kbd-hint {
+  flex: none;
+  padding: 4px 12px 6px;
+  font-size: 11px;
+  color: var(--dim, rgba(255, 255, 255, 0.4));
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}

@@ -27,6 +27,8 @@ import { startHardwarePolling, useHw } from "../tray/hardware";
 import { QuickPanel, useNotifyBadge } from "../tray/QuickPanel";
 import { ImeIndicator } from "./ImeIndicator";
 import { MediaControl } from "./MediaControl";
+// AI-08 Z-23：任务栏天气小组件（配置未启用时不渲染、不挂定时器）
+import { WeatherBadge } from "./WeatherBadge";
 import { pushRecent } from "../startmenu/recent";
 // ---- AI-03 任务栏与托盘组（U-15 / M-10…M-18 / V-15…V-20）----
 import { aggregateRecentForApp, windowsForApp } from "./jumplist";
@@ -870,6 +872,9 @@ export function Taskbar(props: {
 
       {/* F-5.4 媒体控制指示（探测不到则不渲染） */}
       <MediaControl />
+
+      {/* AI-08 Z-23：任务栏天气小组件（未启用时恒返回 null，零开销） */}
+      <WeatherBadge />
 
       {/* 批次D：时钟点击弹日历（本地时区，零网络）+ M-12 悬停详情卡（多时区/ISO 周数/今日未读） */}
       <button

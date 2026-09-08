@@ -1,0 +1,159 @@
+/* AI-08 · Z-27 系统信息面板（类名前缀 si-）
+   红线：只读信息展示样式；无写操作入口。 */
+
+.si-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--panel);
+}
+
+.si-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.si-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.si-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.si-empty {
+  padding: 24px;
+  text-align: center;
+}
+
+.si-sec {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px 10px;
+  background: rgba(127, 127, 127, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.si-sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.si-sec-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.si-src {
+  font-variant-numeric: tabular-nums;
+}
+
+.si-err {
+  color: var(--danger);
+  margin: 0;
+}
+
+.si-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  min-height: 20px;
+}
+
+.si-row-label {
+  flex-shrink: 0;
+  width: 96px;
+  text-align: right;
+}
+
+.si-row-value {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.si-display {
+  display: block;
+}
+
+.si-mem-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.2);
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.si-mem-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.si-disks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.si-disk {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.si-disk-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.si-disk-letter {
+  font-weight: 600;
+}
+
+.si-disk-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(127, 127, 127, 0.2);
+  overflow: hidden;
+}
+
+.si-disk-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+/* 刷新按钮忙碌旋转 */
+.si-spinning {
+  animation: si-spin 0.9s linear infinite;
+}
+
+@keyframes si-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

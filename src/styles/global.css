@@ -6,6 +6,8 @@
 @import "./tools.css";
 @import "./projectviz.css";
 @import "./fate.css";
+/* AI-08 基础工具组（其余 ai08-*.css 由各组件就近 import） */
+@import "./ai08-print.css";
 :root {
   --bg: #05070d;
   --panel: rgba(10, 15, 28, 0.72);

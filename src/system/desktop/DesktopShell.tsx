@@ -25,13 +25,17 @@ import { WelcomeWizard } from "../welcome/WelcomeWizard";
 import { getThirdApps, launchThirdApp, reloadThirdApps } from "../launcher/thirdApps";
 import { autosaveSnapshot } from "../windows/snapshots";
 import { handleDisplayChanged, initDisplayMemory } from "../windows/snapshots";
-import { openVwmApp, openVwmSystem } from "../windows/vwm";
+import { openVwmApp, openVwmSystem, type VwmApp } from "../windows/vwm";
 import { VirtualWindowManager } from "../windows/VirtualWindowManager";
 import { applySnap, SnapPreviewHost } from "../windows/snap";
 import { pushRecent } from "../startmenu/recent";
 import { effectiveBinds } from "../../lib/shortcuts";
 import { InputFeelRuntime } from "../../features/inputFeel/InputFeelRuntime";
 import { CommandPalette } from "../palette/CommandPalette";
+import { MiniAppsLayer } from "../vwm/miniframe";
+import { DndLayer } from "../../lib/dnd/DragGhost";
+// AI-08 Z-28：运行对话框（全局浮层；ctrl+alt+r 呼出）
+import { RunDialog } from "../tools/RunDialog";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：
@@ -64,6 +68,8 @@ export function DesktopShell(props: {
   const win = getCurrentWindow();
   const startOpen = useUi((s) => s.startOpen);
   const [entered, setEntered] = useState(false);
+  // AI-08 Z-28：运行对话框开关（sys://open-run 驱动）
+  const [runOpen, setRunOpen] = useState(false);
   const notifiedRef = useRef(false);
   // 批次E-6：全屏应用运行中（任务栏/红绿灯自动避让）；U 盘拔出横幅
   const [fsApp, setFsApp] = useState(false);
@@ -338,11 +344,14 @@ export function DesktopShell(props: {
     const unSet = listen("sys://open-settings", () => props.onOpenSettings());
     // F-2：剪贴板历史快捷键呼出（ctrl+alt+v，Rust winman 分发）
     const unClip = listen("sys://open-clipboard", () => openVwmApp("clipboard"));
+    // AI-08 Z-28：运行对话框呼出（ctrl+alt+r 降级口径，Rust winman 分发）
+    const unRun = listen("sys://open-run", () => setRunOpen(true));
     return () => {
       void unQp.then((f) => f()).catch(() => {});
       void unDnd.then((f) => f()).catch(() => {});
       void unSet.then((f) => f()).catch(() => {});
       void unClip.then((f) => f()).catch(() => {});
+      void unRun.then((f) => f()).catch(() => {});
     };
   }, [t, props.onOpenSettings]);
 
@@ -582,6 +591,23 @@ export function DesktopShell(props: {
 
       {/* AI-07 N-13：命令面板（Ctrl+K / 全局 ctrl+alt+p → sys://open-palette） */}
       <CommandPalette />
+
+      {/* AI-08 U-17：全局拖放总线视觉层（拖拽幽灵 + 收藏托盘；无会话零开销） */}
+      <DndLayer onDropToTarget={() => {/* 各 Drop 目标经 registerDropTarget 自行订阅 */}} />
+
+      {/* AI-08 U-18：迷你应用框架图层（胶囊头小窗，五件首发） */}
+      <MiniAppsLayer />
+
+      {/* AI-08 Z-28：运行对话框（别名 → VWM 工具/系统窗口；路径/URI 走系统 ShellExecute） */}
+      <RunDialog
+        open={runOpen}
+        onClose={() => setRunOpen(false)}
+        onRunAlias={(id: string) => {
+          if (id === "settings") props.onOpenSettings();
+          else if (id === "explorer" || id === "taskman") openVwmSystem(id);
+          else openVwmApp(id as VwmApp);
+        }}
+      />
 
       {/* M7 第三方软件管理器（模态） */}
       <LauncherManager />

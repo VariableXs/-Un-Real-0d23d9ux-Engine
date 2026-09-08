@@ -1,0 +1,180 @@
+/* ============================================================
+   AI-08 · Z-23 天气信息卡（任务栏 WeatherBadge）
+   类名前缀 wx-；深色玻璃弹卡复用 global.css 变量与 card-pop 基线。
+   ============================================================ */
+
+.wx-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 任务栏温度按钮（与 tb-btn 同高，宽度自适应文字） */
+.wx-badge {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text, #dfe7f5);
+  height: 38px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.wx-badge:hover { background: rgba(255, 255, 255, 0.07); }
+.wx-badge:focus-visible { outline: 1px solid var(--accent); }
+
+.wx-temp { font-weight: 600; }
+
+/* ---------- 悬浮预报卡（任务栏上方） ---------- */
+.wx-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 60;
+  width: 252px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel-solid, #0b1122);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+/* 当前天气头 */
+.wx-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wx-now-icon { color: var(--accent); flex: none; }
+
+.wx-now-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wx-now-temp {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-now-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.wx-gear {
+  flex: none;
+}
+
+/* 三日预报 */
+.wx-days {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wx-day {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.wx-day:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
+
+.wx-day-date {
+  width: 58px;
+  flex: none;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-day-ico {
+  width: 18px;
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.wx-day-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wx-day-temp {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-day-temp .dim { color: var(--text-dim); }
+
+/* 占位/取数中 */
+.wx-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+/* ---------- 设置弹层 ---------- */
+.wx-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.wx-settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.wx-settings .text-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.wx-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.wx-settings-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* 手动刷新/首取时的图标旋转 */
+.wx-spin { animation: wx-spin 1s linear infinite; }
+
+@keyframes wx-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

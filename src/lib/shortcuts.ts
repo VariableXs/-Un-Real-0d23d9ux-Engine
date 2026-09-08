@@ -37,6 +37,8 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   { id: "quickBluetooth", labelKey: "scActQuickBt", accel: "ctrl+alt+b", group: "panel" },
   { id: "quickAudio", labelKey: "scActQuickAudio", accel: "ctrl+alt+k", group: "panel" },
   { id: "dnd", labelKey: "scActDnd", accel: "ctrl+shift+m", group: "panel" },
+  // AI-08 Z-28：运行对话框（Win+R 被系统保留 → ctrl+alt+r 降级口径）
+  { id: "runDialog", labelKey: "scActRunDialog", accel: "ctrl+alt+r", group: "system" },
   ...Array.from({ length: 9 }, (_, i) => ({
     id: `launch${i + 1}`,
     labelKey: "scActLaunchN",

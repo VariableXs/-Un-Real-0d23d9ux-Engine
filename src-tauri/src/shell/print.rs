@@ -344,7 +344,8 @@ mod tests {
         assert_eq!(printer_status_text(0), "ready");
         assert!(printer_status_text(0x80).contains("offline"));
         assert!(printer_status_text(0x1 | 0x10).contains("paused"));
-        assert!(printer_status_text(0x10).contains("printing"));
+        assert!(printer_status_text(0x10).contains("paper-out"));
+        assert!(printer_status_text(0x400).contains("printing"));
     }
 
     #[test]
