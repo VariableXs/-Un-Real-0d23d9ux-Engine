@@ -46,7 +46,7 @@ describe("templates（V-09 模板中心）", () => {
   it("非法扩展名 / 超体积 / 空 name 如实拒绝", async () => {
     const t = await import("../templates");
     expect(t.addTemplate("", "txt", "").result).toBe("invalid");
-    expect(t.addTemplate("x", "toolongext", "").result).toBe("invalid");
+    expect(t.addTemplate("x", "toolongextension", "").result).toBe("invalid");
     expect(t.addTemplate("x", "txt", "a".repeat(TEMPLATE_MAX_BYTES + 1)).result).toBe("size");
   });
 
