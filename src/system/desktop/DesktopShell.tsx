@@ -9,6 +9,7 @@ import { errMessage, ipc } from "../../lib/ipc";
 import { pushToast, uiStore, useUi, type AppMode, type QuickSection } from "../../state/uiStore";
 import { openQuickPanel } from "../../state/uiStore";
 import { pushNotify, toggleDnd } from "../../state/notifyStore";
+import { NotifyRuntime } from "../notify/NotifyRuntime";
 import type { NotifyAction } from "../../state/notifyStore";
 import type { ClosePhase } from "../../components/TitleBar";
 import type { BootStats } from "../boot/BootScreen";
@@ -466,11 +467,14 @@ export function DesktopShell(props: {
   return (
     <div
       className={`desktop-shell${props.entering && !entered ? " entering" : ""}`}
+      data-testid="desktop-shell"
       data-phase={props.closePhase}
       data-fullscreen={fsApp || undefined}
     >
       {/* AI-06 输入手感组运行时（U-58/U-59、V-62…V-69；默认全部关闭） */}
       <InputFeelRuntime settings={props.settings} />
+      {/* AI-16 通知运行时（Z-44 日程勿扰 / Z-47 存档清理 / Z-49 提醒到期；零 UI） */}
+      <NotifyRuntime />
       {/* AI-11 N-19：性能 HUD 悬浮窗（系统中枢内开关，默认关闭） */}
       <PerfHud />
       <WallpaperLayer settings={props.settings} />

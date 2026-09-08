@@ -225,6 +225,8 @@ export interface Settings {
   notifySmart: boolean;
   /** N-32 摘要堆定点呈现时刻（24h 制，默认 12:00 与 18:00 两次）。 */
   notifyDigestTimes: string[];
+  /** AI-18 氛围与个性化组（默认与现状分毫不差）。 */
+  ambience: AmbienceSettings;
   customBg: CustomBg;
   mindDefaults: MindDefaults;
 }
@@ -329,6 +331,7 @@ export const DEFAULT_SETTINGS: Settings = {
     htmlPath: "",
     shaderPath: "",
   },
+  ambience: DEFAULT_AMBIENCE,
   mindDefaults: {
     gridEnabled: true,
     snapEnabled: true,
