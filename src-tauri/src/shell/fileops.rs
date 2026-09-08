@@ -1700,3 +1700,4 @@ mod tests {
         assert_eq!(ha, hb);
         let _ = fs::remove_dir_all(&dir);
     }
+}
