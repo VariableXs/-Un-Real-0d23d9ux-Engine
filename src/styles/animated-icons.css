@@ -1,0 +1,65 @@
+/* ============================================================
+ * AI-17 · U-10 动效图标八件套动画定义
+ * 全部 transform/opacity-only（60fps 合成器层）；单帧预算 ≤0.15ms。
+ * reduce-motion 由 tokens.css [data-reduce-motion] 全局 80ms 覆盖。
+ * ============================================================ */
+
+.ai17-anim { display: inline-block; vertical-align: middle; }
+
+/* 1. 加载弧线：旋转 */
+.ai17-anim-loading { animation: ai17-spin 1s linear infinite; }
+@keyframes ai17-spin { to { transform: rotate(360deg); } }
+
+/* 2. 同步：双箭头循环 */
+.ai17-anim-sync { animation: ai17-spin 1.6s var(--ease-standard) infinite; }
+
+/* 3. 告警：呼吸（opacity 波动，克制） */
+.ai17-anim-alert { animation: ai17-breathe 2s ease-in-out infinite; }
+@keyframes ai17-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* 4. 成功：勾一次性描绘 */
+.ai17-anim-success .ai17-anim-draw {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  animation: ai17-draw 400ms var(--ease-emphasized) 1 forwards;
+}
+@keyframes ai17-draw { to { stroke-dashoffset: 0; } }
+
+/* 5. 网络 / 6. 音量：波动级联（依次起伏，幅度 ≤ 2px） */
+.ai17-anim-network .ai17-anim-wave-1,
+.ai17-anim-network .ai17-anim-wave-2,
+.ai17-anim-network .ai17-anim-wave-3,
+.ai17-anim-network .ai17-anim-wave-4,
+.ai17-anim-volume .ai17-anim-wave-1,
+.ai17-anim-volume .ai17-anim-wave-2 {
+  animation: ai17-wave 1.2s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.ai17-anim-network .ai17-anim-wave-2,
+.ai17-anim-volume .ai17-anim-wave-2 { animation-delay: 150ms; }
+.ai17-anim-network .ai17-anim-wave-3 { animation-delay: 300ms; }
+.ai17-anim-network .ai17-anim-wave-4 { animation-delay: 450ms; }
+@keyframes ai17-wave {
+  0%, 100% { transform: scaleY(1); opacity: 0.9; }
+  50% { transform: scaleY(0.7); opacity: 0.5; }
+}
+
+/* 7. 电池：充电呼吸 */
+.ai17-anim-battery .ai17-anim-charge {
+  animation: ai17-charge 1.8s ease-in-out infinite;
+}
+@keyframes ai17-charge {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 8. 时钟：指针步进 */
+.ai17-anim-clock .ai17-anim-hand {
+  animation: ai17-step 4s steps(4, end) infinite;
+  transform-origin: 12px 12px;
+}
+@keyframes ai17-step { to { transform: rotate(120deg); } }

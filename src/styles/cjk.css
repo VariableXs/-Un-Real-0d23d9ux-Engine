@@ -1,0 +1,42 @@
+/* ============================================================
+ * AI-17 · Z-64 CJK 排版精修（CJK Typography）
+ * 仅作用于 UI 文案层；不动四大内置应用的编辑器排版（红线）。
+ * ① 中西文自动 1/8 em 间距（text-autospace 渐进增强）
+ * ② 标点行首行尾禁则（避头尾）
+ * ③ 省略号/破折号宽度规范
+ * ④ 中文正文行高 1.7（西文 1.5）混排策略
+ * ============================================================ */
+
+:lang(zh) body,
+[lang="zh"] body,
+html[lang^="zh"] body {
+  /* ④ 混排行高策略：中文语境正文 1.7 */
+  line-height: 1.7;
+}
+
+/* ① 中西文间距：支持的引擎直接启用；不支持时保持默认（无 polyfill 布局抖动） */
+html[lang^="zh"] body,
+:lang(zh) {
+  text-autospace: normal;
+  text-spacing-trim: space-all;
+}
+
+/* ② 避头尾：UI 文案容器统一 strict 禁则 */
+html[lang^="zh"] .mi-ctl,
+html[lang^="zh"] .start-menu,
+html[lang^="zh"] .quick-panel,
+html[lang^="zh"] [class*="menu"],
+html[lang^="zh"] [class*="tooltip"],
+html[lang^="zh"] button,
+html[lang^="zh"] label,
+html[lang^="zh"] .toast,
+html[lang^="zh"] .context-menu {
+  line-break: strict;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* ③ 省略号/破折号显示宽度：中文语境统一全角占位 */
+html[lang^="zh"] .ellipsis::after {
+  content: none;
+}
