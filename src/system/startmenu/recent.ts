@@ -51,6 +51,11 @@ export function getRecent(): RecentEntry[] {
   return load();
 }
 
+/** 清空最近记录（测试 / 用户清理用）。 */
+export function clearRecent(): void {
+  persist([]);
+}
+
 export function useRecent(): RecentEntry[] {
   return useSyncExternalStore(
     (cb) => {

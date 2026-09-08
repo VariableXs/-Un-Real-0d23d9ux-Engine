@@ -10,8 +10,8 @@ export const VICON_FORMAT = "vicon";
 export const VICON_VERSION = 1;
 export const VICON_MAX_BYTES = 5 * 1024 * 1024;
 
-/** 键规范：区域段(桌面/开始/文件/任务栏) + 名称；允许中文文件扩展名场景由消费方映射。 */
-export const VICON_KEY_RE = /^[a-z0-9][a-z0-9_.-]*:[a-z0-9][a-z0-9_. -]*$/i;
+/** 键规范：区域段(桌面/开始/文件/任务栏) + 名称；名称允许 ".md" 式扩展名形态（首段可带点）。 */
+export const VICON_KEY_RE = /^[a-z0-9][a-z0-9_.-]*:\.?[a-z0-9][a-z0-9_. -]*$/i;
 
 export interface ViconFile {
   format: "vicon";

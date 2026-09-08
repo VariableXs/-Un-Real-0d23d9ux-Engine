@@ -456,9 +456,9 @@ export function Workshop(): React.ReactElement {
   };
 
   // ---- Generative 引擎 ----
-  const [genPreset, setGenPreset] = useState<GenPreset>(GENERATIVE_PRESETS[0]);
-  const [genMotion, setGenMotion] = useState(GENERATIVE_PRESETS[0].motion);
-  const [genParallax, setGenParallax] = useState(GENERATIVE_PRESETS[0].parallax);
+  const [genPreset, setGenPreset] = useState<GenPreset>(GENERATIVE_PRESETS[0] as GenPreset);
+  const [genMotion, setGenMotion] = useState((GENERATIVE_PRESETS[0] as GenPreset).motion);
+  const [genParallax, setGenParallax] = useState((GENERATIVE_PRESETS[0] as GenPreset).parallax);
 
   // ---- Web 引擎 ----
   const [webPath, setWebPath] = useState("");
@@ -735,7 +735,7 @@ export function Workshop(): React.ReactElement {
                 {t("packErr")}
                 <ul>
                   {packErrors.map((c, i) => (
-                    <li key={`${c}-${i}`}>{errText(t, c)}</li>
+                    <li key={`${c}-${i}`}>{errText(t as (k: string) => string, c)}</li>
                   ))}
                 </ul>
               </div>

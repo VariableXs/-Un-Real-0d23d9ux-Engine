@@ -92,7 +92,7 @@ export function validateVwp(raw: unknown): VwpValidation {
   if (!isRecord(raw.resources)) {
     errors.push("resource-url");
   } else {
-    for (const [key, url] of Object.entries(raw.resources)) {
+    for (const [, url] of Object.entries(raw.resources)) {
       if (typeof url !== "string") {
         errors.push("resource-url");
         continue;
@@ -143,10 +143,11 @@ export function buildVwp(input: {
 
 /** 文本 → base64 data URL（小文本：shader 源码 / html 入口）。 */
 export function textToDataUrl(text: string, mime: "text/plain" | "text/html"): string {
-  const b64 = typeof btoa === "function"
-    ? btoa(String.fromCharCode(...new TextEncoder().encode(text)))
-    : Buffer.from(text, "utf8").toString("base64");
-  return `data:${mime};base64,${b64}`;
+  // 纯浏览器实现（btoa + TextEncoder），不引入 Node Buffer（vite 前端域）。
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `data:${mime};base64,${btoa(bin)}`;
 }
 
 /** data URL → 文本（导入侧；非文本类型返回 null）。 */
@@ -154,9 +155,7 @@ export function dataUrlToText(url: string): string | null {
   const m = /^data:(text\/plain|text\/html);base64,(.+)$/.exec(url);
   if (!m) return null;
   try {
-    const bin = typeof atob === "function"
-      ? atob(m[2])
-      : Buffer.from(m[2], "base64").toString("binary");
+    const bin = atob(m[2] as string);
     const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
     return new TextDecoder().decode(bytes);
   } catch {

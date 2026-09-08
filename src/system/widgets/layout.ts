@@ -43,7 +43,10 @@ export function clampToViewport(x: number, y: number, size: WgtSize, vw: number,
   const { w, h } = SIZE_PX[size];
   const maxX = Math.max(0, vw - w);
   const maxY = Math.max(0, vh - h);
-  return { x: Math.min(Math.max(0, x), snap(maxX)), y: Math.min(Math.max(0, y), snap(maxY)) };
+  // 网格吸附向下取整：吸附后不得越过视口边界（钳制上限优先于网格对齐）
+  const gridMaxX = Math.floor(maxX / WGT_GRID) * WGT_GRID;
+  const gridMaxY = Math.floor(maxY / WGT_GRID) * WGT_GRID;
+  return { x: Math.min(Math.max(0, x), gridMaxX), y: Math.min(Math.max(0, y), gridMaxY) };
 }
 
 export function itemRect(item: WgtLayoutItem): WgtRect {

@@ -123,7 +123,7 @@ function stepAndDraw(
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate(p.spin);
-      ctx.fillStyle = colors[Math.floor(p.seed) % colors.length];
+      ctx.fillStyle = colors[Math.floor(p.seed) % colors.length] as string;
       ctx.beginPath();
       ctx.ellipse(0, 0, p.r, p.r * 0.45, 0, 0, Math.PI * 2);
       ctx.fill();

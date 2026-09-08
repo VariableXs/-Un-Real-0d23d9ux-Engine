@@ -1,4 +1,4 @@
-﻿import { formatDateTime, useI18n } from "../../i18n";
+import { formatDateTime, useI18n } from "../../i18n";
 import { Modal } from "../../components/Modal";
 import { startLabels } from "./labels";
 
@@ -33,7 +33,7 @@ export function StartPropsPanel(props: { info: StartPropsInfo | null; onClose: (
         </div>
         <div className="start-props-row">
           <span className="dim">{L.propKind}</span>
-          <span>{L[info.kindKey] ?? info.kindKey}</span>
+          <span>{(L as Record<string, string>)[info.kindKey] ?? info.kindKey}</span>
         </div>
         <div className="start-props-row">
           <span className="dim">{L.propPath}</span>

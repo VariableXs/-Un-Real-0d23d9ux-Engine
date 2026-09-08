@@ -6,7 +6,7 @@
  * rename / uninstallMenu / tpRemove / tpRemoveBody 等）继续走 useI18n。
  */
 
-export const START_LABELS: Record<"zh" | "en", Record<string, string>> = {
+export const START_LABELS = {
   zh: {
     // V-11 字母索引条
     idxBarLabel: "按字母跳转",
@@ -87,7 +87,7 @@ export const START_LABELS: Record<"zh" | "en", Record<string, string>> = {
   },
 };
 
-/** 语言 → 词典（zh-TW 归并 zh；en 单列）。 */
-export function startLabels(lang: string): Record<string, string> {
+/** 语言 → 词典（zh-TW 归并 zh；en 单列）。键集合两语一致，缺键在 CI 由用例守护。 */
+export function startLabels(lang: string): typeof START_LABELS.zh {
   return lang === "en" ? START_LABELS.en : START_LABELS.zh;
 }

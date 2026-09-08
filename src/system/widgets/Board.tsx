@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { LayoutGrid, Monitor, Pencil, Plus, Trash2, X } from "lucide-react";
 import { pushOverlay, popOverlay, pushToast } from "../../state/uiStore";
 import {
-  clampToViewport, loadLayout, saveLayout, snap, SIZE_PX, WGT_GRID,
+  clampToViewport, loadLayout, saveLayout, snap, SIZE_PX,
   resolvePlacement, type WgtLayoutDoc, type WgtLayoutItem, type WgtSize,
 } from "./layout";
 import {

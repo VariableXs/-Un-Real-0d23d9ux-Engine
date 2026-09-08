@@ -29,7 +29,7 @@ export function normalizeWeather(raw: string | null | undefined): Weather {
 export function cycleWeather(current: Weather, dir: 1 | -1): Weather {
   const idx = WEATHER_CYCLE.indexOf(current);
   const next = (idx + dir + WEATHER_CYCLE.length) % WEATHER_CYCLE.length;
-  return WEATHER_CYCLE[next];
+  return WEATHER_CYCLE[next] as Weather;
 }
 
 /** 场景总开关（默认关闭，规格口径）。 */

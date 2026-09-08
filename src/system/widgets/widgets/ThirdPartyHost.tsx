@@ -72,7 +72,6 @@ export default function ThirdPartyHost(props: ThirdPartyHostProps): React.ReactE
       sandbox="allow-scripts"
       title={manifest.name}
       srcDoc={html}
-      csp={undefined}
     />
   );
 }

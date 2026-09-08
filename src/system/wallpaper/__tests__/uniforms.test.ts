@@ -33,6 +33,6 @@ uniform float uNoRange;
 
   it("clamp default 值进范围内", () => {
     const list = parseUniforms("uniform float uX; // 0..1 default 9");
-    expect(list[0].value).toBe(1);
+    expect(list[0]!.value).toBe(1);
   });
 });

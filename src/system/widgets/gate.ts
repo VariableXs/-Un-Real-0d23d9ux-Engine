@@ -28,7 +28,7 @@ export function useWidgetGate(): WidgetGate {
         }),
       )
       .then((un) => {
-        if (un) unlisten = () => void un().catch(() => {});
+        if (un) unlisten = () => { void Promise.resolve(un()).catch(() => {}); };
       })
       .catch(() => {});
 

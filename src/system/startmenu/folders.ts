@@ -1,4 +1,4 @@
-﻿import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 /**
  * 化境 V-13（车道 S）：固定应用文件夹。
@@ -121,7 +121,10 @@ export function folderRemoveItem(folderId: string, itemId: string): Folder[] {
   const f = folders.find((x) => x.id === folderId);
   if (!f) return folders;
   const rest = f.items.filter((i) => i !== itemId);
-  if (rest.length === 0) return disbandFolder(folderId);
+  if (rest.length === 0) {
+    disbandFolder(folderId); // 清空即解散（成员释放回网格）
+    return load();
+  }
   persist(folders.map((x) => (x.id === folderId ? { ...x, items: rest } : x)));
   return load();
 }

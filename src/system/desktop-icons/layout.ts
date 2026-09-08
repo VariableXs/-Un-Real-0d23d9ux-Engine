@@ -26,13 +26,16 @@ export interface ShelfDef {
   icon?: string;
 }
 
-export type SortMode = "type" | "name";
+// V-01：排序方式扩为四值（type/name/size/date）；load 兼容旧值（unknown → type）。
+export type SortMode = "type" | "name" | "size" | "date";
 
 export interface DesktopLayout {
   autoArrange: boolean;
   positions: Record<string, Cell>;
   shelves: Record<string, ShelfDef>;
   sort: SortMode;
+  /** V-03 桌面图标锁定（缺省 false = 未锁定，旧档自动兼容）。 */
+  locked?: boolean;
 }
 
 const LS_KEY = "variable:desktop:layout:v2";
@@ -76,7 +79,10 @@ export function loadDesktopLayout(): DesktopLayout {
           autoArrange: typeof p.autoArrange === "boolean" ? p.autoArrange : true,
           positions: p.positions && typeof p.positions === "object" ? p.positions : {},
           shelves: p.shelves && typeof p.shelves === "object" ? p.shelves : {},
-          sort: p.sort === "name" ? "name" : "type",
+          // V-01：四值白名单校验，旧档/损坏值回落 type
+          sort: p.sort === "name" || p.sort === "size" || p.sort === "date" ? p.sort : "type",
+          // V-03：锁定标记（旧档无此字段 → undefined = 未锁定）
+          locked: typeof p.locked === "boolean" ? p.locked : undefined,
         };
       }
     }

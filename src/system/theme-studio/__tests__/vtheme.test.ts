@@ -31,7 +31,7 @@ describe("validateVtheme", () => {
 
   it("未知 token 键 → conflict（不阻断）", () => {
     const f = goodFile();
-    const dark = (f.variants as Record<string, { colors: Record<string, string> }>).dark;
+    const dark = (f.variants as Record<string, { colors: Record<string, string> }>).dark as { colors: Record<string, string> };
     dark.colors["--brand-new-token"] = "#123456";
     const r = validateVtheme(f);
     expect(r.ok).toBe(true);
@@ -49,14 +49,14 @@ describe("validateVtheme", () => {
 
   it("坏颜色值 → error", () => {
     const f = goodFile();
-    const dark = (f.variants as Record<string, { colors: Record<string, string> }>).dark;
+    const dark = (f.variants as Record<string, { colors: Record<string, string> }>).dark as { colors: Record<string, string> };
     dark.colors["--accent"] = "rgb(1,2,3)";
     expect(validateVtheme(f).ok).toBe(false);
   });
 
   it("坏形档 → error；至少一个变体", () => {
     const f = goodFile();
-    const dark = (f.variants as Record<string, { shape: Record<string, string> }>).dark;
+    const dark = (f.variants as Record<string, { shape: Record<string, string> }>).dark as { shape: Record<string, string> };
     dark.shape.radius = "wobbly";
     expect(validateVtheme(f).ok).toBe(false);
     const g = goodFile();

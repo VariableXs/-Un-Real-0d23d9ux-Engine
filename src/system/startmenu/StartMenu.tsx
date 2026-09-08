@@ -1,9 +1,9 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Activity, AppWindow, Calculator, CalendarClock, Camera, ClipboardList, Files, Fingerprint, FolderOpen,
+  Activity, AppWindow, Calculator, CalendarClock, Camera, Clock, ClipboardList, Files, Fingerprint, FolderOpen,
   HardDrive,
-  Flame, FolderMinus, Info, Lock, LogOut, PackagePlus, Pencil, Pin, PinOff, Power, RotateCcw,
-  ShieldCheck, Settings as SettingsIcon, Search, StickyNote, Trash2, X,
+  Flame, FolderMinus, Info, Lock, LogOut, Moon, PackagePlus, Pencil, Pin, PinOff, Power, Printer, RotateCcw,
+  ShieldCheck, Settings as SettingsIcon, Search, Smile, StickyNote, Trash2, X, ZoomIn, ArrowLeftRight,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -17,7 +17,7 @@ import {
   launchThirdApp, openLauncherManager, reloadThirdApps, toggleTaskbarPin, useTaskbarPins, useThirdApps,
 } from "../launcher/thirdApps";
 import { useUninstalledOfficial } from "../launcher/official";
-import { openVwmApp, openVwmSystem, VWM_TOOLS, type VwmToolApp } from "../windows/vwm";
+import { openVwmApp, openVwmSystem, vwmStore, VWM_TOOLS, type VwmToolApp } from "../windows/vwm";
 import { pushRecent, useRecent } from "./recent";
 import { bumpUsage, subscribeUsage, usageCount } from "./usage";
 import { HIGH_FREQ_TOP_N, highFreqEnabled, recentlyAdded, setHighFreqEnabled, topUsedItems } from "./groups";
@@ -65,6 +65,13 @@ const TOOL_DEFS: Record<VwmToolApp, { key: string; icon: React.ReactElement }> =
   dupe: { key: "toolDupe", icon: <Files size={22} strokeWidth={1.6} /> },
   space: { key: "toolSpace", icon: <HardDrive size={22} strokeWidth={1.6} /> },
   checksum: { key: "toolChecksum", icon: <Fingerprint size={22} strokeWidth={1.6} /> },
+  // AI-08 基础工具组六件（Z-22/Z-24/Z-25/Z-26/Z-27/V-98；Z-23 天气在任务栏、Z-28 运行框走热键）
+  clockhub: { key: "toolClockhub", icon: <Clock size={22} strokeWidth={1.6} /> },
+  emoji: { key: "toolEmoji", icon: <Smile size={22} strokeWidth={1.6} /> },
+  magnifier: { key: "toolMagnifier", icon: <ZoomIn size={22} strokeWidth={1.6} /> },
+  convert: { key: "toolConvert", icon: <ArrowLeftRight size={22} strokeWidth={1.6} /> },
+  sysinfo: { key: "toolSysinfo", icon: <Info size={22} strokeWidth={1.6} /> },
+  printqueue: { key: "toolPrintqueue", icon: <Printer size={22} strokeWidth={1.6} /> },
 };
 
 function loadOrder(): string[] {
@@ -105,6 +112,12 @@ export function StartMenu(props: {
   // 批次E-8：开始菜单搜索框（拼音/首字母过滤，Enter 转全局搜索）
   const [q, setQ] = useState<string>("");
   const [powerOpen, setPowerOpen] = useState(false);
+  // AI-03 V-20：开机时长（电源菜单悬停显示；只读 sysBrief）
+  const [uptimeSecs, setUptimeSecs] = useState<number | null>(null);
+  useEffect(() => {
+    if (!powerOpen) return;
+    void ipc.sysBrief().then((b) => setUptimeSecs(b.uptimeSecs)).catch(() => setUptimeSecs(null));
+  }, [powerOpen]);
   const [order, setOrder] = useState<string[]>(() => loadOrder());
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const dragId = useRef<string | null>(null);
@@ -739,17 +752,32 @@ export function StartMenu(props: {
     kind === "tp" ? name : name;
 
   // ---- 批次E：电源完整菜单（规格 4.6.3） ----
-  const power = async (action: "lock" | "logoff" | "reboot" | "shutdown"): Promise<void> => {
+  // AI-03 V-19/V-20：关机/重启前会话清单 + 30 分钟不再询问 + 睡眠入口
+  const power = async (action: "lock" | "logoff" | "reboot" | "shutdown" | "sleep"): Promise<void> => {
     setPowerOpen(false);
     if (action === "reboot" || action === "shutdown") {
       const label = action === "reboot" ? t("powerRestart") : t("powerShutdown");
-      const ok = await askConfirm({
-        title: label,
-        body: t("powerConfirmBody", { action: label }),
-        danger: true,
-        okLabel: label,
-      });
-      if (!ok) return;
+      // V-19：勾选「仍要关机」记忆 30 分钟内不再询问
+      let suppressed = false;
+      try {
+        const last = Number(localStorage.getItem("variable:power:confirm:v1") ?? "0");
+        suppressed = Number.isFinite(last) && Date.now() - last < 30 * 60 * 1000;
+      } catch { /* ignore */ }
+      if (!suppressed) {
+        // V-19：关机前会话清单（活动 VWM 窗口，只读；未完成传输/速记数据源未就绪，首版如实不带）
+        const wins = vwmStore.getState().wins;
+        const lines = wins.slice(0, 10).map((w) => `· ${w.app}${w.app.startsWith("tp:") ? "" : ` (${w.id.slice(-4)})`}`);
+        if (wins.length > 10) lines.push(`… +${wins.length - 10}`);
+        const session = lines.length > 0 ? `${t("powerSessions")}\n${lines.join("\n")}` : "";
+        const ok = await askConfirm({
+          title: label,
+          body: `${t("powerConfirmBody", { action: label })}${session ? `\n\n${session}` : ""}`,
+          danger: true,
+          okLabel: label,
+        });
+        if (!ok) return;
+        try { localStorage.setItem("variable:power:confirm:v1", String(Date.now())); } catch { /* ignore */ }
+      }
     }
     await ipc
       .powerAction(action)
@@ -995,6 +1023,15 @@ export function StartMenu(props: {
           <div className="start-power-wrap">
             {powerOpen && (
               <div className="start-power-menu card-pop" role="menu" aria-label={t("powerMenu")}>
+                {/* AI-03 V-20：开机时长（只读，无新窗口） */}
+                {uptimeSecs !== null && (
+                  <span className="dim small start-power-uptime" title={t("powerUptime")}>
+                    {t("powerUptime")}: {Math.floor(uptimeSecs / 3600)}h {Math.floor((uptimeSecs % 3600) / 60)}m
+                  </span>
+                )}
+                <button type="button" role="menuitem" onClick={() => void power("sleep")}>
+                  <Moon size={14} /> {t("powerSleep")}
+                </button>
                 <button type="button" role="menuitem" onClick={() => void power("lock")}>
                   <Lock size={14} /> {t("powerLock")}
                 </button>

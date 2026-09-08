@@ -14,7 +14,7 @@ describe("contrastRatio（WCAG 相对亮度）", () => {
 
   it("已知中灰（#767676 vs 白 ≈ 4.54，AA 临界）", () => {
     expect(contrastRatio("#767676", "#ffffff")).toBeGreaterThan(4.5);
-    expect(contrastRatio("#757575", "#ffffff")).toBeLessThan(4.5);
+    expect(contrastRatio("#777777", "#ffffff")).toBeLessThan(4.5);
   });
 
   it("无效输入返回 0（必然不达标）", () => {

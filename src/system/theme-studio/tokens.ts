@@ -1,4 +1,4 @@
-﻿/**
+/**
  * N-08 主题工坊 —— 语义 token 定义 + 对比度 / OKLCH 纯函数。
  *
  * token 清单以 src/design/tokens.css（A-1 单一事实源）真实存在的变量为准：
@@ -251,7 +251,8 @@ const SEEDS: Record<VariantKind, VariantSeed> = {
       "--bg-canvas": [0.93, 0.02, 90], "--bg-surface": [0.97, 0.015, 90], "--bg-raised": [0.98, 0.01, 90],
       "--text-primary": [0.28, 0.02, 90], "--text-secondary": [0.52, 0.03, 90],
       "--accent": [0.52, 0.08, 75], "--accent-soft": [0.52, 0.08, 75],
-      "--success": [0.78, 0.12, 160], "--warn": [0.82, 0.13, 85], "--danger": [0.68, 0.15, 25],
+      // 浅色层状态色压暗（AA ≥ 4.5 vs 画布 0.93）：出厂主题不触发工坊红牌
+      "--success": [0.5, 0.13, 160], "--warn": [0.51, 0.12, 85], "--danger": [0.52, 0.2, 25],
       "--stroke": [0.35, 0.02, 90],
     },
     alpha: { "--bg-surface": 0.86, "--bg-raised": 0.94, "--accent-soft": 0.14, "--stroke": 0.18 },

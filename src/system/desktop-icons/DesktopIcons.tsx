@@ -4,7 +4,10 @@ import {
   AppWindow,
   Folder,
   Monitor,
+  Network,
+  Settings as SettingsGlyph,
   Trash2,
+  User,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -38,6 +41,39 @@ import {
   type ShelfDef,
   type SortMode,
 } from "./layout";
+// ---- 车道 D 新增模块（V-01…V-10 / V-96 / U-13；纯逻辑与本车道 labels） ----
+import { desktopLabel } from "./labels";
+import { sortItems, type SortItem } from "./sort";
+import { isBlocked } from "./lock";
+import { loadDoubleClickAction, saveDoubleClickAction, type DoubleClickAction } from "./dblclick";
+import { SYS_ICON_IDS, loadSysIconVis, resetSysIconVis, saveSysIconVis, type SysIconId } from "./sysicons";
+import {
+  ICON_PX_STEP,
+  clampIconPx,
+  loadIconPx,
+  prefersReduceMotion,
+  saveIconPx,
+  tierForPx,
+  type DesktopIconSize,
+} from "./density";
+import { collectTyping, isPrintableKey, typingQuery, type TypingState } from "./typeToLocate";
+import {
+  computeLabelShades,
+  loadShadePref,
+  resolveShade,
+  saveShadePref,
+  type LabelShade,
+  type ShadePref,
+} from "./labelReadability";
+import { badgeForCount, fetchRecycleCount, RECYCLE_POLL_MS } from "./recycle";
+import { archiveCandidates, archiveShelfName, markArchiveHinted, shouldSuggestArchive } from "./archive";
+import { OPEN_EVENT, listProfiles, RELOAD_LAYOUT_EVENT } from "../desktop/profiles";
+import {
+  addTemplate, listTemplates, removeTemplate, renameTemplate, templateFileName,
+  type IconTemplate,
+} from "./templates";
+import { matchPinyin } from "../../lib/pinyin";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 /**
  * 桌面图标网格（对齐 Windows 习惯；批次B = 规格 4.2.4–4.2.8 + 4.6/4.7）：
@@ -69,7 +105,8 @@ interface AppIconDef {
 /** M6 系统图标：打开系统窗口（非软件、无特权，同样可拖拽排列）。 */
 interface SysIconDef {
   id: string;
-  sys: "explorer" | "recycle";
+  /** V-02：五系统图标（explorer/recycle/network/userfiles/controlpanel）。 */
+  sys: SysIconId;
   icon: LucideIcon;
   hue: number;
 }
@@ -96,12 +133,8 @@ type IconDef = AppIconDef | SysIconDef | ThirdIconDef | ShelfIconDef;
 const GRID_PAD = 14;
 const LONG_PRESS_MS = 600;
 
-/** 三档图标大小（对齐 Windows 桌面习惯：图标字形 ≈ 标称尺寸，Windows 中图标 ≈ 48px 字形）。 */
-const SIZE_TIERS: Record<IconSize, { w: number; h: number; tile: number; icon: number }> = {
-  32: { w: 84, h: 98, tile: 44, icon: 30 },
-  48: { w: 100, h: 114, tile: 58, icon: 46 },
-  64: { w: 118, h: 132, tile: 76, icon: 62 },
-};
+// V-06：图标几何改为 density.ts 的连续插值 tierForPx（24–128px，四档锚点），
+// 本文件不再自持三档表（32/48/64 几何值在 density.SIZE_TIERS 逐值保留）。
 
 export function desktopIconDefs(): AppIconDef[] {
   return [
@@ -112,11 +145,14 @@ export function desktopIconDefs(): AppIconDef[] {
   ];
 }
 
-/** M6 系统图标定义（此电脑 / 回收站）。 */
+/** V-02 系统图标五件套（显隐由 sysicons.ts 状态控制；默认仅前两个显示）。 */
 export function sysIconDefs(): SysIconDef[] {
   return [
     { id: "sys-explorer", sys: "explorer", icon: Monitor, hue: 210 },
     { id: "sys-recycle", sys: "recycle", icon: Trash2, hue: 0 },
+    { id: "sys-network", sys: "network", icon: Network, hue: 200 },
+    { id: "sys-userfiles", sys: "userfiles", icon: User, hue: 170 },
+    { id: "sys-controlpanel", sys: "controlpanel", icon: SettingsGlyph, hue: 262 },
   ];
 }
 
@@ -150,7 +186,7 @@ export function DesktopIcons(props: {
   /** 批次B：设置补丁（图标大小 / 壁纸切换子菜单）。 */
   onPatchSettings: (patch: Partial<Settings>) => void;
 }): React.ReactElement {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [layout, setLayout] = useState<DesktopLayout>(() => loadDesktopLayout());
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [drag, setDrag] = useState<{ ids: string[]; primary: string; dx: number; dy: number; moved: boolean } | null>(null);
@@ -183,6 +219,29 @@ export function DesktopIcons(props: {
     });
   };
   const refreshTimer = useRef(0);
+  // ---- 车道 D 新增状态（V-02/V-03/V-04/V-05/V-06/V-07/V-08/V-10/V-96） ----
+  // V-02：五系统图标显隐（localStorage 持久化，默认仅 此电脑/回收站）
+  const [sysVis, setSysVis] = useState<Record<SysIconId, boolean>>(() => loadSysIconVis());
+  // V-06：图标 px（连续缩放真源；设置 iconSize 变化时同步，见下方 effect）
+  const [iconPx, setIconPx] = useState<number>(() => loadIconPx() ?? props.iconSize);
+  // V-04：双击空白动作（默认 none = 等于现状）
+  const [dblAction, setDblAction] = useState<DoubleClickAction>(() => loadDoubleClickAction());
+  // V-05：标签字色（用户偏好 + image 壁纸采样结果）
+  const [shadePref, setShadePref] = useState<ShadePref>(() => loadShadePref());
+  const [labelShades, setLabelShades] = useState<Record<string, LabelShade> | null>(null);
+  // V-08：回收站计数（null = 查询不可用，诚实降级不显示角标）
+  const [recCount, setRecCount] = useState<number | null>(null);
+  // V-10：拖动让位预演目标格（仅视觉预演，落点判定仍以 placed 为准）
+  const [previewCell, setPreviewCell] = useState<Cell | null>(null);
+  // V-96：归档选择器（确认弹窗后打开；存选中 id 集）
+  const [archivePick, setArchivePick] = useState<Set<string> | null>(null);
+  // V-09：模板中心管理弹窗（列表 + 重命名/删除）
+  const [tplManage, setTplManage] = useState(false);
+  const [tplList, setTplList] = useState<IconTemplate[]>([]);
+  // V-07：敲字定位缓冲（ref：键频高，避免每键重渲染）
+  const typingRef = useRef<TypingState | null>(null);
+  const matchQueryRef = useRef<string | null>(null);
+  const matchIdxRef = useRef(0);
 
   const dragRef = useRef(drag);
   dragRef.current = drag;
@@ -196,7 +255,11 @@ export function DesktopIcons(props: {
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
-  const tier = SIZE_TIERS[props.iconSize] ?? SIZE_TIERS[48];
+  // V-06：px 是图标几何唯一真源（设置档位 32/48/64 与连续缩放共用）
+  const tier = tierForPx(iconPx);
+  const locked = layout.locked === true; // V-03：锁定态（拖动/删除/剪切/重排拦截）
+  // V-10：动效削减（设置页写入 html[data-reduce-motion] 或系统偏好）
+  const reduceMotion = prefersReduceMotion();
 
   // ---- 定义集合：系统 + 四款软件 + 第三方 + 文件架 ----
   const thirds = useThirdApps();
@@ -213,28 +276,49 @@ export function DesktopIcons(props: {
     [layout.shelves],
   );
 
+  /** V-02：系统图标显示名（此电脑/回收站沿用现有词典，新三件走本车道 labels）。 */
+  const sysIconLabel = useCallback(
+    (id: SysIconId): string =>
+      id === "explorer"
+        ? t("explorerWin")
+        : id === "recycle"
+          ? t("recycleBin")
+          : desktopLabel(
+              lang,
+              id === "network" ? "sysNetwork" : id === "userfiles" ? "sysUserFiles" : "sysControlPanel",
+            ),
+    [t, lang],
+  );
+
   const labelOf = useCallback(
     (d: IconDef): string => {
-      if ("sys" in d) return d.sys === "explorer" ? t("explorerWin") : t("recycleBin");
+      if ("sys" in d) return sysIconLabel(d.sys);
       if ("third" in d) return d.third.name;
       if ("shelfId" in d) return layout.shelves[d.shelfId]?.name ?? "";
       return desktopAppLabel(d.app);
     },
-    [t, layout.shelves],
+    [t, layout.shelves, sysIconLabel],
   );
 
   /** 排序：type = 系统/官方/第三方/文件架；name = 按显示名（稳定）。 */
+  /** 排序（V-01）：type/name/size/date 统一走 sortItems（size 无数据→基线序，见 sort.ts 诚实边界）；
+   *  显隐过滤 V-02 系统图标（sysVis 持久化，默认仅 此电脑/回收站）。 */
   const orderedDefs = useMemo<IconDef[]>(() => {
-    const sys = sysIconDefs();
+    const sys = sysIconDefs().filter((d) => sysVis[d.sys]);
     // 批次C（规格 5.6.1）：已卸载的预装软件不显示（数据保留，恢复入口在软件管理）
     const apps = desktopIconDefs().filter((d) => uninstalled[d.app] === undefined);
     const tp = thirds.map(thirdIconDef);
-    return layout.sort === "name"
-      ? [...sys, ...apps, ...tp, ...shelfDefs].sort((a, b) => labelOf(a).localeCompare(labelOf(b), "zh"))
-      : [...sys, ...apps, ...tp, ...shelfDefs];
+    const raw = [...sys, ...apps, ...tp, ...shelfDefs];
+    const items: SortItem<IconDef>[] = raw.map((def) => ({
+      def,
+      label: labelOf(def),
+      // 基线组：0 系统 / 1 官方软件 / 2 第三方 / 3 文件架
+      group: "sys" in def ? 0 : "app" in def ? 1 : "third" in def ? 2 : 3,
+      addedAt: "third" in def ? def.third.addedAt : undefined,
+    }));
+    return sortItems(items, layout.sort).map((it) => it.def);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [thirds, shelfDefs, layout.sort, labelOf, uninstalled]);
-
+  }, [thirds, shelfDefs, layout.sort, labelOf, uninstalled, sysVis]);
   const defById = useMemo(() => new Map(orderedDefs.map((d) => [d.id, d])), [orderedDefs]);
 
   /** 被任何文件架收容的图标 → 不在主网格显示。 */
@@ -280,6 +364,47 @@ export function DesktopIcons(props: {
     return () => window.removeEventListener("resize", compute);
   }, [tier.h]);
 
+  // V-06：设置 iconSize 变化 → 同步 px 真源（设置页是 32/48/64 的权威入口）
+  useEffect(() => {
+    setIconPx(props.iconSize);
+    saveIconPx(props.iconSize);
+  }, [props.iconSize]);
+
+  // U-13：profiles 应用后由 DesktopShell 派发 RELOAD_LAYOUT_EVENT → 重载布局与图标 px
+  useEffect(() => {
+    const onReload = (): void => {
+      setLayout(loadDesktopLayout());
+      setIconPx(loadIconPx() ?? props.iconSize);
+      setSelected(new Set());
+    };
+    window.addEventListener(RELOAD_LAYOUT_EVENT, onReload);
+    return () => window.removeEventListener(RELOAD_LAYOUT_EVENT, onReload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.iconSize]);
+
+  // V-08：回收站角标轮询（2s 周期 + 窗口 focus 立即刷新；隐藏时诚实降级为无角标）
+  useEffect(() => {
+    if (!sysVis.recycle || iconsHidden) {
+      setRecCount(null);
+      return undefined;
+    }
+    let alive = true;
+    const tick = (): void => {
+      void fetchRecycleCount().then((n) => {
+        if (alive) setRecCount(n);
+      });
+    };
+    tick();
+    const timer = window.setInterval(tick, RECYCLE_POLL_MS);
+    const onFocus = (): void => tick();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [sysVis.recycle, iconsHidden]);
+
   /** 当前布局：自动排列 → 列优先按定义顺序；手动 → 存储位置 + 空位补齐。 */
   const placed = useMemo(() => {
     const map = new Map<string, Cell>();
@@ -319,6 +444,9 @@ export function DesktopIcons(props: {
     return map;
   }, [layout, visibleDefs, rows]);
 
+  // V-10：拖动主图标原格（让位预演的移动目标；多选拖动不预演）
+  const dragFromCell = drag?.moved && drag.ids.length === 1 ? placed.get(drag.primary) : undefined;
+
   /** 从某格起（列优先）找第一个空闲格。 */
   const findFree = (occupied: Set<string>, startIdx: number): { c: number; r: number; idx: number } => {
     let idx = startIdx;
@@ -332,17 +460,76 @@ export function DesktopIcons(props: {
   const occupiedSet = useMemo(() => new Set([...placed.values()].map((p) => `${p.c}:${p.r}`)), [placed]);
   void occupiedSet;
 
+  // V-05：image 壁纸 → 采样每个图标标签落点亮度；其余模式/加载失败 → null（维持默认样式）
+  const wpImagePath = props.wallpaperMode === "image" ? props.customBg.imagePath : "";
+  useEffect(() => {
+    if (!wpImagePath) {
+      setLabelShades(null);
+      return;
+    }
+    let cancelled = false;
+    const url = (() => {
+      try {
+        return convertFileSrc(wpImagePath);
+      } catch {
+        return wpImagePath;
+      }
+    })();
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      // 采样点：标签中心（图标格底部）归一化坐标
+      const points = visibleDefs.flatMap((d) => {
+        const cell = placed.get(d.id);
+        if (!cell) return [];
+        return [
+          {
+            id: d.id,
+            x: (GRID_PAD + cell.c * tier.w + tier.w / 2) / w,
+            y: (GRID_PAD + cell.r * tier.h + tier.h - 6) / h,
+          },
+        ];
+      });
+      setLabelShades(computeLabelShades(img, points));
+    };
+    img.onerror = () => {
+      if (!cancelled) setLabelShades(null);
+    };
+    img.src = url;
+    return () => {
+      cancelled = true;
+    };
+  }, [wpImagePath, visibleDefs, placed, tier.w, tier.h]);
+
   const openItem = useCallback(
     (d: IconDef): void => {
       if (edit) return;
-      if ("sys" in d) props.onOpenSystem(d.sys);
-      else if ("third" in d) void launchThirdApp(d.third.id, d.third.name);
+      if ("sys" in d) {
+        // V-02：此电脑/回收站走原通道；用户的文件尝试打开宿主用户目录（ex_home）；
+        // 网络/控制面板依赖宿主 Shell 能力 → 诚实提示（前端无该能力，不做假窗口）。
+        if (d.sys === "explorer" || d.sys === "recycle") props.onOpenSystem(d.sys);
+        else if (d.sys === "userfiles") {
+          void ipc
+            .exHome()
+            .then((home) => openVwmSystem("explorer", home))
+            .catch(() => pushToast("info", sysIconLabel("userfiles"), desktopLabel(lang, "sysIconHostNA")));
+        } else {
+          pushToast("info", sysIconLabel(d.sys), desktopLabel(lang, "sysIconHostNA"));
+        }
+      } else if ("third" in d) void launchThirdApp(d.third.id, d.third.name);
       else if ("shelfId" in d) setFlyoutId(d.shelfId);
       else props.onOpenApp(d.app);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props, edit],
+    [props, edit, sysIconLabel, lang],
   );
+
+  // V-03：锁定拦截的统一提示（防手滑，非安全功能）
+  const toastLocked = useCallback((): void => {
+    pushToast("info", desktopLabel(lang, "lockIcons"), desktopLabel(lang, "desktopLocked"));
+  }, [lang]);
 
   /** 移除第三方登记（仅删登记，不卸载软件本身）。 */
   const removeThird = useCallback(
@@ -393,6 +580,11 @@ export function DesktopIcons(props: {
 
   const moveToShelf = useCallback(
     (ids: string[], shelfId: string): void => {
+      // V-03：锁定时归架（改变位置）拦截
+      if (isBlocked("reorder", locked)) {
+        toastLocked();
+        return;
+      }
       const l = layoutRef.current;
       const shelves = { ...l.shelves };
       for (const [sid, s] of Object.entries(shelves)) {
@@ -417,6 +609,11 @@ export function DesktopIcons(props: {
 
   const moveOutOfShelf = useCallback(
     (id: string): void => {
+      // V-03：锁定时出架（改变位置）拦截
+      if (isBlocked("reorder", locked)) {
+        toastLocked();
+        return;
+      }
       const l = layoutRef.current;
       const shelves = { ...l.shelves };
       for (const [sid, s] of Object.entries(shelves)) {
@@ -584,6 +781,11 @@ export function DesktopIcons(props: {
     async (_permanent: boolean): Promise<void> => {
       const ids = [...selected];
       if (ids.length === 0) return;
+      // V-03：锁定时拦截删除/移除（第三方登记与文件架一并拦下，防手滑）
+      if (isBlocked("delete", locked)) {
+        toastLocked();
+        return;
+      }
       const thirdDefs = ids.map((id) => defById.get(id)).filter((d): d is ThirdIconDef => d !== undefined && "third" in d);
       const shelfIds = ids.filter((id) => id.startsWith("shelf-"));
       const lockedCount = ids.length - thirdDefs.length - shelfIds.length;
@@ -630,6 +832,11 @@ export function DesktopIcons(props: {
   /** 剪贴板粘贴：剪切=移动到空格并出架；复制=仅文件架可克隆（如实提示其余项）。 */
   const pasteClip = useCallback((): void => {
     if (!clip || clip.ids.length === 0) return;
+    // V-03：锁定时剪切粘贴（= 移动位置）拦截；复制不受影响
+    if (clip.mode === "cut" && isBlocked("cut", locked)) {
+      toastLocked();
+      return;
+    }
     const l = layoutRef.current;
     const occ = new Set([...placed.entries()].filter(([k]) => !clip.ids.includes(k)).map(([, p]) => `${p.c}:${p.r}`));
     let idx = 0;
@@ -670,7 +877,7 @@ export function DesktopIcons(props: {
       return;
     }
     commit({ ...l, positions, shelves, autoArrange: false });
-  }, [clip, placed, commit, t, rows]);
+  }, [clip, placed, commit, t, rows, locked, toastLocked]);
 
   // ---- 指针交互 ----
   const clearPress = (): void => {
@@ -726,6 +933,20 @@ export function DesktopIcons(props: {
     if (!d.moved && !isDragStart(dx, dy, liveDragThreshold(), e.pointerType)) return;
     clearPress();
     setDrag({ ...d, dx, dy, moved: true });
+    // V-10：让位预演 —— 单选拖动时计算悬停格，被占用格上的图标先行让位
+    //（纯视觉预演：提交几何仍以松手时的 placed 判定为准，见 onIconPointerUp）。
+    if (d.ids.length === 1 && !reduceMotion) {
+      const pc = Math.round((e.clientX - tier.w / 2 - GRID_PAD) / tier.w);
+      const pr = Math.round((e.clientY - tier.h / 2 - GRID_PAD) / tier.h);
+      const hit =
+        pc >= 0 && pr >= 0 && pr < rows &&
+        !(dragFromCell && dragFromCell.c === pc && dragFromCell.r === pr) // 原格不让位
+          ? [...placed.entries()].find(([pid, p]) => p.c === pc && p.r === pr && !d.ids.includes(pid))
+          : undefined;
+      setPreviewCell(hit ? { c: pc, r: pr } : null);
+    } else if (previewCell) {
+      setPreviewCell(null);
+    }
   };
 
   const onIconPointerUp = (e: React.PointerEvent): void => {
@@ -733,6 +954,7 @@ export function DesktopIcons(props: {
     const d = dragRef.current;
     setDrag(null);
     iconOrigin.current = null;
+    setPreviewCell(null); // V-10：预演收尾
     if (!d || !d.moved) return; // 视为点击，交给 onClick/onDoubleClick
     const c = Math.round((e.clientX - tier.w / 2 - GRID_PAD) / tier.w);
     const r = Math.round((e.clientY - tier.h / 2 - GRID_PAD) / tier.h);
@@ -744,8 +966,24 @@ export function DesktopIcons(props: {
       const thirds = d.ids
         .map((id) => defById.get(id))
         .filter((x): x is ThirdIconDef => x !== undefined && "third" in x);
-      const locked = d.ids.length - thirds.length;
-      if (locked > 0) pushToast("info", t("delete"), t("sysIconLocked"));
+          // V-02：系统图标拖入回收站 = 隐藏 + 提示（可从右键「查看」恢复；不删除）
+          const sysIds = d.ids.filter((id) => id.startsWith("sys-"));
+          if (sysIds.length > 0) {
+            if (isBlocked("delete", locked)) {
+              toastLocked();
+            } else {
+              const nextVis = { ...sysVis };
+              for (const sid of sysIds) {
+                const sdef = sysIconDefs().find((sd) => sd.id === sid);
+                if (sdef) nextVis[sdef.sys] = false;
+              }
+              saveSysIconVis(nextVis);
+              setSysVis(nextVis);
+              pushToast("info", t("delete"), desktopLabel(lang, "sysIconHidden"));
+            }
+          }
+          const appCount = d.ids.length - thirds.length - sysIds.length;
+          if (appCount > 0) pushToast("info", t("delete"), t("sysIconLocked"));
       if (thirds.length > 0) {
         void (async () => {
           const ok = await askConfirm({
@@ -861,9 +1099,32 @@ export function DesktopIcons(props: {
     const ctrl = e.ctrlKey || e.metaKey;
     const k = e.key;
     if (k === "Escape") {
+      // V-07：Esc 清空敲字缓冲
+      typingRef.current = null;
+      matchQueryRef.current = null;
+      matchIdxRef.current = 0;
       if (flyoutId) setFlyoutId(null);
       else if (edit) setEdit(false);
       else setSelected(new Set());
+      return;
+    }
+    // V-07：敲字定位 —— 裸可打印字符（无 Ctrl/Alt/Meta）累积匹配（300ms 窗口），
+    // 多命中循环高亮；Enter 打开（走下方选中打开逻辑），焦点在桌面时才触发。
+    if (isPrintableKey(k, e.ctrlKey, e.altKey, e.metaKey)) {
+      const st = collectTyping(typingRef.current, k, Date.now());
+      typingRef.current = st;
+      const q = typingQuery(st);
+      const hits = visibleDefs.filter((d) => matchPinyin(labelOf(d), q));
+      if (hits.length > 0) {
+        e.preventDefault();
+        if (matchQueryRef.current === q) matchIdxRef.current = (matchIdxRef.current + 1) % hits.length;
+        else {
+          matchQueryRef.current = q;
+          matchIdxRef.current = 0;
+        }
+        const hit = hits[matchIdxRef.current];
+        if (hit) setSelected(new Set([hit.id]));
+      }
       return;
     }
     if (k === "Enter" && e.altKey) {
@@ -897,7 +1158,9 @@ export function DesktopIcons(props: {
     } else if (lk === "c") {
       if (selected.size) setClip({ ids: [...selected], mode: "copy" });
     } else if (lk === "x") {
-      if (selected.size) setClip({ ids: [...selected], mode: "cut" });
+        // V-03：锁定拦截剪切
+        if (selected.size && isBlocked("cut", locked)) toastLocked();
+        else if (selected.size) setClip({ ids: [...selected], mode: "cut" });
     } else if (lk === "v") {
       e.preventDefault();
       pasteClip();
@@ -912,7 +1175,25 @@ export function DesktopIcons(props: {
 
   // ---- 右键菜单 ----
   const toggleAutoArrange = (): void => {
+    // V-03：锁定时重排拦截
+    if (isBlocked("reorder", locked)) {
+      toastLocked();
+      return;
+    }
     commit({ ...layout, autoArrange: !layout.autoArrange });
+  };
+
+  // V-01「对齐网格」：手动模式下按当前顺序重排成紧凑网格（保持手动模式）。
+  const alignGrid = (): void => {
+    if (isBlocked("reorder", locked)) {
+      toastLocked();
+      return;
+    }
+    const positions: DesktopLayout["positions"] = {};
+    visibleDefs.forEach((d, i) => {
+      positions[d.id] = { c: Math.floor(i / rows), r: i % rows };
+    });
+    commit({ ...layoutRef.current, positions, autoArrange: false });
   };
 
   const refresh = (): void => {
@@ -994,9 +1275,133 @@ export function DesktopIcons(props: {
     }
   };
 
+  // V-96：布局 commit 后检查归档阈值（30 天节流；锁定/隐藏/编辑态不打扰）
+  useEffect(() => {
+    if (locked || iconsHidden || edit) return;
+    const count = visibleDefs.filter((d) => !d.id.startsWith("sys-")).length;
+    if (!shouldSuggestArchive(count, Date.now())) return;
+    markArchiveHinted(Date.now());
+    void (async () => {
+      const ok = await askConfirm({
+        title: desktopLabel(lang, "archiveAskTitle"),
+        body: desktopLabel(lang, "archiveAskBody"),
+      });
+      if (!ok) return;
+      setArchivePick(new Set(archiveCandidates(visibleDefs).map((d) => d.id)));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
+
+  // V-96：执行归档 —— 所选图标收入「桌面归档 YYYY-MM」文件架（可逆：出架即还原；零文件操作）
+  const doArchive = useCallback((): void => {
+    if (!archivePick || archivePick.size === 0) {
+      setArchivePick(null);
+      return;
+    }
+    const l = layoutRef.current;
+    const id = newShelfId();
+    const base = archiveShelfName(new Date(), lang === "en" ? "en" : "zh");
+    let name = base;
+    let n = 2;
+    const names = new Set(Object.values(l.shelves).map((s) => s.name));
+    while (names.has(name)) name = `${base} ${n++}`;
+    const ids = [...archivePick].filter((x) => !x.startsWith("sys-"));
+    const shelves = { ...l.shelves };
+    for (const [sid, s] of Object.entries(shelves)) {
+      const filtered = s.members.filter((m) => !ids.includes(m));
+      if (filtered.length !== s.members.length) shelves[sid] = { ...s, members: filtered };
+    }
+    shelves[id] = { name, color: "slate" as ShelfColor, members: ids };
+    const occupied = new Set([...placed.values()].map((p) => `${p.c}:${p.r}`));
+    const cell = findFree(occupied, 0);
+    commit({
+      ...l,
+      shelves,
+      autoArrange: false,
+      positions: { ...l.positions, [id]: { c: cell.c, r: cell.r } },
+    });
+    setArchivePick(null);
+    pushToast("info", desktopLabel(lang, "archiveDone"), name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [archivePick, lang, placed, commit, rows]);
+
+  // ---- V-09 新建菜单模板中心 ----
+  /** 选目录（Tauri 对话框；纯浏览器环境诚实提示）。 */
+  const pickDirV09 = async (): Promise<string | null> => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const sel = await open({ multiple: false, directory: true });
+      if (typeof sel === "string") return sel;
+      if (Array.isArray(sel)) return sel[0] ?? null;
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** 从模板新建文件：选目录 → 命名（进入重命名态语义）→ 显式落盘。 */
+  const createFromTemplate = async (tpl: IconTemplate): Promise<void> => {
+    const dir = await pickDirV09();
+    if (!dir) {
+      pushToast("info", desktopLabel(lang, "tplCenter"), desktopLabel(lang, "tplPickDirNA"));
+      return;
+    }
+    const name = await askPrompt({ title: desktopLabel(lang, "tplNewTitle"), initial: templateFileName(tpl, 0) });
+    if (!name) return;
+    const path = `${dir.replace(/[\\/]+$/, "")}/${name}`;
+    try {
+      await ipc.saveTextFile(path, tpl.content);
+      pushToast("info", desktopLabel(lang, "tplCreated"), name);
+    } catch (e) {
+      pushToast("error", desktopLabel(lang, "tplCreated"), errMessage(e).message);
+    }
+  };
+
+  /** 「保存为模板」：任选文本文件 → 命名入库（≤256KB，如实拒绝超额）。 */
+  const saveAsTemplate = async (): Promise<void> => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const sel = await open({ multiple: false, directory: false });
+      const p = typeof sel === "string" ? sel : Array.isArray(sel) ? sel[0] ?? null : null;
+      if (!p) return;
+      let content = "";
+      try {
+        content = await ipc.readTextFile(p);
+      } catch {
+        pushToast("error", desktopLabel(lang, "tplSaveFrom"), desktopLabel(lang, "tplReadFail"));
+        return;
+      }
+      const stem = p.split(/[\\/]/).pop() ?? "template";
+      const dot = stem.lastIndexOf(".");
+      const name = await askPrompt({ title: desktopLabel(lang, "tplNameTitle"), initial: dot > 0 ? stem.slice(0, dot) : stem });
+      if (!name) return;
+      const r = addTemplate(name, dot > 0 ? stem.slice(dot + 1) : "txt", content);
+      if (r.result === "ok") pushToast("info", desktopLabel(lang, "tplSavedTpl"), desktopLabel(lang, "tplSavedBody"));
+      else if (r.result === "size") pushToast("info", desktopLabel(lang, "tplSaveFrom"), desktopLabel(lang, "tplTooBig"));
+      else if (r.result === "limit") pushToast("info", desktopLabel(lang, "tplSaveFrom"), desktopLabel(lang, "tplLimit"));
+      else pushToast("info", desktopLabel(lang, "tplSaveFrom"), desktopLabel(lang, "tplInvalid"));
+    } catch {
+      /* dialog unavailable —— 纯浏览器环境静默（入口本就只在 Tauri 下可感知） */
+    }
+  };
+
   const openDesktopMenu = (e: React.MouseEvent): void => {
     if (e.button !== 0) e.preventDefault();
-    const sizes: IconSize[] = [32, 48, 64];
+    // V-06：四档图标大小（96 档仅本车道记忆 —— settings schema 禁改，见 density.ts 诚实边界）
+    const sizeItems: MenuItem[] = ([32, 48, 64, 96] as DesktopIconSize[]).map((s) => ({
+      label: `${s} × ${s}`,
+      checked: s === 96 ? iconPx === 96 : props.iconSize === s && iconPx === s,
+      onClick: () => {
+        if (s === 96) {
+          saveIconPx(96);
+          setIconPx(96);
+          return;
+        }
+        props.onPatchSettings({ iconSize: s });
+        saveIconPx(s);
+        setIconPx(s);
+      },
+    }));
     // "系统桌面（Wallpaper Engine）"入口已移除：选中即隐藏 Variable 并渲染纯黑，
     // WE 未接管时表现为整屏黑屏（实机反馈）。壁纸全部在本地环境内打开。
     const walls = ["solid", "gravity", "image", "video", "hybrid", "web"] as const;
@@ -1015,23 +1420,144 @@ export function DesktopIcons(props: {
           { label: t("newShelf"), onClick: createShelf },
           { label: t("newRecord"), onClick: () => props.onOpenApp("write") },
           { label: t("newMindmap"), onClick: () => props.onOpenApp("mindmap") },
+          // V-09：模板中心 —— 内置 + 用户模板（新建后经命名弹窗进入重命名态语义）
+          { separator: true },
+          ...listTemplates().map((tpl) => ({
+            label: `${tpl.name}.${tpl.ext}`,
+            onClick: () => void createFromTemplate(tpl),
+          })),
+          { separator: true },
+          { label: desktopLabel(lang, "tplSaveFrom"), onClick: () => void saveAsTemplate() },
+          {
+            label: desktopLabel(lang, "tplCenter"),
+            onClick: () => {
+              setTplList(listTemplates());
+              setTplManage(true);
+            },
+          },
         ],
       },
       {
+        // V-01/V-02：查看 = 大小四档 + 自动排列/对齐网格/显示图标 + 五系统图标开关 + 恢复默认
         label: t("viewMenu"),
-        children: sizes.map((s) => ({
-          label: `${s} × ${s}`,
-          checked: props.iconSize === s,
-          onClick: () => props.onPatchSettings({ iconSize: s }),
+        children: [
+          ...sizeItems,
+          { separator: true },
+          { label: t("autoArrange"), checked: layout.autoArrange, onClick: toggleAutoArrange },
+          { label: desktopLabel(lang, "alignGrid"), onClick: alignGrid },
+          { label: iconsHidden ? t("showIcons") : t("hideIcons"), onClick: toggleIconsHidden },
+          { separator: true },
+          ...SYS_ICON_IDS.map((id) => ({
+            label: sysIconLabel(id),
+            checked: sysVis[id],
+            onClick: () =>
+              setSysVis((v) => {
+                const next = { ...v, [id]: !v[id] };
+                saveSysIconVis(next);
+                return next;
+              }),
+          })),
+          {
+            label: desktopLabel(lang, "sysIconsReset"),
+            onClick: () => {
+              setSysVis(resetSysIconVis());
+            },
+          },
+        ],
+      },
+      {
+        // V-01：排序方式四项（"大小"无真实数据 → 恒排基线序，见 sort.ts 诚实边界）
+        label: t("sortBy"),
+        children: (["type", "name", "size", "date"] as SortMode[]).map((m) => ({
+          label:
+            m === "type"
+              ? t("sortType")
+              : m === "name"
+                ? t("sortName")
+                : desktopLabel(lang, m === "size" ? "sortSize" : "sortDate"),
+          checked: layout.sort === m,
+          onClick: () => {
+            if (isBlocked("reorder", locked)) {
+              toastLocked();
+              return;
+            }
+            commit({ ...layoutRef.current, sort: m });
+          },
         })),
       },
       {
-        label: t("sortBy"),
-        children: (["type", "name"] as SortMode[]).map((m) => ({
-          label: m === "type" ? t("sortType") : t("sortName"),
-          checked: layout.sort === m,
-          onClick: () => commit({ ...layoutRef.current, sort: m }),
+        // V-03：锁定桌面图标（子菜单显示当前状态；解锁需确认）
+        label: desktopLabel(lang, "lockIcons"),
+        children: [
+          {
+            label: locked ? desktopLabel(lang, "lockStateOn") : desktopLabel(lang, "lockStateOff"),
+            onClick: () => {
+              if (!locked) {
+                commit({ ...layoutRef.current, locked: true });
+                pushToast("success", desktopLabel(lang, "lockIcons"), desktopLabel(lang, "desktopLocked"));
+                return;
+              }
+              void askConfirm({
+                title: desktopLabel(lang, "unlockConfirmTitle"),
+                body: desktopLabel(lang, "unlockConfirmBody"),
+                okLabel: desktopLabel(lang, "unlockOk"),
+              }).then((ok) => {
+                if (ok) commit({ ...layoutRef.current, locked: false });
+              });
+            },
+          },
+        ],
+      },
+      {
+        // V-04：双击空白动作（默认 none；动作经 ai04:desktop-action 桥由 DesktopShell 执行）
+        label: desktopLabel(lang, "dblClickMenu"),
+        children: (["none", "show-desktop", "minimize-all", "palette", "lock"] as DoubleClickAction[]).map((a) => ({
+          label:
+            a === "none"
+              ? desktopLabel(lang, "dblNone")
+              : a === "show-desktop"
+                ? desktopLabel(lang, "dblShowDesktop")
+                : a === "minimize-all"
+                  ? desktopLabel(lang, "dblMinimizeAll")
+                  : a === "palette"
+                    ? desktopLabel(lang, "dblPalette")
+                    : desktopLabel(lang, "dblLock"),
+          checked: dblAction === a,
+          onClick: () => {
+            saveDoubleClickAction(a);
+            setDblAction(a);
+          },
         })),
+      },
+      {
+        // V-05：标签文字对比（auto 仅 image 壁纸采样生效；black/white 用户强制）
+        label: desktopLabel(lang, "labelShadeMenu"),
+        children: (["auto", "black", "white"] as ShadePref[]).map((p) => ({
+          label: desktopLabel(lang, p === "auto" ? "shadeAuto" : p === "black" ? "shadeBlack" : "shadeWhite"),
+          checked: shadePref === p,
+          onClick: () => {
+            saveShadePref(p);
+            setShadePref(p);
+          },
+        })),
+      },
+      {
+        // U-13：桌面配置（保存当前/切换 N/管理；应用经事件桥交 DesktopShell 执行）
+        label: desktopLabel(lang, "profileMenu"),
+        children: [
+          {
+            label: desktopLabel(lang, "profileSave"),
+            onClick: () => window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { mode: "save" } })),
+          },
+          ...listProfiles().map((p) => ({
+            label: p.name,
+            onClick: () => window.dispatchEvent(new CustomEvent("ai04:apply-profile", { detail: p })),
+          })),
+          {
+            label: desktopLabel(lang, "profileManage"),
+            onClick: () => window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { mode: "manage" } })),
+          },
+        ],
       },
       { separator: true },
       { label: t("addApp"), onClick: () => uiStore.setState({ launcherOpen: true, startOpen: false }) },
@@ -1050,8 +1576,6 @@ export function DesktopIcons(props: {
         ],
       },
       { separator: true },
-      { label: iconsHidden ? t("showIcons") : t("hideIcons"), onClick: toggleIconsHidden },
-      { label: t("autoArrange"), checked: layout.autoArrange, onClick: toggleAutoArrange },
       { label: t("refreshDesktop"), onClick: refresh },
       { label: t("personalize"), onClick: props.onOpenSettings },
       { separator: true },
@@ -1059,7 +1583,6 @@ export function DesktopIcons(props: {
     ];
     openContextMenu(e.clientX, e.clientY, items);
   };
-
   const openIconMenu = (e: React.MouseEvent, d: IconDef): void => {
     e.preventDefault();
     e.stopPropagation();
@@ -1090,7 +1613,17 @@ export function DesktopIcons(props: {
       });
     }
     items.push({ separator: true });
-    items.push({ label: t("cut"), onClick: () => setClip({ ids: [d.id], mode: "cut" }) });
+        items.push({
+          label: t("cut"),
+          onClick: () => {
+            // V-03：锁定拦截剪切
+            if (isBlocked("cut", locked)) {
+              toastLocked();
+              return;
+            }
+            setClip({ ids: [d.id], mode: "cut" });
+          },
+        });
     items.push({ label: t("copy"), onClick: () => setClip({ ids: [d.id], mode: "copy" }) });
     if (!("sys" in d)) {
       const l = layout;
@@ -1158,6 +1691,13 @@ export function DesktopIcons(props: {
 
   const propsDef = propsFor ? defById.get(propsFor) : null;
 
+  // V-05：标签字色类（null → 现状默认样式不加类；HC 主题强制白字 —— data-theme 信号）
+  const labelShadeClass = (id: string): string => {
+    const hc = document.documentElement.dataset.theme === "high-contrast";
+    const s = resolveShade(shadePref, props.wallpaperMode, labelShades, id, hc);
+    return s === "light" ? " shade-light" : s === "dark" ? " shade-dark" : "";
+  };
+
   return (
     <div
       ref={containerRef}
@@ -1167,6 +1707,26 @@ export function DesktopIcons(props: {
       onPointerDown={onContainerPointerDown}
       onPointerMove={onContainerPointerMove}
       onPointerUp={onContainerPointerUp}
+      onDoubleClick={(e) => {
+        // V-04：双击空白动作（图标双击不受影响 —— 仅空白处触发；默认 none 无动作）。
+        // 规格的 80ms 视觉确认以 toast 代替（注明）。动作经桥由 DesktopShell 执行。
+        if (e.target !== e.currentTarget) return;
+        const action = loadDoubleClickAction();
+        if (action === "none") return;
+        window.dispatchEvent(new CustomEvent("ai04:desktop-action", { detail: { action } }));
+        pushToast("info", desktopLabel(lang, "dblClickMenu"), desktopLabel(lang, "dblDone"));
+      }}
+      onWheel={(e) => {
+        // V-06：Ctrl+滚轮连续缩放（24–128px 步进 4；32/48/64 时顺手同步设置档位）
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        const dir = e.deltaY < 0 ? 1 : -1;
+        const next = clampIconPx(iconPx + dir * ICON_PX_STEP);
+        if (next === iconPx) return;
+        setIconPx(next);
+        saveIconPx(next);
+        if (next === 32 || next === 48 || next === 64) props.onPatchSettings({ iconSize: next });
+      }}
       onContextMenu={(e) => {
         if (e.target === e.currentTarget) openDesktopMenu(e);
       }}
@@ -1176,14 +1736,19 @@ export function DesktopIcons(props: {
         if (!cell) return null;
         const isDragging = drag?.moved === true && d.id === drag.primary;
         const isCut = clip?.mode === "cut" && clip.ids.includes(d.id);
-        const Icon = d.icon;
+            // V-10：本图标是否为「被让位」预演目标（位于悬停格、非拖动者）
+            const isPreview =
+              previewCell !== null && !isDragging && cell.c === previewCell.c && cell.r === previewCell.r;
+            // V-08：回收站角标（空=无；N=数量；配额数据后端未提供 → 无 90% 预警态，诚实边界）
+            const recBadge = d.id === "sys-recycle" ? badgeForCount(recCount) : null;
+            const Icon = d.icon;
         const img = "third" in d ? d.third.icon : "shelfId" in d ? d.shelf.icon : null;
         const badge = "shelfId" in d ? layout.shelves[d.shelfId]?.members.length ?? 0 : null;
         return (
           <button
             key={d.id}
             type="button"
-            className={`desktop-icon${selected.has(d.id) ? " selected" : ""}${isDragging ? " dragging" : ""}${isCut ? " cut" : ""}${edit ? " jiggle" : ""}`}
+            className={`desktop-icon${selected.has(d.id) ? " selected" : ""}${isDragging ? " dragging" : ""}${isCut ? " cut" : ""}${edit ? " jiggle" : ""}${isPreview ? " flip-preview" : ""}`}
             style={{
               ["--i" as string]: String(Math.min(idx, 10)), // 批次A：入场交错淡入序号
               left: GRID_PAD + cell.c * tier.w,
@@ -1210,8 +1775,11 @@ export function DesktopIcons(props: {
             >
               {img ? <img src={img} alt="" draggable={false} /> : <Icon size={tier.icon} strokeWidth={1.6} />}
               {badge !== null && badge > 0 && <span className="icon-badge">{badge > 99 ? "99+" : badge}</span>}
+              {recBadge && recBadge.kind === "count" && (
+                <span className="icon-badge rec-badge" aria-hidden>{recBadge.n > 99 ? "99+" : recBadge.n}</span>
+              )}
             </span>
-            <span className="desktop-icon-label">{labelOf(d)}</span>
+            <span className={`desktop-icon-label${labelShadeClass(d.id)}`}>{labelOf(d)}</span>
             {edit && ("third" in d || "shelfId" in d) && (
               <span
                 className="icon-remove"
@@ -1357,6 +1925,102 @@ export function DesktopIcons(props: {
             <p className="dim small" style={{ textAlign: "center", margin: "6px 0 0" }}>
               {t("aboutBody")}
             </p>
+          </div>
+        </div>
+      )}
+
+      {archivePick && (
+        <div className="props-overlay" onPointerDown={() => setArchivePick(null)}>
+          <div className="props-card" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <header className="props-head">
+              <span className="props-title">{desktopLabel(lang, "archivePickTitle")}</span>
+              <button type="button" className="shf-x" onClick={() => setArchivePick(null)} aria-label={t("close")}>
+                <X size={14} />
+              </button>
+            </header>
+            <div className="archive-pick-list">
+              {archiveCandidates(visibleDefs).map((d) => (
+                <label key={d.id} className="archive-pick-item">
+                  <input
+                    type="checkbox"
+                    checked={archivePick.has(d.id)}
+                    onChange={(e) => {
+                      const next = new Set(archivePick);
+                      if (e.target.checked) next.add(d.id);
+                      else next.delete(d.id);
+                      setArchivePick(next);
+                    }}
+                  />
+                  <span>{labelOf(d)}</span>
+                </label>
+              ))}
+            </div>
+            <footer className="archive-pick-actions">
+              <button type="button" className="btn ghost" onClick={() => setArchivePick(new Set(archiveCandidates(visibleDefs).map((x) => x.id)))}>
+                {desktopLabel(lang, "archiveAll")}
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setArchivePick(new Set())}>
+                {desktopLabel(lang, "archiveNone")}
+              </button>
+              <button type="button" className="btn primary" onClick={doArchive}>
+                {desktopLabel(lang, "archiveDo")}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+      {tplManage && (
+        <div className="props-overlay" onPointerDown={() => setTplManage(false)}>
+          <div className="props-card" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+            <header className="props-head">
+              <span className="props-title">{desktopLabel(lang, "tplCenter")}</span>
+              <button type="button" className="shf-x" onClick={() => setTplManage(false)} aria-label={t("close")}>
+                <X size={14} />
+              </button>
+            </header>
+            <div className="archive-pick-list">
+              {tplList.filter((x) => !x.id.startsWith("builtin-")).length === 0 && (
+                <p className="dim small">{desktopLabel(lang, "tplEmpty")}</p>
+              )}
+              {tplList
+                .filter((x) => !x.id.startsWith("builtin-"))
+                .map((x) => (
+                  <div key={x.id} className="archive-pick-item">
+                    <span style={{ flex: 1 }}>{x.name}.{x.ext}</span>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => {
+                        void askPrompt({ title: desktopLabel(lang, "tplNameTitle"), initial: x.name }).then((name) => {
+                          if (!name) return;
+                          renameTemplate(x.id, name);
+                          setTplList(listTemplates());
+                        });
+                      }}
+                    >
+                      {desktopLabel(lang, "tplRename")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => {
+                        void askConfirm({
+                          title: desktopLabel(lang, "tplDelete"),
+                          body: `${x.name}.${x.ext}`,
+                          danger: true,
+                          okLabel: desktopLabel(lang, "tplDelete"),
+                        }).then((ok) => {
+                          if (!ok) return;
+                          removeTemplate(x.id);
+                          setTplList(listTemplates());
+                        });
+                      }}
+                    >
+                      {desktopLabel(lang, "tplDelete")}
+                    </button>
+                  </div>
+                ))}
+            </div>
           </div>
         </div>
       )}

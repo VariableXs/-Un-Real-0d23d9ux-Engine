@@ -81,7 +81,7 @@ export function sunPhase(now: Date, lat?: number | null): { phase: SunPhase; tin
 export function tintToRgba(hex: string, alpha: number): string {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
   if (!m) return `rgba(0,0,0,${alpha})`;
-  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`;
+  return `rgba(${parseInt(m[1] as string, 16)},${parseInt(m[2] as string, 16)},${parseInt(m[3] as string, 16)},${alpha})`;
 }
 
 /** 季节 accent 偏移（月份口径：3-5 春 / 6-8 夏 / 9-11 秋 / 其余冬）。 */

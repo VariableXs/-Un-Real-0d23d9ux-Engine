@@ -53,7 +53,7 @@ describe("N-06 orchestrate", () => {
     const played: number[] = [];
     orchestrate(target(4, (i) => played.push(i)), { kind: "instant", raf });
     expect(rafCbs).toHaveLength(1);
-    rafCbs[0]();
+    rafCbs[0]?.();
     expect(played).toEqual([0, 1, 2, 3]);
   });
 

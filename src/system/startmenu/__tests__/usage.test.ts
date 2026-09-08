@@ -1,5 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bumpUsage, topUsed, usageCount, usageCounts } from "../usage";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * 化境 V-12 回归：高频使用本地计数 ——

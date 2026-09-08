@@ -1,4 +1,4 @@
-﻿/**
+/**
  * N-06 动效编排系统（NEXT-40 · AI-2 窗口路）——中央编排器：
  * - 单入口 `orchestrate(elements, opts)`：批量动效自动按 30ms 错峰（stagger）、
  *   自动合并到单 rAF 批次；
@@ -65,15 +65,13 @@ export function orchestrate(targets: OrchestrateTarget[], opts: OrchestrateOptio
   const dur = durationFor(opts);
   if (dur === 0) {
     // instant：同一批次直接落位（合并到单帧）
-    const raf = opts.raf ?? ((cb: () => void) => requestAnimationFrame(cb));
-    raf(() => {
+    (opts.raf ?? ((cb: () => void) => requestAnimationFrame(cb)))(() => {
       const t0 = performance.now();
       for (const t of targets) t.play(t.el);
       if (performance.now() - t0 > FRAME_BUDGET_MS) budgetExceededCount += 1;
     });
     return;
   }
-  const raf = opts.raf ?? ((cb: () => void) => window.setTimeout(cb, 0));
   const timers: number[] = [];
   targets.forEach((t, i) => {
     timers.push(
