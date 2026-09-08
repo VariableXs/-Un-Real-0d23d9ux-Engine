@@ -1,7 +1,7 @@
 import type { AppMode } from "../state/uiStore";
 
-/** 窗口入口类型：desktop = 桌面环境窗口；四款独立软件；explorer = 系统窗口（文件管理器/回收站）。 */
-export type EntryType = "desktop" | AppMode | "explorer";
+/** 窗口入口类型：desktop = 桌面环境窗口；四款独立软件；explorer = 系统窗口（文件管理器/回收站）；datavault = 数据安全中心（AI-10）。 */
+export type EntryType = "desktop" | AppMode | "explorer" | "datavault";
 
 export function isTauriRuntime(): boolean {
   const internals = (window as { __TAURI_INTERNALS__?: { __variableDevStub?: boolean } }).__TAURI_INTERNALS__;

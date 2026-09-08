@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  ArrowLeft, ArrowRight, ArrowUp, File as FileIcon, Folder, FolderOpen, FolderPlus,
-  HardDrive, Image as ImageIcon, LayoutGrid, List, Network, RefreshCw, Search, Send, Share2, Star, Trash2, X,
+  ArrowLeft, ArrowRight, ArrowUp, Columns3, Copy, File as FileIcon, FileArchive, Folder, FolderOpen, FolderPlus,
+  GitCompare, HardDrive, Image as ImageIcon, LayoutGrid, List, Network, Pin, PinOff, Printer, RefreshCw, Search, Send, Share2, ShieldCheck, Star, Trash2, X,
 } from "lucide-react";
 import { askChoice, askConfirm, askPrompt, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
 import { ContextMenuHost, openContextMenu, type MenuItem } from "../../components/ContextMenu";
@@ -10,9 +10,13 @@ import { ToastHost } from "../../components/ToastHost";
 import { WindowControls } from "../../components/WindowControls";
 import { useI18n } from "../../i18n";
 import {
-  errMessage, ipc, type ExCopyMode, type ExEntry, type ExListing, type ExSearchResult, type ExVarDir,
+  errMessage, ipc, type ArchiveEntry, type ExCopyMode, type ExEntry, type ExListing, type ExSearchResult, type ExVarDir,
   type LockHolder, type NetDrive, type SendToItem,
 } from "../../lib/ipc";
+import {
+  fuzzySuggestions, fromSavedView, highlightParts, nameIssues, pageSlice, sameTypeGroup, toSavedView,
+  type ExViewMode,
+} from "./exFeatures";
 import { beginXDrag } from "../../lib/xflow";
 import { pushToast } from "../../state/uiStore";
 import { openExplorerWindow, trackSelfGeom } from "../windows/appWindows";
@@ -37,8 +41,10 @@ import { loadCtxConfig, loadDeleteTier, type CtxItemId } from "./ctxMenu";
  */
 
 type SysView = "explorer" | "recycle";
-type ExViewMode = "list" | "icons" | "thumbs";
 type SortKey = "name" | "modified" | "created" | "type" | "size";
+
+/** U-16：分页虚拟化页大小（超出才分页）。 */
+const PAGE_SIZE = 500;
 
 interface Tab {
   id: number;
@@ -240,6 +246,21 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   const [addrEdit, setAddrEdit] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
   const [clipboardTick, setClipboardTick] = useState(0); // 触发剪贴板高亮重渲染
+  // AI-10 U-16：分页虚拟化 + 双栏
+  const [page, setPage] = useState(0);
+  const [dual, setDual] = useState(false);
+  const [pane2, setPane2] = useState<{ path: string; listing: ExListing | null }>({ path: "", listing: null });
+  // AI-10 V-34：拖拽计数徽标（多选拖拽时跟随光标）
+  const [dragBadge, setDragBadge] = useState<{ n: number; x: number; y: number } | null>(null);
+  // AI-10 V-35：两文件属性对比
+  const [cmp, setCmp] = useState<[ExEntry, ExEntry] | null>(null);
+  // AI-10 V-38：预览锁定（锁定后空格/导航不替换当前预览）
+  const [previewPin, setPreviewPin] = useState(false);
+  // AI-10 V-39：地址栏模糊建议选中项
+  const [addrSugIdx, setAddrSugIdx] = useState(-1);
+  // AI-10 V-40：压缩包提取向导
+  const [extract, setExtract] = useState<{ archive: ExEntry; entries: ArchiveEntry[] } | null>(null);
+  const [extractBusy, setExtractBusy] = useState(false);
   const alive = useRef(true);
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -396,6 +417,32 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPath]);
 
+  // AI-10 V-31：路径变化 → 恢复该目录记忆的视图（LRU 持久化在后端）
+  useEffect(() => {
+    if (!currentPath) return;
+    void ipc
+      .exViewGet(currentPath)
+      .then((v) => {
+        const m = v ? fromSavedView(v) : null;
+        if (m) setView(m);
+      })
+      .catch(() => {});
+    setPage(0);
+    setAddrSugIdx(-1);
+  }, [currentPath]);
+
+  // 过滤变化 → 回到第一页
+  useEffect(() => {
+    setPage(0);
+  }, [filter]);
+
+  // AI-10 V-31：用户切换视图 → 持久化（thumbs 无后端枚举，退化为 icon）
+  const changeView = useCallback((v: ExViewMode): void => {
+    setView(v);
+    const p = pathRef.current;
+    if (p) void ipc.exViewSet(p, toSavedView(v)).catch(() => {});
+  }, []);
+
   // 搜索（防抖）：语法查询走后端递归
   useEffect(() => {
     if (!isSyntaxQuery(filter)) {
@@ -455,6 +502,135 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     () => visible.find((e) => e.path === selected) ?? listing?.entries.find((e) => e.path === selected) ?? null,
     [visible, listing, selected],
   );
+
+  // AI-10 U-16：分页虚拟化（>PAGE_SIZE 才分页，切片渲染）
+  const paged = useMemo(() => pageSlice(visible, page, PAGE_SIZE), [visible, page]);
+  const rows = paged.rows;
+
+  // AI-10 V-32：过滤高亮（语法查询不高亮——结果是递归搜索而非子串过滤）
+  const hlQuery = filter && !isSyntaxQuery(filter) ? filter.trim() : "";
+  const hlName = (name: string): ReactNode => {
+    const parts = highlightParts(name, hlQuery);
+    if (!parts) return name;
+    return (
+      <>
+        {parts[0]}
+        <mark className="ex-hl">{parts[1]}</mark>
+        {parts[2]}
+      </>
+    );
+  };
+
+  // AI-10 V-39：地址栏模糊建议池（收藏/历史/盘符/网络驱动器/环境目录）
+  const addrSuggestions = useMemo(() => {
+    if (addrEdit === null || !addrEdit.trim()) return [];
+    const pool = [
+      ...favs,
+      home ?? "",
+      ...drives.map((d) => d.path),
+      ...netDrives.map((d) => d.path),
+      ...varDirs.map((v) => v.path),
+      ...tabs.flatMap((tb) => tb.history),
+    ].filter(Boolean);
+    return fuzzySuggestions(addrEdit, pool, 6);
+  }, [addrEdit, favs, home, drives, netDrives, varDirs, tabs]);
+
+  // AI-10 U-16：双栏第二面板加载
+  useEffect(() => {
+    if (!dual) return;
+    setPane2((p) => (p.path ? p : { path: pathRef.current, listing: null }));
+  }, [dual]);
+  useEffect(() => {
+    if (!dual || !pane2.path) return undefined;
+    let ok = true;
+    void ipc
+      .exList(pane2.path)
+      .then((l) => {
+        if (ok) setPane2((p) => ({ ...p, listing: l }));
+      })
+      .catch(() => {});
+    return () => {
+      ok = false;
+    };
+  }, [dual, pane2.path]);
+
+  // AI-10 V-34：拖拽徽标跟随光标（document 级，dragend/drop 收尾）
+  const dragging = dragBadge !== null;
+  useEffect(() => {
+    if (!dragging) return undefined;
+    const move = (ev: DragEvent): void => setDragBadge((d) => (d ? { ...d, x: ev.clientX, y: ev.clientY } : d));
+    const end = (): void => setDragBadge(null);
+    document.addEventListener("dragover", move);
+    document.addEventListener("dragend", end);
+    document.addEventListener("drop", end);
+    return () => {
+      document.removeEventListener("dragover", move);
+      document.removeEventListener("dragend", end);
+      document.removeEventListener("drop", end);
+    };
+  }, [dragging]);
+
+  // AI-10 V-33：复制为路径（多选 = 每行一条）
+  const copyPaths = useCallback(
+    (paths: string[]): void => {
+      if (paths.length === 0) return;
+      void navigator.clipboard.writeText(paths.join("\r\n")).then(
+        () =>
+          pushToast(
+            "success",
+            t("exCopyPath"),
+            paths.length > 1 ? t("items", { n: paths.length }) : (paths[0] ?? ""),
+          ),
+        () => pushToast("error", t("exCopyPath"), t("failedLoad")),
+      );
+    },
+    [t],
+  );
+
+  // AI-10 V-37：按类型选取（与基准条目同类型全部选中）
+  const selectSameType = useCallback(
+    (base: ExEntry): void => {
+      setSelSet(new Set(visible.filter((v) => sameTypeGroup(base, v)).map((v) => v.path)));
+      setSelected(base.path);
+    },
+    [visible],
+  );
+
+  // AI-10 V-36：新建/重命名防呆（非法字符/保留名/结尾点空格/超长名 → 显式确认后才放行）
+  const confirmNameIssues = useCallback(
+    async (name: string): Promise<boolean> => {
+      const issues = nameIssues(name);
+      if (issues.length === 0) return true;
+      return askConfirm({
+        title: t("exNameWarnTitle"),
+        body: t("exNameWarnBody", { issues: issues.join(" · ") }),
+        okLabel: t("ok"),
+      });
+    },
+    [t],
+  );
+
+  // AI-10 V-40：提取向导 —— 逐项解包到当前目录（后端 archive_extract_one）
+  const runExtractAll = useCallback(async (): Promise<void> => {
+    if (!extract) return;
+    setExtractBusy(true);
+    const dest = pathRef.current || "C:\\";
+    let done = 0;
+    try {
+      for (const en of extract.entries) {
+        if (en.isDir) continue;
+        await ipc.archiveExtractOne(extract.archive.path, en.innerPath);
+        done++;
+      }
+      pushToast("success", t("exExtractTitle"), t("exExtractDone", { n: done, dir: dest }));
+      setExtract(null);
+      await refresh();
+    } catch (err) {
+      pushToast("error", t("exExtractTitle"), `${errMessage(err).message} (${done})`);
+    } finally {
+      setExtractBusy(false);
+    }
+  }, [extract, t, refresh]);
 
   // ---------- 操作 ----------
 
@@ -516,18 +692,22 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     if (!p) return;
     const name = await askPrompt({ title: t("newFolder"), initial: "" });
     if (!name) return;
+    // V-36：特殊名防呆（非法字符/保留名/结尾点空格/超长 → 显式确认）
+    if (!(await confirmNameIssues(name))) return;
     try {
       await ipc.exMkdir(p, name);
       await refresh();
     } catch (e) {
       pushToast("error", t("newFolder"), errMessage(e).message);
     }
-  }, [t, refresh]);
+  }, [t, refresh, confirmNameIssues]);
 
   const rename = useCallback(
     async (e: ExEntry): Promise<void> => {
       const name = await askPrompt({ title: t("exRenameTitle"), initial: e.name });
       if (!name || name === e.name) return;
+      // V-36：特殊名防呆
+      if (!(await confirmNameIssues(name))) return;
       try {
         const newPath = await ipc.exRename(e.path, name);
         setSelected(newPath);
@@ -536,7 +716,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         pushToast("error", t("exRename"), errMessage(err).message);
       }
     },
-    [t, refresh],
+    [t, refresh, confirmNameIssues],
   );
 
   const trash = useCallback(
@@ -742,6 +922,36 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     [t],
   );
 
+  /** AI-08 V-97：右键打印 —— 关联判断走系统注册表（无关联如实置灰）；
+   * 执行走系统默认打印关联（ShellExecute print 动词）；批量 >5 个文件需确认。 */
+  const printFiles = useCallback(
+    async (paths: string[]): Promise<void> => {
+      if (paths.length === 0) return;
+      try {
+        const assoc = await ipc.printAssocCheck(paths);
+        const printable = paths.filter((_, i) => assoc[i]);
+        if (printable.length === 0) {
+          pushToast("info", t("pqPrintAction"), t("pqNoAssoc"));
+          return;
+        }
+        if (printable.length > 5) {
+          const ok = await askConfirm({
+            title: t("pqPrintAction"),
+            body: t("pqBatchConfirm", { n: printable.length }),
+          });
+          if (!ok) return;
+        }
+        const errs = await ipc.printFiles(printable);
+        if (errs.length > 0) pushToast("error", t("pqPrintAction"), errs.join("\n"));
+        else pushToast("success", t("pqPrintAction"), t("pqPrintSent", { n: printable.length }));
+      } catch (e: unknown) {
+        // 脱机/缺纸等失败透传系统错误（如实）
+        pushToast("error", t("pqPrintAction"), errMessage(e).message);
+      }
+    },
+    [t],
+  );
+
   const toggleFav = useCallback(
     (p: string): void => {
       const isFav = favs.includes(p);
@@ -801,7 +1011,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   // ---------- 视图 / 排序 ----------
 
   const cycleView = useCallback((): void => {
-    setView((v) => (v === "list" ? "icons" : v === "icons" ? "thumbs" : "list"));
+    setView((v) => (v === "list" ? "icons" : v === "icons" ? "thumbs" : v === "thumbs" ? "column" : "list"));
   }, []);
 
   const clickSort = useCallback(
@@ -895,14 +1105,16 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         e.preventDefault();
         openEntry(selEntry);
       } else if (e.key === "Escape") {
-        setPreview(null); // F-2.6 空格预览优先关闭，其次取消选择
+        // V-38：预览锁定时 Esc 不关预览（只取消选择）；未锁定按原逻辑关闭
+        if (preview && !previewPin) setPreview(null);
         setSelected(null);
         setSelSet(new Set());
       } else if (e.code === "Space" && selEntry) {
         // F-2.6 快速预览：空格呼出（焦点在输入框/文本域时不触发）
+        // V-38：预览锁定时空格不替换当前预览目标
         const ae = document.activeElement;
         const typing = ae instanceof HTMLElement && (ae.isContentEditable || ae.tagName === "INPUT" || ae.tagName === "TEXTAREA");
-        if (!typing) {
+        if (!typing && !previewPin) {
           e.preventDefault();
           setPreview({ name: selEntry.name, path: selEntry.path, kind: selEntry.kind, ext: selEntry.ext, size: selEntry.size });
         }
@@ -913,6 +1125,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   }, [
     goBack, goForward, goUp, refresh, newTab, cycleTab, closeTab, activeId, mkdir,
     copySel, pasteSel, selEntry, selEntries, rename, trash, purge, openEntry,
+    copyPaths, selectSameType, preview, previewPin,
   ]);
 
   // ---------- 右键菜单 ----------
@@ -973,6 +1186,20 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
             : []),
         ],
       },
+      // AI-08 V-97：右键打印（文件；关联判断异步做，无关联时动作内如实提示）
+      print:
+        e.kind === "file"
+          ? {
+              label: t("pqPrintAction"),
+              icon: <Printer size={13} />,
+              onClick: () =>
+                void printFiles(
+                  selEntries.length > 1 && selEntries.some((s) => s.path === e.path)
+                    ? selEntries.filter((s) => s.kind === "file").map((s) => s.path)
+                    : [e.path],
+                ),
+            }
+          : undefined,
       // M-25：文件占用侦探（只读，无强拆）
       wholocks:
         e.kind === "file"
@@ -1017,14 +1244,58 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
       }
       items.push(it);
     }
+    // ---------- AI-10 增补动作（V-33/V-35/V-37/V-40） ----------
+    const batchSel = selEntries.length > 1 && selEntries.some((s) => s.path === e.path);
+    if (items.length > 0) items.push({ separator: true });
+    items.push(
+      // V-33：复制为路径（多选 = 每行一条）
+      {
+        label: t("exCopyPath"),
+        icon: <Copy size={13} />,
+        onClick: () => copyPaths(batchSel ? selEntries.map((s) => s.path) : [e.path]),
+      },
+      // V-37：按类型选取
+      {
+        label: t("exSelectSameType"),
+        onClick: () => selectSameType(e),
+      },
+    );
+    // V-35：两文件属性对比（恰好选中两项时可用）
+    items.push({
+      label: t("exCompareProps"),
+      icon: <GitCompare size={13} />,
+      disabled: !(selEntries.length === 2 && selEntries.some((s) => s.path === e.path)),
+      onClick: () => {
+        const [a, b] = selEntries;
+        if (a && b) setCmp([a, b]);
+      },
+    });
+    // V-40：压缩包提取向导（zip；复用 AI-09 只读浏览后端逐项解包）
+    if (e.kind === "file" && (e.ext === "zip" || e.name.toLowerCase().endsWith(".zip"))) {
+      items.push({
+        label: t("exExtractTitle"),
+        icon: <FileArchive size={13} />,
+        onClick: () => {
+          void ipc
+            .archiveLs(e.path)
+            .then((l) => setExtract({ archive: e, entries: l.entries }))
+            .catch((err: unknown) =>
+              pushToast("error", t("exExtractTitle"), errMessage(err).message),
+            );
+        },
+      });
+    }
     openContextMenu(ev.clientX, ev.clientY, items);
   };
 
   // ---------- 拖拽（规格 7.6：移动（同盘）/ 复制（跨盘）；Ctrl 复制 / Shift 移动） ----------
 
   const onRowDragStart = (ev: React.DragEvent, e: ExEntry): void => {
-    ev.dataTransfer.setData("application/x-variable-ex", JSON.stringify([e.path]));
+    // V-34：多选拖拽 —— 整批进 dataTransfer；计数徽标跟随光标
+    const batch = selEntries.length > 1 && selEntries.some((s) => s.path === e.path) ? selEntries : [e];
+    ev.dataTransfer.setData("application/x-variable-ex", JSON.stringify(batch.map((x) => x.path)));
     ev.dataTransfer.effectAllowed = "copyMove";
+    if (batch.length > 1) setDragBadge({ n: batch.length, x: ev.clientX, y: ev.clientY });
   };
 
   const onDirDrop = (ev: React.DragEvent, target: ExEntry): void => {
@@ -1287,13 +1558,36 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                 <RefreshCw size={15} /> {t("exRefresh")}
               </button>
               <span className="ex-flex1" />
+              {/* AI-10：数据安全中心入口（独立系统窗口） */}
+              <button
+                type="button"
+                className="ex-tool-btn"
+                aria-label={t("exOpenDataVault")}
+                title={t("exOpenDataVault")}
+                onClick={() => {
+                  void ipc.openDatavault().catch(() => {});
+                }}
+              >
+                <ShieldCheck size={15} />
+              </button>
+              {/* U-16：双栏开关 */}
+              <button
+                type="button"
+                className={`ex-tool-btn${dual ? " on" : ""}`}
+                aria-pressed={dual}
+                aria-label={t("exDualPane")}
+                title={t("exDualPane")}
+                onClick={() => setDual((d) => !d)}
+              >
+                <Columns3 size={15} />
+              </button>
               <div className="ex-view-switch" role="group" aria-label={t("exViewMode")}>
                 <button
                   type="button"
                   className={`ex-view-btn${view === "list" ? " on" : ""}`}
                   aria-label={t("viewList")}
                   title={`${t("viewList")} (Ctrl+滚轮)`}
-                  onClick={() => setView("list")}
+                  onClick={() => changeView("list")}
                 >
                   <List size={14} />
                 </button>
@@ -1302,7 +1596,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                   className={`ex-view-btn${view === "icons" ? " on" : ""}`}
                   aria-label={t("viewIcons")}
                   title={t("viewIcons")}
-                  onClick={() => setView("icons")}
+                  onClick={() => changeView("icons")}
                 >
                   <LayoutGrid size={14} />
                 </button>
@@ -1311,9 +1605,19 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                   className={`ex-view-btn${view === "thumbs" ? " on" : ""}`}
                   aria-label={t("viewThumbs")}
                   title={t("viewThumbs")}
-                  onClick={() => setView("thumbs")}
+                  onClick={() => changeView("thumbs")}
                 >
                   <ImageIcon size={14} />
+                </button>
+                {/* U-16：分栏视图 */}
+                <button
+                  type="button"
+                  className={`ex-view-btn${view === "column" ? " on" : ""}`}
+                  aria-label={t("viewColumn")}
+                  title={t("viewColumn")}
+                  onClick={() => changeView("column")}
+                >
+                  <Columns3 size={14} />
                 </button>
               </div>
               <label className="ex-search">
@@ -1328,35 +1632,70 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
               </label>
             </div>
 
-            {/* 地址栏：面包屑 ↔ 编辑（F4/Ctrl+L；粘贴路径 Enter 跳转） */}
+            {/* 地址栏：面包屑 ↔ 编辑（F4/Ctrl+L；粘贴路径 Enter 跳转；V-39 模糊建议） */}
             <div className="ex-crumbs" aria-label="breadcrumb">
               {addrEdit !== null ? (
-                <input
-                  ref={addrRef}
-                  className="ex-addr-input"
-                  value={addrEdit}
-                  autoFocus
-                  spellCheck={false}
-                  onChange={(e) => setAddrEdit(e.target.value)}
-                  onBlur={() => setAddrEdit(null)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      const p = addrEdit.trim();
-                      if (p) nav(p);
-                      else setAddrEdit(null);
-                    } else if (e.key === "Escape") {
-                      setAddrEdit(null);
-                    }
-                  }}
-                  onPaste={(e) => {
-                    // 规格 7.7：地址栏粘贴路径 → 直接跳转
-                    const text = e.clipboardData.getData("text");
-                    if (text.includes("\\") || text.includes("/")) {
-                      e.preventDefault();
-                      nav(text.trim());
-                    }
-                  }}
-                />
+                <div className="ex-addr-edit-wrap">
+                  <input
+                    ref={addrRef}
+                    className="ex-addr-input"
+                    value={addrEdit}
+                    autoFocus
+                    spellCheck={false}
+                    onChange={(e) => {
+                      setAddrEdit(e.target.value);
+                      setAddrSugIdx(-1);
+                    }}
+                    onBlur={() => setAddrEdit(null)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        // V-39：↑↓ 选中建议时 Enter 跳到建议路径，否则按输入内容跳转
+                        const sug = addrSugIdx >= 0 ? addrSuggestions[addrSugIdx] : undefined;
+                        const p = (sug ?? addrEdit).trim();
+                        if (p) nav(p);
+                        else setAddrEdit(null);
+                      } else if (e.key === "Escape") {
+                        setAddrEdit(null);
+                      } else if (e.key === "ArrowDown" && addrSuggestions.length > 0) {
+                        e.preventDefault();
+                        setAddrSugIdx((i) => Math.min(i + 1, addrSuggestions.length - 1));
+                      } else if (e.key === "ArrowUp" && addrSuggestions.length > 0) {
+                        e.preventDefault();
+                        setAddrSugIdx((i) => Math.max(i - 1, -1));
+                      }
+                    }}
+                    onPaste={(e) => {
+                      // 规格 7.7：地址栏粘贴路径 → 直接跳转
+                      const text = e.clipboardData.getData("text");
+                      if (text.includes("\\") || text.includes("/")) {
+                        e.preventDefault();
+                        nav(text.trim());
+                      }
+                    }}
+                  />
+                  {/* V-39：模糊跳转建议（收藏/历史/盘符/网络驱动器/环境目录） */}
+                  {addrSuggestions.length > 0 && (
+                    <div className="ex-addr-sug" role="listbox" aria-label={t("exFuzzyHint")}>
+                      {addrSuggestions.map((p, i) => (
+                        <button
+                          key={p}
+                          type="button"
+                          role="option"
+                          aria-selected={i === addrSugIdx}
+                          className={`ex-addr-sug-item${i === addrSugIdx ? " active" : ""}`}
+                          onMouseDown={(ev) => {
+                            // preventDefault 保持焦点，先跳转再收起
+                            ev.preventDefault();
+                            nav(p);
+                            setAddrEdit(null);
+                          }}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   {currentPath
@@ -1409,14 +1748,15 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
               </div>
             )}
 
-            <div
-              ref={listRef}
-              className={`ex-list view-${view}`}
-              tabIndex={0}
-              onContextMenu={(e) => {
-                if ((e.target as HTMLElement).closest(".ex-row, .ex-tile") === null) openBlankMenu(e);
-              }}
-            >
+            <div className="ex-main-row">
+              <div
+                ref={listRef}
+                className={`ex-list view-${view}`}
+                tabIndex={0}
+                onContextMenu={(e) => {
+                  if ((e.target as HTMLElement).closest(".ex-row, .ex-tile") === null) openBlankMenu(e);
+                }}
+              >
               {view === "list" ? (
                 <>
                   <div className="ex-head-row">
@@ -1433,7 +1773,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                   ) : visible.length === 0 ? (
                     <div className="ex-hint dim">{search ? t("noResults") : t("emptyDirHint")}</div>
                   ) : (
-                    visible.map((e) => {
+                    rows.map((e) => {
                       const cut = exClipboard?.paths.includes(e.path) && exClipboard.cut;
                       void clipboardTick;
                       return (
@@ -1476,8 +1816,8 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                   )}
                 </>
               ) : (
-                <div className="ex-grid">
-                  {visible.map((e) => {
+                <div className={`ex-grid${view === "column" ? " ex-cols" : ""}`}>
+                  {rows.map((e) => {
                     const cut = exClipboard?.paths.includes(e.path) && exClipboard.cut;
                     void clipboardTick;
                     const isImg = e.kind === "file" && e.ext != null && THUMB_EXTS.has(e.ext);
@@ -1509,21 +1849,199 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                         ) : (
                           <FileIcon size={40} strokeWidth={1.3} className="ex-ic dim" />
                         )}
-                        <span className="ex-tile-name" title={e.name}>{e.name}</span>
+                        <span className="ex-tile-name" title={e.name}>{hlName(e.name)}</span>
                       </div>
                     );
                   })}
                 </div>
               )}
+              </div>
+
+              {/* U-16：双栏第二面板（独立导航；接收主面板拖入 = 复制/Shift 移动） */}
+              {dual && (
+                <div className="ex-pane2" aria-label={t("exDualPane")}>
+                  <div className="ex-pane2-head">
+                    <button
+                      type="button"
+                      className="ex-tool-btn"
+                      aria-label={t("navUp")}
+                      onClick={() => {
+                        const parent = pane2.listing?.parent;
+                        if (parent) setPane2({ path: parent, listing: null });
+                      }}
+                    >
+                      <ArrowUp size={13} />
+                    </button>
+                    <span className="ex-pane2-path" title={pane2.path}>{pane2.path ? pathTail(pane2.path) : t("thisPC")}</span>
+                    <button
+                      type="button"
+                      className="ex-tool-btn"
+                      aria-label={t("exRefresh")}
+                      onClick={() => setPane2((p) => ({ ...p, listing: null }))}
+                    >
+                      <RefreshCw size={13} />
+                    </button>
+                  </div>
+                  <div
+                    className="ex-pane2-list"
+                    onDragOver={(ev) => {
+                      if (ev.dataTransfer.types.includes("application/x-variable-ex")) ev.preventDefault();
+                    }}
+                    onDrop={(ev) => {
+                      ev.preventDefault();
+                      if (!pane2.path) return;
+                      try {
+                        const paths = JSON.parse(ev.dataTransfer.getData("application/x-variable-ex")) as string[];
+                        if (Array.isArray(paths) && paths.length > 0) {
+                          // Shift = 移动；默认复制（跨面板最安全语义）
+                          void pasteInto(pane2.path, { paths, cut: ev.shiftKey });
+                        }
+                      } catch {
+                        /* 非 Variable 拖拽忽略 */
+                      }
+                    }}
+                  >
+                    {(pane2.listing?.entries ?? []).map((e) => (
+                      <div
+                        key={e.path}
+                        className="ex-pane2-row"
+                        title={e.path}
+                        onDoubleClick={() => {
+                          if (e.kind === "dir") setPane2({ path: e.path, listing: null });
+                        }}
+                      >
+                        {e.kind === "dir" ? <Folder size={14} /> : <FileIcon size={14} className="dim" />}
+                        <span className="ex-pane2-name">{e.name}</span>
+                        <span className="dim small">{e.kind === "dir" ? "—" : fmtSize(e.size)}</span>
+                      </div>
+                    ))}
+                    {pane2.listing === null && <div className="ex-hint dim" aria-busy="true" />}
+                    {pane2.listing !== null && (pane2.listing?.entries ?? []).length === 0 && (
+                      <div className="ex-hint dim">{t("emptyDirHint")}</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* AI-10 V-34：拖拽计数徽标（fixed 定位跟随光标） */}
+            {dragBadge && (
+              <div className="ex-drag-badge" role="status" aria-label={t("items", { n: dragBadge.n })}>
+                {dragBadge.n}
+              </div>
+            )}
 
             <div className="ex-status">
               {statusText}
               {selSummary && <span className="ex-status-sel">{selSummary}</span>}
+              {/* U-16：分页虚拟化（>500 项时切片渲染） */}
+              {paged.pages > 1 && (
+                <span className="ex-pager">
+                  <button
+                    type="button"
+                    className="ex-tool-btn"
+                    disabled={paged.page === 0}
+                    aria-label={t("exPrevPage")}
+                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  >
+                    ‹
+                  </button>
+                  <span className="dim small">
+                    {paged.page * PAGE_SIZE + 1}–{Math.min((paged.page + 1) * PAGE_SIZE, visible.length)} / {visible.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="ex-tool-btn"
+                    disabled={paged.page >= paged.pages - 1}
+                    aria-label={t("exNextPage")}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    ›
+                  </button>
+                </span>
+              )}
+              {/* V-38：预览锁定开关（预览打开时可见） */}
+              {preview && (
+                <button
+                  type="button"
+                  className={`ex-pin-btn${previewPin ? " on" : ""}`}
+                  aria-pressed={previewPin}
+                  aria-label={t("exPreviewPin")}
+                  title={`${t("exPreviewPin")} (Ctrl+P)`}
+                  onClick={() => setPreviewPin((p) => !p)}
+                >
+                  {previewPin ? <PinOff size={13} /> : <Pin size={13} />}
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* AI-10 V-35：两文件属性对比对话框 */}
+      {cmp && (
+        <div
+          className="ex-dlg-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCmp(null);
+          }}
+        >
+          <div className="ex-dlg ex-cmp" role="dialog" aria-label={t("exCompareProps")}>
+            <p className="ex-dlg-title">{t("exCompareProps")}</p>
+            <table className="ex-cmp-table">
+              <tbody>
+                <tr><th>{t("colName")}</th><td>{cmp[0].name}</td><td>{cmp[1].name}</td></tr>
+                <tr><th>{t("colType")}</th><td>{typeLabel(cmp[0])}</td><td>{typeLabel(cmp[1])}</td></tr>
+                <tr><th>{t("colSize")}</th><td>{cmp[0].kind === "dir" ? "—" : fmtSize(cmp[0].size)}</td><td>{cmp[1].kind === "dir" ? "—" : fmtSize(cmp[1].size)}</td></tr>
+                <tr><th>{t("colModified")}</th><td>{cmp[0].updatedAt ? new Date(cmp[0].updatedAt).toLocaleString() : "—"}</td><td>{cmp[1].updatedAt ? new Date(cmp[1].updatedAt).toLocaleString() : "—"}</td></tr>
+                <tr><th>{t("colCreated")}</th><td>{cmp[0].createdAt ? new Date(cmp[0].createdAt).toLocaleString() : "—"}</td><td>{cmp[1].createdAt ? new Date(cmp[1].createdAt).toLocaleString() : "—"}</td></tr>
+                <tr className="ex-cmp-path"><th>{t("exCopyPath")}</th><td colSpan={2}>{cmp[0].path}<br />{cmp[1].path}</td></tr>
+              </tbody>
+            </table>
+            <div className="ex-dlg-actions">
+              <button type="button" className="dim" onClick={() => setCmp(null)}>
+                {t("close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI-10 V-40：压缩包提取向导（zip；预览条目 → 全部解包到当前目录） */}
+      {extract && (
+        <div
+          className="ex-dlg-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !extractBusy) setExtract(null);
+          }}
+        >
+          <div className="ex-dlg ex-extract" role="dialog" aria-label={t("exExtractTitle")}>
+            <p className="ex-dlg-title">{t("exExtractTitle")}</p>
+            <p className="ex-dlg-body">
+              {extract.archive.name} · {t("items", { n: extract.entries.length })}
+            </p>
+            <ul className="ex-extract-list">
+              {extract.entries.slice(0, 200).map((en) => (
+                <li key={en.innerPath}>
+                  <span className="ex-extract-name" title={en.innerPath}>{en.innerPath}</span>
+                  <span className="dim small">{en.isDir ? "—" : fmtSize(en.size)}</span>
+                </li>
+              ))}
+              {extract.entries.length > 200 && (
+                <li className="dim small">… +{extract.entries.length - 200}</li>
+              )}
+            </ul>
+            <div className="ex-dlg-actions">
+              <button type="button" disabled={extractBusy} onClick={() => void runExtractAll()}>
+                {t("exExtractAll")}
+              </button>
+              <button type="button" className="dim" disabled={extractBusy} onClick={() => setExtract(null)}>
+                {t("cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 冲突对话框（规格 7.7：替换 / 跳过 / 保留两者 / 全部应用） */}
       {conflict && (

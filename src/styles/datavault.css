@@ -1,0 +1,383 @@
+/* AI-10 数据安全中心（datavault.html 独立入口；样式命名 dv-*，零网络、零图片占位） */
+
+.dv-window {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(1200px 700px at 50% 30%, #0a1226 0%, #05070d 70%);
+  color: #dfe7f5;
+  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+
+.dv-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid rgba(127, 151, 196, 0.14);
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.dv-title {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  opacity: 0.92;
+}
+
+.dv-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.dv-nav {
+  flex: 0 0 172px;
+  padding: 10px 8px;
+  border-right: 1px solid rgba(127, 151, 196, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.dv-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dv-nav-btn:hover {
+  background: rgba(127, 151, 196, 0.1);
+}
+
+.dv-nav-btn.on {
+  background: rgba(96, 141, 235, 0.18);
+}
+
+.dv-main {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.dv-main h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.dv-main h3 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.dv-hint {
+  font-size: 12.5px;
+  opacity: 0.55;
+  line-height: 1.6;
+}
+
+.dv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.dv-input,
+.dv-select {
+  padding: 6px 9px;
+  border: 1px solid rgba(127, 151, 196, 0.25);
+  border-radius: 7px;
+  background: rgba(10, 17, 35, 0.6);
+  color: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.dv-input:focus,
+.dv-select:focus {
+  border-color: rgba(96, 141, 235, 0.65);
+}
+
+.dv-input.wide {
+  flex: 1;
+  min-width: 220px;
+}
+
+.dv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(127, 151, 196, 0.25);
+  border-radius: 7px;
+  background: rgba(127, 151, 196, 0.08);
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dv-btn:hover {
+  background: rgba(127, 151, 196, 0.16);
+}
+
+.dv-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.dv-btn.primary {
+  border-color: rgba(96, 141, 235, 0.6);
+  background: rgba(96, 141, 235, 0.2);
+}
+
+.dv-btn.danger {
+  border-color: rgba(235, 96, 118, 0.5);
+  background: rgba(235, 96, 118, 0.12);
+}
+
+.dv-list {
+  margin-top: 10px;
+  border: 1px solid rgba(127, 151, 196, 0.14);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(127, 151, 196, 0.08);
+  font-size: 13px;
+}
+
+.dv-item:last-child {
+  border-bottom: 0;
+}
+
+.dv-item:hover {
+  background: rgba(127, 151, 196, 0.06);
+}
+
+.dv-item .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-chip {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  background: rgba(127, 151, 196, 0.14);
+}
+
+.dv-chip.ok {
+  background: rgba(87, 194, 149, 0.18);
+  color: #9fe8c6;
+}
+
+.dv-chip.warn {
+  background: rgba(235, 176, 96, 0.18);
+  color: #f0cf9a;
+}
+
+.dv-chip.bad {
+  background: rgba(235, 96, 118, 0.18);
+  color: #f2a7b4;
+}
+
+.dv-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.dv-card {
+  padding: 12px 14px;
+  border: 1px solid rgba(127, 151, 196, 0.16);
+  border-radius: 12px;
+  background: rgba(10, 17, 35, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dv-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dv-card-meta {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.dv-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.dv-card-actions .dv-btn {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+/* 版本 diff 双栏 */
+.dv-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid rgba(127, 151, 196, 0.14);
+  border-radius: 10px;
+  overflow: hidden;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dv-diff-col {
+  padding: 8px 0;
+  min-height: 60px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.dv-diff-col > div {
+  padding: 0 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dv-diff-col.old {
+  border-right: 1px solid rgba(127, 151, 196, 0.14);
+}
+
+.dv-diff-line-del {
+  background: rgba(235, 96, 118, 0.12);
+}
+
+.dv-diff-line-add {
+  background: rgba(87, 194, 149, 0.12);
+}
+
+/* 时间线 */
+.dv-timeline {
+  margin-top: 10px;
+  padding-left: 14px;
+  border-left: 2px solid rgba(96, 141, 235, 0.35);
+}
+
+.dv-tl-item {
+  position: relative;
+  padding: 8px 0 10px 16px;
+}
+
+.dv-tl-item::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #608deb;
+  box-shadow: 0 0 0 3px rgba(96, 141, 235, 0.25);
+}
+
+.dv-tl-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.dv-tl-meta {
+  font-size: 11.5px;
+  opacity: 0.55;
+}
+
+/* 传输进度条 */
+.dv-progress {
+  flex: 1;
+  height: 6px;
+  min-width: 80px;
+  border-radius: 3px;
+  background: rgba(127, 151, 196, 0.16);
+  overflow: hidden;
+}
+
+.dv-progress > div {
+  height: 100%;
+  background: linear-gradient(90deg, #608deb, #8fd3c7);
+}
+
+/* 隐身会话状态带 */
+.dv-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.dv-banner.incognito {
+  background: rgba(96, 141, 235, 0.14);
+  border: 1px solid rgba(96, 141, 235, 0.4);
+}
+
+.dv-banner.alert {
+  background: rgba(235, 96, 118, 0.12);
+  border: 1px solid rgba(235, 96, 118, 0.45);
+}
+
+.dv-empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+.dv-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: 12.5px;
+}
+
+.dv-kv dt {
+  opacity: 0.55;
+}
+
+.dv-kv dd {
+  margin: 0;
+}

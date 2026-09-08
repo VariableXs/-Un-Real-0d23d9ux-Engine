@@ -51,6 +51,21 @@ export interface ListFilterT {
 }
 
 export const ipc = {
+  // ---- AI-12 兼容纵深组（Z-15…Z-21、M-37…M-45 支撑）----
+  compatUwpList: () => invoke<{ name: string; appId: string }[]>("compat_uwp_list"),
+  compatElevationProbe: (path: string) =>
+    invoke<{ requiresAdmin: boolean; manifestFound: boolean }>("compat_elevation_probe", { path }),
+  compatDriverScan: () => invoke<string[]>("compat_driver_scan"),
+  compatHostProbe: () =>
+    invoke<{ remoteSession: boolean; vmSignals: string[]; hostKind: "remote" | "vm" | "native" }>("compat_host_probe"),
+  compatShimReport: (hit: string) => invoke<number>("compat_shim_report", { hit }),
+  compatShimStats: () => invoke<Record<string, number>>("compat_shim_stats"),
+  compatIconProbe: (path: string) =>
+    invoke<{ exists: boolean; mtimeMs: number; size: number }>("compat_icon_probe", { path }),
+  compatVolumes: () => invoke<{ guidPath: string; mountPoints: string[] }[]>("compat_volumes"),
+  compatHealPaths: (entries: { path: string; volumeGuid: string }[]) =>
+    invoke<{ path: string; healed: string | null }[]>("compat_heal_paths", { entries }),
+
   bootstrap: () => invoke<BootstrapInfo>("app_bootstrap"),
   openPath: (path: string) => invoke<void>("open_path", { path }),
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),
@@ -202,6 +217,8 @@ export const ipc = {
   exFavAdd: (path: string) => invoke<string[]>("ex_fav_add", { path }),
   exFavRemove: (path: string) => invoke<string[]>("ex_fav_remove", { path }),
   exThumbnail: (path: string) => invoke<string>("ex_thumbnail", { path }),
+  exViewGet: (path: string) => invoke<string | null>("ex_view_get", { path }),
+  exViewSet: (path: string, view: string) => invoke<void>("ex_view_set", { path, view }),
   recList: () => invoke<Shell.RecItem[]>("rec_list"),
   recRestore: (id: string, source: string) => invoke<void>("rec_restore", { id, source }),
   recPurge: (id: string, source: string) => invoke<void>("rec_purge", { id, source }),
@@ -669,6 +686,99 @@ export const ipc = {
   macroListTriggers: () => invoke<Shell.MacroTriggerDef[]>("macro_list_triggers"),
   macroSendText: (text: string, passwordFocus: boolean) =>
     invoke<boolean>("macro_send_text", { text, passwordFocus }),
+
+  // ---- AI-10 数据中枢：U-24 版本时间机 ----
+  verWatch: (path: string) => invoke<void>("ver_watch", { path }),
+  verWatchedList: () => invoke<string[]>("ver_watched_list"),
+  verSnapshot: (path: string) => invoke<Shell.VerInfo | null>("ver_snapshot", { path }),
+  verList: (path: string) => invoke<Shell.VerInfo[]>("ver_list", { path }),
+  verDiff: (path: string, oldId: string, newId: string) =>
+    invoke<Shell.VerDiff>("ver_diff", { path, oldId, newId }),
+  verRestore: (path: string, versionId: string) => invoke<void>("ver_restore", { path, versionId }),
+  verGc: () => invoke<Shell.VerGcReport>("ver_gc"),
+  verPolicySet: (keepVersions: number | null, keepDays: number | null) =>
+    invoke<void>("ver_policy_set", { keepVersions, keepDays }),
+
+  // ---- AI-10：U-25 全局标签 / 智能文件夹 ----
+  tagAll: () => invoke<string[]>("tag_all"),
+  tagFilter: (tag: string) => invoke<string[]>("tag_filter", { tag }),
+  tagSmartList: () => invoke<Shell.SmartFolder[]>("tag_smart_list"),
+  tagSmartAdd: (name: string, query: string) => invoke<Shell.SmartFolder>("tag_smart_add", { name, query }),
+  tagSmartRemove: (id: string) => invoke<void>("tag_smart_remove", { id }),
+
+  // ---- AI-10：U-26 回收站 2.0 自动清理策略 ----
+  recPolicyGet: () => invoke<Shell.RecPolicy>("rec_policy_get"),
+  recPolicySet: (policy: Shell.RecPolicy) => invoke<void>("rec_policy_set", { policy }),
+  recPolicyPreview: () => invoke<Shell.RecItem[]>("rec_policy_preview"),
+  recPolicyApply: () => invoke<number>("rec_policy_apply"),
+
+  // ---- AI-10：U-28 传输指挥台 ----
+  trEnqueue: (srcs: string[], destDir: string, kind: "copy" | "move", onConflict?: string) =>
+    invoke<Shell.TrItem[]>("tr_enqueue", { srcs, destDir, kind, onConflict }),
+  trList: () => invoke<Shell.TrItem[]>("tr_list"),
+  trPause: (id: string) => invoke<Shell.TrItem[]>("tr_pause", { id }),
+  trResume: (id: string) => invoke<Shell.TrItem[]>("tr_resume", { id }),
+  trCancel: (id: string) => invoke<Shell.TrItem[]>("tr_cancel", { id }),
+  trRetry: (id: string) => invoke<Shell.TrItem[]>("tr_retry", { id }),
+  trClearDone: () => invoke<Shell.TrItem[]>("tr_clear_done"),
+
+  // ---- AI-10：U-30 信任链中心 ----
+  trustRegister: (path: string, origin: string) => invoke<void>("trust_register", { path, origin }),
+  trustVerify: (path: string) => invoke<Shell.TrustVerdict>("trust_verify", { path }),
+  trustWall: () => invoke<Shell.TrustWall>("trust_wall"),
+  trustReverifyAll: () => invoke<Shell.TrustWall>("trust_reverify_all"),
+  trustRemove: (path: string) => invoke<void>("trust_remove", { path }),
+
+  // ---- AI-10：U-31 数据血缘 ----
+  linList: (path: string | null) => invoke<Shell.LinEvent[]>("lin_list", { path }),
+  linStats: () => invoke<Shell.LinStats>("lin_stats"),
+  linExport: (destDir: string) => invoke<string>("lin_export", { destDir }),
+  linBurn: () => invoke<boolean>("lin_burn"),
+
+  // ---- AI-10：U-35 本地使用洞察 ----
+  insDashboard: (range: string) => invoke<Shell.InsDashboard>("ins_dashboard", { range }),
+  insSuggestions: () => invoke<Shell.InsSuggestion[]>("ins_suggestions"),
+  insBurn: () => invoke<boolean>("ins_burn"),
+
+  // ---- AI-10：U-27 隐私仪表盘（审计时间线 + 金丝雀） ----
+  privTimeline: (days?: number) => invoke<Shell.AuditTimeline>("priv_timeline", { days }),
+  canaryList: () => invoke<Shell.CanaryOverview>("canary_list"),
+  canaryPlant: (dir: string, template: string) =>
+    invoke<Shell.CanaryFile>("canary_plant", { dir, template }),
+  canaryRemove: (id: string) => invoke<void>("canary_remove", { id }),
+
+  // ---- AI-10：U-29 存档柜（.vxa zstd 归档） ----
+  archCreate: (name: string, srcs: string[]) => invoke<Shell.ArcCard>("arch_create", { name, srcs }),
+  archList: () => invoke<Shell.ArcCard[]>("arch_list"),
+  archBrowse: (id: string, subpath: string) => invoke<Shell.ArcNode[]>("arch_browse", { id, subpath }),
+  archAudit: (id: string) => invoke<Shell.ArcAudit>("arch_audit", { id }),
+  archExtract: (id: string, destDir: string) => invoke<number>("arch_extract", { id, destDir }),
+  archRepair: (id: string) => invoke<Shell.ArcAudit>("arch_repair", { id }),
+  archRemove: (id: string) => invoke<void>("arch_remove", { id }),
+
+  // ---- AI-10：U-33 隐身会话 ----
+  incStatus: () => invoke<Shell.IncStatus>("inc_status"),
+  incStart: () => invoke<Shell.IncSession>("inc_start"),
+  incEnd: () => invoke<number>("inc_end"),
+  incList: () => invoke<string[]>("inc_list"),
+  incWrite: (name: string, contents: string) => invoke<string>("inc_write", { name, contents }),
+
+  // ---- AI-10：U-32 应用防火墙 2.0 ----
+  fwProfiles: () => invoke<Shell.FwProfile[]>("fw_profiles"),
+  fwProfileSet: (profile: Shell.FwProfile) => invoke<void>("fw_profile_set", { profile }),
+  fwAlerts: () => invoke<Shell.FwAlertCenter>("fw_alerts"),
+  fwAlertResolve: (alertId: string, allow: boolean) =>
+    invoke<void>("fw_alert_resolve", { alertId, allow }),
+
+  // ---- AI-10：U-34 紧急擦拭 ----
+  panicConfigGet: () => invoke<Shell.PanicConfig>("panic_config_get"),
+  panicConfigSet: (config: Shell.PanicConfig) => invoke<void>("panic_config_set", { config }),
+  panicTrigger: (level: string, dryRun: boolean) =>
+    invoke<Shell.PanicRunReport>("panic_trigger", { level, dryRun }),
+  panicDrill: () => invoke<Shell.PanicRunReport>("panic_drill"),
+
+  // ---- AI-10：数据安全中心独立窗口 ----
+  openDatavault: () => invoke<void>("open_datavault"),
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
@@ -863,6 +973,243 @@ export namespace Shell {
   export interface ArchiveListing {
     path: string;
     entries: ArchiveEntry[];
+  }
+  /** AI-10 U-32 应用防火墙 2.0。 */
+  export interface FwProfile {
+    app: string;
+    /** blocked | whitelist | full */
+    level: "blocked" | "whitelist" | "full" | string;
+    whitelist: string[];
+    /** 单应用日流量上限（字节，0 = 不限） */
+    dailyQuotaBytes: number;
+  }
+  export interface FwAlert {
+    id: string;
+    app: string;
+    host: string;
+    ts: number;
+    attempts: number;
+    resolved: boolean;
+  }
+  export interface FwAlertCenter {
+    alerts: FwAlert[];
+    hotApps: string[];
+  }
+  /** AI-10 U-34 紧急擦拭。 */
+  export interface PanicConfig {
+    level: string;
+    targets: string[];
+    hotkeyEnabled: boolean;
+    dryRun: boolean;
+  }
+  export interface PanicRunReport {
+    level: string;
+    dryRun: boolean;
+    wouldDelete: string[];
+    vaultLocked: boolean;
+    incognitoBurned: number;
+    targetsBurned: string[];
+    clipboardCleared: boolean;
+    finishedAt: number;
+  }
+  /** AI-10 U-29 存档柜。 */
+  export interface ArcCard {
+    id: string;
+    name: string;
+    createdAt: number;
+    files: number;
+    bytes: number;
+    storedBytes: number;
+  }
+  export interface ArcNode {
+    name: string;
+    path: string;
+    kind: string;
+    size: number;
+  }
+  export interface ArcAudit {
+    checked: number;
+    corrupt: string[];
+    ok: boolean;
+  }
+  /** AI-10 U-33 无痕会话。 */
+  export interface IncSession {
+    id: string;
+    startedAt: number;
+    fileCount: number;
+    fileBytes: number;
+  }
+  export interface IncStatus {
+    active: boolean;
+    session: IncSession | null;
+    sessionsTotal: number;
+    lastBurnedAt: number;
+  }
+  /** AI-10 U-24 版本时间机。 */
+  export interface VerInfo {
+    id: string;
+    path: string;
+    hash: string;
+    size: number;
+    savedAt: number;
+    fileMtime: number;
+    changedLines: number | null;
+  }
+  export interface DiffLine {
+    kind: "deleted" | "added" | "context" | string;
+    text: string;
+  }
+  export interface VerDiff {
+    added: number;
+    removed: number;
+    hunks: DiffLine[];
+  }
+  export interface VerGcReport {
+    removedVersions: number;
+    removedBlocks: number;
+    keptFiles: number;
+    keptVersions: number;
+  }
+  /** AI-10 U-25 智能文件夹。 */
+  export interface SmartFolder {
+    id: string;
+    name: string;
+    query: string;
+    createdAt: number;
+  }
+  /** AI-10 U-26 回收站自动清理策略。 */
+  export interface RecPolicy {
+    capacityBytes: number;
+    maxDays: number;
+    autoClean: boolean;
+    lastWarnedAt: number;
+  }
+  /** AI-10 U-28 传输指挥台。 */
+  export interface TrItem {
+    id: string;
+    src: string;
+    dest: string;
+    kind: "copy" | "move" | string;
+    onConflict: "replace" | "skip" | "keep" | string;
+    status: "queued" | "running" | "paused" | "done" | "failed" | "canceled" | string;
+    bytes: number;
+    total: number;
+    filesDone: number;
+    filesTotal: number;
+    error: string | null;
+    createdAt: number;
+    startedAt: number | null;
+    finishedAt: number | null;
+  }
+  /** AI-10 U-30 信任链中心。 */
+  export interface TrustVerdict {
+    status: "valid" | "unsigned" | "expired" | "tampered" | "unsupported" | "error" | string;
+    signer: string;
+    validFrom: number;
+    validTo: number;
+    chainOk: boolean;
+    detail: string;
+  }
+  export interface TrustEntry {
+    path: string;
+    display: string;
+    origin: "drag" | "download" | "copy" | "install" | string;
+    firstSeen: number;
+    lastVerified: number;
+    verdict: TrustVerdict | null;
+  }
+  export interface TrustWall {
+    entries: TrustEntry[];
+    signerCounts: Record<string, number>;
+  }
+  /** AI-10 U-31 数据血缘。 */
+  export interface LinEvent {
+    id: string;
+    kind: "import" | "use" | "depart" | string;
+    path: string;
+    display: string;
+    app: string | null;
+    ts: number;
+    detail: string;
+  }
+  export interface LinStats {
+    total: number;
+    imports: number;
+    uses: number;
+    departs: number;
+    distinctPaths: number;
+  }
+  /** AI-10 U-35 本地使用洞察。 */
+  export interface InsAppTime {
+    app: string;
+    ms: number;
+    switches: number;
+  }
+  export interface InsFocus {
+    longestStreakMin: number;
+    interruptTop: Record<string, number>;
+  }
+  export interface InsNotif {
+    bySource: Record<string, number>;
+    dndCount: number;
+  }
+  export interface InsSearch {
+    total: number;
+    hits: number;
+    missTop: Record<string, number>;
+  }
+  export interface InsDashboard {
+    range: string;
+    apps: InsAppTime[];
+    focus: InsFocus;
+    notif: InsNotif;
+    search: InsSearch;
+    events: number;
+    recording: boolean;
+  }
+  export interface InsSuggestion {
+    id: string;
+    rule: string;
+    target: string;
+    hits: number;
+  }
+  /** AI-10 U-27 隐私仪表盘。 */
+  export interface AuditEvent {
+    id: string;
+    kind: "clipboard" | "fs" | "net" | string;
+    app: string;
+    resource: string;
+    authorized: boolean;
+    ts: number;
+  }
+  export interface AuditGap {
+    from: number;
+    to: number | null;
+  }
+  export interface AuditTimeline {
+    events: AuditEvent[];
+    gaps: AuditGap[];
+    daily: Record<string, number>;
+    anomalies: string[];
+    enabled: boolean;
+  }
+  export interface CanaryTrigger {
+    ts: number;
+    via: "open" | "read" | string;
+    app: string;
+    exempted: boolean;
+  }
+  export interface CanaryFile {
+    id: string;
+    path: string;
+    template: string;
+    plantedAt: number;
+    triggers: CanaryTrigger[];
+  }
+  export interface CanaryOverview {
+    files: CanaryFile[];
+    templates: string[];
+    whitelist: string[];
   }
   /** M-27 目录监控哨兵。 */
   export interface SentinelCfg {
@@ -1604,6 +1951,40 @@ export type SendToItem = Shell.SendToItem;
 export type NetDrive = Shell.NetDrive;
 export type LockHolder = Shell.LockHolder;
 export type ArchiveListing = Shell.ArchiveListing;
+export type FwProfile = Shell.FwProfile;
+export type FwAlert = Shell.FwAlert;
+export type FwAlertCenter = Shell.FwAlertCenter;
+export type PanicConfig = Shell.PanicConfig;
+export type PanicRunReport = Shell.PanicRunReport;
+export type ArcCard = Shell.ArcCard;
+export type ArcNode = Shell.ArcNode;
+export type ArcAudit = Shell.ArcAudit;
+export type IncSession = Shell.IncSession;
+export type IncStatus = Shell.IncStatus;
+export type VerInfo = Shell.VerInfo;
+export type DiffLine = Shell.DiffLine;
+export type VerDiff = Shell.VerDiff;
+export type VerGcReport = Shell.VerGcReport;
+export type SmartFolder = Shell.SmartFolder;
+export type RecPolicy = Shell.RecPolicy;
+export type TrItem = Shell.TrItem;
+export type TrustVerdict = Shell.TrustVerdict;
+export type TrustEntry = Shell.TrustEntry;
+export type TrustWall = Shell.TrustWall;
+export type LinEvent = Shell.LinEvent;
+export type LinStats = Shell.LinStats;
+export type InsAppTime = Shell.InsAppTime;
+export type InsFocus = Shell.InsFocus;
+export type InsNotif = Shell.InsNotif;
+export type InsSearch = Shell.InsSearch;
+export type InsDashboard = Shell.InsDashboard;
+export type InsSuggestion = Shell.InsSuggestion;
+export type AuditEvent = Shell.AuditEvent;
+export type AuditGap = Shell.AuditGap;
+export type AuditTimeline = Shell.AuditTimeline;
+export type CanaryTrigger = Shell.CanaryTrigger;
+export type CanaryFile = Shell.CanaryFile;
+export type CanaryOverview = Shell.CanaryOverview;
 export type ArchiveEntry = Shell.ArchiveEntry;
 export type SentinelCfg = Shell.SentinelCfg;
 export type SentinelChange = Shell.SentinelChange;

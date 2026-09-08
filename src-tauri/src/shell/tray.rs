@@ -98,13 +98,21 @@ fn open_app_window(app: &AppHandle, label: &str) {
     open_window(app, label, title, WebviewUrl::App(format!("{label}.html").into()));
 }
 
-/// 系统窗口（M6）：explorer（文件管理器）/ recycle（回收站，复用 explorer.html）。
+/// 系统窗口（M6）：explorer（文件管理器）/ recycle（回收站，复用 explorer.html）/
+/// datavault（AI-10 数据安全中心，独立入口 datavault.html）。
 pub fn open_system_window(app: &AppHandle, label: &str) {
     let (title, url) = match label {
         "recycle" => ("Variable 回收站", WebviewUrl::App("explorer.html?view=recycle".into())),
+        "datavault" => ("Variable 数据安全中心", WebviewUrl::App("datavault.html".into())),
         _ => ("Variable 文件管理器", WebviewUrl::App("explorer.html".into())),
     };
     open_window(app, label, title, url);
+}
+
+/// AI-10：前端 IPC 打开数据安全中心（单实例，已存在则聚焦）。
+#[tauri::command]
+pub fn open_datavault(app: tauri::AppHandle) {
+    open_system_window(&app, "datavault");
 }
 
 fn open_window(app: &AppHandle, label: &str, title: &str, url: WebviewUrl) {

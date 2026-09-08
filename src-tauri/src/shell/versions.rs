@@ -611,6 +611,7 @@ mod tests {
 
     #[test]
     fn gc_respects_retention() {
+        let _guard = crate::shell::incognito::TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (st, tmp) = temp_state("gc");
         let f = tmp.join("g.txt");
         fs::write(&f, "v1").unwrap();
@@ -619,16 +620,16 @@ mod tests {
             fs::write(&f, format!("v{i}")).unwrap();
             ver_snapshot_inner(&st, &p).unwrap();
         }
-        // 只保留 2 版
+        // 只保留 2 版（初版锚点 i==0 永远保留：5 版 → 初版 + 最近 2 版，移除 2 版）
         let mut idx = load_index(&st);
         idx.keep_versions = Some(2);
         idx.keep_days = Some(0); // 不按天数保留
         save_index(&st, &idx);
         let rep = ver_gc_inner(&st).unwrap();
-        assert_eq!(rep.removed_versions, 3);
+        assert_eq!(rep.removed_versions, 2);
         assert!(rep.kept_versions >= 2);
         let idx = load_index(&st);
-        assert_eq!(idx.files.get(&norm_key(&p)).unwrap().len(), 2);
+        assert_eq!(idx.files.get(&norm_key(&p)).unwrap().len(), 3);
         let _ = fs::remove_dir_all(&tmp);
     }
 }

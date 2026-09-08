@@ -11,6 +11,7 @@ export type CtxItemId =
   | "copy"
   | "cut"
   | "sendto"
+  | "print"
   | "wholocks"
   | "rename"
   | "delete"
@@ -26,6 +27,7 @@ export const CTX_DEFAULT_ORDER: CtxItemId[] = [
   "copy",
   "cut",
   "sendto",
+  "print",
   "wholocks",
   "rename",
   "delete",
@@ -50,6 +52,7 @@ export const CTX_ITEMS: Record<CtxItemId, CtxItemDef> = {
   copy: { id: "copy", labelKey: "exCopyAction", scope: "all" },
   cut: { id: "cut", labelKey: "exCut", scope: "all" },
   sendto: { id: "sendto", labelKey: "exSendTo", scope: "all" },
+  print: { id: "print", labelKey: "pqPrintAction", scope: "file" },
   wholocks: { id: "wholocks", labelKey: "exWhoLocks", scope: "file" },
   rename: { id: "rename", labelKey: "exRename", scope: "all" },
   delete: { id: "delete", labelKey: "exDelete", scope: "all" },

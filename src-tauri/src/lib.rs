@@ -100,6 +100,8 @@ pub fn run() {
             // 兼容层：Wallpaper Engine 冲突检测与自动缓解（libcef 0x80000003 根因）
             shell::compat::apply_if_needed_at_startup(app.handle());
             shell::compat::spawn_compat_watcher(app.handle().clone());
+            // AI-12 M-45：输入设备热插拔监听（只观察，重注册动作由前端执行）
+            shell::compat::spawn_hotplug_watcher(app.handle().clone());
             // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
             #[cfg(feature = "vm-agent")]
             vm_agent::spawn();
@@ -544,6 +546,8 @@ pub fn run() {
             shell::explorer::ex_view_get,
             shell::explorer::ex_view_set,
             shell::explorer::ex_column_chain,
+            // AI-10 数据安全中心独立窗口
+            shell::tray::open_datavault,
             shell::terminal::term_status,
             shell::terminal::term_open,
             shell::ai::ai_tool_status,
@@ -577,6 +581,16 @@ pub fn run() {
     shell::winman::power_action,
     shell::winman::shortcuts_apply,
             shell::compat::compat_check,
+            // ---- AI-12 兼容纵深组（Z-15…Z-21、M-37…M-45 支撑）----
+            shell::compat::compat_uwp_list,
+            shell::compat::compat_elevation_probe,
+            shell::compat::compat_driver_scan,
+            shell::compat::compat_host_probe,
+            shell::compat::compat_shim_report,
+            shell::compat::compat_shim_stats,
+            shell::compat::compat_icon_probe,
+            shell::compat::compat_volumes,
+            shell::compat::compat_heal_paths,
             shell::compat::compat_apply,
             shell::compat::compat_restore,
             shell::compat::shell_execute,

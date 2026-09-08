@@ -1,4 +1,4 @@
-﻿/// <reference types="vitest" />
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
@@ -29,6 +29,7 @@ export default defineConfig({
         "app-code": html("app-code"),
         "app-fate": html("app-fate"),
         explorer: html("explorer"),
+        datavault: html("datavault"),
       },
       output: {
         // 性能：vendor 与图标库拆为稳定命名 chunk —— 跨窗口共享缓存、
