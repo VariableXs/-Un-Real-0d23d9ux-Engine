@@ -151,7 +151,6 @@ export function SettingsModal(props: {
     { id: "inputFeel", label: t("ifTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
-    { id: "openhub", label: t("ohTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },

@@ -808,30 +808,6 @@ export const ipc = {
   perfBootStage: (name: string, priority: number) => invoke<void>("perf_boot_stage", { name, priority }),
   perfBootStages: () => invoke<{ name: string; ts: number; priority: number }[]>("perf_boot_stages"),
 
-  // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
-  openhubConfigGet: () => invoke<Shell.OpenHubConfigView>("openhub_config_get"),
-  openhubConfigSet: (config: Shell.OpenHubConfigView) =>
-    invoke<Shell.OpenHubConfigView>("openhub_config_set", { config }),
-  deeplinkParse: (url: string) => invoke<Shell.DeepLinkRouteView>("deeplink_parse", { url }),
-  deeplinkRegister: () => invoke<void>("deeplink_register"),
-  deeplinkUnregister: () => invoke<void>("deeplink_unregister"),
-  safehouseCheck: (manifest: Shell.SafehouseManifestView) =>
-    invoke<Shell.SafehouseCheckView>("safehouse_check", { manifest }),
-  safehouseExec: (manifest: Shell.SafehouseManifestView, verb: string, arg: string) =>
-    invoke<Shell.SafehouseRunResultView>("safehouse_exec", { manifest, verb, arg }),
-  vxsValidate: (path: string) => invoke<Shell.VxsPreviewView>("vxs_validate_cmd", { path }),
-  vxsExtract: (path: string, kinds: string[]) => invoke<string>("vxs_extract", { path, kinds }),
-  openhubDataExport: (outDir: string) => invoke<Shell.DataExportResultView>("openhub_data_export", { outDir }),
-  openhubStreamEmit: (eventType: string, payload: string) =>
-    invoke<boolean>("openhub_stream_emit", { eventType, payload }),
-  openhubStreamTail: (n: number) => invoke<string[]>("openhub_stream_tail", { n }),
-  gatewayStatus: () => invoke<Shell.GatewayStatusView>("gateway_status"),
-  gatewayTokenRegen: () => invoke<string>("gateway_token_regen"),
-  openhubConnectorQuery: (def: Shell.ConnectorDefView) =>
-    invoke<Shell.ConnectorResultView>("openhub_connector_query", { def }),
-  companionInbox: () => invoke<string[]>("companion_inbox"),
-  companionInboxClear: () => invoke<void>("companion_inbox_clear"),
-
   // ---- AI-15 开放工具组（M-57/59/63、V-81..V-90）----
   // M-57 出站桥
   webhookRulesGet: () => invoke<Shell.WebhookConfigView>("webhook_rules_get"),
