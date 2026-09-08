@@ -1,4 +1,4 @@
-//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
+﻿//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
 //! - tray.rs     OS 托盘图标 + 菜单（打开桌面/软件/系统窗口/退出）
 //! - hardware.rs 蓝牙/Wi-Fi/音频/摄像头/麦克风（Windows API，只读 + 音量控制）
 //! - explorer.rs 文件管理器（全盘浏览 + 受控写操作 + 删除入回收站）
@@ -77,9 +77,6 @@ pub mod macros;
 // AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
 // M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
 pub mod perf;
-// AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
-// M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
-pub mod perf;
 // AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）
 pub mod openhub;
 // 系统探测与电源（lib.rs 已注册命令；模块文件曾被并发回滚，此处补声明）
@@ -93,3 +90,6 @@ pub mod envedit;
 pub mod workshop;
 pub mod assocguard;
 pub mod svcgraph;
+// AI-19 M-73/M-74 与 AI-16 soundnotify：接线暂存于 lib.rs/mod.rs 历史，模块文件由各组交付时恢复声明
+// AI-16 启动与声音通知组（Z-43 音量记忆 / Z-45 方案校验 / Z-46 通信设备 /
+// Z-47 通知存档 / Z-48 麦克风指示 / Z-49 提醒中心）

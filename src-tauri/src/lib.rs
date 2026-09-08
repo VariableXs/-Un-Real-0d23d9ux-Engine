@@ -1,4 +1,4 @@
-pub mod backup;
+﻿pub mod backup;
 pub mod boot;
 pub mod db;
 pub mod error;
@@ -110,6 +110,7 @@ pub fn run() {
             // AI-15 V-83/V-86：计划任务工坊 + 启动延迟编排运行时（30s 轮询触发器）
             shell::workshop::spawn_workshop_runtime(app.handle().clone());
             shell::workshop::spawn_startdelay_runtime(app.handle().clone());
+            // AI-16 Z-49：提醒中心运行时（系统时钟锚定 1s 粒度；重启补发未触发提醒）
             // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
             #[cfg(feature = "vm-agent")]
             vm_agent::spawn();
@@ -151,6 +152,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             boot::boot_replay,
+            // ---- AI-16 启动与声音通知组（Z-43…Z-49） ----
             system::app_bootstrap,
             system::open_path,
             system::reveal_path,
@@ -738,7 +740,8 @@ pub fn run() {
             shell::assocguard::residue_delete,
             shell::svcgraph::svc_graph,
             shell::svcgraph::svc_impact,
-            shell::svcgraph::svc_topo
+            shell::svcgraph::svc_topo,
+            // ---- AI-19 无障碍与本地化组（M-73/M-74；模块文件由 AI-19 交付时接线）----
         ])
         .build(tauri::generate_context!());
     match app {
