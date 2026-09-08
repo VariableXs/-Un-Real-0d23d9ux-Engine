@@ -11,6 +11,7 @@ import type { AppMode } from "./state/uiStore";
 import { isTauriRuntime } from "./entries/runtime";
 import { appWindowLabel, trackSelfGeom } from "./system/windows/appWindows";
 import { openVwmApp } from "./system/windows/vwm";
+import { initCompatLayer, setHotplugHandlers } from "./system/compat/compatBoot";
 import type { BootstrapInfo } from "./lib/types";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -99,6 +100,19 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
       un = f;
     });
     return () => un?.();
+  }, [appType]);
+
+  // AI-12 兼容纵深组：Z-18 全屏协议统一入口 / M-45 热插拔重注册 / Z-20、Z-21 档位评估。
+  // initCompatLayer 自带幂等保护，多窗口（desktop / app 窗）同时挂载只初始化一次。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    setHotplugHandlers({
+      rebind: () => {
+        window.dispatchEvent(new CustomEvent("variable:rebind-hotkeys"));
+      },
+      toast: (kind, text) => pushToast(kind, text),
+    });
+    initCompatLayer();
   }, [appType]);
 
   // ---------- cross-window settings sync ----------

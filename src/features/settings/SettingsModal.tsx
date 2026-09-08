@@ -41,6 +41,7 @@ import { toAssetUrl } from "../../features/background/CosmicBackground";
 import { SHORTCUT_ACTIONS, findConflicts, normalizeAccel } from "../../lib/shortcuts";
 import { TASKBAR_MENU_REGISTRY, loadMenuOverride, saveMenuOverride, clearMenuOverride, type TaskbarMenuOverride } from "../../system/desktop/taskbarMenu";
 import { sanitizeClockZones } from "../../system/taskbar/clockcard";
+import { CompatTab } from "../../system/compat/CompatTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -783,6 +784,9 @@ export function SettingsModal(props: {
           {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
           {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-12 兼容纵深组：Z-15…Z-21、M-37…M-45 面板 */}
+          {tab === "compat" && <CompatTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-13 性能与长跑组：Z-58/Z-59/Z-60/Z-61/Z-62 + M-46/M-48/N-35/M-53 面板 */}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

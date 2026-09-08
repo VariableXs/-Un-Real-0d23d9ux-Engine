@@ -155,6 +155,22 @@ export interface Settings {
   xmouse: 0 | 1 | 2;
   /** AI-01 Z-42：右缘热区呼出桌面切换预览（0=关 / 8..32 px 宽度）。 */
   desktopHotzone: number;
+  /** AI-12 Z-16：遗留协议兼容 Shim（默认开，只记录不改行为）。 */
+  compatLegacyShim: boolean;
+  /** AI-12 M-40：高刷（≥120Hz）动效时长 0.85× 折算（默认开）。 */
+  compatHighRefresh: boolean;
+  /** AI-12 Z-20：宿主档手动覆盖（auto 服从检测；误检安全=不确定按 native）。 */
+  compatHostOverride: "auto" | "native" | "vm" | "remote";
+  /** AI-12 Z-21：慢速档手动覆盖（-1=auto；0..3=L0..L3；只降不升）。 */
+  compatSlowOverride: -1 | 0 | 1 | 2 | 3;
+  /** AI-13 Z-58：UI 线程健康采集（默认关 = 零采集红线）。 */
+  perfThreadHealth: boolean;
+  /** AI-13 Z-59：空闲渲染冻结（最小化/遮挡暂停 rAF；默认关）。 */
+  perfIdleFreeze: boolean;
+  /** AI-13 Z-62：本地使用统计（零外发，只写本地；默认关）。 */
+  perfUsageStats: boolean;
+  /** AI-13 Z-61：更新通道（stable/beta）。 */
+  updateChannel: "stable" | "beta";
   customBg: CustomBg;
   mindDefaults: MindDefaults;
 }
@@ -214,6 +230,10 @@ export const DEFAULT_SETTINGS: Settings = {
   altTabFilter: "off",
   xmouse: 0,
   desktopHotzone: 0,
+  perfThreadHealth: false,
+  perfIdleFreeze: false,
+  perfUsageStats: false,
+  updateChannel: "stable",
   customBg: {
     type: "nebula",
     color: "#0a1226",
@@ -245,6 +265,11 @@ export const DEFAULT_SETTINGS: Settings = {
     edgeAnim: true,
     wasdSpeed: 520,
   },
+  // AI-12 兼容纵深组
+  compatLegacyShim: true,
+  compatHighRefresh: true,
+  compatHostOverride: "auto",
+  compatSlowOverride: -1,
 };
 
 function coerce(raw: Record<string, string>): Settings {
@@ -314,6 +339,22 @@ function coerce(raw: Record<string, string>): Settings {
       s.xmouse = n === 1 || n === 2 ? (n as Settings["xmouse"]) : 0;
     }
     if (raw["desktopHotzone"] !== undefined) s.desktopHotzone = clamp(Number(raw["desktopHotzone"]) || 0, 0, 32);
+    // AI-12 兼容纵深组（写坏值回落默认）
+    if (raw["compatLegacyShim"] !== undefined) s.compatLegacyShim = raw["compatLegacyShim"] !== "0";
+    if (raw["compatHighRefresh"] !== undefined) s.compatHighRefresh = raw["compatHighRefresh"] !== "0";
+    if (raw["compatHostOverride"]) {
+      const v = raw["compatHostOverride"];
+      s.compatHostOverride = v === "native" || v === "vm" || v === "remote" ? v : "auto";
+    }
+    if (raw["compatSlowOverride"] !== undefined) {
+      const n = Number(raw["compatSlowOverride"]);
+      s.compatSlowOverride = n >= 0 && n <= 3 ? (n as Settings["compatSlowOverride"]) : -1;
+    }
+    // AI-13 性能与长跑组（写坏值回落默认；默认全部关闭）
+    if (raw["perfThreadHealth"] !== undefined) s.perfThreadHealth = raw["perfThreadHealth"] === "1";
+    if (raw["perfIdleFreeze"] !== undefined) s.perfIdleFreeze = raw["perfIdleFreeze"] === "1";
+    if (raw["perfUsageStats"] !== undefined) s.perfUsageStats = raw["perfUsageStats"] === "1";
+    if (raw["updateChannel"]) s.updateChannel = raw["updateChannel"] === "beta" ? "beta" : "stable";
     if (raw["mindDefaults"]) {
       const md = { ...s.mindDefaults, ...JSON.parse(raw["mindDefaults"]) };
       // Clamp numeric ranges so a corrupt stored value (e.g. wasdSpeed 0) can

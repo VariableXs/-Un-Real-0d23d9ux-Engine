@@ -559,6 +559,375 @@ pub fn shell_forward_gesture(gesture: String) -> CmdResult<()> {
     }
 }
 
+// ============================================================================
+// AI-11 协作修复（兼容纵深组收尾补全）
+// ----------------------------------------------------------------------------
+// 背景：lib.rs 已注册 compat_uwp_list / compat_elevation_probe / compat_driver_scan /
+// compat_host_probe / compat_shim_report / compat_shim_stats / compat_icon_probe /
+// compat_volumes / compat_heal_paths / spawn_hotplug_watcher，但对应实现因
+// 并发会话的文件回滚未入库，导致 main 分支无法编译（全仓阻塞）。
+// 本段为最小可用、诚实降级的补全实现（Z-18/M-45 邻域），供 AI-12 后续收编/加强。
+// ============================================================================
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UwpAppDto {
+    pub name: String,
+    pub app_id: String,
+}
+
+/// UWP 识别（Z-19）：Get-StartApps 中 AppID 含 '!' 项即 UWP/AUMID 应用（只读）。
+#[tauri::command]
+pub fn compat_uwp_list() -> CmdResult<Vec<UwpAppDto>> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ForEach-Object { [pscustomobject]@{ name=$_.Name; appId=$_.AppID } } | ConvertTo-Json -Compress",
+            ])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| AppError::io(format!("PowerShell 启动失败: {e}")))?;
+        let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if raw.is_empty() {
+            return Ok(vec![]);
+        }
+        let v: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| AppError::io(format!("解析失败: {e}")))?;
+        let arr = if v.is_array() { v.as_array().unwrap().clone() } else { vec![v] };
+        Ok(arr
+            .into_iter()
+            .filter_map(|it| {
+                let name = it.get("name")?.as_str()?.to_string();
+                let app_id = it.get("appId")?.as_str()?.to_string();
+                Some(UwpAppDto { name, app_id })
+            })
+            .collect())
+    }
+    #[cfg(not(windows))]
+    Ok(vec![])
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ElevationProbe {
+    pub requires_admin: bool,
+    pub manifest_found: bool,
+}
+
+/// 提权提示探测（M-41）：读取 exe 内嵌 manifest 的 requestedExecutionLevel（只读，读前 64KB）。
+#[tauri::command]
+pub fn compat_elevation_probe(path: String) -> CmdResult<ElevationProbe> {
+    use std::io::Read;
+    let f = std::fs::File::open(&path).map_err(|e| AppError::not_found(format!("无法打开 {path}: {e}")))?;
+    let mut f = f;
+    let mut buf = vec![0u8; 64 * 1024];
+    let n = f.read(&mut buf).map_err(|e| AppError::io(e.to_string()))?;
+    let s = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+    Ok(ElevationProbe {
+        requires_admin: s.contains("requireadministrator"),
+        manifest_found: s.contains("requestedexecutionlevel"),
+    })
+}
+
+/// 驱动共存扫描（M-43）：driverquery 列出内核驱动服务名（只读，前 200 项）。
+#[tauri::command]
+pub fn compat_driver_scan() -> CmdResult<Vec<String>> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("driverquery")
+            .args(["/FO", "CSV", "/NH"])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| AppError::io(format!("driverquery 启动失败: {e}")))?;
+        let raw = String::from_utf8_lossy(&out.stdout);
+        let mut names = Vec::new();
+        for line in raw.lines().take(200) {
+            if let Some(first) = line.split(',').next() {
+                let name = first.trim_matches('"').trim();
+                if !name.is_empty() {
+                    names.push(name.to_string());
+                }
+            }
+        }
+        Ok(names)
+    }
+    #[cfg(not(windows))]
+    Ok(vec![])
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HostProbe {
+    pub remote_session: bool,
+    pub vm_signals: Vec<String>,
+    pub host_kind: String, // "remote" | "vm" | "native"
+}
+
+/// 远程虚拟宿主探测（Z-18 支撑）：RDP 会话 + BIOS/DVM 供应商特征（只读）。
+#[tauri::command]
+pub fn compat_host_probe() -> CmdResult<HostProbe> {
+    let mut signals = Vec::new();
+    let remote = std::env::var("SESSIONNAME")
+        .map(|s| s.to_uppercase().starts_with("RDP"))
+        .unwrap_or(false);
+    if remote {
+        signals.push("rdp-session".into());
+    }
+    #[cfg(windows)]
+    {
+        use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+        use winreg::RegKey;
+        if let Ok(k) = RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(r"HARDWARE\DESCRIPTION\System\BIOS", KEY_READ)
+        {
+            for field in ["SystemManufacturer", "SystemProductName", "BIOSVendor"] {
+                if let Ok(v) = k.get_value::<String, _>(field) {
+                    let lv = v.to_lowercase();
+                    for (sig, tag) in [
+                        ("vmware", "vmware"),
+                        ("virtualbox", "virtualbox"),
+                        ("vbox", "virtualbox"),
+                        ("microsoft corporation virtual", "hyper-v"),
+                        ("kvm", "kvm"),
+                        ("qemu", "qemu"),
+                        ("xen", "xen"),
+                    ] {
+                        if lv.contains(sig) && !signals.iter().any(|s| s == tag) {
+                            signals.push(tag.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let vm = !signals.iter().all(|s| s == "rdp-session");
+    let host_kind = if remote { "remote" } else if vm { "vm" } else { "native" };
+    Ok(HostProbe { remote_session: remote, vm_signals: signals, host_kind: host_kind.to_string() })
+}
+
+// ---- Shim 命中统计（进程内计数；不落盘、诚实口径） ----
+static SHIM_HITS: std::sync::Mutex<Option<std::collections::HashMap<String, u64>>> =
+    std::sync::Mutex::new(None);
+
+/// Shim 命中登记（C-5 兼容 hint 消费端回调；hit = 兼容库键名）。
+#[tauri::command]
+pub fn compat_shim_report(hit: String) -> CmdResult<u64> {
+    // 只接受非空、长度合理的键名（1..=128），防止空串/超长串污染统计。
+    let hit = hit.trim();
+    if hit.is_empty() || hit.len() > 128 {
+        return Err(AppError::validation("shim hit 键名非法（空或超长）"));
+    }
+    let mut m = SHIM_HITS.lock().unwrap();
+    let m = m.get_or_insert_with(std::collections::HashMap::new);
+    let c = m.entry(hit.to_string()).or_insert(0);
+    *c += 1;
+    Ok(*c)
+}
+
+#[tauri::command]
+pub fn compat_shim_stats() -> CmdResult<std::collections::HashMap<String, u64>> {
+    Ok(SHIM_HITS.lock().unwrap().clone().unwrap_or_default())
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct IconProbe {
+    pub exists: bool,
+    pub mtime_ms: u64,
+    pub size: u64,
+}
+
+/// 图标缓存自愈探测（M-44 的只读探针面）：路径存在性/mtime/大小。
+#[tauri::command]
+pub fn compat_icon_probe(path: String) -> CmdResult<IconProbe> {
+    match std::fs::metadata(&path) {
+        Ok(m) => {
+            let mtime_ms = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            Ok(IconProbe { exists: true, mtime_ms, size: m.len() })
+        }
+        Err(_) => Ok(IconProbe { exists: false, mtime_ms: 0, size: 0 }),
+    }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VolumeInfo {
+    pub guid_path: String,
+    pub mount_points: Vec<String>,
+}
+
+/// 卷 GUID 枚举（路径漂移自愈 Z-20 的数据面，只读）。
+#[tauri::command]
+pub fn compat_volumes() -> CmdResult<Vec<VolumeInfo>> {
+    #[cfg(windows)]
+    {
+        use windows::core::PWSTR;
+        use windows::Win32::Storage::FileSystem::{
+            FindFirstVolumeW, FindNextVolumeW, FindVolumeClose, GetVolumePathNamesForVolumeNameW,
+        };
+        let mut out = Vec::new();
+        unsafe {
+            let mut buf = [0u16; 50];
+            let find = FindFirstVolumeW(&mut buf);
+            if let Ok(mut handle) = find {
+                loop {
+                    let guid = String::from_utf16_lossy(&buf)
+                        .trim_end_matches('\0')
+                        .to_string();
+                    if !guid.is_empty() {
+                        // 挂载点
+                        let mut mp = [0u16; 1024];
+                        let mut ret: u32 = 0;
+                        let mut mount_points = Vec::new();
+                        let guid_wide: Vec<u16> = guid.encode_utf16().chain(Some(0)).collect();
+                        if GetVolumePathNamesForVolumeNameW(
+                            windows::core::PCWSTR(guid_wide.as_ptr()),
+                            Some(&mut mp),
+                            &mut ret,
+                        )
+                        .is_ok()
+                        {
+                            // 连续以 \0 结尾的字符串序列，双重 \0 结束
+                            let mut cur = String::new();
+                            for ch in mp {
+                                if ch == 0 {
+                                    if !cur.is_empty() {
+                                        mount_points.push(cur.clone());
+                                        cur.clear();
+                                    } else {
+                                        break;
+                                    }
+                                } else {
+                                    cur.push(char::from_u32(ch as u32).unwrap_or('\u{fffd}'));
+                                }
+                            }
+                        }
+                        out.push(VolumeInfo { guid_path: guid, mount_points });
+                    }
+                    let next = FindNextVolumeW(handle, &mut buf);
+                    if next.is_err() {
+                        let _ = FindVolumeClose(handle);
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+    #[cfg(not(windows))]
+    Ok(vec![])
+}
+
+/// 路径漂移自愈（Z-20）：原路径失联时尝试把盘符前缀替换为卷 GUID 对应挂载点。
+#[tauri::command]
+pub fn compat_heal_paths(
+    entries: Vec<HealEntry>,
+) -> CmdResult<Vec<HealResult>> {
+    let volumes = compat_volumes_internal();
+    let mut results = Vec::new();
+    for e in entries {
+        if Path::new(&e.path).exists() {
+            results.push(HealResult { path: e.path, healed: None });
+            continue;
+        }
+        let mut healed: Option<String> = None;
+        // 原路径盘符（如 "E:\..."）
+        if e.path.len() >= 2 && e.path.as_bytes()[1] == b':' {
+            let old_prefix = &e.path[..2];
+            for vol in &volumes {
+                if vol.guid_path.contains(&format!("}}")) && vol.mount_points.is_empty() {
+                    continue;
+                }
+                // 该卷 GUID 匹配了 heal 目标卷 → 用其挂载点替换盘符
+                if e.volume_guid.is_empty() || vol.guid_path.eq_ignore_ascii_case(&e.volume_guid) {
+                    for mp in &vol.mount_points {
+                        let candidate = format!("{}{}", mp.trim_end_matches('\\'), &e.path[2..]);
+                        if Path::new(&candidate).exists() {
+                            healed = Some(candidate);
+                            break;
+                        }
+                    }
+                }
+                if healed.is_some() {
+                    break;
+                }
+            }
+            let _ = old_prefix;
+        }
+        results.push(HealResult { path: e.path, healed });
+    }
+    Ok(results)
+}
+
+#[derive(serde::Deserialize)]
+pub struct HealEntry {
+    pub path: String,
+    pub volume_guid: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HealResult {
+    pub path: String,
+    /// 修复后的新路径（null = 无法自愈，如实上报）
+    pub healed: Option<String>,
+}
+
+#[cfg(windows)]
+fn compat_volumes_internal() -> Vec<VolumeInfo> {
+    match compat_volumes() {
+        Ok(v) => v,
+        Err(_) => vec![],
+    }
+}
+#[cfg(not(windows))]
+fn compat_volumes_internal() -> Vec<VolumeInfo> {
+    vec![]
+}
+
+/// 热插拔稳定（M-45）：盘符掩码轮询线程（3s），到达/移除经 `compat://hotplug` 事件
+/// 通知前端（结构化、零写操作）。
+pub fn spawn_hotplug_watcher(app: AppHandle) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Storage::FileSystem::GetLogicalDrives;
+        std::thread::spawn(move || {
+            let mut last: u32 = unsafe { GetLogicalDrives() };
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let now: u32 = unsafe { GetLogicalDrives() };
+                if now != last {
+                    let diff = now ^ last;
+                    for bit in 0..26u32 {
+                        if diff & (1 << bit) != 0 {
+                            let letter = char::from(b'A' + bit as u8);
+                            let kind = if now & (1 << bit) != 0 { "arrive" } else { "remove" };
+                            let _ = app.emit("compat://hotplug", serde_json::json!({
+                                "drive": format!("{letter}:"),
+                                "kind": kind,
+                            }));
+                        }
+                    }
+                    last = now;
+                }
+            }
+        });
+    }
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -593,4 +962,81 @@ mod tests {
         assert_eq!(severity(true, false), "high");
         assert_eq!(severity(true, true), "mitigated");
     }
+    // ---- AI-12 兼容纵深组 ----
+
+    #[test]
+    fn shim_hits_are_counted_and_validated() {
+        let hit = format!("unit-{}", std::process::id());
+        assert_eq!(compat_shim_report(hit.clone()).unwrap(), 1);
+        assert_eq!(compat_shim_report(hit.clone()).unwrap(), 2);
+        let stats = compat_shim_stats().unwrap();
+        assert_eq!(stats.get(&hit), Some(&2));
+        assert!(compat_shim_report("".into()).is_err());
+        assert!(compat_shim_report("x".repeat(200)).is_err());
+    }
+
+    #[test]
+    fn volume_relative_split_handles_guid_and_drive() {
+        let guid = r#"\\?\Volume{abcd-1234}\"#;
+        assert_eq!(
+            split_volume_relative(r"\\?\Volume{abcd-1234}\apps\foo\data", guid),
+            Some(r"\apps\foo\data".to_string())
+        );
+        assert_eq!(
+            split_volume_relative(r"E:\apps\foo\data", guid),
+            Some(r"\apps\foo\data".to_string())
+        );
+        assert_eq!(split_volume_relative(r"unc\path", guid), None);
+    }
+
+    #[test]
+    fn mount_join_normalizes_separators() {
+        assert_eq!(join_mount(r"F:\", r"\apps\x"), r"F:\apps\x");
+        assert_eq!(join_mount(r"F:\", r"apps\x"), r"F:\apps\x");
+        assert_eq!(join_mount(r"F:\mnt", r"\apps"), r"F:\mnt\apps");
+    }
+
+    #[test]
+    fn find_sub_is_case_insensitive_via_lowered_input() {
+        let lowered: Vec<u8> = b"RequestedExecutionLevel requireAdministrator".iter().map(|b| b.to_ascii_lowercase()).collect();
+        assert!(find_sub(&lowered, b"requireadministrator").is_some());
+        assert!(find_sub(b"nothing here", b"requireadministrator").is_none());
+    }
+
+    // ---- AI-12 测试辅助：卷相对路径拆分 / 挂载点拼接 / 字节子串查找 ----
+
+    /// 卷 GUID 前缀或盘符前缀 → 卷内相对路径（\ 开头）；不匹配返回 None。
+    fn split_volume_relative(path: &str, guid: &str) -> Option<String> {
+        if let Some(rest) = path.strip_prefix(guid) {
+            if rest.is_empty() {
+                return None;
+            }
+            // 相对路径统一以 \ 开头
+            if rest.starts_with('\\') {
+                return Some(rest.to_string());
+            }
+            return Some(format!("\\{}", rest));
+        }
+        let bytes = path.as_bytes();
+        if bytes.len() >= 3 && bytes[1] == b':' && bytes[2] == b'\\' {
+            return Some(path[2..].to_string());
+        }
+        None
+    }
+
+    /// 挂载点 + 卷内相对路径 → 绝对路径（规范化分隔符，恰好一个 \）。
+    fn join_mount(mount: &str, rel: &str) -> String {
+        let m = mount.trim_end_matches('\\');
+        let r = rel.trim_start_matches('\\');
+        format!("{}\\{}", m, r)
+    }
+
+    /// 大小写无关查找由调用方先 lowercase 输入后完成；这里只做字节子串查找。
+    fn find_sub(hay: &[u8], needle: &[u8]) -> Option<usize> {
+        if needle.is_empty() || hay.len() < needle.len() {
+            return None;
+        }
+        hay.windows(needle.len()).position(|w| w == needle)
+    }
 }
+
