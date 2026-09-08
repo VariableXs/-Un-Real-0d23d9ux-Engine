@@ -187,3 +187,18 @@ export function screenShift(rect: VwmRect, screens: ScreenInfo[], dir: "left" | 
   const x = Math.min(Math.max(rect.x + dx, neighbor.left), maxX);
   return { x: Math.round(x), y: rect.y, w: rect.w, h: rect.h };
 }
+
+/**
+ * M-08 精炼 Alt+Tab：两窗口中心是否落在同一块屏幕（screens 空则视为同屏，
+ * 即单屏退化为不过滤——诚实降级）。
+ */
+export function sameMonitor(a: VwmRect, b: VwmRect, screens: ScreenInfo[]): boolean {
+  if (screens.length === 0) return true;
+  const idx = (r: VwmRect): number => {
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const hit = screens.findIndex((s) => cx >= s.left && cx < s.left + s.width && cy >= s.top && cy < s.top + s.height);
+    return hit; // 都不含 → -1（视为"未知屏"，按索引相等判定）
+  };
+  return idx(a) === idx(b);
+}

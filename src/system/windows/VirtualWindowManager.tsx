@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../../entries/runtime";
 import {
   computeWorkArea,
   cycleVwmFocus,
+  cycleVwmFocusFiltered,
   minimizeAllVwm,
   restoreShakenVwm,
   setVwmWorkArea,
@@ -13,6 +14,8 @@ import {
   vwmStore,
   type VwmRect,
 } from "./vwm";
+import { parseScreenDetails, type ScreenInfo } from "./winfeel";
+import { pushToast } from "../../state/uiStore";
 import { useStore } from "../../lib/store";
 import { useI18n } from "../../i18n";
 import { askChoice } from "../../components/Modal";
@@ -129,17 +132,34 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   }, [props.settings.taskbarPos]);
 
   // Alt+Tab：Variable 环境内窗口轮转（系统未抢占时生效）
+  // M-08：Ctrl+Alt+Tab 按设置过滤（app=同应用 / monitor=同屏）；空集合 → toast + 全局兜底
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Tab" && e.altKey) {
         e.preventDefault();
         e.stopPropagation();
+        if (e.ctrlKey && props.settings.altTabFilter !== "off") {
+          const s = vwmStore.getState();
+          const focused = s.wins.find((w) => w.id === s.focusedId);
+          const ok = cycleVwmFocusFiltered(
+            props.settings.altTabFilter === "app" && focused
+              ? { byApp: focused.app }
+              : focused
+                ? { sameMonitorAs: focused, screens: currentScreens() }
+                : {},
+          );
+          if (!ok) {
+            pushToast("info", t("wfAltTabFiltered"), t("wfAltTabEmpty"));
+            cycleVwmFocus(e.shiftKey);
+          }
+          return;
+        }
         cycleVwmFocus(e.shiftKey);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, []);
+  }, [props.settings.altTabFilter, t]);
 
   // Win+方向键（Rust 全局键 → sys://snap）：贴靠当前聚焦的虚拟窗口。
   // 桌面窗口自身持有 OS 焦点时才响应（文件管理器等 OS 窗口聚焦时让给既有 applySnap）。
@@ -371,6 +391,12 @@ type ScreenDetails = {
   screens: Array<{ left: number; top: number; width: number; height: number; devicePixelRatio: number }>;
 };
 let screenDetails: ScreenDetails | null | undefined; // undefined=未探测 null=不可用
+
+/** M-08：当前屏幕矩形列表（解析失败 → 空 = 单屏不过滤）。 */
+function currentScreens(): ScreenInfo[] {
+  if (screenDetails === undefined) monitorDprAt(0, 0); // 触发惰性探测
+  return screenDetails ? (parseScreenDetails(screenDetails) ?? []) : [];
+}
 
 /** 窗口中心所在显示器的 devicePixelRatio（混合 DPI 双屏关键）；拿不到 → 主屏值回退。 */
 function monitorDprAt(cx: number, cy: number): number {

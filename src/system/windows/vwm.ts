@@ -1,8 +1,8 @@
 import { desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { getThirdApps } from "../launcher/thirdApps";
 import { createStore } from "../../lib/store";
-import { parseScreenDetails, screenShift } from "./winfeel";
-import type { GuideResult } from "./winfeel";
+import { parseScreenDetails, sameMonitor, screenShift } from "./winfeel";
+import type { GuideResult, ScreenInfo } from "./winfeel";
 import type { AppMode } from "../../state/uiStore";
 import type { TaskbarPos } from "../../lib/settings";
 
@@ -585,11 +585,21 @@ export function cycleVwmFocus(backward = false): void {
   if (target) focusVwmWin(target.id);
 }
 
-/** M-08 过滤式焦点轮转（如按应用切换）：过滤集为空 → false（调用方提示并兜底）。 */
-export function cycleVwmFocusFiltered(opts?: { byApp?: VwmApp; backward?: boolean }): boolean {
+/** M-08 过滤式焦点轮转（按应用 / 按屏幕）：过滤集为空 → false（调用方提示并兜底）。 */
+export function cycleVwmFocusFiltered(opts?: {
+  byApp?: VwmApp;
+  /** 与该窗口同屏的候选（需要传入屏幕列表；screens 空 = 单屏不过滤）。 */
+  sameMonitorAs?: VwmWin;
+  screens?: ScreenInfo[];
+  backward?: boolean;
+}): boolean {
   const s = vwmStore.getState();
   let cands = s.wins.filter((w) => !w.minimized);
   if (opts?.byApp !== undefined) cands = cands.filter((w) => w.app === opts.byApp);
+  if (opts?.sameMonitorAs) {
+    const screens = opts.screens ?? [];
+    cands = cands.filter((w) => sameMonitor(w, opts.sameMonitorAs!, screens));
+  }
   if (cands.length === 0) return false;
   const sorted = [...cands].sort((a, b) => b.z - a.z);
   const cur = sorted.findIndex((w) => w.id === s.focusedId);
@@ -633,6 +643,12 @@ export function vwmWindowTitle(app: VwmApp): string {
       dupe: "重复文件报告",
       space: "空间分析",
       checksum: "校验和",
+      clockhub: "时钟中心",
+      emoji: "字符与 Emoji",
+      magnifier: "放大镜与取色器",
+      convert: "换算中心",
+      sysinfo: "系统信息",
+      printqueue: "打印队列",
     };
     return labels[app];
   }

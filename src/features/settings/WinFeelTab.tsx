@@ -66,6 +66,7 @@ export function WinFeelTab(props: { settings: Settings; onPatch: (p: Partial<Set
           >
             <option value="off">{t("wfAltTabOff")}</option>
             <option value="app">{t("wfAltTabApp")}</option>
+            <option value="monitor">{t("wfAltTabMonitor")}</option>
           </select>
         </div>
         <div className="wf-feel-row">

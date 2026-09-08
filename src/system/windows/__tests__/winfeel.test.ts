@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeGuide, detectGesture, detectShake, parseScreenDetails, screenShift } from "../winfeel";
+import { computeGuide, detectGesture, detectShake, parseScreenDetails, sameMonitor, screenShift } from "../winfeel";
 
 /**
  * AI-01 窗口手感组：纯函数层单测（M-01 摇晃 / Z-41 手势 / M-07 参考线 / Z-42-M-05 跨屏）。
@@ -141,6 +141,27 @@ describe("Z-42/M-05 screenShift 跨屏摆渡", () => {
 
   it("空屏幕数组 → null", () => {
     expect(screenShift({ x: 0, y: 0, w: 100, h: 100 }, [], "left")).toBe(null);
+  });
+});
+
+describe("M-08 sameMonitor 同屏判定", () => {
+  const twoScreens = [
+    { left: 0, top: 0, width: 1920, height: 1080 },
+    { left: 1920, top: 0, width: 1920, height: 1080 },
+  ];
+  const r = (x: number): { x: number; y: number; w: number; h: number } => ({ x, y: 100, w: 400, h: 300 });
+
+  it("两屏：同屏窗口判定为同屏，跨屏为不同屏", () => {
+    expect(sameMonitor(r(100), r(500), twoScreens)).toBe(true);
+    expect(sameMonitor(r(100), r(2100), twoScreens)).toBe(false);
+  });
+
+  it("screens 空 = 单屏退化，恒为同屏", () => {
+    expect(sameMonitor(r(100), r(9999), [])).toBe(true);
+  });
+
+  it("中心都不在任何屏内 → 同为未知屏，判同屏", () => {
+    expect(sameMonitor(r(-5000), r(-6000), twoScreens)).toBe(true);
   });
 });
 

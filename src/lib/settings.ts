@@ -149,8 +149,8 @@ export interface Settings {
   winGestures: boolean;
   /** AI-01 Z-38：Alt+滚轮在置顶窗口间循环（默认 off）。 */
   altWheelTopmost: boolean;
-  /** AI-01 M-08：精炼 Alt+Tab 过滤（off / app=同应用轮转；Ctrl+Alt+Tab 触发）。 */
-  altTabFilter: "off" | "app";
+  /** AI-01 M-08：精炼 Alt+Tab 过滤（off / app=同应用 / monitor=同屏；Ctrl+Alt+Tab 触发）。 */
+  altTabFilter: "off" | "app" | "monitor";
   /** AI-01 M-09：悬停聚焦 X-Mouse（0=关 / 1=仅聚焦 / 2=聚焦并置顶）。 */
   xmouse: 0 | 1 | 2;
   /** AI-01 Z-42：右缘热区呼出桌面切换预览（0=关 / 8..32 px 宽度）。 */
@@ -308,7 +308,7 @@ function coerce(raw: Record<string, string>): Settings {
     if (raw["winGuides"] !== undefined) s.winGuides = raw["winGuides"] === "1";
     if (raw["winGestures"] !== undefined) s.winGestures = raw["winGestures"] === "1";
     if (raw["altWheelTopmost"] !== undefined) s.altWheelTopmost = raw["altWheelTopmost"] === "1";
-    if (raw["altTabFilter"]) s.altTabFilter = raw["altTabFilter"] === "app" ? "app" : "off";
+    if (raw["altTabFilter"]) s.altTabFilter = raw["altTabFilter"] === "app" ? "app" : raw["altTabFilter"] === "monitor" ? "monitor" : "off";
     if (raw["xmouse"] !== undefined) {
       const n = Number(raw["xmouse"]);
       s.xmouse = n === 1 || n === 2 ? (n as Settings["xmouse"]) : 0;
