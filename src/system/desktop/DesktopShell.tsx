@@ -30,6 +30,8 @@ import { VirtualWindowManager } from "../windows/VirtualWindowManager";
 import { applySnap, SnapPreviewHost } from "../windows/snap";
 import { pushRecent } from "../startmenu/recent";
 import { effectiveBinds } from "../../lib/shortcuts";
+import { InputFeelRuntime } from "../../features/inputFeel/InputFeelRuntime";
+import { CommandPalette } from "../palette/CommandPalette";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：
@@ -456,6 +458,8 @@ export function DesktopShell(props: {
       data-phase={props.closePhase}
       data-fullscreen={fsApp || undefined}
     >
+      {/* AI-06 输入手感组运行时（U-58/U-59、V-62…V-69；默认全部关闭） */}
+      <InputFeelRuntime settings={props.settings} />
       <WallpaperLayer settings={props.settings} />
       {/* X-3：扩展小组件条（widgets.register；slot=desktop-top-right） */}
       {extWidgets.length > 0 && (
@@ -573,7 +577,11 @@ export function DesktopShell(props: {
           props.onOpenSettings();
         }}
         pos={props.settings.taskbarPos}
+        settings={props.settings}
       />
+
+      {/* AI-07 N-13：命令面板（Ctrl+K / 全局 ctrl+alt+p → sys://open-palette） */}
+      <CommandPalette />
 
       {/* M7 第三方软件管理器（模态） */}
       <LauncherManager />

@@ -4,6 +4,7 @@ import { useI18n } from "../../i18n";
 import { appAccent } from "../../components/AppGlyphs";
 import { isTpApp } from "./vwm";
 import { ipc } from "../../lib/ipc";
+import { isDragStart, liveDragThreshold } from "../../lib/inputFeel";
 import {
   activateVwmTab,
   closeVwmTab,
@@ -101,9 +102,16 @@ export function VirtualWindowFrame(props: {
     const drag = { offX, offY };
     let pendingZone: SnapDir | null = null;
     let lastZone: SnapDir | null = null;
+    // V-70 拖拽阈值防手滑：阈值内按住移动不算拖拽（不影响贴靠判定距离）
+    const startXY = { x: e.clientX, y: e.clientY };
+    let dragStarted = false;
     setDragging(true);
 
     const onMove = (ev: PointerEvent): void => {
+      if (!dragStarted && !isDragStart(ev.clientX - startXY.x, ev.clientY - startXY.y, liveDragThreshold(), ev.pointerType)) {
+        return;
+      }
+      dragStarted = true;
       const s = vwmStore.getState();
       const w = s.wins.find((x) => x.id === win.id);
       if (!w) return void cleanup();

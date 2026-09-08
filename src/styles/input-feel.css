@@ -1,0 +1,215 @@
+/* AI-06 输入手感组 — 运行时浮层与设置面板样式（U-58/U-59、V-61…V-70）。
+   默认全部关闭：未开启功能时这些类不会出现在 DOM。 */
+
+/* ---- V-63 指针轨迹（合成层 canvas，零额外全屏开销） ---- */
+.if-trail-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 900;
+}
+
+/* ---- V-64 点击涟漪 / reduce-motion 十字标 ---- */
+.if-ripple-host {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 901;
+  overflow: hidden;
+}
+.if-ripple {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  border: 2px solid var(--accent, #5a8ade);
+  animation: if-ripple-spread 240ms ease-out forwards;
+}
+.if-ripple.left { box-shadow: 0 0 8px rgba(255, 255, 255, 0.5); }
+.if-ripple.right { border-color: #d9a441; box-shadow: 0 0 8px rgba(217, 164, 65, 0.5); }
+@keyframes if-ripple-spread {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(9); opacity: 0; }
+}
+.if-cross {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  animation: if-cross-fade 80ms linear forwards;
+}
+.if-cross::before,
+.if-cross::after {
+  content: "";
+  position: absolute;
+  background: var(--accent, #5a8ade);
+}
+.if-cross::before { left: 8px; top: 0; width: 2px; height: 18px; }
+.if-cross::after { left: 0; top: 8px; width: 18px; height: 2px; }
+@keyframes if-cross-fade {
+  from { opacity: 0.9; }
+  to { opacity: 0; }
+}
+
+/* ---- V-65 大写锁定 OSD（与音量/亮度同族样式） ---- */
+.if-caps-osd {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: rgba(10, 16, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e8eefc;
+  font-size: 13px;
+  backdrop-filter: blur(10px);
+  z-index: 950;
+  animation: if-osd-fade 800ms ease-out forwards;
+  pointer-events: none;
+}
+@keyframes if-osd-fade {
+  0% { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- V-69 精确模式极淡十字标（跟随指针旁） ---- */
+.if-precision-cross {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  pointer-events: none;
+  z-index: 902;
+  opacity: 0.35;
+}
+.if-precision-cross::before,
+.if-precision-cross::after {
+  content: "";
+  position: absolute;
+  background: var(--accent, #8ab4f8);
+}
+.if-precision-cross::before { left: 12px; top: 0; width: 2px; height: 26px; }
+.if-precision-cross::after { left: 0; top: 12px; width: 26px; height: 2px; }
+
+/* ---- U-58 键盘速查浮层 ---- */
+.if-cheatsheet {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  background: rgba(4, 8, 18, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.if-cheatsheet-card {
+  max-width: 720px;
+  max-height: 78vh;
+  overflow: auto;
+  width: min(720px, 92vw);
+  background: rgba(12, 20, 38, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 18px 22px;
+  color: #e8eefc;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+}
+.if-cheatsheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.if-cheatsheet-group { margin-bottom: 12px; }
+.if-cheatsheet-gtitle {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.if-cheatsheet-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.if-cheatsheet-row kbd {
+  font-family: Consolas, monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+/* ---- U-59 触控模式：44×44px 最小目标 + ≥8px 间距 ---- */
+.touch-ui .tb-btn,
+.touch-ui .if-tab button,
+.touch-ui .if-tab select,
+.touch-ui .if-tab input[type="checkbox"],
+.touch-ui .sc-input {
+  min-height: 44px;
+  min-width: 44px;
+}
+.touch-ui .taskbar-center { gap: 8px; }
+
+/* ---- 设置面板 ---- */
+.if-tab section {
+  margin-bottom: 22px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.if-tab h3 { margin: 0 0 6px; font-size: 14px; }
+.if-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--fg-dim, #9aa7c0);
+}
+.if-field input[type="range"] { width: 160px; }
+.if-select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: inherit;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.if-test-sq {
+  width: 72px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+}
+.if-test-sq.hit { background: rgba(90, 138, 222, 0.45); border-style: solid; }
+.if-cursor-grid { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.if-cursor-row { align-items: center; }
+.if-err { color: #e0716e; }
+.if-remap-row { margin-bottom: 4px; align-items: center; }
+.if-coverage { max-height: 300px; overflow: auto; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; }
+.if-coverage-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.if-coverage-table td { padding: 4px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.if-coverage-table tr.bad td { color: #e0716e; }
+.if-coverage-table kbd {
+  font-family: Consolas, monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0 6px;
+}

@@ -1,4 +1,4 @@
-﻿import type { Lang } from "../i18n/dictionaries";
+import type { Lang } from "../i18n/dictionaries";
 
 /**
  * 全局快捷键表（批次E，规格 4.7）：
@@ -46,11 +46,15 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
 ];
 
 const MODIFIERS = new Set(["ctrl", "alt", "super", "shift"]);
+// N-17：键集扩展至全部单字母（改键自由度），另补 esc/backquote（三方占用表引用）
 const KNOWN_KEYS = new Set([
-  "e", "n", "m", "d", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-  "left", "right", "up", "down", "tab",
+  ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(97 + i)), // a-z
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+  "left", "right", "up", "down", "tab", "esc", "`",
   "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
   "home", "end", "pageup", "pagedown", "insert", "delete",
+  "/", // U-58 键盘全景速查浮层（Ctrl+/，前端层快捷键，非系统注册）
+  "f", ",", // U-58 覆盖审计：ctrl+shift+f 搜索 / ctrl+, 设置（同为前端层快捷键）
 ]);
 
 /** accel 归一化：小写、修饰键去重排序（ctrl/alt/shift/super 顺序）、键尾。非法返回 null。 */

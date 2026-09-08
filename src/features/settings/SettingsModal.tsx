@@ -15,6 +15,7 @@ import {
   type VaultItem, type VaultStatus, type WpEngineItem, type WpMonitor,
 } from "../../lib/ipc";
 import { DEFAULT_SETTINGS, type CustomBg, type MindDefaults, type Settings, type ThemeId } from "../../lib/settings";
+import { KeymapExtras } from "./KeymapExtras";
 import { formatBytes, clamp } from "../../lib/format";
 import { pushToast, uiStore, useUi } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
@@ -30,6 +31,7 @@ import { SecurityTab } from "./SecurityTab";
 import { ExtensionsTab } from "./ExtensionsTab";
 import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
 import { SystemCenterTab } from "./SystemCenterTab";
+import { InputFeelTab } from "./InputFeelTab";
 import type { SysSection } from "./SystemCenterTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
@@ -140,6 +142,7 @@ export function SettingsModal(props: {
     { id: "security", label: t("secTitle") },
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
+    { id: "inputFeel", label: t("ifTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "data", label: t("data") },
     { id: "about", label: t("aboutVariable") },
@@ -748,6 +751,8 @@ export function SettingsModal(props: {
           {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
           {tab === "envs" && <EnvsTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "browsers" && <BrowsersTab />}
+          {/* AI-06 输入手感组：U-58/U-59、V-61…V-70 全部面板 */}
+          {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}
           {tab === "security" && <SecurityTab />}
@@ -866,6 +871,11 @@ export function SettingsModal(props: {
                 </button>
               </div>
             </>
+          )}
+
+          {/* AI-05 键位纪律组扩展：Z-14 方案 / M-28 统计 / M-30 侧键 / M-31 启动槽 / M-33 回显 / M-35 滚轮 / M-36 预览 / V-94 体检 */}
+          {tab === "shortcuts" && (
+            <KeymapExtras settings={props.settings} onChange={props.onChange} binds={binds} applyBinds={applyBinds} />
           )}
 
           {tab === "storage" && <StorageRecoveryTab />}

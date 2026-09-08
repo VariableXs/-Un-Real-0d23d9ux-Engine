@@ -12,6 +12,7 @@ import { WriteGlyph, MindGlyph, CodeGlyph, FateGlyph } from "../../components/Ap
 import { openContextMenu, type MenuItem } from "../../components/ContextMenu";
 import { askConfirm, askPrompt } from "../../components/Modal";
 import { errMessage, ipc, type ThirdApp } from "../../lib/ipc";
+import { isDragStart, liveDragThreshold } from "../../lib/inputFeel";
 import type { CustomBg, IconSize, Settings, WallpaperMode } from "../../lib/settings";
 import { useI18n } from "../../i18n";
 import { pushToast, uiStore, type AppMode } from "../../state/uiStore";
@@ -93,7 +94,6 @@ interface ShelfIconDef {
 type IconDef = AppIconDef | SysIconDef | ThirdIconDef | ShelfIconDef;
 
 const GRID_PAD = 14;
-const DRAG_THRESHOLD = 5;
 const LONG_PRESS_MS = 600;
 
 /** 三档图标大小（对齐 Windows 桌面习惯：图标字形 ≈ 标称尺寸，Windows 中图标 ≈ 48px 字形）。 */
@@ -722,7 +722,8 @@ export function DesktopIcons(props: {
     if (!d || !iconOrigin.current) return;
     const dx = e.clientX - iconOrigin.current.x;
     const dy = e.clientY - iconOrigin.current.y;
-    if (!d.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    // V-70 拖拽阈值：全局统一设置（触控自动放大），默认 4px≈原 5px 手感
+    if (!d.moved && !isDragStart(dx, dy, liveDragThreshold(), e.pointerType)) return;
     clearPress();
     setDrag({ ...d, dx, dy, moved: true });
   };

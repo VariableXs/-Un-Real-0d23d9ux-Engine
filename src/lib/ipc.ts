@@ -154,6 +154,13 @@ export const ipc = {
 
   // ---- M5 shell: hardware & privacy (local Windows APIs, zero network) ----
   privacyUsage: () => invoke<Shell.DeviceUsage[]>("privacy_usage"),
+  // AI-06 输入手感组（V-61/V-69）：鼠标参数读/写回/回滚 + 指针临时降速
+  mouseParamsGet: () => invoke<Shell.MouseParamsState>("mouse_params_get"),
+  mouseParamsWrite: (p: { speed: number; doubleClickMs: number; wheelLines: number; swapButtons: boolean }) =>
+    invoke<Shell.MouseParamsState>("mouse_params_write", p),
+  mouseParamsRollback: () => invoke<boolean>("mouse_params_rollback"),
+  pointerSpeedTemp: (ratio: number) => invoke<void>("pointer_speed_temp", { ratio }),
+  pointerSpeedRestore: () => invoke<void>("pointer_speed_restore"),
   audioGet: () => invoke<Shell.AudioState>("audio_get"),
   audioSet: (volume: number, muted?: boolean) =>
     invoke<Shell.AudioState>("audio_set", { volume, muted: muted ?? null }),
@@ -200,6 +207,38 @@ export const ipc = {
   recPurge: (id: string, source: string) => invoke<void>("rec_purge", { id, source }),
   recEmpty: () => invoke<number>("rec_empty"),
   recCount: () => invoke<number>("rec_count"),
+
+  // ---- AI-09 文件操作组（M-21/Z-29..Z-35/M-19..M-27）----
+  checksum: (path: string, algo: string, opId: string) =>
+    invoke<Shell.ChecksumResult>("checksum", { path, algo, opId }),
+  checksumCancel: (opId: string) => invoke<void>("checksum_cancel", { opId }),
+  dupeScan: (path: string, minSize?: number | null) =>
+    invoke<Shell.DupeReport>("dupe_scan", { path, minSize: minSize ?? null }),
+  spaceScan: (path: string) => invoke<Shell.SpaceReport>("space_scan", { path }),
+  batchRenamePreview: (items: Shell.RenameItem[], rules: Shell.RenameRule[]) =>
+    invoke<Shell.RenamePreview>("batch_rename_preview", { items, rules }),
+  batchRenameApply: (items: Shell.RenameItem[], rules: Shell.RenameRule[]) =>
+    invoke<Shell.RenameApplyResult>("batch_rename_apply", { items, rules }),
+  batchRenameUndo: (undoId: string) => invoke<number>("batch_rename_undo", { undoId }),
+  sendtoList: () => invoke<Shell.SendToItem[]>("sendto_list"),
+  sendtoCustomAdd: (path: string) => invoke<string[]>("sendto_custom_add", { path }),
+  sendtoCustomRemove: (path: string) => invoke<string[]>("sendto_custom_remove", { path }),
+  sendtoCopy: (src: string, targetDir: string) => invoke<string>("sendto_copy", { src, targetDir }),
+  netDrives: () => invoke<Shell.NetDrive[]>("net_drives"),
+  whoLocks: (path: string) => invoke<Shell.LockHolder[]>("who_locks", { path }),
+  archiveLs: (path: string) => invoke<Shell.ArchiveListing>("archive_ls", { path }),
+  archiveExtractOne: (archive: string, innerPath: string) =>
+    invoke<string>("archive_extract_one", { archive, innerPath }),
+  sentinelList: () => invoke<Shell.SentinelCfg[]>("sentinel_list"),
+  sentinelAdd: (path: string, quietStart?: number | null, quietEnd?: number | null) =>
+    invoke<Shell.SentinelCfg[]>("sentinel_add", {
+      path,
+      quietStart: quietStart ?? null,
+      quietEnd: quietEnd ?? null,
+    }),
+  sentinelRemove: (id: string) => invoke<Shell.SentinelCfg[]>("sentinel_remove", { id }),
+  sentinelToggle: (id: string, enabled: boolean) =>
+    invoke<Shell.SentinelCfg[]>("sentinel_toggle", { id, enabled }),
 
   // ---- M7 shell: third-party launcher (independent OS processes, zero network) ----
   tpAdd: (path: string, name?: string, grade?: string) =>
@@ -451,6 +490,24 @@ export const ipc = {
   toolSecureWrite: (name: string, content: string) => invoke<void>("tool_secure_write", { name, content }),
   /** 抓取虚拟屏，返回 BMP 字节（base64 data URL 供 canvas 加载；区域裁剪在前端）。 */
   snapshotCapture: () => invoke<number[]>("snapshot_capture"),
+  // ---- AI-08 基础工具组（Z-22…Z-28 支撑 + V-97/98 打印双件） ----
+  /** Z-27：Variable 自身信息（版本/运行档/运行时长/数据目录占用）。 */
+  sysSelfInfo: () => invoke<Shell.SysSelfInfo>("sys_self_info"),
+  /** Z-25：当前光标物理屏幕坐标（虚拟屏坐标系）。 */
+  cursorPos: () => invoke<Shell.CursorPos>("cursor_pos"),
+  /** Z-23/Z-26：受限 HTTP GET（curl 隐藏窗口）；出站必须先经 requestNetConsent 获得用户同意。 */
+  httpFetch: (url: string) => invoke<string>("http_fetch", { url }),
+  /** V-97：文件是否具有系统「print」动词关联（无关联 → false，前端据此置灰）。 */
+  printAssocCheck: (paths: string[]) => invoke<boolean[]>("print_assoc_check", { paths }),
+  /** V-97：走系统打印关联（ShellExecute print 动词）；返回逐文件失败清单（空 = 全部成功）。 */
+  printFiles: (paths: string[]) => invoke<string[]>("print_files", { paths }),
+  /** V-98：枚举本机打印机（本地 + 连接）。 */
+  printList: () => invoke<Shell.PrinterInfo[]>("print_list"),
+  /** V-98：读取打印机当前队列（只读）。 */
+  printJobs: (printer: string | null) => invoke<Shell.PrintJob[]>("print_jobs", { printer }),
+  /** V-98：队列操作（pause / resume / cancel，显式操作无静默批量）。 */
+  printJobSet: (printer: string, jobId: number, action: "pause" | "resume" | "cancel") =>
+    invoke<void>("print_job_set", { printer, jobId, action }),
   // ---- F-3 任务管理器增强：进程/启动项/服务（护栏见 taskman.rs） ----
   procList: () => invoke<Shell.ProcInfo[]>("proc_list"),
   procKill: (pid: number, force: boolean) => invoke<string>("proc_kill", { pid, force }),
@@ -598,6 +655,13 @@ export namespace Shell {
     volume: number;
     muted: boolean;
   }
+  /** AI-06 V-61：系统鼠标四参数（camelCase 对齐 Rust DTO）。 */
+  export interface MouseParamsState {
+    speed: number;
+    doubleClickMs: number;
+    wheelLines: number;
+    swapButtons: boolean;
+  }
   export interface WifiState {
     connected: boolean;
     ssid: string | null;
@@ -668,6 +732,129 @@ export namespace Shell {
     path: string;
   }
   export type RecSource = "doc" | "folder" | "mindmap" | "ws-file" | "fs-item";
+  // ---- AI-09 文件操作组类型（M-21/Z-29..Z-35/M-19..M-27）----
+  /** M-21 校验和结果。 */
+  export interface ChecksumResult {
+    opId: string;
+    algo: string;
+    hex: string;
+    bytes: number;
+    cancelled: boolean;
+  }
+  export interface ChecksumProgress {
+    opId: string;
+    done: number;
+    total: number;
+  }
+  /** Z-33 重复文件报告（只报告不删除）。 */
+  export interface DupeFile {
+    path: string;
+    size: number;
+    modified: number;
+  }
+  export interface DupeGroup {
+    hash: string;
+    size: number;
+    files: DupeFile[];
+    wasted: number;
+  }
+  export interface DupeReport {
+    groups: DupeGroup[];
+    scanned: number;
+    truncated: boolean;
+  }
+  export interface DupeProgress {
+    phase: string;
+    done: number;
+    total: number;
+  }
+  /** Z-34 空间分析。 */
+  export interface SpaceNode {
+    name: string;
+    path: string;
+    size: number;
+    fileCount: number;
+    dirCount: number;
+    children: SpaceNode[];
+  }
+  export interface SpaceReport {
+    root: SpaceNode;
+    scanned: number;
+    truncated: boolean;
+  }
+  /** Z-32 批量重命名规则管线。 */
+  export type RenameRule =
+    | { type: "replace"; find: string; replace: string }
+    | { type: "number"; start: number; step: number; pad: number }
+    | { type: "case"; mode: string }
+    | { type: "ext"; from: string; to: string };
+  export interface RenameItem {
+    path: string;
+    name: string;
+  }
+  export interface RenamePreviewRow {
+    path: string;
+    oldName: string;
+    newName: string;
+    conflict: boolean;
+    reason: string;
+  }
+  export interface RenamePreview {
+    rows: RenamePreviewRow[];
+  }
+  export interface RenameApplyResult {
+    renamed: number;
+    undoId: string;
+  }
+  /** Z-35 发送到。 */
+  export interface SendToItem {
+    kind: string;
+    name: string;
+    target: string;
+  }
+  /** Z-31 网络驱动器。 */
+  export interface NetDrive {
+    letter: string;
+    path: string;
+    kind: string;
+    available: boolean;
+    unc: string | null;
+  }
+  /** M-25 文件锁定侦探（无强拆按钮；空列表=系统未披露占用者）。 */
+  export interface LockHolder {
+    pid: number;
+    name: string;
+    title: string;
+  }
+  /** M-23 压缩包只读浏览。 */
+  export interface ArchiveEntry {
+    name: string;
+    innerPath: string;
+    size: number;
+    compressedSize: number;
+    isDir: boolean;
+  }
+  export interface ArchiveListing {
+    path: string;
+    entries: ArchiveEntry[];
+  }
+  /** M-27 目录监控哨兵。 */
+  export interface SentinelCfg {
+    id: string;
+    path: string;
+    enabled: boolean;
+    quietStart: number;
+    quietEnd: number;
+  }
+  export interface SentinelChange {
+    kind: string;
+    name: string;
+  }
+  export interface SentinelEvent {
+    id: string;
+    path: string;
+    changes: SentinelChange[];
+  }
   export interface RecItem {
     id: string;
     source: RecSource;
@@ -1186,6 +1373,42 @@ export namespace Shell {
     memTotal: number;
     runtimeMode: "vm" | "light" | "direct";
   }
+  /** AI-08 Z-27：Variable 自身信息（sys_self_info）。dataDirCapped = 大小统计 >2GB 截断。 */
+  export interface SysSelfInfo {
+    version: string;
+    runtimeMode: string;
+    uptimeSecs: number;
+    dataDir: string;
+    dataDirBytes: number;
+    dataDirCapped: boolean;
+    osVersion: string;
+  }
+  /** AI-08 Z-25：光标物理屏幕坐标（虚拟屏坐标系）。 */
+  export interface CursorPos {
+    x: number;
+    y: number;
+  }
+  /** AI-08 V-98：本机打印机（print_list）。 */
+  export interface PrinterInfo {
+    name: string;
+    port: string;
+    driver: string;
+    isDefault: boolean;
+    jobs: number;
+    status: string;
+  }
+  /** AI-08 V-98：打印队列任务（print_jobs）。 */
+  export interface PrintJob {
+    jobId: number;
+    printer: string;
+    document: string;
+    user: string;
+    status: string;
+    statusRaw: number;
+    totalPages: number;
+    pagesPrinted: number;
+    submitted: string;
+  }
   /** 批次D：本地盘符容量（sys_disks）。 */
   export interface SysDisk {
     letter: string;
@@ -1315,6 +1538,27 @@ export type ExVarDir = Shell.ExVarDir;
 export type TpScanCandidate = Shell.TpScanCandidate;
 export type RecSource = Shell.RecSource;
 export type RecItem = Shell.RecItem;
+export type ChecksumResult = Shell.ChecksumResult;
+export type ChecksumProgress = Shell.ChecksumProgress;
+export type DupeReport = Shell.DupeReport;
+export type DupeGroup = Shell.DupeGroup;
+export type DupeFile = Shell.DupeFile;
+export type DupeProgress = Shell.DupeProgress;
+export type SpaceReport = Shell.SpaceReport;
+export type SpaceNode = Shell.SpaceNode;
+export type RenameRule = Shell.RenameRule;
+export type RenameItem = Shell.RenameItem;
+export type RenamePreview = Shell.RenamePreview;
+export type RenamePreviewRow = Shell.RenamePreviewRow;
+export type RenameApplyResult = Shell.RenameApplyResult;
+export type SendToItem = Shell.SendToItem;
+export type NetDrive = Shell.NetDrive;
+export type LockHolder = Shell.LockHolder;
+export type ArchiveListing = Shell.ArchiveListing;
+export type ArchiveEntry = Shell.ArchiveEntry;
+export type SentinelCfg = Shell.SentinelCfg;
+export type SentinelChange = Shell.SentinelChange;
+export type SentinelEvent = Shell.SentinelEvent;
 export type TpGrade = Shell.TpGrade;
 export type ThirdApp = Shell.ThirdApp;
 export type PortableProfile = Shell.PortableProfile;

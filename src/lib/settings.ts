@@ -1,5 +1,6 @@
 import { errMessage, ipc } from "./ipc";
 import type { Lang } from "../i18n/dictionaries";
+import { coerceInputFeel, DEFAULT_INPUT_FEEL, type InputFeelSettings } from "./inputFeel";
 
 export type ThemeId = "deep-space" | "paper" | "minimal-black" | "high-contrast" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
@@ -74,6 +75,22 @@ export interface Settings {
   taskbarPos: TaskbarPos;
   /** 快捷键自定义（批次E，规格 4.7）：action → accel；空 = 全默认。冲突检测在前端设置页。 */
   shortcutBinds: Record<string, string>;
+  /** M-30 鼠标侧键编程：XBUTTON1/2 → 动作 id（默认 back/forward 语义）。 */
+  xBinds: { xbutton1: string; xbutton2: string };
+  /** M-31 启动槽应用归属：launch1..launch9 → appKey（空 = 未分配）。 */
+  launchApps: Record<string, string>;
+  /** M-33 按键回显开关（只回显功能组合，打字内容永不出现）。 */
+  keycast: boolean;
+  /** M-33 按键回显位置（四角可选）。 */
+  keycastCorner: "tl" | "tr" | "bl" | "br";
+  /** M-35 任务栏滚轮调音量（默认关；开启后任务栏滚轮 = 音量步进 + 浮标）。 */
+  wheelVolume: boolean;
+  /** Z-13 命令提示条开关（默认开；容器高度 > 600px 才显示）。 */
+  commandHintBar: boolean;
+  /** Z-14 当前键位方案 id。 */
+  keymapProfile: string;
+  /** M-28 键位使用统计（本地，只记 action id + 次数，隐私口径见 keymap/telemetry.ts）。 */
+  keyStats: Record<string, number>;
   /** 🟢 绿灯状态（批次D，规格 4.3.4）：true = 避让 Windows 任务栏。 */
   avoidTaskbar: boolean;
   /** 首次启动欢迎向导已完成（完成后不再显示）。 */
@@ -114,6 +131,8 @@ export interface Settings {
   bgTier: number;
   /** 8.2 用户教学式词典：大白话解释，key 为小写术语。 */
   pvzDictOverrides: Record<string, string>;
+  /** AI-06 输入手感组（U-58/U-59、V-61…V-70）：默认全部关闭或等于现状。 */
+  inputFeel: InputFeelSettings;
   customBg: CustomBg;
   mindDefaults: MindDefaults;
 }
@@ -127,6 +146,14 @@ export const DEFAULT_SETTINGS: Settings = {
   winControls: "mac",
   taskbarPos: "bottom",
   shortcutBinds: {},
+  xBinds: { xbutton1: "back", xbutton2: "forward" },
+  launchApps: {},
+  keycast: false,
+  keycastCorner: "br",
+  wheelVolume: false,
+  commandHintBar: true,
+  keymapProfile: "default",
+  keyStats: {},
   avoidTaskbar: false,
   wizardDone: false,
   oobeDone: false,
@@ -153,6 +180,7 @@ export const DEFAULT_SETTINGS: Settings = {
   safeMode: false,
   bgTier: 0,
   pvzDictOverrides: {},
+  inputFeel: structuredClone(DEFAULT_INPUT_FEEL),
   customBg: {
     type: "nebula",
     color: "#0a1226",
@@ -238,6 +266,9 @@ function coerce(raw: Record<string, string>): Settings {
       }
     }
     if (raw["customBg"]) s.customBg = { ...s.customBg, ...JSON.parse(raw["customBg"]) };
+    if (raw["inputFeel"]) {
+      try { s.inputFeel = coerceInputFeel(JSON.parse(raw["inputFeel"])); } catch { /* 保留默认 */ }
+    }
     if (raw["mindDefaults"]) {
       const md = { ...s.mindDefaults, ...JSON.parse(raw["mindDefaults"]) };
       // Clamp numeric ranges so a corrupt stored value (e.g. wasdSpeed 0) can
