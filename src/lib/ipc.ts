@@ -808,6 +808,30 @@ export const ipc = {
   perfBootStage: (name: string, priority: number) => invoke<void>("perf_boot_stage", { name, priority }),
   perfBootStages: () => invoke<{ name: string; ts: number; priority: number }[]>("perf_boot_stages"),
 
+  // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
+  openhubConfigGet: () => invoke<Shell.OpenHubConfigView>("openhub_config_get"),
+  openhubConfigSet: (config: Shell.OpenHubConfigView) =>
+    invoke<Shell.OpenHubConfigView>("openhub_config_set", { config }),
+  deeplinkParse: (url: string) => invoke<Shell.DeepLinkRouteView>("deeplink_parse", { url }),
+  deeplinkRegister: () => invoke<void>("deeplink_register"),
+  deeplinkUnregister: () => invoke<void>("deeplink_unregister"),
+  safehouseCheck: (manifest: Shell.SafehouseManifestView) =>
+    invoke<Shell.SafehouseCheckView>("safehouse_check", { manifest }),
+  safehouseExec: (manifest: Shell.SafehouseManifestView, verb: string, arg: string) =>
+    invoke<Shell.SafehouseRunResultView>("safehouse_exec", { manifest, verb, arg }),
+  vxsValidate: (path: string) => invoke<Shell.VxsPreviewView>("vxs_validate_cmd", { path }),
+  vxsExtract: (path: string, kinds: string[]) => invoke<string>("vxs_extract", { path, kinds }),
+  openhubDataExport: (outDir: string) => invoke<Shell.DataExportResultView>("openhub_data_export", { outDir }),
+  openhubStreamEmit: (eventType: string, payload: string) =>
+    invoke<boolean>("openhub_stream_emit", { eventType, payload }),
+  openhubStreamTail: (n: number) => invoke<string[]>("openhub_stream_tail", { n }),
+  gatewayStatus: () => invoke<Shell.GatewayStatusView>("gateway_status"),
+  gatewayTokenRegen: () => invoke<string>("gateway_token_regen"),
+  openhubConnectorQuery: (def: Shell.ConnectorDefView) =>
+    invoke<Shell.ConnectorResultView>("openhub_connector_query", { def }),
+  companionInbox: () => invoke<string[]>("companion_inbox"),
+  companionInboxClear: () => invoke<void>("companion_inbox_clear"),
+
   // ---- AI-15 开放工具组（M-57/59/63、V-81..V-90）----
   // M-57 出站桥
   webhookRulesGet: () => invoke<Shell.WebhookConfigView>("webhook_rules_get"),
@@ -869,6 +893,1188 @@ export const ipc = {
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
 export namespace Shell {
+  // ---- AI-14 开放接口组视图（与 openhub.rs serde 字段一一对应）----
+  export interface OpenHubConfigView {
+    streamEnabled: boolean;
+    gatewayEnabled: boolean;
+    gatewayPort: number;
+    gatewayToken: string;
+    gatewayScopes: string[];
+  }
+  export interface DeepLinkRouteView {
+    verb: string;
+    params: [string, string][];
+    action: string;
+  }
+  export interface SafehouseManifestView {
+    id: string;
+    version: string;
+    capabilities: string[];
+    quotaSec: number;
+  }
+  export interface SafehouseCheckView {
+    granted: string[];
+    denied: string[];
+    errors: string[];
+  }
+  export interface SafehouseRunResultView {
+    ok: boolean;
+    output: string;
+    rejected: string | null;
+  }
+  export interface VxsPreviewView {
+    id: string;
+    formatOk: boolean;
+    resources: string[];
+    errors: string[];
+  }
+  export interface DataExportResultView {
+    outDir: string;
+    files: number;
+    bytes: number;
+  }
+  export interface GatewayStatusView {
+    running: boolean;
+    port: number;
+    scopes: string[];
+  }
+  export interface ConnectorDefView {
+    path: string;
+    kind: string;
+    sql: string | null;
+  }
+  export interface ConnectorResultView {
+    columns: string[];
+    rows: string[][];
+    error: string | null;
+  }
+  export interface DeviceUsage {
+    kind: "microphone" | "webcam";
+    app: string;
+  }
+  export interface AudioState {
+    volume: number;
+    muted: boolean;
+  }
+  /** AI-06 V-61：系统鼠标四参数（camelCase 对齐 Rust DTO）。 */
+  export interface MouseParamsState {
+    speed: number;
+    doubleClickMs: number;
+    wheelLines: number;
+    swapButtons: boolean;
+  }
+  export interface WifiState {
+    connected: boolean;
+    ssid: string | null;
+    signal: number | null;
+    /** 批次E（规格 6.2.1）：无线电开关状态（null = 读取失败/无无线电）。 */
+    radio_on: boolean | null;
+  }
+  export interface BluetoothState {
+    available: boolean;
+    enabled: boolean;
+  }
+  /** 批次C（规格 6.1.2）+ 批次E（id 供连接/断开操作）：已配对蓝牙设备 + 连接状态。 */
+  export interface BtDevice {
+    name: string;
+    id: string;
+    connected: boolean;
+  }
+  /** 批次C（规格 6.2.2）：扫描到的 Wi-Fi 网络（仅用户点击"扫描"时获取）。 */
+  export interface WifiNetwork {
+    ssid: string;
+    signal: number;
+    secured: boolean;
+  }
+  /** 批次C（规格 6.3.1）：音频端点（render=输出 / capture=输入）。 */
+  export interface AudioDeviceInfo {
+    id: string;
+    name: string;
+    kind: "render" | "capture";
+    default: boolean;
+  }
+  /** 批次C（规格 6.6.2）：电池状态（percent/lifetimeSecs 未知 = null）。 */
+  export interface BatteryState {
+    hasBattery: boolean;
+    acOnline: boolean;
+    percent: number | null;
+    lifetimeSecs: number | null;
+  }
+  /** 批次C（规格 6.6.1）：屏幕亮度（supported=false = 台式机/外接屏，不伪造可调）。 */
+  export interface BrightnessState {
+    supported: boolean;
+    level: number;
+  }
+  export interface ExEntry {
+    name: string;
+    path: string;
+    kind: "dir" | "file";
+    ext: string | null;
+    size: number;
+    updatedAt: number;
+    createdAt: number;
+    hidden: boolean;
+  }
+  export interface ExListing {
+    path: string;
+    parent: string | null;
+    entries: ExEntry[];
+  }
+  /** 批次C：目录内搜索结果（规格 7.4.3）。 */
+  export interface ExSearchResult {
+    entries: ExEntry[];
+    scanned: number;
+    truncated: boolean;
+  }
+  /** 批次C：复制/移动冲突解决（规格 7.7）。replace=覆盖，keep=保留两者，缺省=自动后缀。 */
+  export type ExCopyMode = "replace" | "keep";
+  export interface ExDrive {
+    letter: string;
+    path: string;
+  }
+  export type RecSource = "doc" | "folder" | "mindmap" | "ws-file" | "fs-item";
+  // ---- AI-09 文件操作组类型（M-21/Z-29..Z-35/M-19..M-27）----
+  /** M-21 校验和结果。 */
+  export interface ChecksumResult {
+    opId: string;
+    algo: string;
+    hex: string;
+    bytes: number;
+    cancelled: boolean;
+  }
+  export interface ChecksumProgress {
+    opId: string;
+    done: number;
+    total: number;
+  }
+  /** Z-33 重复文件报告（只报告不删除）。 */
+  export interface DupeFile {
+    path: string;
+    size: number;
+    modified: number;
+  }
+  export interface DupeGroup {
+    hash: string;
+    size: number;
+    files: DupeFile[];
+    wasted: number;
+  }
+  export interface DupeReport {
+    groups: DupeGroup[];
+    scanned: number;
+    truncated: boolean;
+  }
+  export interface DupeProgress {
+    phase: string;
+    done: number;
+    total: number;
+  }
+  /** Z-34 空间分析。 */
+  export interface SpaceNode {
+    name: string;
+    path: string;
+    size: number;
+    fileCount: number;
+    dirCount: number;
+    children: SpaceNode[];
+  }
+  export interface SpaceReport {
+    root: SpaceNode;
+    scanned: number;
+    truncated: boolean;
+  }
+  /** Z-32 批量重命名规则管线。 */
+  export type RenameRule =
+    | { type: "replace"; find: string; replace: string }
+    | { type: "number"; start: number; step: number; pad: number }
+    | { type: "case"; mode: string }
+    | { type: "ext"; from: string; to: string };
+  export interface RenameItem {
+    path: string;
+    name: string;
+  }
+  export interface RenamePreviewRow {
+    path: string;
+    oldName: string;
+    newName: string;
+    conflict: boolean;
+    reason: string;
+  }
+  export interface RenamePreview {
+    rows: RenamePreviewRow[];
+  }
+  export interface RenameApplyResult {
+    renamed: number;
+    undoId: string;
+  }
+  /** Z-35 发送到。 */
+  export interface SendToItem {
+    kind: string;
+    name: string;
+    target: string;
+  }
+  /** Z-31 网络驱动器。 */
+  export interface NetDrive {
+    letter: string;
+    path: string;
+    kind: string;
+    available: boolean;
+    unc: string | null;
+  }
+  /** M-25 文件锁定侦探（无强拆按钮；空列表=系统未披露占用者）。 */
+  export interface LockHolder {
+    pid: number;
+    name: string;
+    title: string;
+  }
+  /** M-23 压缩包只读浏览。 */
+  export interface ArchiveEntry {
+    name: string;
+    innerPath: string;
+    size: number;
+    compressedSize: number;
+    isDir: boolean;
+  }
+  export interface ArchiveListing {
+    path: string;
+    entries: ArchiveEntry[];
+  }
+  /** AI-10 U-32 应用防火墙 2.0。 */
+  export interface FwProfile {
+    app: string;
+    /** blocked | whitelist | full */
+    level: "blocked" | "whitelist" | "full" | string;
+    whitelist: string[];
+    /** 单应用日流量上限（字节，0 = 不限） */
+    dailyQuotaBytes: number;
+  }
+  export interface FwAlert {
+    id: string;
+    app: string;
+    host: string;
+    ts: number;
+    attempts: number;
+    resolved: boolean;
+  }
+  export interface FwAlertCenter {
+    alerts: FwAlert[];
+    hotApps: string[];
+  }
+  /** AI-10 U-34 紧急擦拭。 */
+  export interface PanicConfig {
+    level: string;
+    targets: string[];
+    hotkeyEnabled: boolean;
+    dryRun: boolean;
+  }
+  export interface PanicRunReport {
+    level: string;
+    dryRun: boolean;
+    wouldDelete: string[];
+    vaultLocked: boolean;
+    incognitoBurned: number;
+    targetsBurned: string[];
+    clipboardCleared: boolean;
+    finishedAt: number;
+  }
+  /** AI-10 U-29 存档柜。 */
+  export interface ArcCard {
+    id: string;
+    name: string;
+    createdAt: number;
+    files: number;
+    bytes: number;
+    storedBytes: number;
+  }
+  export interface ArcNode {
+    name: string;
+    path: string;
+    kind: string;
+    size: number;
+  }
+  export interface ArcAudit {
+    checked: number;
+    corrupt: string[];
+    ok: boolean;
+  }
+  /** AI-10 U-33 无痕会话。 */
+  export interface IncSession {
+    id: string;
+    startedAt: number;
+    fileCount: number;
+    fileBytes: number;
+  }
+  export interface IncStatus {
+    active: boolean;
+    session: IncSession | null;
+    sessionsTotal: number;
+    lastBurnedAt: number;
+  }
+  /** AI-10 U-24 版本时间机。 */
+  export interface VerInfo {
+    id: string;
+    path: string;
+    hash: string;
+    size: number;
+    savedAt: number;
+    fileMtime: number;
+    changedLines: number | null;
+  }
+  export interface DiffLine {
+    kind: "deleted" | "added" | "context" | string;
+    text: string;
+  }
+  export interface VerDiff {
+    added: number;
+    removed: number;
+    hunks: DiffLine[];
+  }
+  export interface VerGcReport {
+    removedVersions: number;
+    removedBlocks: number;
+    keptFiles: number;
+    keptVersions: number;
+  }
+  /** AI-10 U-25 智能文件夹。 */
+  export interface SmartFolder {
+    id: string;
+    name: string;
+    query: string;
+    createdAt: number;
+  }
+  /** AI-10 U-26 回收站自动清理策略。 */
+  export interface RecPolicy {
+    capacityBytes: number;
+    maxDays: number;
+    autoClean: boolean;
+    lastWarnedAt: number;
+  }
+  /** AI-10 U-28 传输指挥台。 */
+  export interface TrItem {
+    id: string;
+    src: string;
+    dest: string;
+    kind: "copy" | "move" | string;
+    onConflict: "replace" | "skip" | "keep" | string;
+    status: "queued" | "running" | "paused" | "done" | "failed" | "canceled" | string;
+    bytes: number;
+    total: number;
+    filesDone: number;
+    filesTotal: number;
+    error: string | null;
+    createdAt: number;
+    startedAt: number | null;
+    finishedAt: number | null;
+  }
+  /** AI-10 U-30 信任链中心。 */
+  export interface TrustVerdict {
+    status: "valid" | "unsigned" | "expired" | "tampered" | "unsupported" | "error" | string;
+    signer: string;
+    validFrom: number;
+    validTo: number;
+    chainOk: boolean;
+    detail: string;
+  }
+  export interface TrustEntry {
+    path: string;
+    display: string;
+    origin: "drag" | "download" | "copy" | "install" | string;
+    firstSeen: number;
+    lastVerified: number;
+    verdict: TrustVerdict | null;
+  }
+  export interface TrustWall {
+    entries: TrustEntry[];
+    signerCounts: Record<string, number>;
+  }
+  /** AI-10 U-31 数据血缘。 */
+  export interface LinEvent {
+    id: string;
+    kind: "import" | "use" | "depart" | string;
+    path: string;
+    display: string;
+    app: string | null;
+    ts: number;
+    detail: string;
+  }
+  export interface LinStats {
+    total: number;
+    imports: number;
+    uses: number;
+    departs: number;
+    distinctPaths: number;
+  }
+  /** AI-10 U-35 本地使用洞察。 */
+  export interface InsAppTime {
+    app: string;
+    ms: number;
+    switches: number;
+  }
+  export interface InsFocus {
+    longestStreakMin: number;
+    interruptTop: Record<string, number>;
+  }
+  export interface InsNotif {
+    bySource: Record<string, number>;
+    dndCount: number;
+  }
+  export interface InsSearch {
+    total: number;
+    hits: number;
+    missTop: Record<string, number>;
+  }
+  export interface InsDashboard {
+    range: string;
+    apps: InsAppTime[];
+    focus: InsFocus;
+    notif: InsNotif;
+    search: InsSearch;
+    events: number;
+    recording: boolean;
+  }
+  export interface InsSuggestion {
+    id: string;
+    rule: string;
+    target: string;
+    hits: number;
+  }
+  /** AI-10 U-27 隐私仪表盘。 */
+  export interface AuditEvent {
+    id: string;
+    kind: "clipboard" | "fs" | "net" | string;
+    app: string;
+    resource: string;
+    authorized: boolean;
+    ts: number;
+  }
+  export interface AuditGap {
+    from: number;
+    to: number | null;
+  }
+  export interface AuditTimeline {
+    events: AuditEvent[];
+    gaps: AuditGap[];
+    daily: Record<string, number>;
+    anomalies: string[];
+    enabled: boolean;
+  }
+  export interface CanaryTrigger {
+    ts: number;
+    via: "open" | "read" | string;
+    app: string;
+    exempted: boolean;
+  }
+  export interface CanaryFile {
+    id: string;
+    path: string;
+    template: string;
+    plantedAt: number;
+    triggers: CanaryTrigger[];
+  }
+  export interface CanaryOverview {
+    files: CanaryFile[];
+    templates: string[];
+    whitelist: string[];
+  }
+  /** M-27 目录监控哨兵。 */
+  export interface SentinelCfg {
+    id: string;
+    path: string;
+    enabled: boolean;
+    quietStart: number;
+    quietEnd: number;
+  }
+  export interface SentinelChange {
+    kind: string;
+    name: string;
+  }
+  export interface SentinelEvent {
+    id: string;
+    path: string;
+    changes: SentinelChange[];
+  }
+  export interface RecItem {
+    id: string;
+    source: RecSource;
+    title: string;
+    origin: string | null;
+    deletedAt: number;
+    kind: "file" | "dir" | "doc" | "folder" | "mindmap";
+    size: number;
+  }
+  export type TpGrade = "portable" | "standalone" | "shortcut";
+  /** 批次E-6：显示器（IDesktopWallpaper 视角，id 用于 SetWallpaper）。 */
+  export interface WpMonitor {
+    id: string;
+    primary: boolean;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+  /** 兼容层：Wallpaper Engine 共存状态。 */
+  export interface CompatStatus {
+    wallpaperEngineRunning: boolean;
+    processes: string[];
+    compatActive: boolean;
+    recommendation: string;
+    severity: "none" | "high" | "mitigated" | string;
+  }
+  /** AI-3 ShellExecuteExW result. A missing PID is valid for URI/UWP launches. */
+  export interface ShellExecuteResult {
+    launched: boolean;
+    processId: number | null;
+    backend: "shellExecuteEx" | "applicationActivationManager" | "fallback" | string;
+    errorCode: number | null;
+  }
+  /** Explorer-compatible 64px shell icon returned as a PNG data URL. */
+  export interface ShellIconResult {
+    dataUrl: string;
+    size: number;
+    source: "shellItemImageFactory" | "embeddedIcon" | "fallback" | string;
+  }
+  /** Native IContextMenu is modal by design; false means the caller should use its safe fallback menu. */
+  export interface ShellContextMenuResult {
+    shown: boolean;
+    invoked: boolean;
+    commandId: number | null;
+  }
+  export type WindowsShellGesture = "showDesktop" | "altTab" | "snapLeft" | "snapRight" | "snapUp" | "snapDown";
+  /** 批次E-12：Wallpaper Engine 壁纸项目（scene/web 类型如实 supported=false）。 */
+  export interface WpEngineItem {
+    id: string;
+    title: string;
+    kind: string;
+    file: string | null;
+    preview: string | null;
+    supported: boolean;
+    source: string;
+  }
+  /** 批次E-7：隐私保险箱状态。 */
+  export interface VaultStatus {
+    initialized: boolean;
+    unlocked: boolean;
+    count: number;
+    bytes: number;
+  }
+  /** 批次E-7：保险箱条目（明文名 + 明文大小；内容密文落盘）。 */
+  export interface VaultItem {
+    name: string;
+    size: number;
+    addedAt: number;
+  }
+  /** 批次E-7：隐私自检发现项（level = pass | warn）。 */
+  export interface AuditFinding {
+    id: string;
+    level: "pass" | "warn";
+    detail: string;
+  }
+  /** AI-07 · N-15：剪贴板历史条目（kind = text | file | image）。 */
+  export interface ClipEntry {
+    id: string;
+    kind: "text" | "file" | "image";
+    /** text/file：文本；image：base64(DIB)。 */
+    data: string;
+    preview: string;
+    ts: number;
+    pinned: boolean;
+  }
+  /** AI-07 · N-15：剪贴板录制配置（敏感名单期间零记录；关闭即焚）。 */
+  export interface ClipConfig {
+    enabled: boolean;
+    sensitiveApps: string[];
+    burnOnClose: boolean;
+  }
+  /** AI-07 · N-18：宏触发器登记（动作在前端 engine.ts 执行）。 */
+  export interface MacroTriggerDef {
+    macroId: string;
+    triggerType: "hotkey" | "process" | "time" | "clipboardRegex" | "scene";
+    triggerValue: string;
+    enabled: boolean;
+  }
+  /** F-1：显示器显示模式。 */
+  export interface SysDisplayMode {
+    width: number;
+    height: number;
+    bits: number;
+    hz: number;
+  }
+  /** F-1：显示器（当前模式 + 可用刷新率/分辨率集合）。 */
+  export interface SysDisplay {
+    device: string;
+    name: string;
+    primary: boolean;
+    current: SysDisplayMode | null;
+    refresh_rates: number[];
+    resolutions: [number, number][];
+  }
+  /** F-1：环境系统总览（vm = VM 档真实可写；否则只读如实降级）。 */
+  export interface SysEnvOverview {
+    vm: boolean;
+    vm_reason: string;
+    displays: SysDisplay[];
+    timezone: string;
+    utc_offset_minutes: number;
+    power_scheme: string;
+    power_scheme_name: string;
+    username: string;
+  }
+  /** 批次E（规格 7.2）：Variable 数据目录侧栏节点。 */
+  /** 批次E（规格 5.9.2）：开始菜单扫描候选。 */
+  export interface TpScanCandidate {
+    name: string;
+    lnk: string;
+    target: string;
+  }
+  export interface ExVarDir {
+    key: "root" | "workspace" | "apps" | "recycle";
+    path: string;
+  }
+  export interface ThirdApp {
+    id: string;
+    name: string;
+    path: string;
+    grade: TpGrade;
+    addedAt: number;
+    lastLaunch: number | null;
+    /** 批次B：自定义图标（data URL；null = 使用默认占位图标）。 */
+    icon: string | null;
+    /** 批次E（规格 5.9.4）：.lnk 解析出的目标 exe；非 lnk 登记为 null。 */
+    target: string | null;
+    /** 批次B-3（M1）：隔离执行档（apps.json v2；v1 文件读出为空档）。 */
+    profile: PortableProfile;
+    /** 批次W-2：DPI 例外（不响应 WM_DPICHANGED 的应用按主屏渲染）。 */
+    dpiFix: boolean;
+    /** 批次C-6：兼容分级（自动探测 + 用户覆盖；旧 apps.json 读出为缺省档）。 */
+    compat: {
+      tier: CompatTier | null;
+      overrideTier: CompatTier | null;
+      probedAt: number | null;
+      evidence: Record<string, unknown>;
+      /** 批次C-5：L4 让位归因（"fullscreen" | "anticheat" | null = 非 L4）。 */
+      hint: string | null;
+      exeMtime: number | null;
+    };
+  }
+  /** 批次C-6：四层兼容层级。 */
+  export type CompatTier = "L1" | "L2" | "L3" | "L4" | "Native";
+  /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
+  export interface PortableProfile {
+    envRedirect: Record<string, string>;
+    envSet: Record<string, string>;
+    /** 出站白名单建议（M8 网络层启用前仅登记）。 */
+    netAllow: string[];
+    sensitive: boolean;
+  }
+  /** 批次B-5：重定向模板（.uxpack AI 提供方包雏形）。 */
+  export interface ProfileTemplateDto {
+    id: string;
+    name: string;
+    description: string;
+    envRedirect: Record<string, string>;
+    envSet: Record<string, string>;
+    netAllow: string[];
+    sensitive: boolean;
+  }
+  /** 批次B-6：干跑结果（「验证重定向」）。 */
+  export interface ProfileDryRun {
+    id: string;
+    name: string;
+    sensitive: boolean;
+    envRedirect: Record<string, string>;
+  }
+  /** 批次B-6：宿主残留条目。 */
+  export interface ResidueEntry {
+    path: string;
+    size: number;
+    modifiedMs: number;
+    /** E-2：file = 文件落盘；reg = HKCU\Software 新增键 */
+    kind?: "file" | "reg";
+  }
+  /** E-1：默认值推断建议。 */
+  export interface ProfileInfer {
+    id: string;
+    name: string;
+    envRedirect: Record<string, string>;
+    note: string;
+  }
+  /** E-1：安装模式暂存会话。 */
+  export interface InstallSession {
+    id: string;
+    name: string;
+    exe: string;
+    createdAt: number;
+  }
+  /** E-1：落点分析报告。 */
+  export interface InstallReport {
+    id: string;
+    areas: { area: string; files: number; bytes: number }[];
+    exeCandidates: string[];
+    totalFiles: number;
+    totalBytes: number;
+    empty: boolean;
+  }
+  /** 批次B-7：终端就绪状态。 */
+  export interface TerminalStatus {
+    deployed: boolean;
+    path: string | null;
+    registered: boolean;
+  }
+  /** 批次B-9：AI 工具三态卡片数据源。 */
+  export interface AiToolStatus {
+    id: string;
+    name: string;
+    npmPackage: string;
+    nodeInstalled: boolean;
+    installed: boolean;
+    /** 登录态为容器配置标记推断，非读取凭据本体。 */
+    loggedIn: boolean;
+    lastActivityMs: number | null;
+    domains: string[];
+  }
+  /** 批次B-8：安装进度事件载荷。 */
+  export interface AiProgress {
+    tool: string;
+    phase: "node-download" | "node-extract" | "npm-install" | "done" | "error";
+    done: number;
+    total: number;
+    message: string;
+  }
+  /** 批次B-10：身份条目视图（凭据只回显尾 4 位）。 */
+  export interface AiIdentityView {
+    id: string;
+    tool: string;
+    label: string;
+    note: string;
+    createdAt: number;
+    tokenTail: string;
+  }
+  /** B-24：环境档。 */
+  export interface EnvView {
+    id: string;
+    name: string;
+    active: boolean;
+    createdAt: number;
+  }
+  /** B-34：诊断包。 */
+  export interface DiagReport {
+    out: string;
+    sections: number;
+  }
+  /** B-28：网络层状态。 */
+  export interface NetStatusView {
+    proxyRunning: boolean;
+    proxyPort: number;
+    killSwitch: boolean;
+    ruleCount: number;
+    bytesRelayed: number;
+    connsAllowed: number;
+    connsDenied: number;
+  }
+  export interface KillSwitchResult {
+    on: boolean;
+  }
+  export interface NetRule {
+    domain: string;
+    profile: string;
+    grantedAt: number;
+  }
+  /** B-33：吊销清单导出。 */
+  export interface RevocationReportView {
+    out: string;
+    entries: number;
+  }
+  export interface DiagFlags {
+    forceRaster: boolean;
+  }
+  /** B-27：可移植性评估卡。 */
+  export interface PortabilityCard {
+    verdict: "green" | "yellow" | "red" | string;
+    reasons: string[];
+    exeSizeBytes: number;
+    dirWritable: boolean;
+    uninstallEntry: string | null;
+  }
+  /** B-27：搬迁报告。 */
+  export interface MigrateReport {
+    appId: string;
+    destExe: string;
+    bytesCopied: number;
+    portableReg: string | null;
+    registered: boolean;
+  }
+  /** B-27：Steam 游戏。 */
+  export interface SteamGame {
+    appId: string;
+    name: string;
+  }
+  /** B-27：文件关联。 */
+  export interface FileAssoc {
+    ext: string;
+    appId: string;
+    appName: string;
+  }
+  /** B-29：PE 静态分析。 */
+  export interface PeAnalysis {
+    isPe: boolean;
+    machine: string;
+    entryRva: number;
+    sections: { name: string; rawSize: number; entropy: number; suspiciousEntropy: boolean }[];
+    imports: { dll: string; functions: number }[];
+    signed: boolean;
+    suspiciousHits: string[];
+    blake3: string;
+    stringsTop: string[];
+    sampleNote: string;
+  }
+  export interface DisasmLine {
+    rva: number;
+    bytesHex: string;
+    text: string;
+  }
+  export interface SandboxProbe {
+    available: boolean;
+    detail: string;
+  }
+  /** X-1…X-3：扩展包视图。 */
+  export interface ExtView {
+    id: string;
+    name: string;
+    version: string;
+    kind: string;
+    permissions: string[];
+    description: string | null;
+    enabled: boolean;
+    signed: boolean;
+    crashed: boolean;
+    running: boolean;
+    csp: string | null;
+  }
+  /** X-6：市场 .uxpack 包视图。 */
+  export interface MarketPackView {
+    file: string;
+    id: string;
+    name: string;
+    version: string;
+    kind: string;
+    description: string | null;
+    permissions: string[];
+    installed: boolean;
+    signed: boolean;
+    sizeBytes: number;
+  }
+  /** B-26：环境克隆报告。 */
+  export interface EnvCloneReport {
+    sourceId: string;
+    cloneId: string;
+    cloneName: string;
+    bytesCopied: number;
+  }
+  /** B-23：搜索/大文件。 */
+  export interface SearchReport {
+    filesScanned: number;
+    filesSkippedBinary: number;
+    filesSkippedSize: number;
+    truncated: boolean;
+    hits: { path: string; lines: { lineNo: number; text: string }[] }[];
+    elapsedMs: number;
+  }
+  export interface FileSlice {
+    offset: number;
+    size: number;
+    total: number;
+    textLossy: string;
+  }
+  /** B-22：Git 只读面板。 */
+  export interface GitStatusView {
+    headBranch: string;
+    headCommit: string | null;
+    entries: GitEntry[];
+    ahead: number;
+    behind: number;
+    hasUpstream: boolean;
+    isRepo: boolean;
+  }
+  export interface GitEntry {
+    path: string;
+    state: string;
+  }
+  export interface GitCommitView {
+    id: string;
+    summary: string;
+    author: string;
+    timeMs: number;
+  }
+  export interface SshKeyView {
+    id: string;
+    label: string;
+    publicKey: string;
+  }
+  /** B-21：工具链状态。 */
+  export interface ToolchainStatusView {
+    id: string;
+    deployed: boolean;
+    home: string;
+  }
+  /** B-20：VS Code Portable 状态。 */
+  export interface CodeStatus {
+    deployed: boolean;
+    exe: string;
+    registered: boolean;
+    portableData: boolean;
+  }
+  /** B-18：检测到的本机浏览器。 */
+  export interface DetectedBrowser {
+    id: string;
+    name: string;
+    exe: string;
+    family: "chrome" | "firefox";
+  }
+  /** B-18：浏览器 profile（数据目录在容器 browsers/ 下）。 */
+  export interface BrowserProfileDto {
+    id: string;
+    browserId: string;
+    name: string;
+    exe: string;
+    family: "chrome" | "firefox";
+    dataDir: string;
+    createdAt: number;
+  }
+  /** B-19：导入报告（书签/密码文件复制进容器）。 */
+  export interface BrowserImportReport {
+    bookmarks: number;
+    passwords: number;
+    copiedFiles: string[];
+  }
+  /** B-33：容器诊断（恢复模式入口判定）。 */
+  export interface ContainerDiag {
+    exists: boolean;
+    magicOk: boolean;
+    containerVersion: number;
+    engineVersion: number;
+    needsMigration: boolean;
+    downgradeRequired: boolean;
+    sizeBytes: number;
+    openable: boolean;
+    openError: string | null;
+  }
+  /** B-33：journal 重放固化 / 建卷报告。 */
+  export interface ContainerRepairReport {
+    repaired: boolean;
+    message: string;
+    fileCount: number;
+    chunkCount: number;
+  }
+  /** B-33：两级救援导出报告。 */
+  export interface ContainerRescueReport {
+    mode: "files" | "chunks" | string;
+    filesRescued: string[];
+    chunksRescued: number;
+    bytesRescued: number;
+    errors: string[];
+  }
+  /** B-17：容器仪表快照。 */
+  export interface ContainerStatsView {
+    volumes: { path: string; usedBytes: number; declaredCapacity: number }[];
+    writeAmplification: number;
+    fileCount: number;
+    chunkCount: number;
+    logicalWritten: number;
+    physicalWritten: number;
+  }
+  /** B-32：介质体检（VHDX 快速档能力）。 */
+  export interface VhdxProbeView {
+    isAdmin: boolean;
+    mountVhdAvailable: boolean;
+    usable: boolean;
+  }
+  /** 批次B-11：凭据零落宿主断言行。 */
+  export interface AiVerifyRow {
+    id: string;
+    name: string;
+    shimInContainer: boolean;
+    configInContainer: boolean;
+    hostResidue: string[];
+  }
+  export interface UsbStatus {
+    portable: boolean;
+    dataDir: string;
+    driveRemovable: boolean;
+    manifestExists: boolean;
+  }
+  export interface FileCheck {
+    path: string;
+    ok: boolean;
+    expected: string;
+    actual: string;
+    size: number;
+  }
+  export interface PackProgress {
+    phase: "collect" | "copy" | "exe" | "manifest" | "done";
+    done: number;
+    total: number;
+    current: string | null;
+  }
+  export type NetPolicy = "allow" | "deny";
+  export interface NetConsentEntry {
+    host: string;
+    policy: NetPolicy;
+    updatedAt: number;
+  }
+  /** 批次C：预装软件数据占用（bytes=null = 数据在工作区，无法按软件切分）。 */
+  export interface OfficialUsage {
+    items: number;
+    bytes: number | null;
+    purgeable: boolean;
+  }
+  /** 批次D：CPU/内存简报（sys_brief；cpu=百分比，mem 为字节）。L-3：runtimeMode 运行档。 */
+  export interface SysBrief {
+    cpu: number;
+    memUsed: number;
+    memTotal: number;
+    runtimeMode: "vm" | "light" | "direct";
+  }
+  /** AI-08 Z-27：Variable 自身信息（sys_self_info）。dataDirCapped = 大小统计 >2GB 截断。 */
+  export interface SysSelfInfo {
+    version: string;
+    runtimeMode: string;
+    uptimeSecs: number;
+    dataDir: string;
+    dataDirBytes: number;
+    dataDirCapped: boolean;
+    osVersion: string;
+  }
+  /** AI-08 Z-25：光标物理屏幕坐标（虚拟屏坐标系）。 */
+  export interface CursorPos {
+    x: number;
+    y: number;
+  }
+  /** AI-08 V-98：本机打印机（print_list）。 */
+  export interface PrinterInfo {
+    name: string;
+    port: string;
+    driver: string;
+    isDefault: boolean;
+    jobs: number;
+    status: string;
+  }
+  /** AI-08 V-98：打印队列任务（print_jobs）。 */
+  export interface PrintJob {
+    jobId: number;
+    printer: string;
+    document: string;
+    user: string;
+    status: string;
+    statusRaw: number;
+    totalPages: number;
+    pagesPrinted: number;
+    submitted: string;
+  }
+  /** 批次D：本地盘符容量（sys_disks）。 */
+  export interface SysDisk {
+    letter: string;
+    path: string;
+    total: number;
+    free: number;
+  }
+  /** V-3：磁盘磨损/健康读数（按需拉取，无计数器字段为 null）。 */
+  export interface DiskHealth {
+    name: string;
+    media: string;
+    bus: string;
+    health: string;
+    wearPct: number | null;
+    tempC: number | null;
+    powerOnHours: number | null;
+  }
+  /** D-2：直跑档 Shell 覆盖状态 + 一键还原脚本路径。 */
+  export interface DirectShellStatus {
+    enabled: boolean;
+    restoreScript: string | null;
+  }
+  /** F-3：进程快照（family=variable 引擎家族 / host 宿主；critical=系统关键禁结束）。 */
+  export interface ProcInfo {
+    pid: number;
+    ppid: number | null;
+    name: string;
+    mem: number;
+    cpu: number;
+    family: "variable" | "host";
+    critical: boolean;
+  }
+  /** F-3：启动项（注册表 Run 键）。 */
+  export interface StartupItem {
+    name: string;
+    cmd: string;
+    hive: "HKCU" | "HKLM";
+  }
+  /** F-3：服务（VM 档 PowerShell）。 */
+  export interface ServiceItem {
+    name: string;
+    display: string;
+    status: string;
+    startType: string;
+  }
+  /** F-4：文件索引命中（容器内文件名/路径索引）。 */
+  export interface FsHit {
+    name: string;
+    path: string;
+    isDir: boolean;
+    size: number;
+    mtime: number;
+  }
+  /** F-4：索引状态（count=条数；building=后台重建中；containerOnly=仅容器内）。 */
+  export interface FsIndexStatus {
+    count: number;
+    builtAt: number;
+    building: boolean;
+    containerOnly: boolean;
+  }
+  /** F-5.2：合成器会话（pid + 进程名；volume 0-1）。 */
+  export interface MixerSession {
+    pid: number;
+    name: string;
+    volume: number;
+    muted: boolean;
+  }
+  /** F-5.3：IME 状态（langId 如 "0804"；chinese null = 无法读取）。 */
+  export interface ImeStatus {
+    langId: string;
+    chinese: boolean | null;
+  }
+  /** F-5.3：键盘布局项。 */
+  export interface ImeLayout {
+    langId: string;
+    name: string;
+  }
+  /** F-5.4：媒体会话（null = 探测不到，前端简化）。 */
+  export interface MediaStatus {
+    title: string;
+    artist: string;
+    positionSec: number;
+    durationSec: number;
+    status: "playing" | "paused" | "other";
+  }
+  /** F-6：计划备份配置。 */
+  export interface BackupSchedule {
+    freq: "none" | "daily" | "weekly" | string;
+    hour: number;
+    lastRunMs: number;
+    lastSource: string;
+    missed: boolean;
+  }
+  /** F-6：本地更新包候选（null = 无更新包）。 */
+  export interface UpdateCandidate {
+    version: string;
+    files: number;
+    minVersion: string | null;
+  }
+  /** F-6：自检发现（ok/warn/info）。 */
+  export interface MaintainFinding {
+    id: string;
+    level: string;
+    message: string;
+  }
   // ---- AI-13 性能与长跑组 ----
   /** U-20 内存快照（tier: 0 normal / 1 watch / 2 critical） */
   export interface MemSnapshot {

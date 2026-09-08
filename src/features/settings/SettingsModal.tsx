@@ -43,6 +43,7 @@ import { SHORTCUT_ACTIONS, findConflicts, normalizeAccel } from "../../lib/short
 import { TASKBAR_MENU_REGISTRY, loadMenuOverride, saveMenuOverride, clearMenuOverride, type TaskbarMenuOverride } from "../../system/desktop/taskbarMenu";
 import { sanitizeClockZones } from "../../system/taskbar/clockcard";
 import { CompatTab } from "../../system/compat/CompatTab";
+import { OpenHubTab } from "./OpenHubTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -151,6 +152,7 @@ export function SettingsModal(props: {
     { id: "inputFeel", label: t("ifTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
+    { id: "openhub", label: t("ohTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
@@ -790,6 +792,8 @@ export function SettingsModal(props: {
           {tab === "compat" && <CompatTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-13 性能与长跑组：Z-58/Z-59/Z-60/Z-61/Z-62 + M-46/M-48/N-35/M-53 面板 */}
           {tab === "perf" && <PerfTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-14 开放接口组：U-37/38/39、Z-50…Z-56、N-27…N-30 面板 */}
+          {tab === "openhub" && <OpenHubTab />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

@@ -105,6 +105,11 @@ pub fn run() {
             shell::perf::install_crash_hook(app.state::<AppState>().data_dir.join("crashes"));
             // AI-12 M-45：输入设备热插拔监听（只观察，重注册动作由前端执行）
             shell::compat::spawn_hotplug_watcher(app.handle().clone());
+            // AI-14 N-28/Z-53：本地网关自动拉起（配置为开时；默认关闭零监听）
+            shell::openhub::gateway_autostart(&app.state::<AppState>());
+            // AI-15 V-83/V-86：计划任务工坊 + 启动延迟编排运行时（30s 轮询触发器）
+            shell::workshop::spawn_workshop_runtime(app.handle().clone());
+            shell::workshop::spawn_startdelay_runtime(app.handle().clone());
             // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
             #[cfg(feature = "vm-agent")]
             vm_agent::spawn();
@@ -650,6 +655,24 @@ pub fn run() {
             shell::winpower::proxy_get,
             shell::winpower::proxy_set,
             shell::winpower::net_ping,
+            // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
+            shell::openhub::openhub_config_get,
+            shell::openhub::openhub_config_set,
+            shell::openhub::deeplink_parse,
+            shell::openhub::vxs_validate_cmd,
+            shell::openhub::vxs_extract,
+            shell::openhub::openhub_data_export,
+            shell::openhub::openhub_stream_emit,
+            shell::openhub::openhub_stream_tail,
+            shell::openhub::safehouse_check,
+            shell::openhub::safehouse_exec,
+            shell::openhub::gateway_status,
+            shell::openhub::gateway_token_regen,
+            shell::openhub::openhub_connector_query,
+            shell::openhub::companion_inbox,
+            shell::openhub::companion_inbox_clear,
+            shell::openhub::deeplink_register,
+            shell::openhub::deeplink_unregister,
             // ---- AI-13 性能与长跑组（U-19/U-20/U-22、M-46…M-48/M-53/M-54、N-35/N-36）----
             shell::perf::perf_mem_snapshot,
             shell::perf::perf_mem_warden_status,
@@ -672,6 +695,50 @@ pub fn run() {
             shell::perf::perf_crash_dumps,
             shell::perf::perf_boot_stage,
             shell::perf::perf_boot_stages,
+            // ---- AI-15 开放工具组（M-57/59/63、V-81..V-90）----
+            shell::opentools::webhook_rules_get,
+            shell::opentools::webhook_rules_set,
+            shell::opentools::webhook_dispatch,
+            shell::opentools::webhook_test,
+            shell::opentools::webhook_log_list,
+            shell::opentools::embed_manifest_scan,
+            shell::opentools::vxs_scan_cmd,
+            shell::opentools::cfg_diff,
+            shell::opentools::sandbox_trial_begin,
+            shell::opentools::sandbox_trial_end,
+            shell::opentools::sandbox_trial_list,
+            shell::winget::winget_status,
+            shell::winget::winget_search,
+            shell::winget::winget_list_installed,
+            shell::winget::winget_upgrade_list,
+            shell::winget::winget_install,
+            shell::winget::winget_upgrade_one,
+            shell::winget::winget_uninstall,
+            shell::envedit::env_overview,
+            shell::envedit::env_backup_list,
+            shell::envedit::env_var_set,
+            shell::envedit::env_var_delete,
+            shell::envedit::env_restore_backup,
+            shell::workshop::sched_list,
+            shell::workshop::sched_upsert,
+            shell::workshop::sched_remove,
+            shell::workshop::sched_toggle,
+            shell::workshop::sched_log_list,
+            shell::workshop::sched_run_now,
+            shell::workshop::workshop_idle_report,
+            shell::workshop::startdelay_get,
+            shell::workshop::startdelay_set,
+            shell::workshop::startdelay_timeline,
+            shell::assocguard::assoc_snapshot_take,
+            shell::assocguard::assoc_snapshot_list,
+            shell::assocguard::assoc_snapshot_remove,
+            shell::assocguard::assoc_snapshot_diff,
+            shell::assocguard::assoc_snapshot_restore,
+            shell::assocguard::residue_scan_app,
+            shell::assocguard::residue_delete,
+            shell::svcgraph::svc_graph,
+            shell::svcgraph::svc_impact,
+            shell::svcgraph::svc_topo
         ])
         .build(tauri::generate_context!());
     match app {
