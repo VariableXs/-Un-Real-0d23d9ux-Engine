@@ -525,6 +525,7 @@ export function Taskbar(props: {
   return (
     <div
       className="taskbar"
+      data-testid="taskbar"
       data-pos={props.pos}
       data-ind={props.settings.runIndicator}
       data-media-breath={props.settings.mediaBreath ? "true" : "false"}

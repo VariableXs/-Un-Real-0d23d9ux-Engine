@@ -791,6 +791,7 @@ export function StartMenu(props: {
   return (
     <div
       className="start-overlay"
+      data-testid="startmenu"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) props.onClose();
       }}

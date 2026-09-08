@@ -1,0 +1,146 @@
+/* AI-15 开放工具组 — 设置页「开放工具」标签（M-55…M-63、V-81…V-90） */
+
+.ot-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ot-desc,
+.ot-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.ot-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+}
+
+.ot-group h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ot-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ot-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ot-input {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ot-input:focus {
+  border-color: var(--accent);
+}
+
+.ot-mono {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.ot-result {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.ot-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+}
+
+.ot-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 2px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.ot-item:last-child {
+  border-bottom: none;
+}
+
+.ot-item .ot-sub {
+  color: var(--text-dim);
+  font-size: 11px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 480px;
+}
+
+.ot-badge {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ot-badge.ok { color: var(--ok, #4ade80); }
+.ot-badge.bad { color: var(--bad, #f87171); }
+.ot-badge.warn { color: var(--warn, #facc15); }
+
+.ot-kind-add { color: var(--ok, #4ade80); }
+.ot-kind-del { color: var(--danger, #f87171); }
+.ot-kind-mod { color: var(--warn, #facc15); }
+
+.ot-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}

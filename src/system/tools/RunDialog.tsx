@@ -157,7 +157,7 @@ export function RunDialog(props: {
   if (!props.open) return null;
 
   return (
-    <div className="rd-overlay">
+    <div className="rd-overlay" data-testid="run-dialog">
       <div className="rd-card" role="dialog" aria-modal="false" aria-label={t("rdTitle")} onKeyDown={onCardKey}>
         <div className="rd-head">
           <span className="rd-title">{t("rdTitle")}</span>

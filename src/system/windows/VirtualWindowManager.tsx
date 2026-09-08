@@ -332,7 +332,7 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   if (wins.length === 0) return null;
 
   return (
-    <div className="vwm-layer" role="presentation">
+    <div className="vwm-layer" role="presentation" data-testid="vwm">
       {wins.filter(isVwmWinVisible).map((w) => (
         <VirtualWindowFrame
           key={w.id}

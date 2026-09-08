@@ -162,7 +162,7 @@ export function WindowOrchestrator(props: { settings: Settings; onClose: () => v
   const appKeys = [...new Set(wins.map((w) => w.app as string))];
 
   return (
-    <div className="vwm-orch-backdrop" onPointerDown={props.onClose}>
+    <div className="vwm-orch-backdrop" onPointerDown={props.onClose} data-testid="window-orchestrator">
       <div
         className="vwm-orch"
         role="dialog"

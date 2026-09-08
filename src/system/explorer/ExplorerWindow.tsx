@@ -161,7 +161,7 @@ export function ExplorerWindow(props: {
   }
 
   return (
-    <div className="ex-window" data-view={view}>
+    <div className="ex-window" data-view={view} data-testid="explorer-window">
       {view === "recycle" ? <RecycleShell /> : <ExplorerShell />}
     </div>
   );

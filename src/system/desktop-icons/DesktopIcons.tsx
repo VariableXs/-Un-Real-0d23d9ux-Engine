@@ -1702,6 +1702,7 @@ export function DesktopIcons(props: {
     <div
       ref={containerRef}
       className={`desktop-icons${edit ? " edit-mode" : ""}${refreshing ? " refreshing" : ""}`}
+      data-testid="desktop-icons"
       onKeyDown={onKeyDown}
       tabIndex={-1}
       onPointerDown={onContainerPointerDown}

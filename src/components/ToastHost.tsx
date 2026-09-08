@@ -4,7 +4,7 @@ import { dismissToast, useToasts } from "../state/uiStore";
 export function ToastHost(): React.ReactElement {
   const toasts = useToasts();
   return (
-    <div className="toast-host" role="status" aria-live="polite">
+    <div className="toast-host" role="status" aria-live="polite" data-testid="toast-host">
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`}>
           <span className="toast-icon">

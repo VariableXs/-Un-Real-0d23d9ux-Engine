@@ -176,7 +176,7 @@ function RealLock(props: { onUnlock: () => void; reduced: boolean }): React.Reac
   }
 
   return (
-    <div className={`lockscr-panel ${props.reduced ? "no-anim" : ""}`}>
+    <div className={`lockscr-panel ${props.reduced ? "no-anim" : ""}`} data-testid="lockscreen">
       <h3>{stage === "setup" ? t("setupTitle") : t("realHint")}</h3>
       <input
         ref={inputRef}
