@@ -92,6 +92,6 @@ pub mod assocguard;
 pub mod svcgraph;
 // AI-19 无障碍与本地化组（M-73 系统辅助功能桥 / M-74 高对比度探针）
 pub mod a11y;
-// AI-16 soundnotify：接线暂存于 lib.rs/mod.rs 历史，模块文件由各组交付时恢复声明
 // AI-16 启动与声音通知组（Z-43 音量记忆 / Z-45 方案校验 / Z-46 通信设备 /
 // Z-47 通知存档 / Z-48 麦克风指示 / Z-49 提醒中心）
+pub mod soundnotify;
