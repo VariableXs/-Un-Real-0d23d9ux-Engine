@@ -2,6 +2,7 @@ import { desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { getThirdApps } from "../launcher/thirdApps";
 import { createStore } from "../../lib/store";
 import { parseScreenDetails, screenShift } from "./winfeel";
+import type { GuideResult } from "./winfeel";
 import type { AppMode } from "../../state/uiStore";
 import type { TaskbarPos } from "../../lib/settings";
 
@@ -29,10 +30,17 @@ export type VwmToolApp =
   | "rename"
   | "dupe"
   | "space"
-  | "checksum";
+  | "checksum"
+  | "clockhub"
+  | "emoji"
+  | "magnifier"
+  | "convert"
+  | "sysinfo"
+  | "printqueue";
 export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp;
 
-/** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。 */
+/** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。
+ *  AI-08 基础工具组并入：时钟中心/Emoji 面板/放大镜取色器/换算中心/系统信息/打印队列。 */
 export const VWM_TOOLS: readonly VwmToolApp[] = [
   "calc",
   "notes",
@@ -43,6 +51,12 @@ export const VWM_TOOLS: readonly VwmToolApp[] = [
   "dupe",
   "space",
   "checksum",
+  "clockhub",
+  "emoji",
+  "magnifier",
+  "convert",
+  "sysinfo",
+  "printqueue",
 ];
 
 export function isVwmTool(app: VwmApp): app is VwmToolApp {
@@ -60,6 +74,12 @@ const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
   dupe: { w: 720, h: 620 },
   space: { w: 720, h: 620 },
   checksum: { w: 640, h: 400 },
+  clockhub: { w: 720, h: 600 },
+  emoji: { w: 680, h: 560 },
+  magnifier: { w: 560, h: 620 },
+  convert: { w: 640, h: 560 },
+  sysinfo: { w: 720, h: 640 },
+  printqueue: { w: 760, h: 560 },
 };
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
@@ -124,6 +144,8 @@ export interface VwmState {
   closing: string[];
   /** 批次E-14 最小化飞行中：窗口向任务栏飞去（transition 生效），落地后 display:none。 */
   flying: string[];
+  /** AI-01 M-07：拖拽对齐参考线（拖拽中由 frame 写入，Manager 渲染；null = 隐藏）。 */
+  guides: GuideResult | null;
 }
 
 const GEOM_KEY = "variable:vwm:geom:v2";
@@ -147,6 +169,7 @@ export const vwmStore = createStore<VwmState>({
   seq: 0,
   closing: [],
   flying: [],
+  guides: null,
 });
 
 // ---------- geometry persistence（按软件记忆最近一次 normal 几何） ----------
@@ -733,8 +756,39 @@ export function setVwmTopmost(id: string, on: boolean): void {
   }));
 }
 
-// ---------- Z-40 布局快照（轻量：名字 → 全部窗口几何） ----------
+// ---------- AI-01 M-07 对齐参考线 + M-01 摇一摇最小化 ----------
 
+/** M-07：拖拽中由 frame 写入参考线集合；拖拽结束传 null 隐藏。 */
+export function setVwmGuides(g: GuideResult | null): void {
+  patch({ guides: g });
+}
+
+/** M-01 摇一摇发起者的登记（shakeInitiator），供 Ctrl+Alt+D 全部还原。 */
+let shakeInitiator: string | null = null;
+
+/** M-01：最小化除发起者外的全部可见窗口（Aero Shake 语义），登记发起者。 */
+export function shakeMinimizeOthers(id: string): void {
+  const s = vwmStore.getState();
+  if (s.wins.some((w) => w.id === id && (w.minimized || w.rolledUp))) return;
+  shakeInitiator = id;
+  patch((st) => ({
+    wins: st.wins.map((w) => (w.id !== id && !w.minimized ? { ...w, minimized: true } : w)),
+  }));
+}
+
+/** M-01：Ctrl+Alt+D —— 有摇一摇记录时，还原被摇走的那批窗口。 */
+export function restoreShakenVwm(): boolean {
+  if (!shakeInitiator) return false;
+  const initiator = shakeInitiator;
+  shakeInitiator = null;
+  patch((st) => ({
+    wins: st.wins.map((w) => (w.id !== initiator ? { ...w, minimized: false } : w)),
+  }));
+  focusVwmWin(initiator);
+  return true;
+}
+
+// ---------- Z-40 布局快照（轻量：名字 → 全部窗口几何） ----------
 const LAYOUTS_KEY = "variable:vwm:layouts";
 const LAYOUTS_CAP = 20;
 

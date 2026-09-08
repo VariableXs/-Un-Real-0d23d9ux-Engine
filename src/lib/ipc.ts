@@ -471,6 +471,9 @@ export const ipc = {
   winHideToTray: () => invoke<void>("win_hide_to_tray"),
   /** AI-01 M-04 窗口体检：按 pid 列表返回其中确认无响应（IsHungAppWindow）的子集。 */
   winHealthScan: (pids: number[]) => invoke<number[]>("win_health_scan", { pids }),
+  /** AI-01 M-06 窗口挂起/恢复（ntdll NtSuspend/ResumeProcess；非 Windows 或失败 → false）。 */
+  procSuspend: (pid: number) => invoke<boolean>("win_suspend", { pid }),
+  procResume: (pid: number) => invoke<boolean>("win_resume", { pid }),
   sysBrief: () => invoke<Shell.SysBrief>("sys_brief"),
   /** V-3：磁盘磨损/健康读数（按需拉取，无计数器字段为 null）。 */
   sysDiskHealth: () => invoke<Shell.DiskHealth[]>("sys_disk_health"),

@@ -185,7 +185,7 @@ export function VirtualWindowFrame(props: {
         const g = computeGuide(candidates, { x: mx, y: my, w: w.w, h: w.h });
         if (g.snapX !== null) mx = g.snapX;
         if (g.snapY !== null) my = g.snapY;
-        setVwmGuides(g.snapX !== null || g.snapY !== null ? { xs: g.guideXs, ys: g.guideYs } : null);
+        setVwmGuides(g.snapX !== null || g.snapY !== null ? { snapX: g.snapX, snapY: g.snapY, guideXs: g.guideXs, guideYs: g.guideYs } : null);
       } else {
         setVwmGuides(null);
       }

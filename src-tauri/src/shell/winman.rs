@@ -329,6 +329,60 @@ pub fn win_health_scan(pids: Vec<u32>) -> Result<Vec<u32>, String> {
     }
 }
 
+/// AI-01 M-06 窗口挂起（Suspend）：对第三方进程树的根进程挂起全部线程。
+/// 走 ntdll `NtSuspendProcess`（与 Process Explorer 同口径），无需特权。
+/// 非Windows / 进程已退出 → false（前端如实提示，不伪造成功）。
+#[tauri::command]
+pub fn win_suspend(pid: u32) -> Result<bool, String> {
+    #[cfg(windows)]
+    unsafe {
+        proc_nt_call(pid, windows::core::s!("NtSuspendProcess"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        Ok(false)
+    }
+}
+
+/// AI-01 M-06 窗口恢复（Resume）：解除挂起（`NtResumeProcess`）。
+#[tauri::command]
+pub fn win_resume(pid: u32) -> Result<bool, String> {
+    #[cfg(windows)]
+    unsafe {
+        proc_nt_call(pid, windows::core::s!("NtResumeProcess"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        Ok(false)
+    }
+}
+
+#[cfg(windows)]
+unsafe fn proc_nt_call(pid: u32, name: windows::core::PCSTR) -> Result<bool, String> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_SUSPEND_RESUME};
+    if pid == 0 {
+        return Ok(false);
+    }
+    let handle = OpenProcess(PROCESS_SUSPEND_RESUME, false, pid).map_err(|e| e.to_string())?;
+    let call = || -> bool {
+        let Ok(ntdll) = GetModuleHandleA(windows::core::s!("ntdll.dll")) else {
+            return false;
+        };
+        let Some(f) = GetProcAddress(ntdll, name) else {
+            return false;
+        };
+        let f: unsafe extern "system" fn(isize) -> i32 = std::mem::transmute(f);
+        f(handle.0 as isize) == 0 // STATUS_SUCCESS
+    };
+    let ok = call();
+    let _ = CloseHandle(handle);
+    Ok(ok)
+}
+
 /// 开始菜单电源操作（批次E，规格 4.6.3）：
 /// - lock = LockWorkStation（锁屏，无需特权）
 /// - logoff / reboot / shutdown = 调系统 shutdown.exe（诚实走 Windows 既有流程）

@@ -571,6 +571,8 @@ pub fn run() {
             shell::installer::profile_infer,
             shell::winman::win_set_avoid_taskbar,
             shell::winman::win_health_scan,
+            shell::winman::win_suspend,
+            shell::winman::win_resume,
     shell::winman::win_hide_to_tray,
     shell::winman::power_action,
     shell::winman::shortcuts_apply,

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import type { Settings } from "../../lib/settings";
@@ -7,6 +7,7 @@ import {
   computeWorkArea,
   cycleVwmFocus,
   minimizeAllVwm,
+  restoreShakenVwm,
   setVwmWorkArea,
   snapVwmWin,
   vwmStore,
@@ -20,6 +21,10 @@ import { VwmAppContent } from "./VwmAppContent";
 import { isTpApp, closeVwmWin, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
 import { setEmbedSessionState, clearEmbedSessionState, bumpEmbedResync, embedStateStore } from "./embedState";
 import { ipc } from "../../lib/ipc";
+// AI-01 窗口手感：M-03 抽屉 / Z-42 切换器（含热区）/ M-06 挂起登记
+import { MinimizedDrawer } from "./MinimizedDrawer";
+import { DesktopHotzone, DesktopSwitcher } from "./DesktopSwitcher";
+import { takeAllSuspended } from "./winfeelMenu";
 
 /**
  * 虚拟窗口管理器（Virtual Window Manager）桌面层：
@@ -43,6 +48,76 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // AI-01 M-04：无响应窗口集合（3s 轮询 IsHungAppWindow）
   const [hungIds, setHungIds] = useState<Set<string>>(new Set());
+
+  // AI-01 M-01：Ctrl+Alt+D 全部还原（摇一摇反向操作）；Z-42：Ctrl+Alt+G 切换器
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.ctrlKey && e.altKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "d") {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreShakenVwm();
+      } else if (k === "g") {
+        e.preventDefault();
+        e.stopPropagation();
+        setSwitcherOpen((v) => !v);
+      } else if (k === "`" || e.code === "Backquote") {
+        e.preventDefault();
+        e.stopPropagation();
+        setDrawerOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // AI-01 M-04：无响应体检（3s 轮询；仅嵌入第三方进程窗口参与，后端 IsHungAppWindow）
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let alive = true;
+    const scan = (): void => {
+      const st = vwmStore.getState();
+      const meta = embedStateStore.getState().meta;
+      const idPid: Array<[string, number]> = st.wins
+        .filter((w) => isTpApp(w.app) && !w.minimized)
+        .map((w): [string, number] => [w.id, meta[w.id]?.rootPid ?? 0])
+        .filter((entry): entry is [string, number] => entry[1] > 0);
+      if (idPid.length === 0) {
+        setHungIds((prev) => (prev.size > 0 ? new Set() : prev));
+        return;
+      }
+      void ipc
+        .winHealthScan(idPid.map(([, pid]) => pid))
+        .then((hungPids) => {
+          if (!alive) return;
+          const hs = new Set(hungPids);
+          const next = new Set(idPid.filter(([, pid]) => hs.has(pid)).map(([id]) => id));
+          setHungIds((prev) => {
+            if (prev.size === next.size && [...next].every((id) => prev.has(id))) return prev;
+            return next;
+          });
+        })
+        .catch(() => {});
+    };
+    scan();
+    const timer = window.setInterval(scan, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  // AI-01 M-06 红线：环境退出前自动恢复全部挂起中的第三方进程。
+  useEffect(() => {
+    return () => {
+      const meta = embedStateStore.getState().meta;
+      for (const id of takeAllSuspended()) {
+        const pid = meta[id]?.rootPid ?? 0;
+        if (pid > 0) void ipc.procResume(pid).catch(() => {});
+      }
+    };
+  }, []);
 
   // 工作区跟随视口尺寸与任务栏停靠位置（最大化/贴靠/边缘判定都基于它）
   useEffect(() => {
@@ -246,6 +321,8 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
           zIndex={w.z}
           closing={closing.includes(w.id)}
           flying={flying.includes(w.id)}
+          settings={props.settings}
+          hung={hungIds.has(w.id)}
         >
           <VwmAppContent winId={w.id} app={w.app} winPath={w.path} settings={props.settings} />
         </VirtualWindowFrame>
@@ -260,6 +337,17 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
           style={snapPreviewStyle(snapPreview)}
         />
       )}
+      {/* AI-01 M-07：拖拽对齐参考线 */}
+      {guides?.guideXs.map((x) => (
+        <div key={`gx-${x}`} className="vwm-guide-v" aria-hidden style={{ left: x }} />
+      ))}
+      {guides?.guideYs.map((y) => (
+        <div key={`gy-${y}`} className="vwm-guide-h" aria-hidden style={{ top: y }} />
+      ))}
+      {/* AI-01 M-03：最小化抽屉；Z-42：桌面切换器 + 右缘热区 */}
+      <MinimizedDrawer open={drawerOpen} onToggle={() => setDrawerOpen((v) => !v)} onClose={() => setDrawerOpen(false)} />
+      <DesktopHotzone width={props.settings.desktopHotzone ?? 0} onTrigger={() => setSwitcherOpen(true)} />
+      <DesktopSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} settings={props.settings} />
     </div>
   );
 }

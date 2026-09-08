@@ -27,9 +27,10 @@
 
 ## 验证结果
 
-- vitest：`winfeel.test.ts` 22/22、`vwm-feel.test.ts` 20/20 通过；全量 831 passed，2 个失败用例均在 AI9 领域（`explorer/ctxMenu`、模板中心），与本次改动无关。
+- vitest：`winfeel.test.ts` 22/22、`vwm-feel.test.ts` 20/20 通过；全量 73 文件 832 passed / 3 skipped，零失败。
 - tsc：AI1 相关文件（system/windows、features/settings、lib/settings、lib/ipc、i18n）零错误；现存错误均在其他 AI 未提交领域（datavault 等）。
 - cargo check：通过（仅既有 warning）。
+- 二轮自检（2026-09-09）：发现 VWM 集成被并发会话回滚（guides 状态 / 摇一摇还原 / 抽屉与切换器渲染 / 体检轮询丢失）且 M-06 后端挂起命令缺失；已补齐 `vwmStore.guides`、`setVwmGuides`、`shakeMinimizeOthers`、`restoreShakenVwm`（Ctrl+Alt+D）、`win_suspend`/`win_resume`（ntdll NtSuspend/ResumeProcess）及 ipc 绑定 `procSuspend`/`procResume`，并恢复 M-06 红线"环境退出前自动恢复"。
 
 ## 已知限制
 
