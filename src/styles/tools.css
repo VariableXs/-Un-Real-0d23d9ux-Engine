@@ -501,6 +501,57 @@
   border-radius: 6px;
 }
 
+/* ---- AI-09 Z-29/M-22：快速预览增强（键导航 + 压缩包浏览） ---- */
+.qprev-head > span.ellipsis { flex: 1; min-width: 0; }
+
+.qprev-nav {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.qprev-archive {
+  width: 100%;
+  max-height: 58vh;
+  overflow: auto;
+}
+
+.qprev-archive-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.qprev-archive-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg, #fff);
+  font-size: 12.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.qprev-archive-entry:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.qprev-archive-entry:disabled { cursor: default; opacity: 0.55; }
+
+.qprev-archive-dir .qprev-archive-entry span:first-child::before { content: "📁 "; }
+
+.qprev-archive-text {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
 /* ============================================================
    F-3 任务管理器（VWM 系统窗口 .vwm-taskman）
    ============================================================ */
@@ -745,4 +796,291 @@
   border-radius: 999px;
   background: linear-gradient(90deg, #4f8cff, #7ee2a0);
   transition: width 0.6s ease;
+}
+
+/* ============================================================
+   AI-09 文件操作四工具（批量重命名 / 重复报告 / 空间分析 / 校验和）
+   复用 desktop.css 控件基线（.btn / .text-input / .icon-btn / .dim）。
+   ============================================================ */
+
+.fo-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 10px 12px 12px;
+  gap: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.fo-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.fo-path { flex: 1; min-width: 0; }
+
+.fo-minsize { width: 110px; }
+.fo-num { width: 64px; }
+.fo-ext { width: 90px; }
+
+.fo-hint { margin: auto; text-align: center; padding: 0 12px; }
+
+/* ---------- 进度 ---------- */
+.fo-progress { display: flex; align-items: center; gap: 8px; flex: none; }
+
+.fo-progress-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.fo-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent, #7aa2f7);
+  transition: width 0.25s ease;
+}
+
+.fo-progress-text { flex: none; }
+
+/* ---------- 校验和结果 ---------- */
+.fo-checksum-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.fo-checksum-hex {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  color: var(--accent, #7aa2f7);
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 摘要条 ---------- */
+.fo-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.fo-wasted { color: var(--warn, #e0af68); font-weight: 600; }
+
+.fo-truncated {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn, #e0af68);
+}
+
+.fo-readonly-note { flex: none; }
+
+/* ---------- 重复文件列表 ---------- */
+.fo-dupe-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+
+.fo-dupe-group { border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
+
+.fo-dupe-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg, #fff);
+  font-size: 12.5px;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.fo-dupe-head:hover { background: rgba(255, 255, 255, 0.08); }
+
+.fo-dupe-size { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.fo-dupe-wasted { margin-left: auto; }
+
+.fo-dupe-files { margin: 0; padding: 4px 8px 6px 24px; list-style: none; }
+
+.fo-dupe-files li { padding: 2px 0; }
+
+.fo-dupe-path {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- 空间树 ---------- */
+.fo-tree { flex: 1; min-height: 0; overflow: auto; }
+
+.fo-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg, #fff);
+  font-size: 12.5px;
+  padding: 3px 8px 3px 6px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+}
+
+.fo-tree-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+.fo-tree-leaf { width: 12px; flex: none; }
+
+.fo-tree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fo-tree-size { font-variant-numeric: tabular-nums; font-weight: 600; flex: none; }
+
+.fo-tree-counts { flex: none; min-width: 90px; text-align: right; }
+
+/* ---------- 批量重命名 ---------- */
+.fo-rename { overflow: auto; }
+
+.fo-label { font-size: 12px; color: var(--dim, rgba(255, 255, 255, 0.62)); flex: none; }
+
+.fo-rename-paths { width: 100%; resize: vertical; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+
+.fo-rules-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+.fo-rule-list { display: flex; flex-direction: column; gap: 4px; }
+
+.fo-rule-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.fo-rule-kind { font-size: 11.5px; font-weight: 600; color: var(--accent, #7aa2f7); flex: none; min-width: 48px; }
+
+.fo-rule-summary { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fo-conflict-count { color: var(--danger, #e07f7f); font-size: 12px; }
+
+/* ---------- 预览表 ---------- */
+.fo-preview-table { flex: 1; min-height: 0; overflow: auto; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; }
+
+.fo-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+
+.fo-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(18, 20, 28, 0.95);
+  text-align: left;
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--dim, rgba(255, 255, 255, 0.62));
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fo-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  overflow-wrap: anywhere;
+}
+
+.fo-row-conflict td { background: rgba(224, 127, 127, 0.08); }
+
+.fo-conflict { color: var(--danger, #e07f7f); }
+
+/* ============================================================
+   AI-09 设置页「文件管理器」tab（FilesTab）
+   ============================================================ */
+.files-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.files-tab h3 { margin: 12px 0 2px; font-size: 13.5px; }
+
+.fs-ctx-list,
+.fs-assoc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fs-ctx-list li,
+.fs-assoc-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+}
+
+.fs-ctx-list li label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fs-ctx-off { opacity: 0.5; }
+
+.fs-ctx-ops { display: flex; gap: 2px; }
+
+.fs-tier-row { display: flex; gap: 18px; padding: 2px 4px; }
+.fs-tier-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+
+.fs-assoc-add { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fs-assoc-add .text-input { width: 130px; }
+.fs-assoc-add select { max-width: 220px; }
+
+.fs-assoc-ext {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.fs-assoc-app {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fs-sentinel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
 }

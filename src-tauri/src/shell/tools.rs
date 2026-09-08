@@ -16,7 +16,23 @@ use crate::state::AppState;
 pub type CmdResultPub<T> = CmdResult<T>;
 
 /// 工具数据名白名单（防路径穿越；新增工具在此登记）。
-const TOOL_NAMES: &[&str] = &["notes", "clipboard", "calc", "calendar", "snapshot"];
+/// AI-08 批次新增：clock/weather/chars/magnifier/converter/sysinfo/run/printqueue/mini。
+const TOOL_NAMES: &[&str] = &[
+    "notes",
+    "clipboard",
+    "calc",
+    "calendar",
+    "snapshot",
+    "clock",
+    "weather",
+    "chars",
+    "magnifier",
+    "converter",
+    "sysinfo",
+    "run",
+    "printqueue",
+    "mini",
+];
 
 fn tool_path(data_dir: &std::path::Path, name: &str) -> CmdResult<PathBuf> {
     if !TOOL_NAMES.contains(&name) {
@@ -101,6 +117,28 @@ mod dpapi {
     }
 }
 
+/// DPAPI 加密（AI-07 N-15 剪贴板历史落盘复用）。
+pub fn dpapi_protect(plain: &[u8]) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    return dpapi::protect(plain).ok();
+    #[cfg(not(windows))]
+    {
+        let _ = plain;
+        None
+    }
+}
+
+/// DPAPI 解密（AI-07 N-15 剪贴板历史读取复用）。
+pub fn dpapi_unprotect(cipher: &[u8]) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    return dpapi::unprotect(cipher).ok();
+    #[cfg(not(windows))]
+    {
+        let _ = cipher;
+        None
+    }
+}
+
 /// DPAPI 加密写入（内容 = 明文字符串，落盘 = base64(cipher)）。
 #[tauri::command]
 pub fn tool_secure_write(st: State<'_, AppState>, name: String, content: String) -> CmdResult<()> {
@@ -135,6 +173,138 @@ pub fn tool_secure_read(st: State<'_, AppState>, name: String) -> CmdResult<Opti
 #[tauri::command]
 pub fn snapshot_capture() -> CmdResult<Vec<u8>> {
     capture_virtual_screen_bmp()
+}
+
+// ---------- AI-08 基础工具组（Z-22…Z-28 / V-97/98 支撑命令） ----------
+
+/// Z-27 系统信息面板：Variable 自身信息（版本 / 运行档 / 运行时长 / 数据目录占用）。
+/// 只读；数据目录占用为浅层递归求和（>2GB 时停止深扫，如实封顶显示）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SysSelfInfo {
+    pub version: &'static str,
+    pub runtime_mode: &'static str,
+    pub uptime_secs: u64,
+    pub data_dir: String,
+    pub data_dir_bytes: u64,
+    /// 目录大小统计是否被封顶截断（>2GB 停止深扫）。
+    pub data_dir_capped: bool,
+    pub os_version: String,
+}
+
+#[tauri::command]
+pub fn sys_self_info(st: State<'_, AppState>) -> CmdResult<SysSelfInfo> {
+    const CAP: u64 = 2 * 1024 * 1024 * 1024;
+    let (mut bytes, mut capped) = (0u64, false);
+    fn walk(dir: &std::path::Path, bytes: &mut u64, capped: &mut bool, cap: u64) {
+        if *bytes > cap {
+            *capped = true;
+            return;
+        }
+        let Ok(rd) = fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let Ok(meta) = e.metadata() else { continue };
+            if meta.is_file() {
+                *bytes = bytes.saturating_add(meta.len());
+            } else if meta.is_dir() {
+                walk(&e.path(), bytes, capped, cap);
+            }
+            if *bytes > cap {
+                *capped = true;
+                return;
+            }
+        }
+    }
+    walk(&st.data_dir, &mut bytes, &mut capped, CAP);
+    let os_version = sysinfo::System::long_os_version()
+        .unwrap_or_else(|| std::env::consts::OS.to_string());
+    Ok(SysSelfInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        runtime_mode: crate::shell::sysinfo::runtime_mode(),
+        uptime_secs: process_uptime_secs(),
+        data_dir: st.data_dir.to_string_lossy().into_owned(),
+        data_dir_bytes: bytes,
+        data_dir_capped: capped,
+        os_version,
+    })
+}
+
+fn process_uptime_secs() -> u64 {
+    // 口径：本进程 lib 加载起点起的时长（OnceLock 首次调用即计时）。
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static START: OnceLock<Instant> = OnceLock::new();
+    let start = START.get_or_init(Instant::now);
+    start.elapsed().as_secs()
+}
+
+/// Z-25 放大镜：当前光标物理屏幕坐标（虚拟屏坐标系）。
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorPos {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[tauri::command]
+pub fn cursor_pos() -> CmdResult<CursorPos> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        unsafe {
+            let mut pt = POINT::default();
+            if GetCursorPos(&mut pt).is_err() {
+                return Err(AppError::io("读取光标位置失败"));
+            }
+            Ok(CursorPos { x: pt.x, y: pt.y })
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Err(AppError::validation("光标位置仅支持 Windows（当前平台为占位）"))
+    }
+}
+
+/// Z-23 天气卡 / Z-26 汇率刷新：受限 HTTP GET（curl.exe 隐藏窗口，10s 超时，512KB 截断）。
+/// 出站纪律：本命令不内置授权判断 —— 前端必须先经 netGuard（requestNetConsent）
+/// 获得用户明确同意后才允许调用（Z-23 规格的「可配置公开 API」通道）。
+#[tauri::command]
+pub fn http_fetch(url: String) -> CmdResult<String> {
+    // 仅允许 http/https；长度上限防滥用
+    let u = url.trim().to_string();
+    if u.len() > 2048 || !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err(AppError::validation("仅支持 http/https URL"));
+    }
+    let out = hidden_command("curl.exe")
+        .args(["-sSL", "--max-time", "10", "--max-filesize", "524288", &u])
+        .output()
+        .map_err(|e| AppError::io(format!("curl 启动失败: {e}")))?;
+    if !out.status.success() {
+        return Err(AppError::io(format!(
+            "请求失败（curl exit {}）",
+            out.status.code().unwrap_or(-1)
+        )));
+    }
+    if out.stdout.len() > 524_288 {
+        return Err(AppError::io("响应超过 512KB 上限"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn hidden_command(program: &str) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let mut c = std::process::Command::new(program);
+        c.creation_flags(CREATE_NO_WINDOW);
+        c
+    }
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new(program)
+    }
 }
 
 #[cfg(windows)]

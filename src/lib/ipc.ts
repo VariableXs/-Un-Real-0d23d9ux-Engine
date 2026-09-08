@@ -643,6 +643,27 @@ export const ipc = {
   vaultDestroy: (name: string) => invoke<void>("vault_destroy", { name }),
   privacyShred: (path: string) => invoke<void>("privacy_shred", { path }),
   privacyAudit: () => invoke<Shell.AuditFinding[]>("privacy_audit"),
+
+  // ---- AI-07 效率中枢：N-15 剪贴板历史（后端录制/DPAPI 落盘/敏感名单/关闭即焚） ----
+  cliphistList: () => invoke<Shell.ClipEntry[]>("cliphist_list"),
+  cliphistPin: (id: string, pinned: boolean) => invoke<void>("cliphist_pin", { id, pinned }),
+  cliphistRemove: (id: string) => invoke<void>("cliphist_remove", { id }),
+  cliphistClear: (keepPinned: boolean) => invoke<void>("cliphist_clear", { keepPinned }),
+  cliphistBurn: () => invoke<void>("cliphist_burn"),
+  cliphistConfigGet: () => invoke<Shell.ClipConfig>("cliphist_config_get"),
+  cliphistConfigSet: (config: Shell.ClipConfig) => invoke<void>("cliphist_config_set", { config }),
+  cliphistWriteBack: (id: string) => invoke<boolean>("cliphist_write_back", { id }),
+
+  // ---- AI-07 效率中枢：N-18 宏引擎（急停护栏 / 触发器登记 / 键鼠模拟） ----
+  macroEmergencyStop: () => invoke<void>("macro_emergency_stop"),
+  macroEmergencyClear: () => invoke<void>("macro_emergency_clear"),
+  macroIsStopped: () => invoke<boolean>("macro_is_stopped"),
+  macroUacForeground: () => invoke<boolean>("macro_uac_foreground"),
+  macroUpsertTrigger: (def: Shell.MacroTriggerDef) => invoke<void>("macro_upsert_trigger", { def }),
+  macroRemoveTrigger: (macroId: string) => invoke<void>("macro_remove_trigger", { macroId }),
+  macroListTriggers: () => invoke<Shell.MacroTriggerDef[]>("macro_list_triggers"),
+  macroSendText: (text: string, passwordFocus: boolean) =>
+    invoke<boolean>("macro_send_text", { text, passwordFocus }),
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
@@ -930,6 +951,29 @@ export namespace Shell {
     id: string;
     level: "pass" | "warn";
     detail: string;
+  }
+  /** AI-07 · N-15：剪贴板历史条目（kind = text | file | image）。 */
+  export interface ClipEntry {
+    id: string;
+    kind: "text" | "file" | "image";
+    /** text/file：文本；image：base64(DIB)。 */
+    data: string;
+    preview: string;
+    ts: number;
+    pinned: boolean;
+  }
+  /** AI-07 · N-15：剪贴板录制配置（敏感名单期间零记录；关闭即焚）。 */
+  export interface ClipConfig {
+    enabled: boolean;
+    sensitiveApps: string[];
+    burnOnClose: boolean;
+  }
+  /** AI-07 · N-18：宏触发器登记（动作在前端 engine.ts 执行）。 */
+  export interface MacroTriggerDef {
+    macroId: string;
+    triggerType: "hotkey" | "process" | "time" | "clipboardRegex" | "scene";
+    triggerValue: string;
+    enabled: boolean;
   }
   /** F-1：显示器显示模式。 */
   export interface SysDisplayMode {

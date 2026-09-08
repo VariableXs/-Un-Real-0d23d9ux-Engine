@@ -30,6 +30,10 @@ serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
+# AI-09 文件操作组：校验和（md5/sha1）+ 压缩包只读浏览（zip）
+md-5 = "0.10"
+sha1 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 sysinfo = "0.30"
 # 批次E-7：隐私保险箱（AES-256-GCM + PBKDF2）与随机数（nonce/盐/覆写）
 aes-gcm = "0.10"
@@ -43,6 +47,8 @@ url = "2"
 regex = "1"
 # X-4 插件扩展：动态库加载（计划指定 libloading）
 libloading = "0.8"
+# AI-10 存档柜（U-29）：.vxa 归档逐条目 zstd 压缩帧
+zstd = "0.13"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
@@ -56,6 +62,7 @@ windows = { version = "0.58", features = [
   "Win32_Devices_DeviceAndDriverInstallation",
   "Win32_Devices_Properties",
   "Win32_Graphics_Gdi",
+  "Win32_Graphics_Printing",
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",
   "Win32_System_Com",
@@ -70,6 +77,9 @@ windows = { version = "0.58", features = [
   "Win32_System_Time",
   "Win32_System_LibraryLoader",
         "Win32_System_Threading",
+        "Win32_System_DataExchange",
+  "Win32_System_RestartManager",
+  "Win32_System_IO",
   "Win32_System_Shutdown",
   "Win32_System_Power",
   "Win32_System_Variant",
@@ -90,6 +100,7 @@ windows = { version = "0.58", features = [
   "Win32_System_Memory",
   "Win32_Security",
   "Win32_Security_Cryptography",
+  "Win32_Security_WinTrust",
   "Graphics_Capture",
   "Graphics_DirectX",
   "Graphics_DirectX_Direct3D11",

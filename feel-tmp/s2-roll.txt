@@ -1,0 +1,20 @@
+/** M-02 卷帘还原字段（未收起 → 空补丁）。 */
+function unrollPatch(w: VwmWin): Partial<VwmWin> {
+  return w.rolledUp ? { rolledUp: false, h: w.rolledFromH ?? w.h, rolledFromH: undefined } : {};
+}
+
+/** M-02 卷帘：收起仅剩标题栏高度；再展开还原原高。 */
+export function rollVwmWin(id: string, rolled: boolean): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || w.state !== "normal" || w.rolledUp === rolled) return;
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id
+        ? rolled
+          ? { ...x, rolledUp: true, rolledFromH: x.h, h: Math.min(x.h, VWM_TITLEBAR_H) }
+          : { ...x, rolledUp: false, h: x.rolledFromH ?? x.h, rolledFromH: undefined }
+        : x,
+    ),
+  }));
+}

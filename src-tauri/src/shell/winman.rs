@@ -93,6 +93,7 @@ pub fn default_binds() -> Vec<(&'static str, &'static str)> {
         ("explorer", "ctrl+alt+e"),
         ("settingsCenter", "ctrl+alt+i"),
         ("clipboardHistory", "ctrl+alt+v"),
+        ("commandPalette", "ctrl+alt+p"),
         ("explorerCtrl", "ctrl+e"),
         ("quickBluetooth", "ctrl+alt+b"),
         ("quickAudio", "ctrl+alt+k"),

@@ -1,0 +1,1012 @@
+﻿cargo : [1m[93mwarning[0m[1m[97m: unused import: `crate::bplustree::TreeVal`[0m
+At line:15 char:1187
++ ... e_modules\@vscode\ripgrep\bin'; cargo check 2> cargo_ai09.txt; rg -n  ...
++                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([1m[93mwarnin...e::TreeVal`[0m:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  [1m[96m--> [0mcrates\container\src\migrate.rs:13:5
+   [1m[96m|[0m
+[1m[96m13[0m [1m[96m|[0m use crate::bplustree::TreeVal;
+   [1m[96m|[0m     [1m[93m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+   [1m[96m|[0m
+   [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: unused import: `FOOTER_LEN`[0m
+  [1m[96m--> [0mcrates\container\src\schema.rs:15:50
+   [1m[96m|[0m
+[1m[96m15[0m [1m[96m|[0m use crate::uxv::{SCHEMA_VERSION, SUPERBLOCK_LEN, FOOTER_LEN};
+   [1m[96m|[0m                                                  [1m[93m^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `Read`[0m
+  [1m[96m--> [0mcrates\container\src\schema.rs:77:19
+   [1m[96m|[0m
+[1m[96m77[0m [1m[96m|[0m     use std::io::{Read, Seek, SeekFrom, Write};
+   [1m[96m|[0m                   [1m[93m^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `index_key`[0m
+   [1m[96m--> [0mcrates\container\src\uxv.rs:346:35
+    [1m[96m|[0m
+[1m[96m346[0m [1m[96m|[0m     fn append_chunk_at(&mut self, index_key: [u8; 32], _content: [u8; 32], payload: &[u
+8], cold: bool) -> CmdResult<ChunkLoc> {
+    [1m[96m|[0m                                   [1m[93m^^^^^^^^^[0m [1m[93mhelp: if this is intentional, pref
+ix it with an underscore: `_index_key`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: unused variable: `v`[0m
+   [1m[96m--> [0mcrates\container\src\uxv.rs:517:23
+    [1m[96m|[0m
+[1m[96m517[0m [1m[96m|[0m                 (Some(v), Some((salt, verifier))) => {
+    [1m[96m|[0m                       [1m[93m^[0m [1m[93mhelp: if this is intentional, prefix it with an unders
+core: `_v`[0m
+
+[1m[93mwarning[0m[1m[97m: value assigned to `pos` is never read[0m
+   [1m[96m--> [0mcrates\container\src\uxv.rs:794:23
+    [1m[96m|[0m
+[1m[96m794[0m [1m[96m|[0m         let mut pos = 0usize;
+    [1m[96m|[0m                       [1m[93m^^^^^^[0m [1m[93mthis value is reassigned later and never used[0m
+[1m[96m795[0m [1m[96m|[0m         let n = u32::from_le_bytes(payload.get(0..4).expect("定长").try_into().expect("定长
+")) as usize;
+[1m[96m796[0m [1m[96m|[0m         pos = 4;
+    [1m[96m|[0m         [1m[96m-------[0m [1m[96m`pos` is overwritten here before the previous value is read[0
+m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: method `is_empty` is never used[0m
+   [1m[96m--> [0mcrates\container\src\bplustree.rs:313:12
+    [1m[96m|[0m
+[1m[96m304[0m [1m[96m|[0m impl<K: TreeKey, V: TreeVal> BPlusTree<K, V> {
+    [1m[96m|[0m [1m[96m--------------------------------------------[0m [1m[96mmethod in this implementation[0m
+[1m[96m...[0m
+[1m[96m313[0m [1m[96m|[0m     pub fn is_empty(&self) -> bool {
+    [1m[96m|[0m            [1m[93m^^^^^^^^[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: type alias `Migrator` is never used[0m
+  [1m[96m--> [0mcrates\container\src\schema.rs:73:6
+   [1m[96m|[0m
+[1m[96m73[0m [1m[96m|[0m type Migrator = fn(CmdResult<()>) -> CmdResult<()>;
+   [1m[96m|[0m      [1m[93m^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: field `data_tail` is never read[0m
+   [1m[96m--> [0mcrates\container\src\uxv.rs:287:5
+    [1m[96m|[0m
+[1m[96m286[0m [1m[96m|[0m struct SnapshotState {
+    [1m[96m|[0m        [1m[96m-------------[0m [1m[96mfield in this struct[0m
+[1m[96m287[0m [1m[96m|[0m     data_tail: u64,
+    [1m[96m|[0m     [1m[93m^^^^^^^^^[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: `SnapshotState` has a derived impl for the trait `Clone`, but this is intentional
+ly ignored during dead code analysis
+
+[1m[93mwarning[0m: `container` (lib) generated 9 warnings (run `cargo fix --lib -p container` to apply 4 suggestions
+)
+[1m[92m    Checking[0m variable v1.0.0 (D:\2\14\-Un-Real-0d23d9ux-Engine-main\src-tauri)
+[1m[91merror[E0432][0m[1m[97m: unresolved imports `windows::Win32::UI::WindowsAndMessaging::SPI_GETDOUBLECLICKTIME
+`, `windows::Win32::UI::WindowsAndMessaging::SPI_GETMOUSEBUTTONSWAP`[0m
+  [1m[96m--> [0msrc\shell\mousefeel.rs:59:9
+   [1m[96m|[0m
+[1m[96m59[0m [1m[96m|[0m         SPI_GETDOUBLECLICKTIME, SPI_GETMOUSE, SPI_GETMOUSEBUTTONSWAP, SPI_GETMOUSESPEED,
+   [1m[96m|[0m         [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m                [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[
+91mno `SPI_GETMOUSEBUTTONSWAP` in `Win32::UI::WindowsAndMessaging`[0m
+   [1m[96m|[0m         [1m[91m|[0m
+   [1m[96m|[0m         [1m[91mno `SPI_GETDOUBLECLICKTIME` in `Win32::UI::WindowsAndMessaging`[0m
+   [1m[96m|[0m
+[1m[96mhelp[0m: a similar name exists in the module
+   [1m[96m|[0m
+[1m[96m59[0m [91m- [0m        [91mSPI_GETDOUBLECLICKTIME[0m, SPI_GETMOUSE, SPI_GETMOUSEBUTTONSWAP, SPI_GETMOUSES
+PEED,
+[1m[96m59[0m [92m+ [0m        [92mSPI_SETDOUBLECLICKTIME[0m, SPI_GETMOUSE, SPI_GETMOUSEBUTTONSWAP, SPI_GETMOUSES
+PEED,
+   [1m[96m|[0m
+[1m[96mhelp[0m: a similar name exists in the module
+   [1m[96m|[0m
+[1m[96m59[0m [91m- [0m        SPI_GETDOUBLECLICKTIME, SPI_GETMOUSE, [91mSPI_GETMOUSEBUTTONSWAP[0m, SPI_GETMOUSES
+PEED,
+[1m[96m59[0m [92m+ [0m        SPI_GETDOUBLECLICKTIME, SPI_GETMOUSE, [92mSPI_SETMOUSEBUTTONSWAP[0m, SPI_GETMOUSES
+PEED,
+   [1m[96m|[0m
+
+[1m[91merror[E0432][0m[1m[97m: unresolved import `windows::Win32::System::DataExchange`[0m
+   [1m[96m--> [0msrc\shell\panic.rs:111:33
+    [1m[96m|[0m
+[1m[96m111[0m [1m[96m|[0m     use windows::Win32::System::DataExchange::{CloseClipboard, EmptyClipboard, OpenClip
+board};
+    [1m[96m|[0m                                 [1m[91m^^^^^^^^^^^^[0m [1m[91mcould not find `DataExchange` in 
+`System`[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: found an item that was configured out
+   [1m[96m--> [0mC:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-0.58.0\src\Windows\Win3
+2\System\mod.rs:24:9
+    [1m[96m|[0m
+[1m[96m 23[0m [1m[96m|[0m #[cfg(feature = "Win32_System_DataExchange")]
+    [1m[96m|[0m       [1m[96m-------------------------------------[0m [1m[96mthe item is gated behind the `Win3
+2_System_DataExchange` feature[0m
+[1m[96m 24[0m [1m[96m|[0m pub mod DataExchange;
+    [1m[96m|[0m         [1m[92m^^^^^^^^^^^^[0m
+
+[1m[91merror[E0432][0m[1m[97m: unresolved import `windows::Win32::Security::WinTrust::CryptQueryObject`[0m
+   [1m[96m--> [0msrc\shell\trust.rs:196:9
+    [1m[96m|[0m
+[1m[96m196[0m [1m[96m|[0m     use windows::Win32::Security::WinTrust::CryptQueryObject;
+    [1m[96m|[0m         [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mno `CryptQueryObj
+ect` in `Win32::Security::WinTrust`[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:114:21
+    [1m[96m|[0m
+[1m[96m114[0m [1m[96m|[0m         let frame = zstd::bulk::compress(&raw, 3)?;
+    [1m[96m|[0m                     [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m114[0m [91m- [0m        let frame = [91mzstd[0m::bulk::compress(&raw, 3)?;
+[1m[96m114[0m [92m+ [0m        let frame = [92mstd[0m::bulk::compress(&raw, 3)?;
+    [1m[96m|[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:119:18
+    [1m[96m|[0m
+[1m[96m119[0m [1m[96m|[0m     let mbytes = zstd::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+    [1m[96m|[0m                  [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m119[0m [91m- [0m    let mbytes = [91mzstd[0m::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+[1m[96m119[0m [92m+ [0m    let mbytes = [92mstd[0m::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+    [1m[96m|[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:150:15
+    [1m[96m|[0m
+[1m[96m150[0m [1m[96m|[0m     let raw = zstd::bulk::decompress(&mbytes, 64 * 1024 * 1024)?;
+    [1m[96m|[0m               [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m150[0m [91m- [0m    let raw = [91mzstd[0m::bulk::decompress(&mbytes, 64 * 1024 * 1024)?;
+[1m[96m150[0m [92m+ [0m    let raw = [92mstd[0m::bulk::decompress(&mbytes, 64 * 1024 * 1024)?;
+    [1m[96m|[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:280:5
+    [1m[96m|[0m
+[1m[96m280[0m [1m[96m|[0m     zstd::bulk::decompress(&frame, e.size as usize + 1024).map_err(|err| AppError::io(f
+ormat!("解压失败 / decompress failed: {err}")))
+    [1m[96m|[0m     [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m280[0m [91m- [0m    [91mzstd[0m::bulk::decompress(&frame, e.size as usize + 1024).map_err(|err| AppError:
+:io(format!("解压失败 / decompress failed: {err}")))
+[1m[96m280[0m [92m+ [0m    [92mstd[0m::bulk::decompress(&frame, e.size as usize + 1024).map_err(|err| AppError::
+io(format!("解压失败 / decompress failed: {err}")))
+    [1m[96m|[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:353:21
+    [1m[96m|[0m
+[1m[96m353[0m [1m[96m|[0m         let frame = zstd::bulk::compress(raw, 3)?;
+    [1m[96m|[0m                     [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m353[0m [91m- [0m        let frame = [91mzstd[0m::bulk::compress(raw, 3)?;
+[1m[96m353[0m [92m+ [0m        let frame = [92mstd[0m::bulk::compress(raw, 3)?;
+    [1m[96m|[0m
+
+[1m[91merror[E0433][0m[1m[97m: cannot find module or crate `zstd` in this scope[0m
+   [1m[96m--> [0msrc\shell\archive.rs:358:18
+    [1m[96m|[0m
+[1m[96m358[0m [1m[96m|[0m     let mbytes = zstd::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+    [1m[96m|[0m                  [1m[91m^^^^[0m [1m[91muse of unresolved module or unlinked crate `zstd`[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: there is a crate or module with a similar name
+    [1m[96m|[0m
+[1m[96m358[0m [91m- [0m    let mbytes = [91mzstd[0m::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+[1m[96m358[0m [92m+ [0m    let mbytes = [92mstd[0m::bulk::compress(&serde_json::to_vec(&manifest)?, 3)?;
+    [1m[96m|[0m
+
+[1m[91merror[E0531][0m[1m[97m: cannot find tuple struct or tuple variant `Failed` in this scope[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:247:13
+    [1m[96m|[0m
+[1m[96m247[0m [1m[96m|[0m         Err(Failed(e)) => update_item(&item.id, |it| {
+    [1m[96m|[0m             [1m[91m^^^^^^[0m [1m[91mnot found in this scope[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: consider importing this tuple variant
+    [1m[96m|[0m
+[1m[96m 10[0m [92m+ use crate::shell::transfer::TrErr::Failed;[0m
+    [1m[96m|[0m
+
+[1m[91merror[E0425][0m[1m[97m: cannot find function `vault_status_inner` in module `crate::shell::privacy`[0m
+   [1m[96m--> [0msrc\shell\panic.rs:148:31
+    [1m[96m|[0m
+[1m[96m148[0m [1m[96m|[0m     if crate::shell::privacy::vault_status_inner(st).map(|s| s.unlocked).unwrap_or(fals
+e) {
+    [1m[96m|[0m                               [1m[91m^^^^^^^^^^^^^^^^^^[0m
+    [1m[96m|[0m
+   [1m[96m::: [0msrc\shell\privacy.rs:156:1
+    [1m[96m|[0m
+[1m[96m156[0m [1m[96m|[0m pub fn vault_status(st: tauri::State<AppState>) -> CmdResult<VaultStatus> {
+    [1m[96m|[0m [1m[96m-------------------------------------------------------------------------[0m [1m[96msimi
+larly named function `vault_status` defined here[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a function with a similar name exists
+    [1m[96m|[0m
+[1m[96m148[0m [91m- [0m    if crate::shell::privacy::[91mvault_status_inner[0m(st).map(|s| s.unlocked).unwrap_or
+(false) {
+[1m[96m148[0m [92m+ [0m    if crate::shell::privacy::[92mvault_status[0m(st).map(|s| s.unlocked).unwrap_or(false
+) {
+    [1m[96m|[0m
+
+[1m[91merror[E0425][0m[1m[97m: cannot find function `is_active` in module `crate::shell::incognito`[0m
+   [1m[96m--> [0msrc\shell\panic.rs:161:33
+    [1m[96m|[0m
+[1m[96m161[0m [1m[96m|[0m     if crate::shell::incognito::is_active() {
+    [1m[96m|[0m                                 [1m[91m^^^^^^^^^[0m [1m[91mnot found in `crate::shell::incognit
+o`[0m
+
+[1m[91merror[E0425][0m[1m[97m: cannot find function `end_and_burn_inner` in module `crate::shell::incognito`[0m
+   [1m[96m--> [0msrc\shell\panic.rs:162:57
+    [1m[96m|[0m
+[1m[96m162[0m [1m[96m|[0m         rep.incognito_burned = crate::shell::incognito::end_and_burn_inner(st)?;
+    [1m[96m|[0m                                                         [1m[91m^^^^^^^^^^^^^^^^^^[0m [1m[91mnot
+ found in `crate::shell::incognito`[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `windows::Win32::Foundation::HWND`[0m
+    [1m[96m--> [0msrc\shell\embed.rs:1034:9
+     [1m[96m|[0m
+[1m[96m1034[0m [1m[96m|[0m     use windows::Win32::Foundation::HWND;
+     [1m[96m|[0m         [1m[93m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+     [1m[96m|[0m
+     [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: unused import: `SPI_GETMOUSESPEED`[0m
+  [1m[96m--> [0msrc\shell\mousefeel.rs:59:71
+   [1m[96m|[0m
+[1m[96m59[0m [1m[96m|[0m         SPI_GETDOUBLECLICKTIME, SPI_GETMOUSE, SPI_GETMOUSEBUTTONSWAP, SPI_GETMOUSESPEED,
+   [1m[96m|[0m                                                                       [1m[93m^^^^^^^^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `PublicKey`[0m
+   [1m[96m--> [0msrc\shell\git_panel.rs:296:31
+    [1m[96m|[0m
+[1m[96m296[0m [1m[96m|[0m     use ssh_key::{PrivateKey, PublicKey};
+    [1m[96m|[0m                               [1m[93m^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `CRYPT_INTEGER_BLOB`[0m
+   [1m[96m--> [0msrc\shell\trust.rs:194:54
+    [1m[96m|[0m
+[1m[96m194[0m [1m[96m|[0m         CERT_CONTEXT, CERT_NAME_SIMPLE_DISPLAY_TYPE, CRYPT_INTEGER_BLOB,
+    [1m[96m|[0m                                                      [1m[93m^^^^^^^^^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED`[0m
+   [1m[96m--> [0msrc\shell\trust.rs:198:9
+    [1m[96m|[0m
+[1m[96m198[0m [1m[96m|[0m         CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED, CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBE
+D,
+    [1m[96m|[0m         [1m[93m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[91merror[E0277][0m[1m[97m: the trait bound `ExEntry: Clone` is not satisfied[0m
+   [1m[96m--> [0msrc\shell\explorer.rs:789:38
+    [1m[96m|[0m
+[1m[96m789[0m [1m[96m|[0m         entries: entries[start..end].to_vec(),
+    [1m[96m|[0m                                      [1m[91m^^^^^^[0m [1m[91mthe trait `Clone` is not implement
+ed for `ExEntry`[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: required by a bound in `std::slice::<impl [T]>::to_vec`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\alloc\
+src\slice.rs:374:12
+    [1m[96m|[0m
+[1m[96m372[0m [1m[96m|[0m     pub fn to_vec(&self) -> Vec<T>
+    [1m[96m|[0m            [1m[96m------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m373[0m [1m[96m|[0m     where
+[1m[96m374[0m [1m[96m|[0m         T: Clone,
+    [1m[96m|[0m            [1m[92m^^^^^[0m [1m[92mrequired by this bound in `std::slice::<impl [T]>::to_vec`[0
+m
+[1m[96mhelp[0m: consider annotating `ExEntry` with `#[derive(Clone)]`
+    [1m[96m|[0m
+[1m[96m 16[0m [92m+ #[derive(Clone)][0m
+[1m[96m 17[0m [1m[96m|[0m pub struct ExEntry {
+    [1m[96m|[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+  [1m[96m--> [0msrc\shell\mousefeel.rs:74:34
+   [1m[96m|[0m
+[1m[96m74[0m [1m[96m|[0m         wheel_lines: spi_get_u32(SPI_GETWHEELSCROLLLINES) as i32,
+   [1m[96m|[0m                      [1m[96m-----------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected 
+`u32`, found `SYSTEM_PARAMETERS_INFO_ACTION`[0m
+   [1m[96m|[0m                      [1m[96m|[0m
+   [1m[96m|[0m                      [1m[96marguments to this function are incorrect[0m
+   [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+  [1m[96m--> [0msrc\shell\mousefeel.rs:30:4
+   [1m[96m|[0m
+[1m[96m30[0m [1m[96m|[0m fn spi_get_u32(action: u32) -> u32 {
+   [1m[96m|[0m    [1m[92m^^^^^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+  [1m[96m--> [0msrc\shell\mousefeel.rs:82:9
+   [1m[96m|[0m
+[1m[96m81[0m [1m[96m|[0m     spi_set(
+   [1m[96m|[0m     [1m[96m-------[0m [1m[96marguments to this function are incorrect[0m
+[1m[96m82[0m [1m[96m|[0m         windows::Win32::UI::WindowsAndMessaging::SPI_SETMOUSESPEED,
+   [1m[96m|[0m         [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u3
+2`, found `SYSTEM_PARAMETERS_INFO_ACTION`[0m
+   [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+  [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+   [1m[96m|[0m
+[1m[96m44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+   [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:120:22
+    [1m[96m|[0m
+[1m[96m120[0m [1m[96m|[0m         ok = spi_set(SPI_SETDOUBLECLICKTIME, double_click_ms.clamp(200, 900) as u32) &&
+ ok;
+    [1m[96m|[0m              [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, found
+ `SYSTEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m              [1m[96m|[0m
+    [1m[96m|[0m              [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:121:22
+    [1m[96m|[0m
+[1m[96m121[0m [1m[96m|[0m         ok = spi_set(SPI_SETWHEELSCROLLLINES, wheel_lines.clamp(1, 10) as u32) && ok;
+    [1m[96m|[0m              [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, foun
+d `SYSTEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m              [1m[96m|[0m
+    [1m[96m|[0m              [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:122:22
+    [1m[96m|[0m
+[1m[96m122[0m [1m[96m|[0m         ok = spi_set(SPI_SETMOUSEBUTTONSWAP, if swap_buttons { 1 } else { 0 }) && ok;
+    [1m[96m|[0m              [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, found
+ `SYSTEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m              [1m[96m|[0m
+    [1m[96m|[0m              [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:153:18
+    [1m[96m|[0m
+[1m[96m153[0m [1m[96m|[0m     ok = spi_set(SPI_SETDOUBLECLICKTIME, p.double_click_ms) && ok;
+    [1m[96m|[0m          [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, found `SY
+STEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m          [1m[96m|[0m
+    [1m[96m|[0m          [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:154:18
+    [1m[96m|[0m
+[1m[96m154[0m [1m[96m|[0m     ok = spi_set(SPI_SETWHEELSCROLLLINES, p.wheel_lines.clamp(0, i32::MAX) as u32) && o
+k;
+    [1m[96m|[0m          [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, found `S
+YSTEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m          [1m[96m|[0m
+    [1m[96m|[0m          [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\mousefeel.rs:155:18
+    [1m[96m|[0m
+[1m[96m155[0m [1m[96m|[0m     ok = spi_set(SPI_SETMOUSEBUTTONSWAP, if p.swap_buttons { 1 } else { 0 }) && ok;
+    [1m[96m|[0m          [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91mexpected `u32`, found `SY
+STEM_PARAMETERS_INFO_ACTION`[0m
+    [1m[96m|[0m          [1m[96m|[0m
+    [1m[96m|[0m          [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\mousefeel.rs:44:4
+    [1m[96m|[0m
+[1m[96m 44[0m [1m[96m|[0m fn spi_set(action: u32, v: u32) -> bool {
+    [1m[96m|[0m    [1m[92m^^^^^^^[0m [1m[96m-----------[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\netconsent.rs:335:33
+    [1m[96m|[0m
+[1m[96m335[0m [1m[96m|[0m     fw_traffic_inner(&st, &app, &bytes)
+    [1m[96m|[0m     [1m[96m----------------[0m            [1m[91m^^^^^^[0m [1m[91mexpected `u64`, found `&u6
+4`[0m
+    [1m[96m|[0m     [1m[96m|[0m
+    [1m[96m|[0m     [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0msrc\shell\netconsent.rs:270:8
+    [1m[96m|[0m
+[1m[96m270[0m [1m[96m|[0m pub fn fw_traffic_inner(st: &AppState, app: &str, bytes: u64) -> CmdResult<bool> {
+    [1m[96m|[0m        [1m[92m^^^^^^^^^^^^^^^^[0m                           [1m[96m----------[0m
+[1m[96mhelp[0m: consider removing the borrow
+    [1m[96m|[0m
+[1m[96m335[0m [91m- [0m    fw_traffic_inner(&st, &app, [91m&[0mbytes)
+[1m[96m335[0m [92m+ [0m    fw_traffic_inner(&st, &app, bytes)
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `saved_at`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:205:9
+    [1m[96m|[0m
+[1m[96m205[0m [1m[96m|[0m         saved_at: rec.saved_at,
+    [1m[96m|[0m         [1m[91m^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m205[0m [91m- [0m        [91msaved_at[0m: rec.saved_at,
+[1m[96m205[0m [92m+ [0m        [92msavedAt[0m: rec.saved_at,
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `file_mtime`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:206:9
+    [1m[96m|[0m
+[1m[96m206[0m [1m[96m|[0m         file_mtime: rec.file_mtime,
+    [1m[96m|[0m         [1m[91m^^^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m206[0m [91m- [0m        [91mfile_mtime[0m: rec.file_mtime,
+[1m[96m206[0m [92m+ [0m        [92mfileMtime[0m: rec.file_mtime,
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `changed_lines`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:207:9
+    [1m[96m|[0m
+[1m[96m207[0m [1m[96m|[0m         changed_lines: Some(changed),
+    [1m[96m|[0m         [1m[91m^^^^^^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m207[0m [91m- [0m        [91mchanged_lines[0m: Some(changed),
+[1m[96m207[0m [92m+ [0m        [92mchangedLines[0m: Some(changed),
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `saved_at`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:252:13
+    [1m[96m|[0m
+[1m[96m252[0m [1m[96m|[0m             saved_at: r.saved_at,
+    [1m[96m|[0m             [1m[91m^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m252[0m [91m- [0m            [91msaved_at[0m: r.saved_at,
+[1m[96m252[0m [92m+ [0m            [92msavedAt[0m: r.saved_at,
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `file_mtime`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:253:13
+    [1m[96m|[0m
+[1m[96m253[0m [1m[96m|[0m             file_mtime: r.file_mtime,
+    [1m[96m|[0m             [1m[91m^^^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m253[0m [91m- [0m            [91mfile_mtime[0m: r.file_mtime,
+[1m[96m253[0m [92m+ [0m            [92mfileMtime[0m: r.file_mtime,
+    [1m[96m|[0m
+
+[1m[91merror[E0560][0m[1m[97m: struct `VerInfo` has no field named `changed_lines`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:254:13
+    [1m[96m|[0m
+[1m[96m254[0m [1m[96m|[0m             changed_lines: None,
+    [1m[96m|[0m             [1m[91m^^^^^^^^^^^^^[0m [1m[91munknown field[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: a field with a similar name exists
+    [1m[96m|[0m
+[1m[96m254[0m [91m- [0m            [91mchanged_lines[0m: None,
+[1m[96m254[0m [92m+ [0m            [92mchangedLines[0m: None,
+    [1m[96m|[0m
+
+[1m[91merror[E0308][0m[1m[97m: arguments to this function are incorrect[0m
+   [1m[96m--> [0msrc\shell\versions.rs:443:17
+    [1m[96m|[0m
+[1m[96m443[0m [1m[96m|[0m         let h = CreateFileW(
+    [1m[96m|[0m                 [1m[91m^^^^^^^^^^^[0m
+[1m[96m444[0m [1m[96m|[0m             PCWSTR(wpath.as_ptr()),
+[1m[96m445[0m [1m[96m|[0m             FILE_WRITE_ATTRIBUTES,
+    [1m[96m|[0m             [1m[96m---------------------[0m [1m[96munexpected argument #2 of type `FILE_ACCESS_
+RIGHTS`[0m
+[1m[96m446[0m [1m[96m|[0m             0,
+    [1m[96m|[0m             [1m[96m-[0m [1m[96margument #3 of type `FILE_SHARE_MODE` is missing[0m
+    [1m[96m|[0m
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0mC:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-0.58.0\src\Windows\Win3
+2\Storage\FileSystem\mod.rs:434:15
+    [1m[96m|[0m
+[1m[96m434[0m [1m[96m|[0m pub unsafe fn CreateFileW<P0, P1>(lpfilename: P0, dwdesiredaccess: u32, dwsharemode: FI
+LE_SHARE_MODE, lpsecurityattributes: Option<[1m[96m...[0m
+    [1m[96m|[0m               [1m[92m^^^^^^^^^^^[0m
+[1m[96mhelp[0m: did you mean
+    [1m[96m|[0m
+[1m[96m443[0m [92m~ [0m        let h = CreateFileW[92m([0m
+[1m[96m444[0m [92m+             PCWSTR(wpath.as_ptr()),[0m
+[1m[96m445[0m [92m+             0,[0m
+[1m[96m446[0m [92m+             /* FILE_SHARE_MODE */,[0m
+[1m[96m447[0m [92m+             None,[0m
+[1m[96m448[0m [92m+             OPEN_EXISTING,[0m
+[1m[96m449[0m [92m+             FILE_FLAG_BACKUP_SEMANTICS,[0m
+[1m[96m450[0m [92m+             HANDLE::default(),[0m
+[1m[96m451[0m [92m~         )[0m;
+    [1m[96m|[0m
+
+[1m[91merror[E0277][0m[1m[97m: can't compare `&std::string::String` with `std::string::String`[0m
+   [1m[96m--> [0msrc\shell\tags.rs:156:37
+    [1m[96m|[0m
+[1m[96m156[0m [1m[96m|[0m             .take_while(|(k, _)| *k == fk || k.starts_with(&format!("{fk}/")))
+    [1m[96m|[0m                                     [1m[91m^^[0m [1m[91mno implementation for `&std::string::St
+ring == std::string::String`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mhelp[0m: the trait `PartialEq<std::string::String>` is not implemented for `&std::string::
+String`
+[1m[96mhelp[0m: consider dereferencing here
+    [1m[96m|[0m
+[1m[96m156[0m [1m[96m| [0m            .take_while(|(k, _)| [92m*[0m*k == fk || k.starts_with(&format!("{fk}/"))
+)
+    [1m[96m|[0m                                  [92m+[0m
+
+[1m[91merror[E0599][0m[1m[97m: no method named `state` found for reference `&AppHandle` in the current scope[0m
+  [1m[96m--> [0msrc\shell\transfer.rs:88:12
+   [1m[96m|[0m
+[1m[96m88[0m [1m[96m|[0m     Ok(app.state::<AppState>().data_dir.clone())
+   [1m[96m|[0m            [1m[91m^^^^^[0m
+   [1m[96m|[0m
+   [1m[96m= [0m[1m[97mhelp[0m: items from traits can only be used if the trait is in scope
+[1m[96mhelp[0m: trait `Manager` which provides `state` is implemented but not in scope; perhaps you want to import i
+t
+   [1m[96m|[0m
+[1m[96m10[0m [92m+ use tauri::Manager;[0m
+   [1m[96m|[0m
+[1m[96mhelp[0m: there is a method `try_state` with a similar name
+   [1m[96m|[0m
+[1m[96m88[0m [1m[96m| [0m    Ok(app.[92mtry_[0mstate::<AppState>().data_dir.clone())
+   [1m[96m|[0m            [92m++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:272:43
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m272[0m [1m[96m|[0m     fs::create_dir_all(&dest_dir).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                   [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpected 
+due to this[0m
+    [1m[96m|[0m                                   [1m[96m|[0m
+    [1m[96m|[0m                                   [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m272[0m [1m[96m| [0m    fs::create_dir_all(&dest_dir).map_err([92m|arg0: std::io::Error| [0mTrErr::Failed
+[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                           [92m++++++++++++++++++++++[0m              [92m++++++++
++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:288:46
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m288[0m [1m[96m|[0m             fs::remove_dir_all(&src).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                      [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpect
+ed due to this[0m
+    [1m[96m|[0m                                      [1m[96m|[0m
+    [1m[96m|[0m                                      [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m288[0m [1m[96m| [0m            fs::remove_dir_all(&src).map_err([92m|arg0: std::io::Error| [0mTrErr::Fai
+led[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                              [92m++++++++++++++++++++++[0m              [92m+++++
+++++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:290:43
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m290[0m [1m[96m|[0m             fs::remove_file(&src).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                   [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpected 
+due to this[0m
+    [1m[96m|[0m                                   [1m[96m|[0m
+    [1m[96m|[0m                                   [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m290[0m [1m[96m| [0m            fs::remove_file(&src).map_err([92m|arg0: std::io::Error| [0mTrErr::Failed
+[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                           [92m++++++++++++++++++++++[0m              [92m++++++++
++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:305:51
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m305[0m [1m[96m|[0m                 fs::remove_dir_all(&dest).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                           [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91me
+xpected due to this[0m
+    [1m[96m|[0m                                           [1m[96m|[0m
+    [1m[96m|[0m                                           [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m305[0m [1m[96m| [0m                fs::remove_dir_all(&dest).map_err([92m|arg0: std::io::Error| [0mTrErr
+::Failed[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                                   [92m++++++++++++++++++++++[0m              [92m
++++++++++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:307:48
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m307[0m [1m[96m|[0m                 fs::remove_file(&dest).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                        [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpe
+cted due to this[0m
+    [1m[96m|[0m                                        [1m[96m|[0m
+    [1m[96m|[0m                                        [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m307[0m [1m[96m| [0m                fs::remove_file(&dest).map_err([92m|arg0: std::io::Error| [0mTrErr::F
+ailed[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                                [92m++++++++++++++++++++++[0m              [92m+++
+++++++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:328:43
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m328[0m [1m[96m|[0m         fs::create_dir_all(&dest).map_err(TrErr::Failed)?;
+    [1m[96m|[0m                                   [1m[96m-------[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpected 
+due to this[0m
+    [1m[96m|[0m                                   [1m[96m|[0m
+    [1m[96m|[0m                                   [1m[96mrequired by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn(std::[1m[35mio::Error[0m) -> [1m[35m_[0m`
+               found function signature `fn(std::[1m[35mstring::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m328[0m [1m[96m| [0m        fs::create_dir_all(&dest).map_err([92m|arg0: std::io::Error| [0mTrErr::Failed
+[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                           [92m++++++++++++++++++++++[0m              [92m++++++++
++++++++++++++++++++[0m
+
+[1m[91merror[E0631][0m[1m[97m: type mismatch in function arguments[0m
+   [1m[96m--> [0msrc\shell\transfer.rs:335:92
+    [1m[96m|[0m
+[1m[96m259[0m [1m[96m|[0m     Failed(String),
+    [1m[96m|[0m     [1m[96m------[0m [1m[96mfound signature defined here[0m
+[1m[96m...[0m
+[1m[96m335[0m [1m[96m|[0m         let (written, canceled, paused) = copy_file_progress(src, &dest, &item.id).map_
+err(TrErr::Failed)?;
+    [1m[96m|[0m                                                                                    [1m[96m-------
+[0m [1m[91m^^^^^^^^^^^^^[0m [1m[91mexpected due to this[0m
+    [1m[96m|[0m                                                                                    [1m[96m|[0m
+    [1m[96m|[0m                                                                                    [1m[96mrequired
+ by a bound introduced by this call[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: expected function signature `fn([1m[35mAppError[0m) -> [1m[35m_[0m`
+               found function signature `fn([1m[35mstd::string::String[0m) -> [1m[35m_[0m`
+[1m[92mnote[0m: required by a bound in `Result::<T, E>::map_err`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\result.rs:964:12
+    [1m[96m|[0m
+[1m[96m962[0m [1m[96m|[0m     pub const fn map_err<F, O>(self, op: O) -> Result<T, F>
+    [1m[96m|[0m                  [1m[96m-------[0m [1m[96mrequired by a bound in this associated function[0m
+[1m[96m963[0m [1m[96m|[0m     where
+[1m[96m964[0m [1m[96m|[0m         O: [const] FnOnce(E) -> F + [const] Destruct,
+    [1m[96m|[0m            [1m[92m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[92mrequired by this bound in `Result::<T, E>::m
+ap_err`[0m
+[1m[96mhelp[0m: consider wrapping the function in a closure
+    [1m[96m|[0m
+[1m[96m335[0m [1m[96m| [0m        let (written, canceled, paused) = copy_file_progress(src, &dest, &item.id).map_
+err([92m|arg0: AppError| [0mTrErr::Failed[92m(/* std::string::String */)[0m)?;
+    [1m[96m|[0m                                                                                            [92m++++
+++++++++++++[0m              [92m+++++++++++++++++++++++++++[0m
+
+[1m[91merror[E0277][0m[1m[97m: the size for values of type `[u8]` cannot be known at compilation time[0m
+   [1m[96m--> [0msrc\shell\archive.rs:365:13
+    [1m[96m|[0m
+[1m[96m365[0m [1m[96m|[0m         for fr in frames {
+    [1m[96m|[0m             [1m[91m^^[0m [1m[91mdoesn't have a size known at compile-time[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mhelp[0m: the trait `Sized` is not implemented for `[u8]`
+    [1m[96m= [0m[1m[97mnote[0m: all local variables must have a statically known size
+
+[1m[91merror[E0277][0m[1m[97m: the size for values of type `[u8]` cannot be known at compilation time[0m
+   [1m[96m--> [0msrc\shell\archive.rs:365:9
+    [1m[96m|[0m
+[1m[96m365[0m [1m[96m|[0m [1m[91m/[0m         for fr in frames {
+[1m[96m366[0m [1m[96m|[0m [1m[91m|[0m             f.write_all(&fr)?;
+[1m[96m367[0m [1m[96m|[0m [1m[91m|[0m         }
+    [1m[96m|[0m [1m[91m|_________^[0m [1m[91mdoesn't have a size known at compile-time[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mhelp[0m: the trait `Sized` is not implemented for `[u8]`
+[1m[92mnote[0m: required by an implicit `Sized` bound in `std::option::Option`
+   [1m[96m--> [0mC:\Users\varia\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\s
+rc\option.rs:597:17
+    [1m[96m|[0m
+[1m[96m597[0m [1m[96m|[0m pub enum Option<T> {
+    [1m[96m|[0m                 [1m[92m^[0m [1m[92mrequired by the implicit `Sized` requirement on this type pa
+rameter in `Option`[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\trust.rs:250:44
+    [1m[96m|[0m
+[1m[96m250[0m [1m[96m|[0m                 CertFreeCertificateContext(ctx);
+    [1m[96m|[0m                 [1m[96m--------------------------[0m [1m[91m^^^[0m [1m[91mexpected `Option<*
+const CERT_CONTEXT>`, found `*mut CERT_CONTEXT`[0m
+    [1m[96m|[0m                 [1m[96m|[0m
+    [1m[96m|[0m                 [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m:     expected enum `[1m[35mstd::option::Option<*const CERT_CONTEXT>[0m`
+            found raw pointer `[1m[35m*mut CERT_CONTEXT[0m`
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0mC:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-0.58.0\src\Windows\Win3
+2\Security\Cryptography\mod.rs:823:15
+    [1m[96m|[0m
+[1m[96m823[0m [1m[96m|[0m pub unsafe fn CertFreeCertificateContext(pcertcontext: Option<*const CERT_CONTEXT>) -> 
+super::super::Foundation::BOOL {
+    [1m[96m|[0m               [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[96mhelp[0m: try wrapping the expression in `Some`
+    [1m[96m|[0m
+[1m[96m250[0m [1m[96m| [0m                CertFreeCertificateContext([92mSome([0mctx[92m)[0m);
+    [1m[96m|[0m                                            [92m+++++[0m   [92m+[0m
+
+[1m[91merror[E0308][0m[1m[97m: mismatched types[0m
+   [1m[96m--> [0msrc\shell\trust.rs:258:44
+    [1m[96m|[0m
+[1m[96m258[0m [1m[96m|[0m         let _ = CertFreeCertificateContext(p as *const _ as *mut _);
+    [1m[96m|[0m                 [1m[96m--------------------------[0m [1m[91m^^^^^^^^^^^^^^^^^^^^^^^[0m [1m[9
+1mexpected `Option<*const CERT_CONTEXT>`, found `*mut _`[0m
+    [1m[96m|[0m                 [1m[96m|[0m
+    [1m[96m|[0m                 [1m[96marguments to this function are incorrect[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m:     expected enum `[1m[35mstd::option::Option<*const CERT_CONTEXT>[0m`
+            found raw pointer `[1m[35m*mut _[0m`
+[1m[92mnote[0m: function defined here
+   [1m[96m--> [0mC:\Users\varia\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-0.58.0\src\Windows\Win3
+2\Security\Cryptography\mod.rs:823:15
+    [1m[96m|[0m
+[1m[96m823[0m [1m[96m|[0m pub unsafe fn CertFreeCertificateContext(pcertcontext: Option<*const CERT_CONTEXT>) -> 
+super::super::Foundation::BOOL {
+    [1m[96m|[0m               [1m[92m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[96mhelp[0m: try wrapping the expression in `Some`
+    [1m[96m|[0m
+[1m[96m258[0m [1m[96m| [0m        let _ = CertFreeCertificateContext([92mSome([0mp as *const _ as *mut _[92m)
+[0m);
+    [1m[96m|[0m                                            [92m+++++[0m                       [92m+[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `container::StorageBackend`[0m
+   [1m[96m--> [0msrc\shell\diagnostic.rs:147:9
+    [1m[96m|[0m
+[1m[96m147[0m [1m[96m|[0m     use container::StorageBackend as _;
+    [1m[96m|[0m         [1m[93m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `container::StorageBackend`[0m
+ [1m[96m--> [0msrc\shell\diagnostic.rs:5:5
+  [1m[96m|[0m
+[1m[96m5[0m [1m[96m|[0m use container::StorageBackend as _;
+  [1m[96m|[0m     [1m[93m^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused import: `std::io::Read`[0m
+  [1m[96m--> [0msrc\shell\versions.rs:15:5
+   [1m[96m|[0m
+[1m[96m15[0m [1m[96m|[0m use std::io::Read;
+   [1m[96m|[0m     [1m[93m^^^^^^^^^^^^^[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `st`[0m
+  [1m[96m--> [0msrc\shell\browsers.rs:35:24
+   [1m[96m|[0m
+[1m[96m35[0m [1m[96m|[0m pub fn browser_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
+   [1m[96m|[0m                        [1m[93m^^[0m [1m[93mhelp: if this is intentional, prefix it with an under
+score: `_st`[0m
+   [1m[96m|[0m
+   [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: unused variable: `h`[0m
+   [1m[96m--> [0msrc\shell\embed.rs:412:45
+    [1m[96m|[0m
+[1m[96m412[0m [1m[96m|[0m     let before = win::collect_handles(&mut |h, img| img.to_lowercase().ends_with(&exe_n
+ame));
+    [1m[96m|[0m                                             [1m[93m^[0m [1m[93mhelp: if this is intentional, pr
+efix it with an underscore: `_h`[0m
+
+[1m[93mwarning[0m[1m[97m: variable does not need to be mutable[0m
+   [1m[96m--> [0msrc\shell\envs.rs:548:9
+    [1m[96m|[0m
+[1m[96m548[0m [1m[96m|[0m     let mut r = load_registry(st);
+    [1m[96m|[0m         [1m[96m----[0m[1m[93m^[0m
+    [1m[96m|[0m         [1m[96m|[0m
+    [1m[96m|[0m         [1m[96mhelp: remove this `mut`[0m
+    [1m[96m|[0m
+    [1m[96m= [0m[1m[97mnote[0m: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+[1m[93mwarning[0m[1m[97m: unused variable: `st`[0m
+   [1m[96m--> [0msrc\shell\envs.rs:832:23
+    [1m[96m|[0m
+[1m[96m832[0m [1m[96m|[0m fn parent_allow_cache(st: &AppState) -> Vec<String> {
+    [1m[96m|[0m                       [1m[93m^^[0m [1m[93mhelp: if this is intentional, prefix it with an under
+score: `_st`[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `app`[0m
+  [1m[96m--> [0msrc\shell\ext_plugin.rs:48:5
+   [1m[96m|[0m
+[1m[96m48[0m [1m[96m|[0m     app: tauri::AppHandle,
+   [1m[96m|[0m     [1m[93m^^^[0m [1m[93mhelp: if this is intentional, prefix it with an underscore: `_app`[0m
+
+[1m[93mwarning[0m[1m[97m: variable does not need to be mutable[0m
+   [1m[96m--> [0msrc\shell\installer.rs:359:9
+    [1m[96m|[0m
+[1m[96m359[0m [1m[96m|[0m     let mut sessions: Vec<InstallSession> =
+    [1m[96m|[0m         [1m[96m----[0m[1m[93m^^^^^^^^[0m
+    [1m[96m|[0m         [1m[96m|[0m
+    [1m[96m|[0m         [1m[96mhelp: remove this `mut`[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `b`[0m
+   [1m[96m--> [0msrc\shell\recycle.rs:521:24
+    [1m[96m|[0m
+[1m[96m521[0m [1m[96m|[0m     doomed.sort_by(|a, b| a.deleted_at.cmp(&a.deleted_at));
+    [1m[96m|[0m                        [1m[93m^[0m [1m[93mhelp: if this is intentional, prefix it with an under
+score: `_b`[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `handle`[0m
+   [1m[96m--> [0msrc\shell\container.rs:138:13
+    [1m[96m|[0m
+[1m[96m138[0m [1m[96m|[0m         let handle = app.clone();
+    [1m[96m|[0m             [1m[93m^^^^^^[0m [1m[93mhelp: if this is intentional, prefix it with an underscore:
+ `_handle`[0m
+
+[1m[93mwarning[0m[1m[97m: unused variable: `key`[0m
+   [1m[96m--> [0msrc\shell\versions.rs:218:38
+    [1m[96m|[0m
+[1m[96m218[0m [1m[96m|[0m fn read_version_bytes(st: &AppState, key: &str, rec: &VerRecord) -> CmdResult<Vec<u8>> 
+{
+    [1m[96m|[0m                                      [1m[93m^^^[0m [1m[93mhelp: if this is intentional, prefix 
+it with an underscore: `_key`[0m
+
+[1m[91merror[E0716][0m[1m[97m: temporary value dropped while borrowed[0m
+   [1m[96m--> [0msrc\shell\versions.rs:296:13
+    [1m[96m|[0m
+[1m[96m296[0m [1m[96m|[0m     let a = String::from_utf8_lossy(old).lines().collect::<Vec<_>>();
+    [1m[96m|[0m             [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m                            [1m[96m-[0m [1m
+[96mtemporary value is freed at the end of this statement[0m
+    [1m[96m|[0m             [1m[91m|[0m
+    [1m[96m|[0m             [1m[91mcreates a temporary value which is freed while still in use[0m
+[1m[96m...[0m
+[1m[96m301[0m [1m[96m|[0m     while i < a.len() && j < b.len() {
+    [1m[96m|[0m               [1m[96m-[0m [1m[96mborrow later used here[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: consider using a `let` binding to create a longer lived value
+    [1m[96m|[0m
+[1m[96m296[0m [92m~ [0m    [92mlet binding = String::from_utf8_lossy(old);[0m
+[1m[96m297[0m [92m~     [0mlet a = [92mbinding[0m.lines().collect::<Vec<_>>();
+    [1m[96m|[0m
+
+[1m[91merror[E0716][0m[1m[97m: temporary value dropped while borrowed[0m
+   [1m[96m--> [0msrc\shell\versions.rs:297:13
+    [1m[96m|[0m
+[1m[96m297[0m [1m[96m|[0m     let b = String::from_utf8_lossy(new).lines().collect::<Vec<_>>();
+    [1m[96m|[0m             [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m                            [1m[96m-[0m [1m
+[96mtemporary value is freed at the end of this statement[0m
+    [1m[96m|[0m             [1m[91m|[0m
+    [1m[96m|[0m             [1m[91mcreates a temporary value which is freed while still in use[0m
+[1m[96m...[0m
+[1m[96m301[0m [1m[96m|[0m     while i < a.len() && j < b.len() {
+    [1m[96m|[0m                              [1m[96m-[0m [1m[96mborrow later used here[0m
+    [1m[96m|[0m
+[1m[96mhelp[0m: consider using a `let` binding to create a longer lived value
+    [1m[96m|[0m
+[1m[96m297[0m [92m~ [0m    [92mlet binding = String::from_utf8_lossy(new);[0m
+[1m[96m298[0m [92m~     [0mlet b = [92mbinding[0m.lines().collect::<Vec<_>>();
+    [1m[96m|[0m
+
+[1m[97mSome errors have detailed explanations: E0277, E0308, E0425, E0432, E0433, E0531, E0560, E0599, E0631...[0m
+[1m[97mFor more information about an error, try `rustc --explain E0277`.[0m
+[1m[93mwarning[0m: `variable` (lib) generated 17 warnings
+[1m[91merror[0m: could not compile `variable` (lib) due to 45 previous errors; 17 warnings emitted

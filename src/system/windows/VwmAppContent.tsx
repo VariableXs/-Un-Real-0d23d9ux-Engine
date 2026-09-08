@@ -28,6 +28,10 @@ import { NotesApp } from "../tools/NotesApp";
 import { CalendarApp } from "../tools/CalendarApp";
 import { SnapshotApp } from "../tools/SnapshotApp";
 import { ClipboardHistoryApp } from "../tools/ClipboardHistoryApp";
+import { RenameApp } from "../tools/RenameApp";
+import { DupeApp } from "../tools/DupeApp";
+import { SpaceApp } from "../tools/SpaceApp";
+import { ChecksumApp } from "../tools/ChecksumApp";
 import { TaskManApp } from "../taskman/TaskManApp";
 import { L3CaptureView } from "./L3CaptureView";
 
@@ -116,6 +120,10 @@ export function VwmAppContent(props: {
         {app === "calendar" && <CalendarApp />}
         {app === "snapshot" && <SnapshotApp />}
         {app === "clipboard" && <ClipboardHistoryApp />}
+        {app === "rename" && <RenameApp winId={props.winId} />}
+        {app === "dupe" && <DupeApp winId={props.winId} />}
+        {app === "space" && <SpaceApp winId={props.winId} />}
+        {app === "checksum" && <ChecksumApp winId={props.winId} />}
       </div>
     );
   }

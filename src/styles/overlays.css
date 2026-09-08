@@ -588,3 +588,54 @@ hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 
 .tb-media-time { white-space: nowrap; }
 
+
+/* ---------- AI-07 N-13 命令面板（Ctrl+K，三类一框） ---------- */
+.var-palette-scrim {
+  position: fixed; inset: 0; z-index: 690;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 14vh;
+  background: rgba(2,4,10,.45); backdrop-filter: blur(3px);
+}
+.var-palette {
+  width: min(92vw, 620px); max-height: 72vh; display: flex; flex-direction: column;
+  background: var(--panel-solid); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  animation: toast-in .16s ease; overflow: hidden;
+}
+.var-palette-input-row {
+  display: flex; align-items: center; gap: 10px; padding: 13px 16px;
+  border-bottom: 1px solid var(--border); color: var(--text-dim);
+}
+.var-palette-input-row input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text); font-size: 15px; font-family: inherit;
+}
+.var-palette-hint {
+  font-size: 11px; color: var(--text-dim); border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 7px; white-space: nowrap;
+}
+.var-palette-list { overflow-y: auto; padding: 6px; }
+.var-palette-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  border-radius: 8px; cursor: pointer; font-size: 13.5px;
+}
+.var-palette-item.sel { background: var(--accent-soft); }
+.var-palette-item-title { flex: 1; }
+.var-palette-item-id { font-size: 11px; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.var-palette-item.pinned .var-palette-item-title::before { content: "📌 "; font-size: 11px; }
+.var-palette-pin {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  padding: 3px; border-radius: 5px; display: inline-flex;
+}
+.var-palette-pin:hover { color: var(--text); background: var(--border); }
+.var-palette-empty { padding: 26px; text-align: center; color: var(--text-dim); font-size: 13px; }
+/* V-41 内联计算 / V-49 时间戳结果卡 */
+.var-palette-card {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px;
+  margin: 8px 10px 2px; padding: 11px 14px; text-align: left;
+  background: var(--accent-soft); border: 1px solid var(--border); border-radius: 9px;
+  color: var(--text); cursor: pointer; font-family: ui-monospace, monospace;
+}
+.var-palette-card .var-palette-expr { font-size: 12.5px; color: var(--text-dim); }
+.var-palette-card .var-palette-value { font-size: 15px; font-weight: 600; }
+.var-palette-card span { font-size: 12px; color: var(--text-dim); }

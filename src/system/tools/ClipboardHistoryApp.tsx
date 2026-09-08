@@ -1,188 +1,125 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Pin, PinOff, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { Pin, PinOff, Settings2, Trash2 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { ipc } from "../../lib/ipc";
+import type { Shell } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
 
 /**
- * F-2.5 剪贴板历史（VWM 虚拟窗口应用）：
- * - 文本 / 图片 / 文件（路径文本）三类，容量上限 500 条
- * - 置顶钉选；跨重启保留（DPAPI 加密落容器 data/tools/clipboard.json）
- * - 轮询系统剪贴板（1.5s；仅在窗口可见时抓取，避免无谓功耗）
- * - 呼出快捷键 ctrl+alt+v（winman "clipboardHistory"，Win+V 被系统占用）
+ * AI-07 · N-15 剪贴板历史中心（前端）：
+ * - 后端 Win32 序列号看护线程录制（文本/文件/图片 DIB），DPAPI 加密落盘；
+ * - 敏感应用名单期间零记录；「关闭即焚」模式下卸载面板即焚毁（含落盘）；
+ * - 新条目经 `cliphist://changed` 事件推送（前端不再轮询 navigator.clipboard）；
+ * - 写回（回贴）走 `cliphist_write_back`，直接 SetClipboardData。
  */
-
-const CAP = 500;
-const POLL_MS = 1500;
-
-export interface ClipItem {
-  id: string;
-  kind: "text" | "image" | "file";
-  /** text/file：文本内容；image：dataURL（PNG/BMP）。 */
-  data: string;
-  /** 预览摘要（图片用尺寸描述）。 */
-  preview: string;
-  ts: number;
-  pinned: boolean;
-}
-
-function looksLikePath(s: string): boolean {
-  return /^[a-zA-Z]:\\[^"<>|*\r\n]+$/.test(s.trim()) && s.length < 600;
-}
 
 export function ClipboardHistoryApp(): React.ReactElement {
   const { t } = useI18n();
-  const [items, setItems] = useState<ClipItem[] | null>(null);
+  const [items, setItems] = useState<Shell.ClipEntry[] | null>(null);
   const [filter, setFilter] = useState<"all" | "text" | "image" | "file">("all");
-  const lastRef = useRef<string>("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [enabled, setEnabled] = useState(true);
+  const [sensitive, setSensitive] = useState("");
+  const [burn, setBurn] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setItems(await ipc.cliphistList());
+    } catch {
+      setItems([]);
+    }
+  }, []);
 
   useEffect(() => {
     void (async () => {
+      await refresh();
       try {
-        const raw = await ipc.toolSecureRead("clipboard");
-        if (raw) {
-          const parsed = JSON.parse(raw) as ClipItem[];
-          setItems(Array.isArray(parsed) ? parsed : []);
-          const first = parsed.find((x) => x.pinned) ?? parsed[0];
-          if (first) lastRef.current = first.data.slice(0, 64);
-        } else {
-          setItems([]);
-        }
+        const cfg = await ipc.cliphistConfigGet();
+        setEnabled(cfg.enabled);
+        setSensitive(cfg.sensitiveApps.join(", "));
+        setBurn(cfg.burnOnClose);
       } catch {
-        // 解密失败（换机/换用户）→ 如实从空开始
-        setItems([]);
-        pushToast("info", t("clipTitle"), t("clipLoadFail"));
+        /* 非 Tauri 环境：保持默认 */
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refresh]);
 
-  const flush = useCallback(
-    (list: ClipItem[]) => {
-      void ipc.toolSecureWrite("clipboard", JSON.stringify(list)).catch(() => {});
+  // 后端事件驱动：新条目 / 超大图拒存
+  useEffect(() => {
+    let un1: (() => void) | undefined;
+    let un2: (() => void) | undefined;
+    void (async () => {
+      try {
+        un1 = await listen("cliphist://changed", () => void refresh());
+        un2 = await listen("cliphist://rejected-image", () =>
+          pushToast("info", t("clipTitle"), t("clipImageRejected")),
+        );
+      } catch {
+        /* 非 Tauri 环境无事件 */
+      }
+    })();
+    return () => {
+      un1?.();
+      un2?.();
+    };
+  }, [refresh, t]);
+
+  // 关闭即焚：面板卸载时焚毁
+  useEffect(
+    () => () => {
+      void ipc.cliphistBurn().catch(() => {});
     },
     [],
   );
 
-  const addItems = useCallback(
-    (next: ClipItem[]) => {
-      if (next.length === 0) return;
-      setItems((cur) => {
-        if (!cur) return cur;
-        const merged = [...next, ...cur]
-          .filter((x, i, arr) => arr.findIndex((y) => y.data === x.data) === i)
-          .sort((a, b) => (a.pinned === b.pinned ? b.ts - a.ts : a.pinned ? -1 : 1))
-          .slice(0, CAP);
-        flush(merged);
-        return merged;
-      });
-    },
-    [flush],
-  );
+  const saveConfig = (next: Partial<Shell.ClipConfig>) => {
+    const cfg: Shell.ClipConfig = {
+      enabled,
+      sensitiveApps: sensitive
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+      burnOnClose: burn,
+      ...next,
+    };
+    setEnabled(cfg.enabled);
+    setBurn(cfg.burnOnClose);
+    void ipc.cliphistConfigSet(cfg).catch(() => {});
+  };
 
-  // 轮询系统剪贴板
-  useEffect(() => {
-    if (items === null) return;
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      void (async () => {
-        try {
-          const read = navigator.clipboard;
-          if (!read || !read.read) return;
-          const perms = await navigator.permissions
-            .query({ name: "clipboard-read" as PermissionName })
-            .then((p) => p.state)
-            .catch(() => "prompt");
-          if (perms === "denied") return;
-          const contents = await read.read().catch(() => null);
-          if (!contents) return;
-          const fresh: ClipItem[] = [];
-          for (const item of contents) {
-            const textType = item.types.find((ty) => ty === "text/plain");
-            const imgType = item.types.find((ty) => ty.startsWith("image/"));
-            if (imgType) {
-              const blob = await item.getType(imgType);
-              if (blob.size > 2_000_000) continue; // 超大图不入历史（容量保护）
-              const b64 = await new Promise<string>((res) => {
-                const fr = new FileReader();
-                fr.onload = () => res(String(fr.result));
-                fr.readAsDataURL(blob);
-              });
-              if (b64.slice(0, 64) !== lastRef.current) {
-                lastRef.current = b64.slice(0, 64);
-                fresh.push({
-                  id: `c${Date.now().toString(36)}`,
-                  kind: "image",
-                  data: b64,
-                  preview: `${blob.type} · ${Math.round(blob.size / 1024)} KB`,
-                  ts: Date.now(),
-                  pinned: false,
-                });
-              }
-            } else if (textType) {
-              const text = await item.getType(textType).then((b) => b.text());
-              if (!text || text.slice(0, 64) === lastRef.current) continue;
-              lastRef.current = text.slice(0, 64);
-              fresh.push({
-                id: `c${Date.now().toString(36)}`,
-                kind: looksLikePath(text) ? "file" : "text",
-                data: text,
-                preview: text,
-                ts: Date.now(),
-                pinned: false,
-              });
-            }
-          }
-          addItems(fresh);
-        } catch {
-          /* 权限/格式不支持 → 静默跳过，如实不抓 */
-        }
-      })();
-    }, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [items === null, addItems]);
-
-  const copyBack = async (x: ClipItem) => {
+  const copyBack = async (x: Shell.ClipEntry) => {
     try {
-      if (x.kind === "image") {
-        const blob = await (await fetch(x.data)).blob();
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      const ok = await ipc.cliphistWriteBack(x.id);
+      if (ok) {
+        pushToast("success", t("clipTitle"), t("clipCopied"));
       } else {
-        await navigator.clipboard.writeText(x.data);
+        // 后端写回不可用（非 Windows）→ 浏览器通道兜底（仅文本）
+        if (x.kind !== "image") {
+          await navigator.clipboard.writeText(x.data);
+          pushToast("success", t("clipTitle"), t("clipCopied"));
+        } else {
+          pushToast("error", t("clipTitle"), t("clipCopyFail"));
+        }
       }
-      pushToast("success", t("clipTitle"), t("clipCopied"));
     } catch {
       pushToast("error", t("clipTitle"), t("clipCopyFail"));
     }
   };
 
-  const mutate = (id: string, fn: (x: ClipItem) => ClipItem) => {
-    setItems((cur) => {
-      if (!cur) return cur;
-      const next = cur
-        .map((x) => (x.id === id ? fn(x) : x))
-        .sort((a, b) => (a.pinned === b.pinned ? b.ts - a.ts : a.pinned ? -1 : 1));
-      flush(next);
-      return next;
-    });
+  const pin = (id: string, pinned: boolean) => {
+    setItems((cur) => (cur ? cur.map((x) => (x.id === id ? { ...x, pinned } : x)) : cur));
+    void ipc.cliphistPin(id, pinned).catch(() => {});
   };
 
   const remove = (id: string) => {
-    setItems((cur) => {
-      if (!cur) return cur;
-      const next = cur.filter((x) => x.id !== id);
-      flush(next);
-      return next;
-    });
+    setItems((cur) => (cur ? cur.filter((x) => x.id !== id) : cur));
+    void ipc.cliphistRemove(id).catch(() => {});
   };
 
   const clearUnpinned = () => {
-    setItems((cur) => {
-      if (!cur) return cur;
-      const next = cur.filter((x) => x.pinned);
-      flush(next);
-      return next;
-    });
+    setItems((cur) => (cur ? cur.filter((x) => x.pinned) : cur));
+    void ipc.cliphistClear(true).catch(() => {});
   };
 
   if (items === null) return <div className="clip-app"><p className="dim small">…</p></div>;
@@ -198,8 +135,43 @@ export function ClipboardHistoryApp(): React.ReactElement {
           </button>
         ))}
         <span className="flex-1" />
+        <button
+          type="button"
+          className="icon-btn tiny"
+          aria-pressed={showSettings}
+          aria-label={t("clipSettings")}
+          onClick={() => setShowSettings((v) => !v)}
+        >
+          <Settings2 size={12} />
+        </button>
         <button type="button" className="btn ghost tiny" onClick={clearUnpinned}>{t("clipClear")}</button>
       </div>
+
+      {showSettings && (
+        <div className="clip-settings" style={{ padding: 12, borderBottom: "1px solid var(--line)" }}>
+          <label className="flex align-center gap8 small">
+            <input type="checkbox" checked={enabled} onChange={(e) => saveConfig({ enabled: e.target.checked })} />
+            {t("clipRecordOn")}
+          </label>
+          <label className="flex align-center gap8 small" style={{ marginTop: 8 }}>
+            <input type="checkbox" checked={burn} onChange={(e) => saveConfig({ burnOnClose: e.target.checked })} />
+            {t("clipBurn")}
+          </label>
+          <label className="small" style={{ marginTop: 8, display: "block" }}>
+            {t("clipSensitive")}
+            <input
+              type="text"
+              className="input tiny"
+              style={{ marginTop: 4 }}
+              value={sensitive}
+              placeholder={t("clipSensitiveHint")}
+              onChange={(e) => setSensitive(e.target.value)}
+              onBlur={() => saveConfig({})}
+            />
+          </label>
+        </div>
+      )}
+
       {shown.length === 0 ? (
         <p className="dim small" style={{ padding: 12 }}>{t("clipEmpty")}</p>
       ) : (
@@ -207,19 +179,19 @@ export function ClipboardHistoryApp(): React.ReactElement {
           {shown.map((x) => (
             <li key={x.id} className="clip-item">
               {x.kind === "image" ? (
-                <img src={x.data} alt={x.preview} className="clip-thumb" />
+                <span className="clip-kind clip-kind-image">{t("clipKind_image")}</span>
               ) : (
                 <span className={`clip-kind clip-kind-${x.kind}`}>{t(`clipKind_${x.kind}`)}</span>
               )}
               <button type="button" className="clip-body ellipsis small" title={x.preview} onClick={() => void copyBack(x)}>
-                {x.kind === "image" ? x.preview : x.data.replace(/\s+/g, " ")}
+                {x.preview.replace(/\s+/g, " ")}
               </button>
               <span className="dim small">{new Date(x.ts).toLocaleTimeString()}</span>
               <button
                 type="button"
                 className="icon-btn tiny"
                 aria-label={x.pinned ? t("clipUnpin") : t("clipPin")}
-                onClick={() => mutate(x.id, (v) => ({ ...v, pinned: !v.pinned }))}
+                onClick={() => pin(x.id, !x.pinned)}
               >
                 {x.pinned ? <PinOff size={12} /> : <Pin size={12} />}
               </button>

@@ -51,7 +51,7 @@ const PINYIN: Record<string, string> = {
   精: "jing", 经: "jing", 静: "jing", 境: "jing", 九: "jiu", 久: "jiu", 旧: "jiu",
   局: "ju", 句: "ju", 拒: "ju", 具: "ju", 据: "ju", 卷: "juan", 决: "jue",
   绝: "jue", 军: "jun", 均: "jun", 几: "ji", 己: "ji", 计算器: "jisuanqi", 加载: "jiazai",
-  开: "kai", 看: "kan", 康: "kang", 考: "kao", 科: "ke", 可: "ke", 刻: "ke",
+  开: "kai", 看: "kan", 康: "kang", 考: "kao", 靠: "kao", 科: "ke", 可: "ke", 刻: "ke",
   客: "ke", 课: "ke", 空: "kong", 口: "kou", 库: "ku", 块: "kuai", 快: "kuai",
   宽: "kuan", 况: "kuang", 困: "kun", 扩: "kuo", 卡: "ka", 开发: "kaifa",
   拉: "la", 来: "lai", 蓝: "lan", 老: "lao", 乐: "le", 类: "lei", 累: "lei",

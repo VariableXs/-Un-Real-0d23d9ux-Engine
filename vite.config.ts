@@ -1,3 +1,4 @@
+﻿/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
@@ -7,6 +8,10 @@ const html = (name: string): string => fileURLToPath(new URL(`./${name}.html`, i
 // M4 拆窗：MPA 多入口 —— 每个窗口一个 html（desktop + 四款软件），独立 bundle。
 export default defineConfig({
   plugins: [react()],
+  // AI-02 批次：vitest 全局 setup（node 环境注入 localStorage 内存兜底）
+  test: {
+    setupFiles: ["./src/test/setup.ts"],
+  },
   clearScreen: false,
   server: {
     port: 1420,
@@ -36,3 +41,4 @@ export default defineConfig({
     },
   },
 });
+

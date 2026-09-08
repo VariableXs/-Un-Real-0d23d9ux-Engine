@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExEntry {
     pub name: String,
@@ -735,9 +735,176 @@ pub fn ex_thumbnail(_st: tauri::State<AppState>, path: String) -> CmdResult<Stri
     Ok(format!("data:{mime};base64,{b64}"))
 }
 
+// ---------- AI-10（U-16 Explorer 2.0 + V-31 视图记忆）后端扩展 ----------
+
+/// 分页列目录（万项目录虚拟滚动的数据面；filter 为行内过滤子串，空 = 全量）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExPage {
+    pub path: String,
+    pub total: u32,
+    pub offset: u32,
+    pub limit: u32,
+    pub entries: Vec<ExEntry>,
+}
+
+#[tauri::command]
+pub fn ex_list_paged(
+    _st: tauri::State<AppState>,
+    path: String,
+    offset: u32,
+    limit: u32,
+    filter: Option<String>,
+) -> CmdResult<ExPage> {
+    if limit == 0 || limit > 1000 {
+        return Err(AppError::validation("limit 须在 1..=1000 / limit must be 1..=1000"));
+    }
+    let dir = PathBuf::from(&path);
+    let lp = long_path(&dir);
+    if !lp.is_dir() {
+        return Err(AppError::not_found(format!("目录不存在 / Directory not found: {path}")));
+    }
+    let filter = filter.unwrap_or_default().to_lowercase();
+    let mut entries: Vec<ExEntry> = Vec::new();
+    for item in fs::read_dir(&lp)?.flatten() {
+        if let Some(e) = entry_from_path(&item.path()) {
+            if !filter.is_empty() && !e.name.to_lowercase().contains(&filter) {
+                continue;
+            }
+            entries.push(e);
+        }
+    }
+    entries.sort_by(|a, b| {
+        let (da, db) = (a.kind == "dir", b.kind == "dir");
+        db.cmp(&da).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    let total = entries.len() as u32;
+    let start = (offset as usize).min(entries.len());
+    let end = (start + limit as usize).min(entries.len());
+    Ok(ExPage {
+        path: display_path(&dir),
+        total,
+        offset,
+        limit,
+        entries: entries[start..end].to_vec(),
+    })
+}
+
+/// V-31 文件夹视图记忆：按目录持久化视图（icon | list | column）。
+/// 存储 `<dataDir>/explorer_views.json`，键为归一化路径。
+fn views_path(st: &AppState) -> PathBuf {
+    st.data_dir.join("explorer_views.json")
+}
+
+/// 归一化目录键：小写 + 统一正斜杠 + 去尾部斜杠。
+fn norm_dir_key(path: &str) -> String {
+    let mut k = path.replace('\\', "/").to_lowercase();
+    while k.ends_with('/') && k.len() > 3 {
+        k.pop();
+    }
+    k
+}
+
+fn ex_view_get_inner(st: &AppState, path: &str) -> CmdResult<Option<String>> {
+    let map: std::collections::BTreeMap<String, String> = fs::read(views_path(st))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    Ok(map.get(&norm_dir_key(path)).cloned())
+}
+
+fn ex_view_set_inner(st: &AppState, path: &str, view: &str) -> CmdResult<()> {
+    if !matches!(view, "icon" | "list" | "column") {
+        return Err(AppError::validation(format!("未知视图 / unknown view: {view}")));
+    }
+    let mut map: std::collections::BTreeMap<String, String> = fs::read(views_path(st))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    map.insert(norm_dir_key(path), view.to_string());
+    fs::write(views_path(st), serde_json::to_vec_pretty(&map)?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn ex_view_get(st: tauri::State<AppState>, path: String) -> CmdResult<Option<String>> {
+    ex_view_get_inner(&st, &path)
+}
+
+#[tauri::command]
+pub fn ex_view_set(st: tauri::State<AppState>, path: String, view: String) -> CmdResult<()> {
+    ex_view_set_inner(&st, &path, &view)
+}
+
+/// U-16 列视图（macOS Finder 式逐级横排）：一次读多级目录（前端传入当前链）。
+#[tauri::command]
+pub fn ex_column_chain(_st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec<ExListing>> {
+    if paths.len() > 12 {
+        return Err(AppError::validation("列视图链过深 / column chain too deep"));
+    }
+    let mut out = Vec::with_capacity(paths.len());
+    for p in &paths {
+        let dir = PathBuf::from(p);
+        let lp = long_path(&dir);
+        if !lp.is_dir() {
+            return Err(AppError::not_found(format!("目录不存在 / Directory not found: {p}")));
+        }
+        let mut entries: Vec<ExEntry> = Vec::new();
+        for item in fs::read_dir(&lp)?.flatten() {
+            if let Some(e) = entry_from_path(&item.path()) {
+                entries.push(e);
+            }
+        }
+        entries.sort_by(|a, b| {
+            let (da, db) = (a.kind == "dir", b.kind == "dir");
+            db.cmp(&da).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+        let parent = if is_root_like(&dir) { None } else { dir.parent().map(|q| display_path(q)) };
+        out.push(ExListing { path: display_path(&dir), parent, entries });
+    }
+    Ok(out)
+}
+
+/// U-16 批量重命名说明：后端复用 fileops::batch_rename_preview/apply/undo（M-21，
+/// AI-09 领地，explorer 前端面板直接调用该命令组，此处不重复实现）。
+
 #[cfg(test)]
 mod tests {
     use super::search_syntax::{glob_match, parse};
+    use super::{norm_dir_key, views_path};
+
+    /// V-31：文件夹视图记忆（按目录持久化，归一化键命中）。
+    #[test]
+    fn view_memory_persists() {
+        let tmp = std::env::temp_dir().join(format!("variable-exview-{}", std::process::id()));
+        let st = crate::state::AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        assert_eq!(ex_view_get_inner(&st, r"D:\Anything").unwrap(), None);
+        ex_view_set_inner(&st, r"D:\Anything", "column").unwrap();
+        assert_eq!(ex_view_get_inner(&st, r"d:\anything\").unwrap().as_deref(), Some("column"));
+        assert!(ex_view_set_inner(&st, r"D:\X", "poster").is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    fn ex_view_get_inner(st: &crate::state::AppState, path: &str) -> crate::error::CmdResult<Option<String>> {
+        let map: std::collections::BTreeMap<String, String> = std::fs::read(views_path(st))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        Ok(map.get(&norm_dir_key(path)).cloned())
+    }
+
+    fn ex_view_set_inner(st: &crate::state::AppState, path: &str, view: &str) -> crate::error::CmdResult<()> {
+        if !matches!(view, "icon" | "list" | "column") {
+            return Err(crate::error::AppError::validation("bad view"));
+        }
+        let mut map: std::collections::BTreeMap<String, String> = std::fs::read(views_path(st))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        map.insert(norm_dir_key(path), view.to_string());
+        std::fs::write(views_path(st), serde_json::to_vec_pretty(&map)?)?;
+        Ok(())
+    }
 
     #[test]
     fn glob_matches_wildcards() {

@@ -1,19 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAllWindows } from "@tauri-apps/api/window";
 import {
   Bot,
-  AppWindow, Bell, Bluetooth, ChevronLeft, ChevronRight, ChevronUp, FolderOpen, Moon, Pin, PinOff,
+  AppWindow, Bell, Bluetooth, ChevronLeft, ChevronRight, ChevronUp, FolderOpen, MessageCircle, Moon, Pin, PinOff,
   Play, Search, Trash2, Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { AppMode } from "../../state/uiStore";
-import type { TaskbarPos } from "../../lib/settings";
+import type { Settings, TaskbarPos } from "../../lib/settings";
 import { closeQuickPanel, openQuickPanel, pushToast, useUi, uiStore } from "../../state/uiStore";
 import { errMessage, ipc, type SysBrief, type SysDisk, type ThirdApp } from "../../lib/ipc";
 import { useDnd } from "../../state/notifyStore";
 import { desktopAppLabel, desktopIconDefs } from "../desktop-icons/DesktopIcons";
 import { openContextMenu, type MenuItem } from "../../components/ContextMenu";
-import { closeVwmWin, openVwmApp, taskbarClickVwm, vwmStore } from "../windows/vwm";
+import { askConfirm } from "../../components/Modal";
+import { closeVwmWin, focusVwmWin, openVwmApp, taskbarClickVwm, vwmStore } from "../windows/vwm";
 import { Globe } from "lucide-react";
 import type { BrowserProfileDto } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
@@ -27,6 +28,16 @@ import { QuickPanel, useNotifyBadge } from "../tray/QuickPanel";
 import { ImeIndicator } from "./ImeIndicator";
 import { MediaControl } from "./MediaControl";
 import { pushRecent } from "../startmenu/recent";
+// ---- AI-03 任务栏与托盘组（U-15 / M-10…M-18 / V-15…V-20）----
+import { aggregateRecentForApp, windowsForApp } from "./jumplist";
+import { computeOverflow } from "./overflow";
+import { canLaunch, markLaunch, pendingPhase, settleLaunch, usePendingLaunches } from "./pending";
+import { imTotal, startImWatcher, useImCounts } from "./imbadge";
+import { isoWeek, sanitizeClockZones, timeInZone } from "./clockcard";
+import { effectiveMenuIds, loadMenuOverride, type TaskbarMenuOverride } from "../desktop/taskbarMenu";
+import { setInputOpen } from "./stickies";
+import { StickyNotes } from "./StickyNotes";
+import { VolumeBadge } from "./VolumeBadge";
 
 /**
  * Win11 风格任务栏（M3 → 批次E，桌面环境 L1）：
@@ -49,6 +60,8 @@ export function Taskbar(props: {
   onShowDesktop: () => void;
   onOpenSettings: () => void;
   pos: TaskbarPos;
+  /** AI-03：运行指示样式 / 媒体呼吸 / 时钟多时区（V-18 / M-16 / M-12） */
+  settings: Settings;
 }): React.ReactElement {
   const { t, lang } = useI18n();
   const [now, setNow] = useState(() => new Date());
@@ -123,22 +136,54 @@ export function Taskbar(props: {
   const time = now.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
   const date = now.toLocaleDateString(locale, { year: "numeric", month: "2-digit", day: "2-digit" });
 
+  // ---- M-10 / U-15 跳转列表：最近记录 + 活动实例窗口 + 常用动作（≤10 项） ----
   const officialJump = (app: AppMode, x: number, y: number): void => {
+    const label = desktopAppLabel(app);
+    const recents = aggregateRecentForApp(app);
+    const wins = windowsForApp(
+      vwmStore.getState().wins.map((w) => ({ id: w.id, app: w.app, title: w.id, z: w.z })),
+      app,
+    );
     const items: MenuItem[] = [
-      { label: t("desktopOpen"), icon: <Play size={13} />, onClick: () => props.onOpenApp(app) },
+      { label: t("desktopOpen"), icon: <Play size={13} />, onClick: () => { void launchPendingKey(`app:${app}`, label); props.onOpenApp(app); } },
+      ...(wins.length > 0
+        ? [
+            { label: t("jlWindows"), children: [
+                ...wins.slice(0, 6).map((w): MenuItem => ({
+                  label: `${label} · ${w.id.slice(-4)}`,
+                  onClick: () => focusVwmWin(w.id),
+                })),
+                { separator: true } as MenuItem,
+                { label: t("jlCloseAll"), danger: true, onClick: () => { for (const w of wins) closeVwmWin(w.id); } } as MenuItem,
+              ] },
+          ]
+        : []),
+      ...(recents.length > 0
+        ? [
+            {
+              label: t("jlRecent"),
+              children: recents.map((r): MenuItem => ({
+                label: `${r.name} · ${new Date(r.ts).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`,
+                onClick: () => props.onOpenApp(app),
+              })),
+            },
+          ]
+        : []),
+      { separator: true },
       {
         label: t("uninstallMenu"),
         icon: <Trash2 size={13} />,
         onClick: () => openLauncherManager("installed"),
       },
     ];
-    openContextMenu(x, y, items);
+    openContextMenu(x, y, items.slice(0, 10));
   };
 
   const thirdJump = (a: ThirdApp, x: number, y: number): void => {
     const pinned = pins.includes(a.id);
+    const recents = aggregateRecentForApp(a.id);
     const items: MenuItem[] = [
-      { label: t("desktopOpen"), icon: <Play size={13} />, onClick: () => void launchThirdApp(a.id, a.name) },
+      { label: t("desktopOpen"), icon: <Play size={13} />, onClick: () => void launchPendingKey(`tp:${a.id}`, a.name).then(() => launchThirdApp(a.id, a.name)) },
       {
         label: t("runAsAdmin"),
         icon: <Play size={13} />,
@@ -153,6 +198,17 @@ export function Taskbar(props: {
         icon: pinned ? <PinOff size={13} /> : <Pin size={13} />,
         onClick: () => toggleTaskbarPin(a.id),
       },
+      ...(recents.length > 0
+        ? [
+            {
+              label: t("jlRecent"),
+              children: recents.map((r): MenuItem => ({
+                label: r.name,
+                onClick: () => void launchThirdApp(a.id, a.name),
+              })),
+            } as MenuItem,
+        ]
+        : []),
       { separator: true },
       {
         label: t("tpRemove"),
@@ -166,7 +222,7 @@ export function Taskbar(props: {
         },
       },
     ];
-    openContextMenu(x, y, items);
+    openContextMenu(x, y, items.slice(0, 10));
   };
 
   const defs = desktopIconDefs().filter((d) => uninstalled[d.app] === undefined);
@@ -236,14 +292,111 @@ export function Taskbar(props: {
       .catch((e) => console.warn("[taskbar] volume wheel failed", errMessage(e).message));
   };
 
-  // 批次E：任务栏空白右键菜单
+  // ---- M-15 任务栏空区菜单：注册表 + 用户覆盖（默认项集与现状一致） ----
+  const [menuOverride, setMenuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
+  const blankMenuActions = useMemo(
+    () => ({
+      showDesktop: props.onShowDesktop,
+      launcher: () => openLauncherManager(),
+      sticky: () => setInputOpen(true),
+      taskbarSettings: props.onOpenSettings,
+    }),
+    [props.onShowDesktop, props.onOpenSettings],
+  );
   const blankMenu = (x: number, y: number): void => {
-    openContextMenu(x, y, [
-      { label: t("showDesktop"), onClick: props.onShowDesktop },
-      { label: t("launcherTitle"), onClick: openLauncherManager },
-      { label: t("taskbarSettings"), onClick: props.onOpenSettings },
-    ]);
+    const items = effectiveMenuIds(menuOverride).map((id): MenuItem => ({
+      label: t(
+        id === "showDesktop" ? "showDesktop"
+        : id === "launcher" ? "launcherTitle"
+        : id === "sticky" ? "tbQuickSticky"
+        : "taskbarSettings",
+      ),
+      onClick: blankMenuActions[id as keyof typeof blankMenuActions],
+    }));
+    openContextMenu(x, y, items);
   };
+
+  // ---- M-13 等待态：占位条目（.skeleton shimmer 既有样式；800ms 防抖在 onClick 处拦截） ----
+  const pendingItems = usePendingLaunches();
+  useEffect(() => {
+    // 运行态轮询确认 → 撤占位
+    for (const p of pendingItems) {
+      if (p.key.startsWith("app:") && (officialRunning.has(p.key.slice(4) as AppMode) || vwmWins.some((w) => w.app === p.key.slice(4)))) settleLaunch(p.key);
+      if (p.key.startsWith("tp:") && tpRunning.has(p.key.slice(3))) settleLaunch(p.key);
+    }
+  }, [officialRunning, tpRunning, vwmWins, pendingItems]);
+
+  // ---- M-14 IM 未读聚合（只读 imwatch 标题信号；99+ 封顶） ----
+  const imCounts = useImCounts();
+  const imSum = imTotal(imCounts);
+  useEffect(() => startImWatcher(), []);
+
+  // ---- V-16 拖到任务栏图标打开（官方=扩展名白名单；第三方=launch arg 直达） ----
+  const dropOpen = async (target: { kind: "app" | "tp"; id: string; name: string }, files: string[]): Promise<void> => {
+    if (files.length === 0) return;
+    if (files.length > 5) {
+      const ok = await askConfirm({
+        title: t("tbDropOpen"),
+        body: t("tbDropMany", { n: files.length }),
+        okLabel: t("tbDropOpen"),
+      });
+      if (!ok) return;
+    }
+    for (const f of files) {
+      if (target.kind === "tp") {
+        void launchThirdApp(target.id, target.name, f);
+      } else if (target.id === "write") {
+        uiStore.setState({ writePendingOpen: f });
+        props.onOpenApp("write");
+      } else {
+        pushToast("info", target.name, t("tbDropUnsupported"));
+      }
+    }
+  };
+
+  // ---- U-15 / V-17 溢出折叠：中心区装不下的图标收进折叠菜单（固定项常驻在外） ----
+  const centerRef = useRef<HTMLDivElement | null>(null);
+  const overflowActions = useRef<Map<string, { label: string; run: () => void }>>(new Map());
+  const [overflowIds, setOverflowIds] = useState<string[]>([]);
+  const overflowSig = overflowIds.join(",");
+  useEffect(() => {
+    const el = centerRef.current;
+    if (!el) return;
+    const measure = (): void => {
+      const kids = Array.from(el.querySelectorAll<HTMLElement>(".tb-btn"));
+      const capacity = el.clientWidth - 36; // 折叠按钮预留
+      const items = kids
+        .filter((k) => k.dataset.oid)
+        .map((k) => ({
+          id: k.dataset.oid as string,
+          width: k.offsetWidth,
+          pinned: k.dataset.pinned === "1",
+        }));
+      const next = computeOverflow(items, capacity);
+      const sig = next.join(",");
+      setOverflowIds((cur) => (cur.join(",") === sig ? cur : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overflowSig]);
+
+  const isOverflow = (id: string): boolean => overflowIds.includes(id);
+  const overflowMenu = (x: number, y: number): void => {
+    const items: MenuItem[] = overflowIds
+      .map((id) => overflowActions.current.get(id))
+      .filter((a): a is { label: string; run: () => void } => !!a)
+      .map((a) => ({ label: a.label, onClick: a.run }));
+    openContextMenu(x, y, items.length > 0 ? items : [{ label: t("tbOverflowEmpty"), disabled: true }]);
+  };
+
+  // ---- M-12 时钟悬停卡（多时区 ≤3 + ISO 周数 + 今日未读，只读消费） ----
+  const [clockHover, setClockHover] = useState(false);
+  const clockHoverTimer = useRef<number | null>(null);
+  const clockZones = useMemo(() => sanitizeClockZones(props.settings.clockZones), [props.settings.clockZones]);
+  const unreadNow = useNotifyBadge();
 
   const setCollapsed = (v: boolean): void => {
     setTrayCollapsed(v);
@@ -403,7 +556,38 @@ export function Taskbar(props: {
         )}
       </div>
 
-      <div className="taskbar-center" role="toolbar" aria-label={t("startMenu")}>
+      <div className="taskbar-center" role="toolbar" aria-label={t("startMenu")} ref={centerRef}>
+        {/* M-13：启动等待态占位（.skeleton shimmer；8s 后转「仍在启动」文案） */}
+        {pendingItems.map((p) => {
+          const phase = pendingPhase(p.startedAt, Date.now());
+          return (
+            <div
+              key={`pending-${p.key}`}
+              className={`tb-btn tb-pending${phase === "slow" ? " slow" : ""}`}
+              role="status"
+              aria-label={phase === "slow" ? t("tbPendingSlow") : t("tbPending")}
+              title={phase === "slow" ? `${t("tbPendingSlow")} · ${Math.round((Date.now() - p.startedAt) / 1000)}s` : t("tbPending")}
+              onClick={() => {
+                if (phase === "slow") pushToast("info", p.name, `${t("tbPendingDetail")} · ${Math.round((Date.now() - p.startedAt) / 1000)}s`);
+              }}
+            >
+              <span className="tb-app-icon skeleton" aria-hidden />
+            </div>
+          );
+        })}
+        {/* V-15/U-15：溢出折叠入口（`^` + 计数） */}
+        {overflowIds.length > 0 && (
+          <button
+            type="button"
+            className="tb-btn tb-overflow-btn"
+            aria-label={`${t("tbOverflow")} (${overflowIds.length})`}
+            title={`${t("tbOverflow")} (${overflowIds.length})`}
+            onClick={(e) => overflowMenu(e.clientX, e.clientY)}
+          >
+            <ChevronUp size={16} strokeWidth={1.7} />
+            <span className="tb-badge" aria-hidden>{overflowIds.length}</span>
+          </button>
+        )}
         <button
           type="button"
           className={`tb-btn tb-v${props.startOpen ? " active" : ""}`}

@@ -90,6 +90,13 @@ pub fn run() {
             shell::sysmaint::start_scheduler(app.handle().clone());
             // AI-09 M-27：目录监控哨兵（从配置恢复哨兵线程，含静音时段）
             shell::fileops::startup_init(&app.state::<AppState>(), app.handle());
+            // AI-07 N-15：剪贴板历史看护（序列号轮询 + DPAPI 落盘 + 敏感名单）
+            {
+                let st = app.state::<AppState>();
+                shell::cliphist::spawn_cliphist_watcher(app.handle().clone(), st.data_dir.clone());
+            }
+            // AI-07 N-18：宏引擎运行时（Ctrl+Esc 急停监测 + cron 调度）
+            shell::macros::spawn_macro_runtime(app.handle().clone());
             // 兼容层：Wallpaper Engine 冲突检测与自动缓解（libcef 0x80000003 根因）
             shell::compat::apply_if_needed_at_startup(app.handle());
             shell::compat::spawn_compat_watcher(app.handle().clone());
@@ -582,7 +589,24 @@ pub fn run() {
     shell::directshell::directshell_status,
     shell::directshell::directshell_set,
             mindmap::nodes_versions,
-            shell::xflow::drag_track
+            shell::xflow::drag_track,
+            // ---- AI-07 效率中枢：N-15 剪贴板历史 / N-18 宏引擎护栏 ----
+            shell::cliphist::cliphist_list,
+            shell::cliphist::cliphist_pin,
+            shell::cliphist::cliphist_remove,
+            shell::cliphist::cliphist_clear,
+            shell::cliphist::cliphist_burn,
+            shell::cliphist::cliphist_config_get,
+            shell::cliphist::cliphist_config_set,
+            shell::cliphist::cliphist_write_back,
+            shell::macros::macro_emergency_stop,
+            shell::macros::macro_emergency_clear,
+            shell::macros::macro_is_stopped,
+            shell::macros::macro_uac_foreground,
+            shell::macros::macro_upsert_trigger,
+            shell::macros::macro_remove_trigger,
+            shell::macros::macro_list_triggers,
+            shell::macros::macro_send_text
         ])
         .build(tauri::generate_context!());
     match app {

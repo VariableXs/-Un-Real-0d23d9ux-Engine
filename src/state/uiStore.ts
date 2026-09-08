@@ -45,6 +45,8 @@ export interface UiState {
   selectedFrameId: string | null;
   /** Node currently in text-editing session (null = none). */
   editingId: string | null;
+  /** M-34 Esc 层级语义：浮层栈（栈顶 = 最后打开的浮层，Esc 逐层消费）。 */
+  overlayStack: string[];
 }
 
 export const uiStore = createStore<UiState>({
@@ -72,6 +74,7 @@ export const uiStore = createStore<UiState>({
   activeContextMenu: null,
   selectedFrameId: null,
   editingId: null,
+  overlayStack: [],
 });
 
 /**
@@ -155,4 +158,33 @@ export function pushToast(kind: Toast["kind"], message: string, detail?: string)
 
 export function dismissToast(id: number): void {
   toastStore.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+}
+
+// ---------- M-34 Esc 层级语义（浮层栈） ----------
+
+/**
+ * 浮层入栈。幂等：同 id 重复 push 只刷新位置（移到栈顶）。
+ * 调用方：模态/右键菜单/各面板/搜索框等浮层在打开时调用。
+ */
+export function pushOverlay(id: string): void {
+  uiStore.setState((s) => ({ overlayStack: [...s.overlayStack.filter((o) => o !== id), id] }));
+}
+
+/** 浮层出栈（浮层关闭时调用，与其打开路径配对）。 */
+export function popOverlay(id: string): void {
+  uiStore.setState((s) => ({ overlayStack: s.overlayStack.filter((o) => o !== id) }));
+}
+
+/**
+ * Esc 消费一层：返回被关闭的浮层 id（栈顶），栈空返回 null。
+ * 红线：kbdhook 双击 Esc 切环境是既有全局契约——环境内有浮层时
+ * 双击 Esc 只关浮层（消费一层 ×2），该判定由 kbdhook 层独立完成，
+ * 此处只负责单次 Esc 的栈顶消费，不参与双击判定。
+ */
+export function consumeOverlayOnEsc(): string | null {
+  const stack = uiStore.getState().overlayStack;
+  if (stack.length === 0) return null;
+  const top = stack[stack.length - 1] ?? null;
+  uiStore.setState({ overlayStack: stack.slice(0, -1) });
+  return top;
 }

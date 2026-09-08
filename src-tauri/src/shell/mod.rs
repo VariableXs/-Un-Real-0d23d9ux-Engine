@@ -71,3 +71,6 @@ pub mod panic;
 pub mod trust;
 pub mod incognito;
 pub mod insights;
+// AI-07 效率中枢组（N-15 剪贴板历史后端 / N-18 宏引擎护栏与触发器）
+pub mod cliphist;
+pub mod macros;

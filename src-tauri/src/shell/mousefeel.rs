@@ -26,6 +26,12 @@ static BACKUP: std::sync::Mutex<Option<MouseParamsDto>> = std::sync::Mutex::new(
 /// V-69 精确模式期间保存的原速度档（0 = 未处于降速态）。
 static TEMP_SPEED_BACKUP: std::sync::Mutex<Option<i32>> = std::sync::Mutex::new(None);
 
+/// windows-0.58 未导出的两个 SPI GET 常量（WinUser.h 原值）。
+#[cfg(windows)]
+const SPI_GETDOUBLECLICKTIME: u32 = 0x0020;
+#[cfg(windows)]
+const SPI_GETMOUSEBUTTONSWAP: u32 = 0x0021;
+
 #[cfg(windows)]
 fn spi_get_u32(action: u32) -> u32 {
     let mut v: u32 = 0;
@@ -55,10 +61,7 @@ fn spi_set(action: u32, v: u32) -> bool {
 
 #[cfg(windows)]
 fn read_params() -> MouseParamsDto {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        SPI_GETDOUBLECLICKTIME, SPI_GETMOUSE, SPI_GETMOUSEBUTTONSWAP, SPI_GETMOUSESPEED,
-        SPI_GETWHEELSCROLLLINES,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{SPI_GETMOUSE, SPI_GETMOUSESPEED, SPI_GETWHEELSCROLLLINES};
     let mut mouse = [0i32; 3]; // [thresh1, thresh2, speed] — 速度档在第 3 位
     unsafe {
         windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
@@ -68,10 +71,11 @@ fn read_params() -> MouseParamsDto {
             windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
         );
     }
+    let _ = SPI_GETMOUSESPEED;
     MouseParamsDto {
         speed: mouse[2],
         double_click_ms: spi_get_u32(SPI_GETDOUBLECLICKTIME),
-        wheel_lines: spi_get_u32(SPI_GETWHEELSCROLLLINES) as i32,
+        wheel_lines: spi_get_u32(SPI_GETWHEELSCROLLLINES.0) as i32,
         swap_buttons: spi_get_u32(SPI_GETMOUSEBUTTONSWAP) != 0,
     }
 }
@@ -79,7 +83,7 @@ fn read_params() -> MouseParamsDto {
 #[cfg(windows)]
 fn spi_set_speed(v: i32) -> bool {
     spi_set(
-        windows::Win32::UI::WindowsAndMessaging::SPI_SETMOUSESPEED,
+        windows::Win32::UI::WindowsAndMessaging::SPI_SETMOUSESPEED.0,
         v.clamp(1, 20) as u32,
     )
 }
@@ -117,9 +121,9 @@ pub fn mouse_params_write(
             )
             .is_ok()
         };
-        ok = spi_set(SPI_SETDOUBLECLICKTIME, double_click_ms.clamp(200, 900) as u32) && ok;
-        ok = spi_set(SPI_SETWHEELSCROLLLINES, wheel_lines.clamp(1, 10) as u32) && ok;
-        ok = spi_set(SPI_SETMOUSEBUTTONSWAP, if swap_buttons { 1 } else { 0 }) && ok;
+        ok = spi_set(SPI_SETDOUBLECLICKTIME.0, double_click_ms.clamp(200, 900) as u32) && ok;
+        ok = spi_set(SPI_SETWHEELSCROLLLINES.0, wheel_lines.clamp(1, 10) as u32) && ok;
+        ok = spi_set(SPI_SETMOUSEBUTTONSWAP.0, if swap_buttons { 1 } else { 0 }) && ok;
         if !ok {
             // 部分失败 → 立即整体回滚到 before，不留半套状态
             let _ = restore_params(&before);
@@ -150,9 +154,9 @@ fn restore_params(p: &MouseParamsDto) -> bool {
         )
         .is_ok()
     };
-    ok = spi_set(SPI_SETDOUBLECLICKTIME, p.double_click_ms) && ok;
-    ok = spi_set(SPI_SETWHEELSCROLLLINES, p.wheel_lines.clamp(0, i32::MAX) as u32) && ok;
-    ok = spi_set(SPI_SETMOUSEBUTTONSWAP, if p.swap_buttons { 1 } else { 0 }) && ok;
+    ok = spi_set(SPI_SETDOUBLECLICKTIME.0, p.double_click_ms) && ok;
+    ok = spi_set(SPI_SETWHEELSCROLLLINES.0, p.wheel_lines.clamp(0, i32::MAX) as u32) && ok;
+    ok = spi_set(SPI_SETMOUSEBUTTONSWAP.0, if p.swap_buttons { 1 } else { 0 }) && ok;
     ok
 }
 

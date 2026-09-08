@@ -1,0 +1,12 @@
+/** M-08 过滤式焦点轮转（如按应用切换）：过滤集为空 → false（调用方提示并兜底）。 */
+export function cycleVwmFocusFiltered(opts?: { byApp?: VwmApp; backward?: boolean }): boolean {
+  const s = vwmStore.getState();
+  let cands = s.wins.filter((w) => !w.minimized);
+  if (opts?.byApp !== undefined) cands = cands.filter((w) => w.app === opts.byApp);
+  if (cands.length === 0) return false;
+  const sorted = [...cands].sort((a, b) => b.z - a.z);
+  const cur = sorted.findIndex((w) => w.id === s.focusedId);
+  const next = cur < 0 ? 0 : (cur + (opts?.backward ? -1 : 1) + sorted.length) % sorted.length;
+  focusVwmWin(sorted[cur < 0 ? 0 : next]!.id);
+  return true;
+}

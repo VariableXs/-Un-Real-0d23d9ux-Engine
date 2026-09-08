@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ArrowLeft, ArrowRight, ArrowUp, File as FileIcon, Folder, FolderOpen, FolderPlus,
-  HardDrive, Image as ImageIcon, LayoutGrid, List, RefreshCw, Search, Share2, Star, Trash2, X,
+  HardDrive, Image as ImageIcon, LayoutGrid, List, Network, RefreshCw, Search, Send, Share2, Star, Trash2, X,
 } from "lucide-react";
 import { askChoice, askConfirm, askPrompt, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
 import { ContextMenuHost, openContextMenu, type MenuItem } from "../../components/ContextMenu";
 import { ToastHost } from "../../components/ToastHost";
 import { WindowControls } from "../../components/WindowControls";
 import { useI18n } from "../../i18n";
-import { errMessage, ipc, type ExCopyMode, type ExEntry, type ExListing, type ExSearchResult, type ExVarDir } from "../../lib/ipc";
+import {
+  errMessage, ipc, type ExCopyMode, type ExEntry, type ExListing, type ExSearchResult, type ExVarDir,
+  type LockHolder, type NetDrive, type SendToItem,
+} from "../../lib/ipc";
 import { beginXDrag } from "../../lib/xflow";
 import { pushToast } from "../../state/uiStore";
 import { openExplorerWindow, trackSelfGeom } from "../windows/appWindows";
@@ -18,6 +21,7 @@ import { openVwmSystem } from "../windows/vwm";
 import { RecycleView } from "../recycle/RecycleView";
 import { showNativeContextMenu } from "../compat/ShellProxy";
 import { QuickPreview, type QuickPreviewTarget } from "./QuickPreview";
+import { loadCtxConfig, loadDeleteTier, type CtxItemId } from "./ctxMenu";
 
 /**
  * 批次C 系统窗口：文件管理器完整版（explorer.html，?view=recycle 时载入回收站）。
@@ -223,6 +227,14 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   const [favs, setFavs] = useState<string[]>([]);
   const [home, setHome] = useState<string | null>(null);
   const [drives, setDrives] = useState<{ letter: string; path: string }[]>([]);
+  // AI-09 Z-31：网络驱动器（侧栏如实显示，断连置灰）
+  const [netDrives, setNetDrives] = useState<NetDrive[]>([]);
+  // AI-09 Z-35：发送到目标（系统 + 自定义）
+  const [sendto, setSendto] = useState<SendToItem[]>([]);
+  // AI-09 M-20：多选集合（Ctrl+点击）
+  const [selSet, setSelSet] = useState<Set<string>>(new Set());
+  // AI-09 M-25：占用查看对话框
+  const [lockView, setLockView] = useState<{ path: string; holders: LockHolder[] } | null>(null);
   // 批次E（规格 7.2）：Variable 数据目录节点组
   const [varDirs, setVarDirs] = useState<ExVarDir[]>([]);
   const [addrEdit, setAddrEdit] = useState<string | null>(null);
@@ -276,6 +288,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
       setFilter("");
       setSearch(null);
       setAddrEdit(null);
+      setSelSet(new Set());
       void loadPath(p);
     },
     [activeId, loadPath],
@@ -351,6 +364,19 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
       .exFavList()
       .then((f) => {
         if (alive.current) setFavs(f);
+      })
+      .catch(() => {});
+    // AI-09 Z-31/Z-35：网络驱动器 + 发送到目标（失败静默——侧栏/菜单保持现状）
+    void ipc
+      .netDrives()
+      .then((d) => {
+        if (alive.current) setNetDrives(d);
+      })
+      .catch(() => {});
+    void ipc
+      .sendtoList()
+      .then((d) => {
+        if (alive.current) setSendto(d);
       })
       .catch(() => {});
     const id = window.setInterval(() => {
@@ -516,18 +542,37 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
   const trash = useCallback(
     async (entries: ExEntry[]): Promise<void> => {
       if (entries.length === 0) return;
-      const ok = await askConfirm({
-        title: t("trashTitle"),
-        body:
-          entries.length === 1
-            ? t("trashBody", { name: entries[0]?.name ?? "" })
-            : t("trashBodyMulti", { n: entries.length }),
-        danger: true,
-        okLabel: t("exDelete"),
-      });
-      if (!ok) return;
+      // M-26：删除档位 —— 默认「环境回收站」= 现状；「询问」= 每次显式选择处置方式
+      let usePurge = false;
+      if (loadDeleteTier() === "ask") {
+        const choice = await askChoice({
+          title: t("trashTitle"),
+          body:
+            entries.length === 1
+              ? t("trashBody", { name: entries[0]?.name ?? "" })
+              : t("trashBodyMulti", { n: entries.length }),
+          options: [
+            { value: "recycle", label: t("exDelete") },
+            { value: "purge", label: t("exPurgeAction") },
+          ],
+        });
+        if (!choice) return;
+        usePurge = choice === "purge";
+      } else {
+        const ok = await askConfirm({
+          title: t("trashTitle"),
+          body:
+            entries.length === 1
+              ? t("trashBody", { name: entries[0]?.name ?? "" })
+              : t("trashBodyMulti", { n: entries.length }),
+          danger: true,
+          okLabel: t("exDelete"),
+        });
+        if (!ok) return;
+      }
       try {
-        await ipc.exTrash(entries.map((e) => e.path));
+        if (usePurge) await ipc.exPurge(entries.map((e) => e.path));
+        else await ipc.exTrash(entries.map((e) => e.path));
         pushToast("success", t("deletedToast"), entries.map((e) => e.name).join(", "));
         await refresh();
       } catch (err) {
@@ -621,17 +666,81 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     [openConflict, t, refresh],
   );
 
+  // ---------- AI-09：多选 / 发送到 / 占用查看 ----------
+
+  /** M-20：当前生效的多选条目（含锚点；顺序按可见列表）。 */
+  const selEntries = useMemo(
+    () => visible.filter((e) => selSet.has(e.path) || e.path === selected),
+    [visible, selSet, selected],
+  );
+
   const copySel = useCallback((cut: boolean): void => {
-    if (!selEntry) return;
-    exClipboard = { paths: [selEntry.path], cut };
+    // M-20：多选时整批进剪贴板
+    const paths = selEntries.length > 1 ? selEntries.map((e) => e.path) : selEntry ? [selEntry.path] : [];
+    if (paths.length === 0) return;
+    exClipboard = { paths, cut };
     clipRef.current = exClipboard;
     setClipboardTick((n) => n + 1);
-  }, [selEntry]);
+  }, [selEntries, selEntry]);
 
   const pasteSel = useCallback((): void => {
     const clip = clipRef.current;
     if (clip && pathRef.current) void pasteInto(pathRef.current, clip);
   }, [pasteInto]);
+
+  // ---------- AI-09：发送到 / 占用查看 ----------
+
+  /** M-20：Ctrl+点击切换多选；普通点击单选。 */
+  const clickRow = useCallback((ev: React.MouseEvent, e: ExEntry): void => {
+    if (ev.ctrlKey || ev.metaKey) {
+      setSelSet((s) => {
+        const n = new Set(s);
+        if (n.has(e.path)) n.delete(e.path);
+        else n.add(e.path);
+        return n;
+      });
+      setSelected(e.path);
+    } else {
+      setSelected(e.path);
+      setSelSet(new Set());
+    }
+  }, []);
+
+  /** Z-35：发送到 —— 复制文件到目标目录（显式动作，复制而非移动）。 */
+  const sendTo = useCallback(
+    (src: string, target: string, name: string): void => {
+      void ipc
+        .sendtoCopy(src, target)
+        .then((dst) => {
+          pushToast("success", t("exSendTo"), `${name} → ${dst}`);
+        })
+        .catch((e: unknown) => pushToast("error", t("exSendTo"), errMessage(e).message));
+    },
+    [t],
+  );
+
+  /** Z-35：把目录登记为自定义发送到目标。 */
+  const sendtoAddCustom = useCallback(
+    (dir: string): void => {
+      void ipc
+        .sendtoCustomAdd(dir)
+        .then(() => ipc.sendtoList())
+        .then(setSendto)
+        .catch((e: unknown) => pushToast("error", t("exSendTo"), errMessage(e).message));
+    },
+    [t],
+  );
+
+  /** M-25：查看占用者（只读；无强拆按钮，系统未披露时如实显示）。 */
+  const whoLocks = useCallback(
+    (path: string): void => {
+      void ipc
+        .whoLocks(path)
+        .then((holders) => setLockView({ path, holders }))
+        .catch((e: unknown) => pushToast("error", t("exWhoLocks"), errMessage(e).message));
+    },
+    [t],
+  );
 
   const toggleFav = useCallback(
     (p: string): void => {
@@ -778,15 +887,17 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         pasteSel();
       } else if (e.key === "F2" && selEntry) {
         void rename(selEntry);
-      } else if (e.key === "Delete" && selEntry) {
+      } else if (e.key === "Delete" && (selEntry || selEntries.length > 0)) {
         e.preventDefault();
-        void (e.shiftKey ? purge([selEntry]) : trash([selEntry]));
+        const batch = selEntries.length > 1 ? selEntries : selEntry ? [selEntry] : [];
+        void (e.shiftKey ? purge(batch) : trash(batch));
       } else if (e.key === "Enter" && selEntry) {
         e.preventDefault();
         openEntry(selEntry);
       } else if (e.key === "Escape") {
         setPreview(null); // F-2.6 空格预览优先关闭，其次取消选择
         setSelected(null);
+        setSelSet(new Set());
       } else if (e.code === "Space" && selEntry) {
         // F-2.6 快速预览：空格呼出（焦点在输入框/文本域时不触发）
         const ae = document.activeElement;
@@ -801,7 +912,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     return () => window.removeEventListener("keydown", onKey);
   }, [
     goBack, goForward, goUp, refresh, newTab, cycleTab, closeTab, activeId, mkdir,
-    copySel, pasteSel, selEntry, rename, trash, purge, openEntry,
+    copySel, pasteSel, selEntry, selEntries, rename, trash, purge, openEntry,
   ]);
 
   // ---------- 右键菜单 ----------
@@ -829,35 +940,56 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     if (native?.shown) return;
 
     const isFav = favs.includes(e.path);
-    const items: MenuItem[] = [
-      { label: t("exOpen"), onClick: () => openEntry(e) },
-      ...(e.kind === "dir"
-        ? [{
-            label: isFav ? t("exFavRemove") : t("exFavAdd"),
-            icon: <Star size={13} />,
-            onClick: () => toggleFav(e.path),
-          }]
-        : []),
-      { separator: true },
-      { label: t("exCopyAction"), onClick: () => copySel(false) },
-      { label: t("exCut"), onClick: () => copySel(true) },
-      { separator: true },
-      { label: t("exRename"), onClick: () => void rename(e) },
-      { label: t("exDelete"), icon: <Trash2 size={14} />, danger: true, onClick: () => void trash([e]) },
-      {
-        label: t("exPurgeAction"),
-        danger: true,
-        onClick: () => void purge([e]),
+    // M-19：右键菜单注册表 —— 按用户配置（显隐 + 排序）组装；仅注册表内安全动作
+    const cfg = loadCtxConfig();
+    const builders: Record<CtxItemId, MenuItem | undefined> = {
+      open: { label: t("exOpen"), onClick: () => openEntry(e) },
+      fav:
+        e.kind === "dir"
+          ? {
+              label: isFav ? t("exFavRemove") : t("exFavAdd"),
+              icon: <Star size={13} />,
+              onClick: () => toggleFav(e.path),
+            }
+          : undefined,
+      copy: { label: t("exCopyAction"), onClick: () => copySel(false) },
+      cut: { label: t("exCut"), onClick: () => copySel(true) },
+      // Z-35：发送到（系统目标 + 自定义目标；目录可登记为新目标）
+      sendto: {
+        label: t("exSendTo"),
+        icon: <Send size={13} />,
+        children: [
+          ...sendto.map((s) => ({
+            label: s.name,
+            onClick: () => sendTo(e.path, s.target, e.name),
+          })),
+          ...(sendto.length > 0 && e.kind === "dir" ? [{ separator: true } as MenuItem] : []),
+          ...(e.kind === "dir"
+            ? [{
+                label: t("exSendToAddCustom"),
+                icon: <FolderPlus size={13} />,
+                onClick: () => sendtoAddCustom(e.path),
+              }]
+            : []),
+        ],
       },
-      // 批次E-7：焚毁（覆写删除，仅文件；不经回收站）
-      ...(e.kind === "file"
-        ? [{ label: t("shredTitle"), danger: true, onClick: () => void shred(e) }]
-        : []),
-      { separator: true },
-      // 批次C（规格 5.7.2）：共享到其他软件 —— 拖到 Write 编辑器嵌入图片/附件
-      ...(
+      // M-25：文件占用侦探（只读，无强拆）
+      wholocks:
         e.kind === "file"
-          ? [{
+          ? { label: t("exWhoLocks"), onClick: () => whoLocks(e.path) }
+          : undefined,
+      rename: { label: t("exRename"), onClick: () => void rename(e) },
+      delete: { label: t("exDelete"), icon: <Trash2 size={14} />, danger: true, onClick: () => void trash([e]) },
+      purge: { label: t("exPurgeAction"), danger: true, onClick: () => void purge([e]) },
+      // 批次E-7：焚毁（覆写删除，仅文件；不经回收站）
+      shred:
+        e.kind === "file"
+          ? { label: t("shredTitle"), danger: true, onClick: () => void shred(e) }
+          : undefined,
+      // 批次C（规格 5.7.2）：共享到其他软件 —— 拖到 Write 编辑器嵌入图片/附件
+      share:
+        e.kind === "file"
+          ? {
               label: t("xfShare"),
               icon: <Share2 size={13} />,
               onClick: () => {
@@ -867,14 +999,24 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                   isImage: /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(e.path),
                 });
               },
-            }]
-          : []
-      ),
-      {
+            }
+          : undefined,
+      reveal: {
         label: t("showInExplorer"),
         onClick: () => void ipc.revealPath(e.path).catch(() => {}),
       },
-    ];
+    };
+    const items: MenuItem[] = [];
+    for (const id of cfg.order) {
+      if (cfg.hidden.includes(id)) continue;
+      const it = builders[id];
+      if (!it) continue;
+      // 分组分隔线：动作组 / 危险组 / 共享组 之间
+      if ((id === "copy" || id === "rename" || id === "share") && items.length > 0) {
+        items.push({ separator: true });
+      }
+      items.push(it);
+    }
     openContextMenu(ev.clientX, ev.clientY, items);
   };
 
@@ -926,11 +1068,37 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         : t("exSearchDone", { n: search.entries.length, folders: search.scanned })
       : t("items", { n: listing?.entries.length ?? 0 });
 
+  // M-20：多选批量汇总（项数 + 总大小）
+  const selSummary =
+    selEntries.length > 1
+      ? t("exSelSummary", {
+          n: selEntries.length,
+          size: fmtSize(selEntries.reduce((s, e) => s + e.size, 0)),
+        })
+      : null;
+
+  // M-22 键导航：预览在可见列表中的前后邻居
+  const previewIdx = preview ? visible.findIndex((e) => e.path === preview.path) : -1;
+  const prevEntry = previewIdx > 0 ? visible[previewIdx - 1] : null;
+  const nextEntry = previewIdx >= 0 && previewIdx < visible.length - 1 ? visible[previewIdx + 1] : null;
+  const toPreview = (en: ExEntry): QuickPreviewTarget => ({
+    name: en.name,
+    path: en.path,
+    kind: en.kind,
+    ext: en.ext,
+    size: en.size,
+  });
+
   return (
     <>
       {!embedded && <ExTitlebar title={title} />}
       {preview && (
-        <QuickPreview target={preview} onClose={() => setPreview(null)} />
+        <QuickPreview
+          target={preview}
+          onClose={() => setPreview(null)}
+          onPrev={prevEntry ? () => setPreview(toPreview(prevEntry)) : undefined}
+          onNext={nextEntry ? () => setPreview(toPreview(nextEntry)) : undefined}
+        />
       )}
       <div className="ex-body">
         <div className="ex-explorer">
@@ -1058,6 +1226,26 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                 </span>
               </button>
             ))}
+            {/* Z-31：网络驱动器（断连置灰并如实标注；SMB 路径仍拒绝写入） */}
+            {netDrives.length > 0 && (
+              <>
+                <p className="ex-side-head">{t("exNetDrives")}</p>
+                {netDrives.map((d) => (
+                  <button
+                    key={d.letter}
+                    type="button"
+                    className={`ex-side-btn${currentPath === d.path ? " active" : ""}${d.available ? "" : " ex-side-offline"}`}
+                    title={d.available ? d.unc ?? d.path : t("exNetOffline")}
+                    onClick={() => nav(d.path)}
+                  >
+                    <Network size={15} strokeWidth={1.7} />
+                    <span>
+                      {d.kind === "unc" ? pathTail(d.path) : `${d.letter}:`} {!d.available && `· ${t("exNetOffline")}`}
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
           </aside>
 
           <div className="ex-main">
@@ -1197,6 +1385,30 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
               )}
             </div>
 
+            {/* M-24：书签条（收藏夹快捷条；右键移除） */}
+            {favs.length > 0 && (
+              <div className="ex-bookmarks" role="toolbar" aria-label={t("favorites")}>
+                {favs.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`ex-bm-chip${currentPath === f ? " active" : ""}`}
+                    title={f}
+                    onClick={() => nav(f)}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      openContextMenu(ev.clientX, ev.clientY, [
+                        { label: t("exFavRemove"), icon: <Star size={13} />, onClick: () => toggleFav(f) },
+                      ]);
+                    }}
+                  >
+                    <Star size={12} strokeWidth={1.7} />
+                    {pathTail(f)}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div
               ref={listRef}
               className={`ex-list view-${view}`}
@@ -1227,8 +1439,8 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                       return (
                         <div
                           key={e.path}
-                          className={`ex-row${selected === e.path ? " selected" : ""}${e.hidden ? " hidden-entry" : ""}${cut ? " cut" : ""}`}
-                          onClick={() => setSelected(e.path)}
+                          className={`ex-row${selected === e.path || selSet.has(e.path) ? " selected" : ""}${e.hidden ? " hidden-entry" : ""}${cut ? " cut" : ""}`}
+                          onClick={(ev) => clickRow(ev, e)}
                           onDoubleClick={() => openEntry(e)}
                           onContextMenu={(ev) => openRowMenu(ev, e)}
                           draggable
@@ -1273,8 +1485,8 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                     return (
                       <div
                         key={e.path}
-                        className={`ex-tile${selected === e.path ? " selected" : ""}${cut ? " cut" : ""}`}
-                        onClick={() => setSelected(e.path)}
+                        className={`ex-tile${selected === e.path || selSet.has(e.path) ? " selected" : ""}${cut ? " cut" : ""}`}
+                        onClick={(ev) => clickRow(ev, e)}
                         onDoubleClick={() => openEntry(e)}
                         onContextMenu={(ev) => openRowMenu(ev, e)}
                         draggable
@@ -1305,7 +1517,10 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
               )}
             </div>
 
-            <div className="ex-status">{statusText}</div>
+            <div className="ex-status">
+              {statusText}
+              {selSummary && <span className="ex-status-sel">{selSummary}</span>}
+            </div>
           </div>
         </div>
       </div>
@@ -1350,6 +1565,38 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
                 setConflict(null);
               }}>
                 {t("cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* M-25：占用查看对话框（只读，无强拆按钮；空 = 系统未披露占用者） */}
+      {lockView && (
+        <div
+          className="ex-dlg-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setLockView(null);
+          }}
+        >
+          <div className="ex-dlg" role="dialog" aria-label={t("exWhoLocks")}>
+            <p className="ex-dlg-title">{t("exWhoLocks")}</p>
+            <p className="ex-dlg-body ex-lock-path">{lockView.path}</p>
+            {lockView.holders.length === 0 ? (
+              <p className="dim">{t("exLocksNone")}</p>
+            ) : (
+              <ul className="ex-lock-list">
+                {lockView.holders.map((h) => (
+                  <li key={h.pid}>
+                    <span className="ex-lock-name">{h.name}</span>
+                    <span className="dim small">PID {h.pid}{h.title ? ` · ${h.title}` : ""}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="ex-dlg-actions">
+              <button type="button" className="dim" onClick={() => setLockView(null)}>
+                {t("close")}
               </button>
             </div>
           </div>

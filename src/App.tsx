@@ -32,6 +32,7 @@ import { CodeXrefPanel } from "./apps/code/XrefPanel";
 import { FateView } from "./apps/fate/FateView";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { OobeGate } from "./features/oobe/OobeWizard";
 
 export type AppEntryType = "desktop" | AppMode;
@@ -46,6 +47,7 @@ export default function App(props: { appType: AppEntryType }): React.ReactElemen
 
 function AppInner(props: { appType: AppEntryType }): React.ReactElement {
   const appType = props.appType;
+  useEscOverlayStack(); // M-34：全局 Esc 栈顶消费（双击 Esc 切环境由 kbdhook 独立判定，不受影响）
   const [settings, setSettingsState] = useState<Settings | null>(null);
   const [boot, setBoot] = useState<BootstrapInfo | null>(null);
   const [closePhase, setClosePhase] = useState<ClosePhase>("idle");
@@ -446,6 +448,10 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             />
             <SearchOverlay />
             <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+            {/* AI-05 键位纪律组：Z-12 速查浮层 / Z-13 命令提示条 / M-33 按键回显 / M-34 全局 Esc */}
+            <KeymapOverlay />
+            <CommandHintBar settings={settings} />
+            <KeycastOverlay settings={settings} />
             {settings && boot && (
               <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
             )}

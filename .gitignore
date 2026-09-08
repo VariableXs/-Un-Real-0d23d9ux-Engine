@@ -15,3 +15,4 @@ archive-*/
 
 # editor/tool artifacts
 docs/Typora_Hook_Log.txt
+launcher/target/

@@ -1,6 +1,7 @@
 import { desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { getThirdApps } from "../launcher/thirdApps";
 import { createStore } from "../../lib/store";
+import { parseScreenDetails, screenShift } from "./winfeel";
 import type { AppMode } from "../../state/uiStore";
 import type { TaskbarPos } from "../../lib/settings";
 
@@ -19,11 +20,30 @@ import type { TaskbarPos } from "../../lib/settings";
  */
 
 /** VWM 托管对象：四款官方软件 + 系统窗口（explorer / recycle）+ 第三方应用（tp:<id>）+ 实用工具（F-2）。 */
-export type VwmToolApp = "calc" | "notes" | "calendar" | "snapshot" | "clipboard";
+export type VwmToolApp =
+  | "calc"
+  | "notes"
+  | "calendar"
+  | "snapshot"
+  | "clipboard"
+  | "rename"
+  | "dupe"
+  | "space"
+  | "checksum";
 export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp;
 
-/** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。 */
-export const VWM_TOOLS: readonly VwmToolApp[] = ["calc", "notes", "calendar", "snapshot", "clipboard"];
+/** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。 */
+export const VWM_TOOLS: readonly VwmToolApp[] = [
+  "calc",
+  "notes",
+  "calendar",
+  "snapshot",
+  "clipboard",
+  "rename",
+  "dupe",
+  "space",
+  "checksum",
+];
 
 export function isVwmTool(app: VwmApp): app is VwmToolApp {
   return VWM_TOOLS.includes(app as VwmToolApp);
@@ -36,6 +56,10 @@ const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
   calendar: { w: 520, h: 600 },
   snapshot: { w: 760, h: 560 },
   clipboard: { w: 620, h: 640 },
+  rename: { w: 760, h: 640 },
+  dupe: { w: 720, h: 620 },
+  space: { w: 720, h: 620 },
+  checksum: { w: 640, h: 400 },
 };
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
@@ -68,6 +92,16 @@ export interface VwmWin {
   group: string | null;
   /** 批次W-5 标签页化：是否为组内当前显示的标签。 */
   groupActive: boolean;
+  /** M-02 卷帘：收起后仅剩标题栏高度（rolledFromH 记忆原高）。 */
+  rolledUp: boolean;
+  /** M-02 卷帘：收起前的高度（undefined = 从未收起）。 */
+  rolledFromH?: number;
+  /** M-03 最小化时刻（抽屉排序用；null = 不在最小化态）。 */
+  minimizedAt: number | null;
+  /** Z-36 不透明度（0.2..1）。 */
+  opacity: number;
+  /** Z-36 置顶（浮于普通窗口之上）。 */
+  topmost: boolean;
 }
 
 export interface VwmRect {
@@ -101,6 +135,8 @@ const CASCADE = 28;
 /** 任务栏占位（与 desktop.css .taskbar 尺寸一致）。 */
 const TB_MAIN = 54;
 const TB_SIDE = 62;
+/** M-02 标题栏高度（与 EmbedBridge 嵌入偏移的 38px 一致；卷帘收起后的窗高）。 */
+export const VWM_TITLEBAR_H = 38;
 
 export const vwmStore = createStore<VwmState>({
   wins: [],
@@ -214,7 +250,7 @@ function openVwmInstance(app: VwmApp, path: string | null): string {
   patch((st) => ({
     wins: [
       ...st.wins,
-      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false },
+      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false, rolledUp: false, minimizedAt: null, opacity: 1, topmost: false },
     ],
     topZ: z,
     focusedId: id,
@@ -251,6 +287,27 @@ export function focusVwmWin(id: string): void {
   }));
 }
 
+/** 聚焦窗口（置顶 + 取消最小化）。Z-36：置顶窗口始终浮在焦点窗口之上。 */
+export function focusVwmWin(id: string): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w) return;
+  const z = s.topZ + 1;
+  const tops = s.wins.filter((x) => x.topmost && x.id !== id);
+  const topZs = new Map(tops.map((t, i) => [t.id, z + 1 + i]));
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id
+        ? { ...x, z, minimized: false, minimizedAt: null }
+        : topZs.has(x.id)
+          ? { ...x, z: topZs.get(x.id)! }
+          : x,
+    ),
+    topZ: z + tops.length,
+    focusedId: id,
+  }));
+}
+
 /** 指针按下时的聚焦：已聚焦则不改动（避免无谓重排）。 */
 export function pointerFocusVwm(id: string): void {
   const s = vwmStore.getState();
@@ -262,6 +319,10 @@ export function closeVwmWin(id: string): void {
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w || s.closing.includes(id)) return;
+  // Z-37 几何记忆增强：normal 态关闭也持久化（卷帘中按记忆原高）
+  if (w.state === "normal") {
+    persistGeom(w.app, { x: w.x, y: w.y, w: w.w, h: w.rolledUp ? (w.rolledFromH ?? w.h) : w.h });
+  }
   // 批次E-14 关闭仪式：先播放缩小淡出动画，170ms 后才真正卸载
   patch((st) => ({ closing: [...st.closing, id] }));
   window.setTimeout(() => {
@@ -291,7 +352,7 @@ export function minimizeVwmWin(id: string): void {
   const w = s.wins.find((x) => x.id === id);
   if (!w || w.minimized || s.flying.includes(id)) return;
   patch((st) => ({
-    wins: st.wins.map((x) => (x.id === id ? { ...x, minimized: true } : x)),
+    wins: st.wins.map((x) => (x.id === id ? { ...x, minimized: true, minimizedAt: Date.now() } : x)),
     flying: [...st.flying, id],
     focusedId: st.focusedId === id ? nextFocus(st.wins, id) : st.focusedId,
   }));
@@ -307,11 +368,24 @@ export function minimizeAllVwm(): void {
   patch({ wins: s.wins.map((w) => ({ ...w, minimized: true })), focusedId: null });
 }
 
+/** M-03 抽屉排序：最小化窗口按 minimizedAt 降序（最近的最先）。 */
+export function minimizedOrder(wins: VwmWin[]): VwmWin[] {
+  return wins
+    .filter((w) => w.minimizedAt !== null)
+    .sort((a, b) => (b.minimizedAt ?? 0) - (a.minimizedAt ?? 0));
+}
+
 /** 最大化 / 还原（记录还原几何）。 */
 export function toggleMaxVwmWin(id: string): void {
   const s = vwmStore.getState();
-  const w = s.wins.find((x) => x.id === id);
+  let w = s.wins.find((x) => x.id === id);
   if (!w) return;
+  if (w.rolledUp) {
+    // M-02：卷帘中先还原高度再最大化/还原
+    patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, ...unrollPatch(x) } : x)) }));
+    w = vwmStore.getState().wins.find((x) => x.id === id);
+    if (!w) return;
+  }
   if (w.state === "max") {
     const r = w.restore ?? { x: w.x, y: w.y, w: w.w, h: w.h };
     patch((st) => ({
@@ -357,6 +431,19 @@ export function settleVwmWin(id: string): void {
   if (w && w.state === "normal") persistGeom(w.app, { x: w.x, y: w.y, w: w.w, h: w.h });
 }
 
+/** Z-37 关闭记忆的恢复入口：返回钳制后的记忆几何；完全出屏 → null（调用方居中）。 */
+export function restoreGeomFor(app: VwmApp, wa: VwmRect): VwmRect | null {
+  const saved = loadGeomMap()[app];
+  if (!saved) return null;
+  const tool = isVwmTool(app);
+  const minW = tool ? TOOL_MIN_SIZE.w : MIN_W;
+  const minH = tool ? TOOL_MIN_SIZE.h : MIN_H;
+  const intersects =
+    saved.x < wa.x + wa.w && saved.x + saved.w > wa.x && saved.y < wa.y + wa.h && saved.y + saved.h > wa.y;
+  if (!intersects) return null;
+  return clampRect(saved, wa, minW, minH);
+}
+
 /** 贴靠矩形（视口局部坐标）：左右半屏 / 四角 1/4 / 上=最大化。 */
 export function snapZoneForVwm(
   dir: "left" | "right" | "up" | "down" | "tl" | "tr" | "bl" | "br",
@@ -385,8 +472,14 @@ export function snapZoneForVwm(
 /** 应用贴靠（up = 最大化；down = 还原，无还原几何则最小化）。 */
 export function snapVwmWin(id: string, dir: "left" | "right" | "up" | "down"): void {
   const s = vwmStore.getState();
-  const w = s.wins.find((x) => x.id === id);
+  let w = s.wins.find((x) => x.id === id);
   if (!w) return;
+  if (w.rolledUp) {
+    // M-02：卷帘中先还原高度再贴靠
+    patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, ...unrollPatch(x) } : x)) }));
+    w = vwmStore.getState().wins.find((x) => x.id === id);
+    if (!w) return;
+  }
   if (dir === "down") {
     if (w.state === "max" || w.restore) toggleMaxVwmWin(id);
     else minimizeVwmWin(id);
@@ -407,8 +500,14 @@ export function snapVwmWin(id: string, dir: "left" | "right" | "up" | "down"): v
 /** 按矩形贴靠（四角 1/4 等；保留还原几何）。 */
 export function snapVwmRect(id: string, rect: VwmRect): void {
   const s = vwmStore.getState();
-  const w = s.wins.find((x) => x.id === id);
+  let w = s.wins.find((x) => x.id === id);
   if (!w) return;
+  if (w.rolledUp) {
+    // M-02：卷帘中先还原高度再贴靠
+    patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, ...unrollPatch(x) } : x)) }));
+    w = vwmStore.getState().wins.find((x) => x.id === id);
+    if (!w) return;
+  }
   const restore = w.state === "max" ? w.restore : { x: w.x, y: w.y, w: w.w, h: w.h };
   patch((st) => ({
     wins: st.wins.map((x) => (x.id === id ? { ...x, state: "normal", ...rect, restore } : x)),
@@ -417,6 +516,27 @@ export function snapVwmRect(id: string, rect: VwmRect): void {
 }
 
 /** 拖拽期间更新贴靠预览。 */
+/** M-02 卷帘还原字段（未收起 → 空补丁）。 */
+function unrollPatch(w: VwmWin): Partial<VwmWin> {
+  return w.rolledUp ? { rolledUp: false, h: w.rolledFromH ?? w.h, rolledFromH: undefined } : {};
+}
+
+/** M-02 卷帘：收起仅剩标题栏高度；再展开还原原高。 */
+export function rollVwmWin(id: string, rolled: boolean): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || w.state !== "normal" || w.rolledUp === rolled) return;
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id
+        ? rolled
+          ? { ...x, rolledUp: true, rolledFromH: x.h, h: Math.min(x.h, VWM_TITLEBAR_H) }
+          : { ...x, rolledUp: false, h: x.rolledFromH ?? x.h, rolledFromH: undefined }
+        : x,
+    ),
+  }));
+}
+
 export function setVwmSnapPreview(r: VwmRect | null): void {
   patch({ snapPreview: r });
 }
@@ -455,6 +575,19 @@ export function cycleVwmFocus(backward = false): void {
   if (target) focusVwmWin(target.id);
 }
 
+/** M-08 过滤式焦点轮转（如按应用切换）：过滤集为空 → false（调用方提示并兜底）。 */
+export function cycleVwmFocusFiltered(opts?: { byApp?: VwmApp; backward?: boolean }): boolean {
+  const s = vwmStore.getState();
+  let cands = s.wins.filter((w) => !w.minimized);
+  if (opts?.byApp !== undefined) cands = cands.filter((w) => w.app === opts.byApp);
+  if (cands.length === 0) return false;
+  const sorted = [...cands].sort((a, b) => b.z - a.z);
+  const cur = sorted.findIndex((w) => w.id === s.focusedId);
+  const next = cur < 0 ? 0 : (cur + (opts?.backward ? -1 : 1) + sorted.length) % sorted.length;
+  focusVwmWin(sorted[cur < 0 ? 0 : next]!.id);
+  return true;
+}
+
 /** 更新工作区（窗口 resize / 任务栏位置变化时由管理器调用）。 */
 export function setVwmWorkArea(wa: VwmRect): void {
   const s = vwmStore.getState();
@@ -486,6 +619,10 @@ export function vwmWindowTitle(app: VwmApp): string {
       calendar: "日历与时钟",
       snapshot: "截图工具",
       clipboard: "剪贴板历史",
+      rename: "批量重命名",
+      dupe: "重复文件报告",
+      space: "空间分析",
+      checksum: "校验和",
     };
     return labels[app];
   }
@@ -582,4 +719,146 @@ export function groupMembersOf(wins: VwmWin[], group: string): VwmWin[] {
 /** 窗口是否可见渲染（未分组 / 组内激活成员）。 */
 export function isVwmWinVisible(w: VwmWin): boolean {
   return !w.group || w.groupActive;
+}
+
+
+// ---------- Z-36 不透明度 / 置顶 ----------
+
+/** Z-36 设置窗口不透明度（钳制 0.2..1，保留两位小数）。 */
+export function setVwmOpacity(id: string, v: number): void {
+  const c = Math.round(Math.min(1, Math.max(0.2, v)) * 100) / 100;
+  patch((st) => ({ wins: st.wins.map((w) => (w.id === id ? { ...w, opacity: c } : w)) }));
+}
+
+/** Z-36 置顶开关：开启即浮到最上；此后每次聚焦，其余置顶窗仍被抬到焦点之上。 */
+export function setVwmTopmost(id: string, on: boolean): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || w.topmost === on) return;
+  if (!on) {
+    patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, topmost: false } : x)) }));
+    return;
+  }
+  const z = s.topZ + 1;
+  patch((st) => ({
+    wins: st.wins.map((x) => (x.id === id ? { ...x, topmost: true, z } : x)),
+    topZ: z,
+  }));
+}
+
+// ---------- Z-40 布局快照（轻量：名字 → 全部窗口几何） ----------
+
+const LAYOUTS_KEY = "variable:vwm:layouts";
+const LAYOUTS_CAP = 20;
+
+export interface LayoutSnapshotWin {
+  app: VwmApp;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  state: "normal" | "max";
+}
+
+interface LayoutEntry {
+  name: string;
+  wins: LayoutSnapshotWin[];
+}
+
+function loadLayouts(): LayoutEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? "[]") as LayoutEntry[];
+    return Array.isArray(raw)
+      ? raw.filter((e) => !!e && typeof e.name === "string" && Array.isArray(e.wins))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLayouts(all: LayoutEntry[]): void {
+  try {
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
+  } catch {
+    /* storage full/blocked → 布局不持久化 */
+  }
+}
+
+/** 保存当前布局（同名原地覆盖；上限 20 份，超出按插入序淘汰最旧）。 */
+export function saveLayoutSnapshot(name: string): void {
+  if (!name) return;
+  const s = vwmStore.getState();
+  const entry: LayoutEntry = {
+    name,
+    wins: s.wins
+      .filter((w) => !s.closing.includes(w.id))
+      .map((w) => ({
+        app: w.app,
+        x: Math.round(w.x),
+        y: Math.round(w.y),
+        w: Math.round(w.w),
+        h: Math.round(w.h),
+        state: w.state,
+      })),
+  };
+  const all = loadLayouts();
+  const idx = all.findIndex((e) => e.name === name);
+  if (idx >= 0) all[idx] = entry;
+  else all.push(entry);
+  while (all.length > LAYOUTS_CAP) all.shift();
+  saveLayouts(all);
+}
+
+export function listLayoutSnapshots(): Array<{ name: string; count: number }> {
+  return loadLayouts().map((e) => ({ name: e.name, count: e.wins.length }));
+}
+
+/**
+ * 应用布局：每个保存项找同 app 的最顶层存活窗口搬进保存矩形（保存为 max → 还原进矩形）；
+ * 缺失的 app 用 openVwmInstance 新开后再贴到保存矩形。全部矩形按当前工作区钳制。
+ */
+export function applyLayoutSnapshot(name: string): boolean {
+  const entry = loadLayouts().find((e) => e.name === name);
+  if (!entry) return false;
+  const consumed = new Set<string>();
+  for (const sw of entry.wins) {
+    const st = vwmStore.getState();
+    const rect = clampRect({ x: sw.x, y: sw.y, w: sw.w, h: sw.h }, st.workArea);
+    const live = st.wins
+      .filter((w) => w.app === sw.app && !st.closing.includes(w.id) && !consumed.has(w.id))
+      .sort((a, b) => b.z - a.z)[0];
+    if (live) consumed.add(live.id);
+    const targetId = live?.id ?? openVwmInstance(sw.app, null);
+    patch((cur) => ({
+      wins: cur.wins.map((w) => (w.id === targetId ? { ...w, state: "normal", ...rect, restore: null } : w)),
+    }));
+  }
+  return true;
+}
+
+export function deleteLayoutSnapshot(name: string): void {
+  saveLayouts(loadLayouts().filter((e) => e.name !== name));
+}
+
+// ---------- Z-42/M-05 跨屏摆渡 ----------
+
+/** Z-42/M-05 摆渡：把窗口水平搬到相邻显示器。屏幕信息不可用或无邻居 → false。 */
+export function ferryVwmWin(id: string, dir: "left" | "right"): boolean {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w) return false;
+  let screens: ReturnType<typeof parseScreenDetails> = null;
+  try {
+    if (typeof window !== "undefined") {
+      const get = (window as { getScreenDetails?: () => unknown }).getScreenDetails;
+      screens = typeof get === "function" ? parseScreenDetails(get.call(window)) : null;
+    }
+  } catch {
+    screens = null;
+  }
+  if (!screens) return false;
+  const next = screenShift({ x: w.x, y: w.y, w: w.w, h: w.h }, screens, dir);
+  if (!next) return false;
+  patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, ...next } : x)) }));
+  return true;
 }

@@ -1,0 +1,141 @@
+
+// ---------- Z-36 不透明度 / 置顶 ----------
+
+/** Z-36 设置窗口不透明度（钳制 0.2..1，保留两位小数）。 */
+export function setVwmOpacity(id: string, v: number): void {
+  const c = Math.round(Math.min(1, Math.max(0.2, v)) * 100) / 100;
+  patch((st) => ({ wins: st.wins.map((w) => (w.id === id ? { ...w, opacity: c } : w)) }));
+}
+
+/** Z-36 置顶开关：开启即浮到最上；此后每次聚焦，其余置顶窗仍被抬到焦点之上。 */
+export function setVwmTopmost(id: string, on: boolean): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || w.topmost === on) return;
+  if (!on) {
+    patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, topmost: false } : x)) }));
+    return;
+  }
+  const z = s.topZ + 1;
+  patch((st) => ({
+    wins: st.wins.map((x) => (x.id === id ? { ...x, topmost: true, z } : x)),
+    topZ: z,
+  }));
+}
+
+// ---------- Z-40 布局快照（轻量：名字 → 全部窗口几何） ----------
+
+const LAYOUTS_KEY = "variable:vwm:layouts";
+const LAYOUTS_CAP = 20;
+
+export interface LayoutSnapshotWin {
+  app: VwmApp;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  state: "normal" | "max";
+}
+
+interface LayoutEntry {
+  name: string;
+  wins: LayoutSnapshotWin[];
+}
+
+function loadLayouts(): LayoutEntry[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? "[]") as LayoutEntry[];
+    return Array.isArray(raw)
+      ? raw.filter((e) => !!e && typeof e.name === "string" && Array.isArray(e.wins))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLayouts(all: LayoutEntry[]): void {
+  try {
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(all));
+  } catch {
+    /* storage full/blocked → 布局不持久化 */
+  }
+}
+
+/** 保存当前布局（同名原地覆盖；上限 20 份，超出按插入序淘汰最旧）。 */
+export function saveLayoutSnapshot(name: string): void {
+  if (!name) return;
+  const s = vwmStore.getState();
+  const entry: LayoutEntry = {
+    name,
+    wins: s.wins
+      .filter((w) => !s.closing.includes(w.id))
+      .map((w) => ({
+        app: w.app,
+        x: Math.round(w.x),
+        y: Math.round(w.y),
+        w: Math.round(w.w),
+        h: Math.round(w.h),
+        state: w.state,
+      })),
+  };
+  const all = loadLayouts();
+  const idx = all.findIndex((e) => e.name === name);
+  if (idx >= 0) all[idx] = entry;
+  else all.push(entry);
+  while (all.length > LAYOUTS_CAP) all.shift();
+  saveLayouts(all);
+}
+
+export function listLayoutSnapshots(): Array<{ name: string; count: number }> {
+  return loadLayouts().map((e) => ({ name: e.name, count: e.wins.length }));
+}
+
+/**
+ * 应用布局：每个保存项找同 app 的最顶层存活窗口搬进保存矩形（保存为 max → 还原进矩形）；
+ * 缺失的 app 用 openVwmInstance 新开后再贴到保存矩形。全部矩形按当前工作区钳制。
+ */
+export function applyLayoutSnapshot(name: string): boolean {
+  const entry = loadLayouts().find((e) => e.name === name);
+  if (!entry) return false;
+  const consumed = new Set<string>();
+  for (const sw of entry.wins) {
+    const st = vwmStore.getState();
+    const rect = clampRect({ x: sw.x, y: sw.y, w: sw.w, h: sw.h }, st.workArea);
+    const live = st.wins
+      .filter((w) => w.app === sw.app && !st.closing.includes(w.id) && !consumed.has(w.id))
+      .sort((a, b) => b.z - a.z)[0];
+    if (live) consumed.add(live.id);
+    const targetId = live?.id ?? openVwmInstance(sw.app, null);
+    patch((cur) => ({
+      wins: cur.wins.map((w) => (w.id === targetId ? { ...w, state: "normal", ...rect, restore: null } : w)),
+    }));
+  }
+  return true;
+}
+
+export function deleteLayoutSnapshot(name: string): void {
+  saveLayouts(loadLayouts().filter((e) => e.name !== name));
+}
+
+// ---------- Z-42/M-05 跨屏摆渡 ----------
+
+/** Z-42/M-05 摆渡：把窗口水平搬到相邻显示器。屏幕信息不可用或无邻居 → false。 */
+export function ferryVwmWin(id: string, dir: "left" | "right"): boolean {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w) return false;
+  let screens: ReturnType<typeof parseScreenDetails> = null;
+  try {
+    if (typeof window !== "undefined") {
+      const get = (window as { getScreenDetails?: () => unknown }).getScreenDetails;
+      screens = typeof get === "function" ? parseScreenDetails(get.call(window)) : null;
+    }
+  } catch {
+    screens = null;
+  }
+  if (!screens) return false;
+  const next = screenShift({ x: w.x, y: w.y, w: w.w, h: w.h }, screens, dir);
+  if (!next) return false;
+  patch((st) => ({ wins: st.wins.map((x) => (x.id === id ? { ...x, ...next } : x)) }));
+  return true;
+}

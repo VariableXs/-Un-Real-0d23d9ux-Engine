@@ -287,6 +287,10 @@ export function restoreSnapshot(name: string): RestoreResult {
       restore: null,
       group: null,
       groupActive: false,
+      rolledUp: false,
+      minimizedAt: null,
+      opacity: 1,
+      topmost: false,
     };
   });
   if (wins.length > 0) topZ = wins[wins.length - 1]!.z;

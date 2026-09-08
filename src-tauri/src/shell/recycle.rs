@@ -411,3 +411,224 @@ pub fn rec_count(st: tauri::State<AppState>) -> CmdResult<u32> {
 pub fn rec_count_inner(st: &AppState) -> CmdResult<u32> {
     Ok(rec_list_core(st)?.len() as u32)
 }
+
+// ---------- AI-10（U-27 回收站 2.0）策略引擎 ----------
+// 容量阈值（默认 2GB）或时间阈值（默认 30 天）自动清理；
+// 清理前托盘预警一次（前端在 apply 前弹预警）；星标文件（U-26）永不自动清理。
+
+const DEFAULT_CAPACITY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const DEFAULT_MAX_DAYS: u64 = 30;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RecPolicy {
+    /// 容量阈值（字节，0 = 不启用容量清理）
+    pub capacity_bytes: u64,
+    /// 时间阈值（天，0 = 不启用时间清理）
+    pub max_days: u64,
+    /// 自动清理总开关（默认关——首次预警由用户确认后才建议开启）
+    pub auto_clean: bool,
+    /// 上次托盘预警时间（ms；避免重复打扰）
+    #[serde(default)]
+    pub last_warned_at: u64,
+}
+
+impl Default for RecPolicy {
+    fn default() -> Self {
+        RecPolicy {
+            capacity_bytes: DEFAULT_CAPACITY_BYTES,
+            max_days: DEFAULT_MAX_DAYS,
+            auto_clean: false,
+            last_warned_at: 0,
+        }
+    }
+}
+
+fn policy_path(st: &AppState) -> PathBuf {
+    st.data_dir.join(RECYCLE_DIR).join("policy.json")
+}
+
+fn load_policy(st: &AppState) -> RecPolicy {
+    fs::read(policy_path(st))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+fn save_policy(st: &AppState, p: &RecPolicy) -> CmdResult<()> {
+    fs::create_dir_all(recycle_dir(st))?;
+    fs::write(policy_path(st), serde_json::to_vec_pretty(p)?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rec_policy_get(st: tauri::State<AppState>) -> CmdResult<RecPolicy> {
+    Ok(load_policy(&st))
+}
+
+#[tauri::command]
+pub fn rec_policy_set(st: tauri::State<AppState>, policy: RecPolicy) -> CmdResult<()> {
+    if policy.capacity_bytes > 1024 * 1024 * 1024 * 1024 {
+        return Err(AppError::validation("容量阈值过大 / capacity too large"));
+    }
+    if policy.max_days > 3650 {
+        return Err(AppError::validation("时间阈值过大 / max_days too large"));
+    }
+    save_policy(&st, &policy)
+}
+
+/// 计算将被自动清理的条目（预览，不执行）：
+/// ① 超过时间阈值的（星标豁免）；② 若仍超容量阈值，按最旧顺序继续纳入直到回到阈值内。
+pub fn rec_policy_preview_inner(st: &AppState) -> CmdResult<Vec<RecItem>> {
+    let policy = load_policy(st);
+    let starred = crate::shell::tags::starred_keys(st);
+    let mut items = rec_list_core(st)?;
+    // 星标豁免：fs-item 用原始路径匹配；数据库条目按 title 近似匹配（星标路径含标题）
+    items.retain(|it| {
+        let origin = it.origin.clone().unwrap_or_default();
+        let key = origin.replace('\\', "/").to_lowercase();
+        if starred.contains(&key) {
+            return false;
+        }
+        true
+    });
+    let now = now_ms();
+    let mut doomed: Vec<RecItem> = Vec::new();
+    let mut rest: Vec<RecItem> = Vec::new();
+    for it in items {
+        let age_days = (now.saturating_sub(it.deleted_at)) / 86_400_000;
+        if policy.max_days > 0 && age_days >= policy.max_days {
+            doomed.push(it);
+        } else {
+            rest.push(it);
+        }
+    }
+    // 容量约束：最旧优先纳入
+    if policy.capacity_bytes > 0 {
+        let total: u64 = doomed.iter().chain(rest.iter()).map(|i| i.size).sum();
+        if total > policy.capacity_bytes {
+            rest.sort_by(|a, b| a.deleted_at.cmp(&b.deleted_at));
+            let mut acc = total;
+            for it in rest {
+                if acc <= policy.capacity_bytes {
+                    break;
+                }
+                acc = acc.saturating_sub(it.size);
+                doomed.push(it);
+            }
+        }
+    }
+    doomed.sort_by(|a, b| a.deleted_at.cmp(&a.deleted_at));
+    Ok(doomed)
+}
+
+#[tauri::command]
+pub fn rec_policy_preview(st: tauri::State<AppState>) -> CmdResult<Vec<RecItem>> {
+    rec_policy_preview_inner(&st)
+}
+
+/// 执行自动清理（真实删除）。返回清理条数。前端在调用前完成托盘预警。
+#[tauri::command]
+pub async fn rec_policy_apply(st: tauri::State<'_, AppState>) -> CmdResult<u32> {
+    let doomed = rec_policy_preview_inner(&st)?;
+    let mut count = 0u32;
+    for it in &doomed {
+        let ok = match it.source.as_str() {
+            "doc" => crate::library::purge_documents(st.clone(), vec![it.id.clone()]).await.is_ok(),
+            "folder" => crate::library::purge_folder(st.clone(), it.id.clone()).is_ok(),
+            "mindmap" => {
+                use rusqlite::params;
+                let mut guard = st.conn.lock().map_err(|_| AppError::db("db mutex"))?;
+                let conn = guard.as_mut().ok_or_else(|| AppError::db("Database closed"))?;
+                conn.execute("DELETE FROM edges WHERE mindmap_id = ?1", params![it.id]).is_ok()
+                    && conn.execute("DELETE FROM nodes WHERE mindmap_id = ?1", params![it.id]).is_ok()
+                    && conn.execute("DELETE FROM mindmaps WHERE id = ?1", params![it.id]).is_ok()
+            }
+            "ws-file" => {
+                let p = ws_trash_dir(&st).join(&it.id);
+                if p.is_dir() { fs::remove_dir_all(&p).is_ok() } else { fs::remove_file(&p).is_ok() }
+            }
+            "fs-item" => {
+                let rdir = recycle_dir(&st);
+                let p = rdir.join(&it.id);
+                let ok = if p.is_dir() { fs::remove_dir_all(&p).is_ok() } else { fs::remove_file(&p).is_ok() };
+                let _ = fs::remove_file(rdir.join(format!("{}.meta.json", it.id)));
+                ok
+            }
+            _ => false,
+        };
+        if ok {
+            count += 1;
+        }
+    }
+    // 更新预警时间戳
+    let mut policy = load_policy(&st);
+    policy.last_warned_at = now_ms();
+    save_policy(&st, &policy)?;
+    Ok(count)
+}
+
+// ---------- 测试 ----------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// U-27：时间阈值命中 + 星标豁免 + 容量回退最旧优先。
+    #[test]
+    fn policy_preview_rules() {
+        let tmp = std::env::temp_dir().join(format!("variable-recpolicy-{}", std::process::id()));
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        st.open_database().unwrap();
+        // 布置：fs-item 三件（旧 40 天 / 新 1 天 / 中 10 天但星标）
+        let rdir = recycle_dir(&st);
+        fs::create_dir_all(&rdir).unwrap();
+        let mk = |id: &str, days_ago: u64, size: u64| {
+            let d = rdir.join(id);
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join("f.bin"), vec![0u8; size as usize]).unwrap();
+            let meta = RecMeta {
+                id: id.into(),
+                original_path: format!(r"C:\orig\{}", id),
+                name: id.to_string(),
+                kind: "dir".into(),
+                deleted_at: now_ms().saturating_sub(days_ago * 86_400_000),
+                size,
+            };
+            fs::write(rdir.join(format!("{id}.meta.json")), serde_json::to_vec(&meta).unwrap()).unwrap();
+        };
+        mk("old", 40, 100);
+        mk("fresh", 1, 100);
+        mk("starred-mid", 10, 100);
+        // 星标 starred-mid 的原路径
+        {
+            let tags_path = st.data_dir.join("file_tags.json");
+            let entry = serde_json::json!({
+                "files": { "c:/orig/starred-mid": { "tags": ["keep"], "starred": true, "updated_at": 1 } },
+                "smart": []
+            });
+            fs::write(&tags_path, entry.to_string()).unwrap();
+        }
+        let doomed = rec_policy_preview_inner(&st).unwrap();
+        let ids: Vec<&str> = doomed.iter().map(|d| d.title.as_str()).collect();
+        assert!(ids.contains(&"old"), "40 天条目应被时间阈值命中");
+        assert!(!ids.contains(&"starred-mid"), "星标条目永不自动清理");
+        assert!(!ids.contains(&"fresh"), "1 天条目不应被清理");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn policy_defaults_and_set() {
+        let tmp = std::env::temp_dir().join(format!("variable-recpolicy2-{}", std::process::id()));
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let p = load_policy(&st);
+        assert_eq!(p.capacity_bytes, DEFAULT_CAPACITY_BYTES);
+        assert_eq!(p.max_days, DEFAULT_MAX_DAYS);
+        assert!(!p.auto_clean);
+        let mut np = p.clone();
+        np.max_days = 7;
+        save_policy(&st, &np).unwrap();
+        assert_eq!(load_policy(&st).max_days, 7);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}
