@@ -274,19 +274,6 @@ function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {
   return cands.reduce((a, b) => (a.z >= b.z ? a : b)).id;
 }
 
-/** 聚焦窗口（置顶 + 取消最小化）。 */
-export function focusVwmWin(id: string): void {
-  const s = vwmStore.getState();
-  const w = s.wins.find((x) => x.id === id);
-  if (!w) return;
-  const z = s.topZ + 1;
-  patch((st) => ({
-    wins: st.wins.map((x) => (x.id === id ? { ...x, z, minimized: false } : x)),
-    topZ: z,
-    focusedId: id,
-  }));
-}
-
 /** 聚焦窗口（置顶 + 取消最小化）。Z-36：置顶窗口始终浮在焦点窗口之上。 */
 export function focusVwmWin(id: string): void {
   const s = vwmStore.getState();

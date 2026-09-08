@@ -1565,11 +1565,11 @@ mod tests {
 
     #[test]
     fn md5_known_vector() {
-        // md5("abc") = 900150983cd24fb0d6963f7d28e17f9
+        // md5("abc") = 900150983cd24fb0d6963f7d28e17f72
         let mut h = md5::Md5::new();
         use md5::Digest;
         h.update(b"abc");
-        assert_eq!(hex(&h.finalize()), "900150983cd24fb0d6963f7d28e17f9");
+        assert_eq!(hex(&h.finalize()), "900150983cd24fb0d6963f7d28e17f72");
     }
 
     #[test]

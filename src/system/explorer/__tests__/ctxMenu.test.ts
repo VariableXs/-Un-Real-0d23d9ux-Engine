@@ -9,6 +9,7 @@ import {
   saveCtxConfig,
   saveDeleteTier,
 } from "../ctxMenu";
+import type { CtxConfig } from "../ctxMenu";
 
 /**
  * AI-09 M-19/M-26：右键菜单注册表与删除档位 ——
@@ -40,9 +41,9 @@ describe("ctxMenu 注册表（M-19）", () => {
   });
 
   it("显隐 + 排序持久化并可读回", () => {
-    const cfg = {
+    const cfg: CtxConfig = {
       order: ["rename", "open", ...CTX_DEFAULT_ORDER.filter((x) => x !== "rename" && x !== "open")],
-      hidden: ["purge" as const],
+      hidden: ["purge"],
     };
     saveCtxConfig(cfg);
     const loaded = loadCtxConfig();
