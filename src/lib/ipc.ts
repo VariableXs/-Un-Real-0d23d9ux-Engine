@@ -469,6 +469,8 @@ export const ipc = {
   // ---- 批次D: 桌面窗口管理（红绿灯补全）+ 任务栏小组件（本地 sysinfo，零网络） ----
   winSetAvoidTaskbar: (avoid: boolean) => invoke<void>("win_set_avoid_taskbar", { avoid }),
   winHideToTray: () => invoke<void>("win_hide_to_tray"),
+  /** AI-01 M-04 窗口体检：按 pid 列表返回其中确认无响应（IsHungAppWindow）的子集。 */
+  winHealthScan: (pids: number[]) => invoke<number[]>("win_health_scan", { pids }),
   sysBrief: () => invoke<Shell.SysBrief>("sys_brief"),
   /** V-3：磁盘磨损/健康读数（按需拉取，无计数器字段为 null）。 */
   sysDiskHealth: () => invoke<Shell.DiskHealth[]>("sys_disk_health"),

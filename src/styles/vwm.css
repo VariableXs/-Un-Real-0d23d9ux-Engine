@@ -520,3 +520,33 @@
 
 /* Z-39 标题栏自定义：关闭键 hover 红底（对齐 Win11 规范；不改排布） */
 .vwm-window .vwm-lights .win-btn:hover:has(.win-dot.red) { background: #e81123; border-radius: 50%; }
+
+/* Z-36/V-21 标题栏右键菜单（winfeel / systemMenu 共用） */
+.vwm-sysmenu {
+  position: fixed;
+  z-index: 999999;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 10px;
+  background: rgb(10 15 26 / 0.97);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.45);
+}
+.vwm-sysmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.vwm-sysmenu-item:hover:not(:disabled) { background: rgb(96 165 250 / 0.16); }
+.vwm-sysmenu-item:disabled { opacity: 0.45; cursor: not-allowed; }

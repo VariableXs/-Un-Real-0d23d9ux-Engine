@@ -36,6 +36,13 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   const snapPreview = useStore(vwmStore, (s) => s.snapPreview);
   const closing = useStore(vwmStore, (s) => s.closing);
   const flying = useStore(vwmStore, (s) => s.flying);
+  // AI-01 M-07：对齐参考线（拖拽中由 frame 写入，这里渲染）
+  const guides = useStore(vwmStore, (s) => s.guides);
+  // AI-01 M-03/Z-42：最小化抽屉 / 桌面切换器
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  // AI-01 M-04：无响应窗口集合（3s 轮询 IsHungAppWindow）
+  const [hungIds, setHungIds] = useState<Set<string>>(new Set());
 
   // 工作区跟随视口尺寸与任务栏停靠位置（最大化/贴靠/边缘判定都基于它）
   useEffect(() => {

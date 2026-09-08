@@ -1,21 +1,39 @@
 import type { VwmWin, VwmRect } from "./vwm";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
 import { appAccent } from "../../components/AppGlyphs";
 import { isTpApp } from "./vwm";
 import { ipc } from "../../lib/ipc";
 import { isDragStart, liveDragThreshold } from "../../lib/inputFeel";
+import type { Settings } from "../../lib/settings";
+import { pushToast } from "../../state/uiStore";
+import { askChoice, askConfirm, askPrompt } from "../../components/Modal";
+import { useStore } from "../../lib/store";
+import { embedStateStore } from "./embedState";
+// AI-01 窗口手感组：M-01 摇晃 / Z-41 手势 / M-07 参考线（纯函数层）
+import { detectGesture, detectShake, computeGuide } from "./winfeel";
+// AI-01：Z-36 菜单模型 + 逐应用透明度记忆 + M-06 挂起登记
+import { appOpacityOf, rememberAppOpacity, setSuspended, suspensionStore, winFeelMenuItems } from "./winfeelMenu";
 import {
   activateVwmTab,
+  applyLayoutSnapshot,
   closeVwmTab,
+  ferryVwmWin,
   groupMembersOf,
   groupVwmWins,
+  listLayoutSnapshots,
   minimizeVwmWin,
   moveVwmWin,
   pointerFocusVwm,
   resizeVwmWin,
+  rollVwmWin,
+  saveLayoutSnapshot,
+  setVwmGuides,
+  setVwmOpacity,
   setVwmSnapPreview,
+  setVwmTopmost,
   settleVwmWin,
+  shakeMinimizeOthers,
   snapVwmRect,
   snapZoneForVwm,
   tabsEnabled,
@@ -24,6 +42,7 @@ import {
   unmaxVwmTo,
   vwmStore,
   vwmWindowTitle,
+  closeVwmWin,
 } from "./vwm";
 
 /**
@@ -32,6 +51,8 @@ import {
  * - 拖到屏幕边缘 → 贴靠预览（左右半屏 / 四角 1/4 / 顶部最大化），松手应用
  * - 八向边缘缩放（min 820×540，与既有系统窗口一致）
  * - 右上角 Mac 风格红绿灯：🟢 退出（关闭）/ 🟡 全屏（最大化-还原）/ 🔴 最小化
+ * - AI-01 窗口手感：M-01 摇一摇最小化 / Z-41 手势 / M-07 参考线 / M-05 边缘摆渡 /
+ *   Z-36 右键菜单（透明度+置顶）/ M-02 卷帘 / M-06 挂起 / M-04 未响应徽标 / Z-40 布局快照
  *
  * 壳层只做几何与层级调度；children（软件视图）零触碰。
  */
@@ -66,6 +87,10 @@ export function VirtualWindowFrame(props: {
   /** 批次E-14 动效：关闭仪式中（缩小淡出）/ 最小化飞行中（飞向任务栏）。 */
   closing?: boolean;
   flying?: boolean;
+  /** AI-01：窗口手感设置（透明度/摇一摇/参考线/手势开关；缺省 = 全部最保守关闭）。 */
+  settings?: Settings;
+  /** AI-01 M-04：无响应（IsHungAppWindow 命中）徽标。 */
+  hung?: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useI18n();
@@ -74,6 +99,28 @@ export function VirtualWindowFrame(props: {
   // 拖拽中半透明 + 抬起阴影；贴靠/最大化时平滑滑入
   const [dragging, setDragging] = useState(false);
   const [snapping, setSnapping] = useState(false);
+  // AI-01 Z-36：标题栏右键菜单（模型与透明度记忆在 winfeelMenu）
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const feel = props.settings;
+  const suspVersion = useStore(suspensionStore, (s) => (s.suspended[win.id] === true ? 1 : 0));
+  const suspendedNow = suspVersion === 1;
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (ev: MouseEvent): void => {
+      if (menuRef.current?.contains(ev.target as Node)) return;
+      setMenu(null);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [menu]);
   const playSnap = (): void => {
     setSnapping(true);
     window.setTimeout(() => setSnapping(false), 240);
@@ -106,6 +153,12 @@ export function VirtualWindowFrame(props: {
     const startXY = { x: e.clientX, y: e.clientY };
     let dragStarted = false;
     setDragging(true);
+    // AI-01 M-01：拖拽路径采样（摇晃检测）
+    const shakeSamples: Array<{ x: number; t: number }> = [{ x: e.clientX, t: Date.now() }];
+    let shook = false;
+    // AI-01 M-05：边缘摆渡节流（左右缘停留 700ms 触发一次）
+    let ferryTimer: number | null = null;
+    let ferryDir: "left" | "right" | null = null;
 
     const onMove = (ev: PointerEvent): void => {
       if (!dragStarted && !isDragStart(ev.clientX - startXY.x, ev.clientY - startXY.y, liveDragThreshold(), ev.pointerType)) {
@@ -122,11 +175,45 @@ export function VirtualWindowFrame(props: {
         Math.max(nx, s.workArea.x - w.w + 120),
         Math.max(s.workArea.x, s.workArea.x + s.workArea.w - 120),
       );
-      moveVwmWin(win.id, cx, ny);
+      let mx = cx;
+      let my = ny;
+      // AI-01 M-07：对齐参考线与轻吸附（Alt 按住临时禁用）
+      if (feel?.winGuides && !ev.altKey) {
+        const candidates = s.wins
+          .filter((o) => o.id !== win.id && !o.minimized && !s.closing.includes(o.id))
+          .map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
+        const g = computeGuide(candidates, { x: mx, y: my, w: w.w, h: w.h });
+        if (g.snapX !== null) mx = g.snapX;
+        if (g.snapY !== null) my = g.snapY;
+        setVwmGuides(g.snapX !== null || g.snapY !== null ? { xs: g.guideXs, ys: g.guideYs } : null);
+      } else {
+        setVwmGuides(null);
+      }
+      moveVwmWin(win.id, mx, my);
+      // AI-01 M-01：摇晃采样（≤96 个样本）
+      shakeSamples.push({ x: ev.clientX, t: Date.now() });
+      if (shakeSamples.length > 96) shakeSamples.shift();
       pendingZone = zoneFromPointer(ev.clientX, ev.clientY, s.workArea);
       if (pendingZone !== lastZone) {
         lastZone = pendingZone;
         setVwmSnapPreview(pendingZone ? snapZoneForVwm(pendingZone, s.workArea) : null);
+      }
+      // AI-01 M-05：拖到工作区左右缘停住 → 摆渡到相邻屏（仅多屏时 ferryVwmWin 生效）
+      {
+        const nearL = ev.clientX <= s.workArea.x + 6;
+        const nearR = ev.clientX >= s.workArea.x + s.workArea.w - 6;
+        const dir = nearL ? "left" : nearR ? "right" : null;
+        if (dir && dir !== ferryDir && ferryTimer === null && !pendingZone) {
+          ferryDir = dir;
+          ferryTimer = window.setTimeout(() => {
+            ferryTimer = null;
+            if (ferryDir === "left" || ferryDir === "right") void ferryVwmWin(win.id, ferryDir);
+          }, 700);
+        } else if (!dir && ferryTimer !== null) {
+          window.clearTimeout(ferryTimer);
+          ferryTimer = null;
+          ferryDir = null;
+        }
       }
     };
     const cleanup = (): void => {
@@ -135,6 +222,17 @@ export function VirtualWindowFrame(props: {
       window.removeEventListener("pointercancel", onUp);
     };
     const onUp = (ev?: PointerEvent): void => {
+      if (ferryTimer !== null) {
+        window.clearTimeout(ferryTimer);
+        ferryTimer = null;
+      }
+      setVwmGuides(null);
+      // AI-01 M-01：摇晃触发（默认关；只最小化其他窗口，可 Ctrl+Alt+D 恢复）
+      if (!shook && feel?.winShake && dragStarted && detectShake(shakeSamples)) {
+        shook = true;
+        shakeMinimizeOthers(win.id);
+        pushToast("info", t("wfShakeDone"), t("wfShakeRestoreHint"));
+      }
       if (pendingZone) {
         playSnap();
         if (pendingZone === "up") toggleMaxVwmWin(win.id);
@@ -193,25 +291,169 @@ export function VirtualWindowFrame(props: {
 
   const maximized = win.state === "max";
 
+  // ---------- AI-01 Z-41 鼠标手势最小集（默认关；右键拖 下=关窗 / 上=最小化） ----------
+  const gestureFired = useRef(false);
+  const onTitleGestureStart = (e: React.PointerEvent): void => {
+    if (e.button !== 2 || !feel?.winGestures) return;
+    if (win.state === "max" || win.rolledUp) return;
+    const path: Array<{ x: number; y: number }> = [{ x: e.clientX, y: e.clientY }];
+    const onMove = (ev: PointerEvent): void => {
+      path.push({ x: ev.clientX, y: ev.clientY });
+      if (path.length > 96) path.shift();
+    };
+    const onUp = (ev: PointerEvent): void => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      path.push({ x: ev.clientX, y: ev.clientY });
+      // 24px 内判定失败 → 还原为正常右键菜单（无感回退）
+      const d = detectGesture(path, 24);
+      if (!d) return;
+      gestureFired.current = true;
+      window.setTimeout(() => { gestureFired.current = false; }, 350);
+      if (d === "down") closeVwmWin(win.id);
+      else if (d === "up") minimizeVwmWin(win.id);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
+  // ---------- AI-01 M-06 挂起 / 恢复（仅嵌入登记的第三方进程） ----------
+  const toggleSuspend = (): void => {
+    setMenu(null);
+    const pid = embedStateStore.getState().meta[win.id]?.rootPid ?? 0;
+    if (!pid) {
+      pushToast("info", title, t("wfSuspendFail"));
+      return;
+    }
+    if (suspendedNow) {
+      void ipc
+        .procResume(pid)
+        .then(() => {
+          setSuspended(win.id, false);
+          pushToast("success", title, t("wfResumeDone"));
+        })
+        .catch(() => pushToast("error", title, t("wfSuspendFail")));
+    } else {
+      void ipc
+        .procSuspend(pid)
+        .then(() => {
+          setSuspended(win.id, true);
+          pushToast("info", title, t("wfSuspendDone"));
+        })
+        .catch(() => pushToast("error", title, t("wfSuspendFail")));
+    }
+  };
+
+  // ---------- AI-01 M-04 无响应处置（环境绝不自动杀进程） ----------
+  const hungAction = (): void => {
+    void (async () => {
+      const c = await askChoice({
+        title: t("wfHungTitle"),
+        body: t("wfHungBody"),
+        options: [
+          { value: "wait", label: t("wfWait") },
+          { value: "kill", label: t("wfKill") },
+        ],
+      });
+      if (c !== "kill") return;
+      const ok = await askConfirm({ title: t("wfKillConfirmTitle"), body: t("wfKillConfirmBody"), danger: true });
+      if (!ok) return;
+      const pid = embedStateStore.getState().meta[win.id]?.rootPid ?? 0;
+      if (!pid) return;
+      try {
+        await ipc.procKill(pid, true);
+      } catch {
+        pushToast("error", title, t("wfSuspendFail"));
+      }
+    })();
+  };
+
+  // ---------- AI-01 Z-40 布局快照（保存 / 应用） ----------
+  const saveLayoutUi = (): void => {
+    setMenu(null);
+    void askPrompt({ title: t("wfSnapSave"), initial: "" }).then((name) => {
+      if (!name || !name.trim()) return;
+      saveLayoutSnapshot(name.trim());
+      pushToast("success", t("wfSnapSaved"), name.trim());
+    });
+  };
+  const applyLayoutUi = (): void => {
+    setMenu(null);
+    const list = listLayoutSnapshots();
+    if (list.length === 0) {
+      pushToast("info", t("wfSnapApply"), t("wfSnapNone"));
+      return;
+    }
+    void (async () => {
+      const name = await askPrompt({ title: t("wfSnapApply"), initial: list[0]?.name ?? "" });
+      if (!name || !name.trim()) return;
+      if (applyLayoutSnapshot(name.trim())) pushToast("success", t("wfSnapApplied"), name.trim());
+      else pushToast("info", t("wfSnapApply"), t("wfSnapNone"));
+    })();
+  };
+
+  // ---------- AI-01 Z-36 右键菜单动作 ----------
+  const onFeelMenuItem = (id: string): void => {
+    if (id === "roll") rollVwmWin(win.id, true);
+    else if (id === "unroll") rollVwmWin(win.id, false);
+    else if (id === "topmost") setVwmTopmost(win.id, true);
+    else if (id === "untopmost") setVwmTopmost(win.id, false);
+    else if (id === "suspend" || id === "resume") toggleSuspend();
+    else if (id === "saveLayout") saveLayoutUi();
+    else if (id === "applyLayout") applyLayoutUi();
+    if (id !== "suspend" && id !== "resume" && id !== "saveLayout" && id !== "applyLayout") setMenu(null);
+  };
+
+  // Z-36：开启透明度微控时，新窗口应用该应用的记忆透明度（与 1 一致不记忆）
+  useEffect(() => {
+    if (!feel?.winFeelOpacity) return;
+    const mem = appOpacityOf(win.app);
+    if (mem !== null && win.opacity === 1) setVwmOpacity(win.id, mem);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div
       className={`vwm-window${props.focused ? " focused" : ""}${win.minimized && !props.flying ? " minimized" : ""}${maximized ? " maximized" : ""}${dragging ? " dragging" : ""}${snapping ? " snapping" : ""}${props.closing ? " closing" : ""}${props.flying ? " flying" : ""}`}
-      style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: props.zIndex }}
+      style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: props.zIndex, opacity: win.opacity < 1 ? win.opacity : undefined }}
       onPointerDown={() => {
         pointerFocusVwm(win.id);
         if (isTpApp(win.app)) void ipc.embedFocus(win.id).catch(() => {});
       }}
       role="dialog"
       aria-label={title}
+      data-winid={win.id}
     >
       <div
         className="vwm-titlebar"
         data-winid={win.id}
-        onPointerDown={onTitlePointerDown}
+        onPointerDown={(e) => {
+          onTitlePointerDown(e);
+          onTitleGestureStart(e);
+        }}
         onDoubleClick={() => { playSnap(); toggleMaxVwmWin(win.id); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          // AI-01 Z-41：手势已触发 → 本次抑制菜单
+          if (gestureFired.current) return;
+          setMenu({ x: e.clientX, y: e.clientY });
+        }}
       >
         <span className="vwm-app-dot" aria-hidden style={{ background: appAccent(win.app) }} />
         <span className="vwm-title">{title}</span>
+        {/* AI-01 M-04：未响应琥珀色徽标（环境不替应用做决定，仅提供选项） */}
+        {props.hung && (
+          <button type="button" className="vwm-hung-badge" title={t("wfHungHint")} onClick={hungAction}>
+            {t("wfHungBadge")}
+          </button>
+        )}
+        {suspendedNow && (
+          <span className="vwm-suspended-badge" title={t("wfSuspendedHint")}>
+            {t("wfSuspendedBadge")}
+          </span>
+        )}
         <span className="vwm-titlebar-space" />
         {/* 右上角 Mac 风格红绿灯（需求指定顺序：左绿 中黄 右红）：
             🟢 退出（关闭窗口）/ 🟡 全屏（最大化-还原）/ 🔴 最小化 */}
@@ -295,6 +537,54 @@ export function VirtualWindowFrame(props: {
       )}
 
       <div className="vwm-content">{props.children}</div>
+
+      {/* AI-01 Z-36 标题栏右键菜单：卷帘 / 置顶 / 挂起 / 透明度 / 布局快照 */}
+      {menu && (
+        <div
+          ref={menuRef}
+          className="vwm-sysmenu"
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {winFeelMenuItems(win, suspendedNow).map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              role="menuitem"
+              className="vwm-sysmenu-item"
+              disabled={it.disabled}
+              title={it.hintKey ? t(it.hintKey) : undefined}
+              onClick={() => onFeelMenuItem(it.id)}
+            >
+              {t(it.labelKey)}
+            </button>
+          ))}
+          {feel?.winFeelOpacity && (
+            <label className="vwm-sysmenu-item vwm-feel-opacity">
+              <span className="vwm-sysmenu-cap">{t("wfOpacity")}</span>
+              <input
+                type="range"
+                min={0.2}
+                max={1}
+                step={0.05}
+                value={win.opacity}
+                onChange={(e) => setVwmOpacity(win.id, Number(e.target.value))}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseUp={() => rememberAppOpacity(win.app, win.opacity)}
+                onTouchEnd={() => rememberAppOpacity(win.app, win.opacity)}
+              />
+              <span>{Math.round(win.opacity * 100)}%</span>
+            </label>
+          )}
+          <button type="button" role="menuitem" className="vwm-sysmenu-item" onClick={saveLayoutUi}>
+            {t("wfMenuSaveLayout")}
+          </button>
+          <button type="button" role="menuitem" className="vwm-sysmenu-item" onClick={applyLayoutUi}>
+            {t("wfMenuApplyLayout")}
+          </button>
+        </div>
+      )}
 
       {!maximized && (
         <>
