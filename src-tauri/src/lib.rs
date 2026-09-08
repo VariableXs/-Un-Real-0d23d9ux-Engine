@@ -1,4 +1,4 @@
-pub mod backup;
+﻿pub mod backup;
 pub mod boot;
 pub mod db;
 pub mod error;
@@ -111,7 +111,6 @@ pub fn run() {
             shell::workshop::spawn_workshop_runtime(app.handle().clone());
             shell::workshop::spawn_startdelay_runtime(app.handle().clone());
             // AI-16 Z-49：提醒中心运行时（系统时钟锚定 1s 粒度；重启补发未触发提醒）
-            shell::soundnotify::spawn_reminder_runtime(app.handle().clone());
             // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
             #[cfg(feature = "vm-agent")]
             vm_agent::spawn();
@@ -154,23 +153,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             boot::boot_replay,
             // ---- AI-16 启动与声音通知组（Z-43…Z-49） ----
-            shell::soundnotify::volmem_list,
-            shell::soundnotify::volmem_save,
-            shell::soundnotify::volmem_forget,
-            shell::soundnotify::volmem_sync,
-            shell::soundnotify::sound_scheme_validate,
-            shell::soundnotify::audio_set_default_comm,
-            shell::soundnotify::notify_archive_insert,
-            shell::soundnotify::notify_archive_query,
-            shell::soundnotify::notify_archive_apps,
-            shell::soundnotify::notify_archive_delete,
-            shell::soundnotify::notify_archive_cleanup,
-            shell::soundnotify::mic_usage_state,
-            shell::soundnotify::reminder_add,
-            shell::soundnotify::reminder_list,
-            shell::soundnotify::reminder_complete,
-            shell::soundnotify::reminder_reschedule,
-            shell::soundnotify::reminder_delete,
             system::app_bootstrap,
             system::open_path,
             system::reveal_path,

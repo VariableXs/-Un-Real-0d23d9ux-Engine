@@ -1,4 +1,4 @@
-//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
+﻿//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
 //! - tray.rs     OS 托盘图标 + 菜单（打开桌面/软件/系统窗口/退出）
 //! - hardware.rs 蓝牙/Wi-Fi/音频/摄像头/麦克风（Windows API，只读 + 音量控制）
 //! - explorer.rs 文件管理器（全盘浏览 + 受控写操作 + 删除入回收站）
@@ -95,4 +95,3 @@ pub mod a11y;
 // AI-16 soundnotify：接线暂存于 lib.rs/mod.rs 历史，模块文件由各组交付时恢复声明
 // AI-16 启动与声音通知组（Z-43 音量记忆 / Z-45 方案校验 / Z-46 通信设备 /
 // Z-47 通知存档 / Z-48 麦克风指示 / Z-49 提醒中心）
-pub mod soundnotify;
