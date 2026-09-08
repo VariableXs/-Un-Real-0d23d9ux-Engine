@@ -779,10 +779,175 @@ export const ipc = {
 
   // ---- AI-10：数据安全中心独立窗口 ----
   openDatavault: () => invoke<void>("open_datavault"),
+
+  // ---- AI-13 性能与长跑组（U-19/U-20/U-22、M-46…M-48/M-53/M-54、N-35/N-36）----
+  perfMemSnapshot: () => invoke<Shell.MemSnapshot>("perf_mem_snapshot"),
+  perfMemWardenStatus: () => invoke<Shell.WardenStatus>("perf_mem_warden_status"),
+  perfIoCopy: (from: string, to: string) => invoke<{ id: number }>("perf_io_copy", { from, to }),
+  perfIoPause: (id: number) => invoke<void>("perf_io_pause", { id }),
+  perfIoResume: (id: number) => invoke<void>("perf_io_resume", { id }),
+  perfIoCancel: (id: number) => invoke<void>("perf_io_cancel", { id }),
+  perfIoProgress: () => invoke<Shell.IoProgress>("perf_io_progress"),
+  perfLogUsage: () => invoke<Shell.LogUsage>("perf_log_usage"),
+  perfLogRotate: () => invoke<Shell.RotateReport>("perf_log_rotate"),
+  perfSettingsPreflight: (knownKeys: string[]) =>
+    invoke<Shell.PreflightReport>("perf_settings_preflight", { knownKeys }),
+  perfDbCompact: () => invoke<Shell.CompactReport>("perf_db_compact"),
+  perfInstanceList: () => invoke<Shell.InstanceInfo[]>("perf_instance_list"),
+  perfInstanceCreate: (name: string, takesDesktop: boolean) =>
+    invoke<Shell.InstanceInfo>("perf_instance_create", { name, takesDesktop }),
+  perfInstanceDelete: (name: string) => invoke<void>("perf_instance_delete", { name }),
+  perfInstanceHeartbeat: (name: string) => invoke<void>("perf_instance_heartbeat", { name }),
+  perfRelayExport: (rels: string[], outFile: string) =>
+    invoke<Shell.RelayManifestView>("perf_relay_export", { rels, outFile }),
+  perfRelayImport: (relayFile: string, targetDir: string) =>
+    invoke<Shell.RelayImportReport>("perf_relay_import", { relayFile, targetDir }),
+  perfCpuQuotaSet: (pid: number, tier: number) =>
+    invoke<Shell.QuotaResult>("perf_cpu_quota_set", { pid, tier }),
+  perfCrashDumps: () => invoke<Shell.CrashDumpInfo[]>("perf_crash_dumps"),
+  perfBootStage: (name: string, priority: number) => invoke<void>("perf_boot_stage", { name, priority }),
+  perfBootStages: () => invoke<{ name: string; ts: number; priority: number }[]>("perf_boot_stages"),
+
+  // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
+  openhubConfigGet: () => invoke<Shell.OpenHubConfigView>("openhub_config_get"),
+  openhubConfigSet: (config: Shell.OpenHubConfigView) =>
+    invoke<Shell.OpenHubConfigView>("openhub_config_set", { config }),
+  deeplinkParse: (url: string) => invoke<Shell.DeepLinkRouteView>("deeplink_parse", { url }),
+  deeplinkRegister: () => invoke<void>("deeplink_register"),
+  deeplinkUnregister: () => invoke<void>("deeplink_unregister"),
+  safehouseCheck: (manifest: Shell.SafehouseManifestView) =>
+    invoke<Shell.SafehouseCheckView>("safehouse_check", { manifest }),
+  safehouseExec: (manifest: Shell.SafehouseManifestView, verb: string, arg: string) =>
+    invoke<Shell.SafehouseRunResultView>("safehouse_exec", { manifest, verb, arg }),
+  vxsValidate: (path: string) => invoke<Shell.VxsPreviewView>("vxs_validate_cmd", { path }),
+  vxsExtract: (path: string, kinds: string[]) => invoke<string>("vxs_extract", { path, kinds }),
+  openhubDataExport: (outDir: string) => invoke<Shell.DataExportResultView>("openhub_data_export", { outDir }),
+  openhubStreamEmit: (eventType: string, payload: string) =>
+    invoke<boolean>("openhub_stream_emit", { eventType, payload }),
+  openhubStreamTail: (n: number) => invoke<string[]>("openhub_stream_tail", { n }),
+  gatewayStatus: () => invoke<Shell.GatewayStatusView>("gateway_status"),
+  gatewayTokenRegen: () => invoke<string>("gateway_token_regen"),
+  openhubConnectorQuery: (def: Shell.ConnectorDefView) =>
+    invoke<Shell.ConnectorResultView>("openhub_connector_query", { def }),
+  companionInbox: () => invoke<string[]>("companion_inbox"),
+  companionInboxClear: () => invoke<void>("companion_inbox_clear"),
+
+  // ---- AI-15 开放工具组（M-57/59/63、V-81..V-90）----
+  // M-57 出站桥
+  webhookRulesGet: () => invoke<Shell.WebhookConfigView>("webhook_rules_get"),
+  webhookRulesSet: (config: Shell.WebhookConfigView) =>
+    invoke<Shell.WebhookConfigView>("webhook_rules_set", { config }),
+  webhookDispatch: (event: string, payload: string) => invoke<number>("webhook_dispatch", { event, payload }),
+  webhookTest: (url: string) => invoke<boolean>("webhook_test", { url }),
+  webhookLogList: (limit?: number) => invoke<Shell.WebhookLogView[]>("webhook_log_list", { limit }),
+  // M-59 嵌入声明协议 / M-63 资源包安全扫描
+  embedManifestScan: (exePath: string) => invoke<Shell.EmbedManifestView | null>("embed_manifest_scan", { exePath }),
+  vxsScan: (path: string) => invoke<Shell.VxsScanReportView>("vxs_scan_cmd", { path }),
+  // V-89 配置对比 / V-90 沙盒试用
+  cfgDiff: (a: string, b: string) => invoke<Shell.CfgDiffEntryView[]>("cfg_diff", { a, b }),
+  sandboxTrialBegin: (kind: string, id: string, prevValue: string) =>
+    invoke<void>("sandbox_trial_begin", { kind, id, prevValue }),
+  sandboxTrialEnd: (kind: string, id: string) =>
+    invoke<Shell.SandboxTrialView[]>("sandbox_trial_end", { kind, id }),
+  sandboxTrialList: () => invoke<Shell.SandboxTrialView[]>("sandbox_trial_list"),
+  // V-81 开放安装器（winget）
+  wingetStatus: () => invoke<Shell.WingetStatusView>("winget_status"),
+  wingetSearch: (query: string) => invoke<Shell.WingetPkgView[]>("winget_search", { query }),
+  wingetListInstalled: () => invoke<Shell.WingetPkgView[]>("winget_list_installed"),
+  wingetUpgradeList: () => invoke<Shell.WingetPkgView[]>("winget_upgrade_list"),
+  wingetInstall: (id: string, exact?: boolean) => invoke<Shell.WingetOpResultView>("winget_install", { id, exact }),
+  wingetUpgradeOne: (id: string) => invoke<Shell.WingetOpResultView>("winget_upgrade_one", { id }),
+  wingetUninstall: (id: string) => invoke<Shell.WingetOpResultView>("winget_uninstall", { id }),
+  // V-82 环境变量编辑器
+  envOverview: () => invoke<Shell.EnvOverviewView>("env_overview"),
+  envBackupList: () => invoke<Shell.EnvBackupView[]>("env_backup_list"),
+  envVarSet: (name: string, value: string, expand: boolean) =>
+    invoke<void>("env_var_set", { name, value, expand }),
+  envVarDelete: (name: string) => invoke<void>("env_var_delete", { name }),
+  envRestoreBackup: (backupId: string) => invoke<number>("env_restore_backup", { backupId }),
+  // V-83 计划任务工坊 / V-86 启动延迟编排
+  schedList: () => invoke<Shell.SchedTaskView[]>("sched_list"),
+  schedUpsert: (task: Shell.SchedTaskView) => invoke<Shell.SchedTaskView[]>("sched_upsert", { task }),
+  schedRemove: (id: string) => invoke<Shell.SchedTaskView[]>("sched_remove", { id }),
+  schedToggle: (id: string, enabled: boolean) => invoke<Shell.SchedTaskView[]>("sched_toggle", { id, enabled }),
+  schedLogList: () => invoke<Shell.SchedLogView[]>("sched_log_list"),
+  schedRunNow: (id: string) => invoke<void>("sched_run_now", { id }),
+  startdelayGet: () => invoke<Shell.StartDelayConfigView>("startdelay_get"),
+  startdelaySet: (config: Shell.StartDelayConfigView) =>
+    invoke<Shell.StartDelayConfigView>("startdelay_set", { config }),
+  startdelayTimeline: () => invoke<Shell.StartDelayTimelineView[]>("startdelay_timeline"),
+  // V-84 关联快照 / V-85 卸载善后
+  assocSnapshotTake: (name: string) => invoke<Shell.AssocSnapshotView>("assoc_snapshot_take", { name }),
+  assocSnapshotList: () => invoke<Shell.AssocSnapshotView[]>("assoc_snapshot_list"),
+  assocSnapshotRemove: (id: string) => invoke<void>("assoc_snapshot_remove", { id }),
+  assocSnapshotDiff: (idA: string, idB: string) =>
+    invoke<Shell.AssocDiffEntryView[]>("assoc_snapshot_diff", { idA, idB }),
+  assocSnapshotRestore: (id: string) => invoke<[number, number]>("assoc_snapshot_restore", { id }),
+  residueScanApp: (appName: string) => invoke<Shell.ResidueReportView>("residue_scan_app", { appName }),
+  residueDelete: (paths: string[]) => invoke<string[]>("residue_delete", { paths }),
+  // V-87 服务依赖图
+  svcGraph: () => invoke<Shell.SvcNodeView[]>("svc_graph"),
+  svcImpact: (target: string) => invoke<Shell.SvcImpactView>("svc_impact", { target }),
+  svcTopo: () => invoke<Shell.SvcTopoView>("svc_topo"),
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
 export namespace Shell {
+  // ---- AI-14 开放接口组视图（与 openhub.rs serde 字段一一对应）----
+  export interface OpenHubConfigView {
+    streamEnabled: boolean;
+    gatewayEnabled: boolean;
+    gatewayPort: number;
+    gatewayToken: string;
+    gatewayScopes: string[];
+  }
+  export interface DeepLinkRouteView {
+    verb: string;
+    params: [string, string][];
+    action: string;
+  }
+  export interface SafehouseManifestView {
+    id: string;
+    version: string;
+    capabilities: string[];
+    quotaSec: number;
+  }
+  export interface SafehouseCheckView {
+    granted: string[];
+    denied: string[];
+    errors: string[];
+  }
+  export interface SafehouseRunResultView {
+    ok: boolean;
+    output: string;
+    rejected: string | null;
+  }
+  export interface VxsPreviewView {
+    id: string;
+    formatOk: boolean;
+    resources: string[];
+    errors: string[];
+  }
+  export interface DataExportResultView {
+    outDir: string;
+    files: number;
+    bytes: number;
+  }
+  export interface GatewayStatusView {
+    running: boolean;
+    port: number;
+    scopes: string[];
+  }
+  export interface ConnectorDefView {
+    path: string;
+    kind: string;
+    sql: string | null;
+  }
+  export interface ConnectorResultView {
+    columns: string[];
+    rows: string[][];
+    error: string | null;
+  }
   export interface DeviceUsage {
     kind: "microphone" | "webcam";
     app: string;
@@ -1909,6 +2074,78 @@ export namespace Shell {
     id: string;
     level: string;
     message: string;
+  }
+  // ---- AI-13 性能与长跑组 ----
+  /** U-20 内存快照（tier: 0 normal / 1 watch / 2 critical） */
+  export interface MemSnapshot {
+    load_pct: number;
+    total_bytes: number;
+    avail_bytes: number;
+    tier: number;
+  }
+  export interface WardenStatus {
+    running: boolean;
+    points: number;
+    leak_suspect: boolean;
+    tier: number;
+    history: { ts: number; load_pct: number }[];
+  }
+  export interface IoJobProgress {
+    id: number;
+    from: string;
+    to: string;
+    copied: number;
+    total: number;
+    state: number;
+  }
+  export interface IoProgress {
+    jobs: IoJobProgress[];
+  }
+  export interface LogUsage {
+    active_bytes: number;
+    archived_bytes: number;
+    archived_count: number;
+  }
+  export interface RotateReport {
+    rotated: boolean;
+    deleted: number;
+    active_bytes: number;
+  }
+  export interface PreflightReport {
+    total: number;
+    unknown_keys: string[];
+    corrupt_keys: string[];
+  }
+  export interface CompactReport {
+    before_bytes: number;
+    after_bytes: number;
+    snapshot_path: string;
+    ms: number;
+  }
+  export interface InstanceInfo {
+    name: string;
+    heartbeat: number;
+    takes_desktop: boolean;
+  }
+  export interface RelayManifestView {
+    kind: string;
+    version: number;
+    created_at: number;
+    files: { rel: string; size: number; sha256: string }[];
+  }
+  export interface RelayImportReport {
+    imported: string[];
+    missing: string[];
+  }
+  export interface QuotaResult {
+    pid: number;
+    applied: boolean;
+    tier: number;
+  }
+  export interface CrashDumpInfo {
+    file: string;
+    size: number;
+    ts: number;
   }
 }
 

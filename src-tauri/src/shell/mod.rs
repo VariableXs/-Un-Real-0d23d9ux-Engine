@@ -74,6 +74,19 @@ pub mod insights;
 // AI-07 效率中枢组（N-15 剪贴板历史后端 / N-18 宏引擎护栏与触发器）
 pub mod cliphist;
 pub mod macros;
-// AI-11 系统集成与硬件组（U-43..U-48 / N-19..N-25 / V-51..V-60 后端支撑）
+// AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
+// M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
+pub mod perf;
+// AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）
+pub mod openhub;
+// 系统探测与电源（lib.rs 已注册命令；模块文件曾被并发回滚，此处补声明）
 pub mod sysprobe;
 pub mod winpower;
+// AI-15 开放工具组（M-57/59/63、V-89/90 出站桥与安全扫描；V-81 winget；V-82 环境变量；
+// V-83/V-86 计划任务与启动延迟；V-84/85 关联快照与卸载善后；V-87 服务依赖图）
+pub mod opentools;
+pub mod winget;
+pub mod envedit;
+pub mod workshop;
+pub mod assocguard;
+pub mod svcgraph;

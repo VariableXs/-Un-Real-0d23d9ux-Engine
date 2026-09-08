@@ -33,6 +33,7 @@ import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManage
 import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
 import { WinFeelTab } from "./WinFeelTab";
+import { PerfTab } from "./PerfTab";
 import { FilesTab } from "./FilesTab";
 import type { SysSection } from "./SystemCenterTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
@@ -149,6 +150,8 @@ export function SettingsModal(props: {
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
+    { id: "perf", label: t("pfTabTitle") },
+    { id: "openhub", label: t("ohTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
@@ -787,6 +790,7 @@ export function SettingsModal(props: {
           {/* AI-12 兼容纵深组：Z-15…Z-21、M-37…M-45 面板 */}
           {tab === "compat" && <CompatTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-13 性能与长跑组：Z-58/Z-59/Z-60/Z-61/Z-62 + M-46/M-48/N-35/M-53 面板 */}
+          {tab === "perf" && <PerfTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

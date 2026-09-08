@@ -10,6 +10,8 @@
 @import "./ai08-print.css";
 /* AI-12 兼容纵深组 */
 @import "./ai12-compat.css";
+/* AI-14 开放接口组 */
+@import "./ai14-openhub.css";
 :root {
   --bg: #05070d;
   --panel: rgba(10, 15, 28, 0.72);

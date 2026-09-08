@@ -1,0 +1,98 @@
+/* AI-14 开放接口组 — 设置页「开放接口」标签（U-37/38/39、Z-50…Z-56、N-27…N-30） */
+
+.oh-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.oh-desc,
+.oh-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.oh-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+}
+
+.oh-group h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.oh-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oh-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oh-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.oh-input {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.oh-input:focus {
+  border-color: var(--accent);
+}
+
+.oh-mono {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.oh-result {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 12px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.oh-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.oh-badge {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.oh-badge.ok { color: var(--ok, #4ade80); }
+.oh-badge.bad { color: var(--bad, #f87171); }
+.oh-badge.warn { color: var(--warn, #facc15); }

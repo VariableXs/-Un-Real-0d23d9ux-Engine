@@ -97,6 +97,109 @@ pub fn run_cli(args: &[String]) -> Option<i32> {
                 Some(1)
             }
         }
+        // ---- AI-14 N-29 variable-cli：离线子命令族（在线族经 N-28 网关，见 --help）----
+        "--doctor" => {
+            let st = st();
+            let ok = std::fs::create_dir_all(&st.data_dir).is_ok();
+            let container = st.data_dir.join("data.uxv");
+            println!("data-dir: {}", st.data_dir.display());
+            println!("writable: {ok}");
+            println!(
+                "container: {}",
+                if container.is_file() { "present" } else { "absent (fresh)" }
+            );
+            println!(
+                "engine: {} / os: {}-{}",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
+            if args.iter().any(|a| a == "--json") {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "dataDir": st.data_dir.to_string_lossy(),
+                        "writable": ok,
+                        "container": container.is_file(),
+                        "engine": env!("CARGO_PKG_VERSION"),
+                    })
+                );
+            }
+            Some(if ok { 0 } else { 1 })
+        }
+        "--api-token-gen" => {
+            let st = st();
+            let token = uuid::Uuid::new_v4().simple().to_string();
+            // 写入 openhub.json（与网关共用 token 字段）
+            let path = st.data_dir.join("openhub.json");
+            let mut cfg: serde_json::Value = std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::json!({}));
+            cfg["gatewayToken"] = serde_json::json!(token);
+            match serde_json::to_string_pretty(&cfg)
+                .map_err(|e| e.to_string())
+                .and_then(|s| std::fs::write(&path, s).map_err(|e| e.to_string()))
+            {
+                Ok(()) => {
+                    println!("token: {token}");
+                    println!("（写入 openhub.json；网关开启后即生效）");
+                    if args.iter().any(|a| a == "--json") {
+                        println!("{}", serde_json::json!({ "token": token }));
+                    }
+                    Some(0)
+                }
+                Err(e) => {
+                    eprintln!("写入失败: {e}");
+                    Some(1)
+                }
+            }
+        }
+        // ---- AI-15 开放工具组 CLI ----
+        // V-88 CLI 交互式教程：--tour [章节|list]
+        "--tour" => {
+            let topic = args.get(1).cloned().unwrap_or_else(|| "list".into());
+            Some(crate::shell::opentools::cli_tour(&topic))
+        }
+        // M-58 插件开发热重载（CLI 侧）：校验插件目录/清单 + 打印热重载工作流指引
+        "--plugin-dev" => {
+            let dir = args.get(1).cloned().unwrap_or_default();
+            if dir.is_empty() {
+                eprintln!("用法: Variable --plugin-dev <插件目录>");
+                return Some(2);
+            }
+            match crate::shell::opentools::cli_plugin_dev(Path::new(&dir)) {
+                Ok(msg) => {
+                    println!("{msg}");
+                    Some(0)
+                }
+                Err(e) => {
+                    eprintln!("校验失败: {e}");
+                    Some(1)
+                }
+            }
+        }
+        // M-60 测试钩子规范（CLI 侧）：--test-ready 扫描 data-testid 覆盖与规范文件
+        "--test-ready" => {
+            let root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            match crate::shell::opentools::cli_test_ready(&root) {
+                Ok((ok, msg)) => {
+                    println!("{msg}");
+                    Some(if ok { 0 } else { 1 })
+                }
+                Err(e) => {
+                    eprintln!("扫描失败: {e}");
+                    Some(1)
+                }
+            }
+        }
+        "--help" | "-h" => {
+            // 三段式帮助：应急 | 控制 | 生态（N-29 统一入口）
+            println!("应急: --export-rescue <容器> <输出> [口令] | --repair <容器> [口令] | --force-raster | --revoke-list [out]");
+            println!("生态: --doctor [--json] | --api-token-gen [--json] | --tour [章节|list] | --plugin-dev <插件目录> | --test-ready");
+            println!("控制: 在线命令族经本地网关（设置 → 开放接口 → 网关，默认关闭）");
+            Some(0)
+        }
         "--revoke-list" => {
             let out = args.get(1).cloned().unwrap_or_else(|| "revocation-list.md".into());
             let st = st();
