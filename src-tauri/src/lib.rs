@@ -110,6 +110,8 @@ pub fn run() {
             // AI-15 V-83/V-86：计划任务工坊 + 启动延迟编排运行时（30s 轮询触发器）
             shell::workshop::spawn_workshop_runtime(app.handle().clone());
             shell::workshop::spawn_startdelay_runtime(app.handle().clone());
+            // AI-16 Z-49：提醒中心运行时（系统时钟锚定 1s 粒度；重启补发未触发提醒）
+            shell::soundnotify::spawn_reminder_runtime(app.handle().clone());
             // L-1：VM 档 agent 心跳（宿主引导器探测 47631；退出回发 EXIT 通知宿主卸盘）
             #[cfg(feature = "vm-agent")]
             vm_agent::spawn();
@@ -151,6 +153,24 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             boot::boot_replay,
+            // ---- AI-16 启动与声音通知组（Z-43…Z-49） ----
+            shell::soundnotify::volmem_list,
+            shell::soundnotify::volmem_save,
+            shell::soundnotify::volmem_forget,
+            shell::soundnotify::volmem_sync,
+            shell::soundnotify::sound_scheme_validate,
+            shell::soundnotify::audio_set_default_comm,
+            shell::soundnotify::notify_archive_insert,
+            shell::soundnotify::notify_archive_query,
+            shell::soundnotify::notify_archive_apps,
+            shell::soundnotify::notify_archive_delete,
+            shell::soundnotify::notify_archive_cleanup,
+            shell::soundnotify::mic_usage_state,
+            shell::soundnotify::reminder_add,
+            shell::soundnotify::reminder_list,
+            shell::soundnotify::reminder_complete,
+            shell::soundnotify::reminder_reschedule,
+            shell::soundnotify::reminder_delete,
             system::app_bootstrap,
             system::open_path,
             system::reveal_path,
@@ -634,6 +654,8 @@ pub fn run() {
             shell::macros::macro_send_text,
             // ---- AI-11 系统集成与硬件组（U-43..U-48 / N-19..N-25 / V-51..V-60）----
             shell::sysprobe::monitor_list,
+            // AI-19 M-73/M-74：系统辅助功能桥只读探针
+            shell::a11y::a11y_probe,
             shell::sysprobe::port_table,
             shell::sysprobe::eventlog_recent,
             shell::sysprobe::bigfile_scan,
@@ -738,7 +760,8 @@ pub fn run() {
             shell::assocguard::residue_delete,
             shell::svcgraph::svc_graph,
             shell::svcgraph::svc_impact,
-            shell::svcgraph::svc_topo
+            shell::svcgraph::svc_topo,
+            // ---- AI-19 无障碍与本地化组（M-73/M-74；模块文件由 AI-19 交付时接线）----
         ])
         .build(tauri::generate_context!());
     match app {

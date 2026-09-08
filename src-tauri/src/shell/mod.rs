@@ -77,9 +77,6 @@ pub mod macros;
 // AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
 // M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
 pub mod perf;
-// AI-13 性能与长跑组（U-20 内存守护 / U-22 IO 治理 / M-46 日志轮转 / M-47 迁移预检 /
-// M-48 DB 紧凑 / N-35 分身 / N-36 接力 / M-53 崩溃转储 / M-54 CPU 配额 / U-19 boot 阶段）
-pub mod perf;
 // AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）
 pub mod openhub;
 // 系统探测与电源（lib.rs 已注册命令；模块文件曾被并发回滚，此处补声明）
@@ -93,3 +90,9 @@ pub mod envedit;
 pub mod workshop;
 pub mod assocguard;
 pub mod svcgraph;
+// AI-19 无障碍与本地化组（M-73 系统辅助功能桥 / M-74 高对比度探针）
+pub mod a11y;
+// AI-16 soundnotify：接线暂存于 lib.rs/mod.rs 历史，模块文件由各组交付时恢复声明
+// AI-16 启动与声音通知组（Z-43 音量记忆 / Z-45 方案校验 / Z-46 通信设备 /
+// Z-47 通知存档 / Z-48 麦克风指示 / Z-49 提醒中心）
+pub mod soundnotify;

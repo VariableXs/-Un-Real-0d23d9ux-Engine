@@ -4,6 +4,9 @@ import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n, I18nContext, makeT } from "./i18n";
 import type { Lang } from "./i18n/dictionaries";
+import { setI18nRuntimeOverrides, setPseudoLocale } from "./i18n/dictionaries";
+import { setS2tUserLexicon } from "./i18n/s2t";
+import { applyCvdFilter, startFocusAnnouncer, StickyModifiers, withStickyModifiers, a11yRuntime } from "./lib/a11y";
 import { ipc, errMessage } from "./lib/ipc";
 import { loadSettings, saveSetting, type Settings } from "./lib/settings";
 import { uiStore, pushToast, resetGlobalCanvasInteraction, useUi } from "./state/uiStore";
@@ -34,6 +37,7 @@ import { FateView } from "./apps/fate/FateView";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
+import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { OobeGate } from "./features/oobe/OobeWizard";
 
 export type AppEntryType = "desktop" | AppMode;
@@ -311,9 +315,17 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
   useEffect(() => {
     if (!settings) return;
     const root = document.documentElement;
-    root.dataset.theme = settings.theme;
+    // M-74：系统高对比度跟随（hcOverride 由 a11y 桥探针维护）
+    root.dataset.theme = a11yRuntime.hcOverride && settings.themeFollowHc ? "high-contrast" : settings.theme;
     // A-2.3：reduceMotion / 性能低档位 → 全部动效降级 80ms（动效是增益不是依赖）
-    root.dataset.reduceMotion = String(!!settings.reduceMotion);
+    // M-73：讲述人运行时自动叠加 reduce-motion（讲述人对动画敏感；不改用户设置）
+    root.dataset.reduceMotion = String(!!settings.reduceMotion || a11yRuntime.narrator);
+    // M-75：动效时长全局缩放（0.5x/1x；reduceMotion 优先级最高不受影响）
+    root.style.setProperty("--dur-scale", String(settings.motionScale ?? 1));
+    // U-40：色觉模拟器（默认 off）
+    applyCvdFilter(root, settings.cvdSim ?? "off");
+    // U-41：RTL 试点信号（设置/通知中心两处面板读取）
+    root.dataset.rtlPilot = String(!!settings.rtlPilot);
     root.style.setProperty("--editor-font", settings.fontFamily);
     root.style.setProperty("--editor-font-size", `${settings.fontSize}px`);
     root.style.setProperty("--editor-line-height", String(settings.lineHeight));
@@ -321,6 +333,80 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     const appEl = document.getElementById("app-root");
     if (appEl) (appEl as HTMLElement).style.zoom = String(settings.uiZoom);
   }, [settings]);
+
+  // ---------- AI-19 无障碍与本地化组运行时接线 ----------
+  // U-41：i18n 运行时覆盖 / 伪本地化；M-77：简繁用户词表（热路径零开销当空）
+  useEffect(() => {
+    setS2tUserLexicon(settings?.s2tLexicon ?? {});
+    setI18nRuntimeOverrides(settings?.i18nOverrides ?? {});
+    setPseudoLocale(!!settings?.pseudoLocale);
+  }, [settings?.s2tLexicon, settings?.i18nOverrides, settings?.pseudoLocale]);
+
+  // U-40：焦点跟随提示（Tab 移动读出目标控件名称；默认关）
+  useEffect(() => {
+    if (!settings?.focusAnnounce) return;
+    return startFocusAnnouncer(document);
+  }, [settings?.focusAnnounce]);
+
+  // M-73/M-74：系统辅助功能桥 — 只读探针轮询（HC 跟随 / 讲述人降级 / 粘滞键）
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let stopped = false;
+    const poll = async (): Promise<void> => {
+      try {
+        const p = await ipc.a11yProbe();
+        if (stopped) return;
+        const before = `${a11yRuntime.hcOverride}|${a11yRuntime.narrator}`;
+        a11yRuntime.hcOverride = p.highContrast;
+        a11yRuntime.narrator = p.narratorRunning;
+        a11yRuntime.stickyKeys = p.stickyKeys;
+        a11yRuntime.filterKeys = p.filterKeys;
+        const after = `${a11yRuntime.hcOverride}|${a11yRuntime.narrator}`;
+        // M-74：系统 HC 切换 → 环境 300ms 内跟随（轮询间隔内即时写 dataset；
+        // 联动事件写日志可查）。M-73：讲述人 → 动效降级立即生效。
+        if (before !== after && settings) {
+          const root = document.documentElement;
+          root.dataset.theme = a11yRuntime.hcOverride && settings.themeFollowHc ? "high-contrast" : settings.theme;
+          root.dataset.reduceMotion = String(!!settings.reduceMotion || a11yRuntime.narrator);
+          // M-74 红线：联动事件写日志可查（a11y-bridge 频道）
+          void ipc.log("info", `a11y-bridge: hc=${p.highContrast} narrator=${p.narratorRunning} sticky=${p.stickyKeys} filter=${p.filterKeys}`).catch(() => {});
+        }
+      } catch {
+        /* 探针失败如实保留现状（绝编造） */
+      }
+    };
+    void poll();
+    // 跟随开启时 500ms 轮询（300ms 跟随目标），关闭时 5s 低频观察（状态展示用）
+    const interval = window.setInterval(poll, settings?.themeFollowHc ? 500 : 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [settings?.themeFollowHc, settings?.theme, settings?.reduceMotion]);
+
+  // M-73：粘滞键分步修饰键 — 系统粘滞键开启时锁存分步修饰键并并入键盘事件
+  //（OS 级粘滞键通常已由系统注入 ctrlKey；此处兜底 webview 不透传的场景）
+  const stickyModsRef = useRef(new StickyModifiers());
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        stickyModsRef.current.reset();
+        return;
+      }
+      if (!a11yRuntime.stickyKeys) return;
+      const flags = withStickyModifiers(e, stickyModsRef.current);
+      try {
+        Object.defineProperty(e, "ctrlKey", { get: () => flags.ctrl, configurable: true });
+        Object.defineProperty(e, "altKey", { get: () => flags.alt, configurable: true });
+        Object.defineProperty(e, "shiftKey", { get: () => flags.shift, configurable: true });
+        Object.defineProperty(e, "metaKey", { get: () => flags.meta, configurable: true });
+      } catch {
+        /* 事件属性不可覆写时保留系统注入值 */
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   // persist last opened doc
   useEffect(() => {
@@ -466,6 +552,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <KeymapOverlay />
             <CommandHintBar settings={settings} />
             <KeycastOverlay settings={settings} />
+            {/* AI-17 视觉语言组：Z-69 边缘热区 / Z-70 帮助中心 / U-57 首次导览 */}
+            <VisionRuntime />
             {settings && boot && (
               <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
             )}

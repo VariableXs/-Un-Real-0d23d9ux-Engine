@@ -51,6 +51,15 @@ export interface ListFilterT {
 }
 
 export const ipc = {
+  // ---- AI-19 无障碍与本地化组（M-73/M-74 系统辅助功能只读探针）----
+  a11yProbe: () => invoke<{
+    stickyKeys: boolean;
+    filterKeys: boolean;
+    highContrast: boolean;
+    narratorRunning: boolean;
+    probedAt: number;
+  }>("a11y_probe"),
+
   // ---- AI-12 兼容纵深组（Z-15…Z-21、M-37…M-45 支撑）----
   compatUwpList: () => invoke<{ name: string; appId: string }[]>("compat_uwp_list"),
   compatElevationProbe: (path: string) =>
@@ -889,6 +898,31 @@ export const ipc = {
   svcGraph: () => invoke<Shell.SvcNodeView[]>("svc_graph"),
   svcImpact: (target: string) => invoke<Shell.SvcImpactView>("svc_impact", { target }),
   svcTopo: () => invoke<Shell.SvcTopoView>("svc_topo"),
+  // ---- AI-16 启动与声音通知组（Z-43…Z-49）----
+  // Z-43 逐应用音量记忆
+  volmemList: () => invoke<Shell.VolMemEntryView[]>("volmem_list"),
+  volmemSave: (entry: Shell.VolMemEntryView) => invoke<void>("volmem_save", { entry }),
+  volmemForget: (app: string) => invoke<void>("volmem_forget", { app }),
+  volmemSync: () => invoke<Shell.VolMemApplyView[]>("volmem_sync"),
+  // Z-45 系统声音方案（方案包校验）
+  soundSchemeValidate: (path: string) => invoke<Shell.SchemeCheckView>("sound_scheme_validate", { path }),
+  // Z-46 音频设备快切（默认通信设备）
+  audioSetDefaultComm: (deviceId: string) => invoke<void>("audio_set_default_comm", { deviceId }),
+  // Z-47 通知存档与搜索
+  notifyArchiveInsert: (entry: Shell.ArchiveEntryView) => invoke<number>("notify_archive_insert", { entry }),
+  notifyArchiveQuery: (query: string, app: string, limit: number, offset: number) =>
+    invoke<Shell.ArchiveQueryView>("notify_archive_query", { query, app, limit, offset }),
+  notifyArchiveApps: () => invoke<string[]>("notify_archive_apps"),
+  notifyArchiveDelete: (ids: number[]) => invoke<number>("notify_archive_delete", { ids }),
+  notifyArchiveCleanup: (retentionDays: number) => invoke<number>("notify_archive_cleanup", { retentionDays }),
+  // Z-48 麦克风使用指示（只读）
+  micUsageState: () => invoke<Shell.MicUsageView>("mic_usage_state"),
+  // Z-49 提醒中心
+  reminderAdd: (reminder: Shell.ReminderView) => invoke<Shell.ReminderView[]>("reminder_add", { reminder }),
+  reminderList: () => invoke<Shell.ReminderView[]>("reminder_list"),
+  reminderComplete: (id: string) => invoke<Shell.ReminderView[]>("reminder_complete", { id }),
+  reminderReschedule: (id: string, dueAt: number) => invoke<Shell.ReminderView[]>("reminder_reschedule", { id, dueAt }),
+  reminderDelete: (id: string) => invoke<Shell.ReminderView[]>("reminder_delete", { id }),
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
@@ -2146,6 +2180,226 @@ export namespace Shell {
     file: string;
     size: number;
     ts: number;
+  }
+
+  // ---- AI-15 开放工具组视图（与 opentools/winget/envedit/workshop/assocguard/svcgraph.rs serde 字段一一对应）----
+  export interface WebhookRuleView {
+    id: string;
+    event: string;
+    url: string;
+    enabled: boolean;
+  }
+  export interface WebhookConfigView {
+    enabled: boolean;
+    rules: WebhookRuleView[];
+  }
+  export interface WebhookLogView {
+    ts: number;
+    event: string;
+    url: string;
+    ok: boolean;
+    status: number | null;
+    detail: string;
+  }
+  export interface EmbedManifestView {
+    version: number;
+    titleMatch: string;
+    minWidth: number;
+    minHeight: number;
+    multiInstance: string;
+    waitMs: number;
+  }
+  export interface VxsScanReportView {
+    path: string;
+    totalFiles: number;
+    totalBytes: number;
+    typeDist: [string, number][];
+    blocked: string[];
+    warnings: string[];
+    safe: boolean;
+  }
+  export interface CfgDiffEntryView {
+    path: string;
+    kind: "add" | "del" | "mod" | string;
+    a: unknown;
+    b: unknown;
+  }
+  export interface SandboxTrialView {
+    kind: string;
+    id: string;
+    startedAt: number;
+    prevValue: string;
+  }
+  export interface WingetStatusView {
+    available: boolean;
+    version: string;
+  }
+  export interface WingetPkgView {
+    name: string;
+    id: string;
+    version: string;
+    available: string;
+    source: string;
+  }
+  export interface WingetOpResultView {
+    ok: boolean;
+    exitCode: number | null;
+  }
+  export interface EnvVarView {
+    name: string;
+    value: string;
+    expand: boolean;
+  }
+  export interface EnvOverviewView {
+    user: EnvVarView[];
+    system: EnvVarView[];
+  }
+  export interface EnvBackupView {
+    id: string;
+    createdAt: number;
+    vars: EnvVarView[];
+  }
+  export type SchedTriggerView =
+    | { type: "at"; hour: number; minute: number }
+    | { type: "interval"; secs: number }
+    | { type: "idle"; secs: number }
+    | { type: "login"; secs: number };
+  export interface SchedTaskView {
+    id: string;
+    name: string;
+    action: string;
+    arg: string;
+    trigger: SchedTriggerView;
+    enabled: boolean;
+    lastFired: number;
+  }
+  export interface SchedLogView {
+    ts: number;
+    taskId: string;
+    name: string;
+    action: string;
+    ok: boolean;
+    detail: string;
+  }
+  export interface StartDelayEntryView {
+    name: string;
+    delaySecs: number;
+  }
+  export interface StartDelayConfigView {
+    vmOnly: boolean;
+    delays: StartDelayEntryView[];
+  }
+  export interface StartDelayTimelineView {
+    bootMs: number;
+    name: string;
+    delaySecs: number;
+    launchedMs: number;
+    theoreticalMs: number;
+    via: string;
+  }
+  export interface AssocEntryView {
+    ext: string;
+    progId: string;
+  }
+  export interface AssocSnapshotView {
+    id: string;
+    name: string;
+    createdAt: number;
+    entries: AssocEntryView[];
+  }
+  export interface AssocDiffEntryView {
+    ext: string;
+    kind: "add" | "del" | "mod" | string;
+    aProg: string;
+    bProg: string;
+  }
+  export interface ResidueHitView {
+    path: string;
+    kind: string;
+    bytes: number;
+  }
+  export interface ResidueReportView {
+    appName: string;
+    hits: ResidueHitView[];
+    scannedRoots: string[];
+    totalBytes: number;
+  }
+  export interface SvcNodeView {
+    name: string;
+    display: string;
+    start: string;
+    process: string;
+    dependsOn: string[];
+  }
+  export interface SvcImpactView {
+    target: string;
+    directDependents: string[];
+    transitiveDependents: string[];
+    targetDependsOn: string[];
+    suggestedStopOrder: string[];
+    suggestedStartOrder: string[];
+  }
+  export interface SvcTopoView {
+    layers: string[][];
+    unresolved: string[];
+  }
+  // ---- AI-16 启动与声音通知组视图（与 soundnotify.rs serde 字段一一对应）----
+  /** Z-43 逐应用音量记忆条目。 */
+  export interface VolMemEntryView {
+    app: string;
+    volume: number;
+    muted: boolean;
+    remember: boolean;
+    updatedAt: number;
+  }
+  export interface VolMemApplyView {
+    app: string;
+    ok: boolean;
+    reason: string | null;
+  }
+  /** Z-45 方案包校验结果。 */
+  export interface SchemeCheckView {
+    ok: boolean;
+    reason: string | null;
+    events: number;
+    name: string;
+  }
+  /** Z-47 通知存档。 */
+  export interface ArchiveEntryView {
+    app: string;
+    title: string;
+    body: string;
+    kind: string;
+    actions: string;
+    ts: number;
+  }
+  export interface ArchiveRowView {
+    id: number;
+    app: string;
+    title: string;
+    body: string;
+    kind: string;
+    actions: string;
+    ts: number;
+  }
+  export interface ArchiveQueryView {
+    rows: ArchiveRowView[];
+    total: number;
+  }
+  /** Z-48 麦克风使用指示。 */
+  export interface MicUsageView {
+    inUse: boolean;
+    apps: string[];
+  }
+  /** Z-49 提醒。 */
+  export interface ReminderView {
+    id: string;
+    text: string;
+    dueAt: number;
+    repeat: "none" | "daily" | "weekly";
+    category: "reminder" | "pomodoro";
+    enabled: boolean;
+    lastFired: number;
   }
 }
 

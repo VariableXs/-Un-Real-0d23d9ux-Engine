@@ -44,6 +44,9 @@ import { TASKBAR_MENU_REGISTRY, loadMenuOverride, saveMenuOverride, clearMenuOve
 import { sanitizeClockZones } from "../../system/taskbar/clockcard";
 import { CompatTab } from "../../system/compat/CompatTab";
 import { OpenHubTab } from "./OpenHubTab";
+import { A11yTab } from "./A11yTab";
+import { OpenToolsTab } from "./OpenToolsTab";
+import { SoundNotifyTab } from "./SoundNotifyTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -153,6 +156,9 @@ export function SettingsModal(props: {
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
     { id: "openhub", label: t("ohTitle") },
+    { id: "sndnotify", label: t("snTabTitle") },
+    { id: "vision", label: t("vtTabTitle") },
+    { id: "a11y", label: t("a19TabTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
@@ -373,8 +379,9 @@ export function SettingsModal(props: {
 
   return (
     <Modal open onClose={() => uiStore.setState({ settingsOpen: false })} title={t("settings")} width={760}>
-      <div className="settings-layout">
-        <nav className="settings-nav">
+      {/* U-41 RTL 试点面板①：设置中心（rtlPilot 开启时 dir=rtl 正确渲染） */}
+      <div className="settings-layout" dir={s.rtlPilot ? "rtl" : "ltr"} data-testid="settings-modal">
+        <nav className="settings-nav" aria-label={t("settings")}>
           {engineTabs.map((tb) => (
             <button key={tb.id} type="button" className={tab === tb.id ? "on" : ""} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
               {tb.label}
@@ -794,6 +801,12 @@ export function SettingsModal(props: {
           {tab === "perf" && <PerfTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-14 开放接口组：U-37/38/39、Z-50…Z-56、N-27…N-30 面板 */}
           {tab === "openhub" && <OpenHubTab />}
+          {/* AI-19 无障碍与本地化组：U-40/U-41、M-73…M-78 面板 */}
+          {tab === "a11y" && <A11yTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-15 开放工具组：M-55…M-63、V-81…V-90 面板 */}
+          {tab === "opentools" && <OpenToolsTab />}
+          {/* AI-16 启动与声音通知组：U-05/U-06/U-51/U-52、Z-43…Z-49、N-32 面板 */}
+          {tab === "sndnotify" && <SoundNotifyTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

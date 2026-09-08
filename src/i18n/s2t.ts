@@ -144,3 +144,92 @@ export function convertDict(dict: Record<string, string>): Record<string, string
   }
   return out;
 }
+
+// ============================================================
+// M-77 简繁转换用户词表（S2T User Lexicon）
+// 红线（承 SUMMIT 域 U）：词表上限 500 条防性能退化；转换管线
+// 最后一级应用（字符级 s2t 之后做词级覆盖）；冲突词（同简异繁）
+// 由设置页在录入时提示选择，这里只做确定性覆盖。
+// ============================================================
+
+export const S2T_LEXICON_MAX = 500;
+
+let userLexicon: Record<string, string> = {};
+
+/** 校验并安装用户词表（超限截断、键值规范化；返回实际安装的条数）。 */
+export function setS2tUserLexicon(map: Record<string, string>): number {
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(map)) {
+    const key = k.trim();
+    const val = v.trim();
+    if (!key || !val) continue;
+    clean[key] = val;
+    if (Object.keys(clean).length >= S2T_LEXICON_MAX) break;
+  }
+  userLexicon = clean;
+  rebuildLexiconKeys();
+  return Object.keys(clean).length;
+}
+
+/** 当前生效的用户词表（只读副本）。 */
+export function getS2tUserLexicon(): Record<string, string> {
+  return { ...userLexicon };
+}
+
+/** 词表是否为空（translate 热路径零开销判定）。 */
+export function s2tLexiconEmpty(): boolean {
+  return Object.keys(userLexicon).length === 0;
+}
+
+// 最长优先匹配表：键为「简体词」，按长度降序排列一次构建。
+let lexiconKeys: string[] = [];
+function rebuildLexiconKeys(): void {
+  lexiconKeys = Object.keys(userLexicon).sort((a, b) => b.length - a.length);
+}
+
+/**
+ * M-77 转换管线最后一级：对已完成字符级 s2t 的文本做用户词级覆盖。
+ * 键匹配用简体形式（先把文本局部转简不可能——只做「繁体结果里
+ * 出现 s2t(键) 的位置替换」：键先经 s2t 转成繁体形式再最长匹配），
+ * 保证「内存→記憶體」「专有名词不转换」两类偏好都成立
+ * （值允许包含简体字符：直接按用户给出的目标串原样替换）。
+ */
+export function applyUserLexicon(s: string): string {
+  if (s2tLexiconEmpty()) return s;
+  if (lexiconKeys.length !== Object.keys(userLexicon).length) rebuildLexiconKeys();
+  let out = s;
+  for (const key of lexiconKeys) {
+    const target = userLexicon[key];
+    if (!target) continue;
+    // 先按简体键直接替换（覆盖「不转换」类：值=键本身或专有名词），
+    // 再按键的繁体形式替换（覆盖「个性化术语」类）。
+    if (out.includes(key)) out = out.split(key).join(target);
+    const tw = s2t(key);
+    if (tw !== key && out.includes(tw)) out = out.split(tw).join(target);
+  }
+  return out;
+}
+
+/** 完整管线：字符级 s2t + 用户词表（M-77 后对外推荐入口）。 */
+export function s2tFull(s: string): string {
+  return applyUserLexicon(s2t(s));
+}
+
+/**
+ * 冲突检测（同简异繁）：录入 (key, value) 时，若词表中已有同键不同值，
+ * 或值与 s2t 默认结果不同且已有其它用户词映射到同一繁体串，返回提示。
+ * 返回 null = 无冲突。
+ */
+export function s2tLexiconConflict(
+  key: string,
+  value: string,
+  current: Record<string, string>,
+): string | null {
+  const k = key.trim();
+  const v = value.trim();
+  if (!k || !v) return null;
+  const existing = current[k];
+  if (existing !== undefined && existing !== v) return existing;
+  if (s2t(k) !== v && Object.values(current).includes(v)) return v;
+  return null;
+}

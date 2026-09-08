@@ -1,0 +1,252 @@
+/* AI-19 无障碍与本地化组 — 设置页「无障碍与本地化」标签（U-40/U-41、M-73…M-78） */
+
+.a19-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.a19-desc,
+.a19-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.a19-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+}
+
+.a19-group h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.a19-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.a19-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.a19-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.a19-check {
+  cursor: pointer;
+}
+
+.a19-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.a19-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.a19-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.a19-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.a19-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.a19-icon-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.a19-warn {
+  color: var(--warn, #facc15);
+  font-size: 12px;
+  margin: 0;
+}
+
+.a19-query,
+.a19-lex-add input,
+.a19-wb-edit input[type="text"] {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.a19-query:focus,
+.a19-lex-add input:focus,
+.a19-wb-edit input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+.a19-lex-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.a19-lex-add input {
+  flex: 1;
+  min-width: 0;
+}
+
+.a19-lex-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.a19-lex-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+.a19-lex-pair {
+  color: var(--text);
+}
+
+.a19-wb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.a19-wb-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr 2fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+
+.a19-wb-row.missing {
+  background: rgba(250, 204, 21, 0.08);
+}
+
+.a19-wb-key {
+  color: var(--text-dim);
+  font-family: Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.a19-wb-zh,
+.a19-wb-en {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.a19-wb-row.missing .a19-wb-en {
+  color: var(--warn, #facc15);
+}
+
+.a19-wb-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.a19-wb-edit label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.a19-csv {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.a19-csv textarea {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  resize: vertical;
+  outline: none;
+}
+
+.a19-csv textarea:focus {
+  border-color: var(--accent);
+}
+
+.a19-csv-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* U-41 RTL 试点：逻辑属性兜底（margin/padding 物理方向在 RTL 下由浏览器翻转布局主线） */
+[dir="rtl"] .a19-tab .a19-row {
+  flex-direction: row-reverse;
+}

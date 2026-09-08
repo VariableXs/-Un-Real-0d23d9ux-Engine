@@ -39,19 +39,68 @@
   --elev-4: 0 12px 32px oklch(0.15 0.02 260 / 0.34);
   --elev-5: 0 24px 64px oklch(0.15 0.02 260 / 0.40);
 
-  /* ---- 动效：曲线 + 六档时长（红绿灯 170/200ms 等既有数值收编）---- */
+  /* ---- 动效：曲线 + 六档时长（红绿灯 170/200ms 等既有数值收编）----
+   * M-75 动效时长缩放：--dur-scale 全局乘入六档（0.5x/1x 三档封顶；
+   * reduceMotion 优先级最高、不受缩放影响；只影响时长不影响缓动曲线；
+   * 与 M-40 高刷系数为乘法叠加（高刷系数在前端 JS 层另行乘算）。 */
   --ease-standard: cubic-bezier(0.2, 0, 0.1, 1);
   --ease-emphasized: cubic-bezier(0.3, 0, 0.05, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
-  --dur-1: 80ms;
-  --dur-2: 120ms;
-  --dur-3: 170ms;
-  --dur-4: 200ms;
-  --dur-5: 240ms;
-  --dur-6: 320ms;
+  --dur-scale: 1;
+  --dur-1: calc(80ms * var(--dur-scale));
+  --dur-2: calc(120ms * var(--dur-scale));
+  --dur-3: calc(170ms * var(--dur-scale));
+  --dur-4: calc(200ms * var(--dur-scale));
+  --dur-5: calc(240ms * var(--dur-scale));
+  --dur-6: calc(320ms * var(--dur-scale));
 
   /* ---- 声音（A-4）：全局开关，值 0-1 ---- */
   --sound-volume: 0.5;
+
+  /* ---- AI-18 M-71：悬停延迟三档（fast 200 / std 400 / slow 600ms；默认 std = 现状）----
+   * 悬停浮层（tooltip / 任务栏预览 / 跳转列表等）统一引用 --hover-delay。 */
+  --hover-delay-fast: 200ms;
+  --hover-delay-std: 400ms;
+  --hover-delay-slow: 600ms;
+  --hover-delay: var(--hover-delay-std);
+
+  /* ---- AI-18 V-78：全局 UI 图标尺寸档位（16/20/24px；20 = 现状；与文字缩放解耦）---- */
+  --icon-size: 20px;
+
+  /* ============================================================
+   * AI-17 视觉语言组交付段（U-07 Tokens 2.0 / Z-02 / Z-05 / U-08 / Z-67）
+   * ============================================================ */
+
+  /* ---- U-07 遮罩浓度三档（弹层/抽屉/全屏幕帘）---- */
+  --overlay-1: oklch(0.10 0.02 262 / 0.32);
+  --overlay-2: oklch(0.10 0.02 262 / 0.52);
+  --overlay-3: oklch(0.10 0.02 262 / 0.72);
+  /* U-07 噪声纹理参数（U-08 材质用，单文件内联 SVG feTurbulence） */
+  --texture-grain: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCI+PGZpbHRlciBpZD0ibiI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuOCIgbnVtT2N0YXZlcz0iMiIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgZmlsdGVyPSJ1cmwoI24pIiBvcGFjaXR5PSIwLjAzIi8+PC9zdmc+");
+
+  /* ---- Z-02 Fluent 控件规格（--ctl-*：尺寸/命中区全部令牌化）----
+   * 命令栏按钮 32×32、对话框按钮 min-w 120 / h 32、输入框 h 32、
+   * 菜单项 h 36、复选框 20×20、触控命中区 ≥44、分隔线 1px。 */
+  --ctl-btn: 32px;
+  --ctl-btn-minw: 120px;
+  --ctl-input: 32px;
+  --ctl-menu-item: 36px;
+  --ctl-checkbox: 20px;
+  --ctl-touch: 44px;
+  --ctl-divider: 1px;
+  --ctl-pad-btn: 4px;
+
+  /* ---- Z-05 焦点环与选择态规范（仅键盘 :focus-visible 显示）---- */
+  --focus-ring: 0 0 0 2px var(--bg-canvas), 0 0 0 4px var(--accent);
+  --focus-ring-inset: inset 0 0 0 2px var(--accent);
+  --sel-bar: 3px solid var(--accent);
+
+  /* ---- U-09 光影语义：全局光源左上 45°，hover 抬升 / active 下压 ---- */
+  --elev-hover: var(--elev-1);
+  --elev-drag: var(--elev-3);
+
+  /* ---- Z-67 动效速度档（0.5×/1×/1.5×，reduce-motion 优先级更高）---- */
+  --motion-speed: 1;
 
   /* ---- 语义层（dark 默认；亮度层覆盖）---- */
   --bg-canvas: oklch(0.14 0.02 262);
@@ -114,3 +163,100 @@
   animation-duration: var(--dur-1) !important;
   transition-duration: var(--dur-1) !important;
 }
+
+/* ---- Z-67 动效速度档：乘以全部 --dur-*（reduce-motion 规则更靠后优先，此处天然被覆盖）---- */
+[data-motion-speed="0.5"] {
+  --dur-1: 40ms;
+  --dur-2: 60ms;
+  --dur-3: 85ms;
+  --dur-4: 100ms;
+  --dur-5: 120ms;
+  --dur-6: 160ms;
+}
+[data-motion-speed="1.5"] {
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 255ms;
+  --dur-4: 300ms;
+  --dur-5: 360ms;
+  --dur-6: 480ms;
+}
+
+/* ---- U-08/Z-05 high-contrast 降级：阴影替换为 2px 对比描边、frosted 全降级 ---- */
+[data-theme="high-contrast"] {
+  --elev-1: 0 0 0 2px var(--stroke);
+  --elev-2: 0 0 0 2px var(--stroke);
+  --elev-3: 0 0 0 2px var(--stroke);
+  --elev-4: 0 0 0 2px var(--stroke);
+  --elev-5: 0 0 0 2px var(--stroke);
+  --elev-hover: 0 0 0 2px var(--accent);
+  --elev-drag: 0 0 0 2px var(--accent);
+  --texture-grain: none;
+}
+
+/* ============================================================
+ * AI-18 氛围与个性化组 · 档位层（V-74/75/76/77/78、M-71、M-67）
+ * 全部「默认档 = 现状」：档位属性缺省时本段零生效。
+ * ============================================================ */
+
+/* ---- V-74 界面密度：紧凑档（间距 -20%、列表行高 -15%；仍满足 44px 触控红线）---- */
+[data-density="compact"] {
+  --sp-1: 4px;   /* 4px 基格不动（亚像素抖动无意义，保持最小档） */
+  --sp-2: 7px;
+  --sp-3: 10px;
+  --sp-4: 13px;
+  --sp-5: 19px;
+  --sp-6: 26px;
+  --sp-7: 38px;
+  --sp-8: 51px;
+  --ctl-menu-item: 31px; /* 36 → -15% */
+}
+
+/* ---- V-75 几何风格三档：小圆角 4px / 直角 0px（直角档阴影同步收细）---- */
+[data-radius="small"] {
+  --r-window: 8px;
+  --r-card: 6px;
+  --r-control: 4px;
+  --r-chip: 2px;
+}
+[data-radius="sharp"] {
+  --r-window: 0px;
+  --r-card: 0px;
+  --r-control: 0px;
+  --r-chip: 0px;
+  --elev-1: 0 1px 2px oklch(0.15 0.02 260 / 0.14);
+  --elev-2: 0 1px 5px oklch(0.15 0.02 260 / 0.18);
+  --elev-3: 0 4px 12px oklch(0.15 0.02 260 / 0.24);
+  --elev-4: 0 8px 22px oklch(0.15 0.02 260 / 0.28);
+  --elev-5: 0 14px 44px oklch(0.15 0.02 260 / 0.34);
+}
+
+/* ---- V-76 界面字体偏好：--ui-font 注入（缺省 = 现状字体栈；CJK 回退链恒在）---- */
+:root {
+  --ui-font: "";
+}
+
+/* ---- V-77 焦点环三样式（system = 现状 Z-05 双线；HC 下强制最强可见样式）---- */
+[data-focus-ring="box"] :focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px !important;
+  box-shadow: none !important;
+}
+[data-focus-ring="underline"] :focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-bottom: 2px solid var(--accent) !important;
+}
+[data-theme="high-contrast"] :focus-visible {
+  /* HC 铁律：任何焦点环档位下强制最强可见（V-77 红线） */
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 1px !important;
+}
+
+/* ---- M-67 桌面纯净模式：三层（图标/任务栏/横幅）隐藏，200ms 淡出（JS 加类）---- */
+.pure-mode-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 200ms var(--ease-standard) !important;
+}
+

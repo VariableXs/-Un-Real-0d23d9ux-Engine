@@ -1,6 +1,7 @@
 import { errMessage, ipc } from "./ipc";
 import type { Lang } from "../i18n/dictionaries";
 import { coerceInputFeel, DEFAULT_INPUT_FEEL, type InputFeelSettings } from "./inputFeel";
+import { DEFAULT_AMBIENCE, coerceAmbience, type AmbienceSettings } from "../system/ambience/schema";
 
 export type ThemeId = "deep-space" | "paper" | "minimal-black" | "high-contrast" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
@@ -15,6 +16,15 @@ export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "hybrid" |
  * 进度/日志本身始终是真实事件，此设置只影响 ready 之后的过渡形式。
  */
 export type BootAnim = "full" | "simple" | "none";
+/**
+ * U-06 仪式节奏（bootPacing）：管「走多慢」，与 bootAnim（管「怎么走」）正交。
+ * - cinematic：影院（enter 900ms / readyHold 1200ms，默认）
+ * - brisk：轻快（500ms / 400ms）
+ * - instant：直通（0/0，等价 bootAnim=none 快路径）
+ */
+export type BootPacing = "cinematic" | "brisk" | "instant";
+/** U-52 声景主题：default（玻璃质感基线）/ wood（木质）/ midnight（暗夜）。 */
+export type SoundThemeId = "default" | "wood" | "midnight";
 /** 桌面图标三档大小（批次B，规格 4.2.4）：像素为图标底座边长。 */
 export type IconSize = 32 | 48 | 64;
 /** 窗口控制按钮位置（批次D，规格 4.3.5）：Mac 圆点（默认）/ Windows 风格。 */
@@ -171,6 +181,50 @@ export interface Settings {
   perfUsageStats: boolean;
   /** AI-13 Z-61：更新通道（stable/beta）。 */
   updateChannel: "stable" | "beta";
+  // ---- AI-19 无障碍与本地化组（U-40/U-41、M-73…M-78；默认全部关闭或等于现状）----
+  /** M-74：系统高对比度跟随（默认关；开启后系统 HC 切换环境即时跟随）。 */
+  themeFollowHc: boolean;
+  /** M-75：动效时长全局缩放（0.5 / 1；reduceMotion 优先级最高不受影响）。 */
+  motionScale: 0.5 | 1;
+  /** U-40：色觉模拟器（开发者向预览；默认 off）。 */
+  cvdSim: "off" | "protanopia" | "deuteranopia" | "tritanopia" | "achromatopsia";
+  /** U-40：焦点跟随提示（Tab 移动读出目标控件名称；默认关）。 */
+  focusAnnounce: boolean;
+  /** M-77：简繁转换用户词表（键=简体词，值=目标串；上限 500 条）。 */
+  s2tLexicon: Record<string, string>;
+  /** U-41：i18n 运行时覆盖表 { lang: { key: value } }（工作台编辑写这里）。 */
+  i18nOverrides: Record<string, Record<string, string>>;
+  /** U-41：伪本地化模式（dev 检查硬编码文案与溢出布局；默认关）。 */
+  pseudoLocale: boolean;
+  /** U-41：RTL 试点（设置/通知中心两处面板正确渲染；默认关）。 */
+  rtlPilot: boolean;
+  /** M-78：日期/时间/数字区域格式跟随系统（默认关 = 现状硬编码）。 */
+  localeFormatFollow: boolean;
+  /** M-78：容量单位口径（auto=系统口径即二进制 / binary / decimal）。 */
+  byteUnit: "auto" | "binary" | "decimal";
+  // ---- AI-16 启动与声音通知组（U-05/U-06/U-52、Z-44/Z-47、N-32）----
+  /** U-06 bootPacing：仪式节奏（cinematic 影院 / brisk 轻快 / instant 直通）。 */
+  bootPacing: BootPacing;
+  /** U-05 启动交响（full 完整三层 / mute 静音 / chime-only 仅就绪音）。 */
+  bootSoundMode: "full" | "mute" | "chime-only";
+  /** U-52 声景主题（default 玻璃质感基线 / wood 木质 / midnight 暗夜）。 */
+  soundTheme: SoundThemeId;
+  /** U-52 深夜（22:00–6:00）自动整体音量 ×0.5（默认开；可关闭此智能行为）。 */
+  soundNightDamp: boolean;
+  /** Z-44 勿扰日程启用（手动勿扰优先级高于日程）。 */
+  dndScheduleEnabled: boolean;
+  /** Z-44 每日自动勿扰开始 "HH:MM"（支持跨午夜，如 22:00→07:00）。 */
+  dndScheduleStart: string;
+  /** Z-44 每日自动勿扰结束 "HH:MM"。 */
+  dndScheduleEnd: string;
+  /** Z-44 提醒类豁免勿扰（闹钟/提醒仍响；普通通知静默入档）。 */
+  dndReminderExempt: boolean;
+  /** Z-47 通知存档保留策略（30/90/0=永久）。 */
+  notifyRetentionDays: 0 | 30 | 90;
+  /** N-32 智能通知整理（本地学习分堆；默认关 = 全即时堆，7 天学习期）。 */
+  notifySmart: boolean;
+  /** N-32 摘要堆定点呈现时刻（24h 制，默认 12:00 与 18:00 两次）。 */
+  notifyDigestTimes: string[];
   customBg: CustomBg;
   mindDefaults: MindDefaults;
 }
@@ -234,6 +288,29 @@ export const DEFAULT_SETTINGS: Settings = {
   perfIdleFreeze: false,
   perfUsageStats: false,
   updateChannel: "stable",
+  // AI-19 无障碍与本地化组（默认全部关闭或等于现状）
+  themeFollowHc: false,
+  motionScale: 1,
+  cvdSim: "off",
+  focusAnnounce: false,
+  s2tLexicon: {},
+  i18nOverrides: {},
+  pseudoLocale: false,
+  rtlPilot: false,
+  localeFormatFollow: false,
+  byteUnit: "auto",
+  // AI-16 启动与声音通知组（默认全部等于现状/保守值）
+  bootPacing: "cinematic",
+  bootSoundMode: "full",
+  soundTheme: "default",
+  soundNightDamp: true,
+  dndScheduleEnabled: false,
+  dndScheduleStart: "22:00",
+  dndScheduleEnd: "07:00",
+  dndReminderExempt: true,
+  notifyRetentionDays: 30,
+  notifySmart: false,
+  notifyDigestTimes: ["12:00", "18:00"],
   customBg: {
     type: "nebula",
     color: "#0a1226",
@@ -355,6 +432,83 @@ function coerce(raw: Record<string, string>): Settings {
     if (raw["perfIdleFreeze"] !== undefined) s.perfIdleFreeze = raw["perfIdleFreeze"] === "1";
     if (raw["perfUsageStats"] !== undefined) s.perfUsageStats = raw["perfUsageStats"] === "1";
     if (raw["updateChannel"]) s.updateChannel = raw["updateChannel"] === "beta" ? "beta" : "stable";
+    // AI-19 无障碍与本地化组（写坏值回落默认）
+    if (raw["themeFollowHc"] !== undefined) s.themeFollowHc = raw["themeFollowHc"] === "1";
+    if (raw["motionScale"] !== undefined) s.motionScale = Number(raw["motionScale"]) === 0.5 ? 0.5 : 1;
+    if (raw["cvdSim"]) {
+      const v = raw["cvdSim"];
+      s.cvdSim = v === "protanopia" || v === "deuteranopia" || v === "tritanopia" || v === "achromatopsia" ? v : "off";
+    }
+    if (raw["focusAnnounce"] !== undefined) s.focusAnnounce = raw["focusAnnounce"] === "1";
+    if (raw["s2tLexicon"]) {
+      try {
+        const parsed = JSON.parse(raw["s2tLexicon"]) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const lex: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "string" && k.trim() && v.trim() && Object.keys(lex).length < 500) {
+              lex[k.trim()] = v.trim();
+            }
+          }
+          s.s2tLexicon = lex;
+        }
+      } catch { /* 保留默认 */ }
+    }
+    if (raw["i18nOverrides"]) {
+      try {
+        const parsed = JSON.parse(raw["i18nOverrides"]) as Record<string, Record<string, string>>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const ov: Record<string, Record<string, string>> = {};
+          for (const [lang, kv] of Object.entries(parsed)) {
+            if (kv && typeof kv === "object" && !Array.isArray(kv)) ov[lang] = { ...kv };
+          }
+          s.i18nOverrides = ov;
+        }
+      } catch { /* 保留默认 */ }
+    }
+    if (raw["pseudoLocale"] !== undefined) s.pseudoLocale = raw["pseudoLocale"] === "1";
+    if (raw["rtlPilot"] !== undefined) s.rtlPilot = raw["rtlPilot"] === "1";
+    if (raw["localeFormatFollow"] !== undefined) s.localeFormatFollow = raw["localeFormatFollow"] === "1";
+    if (raw["byteUnit"]) {
+      const v = raw["byteUnit"];
+      s.byteUnit = v === "binary" || v === "decimal" ? v : "auto";
+    }
+    // AI-16 启动与声音通知组（写坏值回落默认）
+    if (raw["bootPacing"]) {
+      const v = raw["bootPacing"];
+      s.bootPacing = v === "brisk" || v === "instant" || v === "cinematic" ? v : "cinematic";
+    }
+    if (raw["bootSoundMode"]) {
+      const v = raw["bootSoundMode"];
+      s.bootSoundMode = v === "mute" || v === "chime-only" ? v : "full";
+    }
+    if (raw["soundTheme"]) {
+      const v = raw["soundTheme"];
+      s.soundTheme = v === "wood" || v === "midnight" ? v : "default";
+    }
+    if (raw["soundNightDamp"] !== undefined) s.soundNightDamp = raw["soundNightDamp"] === "1";
+    if (raw["dndScheduleEnabled"] !== undefined) s.dndScheduleEnabled = raw["dndScheduleEnabled"] === "1";
+    if (raw["dndScheduleStart"] && /^\d{2}:\d{2}$/.test(raw["dndScheduleStart"])) s.dndScheduleStart = raw["dndScheduleStart"];
+    if (raw["dndScheduleEnd"] && /^\d{2}:\d{2}$/.test(raw["dndScheduleEnd"])) s.dndScheduleEnd = raw["dndScheduleEnd"];
+    if (raw["dndReminderExempt"] !== undefined) s.dndReminderExempt = raw["dndReminderExempt"] === "1";
+    if (raw["notifyRetentionDays"] !== undefined) {
+      const n = Number(raw["notifyRetentionDays"]);
+      s.notifyRetentionDays = n === 0 || n === 90 ? (n as 0 | 90) : 30;
+    }
+    if (raw["notifySmart"] !== undefined) s.notifySmart = raw["notifySmart"] === "1";
+    if (raw["notifyDigestTimes"]) {
+      try {
+        const arr = JSON.parse(raw["notifyDigestTimes"]) as unknown;
+        if (Array.isArray(arr)) {
+          const times = arr.filter((t): t is string => typeof t === "string" && /^\d{2}:\d{2}$/.test(t)).slice(0, 4);
+          if (times.length > 0) s.notifyDigestTimes = times;
+        }
+      } catch { /* 保留默认 */ }
+    }
+    // AI-18 氛围与个性化组（写坏值回落默认：氛围项绝不允许坏值弄巧成拙）
+    if (raw["ambience"]) {
+      try { s.ambience = coerceAmbience(JSON.parse(raw["ambience"])); } catch { /* 保留默认 */ }
+    }
     if (raw["mindDefaults"]) {
       const md = { ...s.mindDefaults, ...JSON.parse(raw["mindDefaults"]) };
       // Clamp numeric ranges so a corrupt stored value (e.g. wasdSpeed 0) can

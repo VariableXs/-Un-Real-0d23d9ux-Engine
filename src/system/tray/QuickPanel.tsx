@@ -113,11 +113,18 @@ export function QuickPanel(props: {
   return (
     <div
       className="qp-overlay"
+      data-testid="quick-panel"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) props.onClose();
       }}
     >
-      <div className="quick-panel" role="dialog" aria-label={t("trayQuick")}>
+      {/* U-41 RTL 试点面板②：通知中心（App.tsx 写入 html[data-rtl-pilot]） */}
+      <div
+        className="quick-panel"
+        role="dialog"
+        aria-label={t("trayQuick")}
+        dir={typeof document !== "undefined" && document.documentElement.dataset.rtlPilot === "true" ? "rtl" : "ltr"}
+      >
         <div className="qp-head">
           <CloseLight onClose={props.onClose} />
           <span>{t("trayQuick")}</span>

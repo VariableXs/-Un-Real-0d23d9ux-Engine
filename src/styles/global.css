@@ -12,6 +12,18 @@
 @import "./ai12-compat.css";
 /* AI-14 开放接口组 */
 @import "./ai14-openhub.css";
+/* AI-17 视觉语言组：材质引擎 / 微交互与焦点 / CJK 排版 / 光标语义 */
+@import "./material.css";
+@import "./interactions.css";
+@import "./cjk.css";
+@import "./cursor.css";
+@import "./animated-icons.css";
+/* AI-15 开放工具组 */
+@import "./ai15-opentools.css";
+/* AI-19 无障碍与本地化组 */
+@import "./ai19-a11y.css";
+/* AI-18 氛围与个性化组（U-49/50/53/54、N-33、M-64…M-72、V-71…V-80；默认全关零生效） */
+@import "./ai18-ambience.css";
 :root {
   --bg: #05070d;
   --panel: rgba(10, 15, 28, 0.72);
