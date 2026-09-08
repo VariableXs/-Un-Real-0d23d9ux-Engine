@@ -32,6 +32,7 @@ import { ExtensionsTab } from "./ExtensionsTab";
 import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
 import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
+import { WinFeelTab } from "./WinFeelTab";
 import { FilesTab } from "./FilesTab";
 import type { SysSection } from "./SystemCenterTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
@@ -146,6 +147,7 @@ export function SettingsModal(props: {
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
+    { id: "winFeel", label: t("wfTabTitle") },
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
@@ -779,6 +781,8 @@ export function SettingsModal(props: {
           {tab === "browsers" && <BrowsersTab />}
           {/* AI-06 输入手感组：U-58/U-59、V-61…V-70 全部面板 */}
           {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
+          {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}
