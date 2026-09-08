@@ -32,6 +32,14 @@ import { applySnap, SnapPreviewHost } from "../windows/snap";
 import { pushRecent } from "../startmenu/recent";
 import { effectiveBinds } from "../../lib/shortcuts";
 import { InputFeelRuntime } from "../../features/inputFeel/InputFeelRuntime";
+import { AmbienceRuntime, pureStore } from "../ambience/AmbienceRuntime";
+import { GlowLayer } from "../ambience/GlowLayer";
+import { ScreensaverClock } from "../ambience/ScreensaverClock";
+import { FocusCabin } from "../ambience/FocusCabin";
+import { BriefingCard } from "../ambience/BriefingCard";
+import { SessionRestorePrompt, persistAmbientSnapshot } from "../ambience/SessionRestorePrompt";
+import { useStore } from "../../lib/store";
+import { useUnreadCount } from "../../state/notifyStore";
 import { CommandPalette } from "../palette/CommandPalette";
 import { MiniAppsLayer } from "../vwm/miniframe";
 import { DndLayer } from "../../lib/dnd/DragGhost";
@@ -79,6 +87,22 @@ export function DesktopShell(props: {
   const [usbRemoved, setUsbRemoved] = useState(false);
   // X-3：扩展推送的桌面小组件（widgets.register）与主题局部 token
   const [extWidgets, setExtWidgets] = useState<{ extId: string; slot: string; title: string }[]>([]);
+  // AI-18 U-50：焦点舱开关（Ctrl+Alt+F 呼出）
+  const [cabinOpen, setCabinOpen] = useState(false);
+  // AI-18 M-67：纯净模式（AmbienceRuntime 管 Ctrl+Alt+P；此处读共享态渲染边缘小点）
+  const pureActive = useStore(pureStore, (s) => s.active);
+  const unread = useUnreadCount();
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        setCabinOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // 退出不再弹确认框：所有入口（红绿灯/开始菜单/托盘）直接走保存冲刷 + 关闭。
   const exitDesktop = (): void => {
@@ -87,6 +111,15 @@ export function DesktopShell(props: {
       autosaveSnapshot();
     } catch {
       /* 快照失败不阻断退出流程 */
+    }
+    // AI-18 M-72：退出前自动存氛围快照（sessionRestore=false 时清键零残留）
+    try {
+      persistAmbientSnapshot(
+        props.settings,
+        props.settings.wallpaperMode === "image" ? props.settings.customBg.imagePath : "",
+      );
+    } catch {
+      /* 氛围快照失败静默 */
     }
     props.onCloseRequested();
   };
@@ -478,6 +511,35 @@ export function DesktopShell(props: {
       {/* AI-11 N-19：性能 HUD 悬浮窗（系统中枢内开关，默认关闭） */}
       <PerfHud />
       <WallpaperLayer settings={props.settings} />
+      {/* AI-18 氛围与个性化组运行时（U-49/54、N-33、M-65/67/71、V-71/72/74..78；默认全部关闭） */}
+      <AmbienceRuntime settings={props.settings} onPatchSettings={props.onPatchSettings} />
+      {/* AI-18 U-53 环境辉光（壁纸主色采样；HC/reduce-motion/低档自动关闭） */}
+      <GlowLayer settings={props.settings} />
+      {/* AI-18 M-68 屏保时钟（空闲 N 分钟；任意输入退出） */}
+      <ScreensaverClock settings={props.settings} />
+      {/* AI-18 U-50 焦点舱 2.0（Ctrl+Alt+F 呼出；双 Esc 退出） */}
+      <FocusCabin open={cabinOpen} onClose={() => setCabinOpen(false)} settings={props.settings} />
+      {/* AI-18 M-69 今日简报卡（每日首启；8s 自动收起） */}
+      <BriefingCard enabled={props.settings.ambience.briefing} />
+      {/* AI-18 M-72 会话恢复提示条（提示而非自动） */}
+      <SessionRestorePrompt
+        settings={props.settings}
+        onRestoreWallpaper={(p) =>
+          props.onPatchSettings({
+            wallpaperMode: "image",
+            customBg: { ...props.settings.customBg, imagePath: p },
+          })
+        }
+      />
+      {/* AI-18 M-67 纯净模式：任务栏隐藏期间通知角标 = 屏幕边缘一枚小点 */}
+      {pureActive && unread > 0 && (
+        <div
+          className="ai18-pure-dot"
+          data-testid="ai18-pure-dot"
+          title={t("amb18PureDot")}
+          onClick={() => uiStore.setState({ startOpen: false })}
+        />
+      )}
       {/* X-3：扩展小组件条（widgets.register；slot=desktop-top-right） */}
       {extWidgets.length > 0 && (
         <div

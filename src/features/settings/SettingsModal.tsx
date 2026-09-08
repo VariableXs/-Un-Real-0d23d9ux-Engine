@@ -32,6 +32,7 @@ import { ExtensionsTab } from "./ExtensionsTab";
 import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
 import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
+import { AmbienceTab } from "./AmbienceTab";
 import { WinFeelTab } from "./WinFeelTab";
 import { PerfTab } from "./PerfTab";
 import { FilesTab } from "./FilesTab";
@@ -153,6 +154,7 @@ export function SettingsModal(props: {
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
+    { id: "ambience", label: t("amb18TabTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
     { id: "openhub", label: t("ohTitle") },
@@ -793,6 +795,7 @@ export function SettingsModal(props: {
           {tab === "browsers" && <BrowsersTab />}
           {/* AI-06 输入手感组：U-58/U-59、V-61…V-70 全部面板 */}
           {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "ambience" && <AmbienceTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
           {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-12 兼容纵深组：Z-15…Z-21、M-37…M-45 面板 */}

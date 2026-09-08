@@ -260,3 +260,14 @@
   transition: opacity 200ms var(--ease-standard) !important;
 }
 
+/* ---- V-78 全局 UI 图标尺寸档位（20 = 现状；与文字缩放解耦）---- */
+:root {
+  --icon-ui: 20px;
+}
+[data-icon-tier="16"] {
+  --icon-ui: 16px;
+}
+[data-icon-tier="24"] {
+  --icon-ui: 24px;
+}
+

@@ -1,0 +1,299 @@
+/* ============================================================
+ * AI-18 氛围与个性化组样式（U-49/50/53/54、N-33、M-64…M-72、V-71…V-80）
+ * 红线：全部令牌化（零裸色值）；动效 ≤260ms（辉光呼吸 8s 属环境光非交互动效）；
+ * 默认全部关闭 —— 未开启时本文件零生效。
+ * ============================================================ */
+
+/* ---- V-72 壁纸饱和度/明度 + N-33 情绪偏移（相乘；变量由 AmbienceRuntime 注入）---- */
+.wallpaper {
+  filter: saturate(calc(var(--wp-sat, 1) * var(--mood-sat, 1)))
+    brightness(calc(var(--wp-bright, 1) * var(--mood-bright, 1)));
+  transition: filter 120s linear; /* N-33：120s 缓动，绝不跳变 */
+}
+
+/* ---- M-67 纯净模式：三层隐藏（data-pure-mode 由 AmbienceRuntime 切换）---- */
+[data-pure-mode="on"] .desktop-icons,
+[data-pure-mode="on"] .taskbar,
+[data-pure-mode="on"] .privacy-banner,
+[data-pure-mode="on"] .compat-banner {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 200ms var(--ease-standard) !important;
+}
+
+/* ---- U-53 环境辉光：四边内发光（12px 渐隐内阴影式；非跑马灯）---- */
+.ai18-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1; /* 壁纸之上、图标之下 */
+  opacity: 0;
+  transition: opacity 1.5s var(--ease-standard); /* 壁纸切换光色 1.5s 交叉过渡 */
+}
+.ai18-glow.static {
+  opacity: 1;
+  box-shadow:
+    inset 0 12px 24px -12px var(--ai18-glow-color, var(--accent)),
+    inset 0 -12px 24px -12px var(--ai18-glow-color, var(--accent)),
+    inset 12px 0 24px -12px var(--ai18-glow-color, var(--accent)),
+    inset -12px 0 24px -12px var(--ai18-glow-color, var(--accent));
+}
+.ai18-glow.breath {
+  animation: ai18-glow-breath 8s var(--ease-standard) infinite;
+}
+/* 呼吸：亮度波动 ±6%（克制到「感觉到但不注意到」）；reduce-motion 下退化为静止 */
+@keyframes ai18-glow-breath {
+  0%, 100% { opacity: 0.94; }
+  50% { opacity: 1.06; }
+}
+[data-reduce-motion] .ai18-glow.breath {
+  animation: none;
+  opacity: 1;
+}
+
+/* ---- M-68 屏保时钟：极简大字（分钟级跳动；暗色低亮度）---- */
+.ai18-screensaver {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: oklch(0.08 0.01 260);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  animation: ai18-fade-in 260ms var(--ease-standard);
+  cursor: default;
+}
+.ai18-screensaver.black {
+  background: oklch(0.03 0 0);
+}
+.ai18-screensaver .ai18-ss-time {
+  font-size: clamp(64px, 12vw, 160px);
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  color: oklch(0.85 0.01 260);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ai18-screensaver .ai18-ss-date {
+  font-size: var(--fs-20);
+  color: oklch(0.62 0.01 260);
+  letter-spacing: 0.12em;
+}
+.ai18-screensaver .ai18-ss-hint {
+  position: absolute;
+  bottom: var(--sp-6);
+  font-size: var(--fs-12);
+  color: oklch(0.45 0.01 260);
+}
+@keyframes ai18-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- U-50 焦点舱 2.0：全屏深色舱体 ---- */
+.ai18-cabin {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-5);
+  background: oklch(0.08 0.01 260 / 0.88);
+  backdrop-filter: blur(2px);
+  animation: ai18-fade-in 260ms var(--ease-standard);
+}
+.ai18-cabin .ai18-cabin-task {
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 600;
+  color: oklch(0.92 0.01 260);
+  max-width: 72vw;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+.ai18-cabin .ai18-cabin-timer {
+  font-size: var(--fs-32);
+  color: oklch(0.75 0.01 260);
+  font-variant-numeric: tabular-nums;
+}
+.ai18-cabin .ai18-cabin-stats {
+  display: flex;
+  gap: var(--sp-5);
+  color: oklch(0.60 0.01 260);
+  font-size: var(--fs-13);
+}
+.ai18-cabin .ai18-cabin-actions {
+  display: flex;
+  gap: var(--sp-3);
+}
+.ai18-cabin .ai18-cabin-exit {
+  font-size: var(--fs-12);
+  color: oklch(0.45 0.01 260);
+}
+
+/* ---- M-69 今日简报卡：右下角浮出，8s 自动收起 ---- */
+.ai18-briefing {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--sp-8) + var(--sp-4));
+  z-index: 6000;
+  width: 320px;
+  padding: var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--bg-surface, oklch(0.18 0.02 262 / 0.92));
+  border: 1px solid var(--border-subtle, oklch(1 0 0 / 0.08));
+  box-shadow: var(--elev-4);
+  animation: ai18-briefing-in 260ms var(--ease-emphasized);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+@keyframes ai18-briefing-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ai18-briefing .ai18-bf-date {
+  font-size: var(--fs-15);
+  font-weight: 600;
+  color: var(--fg-strong, oklch(0.95 0.01 260));
+}
+.ai18-briefing .ai18-bf-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+  color: var(--fg-muted, oklch(0.65 0.01 260));
+}
+.ai18-briefing .ai18-bf-tip {
+  font-size: var(--fs-13);
+  color: var(--fg-default, oklch(0.85 0.01 260));
+  border-left: 3px solid var(--accent);
+  padding-left: var(--sp-2);
+}
+.ai18-briefing .ai18-bf-actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  margin-top: var(--sp-1);
+}
+
+/* ---- M-72 会话恢复提示条 ---- */
+.ai18-session-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-8) + var(--sp-4));
+  transform: translateX(-50%);
+  z-index: 6000;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--bg-surface, oklch(0.18 0.02 262 / 0.94));
+  border: 1px solid var(--border-subtle, oklch(1 0 0 / 0.08));
+  box-shadow: var(--elev-3);
+  animation: ai18-briefing-in 260ms var(--ease-emphasized);
+  font-size: var(--fs-13);
+}
+.ai18-session-prompt .ai18-sp-meta {
+  color: var(--fg-muted, oklch(0.65 0.01 260));
+  font-size: var(--fs-12);
+}
+
+/* ---- M-67 纯净模式：任务栏隐藏期间通知角标 = 屏幕边缘一枚小点 ---- */
+.ai18-pure-dot {
+  position: fixed;
+  right: 4px;
+  bottom: 50%;
+  transform: translateY(50%);
+  z-index: 8500;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: var(--elev-2);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: ai18-fade-in 200ms var(--ease-standard);
+}
+
+/* ---- U-54 节律四环卡片（RhythmCenter；设置页/焦点舱共用）---- */
+.ai18-rhythm-center {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.ai18-rhythm-ring {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.ai18-rhythm-ring svg {
+  flex: none;
+}
+.ai18-rhythm-ring .ai18-rr-label {
+  flex: 1;
+  font-size: var(--fs-13);
+}
+.ai18-rhythm-ring .ai18-rr-count {
+  font-size: var(--fs-12);
+  color: var(--fg-muted, oklch(0.65 0.01 260));
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- M-64 壁纸主色采样预览卡（AmbienceTab 内）---- */
+.ai18-accent-candidates {
+  display: flex;
+  gap: var(--sp-3);
+}
+.ai18-accent-chip {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-control);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 200ms var(--ease-standard), transform 200ms var(--ease-standard);
+}
+.ai18-accent-chip:hover {
+  transform: translateY(-2px);
+}
+.ai18-accent-chip.active {
+  border-color: var(--fg-strong, oklch(0.95 0.01 260));
+}
+
+/* ---- V-71 精选壁纸故事角标（壁纸右下角轻入口 hover 展示）---- */
+.ai18-curated-badge {
+  position: fixed;
+  right: var(--sp-3);
+  bottom: calc(var(--sp-8) + var(--sp-2));
+  z-index: 2;
+  padding: 6px var(--sp-3);
+  border-radius: var(--r-chip);
+  background: oklch(0.10 0.02 262 / 0.55);
+  color: oklch(0.92 0.01 260);
+  font-size: var(--fs-12);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  opacity: 0.85;
+}
+.ai18-curated-badge:hover {
+  opacity: 1;
+}
+
+/* ---- AmbienceTab 通用段 ---- */
+.ai18-tab section {
+  margin-bottom: var(--sp-5);
+}
+.ai18-tab h4 {
+  margin-bottom: var(--sp-2);
+}
+.ai18-tab .ai18-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2) var(--sp-4);
+}
+.ai18-tab .ai18-hint {
+  font-size: var(--fs-12);
+}

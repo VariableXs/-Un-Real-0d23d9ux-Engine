@@ -65,7 +65,7 @@ interface NotifyState {
 
 const MAX_ITEMS = 50;
 
-const notifyStore = createStore<NotifyState>({
+export const notifyStore = createStore<NotifyState>({
   items: [],
   nextId: 1,
   dnd: false,

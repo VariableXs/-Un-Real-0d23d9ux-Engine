@@ -36,6 +36,7 @@ import { computeOverflow } from "./overflow";
 import { canLaunch, markLaunch, pendingPhase, settleLaunch, usePendingLaunches } from "./pending";
 import { imTotal, startImWatcher, useImCounts } from "./imbadge";
 import { isoWeek, sanitizeClockZones, timeInZone } from "./clockcard";
+import { lunarSummary } from "../../lib/lunar";
 import { effectiveMenuIds, loadMenuOverride, type TaskbarMenuOverride } from "../desktop/taskbarMenu";
 import { setInputOpen } from "./stickies";
 import { StickyNotes } from "./StickyNotes";
@@ -405,6 +406,11 @@ export function Taskbar(props: {
   const [clockHover, setClockHover] = useState(false);
   const clockHoverTimer = useRef<number | null>(null);
   const clockZones = useMemo(() => sanitizeClockZones(props.settings.clockZones), [props.settings.clockZones]);
+  // AI-18 V-73 农历节气：任务栏时钟悬停卡展示（lunarCalendar=true 时）
+  const lunar = useMemo(
+    () => (props.settings.ambience?.lunarCalendar ? lunarSummary(new Date()) : null),
+    [props.settings.ambience?.lunarCalendar],
+  );
   const unreadNow = useNotifyBadge();
 
   // M-11 托盘抽屉：镜像环境内托盘动作（只读镜像，不注入系统托盘）
@@ -911,6 +917,16 @@ export function Taskbar(props: {
                   <span className="small">{timeInZone(now, z) ?? "—"}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {lunar && (lunar.text || lunar.term || lunar.festival) && (
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span className="dim small">{t("amb18LunarEnable")}</span>
+              <span className="small">
+                {lunar.text ?? ""}
+                {lunar.term ? ` · ${lunar.term}` : ""}
+                {lunar.festival ? ` · ${lunar.festival}` : ""}
+              </span>
             </div>
           )}
           <div className="row" style={{ justifyContent: "space-between" }}>
