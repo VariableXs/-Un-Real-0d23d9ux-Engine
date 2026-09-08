@@ -623,7 +623,30 @@ pub fn run() {
             shell::macros::macro_upsert_trigger,
             shell::macros::macro_remove_trigger,
             shell::macros::macro_list_triggers,
-            shell::macros::macro_send_text
+            shell::macros::macro_send_text,
+            // ---- AI-11 系统集成与硬件组（U-43..U-48 / N-19..N-25 / V-51..V-60）----
+            shell::sysprobe::monitor_list,
+            shell::sysprobe::port_table,
+            shell::sysprobe::eventlog_recent,
+            shell::sysprobe::bigfile_scan,
+            shell::sysprobe::sys_uptime,
+            shell::sysprobe::startup_procs,
+            shell::sysprobe::selfheal_checks,
+            shell::sysprobe::heal_run,
+            shell::sysprobe::pwrloss_check,
+            shell::sysprobe::predwarm,
+            shell::sysprobe::periph_probe,
+            shell::winpower::keepawake_set,
+            shell::winpower::keepawake_get,
+            shell::winpower::power_schemes_list,
+            shell::winpower::power_scheme_set,
+            shell::winpower::battery_health,
+            shell::winpower::gamma_set,
+            shell::winpower::gamma_restore,
+            shell::winpower::proc_priority_set,
+            shell::winpower::proxy_get,
+            shell::winpower::proxy_set,
+            shell::winpower::net_ping
         ])
         .build(tauri::generate_context!());
     match app {
@@ -638,6 +661,20 @@ pub fn run() {
                 #[cfg(windows)]
                 if let tauri::RunEvent::Exit = event {
                     shell::shellmode::cleanup_explorer_service();
+                }
+                // AI-11 红线：退出还原宿主状态（gamma 字节级还原 + 解除保持唤醒）
+                // + 写干净关机标记（V-59 断电自检判定基准）
+                #[cfg(windows)]
+                if let tauri::RunEvent::Exit = event {
+                    shell::winpower::restore_on_exit();
+                    let st = _app.state::<AppState>();
+                    let _ = std::fs::write(
+                        st.data_dir.join(shell::sysprobe::CLEAN_SHUTDOWN_FILE),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis().to_string())
+                            .unwrap_or_default(),
+                    );
                 }
                 #[cfg(not(all(feature = "vm-agent", windows)))]
                 let _ = &event;

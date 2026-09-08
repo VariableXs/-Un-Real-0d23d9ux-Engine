@@ -39,6 +39,7 @@ import { MagnifierApp } from "../tools/MagnifierApp";
 import { ConverterApp } from "../tools/ConverterApp";
 import { SysInfoApp } from "../tools/SysInfoApp";
 import { PrintQueueApp } from "../tools/PrintQueueApp";
+import { SysHubApp } from "../tools/SysHubApp";
 import { TaskManApp } from "../taskman/TaskManApp";
 import { L3CaptureView } from "./L3CaptureView";
 
@@ -138,6 +139,8 @@ export function VwmAppContent(props: {
         {app === "convert" && <ConverterApp winId={props.winId} />}
         {app === "sysinfo" && <SysInfoApp winId={props.winId} />}
         {app === "printqueue" && <PrintQueueApp winId={props.winId} />}
+        {/* AI-11 系统集成与硬件组：系统中枢（U-43..U-48 / N-19..N-25 / V-51..V-60） */}
+        {app === "syshub" && <SysHubApp winId={props.winId} />}
       </div>
     );
   }

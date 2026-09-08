@@ -74,3 +74,6 @@ pub mod insights;
 // AI-07 效率中枢组（N-15 剪贴板历史后端 / N-18 宏引擎护栏与触发器）
 pub mod cliphist;
 pub mod macros;
+// AI-11 系统集成与硬件组（U-43..U-48 / N-19..N-25 / V-51..V-60 后端支撑）
+pub mod sysprobe;
+pub mod winpower;

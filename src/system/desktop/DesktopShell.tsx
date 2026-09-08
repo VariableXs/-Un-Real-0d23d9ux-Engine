@@ -36,6 +36,8 @@ import { MiniAppsLayer } from "../vwm/miniframe";
 import { DndLayer } from "../../lib/dnd/DragGhost";
 // AI-08 Z-28：运行对话框（全局浮层；ctrl+alt+r 呼出）
 import { RunDialog } from "../tools/RunDialog";
+// AI-11 N-19：性能 HUD 悬浮窗（localStorage 开关，默认关）
+import { PerfHud } from "../tools/syshub/PerfHud";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：
@@ -469,6 +471,8 @@ export function DesktopShell(props: {
     >
       {/* AI-06 输入手感组运行时（U-58/U-59、V-62…V-69；默认全部关闭） */}
       <InputFeelRuntime settings={props.settings} />
+      {/* AI-11 N-19：性能 HUD 悬浮窗（系统中枢内开关，默认关闭） */}
+      <PerfHud />
       <WallpaperLayer settings={props.settings} />
       {/* X-3：扩展小组件条（widgets.register；slot=desktop-top-right） */}
       {extWidgets.length > 0 && (

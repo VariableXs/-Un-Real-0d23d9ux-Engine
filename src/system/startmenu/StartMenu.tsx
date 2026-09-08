@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Activity, AppWindow, Calculator, CalendarClock, Camera, Clock, ClipboardList, Files, Fingerprint, FolderOpen,
+  Gauge,
   HardDrive,
   Flame, FolderMinus, Info, Lock, LogOut, Moon, PackagePlus, Pencil, Pin, PinOff, Power, Printer, RotateCcw,
   ShieldCheck, Settings as SettingsIcon, Search, Smile, StickyNote, Trash2, X, ZoomIn, ArrowLeftRight,
@@ -73,6 +74,8 @@ const TOOL_DEFS: Record<string, { key: string; icon: React.ReactElement }> = {
   convert: { key: "toolConvert", icon: <ArrowLeftRight size={22} strokeWidth={1.6} /> },
   sysinfo: { key: "toolSysinfo", icon: <Info size={22} strokeWidth={1.6} /> },
   printqueue: { key: "toolPrintqueue", icon: <Printer size={22} strokeWidth={1.6} /> },
+  // AI-11 系统集成与硬件组：系统中枢
+  syshub: { key: "toolSyshub", icon: <Gauge size={22} strokeWidth={1.6} /> },
 };
 
 function loadOrder(): string[] {

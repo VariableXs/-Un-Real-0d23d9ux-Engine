@@ -36,7 +36,8 @@ export type VwmToolApp =
   | "magnifier"
   | "convert"
   | "sysinfo"
-  | "printqueue";
+  | "printqueue"
+  | "syshub";
 export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp;
 
 /** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。
@@ -80,6 +81,7 @@ const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
   convert: { w: 640, h: 560 },
   sysinfo: { w: 720, h: 640 },
   printqueue: { w: 760, h: 560 },
+  syshub: { w: 860, h: 640 },
 };
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
@@ -649,6 +651,7 @@ export function vwmWindowTitle(app: VwmApp): string {
       convert: "换算中心",
       sysinfo: "系统信息",
       printqueue: "打印队列",
+      syshub: "系统中枢",
     };
     return labels[app];
   }
