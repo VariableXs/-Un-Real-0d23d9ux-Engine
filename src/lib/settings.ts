@@ -73,6 +73,12 @@ export interface Settings {
   winControls: WinControls;
   /** 任务栏停靠位置（批次E，规格 4.4）。 */
   taskbarPos: TaskbarPos;
+  /** AI-03 V-18：运行指示样式三选（dot=Win11 圆点 / underline=Win10 下划线 / capsule=胶囊）。 */
+  runIndicator: "dot" | "underline" | "capsule";
+  /** AI-03 M-16：媒体呼吸（播放时时钟旁 2% 幅度 / 4s 周期；默认关；reduce-motion 自动停用）。 */
+  mediaBreath: boolean;
+  /** AI-03 M-12：时钟多时区（IANA 名，最多 3 个）。 */
+  clockZones: string[];
   /** 快捷键自定义（批次E，规格 4.7）：action → accel；空 = 全默认。冲突检测在前端设置页。 */
   shortcutBinds: Record<string, string>;
   /** M-30 鼠标侧键编程：XBUTTON1/2 → 动作 id（默认 back/forward 语义）。 */
@@ -133,6 +139,22 @@ export interface Settings {
   pvzDictOverrides: Record<string, string>;
   /** AI-06 输入手感组（U-58/U-59、V-61…V-70）：默认全部关闭或等于现状。 */
   inputFeel: InputFeelSettings;
+  /** AI-01 Z-36：标题栏透明度/置顶微控总开关（默认 off）。 */
+  winFeelOpacity: boolean;
+  /** AI-01 M-01：摇一摇最小化（Aero Shake，默认 off）。 */
+  winShake: boolean;
+  /** AI-01 M-07：拖拽对齐参考线与轻吸附（默认 off；Alt 临时禁用）。 */
+  winGuides: boolean;
+  /** AI-01 Z-41：鼠标手势最小集（右键拖 下=关窗 / 上=最小化，默认 off）。 */
+  winGestures: boolean;
+  /** AI-01 Z-38：Alt+滚轮在置顶窗口间循环（默认 off）。 */
+  altWheelTopmost: boolean;
+  /** AI-01 M-08：精炼 Alt+Tab 过滤（off / app=同应用轮转；Ctrl+Alt+Tab 触发）。 */
+  altTabFilter: "off" | "app";
+  /** AI-01 M-09：悬停聚焦 X-Mouse（0=关 / 1=仅聚焦 / 2=聚焦并置顶）。 */
+  xmouse: 0 | 1 | 2;
+  /** AI-01 Z-42：右缘热区呼出桌面切换预览（0=关 / 8..32 px 宽度）。 */
+  desktopHotzone: number;
   customBg: CustomBg;
   mindDefaults: MindDefaults;
 }
@@ -145,6 +167,9 @@ export const DEFAULT_SETTINGS: Settings = {
   iconSize: 48,
   winControls: "mac",
   taskbarPos: "bottom",
+  runIndicator: "dot",
+  mediaBreath: false,
+  clockZones: [],
   shortcutBinds: {},
   xBinds: { xbutton1: "back", xbutton2: "forward" },
   launchApps: {},
@@ -181,6 +206,14 @@ export const DEFAULT_SETTINGS: Settings = {
   bgTier: 0,
   pvzDictOverrides: {},
   inputFeel: structuredClone(DEFAULT_INPUT_FEEL),
+  winFeelOpacity: false,
+  winShake: false,
+  winGuides: false,
+  winGestures: false,
+  altWheelTopmost: false,
+  altTabFilter: "off",
+  xmouse: 0,
+  desktopHotzone: 0,
   customBg: {
     type: "nebula",
     color: "#0a1226",
@@ -269,6 +302,18 @@ function coerce(raw: Record<string, string>): Settings {
     if (raw["inputFeel"]) {
       try { s.inputFeel = coerceInputFeel(JSON.parse(raw["inputFeel"])); } catch { /* 保留默认 */ }
     }
+    // AI-01 窗口手感组（全部保守默认，写坏值回落 off/0）
+    if (raw["winFeelOpacity"] !== undefined) s.winFeelOpacity = raw["winFeelOpacity"] === "1";
+    if (raw["winShake"] !== undefined) s.winShake = raw["winShake"] === "1";
+    if (raw["winGuides"] !== undefined) s.winGuides = raw["winGuides"] === "1";
+    if (raw["winGestures"] !== undefined) s.winGestures = raw["winGestures"] === "1";
+    if (raw["altWheelTopmost"] !== undefined) s.altWheelTopmost = raw["altWheelTopmost"] === "1";
+    if (raw["altTabFilter"]) s.altTabFilter = raw["altTabFilter"] === "app" ? "app" : "off";
+    if (raw["xmouse"] !== undefined) {
+      const n = Number(raw["xmouse"]);
+      s.xmouse = n === 1 || n === 2 ? (n as Settings["xmouse"]) : 0;
+    }
+    if (raw["desktopHotzone"] !== undefined) s.desktopHotzone = clamp(Number(raw["desktopHotzone"]) || 0, 0, 32);
     if (raw["mindDefaults"]) {
       const md = { ...s.mindDefaults, ...JSON.parse(raw["mindDefaults"]) };
       // Clamp numeric ranges so a corrupt stored value (e.g. wasdSpeed 0) can

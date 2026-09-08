@@ -63,7 +63,7 @@ export function useStickies(): StickyState {
 }
 
 /** 重启恢复：只恢复钉住项。 */
-export function restoreStickies(now: number = Date.now()): void {
+export function restoreStickies(_now: number = Date.now()): void {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "[]") as unknown;
     if (!Array.isArray(raw)) return;
@@ -81,6 +81,11 @@ export function restoreStickies(now: number = Date.now()): void {
   }
 }
 
+/** 非响应式快照（测试/命令式读取用）。 */
+export function getStickiesSnapshot(): StickyState {
+  return state;
+}
+
 export function setInputOpen(open: boolean): void {
   state = { ...state, inputOpen: open };
   emit();
@@ -95,7 +100,7 @@ export function addSticky(text: string, now: number = Date.now()): Sticky | null
     id: now,
     text: t,
     pinned: false,
-    corner: (["br", "tr", "bl", "tl"] as const)[state.items.length % 4],
+    corner: (["br", "tr", "bl", "tl"] as StickyCorner[])[state.items.length % 4]!,
     createdAt: now,
     fadeAt: now + STICKY_TTL_MS,
     fading: false,
@@ -142,13 +147,12 @@ export function clearUnpinned(): void {
 export function tickStickies(now: number = Date.now()): void {
   let changed = false;
   for (const s of state.items) {
-    if (s.pinned || s.fading || s.fadeAt === null) continue;
-    if (now >= s.fadeAt) {
-      if (now >= s.fadeAt + STICKY_FADE_MS) {
-        state = { ...state, items: state.items.filter((x) => x.id !== s.id) };
-      } else {
-        state = { ...state, items: state.items.map((x) => (x.id === s.id ? { ...x, fading: true } : x)) };
-      }
+    if (s.pinned || s.fadeAt === null) continue;
+    if (!s.fading && now >= s.fadeAt) {
+      state = { ...state, items: state.items.map((x) => (x.id === s.id ? { ...x, fading: true } : x)) };
+      changed = true;
+    } else if (s.fading && now >= s.fadeAt + STICKY_FADE_MS) {
+      state = { ...state, items: state.items.filter((x) => x.id !== s.id) };
       changed = true;
     }
   }

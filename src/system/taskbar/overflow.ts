@@ -26,7 +26,7 @@ export function computeOverflow(items: OverflowItem[], capacity: number): string
   // 先累加所有 pinned（必须显示）
   for (const it of items) if (it.pinned) used += Math.max(MIN_ICON_WIDTH, it.width);
   for (let i = items.length - 1; i >= 0; i--) {
-    const it = items[i];
+    const it = items[i]!;
     if (it.pinned) continue;
     const w = Math.max(MIN_ICON_WIDTH, it.width);
     if (used + w > capacity) {

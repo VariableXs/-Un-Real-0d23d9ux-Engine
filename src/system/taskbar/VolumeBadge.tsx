@@ -36,7 +36,7 @@ export function VolumeBadge(): React.ReactElement | null {
       else return;
       void ipc
         .audioGet()
-        .then((a) => a.kind === "ok" && setVolume(a.value.volume))
+        .then((a) => setVolume(a.volume))
         .catch((err) => console.warn("[volume-badge] read failed", errMessage(err).message));
     };
     window.addEventListener("keydown", onKey, true);

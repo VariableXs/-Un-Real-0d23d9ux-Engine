@@ -286,6 +286,49 @@ pub fn win_hide_to_tray(app: AppHandle) -> Result<(), String> {
     w.hide().map_err(|e| e.to_string())
 }
 
+/// AI-01 M-04 窗口体检（Window Health）：按 pid 列表检测无响应窗口。
+/// 枚举全部可见顶层窗口，`IsHungAppWindow` 命中且 pid 在名单内 → 视为无响应。
+/// 返回确认无响应的 pid 子集；非 Windows 平台恒为空（如实降级，不伪造结果）。
+#[tauri::command]
+pub fn win_health_scan(pids: Vec<u32>) -> Result<Vec<u32>, String> {
+    #[cfg(windows)]
+    {
+        if pids.is_empty() {
+            return Ok(vec![]);
+        }
+        use std::collections::HashSet;
+        use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            EnumWindows, GetWindowThreadProcessId, IsHungAppWindow, IsWindowVisible,
+        };
+        let want: HashSet<u32> = pids.into_iter().collect();
+        let mut hung: Vec<u32> = Vec::new();
+        unsafe extern "system" fn probe(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let out = unsafe { &mut *(lparam.0 as *mut Vec<u32>) };
+            unsafe {
+                if !IsWindowVisible(hwnd).as_bool() {
+                    return BOOL(1);
+                }
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                if pid != 0 && IsHungAppWindow(hwnd).as_bool() && !out.contains(&pid) {
+                    out.push(pid);
+                }
+            }
+            BOOL(1)
+        }
+        unsafe {
+            EnumWindows(Some(probe), LPARAM(&mut hung as *mut Vec<u32> as isize));
+        }
+        Ok(hung.into_iter().filter(|p| want.contains(p)).collect())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pids;
+        Ok(vec![])
+    }
+}
+
 /// 开始菜单电源操作（批次E，规格 4.6.3）：
 /// - lock = LockWorkStation（锁屏，无需特权）
 /// - logoff / reboot / shutdown = 调系统 shutdown.exe（诚实走 Windows 既有流程）
@@ -328,6 +371,24 @@ pub fn power_action(app: AppHandle, action: String) -> Result<(), String> {
             #[cfg(not(windows))]
             {
                 let _ = (prog, app);
+                Ok(())
+            }
+        }
+        "sleep" => {
+            // AI-04 开始菜单电源项：睡眠走系统 powrprof（若开启休眠则为休眠，诚实沿用 Windows 行为）
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                std::process::Command::new("rundll32")
+                    .args(["powrprof.dll,SetSuspendState", "0,1,0"])
+                    .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+                    .spawn()
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = &app;
                 Ok(())
             }
         }

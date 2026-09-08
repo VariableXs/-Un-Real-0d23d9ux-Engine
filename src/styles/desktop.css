@@ -3076,7 +3076,8 @@ html[data-reduce-motion] .desktop-icon.flip-preview { outline: none; }
 }
 
 /* M-16 媒体呼吸：播放态 2% 幅度 / 4s 周期（写死不可调）；reduce-motion 永不启用 */
-.tb-media-icon.breathing { animation: media-breathe 4s ease-in-out infinite; }
+/* M-16 媒体呼吸：默认关；仅 taskbar[data-media-breath="true"] 且播放态启用；reduce-motion 永不启用 */
+.taskbar[data-media-breath="true"] .tb-media-icon.breathing { animation: media-breathe 4s ease-in-out infinite; }
 @keyframes media-breathe {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.02); }

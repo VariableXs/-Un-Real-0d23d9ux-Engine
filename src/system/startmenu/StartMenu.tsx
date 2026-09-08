@@ -17,7 +17,7 @@ import {
   launchThirdApp, openLauncherManager, reloadThirdApps, toggleTaskbarPin, useTaskbarPins, useThirdApps,
 } from "../launcher/thirdApps";
 import { useUninstalledOfficial } from "../launcher/official";
-import { openVwmApp, openVwmSystem, vwmStore, VWM_TOOLS, type VwmToolApp } from "../windows/vwm";
+import { openVwmApp, openVwmSystem, vwmStore, VWM_TOOLS } from "../windows/vwm";
 import { pushRecent, useRecent } from "./recent";
 import { bumpUsage, subscribeUsage, usageCount } from "./usage";
 import { HIGH_FREQ_TOP_N, highFreqEnabled, recentlyAdded, setHighFreqEnabled, topUsedItems } from "./groups";
@@ -53,8 +53,9 @@ import { StartPropsPanel, type StartPropsInfo } from "./StartPropsPanel";
 
 const ORDER_KEY = "variable:start:order:v1";
 
-/** F-2 工具集：标题词典 key 与图标（开始菜单/VWM 共用语义）。 */
-const TOOL_DEFS: Record<VwmToolApp, { key: string; icon: React.ReactElement }> = {
+/** F-2 工具集：标题词典 key 与图标（开始菜单/VWM 共用语义）。
+ *  注：键集按 VwmToolApp 索引，另含其他 AI 工具组的预置词条（运行时按 VWM_TOOLS 过滤），故用宽松键型。 */
+const TOOL_DEFS: Record<string, { key: string; icon: React.ReactElement }> = {
   calc: { key: "toolCalc", icon: <Calculator size={22} strokeWidth={1.6} /> },
   notes: { key: "toolNotes", icon: <StickyNote size={22} strokeWidth={1.6} /> },
   calendar: { key: "toolCalendar", icon: <CalendarClock size={22} strokeWidth={1.6} /> },
@@ -116,7 +117,7 @@ export function StartMenu(props: {
   const [uptimeSecs, setUptimeSecs] = useState<number | null>(null);
   useEffect(() => {
     if (!powerOpen) return;
-    void ipc.sysBrief().then((b) => setUptimeSecs(b.uptimeSecs)).catch(() => setUptimeSecs(null));
+    void ipc.sysBrief().then((b) => setUptimeSecs((b as { uptimeSecs?: number }).uptimeSecs ?? null)).catch(() => setUptimeSecs(null));
   }, [powerOpen]);
   const [order, setOrder] = useState<string[]>(() => loadOrder());
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -310,16 +311,16 @@ export function StartMenu(props: {
     // F-2 实用工具集（VWM 虚拟窗口应用：贴靠/保活/多开语义与四软件一致）
     ...VWM_TOOLS.map((tool) => ({
       id: `tool-${tool}`,
-      label: t(TOOL_DEFS[tool].key),
+      label: t(TOOL_DEFS[tool]!.key),
       hue: "268",
       kind: "tool" as const,
-      icon: TOOL_DEFS[tool].icon,
+      icon: TOOL_DEFS[tool]!.icon,
       onClick: () => {
-        pushRecent("sys", `tool-${tool}`, t(TOOL_DEFS[tool].key));
+        pushRecent("sys", `tool-${tool}`, t(TOOL_DEFS[tool]!.key));
         props.onClose();
         openVwmApp(tool);
       },
-      title: t(TOOL_DEFS[tool].key),
+      title: t(TOOL_DEFS[tool]!.key),
     })),
     {
       id: "sys-launcher",
@@ -780,7 +781,7 @@ export function StartMenu(props: {
       }
     }
     await ipc
-      .powerAction(action)
+      .powerAction(action as "lock" | "logoff" | "reboot" | "shutdown")
       .catch((e) => pushToast("error", t("powerMenu"), errMessage(e).message));
   };
 

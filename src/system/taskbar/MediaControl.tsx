@@ -58,7 +58,7 @@ export function MediaControl(): React.ReactElement | null {
 
   return (
     <div className="tb-media" role="group" aria-label={t("mediaTitle")}>
-      <span className="tb-media-icon" aria-hidden>
+      <span className={`tb-media-icon${playing ? " breathing" : ""}`} aria-hidden>
         {playing ? <Pause size={14} strokeWidth={1.8} /> : <Play size={14} strokeWidth={1.8} />}
       </span>
       <div className="tb-media-info">

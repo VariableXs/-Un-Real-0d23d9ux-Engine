@@ -37,7 +37,15 @@ import { isoWeek, sanitizeClockZones, timeInZone } from "./clockcard";
 import { effectiveMenuIds, loadMenuOverride, type TaskbarMenuOverride } from "../desktop/taskbarMenu";
 import { setInputOpen } from "./stickies";
 import { StickyNotes } from "./StickyNotes";
+import { TrayDrawer, type TrayItem } from "./TrayDrawer";
 import { VolumeBadge } from "./VolumeBadge";
+
+/** M-13 等待态：启动登记（800ms 防抖在 pending.ts 内拦截重复 ShellExecute）。 */
+const launchPendingKey = async (key: string, name: string): Promise<boolean> => {
+  if (!canLaunch(key)) return false;
+  markLaunch(key, name);
+  return true;
+};
 
 /**
  * Win11 风格任务栏（M3 → 批次E，桌面环境 L1）：
@@ -293,7 +301,7 @@ export function Taskbar(props: {
   };
 
   // ---- M-15 任务栏空区菜单：注册表 + 用户覆盖（默认项集与现状一致） ----
-  const [menuOverride, setMenuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
+  const [menuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
   const blankMenuActions = useMemo(
     () => ({
       showDesktop: props.onShowDesktop,
@@ -383,7 +391,6 @@ export function Taskbar(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overflowSig]);
 
-  const isOverflow = (id: string): boolean => overflowIds.includes(id);
   const overflowMenu = (x: number, y: number): void => {
     const items: MenuItem[] = overflowIds
       .map((id) => overflowActions.current.get(id))
@@ -397,6 +404,14 @@ export function Taskbar(props: {
   const clockHoverTimer = useRef<number | null>(null);
   const clockZones = useMemo(() => sanitizeClockZones(props.settings.clockZones), [props.settings.clockZones]);
   const unreadNow = useNotifyBadge();
+
+  // M-11 托盘抽屉：镜像环境内托盘动作（只读镜像，不注入系统托盘）
+  const trayItems: TrayItem[] = [
+    { id: "wifi", label: t("trayNetwork"), node: <Wifi size={15} strokeWidth={1.7} />, onClick: () => openQuickPanel("wifi") },
+    { id: "bluetooth", label: t("trayBluetooth"), node: <Bluetooth size={15} strokeWidth={1.7} />, onClick: () => openQuickPanel("bluetooth") },
+    { id: "audio", label: t("trayAudio"), node: <Volume2 size={15} strokeWidth={1.7} />, onClick: () => openQuickPanel("audio") },
+    { id: "notify", label: t("notifyCenter"), node: <Bell size={15} strokeWidth={1.7} />, onClick: () => openQuickPanel(null) },
+  ];
 
   const setCollapsed = (v: boolean): void => {
     setTrayCollapsed(v);
@@ -509,6 +524,8 @@ export function Taskbar(props: {
     <div
       className="taskbar"
       data-pos={props.pos}
+      data-ind={props.settings.runIndicator}
+      data-media-breath={props.settings.mediaBreath ? "true" : "false"}
       onContextMenu={(e) => {
         // 批次E：空白右键（图标自身右键已 stopPropagation 在各自 handler 内 preventDefault）
         const tEl = e.target as HTMLElement | null;
@@ -695,6 +712,17 @@ export function Taskbar(props: {
               onAuxClick={(e) => {
                 if (e.button === 1) void launchThirdApp(a.id, a.name);
               }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                e.currentTarget.classList.add("drop-open");
+              }}
+              onDragLeave={(e) => e.currentTarget.classList.remove("drop-open")}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove("drop-open");
+                void dropOpen({ kind: "tp", id: a.id, name: a.name }, Array.from(e.dataTransfer.files).map((f) => (f as File & { path?: string }).path ?? "")).catch(() => {});
+              }}
               onMouseEnter={() => hoverEnter(a.id, a.name, running)}
               onMouseLeave={hoverLeave}
               onContextMenu={(e) => {
@@ -822,6 +850,19 @@ export function Taskbar(props: {
           )}
           {unread > 0 && <span className="tb-badge" aria-hidden>{unread > 9 ? "9+" : unread}</span>}
         </button>
+        {/* M-14 IM 未读聚合（只读 imwatch 标题信号；99+ 封顶） */}
+        <button
+          type="button"
+          className={`tb-btn tray-btn${quickOpen ? " active" : ""}`}
+          aria-label={t("tbImBadge")}
+          title={t("tbImBadge")}
+          onClick={() => openQuickPanel(null)}
+        >
+          <MessageCircle size={16} strokeWidth={1.7} />
+          {imSum > 0 && <span className="tb-badge" aria-hidden>{imSum > 99 ? "99+" : imSum}</span>}
+        </button>
+        {/* M-11 托盘收纳抽屉（环境内图标超阈值后收进二级抽屉；可搜索） */}
+        <TrayDrawer newCount={0} onOpen={() => {}} items={trayItems} />
       </div>
 
       {/* F-5.3 输入法指示器（中英态 1s 轮询；点击弹语言列表） */}
@@ -830,16 +871,52 @@ export function Taskbar(props: {
       {/* F-5.4 媒体控制指示（探测不到则不渲染） */}
       <MediaControl />
 
-      {/* 批次D：时钟点击弹日历（本地时区，零网络） */}
+      {/* 批次D：时钟点击弹日历（本地时区，零网络）+ M-12 悬停详情卡（多时区/ISO 周数/今日未读） */}
       <button
         type="button"
         className={`tb-clock${calOpen ? " active" : ""}`}
         aria-label={date}
         onClick={() => setCalOpen(!calOpen)}
+        onMouseEnter={() => {
+          if (clockHoverTimer.current !== null) window.clearTimeout(clockHoverTimer.current);
+          clockHoverTimer.current = window.setTimeout(() => setClockHover(true), 600);
+        }}
+        onMouseLeave={() => {
+          if (clockHoverTimer.current !== null) window.clearTimeout(clockHoverTimer.current);
+          clockHoverTimer.current = null;
+          setClockHover(false);
+        }}
       >
         <span className="tb-time">{time}</span>
         <span className="tb-date">{date}</span>
       </button>
+
+      {clockHover && !calOpen && (
+        <div className="tb-clock-card card-pop" role="tooltip" aria-label={t("tbClockCard")}>
+          <div className="tb-clock-card-main">
+            <span className="tb-time">{time}</span>
+            <span className="tb-date">{date}</span>
+          </div>
+          {clockZones.length > 0 && (
+            <div className="tb-clock-zones">
+              {clockZones.map((z) => (
+                <div key={z} className="row" style={{ justifyContent: "space-between" }}>
+                  <span className="dim small">{z}</span>
+                  <span className="small">{timeInZone(now, z) ?? "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="dim small">{t("tbClockWeek")}</span>
+            <span className="small">{t("tbClockWeek")} {isoWeek(now)}</span>
+          </div>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="dim small">{t("tbClockUnread")}</span>
+            <span className="small">{unreadNow}</span>
+          </div>
+        </div>
+      )}
 
       {calOpen && (
         <div className="tb-calendar card-pop" role="dialog" aria-label={t("calendar")}>
@@ -915,6 +992,10 @@ export function Taskbar(props: {
       />
 
       <QuickPanel open={quickOpen} section={quickSection} onClose={closeQuickPanel} />
+
+      {/* AI-03：便签速贴（M-17）+ 音量浮标（M-18）—— 自包含浮层组件 */}
+      <StickyNotes />
+      <VolumeBadge />
     </div>
   );
 }

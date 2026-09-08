@@ -38,6 +38,8 @@ import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
 import { toAssetUrl } from "../../features/background/CosmicBackground";
 import { SHORTCUT_ACTIONS, findConflicts, normalizeAccel } from "../../lib/shortcuts";
+import { TASKBAR_MENU_REGISTRY, loadMenuOverride, saveMenuOverride, clearMenuOverride, type TaskbarMenuOverride } from "../../system/desktop/taskbarMenu";
+import { sanitizeClockZones } from "../../system/taskbar/clockcard";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -430,6 +432,28 @@ export function SettingsModal(props: {
                   <option value="top">{t("tbPosTop")}</option>
                 </select>
               </Field>
+              {/* AI-03 V-18：运行指示样式三选（dot=默认现状；即时生效零重启） */}
+              <Field label={t("setRunIndicator")}>
+                <select
+                  value={s.runIndicator}
+                  onChange={(e) => set("runIndicator", e.target.value as Settings["runIndicator"])}
+                >
+                  <option value="dot">{t("runIndDot")}</option>
+                  <option value="underline">{t("runIndUnderline")}</option>
+                  <option value="capsule">{t("runIndCapsule")}</option>
+                </select>
+              </Field>
+              {/* AI-03 M-16：媒体呼吸（默认关；幅度 2% / 周期 4s 写死） */}
+              <Field label={t("setMediaBreath")}>
+                <div className="col gap4">
+                  <Check label={t("setMediaBreath")} checked={s.mediaBreath} onChange={(v) => set("mediaBreath", v)} />
+                  <span className="dim small">{t("setMediaBreathHint")}</span>
+                </div>
+              </Field>
+              {/* AI-03 M-12：时钟多时区（IANA，≤3；非法名保存时如实过滤） */}
+              <Ai03ClockZones set={set} zones={s.clockZones} />
+              {/* AI-03 M-15：任务栏空区右键菜单编辑 */}
+              <Ai03BlankMenu />
               <Field label={t("theme")}>
                 <select value={s.theme} onChange={(e) => set("theme", e.target.value as ThemeId)}>
                   <option value="deep-space">{t("themeDeepSpace")}</option>
@@ -1172,6 +1196,133 @@ function Check(props: { label: string; checked: boolean; disabled?: boolean; onC
       <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(e) => props.onChange(e.target.checked)} />
       {props.label}
     </label>
+  );
+}
+
+/** AI-03 M-12：时钟多时区编辑（≤3 个 IANA 名；非法名保存时如实过滤，零网络）。 */
+function Ai03ClockZones(props: { zones: string[]; set: <K extends keyof Settings>(key: K, value: Settings[K]) => void }): React.ReactElement {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const full = props.zones.length >= 3;
+  const add = (): void => {
+    const next = sanitizeClockZones([...props.zones, draft.trim()]);
+    if (next.length === props.zones.length) {
+      pushToast("error", t("setClockZones"), t("scInvalid"));
+      return;
+    }
+    props.set("clockZones", next);
+    setDraft("");
+  };
+  return (
+    <Field label={t("setClockZones")}>
+      <div className="col gap4">
+        <div className="row gap8 wrap">
+          {props.zones.map((z) => (
+            <span key={z} className="row gap4 chip">
+              {z}
+              <button
+                type="button" className="icon-btn tiny" aria-label={`× ${z}`}
+                onClick={() => props.set("clockZones", props.zones.filter((x) => x !== z))}
+              >×</button>
+            </span>
+          ))}
+          {props.zones.length === 0 && <span className="dim small">{t("tbClockNoZones")}</span>}
+        </div>
+        <div className="row gap8">
+          <input
+            className="text-input flex-1"
+            value={draft}
+            placeholder="Asia/Shanghai"
+            disabled={full}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) add(); }}
+          />
+          <button type="button" className="btn ghost" disabled={full || !draft.trim()} onClick={add}>
+            {t("setClockZoneAdd")}
+          </button>
+        </div>
+        <span className="dim small">{t("setClockZonesHint")}</span>
+      </div>
+    </Field>
+  );
+}
+
+/** AI-03 M-15：任务栏空区右键菜单编辑（仅注册表内安全项；覆盖持久化 localStorage）。 */
+function Ai03BlankMenu(): React.ReactElement {
+  const { t } = useI18n();
+  const [menuOverride, setMenuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
+  const order = menuOverride.order;
+  return (
+    <Field label={t("tbMenuTitle")}>
+      <div className="col gap4">
+        <span className="dim small">{t("tbMenuHint")}</span>
+        {TASKBAR_MENU_REGISTRY.map((entry) => {
+          const visible = !menuOverride.hidden.includes(entry.id);
+          const first = order[0] === entry.id;
+          const last = order[order.length - 1] === entry.id;
+          return (
+            <div key={entry.id} className="row gap8" style={{ alignItems: "center" }}>
+              <Check
+                label={t(entry.labelKey)}
+                checked={visible}
+                onChange={(v) => {
+                  const hidden = menuOverride.hidden.filter((x) => x !== entry.id);
+                  const next = v
+                    ? { order: [...order, entry.id], hidden }
+                    : { order: order.filter((x) => x !== entry.id), hidden: [...hidden, entry.id] };
+                  const nv: TaskbarMenuOverride = { ...next };
+                  saveMenuOverride(nv);
+                  setMenuOverride(nv);
+                }}
+              />
+              {visible && (
+                <span className="row gap4">
+                  <button
+                    type="button" className="icon-btn tiny" aria-label="↑" disabled={first}
+                    onClick={() => {
+                      const nextOrder = [...order];
+                      const i = nextOrder.indexOf(entry.id);
+                      if (i > 0) {
+                        const prev = nextOrder[i - 1]!;
+                        nextOrder[i - 1] = nextOrder[i]!;
+                        nextOrder[i] = prev;
+                      }
+                      const nv = { ...menuOverride, order: nextOrder };
+                      saveMenuOverride(nv);
+                      setMenuOverride(nv);
+                    }}
+                  >↑</button>
+                  <button
+                    type="button" className="icon-btn tiny" aria-label="↓" disabled={last}
+                    onClick={() => {
+                      const nextOrder = [...order];
+                      const i = nextOrder.indexOf(entry.id);
+                      if (i >= 0 && i < nextOrder.length - 1) {
+                        const next = nextOrder[i + 1]!;
+                        nextOrder[i + 1] = nextOrder[i]!;
+                        nextOrder[i] = next;
+                      }
+                      const nv = { ...menuOverride, order: nextOrder };
+                      saveMenuOverride(nv);
+                      setMenuOverride(nv);
+                    }}
+                  >↓</button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+        <button
+          type="button" className="btn ghost"
+          onClick={() => {
+            clearMenuOverride();
+            setMenuOverride(loadMenuOverride());
+          }}
+        >
+          {t("tbMenuReset")}
+        </button>
+      </div>
+    </Field>
   );
 }
 
