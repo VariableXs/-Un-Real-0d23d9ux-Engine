@@ -34,7 +34,9 @@ export function GlowLayer(props: { settings: Settings }): React.ReactElement | n
       return;
     }
     let alive = true;
-    const path = s.wallpaperMode === "image" || s.wallpaperMode === "hybrid" ? s.customBg.imagePath : "";
+    const path = s.wallpaperMode === "image" || s.wallpaperMode === "living" || s.wallpaperMode === "hybrid"
+      ? s.customBg.imagePath
+      : "";
     if (!path) {
       setColor(null);
       return;

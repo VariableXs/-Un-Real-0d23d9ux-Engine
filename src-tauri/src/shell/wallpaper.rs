@@ -249,10 +249,18 @@ fn wp_engine_item(project_dir: &std::path::Path, source: &str) -> Option<WpEngin
         "scene" => matches!(ext.as_str(), "frag" | "glsl" | "fs" | "fsh"),
         _ => false,
     };
+    // 实机反馈（动态壁纸）：预览图 GIF 优先 —— WE scene/video 项目常带 preview.gif
+    // 动图预览，导入 living/image 模式后 <img> 原生播放动图，不再是死静态。
     let preview = project_dir
-        .join("preview.jpg")
+        .join("preview.gif")
         .is_file()
-        .then(|| project_dir.join("preview.jpg").to_string_lossy().to_string())
+        .then(|| project_dir.join("preview.gif").to_string_lossy().to_string())
+        .or_else(|| {
+            project_dir
+                .join("preview.jpg")
+                .is_file()
+                .then(|| project_dir.join("preview.jpg").to_string_lossy().to_string())
+        })
         .or_else(|| find_fallback_preview(project_dir));
     Some(WpEngineItem {
         id: project_dir

@@ -116,7 +116,9 @@ export function DesktopShell(props: {
     try {
       persistAmbientSnapshot(
         props.settings,
-        props.settings.wallpaperMode === "image" ? props.settings.customBg.imagePath : "",
+        props.settings.wallpaperMode === "image" || props.settings.wallpaperMode === "living"
+          ? props.settings.customBg.imagePath
+          : "",
       );
     } catch {
       /* 氛围快照失败静默 */
@@ -353,7 +355,7 @@ export function DesktopShell(props: {
         const picked = await ipc.wpPickDaily(props.settings.wallpaperPoolDir, "date");
         if (!picked || picked === props.settings.customBg.imagePath) return;
         props.onPatchSettings({
-          wallpaperMode: "image",
+          wallpaperMode: "living",
           customBg: { ...props.settings.customBg, type: "image", imagePath: picked },
         });
       } catch {
@@ -526,7 +528,7 @@ export function DesktopShell(props: {
         settings={props.settings}
         onRestoreWallpaper={(p) =>
           props.onPatchSettings({
-            wallpaperMode: "image",
+            wallpaperMode: "living",
             customBg: { ...props.settings.customBg, imagePath: p },
           })
         }

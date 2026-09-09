@@ -1,11 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import type { BootAnim, BootPacing } from "../../lib/settings";
+import type { BootAnim, BootPacing, PerfMode } from "../../lib/settings";
 import { ceremonyReducer, INITIAL_CEREMONY, pacingTimings, SKIP_THRESHOLD } from "./ceremony";
 import { BootWordmark } from "./BootWordmark";
 import { CapsuleBar } from "./CapsuleBar";
 import { FileTicker } from "./FileTicker";
+import { BootAtmosphere } from "./BootAtmosphere";
 import "../../styles/boot.css";
 
 /**
@@ -91,6 +92,19 @@ export function BootScreen(props: {
   const [stalled, setStalled] = useState(false);
   const [denied, setDenied] = useState(false);
   const [exit, setExit] = useState<BootAnim | null>(null);
+  // 氛围层性能口径：设置加载前用系统级 reduce-motion 预判，加载后跟随设置
+  const [atmo, setAtmo] = useState<{
+    reduceMotion: boolean;
+    safeMode: boolean;
+    perfMode: PerfMode;
+  }>(() => ({
+    reduceMotion:
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    safeMode: false,
+    perfMode: "balanced",
+  }));
 
   const progressRef = useRef(0); // 真实进度（单调不减）
   const lastSeqRef = useRef(0);
@@ -180,6 +194,7 @@ export function BootScreen(props: {
         if (!cancelled) {
           if (s.bootAnim === "simple" || s.bootAnim === "none") animRef.current = s.bootAnim;
           pacingRef.current = s.bootPacing;
+          setAtmo({ reduceMotion: s.reduceMotion, safeMode: s.safeMode, perfMode: s.perfMode });
           // U-05 启动交响：mode 三档（full 三层 / mute 静音 / chime-only 仅就绪音）。
           try {
             symphonyRef.current = (await import("../../lib/sounds")).startBootSymphony({
@@ -290,6 +305,12 @@ export function BootScreen(props: {
       role="status"
       aria-live="polite"
     >
+      <BootAtmosphere
+        progress={shown}
+        reduceMotion={atmo.reduceMotion}
+        safeMode={atmo.safeMode}
+        perfMode={atmo.perfMode}
+      />
       <div className="boot-stage">
         <div className="boot-wordmark-wrap">
           <BootWordmark progress={shown} />

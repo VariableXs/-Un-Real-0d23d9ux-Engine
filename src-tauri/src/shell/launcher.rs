@@ -240,7 +240,8 @@ pub fn tp_add(
         grade: g,
         added_at: now_ms(),
         last_launch: None,
-        icon: None,
+        // 实机反馈（图标清晰度）：登记即提取 128px 高清图标，桌面不再显示占位字形
+        icon: auto_icon_hd(&p),
         target,
         profile: Default::default(),
         dpi_fix: false,
@@ -851,6 +852,94 @@ pub fn icon_jumbo_dataurl(path: String) -> CmdResult<String> {
             "仅 Windows 支持 Jumbo 图标提取 / Windows only",
         ))
     }
+}
+
+/// 实机反馈（图标清晰度）：128px 高清图标提取（桌面图标显示上限 94px ×
+/// 常见 1.5x DPI ≈ 141 物理像素，128px 源已覆盖全部常用档位；256px Jumbo
+/// 的 data URL 太重不落注册表）。链路：.ico/.png 原样读盘 → lnk 原路径
+/// GetImage(128)（图标可能挂在 lnk 自身）→ 解析目标后 GetImage(128)。
+/// 失败返回 None（调用方保持占位图标，诚实降级）。
+fn auto_icon_hd(path: &Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        let is_lnk = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+            .unwrap_or(false);
+        let resolved = if is_lnk {
+            resolve_lnk(path).unwrap_or_else(|| path.to_path_buf())
+        } else {
+            path.to_path_buf()
+        };
+        // 独立图标文件（.ico/.png）原样读盘：浏览器自选最佳尺寸，无损
+        let ext = resolved
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if matches!(ext.as_str(), "ico" | "png") {
+            if let Ok(url) = encode_icon(resolved.to_string_lossy().as_ref()) {
+                return Some(url);
+            }
+        }
+        let to_url = |p: &Path| -> Option<String> {
+            let (w, h, rgba) = extract_shell_item_image_rgba_sized(p, 128).ok()?;
+            Some(format!(
+                "data:image/png;base64,{}",
+                b64_encode(&encode_png(w, h, &rgba))
+            ))
+        };
+        if is_lnk {
+            if let Some(url) = to_url(path) {
+                return Some(url);
+            }
+        }
+        to_url(&resolved)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
+}
+
+/// 实机反馈（图标清晰度）：128px 高清图标 → data URL（货架换图标等 UI 入口）。
+#[tauri::command]
+pub fn icon_dataurl_hd(path: String) -> CmdResult<String> {
+    let p = PathBuf::from(&path);
+    auto_icon_hd(&p).ok_or_else(|| {
+        AppError::not_found("未能提取高清图标 / failed to extract HD icon")
+    })
+}
+
+/// 实机反馈（图标清晰度）：存量登记项高清图标补齐 —— 图标为空（历史登记 /
+/// auto_icon_hd 失败）的应用按 id 批量提取 128px 图标并持久化，返回补齐数。
+/// 前端分批调用（每批 ≤8 个，GetImage 每项数十毫秒，避免单次命令过长）。
+#[tauri::command]
+pub fn tp_ensure_icons(st: tauri::State<AppState>, ids: Vec<String>) -> CmdResult<usize> {
+    let mut apps = load_registry(&st);
+    let mut changed = 0usize;
+    let mut dirty = false;
+    for a in apps.iter_mut() {
+        if !ids.is_empty() && !ids.contains(&a.id) {
+            continue;
+        }
+        if a.icon.is_some() {
+            continue;
+        }
+        let p = PathBuf::from(&a.path);
+        if !p.is_file() {
+            continue; // 目标已被移动/卸载：如实跳过，不伪造
+        }
+        if let Some(url) = auto_icon_hd(&p) {
+            a.icon = Some(url);
+            changed += 1;
+            dirty = true;
+        }
+    }
+    if dirty {
+        save_registry(&st, &apps)?;
+    }
+    Ok(changed)
 }
 
 /// Explorer 同款兜底：IShellItemImageFactory::GetImage → 32bpp RGBA。

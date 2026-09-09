@@ -460,8 +460,10 @@ export function DesktopIcons(props: {
   const occupiedSet = useMemo(() => new Set([...placed.values()].map((p) => `${p.c}:${p.r}`)), [placed]);
   void occupiedSet;
 
-  // V-05：image 壁纸 → 采样每个图标标签落点亮度；其余模式/加载失败 → null（维持默认样式）
-  const wpImagePath = props.wallpaperMode === "image" ? props.customBg.imagePath : "";
+  // V-05：image/living 壁纸 → 采样每个图标标签落点亮度；其余模式/加载失败 → null（维持默认样式）
+  const wpImagePath = props.wallpaperMode === "image" || props.wallpaperMode === "living"
+    ? props.customBg.imagePath
+    : "";
   useEffect(() => {
     if (!wpImagePath) {
       setLabelShades(null);
@@ -700,7 +702,8 @@ export function DesktopIcons(props: {
         }
       } else if ("shelfId" in d) {
         try {
-          const url = await ipc.iconDataurl(path);
+          // 实机反馈（图标清晰度）：128px 高清链路（icon_dataurl 为 32/64px）
+          const url = await ipc.iconDataurlHd(path);
           const l = layoutRef.current;
           const s = l.shelves[d.shelfId];
           if (s) commit({ ...l, shelves: { ...l.shelves, [d.shelfId]: { ...s, icon: url } } });
@@ -1223,7 +1226,7 @@ export function DesktopIcons(props: {
           return;
         }
         props.onPatchSettings({
-          wallpaperMode: "image",
+          wallpaperMode: "living",
           customBg: { ...props.customBg, type: "image", imagePath: picked },
         });
       })
@@ -1246,7 +1249,9 @@ export function DesktopIcons(props: {
       props.onPatchSettings({ wallpaperMode: w });
       return;
     }
-    const needImage = w === "image" || (w === "hybrid" && !props.customBg.imagePath && !props.customBg.videoPath);
+    const needImage = w === "image"
+      || w === "living"
+      || (w === "hybrid" && !props.customBg.imagePath && !props.customBg.videoPath);
     const needVideo = w === "video" && !props.customBg.videoPath;
     if (!needImage && !needVideo) {
       props.onPatchSettings({ wallpaperMode: w });
@@ -1404,11 +1409,12 @@ export function DesktopIcons(props: {
     }));
     // "系统桌面（Wallpaper Engine）"入口已移除：选中即隐藏 Variable 并渲染纯黑，
     // WE 未接管时表现为整屏黑屏（实机反馈）。壁纸全部在本地环境内打开。
-    const walls = ["solid", "gravity", "image", "video", "hybrid", "web"] as const;
+    const walls = ["solid", "gravity", "image", "living", "video", "hybrid", "web"] as const;
     const wallKeys: Record<(typeof walls)[number], string> = {
       solid: "wpSolid",
       gravity: "wpGravity",
       image: "wpImage",
+      living: "wpLiving",
       video: "wpVideo",
       hybrid: "wpHybrid",
       web: "wpWeb",

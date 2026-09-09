@@ -301,6 +301,10 @@ export const ipc = {
   tpPortableize: (id: string) => invoke<Shell.ThirdApp>("tp_portableize", { id }),
   tpLaunchAdmin: (id: string) => invoke<void>("tp_launch_admin", { id }),
   iconDataurl: (path: string) => invoke<string>("icon_dataurl", { path }),
+  /** 实机反馈（图标清晰度）：128px 高清图标（icon_dataurl 链路为 32/64px）。 */
+  iconDataurlHd: (path: string) => invoke<string>("icon_dataurl_hd", { path }),
+  /** 实机反馈（图标清晰度）：存量登记项高清图标批量补齐（ids 空 = 全部缺图标项）。 */
+  tpEnsureIcons: (ids: string[]) => invoke<number>("tp_ensure_icons", { ids }),
 
   // ---- 批次B-5/B-6（M1 执行档）：模板套用 / 手工编辑 / 干跑 / 残留扫描 ----
   profileTemplates: () => invoke<Shell.ProfileTemplateDto[]>("profile_templates"),

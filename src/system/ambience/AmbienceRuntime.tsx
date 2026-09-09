@@ -123,7 +123,7 @@ export function AmbienceRuntime(props: {
           const dir = a.dayAround.dirs[slot];
           if (slotConfigured(a.dayAround.dirs, slot) && dir) {
             props.onPatchSettings({
-              wallpaperMode: "image",
+              wallpaperMode: "living",
               customBg: { ...props.settings.customBg, imagePath: dir },
             });
           }
@@ -137,7 +137,7 @@ export function AmbienceRuntime(props: {
           const wp = CURATED_WALLPAPERS[dailyIndex(now, CURATED_WALLPAPERS.length)];
           if (wp) {
             props.onPatchSettings({
-              wallpaperMode: "image",
+              wallpaperMode: "living",
               customBg: { ...props.settings.customBg, imagePath: wp.svg },
             });
           }

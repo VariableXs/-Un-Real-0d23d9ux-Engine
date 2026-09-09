@@ -413,6 +413,7 @@ export function SettingsModal(props: {
                   <option value="gravity">{t("wpGravity")}</option>
                   <option value="solid">{t("wpSolid")}</option>
                   <option value="image">{t("wpImage")}</option>
+                  <option value="living">{t("wpLiving")}</option>
                   <option value="video">{t("wpVideo")}</option>
                   <option value="hybrid">{t("wpHybrid")}</option>
                   <option value="web">{t("wpWeb")}</option>
@@ -609,11 +610,12 @@ export function SettingsModal(props: {
                           }
                           if (!it.supported || !it.file) {
                             // application/合成 scene：无法在引擎内直接渲染，
-                            // 全部在本地打开 —— 用项目预览图作为本地图片壁纸；
-                            // 不再交给 Wallpaper Engine 本体、不再隐藏窗口（避免黑屏）
+                            // 全部在本地打开 —— 用项目预览图作为活化壁纸（粒子 + 缓动，
+                            // 实机反馈：动态壁纸导入后变静态的根因修复）；preview.gif
+                            // 由后端优先返回，动图预览天然保留动态。
                             if (it.preview) {
                               props.onChange({
-                                wallpaperMode: "image",
+                                wallpaperMode: "living",
                                 customBg: { ...s.customBg, type: "image", imagePath: it.preview },
                               });
                               pushToast("info", t("wpEngineLocal"), it.title);
@@ -624,7 +626,8 @@ export function SettingsModal(props: {
                           }
                           const isVideo = it.kind === "video";
                           props.onChange({
-                            wallpaperMode: isVideo ? "video" : "image",
+                            // WE image 型也走 living：静态图活化（光尘 + Ken Burns）
+                            wallpaperMode: isVideo ? "video" : "living",
                             customBg: isVideo
                               ? { ...s.customBg, type: "video", videoPath: it.file, playVideo: true }
                               : { ...s.customBg, type: "image", imagePath: it.file },

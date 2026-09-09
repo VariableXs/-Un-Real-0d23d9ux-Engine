@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { errMessage, ipc } from "../../lib/ipc";
-import { toAssetUrl } from "../../features/background/CosmicBackground";
+import { LivingWallpaper } from "./LivingWallpaper";
 
 /**
  * 实机反馈：scene 着色器壁纸必须全本地渲染（不靠 Wallpaper Engine 本体，
@@ -8,7 +8,8 @@ import { toAssetUrl } from "../../features/background/CosmicBackground";
  * - 源码读取与 `#include` 递归展开全部在后端完成（只读、PathBuf 拼接、限深防环）
  * - WE 全局变量：CURTIME / TIME / resolution / g_Resolution / MOUSE /
  *   g_Texture0..3（未绑定的 sampler 挂 1×1 白纹理，缺纹理不致全黑）
- * - 任何一步失败（读取/编译/链接）→ 回退预览图静态壁纸，绝不黑屏
+ * - 任何一步失败（读取/编译/链接）→ 回退「活化图片」（粒子 + 缓动），
+ *   绝不黑屏也绝不退回死静态（实机反馈：动态壁纸变静态的根因之一）
  */
 
 /** WE 全局变量：只补声明缺失的（用户源码里已声明的不重复声明）。 */
@@ -46,6 +47,7 @@ export function SceneShaderWallpaper(props: {
   shaderPath: string;
   fallbackImage?: string;
   reduceMotion?: boolean;
+  safeMode?: boolean;
   perfMode?: string;
 }): React.ReactElement {
   const { shaderPath, fallbackImage } = props;
@@ -163,8 +165,14 @@ export function SceneShaderWallpaper(props: {
   }, [shaderPath, props.reduceMotion, props.perfMode]);
 
   if (failed || !shaderPath) {
+    // 编译失败回退「活化图片」：粒子 + Ken Burns，保持壁纸的呼吸感（不退死静态）。
     return fallbackImage ? (
-      <img src={toAssetUrl(fallbackImage)} alt="" draggable={false} className="wallpaper-media-fill" />
+      <LivingWallpaper
+        imagePath={fallbackImage}
+        reduceMotion={props.reduceMotion}
+        safeMode={props.safeMode}
+        perfMode={props.perfMode}
+      />
     ) : (
       <div className="wallpaper wallpaper-solid" aria-hidden />
     );

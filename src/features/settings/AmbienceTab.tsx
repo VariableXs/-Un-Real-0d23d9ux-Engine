@@ -59,7 +59,9 @@ export function AmbienceTab(props: { settings: Settings; onPatch: (p: Partial<Se
   // M-64 主色采样候选（OKLCH 元组；渲染时转 CSS）
   const [candidates, setCandidates] = useState<[number, number, number][]>([]);
   useEffect(() => {
-    const path = props.settings.wallpaperMode === "image" || props.settings.wallpaperMode === "hybrid"
+    const path = props.settings.wallpaperMode === "image"
+      || props.settings.wallpaperMode === "living"
+      || props.settings.wallpaperMode === "hybrid"
       ? props.settings.customBg.imagePath
       : "";
     if (!path) {

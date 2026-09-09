@@ -1,14 +1,17 @@
 import { CosmicBackground, toAssetUrl } from "../../features/background/CosmicBackground";
 import { SceneShaderWallpaper } from "./SceneShaderWallpaper";
+import { LivingWallpaper } from "./LivingWallpaper";
 import type { CustomBg, Settings } from "../../lib/settings";
 
 /**
  * 桌面壁纸层（L0 显示层，docs/ARCHITECTURE_V2.md §四）。
  *
- * 5 种模式：
+ * 6 种模式：
  * - solid   纯黑
  * - gravity 3D 引力场（复用 v1 星空引擎 deep-space 主题，参数原样）
  * - image   图片壁纸（customBg.imagePath）
+ * - living  活化图片（实机反馈：Windows 动态壁纸在 Variable 里变静态 —— 图片 +
+ *           粒子活化层 + Ken Burns 缓动，任何静态图都有呼吸感）
  * - video   视频壁纸（customBg.videoPath）
  * - hybrid  混合 = 图片/视频之上叠加星空引擎
  *
@@ -38,7 +41,7 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
   }
 
   // 实机反馈：scene 着色器壁纸 —— WebGL 本地渲染（WE 全局变量兼容），
-  // 编译失败自动回退预览图静态壁纸，绝不黑屏
+  // 编译失败自动回退「活化图片」（粒子 + 缓动，不再是死静态），绝不黑屏
   if (mode === "shader") {
     return (
       <div className="wallpaper wallpaper-web" aria-hidden>
@@ -46,9 +49,23 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
           shaderPath={s.customBg.shaderPath}
           fallbackImage={s.customBg.imagePath || undefined}
           reduceMotion={s.reduceMotion}
+          safeMode={s.safeMode}
           perfMode={s.perfMode}
         />
       </div>
+    );
+  }
+
+  // 实机反馈：Windows 动态壁纸在 Variable 里变静态 —— living 活化模式
+  // （图片 + 粒子层 + Ken Burns；reduce-motion/static 档诚实降级静态）。
+  if (mode === "living") {
+    return (
+      <LivingWallpaper
+        imagePath={s.customBg.imagePath}
+        reduceMotion={s.reduceMotion}
+        safeMode={s.safeMode}
+        perfMode={s.perfMode}
+      />
     );
   }
 
@@ -86,5 +103,5 @@ function effectiveCustomBg(mode: Settings["wallpaperMode"], cb: CustomBg): Custo
 
 /** 壁纸模式是否依赖用户选择的媒体文件（设置页据此显示选择器）。 */
 export function wallpaperUsesMedia(mode: Settings["wallpaperMode"]): boolean {
-  return mode === "image" || mode === "video" || mode === "hybrid" || mode === "shader";
+  return mode === "image" || mode === "living" || mode === "video" || mode === "hybrid" || mode === "shader";
 }

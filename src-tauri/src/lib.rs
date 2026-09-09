@@ -1,4 +1,4 @@
-﻿pub mod backup;
+pub mod backup;
 pub mod boot;
 pub mod db;
 pub mod error;
@@ -408,6 +408,8 @@ pub fn run() {
             shell::launcher::tp_launch_admin,
             shell::launcher::icon_dataurl,
             shell::launcher::icon_jumbo_dataurl,
+            shell::launcher::icon_dataurl_hd,
+            shell::launcher::tp_ensure_icons,
             shell::appman::tp_running,
             shell::appman::official_usage,
             shell::appman::official_purge,

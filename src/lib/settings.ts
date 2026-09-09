@@ -6,8 +6,10 @@ import { DEFAULT_AMBIENCE, coerceAmbience, type AmbienceSettings } from "../syst
 export type ThemeId = "deep-space" | "paper" | "minimal-black" | "high-contrast" | "custom";
 export type PerfMode = "high" | "balanced" | "eco" | "static" | "auto";
 export type BgType = "nebula" | "color" | "gradient" | "image" | "video";
-/** 桌面环境壁纸模式（M2）：纯黑 / 3D 引力场 / 视频 / 图片 / 混合（媒体+星空叠加）。 */
-export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "hybrid" | "web" | "shader" | "system";
+/** 桌面环境壁纸模式（M2）：纯黑 / 3D 引力场 / 视频 / 图片 / 混合（媒体+星空叠加）。
+ * living = 活化图片（实机反馈：Windows 动态壁纸在 Variable 里变静态）——图片之上
+ * 叠加粒子活化层 + Ken Burns 缓动，任何静态图都有呼吸感；reduce-motion 自动降级静态。 */
+export type WallpaperMode = "solid" | "gravity" | "video" | "image" | "living" | "hybrid" | "web" | "shader" | "system";
 /**
  * 启动动画（批次A，规格 14.2.1）：控制真实加载完成后的过渡编排。
  * - full：字母落位任务栏 + 任务栏展开 + 图标淡入（阶段4/5 完整编排）

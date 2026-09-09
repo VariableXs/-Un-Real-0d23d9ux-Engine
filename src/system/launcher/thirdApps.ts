@@ -1,7 +1,6 @@
 import { errMessage, ipc, type ThirdApp } from "../../lib/ipc";
 import { pushToast, uiStore } from "../../state/uiStore";
 import { createStore, useStore } from "../../lib/store";
-import { getShellIcon } from "../compat/ShellProxy";
 
 /**
  * M7 第三方软件登记（桌面窗口内共享状态）：
@@ -17,30 +16,36 @@ export async function reloadThirdApps(): Promise<void> {
     const apps = await ipc.tpList();
     tpStore.setState({ apps });
     // 批次E-16：未自定义图标的第三方应用自动提取 Windows 原生图标
-    // （exe 资源里的 HICON → data URL），与系统里看到的一致
+    // （实机反馈升级：128px 高清 + 后端持久化，一次成本不再每会话重提）
     void fillNativeIcons(apps);
   } catch (e) {
     console.warn("[launcher] tp_list failed", errMessage(e).message);
   }
 }
 
-/** 为缺少图标的登记项提取 Windows 原生图标（exe/lnk 目标；失败静默跳过）。 */
+/**
+ * 为缺少图标的登记项批量补齐 128px 高清图标（实机反馈：图标清晰度不够）。
+ * 后端 tp_ensure_icons 提取并持久化到登记表（每批 ≤8 个防单命令过长）；
+ * 有补齐才重载一次列表。失败项保持占位图标（诚实降级）。
+ */
 async function fillNativeIcons(apps: ThirdApp[]): Promise<void> {
-  for (const a of apps) {
-    if (a.icon) continue;
-    // .lnk 也直接传：Rust 端 icon_dataurl 会先解析快捷方式目标再提取
-    const target = a.target ?? a.path;
-    if (!target) continue;
+  const missing = apps.filter((a) => !a.icon).map((a) => a.id);
+  if (missing.length === 0) return;
+  const CHUNK = 8;
+  let changed = 0;
+  for (let i = 0; i < missing.length; i += CHUNK) {
+    const ids = missing.slice(i, i + CHUNK);
     try {
-      const icon = await getShellIcon(target);
-      if (!icon.dataUrl) continue;
-      const cur = tpStore.getState().apps;
-      tpStore.setState({
-        apps: cur.map((x) => (x.id === a.id ? { ...x, icon: icon.dataUrl } : x)),
-      });
+      changed += await ipc.tpEnsureIcons(ids);
     } catch (e) {
-      /* 提取失败（Rust 端已尽力：exe 内嵌 → shell 项 GetImage → .ico/.png）→ 占位图标，留痕便于排查 */
-      console.warn("[launcher] native icon failed", target, errMessage(e).message);
+      console.warn("[launcher] tp_ensure_icons failed", errMessage(e).message);
+    }
+  }
+  if (changed > 0) {
+    try {
+      tpStore.setState({ apps: await ipc.tpList() });
+    } catch {
+      /* 重载失败保持现状（下次挂载再补） */
     }
   }
 }

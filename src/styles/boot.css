@@ -28,10 +28,146 @@
 }
 
 .boot-stage {
+  position: relative; /* 氛围层之上（BootAtmosphere z-index:0） */
+  z-index: 1;
   width: var(--wm-w);
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* ============================================================
+ * U-01 电影级氛围层（BootAtmosphere，实机反馈重做开场）— 布光法
+ * 层序（后→前）：极光 ×2 → 尘埃/流星画布 → 地平线微光 → 晕影 → 胶片颗粒
+ * 红线：纯装饰，不承载进度语义；氛围强度 --atm-boost 由 JS 随真实进度
+ *       0.35→0.55 微升；全部动效 transform/opacity（合成器友好）。
+ * ============================================================ */
+.boot-atmosphere {
+  --atm-boost: 0.35; /* JS 逐进度更新（0.35→0.55），CSS 兜底防闪 */
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 极光层：radial 渐变自带柔边（免 blur 滤镜）；渐变焦点偏离圆心，
+   旋转时亮区缓慢巡游 —— a1 青绿主幕（accent+success），a2 蓝紫副幕反向。 */
+.boot-atmosphere .boot-aurora {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+  transform-origin: 50% 50%;
+}
+.boot-atmosphere .boot-aurora.a1 {
+  top: -92vmax;
+  left: calc(50% - 75vmax);
+  width: 150vmax;
+  height: 150vmax;
+  background: radial-gradient(
+    circle at 42% 68%,
+    color-mix(in oklab, var(--success) 38%, var(--accent) 62%) 0%,
+    color-mix(in oklab, var(--accent) 40%, transparent) 26%,
+    transparent 62%
+  );
+  opacity: calc(var(--atm-boost) * 1.05);
+  animation: boot-aurora-turn 64s linear infinite;
+}
+.boot-atmosphere .boot-aurora.a2 {
+  top: -112vmax;
+  left: calc(50% - 85vmax);
+  width: 170vmax;
+  height: 170vmax;
+  background: radial-gradient(
+    circle at 58% 66%,
+    color-mix(in oklab, var(--accent) 72%, var(--danger) 28%) 0%,
+    color-mix(in oklab, var(--accent) 34%, transparent) 30%,
+    transparent 66%
+  );
+  opacity: calc(var(--atm-boost) * 0.8);
+  animation: boot-aurora-breathe 92s linear infinite reverse;
+}
+@keyframes boot-aurora-turn {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes boot-aurora-breathe {
+  from { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(1.06); }
+  to { transform: rotate(360deg) scale(1); }
+}
+
+/* 尘埃 + 流星画布（组件内 30fps 上限，此处只负责铺满） */
+.boot-atmosphere .boot-atm-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 地平线微光：底部一点暖光接地（warn 低浓度），12s 缓慢呼吸 */
+.boot-atmosphere .boot-horizon {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -16vh;
+  height: 42vh;
+  transform-origin: 50% 100%;
+  background: radial-gradient(
+    58% 100% at 50% 100%,
+    color-mix(in oklab, var(--warn) 24%, transparent) 0%,
+    color-mix(in oklab, var(--warn) 8%, transparent) 42%,
+    transparent 72%
+  );
+  opacity: calc(var(--atm-boost) * 0.75);
+  animation: boot-horizon-breathe 12s var(--ease-standard) infinite;
+}
+@keyframes boot-horizon-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.14); }
+}
+
+/* 晕影：四周压暗聚焦中央字标（电影布光，向 --boot-deep 收拢） */
+.boot-atmosphere .boot-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    130% 104% at 50% 40%,
+    transparent 50%,
+    color-mix(in oklab, var(--boot-deep) 62%, transparent) 100%
+  );
+}
+
+/* 胶片颗粒：feTurbulence 单色噪点（4% 透明度），steps 跳帧抖动 ≈7fps */
+.boot-atmosphere .boot-grain {
+  position: absolute;
+  inset: -120px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  opacity: 0.04;
+  animation: boot-grain-jitter 0.7s steps(1) infinite;
+}
+@keyframes boot-grain-jitter {
+  0% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-28px, 16px, 0); }
+  40% { transform: translate3d(18px, -24px, 0); }
+  60% { transform: translate3d(-12px, -14px, 0); }
+  80% { transform: translate3d(22px, 10px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* static-only（reduce-motion / safeMode / static 档）：粒子画布已不渲染，
+   CSS 常驻层保留但全部停摆 —— 画面仍分层，只是不运动。 */
+.boot-atmosphere.static-only .boot-aurora,
+.boot-atmosphere.static-only .boot-horizon,
+.boot-atmosphere.static-only .boot-grain {
+  animation: none;
+}
+
+/* full 退场：氛围随沉降淡出（字标起飞后、桌面就绪前） */
+.boot-screen[data-exit="full"] .boot-atmosphere {
+  opacity: 0;
+  transition: opacity 600ms var(--ease-standard) 400ms;
 }
 
 /* ---- U-02 字标 ---- */
@@ -392,12 +528,19 @@
   .boot-capsule-endpoint.is-left,
   .boot-arc-spin,
   .boot-capsule.is-stalled .boot-capsule-glow,
-  .boot-capsule.is-breath {
+  .boot-capsule.is-breath,
+  .boot-atmosphere .boot-aurora,
+  .boot-atmosphere .boot-horizon,
+  .boot-atmosphere .boot-grain {
     animation: none;
   }
   .boot-screen[data-exit="full"] .boot-wordmark-wrap,
   .boot-screen[data-exit="full"] .boot-capsule-wrap {
     animation: none;
+    opacity: 0;
+    transition: opacity 80ms var(--ease-standard);
+  }
+  .boot-screen[data-exit="full"] .boot-atmosphere {
     opacity: 0;
     transition: opacity 80ms var(--ease-standard);
   }

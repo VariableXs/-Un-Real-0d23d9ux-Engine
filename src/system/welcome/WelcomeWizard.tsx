@@ -11,11 +11,12 @@ import type { Settings, TaskbarPos, ThemeId, WallpaperMode } from "../../lib/set
  * 换装资源全部本地化（零联网）；删减说明：星图叙事/多主题启动动画已弃用。
  */
 
-const WALL_MODES: WallpaperMode[] = ["solid", "gravity", "image", "video", "hybrid", "web"];
+const WALL_MODES: WallpaperMode[] = ["solid", "gravity", "image", "living", "video", "hybrid", "web"];
 const WALL_LABEL_KEYS: Record<WallpaperMode, string> = {
   solid: "wpSolid",
   gravity: "wpGravity",
   image: "wpImage",
+  living: "wpLiving",
   video: "wpVideo",
   hybrid: "wpHybrid",
   web: "wpWeb",

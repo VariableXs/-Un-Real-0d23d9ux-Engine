@@ -156,7 +156,9 @@ export function PrefsImportGate(props: {
           // 壁纸路径存在性校验（只读 check）；失败如实 toast 跳过该项
           const chk = await ipc.checkPaths([wp]).catch(() => []);
           if (chk[0]?.exists) {
-            patch.wallpaperMode = "image";
+            // living 活化模式：Windows 桌面动态壁纸（Wallpaper Engine 等）读到的
+            // 是静态落盘图，活化层（粒子 + Ken Burns）让导入后依旧有呼吸感。
+            patch.wallpaperMode = "living";
             patch.customBg = { ...s.customBg, type: "image", imagePath: wp };
           } else {
             pushToast("error", t("v93WallpaperTitle"), t("v93WallpaperMissing"));
