@@ -144,7 +144,9 @@ describe("AI-5 PowerShell 套件自检 (真 pwsh 执行)", () => {
       const failures: string[] = [];
       for (const sh of shells) {
         try {
-          execFileSync(sh, ["-NoProfile", "-NonInteractive", "-File", selfTest], {
+          // -ExecutionPolicy Bypass：Windows 客户端默认 Restricted，不带此参数时
+          // 脚本会被执行策略拒绝（UnauthorizedAccess）。仅对本子进程生效。
+          execFileSync(sh, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", selfTest], {
             stdio: "pipe",
             timeout: 600_000,
             encoding: "utf8",
