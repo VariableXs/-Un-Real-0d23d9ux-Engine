@@ -226,7 +226,7 @@ pub fn audio_set_default_comm(device_id: String) -> Result<(), String> {
     type SetDefaultEndpointFn =
         unsafe extern "system" fn(this: *mut core::ffi::c_void, device_id: PCWSTR, role: i32) -> HRESULT;
 
-    crate::shell::hardware::with_mta(|| unsafe {
+    crate::shell::hardware::with_mta(move || unsafe {
         let unk: windows::core::IUnknown =
             CoCreateInstance(&CLSID_POLICY_CONFIG, None, CLSCTX_ALL).map_err(crate::shell::hardware::e2s)?;
         let vtable = *(unk.as_raw() as *mut *mut core::ffi::c_void) as *const *mut core::ffi::c_void;

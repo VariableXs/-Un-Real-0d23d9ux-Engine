@@ -31,26 +31,22 @@ pub struct WifiState {
 }
 
 /// Wi-Fi 无线电开关状态（WinRT Radio；零网络）。
+/// 防冻结纪律：经 with_mta 工作线程 + 5s 超时执行（见 helper 注释）。
 #[cfg(windows)]
 fn wifi_radio() -> Option<bool> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
-    use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
-    let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-    let need_uninit = hr.is_ok();
-    let result = (|| -> Option<bool> {
-        let radios = Radio::GetRadiosAsync().ok()?.get().ok()?;
-        for i in 0..radios.Size().ok()? {
+    with_mta(move || -> Result<Option<bool>, String> {
+        let radios = Radio::GetRadiosAsync().map_err(e2s)?.get().map_err(e2s)?;
+        for i in 0..radios.Size().map_err(e2s)? {
             let Ok(r) = radios.GetAt(i) else { continue };
-            if r.Kind().ok()? == RadioKind::WiFi {
-                return Some(r.State().ok()? == RadioState::On);
+            if r.Kind().map_err(e2s)? == RadioKind::WiFi {
+                return Ok(Some(r.State().map_err(e2s)? == RadioState::On));
             }
         }
-        None
-    })();
-    if need_uninit {
-        unsafe { windows::Win32::System::Com::CoUninitialize() };
-    }
-    result
+        Ok(None)
+    })
+    .ok()
+    .flatten()
 }
 
 #[derive(Serialize)]
@@ -163,16 +159,37 @@ pub(crate) fn e2s(e: windows::core::Error) -> String {
 
 /// MTA apartment helper（线程池线程进入 COM 前初始化；已初始化过则不重复 Uninit）。
 /// pub(crate)：AI-16 soundnotify.rs（通信设备角色切换）复用。
+///
+/// 防冻结纪律（2026-09-09 事故修复）：`Radio::GetRadiosAsync().get()` 等
+/// WinRT IAsyncOperation 阻塞等待在无线电/蓝牙系统服务卡死时永不返回——
+/// 同类 SMTC 事故曾把主线程冻成 WER AppHangB1。现所有走本 helper 的
+/// WinRT 读取都在一次性工作线程上执行 + 5s 超时：超时 → 如实报错降级，
+/// UI 永不阻塞（工作线程可能残留等待系统恢复，每调用最多 1 个，可接受）。
 #[cfg(windows)]
-pub(crate) fn with_mta<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+pub(crate) fn with_mta<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    use std::sync::mpsc;
+    use std::time::Duration;
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
-    let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-    let need_uninit = hr.is_ok();
-    let out = f();
-    if need_uninit {
-        unsafe { CoUninitialize() };
+
+    let (tx, rx) = mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("winrt-radio-guard".into())
+        .spawn(move || {
+            let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            let need_uninit = hr.is_ok();
+            let out = f();
+            if need_uninit {
+                unsafe { CoUninitialize() };
+            }
+            let _ = tx.send(out);
+        });
+    if spawned.is_err() {
+        return Err("winrt guard: 工作线程启动失败".into());
     }
-    out
+    rx.recv_timeout(Duration::from_secs(5))
+        .unwrap_or_else(|_| Err("系统无线电/蓝牙服务无响应（5s 超时）——已跳过本次读取".into()))
 }
 
 #[cfg(windows)]
@@ -282,16 +299,10 @@ pub fn wifi_get() -> Result<WifiState, String> {
 pub fn bluetooth_get() -> Result<BluetoothState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
 
-    // CoInitializeEx(MTA) 已随本命令线程初始化（WinRT static 调用需要 apartment）
-    let hr = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED) };
-    let need_uninit = hr.is_ok();
-
-    // 无蓝牙设备 / 系统服务不可用 → available=false（真实状态，不是错误）
-    let result = (|| -> Result<BluetoothState, String> {
-        let radios = Radio::GetRadiosAsync()
-            .map_err(e2s)?
-            .get()
-            .map_err(e2s)?;
+    // 防冻结纪律：经 with_mta 工作线程 + 5s 超时执行（见 helper 注释）。
+    // 无蓝牙设备 → available=false（真实状态，不是错误）。
+    with_mta(move || {
+        let radios = Radio::GetRadiosAsync().map_err(e2s)?.get().map_err(e2s)?;
         let mut found = BluetoothState { available: false, enabled: false };
         for i in 0..radios.Size().map_err(e2s)? {
             let r = radios.GetAt(i).map_err(e2s)?;
@@ -302,12 +313,7 @@ pub fn bluetooth_get() -> Result<BluetoothState, String> {
             }
         }
         Ok(found)
-    })();
-
-    if need_uninit {
-        unsafe { windows::Win32::System::Com::CoUninitialize() };
-    }
-    result
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -319,7 +325,7 @@ pub fn bluetooth_get() -> Result<BluetoothState, String> {
 #[tauri::command]
 pub fn bluetooth_set(enabled: bool) -> Result<BluetoothState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
-    with_mta(|| {
+    with_mta(move || {
         let radios = Radio::GetRadiosAsync().map_err(e2s)?.get().map_err(e2s)?;
         let mut state = BluetoothState { available: false, enabled: false };
         for i in 0..radios.Size().map_err(e2s)? {
@@ -411,7 +417,7 @@ pub fn bt_devices() -> Result<Vec<BtDevice>, String> {
     use windows::Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice};
     use windows::Devices::Enumeration::DeviceInformation;
 
-    with_mta(|| {
+    with_mta(move || {
         let selector = BluetoothDevice::GetDeviceSelectorFromPairingState(true).map_err(e2s)?;
         let coll = DeviceInformation::FindAllAsyncAqsFilter(&selector)
             .map_err(e2s)?
@@ -480,7 +486,7 @@ pub fn bt_disconnect(id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn wifi_set(enabled: bool) -> Result<WifiState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
-    with_mta(|| {
+    with_mta(move || {
         let radios = Radio::GetRadiosAsync().map_err(e2s)?.get().map_err(e2s)?;
         let mut found = false;
         for i in 0..radios.Size().map_err(e2s)? {
@@ -685,7 +691,7 @@ pub fn audio_devices() -> Result<Vec<AudioDeviceInfo>, String> {
         Ok(())
     }
 
-    with_mta(|| {
+    with_mta(move || {
         unsafe {
             let enumerator: IMMDeviceEnumerator =
                 CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(e2s)?;
@@ -722,7 +728,7 @@ pub fn audio_set_default(device_id: String) -> Result<(), String> {
     type SetDefaultEndpointFn =
         unsafe extern "system" fn(this: *mut core::ffi::c_void, device_id: PCWSTR, role: i32) -> HRESULT;
 
-    with_mta(|| unsafe {
+    with_mta(move || unsafe {
         // 未公开 COM 接口（IID 不在 windows-rs 元数据中）：以 IUnknown 创建后按槽位调用
         let unk: windows::core::IUnknown =
             CoCreateInstance(&CLSID_POLICY_CONFIG, None, CLSCTX_ALL).map_err(e2s)?;
@@ -923,7 +929,7 @@ mod brightness_wmi {
 #[cfg(windows)]
 #[tauri::command]
 pub fn brightness_get() -> Result<BrightnessState, String> {
-    with_mta(|| {
+    with_mta(move || {
         let server = brightness_wmi::connect()?;
         match brightness_wmi::current_level(&server)? {
             Some(level) => Ok(BrightnessState { supported: true, level }),
@@ -936,7 +942,7 @@ pub fn brightness_get() -> Result<BrightnessState, String> {
 #[tauri::command]
 pub fn brightness_set(level: u8) -> Result<BrightnessState, String> {
     let level = level.clamp(5, 100);
-    with_mta(|| {
+    with_mta(move || {
         let server = brightness_wmi::connect()?;
         brightness_wmi::set_level(&server, level)?;
         Ok(BrightnessState { supported: true, level })

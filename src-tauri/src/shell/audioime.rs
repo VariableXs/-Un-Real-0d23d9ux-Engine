@@ -296,37 +296,93 @@ pub struct MediaStatus {
 }
 
 /// SMTC 全局会话读取（进度条 + 曲目信息）。探测不到返回 None（前端简化呈现）。
+///
+/// 防冻结纪律（2026-09-09 事故修复）：`RequestAsync().get()` 在 SMTC broker
+/// 卡死时永不返回——任务栏每 2s 轮询本命令，曾在主线程上把整个环境冻成
+/// WER AppHangB1（0xCFFFFFFF），导致环境无法启动。现改为 async 命令 +
+/// 常驻单例工作线程 + 3s 超时：broker 卡死 → None 诚实降级（前端隐藏组件），
+/// UI 永不阻塞；卡死请求的迟到结果由下轮 poll 排空丢弃。
 #[tauri::command]
-pub fn media_status() -> CmdResult<Option<MediaStatus>> {
+pub async fn media_status() -> CmdResult<Option<MediaStatus>> {
     #[cfg(windows)]
     {
-        use windows::Media::Control::{GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus};
-        let res: Option<MediaStatus> = (|| -> Option<MediaStatus> {
-            let mgr = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-                .ok()?
-                .get()
-                .ok()?;
-            let session = mgr.GetCurrentSession().ok()?;
-            let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
-            let timeline = session.GetTimelineProperties().ok()?;
-            let playback = session.GetPlaybackInfo().ok()?;
-            let status = match playback.PlaybackStatus() {
-                Ok(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) => "playing",
-                Ok(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused) => "paused",
-                _ => "other",
-            };
-            Some(MediaStatus {
-                title: props.Title().ok()?.to_string(),
-                artist: props.Artist().map(|a| a.to_string()).unwrap_or_default(),
-                position_sec: timeline.Position().ok().map(|t| t.Duration as f64 / 10_000_000.0).unwrap_or(0.0),
-                duration_sec: timeline.EndTime().ok().map(|t| t.Duration as f64 / 10_000_000.0).unwrap_or(0.0),
-                status: status.into(),
-            })
-        })();
-        Ok(res)
+        let r = tauri::async_runtime::spawn_blocking(smtc_read).await.unwrap_or(None);
+        Ok(r)
     }
     #[cfg(not(windows))]
     Ok(None)
+}
+
+/// 单例 SMTC 工作线程：请求-应答。全程仅一条线程（防轮询线程泄漏）。
+#[cfg(windows)]
+fn smtc_read() -> Option<MediaStatus> {
+    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::Duration;
+
+    static WORKER: OnceLock<(Sender<()>, Mutex<Receiver<Option<MediaStatus>>>)> = OnceLock::new();
+    let (req_tx, res_rx) = WORKER.get_or_init(|| {
+        let (req_tx, req_rx) = channel::<()>();
+        let (res_tx, res_rx) = channel::<Option<MediaStatus>>();
+        let _ = std::thread::Builder::new()
+            .name("smtc-reader".into())
+            .spawn(move || {
+                // COM apartment 跟随工作线程（MTA；失败仍尽力执行——与原实现口径一致）
+                let hr = unsafe {
+                    windows::Win32::System::Com::CoInitializeEx(
+                        None,
+                        windows::Win32::System::Com::COINIT_MULTITHREADED,
+                    )
+                };
+                let need_uninit = hr.is_ok();
+                while req_rx.recv().is_ok() {
+                    let _ = res_tx.send(smtc_read_blocking());
+                }
+                if need_uninit {
+                    unsafe { windows::Win32::System::Com::CoUninitialize() };
+                }
+            });
+        (req_tx, Mutex::new(res_rx))
+    });
+
+    // 排空上一轮超时遗留的迟到结果（陈旧数据不冒充新数据）
+    if let Ok(rx) = res_rx.lock() {
+        while rx.try_recv().is_ok() {}
+    }
+    // 发起请求；工作线程若仍卡在上一轮读取，send 仍成功（缓冲），
+    // 本轮 recv_timeout 到点即返回 None。
+    req_tx.send(()).ok()?;
+    res_rx
+        .lock()
+        .ok()?
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap_or(None)
+}
+
+/// 真正的 SMTC 阻塞读取（只在工作线程上执行）。
+#[cfg(windows)]
+fn smtc_read_blocking() -> Option<MediaStatus> {
+    use windows::Media::Control::{GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus};
+    let mgr = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+        .ok()?
+        .get()
+        .ok()?;
+    let session = mgr.GetCurrentSession().ok()?;
+    let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
+    let timeline = session.GetTimelineProperties().ok()?;
+    let playback = session.GetPlaybackInfo().ok()?;
+    let status = match playback.PlaybackStatus() {
+        Ok(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) => "playing",
+        Ok(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused) => "paused",
+        _ => "other",
+    };
+    Some(MediaStatus {
+        title: props.Title().ok()?.to_string(),
+        artist: props.Artist().map(|a| a.to_string()).unwrap_or_default(),
+        position_sec: timeline.Position().ok().map(|t| t.Duration as f64 / 10_000_000.0).unwrap_or(0.0),
+        duration_sec: timeline.EndTime().ok().map(|t| t.Duration as f64 / 10_000_000.0).unwrap_or(0.0),
+        status: status.into(),
+    })
 }
 
 #[cfg(test)]
