@@ -27,7 +27,7 @@
 | 8 | AI-08 硬件感知路 | 域8 系统集成与硬件 | W-090…W-101 | 12 | `modules/hwNova.ts` | ✅ |
 | 9 | AI-09 兼容诊疗路 | 域9 兼容性防线 | W-102…W-113 | 12 | `modules/compatNova.ts` | ✅ |
 | 10 | AI-10 隐私叙事路 | 域10 安全与隐私 | W-114…W-126 | 13 | `modules/privacyNova.ts` | ✅ |
-| 11 | AI-11 生态基因路 | 域11 开放生态 | W-127…W-138 | 12 | `modules/ecoNova.ts` | ☐ |
+| 11 | AI-11 生态基因路 | 域11 开放生态 | W-127…W-138 | 12 | `modules/ecoNova.ts` | ✅ |
 | 12 | AI-12 视觉氛围路 | 域12 视觉、个性化与氛围 | W-139…W-151 | 13 | `modules/visionNova.ts` | ☐ |
 | 13 | AI-13 声音通知路 | 域13 声音与通知 | W-152…W-163 | 12 | `modules/soundNova.ts` | ☐ |
 | 14 | AI-14 无障碍扩展路 | 域14 无障碍与本地化 | W-164…W-175 | 12 | `modules/a11yNova.ts` | ☐ |
