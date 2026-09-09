@@ -122,7 +122,6 @@ export function BootScreen(props: {
   onExitStartRef.current = props.onExitStart;
   const onStatsRef = useRef(props.onStats);
   onStatsRef.current = props.onStats;
-  const zh = typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("zh");
 
   /** 退出编排开始：full=实心化→光扫→落向任务栏；simple=640ms 交叉淡出；none/instant=直通。 */
   const finish = (): void => {
@@ -328,44 +327,39 @@ export function BootScreen(props: {
           fileCount={fileCount}
           totalCount={totalCount}
           elapsedMs={elapsed}
-          zh={zh}
         />
 
         {totalSlow && (
-          <div className="boot-hint">
-            {zh ? "耗时比平时长，请稍候…（进度条反映真实加载状态）" : "This is taking longer than usual. Please wait…"}
-          </div>
+          <div className="boot-hint">Taking longer than usual — the bar reflects real loading</div>
         )}
 
         {stats && (
           <div className="boot-summary">
             <span>
-              {stats.records} {zh ? "条记录" : "records"}
+              {stats.records} records
             </span>
             <span>
-              {stats.mindmaps} {zh ? "张导图" : "mindmaps"}
+              {stats.mindmaps} mindmaps
             </span>
             <span>
-              {stats.mediaDirFiles} {zh ? "个媒体文件" : "media files"}
+              {stats.mediaDirFiles} media files
             </span>
             <span>
-              {fmtBytes(stats.workspaceBytes)} {zh ? "工作区" : "workspace"}
+              {fmtBytes(stats.workspaceBytes)} workspace
             </span>
             <span>
-              {stats.nodes} {zh ? "节点" : "nodes"}
+              {stats.nodes} nodes
             </span>
             <span>
-              {stats.attachments} {zh ? "个附件" : "attachments"}
+              {stats.attachments} attachments
             </span>
           </div>
         )}
       </div>
 
-      <div className="boot-skip">{zh ? "Esc / 空格跳过（进度 ≥30% 后可用）" : "Esc / Space to skip (after 30%)"}</div>
+      <div className="boot-skip">Esc / Space to skip · unlocks at 30%</div>
       {denied && (
-        <div className="boot-denied">
-          {zh ? "系统仍在初始化关键数据，请稍候" : "System is still loading critical data. Please wait."}
-        </div>
+        <div className="boot-denied">System is still loading critical data. Please wait.</div>
       )}
     </div>
   );

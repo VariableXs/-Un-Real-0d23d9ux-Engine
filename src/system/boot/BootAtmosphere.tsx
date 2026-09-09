@@ -6,10 +6,13 @@ import { useEffect, useRef } from "react";
  * 红线不动：进度/日志仍 100% 后端真实事件驱动，本层是纯装饰性氛围，
  * 绝不伪造进度时间线。
  *
- * 氛围构成（电影布光法）：
- * - 深空尘埃场：Canvas 2D 三层深度光尘，30fps 上限（壁纸级功耗，不抢加载预算）
- * - 偶发流星：真实随机间隔 6–14s 一颗（与加载进度无关的纯氛围，非时间线）
+ * 氛围构成（电影布光法 + 游戏加载屏质地）：
+ * - 深空尘埃场：Canvas 2D 三层深度光尘，30fps 上限（壁纸级功耗，不抢加载预算），
+ *   亮度随真实进度微升（dustBoost 0.97→1.05）
+ * - 偶发流星：真实随机间隔 6–14s 一颗（与加载进度无关的纯氛围，非时间线），
+ *   尾迹渐隐 + 头部 6px 径向辉光 + 亮点
  * - 极光层：两片 token 色柔光极缓旋转漂移（transform-only，60s/90s 周期）
+ * - 扫描线：3px 节距静态细纹（CRT/游戏加载屏质地，无动画）
  * - 晕影 + 地平线微光：四周压暗聚焦字标（底部一点暖光接地）
  * - 胶片颗粒：feTurbulence 噪点 4% 透明度步进抖动（真实胶片质感）
  * - 氛围强度随真实进度微升（--atm-boost 0.35→0.55）：视觉与真实加载挂钩
@@ -61,6 +64,7 @@ export function BootAtmosphere(props: {
   const motesRef = useRef<Mote[]>([]);
   const cometRef = useRef<Comet | null>(null);
   const nextCometAtRef = useRef(0);
+  const boostRef = useRef(0.35); // 真实进度 → 尘埃亮度微升（canvas 侧，与 CSS --atm-boost 同源）
   const budget = budgetFor(props.perfMode, props.reduceMotion === true, props.safeMode === true);
 
   // 初始化粒子群（budget 变化时重建；归一化坐标，resize 不重排）
@@ -86,10 +90,13 @@ export function BootAtmosphere(props: {
     motesRef.current = motes;
   }, [budget]);
 
-  // 真实进度 → 氛围强度（CSS 变量驱动，不触发 canvas 重排）
+  // 真实进度 → 氛围强度（CSS 变量驱动，不触发 canvas 重排；同步 canvas 亮度源）
   useEffect(() => {
+    const p = Math.min(1, Math.max(0, props.progress));
+    const boost = 0.35 + p * 0.2;
+    boostRef.current = boost;
     const el = rootRef.current;
-    if (el) el.style.setProperty("--atm-boost", (0.35 + Math.min(1, Math.max(0, props.progress)) * 0.2).toFixed(3));
+    if (el) el.style.setProperty("--atm-boost", boost.toFixed(3));
   }, [props.progress]);
 
   // Canvas 尘埃场 + 偶发流星（30fps 上限；hidden 暂停）
@@ -149,7 +156,8 @@ export function BootAtmosphere(props: {
       const t = now / 1000;
 
       ctx.clearRect(0, 0, w, h);
-      // 尘埃光点
+      // 尘埃光点（亮度随真实进度微升：boost 0.35→0.55 ⇒ 系数 0.96→1.05）
+      const dustBoost = 0.82 + boostRef.current * 0.42;
       for (const p of motesRef.current) {
         p.x += (p.vx + Math.sin(t * 0.35 + p.phase) * p.sway) * dt;
         p.y += p.vy * dt;
@@ -162,13 +170,13 @@ export function BootAtmosphere(props: {
         const px = p.x * w;
         const py = p.y * h;
         const twinkle = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * p.tw * Math.PI * 2 + p.phase));
-        const alpha = Math.min(0.55, 0.05 + p.z * 0.3) * twinkle;
+        const alpha = Math.min(0.6, (0.05 + p.z * 0.3) * twinkle * dustBoost);
         ctx.beginPath();
         ctx.arc(px, py, p.r * p.z * dpr, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(226, 236, 252, ${alpha.toFixed(3)})`;
         ctx.fill();
       }
-      // 流星：尾迹渐隐 + 头部亮点（唯一瞬时态元素）
+      // 流星：头部辉光（径向渐变）+ 尾迹渐隐 + 头部亮点（唯一瞬时态元素）
       const comet = cometRef.current;
       if (comet) {
         comet.x += comet.vx * dtMs;
@@ -190,6 +198,15 @@ export function BootAtmosphere(props: {
           ctx.moveTo(comet.x, comet.y);
           ctx.lineTo(tx, ty);
           ctx.stroke();
+          // 头部辉光：6px 径向柔光（低于尾迹亮度，只做质感不加戏）
+          const hr = 6 * dpr;
+          const hg = ctx.createRadialGradient(comet.x, comet.y, 0, comet.x, comet.y, hr);
+          hg.addColorStop(0, `rgba(230, 240, 255, ${(0.3 * comet.life).toFixed(3)})`);
+          hg.addColorStop(1, "rgba(230, 240, 255, 0)");
+          ctx.fillStyle = hg;
+          ctx.beginPath();
+          ctx.arc(comet.x, comet.y, hr, 0, Math.PI * 2);
+          ctx.fill();
           ctx.beginPath();
           ctx.arc(comet.x, comet.y, 1.4 * dpr, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(240, 246, 255, ${(0.85 * comet.life).toFixed(3)})`;
@@ -225,6 +242,8 @@ export function BootAtmosphere(props: {
       <div className="boot-aurora a2" />
       {/* 尘埃 + 流星画布（30fps） */}
       {!staticOnly && <canvas ref={canvasRef} className="boot-atm-canvas" />}
+      {/* 扫描线：3px 节距静态细纹（CRT/游戏加载屏质地，无动画） */}
+      <div className="boot-scan" />
       {/* 地平线微光：字标下方一点暖光接地 */}
       <div className="boot-horizon" />
       {/* 晕影：四周压暗聚焦中央（电影布光） */}

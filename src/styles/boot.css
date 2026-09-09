@@ -105,6 +105,20 @@
   height: 100%;
 }
 
+/* 扫描线：3px 节距横向细纹（静态质感层，无动画）——CRT/游戏加载屏质地 */
+.boot-atmosphere .boot-scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 2px,
+    color-mix(in oklab, var(--boot-deep) 26%, transparent) 2px,
+    color-mix(in oklab, var(--boot-deep) 26%, transparent) 3px
+  );
+  opacity: 0.45;
+}
+
 /* 地平线微光：底部一点暖光接地（warn 低浓度），12s 缓慢呼吸 */
 .boot-atmosphere .boot-horizon {
   position: absolute;
@@ -210,17 +224,35 @@
   transition: none;
 }
 
-/* ---- U-03 胶囊进度条 ---- */
+/* ---- U-03 胶囊进度条（游戏级加载条重铸） ---- */
 .boot-capsule-wrap {
-  width: calc(var(--wm-w) * 0.62); /* 字标宽的 62% */
-  margin-top: calc(var(--wm-w) * 0.06); /* 字标下方 6% */
+  width: 100%; /* 字标全宽（原 62%）——游戏加载条满幅横展 */
+  margin-top: calc(var(--wm-w) * 0.05); /* 字标下方 5% */
 }
 .boot-capsule {
-  --capsule-h: 10px;
+  --capsule-h: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  animation: boot-rise var(--dur-5) var(--ease-standard) 420ms both;
+}
+/* 顶部 HUD 行：百分比右对齐浮于条体上方（唯一文案，等宽数字） */
+.boot-capsule-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  min-height: 15px;
+}
+.boot-capsule-pct {
+  font: var(--fs-12)/1.25 Consolas, "Cascadia Mono", monospace;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+.boot-capsule-body {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  animation: boot-rise var(--dur-5) var(--ease-standard) 420ms both;
 }
 .boot-capsule-shell {
   position: relative;
@@ -229,6 +261,8 @@
   border: 1px solid color-mix(in oklab, var(--text-primary) 25%, transparent);
   /* 体育场胶囊：圆角精确 = 高度/2 */
   border-radius: calc(var(--capsule-h) / 2);
+  /* 空轨底色：极淡通道提示（6%） */
+  background: color-mix(in oklab, var(--text-primary) 6%, transparent);
   /* 入场：边框 350ms 弹簧式左→右描画 */
   animation: boot-capsule-draw 350ms var(--ease-spring) 300ms both;
 }
@@ -240,27 +274,81 @@
   position: absolute;
   top: 50%;
   left: 0;
-  height: 3px; /* 内部 3px 填充轨道 */
+  height: 4px; /* 内部 4px 填充轨道 */
   transform: translateY(-50%);
   width: 0%;
-  background: var(--text-primary);
-  border-radius: 1.5px;
+  /* 圆柱渐变：顶部高光 → 底部收暗（三维管体质感） */
+  background: linear-gradient(
+    180deg,
+    var(--text-primary) 0%,
+    color-mix(in oklab, var(--text-primary) 84%, var(--boot-deep)) 55%,
+    color-mix(in oklab, var(--text-primary) 64%, var(--boot-deep)) 100%
+  );
+  border-radius: 2px;
   transition: none; /* 宽度由 rAF 平滑值逐帧驱动 */
+}
+/* 扫光裁剪容器：只裁 sheen，不裁前导光点（glow 需溢出右缘） */
+.boot-capsule-clip {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  display: block;
+}
+/* 扫光带：25% 填充宽斜向高光，transform 百分比自适应任意条宽（-130%→500%） */
+.boot-capsule-sheen {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 25%;
+  display: block;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    var(--text-primary) 50%,
+    transparent 100%
+  );
+  transform: translateX(-130%) skewX(-14deg);
+  animation: boot-sheen-sweep 2.4s var(--ease-standard) infinite;
+}
+@keyframes boot-sheen-sweep {
+  from { transform: translateX(-130%) skewX(-14deg); }
+  to { transform: translateX(500%) skewX(-14deg); }
+}
+/* 分段刻度槽：24px 节距纵向暗刻线，覆于填充之上 —— 填充越过后逐格显形 */
+.boot-capsule-ticks {
+  position: absolute;
+  inset: 0;
+  display: block;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 23px,
+    color-mix(in oklab, var(--boot-deep) 72%, transparent) 23px,
+    color-mix(in oklab, var(--boot-deep) 72%, transparent) 24px
+  );
+  pointer-events: none;
 }
 .boot-capsule-glow {
   position: absolute;
   top: 50%;
-  right: -3px;
-  width: 6px;
-  height: 6px;
+  right: -3.5px;
+  width: 7px;
+  height: 7px;
   transform: translateY(-50%);
   border-radius: 50%;
   /* 前导光点：同色调 80% 透明度（非彩色霓虹） */
   background: color-mix(in oklab, var(--text-primary) 80%, transparent);
-  box-shadow: 0 0 6px color-mix(in oklab, var(--text-primary) 55%, transparent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--text-primary) 55%, transparent);
 }
 .boot-capsule.is-stalled .boot-capsule-glow {
   animation: boot-glow-wait 2s var(--ease-standard) infinite;
+}
+/* 停滞态：扫光减速（等待呼吸感） */
+.boot-capsule.is-stalled .boot-capsule-sheen {
+  animation-duration: 3.6s;
 }
 @keyframes boot-glow-wait {
   0%, 100% { opacity: 0.45; }
@@ -294,6 +382,11 @@
   opacity: 1;
   box-shadow: 0 0 4px color-mix(in oklab, var(--text-primary) 60%, transparent);
 }
+/* 完成态：扫光停摆隐没（满格即终局） */
+.boot-capsule.is-complete .boot-capsule-sheen {
+  animation: none;
+  opacity: 0;
+}
 /* 100% 一次性「满格呼吸」：brightness +8%，300ms */
 .boot-capsule.is-breath {
   animation: boot-capsule-breath 300ms var(--ease-standard);
@@ -301,14 +394,6 @@
 @keyframes boot-capsule-breath {
   from { filter: brightness(1.08); }
   to { filter: brightness(1); }
-}
-.boot-capsule-pct {
-  flex: none;
-  min-width: 52px;
-  text-align: right;
-  font: var(--fs-12)/1.4 Consolas, "Cascadia Mono", monospace;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---- U-04 文件走马灯 ---- */
@@ -381,54 +466,76 @@
 .boot-ticker-stallspin svg { width: 8px; height: 8px; }
 .boot-ticker-stallspin .boot-arc-spin { animation-duration: 1.4s; }
 
-/* 三列真实统计（速度 / 剩余项目 / 剩余时间） */
+/* 三列真实统计（速度 / 剩余项目 / 剩余时间）——游戏 HUD 堆叠式：
+   上行 9px 大写宽字距键名（次要色），下行等宽数值（主色） */
 .boot-ticker-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--sp-1) var(--sp-3);
-  margin-top: var(--sp-2);
-  font: 11px/1.6 Consolas, "Cascadia Mono", monospace;
-  color: var(--text-secondary);
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-3);
 }
 .boot-ticker-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.boot-ticker-stat-k {
+  font: 9px/1.4 Consolas, "Cascadia Mono", monospace;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  opacity: 0.72;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .boot-ticker-stat b {
-  font-weight: 400;
+  font: 500 12px/1.5 Consolas, "Cascadia Mono", monospace;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ---- readyHold 真实摘要（三列小字，无 emoji） ---- */
+/* ---- readyHold 真实摘要（三列小字，全大写 HUD 微文案，无 emoji） ---- */
 .boot-summary {
   width: 100%;
   margin-top: var(--sp-4);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-1) var(--sp-3);
-  font: var(--fs-12)/1.7 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font: 10px/1.7 Consolas, "Cascadia Mono", monospace;
   color: var(--text-secondary);
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
   animation: boot-rise var(--dur-5) var(--ease-standard) both;
 }
 
 .boot-hint {
   margin-top: var(--sp-4);
-  font: var(--fs-12)/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font: 10px/1.6 Consolas, "Cascadia Mono", monospace;
   color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
   animation: boot-rise var(--dur-5) var(--ease-standard) both;
 }
 
+/* 跳过角标：右下角 HUD 提示（全大写 + 宽字距） */
 .boot-skip {
   position: fixed;
   right: 26px;
   bottom: 22px;
-  font: 11px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font: 10px/1.4 Consolas, "Cascadia Mono", monospace;
   color: var(--text-secondary);
   opacity: 0.75;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 .boot-denied {
   position: fixed;
@@ -528,6 +635,7 @@
   .boot-capsule-endpoint.is-left,
   .boot-arc-spin,
   .boot-capsule.is-stalled .boot-capsule-glow,
+  .boot-capsule-sheen,
   .boot-capsule.is-breath,
   .boot-atmosphere .boot-aurora,
   .boot-atmosphere .boot-horizon,

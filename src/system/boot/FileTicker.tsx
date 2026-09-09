@@ -65,9 +65,8 @@ export function FileTicker(props: {
   fileCount: number | null;
   totalCount: number | null;
   elapsedMs: number;
-  zh: boolean;
 }): React.ReactElement {
-  const { task, filePath, level, stalled, fileCount, totalCount, elapsedMs, zh } = props;
+  const { task, filePath, level, stalled, fileCount, totalCount, elapsedMs } = props;
 
   // ---- 换行过渡（旧-上淡出 / 新-下淡入） ----
   const prevRef = useRef<TickerItem>({ key: 0, task, filePath });
@@ -107,8 +106,7 @@ export function FileTicker(props: {
   const etaSec =
     windowSpeed != null && windowSpeed > 0 && remainingItems != null ? remainingItems / windowSpeed : null;
 
-  const L = (zh: boolean, a: string, b: string): string => (zh ? a : b);
-  const fmtEta = (n: number): string => (zh ? `大约 ${Math.ceil(n)} 秒` : `~${Math.ceil(n)}s`);
+  const fmtEta = (n: number): string => `~${Math.ceil(n)}s`;
 
   const renderRow = (it: TickerItem, cls: string): React.ReactElement => (
     <div className={`boot-ticker-row ${cls}`} data-level={level} key={it.key}>
@@ -119,7 +117,7 @@ export function FileTicker(props: {
         {it.filePath ? tailTruncate(it.filePath) : it.task}
       </span>
       {stalled && (
-        <span className="boot-ticker-stallspin" aria-label={L(zh, "加载停滞中", "stalled")} role="img">
+        <span className="boot-ticker-stallspin" aria-label="stalled" role="img">
           <svg viewBox="0 0 8 8" aria-hidden="true">
             <circle cx="4" cy="4" r="2.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeDasharray="13.2 4.4" strokeLinecap="round" />
           </svg>
@@ -136,15 +134,15 @@ export function FileTicker(props: {
       </div>
       <div className="boot-ticker-stats">
         <span className="boot-ticker-stat">
-          {L(zh, "速度", "Speed")}:{" "}
+          <span className="boot-ticker-stat-k">Speed</span>
           <b>{speed != null ? `${speed.toFixed(1)} files/s` : "—"}</b>
         </span>
         <span className="boot-ticker-stat">
-          {L(zh, "剩余项目", "Remaining")}:{" "}
+          <span className="boot-ticker-stat-k">Remaining</span>
           <b>{remainingItems != null ? String(remainingItems) : "—"}</b>
         </span>
         <span className="boot-ticker-stat">
-          {L(zh, "剩余时间", "ETA")}:{" "}
+          <span className="boot-ticker-stat-k">ETA</span>
           <b>{etaSec != null ? fmtEta(etaSec) : "—"}</b>
         </span>
       </div>
