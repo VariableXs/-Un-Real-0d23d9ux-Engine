@@ -7,9 +7,11 @@ import type { CompatStatus } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
 
 /**
- * Wallpaper Engine 兼容横幅（悬浮在桌面顶部，桌面环境独有）。
- * - 后端在启动/运行期检测 wallpaper64/wallpaperservice 进程；
- * - 命中时自动进入兼容态（alwaysOnTop=false），前端如实展示原因与处置路径；
+ * CEF 应用（Wallpaper Engine / Steam）兼容横幅（悬浮在桌面顶部，桌面环境独有）。
+ * - 后端在启动/运行期检测 wallpaper64/wallpaperservice/steam/steamwebhelper 进程
+ *   （Steam 与 WE 同为 Chromium 系：GPU 竞争与 z-order 抖动同源）；
+ * - 命中时自动进入兼容态（alwaysOnTop=false + 壁纸降载），相关进程全部退出
+ *   约 30s 后自动恢复；
  * - 用户可一键“兼容/恢复”或关闭横幅（关闭后本会话不再自动弹出，直到状态翻转）。
  */
 export function CompatBanner(): React.ReactElement | null {
@@ -29,7 +31,7 @@ export function CompatBanner(): React.ReactElement | null {
       .catch(() => {});
 
     // 后端 watcher 推送
-    const un = listen<CompatStatus>("compat://wallpaper-engine", (e) => {
+    const un = listen<CompatStatus>("compat://cef-apps", (e) => {
       setSt(e.payload);
       // 状态翻转时重置 dismissed，让横幅有机会再次出现
       setDismissed(false);

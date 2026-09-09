@@ -54,6 +54,12 @@ export interface CustomBg {
   /** 实机反馈：scene 着色器壁纸（WE 片元着色器）本地 WebGL 渲染入口文件绝对路径；
    *  imagePath 同时保留预览图，着色器编译失败时回退静态图（绝不黑屏）。 */
   shaderPath: string;
+  /** 壁纸中心·静态图活化属性：粒子密度 0..1.5（0=关）。 */
+  livingIntensity: number;
+  /** 壁纸中心·Ken Burns 漂移幅度 0..1（0≈静止，1=全幅慢漂）。 */
+  livingDrift: number;
+  /** 壁纸中心·粒子风格。 */
+  particleStyle: "dust" | "bokeh" | "mixed";
 }
 
 export type GridMode = "dot" | "grid" | "iso" | "none";
@@ -335,6 +341,9 @@ export const DEFAULT_SETTINGS: Settings = {
     playVideo: true,
     htmlPath: "",
     shaderPath: "",
+    livingIntensity: 0.8,
+    livingDrift: 0.6,
+    particleStyle: "mixed",
   },
   ambience: DEFAULT_AMBIENCE,
   mindDefaults: {

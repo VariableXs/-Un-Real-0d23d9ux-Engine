@@ -18,6 +18,7 @@ export interface TaskbarMenuEntry {
 
 export const TASKBAR_MENU_REGISTRY: TaskbarMenuEntry[] = [
   { id: "showDesktop", labelKey: "showDesktop", defaultVisible: true },
+  { id: "wallpaperCenter", labelKey: "wpCenterTitle", defaultVisible: true },
   { id: "launcher", labelKey: "launcherTitle", defaultVisible: true },
   { id: "sticky", labelKey: "tbQuickSticky", defaultVisible: false },
   { id: "taskbarSettings", labelKey: "taskbarSettings", defaultVisible: true },
@@ -43,11 +44,15 @@ function sanitize(raw: unknown): TaskbarMenuOverride | null {
   const order = Array.isArray(o.order) ? o.order.filter((x): x is string => typeof x === "string" && ids.has(x)) : [];
   const hidden = Array.isArray(o.hidden) ? o.hidden.filter((x): x is string => typeof x === "string" && ids.has(x)) : [];
   if (order.length === 0) return null;
-  // 去重 + 补齐漏掉的注册表项（隐藏项补入 hidden）
+  // 去重 + 补齐漏掉的注册表项（默认可见补入 order 尾部 → 老用户升级后可见新功能；
+  // 默认隐藏补入 hidden）
   const uniqOrder = [...new Set(order)];
   const uniqHidden = [...new Set(hidden)].filter((h) => !uniqOrder.includes(h));
   for (const e of TASKBAR_MENU_REGISTRY) {
-    if (!uniqOrder.includes(e.id) && !uniqHidden.includes(e.id)) uniqHidden.push(e.id);
+    if (!uniqOrder.includes(e.id) && !uniqHidden.includes(e.id)) {
+      if (e.defaultVisible) uniqOrder.push(e.id);
+      else uniqHidden.push(e.id);
+    }
   }
   return { order: uniqOrder, hidden: uniqHidden };
 }

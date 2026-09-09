@@ -47,6 +47,20 @@ import { DndLayer } from "../../lib/dnd/DragGhost";
 import { RunDialog } from "../tools/RunDialog";
 // AI-11 N-19：性能 HUD 悬浮窗（localStorage 开关，默认关）
 import { PerfHud } from "../tools/syshub/PerfHud";
+// 壁纸工坊 + 壁纸中心 overlay 激活（mount.ts 自挂载协议：模块加载即监听 open-feature）
+import "../wallpaper/Workshop";
+import "../wallpaper/center/WallpaperCenter";
+import {
+  entryPatch,
+  loadPlaylist,
+  loadPlaylistState,
+  nextIndex,
+  savePlaylistState,
+  WP_APPLY_EVENT,
+  WP_CENTER_OPEN_STATE,
+  WP_CENTER_PLAYLIST_CHANGED,
+  type WpApplyPatch,
+} from "../wallpaper/center/centerCore";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：
@@ -92,6 +106,11 @@ export function DesktopShell(props: {
   // AI-18 M-67：纯净模式（AmbienceRuntime 管 Ctrl+Alt+P；此处读共享态渲染边缘小点）
   const pureActive = useStore(pureStore, (s) => s.active);
   const unread = useUnreadCount();
+  // 壁纸中心开合（GPU 自律信号 → WallpaperLayer suppress）
+  const [wpCenterOpen, setWpCenterOpen] = useState(false);
+  // apply/playlist 消费者用最新 customBg（ref 避免 interval 因设置变更重启）
+  const customBgRef = useRef(props.settings.customBg);
+  customBgRef.current = props.settings.customBg;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -365,6 +384,64 @@ export function DesktopShell(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.settings.wallpaperDaily, props.settings.wallpaperPoolDir]);
 
+  // 壁纸中心/壁纸工坊「应用」事件消费者（首次接通 ai04:wallpaper-apply）：
+  // customBg 浅合并到当前值 → onPatchSettings（持久化 + WallpaperLayer 即时生效）
+  useEffect(() => {
+    const onApply = (e: Event): void => {
+      const patch = (e as CustomEvent<{ patch?: WpApplyPatch }>).detail?.patch;
+      if (!patch || !patch.wallpaperMode) return;
+      props.onPatchSettings({
+        wallpaperMode: patch.wallpaperMode as Settings["wallpaperMode"],
+        customBg: { ...customBgRef.current, ...(patch.customBg ?? {}) },
+      });
+    };
+    window.addEventListener(WP_APPLY_EVENT, onApply);
+    return () => window.removeEventListener(WP_APPLY_EVENT, onApply);
+  }, [props.onPatchSettings]);
+
+  // 壁纸中心开合 → 壁纸动画抑制（GPU 自律：全屏浮层之下暂停粒子/Ken Burns）
+  useEffect(() => {
+    const onOpenState = (e: Event): void => {
+      setWpCenterOpen((e as CustomEvent<{ open?: boolean }>).detail?.open === true);
+    };
+    window.addEventListener(WP_CENTER_OPEN_STATE, onOpenState);
+    return () => window.removeEventListener(WP_CENTER_OPEN_STATE, onOpenState);
+  }, []);
+
+  // 壁纸中心播放列表 runner：间隔轮换（localStorage 持久；列表/开关变更事件重排程）
+  useEffect(() => {
+    let timer = 0;
+    const run = (): void => {
+      window.clearInterval(timer);
+      const st = loadPlaylistState();
+      const list = loadPlaylist();
+      if (!st.enabled || list.length === 0) return;
+      timer = window.setInterval(() => {
+        const s2 = loadPlaylistState();
+        const l2 = loadPlaylist();
+        if (!s2.enabled || l2.length === 0) {
+          window.clearInterval(timer);
+          return;
+        }
+        const i = nextIndex(l2.length, s2.cursor, s2.shuffle);
+        const entry = l2[i];
+        if (!entry) return;
+        savePlaylistState({ ...s2, cursor: i });
+        const patch = entryPatch(entry);
+        props.onPatchSettings({
+          wallpaperMode: patch.wallpaperMode as Settings["wallpaperMode"],
+          customBg: { ...customBgRef.current, ...(patch.customBg ?? {}) },
+        });
+      }, Math.max(1, st.intervalMin) * 60_000);
+    };
+    run();
+    window.addEventListener(WP_CENTER_PLAYLIST_CHANGED, run);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener(WP_CENTER_PLAYLIST_CHANGED, run);
+    };
+  }, [props.onPatchSettings]);
+
   // 批次E-6：Win+Tab 多窗口切换器（开关门控在 WintabSwitcher 内部）
 
   // 批次C（规格 6.1/6.2/6.3/6.5）：全局快捷键（Rust 注册）→ 快捷面板分区 / 勿扰切换。
@@ -512,7 +589,7 @@ export function DesktopShell(props: {
       <NotifyRuntime />
       {/* AI-11 N-19：性能 HUD 悬浮窗（系统中枢内开关，默认关闭） */}
       <PerfHud />
-      <WallpaperLayer settings={props.settings} />
+      <WallpaperLayer settings={props.settings} suppress={wpCenterOpen} />
       {/* AI-18 氛围与个性化组运行时（U-49/54、N-33、M-65/67/71、V-71/72/74..78；默认全部关闭） */}
       <AmbienceRuntime settings={props.settings} onPatchSettings={props.onPatchSettings} />
       {/* AI-18 U-53 环境辉光（壁纸主色采样；HC/reduce-motion/低档自动关闭） */}

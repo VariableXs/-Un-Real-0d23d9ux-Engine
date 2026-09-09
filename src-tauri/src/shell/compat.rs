@@ -1,4 +1,4 @@
-//! L3 shell — compat.rs：Wallpaper Engine 共存兼容层
+//! L3 shell — compat.rs：CEF 应用共存兼容层（Wallpaper Engine / Steam）
 //!
 //! # 背景 / 为什么会崩溃与卡死
 //! 用户实机反馈：Wallpaper Engine 报 `libcef.dll 0x80000003` 崩溃，Variable 在该环境下
@@ -19,9 +19,11 @@
 //!    壁纸窗口形成 z-order 抖动，导致 DWM 卡死正反馈。
 //!
 //! # 修复策略（零侵入、如实降级）
-//! - 探测 WE 4 个典型进程名；
+//! - 探测 WE/Steam 典型进程名（Steam 与 WE 同为 Chromium 系，GPU 竞争与
+//!   z-order 抖动同源 libcef 0x80000003，故同表监控同策略让位）；
 //! - 命中时自动取消桌面窗口 alwaysOnTop + 推送事件让前端降级壁纸负载；
-//! - 提供 compat_check / compat_apply / compat_restore 命令；后台 3s watcher。
+//! - 提供 compat_check / compat_apply / compat_restore 命令；后台 3s watcher；
+//! - CEF 进程全部消失 30s 后自动恢复置顶（防抖：期间再现则取消恢复）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -33,7 +35,9 @@ use crate::error::{AppError, CmdResult};
 
 static COMPAT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Wallpaper Engine 相关进程名（小写后缀匹配，覆盖 32/64 位）。
+/// CEF 系应用进程名（小写后缀匹配，覆盖 32/64 位）。
+/// 实机反馈：Steam 与 Wallpaper Engine 同为 Chromium 系——GPU 竞争与
+/// z-order 抖动同源（libcef 0x80000003），故同表监控同策略让位。
 const WE_PROCS: &[&str] = &[
     "wallpaper64.exe",
     "wallpaper32.exe",
@@ -41,6 +45,8 @@ const WE_PROCS: &[&str] = &[
     "wallpaperservice32.exe",
     "wallpaperservice.exe",
     "wallpaper engine.exe",
+    "steam.exe",
+    "steamwebhelper.exe",
 ];
 
 #[derive(Serialize, Clone)]
@@ -115,9 +121,9 @@ fn recommendation_text(running: bool, compat: bool) -> String {
     if !running {
         String::new()
     } else if compat {
-        "已自动进入 Wallpaper Engine 兼容模式：已取消独占置顶并降低壁纸 GPU 负载。\n如需完整性能，退出 Wallpaper Engine 后重启 Variable 即可恢复。\nAuto compat mode: always-on-top disabled & wallpaper GPU load reduced.".into()
+        "已自动进入 CEF 应用兼容模式（Wallpaper Engine / Steam）：已取消独占置顶并降低壁纸 GPU 负载。\n相关应用全部退出约 30 秒后自动恢复置顶。\nAuto compat mode for CEF apps (Wallpaper Engine / Steam): always-on-top disabled & wallpaper GPU load reduced; auto-restores ~30s after these apps exit.".into()
     } else {
-        "检测到 Wallpaper Engine 正在运行，与 Variable 的全屏独占 + 双 Chromium GPU 进程存在已知冲突（libcef 0x80000003）。\n建议：① 退出 Wallpaper Engine 后再启动 Variable；或 ② 点“一键兼容”让 Variable 取消独占置顶并降级壁纸渲染。\nWallpaper Engine detected — known conflict with Variable fullscreen + dual Chromium GPUs (libcef 0x80000003).".into()
+        "检测到 Wallpaper Engine / Steam 正在运行，与 Variable 的全屏独占 + 双 Chromium GPU 进程存在已知冲突（libcef 0x80000003）。\n建议：点“一键兼容”让 Variable 取消独占置顶并降级壁纸渲染；CEF 应用全部退出约 30 秒后自动恢复。\nWallpaper Engine / Steam detected — known conflict with Variable fullscreen + dual Chromium GPUs (libcef 0x80000003).".into()
     }
 }
 
@@ -150,9 +156,9 @@ pub fn apply_compat_mode(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("desktop") {
         let _ = w.set_always_on_top(false);
     }
-    let _ = app.emit("compat://wallpaper-engine", current_status());
+    let _ = app.emit("compat://cef-apps", current_status());
     eprintln!(
-        "[compat] Wallpaper Engine compat mode applied (alwaysOnTop=false) procs={:?}",
+        "[compat] CEF app compat mode applied (alwaysOnTop=false) procs={:?}",
         list_wallpaper_engine_processes()
     );
 }
@@ -163,7 +169,7 @@ pub fn compat_restore(app: AppHandle) -> CmdResult<CompatStatus> {
     if let Some(w) = app.get_webview_window("desktop") {
         let _ = w.set_always_on_top(true);
     }
-    let _ = app.emit("compat://wallpaper-engine", current_status());
+    let _ = app.emit("compat://cef-apps", current_status());
     eprintln!("[compat] compat mode restored (alwaysOnTop=true)");
     Ok(current_status())
 }
@@ -184,18 +190,34 @@ pub fn spawn_compat_watcher(app: AppHandle) {
         .name("compat-watcher".into())
         .spawn(move || {
             let mut last_running = is_wallpaper_engine_running();
+            // 进程全部消失的时刻（None = 尚在运行或从未让位）
+            let mut gone_since: Option<std::time::Instant> = None;
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
                 let running = is_wallpaper_engine_running();
                 if running != last_running {
                     last_running = running;
+                    gone_since = None;
                     if running {
-                        eprintln!("[compat] Wallpaper Engine appeared at runtime -> compat on");
+                        eprintln!("[compat] CEF app appeared at runtime -> compat on");
                         apply_compat_mode(&app);
                     } else {
-                        eprintln!("[compat] Wallpaper Engine gone -> emitting cleared status (compat stays until restore)");
-                        let _ = app.emit("compat://wallpaper-engine", current_status());
+                        eprintln!("[compat] CEF apps gone -> emitting cleared status (auto-restore in 30s)");
+                        let _ = app.emit("compat://cef-apps", current_status());
                     }
+                } else if !running && is_compat_active() {
+                    // 30s 防抖：进程再次出现则取消（上面分支已清 gone_since）
+                    if gone_since.is_none() {
+                        gone_since = Some(std::time::Instant::now());
+                    } else if gone_since.unwrap().elapsed().as_secs() >= 30 {
+                        eprintln!("[compat] CEF apps gone for 30s -> auto restore always-on-top");
+                        if let Err(e) = compat_restore(app.clone()) {
+                            eprintln!("[compat] auto restore failed: {e:?}");
+                        }
+                        gone_since = None;
+                    }
+                } else {
+                    gone_since = None;
                 }
             }
         })
@@ -961,6 +983,18 @@ mod tests {
         assert_eq!(severity(false, true), "none");
         assert_eq!(severity(true, false), "high");
         assert_eq!(severity(true, true), "mitigated");
+    }
+
+    #[test]
+    fn cef_procs_cover_steam() {
+        // Steam 主进程 + webhelper 与 WE 同表监控（小写后缀匹配）
+        let procs = ["steamwebhelper.exe", "steam.exe"];
+        for p in procs {
+            assert!(
+                WE_PROCS.iter().any(|pat| p.ends_with(pat) || pat == &p),
+                "steam proc {p} should be monitored"
+            );
+        }
     }
     // ---- AI-12 兼容纵深组 ----
 

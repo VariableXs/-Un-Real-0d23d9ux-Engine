@@ -18,7 +18,7 @@ import type { CustomBg, Settings } from "../../lib/settings";
  * 注意：此组件只服务桌面环境。四款软件（Write/Mind/Code/Fate）内部
  * 背景不经过这里，其光影方案保持原设计不变。
  */
-export function WallpaperLayer(props: { settings: Settings }): React.ReactElement {
+export function WallpaperLayer(props: { settings: Settings; suppress?: boolean }): React.ReactElement {
   const s = props.settings;
   const mode = s.wallpaperMode;
 
@@ -65,6 +65,10 @@ export function WallpaperLayer(props: { settings: Settings }): React.ReactElemen
         reduceMotion={s.reduceMotion}
         safeMode={s.safeMode}
         perfMode={s.perfMode}
+        livingIntensity={s.customBg.livingIntensity}
+        livingDrift={s.customBg.livingDrift}
+        particleStyle={s.customBg.particleStyle}
+        suppress={props.suppress}
       />
     );
   }

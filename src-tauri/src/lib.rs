@@ -97,9 +97,11 @@ pub fn run() {
             }
             // AI-07 N-18：宏引擎运行时（Ctrl+Esc 急停监测 + cron 调度）
             shell::macros::spawn_macro_runtime(app.handle().clone());
-            // 兼容层：Wallpaper Engine 冲突检测与自动缓解（libcef 0x80000003 根因）
+            // 兼容层：CEF 应用（Wallpaper Engine / Steam）冲突检测与自动缓解（libcef 0x80000003 根因）
             shell::compat::apply_if_needed_at_startup(app.handle());
             shell::compat::spawn_compat_watcher(app.handle().clone());
+            // 任务栏智能让位：Steam 等外部应用获前台时 Windows 任务栏浮上 → 前端底栏上移
+            shell::taskbar_yield::spawn_taskbar_yield_watcher(app.handle().clone());
             // AI-13 U-20 内存守护（5s 采样 + 泄漏看门狗）与 M-53 崩溃转储钩子
             shell::perf::spawn_mem_warden();
             shell::perf::install_crash_hook(app.state::<AppState>().data_dir.join("crashes"));
@@ -421,6 +423,8 @@ pub fn run() {
             shell::wallpaper::wp_pick_daily,
             shell::wallpaper::wp_engine_scan,
             shell::wallpaper::wp_scene_shader,
+            shell::wallpaper::wp_list_images,
+            shell::taskbar_yield::taskbar_yield_check,
             shell::embed::embed_launch,
             shell::embed::embed_adopt,
             shell::embed::embed_pick_window,

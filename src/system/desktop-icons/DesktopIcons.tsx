@@ -1576,6 +1576,12 @@ export function DesktopIcons(props: {
             onClick: () => void switchWallpaper(w),
           })),
           { separator: true },
+          // 壁纸中心（本地 Wallpaper UI，Variable 界面内运行；Steam 免开）
+          {
+            label: t("wpCenterTitle"),
+            onClick: () =>
+              window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "wallpaper-center" } })),
+          },
           // 批次E-6：右键快捷换一张（本地缓存池随机；未配置缓存目录时弹设置提示）
           { label: t("wpNext"), onClick: nextWallpaper },
           { label: t("wpDailySetup"), onClick: props.onOpenSettings },

@@ -19,6 +19,14 @@ export function LivingWallpaper(props: {
   reduceMotion?: boolean;
   safeMode?: boolean;
   perfMode?: string;
+  /** 壁纸中心属性：粒子密度 0..1.5（0=关）；缺省 0.8 */
+  livingIntensity?: number;
+  /** 壁纸中心属性：Ken Burns 漂移幅度 0..1；缺省 0.6 */
+  livingDrift?: number;
+  /** 壁纸中心属性：粒子风格；缺省 mixed */
+  particleStyle?: "dust" | "bokeh" | "mixed";
+  /** GPU 自律：壁纸中心等全屏浮层打开时暂停动画（静态帧渲染，省 GPU 给前台） */
+  suppress?: boolean;
 }): React.ReactElement {
   const { imagePath } = props;
   const [missing, setMissing] = useState(false);
@@ -53,14 +61,19 @@ export function LivingWallpaper(props: {
     return <div className="wallpaper wallpaper-solid" aria-hidden />;
   }
 
+  // 漂移幅度（壁纸中心滑杆）：0≈静止，1=全幅慢漂；时长反向（漂得越欢越慢）
+  const driftAmp = 0.2 + 0.8 * (props.livingDrift ?? 0.6);
+  const dur = Math.max(30, Math.round(drift.dur / (0.4 + 0.6 * (props.livingDrift ?? 0.6))));
+
   return (
     <div className="wallpaper wallpaper-living" aria-hidden>
       <div
         className="living-media"
         style={{
-          ["--kb-dx" as string]: String(drift.dx),
-          ["--kb-dy" as string]: String(drift.dy),
-          ["--kb-dur" as string]: `${drift.dur}s`,
+          ["--kb-dx" as string]: String(drift.dx * driftAmp),
+          ["--kb-dy" as string]: String(drift.dy * driftAmp),
+          ["--kb-dur" as string]: `${dur}s`,
+          animationPlayState: props.suppress ? "paused" : undefined,
         }}
       >
         <img src={toAssetUrl(imagePath)} alt="" draggable={false} />
@@ -69,21 +82,36 @@ export function LivingWallpaper(props: {
         reduceMotion={props.reduceMotion}
         safeMode={props.safeMode}
         perfMode={props.perfMode}
+        intensity={props.livingIntensity}
+        particleStyle={props.particleStyle}
+        suppress={props.suppress}
       />
     </div>
   );
 }
 
-/** 粒子分档：high=全量 / balanced=中量 / eco=轻量 / static·auto(static 解析)=关。 */
-function particleBudget(perfMode: string | undefined, reduceMotion?: boolean, safeMode?: boolean): number {
+/**
+ * 粒子分档：high=全量 / balanced=中量 / eco=轻量 / static·auto(static 解析)=关；
+ * intensity（0..1.5）为壁纸中心密度滑杆的整体缩放（0=彻底关）。
+ */
+function particleBudget(
+  perfMode: string | undefined,
+  reduceMotion?: boolean,
+  safeMode?: boolean,
+  intensity?: number,
+): number {
   if (reduceMotion || safeMode) return 0;
-  switch (perfMode) {
-    case "high": return 110;
-    case "balanced": return 72;
-    case "eco": return 34;
-    case "static": return 0;
-    default: return 72; // auto 未定档前按 balanced 起步
-  }
+  const base = (() => {
+    switch (perfMode) {
+      case "high": return 110;
+      case "balanced": return 72;
+      case "eco": return 34;
+      case "static": return 0;
+      default: return 72; // auto 未定档前按 balanced 起步
+    }
+  })();
+  const k = Math.min(1.5, Math.max(0, intensity ?? 0.8));
+  return Math.round(base * k);
 }
 
 interface Mote {
@@ -100,9 +128,14 @@ function LivingParticles(props: {
   reduceMotion?: boolean;
   safeMode?: boolean;
   perfMode?: string;
+  intensity?: number;
+  particleStyle?: "dust" | "bokeh" | "mixed";
+  suppress?: boolean;
 }): React.ReactElement | null {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const budget = particleBudget(props.perfMode, props.reduceMotion, props.safeMode);
+  const budget = props.suppress
+    ? 0
+    : particleBudget(props.perfMode, props.reduceMotion, props.safeMode, props.intensity);
   const enabled = budget > 0;
 
   useEffect(() => {
@@ -125,9 +158,14 @@ function LivingParticles(props: {
     window.addEventListener("resize", resize);
 
     // 粒子群：上升尘埃 + 少量大光斑（bokeh），全部归一化坐标（resize 不重排）
+    // 风格（壁纸中心）：dust=纯尘埃 / bokeh=纯光斑 / mixed=每 9 颗 1 颗大光斑
     const motes: Mote[] = [];
     for (let i = 0; i < budget; i++) {
-      const bokeh = i % 9 === 0; // 每 9 颗 1 颗大光斑
+      const bokeh = props.particleStyle === "bokeh"
+        ? true
+        : props.particleStyle === "dust"
+          ? false
+          : i % 9 === 0;
       motes.push({
         x: Math.random(),
         y: Math.random(),
@@ -223,7 +261,7 @@ function LivingParticles(props: {
       window.removeEventListener("pointermove", onMove);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [enabled, budget]);
+  }, [enabled, budget, props.particleStyle]);
 
   if (!enabled) return null;
   return <canvas ref={canvasRef} className="living-particles" aria-hidden />;

@@ -1,4 +1,4 @@
-﻿//! 应用生态 2.0（B-27，M7；BLUEPRINT 3.5 / 3.5a）。
+//! 应用生态 2.0（B-27，M7；BLUEPRINT 3.5 / 3.5a）。
 //!
 //! - 可移植性评估向导：绿/黄/红评估卡（目录可写性、卸载注册表痕迹、
 //!   配置文件形态三类启发式，理由逐条如实列出）；
@@ -328,11 +328,13 @@ pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
 }
 
 /// steam:// 协议直通（rungameid / store 前台由 Steam 自管）。
+/// 启动前主动进入 CEF 兼容态：不等 3s watcher，杜绝启动瞬间 z-order 抖动。
 #[tauri::command]
-pub fn steam_launch(app_id: String) -> CmdResult<()> {
+pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
         return Err(AppError::validation("Steam AppID 必须是数字 / Steam AppID must be numeric"));
     }
+    crate::shell::compat::apply_compat_mode(&app);
     let url = format!("steam://rungameid/{app_id}");
     // URI associations belong to Windows Shell; cmd/start is intentionally
     // not used because it breaks quoting and profile environment semantics.

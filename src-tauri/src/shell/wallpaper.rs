@@ -407,6 +407,46 @@ pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
 /// 会出现整屏黑屏，前端已改为全部本地打开 —— 预览图静态渲染；
 /// 通道下线后宿主侧不再启动 wallpaper64.exe，攻击面同步收窄。）
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WpImageFile {
+    pub name: String,
+    pub path: String,
+}
+
+/// 枚举目录下的壁纸图片（平铺一层，不递归；按文件名排序）。
+/// 壁纸中心「本地目录」库源；目录不存在报错，空目录返回空表（如实）。
+#[tauri::command]
+pub fn wp_list_images(dir: String) -> CmdResult<Vec<WpImageFile>> {
+    let root = std::path::PathBuf::from(&dir);
+    let mut out: Vec<WpImageFile> = std::fs::read_dir(&root)
+        .map_err(|e| AppError::io(format!("读取目录失败 / read_dir failed: {e}")))?
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            let is_img = p
+                .extension()
+                .map(|x| {
+                    let x = x.to_string_lossy().to_lowercase();
+                    matches!(
+                        x.as_str(),
+                        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "gif"
+                    )
+                })
+                .unwrap_or(false);
+            if !p.is_file() || !is_img {
+                return None;
+            }
+            Some(WpImageFile {
+                name: e.file_name().to_string_lossy().into_owned(),
+                path: p.to_string_lossy().into_owned(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
 /// 实机反馈：scene 着色器壁纸本地 WebGL 渲染 —— 读取主片元着色器并递归展开
 /// `#include "x"`（相对主文件目录；PathBuf 拼接、限深 8、防环；只读零网络）。
 /// 只允许读文件（拒绝目录/不存在），内容原样返回由前端编译。

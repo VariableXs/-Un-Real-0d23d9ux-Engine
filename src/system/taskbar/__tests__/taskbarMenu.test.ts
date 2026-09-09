@@ -7,8 +7,13 @@ describe("taskbarMenu (M-15)", () => {
     try { localStorage.removeItem("variable:taskbar:blankmenu:v1"); } catch { /* ignore */ }
   });
 
-  it("默认覆盖 = 注册表默认显隐（与改动前现状一致）", () => {
-    expect(effectiveMenuIds(defaultOverride())).toEqual(["showDesktop", "launcher", "taskbarSettings"]);
+  it("默认覆盖 = 注册表默认显隐（壁纸中心默认可见）", () => {
+    expect(effectiveMenuIds(defaultOverride())).toEqual([
+      "showDesktop",
+      "wallpaperCenter",
+      "launcher",
+      "taskbarSettings",
+    ]);
     expect(TASKBAR_MENU_REGISTRY.every((e) => TASKBAR_MENU_REGISTRY.filter((x) => x.id === e.id).length === 1)).toBe(true);
   });
 
@@ -25,6 +30,21 @@ describe("taskbarMenu (M-15)", () => {
     expect(o.order).toContain("showDesktop");
     expect(o.order).not.toContain("hack");
     saveMenuOverride({ order: [], hidden: [] });
-    expect(effectiveMenuIds(loadMenuOverride())).toEqual(["showDesktop", "launcher", "taskbarSettings"]);
+    expect(effectiveMenuIds(loadMenuOverride())).toEqual([
+      "showDesktop",
+      "wallpaperCenter",
+      "launcher",
+      "taskbarSettings",
+    ]);
+  });
+
+  it("sanitize：老用户已存覆盖 → 新默认可见项补入 order 尾部（升级后可见壁纸中心）", () => {
+    // 模拟升级前的覆盖（无 wallpaperCenter）
+    saveMenuOverride({ order: ["showDesktop", "launcher", "taskbarSettings"], hidden: [] });
+    const o = loadMenuOverride();
+    expect(o.order).toContain("wallpaperCenter");
+    expect(effectiveMenuIds(o)).toContain("wallpaperCenter");
+    // 默认隐藏项（sticky）仍补入 hidden
+    expect(o.hidden).toContain("sticky");
   });
 });

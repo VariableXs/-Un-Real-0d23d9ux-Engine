@@ -613,6 +613,8 @@ export const ipc = {
   wpEngineScan: (root = "") => invoke<Shell.WpEngineItem[]>("wp_engine_scan", { root }),
   /** 实机反馈：scene 着色器壁纸本地渲染 —— 读主片元着色器并递归展开 #include。 */
   wpSceneShader: (entry: string) => invoke<string>("wp_scene_shader", { entry }),
+  /** 壁纸中心：枚举本地目录下的图片（平铺一层，按文件名排序）。 */
+  wpListImages: (dir: string) => invoke<Shell.WpImageFile[]>("wp_list_images", { dir }),
 
   // ---- 兼容层：Wallpaper Engine 冲突检测与缓解（libcef 0x80000003） ----
   compatCheck: () =>
@@ -1508,6 +1510,11 @@ export namespace Shell {
     preview: string | null;
     supported: boolean;
     source: string;
+  }
+  /** 壁纸中心：本地目录图片文件（平铺一层）。 */
+  export interface WpImageFile {
+    name: string;
+    path: string;
   }
   /** 批次E-7：隐私保险箱状态。 */
   export interface VaultStatus {
@@ -2580,6 +2587,7 @@ export type ShellIconResult = Shell.ShellIconResult;
 export type ShellContextMenuResult = Shell.ShellContextMenuResult;
 export type WindowsShellGesture = Shell.WindowsShellGesture;
 export type WpEngineItem = Shell.WpEngineItem;
+export type WpImageFile = Shell.WpImageFile;
 export type VaultStatus = Shell.VaultStatus;
 export type VaultItem = Shell.VaultItem;
 export type AuditFinding = Shell.AuditFinding;

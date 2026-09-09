@@ -2664,6 +2664,234 @@ button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* ---------- 壁纸中心（portal → body，z 2550；工坊之下可叠加打开） ---------- */
+.wp-center-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2550;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 12, 22, 0.92);
+  backdrop-filter: blur(14px);
+  color: #e8edf7;
+  outline: none;
+  animation: wp-center-in 0.28s ease both;
+}
+@keyframes wp-center-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+.wp-center-header { display: flex; align-items: center; gap: 16px; padding: 14px 22px 10px; }
+.wp-center-header h2 { margin: 0; font-size: 16px; letter-spacing: 0.02em; }
+.wp-center-tabs { display: flex; gap: 6px; }
+.wp-center-tabs button {
+  padding: 6px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-tabs button.on { border-color: #7fa8e6; background: rgba(127, 168, 230, 0.14); }
+.wp-center-actions { margin-left: auto; display: flex; gap: 6px; }
+.wp-center-actions button {
+  padding: 6px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-actions button:disabled { opacity: 0.4; cursor: default; }
+.wp-center-close:hover { border-color: #e07a6a; color: #ffb3a6; }
+.wp-center-error { margin: 0; padding: 6px 22px; font-size: 12px; color: #ff9a9a; }
+.wp-center-main { flex: 1; display: grid; grid-template-columns: minmax(360px, 1fr) 340px; min-height: 0; }
+.wp-center-lib {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 10px;
+  padding: 6px 16px 14px 22px;
+  align-content: start;
+}
+.wp-center-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.wp-center-card:hover { transform: translateY(-2px); border-color: rgba(127, 168, 230, 0.5); }
+.wp-center-card.on { border-color: #7fa8e6; box-shadow: 0 0 0 1px #7fa8e6; }
+.wp-center-card.off { opacity: 0.55; }
+.wp-center-thumb {
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #05070d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wp-center-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.wp-center-thumb-none { font-size: 20px; opacity: 0.35; }
+.wp-center-card-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wp-center-kind {
+  font-size: 10px;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.wp-center-side { border-left: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; min-height: 0; }
+.wp-center-preview {
+  flex: 1;
+  min-height: 0;
+  background: #05070d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.wp-center-preview img,
+.wp-center-preview video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wp-center-props { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.wp-center-props h3 { margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-center-slider { display: grid; grid-template-columns: 1fr 92px 38px; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
+.wp-center-slider code { opacity: 0.6; }
+.wp-center-select { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
+.wp-center-select select {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.wp-center-apply {
+  margin-top: 4px;
+  padding: 9px;
+  border-radius: 10px;
+  border: none;
+  background: #2f5fd0;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wp-center-apply:disabled { background: rgba(255, 255, 255, 0.12); cursor: default; }
+.wp-center-apply:not(:disabled):hover { background: #3a6ee0; }
+.wp-center-playlist-add {
+  padding: 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-playlist-add:disabled { opacity: 0.4; cursor: default; }
+.wp-center-note { margin: 0; font-size: 11px; opacity: 0.6; line-height: 1.5; }
+.wp-center-empty { grid-column: 1 / -1; padding: 24px; font-size: 13px; opacity: 0.45; text-align: center; }
+.wp-center-create { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+.wp-center-create p { margin: 0; max-width: 520px; text-align: center; font-size: 13px; opacity: 0.7; line-height: 1.7; }
+.wp-center-open-studio {
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 168, 230, 0.5);
+  background: rgba(127, 168, 230, 0.12);
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wp-center-open-studio:hover { background: rgba(127, 168, 230, 0.2); }
+.wp-center-playlist {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+.wp-center-toggle { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.wp-center-num { display: flex; align-items: center; gap: 4px; }
+.wp-center-num input {
+  width: 56px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 3px 6px;
+}
+.wp-center-playlist > button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-playlist > button:disabled { opacity: 0.4; cursor: default; }
+.wp-center-pl-count { opacity: 0.55; }
+.wp-center-pl-items { display: flex; gap: 4px; overflow-x: auto; margin-left: auto; }
+.wp-center-pl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.wp-center-pl-item.on { border-color: #7fa8e6; opacity: 1; }
+.wp-center-pl-remove {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-center-pl-remove:hover { background: rgba(224, 122, 106, 0.4); }
+.wp-center-pl-clear {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 64px;
+  z-index: 2560;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(20, 28, 46, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 /* ---------- N-10 锁屏（portal → body，z 3000；CSS 星空 + 动效，reduce-motion 关） ---------- */
 .lockscr-root {
   position: fixed;

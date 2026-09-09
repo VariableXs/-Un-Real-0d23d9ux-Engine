@@ -758,6 +758,10 @@ export function Workshop(): React.ReactElement {
         <button onClick={() => window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "scene-settings" } }))}>
           {t("sceneEntry")}
         </button>
+        {/* 壁纸中心（库管理/播放列表/静态图活化属性；本地运行，Steam 免开） */}
+        <button onClick={() => window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "wallpaper-center" } }))}>
+          {t("centerEntry")}
+        </button>
       </footer>
 
       {toast && <div className="wp-studio-toast">{toast}</div>}

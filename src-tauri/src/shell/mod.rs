@@ -1,4 +1,4 @@
-﻿//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
+//! L3 shell — 桌面环境系统集成（M5/M6/M7/M8）：
 //! - tray.rs     OS 托盘图标 + 菜单（打开桌面/软件/系统窗口/退出）
 //! - hardware.rs 蓝牙/Wi-Fi/音频/摄像头/麦克风（Windows API，只读 + 音量控制）
 //! - explorer.rs 文件管理器（全盘浏览 + 受控写操作 + 删除入回收站）
@@ -47,6 +47,7 @@ pub mod sysenv;
 pub mod taskman;
 pub mod tools;
 pub mod sysinfo;
+pub mod taskbar_yield;
 pub mod terminal;
 pub mod toolchains;
 pub mod compat;

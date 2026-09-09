@@ -97,6 +97,32 @@ export function Taskbar(props: {
 
   useEffect(() => startHardwarePolling(), []);
 
+  // 任务栏智能让位：外部应用（Steam 等 CEF）获前台时 Windows 任务栏（Shell_TrayWnd）
+  // 浮上并与 Variable 底栏重叠（实机反馈）——Rust 1s 轮询推送 sys://taskbar-yield，
+  // 底停靠时整体上移让位（0.25s 缓动）；回前台/任务栏退下自动复位。
+  const [yieldPx, setYieldPx] = useState(0);
+  useEffect(() => {
+    let un: (() => void) | null = null;
+    let disposed = false;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<{ visible: boolean; height: number }>("sys://taskbar-yield", (e) => {
+          if (disposed) return;
+          const p = e.payload;
+          setYieldPx(p?.visible ? Math.max(8, Math.min(120, p.height || 48)) : 0);
+        }),
+      )
+      .then((fn) => {
+        if (disposed) fn();
+        else un = fn;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15000);
     // AI-20 M-90：统一日界事件 —— 跨午夜/系统时间调整时时钟·日历·农历立即翻页
@@ -315,6 +341,8 @@ export function Taskbar(props: {
   const blankMenuActions = useMemo(
     () => ({
       showDesktop: props.onShowDesktop,
+      wallpaperCenter: () =>
+        window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "wallpaper-center" } })),
       launcher: () => openLauncherManager(),
       sticky: () => setInputOpen(true),
       taskbarSettings: props.onOpenSettings,
@@ -325,6 +353,7 @@ export function Taskbar(props: {
     const items = effectiveMenuIds(menuOverride).map((id): MenuItem => ({
       label: t(
         id === "showDesktop" ? "showDesktop"
+        : id === "wallpaperCenter" ? "wpCenterTitle"
         : id === "launcher" ? "launcherTitle"
         : id === "sticky" ? "tbQuickSticky"
         : "taskbarSettings",
@@ -542,6 +571,12 @@ export function Taskbar(props: {
       data-pos={props.pos}
       data-ind={props.settings.runIndicator}
       data-media-breath={props.settings.mediaBreath ? "true" : "false"}
+      data-yield={yieldPx > 0 ? "true" : "false"}
+      style={
+        props.pos === "bottom"
+          ? { transform: `translateY(-${yieldPx}px)`, transition: "transform 0.25s ease" }
+          : undefined
+      }
       onContextMenu={(e) => {
         // 批次E：空白右键（图标自身右键已 stopPropagation 在各自 handler 内 preventDefault）
         const tEl = e.target as HTMLElement | null;
