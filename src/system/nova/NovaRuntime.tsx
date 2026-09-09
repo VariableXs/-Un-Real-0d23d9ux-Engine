@@ -106,6 +106,7 @@ const MODULE_TABLE: ModuleEntry[] = [
   { domain: "desktop", file: "deskNova", load: () => import("./modules/deskNova") },
   { domain: "dock", file: "dockNova", load: () => import("./modules/dockNova") },
   { domain: "input", file: "inputNova", load: () => import("./modules/inputNova") },
+  { domain: "files", file: "filesNova", load: () => import("./modules/filesNova") },
 ];
 
 // ---------------------------------------------------------------------------
