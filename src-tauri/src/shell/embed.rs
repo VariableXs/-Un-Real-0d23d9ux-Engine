@@ -1260,6 +1260,125 @@ pub fn watch_scan_windows() -> Vec<(isize, u32, String)> {
     out
 }
 
+// ---------- Steam 主动收编（实机需求：从 Variable 启动 = Steam 收进 Variable 运行） ----------
+//
+// steam_launch（ecosystem.rs）之后启动本看护：轮询查找 Steam 家族
+// （steam.exe / steamwebhelper.exe）的可见顶层主窗口 → emit `embed://popup`
+// → 前端开 VWM 占位窗 → embed_adopt 重父化收编。Steam 已嵌入（主窗已是
+// WS_CHILD，不出现在顶层枚举里）→ 扫不到候选，静默退出；之后游戏窗口由
+// WinEventHook 同树 popup 通道自动收编（会话 pid 树含游戏进程）。
+// 90s 超时（Steam 冷启动/登录中）→ 退出，逃逸窗口由 D-3 看门狗兜底。
+
+/// Steam 家族进程映像名（basename 小写匹配）。
+const STEAM_IMAGES: &[&str] = &["steam.exe", "steamwebhelper.exe"];
+
+/// 纯函数：候选顶层窗口（hwnd, pid, 完整映像路径）里挑 Steam 主窗。
+/// 规则：basename ∈ Steam 家族（大小写/路径分隔符不敏感）；嵌入式主窗
+/// 本就不在顶层枚举里（WS_CHILD），无需额外排除。
+pub fn pick_steam_window(cands: &[(isize, u32, String)]) -> Option<(isize, u32)> {
+    for (h, pid, img) in cands {
+        let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+        if STEAM_IMAGES.contains(&name.as_str()) {
+            return Some((*h, *pid));
+        }
+    }
+    None
+}
+
+/// Steam 会话 root pid：从窗口归属进程沿父链上行找 steam.exe
+/// （主窗属 steamwebhelper，游戏进程是 steam.exe 后代——root 必须锚在
+/// steam.exe 上，pid 树才能同时覆盖二者）。找不到（异常谱系）回落原 pid。
+#[cfg(windows)]
+fn steam_root_pid(pid: u32) -> u32 {
+    use std::collections::HashMap;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    let Ok(snap) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
+        return pid;
+    };
+    let mut rows: HashMap<u32, (u32, String)> = HashMap::new();
+    let mut entry = PROCESSENTRY32W {
+        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    if unsafe { Process32FirstW(snap, &mut entry) }.is_ok() {
+        loop {
+            let name = String::from_utf16_lossy(&entry.szExeFile)
+                .trim_end_matches('\0')
+                .to_lowercase();
+            rows.insert(entry.th32ProcessID, (entry.th32ParentProcessID, name));
+            if unsafe { Process32NextW(snap, &mut entry) }.is_err() {
+                break;
+            }
+        }
+    }
+    let _ = unsafe { windows::Win32::Foundation::CloseHandle(snap) };
+    let mut p = pid;
+    for _ in 0..16 {
+        // 防环：父链回到自身/查无此行即止
+        match rows.get(&p) {
+            Some((_, name)) if name == "steam.exe" => return p,
+            Some((ppid, _)) if *ppid != 0 && *ppid != p => p = *ppid,
+            _ => break,
+        }
+    }
+    pid
+}
+
+/// 主窗特征过滤：带标题栏（CEF 无边框工具窗/气泡不收编，与 WinEventHook
+/// on_show 的 has_caption 口径一致）。
+#[cfg(windows)]
+fn has_caption_style(hwnd: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_STYLE, WS_CAPTION};
+    let style = unsafe { GetWindowLongPtrW(hwnd_from_isize(hwnd), GWL_STYLE) } as u32;
+    style & WS_CAPTION.0 != 0
+}
+
+/// steam_launch 后启动的 Steam 主窗看护（见模块注释）。幂等安全：每次
+/// steam_launch 一个看护线程；已嵌入时扫不到候选，90s 后自然退出。
+#[cfg(windows)]
+pub fn spawn_steam_adopt_watcher(app: tauri::AppHandle) {
+    use tauri::Emitter;
+    std::thread::Builder::new()
+        .name("steam-adopt".into())
+        .spawn(move || {
+            // ShellExecute 异步拉起 Steam：先等一拍再开扫
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            for _ in 0..90 {
+                let cands: Vec<(isize, u32, String)> = watch_scan_windows()
+                    .into_iter()
+                    .filter(|(h, _, _)| has_caption_style(*h))
+                    .collect();
+                if let Some((hwnd, pid)) = pick_steam_window(&cands) {
+                    let root = steam_root_pid(pid);
+                    eprintln!(
+                        "[steam-adopt] Steam main window found hwnd={hwnd} pid={pid} root={root} -> popup"
+                    );
+                    let _ = app.emit(
+                        "embed://popup",
+                        serde_json::json!({
+                            "origin": "steam-launch",
+                            "tpId": "steam",
+                            "hwnd": hwnd,
+                            "rootPid": root,
+                        }),
+                    );
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            eprintln!(
+                "[steam-adopt] no Steam main window in 90s (cold start / login?) — watchdog remains as fallback"
+            );
+        })
+        .ok();
+}
+
+#[cfg(not(windows))]
+pub fn spawn_steam_adopt_watcher(_app: tauri::AppHandle) {}
+
 #[cfg(test)]
 mod tests {
     use super::{with_registry, norm_id};
@@ -1300,5 +1419,29 @@ mod tests {
 
         // 收尾清场
         with_registry(|m| m.clear());
+    }
+
+    /// Steam 主动收编：家族窗口匹配（basename 小写 + 任意路径/盘符），
+    /// 非家族窗口不命中，空候选返回 None。
+    #[test]
+    fn pick_steam_window_matches_family_only() {
+        let cands = vec![
+            (101, 10, "C:\\Windows\\explorer.exe".into()),
+            (102, 20, "C:\\Program Files (x86)\\Steam\\steamwebhelper.exe".into()),
+            (103, 30, "D:\\Games\\SomeGame\\game.exe".into()),
+        ];
+        assert_eq!(super::pick_steam_window(&cands), Some((102, 20)));
+
+        // 大写盘符路径 + steam.exe 本体
+        let cands2 = vec![(201, 40, "E:\\Steam\\STEAM.EXE".into())];
+        assert_eq!(super::pick_steam_window(&cands2), Some((201, 40)));
+
+        // 正斜杠路径（shell_execute 语义兼容）与无家族窗口
+        let none = vec![
+            (301, 50, "C:/Windows/System32/notepad.exe".into()),
+            (302, 51, String::new()),
+        ];
+        assert_eq!(super::pick_steam_window(&none), None);
+        assert_eq!(super::pick_steam_window(&[]), None);
     }
 }

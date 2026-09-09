@@ -641,6 +641,9 @@ export function vwmWindowTitle(app: VwmApp): string {
   if (app === "taskman") return "任务管理器";
   if (isTpApp(app)) {
     const id = tpIdOf(app);
+    // Steam 主动收编会话（steam_launch → embed://popup）固定 tpId="steam"，
+    // 不在第三方登记册里——给固定友好标题，其余走登记名/兜底。
+    if (id === "steam") return "Steam";
     return (
       getThirdApps().find((a) => a.id === id)?.name ?? `应用 ${id}`
     );

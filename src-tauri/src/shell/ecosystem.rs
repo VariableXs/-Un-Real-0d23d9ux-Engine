@@ -329,6 +329,9 @@ pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
 
 /// steam:// 协议直通（rungameid / store 前台由 Steam 自管）。
 /// 启动前主动进入 CEF 兼容态：不等 3s watcher，杜绝启动瞬间 z-order 抖动。
+/// 启动后拉起 Steam 主窗看护：从 Variable 启动 = Steam 收进 Variable 运行
+/// （embed://popup → 前端 VWM 占位窗 → embed_adopt 重父化；Steam 已嵌入时
+/// 游戏窗口走 WinEventHook 同树 popup 自动收编；90s 冷启动超时看门狗兜底）。
 #[tauri::command]
 pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
@@ -339,6 +342,7 @@ pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
     // URI associations belong to Windows Shell; cmd/start is intentionally
     // not used because it breaks quoting and profile environment semantics.
     crate::shell::compat::shell_execute_path(Path::new(&url), Some("open"), None, None, None)?;
+    crate::shell::embed::spawn_steam_adopt_watcher(app);
     Ok(())
 }
 

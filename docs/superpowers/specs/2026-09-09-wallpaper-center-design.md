@@ -87,6 +87,24 @@
 - `steam_launch`（ecosystem.rs）：启动前**主动**调用 `apply_compat_mode`（不等 3s watcher），杜绝启动瞬间 z-order 抖动。
 - watcher 现状「WE 消失后 compat 保持到手动恢复」——扩展后 Steam 进程频繁启停（游戏内 Steam overlay 等），改为：**所有 CEF 进程消失 → 自动 emit 清除状态，并延迟 30s 自动恢复置顶**（防抖：30s 内再现则取消恢复）。前端 CompatBanner 状态同步。
 
+## 设计四：Steam 主动收编（补记 2026-09-10，实机需求追加）
+
+「Steam 及其软件既能在 Windows 也能在 Variable 运行；从 Variable 启动时收进 Variable，
+Windows 桌面上的相同窗口停止存在；流畅不卡死」——复用既有嵌入体系实现：
+
+- `steam_launch`（ecosystem.rs）启动后拉起 `spawn_steam_adopt_watcher`（embed.rs）：
+  90s 内每秒扫描顶层可见窗口，命中 Steam 家族（steam.exe / steamwebhelper.exe，
+  basename 小写匹配 + WS_CAPTION 主窗特征）→ emit `embed://popup`（tpId="steam"，
+  rootPid 锚定父链上的 steam.exe）→ 前端开 VWM 占位窗 → `embed_adopt` 重父化收编。
+- Steam 已嵌入时再次启动游戏：主窗已是 WS_CHILD 不在顶层枚举中，看护静默退出；
+  游戏窗口（steam.exe 后代）由 WinEventHook 同树 popup 通道自动收编为新虚拟窗口。
+- 冷启动超 90s（登录/大更新）→ 看护退出，逃逸窗口由 D-3 看门狗兜底（ask/auto）。
+- 互斥语义：Steam 单实例 + 收编 = 从 Variable 启动时其窗口从 Windows 桌面消失
+  （任务栏/Alt+Tab 不再出现），只在 Variable 内呈现。
+- 嵌入后 Variable 全屏持有前台 → Windows 任务栏不浮现 → 底部只显示 Variable 条框；
+  失焦让位与 CEF 兼容（GPU 降级、30s 防抖恢复）语义不变。
+- 纯函数 `pick_steam_window`（家族匹配）有 cargo 单测覆盖。
+
 ## 错误处理
 
 | 场景 | 行为 |
