@@ -144,7 +144,7 @@ fn run_boot(app: AppHandle) {
     let mut warns: Vec<String> = Vec::new();
 
     // ---- Phase 1 (5%): verify data directory structure ---------------------
-    em.send(0.0, "校验数据目录结构 / Verifying data directories", "📦", 0, None, None, None, None);
+    em.send(0.0, "Verifying data directories", "📦", 0, None, None, None, None);
     let dirs: [(&str, &PathBuf); 6] = [
         ("db", &st.db_dir),
         ("media", &st.media_dir),
@@ -159,7 +159,7 @@ fn run_boot(app: AppHandle) {
             warns.push(format!("directory missing: {}", path.display()));
             em.send(
                 0.05,
-                &format!("目录缺失，已重建 / Rebuilt missing directory: data/{name}"),
+                &format!("Rebuilt missing directory: data/{name}"),
                 "⚠",
                 1,
                 Some(path.to_string_lossy().to_string()),
@@ -170,13 +170,13 @@ fn run_boot(app: AppHandle) {
             let _ = fs::create_dir_all(path);
         }
     }
-    em.send(0.05, "数据目录就绪 / Data directories ready", "✓", 0, None, None, None, None);
+    em.send(0.05, "Data directories ready", "✓", 0, None, None, None, None);
 
     // ---- Phase 2 (10%): open database + migrations --------------------------
     let db_path = st.db_dir.join("variable.db");
     em.send(
         0.05,
-        &format!("打开数据库 / Opening database: {}", db_path.display()),
+        &format!("Opening database: {}", db_path.display()),
         "📦",
         0,
         Some(db_path.to_string_lossy().to_string()),
@@ -189,13 +189,13 @@ fn run_boot(app: AppHandle) {
     match &db_open {
         Ok(()) => {
             db_ready = true;
-            em.send(0.15, "数据库就绪 (WAL) / Database ready", "✓", 0, None, None, None, None);
+            em.send(0.15, "Database ready (WAL)", "✓", 0, None, None, None, None);
         }
         Err(e) => {
             warns.push(format!("database open failed: {e}"));
             em.send(
                 0.15,
-                &format!("数据库打开失败，尝试恢复 / Database failed, attempting recovery: {e}"),
+                &format!("Database failed, attempting recovery: {e}"),
                 "❌",
                 2,
                 Some(db_path.to_string_lossy().to_string()),
@@ -207,7 +207,7 @@ fn run_boot(app: AppHandle) {
             if let Some(bak) = newest_backup(&st.backups_dir) {
                 em.send(
                     0.15,
-                    &format!("发现备份，自动恢复 / Restoring from backup: {}", bak.display()),
+                    &format!("Restoring from backup: {}", bak.display()),
                     "🔐",
                     1,
                     Some(bak.to_string_lossy().to_string()),
@@ -224,7 +224,7 @@ fn run_boot(app: AppHandle) {
                             warns.push(format!("restored from backup: {}", bak.display()));
                             em.send(
                                 0.15,
-                                "备份恢复成功 / Restored from backup",
+                                "Restored from backup",
                                 "✓",
                                 1,
                                 None,
@@ -237,7 +237,7 @@ fn run_boot(app: AppHandle) {
                             warns.push(format!("restore open failed: {e2}"));
                             em.send(
                                 0.15,
-                                &format!("恢复后仍无法打开 / Still failing after restore: {e2}"),
+                                &format!("Still failing after restore: {e2}"),
                                 "❌",
                                 2,
                                 None,
@@ -251,7 +251,7 @@ fn run_boot(app: AppHandle) {
                         warns.push(format!("restore copy failed: {e2}"));
                         em.send(
                             0.15,
-                            &format!("备份复制失败 / Backup copy failed: {e2}"),
+                            &format!("Backup copy failed: {e2}"),
                             "❌",
                             2,
                             None,
@@ -319,7 +319,7 @@ fn run_boot(app: AppHandle) {
                     p += per;
                     em.send(
                         p,
-                        &format!("索引 {table}: {n} 行 / indexing {table} ({n} rows)"),
+                        &format!("Indexing {table}: {n} rows"),
                         icon,
                         0,
                         None,
@@ -332,7 +332,7 @@ fn run_boot(app: AppHandle) {
                     warns.push(format!("table {table}: {e}"));
                     em.send(
                         p + per,
-                        &format!("跳过表 {table}: {e} / skipped table {table}"),
+                        &format!("Skipped table {table}: {e}"),
                         "⚠",
                         1,
                         None,
@@ -344,14 +344,14 @@ fn run_boot(app: AppHandle) {
             }
         }
     } else {
-        em.send(0.40, "数据库不可用，跳过表统计 / Skipping table stats", "⚠", 1, None, None, None, None);
+        em.send(0.40, "Database unavailable, skipping table stats", "⚠", 1, None, None, None, None);
     }
 
     // ---- Phase 4 (30%): real workspace tree scan ----------------------------
     let ws_root = st.data_dir.join("Workspace");
     em.send(
         0.40,
-        &format!("🔍 扫描工作区 / Scanning workspace: {}", ws_root.display()),
+        &format!("Scanning workspace: {}", ws_root.display()),
         "🔍",
         0,
         Some(ws_root.to_string_lossy().to_string()),
@@ -367,7 +367,7 @@ fn run_boot(app: AppHandle) {
     em.send(
         0.70,
         &format!(
-            "工作区扫描完成 / Workspace scanned: {} folders, {} files",
+            "Workspace scanned: {} folders, {} files",
             scan.folders, scan.files
         ),
         "✓",
@@ -379,7 +379,7 @@ fn run_boot(app: AppHandle) {
     );
 
     // ---- Phase 5 (20%): real media library index ----------------------------
-    em.send(0.70, "🖼 索引媒体库 / Indexing media library", "🖼", 0, None, Some(0), None, None);
+    em.send(0.70, "Indexing media library", "🖼", 0, None, Some(0), None, None);
     let mut media_scan = Scan { files: 0, folders: 0, bytes: 0 };
     scan_dir_quiet(&st.media_dir, &mut media_scan, 0);
     scan_dir_quiet(&st.attachments_dir, &mut media_scan, 0);
@@ -388,7 +388,7 @@ fn run_boot(app: AppHandle) {
     em.send(
         0.90,
         &format!(
-            "媒体库就绪 / Media ready: {} files ({})",
+            "Media ready: {} files ({})",
             media_scan.files,
             human_bytes(media_scan.bytes)
         ),
@@ -401,12 +401,12 @@ fn run_boot(app: AppHandle) {
     );
 
     // ---- Phase 6 (5%): real backup inventory --------------------------------
-    em.send(0.90, "🔐 清点备份 / Checking backups", "🔐", 0, None, None, None, None);
+    em.send(0.90, "Checking backups", "🔐", 0, None, None, None, None);
     let backups = count_backups(&st.backups_dir);
     stats.backups = backups;
     em.send(
         0.95,
-        &format!("备份清点完成 / {} backup(s) available", backups),
+        &format!("{} backup(s) available", backups),
         "✓",
         0,
         None,
@@ -417,9 +417,9 @@ fn run_boot(app: AppHandle) {
 
     // ---- Ready (100%) with the real summary ---------------------------------
     if !warns.is_empty() {
-        em.send(1.0, &format!("启动包含警告 / {} warning(s)", warns.len()), "⚠", 1, None, None, None, None);
+        em.send(1.0, &format!("Boot completed with {} warning(s)", warns.len()), "⚠", 1, None, None, None, None);
     }
-    em.send(1.0, "✓ ready", "✓", 0, None, None, None, Some(stats));
+    em.send(1.0, "Ready", "✓", 0, None, None, None, Some(stats));
     crate::state::append_log(&st.logs_dir, &format!("boot complete in {}ms", t0.elapsed().as_millis()));
 }
 
@@ -461,7 +461,7 @@ fn scan_dir(dir: &Path, em: &BootEmit, p_from: f32, p_to: f32, scan: &mut Scan, 
                 let p = p_from + (p_to - p_from) * 0.5; // intermediate: halfway inside the phase
                 em.send(
                     p,
-                    &format!("🔍 已发现 {} 个文件 / {} files found", scan.files, scan.files),
+                    &format!("{} files found", scan.files),
                     "🔍",
                     0,
                     Some(path.to_string_lossy().to_string()),
