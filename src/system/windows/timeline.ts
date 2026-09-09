@@ -1,4 +1,4 @@
-import type { VwmRect } from "./vwm";
+import type { VwmRect, VwmWin } from "./vwm";
 
 /**
  * N-01 窗口时间机器（NEXT-40 · AI-2 窗口路）：

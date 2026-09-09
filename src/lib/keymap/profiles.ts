@@ -30,7 +30,8 @@ export const KEYMAP_PROFILES: KeymapProfile[] = [
     patch: {
       explorer: "ctrl+alt+q",
       settingsCenter: "ctrl+alt+w",
-      clipboardHistory: "ctrl+alt+r",
+      // AI-20 协同修复：ctrl+alt+r 与 AI-08 Z-28 runDialog 降级口径撞车 → 改 t（同为左手顶排）
+      clipboardHistory: "ctrl+alt+t",
       notifyCenter: "ctrl+alt+f",
       quickBluetooth: "ctrl+alt+z",
       quickAudio: "ctrl+alt+x",

@@ -74,7 +74,7 @@ export function A11yTab(props: { settings: Settings; onPatch: (p: Partial<Settin
   const wbRows = useMemo(() => {
     const q = wbQuery.trim().toLowerCase();
     const keys = Object.keys(dictionaries.zh);
-    const filtered = q ? keys.filter((k) => k.toLowerCase().includes(q) || dictionaries.zh[k].toLowerCase().includes(q) || (dictionaries.en[k] ?? "").toLowerCase().includes(q)) : keys;
+    const filtered = q ? keys.filter((k) => k.toLowerCase().includes(q) || (dictionaries.zh[k] ?? "").toLowerCase().includes(q) || (dictionaries.en[k] ?? "").toLowerCase().includes(q)) : keys;
     return filtered.slice(0, 200).map((k) => ({
       key: k,
       zh: dictionaries.zh[k] ?? "",
@@ -93,15 +93,17 @@ export function A11yTab(props: { settings: Settings; onPatch: (p: Partial<Settin
 
   const saveEdit = (): void => {
     if (!wbEditKey) return;
+    const zhMap: Record<string, string> = { ...(s.i18nOverrides.zh ?? {}) };
+    const enMap: Record<string, string> = { ...(s.i18nOverrides.en ?? {}) };
     const next: Record<string, Record<string, string>> = {
-      zh: { ...(s.i18nOverrides.zh ?? {}) },
-      en: { ...(s.i18nOverrides.en ?? {}) },
+      zh: zhMap,
+      en: enMap,
       ...(s.i18nOverrides["zh-TW"] ? { "zh-TW": { ...s.i18nOverrides["zh-TW"] } } : {}),
     };
-    if (wbEditZh.trim() && wbEditZh !== dictionaries.zh[wbEditKey]) next.zh[wbEditKey] = wbEditZh.trim();
-    else delete next.zh[wbEditKey];
-    if (wbEditEn.trim() && wbEditEn !== dictionaries.en[wbEditKey]) next.en[wbEditKey] = wbEditEn.trim();
-    else delete next.en[wbEditKey];
+    if (wbEditZh.trim() && wbEditZh !== dictionaries.zh[wbEditKey]) zhMap[wbEditKey] = wbEditZh.trim();
+    else delete zhMap[wbEditKey];
+    if (wbEditEn.trim() && wbEditEn !== dictionaries.en[wbEditKey]) enMap[wbEditKey] = wbEditEn.trim();
+    else delete enMap[wbEditKey];
     set("i18nOverrides", next);
     setWbEditKey(null);
   };
@@ -112,9 +114,11 @@ export function A11yTab(props: { settings: Settings; onPatch: (p: Partial<Settin
   };
 
   const importCsv = (): void => {
+    const zhMap: Record<string, string> = { ...(s.i18nOverrides.zh ?? {}) };
+    const enMap: Record<string, string> = { ...(s.i18nOverrides.en ?? {}) };
     const next: Record<string, Record<string, string>> = {
-      zh: { ...(s.i18nOverrides.zh ?? {}) },
-      en: { ...(s.i18nOverrides.en ?? {}) },
+      zh: zhMap,
+      en: enMap,
       ...(s.i18nOverrides["zh-TW"] ? { "zh-TW": { ...s.i18nOverrides["zh-TW"] } } : {}),
     };
     let count = 0;
@@ -124,8 +128,8 @@ export function A11yTab(props: { settings: Settings; onPatch: (p: Partial<Settin
       if (cells.length < 2) continue;
       const [k, zh, en] = cells;
       if (!k) continue;
-      if (zh && zh !== dictionaries.zh[k]) next.zh[k] = zh;
-      if (en && en !== dictionaries.en[k]) next.en[k] = en;
+      if (zh && zh !== dictionaries.zh[k]) zhMap[k] = zh;
+      if (en && en !== dictionaries.en[k]) enMap[k] = en;
       count++;
     }
     set("i18nOverrides", next);
@@ -460,8 +464,10 @@ function importLexiconCsv(
   for (const line of csv.split(/\r?\n/)) {
     if (!line.trim() || line.startsWith("key,")) continue;
     const cells = parseCsvLine(line);
-    if (cells.length >= 2 && cells[0].trim() && cells[1].trim() && Object.keys(next).length < S2T_LEXICON_MAX) {
-      next[cells[0].trim()] = cells[1].trim();
+    const k = cells[0]?.trim() ?? "";
+    const v = cells[1]?.trim() ?? "";
+    if (k && v && Object.keys(next).length < S2T_LEXICON_MAX) {
+      next[k] = v;
     }
   }
   set("s2tLexicon", next);

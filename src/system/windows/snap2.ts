@@ -98,6 +98,7 @@ export function predictZone(
   opts: { shiftHeld?: boolean } = {},
 ): { layout: ZoneLayout; rect: VwmRect } | null {
   if (opts.shiftHeld) return null;
+  if (!snap2Enabled()) return null;
   const EDGE = 24;
   const nearLeft = px <= wa.x + EDGE;
   const nearRight = px >= wa.x + wa.w - EDGE;
@@ -123,4 +124,26 @@ export function predictZone(
   if (nearTop) return { layout: "two-plus-one-right", rect: zoneRect("two-plus-one-right", wa) };
   if (nearBottom) return { layout: "two-plus-one-left", rect: zoneRect("two-plus-one-left", wa) };
   return null;
+}
+
+// ---------- U-14 吸附 2.0 总开关（编排中心设置页接线） ----------
+
+const SNAP2_KEY = "variable:snap2:enabled:v1";
+
+/** U-14 吸附 2.0 总开关（默认开；Shift 临时禁用是行为级，不受此开关影响）。 */
+export function snap2Enabled(): boolean {
+  try {
+    return localStorage.getItem(SNAP2_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/** 设置吸附 2.0 总开关（编排中心「窗口编排设置」区写入）。 */
+export function setSnap2Enabled(on: boolean): void {
+  try {
+    localStorage.setItem(SNAP2_KEY, on ? "1" : "0");
+  } catch {
+    /* storage 不可用：内存态由下次读取回落默认 */
+  }
 }

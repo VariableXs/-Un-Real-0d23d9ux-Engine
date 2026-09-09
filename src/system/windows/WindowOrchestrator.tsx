@@ -16,7 +16,7 @@ import {
 import { healthCheck } from "./rescue";
 import { loadScenes, saveScene, deleteScene, applyScene, type Scene } from "./scenes";
 import { activateStage } from "./StageRail";
-import { loadRules, saveRule, ruleLogs, RULE_TEMPLATES, loadRules as rulesOf } from "./rules";
+import { loadRules, saveRule, ruleLogs, RULE_TEMPLATES } from "./rules";
 import { loadStages } from "./stages";
 import { snap2Enabled, setSnap2Enabled } from "./snap2";
 import { colorBandEnabled, setColorBandEnabled, loadBandMap, saveBandMap, BAND_LABEL, type BandColor } from "./colorBand";
@@ -88,7 +88,7 @@ export function WindowOrchestrator(props: { settings: Settings; onClose: () => v
     vwmStore.setState((cur) => ({
       wins: cur.wins.map((w) => (rep.moved[w.id] ? { ...w, ...rep.moved[w.id] } : w)),
     }));
-    pushToast("ok", t("orchRescue"), `${t("orchRescuedN")} ${rep.lost.length}`);
+    pushToast("success", t("orchRescue"), `${t("orchRescuedN")} ${rep.lost.length}`);
   };
 
   // ---------- N-05 ----------
@@ -133,7 +133,7 @@ export function WindowOrchestrator(props: { settings: Settings; onClose: () => v
       },
     });
     if (!res.ok && res.guard) {
-      pushToast("info", t("sceneGuardTitle"), t("scGuardBody"));
+      pushToast("info", t("scGuardTitle"), t("scGuardBody"));
     } else if (!res.ok) {
       pushToast("error", t("scFailTitle"), res.error ?? "");
     } else {

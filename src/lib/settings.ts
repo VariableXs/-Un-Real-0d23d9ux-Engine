@@ -111,6 +111,8 @@ export interface Settings {
   avoidTaskbar: boolean;
   /** 首次启动欢迎向导已完成（完成后不再显示）。 */
   wizardDone: boolean;
+  /** AI-20 V-93：Windows 偏好搬家向导已完成（首启触发一次；设置页可手动重开）。 */
+  prefsImportDone: boolean;
   /** B-32 OOBE 首次初始化向导已完成（口令/三模板/介质体检/导览）。 */
   oobeDone: boolean;
   /** B-32：OOBE 建卷的容器文件路径（空 = 未创建）。 */
@@ -253,6 +255,7 @@ export const DEFAULT_SETTINGS: Settings = {
   keyStats: {},
   avoidTaskbar: false,
   wizardDone: false,
+  prefsImportDone: false,
   oobeDone: false,
   soundVolume: 0.5,
   soundMuted: false,
@@ -352,6 +355,15 @@ export const DEFAULT_SETTINGS: Settings = {
   compatSlowOverride: -1,
 };
 
+/**
+ * AI-20 M-81：设置迁移（coerce）公开导出 —— 供 fixtures/settings/*.json
+ * 版本矩阵漂移测试逐版断言（新版本必须补「上一版→新版」用例才能合入，
+ * 见 CONTRIBUTING 与 tools/release.ps1 门禁）。
+ */
+export function coerceSettings(raw: Record<string, string>): Settings {
+  return coerce(raw);
+}
+
 function coerce(raw: Record<string, string>): Settings {
   const s: Settings = structuredClone(DEFAULT_SETTINGS);
   try {
@@ -369,6 +381,7 @@ function coerce(raw: Record<string, string>): Settings {
       s.iconSize = n === 32 || n === 64 ? (n as IconSize) : n === 48 ? 48 : s.iconSize;
     }
     if (raw["wizardDone"] !== undefined) s.wizardDone = raw["wizardDone"] === "1";
+    if (raw["prefsImportDone"] !== undefined) s.prefsImportDone = raw["prefsImportDone"] === "1";
     if (raw["oobeDone"] !== undefined) s.oobeDone = raw["oobeDone"] === "1";
     if (raw["oobeContainerPath"] !== undefined) s.oobeContainerPath = raw["oobeContainerPath"];
     if (raw["oobeContainerEncrypted"] !== undefined) s.oobeContainerEncrypted = raw["oobeContainerEncrypted"] === "1";

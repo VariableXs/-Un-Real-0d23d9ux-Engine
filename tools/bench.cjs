@@ -33,6 +33,8 @@ const REGRESSION_LIMIT = 0.10; // >10% 回归即红（MASTER-PLAN 第 6 节）
 const args = new Set(process.argv.slice(2));
 const noGui = args.has('--no-gui');
 const checkOnly = args.has('--check');
+// M-84 性能影响声明：只产 PR 片段，不归档（避免污染当日既有归档——收口红线）
+const snippetOnly = args.has('--snippet');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (v, unit) => (v == null ? '—' : `${Math.round(v * 100) / 100}${unit}`);
@@ -191,6 +193,30 @@ function regressionCheck(current, prev) {
   };
 
   const prev = loadPrevReport();
+
+  // ---- M-84 性能影响声明片段（可直贴 PR；不写 docs/bench/） ----
+  if (snippetOnly) {
+    const now = new Date();
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    const out = [];
+    out.push(`**性能影响声明（M-84）** · ${date} · variable@${version} · \`node tools/bench.cjs --snippet\``);
+    out.push('');
+    out.push('| 指标 | 本次 | 上一基线' + (prev ? `（${prev.file}）` : '') + ' | 变化 |');
+    out.push('| --- | --- | --- | --- |');
+    const rows = prev
+      ? regressionCheck(current, prev).rows
+      : [
+          `| coldStart | ${fmt(current.coldStart, ' ms')} | —（无基线） | — |`,
+          `| fileIndex | ${fmt(current.fileIndex, ' ms')} | —（无基线） | — |`,
+          `| memory | ${fmt(current.memory, ' MB')} | —（无基线） | — |`,
+        ];
+    rows.forEach((r) => out.push(r));
+    out.push('');
+    out.push(`> 预算口径：coldStart ≤3000ms · fileIndex <3000ms（万文件） · memory ≤600MB；回归红线 >10%。`);
+    console.log(out.join('\n'));
+    process.exit(0);
+  }
 
   if (checkOnly) {
     if (!prev) {

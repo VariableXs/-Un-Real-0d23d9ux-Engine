@@ -45,7 +45,8 @@
     "windows": {
       "nsis": {
         "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerHooks": "nsis/uninstaller-hooks.nsh"
       }
     }
   }

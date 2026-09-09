@@ -36,6 +36,11 @@ import { AmbienceTab } from "./AmbienceTab";
 import { WinFeelTab } from "./WinFeelTab";
 import { PerfTab } from "./PerfTab";
 import { FilesTab } from "./FilesTab";
+// AI-20 质量门禁与收官组：M-79 看板页 / V-93 搬家入口 / V-99 依赖声明 / V-100 毕业页
+import { QualityTab } from "./QualityTab";
+import { DependencyHonesty } from "./about/DependencyHonesty";
+import { GraduationEntry } from "./about/GraduationWall";
+import { PrefsImportEntry } from "../../features/onboarding/PrefsWizard";
 import type { SysSection } from "./SystemCenterTab";
 import type { BackupInfo, BootstrapInfo } from "../../lib/types";
 import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
@@ -164,6 +169,7 @@ export function SettingsModal(props: {
     { id: "storage", label: t("stTitle") },
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
+    { id: "quality", label: t("q20TabTitle") },
     { id: "about", label: t("aboutVariable") },
   ];
   const sysTabs: { id: string; label: string }[] = [
@@ -941,6 +947,8 @@ export function SettingsModal(props: {
           {tab.startsWith("sys-") && (
             <SystemCenterTab section={tab as SysSection} settings={props.settings} onChange={props.onChange} />
           )}
+          {/* AI-20 M-79：质量与诊断（错误聚合看板 + IPC 追踪说明） */}
+          {tab === "quality" && <QualityTab appVersion={aboutVersion} />}
           {tab === "data" && (
             <>
               <Field label={t("dataDir")}>
@@ -1189,6 +1197,17 @@ export function SettingsModal(props: {
                 ))}
               </ul>
               <p className="dim small" style={{ marginTop: 8 }}>{t("bndNote")}</p>
+
+              {/* AI-20 V-99：依赖诚实声明页 v2 —— 外部依赖节（检测当前状态） */}
+              <div style={{ marginTop: 8 }}>
+                <DependencyHonesty />
+              </div>
+
+              {/* AI-20 V-93 / V-100：偏好搬家入口 + 毕业页入口 */}
+              <div className="row gap8" style={{ marginTop: 12 }}>
+                <PrefsImportEntry settings={props.settings} onPatch={props.onChange} />
+                <GraduationEntry settings={props.settings} />
+              </div>
             </>
           )}
         </div>

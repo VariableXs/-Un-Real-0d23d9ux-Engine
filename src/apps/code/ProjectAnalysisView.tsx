@@ -1,4 +1,4 @@
-﻿﻿/**
+﻿/**
  * 项目分析空间（PVCCE 独立模块 · 沉浸式工作区）。
  * 布局（三章 3.2，与主软件同一套视觉语言，禁止弹窗表单）：
  *   左侧可折叠文件树（多选/筛选/固定到画布/移除）
@@ -1424,10 +1424,10 @@ export function ProjectAnalysisView(props: { settings: Settings }): React.ReactE
         <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "重新扫描" : "Rescan"} disabled={!archive} onClick={() => void importProjectFolder(archive!.root)}>
           <RefreshCw size={14} />
         </button>
-        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "适应全部" : "Fit all"} disabled={!archive} onClick={fitAll}>
+        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "适应全部" : "Fit all"} aria-label={lang !== "en" ? "适应全部" : "Fit all"} disabled={!archive} onClick={fitAll}>
           <Maximize2 size={14} />
         </button>
-        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "撤销上一次代码写入（Ctrl+Z）" : "Undo last write (Ctrl+Z)"} onClick={undoLastEdit}>
+        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "撤销上一次代码写入（Ctrl+Z）" : "Undo last write (Ctrl+Z)"} aria-label={lang !== "en" ? "撤销上一次代码写入" : "Undo last write"} onClick={undoLastEdit}>
           <Undo2 size={14} />
         </button>
         <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "字典管理（L1-L5）" : "Dictionary manager"} onClick={() => setPod({ kind: "dict" })}>

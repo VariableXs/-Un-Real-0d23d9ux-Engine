@@ -59,7 +59,7 @@ describe("N-03 裁决", () => {
     const d = decide({ winId: "w1", app: "write", title: "文档", restricted: false }, [rule({})], 123);
     expect(d.rule?.name).toBe("测试规则");
     expect(ruleLogs()).toHaveLength(1);
-    expect(ruleLogs()[0].ts).toBe(123);
+    expect(ruleLogs()[0]!.ts).toBe(123);
   });
 
   it("冲突按 priority 优先、同分比 specificity（精确 > 通配）", () => {
@@ -75,7 +75,7 @@ describe("N-03 裁决", () => {
   it("L4/管理员窗口：任何规则下动作全部拒绝（安全分叉不可放宽，验收 ③）", () => {
     const d = decide({ winId: "w1", app: "game.exe", title: "AntiCheat", restricted: true }, [rule({ priority: 999 })]);
     expect(d.rule).toBeNull();
-    expect(ruleLogs()[0].text).toContain("拒绝");
+    expect(ruleLogs()[0]!.text).toContain("拒绝");
   });
 
   it("透明度越界动作被拒绝并留日志", () => {
@@ -84,7 +84,7 @@ describe("N-03 裁决", () => {
       [rule({ actions: [{ type: "opacity", value: 5 }] })],
     );
     expect(d.rejected).toHaveLength(1);
-    expect(d.rejected[0].reason).toContain("30");
+    expect(d.rejected[0]!.reason).toContain("30");
   });
 
   it("日志环形缓冲上限 500 条", () => {
@@ -92,7 +92,7 @@ describe("N-03 裁决", () => {
       decide({ winId: `w${i}`, app: "write", title: "", restricted: true }, []);
     }
     expect(ruleLogs().length).toBe(500);
-    expect(ruleLogs()[0].text).toContain("w5");
+    expect(ruleLogs()[0]!.text).toContain("w5");
   });
 
   it("无命中 → rule=null 维持现状", () => {

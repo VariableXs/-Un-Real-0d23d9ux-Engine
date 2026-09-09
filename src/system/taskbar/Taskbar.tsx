@@ -37,6 +37,7 @@ import { canLaunch, markLaunch, pendingPhase, settleLaunch, usePendingLaunches }
 import { imTotal, startImWatcher, useImCounts } from "./imbadge";
 import { isoWeek, sanitizeClockZones, timeInZone } from "./clockcard";
 import { lunarSummary } from "../../lib/lunar";
+import { onDayRollover } from "../../lib/dayRollover";
 import { effectiveMenuIds, loadMenuOverride, type TaskbarMenuOverride } from "../desktop/taskbarMenu";
 import { setInputOpen } from "./stickies";
 import { StickyNotes } from "./StickyNotes";
@@ -98,7 +99,13 @@ export function Taskbar(props: {
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 15000);
-    return () => window.clearInterval(id);
+    // AI-20 M-90：统一日界事件 —— 跨午夜/系统时间调整时时钟·日历·农历立即翻页
+    //（不等下一个 15s tick；挂机过夜零延迟翻页）
+    const offRollover = onDayRollover(() => setNow(new Date()));
+    return () => {
+      window.clearInterval(id);
+      offRollover();
+    };
   }, []);
 
   // 批次C：运行态轮询（3s；官方 = 窗口枚举，第三方 = 后端进程匹配，失败静默保持原值）

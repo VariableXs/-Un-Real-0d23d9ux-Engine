@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+﻿import { beforeEach, describe, expect, it } from "vitest";
 import {
   STAGE_HOTZONE_OFFSET_PX,
   addToStage,
@@ -28,6 +28,10 @@ function win(id: string): VwmWin {
     restore: null,
     group: null,
     groupActive: false,
+    rolledUp: false,
+    minimizedAt: null,
+    opacity: 1,
+    topmost: false,
   };
 }
 
@@ -40,7 +44,7 @@ describe("N-02 舞台组管理", () => {
     addToStage(g.id, "w2");
     const loaded = loadStages();
     expect(loaded).toHaveLength(1);
-    expect(loaded[0].members).toEqual(["w1", "w2"]);
+    expect(loaded[0]!.members).toEqual(["w1", "w2"]);
   });
 
   it("入组即从其它组移除（一个窗口同时只属一个组）", () => {
@@ -56,9 +60,9 @@ describe("N-02 舞台组管理", () => {
     const g = createStage("旧名");
     addToStage(g.id, "w1");
     removeFromStage(g.id, "w1");
-    expect(loadStages()[0].members).toEqual([]);
+    expect(loadStages()[0]!.members).toEqual([]);
     renameStage(g.id, "新名");
-    expect(loadStages()[0].name).toBe("新名");
+    expect(loadStages()[0]!.name).toBe("新名");
     deleteStage(g.id);
     expect(loadStages()).toHaveLength(0);
   });

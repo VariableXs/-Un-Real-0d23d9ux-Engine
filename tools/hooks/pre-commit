@@ -1,0 +1,16 @@
+#!/bin/sh
+# M-83 键位 CI 门禁 — pre-commit 钩子。
+# 安装：powershell -File tools/hooks/install.ps1（复制到 .git/hooks/pre-commit）
+#
+# 分级口径（与 tools/keymap-audit.cjs 一致）：
+#   error 级（默认表功能冲突：同 accel 绑多个 action）→ 阻断提交；
+#   warn  级（默认 accel 命中 Z-09 系统保留键）→ 放行但提示 PR 须带说明标签。
+ROOT="$(git rev-parse --show-toplevel)"
+
+node "$ROOT/tools/keymap-audit.cjs" || {
+  echo ""
+  echo "[pre-commit] 键位门禁未通过（error 级功能冲突），本次提交被阻断。"
+  echo "  修复 src/lib/shortcuts.ts / keymap profiles 中的冲突组合后重试；"
+  echo "  强行绕过（--no-verify）视为破坏 Z-08 铁律，评审直接驳回。"
+  exit 1
+}

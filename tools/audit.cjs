@@ -68,9 +68,13 @@ function walk(dir, out = []) {
   return out;
 }
 const srcFiles = walk("src").filter((f) => !f.includes("__tests__"));
+// 本地词典车道（lockT/sceneT/wpT 等，见各 labels.ts 头注）：t 绑定到本地工厂，
+// 其键不走 dictionaries.ts —— 全局审计跳过这些文件，否则必然整片误报。
+const localDictRe = /const\s+t\s*=\s*useMemo\(\s*\(\)\s*=>\s*\w+T\(\s*\)\s*,\s*\[\s*\]\s*\)/;
 const used = new Map(); // key -> [files]
 for (const f of srcFiles) {
   const s = fs.readFileSync(f, "utf8");
+  if (localDictRe.test(s)) continue;
   for (const m of s.matchAll(/\bt\(\s*"([A-Za-z0-9_]+)"/g)) {
     if (!used.has(m[1])) used.set(m[1], []);
     used.get(m[1]).push(f);

@@ -69,7 +69,7 @@ export function isPip(winId: string): boolean {
 /** 透明度循环降档（85→70→50→30→85）。 */
 export function nextOpacity(cur: PipState["opacity"]): PipState["opacity"] {
   const i = PIP_OPACITY_LEVELS.indexOf(cur);
-  return PIP_OPACITY_LEVELS[(i + 1) % PIP_OPACITY_LEVELS.length];
+  return PIP_OPACITY_LEVELS[(i + 1) % PIP_OPACITY_LEVELS.length]!;
 }
 
 /**
@@ -154,5 +154,5 @@ export function pipExitAll(): Record<string, VwmRect> {
 /** app 键提取（winId 形如 vwm-<app>-xxx）。 */
 function appKeyOf(winId: string): string {
   const m = winId.match(/^vwm-(.+)-[0-9a-z]+$/);
-  return m ? m[1] : winId;
+  return m?.[1] ?? winId;
 }

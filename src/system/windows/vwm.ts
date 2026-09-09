@@ -281,7 +281,19 @@ function openVwmInstance(app: VwmApp, path: string | null): string {
     focusedId: id,
     seq: st.seq + 1,
   }));
+  // N-03 规则引擎开窗钩子（rulesApply.installRuleHook 安装；title 以 app 名近似——
+  // 虚拟窗口暂无真实标题，规则 titlePattern 匹配按此口径，诚实记录于交付报告）
+  vwmOpenHook?.(id, app, app);
   return id;
+}
+
+// ---------- N-03 规则桥开窗钩子（rulesApply.ts setVwmOpenHook） ----------
+
+let vwmOpenHook: ((id: string, app: VwmApp, title: string) => void) | null = null;
+
+/** 安装/卸载规则引擎开窗钩子（传 null 卸载；幂等覆盖）。 */
+export function setVwmOpenHook(fn: ((id: string, app: VwmApp, title: string) => void) | null): void {
+  vwmOpenHook = fn;
 }
 
 /**

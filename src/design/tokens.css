@@ -64,6 +64,17 @@
   --hover-delay-slow: 600ms;
   --hover-delay: var(--hover-delay-std);
 
+  /* ---- AI-20 M-88：全局 Tooltip 规范令牌（样式/延迟/后缀格式三统一）----
+   * 延迟引用 M-71 --hover-delay（禁各处自定 transition-delay）；
+   * 快捷键后缀圆括号式由 tooltip.ts tooltipLabel() 生成。 */
+  --tooltip-bg: oklch(0.22 0.02 262 / 0.94);
+  --tooltip-fg: oklch(0.94 0.01 262);
+  --tooltip-maxw: 280px;
+  --tooltip-pad: 6px 10px;
+  --tooltip-r: 6px;
+  --tooltip-fs: var(--fs-12);
+  --tooltip-border: 1px solid oklch(0.70 0.02 262 / 0.18);
+
   /* ---- AI-18 V-78：全局 UI 图标尺寸档位（16/20/24px；20 = 现状；与文字缩放解耦）---- */
   --icon-size: 20px;
 
@@ -127,6 +138,10 @@
   --accent: oklch(0.52 0.08 75);
   --accent-soft: oklch(0.52 0.08 75 / 0.14);
   --stroke: oklch(0.35 0.02 90 / 0.18);
+  /* AI-20 M-88：tooltip 亮度层覆盖 */
+  --tooltip-bg: oklch(0.30 0.02 90 / 0.96);
+  --tooltip-fg: oklch(0.97 0.01 90);
+  --tooltip-border: 1px solid oklch(0.30 0.02 90 / 0.4);
 }
 
 /* ---- high-contrast 亮度层（F-7.1）---- */
@@ -142,6 +157,10 @@
   --warn: oklch(0.85 0.16 90);
   --danger: oklch(0.66 0.21 25);
   --stroke: oklch(0.65 0 0);
+  /* AI-20 M-88：HC tooltip 纯黑白 + 2px 描边 */
+  --tooltip-bg: oklch(0 0 0);
+  --tooltip-fg: oklch(1 0 0);
+  --tooltip-border: 2px solid oklch(1 0 0);
 }
 
 /* ---- 语义层 → 既有变量映射（兼容期；迁移完成后移除）---- */

@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n";
+import { onDayRollover } from "../../lib/dayRollover";
 import { isoWeek, nextTip, shouldShowBriefing, localDayKey, TIPS } from "./briefing";
 
 const STATE_KEY = "ai18.briefingState";
@@ -46,20 +47,21 @@ export function BriefingCard(props: { enabled: boolean }): React.ReactElement | 
   const [visible, setVisible] = useState(false);
   const today = localDayKey(new Date());
 
-  // 每日首启判定（挂载 + 跨午夜重查）
+  // 每日首启判定（挂载 + AI-20 M-90 统一日界事件 day://rollover —— 跨午夜
+  // 即时翻页，替代 60s 轮询；系统时间手动调整同样触发）
   useEffect(() => {
     if (!props.enabled) return undefined;
     const check = (): void => {
       const s = loadState();
       setState(s);
-      if (shouldShowBriefing(s.lastShownDay, new Date()) && s.dismissedDay !== today) {
+      if (shouldShowBriefing(s.lastShownDay, new Date()) && s.dismissedDay !== localDayKey(new Date())) {
         setVisible(true);
       }
     };
     check();
-    const id = window.setInterval(check, 60_000); // 跨午夜会话捕获
-    return () => window.clearInterval(id);
-  }, [props.enabled, today]);
+    const offRollover = onDayRollover(check);
+    return () => offRollover();
+  }, [props.enabled]);
 
   // 8s 自动收起
   useEffect(() => {

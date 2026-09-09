@@ -116,7 +116,7 @@ describe("V-28 分布小地图", () => {
     const r = minimapLayout(cell, [
       { winId: "a", title: "A", rect: { x: 100, y: 100, w: 800, h: 600 }, minimized: false },
     ], 300, 200);
-    const p = r.placements[0];
+    const p = r.placements[0]!;
     expect(p.thumb.x).toBeGreaterThan(0);
     expect(p.thumb.w).toBeLessThan(300);
     expect(p.thumb.h).toBeLessThan(200);
@@ -126,12 +126,12 @@ describe("V-28 分布小地图", () => {
     const cells = Array.from({ length: 4 }, (_, d) => ({ desktop: d, display: "main", workArea: wa }));
     const winsByDesktop: Record<number, { winId: string; title: string; rect: VwmRect; minimized: boolean }[]> = { 0: [], 1: [], 2: [], 3: [] };
     for (let i = 0; i < 30; i++) {
-      winsByDesktop[i % 4].push({ winId: `w${i}`, title: `T${i}`, rect: { x: (i * 37) % 1600, y: (i * 53) % 900, w: 400, h: 300 }, minimized: false });
+      winsByDesktop[i % 4]!.push({ winId: `w${i}`, title: `T${i}`, rect: { x: (i * 37) % 1600, y: (i * 53) % 900, w: 400, h: 300 }, minimized: false });
     }
     const grid = minimapGrid(cells, winsByDesktop, 300, 200);
     expect(grid).toHaveLength(4);
-    expect(grid[0].placements).toHaveLength(8);
-    expect(grid[3].placements).toHaveLength(7);
+    expect(grid[0]!.placements).toHaveLength(8);
+    expect(grid[3]!.placements).toHaveLength(7);
   });
 
   it("点击直达：命中检测 100%", () => {

@@ -13,9 +13,28 @@ import {
   takeSnap,
 } from "../timeline";
 import type { TimelineSnap } from "../timeline";
+import type { VwmWin } from "../vwm";
 
-function win(id: string, x = 0, y = 0, z = 1): { id: string; app: "write"; x: number; y: number; w: number; h: number; state: "normal"; minimized: boolean; z: number } {
-  return { id, app: "write", x, y, w: 800, h: 600, state: "normal", minimized: false, z };
+function win(id: string, x = 0, y = 0, z = 1): VwmWin {
+  return {
+    id,
+    app: "write",
+    path: null,
+    x,
+    y,
+    w: 800,
+    h: 600,
+    state: "normal",
+    minimized: false,
+    z,
+    restore: null,
+    group: null,
+    groupActive: false,
+    rolledUp: false,
+    minimizedAt: null,
+    opacity: 1,
+    topmost: false,
+  };
 }
 
 beforeEach(() => {
@@ -40,7 +59,7 @@ describe("N-01 快照", () => {
     );
     const all = listSnaps();
     expect(all).toHaveLength(1);
-    expect(all[0].ts).toBe(1000);
+    expect(all[0]!.ts).toBe(1000);
   });
 
   it("保留策略：超上限 FIFO 淘汰", () => {
@@ -50,13 +69,13 @@ describe("N-01 快照", () => {
     const all = listSnaps();
     expect(all).toHaveLength(TIMELINE_CAP);
     expect(all.some((s) => s.name === undefined && s.ts === 0)).toBe(false); // 最旧的被淘汰
-    expect(all[0].ts).toBe(TIMELINE_CAP + 4); // 最新保留
+    expect(all[0]!.ts).toBe(TIMELINE_CAP + 4); // 最新保留
   });
 
   it("自动快照去抖 8s：期间多次触发只落一张", () => {
     vi.useFakeTimers();
     const base = [win("a")];
-    snapshotNow(base, undefined, 1);
+    snapshotNow(base);
     pushSnap(takeSnap(base, undefined, 2));
     // 去抖 8s：期间只落一张
     scheduleAutoSnap(base);

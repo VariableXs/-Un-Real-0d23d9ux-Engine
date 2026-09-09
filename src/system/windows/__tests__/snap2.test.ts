@@ -21,7 +21,7 @@ describe("U-14 分区方案库", () => {
     const odd: VwmRect = { x: 0, y: 0, w: 1000, h: 800 };
     const cols = [zoneRect("third-1", odd), zoneRect("third-2", odd), zoneRect("third-3", odd)];
     expect(cols.reduce((s, c) => s + c.w, 0)).toBe(1000);
-    expect(cols[2].x + cols[2].w).toBe(1000);
+    expect(cols[2]!.x + cols[2]!.w).toBe(1000);
   });
 
   it("2+1：左侧上下两块 + 右侧通高", () => {

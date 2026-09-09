@@ -48,7 +48,7 @@ describe("N-10 口令哈希与恢复码", () => {
   it("恢复码 8 位数字；随机源可注入", () => {
     let i = 0;
     const seq = [0.1, 0.99, 0.5, 0.05, 0.75, 0.33, 0.62, 0.47];
-    const code = randomRecoveryCode(() => seq[i++ % seq.length]);
+    const code = randomRecoveryCode(() => seq[i++ % seq.length] ?? 0.5);
     expect(code).toMatch(/^\d{8}$/);
     expect(code).toBe("19507364"); // floor(x*10) 逐位
   });

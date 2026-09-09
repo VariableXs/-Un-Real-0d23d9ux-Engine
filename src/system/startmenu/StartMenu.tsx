@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
+import { requestPowerAction } from "../../system/power/powerGate";
 import { matchPinyin } from "../../lib/pinyin";
 import type { AppMode } from "../../state/uiStore";
 import { pushToast } from "../../state/uiStore";
@@ -782,6 +783,12 @@ export function StartMenu(props: {
         if (!ok) return;
         try { localStorage.setItem("variable:power:confirm:v1", String(Date.now())); } catch { /* ignore */ }
       }
+    }
+    // AI-20 V-92：环境自己发起的关机/重启走 10s 可取消倒计时门禁
+    //（lock/logoff/sleep 不受管；--force 脚本通道见 powerGate.requestPowerAction）
+    if (action === "reboot" || action === "shutdown") {
+      requestPowerAction(action, { via: "menu" });
+      return;
     }
     await ipc
       .powerAction(action as "lock" | "logoff" | "reboot" | "shutdown")

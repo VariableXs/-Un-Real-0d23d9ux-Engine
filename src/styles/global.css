@@ -24,6 +24,9 @@
 @import "./ai19-a11y.css";
 /* AI-18 氛围与个性化组（U-49/50/53/54、N-33、M-64…M-72、V-71…V-80；默认全关零生效） */
 @import "./ai18-ambience.css";
+/* AI-20 质量门禁与收官组：M-88 Tooltip 规范 + V-92 倒计时 / M-80 追踪面板 / V-100 毕业页 */
+@import "./tooltip.css";
+@import "./ai20-quality.css";
 :root {
   --bg: #05070d;
   --panel: rgba(10, 15, 28, 0.72);

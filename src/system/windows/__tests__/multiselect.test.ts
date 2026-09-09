@@ -41,8 +41,8 @@ describe("V-24 多选编组", () => {
     const ops = [op("a", 0, 0), op("b", 100, 50), op("c", 300, 200)];
     const moved = translateGroup(ops, 37, -19);
     expect(moved.a).toEqual({ x: 37, y: -19 });
-    const relBefore = ops[1].rect.x - ops[0].rect.x;
-    const relAfter = moved.b.x - moved.a.x;
+    const relBefore = ops[1]!.rect.x - ops[0]!.rect.x;
+    const relAfter = moved.b!.x - moved.a!.x;
     expect(relAfter - relBefore).toBe(0);
   });
 

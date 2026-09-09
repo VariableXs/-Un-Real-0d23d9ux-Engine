@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { errMessage, ipc } from "../lib/ipc";
+import { recordError } from "../lib/errBoard";
 
 interface Props {
   children: ReactNode;
@@ -17,6 +18,8 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(e: unknown, info: ErrorInfo): void {
     console.error("[Variable] render error", e, info.componentStack);
+    // AI-20 M-79：错误聚合看板（环形缓冲 + PII 清洗 + 退出落盘）
+    recordError("ErrorBoundary", errMessage(e).message, e instanceof Error ? e.stack : info.componentStack);
     void ipc.log("error", `render error: ${errMessage(e).message}`).catch(() => {});
   }
 

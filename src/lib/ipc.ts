@@ -37,9 +37,22 @@ export function errMessage(e: unknown): { code: string; message: string } {
 }
 
 // Lazy import so vitest (pure logic tests) never loads @tauri-apps/api.
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function invokeRaw<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const mod = await import("@tauri-apps/api/core");
   return mod.invoke<T>(cmd, args);
+}
+
+/**
+ * AI-20 M-80：dev 构建统一 IPC 埋点（命令/耗时/成败 → 环形缓冲）。
+ * release 构建该分支经 Vite 死代码剔除 —— ipcTrace 模块零残留
+ * （验收：`rg "ipcTrace" dist/` 零命中，零运行时开销承诺）。
+ */
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (import.meta.env.DEV) {
+    const { traceInvoke } = await import("./ipcTrace");
+    return traceInvoke<T>(cmd, () => invokeRaw<T>(cmd, args));
+  }
+  return invokeRaw<T>(cmd, args);
 }
 
 export interface ListFilterT {
@@ -923,6 +936,14 @@ export const ipc = {
   reminderComplete: (id: string) => invoke<Shell.ReminderView[]>("reminder_complete", { id }),
   reminderReschedule: (id: string, dueAt: number) => invoke<Shell.ReminderView[]>("reminder_reschedule", { id, dueAt }),
   reminderDelete: (id: string) => invoke<Shell.ReminderView[]>("reminder_delete", { id }),
+
+  // ---- AI-20 质量门禁与收官组（V-93 偏好搬家 / V-99 依赖诚实声明）----
+  /** V-93：只读读取 Windows 用户偏好（壁纸/强调色/深浅色/区域格式/24h 制；绝不写回系统）。 */
+  sysPrefsRead: () => invoke<Shell.SysPrefsView>("sys_prefs_read"),
+  /** V-99：外部依赖状态探针（winget / OCR 语言包 / 打印机 / 字体回退链）。 */
+  sysdepProbe: () => invoke<Shell.SysdepProbeView>("sysdep_probe"),
+  /** M-85：依赖审计周任务状态（只读；报告见 docs/selfcheck/，升级须人工审阅）。 */
+  depAuditStatus: () => invoke<Shell.DepAuditStateView>("dep_audit_status"),
 };
 
 /** Shell 命令的返回结构（与 src-tauri/src/shell/hardware.rs 序列化字段一一对应）。 */
@@ -2401,6 +2422,40 @@ export namespace Shell {
     enabled: boolean;
     lastFired: number;
   }
+  // ---- AI-20 质量门禁与收官组视图（与 quality.rs serde 字段一一对应）----
+  /** V-93：Windows 用户偏好只读快照（全部用户级注册表/系统 API 读取，零写入）。 */
+  export interface SysPrefsView {
+    /** 当前桌面壁纸绝对路径（空 = 纯色壁纸）。 */
+    wallpaperPath: string | null;
+    /** 强调色（#RRGGBB；null = 读取失败如实降级）。 */
+    accentColor: string | null;
+    /** 应用深浅色偏好（true = 浅色）。 */
+    lightTheme: boolean | null;
+    /** 区域格式（BCP-47，如 zh-CN）。 */
+    localeName: string | null;
+    /** 24 小时制（true = 24h；null = 未知）。 */
+    hour24: boolean | null;
+    /** 读取失败的分项说明（诚实降级：哪些项没读到）。 */
+    unavailable: string[];
+  }
+  /** V-99：单项外部依赖状态。 */
+  export interface SysdepItemView {
+    id: "winget" | "ocr" | "printer" | "fonts";
+    /** 探测是否成功（false = 探测本身失败，非未安装）。 */
+    available: boolean | null;
+    detail: string;
+  }
+  export interface SysdepProbeView {
+    items: SysdepItemView[];
+    probedAt: number;
+  }
+  /** M-85：依赖审计周任务状态（sysmaint.rs DepAuditState 一一对应）。 */
+  export interface DepAuditStateView {
+    lastRunMs: number;
+    lastOk: boolean;
+    summary: string;
+    due: boolean;
+  }
 }
 
 // 供外部模块 import type 使用（namespace 不导出，这里做类型别名导出）。
@@ -2524,6 +2579,7 @@ export type WpEngineItem = Shell.WpEngineItem;
 export type VaultStatus = Shell.VaultStatus;
 export type VaultItem = Shell.VaultItem;
 export type AuditFinding = Shell.AuditFinding;
+export type DepAuditStateView = Shell.DepAuditStateView;
 
 export type EdgeStylePatch = Partial<Pick<MindEdge, "direction" | "lineStyle" | "pathStyle" | "color" | "width" | "label" | "animated">>;
 export type ShapeKind = NodeShape;

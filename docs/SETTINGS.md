@@ -4,7 +4,7 @@
 > 新增设置项不改文档，下次发版自动出现在本手册；默认值与代码实测一致（生成时直接读取 DEFAULT_SETTINGS）。
 > 键与数据开放导出（Z-51）/ 配置分享（Z-54）字段一一对应。
 
-共 74 个设置项。
+共 87 个设置项。
 
 | 键 | 类型 | 默认值 | 说明 | 所有者 | Since |
 |---|---|---|---|---|---|
@@ -29,6 +29,7 @@
 | `keyStats` | `Record<string, number>` | `{}` | M-28 键位使用统计（本地，只记 action id + 次数，隐私口径见 keymap/telemetry.ts）。 | — | 1.5xw |
 | `avoidTaskbar` | `boolean` | `false` | 🟢 绿灯状态（批次D，规格 4.3.4）：true = 避让 Windows 任务栏。 | — | 1.5xw |
 | `wizardDone` | `boolean` | `false` | 首次启动欢迎向导已完成（完成后不再显示）。 | — | 1.5xw |
+| `prefsImportDone` | `boolean` | `false` | AI-20 V-93：Windows 偏好搬家向导已完成（首启触发一次；设置页可手动重开）。 | AI-20 | 1.5xw |
 | `oobeDone` | `boolean` | `false` | B-32 OOBE 首次初始化向导已完成（口令/三模板/介质体检/导览）。 | — | 1.5xw |
 | `oobeContainerPath` | `string` | `""` | B-32：OOBE 建卷的容器文件路径（空 = 未创建）。 | — | 1.5xw |
 | `oobeContainerEncrypted` | `boolean` | `false` | B-32：OOBE 容器是否启用口令加密。 | — | 1.5xw |
@@ -80,5 +81,17 @@
 | `rtlPilot` | `boolean` | `false` | U-41：RTL 试点（设置/通知中心两处面板正确渲染；默认关）。 | — | 1.5xw |
 | `localeFormatFollow` | `boolean` | `false` | M-78：日期/时间/数字区域格式跟随系统（默认关 = 现状硬编码）。 | — | 1.5xw |
 | `byteUnit` | `"auto" \| "binary" \| "decimal"` | `"auto"` | M-78：容量单位口径（auto=系统口径即二进制 / binary / decimal）。 | — | 1.5xw |
+| `bootPacing` | `BootPacing` | `"cinematic"` | U-06 bootPacing：仪式节奏（cinematic 影院 / brisk 轻快 / instant 直通）。 | — | 1.5xw |
+| `bootSoundMode` | `"full" \| "mute" \| "chime-only"` | `"full"` | U-05 启动交响（full 完整三层 / mute 静音 / chime-only 仅就绪音）。 | — | 1.5xw |
+| `soundTheme` | `SoundThemeId` | `"default"` | U-52 声景主题（default 玻璃质感基线 / wood 木质 / midnight 暗夜）。 | — | 1.5xw |
+| `soundNightDamp` | `boolean` | `true` | U-52 深夜（22:00–6:00）自动整体音量 ×0.5（默认开；可关闭此智能行为）。 | — | 1.5xw |
+| `dndScheduleEnabled` | `boolean` | `false` | Z-44 勿扰日程启用（手动勿扰优先级高于日程）。 | — | 1.5xw |
+| `dndScheduleStart` | `string` | `"22:00"` | Z-44 每日自动勿扰开始 "HH:MM"（支持跨午夜，如 22:00→07:00）。 | — | 1.5xw |
+| `dndScheduleEnd` | `string` | `"07:00"` | Z-44 每日自动勿扰结束 "HH:MM"。 | — | 1.5xw |
+| `dndReminderExempt` | `boolean` | `true` | Z-44 提醒类豁免勿扰（闹钟/提醒仍响；普通通知静默入档）。 | — | 1.5xw |
+| `notifyRetentionDays` | `0 \| 30 \| 90` | `30` | Z-47 通知存档保留策略（30/90/0=永久）。 | — | 1.5xw |
+| `notifySmart` | `boolean` | `false` | N-32 智能通知整理（本地学习分堆；默认关 = 全即时堆，7 天学习期）。 | — | 1.5xw |
+| `notifyDigestTimes` | `string[]` | `["12:00", "18:00"]` | N-32 摘要堆定点呈现时刻（24h 制，默认 12:00 与 18:00 两次）。 | — | 1.5xw |
+| `ambience` | `AmbienceSettings` | `DEFAULT_AMBIENCE` | AI-18 氛围与个性化组（默认与现状分毫不差）。 | AI-18 | 1.5xw |
 | `customBg` | `CustomBg` | `{ type: "nebula", color: "#0a1226", gradientFrom: "#0a1638", …` | — | — | 1.5xw |
 | `mindDefaults` | `MindDefaults` | `{ gridEnabled: true, snapEnabled: true, gridMode: "grid", gr …` | — | — | 1.5xw |

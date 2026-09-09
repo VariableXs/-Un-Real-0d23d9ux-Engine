@@ -26,7 +26,7 @@ function target(n: number, spy: (i: number) => void): OrchestrateTarget[] {
 
 describe("N-06 orchestrate", () => {
   it("空目标不产生任何调度", () => {
-    const raf = vi.fn((cb: () => void) => 1);
+    const raf = vi.fn((_: () => void) => 1);
     orchestrate([], { raf });
     expect(raf).not.toHaveBeenCalled();
   });

@@ -157,13 +157,14 @@ fn with_endpoint_volume<T>(
 }
 
 #[cfg(windows)]
-fn e2s(e: windows::core::Error) -> String {
+pub(crate) fn e2s(e: windows::core::Error) -> String {
     e.to_string()
 }
 
 /// MTA apartment helper（线程池线程进入 COM 前初始化；已初始化过则不重复 Uninit）。
+/// pub(crate)：AI-16 soundnotify.rs（通信设备角色切换）复用。
 #[cfg(windows)]
-fn with_mta<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+pub(crate) fn with_mta<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
     let hr = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     let need_uninit = hr.is_ok();

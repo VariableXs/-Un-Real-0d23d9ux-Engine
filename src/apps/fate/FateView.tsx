@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 命运推演空间（FTPE · 第三大独立功能空间）。
  * - 三大维度字典（人格/性格/思想）+ 事件库 + 随机因素，全部无模板、-100..+100 无级滑块
  * - 推演：确定性种子 → 多分支命运树（主干/分支/结局印章）
@@ -709,10 +709,10 @@ export function FateView(): React.ReactElement {
           <span className="pv-badge warn">{lang !== "en" ? `内心挣扎 ×${struggles.length}` : `conflicts ×${struggles.length}`}</span>
         )}
         <span className="flex-1" />
-        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "随机构成（随机生成人格/性格/思想组合并放入总结）" : "Random compose (random trait set into summary)"} onClick={randomCompose}>
+        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "随机构成（随机生成人格/性格/思想组合并放入总结）" : "Random compose (random trait set into summary)"} aria-label={lang !== "en" ? "随机构成" : "Random compose"} onClick={randomCompose}>
           <Shuffle size={14} />
         </button>
-        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "行为树继续推演（在原树上延伸，不清空）" : "Continue simulating (extend the tree, nothing is cleared)"} disabled={!root} onClick={continueSim}>
+        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "行为树继续推演（在原树上延伸，不清空）" : "Continue simulating (extend the tree, nothing is cleared)"} aria-label={lang !== "en" ? "行为树继续推演" : "Continue simulating"} disabled={!root} onClick={continueSim}>
           <Repeat size={14} />
         </button>
         <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "打开 .fatetree" : "Open .fatetree"} onClick={() => void openDoc()}>
@@ -730,7 +730,7 @@ export function FateView(): React.ReactElement {
         <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "适应全部" : "Fit all"} disabled={!root} onClick={() => fitTree()}>
           <Maximize2 size={14} />
         </button>
-        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "复制角色档案（到 Write 粘贴）" : "Copy profile (paste into Write)"} onClick={copyCharacterProfile}>
+        <button type="button" className="icon-btn tiny" data-tip={lang !== "en" ? "复制角色档案（到 Write 粘贴）" : "Copy profile (paste into Write)"} aria-label={lang !== "en" ? "复制角色档案" : "Copy profile"} onClick={copyCharacterProfile}>
           <Copy size={13} />
         </button>
         <button type="button" className="btn tiny primary ft-run" onClick={runSim}>
@@ -1026,7 +1026,7 @@ export function FateView(): React.ReactElement {
                         </button>
                       )}
                       {n.id !== root.id && (
-                        <button type="button" className="icon-btn tiny" title={lang !== "en" ? "删除该分支" : "Delete branch"} onClick={removeSelBranch}>
+                        <button type="button" className="icon-btn tiny" title={lang !== "en" ? "删除该分支" : "Delete branch"} aria-label={lang !== "en" ? "删除该分支" : "Delete branch"} onClick={removeSelBranch}>
                           <Trash2 size={11} />
                         </button>
                       )}
@@ -1184,7 +1184,7 @@ function TraitEditor(props: {
       </div>
       <p className="dim small">{props.desc}</p>
       {props.onDelete && (
-        <button type="button" className="icon-btn tiny ft-del" onClick={props.onDelete} title={lang !== "en" ? "删除该自定义条目" : "Delete custom entry"}>
+        <button type="button" className="icon-btn tiny ft-del" onClick={props.onDelete} title={lang !== "en" ? "删除该自定义条目" : "Delete custom entry"} aria-label={lang !== "en" ? "删除该自定义条目" : "Delete custom entry"}>
           <Trash2 size={12} />
         </button>
       )}

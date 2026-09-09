@@ -109,5 +109,5 @@ export function nextStageId(currentId: string | null, backward = false): string 
   const idx = currentId ? groups.findIndex((g) => g.id === currentId) : -1;
   const next = idx < 0 ? (backward ? groups.length - 1 : 0) : idx + (backward ? -1 : 1);
   if (next < 0 || next >= groups.length) return null;
-  return groups[next].id;
+  return groups[next]!.id;
 }

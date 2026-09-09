@@ -192,7 +192,7 @@ export function decide(
   if (hits.length === 0) {
     return { winId: input.winId, app: input.app, rule: null, rejected: [] };
   }
-  const winner = hits[0].r;
+  const winner = hits[0]!.r;
   const rejected: RuleDecision["rejected"] = [];
   // 安全检查：透明度下限 30%（与 Z-36 档位一致）、stage 必须存在
   for (const a of winner.actions) {
@@ -219,4 +219,4 @@ export const RULE_TEMPLATES: { name: string; rule: Omit<Rule, "id"> }[] = [
   { name: "截图工具居中", rule: { name: "截图工具居中", trigger: { app: "snapshot" }, actions: [{ type: "snapRect", rect: { x: 0.2, y: 0.1, w: 0.6, h: 0.8 } }], priority: 10, enabled: true } },
   { name: "剪贴板历史右侧", rule: { name: "剪贴板历史右侧", trigger: { app: "clipboard" }, actions: [{ type: "snapRect", rect: { x: 0.75, y: 0.2, w: 0.25, h: 0.6 } }], priority: 10, enabled: true } },
   { name: "计算器左下角", rule: { name: "计算器左下角", trigger: { app: "calc" }, actions: [{ type: "snapRect", rect: { x: 0, y: 0.55, w: 0.35, h: 0.45 } }], priority: 10, enabled: true } },
-].map((t) => ({ name: t.name, rule: t.rule }));
+];

@@ -93,7 +93,7 @@ export function OpenToolsTab(): React.ReactElement {
   const testWh = (url: string): void => {
     void wrap(async () => {
       const ok = await ipc.webhookTest(url);
-      pushToast(ok ? "ok" : "error", ok ? t("otWhTestOk") : t("otWhTestFail"));
+      pushToast(ok ? "success" : "error", ok ? t("otWhTestOk") : t("otWhTestFail"));
     });
   };
 
@@ -389,7 +389,7 @@ export function OpenToolsTab(): React.ReactElement {
       });
       if (!ok) return;
       const failed = await ipc.residueDelete(paths);
-      pushToast(failed.length === 0 ? "ok" : "error", failed.length === 0 ? t("otResDeleted") : t("otResDeleteFail", { n: String(failed.length) }));
+      pushToast(failed.length === 0 ? "success" : "error", failed.length === 0 ? t("otResDeleted") : t("otResDeleteFail", { n: String(failed.length) }));
       setResChecked(new Set());
       const r = await ipc.residueScanApp(resApp.trim());
       setResReport(r);

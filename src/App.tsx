@@ -38,6 +38,7 @@ import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
+import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { OobeGate } from "./features/oobe/OobeWizard";
 
 export type AppEntryType = "desktop" | AppMode;
@@ -672,6 +673,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
           </Modal>
         )}
         <RecoveryPromptHost />
+        {/* AI-20 M-80：IPC 调用追踪面板（仅 dev 构建挂载，Ctrl+Alt+F12 开关；release 死代码剔除零残留） */}
+        {import.meta.env.DEV && <IpcTracePanel />}
         <ContextMenuHost />
         <ConfirmBubbleHost />
         <ConfirmHost />

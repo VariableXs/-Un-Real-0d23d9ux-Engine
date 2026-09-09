@@ -1,4 +1,4 @@
-﻿//! L3 shell — sysmaint.rs（F-6 系统维护与自更新）
+//! L3 shell — sysmaint.rs（F-6 系统维护与自更新）
 //! - 计划备份：none/daily/weekly + 小时点；内部定时器（直跑档跨会话补偿：
 //!   启动时发现错过的任务 → 立即补跑一次并标记 lastSource="catchup"）。
 //!   边界：VM 档的 VM 内计划任务由 D 路登记；此处统一为 Variable 内部定时器。
@@ -41,7 +41,9 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let doe = z - era * 146_097;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
     let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100 + doe / 1460);
+    // 协同修复（AI-20）：标准 Hinnant 算法 doy = doe - (365*yoe + yoe/4 - yoe/100)，
+    // 原实现多出的 "+ doe/1460" 使 1970-01-01 被算成 1969-10-01（civil_stamp_formats 既有测试红）
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
@@ -215,10 +217,95 @@ pub fn start_scheduler(app: tauri::AppHandle) {
         loop {
             let st = app.state::<AppState>();
             let _ = tick(&st);
+            tick_dep_audit(&st); // M-85 周任务（内部自判 7 天周期）
             drop(st);
             std::thread::sleep(Duration::from_secs(600));
         }
     });
+}
+
+// ---------------------------------------------------------------- M-85 依赖审计周任务
+
+/// 周期 7 天；安装档无 node/开发工具链时如实记 unavailable（不重试轰炸，按周期推进）。
+const DEP_AUDIT_INTERVAL_MS: i64 = 7 * 86_400_000;
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DepAuditState {
+    pub last_run_ms: i64,
+    pub last_ok: bool,
+    pub summary: String,
+    pub due: bool,
+}
+
+fn dep_audit_cfg_path(st: &AppState) -> PathBuf {
+    st.data_dir.join("config").join("dep-audit.json")
+}
+
+fn load_dep_audit(st: &AppState) -> DepAuditState {
+    let raw = fs::read_to_string(dep_audit_cfg_path(st)).unwrap_or_default();
+    serde_json::from_str::<DepAuditState>(&raw).unwrap_or_default()
+}
+
+fn save_dep_audit(st: &AppState, s: &DepAuditState) -> CmdResult<()> {
+    let p = dep_audit_cfg_path(st);
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).map_err(|e| AppError::io(e.to_string()))?;
+    }
+    let json = serde_json::to_string_pretty(s).map_err(|e| AppError::io(e.to_string()))?;
+    fs::write(&p, json).map_err(|e| AppError::io(e.to_string()))
+}
+
+fn dep_audit_due(last_run_ms: i64, now: i64) -> bool {
+    last_run_ms <= 0 || now - last_run_ms >= DEP_AUDIT_INTERVAL_MS
+}
+
+#[tauri::command]
+pub fn dep_audit_status(st: tauri::State<AppState>) -> CmdResult<DepAuditState> {
+    let mut s = load_dep_audit(st.inner());
+    s.due = dep_audit_due(s.last_run_ms, now_ms());
+    Ok(s)
+}
+
+/// 定位开发仓的 tools/dep-audit.cjs（沿 exe 祖先目录寻找；安装档不存在 → None）。
+fn find_dep_audit_script() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    exe.ancestors().skip(1).find_map(|anc| {
+        let cand = anc.join("tools").join("dep-audit.cjs");
+        cand.is_file().then_some(cand)
+    })
+}
+
+/// 周任务主体：到点拉起 node tools/dep-audit.cjs（报告归档 docs/selfcheck/，明细 JSON 落 dataDir）。
+/// 红线：只审计、不自动升级——任何依赖升级必须人工审阅后另行提交（M-84 PR 声明 + 人工复核）。
+fn tick_dep_audit(st: &AppState) {
+    let now = now_ms();
+    let mut s = load_dep_audit(st);
+    if !dep_audit_due(s.last_run_ms, now) {
+        return;
+    }
+    let detail = st.data_dir.join("config").join("dep-audit-detail.json");
+    let (ok, summary) = match find_dep_audit_script() {
+        Some(script) => {
+            let mut cmd = std::process::Command::new("node");
+            cmd.arg(&script).arg("--json-out").arg(&detail);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            }
+            match cmd.output() {
+                Ok(o) if o.status.success() => (true, "ok".into()),
+                Ok(o) => (false, format!("script exit {:?}", o.status.code())),
+                Err(e) => (false, format!("node unavailable: {e}")),
+            }
+        }
+        None => (false, "unavailable: 安装档无开发工具链（审计属开发档门禁）".into()),
+    };
+    s.last_run_ms = now;
+    s.last_ok = ok;
+    s.summary = summary;
+    let _ = save_dep_audit(st, &s);
 }
 
 // ---------------------------------------------------------------- 自更新
@@ -276,7 +363,12 @@ fn sha256_file(p: &Path) -> CmdResult<String> {
 
 fn safe_rel(rel: &str) -> CmdResult<()> {
     let p = Path::new(rel);
-    let absolute = p.is_absolute() || rel.contains(':') || rel.contains("..");
+    // Windows 下 "/abs" 不是 is_absolute（无盘符前缀），需显式拦截根相对路径
+    let absolute = p.is_absolute()
+        || rel.starts_with('/')
+        || rel.starts_with('\\')
+        || rel.contains(':')
+        || rel.contains("..");
     if absolute || rel.is_empty() || p.file_name().is_none() {
         return Err(AppError::validation(format!("非法更新路径: {rel}")));
     }
@@ -587,5 +679,12 @@ mod tests {
     #[test]
     fn civil_stamp_formats() {
         assert_eq!(civil_stamp(0), "19700101-000000");
+    }
+
+    #[test]
+    fn dep_audit_due_cycle() {
+        assert!(dep_audit_due(0, 1_000)); // 从未跑过 → 立即到期
+        assert!(!dep_audit_due(1_000, 1_000 + DEP_AUDIT_INTERVAL_MS - 1));
+        assert!(dep_audit_due(1_000, 1_000 + DEP_AUDIT_INTERVAL_MS)); // 满 7 天到期
     }
 }

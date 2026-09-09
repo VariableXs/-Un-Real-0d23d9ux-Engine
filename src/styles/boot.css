@@ -1,169 +1,288 @@
-/* 启动仪式（真实事件驱动）— Variable Private Desktop Environment
-   进度、日志、字母描边全部由后端 boot://event 真实事件驱动，无预设时间线。 */
+/* ============================================================
+ * 启动仪式（U-01…U-06 重写）— Variable Private Desktop Environment
+ * 红线：进度/日志 100% 后端真实事件驱动，无预设时间线；
+ *       零裸 hex（全部 var(--…) 语义 token，见 src/design/tokens.css）；
+ *       零 emoji；缓动只走 --ease-*，时长优先 --dur-*；
+ *       回弹过冲 ≤6%（本文件为 0 过冲：0.96→1.0→0 沉降）。
+ * ============================================================ */
 
 .boot-screen {
+  /* boot-local 深空底（tokens 无更深一档画布色）：≈#050607 级，oklch 等值 */
+  --boot-deep: oklch(0.055 0.01 262);
+  /* 字标宽度基准：38vw，小窗 clamp 收窄 */
+  --wm-w: clamp(280px, 38vw, 560px);
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: #05070d;
-  color: #dfe7f5;
+  background: var(--boot-deep);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   user-select: none;
-  opacity: 1;
-  transition: opacity 0.4s ease;
+  /* 入场：背景 400ms 淡入 */
+  animation: boot-bg-in 400ms var(--ease-standard) both;
 }
-.boot-screen[data-exit="simple"],
-.boot-screen[data-exit="none"] {
-  opacity: 0;
-  pointer-events: none;
-}
-.boot-screen[data-exit="simple"] { transition: opacity 0.5s ease; }
-.boot-screen[data-exit="none"] { transition: none; }
-
-/* ---- 阶段4（full 编排）：真实 ready 后字母落位任务栏 ----
-   进度条/日志/统计淡出 → 背景透出桌面 → 字母缩小落向底部任务栏 V 位置并溶解。
-   时序由真实 ready 事件触发（BootScreen.finish），此处仅描述视觉过渡。 */
-.boot-screen[data-exit="full"] {
-  background: transparent;
-  pointer-events: none;
-  transition: background 0.5s ease 0.4s;
-}
-.boot-screen[data-exit="full"] .boot-bar,
-.boot-screen[data-exit="full"] .boot-progress-row,
-.boot-screen[data-exit="full"] .boot-log,
-.boot-screen[data-exit="full"] .boot-stats-row,
-.boot-screen[data-exit="full"] .boot-summary,
-.boot-screen[data-exit="full"] .boot-hint,
-.boot-screen[data-exit="full"] .boot-skip {
-  opacity: 0;
-  transition: opacity 0.35s ease;
-}
-.boot-screen[data-exit="full"] .boot-letter-fill {
-  fill: #cfe0ff;
-  transition: fill 0.5s ease;
-}
-.boot-screen[data-exit="full"] .boot-letter-stroke {
-  stroke: #eaf2ff;
-  transition: stroke 0.5s ease;
-}
-.boot-screen[data-exit="full"] .boot-letters {
-  animation: boot-land 1.15s cubic-bezier(0.6, 0.02, 0.32, 1) 0.42s both;
-}
-@keyframes boot-land {
-  0% { transform: translateY(0) scale(1); opacity: 1; }
-  62% { transform: translateY(28vh) scale(0.52); opacity: 1; }
-  88% { opacity: 1; }
-  100% { transform: translateY(46.5vh) scale(0.16); opacity: 0; }
+@keyframes boot-bg-in {
+  from { opacity: 0; }
 }
 
 .boot-stage {
-  width: min(760px, 86vw);
+  width: var(--wm-w);
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* ---- VARIABLE 字母（描边追随真实进度，每字母 12.5% 区间） ---- */
-.boot-letters { display: flex; gap: 4px; }
-.boot-letter { width: 64px; height: 88px; overflow: visible; }
-.boot-letter text {
-  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  font-size: 84px;
-  font-weight: 300;
-  letter-spacing: 0;
+/* ---- U-02 字标 ---- */
+.boot-wordmark-wrap {
+  position: relative;
+  width: 100%;
 }
-.boot-letter-fill { fill: #1a1f2e; }
-.boot-letter-stroke {
+.boot-wordmark {
+  display: flex;
+  width: 100%;
+  color: var(--text-primary);
+}
+.boot-wordmark.tone-dark { color: var(--bg-canvas); }
+.boot-wm-letter {
+  flex: 1 1 0;
+  display: block;
+  aspect-ratio: 100 / 120;
+  overflow: visible;
+}
+/* 12% 实心底衬：入场 40ms 级联（delay 由组件 inline 注入），ready 退出时实心化 */
+.boot-wm-underlay {
+  fill: currentColor;
+  fill-rule: evenodd;
+  fill-opacity: 0.12;
+  opacity: 0;
+  animation: boot-underlay-in var(--dur-5) var(--ease-standard) both;
+}
+@keyframes boot-underlay-in {
+  to { opacity: 1; }
+}
+/* 真实进度描边：1.5px 发丝 + non-scaling-stroke（24px 高度仍清晰）；
+   dashoffset 由 JS 逐帧驱动，禁止 CSS 过渡造成假平滑 */
+.boot-wm-draw {
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   fill: none;
-  stroke: #9fc0ff;
-  stroke-width: 1.4;
-  transition: none; /* 描边由 JS 逐帧驱动，禁止 CSS 过渡造成假平滑 */
+  fill-rule: evenodd;
+  transition: none;
 }
 
-/* ---- 进度条（真实进度） ---- */
-.boot-bar {
-  width: 100%;
-  height: 2px;
-  margin-top: 26px;
-  background: rgba(159, 192, 255, 0.12);
-  border-radius: 1px;
-  overflow: hidden;
+/* ---- U-03 胶囊进度条 ---- */
+.boot-capsule-wrap {
+  width: calc(var(--wm-w) * 0.62); /* 字标宽的 62% */
+  margin-top: calc(var(--wm-w) * 0.06); /* 字标下方 6% */
 }
-.boot-bar-fill {
-  height: 100%;
+.boot-capsule {
+  --capsule-h: 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  animation: boot-rise var(--dur-5) var(--ease-standard) 420ms both;
+}
+.boot-capsule-shell {
+  position: relative;
+  flex: 1 1 auto;
+  height: var(--capsule-h);
+  border: 1px solid color-mix(in oklab, var(--text-primary) 25%, transparent);
+  /* 体育场胶囊：圆角精确 = 高度/2 */
+  border-radius: calc(var(--capsule-h) / 2);
+  /* 入场：边框 350ms 弹簧式左→右描画 */
+  animation: boot-capsule-draw 350ms var(--ease-spring) 300ms both;
+}
+@keyframes boot-capsule-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+.boot-capsule-fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 3px; /* 内部 3px 填充轨道 */
+  transform: translateY(-50%);
   width: 0%;
-  background: linear-gradient(90deg, #4f7cff, #9fc0ff);
-  border-radius: 1px;
+  background: var(--text-primary);
+  border-radius: 1.5px;
+  transition: none; /* 宽度由 rAF 平滑值逐帧驱动 */
 }
-.boot-progress-row {
-  width: 100%;
-  margin-top: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font: 12px/1.4 Consolas, "Cascadia Mono", monospace;
-  color: #7f97c4;
-}
-.boot-percent { color: #9fc0ff; font-variant-numeric: tabular-nums; }
-
-/* ---- 日志区（真实文件名与真实操作） ---- */
-.boot-log {
-  width: 100%;
-  margin-top: 22px;
-  min-height: 172px;
-  font: 12px/1.75 Consolas, "Cascadia Mono", monospace;
-  color: #7f97c4;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-}
-.boot-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.boot-line.is-warn { color: #d9b96c; }
-.boot-line.is-error { color: #e07070; }
-.boot-line-latest { color: #dfe7f5; }
-.boot-line-path { color: #54679a; padding-left: 22px; }
-.boot-spinner {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 6px;
-  border: 1.5px solid #54679a;
-  border-top-color: #9fc0ff;
+.boot-capsule-glow {
+  position: absolute;
+  top: 50%;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  transform: translateY(-50%);
   border-radius: 50%;
-  animation: boot-spin 0.8s linear infinite;
-  vertical-align: -1px;
+  /* 前导光点：同色调 80% 透明度（非彩色霓虹） */
+  background: color-mix(in oklab, var(--text-primary) 80%, transparent);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--text-primary) 55%, transparent);
 }
-@keyframes boot-spin { to { transform: rotate(360deg); } }
+.boot-capsule.is-stalled .boot-capsule-glow {
+  animation: boot-glow-wait 2s var(--ease-standard) infinite;
+}
+@keyframes boot-glow-wait {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+/* 端点标记：左点加载期 2s 呼吸；右点 100% 点灯 */
+.boot-capsule-endpoint {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--text-primary);
+}
+.boot-capsule-endpoint.is-left {
+  opacity: 0.4;
+  animation: boot-endpoint-breathe 2s var(--ease-standard) infinite;
+}
+@keyframes boot-endpoint-breathe {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.9; }
+}
+.boot-capsule-endpoint.is-right {
+  opacity: 0.15;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.boot-capsule.is-complete .boot-capsule-endpoint.is-left {
+  animation: none;
+  opacity: 1;
+}
+.boot-capsule.is-complete .boot-capsule-endpoint.is-right {
+  opacity: 1;
+  box-shadow: 0 0 4px color-mix(in oklab, var(--text-primary) 60%, transparent);
+}
+/* 100% 一次性「满格呼吸」：brightness +8%，300ms */
+.boot-capsule.is-breath {
+  animation: boot-capsule-breath 300ms var(--ease-standard);
+}
+@keyframes boot-capsule-breath {
+  from { filter: brightness(1.08); }
+  to { filter: brightness(1); }
+}
+.boot-capsule-pct {
+  flex: none;
+  min-width: 52px;
+  text-align: right;
+  font: var(--fs-12)/1.4 Consolas, "Cascadia Mono", monospace;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 
-/* ---- 实时统计（真实数据） ---- */
-.boot-stats-row {
+/* ---- U-04 文件走马灯 ---- */
+.boot-ticker {
   width: 100%;
-  margin-top: 8px;
-  font: 12px/1.6 Consolas, "Cascadia Mono", monospace;
-  color: #54679a;
+  margin-top: var(--sp-7);
+  /* 入场 650ms 后启动 */
+  animation: boot-rise var(--dur-5) var(--ease-standard) 650ms both;
+}
+@keyframes boot-rise {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.boot-ticker-rowbox {
+  position: relative;
+  height: 22px;
+}
+.boot-ticker-row {
+  position: absolute;
+  inset: 0;
   display: flex;
-  gap: 18px;
+  align-items: center;
+  gap: var(--sp-2);
+  font: var(--fs-12)/1.6 Consolas, "Cascadia Mono", monospace;
+  color: var(--text-secondary);
+}
+.boot-ticker-row[data-level="1"] { color: var(--warn); }
+.boot-ticker-row[data-level="2"] { color: var(--danger); }
+.boot-ticker-row.is-current {
+  animation: boot-ticker-in var(--dur-2) var(--ease-standard) both;
+}
+.boot-ticker-row.is-leaving {
+  animation: boot-ticker-out var(--dur-2) var(--ease-standard) both;
+}
+/* 换行过渡：仅 transform + opacity（无布局属性），120ms */
+@keyframes boot-ticker-in {
+  from { transform: translateY(6px); opacity: 0; }
+}
+@keyframes boot-ticker-out {
+  to { transform: translateY(-6px); opacity: 0; }
+}
+.boot-ticker-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  color: inherit;
+}
+.boot-ticker-icon svg { width: 12px; height: 12px; }
+.boot-arc-spin {
+  transform-origin: 50% 50%;
+  animation: boot-arc-rotate 0.9s linear infinite;
+}
+@keyframes boot-arc-rotate {
+  to { transform: rotate(360deg); }
+}
+.boot-ticker-name {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+.boot-ticker-stallspin {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  display: inline-flex;
+  color: var(--text-secondary);
+}
+.boot-ticker-stallspin svg { width: 8px; height: 8px; }
+.boot-ticker-stallspin .boot-arc-spin { animation-duration: 1.4s; }
+
+/* 三列真实统计（速度 / 剩余项目 / 剩余时间） */
+.boot-ticker-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin-top: var(--sp-2);
+  font: 11px/1.6 Consolas, "Cascadia Mono", monospace;
+  color: var(--text-secondary);
+}
+.boot-ticker-stat {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.boot-ticker-stat b {
+  font-weight: 400;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-/* ---- 完成摘要 ---- */
+/* ---- readyHold 真实摘要（三列小字，无 emoji） ---- */
 .boot-summary {
   width: 100%;
-  margin-top: 14px;
-  font: 13px/1.8 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  color: #9fc0ff;
+  margin-top: var(--sp-4);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  font: var(--fs-12)/1.7 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: var(--text-secondary);
   text-align: center;
-  letter-spacing: 0.06em;
+  animation: boot-rise var(--dur-5) var(--ease-standard) both;
 }
 
 .boot-hint {
-  margin-top: 14px;
-  font: 12px/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  color: #d9b96c;
+  margin-top: var(--sp-4);
+  font: var(--fs-12)/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: var(--warn);
+  animation: boot-rise var(--dur-5) var(--ease-standard) both;
 }
 
 .boot-skip {
@@ -171,7 +290,8 @@
   right: 26px;
   bottom: 22px;
   font: 11px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  color: #54679a;
+  color: var(--text-secondary);
+  opacity: 0.75;
   letter-spacing: 0.08em;
 }
 .boot-denied {
@@ -180,16 +300,112 @@
   bottom: 22%;
   transform: translateX(-50%);
   padding: 8px 18px;
-  border: 1px solid rgba(217, 185, 108, 0.4);
-  border-radius: 8px;
-  background: rgba(20, 18, 10, 0.9);
-  color: #d9b96c;
-  font: 13px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+  border-radius: var(--r-control);
+  background: var(--bg-raised);
+  color: var(--warn);
+  font: var(--fs-13)/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
 }
 
+/* ============================================================
+ * 退出编排（由 data-exit 驱动；时序与 BootScreen.finish 对齐）
+ * ============================================================ */
+
+/* simple：640ms 交叉淡出；none：直通 */
+.boot-screen[data-exit="simple"],
+.boot-screen[data-exit="none"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.boot-screen[data-exit="simple"] { transition: opacity 640ms var(--ease-standard); }
+.boot-screen[data-exit="none"] { transition: none; }
+
+/* full：实心化 → 柔光横扫 → 三段沉降 */
+.boot-screen[data-exit="full"] {
+  background: transparent;
+  pointer-events: none;
+  animation: none;
+  transition: background 0.5s var(--ease-standard) 0.4s;
+}
+/* 走马灯 / 摘要 / 提示 / 跳过角标先淡出 */
+.boot-screen[data-exit="full"] .boot-ticker,
+.boot-screen[data-exit="full"] .boot-summary,
+.boot-screen[data-exit="full"] .boot-hint,
+.boot-screen[data-exit="full"] .boot-skip {
+  opacity: 0;
+  transition: opacity 350ms var(--ease-standard);
+}
+/* ① 字母实心化（12% → 100%），描边淡出 */
+.boot-screen[data-exit="full"] .boot-wm-underlay {
+  fill-opacity: 1;
+  transition: fill-opacity 400ms var(--ease-standard) 100ms;
+}
+.boot-screen[data-exit="full"] .boot-wm-draw {
+  opacity: 0;
+  transition: opacity 300ms var(--ease-standard);
+}
+/* ② 柔白光带左→右横扫 700ms（screen 混合） */
+.boot-screen[data-exit="full"] .boot-wordmark-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -12% -6%;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    color-mix(in oklab, var(--text-primary) 65%, transparent) 50%,
+    transparent 65%
+  );
+  mix-blend-mode: screen;
+  transform: translateX(-130%);
+  animation: boot-sweep 700ms var(--ease-standard) 300ms both;
+  pointer-events: none;
+}
+@keyframes boot-sweep {
+  to { transform: translateX(130%); }
+}
+/* ③ 字标 + 胶囊三段沉降落向任务栏：0.96 → 1.0 → 0（零过冲） */
+.boot-screen[data-exit="full"] .boot-wordmark-wrap,
+.boot-screen[data-exit="full"] .boot-capsule-wrap {
+  animation: boot-sink 1150ms var(--ease-emphasized) 0.5s both;
+}
+@keyframes boot-sink {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  30% { transform: translateY(6vh) scale(0.96); opacity: 1; }
+  55% { transform: translateY(18vh) scale(1); opacity: 1; }
+  100% { transform: translateY(46vh) scale(0); opacity: 0; }
+}
+
+/* ---- reduce-motion：全部编排降级为 ≤80ms 淡入淡出 ---- */
 @media (prefers-reduced-motion: reduce) {
-  .boot-screen { transition: none; }
-  .boot-spinner { animation: none; opacity: 0.6; }
-  .boot-screen[data-exit="full"] .boot-letters { animation: none; opacity: 0; transition: opacity 0.3s ease; }
-  .boot-screen[data-exit="simple"] { transition: none; }
+  .boot-screen,
+  .boot-wm-underlay,
+  .boot-capsule,
+  .boot-capsule-shell,
+  .boot-ticker,
+  .boot-summary,
+  .boot-hint,
+  .boot-ticker-row.is-current,
+  .boot-ticker-row.is-leaving {
+    animation-duration: 80ms;
+    animation-delay: 0ms;
+  }
+  .boot-capsule-endpoint.is-left,
+  .boot-arc-spin,
+  .boot-capsule.is-stalled .boot-capsule-glow,
+  .boot-capsule.is-breath {
+    animation: none;
+  }
+  .boot-screen[data-exit="full"] .boot-wordmark-wrap,
+  .boot-screen[data-exit="full"] .boot-capsule-wrap {
+    animation: none;
+    opacity: 0;
+    transition: opacity 80ms var(--ease-standard);
+  }
+  .boot-screen[data-exit="full"] .boot-wordmark-wrap::after {
+    animation: none;
+    opacity: 0;
+  }
+  .boot-screen[data-exit="simple"] {
+    transition-duration: 80ms;
+  }
 }

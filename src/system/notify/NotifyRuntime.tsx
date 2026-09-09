@@ -10,6 +10,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useI18n } from "../../i18n";
 import { loadSettings } from "../../lib/settings";
 import { isDndActive } from "../../lib/dndSchedule";
+import { onDayRollover } from "../../lib/dayRollover";
 import { pushNotify, setSchedDnd } from "../../state/notifyStore";
 import { ipc } from "../../lib/ipc";
 
@@ -60,12 +61,16 @@ export function NotifyRuntime(): null {
     }
     void tick();
     const timer = window.setInterval(() => void tick(), 60_000);
+    // AI-20 M-90：统一日界事件 —— 跨午夜即时刷新日程勿扰 + 保留策略
+    //（不等下一个 60s tick，跨午夜 DND 日程零延迟翻页）
+    const offRollover = onDayRollover(() => void tick());
 
     return () => {
       stopped = true;
       unlisten?.();
       void unlistenP.then((f) => f()).catch(() => {});
       window.clearInterval(timer);
+      offRollover();
     };
   }, [t]);
 

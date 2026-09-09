@@ -763,6 +763,11 @@ pub fn run() {
             shell::soundnotify::reminder_complete,
             shell::soundnotify::reminder_reschedule,
             shell::soundnotify::reminder_delete,
+            // ---- AI-20 质量门禁与收官组（V-93 偏好搬家 / V-99 依赖诚实声明）----
+            shell::quality::sys_prefs_read,
+            shell::quality::sysdep_probe,
+            // M-85 依赖审计周任务状态
+            shell::sysmaint::dep_audit_status,
         ])
         .build(tauri::generate_context!());
     match app {

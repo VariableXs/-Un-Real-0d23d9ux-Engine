@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { healthCheck, isVisibleInWorkArea, rescueRect } from "../rescue";
 import type { VwmRect, VwmWin } from "../vwm";
 
@@ -66,7 +66,7 @@ describe("V-22 healthCheck", () => {
     ];
     const rep = healthCheck(wins, WA);
     expect(rep.lost).toEqual(["lost-right"]);
-    expect(rep.moved["lost-right"].x).toBe(1920 - 400);
+    expect(rep.moved["lost-right"]!.x).toBe(1920 - 400);
     expect(rep.moved["min-ok"]).toBeUndefined();
   });
   it("全部可见时报告为空（零误判）", () => {

@@ -248,7 +248,7 @@ export default function WidgetBoard({ onClose }: BoardProps): ReactElement {
         <button type="button" className="wgt-handle-btn" title={t.add} onClick={() => setAddOpen((v) => !v)}>
           <Plus size={14} />
         </button>
-        <button type="button" className="wgt-handle-btn" title={t.board} onClick={onClose}>
+        <button type="button" className="wgt-handle-btn" title={t.board} aria-label={t.board} onClick={onClose}>
           <X size={14} />
         </button>
       </div>
