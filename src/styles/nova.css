@@ -1,0 +1,414 @@
+/* ==========================================================================
+   NOVA-200（新星计划）· 新星样式层（W-001..W-200）
+   --------------------------------------------------------------------------
+   纪律（S0 地基 · AI-01 路代建，十六路共享）：
+   - 类名一律 `nova-` 前缀，变量一律 `--nova-*` 前缀；与 `singu-` 零碰撞；
+   - 色彩一律走 tokens.css 语义变量（禁止裸色值；数据色温经 --nova-hue
+     数值变量组合 oklch 表达，随主题明暗自适应）；
+   - 全部动效收敛于 prefers-reduced-motion + [data-reduce-motion="true"] 双闸，
+     safeMode / static（data-safe-mode / data-static-mode）一并静止；
+   - 零侵入：只新增 .nova-* 类，不改写任何既有选择器结构。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   0. 宿主层：#nova-layer（新星域模块浮层/指示器的统一父节点）
+   -------------------------------------------------------------------------- */
+
+#nova-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: var(--font-ui, inherit);
+}
+
+/* 交互产出物（面板/按钮/星点/戳）单独恢复指针 */
+#nova-layer .nova-panel,
+#nova-layer .nova-btn,
+#nova-layer .nova-star,
+#nova-layer .nova-stamp,
+#nova-layer .nova-footprints,
+#nova-layer .nova-constellation {
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   1. 共享基元：面板 / 按钮 / 空态 / 提示行（各域模块复用）
+   -------------------------------------------------------------------------- */
+
+.nova-panel {
+  position: absolute;
+  min-width: 260px;
+  max-width: min(440px, 90vw);
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  backdrop-filter: blur(18px) saturate(1.2);
+  scrollbar-width: thin;
+}
+
+.nova-panel-title {
+  font: 600 11px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.nova-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.nova-btn {
+  appearance: none;
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-radius: var(--r-control);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard), border-color var(--dur-2) var(--ease-standard);
+}
+
+.nova-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.nova-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* HUD 微行（工程腔自报：启动预报 / 跳映自报 / 源流戳链），全英文纪律 */
+.nova-hudline {
+  position: absolute;
+  font: 500 11px/1.4 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--dur-5) var(--ease-standard), transform var(--dur-5) var(--ease-standard);
+  white-space: nowrap;
+}
+
+.nova-hudline.nova-show {
+  opacity: 0.92;
+  transform: translateY(0);
+}
+
+/* --------------------------------------------------------------------------
+   2. 域1 启动剧场：温度制式 / 预报 / 跳映 / 接力 / 足迹 / 星座 / 情绪 / 源流戳
+   -------------------------------------------------------------------------- */
+
+/* W-001 点火制式：data-nova-regime 由真实电源状态判定后写入 <html>；
+   熔炉 2.4s 全屏辉光升温、余烬 0.9s 短促亮起、无点火零产出。 */
+.nova-ignite-veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 60%, var(--accent-soft), transparent 70%);
+  opacity: 0;
+}
+
+[data-nova-regime="furnace"] .nova-ignite-veil {
+  animation: nova-furnace 2.4s var(--ease-emphasized) forwards;
+}
+
+[data-nova-regime="ember"] .nova-ignite-veil {
+  animation: nova-furnace 0.9s var(--ease-standard) forwards;
+}
+
+@keyframes nova-furnace {
+  0% { opacity: 0; transform: scale(0.96); }
+  55% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+
+/* W-002 启动预报行：胶囊条旁 HUD 微行 */
+.nova-forecast {
+  left: 50%;
+  bottom: 18%;
+  translate: -50% 0;
+}
+
+/* W-003 跳映自报行 */
+.nova-skip-report {
+  left: 50%;
+  bottom: 14%;
+  translate: -50% 0;
+}
+
+/* W-005 多屏顺次点火：各屏接力光幕（v0 为本屏代理元素） */
+.nova-cascade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--accent-soft), transparent 30%);
+  opacity: 0;
+}
+
+.nova-cascade.nova-ignite {
+  animation: nova-cascade-glow 480ms var(--ease-standard) forwards;
+}
+
+@keyframes nova-cascade-glow {
+  0% { opacity: 0; }
+  40% { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
+/* W-006 启动足迹墙：20 枚光点行，耗时→色温（--nova-hue 数值驱动） */
+.nova-footprints {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.nova-footprint-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 20px;
+}
+
+.nova-footprint-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+  background: oklch(0.74 0.1 var(--nova-hue, 260));
+  box-shadow: 0 0 6px oklch(0.74 0.1 var(--nova-hue, 260) / 0.55);
+  transition: box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.nova-footprint-row:hover .nova-footprint-dot {
+  box-shadow: 0 0 12px oklch(0.74 0.1 var(--nova-hue, 260) / 0.9);
+}
+
+.nova-footprint-ms {
+  font: 500 11px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+/* W-008 品牌星座：字标星点可交互层 */
+.nova-constellation {
+  position: absolute;
+  inset: 0;
+}
+
+.nova-star {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  cursor: pointer;
+  transition: transform var(--dur-3) var(--ease-spring), box-shadow var(--dur-3) var(--ease-standard);
+}
+
+.nova-star:hover,
+.nova-star.nova-star-active {
+  transform: scale(1.35);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+.nova-constellation-links {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+}
+
+.nova-star-card {
+  position: absolute;
+  min-width: 200px;
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-4);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nova-star-card .nova-star-id {
+  font: 600 10px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+/* W-011 情绪测温：data-nova-mood 写在 <html>（安抚版抑制新星装饰层并素净化；
+   检视版以描边提示「先自检再剧场」。自检结果永不掩盖 —— 仅观感层。） */
+[data-nova-mood="soothing"] .nova-constellation,
+[data-nova-mood="soothing"] .nova-milestone-pip {
+  display: none;
+}
+
+[data-nova-mood="soothing"] #nova-layer {
+  filter: grayscale(1) brightness(0.94);
+}
+
+[data-nova-mood="inspect"] #nova-layer {
+  outline: 1px solid var(--warn);
+  outline-offset: -1px;
+}
+
+[data-nova-mood] .nova-recovered-line {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  translate: -50% 0;
+}
+
+/* W-011 检视版押后提示 / W-009 里程碑复述行 / W-010 微振替身（HUD 定位） */
+.nova-inspect-line {
+  left: 50%;
+  bottom: 22%;
+  translate: -50% 0;
+}
+
+.nova-milestones {
+  left: 50%;
+  bottom: 26%;
+  translate: -50% 0;
+}
+
+.nova-rite-haptic {
+  right: 16px;
+  bottom: 26%;
+  font-size: 16px;
+}
+
+/* W-012 源流戳：16px 半透明 + 悬停判定链 */
+.nova-stamp {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font: 600 10px/1.4 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.16em;
+  opacity: 0.55;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+
+.nova-stamp:hover {
+  opacity: 1;
+}
+
+.nova-stamp-chain {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 220px;
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  color: var(--text-primary);
+  font: 400 11px/1.5 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  white-space: pre-line;
+  display: none;
+}
+
+.nova-stamp:hover .nova-stamp-chain,
+.nova-stamp:focus-within .nova-stamp-chain {
+  display: block;
+}
+
+/* dev 模式戳常显 */
+[data-nova-dev="true"] .nova-stamp {
+  opacity: 1;
+}
+
+/* W-009 里程碑微音伴随的进度点脉冲（视觉对位，音为主） */
+.nova-milestone-pip {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: nova-pip 360ms var(--ease-standard) forwards;
+}
+
+@keyframes nova-pip {
+  0% { opacity: 0.9; transform: scale(0.6); }
+  100% { opacity: 0; transform: scale(2.4); }
+}
+
+/* --------------------------------------------------------------------------
+   3. 降级链：reduce-motion / safeMode / static 全静止
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .nova-ignite-veil,
+  .nova-cascade.nova-ignite,
+  .nova-milestone-pip {
+    animation: none;
+    opacity: 0;
+  }
+
+  .nova-hudline,
+  .nova-star,
+  .nova-footprint-dot,
+  .nova-btn {
+    transition: none;
+  }
+}
+
+[data-reduce-motion="true"] .nova-ignite-veil,
+[data-reduce-motion="true"] .nova-cascade.nova-ignite,
+[data-reduce-motion="true"] .nova-milestone-pip,
+[data-safe-mode="true"] .nova-ignite-veil,
+[data-safe-mode="true"] .nova-cascade.nova-ignite,
+[data-safe-mode="true"] .nova-milestone-pip,
+[data-static-mode="true"] .nova-ignite-veil,
+[data-static-mode="true"] .nova-cascade.nova-ignite,
+[data-static-mode="true"] .nova-milestone-pip {
+  animation: none;
+  opacity: 0;
+}
+
+[data-reduce-motion="true"] .nova-hudline,
+[data-reduce-motion="true"] .nova-star,
+[data-reduce-motion="true"] .nova-footprint-dot,
+[data-reduce-motion="true"] .nova-btn,
+[data-safe-mode="true"] .nova-hudline,
+[data-safe-mode="true"] .nova-star,
+[data-safe-mode="true"] .nova-footprint-dot,
+[data-safe-mode="true"] .nova-btn,
+[data-static-mode="true"] .nova-hudline,
+[data-static-mode="true"] .nova-star,
+[data-static-mode="true"] .nova-footprint-dot,
+[data-static-mode="true"] .nova-btn {
+  transition: none;
+}
