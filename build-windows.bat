@@ -83,6 +83,19 @@ set "BUNDLE_ARGS=build --bundles nsis"
 if /I "%MODE%"=="msi" set "BUNDLE_ARGS=build --bundles nsis,msi"
 if /I "%MODE%"=="demo" set "BUNDLE_ARGS=build --bundles none"
 
+REM ---- real-machine fix: stop repo-local instances before bundling ----
+REM If target\release\variable.exe is held by a running instance, cargo fails
+REM to replace the exe at link time with "Access denied (os error 5)".
+REM The helper only closes instances whose exe lives inside this repo
+REM (target\release, dist-portable); it never touches installs elsewhere.
+REM NOTE: keep this file ASCII-only - non-ASCII comments desync cmd parsing.
+echo [..] stopping Variable instances from this repo ...
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\stop-variable.ps1
+if errorlevel 1 (
+  echo [ERROR] variable.exe is still locked by a running process. Close Variable and retry.
+  exit /b 1
+)
+
 echo [..] running tauri %BUNDLE_ARGS% ...
 call npx tauri %BUNDLE_ARGS%
 if errorlevel 1 (

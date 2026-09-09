@@ -40,12 +40,13 @@ fn build_legacy_db(v: i32) -> rusqlite::Connection {
         tx.pragma_update(None, "user_version", ver).unwrap();
     }
     tx.commit().unwrap();
-    // 注入 v 版典型数据
+    // 注入 v 版典型数据（与生产写入同构：settings.updated_at NOT NULL 无默认）
+    let now = db::now_ms();
     for (k, val) in legacy_kv(v) {
         conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            [k, val],
+            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            rusqlite::params![k, val, now],
         )
         .unwrap();
     }
@@ -80,9 +81,9 @@ fn migration_matrix_every_legacy_version_upgrades() {
 
         // ③ 新结构可用：settings 表可写新键（新版键写入无冲突）
         conn.execute(
-            "INSERT INTO settings (key, value) VALUES ('ai20NewKey', '1')
+            "INSERT INTO settings (key, value, updated_at) VALUES ('ai20NewKey', '1', ?1)
              ON CONFLICT(key) DO UPDATE SET value = '1'",
-            [],
+            rusqlite::params![db::now_ms()],
         )
         .unwrap();
 

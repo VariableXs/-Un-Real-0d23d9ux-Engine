@@ -417,6 +417,8 @@ mod tests {
 
     #[test]
     fn record_and_dashboard_roundtrip() {
+        // 全局隐身态是进程级单例：与 incognito 测试共享 TEST_SERIAL 串行
+        let _guard = crate::shell::incognito::TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (st, tmp) = temp_state("dash");
         // 隐身关闭
         crate::shell::incognito::reset_for_tests();
@@ -448,6 +450,8 @@ mod tests {
 
     #[test]
     fn dashboard_aggregates() {
+        // 全局隐身态是进程级单例：与 incognito 测试共享 TEST_SERIAL 串行
+        let _guard = crate::shell::incognito::TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (st, tmp) = temp_state("agg");
         crate::shell::incognito::reset_for_tests();
         let mut batch = Vec::new();
@@ -468,6 +472,8 @@ mod tests {
 
     #[test]
     fn burn_removes_everything() {
+        // 全局隐身态是进程级单例：与 incognito 测试共享 TEST_SERIAL 串行
+        let _guard = crate::shell::incognito::TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let (st, tmp) = temp_state("burn");
         crate::shell::incognito::reset_for_tests();
         ins_record_inner(&st, vec![ev("foreground", "a", 1, "", true)]).unwrap();
