@@ -32,6 +32,21 @@ interface DemoSnapshot {
 
 let snapshot: DemoSnapshot | null = null;
 
+/** 读标记里的持久快照（被强杀后自愈用）；损坏/旧格式一律视为无快照。 */
+function readPersistedSnapshot(): DemoSnapshot | null {
+  try {
+    const raw = localStorage.getItem(DEMO_MODE_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<DemoSnapshot>;
+    if (typeof s.dnd !== "boolean" || typeof s.trailEnabled !== "boolean" || typeof s.rippleEnabled !== "boolean") {
+      return null;
+    }
+    return s as DemoSnapshot;
+  } catch {
+    return null;
+  }
+}
+
 /** 当前是否处于演示模式（模块态；面板/托盘共用）。 */
 export function demoModeActive(): boolean {
   return snapshot !== null;
@@ -52,7 +67,7 @@ export async function toggleDemoMode(): Promise<void> {
   };
   snapshot = prev;
   try {
-    localStorage.setItem(DEMO_MODE_KEY, "1");
+    localStorage.setItem(DEMO_MODE_KEY, JSON.stringify(prev));
   } catch {
     /* ignore */
   }
@@ -102,19 +117,62 @@ export async function exitDemoMode(): Promise<void> {
   pushToast("info", useI18nStatic("v91ExitToast"), useI18nStatic("v91ExitDetail"));
 }
 
-/** 异常退出钩子：环境被杀/刷新时尽力恢复（keepawake 会话级自动失效双保险）。 */
-export function installDemoModeExitHook(): void {
-  window.addEventListener("beforeunload", () => {
-    if (snapshot) {
-      notifyStore.setState({ dnd: snapshot.dnd });
-      try {
-        localStorage.removeItem(DEMO_MODE_KEY);
-      } catch {
-        /* ignore */
-      }
-      void ipc11.keepawakeSet(false, false).catch(() => {});
-    }
+/** 按快照尽力恢复（beforeunload / 启动自愈共用；异步链路 fire-and-forget）。 */
+async function restoreFromSnapshot(prev: DemoSnapshot): Promise<void> {
+  notifyStore.setState({ dnd: prev.dnd });
+  try {
+    await ipc11.keepawakeSet(false, false);
+  } catch {
+    /* keepawake 会话级，进程退出自动失效 */
+  }
+  const settings = await loadSettings();
+  await saveSetting("inputFeel", {
+    ...settings.inputFeel,
+    trailEnabled: prev.trailEnabled,
+    rippleEnabled: prev.rippleEnabled,
   });
+}
+
+/** 异常退出钩子：环境被杀/刷新时尽力恢复全部状态（keepawake 会话级自动失效双保险；
+ *  saveSetting 若未及落盘，标记留存 → 下次启动 recoverDemoModeOnBoot 兜底）。
+ *  幂等：重复安装 no-op（挂载点可能反复挂载/卸载）。 */
+let exitHookInstalled = false;
+export function installDemoModeExitHook(): void {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  window.addEventListener("beforeunload", () => {
+    if (!snapshot) return;
+    const prev = snapshot;
+    snapshot = null;
+    try {
+      localStorage.removeItem(DEMO_MODE_KEY);
+    } catch {
+      /* ignore */
+    }
+    void restoreFromSnapshot(prev).catch(() => {});
+  });
+}
+
+/** 启动自愈：上次会话处于演示模式且未能正常退出（进程被杀）时，
+ *  从持久标记恢复用户原状并清除标记（幂等；无标记 no-op）。
+ *  红线（化境 V-91）：进程被杀场景状态零残留。 */
+export async function recoverDemoModeOnBoot(): Promise<void> {
+  if (snapshot) return; // 本会话已在演示中（正常重载场景由 beforeunload 处理）
+  const prev = readPersistedSnapshot();
+  if (!prev) {
+    try {
+      localStorage.removeItem(DEMO_MODE_KEY); // 损坏数据如实清除
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  try {
+    localStorage.removeItem(DEMO_MODE_KEY);
+  } catch {
+    /* ignore */
+  }
+  await restoreFromSnapshot(prev).catch(() => {});
 }
 
 // ---------- 快捷面板按钮 ----------

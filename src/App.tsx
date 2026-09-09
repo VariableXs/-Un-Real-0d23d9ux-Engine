@@ -39,6 +39,7 @@ import { SettingsModal } from "./features/settings/SettingsModal";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
+import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
 import { OobeGate } from "./features/oobe/OobeWizard";
 
 export type AppEntryType = "desktop" | AppMode;
@@ -119,6 +120,14 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     });
     initCompatLayer();
   }, [appType]);
+
+  // AI-20 V-91 演示模式：退出钩子（beforeunload 尽力恢复）+ 启动自愈
+  // （上次会话进程被杀时从持久标记恢复用户原状）。两者均幂等。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    installDemoModeExitHook();
+    void recoverDemoModeOnBoot();
+  }, []);
 
   // ---------- cross-window settings sync ----------
   // 其他窗口（软件窗口设置页 / 桌面设置）改了设置并落库后，后端广播
