@@ -14,6 +14,23 @@ import { embedStateStore } from "./embedState";
 import { detectGesture, detectShake, computeGuide } from "./winfeel";
 // AI-01：Z-36 菜单模型 + 逐应用透明度记忆 + M-06 挂起登记
 import { appOpacityOf, rememberAppOpacity, setSuspended, suspensionStore, winFeelMenuItems } from "./winfeelMenu";
+// AI-02 窗口编排组接线：V-30 拖拽取消 / V-23 几何提示 / V-29 色带 / V-21 系统菜单 /
+// V-24 多选编组 / N-04 画中画 / V-27 嵌入焦点联动（视觉态）
+import { dragBegin, dragCancelByEsc, dragSettle } from "./dragCancel";
+import { aspectSize, formatSizeHint, sizeHintFor } from "./sizeHint";
+import { bandFor, bandStyle, bandVersionStore } from "./colorBand";
+import { nudgeBegin, nudgeStep, systemMenuItems, type NudgeState, type SystemMenuItemId } from "./systemMenu";
+import {
+  clearMultiSelect,
+  multiSelected,
+  snapGroupRects,
+  subscribeMultiSelect,
+  toggleSelect,
+  translateGroup,
+  type MultiSelectOp,
+} from "./multiselect";
+import { isPip, pipEnter, pipExit, pipMove } from "./pip";
+import { noteEmbedInteraction, useEmbedVisualActive } from "./embedFocusLink";
 import {
   activateVwmTab,
   applyLayoutSnapshot,
@@ -126,10 +143,136 @@ export function VirtualWindowFrame(props: {
     window.setTimeout(() => setSnapping(false), 240);
   };
 
+  // ---------- AI-02 接线状态 ----------
+  // V-23：调整大小时光标旁实时 W×H（Shift 等比时强调显示）
+  const [rzHint, setRzHint] = useState<{ x: number; y: number; text: string; aspect: boolean } | null>(null);
+  // V-24：本窗口是否在多选编组中（订阅选择集，边框强调即时刷新）
+  const [inSelection, setInSelection] = useState(false);
+  useEffect(() => subscribeMultiSelect(() => setInSelection(multiSelected().includes(win.id))), [win.id]);
+  // V-21：经典系统菜单（Alt+Space）与键盘微调模式
+  const [sysMenu, setSysMenu] = useState<{ x: number; y: number } | null>(null);
+  const sysMenuRef = useRef<HTMLDivElement | null>(null);
+  const [nudge, setNudge] = useState<NudgeState | null>(null);
+  // V-27：嵌入窗口视觉激活（真实聚焦让位后仍表达「我在操作谁」）
+  const embedActive = useEmbedVisualActive(win.id);
+  // V-29：色带（bandVersionStore 订阅使编排中心改动即时生效）
+  const bandV = useStore(bandVersionStore, (s) => s.v);
+  void bandV;
+  const band = bandFor(win.app);
+
+  // V-21：Alt+Space 呼出经典系统菜单（仅聚焦窗口；先于全局 Esc/系统语义消费）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && e.code === "Space" && props.focused) {
+        e.preventDefault();
+        setSysMenu({ x: win.x + 6, y: win.y + 46 });
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [props.focused, win.x, win.y]);
+
+  // V-21 系统菜单外点关闭 / Esc 关闭（与 Z-36 右键菜单同模式）
+  useEffect(() => {
+    if (!sysMenu) return;
+    const close = (ev: MouseEvent): void => {
+      if (sysMenuRef.current?.contains(ev.target as Node)) return;
+      setSysMenu(null);
+    };
+    const onKey = (ev: KeyboardEvent): void => {
+      if (ev.key === "Escape") setSysMenu(null);
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [sysMenu]);
+
+  // V-21 键盘微调：方向键 1px / Shift+方向 10px；Enter 确认 / Esc 退出（保持当前几何）
+  useEffect(() => {
+    if (!nudge) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const dir = e.key === "ArrowLeft" ? "left" : e.key === "ArrowRight" ? "right" : e.key === "ArrowUp" ? "up" : e.key === "ArrowDown" ? "down" : null;
+      if (dir) {
+        e.preventDefault();
+        const next = nudgeStep(nudge, dir, e.shiftKey);
+        setNudge(next);
+        if (nudge.mode === "move") moveVwmWin(win.id, next.rect.x, next.rect.y);
+        else resizeVwmWin(win.id, next.rect);
+        setRzHint({
+          x: win.x + win.w / 2 - 40,
+          y: win.y + 46,
+          text: nudge.mode === "move" ? `${Math.round(next.rect.x)}, ${Math.round(next.rect.y)}` : formatSizeHint(next.rect.w, next.rect.h),
+          aspect: false,
+        });
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setNudge(null);
+        setRzHint(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [nudge, win.id, win.x, win.y, win.w]);
+
+  // V-21 系统菜单动作（还原/移动/大小/最小化/最大化/关闭）
+  const onSystemMenuItem = (id: SystemMenuItemId): void => {
+    if (id === "restore") {
+      if (win.state === "max") toggleMaxVwmWin(win.id);
+    } else if (id === "move") {
+      setNudge(nudgeBegin("move", { x: win.x, y: win.y, w: win.w, h: win.h }));
+    } else if (id === "size") {
+      setNudge(nudgeBegin("size", { x: win.x, y: win.y, w: win.w, h: win.h }));
+    } else if (id === "minimize") {
+      minimizeVwmWin(win.id);
+    } else if (id === "maximize") {
+      if (win.state !== "max") toggleMaxVwmWin(win.id);
+    } else if (id === "close") {
+      closeVwmTab(win.id);
+    }
+  };
+
+  // N-04 画中画：进入（置顶小窗 + 记忆档透明度）/ 退出（回原位 + 复原透明度与置顶）
+  const togglePip = (): void => {
+    setMenu(null);
+    if (isPip(win.id)) {
+      const back = pipExit(win.id);
+      setVwmOpacity(win.id, 1);
+      setVwmTopmost(win.id, false);
+      if (back) {
+        playSnap();
+        resizeVwmWin(win.id, back);
+      }
+      return;
+    }
+    const wa = vwmStore.getState().workArea;
+    const r = pipEnter({ winId: win.id, app: win.app, tier: 1, rect: { x: win.x, y: win.y, w: win.w, h: win.h } }, wa);
+    if (!r.ok || !r.state) {
+      pushToast("error", title, r.reason ?? "");
+      return;
+    }
+    playSnap();
+    setVwmTopmost(win.id, true);
+    setVwmOpacity(win.id, r.state.opacity / 100);
+    resizeVwmWin(win.id, r.state.rect);
+  };
+
   // ---------- 标题栏拖拽 ----------
   const onTitlePointerDown = (e: React.PointerEvent): void => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest(".vwm-lights")) return;
+    // V-24：Ctrl+点击标题栏 = 多选切换（不进入拖拽；普通点击清空编组退出）
+    if (e.ctrlKey) {
+      pointerFocusVwm(win.id);
+      toggleSelect(win.id, true);
+      return;
+    }
+    if (multiSelected().length > 0) clearMultiSelect();
     pointerFocusVwm(win.id);
     const s0 = vwmStore.getState();
     const wa = s0.workArea;
@@ -159,6 +302,21 @@ export function VirtualWindowFrame(props: {
     // AI-01 M-05：边缘摆渡节流（左右缘停留 700ms 触发一次）
     let ferryTimer: number | null = null;
     let ferryDir: "left" | "right" | null = null;
+    // V-30 拖拽会话：记录起点（Esc 回弹目标）——还原后的最新几何为准
+    {
+      const fresh = vwmStore.getState().wins.find((x) => x.id === win.id);
+      if (fresh) dragBegin(win.id, { x: fresh.x, y: fresh.y, w: fresh.w, h: fresh.h });
+    }
+    // V-24 编组拖拽：捕获组内成员起点几何（整组平移保持相对位置）
+    const selAtStart = multiSelected().includes(win.id) ? multiSelected() : [];
+    const groupStart: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    if (selAtStart.length >= 2) {
+      const s = vwmStore.getState();
+      for (const id of selAtStart) {
+        const m = s.wins.find((x) => x.id === id);
+        if (m) groupStart[id] = { x: m.x, y: m.y, w: m.w, h: m.h };
+      }
+    }
 
     const onMove = (ev: PointerEvent): void => {
       if (!dragStarted && !isDragStart(ev.clientX - startXY.x, ev.clientY - startXY.y, liveDragThreshold(), ev.pointerType)) {
@@ -190,6 +348,19 @@ export function VirtualWindowFrame(props: {
         setVwmGuides(null);
       }
       moveVwmWin(win.id, mx, my);
+      // V-24：编组拖拽——其余成员按相同位移平移（相对位置误差 0px）
+      if (selAtStart.length >= 2 && groupStart[win.id]) {
+        const dx = mx - groupStart[win.id]!.x;
+        const dy = my - groupStart[win.id]!.y;
+        const ops: MultiSelectOp[] = selAtStart
+          .filter((id) => groupStart[id])
+          .map((id) => ({ winId: id, rect: groupStart[id]! }));
+        const next = translateGroup(ops, dx, dy);
+        for (const id of selAtStart) {
+          if (id === win.id || !next[id]) continue;
+          moveVwmWin(id, next[id]!.x, next[id]!.y);
+        }
+      }
       // AI-01 M-01：摇晃采样（≤96 个样本）
       shakeSamples.push({ x: ev.clientX, t: Date.now() });
       if (shakeSamples.length > 96) shakeSamples.shift();
@@ -216,12 +387,32 @@ export function VirtualWindowFrame(props: {
         }
       }
     };
+    // V-30：拖拽进行中 Esc = 取消本次拖拽，回弹到起点（先于全局 Esc 语义消费）
+    const onDragEsc = (ev: KeyboardEvent): void => {
+      if (ev.key !== "Escape") return;
+      const r = dragCancelByEsc();
+      if (!r) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (ferryTimer !== null) {
+        window.clearTimeout(ferryTimer);
+        ferryTimer = null;
+      }
+      setVwmGuides(null);
+      setVwmSnapPreview(null);
+      playSnap(); // 复用贴靠滑入过渡承担 150ms spring 回弹
+      moveVwmWin(r.winId, r.rect.x, r.rect.y);
+      setDragging(false);
+      cleanup();
+    };
     const cleanup = (): void => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("keydown", onDragEsc, true);
     };
     const onUp = (ev?: PointerEvent): void => {
+      dragSettle();
       if (ferryTimer !== null) {
         window.clearTimeout(ferryTimer);
         ferryTimer = null;
@@ -235,8 +426,18 @@ export function VirtualWindowFrame(props: {
       }
       if (pendingZone) {
         playSnap();
-        if (pendingZone === "up") toggleMaxVwmWin(win.id);
-        else snapVwmRect(win.id, snapZoneForVwm(pendingZone, vwmStore.getState().workArea));
+        const zoneRect = snapZoneForVwm(pendingZone, vwmStore.getState().workArea);
+        if (selAtStart.length >= 2 && groupStart[win.id]) {
+          // V-24 组贴靠：全部成员落位目标区（Windows 组贴靠语义）
+          const ops: MultiSelectOp[] = selAtStart
+            .filter((id) => groupStart[id])
+            .map((id) => ({ winId: id, rect: groupStart[id]! }));
+          const rects = snapGroupRects(ops, zoneRect);
+          for (const id of selAtStart) {
+            if (rects[id]) snapVwmRect(id, rects[id]!);
+          }
+        } else if (pendingZone === "up") toggleMaxVwmWin(win.id);
+        else snapVwmRect(win.id, zoneRect);
       } else if (ev && tabsEnabled()) {
         // 批次W-5 标签页化：拖到同应用另一窗口标题栏上松手 → 合并为标签组
         const el = document.elementFromPoint(ev.clientX, ev.clientY);
@@ -248,6 +449,15 @@ export function VirtualWindowFrame(props: {
           if (target && target.app === win.app) groupVwmWins(win.id, targetId);
         }
       }
+      // N-04：PiP 窗口拖动结束 → 角落磁吸（8px）并回写档位记忆
+      if (isPip(win.id)) {
+        const s = vwmStore.getState();
+        const w = s.wins.find((x) => x.id === win.id);
+        if (w) {
+          const st = pipMove(win.id, w.x, w.y, s.workArea);
+          if (st) moveVwmWin(win.id, st.rect.x, st.rect.y);
+        }
+      }
       settleVwmWin(win.id);
       setVwmSnapPreview(null);
       setDragging(false);
@@ -256,6 +466,7 @@ export function VirtualWindowFrame(props: {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+    window.addEventListener("keydown", onDragEsc, true);
   };
 
   // ---------- 八向缩放 ----------
@@ -278,11 +489,21 @@ export function VirtualWindowFrame(props: {
         wh = Math.max(MIN_H, start.wh - dy);
         wy = start.wy + (start.wh - wh);
       }
+      // V-23：Shift 等比缩放（以拖动起点宽高比锁定，主维度推另一维度）
+      if (ev.shiftKey) {
+        const a = aspectSize(start.ww, start.wh, ww);
+        ww = a.w;
+        wh = a.h;
+      }
       resizeVwmWin(win.id, { x: wx, y: wy, w: ww, h: wh });
+      // V-23：光标旁实时 W×H 提示（等宽字体；80ms 跟随由 CSS transition 承担）
+      const hint = sizeHintFor({ w: start.ww, h: start.wh }, { w: ww, h: wh }, ev.shiftKey);
+      setRzHint({ x: ev.clientX + 16, y: ev.clientY + 20, text: formatSizeHint(hint.w, hint.h), aspect: hint.aspect });
     };
     const onUp = (): void => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      setRzHint(null);
       settleVwmWin(win.id);
     };
     window.addEventListener("pointermove", onMove);
@@ -416,7 +637,7 @@ export function VirtualWindowFrame(props: {
 
   return (
     <div
-      className={`vwm-window${props.focused ? " focused" : ""}${win.minimized && !props.flying ? " minimized" : ""}${maximized ? " maximized" : ""}${dragging ? " dragging" : ""}${snapping ? " snapping" : ""}${props.closing ? " closing" : ""}${props.flying ? " flying" : ""}`}
+      className={`vwm-window${props.focused ? " focused" : ""}${win.minimized && !props.flying ? " minimized" : ""}${maximized ? " maximized" : ""}${dragging ? " dragging" : ""}${snapping ? " snapping" : ""}${props.closing ? " closing" : ""}${props.flying ? " flying" : ""}${inSelection ? " selected" : ""}`}
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: props.zIndex, opacity: win.opacity < 1 ? win.opacity : undefined }}
       onPointerDown={() => {
         pointerFocusVwm(win.id);
@@ -427,7 +648,7 @@ export function VirtualWindowFrame(props: {
       data-winid={win.id}
     >
       <div
-        className="vwm-titlebar"
+        className={`vwm-titlebar${embedActive && !props.focused ? " embed-active" : ""}`}
         data-winid={win.id}
         onPointerDown={(e) => {
           onTitlePointerDown(e);
@@ -441,6 +662,8 @@ export function VirtualWindowFrame(props: {
           setMenu({ x: e.clientX, y: e.clientY });
         }}
       >
+        {/* V-29 窗口色带（覆盖绘制，不占标题栏布局高度） */}
+        {band && <span className="vwm-colorband" aria-hidden style={bandStyle(band)} />}
         <span className="vwm-app-dot" aria-hidden style={{ background: appAccent(win.app) }} />
         <span className="vwm-title">{title}</span>
         {/* AI-01 M-04：未响应琥珀色徽标（环境不替应用做决定，仅提供选项） */}
@@ -536,7 +759,67 @@ export function VirtualWindowFrame(props: {
         </div>
       )}
 
-      <div className="vwm-content">{props.children}</div>
+      {/* V-27：内容区交互观测（嵌入占位/非原生内容场景；原生子窗口覆盖时不触发，由真实聚焦语义接管） */}
+      <div
+        className="vwm-content"
+        onPointerDownCapture={() => {
+          if (isTpApp(win.app)) noteEmbedInteraction(win.id);
+        }}
+      >
+        {props.children}
+      </div>
+
+      {/* V-23：调整大小 / V-21 键盘微调的实时几何提示（光标旁等宽 W×H） */}
+      {rzHint && (
+        <div
+          className={`vwm-sizehint${rzHint.aspect ? " aspect" : ""}`}
+          aria-hidden
+          style={{ left: rzHint.x, top: rzHint.y }}
+        >
+          {rzHint.text}
+        </div>
+      )}
+
+      {/* V-21 经典系统菜单（Alt+Space）：还原/移动/大小/最小化/最大化/关闭 + 键盘微调 */}
+      {sysMenu && (
+        <div
+          ref={sysMenuRef}
+          className="vwm-sysmenu"
+          role="menu"
+          style={{ left: sysMenu.x, top: sysMenu.y }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {systemMenuItems(win.state === "max" ? "max" : win.minimized ? "minimized" : "normal").map((it) => (
+            <button
+              key={it.id}
+              type="button"
+              role="menuitem"
+              className="vwm-sysmenu-item"
+              disabled={it.disabled}
+              onClick={() => {
+                setSysMenu(null);
+                onSystemMenuItem(it.id);
+              }}
+            >
+              {t(
+                it.id === "restore"
+                  ? "winMenuRestore"
+                  : it.id === "move"
+                    ? "winMenuMove"
+                    : it.id === "size"
+                      ? "winMenuSize"
+                      : it.id === "minimize"
+                        ? "winMenuMinimize"
+                        : it.id === "maximize"
+                          ? "winMenuMaximize"
+                          : "winMenuClose",
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* N-04 画中画与 V-21 系统菜单见上方对应区块；此处仅保留右键菜单 */}
 
       {/* AI-01 Z-36 标题栏右键菜单：卷帘 / 置顶 / 挂起 / 透明度 / 布局快照 */}
       {menu && (
@@ -560,6 +843,10 @@ export function VirtualWindowFrame(props: {
               {t(it.labelKey)}
             </button>
           ))}
+          {/* N-04 画中画：进入（置顶小窗 + 档位透明度）/ 退出（回原位） */}
+          <button type="button" role="menuitem" className="vwm-sysmenu-item" onClick={togglePip}>
+            {isPip(win.id) ? t("winMenuPipExit") : t("winMenuPip")}
+          </button>
           {feel?.winFeelOpacity && (
             <label className="vwm-sysmenu-item vwm-feel-opacity">
               <span className="vwm-sysmenu-cap">{t("wfOpacity")}</span>

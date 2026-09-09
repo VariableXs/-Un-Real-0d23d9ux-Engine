@@ -328,14 +328,14 @@ cd portable/AI5
 - **提交**: [8fc04ef](https://github.com/VariableXs/-Un-Real-0d23d9ux-Engine/commit/8fc04ef)
 
 ### 文档
-- **主计划**: [docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md](docs/PORTABLE_VIRTUAL_SYSTEM_PLAN.md)
-- **分工计划**: [docs/PORTABLE_AI_SPLIT_PLAN.md](docs/PORTABLE_AI_SPLIT_PLAN.md)
-- **AI-5 交付文档**: [docs/AI5-测试交付.md](docs/AI5-测试交付.md)
+- **主计划**: [PORTABLE_VIRTUAL_SYSTEM_PLAN.md](PORTABLE_VIRTUAL_SYSTEM_PLAN.md)
+- **分工计划**: [PORTABLE_AI_SPLIT_PLAN.md](PORTABLE_AI_SPLIT_PLAN.md)
+- **AI-5 交付文档**: [AI5-测试交付.md](AI5-测试交付.md)
 
 ### 目录结构
-- **AI-5 根目录**: [portable/AI5/](portable/AI5/)
-- **脚本**: [portable/AI5/*.ps1](portable/AI5/)
-- **数据**: [portable/AI5/Data/](portable/AI5/Data/)
+- **AI-5 根目录**: [portable/AI5/](../portable/AI5/)
+- **脚本**: [portable/AI5/*.ps1](../portable/AI5/)
+- **数据**: [portable/AI5/Data/](../portable/AI5/Data/)
 
 ---
 

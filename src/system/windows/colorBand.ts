@@ -9,6 +9,7 @@
  */
 
 import type { CSSProperties } from "react";
+import { createStore } from "../../lib/store";
 
 export type BandColor = "accent" | "info" | "success" | "warning" | "danger";
 
@@ -48,6 +49,7 @@ export function setColorBandEnabled(v: boolean): void {
   } catch {
     /* storage blocked */
   }
+  bandVersionStore.setState((s) => ({ v: s.v + 1 }));
 }
 
 export function loadBandMap(): BandMap {
@@ -65,7 +67,11 @@ export function saveBandMap(map: BandMap): void {
   } catch {
     /* storage blocked */
   }
+  bandVersionStore.setState((s) => ({ v: s.v + 1 }));
 }
+
+/** 色带配置版本（编排中心改动 → 已渲染窗口即时重取 bandFor；非 VWM 状态，避免污染 vwmStore）。 */
+export const bandVersionStore = createStore({ v: 0 });
 
 /** 查询某应用的色带（未映射或总开关关闭 → null = 不渲染，逐像素等于现状）。 */
 export function bandFor(app: string, map: BandMap = loadBandMap(), enabled = colorBandEnabled()): BandColor | null {

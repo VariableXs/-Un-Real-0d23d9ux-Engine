@@ -1,6 +1,0 @@
-/** M-03 抽屉排序：最小化窗口按 minimizedAt 降序（最近的最先）。 */
-export function minimizedOrder(wins: VwmWin[]): VwmWin[] {
-  return wins
-    .filter((w) => w.minimizedAt !== null)
-    .sort((a, b) => (b.minimizedAt ?? 0) - (a.minimizedAt ?? 0));
-}

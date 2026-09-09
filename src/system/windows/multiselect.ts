@@ -18,12 +18,27 @@ export interface MultiSelectOp {
 /** 当前多选集合（内存态，会话级）。 */
 let selected: string[] = [];
 
+// ---------- 订阅机制（UI 层渲染跟随：选择集变化即通知） ----------
+const listeners = new Set<() => void>();
+
+/** 订阅选择集变化（返回退订函数；工具条 / StageRail / 窗口边框即时刷新）。 */
+export function subscribeMultiSelect(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function notifyMultiSelect(): void {
+  for (const l of listeners) l();
+}
+
 export function multiSelected(): string[] {
   return [...selected];
 }
 
 export function clearMultiSelect(): void {
+  if (selected.length === 0) return;
   selected = [];
+  notifyMultiSelect();
 }
 
 /** Ctrl+点击切换选中；普通点击（无 Ctrl）清空并退出编组。 */
@@ -35,6 +50,7 @@ export function toggleSelect(winId: string, additive: boolean): string[] {
   const i = selected.indexOf(winId);
   if (i >= 0) selected.splice(i, 1);
   else selected.push(winId);
+  notifyMultiSelect();
   return [...selected];
 }
 

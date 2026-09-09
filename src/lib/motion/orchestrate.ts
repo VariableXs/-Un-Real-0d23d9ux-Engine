@@ -58,19 +58,23 @@ function durationFor(opts: OrchestrateOptions): number {
  * 批量编排：第 i 个元素延迟 `i * stagger` 后调用其 play()。
  * stagger=0 或单元素时零延迟直接落位；reduce-motion 时错峰压缩为 0
  * （全部同时落位，总时长 ≤80ms）——避免长时间排队阻塞。
+ * 返回取消函数：调用方卸载/重排时清掉未触发的定时器（防泄漏）。
  */
-export function orchestrate(targets: OrchestrateTarget[], opts: OrchestrateOptions = {}): void {
-  if (targets.length === 0) return;
+export function orchestrate(targets: OrchestrateTarget[], opts: OrchestrateOptions = {}): () => void {
+  if (targets.length === 0) return () => {};
   const stagger = opts.reduceMotion ? 0 : Math.max(0, opts.stagger ?? STAGGER_MS);
   const dur = durationFor(opts);
   if (dur === 0) {
     // instant：同一批次直接落位（合并到单帧）
-    (opts.raf ?? ((cb: () => void) => requestAnimationFrame(cb)))(() => {
+    const raf = (opts.raf ?? ((cb: () => void) => requestAnimationFrame(cb)))(() => {
       const t0 = performance.now();
       for (const t of targets) t.play(t.el);
       if (performance.now() - t0 > FRAME_BUDGET_MS) budgetExceededCount += 1;
     });
-    return;
+    // 测试注入的 raf 不提供取消语义时退化为无操作
+    return () => {
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
+    };
   }
   const timers: number[] = [];
   targets.forEach((t, i) => {
@@ -82,8 +86,10 @@ export function orchestrate(targets: OrchestrateTarget[], opts: OrchestrateOptio
       }, i * stagger),
     );
   });
-  // 返回值：无（编排器不持句柄；调用方如需取消用 data 标记）
-  void timers;
+  return () => {
+    for (const h of timers) window.clearTimeout(h);
+    timers.length = 0;
+  };
 }
 
 // ---------- FLIP 引擎 ----------

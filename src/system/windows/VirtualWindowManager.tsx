@@ -7,7 +7,10 @@ import {
   computeWorkArea,
   cycleVwmFocus,
   cycleVwmFocusFiltered,
+  focusVwmWin,
   minimizeAllVwm,
+  minimizeVwmWin,
+  resizeVwmWin,
   restoreShakenVwm,
   setVwmWorkArea,
   snapVwmWin,
@@ -18,7 +21,7 @@ import { parseScreenDetails, type ScreenInfo } from "./winfeel";
 import { pushToast } from "../../state/uiStore";
 import { useStore } from "../../lib/store";
 import { useI18n } from "../../i18n";
-import { askChoice } from "../../components/Modal";
+import { askChoice, askConfirm } from "../../components/Modal";
 import { VirtualWindowFrame } from "./VirtualWindowFrame";
 import { VwmAppContent } from "./VwmAppContent";
 import { isTpApp, closeVwmWin, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
@@ -28,6 +31,24 @@ import { ipc } from "../../lib/ipc";
 import { MinimizedDrawer } from "./MinimizedDrawer";
 import { DesktopHotzone, DesktopSwitcher } from "./DesktopSwitcher";
 import { takeAllSuspended } from "./winfeelMenu";
+// AI-02 窗口编排组：编排中心 / 舞台侧幕 / 时间机器自动快照 / 规则引擎钩子 /
+// 失联救援 / 焦点历史 / 多选编组 / 嵌入焦点联动
+import { WindowOrchestrator } from "./WindowOrchestrator";
+import { StageRail } from "./StageRail";
+import { scheduleAutoSnap } from "./timeline";
+import { installRuleHook } from "./rulesApply";
+import { healthCheck } from "./rescue";
+import { focusBack, focusForward, recordFocus } from "./focusHistory";
+import {
+  clearMultiSelect,
+  multiSelected,
+  planGroupClose,
+  planSwap,
+  subscribeMultiSelect,
+  type MultiSelectOp,
+} from "./multiselect";
+import { noteVwmFocusChange } from "./embedFocusLink";
+import { dragActive } from "./dragCancel";
 
 /**
  * 虚拟窗口管理器（Virtual Window Manager）桌面层：
@@ -51,6 +72,131 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   const [switcherOpen, setSwitcherOpen] = useState(false);
   // AI-01 M-04：无响应窗口集合（3s 轮询 IsHungAppWindow）
   const [hungIds, setHungIds] = useState<Set<string>>(new Set());
+  // AI-02 窗口编排组：编排中心 / 舞台 / 多选工具条
+  const [orchOpen, setOrchOpen] = useState(false);
+  const [activeStage, setActiveStage] = useState<string | null>(null);
+  const [selIds, setSelIds] = useState<string[]>([]);
+
+  // N-03：规则引擎开窗钩子（幂等安装——新开窗口按规则裁决贴靠/置顶/透明度/入组）
+  useEffect(() => {
+    installRuleHook();
+  }, []);
+
+  // N-01：布局变化 → 自动快照（去抖 8s；仅几何签名变化时调度，聚焦等无关变更不打扰）
+  useEffect(() => {
+    const sigOf = (wins: VwmWin[]): string =>
+      wins.map((w) => `${w.id}:${w.x},${w.y},${w.w},${w.h},${w.state},${w.minimized ? 1 : 0},${w.z}`).join("|");
+    let lastSig = sigOf(vwmStore.getState().wins);
+    return vwmStore.subscribe(() => {
+      const s = vwmStore.getState();
+      const sig = sigOf(s.wins);
+      if (sig === lastSig) return;
+      lastSig = sig;
+      if (s.wins.length > 0) scheduleAutoSnap(s.wins);
+    });
+  }, []);
+
+  // V-22：启动 + 工作区变更 → 失联窗口体检与拉回（保持尺寸贴最近可视边缘）
+  useEffect(() => {
+    let lastWa: string | null = null;
+    return vwmStore.subscribe(() => {
+      const s = vwmStore.getState();
+      const key = `${s.workArea.x},${s.workArea.y},${s.workArea.w},${s.workArea.h}`;
+      if (key === lastWa) return;
+      lastWa = key;
+      if (s.wins.length === 0) return;
+      const rep = healthCheck(s.wins, s.workArea);
+      if (rep.lost.length === 0) return;
+      vwmStore.setState((cur) => ({
+        wins: cur.wins.map((w) => (rep.moved[w.id] ? { ...w, ...rep.moved[w.id]! } : w)),
+      }));
+      pushToast("success", t("orchRescue"), `${t("orchRescuedN")} ${rep.lost.length}`);
+    });
+  }, [t]);
+
+  // V-25 + V-27：真实焦点变化 → 历史栈记录（去重/截断前进分支） + 嵌入视觉态让位
+  useEffect(() => {
+    recordFocus(focusedId);
+    noteVwmFocusChange(focusedId);
+  }, [focusedId]);
+
+  // V-24：多选工具条（选择集变化即刷新）
+  useEffect(() => subscribeMultiSelect(() => setSelIds(multiSelected())), []);
+
+  // AI-02 键位：Ctrl+Alt+O 编排中心 / V-25 Ctrl+Alt+[ ] 焦点历史回溯 / V-24 Esc 退出编组
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey && e.altKey && !e.shiftKey) {
+        const k = e.key.toLowerCase();
+        if (k === "o") {
+          e.preventDefault();
+          e.stopPropagation();
+          setOrchOpen((v) => !v);
+          return;
+        }
+        if (e.key === "[" || e.code === "BracketLeft") {
+          e.preventDefault();
+          e.stopPropagation();
+          const back = focusBack();
+          if (back) focusVwmWin(back);
+          return;
+        }
+        if (e.key === "]" || e.code === "BracketRight") {
+          e.preventDefault();
+          e.stopPropagation();
+          const fwd = focusForward();
+          if (fwd) focusVwmWin(fwd);
+          return;
+        }
+      }
+      // V-24：Esc 退出多选编组（拖拽中的 Esc 已被 V-30 在捕获早期消费；此处仅在确有编组时拦截）
+      if (e.key === "Escape" && !dragActive() && multiSelected().length > 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        clearMultiSelect();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // ---------- V-24/V-26 多选工具条操作 ----------
+  /** 当前选中成员的操作视图（store 即时取，避免工具条按钮作用陈旧几何）。 */
+  const selOps = (): MultiSelectOp[] => {
+    const s = vwmStore.getState();
+    return selIds
+      .map((id) => s.wins.find((w) => w.id === id))
+      .filter((w): w is VwmWin => !!w)
+      .map((w) => ({ winId: w.id, rect: { x: w.x, y: w.y, w: w.w, h: w.h } }));
+  };
+  // V-26：互换位置（多选恰好两窗）
+  const selSwap = (): void => {
+    const ops = selOps();
+    if (ops.length !== 2) return;
+    const plan = planSwap(ops[0]!, ops[1]!);
+    resizeVwmWin(plan.a.winId, plan.a.rect);
+    resizeVwmWin(plan.b.winId, plan.b.rect);
+  };
+  // V-24：一起最小化（编组即散）
+  const selMinimize = (): void => {
+    for (const id of selIds) minimizeVwmWin(id);
+    clearMultiSelect();
+  };
+  // V-24：一起关闭（确认门恒开——批量关闭必须确认）
+  const selClose = (): void => {
+    void (async () => {
+      const plan = planGroupClose(selOps());
+      const ok = await askConfirm({
+        title: t("v24CloseTitle"),
+        body: t("v24CloseBody"),
+        danger: true,
+        okLabel: t("v24CloseYes"),
+      });
+      if (!ok) return;
+      for (const id of plan.winIds) closeVwmWinSafe(id);
+      clearMultiSelect();
+    })();
+  };
 
   // AI-01 M-01：Ctrl+Alt+D 全部还原（摇一摇反向操作）；Z-42：Ctrl+Alt+G 切换器
   useEffect(() => {
@@ -368,6 +514,32 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
       <MinimizedDrawer open={drawerOpen} onToggle={() => setDrawerOpen((v) => !v)} onClose={() => setDrawerOpen(false)} />
       <DesktopHotzone width={props.settings.desktopHotzone ?? 0} onTrigger={() => setSwitcherOpen(true)} />
       <DesktopSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} settings={props.settings} />
+      {/* AI-02 V-24：多选工具条（≥2 选中时出现；批量操作入口） */}
+      {selIds.length >= 2 && (
+        <div className="vwm-selbar" role="toolbar" aria-label={t("v24Exit")}>
+          <span className="vwm-selbar-count" aria-label={`${selIds.length}`}>
+            {selIds.length}
+          </span>
+          {selIds.length === 2 && (
+            <button type="button" className="btn tiny" onClick={selSwap}>
+              {t("v26Swap")}
+            </button>
+          )}
+          <button type="button" className="btn tiny" onClick={selMinimize}>
+            {t("v24Min")}
+          </button>
+          <button type="button" className="btn tiny danger" onClick={selClose}>
+            {t("v24CloseBtn")}
+          </button>
+          <button type="button" className="btn tiny ghost" onClick={() => clearMultiSelect()}>
+            {t("v24Exit")}
+          </button>
+        </div>
+      )}
+      {/* AI-02 N-02：舞台侧幕（左缘竖排气泡；空舞台 + 无多选时自动不渲染） */}
+      <StageRail activeStageId={activeStage} onActivate={(id) => setActiveStage(id)} />
+      {/* AI-02 N-01…N-06：窗口编排中心（Ctrl+Alt+O 呼出） */}
+      {orchOpen && <WindowOrchestrator settings={props.settings} onClose={() => setOrchOpen(false)} />}
     </div>
   );
 }
