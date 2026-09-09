@@ -291,6 +291,9 @@ function installHandlers(): void {
     "eff.cheatsheetMd": () => window.dispatchEvent(new CustomEvent("variable:cheatsheet", { detail: "md" })),
     "eff.cheatsheetHtml": () => window.dispatchEvent(new CustomEvent("variable:cheatsheet", { detail: "html" })),
     "eff.historyPrivacy": () => uiStore.setState({ settingsOpen: true }),
+    // SINGULARITY-100 奇点中枢
+    "singu.hub": () =>
+      window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "singu-hub" } })),
   };
   for (const [id, fn] of Object.entries(actions)) setCommandHandler(id, fn);
 }

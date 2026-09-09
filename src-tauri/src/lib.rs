@@ -774,6 +774,17 @@ pub fn run() {
             shell::quality::sysdep_probe,
             // M-85 依赖审计周任务状态
             shell::sysmaint::dep_audit_status,
+            // ---- SINGULARITY-100 奇点计划（Q-01..Q-100 六组本地命令）----
+            shell::singularity::singu_pulse,
+            shell::singularity::singu_temp_scan,
+            shell::singularity::singu_temp_clear,
+            shell::singularity::singu_zone_check,
+            shell::singularity::singu_journal_log,
+            shell::singularity::singu_journal_list,
+            shell::singularity::singu_journal_clear,
+            shell::singularity::singu_batch_attrs,
+            shell::singularity::singu_archive_check,
+            shell::singularity::singu_data_profile,
         ])
         .build(tauri::generate_context!());
     match app {

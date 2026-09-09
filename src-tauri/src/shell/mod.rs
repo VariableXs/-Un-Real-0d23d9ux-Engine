@@ -98,3 +98,5 @@ pub mod a11y;
 pub mod soundnotify;
 // AI-20 质量门禁与收官组（V-93 偏好搬家只读读取 / V-99 依赖诚实声明探针）
 pub mod quality;
+// SINGULARITY-100 奇点计划（Q-01..Q-100：硬件脉搏/临时账本/检疫/审计/批量属性/冰山）
+pub mod singularity;

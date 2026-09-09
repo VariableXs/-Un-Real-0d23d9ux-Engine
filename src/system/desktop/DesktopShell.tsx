@@ -61,6 +61,10 @@ import {
   WP_CENTER_PLAYLIST_CHANGED,
   type WpApplyPatch,
 } from "../wallpaper/center/centerCore";
+// SINGULARITY-100 奇点计划：100 项能力运行时 + 中枢/工具窗 overlay（零侵入自挂载协议同上）
+import "../singularity/SinguHub";
+import "../singularity/SinguOverlays";
+import { initSingularity } from "../singularity/runtime";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：
@@ -121,6 +125,11 @@ export function DesktopShell(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // SINGULARITY-100：奇点运行时（15 域控制器挂载；幂等，全关零开销自动卸载）
+  useEffect(() => {
+    initSingularity();
   }, []);
 
   // 退出不再弹确认框：所有入口（红绿灯/开始菜单/托盘）直接走保存冲刷 + 关闭。

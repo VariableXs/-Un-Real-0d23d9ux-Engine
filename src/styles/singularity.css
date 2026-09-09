@@ -1,0 +1,2697 @@
+/* ==========================================================================
+   SINGULARITY-100 · 奇点计划样式层（Q-01..Q-100）
+   --------------------------------------------------------------------------
+   纪律：
+   - 全部动画收敛于 prefers-reduced-motion + [data-reduce-motion="true"] 双闸；
+     任一触发即整体静止（降级矩阵 Q-98 的 CSS 侧真源）。
+   - 色彩一律走 tokens.css 语义变量（oklch 亮度层自动适配 paper/light/high-contrast）。
+   - 零侵入：只新增 .singu-* 类与 --singu-* 变量，不改写任何既有选择器结构；
+     对既有宿主（.taskbar / .icon-grid 等）只做加法式的修饰类。
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   0. 宿主层：#singu-layer（所有指示器/浮层的统一父节点；本身不拦截指针）
+   -------------------------------------------------------------------------- */
+#singu-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* 交互产出物（面板/按钮/确认条）单独恢复指针 */
+#singu-layer .singu-panel,
+#singu-layer .singu-btn,
+#singu-layer button,
+#singu-layer input,
+#singu-layer select,
+#singu-layer .singu-escort-bar,
+#singu-layer .singu-quarantine,
+#singu-layer .singu-fuzzy-hint,
+#singu-layer .singu-breathe,
+#singu-layer .singu-selkit,
+#singu-layer .singu-dial,
+#singu-layer .singu-capsules,
+#singu-layer .singu-bootcast,
+#singu-layer .singu-cards,
+#singu-layer .singu-parade,
+#singu-layer .singu-greet-host {
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   1. 共享基元：面板 / 按钮 / 空态 / 提示行 / 表格
+   -------------------------------------------------------------------------- */
+.singu-panel {
+  position: absolute;
+  min-width: 260px;
+  max-width: min(420px, 90vw);
+  max-height: min(70vh, 640px);
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  backdrop-filter: blur(18px) saturate(1.2);
+  scrollbar-width: thin;
+}
+
+.singu-panel-title {
+  font: 600 11px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.singu-btn {
+  appearance: none;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-control);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.15s var(--ease-standard), border-color 0.15s var(--ease-standard),
+    transform 0.12s var(--ease-spring);
+}
+
+.singu-btn:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.singu-btn:active {
+  transform: scale(0.96);
+}
+
+.singu-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.singu-btn.danger {
+  color: var(--danger);
+  border-color: color-mix(in oklch, var(--danger) 45%, transparent);
+}
+
+.singu-btn.danger:hover {
+  background: color-mix(in oklch, var(--danger) 14%, transparent);
+}
+
+.singu-btn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.singu-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 10px 4px;
+  text-align: center;
+}
+
+.singu-empty.err,
+.err {
+  color: var(--danger);
+}
+
+.singu-hint {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  margin: 8px 0 2px;
+  border-top: 1px dashed var(--stroke);
+  padding-top: 8px;
+}
+
+.singu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.singu-table th {
+  text-align: left;
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.singu-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid color-mix(in oklch, var(--stroke) 50%, transparent);
+}
+
+/* --------------------------------------------------------------------------
+   2. 奇点中枢 Hub（singu-hub overlay 窗）
+   -------------------------------------------------------------------------- */
+.singu-hub {
+  position: fixed;
+  inset: 0;
+  z-index: 1005;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in oklch, var(--bg-canvas) 82%, transparent);
+  backdrop-filter: blur(22px) saturate(1.25);
+  animation: singu-hub-in calc(260ms * var(--dur-scale, 1)) var(--ease-emphasized);
+}
+
+@keyframes singu-hub-in {
+  from {
+    opacity: 0;
+    transform: scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.singu-hub-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--stroke);
+  flex-shrink: 0;
+}
+
+.singu-hub-brand h1 {
+  font: 700 15px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.singu-hub-brand span {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.singu-hub-search {
+  flex: 0 1 300px;
+  height: 30px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.singu-hub-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+
+.singu-hub-stats {
+  margin-left: auto;
+  font: 500 11px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.singu-hub-body {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.singu-hub-nav {
+  border-right: 1px solid var(--stroke);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.singu-hub-nav button {
+  appearance: none;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: left;
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.12s var(--ease-standard), color 0.12s var(--ease-standard);
+}
+
+.singu-hub-nav button i {
+  font: 600 10px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-secondary);
+  opacity: 0.6;
+  font-style: normal;
+}
+
+.singu-hub-nav button:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.singu-hub-nav button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.singu-hub-nav button.on i {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.singu-hub-list {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+.singu-hub-note {
+  font-size: 11.5px;
+  color: var(--warn);
+  border: 1px dashed color-mix(in oklch, var(--warn) 40%, transparent);
+  border-radius: var(--r-control);
+  padding: 6px 10px;
+}
+
+.singu-row {
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  transition: border-color 0.15s var(--ease-standard);
+}
+
+.singu-row.on {
+  border-color: color-mix(in oklch, var(--accent) 55%, transparent);
+}
+
+.singu-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.singu-row-main input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.singu-row-id {
+  font: 600 10.5px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-secondary);
+  letter-spacing: 0.08em;
+  background: var(--bg-canvas);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-chip);
+  padding: 3px 6px;
+}
+
+.singu-row.on .singu-row-id {
+  color: var(--accent);
+  border-color: color-mix(in oklch, var(--accent) 45%, transparent);
+}
+
+.singu-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.singu-row-desc {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.singu-row-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--stroke);
+}
+
+.singu-param {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.singu-param input[type="range"] {
+  width: 110px;
+  accent-color: var(--accent);
+}
+
+.singu-param-value {
+  font: 600 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-primary);
+  min-width: 2.2em;
+}
+
+.singu-degrade {
+  margin-top: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+
+.singu-degrade-title {
+  font: 600 10.5px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.singu-degrade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  border-top: 1px solid color-mix(in oklch, var(--stroke) 50%, transparent);
+}
+
+.singu-degrade-row.active {
+  color: var(--text-primary);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+}
+
+.singu-degrade-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.singu-degrade-row .dot.on {
+  background: var(--warn);
+  opacity: 1;
+}
+
+.singu-hub-foot {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--stroke);
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   3. 域1 启动与品牌剧场（Q-01..Q-07）
+   -------------------------------------------------------------------------- */
+.singu-theater {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: singu-fade calc(var(--singu-dur, 400ms) * var(--dur-scale, 1)) var(--ease-emphasized);
+}
+
+@keyframes singu-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Q-01 唤醒握手：竖光 + 时钟 */
+.singu-wake-light {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+  filter: blur(1px);
+  animation: singu-wake-light 900ms var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-wake-light {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(0);
+  }
+  45% {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+
+.singu-wake-clock,
+.singu-wake-static {
+  position: relative;
+  font: 600 20px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.24em;
+  color: var(--text-primary);
+  text-shadow: 0 2px 24px color-mix(in oklch, var(--accent) 55%, transparent);
+  animation: singu-wake-clock 900ms var(--ease-emphasied, var(--ease-emphasized)) forwards;
+}
+
+@keyframes singu-wake-clock {
+  from {
+    opacity: 0;
+    letter-spacing: 0.6em;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    letter-spacing: 0.24em;
+    filter: blur(0);
+  }
+}
+
+/* Q-02 谢幕剧场：桌面收拢成一线光 */
+.singu-curtain-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(to right, transparent, var(--accent), transparent);
+  animation: singu-curtain 650ms var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-curtain {
+  0% {
+    transform: scaleX(0.02);
+    opacity: 0;
+  }
+  40% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+/* Q-05 启动实况解说条 */
+.singu-bootcast {
+  position: absolute;
+  left: 24px;
+  bottom: 64px;
+  font: 500 11px/1.6 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--accent);
+  padding: 2px 10px;
+  background: color-mix(in oklch, var(--bg-canvas) 65%, transparent);
+  border-radius: 0 var(--r-control) var(--r-control) 0;
+  transition: opacity 0.6s var(--ease-standard);
+}
+
+.singu-bootcast b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* Q-06 品牌时刻 */
+.singu-brand-stardust {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in oklch, var(--accent) 60%, transparent), transparent 70%);
+  animation: singu-stardust 2.5s var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-stardust {
+  0% {
+    transform: scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.15) rotate(40deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(120deg);
+    opacity: 0;
+  }
+}
+
+.singu-brand-anniv {
+  font: 700 16px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.4em;
+  color: var(--accent);
+  text-shadow: 0 0 30px color-mix(in oklch, var(--accent) 70%, transparent);
+  animation: singu-brand-anniv 2.2s var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-brand-anniv {
+  0% {
+    opacity: 0;
+    letter-spacing: 1em;
+  }
+  30% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+    letter-spacing: 0.4em;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Q-07 晨昏问候 */
+.singu-greet-host,
+.singu-parade-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.singu-greet {
+  text-align: center;
+  animation: singu-greet 4s var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-greet {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  12%,
+  82% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.singu-greet-word {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.18em;
+}
+
+.singu-greet-sub {
+  margin-top: 6px;
+  font: 500 12px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+}
+
+.singu-greet-focus {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.singu-greet.night .singu-greet-word {
+  color: color-mix(in oklch, var(--accent) 45%, var(--text-primary));
+}
+
+/* Q-03 首跑巡礼 */
+.singu-parade {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.singu-parade-card {
+  width: 180px;
+  padding: 16px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  font: 700 11px/1.4 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.singu-parade-card span {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+}
+
+.singu-parade-card:nth-child(1) {
+  animation: singu-parade-in 8s var(--ease-emphasized) forwards;
+}
+
+.singu-parade-card:nth-child(2) {
+  animation: singu-parade-in 8s var(--ease-emphasized) 0.25s forwards;
+  animation-delay: 0.25s;
+}
+
+.singu-parade-card:nth-child(3) {
+  animation: singu-parade-in 8s var(--ease-emphasized) forwards;
+  animation-delay: 0.5s;
+}
+
+@keyframes singu-parade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  10%,
+  88% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   4. 域2 窗口与空间管理（Q-08..Q-15）
+   -------------------------------------------------------------------------- */
+/* Q-08 生命体征环：VWM 窗口标题栏微环 */
+.singu-vitals {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.6px solid var(--accent);
+  border-top-color: transparent;
+  margin: 0 4px;
+  vertical-align: -1px;
+  animation: singu-vitals var(--singu-spin, 2.4s) linear infinite;
+}
+
+.singu-vitals.static {
+  animation: none;
+  border-top-color: var(--accent);
+  opacity: 0.55;
+}
+
+@keyframes singu-vitals {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Q-09 焦点轨迹残影 */
+.singu-trail {
+  position: fixed;
+  pointer-events: none;
+  z-index: 940;
+  animation: singu-trail 350ms var(--ease-standard) forwards;
+}
+
+@keyframes singu-trail {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Q-10 窗口年龄衰减 */
+.singu-aged {
+  filter: saturate(0.55) brightness(0.88);
+  transition: filter 1.2s var(--ease-standard);
+}
+
+/* Q-12 边缘偷看 */
+.singu-peek {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  z-index: 930;
+  pointer-events: auto;
+}
+
+.singu-peek.left {
+  left: 0;
+}
+
+.singu-peek.right {
+  right: 0;
+}
+
+.singu-peek-ghost {
+  position: fixed;
+  z-index: 935;
+  border-radius: var(--r-window);
+  border: 1.5px solid color-mix(in oklch, var(--accent) 70%, transparent);
+  background: color-mix(in oklch, var(--accent) 9%, transparent);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  animation: singu-trail 240ms var(--ease-standard) forwards;
+}
+
+/* Q-13 镜像监控角 */
+.singu-mirror {
+  position: fixed;
+  right: 10px;
+  bottom: 10px;
+  width: 190px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  z-index: 920;
+}
+
+.singu-mirror-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.singu-mirror-meta {
+  margin-top: 3px;
+  font: 500 10px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+/* Q-14 动量拖拽（VWM 窗体 --singu-tilt 驱动） */
+.vwm-frame {
+  --singu-tilt: 0deg;
+}
+
+.singu-tilt-able {
+  transform: rotate(var(--singu-tilt));
+  transition: transform 0.18s var(--ease-spring);
+}
+
+/* --------------------------------------------------------------------------
+   5. 域3 桌面与图标表达（Q-16..Q-22）
+   -------------------------------------------------------------------------- */
+/* Q-16 情绪微动效 + Q-19 贴地感（宿主加法修饰类） */
+.singu-grounding .icon-cell,
+.singu-grounding .desktop-icon {
+  --singu-tilt: 0deg;
+  transform: rotate(var(--singu-tilt));
+  transition: transform 0.35s var(--ease-spring), translate 0.25s var(--ease-spring);
+}
+
+.singu-grounding .icon-cell:hover,
+.singu-grounding .desktop-icon:hover {
+  translate: 0 -2px;
+}
+
+.singu-grounding .icon-cell::after,
+.singu-grounding .desktop-icon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 52%;
+  height: 7px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.35), transparent 70%);
+  pointer-events: none;
+}
+
+/* Q-17 堆叠面板 */
+.singu-stacks {
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+}
+
+.singu-stack {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  width: 100%;
+  margin: 3px 0;
+  padding: 6px 10px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s var(--ease-standard);
+}
+
+.singu-stack:hover {
+  background: var(--accent-soft);
+}
+
+.singu-stack-count {
+  font: 700 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--r-chip);
+  padding: 3px 6px;
+}
+
+.singu-stack-cat {
+  font-weight: 600;
+}
+
+.singu-stack-item {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Q-18 框选橡皮筋 */
+.singu-lasso {
+  --singu-lasso-x: 0px;
+  border: 1px solid color-mix(in oklch, var(--accent) 80%, transparent);
+  background: color-mix(in oklch, var(--accent) 12%, transparent);
+  border-radius: 3px;
+}
+
+.singu-lasso-count {
+  position: absolute;
+  top: -26px;
+  left: 0;
+  font: 600 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--accent);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-chip);
+  padding: 3px 8px;
+}
+
+/* Q-17 点亮反馈 */
+.singu-flash {
+  animation: singu-flash 0.9s var(--ease-spring);
+}
+
+@keyframes singu-flash {
+  0% {
+    filter: brightness(2.2) saturate(1.6);
+    transform: scale(1.12);
+  }
+  100% {
+    filter: none;
+    transform: scale(1);
+  }
+}
+
+/* Q-21 涟漪重排（图标波次落位由 JS 设置 --singu-ripple 延迟） */
+.singu-grounding .icon-cell {
+  animation: singu-ripple 0.5s var(--ease-spring) var(--singu-ripple, 0s);
+}
+
+@keyframes singu-ripple {
+  0% {
+    transform: translate(0, -14px) scale(0.92);
+    opacity: 0;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Q-22 网格微调器 */
+.singu-grid-tuner {
+  right: 18px;
+  top: 72px;
+}
+
+.singu-grid-tuner input[type="range"] {
+  width: 130px;
+  accent-color: var(--accent);
+  display: block;
+  margin: 2px 0 8px;
+}
+
+.singu-grid-preview .icon-grid {
+  background-image: linear-gradient(
+      to right,
+      color-mix(in oklch, var(--accent) 14%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, color-mix(in oklch, var(--accent) 14%, transparent) 1px, transparent 1px);
+  background-size: var(--singu-grid-gx, 84px) var(--singu-grid-gy, 96px);
+}
+
+/* --------------------------------------------------------------------------
+   6. 域4 任务栏与开始菜单（Q-23..Q-29）
+   -------------------------------------------------------------------------- */
+/* Q-23 温度计 */
+.singu-thermo {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--singu-temp, var(--success));
+  opacity: 0.85;
+  transition: background 0.8s var(--ease-standard);
+}
+
+/* Q-24 键击流命中 */
+.singu-flow-hit {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--r-control);
+  animation: singu-flow-hit 0.4s var(--ease-spring);
+}
+
+@keyframes singu-flow-hit {
+  from {
+    outline-color: transparent;
+    transform: scale(0.94);
+  }
+  to {
+    outline-color: var(--accent);
+    transform: scale(1);
+  }
+}
+
+/* Q-25 隐形模式 */
+.taskbar.singu-ghost {
+  opacity: 0.06;
+  transition: opacity 0.5s var(--ease-standard);
+}
+
+.taskbar.singu-ghost::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(to right, transparent, color-mix(in oklch, var(--accent) 60%, transparent), transparent);
+}
+
+.taskbar.singu-ghost:hover {
+  opacity: 1;
+}
+
+/* Q-26 时钟微卡片 */
+.singu-cards {
+  position: fixed;
+  right: 10px;
+  bottom: 58px;
+  display: flex;
+  gap: 8px;
+  z-index: 930;
+}
+
+.singu-card {
+  width: 150px;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  color: var(--text-primary);
+  animation: singu-card-in calc(220ms * var(--dur-scale, 1)) var(--ease-spring) backwards;
+}
+
+.singu-card:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.singu-card:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+@keyframes singu-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.singu-card-h {
+  font: 600 10px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.singu-card-b {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.singu-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  font: 500 9.5px/1.7 var(--font-mono, Consolas, monospace);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.singu-cal-grid b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Q-27 律动条 */
+.singu-pulsebar {
+  position: fixed;
+  right: 14px;
+  bottom: 60px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 26px;
+  z-index: 915;
+}
+
+.singu-pulsebar i {
+  width: 3.5px;
+  border-radius: 2px;
+  background: linear-gradient(to top, color-mix(in oklch, var(--accent) 55%, transparent), var(--accent));
+  height: calc(20% + var(--singu-vol, 0) * 80%);
+  transition: height 120ms var(--ease-standard);
+}
+
+.singu-pulsebar.idle i {
+  animation: singu-pulse-idle 2.4s var(--ease-standard) infinite;
+}
+
+.singu-pulsebar.idle.breath i {
+  animation: singu-pulse-idle 2.4s var(--ease-standard) infinite;
+}
+
+.singu-pulsebar.idle:not(.breath) i {
+  animation: none;
+}
+
+@keyframes singu-pulse-idle {
+  0%,
+  100% {
+    height: 22%;
+  }
+  50% {
+    height: 40%;
+  }
+}
+
+/* Q-28 布局编辑 */
+.singu-menu-layout {
+  position: fixed;
+  left: 12px;
+  bottom: 58px;
+}
+
+html.singu-menu-swap .start-fixed,
+html.singu-menu-swap .start-recent {
+  order: 2;
+}
+
+/* Q-29 分页坞 */
+.singu-pages {
+  position: fixed;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 915;
+}
+
+.singu-page-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease-standard), background 0.15s var(--ease-standard);
+}
+
+.singu-page-dot.on {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------------------
+   7. 域5 键盘与输入手感（Q-30..Q-36）
+   -------------------------------------------------------------------------- */
+/* Q-34 数字跳转角标 */
+.singu-numhints {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 960;
+}
+
+.singu-numtag {
+  position: absolute;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  font: 700 10px/16px var(--font-mono, Consolas, monospace);
+  color: var(--bg-canvas);
+  background: var(--accent);
+  border-radius: var(--r-chip);
+  padding: 0 3px;
+  box-shadow: var(--elev-1);
+}
+
+/* Q-35 IME 候选剧场 */
+.singu-ime-stage {
+  position: fixed;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3em;
+  z-index: 955;
+  animation: singu-ime-in 0.18s var(--ease-spring);
+}
+
+.singu-ime-stage.confirm {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+@keyframes singu-ime-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* Q-32 / Q-91 组合键节拍环 */
+.singu-chordring,
+.singu-chord-ring {
+  position: fixed;
+  left: 50%;
+  bottom: 84px;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--accent);
+  border-top-color: transparent;
+  z-index: 950;
+  animation: singu-vitals 1s linear infinite;
+}
+
+.singu-chord-ring {
+  border-color: var(--success);
+  animation-duration: 2.4s;
+}
+
+/* --------------------------------------------------------------------------
+   8. 域6 文件与数据能力（Q-38..Q-43）
+   -------------------------------------------------------------------------- */
+/* Q-39 配重感拖影 */
+.singu-dragweight {
+  position: fixed;
+  z-index: 970;
+  pointer-events: none;
+  border-radius: var(--r-chip);
+  background: color-mix(in oklch, var(--accent) 22%, transparent);
+  border: 1px solid color-mix(in oklch, var(--accent) 55%, transparent);
+  transition: box-shadow 0.15s var(--ease-standard);
+}
+
+.singu-dragweight.t1 {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+}
+
+.singu-dragweight.t2 {
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
+  background: color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+.singu-dragweight.t3 {
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.38);
+  background: color-mix(in oklch, var(--accent) 38%, transparent);
+}
+
+.singu-dragweight.tremble {
+  animation: singu-tremble 0.12s var(--ease-standard) infinite;
+}
+
+@keyframes singu-tremble {
+  0%,
+  100% {
+    margin-top: 0;
+  }
+  50% {
+    margin-top: 1.5px;
+  }
+}
+
+/* Q-66 密码侦探（输入框警示描边） */
+.singu-secret-warn {
+  outline: 2px solid var(--warn) !important;
+  outline-offset: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   9. 域7 效率与工具中枢（Q-44..Q-50）
+   -------------------------------------------------------------------------- */
+/* Q-44 番茄剧场：全局聚光氛围 */
+html.singu-pomo-focus::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 890;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 42%,
+    color-mix(in oklch, var(--accent) 10%, transparent) 78%,
+    color-mix(in oklch, var(--bg-canvas) 55%, transparent)
+  );
+  transition: opacity 0.8s var(--ease-standard);
+}
+
+.singu-pomo-glow {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  width: 120px;
+  height: 120px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in oklch, var(--accent) 32%, transparent), transparent 68%);
+  filter: blur(8px);
+  pointer-events: none;
+  z-index: 891;
+  animation: singu-pomo-breathe 5s var(--ease-standard) infinite;
+}
+
+@keyframes singu-pomo-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1.12);
+  }
+}
+
+/* Q-46 粘贴队列 HUD */
+.singu-pastequeue {
+  position: fixed;
+  left: 14px;
+  bottom: 60px;
+  min-width: 200px;
+  max-width: 300px;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 940;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+/* Q-47 划词工具条 */
+.singu-selkit {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-control);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 965;
+  animation: singu-ime-in 0.15s var(--ease-spring);
+}
+
+.singu-selkit .singu-btn {
+  border: 0;
+  background: transparent;
+  padding: 3px 9px;
+  font-size: 11.5px;
+}
+
+.singu-selkit .singu-btn:hover {
+  background: var(--accent-soft);
+}
+
+/* Q-48 滚轮轮盘 */
+.singu-dial {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 300px;
+  height: 300px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--bg-canvas) 78%, transparent);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(20px);
+  z-index: 975;
+}
+
+.singu-dial-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(var(--singu-a, 0deg)) translateY(-108px) rotate(calc(-1 * var(--singu-a, 0deg)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 84px;
+  padding: 8px 6px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-align: center;
+  transition: transform 0.15s var(--ease-spring), border-color 0.15s var(--ease-standard),
+    color 0.15s var(--ease-standard);
+}
+
+.singu-dial-slot.on {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  box-shadow: var(--elev-2), 0 0 0 3px var(--accent-soft);
+  transform: translate(-50%, -50%) rotate(var(--singu-a, 0deg)) translateY(-108px) rotate(calc(-1 * var(--singu-a, 0deg)))
+    scale(1.1);
+}
+
+/* Q-49 倒计时胶囊 */
+.singu-capsules {
+  position: fixed;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  z-index: 930;
+}
+
+.singu-capsules .pill {
+  font: 600 11px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+
+.singu-capsules .pill.soon {
+  border-color: var(--warn);
+  color: var(--warn);
+  animation: singu-pill-soon 1.6s var(--ease-standard) infinite;
+}
+
+@keyframes singu-pill-soon {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--warn) 45%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* Q-50 收藏抽屉 */
+.singu-stash-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(300px, 84vw);
+  padding: 14px;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  z-index: 945;
+  overflow-y: auto;
+  animation: singu-drawer-in 0.24s var(--ease-emphasized);
+  scrollbar-width: thin;
+}
+
+@keyframes singu-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.singu-stash-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   10. 域8 系统集成与硬件（Q-51..Q-57）
+   -------------------------------------------------------------------------- */
+.singu-hw-tray {
+  position: fixed;
+  right: 12px;
+  bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  z-index: 910;
+}
+
+/* Q-51 GPU 极光 */
+.singu-gpu-aurora {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 130px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: calc(var(--singu-aurora, 0) * 0.85);
+  background: radial-gradient(
+      ellipse 70% 100% at 18% 108%,
+      color-mix(in oklch, var(--accent) 55%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(ellipse 55% 90% at 72% 110%, color-mix(in oklch, var(--accent) 32%, transparent), transparent 72%);
+  filter: blur(22px);
+  transition: opacity 1.6s var(--ease-standard);
+}
+
+.singu-gpu-aurora.by-cpu {
+  background: radial-gradient(
+      ellipse 70% 100% at 18% 108%,
+      color-mix(in oklch, var(--warn) 40%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(ellipse 55% 90% at 72% 110%, color-mix(in oklch, var(--warn) 22%, transparent), transparent 72%);
+}
+
+/* Q-52 电池呼吸 */
+.singu-battery-breath {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  pointer-events: none;
+  /* warm ∈ 0..1（0=充足/插电 → success；1=低电 → warn） */
+  background: radial-gradient(
+    circle,
+    color-mix(
+      in oklch,
+      var(--warn) calc(var(--singu-breath-warm, 0) * 100%),
+      var(--success)
+    ),
+    transparent 70%
+  );
+  opacity: 0.35;
+  filter: blur(6px);
+  animation: singu-breath var(--singu-breath-ms, 3200ms) var(--ease-standard) infinite;
+}
+
+@keyframes singu-breath {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.08);
+  }
+}
+
+/* 插电 / 未知电量：常亮不呼吸 */
+.singu-battery-breath.steady {
+  animation: none;
+  opacity: 0.4;
+  transform: none;
+}
+
+/* Q-53 热点角标 */
+.singu-temp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: oklch(0.75 0.16 var(--singu-temp-hue, 140));
+  box-shadow: 0 0 8px oklch(0.75 0.16 var(--singu-temp-hue, 140) / 0.7);
+  transition: background 1.2s var(--ease-standard);
+}
+
+/* Q-56 网络风向标 */
+.singu-net-vane {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.singu-net-vane span {
+  width: 0;
+  height: 0;
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  opacity: calc(0.25 + var(--singu-vane, 0) * 0.75);
+  transition: opacity 0.6s var(--ease-standard);
+}
+
+.singu-net-vane .up {
+  border-bottom: 6px solid var(--accent);
+}
+
+.singu-net-vane .down {
+  border-top: 6px solid var(--accent);
+}
+
+.singu-net-vane.offline span {
+  opacity: 0.15;
+}
+
+/* Q-55 外设卡片 */
+.singu-device-card {
+  position: fixed;
+  right: 12px;
+  bottom: 40px;
+  min-width: 200px;
+  padding: 10px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 935;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  animation: singu-device-in 0.4s var(--ease-spring);
+}
+
+.singu-device-card.leaving {
+  animation: singu-device-out 0.4s var(--ease-standard) forwards;
+}
+
+@keyframes singu-device-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes singu-device-out {
+  to {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+}
+
+/* Q-57 风扇静默（降负载全局修饰） */
+html.singu-fan-hush .singu-gpu-aurora,
+html.singu-fan-hush .singu-battery-breath,
+html.singu-fan-hush .singu-pomo-glow {
+  animation: none;
+  transition: none;
+}
+
+html.singu-fan-hush * {
+  scroll-behavior: auto !important;
+}
+
+/* --------------------------------------------------------------------------
+   11. 域9 兼容性防线（Q-58..Q-63）
+   -------------------------------------------------------------------------- */
+.singu-escort-bar {
+  position: fixed;
+  left: 50%;
+  top: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid color-mix(in oklch, var(--warn) 50%, transparent);
+  box-shadow: var(--elev-3);
+  z-index: 985;
+  animation: singu-ime-in 0.2s var(--ease-spring);
+}
+
+.singu-escort-label {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* Q-60 低电量防线 */
+html.singu-battery-static .singu-gpu-aurora,
+html.singu-battery-static .singu-pomo-glow,
+html.singu-battery-static .singu-pulsebar i {
+  animation: none !important;
+}
+
+html.singu-battery-static {
+  --singu-anim-level: 0;
+}
+
+/* --------------------------------------------------------------------------
+   12. 域10 安全与隐私（Q-64..Q-70）
+   -------------------------------------------------------------------------- */
+/* Q-65 剪贴板 TTL 角标 */
+.singu-clip-ttl {
+  position: fixed;
+  right: 14px;
+  top: 52px;
+  font: 600 10.5px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-chip);
+  padding: 4px 9px;
+  z-index: 930;
+}
+
+.singu-clip-ttl.warn {
+  color: var(--warn);
+  border-color: color-mix(in oklch, var(--warn) 55%, transparent);
+}
+
+/* Q-67 下载检疫卡 */
+.singu-quarantine {
+  position: fixed;
+  left: 50%;
+  top: 26%;
+  transform: translateX(-50%);
+  width: min(400px, 88vw);
+  padding: 16px 18px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid color-mix(in oklch, var(--danger) 55%, transparent);
+  box-shadow: var(--elev-3);
+  z-index: 990;
+  color: var(--text-primary);
+  animation: singu-ime-in 0.22s var(--ease-spring);
+}
+
+.singu-quarantine .title {
+  font: 700 11px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.16em;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+.singu-quarantine .file {
+  font-weight: 600;
+  font-size: 13.5px;
+  word-break: break-all;
+}
+
+.singu-quarantine .meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.singu-quarantine .row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+/* Q-70 冰山面板 */
+.singu-iceberg-sea {
+  position: relative;
+  margin: 10px 0;
+  padding: 14px 10px;
+  border-radius: var(--r-card);
+  background: linear-gradient(to bottom, transparent 42%, color-mix(in oklch, var(--accent) 12%, transparent) 42%);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.singu-berg {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: var(--r-control);
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--stroke);
+}
+
+.singu-berg.above {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.singu-berg:not(.above) {
+  background: color-mix(in oklch, var(--accent) 9%, transparent);
+  color: var(--text-secondary);
+}
+
+.singu-berg:hover {
+  border-color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   13. 域11 开放生态 overlay（Q-71..Q-76）
+   -------------------------------------------------------------------------- */
+.singu-camp-humidity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.singu-camp-humidity .hum {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.singu-camp-humidity .hum.dry {
+  color: var(--success);
+}
+
+.singu-camp-humidity .hum.moist {
+  color: var(--accent);
+}
+
+.singu-camp-humidity .hum.damp {
+  color: var(--warn);
+}
+
+.singu-camp-humidity .hum.tide {
+  color: var(--danger);
+}
+
+.singu-camp-humidity .pct {
+  margin-left: auto;
+  font: 600 12px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-primary);
+}
+
+.singu-camp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.singu-camp-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11.5px;
+}
+
+.singu-camp-list .kind {
+  font: 600 9.5px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-chip);
+  padding: 3px 6px;
+  text-transform: uppercase;
+}
+
+.singu-camp-list .path {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.singu-camp-list .bytes {
+  font: 500 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.singu-freed,
+.freed {
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* 番茄面板 */
+.singu-pomo-status {
+  text-align: center;
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  margin: 6px 0 2px;
+}
+
+.singu-pomo-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* 标尺面板 */
+.singu-ruler-modes {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.singu-ruler-read {
+  font: 600 22px/1.2 var(--font-mono, Consolas, monospace);
+  text-align: center;
+  color: var(--accent);
+  margin: 10px 0;
+}
+
+.singu-ruler-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--accent), color-mix(in oklch, var(--accent) 25%, transparent));
+  transform-origin: left;
+}
+
+/* 倒计时面板表单 */
+.singu-count-form {
+  display: flex;
+  gap: 6px;
+}
+
+.singu-count-form input {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+/* API 演练场 */
+.singu-api-form {
+  display: flex;
+  gap: 6px;
+}
+
+.singu-api-form input {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 0 10px;
+  font: 500 12px/1 var(--font-mono, Consolas, monospace);
+}
+
+.singu-api-result {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: var(--r-control);
+  background: var(--bg-canvas);
+  border: 1px solid var(--stroke);
+  font: 500 11.5px/1.6 var(--font-mono, Consolas, monospace);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.singu-events-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font: 500 11px/1.7 var(--font-mono, Consolas, monospace);
+  max-height: 320px;
+  overflow: auto;
+}
+
+.singu-events-list li {
+  border-bottom: 1px solid color-mix(in oklch, var(--stroke) 40%, transparent);
+  padding: 3px 2px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.singu-pack-report p {
+  margin: 4px 0;
+  font-size: 12.5px;
+}
+
+/* CLI 速查 */
+.singu-cli-group {
+  margin-bottom: 12px;
+}
+
+.singu-cli-group > b {
+  display: block;
+  font: 600 10.5px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.singu-cli-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 4px 10px;
+  width: 100%;
+  text-align: left;
+  margin: 3px 0;
+  padding: 7px 10px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.12s var(--ease-standard);
+}
+
+.singu-cli-card:hover {
+  border-color: var(--accent);
+}
+
+.singu-cli-card code {
+  font: 600 11.5px/1.4 var(--font-mono, Consolas, monospace);
+  color: var(--accent);
+}
+
+.singu-cli-card span {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.singu-cli-card i {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   14. 域12 视觉、个性化与氛围（Q-77..Q-81）
+   -------------------------------------------------------------------------- */
+/* Q-78 视差变量消费层（壁纸三层景深；变量由 JS 写入 documentElement） */
+html {
+  --singu-plx-fg-x: 0px;
+  --singu-plx-fg-y: 0px;
+  --singu-plx-base-x: 0px;
+  --singu-plx-base-y: 0px;
+  --singu-plx-far-x: 0px;
+  --singu-plx-far-y: 0px;
+}
+
+.singu-plx-fg {
+  transform: translate(var(--singu-plx-fg-x), var(--singu-plx-fg-y));
+}
+
+.singu-plx-base {
+  transform: translate(var(--singu-plx-base-x), var(--singu-plx-base-y));
+}
+
+.singu-plx-far {
+  transform: translate(var(--singu-plx-far-x), var(--singu-plx-far-y));
+}
+
+/* Q-79 试穿态（主题试穿变量） */
+html {
+  --singu-try-hue: initial;
+}
+
+/* Q-80 材质滑块变量默认值 */
+html {
+  --singu-mat-fog: 0.4;
+  --singu-mat-refraction: 0.3;
+  --singu-mat-grain: 0.15;
+  --singu-mat-gloss: 0.55;
+}
+
+/* Q-77 季节色相 */
+html {
+  --singu-season-hue: initial;
+}
+
+/* Q-81 亮暗仪式 */
+.singu-ritual {
+  position: fixed;
+  inset: 0;
+  z-index: 995;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent, var(--bg-canvas));
+  animation: singu-ritual 1.1s var(--ease-emphasized) forwards;
+}
+
+.singu-ritual.to-dark {
+  background: radial-gradient(circle at center, transparent 30%, oklch(0.08 0.02 262 / 0.92));
+}
+
+.singu-ritual.to-light {
+  background: radial-gradient(circle at center, transparent 30%, oklch(0.95 0.01 90 / 0.92));
+}
+
+@keyframes singu-ritual {
+  from {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* 主题精品店 */
+.singu-boutique-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.singu-theme-card {
+  aspect-ratio: 1;
+  border-radius: var(--r-card);
+  border: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 0.18s var(--ease-spring), box-shadow 0.18s var(--ease-standard);
+}
+
+.singu-theme-card:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: var(--elev-2);
+}
+
+.singu-theme-card b {
+  font-size: 12px;
+  color: oklch(0.98 0.01 262);
+  text-shadow: 0 1px 6px rgb(0 0 0 / 0.5);
+}
+
+.singu-theme-card span {
+  font-size: 9.5px;
+  color: oklch(0.92 0.01 262 / 0.85);
+  text-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+}
+
+.singu-material {
+  border-top: 1px dashed var(--stroke);
+  padding-top: 10px;
+}
+
+.singu-material > b {
+  display: block;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.singu-material label {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  margin: 5px 0;
+}
+
+.singu-material input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   15. 域13 声音与通知（Q-82..Q-86）
+   -------------------------------------------------------------------------- */
+.singu-breathe {
+  position: fixed;
+  right: 16px;
+  bottom: 76px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 928;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.singu-breathe .pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: singu-vitals 1.4s linear infinite;
+}
+
+.singu-breathe .count {
+  font: 700 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--accent);
+}
+
+.singu-breathe p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Q-85 优先金铃标记 */
+.singu-priority-gold {
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  padding: 10px 22px;
+  border-radius: 999px;
+  font: 700 12px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: oklch(0.85 0.14 90);
+  background: linear-gradient(135deg, oklch(0.35 0.09 85 / 0.95), oklch(0.28 0.07 75 / 0.95));
+  border: 1px solid oklch(0.8 0.14 90 / 0.6);
+  box-shadow: 0 0 30px oklch(0.8 0.14 90 / 0.35);
+  z-index: 986;
+  animation: singu-gold 2.6s var(--ease-emphasized) forwards;
+}
+
+@keyframes singu-gold {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-12px);
+  }
+  15%,
+  85% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+}
+
+/* 声音透视镜行 */
+.singu-sound-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 40px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.singu-sound-row .level {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-canvas);
+  overflow: hidden;
+}
+
+.singu-sound-row .level i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--accent), color-mix(in oklch, var(--accent) 45%, var(--warn)));
+  transition: width 120ms var(--ease-standard);
+}
+
+/* --------------------------------------------------------------------------
+   16. 域14 无障碍与本地化（Q-87..Q-92）
+   -------------------------------------------------------------------------- */
+.singu-fuzzy-hint {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: var(--r-control);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 962;
+  animation: singu-ime-in 0.15s var(--ease-spring);
+}
+
+/* Q-88 文本缩放（变量由 JS 写入；作用于环境内容层） */
+html {
+  --singu-text-scale: 1;
+}
+
+.singu-textscale-target {
+  font-size: calc(1em * var(--singu-text-scale));
+}
+
+/* Q-89 色觉滤镜（SVG filter defs 由 JS 注入 #singu-cvd-defs） */
+html.singu-cvd body {
+  filter: var(--singu-cvd-filter, none);
+}
+
+/* Q-90 阅读导引 */
+.singu-reading-guide {
+  position: fixed;
+  left: 6%;
+  right: 6%;
+  height: 44px;
+  border-radius: var(--r-control);
+  border: 1.5px solid color-mix(in oklch, var(--accent) 70%, transparent);
+  background: color-mix(in oklch, var(--accent) 7%, transparent);
+  box-shadow: 0 0 24px color-mix(in oklch, var(--accent) 22%, transparent);
+  pointer-events: none;
+  z-index: 929;
+}
+
+/* Q-92 手势提示卡 */
+.singu-gesture-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%);
+  padding: 9px 16px;
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-2);
+  z-index: 940;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  animation: singu-ime-in 0.2s var(--ease-spring);
+}
+
+/* 宽容搜索按钮 */
+.singu-fuzzy-hint .singu-btn {
+  font-size: 11.5px;
+}
+
+/* --------------------------------------------------------------------------
+   17. 域15 工程质量面板（Q-93..Q-100）
+   -------------------------------------------------------------------------- */
+.singu-flame {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  border-radius: var(--r-chip);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.singu-flame span {
+  min-width: 4px;
+  font: 600 9px/22px var(--font-mono, Consolas, monospace);
+  text-align: center;
+  color: oklch(0.14 0.02 262);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.singu-flame span:nth-child(6n + 1) {
+  background: oklch(0.72 0.12 160);
+}
+
+.singu-flame span:nth-child(6n + 2) {
+  background: oklch(0.76 0.12 130);
+}
+
+.singu-flame span:nth-child(6n + 3) {
+  background: oklch(0.80 0.12 95);
+}
+
+.singu-flame span:nth-child(6n + 4) {
+  background: oklch(0.74 0.12 70);
+}
+
+.singu-flame span:nth-child(6n + 5) {
+  background: oklch(0.68 0.13 45);
+}
+
+.singu-flame span:nth-child(6n + 6) {
+  background: oklch(0.64 0.14 25);
+}
+
+.singu-task-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font: 500 11.5px/1.9 var(--font-mono, Consolas, monospace);
+}
+
+.singu-task-list .ms {
+  color: var(--warn);
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.singu-quota-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  margin: 5px 0;
+  padding: 4px 8px;
+  border-radius: var(--r-chip);
+}
+
+.singu-quota-row span:first-child {
+  font: 600 10.5px/1 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  width: 84px;
+}
+
+.singu-quota-row span:nth-child(2) {
+  margin-left: auto;
+  font: 500 11.5px/1 var(--font-mono, Consolas, monospace);
+  color: var(--text-primary);
+}
+
+.singu-quota-row.warn {
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+}
+
+.singu-quality-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.singu-panel section {
+  margin: 10px 0;
+}
+
+.singu-panel section > b {
+  display: block;
+  font: 600 10.5px/1.4 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* 通用面板头/体/脚（React overlay Panel 组件） */
+.singu-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.singu-panel-head b {
+  font: 700 11px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.15em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+}
+
+.singu-panel-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--stroke);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.singu-panel-foot .singu-btn {
+  margin-left: auto;
+}
+
+.singu-panel-foot .singu-btn + .singu-btn {
+  margin-left: 0;
+}
+
+/* React overlay 定位：居中工具窗 */
+[data-ai04-overlay] > .singu-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, 92vw);
+  animation: singu-panel-pop calc(200ms * var(--dur-scale, 1)) var(--ease-spring);
+}
+
+@keyframes singu-panel-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* 日报/日志列表 */
+.singu-journal-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.singu-journal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11.5px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.singu-journal-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  padding: 4px 2px;
+  border-bottom: 1px solid color-mix(in oklch, var(--stroke) 40%, transparent);
+  color: var(--text-secondary);
+}
+
+.singu-journal-list li b {
+  font: 500 10.5px/1.5 var(--font-mono, Consolas, monospace);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   18. 降级纪律：reduce-motion / safeMode / static 三闸全停
+   --------------------------------------------------------------------------
+   项目运行时在 <html data-reduce-motion="true"> 上标注；系统偏好亦生效。
+   动画全停 ≠ 功能消失：指示器保留静态呈现。
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .singu-theater,
+  .singu-wake-light,
+  .singu-wake-clock,
+  .singu-wake-static,
+  .singu-curtain-beam,
+  .singu-brand-stardust,
+  .singu-brand-anniv,
+  .singu-greet,
+  .singu-parade-card,
+  .singu-vitals,
+  .singu-trail,
+  .singu-peek-ghost,
+  .singu-flash,
+  .singu-card,
+  .singu-flow-hit,
+  .singu-ime-stage,
+  .singu-selkit,
+  .singu-tremble,
+  .singu-pomo-glow,
+  .singu-battery-breath,
+  .singu-device-card,
+  .singu-quarantine,
+  .singu-ritual,
+  .singu-priority-gold,
+  .singu-gesture-hint,
+  .singu-hub,
+  .singu-breathe .pulse,
+  .singu-pulsebar i,
+  .singu-capsules .pill.soon,
+  .singu-grounding .icon-cell,
+  .singu-dial-slot {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .singu-chordring,
+  .singu-chord-ring {
+    display: none !important;
+  }
+}
+
+[data-reduce-motion="true"] .singu-theater,
+[data-reduce-motion="true"] .singu-wake-light,
+[data-reduce-motion="true"] .singu-wake-clock,
+[data-reduce-motion="true"] .singu-wake-static,
+[data-reduce-motion="true"] .singu-curtain-beam,
+[data-reduce-motion="true"] .singu-brand-stardust,
+[data-reduce-motion="true"] .singu-brand-anniv,
+[data-reduce-motion="true"] .singu-greet,
+[data-reduce-motion="true"] .singu-parade-card,
+[data-reduce-motion="true"] .singu-vitals,
+[data-reduce-motion="true"] .singu-trail,
+[data-reduce-motion="true"] .singu-peek-ghost,
+[data-reduce-motion="true"] .singu-flash,
+[data-reduce-motion="true"] .singu-card,
+[data-reduce-motion="true"] .singu-flow-hit,
+[data-reduce-motion="true"] .singu-ime-stage,
+[data-reduce-motion="true"] .singu-selkit,
+[data-reduce-motion="true"] .singu-tremble,
+[data-reduce-motion="true"] .singu-pomo-glow,
+[data-reduce-motion="true"] .singu-battery-breath,
+[data-reduce-motion="true"] .singu-device-card,
+[data-reduce-motion="true"] .singu-quarantine,
+[data-reduce-motion="true"] .singu-ritual,
+[data-reduce-motion="true"] .singu-priority-gold,
+[data-reduce-motion="true"] .singu-gesture-hint,
+[data-reduce-motion="true"] .singu-hub,
+[data-reduce-motion="true"] .singu-breathe .pulse,
+[data-reduce-motion="true"] .singu-pulsebar i,
+[data-reduce-motion="true"] .singu-capsules .pill.soon,
+[data-reduce-motion="true"] .singu-grounding .icon-cell,
+[data-reduce-motion="true"] .singu-dial-slot {
+  animation: none !important;
+  transition: none !important;
+}
+
+[data-reduce-motion="true"] .singu-chordring,
+[data-reduce-motion="true"] .singu-chord-ring {
+  display: none !important;
+}
+
+[data-reduce-motion="true"] .singu-gpu-aurora,
+[data-reduce-motion="true"] .singu-battery-breath,
+[data-reduce-motion="true"] .singu-pomo-glow {
+  animation: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   19. 高对比主题适配
+   -------------------------------------------------------------------------- */
+[data-theme="high-contrast"] .singu-panel,
+[data-theme="high-contrast"] .singu-hub,
+[data-theme="high-contrast"] .singu-mirror,
+[data-theme="high-contrast"] .singu-card,
+[data-theme="high-contrast"] .singu-device-card,
+[data-theme="high-contrast"] .singu-escort-bar,
+[data-theme="high-contrast"] .singu-quarantine,
+[data-theme="high-contrast"] .singu-breathe,
+[data-theme="high-contrast"] .singu-dial-slot,
+[data-theme="high-contrast"] .singu-cli-card {
+  backdrop-filter: none;
+  background: var(--bg-raised);
+  border-width: 2px;
+}

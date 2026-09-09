@@ -5,6 +5,7 @@ import App from "../../App";
 import "../../styles/global.css";
 import "../../styles/desktop.css";
 import "../../styles/vwm.css";
+import "../../styles/singularity.css";
 
 // 桌面环境窗口：启动仪式 → 壁纸 → 图标网格 → 任务栏/开始菜单。
 setupEntryRuntime("desktop");

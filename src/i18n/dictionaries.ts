@@ -4843,6 +4843,7 @@ const en: Dict = {
   cmdOcr: "Screen OCR",
   cmdShortcutsHub: "Shortcuts hub",
   cmdMacroEngine: "Macro engine",
+  cmdSinguHub: "Singularity hub (100 abilities)",
   cmdCheatsheetMd: "Export cheatsheet (Markdown)",
   cmdCheatsheetHtml: "Export cheatsheet (HTML)",
   cmdHistoryPrivacy: "Search history privacy",

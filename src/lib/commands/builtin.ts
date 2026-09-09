@@ -68,6 +68,8 @@ export function builtinCommands(): Command[] {
     c("eff.inlineCalc", "cmdInlineCalc", "tool", ["calculator", "内联计算", "nljs"]),
     c("eff.timestamp", "cmdTimestamp", "tool", ["timestamp", "时间戳", "sjc", "now", "ts"]),
     c("eff.clipboardHistory", "cmdClipboardHistory", "tool", ["clipboard history", "剪贴板历史", "jtb"]),
+    // ---- SINGULARITY-100 奇点中枢 ----
+    c("singu.hub", "cmdSinguHub", "tool", ["singularity", "奇点中枢", "qd", "singu", "q-100", "100"]),
   ];
 }
 
