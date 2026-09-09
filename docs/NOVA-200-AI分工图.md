@@ -371,8 +371,8 @@
 
 | 工件 | 归属 | 状态 |
 |---|---|---|
-| `registry.ts` / `labels.ts` / `nova.css` | 地基（AI-01 路代建，十六路共享） | ☐ |
-| `NovaHub.tsx` / `NovaRuntime.tsx` / `activate.ts` | 地基 | ☐ |
+| `registry.ts` / `labels.ts` / `nova.css` | 地基（AI-01 路代建，十六路共享） | ✅ |
+| `NovaHub.tsx` / `NovaRuntime.tsx` / `activate.ts` | 地基 | ✅ |
 | `src-tauri/src/shell/nova.rs` + lib.rs 注册 | 地基（AI-08 路协同验证） | ☐ |
 | `novaVoice.ts`（opt-in 语音件） | 地基（AI-13/14 路消费，可后补） | ☐ |
 | 十六域 `modules/*Nova.ts` | 各路自有（见上表） | ☐ |

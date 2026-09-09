@@ -1078,6 +1078,14 @@ export function activateBootNova(): void {
   window.addEventListener("nova://boot-footprints", onFootprints);
   bag.push(() => window.removeEventListener("nova://boot-footprints", onFootprints));
 
+  // Hub overlay 直达（ai04 协议：nova-footprints 足迹墙）
+  const onOpenFeature = (ev: Event): void => {
+    const f = (ev as CustomEvent<{ feature?: string }>).detail?.feature;
+    if (f === "nova-footprints" && novaOn("W-006")) toggleFootprints();
+  };
+  window.addEventListener("ai04:open-feature", onOpenFeature);
+  bag.push(() => window.removeEventListener("ai04:open-feature", onOpenFeature));
+
   // 与 Q-02 谢幕视觉同步的仪式音（singu/ai04 双通道只听不改）
   const onCurtain = (): void => {
     if (novaOn("W-010")) void playRite("shutdown");

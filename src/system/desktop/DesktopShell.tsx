@@ -42,6 +42,8 @@ import { useStore } from "../../lib/store";
 import { useUnreadCount } from "../../state/notifyStore";
 import { CommandPalette } from "../palette/CommandPalette";
 import { MiniAppsLayer } from "../vwm/miniframe";
+// NOVA-200 S0 地基：新星体系副作用激活（hub 监听 + 运行时按需启动；AI-01 代建）
+import "../nova/activate";
 import { DndLayer } from "../../lib/dnd/DragGhost";
 // AI-08 Z-28：运行对话框（全局浮层；ctrl+alt+r 呼出）
 import { RunDialog } from "../tools/RunDialog";

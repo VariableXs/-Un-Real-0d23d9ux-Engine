@@ -412,3 +412,245 @@
 [data-static-mode="true"] .nova-btn {
   transition: none;
 }
+
+/* --------------------------------------------------------------------------
+   4. S0 新星中枢 NovaHub（ai04:open-feature { feature: "nova-hub" } 挂载；
+      与奇点中枢同构并行、可同开互不干扰；样式全走 tokens 语义变量）
+   -------------------------------------------------------------------------- */
+
+.nova-hub {
+  position: fixed;
+  inset: 0;
+  z-index: 1006;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in oklch, var(--bg-canvas) 82%, transparent);
+  backdrop-filter: blur(22px) saturate(1.25);
+  color: var(--text-primary);
+  animation: nova-hub-in calc(260ms * var(--dur-scale, 1)) var(--ease-emphasized);
+}
+
+@keyframes nova-hub-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+
+.nova-hub-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--stroke);
+  flex-shrink: 0;
+}
+
+.nova-hub-brand h1 {
+  font: 700 15px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.18em;
+  margin: 0;
+}
+
+.nova-hub-brand span {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.nova-hub-search {
+  flex: 1;
+  max-width: 420px;
+  padding: 7px 12px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--stroke);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.nova-hub-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.nova-hub-stats {
+  font: 500 11px/1.4 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.nova-btn.danger:hover {
+  border-color: var(--danger, var(--warn));
+  color: var(--danger, var(--warn));
+}
+
+.nova-hub-body {
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.nova-hub-nav {
+  border-right: 1px solid var(--stroke);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.nova-hub-nav button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 12.5px;
+  padding: 6px 10px;
+  border-radius: var(--r-control);
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease-standard), color var(--dur-2) var(--ease-standard);
+}
+
+.nova-hub-nav button:hover {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.nova-hub-nav button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nova-hub-nav button i {
+  font: 600 10px/1 var(--font-mono, Consolas, monospace);
+  font-style: normal;
+  letter-spacing: 0.12em;
+  margin-right: 8px;
+  opacity: 0.7;
+}
+
+.nova-hub-list {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+.nova-hub-note {
+  font-size: 11.5px;
+  color: var(--warn);
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--r-control);
+}
+
+.nova-hub-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  padding: 10px 2px 2px;
+  border-top: 1px solid var(--stroke);
+  margin-top: 6px;
+}
+
+/* 功能行：开关 + 编号 + 标题 + 描述 + changelog + 参数 + overlay 直达 */
+.nova-row {
+  padding: 10px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  transition: border-color var(--dur-2) var(--ease-standard);
+}
+
+.nova-row.on {
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--stroke));
+}
+
+.nova-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.nova-row-id {
+  font: 600 10.5px/1.2 var(--font-mono, Consolas, monospace);
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  flex: none;
+}
+
+.nova-row-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.nova-row-desc {
+  margin: 4px 0 0 26px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.nova-row-changelog {
+  margin: 3px 0 0 26px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.nova-row-changelog b {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.nova-row-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 8px 0 0 26px;
+}
+
+.nova-param {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.nova-param-label {
+  color: var(--text-secondary);
+}
+
+.nova-param-value {
+  font: 600 11px/1 var(--font-mono, Consolas, monospace);
+  color: var(--accent);
+  min-width: 28px;
+}
+
+/* 中枢动效同样受降级链钳制 */
+@media (prefers-reduced-motion: reduce) {
+  .nova-hub { animation: none; }
+}
+
+[data-reduce-motion="true"] .nova-hub,
+[data-safe-mode="true"] .nova-hub,
+[data-static-mode="true"] .nova-hub {
+  animation: none;
+}
+
+[data-reduce-motion="true"] .nova-row,
+[data-safe-mode="true"] .nova-row,
+[data-static-mode="true"] .nova-row {
+  transition: none;
+}

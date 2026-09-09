@@ -294,6 +294,9 @@ function installHandlers(): void {
     // SINGULARITY-100 奇点中枢
     "singu.hub": () =>
       window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "singu-hub" } })),
+    // NOVA-200 新星中枢
+    "nova.hub": () =>
+      window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "nova-hub" } })),
   };
   for (const [id, fn] of Object.entries(actions)) setCommandHandler(id, fn);
 }

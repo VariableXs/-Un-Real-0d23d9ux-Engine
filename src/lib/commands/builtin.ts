@@ -70,6 +70,8 @@ export function builtinCommands(): Command[] {
     c("eff.clipboardHistory", "cmdClipboardHistory", "tool", ["clipboard history", "剪贴板历史", "jtb"]),
     // ---- SINGULARITY-100 奇点中枢 ----
     c("singu.hub", "cmdSinguHub", "tool", ["singularity", "奇点中枢", "qd", "singu", "q-100", "100"]),
+    // ---- NOVA-200 新星中枢 ----
+    c("nova.hub", "cmdNovaHub", "tool", ["nova", "新星中枢", "xx", "nova hub", "200"]),
   ];
 }
 
