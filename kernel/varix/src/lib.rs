@@ -80,3 +80,10 @@ pub mod app_fate;
 pub mod sync;
 pub mod sec;
 pub mod verify;
+
+// --- GALAXY-1800 AI-08~AI-16 (G421~G960) ------------------------------------
+pub mod gdist;
+pub mod gcons;
+pub mod gcont;
+// --- TRINITY-500 AI-20 (F476~F500) 工程质量与门禁收官（模块注册由 AI-20 统一收口）
+pub mod quality;
