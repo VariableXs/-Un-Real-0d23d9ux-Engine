@@ -85,7 +85,7 @@ fn snap_path(st: &AppState, id: &str) -> PathBuf {
     snaps_dir(st).join(format!("{id}.json"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assoc_snapshot_take(st: tauri::State<AppState>, name: String) -> CmdResult<AssocSnapshot> {
     if name.trim().is_empty() {
         return Err(AppError::validation("快照名为空"));
@@ -99,7 +99,7 @@ pub fn assoc_snapshot_take(st: tauri::State<AppState>, name: String) -> CmdResul
     Ok(s)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assoc_snapshot_list(st: tauri::State<AppState>) -> CmdResult<Vec<AssocSnapshot>> {
     let mut out: Vec<AssocSnapshot> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(snaps_dir(&st)) {
@@ -115,7 +115,7 @@ pub fn assoc_snapshot_list(st: tauri::State<AppState>) -> CmdResult<Vec<AssocSna
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assoc_snapshot_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let p = snap_path(&st, &id);
     if !p.is_file() {
@@ -167,7 +167,7 @@ pub fn assoc_diff(a: &[AssocEntry], b: &[AssocEntry]) -> Vec<AssocDiffEntry> {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assoc_snapshot_diff(st: tauri::State<AppState>, id_a: String, id_b: String) -> CmdResult<Vec<AssocDiffEntry>> {
     let sa = std::fs::read_to_string(snap_path(&st, &id_a))
         .ok()
@@ -182,7 +182,7 @@ pub fn assoc_snapshot_diff(st: tauri::State<AppState>, id_a: String, id_b: Strin
 
 /// 还原：把快照中的关联逐条写回 HKCU UserChoice。
 /// 返回 (成功数, 冲突数) —— 冲突 = 写入后读回不一致（UserChoice 哈希保护）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn assoc_snapshot_restore(st: tauri::State<AppState>, id: String) -> CmdResult<(usize, usize)> {
     let snap = std::fs::read_to_string(snap_path(&st, &id))
         .ok()
@@ -344,7 +344,7 @@ fn scan_uninstall_keys(_key: &str) -> Vec<ResidueHit> {
 }
 
 /// 卸载后残留扫描（只报告不删除；删除由 residue_delete 勾选执行）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_scan_app(app_name: String) -> CmdResult<ResidueReport> {
     let key = app_name.trim();
     if key.len() < 2 {
@@ -367,7 +367,7 @@ pub fn residue_scan_app(app_name: String) -> CmdResult<ResidueReport> {
 }
 
 /// 勾选删除：一律移入环境回收站（U-27 体系），绝不覆写。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_delete(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec<String>> {
     if paths.is_empty() {
         return Err(AppError::validation("未勾选任何项"));

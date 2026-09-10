@@ -68,13 +68,13 @@ fn clamp01(v: f32) -> f32 {
 }
 
 /// 记忆列表（remember=false 的条目也保留——"记住此应用"开关本体需要持久化）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn volmem_list(st: tauri::State<AppState>) -> CmdResult<Vec<VolMemEntry>> {
     Ok(volmem_load(&st))
 }
 
 /// 保存/更新一条应用音量记忆（app 已存在则覆盖）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn volmem_save(st: tauri::State<AppState>, entry: VolMemEntry) -> CmdResult<()> {
     let app = entry.app.trim().to_lowercase();
     if app.is_empty() {
@@ -96,7 +96,7 @@ pub fn volmem_save(st: tauri::State<AppState>, entry: VolMemEntry) -> CmdResult<
 }
 
 /// 忘记某应用（连同开关一起删除）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn volmem_forget(st: tauri::State<AppState>, app: String) -> CmdResult<()> {
     let app = app.trim().to_lowercase();
     let mut list = volmem_load(&st);
@@ -110,7 +110,7 @@ pub fn volmem_forget(st: tauri::State<AppState>, app: String) -> CmdResult<()> {
 
 /// 把记忆音量套回当前活跃 mixer 会话（按进程名匹配；只动 remember=true 的应用）。
 /// 返回逐条结果（会话不存在 = skipped，非错误——应用没在发声）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn volmem_sync(st: tauri::State<AppState>) -> CmdResult<Vec<VolMemApplyResult>> {
     let memories: Vec<VolMemEntry> = volmem_load(&st).into_iter().filter(|m| m.remember).collect();
     if memories.is_empty() {
@@ -165,7 +165,7 @@ pub struct SchemeCheckResult {
 }
 
 /// 校验方案包 JSON（结构 + 事件白名单 + 数值范围）。无效即拒绝并如实说明。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sound_scheme_validate(path: String) -> CmdResult<SchemeCheckResult> {
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| AppError::io(format!("读取方案包失败: {e}")))?;
@@ -215,7 +215,7 @@ pub fn sound_scheme_validate(path: String) -> CmdResult<SchemeCheckResult> {
 /// 切换默认「通信设备」（eCommunications 角色；console 角色见 hardware::audio_set_default）。
 /// 同样走 PolicyConfig COM 槽位 13，Windows 10/11 通用；失败如实报错。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set_default_comm(device_id: String) -> Result<(), String> {
     use windows::core::{GUID, HSTRING, HRESULT, Interface, PCWSTR};
     use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
@@ -242,7 +242,7 @@ pub fn audio_set_default_comm(device_id: String) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set_default_comm(_device_id: String) -> Result<(), String> {
     Err("仅 Windows 支持".into())
 }
@@ -308,7 +308,7 @@ fn archive_conn(st: &AppState) -> Result<rusqlite::Connection, AppError> {
 }
 
 /// 通知入档（前端 pushNotify 时 fire-and-forget 调用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notify_archive_insert(st: tauri::State<AppState>, entry: ArchiveEntry) -> CmdResult<i64> {
     let conn = archive_conn(&st)?;
     conn.execute(
@@ -320,7 +320,7 @@ pub fn notify_archive_insert(st: tauri::State<AppState>, entry: ArchiveEntry) ->
 }
 
 /// 存档查询：标题+正文全文 LIKE；app 为空 = 全部；时间倒序。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notify_archive_query(
     st: tauri::State<AppState>,
     query: String,
@@ -374,7 +374,7 @@ pub fn notify_archive_query(
 }
 
 /// 按应用聚合（筛选用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notify_archive_apps(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let conn = archive_conn(&st)?;
     let mut stmt = conn
@@ -389,7 +389,7 @@ pub fn notify_archive_apps(st: tauri::State<AppState>) -> CmdResult<Vec<String>>
 }
 
 /// 删除指定条目。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notify_archive_delete(st: tauri::State<AppState>, ids: Vec<i64>) -> CmdResult<u64> {
     let conn = archive_conn(&st)?;
     let mut n = 0u64;
@@ -404,7 +404,7 @@ pub fn notify_archive_delete(st: tauri::State<AppState>, ids: Vec<i64>) -> CmdRe
 
 /// 保留策略清理：retentionDays <= 0 = 永久保留（只清已读可选？不——保留策略只按时间）。
 /// 返回删除条数；只在策略到期时发生（本命令即"到期执行"本体）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn notify_archive_cleanup(st: tauri::State<AppState>, retention_days: i64) -> CmdResult<u64> {
     let conn = archive_conn(&st)?;
     if retention_days <= 0 {
@@ -429,7 +429,7 @@ pub struct MicUsageState {
 }
 
 /// 当前麦克风占用（与 Windows 隐私仪表板同源；仅指示，不拦截）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mic_usage_state() -> MicUsageState {
     let apps = crate::shell::hardware::privacy_usage()
         .into_iter()
@@ -514,7 +514,7 @@ pub fn next_due(r: &Reminder, now_ms: u64) -> u64 {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminder_add(st: tauri::State<AppState>, reminder: Reminder) -> CmdResult<Vec<Reminder>> {
     validate_reminder(&reminder)?;
     if reminder.due_at == 0 {
@@ -529,13 +529,13 @@ pub fn reminder_add(st: tauri::State<AppState>, reminder: Reminder) -> CmdResult
     Ok(list)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminder_list(st: tauri::State<AppState>) -> CmdResult<Vec<Reminder>> {
     Ok(reminders_load(&st))
 }
 
 /// 完成（一次性提醒移除；重复提醒推到下一周期）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminder_complete(st: tauri::State<AppState>, id: String) -> CmdResult<Vec<Reminder>> {
     let now = now_ms();
     let mut list = reminders_load(&st);
@@ -553,7 +553,7 @@ pub fn reminder_complete(st: tauri::State<AppState>, id: String) -> CmdResult<Ve
 }
 
 /// 改期（保持重复规则，重设基准时刻）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminder_reschedule(st: tauri::State<AppState>, id: String, due_at: u64) -> CmdResult<Vec<Reminder>> {
     let mut list = reminders_load(&st);
     let Some(r) = list.iter_mut().find(|r| r.id == id) else {
@@ -567,7 +567,7 @@ pub fn reminder_reschedule(st: tauri::State<AppState>, id: String, due_at: u64) 
     Ok(list)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reminder_delete(st: tauri::State<AppState>, id: String) -> CmdResult<Vec<Reminder>> {
     let mut list = reminders_load(&st);
     let before = list.len();

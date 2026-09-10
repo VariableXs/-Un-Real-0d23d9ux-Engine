@@ -177,7 +177,7 @@ fn entry_from_path(p: &Path) -> Option<ExEntry> {
 }
 
 /// 用户主目录（Windows: %USERPROFILE%）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_home(_st: tauri::State<AppState>) -> CmdResult<String> {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -186,7 +186,7 @@ pub fn ex_home(_st: tauri::State<AppState>) -> CmdResult<String> {
 }
 
 /// 逻辑驱动器枚举（A:–Z: 中真实存在的盘）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_drives(_st: tauri::State<AppState>) -> CmdResult<Vec<ExDrive>> {
     let mut out = Vec::new();
     for b in b'A'..=b'Z' {
@@ -209,7 +209,7 @@ pub struct ExVarDir {
 }
 
 /// 返回数据目录根 + 已存在的关键子目录（工作区 / 便携应用 / 回收站）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_variable_dirs(st: tauri::State<AppState>) -> CmdResult<Vec<ExVarDir>> {
     let mut out = vec![ExVarDir {
         key: "root".into(),
@@ -228,7 +228,7 @@ pub fn ex_variable_dirs(st: tauri::State<AppState>) -> CmdResult<Vec<ExVarDir>> 
 }
 
 /// 列出目录内容（全部文件类型；目录在前、按名称不区分大小写排序）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_list(_st: tauri::State<AppState>, path: String) -> CmdResult<ExListing> {
     let dir = PathBuf::from(&path);
     let lp = long_path(&dir);
@@ -259,7 +259,7 @@ pub fn ex_list(_st: tauri::State<AppState>, path: String) -> CmdResult<ExListing
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_mkdir(st: tauri::State<AppState>, parent: String, name: String) -> CmdResult<String> {
     let dir = long_path(Path::new(&parent));
     if !dir.is_dir() {
@@ -272,7 +272,7 @@ pub fn ex_mkdir(st: tauri::State<AppState>, parent: String, name: String) -> Cmd
     Ok(display_path(&dest))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_rename(st: tauri::State<AppState>, path: String, new_name: String) -> CmdResult<String> {
     let src = PathBuf::from(&path);
     guard_target(&st, &src)?;
@@ -339,7 +339,7 @@ fn resolve_dest(from: &Path, to_dir: &Path, mode: &str) -> CmdResult<PathBuf> {
 }
 
 /// 复制文件/文件夹到目标目录（跨盘安全；mode = auto|replace|keep）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_copy(
     st: tauri::State<AppState>,
     src: String,
@@ -364,7 +364,7 @@ pub fn ex_copy(
 }
 
 /// 移动文件/文件夹（同盘 rename；跨盘 copy + 删除源；mode = auto|replace|keep）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_move(
     st: tauri::State<AppState>,
     src: String,
@@ -405,7 +405,7 @@ pub fn ex_move(
 }
 
 /// 批次C（规格 7.7 冲突检测）：哪些源在目标目录会撞名。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_conflicts(_st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: String) -> CmdResult<Vec<String>> {
     let to_dir = long_path(Path::new(&dest_dir));
     if !to_dir.is_dir() {
@@ -424,7 +424,7 @@ pub fn ex_conflicts(_st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: St
 }
 
 /// 删除 → 移入 Variable 全局回收站（可还原）。返回回收站条目 id 列表。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_trash(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec<String>> {
     let mut ids = Vec::new();
     for p in paths {
@@ -436,7 +436,7 @@ pub fn ex_trash(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec
 }
 
 /// 批次C（规格 7.6 Shift+Delete）：彻底删除（不入回收站，二次确认由前端负责）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_purge(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<u32> {
     let mut n = 0u32;
     for p in paths {
@@ -461,7 +461,7 @@ fn favorites_file(st: &AppState) -> PathBuf {
     st.data_dir.join("explorer_favorites.json")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_fav_list(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let f = favorites_file(&st);
     if !f.exists() {
@@ -472,7 +472,7 @@ pub fn ex_fav_list(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     Ok(list.into_iter().filter(|p| Path::new(p).is_dir()).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_fav_add(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<String>> {
     if !Path::new(&path).is_dir() {
         return Err(AppError::not_found("文件夹不存在 / Folder not found"));
@@ -489,7 +489,7 @@ pub fn ex_fav_add(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<Str
     Ok(list)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_fav_remove(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<String>> {
     let f = favorites_file(&st);
     let mut list: Vec<String> = fs::read_to_string(&f)
@@ -681,7 +681,7 @@ fn search_dir(
 }
 
 /// 目录内搜索（规格 7.4.3：通配符 + AND/OR/NOT）。空查询返回空结果。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_search(_st: tauri::State<AppState>, path: String, query: String) -> CmdResult<ExSearchResult> {
     let dir = PathBuf::from(&path);
     if !long_path(&dir).is_dir() {
@@ -707,7 +707,7 @@ const THUMB_MAX_BYTES: u64 = 15 * 1024 * 1024;
 /// 批次C（规格 7.7）：图片缩略图 → data URL（WebView 直接渲染）。
 /// 仅支持 WebView 原生可解码的位图格式；超过 15MB 的文件如实返回错误（不伪造缩略图）。
 /// 视频无解码器，不提供假缩略图 —— 前端对视频显示文件图标。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_thumbnail(_st: tauri::State<AppState>, path: String) -> CmdResult<String> {
     let p = PathBuf::from(&path);
     let ext = p
@@ -748,7 +748,7 @@ pub struct ExPage {
     pub entries: Vec<ExEntry>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_list_paged(
     _st: tauri::State<AppState>,
     path: String,
@@ -826,18 +826,18 @@ fn ex_view_set_inner(st: &AppState, path: &str, view: &str) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_view_get(st: tauri::State<AppState>, path: String) -> CmdResult<Option<String>> {
     ex_view_get_inner(&st, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_view_set(st: tauri::State<AppState>, path: String, view: String) -> CmdResult<()> {
     ex_view_set_inner(&st, &path, &view)
 }
 
 /// U-16 列视图（macOS Finder 式逐级横排）：一次读多级目录（前端传入当前链）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ex_column_chain(_st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec<ExListing>> {
     if paths.len() > 12 {
         return Err(AppError::validation("列视图链过深 / column chain too deep"));

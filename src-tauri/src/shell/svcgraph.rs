@@ -254,13 +254,13 @@ pub fn topo_layers(nodes: &[SvcNode]) -> SvcTopo {
 // ---------------------------------------------------------------------------
 
 /// V-87：全量服务依赖图。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn svc_graph() -> CmdResult<Vec<SvcNode>> {
     read_services()
 }
 
 /// V-87：单服务影响分析（停止/禁用前的破坏面提示）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn svc_impact(target: String) -> CmdResult<SvcImpact> {
     let nodes = read_services()?;
     if !nodes.iter().any(|n| n.name.eq_ignore_ascii_case(&target)) {
@@ -276,7 +276,7 @@ pub fn svc_impact(target: String) -> CmdResult<SvcImpact> {
 }
 
 /// V-87：拓扑分层（并行启动顺序建议）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn svc_topo() -> CmdResult<SvcTopo> {
     Ok(topo_layers(&read_services()?))
 }

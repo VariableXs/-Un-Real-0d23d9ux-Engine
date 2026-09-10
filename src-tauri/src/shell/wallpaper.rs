@@ -41,7 +41,7 @@ fn with_wallpaper<T>(
 }
 
 /// 枚举显示器（IDesktopWallpaper 视角，id 可直接用于 SetWallpaper）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn wp_monitors() -> CmdResult<Vec<WpMonitor>> {
     use windows::core::PCWSTR;
@@ -68,14 +68,14 @@ pub fn wp_monitors() -> CmdResult<Vec<WpMonitor>> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(not(windows))]
 pub fn wp_monitors() -> CmdResult<Vec<WpMonitor>> {
     Ok(Vec::new())
 }
 
 /// 设置某显示器（monitor 为空 = 全部显示器）的桌面壁纸为 path 指向的图片。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn wp_set_monitor(monitor: String, path: String) -> CmdResult<()> {
     use windows::core::{HSTRING, PCWSTR};
@@ -92,7 +92,7 @@ pub fn wp_set_monitor(monitor: String, path: String) -> CmdResult<()> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(not(windows))]
 pub fn wp_set_monitor(_monitor: String, _path: String) -> CmdResult<()> {
     Err(AppError::validation("仅 Windows 支持 / Windows only"))
@@ -102,7 +102,7 @@ pub fn wp_set_monitor(_monitor: String, _path: String) -> CmdResult<()> {
 /// - mode="date"：按当天日期确定性取一张（每日自动换，同一天内稳定）
 /// - mode="next"：随机取一张（右键"下一张壁纸"）
 /// 目录无可用图片时返回 None（前端如实提示，不伪造）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wp_pick_daily(dir: String, mode: String) -> CmdResult<Option<String>> {
     let root = std::path::PathBuf::from(&dir);
     if !root.is_dir() {
@@ -376,7 +376,7 @@ pub(crate) fn steam_library_roots() -> Vec<std::path::PathBuf> {
 /// root 为空 = 自动探测（默认 Steam 库 + libraryfolders.vdf 里的全部库）；
 /// 否则 root 为 Steam 库根 / wallpaper_engine 目录 / 项目父目录。
 /// scene 着色器型 / web / application 类型按实际能力返回 supported（其余回退预览图）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wp_engine_scan(root: String) -> CmdResult<Vec<WpEngineItem>> {
     let roots: Vec<std::path::PathBuf> = if root.trim().is_empty() {
         steam_library_roots()
@@ -416,7 +416,7 @@ pub struct WpImageFile {
 
 /// 枚举目录下的壁纸图片（平铺一层，不递归；按文件名排序）。
 /// 壁纸中心「本地目录」库源；目录不存在报错，空目录返回空表（如实）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wp_list_images(dir: String) -> CmdResult<Vec<WpImageFile>> {
     let root = std::path::PathBuf::from(&dir);
     let mut out: Vec<WpImageFile> = std::fs::read_dir(&root)
@@ -451,7 +451,7 @@ pub fn wp_list_images(dir: String) -> CmdResult<Vec<WpImageFile>> {
 /// `#include "x"`（相对主文件目录；PathBuf 拼接、限深 8、防环；只读零网络）。
 /// 只允许读文件（拒绝目录/不存在），内容原样返回由前端编译。
 #[tauri::command]
-pub fn wp_scene_shader(entry: String) -> CmdResult<String> {
+pub async fn wp_scene_shader(entry: String) -> CmdResult<String> {
     let root = std::path::PathBuf::from(&entry);
     if !root.is_file() {
         return Err(AppError::not_found("着色器文件不存在 / Shader file missing"));

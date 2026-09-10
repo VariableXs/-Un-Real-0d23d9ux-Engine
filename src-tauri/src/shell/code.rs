@@ -41,7 +41,7 @@ pub struct CodeStatus {
     pub portable_data: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn code_status(st: tauri::State<AppState>) -> CmdResult<CodeStatus> {
     let exe = code_exe(&st.data_dir);
     let registered = crate::shell::launcher::registry_snapshot(&st)
@@ -77,7 +77,7 @@ fn hidden_command(program: &str) -> std::process::Command {
 }
 
 /// 一键部署（幂等）。zip 已存在于 runtime/vscode-download.zip 时跳过下载。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn code_deploy(st: tauri::State<AppState>, app: tauri::AppHandle) -> CmdResult<()> {
     if code_exe(&st.data_dir).is_file() {
         return Ok(()); // 幂等
@@ -175,7 +175,7 @@ pub fn code_deploy(st: tauri::State<AppState>, app: tauri::AppHandle) -> CmdResu
 }
 
 /// 自动登记 ThirdApp（幂等 upsert）——登记后即出现在任务栏/启动器/嵌入通道。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
     let exe = code_exe(&st.data_dir);
     if !exe.is_file() {
@@ -219,7 +219,7 @@ pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
 }
 
 /// 启动并嵌入（复用 embed_launch 整条通道——Electron 嵌入回归由此保证）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn code_launch(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,

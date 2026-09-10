@@ -44,7 +44,7 @@ fn tool_path(data_dir: &std::path::Path, name: &str) -> CmdResult<PathBuf> {
 }
 
 /// 读取工具 JSON 数据（不存在 → null，前端按默认值处理）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tool_data_read(st: State<'_, AppState>, name: String) -> CmdResult<Option<String>> {
     let p = tool_path(&st.data_dir, &name)?;
     if !p.exists() {
@@ -55,7 +55,7 @@ pub fn tool_data_read(st: State<'_, AppState>, name: String) -> CmdResult<Option
 }
 
 /// 写入工具 JSON 数据（整文件覆盖；调用方负责序列化与容量控制）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tool_data_write(st: State<'_, AppState>, name: String, content: String) -> CmdResult<()> {
     let p = tool_path(&st.data_dir, &name)?;
     fs::write(&p, content.as_bytes()).map_err(|e| AppError::io(format!("写入 {name} 数据失败: {e}")))?;
@@ -140,7 +140,7 @@ pub fn dpapi_unprotect(cipher: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// DPAPI 加密写入（内容 = 明文字符串，落盘 = base64(cipher)）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tool_secure_write(st: State<'_, AppState>, name: String, content: String) -> CmdResult<()> {
     let p = tool_path(&st.data_dir, &name)?;
     let cipher = dpapi::protect(content.as_bytes()).map_err(|e| AppError::io(format!("DPAPI 加密失败: {e}")))?;
@@ -150,7 +150,7 @@ pub fn tool_secure_write(st: State<'_, AppState>, name: String, content: String)
 }
 
 /// DPAPI 解密读取（本机当前用户可解；换机/换用户如实报错）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tool_secure_read(st: State<'_, AppState>, name: String) -> CmdResult<Option<String>> {
     let p = tool_path(&st.data_dir, &name)?;
     if !p.exists() {
@@ -170,7 +170,7 @@ pub fn tool_secure_read(st: State<'_, AppState>, name: String) -> CmdResult<Opti
 /// 抓取整个虚拟屏（多显示器并集），返回 BMP 文件字节。
 /// 说明：区域/窗口裁剪与标注在前端 canvas 完成；S-1 防截屏开启时前端
 /// 会限制只能裁剪 Variable 自身窗口（如实语义）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn snapshot_capture() -> CmdResult<Vec<u8>> {
     capture_virtual_screen_bmp()
 }
@@ -192,7 +192,7 @@ pub struct SysSelfInfo {
     pub os_version: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_self_info(st: State<'_, AppState>) -> CmdResult<SysSelfInfo> {
     const CAP: u64 = 2 * 1024 * 1024 * 1024;
     let (mut bytes, mut capped) = (0u64, false);
@@ -246,7 +246,7 @@ pub struct CursorPos {
     pub y: i32,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cursor_pos() -> CmdResult<CursorPos> {
     #[cfg(windows)]
     {
@@ -269,7 +269,7 @@ pub fn cursor_pos() -> CmdResult<CursorPos> {
 /// Z-23 天气卡 / Z-26 汇率刷新：受限 HTTP GET（curl.exe 隐藏窗口，10s 超时，512KB 截断）。
 /// 出站纪律：本命令不内置授权判断 —— 前端必须先经 netGuard（requestNetConsent）
 /// 获得用户明确同意后才允许调用（Z-23 规格的「可配置公开 API」通道）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn http_fetch(url: String) -> CmdResult<String> {
     // 仅允许 http/https；长度上限防滥用
     let u = url.trim().to_string();

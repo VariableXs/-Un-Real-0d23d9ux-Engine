@@ -111,7 +111,7 @@ pub struct EnvView {
     pub is_clone: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_list(st: tauri::State<AppState>) -> CmdResult<Vec<EnvView>> {
     env_list_inner(&st)
 }
@@ -130,7 +130,7 @@ pub(crate) fn env_list_inner(st: &AppState) -> CmdResult<Vec<EnvView>> {
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_create(st: tauri::State<AppState>, name: String) -> CmdResult<EnvView> {
     env_create_inner(&st, name)
 }
@@ -166,7 +166,7 @@ pub(crate) fn env_create_inner(st: &AppState, name: String) -> CmdResult<EnvView
 
 /// 切换编排：①当前设置快照写入 active 环境 → ②active 翻转 → ③返回目标环境
 /// 快照（前端应用后状态重载）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_switch(
     st: tauri::State<AppState>,
     id: String,
@@ -207,7 +207,7 @@ pub(crate) fn env_switch_inner(
     Ok(snapshot)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_delete(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     env_delete_inner(&st, id)
 }
@@ -448,7 +448,7 @@ pub struct CloneReport {
 }
 
 /// 克隆环境：剖面目录全量复制 + 条目复制（含设置快照）——"平行世界"。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_clone(
     st: tauri::State<AppState>,
     id: String,
@@ -587,7 +587,7 @@ pub struct DiffReport {
 
 /// 试验档 diff：克隆基线 → 现在的三方比对。
 /// 试验档改动 = added/changed/deleted；主档同时改动且不同 → conflict。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_diff(st: tauri::State<AppState>, id: String) -> CmdResult<DiffReport> {
     env_diff_inner(&st, id)
 }
@@ -653,7 +653,7 @@ pub(crate) fn env_diff_inner(st: &AppState, id: String) -> CmdResult<DiffReport>
 }
 
 /// 丢弃试验档：active 弹回主档 → 删登记 + 删剖面目录（糟蹋完零影响主档）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_discard(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     env_discard_inner(&st, id)
 }
@@ -689,7 +689,7 @@ pub struct MergeReport {
 
 /// 合并回主档：非冲突项直接应用；冲突项按 keep_clone 清单裁决（不在清单 = 保主档）。
 /// 合并后基线重写为合并结果（试验档可继续用或丢弃）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_merge(
     st: tauri::State<AppState>,
     id: String,
@@ -797,7 +797,7 @@ pub(crate) fn nested_env(
 /// 嵌套启动：spawn 当前 exe（独立数据根）+ 深度/白名单继承。
 /// V1 回退口径：子实例作为独立 OS 窗口运行（embed 进 VWM 属后续批）——
 /// 与嵌入失败路径"不杀进程可重试"的哲学一致。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_nested(st: tauri::State<AppState>, id: String) -> CmdResult<u32> {
     env_nested_inner(&st, id)
 }

@@ -164,12 +164,12 @@ pub fn vault_status_inner(st: &AppState) -> CmdResult<VaultStatus> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_status(st: tauri::State<AppState>) -> CmdResult<VaultStatus> {
     vault_status_inner(&st)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_init(st: tauri::State<AppState>, password: String) -> CmdResult<()> {
     if password.chars().count() < 4 {
         return Err(AppError::validation("口令至少 4 位 / password too short"));
@@ -189,7 +189,7 @@ pub fn vault_init(st: tauri::State<AppState>, password: String) -> CmdResult<()>
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_unlock(st: tauri::State<AppState>, password: String) -> CmdResult<()> {
     let meta = load_meta(&st).ok_or_else(|| AppError::not_found("保险箱未初始化 / vault not initialized"))?;
     let salt = unhex(&meta.salt).ok_or_else(|| AppError::io("meta 盐损坏 / corrupt salt"))?;
@@ -203,14 +203,14 @@ pub fn vault_unlock(st: tauri::State<AppState>, password: String) -> CmdResult<(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_lock() -> CmdResult<()> {
     *vault_available()? = None;
     Ok(())
 }
 
 /// 从磁盘导入文件进保险箱（加密存储）；shred_source=true 时同时焚毁源文件。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_import(st: tauri::State<AppState>, path: String, shred_source: bool) -> CmdResult<VaultItem> {
     let key = {
         let guard = vault_available()?;
@@ -246,7 +246,7 @@ pub fn vault_import(st: tauri::State<AppState>, path: String, shred_source: bool
     Ok(item)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_list(st: tauri::State<AppState>) -> CmdResult<Vec<VaultItem>> {
     let meta = load_meta(&st).ok_or_else(|| AppError::not_found("保险箱未初始化 / vault not initialized"))?;
     Ok(meta
@@ -257,7 +257,7 @@ pub fn vault_list(st: tauri::State<AppState>) -> CmdResult<Vec<VaultItem>> {
 }
 
 /// 导出（解密）到目标目录；同名文件自动加序号，绝不覆盖。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_export(st: tauri::State<AppState>, name: String, dest_dir: String) -> CmdResult<String> {
     let guard = vault_available()?;
     let key = guard.ok_or_else(|| AppError::validation("保险箱未解锁 / vault locked"))?;
@@ -281,7 +281,7 @@ pub fn vault_export(st: tauri::State<AppState>, name: String, dest_dir: String) 
 }
 
 /// 彻底焚毁保险箱条目（覆写密文 + 从登记表移除）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vault_destroy(st: tauri::State<AppState>, name: String) -> CmdResult<()> {
     let mut meta = load_meta(&st).ok_or_else(|| AppError::not_found("保险箱未初始化 / vault not initialized"))?;
     let pos = meta.entries.iter().position(|e| e.name == name).ok_or_else(|| AppError::not_found(format!("未找到条目 / not found: {name}")))?;
@@ -336,7 +336,7 @@ pub(crate) fn shred_file(p: &Path) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn privacy_shred(path: String) -> CmdResult<()> {
     shred_file(Path::new(&path))
 }
@@ -352,7 +352,7 @@ pub struct AuditFinding {
 }
 
 /// 隐私自检报告：全部来自本机真实状态，零网络。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn privacy_audit(st: tauri::State<AppState>) -> CmdResult<Vec<AuditFinding>> {
     let mut out = Vec::new();
 
@@ -514,7 +514,7 @@ pub fn priv_log_inner(st: &AppState, kind: &str, app: &str, resource: &str, auth
     Ok(ev)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn priv_log(st: tauri::State<AppState>, kind: String, app: String, resource: String, authorized: bool) -> CmdResult<AuditEvent> {
     priv_log_inner(&st, &kind, &app, &resource, authorized)
 }
@@ -546,7 +546,7 @@ fn day_of(ts: u64) -> String {
     format!("{:04}-{:02}-{:02}", y, m, d)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn priv_timeline(st: tauri::State<AppState>, days: Option<u64>) -> CmdResult<AuditTimeline> {
     let days = days.unwrap_or(14);
     let cutoff = now_ms().saturating_sub(days * 86_400_000);
@@ -566,7 +566,7 @@ pub fn priv_timeline(st: tauri::State<AppState>, days: Option<u64>) -> CmdResult
 }
 
 /// 暂停 / 恢复审计（暂停区间如实登记为 gap）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn priv_audit_pause(st: tauri::State<AppState>, paused: bool) -> CmdResult<()> {
     let mut s = load_audit(&st);
     if paused {
@@ -582,7 +582,7 @@ pub fn priv_audit_pause(st: tauri::State<AppState>, paused: bool) -> CmdResult<(
 }
 
 /// 审计开关（默认开）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn priv_audit_enabled(st: tauri::State<AppState>, enabled: bool) -> CmdResult<()> {
     let mut s = load_audit(&st);
     s.enabled = enabled;
@@ -654,7 +654,7 @@ pub fn canary_templates() -> Vec<(&'static str, &'static str, &'static str)> {
 }
 
 /// 布放诱饵文件（生成模板内容写入目标目录）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn canary_plant(st: tauri::State<AppState>, dir: String, template: String) -> CmdResult<CanaryFile> {
     let templates = canary_templates();
     let (_tid, fname, body) = templates
@@ -689,7 +689,7 @@ pub struct CanaryOverview {
     pub whitelist: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn canary_list(st: tauri::State<AppState>) -> CmdResult<CanaryOverview> {
     let s = load_canary(&st);
     Ok(CanaryOverview {
@@ -701,7 +701,7 @@ pub fn canary_list(st: tauri::State<AppState>) -> CmdResult<CanaryOverview> {
 
 /// 诱饵触报（explorer 打开/读取文件时检测路径命中即调用）。
 /// 返回 Some(alert) 当为非豁免触发。托盘红警与仪表盘置顶由前端据此渲染。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn canary_touch(st: tauri::State<AppState>, path: String, via: String, app: Option<String>) -> CmdResult<Option<CanaryTrigger>> {
     if !matches!(via.as_str(), "open" | "read") {
         return Err(AppError::validation("via 必须为 open|read / via must be open|read"));
@@ -723,7 +723,7 @@ pub fn canary_touch(st: tauri::State<AppState>, path: String, via: String, app: 
 }
 
 /// 白名单增删（误报豁免：备份/杀软经环境通道的正常读取）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn canary_whitelist(st: tauri::State<AppState>, app: String, add: bool) -> CmdResult<()> {
     let mut s = load_canary(&st);
     if add {
@@ -737,7 +737,7 @@ pub fn canary_whitelist(st: tauri::State<AppState>, app: String, add: bool) -> C
 }
 
 /// 撤除单个诱饵（删除文件 + 移除登记）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn canary_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let mut s = load_canary(&st);
     let pos = s.files.iter().position(|f| f.id == id)

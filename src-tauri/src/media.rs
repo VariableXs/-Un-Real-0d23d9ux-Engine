@@ -267,7 +267,7 @@ pub fn absolute_media_path(st: &AppState, rel_path: &str) -> String {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn import_data_url(st: tauri::State<AppState>, data_url: String, suggested_name: Option<String>) -> CmdResult<AttachmentView> {
     let (meta, b64) = data_url
         .strip_prefix("data:")
@@ -340,7 +340,7 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn attach_media(
     st: tauri::State<AppState>,
     media_id: String,
@@ -361,7 +361,7 @@ pub fn attach_media(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_attachments(st: tauri::State<AppState>, document_id: Option<String>, node_id: Option<String>) -> CmdResult<Vec<AttachmentView>> {
     st.with_conn(|conn| list_attachments_inner(conn, &st, document_id, node_id))
 }
@@ -403,7 +403,7 @@ pub(crate) fn list_attachments_inner(conn: &Connection, st: &AppState, document_
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn resolve_media_path(st: tauri::State<AppState>, attachment_id: String, new_path: String) -> CmdResult<AttachmentView> {
     let src = PathBuf::from(&new_path);
     let meta = fs::metadata(&src).map_err(|_| AppError::not_found("新路径不存在 / New path does not exist"))?;
@@ -454,7 +454,7 @@ pub fn resolve_media_path(st: tauri::State<AppState>, attachment_id: String, new
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_media(st: tauri::State<AppState>, media_id: String) -> CmdResult<()> {
     let files = st.with_conn(|conn| {
         let rel: Option<String> = conn

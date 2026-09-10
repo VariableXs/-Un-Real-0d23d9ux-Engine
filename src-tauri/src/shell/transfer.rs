@@ -377,7 +377,7 @@ fn transfer_dir(src: &Path, dest_dir: &Path, item: &TrItem) -> Result<(), TrErr>
 // ---------- 命令 ----------
 
 /// 入队（来源不限：explorer 操作 / 拖入 / 版本导出）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_enqueue(st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: String, kind: String, on_conflict: Option<String>) -> CmdResult<Vec<TrItem>> {
     if !matches!(kind.as_str(), "copy" | "move") {
         return Err(AppError::validation("kind 必须为 copy|move / kind must be copy|move"));
@@ -429,19 +429,19 @@ pub fn tr_enqueue(st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: Strin
     tr_list()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_list() -> CmdResult<Vec<TrItem>> {
     let guard = items().lock().map_err(|_| AppError::io("queue mutex"))?;
     Ok(guard.clone())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_pause(id: String) -> CmdResult<Vec<TrItem>> {
     control().lock().unwrap_or_else(|e| e.into_inner()).insert(id, Ctrl::Pause);
     Ok(tr_list()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_resume(id: String) -> CmdResult<Vec<TrItem>> {
     control().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
     update_item(&id, |it| {
@@ -453,13 +453,13 @@ pub fn tr_resume(id: String) -> CmdResult<Vec<TrItem>> {
     Ok(tr_list()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_cancel(id: String) -> CmdResult<Vec<TrItem>> {
     control().lock().unwrap_or_else(|e| e.into_inner()).insert(id, Ctrl::Cancel);
     Ok(tr_list()?)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_retry(id: String) -> CmdResult<Vec<TrItem>> {
     update_item(&id, |it| {
         if it.status == TrStatus::Failed || it.status == TrStatus::Canceled {
@@ -474,7 +474,7 @@ pub fn tr_retry(id: String) -> CmdResult<Vec<TrItem>> {
 }
 
 /// 清理已完成/失败/取消的历史条目。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tr_clear_done() -> CmdResult<Vec<TrItem>> {
     {
         let mut guard = items().lock().map_err(|_| AppError::io("queue mutex"))?;

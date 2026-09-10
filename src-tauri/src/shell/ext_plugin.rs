@@ -43,7 +43,7 @@ impl HostApi {
 
 static LOADED_PLUGINS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_plugin_load(
     app: tauri::AppHandle,
     st: tauri::State<'_, crate::state::AppState>,
@@ -90,7 +90,7 @@ pub fn ext_plugin_load(
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_plugin_unload(id: String) -> CmdResult<()> {
     LOADED_PLUGINS
         .lock()
@@ -110,7 +110,7 @@ struct DaemonState {
 static DAEMONS: Mutex<std::collections::BTreeMap<String, DaemonState>> =
     Mutex::new(std::collections::BTreeMap::new());
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_daemon_start(
     app: tauri::AppHandle,
     st: tauri::State<'_, crate::state::AppState>,
@@ -232,7 +232,7 @@ fn serve_jsonrpc(listener: TcpListener, token: String) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_daemon_status() -> CmdResult<Vec<Value>> {
     let g = DAEMONS.lock().map_err(|_| AppError::db("mutex"))?;
     Ok(g.iter()
@@ -271,7 +271,7 @@ setInterval(() => {}, 1 << 30); // keepalive
     Ok(js)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_daemon_example(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<String> {
     let dir = crate::shell::extensions::ext_root(&st).join("calendar-sync");
     let p = example_daemon_script(&dir)?;

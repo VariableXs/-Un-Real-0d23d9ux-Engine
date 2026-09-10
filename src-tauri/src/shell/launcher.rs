@@ -198,7 +198,7 @@ pub fn resolve_lnk(_path: &Path) -> Option<PathBuf> {
 // ---------- 命令 ----------
 
 /// 登记第三方软件（同路径重复添加 → 幂等返回已有项）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_add(
     st: tauri::State<AppState>,
     path: String,
@@ -257,14 +257,14 @@ fn add_app_inner(st: &AppState, path: &str, name: Option<String>, grade: Option<
     Ok(app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_list(st: tauri::State<AppState>) -> CmdResult<Vec<ThirdApp>> {
     let mut apps = load_registry(&st);
     apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(apps)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let mut apps = load_registry(&st);
     let before = apps.len();
@@ -278,7 +278,7 @@ pub fn tp_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
 /// 批次C（规格 5.6.2）：移除登记并彻底删除文件。
 /// 护栏：仅数据目录内的文件允许删除（防误删系统软件）；删除失败（如软件
 /// 正在运行、文件被锁）则报错并保留登记，用户关闭软件后可重试。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_purge(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     tp_purge_inner(&st, &id)
 }
@@ -313,7 +313,7 @@ fn tp_purge_inner(st: &AppState, id: &str) -> CmdResult<()> {
 }
 
 /// 修改便携性分级（用户覆盖自动判定）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_set_grade(st: tauri::State<AppState>, id: String, grade: String) -> CmdResult<ThirdApp> {
     if !valid_grade(&grade) {
         return Err(AppError::validation(format!("无效分级 / Invalid grade: {grade}")));
@@ -330,7 +330,7 @@ pub fn tp_set_grade(st: tauri::State<AppState>, id: String, grade: String) -> Cm
 }
 
 /// 批次W-2：登记/取消 DPI 例外（不响应 DPI 消息的应用，按主屏渲染）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_set_dpi_fix(st: tauri::State<AppState>, id: String, dpi_fix: bool) -> CmdResult<ThirdApp> {
     let mut apps = load_registry(&st);
     let app = apps
@@ -343,7 +343,7 @@ pub fn tp_set_dpi_fix(st: tauri::State<AppState>, id: String, dpi_fix: bool) -> 
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_rename(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<ThirdApp> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -446,7 +446,7 @@ pub(crate) fn tp_launch_inner(
 /// 启动：独立 OS 进程（DETACHED），更新 last_launch。
 /// 批次0：桌面窗口默认置顶覆盖（规格 10.1），启动第三方软件时暂时撤销置顶，
 /// 让其窗口浮于桌面之上（规格 10.3）；用户回到桌面时由 on_window_event 自动恢复。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_launch(
     st: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
@@ -614,7 +614,7 @@ fn encode_icon(path: &str) -> Result<String, AppError> {
 }
 
 /// 更换第三方软件图标（None/空串 = 恢复默认占位图标）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_set_icon(
     st: tauri::State<AppState>,
     id: String,
@@ -675,7 +675,7 @@ fn collect_lnks(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
 
 /// 扫描开始菜单（系统 + 用户两处）里的软件快捷方式，解析出目标 exe。
 /// 已登记的项（按目标路径去重）不返回，前端无需再过滤。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_scan_start_menu(st: tauri::State<AppState>) -> CmdResult<Vec<TpScanCandidate>> {
     let mut lnk_dirs = Vec::new();
     if let Ok(pd) = std::env::var("ProgramData") {
@@ -975,7 +975,7 @@ fn folder_candidates(p: &Path, registered: &[String]) -> Vec<TpFolderCandidate> 
 /// - 显示名优先 FileDescription（什么语言的软件就叫它自己的名字）
 /// - 已登记路径自动去重；普通文件（非目录）is_folder=false，前端静默忽略
 /// - 单 exe 文件夹恒推荐（用户拖文件夹就是想登记它）
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpFolderScanReport> {
     let p = PathBuf::from(&path);
     if !p.is_dir() {
@@ -1029,7 +1029,7 @@ pub fn inbox_dir(st: &AppState) -> PathBuf {
 /// - 顶层子文件夹 → 与拖入登记同一套智能扫描，只登记推荐主程序
 /// - 显示名优先 FileDescription（任意语言）；128px Windows 图标随登记提取
 /// - 已登记路径幂等跳过；单条失败不中断批次
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_inbox_import(st: tauri::State<AppState>) -> CmdResult<TpInboxImportResult> {
     let inbox = inbox_dir(&st);
     tp_inbox_import_inner(&st, &inbox)
@@ -1105,7 +1105,7 @@ fn tp_inbox_import_inner(st: &AppState, inbox: &Path) -> CmdResult<TpInboxImport
 
 /// 把已登记的 standalone/shortcut 软件整目录复制进数据目录（Apps/<目录名>），
 /// 登记项转为 🟢 portable 并指向副本 exe。复制失败如实报错、登记不变。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_portableize(st: tauri::State<AppState>, id: String) -> CmdResult<ThirdApp> {
     portableize_inner(&st, &id)
 }
@@ -1174,7 +1174,7 @@ fn portableize_inner(st: &AppState, id: &str) -> CmdResult<ThirdApp> {
 /// SHCreateItemFromParsingName + IShellItemImageFactory::GetImage(64px)，
 /// 对任意 shell 项（lnk/exe/文件夹/UWP 快捷方式）都能取到与资源管理器
 /// 一致的图标。链路：exe 内嵌提取 → shell 项 GetImage → .ico/.png 文件。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn icon_dataurl(path: String) -> CmdResult<String> {
     let p = PathBuf::from(&path);
     let is_lnk = p
@@ -1212,7 +1212,7 @@ pub fn icon_dataurl(path: String) -> CmdResult<String> {
 /// 批次B-27：256px Jumbo 图标提取（SHIL_JUMBO 等效：IShellItemImageFactory
 /// GetImage(256) + SIIGBF_BIGGERSIZEOK，资源管理器大图标同源）→ PNG data URL。
 /// 调用方（前端）负责缓存 data URL（localStorage），此处只读不落盘。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn icon_jumbo_dataurl(path: String) -> CmdResult<String> {
     #[cfg(windows)]
     {
@@ -1282,7 +1282,7 @@ fn auto_icon_hd(path: &Path) -> Option<String> {
 
 /// 实机反馈（图标清晰度）：128px 高清图标 → data URL（货架换图标等 UI 入口）。
 #[tauri::command]
-pub fn icon_dataurl_hd(path: String) -> CmdResult<String> {
+pub async fn icon_dataurl_hd(path: String) -> CmdResult<String> {
     let p = PathBuf::from(&path);
     auto_icon_hd(&p).ok_or_else(|| {
         AppError::not_found("未能提取高清图标 / failed to extract HD icon")
@@ -1292,7 +1292,7 @@ pub fn icon_dataurl_hd(path: String) -> CmdResult<String> {
 /// 实机反馈（图标清晰度）：存量登记项高清图标补齐 —— 图标为空（历史登记 /
 /// auto_icon_hd 失败）的应用按 id 批量提取 128px 图标并持久化，返回补齐数。
 /// 前端分批调用（每批 ≤8 个，GetImage 每项数十毫秒，避免单次命令过长）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_ensure_icons(st: tauri::State<AppState>, ids: Vec<String>) -> CmdResult<usize> {
     let mut apps = load_registry(&st);
     let mut changed = 0usize;
@@ -1563,7 +1563,7 @@ fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
 
 /// 以管理员身份运行（ShellExecuteW runas，弹 UAC）。
 /// .lnk 不支持 RunAs（诚实报错）；用户取消 UAC → 报错提示。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_launch_admin(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let apps = load_registry(&st);
     let app_item = apps

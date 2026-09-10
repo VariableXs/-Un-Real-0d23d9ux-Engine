@@ -73,7 +73,7 @@ pub async fn create_backup(st: tauri::State<'_, AppState>, source: Option<String
     Ok(info)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_backups(st: tauri::State<AppState>) -> CmdResult<Vec<BackupInfo>> {
     st.with_conn(|conn| {
         let mut stmt = conn
@@ -116,7 +116,7 @@ fn safe_backup_path(st: &AppState, file_name: &str) -> CmdResult<std::path::Path
     Ok(full)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_backup(st: tauri::State<AppState>, file_name: String) -> CmdResult<()> {
     let p = safe_backup_path(&st, &file_name)?;
     fs::remove_file(&p).map_err(|e| AppError::io(format!("删除备份失败 / Delete failed: {e}")))?;
@@ -127,7 +127,7 @@ pub fn delete_backup(st: tauri::State<AppState>, file_name: String) -> CmdResult
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_backup(st: tauri::State<AppState>, file_name: String, dest_path: String) -> CmdResult<String> {
     let src = safe_backup_path(&st, &file_name)?;
     let dest = Path::new(&dest_path);

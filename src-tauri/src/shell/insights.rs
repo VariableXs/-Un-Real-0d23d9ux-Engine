@@ -111,7 +111,7 @@ pub fn ins_record_inner(st: &AppState, mut events: Vec<InsEvent>) -> CmdResult<u
 }
 
 /// 记录事件（批量）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ins_record(st: tauri::State<AppState>, events: Vec<InsEvent>) -> CmdResult<usize> {
     ins_record_inner(&st, events)
 }
@@ -182,7 +182,7 @@ pub struct InsDashboard {
     pub recording: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ins_dashboard(st: tauri::State<AppState>, range: Option<String>) -> CmdResult<InsDashboard> {
     let range = range.unwrap_or_else(|| "today".into());
     let days = match range.as_str() {
@@ -292,7 +292,7 @@ pub struct InsSuggestion {
     pub hits: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ins_suggestions(st: tauri::State<AppState>) -> CmdResult<Vec<InsSuggestion>> {
     let evs = recent_events(&st, 5); // 近 5 天
     let mut out = Vec::new();
@@ -359,7 +359,7 @@ pub fn ins_suggestions(st: tauri::State<AppState>) -> CmdResult<Vec<InsSuggestio
 // ---------- 维护 ----------
 
 /// 滚动清理 90 天前的分片 + 返回当前占用的分片数。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ins_gc(st: tauri::State<AppState>) -> CmdResult<u32> {
     let dir = insights_dir(&st);
     if !dir.is_dir() {
@@ -380,7 +380,7 @@ pub fn ins_gc(st: tauri::State<AppState>) -> CmdResult<u32> {
 }
 
 /// 一键焚毁全部洞察数据（不可恢复）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ins_burn(st: tauri::State<AppState>) -> CmdResult<bool> {
     let dir = insights_dir(&st);
     if !dir.is_dir() {

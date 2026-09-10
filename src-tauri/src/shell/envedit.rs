@@ -108,7 +108,7 @@ pub struct EnvOverview {
     pub system: Vec<EnvVar>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_overview() -> CmdResult<EnvOverview> {
     Ok(EnvOverview { user: read_hkcu_environment()?, system: read_hklm_environment()? })
 }
@@ -159,13 +159,13 @@ fn backup_list_inner(st: &AppState) -> CmdResult<Vec<EnvBackup>> {
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_backup_list(st: tauri::State<AppState>) -> CmdResult<Vec<EnvBackup>> {
     backup_list_inner(&st)
 }
 
 /// 写一个用户变量（改前自动备份）。PATH 值由前端分行编辑后用 ';' join 传入。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_var_set(st: tauri::State<AppState>, name: String, value: String, expand: bool) -> CmdResult<()> {
     if name.trim().is_empty() || name.contains('=') || name.contains('\0') {
         return Err(AppError::validation("变量名非法（空 / 含 = 或 NUL）"));
@@ -193,7 +193,7 @@ pub fn env_var_set(st: tauri::State<AppState>, name: String, value: String, expa
 }
 
 /// 删除一个用户变量（改前自动备份）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_var_delete(st: tauri::State<AppState>, name: String) -> CmdResult<()> {
     if name.eq_ignore_ascii_case("PATH") {
         return Err(AppError::validation("PATH 不允许删除（清空请用变量编辑）"));
@@ -220,7 +220,7 @@ pub fn env_var_delete(st: tauri::State<AppState>, name: String) -> CmdResult<()>
 }
 
 /// 回滚到指定备份（当前值先自动备份，可再回滚回来）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn env_restore_backup(st: tauri::State<AppState>, backup_id: String) -> CmdResult<usize> {
     let all = backup_list_inner(&st)?;
     let target = all

@@ -31,7 +31,7 @@ fn record_pid(profile_id: &str, pid: u32) {
 }
 
 /// 任务栏运行态（B-19 分组）：每个存活 profile 是独立分组项。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let g = LAUNCHED.lock().unwrap_or_else(|e| e.into_inner());
     let map = match g.as_ref() {
@@ -209,12 +209,12 @@ fn slugify(name: &str) -> String {
     if s.is_empty() { "profile".into() } else { s }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_detect() -> CmdResult<Vec<DetectedBrowser>> {
     Ok(detect_installed())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profiles(st: tauri::State<AppState>) -> CmdResult<Vec<BrowserProfile>> {
     browser_profiles_inner(&st)
 }
@@ -223,7 +223,7 @@ pub fn browser_profiles_inner(st: &AppState) -> CmdResult<Vec<BrowserProfile>> {
     Ok(load_profiles(st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profile_add(
     st: tauri::State<AppState>,
     browser_id: String,
@@ -266,7 +266,7 @@ pub fn browser_profile_add_inner(
     Ok(profile)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profile_rename(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<()> {
     browser_profile_rename_inner(&st, id, name)
 }
@@ -282,7 +282,7 @@ pub fn browser_profile_rename_inner(st: &AppState, id: String, name: String) -> 
 }
 
 /// 克隆 = 数据目录整拷贝（含 Cookie/扩展/登录态）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profile_clone(
     st: tauri::State<AppState>,
     id: String,
@@ -321,7 +321,7 @@ pub fn browser_profile_clone_inner(
 }
 
 /// 删除；shred=true 先覆写再删（焚毁，H3 公用机口径）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profile_delete(
     st: tauri::State<AppState>,
     id: String,
@@ -429,7 +429,7 @@ pub fn launch_args(family: Family, data_dir: &Path, url: Option<&str>) -> Vec<St
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_profile_launch(
     st: tauri::State<AppState>,
     id: String,
@@ -481,7 +481,7 @@ pub struct ImportReport {
 
 /// 导入：把导出文件复制进容器 profile 目录 `imports/`，并解析书签计数。
 /// 绝不读取宿主浏览器运行数据（蓝图 3.4 边界文案）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn browser_import(
     st: tauri::State<AppState>,
     id: String,

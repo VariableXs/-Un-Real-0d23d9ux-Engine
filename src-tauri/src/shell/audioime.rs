@@ -87,7 +87,7 @@ fn with_sessions<T>(
 }
 
 /// 合成器会话列表（渲染设备；每会话 pid/进程名/音量/静音）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mixer_list() -> CmdResult<Vec<MixerSession>> {
     #[cfg(windows)]
     {
@@ -128,7 +128,7 @@ pub fn mixer_list() -> CmdResult<Vec<MixerSession>> {
 }
 
 /// 设置指定 pid 会话的音量/静音（合成器滑杆/静音按钮）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mixer_set(pid: u32, volume: f32, muted: bool) -> CmdResult<()> {
     #[cfg(windows)]
     {
@@ -169,7 +169,7 @@ pub struct ImeStatus {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_status() -> CmdResult<ImeStatus> {
     use windows::Win32::UI::Input::Ime::{ImmGetDefaultIMEWnd, IME_CMODE_NATIVE};
     use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout;
@@ -196,7 +196,7 @@ pub fn ime_status() -> CmdResult<ImeStatus> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_status() -> CmdResult<ImeStatus> {
     Ok(ImeStatus { lang_id: "unknown".into(), chinese: None })
 }
@@ -210,7 +210,7 @@ pub struct ImeLayout {
 
 /// 系统已装键盘布局列表（弹层展示；切换见 ime_switch 边界说明）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_list() -> CmdResult<Vec<ImeLayout>> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayoutList, HKL};
     unsafe {
@@ -231,7 +231,7 @@ pub fn ime_list() -> CmdResult<Vec<ImeLayout>> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_list() -> CmdResult<Vec<ImeLayout>> {
     Ok(vec![])
 }
@@ -253,7 +253,7 @@ fn ime_name(id: usize) -> String {
 /// 切换布局：ActivateKeyboardLayout 仅作用于本进程（Variable 内输入即刻生效）；
 /// 不承诺改变宿主全局布局（跨进程 Shell 挂钩越界）——弹层文案如实标注。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_switch(lang_id: String) -> CmdResult<()> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{ActivateKeyboardLayout, GetKeyboardLayoutList, HKL, KLF_SETFORPROCESS};
     let want = usize::from_str_radix(&lang_id, 16).map_err(|_| AppError::validation("语言 ID 非法"))?;
@@ -275,7 +275,7 @@ pub fn ime_switch(lang_id: String) -> CmdResult<()> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ime_switch(_lang_id: String) -> CmdResult<()> {
     Err(AppError::validation("仅支持 Windows"))
 }

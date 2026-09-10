@@ -161,7 +161,7 @@ fn hash_file(
 }
 
 /// M-21：计算文件校验和（进度事件 `checksum://progress`；可经 checksum_cancel 取消）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn checksum(
     _st: tauri::State<AppState>,
     app: tauri::AppHandle,
@@ -186,7 +186,7 @@ pub fn checksum(
 }
 
 /// M-21：请求取消（CancelToken 模式，复用 bench 先例语义）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn checksum_cancel(op_id: String) -> CmdResult<()> {
     cancel_flags().lock().map(|mut s| s.insert(op_id)).ok();
     Ok(())
@@ -280,7 +280,7 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut u32, truncated: 
 }
 
 /// Z-33：扫描目录树找出内容重复的文件（≥ minSize）。只报告不删除（红线）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn dupe_scan(
     _st: tauri::State<AppState>,
     app: tauri::AppHandle,
@@ -452,7 +452,7 @@ fn scan_dir(node_path: &Path, counter: &mut u32, truncated: &mut bool) -> SpaceN
 }
 
 /// Z-34：空间分析（目录树 + 大小/文件数统计；20 万项截断如实返回）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn space_scan(_st: tauri::State<AppState>, path: String) -> CmdResult<SpaceReport> {
     let root = PathBuf::from(&path);
     if !long_path(&root).is_dir() {
@@ -584,7 +584,7 @@ pub struct RenamePreview {
 }
 
 /// Z-32：预览（不落盘）。冲突 = 目标已存在（非自身）或同批重复。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn batch_rename_preview(
     _st: tauri::State<AppState>,
     items: Vec<RenameItem>,
@@ -641,7 +641,7 @@ fn undo_dir(st: &AppState) -> PathBuf {
 }
 
 /// Z-32：执行批量重命名（预览已确认；写撤销点日志，可整体回滚）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn batch_rename_apply(
     st: tauri::State<AppState>,
     items: Vec<RenameItem>,
@@ -679,7 +679,7 @@ pub fn batch_rename_apply(
 struct UndoLog(Vec<(String, String)>);
 
 /// Z-32：撤销最近一次批量重命名（按撤销点日志反向恢复）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn batch_rename_undo(st: tauri::State<AppState>, undo_id: String) -> CmdResult<u32> {
     if !undo_id.chars().all(|c| c.is_ascii_digit()) {
         return Err(AppError::validation("无效撤销点 / Invalid undo id"));
@@ -730,7 +730,7 @@ fn system_sendto_dir() -> Option<PathBuf> {
 }
 
 /// Z-35：合并系统 SendTo 目录与自定义目标。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sendto_list(st: tauri::State<AppState>) -> CmdResult<Vec<SendToItem>> {
     let mut out = Vec::new();
     if let Some(sys) = system_sendto_dir() {
@@ -781,7 +781,7 @@ fn write_custom(st: &AppState, list: &[String]) -> CmdResult<()> {
 }
 
 /// Z-35：添加自定义发送目标（目录）。上限 10。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sendto_custom_add(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<String>> {
     let p = Path::new(&path);
     if !p.is_dir() {
@@ -799,7 +799,7 @@ pub fn sendto_custom_add(st: tauri::State<AppState>, path: String) -> CmdResult<
 }
 
 /// Z-35：移除自定义发送目标。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sendto_custom_remove(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<String>> {
     let mut list = read_custom(&st);
     list.retain(|p| p != &path);
@@ -808,7 +808,7 @@ pub fn sendto_custom_remove(st: tauri::State<AppState>, path: String) -> CmdResu
 }
 
 /// Z-35：把文件/文件夹复制到自定义目标（防覆盖：重名自动保留两者后缀，绝不静默覆盖）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sendto_copy(_st: tauri::State<AppState>, src: String, target_dir: String) -> CmdResult<String> {
     let from = PathBuf::from(&src);
     let to = long_path(Path::new(&target_dir));
@@ -877,7 +877,7 @@ pub struct NetDrive {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_drives(_st: tauri::State<AppState>) -> CmdResult<Vec<NetDrive>> {
     use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDriveStringsW};
     use windows::Win32::System::WindowsProgramming::{
@@ -956,7 +956,7 @@ fn wnet_connection(root: &str) -> Option<String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_drives(_st: tauri::State<AppState>) -> CmdResult<Vec<NetDrive>> {
     Ok(Vec::new())
 }
@@ -974,7 +974,7 @@ pub struct LockHolder {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn who_locks(path: String) -> CmdResult<Vec<LockHolder>> {
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::System::RestartManager::{
@@ -1072,7 +1072,7 @@ fn window_title_of_pid(pid: u32) -> Option<String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn who_locks(path: String) -> CmdResult<Vec<LockHolder>> {
     let _ = path;
     Err(AppError::validation("仅 Windows 支持 / Windows only"))
@@ -1119,7 +1119,7 @@ fn unsupported_format(path: &Path) -> Option<CmdResult<ArchiveListing>> {
 }
 
 /// M-23：压缩包只读清单（不落盘解压）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn archive_ls(_st: tauri::State<AppState>, path: String) -> CmdResult<ArchiveListing> {
     let p = PathBuf::from(&path);
     if !p.exists() {
@@ -1164,7 +1164,7 @@ fn safe_inner(inner: &str) -> CmdResult<PathBuf> {
 
 /// M-23：解压单个条目到临时区（data/tmp/archive/，启动时清理）→ 返回解出文件路径。
 /// 前端随后 openPath；关闭后由下次启动清理（sysmaint 临时区语义）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn archive_extract_one(
     st: tauri::State<AppState>,
     archive: String,
@@ -1501,13 +1501,13 @@ fn sentinel_loop(_app: tauri::AppHandle, _cfg: SentinelCfg, stop: Arc<AtomicBool
 }
 
 /// M-27：哨兵列表。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sentinel_list(st: tauri::State<AppState>) -> CmdResult<Vec<SentinelCfg>> {
     Ok(read_sentinels(&st))
 }
 
 /// M-27：添加哨兵（上限 5；SMB/网络路径入口拒绝）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sentinel_add(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,
@@ -1543,7 +1543,7 @@ pub fn sentinel_add(
 }
 
 /// M-27：移除哨兵。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sentinel_remove(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,
@@ -1557,7 +1557,7 @@ pub fn sentinel_remove(
 }
 
 /// M-27：启停哨兵。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sentinel_toggle(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,

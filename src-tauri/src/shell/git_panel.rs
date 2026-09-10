@@ -110,7 +110,7 @@ fn status_state(s: git2::Status) -> &'static str {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_status(st: tauri::State<AppState>, repo: String) -> CmdResult<GitStatusView> {
     git_status_inner(&st, &repo)
 }
@@ -170,7 +170,7 @@ pub(crate) fn git_status_inner(st: &AppState, repo_path: &str) -> CmdResult<GitS
     Ok(view)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_log(
     st: tauri::State<AppState>,
     repo: String,
@@ -214,7 +214,7 @@ pub(crate) fn git_log_inner(st: &AppState, repo_path: &str, limit: Option<u32>) 
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_branches(st: tauri::State<AppState>, repo: String) -> CmdResult<Vec<String>> {
     let root = ensure_in_container(&st, &repo)?;
     let repo = open_repo(&root)?;
@@ -281,13 +281,13 @@ fn load_keys(st: &AppState) -> CmdResult<Vec<SshKeyView>> {
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ssh_keys(st: tauri::State<AppState>) -> CmdResult<Vec<SshKeyView>> {
     load_keys(&st)
 }
 
 /// 生成 ed25519 密钥对；私钥写入金库目录（金库未解锁即拒绝）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ssh_key_generate(
     st: tauri::State<AppState>,
     label: String,
@@ -356,7 +356,7 @@ pub fn ssh_git_command(private_key_path: &Path) -> String {
 }
 
 /// 删除 SSH 密钥（私钥 + 公钥）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ssh_key_delete(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     if crate::shell::privacy::vault_key()?.is_none() {
         return Err(AppError::new("VAULT_LOCKED", "金库未解锁"));

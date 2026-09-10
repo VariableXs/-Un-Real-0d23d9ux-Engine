@@ -284,13 +284,13 @@ fn template_dto(t: &ProfileTemplate) -> serde_json::Value {
 // ---------- 命令面（B-5/B-6） ----------
 
 /// 模板列表（设置页「执行档」标签下拉用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn profile_templates() -> CmdResult<Vec<serde_json::Value>> {
     Ok(TEMPLATES.iter().map(template_dto).collect())
 }
 
 /// 套用模板：整体覆写该登记项的执行档（UI 已有确认）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn profile_apply(st: tauri::State<AppState>, id: String, template_id: String) -> CmdResult<crate::shell::launcher::ThirdApp> {
     let tpl = template_by_id(&template_id).ok_or_else(|| {
         AppError::validation(format!("未知模板 / Unknown template: {template_id}"))
@@ -312,7 +312,7 @@ pub fn profile_apply(st: tauri::State<AppState>, id: String, template_id: String
 }
 
 /// 手工编辑执行档（重定向表/附加表/敏感标记）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn profile_set(
     st: tauri::State<AppState>,
     id: String,
@@ -337,7 +337,7 @@ pub fn profile_set(
 }
 
 /// 干跑：列出将被注入的环境变量（「验证重定向」按钮）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn profile_dryrun(st: tauri::State<AppState>, id: String) -> CmdResult<serde_json::Value> {
     let apps = crate::shell::launcher::load_registry(&st);
     let app = apps
@@ -509,14 +509,14 @@ fn residue_diff(
     hits
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_scan(st: tauri::State<AppState>) -> CmdResult<Vec<ResidueEntry>> {
     Ok(residue_snapshot_diff_st(&st))
 }
 
 /// E-2：清理单条残留。文件 → 删除；注册表 → 删除 HKCU\Software 新增子键
 /// （只允许清 diff 里出现的键，且只删顶层——用户已确认，不递归值）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_resolve(st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     if whitelist_hit(&st, &path) {
         return Err(AppError::validation("该项在白名单内，无需清理"));
@@ -572,13 +572,13 @@ fn residue_whitelist_add_inner(st: &AppState, pattern: &str) -> CmdResult<Vec<St
     Ok(user)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_whitelist_add(st: tauri::State<AppState>, pattern: String) -> CmdResult<Vec<String>> {
     residue_whitelist_add_inner(&st, &pattern)
 }
 
 /// E-2：当前生效的白名单（内置 + 用户）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn residue_whitelist_list(st: tauri::State<AppState>) -> CmdResult<serde_json::Value> {
     let user: Vec<String> = std::fs::read(whitelist_path(&st))
         .ok()
@@ -615,7 +615,7 @@ pub struct ExitPrepReport {
 
 /// E-3 退出前置：逐步执行并如实回报。前端在关窗前调用；
 /// 返回后由前端决定「弹残留报告（可跳过）」或直接关壳。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn exit_prepare(st: tauri::State<AppState>) -> CmdResult<ExitPrepReport> {
     let mut steps = Vec::new();
 

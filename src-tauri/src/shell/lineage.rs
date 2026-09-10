@@ -62,7 +62,7 @@ fn save(st: &AppState, l: &Ledger) -> CmdResult<()> {
 }
 
 /// 记录事件（前端在三站点调用：拖入 / 打开使用 / 导出离开）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lin_record(st: tauri::State<AppState>, kind: String, path: String, app: Option<String>, detail: Option<String>) -> CmdResult<LinEvent> {
     if !matches!(kind.as_str(), "import" | "use" | "depart") {
         return Err(AppError::validation(format!("未知事件类型 / unknown lineage kind: {kind}")));
@@ -99,7 +99,7 @@ pub fn lin_record(st: tauri::State<AppState>, kind: String, path: String, app: O
 }
 
 /// 查询：按路径（含子路径前缀）或全量；按时间倒序。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lin_list(st: tauri::State<AppState>, path: Option<String>) -> CmdResult<Vec<LinEvent>> {
     let l = load(&st);
     let mut out = l.events;
@@ -122,7 +122,7 @@ pub struct LinStats {
     pub distinct_paths: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lin_stats(st: tauri::State<AppState>) -> CmdResult<LinStats> {
     let l = load(&st);
     let mut paths = std::collections::HashSet::new();
@@ -141,7 +141,7 @@ pub fn lin_stats(st: tauri::State<AppState>) -> CmdResult<LinStats> {
 }
 
 /// 整体导出（用户选择目标目录；明文 JSON，导出前 UI 明示）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lin_export(st: tauri::State<AppState>, dest_dir: String) -> CmdResult<String> {
     let l = load(&st);
     let dir = PathBuf::from(&dest_dir);
@@ -154,7 +154,7 @@ pub fn lin_export(st: tauri::State<AppState>, dest_dir: String) -> CmdResult<Str
 }
 
 /// 焚毁：覆写账本 + 删除；返回验证（文件不存在 = 残留 0）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn lin_burn(st: tauri::State<AppState>) -> CmdResult<bool> {
     let p = ledger_path(&st);
     if p.exists() {

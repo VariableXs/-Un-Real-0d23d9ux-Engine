@@ -325,13 +325,13 @@ pub struct ExtView {
     pub csp: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_list(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<Vec<ExtView>> {
     ext_rescan(st)
 }
 
 /// 目录即安装：每次列表都重扫（含热重载语义）；卸载 = 删目录。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_rescan(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<Vec<ExtView>> {
     let root = ext_root(&st);
     let _ = std::fs::create_dir_all(&root);
@@ -372,7 +372,7 @@ pub fn ext_rescan(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<Vec
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_set_enabled(id: String, on: bool) -> CmdResult<()> {
     with_ext(&id, |e| {
         e.enabled = on;
@@ -383,7 +383,7 @@ pub fn ext_set_enabled(id: String, on: bool) -> CmdResult<()> {
 }
 
 /// 启动 Web 扩展宿主（隐藏窗口；entry 经 asset 协议加载，注入 variable 桥）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_open_web(app: tauri::AppHandle, id: String) -> CmdResult<String> {
     let (dir, entry, script) = {
         let guard = EXTS.lock().map_err(|_| AppError::db("extensions mutex poisoned"))?;
@@ -421,7 +421,7 @@ pub fn ext_open_web(app: tauri::AppHandle, id: String) -> CmdResult<String> {
     Ok(label)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_close(app: tauri::AppHandle, id: String) -> CmdResult<()> {
     if let Some(w) = app.get_webview_window(&format!("ext-{id}")) {
         let _ = w.destroy();
@@ -443,7 +443,7 @@ pub struct ExtAuditView {
     pub lines: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_audit() -> CmdResult<ExtAuditView> {
     Ok(ExtAuditView {
         lines: AUDIT.lock().map_err(|_| AppError::db("mutex"))?.clone(),
@@ -451,7 +451,7 @@ pub fn ext_audit() -> CmdResult<ExtAuditView> {
 }
 
 /// X-1 验收示例：时钟小组件（目录即安装）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_install_example(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<String> {
     let dir = ext_root(&st).join("clock-widget");
     std::fs::create_dir_all(&dir).map_err(|e| AppError::io(e.to_string()))?;
@@ -485,7 +485,7 @@ setInterval(function () {
 // ---------------------------------------------------------------- IPC 桥（X-3 API 面 v1）
 
 #[tauri::command]
-pub fn ext_invoke(
+pub async fn ext_invoke(
     app: tauri::AppHandle,
     st: tauri::State<'_, crate::state::AppState>,
     webview: tauri::WebviewWindow,
@@ -772,7 +772,7 @@ pub struct MarketPackView {
 }
 
 /// 商店列表：扫 `<data>/market/*.uxpack`，逐包解析（坏包跳过并审计）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_market_list(st: tauri::State<'_, crate::state::AppState>) -> CmdResult<Vec<MarketPackView>> {
     let dir = market_dir(&st);
     let _ = std::fs::create_dir_all(&dir);
@@ -813,7 +813,7 @@ pub fn ext_market_list(st: tauri::State<'_, crate::state::AppState>) -> CmdResul
 }
 
 /// 导入 .uxpack 包到市场目录（复制；解析校验通过才收货）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_market_import(st: tauri::State<'_, crate::state::AppState>, path: String) -> CmdResult<String> {
     let src = PathBuf::from(&path);
     if src.extension().and_then(|s| s.to_str()) != Some("uxpack") || !src.is_file() {
@@ -830,7 +830,7 @@ pub fn ext_market_import(st: tauri::State<'_, crate::state::AppState>, path: Str
 }
 
 /// 安装：解包到 `<data>/extensions/<id>/`（覆盖式），随后重扫生效。返回扩展 id。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_market_install(st: tauri::State<'_, crate::state::AppState>, file: String) -> CmdResult<String> {
     // file 限市场目录内文件名（防路径穿越）
     if file.contains('/') || file.contains('\\') || file.contains("..") {
@@ -860,7 +860,7 @@ pub fn ext_market_install(st: tauri::State<'_, crate::state::AppState>, file: St
 }
 
 /// 从市场移除包（不影响已安装目录）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ext_market_remove(st: tauri::State<'_, crate::state::AppState>, file: String) -> CmdResult<()> {
     if file.contains('/') || file.contains('\\') || file.contains("..") {
         return Err(AppError::validation("非法包文件名"));

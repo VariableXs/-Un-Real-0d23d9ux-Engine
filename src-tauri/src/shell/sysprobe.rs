@@ -65,7 +65,7 @@ unsafe fn enum_monitors() -> Vec<MonitorDto> {
 }
 
 /// U-43：显示器拓扑（只读）。档案与布局在前端持久化（tool_data），重接入按 device 名恢复。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn monitor_list() -> Result<Vec<MonitorDto>, String> {
     #[cfg(windows)]
     return unsafe { Ok(enum_monitors()) };
@@ -96,7 +96,7 @@ fn port_net_to_host(p: u32) -> u16 {
 }
 
 /// V-53：TCP + UDP 监听/连接表（进程侧通过 PID 在前端与 procList 关联）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn port_table() -> Result<Vec<PortRow>, String> {
     #[cfg(windows)]
     {
@@ -221,7 +221,7 @@ pub struct EventRow {
 
 /// V-52：只读读取 System / Application 关键事件（Level 1-2），按时间倒序。
 /// 数据源 = PowerShell Get-WinEvent → JSON；不做任何删除/清理（系统领地）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn eventlog_recent(log: String, count: u32) -> Result<Vec<EventRow>, String> {
     if log != "System" && log != "Application" {
         return Err("log must be System or Application".into());
@@ -310,7 +310,7 @@ pub struct FileHit {
 
 /// V-55：指定根目录下「最近 days 天内、≥ min_mb MB」的文件，按体积倒序 Top 100。
 /// 纯只读；无 USN Journal 时的诚实降级路径（前端标注扫描耗时）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bigfile_scan(root: String, min_mb: u64, days: u32) -> Result<Vec<FileHit>, String> {
     let min_bytes = min_mb.saturating_mul(1024 * 1024);
     let cutoff = (now_ms()).saturating_sub(days as u64 * 86_400_000);
@@ -383,7 +383,7 @@ fn tick64() -> u64 {
 }
 
 /// V-56：系统/环境运行时长（与 GetTickCount64 一致口径，只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_uptime() -> Result<UptimeDto, String> {
     #[cfg(windows)]
     {
@@ -412,7 +412,7 @@ pub struct StartupProc {
 
 /// V-60：枚举「系统启动后创建」的进程，bootOffsetMs = 创建时刻 − 开机时刻，
 /// 作为对开机时间贡献的诚实采样代理（非首次空闲精确值，UI 如实标注）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startup_procs() -> Result<Vec<StartupProc>, String> {
     #[cfg(windows)]
     {
@@ -464,7 +464,7 @@ fn db_path(st: &tauri::State<'_, crate::state::AppState>) -> std::path::PathBuf 
 
 /// N-25：环境自检树（每项 {id/名称/状态/证据}；3s 预算由调用方控制，本函数内
 /// 每项检查均为轻量同步操作）。只读为主；修复走 heal_run 白名单。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn selfheal_checks(st: tauri::State<'_, crate::state::AppState>) -> Result<Vec<CheckItem>, String> {
     let mut out = Vec::new();
 
@@ -570,7 +570,7 @@ fn free_bytes_of(_p: &std::path::Path) -> Option<u64> {
 
 /// N-25：白名单修复器（当前两项：重建 .selfheal-probe 校验位 / 清除损坏的
 /// tool_data JSON 缓存为 null）。白名单之外一律只报告不修复。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn heal_run(st: tauri::State<'_, crate::state::AppState>, id: String) -> Result<String, String> {
     match id.as_str() {
         "trash" => {
@@ -617,7 +617,7 @@ pub struct PowerLossReport {
 
 /// V-59：检测上次关机是否异常（脏关机），并运行四项轻量自检（<5s、并行性足够——
 /// 各项均为本地轻操作）。自动修复仅限白名单（缓存重建类）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pwrloss_check(st: tauri::State<'_, crate::state::AppState>) -> Result<PowerLossReport, String> {
     let marker = st.data_dir.join(CLEAN_SHUTDOWN_FILE);
     let dirty = !marker.exists();
@@ -686,7 +686,7 @@ pub fn pwrloss_check(st: tauri::State<'_, crate::state::AppState>) -> Result<Pow
 
 /// N-24 L1：对白名单可执行文件做页缓存预读（读前 2MB）。
 /// 纪律红线：仅预读、不启动进程、不模拟输入、不联网；路径必须存在且为文件。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn predwarm(path: String) -> Result<bool, String> {
     let p = std::path::Path::new(&path);
     if !p.is_file() {
@@ -721,7 +721,7 @@ pub struct PeriphProbe {
 
 /// U-44/U-45/U-47：外设与无线一次性只读探针（PowerShell/netsh，无任何写入）。
 /// 降级口径：任一子探针失败如实留空，不编造数据。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn periph_probe() -> Result<PeriphProbe, String> {
     #[cfg(windows)]
     {

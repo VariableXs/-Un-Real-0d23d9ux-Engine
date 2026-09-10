@@ -130,10 +130,34 @@ export function watchSelector(
     }
   };
   scan();
-  const mo = new MutationObserver(() => scan());
+  // 大检查第十四轮：变更去抖。子树挂载可能高频爆发（壁纸层逐帧挂载、
+  // 批量图标注册），每批同步 querySelectorAll 全树扫描会形成风暴
+  // （designNova 同类问题实测整页冻结）。合并到帧级单次扫描，
+  // 语义不变（新元素最迟下一帧纳入）。
+  let pending = 0;
+  const schedule = (): void => {
+    if (pending) return;
+    if (typeof requestAnimationFrame === "function") {
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        scan();
+      });
+    } else {
+      pending = window.setTimeout(() => {
+        pending = 0;
+        scan();
+      }, 50) as unknown as number;
+    }
+  };
+  const mo = new MutationObserver(schedule);
   mo.observe(scope, { childList: true, subtree: true });
   return () => {
     mo.disconnect();
+    if (pending) {
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(pending);
+      else clearTimeout(pending);
+      pending = 0;
+    }
     if (onRemove) for (const el of Array.from(scope.querySelectorAll(selector))) onRemove(el);
   };
 }

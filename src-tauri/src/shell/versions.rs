@@ -136,7 +136,7 @@ pub struct VerInfo {
 }
 
 /// 登记为受版本保护的文件（加入观察清单；不立即快照）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_watch(st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     let p = PathBuf::from(&path);
     if !p.is_file() {
@@ -148,7 +148,7 @@ pub fn ver_watch(st: tauri::State<AppState>, path: String) -> CmdResult<()> {
 }
 
 /// 快照当前内容（保存队列挂点：每次保存后调用；内容未变则跳过）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_snapshot(st: tauri::State<AppState>, path: String) -> CmdResult<Option<VerInfo>> {
     // U-36 隐身会话禁止清单：隐身期间禁用版本快照
     if crate::shell::incognito::is_incognito() {
@@ -235,7 +235,7 @@ fn read_version_bytes(st: &AppState, key: &str, rec: &VerRecord) -> CmdResult<Ve
 }
 
 /// 版本时间轴列表（新→旧）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_list(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<VerInfo>> {
     let key = norm_key(&path);
     let idx = load_index(&st);
@@ -259,7 +259,7 @@ pub fn ver_list(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<VerIn
 }
 
 /// 读取指定版本内容（文本预览/diff 双栏数据源；≤2MB）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_read(st: tauri::State<AppState>, path: String, version_id: String) -> CmdResult<String> {
     let key = norm_key(&path);
     let idx = load_index(&st);
@@ -314,7 +314,7 @@ pub fn line_diff_count(old: &[u8], new: &[u8]) -> u64 {
 }
 
 /// 双版本 diff（U-25 时间轴浏览器双栏）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_diff(st: tauri::State<AppState>, path: String, old_id: String, new_id: String) -> CmdResult<VerDiff> {
     let key = norm_key(&path);
     let idx = load_index(&st);
@@ -370,7 +370,7 @@ pub fn ver_diff(st: tauri::State<AppState>, path: String, old_id: String, new_id
 }
 
 /// 还原：内容写回 + 保留原 mtime。当前文件先快照（保证可再还原回来）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_restore(st: tauri::State<AppState>, path: String, version_id: String) -> CmdResult<()> {
     let key = norm_key(&path);
     let idx = load_index(&st);
@@ -464,7 +464,7 @@ fn set_mtime(_p: &Path, _mtime_ms: u64) {}
 
 /// GC：按保留策略清理（keep_versions / keep_days，星标豁免由前端在 UI 层提示，
 /// 后端如实执行策略）。删除孤儿块。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_gc(st: tauri::State<AppState>) -> CmdResult<VerGcReport> {
     ver_gc_inner(&st)
 }
@@ -552,7 +552,7 @@ pub fn ver_gc_inner(st: &AppState) -> CmdResult<VerGcReport> {
 }
 
 /// 策略配置。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_policy_set(st: tauri::State<AppState>, keep_versions: Option<usize>, keep_days: Option<u64>) -> CmdResult<()> {
     let mut idx = load_index(&st);
     idx.keep_versions = keep_versions;
@@ -561,7 +561,7 @@ pub fn ver_policy_set(st: tauri::State<AppState>, keep_versions: Option<usize>, 
 }
 
 /// 受保护文件清单（时间轴浏览器侧栏）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ver_watched_list(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let idx = load_index(&st);
     Ok(idx.files.keys().cloned().collect())

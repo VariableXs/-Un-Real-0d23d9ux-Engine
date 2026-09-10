@@ -128,7 +128,7 @@ pub fn boot_selfcheck() -> Option<bool> {
 // ---- Tauri 命令（设置→运行环境→「开机进入 Variable（实验性）」）----
 
 /// 状态查询：enabled + 一键还原脚本位置
-#[tauri::command]
+#[tauri::command(async)]
 pub fn directshell_status() -> DirectShellStatus {
     #[cfg(windows)]
     {
@@ -154,7 +154,7 @@ pub struct DirectShellStatus {
 }
 
 /// 开关（前端负责三重警示弹窗后再调用 enable）
-#[tauri::command]
+#[tauri::command(async)]
 pub fn directshell_set(enable: bool) -> Result<(), String> {
     #[cfg(windows)]
     {

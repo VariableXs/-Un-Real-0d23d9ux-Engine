@@ -63,12 +63,12 @@ fn save(st: &AppState, c: &PanicConfig) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panic_config_get(st: tauri::State<AppState>) -> CmdResult<PanicConfig> {
     Ok(load(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panic_config_set(st: tauri::State<AppState>, config: PanicConfig) -> CmdResult<()> {
     if !matches!(config.level.as_str(), "L1" | "L2" | "L3") {
         return Err(AppError::validation("level 必须为 L1|L2|L3 / level must be L1|L2|L3"));
@@ -191,7 +191,7 @@ pub fn panic_run_inner(st: &AppState, level: &str, dry_run: bool) -> CmdResult<P
     Ok(rep)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panic_trigger(st: tauri::State<AppState>, level: Option<String>, dry_run: Option<bool>) -> CmdResult<PanicRunReport> {
     let lvl = level.unwrap_or_default();
     if !lvl.is_empty() && !matches!(lvl.as_str(), "L1" | "L2" | "L3") {
@@ -203,7 +203,7 @@ pub fn panic_trigger(st: tauri::State<AppState>, level: Option<String>, dry_run:
 }
 
 /// 演练模式专用：断言磁盘 diff 为空（执行前后应删除清单一致且未动磁盘）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panic_drill(st: tauri::State<AppState>) -> CmdResult<PanicRunReport> {
     let rep = panic_run_inner(&st, "", true)?;
     if !rep.would_delete.is_empty() && !rep.dry_run {

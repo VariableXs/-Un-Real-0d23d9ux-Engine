@@ -45,7 +45,7 @@ pub struct ContainerDiag {
     pub open_error: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn container_diag(path: String) -> CmdResult<ContainerDiag> {
     let p = PathBuf::from(&path);
     let exists = p.exists();
@@ -94,7 +94,7 @@ pub struct RepairReport {
     pub chunk_count: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn container_repair(path: String, passphrase: Option<String>) -> CmdResult<RepairReport> {
     let p = PathBuf::from(&path);
     let pass = parse_passphrase(&passphrase);
@@ -131,7 +131,7 @@ pub struct RescueExportReport {
     pub errors: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn container_rescue_export(
     path: String,
     out_dir: String,
@@ -167,7 +167,7 @@ pub fn container_rescue_export(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn container_init(path: String, passphrase: Option<String>) -> CmdResult<RepairReport> {
     let p = PathBuf::from(&path);
     if p.exists() && std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0) > 0 {
@@ -215,7 +215,7 @@ pub struct VolumeView {
     pub declared_capacity: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn container_stats(path: String, passphrase: Option<String>) -> CmdResult<ContainerStatsView> {
     let pass = parse_passphrase(&passphrase);
     let mut be = container::UxvBackend::new();
@@ -257,7 +257,7 @@ pub struct VhdxProbeView {
     pub usable: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vhdx_probe() -> CmdResult<VhdxProbeView> {
     let p = container::vhdx_probe();
     Ok(VhdxProbeView {
@@ -287,7 +287,7 @@ pub struct RevocationReport {
     pub entries: usize,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn revocation_list_export(st: tauri::State<AppState>, out: String) -> CmdResult<RevocationReport> {
     revocation_list_export_inner(&st, std::path::Path::new(&out))
 }
@@ -336,7 +336,7 @@ pub(crate) fn revocation_list_export_inner(st: &AppState, out: &std::path::Path)
 }
 
 /// 前端启动时读取软件渲染标记（--force-raster 写入的 flag 文件）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diag_flags(st: tauri::State<AppState>) -> CmdResult<serde_json::Value> {
     Ok(serde_json::json!({
         "forceRaster": st.data_dir.join("force-raster.flag").is_file()

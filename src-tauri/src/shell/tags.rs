@@ -68,7 +68,7 @@ fn save(st: &AppState, s: &TagStore) -> CmdResult<()> {
 }
 
 /// 设置标签（全量替换该路径的标签集；空集合 = 删除条目）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_set(st: tauri::State<AppState>, path: String, tags: Vec<String>) -> CmdResult<()> {
     let mut s = load(&st);
     let key = norm_key(&path);
@@ -98,7 +98,7 @@ pub fn starred_keys(st: &AppState) -> std::collections::BTreeSet<String> {
 }
 
 /// 星标（独立于标签，回收站 2.0 豁免策略用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_star(st: tauri::State<AppState>, path: String, starred: bool) -> CmdResult<()> {
     let mut s = load(&st);
     let key = norm_key(&path);
@@ -109,14 +109,14 @@ pub fn tag_star(st: tauri::State<AppState>, path: String, starred: bool) -> CmdR
 }
 
 /// 查询单路径。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_get(st: tauri::State<AppState>, path: String) -> CmdResult<Option<TagEntry>> {
     let s = load(&st);
     Ok(s.files.get(&norm_key(&path)).cloned())
 }
 
 /// 批量查询（explorer 列表角点用，一次 IPC 取整目录）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_map(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<std::collections::HashMap<String, TagEntry>> {
     let s = load(&st);
     let mut out = std::collections::HashMap::new();
@@ -130,7 +130,7 @@ pub fn tag_map(st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<std:
 }
 
 /// 全部标签（标签管理面板 / 过滤器）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_all(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let s = load(&st);
     let mut set = std::collections::BTreeSet::new();
@@ -143,7 +143,7 @@ pub fn tag_all(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
 }
 
 /// 标签跟随移动/重命名（ex_rename / ex_move 成功后由前端调用；支持批量）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_move(st: tauri::State<AppState>, from: String, to: String) -> CmdResult<()> {
     let mut s = load(&st);
     let fk = norm_key(&from);
@@ -167,7 +167,7 @@ pub fn tag_move(st: tauri::State<AppState>, from: String, to: String) -> CmdResu
 }
 
 /// 按标签过滤（返回有该标签的路径键列表）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_filter(st: tauri::State<AppState>, tag: String) -> CmdResult<Vec<String>> {
     let s = load(&st);
     Ok(s
@@ -179,13 +179,13 @@ pub fn tag_filter(st: tauri::State<AppState>, tag: String) -> CmdResult<Vec<Stri
 }
 
 /// 智能文件夹：列出 / 新建 / 删除。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_smart_list(st: tauri::State<AppState>) -> CmdResult<Vec<SmartFolder>> {
     let s = load(&st);
     Ok(s.smart.clone())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_smart_add(st: tauri::State<AppState>, name: String, query: String) -> CmdResult<SmartFolder> {
     let n = name.trim();
     let q = query.trim();
@@ -205,7 +205,7 @@ pub fn tag_smart_add(st: tauri::State<AppState>, name: String, query: String) ->
     Ok(f)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tag_smart_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let mut s = load(&st);
     s.smart.retain(|f| f.id != id);

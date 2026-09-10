@@ -91,13 +91,13 @@ pub fn set_maintenance(on: bool) {
 }
 
 /// 读取设置（供设置界面命令）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn watch_get_settings(st: tauri::State<'_, AppState>) -> CmdResult<WatchSettings> {
     Ok(load_settings(&st))
 }
 
 /// 更新设置：整体关闭 = 回滚开关（退回「仅手动从 Variable 内启动才嵌入」）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn watch_set_settings(
     st: tauri::State<'_, AppState>,
     enabled: bool,
@@ -115,7 +115,7 @@ pub fn watch_set_settings(
 }
 
 /// 询问卡处置回执：once（本次保持在桌面）| always（总是忽略该软件）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn watch_dismiss(st: tauri::State<'_, AppState>, image: String, action: String) -> CmdResult<()> {
     let img = image.to_lowercase();
     if action == "always" && !img.is_empty() {

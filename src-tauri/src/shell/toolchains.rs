@@ -37,7 +37,7 @@ fn go_dir(d: &Path) -> PathBuf { d.join("runtime").join("go") }
 fn cargo_dir(d: &Path) -> PathBuf { d.join("runtime").join("cargo") }
 fn rustup_dir(d: &Path) -> PathBuf { d.join("runtime").join("rustup") }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn toolchain_status(st: tauri::State<AppState>) -> CmdResult<Vec<ToolchainStatus>> {
     let d = &st.data_dir;
     Ok(vec![
@@ -115,7 +115,7 @@ fn extract_zip(zip: &Path, stage: &Path) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn toolchain_deploy(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,

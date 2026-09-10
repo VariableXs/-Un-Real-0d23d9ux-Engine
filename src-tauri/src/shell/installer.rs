@@ -109,7 +109,7 @@ pub fn slugify(name: &str) -> String {
 // ---------- 命令面 ----------
 
 /// 安装模式：启动安装器，全部环境落点重定向到暂存区。返回会话 id。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_mode_launch(st: tauri::State<AppState>, exe: String, name: Option<String>) -> CmdResult<InstallSession> {
     let path = PathBuf::from(&exe);
     if !path.is_file() {
@@ -178,7 +178,7 @@ pub fn install_mode_launch(st: tauri::State<AppState>, exe: String, name: Option
 }
 
 /// 暂存会话列表（含崩溃恢复：index.json 持久化，重启后仍在）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_list(st: tauri::State<AppState>) -> CmdResult<Vec<InstallSession>> {
     Ok(load_index(&st))
 }
@@ -208,7 +208,7 @@ fn area_files(dir: &Path) -> Vec<(String, u64)> {
 }
 
 /// 落点分析：逐区域统计捕获到的文件，列出候选主程序 exe（浅层优先）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_analyze(st: tauri::State<AppState>, id: String) -> CmdResult<InstallReport> {
     if !valid_id(&id) {
         return Err(AppError::validation("非法会话 id"));
@@ -252,7 +252,7 @@ pub fn install_analyze(st: tauri::State<AppState>, id: String) -> CmdResult<Inst
 
 /// 归位：把暂存内容按区域搬进容器——pf/pf86 → apps/<name>/，home/appdata/local
 /// → 容器环境 home（合并）；tmp 丢弃。然后登记便携档（通用重定向执行档）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_commit(
     st: tauri::State<AppState>,
     id: String,
@@ -363,7 +363,7 @@ pub fn install_commit(
 }
 
 /// 丢弃会话（暂存目录整体删除——含安装器在暂存区的一切写入）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_discard(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     if !valid_id(&id) {
         return Err(AppError::validation("非法会话 id"));
@@ -379,7 +379,7 @@ pub fn install_discard(st: tauri::State<AppState>, id: String) -> CmdResult<()> 
 }
 
 /// 默认值推断（E-1）：为任意登记项生成通用重定向建议（不落盘，前端回填表格）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn profile_infer(st: tauri::State<AppState>, id: String) -> CmdResult<serde_json::Value> {
     let apps = crate::shell::launcher::load_registry(&st);
     let app = apps

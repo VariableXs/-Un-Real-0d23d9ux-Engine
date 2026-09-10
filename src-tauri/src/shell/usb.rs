@@ -141,7 +141,7 @@ fn drive_is_removable(_p: &Path) -> bool {
     false
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn usb_status(st: tauri::State<AppState>) -> CmdResult<UsbStatus> {
     let portable = crate::state::is_portable();
     let manifest_exists = portable
@@ -276,7 +276,7 @@ fn pack_impl(
 }
 
 /// 一键全量打包到目标文件夹（真实进度事件 `usb://progress`）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn usb_pack(
     st: tauri::State<AppState>,
     app: tauri::AppHandle,
@@ -292,7 +292,7 @@ pub fn usb_pack(
 // ---------- 校验 ----------
 
 /// 按打包基线校验便携包完整性（用于拷贝到 U 盘后 / 换机后核验）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn usb_verify(dir: String) -> CmdResult<Vec<FileCheck>> {
     let root = PathBuf::from(&dir);
     let mpath = root.join(MANIFEST_FILE);

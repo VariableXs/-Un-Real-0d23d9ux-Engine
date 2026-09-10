@@ -136,7 +136,7 @@ fn index_roots(st: &AppState) -> Vec<PathBuf> {
 }
 
 /// 索引状态（设置/搜索浮层展示「索引中/条数」）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fsindex_status(st: tauri::State<AppState>) -> CmdResult<FsIndexStatus> {
     let snap = get_snap();
     ensure_fresh(st.inner());
@@ -169,7 +169,7 @@ pub(crate) fn sample_entries(n: usize) -> Vec<FsHit> {
 
 /// 文件名/路径子串查询（大小写不敏感）+ 扩展名/类型/大小/时间过滤。
 /// 直跑档与 VM 档同口径：仅容器内（spec F-4 边界如实声明）。
-#[tauri::command]
+#[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
 pub fn fsindex_query(
     st: tauri::State<AppState>,

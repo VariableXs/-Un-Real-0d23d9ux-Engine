@@ -47,7 +47,7 @@ fn from_wide(p: windows::core::PWSTR) -> String {
 
 /// V-97：检查一批文件是否具有系统「print」动词关联（逐文件如实判定）。
 /// 关联判断完全走系统注册表（ASSOCF_NONE，不改任何关联）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn print_assoc_check(paths: Vec<String>) -> CmdResult<Vec<bool>> {
     #[cfg(windows)]
     {
@@ -92,7 +92,7 @@ pub fn print_assoc_check(paths: Vec<String>) -> CmdResult<Vec<bool>> {
 /// V-97：右键打印 —— 走系统默认打印关联（ShellExecute "print" 动词，逐文件）。
 /// 不做打印预览、不做打印机选择（系统打印对话框领地，规格红线）。
 /// 复用 AI-3 Shell 代理通道（compat::shell_execute_path），不新增进程创建代码。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn print_files(paths: Vec<String>) -> CmdResult<Vec<String>> {
     if paths.is_empty() {
         return Err(AppError::validation("打印文件列表为空"));
@@ -114,7 +114,7 @@ pub fn print_files(paths: Vec<String>) -> CmdResult<Vec<String>> {
 }
 
 /// V-98：枚举本机打印机（本地 + 连接）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn print_list() -> CmdResult<Vec<PrinterInfo>> {
     #[cfg(windows)]
     {
@@ -223,7 +223,7 @@ fn job_status_text(status: u32) -> String {
 }
 
 /// V-98：读取某打印机（None = 第一台/默认）当前队列。只读。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn print_jobs(printer: Option<String>) -> CmdResult<Vec<PrintJob>> {
     #[cfg(windows)]
     {
@@ -290,7 +290,7 @@ pub fn print_jobs(printer: Option<String>) -> CmdResult<Vec<PrintJob>> {
 }
 
 /// V-98：队列操作（pause / resume / cancel）——显式操作，无静默批量。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn print_job_set(printer: String, job_id: u32, action: String) -> CmdResult<()> {
     #[cfg(windows)]
     {

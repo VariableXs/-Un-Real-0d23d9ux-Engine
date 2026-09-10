@@ -116,12 +116,12 @@ pub fn set_inner(st: &AppState, host: &str, policy: &str) -> CmdResult<()> {
     save_store(st, &store)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_consent_check(st: tauri::State<AppState>, host: String) -> CmdResult<Option<String>> {
     check_inner(&st, &host)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_consent_set(st: tauri::State<AppState>, host: String, policy: String) -> CmdResult<()> {
     set_inner(&st, &host, &policy)
 }
@@ -295,12 +295,12 @@ pub fn fw_traffic_inner(st: &AppState, app: &str, bytes: u64) -> CmdResult<bool>
 
 // ---------- 防火墙命令 ----------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_profile_get(st: tauri::State<AppState>, app: String) -> CmdResult<FwProfile> {
     Ok(fw_profile_of(&load_fw(&st), &app))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_profile_set(st: tauri::State<AppState>, profile: FwProfile) -> CmdResult<()> {
     if !matches!(profile.level.as_str(), FW_LEVEL_BLOCKED | FW_LEVEL_WHITELIST | FW_LEVEL_FULL) {
         return Err(AppError::validation(format!("无效级别 / invalid level: {}", profile.level)));
@@ -324,13 +324,13 @@ pub fn fw_profile_set(st: tauri::State<AppState>, profile: FwProfile) -> CmdResu
 }
 
 /// 决策检查（前端 netGuard 请求前调用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_check(st: tauri::State<AppState>, app: String, host: String) -> CmdResult<(bool, String)> {
     fw_check_inner(&st, &app, &host)
 }
 
 /// 流量记账（请求完成后调用）。返回是否触发配额降级。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_traffic(st: tauri::State<AppState>, app: String, bytes: u64) -> CmdResult<bool> {
     fw_traffic_inner(&st, &app, bytes)
 }
@@ -344,7 +344,7 @@ pub struct FwAlertCenter {
     pub hot_apps: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_alerts(st: tauri::State<AppState>) -> CmdResult<FwAlertCenter> {
     let s = load_fw(&st);
     let alerts: Vec<FwAlert> = s.alerts.iter().filter(|a| !a.resolved).cloned().collect();
@@ -359,7 +359,7 @@ pub fn fw_alerts(st: tauri::State<AppState>) -> CmdResult<FwAlertCenter> {
 }
 
 /// 一键放行：域名加入该应用白名单 + 告警消解（或保持拦截 = 仅清除告警）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_alert_resolve(st: tauri::State<AppState>, alert_id: String, allow: bool) -> CmdResult<()> {
     let mut s = load_fw(&st);
     let alert = s
@@ -391,7 +391,7 @@ pub fn fw_alert_resolve(st: tauri::State<AppState>, alert_id: String, allow: boo
 }
 
 /// 应用档案总览（防火墙设置页）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fw_profiles(st: tauri::State<AppState>) -> CmdResult<Vec<FwProfile>> {
     Ok(load_fw(&st).profiles)
 }

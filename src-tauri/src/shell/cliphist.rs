@@ -446,13 +446,13 @@ pub fn spawn_cliphist_watcher(app: AppHandle, data_dir: std::path::PathBuf) {
 // ---------- 命令 ----------
 
 /// 历史列表（最新在前）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_list() -> CmdResult<Vec<ClipEntry>> {
     Ok(hist().clone())
 }
 
 /// 钉选 / 取消钉选。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_pin(id: String, pinned: bool, st: State<'_, AppState>) -> CmdResult<()> {
     {
         let mut h = hist();
@@ -465,7 +465,7 @@ pub fn cliphist_pin(id: String, pinned: bool, st: State<'_, AppState>) -> CmdRes
 }
 
 /// 删除单条。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_remove(id: String, st: State<'_, AppState>) -> CmdResult<()> {
     hist().retain(|x| x.id != id);
     persist(&st.data_dir);
@@ -473,7 +473,7 @@ pub fn cliphist_remove(id: String, st: State<'_, AppState>) -> CmdResult<()> {
 }
 
 /// 清空（keepPinned=true 保留钉选）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_clear(keep_pinned: bool, st: State<'_, AppState>) -> CmdResult<()> {
     if keep_pinned {
         hist().retain(|x| x.pinned);
@@ -485,7 +485,7 @@ pub fn cliphist_clear(keep_pinned: bool, st: State<'_, AppState>) -> CmdResult<(
 }
 
 /// 关闭即焚：面板关闭时调用（配置开启才生效）——清空内存 + 焚毁落盘。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_burn(st: State<'_, AppState>) -> CmdResult<()> {
     if !cfg().burn_on_close {
         return Ok(());
@@ -496,20 +496,20 @@ pub fn cliphist_burn(st: State<'_, AppState>) -> CmdResult<()> {
 }
 
 /// 读配置。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_config_get() -> CmdResult<ClipConfig> {
     Ok(cfg().clone())
 }
 
 /// 写配置（前端设置面板调用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_config_set(config: ClipConfig) -> CmdResult<()> {
     *cfg() = config;
     Ok(())
 }
 
 /// 写回剪贴板（回贴；粘贴动作由前端在用户显式操作时执行）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cliphist_write_back(id: String) -> CmdResult<bool> {
     let entry = hist().iter().find(|x| x.id == id).cloned();
     let Some(e) = entry else {

@@ -41,7 +41,7 @@ pub(crate) fn process_matches(app_path: &str, proc_image: Option<&str>, proc_nam
 // ---------- 命令：第三方软件运行检测 ----------
 
 /// 返回当前正在运行的已登记第三方软件 id 列表。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn tp_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let registry = crate::shell::launcher::registry_snapshot(&st);
     if registry.is_empty() {
@@ -147,7 +147,7 @@ pub struct OfficialUsage {
 }
 
 /// 预装软件数据占用（诚实边界：workspace 用户文件不按软件切分）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn official_usage(st: tauri::State<AppState>, app: String) -> CmdResult<OfficialUsage> {
     if !valid_official(&app) {
         return Err(AppError::validation(format!("未知软件 / Unknown app: {app}")));
@@ -186,7 +186,7 @@ pub fn official_usage(st: tauri::State<AppState>, app: String) -> CmdResult<Offi
 }
 
 /// 彻底删除某预装软件的数据库数据（二次确认由前端负责）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn official_purge(st: tauri::State<AppState>, app: String) -> CmdResult<()> {
     match app.as_str() {
         "write" => st.with_conn(|conn| {

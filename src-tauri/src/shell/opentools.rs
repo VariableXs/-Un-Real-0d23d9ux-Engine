@@ -112,12 +112,12 @@ pub fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
     Some(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn webhook_rules_get(st: tauri::State<AppState>) -> CmdResult<WebhookConfig> {
     Ok(webhook_load(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn webhook_rules_set(st: tauri::State<AppState>, config: WebhookConfig) -> CmdResult<WebhookConfig> {
     let mut cfg = config;
     // 红线：未知事件 / 非 http / 公网 URL 一律拒绝保存
@@ -164,7 +164,7 @@ fn now_suffix() -> String {
 
 /// 事件分发：匹配 enabled 规则 → POST（超时 3s，失败重试 1 次）。
 /// 前端在事件发生处调用（如 workshop 触发、主题切换）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn webhook_dispatch(st: tauri::State<AppState>, event: String, payload: String) -> CmdResult<u32> {
     let cfg = webhook_load(&st);
     if !cfg.enabled || !KNOWN_EVENTS.contains(&event.as_str()) {
@@ -247,7 +247,7 @@ fn post_with_retry(url: &str, body: &str) -> (bool, Option<u16>, Option<String>)
 }
 
 /// 测试发送（前端「测试」按钮）：不要求规则已启用，但仍受 URL 策略约束。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn webhook_test(st: tauri::State<AppState>, url: String) -> CmdResult<bool> {
     if !webhook_url_allowed(&url) {
         return Err(AppError::validation("URL 主机不在环回/内网段"));
@@ -259,7 +259,7 @@ pub fn webhook_test(st: tauri::State<AppState>, url: String) -> CmdResult<bool> 
 }
 
 /// 最近 n 条出站日志（时间轴展示）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn webhook_log_list(st: tauri::State<AppState>, limit: Option<usize>) -> CmdResult<Vec<Value>> {
     let raw = std::fs::read_to_string(st.data_dir.join("webhook-log.jsonl")).unwrap_or_default();
     let cap = limit.unwrap_or(50).min(200);
@@ -327,7 +327,7 @@ fn regex_lite_check(re: &str) -> Result<(), String> {
 }
 
 /// 扫描 exe 同目录的 variable-embed.json（应用作者放置）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_manifest_scan(exe_path: String) -> CmdResult<Option<EmbedManifest>> {
     let dir = Path::new(&exe_path)
         .parent()
@@ -446,7 +446,7 @@ pub fn vxs_scan(path: &Path) -> CmdResult<VxsScanReport> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vxs_scan_cmd(path: String) -> CmdResult<VxsScanReport> {
     vxs_scan(Path::new(&path))
 }
@@ -577,7 +577,7 @@ fn array_id_key(arr: &[Value]) -> Option<String> {
     None
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cfg_diff(a: String, b: String) -> CmdResult<Vec<DiffEntry>> {
     let va: Value = serde_json::from_str(&a).map_err(|e| AppError::validation(format!("A 不是合法 JSON: {e}")))?;
     let vb: Value = serde_json::from_str(&b).map_err(|e| AppError::validation(format!("B 不是合法 JSON: {e}")))?;
@@ -625,7 +625,7 @@ fn trials_save(st: &AppState, list: &[SandboxTrial]) -> CmdResult<()> {
 }
 
 /// 登记一次试用（kind 白名单：theme/wallpaper；只读类）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sandbox_trial_begin(st: tauri::State<AppState>, kind: String, id: String, prev_value: String) -> CmdResult<()> {
     if !matches!(kind.as_str(), "theme" | "wallpaper") {
         return Err(AppError::validation("试用白名单：theme / wallpaper（写操作类插件不支持）"));
@@ -638,7 +638,7 @@ pub fn sandbox_trial_begin(st: tauri::State<AppState>, kind: String, id: String,
 }
 
 /// 结束试用（应用回主环境时移除登记）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sandbox_trial_end(st: tauri::State<AppState>, kind: String, id: String) -> CmdResult<Vec<SandboxTrial>> {
     let mut list = trials_load(&st);
     list.retain(|t| !(t.kind == kind && t.id == id));
@@ -647,7 +647,7 @@ pub fn sandbox_trial_end(st: tauri::State<AppState>, kind: String, id: String) -
 }
 
 /// 当前试用清单（前端展示「试用中」徽标）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sandbox_trial_list(st: tauri::State<AppState>) -> CmdResult<Vec<SandboxTrial>> {
     Ok(trials_load(&st))
 }

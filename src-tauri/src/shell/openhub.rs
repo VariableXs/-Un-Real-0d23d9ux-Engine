@@ -75,7 +75,7 @@ fn save_config(st: &AppState, cfg: &OpenHubConfig) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_config_get(st: tauri::State<AppState>) -> CmdResult<OpenHubConfig> {
     let mut cfg = load_config(&st);
     if cfg.gateway_token.is_empty() {
@@ -85,7 +85,7 @@ pub fn openhub_config_get(st: tauri::State<AppState>) -> CmdResult<OpenHubConfig
     Ok(cfg)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_config_set(st: tauri::State<AppState>, config: OpenHubConfig) -> CmdResult<OpenHubConfig> {
     let mut cfg = config;
     cfg.gateway_port = clamp_port(cfg.gateway_port);
@@ -174,13 +174,13 @@ fn urldecode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn deeplink_parse(url: String) -> CmdResult<DeepLinkRoute> {
     parse_deeplink(&url)
 }
 
 /// 协议注册（红线：仅便携部署态写 HKCU；记录注册标记，退出时退订）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn deeplink_register(st: tauri::State<AppState>) -> CmdResult<()> {
     if !is_portable_mode(&st) {
@@ -224,7 +224,7 @@ pub fn deeplink_unregister_on_exit(st: &AppState) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn deeplink_unregister(st: tauri::State<AppState>) -> CmdResult<()> {
     use winreg::enums::*;
@@ -315,7 +315,7 @@ pub fn safehouse_review(m: &SafehouseManifest) -> SafehouseCheck {
     SafehouseCheck { granted, denied, errors }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn safehouse_check(manifest: SafehouseManifest) -> CmdResult<SafehouseCheck> {
     let r = safehouse_review(&manifest);
     if r.errors.is_empty() {
@@ -383,7 +383,7 @@ pub fn safehouse_exec_inner(st: &AppState, m: &SafehouseManifest, verb: &str, ar
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn safehouse_exec(
     st: tauri::State<AppState>,
     manifest: SafehouseManifest,
@@ -468,13 +468,13 @@ pub fn vxs_validate(path: &Path) -> CmdResult<VxsPreview> {
     Ok(VxsPreview { id: mf.id, format_ok: errors.is_empty(), resources, files, errors })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vxs_validate_cmd(path: String) -> CmdResult<VxsPreview> {
     vxs_validate(Path::new(&path))
 }
 
 /// 部分应用：把勾选资源解包到 data_dir/packs/<id>/（应用本身由对应域消费）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn vxs_extract(st: tauri::State<AppState>, path: String, kinds: Vec<String>) -> CmdResult<String> {
     let prev = vxs_validate(Path::new(&path))?;
     if !prev.format_ok {
@@ -590,7 +590,7 @@ pub fn data_export_inner(st: &AppState, out_root: &Path) -> CmdResult<DataExport
     Ok(DataExportResult { out_dir: out.to_string_lossy().into_owned(), files, bytes })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_data_export(st: tauri::State<AppState>, out_dir: String) -> CmdResult<DataExportResult> {
     data_export_inner(&st, Path::new(&out_dir))
 }
@@ -603,7 +603,7 @@ fn stream_path(st: &AppState) -> PathBuf {
     st.data_dir.join("event-stream.jsonl")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_stream_emit(st: tauri::State<AppState>, event_type: String, payload: String) -> CmdResult<bool> {
     let cfg = load_config(&st);
     if !cfg.stream_enabled {
@@ -624,7 +624,7 @@ pub fn openhub_stream_emit(st: tauri::State<AppState>, event_type: String, paylo
     Ok(true)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_stream_tail(st: tauri::State<AppState>, n: u32) -> CmdResult<Vec<String>> {
     let p = stream_path(&st);
     if !p.is_file() {
@@ -661,7 +661,7 @@ pub struct GatewayStatus {
     pub requests: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn gateway_status(st: tauri::State<AppState>) -> CmdResult<GatewayStatus> {
     let cfg = load_config(&st);
     let running = gateway_slot().lock().map(|g| g.is_some()).unwrap_or(false);
@@ -673,7 +673,7 @@ pub fn gateway_status(st: tauri::State<AppState>) -> CmdResult<GatewayStatus> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn gateway_token_regen(st: tauri::State<AppState>) -> CmdResult<String> {
     let mut cfg = load_config(&st);
     cfg.gateway_token = Uuid::new_v4().simple().to_string();
@@ -1021,7 +1021,7 @@ pub fn connector_query_inner(def: &ConnectorDef) -> ConnectorResult {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn openhub_connector_query(def: ConnectorDef) -> CmdResult<ConnectorResult> {
     Ok(connector_query_inner(&def))
 }
@@ -1034,7 +1034,7 @@ fn inbox_path(st: &AppState) -> PathBuf {
     st.data_dir.join("companion-inbox.jsonl")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn companion_inbox(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let p = inbox_path(&st);
     if !p.is_file() {
@@ -1044,7 +1044,7 @@ pub fn companion_inbox(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     Ok(raw.lines().rev().take(100).map(|s| s.to_string()).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn companion_inbox_clear(st: tauri::State<AppState>) -> CmdResult<()> {
     let _ = std::fs::remove_file(inbox_path(&st));
     Ok(())

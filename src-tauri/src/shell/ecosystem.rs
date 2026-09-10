@@ -132,7 +132,7 @@ pub(crate) fn assess(exe: &Path) -> CmdResult<PortabilityCard> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn portability_assess(exe: String) -> CmdResult<PortabilityCard> {
     assess(Path::new(&exe))
 }
@@ -176,7 +176,7 @@ pub struct MigrateReport {
 }
 
 /// 搬迁执行器：目录整拷 → apps/<id>/ + 卸载注册表快照 + ThirdApp 登记。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ecosystem_migrate(
     st: tauri::State<AppState>,
     exe: String,
@@ -286,7 +286,7 @@ fn steam_root() -> Option<PathBuf> {
 }
 
 /// Steam 库扫描：库目录 + appmanifest_*.acf 解析（名称 + appid）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
     let Some(root) = steam_root() else {
         return Err(AppError::not_found("未找到 Steam（HKCU SteamPath）"));
@@ -332,7 +332,7 @@ pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
 /// 启动后拉起 Steam 主窗看护：从 Variable 启动 = Steam 收进 Variable 运行
 /// （embed://popup → 前端 VWM 占位窗 → embed_adopt 重父化；Steam 已嵌入时
 /// 游戏窗口走 WinEventHook 同树 popup 自动收编；90s 冷启动超时看门狗兜底）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
         return Err(AppError::validation("Steam AppID 必须是数字 / Steam AppID must be numeric"));
@@ -347,7 +347,7 @@ pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
 }
 
 /// 商店应用 AUMID 启动（IApplicationActivationManager）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn aumid_launch(aumid: String) -> CmdResult<()> {
     crate::shell::compat::shell_activate_application(aumid)?;
     Ok(())
@@ -374,12 +374,12 @@ fn load_assocs(st: &AppState) -> Vec<FileAssoc> {
         .unwrap_or_default()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_assoc_list(st: tauri::State<AppState>) -> CmdResult<Vec<FileAssoc>> {
     Ok(load_assocs(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_assoc_set(st: tauri::State<AppState>, ext: String, app_id: String, app_name: String) -> CmdResult<()> {
     let st = &st;
     let ext = ext.trim_start_matches('.').to_lowercase();
@@ -394,13 +394,13 @@ pub fn file_assoc_set(st: tauri::State<AppState>, ext: String, app_id: String, a
 }
 
 /// 解析：返回环境内登记的处理方；None = 宿主兜底打开（前端调 open_path）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_assoc_resolve(st: tauri::State<AppState>, ext: String) -> CmdResult<Option<FileAssoc>> {
     let ext = ext.trim_start_matches('.').to_lowercase();
     Ok(load_assocs(&st).into_iter().find(|a| a.ext == ext))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn file_assoc_remove(st: tauri::State<AppState>, ext: String) -> CmdResult<()> {
     let st = &st;
     let ext = ext.trim_start_matches('.').to_lowercase();

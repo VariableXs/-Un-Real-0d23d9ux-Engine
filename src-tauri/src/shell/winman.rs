@@ -273,20 +273,21 @@ pub struct ShortcutBind {
 /// 批次E（规格 4.7）：整表应用用户自定义快捷键（unregister_all → 重新注册）。
 /// 实机反馈"彻底解决"：被系统/他方占用的组合自动改用备选组合键并如实回报
 /// （remapped）；连备选都失败的才进 failed，由前端提示。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shortcuts_apply(app: AppHandle, binds: Vec<ShortcutBind>) -> Result<ShortcutsApplyResult, String> {
     register_binds(&app, binds)
 }
 
 /// 🟢 切换"避让 Windows 任务栏"（avoid=true 时露出系统任务栏）。
+/// 大检查第十四轮：async —— 同步命令跑主线程，窗口操作经事件循环投递等待 → 自死锁。
 #[tauri::command]
-pub fn win_set_avoid_taskbar(app: AppHandle, avoid: bool) -> Result<(), String> {
+pub async fn win_set_avoid_taskbar(app: AppHandle, avoid: bool) -> Result<(), String> {
     avoid_taskbar_impl(&app, avoid)
 }
 
 /// 🔴 选择框"隐藏到托盘"：隐藏桌面窗口，Variable 继续运行（托盘左键恢复）。
 #[tauri::command]
-pub fn win_hide_to_tray(app: AppHandle) -> Result<(), String> {
+pub async fn win_hide_to_tray(app: AppHandle) -> Result<(), String> {
     let w = app.get_webview_window("desktop").ok_or("no desktop window")?;
     w.hide().map_err(|e| e.to_string())
 }
@@ -294,7 +295,7 @@ pub fn win_hide_to_tray(app: AppHandle) -> Result<(), String> {
 /// AI-01 M-04 窗口体检（Window Health）：按 pid 列表检测无响应窗口。
 /// 枚举全部可见顶层窗口，`IsHungAppWindow` 命中且 pid 在名单内 → 视为无响应。
 /// 返回确认无响应的 pid 子集；非 Windows 平台恒为空（如实降级，不伪造结果）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn win_health_scan(pids: Vec<u32>) -> Result<Vec<u32>, String> {
     #[cfg(windows)]
     {
@@ -337,7 +338,7 @@ pub fn win_health_scan(pids: Vec<u32>) -> Result<Vec<u32>, String> {
 /// AI-01 M-06 窗口挂起（Suspend）：对第三方进程树的根进程挂起全部线程。
 /// 走 ntdll `NtSuspendProcess`（与 Process Explorer 同口径），无需特权。
 /// 非Windows / 进程已退出 → false（前端如实提示，不伪造成功）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn win_suspend(pid: u32) -> Result<bool, String> {
     #[cfg(windows)]
     unsafe {
@@ -351,7 +352,7 @@ pub fn win_suspend(pid: u32) -> Result<bool, String> {
 }
 
 /// AI-01 M-06 窗口恢复（Resume）：解除挂起（`NtResumeProcess`）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn win_resume(pid: u32) -> Result<bool, String> {
     #[cfg(windows)]
     unsafe {
@@ -391,7 +392,7 @@ unsafe fn proc_nt_call(pid: u32, name: windows::core::PCSTR) -> Result<bool, Str
 /// 开始菜单电源操作（批次E，规格 4.6.3）：
 /// - lock = LockWorkStation（锁屏，无需特权）
 /// - logoff / reboot / shutdown = 调系统 shutdown.exe（诚实走 Windows 既有流程）
-#[tauri::command]
+#[tauri::command(async)]
 pub fn power_action(app: AppHandle, action: String) -> Result<(), String> {
     let _ = &app; // logoff/reboot/shutdown 在 Windows 走 shutdown.exe，app 仅保留给非 Windows 分支
     match action.as_str() {

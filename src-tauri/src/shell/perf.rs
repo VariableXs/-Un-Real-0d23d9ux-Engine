@@ -121,7 +121,7 @@ pub fn spawn_mem_warden() {
     }).ok();
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_mem_snapshot() -> MemSnapshot {
     mem_sample()
 }
@@ -135,7 +135,7 @@ pub struct WardenStatus {
     pub history: Vec<MemPoint>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_mem_warden_status() -> WardenStatus {
     let h = history().lock().unwrap_or_else(|e| e.into_inner()).clone();
     // 泄漏看门狗：最近 120 点（10 分钟）负载全部 ≥90% → 可疑
@@ -212,7 +212,7 @@ fn io_snapshot() -> IoProgress {
     IoProgress { jobs }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_io_progress() -> IoProgress {
     io_snapshot()
 }
@@ -222,7 +222,7 @@ pub struct IoStartResult {
     pub id: u32,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_io_copy(from: String, to: String) -> CmdResult<IoStartResult> {
     let from = PathBuf::from(&from);
     let meta = fs::metadata(&from).map_err(|e| AppError::io(format!("{}: {e}", from.display())))?;
@@ -308,7 +308,7 @@ fn set_io_priority_low(f: &mut fs::File) {
 #[cfg(not(target_os = "windows"))]
 fn set_io_priority_low(_f: &mut fs::File) {}
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_io_pause(id: u32) -> CmdResult<()> {
     let reg = io_registry().lock().unwrap_or_else(|e| e.into_inner());
     let job = reg.get(&id).ok_or_else(|| AppError::not_found(format!("io job {id}")))?;
@@ -318,7 +318,7 @@ pub fn perf_io_pause(id: u32) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_io_resume(id: u32) -> CmdResult<()> {
     let reg = io_registry().lock().unwrap_or_else(|e| e.into_inner());
     let job = reg.get(&id).ok_or_else(|| AppError::not_found(format!("io job {id}")))?;
@@ -328,7 +328,7 @@ pub fn perf_io_resume(id: u32) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_io_cancel(id: u32) -> CmdResult<()> {
     let reg = io_registry().lock().unwrap_or_else(|e| e.into_inner());
     let job = reg.get(&id).ok_or_else(|| AppError::not_found(format!("io job {id}")))?;
@@ -370,7 +370,7 @@ pub fn log_usage(logs_dir: &Path) -> LogUsage {
     LogUsage { active_bytes: active, archived_bytes, archived_count }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_log_usage(st: tauri::State<'_, AppState>) -> LogUsage {
     log_usage(&st.logs_dir)
 }
@@ -425,7 +425,7 @@ pub fn rotate_logs(logs_dir: &Path) -> std::io::Result<RotateReport> {
     Ok(RotateReport { rotated, deleted, active_bytes })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_log_rotate(st: tauri::State<'_, AppState>) -> CmdResult<RotateReport> {
     rotate_logs(&st.logs_dir).map_err(|e| AppError::io(e.to_string()))
 }
@@ -464,7 +464,7 @@ pub fn preflight(raw: &[(String, String)], known: &[String]) -> PreflightReport 
     PreflightReport { total: raw.len(), unknown_keys: unknown, corrupt_keys: corrupt }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_settings_preflight(st: tauri::State<'_, AppState>, known_keys: Vec<String>) -> CmdResult<PreflightReport> {
     let raw = st.with_conn(|conn| {
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
@@ -488,7 +488,7 @@ pub struct CompactReport {
     pub ms: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_db_compact(st: tauri::State<'_, AppState>) -> CmdResult<CompactReport> {
     let db_path = st.db_dir.join("variable.db");
     let before = fs::metadata(&db_path).map(|m| m.len()).unwrap_or(0);
@@ -607,22 +607,22 @@ pub fn instance_list(data_dir: &Path) -> Vec<InstanceInfo> {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_instance_list(st: tauri::State<'_, AppState>) -> Vec<InstanceInfo> {
     instance_list(&st.data_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_instance_create(st: tauri::State<'_, AppState>, name: String, takes_desktop: bool) -> CmdResult<InstanceInfo> {
     instance_create(&st.data_dir, &name, takes_desktop).map_err(|e| AppError::new("INSTANCE", e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_instance_delete(st: tauri::State<'_, AppState>, name: String) -> CmdResult<()> {
     instance_delete(&st.data_dir, &name).map_err(|e| AppError::new("INSTANCE", e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_instance_heartbeat(st: tauri::State<'_, AppState>, name: String) -> CmdResult<()> {
     instance_heartbeat(&st.data_dir, &name).map_err(|e| AppError::new("INSTANCE", e.to_string()))
 }
@@ -731,12 +731,12 @@ fn unb64(s: &str) -> Vec<u8> {
     base64::engine::general_purpose::STANDARD.decode(s.trim()).unwrap_or_default()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_relay_export(st: tauri::State<'_, AppState>, rels: Vec<String>, out_file: String) -> CmdResult<RelayManifest> {
     relay_export(&st.data_dir, &rels, Path::new(&out_file)).map_err(|e| AppError::io(e.to_string()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_relay_import(st: tauri::State<'_, AppState>, relay_file: String, target_dir: String) -> CmdResult<RelayImportReport> {
     relay_import(Path::new(&relay_file), Path::new(&target_dir)).map_err(|e| AppError::io(e.to_string()))
 }
@@ -835,7 +835,7 @@ pub fn cpu_quota_set(pid: u32, tier: u8) -> Result<QuotaResult, AppError> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_cpu_quota_set(pid: u32, tier: u8) -> CmdResult<QuotaResult> {
     cpu_quota_set(pid, tier)
 }
@@ -919,7 +919,7 @@ pub struct CrashDumpInfo {
     pub ts: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_crash_dumps(st: tauri::State<'_, AppState>) -> Vec<CrashDumpInfo> {
     let dir = st.data_dir.join("crashes");
     let mut out = Vec::new();
@@ -959,7 +959,7 @@ pub struct BootStage {
     pub priority: u8,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_boot_stage(name: String, priority: u8) -> CmdResult<()> {
     if priority > 2 {
         return Err(AppError::validation("priority must be 0/1/2 (P0/P1/P2)"));
@@ -972,7 +972,7 @@ pub fn perf_boot_stage(name: String, priority: u8) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_boot_stages() -> Vec<BootStage> {
     boot_stages().lock().unwrap_or_else(|e| e.into_inner())
         .iter()

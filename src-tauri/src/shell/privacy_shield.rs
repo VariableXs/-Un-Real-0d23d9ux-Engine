@@ -120,12 +120,12 @@ mod imp {
 }
 
 /// 开关防截屏模式（设置页 / 托盘菜单共用）。关闭即恢复可截（纯开关，回滚=关）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shield_set(on: bool) -> CmdResult<ShieldStatus> {
     Ok(imp::set(on))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shield_get() -> CmdResult<bool> {
     Ok(is_on())
 }

@@ -92,7 +92,7 @@ fn current_status(_app: &AppHandle) -> TaskbarYieldStatus {
 }
 
 /// 手动查询（诊断用；运行期状态由 watcher 推送）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn taskbar_yield_check(app: AppHandle) -> CmdResult<TaskbarYieldStatus> {
     Ok(current_status(&app))
 }

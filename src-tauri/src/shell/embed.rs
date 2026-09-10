@@ -371,7 +371,7 @@ fn desktop_hwnd(app: &tauri::AppHandle) -> Option<isize> {
 /// 启动第三方应用并把它的主窗口嵌入 Variable 桌面窗口（环境内打开）。
 /// `embed_id` = 前端 VWM 虚拟窗口实例 id（占位窗口创建时分配；缺省 "0" 兼容旧单嵌）。
 /// 无法嵌入时如实返回 attached=false（应用已按独立窗口方式启动）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_launch(
     st: tauri::State<'_, crate::state::AppState>,
@@ -477,7 +477,9 @@ pub fn embed_launch(
                     capture: false,
                 });
             };
-            if !crate::shell::container::win::wrap_child(host, hwnd) {
+            // 第十四轮大检查：命令已 async 化（线程池运行），宿主窗口消息泵在
+            // 主线程 → wrap 的 SetParent/尺寸同步必须经主线程调度。
+            if !crate::shell::container::win::wrap_child_on_main_thread(&app, host, hwnd) {
                 return Ok(EmbedResult {
                     attached: false,
                     reason: "容器包裹失败（L2）。应用保持独立窗口运行。".into(),
@@ -882,7 +884,7 @@ fn reembed_into_session(key: &str, new_hwnd: isize) -> bool {
 /// 窗口必须仍然有效且未被登记；剥边框 → SetParent → 注册 → 监护。
 #[tauri::command]
 #[cfg(windows)]
-pub fn embed_adopt(
+pub async fn embed_adopt(
     _st: tauri::State<'_, crate::state::AppState>,
     app: tauri::AppHandle,
     tp_id: String,
@@ -929,7 +931,7 @@ pub fn embed_adopt(
 
 #[cfg(not(windows))]
 #[tauri::command]
-pub fn embed_adopt(
+pub async fn embed_adopt(
     _st: tauri::State<'_, crate::state::AppState>,
     _app: tauri::AppHandle,
     _tp_id: String,
@@ -960,7 +962,7 @@ fn detach_by_id(embed_id: &str) -> bool {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_launch(
     _st: tauri::State<'_, crate::state::AppState>,
     _app: tauri::AppHandle,
@@ -974,7 +976,7 @@ pub fn embed_launch(
 /// 批次C-2：手动框选窗口（捕获失败占位卡的兜底动作）。
 /// 先等当前按下的左键释放（去抖），再在 timeout_ms 内轮询左键按下；
 /// 按下瞬间取光标下顶层根窗口（WindowFromPoint → GA_ROOT）。未选中返回 None。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_pick_window(timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
     use windows::Win32::Foundation::POINT;
@@ -1008,14 +1010,14 @@ pub fn embed_pick_window(timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
 
 #[cfg(not(windows))]
 #[tauri::command]
-pub fn embed_pick_window(_timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
+pub async fn embed_pick_window(_timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
     Ok(None)
 }
 
 /// 更新嵌入窗口边界（物理像素；随虚拟窗口移动/缩放由前端按 embed_id 上报）。
 /// 批次W-2：跨屏拖动时检测显示器实际 DPI 变化 → 转发 WM_DPICHANGED
 /// （dpiFix 例外登记的应用跳过——按主屏渲染，如实标注轻微模糊）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_bounds(embed_id: Option<String>, x: i32, y: i32, w: i32, h: i32) -> CmdResult<()> {
     use windows::Win32::Foundation::HWND;
@@ -1041,13 +1043,13 @@ pub fn embed_bounds(embed_id: Option<String>, x: i32, y: i32, w: i32, h: i32) ->
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_bounds(_embed_id: Option<String>, _x: i32, _y: i32, _w: i32, _h: i32) -> CmdResult<()> {
     Ok(())
 }
 
 /// 显示/隐藏嵌入窗口（最小化=隐藏，恢复=显示）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
     use windows::Win32::Foundation::HWND;
@@ -1065,13 +1067,13 @@ pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_visible(_embed_id: Option<String>, _visible: bool) -> CmdResult<()> {
     Ok(())
 }
 
 /// 关闭指定嵌入会话（WM_CLOSE，应用自行退出），并清除嵌入状态。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
@@ -1093,7 +1095,7 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_close(_embed_id: Option<String>) -> CmdResult<()> {
     Ok(())
 }
@@ -1101,7 +1103,7 @@ pub fn embed_close(_embed_id: Option<String>) -> CmdResult<()> {
 /// W-1 退出会话：对全部嵌入会话发 WM_CLOSE（应用自行退出），随后由后台线程
 /// 在 30s 内核对——仍未退出的窗口**脱离重父化留在桌面**（绝不强杀进程）。
 /// 立即返回，不阻塞退出流程。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
@@ -1172,7 +1174,7 @@ pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_close_all() -> CmdResult<usize> {
     Ok(0)
 }
@@ -1199,7 +1201,7 @@ fn detach_child(hwnd: isize) {
 
 /// 让指定嵌入窗口获得键盘焦点（点击/聚焦虚拟窗口时调用；W-1 焦点仲裁：
 /// Z 序顶窗口 = 焦点移交对象）。
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_focus(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
@@ -1214,7 +1216,7 @@ pub fn embed_focus(embed_id: Option<String>) -> CmdResult<()> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn embed_focus(_embed_id: Option<String>) -> CmdResult<()> {
     Ok(())
 }
@@ -1222,7 +1224,7 @@ pub fn embed_focus(_embed_id: Option<String>) -> CmdResult<()> {
 /// 批次C-4：L3 输入转发 —— 归一化坐标(0..1) + 事件 → 客户区物理坐标
 /// PostMessage 直注真实窗口（屏外窗口天然不泄漏光标、不抢焦点）。
 /// kind: move | down | up | dbl | wheel | key | char
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_input(
     embed_id: Option<String>,
@@ -1249,7 +1251,7 @@ pub fn embed_input(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 #[cfg(not(windows))]
 pub fn embed_input(
     _embed_id: Option<String>,

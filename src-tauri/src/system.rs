@@ -25,7 +25,7 @@ fn is_portable(_st: &AppState) -> bool {
 
 /// Called by the frontend right after load. Runs pending migrations (idempotent)
 /// and reports environment paths so the UI can show the real data location.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn app_bootstrap(_app: tauri::AppHandle, st: tauri::State<AppState>) -> CmdResult<BootstrapInfo> {
     let mut conn_guard = st.conn.lock().map_err(|_| AppError::db("db mutex"))?;
     let conn = conn_guard
@@ -64,7 +64,7 @@ fn validate_open_target(p: &str) -> CmdResult<std::path::PathBuf> {
 }
 
 /// Open a file with the Windows default application or a folder in Explorer.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn open_path(_st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     let p = validate_open_target(&path)?;
     // One Shell boundary for both folders and files.  Do not use `cmd /C
@@ -76,7 +76,7 @@ pub fn open_path(_st: tauri::State<AppState>, path: String) -> CmdResult<()> {
 }
 
 /// Reveal a file or folder in Windows Explorer.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reveal_path(_st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     let p = validate_open_target(&path)?;
     #[cfg(target_os = "windows")]
@@ -109,7 +109,7 @@ pub struct PathCheck {
 
 /// Batch existence check used for custom background images/videos and
 /// referenced (not copied) media.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_paths_exist(_st: tauri::State<AppState>, paths: Vec<String>) -> CmdResult<Vec<PathCheck>> {
     Ok(paths
         .into_iter()
@@ -127,7 +127,7 @@ pub fn check_paths_exist(_st: tauri::State<AppState>, paths: Vec<String>) -> Cmd
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn log_frontend(st: tauri::State<AppState>, level: String, message: String) -> CmdResult<()> {
     AppState::append_log_public(&st.logs_dir, &level, &message);
     Ok(())
@@ -136,7 +136,7 @@ pub fn log_frontend(st: tauri::State<AppState>, level: String, message: String) 
 /// Generic UTF-8 text export to a user-chosen path (never overwrites silently:
 /// the frontend uses a save dialog which already confirms replacement intent,
 /// but an existing-file guard is still enforced here unless allow_overwrite).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_text_file(path: String, contents: String, allow_overwrite: Option<bool>) -> CmdResult<String> {
     let p = Path::new(&path);
     if p.exists() && !allow_overwrite.unwrap_or(false) {

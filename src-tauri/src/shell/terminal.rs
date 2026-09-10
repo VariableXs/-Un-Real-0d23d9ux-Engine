@@ -29,7 +29,7 @@ pub struct TerminalStatus {
 }
 
 /// 终端就绪状态（AI Hub / 任务栏提示用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn term_status(st: tauri::State<AppState>) -> CmdResult<TerminalStatus> {
     let exe = wt_exe(&st);
     let deployed = exe.is_file();
@@ -84,7 +84,7 @@ pub fn ensure_terminal_registered(st: &AppState) -> CmdResult<()> {
 }
 
 /// 打开终端（幂等登记 + 返回登记项 id，前端走 embed 通道嵌入 VWM）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn term_open(st: tauri::State<AppState>) -> CmdResult<String> {
     ensure_terminal_registered(&st)?;
     Ok(TERMINAL_ID.to_string())

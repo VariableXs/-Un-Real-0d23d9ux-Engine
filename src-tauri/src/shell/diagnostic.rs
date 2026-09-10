@@ -35,7 +35,7 @@ fn scrub(s: &str) -> String {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn diagnostic_export(st: tauri::State<AppState>, out: String) -> CmdResult<DiagReport> {
     diagnostic_export_inner(&st, Path::new(&out))
 }
@@ -149,7 +149,7 @@ pub fn demo_capsule_build(data_dir: &Path) -> CmdResult<PathBuf> {
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn demo_capsule(st: tauri::State<AppState>) -> CmdResult<String> {
     demo_capsule_build(&st.data_dir).map(|p| p.to_string_lossy().into_owned())
 }

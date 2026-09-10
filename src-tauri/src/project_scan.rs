@@ -258,7 +258,7 @@ fn walk_dir(ctx: &mut WalkCtx, abs: &Path, rel: &str, depth: u32) {
 }
 
 /// 规范 2.1：递归深度扫描 + 类型识别 + 有界源码读取，一次 IPC 返回全部原料。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_scan(root: String) -> CmdResult<ScanResult> {
     let (root_canon, root_display) = canonical_root(&root)?;
 
@@ -327,7 +327,7 @@ pub fn project_scan(root: String) -> CmdResult<ScanResult> {
 }
 
 /// 通用只读文本读取（供 .project 档案等应用文件使用，非项目扫描路径）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_text_file(path: String) -> CmdResult<String> {
     let p = Path::new(&path);
     let meta = fs::metadata(p).map_err(|_| AppError::not_found(format!("文件不存在 / Not found: {path}")))?;
@@ -345,7 +345,7 @@ pub fn read_text_file(path: String) -> CmdResult<String> {
 }
 
 /// 批次E：通用文本写入（仅用于设置导入/导出等用户显式选择的路径）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_text_file(path: String, contents: String) -> CmdResult<()> {
     // 防误写：仅允许 .json/.txt 后缀（导入导出场景）
     let ok_ext = std::path::Path::new(&path)
@@ -359,7 +359,7 @@ pub fn write_text_file(path: String, contents: String) -> CmdResult<()> {
 }
 
 /// 规范 5.2 / 8.2：信息卡与下钻的按需单文件读取（延迟重解析用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_read_file(root: String, rel_path: String) -> CmdResult<SourceFile> {
     let (root_canon, _) = canonical_root(&root)?;
     let abs = resolve_inside(&root_canon, &rel_path)?;
@@ -397,7 +397,7 @@ pub struct BinaryFile {
 /// Per-file read cap for binary analysis: PE headers/tables live at the front.
 const MAX_BINARY_READ: u64 = 2 * 1024 * 1024;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn project_read_bytes(root: String, rel_path: String) -> CmdResult<BinaryFile> {
     let (root_canon, _) = canonical_root(&root)?;
     let abs = resolve_inside(&root_canon, &rel_path)?;

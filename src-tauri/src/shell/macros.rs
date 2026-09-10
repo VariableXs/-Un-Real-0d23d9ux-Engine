@@ -272,33 +272,33 @@ fn key_down(vk: u32) -> bool {
 // ---------- 命令 ----------
 
 /// 手动急停（UI 急停按钮；与热键同效）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_emergency_stop() -> CmdResult<()> {
     EMERGENCY.store(true, Ordering::SeqCst);
     Ok(())
 }
 
 /// 解除急停（用户显式操作）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_emergency_clear() -> CmdResult<()> {
     EMERGENCY.store(false, Ordering::SeqCst);
     Ok(())
 }
 
 /// 急停状态查询。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_is_stopped() -> CmdResult<bool> {
     Ok(is_stopped())
 }
 
 /// UAC 前台检测（前端 GuardContext 数据源之一）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_uac_foreground() -> CmdResult<bool> {
     Ok(uac_foreground())
 }
 
 /// 登记触发器（前端宏库同步；整表替换同 id 条目）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_upsert_trigger(def: MacroTriggerDef) -> CmdResult<()> {
     if def.trigger_type == "time" && !cron_valid(&def.trigger_value) {
         return Err(crate::error::AppError::validation(format!(
@@ -315,20 +315,20 @@ pub fn macro_upsert_trigger(def: MacroTriggerDef) -> CmdResult<()> {
 }
 
 /// 移除触发器（宏删除时）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_remove_trigger(macro_id: String) -> CmdResult<()> {
     triggers().retain(|t| t.macro_id != macro_id);
     Ok(())
 }
 
 /// 触发器列表。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_list_triggers() -> CmdResult<Vec<MacroTriggerDef>> {
     Ok(triggers().clone())
 }
 
 /// 键鼠模拟（sendText 动作；护栏全绿才执行——急停/UAC/密码框任一命中即拒）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn macro_send_text(text: String, password_focus: bool) -> CmdResult<bool> {
     if is_stopped() {
         return Ok(false);

@@ -123,7 +123,7 @@ fn stat_session(dir: &Path) -> (u64, u64) {
 // ---------- 命令 ----------
 
 /// 开启隐身会话（同一时刻仅一个）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn inc_start(st: tauri::State<AppState>) -> CmdResult<IncSession> {
     if is_incognito() {
         return Err(AppError::validation("已有隐身会话进行中 / incognito session already active"));
@@ -136,7 +136,7 @@ pub fn inc_start(st: tauri::State<AppState>) -> CmdResult<IncSession> {
 }
 
 /// 当前状态（含统计）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn inc_status(st: tauri::State<AppState>) -> CmdResult<IncStatus> {
     let hist = load_history(&st);
     let session = if is_incognito() {
@@ -161,7 +161,7 @@ pub fn inc_status(st: tauri::State<AppState>) -> CmdResult<IncStatus> {
 }
 
 /// 会话内写入文件副本（explorer 在隐身会话中打开文件时调用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn inc_write(st: tauri::State<AppState>, name: String, contents: String) -> CmdResult<String> {
     let sid = current_id().ok_or_else(|| AppError::validation("无隐身会话 / no incognito session"))?;
     let safe: String = name
@@ -177,7 +177,7 @@ pub fn inc_write(st: tauri::State<AppState>, name: String, contents: String) -> 
 }
 
 /// 会话内列文件。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn inc_list(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let sid = current_id().ok_or_else(|| AppError::validation("无隐身会话 / no incognito session"))?;
     let dir = session_dir(&st, &sid);
@@ -200,7 +200,7 @@ fn current_id() -> Option<String> {
 
 /// 关闭（焚毁）当前隐身会话：逐文件覆写删除 → 目录树清除 → 剪贴板清空。
 /// 返回清除的文件数；残留断言：关闭后 session 目录必须不存在。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn inc_end(st: tauri::State<AppState>) -> CmdResult<u64> {
     end_and_burn_inner(&st)
 }

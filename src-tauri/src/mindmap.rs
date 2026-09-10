@@ -29,7 +29,7 @@ fn placeholders(n: usize) -> String {
     (1..=n).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_mindmaps(st: tauri::State<AppState>) -> CmdResult<Vec<Mindmap>> {
     st.with_conn(|conn| {
         let mut stmt = conn
@@ -41,7 +41,7 @@ pub fn list_mindmaps(st: tauri::State<AppState>) -> CmdResult<Vec<Mindmap>> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_mindmap(st: tauri::State<AppState>, name: Option<String>, folder_id: Option<String>) -> CmdResult<Mindmap> {
     let name = {
         let n = name.unwrap_or_default().trim().to_string();
@@ -78,7 +78,7 @@ pub fn create_mindmap(st: tauri::State<AppState>, name: Option<String>, folder_i
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_mindmap(st: tauri::State<AppState>, id: String) -> CmdResult<MindmapData> {
     st.with_conn(|conn| get_mindmap_inner(conn, &id))
 }
@@ -255,7 +255,7 @@ pub async fn update_mindmap(st: tauri::State<'_, AppState>, update: MindmapUpdat
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_mindmap(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<()> {
     let name = crate::library::validate_name(&name)?;
     st.with_conn(|conn| {
@@ -265,7 +265,7 @@ pub fn rename_mindmap(st: tauri::State<AppState>, id: String, name: String) -> C
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trash_mindmap(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute("UPDATE mindmaps SET deleted_at=?1 WHERE id=?2", params![now_ms(), id])
@@ -282,7 +282,7 @@ pub struct NodeVersion {
     pub updated_at: i64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn nodes_versions(st: tauri::State<AppState>, ids: Vec<String>) -> CmdResult<Vec<NodeVersion>> {
     if ids.is_empty() {
         return Ok(Vec::new());

@@ -105,7 +105,7 @@ fn interval_ms(freq: &str) -> i64 {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backup_schedule_get(st: tauri::State<AppState>) -> CmdResult<BackupSchedule> {
     let cfg = load_schedule(st.inner());
     let iv = interval_ms(&cfg.freq);
@@ -118,7 +118,7 @@ pub fn backup_schedule_get(st: tauri::State<AppState>) -> CmdResult<BackupSchedu
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backup_schedule_set(st: tauri::State<AppState>, freq: String, hour: u8) -> CmdResult<BackupSchedule> {
     if !["none", "daily", "weekly"].contains(&freq.as_str()) {
         return Err(AppError::validation("freq 仅支持 none/daily/weekly"));
@@ -163,7 +163,7 @@ fn run_backup(st: &AppState, source: &str) -> CmdResult<(String, i64)> {
 }
 
 /// 手动「立即备份」（设置 → 数据 → 计划备份）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn backup_run_now(st: tauri::State<AppState>) -> CmdResult<String> {
     let (name, ts) = run_backup(st.inner(), "manual")?;
     let mut cfg = load_schedule(st.inner());
@@ -260,7 +260,7 @@ fn dep_audit_due(last_run_ms: i64, now: i64) -> bool {
     last_run_ms <= 0 || now - last_run_ms >= DEP_AUDIT_INTERVAL_MS
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn dep_audit_status(st: tauri::State<AppState>) -> CmdResult<DepAuditState> {
     let mut s = load_dep_audit(st.inner());
     s.due = dep_audit_due(s.last_run_ms, now_ms());
@@ -385,7 +385,7 @@ fn read_manifest(st: &AppState) -> CmdResult<(UpdateManifest, PathBuf)> {
 }
 
 /// 扫描本地更新包（不改动文件，仅校验 SHA-256）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_scan(st: tauri::State<AppState>) -> CmdResult<Option<UpdateCandidate>> {
     let (m, payload) = match read_manifest(st.inner()) {
         Ok(v) => v,
@@ -410,7 +410,7 @@ pub fn update_scan(st: tauri::State<AppState>) -> CmdResult<Option<UpdateCandida
 }
 
 /// 应用更新：校验 → 备份当前（保留 N=2）→ 替换 → 失败回滚。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_apply(st: tauri::State<AppState>) -> CmdResult<String> {
     let (m, payload) = read_manifest(st.inner())?;
     if let Some(minv) = &m.min_version {
@@ -515,7 +515,7 @@ pub struct MaintainFinding {
 }
 
 /// 数据自检扩展（F-6.2）：备份可恢复性抽检 + 容器索引一致性抽检 + 媒体孤儿引用。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn maintain_selfcheck(st: tauri::State<AppState>) -> CmdResult<Vec<MaintainFinding>> {
     let mut out: Vec<MaintainFinding> = Vec::new();
 

@@ -27,7 +27,7 @@ pub struct A11yProbe {
 /// M-73/M-74：一次性读取系统辅助功能状态（只读探针）。
 /// 前端按需轮询（hcFollow 开启时 ~500ms，其余场景低频或手动），
 /// HC 切换的 300ms 跟随目标由轮询间隔 + 前端立即应用共同达成。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn a11y_probe() -> Result<A11yProbe, String> {
     #[cfg(windows)]
     {

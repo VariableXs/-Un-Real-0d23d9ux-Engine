@@ -217,7 +217,7 @@ fn walk(dir: &Path, display_dir: &Path, out: &mut Vec<WsEntry>, depth: usize) ->
 }
 
 /// Default (and initial) workspace root: `<dataDir>/Workspace`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_default_dir(st: tauri::State<AppState>) -> CmdResult<String> {
     let d = st.data_dir.join("Workspace");
     fs::create_dir_all(&d)?;
@@ -225,7 +225,7 @@ pub fn ws_default_dir(st: tauri::State<AppState>) -> CmdResult<String> {
 }
 
 /// Recursive listing of the workspace tree (dirs first, dot/`.trash` skipped).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_list(_st: tauri::State<AppState>, root: String) -> CmdResult<Vec<WsEntry>> {
     let rc = canonical_root(&root)?;
     let mut out = Vec::new();
@@ -235,7 +235,7 @@ pub fn ws_list(_st: tauri::State<AppState>, root: String) -> CmdResult<Vec<WsEnt
 
 /// Read a `.mindmap` / `.json` file from anywhere (used for Save/Open flows
 /// whose target the user picked outside the workspace too).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_read_text(_st: tauri::State<AppState>, path: String) -> CmdResult<String> {
     let p = Path::new(&path);
     if !p.is_file() {
@@ -251,7 +251,7 @@ pub fn ws_read_text(_st: tauri::State<AppState>, path: String) -> CmdResult<Stri
     fs::read_to_string(p).map_err(|e| AppError::io(format!("璇诲彇澶辫触 / Read failed: {e}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_create_dir(st: tauri::State<AppState>, root: String, parent_dir: String, name: String) -> CmdResult<String> {
     let _ = st;
     let rc = canonical_root(&root)?;
@@ -265,7 +265,7 @@ pub fn ws_create_dir(st: tauri::State<AppState>, root: String, parent_dir: Strin
     Ok(display_path(&dest))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_rename(st: tauri::State<AppState>, root: String, path: String, new_name: String) -> CmdResult<String> {
     let _ = st;
     let rc = canonical_root(&root)?;
@@ -286,7 +286,7 @@ pub fn ws_rename(st: tauri::State<AppState>, root: String, path: String, new_nam
 /// Move an entry between folders inside the same workspace. Collisions get a
 /// numeric suffix instead of overwriting. Moving a directory into its own
 /// descendant is rejected.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_move(st: tauri::State<AppState>, root: String, src: String, dest_dir: String) -> CmdResult<String> {
     let _ = st;
     let rc = canonical_root(&root)?;
@@ -309,7 +309,7 @@ pub fn ws_move(st: tauri::State<AppState>, root: String, src: String, dest_dir: 
 
 /// Copy external files (OS drag-in) into a workspace folder. Only allowed
 /// extensions are copied; the returned list holds the final absolute paths.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_copy_in(st: tauri::State<AppState>, root: String, paths: Vec<String>, dest_dir: String) -> CmdResult<Vec<String>> {
     let _ = st;
     let rc = canonical_root(&root)?;
@@ -332,7 +332,7 @@ pub fn ws_copy_in(st: tauri::State<AppState>, root: String, paths: Vec<String>, 
 }
 
 /// Soft-delete: move the entry into `<workspaceRoot>/.trash/<ts>-<name>`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ws_delete_trash(st: tauri::State<AppState>, root: String, path: String) -> CmdResult<String> {
     let _ = st;
     let rc = canonical_root(&root)?;

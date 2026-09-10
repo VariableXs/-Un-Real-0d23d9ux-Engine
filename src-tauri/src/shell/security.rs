@@ -272,7 +272,7 @@ fn extract_strings(bytes: &[u8], min_len: usize) -> Vec<String> {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pe_analyze(path: String) -> CmdResult<PeAnalysis> {
     let mut f = std::fs::File::open(&path).map_err(|e| AppError::io(e.to_string()))?;
     let mut bytes = Vec::new();
@@ -302,7 +302,7 @@ pub struct DisasmLine {
 }
 
 /// 从入口点 RVA 反汇编 N 条（样本字节需自行传入区间；只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn disasm_entry(path: String, count: u32) -> CmdResult<Vec<DisasmLine>> {
     use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, NasmFormatter};
     let mut f = std::fs::File::open(&path).map_err(|e| AppError::io(e.to_string()))?;
@@ -371,7 +371,7 @@ pub struct SandboxProbe {
     pub detail: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sandbox_probe() -> CmdResult<SandboxProbe> {
     // Windows Sandbox 特性探测（reg 键）；不可用如实标注
     let out = std::process::Command::new("reg")
@@ -389,7 +389,7 @@ pub fn sandbox_probe() -> CmdResult<SandboxProbe> {
 }
 
 /// 生成 .wsb 文件（映射样本 + 只读），返回路径；启动交由用户双击或 `WindowsSandbox.exe`。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sandbox_wsb_generate(st: tauri::State<AppState>, sample: String) -> CmdResult<String> {
     let sample_path = PathBuf::from(&sample);
     if !sample_path.is_file() {
@@ -411,7 +411,7 @@ pub fn sandbox_wsb_generate(st: tauri::State<AppState>, sample: String) -> CmdRe
 
 // ---------- 报告导出（Markdown，不含样本字节） ----------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn security_report_export(path: String, out: String) -> CmdResult<String> {
     let a = pe_analyze(path)?;
     let mut md = String::from("# Variable 安全分析报告（静态）\n\n");
@@ -449,7 +449,7 @@ pub fn security_report_export(path: String, out: String) -> CmdResult<String> {
 // ---------- 安全子环境预设 ----------
 
 /// 安全子环境预设：白名单清空（net 规则重置）+ 红色警示标记（settings 层）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn security_env_preset(st: tauri::State<AppState>) -> CmdResult<String> {
     // 白名单清空 = 重置 net.json 规则（kill-switch 保持关闭，由用户决定）
     let net = st.data_dir.join("net");

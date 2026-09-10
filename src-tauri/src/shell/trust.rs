@@ -309,7 +309,7 @@ pub fn trust_register_inner(
 }
 
 /// 登记 + 立即验证一个可执行文件（登记任何 exe 时自动调用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trust_register(
     st: tauri::State<AppState>,
     path: String,
@@ -319,7 +319,7 @@ pub fn trust_register(
 }
 
 /// 验证任意文件（不登记）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trust_verify(path: String) -> CmdResult<TrustVerdict> {
     let p = PathBuf::from(&path);
     if !p.is_file() {
@@ -350,13 +350,13 @@ pub fn trust_wall_inner(st: &AppState) -> CmdResult<TrustWall> {
     Ok(TrustWall { entries: idx.entries.values().cloned().collect(), signer_counts })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trust_wall(st: tauri::State<AppState>) -> CmdResult<TrustWall> {
     trust_wall_inner(&st)
 }
 
 /// 一键重新验证全部（8 路并发）。返回更新后的信任墙。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trust_reverify_all(st: tauri::State<AppState>) -> CmdResult<TrustWall> {
     let mut idx = load(&st);
     let items: Vec<(String, String)> =
@@ -391,7 +391,7 @@ pub fn trust_reverify_all(st: tauri::State<AppState>) -> CmdResult<TrustWall> {
 }
 
 /// 移除登记条目（不动文件本身）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trust_remove(st: tauri::State<AppState>, path: String) -> CmdResult<()> {
     let mut idx = load(&st);
     idx.entries.remove(&norm_key(&path));

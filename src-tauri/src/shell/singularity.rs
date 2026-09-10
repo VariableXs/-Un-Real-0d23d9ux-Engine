@@ -95,7 +95,7 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_pulse() -> Result<SinguPulse, String> {
     let mut guard = PULSE.lock().map_err(|e| e.to_string())?;
     let now = now_ms();
@@ -215,7 +215,7 @@ fn dir_size(p: &PathBuf) -> (u64, u64) {
     (bytes, files)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_temp_scan(app: tauri::AppHandle) -> Result<Vec<SinguTempEntry>, String> {
     use tauri::Manager;
     let mut out: Vec<SinguTempEntry> = Vec::new();
@@ -251,7 +251,7 @@ pub fn singu_temp_scan(app: tauri::AppHandle) -> Result<Vec<SinguTempEntry>, Str
 }
 
 /// Q-37 一键清理：只清理「账本口径」内的目录（temp/cache），绝不越权。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_temp_clear(app: tauri::AppHandle, kinds: Vec<String>) -> Result<u64, String> {
     use tauri::Manager;
     let mut freed = 0u64;
@@ -291,7 +291,7 @@ pub struct SinguZone {
     pub readable: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_zone_check(path: String) -> Result<SinguZone, String> {
     #[cfg(windows)]
     {
@@ -347,7 +347,7 @@ fn journal_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(data.join("singularity-journal.jsonl"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_journal_log(app: tauri::AppHandle, dir: String, action: String, actor: String) -> Result<(), String> {
     let p = journal_path(&app)?;
     let entry = SinguJournalEntry {
@@ -378,7 +378,7 @@ fn trim_journal(p: &PathBuf) -> Result<(), String> {
     fs::write(p, keep.join("\n") + "\n").map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_journal_list(app: tauri::AppHandle) -> Result<Vec<SinguJournalEntry>, String> {
     let p = journal_path(&app)?;
     if !p.exists() {
@@ -395,7 +395,7 @@ pub fn singu_journal_list(app: tauri::AppHandle) -> Result<Vec<SinguJournalEntry
 }
 
 /// 焚毁（零残留纪律）：删除整个日志文件。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_journal_clear(app: tauri::AppHandle) -> Result<(), String> {
     let p = journal_path(&app)?;
     if p.exists() {
@@ -438,7 +438,7 @@ fn set_windows_attrs(path: &str, readonly: bool, hidden: bool, archive: bool) ->
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_batch_attrs(
     paths: Vec<String>,
     readonly: Option<bool>,
@@ -506,7 +506,7 @@ pub struct SinguArchiveReport {
     pub readable: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_archive_check(path: String) -> Result<SinguArchiveReport, String> {
     let f = fs::File::open(&path).map_err(|e| e.to_string())?;
     let mut zip = match zip::ZipArchive::new(f) {
@@ -556,7 +556,7 @@ pub struct SinguDataZone {
     pub bytes: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn singu_data_profile(app: tauri::AppHandle) -> Result<Vec<SinguDataZone>, String> {
     use tauri::Manager;
     let data = app.path().app_data_dir().map_err(|e| e.to_string())?;

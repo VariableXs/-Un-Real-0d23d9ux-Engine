@@ -233,7 +233,7 @@ pub fn probe_and_persist(
 }
 
 /// 批次C-6：用户强制层级（设置 → 第三方 → 兼容层级；优先级高于自动探测）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_set_override(
     st: tauri::State<'_, crate::state::AppState>,
     id: String,

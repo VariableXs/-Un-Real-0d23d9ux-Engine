@@ -134,7 +134,7 @@ fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_documents(st: tauri::State<AppState>, ids: Vec<String>, format: String, dest_path: String) -> CmdResult<ExportResult> {
     if ids.is_empty() {
         return Err(AppError::validation("未选择要导出的记录 / No documents selected"));
@@ -172,7 +172,7 @@ pub fn export_documents(st: tauri::State<AppState>, ids: Vec<String>, format: St
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn export_mindmap_json(st: tauri::State<AppState>, id: String, dest_path: String) -> CmdResult<ExportResult> {
     st.with_conn(|conn| {
         let map_name: String = conn

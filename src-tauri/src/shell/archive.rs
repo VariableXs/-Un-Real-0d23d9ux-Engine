@@ -95,7 +95,7 @@ fn collect(src: &Path, base: &Path, out: &mut Vec<(String, PathBuf)>) -> CmdResu
 }
 
 /// 创建归档（srcs 支持混合文件/目录）。返回卡片。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_create(st: tauri::State<AppState>, name: String, srcs: Vec<String>) -> CmdResult<ArcCard> {
     let n = name.trim();
     if n.is_empty() {
@@ -171,7 +171,7 @@ fn archive_path(st: &AppState, id: &str) -> CmdResult<PathBuf> {
 }
 
 /// 柜卡片墙。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_list(st: tauri::State<AppState>) -> CmdResult<Vec<ArcCard>> {
     let dir = archive_dir(&st);
     let mut out = Vec::new();
@@ -218,7 +218,7 @@ pub struct ArcNode {
     pub size: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_browse(st: tauri::State<AppState>, id: String, subpath: String) -> CmdResult<Vec<ArcNode>> {
     let p = archive_path(&st, &id)?;
     let m = read_manifest(&p)?;
@@ -247,7 +247,7 @@ pub fn arch_browse(st: tauri::State<AppState>, id: String, subpath: String) -> C
 }
 
 /// 读单条目（预览；≤8MB）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_read(st: tauri::State<AppState>, id: String, entry_path: String) -> CmdResult<Vec<u8>> {
     let p = archive_path(&st, &id)?;
     let m = read_manifest(&p)?;
@@ -300,7 +300,7 @@ pub struct ArcAudit {
     pub ok: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_audit(st: tauri::State<AppState>, id: String) -> CmdResult<ArcAudit> {
     let p = archive_path(&st, &id)?;
     let m = read_manifest(&p)?;
@@ -316,7 +316,7 @@ pub fn arch_audit(st: tauri::State<AppState>, id: String) -> CmdResult<ArcAudit>
 }
 
 /// 还原（整柜解包到目标目录）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_extract(st: tauri::State<AppState>, id: String, dest_dir: String) -> CmdResult<u64> {
     let p = archive_path(&st, &id)?;
     let m = read_manifest(&p)?;
@@ -341,7 +341,7 @@ pub fn arch_extract(st: tauri::State<AppState>, id: String, dest_dir: String) ->
 }
 
 /// 修复：提取可抢救条目到新归档（损坏条目被丢弃并报告）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_repair(st: tauri::State<AppState>, id: String) -> CmdResult<ArcAudit> {
     let p = archive_path(&st, &id)?;
     let m = read_manifest(&p)?;
@@ -383,7 +383,7 @@ pub fn arch_repair(st: tauri::State<AppState>, id: String) -> CmdResult<ArcAudit
     Ok(ArcAudit { checked: good.len() as u64, corrupt, ok })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn arch_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let p = archive_path(&st, &id)?;
     fs::remove_file(&p)?;

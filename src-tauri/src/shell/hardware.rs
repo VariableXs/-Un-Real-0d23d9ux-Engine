@@ -106,7 +106,7 @@ fn filetime_value(key: &winreg::RegKey, name: &str) -> Option<u64> {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn privacy_usage() -> Vec<DeviceUsage> {
     let mut v = Vec::new();
     read_consent_usage("microphone", "microphone", &mut v);
@@ -193,7 +193,7 @@ pub(crate) fn with_mta<T: Send + 'static>(
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_get() -> Result<AudioState, String> {
     with_endpoint_volume(|v| unsafe {
         let volume = v.GetMasterVolumeLevelScalar()?;
@@ -203,7 +203,7 @@ pub fn audio_get() -> Result<AudioState, String> {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set(volume: f32, muted: Option<bool>) -> Result<AudioState, String> {
     let volume = volume.clamp(0.0, 1.0);
     with_endpoint_volume(move |v| unsafe {
@@ -223,7 +223,7 @@ pub fn audio_set(volume: f32, muted: Option<bool>) -> Result<AudioState, String>
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_get() -> Result<WifiState, String> {
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::NetworkManagement::WiFi::{
@@ -295,7 +295,7 @@ pub fn wifi_get() -> Result<WifiState, String> {
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bluetooth_get() -> Result<BluetoothState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
 
@@ -322,7 +322,7 @@ pub fn bluetooth_get() -> Result<BluetoothState, String> {
 
 /// 蓝牙无线电开关（规格 6.1：开关切换；WinRT Radio.SetStateAsync）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bluetooth_set(enabled: bool) -> Result<BluetoothState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
     with_mta(move || {
@@ -412,7 +412,7 @@ fn locate_devnode(instance_id: &str) -> Result<u32, String> {
 /// 已配对蓝牙设备列表 + 连接状态（规格 6.1.2；批次E 增加 id 供连接/断开操作）。
 /// 电量读数需要 GATT 连接，当前不显示。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_devices() -> Result<Vec<BtDevice>, String> {
     use windows::Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice};
     use windows::Devices::Enumeration::DeviceInformation;
@@ -445,7 +445,7 @@ pub fn bt_devices() -> Result<Vec<BtDevice>, String> {
 
 /// 蓝牙设备连接（批次E 规格 6.1.3：重新启用设备节点触发回连；失败如实报错）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_connect(id: String) -> Result<(), String> {
     use windows::Win32::Devices::DeviceAndDriverInstallation::{CM_Enable_DevNode, CM_Reenumerate_DevNode, CM_REENUMERATE_NORMAL, CONFIGRET};
     if id.is_empty() {
@@ -463,7 +463,7 @@ pub fn bt_connect(id: String) -> Result<(), String> {
 
 /// 蓝牙设备断开（批次E 规格 6.1.3：停用设备节点即断开链路；失败如实报错）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_disconnect(id: String) -> Result<(), String> {
     use windows::Win32::Devices::DeviceAndDriverInstallation::{CM_Disable_DevNode, CONFIGRET};
     if id.is_empty() {
@@ -483,7 +483,7 @@ pub fn bt_disconnect(id: String) -> Result<(), String> {
 
 /// Wi-Fi 无线电开关（规格 6.2.1；WinRT Radio.SetStateAsync）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_set(enabled: bool) -> Result<WifiState, String> {
     use windows::Devices::Radios::{Radio, RadioKind, RadioState};
     with_mta(move || {
@@ -522,7 +522,7 @@ pub struct WifiNetwork {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_scan() -> Result<Vec<WifiNetwork>, String> {
     use windows::Win32::NetworkManagement::WiFi::{
         WlanCloseHandle, WlanEnumInterfaces, WlanFreeMemory, WlanGetAvailableNetworkList,
@@ -584,7 +584,7 @@ pub fn wifi_scan() -> Result<Vec<WifiNetwork>, String> {
 
 /// 断开当前 Wi-Fi 连接（用户在面板中显式点击）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_disconnect() -> Result<(), String> {
     use windows::Win32::NetworkManagement::WiFi::{
         WlanCloseHandle, WlanDisconnect, WlanEnumInterfaces, WlanFreeMemory, WlanOpenHandle,
@@ -640,7 +640,7 @@ pub struct AudioDeviceInfo {
 
 /// 枚举激活的输出/输入端点 + 友好名 + 是否默认（规格 6.3.1 面板）。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     use windows::core::BSTR;
     use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
@@ -717,7 +717,7 @@ pub fn audio_devices() -> Result<Vec<AudioDeviceInfo>, String> {
 /// 经 PolicyConfig COM（IPolicyConfig::SetDefaultEndpoint，vtable 槽位 13），
 /// Windows 10/11 通用；失败时如实报错，不伪造成功。
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set_default(device_id: String) -> Result<(), String> {
     use windows::core::{GUID, HSTRING, HRESULT, Interface, PCWSTR};
     use windows::Win32::Media::Audio::eConsole;
@@ -761,7 +761,7 @@ pub struct BatteryState {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn battery_get() -> Result<BatteryState, String> {
     use windows::Win32::System::Power::GetSystemPowerStatus;
     unsafe {
@@ -788,7 +788,7 @@ pub fn battery_get() -> Result<BatteryState, String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn battery_get() -> Result<BatteryState, String> {
     Err("unsupported platform".into())
 }
@@ -927,7 +927,7 @@ mod brightness_wmi {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn brightness_get() -> Result<BrightnessState, String> {
     with_mta(move || {
         let server = brightness_wmi::connect()?;
@@ -939,7 +939,7 @@ pub fn brightness_get() -> Result<BrightnessState, String> {
 }
 
 #[cfg(windows)]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn brightness_set(level: u8) -> Result<BrightnessState, String> {
     let level = level.clamp(5, 100);
     with_mta(move || {
@@ -950,13 +950,13 @@ pub fn brightness_set(level: u8) -> Result<BrightnessState, String> {
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn brightness_get() -> Result<BrightnessState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn brightness_set(_level: u8) -> Result<BrightnessState, String> {
     Err("unsupported platform".into())
 }
@@ -966,85 +966,85 @@ pub fn brightness_set(_level: u8) -> Result<BrightnessState, String> {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn privacy_usage() -> Vec<DeviceUsage> {
     Vec::new()
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_get() -> Result<AudioState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set(_volume: f32, _muted: Option<bool>) -> Result<AudioState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_get() -> Result<WifiState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bluetooth_get() -> Result<BluetoothState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bluetooth_set(_enabled: bool) -> Result<BluetoothState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_devices() -> Result<Vec<BtDevice>, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_scan() -> Result<Vec<WifiNetwork>, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_disconnect() -> Result<(), String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn wifi_set(_enabled: bool) -> Result<WifiState, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_connect(_id: String) -> Result<(), String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bt_disconnect(_id: String) -> Result<(), String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_devices() -> Result<Vec<AudioDeviceInfo>, String> {
     Err("unsupported platform".into())
 }
 
 #[cfg(not(windows))]
-#[tauri::command]
+#[tauri::command(async)]
 pub fn audio_set_default(_device_id: String) -> Result<(), String> {
     Err("unsupported platform".into())
 }

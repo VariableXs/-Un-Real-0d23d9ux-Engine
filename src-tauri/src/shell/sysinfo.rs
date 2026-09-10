@@ -70,13 +70,13 @@ pub fn hardware_summary() -> crate::error::CmdResult<serde_json::Value> {
 }
 
 /// 本机用户名（开始菜单底栏显示；仅读环境变量，零网络）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_user() -> String {
     std::env::var("USERNAME").unwrap_or_else(|_| "User".into())
 }
 
 /// 当前联网网卡的 IPv4（批次E，规格 6.1 Wi-Fi 详情；只读，零网络请求——仅枚举本机适配器）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_ip() -> Option<String> {
     #[cfg(windows)]
     {
@@ -125,7 +125,7 @@ pub fn net_ip() -> Option<String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_brief() -> SysBrief {
     let mut guard = SYS.lock().unwrap_or_else(|e| e.into_inner());
     let sys = guard.get_or_insert_with(sysinfo::System::new);
@@ -141,7 +141,7 @@ pub fn sys_brief() -> SysBrief {
 }
 
 /// 固定盘 + 可移动盘（本地卷）；排除网络/虚拟挂载与无盘符卷。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_disks() -> Vec<SysDisk> {
     let disks = sysinfo::Disks::new_with_refreshed_list();
     let mut out = Vec::new();
@@ -174,7 +174,7 @@ pub fn sys_disks() -> Vec<SysDisk> {
 
 /// V-3：磁盘磨损/健康读数（硬件面板「运行环境」页按需拉取；PowerShell 一次性调用，
 /// 结果由调用方缓存，不做轮询）。无计数器的设备 wear/temp 为 null（诚实上报）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_disk_health() -> Result<Vec<DiskHealth>, String> {
     #[cfg(windows)]
     {

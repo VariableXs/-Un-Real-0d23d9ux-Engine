@@ -328,7 +328,7 @@ pub struct NetStatus {
     pub conns_denied: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_status(st: tauri::State<AppState>) -> CmdResult<NetStatus> {
     net_status_snapshot(&st)
 }
@@ -348,7 +348,7 @@ pub(crate) fn net_status_snapshot(st: &AppState) -> CmdResult<NetStatus> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_proxy_start(st: tauri::State<AppState>) -> CmdResult<u16> {
     let mut cfg = load_config(&st);
     cfg.proxy_enabled = true;
@@ -380,7 +380,7 @@ pub fn net_proxy_start(st: tauri::State<AppState>) -> CmdResult<u16> {
     Ok(port)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_proxy_stop() -> CmdResult<()> {
     let mut g = PROXY.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(p) = g.as_mut() {
@@ -399,7 +399,7 @@ pub struct KillSwitchResult {
     pub on: bool,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_kill_switch(st: tauri::State<AppState>, on: bool) -> CmdResult<KillSwitchResult> {
     let mut cfg = load_config(&st);
     cfg.kill_switch = on;
@@ -407,12 +407,12 @@ pub fn net_kill_switch(st: tauri::State<AppState>, on: bool) -> CmdResult<KillSw
     Ok(KillSwitchResult { on })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_rules_list(st: tauri::State<AppState>) -> CmdResult<Vec<NetRule>> {
     Ok(load_config(&st).rules)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_rule_grant(
     st: tauri::State<AppState>,
     domain: String,
@@ -434,7 +434,7 @@ pub fn net_rule_grant(
     Ok(cfg.rules)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_rule_revoke(st: tauri::State<AppState>, domain: String) -> CmdResult<Vec<NetRule>> {
     let domain = domain.trim().to_lowercase();
     let mut cfg = load_config(&st);

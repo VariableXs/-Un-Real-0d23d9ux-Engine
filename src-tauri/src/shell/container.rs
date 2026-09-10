@@ -20,7 +20,8 @@ pub mod win {
     use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, GetClientRect, GetDesktopWindow,
-        GetWindowLongPtrW, RegisterClassW, SetParent, SetWindowLongPtrW, SetWindowPos,
+        GetWindowLongPtrW, GetWindowThreadProcessId, RegisterClassW, SetParent, SetWindowLongPtrW,
+        SetWindowPos,
         CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, SWP_NOZORDER,
         WINDOW_EX_STYLE, WM_CLOSE, WM_SETFOCUS, WM_SIZE, WNDCLASSW, WS_CHILD, WS_POPUP,
         WS_VISIBLE,
@@ -132,35 +133,55 @@ pub mod win {
 
     /// 在主线程创建宿主窗口（Tauri run_on_main_thread），返回 host hwnd。
     /// 调用方（命令线程）阻塞等待 ≤5s。
+    /// 大检查第十四轮：若调用方本身就是主线程（同步命令在 Tauri v2 跑在
+    /// 主线程），run_on_main_thread 会向事件循环自投递并等待 —— 而主线程
+    /// 正卡在本调用里 → EventLoop 互斥锁自死锁（实机 minidump 证实：
+    /// 主线程停在 Mutex<tauri::app::EventLoop>::lock）。此时必须内联
+    /// 直接创建（本线程即主线程，线程亲和性天然满足）。
     pub fn create_host_on_main_thread(app: &tauri::AppHandle) -> Option<isize> {
         use std::sync::mpsc;
+        use tauri::Manager;
+        // 主线程判定：desktop 窗口所在线程 = Tauri 主线程。
+        let on_main = unsafe {
+            app.get_webview_window("desktop").and_then(|w| w.hwnd().ok()).map(|h| {
+                // tauri 的 HWND 可能来自不同 windows crate 版本 → 按裸指针重建
+                GetWindowThreadProcessId(HWND(h.0 as *mut core::ffi::c_void), None)
+            }).unwrap_or(0)
+                == GetWindowThreadProcessId(GetDesktopWindow(), None)
+        };
+        if on_main {
+            return create_host_inline();
+        }
         let (tx, rx) = mpsc::channel::<Option<isize>>();
         let _ = app.run_on_main_thread(move || {
-            let created = unsafe {
-                if !ensure_class() {
-                    None
-                } else {
-                    let name: Vec<u16> = HOST_CLASS.encode_utf16().chain([0]).collect();
-                    let h = CreateWindowExW(
-                        WINDOW_EX_STYLE(0),
-                        windows::core::PCWSTR(name.as_ptr()),
-                        windows::core::w!(""),
-                        WS_POPUP | WS_VISIBLE,
-                        CW_USEDEFAULT,
-                        CW_USEDEFAULT,
-                        900,
-                        600,
-                        GetDesktopWindow(),
-                        None,
-                        GetModuleHandleW(None).ok().unwrap_or_default(),
-                        None,
-                    );
-                    h.ok().map(|w| w.0 as isize)
-                }
-            };
-            let _ = tx.send(created);
+            let _ = tx.send(create_host_inline());
         });
         rx.recv_timeout(std::time::Duration::from_secs(5)).ok().flatten()
+    }
+
+    /// 宿主窗口创建本体（必须在主线程调用；线程亲和性安全）。
+    fn create_host_inline() -> Option<isize> {
+        unsafe {
+            if !ensure_class() {
+                return None;
+            }
+            let name: Vec<u16> = HOST_CLASS.encode_utf16().chain([0]).collect();
+            let h = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                windows::core::PCWSTR(name.as_ptr()),
+                windows::core::w!(""),
+                WS_POPUP | WS_VISIBLE,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                900,
+                600,
+                GetDesktopWindow(),
+                None,
+                GetModuleHandleW(None).ok().unwrap_or_default(),
+                None,
+            );
+            h.ok().map(|w| w.0 as isize)
+        }
     }
 
     /// L2 包裹：把第三方窗口 SetParent 进宿主客户区（不剥样式，仅加 WS_CHILD）。
@@ -187,6 +208,34 @@ pub mod win {
             );
         }
         true
+    }
+
+    /// wrap_child 的主线程调度版（大检查第十四轮）：宿主窗口由主线程创建、
+    /// 消息泵在主线程，SetParent/尺寸同步必须在宿主的创建线程执行。若调用方
+    /// 已在主线程则内联直跑，否则 run_on_main_thread + channel 等待（≤5s）。
+    /// Tauri v2 同步命令跑在主线程的时代此封装可省；命令全面 async 化后
+    /// embed_launch 在线程池运行，必须经此调度。
+    pub fn wrap_child_on_main_thread(
+        app: &tauri::AppHandle,
+        host: isize,
+        child: isize,
+    ) -> bool {
+        use std::sync::mpsc;
+        use tauri::Manager;
+        let on_main = unsafe {
+            app.get_webview_window("desktop").and_then(|w| w.hwnd().ok()).map(|h| {
+                GetWindowThreadProcessId(HWND(h.0 as *mut core::ffi::c_void), None)
+            }).unwrap_or(0)
+                == GetWindowThreadProcessId(GetDesktopWindow(), None)
+        };
+        if on_main {
+            return wrap_child(host, child);
+        }
+        let (tx, rx) = mpsc::channel::<bool>();
+        let _ = app.run_on_main_thread(move || {
+            let _ = tx.send(wrap_child(host, child));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or(false)
     }
 
     /// 脱离：恢复第三方窗口为顶层（不杀进程）；宿主自毁。

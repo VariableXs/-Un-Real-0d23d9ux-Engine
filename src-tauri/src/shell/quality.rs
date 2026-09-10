@@ -26,7 +26,7 @@ pub struct SysPrefs {
     pub unavailable: Vec<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sys_prefs_read() -> Result<SysPrefs, String> {
     #[cfg(windows)]
     {
@@ -101,7 +101,7 @@ pub struct SysdepProbe {
     pub probed_at: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sysdep_probe() -> Result<SysdepProbe, String> {
     #[cfg(windows)]
     {

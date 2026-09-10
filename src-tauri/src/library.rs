@@ -82,7 +82,7 @@ fn ensure_unique_folder_name(conn: &Connection, parent: Option<&str>, name: &str
 
 // ---------- folders ----------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_folders(st: tauri::State<AppState>) -> CmdResult<Vec<Folder>> {
     st.with_conn(|conn| {
         let mut stmt = conn
@@ -97,7 +97,7 @@ pub fn list_folders(st: tauri::State<AppState>) -> CmdResult<Vec<Folder>> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_folder(st: tauri::State<AppState>, name: String, parent_id: Option<String>) -> CmdResult<Folder> {
     let name = validate_name(&name)?;
     st.with_conn(|conn| {
@@ -133,7 +133,7 @@ pub fn create_folder_inner(conn: &Connection, parent_id: Option<&str>, name: &st
     Ok(Folder { id, parent_id: parent_id.map(|s| s.to_string()), name: name.to_string(), sort_order: max_order + 1, created_at: now, updated_at: now, deleted_at: None })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_folder(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<()> {
     let name = validate_name(&name)?;
     st.with_conn(|conn| {
@@ -149,7 +149,7 @@ pub fn rename_folder(st: tauri::State<AppState>, id: String, name: String) -> Cm
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_folder(st: tauri::State<AppState>, id: String, new_parent_id: Option<String>) -> CmdResult<()> {
     st.with_conn(|conn| {
         if new_parent_id.as_deref() == Some(id.as_str()) {
@@ -200,7 +200,7 @@ fn fill_subtree_scope(conn: &Connection, root: &str) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trash_folder(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     st.with_conn(|conn| {
         let tx = conn.transaction().map_err(AppError::from)?;
@@ -217,7 +217,7 @@ pub fn trash_folder(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn restore_folder(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     st.with_conn(|conn| {
         let tx = conn.transaction().map_err(AppError::from)?;
@@ -286,7 +286,7 @@ fn purge_mindmaps_in_scope(tx: &Connection) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn purge_folder(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let files = st.with_conn(|conn| {
         let tx = conn.transaction().map_err(AppError::from)?;
@@ -338,7 +338,7 @@ fn doc_from_row_named(r: &rusqlite::Row) -> rusqlite::Result<Document> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_document(st: tauri::State<AppState>, folder_id: Option<String>, title: Option<String>) -> CmdResult<Document> {
     st.with_conn(|conn| {
         if let Some(fid) = folder_id.as_deref() {
@@ -359,7 +359,7 @@ pub fn create_document(st: tauri::State<AppState>, folder_id: Option<String>, ti
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_document(st: tauri::State<AppState>, id: String) -> CmdResult<Document> {
     st.with_conn(|conn| load_doc(conn, &id))
 }
@@ -391,7 +391,7 @@ pub async fn save_document(st: tauri::State<'_, AppState>, input: DocumentInput)
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn move_document(st: tauri::State<AppState>, id: String, folder_id: Option<String>) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute("UPDATE documents SET folder_id=?1, updated_at=?2 WHERE id=?3", params![folder_id, now_ms(), id])
@@ -400,7 +400,7 @@ pub fn move_document(st: tauri::State<AppState>, id: String, folder_id: Option<S
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_document_favorite(st: tauri::State<AppState>, id: String, favorite: bool) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute("UPDATE documents SET favorite=?1, updated_at=?2 WHERE id=?3", params![favorite as i64, now_ms(), id])
@@ -409,7 +409,7 @@ pub fn set_document_favorite(st: tauri::State<AppState>, id: String, favorite: b
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_document_tags(st: tauri::State<AppState>, id: String, tags: Vec<String>) -> CmdResult<Vec<String>> {
     let cleaned: Vec<String> = tags
         .iter()
@@ -447,7 +447,7 @@ fn set_tags_inner(conn: &Connection, doc_id: &str, tags: &[String]) -> CmdResult
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_document_tags(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     st.with_conn(|conn| {
         let mut stmt = conn.prepare("SELECT name FROM tags ORDER BY name COLLATE NOCASE").map_err(AppError::from)?;
@@ -460,7 +460,7 @@ pub fn list_document_tags(st: tauri::State<AppState>) -> CmdResult<Vec<String>> 
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_documents(st: tauri::State<AppState>, filter: ListFilter) -> CmdResult<Vec<Document>> {
     st.with_conn(|conn| {
         let mut clauses: Vec<String> = Vec::new();
@@ -536,7 +536,7 @@ pub fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn trash_document(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute("UPDATE documents SET deleted_at=?1 WHERE id=?2", params![now_ms(), id])
@@ -545,7 +545,7 @@ pub fn trash_document(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn restore_document(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute("UPDATE documents SET deleted_at=NULL WHERE id=?1", params![id])
@@ -649,7 +649,7 @@ fn snippet(text: &str, query: &str) -> String {
     s.replace('\n', " ")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search_all(st: tauri::State<AppState>, query: String) -> CmdResult<Vec<SearchHit>> {
     let q = query.trim().to_string();
     if q.is_empty() {

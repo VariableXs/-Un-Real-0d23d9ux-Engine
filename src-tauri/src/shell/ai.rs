@@ -125,7 +125,7 @@ fn dir_mtime_ms(p: &Path) -> Option<u64> {
     fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as u64)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ai_tool_status(st: tauri::State<AppState>) -> CmdResult<Vec<AiToolStatus>> {
     let node_installed = node_exe(&st.data_dir).is_file();
     Ok(AI_TOOLS
@@ -195,7 +195,7 @@ fn resolve_node_zip_name() -> CmdResult<String> {
 
 /// 后台下载并解压 Node 便携运行时（nodejs.org，需用户授权）→ runtime/node。
 /// 进度经 `ai://progress` 事件流回传（真实字节计数）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ai_install_node(st: tauri::State<AppState>, app: tauri::AppHandle) -> CmdResult<()> {
     if node_exe(&st.data_dir).is_file() {
         return Ok(()); // 幂等
@@ -284,7 +284,7 @@ fn node_dir_from(data_dir: &Path) -> PathBuf {
 
 /// npm 全局安装进容器（prefix=runtime/npm-global；凭据与包都不落宿主）。
 /// 安装源 registry.npmjs.org 走 netconsent 授权（前端弹窗后调用本命令）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ai_install_tool(st: tauri::State<AppState>, app: tauri::AppHandle, tool_id: String) -> CmdResult<()> {
     let tool = tool_by_id(&tool_id)?.clone_shim();
     if !npm_cmd(&st.data_dir).is_file() {
@@ -372,7 +372,7 @@ pub struct AiIdentityView {
     pub token_tail: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn identity_list(st: tauri::State<AppState>) -> CmdResult<Vec<AiIdentityView>> {
     Ok(load_identities(&st)?
         .into_iter()
@@ -383,7 +383,7 @@ pub fn identity_list(st: tauri::State<AppState>) -> CmdResult<Vec<AiIdentityView
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn identity_add(
     st: tauri::State<AppState>,
     tool: String,
@@ -415,7 +415,7 @@ pub fn identity_add(
     Ok(view)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn identity_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let mut items = load_identities(&st)?;
     let before = items.len();
@@ -433,7 +433,7 @@ pub fn identity_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> 
 /// - Token 注入该工具的环境变量名（值只经内存，不落明文文件）
 /// - 多账号：配置目录加 @label 后缀（{home}/.claude@work），账号互不串
 /// 前端随后走 launchThirdApp(终端) 嵌入 VWM。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ai_launch(st: tauri::State<AppState>, tool_id: String, identity_id: Option<String>) -> CmdResult<String> {
     let tool = tool_by_id(&tool_id)?;
     let shim = shim_path(&st.data_dir, tool);
@@ -505,7 +505,7 @@ pub struct AiVerifyRow {
 }
 
 /// 逐工具断言：shim 与配置目录都在容器内；宿主 %USERPROFILE% 不得出现对应目录。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ai_verify(st: tauri::State<AppState>) -> CmdResult<Vec<AiVerifyRow>> {
     let host_home = std::env::var("USERPROFILE").map(PathBuf::from).ok();
     Ok(AI_TOOLS

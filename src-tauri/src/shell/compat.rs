@@ -140,12 +140,12 @@ fn current_status() -> CompatStatus {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_check() -> CmdResult<CompatStatus> {
     Ok(current_status())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_apply(app: AppHandle) -> CmdResult<CompatStatus> {
     apply_compat_mode(&app);
     Ok(current_status())
@@ -163,7 +163,7 @@ pub fn apply_compat_mode(app: &AppHandle) {
     );
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_restore(app: AppHandle) -> CmdResult<CompatStatus> {
     COMPAT_ACTIVE.store(false, Ordering::Relaxed);
     if let Some(w) = app.get_webview_window("desktop") {
@@ -257,7 +257,7 @@ pub struct ShellContextMenuResult {
 /// separate command from the profiled CreateProcess path: ShellExecute is the
 /// correct authority for associations, .lnk files, folders, protocols, and
 /// UAC verbs.  No cmd.exe/start string is ever constructed here.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shell_execute(
     path: String,
     verb: Option<String>,
@@ -379,7 +379,7 @@ fn shell_error_hint(code: i32) -> &'static str {
 /// Activate a packaged application without going through explorer.exe or a
 /// shell command line.  AUMID is supplied by the Windows Start menu/AppX
 /// registration, not guessed from a display name.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shell_activate_application(aumid: String) -> CmdResult<ShellExecuteResult> {
     let id = aumid.trim();
     if id.is_empty() {
@@ -433,7 +433,7 @@ pub fn shell_activate_application(aumid: String) -> CmdResult<ShellExecuteResult
 /// tested HICON → PNG and IShellItemImageFactory fallback chain; this command
 /// exposes that chain from the compatibility boundary instead of making the
 /// UI know which Win32 API to call.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shell_item_icon(path: String) -> CmdResult<ShellIconResult> {
     let data_url = crate::shell::launcher::icon_dataurl(path)?;
     let source = if data_url.starts_with("data:image/png") {
@@ -450,7 +450,7 @@ pub fn shell_item_icon(path: String) -> CmdResult<ShellIconResult> {
 
 /// Show one item's native IContextMenu.  Multiple selection is intentionally
 /// returned as unsupported for now rather than showing a misleading menu.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shell_context_menu(paths: Vec<String>, x: i32, y: i32) -> CmdResult<ShellContextMenuResult> {
     if paths.len() != 1 {
         return Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None });
@@ -548,7 +548,7 @@ pub fn shell_context_menu(paths: Vec<String>, x: i32, y: i32) -> CmdResult<Shell
 /// Native shell gestures. Windows owns these semantics; Variable does not
 /// redraw a fake task switcher or fake desktop.  A single virtual-key path
 /// hands Win+D, Win+Arrow, and Alt+Tab to the normal Explorer/DWM handling.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn shell_forward_gesture(gesture: String) -> CmdResult<()> {
     #[cfg(windows)]
     {
@@ -599,7 +599,7 @@ pub struct UwpAppDto {
 }
 
 /// UWP 识别（Z-19）：Get-StartApps 中 AppID 含 '!' 项即 UWP/AUMID 应用（只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_uwp_list() -> CmdResult<Vec<UwpAppDto>> {
     #[cfg(windows)]
     {
@@ -642,7 +642,7 @@ pub struct ElevationProbe {
 }
 
 /// 提权提示探测（M-41）：读取 exe 内嵌 manifest 的 requestedExecutionLevel（只读，读前 64KB）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_elevation_probe(path: String) -> CmdResult<ElevationProbe> {
     use std::io::Read;
     let f = std::fs::File::open(&path).map_err(|e| AppError::not_found(format!("无法打开 {path}: {e}")))?;
@@ -657,7 +657,7 @@ pub fn compat_elevation_probe(path: String) -> CmdResult<ElevationProbe> {
 }
 
 /// 驱动共存扫描（M-43）：driverquery 列出内核驱动服务名（只读，前 200 项）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_driver_scan() -> CmdResult<Vec<String>> {
     #[cfg(windows)]
     {
@@ -692,7 +692,7 @@ pub struct HostProbe {
 }
 
 /// 远程虚拟宿主探测（Z-18 支撑）：RDP 会话 + BIOS/DVM 供应商特征（只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_host_probe() -> CmdResult<HostProbe> {
     let mut signals = Vec::new();
     let remote = std::env::var("SESSIONNAME")
@@ -738,7 +738,7 @@ static SHIM_HITS: std::sync::Mutex<Option<std::collections::HashMap<String, u64>
     std::sync::Mutex::new(None);
 
 /// Shim 命中登记（C-5 兼容 hint 消费端回调；hit = 兼容库键名）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_shim_report(hit: String) -> CmdResult<u64> {
     // 只接受非空、长度合理的键名（1..=128），防止空串/超长串污染统计。
     let hit = hit.trim();
@@ -752,7 +752,7 @@ pub fn compat_shim_report(hit: String) -> CmdResult<u64> {
     Ok(*c)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_shim_stats() -> CmdResult<std::collections::HashMap<String, u64>> {
     Ok(SHIM_HITS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default())
 }
@@ -766,7 +766,7 @@ pub struct IconProbe {
 }
 
 /// 图标缓存自愈探测（M-44 的只读探针面）：路径存在性/mtime/大小。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_icon_probe(path: String) -> CmdResult<IconProbe> {
     match std::fs::metadata(&path) {
         Ok(m) => {
@@ -790,7 +790,7 @@ pub struct VolumeInfo {
 }
 
 /// 卷 GUID 枚举（路径漂移自愈 Z-20 的数据面，只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_volumes() -> CmdResult<Vec<VolumeInfo>> {
     #[cfg(windows)]
     {
@@ -852,7 +852,7 @@ pub fn compat_volumes() -> CmdResult<Vec<VolumeInfo>> {
 }
 
 /// 路径漂移自愈（Z-20）：原路径失联时尝试把盘符前缀替换为卷 GUID 对应挂载点。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn compat_heal_paths(
     entries: Vec<HealEntry>,
 ) -> CmdResult<Vec<HealResult>> {

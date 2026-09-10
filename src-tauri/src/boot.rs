@@ -122,7 +122,7 @@ impl BootEmit<'_> {
 }
 
 /// Fetch every boot event emitted so far (replay for late-attaching listeners).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn boot_replay() -> Vec<LoadEvent> {
     REPLAY.lock().map(|g| g.clone()).unwrap_or_default()
 }

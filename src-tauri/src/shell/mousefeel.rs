@@ -89,7 +89,7 @@ fn spi_set_speed(v: i32) -> bool {
 }
 
 /// 读取当前系统鼠标四参数（只读；V-61 面板初始化与回滚预览用）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mouse_params_get() -> Result<MouseParamsDto, String> {
     #[cfg(windows)]
     return Ok(read_params());
@@ -98,7 +98,7 @@ pub fn mouse_params_get() -> Result<MouseParamsDto, String> {
 }
 
 /// 写回系统（前端已走显式确认）。返回写前的原值供前端展示回滚点。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mouse_params_write(
     speed: i32,
     double_click_ms: i32,
@@ -161,7 +161,7 @@ fn restore_params(p: &MouseParamsDto) -> bool {
 }
 
 /// 一键回滚到最近一次写回前的系统原值；无备份返回 false。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mouse_params_rollback() -> Result<bool, String> {
     let mut guard = BACKUP.lock().map_err(|e| e.to_string())?;
     match guard.take() {
@@ -179,7 +179,7 @@ pub fn mouse_params_rollback() -> Result<bool, String> {
 }
 
 /// V-69 精确模式：按住修饰键期间把指针速度按比例降到原档的 ratio（0.2..0.6）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pointer_speed_temp(ratio: f64) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -203,7 +203,7 @@ pub fn pointer_speed_temp(ratio: f64) -> Result<(), String> {
 }
 
 /// V-69 精确模式：松开修饰键 / 运行时卸载时还原原速度档。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pointer_speed_restore() -> Result<(), String> {
     #[cfg(windows)]
     {

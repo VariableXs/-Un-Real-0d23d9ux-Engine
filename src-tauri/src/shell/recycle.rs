@@ -149,7 +149,7 @@ fn copy_recursive(src: &Path, dest: &Path, depth: u8) -> CmdResult<u64> {
 }
 
 /// 聚合列表：数据库软删除 + 工作区 .trash + fs recycle，按删除时间倒序。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_list(st: tauri::State<AppState>) -> CmdResult<Vec<RecItem>> {
     rec_list_core(&st)
 }
@@ -242,7 +242,7 @@ pub fn rec_list_core(st: &AppState) -> CmdResult<Vec<RecItem>> {
 }
 
 /// 还原：按来源分派。fs-item 还原回原始路径（父目录不存在则重建，重名自动加后缀）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_restore(st: tauri::State<AppState>, id: String, source: String) -> CmdResult<()> {
     match source.as_str() {
         "doc" => crate::library::restore_document(st, id)?,
@@ -416,7 +416,7 @@ pub async fn rec_empty(st: tauri::State<'_, AppState>) -> CmdResult<u32> {
 }
 
 /// 回收站条目数（桌面图标徽标/占用提示用，轻量查询）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_count(st: tauri::State<AppState>) -> CmdResult<u32> {
     rec_count_inner(&st)
 }
@@ -475,12 +475,12 @@ fn save_policy(st: &AppState, p: &RecPolicy) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_policy_get(st: tauri::State<AppState>) -> CmdResult<RecPolicy> {
     Ok(load_policy(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_policy_set(st: tauri::State<AppState>, policy: RecPolicy) -> CmdResult<()> {
     if policy.capacity_bytes > 1024 * 1024 * 1024 * 1024 {
         return Err(AppError::validation("容量阈值过大 / capacity too large"));
@@ -536,7 +536,7 @@ pub fn rec_policy_preview_inner(st: &AppState) -> CmdResult<Vec<RecItem>> {
     Ok(doomed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rec_policy_preview(st: tauri::State<AppState>) -> CmdResult<Vec<RecItem>> {
     rec_policy_preview_inner(&st)
 }

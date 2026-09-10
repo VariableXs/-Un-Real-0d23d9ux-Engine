@@ -110,8 +110,10 @@ pub fn open_system_window(app: &AppHandle, label: &str) {
 }
 
 /// AI-10：前端 IPC 打开数据安全中心（单实例，已存在则聚焦）。
+/// 大检查第十四轮：必须 async —— 同步命令跑在主线程，窗口创建经事件循环
+/// 投递等待 → 主线程自等待死锁（Tauri v2 官方文档明确要求 async）。
 #[tauri::command]
-pub fn open_datavault(app: tauri::AppHandle) {
+pub async fn open_datavault(app: tauri::AppHandle) {
     open_system_window(&app, "datavault");
 }
 

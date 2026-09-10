@@ -86,7 +86,12 @@ function mountLasso(): void {
     }),
   );
   // marquee 元素由 DesktopIcons 渲染；我们只贴角标 + 张力类
-  const mo = new MutationObserver(() => {
+  // 大检查第十四轮：回调自身会制造变更（badge.textContent 每次赋值都替换
+  // 文本节点 → childList 变更 → 再触发本回调）→ 无限微任务循环整页冻结。
+  // 修复：rAF 合并扫描 + textContent 仅在值变化时写入，打破自激励。
+  let rafPending = 0;
+  const scan = (): void => {
+    rafPending = 0;
     if (!ctxRef?.on("Q-18")) return;
     const marquee = document.querySelector<HTMLElement>(".marquee");
     if (!marquee) {
@@ -103,11 +108,17 @@ function mountLasso(): void {
     const mr = marquee.getBoundingClientRect();
     badge.style.left = `${mr.right + 6}px`;
     badge.style.top = `${mr.top - 8}px`;
-    badge.textContent = String(count);
-  });
+    if (badge.textContent !== String(count)) badge.textContent = String(count);
+  };
+  const schedule = (): void => {
+    if (rafPending) return;
+    rafPending = requestAnimationFrame(scan);
+  };
+  const mo = new MutationObserver(schedule);
   mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
   bag.add(() => {
     mo.disconnect();
+    if (rafPending) cancelAnimationFrame(rafPending);
     badge?.remove();
   });
 }

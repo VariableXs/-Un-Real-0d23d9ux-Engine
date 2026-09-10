@@ -184,7 +184,7 @@ pub(crate) fn search_tree(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn workspace_search(st: tauri::State<AppState>, root: String, query: String) -> CmdResult<SearchReport> {
     // 只搜容器内路径
     let canonical_root = st
@@ -212,7 +212,7 @@ pub struct FileSlice {
     pub text_lossy: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn bigfile_slice(path: String, offset: u64, len: u32) -> CmdResult<FileSlice> {
     let mut f = std::fs::File::open(&path).map_err(|e| AppError::io(e.to_string()))?;
     let total = f.metadata()?.len();
@@ -239,7 +239,7 @@ pub fn bigfile_slice(path: String, offset: u64, len: u32) -> CmdResult<FileSlice
 // ---------- 行级跳转（PVCCE → VS Code） ----------
 
 /// `code --goto file:line`：VS Code Portable 已部署时打开并定位行。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn editor_goto(
     st: tauri::State<AppState>,
     path: String,

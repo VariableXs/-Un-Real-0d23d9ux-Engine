@@ -118,12 +118,12 @@ fn tasks_save(st: &AppState, list: &[SchedTask]) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_list(st: tauri::State<AppState>) -> CmdResult<Vec<SchedTask>> {
     Ok(tasks_load(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_upsert(st: tauri::State<AppState>, task: SchedTask) -> CmdResult<Vec<SchedTask>> {
     let mut t = task;
     validate_task(&t)?;
@@ -144,7 +144,7 @@ pub fn sched_upsert(st: tauri::State<AppState>, task: SchedTask) -> CmdResult<Ve
     Ok(list)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_remove(st: tauri::State<AppState>, id: String) -> CmdResult<Vec<SchedTask>> {
     let mut list = tasks_load(&st);
     list.retain(|t| t.id != id);
@@ -152,7 +152,7 @@ pub fn sched_remove(st: tauri::State<AppState>, id: String) -> CmdResult<Vec<Sch
     Ok(list)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_toggle(st: tauri::State<AppState>, id: String, enabled: bool) -> CmdResult<Vec<SchedTask>> {
     let mut list = tasks_load(&st);
     for t in list.iter_mut() {
@@ -268,7 +268,7 @@ fn log_push(st: &AppState, e: SchedLogEntry) {
     );
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_log_list(st: tauri::State<AppState>) -> CmdResult<Vec<SchedLogEntry>> {
     let mut list = log_load(&st);
     list.reverse();
@@ -276,7 +276,7 @@ pub fn sched_log_list(st: tauri::State<AppState>) -> CmdResult<Vec<SchedLogEntry
 }
 
 /// 前端手动「立即执行」（白名单同校验；不写触发时刻）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sched_run_now(app: tauri::AppHandle, st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let list = tasks_load(&st);
     let t = list.iter().find(|t| t.id == id).ok_or_else(|| AppError::validation("任务不存在"))?;
@@ -306,7 +306,7 @@ static RUNTIME_CTX: Mutex<Option<RuntimeCtx>> = Mutex::new(None);
 /// 前端空闲秒（前端调用更新；GetLastInputInfo 在前端可见性受限，用前端采样）。
 static IDLE_SECS: Mutex<u32> = Mutex::new(0);
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn workshop_idle_report(idle_secs: u32) -> CmdResult<()> {
     if let Ok(mut g) = IDLE_SECS.lock() {
         *g = idle_secs;
@@ -450,12 +450,12 @@ fn delay_save(st: &AppState, cfg: &StartDelayConfig) -> CmdResult<()> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startdelay_get(st: tauri::State<AppState>) -> CmdResult<StartDelayConfig> {
     Ok(delay_load(&st))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startdelay_set(st: tauri::State<AppState>, config: StartDelayConfig) -> CmdResult<StartDelayConfig> {
     delay_save(&st, &config)?;
     Ok(config)
@@ -481,7 +481,7 @@ fn timeline_path(st: &AppState) -> PathBuf {
     st.data_dir.join("startdelay-timeline.jsonl")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startdelay_timeline(st: tauri::State<AppState>) -> CmdResult<Vec<StartDelayTimelineEntry>> {
     let raw = std::fs::read_to_string(timeline_path(&st)).unwrap_or_default();
     let mut out: Vec<StartDelayTimelineEntry> = raw

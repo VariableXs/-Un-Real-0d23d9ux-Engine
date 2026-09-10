@@ -199,7 +199,7 @@ fn enum_display(_target: &mut Vec<SysDisplay>) -> Result<(), AppError> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sysenv_overview() -> CmdResult<SysEnvOverview> {
     let (vm, vm_reason) = vm_detect();
     let mut displays = Vec::new();
@@ -261,7 +261,7 @@ pub fn sysenv_overview() -> CmdResult<SysEnvOverview> {
 // 显示模式切换（VM 档真实生效；直跑档只读，如实拒绝）
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sysenv_display_set(device: String, width: u32, height: u32, hz: u32) -> CmdResult<String> {
     let (vm, _) = vm_detect();
     if !vm {

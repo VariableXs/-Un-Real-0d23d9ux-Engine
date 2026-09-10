@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use tauri::Emitter;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_all_settings(st: tauri::State<AppState>) -> CmdResult<HashMap<String, String>> {
     st.with_conn(|conn| {
         let mut stmt = conn.prepare("SELECT key, value FROM settings").map_err(AppError::from)?;
@@ -73,7 +73,7 @@ const UI_KEYS: &[&str] = &[
     "reduceMotion", "safeMode", "bgCustom", "mindDefaults", "bgTier",
 ];
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn reset_ui_settings(st: tauri::State<AppState>) -> CmdResult<()> {
     st.with_conn(|conn| {
         conn.execute(
@@ -106,7 +106,7 @@ fn recovery_path(st: &AppState, id: &str) -> CmdResult<std::path::PathBuf> {
     Ok(st.recovery_dir.join(format!("recovery-{id}.json")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_recovery_file(st: tauri::State<AppState>, payload: RecoveryPayload) -> CmdResult<String> {
     let mut hasher: u64 = 0xcbf29ce484222325;
     for b in format!("{}{}", payload.saved_at, payload.title).bytes() {
@@ -133,7 +133,7 @@ fn read_recovery_entry(p: &std::path::Path) -> Option<RecoveryEntry> {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_recovery_files(st: tauri::State<AppState>) -> CmdResult<Vec<RecoveryEntry>> {
     let mut out = Vec::new();
     if let Ok(rd) = fs::read_dir(&st.recovery_dir) {
@@ -156,14 +156,14 @@ pub struct RecoveryFileContent {
     pub content_text: String,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_recovery_file(st: tauri::State<AppState>, id: String) -> CmdResult<RecoveryFileContent> {
     let p = recovery_path(&st, &id)?;
     let raw = fs::read_to_string(&p).map_err(|_| AppError::not_found("恢复文件不存在或已删除 / Recovery file missing"))?;
     serde_json::from_str(&raw).map_err(|e| AppError::validation(format!("恢复文件损坏 / Recovery file corrupted: {e}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_recovery_file(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
     let p = recovery_path(&st, &id)?;
     if p.exists() {
@@ -173,7 +173,7 @@ pub fn delete_recovery_file(st: tauri::State<AppState>, id: String) -> CmdResult
 }
 
 /// Turn a recovery file into a real document (never overwrites existing data).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn recover_to_document(st: tauri::State<AppState>, id: String) -> CmdResult<String> {
     let p = recovery_path(&st, &id)?;
     let raw = std::fs::read_to_string(&p)

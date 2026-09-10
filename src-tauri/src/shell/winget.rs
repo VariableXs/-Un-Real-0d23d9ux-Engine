@@ -27,7 +27,7 @@ fn winget_bin() -> Command {
 }
 
 /// winget 可用性（where winget + --version）。无 = 前端诚实降级。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_status() -> CmdResult<WingetStatus> {
     let probe = winget_bin().arg("--version").output();
     match probe {
@@ -132,7 +132,7 @@ pub fn parse_progress_line(line: &str) -> Option<u8> {
     best
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_search(query: String) -> CmdResult<Vec<WingetPkg>> {
     if query.trim().is_empty() {
         return Ok(vec![]);
@@ -144,7 +144,7 @@ pub fn winget_search(query: String) -> CmdResult<Vec<WingetPkg>> {
     Ok(parse_winget_table(&String::from_utf8_lossy(&out.stdout)))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_list_installed() -> CmdResult<Vec<WingetPkg>> {
     let out = winget_bin()
         .args(["list", "--disable-interactivity"])
@@ -154,7 +154,7 @@ pub fn winget_list_installed() -> CmdResult<Vec<WingetPkg>> {
 }
 
 /// 可更新列表（winget upgrade）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_upgrade_list() -> CmdResult<Vec<WingetPkg>> {
     let out = winget_bin()
         .args(["upgrade", "--include-unknown", "--disable-interactivity"])
@@ -211,7 +211,7 @@ pub struct WingetOpResult {
     pub exit_code: Option<i32>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_install(app: tauri::AppHandle, id: String, exact: Option<bool>) -> CmdResult<WingetOpResult> {
     let mut extra: Vec<&str> = vec![];
     if exact.unwrap_or(false) {
@@ -220,12 +220,12 @@ pub fn winget_install(app: tauri::AppHandle, id: String, exact: Option<bool>) ->
     run_with_progress(&app, "install", &id, &extra)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_upgrade_one(app: tauri::AppHandle, id: String) -> CmdResult<WingetOpResult> {
     run_with_progress(&app, "upgrade", &id, &[])
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn winget_uninstall(app: tauri::AppHandle, id: String) -> CmdResult<WingetOpResult> {
     run_with_progress(&app, "uninstall", &id, &[])
 }

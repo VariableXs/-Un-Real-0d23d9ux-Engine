@@ -46,7 +46,7 @@ const CRITICAL_NAMES: &[&str] = &[
     "dwm.exe", "fontdrvhost.exe",
 ];
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn proc_list() -> CmdResult<Vec<ProcInfo>> {
     let self_exe = std::env::current_exe().ok();
     let self_dir = self_exe.as_ref().and_then(|p| p.parent()).map(|d| d.to_path_buf());
@@ -90,7 +90,7 @@ pub fn proc_list() -> CmdResult<Vec<ProcInfo>> {
 
 /// 结束任务（护栏）：系统关键进程一律拒绝；宿主进程需 force=true（用户显式确认）；
 /// Variable 家族可直接结束（嵌入应用结束走 VWM 占位卡路径）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn proc_kill(pid: u32, force: bool) -> CmdResult<String> {
     let procs = with_sys(|sys| {
         sys.refresh_processes_specifics(ProcessRefreshKind::new().with_exe(UpdateKind::OnlyIfNotSet));
@@ -126,7 +126,7 @@ pub fn proc_kill(pid: u32, force: bool) -> CmdResult<String> {
 }
 
 /// 性能页：总 CPU + 每核（百分比；前端 1s 轮询，采样成本 sysinfo 内部差分）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn perf_cpu() -> CmdResult<Vec<f32>> {
     with_sys(|sys| {
         sys.refresh_cpu_usage();
@@ -208,7 +208,7 @@ fn read_run_key(_hive: &str) -> Vec<StartupItem> {
 }
 
 /// 启动项列表（HKCU + HKLM Run）。直跑档仅展示（禁用操作如实报错）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startup_list() -> CmdResult<Vec<StartupItem>> {
     let mut out = read_run_key("HKCU");
     out.extend(read_run_key("HKLM"));
@@ -216,7 +216,7 @@ pub fn startup_list() -> CmdResult<Vec<StartupItem>> {
 }
 
 /// 禁用启动项 = 删除注册表值。仅 VM 档可写；直跑档返回只读提示（跳转宿主任务管理器）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn startup_disable(item: StartupItem) -> CmdResult<()> {
     if crate::shell::sysinfo::runtime_mode() != "vm" {
         return Err(AppError::validation("直跑档启动项为只读：请在宿主任务管理器 → 启动应用 中管理"));
@@ -284,7 +284,7 @@ fn ps_json(script: &str) -> Result<Vec<u8>, AppError> {
 }
 
 /// VM 档服务列表（Get-Service，零网络）。直跑档/PowerShell 不可用时返回空 + 前端文案。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn service_list() -> CmdResult<Vec<ServiceItem>> {
     let raw = ps_json(
         "Get-Service | Select-Object -First 120 Name,DisplayName,Status,StartType | ConvertTo-Json -Compress",
@@ -328,7 +328,7 @@ fn parse_services(raw: &[u8]) -> CmdResult<Vec<ServiceItem>> {
 }
 
 /// 启停服务（VM 档；需要管理员权限，失败如实返回）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn service_set(name: String, start: bool) -> CmdResult<String> {
     if crate::shell::sysinfo::runtime_mode() != "vm" {
         return Err(AppError::validation("直跑档服务为只读：请在宿主 services.msc 中管理"));

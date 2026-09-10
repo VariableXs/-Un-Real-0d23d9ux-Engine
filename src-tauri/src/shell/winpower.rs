@@ -27,7 +27,7 @@ static KEEP_AWAKE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::ne
 
 /// V-54：开启/解除「保持唤醒」。SetThreadExecutionState 会话级实现，
 /// 不改电源计划；到期由前端定时器调用 set(false)，进程退出自动失效。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn keepawake_set(on: bool, display: bool) -> Result<KeepAwakeState, String> {
     #[cfg(windows)]
     {
@@ -57,7 +57,7 @@ pub fn keepawake_set(on: bool, display: bool) -> Result<KeepAwakeState, String> 
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn keepawake_get() -> KeepAwakeState {
     let v = KEEP_AWAKE.load(std::sync::atomic::Ordering::Relaxed);
     KeepAwakeState { on: v & 1 != 0, display: v & 2 != 0 }
@@ -101,7 +101,7 @@ fn run_powercfg(args: &[&str]) -> Result<String, String> {
 }
 
 /// N-20：列出系统电源计划 + 当前激活项（只读）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn power_schemes_list() -> Result<Vec<PowerScheme>, String> {
     #[cfg(windows)]
     {
@@ -138,7 +138,7 @@ pub fn power_schemes_list() -> Result<Vec<PowerScheme>, String> {
 }
 
 /// N-20：切换电源计划（powercfg /setactive，用户显式触发）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn power_scheme_set(guid: String) -> Result<(), String> {
     if !guid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') || guid.len() != 36 {
         return Err("GUID 格式非法".into());
@@ -160,7 +160,7 @@ pub struct BatteryHealth {
 }
 
 /// N-20：电池健康（powercfg /batteryreport XML 解析；台式机/不支持机型如实报错）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn battery_health(st: tauri::State<'_, crate::state::AppState>) -> Result<BatteryHealth, String> {
     #[cfg(windows)]
     {
@@ -250,7 +250,7 @@ fn gamma_apply(ramp: &[u16; 768]) -> Result<(), String> {
 }
 
 /// U-46：设置色温（2800–6500K）。首次调用保存宿主原 ramp，退出时还原。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn gamma_set(kelvin: u32) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -280,7 +280,7 @@ pub fn gamma_set(kelvin: u32) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn gamma_restore() -> Result<(), String> {
     #[cfg(windows)]
     return gamma_restore_internal();
@@ -301,7 +301,7 @@ fn gamma_restore_internal() -> Result<(), String> {
 
 /// V-57：为指定 PID 设置优先级类（仅用户显式创建的预设生效；失败如实报错不重试）。
 /// class ∈ idle | below | normal | above | high（realtime 拒绝——需要权限且危险）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn proc_priority_set(pid: u32, class: String) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -354,7 +354,7 @@ fn open_inet_settings() -> Option<winreg::RegKey> {
         .ok()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn proxy_get() -> Result<ProxyState, String> {
     #[cfg(windows)]
     {
@@ -373,7 +373,7 @@ pub fn proxy_get() -> Result<ProxyState, String> {
 
 /// N-21：写系统代理（仅 ProxyEnable/ProxyServer/ProxyOverride 三项；
 /// 不做流量代理）。enable=false 即关闭系统代理。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn proxy_set(enabled: bool, server: String, override_list: String) -> Result<(), String> {
     if enabled && !server.contains(':') {
         return Err("server 需为 host:port 形式".into());
@@ -406,7 +406,7 @@ pub struct PingResult {
 }
 
 /// N-21：显式触发的延迟测速（ping ×4 取平均；仅用户点击时调用，绝不后台偷跑）。
-#[tauri::command]
+#[tauri::command(async)]
 pub fn net_ping(host: String) -> Result<PingResult, String> {
     let host = host.trim().to_string();
     if host.is_empty() || host.contains(|c: char| !(c.is_ascii_alphanumeric() || ".-_:".contains(c))) {
