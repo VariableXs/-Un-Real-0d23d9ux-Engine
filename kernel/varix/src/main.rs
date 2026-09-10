@@ -168,6 +168,26 @@ fn boot() -> ! {
     let (pool, seeded) = varix::kaslr::pool_state();
     varix::kinfo!("kaslr: seeded={} pool={:#x}", seeded, pool);
 
+    // --- cpu / interrupt domain (F026~F050) --------------------------------------------
+    // Runs after the platform probe (CPUID), the ACPI/MADT parse and the memory
+    // map, because it consumes all three. Interrupts stay disabled here — the
+    // scheduler domain owns `sti`.
+    let cpu_state = varix::cpu::init();
+    varix::cpu::render_to_console(&cpu_state);
+
+    // --- memory management domain (F051~F075) ------------------------------------------
+    // Needs the framebuffer reservation (F016), the boot reservations and the
+    // platform topology, so it runs after AI-01's boot stages and after the
+    // CPU domain has reported its core count.
+    let mem_state = varix::mem::init();
+    varix::mem::render_to_console(&mem_state);
+
+    // --- scheduler domain (F076~F100) --------------------------------------------------
+    // Last in the boot chain: it needs CPU vectors, the clock tick and the
+    // memory allocators, and it is what finally enables interrupts.
+    let sched_state = varix::sched::init();
+    varix::sched::render_to_console(&sched_state);
+
     // --- integrity (F021) ------------------------------------------------------------
     TIMELINE.stage_begin(Stage::Integrity, varix::timeline::read_tsc());
     let chain = varix::integrity::init();
