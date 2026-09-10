@@ -156,7 +156,7 @@ pub fn push_usize(out: &mut [u8], n: &mut usize, mut v: usize) {
 // ---------------------------------------------------------------------------
 
 /// Maximum domains in the kernel checkup registry.
-pub const MAX_DOMAINS: usize = 12;
+pub const MAX_DOMAINS: usize = 32;
 
 /// Aggregate result of `run_kernel_checkup()`.
 #[derive(Clone, Copy, Debug)]

@@ -81,9 +81,27 @@ pub mod sync;
 pub mod sec;
 pub mod verify;
 
+// --- GALAXY-1800 AI-16~AI-25 (G901~G1500) ----------------------------------
+pub mod galaxy;
+
+// --- GALAXY-1800 AI-01~AI-07（G001~G420，W1/W2）-----------------------------
+pub mod gtoolchain;
+pub mod gconcur;
+pub mod gmem;
+pub mod gstore;
+pub mod gbus;
+pub mod gperiph;
+pub mod gnet;
+
 // --- GALAXY-1800 AI-08~AI-16 (G421~G960) ------------------------------------
 pub mod gdist;
 pub mod gcons;
 pub mod gcont;
+pub mod guni;
+pub mod gpm;
+pub mod gperf;
+pub mod gobs;
+pub mod gsec;
+pub mod grtc;
 // --- TRINITY-500 AI-20 (F476~F500) 工程质量与门禁收官（模块注册由 AI-20 统一收口）
 pub mod quality;
