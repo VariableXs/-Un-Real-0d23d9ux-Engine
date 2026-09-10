@@ -1088,14 +1088,15 @@ pub fn embed_close_all() -> CmdResult<usize> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let sessions = with_registry(|map| {
-        map.drain().map(|(_, v)| v).collect::<Vec<_>>()
+        map.drain().map(|(k, v)| (k, v)).collect::<Vec<_>>()
     });
     let n = sessions.len();
-    for e in &sessions {
-        // 批次C-4：L3 先停采集 + 还原屏外窗口
+    for (key, e) in &sessions {
+        // 批次C-4：L3 先停采集并还原屏外窗口（与 embed_close 同语义：采集线程
+        // 立即停转；30s 超时未退的窗口归还桌面可见区，而非留在 -32000 屏外）
         if e.capture {
-            // embed_id 已 drain，按 tp_id+hwnd 反查不可靠 → 采集线程在窗口销毁后自然失效；
-            // 此处按 hwnd 停对应会话：遍历停止（close_all 是全局清场，全停无副作用）
+            crate::shell::capture::win::stop_capture(key);
+            crate::shell::capture::win::restore_window(e.hwnd);
         }
         // 批次C-3：L2 会话发宿主 WM_CLOSE（转发链路：宿主→子窗口→脱离自毁）
         let target = e.host.unwrap_or(e.hwnd);
@@ -1111,7 +1112,7 @@ pub fn embed_close_all() -> CmdResult<usize> {
                 // 仍在的窗口 = IsWindow 为真（已销毁 = 应用自行退出 → 无需处理）
                 let remaining: Vec<(Option<isize>, isize)> = sessions
                     .iter()
-                    .map(|e| (e.host, e.hwnd))
+                    .map(|(_, e)| (e.host, e.hwnd))
                     .filter(|(host, hwnd)| {
                         let t = host.unwrap_or(*hwnd);
                         unsafe {
@@ -1121,18 +1122,18 @@ pub fn embed_close_all() -> CmdResult<usize> {
                     })
                     .collect();
                 if remaining.is_empty() || std::time::Instant::now() >= deadline {
-                    for (host, hwnd) in remaining {
+                    for (host, hwnd) in &remaining {
                         match host {
                             // L2：宿主仍存活 → 脱离子窗口并销毁宿主
                             Some(h) => {
-                                crate::shell::container::win::unwrap_child(h);
+                                crate::shell::container::win::unwrap_child(*h);
                                 unsafe {
                                     let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
-                                        hwnd_from_isize(h),
+                                        hwnd_from_isize(*h),
                                     );
                                 }
                             }
-                            None => detach_child(hwnd),
+                            None => detach_child(*hwnd),
                         }
                     }
                     break;

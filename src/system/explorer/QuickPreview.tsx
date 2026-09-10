@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { ipc } from "../../lib/ipc";
@@ -58,8 +58,12 @@ export function QuickPreview(props: {
   const [archive, setArchive] = useState<ArchiveListing | null>(null);
   const e = props.target;
   const ext = (e.ext ?? "").toLowerCase();
+  // 压缩包内条目预览的序号（丢弃迟到链：用户快速点多个条目时只认最后一次）
+  const previewSeq = useRef(0);
 
   useEffect(() => {
+    let cancelled = false;
+    previewSeq.current += 1;
     setText(null);
     setErr(null);
     setArchive(null);
@@ -67,19 +71,27 @@ export function QuickPreview(props: {
       void (async () => {
         try {
           const raw = await ipc.readTextFile(e.path);
+          if (cancelled) return;
           const lines = raw.split("\n").slice(0, 200).join("\n");
           setText(lines + (raw.split("\n").length > 200 ? "\n…" : ""));
         } catch (ex) {
-          setErr(ex instanceof Error ? ex.message : String(ex));
+          if (!cancelled) setErr(ex instanceof Error ? ex.message : String(ex));
         }
       })();
     }
     if (ARCHIVE.has(ext)) {
       void ipc
         .archiveLs(e.path)
-        .then(setArchive)
-        .catch((ex: unknown) => setErr(ex instanceof Error ? ex.message : String(ex)));
+        .then((a) => {
+          if (!cancelled) setArchive(a);
+        })
+        .catch((ex: unknown) => {
+          if (!cancelled) setErr(ex instanceof Error ? ex.message : String(ex));
+        });
     }
+    return () => {
+      cancelled = true;
+    };
   }, [e.path, ext]);
 
   // M-22 键导航：← → 切换同目录文件
@@ -99,14 +111,19 @@ export function QuickPreview(props: {
 
   /** Z-29：压缩包内文本条目 → 提取到临时目录并预览内容。 */
   const previewInner = (innerPath: string): void => {
+    const seq = ++previewSeq.current;
     void ipc
       .archiveExtractOne(e.path, innerPath)
       .then((tmp) => ipc.readTextFile(tmp))
       .then((raw) => {
+        if (previewSeq.current !== seq) return;
         const lines = raw.split("\n").slice(0, 200).join("\n");
         setText(`${innerPath}\n\n${lines}${raw.split("\n").length > 200 ? "\n…" : ""}`);
       })
-      .catch((ex: unknown) => setErr(ex instanceof Error ? ex.message : String(ex)));
+      .catch((ex: unknown) => {
+        if (previewSeq.current !== seq) return;
+        setErr(ex instanceof Error ? ex.message : String(ex));
+      });
   };
 
   return (

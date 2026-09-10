@@ -282,12 +282,14 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     async (p: string): Promise<void> => {
       try {
         const l = await ipc.exList(p);
-        if (!alive.current) return;
+        // 竞态守卫：await 期间已导航到其他目录 → 丢弃迟到结果（否则旧目录内容
+        // 会错写进新路径的列表，且 currentPath 未变时无自愈效应）
+        if (!alive.current || pathRef.current !== p) return;
         setListing(l);
         setLoadErr(null);
         setSelected(null);
       } catch (e) {
-        if (!alive.current) return;
+        if (!alive.current || pathRef.current !== p) return;
         setListing(null);
         setLoadErr(errMessage(e).message);
         pushToast("error", t("explorerWin"), errMessage(e).message);
@@ -343,12 +345,13 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
     if (!p) return;
     try {
       const l = await ipc.exList(p);
-      if (!alive.current) return;
+      // 竞态守卫：await 期间发生导航 → 丢弃旧目录的迟到快照
+      if (!alive.current || pathRef.current !== p) return;
       setListing(l);
       setLoadErr(null);
       setSelected((sel) => (sel && l.entries.some((e) => e.path === sel) ? sel : null));
     } catch (e) {
-      if (!alive.current) return;
+      if (!alive.current || pathRef.current !== p) return;
       setLoadErr(errMessage(e).message);
     }
   }, []);
