@@ -703,7 +703,12 @@ static PENDING_ADOPT: std::sync::LazyLock<Mutex<std::collections::HashSet<isize>
 
 #[cfg(windows)]
 fn pending_adopt_insert(h: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
     let mut g = PENDING_ADOPT.lock().unwrap_or_else(|e| e.into_inner());
+    // 第十一轮大检查：清理已销毁的等待句柄——此前集合只增不减（弹窗未被
+    // 收编就关闭时条目永久驻留），且 Windows 会回收句柄值，陈旧条目会
+    // 静默压制未来同句柄值的合法弹窗广播。集合很小，IsWindow 便宜。
+    g.retain(|&pending| unsafe { IsWindow(hwnd_from_isize(pending)) }.as_bool());
     g.insert(h)
 }
 

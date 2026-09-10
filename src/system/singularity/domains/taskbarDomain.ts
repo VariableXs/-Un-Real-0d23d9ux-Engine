@@ -247,7 +247,13 @@ function mountPulseBar(): void {
     // 懒绑定：查找环境内正在播放的媒体元素
     const media = document.querySelector<HTMLMediaElement>("audio, video");
     if (!media || media.paused) {
-      if (host && !document.querySelector("audio:not([paused]), video:not([paused])")) {
+      // 第十一轮大检查：原写法 querySelector("audio:not([paused]), video:not([paused])")
+      // 永远命中自身——媒体元素没有 paused 内容属性（那是 JS 属性），
+      // 导致 idle 呼吸态从未进入过。改为按属性真值判定。
+      const anyPlaying = Array.from(
+        document.querySelectorAll<HTMLMediaElement>("audio, video"),
+      ).some((m) => !m.paused);
+      if (host && !anyPlaying) {
         // 无播放：呼吸慢闪态
         host.classList.add("idle");
         host.classList.toggle("breath", singuMotionOK());
@@ -270,7 +276,9 @@ function mountPulseBar(): void {
     }
     if (!host) {
       host = makeEl("div", "singu-pulsebar");
-      host.innerHTML = "<span></span><span></span><span></span><span></span>";
+      // 第十一轮大检查：子元素必须是 <i>——全部 CSS 规则（.singu-pulsebar i）
+      // 按标签选择器编写，此前生成的 <span> 与样式完全不匹配，律动条不可见。
+      host.innerHTML = "<i></i><i></i><i></i><i></i>";
       singuLayer().appendChild(host);
     }
     host.classList.remove("idle");

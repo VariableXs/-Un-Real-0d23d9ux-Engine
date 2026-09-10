@@ -1389,6 +1389,16 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
 
     loop {
         if stop.load(Ordering::Relaxed) {
+            // 第十一轮大检查：读仍挂起时必须「取消 + 有界等待完成」再退出——
+            // CancelIoEx 的取消是异步的，内核可能仍在向栈上的 OVERLAPPED/
+            // 缓冲写入；不等待就关句柄并让 OVERLAPPED 离开作用域 = 栈复用后
+            // 的未定义行为（MSDN：调用方必须等完成才能复用/释放这些结构）。
+            if !watch {
+                unsafe { CancelIoEx(handle, Some(&overlapped)) };
+                let _ = unsafe {
+                    windows::Win32::System::Threading::WaitForSingleObject(ev, 3000)
+                };
+            }
             break;
         }
         let mut bytes: u32 = 0;
@@ -1412,7 +1422,14 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
         }
         let wait = unsafe { windows::Win32::System::Threading::WaitForSingleObject(ev, 1000) };
         if stop.load(Ordering::Relaxed) {
-            unsafe { CancelIoEx(handle, Some(&overlapped)) };
+            // WAIT_OBJECT_0 = 本次读已完成，无挂起操作，直接退出即可；
+            // 否则取消并等完成（理由同循环顶部）。
+            if !watch && wait != WAIT_OBJECT_0 {
+                unsafe { CancelIoEx(handle, Some(&overlapped)) };
+                let _ = unsafe {
+                    windows::Win32::System::Threading::WaitForSingleObject(ev, 3000)
+                };
+            }
             break;
         }
         if wait == WAIT_OBJECT_0 {
@@ -1428,7 +1445,10 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
                 let next = u32::from_ne_bytes(buf[off..off + 4].try_into().unwrap()) as usize;
                 let action = u32::from_ne_bytes(buf[off + 4..off + 8].try_into().unwrap());
                 let len = u32::from_ne_bytes(buf[off + 8..off + 12].try_into().unwrap()) as usize;
-                if off + 12 + len > buf.len() {
+                if off + 12 + len > got as usize {
+                    // 第十一轮大检查：有效数据只到 got（本次实际写入的字节数）；
+                    // 此前用 buf.len() 做界会读到上一批通知的陈旧字节，
+                    // 产生不存在的幽灵文件名。
                     break;
                 }
                 let name = String::from_utf16_lossy(

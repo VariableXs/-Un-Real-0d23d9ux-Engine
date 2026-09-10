@@ -1133,10 +1133,17 @@
 }
 
 .singu-pulsebar.idle i {
+  /* 第十一轮大检查：基线锁定 22%（!important 压过音量模式遗留的行内高度）；
+     呼吸动画改走 scaleY 合成器路径——此前逐帧动画 height 会持续触发
+     主线程布局重排，现在完全交给合成器。 */
+  height: 22% !important;
+  transform-origin: bottom;
   animation: singu-pulse-idle 2.4s var(--ease-standard) infinite;
 }
 
 .singu-pulsebar.idle.breath i {
+  height: 22% !important;
+  transform-origin: bottom;
   animation: singu-pulse-idle 2.4s var(--ease-standard) infinite;
 }
 
@@ -1147,10 +1154,10 @@
 @keyframes singu-pulse-idle {
   0%,
   100% {
-    height: 22%;
+    transform: scaleY(1);
   }
   50% {
-    height: 40%;
+    transform: scaleY(1.8182); /* 40% / 22% —— 与原 height 振荡等比 */
   }
 }
 
