@@ -35,17 +35,22 @@ fn civil_from_days(z: i64) -> (i64, i64, i64) {
 
 #[tauri::command]
 pub async fn create_backup(st: tauri::State<'_, AppState>, source: Option<String>) -> CmdResult<BackupInfo> {
-    st.with_conn(|conn| {
-        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(AppError::from)?;
-        Ok(())
-    })?;
     let src = db_file(&st);
     if !src.exists() {
         return Err(AppError::not_found("数据库文件不存在 / Database file missing"));
     }
     let name = format!("{}.db", stamp_name());
     let dest = st.backups_dir.join(&name);
-    fs::copy(&src, &dest).map_err(|e| AppError::io(format!("备份失败 / Backup failed: {e}")))?;
+    // Checkpoint + copy under ONE lock hold: every writer (and therefore every
+    // SQLite auto-checkpoint, which fires inside a committing write) must pass
+    // through with_conn. Holding the mutex across the copy keeps the main file
+    // frozen — otherwise a concurrent auto-checkpoint could mutate pages
+    // mid-copy and tear the backup (mixed old/new pages, failing quick_check).
+    st.with_conn(|conn| {
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(AppError::from)?;
+        fs::copy(&src, &dest).map_err(|e| AppError::io(format!("备份失败 / Backup failed: {e}")))?;
+        Ok(())
+    })?;
     let meta = fs::metadata(&dest).map_err(AppError::from)?;
     let (checksum, _) = crate::media::checksum_file_public(&dest);
     let info = BackupInfo {
