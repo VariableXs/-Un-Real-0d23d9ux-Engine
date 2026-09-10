@@ -47,7 +47,7 @@ pub fn derive_dark(c: (u8, u8, u8)) -> (u8, u8, u8) {
 pub fn render_panic_report(pc: u64, code: u32, out: &mut [u8]) -> usize {
     let mut n = 0;
     crate::checks::push_str(out, &mut n, "PANIC at 0x");
-    crate::checks::push_usize(out, &mut n, pc as usize);
+    crate::checks::push_hex_u64(out, &mut n, pc);
     crate::checks::push_str(out, &mut n, " code=");
     crate::checks::push_usize(out, &mut n, code as usize);
     crate::checks::push_str(out, &mut n, " hint=");
@@ -263,7 +263,8 @@ pub fn spacing_grid_ok(px: u32) -> bool {
 /// ease-out cubic：t∈[0,1] → 进度。
 pub fn ease_out_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
-    1.0 - (1.0 - t).powi(3)
+    let b = 1.0 - t;
+    1.0 - b * b * b
 }
 
 /// ease-in-out。
@@ -272,7 +273,8 @@ pub fn ease_in_out(t: f32) -> f32 {
     if t < 0.5 {
         4.0 * t * t * t
     } else {
-        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+        let b = -2.0 * t + 2.0;
+        1.0 - b * b * b / 2.0
     }
 }
 
@@ -319,7 +321,7 @@ pub fn run_design_checks() -> CheckSet {
     let ptext = core::str::from_utf8(&pbuf[..pn]).unwrap_or("");
     set.add(
         "G1383 error aesthetics",
-        ptext.contains("PANIC at 0x4198408") && ptext.contains("page-fault"),
+        ptext.contains("PANIC at 0x401000") && ptext.contains("page-fault"),
         "readable + hintful",
     );
     // G1384

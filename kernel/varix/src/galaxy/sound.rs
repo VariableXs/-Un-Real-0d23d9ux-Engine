@@ -15,7 +15,7 @@ pub fn synth_sine(freq_hz: u32, sample_rate: u32, samples: usize) -> [i16; 32] {
     let mut out = [0i16; 32];
     for (i, slot) in out.iter_mut().enumerate().take(samples.min(32)) {
         let phase = (i as f64 * freq_hz as f64 / sample_rate as f64) * 2.0 * core::f64::consts::PI;
-        *slot = (phase.sin() * 8000.0) as i16;
+        *slot = (crate::galaxy::math::sin64(phase) * 8000.0) as i16;
     }
     out
 }

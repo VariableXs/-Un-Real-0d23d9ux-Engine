@@ -305,7 +305,7 @@ pub fn run_provenance_checks() -> CheckSet {
     let n = g.ancestry(c2, &mut anc);
     set.add(
         "G1281 version dag",
-        g.count == 3 && n == 3 && anc == [2, 1, 0] && g.add(9, 1).is_none(),
+        g.count == 3 && n == 3 && anc[..3] == [2u32, 1, 0] && g.add(9, 1).is_none(),
         "chain root->c1->c2",
     );
     // G1282

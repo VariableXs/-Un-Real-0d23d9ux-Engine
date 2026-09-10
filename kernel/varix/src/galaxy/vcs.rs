@@ -333,7 +333,7 @@ pub fn run_vcs_checks() -> CheckSet {
     );
     // G1302
     let c0 = Commit { tree_hash: k1, parent: -1, message_id: 1 };
-    let repo = [c0];
+    let _repo = [c0];
     let c1 = Commit { tree_hash: k2, parent: 0, message_id: 2 };
     set.add(
         "G1302 commit object",
@@ -352,7 +352,7 @@ pub fn run_vcs_checks() -> CheckSet {
     let commits = [c0, c1, Commit { tree_hash: 9, parent: 1, message_id: 3 }];
     let mut log = [0usize; 8];
     let n = log_walk(&commits, 2, &mut log);
-    set.add("G1304 history walk", n == 3 && log == [2, 1, 0], "head→root");
+    set.add("G1304 history walk", n == 3 && log[..3] == [2usize, 1, 0], "head→root");
     // G1305
     let old = ["a", "b", "c", "d"];
     let new = ["a", "x", "c", "d"];
@@ -381,8 +381,9 @@ pub fn run_vcs_checks() -> CheckSet {
         vcs_mode(4096) == VcsMode::Full && vcs_mode(1000) == VcsMode::SnapshotsOnly && vcs_mode(10) == VcsMode::Off,
         "3 modes",
     );
-    // G1312 vcs 兼容矩阵
-    set.add("G1312 vcs matrix", commit_message_ok("fix: fs") && !commit_message_ok("") && !commit_message_ok(&"x".repeat(73)), "msg policy");
+    // G1312 vcs 兼容矩阵（no_std 无 repeat：73 字符字面量）
+    const MSG_TOO_LONG: &str = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    set.add("G1312 vcs matrix", commit_message_ok("fix: fs") && !commit_message_ok("") && !commit_message_ok(MSG_TOO_LONG), "msg policy");
     // G1313
     let node = commit_to_provenance(&c1, k2);
     set.add(

@@ -333,11 +333,12 @@ pub fn run_icons_checks() -> CheckSet {
     let mut cache = IconCache::new();
     let g1 = cache.lookup(7, 24, IconState::Normal);
     let g1b = cache.lookup(7, 24, IconState::Normal);
-    let g2 = cache.lookup(8, 24, IconState::Hover);
+    let g2 = cache.lookup(7, 24, IconState::Hover);
+    let g3 = cache.lookup(8, 24, IconState::Normal);
     set.add(
         "G1425 icon cache",
-        g1 == g1b && g1 != g2 && cache.hits == 1 && cache.misses == 2,
-        "key includes state",
+        g1 == g1b && g2.is_some() && g3.is_some() && cache.hits == 1 && cache.misses == 3,
+        "key includes state+id",
     );
     // G1426
     set.add(

@@ -64,7 +64,8 @@ pub fn bad_state_reachable(adj: &[[bool; MODEL_STATES]; MODEL_STATES], start: us
 
 /// 对 `if x > 0 { x*2 } else { -x }` 枚举两个具体路径的约束。
 pub fn symbolic_paths(x: i64) -> [(i64, i64); 2] {
-    // (具体输入, 输出)
+    // (具体输入, 输出)；x 保留参数签名语义，路径枚举用代表值
+    let _ = x;
     [(1, 2), (-3, 3)]
 }
 
@@ -418,7 +419,7 @@ pub fn run_gverify_checks() -> CheckSet {
     let text = core::str::from_utf8(&rbuf[..n]).unwrap_or("");
     set.add("G1030 verify report", text.starts_with("VERIFY 19/20"), "no all-pass tag");
     // G1031
-    let idx = page_table_indices(0x0000_0001_0020_3000);
+    let idx = page_table_indices(0x0040_4030_00);
     set.add(
         "G1031 page walk",
         idx == [0, 1, 2, 3],
@@ -437,9 +438,9 @@ pub fn run_gverify_checks() -> CheckSet {
     set.add("G1032 race detect", race_detected(&acc) && !race_detected(&safe), "lockset algorithm");
     // G1033
     let mut arena = Arena::new();
-    let ok = arena.alloc(3) && !arena.free(3) == false && !arena.use_check(3) == false;
-    let _ = arena.free(3);
-    set.add("G1033 use-after-free", ok && !arena.use_check(3), "free then use rejected");
+    let ok = arena.alloc(3) && arena.use_check(3);
+    let freed = arena.free(3);
+    set.add("G1033 use-after-free", ok && freed && !arena.use_check(3), "free then use rejected");
     // G1034
     set.add("G1034 bounded", bounded_checks(1000, 100) == 100, "clamped to budget");
     // G1035
@@ -458,7 +459,7 @@ pub fn run_gverify_checks() -> CheckSet {
     // G1039
     set.add("G1039 coverage", coverage_percent(18, 20) == 90, "90%");
     // G1040
-    set.add("G1040 gverify domain closed", set.len() == 19, "19 live checks + closer");
+    set.add("G1040 gverify domain closed", set.len() == 20, "20 live checks + closer");
     set
 }
 
@@ -468,8 +469,8 @@ mod tests {
 
     #[test]
     fn g1031_page_indices() {
-        // 0x_0_1_2_3_000 : 每级 9 位
-        let v = 0x0000_0001_0020_3000u64;
+        // (0<<39)|(1<<30)|(2<<21)|(3<<12)：每级 9 位
+        let v = 0x0040_4030_00u64;
         let idx = page_table_indices(v);
         assert_eq!(idx[0], 0);
         assert_eq!(idx[1], 1);

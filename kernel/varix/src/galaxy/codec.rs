@@ -159,7 +159,7 @@ pub enum DecodePath {
 }
 
 /// h264/h265/av1 硬件能力位图 → 最优解码路径。
-pub fn pick_decode_path(hw_h264: bool, simd_avx2: bool, codec: u8) -> DecodePath {
+pub fn pick_decode_path(hw_h264: bool, simd_avx2: bool, codec: u16) -> DecodePath {
     let hw_supports = match codec {
         264 => hw_h264,
         265 => hw_h264, // 简化：同一硬件管线
@@ -329,7 +329,7 @@ impl DecodeSessions {
         if session >= self.active {
             return false;
         }
-        let over = self.used_us[session] + us > self.budget_us[session];
+        let over = self.used_us[session] + us > self.budgets_us[session];
         if !over {
             self.used_us[session] += us;
         }
@@ -380,7 +380,7 @@ pub fn run_codec_checks() -> CheckSet {
     set.add("G1082 colorspace", (r as i32 - 254).abs() <= 2 && y2 >= 233, "white roundtrip");
     // G1083
     let idr = [0x65, 0x00];
-    let non_idr = [0x41, 0x00];
+    let _non_idr = [0x41, 0x00];
     let bad = [0x80, 0x00];
     set.add(
         "G1083 h264 nal",

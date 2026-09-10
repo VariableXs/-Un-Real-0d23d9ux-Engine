@@ -151,6 +151,29 @@ pub fn push_usize(out: &mut [u8], n: &mut usize, mut v: usize) {
     }
 }
 
+/// Lowercase hex rendering (minimal width, no `0x` prefix).
+pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    if v == 0 {
+        push_str(out, n, "0");
+        return;
+    }
+    let mut digits = [0u8; 16];
+    let mut w = 0usize;
+    while v > 0 && w < digits.len() {
+        digits[w] = HEX[(v & 0xF) as usize];
+        v >>= 4;
+        w += 1;
+    }
+    while w > 0 {
+        w -= 1;
+        if *n < out.len() {
+            out[*n] = digits[w];
+            *n += 1;
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // F475 — kernel-wide closed loop: every domain registers here, one verdict.
 // ---------------------------------------------------------------------------

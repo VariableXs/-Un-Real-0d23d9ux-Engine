@@ -121,7 +121,7 @@ pub fn render_report(dump: &CrashDump, root: Option<u32>, events_n: usize, out: 
         None => crate::checks::push_str(out, &mut n, "none"),
     }
     crate::checks::push_str(out, &mut n, " pc=0x");
-    crate::checks::push_usize(out, &mut n, dump.panic_pc as usize);
+    crate::checks::push_hex_u64(out, &mut n, dump.panic_pc);
     crate::checks::push_str(out, &mut n, " events=");
     crate::checks::push_usize(out, &mut n, events_n);
     n
@@ -392,7 +392,7 @@ pub fn run_forensics_checks() -> CheckSet {
     ];
     let mut chain_ids = [0u32; 16];
     let n = build_causal_chain(&events, 4, &mut chain_ids);
-    set.add("G1002 causal chain", n == 4 && chain_ids == [4, 3, 2, 1], "4->3->2->1");
+    set.add("G1002 causal chain", n == 4 && chain_ids[..4] == [4u32, 3, 2, 1], "4->3->2->1");
     // G1003
     let state = replay_until_crash(&events, 3);
     set.add("G1003 replay", state == 9 + 1 + 2, "state before crash=12");
@@ -402,7 +402,7 @@ pub fn run_forensics_checks() -> CheckSet {
     let mut rbuf = [0u8; 96];
     let rn = render_report(&dump, Some(1), 4, &mut rbuf);
     let text = core::str::from_utf8(&rbuf[..rn]).unwrap_or("");
-    set.add("G1005 report", text.contains("root=1") && text.contains("pc=0x3405705278"), "renders root+pc");
+    set.add("G1005 report", text.contains("root=1") && text.contains("pc=0xcafebabe"), "renders root+pc");
     // G1006
     let mut ec = EvidenceChain::new();
     ec.append(b"boot");
@@ -438,7 +438,7 @@ pub fn run_forensics_checks() -> CheckSet {
     // G1014
     let mut hex = [0u8; 88];
     let hn = dump_hex_preview(&dump, &mut hex);
-    set.add("G1014 hex tool", hn == 32 && hex[0] == b'0' && hex[1] == b'0', "16B hex preview");
+    set.add("G1014 hex tool", hn == 32 && hex[0] == b'b' && hex[1] == b'e', "16B hex of LE dump");
     // G1015
     set.add(
         "G1015 forensics degrade",

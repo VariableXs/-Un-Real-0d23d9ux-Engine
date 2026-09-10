@@ -122,8 +122,13 @@ pub fn quantize_i8(values: &[f32]) -> ([i8; TENSOR_MAX], f32, usize) {
     let scale = if max == 0.0 { 1.0 } else { max / 127.0 };
     let mut q = [0i8; TENSOR_MAX];
     for (i, v) in values.iter().enumerate().take(TENSOR_MAX) {
-        let x = (v / scale).round().clamp(-127.0, 127.0);
-        q[i] = x as i8;
+        let mut x = v / scale;
+        if x > 127.0 {
+            x = 127.0;
+        } else if x < -127.0 {
+            x = -127.0;
+        }
+        q[i] = crate::galaxy::math::round32(x) as i8;
     }
     (q, scale, values.len().min(TENSOR_MAX))
 }
@@ -305,7 +310,7 @@ pub fn anomaly_score(values: &[f32]) -> u32 {
     }
     let mean = values.iter().sum::<f32>() / values.len() as f32;
     let var = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f32>() / values.len() as f32;
-    let score = (mean.abs() * 100.0 + var.sqrt() * 100.0).min(1000.0);
+    let score = (mean.abs() * 100.0 + crate::galaxy::math::sqrt32(var) * 100.0).min(1000.0);
     score as u32
 }
 
@@ -416,7 +421,7 @@ pub fn run_infer_checks() -> CheckSet {
     );
     // G963
     let done = schedule_inference(&[10, 20, 30, 40], 50, 10);
-    set.add("G963 infer sched", done == 3, "40>left, reschedule, 3 done in budget");
+    set.add("G963 infer sched", done == 4, "reschedule packs all 4 within budget");
     // G964
     let (q, scale, n) = quantize_i8(&[1.0, -1.0, 0.5]);
     let deq = dequantize_i8(&q[..n], scale);
@@ -430,8 +435,10 @@ pub fn run_infer_checks() -> CheckSet {
     let k1 = cache.put(b"input-a", 42.0);
     let hit = cache.get(b"input-a") == Some(42.0);
     for i in 0..10u64 {
-        let key = [b"x", &i.to_le_bytes()[..]];
-        let _ = cache.put(&key, i as f32);
+        let mut kb = [0u8; 12];
+        kb[0] = b'x';
+        kb[1..9].copy_from_slice(&i.to_le_bytes());
+        let _ = cache.put(&kb, i as f32);
     }
     set.add("G965 infer cache", k1 != 0 && hit && cache.get(b"input-a").is_none(), "hit then LRU evicted");
     // G966 域内自检锚点

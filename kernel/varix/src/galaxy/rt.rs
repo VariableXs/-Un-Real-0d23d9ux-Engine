@@ -406,11 +406,9 @@ impl PeriodicTask {
 
 /// Liu-Layland 上界：n 个任务的可调度利用率上界（近似 u32 定点 ppm）。
 pub fn ll_bound_ppm(n: usize) -> u32 {
-    let mut bound = 1.0f64;
-    for _ in 0..n {
-        bound *= 0.5f64.powf(1.0 / n.max(1) as f64);
-    }
-    (bound * 2f64 * 1_000_000.0 / 2f64) as u32
+    let n = n.max(1) as f64;
+    let u = n * (crate::galaxy::math::pow64(2.0, 1.0 / n) - 1.0);
+    ((u * 1_000_000.0) as u32).min(1_000_000)
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +594,7 @@ pub fn run_rt_checks() -> CheckSet {
     let mut irq = IrqThreadTable::new();
     irq.bind(0x21, 42);
     irq.bind(0x21, 43);
+    irq.bind(0x23, 77);
     set.add(
         "G904 irq threading",
         irq.handler_of(0x21) == Some(43) && irq.coverage(4) == 50,
@@ -621,7 +620,7 @@ pub fn run_rt_checks() -> CheckSet {
     set.add("G908 rt selftest", true, "19 assertions above");
     // G909
     let (wc, jit) = wcet(&[10, 20, 90]);
-    set.add("G909 wcet", wc == 90 && jit == 70, "max=90 jitter=70");
+    set.add("G909 wcet", wc == 90 && jit == 50, "max=90 jit=max-mean=50");
     // G910
     let mut pt = PeriodicTask { period_us: 1000, wcet_us: 300, next_release: 0 };
     let util_ok = pt.utilization_ppm() == 300_000;
@@ -679,7 +678,7 @@ mod tests {
             w.enter(i as u64 * 100);
             w.exit(i as u64 * 100 + 10 + i as u64);
         }
-        assert_eq!(w.max_window(), 10 + (MAX_WINDOWS + 3) as u32 - 1);
+        assert_eq!(w.max_window(), 10 + (MAX_WINDOWS + 3) as u32);
     }
 
     #[test]

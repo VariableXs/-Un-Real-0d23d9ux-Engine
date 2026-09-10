@@ -40,8 +40,8 @@ pub fn itd_us(azimuth_deg: i32) -> i64 {
     const HEAD_RADIUS_MM: f64 = 87.5;
     const SPEED_MS: f64 = 343.0;
     let theta = (azimuth_deg.clamp(-90, 90) as f64).to_radians();
-    let itd = (HEAD_RADIUS_MM / 1000.0 / SPEED_MS) * (theta + theta.sin());
-    (itd * 1_000_000.0).round() as i64
+    let itd = (HEAD_RADIUS_MM / 1000.0 / SPEED_MS) * (theta + crate::galaxy::math::sin64(theta));
+    (itd * 1_000_000.0) as i64
 }
 
 /// ILD（耳间声级差）dB 近似：右偏为正。
@@ -58,11 +58,11 @@ pub fn ild_db(azimuth_deg: i32) -> f32 {
 pub fn spatialize(source: [f32; 3], listener: [f32; 3], listener_facing: f32) -> (f32, f32) {
     let dx = source[0] - listener[0];
     let dz = source[2] - listener[2];
-    let dist = (dx * dx + dz * dz).sqrt();
+    let dist = crate::galaxy::math::sqrt32(dx * dx + dz * dz);
     // 简化：以 listener_facing 为前向轴，声像 = 侧向分量 / 距离。
-    let side = dx * listener_facing.cos() - dz * listener_facing.sin();
+    let side = dx * crate::galaxy::math::cos32(listener_facing) - dz * crate::galaxy::math::sin32(listener_facing);
     let pan = if dist < 0.01 { 0.0 } else { (side / dist).clamp(-1.0, 1.0) };
-    let atten = (1.0 / (1.0 + dist * 0.1)).clamp(0.0, 1.0);
+    let atten = (1.0f32 / (1.0 + dist * 0.1)).min(1.0);
     (pan, atten)
 }
 
@@ -192,6 +192,11 @@ pub fn reverb_memory_ok(voices: u32, delay_samples: u32, budget_kb: u32) -> bool
     voices.saturating_mul(delay_samples).saturating_mul(4) / 1024 <= budget_kb
 }
 
+/// G1174 空间音频兼容矩阵：采样率 8k~48k、声道 ≤2 才可空间化。
+pub fn spatial_format_ok(sample_hz: u32, channels: u32) -> bool {
+    (8_000..=48_000).contains(&sample_hz) && channels >= 1 && channels <= 2
+}
+
 // ---------------------------------------------------------------------------
 // G1175 空间音频工具集
 // ---------------------------------------------------------------------------
@@ -200,9 +205,9 @@ pub fn reverb_memory_ok(voices: u32, delay_samples: u32, budget_kb: u32) -> bool
 pub fn render_spatial_summary(pan: f32, atten: f32, out: &mut [u8]) -> usize {
     let mut n = 0;
     crate::checks::push_str(out, &mut n, "pan=");
-    crate::checks::push_usize(out, &mut n, ((pan * 100.0).round() as i64).unsigned_abs() as usize);
+    crate::checks::push_usize(out, &mut n, (crate::galaxy::math::round32(pan * 100.0) as i64).unsigned_abs() as usize);
     crate::checks::push_str(out, &mut n, " atten=");
-    crate::checks::push_usize(out, &mut n, ((atten * 100.0).round() as i64).unsigned_abs() as usize);
+    crate::checks::push_usize(out, &mut n, (crate::galaxy::math::round32(atten * 100.0) as i64).unsigned_abs() as usize);
     n
 }
 
@@ -292,7 +297,7 @@ pub fn run_audio3d_checks() -> CheckSet {
         "right side, atten 1/(1+d/10)",
     );
     // G1164
-    let reved = comb_reverb(&[1000, 0, 0, 0], 2, 128);
+    let reved = comb_reverb(&[1000, 0, 0, 0, 0, 0], 2, 128);
     set.add(
         "G1164 reverb",
         reved[0] == 1000 && reved[2] == 500 && reved[4] == 250,
@@ -339,6 +344,12 @@ pub fn run_audio3d_checks() -> CheckSet {
         "G1173 reverb memory",
         reverb_memory_ok(16, 1024, 64) && !reverb_memory_ok(64, 1024, 64),
         "64KB fits",
+    );
+    // G1174
+    set.add(
+        "G1174 spatial matrix",
+        spatial_format_ok(48_000, 2) && spatial_format_ok(8_000, 1) && !spatial_format_ok(96_000, 2) && !spatial_format_ok(48_000, 6),
+        "hz/channel window",
     );
     // G1175
     let mut abuf = [0u8; 48];

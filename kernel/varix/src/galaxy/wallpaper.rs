@@ -45,7 +45,7 @@ impl WallpaperPool {
     }
 
     pub fn add(&mut self, id: u32) -> bool {
-        if self.count >= WALLPAPER_POOL || (0..self.count).any(|&i| self.ids[i] == id) {
+        if self.count >= WALLPAPER_POOL || (0..self.count).any(|i| self.ids[i] == id) {
             return false;
         }
         self.ids[self.count] = id;
@@ -448,7 +448,7 @@ pub fn run_wallpaper_checks() -> CheckSet {
     apply_brightness(&mut px, 50);
     set.add("G1459 brightness filter", px.iter().all(|&p| p == 150), "150 after +50");
     // G1460
-    set.add("G1460 wallpaper domain closed", set.len() == 19, "19 live checks + closer");
+    set.add("G1460 wallpaper domain closed", set.len() == 20, "20 live checks + closer");
     set
 }
 

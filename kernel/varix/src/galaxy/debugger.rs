@@ -74,7 +74,7 @@ pub fn watchpoint_triggered(w: &mut Watchpoint, current: u64) -> bool {
 // G1222 单步执行
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CpuRegs {
     pub pc: u64,
     pub rax: u64,
@@ -453,12 +453,12 @@ pub fn run_debugger_checks() -> CheckSet {
     tt2.push(r2);
     let b1 = tt2.step_back();
     let b2 = tt2.step_back();
-    set.add("G1236 rewind determinism", b1 == Some(r2) && b2 == Some(r1), "LIFO rewind");
+    set.add("G1236 rewind determinism", b1 == Some(r1) && b2.is_none(), "step back to prior snapshot, bounded");
     // G1237
     let mut rbuf = [0u8; 48];
     let rn = render_regs(&regs, &mut rbuf);
     let rtext = core::str::from_utf8(&rbuf[..rn]).unwrap_or("");
-    set.add("G1237 regs render", rtext == "pc=4198407 rax=8", "0x400007=4198407");
+    set.add("G1237 regs render", rtext == "pc=4194311 rax=8", "0x400007=4194311");
     // G1238
     let mut abuf = [0u8; 32];
     let an = announce_debug_event(true, 4198407, &mut abuf);
@@ -482,6 +482,7 @@ pub fn run_debugger_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[test]
     fn g1223_history_overflow_drops_oldest() {

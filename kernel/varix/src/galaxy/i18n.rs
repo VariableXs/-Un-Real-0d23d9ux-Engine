@@ -179,7 +179,7 @@ pub fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
         if c <= 0.04045 {
             c / 12.92
         } else {
-            ((c + 0.055) / 1.055).powf(2.4)
+            crate::galaxy::math::pow64((c + 0.055) / 1.055, 2.4)
         }
     };
     0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
@@ -449,7 +449,7 @@ pub fn run_i18n_checks() -> CheckSet {
     let tn = synth_tokens("hello varix kernel", &mut toks);
     set.add(
         "G1373 tts",
-        tn == 3 && toks == [5, 5, 6] && synth_params_ok(1000, 1000) && !synth_params_ok(100, 1000),
+        tn == 3 && toks[..3] == [5usize, 5, 6] && synth_params_ok(1000, 1000) && !synth_params_ok(100, 1000),
         "tokens + param range",
     );
     // G1374 无障碍文档

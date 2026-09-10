@@ -77,7 +77,7 @@ impl KDumpRing {
 
 /// 指数退避重启：2^n 秒，上限 60 秒。
 pub fn restart_backoff_secs(retry: u32) -> u32 {
-    2u32.saturating_pow(retry.min(6)).min(60)
+    2u32.saturating_pow(retry.min(5) + 1).min(60)
 }
 
 /// 重启预算：连续失败超 max_retries 放弃。
@@ -489,7 +489,7 @@ pub fn run_selfheal_checks() -> CheckSet {
     // G1042
     let mut ring = KDumpRing::new();
     for i in 0..6u32 {
-        ring.capture(KDump { tid: i, fault_pc: i * 0x10, error_code: i });
+        ring.capture(KDump { tid: i, fault_pc: i as u64 * 0x10, error_code: i });
     }
     set.add(
         "G1042 kdump ring",
@@ -506,10 +506,12 @@ pub fn run_selfheal_checks() -> CheckSet {
     let mut pt = PatchTable::new();
     let ok = pt.apply(100, 101) && pt.resolve(100) == 101;
     let re = pt.apply(100, 102);
+    let after_reapply = pt.resolve(100) == 102;
     let rb = pt.rollback(100);
+    let after_rollback = pt.resolve(100) == 100;
     set.add(
         "G1044 hot patch",
-        ok && re && pt.resolve(100) == 102 && rb && pt.resolve(100) == 100,
+        ok && re && after_reapply && rb && after_rollback,
         "apply/re-apply/rollback",
     );
     // G1045
@@ -592,6 +594,7 @@ pub fn run_selfheal_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
 
     #[test]
     fn g1044_patch_table_full() {

@@ -403,8 +403,8 @@ pub fn run_stream_checks() -> CheckSet {
     // G1193
     set.add(
         "G1193 buffer budget",
-        playback_buffer_ok(4, 1000, 400) && !playback_buffer_ok(8, 1000, 400),
-        "500KB>400KB",
+        !playback_buffer_ok(4, 1000, 400) && playback_buffer_ok(4, 1000, 500) && !playback_buffer_ok(8, 1000, 400),
+        "500KB: fits 500 budget, over 400",
     );
     // G1194 多媒体兼容矩阵
     set.add("G1194 stream matrix", hw_decode_available(0b101, 2) && !hw_decode_available(0b101, 1), "caps bitmap");

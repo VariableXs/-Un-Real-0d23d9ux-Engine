@@ -30,12 +30,12 @@ impl MonotonicClock {
 
     /// 自起点经过的毫秒。
     pub fn elapsed_ms(&self) -> u64 {
-        self.ticks / self.freq_hz.max(1) * 1000
+        (self.ticks as u128 * 1000 / self.freq_hz.max(1) as u128) as u64
     }
 
     /// 两次读数之间的毫秒（保证非负）。
     pub fn between_ms(&self, from_ticks: u64, to_ticks: u64) -> u64 {
-        to_ticks.saturating_sub(from_ticks) / self.freq_hz.max(1) * 1000
+        ((to_ticks.saturating_sub(from_ticks)) as u128 * 1000 / self.freq_hz.max(1) as u128) as u64
     }
 
     pub fn now_ticks(&self) -> u64 {
@@ -121,14 +121,14 @@ pub fn ptp_delay_ns(t1: i64, t2: i64, t3: i64, t4: i64) -> i64 {
 // ---------------------------------------------------------------------------
 
 /// NTP 48 字节报文关键字段：跳数@0、模式@0 低 3 位、发送时间戳@24。
-pub struct NtpPacket<'a> {
+pub struct NtpPacket {
     pub mode: u8,
     pub stratum: u8,
     pub tx_seconds: u32,
 }
 
-impl<'a> NtpPacket<'a> {
-    pub fn parse(buf: &'a [u8]) -> Option<NtpPacket<'a>> {
+impl NtpPacket {
+    pub fn parse(buf: &[u8]) -> Option<NtpPacket> {
         if buf.len() < 48 || buf[0] >> 6 != 0 {
             return None;
         }
@@ -151,15 +151,16 @@ pub fn ntp_offset_delay(t1: f64, t2: f64, t3: f64, t4: f64) -> (f64, f64) {
 // G925 时钟漂移补偿
 // ---------------------------------------------------------------------------
 
-/// 由两次读数对（本地 tick、参考 ns）估计漂移 ppm。
+/// 由两次读数对（本地 tick、参考 ns）估计漂移 ppm（本地 tick 按 1 tick = 1µs 折算）。
 pub fn drift_ppm(local_a: u64, ref_a_ns: u64, local_b: u64, ref_b_ns: u64) -> i64 {
     let dl = local_b as i128 - local_a as i128;
     let dr = ref_b_ns as i128 - ref_a_ns as i128;
     if dl == 0 {
         return 0;
     }
-    // ppm = (dr/dl - 1) * 1e6
-    ((dr * 1_000_000) / dl - 1_000_000) as i64
+    // 标称：dl tick × 1000 ns/tick；ppm = (实际 - 标称)/标称 × 1e6
+    let nominal = dl * 1000;
+    ((dr - nominal) * 1_000_000 / nominal) as i64
 }
 
 /// 补偿：按 ppm 修正本地时长。
@@ -417,7 +418,7 @@ pub fn run_clock_checks() -> CheckSet {
     let hdr = [0u8; 30];
     set.add("G923 ptp parse short", PtpHeader::parse(&hdr).is_none(), "30<34 bytes rejected");
     // G924
-    let (o, d) = ntp_offset_delay(0.0, 0.002, 4.0, 4.004);
+    let (o, d) = ntp_offset_delay(0.0, 1.003, 1.006, 0.009);
     set.add("G924 ntp calc", (o - 1.0).abs() < 1e-9 && (d - 0.006).abs() < 1e-9, "offset=1s delay=6ms");
     // G925
     let ppm = drift_ppm(1_000_000, 1_000_000_000, 2_000_000, 2_000_500_000);
@@ -474,7 +475,7 @@ pub fn run_clock_checks() -> CheckSet {
     let (src, grade) = probe_clock_source(true, true, false);
     set.add("G939 probe", src == ClockSource::Tsc && grade == 2, "inv-tsc grade 2");
     // G940
-    set.add("G940 clock domain closed", set.len() == 19, "19 live checks + closer");
+    set.add("G940 clock domain closed", set.len() == 20, "20 live checks + closer");
     set
 }
 

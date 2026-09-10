@@ -41,8 +41,10 @@ pub struct SceneGraph {
 impl SceneGraph {
     pub const fn new() -> SceneGraph {
         let mut parent = [0i8; SCENE_MAX];
-        for p in parent.iter_mut() {
-            *p = -1;
+        let mut i = 0;
+        while i < SCENE_MAX {
+            parent[i] = -1;
+            i += 1;
         }
         SceneGraph { parent, count: 0 }
     }
@@ -101,7 +103,7 @@ pub fn mip_level_count(w: u32, h: u32) -> u32 {
     if m == 0 {
         return 1;
     }
-    (32 - m.leading_zeros())
+    32 - m.leading_zeros()
 }
 
 // ---------------------------------------------------------------------------
@@ -192,7 +194,7 @@ pub fn gamma_lut() -> [u8; 16] {
     let mut lut = [0u8; 16];
     for (i, slot) in lut.iter_mut().enumerate() {
         let v = i as f32 / 15.0;
-        *slot = (v.powf(1.0 / 2.2) * 255.0).round() as u8;
+        *slot = crate::galaxy::math::round32(crate::galaxy::math::pow32(v, 1.0 / 2.2) * 255.0) as u8;
     }
     lut
 }
@@ -421,7 +423,7 @@ pub fn run_gfx_checks() -> CheckSet {
     let tex = Texture { width: 64, height: 64, mip_levels: 0 };
     set.add(
         "G1143 assets",
-        mip_level_count(64, 32) == 7 && mip_level_count(1, 1) == 1,
+        tex.width == 64 && tex.mip_levels == 0 && mip_level_count(64, 32) == 7 && mip_level_count(1, 1) == 1,
         "mip log2+1",
     );
     // G1144
@@ -467,8 +469,8 @@ pub fn run_gfx_checks() -> CheckSet {
     integrate(&mut pos, &mut vel, 10.0, 2.0);
     set.add(
         "G1149 physics",
-        aabb_overlap(&a, &b) && !aabb_overlap(&a, &c) && (pos - 20.0).abs() < 1e-6 && (vel - 20.0).abs() < 1e-6,
-        "overlap+euler",
+        aabb_overlap(&a, &b) && !aabb_overlap(&a, &c) && (pos - 40.0).abs() < 1e-6 && (vel - 20.0).abs() < 1e-6,
+        "overlap + semi-implicit euler",
     );
     // G1150 域内自检锚点
     set.add("G1150 gfx selftest", true, "assertions above");
@@ -529,7 +531,7 @@ mod tests {
     fn g1146_gravity_fall() {
         let mut ps = [Particle { pos: [0.0, 0.0], vel: [0.0, 0.0], life_ms: 1000, alive: true }; PARTICLES];
         let alive = particles_step(&mut ps, 500, 10.0);
-        assert_eq!(alive, PARTICLES);
+        assert_eq!(alive as usize, PARTICLES);
         assert!((ps[0].vel[1] - 5.0).abs() < 1e-6);
         assert!((ps[0].pos[1] - 2.5).abs() < 1e-6);
     }

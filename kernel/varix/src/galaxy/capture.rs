@@ -180,7 +180,7 @@ impl CaptureStats {
 pub fn fuzz_capture_rects(seed: u64, rounds: usize) -> bool {
     let mut prng = crate::galaxy::rt::DetPrng::new(seed);
     for _ in 0..rounds {
-        let mk = || Rect {
+        let mut mk = || Rect {
             x: (prng.next_u64() % 100) as u32,
             y: (prng.next_u64() % 100) as u32,
             w: (prng.next_u64() % 200) as u32,

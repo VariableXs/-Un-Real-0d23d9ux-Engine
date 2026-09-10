@@ -414,8 +414,8 @@ pub fn run_simd_checks() -> CheckSet {
     // G1124
     let i = mat4_identity();
     let a = [1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-    let out = mat4_mul(a, i);
-    set.add("G1124 mat4", out[0] == 1.0 && out[1] == 2.0 && mat4_mul(i, i) == i, "A*I=A");
+    let out = mat4_mul(&a, &i);
+    set.add("G1124 mat4", out[0] == 1.0 && out[1] == 2.0 && mat4_mul(&i, &i) == i, "A*I=A");
     // G1125
     let c = conv1d(&[1.0, 2.0, 3.0, 4.0], &[1.0, 1.0]);
     let (sum, max) = reduce_sum_max(&[1.0, 5.0, 2.0]);
@@ -506,8 +506,8 @@ mod tests {
         let mut m = mat4_identity();
         m[1] = 3.0;
         let i = mat4_identity();
-        assert_eq!(mat4_mul(m, i), m);
-        assert_eq!(mat4_mul(i, m), m);
+        assert_eq!(mat4_mul(&m, &i), m);
+        assert_eq!(mat4_mul(&i, &m), m);
     }
 
     #[test]

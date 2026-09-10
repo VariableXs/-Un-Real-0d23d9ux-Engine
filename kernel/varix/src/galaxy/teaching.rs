@@ -81,7 +81,7 @@ fn double(x: i64) -> i64 {
 // ---------------------------------------------------------------------------
 
 /// 从源码行提取 `///` 文档注释。
-pub fn extract_doc_lines(source: &str, out: &mut [&str; 8]) -> usize {
+pub fn extract_doc_lines<'a>(source: &'a str, out: &mut [&'a str; 8]) -> usize {
     let mut n = 0;
     for line in source.lines() {
         if let Some(rest) = line.trim_start().strip_prefix("///") {
@@ -355,7 +355,15 @@ pub fn run_teaching_checks() -> CheckSet {
         "alt text required",
     );
     // G1339
-    set.add("G1339 typography", typography_ok(&"x".repeat(100)) && !typography_ok(&"x".repeat(101)), "100-char width");
+    // G1339 typography：100 字符宽度合规、101 超限（no_std 无 String::repeat，用字面量）
+    set.add(
+        "G1339 typography",
+        typography_ok(&"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+            && !typography_ok(
+                &"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            ),
+        "100-char width",
+    );
     // G1340
     set.add("G1340 teaching domain closed", set.len() == 19, "19 live checks + closer");
     set

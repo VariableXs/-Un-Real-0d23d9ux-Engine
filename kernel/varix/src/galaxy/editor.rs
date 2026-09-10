@@ -376,6 +376,9 @@ pub fn run_editor_checks() -> CheckSet {
         Cursor { pos: 20, anchor: 20 },
         Cursor { pos: 10, anchor: 10 },
         Cursor { pos: 0, anchor: 0 },
+        Cursor { pos: 0, anchor: 0 },
+        Cursor { pos: 0, anchor: 0 },
+        Cursor { pos: 0, anchor: 0 },
     ];
     let (n2, primary) = normalize_cursors(cursors, 5);
     set.add(

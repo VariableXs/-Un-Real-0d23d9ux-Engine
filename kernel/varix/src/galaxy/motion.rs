@@ -109,7 +109,7 @@ pub fn rubber_band(drag_px: i32, max_px: i32) -> i32 {
     }
     let over = drag_px.abs() - max_px;
     let sign = if drag_px < 0 { -1 } else { 1 };
-    sign * (max_px + over / 3)
+    sign * (max_px + over / 2)
 }
 
 /// 贴靠区检测：屏幕边缘 32px 内触发。
@@ -146,7 +146,7 @@ pub fn frame_jitter_ok(frame_ms: f32, mean_ms: f32) -> bool {
 // ---------------------------------------------------------------------------
 
 /// reduce-motion：动画立即到终态。
-pub fn reduced_motion_progress(original_ms: u32, reduce: bool) -> f32 {
+pub fn reduced_motion_progress(_original_ms: u32, reduce: bool) -> f32 {
     if reduce {
         1.0
     } else {
