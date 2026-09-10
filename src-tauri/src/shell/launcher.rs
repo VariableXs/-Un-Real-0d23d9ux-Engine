@@ -205,13 +205,18 @@ pub fn tp_add(
     name: Option<String>,
     grade: Option<String>,
 ) -> CmdResult<ThirdApp> {
-    let p = PathBuf::from(&path);
+    add_app_inner(&st, &path, name, grade)
+}
+
+/// tp_add 核心（收件箱自动登记共用）：校验 → 幂等去重 → 构造（128px 图标随登记提取）→ 落盘。
+fn add_app_inner(st: &AppState, path: &str, name: Option<String>, grade: Option<String>) -> CmdResult<ThirdApp> {
+    let p = PathBuf::from(path);
     if !valid_target(&p) {
         return Err(AppError::validation(
             "目标必须是存在的 .exe / .lnk / .bat / .cmd 文件 / Target must be an existing .exe / .lnk / .bat / .cmd file",
         ));
     }
-    let mut apps = load_registry(&st);
+    let mut apps = load_registry(st);
     if let Some(existing) = apps.iter().find(|a| norm(Path::new(&a.path)) == norm(&p)) {
         return Ok(existing.clone());
     }
@@ -236,7 +241,7 @@ pub fn tp_add(
     let app = ThirdApp {
         id: new_id(),
         name: display,
-        path,
+        path: path.to_string(),
         grade: g,
         added_at: now_ms(),
         last_launch: None,
@@ -248,7 +253,7 @@ pub fn tp_add(
         compat: Default::default(),
     };
     apps.push(app.clone());
-    save_registry(&st, &apps)?;
+    save_registry(st, &apps)?;
     Ok(app)
 }
 
@@ -924,29 +929,16 @@ fn file_description(_path: &Path) -> Option<String> {
     None
 }
 
-/// 扫描任意软件文件夹：找出全部 .exe，按主程序可能性排序。
-/// - 显示名优先 FileDescription（什么语言的软件就叫它自己的名字）
-/// - 已登记路径自动去重；普通文件（非目录）is_folder=false，前端静默忽略
-/// - 单 exe 文件夹恒推荐（用户拖文件夹就是想登记它）
-#[tauri::command]
-pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpFolderScanReport> {
-    let p = PathBuf::from(&path);
-    if !p.is_dir() {
-        // 非目录（用户拖入的是普通文件）→ 如实标注，前端无动作
-        return Ok(TpFolderScanReport { is_folder: false, candidates: Vec::new() });
-    }
+/// 文件夹内候选 exe 评分收集（拖入登记与软件收件箱子文件夹共用）：
+/// 已登记路径去重、否决词过滤、按主程序可能性排序、推荐判定（达标或唯一合法 exe）。
+fn folder_candidates(p: &Path, registered: &[String]) -> Vec<TpFolderCandidate> {
     let folder_name = p
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
-    let registered: Vec<String> = load_registry(&st)
-        .iter()
-        .map(|a| norm(Path::new(&a.path)))
-        .collect();
-
     let mut exes: Vec<(PathBuf, u64, u32)> = Vec::new();
     let mut budget = FOLDER_SCAN_MAX_ENTRIES;
-    collect_exes(&p, 0, &mut exes, &mut budget);
+    collect_exes(p, 0, &mut exes, &mut budget);
 
     let mut out: Vec<TpFolderCandidate> = Vec::new();
     for (ep, size, depth) in exes {
@@ -976,7 +968,119 @@ pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpF
         c.recommended = single || c.score >= EXE_RECOMMEND_THRESHOLD;
     }
     out.sort_by(|a, b| b.score.cmp(&a.score).then(a.path.cmp(&b.path)));
-    Ok(TpFolderScanReport { is_folder: true, candidates: out })
+    out
+}
+
+/// 扫描任意软件文件夹：找出全部 .exe，按主程序可能性排序。
+/// - 显示名优先 FileDescription（什么语言的软件就叫它自己的名字）
+/// - 已登记路径自动去重；普通文件（非目录）is_folder=false，前端静默忽略
+/// - 单 exe 文件夹恒推荐（用户拖文件夹就是想登记它）
+#[tauri::command]
+pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpFolderScanReport> {
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        // 非目录（用户拖入的是普通文件）→ 如实标注，前端无动作
+        return Ok(TpFolderScanReport { is_folder: false, candidates: Vec::new() });
+    }
+    let registered: Vec<String> = load_registry(&st)
+        .iter()
+        .map(|a| norm(Path::new(&a.path)))
+        .collect();
+    Ok(TpFolderScanReport { is_folder: true, candidates: folder_candidates(&p, &registered) })
+}
+
+// ---------- 批次F：软件收件箱（专属文件夹，环境启动自动登记） ----------
+
+/// 收件箱单次导入上限（图标逐个提取有成本，防启动卡顿；超量下次启动继续收）。
+const INBOX_IMPORT_MAX: usize = 32;
+
+/// 收件箱导入结果（path = 收件箱绝对路径，供前端「打开文件夹」入口）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpInboxImportResult {
+    pub added: usize,
+    pub path: String,
+}
+
+/// 软件收件箱目录：<数据目录>\SoftwareInbox（不存在则创建）。
+pub fn inbox_dir(st: &AppState) -> PathBuf {
+    st.data_dir.join("SoftwareInbox")
+}
+
+/// 软件收件箱自动导入：
+/// - 顶层直接放置的 .exe → 显式意图，恒登记（否决词护栏保留——卸载器不是「软件」）
+/// - 顶层子文件夹 → 与拖入登记同一套智能扫描，只登记推荐主程序
+/// - 显示名优先 FileDescription（任意语言）；128px Windows 图标随登记提取
+/// - 已登记路径幂等跳过；单条失败不中断批次
+#[tauri::command]
+pub fn tp_inbox_import(st: tauri::State<AppState>) -> CmdResult<TpInboxImportResult> {
+    tp_inbox_import_inner(&st)
+}
+
+fn tp_inbox_import_inner(st: &AppState) -> CmdResult<TpInboxImportResult> {
+    let inbox = inbox_dir(st);
+    fs::create_dir_all(&inbox).map_err(|e| {
+        AppError::io(format!("创建软件收件箱失败 / Cannot create software inbox: {e}"))
+    })?;
+    let path_out = inbox.to_string_lossy().to_string();
+    let registered: Vec<String> = load_registry(st)
+        .iter()
+        .map(|a| norm(Path::new(&a.path)))
+        .collect();
+
+    let mut picks: Vec<(PathBuf, String)> = Vec::new();
+    let Ok(rd) = fs::read_dir(&inbox) else {
+        return Ok(TpInboxImportResult { added: 0, path: path_out });
+    };
+    for item in rd.flatten() {
+        if picks.len() >= INBOX_IMPORT_MAX {
+            break; // 诚实截断：超量下次启动继续收
+        }
+        let Ok(ft) = item.file_type() else { continue };
+        let path = item.path();
+        if ft.is_file() {
+            // 直接放置的 exe：用户显式意图（什么语言、什么名字都行）
+            let is_exe = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+                .unwrap_or(false);
+            if !is_exe || registered.contains(&norm(&path)) {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let low = stem.to_lowercase();
+            if EXE_VETO.iter().any(|v| low.contains(v)) {
+                continue; // 卸载器/更新器即使手动放入也不登记（防桌面脏污）
+            }
+            let name = file_description(&path).unwrap_or(stem);
+            picks.push((path, name));
+        } else if ft.is_dir() {
+            // 子文件夹：智能扫描（过滤辅助进程，只取推荐主程序）
+            if item.metadata().map(|m| is_reparse(&m)).unwrap_or(false) {
+                continue; // reparse point（junction/符号链接）不深入，防环
+            }
+            for c in folder_candidates(&path, &registered) {
+                if picks.len() >= INBOX_IMPORT_MAX {
+                    break;
+                }
+                if c.recommended {
+                    picks.push((PathBuf::from(&c.path), c.name));
+                }
+            }
+        }
+    }
+
+    let mut added = 0usize;
+    for (p, name) in picks {
+        // add_app_inner 自带幂等去重与路径校验；单条失败（目标被移动/锁定）不中断
+        if add_app_inner(st, &p.to_string_lossy(), Some(name), None).is_ok() {
+            added += 1;
+        }
+    }
+    Ok(TpInboxImportResult { added, path: path_out })
 }
 
 // ---------- 批次E（规格 5.9.3）：便携化 ----------
@@ -1781,6 +1885,67 @@ mod tests {
 
         let _ = fs::remove_dir_all(&tmp);
         let _ = fs::remove_dir_all(&many);
+    }
+
+    // ---------- 批次F：软件收件箱 ----------
+
+    #[test]
+    fn inbox_import_registers_direct_exes_and_folder_mains_only() {
+        let tmp = std::env::temp_dir().join(format!("variable-inbox-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let inbox = st.data_dir.join("SoftwareInbox");
+        // 收件箱内容：直接放 1 个 exe（任意语言名）+ 1 个软件子文件夹（主程序+卸载器）+
+        // 1 个非 exe 文件 + 1 个含否决词的直接 exe
+        fs::create_dir_all(inbox.join("PotPlayer")).unwrap();
+        fs::write(inbox.join("任意名字.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("PotPlayer").join("PotPlayer.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("PotPlayer").join("unins000.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("readme.txt"), b"no").unwrap();
+        fs::write(inbox.join("setup.exe"), b"MZ").unwrap();
+
+        let r = tp_inbox_import_inner(&st).unwrap();
+        assert_eq!(r.added, 2, "直接 exe + 子文件夹主程序，共 2 个");
+        assert!(r.path.ends_with("SoftwareInbox"));
+
+        let apps = load_registry(&st);
+        let paths: Vec<&str> = apps.iter().map(|a| a.path.as_str()).collect();
+        assert!(paths.iter().any(|p| p.ends_with("任意名字.exe")), "直接放置的 exe 应登记（任意语言名）");
+        assert!(paths.iter().any(|p| p.ends_with("PotPlayer.exe")), "子文件夹主程序应登记");
+        assert!(!paths.iter().any(|p| p.contains("unins000")), "卸载器不应登记");
+        assert!(!paths.iter().any(|p| p.ends_with("setup.exe")), "否决词直接放置也不登记");
+        assert!(!paths.iter().any(|p| p.ends_with("readme.txt")), "非 exe 不登记");
+        // 显示名：无版本资源 → 文件名兜底
+        assert!(apps.iter().any(|a| a.name == "任意名字"));
+
+        // 幂等：第二次导入 → 0（已登记路径去重）
+        let r2 = tp_inbox_import_inner(&st).unwrap();
+        assert_eq!(r2.added, 0);
+
+        // 收件箱目录不存在时自动创建并返回 0
+        let _ = fs::remove_dir_all(&inbox);
+        let r3 = tp_inbox_import_inner(&st).unwrap();
+        assert_eq!(r3.added, 0);
+        assert!(inbox.exists(), "收件箱应被自动创建");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inbox_import_respects_cap() {
+        let tmp = std::env::temp_dir().join(format!("variable-inbox-cap-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let inbox = st.data_dir.join("SoftwareInbox");
+        for i in 0..(INBOX_IMPORT_MAX + 10) {
+            fs::write(inbox.join(format!("app{i:03}.exe")), b"MZ").unwrap();
+        }
+        let r = tp_inbox_import_inner(&st).unwrap();
+        assert_eq!(r.added, INBOX_IMPORT_MAX, "单次导入应封顶");
+        // 补量：删掉已登记的，第二次启动继续收余下的
+        let apps = load_registry(&st);
+        assert_eq!(apps.len(), INBOX_IMPORT_MAX);
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
 

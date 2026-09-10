@@ -474,6 +474,11 @@ const zh: Dict = {
   tpFolderScan: "文件夹扫描",
   tpFolderAddedBody: "已自动登记 {n} 个应用（图标与 Windows 一致）",
   tpFolderNoneBody: "未发现可自动登记的应用（文件夹中没有 exe，或已全部登记）",
+  // ---- 批次F：软件收件箱（专属文件夹，启动自动登记） ----
+  tpInbox: "软件收件箱",
+  tpInboxOpen: "软件收件箱",
+  tpInboxImported: "已从软件收件箱自动登记 {n} 个软件到桌面",
+  tpInboxHint: "把 .exe 文件或整个软件文件夹放进去，环境启动时自动登记到桌面（带 Windows 原生图标）",
   // ---- 隐藏窗口 ----
   wfMenuHide: "隐藏窗口",
   wfHiddenRestore: "显示隐藏的窗口",
@@ -3825,6 +3830,11 @@ const en: Dict = {
   tpFolderScan: "Folder scan",
   tpFolderAddedBody: "Auto-registered {n} app(s) with native Windows icons",
   tpFolderNoneBody: "No auto-registerable apps found (no .exe in the folder, or all already registered)",
+  // ---- Batch F: software inbox (dedicated folder, auto-registered at startup) ----
+  tpInbox: "Software inbox",
+  tpInboxOpen: "Software inbox",
+  tpInboxImported: "Auto-registered {n} app(s) from the software inbox to the desktop",
+  tpInboxHint: "Drop .exe files or whole app folders here; they are auto-registered to the desktop on startup (with native Windows icons)",
   // ---- Hidden windows ----
   wfMenuHide: "Hide window",
   wfHiddenRestore: "Show hidden windows",

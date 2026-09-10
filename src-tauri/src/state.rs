@@ -77,6 +77,8 @@ impl AppState {
             })?;
         }
         let _ = crate::state::ensure_workspace(&base);
+        // 批次F：软件收件箱（用户放入 exe/软件文件夹，启动时自动登记桌面）
+        let _ = fs::create_dir_all(base.join("SoftwareInbox"));
         Ok(AppState {
             conn: Mutex::new(None),
             data_dir: base,

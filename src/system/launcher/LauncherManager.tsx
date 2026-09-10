@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { PackagePlus, Play, RotateCcw, ScanEye, Search, Trash2 } from "lucide-react";
+import { Inbox, PackagePlus, Play, RotateCcw, ScanEye, Search, Trash2 } from "lucide-react";
 import { askConfirm, askPrompt, Modal } from "../../components/Modal";
 import { errMessage, ipc, type OfficialUsage, type TpGrade, type TpScanCandidate, type ThirdApp } from "../../lib/ipc";
 import { formatBytes } from "../../lib/format";
@@ -14,7 +14,7 @@ import {
   markOfficialUninstalled,
   useUninstalledOfficial,
 } from "./official";
-import { launchThirdApp, reloadThirdApps, useThirdApps } from "./thirdApps";
+import { launchThirdApp, reloadThirdApps, useThirdApps, importSoftwareInbox } from "./thirdApps";
 
 /**
  * 软件管理器（M7 + 批次C，桌面窗口模态）：
@@ -88,6 +88,21 @@ export function LauncherManager(): React.ReactElement | null {
       pushToast("success", t("tpAdded"));
     } catch (e) {
       pushToast("error", t("addApp"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 批次F：打开软件收件箱（顺带导入新放入的 exe/软件文件夹，环境启动时也会自动导入）。 */
+  const openInbox = async (): Promise<void> => {
+    if (busy || scanBusy) return;
+    setBusy(true);
+    try {
+      const r = await importSoftwareInbox();
+      if (r.added > 0) pushToast("success", t("tpInbox"), t("tpInboxImported", { n: r.added }));
+      await ipc.openPath(r.path);
+    } catch (e) {
+      pushToast("error", t("tpInbox"), errMessage(e).message);
     } finally {
       setBusy(false);
     }
@@ -310,6 +325,16 @@ export function LauncherManager(): React.ReactElement | null {
             </button>
             <button type="button" className="btn" disabled={scanBusy} onClick={() => void openScan()}>
               <Search size={15} /> {t("tpScanTitle")}
+            </button>
+            {/* 批次F：软件收件箱——把 exe/软件文件夹放进去，环境启动自动登记桌面 */}
+            <button
+              type="button"
+              className="btn"
+              title={t("tpInboxHint")}
+              disabled={busy || scanBusy}
+              onClick={() => void openInbox()}
+            >
+              <Inbox size={15} /> {t("tpInboxOpen")}
             </button>
           </div>
           {apps.length === 0 ? (

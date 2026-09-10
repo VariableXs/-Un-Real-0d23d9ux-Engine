@@ -408,6 +408,7 @@ pub fn run() {
             shell::launcher::tp_set_icon,
             shell::launcher::tp_scan_start_menu,
             shell::launcher::tp_scan_folder,
+            shell::launcher::tp_inbox_import,
             shell::launcher::tp_portableize,
             shell::launcher::tp_launch_admin,
             shell::launcher::icon_dataurl,

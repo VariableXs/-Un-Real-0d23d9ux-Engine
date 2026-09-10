@@ -300,6 +300,8 @@ export const ipc = {
   tpScanStartMenu: () => invoke<Shell.TpScanCandidate[]>("tp_scan_start_menu"),
   /** 批次F：扫描软件文件夹，返回按主程序可能性排序的 exe 候选报告。 */
   tpScanFolder: (path: string) => invoke<Shell.TpFolderScanReport>("tp_scan_folder", { path }),
+  /** 批次F：软件收件箱导入（启动时自动登记；返回新增数 + 收件箱绝对路径）。 */
+  tpInboxImport: () => invoke<Shell.TpInboxImportResult>("tp_inbox_import"),
   tpPortableize: (id: string) => invoke<Shell.ThirdApp>("tp_portableize", { id }),
   tpLaunchAdmin: (id: string) => invoke<void>("tp_launch_admin", { id }),
   iconDataurl: (path: string) => invoke<string>("icon_dataurl", { path }),
@@ -1608,6 +1610,11 @@ export namespace Shell {
     isFolder: boolean;
     candidates: TpFolderCandidate[];
   }
+  /** 批次F：软件收件箱导入结果（path = 收件箱绝对路径，供「打开文件夹」入口）。 */
+  export interface TpInboxImportResult {
+    added: number;
+    path: string;
+  }
   export interface ExVarDir {
     key: "root" | "workspace" | "apps" | "recycle";
     path: string;
@@ -2507,6 +2514,7 @@ export type ExVarDir = Shell.ExVarDir;
 export type TpScanCandidate = Shell.TpScanCandidate;
 export type TpFolderCandidate = Shell.TpFolderCandidate;
 export type TpFolderScanReport = Shell.TpFolderScanReport;
+export type TpInboxImportResult = Shell.TpInboxImportResult;
 export type RecSource = Shell.RecSource;
 export type RecItem = Shell.RecItem;
 export type ChecksumResult = Shell.ChecksumResult;

@@ -94,6 +94,32 @@ export function openLauncherManager(tab: "third" | "installed" = "third"): void 
   uiStore.setState({ launcherOpen: true, launcherTab: tab });
 }
 
+// ---------- 批次F：软件收件箱（专属文件夹，环境启动自动登记） ----------
+
+/** 收件箱导入结果（added = 本次新增登记数；path = 收件箱绝对路径）。 */
+export interface InboxImportResult {
+  added: number;
+  path: string;
+}
+
+/**
+ * 批次F：导入软件收件箱（<数据目录>\SoftwareInbox）。
+ * - 后端负责扫描/去重/登记/128px 图标提取，此处只编排：
+ *   有新增才重载列表（桌面/开始菜单/任务栏即时可见）
+ * - 失败向上抛（调用方 toast 兜底）；无新增静默（启动路径不制造噪音）
+ */
+export async function importSoftwareInbox(): Promise<InboxImportResult> {
+  const r = await ipc.tpInboxImport();
+  if (r.added > 0) {
+    try {
+      await reloadThirdApps();
+    } catch {
+      /* 重载失败不影响计数（下次挂载再补） */
+    }
+  }
+  return { added: r.added, path: r.path };
+}
+
 // ---------- 批次F：拖入软件文件夹 → 智能扫描自动登记 ----------
 
 /** 拖放路径分类（纯逻辑，可单测）：exe/lnk/bat/cmd 直接登记，其余交给文件夹扫描。 */

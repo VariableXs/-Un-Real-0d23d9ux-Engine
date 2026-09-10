@@ -26,6 +26,7 @@ import { WelcomeWizard } from "../welcome/WelcomeWizard";
 import {
   classifyDropPaths,
   getThirdApps,
+  importSoftwareInbox,
   launchThirdApp,
   registerDroppedFolder,
   reloadThirdApps,
@@ -301,8 +302,25 @@ export function DesktopShell(props: {
   }, [win]);
 
   // M7：第三方软件登记（桌面窗口加载一次；增删改由各入口自行 reload）。
+  // 批次F：随后导入软件收件箱（<数据目录>\SoftwareInbox 放入的 exe/软件文件夹
+  // 自动登记到桌面，带 128px Windows 图标）；无新增静默，不制造启动噪音。
   useEffect(() => {
-    void reloadThirdApps();
+    let alive = true;
+    void (async () => {
+      await reloadThirdApps().catch(() => {});
+      try {
+        const r = await importSoftwareInbox();
+        if (alive && r.added > 0) {
+          pushToast("success", t("tpInbox"), t("tpInboxImported", { n: r.added }));
+        }
+      } catch (e) {
+        console.warn("[launcher] inbox import failed", errMessage(e).message);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // M8 拔出保护 + 批次E-7：后端监测到便携数据卷消失 → 常驻横幅 + 通知中心留痕

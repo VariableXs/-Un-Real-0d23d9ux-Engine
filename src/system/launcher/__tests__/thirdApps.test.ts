@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { ipc } from "../../../lib/ipc";
-import { classifyDropPaths, registerDroppedFolder } from "../thirdApps";
+import { classifyDropPaths, importSoftwareInbox, registerDroppedFolder } from "../thirdApps";
 
 /**
  * 批次F 回归：拖入软件文件夹 → 智能扫描自动登记——
@@ -103,5 +103,49 @@ describe("registerDroppedFolder（文件夹自动登记）", () => {
   it("扫描命令异常向上抛出（调用方 toast 兜底，不吞错）", async () => {
     scanSpy.mockRejectedValue(new Error("rpc timeout"));
     await expect(registerDroppedFolder("D:/X")).rejects.toThrow("rpc timeout");
+  });
+});
+
+describe("importSoftwareInbox（软件收件箱启动导入）", () => {
+  let inboxSpy: MockInstance<typeof ipc.tpInboxImport>;
+  let listSpy: MockInstance<typeof ipc.tpList>;
+
+  beforeEach(() => {
+    inboxSpy = vi.spyOn(ipc, "tpInboxImport");
+    listSpy = vi.spyOn(ipc, "tpList");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("有新增 → 重载列表（桌面即时可见）并如实返回计数与收件箱路径", async () => {
+    inboxSpy.mockResolvedValue({ added: 3, path: "C:/Users/t/AppData/Roaming/com.variable.app/SoftwareInbox" } as never);
+    listSpy.mockResolvedValue([] as never);
+
+    const r = await importSoftwareInbox();
+    expect(r).toEqual({
+      added: 3,
+      path: "C:/Users/t/AppData/Roaming/com.variable.app/SoftwareInbox",
+    });
+    expect(listSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("无新增 → 不重载列表（启动路径不制造噪音）", async () => {
+    inboxSpy.mockResolvedValue({ added: 0, path: "D:/inbox" } as never);
+    const r = await importSoftwareInbox();
+    expect(r.added).toBe(0);
+    expect(listSpy).not.toHaveBeenCalled();
+  });
+
+  it("重载失败不吞计数（added 仍如实返回；下次挂载再补）", async () => {
+    inboxSpy.mockResolvedValue({ added: 2, path: "D:/inbox" } as never);
+    listSpy.mockRejectedValue(new Error("rpc down"));
+    const r = await importSoftwareInbox();
+    expect(r.added).toBe(2);
+  });
+
+  it("导入命令异常向上抛出（调用方 toast 兜底）", async () => {
+    inboxSpy.mockRejectedValue(new Error("os error 5"));
+    await expect(importSoftwareInbox()).rejects.toThrow("os error 5");
   });
 });
