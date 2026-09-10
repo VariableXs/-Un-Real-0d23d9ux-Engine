@@ -1,0 +1,17 @@
+# Varix kernel workspace build configuration.
+# Kernel ELF:  cargo kbuild            (alias, see below)
+# Host tests: cargo ktest              (alias, builds lib for the host triple)
+[alias]
+kbuild = "build --target x86_64-unknown-none --release"
+ktest = "test --target x86_64-pc-windows-msvc"
+kcheck = "check --target x86_64-unknown-none"
+
+[target.x86_64-unknown-none]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=-Tvarix/linker.ld",
+    "-C", "code-model=kernel",
+    "-C", "relocation-model=static",
+    "-C", "panic=abort",
+    "-C", "force-frame-pointers=yes",
+]
