@@ -135,7 +135,6 @@ pub mod win {
     pub fn create_host_on_main_thread(app: &tauri::AppHandle) -> Option<isize> {
         use std::sync::mpsc;
         let (tx, rx) = mpsc::channel::<Option<isize>>();
-        let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
             let created = unsafe {
                 if !ensure_class() {

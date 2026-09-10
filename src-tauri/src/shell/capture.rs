@@ -114,10 +114,11 @@ pub mod win {
         let stop2 = stop.clone();
         let eid = embed_id.clone();
         let objs = SendObjs { d3d, pool: pool.clone(), session: session.clone() };
+        let init_size = (size.Width, size.Height);
         let thread = std::thread::spawn(move || {
             let objs = objs; // 整体捕获（规避分域字段捕获绕过 unsafe impl Send）
             let (d3d, pool, session) = (objs.d3d, objs.pool, objs.session);
-            frame_loop(&app, &eid, &pool, &d3d, stop2);
+            frame_loop(&app, &eid, &pool, &d3d, init_size, stop2);
             let _ = session.Close();
             let _ = pool.Close();
         });
@@ -151,11 +152,13 @@ pub mod win {
         embed_id: &str,
         pool: &Direct3D11CaptureFramePool,
         d3d: &D3dCtx,
+        init_size: (i32, i32),
         stop: Arc<AtomicBool>,
     ) {
         let mut last_hash: u64 = 0;
         let mut staging: Option<(ID3D11Texture2D, i32, i32)> = None;
         let mut buf: Vec<u8> = Vec::new();
+        let mut pool_size = init_size;
         while !stop.load(Ordering::SeqCst) {
             let frame = match pool.TryGetNextFrame() {
                 Ok(f) => f,
@@ -165,19 +168,45 @@ pub mod win {
                 }
             };
             let content_size = frame.ContentSize().unwrap_or_default();
-            let changed = match grab_frame(&frame, d3d, &mut staging, &mut buf) {
-                Some(hash) => hash != last_hash,
-                None => false,
+            // 第十二轮大检查：窗口尺寸变化 → 重建帧池。此前池保持初始尺寸，
+            // 捕获画面与真实窗口错位（staging 会按 desc 自适应，池不会）。
+            if content_size.Width > 0
+                && content_size.Height > 0
+                && (content_size.Width != pool_size.0 || content_size.Height != pool_size.1)
+            {
+                let _ = pool.Recreate(
+                    &d3d.winrt_device,
+                    DirectXPixelFormat::B8G8R8A8UIntNormalized,
+                    2,
+                    content_size,
+                );
+                pool_size = (content_size.Width, content_size.Height);
+            }
+            // 第十二轮大检查：单次抓取（哈希 + 像素一次完成）——此前变更检测
+            // 和取数对同一帧各调一次 grab_frame，等于每帧做两遍完整的
+            // GPU→CPU 拷贝（1080p ≈ 8.3MB×2），纯浪费一半带宽。
+            let hash = grab_frame(&frame, d3d, &mut staging, &mut buf);
+            // 释放帧池缓冲再睡眠（2 缓冲池不能长期占住 1 个）
+            drop(frame);
+            let Some(h) = hash else {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                continue;
             };
-            if changed || last_hash == 0 {
-                last_hash = grab_frame(&frame, d3d, &mut staging, &mut buf).unwrap_or(last_hash);
+            if h != last_hash || last_hash == 0 {
+                last_hash = h;
+                // 上报实际抓取到的表面尺寸（与 buf 逐字节对应；重建帧池的
+                // 过渡帧上 ContentSize 可能与表面不一致）
+                let (w, hgt) = staging
+                    .as_ref()
+                    .map(|(_, w, h)| (*w, *h))
+                    .unwrap_or((content_size.Width, content_size.Height));
                 let _ = tauri::Emitter::emit(
                     app,
                     "embed-frame",
                     serde_json::json!({
                         "embedId": embed_id,
-                        "width": content_size.Width,
-                        "height": content_size.Height,
+                        "width": w,
+                        "height": hgt,
                         "bgra": base64::engine::general_purpose::STANDARD.encode(&buf),
                     }),
                 );

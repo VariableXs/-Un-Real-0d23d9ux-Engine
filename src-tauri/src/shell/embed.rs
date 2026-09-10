@@ -634,7 +634,7 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         }
         // 批次C-1 宽限一拍：WinEventHook 可能正把重建的新窗口重嵌进本会话
         std::thread::sleep(std::time::Duration::from_secs(2));
-        let Some(e) = with_registry(|m| m.get(&key).map(|e| (e.hwnd, e.root_pid))) else {
+        let Some(e) = with_registry(|m| m.get(&key).map(|e| (e.hwnd, e.root_pid, e.host))) else {
             return;
         };
         if unsafe { IsWindow(hwnd_from_isize(e.0)) }.as_bool() {
@@ -663,6 +663,20 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         with_registry(|m| {
             m.remove(&key);
         });
+        // 第十二轮大检查：L2 宿主收场——第三方窗口先退出时，宿主空壳必须
+        // 销毁。此前只有 embed_close 链路会销毁宿主，而本路径先移除了注册
+        // 条目，前端随后的 embed_close 查不到会话，空壳宿主（WS_POPUP
+        // 900×600）永久留在桌面。DestroyWindow 有线程亲和性（宿主在主线程
+        // 创建）→ 必须经 run_on_main_thread；unwrap_child 清 CHILD_OF 映射
+        // （子窗口已死时 SetParent 等调用无害失败）。
+        if let Some(host) = e.2 {
+            crate::shell::container::win::unwrap_child(host);
+            let _ = app.run_on_main_thread(move || unsafe {
+                let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
+                    windows::Win32::Foundation::HWND(host as *mut core::ffi::c_void),
+                );
+            });
+        }
         // 尽力采样根进程退出码（进程对象可能已被回收 → code 缺省）
         let mut code: Option<u32> = None;
         if !orphaned && e.1 != 0 {
@@ -1089,7 +1103,7 @@ pub fn embed_close(_embed_id: Option<String>) -> CmdResult<()> {
 /// 立即返回，不阻塞退出流程。
 #[tauri::command]
 #[cfg(windows)]
-pub fn embed_close_all() -> CmdResult<usize> {
+pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let sessions = with_registry(|map| {
@@ -1129,14 +1143,21 @@ pub fn embed_close_all() -> CmdResult<usize> {
                 if remaining.is_empty() || std::time::Instant::now() >= deadline {
                     for (host, hwnd) in &remaining {
                         match host {
-                            // L2：宿主仍存活 → 脱离子窗口并销毁宿主
+                            // L2：宿主仍存活 → 脱离子窗口并销毁宿主。
+                            // 第十二轮大检查：DestroyWindow 有线程亲和性——
+                            // 本线程不是宿主创建线程（主线程），直接调用会
+                            // 静默失败、宿主照旧泄漏；必须经 run_on_main_thread。
                             Some(h) => {
                                 crate::shell::container::win::unwrap_child(*h);
-                                unsafe {
-                                    let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
-                                        hwnd_from_isize(*h),
-                                    );
-                                }
+                                let h2 = *h;
+                                let _ = app.run_on_main_thread(move || unsafe {
+                                    let _ =
+                                        windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
+                                            windows::Win32::Foundation::HWND(
+                                                h2 as *mut core::ffi::c_void,
+                                            ),
+                                        );
+                                });
                             }
                             None => detach_child(*hwnd),
                         }
