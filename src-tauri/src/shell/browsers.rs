@@ -23,7 +23,7 @@ static LAUNCHED: std::sync::Mutex<Option<std::collections::HashMap<String, Vec<u
     std::sync::Mutex::new(None);
 
 fn record_pid(profile_id: &str, pid: u32) {
-    let mut g = LAUNCHED.lock().unwrap();
+    let mut g = LAUNCHED.lock().unwrap_or_else(|e| e.into_inner());
     g.get_or_insert_with(Default::default)
         .entry(profile_id.to_string())
         .or_default()
@@ -33,7 +33,7 @@ fn record_pid(profile_id: &str, pid: u32) {
 /// 任务栏运行态（B-19 分组）：每个存活 profile 是独立分组项。
 #[tauri::command]
 pub fn browser_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
-    let g = LAUNCHED.lock().unwrap();
+    let g = LAUNCHED.lock().unwrap_or_else(|e| e.into_inner());
     let map = match g.as_ref() {
         Some(m) => m,
         None => return Ok(Vec::new()),

@@ -690,7 +690,7 @@ pub fn gateway_autostart(st: &AppState) {
 }
 
 fn gateway_start_inner(_st: &AppState, cfg: &OpenHubConfig) {
-    let mut slot = gateway_slot().lock().unwrap();
+    let mut slot = gateway_slot().lock().unwrap_or_else(|e| e.into_inner());
     if slot.is_some() {
         return; // 已在运行
     }

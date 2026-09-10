@@ -745,7 +745,7 @@ pub fn compat_shim_report(hit: String) -> CmdResult<u64> {
     if hit.is_empty() || hit.len() > 128 {
         return Err(AppError::validation("shim hit 键名非法（空或超长）"));
     }
-    let mut m = SHIM_HITS.lock().unwrap();
+    let mut m = SHIM_HITS.lock().unwrap_or_else(|e| e.into_inner());
     let m = m.get_or_insert_with(std::collections::HashMap::new);
     let c = m.entry(hit.to_string()).or_insert(0);
     *c += 1;
@@ -754,7 +754,7 @@ pub fn compat_shim_report(hit: String) -> CmdResult<u64> {
 
 #[tauri::command]
 pub fn compat_shim_stats() -> CmdResult<std::collections::HashMap<String, u64>> {
-    Ok(SHIM_HITS.lock().unwrap().clone().unwrap_or_default())
+    Ok(SHIM_HITS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default())
 }
 
 #[derive(Serialize, Clone)]

@@ -198,6 +198,8 @@ function LivingParticles(props: {
       running = !document.hidden;
       if (running) {
         last = 0;
+        // 隐藏期间挂起的 rAF 不会销毁，恢复前先清旧帧，防止 hide/show 快切叠出双循环
+        cancelAnimationFrame(raf);
         raf = requestAnimationFrame(loop);
       }
     };

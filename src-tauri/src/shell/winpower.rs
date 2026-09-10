@@ -258,7 +258,7 @@ pub fn gamma_set(kelvin: u32) -> Result<(), String> {
         use windows::Win32::UI::ColorSystem::GetDeviceGammaRamp;
         // 保存原始 ramp（仅一次；还原即回到宿主进入前状态）
         {
-            let mut orig = GAMMA_ORIG.lock().unwrap();
+            let mut orig = GAMMA_ORIG.lock().unwrap_or_else(|e| e.into_inner());
             if orig.is_none() {
                 unsafe {
                     let hdc = GetDC(None);
@@ -290,7 +290,7 @@ pub fn gamma_restore() -> Result<(), String> {
 
 #[cfg(windows)]
 fn gamma_restore_internal() -> Result<(), String> {
-    let orig = GAMMA_ORIG.lock().unwrap().take();
+    let orig = GAMMA_ORIG.lock().unwrap_or_else(|e| e.into_inner()).take();
     if let Some(ramp) = orig {
         gamma_apply(&ramp)?;
     }

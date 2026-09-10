@@ -163,7 +163,7 @@ fn scan_loop() {
 }
 
 fn take_ctrl(id: &str) -> Option<Ctrl> {
-    control().lock().unwrap().get(id).copied()
+    control().lock().unwrap_or_else(|e| e.into_inner()).get(id).copied()
 }
 
 fn update_item(id: &str, f: impl FnOnce(&mut TrItem)) {
@@ -251,7 +251,7 @@ fn run_item(item: TrItem) {
             it.finished_at = Some(now_ms());
         }),
     }
-    control().lock().unwrap().remove(&item.id);
+    control().lock().unwrap_or_else(|e| e.into_inner()).remove(&item.id);
 }
 
 #[derive(Debug)]
@@ -411,13 +411,13 @@ pub fn tr_list() -> CmdResult<Vec<TrItem>> {
 
 #[tauri::command]
 pub fn tr_pause(id: String) -> CmdResult<Vec<TrItem>> {
-    control().lock().unwrap().insert(id, Ctrl::Pause);
+    control().lock().unwrap_or_else(|e| e.into_inner()).insert(id, Ctrl::Pause);
     Ok(tr_list()?)
 }
 
 #[tauri::command]
 pub fn tr_resume(id: String) -> CmdResult<Vec<TrItem>> {
-    control().lock().unwrap().remove(&id);
+    control().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
     update_item(&id, |it| {
         if it.status == TrStatus::Paused {
             it.status = TrStatus::Queued; // 重传（如实：续传为重传）
@@ -429,7 +429,7 @@ pub fn tr_resume(id: String) -> CmdResult<Vec<TrItem>> {
 
 #[tauri::command]
 pub fn tr_cancel(id: String) -> CmdResult<Vec<TrItem>> {
-    control().lock().unwrap().insert(id, Ctrl::Cancel);
+    control().lock().unwrap_or_else(|e| e.into_inner()).insert(id, Ctrl::Cancel);
     Ok(tr_list()?)
 }
 
