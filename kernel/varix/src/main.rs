@@ -188,6 +188,32 @@ fn boot() -> ! {
     let sched_state = varix::sched::init();
     varix::sched::render_to_console(&sched_state);
 
+    // --- process & user-space domain (F101~F125) ---------------------------------------
+    // Needs the scheduler (for thread identity) and the memory allocators, and
+    // it is what gives the rest of the boot chain a notion of "who".
+    let proc_state = varix::proc::init();
+    varix::proc::render_to_console(&proc_state);
+
+    // --- storage domain (F126~F150) ----------------------------------------------------
+    let storage_state = varix::storage::init();
+    varix::storage::render_to_console(&storage_state);
+
+    // --- input domain (F151~F175) ------------------------------------------------------
+    let input_state = varix::input::init();
+    varix::input::render_to_console(&input_state);
+
+    // --- display domain (F176~F200) ----------------------------------------------------
+    let display_state = varix::display::init();
+    varix::display::render_to_console(&display_state);
+
+    // --- network domain (F201~F225) ----------------------------------------------------
+    let net_state = varix::net::init();
+    varix::net::render_to_console(&net_state);
+
+    // --- security domain (F226~F250) ---------------------------------------------------
+    let sec_state = varix::security::init();
+    varix::security::render_to_console(&sec_state);
+
     // --- integrity (F021) ------------------------------------------------------------
     TIMELINE.stage_begin(Stage::Integrity, varix::timeline::read_tsc());
     let chain = varix::integrity::init();
@@ -214,6 +240,11 @@ fn boot() -> ! {
     TIMELINE.stage_begin(Stage::SelfTest, varix::timeline::read_tsc());
     let (_pass, _fail) = varix::selftest::run_boot_checks();
     TIMELINE.stage_end(Stage::SelfTest, varix::timeline::read_tsc());
+
+    // Every domain is armed; only now do interrupts become useful. This is the
+    // single point in the boot chain where the machine goes live.
+    varix::cpu::enable_interrupts();
+    varix::kinfo!("interrupts enabled — system live");
 
     // --- HUD: progress bar + timeline + self-test (F014/F024/F025) -------------------
     draw_hud(&surface, hud_y);

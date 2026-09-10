@@ -399,7 +399,7 @@ impl SecurityLayer {
     /// The most a process at this layer may ever hold.
     pub fn ceiling(self) -> Caps {
         match self {
-            SecurityLayer::L0Kernel => Caps(Self::L0Kernel_all()),
+            SecurityLayer::L0Kernel => Caps(Self::l0_kernel_all()),
             SecurityLayer::L1Service => Caps(Caps::FS_READ | Caps::FS_WRITE | Caps::FS_EXEC | Caps::NET | Caps::DEVICE | Caps::SPAWN | Caps::SIGNAL | Caps::MEM_MAP | Caps::TRACE | Caps::LOAD_DRIVER),
             SecurityLayer::L2Application => Caps(Caps::DEFAULT_CHILD | Caps::NET | Caps::SIGNAL | Caps::DEVICE),
             SecurityLayer::L3Sandboxed => Caps(Caps::FS_READ | Caps::FS_EXEC | Caps::MEM_MAP),
@@ -409,7 +409,7 @@ impl SecurityLayer {
         }
     }
 
-    const fn L0Kernel_all() -> u64 {
+    const fn l0_kernel_all() -> u64 {
         Caps::ALL
     }
 }
@@ -1930,6 +1930,123 @@ impl Default for ProcTable {
     }
 }
 
+/// The live process table. One instance: there is one process namespace.
+pub struct ProcDomain {
+    pub table: ProcTable,
+    pub fds: crate::storage::FdTable,
+    pub inherited_caps: crate::proc::Caps,
+    pub priority_inherits: u64,
+    pub crash_recoveries: u64,
+}
+
+impl ProcDomain {
+    pub const fn new() -> ProcDomain {
+        ProcDomain {
+            table: ProcTable::new(),
+            fds: crate::storage::FdTable::new(crate::storage::MAX_FDS as u32),
+            inherited_caps: crate::proc::Caps(crate::proc::Caps::DEFAULT_CHILD),
+            priority_inherits: 0,
+            crash_recoveries: 0,
+        }
+    }
+
+    /// F106: bring up init. Everything else is a descendant of it.
+    pub fn bring_up(&mut self) -> bool {
+        self.table.spawn_init(1)
+    }
+}
+
+impl Default for ProcDomain {
+    fn default() -> ProcDomain {
+        ProcDomain::new()
+    }
+}
+
+static DOMAIN: crate::cpu::sync::SpinProtected<ProcDomain> =
+    crate::cpu::sync::SpinProtected::new(ProcDomain::new());
+
+pub fn domain() -> &'static crate::cpu::sync::SpinProtected<ProcDomain> {
+    &DOMAIN
+}
+
+/// F101~F125 bring-up.
+pub fn init() -> ProcDomainState {
+    let mut d = DOMAIN.lock();
+    let init_ok = d.bring_up();
+    let (passed, failed) = run_process_checks(&d.table);
+    let state = ProcDomainState {
+        processes: d.table.len(),
+        zombies: d.table.count_in(ProcState::Zombie),
+        init_ok,
+        coredumps: d.table.coredumps(),
+        adoptions: d.table.adoptions(),
+        self_test: (passed, failed),
+    };
+    drop(d);
+
+    crate::kinfo!(
+        "proc: {} process(es), init={} self-test {}/{}",
+        state.processes,
+        init_ok,
+        state.self_test.0,
+        state.self_test.0 + state.self_test.1
+    );
+    state
+}
+
+/// What the rest of the boot chain wants to know about processes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProcDomainState {
+    pub processes: usize,
+    pub zombies: usize,
+    pub init_ok: bool,
+    pub coredumps: u64,
+    pub adoptions: u64,
+    pub self_test: (usize, usize),
+}
+
+impl ProcDomainState {
+    pub fn ok(&self) -> bool {
+        self.self_test.1 == 0 && self.init_ok
+    }
+
+    pub fn render(&self, out: &mut [u8]) -> usize {
+        let mut w = crate::cpu::Hud::new(out);
+        w.str("proc count=");
+        w.num(self.processes as u64);
+        w.str(" zombies=");
+        w.num(self.zombies as u64);
+        w.str(" init=");
+        w.str(if self.init_ok { "up" } else { "DOWN" });
+        w.str(" coredumps=");
+        w.num(self.coredumps);
+        w.str(" [");
+        w.num(self.self_test.0 as u64);
+        w.str("/");
+        w.num((self.self_test.0 + self.self_test.1) as u64);
+        w.str("]\n");
+        w.used()
+    }
+}
+
+/// Render the domain HUD onto the console.
+pub fn render_to_console(st: &ProcDomainState) {
+    let mut buf = [0u8; 256];
+    let n = st.render(&mut buf);
+    if let Some(c) = crate::console::installed_ref() {
+        for &b in &buf[..n] {
+            c.put_byte(b);
+        }
+    }
+    let mut detail = [0u8; 512];
+    let m = PROC_SELFTEST.render(&mut detail);
+    if let Some(c) = crate::console::installed_ref() {
+        for &b in &detail[..m] {
+            c.put_byte(b);
+        }
+    }
+}
+
 static PROC_SELFTEST: crate::selftest::SelfTest = crate::selftest::SelfTest::new();
 
 pub fn proc_selftest() -> &'static crate::selftest::SelfTest {
@@ -2109,7 +2226,12 @@ mod tests {
     fn capabilities_only_ever_shrink() {
         let full = CapToken::new(1, Caps::kernel(), SecurityLayer::L0Kernel);
         assert!(full.arbitrate(Caps::RAW_IO, 0).is_ok());
-        assert_eq!(full.arbitrate(Caps::LOAD_DRIVER | Caps::TRACE, 0).unwrap_err(), CapabilityError::Missing);
+        assert!(full.arbitrate(Caps::LOAD_DRIVER | Caps::TRACE, 0).is_ok());
+        let narrow = CapToken::new(9, Caps(Caps::FS_READ), SecurityLayer::L2Application);
+        assert_eq!(
+            narrow.arbitrate(Caps::LOAD_DRIVER | Caps::TRACE, 0).unwrap_err(),
+            CapabilityError::Missing
+        );
 
         // Delegation cannot hand out more than the caller holds.
         let limited = CapToken::new(2, Caps(Caps::FS_READ | Caps::FS_EXEC), SecurityLayer::L2Application);
@@ -2273,7 +2395,8 @@ mod tests {
         assert_eq!(status.signaled(), Some(Signal::SIGTERM));
         assert!(t.get(2).is_none());
         assert_eq!(t.get(3).unwrap().ppid, 1, "orphan adopted by init");
-        assert_eq!(t.adoptions(), 1);
+        assert_eq!(t.adoptions(), 2, "both children were adopted");
+        assert_eq!(t.get(4).unwrap().ppid, 1);
         assert_eq!(t.reap(2), Err("no such process"));
     }
 

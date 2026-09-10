@@ -77,7 +77,9 @@ impl SyscallError {
 /// caller sees in `rax` (negative = error, by convention).
 pub type Handler = fn(&[u64]) -> Result<i64, SyscallError>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// Not `PartialEq`: comparing function pointers is meaningless (the compiler may
+/// merge or duplicate them), and nothing should be tempted to try.
+#[derive(Clone, Copy, Debug)]
 pub struct Syscall {
     pub nr: u32,
     pub name: &'static str,
@@ -302,10 +304,18 @@ impl Default for SyscallTable {
 // F103 — the fast path
 // ---------------------------------------------------------------------------
 
-/// `IA32_STAR` layout: kernel CS in 47:32, user CS in 63:48 (SYSRET adds 16 to
-/// the user value to derive SS).
-pub const fn star_value(kernel_code: u16, user_code: u16) -> u64 {
-    ((kernel_code as u64) << 32) | ((user_code as u64) << 48)
+/// `IA32_STAR` layout. `SYSCALL` takes CS from bits 47:32 and derives
+/// `SS = CS + 8`; `SYSRET` takes its base from bits 63:48 and derives
+/// `CS = base + 16`, `SS = base + 8`.
+///
+/// So the base is *not* the user code selector — it is the selector one slot
+/// before user data, and the GDT must therefore lay user data out directly
+/// before user code (F026 does). Getting this wrong loads a valid-looking
+/// selector that is actually kernel data on the way back from a syscall, which
+/// is a privilege bug that only shows up under load.
+pub const fn star_value(kernel_code: u16, user_data: u16) -> u64 {
+    let sysret_base = user_data.wrapping_sub(8);
+    ((kernel_code as u64) << 32) | ((sysret_base as u64) << 48)
 }
 
 /// `IA32_SFMASK`: the flags cleared on entry. IF kills re-entrancy, TF kills
@@ -332,8 +342,8 @@ impl FastPath {
             return Err("syscall entry point is null");
         }
         let (kernel_code, _kernel_data) = crate::proc::selectors_for(crate::proc::Ring::Zero);
-        let (user_code, _user_data) = crate::proc::selectors_for(crate::proc::Ring::Three);
-        let star = star_value(kernel_code, user_code);
+        let (_user_code, user_data) = crate::proc::selectors_for(crate::proc::Ring::Three);
+        let star = star_value(kernel_code, user_data);
         let fp = FastPath {
             configured: true,
             star,
@@ -548,16 +558,20 @@ mod tests {
     }
 
     #[test]
-    fn star_encoding_puts_the_selectors_where_the_cpu_expects_them() {
-        let star = star_value(crate::cpu::gdt::SEL_KERNEL_CODE, crate::cpu::gdt::SEL_USER_CODE);
-        assert_eq!(star >> 32 & 0xFFFF, crate::cpu::gdt::SEL_KERNEL_CODE as u64);
-        assert_eq!(star >> 48 & 0xFFFF, crate::cpu::gdt::SEL_USER_CODE as u64);
-        // SYSRET derives SS = user_cs + 16, so the user data selector must
-        // follow the user code selector exactly.
-        assert_eq!(
-            crate::cpu::gdt::SEL_USER_DATA,
-            crate::cpu::gdt::SEL_USER_CODE + 16
-        );
+    fn star_encoding_survives_the_architectural_derivation() {
+        use crate::cpu::gdt;
+        let star = star_value(gdt::SEL_KERNEL_CODE, gdt::SEL_USER_DATA);
+        // SYSCALL: CS = STAR[47:32], SS = that + 8.
+        let syscall_cs = star >> 32 & 0xFFFF;
+        assert_eq!(syscall_cs, gdt::SEL_KERNEL_CODE as u64);
+        assert_eq!(syscall_cs + 8, gdt::SEL_KERNEL_DATA as u64);
+        // SYSRET: CS = base + 16, SS = base + 8.
+        let base = star >> 48 & 0xFFFF;
+        assert_eq!(base + 16, gdt::SEL_USER_CODE as u64, "SYSRET CS");
+        assert_eq!(base + 8, gdt::SEL_USER_DATA as u64, "SYSRET SS");
+        // The GDT layout that derivation depends on.
+        assert_eq!(gdt::SEL_KERNEL_DATA, gdt::SEL_KERNEL_CODE + 8);
+        assert_eq!(gdt::SEL_USER_CODE, gdt::SEL_USER_DATA + 8);
     }
 
     #[test]

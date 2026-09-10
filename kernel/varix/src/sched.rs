@@ -248,9 +248,9 @@ pub fn init() -> SchedDomainState {
         state.self_test.0 + state.self_test.1
     );
 
-    // The scheduler owns the tick, so it also owns the moment interrupts become
-    // useful. From here the machine is live.
-    crate::cpu::enable_interrupts();
+    // The scheduler owns the tick. The *interrupt enable* itself is deferred to
+    // the end of the whole boot chain: turning interrupts on before every
+    // domain has armed its spin locks would only invite a deadlock.
     state
 }
 

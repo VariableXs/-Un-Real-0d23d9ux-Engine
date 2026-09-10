@@ -389,7 +389,7 @@ pub fn synth_image(entry: u64, vaddr: u64, filesz: usize, memsz: u64, flags: u32
 
     // Segment payload lives right after the program header table.
     let data_off = EHDR_SIZE + phnum as usize * PHDR_SIZE;
-    let seg = EHDR_SIZE + PHDR_SIZE;
+    let seg = EHDR_SIZE;
     img[seg..seg + 4].copy_from_slice(&PT_LOAD.to_le_bytes());
     img[seg + 4..seg + 8].copy_from_slice(&flags.to_le_bytes());
     img[seg + 8..seg + 16].copy_from_slice(&(data_off as u64).to_le_bytes());
@@ -399,7 +399,7 @@ pub fn synth_image(entry: u64, vaddr: u64, filesz: usize, memsz: u64, flags: u32
     img[seg + 48..seg + 56].copy_from_slice(&4096u64.to_le_bytes());
 
     if let Some(path) = interp {
-        let p = EHDR_SIZE + 2 * PHDR_SIZE;
+        let p = EHDR_SIZE + PHDR_SIZE;
         let bytes = path.as_bytes();
         img[p..p + 4].copy_from_slice(&PT_INTERP.to_le_bytes());
         img[p + 8..p + 16].copy_from_slice(&(data_off as u64).to_le_bytes());
@@ -417,9 +417,11 @@ mod tests {
 
     #[test]
     fn parses_a_synthetic_image() {
-        let img = synth_image(0x40_1000, 0x40_0000, 64, 4096, PF_R | PF_X, None);
+        // Entry 0x40_0800 sits inside the single 4 KiB segment; an entry exactly
+        // at a segment's end would be outside it, which the entry test covers.
+        let img = synth_image(0x40_0800, 0x40_0000, 64, 4096, PF_R | PF_X, None);
         let e = parse(&img).expect("valid image");
-        assert_eq!(e.entry, 0x40_1000);
+        assert_eq!(e.entry, 0x40_0800);
         assert_eq!(e.kind, Some(ElfKind::Executable));
         assert_eq!(e.count, 1);
         let s = e.segments()[0];
@@ -429,11 +431,13 @@ mod tests {
         assert_eq!(s.bss_bytes(), 4032);
         assert!(s.executable());
         assert!(!s.writable());
-        assert_eq!(s.end(), 0x41_0000);
+        // 4 KiB of memsz starting at 0x40_0000 ends at 0x40_1000.
+        assert_eq!(s.end(), 0x40_1000);
         assert!(s.contains(0x40_0000));
-        assert!(!s.contains(0x41_0000));
+        assert!(s.contains(0x40_0FFF));
+        assert!(!s.contains(0x40_1000), "the end is exclusive");
         assert_eq!(e.total_memsz(), 4096);
-        assert_eq!(e.highest_vaddr(), 0x41_0000);
+        assert_eq!(e.highest_vaddr(), 0x40_1000);
         assert_eq!(e.lowest_vaddr(), 0x40_0000);
         assert!(e.segment_of(0x40_0800).is_some());
         assert!(e.segment_of(0x90_0000).is_none());
@@ -498,7 +502,7 @@ mod tests {
     #[test]
     fn oversized_segments_and_misalignment_are_caught() {
         let mut bad = synth_image(0x40_0000, 0x40_0000, 16, 4096, PF_R | PF_X, None);
-        let seg = EHDR_SIZE + PHDR_SIZE;
+        let seg = EHDR_SIZE;
         // filesz larger than the image.
         bad[seg + 32..seg + 40].copy_from_slice(&900_000u64.to_le_bytes());
         bad[seg + 40..seg + 48].copy_from_slice(&900_000u64.to_le_bytes());
@@ -526,9 +530,11 @@ mod tests {
         let e2 = parse(&img2).unwrap();
         assert_eq!(e2.validate().unwrap_err(), ElfError::EntryOutsideUserRange);
 
-        // A kernel entry point is refused before anything else matters.
+        // A kernel entry point parses (the header is well-formed) but can never
+        // be validated — the refusal happens exactly where it matters.
         let img3 = synth_image(0xFFFF_8000_0000_1000, 0x40_0000, 16, 4096, PF_R | PF_X, None);
-        assert_eq!(parse(&img3).unwrap_err(), ElfError::EntryOutsideUserRange);
+        let e3 = parse(&img3).expect("well-formed header");
+        assert_eq!(e3.validate().unwrap_err(), ElfError::EntryOutsideUserRange);
     }
 
     #[test]
