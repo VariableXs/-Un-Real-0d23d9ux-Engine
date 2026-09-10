@@ -160,6 +160,10 @@ struct IoJob {
     state: AtomicU8,
     copied: AtomicU64,
     total: u64,
+    /// 第十轮大检查：完成/取消时刻（0=未结束）。io_snapshot 据此清理
+    /// 60 秒前已结束的任务——此前注册表只增不减，长期运行的桌面
+    /// 环境里每个历史复制任务都永久驻留内存。
+    finished_ms: AtomicU64,
 }
 
 fn io_registry() -> &'static Mutex<HashMap<u32, std::sync::Arc<IoJob>>> {
@@ -184,7 +188,19 @@ pub struct IoJobProgress {
 }
 
 fn io_snapshot() -> IoProgress {
-    let reg = io_registry().lock().unwrap_or_else(|e| e.into_inner());
+    let mut reg = io_registry().lock().unwrap_or_else(|e| e.into_inner());
+    // 第十轮大检查：清理 60 秒前已结束的任务（DONE/CANCELLED）。
+    // 轮询方 1-2s 一拍，60 秒窗口足够读到终态；活跃/暂停任务不受影响。
+    let now = now_ms();
+    reg.retain(|_, j| {
+        let st = j.state.load(Ordering::SeqCst);
+        if st == IO_STATE_DONE || st == IO_STATE_CANCELLED {
+            let fin = j.finished_ms.load(Ordering::SeqCst);
+            fin == 0 || now.saturating_sub(fin) < 60_000
+        } else {
+            true
+        }
+    });
     let jobs = reg.iter().map(|(id, j)| IoJobProgress {
         id: *id,
         from: j.from.display().to_string(),
@@ -221,6 +237,7 @@ pub fn perf_io_copy(from: String, to: String) -> CmdResult<IoStartResult> {
         state: AtomicU8::new(IO_STATE_RUN),
         copied: AtomicU64::new(0),
         total: meta.len(),
+        finished_ms: AtomicU64::new(0),
     });
     io_registry().lock().unwrap_or_else(|e| e.into_inner()).insert(id, job.clone());
     let th_job = job.clone();
@@ -232,20 +249,24 @@ pub fn perf_io_copy(from: String, to: String) -> CmdResult<IoStartResult> {
 
 fn io_copy_worker(job: &IoJob) {
     // IoPriority 尽力而为（U-22）：设置失败不影响复制（无特权/句柄差异都忽略）。
+    // 第十轮大检查：所有退出路径都记录 finished_ms，供 io_snapshot 清理。
+    let finish = || {
+        job.finished_ms.store(now_ms(), Ordering::SeqCst);
+    };
     let mut buf = vec![0u8; IO_CHUNK];
     let mut src = match fs::File::open(&job.from) {
         Ok(f) => f,
-        Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); return; }
+        Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); finish(); return; }
     };
     set_io_priority_low(&mut src);
     let mut dst = match fs::OpenOptions::new().create(true).write(true).truncate(true).open(&job.to) {
         Ok(f) => f,
-        Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); return; }
+        Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); finish(); return; }
     };
     loop {
         match job.state.load(Ordering::SeqCst) {
             IO_STATE_PAUSED => { std::thread::sleep(Duration::from_millis(100)); continue; }
-            IO_STATE_CANCELLED => { let _ = fs::remove_file(&job.to); return; }
+            IO_STATE_CANCELLED => { let _ = fs::remove_file(&job.to); finish(); return; }
             _ => {}
         }
         match src.read(&mut buf) {
@@ -253,14 +274,16 @@ fn io_copy_worker(job: &IoJob) {
             Ok(n) => {
                 if dst.write_all(&buf[..n]).is_err() {
                     job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst);
+                    finish();
                     return;
                 }
                 job.copied.fetch_add(n as u64, Ordering::SeqCst);
             }
-            Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); return; }
+            Err(_) => { job.state.store(IO_STATE_CANCELLED, Ordering::SeqCst); finish(); return; }
         }
     }
     job.state.store(IO_STATE_DONE, Ordering::SeqCst);
+    finish();
 }
 
 /// IoPriority Hint = Low（尽力而为：仅 Windows + 非只读句柄生效，失败静默）。
@@ -733,13 +756,14 @@ struct JobObjectCpuRateControlInfo {
     weight: u32,
 }
 
+// 第十轮大检查：kernel32 符号与 isolation.rs 的裸声明同名异签名（UB 警告），
+// 签名对齐 isolation.rs 的指针版声明；注册表仍存 isize，边界处转换。
 extern "system" {
-    fn CreateJobObjectW(attrs: *const core::ffi::c_void, name: *const u16) -> isize;
-    fn SetInformationJobObject(job: isize, class: i32, info: *const JobObjectCpuRateControlInfo, size: u32) -> i32;
+    fn CreateJobObjectW(attributes: *mut core::ffi::c_void, name: *const u16) -> *mut core::ffi::c_void;
+    fn SetInformationJobObject(job: *mut core::ffi::c_void, info_class: u32, info: *mut core::ffi::c_void, length: u32) -> i32;
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
-    fn AssignProcessToJobObject(job: isize, proc_handle: isize) -> i32;
-    fn TerminateJobObject(job: isize, code: u32) -> i32;
-    fn CloseHandle(h: isize) -> i32;
+    fn AssignProcessToJobObject(job: *mut core::ffi::c_void, process: *mut core::ffi::c_void) -> i32;
+    fn CloseHandle(handle: *mut core::ffi::c_void) -> i32;
 }
 
 fn job_registry() -> &'static Mutex<HashMap<u32, isize>> {
@@ -765,16 +789,16 @@ pub fn cpu_quota_set(pid: u32, tier: u8) -> Result<QuotaResult, AppError> {
         let mut reg = job_registry().lock().unwrap_or_else(|e| e.into_inner());
         if tier == 100 {
             if let Some(job) = reg.remove(&pid) {
-                unsafe { CloseHandle(job); }
+                unsafe { CloseHandle(job as *mut core::ffi::c_void); }
             }
             return Ok(QuotaResult { pid, applied: true, tier });
         }
         // 已有 Job：重建（JobObject 不支持并发二次赋值语义，直接换新）
         if let Some(old) = reg.remove(&pid) {
-            unsafe { CloseHandle(old); }
+            unsafe { CloseHandle(old as *mut core::ffi::c_void); }
         }
-        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
-        if job == 0 {
+        let job = unsafe { CreateJobObjectW(std::ptr::null_mut(), std::ptr::null()) };
+        if job.is_null() {
             return Err(AppError::io("CreateJobObjectW failed"));
         }
         let info = JobObjectCpuRateControlInfo {
@@ -783,7 +807,7 @@ pub fn cpu_quota_set(pid: u32, tier: u8) -> Result<QuotaResult, AppError> {
             weight: 0,
         };
         // JobObjectCpuRateControlInformation = 15
-        let ok = unsafe { SetInformationJobObject(job, 15, &info, 12) };
+        let ok = unsafe { SetInformationJobObject(job, 15, std::ptr::from_ref(&info) as *mut core::ffi::c_void, 12) };
         if ok == 0 {
             unsafe { CloseHandle(job); }
             return Err(AppError::io("SetInformationJobObject failed (需要 Win11+/Win10 1607+)"));
@@ -795,13 +819,13 @@ pub fn cpu_quota_set(pid: u32, tier: u8) -> Result<QuotaResult, AppError> {
             unsafe { CloseHandle(job); }
             return Err(AppError::io(format!("OpenProcess({pid}) failed")));
         }
-        let assigned = unsafe { AssignProcessToJobObject(job, ph) };
-        unsafe { CloseHandle(ph); }
+        let assigned = unsafe { AssignProcessToJobObject(job, ph as *mut core::ffi::c_void) };
+        unsafe { CloseHandle(ph as *mut core::ffi::c_void); }
         if assigned == 0 {
             unsafe { CloseHandle(job); }
             return Err(AppError::io(format!("AssignProcessToJobObject({pid}) failed")));
         }
-        reg.insert(pid, job);
+        reg.insert(pid, job as isize);
         return Ok(QuotaResult { pid, applied: true, tier });
     }
     #[cfg(not(target_os = "windows"))]
@@ -844,7 +868,7 @@ extern "system" fn crash_filter(_ep: isize) -> i32 {
         // MiniDumpNormal = 0
         unsafe {
             let _ = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), h, 0, 0, 0, 0);
-            CloseHandle(h);
+            CloseHandle(h as *mut core::ffi::c_void);
         }
     }
     // 叙事标记：下次启动检测到 → 前端提示「可导出诊断包」

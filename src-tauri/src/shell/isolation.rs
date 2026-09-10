@@ -457,6 +457,97 @@ pub fn spawn_limited_program(program: impl AsRef<OsStr>, args: &[String], limits
     spawn_limited(&mut command, limits)
 }
 
+// -----------------------------------------------------------------------------
+// 生命周期 Job（第十轮大检查）：受管进程随宿主一起退出
+// -----------------------------------------------------------------------------
+//
+// AI-2 隔离防崩 §2.3 的契约是「一软件一 Job；KILL_ON_JOB_CLOSE」。
+// `spawn_limited` 只服务 Test-VM 资源限额路径；通用受管进程入口
+// （exec::spawn_profiled → launcher::spawn_detached）此前没有 Job——宿主
+// 崩溃或退出时整棵第三方进程树会作为孤儿泄漏到宿主上。这里补上最低限度
+// 的生命周期绑定：Job 不带任何资源限额、不动亲和性、不改完整性级别，
+// 只带 KILL_ON_JOB_CLOSE；句柄登记进全局注册表后故意永不关闭——宿主以
+// 任何方式终止（正常退出、panic、任务管理器结束）时内核关闭全部句柄，
+// 所有登记过的进程树一并终止。注册表只增不减：每项仅一个内核句柄，
+// 数量级远低于一次图标解码，不值得引入清理路径。
+
+#[cfg(windows)]
+static LIFECYCLE_JOBS: Mutex<Vec<JobHandle>> = Mutex::new(Vec::new());
+
+/// 给已启动的子进程绑定「随宿主退出」的 KILL_ON_JOB_CLOSE Job。
+/// 返回是否绑定成功；失败开放——Job 建不起来时进程照常运行，只是
+/// 失去生命周期绑定（由调用方记日志）。绝不能因绑不上 Job 而拒绝
+/// 启动用户软件。
+#[cfg(windows)]
+pub fn bind_lifecycle(child: &Child) -> bool {
+    let job = match create_lifecycle_job() {
+        Ok(job) => job,
+        Err(_) => return false,
+    };
+    let process = child.as_raw_handle() as *mut c_void;
+    if unsafe { AssignProcessToJobObject(job.0, process) } == 0 {
+        return false; // JobHandle Drop 关闭句柄；此时 Job 尚未承载任何进程
+    }
+    LIFECYCLE_JOBS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .push(job);
+    true
+}
+
+#[cfg(not(windows))]
+pub fn bind_lifecycle(_child: &Child) -> bool {
+    false
+}
+
+/// 只设 KILL_ON_JOB_CLOSE 的裸 Job：对进程的唯一语义影响是
+/// 「宿主侧最后一个句柄关闭 = 整棵进程树终止」。
+#[cfg(windows)]
+fn create_lifecycle_job() -> io::Result<JobHandle> {
+    let handle = unsafe { CreateJobObjectW(std::ptr::null_mut(), std::ptr::null()) };
+    if handle.is_null() {
+        return Err(io::Error::last_os_error());
+    }
+    let mut extended = ExtendedLimitInformation {
+        basic: BasicLimitInformation {
+            per_process_user_time_limit: 0,
+            per_job_user_time_limit: 0,
+            limit_flags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            minimum_working_set_size: 0,
+            maximum_working_set_size: 0,
+            active_process_limit: 0,
+            affinity: 0,
+            priority_class: 0,
+            scheduling_class: 0,
+        },
+        io: IoCounters {
+            read_operations: 0,
+            write_operations: 0,
+            other_operations: 0,
+            read_bytes: 0,
+            write_bytes: 0,
+            other_bytes: 0,
+        },
+        process_memory_limit: 0,
+        peak_process_memory_used: 0,
+        job_memory_limit: 0,
+        peak_job_memory_used: 0,
+    };
+    let ok = unsafe {
+        SetInformationJobObject(
+            handle,
+            JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            (&mut extended as *mut ExtendedLimitInformation).cast(),
+            std::mem::size_of::<ExtendedLimitInformation>() as u32,
+        )
+    };
+    if ok == 0 {
+        unsafe { close_handle(handle) };
+        return Err(io::Error::last_os_error());
+    }
+    Ok(JobHandle(handle))
+}
+
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
 
@@ -1428,6 +1519,47 @@ mod tests {
         assert!(registry_hive_path(&root, "User.dat").is_ok());
         assert!(registry_hive_path(&root, "../Host.dat").is_err());
         assert!(registry_hive_path(&root, "no-suffix").is_err());
+    }
+
+    /// 第十轮大检查：生命周期 Job 语义验证——宿主侧最后一个句柄关闭
+    /// （等价于宿主进程退出）时，KILL_ON_JOB_CLOSE 必须终止已绑定的进程。
+    /// 对照组（未绑定 Job 的同款进程）必须仍然存活，把因果钉在 Job 上。
+    /// （KILL_ON_JOB_CLOSE 的终止退出码由内核给 0，不作断言。）
+    #[cfg(windows)]
+    #[test]
+    fn lifecycle_job_kills_child_when_handle_drops() {
+        let mut bound = Command::new("ping")
+            .args(["-n", "20", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut control = Command::new("ping")
+            .args(["-n", "20", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        assert!(bind_lifecycle(&bound));
+        // 模拟宿主退出：从注册表取回唯一句柄并 drop。
+        let job = LIFECYCLE_JOBS
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .pop();
+        drop(job);
+        let mut exited = false;
+        for _ in 0..60 {
+            if bound.try_wait().unwrap().is_some() {
+                exited = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(exited, "关闭 Job 句柄应在数秒内终止已绑定的子进程");
+        assert!(
+            control.try_wait().unwrap().is_none(),
+            "未绑定 Job 的对照进程不应受影响"
+        );
+        let _ = bound.kill();
+        let _ = control.kill();
     }
 
     #[test]

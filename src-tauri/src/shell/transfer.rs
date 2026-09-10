@@ -95,18 +95,23 @@ fn store_path() -> CmdResult<PathBuf> {
 
 fn persist() {
     let Ok(sp) = store_path() else { return };
-    let guard = items().lock().unwrap();
-    let s = TrStore { items: guard.clone() };
-    if let Ok(bytes) = serde_json::to_vec_pretty(&s) {
-        let _ = fs::write(sp, bytes);
-    }
+    // 第十轮大检查：锁中毒恢复（后台线程不能因 .unwrap() 静默死亡）+
+    // 写盘移出锁窗口（磁盘慢时不阻塞其他命令）。
+    let bytes = {
+        let guard = items().lock().unwrap_or_else(|e| e.into_inner());
+        match serde_json::to_vec_pretty(&TrStore { items: guard.clone() }) {
+            Ok(b) => b,
+            Err(_) => return,
+        }
+    };
+    let _ = fs::write(sp, bytes);
 }
 
 fn emit_progress() {
     if let Some(app) = HUB.get() {
         use tauri::Emitter;
-        let guard = items().lock().unwrap();
-        let _ = app.emit("transfer://progress", guard.clone());
+        let snapshot = items().lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let _ = app.emit("transfer://progress", snapshot);
     }
 }
 
@@ -117,7 +122,7 @@ pub fn spawn_hub(app: tauri::AppHandle) {
     if let Ok(sp) = store_path() {
         if let Ok(bytes) = fs::read(&sp) {
             if let Ok(mut s) = serde_json::from_slice::<TrStore>(&bytes) {
-                let mut guard = items().lock().unwrap();
+                let mut guard = items().lock().unwrap_or_else(|e| e.into_inner());
                 for it in &mut s.items {
                     match it.status {
                         TrStatus::Running | TrStatus::Queued | TrStatus::Paused => it.status = TrStatus::Queued,
@@ -137,9 +142,10 @@ fn scan_loop() {
         if ACTIVE.load(Ordering::Relaxed) >= CONCURRENCY {
             continue;
         }
-        // 取下一个 queued 项
+        // 取下一个 queued 项（锁中毒恢复：扫描线程绝不能 panic 死掉，
+        // 否则整个传输队列永久停摆）
         let next = {
-            let mut guard = items().lock().unwrap();
+            let mut guard = items().lock().unwrap_or_else(|e| e.into_inner());
             guard
                 .iter_mut()
                 .find(|it| it.status == TrStatus::Queued)
@@ -167,14 +173,17 @@ fn take_ctrl(id: &str) -> Option<Ctrl> {
 }
 
 fn update_item(id: &str, f: impl FnOnce(&mut TrItem)) {
-    {
-        let mut guard = items().lock().unwrap();
-        if let Some(it) = guard.iter_mut().find(|i| i.id == id) {
-            f(it);
-        }
-    }
+    update_item_mem(id, f);
     persist();
     emit_progress();
+}
+
+/// 只更新内存中的条目（锁中毒恢复），不写盘不广播——给高频路径用。
+fn update_item_mem(id: &str, f: impl FnOnce(&mut TrItem)) {
+    let mut guard = items().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(it) = guard.iter_mut().find(|i| i.id == id) {
+        f(it);
+    }
 }
 
 /// 统计目录/文件总字节与文件数。
@@ -207,11 +216,16 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
 }
 
 /// 单文件分块复制（进度 + 暂停/取消检查点）。返回 (written, canceled, paused)。
+/// 第十轮大检查：进度持久化/广播按 250ms 节流——此前每个 1MiB 分块都做
+/// 全队列 JSON 序列化 + 写盘 + 事件广播（10GB 文件 = 万次写盘风暴，
+/// 严重拖垮传输期间的整机流畅度）。进度条视觉不变（250ms 足够平滑），
+/// 结束时强制冲刷一次保证最终状态落盘。
 fn copy_file_progress(src: &Path, dest: &Path, id: &str) -> CmdResult<(u64, bool, bool)> {
     let mut in_f = fs::File::open(src)?;
     let mut out_f = fs::File::create(dest)?;
     let mut buf = vec![0u8; CHUNK];
     let mut written = 0u64;
+    let mut last_push = now_ms();
     loop {
         match take_ctrl(id) {
             Some(Ctrl::Cancel) => return Ok((written, true, false)),
@@ -224,9 +238,17 @@ fn copy_file_progress(src: &Path, dest: &Path, id: &str) -> CmdResult<(u64, bool
         }
         out_f.write_all(&buf[..n])?;
         written += n as u64;
-        update_item(id, |it| it.bytes += n as u64);
+        update_item_mem(id, |it| it.bytes += n as u64);
+        let t = now_ms();
+        if t.saturating_sub(last_push) >= 250 {
+            last_push = t;
+            persist();
+            emit_progress();
+        }
     }
     out_f.sync_all()?;
+    persist();
+    emit_progress();
     Ok((written, false, false))
 }
 
@@ -369,12 +391,17 @@ pub fn tr_enqueue(st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: Strin
         return Err(AppError::not_found("目标目录不存在 / destination folder not found"));
     }
     let dir = st.data_dir.clone();
+    // 第十轮大检查：源存在性校验和写盘都移出锁窗口——此前整个
+    // fs::exists 检查 + JSON 序列化 + 写盘都持着队列锁，磁盘慢时
+    // 阻塞所有其他传输命令。
+    for s in &srcs {
+        if !Path::new(s).exists() {
+            return Err(AppError::not_found(format!("源不存在 / source not found: {s}")));
+        }
+    }
     {
         let mut guard = items().lock().map_err(|_| AppError::io("queue mutex"))?;
         for s in &srcs {
-            if !Path::new(s).exists() {
-                return Err(AppError::not_found(format!("源不存在 / source not found: {s}")));
-            }
             guard.push(TrItem {
                 id: crate::db::gen_id(),
                 src: s.clone(),
@@ -392,12 +419,11 @@ pub fn tr_enqueue(st: tauri::State<AppState>, srcs: Vec<String>, dest_dir: Strin
                 finished_at: None,
             });
         }
-        // 持久化（用调用方给的 data_dir，避免 HUB 未就绪）
-        let sp = dir.join("transfer.json");
-        let s = TrStore { items: guard.clone() };
-        if let Ok(bytes) = serde_json::to_vec_pretty(&s) {
-            let _ = fs::write(sp, bytes);
-        }
+    }
+    // 持久化（用调用方给的 data_dir，避免 HUB 未就绪）
+    let sp = dir.join("transfer.json");
+    if let Ok(bytes) = serde_json::to_vec_pretty(&TrStore { items: tr_list()? }) {
+        let _ = fs::write(sp, bytes);
     }
     emit_progress();
     tr_list()

@@ -456,9 +456,19 @@ pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-        .spawn()
-        .map(|c| Some(c.id()))
+    let child = cmd
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()?;
+    // 第十轮大检查：受管进程绑生命周期 Job（AI-2 §2.3「一软件一 Job；
+    // KILL_ON_JOB_CLOSE」）。宿主以任何方式退出时整棵进程树随之终止，
+    // 不再向宿主泄漏孤儿进程。绑定失败开放：进程照常运行，仅失去绑定。
+    if !crate::shell::isolation::bind_lifecycle(&child) {
+        eprintln!(
+            "[spawn] lifecycle job binding failed for pid {} (process runs unbound)",
+            child.id()
+        );
+    }
+    Ok(Some(child.id()))
 }
 
 #[cfg(not(windows))]
