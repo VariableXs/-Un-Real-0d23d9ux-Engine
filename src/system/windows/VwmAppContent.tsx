@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { uiStore, useUi } from "../../state/uiStore";
 import type { Settings } from "../../lib/settings";
@@ -51,7 +51,7 @@ import { L3CaptureView } from "./L3CaptureView";
  * 业务组件零修改：数据、编辑器、算法、快捷键事件协议全部照旧。
  */
 
-export function VwmAppContent(props: {
+export const VwmAppContent = memo(function VwmAppContent(props: {
   winId: string;
   app: VwmApp;
   /** explorer 初始定位路径（VwmWin.path；null/undefined = 默认位置）。 */
@@ -215,7 +215,7 @@ export function VwmAppContent(props: {
       </div>
     </div>
   );
-}
+});
 
 /**
  * 批次W-3：第三方占位层 —— running 时透明占位；exited/orphaned/failed 时占位卡。

@@ -117,18 +117,22 @@ export function CommandHintBar(props: { settings: Settings }): JSX.Element | nul
   }, []);
 
   useEffect(() => {
+    // 功能关闭时不轮询（默认关；开启才挂 2s 低频快照 diff）
+    if (!props.settings.commandHintBar) return;
     const update = (): void => {
-      setItems(
-        snapshot()
+      setItems((prev) => {
+        const next = snapshot()
           .filter((b) => b.scope !== "context")
           .slice(0, 8)
-          .map((b) => ({ id: b.id, combo: b.combo, desc: b.descKey })),
-      );
+          .map((b) => ({ id: b.id, combo: b.combo, desc: b.descKey }));
+        const sig = next.map((x) => `${x.id}:${x.combo}`).join("|");
+        return prev.map((x) => `${x.id}:${x.combo}`).join("|") === sig ? prev : next;
+      });
     };
     update();
     const timer = window.setInterval(update, 2000); // 注册表变更低频轮询（快照 diff）
     return () => window.clearInterval(timer);
-  }, []);
+  }, [props.settings.commandHintBar]);
 
   if (!props.settings.commandHintBar || !tall || items.length === 0) return null;
   return (

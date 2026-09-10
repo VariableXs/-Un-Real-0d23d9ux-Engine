@@ -192,12 +192,15 @@ function SceneLayer(): React.ReactElement {
       lastKeyAt.current = Date.now();
     };
     window.addEventListener("keydown", onKey);
-    const timer = window.setInterval(() => setGateTick((n) => n + 1), 500);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.clearInterval(timer);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // 仅用于「粒子已静止」提示的重渲染节拍（500ms）；粒子循环本身读 ref，不受影响。
+  // 场景关闭时停摆（渲染 null，无需节拍，避免空转重渲染）。
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = window.setInterval(() => setGateTick((n) => n + 1), 500);
+    return () => window.clearInterval(timer);
+  }, [enabled]);
 
   // 全屏源：sys://fullscreen（DesktopShell 同款；非 Tauri 环境视为非全屏）
   useEffect(() => {
@@ -283,17 +286,34 @@ function SceneLayer(): React.ReactElement {
       }).particlesStatic;
 
     let raf = 0;
+    let pollTimer = 0;
     let last = performance.now();
+    // 静止期探测周期：静态帧保持不变，用低频定时器探测恢复条件，
+    // 空转成本从满帧率 rAF 降到 4Hz（打字/全屏期间零绘制零合成）。
+    const STATIC_POLL_MS = 250;
     const frame = (now: number): void => {
+      if (isStatic()) {
+        // 保持最后一帧（静态帧），停 rAF 改低频探测，条件解除后自动续播
+        pollTimer = window.setTimeout(checkStatic, STATIC_POLL_MS);
+        return;
+      }
       raf = requestAnimationFrame(frame);
-      if (isStatic()) return; // 保持最后一帧（静态帧），恢复后自动续播
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       stepAndDraw(ctx, weather, ps, canvas.width, canvas.height, dt, now / 1000);
     };
+    const checkStatic = (): void => {
+      if (isStatic()) {
+        pollTimer = window.setTimeout(checkStatic, STATIC_POLL_MS);
+        return;
+      }
+      last = performance.now();
+      raf = requestAnimationFrame(frame);
+    };
 
     stepAndDraw(ctx, weather, ps, canvas.width, canvas.height, 0, 0); // 先画一帧（静止口径下即最终帧）
-    if (!isStatic()) raf = requestAnimationFrame(frame);
+    if (isStatic()) pollTimer = window.setTimeout(checkStatic, STATIC_POLL_MS);
+    else raf = requestAnimationFrame(frame);
 
     const onResize = (): void => {
       resize();
@@ -303,6 +323,7 @@ function SceneLayer(): React.ReactElement {
     window.addEventListener("resize", onResize);
     return () => {
       cancelAnimationFrame(raf);
+      window.clearTimeout(pollTimer);
       window.removeEventListener("resize", onResize);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };

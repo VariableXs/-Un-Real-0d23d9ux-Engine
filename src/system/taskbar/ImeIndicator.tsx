@@ -21,8 +21,16 @@ export function ImeIndicator(): React.ReactElement {
     const tick = (): void => {
       void ipc
         .imeStatus()
-        .then((s) => alive && setStatus(s))
-        .catch(() => alive && setStatus(null));
+        .then((s) => {
+          if (!alive) return;
+          // 变更检测：中英态与布局不变则保持原引用（避免每秒空转重渲染）
+          setStatus((prev) =>
+            prev !== null && s !== null && prev.chinese === s.chinese && prev.langId === s.langId ? prev : s,
+          );
+        })
+        .catch(() => {
+          if (alive) setStatus((prev) => (prev === null ? prev : null));
+        });
     };
     tick();
     const id = window.setInterval(tick, 1000);

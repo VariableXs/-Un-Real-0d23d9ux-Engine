@@ -64,6 +64,13 @@ const launchPendingKey = async (key: string, name: string): Promise<boolean> => 
 
 const CPU_HIST = 40;
 
+/** 集合内容相等（避免轮询新 Set 引用引发的无效重渲染）。 */
+const sameSet = <T,>(a: Set<T>, b: Set<T>): boolean =>
+  a.size === b.size && [...a].every((v) => b.has(v));
+/** 浏览器 profile 列表签名相等（id/exe/名称不变即视为无变化）。 */
+const sameProfiles = (a: BrowserProfileDto[], b: BrowserProfileDto[]): boolean =>
+  a.length === b.length && a.every((p, i) => p.id === b[i]?.id && p.name === b[i]?.name && p.exe === b[i]?.exe);
+
 export function Taskbar(props: {
   startOpen: boolean;
   onToggleStart: () => void;
@@ -148,21 +155,25 @@ export function Taskbar(props: {
             apps.add((a === "code" ? "project" : a) as AppMode);
           }
         }
-        if (alive) setOfficialRunning(apps);
+        if (alive) setOfficialRunning((prev) => (sameSet(prev, apps) ? prev : apps));
       } catch {
         /* window API unavailable */
       }
       try {
         const ids = await ipc.tpRunning();
-        if (alive) setTpRunning(new Set(ids));
+        if (alive) {
+          const next = new Set(ids);
+          setTpRunning((prev) => (sameSet(prev, next) ? prev : next));
+        }
       } catch {
         /* backend busy — keep previous */
       }
       try {
         const [bps, br] = await Promise.all([ipc.browserProfiles(), ipc.browserRunning()]);
         if (alive) {
-          setBrowserProfiles(bps);
-          setBrRunning(new Set(br));
+          const brNext = new Set(br);
+          setBrowserProfiles((prev) => (sameProfiles(prev, bps) ? prev : bps));
+          setBrRunning((prev) => (sameSet(prev, brNext) ? prev : brNext));
         }
       } catch {
         /* backend busy — keep previous */
@@ -473,7 +484,14 @@ export function Taskbar(props: {
     const poll = (): void => {
       void ipc
         .privacyUsage()
-        .then((u) => alive && setPrivacy(u))
+        .then((u) => {
+          if (!alive) return;
+          setPrivacy((prev) =>
+            prev.length === u.length && prev.every((p, i) => p.kind === u[i]?.kind && p.app === u[i]?.app)
+              ? prev
+              : u,
+          );
+        })
         .catch(() => {});
     };
     poll();

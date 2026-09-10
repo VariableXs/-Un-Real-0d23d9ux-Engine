@@ -141,8 +141,35 @@ async function tryWorkerEngine(
     heightCss: Math.max(240, window.innerHeight),
     dpr: window.devicePixelRatio || 1,
   });
-    const onMouseMove = (e: MouseEvent): void => post({ type: "cursor", x: e.clientX, y: e.clientY });
-    const onDocLeave = (): void => post({ type: "cursor", x: -9999, y: -9999 });
+    // 鼠标视差：worker 每帧只消费最新光标位，rAF 合并逐事件 postMessage
+    //（高回报率鼠标 120Hz+ 时消息量减半以上，视觉零差异——中间位置本就会被覆盖）
+    let cursorPending = false;
+    let cursorX = 0;
+    let cursorY = 0;
+    let cursorLeft = false;
+    const flushCursor = (): void => {
+      cursorPending = false;
+      if (cursorLeft) return;
+      post({ type: "cursor", x: cursorX, y: cursorY });
+    };
+    const onMouseMove = (e: MouseEvent): void => {
+      cursorX = e.clientX;
+      cursorY = e.clientY;
+      if (cursorLeft) {
+        cursorLeft = false;
+        post({ type: "cursor", x: cursorX, y: cursorY });
+        return;
+      }
+      if (!cursorPending) {
+        cursorPending = true;
+        requestAnimationFrame(flushCursor);
+      }
+    };
+    const onDocLeave = (): void => {
+      cursorLeft = true;
+      cursorPending = false;
+      post({ type: "cursor", x: -9999, y: -9999 });
+    };
     const onVis = (): void => post({ type: "visibility", hidden: document.hidden });
     window.addEventListener("resize", onResize);
     window.addEventListener("mousemove", onMouseMove, { passive: true });

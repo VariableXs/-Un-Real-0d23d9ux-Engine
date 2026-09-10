@@ -701,9 +701,13 @@ function taskbarEl(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.taskbar[data-testid="taskbar"]');
 }
 
+let centerCached: HTMLElement | null = null;
 function centerEl(): HTMLElement | null {
   if (typeof document === "undefined") return null;
-  return document.querySelector<HTMLElement>(".taskbar .taskbar-center");
+  // 缓存 + isConnected 校验：磁漂 pointermove 热路径逐事件调用，避免全文档 querySelector
+  if (centerCached?.isConnected) return centerCached;
+  centerCached = document.querySelector<HTMLElement>(".taskbar .taskbar-center");
+  return centerCached;
 }
 
 // ---- W-039 磁漂 ----
@@ -756,6 +760,7 @@ function driftKick(): void {
   driftRaf = requestAnimationFrame(driftTick);
 }
 
+let driftCountCheckedAt = 0;
 function onDockPointerMove(e: PointerEvent): void {
   if (!flagOn("W-039")) return;
   const center = centerEl();
@@ -766,7 +771,17 @@ function onDockPointerMove(e: PointerEvent): void {
     driftInside = e.clientY >= r.top - 12 && e.clientY <= r.bottom + 12;
     if (driftInside) {
       driftPointerX = e.clientX;
-      if (driftItems.length === 0 || driftItems.length !== center.querySelectorAll(".tb-btn .tb-app-icon").length) driftSample();
+      // 图标增删检测 400ms 节流：querySelectorAll 逐事件跑是热路径开销，
+      // 增删图标本身是稀有事件，亚秒级检测延迟对手感无感知影响
+      const now = performance.now();
+      if (
+        driftItems.length === 0 ||
+        (now - driftCountCheckedAt >= 400 &&
+          driftItems.length !== center.querySelectorAll(".tb-btn .tb-app-icon").length)
+      ) {
+        driftCountCheckedAt = now;
+        driftSample();
+      }
       driftKick();
     }
   } else if (driftInside) {

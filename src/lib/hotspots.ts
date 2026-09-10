@@ -25,19 +25,42 @@ export const DEFAULT_HOTSPOT_CONFIG: HotspotConfig = {
 
 const STORAGE_KEY = "vision.edgeHotspots.v1";
 
+/**
+ * 配置缓存（写穿透）：EdgeHotspots 的 pointermove 热路径每次事件都读配置，
+ * 高回报率鼠标（120Hz+）下逐事件 localStorage.getItem + JSON.parse 是可观开销；
+ * 本窗口写入由 save/reset 主动刷新缓存，其他 WebView 修改经 storage 事件失效。
+ */
+let cachedCfg: HotspotConfig | null = null;
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) cachedCfg = null;
+  });
+}
+
+function defaultConfig(): HotspotConfig {
+  return { ...DEFAULT_HOTSPOT_CONFIG, positions: { ...DEFAULT_HOTSPOT_CONFIG.positions } };
+}
+
 export function loadHotspotConfig(): HotspotConfig {
+  if (cachedCfg) return cachedCfg;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_HOTSPOT_CONFIG, positions: { ...DEFAULT_HOTSPOT_CONFIG.positions } };
+    if (!raw) {
+      cachedCfg = defaultConfig();
+      return cachedCfg;
+    }
     const parsed = JSON.parse(raw) as Partial<HotspotConfig>;
-    return {
+    cachedCfg = {
       positions: { ...parsed.positions },
       hoverDwellMs: parsed.hoverDwellMs ?? DEFAULT_HOTSPOT_CONFIG.hoverDwellMs,
       hitPx: parsed.hitPx ?? DEFAULT_HOTSPOT_CONFIG.hitPx,
       enabled: parsed.enabled ?? true,
     };
+    return cachedCfg;
   } catch {
-    return { ...DEFAULT_HOTSPOT_CONFIG, positions: { ...DEFAULT_HOTSPOT_CONFIG.positions } };
+    cachedCfg = defaultConfig();
+    return cachedCfg;
   }
 }
 
@@ -47,6 +70,7 @@ export function saveHotspotConfig(cfg: HotspotConfig): void {
   } catch {
     /* 隐私模式等：静默 */
   }
+  cachedCfg = cfg;
 }
 
 export function resetHotspotConfig(): HotspotConfig {
