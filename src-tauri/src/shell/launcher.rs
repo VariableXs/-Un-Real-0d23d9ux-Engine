@@ -1002,9 +1002,26 @@ pub struct TpInboxImportResult {
     pub path: String,
 }
 
-/// 软件收件箱目录：<数据目录>\SoftwareInbox（不存在则创建）。
+/// 收件箱目录决策（纯逻辑 + 可写探测，可单测）：
+/// 优先 <程序目录>\SoftwareInbox——用户打开环境所在文件夹即见，直观可放；
+/// 程序目录不可写（如安装到 Program Files）→ 回退 <数据目录>\SoftwareInbox。
+/// 探测即建：候选位置不存在时 create_dir_all 试建（成功 = 可写，同时文件夹就此可见）。
+fn inbox_dir_with(exe_dir: Option<&Path>, data_dir: &Path) -> PathBuf {
+    if let Some(dir) = exe_dir {
+        let candidate = dir.join("SoftwareInbox");
+        if candidate.exists() || fs::create_dir_all(&candidate).is_ok() {
+            return candidate;
+        }
+    }
+    data_dir.join("SoftwareInbox")
+}
+
+/// 软件收件箱目录：环境（程序）文件夹优先，回退数据目录。
 pub fn inbox_dir(st: &AppState) -> PathBuf {
-    st.data_dir.join("SoftwareInbox")
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    inbox_dir_with(exe_dir.as_deref(), &st.data_dir)
 }
 
 /// 软件收件箱自动导入：
@@ -1014,12 +1031,13 @@ pub fn inbox_dir(st: &AppState) -> PathBuf {
 /// - 已登记路径幂等跳过；单条失败不中断批次
 #[tauri::command]
 pub fn tp_inbox_import(st: tauri::State<AppState>) -> CmdResult<TpInboxImportResult> {
-    tp_inbox_import_inner(&st)
+    let inbox = inbox_dir(&st);
+    tp_inbox_import_inner(&st, &inbox)
 }
 
-fn tp_inbox_import_inner(st: &AppState) -> CmdResult<TpInboxImportResult> {
-    let inbox = inbox_dir(st);
-    fs::create_dir_all(&inbox).map_err(|e| {
+/// inbox 参数注入（命令层用 inbox_dir 决策；测试直接指定临时目录隔离）。
+fn tp_inbox_import_inner(st: &AppState, inbox: &Path) -> CmdResult<TpInboxImportResult> {
+    fs::create_dir_all(inbox).map_err(|e| {
         AppError::io(format!("创建软件收件箱失败 / Cannot create software inbox: {e}"))
     })?;
     let path_out = inbox.to_string_lossy().to_string();
@@ -1890,11 +1908,36 @@ mod tests {
     // ---------- 批次F：软件收件箱 ----------
 
     #[test]
+    fn inbox_dir_prefers_program_dir_and_falls_back() {
+        let tmp = std::env::temp_dir().join(format!("variable-inboxdir-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        fs::create_dir_all(&data).unwrap();
+
+        // exe 目录可写 → 环境文件夹优先（探测即建）
+        let exe_dir = tmp.join("env");
+        fs::create_dir_all(&exe_dir).unwrap();
+        let p = inbox_dir_with(Some(&exe_dir), &data);
+        assert_eq!(p, exe_dir.join("SoftwareInbox"));
+        assert!(p.exists(), "探测即建：文件夹应已可见");
+
+        // 已存在的收件箱 → 直接复用（不重建）
+        let p2 = inbox_dir_with(Some(&exe_dir), &data);
+        assert_eq!(p2, p);
+
+        // 无 exe 目录（探测失败场景）→ 回退数据目录
+        let p3 = inbox_dir_with(None, &data);
+        assert_eq!(p3, data.join("SoftwareInbox"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn inbox_import_registers_direct_exes_and_folder_mains_only() {
         let tmp = std::env::temp_dir().join(format!("variable-inbox-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
-        let inbox = st.data_dir.join("SoftwareInbox");
+        let inbox = tmp.join("inbox"); // 注入：测试隔离（命令层用 inbox_dir 决策）
         // 收件箱内容：直接放 1 个 exe（任意语言名）+ 1 个软件子文件夹（主程序+卸载器）+
         // 1 个非 exe 文件 + 1 个含否决词的直接 exe
         fs::create_dir_all(inbox.join("PotPlayer")).unwrap();
@@ -1904,9 +1947,9 @@ mod tests {
         fs::write(inbox.join("readme.txt"), b"no").unwrap();
         fs::write(inbox.join("setup.exe"), b"MZ").unwrap();
 
-        let r = tp_inbox_import_inner(&st).unwrap();
+        let r = tp_inbox_import_inner(&st, &inbox).unwrap();
         assert_eq!(r.added, 2, "直接 exe + 子文件夹主程序，共 2 个");
-        assert!(r.path.ends_with("SoftwareInbox"));
+        assert!(r.path.ends_with("inbox"));
 
         let apps = load_registry(&st);
         let paths: Vec<&str> = apps.iter().map(|a| a.path.as_str()).collect();
@@ -1919,12 +1962,12 @@ mod tests {
         assert!(apps.iter().any(|a| a.name == "任意名字"));
 
         // 幂等：第二次导入 → 0（已登记路径去重）
-        let r2 = tp_inbox_import_inner(&st).unwrap();
+        let r2 = tp_inbox_import_inner(&st, &inbox).unwrap();
         assert_eq!(r2.added, 0);
 
         // 收件箱目录不存在时自动创建并返回 0
         let _ = fs::remove_dir_all(&inbox);
-        let r3 = tp_inbox_import_inner(&st).unwrap();
+        let r3 = tp_inbox_import_inner(&st, &inbox).unwrap();
         assert_eq!(r3.added, 0);
         assert!(inbox.exists(), "收件箱应被自动创建");
 
@@ -1936,11 +1979,12 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!("variable-inbox-cap-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
-        let inbox = st.data_dir.join("SoftwareInbox");
+        let inbox = tmp.join("inbox");
+        fs::create_dir_all(&inbox).unwrap();
         for i in 0..(INBOX_IMPORT_MAX + 10) {
             fs::write(inbox.join(format!("app{i:03}.exe")), b"MZ").unwrap();
         }
-        let r = tp_inbox_import_inner(&st).unwrap();
+        let r = tp_inbox_import_inner(&st, &inbox).unwrap();
         assert_eq!(r.added, INBOX_IMPORT_MAX, "单次导入应封顶");
         // 补量：删掉已登记的，第二次启动继续收余下的
         let apps = load_registry(&st);
