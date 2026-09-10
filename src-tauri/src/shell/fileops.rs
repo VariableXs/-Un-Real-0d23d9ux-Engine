@@ -263,8 +263,15 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut u32, truncated: 
             return;
         }
         let p = item.path();
+        // 不跟随符号链接/junction 目录：Windows 用户目录存在 junction 环
+        //（Application Data 链等），跟随会重复扫描灌满上限甚至无限递归。
+        // DirEntry::file_type() 不跟随链接，junction 在其结果中 is_symlink()==true
+        //（与下方 scan_dir 的 symlink_metadata 语义一致）。
+        let is_link = item.file_type().map(|ft| ft.is_symlink()).unwrap_or(false);
         if p.is_dir() {
-            walk_files(&p, out, scanned, truncated);
+            if !is_link {
+                walk_files(&p, out, scanned, truncated);
+            }
         } else {
             out.push(p);
             *scanned += 1;
