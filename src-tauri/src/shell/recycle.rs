@@ -386,15 +386,29 @@ pub async fn rec_empty(st: tauri::State<'_, AppState>) -> CmdResult<u32> {
         }
     }
 
-    // fs recycle 全部清除（含元数据）
+    // fs recycle 全部清除（含元数据；policy.json 是回收站策略配置，不属于回收内容）
     let rdir = recycle_dir(&st);
     if let Ok(rd) = fs::read_dir(&rdir) {
         for item in rd.flatten() {
+            let name = item.file_name().to_string_lossy().to_string();
+            if name == "policy.json" {
+                continue;
+            }
             let p = item.path();
-            let is_dir = item.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            let ok = if is_dir { fs::remove_dir_all(&p).is_ok() } else { fs::remove_file(&p).is_ok() };
-            if ok {
-                count += 1;
+            if name.ends_with(".meta.json") {
+                // 一条 fs-item = 数据目录 + 元数据：连带清除，只计一次
+                let id = name.strip_suffix(".meta.json").unwrap_or(&name);
+                let dir = rdir.join(id);
+                if dir.is_dir() {
+                    let _ = fs::remove_dir_all(&dir);
+                }
+                if fs::remove_file(&p).is_ok() {
+                    count += 1;
+                }
+            } else {
+                // 无元数据的孤儿目录/文件：如实清除，不计入条目数
+                let is_dir = item.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                let _ = if is_dir { fs::remove_dir_all(&p) } else { fs::remove_file(&p) };
             }
         }
     }
@@ -518,7 +532,7 @@ pub fn rec_policy_preview_inner(st: &AppState) -> CmdResult<Vec<RecItem>> {
             }
         }
     }
-    doomed.sort_by(|a, b| a.deleted_at.cmp(&a.deleted_at));
+    doomed.sort_by(|a, b| a.deleted_at.cmp(&b.deleted_at));
     Ok(doomed)
 }
 

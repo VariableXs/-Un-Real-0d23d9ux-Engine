@@ -1,4 +1,4 @@
-﻿use crate::db::{gen_id, now_ms};
+use crate::db::{gen_id, now_ms};
 use crate::error::{AppError, CmdResult};
 use crate::models::BackupInfo;
 use crate::state::AppState;
@@ -150,10 +150,15 @@ pub async fn restore_backup(st: tauri::State<'_, AppState>, file_name: String) -
     st.with_conn(|conn| conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").map_err(AppError::from))?;
     let db_path = db_file(&st);
     let tmp = st.db_dir.join(".restore-old.db");
-    let _ = fs::remove_file(&tmp);
-    let _ = fs::remove_file(db_path.with_extension("db-wal"));
-    let _ = fs::remove_file(db_path.with_extension("db-shm"));
     let result = st.with_conn_closed(|| -> CmdResult<()> {
+        // Inside the closure the SQLite handle is already dropped: the -shm file
+        // is no longer memory-mapped and -wal is no longer held open. Deleting
+        // them BEFORE the swap is critical on Windows — outside the closure the
+        // deletes silently fail (sharing violation), leaving a stale WAL from
+        // the OLD database that SQLite would replay onto the restored file.
+        let _ = fs::remove_file(db_path.with_extension("db-wal"));
+        let _ = fs::remove_file(db_path.with_extension("db-shm"));
+        let _ = fs::remove_file(&tmp);
         fs::rename(&db_path, &tmp)
             .map_err(|e| AppError::io(format!("无法暂存当前数据库 / Cannot stage current db: {e}")))?;
         match fs::copy(&backup, &db_path) {
