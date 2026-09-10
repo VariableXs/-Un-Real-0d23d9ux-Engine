@@ -59,6 +59,7 @@ function seedWins(wins: Partial<VwmWin>[]): void {
       h: w.h ?? 600,
       state: w.state ?? "normal",
       minimized: w.minimized ?? false,
+      hidden: false,
       z: w.z ?? i + 1,
       restore: null,
       group: null,

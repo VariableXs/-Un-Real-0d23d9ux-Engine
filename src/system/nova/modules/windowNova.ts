@@ -1264,7 +1264,7 @@ function syncPass(): void {
   for (const [tid, t] of slotDebounce) if (!alive.has(tid)) clearTimeout(t), slotDebounce.delete(tid);
 
   // W-016 z 序阴影
-  const vis = s.wins.filter((w) => !w.minimized && isVwmWinVisible(w));
+  const vis = s.wins.filter((w) => !w.minimized && !w.hidden && isVwmWinVisible(w));
   const sorted = [...vis].sort((a, b) => b.z - a.z);
   for (const [i, w] of sorted.entries()) {
     const el = frameEl(w.id);

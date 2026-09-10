@@ -733,6 +733,252 @@ pub fn tp_scan_start_menu(st: tauri::State<AppState>) -> CmdResult<Vec<TpScanCan
     Ok(out)
 }
 
+// ---------- 批次F：任意软件文件夹智能扫描（拖入文件夹自动登记） ----------
+
+/// 文件夹扫描候选（recommended = 疑似主程序，可自动登记）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpFolderCandidate {
+    /// 显示名：优先版本资源 FileDescription（任意语言软件的本地化名称），
+    /// 缺失时回退 exe 文件名。
+    pub name: String,
+    /// exe 绝对路径
+    pub path: String,
+    /// 文件字节数
+    pub size: u64,
+    /// 打分（越高越可能是主程序；越低越可能是辅助组件）
+    pub score: i32,
+    /// 是否推荐自动登记（过滤卸载器/更新器/崩溃报告器等辅助进程后）
+    pub recommended: bool,
+}
+
+/// 文件夹扫描报告（isFolder=false = 拖入的是普通文件，前端应静默忽略）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpFolderScanReport {
+    pub is_folder: bool,
+    pub candidates: Vec<TpFolderCandidate>,
+}
+
+/// 否决词（文件名包含即排除：卸载/安装/更新/崩溃上报/提权/服务等辅助进程）。
+/// 与 SCAN_SKIP_PAT 同源思路，但按「拖入文件夹自动登记」的误登记代价单独调校。
+const EXE_VETO: &[&str] = &[
+    "uninstall", "unins", "setup", "install", "update", "updater", "upgrade",
+    "downgrade", "crashpad", "crashreport", "crash_handler", "reporter", "error",
+    "feedback", "helper", "webview", "loader", "stub", "repair", "diag",
+    "diagnose", "elevate", "elevation", "console", "cli", "daemon", "service",
+    "agent", "watchdog", "cleaner", "killer", "fixer", "uninst", "卸载", "更新",
+    "升级", "修复", "安装",
+];
+
+/// 软性降权词（疑似工具组件而非主程序，仅减分不否决）。
+const EXE_SOFT_MINUS: &[&str] = &[
+    "tool", "util", "browser", "patch", "mux", "convert", "ffmpeg", "test",
+    "demo", "sample", "helper_", "mini", "lite",
+];
+
+/// 推荐阈值：达到即自动登记（单 exe 文件夹不受阈值约束，恒推荐）。
+const EXE_RECOMMEND_THRESHOLD: i32 = 30;
+
+/// 名称归一（去分隔符，小写）——「MyApp v2」与「myappv2」视为同名。
+fn norm_name(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// 候选打分（纯逻辑，可单测）：
+/// - 否决词命中 → i32::MIN（绝不推荐）
+/// - +40 文件名 ≈ 文件夹名（完全一致）；+25 互为前缀（WeChat / WeChatApp）
+/// - +20 有版本资源 FileDescription（正经软件都有）
+/// - +12 根目录；+6 两层以内
+/// - +min(体积/512KB, 12)（主程序通常更大）
+/// - 软性降权词 −8
+pub fn exe_candidate_score(file_stem: &str, folder_name: &str, depth: u32, has_desc: bool, size: u64) -> i32 {
+    let low = file_stem.to_lowercase();
+    if EXE_VETO.iter().any(|v| low.contains(v)) {
+        return i32::MIN;
+    }
+    let mut score = 0i32;
+    let fs = norm_name(file_stem);
+    let fdir = norm_name(folder_name);
+    if !fs.is_empty() && !fdir.is_empty() {
+        if fs == fdir {
+            score += 40;
+        } else if fdir.starts_with(&fs) || fs.starts_with(&fdir) {
+            score += 25;
+        }
+    }
+    if has_desc {
+        score += 20;
+    }
+    if depth == 0 {
+        score += 12;
+    } else if depth <= 2 {
+        score += 6;
+    }
+    score += (size / (512 * 1024)).min(12) as i32;
+    if EXE_SOFT_MINUS.iter().any(|v| low.contains(v)) {
+        score -= 8;
+    }
+    score
+}
+
+/// 扫描护栏：深度 ≤4、目录条目 ≤4000、候选 exe ≤128（大目录诚实截断，不卡 UI）。
+const FOLDER_SCAN_MAX_DEPTH: u32 = 4;
+const FOLDER_SCAN_MAX_ENTRIES: usize = 4000;
+const FOLDER_SCAN_MAX_EXES: usize = 128;
+
+/// 递归收集 .exe（跳过 reparse point 防符号链接环；读失败静默跳过）。
+fn collect_exes(dir: &Path, depth: u32, out: &mut Vec<(PathBuf, u64, u32)>, budget: &mut usize) {
+    if depth > FOLDER_SCAN_MAX_DEPTH || out.len() >= FOLDER_SCAN_MAX_EXES || *budget == 0 {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for item in rd.flatten() {
+        if *budget == 0 || out.len() >= FOLDER_SCAN_MAX_EXES {
+            return;
+        }
+        let Ok(ft) = item.file_type() else { continue };
+        let path = item.path();
+        if ft.is_dir() {
+            // reparse point（junction/符号链接）不深入，防环
+            if item.metadata().map(|m| is_reparse(&m)).unwrap_or(false) {
+                continue;
+            }
+            *budget -= 1;
+            collect_exes(&path, depth + 1, out, budget);
+        } else if ft.is_file()
+            && path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+                .unwrap_or(false)
+        {
+            let size = item.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push((path, size, depth));
+        }
+    }
+}
+
+/// FILE_ATTRIBUTE_REPARSE_POINT（Windows；非 Windows 恒 false）。
+#[cfg(windows)]
+fn is_reparse(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_attributes() & 0x400 != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse(_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
+/// 读取版本资源 FileDescription（任意语言的本地化软件名）。
+/// 仅本机 version.dll 查询，零网络；无版本资源如实返回 None。
+#[cfg(windows)]
+fn file_description(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+    };
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    unsafe {
+        let len = GetFileVersionInfoSizeW(PCWSTR(wide.as_ptr()), None);
+        if len == 0 {
+            return None; // 无版本资源
+        }
+        let mut buf = vec![0u8; len as usize];
+        if GetFileVersionInfoW(PCWSTR(wide.as_ptr()), 0, len, buf.as_mut_ptr() as *mut core::ffi::c_void).is_err() {
+            return None;
+        }
+        let sub: Vec<u16> = "\\VarFileInfo\\FileDescription"
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let mut ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut chars: u32 = 0;
+        if !VerQueryValueW(
+            buf.as_ptr() as *const core::ffi::c_void,
+            PCWSTR(sub.as_ptr()),
+            &mut ptr,
+            &mut chars,
+        )
+        .as_bool()
+            || ptr.is_null()
+            || chars == 0
+        {
+            return None;
+        }
+        // chars 含结尾 NUL；逐字符截到首个 NUL，防越界读脏字节
+        let slice = std::slice::from_raw_parts(ptr as *const u16, chars as usize);
+        let end = slice.iter().position(|&c| c == 0).unwrap_or(slice.len());
+        let s = String::from_utf16_lossy(&slice[..end]).trim().to_string();
+        (!s.is_empty()).then_some(s)
+    }
+}
+
+#[cfg(not(windows))]
+fn file_description(_path: &Path) -> Option<String> {
+    None
+}
+
+/// 扫描任意软件文件夹：找出全部 .exe，按主程序可能性排序。
+/// - 显示名优先 FileDescription（什么语言的软件就叫它自己的名字）
+/// - 已登记路径自动去重；普通文件（非目录）is_folder=false，前端静默忽略
+/// - 单 exe 文件夹恒推荐（用户拖文件夹就是想登记它）
+#[tauri::command]
+pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpFolderScanReport> {
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        // 非目录（用户拖入的是普通文件）→ 如实标注，前端无动作
+        return Ok(TpFolderScanReport { is_folder: false, candidates: Vec::new() });
+    }
+    let folder_name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let registered: Vec<String> = load_registry(&st)
+        .iter()
+        .map(|a| norm(Path::new(&a.path)))
+        .collect();
+
+    let mut exes: Vec<(PathBuf, u64, u32)> = Vec::new();
+    let mut budget = FOLDER_SCAN_MAX_ENTRIES;
+    collect_exes(&p, 0, &mut exes, &mut budget);
+
+    let mut out: Vec<TpFolderCandidate> = Vec::new();
+    for (ep, size, depth) in exes {
+        if registered.contains(&norm(&ep)) {
+            continue;
+        }
+        let stem = ep
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let desc = file_description(&ep);
+        let score = exe_candidate_score(&stem, &folder_name, depth, desc.is_some(), size);
+        if score == i32::MIN {
+            continue; // 否决词：卸载器/更新器/辅助进程
+        }
+        out.push(TpFolderCandidate {
+            name: desc.unwrap_or(stem),
+            path: ep.to_string_lossy().to_string(),
+            size,
+            score,
+            recommended: false, // 下方统一判定（依赖总数）
+        });
+    }
+    // 推荐判定：达标 or 全文件夹唯一的合法 exe
+    let single = out.len() == 1;
+    for c in out.iter_mut() {
+        c.recommended = single || c.score >= EXE_RECOMMEND_THRESHOLD;
+    }
+    out.sort_by(|a, b| b.score.cmp(&a.score).then(a.path.cmp(&b.path)));
+    Ok(TpFolderScanReport { is_folder: true, candidates: out })
+}
+
 // ---------- 批次E（规格 5.9.3）：便携化 ----------
 
 /// 把已登记的 standalone/shortcut 软件整目录复制进数据目录（Apps/<目录名>），
@@ -1450,6 +1696,91 @@ mod tests {
         assert!(out.icon.is_none());
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // ---------- 批次F：文件夹智能扫描 ----------
+
+    #[test]
+    fn exe_score_vetoes_helpers_and_updaters() {
+        // 卸载器/更新器/崩溃上报/辅助进程 → 一票否决
+        for stem in [
+            "unins000", "Uninstall", "setup", "Installer", "Update", "updater",
+            "crashpad_handler", "elevate", "uninst", "卸载工具", "修复",
+        ] {
+            assert_eq!(exe_candidate_score(stem, "AnyApp", 0, true, 30_000_000), i32::MIN, "{stem} 应被否决");
+        }
+    }
+
+    #[test]
+    fn exe_score_ranks_main_program_above_helpers() {
+        // 主程序：文件夹同名 + 版本描述 + 根目录 + 大体积
+        let main = exe_candidate_score("PotPlayer", "PotPlayer", 0, true, 40_000_000);
+        // 变体名（互为前缀）
+        let variant = exe_candidate_score("WeChatApp", "WeChat", 0, true, 20_000_000);
+        // 深层小体积辅助组件（无版本描述）
+        let helper = exe_candidate_score("ffmpeg-mux", "obs-studio", 2, false, 900_000);
+        assert!(main > helper, "主程序 {main} 应高于辅助组件 {helper}");
+        assert!(variant > helper);
+        assert!(main >= EXE_RECOMMEND_THRESHOLD, "典型主程序应达推荐线（{main}）");
+        assert!(helper < EXE_RECOMMEND_THRESHOLD, "辅助组件不应被推荐（{helper}）");
+        // 软性降权词确实降权
+        let plain = exe_candidate_score("obs", "obs-studio", 2, true, 200_000_000);
+        let tool = exe_candidate_score("obs-tool", "obs-studio", 2, true, 200_000_000);
+        assert!(tool < plain, "软性降权词应减分");
+    }
+
+    #[test]
+    fn exe_score_normalizes_separators_for_name_match() {
+        // 「My App v2」文件夹 vs「myappv2」exe → 归一后同名 +40
+        let a = exe_candidate_score("myappv2", "My App v2", 0, false, 0);
+        let b = exe_candidate_score("totally-different", "My App v2", 0, false, 0);
+        assert!(a > b);
+        assert!(a >= 40, "归一同名应拿到 +40（{a}）");
+    }
+
+    #[test]
+    fn folder_scan_collects_exes_with_depth_and_caps() {
+        let tmp = std::env::temp_dir().join(format!("variable-scan-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        // 结构：root/App.exe（depth0）、root/bin/core.exe（depth1）、
+        // root/a/b/c/d/deep.exe（depth4，仍收录）、root/a/b/c/d/e/toodeep.exe（depth5，不收录）
+        fs::create_dir_all(tmp.join("bin")).unwrap();
+        fs::create_dir_all(tmp.join("a/b/c/d/e")).unwrap();
+        fs::write(tmp.join("App.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("bin").join("core.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("readme.txt"), b"no").unwrap();
+        fs::write(tmp.join("a/b/c/d").join("deep.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("a/b/c/d/e").join("toodeep.exe"), b"MZ").unwrap();
+
+        let mut out = Vec::new();
+        let mut budget = FOLDER_SCAN_MAX_ENTRIES;
+        collect_exes(&tmp, 0, &mut out, &mut budget);
+        let names: Vec<&str> = out.iter().map(|(p, _, _)| p.file_name().unwrap().to_str().unwrap()).collect();
+        assert!(names.contains(&"App.exe"));
+        assert!(names.contains(&"core.exe"));
+        assert!(names.contains(&"deep.exe"), "depth 4 边界应收录");
+        assert!(!names.contains(&"toodeep.exe"), "depth 5 超限不收录");
+        assert!(!names.contains(&"readme.txt"), "非 exe 不收录");
+        // 深度值正确（App.exe = 0，core.exe = 1）
+        let (_, _, d0) = out.iter().find(|(p, _, _)| p.ends_with("App.exe")).unwrap();
+        let (_, _, d1) = out.iter().find(|(p, _, _)| p.ends_with("core.exe")).unwrap();
+        assert_eq!(*d0, 0);
+        assert_eq!(*d1, 1);
+
+        // 候选上限护栏：128 封顶
+        let many = std::env::temp_dir().join(format!("variable-scan-many-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&many);
+        fs::create_dir_all(&many).unwrap();
+        for i in 0..200 {
+            fs::write(many.join(format!("f{i:03}.exe")), b"MZ").unwrap();
+        }
+        let mut out2 = Vec::new();
+        let mut budget2 = FOLDER_SCAN_MAX_ENTRIES;
+        collect_exes(&many, 0, &mut out2, &mut budget2);
+        assert_eq!(out2.len(), FOLDER_SCAN_MAX_EXES, "候选数应封顶 128");
+
+        let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_dir_all(&many);
     }
 }
 

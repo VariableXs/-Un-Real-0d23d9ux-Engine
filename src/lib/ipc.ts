@@ -298,6 +298,8 @@ export const ipc = {
   tpSetIcon: (id: string, iconPath: string | null) => invoke<Shell.ThirdApp>("tp_set_icon", { id, iconPath }),
   // 批次E（规格 5.9.2/5.9.3）：开始菜单扫描 + 便携化
   tpScanStartMenu: () => invoke<Shell.TpScanCandidate[]>("tp_scan_start_menu"),
+  /** 批次F：扫描软件文件夹，返回按主程序可能性排序的 exe 候选报告。 */
+  tpScanFolder: (path: string) => invoke<Shell.TpFolderScanReport>("tp_scan_folder", { path }),
   tpPortableize: (id: string) => invoke<Shell.ThirdApp>("tp_portableize", { id }),
   tpLaunchAdmin: (id: string) => invoke<void>("tp_launch_admin", { id }),
   iconDataurl: (path: string) => invoke<string>("icon_dataurl", { path }),
@@ -1592,6 +1594,20 @@ export namespace Shell {
     lnk: string;
     target: string;
   }
+  /** 批次F：软件文件夹扫描候选（拖入文件夹自动登记）。 */
+  export interface TpFolderCandidate {
+    /** 显示名：优先版本资源 FileDescription（任意语言软件的本地化名称）。 */
+    name: string;
+    path: string;
+    size: number;
+    score: number;
+    recommended: boolean;
+  }
+  /** 批次F：文件夹扫描报告（isFolder=false = 拖入的是普通文件，应静默忽略）。 */
+  export interface TpFolderScanReport {
+    isFolder: boolean;
+    candidates: TpFolderCandidate[];
+  }
   export interface ExVarDir {
     key: "root" | "workspace" | "apps" | "recycle";
     path: string;
@@ -2489,6 +2505,8 @@ export type ExCopyMode = Shell.ExCopyMode;
 export type ExDrive = Shell.ExDrive;
 export type ExVarDir = Shell.ExVarDir;
 export type TpScanCandidate = Shell.TpScanCandidate;
+export type TpFolderCandidate = Shell.TpFolderCandidate;
+export type TpFolderScanReport = Shell.TpFolderScanReport;
 export type RecSource = Shell.RecSource;
 export type RecItem = Shell.RecItem;
 export type ChecksumResult = Shell.ChecksumResult;

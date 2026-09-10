@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTO_DEBOUNCE_MS,
   TIMELINE_CAP,
@@ -26,6 +26,7 @@ function win(id: string, x = 0, y = 0, z = 1): VwmWin {
     h: 600,
     state: "normal",
     minimized: false,
+    hidden: false,
     z,
     restore: null,
     group: null,

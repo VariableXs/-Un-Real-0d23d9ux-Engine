@@ -124,6 +124,8 @@ export interface VwmWin {
   opacity: number;
   /** Z-36 置顶（浮于普通窗口之上）。 */
   topmost: boolean;
+  /** 批次F：隐藏（从桌面与任务栏完全消失，进程与状态全保留；Ctrl+Alt+H / 菜单恢复）。 */
+  hidden: boolean;
 }
 
 export interface VwmRect {
@@ -275,7 +277,7 @@ function openVwmInstance(app: VwmApp, path: string | null): string {
   patch((st) => ({
     wins: [
       ...st.wins,
-      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false, rolledUp: false, minimizedAt: null, opacity: 1, topmost: false },
+      { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false, rolledUp: false, minimizedAt: null, opacity: 1, topmost: false, hidden: false },
     ],
     topZ: z,
     focusedId: id,
@@ -306,12 +308,12 @@ export function openVwmTpNew(app: `tp:${string}`): string {
 }
 
 function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {
-  const cands = wins.filter((w) => !w.minimized && w.id !== excludeId);
+  const cands = wins.filter((w) => !w.minimized && !w.hidden && w.id !== excludeId);
   if (cands.length === 0) return null;
   return cands.reduce((a, b) => (a.z >= b.z ? a : b)).id;
 }
 
-/** 聚焦窗口（置顶 + 取消最小化）。Z-36：置顶窗口始终浮在焦点窗口之上。 */
+/** 聚焦窗口（置顶 + 取消最小化；批次F：聚焦即解除隐藏——任务栏点击隐藏窗口 = 恢复）。Z-36：置顶窗口始终浮在焦点窗口之上。 */
 export function focusVwmWin(id: string): void {
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
@@ -322,7 +324,7 @@ export function focusVwmWin(id: string): void {
   patch((st) => ({
     wins: st.wins.map((x) =>
       x.id === id
-        ? { ...x, z, minimized: false, minimizedAt: null }
+        ? { ...x, z, minimized: false, minimizedAt: null, hidden: false }
         : topZs.has(x.id)
           ? { ...x, z: topZs.get(x.id)! }
           : x,
@@ -390,6 +392,64 @@ export function minimizeAllVwm(): void {
   const s = vwmStore.getState();
   if (s.wins.length === 0) return;
   patch({ wins: s.wins.map((w) => ({ ...w, minimized: true })), focusedId: null });
+}
+
+// ---------- 批次F：隐藏窗口（桌面+任务栏完全消失，进程与状态全保留） ----------
+
+/** 隐藏窗口：清除最小化态（避免恢复时双重态），焦点让给下一个可见窗口。
+ * 标签组：隐藏的是组内激活标签时先让位给相邻成员，整组只剩它则整组隐藏。 */
+export function hideVwmWin(id: string): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || w.hidden) return;
+  if (w.group && w.groupActive) {
+    const others = groupMembersOf(s.wins, w.group).filter((x) => x.id !== id);
+    const next = others[others.length - 1];
+    if (next) activateVwmTab(next.id);
+  }
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id ? { ...x, hidden: true, minimized: false, minimizedAt: null } : x,
+    ),
+    focusedId: st.focusedId === id ? nextFocus(st.wins, id) : st.focusedId,
+  }));
+}
+
+/** 恢复隐藏窗口：解除隐藏、置顶并聚焦。 */
+export function unhideVwmWin(id: string): void {
+  const s = vwmStore.getState();
+  const w = s.wins.find((x) => x.id === id);
+  if (!w || !w.hidden) return;
+  const z = s.topZ + 1;
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id ? { ...x, hidden: false, minimized: false, minimizedAt: null, z } : x,
+    ),
+    topZ: z,
+    focusedId: id,
+  }));
+}
+
+/** 恢复全部隐藏窗口（Ctrl+Alt+H / 菜单入口），返回恢复数。 */
+export function unhideAllVwm(): number {
+  const s = vwmStore.getState();
+  const hidden = s.wins.filter((w) => w.hidden);
+  if (hidden.length === 0) return 0;
+  let z = s.topZ;
+  const last = hidden[hidden.length - 1]?.id ?? null;
+  patch((st) => ({
+    wins: st.wins.map((w) =>
+      w.hidden ? { ...w, hidden: false, minimized: false, minimizedAt: null, z: (z += 1) } : w,
+    ),
+    topZ: z,
+    focusedId: last ?? st.focusedId,
+  }));
+  return hidden.length;
+}
+
+/** 当前隐藏中的窗口（恢复菜单用；按隐藏先后排序稳定展示）。 */
+export function hiddenVwmWins(): VwmWin[] {
+  return vwmStore.getState().wins.filter((w) => w.hidden);
 }
 
 /** M-03 抽屉排序：最小化窗口按 minimizedAt 降序（最近的最先）。 */
@@ -718,13 +778,20 @@ export function ungroupVwmWin(id: string): void {
   }));
 }
 
-/** 点击标签：切换组内显示（保活语义——非显示成员仅隐藏不卸载业务数据）。 */
+/** 点击标签：切换组内显示（保活语义——非显示成员仅隐藏不卸载业务数据）。
+ * 批次F：激活隐藏成员 = 解除隐藏（从隐藏恢复到组内前台）。 */
 export function activateVwmTab(id: string): void {
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w?.group) return;
+  const z = s.topZ + 1;
   patch((st) => ({
-    wins: st.wins.map((x) => (x.group === w.group ? { ...x, groupActive: x.id === id } : x)),
+    wins: st.wins.map((x) =>
+      x.group === w.group
+        ? { ...x, groupActive: x.id === id, ...(x.id === id ? { hidden: false, minimized: false, minimizedAt: null, z } : {}) }
+        : x,
+    ),
+    topZ: z,
     focusedId: id,
   }));
 }

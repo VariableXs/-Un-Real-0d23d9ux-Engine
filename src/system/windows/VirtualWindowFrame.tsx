@@ -38,6 +38,7 @@ import {
   ferryVwmWin,
   groupMembersOf,
   groupVwmWins,
+  hideVwmWin,
   listLayoutSnapshots,
   minimizeVwmWin,
   moveVwmWin,
@@ -624,6 +625,11 @@ export function VirtualWindowFrame(props: {
     else if (id === "suspend" || id === "resume") toggleSuspend();
     else if (id === "saveLayout") saveLayoutUi();
     else if (id === "applyLayout") applyLayoutUi();
+    else if (id === "hide") {
+      // 批次F：隐藏窗口（进程与状态保留），toast 告知恢复方式
+      hideVwmWin(win.id);
+      pushToast("info", t("wfMenuHide"), t("wfHiddenToast"));
+    }
     if (id !== "suspend" && id !== "resume" && id !== "saveLayout" && id !== "applyLayout") setMenu(null);
   };
 

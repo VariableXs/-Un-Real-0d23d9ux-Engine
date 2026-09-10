@@ -94,6 +94,51 @@ export function openLauncherManager(tab: "third" | "installed" = "third"): void 
   uiStore.setState({ launcherOpen: true, launcherTab: tab });
 }
 
+// ---------- 批次F：拖入软件文件夹 → 智能扫描自动登记 ----------
+
+/** 拖放路径分类（纯逻辑，可单测）：exe/lnk/bat/cmd 直接登记，其余交给文件夹扫描。 */
+export function classifyDropPaths(paths: string[]): { files: string[]; rest: string[] } {
+  const files: string[] = [];
+  const rest: string[] = [];
+  for (const p of paths) {
+    if (/\.(exe|lnk|bat|cmd)$/i.test(p)) files.push(p);
+    else rest.push(p);
+  }
+  return { files, rest };
+}
+
+/** 文件夹登记结果（found = 候选 exe 总数；skipped = 找到但未达推荐线的辅助组件数）。 */
+export interface FolderRegisterResult {
+  isFolder: boolean;
+  added: number;
+  found: number;
+}
+
+/**
+ * 批次F：扫描拖入的软件文件夹并自动登记推荐候选（主程序）。
+ * - 显示名用 FileDescription（任意语言软件的本地化名称）
+ * - 后端已过滤卸载器/更新器等辅助进程并按主程序可能性排序
+ * - 普通文件（isFolder=false）如实返回，调用方静默忽略
+ * - 单个登记失败不中断批次（目标可能被移动/锁定），如实计数
+ */
+export async function registerDroppedFolder(dir: string): Promise<FolderRegisterResult> {
+  const report = await ipc.tpScanFolder(dir);
+  if (!report.isFolder) {
+    return { isFolder: false, added: 0, found: 0 };
+  }
+  const picked = report.candidates.filter((c) => c.recommended);
+  let added = 0;
+  for (const c of picked) {
+    try {
+      await ipc.tpAdd(c.path, c.name);
+      added++;
+    } catch (e) {
+      console.warn("[launcher] folder tp_add failed", c.path, errMessage(e).message);
+    }
+  }
+  return { isFolder: true, added, found: report.candidates.length };
+}
+
 // ---------- 批次C（规格 5.5）：任务栏固定 ----------
 
 const PINS_KEY = "variable:taskbar:pins:v1";

@@ -23,7 +23,13 @@ import { CompatBanner } from "../compat/CompatBanner";
 import { LauncherManager } from "../launcher/LauncherManager";
 import { AIHub } from "../ai/AIHub";
 import { WelcomeWizard } from "../welcome/WelcomeWizard";
-import { getThirdApps, launchThirdApp, reloadThirdApps } from "../launcher/thirdApps";
+import {
+  classifyDropPaths,
+  getThirdApps,
+  launchThirdApp,
+  registerDroppedFolder,
+  reloadThirdApps,
+} from "../launcher/thirdApps";
 import { autosaveSnapshot } from "../windows/snapshots";
 import { handleDisplayChanged, initDisplayMemory } from "../windows/snapshots";
 import { openVwmApp, openVwmSystem, type VwmApp } from "../windows/vwm";
@@ -205,26 +211,48 @@ export function DesktopShell(props: {
 
   const closeStart = (): void => uiStore.setState({ startOpen: false });
 
-  // 批次E（规格 5.9.1）：拖入 exe/lnk/bat/cmd → 直接登记第三方软件。
+  // 批次E（规格 5.9.1）+ 批次F：拖入登记
+  // - exe/lnk/bat/cmd 文件 → 直接登记第三方软件（批次E 既有行为）
+  // - 软件文件夹 → 智能扫描主程序（过滤卸载器/更新器等），推荐项自动登记
   // Tauri v2 webview 接管拖放（HTML5 drop 不触发），走 onDragDropEvent 拿真实路径。
+  // busy 防重入：扫描/登记进行中的新拖放直接忽略（防并发重复登记）。
   useEffect(() => {
+    let busy = false;
     const un = getCurrentWebview().onDragDropEvent((ev) => {
-      if (ev.payload.type !== "drop") return;
-      const paths = ev.payload.paths.filter((p) => /\.(exe|lnk|bat|cmd)$/i.test(p));
-      if (paths.length === 0) return;
+      if (ev.payload.type !== "drop" || busy) return;
+      const { files, rest } = classifyDropPaths(ev.payload.paths);
+      if (files.length === 0 && rest.length === 0) return;
+      busy = true;
       void (async () => {
-        let ok = 0;
-        for (const p of paths) {
-          try {
-            await ipc.tpAdd(p);
-            ok++;
-          } catch (e) {
-            pushToast("error", t("addApp"), errMessage(e).message);
+        try {
+          let ok = 0;
+          let folderNone = false;
+          for (const p of files) {
+            try {
+              await ipc.tpAdd(p);
+              ok++;
+            } catch (e) {
+              pushToast("error", t("addApp"), errMessage(e).message);
+            }
           }
-        }
-        if (ok > 0) {
-          await reloadThirdApps();
-          pushToast("success", t("tpAdded"));
+          for (const d of rest) {
+            try {
+              const r = await registerDroppedFolder(d);
+              ok += r.added;
+              // 真文件夹但没有任何可登记项（无 exe / 全部已登记）→ 汇总后一次告知
+              if (r.isFolder && r.found === 0) folderNone = true;
+            } catch (e) {
+              pushToast("error", t("tpFolderScan"), errMessage(e).message);
+            }
+          }
+          if (ok > 0) {
+            await reloadThirdApps();
+            pushToast("success", t("tpAdded"), t("tpFolderAddedBody", { n: ok }));
+          } else if (folderNone) {
+            pushToast("info", t("tpFolderScan"), t("tpFolderNoneBody"));
+          }
+        } finally {
+          busy = false;
         }
       })();
     });

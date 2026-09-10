@@ -14,6 +14,7 @@ import {
   restoreShakenVwm,
   setVwmWorkArea,
   snapVwmWin,
+  unhideAllVwm,
   vwmStore,
   type VwmRect,
 } from "./vwm";
@@ -215,6 +216,12 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
         e.preventDefault();
         e.stopPropagation();
         setDrawerOpen((v) => !v);
+      } else if (k === "h" && !e.repeat) {
+        // 批次F：Ctrl+Alt+H 恢复全部隐藏窗口（隐藏 toast 的承诺入口；无隐藏时静默）
+        e.preventDefault();
+        e.stopPropagation();
+        const n = unhideAllVwm();
+        if (n > 0) pushToast("info", t("wfMenuHide"), t("wfHiddenRestored", { n }));
       }
     };
     window.addEventListener("keydown", onKey, true);
@@ -479,7 +486,8 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
 
   return (
     <div className="vwm-layer" role="presentation" data-testid="vwm">
-      {wins.filter(isVwmWinVisible).map((w) => (
+      {/* 批次F：隐藏窗口不渲染框架（EmbedBridge 仍保留 → embed_visible(false) 隐藏原生窗口） */}
+      {wins.filter((w) => isVwmWinVisible(w) && !w.hidden).map((w) => (
         <VirtualWindowFrame
           key={w.id}
           win={w}
@@ -494,7 +502,7 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
         </VirtualWindowFrame>
       ))}
       {wins.map((w) => (
-        <EmbedBridge key={`bridge-${w.id}`} win={w} focused={w.id === focusedId} visible={isVwmWinVisible(w)} />
+        <EmbedBridge key={`bridge-${w.id}`} win={w} focused={w.id === focusedId} visible={isVwmWinVisible(w) && !w.hidden} />
       ))}
       {snapPreview && snapPreview.w > 0 && (
         <div

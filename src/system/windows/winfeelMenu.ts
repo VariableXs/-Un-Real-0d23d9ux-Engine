@@ -17,6 +17,7 @@ export type WinFeelMenuItemId =
   | "untopmost"
   | "suspend"
   | "resume"
+  | "hide"
   | "saveLayout"
   | "applyLayout";
 
@@ -50,6 +51,8 @@ export function winFeelMenuItems(w: Pick<VwmWin, "app" | "state" | "rolledUp" | 
       disabled: false,
     });
   }
+  // 批次F：隐藏窗口（桌面+任务栏消失，进程与状态保留；Ctrl+Alt+H / 任务栏恢复）
+  items.push({ id: "hide", labelKey: "wfMenuHide", disabled: false });
   return items;
 }
 

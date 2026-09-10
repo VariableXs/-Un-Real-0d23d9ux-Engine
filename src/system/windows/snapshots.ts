@@ -283,6 +283,8 @@ export function restoreSnapshot(name: string): RestoreResult {
       ...geom,
       state: w.snapped ? ("max" as const) : ("normal" as const),
       minimized: w.minimized && !w.snapped,
+      // 批次F：布局快照恢复 = 全新会话态，隐藏是运行时操作不属于快照语义
+      hidden: false,
       z,
       restore: null,
       group: null,

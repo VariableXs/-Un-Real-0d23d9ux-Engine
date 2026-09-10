@@ -49,6 +49,7 @@ function makeWin(p: Partial<VwmWin> & { id: string }): VwmWin {
     h: p.h ?? 600,
     state: p.state ?? "normal",
     minimized: p.minimized ?? false,
+    hidden: p.hidden ?? false,
     z: p.z ?? winSeq,
     restore: p.restore ?? null,
     group: null,

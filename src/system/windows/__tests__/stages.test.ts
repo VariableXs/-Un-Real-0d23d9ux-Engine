@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   STAGE_HOTZONE_OFFSET_PX,
   addToStage,
@@ -24,6 +24,7 @@ function win(id: string): VwmWin {
     h: 600,
     state: "normal",
     minimized: false,
+    hidden: false,
     z: 1,
     restore: null,
     group: null,
