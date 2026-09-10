@@ -286,7 +286,8 @@ describe("W-157 音量晨昏曲线", () => {
     expect(dayCurve(9)).toBe(1);
     expect(dayCurve(12)).toBe(1);
     expect(dayCurve(18)).toBe(1);
-    expect(dayCurve(20.5)).toBeCloseTo(0.7, 5);
+    expect(dayCurve(20.2)).toBeCloseTo(0.76, 5);
+    expect(dayCurve(20.5)).toBeCloseTo(0.64, 5); // Math.round(20.5)=21
     expect(dayCurve(23)).toBe(0.4);
     expect(dayCurve(25)).toBe(0.4); // 越界回卷
     expect(dayCurve(-1)).toBe(0.4);
