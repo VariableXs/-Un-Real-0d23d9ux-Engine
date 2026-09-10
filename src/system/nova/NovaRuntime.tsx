@@ -115,6 +115,7 @@ const MODULE_TABLE: ModuleEntry[] = [
   { domain: "vision", file: "visionNova", load: () => import("./modules/visionNova") },
   { domain: "sound", file: "soundNova", load: () => import("./modules/soundNova") },
   { domain: "design", file: "designNova", load: () => import("./modules/designNova") },
+  { domain: "a11y", file: "a11yNova", load: () => import("./modules/a11yNova") },
 ];
 
 // ---------------------------------------------------------------------------
