@@ -88,7 +88,7 @@ fn persist(data_dir: &std::path::Path) {
     if let Some(c) = cipher {
         use base64::Engine as _;
         let b64 = base64::engine::general_purpose::STANDARD.encode(c);
-        let _ = std::fs::write(store_path(data_dir), b64.as_bytes());
+        let _ = crate::fsutil::atomic_write(store_path(data_dir), b64.as_bytes());
     }
     // 加密失败：不落盘（宁失勿裸——内存历史仍在，重启后清空）。
 }

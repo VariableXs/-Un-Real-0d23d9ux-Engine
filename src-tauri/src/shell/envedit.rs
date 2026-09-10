@@ -1,4 +1,4 @@
-﻿//! AI-15 V-82 环境变量编辑器：用户级（HKCU\Environment）GUI 后端。
+//! AI-15 V-82 环境变量编辑器：用户级（HKCU\Environment）GUI 后端。
 //!
 //! 红线（承化境计划）：
 //! - 仅用户级编辑；系统级（HKLM）如实只读展示并标注「需要管理员且风险高，本轮不做」；
@@ -133,7 +133,7 @@ pub fn backup_take(st: &AppState) -> CmdResult<EnvBackup> {
     let dir = backups_dir(st);
     std::fs::create_dir_all(&dir).map_err(|e| AppError::io(e.to_string()))?;
     let json = serde_json::to_string_pretty(&b).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(dir.join(format!("{}.json", b.id)), json).map_err(|e| AppError::io(e.to_string()))?;
+    crate::fsutil::atomic_write(dir.join(format!("{}.json", b.id)), json).map_err(|e| AppError::io(e.to_string()))?;
     // 只保留最近 10 份
     let mut all = backup_list_inner(st)?;
     while all.len() > 10 {

@@ -497,7 +497,7 @@ pub fn ex_fav_remove(st: tauri::State<AppState>, path: String) -> CmdResult<Vec<
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default();
     list.retain(|p| p != &path);
-    fs::write(&f, serde_json::to_string(&list)?)?;
+    crate::fsutil::atomic_write(&f, serde_json::to_string(&list)?)?;
     Ok(list)
 }
 
@@ -822,7 +822,7 @@ fn ex_view_set_inner(st: &AppState, path: &str, view: &str) -> CmdResult<()> {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
     map.insert(norm_dir_key(path), view.to_string());
-    fs::write(views_path(st), serde_json::to_vec_pretty(&map)?)?;
+    crate::fsutil::atomic_write(views_path(st), serde_json::to_vec_pretty(&map)?)?;
     Ok(())
 }
 

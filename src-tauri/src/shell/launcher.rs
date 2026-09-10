@@ -69,7 +69,7 @@ pub fn registry_snapshot(st: &AppState) -> Vec<ThirdApp> {
 pub(crate) fn save_registry(st: &AppState, apps: &[ThirdApp]) -> CmdResult<()> {
     let bytes = serde_json::to_vec_pretty(apps)
         .map_err(|e| AppError::io(format!("序列化登记表失败 / Serialize registry failed: {e}")))?;
-    fs::write(registry_path(st), bytes)
+    crate::fsutil::atomic_write(registry_path(st), bytes)
         .map_err(|e| AppError::io(format!("写入登记表失败 / Write registry failed: {e}")))?;
     Ok(())
 }

@@ -558,7 +558,7 @@ fn write_clone_base(st: &AppState, clone_id: &str) -> CmdResult<()> {
         scan_manifest(&src, &mut manifest)?;
     }
     let bytes = serde_json::to_vec_pretty(&manifest).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(base_path(st, clone_id), bytes).map_err(|e| AppError::io(e.to_string()))
+    crate::fsutil::atomic_write(base_path(st, clone_id), bytes).map_err(|e| AppError::io(e.to_string()))
 }
 
 fn read_clone_base(st: &AppState, clone_id: &str) -> std::collections::BTreeMap<String, String> {

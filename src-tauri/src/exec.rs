@@ -566,7 +566,7 @@ fn residue_whitelist_add_inner(st: &AppState, pattern: &str) -> CmdResult<Vec<St
         user.push(pattern);
         let bytes = serde_json::to_vec_pretty(&user)
             .map_err(|e| AppError::io(format!("序列化白名单失败: {e}")))?;
-        fs::write(whitelist_path(st), bytes)
+        crate::fsutil::atomic_write(whitelist_path(st), bytes)
             .map_err(|e| AppError::io(format!("写入白名单失败: {e}")))?;
     }
     Ok(user)

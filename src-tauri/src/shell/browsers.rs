@@ -189,7 +189,7 @@ fn load_profiles(st: &AppState) -> Vec<BrowserProfile> {
 
 fn save_profiles(st: &AppState, profiles: &[BrowserProfile]) -> CmdResult<()> {
     let bytes = serde_json::to_vec_pretty(profiles).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(profiles_path(st), bytes).map_err(|e| AppError::io(e.to_string()))?;
+    crate::fsutil::atomic_write(profiles_path(st), bytes).map_err(|e| AppError::io(e.to_string()))?;
     Ok(())
 }
 

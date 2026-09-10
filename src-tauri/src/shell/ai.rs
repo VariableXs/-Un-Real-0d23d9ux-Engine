@@ -357,7 +357,7 @@ fn save_identities(st: &AppState, items: &[AiIdentity]) -> CmdResult<()> {
     let plain = serde_json::to_vec(items).map_err(|e| AppError::io(e.to_string()))?;
     let blob = crate::shell::privacy::seal_pub(&key, &plain)?;
     fs::create_dir_all(st.data_dir.join("vault"))?;
-    fs::write(identities_path(st), blob).map_err(|e| AppError::io(e.to_string()))
+    crate::fsutil::atomic_write(identities_path(st), blob).map_err(|e| AppError::io(e.to_string()))
 }
 
 #[derive(Serialize)]

@@ -95,7 +95,7 @@ pub fn assoc_snapshot_take(st: tauri::State<AppState>, name: String) -> CmdResul
     let dir = snaps_dir(&st);
     std::fs::create_dir_all(&dir).map_err(|e| AppError::io(e.to_string()))?;
     let json = serde_json::to_string_pretty(&s).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(snap_path(&st, &s.id), json).map_err(|e| AppError::io(e.to_string()))?;
+    crate::fsutil::atomic_write(snap_path(&st, &s.id), json).map_err(|e| AppError::io(e.to_string()))?;
     Ok(s)
 }
 

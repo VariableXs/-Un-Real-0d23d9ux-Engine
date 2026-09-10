@@ -471,7 +471,7 @@ fn load_policy(st: &AppState) -> RecPolicy {
 
 fn save_policy(st: &AppState, p: &RecPolicy) -> CmdResult<()> {
     fs::create_dir_all(recycle_dir(st))?;
-    fs::write(policy_path(st), serde_json::to_vec_pretty(p)?)?;
+    crate::fsutil::atomic_write(policy_path(st), serde_json::to_vec_pretty(p)?)?;
     Ok(())
 }
 

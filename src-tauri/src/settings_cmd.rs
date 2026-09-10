@@ -1,4 +1,4 @@
-﻿use crate::db::now_ms;
+use crate::db::now_ms;
 use crate::error::{AppError, CmdResult};
 use crate::models::RecoveryEntry;
 use crate::state::AppState;
@@ -115,7 +115,7 @@ pub fn write_recovery_file(st: tauri::State<AppState>, payload: RecoveryPayload)
     }
     let id = format!("{hasher:032x}");
     let p = st.recovery_dir.join(format!("recovery-{id}.json"));
-    fs::write(&p, serde_json::to_vec(&payload).map_err(|e| AppError::io(e.to_string()))?)
+    crate::fsutil::atomic_write(&p, serde_json::to_vec(&payload).map_err(|e| AppError::io(e.to_string()))?)
         .map_err(|e| AppError::io(format!("写入恢复文件失败 / Recovery write failed: {e}")))?;
     Ok(id)
 }

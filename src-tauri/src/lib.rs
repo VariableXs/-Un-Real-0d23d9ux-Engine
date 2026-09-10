@@ -4,6 +4,7 @@ pub mod db;
 pub mod error;
 pub mod exec;
 pub mod export;
+pub mod fsutil;
 pub mod library;
 pub mod media;
 pub mod mindmap;

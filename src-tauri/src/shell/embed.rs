@@ -96,7 +96,7 @@ fn load_hints(st: &crate::state::AppState) -> HashMap<String, CaptureHint> {
 
 fn save_hints(st: &crate::state::AppState, hints: &HashMap<String, CaptureHint>) {
     if let Ok(json) = serde_json::to_vec_pretty(hints) {
-        let _ = std::fs::write(hints_path(st), json);
+        let _ = crate::fsutil::atomic_write(hints_path(st), json);
     }
 }
 

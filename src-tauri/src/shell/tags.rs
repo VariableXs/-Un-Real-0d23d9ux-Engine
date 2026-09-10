@@ -63,7 +63,7 @@ fn load(st: &AppState) -> TagStore {
 }
 
 fn save(st: &AppState, s: &TagStore) -> CmdResult<()> {
-    fs::write(tags_path(st), serde_json::to_vec_pretty(s)?)?;
+    crate::fsutil::atomic_write(tags_path(st), serde_json::to_vec_pretty(s)?)?;
     Ok(())
 }
 

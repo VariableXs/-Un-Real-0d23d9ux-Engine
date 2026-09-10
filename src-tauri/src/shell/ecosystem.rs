@@ -390,7 +390,7 @@ pub fn file_assoc_set(st: tauri::State<AppState>, ext: String, app_id: String, a
     list.retain(|a| a.ext != ext);
     list.push(FileAssoc { ext, app_id, app_name });
     let bytes = serde_json::to_vec_pretty(&list).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(assoc_path(st), bytes).map_err(|e| AppError::io(e.to_string()))
+    crate::fsutil::atomic_write(assoc_path(st), bytes).map_err(|e| AppError::io(e.to_string()))
 }
 
 /// 解析：返回环境内登记的处理方；None = 宿主兜底打开（前端调 open_path）。
@@ -407,7 +407,7 @@ pub fn file_assoc_remove(st: tauri::State<AppState>, ext: String) -> CmdResult<(
     let mut list = load_assocs(&st);
     list.retain(|a| a.ext != ext);
     let bytes = serde_json::to_vec_pretty(&list).map_err(|e| AppError::io(e.to_string()))?;
-    std::fs::write(assoc_path(st), bytes).map_err(|e| AppError::io(e.to_string()))
+    crate::fsutil::atomic_write(assoc_path(st), bytes).map_err(|e| AppError::io(e.to_string()))
 }
 
 #[cfg(test)]
