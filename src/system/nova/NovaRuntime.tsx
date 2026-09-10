@@ -112,6 +112,8 @@ const MODULE_TABLE: ModuleEntry[] = [
   { domain: "compat", file: "compatNova", load: () => import("./modules/compatNova") },
   { domain: "eco", file: "ecoNova", load: () => import("./modules/ecoNova") },
   { domain: "privacy", file: "privacyNova", load: () => import("./modules/privacyNova") },
+  { domain: "vision", file: "visionNova", load: () => import("./modules/visionNova") },
+  { domain: "sound", file: "soundNova", load: () => import("./modules/soundNova") },
   { domain: "design", file: "designNova", load: () => import("./modules/designNova") },
 ];
 
