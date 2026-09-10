@@ -130,15 +130,9 @@ fn is_reparse(_meta: &std::fs::Metadata) -> bool {
 }
 
 fn index_roots(st: &AppState) -> Vec<PathBuf> {
-    let mut roots = vec![st.data_dir.clone()];
-    for sub in ["Workspace", "Apps", "recycle"] {
-        let p = st.data_dir.join(sub);
-        if p.exists() {
-            roots.push(p);
-        }
-    }
-    // 去重：Workspace 等子目录包含于 root，但 root 扫描已覆盖；仅保留 root 即可。
-    vec![roots[0].clone()]
+    // 第十三轮大检查：Workspace/Apps/recycle 都是 data_dir 子目录——root 扫描
+    // 已全部覆盖，此前逐个 exists() 再丢弃属于每次查询的纯浪费系统调用。
+    vec![st.data_dir.clone()]
 }
 
 /// 索引状态（设置/搜索浮层展示「索引中/条数」）。
