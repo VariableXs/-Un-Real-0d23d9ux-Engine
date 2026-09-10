@@ -1030,6 +1030,17 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::deploy::run_deploy_checks());
     checkup.register(crate::robust::run_robust_checks());
     checkup.register(crate::deveco::run_deveco_checks());
+    // --- TRINITY-500 AI-01~AI-10 (F001~F250) --------------------------------
+    checkup.register(crate::switcher::bootnext::run_boot_checks());
+    checkup.register(crate::switcher::hibernate::run_hibernate_checks());
+    checkup.register(crate::fs::run_fs_checks());
+    checkup.register(crate::share::run_share_checks());
+    checkup.register(crate::gfx::run_gfx_checks());
+    checkup.register(crate::gfx::text::run_text_checks());
+    checkup.register(crate::ui::widgets::run_widget_checks());
+    checkup.register(crate::ui::motion::run_motion_checks());
+    checkup.register(crate::vwm::run_vwm_checks());
+    checkup.register(crate::shell::run_shell_checks());
     checkup
 }
 

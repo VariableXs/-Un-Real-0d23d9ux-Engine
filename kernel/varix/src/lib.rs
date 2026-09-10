@@ -27,6 +27,11 @@ pub mod console;
 pub mod cpu;
 pub mod fb;
 pub mod font;
+pub mod fs;
+pub mod gfx;
+pub mod share;
+pub mod shell;
+pub mod switcher;
 pub mod input;
 pub mod integrity;
 pub mod kaslr;
@@ -51,5 +56,27 @@ pub mod smbios;
 pub mod storage;
 pub mod timeline;
 pub mod ui;
+pub mod vwm;
 pub mod virt;
 pub mod vsem;
+
+// --- TRINITY-500 AI-11~AI-19 (F251~F475) -----------------------------------
+#[path = "shell/taskbar.rs"]
+pub mod taskbar;
+#[path = "shell/startmenu.rs"]
+pub mod startmenu;
+#[path = "proc/entry.rs"]
+pub mod entry;
+#[path = "proc/ipc.rs"]
+pub mod ipc;
+#[path = "app/write.rs"]
+pub mod app_write;
+#[path = "app/mind.rs"]
+pub mod app_mind;
+#[path = "app/code.rs"]
+pub mod app_code;
+#[path = "app/fate.rs"]
+pub mod app_fate;
+pub mod sync;
+pub mod sec;
+pub mod verify;
