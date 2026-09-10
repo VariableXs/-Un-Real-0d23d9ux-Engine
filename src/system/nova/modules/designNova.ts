@@ -1246,11 +1246,27 @@ function registerLoops(): void {
   };
   attach();
   bailTimer = window.setInterval(bailScan, 1000);
-  const mo = new MutationObserver(() => attach());
+  // 变更去抖：body 子树的 childList 变更可能高频爆发（右键菜单/弹层挂载、
+  // 壁纸粒子层逐帧节点操作等），全量 querySelectorAll 扫描若随每次变更同步
+  // 执行会形成变更→扫描→观察→再变更的风暴（实测整页冻结卡死在此处）。
+  // 合并为单次 250ms 低频重扫，语义不变（新循环元素最迟 1/4 秒纳入保释管理）。
+  let attachPending = 0;
+  const scheduleAttach = (): void => {
+    if (attachPending) return;
+    attachPending = window.setTimeout(() => {
+      attachPending = 0;
+      attach();
+    }, 250);
+  };
+  const mo = new MutationObserver(scheduleAttach);
   mo.observe(document.body, { childList: true, subtree: true });
   bag.push(() => {
     io.disconnect();
     mo.disconnect();
+    if (attachPending) {
+      clearTimeout(attachPending);
+      attachPending = 0;
+    }
     if (bailTimer) clearInterval(bailTimer);
     bailTimer = 0;
     for (const t of bailTracks) t.el.classList.remove("nova-design-bail-half", "nova-design-bail-paused");
