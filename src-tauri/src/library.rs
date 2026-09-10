@@ -1,4 +1,4 @@
-﻿use crate::db::{gen_id, now_ms};
+use crate::db::{gen_id, now_ms};
 use crate::error::{AppError, CmdResult};
 use crate::models::*;
 use crate::state::AppState;
@@ -620,8 +620,24 @@ pub async fn empty_trash(st: tauri::State<'_, AppState>) -> CmdResult<u32> {
 fn snippet(text: &str, query: &str) -> String {
     let lower_t = text.to_lowercase();
     let lower_q = query.to_lowercase();
-    let pos = lower_t.find(&lower_q);
-    let start = pos.map(|p| p.saturating_sub(24)).unwrap_or(0);
+    // 命中点先在 lower_t 上定位（字节），再映射回原文字节边界：to_lowercase
+    // 可能改变字节长度（如 İ→i̇），直接拿 lower_t 的字节位置切原文会错位
+    // 或 panic；24 字节回退经 is_char_boundary 向下吸附后，多字节文本永不
+    // 切进字符中间（旧实现 text[..start] 在中文正文上可复现 panic）。
+    let hit_byte = lower_t.find(&lower_q).and_then(|p| {
+        let c = lower_t[..p].chars().count();
+        text.char_indices().nth(c).map(|(b, _)| b)
+    });
+    let start = match hit_byte {
+        Some(b) => {
+            let mut s = b.saturating_sub(24);
+            while s > 0 && !text.is_char_boundary(s) {
+                s -= 1;
+            }
+            s
+        }
+        None => 0,
+    };
     let end = (start + 88).min(text.len());
     let mut s: String = text.chars().skip(text[..start].chars().count()).take(200).collect();
     if start > 0 {
@@ -709,6 +725,32 @@ pub fn search_all(st: tauri::State<AppState>, query: String) -> CmdResult<Vec<Se
         }
         Ok(hits)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::snippet;
+
+    /// 回归：混合宽度文本 + 命中位置使 24 字节回退落在多字节字符中间——
+    /// 旧实现的字节回退 text[..start] 直接 panic（全局搜索中文文档可复现）。
+    /// 构造：8 个中文(24B) + "ab"(2B) + "子"(3B) + query → pos=29，
+    /// start=5 落在第 2 个中文字符(字节 3..5)内部。
+    #[test]
+    fn snippet_chinese_multibyte_no_panic() {
+        let body = "甲乙丙丁戊己庚辛ab子query关键词出现之后的正文内容，确保片段逻辑在多字节混合场景下永不越界。";
+        let s = snippet(&body, "query");
+        assert!(s.contains("query"), "片段应包含命中词: {s}");
+        // 命中点前的省略号分支（start > 0）
+        assert!(s.starts_with('…'));
+    }
+
+    /// 回归：未命中时返回开头字符窗口，且首字符为多字节也不越界。
+    #[test]
+    fn snippet_miss_returns_head() {
+        let s = snippet("中文开头没有任何匹配内容的正文", "zzz");
+        assert!(!s.is_empty());
+        assert!(s.starts_with('中'));
+    }
 }
 
 
