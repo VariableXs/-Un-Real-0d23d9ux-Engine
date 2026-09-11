@@ -349,7 +349,8 @@ export function FateView(): React.ReactElement {
       setStage(null);
       setRoot(r);
       syncDoc(r);
-      setProfile({ ...profile });
+      // 函数式更新：读取最新 profile，避免闭包捕获 2.7s 前的旧值覆盖期间的编辑
+      setProfile((p) => ({ ...p }));
       requestAnimationFrame(() => fitTree(r));
       pushToast("success", lang !== "en" ? "推演完成" : "Simulation done",
         lang !== "en" ? `共 ${treeStats(r).count} 个节点 · ${struggles.length > 0 ? `内心挣扎 ×${struggles.length}` : "无思想冲突"}` : "");

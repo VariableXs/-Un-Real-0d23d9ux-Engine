@@ -110,7 +110,7 @@ export function CosmicBackground(props: BackgroundProps): React.ReactElement {
       ipc.checkPaths([p]).then((res) => {
         if (alive && res.length > 0 && res[0] && !res[0].exists) setBgMissing({ path: p });
         else if (alive) setBgMissing(null);
-      }),
+      }).catch(() => {}),
     ).catch(() => {});
     return () => {
       alive = false;

@@ -38,3 +38,15 @@ export function setupEntryRuntime(entry: EntryType): void {
     console.error("[Variable] unhandled rejection", e.reason);
   });
 }
+
+/**
+ * 首帧渲染后移除 boot-splash（各入口共用；此前 explorer 曾漏移除，
+ * 窗口永远停在启动屏）。淡出 400ms 与 boot-splash 的 CSS 过渡对齐。
+ */
+export function dismissBootSplash(): void {
+  requestAnimationFrame(() => {
+    const splash = document.getElementById("boot-splash");
+    splash?.classList.add("done");
+    window.setTimeout(() => splash?.remove(), 400);
+  });
+}

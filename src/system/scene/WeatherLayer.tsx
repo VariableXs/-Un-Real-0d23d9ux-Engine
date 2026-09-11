@@ -279,6 +279,8 @@ function SceneLayer(): React.ReactElement {
     const isStatic = (): boolean =>
       weather === "off" ||
       reduced ||
+      // 页面隐藏（环境窗口隐藏/最小化）→ 降为低频探测，后台零渲染
+      document.hidden ||
       isDegradeActive({
         typing: isTypingRecent(lastKeyAt.current, Date.now()),
         fullscreen: fullscreenRef.current,

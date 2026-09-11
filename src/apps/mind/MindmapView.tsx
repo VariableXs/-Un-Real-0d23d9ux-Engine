@@ -559,6 +559,13 @@ export function MindmapView(props: { settings: Settings }): React.ReactElement {
     return () => {
       cancelled = true;
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      // 卸载时取消挂起的导航/缓动 rAF，防止切空间后 tick 仍在
+      // setVp 已卸载组件（React 警告 + 无谓渲染）。
+      if (navRafRef.current) {
+        cancelAnimationFrame(navRafRef.current);
+        navRafRef.current = 0;
+      }
+      animRef.current = null;
       const ids = Array.from(pendingSaveIds.current);
       pendingSaveIds.current.clear();
       if (ids.length > 0) {

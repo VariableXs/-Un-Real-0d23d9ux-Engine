@@ -934,7 +934,7 @@ function AttachmentPopup(props: {
               <button type="button" className="btn tiny ghost" onClick={() => void ipc.openPath(a.absPath).catch((e) => pushToast("error", t("mediaLoadError"), errMessage(e).message))}>
                 {t("openFile")}
               </button>
-              <button type="button" className="btn tiny ghost" onClick={() => void ipc.revealPath(a.absPath).catch(() => {})}>
+              <button type="button" className="btn tiny ghost" onClick={() => void ipc.revealPath(a.absPath).catch((e) => pushToast("error", lang !== "en" ? "定位失败" : "Reveal failed", errMessage(e).message))}>
                 {lang !== "en" ? "定位" : "Reveal"}
               </button>
             </>

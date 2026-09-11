@@ -542,7 +542,16 @@ pub fn residue_resolve(st: tauri::State<AppState>, path: String) -> CmdResult<()
         }
         return Ok(());
     }
-    // 文件残留：只删除，不改名不移动；失败如实上抛
+    // 文件残留：只删除，不改名不移动；失败如实上抛。
+    // 安全约束：仅允许清理「当前会话差集」中真实出现的残留项——
+    // 前端透传的任意路径（非本次会话产生的新增/变化文件）一律拒绝，
+    // 与注册表分支的防误删级别对齐。
+    let entries = residue_snapshot_diff_st(&st);
+    if !entries.iter().any(|e| e.kind == "file" && e.path == path) {
+        return Err(AppError::validation(
+            "该路径不在本次会话残留差集中，已拒绝清理 / Path is not session residue",
+        ));
+    }
     let p = PathBuf::from(&path);
     if p.is_file() {
         fs::remove_file(&p).map_err(|e| AppError::io(format!("删除残留文件失败: {e}")))?;

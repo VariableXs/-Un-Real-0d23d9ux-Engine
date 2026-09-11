@@ -124,9 +124,22 @@ export function SceneShaderWallpaper(props: {
         const frameMs = 1000 / capFps;
         let raf = 0;
         let last = 0;
+        // 可见性暂停（与 LivingWallpaper 同款模式）：页面隐藏时不再排帧，
+        // 恢复可见时清掉挂起 rAF 重启单循环，GPU 零浪费。
+        let running = !document.hidden;
+        const onVis = (): void => {
+          running = !document.hidden;
+          if (running) {
+            last = 0;
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(loop);
+          }
+        };
+        document.addEventListener("visibilitychange", onVis);
         const t0 = performance.now();
         const loop = (now: number) => {
           if (disposed) return;
+          if (!running) return;
           raf = requestAnimationFrame(loop);
           if (now - last < frameMs - 1) return;
           last = now;
@@ -146,6 +159,7 @@ export function SceneShaderWallpaper(props: {
         };
         raf = requestAnimationFrame(loop);
         cleanup = () => {
+          document.removeEventListener("visibilitychange", onVis);
           cancelAnimationFrame(raf);
           gl.getExtension("WEBGL_lose_context")?.loseContext();
         };

@@ -220,8 +220,8 @@ pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
 
 /// 启动并嵌入（复用 embed_launch 整条通道——Electron 嵌入回归由此保证）。
 #[tauri::command(async)]
-pub fn code_launch(
-    st: tauri::State<AppState>,
+pub async fn code_launch(
+    st: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> CmdResult<crate::shell::embed::EmbedResult> {
     let registered = crate::shell::launcher::registry_snapshot(&st)
@@ -232,7 +232,7 @@ pub fn code_launch(
     }
     // W-1：缺省 embed_id → "0" 兼容槽位（设置卡直启无 VWM 占位窗口；
     // 经启动器 tp:vscode 打开时走 launchThirdApp 的独立 embed_id）
-    crate::shell::embed::embed_launch(st, app, VSCODE_ID.into(), None, None)
+    crate::shell::embed::embed_launch(st, app, VSCODE_ID.into(), None, None).await
 }
 
 #[cfg(test)]

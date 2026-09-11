@@ -161,9 +161,12 @@ fn hash_file(
 }
 
 /// M-21：计算文件校验和（进度事件 `checksum://progress`；可经 checksum_cancel 取消）。
+/// 大文件流式 IO 移入阻塞线程池（spawn_blocking），避免占死 tokio async
+/// worker 拖慢其它 IPC（Tauri 对「同步函数 + command(async)」的调度是把
+/// 函数体直接放进 async 块执行，长阻塞会饿死异步运行时）。
 #[tauri::command(async)]
-pub fn checksum(
-    _st: tauri::State<AppState>,
+pub async fn checksum(
+    _st: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     path: String,
     algo: String,
@@ -175,7 +178,12 @@ pub fn checksum(
         return Err(AppError::not_found(format!("文件不存在 / File not found: {path}")));
     }
     cancel_flags().lock().map(|mut s| s.remove(&op_id)).ok();
-    let (out, bytes, cancelled) = hash_file(&app, &p, algo, &op_id)?;
+    let app_c = app.clone();
+    let op_c = op_id.clone();
+    let (out, bytes, cancelled) =
+        tauri::async_runtime::spawn_blocking(move || hash_file(&app_c, &p, algo, &op_c))
+            .await
+            .map_err(|e| AppError::io(format!("校验和线程异常 / checksum thread error: {e}")))??;
     Ok(ChecksumResult {
         op_id: op_id.clone(),
         algo: algo.to_string(),
@@ -281,8 +289,8 @@ fn walk_files(dir: &Path, out: &mut Vec<PathBuf>, scanned: &mut u32, truncated: 
 
 /// Z-33：扫描目录树找出内容重复的文件（≥ minSize）。只报告不删除（红线）。
 #[tauri::command(async)]
-pub fn dupe_scan(
-    _st: tauri::State<AppState>,
+pub async fn dupe_scan(
+    _st: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
     path: String,
     min_size: Option<u64>,
@@ -291,7 +299,19 @@ pub fn dupe_scan(
     if !long_path(&root).is_dir() {
         return Err(AppError::not_found(format!("目录不存在 / Directory not found: {path}")));
     }
-    let min_size = min_size.unwrap_or(1);
+    // 全量递归扫描 + 全量哈希确认是重 IO，整体移入阻塞线程池执行
+    // （进度事件经 Emitter 在阻塞线程里照样可达前端）。
+    let report = tauri::async_runtime::spawn_blocking(move || dupe_scan_blocking(app, root, min_size.unwrap_or(1)))
+        .await
+        .map_err(|e| AppError::io(format!("重复扫描线程异常 / dupe thread error: {e}")))??;
+    Ok(report)
+}
+
+fn dupe_scan_blocking(
+    app: tauri::AppHandle,
+    root: PathBuf,
+    min_size: u64,
+) -> CmdResult<DupeReport> {
     let send = |phase: &str, done: u32, total: u32| {
         let _ = tauri::Emitter::emit(
             &app,
@@ -453,15 +473,21 @@ fn scan_dir(node_path: &Path, counter: &mut u32, truncated: &mut bool) -> SpaceN
 
 /// Z-34：空间分析（目录树 + 大小/文件数统计；20 万项截断如实返回）。
 #[tauri::command(async)]
-pub fn space_scan(_st: tauri::State<AppState>, path: String) -> CmdResult<SpaceReport> {
+pub async fn space_scan(_st: tauri::State<'_, AppState>, path: String) -> CmdResult<SpaceReport> {
     let root = PathBuf::from(&path);
     if !long_path(&root).is_dir() {
         return Err(AppError::not_found(format!("目录不存在 / Directory not found: {path}")));
     }
-    let mut counter = 0u32;
-    let mut truncated = false;
-    let node = scan_dir(&root, &mut counter, &mut truncated);
-    Ok(SpaceReport { root: node, scanned: counter, truncated })
+    // 目录树递归统计（上限 20 万项）为重 IO，移入阻塞线程池执行
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        let mut counter = 0u32;
+        let mut truncated = false;
+        let node = scan_dir(&root, &mut counter, &mut truncated);
+        Ok(SpaceReport { root: node, scanned: counter, truncated })
+    })
+    .await
+    .map_err(|e| AppError::io(format!("空间扫描线程异常 / space thread error: {e}")))?;
+    report
 }
 
 // ===========================================================================
@@ -1324,9 +1350,9 @@ fn sentinel_apply(st: &AppState, app: &tauri::AppHandle) -> CmdResult<()> {
     for id in to_remove {
         if let Some(mut r) = rt.remove(&id) {
             r.stop.store(true, Ordering::Relaxed);
-            if let Some(h) = r.handle.take() {
-                let _ = h.join();
-            }
+            // detach 而非 join：join 会在 async 命令里阻塞 worker 最长一个
+            // 轮询周期；线程看到 stop 标志后自会退出（≤500ms），无需等待。
+            drop(r.handle.take());
         }
     }
     // 启动新增的

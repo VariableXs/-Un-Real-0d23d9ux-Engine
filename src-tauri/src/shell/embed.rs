@@ -373,7 +373,7 @@ fn desktop_hwnd(app: &tauri::AppHandle) -> Option<isize> {
 /// 无法嵌入时如实返回 attached=false（应用已按独立窗口方式启动）。
 #[tauri::command(async)]
 #[cfg(windows)]
-pub fn embed_launch(
+pub async fn embed_launch(
     st: tauri::State<'_, crate::state::AppState>,
     app: tauri::AppHandle,
     id: String,
@@ -425,7 +425,16 @@ pub fn embed_launch(
     let mut hint = hints.get(&id).cloned().unwrap_or_default();
     let timeout_ms = hint.capture_timeout_ms.unwrap_or(30_000);
     let started = std::time::Instant::now();
-    let Some(hwnd) = win::wait_new_window(&exe_name, root_pid, &before, hint.title_regex.as_deref(), timeout_ms)
+    // 等窗口轮询（最长 30s）是纯阻塞操作：移入阻塞线程池执行，
+    // 避免占死 tokio async worker 拖慢其它 IPC。
+    let exe_c = exe_name.clone();
+    let title_c = hint.title_regex.clone();
+    let hwnd = tauri::async_runtime::spawn_blocking(move || {
+        win::wait_new_window(&exe_c, root_pid, &before, title_c.as_deref(), timeout_ms)
+    })
+    .await
+    .map_err(|e| AppError::io(format!("等待窗口线程异常 / wait thread error: {e}")))?;
+    let Some(hwnd) = hwnd
     else {
         write_fail_evidence(&st, &id, root_pid.unwrap_or(0), &exe_name);
         // 自适应：超时 → 下次放宽到 60s（快启动命中后由下方收紧）
@@ -963,7 +972,7 @@ fn detach_by_id(embed_id: &str) -> bool {
 
 #[cfg(not(windows))]
 #[tauri::command(async)]
-pub fn embed_launch(
+pub async fn embed_launch(
     _st: tauri::State<'_, crate::state::AppState>,
     _app: tauri::AppHandle,
     _id: String,
@@ -978,7 +987,15 @@ pub fn embed_launch(
 /// 按下瞬间取光标下顶层根窗口（WindowFromPoint → GA_ROOT）。未选中返回 None。
 #[tauri::command(async)]
 #[cfg(windows)]
-pub fn embed_pick_window(timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
+pub async fn embed_pick_window(timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
+    // 键盘去抖 + 轮询等待（最长 15s）为纯阻塞操作：整体移入阻塞线程池
+    tauri::async_runtime::spawn_blocking(move || embed_pick_window_blocking(timeout_ms))
+        .await
+        .map_err(|e| AppError::io(format!("框选线程异常 / pick thread error: {e}")))?
+}
+
+#[cfg(windows)]
+fn embed_pick_window_blocking(timeout_ms: Option<u64>) -> CmdResult<Option<isize>> {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -1052,7 +1069,6 @@ pub fn embed_bounds(_embed_id: Option<String>, _x: i32, _y: i32, _w: i32, _h: i3
 #[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOW};
     let key = norm_id(embed_id);
     let target = with_registry(|map| {

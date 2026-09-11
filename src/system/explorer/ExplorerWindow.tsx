@@ -1233,7 +1233,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
           : undefined,
       reveal: {
         label: t("showInExplorer"),
-        onClick: () => void ipc.revealPath(e.path).catch(() => {}),
+        onClick: () => void ipc.revealPath(e.path).catch((err) => pushToast("error", t("showInExplorer"), errMessage(err).message)),
       },
     };
     const items: MenuItem[] = [];
@@ -1981,8 +1981,8 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
         </div>
       </div>
 
-      {/* AI-10 V-35：两文件属性对比对话框 */}
-      {cmp && (
+      {/* AI-10 V-35：两文件属性对比对话框（长度守卫：不足两文件时绝不渲染，防越界崩溃） */}
+      {cmp && cmp.length === 2 && (
         <div
           className="ex-dlg-overlay"
           onMouseDown={(e) => {

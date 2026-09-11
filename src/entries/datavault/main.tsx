@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { setupEntryRuntime, isTauriRuntime } from "../runtime";
+import { setupEntryRuntime, isTauriRuntime, dismissBootSplash } from "../runtime";
 import { I18nContext, makeT } from "../../i18n";
 import type { Lang } from "../../i18n/dictionaries";
 import { loadSettings } from "../../lib/settings";
@@ -42,8 +42,4 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 // 首帧渲染后移除 boot-splash
-requestAnimationFrame(() => {
-  const splash = document.getElementById("boot-splash");
-  splash?.classList.add("done");
-  window.setTimeout(() => splash?.remove(), 400);
-});
+dismissBootSplash();

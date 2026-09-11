@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { setupEntryRuntime, isTauriRuntime } from "../runtime";
+import { setupEntryRuntime, isTauriRuntime, dismissBootSplash } from "../runtime";
 import { ExplorerWindow } from "../../system/explorer/ExplorerWindow";
 import "../../styles/global.css";
 import "../../styles/desktop.css";
@@ -21,8 +21,4 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 );
 
 // 首帧渲染后移除 boot-splash（此前从未移除，窗口永远停在启动屏）
-requestAnimationFrame(() => {
-  const splash = document.getElementById("boot-splash");
-  splash?.classList.add("done");
-  window.setTimeout(() => splash?.remove(), 400);
-});
+dismissBootSplash();

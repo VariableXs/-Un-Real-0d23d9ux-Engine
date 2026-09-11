@@ -20,6 +20,17 @@ import type { IngestProgress } from "./ingest";
 
 function joinPath(root: string, rel: string): string {
   const sep = root.includes("\\") || /^[A-Za-z]:/.test(root) ? "\\" : "/";
+  // 隔离守卫：拒绝含 `..` 段或盘符/根前缀的相对路径，防止拼接后穿越出
+  // 工作区根目录、把 openPath 的目标指到真实文件系统的任意位置。
+  const norm = rel.replace(/\\/g, "/").trim();
+  if (
+    norm === "" ||
+    norm.split("/").some((seg) => seg === "..") ||
+    /^[A-Za-z]:/.test(norm) ||
+    norm.startsWith("/")
+  ) {
+    return root;
+  }
   return `${root.replace(/[\\/]+$/, "")}${sep}${rel.replace(/\//g, sep)}`;
 }
 
