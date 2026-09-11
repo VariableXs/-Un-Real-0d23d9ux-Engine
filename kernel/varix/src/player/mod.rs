@@ -586,13 +586,16 @@ pub fn run_player_checks() -> CheckSet {
     let mut prng = DetPrng::new(12345);
     pl.shuffle(&mut prng);
     let after: u32 = pl.ids[..pl.count].iter().map(|&x| x as u32).sum();
+    let first = pl.ids[0];
+    let cur0 = pl.current() == Some(first);
+    let nx = pl.next();
     set.add(
         "A580 playlist",
         pl.count == 8
             && before == sum
             && after == sum
-            && pl.current() == Some(0)
-            && pl.next()
+            && cur0
+            && nx
             && pl.cur == 1,
         "append+shuffle perm",
     );

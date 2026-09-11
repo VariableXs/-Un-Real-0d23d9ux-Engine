@@ -887,13 +887,14 @@ pub fn run_sysmon_checks() -> CheckSet {
     let mut st = ServiceTable::new();
     st.add(Service { name: "sshd", state: SvcState::Stopped });
     let s1 = st.start("sshd");
+    let c1 = st.state_of("sshd") == Some(SvcState::Running);
     let s2 = st.stop("sshd");
+    let c2 = st.state_of("sshd") == Some(SvcState::Stopped);
     let s3 = st.restart("sshd");
+    let c3 = st.state_of("sshd") == Some(SvcState::Running);
     set.add(
         "A679 service start/stop/restart",
-        s1 && st.state_of("sshd") == Some(SvcState::Running) && s2
-            && st.state_of("sshd") == Some(SvcState::Stopped)
-            && s3 && st.state_of("sshd") == Some(SvcState::Running),
+        s1 && c1 && s2 && c2 && s3 && c3,
         "state transitions",
     );
 
@@ -901,10 +902,12 @@ pub fn run_sysmon_checks() -> CheckSet {
     let mut tt = TaskTable::new();
     tt.add(TaskItem { id: 5, name: "backup", resp: TaskResp::Pending });
     let responded = tt.respond(5);
+    let c1 = tt.resp_of(5) == Some(TaskResp::Responded);
     let ended = tt.end(5);
+    let c2 = tt.resp_of(5).is_none();
     set.add(
         "A680 task end + respond",
-        responded && tt.resp_of(5) == Some(TaskResp::Responded) && ended && tt.resp_of(5).is_none(),
+        responded && c1 && ended && c2,
         "respond + end",
     );
 
@@ -937,10 +940,12 @@ pub fn run_sysmon_checks() -> CheckSet {
     let mut su = StartupTable::new();
     su.add(StartupItem { name: "updater", enabled: true });
     let dis = su.disable("updater");
+    let c1 = su.is_enabled("updater") == Some(false);
     let en = su.enable("updater");
+    let c2 = su.is_enabled("updater") == Some(true);
     set.add(
         "A683 startup toggle",
-        dis && su.is_enabled("updater") == Some(false) && en && su.is_enabled("updater") == Some(true),
+        dis && c1 && en && c2,
         "enable/disable",
     );
 

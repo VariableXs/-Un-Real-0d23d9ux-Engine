@@ -2,9 +2,9 @@
 # Kernel ELF:  cargo kbuild            (alias, see below)
 # Host tests: cargo ktest              (alias, builds lib for the host triple)
 [alias]
-kbuild = "build --target x86_64-unknown-none --release"
+kbuild = "build --target x86_64-unknown-none --release --features kernel-image"
 ktest = "test --target x86_64-pc-windows-msvc"
-kcheck = "check --target x86_64-unknown-none"
+kcheck = "check --target x86_64-unknown-none --features kernel-image"
 
 [target.x86_64-unknown-none]
 linker = "rust-lld"

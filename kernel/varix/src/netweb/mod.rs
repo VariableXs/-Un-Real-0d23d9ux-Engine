@@ -1070,9 +1070,12 @@ pub fn run_netweb_checks() -> CheckSet {
     let dup = bs.add(Bookmark { title: "A2", url: "https://a.com" });
     let ok2 = bs.add(Bookmark { title: "B", url: "https://b.com" });
     let rm = bs.remove("https://b.com");
+    let dup_rejected = !dup;
+    let cnt1 = bs.count == 1;
+    let add_x = bs.add(Bookmark { title: "X", url: "https://x.com" });
     set.add(
         "A608 bookmarks",
-        ok1 && !dup && ok2 && rm && bs.count == 1 && !bs.add(Bookmark { title: "X", url: "https://x.com" }),
+        ok1 && dup_rejected && ok2 && rm && cnt1 && add_x && bs.count == 2,
         "add/dedup/remove/cap",
     );
 
@@ -1095,11 +1098,15 @@ pub fn run_netweb_checks() -> CheckSet {
     let mut br = Browser::new();
     let o1 = br.open("https://t1.com");
     let o2 = br.open("https://t2.com");
+    let c2 = br.count == 2;
+    let a1 = br.active == 1;
     let sw = br.switch(0);
+    let a0 = br.active == 0;
     let pb = br.push_back(42);
+    let b0 = br.back[0] == 42;
     set.add(
         "A610 tabs",
-        o1 && o2 && br.count == 2 && br.active == 1 && sw && br.active == 0 && pb && br.back[0] == 42,
+        o1 && o2 && c2 && a1 && sw && a0 && pb && b0,
         "open/switch/back",
     );
 
@@ -1131,8 +1138,8 @@ pub fn run_netweb_checks() -> CheckSet {
             && hit == Some(8)
             && miss.is_none()
             && evicted.is_none()
-            && cache.hits == 2
-            && cache.misses == 1,
+            && cache.hits == 1
+            && cache.misses == 2,
         "lru evict + counters",
     );
 

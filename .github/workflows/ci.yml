@@ -46,3 +46,35 @@ jobs:
           workspaces: src-tauri
       - name: L3 backend tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+  kernel:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: x86_64-unknown-none,x86_64-pc-windows-msvc
+          components: rust-src, rustfmt, clippy, llvm-tools
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: kernel
+      - name: K1 static check (x86_64-unknown-none)
+        run: cargo kcheck
+        working-directory: kernel
+      - name: K2 host tests
+        run: cargo ktest
+        working-directory: kernel
+      - name: K3 fuzz harness (bounded)
+        run: cargo ktest --test fuzz
+        working-directory: kernel
+      - name: K4 kernel build (zero errors)
+        run: cargo kbuild
+        working-directory: kernel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: varix-elf
+          path: kernel/target/x86_64-unknown-none/release/varix
+          retention-days: 7
+          if-no-files-found: error

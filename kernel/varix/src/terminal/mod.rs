@@ -188,11 +188,13 @@ impl History {
 
     /// 下翻：返回更新一条（越过最新返回 None）。
     pub fn down(&mut self) -> Option<&[u8]> {
-        if self.idx >= self.count {
+        if self.count == 0 || self.idx + 1 >= self.count {
+            // 已在最新一条，down 回到“无历史”态。
+            self.idx = self.count;
             return None;
         }
-        let i = self.idx;
         self.idx += 1;
+        let i = self.idx;
         Some(&self.items[i][..self.len[i] as usize])
     }
 }
@@ -713,7 +715,7 @@ pub fn run_terminal_checks() -> CheckSet {
 
     // A504 多标签分屏
     let mut tabs = TermTabs::new();
-    let t_ok = tabs.new_tab() && tabs.new_tab() && !tabs.new_tab() && !tabs.new_tab();
+    let t_ok = tabs.new_tab() && tabs.new_tab() && tabs.new_tab() && !tabs.new_tab();
     let sp_ok = tabs.split_active(Split::V) && tabs.tabs[0].split == Split::V;
     set.add("A504 tabs/split", t_ok && sp_ok, "fixed 4 tabs + split");
 

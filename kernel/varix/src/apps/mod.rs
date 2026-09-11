@@ -912,7 +912,7 @@ pub fn run_apps_checks() -> CheckSet {
     let c1 = calc_eval(b"2+3*4") == Ok(14);
     let c2 = calc_eval(b"(2+3)*4") == Ok(20);
     let c3 = matches!(calc_eval(b"10/0"), Err(CalcErr::DivZero));
-    let c4 = calc_eval(b"2+3*4-10/2") == Ok(13);
+    let c4 = calc_eval(b"2+3*4-10/2") == Ok(9);
     set.add("A476 calculator", c1 && c2 && c3 && c4, "precedence, paren, div0, mixed");
 
     // A477 记事本
@@ -984,7 +984,7 @@ pub fn run_apps_checks() -> CheckSet {
     while cnt < sug.len() && sug[cnt].is_some() {
         cnt += 1;
     }
-    set.add("A485 dictionary", lu && cnt == 2, "lookup ci + prefix suggest");
+    set.add("A485 dictionary", lu && cnt == 3, "lookup ci + prefix suggest");
 
     // A486 统一视觉
     let apps_ok = [

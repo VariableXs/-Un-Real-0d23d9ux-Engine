@@ -54,3 +54,5 @@
 - 多会话会把别人的未提交文件一起 `git add .` 提交；提交前务必
   `git status --porcelain | grep -E '^(A|M) '` 只挑自己域的路径。
 - 恢复对象库只能靠 `git fetch`（代理 127.0.0.1:55799 间歇 502，需重试 5~10 次）。
+
+- **rustup 工具链易损坏（2026-09-12）**：stable/1.97.1 曾整链 Missing manifest。修法：uninstall 后 minimal profile 重装 rustc/std/rust-src；cargo 与 none-std 用 Python 从 static.rust-lang.org dist 手工解包（归档内层还有同名目录要拍平）+ 手写 rustlib manifest/components。跑内核命令始终带 RUSTUP_TOOLCHAIN=1.97.1-x86_64-pc-windows-msvc 绕过 rust-toolchain.toml 的 resync（resync 会回滚删光工具链）。ktest 全量会因 bin varix（msvc target）unwinding panic 失败，用 cargo ktest --lib。

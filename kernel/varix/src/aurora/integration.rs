@@ -20,7 +20,7 @@ use super::compositor::{self, BlendMode, LayerRegistry};
 use super::image;
 use super::input::{self, Event, InputKind};
 use super::typography;
-use super::window::{Rect as WinRect, SnapSide, WindowManager};
+use super::window::{Rect as WinRect, WindowManager};
 
 // ---------------------------------------------------------------------------
 // 确定性 PRNG（xorshift32）—— 供 fuzz 大跑使用，保证结果可复现。

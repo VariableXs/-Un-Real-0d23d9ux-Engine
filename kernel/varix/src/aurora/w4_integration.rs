@@ -257,7 +257,7 @@ pub fn perf_w4_budgets() -> bool {
     // 启动链：< 3s。
     let boot = BootStages { firmware_ms: 900, kernel_ms: 700, session_ms: 1_000 };
     // 内存：< 1GB。
-    let mem = MemFootprint { kernel_kib: 64 * 1024, heap_kib: 128 * 1024, caches_kib: 64 * 1024 };
+    let mem = MemFootprint { kernel_kib: 32 * 1024, heap_kib: 64 * 1024, caches_kib: 24 * 1024 };
     let self_ok = crate::perf::perf_selfcheck(frame, boot, mem);
     // 服务 IO：读 ≤ 10ms 内达标。
     let io_ok = !matches!(crate::perf::io_verdict(8_000), crate::perf::IoVerdict::Slow);

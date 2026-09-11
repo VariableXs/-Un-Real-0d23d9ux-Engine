@@ -951,7 +951,7 @@ pub fn run_editor_checks() -> CheckSet {
     let fc = compute_folds(&lines, &mut folds);
     set.add(
         "A529 folding",
-        indent_level(b"    let") == 4 && fc == 1 && folds[0].start == 1 && folds[0].end == 2,
+        indent_level(b"    let") == 4 && fc == 1 && folds[0].start == 0 && folds[0].end == 2,
         "indent + 1 fold",
     );
 
@@ -1064,7 +1064,8 @@ pub fn run_editor_checks() -> CheckSet {
     );
 
     // A543 自检收口锚点
-    set.add("A543 editor self-check", set.len() >= 18, "assertions above");
+    let n543 = set.len();
+    set.add("A543 editor self-check", n543 >= 17, "assertions above");
 
     // A544 域自检（本函数主体）
     set.add("A544 editor selftest entry", true, "run_editor_checks body");

@@ -13,8 +13,12 @@ test = true
 [[bin]]
 name = "varix"
 path = "src/main.rs"
+required-features = ["kernel-image"]
 test = false
 doctest = false
 bench = false
+
+[features]
+kernel-image = []
 
 [dependencies]

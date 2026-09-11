@@ -1,3 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["varix"]
+# 内核镜像 panic=abort（no_std bin 宿主侧编译必需；测试目标自动豁免）
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
