@@ -146,21 +146,21 @@ pub fn struct_at(table: &[u8], off: usize) -> Option<(StructHeader, &[u8])> {
 /// a sequence of NUL-terminated strings plus one extra terminating NUL; a
 /// structure with no strings carries just that single terminator NUL.
 pub fn next_struct_offset(table: &[u8], off: usize) -> Option<usize> {
+    // The strings area ends with two consecutive NULs — including when there
+    // are no strings at all, in which case the area is *exactly* those two
+    // bytes (SMBIOS spec §"Text Strings"). The previous single-null run
+    // counting landed one byte short after string-less structures (type 16 on
+    // real QEMU tables) and desynchronised the whole walk.
     let mut i = off;
-    // Skip complete strings: a run of non-NUL bytes plus its NUL.
-    while i < table.len() && table[i] != 0 {
-        while i < table.len() && table[i] != 0 {
-            i += 1;
+    loop {
+        if i + 1 >= table.len() {
+            return None; // no double-NUL terminator — truncated table
         }
-        if i >= table.len() {
-            return None; // unterminated string
+        if table[i] == 0 && table[i + 1] == 0 {
+            return Some(i + 2);
         }
-        i += 1; // past this string's NUL
+        i += 1;
     }
-    if i >= table.len() {
-        return None; // missing set terminator
-    }
-    Some(i + 1) // past the set terminator NUL
 }
 
 /// Read the n-th (1-based) string of the string set starting at `off`.
@@ -273,19 +273,32 @@ pub fn info() -> Option<&'static SmbiosInfo<'static>> {
 
 /// Read the SMBIOS entry point from the Limine-provided address and walk it.
 pub fn init() -> Option<&'static SmbiosInfo<'static>> {
-    let (entry_addr, _major) = crate::limine::smbios_entries()?;
+    let Some((entry_addr, _major)) = crate::limine::smbios_entries() else {
+        crate::kwarn!("smbios: no Limine SMBIOS response");
+        return None;
+    };
     let hhdm = crate::limine::hhdm_offset().unwrap_or(0);
     let virt = if entry_addr >= hhdm && hhdm != 0 { entry_addr } else { entry_addr + hhdm };
     unsafe {
         let entry_bytes = core::slice::from_raw_parts(virt as *const u8, ENTRY64_LEN);
-        let entry = parse_entry(entry_bytes)?;
+        let Some(entry) = parse_entry(entry_bytes) else {
+            crate::kwarn!("smbios: entry point at {:#x} unparseable", entry_addr);
+            return None;
+        };
         let table_virt = if entry.table_address >= hhdm && hhdm != 0 {
             entry.table_address
         } else {
             entry.table_address + hhdm
         };
         let table = core::slice::from_raw_parts(table_virt as *const u8, entry.table_length);
-        let mut info = parse_table(table)?;
+        let Some(mut info) = parse_table(table) else {
+            crate::kwarn!(
+                "smbios: table walk failed ({:#x}, {} bytes)",
+                entry.table_address,
+                entry.table_length
+            );
+            return None;
+        };
         info.major = entry.major;
         info.minor = entry.minor;
         let _ = INFO.set(info);
@@ -444,10 +457,11 @@ mod tests {
 
     #[test]
     fn empty_strings_set_is_handled() {
-        // Type 0 with no strings: string set = single NUL.
+        // Type 0 with no strings: the strings area is two NULs (SMBIOS spec).
         let mut t = Vec::new();
         t.extend_from_slice(&[0, 6, 0, 0, 0, 0]); // type 0, len 6, handle 0, vendor idx 0, version idx 0
-        t.push(0); // empty string set terminator
+        t.push(0); // empty strings area = two NULs
+        t.push(0);
         type127(&mut t);
         let info = parse_table(&t).expect("table");
         assert_eq!(info.bios_vendor, b"");

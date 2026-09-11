@@ -231,6 +231,19 @@ pub fn run_boot_checks() -> (usize, usize) {
     if failed == 0 {
         crate::kinfo!("self-test: {}/{} pass", passed, passed);
     } else {
+        // Emit every failing item to serial: the graphical render is useless
+        // when the console is the thing being diagnosed.
+        for i in 0..r.len() {
+            if let Some(c) = r.get(i) {
+                if !c.passed {
+                    crate::kerror!(
+                        "self-check {} FAILED: {}",
+                        c.name,
+                        if c.detail.is_empty() { "-" } else { c.detail }
+                    );
+                }
+            }
+        }
         crate::kwarn!("self-test: {}/{} pass ({} FAIL)", passed, passed + failed, failed);
     }
     (passed, failed)

@@ -105,6 +105,10 @@ pub struct Features {
     pub rdtscp: bool,
     pub la57: bool,
     pub gb_pages: bool,
+    // leaf 1 (ECX) — XSTATE enablement. Must be probed, never assumed: a CPU
+    // without XSAVE triple-fault-loops on CR4.OSXSAVE (QEMU qemu64, 2026-09-12).
+    pub xsave: bool,
+    pub osxsave: bool,
 }
 
 impl Features {
@@ -141,6 +145,8 @@ impl Features {
             rdtscp: e1d & (1 << 27) != 0,
             la57: e1c & (1 << 16) != 0,
             gb_pages: e1d & (1 << 29) != 0,
+            xsave: l1c & (1 << 26) != 0,
+            osxsave: l1c & (1 << 27) != 0,
         }
     }
 

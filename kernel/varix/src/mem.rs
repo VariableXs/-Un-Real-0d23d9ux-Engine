@@ -10,7 +10,7 @@ pub mod mm;
 pub mod paging;
 pub mod pmm;
 
-use pmm::{FrameBitmap, PAGE_SIZE};
+use pmm::PAGE_SIZE;
 
 /// Everything the rest of the kernel wants to know about memory.
 #[derive(Clone, Copy, Debug, Default)]
@@ -83,11 +83,13 @@ impl MemDomainState {
 pub fn init() -> MemDomainState {
     let mut st = MemDomainState::default();
 
-    // 1. Translate the boot memory map into allocator inputs.
-    let (usable, reserved, total_frames) = boot_bitmaps();
+    // 1. Translate the boot memory map into allocator inputs. The bitmaps
+    //    live in static storage inside pmm: at 64 KiB apiece they must never
+    //    touch the bootloader's small stack (boot hang, QEMU 2026-09-12).
+    let total_frames = boot_bitmaps();
 
     // 2. F051 + F052 + F070 — the frame allocators.
-    pmm::init(&usable, &reserved);
+    pmm::init();
 
     // 3. F053 + F054 + F055 — the slab heap and its leak journal.
     heap::init();
@@ -150,57 +152,64 @@ pub fn render_to_console(st: &MemDomainState) {
 }
 
 /// Turn AI-01's memory map into usable/reserved bitmaps.
-fn boot_bitmaps() -> (FrameBitmap, FrameBitmap, usize) {
-    let mut usable = FrameBitmap::new();
-    let mut reserved = FrameBitmap::new();
+///
+/// The bitmaps are pmm's static storage: each `FrameBitmap` is 64 KiB, and
+/// returning them by value used to put 128 KiB on the bootloader's stack
+/// (crash, QEMU 2026-09-12). Returns the usable-frame count.
+fn boot_bitmaps() -> usize {
     let map = crate::memmap::init();
     let total = (pmm::MAX_FRAMES).min(u64::MAX as usize);
+    let frames;
+    {
+        let mut usable = pmm::usable_map().lock();
+        let mut reserved = pmm::reserved_map().lock();
 
-    match map {
-        Some(state) => {
-            let frames = (state.usable_bytes / PAGE_SIZE as u64) as usize;
-            usable.reset(total);
-            reserved.reset(total);
-            // Everything above the reported usable window is reserved: the
-            // allocator must never hand out a frame the firmware did not
-            // describe as RAM.
-            for f in 0..total {
-                usable.set(f, f < frames);
-            }
-            // The kernel image, framebuffer, ACPI tables and log ring are
-            // already tracked by F016; mirror them as reserved frames here so
-            // the frame allocators can never hand them out.
-            let res = crate::memmap::reservations();
-            for i in 0..res.len() {
-                if let Some(r) = res.get(i) {
-                    if r.length == 0 {
-                        continue;
-                    }
-                    let first = (r.base / PAGE_SIZE as u64) as usize;
-                    let last = ((r.base + r.length) / PAGE_SIZE as u64) as usize;
-                    for f in first..=last.min(total.saturating_sub(1)) {
-                        reserved.set(f, true);
+        match map {
+            Some(state) => {
+                frames = (state.usable_bytes / PAGE_SIZE as u64) as usize;
+                usable.reset(total);
+                reserved.reset(total);
+                // Everything above the reported usable window is reserved: the
+                // allocator must never hand out a frame the firmware did not
+                // describe as RAM.
+                for f in 0..total {
+                    usable.set(f, f < frames);
+                }
+                // The kernel image, framebuffer, ACPI tables and log ring are
+                // already tracked by F016; mirror them as reserved frames here
+                // so the frame allocators can never hand them out.
+                let res = crate::memmap::reservations();
+                for i in 0..res.len() {
+                    if let Some(r) = res.get(i) {
+                        if r.length == 0 {
+                            continue;
+                        }
+                        let first = (r.base / PAGE_SIZE as u64) as usize;
+                        let last = ((r.base + r.length) / PAGE_SIZE as u64) as usize;
+                        for f in first..=last.min(total.saturating_sub(1)) {
+                            reserved.set(f, true);
+                        }
                     }
                 }
+                crate::kinfo!(
+                    "mem::boot: {} usable frames, {} reserved ranges",
+                    frames,
+                    crate::memmap::reservations().len()
+                );
             }
-            crate::kinfo!(
-                "mem::boot: {} usable frames, {} reserved ranges",
-                frames,
-                crate::memmap::reservations().len()
-            );
-            // The first 1 MiB is never usable, whatever the firmware says.
-            for f in 0..(1024 * 1024 / PAGE_SIZE) {
-                reserved.set(f, true);
+            None => {
+                frames = 0;
+                usable.reset(total);
+                reserved.reset(total);
+                crate::kwarn!("mem::boot: no memory map — allocator starts empty");
             }
-            (usable, reserved, frames)
         }
-        None => {
-            usable.reset(total);
-            reserved.reset(total);
-            crate::kwarn!("mem::boot: no memory map — allocator starts empty");
-            (usable, reserved, 0)
+        // The first 1 MiB is never usable, whatever the firmware says.
+        for f in 0..(1024 * 1024 / PAGE_SIZE) {
+            reserved.set(f, true);
         }
     }
+    frames
 }
 
 fn watcher() -> &'static crate::cpu::sync::SpinProtected<mm::WatermarkWatcher> {

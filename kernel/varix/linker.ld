@@ -24,6 +24,17 @@ SECTIONS
         *(.srodata .srodata.*)
     }
 
+    /* Interrupt entry stubs are generated at boot, so they need a writable
+     * home — but they are code, so they get their own page-aligned section.
+     * `cpu::idt` hardens the mapping to R-X once generation finishes. */
+    .stubs : ALIGN(4096)
+    {
+        __stubs_start = .;
+        KEEP(*(.stubs .stubs.*))
+        . = ALIGN(4096);
+        __stubs_end = .;
+    }
+
     .data : ALIGN(4096)
     {
         *(.data .data.*)

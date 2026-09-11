@@ -178,11 +178,13 @@ impl ApicBase {
         }
     }
 
-    /// Default MMIO window the LAPIC is traditionally mapped at.
+    /// MMIO window the LAPIC is reached through.
     pub fn mmio_vaddr(&self) -> u64 {
-        // Varix keeps the low-half identity window; the kernel's high-half
-        // alias is established by AI-03 (F057).
-        self.phys
+        // The LAPIC page is device MMIO, not RAM: Limine only maps RAM through
+        // the HHDM, so the raw physical address is NOT dereferenceable in the
+        // higher-half kernel (triple fault, QEMU 2026-09-12). Route it through
+        // the direct map like every other MMIO window (F057).
+        crate::mem::paging::phys_to_virt(self.phys)
     }
 }
 
@@ -630,8 +632,13 @@ impl IoApic {
     }
 
     /// Adopt a controller discovered through the MADT (F009 hand-off).
+    ///
+    /// `phys` is the physical MMIO base from the MADT; it is translated into
+    /// the kernel's HHDM direct map before being stored (raw physical
+    /// addresses are not mapped in a higher-half kernel).
     pub fn attach(&self, phys: u64, gsi_base: u32) {
-        self.base.store(phys, Ordering::Relaxed);
+        self.base
+            .store(crate::mem::paging::phys_to_virt(phys), Ordering::Relaxed);
         self.gsi_base.store(gsi_base, Ordering::Relaxed);
         let ver = self.read(IOAPIC_REG_VER);
         self.redirects.store(max_redirects(ver), Ordering::Relaxed);

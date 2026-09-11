@@ -162,14 +162,19 @@ static ISA_LEVEL: AtomicU32 = AtomicU32::new(u32::MAX);
 /// F048 bring-up: evaluate and enable the highest safe level.
 pub fn init() -> IsaState {
     let p = crate::platform::detect();
+    // XSTATE enablement MUST come from the CPUID probe, never hard-coded: on a
+    // CPU without XSAVE (e.g. QEMU's qemu64 model) `enable()` would set
+    // CR4.OSXSAVE against an unadvertised feature and #GP-loop forever
+    // (boot hang, QEMU 2026-09-12). A CPU that fails the probe degrades to
+    // the integer baseline instead (F048 降级链).
     let mut state = evaluate(
         p.features.sse2,
         p.features.sse4_2,
         true, // AVX presence is implied by AVX2 on every target Varix boots on
         p.features.avx2,
         false,
-        true,
-        true,
+        p.features.osxsave,
+        p.features.xsave,
         XCR0_SSE,
     );
     if let Some(level) = state.level {

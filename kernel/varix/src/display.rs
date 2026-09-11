@@ -2148,14 +2148,21 @@ pub fn init() -> DisplayDomainState {
 
     let (passed, failed) = run_display_checks();
     let current = MODES.lock().current();
+    // Both clock reads share one guard: two `CLOCK.lock()` temporaries in one
+    // struct literal would both live until the end of the statement and
+    // self-deadlock the ticket lock (boot hang, QEMU 2026-09-12).
+    let (fps, worst_frame_us) = {
+        let c = CLOCK.lock();
+        (c.fps(), c.worst_us())
+    };
     let state = DisplayDomainState {
         mode: current,
         displays: 1,
         hdr: 0,
         compositor: path,
         gpu: backend,
-        fps: CLOCK.lock().fps(),
-        worst_frame_us: CLOCK.lock().worst_us(),
+        fps,
+        worst_frame_us,
         self_test: (passed, failed),
     };
 

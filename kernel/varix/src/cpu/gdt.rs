@@ -410,13 +410,19 @@ unsafe fn reload_segments() {
         options(nostack, preserves_flags)
     );
     // Far return reloads CS with the ring-0 code selector.
+    //
+    // The selector MUST be pushed as a full 64-bit quadword: `retfq` pops a
+    // 8-byte RIP followed by a 8-byte CS. A 16-bit `push {sel:x}` (u16 reg)
+    // only moves RSP by 2, leaving the stack permanently shifted +6 after the
+    // far return — which misaligns every later frame and corrupted the first
+    // `kinfo!` format argument into a wild pointer (triple fault, QEMU 2026-09-12).
     core::arch::asm!(
-        "push {sel:x}",
+        "push {sel}",
         "lea {tmp}, [rip + 2f]",
         "push {tmp}",
         "retfq",
         "2:",
-        sel = in(reg) SEL_KERNEL_CODE,
+        sel = in(reg) SEL_KERNEL_CODE as u64,
         tmp = lateout(reg) _,
         options(preserves_flags)
     );

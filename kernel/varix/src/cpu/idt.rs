@@ -54,7 +54,7 @@ impl IdtEntry {
     }
 
     /// Encode to the 16-byte wire format as two `u64`s.
-    pub fn encode(&self) -> [u64; 2] {
+    pub const fn encode(&self) -> [u64; 2] {
         let mut low = self.offset & 0xFFFF;
         low |= (self.selector as u64) << 16;
         low |= ((self.ist as u64) & 0x7) << 32;
@@ -89,6 +89,11 @@ unsafe impl Sync for Idt {}
 
 pub struct Idt {
     entries: UnsafeCell<[IdtEntry; IDT_VECTORS]>,
+    /// Wire-format gates the CPU actually reads through the IDTR. `IdtEntry`
+    /// is a plain Rust struct — its memory layout is NOT the x86 gate layout —
+    /// so the CPU must never be pointed at `entries` directly (the first
+    /// hardware interrupt triple-faulted exactly that way, QEMU 2026-09-12).
+    wire: UnsafeCell<[[u64; 2]; IDT_VECTORS]>,
     installed: AtomicBool,
 }
 
@@ -96,6 +101,7 @@ impl Idt {
     pub const fn new() -> Idt {
         Idt {
             entries: UnsafeCell::new([IdtEntry::missing(); IDT_VECTORS]),
+            wire: UnsafeCell::new([IdtEntry::missing().encode(); IDT_VECTORS]),
             installed: AtomicBool::new(false),
         }
     }
@@ -130,6 +136,8 @@ impl Idt {
                     dpl,
                     present: true,
                 };
+                // Mirror into the wire-format gate the CPU dispatches through.
+                (*self.wire.get())[vec] = e.encode();
                 true
             } else {
                 false
@@ -152,9 +160,9 @@ impl Idt {
             .count()
     }
 
-    /// LIDT pseudo-descriptor.
+    /// LIDT pseudo-descriptor — points at the wire-format gate table.
     pub fn descriptor(&self) -> (u16, u64) {
-        let base = self.entries.get() as u64;
+        let base = self.wire.get() as u64;
         ((IDT_VECTORS * 16 - 1) as u16, base)
     }
 
@@ -468,6 +476,28 @@ pub fn stub_rel32(slot_addr: u64, target: u64) -> i32 {
     }
 }
 
+/// x86_64 exceptions that push an error code; it shifts RIP in the frame.
+fn has_error_code(vector: u8) -> bool {
+    matches!(vector, 8 | 10 | 11 | 12 | 13 | 14 | 17 | 30)
+}
+
+/// CR2 — the address that caused the last page fault.
+fn fault_addr() -> u64 {
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+    {
+        let cr2: u64;
+        // SAFETY: reading a control register has no memory effect.
+        unsafe {
+            core::arch::asm!("mov {}, cr2", out(reg) cr2, options(nomem, nostack, preserves_flags))
+        };
+        cr2
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+    {
+        0
+    }
+}
+
 /// The single Rust entry every stub reaches. `vector` is the number the stub
 /// pushed; `rsp` points at it (the CPU's own frame sits just above).
 ///
@@ -476,6 +506,26 @@ pub fn stub_rel32(slot_addr: u64, target: u64) -> i32 {
 /// the `iretq` is done by the naked wrapper below.
 extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
     if vector < EXCEPTION_COUNT as u64 {
+        // `rsp` is the frame base: [rsp+8] is the vector the stub pushed, then
+        // the CPU's own frame (error code if the exception has one, then RIP).
+        let (code, rip) = unsafe {
+            if has_error_code(vector as u8) {
+                (
+                    core::ptr::read((rsp + 16) as *const u64),
+                    core::ptr::read((rsp + 24) as *const u64),
+                )
+            } else {
+                (0u64, core::ptr::read((rsp + 16) as *const u64))
+            }
+        };
+        let cr2: u64 = fault_addr();
+        crate::kerror!(
+            "fatal exception {} err={:#x} rip={:#x} cr2={:#x} — halting",
+            vector,
+            code,
+            rip,
+            cr2
+        );
         let frame = TrapFrame {
             vector,
             rsp,
@@ -533,11 +583,35 @@ unsafe extern "C" fn common_entry() {
     core::arch::naked_asm!(
         "push rbp",
         "mov rbp, rsp",
+        // The Rust dispatcher follows the C calling convention, so every
+        // caller-saved register it touches would otherwise be handed back to
+        // the interrupted code already overwritten. A timer tick landing
+        // inside `core::fmt::write` used to come back with a dead writer
+        // pointer and fault immediately, so save the whole volatile set.
+        "push rax",
+        "push rcx",
+        "push rdx",
+        "push rsi",
+        "push rdi",
+        "push r8",
+        "push r9",
+        "push r10",
+        "push r11",
         "mov rdi, [rbp + 8]",      // vector pushed by the stub
         "mov rsi, rbp",            // frame pointer
         "and rsp, -16",            // ABI stack alignment for the call
         "call {entry}",
         "mov rsp, rbp",
+        "sub rsp, 72",             // rewind to the last saved register (9 × 8)
+        "pop r11",
+        "pop r10",
+        "pop r9",
+        "pop r8",
+        "pop rdi",
+        "pop rsi",
+        "pop rdx",
+        "pop rcx",
+        "pop rax",
         "pop rbp",
         "add rsp, 8",              // drop the vector the stub pushed
         "iretq",
@@ -554,10 +628,96 @@ struct StubTable {
 // SAFETY: filled once during boot before the IDT is installed; read-only after.
 unsafe impl Sync for StubTable {}
 
+#[cfg_attr(target_os = "none", link_section = ".stubs")]
 static STUBS: StubTable = StubTable {
     bytes: UnsafeCell::new([0xCCu8; STUB_SIZE * IDT_VECTORS]),
     base: AtomicU64::new(0),
 };
+
+/// Outcome of hardening the stub page (see [`harden_stub_mapping`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StubMapping {
+    /// NX and the write bit both cleared: the table is now read-execute.
+    Tightened,
+    /// NX cleared, but the leaf is a huge page shared with writable kernel
+    /// data, so the write bit had to stay (the table is still executable).
+    Executable,
+    /// Nothing could be walked — host build, or the page is not mapped.
+    Skipped,
+}
+
+/// The entry stubs are *generated* at boot, so they have to live in a writable
+/// page, and Limine marks every writable page NX. Once the bytes are in place
+/// there is no reason to keep the page writable, so this walks the live page
+/// tables (CR3 + HHDM) and turns the range into read-execute before the IDT
+/// can deliver anything. Without it the first interrupt faults with
+/// `e=0x11` (instruction fetch from a non-executable page).
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+unsafe fn harden_stub_mapping(base: u64, len: usize) -> StubMapping {
+    let hhdm = match crate::limine::hhdm_offset() {
+        Some(h) => h,
+        None => return StubMapping::Skipped,
+    };
+    let cr3: u64;
+    core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nomem, nostack, preserves_flags));
+    let root = (cr3 & crate::mem::paging::P_ADDR_MASK) + hhdm;
+
+    let mut page = base & !0xFFFu64;
+    let end = base + len as u64;
+    let mut pages = 0usize;
+    let mut tightened = true;
+    while page < end {
+        let (ptr, huge) = match leaf_entry(root, page, hhdm) {
+            Some(v) => v,
+            None => return StubMapping::Skipped,
+        };
+        let entry = core::ptr::read(ptr);
+        let mut next = entry & !crate::mem::paging::P_NX;
+        if huge {
+            // Shared with ordinary writable kernel data: only drop NX.
+            tightened = false;
+        } else {
+            next &= !crate::mem::paging::P_WRITE;
+        }
+        core::ptr::write(ptr, next);
+        core::arch::asm!("invlpg [{}]", in(reg) page, options(nostack, preserves_flags));
+        pages += 1;
+        page += 0x1000;
+    }
+    if pages == 0 {
+        StubMapping::Skipped
+    } else if tightened {
+        StubMapping::Tightened
+    } else {
+        StubMapping::Executable
+    }
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+unsafe fn harden_stub_mapping(_base: u64, _len: usize) -> StubMapping {
+    StubMapping::Skipped
+}
+
+/// Walk PML4→PDPT→PD→PT for `virt`; returns the leaf entry address and whether
+/// the walk stopped early on a huge page.
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+unsafe fn leaf_entry(root: u64, virt: u64, hhdm: u64) -> Option<(*mut u64, bool)> {
+    const P_PRESENT: u64 = 1 << 0;
+    let idx = |shift: u32| ((virt >> shift) & 0x1FF) as usize;
+    let mut table = root as *mut u64;
+    for shift in [39u32, 30, 21] {
+        let slot = table.add(idx(shift));
+        let entry = core::ptr::read(slot);
+        if entry & P_PRESENT == 0 {
+            return None;
+        }
+        if entry & crate::mem::paging::P_HUGE != 0 {
+            return Some((slot, true));
+        }
+        table = ((entry & crate::mem::paging::P_ADDR_MASK) + hhdm) as *mut u64;
+    }
+    Some((table.add(idx(12)), false))
+}
 
 /// Build the stub table and return its base address.
 pub fn build_stubs(common_entry_addr: u64) -> u64 {
@@ -574,7 +734,14 @@ pub fn build_stubs(common_entry_addr: u64) -> u64 {
             core::ptr::copy_nonoverlapping(code.as_ptr(), dst, STUB_SIZE);
         }
     }
+    // Publish before the mapping loses its write permission.
     STUBS.base.store(base, Ordering::Release);
+    // SAFETY: generation is finished; nothing writes to the table again, so it
+    // is safe to turn it into read-execute code.
+    let mapping = unsafe { harden_stub_mapping(base, STUB_SIZE * IDT_VECTORS) };
+    if mapping != StubMapping::Skipped {
+        crate::kinfo!("idt-stubs: mapping {:?}", mapping);
+    }
     base
 }
 
@@ -761,6 +928,28 @@ mod tests {
             assert_eq!(addr, base + v as u64 * STUB_SIZE as u64);
             assert_eq!(stub_for(v), addr);
         }
+    }
+
+    #[test]
+    fn error_code_shift_only_applies_to_the_documented_traps() {
+        // #PF/#GP/… push a code, so RIP sits 8 bytes higher in the frame.
+        for v in [8u8, 10, 11, 12, 13, 14, 17, 30] {
+            assert!(has_error_code(v), "vector {v} must report an error code");
+        }
+        for v in [0u8, 1, 3, 6, 7, 16, 18, 19, 32, 255] {
+            assert!(!has_error_code(v), "vector {v} must not report one");
+        }
+    }
+
+    #[test]
+    fn stub_mapping_is_a_no_op_off_target() {
+        // There are no Limine page tables to walk on the host.
+        // SAFETY: no real mapping is touched; the host build returns early.
+        let state = unsafe { harden_stub_mapping(0x1000, STUB_SIZE * IDT_VECTORS) };
+        #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+        assert_ne!(state, StubMapping::Tightened);
+        #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+        assert_eq!(state, StubMapping::Skipped);
     }
 
     #[test]

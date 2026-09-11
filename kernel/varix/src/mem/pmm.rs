@@ -504,16 +504,36 @@ pub fn bootstrap() -> &'static SpinProtected<FrameBitmapAllocator> {
     &BOOTSTRAP
 }
 
+// Boot bitmaps. These MUST live in static storage: a `FrameBitmap` is 64 KiB
+// (MAX_FRAMES/64 u64 words), and two of them + a clone on the boot stack blew
+// past the bootloader's 64 KiB stack, wiping the boot page tables and
+// triple-faulting (QEMU, 2026-09-12).
+static USABLE_MAP: SpinProtected<FrameBitmap> = SpinProtected::new(FrameBitmap::new());
+static RESERVED_MAP: SpinProtected<FrameBitmap> = SpinProtected::new(FrameBitmap::new());
+static MERGED_MAP: SpinProtected<FrameBitmap> = SpinProtected::new(FrameBitmap::new());
+
+pub fn usable_map() -> &'static SpinProtected<FrameBitmap> {
+    &USABLE_MAP
+}
+
+pub fn reserved_map() -> &'static SpinProtected<FrameBitmap> {
+    &RESERVED_MAP
+}
+
 /// F051+F052+F070 bring-up from the boot memory map.
 ///
-/// `usable` marks the frames the firmware reported as available; `reserved`
-/// marks frames the kernel already owns (image, log ring, boot structures).
-pub fn init(usable: &FrameBitmap, reserved: &FrameBitmap) -> u32 {
-    let total = usable.len().min(MAX_FRAMES);
+/// `USABLE_MAP` marks the frames the firmware reported as available;
+/// `RESERVED_MAP` marks frames the kernel already owns (image, log ring, boot
+/// structures). Both are filled by [`crate::mem::boot_bitmaps`] before this
+/// runs.
+pub fn init() -> u32 {
+    let total = USABLE_MAP.lock().len().min(MAX_FRAMES);
 
     // 1. The bitmap allocator is armed first so anything that needs a page
     //    during bring-up has somewhere to come from.
     {
+        let usable = USABLE_MAP.lock();
+        let reserved = RESERVED_MAP.lock();
         let mut boot = BOOTSTRAP.lock();
         boot.init(total);
         for f in 0..total {
@@ -524,15 +544,21 @@ pub fn init(usable: &FrameBitmap, reserved: &FrameBitmap) -> u32 {
     }
 
     // 2. The buddy zone takes ownership of everything usable and unreserved.
-    let mut merged = usable.clone();
-    for f in 0..total {
-        if reserved.get(f) {
-            merged.set(f, false);
+    //    The merged view is built in static storage — never on the boot stack.
+    {
+        let mut merged = MERGED_MAP.lock();
+        let usable = USABLE_MAP.lock();
+        let reserved = RESERVED_MAP.lock();
+        merged.reset(total);
+        for f in 0..total {
+            merged.set(f, usable.get(f) && !reserved.get(f));
         }
     }
-    let bad = BAD.lock();
-    let free = ZONE.lock().init(0, total as u32, &merged, &bad);
-    drop(bad);
+    let free = {
+        let merged = MERGED_MAP.lock();
+        let bad = BAD.lock();
+        ZONE.lock().init(0, total as u32, &merged, &bad)
+    };
 
     // Read the resulting state through locals: holding a lock guard inside a
     // multi-argument expression would try to re-lock the same ticket lock.

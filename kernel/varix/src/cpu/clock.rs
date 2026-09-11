@@ -321,7 +321,9 @@ impl Hpet {
 
     /// Adopt + enable the HPET. Refuses a timer with an insane period.
     pub fn init(&mut self, phys: u64) -> bool {
-        self.base = phys;
+        // HPET is device MMIO: translate through the HHDM direct map, the raw
+        // physical address is not dereferenceable in the higher-half kernel.
+        self.base = crate::mem::paging::phys_to_virt(phys);
         let raw = self.read64(HPET_CAP_ID);
         let caps = HpetCaps::from_raw(raw);
         if !caps.period_valid() {

@@ -271,6 +271,10 @@ impl Reservations {
     /// Claim a region. Fails (with the reason) on: registry full,
     /// duplicate base, or overlap with an existing reservation.
     /// Zero-length claims always fail (`empty`).
+    ///
+    /// Re-claiming the *exact same* region with the same purpose is accepted
+    /// as an idempotent no-op: boot registers the reservations once early and
+    /// the boot self-check re-runs the same registration (F016 gate).
     pub fn claim(
         &self,
         base: u64,
@@ -291,6 +295,9 @@ impl Reservations {
             for i in 0..len {
                 if let Some(existing) = items[i] {
                     if existing.base == base {
+                        if existing.length == length && existing.purpose == purpose {
+                            return Ok(()); // identical re-claim — idempotent
+                        }
                         return Err("duplicate");
                     }
                     if existing.as_region().overlaps(&new_region) {
