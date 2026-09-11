@@ -1,0 +1,117 @@
+﻿cargo :    Compiling varix v0.1.0 (D:\2\14\-Un-Real-0d23d9ux-Engine-main\kernel\varix)
+所在位置 行:445 字符: 184
++ ... -Engine-main\ktest-out.txt" -Encoding utf8; cargo kbuild 2>&1 | Out-F ...
++                                                 ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling va...n\kernel\varix):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: variable does not need to be mutable
+   --> varix\src\galaxy\verifyall.rs:282:9
+    |
+282 |     let mut push = |out: &mut [u8], o: &mut usize, b: u8| {
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> varix\src\galaxy\verifyall.rs:288:9
+    |
+288 |     let mut push_num = |out: &mut [u8], o: &mut usize, mut v: u32| {
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: value assigned to `rs` is never read
+   --> varix\src\gtoolchain.rs:277:22
+    |
+277 |         let mut rs = 0u32;
+    |                      ^^^^ this value is reassigned later and never used
+...
+297 |             rs = v & 0xFF;
+    |             ------------- `rs` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `pos` is never read
+   --> varix\src\gconcur.rs:502:23
+    |
+502 |         let mut pos = self.len;
+    |                       ^^^^^^^^ this value is reassigned later and never used
+...
+519 |         pos = i;
+    |         ------- `pos` is overwritten here before the previous value is read
+
+warning: variable does not need to be mutable
+   --> varix\src\gmem.rs:715:9
+    |
+715 |     let mut wear = [9u32, 3, 9, 9, 9, 9, 9, 9];
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> varix\src\gstore.rs:627:9
+    |
+627 |     let mut good = [1u8, 2, 3];
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: unused variable: `cls`
+   --> varix\src\gbus.rs:110:18
+    |
+110 |     for &(v, dv, cls, name) in table {
+    |                  ^^^ help: if this is intentional, prefix it with an underscore: `_cls`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `expect_hex` is never read
+   --> varix\src\gnet.rs:75:26
+    |
+ 75 |     let mut expect_hex = true;
+    |                          ^^^^ this value is reassigned later and never used
+...
+111 |         expect_hex = false;
+    |         ------------------ `expect_hex` is overwritten here before the previous value is read
+
+warning: value assigned to `expect_hex` is never read
+  --> varix\src\gnet.rs:91:13
+   |
+87 |                 expect_hex = true;
+   |                 ----------------- `expect_hex` is overwritten here before the previous value is read
+...
+91 |             expect_hex = true;
+   |             ^^^^^^^^^^^^^^^^^ this value is reassigned later and never used
+
+warning: value assigned to `expect_hex` is never read
+  --> varix\src\gnet.rs:87:17
+   |
+87 |                 expect_hex = true;
+   |                 ^^^^^^^^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: unused variable: `prev`
+   --> varix\src\gsec.rs:231:13
+    |
+231 |         let prev = if idx == 0 { Self::GENESIS } else { self.chain[idx - 1] };
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_prev`
+
+warning: unused variable: `what`
+   --> varix\src\gsec.rs:435:42
+    |
+435 |     pub fn assert(&mut self, cond: bool, what: &'static str) -> bool {
+    |                                          ^^^^ help: if this is intentional, prefix it with an underscore: `_what`
+
+warning: associated constant `Closing2` should have an upper case name
+   --> varix\src\gnet.rs:191:15
+    |
+191 |     pub const Closing2: TcpState = TcpState::FinWait2;
+    |               ^^^^^^^^ help: convert the identifier to upper case: `CLOSING2`
+    |
+    = note: `#[warn(non_upper_case_globals)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: `varix` (lib) generated 13 warnings (run `cargo fix --lib -p varix` to apply 7 suggestions)
+    Finished `release` profile [optimized] target(s) in 9.86s
