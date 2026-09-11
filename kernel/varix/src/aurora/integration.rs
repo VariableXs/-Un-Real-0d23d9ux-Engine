@@ -20,7 +20,7 @@ use super::compositor::{self, BlendMode, LayerRegistry};
 use super::image;
 use super::input::{self, Event, InputKind};
 use super::typography;
-use super::window::{self, Rect as WinRect, SnapSide, WindowManager};
+use super::window::{Rect as WinRect, SnapSide, WindowManager};
 
 // ---------------------------------------------------------------------------
 // 确定性 PRNG（xorshift32）—— 供 fuzz 大跑使用，保证结果可复现。
@@ -412,6 +412,7 @@ pub fn run_w1_integration_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::aurora::window::SnapSide;
 
     #[test]
     fn w1_i01_text_composite() {

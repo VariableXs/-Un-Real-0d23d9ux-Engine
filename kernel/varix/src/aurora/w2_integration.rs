@@ -15,7 +15,7 @@ use crate::checks::CheckSet;
 /// 建窗 → 开窗动画 → 贴靠 → 切焦点 → 关窗，窗口与合成器状态一致。
 fn scenario_vwm_compositor() -> bool {
     use super::compositor::{self, BlendMode, FrameClock, LayerRegistry};
-    use super::motion::{self, Anim, AnimKind, Curve, Scheduler};
+    use super::motion::{Anim, AnimKind, Curve, Scheduler};
     use super::window::{Rect, SnapSide, WindowManager};
 
     let screen = Rect { x: 0, y: 0, w: 1920, h: 1080 };
@@ -42,14 +42,13 @@ fn scenario_vwm_compositor() -> bool {
     sched.advance(24);
     let done = sched.progress_of(1, 24) == Some(255);
 
-    // 窗口层进合成器并脏区合成一次。
+    // 窗口层进合成器并脏区合成一次（层像素缓冲上限 16x16，坐标对齐画布）。
     let mut reg = LayerRegistry::new();
-    let layer =
-        compositor::make_layer(1, 100, 100, 640, 480, [40, 40, 60, 255], 255, BlendMode::Normal);
+    let layer = compositor::make_layer(1, 0, 0, 16, 16, [40, 40, 60, 255], 255, BlendMode::Normal);
     if !compositor::layer_tree_add(&mut reg, layer) {
         return false;
     }
-    let mut canvas = [0u8; 64 * 64];
+    let mut canvas = [0u8; 64 * 64 * 4];
     let dirty = compositor::Rect { x: 0, y: 0, w: 64, h: 64 };
     let painted = compositor::composite_dirty(&mut canvas, 64, 64, &reg, &dirty) > 0;
 
@@ -172,7 +171,7 @@ fn scenario_appfw_widgets() -> bool {
 
 /// 复制 → 拖放 → 粘贴 跨应用全通，权限与不变量收口。
 fn scenario_clipboard_dnd() -> bool {
-    use super::clipboard::{self, ClipFormat, Clipboard, DragPhase, DropResult, ReadOutcome};
+    use super::clipboard::{self, ClipFormat, DragPhase, DropResult, ReadOutcome};
 
     let mut cb = clipboard::new_clipboard();
     let src: u16 = 100;
@@ -268,7 +267,7 @@ fn scenario_perf_joint() -> bool {
     let mut reg = LayerRegistry::new();
     let layer = compositor::make_layer(1, 0, 0, 32, 32, [255, 0, 0, 255], 255, compositor::BlendMode::Normal);
     let added = compositor::layer_tree_add(&mut reg, layer);
-    let mut canvas = [0u8; 64 * 64];
+    let mut canvas = [0u8; 64 * 64 * 4];
     let dirty = compositor::Rect { x: 0, y: 0, w: 64, h: 64 };
     let _ = compositor::composite_dirty(&mut canvas, 64, 64, &reg, &dirty);
     let mut prof = ComposeProfile::new();
@@ -284,7 +283,7 @@ fn scenario_perf_joint() -> bool {
 
 /// 无合成器/低端降级下窗口与剪贴板仍可用。
 fn scenario_degrade_joint() -> bool {
-    use super::clipboard::{self, ClipFormat, Clipboard, DegradeMode};
+    use super::clipboard::{self, ClipFormat, DegradeMode};
     use super::compositor;
     use super::motion;
     use super::window::{DegradeLevel, Rect, WindowManager};
@@ -309,7 +308,7 @@ fn scenario_degrade_joint() -> bool {
     let clip_ok = matches!(mode, DegradeMode::Full | DegradeMode::TextOnly);
 
     // 动效降级：负载打满 → Static 档；reduce motion 下进度被压平但不 panic。
-    let flat = motion::apply_reduce_motion(true, 255) <= 255;
+    let flat = motion::apply_reduce_motion(true, 255) == 255;
     let md = motion::motion_degrade(1000);
 
     deep != compositor::DegradeLevel::Full && still_works && clip_ok && flat
@@ -343,7 +342,7 @@ fn scenario_fuzz_joint() -> bool {
     let _ = motion::motion_fuzz(0, 0, true, Curve::Linear);
 
     let reg = LayerRegistry::new();
-    let mut canvas = [0u8; 32 * 32];
+    let mut canvas = [0u8; 32 * 32 * 4];
     let _ = compositor::fuzz_composite(&mut canvas, 32, 32, &reg);
 
     fz_win && fz_clip
@@ -388,6 +387,8 @@ mod tests {
         assert!(scenario_degrade_joint(), "degrade joint");
         assert!(scenario_fuzz_joint(), "fuzz joint");
     }
+
+
 
     #[test]
     fn w2_checkset_all_green() {
