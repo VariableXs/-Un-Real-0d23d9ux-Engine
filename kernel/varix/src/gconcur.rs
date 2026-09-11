@@ -499,7 +499,6 @@ impl SkipList {
         if self.len >= SKIPLIST_MAX {
             return false;
         }
-        let mut pos = self.len;
         let mut i = 0usize;
         while i < self.len && self.keys[i] < key {
             i += 1;
@@ -516,8 +515,6 @@ impl SkipList {
         self.level[i] = tier.min(4).max(1);
         self.next[i] = [0; 4];
         self.len += 1;
-        pos = i;
-        let _ = pos;
         true
     }
     pub fn contains(&self, key: u64) -> bool {

@@ -141,6 +141,7 @@ impl SeccompFilter {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(non_snake_case)] // kASLR / W^X 为安全领域通用术语
 pub struct HardeningFlags {
     pub kASLR: bool,
     pub wXorX: bool,

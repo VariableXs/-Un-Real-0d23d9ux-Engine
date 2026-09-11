@@ -624,7 +624,7 @@ pub fn run_storage_checks() -> CheckSet {
     s.add("G189 raid1", mir.read(3) == Some(77), "degraded read");
     s.add("G190 gc reachable", fs.reachable() == 1, "single root");
     s.add("G192 snap budget", snapshot_budget(10, 2, 3) == 16, "shared+overhead");
-    let mut good = [1u8, 2, 3];
+    let good = [1u8, 2, 3];
     let recorded = crc32(&good);
     let mut damaged = [1u8, 9, 3];
     s.add("G194 self-heal", heal_block(&mut damaged, &good, recorded) && damaged == [1, 2, 3], "restore copy");

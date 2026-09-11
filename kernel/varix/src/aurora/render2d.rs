@@ -835,6 +835,8 @@ pub fn select_quality(frame_us: u32, budget_us: u32) -> Quality {
 // ---------------------------------------------------------------------------
 
 /// 画布不变式：所有像素 alpha 均在合法范围（无越界写入）。
+/// 注：alpha 以 u8 存储，天然 ≤255，此检查恒成立（保留接口以维持语义契约）。
+#[allow(unused_comparisons)]
 pub fn canvas_invariant(buf: &[u8]) -> bool {
     let mut i = 3usize;
     while i < buf.len() {

@@ -634,7 +634,7 @@ pub fn encode_qoi(rgba: &[u8], width: u32, height: u32, out: &mut [u8]) -> Optio
                 if dg >= -32 && dg <= 31 && dr_dg >= -8 && dr_dg <= 7 && db_dg >= -8 && db_dg <= 7 {
                     out[pos] = QOI_OP_LUMA | ((dg + 32) as u8);
                     pos += 1;
-                    out[pos] = ((((dr_dg + 8) as u8) << 4) | ((db_dg + 8) as u8));
+                    out[pos] = (((dr_dg + 8) as u8) << 4) | ((db_dg + 8) as u8);
                     pos += 1;
                 } else {
                     out[pos] = QOI_OP_RGB;
@@ -1317,7 +1317,7 @@ pub fn apply_gamma_lut(lut: &[u8; 256], rgba: &mut [u8]) {
     }
 }
 
-fn ipow(mut base: u32, mut e: u8) -> u32 {
+fn ipow(base: u32, mut e: u8) -> u32 {
     let mut r = 1u32;
     while e > 0 {
         r = r.wrapping_mul(base);

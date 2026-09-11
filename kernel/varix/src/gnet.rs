@@ -72,7 +72,6 @@ pub fn parse_ipv6(s: &[u8]) -> Option<[u16; 8]> {
     let mut n = 0usize;
     let mut i = 0usize;
     let mut dcolon: Option<usize> = None;
-    let mut expect_hex = true;
     while i < s.len() {
         if s[i] == b':' {
             if i + 1 < s.len() && s[i + 1] == b':' {
@@ -84,11 +83,9 @@ pub fn parse_ipv6(s: &[u8]) -> Option<[u16; 8]> {
                 if i >= s.len() {
                     break;
                 }
-                expect_hex = true;
                 continue;
             }
             i += 1;
-            expect_hex = true;
             continue;
         }
         let start = i;
@@ -108,8 +105,6 @@ pub fn parse_ipv6(s: &[u8]) -> Option<[u16; 8]> {
         }
         groups[n] = v as u16;
         n += 1;
-        expect_hex = false;
-        let _ = expect_hex;
     }
     match dcolon {
         None => {
@@ -186,8 +181,8 @@ pub fn tcp_step(st: TcpState, ev: u8) -> TcpState {
 }
 
 // 让 Closing2 参与枚举（半关路径）
-#[allow(non_camel_case_types)]
 impl TcpState {
+    #[allow(non_upper_case_globals)]
     pub const Closing2: TcpState = TcpState::FinWait2;
 }
 

@@ -578,6 +578,7 @@ pub fn state_transition(s: WState, e: UiEvent) -> WState {
         (_, UiEvent::Disable) => WState::Disabled,
         (WState::Disabled, UiEvent::Enable) => WState::Normal,
         (WState::Disabled, _) => WState::Disabled,
+        (WState::Focused, UiEvent::Press) => WState::Pressed,
         (_, UiEvent::Hover) => WState::Hover,
         (_, UiEvent::Unhover) => WState::Normal,
         (_, UiEvent::Press) => WState::Pressed,
@@ -585,7 +586,6 @@ pub fn state_transition(s: WState, e: UiEvent) -> WState {
         (WState::Hover, UiEvent::Release) => WState::Hover,
         (WState::Pressed, UiEvent::Focus) => WState::Focused,
         (WState::Hover, UiEvent::Focus) => WState::Focused,
-        (WState::Focused, UiEvent::Press) => WState::Pressed,
         (WState::Focused, UiEvent::Release) => WState::Focused,
         (WState::Focused, UiEvent::Blur) => WState::Normal,
         (WState::Normal, UiEvent::Focus) => WState::Focused,
@@ -741,7 +741,7 @@ pub fn run_widgets_checks() -> CheckSet {
     // A307 列表可见窗口（空 + 滚动钳制）
     let empty = ListModel { total: 0, selected: 0, scroll_top: 0, view: 5 };
     let ew = list_visible_window(&empty);
-    let mut big = ListModel { total: 10, selected: 9, scroll_top: 0, view: 3 };
+    let big = ListModel { total: 10, selected: 9, scroll_top: 0, view: 3 };
     let bw = list_visible_window(&big);
     set.add("A307 visible window", ew == (0, 0) && bw == (7, 10), "scroll clamp");
 

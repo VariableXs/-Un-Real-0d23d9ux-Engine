@@ -228,7 +228,7 @@ impl AuditLog {
         if idx >= self.count {
             return true;
         }
-        let prev = if idx == 0 { Self::GENESIS } else { self.chain[idx - 1] };
+        let _prev = if idx == 0 { Self::GENESIS } else { self.chain[idx - 1] };
         self.chain[idx] != sec_mac(forged, self.entries[idx], 0x4ad1_3a7)
     }
 }
@@ -432,7 +432,7 @@ impl SelfVerify {
     }
 
     /// G882 运行时断言：失败计数不 panic（内核永不因自证崩溃）。
-    pub fn assert(&mut self, cond: bool, what: &'static str) -> bool {
+    pub fn assert(&mut self, cond: bool, _what: &'static str) -> bool {
         self.assertions_run += 1;
         if cond {
             true

@@ -966,7 +966,7 @@ pub fn run_appfw_checks() -> CheckSet {
         "terminated->running rejected",
     );
     // 填满注册表
-    let mut full = false;
+    let full;
     for _ in 0..MAX_APPS {
         let _ = app_register(&mut m, "x", 0, 0);
     }
@@ -992,7 +992,7 @@ pub fn run_appfw_checks() -> CheckSet {
     let d = app_register(&mut m4, "term", PERM_FS, 0).unwrap();
     app_launch(&mut m4, d);
     let w1 = window_create(&mut m4, d, 800, 600).unwrap();
-    let w2 = window_create(&mut m4, d, 640, 480).unwrap();
+    let _w2 = window_create(&mut m4, d, 640, 480).unwrap();
     set.add("A278 window create", window_count(&m4, d) == 2, "two windows");
     window_destroy(&mut m4, d, w1);
     // 窗口上限
@@ -1041,7 +1041,7 @@ pub fn run_appfw_checks() -> CheckSet {
     let mut m8 = AppManager::new();
     let i = app_register(&mut m8, "focus", PERM_FS, 0).unwrap();
     app_launch(&mut m8, i);
-    let fw = window_create(&mut m8, i, 100, 100).unwrap();
+    let _fw = window_create(&mut m8, i, 100, 100).unwrap();
     let fw2 = window_create(&mut m8, i, 100, 100).unwrap();
     focus_window(&mut m8, i, fw2);
     set.add(

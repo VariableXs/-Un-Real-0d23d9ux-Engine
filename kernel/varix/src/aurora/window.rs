@@ -1064,7 +1064,6 @@ impl WindowManager {
     // -----------------------------------------------------------------------
 
     pub fn fuzz_step(&mut self, kind: u8, a: u32, b: u32) -> bool {
-        const SCREEN: Rect = Rect::new(0, 0, 1920, 1080);
         match kind % 8 {
             0 => self
                 .create_window(
@@ -1471,7 +1470,7 @@ pub fn run_window_checks() -> CheckSet {
 
     // A217 无障碍
     let mut wm = WindowManager::new();
-    let a = wm.create_window(Rect::new(0, 0, 100, 100), 0).unwrap();
+    let _a = wm.create_window(Rect::new(0, 0, 100, 100), 0).unwrap();
     let b = wm.create_window(Rect::new(0, 0, 100, 100), 0).unwrap();
     wm.minimize(b);
     let a217 = wm.a11y_exposed_count() == 1 && !wm.is_exposed(b) && wm.a11y_exposed_count() < wm.alive_count();

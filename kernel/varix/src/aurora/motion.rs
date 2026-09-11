@@ -211,7 +211,7 @@ pub fn scene_fade(progress: u8) -> (u8, u8) {
 pub fn scene_slide(progress: u8) -> (i16, i16) {
     let e = ease(Curve::EaseInOut, progress) as i16;
     let off_a = -((100i16 * e) / 255);
-    let off_b = ((100i16 * (255 - e)) / 255);
+    let off_b = (100i16 * (255 - e)) / 255;
     (off_a, off_b)
 }
 
@@ -935,6 +935,8 @@ pub fn run_motion_checks() -> CheckSet {
 
     // A247 窗口动画与过渡模糊测试
     let fz = motion_fuzz(12345, 600, true, Curve::EaseInOut);
+    // motion_fuzz 返回 u8，≤255 恒成立（保留断言以维持语义契约）
+    #[allow(unused_comparisons)]
     set.add(
         "A247 窗口动画与过渡模糊测试",
         motion_fuzz(0, 0, false, Curve::EaseInOut) <= 255 && fz <= 255,

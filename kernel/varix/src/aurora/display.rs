@@ -117,7 +117,7 @@ pub fn edid_manufacturer(e: &[u8]) -> [u8; 3] {
         if c == 0 {
             b'X'
         } else {
-            (b'A' + (c as u8 - 1))
+            b'A' + (c as u8 - 1)
         }
     };
     [ch(c1), ch(c2), ch(c3)]
@@ -891,7 +891,7 @@ impl ScreenConfigTable {
     pub fn set(&mut self, c: ScreenConfig) -> bool {
         let mut i = 0;
         while i < self.count {
-            if let Some(mut s) = self.cfg[i] {
+            if let Some(s) = self.cfg[i] {
                 if s.index == c.index {
                     self.cfg[i] = Some(c);
                     return true;

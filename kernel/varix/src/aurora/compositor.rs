@@ -392,7 +392,7 @@ pub fn gauss_blur_3x3(src: &[u8], w: usize, h: usize, tmp: &mut [u8], out: &mut 
                 let a = sample(src, w, h, x.wrapping_sub(1), y, c) as u32;
                 let b = sample(src, w, h, x, y, c) as u32;
                 let d = sample(src, w, h, x + 1, y, c) as u32;
-                tmp[(y * w + x) * 4 + c] = (((a + b + d) / 3) as u8);
+                tmp[(y * w + x) * 4 + c] = ((a + b + d) / 3) as u8;
             }
         }
     }
@@ -403,7 +403,7 @@ pub fn gauss_blur_3x3(src: &[u8], w: usize, h: usize, tmp: &mut [u8], out: &mut 
                 let a = sample(tmp, w, h, x, y.wrapping_sub(1), c) as u32;
                 let b = sample(tmp, w, h, x, y, c) as u32;
                 let d = sample(tmp, w, h, x, y + 1, c) as u32;
-                out[(y * w + x) * 4 + c] = (((a + b + d) / 3) as u8);
+                out[(y * w + x) * 4 + c] = ((a + b + d) / 3) as u8;
             }
         }
     }

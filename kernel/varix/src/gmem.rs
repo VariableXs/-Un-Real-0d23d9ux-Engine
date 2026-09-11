@@ -712,7 +712,7 @@ pub fn run_memory_checks() -> CheckSet {
     xtea_decrypt(&mut blk, &key);
     s.add("G152 pm crypto", blk == [0x11223344, 0x55667788] && enc != blk, "xtea roundtrip");
     s.add("G153 page-cache bypass", page_cache_bypass(true, false) && page_cache_bypass(false, true) == false, "dax path");
-    let mut wear = [9u32, 3, 9, 9, 9, 9, 9, 9];
+    let wear = [9u32, 3, 9, 9, 9, 9, 9, 9];
     s.add("G157 wear level", wear_level(&wear) == 1, "least worn");
     // 缓存段
     s.add("G161 numa bw", numa_bandwidth(0, 0) == 200 && numa_bandwidth(0, 3) == 40, "topology");
