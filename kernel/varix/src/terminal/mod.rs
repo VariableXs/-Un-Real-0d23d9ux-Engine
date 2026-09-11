@@ -629,7 +629,7 @@ pub fn fuzz_terminal(seed: u64, rounds: usize) -> bool {
         i += 1;
     }
     // 不变式：宽高由常量决定，不因写入改变；可打印区可读。
-    let mut readable = true;
+    let readable = true;
     let mut r = 0usize;
     while r < GRID_H {
         let mut buf = [0u8; GRID_W];
@@ -664,7 +664,7 @@ pub fn term_degrade_pressure() -> bool {
         g.write_char(b'.');
         i += 1;
     }
-    let scrolled = g.stats.scrolls > 0;
+    let _scrolled = g.stats.scrolls > 0;
 
     let mut h = History::new();
     let mut k = 0usize;

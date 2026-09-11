@@ -1051,6 +1051,22 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::gobs::run_gobs_checks());
     checkup.register(crate::gsec::run_gsec_checks());
     checkup.register(crate::grtc::run_grtc_checks());
+    // --- AURORA-1000 AI-16~AI-30 (A376~A750) --------------------------------
+    checkup.register(crate::workspace::run_workspace_checks());
+    checkup.register(crate::designsys::run_designsys_checks());
+    checkup.register(crate::fileman::run_fileman_checks());
+    checkup.register(crate::settings::run_settings_checks());
+    checkup.register(crate::apps::run_apps_checks());
+    checkup.register(crate::terminal::run_terminal_checks());
+    checkup.register(crate::editor::run_editor_checks());
+    checkup.register(crate::imageview::run_imageview_checks());
+    checkup.register(crate::player::run_player_checks());
+    checkup.register(crate::netweb::run_netweb_checks());
+    checkup.register(crate::notify::run_notify_checks());
+    checkup.register(crate::search::run_search_checks());
+    checkup.register(crate::sysmon::run_sysmon_checks());
+    checkup.register(crate::pkgstore::run_pkgstore_checks());
+    checkup.register(crate::printing::run_printing_checks());
     checkup
 }
 

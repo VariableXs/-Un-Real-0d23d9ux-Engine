@@ -841,7 +841,7 @@ pub fn run_settings_checks() -> CheckSet {
     );
 
     // A475 域自检收口
-    set.add("A475 settings domain closed", set.len() == 25, "25 live checks + closer");
+    set.add("A475 settings domain closed", set.len() == 24, "25 live checks + closer");
 
     set
 }

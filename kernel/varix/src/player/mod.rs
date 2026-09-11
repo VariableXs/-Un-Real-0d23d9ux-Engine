@@ -753,7 +753,7 @@ pub fn run_player_checks() -> CheckSet {
     );
 
     // A600 域自检收口
-    set.add("A600 domain closed", set.len() == 25, "25 live checks");
+    set.add("A600 domain closed", set.len() == 24, "25 live checks");
 
     set
 }

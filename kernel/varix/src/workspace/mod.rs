@@ -66,7 +66,7 @@ impl Workspaces {
 
 pub const MAX_MONITORS: usize = 4;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Monitor {
     pub id: u8,
     pub x: i32,
@@ -75,7 +75,7 @@ pub struct Monitor {
     pub h: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,
@@ -254,7 +254,7 @@ impl PerMonitorCfg {
 
 pub const MAX_WIN_MAP: usize = 16;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct WinRec {
     pub id: u16,
     pub mon: u8,
@@ -263,25 +263,20 @@ pub struct WinRec {
 
 /// 越界窗口吸附回可见区（不缩成 0）。
 pub fn clamp_window_into(m: &Monitor, r: Rect) -> Rect {
-    let mut x = r.x;
-    let mut y = r.y;
-    let mut w = r.w;
-    let mut h = r.h;
-    if x < m.x {
-        x = m.x;
-    }
-    if y < m.y {
-        y = m.y;
-    }
+    // 宽高不超过屏幕；x/y 先夹进屏幕左上，再保证 x+w/y+h 不越过右/下边界。
+    let w = r.w.min(m.w);
+    let h = r.h.min(m.h);
     let right = m.x as i64 + m.w as i64;
     let bottom = m.y as i64 + m.h as i64;
-    if (x as i64 + w as i64) > right {
-        w = ((right - x as i64).max(1)) as u32;
+    let mut x = (r.x.max(m.x)) as i64;
+    let mut y = (r.y.max(m.y)) as i64;
+    if x + w as i64 > right {
+        x = right - w as i64;
     }
-    if (y as i64 + h as i64) > bottom {
-        h = ((bottom - y as i64).max(1)) as u32;
+    if y + h as i64 > bottom {
+        y = bottom - h as i64;
     }
-    Rect { x, y, w, h }
+    Rect { x: x as i32, y: y as i32, w, h }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

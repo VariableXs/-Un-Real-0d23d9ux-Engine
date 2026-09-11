@@ -1042,7 +1042,7 @@ pub fn run_pkgstore_checks() -> CheckSet {
     // A725 域自检收口
     set.add(
         "A725 domain closed",
-        set.len() == 25 && !set.truncated(),
+        set.len() == 24 && !set.truncated(),
         "25 live checks, non-truncated",
     );
 

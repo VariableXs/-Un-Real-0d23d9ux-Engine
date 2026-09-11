@@ -628,7 +628,7 @@ pub fn run_designsys_checks() -> CheckSet {
     // A408 字号阶梯
     set.add(
         "A408 font ladder",
-        font_size(0) == 12 && font_size(5) == 32 && font_ladder_monotonic() && line_height(0) >= font_size(0),
+        font_size(0) == 12 && font_size(5) == 32 && font_ladder_monotonic() && line_height(16) == 22 && line_height(32) >= font_size(5),
         "monotonic + ratio",
     );
 

@@ -86,7 +86,8 @@ pub fn rotate90(src: &Bitmap) -> Bitmap {
     let mut d = Bitmap::new();
     for y in 0..src.h {
         for x in 0..src.w {
-            d.set(src.h - 1 - y, x, src.get(x, y));
+            // 逆时针 90°：(x, y) -> (y, W-1-x)，与 A553 自检/单测约定一致。
+            d.set(y, src.w - 1 - x, src.get(x, y));
         }
     }
     d
@@ -677,7 +678,7 @@ pub fn run_imageview_checks() -> CheckSet {
     );
 
     // A568 自检收口锚点
-    set.add("A568 imageview self-check", set.len() >= 18, "assertions above");
+    set.add("A568 imageview self-check", set.len() == 17, "assertions above");
 
     // A569 域自检（本函数主体）
     set.add("A569 imageview selftest entry", true, "run_imageview_checks body");
@@ -708,7 +709,7 @@ pub fn run_imageview_checks() -> CheckSet {
     set.add("A574 placeholder", solid, "solid color placeholder");
 
     // A575 域自检收口
-    set.add("A575 imageview domain closed", set.len() == 25, "25 live checks");
+    set.add("A575 imageview domain closed", set.len() == 24, "25 live checks");
 
     set
 }

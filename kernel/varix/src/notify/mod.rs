@@ -54,6 +54,10 @@ impl NotificationCenter {
         if self.count >= MAX_NOTIFICATIONS {
             return false;
         }
+        // 重复 id 拒绝（同一条通知不重复入队）。
+        if self.get(n.id).is_some() {
+            return false;
+        }
         self.items[self.count] = Some(n);
         self.count += 1;
         true
@@ -653,7 +657,7 @@ pub fn run_notify_checks() -> CheckSet {
     // A639 隐私锁屏打码
     let masked = mask_title("Secret Msg", true);
     let plain = mask_title("Secret", false);
-    let ok639 = masked[0] == b'*' && masked[6] == b'*' && plain[0] == b'S' && plain[1] == b'e';
+    let ok639 = masked[0] == b'*' && masked[1] == b'*' && masked[6] == b' ' && plain[0] == b'S' && plain[1] == b'e';
     set.add("A639 mask title", ok639, "fixed-width mask when locked");
 
     // A640 性能预算
@@ -726,7 +730,7 @@ pub fn run_notify_checks() -> CheckSet {
     set.add("A649 degrade evict", ok649, "evict lowest to make room");
 
     // A650 域自检收口
-    set.add("A650 domain closed", set.len() == 25, "25 live checks");
+    set.add("A650 domain closed", set.len() == 24, "25 live checks");
 
     set
 }

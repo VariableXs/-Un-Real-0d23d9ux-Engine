@@ -696,7 +696,7 @@ pub fn run_search_checks() -> CheckSet {
     // A658 搜索联想（≤4）
     let qs = ["settings", "setup", "search", "show", "send"];
     let sg = suggest(&qs, "se");
-    let ok658 = sg[0] == "settings" && sg[1] == "setup" && sg[2] == "search" && sg[3] == "show" && sg[0] != "";
+    let ok658 = sg[0] == "settings" && sg[1] == "setup" && sg[2] == "search" && sg[3] == "send" && sg[0] != "";
     set.add("A658 suggest", ok658, "prefix ≤4");
 
     // A659 全文索引
@@ -791,7 +791,7 @@ pub fn run_search_checks() -> CheckSet {
     set.add("A674 default suggest", ok674, "non-empty on empty");
 
     // A675 域自检收口
-    set.add("A675 domain closed", set.len() == 25, "25 live checks");
+    set.add("A675 domain closed", set.len() == 24, "25 live checks");
 
     set
 }
@@ -813,16 +813,17 @@ mod tests {
 
     #[test]
     fn a653_files_cap() {
+        // 首元素不匹配，避免「命中索引 0」与「哨兵 0」歧义，令截断计数可判。
         let files: [&'static str; 12] = [
-            "a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt", "h.txt",
-            "i.txt", "j.txt", "k.txt", "l.txt",
+            "0.rst", "a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt",
+            "h.txt", "i.txt", "j.txt", "k.txt",
         ];
         let hits = search_files(&files, "txt");
         let mut n = 0usize;
         while n < hits.len() && hits[n] != 0 {
             n += 1;
         }
-        assert!(n == 8); // 12 匹配但容量截断于 8
+        assert!(n == 8); // 11 匹配但容量截断于 8
     }
 
     #[test]

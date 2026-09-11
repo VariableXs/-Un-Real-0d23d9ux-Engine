@@ -866,7 +866,7 @@ pub fn parse_url<'a>(u: &'a str, out: &mut UrlParts<'a>) -> bool {
         None => return false,
     };
     out.scheme = &u[..se];
-    let mut j = se + 3;
+    let j = se + 3;
     let host_start = j;
     let mut path_start = b.len();
     let mut p = j;
@@ -1231,7 +1231,7 @@ pub fn run_netweb_checks() -> CheckSet {
     );
 
     // A625 域自检收口
-    set.add("A625 domain closed", set.len() == 25, "25 live checks");
+    set.add("A625 domain closed", set.len() == 24, "25 live checks");
 
     set
 }

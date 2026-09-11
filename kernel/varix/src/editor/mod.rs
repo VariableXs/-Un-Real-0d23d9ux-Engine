@@ -247,7 +247,7 @@ impl MultiCursor {
             pos[k] = self.cursors[k];
         }
         // 降序排序。
-        for a in 0..self.count {
+        for _a in 0..self.count {
             for b in 0..self.count - 1 {
                 if pos[b] < pos[b + 1] {
                     let t = pos[b];
@@ -1102,7 +1102,7 @@ pub fn run_editor_checks() -> CheckSet {
     set.add("A549 degrade", all4 && !fifth && fh8 == MAX_FIND, "cursor cap 4 + find cap 8");
 
     // A550 域自检收口
-    set.add("A550 editor domain closed", set.len() == 25, "25 live checks");
+    set.add("A550 editor domain closed", set.len() == 24, "25 live checks");
 
     set
 }

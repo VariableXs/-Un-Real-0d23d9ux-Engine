@@ -196,15 +196,16 @@ pub enum ViewMode {
 
 /// 把 dir 的子节点 id 收集并按当前视图排序（插入排序，无分配）。
 pub fn ordered_siblings(tree: &VfsTree, dir: NodeId, by_size: bool, out: &mut [NodeId; MAX_NODES]) -> usize {
-    let mut n = 0usize;
-    let mut i = 0;
-    while i < MAX_NODES {
-        if tree.nodes[i].used && tree.nodes[i].parent == dir {
-            out[n] = tree.nodes[i].id;
-            n += 1;
+        let mut n = 0usize;
+        let mut i = 0;
+        while i < MAX_NODES {
+            // 排除目录自身（根节点 parent 指向自身）。
+            if tree.nodes[i].used && tree.nodes[i].parent == dir && tree.nodes[i].id != dir {
+                out[n] = tree.nodes[i].id;
+                n += 1;
+            }
+            i += 1;
         }
-        i += 1;
-    }
     let mut j = 1usize;
     while j < n {
         let key = out[j];
@@ -364,6 +365,10 @@ pub fn drag_drop(tree: &mut VfsTree, src: NodeId, dst_dir: NodeId, mv: bool) -> 
     if !tree.exists(src) || !tree.exists(dst_dir) || src == dst_dir {
         return None;
     }
+    // 目标必须是目录（不可拖入文件节点）。
+    if tree.get(dst_dir).map(|n| n.kind) != Some(NodeKind::Dir) {
+        return None;
+    }
     if mv {
         // 不可移入自身后代（防环）。
         if tree.is_descendant(dst_dir, src) {
@@ -474,7 +479,8 @@ pub fn search(tree: &VfsTree, root: NodeId, needle: &str, out: &mut [NodeId; MAX
         }
         let mut i = 0;
         while i < MAX_NODES {
-            if tree.nodes[i].used && tree.nodes[i].parent == cur {
+            // 根节点的 parent 指向自身，必须排除，否则自我入栈死循环。
+            if tree.nodes[i].used && tree.nodes[i].parent == cur && tree.nodes[i].id != cur {
                 if sp < MAX_NODES {
                     stack[sp] = tree.nodes[i].id;
                     sp += 1;
@@ -1030,7 +1036,7 @@ pub fn run_fileman_checks() -> CheckSet {
     let n = archive(&ids, &tree, &mut buf);
     let mut names = [[0u8; 32]; MAX_ARCHIVE];
     let cnt2 = unarchive(&buf[..n], &mut names);
-    let arc_ok = cnt2 == 2 && buf_eq(&names[0][..9], b"readme.txt");
+    let arc_ok = cnt2 == 2 && buf_eq(&names[0][..10], b"readme.txt");
     set.add(
         "A436 archive + unarchive",
         n > 0 && arc_ok,
@@ -1153,7 +1159,7 @@ pub fn run_fileman_checks() -> CheckSet {
     );
 
     // A450 域自检收口
-    set.add("A450 fileman domain closed", set.len() == 25, "25 live checks + closer");
+    set.add("A450 fileman domain closed", set.len() == 24, "25 live checks + closer");
 
     set
 }

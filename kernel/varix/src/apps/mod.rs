@@ -498,8 +498,8 @@ impl Canvas {
     }
     /// Bresenham 直线，返回成功绘制点数。
     pub fn draw_line(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: u8) -> usize {
-        let mut dx = (x1 - x0).abs();
-        let mut dy = -(y1 - y0).abs();
+        let dx = (x1 - x0).abs();
+        let dy = -(y1 - y0).abs();
         let sx = if x0 < x1 { 1 } else { -1 };
         let sy = if y0 < y1 { 1 } else { -1 };
         let mut err = dx + dy;
@@ -802,7 +802,7 @@ pub fn fuzz_apps(seed: u64, rounds: usize) -> bool {
     let mut prng = DetPrng::new(seed);
     let mut tb = TextBuf::new();
     let mut cv = Canvas::new();
-    let mut alive = true;
+    let alive = true;
     for _ in 0..rounds {
         let pick = prng.next_u64() % 3;
         match pick {
@@ -979,7 +979,7 @@ pub fn run_apps_checks() -> CheckSet {
 
     // A485 离线词典
     let lu = dict_lookup("RUST") == Some("系统编程语言");
-    let mut sug = dict_suggest("re");
+    let sug = dict_suggest("re");
     let mut cnt = 0usize;
     while cnt < sug.len() && sug[cnt].is_some() {
         cnt += 1;
