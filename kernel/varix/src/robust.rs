@@ -1067,6 +1067,38 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::sysmon::run_sysmon_checks());
     checkup.register(crate::pkgstore::run_pkgstore_checks());
     checkup.register(crate::printing::run_printing_checks());
+    // --- AURORA-1000 W1 十五域 + 跨域集成收口（步骤 0257 domain-gate 汇总） ---
+    checkup.register(crate::aurora::display::run_display_checks());
+    checkup.register(crate::aurora::render2d::run_render2d_checks());
+    checkup.register(crate::aurora::typography::run_typography_checks());
+    checkup.register(crate::aurora::gpu::run_gpu_checks());
+    checkup.register(crate::aurora::compositor::run_compositor_checks());
+    checkup.register(crate::aurora::image::run_image_checks());
+    checkup.register(crate::aurora::input::run_ainput_checks());
+    checkup.register(crate::aurora::audio::run_aaudio_checks());
+    checkup.register(crate::aurora::window::run_window_checks());
+    checkup.register(crate::aurora::motion::run_motion_checks());
+    checkup.register(crate::aurora::desktop::run_desktop_checks());
+    checkup.register(crate::aurora::appfw::run_appfw_checks());
+    checkup.register(crate::aurora::widgets::run_widgets_checks());
+    checkup.register(crate::aurora::clipboard::run_clipboard_checks());
+    checkup.register(crate::aurora::session::run_session_checks());
+    checkup.register(crate::aurora::integration::run_w1_integration_checks());
+    // --- AURORA-1000 W2 联调集成域（步骤 0490~0499）--------------------------
+    checkup.register(crate::aurora::w2_integration::run_w2_checks());
+    // --- AURORA-1000 W3 收口门禁（步骤 0729~0737） ---------------------------
+    checkup.register(crate::w3gate::run_w3gate_checks());
+    // --- AURORA-1000 W4/W5 AI-31~AI-40 域 CheckSet 收口（步骤 0968~1202）------
+    checkup.register(crate::a11y::run_a11y_checks());
+    checkup.register(crate::apower::run_apower_checks());
+    checkup.register(crate::perf::run_perf_checks());
+    checkup.register(crate::stability::run_stability_checks());
+    checkup.register(crate::asecurity::run_asecurity_checks());
+    checkup.register(crate::testing::run_testing_checks());
+    checkup.register(crate::help::run_help_checks());
+    checkup.register(crate::acceptance::run_acceptance_checks());
+    checkup.register(crate::release::run_release_checks());
+    checkup.register(crate::finalize::run_finalize_checks());
     checkup
 }
 

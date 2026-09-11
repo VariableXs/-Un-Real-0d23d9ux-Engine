@@ -122,6 +122,7 @@ pub mod search;
 pub mod sysmon;
 pub mod pkgstore;
 pub mod printing;
+pub mod w3gate;
 // （aurora:: 命名空间由 AI-01~AI-15 收口段统一注册，见文件底部）
 
 // --- AURORA-1000 AI-31~AI-40 (A751~A1000，W4/W5) -----------------------------
@@ -150,3 +151,6 @@ pub mod finalize;
 // 界面栈十五域统一收口在 aurora:: 命名空间（顶层 display/input/audio 已被
 // VARIX 既有模块占用，依赖收口：不覆盖、只新增）。
 pub mod aurora;
+
+// --- AURORA-1000 步骤 0028 · 全局可观测计数器 --------------------------------
+pub mod metrics;

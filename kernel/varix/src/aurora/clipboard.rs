@@ -139,6 +139,7 @@ pub struct Clipboard {
 }
 
 /// A326 剪贴板核心：构造空剪贴板。
+/// A326 剪贴板核心：构造空剪贴板（跨域联调也需要构造入口）。
 pub const fn new_clipboard() -> Clipboard {
     Clipboard {
         slots: [ClipSlot::new(); 4],

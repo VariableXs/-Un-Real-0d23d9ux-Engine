@@ -22,3 +22,9 @@ pub mod appfw;
 pub mod widgets;
 pub mod clipboard;
 pub mod session;
+/// W1 跨域联调集成域（步骤 0257 域收口）。
+pub mod integration;
+/// W2 联调集成域（步骤 0490~0499）：八条跨域场景 + CheckSet 汇总。
+pub mod w2_integration;
+/// W4 联调集成域（步骤 0969~0980）：八条跨域场景 + CheckSet 汇总。
+pub mod w4_integration;

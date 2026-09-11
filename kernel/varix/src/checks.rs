@@ -179,7 +179,7 @@ pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
 // ---------------------------------------------------------------------------
 
 /// Maximum domains in the kernel checkup registry.
-pub const MAX_DOMAINS: usize = 32;
+pub const MAX_DOMAINS: usize = 96;
 
 /// Aggregate result of `run_kernel_checkup()`.
 #[derive(Clone, Copy, Debug)]
