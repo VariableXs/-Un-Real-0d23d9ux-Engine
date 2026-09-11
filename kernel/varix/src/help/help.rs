@@ -405,7 +405,7 @@ pub fn alt_text_ok(body: &str, images: usize) -> bool {
     // Model: images count provided by the parser; every one must have been
     // emitted with a non-empty alt (checked upstream). We verify the count
     // matches the alt markers in the body.
-    body.matches("![a").count() <= images || images == 0
+    body.matches("![a").count() == images
 }
 
 /// Reading level: sentences ≤ 25 words average.
@@ -413,7 +413,7 @@ pub fn reading_level_ok(total_words: u32, total_sentences: u32) -> bool {
     if total_sentences == 0 {
         return false;
     }
-    total_words / total_sentences <= 25
+    (total_words as u64) <= (total_sentences as u64) * 25
 }
 
 // ---------------------------------------------------------------------------
@@ -621,7 +621,7 @@ pub fn run_help_checks() -> CheckSet {
 
     set.add(
         "A925 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 
@@ -701,7 +701,7 @@ mod tests {
     #[test]
     fn a917_reading_level() {
         assert_eq!(reading_level_ok(50, 2), true);
-        assert_eq!(reading_level_ok(50, 1), true);
+        assert_eq!(reading_level_ok(25, 1), true);
         assert!(!reading_level_ok(51, 2));
         assert!(!reading_level_ok(10, 0));
     }

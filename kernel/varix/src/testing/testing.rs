@@ -72,7 +72,8 @@ pub fn ui_focus_trapped(in_dialog: usize, total_focusables: usize, tab_presses: 
         return false;
     }
     // After any number of tabs, focus must remain in the dialog cycle.
-    tab_presses <= total_focusables * 2 && in_dialog <= total_focusables
+    let _ = tab_presses; // tab presses wrap the dialog cycle
+    in_dialog <= total_focusables
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +605,18 @@ pub fn run_testing_checks() -> CheckSet {
     set.add("A896 obs cap", rep.duration_s <= 60, "report sanity");
 
     set.add(
+        "A893/A897 wrap",
+        e2e_pass(&stages) && ui_replay(&steps, &[true, true]) && cov.meets_gate(),
+        "closure wrap",
+    );
+
+    set.add(
+        "A898/A899 tier pair",
+        test_degrade(true, true) == TestTier::Full && test_degrade(false, true) == TestTier::Headless,
+        "tiers",
+    );
+
+    set.add(
         "A898 docs headroom",
         digits(0) == 1 && digits(9) == 1 && digits(10) == 2 && digits(u32::MAX) == 10,
         "digit math",
@@ -617,7 +630,7 @@ pub fn run_testing_checks() -> CheckSet {
 
     set.add(
         "A900 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 

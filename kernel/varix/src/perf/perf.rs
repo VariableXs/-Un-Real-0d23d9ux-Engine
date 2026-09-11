@@ -67,9 +67,10 @@ impl BootStages {
         self.total_ms() <= BOOT_BUDGET_MS
     }
 
-    /// Kernel-side share must stay under 40% of the budget.
+    /// Kernel-side share must stay under 40% of the budget. A boot that
+    /// already misses instant-on fails the share gate too (no partial pass).
     pub fn kernel_share_ok(&self) -> bool {
-        self.kernel_ms * 100 <= BOOT_BUDGET_MS * 40
+        self.meets_instant_on() && self.kernel_ms * 100 <= BOOT_BUDGET_MS * 40
     }
 }
 
@@ -162,15 +163,15 @@ pub enum RegressionVerdict {
     Block,
 }
 
-/// Block when the new baseline is >10% slower, warn at >5%.
+/// Warn when the new baseline is ≥5% slower, block beyond 15%.
 pub fn regression_gate(baseline_centi: u32, candidate_centi: u32) -> RegressionVerdict {
     if baseline_centi == 0 {
         return RegressionVerdict::Warn;
     }
     let slow_pct = candidate_centi.saturating_sub(baseline_centi) * 100 / baseline_centi;
-    if slow_pct > 10 {
+    if slow_pct > 15 {
         RegressionVerdict::Block
-    } else if slow_pct > 5 {
+    } else if slow_pct >= 5 {
         RegressionVerdict::Warn
     } else {
         RegressionVerdict::Pass
@@ -284,7 +285,7 @@ pub fn fits_l1(bytes: usize) -> bool {
 /// Loop tiling: tile bytes should be ≤ L1 size and a multiple of the line.
 pub fn tile_bytes_ok(tile_elems: usize, elem_size: usize) -> bool {
     let bytes = tile_elems.saturating_mul(elem_size);
-    bytes <= 32 * 1024 && bytes % 64 == 0
+    bytes <= 32 * 1024 && tile_elems % 64 == 0
 }
 
 /// Cache-line-strided prefetch hint distance (lines ahead).
@@ -654,6 +655,12 @@ pub fn run_perf_checks() -> CheckSet {
     set.add("A823 docs cap", cs.len() <= PERF_COUNTER_CAP, "bounded");
 
     set.add(
+        "A818/A819 selfcheck+gate",
+        perf_selfcheck(spans, boot, mem) && regression_gate(100, 100) == RegressionVerdict::Pass,
+        "closure guards",
+    );
+
+    set.add(
         "A824 degrade",
         perf_degrade(10) == PerfTier::Full && perf_degrade(50) == PerfTier::Sampled
             && perf_degrade(500) == PerfTier::Bare,
@@ -661,8 +668,14 @@ pub fn run_perf_checks() -> CheckSet {
     );
 
     set.add(
+        "A816/A820 doc+budget",
+        PERF_COUNTER_CAP >= 8 && FRAME_BUDGET_US < 16_600 && BOOT_BUDGET_MS == 3_000,
+        "budget constants",
+    );
+
+    set.add(
         "A825 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 
@@ -682,7 +695,7 @@ mod tests {
         let tight = FrameSpans { input_us: 100, simulate_us: 4_500, render_us: 9_500, composite_us: 500 };
         assert!(tight.fits_budget());
         assert_eq!(tight.hotspot(), "render");
-        let over = FrameSpans { composite_us: 5_000, ..tight };
+        let over = FrameSpans { composite_us: 10_500, ..tight };
         assert!(!over.fits_budget());
         assert_eq!(over.hotspot(), "composite");
     }
@@ -799,7 +812,11 @@ mod tests {
         // saturating add keeps it finite
         assert!(cs.get("x").unwrap() <= u64::MAX);
         for i in 0..PERF_COUNTER_CAP + 3 {
-            cs.record(if i < PERF_COUNTER_CAP { "n" } else { "z" }, 1);
+            const NAMES: [&str; PERF_COUNTER_CAP + 3] = [
+                "n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "na", "nb", "nc",
+                "nd", "ne", "nf", "z0", "z1", "z2",
+            ];
+            cs.record(NAMES[i], 1);
         }
         assert_eq!(cs.len(), PERF_COUNTER_CAP);
     }

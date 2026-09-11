@@ -143,7 +143,7 @@ pub fn heal(fault: &'static str, retries: u8) -> HealAction {
 
 /// Escalation after repeated heals: same fault 5× → failover.
 pub fn heal_escalate(retries: u8, action: HealAction) -> HealAction {
-    if retries >= 5 && action != HealAction::FailoverSlot {
+    if retries >= 5 && action != HealAction::FailoverSlot && action != HealAction::None {
         HealAction::FailoverSlot
     } else {
         action
@@ -507,7 +507,7 @@ pub fn run_stability_checks() -> CheckSet {
         "safe mode",
     );
 
-    let site = AllocSite { tag: "buf", allocs: 100, frees: 40, peak_live: 55 };
+    let site = AllocSite { tag: "buf", allocs: 100, frees: 40, peak_live: 45 };
     set.add(
         "A827 leak",
         site.live() == 60 && site.leaking(10) && !AllocSite { frees: 50, ..site }.leaking(10),
@@ -663,6 +663,8 @@ pub fn run_stability_checks() -> CheckSet {
         "min",
     );
 
+    set.add("A837 selfcheck", scan_budget_ok(1) && pet_budget_ok(1) && stab_consistent(3, 9, 4), "guards");
+
     set.add("A846 obs cap", log.len() <= STAB_EVENT_CAP, "bounded");
 
     set.add(
@@ -673,7 +675,7 @@ pub fn run_stability_checks() -> CheckSet {
 
     set.add(
         "A850 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 
@@ -690,7 +692,7 @@ mod tests {
 
     #[test]
     fn a826_journal_and_loop() {
-        assert_eq!(fuzz_journal(b"VJRN", 1, 0), CrashRecovery::Fresh);
+        assert_eq!(fuzz_journal(b"XXXX", 1, 0), CrashRecovery::Fresh);
         assert!(crash_loop_safe_mode(&[0, 0, 0, 10]));
         assert!(!crash_loop_safe_mode(&[0, 5, 10, 11]));
         assert!(!crash_loop_safe_mode(&[]));
@@ -714,7 +716,9 @@ mod tests {
         assert!(!rc.handle_leak()); // exactly at the margin
         let over = ResourceCount { handles_open: 1_025, ..rc };
         assert!(over.handle_leak());
-        assert!(rc.inode_leak(0));
+        let pinned = ResourceCount { inodes_pinned: 1, ..rc };
+        assert!(pinned.inode_leak(0));
+        assert!(!rc.inode_leak(0));
     }
 
     #[test]

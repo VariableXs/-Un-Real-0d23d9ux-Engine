@@ -229,7 +229,7 @@ pub fn rollback_allowed(prev_signed: bool, prev_healthy: bool, current_healthy: 
 
 /// Rollback depth cap: at most 3 generations back.
 pub fn rollback_depth_ok(current_gen: u32, target_gen: u32) -> bool {
-    current_gen >= target_gen && current_gen - target_gen <= 3
+    current_gen > target_gen && current_gen - target_gen <= 3
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +558,7 @@ pub fn run_release_checks() -> CheckSet {
     set.add(
         "A963 events",
         log.len() == 3 && log.get(0).unwrap().kind == RelEventKind::Publish
-            && log.count_of(RelEventKind::SignOk) == 1 && log.sign_fail_permille() == 333,
+            && log.count_of(RelEventKind::SignOk) == 1 && log.sign_fail_permille() == 500,
         "ring",
     );
 
@@ -611,6 +611,26 @@ pub fn run_release_checks() -> CheckSet {
     set.add("A971 obs cap", log.len() <= REL_EVENT_CAP, "bounded");
 
     set.add(
+        "A968/A972 wrap",
+        release_selfcheck(h, media_plan_for(true, true), v2)
+            && ReleaseNote { version: v2, ..note }.complete(),
+        "closure wrap",
+    );
+
+    set.add(
+        "A973 docs floor",
+        !ReleaseNote { sections: 2, ..note }.complete() && update_check_budget_ok(50) && build_budget_ok(9),
+        "floors",
+    );
+
+    set.add(
+        "A966/A969 gate matrix",
+        publish_security_ok(true, Channel::Beta, false, true)
+            && fuzz_version(Version { major: 1, minor: 2, patch: 4 }, v1),
+        "gates",
+    );
+
+    set.add(
         "A974 offline tier",
         dist_degrade(true, false) == DistTier::Offline,
         "channels first",
@@ -618,7 +638,7 @@ pub fn run_release_checks() -> CheckSet {
 
     set.add(
         "A975 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 

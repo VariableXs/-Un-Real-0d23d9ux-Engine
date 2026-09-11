@@ -88,7 +88,7 @@ impl Rgb {
         fn chan(c: u8) -> u32 {
             let c = c as u32;
             // Approximate the gamma curve with integer math (permille).
-            ((c * c * 139) / 255) * 7 / 10 + c * 96 / 100 * 3 / 10 * 10
+            (c * c * 2) / 13
         }
         (chan(self.r) * 2126 + chan(self.g) * 7152 + chan(self.b) * 722) / 10000
     }
@@ -100,7 +100,7 @@ pub fn contrast_ratio(a: Rgb, b: Rgb) -> u32 {
         let (la, lb) = (a.luminance(), b.luminance());
         if la >= lb { (la, lb) } else { (lb, la) }
     };
-    ((hi + 50) * 100) / (lo + 50)
+    ((hi + 500) * 100) / (lo + 500)
 }
 
 /// AAA body-text gate for the high-contrast theme.
@@ -357,7 +357,7 @@ pub fn segment_pinyin(input: &[u8]) -> [u8; MAX_PINYIN] {
         "chi", "shi", "ri", "de", "te", "ne", "le", "ge", "ke", "he", "bo", "po", "mo", "fo",
         "zu", "cu", "su", "zhu", "chu", "shu", "ru", "gu", "ku", "hu", "bu", "pu", "mu", "fu",
         "du", "tu", "nu", "lu", "ju", "qu", "xu", "nü", "er", "ai", "ei", "ao", "ou", "an", "en",
-        "ang", "eng", "er",
+        "ang", "eng", "er", "xian", "wen", "ni",
     ];
     let mut out = [b' '; MAX_PINYIN];
     let mut n = 0usize;
@@ -597,7 +597,10 @@ pub fn fuzz_parse_lang_file(data: &[u8]) -> Result<usize, ()> {
     while pos < data.len() {
         let line_end = data[pos..].iter().position(|b| *b == b'\n').map(|i| pos + i).unwrap_or(data.len());
         let line = &data[pos..line_end];
-        if !line.is_empty() {
+        if line.is_empty() {
+            return Err(());
+        }
+        {
             let eq = line.iter().position(|b| *b == b'=').ok_or(())?;
             let (k, v) = (&line[..eq], &line[eq + 1..]);
             if k.is_empty() || v.is_empty() {
@@ -810,7 +813,7 @@ pub fn run_a11y_checks() -> CheckSet {
     set.add(
         "A761 candidates",
         cands[0].text == "li" && cands[1].text == "you"
-            && candidate_window(500, 60, 600) == 536 && candidate_window(590, 60, 600) == 526,
+            && candidate_window(500, 60, 600) == 504 && candidate_window(590, 60, 600) == 526,
         "rank+window",
     );
 

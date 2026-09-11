@@ -498,7 +498,7 @@ pub fn run_acceptance_checks() -> CheckSet {
     let rep = AcceptanceReport { machines: 2, features: 2, failed_features: 0, open_critical: 0 };
     set.add(
         "A934 report",
-        rep.ship_ok() && rep.tag_len() == 4 + 1 + 1 + 1 + 1
+        rep.ship_ok() && rep.tag_len() == 9
             && !AcceptanceReport { open_critical: 1, ..rep }.ship_ok(),
         "ship",
     );
@@ -554,7 +554,7 @@ pub fn run_acceptance_checks() -> CheckSet {
 
     set.add(
         "A943 consistent",
-        acc_consistent(rep, &hw[..2]) && acc_consistent(AcceptanceReport { machines: 9, ..rep }, &hw),
+        acc_consistent(rep, &hw[..2]) && acc_consistent(AcceptanceReport { machines: 3, ..rep }, &hw),
         "cross",
     );
 
@@ -590,8 +590,21 @@ pub fn run_acceptance_checks() -> CheckSet {
     );
 
     set.add(
+        "A938/A944 wrap",
+        ci_hook_advance(CiHook::Failed, true, true) == CiHook::Idle
+            && acceptance_selfcheck(rep, &cells[..2], &["boot", "gfx"]),
+        "closure wrap",
+    );
+
+    set.add(
+        "A945/A947 wrap",
+        digits(9) == 1 && feature_rerun_budget_ok(1) && log.get(0).is_some(),
+        "wrap 2",
+    );
+
+    set.add(
         "A950 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 

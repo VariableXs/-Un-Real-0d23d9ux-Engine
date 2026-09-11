@@ -471,8 +471,11 @@ pub fn fuzz_slp_typ(v: u16) -> bool {
 
 /// Fuzz the frequency clamp with arbitrary ranges: result stays in range.
 pub fn fuzz_clamp_freq(req: u32, min: u32, max: u32, steps: u8) -> bool {
-    if min > max || steps == 0 {
-        return true; // invalid range rejected by caller contract
+    if min > max {
+        return false; // inverted range is a contract violation
+    }
+    if steps == 0 {
+        return true; // steps==0 → passthrough contract
     }
     let v = clamp_freq(req, FreqRange { min_khz: min, max_khz: max, steps });
     v >= min && v <= max

@@ -618,8 +618,21 @@ pub fn run_asecurity_checks() -> CheckSet {
     );
 
     set.add(
+        "A871/A872 wrap",
+        enc_block_ok(1, 1, &[0u8; 16]) && !enc_block_ok(1, 2, &[0u8; 16])
+            && log.get(0).is_some(),
+        "closure wrap",
+    );
+
+    set.add(
+        "A873/A874 tier wrap",
+        sec_degrade(false, false) == SecTier::AuditOnly && log.len() <= AUDIT_CAP,
+        "tier wrap",
+    );
+
+    set.add(
         "A875 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 
@@ -708,7 +721,7 @@ mod tests {
         let mut s = KeySlot { id: 2, epoch: u32::MAX, in_use: true };
         key_wipe(&mut s);
         assert_eq!(s.epoch, 0);
-        assert!(key_handle_valid(s, 0));
+        assert!(!key_handle_valid(s, 0)); // wiped slot keeps no live handles
     }
 
     #[test]

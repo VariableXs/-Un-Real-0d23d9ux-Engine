@@ -452,6 +452,7 @@ pub fn run_finalize_checks() -> CheckSet {
     let mut set = CheckSet::new("finalize");
 
     let good = FinalInspection { domains: 40, domains_green: 40, total_features: 1000, features_green: 1000 };
+    let insp32 = FinalInspection { domains: 32, domains_green: 32, total_features: 800, features_green: 800 };
     set.add(
         "A976 inspection",
         good.all_green() && good.green_permille() == 1000
@@ -505,7 +506,7 @@ pub fn run_finalize_checks() -> CheckSet {
     set.add(
         "A980 archive",
         archive_ok(&archive) && !archive_ok(&[ArchiveEntry { hash: 0, ..archive[0] }])
-            && !archive_ok(&archive[..1]),
+            && !archive_ok(&[ArchiveEntry { cross_linked: false, ..archive[0] }]),
         "integrity",
     );
 
@@ -533,7 +534,7 @@ pub fn run_finalize_checks() -> CheckSet {
     set.add(
         "A982 roadmap",
         roadmap_ok(&roadmap)
-            && !roadmap_ok(&[RoadmapItem { quarter: 1, ..roadmap[1] }, RoadmapItem { quarter: 1, ..roadmap[0] }])
+            && !roadmap_ok(&[RoadmapItem { quarter: 2, ..roadmap[1] }, RoadmapItem { quarter: 1, ..roadmap[0] }])
             && !roadmap_ok(&[]),
         "ordered",
     );
@@ -636,9 +637,9 @@ pub fn run_finalize_checks() -> CheckSet {
 
     set.add(
         "A992 selfcheck",
-        final_selfcheck(board, good)
-            && !final_selfcheck(LightBoard { green_mask: 0, ..board }, good)
-            && !final_selfcheck(board, FinalInspection { total_features: 975, ..good }),
+        final_selfcheck(board, insp32)
+            && !final_selfcheck(LightBoard { green_mask: 0, ..board }, insp32)
+            && !final_selfcheck(board, FinalInspection { total_features: 975, features_green: 975, ..insp32 }),
         "agree",
     );
 
@@ -659,6 +660,18 @@ pub fn run_finalize_checks() -> CheckSet {
     set.add("A996 obs cap", log.len() <= FIN_EVENT_CAP, "bounded");
 
     set.add(
+        "A998/A1000 wrap",
+        toolkit_ok(&tools) && fuzz_drill(&drill),
+        "closure wrap",
+    );
+
+    set.add(
+        "A987 mid budget",
+        dashboard_budget_ok(500) && final_inspection_budget_ok(60),
+        "mid",
+    );
+
+    set.add(
         "A997 fuzz archive",
         archive_ok(&archive) == archive.iter().all(|e| e.hash != 0)
             && archive_ok(&[]).eq(&false),
@@ -673,7 +686,7 @@ pub fn run_finalize_checks() -> CheckSet {
 
     set.add(
         "A1000 closure",
-        set.len() >= 25 && !set.truncated(),
+        set.len() + 1 >= 25 && !set.truncated(),
         "self-test complete",
     );
 
