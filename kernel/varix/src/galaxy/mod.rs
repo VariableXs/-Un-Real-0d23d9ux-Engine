@@ -1,4 +1,4 @@
-//! GALAXY-1800 AI-16~AI-29 落地基座（G901~G1740）。
+//! GALAXY-1800 AI-16~AI-30 落地基座（G901~G1800）。
 //!
 //! 十四个域，每域三文件，每文件 20 项功能（纯逻辑 + 固定容量数组）：
 //! AI-16 `rt` / `clock` / `gpower`，AI-17 `infer` / `prefetch` / `forensics`，
@@ -70,6 +70,10 @@ pub mod display;
 pub mod chaos;
 pub mod longevity;
 
+pub mod finalgate;
+pub mod verifyall;
+pub mod closure;
+
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
@@ -122,7 +126,7 @@ impl GalaxyReport {
     }
 
     fn register(&mut self, set: CheckSet) {
-        if self.count < 42 {
+        if self.count < 45 {
             self.sets[self.count] = Some(set);
             self.count += 1;
         }
@@ -159,7 +163,7 @@ impl GalaxyReport {
     }
 }
 
-/// 汇总 AI-16~AI-29 全部 42 个子域自检。
+/// 汇总 AI-16~AI-30 全部 45 个子域自检。
 pub fn run_galaxy_checks() -> GalaxyReport {
     let mut r = GalaxyReport::new();
     // AI-16
