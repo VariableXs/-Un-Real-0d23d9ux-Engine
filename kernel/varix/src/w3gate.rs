@@ -62,7 +62,7 @@ pub fn integ_fileman_imageview() -> bool {
                 &rot,
                 crate::imageview::Rect { x: 0, y: 0, w: 4, h: 4 },
             );
-            edited && rot.get(0, 0) == 9 && c.w == 4 && c.h == 4
+            edited && rot.get(0, bm.w - 1) == 9 && c.w == 4 && c.h == 4
         } else {
             false
         }
@@ -174,7 +174,7 @@ pub fn degrade_all_safe() -> bool {
     // 配置损坏 → 拒绝反序列化（safe_set 缺键报错）。
     let err_ok = crate::settings::safe_set(&mut local, 999, 1).is_err();
     // 缺字体 → 终端行高仍有点阵档位、编辑器标尺仍可生成。
-    let ok_font = crate::terminal::font_valid(0);
+    let ok_font = crate::terminal::font_valid(8);
     let mut ruler = [0u8; 32];
     let ok_ruler = crate::editor::gen_ruler(10, 4, &mut ruler) == 10;
     // 低端 → 终端输出洪峰丢弃最旧行不 panic；图像大图降采样。
