@@ -17,3 +17,13 @@ archive-*/
 docs/Typora_Hook_Log.txt
 launcher/target/
 kernel/target/
+
+# QEMU / 引导验收产物
+varix.iso
+qemu-serial*.log
+qscreen*.ppm
+qscreen*.png
+qfinal.ppm
+qfinal.png
+tools/limine/
+build/

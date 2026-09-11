@@ -13,24 +13,24 @@ SECTIONS
         KEEP(*(.limine_requests))
     }
 
-    .text : ALIGN(16)
+    .text : ALIGN(4096)
     {
         *(.text .text.*)
     }
 
-    .rodata : ALIGN(16)
+    .rodata : ALIGN(4096)
     {
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
     }
 
-    .data : ALIGN(16)
+    .data : ALIGN(4096)
     {
         *(.data .data.*)
         *(.sdata .sdata.*)
     }
 
-    .bss : ALIGN(16)
+    .bss : ALIGN(4096)
     {
         __bss_start = .;
         *(.bss .bss.*)
