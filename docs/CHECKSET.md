@@ -187,3 +187,29 @@ W4（系统服务与互联，A601~A800）八个域 + 联调集成域统一登记
 - 聚合入口：`robust::run_kernel_checkup()`（AI-31~AI-40 十域 CheckSet 全部接入）。
 - 真机点验（0980）：网络/打印/电源 **待环境具备**（无 QEMU）。
 - 域行（顶部表格）同步置 PASS：a11y / apower / perf / stability / asecurity / testing / help / acceptance / netweb / notify / search / sysmon / pkgstore / printing / w4gate。
+
+## W5 CheckSet 汇总（步骤 1219 · 2026-09-12）
+
+W5（打磨、验证与发布，A801~A1000）八个域 CheckSet 全部接入内核自检闭环：
+
+| 域 | 模块 | 自检项 | 状态 |
+|---|---|---|---|
+| AI-33 性能工程 | `perf/perf.rs` | `run_perf_checks()` A801~A825 | PASS |
+| AI-34 稳定与可靠 | `stability/stability.rs` | `run_stability_checks()` A826~A850 | PASS |
+| AI-35 安全与隐私 | `security/aurora.rs` | `run_asecurity_checks()` A851~A875 | PASS |
+| AI-36 测试与自动化 | `testing/testing.rs` | `run_testing_checks()` A876~A900 | PASS |
+| AI-37 文档与帮助 | `help/help.rs` | `run_help_checks()` A901~A925 | PASS |
+| AI-38 自检与验收 | `acceptance/acceptance.rs` | `run_acceptance_checks()` A926~A950 | PASS |
+| AI-39 发布与分发 | `release/release.rs` | `run_release_checks()` A951~A975 | PASS |
+| AI-40 终极闭环 | `finalize/finalize.rs` | `run_finalize_checks()` A976~A1000 | PASS |
+
+- 聚合入口：`robust::run_kernel_checkup()`（步骤 1150/1176/1202 domain-gate 接入，`MAX_DOMAINS=96`）。
+- 本机验证（nightly 工具链）：`cargo test --lib` 1858 PASS；W5 八域全部绿。
+- W2/W3/W4 联调门禁若干项由并行会话收口中（非 W5 范围）。
+- 真机矩阵（步骤 1241~1290）：**待环境具备**（无 QEMU、无四类真机），按降级链记 Emulated/Smoke 层。
+
+## 长期维护登记（步骤 1321~1330 · 2026-09-12）
+
+维护节奏、版本生命周期、缺陷 SLA、性能回归守护、安全更新通道、知识归档续写、
+文档即代码续跑、真机矩阵续跑、社区反馈闭环与「下一座山」路线：
+统一收敛在 `docs/维护路线.md`（步骤 1321~1330 验收对象）。
