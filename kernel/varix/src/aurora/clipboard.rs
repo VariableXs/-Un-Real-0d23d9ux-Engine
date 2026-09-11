@@ -457,7 +457,7 @@ pub fn cycle_paste(cb: &mut Clipboard, n: usize, app_id: u16, out: &mut [u8]) ->
 
 /// A332 同步：将最新非 secret、非空的槽快照序列化进 out，返回写入字节数。
 pub fn sync_snapshot(cb: &Clipboard, out: &mut [u8]) -> usize {
-    let mut n = 0usize;
+    let mut n;
     if out.len() < 4 {
         return 0;
     }

@@ -107,7 +107,7 @@ pub fn aer_severity(status: u32) -> &'static str {
 
 /// G248 驱动匹配表：vendor:device 精确优先，其次 class。
 pub fn driver_match(table: &[(u16, u16, u8, &'static str)], d: &PciDev) -> Option<&'static str> {
-    for &(v, dv, cls, name) in table {
+    for &(v, dv, _cls, name) in table {
         if v == d.vendor && dv == d.device {
             return Some(name);
         }

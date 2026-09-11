@@ -324,7 +324,6 @@ pub struct VramAllocator {
     used_bytes: u32,
     alloc_count: u32,
     free_count: u32,
-    total_bytes: u32,
 }
 
 impl VramAllocator {
@@ -340,7 +339,6 @@ impl VramAllocator {
             used_bytes: 0,
             alloc_count: 0,
             free_count: 0,
-            total_bytes,
         };
         a.blocks[0] = VramBlock {
             state: BlockState::Free,

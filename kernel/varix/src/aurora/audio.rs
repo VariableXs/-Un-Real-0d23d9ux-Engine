@@ -265,7 +265,7 @@ pub fn synth_sine_sample(phase: u32) -> i16 {
         2 => -sin_quarter_q15(s),
         _ => -cos_quarter_q15(s),
     }; // Q15
-    ((y as i64 * 32767 / 32768) as i16)
+    (y as i64 * 32767 / 32768) as i16
 }
 
 /// 确定性噪声发生器（LCG），返回 i16。
@@ -1011,6 +1011,8 @@ pub fn run_aaudio_checks() -> CheckSet {
     // A180 软件合成器
     let mut nst = 0x1234u32;
     let a180_noise = synth_noise(&mut nst);
+    // i16 采样天然在 [-32768, 32767] 内（保留边界断言以维持语义契约）
+    #[allow(unused_comparisons)]
     set.add(
         "A180 软件合成器",
         synth_phase_step(440, 48000) > 0

@@ -279,7 +279,7 @@ pub fn regression_diff(a: &[RegressionSegment], b: &[RegressionSegment]) -> usiz
 /// 报告行："VERIFY g=4 r=900 f=0 lvl=0"（lvl: 0=Full 1=Degraded 2=None）。
 pub fn verify_report(e: &GenerationEvidence, regression_items: u32, open_findings: u32, out: &mut [u8]) -> usize {
     let mut o = 0usize;
-    let mut push = |out: &mut [u8], o: &mut usize, b: u8| {
+    let push = |out: &mut [u8], o: &mut usize, b: u8| {
         if *o < out.len() {
             out[*o] = b;
             *o += 1;
