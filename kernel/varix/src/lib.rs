@@ -105,3 +105,48 @@ pub mod gsec;
 pub mod grtc;
 // --- TRINITY-500 AI-20 (F476~F500) 工程质量与门禁收官（模块注册由 AI-20 统一收口）
 pub mod quality;
+
+// --- AURORA-1000 AI-16~AI-30 (A376~A750) ------------------------------------
+pub mod workspace;
+pub mod designsys;
+pub mod fileman;
+pub mod settings;
+pub mod apps;
+pub mod terminal;
+pub mod editor;
+pub mod imageview;
+pub mod player;
+pub mod netweb;
+pub mod notify;
+pub mod search;
+pub mod sysmon;
+pub mod pkgstore;
+pub mod printing;
+// （aurora:: 命名空间由 AI-01~AI-15 收口段统一注册，见文件底部）
+
+// --- AURORA-1000 AI-31~AI-40 (A751~A1000，W4/W5) -----------------------------
+#[path = "a11y/a11y.rs"]
+pub mod a11y;
+#[path = "power/aurora.rs"]
+pub mod apower;
+#[path = "perf/perf.rs"]
+pub mod perf;
+#[path = "stability/stability.rs"]
+pub mod stability;
+#[path = "security/aurora.rs"]
+pub mod asecurity;
+#[path = "testing/testing.rs"]
+pub mod testing;
+#[path = "help/help.rs"]
+pub mod help;
+#[path = "acceptance/acceptance.rs"]
+pub mod acceptance;
+#[path = "release/release.rs"]
+pub mod release;
+#[path = "finalize/finalize.rs"]
+pub mod finalize;
+
+// --- AURORA-1000 AI-01~AI-15 (A001~A375, W1/W2) -----------------------------
+// 界面栈十五域统一收口在 aurora:: 命名空间（顶层 display/input/audio 已被
+// VARIX 既有模块占用，依赖收口：不覆盖、只新增）。
+pub mod aurora;

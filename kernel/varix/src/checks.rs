@@ -8,7 +8,7 @@
 //! the same text.
 
 /// Maximum checks recorded by one domain self-test.
-pub const MAX_CHECKS: usize = 32;
+pub const MAX_CHECKS: usize = 64;
 
 /// One check result — name, verdict and a short failure detail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
