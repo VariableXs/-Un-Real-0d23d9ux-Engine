@@ -1158,6 +1158,28 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）--------------
     checkup.register(crate::m7sched::run_m7sched_checks());
     checkup.register(crate::m7cgroup::run_m7cgroup_checks());
+    // --- VARIX-M600 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
+    checkup.register(crate::m600media::run_m600media_checks());
+    checkup.register(crate::m600motion::run_m600motion_checks());
+    checkup.register(crate::m600shell::run_m600shell_checks());
+    checkup.register(crate::m600files::run_m600files_checks());
+    checkup.register(crate::m600sdk::run_m600sdk_checks());
+    checkup.register(crate::m600auto::run_m600auto_checks());
+    checkup.register(crate::m600net::run_m600net_checks());
+    checkup.register(crate::m600svc::run_m600svc_checks());
+    checkup.register(crate::m600priv::run_m600priv_checks());
+    checkup.register(crate::m600hw::run_m600hw_checks());
+    // --- VARIX-M700 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
+    checkup.register(crate::m700cache::run_m700cache_checks());
+    checkup.register(crate::m700dev::run_m700dev_checks());
+    checkup.register(crate::m700drv::run_m700drv_checks());
+    checkup.register(crate::m700input::run_m700input_checks());
+    checkup.register(crate::m700gpu::run_m700gpu_checks());
+    checkup.register(crate::m700disp::run_m700disp_checks());
+    checkup.register(crate::m700net::run_m700net_checks());
+    checkup.register(crate::m700rf::run_m700rf_checks());
+    checkup.register(crate::m700pwr::run_m700pwr_checks());
+    checkup.register(crate::m700smp::run_m700smp_checks());
     checkup.register(crate::m7timelog::run_m7timelog_checks());
     checkup.register(crate::m7bootfw::run_m7bootfw_checks());
     checkup.register(crate::m7testing::run_m7testing_checks());

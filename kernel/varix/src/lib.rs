@@ -247,3 +247,34 @@ pub mod m7testing;
 pub mod m7bench;
 pub mod m7compat;
 pub mod m7docrel;
+
+// --- VARIX-M600 AI-11~AI-20（F251~F500，感官/生态/信任波次）-------------------
+// 图像媒体（m600media）、动效空间（m600motion）、Shell 精工（m600shell）、
+// 文件数据（m600files）、应用 SDK（m600sdk）、自动化（m600auto）、
+// 网络互联（m600net）、服务进程（m600svc）、隐私信任（m600priv）、
+// 硬件广度（m600hw）。符号全部落在新模块避免编号冲突。
+pub mod m600media;
+pub mod m600motion;
+pub mod m600shell;
+pub mod m600files;
+pub mod m600sdk;
+pub mod m600auto;
+pub mod m600net;
+pub mod m600svc;
+pub mod m600priv;
+pub mod m600hw;
+
+// --- VARIX-M700 AI-11~AI-20（F251~F500，存储/图形网络波次）--------------------
+// 缓存回写（m700cache）、设备模型（m700dev）、驱动框架（m700drv）、
+// 输入内核（m700input）、GPU 驱动（m700gpu）、显示合成（m700disp）、
+// 协议栈（m700net）、无线链路（m700rf）、电源时钟（m700pwr）、多核 SMP（m700smp）。
+pub mod m700cache;
+pub mod m700dev;
+pub mod m700drv;
+pub mod m700input;
+pub mod m700gpu;
+pub mod m700disp;
+pub mod m700net;
+pub mod m700rf;
+pub mod m700pwr;
+pub mod m700smp;
