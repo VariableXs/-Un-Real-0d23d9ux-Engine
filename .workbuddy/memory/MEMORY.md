@@ -137,3 +137,9 @@
   所以回退永远不触发 → 失败被拖到 B5 才暴露。下载后必须在 B1 加
   `test -f tools/limine/limine-binary/limine-bios-cd.bin || exit 1` 硬门禁。
 - `tools/limine/` 在 `.gitignore` 里，CI 干净检出时不存在，全靠这一步下载。
+
+## CI 已真实启用（2026-09-12）
+- run 全绿常态：frontend/backend/kernel/boot 四 job，含云端 QEMU 冒烟引导（boot complete 门禁）。
+- 坑：YAML step name 含裸冒号会让整条 workflow startup_failure（0 jobs）；name 一律加引号。
+- 推送通道照旧走 api.github.com（Git Data API），脚本必须 core.quotepath=false。
+- 根目录 html 是 vite MPA 入口，清理前必须对照 vite.config。
