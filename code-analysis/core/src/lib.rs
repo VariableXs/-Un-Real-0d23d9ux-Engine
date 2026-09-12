@@ -7,13 +7,21 @@
 pub mod canvas;
 pub mod checks;
 pub mod cont;
+pub mod dyna;
 pub mod flowchart;
 pub mod iface;
 pub mod infra;
 pub mod ir;
+pub mod langid;
 pub mod logic;
 pub mod model;
+pub mod nouns;
 pub mod parser;
+pub mod refactor;
+pub mod roottree;
+pub mod simple;
+pub mod statics;
+pub mod translate;
 
 use checks::CheckSet;
 
@@ -176,14 +184,35 @@ pub fn run_ca_checks() -> Vec<CheckSet> {
     vec![run_infra_checks(), run_cont_checks(), run_logic_checks()]
 }
 
+/// AI-03 W2 域自检汇总（#151~#250：名词提取/通俗翻译/简化操作/树根分级）。
+pub fn run_ai03_checks() -> Vec<CheckSet> {
+    vec![
+        nouns::run_nouns_checks(),
+        translate::run_translate_checks(),
+        simple::run_simple_checks(),
+        roottree::run_roottree_checks(),
+    ]
+}
+
 /// AI-04 W2 域自检汇总（#251~#336：画布/流程图/三界面）。
 pub fn run_w2_checks() -> Vec<CheckSet> {
     vec![canvas::run_canvas_checks(), flowchart::run_flowchart_checks(), iface::run_iface_checks()]
 }
 
+/// AI-02 W2 域自检汇总（#065~#150：静态分析/动态分析/改进重构/语言识别）。
+pub fn run_ai02_checks() -> Vec<CheckSet> {
+    vec![
+        statics::run_statics_checks(),
+        dyna::run_dyna_checks(),
+        refactor::run_refactor_checks(),
+        langid::run_langid_checks(),
+    ]
+}
+
 /// 全量自检（W1+W2，共 150 项）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
+    v.extend(run_ai02_checks());
     v.extend(run_w2_checks());
     v
 }
@@ -215,7 +244,6 @@ mod tests {
     }
 }
 
-
 /// AI-04 W2 域测试。
 #[cfg(test)]
 mod w2_tests {
@@ -226,18 +254,25 @@ mod w2_tests {
         let sets = run_w2_checks();
         assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 86);
         for s in &sets {
-            assert!(s.all_pass(), "domain {} failed:
-{}", s.domain, s.render());
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
     }
 
     #[test]
-    fn all_150_checks_pass() {
-        let sets = run_all_checks();
-        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 150);
+    fn ai02_86_checks_pass() {
+        let sets = run_ai02_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 86);
         for s in &sets {
-            assert!(s.all_pass(), "domain {} failed:
-{}", s.domain, s.render());
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_checks_pass() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 236);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
     }
 }
