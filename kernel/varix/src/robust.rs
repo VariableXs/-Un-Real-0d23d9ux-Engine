@@ -1132,6 +1132,9 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::m5mem::run_m5mem_checks());
     checkup.register(crate::m5srv::run_m5srv_checks());
     checkup.register(crate::m5fs::run_m5fs_checks());
+    // --- VARIX-M600 AI-01 / VARIX-M700 AI-01（各域 CheckSet 闭环）------------
+    checkup.register(crate::m600boot::run_m600boot_checks());
+    checkup.register(crate::m700proc::run_m700proc_checks());
     // --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）----------------------
     checkup.register(crate::deskwis::run_deskwis_checks());
     checkup.register(crate::dataflow::run_dataflow_checks());
@@ -1147,6 +1150,20 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::m4quality::run_m4quality_checks());
     checkup.register(crate::m4docseco::run_m4docseco_checks());
     checkup.register(crate::m4arts::run_m4arts_checks());
+    // --- VARIX-M600 AI-21~AI-24（F501~F600，作品交付波次）--------------------
+    checkup.register(crate::m6sync::run_m6sync_checks());
+    checkup.register(crate::m6assist::run_m6assist_checks());
+    checkup.register(crate::m6a11y::run_m6a11y_checks());
+    checkup.register(crate::m6deliver::run_m6deliver_checks());
+    // --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）--------------
+    checkup.register(crate::m7sched::run_m7sched_checks());
+    checkup.register(crate::m7cgroup::run_m7cgroup_checks());
+    checkup.register(crate::m7timelog::run_m7timelog_checks());
+    checkup.register(crate::m7bootfw::run_m7bootfw_checks());
+    checkup.register(crate::m7testing::run_m7testing_checks());
+    checkup.register(crate::m7bench::run_m7bench_checks());
+    checkup.register(crate::m7compat::run_m7compat_checks());
+    checkup.register(crate::m7docrel::run_m7docrel_checks());
     checkup
 }
 

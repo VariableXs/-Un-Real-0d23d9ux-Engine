@@ -221,3 +221,29 @@ pub mod m400store;
 pub mod m400input;
 pub mod m400net;
 pub mod m400gfx;
+
+// --- VARIX-M600 AI-21~AI-24（F501~F600，作品交付波次）------------------------
+// 数据同步（m6sync）、智能助手（m6assist）、无障碍与全球化（m6a11y）、
+// 作品交付与文档（m6deliver）。符号全部落在新模块避免编号冲突。
+pub mod m6sync;
+pub mod m6assist;
+pub mod m6a11y;
+pub mod m6deliver;
+
+// --- VARIX-M600 AI-01（F001~F025，启动与秒开域）与 VARIX-M700 AI-01
+// --- （F001~F025，进程与线程域）。符号全部落在新模块避免编号冲突。
+pub mod m600boot;
+pub mod m700proc;
+
+// --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）-------------------
+// 调度器（m7sched）、容器隔离（m7cgroup）、时间日志（m7timelog）、
+// 引导固件（m7bootfw）、可测试性（m7testing）、基准度量（m7bench）、
+// 兼容移植（m7compat）、文档发布（m7docrel）。符号全落新模块避免编号冲突。
+pub mod m7sched;
+pub mod m7cgroup;
+pub mod m7timelog;
+pub mod m7bootfw;
+pub mod m7testing;
+pub mod m7bench;
+pub mod m7compat;
+pub mod m7docrel;
