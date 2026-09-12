@@ -4,8 +4,11 @@
 //! 一域一文件：infra（#001~#017）/ cont（#018~#037）/ logic（#038~#064），
 //! 每域 CheckSet 自检逐项断言，`run_ca_checks()` 汇总。
 
+pub mod canvas;
 pub mod checks;
 pub mod cont;
+pub mod flowchart;
+pub mod iface;
 pub mod infra;
 pub mod ir;
 pub mod logic;
@@ -173,6 +176,18 @@ pub fn run_ca_checks() -> Vec<CheckSet> {
     vec![run_infra_checks(), run_cont_checks(), run_logic_checks()]
 }
 
+/// AI-04 W2 域自检汇总（#251~#336：画布/流程图/三界面）。
+pub fn run_w2_checks() -> Vec<CheckSet> {
+    vec![canvas::run_canvas_checks(), flowchart::run_flowchart_checks(), iface::run_iface_checks()]
+}
+
+/// 全量自检（W1+W2，共 150 项）。
+pub fn run_all_checks() -> Vec<CheckSet> {
+    let mut v = run_ca_checks();
+    v.extend(run_w2_checks());
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +212,32 @@ mod tests {
         assert!(ir.loc >= 3);
         assert!(ir.calls.iter().any(|e| e.to == "pong"));
         std::fs::remove_dir_all(&tmp).ok();
+    }
+}
+
+
+/// AI-04 W2 域测试。
+#[cfg(test)]
+mod w2_tests {
+    use super::*;
+
+    #[test]
+    fn w2_86_checks_pass() {
+        let sets = run_w2_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 86);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_150_checks_pass() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 150);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
     }
 }
