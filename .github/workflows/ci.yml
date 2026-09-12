@@ -22,9 +22,9 @@ jobs:
         run: npm test -- --run
       - name: L4 static audit (IPC surface + i18n)
         run: node tools/audit.cjs
-      - name: L4.5 keymap CI gate (M-83: bare-keydown baseline + binds conflicts/reserved)
+      - name: "L4.5 keymap CI gate (M-83: bare-keydown baseline + binds conflicts/reserved)"
         run: node tools/keymap-audit.cjs
-      - name: L4.6 doc link check (M-86: relative links + anchors, exit 1 on broken)
+      - name: "L4.6 doc link check (M-86: relative links + anchors, exit 1 on broken)"
         run: node tools/link-check.cjs
       - name: L5 frontend build
         run: npm run build
@@ -125,9 +125,9 @@ jobs:
         run: python3 scripts/make-initfs.py --verbose
       - name: B4 initrd TOC self-check
         run: python3 scripts/make-initfs.py --check
-      - name: B5 ISO artifact (F181: BIOS + UEFI dual boot via xorriso)
+      - name: "B5 ISO artifact (F181: BIOS + UEFI dual boot via xorriso)"
         run: bash scripts/make-iso.sh
-      - name: B6 USB artifact (F182: dd-writable hybrid image + GPT backup)
+      - name: "B6 USB artifact (F182: dd-writable hybrid image + GPT backup)"
         run: |
           # varix.iso 由 xorriso 以 --protective-msdos-label + -isohybrid-gpt-basdat 产出，
           # 本身即「混合 MBR + 盘尾 GPT 备份表」的 dd 可写镜像，故 USB 产物就是它。
