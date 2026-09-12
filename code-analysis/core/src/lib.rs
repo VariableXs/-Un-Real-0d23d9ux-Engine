@@ -6,6 +6,7 @@
 
 pub mod canvas;
 pub mod checks;
+pub mod cmd;
 pub mod cont;
 pub mod dyna;
 pub mod flowchart;
@@ -14,7 +15,9 @@ pub mod infra;
 pub mod ir;
 pub mod langid;
 pub mod logic;
+pub mod manual;
 pub mod model;
+pub mod multisrc;
 pub mod nouns;
 pub mod parser;
 pub mod refactor;
@@ -22,9 +25,17 @@ pub mod roottree;
 pub mod simple;
 pub mod statics;
 pub mod translate;
+pub mod undo;
 
 // AI-08 域（UI-001~UI-036）：33 章 UI 规范落地 / 8 风格资产 / 三端渲染差异清零。
 pub mod uispec;
+
+// AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
+pub mod debug;
+pub mod drag;
+pub mod learn;
+pub mod style;
+pub mod wallpaper;
 
 // AI-07 域（#461~#530）：键位管理 / 颜色标记修复 / OS 兼容 / 无障碍 / 语义系统。
 pub mod a11y;
@@ -219,6 +230,17 @@ pub fn run_ai02_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// AI-05 W3 域自检汇总（#337~#410：调试/学习/拖拽/多风格UI/动态壁纸）。
+pub fn run_ai05_checks() -> Vec<CheckSet> {
+    vec![
+        debug::run_debug_checks(),
+        learn::run_learn_checks(),
+        drag::run_drag_checks(),
+        style::run_style_checks(),
+        wallpaper::run_wallpaper_checks(),
+    ]
+}
+
 /// AI-07 W3 域自检汇总（#461~#530：键位管理/颜色标记修复/OS兼容/无障碍/语义系统）。
 pub fn run_ai07_checks() -> Vec<CheckSet> {
     vec![
@@ -323,6 +345,30 @@ mod w3tests {
     fn all_w3_checks_pass() {
         let sets = run_all_checks();
         assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 306);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+}
+
+/// AI-05 W3 域测试（#337~#410）。
+#[cfg(test)]
+mod w3_ai05_tests {
+    use super::*;
+
+    #[test]
+    fn ai05_74_checks_pass() {
+        let sets = run_ai05_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 75);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_checks_pass_with_ai05() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 342);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
