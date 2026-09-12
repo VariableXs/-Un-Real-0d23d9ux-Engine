@@ -30,8 +30,8 @@ function walkRs(dir, out = []) {
 const cmdFiles = walkRs("src-tauri/src");
 for (const f of cmdFiles) {
   const src = fs.readFileSync(f, "utf8");
-  // #[tauri::command] 与 fn 之间允许夹带其它属性行（#[cfg(windows)] 等）
-  for (const m of src.matchAll(/#\[tauri::command\]((?:\s*#\[[^\]]+\])*)\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z_]+)/g)) {
+  // #[tauri::command]（可带参数如 (async)）与 fn 之间允许夹带其它属性行（#[cfg(windows)] 等）与 /// 文档注释
+  for (const m of src.matchAll(/#\[tauri::command(?:\([^)]*\))?\]((?:\s*#[^\r\n\]]+\]|\s*\/\/\/[^\r\n]*)*)\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z_]+)/g)) {
     cmdAttrs.push({ file: path.relative("src-tauri/src", f), name: m[2] });
   }
 }

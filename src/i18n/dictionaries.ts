@@ -485,6 +485,7 @@ const zh: Dict = {
   wfHiddenNone: "当前没有隐藏的窗口",
   wfHiddenToast: "窗口已隐藏（Ctrl+Alt+H 恢复）",
   wfHiddenRestored: "已恢复 {n} 个窗口",
+  wfHiddenRestoreAll: "全部恢复",
   scActHideWindow: "隐藏当前窗口 / 恢复全部",
   colGrade: "便携性",
   gradePortable: "🟢 完全便携",
