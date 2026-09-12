@@ -35,3 +35,4 @@ qemu/
 # 调试截图不入库（归档于 archive/tools-screenshots/）
 tools/*.png
 tools/*.jpg
+code-analysis/target/

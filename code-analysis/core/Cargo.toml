@@ -1,0 +1,7 @@
+[package]
+name = "ca-core"
+version = "0.1.0"
+edition = "2021"
+description = "(Un)Real 0d23d9ux# Engine core：零AI代码逻辑引擎（基础设施/续写/逻辑链，#001~#064）"
+
+[dependencies]
