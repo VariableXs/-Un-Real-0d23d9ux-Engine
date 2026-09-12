@@ -1032,6 +1032,11 @@ pub const fn crash_spreads_to_others(_affected: usize) -> bool {
 // 域自检：F076~F100 共 25 项
 // ---------------------------------------------------------------------------
 
+/// 自检里「取不到下标」的哨兵。本 crate 所有下游访问器都做 `i < count` 边界检查，
+/// 因此用哨兵替代 `.unwrap()` 时，失败会表现为该项自检判定不通过，
+/// 而不会把整个内核 checkup panic 掉（自检必须记 fail，不能崩）。
+const IDX_NONE: usize = usize::MAX;
+
 pub fn run_srv_checks() -> CheckSet {
     let mut set = CheckSet::new("srv");
 
@@ -1106,10 +1111,9 @@ pub fn run_srv_checks() -> CheckSet {
 
     // F080 服务管理器
     let mut mgr = ServiceManager::new();
-    let a = mgr.declare(b"init", 0);
-    let b = mgr.declare(b"logd", 10);
-    let c = mgr.declare(b"ui", 20);
-    let (a, b, c) = (a.unwrap(), b.unwrap(), c.unwrap());
+    let a = mgr.declare(b"init", 0).unwrap_or(IDX_NONE);
+    let b = mgr.declare(b"logd", 10).unwrap_or(IDX_NONE);
+    let c = mgr.declare(b"ui", 20).unwrap_or(IDX_NONE);
     let wired = mgr.depends_on(b, a) && mgr.depends_on(c, b) && mgr.depends_on(c, a);
     let no_self = !mgr.depends_on(a, a);
     let planned = mgr.plan_boot();
@@ -1130,8 +1134,8 @@ pub fn run_srv_checks() -> CheckSet {
 
     // F080 环依赖拒绝
     let mut cyc = ServiceManager::new();
-    let x = cyc.declare(b"x", 0).unwrap();
-    let y = cyc.declare(b"y", 1).unwrap();
+    let x = cyc.declare(b"x", 0).unwrap_or(IDX_NONE);
+    let y = cyc.declare(b"y", 1).unwrap_or(IDX_NONE);
     let _ = cyc.depends_on(x, y);
     let _ = cyc.depends_on(y, x);
     set.add(
@@ -1142,7 +1146,7 @@ pub fn run_srv_checks() -> CheckSet {
 
     // F081 看门狗
     let mut wd = Watchdog::new();
-    let wi = wd.watch(7, 100).unwrap();
+    let wi = wd.watch(7, 100).unwrap_or(IDX_NONE);
     let beat = wd.heartbeat(7, 120);
     let none = wd.scan(140).is_none();
     let restart = wd.scan(200).is_some();
@@ -1186,12 +1190,12 @@ pub fn run_srv_checks() -> CheckSet {
     sys::extend_checks(&mut set);
 
     // F099 服务自检（本 CheckSet 自身完整性）
+    // 此刻已含 srv 自有项 + ipc/sys 扩展项，低于 25 说明有子模块没接线。
+    // 先读进 let：既避免与 set.add 的可变借用纠缠，也避免读到"末态"。
+    let wired_checks = set.len();
     set.add(
         "F099 service selfcheck",
-        set.len() >= 25 && {
-            // F099 之后仍会追加 F100，故此处只断言前 25 项已就位。
-            true
-        },
+        wired_checks >= 25,
         "25 项自检已接线",
     );
 

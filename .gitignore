@@ -28,3 +28,6 @@ qfinal.ppm
 qfinal.png
 tools/limine/
 build/
+
+# QEMU 便携安装（本地真机验收用，不入库）
+qemu/

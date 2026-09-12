@@ -1120,10 +1120,14 @@ impl LogService {
 // 自检扩展（F083~F090 共 8 项）
 // ---------------------------------------------------------------------------
 
+/// 自检里「取不到下标」的哨兵：下游访问器都做 `i < count` 边界检查，
+/// 用它替代 `.unwrap()` 只会让该项自检判定失败，不会 panic 掉整个 checkup。
+const IDX_NONE: usize = usize::MAX;
+
 pub fn extend_checks(set: &mut CheckSet) {
     // F083 事件总线
     let mut bus = EventBus::new();
-    let si = bus.subscribe(100, 0b0000_0111).unwrap();
+    let si = bus.subscribe(100, 0b0000_0111).unwrap_or(IDX_NONE);
     let _ = bus.subscribe(101, 0b0000_0001);
     let dev = EventBus::topic_bit(b"device");
     let n_dev = bus.publish(dev.unwrap_or(0));
@@ -1164,8 +1168,9 @@ pub fn extend_checks(set: &mut CheckSet) {
     let f0 = fifos.mkfifo(b"ui.log", PipeMode::Line);
     let dup = fifos.mkfifo(b"ui.log", PipeMode::Line).is_none();
     let ew = fifos.open_write(b"ui.log");
-    let _ = fifos.pipe_mut(f0.unwrap()).map(|pp| pp.write(b"x\n"));
-    let r = fifos.pipe_mut(f0.unwrap()).map(|pp| pp.read(&mut out)).unwrap_or(0);
+    let f0i = f0.unwrap_or(IDX_NONE);
+    let _ = fifos.pipe_mut(f0i).map(|pp| pp.write(b"x\n"));
+    let r = fifos.pipe_mut(f0i).map(|pp| pp.read(&mut out)).unwrap_or(0);
     set.add(
         "F084 fifo table",
         f0 == Some(0) && dup && ew == Some(0) && fifos.len() == 1 && r == 2 && fifos.writers(0) == 2,
@@ -1174,7 +1179,7 @@ pub fn extend_checks(set: &mut CheckSet) {
 
     // F084 close 语义
     let mut pf = FifoTable::new();
-    let i = pf.mkfifo(b"a", PipeMode::Stream).unwrap();
+    let i = pf.mkfifo(b"a", PipeMode::Stream).unwrap_or(IDX_NONE);
     let _ = pf.close_write(i);
     let eof = pf.pipe_mut(i).map(|pp| pp.eof()).unwrap_or(false);
     set.add(
@@ -1186,7 +1191,7 @@ pub fn extend_checks(set: &mut CheckSet) {
     // F085 共享内存
     let mut shm = ShmTable::new();
     let rw = ShmPerm::READ.union(ShmPerm::WRITE);
-    let a = shm.create(b"shot", 2, rw).unwrap();
+    let a = shm.create(b"shot", 2, rw).unwrap_or(IDX_NONE);
     let dup = shm.create(b"shot", 1, rw).is_none();
     let over = shm.create(b"huge", SHM_MAX_PAGES + 1, rw).is_none();
     let m1 = shm.map(a, ShmPerm::READ);
@@ -1219,7 +1224,7 @@ pub fn extend_checks(set: &mut CheckSet) {
 
     // F086 事件通道
     let mut chans = ChannelTable::new();
-    let ci = chans.create().unwrap();
+    let ci = chans.create().unwrap_or(IDX_NONE);
     let trips = chans.get_mut(ci).map(|c| c.ping_pong(1000)).unwrap_or(0);
     let (delivered, dropped) =
         chans.get(ci).map(|c| (c.delivered, c.dropped)).unwrap_or((0, 0));

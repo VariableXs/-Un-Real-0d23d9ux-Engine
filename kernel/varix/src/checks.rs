@@ -23,6 +23,10 @@ pub struct Check {
 pub struct CheckSet {
     checks: [Option<Check>; MAX_CHECKS],
     count: usize,
+    /// Results dropped because the set was already full. Tracked separately from
+    /// `count` so that a域 producing *exactly* MAX_CHECKS checks is not
+    /// misreported as truncated.
+    dropped: usize,
     /// Domain tag, e.g. `"power"`.
     pub domain: &'static str,
 }
@@ -32,6 +36,7 @@ impl CheckSet {
         CheckSet {
             checks: [None; MAX_CHECKS],
             count: 0,
+            dropped: 0,
             domain,
         }
     }
@@ -40,6 +45,7 @@ impl CheckSet {
     /// `truncated()` reports the overflow).
     pub fn add(&mut self, name: &'static str, passed: bool, detail: &'static str) {
         if self.count >= MAX_CHECKS {
+            self.dropped += 1;
             return;
         }
         self.checks[self.count] = Some(Check { name, passed, detail });
@@ -72,9 +78,15 @@ impl CheckSet {
         }
     }
 
-    /// True when more results were produced than fit.
+    /// True when more results were produced than fit (i.e. at least one was
+    /// dropped). A set that is merely *full* is not truncated.
     pub fn truncated(&self) -> bool {
-        self.count == MAX_CHECKS
+        self.dropped > 0
+    }
+
+    /// How many results were dropped past the capacity.
+    pub fn dropped(&self) -> usize {
+        self.dropped
     }
 
     pub fn all_passed(&self) -> bool {
@@ -288,6 +300,23 @@ mod tests {
         assert_eq!(s.len(), MAX_CHECKS);
         assert!(s.truncated());
         assert!(s.all_passed());
+    }
+
+    #[test]
+    fn exactly_full_is_not_truncated() {
+        // 正好 MAX_CHECKS 项不是"被截断"；只有真的丢掉了才算。
+        let mut s = CheckSet::new("x");
+        for _ in 0..MAX_CHECKS {
+            s.ok("y");
+        }
+        assert_eq!(s.len(), MAX_CHECKS);
+        assert!(!s.truncated());
+        assert_eq!(s.dropped(), 0);
+
+        s.ok("z"); // 第 MAX_CHECKS+1 项被丢弃
+        assert_eq!(s.len(), MAX_CHECKS);
+        assert!(s.truncated());
+        assert_eq!(s.dropped(), 1);
     }
 
     #[test]

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# AURORA-1000 步骤 0021 · 现状盘点脚本
+# 输出：源码行数 / 域数 / 自检项数 / 单测数 / ELF 大小。只读，不改任何文件。
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "== AURORA-1000 现状盘点 =="
+echo "-- 内核 Rust 源码行数 --"
+find kernel/varix/src -name '*.rs' -exec cat {} + | wc -l
+
+echo "-- 已登记域（run_*_checks）--"
+grep -rh "pub fn run_[a-z0-9_]*_checks() -> CheckSet" kernel/varix/src --include='*.rs' | wc -l
+
+echo "-- CheckSet 自检项总数 --"
+grep -rh "\.add(" kernel/varix/src --include='*.rs' | wc -l
+
+echo "-- 单测函数数（#[test]）--"
+grep -rh "#\[test\]" kernel/varix/src kernel/varix/tests --include='*.rs' | wc -l
+
+echo "-- 内核 ELF --"
+if [ -f kernel/target/x86_64-unknown-none/release/varix ]; then
+    stat -c "%s bytes" kernel/target/x86_64-unknown-none/release/varix
+else
+    echo "未构建（cargo kbuild）"
+fi

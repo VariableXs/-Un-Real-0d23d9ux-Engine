@@ -61,6 +61,18 @@ MODE_EXEC = 0o100755
 
 NEWC_MAGIC = b"070701"
 TRAILER = "TRAILER!!!"
+U32_MAX = 0xFFFFFFFF
+
+
+def hex8(v: int) -> bytes:
+    """cpio newc 的每个字段都是【定宽】8 位十六进制。
+
+    直接用 b"%08X" % v 时，v >= 2**32（例如 >4GiB 的载荷、或 ino 溢出）
+    会写出 9 位以上，把整个头部推歪且不报错。这里显式拦截。
+    """
+    if not (0 <= v <= U32_MAX):
+        raise ValueError("newc 字段超出 u32 范围（0..2^32-1）: %r" % (v,))
+    return b"%08X" % v
 
 
 def pad4(n: int) -> int:
@@ -97,7 +109,7 @@ def write_newc(out_path: str, entries: list[Entry]) -> int:
         for e in entries:
             name_bytes = e.name.encode("utf-8") + b"\x00"
             hdr = NEWC_MAGIC + b"".join(
-                b"%08X" % v
+                hex8(v)
                 for v in (
                     ino,
                     e.mode,
@@ -125,7 +137,7 @@ def write_newc(out_path: str, entries: list[Entry]) -> int:
             ino += 1
         trailer = TRAILER.encode("utf-8") + b"\x00"
         hdr = NEWC_MAGIC + b"".join(
-            b"%08X" % v for v in (0, MODE_FILE, 0, 0, 1, 0, 0, 0, 0, 0, 0, len(trailer), 0)
+            hex8(v) for v in (0, MODE_FILE, 0, 0, 1, 0, 0, 0, 0, 0, 0, len(trailer), 0)
         )
         block = hdr + trailer + b"\x00" * pad4(len(hdr) + len(trailer))
         fh.write(block)

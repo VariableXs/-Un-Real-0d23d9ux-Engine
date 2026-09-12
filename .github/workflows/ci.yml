@@ -96,14 +96,28 @@ jobs:
       - name: B1 install image tooling (xorriso + qemu + limine)
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorriso xorriso-tcltk qemu-system-x86 curl
-          curl -fsSL -o /tmp/limine.tar.gz \
-            https://github.com/limine-bootloader/limine/releases/download/v12.1.0/limine-12.1.0.tar.gz || \
-          curl -fsSL -o /tmp/limine.tar.gz \
-            https://github.com/limine-bootloader/limine/releases/latest/download/limine-binary.tar.gz
+          sudo apt-get install -y xorriso qemu-system-x86 curl
+          # 注意：limine-<ver>.tar.gz 是【源码包】（只有 configure / host/limine.c，
+          # 没有任何预编译 .bin）。必须下 limine-binary.tar.gz。其首层目录就是
+          # limine-binary/，因此【不要】加 --strip-components，否则文件会落到
+          # tools/limine/*.bin，而 scripts/make-iso.sh 读的是
+          # tools/limine/limine-binary/*.bin —— 路径不匹配会在 B5 才炸。
+          for v in v12.1.0 v12.9.0; do
+            if curl -fsSL -o /tmp/limine.tar.gz \
+              "https://github.com/limine-bootloader/limine/releases/download/$v/limine-binary.tar.gz"; then
+              echo "limine binary release: $v"
+              break
+            fi
+          done
           mkdir -p tools/limine
-          tar -xzf /tmp/limine.tar.gz -C tools/limine --strip-components=1 || true
-          find tools/limine -maxdepth 2 -name 'limine-bios-cd.bin' -print
+          tar -xzf /tmp/limine.tar.gz -C tools/limine
+          # 硬门禁：路径不对就让 B1 立刻红，而不是拖到 B5 才暴露。
+          test -f tools/limine/limine-binary/limine-bios-cd.bin
+          test -f tools/limine/limine-binary/limine-uefi-cd.bin
+          test -f tools/limine/limine-binary/limine-bios.sys
+          ls -l tools/limine/limine-binary/limine-bios-cd.bin \
+                tools/limine/limine-binary/limine-uefi-cd.bin \
+                tools/limine/limine-binary/limine-bios.sys
       - name: B2 kernel build
         run: cargo kbuild
         working-directory: kernel
@@ -113,12 +127,22 @@ jobs:
         run: python3 scripts/make-initfs.py --check
       - name: B5 ISO artifact (F181: BIOS + UEFI dual boot via xorriso)
         run: bash scripts/make-iso.sh
-      - name: B6 USB artifact (F182: dd-writable raw image)
+      - name: B6 USB artifact (F182: dd-writable hybrid image + GPT backup)
         run: |
-          # Hybrid MBR + GPT backup table is produced by xorriso above;
-          # the .iso is directly dd-writable, so the USB image is the ISO itself.
+          # varix.iso 由 xorriso 以 --protective-msdos-label + -isohybrid-gpt-basdat 产出，
+          # 本身即「混合 MBR + 盘尾 GPT 备份表」的 dd 可写镜像，故 USB 产物就是它。
           cp varix.iso varix-usb.img
           ls -l varix.iso varix-usb.img
+          # 实测而非只看模型常量：GPT 备份表必须真在镜像里。
+          sudo apt-get install -y gdisk >/dev/null
+          sgdisk --print varix-usb.img | grep -qi 'GPT: present\|Found valid GPT' \
+            || { echo "FAIL: USB image has no GPT table"; exit 1; }
+          sgdisk --verify varix-usb.img \
+            || { echo "FAIL: GPT backup table at end of image is corrupt/absent"; exit 1; }
+          # 混合 MBR（BIOS 引导记录）也必须在。
+          test "$(dd if=varix-usb.img bs=1 skip=510 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "55aa" \
+            || { echo "FAIL: no 0x55AA MBR signature"; exit 1; }
+          echo "OK: hybrid MBR + GPT backup verified"
       - name: B7 smoke boot in QEMU (serial log + self-test gate)
         run: |
           set +e

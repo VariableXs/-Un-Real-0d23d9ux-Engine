@@ -1315,6 +1315,10 @@ pub fn standard_assets() -> AssetIndex {
 // 域自检：F151~F175（本文件 F151~F160，子模块 render/verify）
 // ---------------------------------------------------------------------------
 
+/// 自检里「取不到下标」的哨兵：下游访问器都做 `i < count` 边界检查，
+/// 用它替代 `.unwrap()` 只会让该项自检判定失败，不会 panic 掉整个 checkup。
+const IDX_NONE: usize = usize::MAX;
+
 pub fn run_vport_checks() -> CheckSet {
     let mut set = CheckSet::new("vport");
 
@@ -1410,7 +1414,7 @@ pub fn run_vport_checks() -> CheckSet {
     let raised = wc.raise(1);
     let z_after = wc.z_order();
     let drag = wc.drag_by(1, 200, 200);
-    let clamped = wc.win(w1.unwrap()).map(|w| w.x == DESKTOP_W - 16 && w.y == DESKTOP_H - 12).unwrap_or(false);
+    let clamped = wc.win(w1.unwrap_or(IDX_NONE)).map(|w| w.x == DESKTOP_W - 16 && w.y == DESKTOP_H - 12).unwrap_or(false);
     let hit = wc.hit_test(18, 14);
     let maxed = wc.maximize(1);
     let drag_denied = !wc.drag_by(1, 1, 1);
@@ -1430,7 +1434,7 @@ pub fn run_vport_checks() -> CheckSet {
             && drag_denied
             && snapped
             && unsnapped
-            && wc.win(w1.unwrap()).map(|w| w.state == WinState::Maximized).unwrap_or(false)
+            && wc.win(w1.unwrap_or(IDX_NONE)).map(|w| w.state == WinState::Maximized).unwrap_or(false)
             && wc.win(1).map(|w| w.state == WinState::Normal && w.x == 7 && w.w == 16).unwrap_or(false),
         "层级/拖拽钳制/最大化/贴边脱离",
     );

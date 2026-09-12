@@ -845,6 +845,10 @@ impl AccelStub {
 // 域自检：F101~F125 共 25 项（F101~F109 在本文件，F110~F115/F116~F125 见子模块）
 // ---------------------------------------------------------------------------
 
+/// 自检里「取不到下标」的哨兵：下游访问器都做 `i < count` 边界检查，
+/// 用它替代 `.unwrap()` 只会让该项自检判定失败，不会 panic 掉整个 checkup。
+const IDX_NONE: usize = usize::MAX;
+
 pub fn run_gfxsrv_checks() -> CheckSet {
     let mut set = CheckSet::new("gfxsrv");
 
@@ -942,8 +946,8 @@ pub fn run_gfxsrv_checks() -> CheckSet {
 
     // F105 合成器 + Z 序
     let mut comp = Compositor::new();
-    let bottom = comp.add_layer(0, 100).unwrap();
-    let top = comp.add_layer(10, 200).unwrap();
+    let bottom = comp.add_layer(0, 100).unwrap_or(IDX_NONE);
+    let top = comp.add_layer(10, 200).unwrap_or(IDX_NONE);
     if let Some(l) = comp.layer_mut(bottom) {
         l.fill_tile(rgb(0, 0, 255));
         l.opaque = true;
@@ -970,8 +974,8 @@ pub fn run_gfxsrv_checks() -> CheckSet {
 
     // F106 分层合成优化
     let mut comp2 = Compositor::new();
-    let op = comp2.add_layer(0, 1).unwrap();
-    let tr = comp2.add_layer(1, 2).unwrap();
+    let op = comp2.add_layer(0, 1).unwrap_or(IDX_NONE);
+    let tr = comp2.add_layer(1, 2).unwrap_or(IDX_NONE);
     if let Some(l) = comp2.layer_mut(op) {
         l.fill_tile(rgb(255, 255, 255));
         l.opaque = true;

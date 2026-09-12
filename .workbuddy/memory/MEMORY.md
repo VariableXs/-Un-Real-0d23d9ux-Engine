@@ -122,3 +122,18 @@
 - 恢复对象库只能靠 `git fetch`（代理 127.0.0.1:55799 间歇 502，需重试 5~10 次）。
 
 - **rustup 工具链易损坏（2026-09-12）**：stable/1.97.1 曾整链 Missing manifest。修法：uninstall 后 minimal profile 重装 rustc/std/rust-src；cargo 与 none-std 用 Python 从 static.rust-lang.org dist 手工解包（归档内层还有同名目录要拍平）+ 手写 rustlib manifest/components。跑内核命令始终带 RUSTUP_TOOLCHAIN=1.97.1-x86_64-pc-windows-msvc 绕过 rust-toolchain.toml 的 resync（resync 会回滚删光工具链）。ktest 全量会因 bin varix（msvc target）unwinding panic 失败，用 cargo ktest --lib。
+
+## Limine 发布包选取（CI/ISO 打包必读）
+
+- **`limine-<ver>.tar.gz` 是源码包，不是二进制包**：v12.1.0 包内只有
+  `limine-12.1.0/{configure,host/limine.c,...}`，**没有任何预编译 `.bin`**。
+  要 `limine-bios-cd.bin` / `limine-uefi-cd.bin` / `limine-bios.sys` 必须下
+  `limine-binary.tar.gz`（同名 tag 下有，v12.1.0 与 v12.9.0 都 200）。
+- **`limine-binary.tar.gz` 的首层目录就是 `limine-binary/`**（本地 `tools/limine/limine-binary.zip` 同构）。
+  因此解包时 **不要加 `--strip-components=1`**，否则文件会落到 `tools/limine/*.bin`，
+  而 `scripts/make-iso.sh` 读的是 `tools/limine/limine-binary/*.bin` → `set -e` 下 B5 直接失败。
+  正确组合：URL 用 `limine-binary.tar.gz` + `tar -xzf … -C tools/limine`（不 strip）。
+- **CI 的 `curl A || curl B` 只在 A 失败时才走 B**：A 是源码包但 HTTP 200，
+  所以回退永远不触发 → 失败被拖到 B5 才暴露。下载后必须在 B1 加
+  `test -f tools/limine/limine-binary/limine-bios-cd.bin || exit 1` 硬门禁。
+- `tools/limine/` 在 `.gitignore` 里，CI 干净检出时不存在，全靠这一步下载。
