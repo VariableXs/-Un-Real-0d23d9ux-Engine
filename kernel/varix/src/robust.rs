@@ -1138,6 +1138,15 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::selfheal::run_selfheal_checks());
     checkup.register(crate::observ::run_observ_checks());
     checkup.register(crate::i18n::run_i18n_checks());
+    // --- VARIX-M400 AI-09~AI-16（F201~F400，成品体验与看不见的质量）----------
+    checkup.register(crate::m4shell::run_m4shell_checks());
+    checkup.register(crate::m4compat::run_m4compat_checks());
+    checkup.register(crate::m4perf::run_m4perf_checks());
+    checkup.register(crate::m4privsec::run_m4privsec_checks());
+    checkup.register(crate::m4release::run_m4release_checks());
+    checkup.register(crate::m4quality::run_m4quality_checks());
+    checkup.register(crate::m4docseco::run_m4docseco_checks());
+    checkup.register(crate::m4arts::run_m4arts_checks());
     checkup
 }
 

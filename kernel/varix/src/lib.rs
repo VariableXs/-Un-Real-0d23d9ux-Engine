@@ -198,6 +198,20 @@ pub mod m5mem;
 pub mod m5srv;
 pub mod m5fs;
 
+// --- VARIX-M400 AI-09~AI-16（F201~F400，成品体验与看不见的质量）-------------
+// 桌面 shell 完备化（m4shell）、兼容层扩展（m4compat）、性能工程（m4perf）、
+// 安全与隐私（m4privsec）、发布工程（m4release）、质量与测试（m4quality）、
+// 文档与生态（m4docseco）、艺术与体验（m4arts）。
+// M400 的 F 编号与历史编号空间重叠，符号全部落在新模块避免冲突。
+pub mod m4shell;
+pub mod m4compat;
+pub mod m4perf;
+pub mod m4privsec;
+pub mod m4release;
+pub mod m4quality;
+pub mod m4docseco;
+pub mod m4arts;
+
 // VARIX-M400 W1/W2 domains (AI-01 ~ AI-08).
 pub mod m400boot;
 pub mod m400mem;
