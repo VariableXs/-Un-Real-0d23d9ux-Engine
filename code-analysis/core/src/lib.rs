@@ -23,6 +23,13 @@ pub mod simple;
 pub mod statics;
 pub mod translate;
 
+// AI-07 域（#461~#530）：键位管理 / 颜色标记修复 / OS 兼容 / 无障碍 / 语义系统。
+pub mod a11y;
+pub mod colorfix;
+pub mod keymap;
+pub mod oscompat;
+pub mod semantic;
+
 use checks::CheckSet;
 
 pub fn run_infra_checks() -> CheckSet {
@@ -209,11 +216,23 @@ pub fn run_ai02_checks() -> Vec<CheckSet> {
     ]
 }
 
-/// 全量自检（W1+W2，共 150 项）。
+/// AI-07 W3 域自检汇总（#461~#530：键位管理/颜色标记修复/OS兼容/无障碍/语义系统）。
+pub fn run_ai07_checks() -> Vec<CheckSet> {
+    vec![
+        keymap::run_keymap_checks(),
+        colorfix::run_colorfix_checks(),
+        oscompat::run_oscompat_checks(),
+        a11y::run_a11y_checks(),
+        semantic::run_semantic_checks(),
+    ]
+}
+
+/// 全量自检（W1+W2+AI-07，共 306 项）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
     v.extend(run_ai02_checks());
     v.extend(run_w2_checks());
+    v.extend(run_ai07_checks());
     v
 }
 
@@ -271,6 +290,30 @@ mod w2_tests {
     fn all_checks_pass() {
         let sets = run_all_checks();
         assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 236);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+}
+
+/// AI-07 W3 域测试（#461~#530）。
+#[cfg(test)]
+mod w3tests {
+    use super::*;
+
+    #[test]
+    fn ai07_70_checks_pass() {
+        let sets = run_ai07_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 70);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_w3_checks_pass() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 306);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
