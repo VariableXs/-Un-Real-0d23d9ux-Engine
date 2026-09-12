@@ -89,6 +89,28 @@
   需循环重试 2~6 次（api.github.com 始终正常，别被它误导）。
 - 运行 canonical 命令后确认：`cargo ktest`（应全绿）、`cargo kbuild`（应零告警）。
 
+## Rust 实现坑（VARIABLE-200 实测，2026-09-12）
+- **`const fn` 里不能用 `Ord::min`**：`1u64 << kind.min(63)` 报 E0658「`Ord` is not yet
+  stable as a const trait」。手写 `if kind > 63 { 63 } else { kind }`。
+- **非 `Copy` 类型的数组重复初始化**：`[None; N]` 要求 `Option<T>: Copy`；`T` 带
+  大缓冲/非 Copy 时必须写 `[const { None }; N]`（inline const block）。
+- **`Result<&mut T, E>` 不能 `assert_eq!(…, Err(e))`**：`&mut T` 无 `PartialEq`/`Debug`；
+  连带 `Option<Result<(), E>>` 的 `==` 也不成立。用 `is_err()`，或先把字段拷成值再比。
+- **自检探针的"末态读取"**：`set.add(name, a && obj.field == X, …)` 里对字段的读取发生在
+  表达式末尾 = 读到末态。任何"操作→读状态→再操作"都要先把中间读数存进独立 `let`。
+  同理：会被后续操作覆写的缓冲（如 partial copy 的落点）不能与"待断言缓冲"共用。
+- **fuzz 必须偏置到有效号段**：纯 `u64` 随机数落到内核号段（如 `0x4000-0x40FF`）的概率
+  约 `256/2^64 ≈ 0`，于是每轮都进 `ENOSYS`、处理体一次都没跑到，"零 panic"是空证明。
+  正确配比：1/4 完全野生 + 1/4 原生带 + 1/4 兼容带 + 1/4 低位全谱。
+- **清"未用导入"要连带查 `#[cfg(test)] mod tests`**：从模块顶部删掉常量后测试里还在用
+  → E0425。正确做法是把该导入下沉进 `mod tests`。
+- **内层 crate 要自带空 `[workspace]`**：`kernel/userspace/<crate>` 位于 `kernel/` 的
+  workspace 目录树内但不是成员 → 「believes it's in a workspace when it's not」。
+  加一个空 `[workspace]` 表自成一棵，并在 `.gitignore` 加 `kernel/userspace/*/target/`。
+- **提交前先判断改动是否已在 HEAD**：并行会话的 `git add .` 会把你的源文件卷进它的提交
+  （2026-09-12 的 61a135c 就卷走了 AI-01/02/03 全部源文件）。先 `git log --oneline -1`
+  + `git status --porcelain`，再决定提交哪些路径，避免重复提交或漏提交。
+
 ## Git 并发纪律（血泪）
 
 - **绝对禁止 `git pull --rebase --autostash`**：2026-09-11 多会话并行时它把
