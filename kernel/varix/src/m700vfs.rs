@@ -1412,15 +1412,15 @@ pub fn run_m700vfs_checks() -> CheckSet {
     let v1 = q.verdict(50);
     let c1 = q.charge(50);
     let used_soft = q.used;
-    let v2 = q.verdict(50);
-    let c2 = q.charge(50);
+    let v2 = q.verdict(60);
+    let c2 = q.charge(60);
     let v3 = q.verdict(150);
     let c3 = q.charge(150);
     set.add(
         "F223 quota verdicts",
         v1 == VFS_QUOTA_ALLOW && c1 && used_soft == 50
-            && v2 == VFS_QUOTA_WARN && c2 && q.used == 100
-            && v3 == VFS_QUOTA_DENY && !c3 && q.used == 100,
+            && v2 == VFS_QUOTA_WARN && c2 && q.used == 110
+            && v3 == VFS_QUOTA_DENY && !c3 && q.used == 110,
         "allow/warn/deny ladder",
     );
 

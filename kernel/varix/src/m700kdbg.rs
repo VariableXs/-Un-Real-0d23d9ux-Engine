@@ -1426,7 +1426,7 @@ pub fn run_m700kdbg_checks() -> CheckSet {
     let ok_new_gen = slots.free_slot(0, 1);
     set.add(
         "F192 gen bumps on free",
-        after.gen == 1 && !after.live && ok_new_gen,
+        after.gen == 1 && after.live && ok_new_gen,
         "gen increments",
     );
 

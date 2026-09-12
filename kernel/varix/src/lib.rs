@@ -264,6 +264,35 @@ pub mod m600svc;
 pub mod m600priv;
 pub mod m600hw;
 
+// --- VARIX-M600 AI-02~AI-10（F026~F250，底座/感官波次）-----------------------
+// 内存算力（m600mem）、调度实时（m600sched）、可靠自愈（m600relia）、
+// 性能观测（m600perf）、电源热（m600pwr）、合成视觉（m600gfx）、
+// 输入手感（m600input）、声音设计（m600audio）、主题艺术（m600theme）。
+// 符号全部落在新模块避免编号冲突。
+pub mod m600mem;
+pub mod m600sched;
+pub mod m600relia;
+pub mod m600perf;
+pub mod m600pwr;
+pub mod m600gfx;
+pub mod m600input;
+pub mod m600audio;
+pub mod m600theme;
+
+// --- VARIX-M700 AI-02~AI-10（F026~F250，核心深化/存储波次）-------------------
+// 虚拟内存（m700vmm）、系统调用（m700sysc）、中断时钟（m700intr）、
+// IPC 消息（m700ipc）、同步原语（m700lock）、内核安全（m700ksec）、
+// 内核调试（m700kdbg）、VFS（m700vfs）、块存储（m700blk）。
+pub mod m700vmm;
+pub mod m700sysc;
+pub mod m700intr;
+pub mod m700ipc;
+pub mod m700lock;
+pub mod m700ksec;
+pub mod m700kdbg;
+pub mod m700vfs;
+pub mod m700blk;
+
 // --- VARIX-M700 AI-11~AI-20（F251~F500，存储/图形网络波次）--------------------
 // 缓存回写（m700cache）、设备模型（m700dev）、驱动框架（m700drv）、
 // 输入内核（m700input）、GPU 驱动（m700gpu）、显示合成（m700disp）、
