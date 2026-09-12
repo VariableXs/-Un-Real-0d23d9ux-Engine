@@ -8,6 +8,9 @@
 
 use crate::checks::CheckSet;
 
+/// VARIX-M500 AI-08 音声设计（F176~F200）。
+pub mod tone;
+
 /// Q15 gain: 1.0 == 32768 (stored as u32 to leave headroom).
 pub const Q15_ONE: u32 = 32768;
 /// Hard ceiling for a mixed sample (16-bit PCM).

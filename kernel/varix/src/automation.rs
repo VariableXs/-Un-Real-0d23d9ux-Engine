@@ -486,7 +486,11 @@ pub fn batch_rename(prefix: &[u8], index: u32, out: &mut [u8]) -> usize {
 pub fn batch_classify(name: &[u8]) -> u8 {
     let ext: &[&[u8]] = &[b"png", b"jpg", b"gif", b"webp"];
     let ext_doc: &[&[u8]] = &[b"pdf", b"doc", b"txt", b"md"];
-    let lower = name.to_ascii_lowercase();
+    let mut lower_buf = [0u8; 64];
+    let ln = name.len().min(64);
+    lower_buf[..ln].copy_from_slice(&name[..ln]);
+    lower_buf[..ln].make_ascii_lowercase();
+    let lower: &[u8] = &lower_buf[..ln];
     if ext.iter().any(|e| lower.ends_with(e)) {
         0
     } else if ext_doc.iter().any(|e| lower.ends_with(e)) {

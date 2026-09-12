@@ -9,6 +9,9 @@
 //! 威胁（固件级木马、DMA、物理键盘记录器）在 F449 中如实声明为不在防御范围。
 
 use crate::checks::{push_str, CheckSet};
+
+/// VARIX-M500 AI-10 隐私与信任深化（F226~F250）。
+pub mod trust;
 use crate::security::{
     aslr_slide, w_xor_x, AuditLog, AuditAction, BootChain, Canary, KeyPurpose, KeyStore,
     constant_time_eq, secure_zero, sha256, TELEMETRY_ENABLED,

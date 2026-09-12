@@ -6,6 +6,9 @@
 //! must produce an error, never a read past the end of the buffer.
 
 
+//! VARIX-M500 AI-09 网络体验与协同（F201~F225）。
+pub mod netxp;
+
 pub const ETHERTYPE_IPV4: u16 = 0x0800;
 pub const ETHERTYPE_ARP: u16 = 0x0806;
 pub const ETHERTYPE_IPV6: u16 = 0x86DD;
