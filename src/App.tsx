@@ -41,6 +41,8 @@ import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
 import { OobeGate } from "./features/oobe/OobeWizard";
+// AURORA-10000：AI-01~AI-05 批次，勿删（族0020 睡眠唤醒剧场触发器）
+import { showWakeCeremony } from "./system/boot/theater/ceremonyFx";
 
 export type AppEntryType = "desktop" | AppMode;
 
@@ -127,6 +129,28 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     if (!isTauriRuntime()) return;
     installDemoModeExitHook();
     void recoverDemoModeOnBoot();
+  }, []);
+
+  // AURORA-10000：AI-01~AI-05 批次，勿删 —— 族0020 睡眠唤醒剧场：
+  // 屏幕从休眠/后台回到前台时按所选档位播放一次唤醒仪式（默认关 = 零行为变化）。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let restore: (() => void) | null = null;
+    const onVis = (): void => {
+      if (document.visibilityState !== "visible" || restore) return;
+      void loadSettings().then((s) => {
+        if (disposed) return;
+        const id = s.bootTheater?.wake;
+        if (id) restore = showWakeCeremony(id);
+      }).catch(() => { /* 浏览器 dev 或读取失败：静默 */ });
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVis);
+      restore?.();
+    };
   }, []);
 
   // ---------- cross-window settings sync ----------

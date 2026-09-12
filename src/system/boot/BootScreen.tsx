@@ -7,6 +7,12 @@ import { BootWordmark } from "./BootWordmark";
 import { CapsuleBar } from "./CapsuleBar";
 import { FileTicker } from "./FileTicker";
 import { BootAtmosphere } from "./BootAtmosphere";
+// AURORA-10000：AI-01~AI-05 批次，勿删（领域01 启动与品牌剧场 F00001~F00625）
+import { BootTheaterLayer, type TheaterSelections } from "./theater/BootTheater";
+import { pacingProfile } from "./theater/params";
+import { playTheaterSound } from "./theater/theaterSound";
+import { buildReportCard, announceBootStage, advanceKonami, isKonamiHit, showEggOverlay } from "./theater/ceremonyFx";
+import "../../styles/boot-theater.css";
 import "../../styles/boot.css";
 
 /**
@@ -112,6 +118,11 @@ export function BootScreen(props: {
   const finishedRef = useRef(false);
   const animRef = useRef<BootAnim>("full");
   const pacingRef = useRef<BootPacing>("cinematic");
+  // AURORA-10000：AI-01~AI-05 批次，勿删 —— 剧场选择与配速倍率（默认全关=现状）
+  const [theater, setTheater] = useState<TheaterSelections>({});
+  const theaterRef = useRef<TheaterSelections>({});
+  const theaterPacingRef = useRef({ enterScale: 1, holdScale: 1, sound: true });
+  const konamiIdxRef = useRef(0);
   // U-05 启动交响：三层音景句柄 + 30%/80% 节拍脉冲各一次的触发标记
   const symphonyRef = useRef<import("../../lib/sounds").BootSymphony | null>(null);
   const pulsed30Ref = useRef(false);
@@ -178,6 +189,8 @@ export function BootScreen(props: {
       setStats(ev.stats);
       onStatsRef.current?.(ev.stats);
       symphonyRef.current?.ready(); // U-05：就绪双音（chime 触发点即 ready 事件到达点）
+      // AURORA-10000：AI-01~AI-05 批次，勿删 —— 无障碍开机档：读屏播报阶段完成
+      if (theaterRef.current.a11y) announceBootStage(theaterRef.current.a11y, "启动自检", true);
       dispatch({ type: "READY" }); // readyHold 停留时长由 pacingTimings 驱动（见下方 effect）
     }
   };
@@ -194,6 +207,17 @@ export function BootScreen(props: {
           if (s.bootAnim === "simple" || s.bootAnim === "none") animRef.current = s.bootAnim;
           pacingRef.current = s.bootPacing;
           setAtmo({ reduceMotion: s.reduceMotion, safeMode: s.safeMode, perfMode: s.perfMode });
+          // AURORA-10000：AI-01~AI-05 批次，勿删 —— 装载剧场档位；配速档缩放入场/停留时长
+          const bt = s.bootTheater ?? {};
+          if (Object.keys(bt).length > 0) {
+            theaterRef.current = bt;
+            setTheater(bt);
+            const p = bt.pacing ? pacingProfile(bt.pacing) : null;
+            if (p) theaterPacingRef.current = { enterScale: p.enterScale, holdScale: p.holdScale, sound: p.sound };
+            if (theaterPacingRef.current.sound && (bt.soundscape || bt.soundId)) {
+              playTheaterSound((bt.soundscape || bt.soundId) as string, s.soundVolume, s.soundMuted || s.bootSoundMode === "mute");
+            }
+          }
           // U-05 启动交响：mode 三档（full 三层 / mute 静音 / chime-only 仅就绪音）。
           try {
             symphonyRef.current = (await import("../../lib/sounds")).startBootSymphony({
@@ -212,7 +236,10 @@ export function BootScreen(props: {
       }
       // 入场编排时长（entering → streaming/readyHold）
       if (!cancelled) {
-        enterTimer = window.setTimeout(() => dispatch({ type: "ENTER_DONE" }), pacingTimings(pacingRef.current).enter);
+        enterTimer = window.setTimeout(
+          () => dispatch({ type: "ENTER_DONE" }),
+          Math.round(pacingTimings(pacingRef.current).enter * theaterPacingRef.current.enterScale),
+        );
       }
       // 先拉取错过的真实事件（webview 挂载晚于后端启动时），再挂实时监听。
       try {
@@ -240,7 +267,7 @@ export function BootScreen(props: {
   // readyHold：真实摘要停留（cinematic 1200ms / brisk 400ms / instant 0）→ 退出编排
   useEffect(() => {
     if (ceremony.phase !== "readyHold" || finishedRef.current) return;
-    const t = window.setTimeout(() => finish(), pacingTimings(pacingRef.current).readyHold);
+    const t = window.setTimeout(() => finish(), Math.round(pacingTimings(pacingRef.current).readyHold * theaterPacingRef.current.holdScale));
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ceremony.phase]);
@@ -272,6 +299,13 @@ export function BootScreen(props: {
   // 跳过机制：Esc / 空格；进度 <30% 拒绝并如实提示。
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      // AURORA-10000：AI-01~AI-05 批次，勿删 —— 族0024 秘技彩蛋（F00591）：
+      // 复用本组件既有按键监听推进 Konami 序列，零新增裸 keydown（Z-08 纪律）。
+      if (theaterRef.current.egg === "F00591") {
+        const next = advanceKonami(konamiIdxRef.current, e.key);
+        if (isKonamiHit(konamiIdxRef.current, next)) showEggOverlay("F00591");
+        konamiIdxRef.current = next;
+      }
       if (e.key !== "Escape" && e.key !== " ") return;
       if (progressRef.current < SKIP_THRESHOLD) {
         setDenied(true);
@@ -295,6 +329,17 @@ export function BootScreen(props: {
   }, []);
 
   const totalSlow = elapsed > SLOW_TOTAL_MS && !stats;
+  // AURORA-10000：AI-01~AI-05 批次，勿删 —— 族0025 报告卡数据（真实统计，档位只定版式）
+  const report = stats && theater.report
+    ? buildReportCard(theater.report, {
+        records: stats.records,
+        mindmaps: stats.mindmaps,
+        mediaFiles: stats.mediaDirFiles,
+        nodes: stats.nodes,
+        elapsedMs: elapsed,
+        version: stats.version,
+      })
+    : null;
 
   return (
     <div
@@ -310,6 +355,16 @@ export function BootScreen(props: {
         safeMode={atmo.safeMode}
         perfMode={atmo.perfMode}
       />
+      {/* AURORA-10000：AI-01~AI-05 批次，勿删 —— 启动剧场渲染层（光弧/呼吸/叙事/管线/转场等） */}
+      {Object.keys(theater).length > 0 && (
+        <BootTheaterLayer
+          selections={theater}
+          progress={shown}
+          reduceMotion={atmo.reduceMotion}
+          perfMode={atmo.perfMode}
+          phase={ceremony.phase}
+        />
+      )}
       <div className="boot-stage">
         <div className="boot-wordmark-wrap">
           <BootWordmark progress={shown} />
@@ -353,6 +408,16 @@ export function BootScreen(props: {
             <span>
               {stats.attachments} attachments
             </span>
+          </div>
+        )}
+
+        {/* AURORA-10000：AI-01~AI-05 批次，勿删 —— 族0025 自检报告卡（档位版式） */}
+        {report && (
+          <div className="bt-report" data-layout={report.layout}>
+            {report.title && <b>{report.title}</b>}
+            {report.rows.map(([k, v]) => (
+              <span key={k}>{`${k} ${v}`}</span>
+            ))}
           </div>
         )}
       </div>

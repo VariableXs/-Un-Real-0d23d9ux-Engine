@@ -1,0 +1,235 @@
+/* ============================================================
+ * AURORA-10000：AI-01~AI-05 批次，勿删。
+ * boot-theater.css — 领域01 启动与品牌剧场样式层（F00001~F00625）。
+ * 规则：零硬编码色值/时长 —— 色相与 duration 全部由 params.ts 内联注入；
+ * 本文件只定义动画关键帧、布局与结构；色彩仅用透明中性色兜底。
+ * ============================================================ */
+
+.bt-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+.bt-root--hc { filter: contrast(1.15); }
+.bt-root--large { font-size: calc(var(--fs-15) * 1.25); }
+.bt-root--silent * { animation: none !important; transition: none !important; }
+
+/* 色彩管线（族0005）：backdrop 滤镜层 + OLED 纯黑基底层 */
+.bt-pipeline,
+.bt-blackbase {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bt-blackbase { background: oklch(0.05 0 0 / 0.82); }
+
+/* ---- 族0001 光弧 ---- */
+.bt-arc {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30%;
+  display: flex;
+  justify-content: center;
+}
+.bt-arc-line {
+  width: 60%;
+  animation-name: bt-arc-sweep;
+  animation-iteration-count: infinite;
+  animation-timing-function: var(--ease-standard);
+  transform-origin: center;
+}
+.bt-arc--wide .bt-arc-line { border-radius: var(--r-chip); }
+.bt-arc--static { animation: none !important; opacity: 0.85; }
+@keyframes bt-arc-sweep {
+  0% { transform: translateX(-45%) scaleX(0.6); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateX(45%) scaleX(0.6); opacity: 0; }
+}
+
+/* ---- 族0002 品牌呼吸 ---- */
+.bt-breath {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bt-breath-ring {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  animation-name: bt-breath;
+  animation-iteration-count: infinite;
+}
+.bt-arc--static.bt-breath-ring { animation: none !important; }
+@keyframes bt-breath {
+  0%, 100% { transform: scale(0.96); opacity: 0.55; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+
+/* ---- 族0003 进度叙事 ---- */
+.bt-narrative {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18%;
+  text-align: center;
+  font-size: var(--fs-13);
+  opacity: 0.85;
+  letter-spacing: 0.06em;
+}
+
+/* ---- 族0013 倒计时刻度 ---- */
+.bt-count {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  display: flex;
+  align-items: center;
+}
+.bt-count--digits span { font-size: var(--fs-20); font-weight: 600; }
+.bt-count-dial {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  mask: radial-gradient(circle, transparent 55%, #000 56%);
+  -webkit-mask: radial-gradient(circle, transparent 55%, #000 56%);
+}
+
+/* ---- 族0006/0007/0008/0009 状态带（诊断/仪表/信任/恢复） ---- */
+.bt-strip {
+  position: absolute;
+  left: 50%;
+  bottom: 26%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.bt-strip i {
+  width: 14px;
+  height: 4px;
+  border-radius: var(--r-chip);
+  border: 1px solid transparent;
+  transition: background var(--dur-2) var(--ease-standard);
+}
+.bt-strip--trust i { height: 6px; }
+.bt-strip-label {
+  margin-left: var(--sp-2);
+  font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+/* ---- 族0010/0015/0011/0018 质感层（固件皮肤/日志美学/Splash 特效/情绪板） ---- */
+.bt-texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bt-texture--scan {
+  background: repeating-linear-gradient(
+    0deg,
+    oklch(1 0 0 / 0.025) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: overlay;
+}
+
+/* ---- 族0012 转场（退出编排） ---- */
+.bt-trans {
+  position: absolute;
+  inset: 0;
+  animation-name: bt-trans-fade;
+  animation-fill-mode: both;
+  animation-timing-function: var(--ease-emphasized);
+  background: oklch(0.1 0 0 / 0.55);
+}
+.bt-trans--wipe { animation-name: bt-trans-wipe; }
+.bt-trans--iris { animation-name: bt-trans-iris; border-radius: 50%; }
+@keyframes bt-trans-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bt-trans-wipe { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes bt-trans-iris { from { transform: scale(0.1); opacity: 0.2; } to { transform: scale(2.2); opacity: 0.9; } }
+
+/* ---- 族0024 彩蛋 ---- */
+.bt-egg {
+  position: absolute;
+  top: 20%;
+  left: 70%;
+  font-size: var(--fs-24);
+  animation-name: bt-egg-float;
+  animation-iteration-count: infinite;
+  animation-timing-function: var(--ease-spring);
+  opacity: 0.8;
+}
+@keyframes bt-egg-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(8deg); }
+}
+.bt-egg--pop {
+  position: fixed;
+  top: 30%;
+  left: 60%;
+  animation-name: bt-egg-pop;
+  animation-fill-mode: both;
+  pointer-events: none;
+}
+@keyframes bt-egg-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  30% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1) translateY(-24px); opacity: 0; }
+}
+
+/* ---- 族0025 报告卡（BootScreen 内挂载） ---- */
+.bt-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  justify-content: center;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-card);
+  border: 1px solid oklch(1 0 0 / 0.12);
+  font-size: var(--fs-12);
+  max-width: 70%;
+  margin-inline: auto;
+}
+.bt-report b { width: 100%; text-align: center; letter-spacing: 0.08em; }
+.bt-report[data-layout="plain"] { border: none; }
+.bt-report[data-layout="stamp"] { border-style: dashed; }
+.bt-report[data-layout="ticker"] { border-radius: var(--r-chip); }
+
+/* ---- 关机/唤醒仪式（ceremonyFx 动态挂载） ---- */
+.bt-ceremony {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: oklch(0.08 0 0 / 0.6);
+  backdrop-filter: blur(2px);
+}
+.bt-ceremony-core {
+  width: 40vmin;
+  height: 40vmin;
+  border-radius: 50%;
+  border: 2px solid oklch(1 0 0 / 0.35);
+  animation: bt-ceremony-core 1.2s var(--ease-emphasized) both;
+}
+.bt-ceremony--wake { animation: bt-ceremony-wake 0.9s var(--ease-standard) both; }
+.bt-ceremony--wake .bt-ceremony-core { animation-direction: reverse; }
+@keyframes bt-ceremony-core {
+  from { transform: scale(1); opacity: 1; box-shadow: 0 0 40px oklch(1 0 0 / 0.25); }
+  to { transform: scale(0.1); opacity: 0; }
+}
+@keyframes bt-ceremony-wake {
+  from { opacity: 0; }
+  to { opacity: 0; }
+}

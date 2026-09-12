@@ -239,6 +239,9 @@ export interface Settings {
   ambience: AmbienceSettings;
   customBg: CustomBg;
   mindDefaults: MindDefaults;
+  // ---- AURORA-10000：AI-01~AI-05 批次，勿删 ----
+  /** 领域01 启动与品牌剧场选择表：键 = 剧场族 kind（"arc"/"breath"/…），值 = 全景图 F 编号（如 "F00001"），空串/缺省 = 关闭该族（默认全关，零行为变化）。 */
+  bootTheater: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -364,6 +367,8 @@ export const DEFAULT_SETTINGS: Settings = {
   compatHighRefresh: true,
   compatHostOverride: "auto",
   compatSlowOverride: -1,
+  // ---- AURORA-10000：AI-01~AI-05 批次，勿删 ----
+  bootTheater: {},
 };
 
 /**
@@ -544,6 +549,19 @@ function coerce(raw: Record<string, string>): Settings {
       md.resizeSensitivity = clamp(Number(md.resizeSensitivity) || DEFAULT_SETTINGS.mindDefaults.resizeSensitivity, 2, 40);
       md.gridOpacity = clamp(Number(md.gridOpacity) || DEFAULT_SETTINGS.mindDefaults.gridOpacity, 0, 1);
       s.mindDefaults = md;
+    }
+    // ---- AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场选择表）----
+    if (raw["bootTheater"]) {
+      try {
+        const parsed = JSON.parse(raw["bootTheater"]) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const sel: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "string" && /^F\d{5}$/.test(v)) sel[k] = v;
+          }
+          s.bootTheater = sel;
+        }
+      } catch { /* 保留默认 */ }
     }
   } catch {
     // Corrupt settings fall back to defaults for the affected keys.

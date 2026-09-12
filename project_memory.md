@@ -495,3 +495,10 @@
 - 前端：EnvsTab 增 Diff 报告面板 + 冲突勾选裁决 + 丢弃/合并按钮；ipc.ts 增 envDiff/envDiscard/envMerge；i18n 双语 evDiff*/evDiscard*/evMerge* 19 键。envs 5 测试 + container 52 + 主 crate 94 全绿；typecheck 我方文件零错。
 - 文档收口：附录 A P2/P8/P14 打勾、里程碑 M2/M6 标注代码落地、能力现状表三行更新（如实注明 E-4 三宿主矩阵随 B-30）。
 - 再次教训：并行 Edit 同文件三连发必踩（本轮 M2/M6 行又被冲掉一次；EnvsTab 接口块被并发写覆盖一次）——同文件多处改动必须单发顺序执行。
+
+## AURORA-10000 AI-01~AI-05 批次（2026-09-13）—— 领域01 启动与品牌剧场 F00001~F00625 全量交付
+- 用户指令下达后启动实施（解除「规划冻结」）。范围：族0001~族0025 × 25 项 = 625 项，全部为独立参数档（registry 与全景图逐字对齐，由脚本生成保证零抄写误差）。
+- 落点：src/system/boot/theater/（registry.ts 625 档、params.ts 每项确定性参数、BootTheater.tsx 渲染引擎、theaterSound.ts WebAudio 合成音景/声音ID、ceremonyFx.ts 关机/唤醒/报告卡/秘技、__tests__/theater.test.ts 14 用例）；BootScreen.tsx 集成剧场层 + 配速倍率（pacingProfile 缩放入场/停留）+ a11y 播报 + 报告卡 + Konami 复用既有按键监听（零新增裸 keydown，Z-08 纪律）；settings.ts 增 bootTheater 选择表（默认全关=零行为变化）；BootTheaterTab.tsx + SettingsModal「启动剧场」标签；App.tsx visibilitychange 触发族0020 唤醒仪式；boot-theater.css 全令牌化。
+- 门禁：我的文件 tsc 零错误；vitest 2161 绿（含本批 14 项：ID 唯一连续校验/参数确定性/配速/叙事包/报告卡/静音档）；keymap 审计我的范围干净（desktop-design/runners.ts 的裸监听为其他并行会话 WIP）；aria 审计 OK；全景图 ID 校验 unique=10000/missing=none。
+- 文档回写：全景图 F00001~F00625 行尾 ✅；分工图 AI-01~05 区块 ✅ + 落点记录 + W1 总览 🔶 625/1250。工具：tools/gen-boot-theater.cjs（生成）、tools/mark-done-ai01-05.cjs（回写）。
+- 并行会话纪律：工作区存在 AI-06~AI-20 会话未提交 WIP（taskbar/aurora、windows/aurora、desktop-design、features/files、dictionaries、App/SettingsModal 混合改动），本批次仅提交自己文件与 hunks，未触碰他人 WIP；共享文件采用「HEAD 基线 + 本批次改动」重建 blob 后 hash-object 暂存，避免把他人半成品带入提交。

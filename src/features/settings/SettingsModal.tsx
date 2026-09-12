@@ -53,6 +53,8 @@ import { OpenHubTab } from "./OpenHubTab";
 import { A11yTab } from "./A11yTab";
 import { OpenToolsTab } from "./OpenToolsTab";
 import { SoundNotifyTab } from "./SoundNotifyTab";
+// AURORA-10000：AI-01~AI-05 批次，勿删
+import { BootTheaterTab } from "./BootTheaterTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -171,6 +173,8 @@ export function SettingsModal(props: {
     { id: "data", label: t("data") },
     { id: "quality", label: t("q20TabTitle") },
     { id: "about", label: t("aboutVariable") },
+    // AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场设置页）
+    { id: "bootTheater", label: "启动剧场" },
   ];
   const sysTabs: { id: string; label: string }[] = [
     { id: "sys-display", label: t("sysDispTitle") },
@@ -819,6 +823,8 @@ export function SettingsModal(props: {
           {tab === "opentools" && <OpenToolsTab />}
           {/* AI-16 启动与声音通知组：U-05/U-06/U-51/U-52、Z-43…Z-49、N-32 面板 */}
           {tab === "sndnotify" && <SoundNotifyTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AURORA-10000：AI-01~AI-05 批次，勿删（领域01 启动与品牌剧场 F00001~F00625 设置页） */}
+          {tab === "bootTheater" && <BootTheaterTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}
