@@ -289,7 +289,8 @@ pub fn download_verified(payload: &[u8], expect_sum: u64, salt: u64, sig: u64) -
 
 /// 按设备 id 稳定散列决定放量（同设备结果恒定）。
 pub fn canary_includes(device_id: u32, rollout_permille: u16) -> bool {
-    (((device_id.wrapping_mul(2654435761) % 1000) as u16) < rollout_permille)
+    let bucket = (device_id.wrapping_mul(2654435761) % 1000) as u16;
+    bucket < rollout_permille
 }
 
 // ===========================================================================

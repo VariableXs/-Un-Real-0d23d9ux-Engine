@@ -208,7 +208,15 @@ pub fn downsample_scale(src_w: u32, src_h: u32, max_pixels: u32) -> u16 {
     if pixels <= max_pixels as u64 {
         return 1000;
     }
-    let k = ((max_pixels as u64 * 1_000_000 / pixels) as f64).sqrt() as u64;
+    // 整数平方根：牛顿迭代求 sqrt(max_pixels / pixels) * 1000
+    let mut k = 1000u64;
+    for _ in 0..32 {
+        let next = (k + max_pixels as u64 * 1_000_000 / pixels / k.max(1)) / 2;
+        if next == k {
+            break;
+        }
+        k = next;
+    }
     k.min(1000) as u16
 }
 
