@@ -109,7 +109,10 @@ F251~F336 的可运行 UI：无限画布（力导向/LOD/小地图/Bloom/粒子/
 2D 流程图（Sugiyama/七类节点/四类连线/对比 diff/PNG·SVG·PDF 导出/瀑布·蛛网·架构）、
 通俗·专业·对照三界面（400ms 交叉淡入，树的形状位置不变）、六功能区 + 极简 UI +
 结构稳定性（固定布局/弹性尺寸/锚点锁定/占位符/布局快照/结构哈希）；
-`node code-analysis/ui/smoke.mjs` 66 项冒烟全绿（含装配层完整启动）。
+`node code-analysis/ui/smoke.mjs` 75 项冒烟全绿（含装配层完整启动）。
+✅ 真实数据接入：`CA.irFromJSON` 双通道（规格形态 `modules/calls` 与完整 IR 转储
+`nodes/edges`），入口四选一——`?ir=<url>` / 同目录 `data/ir.json` / 工具栏「载入」/
+拖拽 `.json` 到画布；载入后热替换 IR 并重算 F336 结构哈希（`CA_APP.loadIRJSON` 可验收）。
 
 ✅ #251
 ✅ #251 ✅ #252 ✅ #253 ✅ #254 ✅ #255 ✅ #256 ✅ #257 ✅ #258 ✅ #259 ✅ #260
