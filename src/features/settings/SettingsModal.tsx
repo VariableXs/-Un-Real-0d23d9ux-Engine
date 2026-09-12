@@ -53,6 +53,8 @@ import { OpenHubTab } from "./OpenHubTab";
 import { A11yTab } from "./A11yTab";
 import { OpenToolsTab } from "./OpenToolsTab";
 import { SoundNotifyTab } from "./SoundNotifyTab";
+// AURORA-10000：AI-16~AI-20 批次，勿删（领域04 任务栏与开始菜单）
+import { AuroraD4Tab } from "./AuroraD4Tab";
 // AURORA-10000：AI-01~AI-05 批次，勿删
 import { BootTheaterTab } from "./BootTheaterTab";
 
@@ -172,6 +174,8 @@ export function SettingsModal(props: {
     { id: "files", label: t("filesTab") },
     { id: "data", label: t("data") },
     { id: "quality", label: t("q20TabTitle") },
+    // AURORA-10000：AI-16~AI-20 批次，勿删
+    { id: "aurora4", label: t("d4TabTitle") },
     { id: "about", label: t("aboutVariable") },
     // AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场设置页）
     { id: "bootTheater", label: "启动剧场" },
@@ -958,6 +962,8 @@ export function SettingsModal(props: {
           )}
           {/* AI-20 M-79：质量与诊断（错误聚合看板 + IPC 追踪说明） */}
           {tab === "quality" && <QualityTab appVersion={aboutVersion} />}
+          {/* AURORA-10000：AI-16~AI-20 批次，勿删 */}
+          {tab === "aurora4" && <AuroraD4Tab />}
           {tab === "data" && (
             <>
               <Field label={t("dataDir")}>
