@@ -84,6 +84,15 @@ pub mod verify;
 // --- GALAXY-1800 AI-16~AI-25 (G901~G1500) ----------------------------------
 pub mod galaxy;
 
+// --- VARIABLE-200 内核并入 Variable 系统（F001~F200）------------------------
+// AI-01 用户态进程域：落点 proc.rs（扩展）+ proc/uspace.rs + mem/addrspace.rs。
+// AI-02 ELF 加载与 ABI 域：落点 exec.rs（VXELF 格式与加载器）。
+// AI-03 系统调用域：落点 syscall/。
+#[path = "exec.rs"]
+pub mod exec;
+#[path = "syscall/mod.rs"]
+pub mod syscall;
+
 // --- GALAXY-1800 AI-01~AI-07（G001~G420，W1/W2）-----------------------------
 pub mod gtoolchain;
 pub mod gconcur;
@@ -154,3 +163,10 @@ pub mod aurora;
 
 // --- AURORA-1000 步骤 0028 · 全局可观测计数器 --------------------------------
 pub mod metrics;
+
+// --- VARIABLE-200 AI-04~AI-08（F076~F200，内核并入 Variable 系统）-----------
+pub mod srv;
+pub mod gfxsrv;
+pub mod hidsrv;
+pub mod vport;
+pub mod bootchain;

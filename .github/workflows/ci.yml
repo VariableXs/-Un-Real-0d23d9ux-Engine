@@ -78,3 +78,78 @@ jobs:
           path: kernel/target/x86_64-unknown-none/release/varix
           retention-days: 7
           if-no-files-found: error
+
+  # F196 · CI boot job：内核 + initrd + ISO 三产物，并在 QEMU 里做冒烟引导。
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          targets: x86_64-unknown-none,x86_64-pc-windows-msvc
+          components: rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: kernel
+      - name: B1 install image tooling (xorriso + qemu + limine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xorriso xorriso-tcltk qemu-system-x86 curl
+          curl -fsSL -o /tmp/limine.tar.gz \
+            https://github.com/limine-bootloader/limine/releases/download/v12.1.0/limine-12.1.0.tar.gz || \
+          curl -fsSL -o /tmp/limine.tar.gz \
+            https://github.com/limine-bootloader/limine/releases/latest/download/limine-binary.tar.gz
+          mkdir -p tools/limine
+          tar -xzf /tmp/limine.tar.gz -C tools/limine --strip-components=1 || true
+          find tools/limine -maxdepth 2 -name 'limine-bios-cd.bin' -print
+      - name: B2 kernel build
+        run: cargo kbuild
+        working-directory: kernel
+      - name: B3 initrd pipeline (F180)
+        run: python3 scripts/make-initfs.py --verbose
+      - name: B4 initrd TOC self-check
+        run: python3 scripts/make-initfs.py --check
+      - name: B5 ISO artifact (F181: BIOS + UEFI dual boot via xorriso)
+        run: bash scripts/make-iso.sh
+      - name: B6 USB artifact (F182: dd-writable raw image)
+        run: |
+          # Hybrid MBR + GPT backup table is produced by xorriso above;
+          # the .iso is directly dd-writable, so the USB image is the ISO itself.
+          cp varix.iso varix-usb.img
+          ls -l varix.iso varix-usb.img
+      - name: B7 smoke boot in QEMU (serial log + self-test gate)
+        run: |
+          set +e
+          timeout 90 qemu-system-x86_64 \
+            -cdrom varix.iso -serial file:serial.log \
+            -display none -no-reboot -no-shutdown -m 512M -M q35
+          rc=$?
+          echo "qemu exit=$rc"
+          echo "----- serial.log (tail) -----"
+          tail -60 serial.log || true
+          # 冒烟门禁：内核必须跑到 boot complete，且无致命异常。
+          grep -q "boot complete" serial.log || { echo "FAIL: kernel did not reach boot complete"; exit 1; }
+          grep -q "limine: Loading executable" serial.log || { echo "FAIL: limine did not load the kernel"; exit 1; }
+          if grep -qiE "fatal exception|page fault|general protection|triple fault" serial.log; then
+            echo "FAIL: fatal exception in serial log"; exit 1
+          fi
+          echo "OK: smoke boot passed"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: varix-iso
+          path: |
+            varix.iso
+            varix-usb.img
+            build/initrd.img
+          retention-days: 7
+          if-no-files-found: error
+      - name: B8 serial log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-serial-log
+          path: serial.log
+          retention-days: 7
+          if-no-files-found: warn

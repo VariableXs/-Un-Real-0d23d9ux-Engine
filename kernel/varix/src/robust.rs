@@ -1099,6 +1099,21 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::acceptance::run_acceptance_checks());
     checkup.register(crate::release::run_release_checks());
     checkup.register(crate::finalize::run_finalize_checks());
+    // --- VARIABLE-200 AI-01 用户态进程域（F001~F025，W2）--------------------
+    // 页表隔离、ring3 双路切换、进程生命周期与崩溃隔离。
+    checkup.register(crate::proc::run_uspace_checks());
+    // --- VARIABLE-200 AI-02 可执行加载与 ABI 域（F026~F050，W2）--------------
+    // VXELF 加载、W^X、ASLR、入口栈/auxv/TLS、重定位、失败回收。
+    checkup.register(crate::exec::run_exec_checks());
+    // --- VARIABLE-200 AI-03 系统调用域（F051~F075，W2）----------------------
+    // 号表/参数安全层/错误码/调用面/能力审计配额/seccomp/vDSO/fuzz/仪表。
+    checkup.register(crate::syscall::run_syscall_checks());
+    // --- VARIABLE-200 AI-04~AI-08（F076~F200）--------------------------------
+    checkup.register(crate::srv::run_srv_checks());
+    checkup.register(crate::gfxsrv::run_gfxsrv_checks());
+    checkup.register(crate::hidsrv::run_hidsrv_checks());
+    checkup.register(crate::vport::run_vport_checks());
+    checkup.register(crate::bootchain::run_bootchain_checks());
     checkup
 }
 

@@ -11,6 +11,10 @@ use core::sync::atomic::AtomicU64;
 pub mod elf;
 pub mod syscall;
 
+// --- VARIABLE-200 AI-01 · 用户态进程域（F001~F025，W2）---------------------
+pub mod uspace;
+pub use uspace::run_uspace_checks;
+
 pub use elf::{ElfError, ElfImage, LoadSegment, MAX_LOAD_SEGMENTS};
 pub use syscall::{SyscallError, SyscallTable, SyscallTableError, MAX_SYSCALLS};
 

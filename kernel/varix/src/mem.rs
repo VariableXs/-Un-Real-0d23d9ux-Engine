@@ -10,6 +10,9 @@ pub mod mm;
 pub mod paging;
 pub mod pmm;
 
+// --- VARIABLE-200 AI-01 · F001 每进程地址空间 --------------------------------
+pub mod addrspace;
+
 use pmm::PAGE_SIZE;
 
 /// Everything the rest of the kernel wants to know about memory.

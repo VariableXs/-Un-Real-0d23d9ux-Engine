@@ -14,6 +14,23 @@
 - 内核自检闭环：`robust::run_kernel_checkup()` 汇总各域 CheckSet
   （robust 内部聚合时排除自身，避免递归）。
 
+### CheckSet 断言铁律：禁止"末态读取"（2026-09-12 反复踩坑）
+- `set.add("…", cond1 && obj.field == X && …)` 里对**可变对象**的字段读取，
+  全部发生在**表达式求值末尾**，即读到的是**末态**——中间过程的读数会被末态覆盖。
+- 凡"操作 → 读状态 → 再操作 → 断言"的写法，必须把每个中间读数先存进独立的
+  `let` 变量，再用变量参与布尔表达式。F158/F159/F164/F165/F183/F185/F186/F190/F191
+  都因这条挂过。
+- 调试手法：临时加 `#[cfg(test)] mod tmp_dbg`，把复合断言拆成逐条
+  `assert!(…, "tag")`，一次定位到具体子条件；**验证完立刻删掉该模块**。
+- 登记类接口（`register`/`record`/`add`）必须自带**去重**，否则重复登记会静默
+  改变计数断言。
+
+### 隔离验证法：绕开并行会话的编译错误
+- 当并行会话把别处源码改坏（crate 整体编不过）导致无法跑自己的模块时：
+  把 `checks.rs` + 待验模块复制到临时 scratch crate（`/tmp/bcverify`，
+  `Cargo.toml` 里 `[profile.test] panic = "unwind"`，自带一个 `gfxsrv::rgb` shim），
+  在那里单独 `cargo test --lib`。可完全绕开他人的编译错误。
+
 ## 共享文件与并行纪律
 - 多个会话并行改同一仓库：编辑 `lib.rs`、`docs/VARIX-500-*.md` 前先 `git log` / 重读文件，
   只改自己域的段落（`## AI-xx ·` 到下一个 `## AI-x` 之间）。
@@ -32,6 +49,33 @@
 
 ## 环境坑
 - **无 QEMU**：真机/模拟验收一律标注"待环境具备"。
+  （2026-09-12 已装 QEMU 11.1.0，见下方「QEMU 真机验收」小节。）
+
+## QEMU 真机验收（2026-09-12 打通，内核可完整引导至 boot complete）
+- 命令链：
+  - 构建：`cd kernel && RUSTUP_TOOLCHAIN=1.97.1-x86_64-pc-windows-msvc cargo kbuild`
+  - 打 ISO：`PATH="/tmp/xorr/root/usr/bin:$PATH" bash scripts/make-iso.sh`
+    （**必须 xorriso**；tools/build-iso.py 的 pycdlib 产物 Limine 读不了大文件。
+    xorriso 便携版在 /tmp/xorr，重启会话可能丢失，需重新解包 msys2 包。）
+  - 运行：`qemu-system-x86_64 -cdrom varix.iso -serial file:serialX.log
+    -monitor tcp:127.0.0.1:55xx,server,nowait -no-reboot -no-shutdown -m 512M -M q35 -display none`
+    **必须用 run_in_background=true**，否则 Bash 工具调用结束会杀掉 QEMU。
+- 抓状态：`python _qmon.py <port> "info registers" "xp /96xg 0x…"`
+  （自带剥 readline 回显 + ANSI 转义的逻辑；monitor 的 `xp` 只能看已映射地址）。
+- 定位流程：串口最后一行 → `info status` → RIP/CR2 → 用 ELF 符号表把 RIP 映射回函数
+  （Python 解析 ELF section/symtab，见当日日志）→ 反汇编确认。
+- 致命异常现在会打印 `err/rip/cr2`（`cpu/idt.rs::isr_dispatch`），不要再只依赖
+  "fatal exception 14" 这种无地址信息。
+- 中断入口段约束：stub 表必须放 `linker.ld` 的页对齐 `.stubs` 段（Limine 把 `.data`
+  映射为 NX），生成完代码后用 `harden_stub_mapping()`（CR3+HHDM 走页表）清 NX/清写位。
+  任何"运行时生成代码"的新需求都要走这条路径，不能塞进 `.data`。
+
+## CI
+- `.github/workflows/ci.yml` 三个 job：frontend / backend / kernel（kcheck、ktest、
+  fuzz、kbuild + ELF 产物）。
+- **当前 GitHub 不为该仓库调度 Actions job**（run #100 起全是 0 job / 0 秒 / failure，
+  workflow 状态却是 active），属账号层面（额度/账单/被禁用），与代码无关。
+  `gh` CLI 未登录，只能靠未认证 REST API 查 run 元信息。
 - **禁止 `git pull --rebase --autostash`**：曾把 `.git/objects/pack/*.pack` 与
   refs 整体删掉，本地历史全丢（工作区文件无事）。要对齐远端用
   `git fetch origin +refs/heads/main:refs/remotes/origin/main` +

@@ -20,6 +20,14 @@ cp tools/limine/limine-binary/limine-bios-cd.bin \
    tools/limine/limine-binary/limine-uefi-cd.bin \
    tools/limine/limine-binary/limine-bios.sys "$ISO_ROOT/"
 
+# F180 · initrd 打包流水线：用户程序/资产自动打进 ISO（一键）
+# 源程序尚未构建时脚本会写入占位载荷，保证 ISO 仍可引导到内核。
+PY_BIN="${PYTHON:-python3}"
+command -v "$PY_BIN" >/dev/null 2>&1 || PY_BIN=python
+"$PY_BIN" scripts/make-initfs.py --no-isoroot
+cp build/initrd.img "$ISO_ROOT/initrd.img"
+ls -l "$ISO_ROOT/initrd.img"
+
 xorriso -as mkisofs \
     -b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
     --efi-boot limine-uefi-cd.bin -efi-boot-part --efi-boot-image --protective-msdos-label \
