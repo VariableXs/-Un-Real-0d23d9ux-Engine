@@ -1114,6 +1114,12 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::hidsrv::run_hidsrv_checks());
     checkup.register(crate::vport::run_vport_checks());
     checkup.register(crate::bootchain::run_bootchain_checks());
+    // --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）----------------------
+    checkup.register(crate::deskwis::run_deskwis_checks());
+    checkup.register(crate::dataflow::run_dataflow_checks());
+    checkup.register(crate::selfheal::run_selfheal_checks());
+    checkup.register(crate::observ::run_observ_checks());
+    checkup.register(crate::i18n::run_i18n_checks());
     checkup
 }
 

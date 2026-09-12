@@ -115,6 +115,13 @@ pub mod grtc;
 // --- TRINITY-500 AI-20 (F476~F500) 工程质量与门禁收官（模块注册由 AI-20 统一收口）
 pub mod quality;
 
+// --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）--------------------------
+pub mod deskwis; //   AI-16 桌面智慧与空间管理
+pub mod dataflow; //  AI-17 数据流动与互操作
+pub mod selfheal; //  AI-18 自愈与可靠性深化
+pub mod observ; //    AI-19 性能艺术与观测（先行域）
+pub mod i18n; //      AI-20 全球化与作品集交付
+
 // --- AURORA-1000 AI-16~AI-30 (A376~A750) ------------------------------------
 pub mod workspace;
 pub mod designsys;
