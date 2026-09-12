@@ -3020,6 +3020,29 @@ const zh: Dict = {
   v100NeverAgain: "不再显示",
   v100Close: "关闭",
   v100EntryBtn: "查看毕业页",
+
+  // AURORA-10000：AI-16~AI-20 批次，勿删（领域04 任务栏与开始菜单 设置面板）
+  d4TabTitle: "任务栏与开始",
+  d4Master: "任务栏功能总控",
+  d4MasterHint: "关闭后全部任务栏新增能力回到保守默认",
+  d4Lock: "锁定配置",
+  d4Unlock: "解锁配置",
+  d4Reset: "恢复默认",
+  d4Export: "导出配置",
+  d4Import: "导入配置",
+  d4SlotA: "布局 A",
+  d4SlotB: "布局 B",
+  d4SaveSlot: "保存当前到",
+  d4ApplySlot: "应用",
+  d4Families: "功能族",
+  d4On: "开",
+  d4Off: "关",
+  d4Saved: "已保存",
+  d4Imported: "导入成功",
+  d4ImportBad: "导入失败：文件格式不正确",
+  d4LockedHint: "配置已锁定，先解锁再修改",
+  // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心入口）
+  aurW2DesignCenter: "设计中心（领域03）",
 };
 
 /**
@@ -3157,6 +3180,8 @@ const zhTwOverrides: Dict = {
   tmKillConfirm: "結束",
   tmStartupEmpty: "登錄檔 Run 鍵中沒有啟動項。",
   tmStartupNote: "啟動項來自 HKCU/HKLM Run 鍵；直跑檔為唯讀（請在宿主工作管理員中管理）。",
+  // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心入口）
+  aurW2DesignCenter: "設計中心（領域03）",
 };
 
 const zhTW: Dict = { ...convertDict(zh), ...zhTwOverrides };
@@ -6159,6 +6184,29 @@ const en: Dict = {
   v100NeverAgain: "Don't show again",
   v100Close: "Close",
   v100EntryBtn: "View graduation wall",
+
+  // AURORA-10000：AI-16~AI-20 批次，勿删（领域04 settings panel）
+  d4TabTitle: "Taskbar & Start",
+  d4Master: "Taskbar feature master switch",
+  d4MasterHint: "When off, all new taskbar abilities fall back to safe defaults",
+  d4Lock: "Lock config",
+  d4Unlock: "Unlock config",
+  d4Reset: "Restore defaults",
+  d4Export: "Export config",
+  d4Import: "Import config",
+  d4SlotA: "Layout A",
+  d4SlotB: "Layout B",
+  d4SaveSlot: "Save current to",
+  d4ApplySlot: "Apply",
+  d4Families: "Feature families",
+  d4On: "On",
+  d4Off: "Off",
+  d4Saved: "Saved",
+  d4Imported: "Imported",
+  d4ImportBad: "Import failed: invalid file format",
+  d4LockedHint: "Config is locked — unlock to edit",
+  // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心入口）
+  aurW2DesignCenter: "Design Center (Domain 03)",
 };
 
 export const dictionaries: Record<Lang, Dict> = { zh, "zh-TW": zhTW, en };
