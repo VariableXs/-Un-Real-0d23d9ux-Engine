@@ -223,7 +223,7 @@
       kv("状态", statusText) +
       kv("调用出边", ir.edges.filter(function (e) { return e.from === id; }).length) +
       '<div class="acts">' +
-      '<button class="chip" id="d-story">讲故事</button>' +
+      '<button class="chip primary" id="d-story">讲故事</button>' +
       '<button class="chip" id="d-down">下一级</button>' +
       '<button class="chip" id="d-focus">定位</button>' +
       '<button class="chip" id="d-mark">书签</button>' +
@@ -247,7 +247,7 @@
   }
   function closeDetail() {
     $("app").classList.add("detail-closed");
-    $("detail-body").innerHTML = '<div class="empty">点画布上的节点，这里会滑出它的大白话解释、指标和操作。</div>';
+    $("detail-body").innerHTML = '<div class="empty"><i></i>点画布上的节点，这里会滑出它的大白话解释、指标和操作。</div>';
   }
 
   /* ── F308 点击讲故事 / F311 一键总结 / F310 进度条 ──────────────────── */
