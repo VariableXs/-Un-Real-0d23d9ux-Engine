@@ -1114,6 +1114,24 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::hidsrv::run_hidsrv_checks());
     checkup.register(crate::vport::run_vport_checks());
     checkup.register(crate::bootchain::run_bootchain_checks());
+    // --- VARIX-M500 AI-06~AI-10（F126~F250）---------------------------------
+    checkup.register(crate::gfxsrv::vision::run_vision_checks());
+    checkup.register(crate::hidsrv::feel::run_feel_checks());
+    checkup.register(crate::audio::tone::run_tone_checks());
+    checkup.register(crate::net::netxp::run_netxp_checks());
+    checkup.register(crate::sec::trust::run_trust_checks());
+    // --- VARIX-M500 AI-11~AI-15（F251~F375，内核成熟化）----------------------
+    checkup.register(crate::envpower::run_energy_checks());
+    checkup.register(crate::theme::run_theme_checks());
+    checkup.register(crate::hwcompat::run_hwcompat_checks());
+    checkup.register(crate::appmgr::run_appmgr_checks());
+    checkup.register(crate::automation::run_automation_checks());
+    // --- VARIX-M500 AI-01~AI-05（F001~F125，M1 底座 + M3 生态门口）----------
+    checkup.register(crate::m5boot::run_bootm5_checks());
+    checkup.register(crate::m5sched::run_m5sched_checks());
+    checkup.register(crate::m5mem::run_m5mem_checks());
+    checkup.register(crate::m5srv::run_m5srv_checks());
+    checkup.register(crate::m5fs::run_m5fs_checks());
     // --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）----------------------
     checkup.register(crate::deskwis::run_deskwis_checks());
     checkup.register(crate::dataflow::run_dataflow_checks());

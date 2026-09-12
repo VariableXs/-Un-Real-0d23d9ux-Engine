@@ -177,3 +177,23 @@ pub mod gfxsrv;
 pub mod hidsrv;
 pub mod vport;
 pub mod bootchain;
+
+// --- VARIX-M500 AI-11~AI-15（F251~F375，内核成熟化与生态深化）---------------
+// 能源 v2（envpower）、主题艺术（theme）、硬件兼容广度（hwcompat）、
+// 应用生态 SDK（appmgr）、自动化引擎（automation）。
+// M500 的 F 编号与 VARIX-500 历史编号空间重叠，符号全部落在新模块避免冲突。
+pub mod envpower;
+pub mod theme;
+pub mod hwcompat;
+pub mod appmgr;
+pub mod automation;
+
+// --- VARIX-M500 AI-01~AI-05（F001~F125，M1 底座 + M3 生态门口）--------------
+// 启动体验（m5boot）、算力编排（m5sched）、内存智能（m5mem）、
+// 服务编排 IPC（m5srv）、文件系统与数据（m5fs）。
+// M500 的 F 编号与 VARIX-500 历史编号空间重叠，符号全部落在新模块避免冲突。
+pub mod m5boot;
+pub mod m5sched;
+pub mod m5mem;
+pub mod m5srv;
+pub mod m5fs;
