@@ -104,6 +104,12 @@ AI-10 发布同步                                                     ▶
 ### AI-04 全景画布·2D流程图·三界面·极简UI（#251~#336，86/86 ✅ W2 完成）
 ✅ 落点：`code-analysis/core`（canvas #251-275 / flowchart #276-300 / iface #301-336
 三域一域一文件，CheckSet 91 项自检 + 单测全绿；`run_w2_checks()` 汇总入口）。
+✅ 渲染层落点：`code-analysis/ui/`（`index.html` + `styles.css` + `js/ir·canvas·flow·iface·app`），
+F251~F336 的可运行 UI：无限画布（力导向/LOD/小地图/Bloom/粒子/代码雨/频谱/爆炸展开）、
+2D 流程图（Sugiyama/七类节点/四类连线/对比 diff/PNG·SVG·PDF 导出/瀑布·蛛网·架构）、
+通俗·专业·对照三界面（400ms 交叉淡入，树的形状位置不变）、六功能区 + 极简 UI +
+结构稳定性（固定布局/弹性尺寸/锚点锁定/占位符/布局快照/结构哈希）；
+`node code-analysis/ui/smoke.mjs` 66 项冒烟全绿（含装配层完整启动）。
 
 ✅ #251
 ✅ #251 ✅ #252 ✅ #253 ✅ #254 ✅ #255 ✅ #256 ✅ #257 ✅ #258 ✅ #259 ✅ #260

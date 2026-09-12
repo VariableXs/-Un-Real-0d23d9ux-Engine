@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Code Analysis · 代码透视引擎</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="auto-ui reveal-left reveal-right reveal-bottom">
+    <div id="app" class="detail-closed">
+      <!-- F315 导航区（左上 260×auto，极淡实线）：级别滑块+搜索框+目录树+书签+视图快捷 -->
+      <aside id="nav">
+        <div class="brand">Code Analysis <small id="brand-sub">auth-service</small></div>
+
+        <div>
+          <div class="block-title">七级下钻</div>
+          <div class="level-row">
+            <input id="level" type="range" min="1" max="7" step="1" value="2" aria-label="下钻级别" />
+            <span class="level-tag" id="level-tag">L2 模块</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="block-title">界面</div>
+          <div class="chips" id="iface-chips">
+            <button class="chip" data-mode="plain" aria-pressed="true">通俗</button>
+            <button class="chip" data-mode="pro" aria-pressed="false">专业</button>
+            <button class="chip" data-mode="compare" aria-pressed="false">对照</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="block-title">视图</div>
+          <div class="chips" id="view-chips">
+            <button class="chip" data-view="canvas" aria-pressed="true">全景画布</button>
+            <button class="chip" data-view="flow" aria-pressed="false">流程图</button>
+            <button class="chip" data-view="waterfall" aria-pressed="false">调用瀑布</button>
+            <button class="chip" data-view="spider" aria-pressed="false">变量蛛网</button>
+            <button class="chip" data-view="arch" aria-pressed="false">模块架构</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="block-title">搜索</div>
+          <label class="search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" />
+            </svg>
+            <input id="search" type="text" placeholder="搜函数 / 大白话" />
+            <span class="hit" id="search-hit"></span>
+          </label>
+        </div>
+
+        <div>
+          <div class="block-title">目录树</div>
+          <div class="tree" id="tree"></div>
+        </div>
+
+        <div>
+          <div class="block-title">书签</div>
+          <div class="bookmarks" id="bookmarks"></div>
+        </div>
+      </aside>
+
+      <!-- F316 画布区（中央自适应，无边框） -->
+      <main id="stage">
+        <canvas id="scene"></canvas>
+
+        <div id="progress"><i></i></div>
+        <div class="mode-tag" id="tag-left">通俗界面</div>
+        <div class="mode-tag" id="tag-right">专业界面</div>
+        <div id="split"><span class="split-tag">对照分屏 · 拖动分割线</span></div>
+
+        <canvas id="minimap" width="150" height="100" title="全景小地图"></canvas>
+
+        <!-- F319 图例区（右下 180×120，极淡虚线，可折叠） -->
+        <div id="legend" class="glass">
+          <h4><span>图例</span><span id="legend-fold">－</span></h4>
+          <div class="li"><i class="sw" style="background:#007AFF"></i>用户模块</div>
+          <div class="li"><i class="sw" style="background:#34C759"></i>订单模块</div>
+          <div class="li"><i class="sw" style="background:#FF9500"></i>支付模块</div>
+          <div class="li"><i class="sw" style="background:#AF52DE"></i>数据模块</div>
+          <div class="li"><i class="sw" style="background:#FF3B30"></i>bug / 红</div>
+          <div class="li"><i class="sw" style="background:#FFAB00"></i>警告 / 黄</div>
+          <div class="li"><i class="sw" style="background:#8E8E93"></i>死代码 / 灰</div>
+          <div class="li"><i class="lb"></i>线宽 = 调用频率</div>
+          <div class="li"><i class="lb" style="height:3px"></i>粗 = 高频调用</div>
+        </div>
+
+        <div class="float" id="tip"></div>
+        <div class="float" id="hoare"></div>
+
+        <!-- F308 点击讲故事（底部滑入 300ms） -->
+        <div id="story" class="glass">
+          <div class="s"><span>1</span><em id="story-1"></em></div>
+          <div class="s"><span>2</span><em id="story-2"></em></div>
+          <div class="s"><span>3</span><em id="story-3"></em></div>
+        </div>
+
+        <!-- F311 一键总结 -->
+        <div id="summary" class="glass">
+          <span class="close" id="summary-close">✕</span>
+          <h3>一键总结</h3>
+          <div id="summary-body"></div>
+        </div>
+      </main>
+
+      <!-- F317 详情区（右侧 280×auto，点击节点滑出，Esc 收起） -->
+      <aside id="detail">
+        <div id="detail-body"></div>
+      </aside>
+
+      <!-- F318 工具栏（底部 auto×40，极淡实线，悬停 tooltip） -->
+      <div id="toolbar" class="glass">
+        <button class="tool" id="t-zoomin" data-tip="放大">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M8 11h6M11 8v6M20 20l-4-4" /></svg>
+        </button>
+        <button class="tool" id="t-zoomout" data-tip="缩小">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M8 11h6M20 20l-4-4" /></svg>
+        </button>
+        <button class="tool" id="t-fit" data-tip="适应窗口">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+        </button>
+        <span class="zoomval" id="zoomval">100%</span>
+        <span class="tool-sep"></span>
+
+        <button class="tool" id="t-particles" data-tip="数据流粒子" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>
+        </button>
+        <button class="tool" id="t-bloom" data-tip="Bloom 光晕" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="8" stroke-dasharray="2 3" /></svg>
+        </button>
+        <button class="tool" id="t-heat" data-tip="性能热力" aria-pressed="false">
+          <svg viewBox="0 0 24 24"><path d="M12 3c3 4 5 6 5 9a5 5 0 01-10 0c0-3 2-5 5-9z" /></svg>
+        </button>
+        <button class="tool" id="t-rain" data-tip="代码雨" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><path d="M6 6l-2 4M12 4l-2 6M18 6l-2 5M8 16l-2 3M16 16l-2 4" /></svg>
+        </button>
+        <button class="tool" id="t-spectrum" data-tip="声波频谱" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><path d="M4 18v-4M8 18v-8M12 18v-12M16 18v-7M20 18v-3" /></svg>
+        </button>
+        <span class="tool-sep"></span>
+
+        <button class="tool" id="t-layout" data-tip="自动布局 Sugiyama">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="5" rx="1" /><rect x="13" y="15" width="7" height="5" rx="1" /><path d="M7.5 9v5h8v1" /></svg>
+        </button>
+        <button class="tool" id="t-play" data-tip="动画播放">
+          <svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" /></svg>
+        </button>
+        <button class="tool" id="t-compare" data-tip="对比模式 diff">
+          <svg viewBox="0 0 24 24"><path d="M12 3v18M6 8l-3 4 3 4M18 8l3 4-3 4" /></svg>
+        </button>
+        <button class="tool" id="t-dataflow" data-tip="数据流叠加" aria-pressed="true">
+          <svg viewBox="0 0 24 24"><path d="M3 12h18M18 8l4 4-4 4" /></svg>
+        </button>
+        <span class="tool-sep"></span>
+
+        <button class="tool" id="t-shot" data-tip="截图壁纸 2x">
+          <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2" /><circle cx="12" cy="12.5" r="3.5" /><path d="M8 6l1.5-2h5L16 6" /></svg>
+        </button>
+        <button class="tool" id="t-export" data-tip="导出 PNG / SVG">
+          <svg viewBox="0 0 24 24"><path d="M12 3v11M8 10l4 4 4-4M4 20h16" /></svg>
+        </button>
+        <button class="tool" id="t-print" data-tip="打印 A4 分页">
+          <svg viewBox="0 0 24 24"><path d="M7 9V4h10v5M7 18H5v-6h14v6h-2M7 15h10v5H7z" /></svg>
+        </button>
+        <button class="tool" id="t-full" data-tip="全屏">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+        </button>
+        <span class="spacer"></span>
+        <button class="tool" id="t-summary" data-tip="一键总结">
+          <svg viewBox="0 0 24 24"><path d="M5 5h14M5 10h14M5 15h9" /></svg>
+        </button>
+        <button class="tool" id="t-theme" data-tip="浅色 / 深色">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" /></svg>
+        </button>
+      </div>
+
+      <!-- F320 状态栏（最底 auto×22，几乎隐形） -->
+      <footer id="status">
+        <span>级别 <b id="s-level">L2</b></span>
+        <span>节点 <b id="s-nodes">0</b></span>
+        <span>文件 <b id="s-files">0</b></span>
+        <span>LOC <b id="s-loc">0</b></span>
+        <span>视图 <b id="s-view">全景画布</b></span>
+        <span>LOD <b id="s-lod">module</b></span>
+        <span>风格 <b id="s-style">极简</b></span>
+        <span>结构 <b id="s-hash">—</b></span>
+        <span class="spacer"></span>
+        <span><i class="dot" id="s-dot"></i> F 键跟随 <b id="s-fkey">关</b></span>
+        <span><button id="s-pin">锁定面板</button></span>
+      </footer>
+    </div>
+
+    <script src="js/ir.js"></script>
+    <script src="js/canvas.js"></script>
+    <script src="js/flow.js"></script>
+    <script src="js/iface.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>
