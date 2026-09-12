@@ -915,7 +915,7 @@ impl StallHunter {
                         }
                     }
                 }
-                if best.map(|(bt, bc)| c > bc).unwrap_or(true) {
+                if best.map(|(_, bc)| c > bc).unwrap_or(true) {
                     best = Some((e.tid, c));
                 }
             }

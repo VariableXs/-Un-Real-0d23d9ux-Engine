@@ -736,7 +736,6 @@ pub fn run_automation_checks() -> CheckSet {
     let r = CondRule { cond: Cond::BatteryBelow(20), then_flow: 1, else_flow: 2 };
     set.add("F354 low", cond_route(&r, 1500, 12, 0) == 1, "15% < 20%");
     set.add("F354 ok", cond_route(&r, 5000, 12, 0) == 2, "50% >= 20%");
-    let r2 = CondRule { cond: Cond::FlagSet(3), then_flow: 5, else_flow: 6 };
 
     // F355
     let mut lib = ActionLib::new();

@@ -732,7 +732,7 @@ pub fn run_energy_checks() -> CheckSet {
     let mut q = WakeQuota::new(2);
     let a1 = wake_gate(&mut q);
     let a2 = wake_gate(&mut q);
-    let used_before_tick = q.used;
+    let _used_before_tick = q.used;
     let a3 = wake_gate(&mut q);
     set.add("F255 quota 2 ok", a1 && a2, "first two pass");
     set.add("F255 quota deny", !a3, "third denied");

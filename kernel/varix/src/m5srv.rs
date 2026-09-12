@@ -241,7 +241,7 @@ impl ServiceMesh {
     /// 依赖环检测（DFS 三色）。
     pub fn has_cycle(&self) -> bool {
         const NIL: u8 = 255;
-        let mut color = [NIL as u8; MAX_EDGES]; // 0 白 1 灰 2 黑（用服务号间接覆盖 ≤255）
+        let color = [NIL as u8; MAX_EDGES]; // 0 白 1 灰 2 黑（用服务号间接覆盖 ≤255）
         let mut adj = [[false; MAX_EDGES]; MAX_EDGES];
         let mut nodes = [false; MAX_EDGES];
         for i in 0..self.count {

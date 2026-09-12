@@ -1367,7 +1367,7 @@ pub fn run_bootm5_checks() -> CheckSet {
     set.add("F011 respects silent", !ch.respects_silent(true) && ch.respects_silent(false), "silent");
 
     // F012 文案规范
-    let mut ts = BootTextSpec::new();
+    let ts = BootTextSpec::new();
     set.add("F012 normal line ok", ts.line_ok(b"Loading kernel"), "ok");
     set.add("F012 all-caps rejected", !ts.line_ok(b"LOADING"), "caps");
     set.add("F012 spinner limited", !ts.line_ok(b"....."), "spin");
