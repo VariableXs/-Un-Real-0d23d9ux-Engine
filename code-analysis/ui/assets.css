@@ -32,6 +32,19 @@
   background: #000;
   opacity: var(--wp-dim);
 }
+/* AI-10 质感层：暗角 + 顶部天光，给壁纸纵深（不参与 --wp-* 契约） */
+#wallpaper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.26) 100%),
+    linear-gradient(180deg, rgba(41, 151, 255, 0.05) 0%, transparent 22%);
+}
+/* 浅色主题：压暗罩加深一档，白色玻璃面板与壁纸的对比保持可读 */
+html[data-theme="light"] #wallpaper::after {
+  opacity: calc(var(--wp-dim) + 0.18);
+}
 
 /* ── 8 风格壁纸本体（纯 CSS，零外部资源） ──────────────────────────────── */
 [data-style="0"] #wallpaper {
