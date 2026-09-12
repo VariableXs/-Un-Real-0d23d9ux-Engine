@@ -21,6 +21,8 @@ export const TASKBAR_MENU_REGISTRY: TaskbarMenuEntry[] = [
   { id: "wallpaperCenter", labelKey: "wpCenterTitle", defaultVisible: true },
   { id: "launcher", labelKey: "launcherTitle", defaultVisible: true },
   { id: "sticky", labelKey: "tbQuickSticky", defaultVisible: false },
+  // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心；默认隐藏，不改变既有默认项集）
+  { id: "designCenter", labelKey: "aurW2DesignCenter", defaultVisible: false },
   { id: "taskbarSettings", labelKey: "taskbarSettings", defaultVisible: true },
 ];
 

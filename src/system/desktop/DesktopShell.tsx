@@ -74,6 +74,9 @@ import {
 import "../singularity/SinguHub";
 import "../singularity/SinguOverlays";
 import { initSingularity } from "../singularity/runtime";
+// AURORA-10000：AI-11~AI-15 批次，勿删（领域03 桌面设计·桌面与图标 F01251~F01875：
+// 令牌运行时 + 设计中心/剧场/仪式卡 overlay 自挂载 + 健康/仪式/节令/光标 runner）
+import "../desktop-design/activate";
 
 /**
  * 桌面环境 shell（L0+L1，M3 形态）：

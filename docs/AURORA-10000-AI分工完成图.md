@@ -11,7 +11,7 @@
 |------|----|----------|------|
 | W0 | AI-75（先行 8 项） | BUG-01~08 | ⬜ 0/8 |
 | W1 | AI-01~AI-10 | F00001~F01250 | 🔶 1250/1250（AI-01~05、AI-06~AI-10 区块均 ✅，待波次出口统验） |
-| W2 | AI-11~AI-25 | F01251~F03125 | 🔶 625/1875 |
+| W2 | AI-11~AI-25 | F01251~F03125 | 🔶 1250/1875（AI-11~AI-15、AI-21~AI-25 区块均 ✅，待波次出口统验） |
 | W3 | AI-26~AI-40 | F03126~F05000 | ⬜ 0/1875 |
 | W4 | AI-41~AI-50 | F05001~F06250 | ⬜ 0/1250 |
 | W5 | AI-51~AI-60 | F06251~F07500 | ⬜ 0/1250 |
@@ -126,54 +126,54 @@
 
 ## W2 批次（AI-11~AI-25）
 
-### AI-11 图标系统组A（领域03 桌面与图标 · F01251~F01375 · W2）⬜
-- 族0051 图标风格体系（F01251~F01275）25 项 ⬜ 0/25
-- 族0052 图标动效（F01276~F01300）25 项 ⬜ 0/25
-- 族0053 图标栅格与密度（F01301~F01325）25 项 ⬜ 0/25
-- 族0054 图标语义色（F01326~F01350）25 项 ⬜ 0/25
-- 族0055 图标状态机（F01351~F01375）25 项 ⬜ 0/25
+### AI-11 图标系统组A（领域03 桌面与图标 · F01251~F01375 · W2）✅
+- 族0051 图标风格体系（F01251~F01275）25 项 ✅ 25/25
+- 族0052 图标动效（F01276~F01300）25 项 ✅ 25/25
+- 族0053 图标栅格与密度（F01301~F01325）25 项 ✅ 25/25
+- 族0054 图标语义色（F01326~F01350）25 项 ✅ 25/25
+- 族0055 图标状态机（F01351~F01375）25 项 ✅ 25/25
 - 归属：Variable 桌面（明细见全景图族标注）
-- 落点记录：（实施会话完成后填写实际改动文件与提交号）
+- 落点记录：src/system/desktop-design/{types,state,catalog,logic,runtime,runners,particles,ambience,labels,ritualBus,mounts}.ts + {DesignCenter,TheaterOverlay,RitualOverlay}.tsx + design-center.css + activate.ts + __tests__/{catalog,logic}.test.ts；src/design/tokens.css（族0066 令牌段「AURORA-10000：AI-11~AI-15 批次，勿删」）；src/system/desktop/DesktopShell.tsx（activate 一行接入）；src/system/desktop/taskbarMenu.ts + src/system/taskbar/Taskbar.tsx（任务栏空区菜单「设计中心」入口，默认隐藏）；src/i18n/dictionaries.ts（aurW2DesignCenter 键，三语）。
 - 自检：构建/审计/视觉/性能/文档五门禁 + 本组 125 项逐条核对
 
-### AI-12 壁纸系统组B（领域03 桌面与图标 · F01376~F01500 · W2）⬜
-- 族0056 壁纸引擎（F01376~F01400）25 项 ⬜ 0/25
-- 族0057 壁纸取色联动（F01401~F01425）25 项 ⬜ 0/25
-- 族0058 壁纸管理（F01426~F01450）25 项 ⬜ 0/25
-- 族0059 壁纸创作工坊（F01451~F01475）25 项 ⬜ 0/25
-- 族0060 锁屏一体化（F01476~F01500）25 项 ⬜ 0/25
+### AI-12 壁纸系统组B（领域03 桌面与图标 · F01376~F01500 · W2）✅
+- 族0056 壁纸引擎（F01376~F01400）25 项 ✅ 25/25
+- 族0057 壁纸取色联动（F01401~F01425）25 项 ✅ 25/25
+- 族0058 壁纸管理（F01426~F01450）25 项 ✅ 25/25
+- 族0059 壁纸创作工坊（F01451~F01475）25 项 ✅ 25/25
+- 族0060 锁屏一体化（F01476~F01500）25 项 ✅ 25/25
 - 归属：Variable 桌面（明细见全景图族标注）
-- 落点记录：（实施会话完成后填写实际改动文件与提交号）
+- 落点记录：src/system/desktop-design/{types,state,catalog,logic,runtime,runners,particles,ambience,labels,ritualBus,mounts}.ts + {DesignCenter,TheaterOverlay,RitualOverlay}.tsx + design-center.css + activate.ts + __tests__/{catalog,logic}.test.ts；src/design/tokens.css（族0066 令牌段「AURORA-10000：AI-11~AI-15 批次，勿删」）；src/system/desktop/DesktopShell.tsx（activate 一行接入）；src/system/desktop/taskbarMenu.ts + src/system/taskbar/Taskbar.tsx（任务栏空区菜单「设计中心」入口，默认隐藏）；src/i18n/dictionaries.ts（aurW2DesignCenter 键，三语）。
 - 自检：构建/审计/视觉/性能/文档五门禁 + 本组 125 项逐条核对
 
-### AI-13 桌面微件组C（领域03 桌面与图标 · F01501~F01625 · W2）⬜
-- 族0061 微件框架（F01501~F01525）25 项 ⬜ 0/25
-- 族0062 内置微件集（F01526~F01550）25 项 ⬜ 0/25
-- 族0063 桌面互动层（F01551~F01575）25 项 ⬜ 0/25
-- 族0064 桌面整理哲学（F01576~F01600）25 项 ⬜ 0/25
-- 族0065 桌面健康（F01601~F01625）25 项 ⬜ 0/25
+### AI-13 桌面微件组C（领域03 桌面与图标 · F01501~F01625 · W2）✅
+- 族0061 微件框架（F01501~F01525）25 项 ✅ 25/25
+- 族0062 内置微件集（F01526~F01550）25 项 ✅ 25/25
+- 族0063 桌面互动层（F01551~F01575）25 项 ✅ 25/25
+- 族0064 桌面整理哲学（F01576~F01600）25 项 ✅ 25/25
+- 族0065 桌面健康（F01601~F01625）25 项 ✅ 25/25
 - 归属：Variable 桌面（明细见全景图族标注）
-- 落点记录：（实施会话完成后填写实际改动文件与提交号）
+- 落点记录：src/system/desktop-design/{types,state,catalog,logic,runtime,runners,particles,ambience,labels,ritualBus,mounts}.ts + {DesignCenter,TheaterOverlay,RitualOverlay}.tsx + design-center.css + activate.ts + __tests__/{catalog,logic}.test.ts；src/design/tokens.css（族0066 令牌段「AURORA-10000：AI-11~AI-15 批次，勿删」）；src/system/desktop/DesktopShell.tsx（activate 一行接入）；src/system/desktop/taskbarMenu.ts + src/system/taskbar/Taskbar.tsx（任务栏空区菜单「设计中心」入口，默认隐藏）；src/i18n/dictionaries.ts（aurW2DesignCenter 键，三语）。
 - 自检：构建/审计/视觉/性能/文档五门禁 + 本组 125 项逐条核对
 
-### AI-14 视觉一致性组D（领域03 桌面与图标 · F01626~F01750 · W2）⬜
-- 族0066 设计令牌扩展（F01626~F01650）25 项 ⬜ 0/25
-- 族0067 暗色与亮度（F01651~F01675）25 项 ⬜ 0/25
-- 族0068 光标与指针（F01676~F01700）25 项 ⬜ 0/25
-- 族0069 窗口内容风格（F01701~F01725）25 项 ⬜ 0/25
-- 族0070 视觉动效全局（F01726~F01750）25 项 ⬜ 0/25
+### AI-14 视觉一致性组D（领域03 桌面与图标 · F01626~F01750 · W2）✅
+- 族0066 设计令牌扩展（F01626~F01650）25 项 ✅ 25/25
+- 族0067 暗色与亮度（F01651~F01675）25 项 ✅ 25/25
+- 族0068 光标与指针（F01676~F01700）25 项 ✅ 25/25
+- 族0069 窗口内容风格（F01701~F01725）25 项 ✅ 25/25
+- 族0070 视觉动效全局（F01726~F01750）25 项 ✅ 25/25
 - 归属：Variable 桌面（明细见全景图族标注）
-- 落点记录：（实施会话完成后填写实际改动文件与提交号）
+- 落点记录：src/system/desktop-design/{types,state,catalog,logic,runtime,runners,particles,ambience,labels,ritualBus,mounts}.ts + {DesignCenter,TheaterOverlay,RitualOverlay}.tsx + design-center.css + activate.ts + __tests__/{catalog,logic}.test.ts；src/design/tokens.css（族0066 令牌段「AURORA-10000：AI-11~AI-15 批次，勿删」）；src/system/desktop/DesktopShell.tsx（activate 一行接入）；src/system/desktop/taskbarMenu.ts + src/system/taskbar/Taskbar.tsx（任务栏空区菜单「设计中心」入口，默认隐藏）；src/i18n/dictionaries.ts（aurW2DesignCenter 键，三语）。
 - 自检：构建/审计/视觉/性能/文档五门禁 + 本组 125 项逐条核对
 
-### AI-15 桌面个性组E（领域03 桌面与图标 · F01751~F01875 · W2）⬜
-- 族0071 主题系统（F01751~F01775）25 项 ⬜ 0/25
-- 族0072 个性化深度（F01776~F01800）25 项 ⬜ 0/25
-- 族0073 季节与节日（F01801~F01825）25 项 ⬜ 0/25
-- 族0074 桌面剧场模式（F01826~F01850）25 项 ⬜ 0/25
-- 族0075 桌面仪式感（F01851~F01875）25 项 ⬜ 0/25
+### AI-15 桌面个性组E（领域03 桌面与图标 · F01751~F01875 · W2）✅
+- 族0071 主题系统（F01751~F01775）25 项 ✅ 25/25
+- 族0072 个性化深度（F01776~F01800）25 项 ✅ 25/25
+- 族0073 季节与节日（F01801~F01825）25 项 ✅ 25/25
+- 族0074 桌面剧场模式（F01826~F01850）25 项 ✅ 25/25
+- 族0075 桌面仪式感（F01851~F01875）25 项 ✅ 25/25
 - 归属：Variable 桌面（明细见全景图族标注）
-- 落点记录：（实施会话完成后填写实际改动文件与提交号）
+- 落点记录：src/system/desktop-design/{types,state,catalog,logic,runtime,runners,particles,ambience,labels,ritualBus,mounts}.ts + {DesignCenter,TheaterOverlay,RitualOverlay}.tsx + design-center.css + activate.ts + __tests__/{catalog,logic}.test.ts；src/design/tokens.css（族0066 令牌段「AURORA-10000：AI-11~AI-15 批次，勿删」）；src/system/desktop/DesktopShell.tsx（activate 一行接入）；src/system/desktop/taskbarMenu.ts + src/system/taskbar/Taskbar.tsx（任务栏空区菜单「设计中心」入口，默认隐藏）；src/i18n/dictionaries.ts（aurW2DesignCenter 键，三语）。
 - 自检：构建/审计/视觉/性能/文档五门禁 + 本组 125 项逐条核对
 
 ### AI-16 任务栏形态组A（领域04 任务栏与开始菜单 · F01876~F02000 · W2）✅

@@ -290,3 +290,35 @@
   --icon-ui: 24px;
 }
 
+
+/* ============================================================
+ * AURORA-10000：AI-11~AI-15 批次，勿删（领域03 桌面设计·桌面与图标）
+ * 族0066 设计令牌扩展（F01626~F01650）——车道运行时覆写同名变量即生效。
+ * ============================================================ */
+:root {
+  --w2-elev-6: 0 32px 96px oklch(0.15 0.02 260 / 0.48);      /* F01627 海拔 6 */
+  --w2-blur-1: 8px;                                          /* F01628 模糊族 */
+  --w2-blur-2: 16px;
+  --w2-blur-3: 28px;
+  --w2-glass: oklch(1 0 0 / 0.06);                           /* F01629 玻璃材质 */
+  --w2-glow: 0 0 12px oklch(0.68 0.09 262 / 0.35);           /* F01630 辉光强度 */
+  --w2-stroke: 1px;                                          /* F01631 描边宽度 */
+  --w2-divider: 1px solid oklch(1 0 0 / 0.07);               /* F01632 分割线 */
+  --w2-row-h: 40px;                                          /* F01633 表格行高 */
+  --w2-control-h: 32px;                                      /* F01634 控件高度 */
+  --w2-optical: 0px;                                         /* F01635 光学补偿 */
+  --w2-body-contrast: 1;                                     /* F01636 文本对比 */
+  --w2-disabled-alpha: 0.4;                                  /* F01637 禁用透明 */
+  --w2-hover-lift: 1px;                                      /* F01638 hover 抬升 */
+  --w2-press-shift: 1px;                                     /* F01639 按压位移 */
+  --w2-focus-ring: 0 0 0 2px var(--accent);                  /* F01640 焦点环 */
+  --w2-scrollbar: 10px;                                      /* F01641 滚动条尺寸 */
+  --w2-tooltip-bg: var(--bg-raised);                         /* F01642 tooltip */
+  --w2-menu-shadow: var(--elev-3);                           /* F01643 菜单阴影 */
+  --w2-selection: oklch(0.68 0.09 262 / 0.35);               /* F01715 选择色 */
+  --w2-lh: 1.6;                                              /* F01704 行高 */
+  --w2-theme-dur: 240ms;                                     /* F01674 明暗过渡 */
+  --w2-font-ui: inherit;                                     /* F01788 全局字体 */
+  --w2-font-mono: "Cascadia Mono", Consolas, monospace;      /* F01789 等宽字体 */
+  --w2-tracking: 0em;                                        /* F01791 字距微调 */
+}

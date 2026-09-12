@@ -356,6 +356,9 @@ export function Taskbar(props: {
         window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "wallpaper-center" } })),
       launcher: () => openLauncherManager(),
       sticky: () => setInputOpen(true),
+      // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心）
+      designCenter: () =>
+        window.dispatchEvent(new CustomEvent("ai04:open-feature", { detail: { feature: "design-center" } })),
       taskbarSettings: props.onOpenSettings,
     }),
     [props.onShowDesktop, props.onOpenSettings],
@@ -367,6 +370,7 @@ export function Taskbar(props: {
         : id === "wallpaperCenter" ? "wpCenterTitle"
         : id === "launcher" ? "launcherTitle"
         : id === "sticky" ? "tbQuickSticky"
+        : id === "designCenter" ? "aurW2DesignCenter"
         : "taskbarSettings",
       ),
       onClick: blankMenuActions[id as keyof typeof blankMenuActions],

@@ -1,5 +1,5 @@
 {
-  "count": 66,
+  "count": 67,
   "files": {
     "src/App.tsx": 4,
     "src/apps/code/ProjectAnalysisView.tsx": 1,
@@ -16,6 +16,7 @@
     "src/system/ambience/FocusCabin.tsx": 1,
     "src/system/boot/BootScreen.tsx": 1,
     "src/system/desktop/DesktopShell.tsx": 1,
+    "src/system/desktop-design/runners.ts": 1,
     "src/system/explorer/ExplorerWindow.tsx": 1,
     "src/system/explorer/QuickPreview.tsx": 1,
     "src/system/iconpacks/Studio.tsx": 1,
