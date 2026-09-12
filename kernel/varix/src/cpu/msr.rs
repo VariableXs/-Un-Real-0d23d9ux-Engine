@@ -272,6 +272,9 @@ pub fn init() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+    // 全局 denied 统计被多个测试读写；串行化避免并行测试互相污染计数断言。
+    static STATS_GATE: Mutex<()> = Mutex::new(());
 
     #[test]
     fn addresses_are_unique_and_resolvable() {
@@ -314,6 +317,7 @@ mod tests {
 
     #[test]
     fn read_only_msrs_refuse_writes() {
+        let _g = STATS_GATE.lock().unwrap();
         assert!(!Msr::ArchCaps.writable());
         assert!(!Msr::Tsc.writable());
         let before = stats().denied();
@@ -324,6 +328,7 @@ mod tests {
 
     #[test]
     fn raw_access_denies_unknown_addresses() {
+        let _g = STATS_GATE.lock().unwrap();
         let before = stats().denied();
         assert_eq!(try_raw_read(0x1234), Err(Denied::NotAllowed));
         assert_eq!(stats().denied(), before + 1);

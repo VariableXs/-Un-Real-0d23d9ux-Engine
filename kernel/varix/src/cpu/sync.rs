@@ -606,7 +606,12 @@ mod tests {
             }
         });
         assert_eq!(*cell.lock(), 8000);
-        assert!(cell.contentions() > 0, "the test should actually contend");
+        // 争用只有在多核（≥2 并行度）时才必然发生；单 vCPU 的 CI runner 上
+        // 线程不会真正抢锁，此时只验证计数不丢失，不强制 contentions > 0。
+        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        if cores >= 2 {
+            assert!(cell.contentions() > 0, "the test should actually contend");
+        }
     }
 
     #[test]
