@@ -17,6 +17,7 @@ archive-*/
 docs/Typora_Hook_Log.txt
 launcher/target/
 kernel/target/
+kernel/userspace/*/target/
 
 # QEMU / 引导验收产物
 varix.iso

@@ -812,6 +812,8 @@ impl SwitchFrame {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // 非测试代码不再需要它，但测试要拼原始页表项做隔离断言。
+    use crate::mem::paging::P_PRESENT;
 
     fn arena_with_kernel() -> (SpaceArena, usize, usize) {
         let mut a = SpaceArena::new();
