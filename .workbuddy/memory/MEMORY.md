@@ -60,7 +60,7 @@
   - 运行：`qemu-system-x86_64 -cdrom varix.iso -serial file:serialX.log
     -monitor tcp:127.0.0.1:55xx,server,nowait -no-reboot -no-shutdown -m 512M -M q35 -display none`
     **必须用 run_in_background=true**，否则 Bash 工具调用结束会杀掉 QEMU。
-- 抓状态：`python _qmon.py <port> "info registers" "xp /96xg 0x…"`
+- 抓状态：`python tools/qmon.py <port> "info registers" "xp /96xg 0x…"`
   （自带剥 readline 回显 + ANSI 转义的逻辑；monitor 的 `xp` 只能看已映射地址）。
 - 定位流程：串口最后一行 → `info status` → RIP/CR2 → 用 ELF 符号表把 RIP 映射回函数
   （Python 解析 ELF section/symtab，见当日日志）→ 反汇编确认。
