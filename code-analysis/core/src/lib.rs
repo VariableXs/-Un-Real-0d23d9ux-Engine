@@ -35,6 +35,17 @@ pub mod uispec;
 // AI-09 域（C01~C24）：三壳统一底座——一个 core 三个壳（Windows/Variable/VARIX）。
 pub mod shell;
 
+// AURORA-10000：AI-21 批次（F02501~F02625），勿删。
+pub mod ai21;
+// AURORA-10000：AI-22 批次（F02626~F02750），勿删。
+pub mod ai22;
+// AURORA-10000：AI-23 批次（F02751~F02875），勿删。
+pub mod ai23;
+// AURORA-10000：AI-24 批次（F02876~F03000），勿删。
+pub mod ai24;
+// AURORA-10000：AI-25 批次（F03001~F03125），勿删。
+pub mod ai25;
+
 // AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
 pub mod debug;
 pub mod drag;
@@ -279,7 +290,62 @@ pub fn run_ai09_checks() -> Vec<CheckSet> {
     vec![shell::run_shell_checks()]
 }
 
-/// 全量自检（W1+W2+W3+W4）。
+/// AURORA-10000 AI-21 域自检汇总（F02501~F02625：按键手感/编辑手感/代码输入/跨窗输入/输入无障碍）。
+pub fn run_ai21_checks() -> Vec<CheckSet> {
+    vec![
+        ai21::run_keyfeel_checks(),
+        ai21::run_editfeel_checks(),
+        ai21::run_codeinput_checks(),
+        ai21::run_crosswin_checks(),
+        ai21::run_inputa11y_checks(),
+    ]
+}
+
+/// AURORA-10000 AI-22 域自检汇总（F02626~F02750：触控板/鼠标/语音/手写/表情符号）。
+pub fn run_ai22_checks() -> Vec<CheckSet> {
+    vec![
+        ai22::run_touchpad_checks(),
+        ai22::run_mouse_checks(),
+        ai22::run_voice_checks(),
+        ai22::run_handwrite_checks(),
+        ai22::run_symbols_checks(),
+    ]
+}
+
+/// AURORA-10000 AI-23 域自检汇总（F02751~F02875：翻译/朗读/截图/OCR/输入统计）。
+pub fn run_ai23_checks() -> Vec<CheckSet> {
+    vec![
+        ai23::run_translate_checks(),
+        ai23::run_reader_checks(),
+        ai23::run_screenshot_checks(),
+        ai23::run_ocr_checks(),
+        ai23::run_stats_checks(),
+    ]
+}
+
+/// AURORA-10000 AI-24 域自检汇总（F02876~F03000：撤销/自动化/聚焦书写/输入安全/按键映射）。
+pub fn run_ai24_checks() -> Vec<CheckSet> {
+    vec![
+        ai24::run_undo_checks(),
+        ai24::run_automation_checks(),
+        ai24::run_focus_checks(),
+        ai24::run_inputsec_checks(),
+        ai24::run_keymap_checks(),
+    ]
+}
+
+/// AURORA-10000 AI-25 域自检汇总（F03001~F03125：外设/无线延迟/中文排版/输入细节/输入彩蛋）。
+pub fn run_ai25_checks() -> Vec<CheckSet> {
+    vec![
+        ai25::run_peripheral_checks(),
+        ai25::run_latency_checks(),
+        ai25::run_ctype_checks(),
+        ai25::run_details_checks(),
+        ai25::run_eggs_checks(),
+    ]
+}
+
+/// 全量自检（W1+W2+W3+W4+AURORA-10000 领域05）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
     v.extend(run_ai02_checks());
@@ -288,6 +354,12 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ai07_checks());
     v.extend(run_ui08_checks());
     v.extend(run_ai09_checks());
+    // AURORA-10000：AI-21~AI-25 批次，勿删。
+    v.extend(run_ai21_checks());
+    v.extend(run_ai22_checks());
+    v.extend(run_ai23_checks());
+    v.extend(run_ai24_checks());
+    v.extend(run_ai25_checks());
     v
 }
 
@@ -417,6 +489,66 @@ mod ui08_tests {
     fn all_checks_still_pass_with_ui08() {
         let sets = run_all_checks();
         assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 342);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+}
+
+/// AURORA-10000 AI-21~AI-25 域测试（F02501~F03125）。
+#[cfg(test)]
+mod aurora_w2_tests {
+    use super::*;
+
+    #[test]
+    fn ai21_125_checks_pass() {
+        let sets = run_ai21_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai22_125_checks_pass() {
+        let sets = run_ai22_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai23_125_checks_pass() {
+        let sets = run_ai23_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai24_125_checks_pass() {
+        let sets = run_ai24_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai25_125_checks_pass() {
+        let sets = run_ai25_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_checks_still_pass_with_aurora_w2() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 356 + 625);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
