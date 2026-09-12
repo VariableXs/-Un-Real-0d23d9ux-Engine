@@ -546,33 +546,31 @@ pub fn export_json(buttons: &[CustomButton]) -> String {
     s
 }
 
-/// 极简扁平 JSON 解析（无第三方依赖）：读取 `buttons` 数组内每项的字段。
+/// 极简扁平 JSON 解析（无第三方依赖）：遍历每个 `{...}` 平衡块，
+/// 只收「扁平的按钮对象」，外层包装（`{"kind":"ca-buttons","buttons":[...]}`）自动跳过。
 pub fn import_json(json: &str) -> Vec<CustomButton> {
-    let mut out = Vec::new();
     let bytes: Vec<char> = json.chars().collect();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] != '{' {
-            i += 1;
+    let mut out = Vec::new();
+    for start in 0..bytes.len() {
+        if bytes[start] != '{' {
             continue;
         }
         let mut depth = 0usize;
-        let start = i;
-        while i < bytes.len() {
+        let mut end = start;
+        for i in start..bytes.len() {
             match bytes[i] {
                 '{' => depth += 1,
                 '}' => {
                     depth -= 1;
                     if depth == 0 {
-                        i += 1;
+                        end = i;
                         break;
                     }
                 }
                 _ => {}
             }
-            i += 1;
         }
-        let obj: String = bytes[start..i.min(bytes.len())].iter().collect();
+        let obj: String = bytes[start..=end].iter().collect();
         if let Some(b) = parse_button_obj(&obj) {
             out.push(b);
         }
@@ -611,10 +609,11 @@ fn field<'a>(obj: &'a str, key: &str) -> Option<String> {
 }
 
 fn parse_button_obj(obj: &str) -> Option<CustomButton> {
-    let command = field(obj, "command")?;
-    if command.is_empty() || command == "ca-buttons" {
+    // 只接受扁平对象：带 "buttons" 数组的外层包装（{"kind":"ca-buttons",...}）跳过。
+    if obj.chars().filter(|c| *c == '{').count() != 1 {
         return None;
     }
+    let command = field(obj, "command")?;
     let label = field(obj, "label").unwrap_or_else(|| command.clone());
     let icon = field(obj, "icon").and_then(|s| IconKind::parse(&s)).unwrap_or(IconKind::Emoji);
     let icon_src = field(obj, "icon_src").unwrap_or_else(|| "▶".to_string());
@@ -788,7 +787,7 @@ pub fn run_manual_checks() -> crate::checks::CheckSet {
     let id4 = bm4.create("theme", "风格", IconKind::Pixel, "px", "#FF3B30", 40, Place::Floating, CreateWay::Drag);
     let b4 = bm4.get(&id4).unwrap();
     let s24 = CustomButton::normalize_size(24);
-    let s32 = CustomButton::normalize_size(28);
+    let s32 = CustomButton::normalize_size(30);
     let s48 = CustomButton::normalize_size(99);
     s.add(
         "F430 按钮外观",

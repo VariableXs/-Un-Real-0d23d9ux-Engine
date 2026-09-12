@@ -14,7 +14,9 @@ pub mod iface;
 pub mod infra;
 pub mod ir;
 pub mod langid;
+pub mod link;
 pub mod logic;
+pub mod marquee;
 pub mod manual;
 pub mod model;
 pub mod multisrc;
@@ -241,6 +243,18 @@ pub fn run_ai05_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// AI-06 W3 域自检汇总（#411~#460：命令终端/手册+自定义按钮/撤回时间旅行/多源码/框选/联动）。
+pub fn run_ai06_checks() -> Vec<CheckSet> {
+    vec![
+        cmd::run_cmd_checks(),
+        manual::run_manual_checks(),
+        undo::run_undo_checks(),
+        multisrc::run_multisrc_checks(),
+        marquee::run_marquee_checks(),
+        link::run_link_checks(),
+    ]
+}
+
 /// AI-07 W3 域自检汇总（#461~#530：键位管理/颜色标记修复/OS兼容/无障碍/语义系统）。
 pub fn run_ai07_checks() -> Vec<CheckSet> {
     vec![
@@ -257,11 +271,12 @@ pub fn run_ui08_checks() -> Vec<CheckSet> {
     vec![uispec::run_uispec_checks()]
 }
 
-/// 全量自检（W1+W2+W3，共 306 项）。
+/// 全量自检（W1+W2+W3，共 356 项）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
     v.extend(run_ai02_checks());
     v.extend(run_w2_checks());
+    v.extend(run_ai06_checks());
     v.extend(run_ai07_checks());
     v.extend(run_ui08_checks());
     v
@@ -393,6 +408,30 @@ mod ui08_tests {
     fn all_checks_still_pass_with_ui08() {
         let sets = run_all_checks();
         assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 342);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+}
+
+/// AI-06 W3 域测试（#411~#460：命令/手册/撤回/多源码/框选/联动）。
+#[cfg(test)]
+mod ai06_tests {
+    use super::*;
+
+    #[test]
+    fn ai06_50_checks_pass() {
+        let sets = run_ai06_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 50);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn all_checks_still_pass_with_ai06() {
+        let sets = run_all_checks();
+        assert!(sets.iter().map(|s| s.total()).sum::<usize>() >= 356);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }

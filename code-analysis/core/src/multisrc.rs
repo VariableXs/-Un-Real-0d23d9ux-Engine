@@ -472,6 +472,7 @@ pub fn run_multisrc_checks() -> crate::checks::CheckSet {
     open_local(&mut ws4, "D:/b/beta", false).unwrap();
     let sw = switch_project(&mut ws4, "alpha");
     let (out_t, in_t) = sw.expect("切换成功");
+    let active_name = ws4.active_project().map(|p| p.name.clone());
     let again = switch_project(&mut ws4, "beta");
     let none = switch_project(&mut ws4, "ghost");
     s.add(
@@ -480,7 +481,7 @@ pub fn run_multisrc_checks() -> crate::checks::CheckSet {
             && in_t == Transition::GrowFromCenter { ms: 600 }
             && out_t.ms() == 300
             && in_t.as_str() == "grow-from-center"
-            && ws4.active_project().map(|p| p.name.as_str()) == Some("alpha")
+            && active_name.as_deref() == Some("alpha")
             && again.is_some()
             && none.is_none(),
         "旧项目缩小淡出→新项目从中心生长",
