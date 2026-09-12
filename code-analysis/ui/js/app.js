@@ -9,7 +9,7 @@
   var U = CA.util;
   var $ = function (id) { return document.getElementById(id); };
 
-  var ir = CA.buildIR();
+  var ir = CA.buildIR(CA.DEMO_SPEC);
   var iface = new CA.InterfaceManager();
   iface.level = 2; iface.selected = -1; iface.expanded = {};
 
@@ -50,6 +50,58 @@
 
   canvasView.start();
   flowView.start();
+
+  /* ── F315 载入真实工程 IR（?ir=<url> / data/ir.json / 选择文件 / 拖拽） ── */
+  function toast(msg) {
+    var t = $("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("on");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove("on"); }, 2800);
+  }
+  function applyIR(next, label) {
+    if (!next || !next.nodes || !next.nodes.length) { toast("IR 数据为空或结构不符"); return false; }
+    ir = next;
+    state.hash = ir.structureHash;
+    state.understood = {};
+    state.bookmarks = [];
+    state.search = "";
+    if ($("search")) $("search").value = "";
+    iface.selected = -1; iface.expanded = {};
+    canvasView.setIR(ir);
+    flowView.setIR(ir);
+    canvasView.setLevel(iface.level);
+    canvasView.setMode(iface.mode);
+    $("brand-sub").textContent = ir.name;
+    $("s-hash").style.color = "";
+    closeDetail();
+    renderTree();
+    updateProgress();
+    setView(state.view);
+    if (label) toast("已载入 " + label + " · " + ir.nodes.length + " 节点 / " + ir.edges.length + " 边");
+    root.CA_APP.ir = ir;
+    return true;
+  }
+  function loadIRText(text, label) {
+    var json;
+    try { json = JSON.parse(text); }
+    catch (e) { toast("IR JSON 解析失败：" + e.message); return false; }
+    return applyIR(CA.irFromJSON(json), label);
+  }
+  function readFile(f, label) {
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { loadIRText(String(r.result), label || f.name); };
+    r.readAsText(f);
+  }
+  function loadIRURL(url) {
+    if (typeof fetch !== "function") return;
+    fetch(url, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) { applyIR(CA.irFromJSON(j), url); })
+      .catch(function () { /* 没有外部数据就用内置演示 IR */ });
+  }
 
   /* ── 当前函数上下文（流程图用） ─────────────────────────────────────── */
   function currentFuncId() {
@@ -395,6 +447,27 @@
     $("summary-body").textContent = CA.summarize(ir.name, ir.meta.funcCount, ir.lang);
     $("summary").classList.add("on");
   });
+  tool("t-load", function () { $("ir-file").click(); });
+  if ($("ir-file")) {
+    $("ir-file").addEventListener("change", function (e) {
+      var f = e.target.files && e.target.files[0];
+      readFile(f);
+      e.target.value = "";
+    });
+  }
+  /* 直接把 .json 拖到画布上载入 */
+  (function () {
+    var stage = $("stage");
+    if (!stage) return;
+    stage.addEventListener("dragover", function (e) { e.preventDefault(); stage.classList.add("dropping"); });
+    stage.addEventListener("dragleave", function () { stage.classList.remove("dropping"); });
+    stage.addEventListener("drop", function (e) {
+      e.preventDefault();
+      stage.classList.remove("dropping");
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      readFile(f);
+    });
+  })();
   tool("t-theme", function () {
     state.theme = state.theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", state.theme);
@@ -454,6 +527,17 @@
   setMode("plain");
   setView("canvas");
 
+  /* 启动后尝试拉外部 IR：?ir=<url> 优先，其次同目录 data/ir.json */
+  (function bootLoad() {
+    var loc = root.location || {};
+    var url = "";
+    try { url = new URLSearchParams(String(loc.search || "")).get("ir") || ""; } catch (e) { url = ""; }
+    if (!url && String(loc.protocol || "").indexOf("http") === 0) url = "data/ir.json";
+    if (url) loadIRURL(url);
+  })();
+
   /* 供控制台/验收脚本调用 */
-  root.CA_APP = { ir: ir, canvas: canvasView, flow: flowView, iface: iface, state: state };
+  root.CA_APP = { ir: ir, canvas: canvasView, flow: flowView, iface: iface, state: state,
+    loadIRJSON: function (json, label) { return applyIR(CA.irFromJSON(json), label || "IR JSON"); },
+    loadIRText: loadIRText, loadIRURL: loadIRURL };
 })(typeof globalThis !== "undefined" ? globalThis : this);

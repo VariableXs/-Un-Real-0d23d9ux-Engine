@@ -193,6 +193,25 @@ ok("F335 手动快照优先", ls.coord(1)[0] === 999);
   ok("F315 目录树已渲染", el("tree").children.length > 20, el("tree").children.length);
   ok("F317 详情区初始为空态", String(el("detail-body").innerHTML).includes("点画布上的节点"));
   ok("F310 进度条已挂载", el("progress").firstElementChild.style.width !== undefined);
+
+  /* 6. F315 外部 IR 载入：规格形态 / 完整转储 / 非法输入 */
+  const specHash = CA.buildIR(CA.DEMO_SPEC).structureHash;
+  ok("F315 载入规格形态 IR", CA_APP.loadIRJSON(CA.DEMO_SPEC, "spec") === true);
+  ok("F315 规格载入后结构哈希一致", CA_APP.ir.structureHash === specHash);
+
+  const dump = JSON.parse(JSON.stringify(CA.buildIR(CA.DEMO_SPEC)));
+  ok("F315 载入完整 IR 转储", CA_APP.loadIRJSON(dump, "dump") === true);
+  const rebuilt = CA_APP.ir;
+  ok("F315 转储 children 按 parent 重建",
+    rebuilt.nodes.every((n, i) => n.children.length === dump.nodes[i].children.length));
+  ok("F315 转储边数不变", rebuilt.edges.length === dump.edges.length);
+  ok("F336 转储后结构哈希一致", rebuilt.structureHash === CA.structureHash(CA.buildIR(CA.DEMO_SPEC)));
+
+  ok("F315 非法 JSON 返回 null", CA.irFromJSON(null) === null && CA.irFromJSON({}) === null);
+  ok("F315 空节点数组被拒", CA.irFromJSON({ nodes: [] }) === null);
+  ok("F315 解析失败不崩", CA_APP.loadIRText("{oops", "bad") === false);
+  /* 回到演示 IR，避免影响后续 */
+  CA_APP.loadIRJSON(CA.DEMO_SPEC, "demo");
 })();
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

@@ -89,6 +89,7 @@
 
         <div class="float" id="tip"></div>
         <div class="float" id="hoare"></div>
+        <div id="toast"></div>
 
         <!-- F308 点击讲故事（底部滑入 300ms） -->
         <div id="story" class="glass">
@@ -167,6 +168,10 @@
         <button class="tool" id="t-full" data-tip="全屏">
           <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
         </button>
+        <button class="tool" id="t-load" data-tip="载入 IR JSON（也可直接拖到画布）">
+          <svg viewBox="0 0 24 24"><path d="M3 15V6a2 2 0 012-2h6l2 2h6a2 2 0 012 2v7" /><rect x="3" y="15" width="18" height="6" rx="1" /></svg>
+        </button>
+        <input type="file" id="ir-file" accept=".json,application/json" hidden />
         <span class="spacer"></span>
         <button class="tool" id="t-summary" data-tip="一键总结">
           <svg viewBox="0 0 24 24"><path d="M5 5h14M5 10h14M5 15h9" /></svg>

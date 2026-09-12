@@ -312,6 +312,60 @@
     return path;
   };
 
+  /**
+   * 外部 JSON → 可渲染 IR（F315 载入真实工程数据）。
+   * 两种形态都收：
+   *   1) 规格形态（分析器最省事）：
+   *      { name, lang, modules:[{key,domain,cls,files:[[rel,loc,[[fn,plain,loc,cc,cov,hot,status]]]]}],
+   *        calls:[[from,to,freq]] }
+   *   2) 完整 IR 转储：{ name, lang, root, nodes:[{id,kind,name,parent,...}], edges:[{from,to,freq,kind}] }
+   * 结构不对返回 null（调用方据此回退到内置演示 IR）。
+   */
+  CA.irFromJSON = function (json) {
+    if (!json || typeof json !== "object") return null;
+    if (Array.isArray(json.modules) && json.modules.length) return buildIR(json);
+    if (!Array.isArray(json.nodes) || !json.nodes.length) return null;
+
+    var nodes = [], byName = {};
+    for (var i = 0; i < json.nodes.length; i++) {
+      var s = json.nodes[i] || {};
+      var k = +s.kind || 0;
+      var n = {
+        id: i, kind: k, kindName: KIND_NAME[k], name: String(s.name || ("n" + i)),
+        parent: (s.parent == null || +s.parent < 0) ? -1 : (+s.parent), children: [],
+        loc: +s.loc || 1, domain: s.domain || "", plain: s.plain || "", icon: s.icon || "",
+        sig: s.sig || "", cc: +s.cc || 0, cov: +s.cov || 0, hot: +s.hot || 0,
+        status: s.status || "", loop: !!s.loop, x: 0, y: 0
+      };
+      nodes.push(n);
+      if (k === 5) byName[n.name] = i;
+    }
+    /* children 一律按 parent 重建：外部 children 可能与 parent 不一致 */
+    nodes.forEach(function (n) {
+      if (n.parent >= 0 && n.parent < nodes.length && n.parent !== n.id) nodes[n.parent].children.push(n.id);
+      else n.parent = -1;
+    });
+    var edges = (json.edges || []).map(function (e) {
+      return { from: +e.from, to: +e.to, freq: +e.freq || 0.2, kind: e.kind || "call" };
+    }).filter(function (e) {
+      return nodes[e.from] && nodes[e.to] && e.from !== e.to;
+    });
+    var root = (json.root == null || !nodes[+json.root]) ? 0 : +json.root;
+    var fileCount = 0, loc = 0, funcCount = 0;
+    nodes.forEach(function (n) {
+      if (n.kind === 3) { fileCount++; loc += n.loc; }
+      if (n.kind === 5) funcCount++;
+    });
+    var ir = {
+      name: String(json.name || "项目"), lang: json.lang || "rust",
+      nodes: nodes, edges: edges, root: root,
+      meta: { fileCount: fileCount, loc: loc, funcCount: funcCount },
+      byName: byName
+    };
+    ir.structureHash = CA.structureHash(ir);
+    return ir;
+  };
+
   CA.buildIR = buildIR;
   CA.DEMO_SPEC = SPEC;
 })(typeof globalThis !== "undefined" ? globalThis : this);

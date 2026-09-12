@@ -345,6 +345,19 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 /* 无框节点提示：画布上的标签沿用极细字重 */
 .canvas-tip { font-size: 10px; color: var(--faint); }
 
+/* 载入外部 IR：拖拽高亮 + 轻提示（300ms，与全局动效一致） */
+#stage.dropping { outline: 1px dashed rgba(128, 128, 128, .34); outline-offset: -6px; }
+#toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(6px);
+  padding: 6px 12px; border-radius: 8px; font-size: 11px; font-weight: 300;
+  color: var(--text); background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  opacity: 0; pointer-events: none; transition: opacity .3s ease-in-out, transform .3s ease-in-out;
+  z-index: 40;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* 窄窗口（嵌入态：虚拟窗口尺寸 ≠ 全屏，UI-021 断点） */
 @media (max-width: 1100px) {
   :root { --nav-w: 216px; --detail-w: 236px; }
