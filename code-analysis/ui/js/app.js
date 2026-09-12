@@ -448,6 +448,45 @@
     $("summary").classList.add("on");
   });
   tool("t-load", function () { $("ir-file").click(); });
+
+  /* ── AI-09 活动栏 + 标题栏色板（壳无关：三壳共用同一装配层） ──────────── */
+  function toggleNav() {
+    var app = $("app");
+    app.classList.toggle("nav-closed");
+    $("a-nav").setAttribute("aria-pressed", String(!app.classList.contains("nav-closed")));
+  }
+  function toggleDetailPanel() {
+    var app = $("app");
+    app.classList.toggle("detail-closed");
+    $("a-detail").setAttribute("aria-pressed", String(!app.classList.contains("detail-closed")));
+  }
+  if ($("a-nav")) tool("a-nav", toggleNav);
+  if ($("a-detail")) tool("a-detail", toggleDetailPanel);
+  if ($("a-style")) {
+    tool("a-style", function () {
+      if (CA.Shell) CA.Shell.cycleStyle();
+    });
+  }
+  if ($("a-theme")) tool("a-theme", function () { setTheme(); });
+  if ($("a-summary")) {
+    tool("a-summary", function () {
+      $("summary-body").textContent = CA.summarize(ir.name, ir.meta.funcCount, ir.lang);
+      $("summary").classList.add("on");
+    });
+  }
+  /* 标题栏 8 风格色板：点击直达对应风格 */
+  if (CA.Shell && document.querySelectorAll) {
+    Array.prototype.forEach.call(document.querySelectorAll(".tl-styles button"), function (b) {
+      b.addEventListener("click", function () { CA.Shell.applyStyle(+b.dataset.styleI); });
+    });
+  }
+  /* UI-025 快捷键：Ctrl+B 导航面板 / Ctrl+Alt+B 详情面板（三壳同表） */
+  document.addEventListener("keydown", function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey === undefined) return;
+    var k = (e.key || "").toLowerCase();
+    if (k === "b" && !e.altKey) { e.preventDefault(); toggleNav(); }
+    else if (k === "b" && e.altKey) { e.preventDefault(); toggleDetailPanel(); }
+  });
   if ($("ir-file")) {
     $("ir-file").addEventListener("change", function (e) {
       var f = e.target.files && e.target.files[0];
@@ -468,11 +507,13 @@
       readFile(f);
     });
   })();
-  tool("t-theme", function () {
+  /* 主题切换（工具栏与活动栏共用；t-theme/a-theme 双入口） */
+  function setTheme() {
     state.theme = state.theme === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", state.theme);
     canvasView.setTheme(state.theme);
-  });
+  }
+  tool("t-theme", setTheme);
   function download(url, name) {
     var a = document.createElement("a");
     a.href = url; a.download = name;
@@ -527,12 +568,12 @@
   setMode("plain");
   setView("canvas");
 
-  /* 启动后尝试拉外部 IR：?ir=<url> 优先，其次同目录 data/ir.json */
+  /* 启动后 ?ir=<url> 显式载入；默认数据由 shell.js 统一调度
+   * （壳A 服务器 → /api/ir 的 core 统一 IR；静态伺服 → data/ir.json 兜底）。 */
   (function bootLoad() {
     var loc = root.location || {};
     var url = "";
     try { url = new URLSearchParams(String(loc.search || "")).get("ir") || ""; } catch (e) { url = ""; }
-    if (!url && String(loc.protocol || "").indexOf("http") === 0) url = "data/ir.json";
     if (url) loadIRURL(url);
   })();
 

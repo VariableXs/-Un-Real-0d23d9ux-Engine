@@ -1,30 +1,48 @@
 /* =============================================================================
- * AI-04 · 极简界面设计（F321~F330）+ 功能区（F315~F320）
- *   纯白/纯黑底 · 单色系线条 · 无框节点 · 大量留白 · 极细字体(Inter 300)
- *   · 微动效 300ms ease-in-out · 统一 8px 圆角 · 1px 线条图标
+ * AI-04 极简界面（F321~F330）+ 功能区（F315~F320）× AI-09 三壳提质（C09~C19）
+ *   类 VS Code 七区布局：标题栏 28 / 活动栏 48 / 导航 260 / 画布 / 详情 280 /
+ *   工具栏 40 / 状态栏 22（对齐 core::uispec 33.1 尺寸表，UI-025）。
+ *   视觉方向：工业感玻璃 × 深空底 × 单一天蓝强调 —— 壁纸层透出（C17），
+ *   8 风格 token 在 assets.css，本文件只持结构 + 默认 token。
  * ========================================================================== */
 
 :root {
-  /* F321 纯白/纯黑底色（浅色 / 深色两套） */
+  /* F321 底色（浅色 / 深色两套） */
   --bg: #0A0A0F;
   --panel: #1A1A2E;
   --text: #F5F5F7;
-  --sub: #86868B;
+  --sub: #9A9AA2;
   --faint: #3A3A4A;
   --accent: #2997FF;
   --line: rgba(128, 128, 128, 0.12);
   --line-dashed: rgba(128, 128, 128, 0.10);
   --line-almost: rgba(128, 128, 128, 0.06);
-  --glass-bg: rgba(18, 18, 32, 0.62);
+  /* C17 面板玻璃化：壁纸层从半透明面板后透出 */
+  --glass-bg: rgba(16, 16, 26, 0.62);
   --glass-border: rgba(255, 255, 255, 0.06);
+  --panel-glass: rgba(12, 12, 19, 0.72);
   --node-fill: rgba(0, 113, 227, 0.06);
 
-  /* F329 统一圆角 / F328 微动效 */
+  /* 字体：UI 用系统细体栈（资产自带，不加载外部字体），等宽做数字/签名 */
+  --font: "SF Pro Text", Inter, -apple-system, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --mono-ls: 0.02em;
+
+  /* F328/F329 微动效 + 统一圆角；缓动用减速曲线（出场的 physics 感） */
   --r: 8px;
   --motion: 300ms;
   --ease: ease-in-out;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* F315~F320 功能区尺寸 */
+  /* 阴影三级（Y 2 / 8 / 24） */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 8px 24px -8px rgba(0, 0, 0, 0.42);
+  --shadow-3: 0 24px 64px -16px rgba(0, 0, 0, 0.55);
+
+  /* 33.1 七区尺寸（UI-025 锁定值） */
+  --titlebar-h: 28px;
+  --actbar-w: 48px;
   --nav-w: 260px;
   --detail-w: 280px;
   --toolbar-h: 40px;
@@ -35,11 +53,15 @@ html[data-theme="light"] {
   --bg: #FFFFFF;
   --panel: #F5F5F7;
   --text: #1D1D1F;
-  --sub: #86868B;
+  --sub: #6E6E76;
   --faint: #C7C7CC;
   --accent: #0071E3;
-  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-bg: rgba(255, 255, 255, 0.66);
   --glass-border: rgba(0, 0, 0, 0.06);
+  --panel-glass: rgba(252, 252, 254, 0.74);
+  --node-fill: rgba(0, 113, 227, 0.07);
+  --shadow-2: 0 8px 24px -10px rgba(0, 0, 0, 0.18);
+  --shadow-3: 0 24px 64px -20px rgba(0, 0, 0, 0.24);
 }
 
 * { box-sizing: border-box; }
@@ -52,26 +74,51 @@ html, body {
   color: var(--text);
 }
 
-/* F325 极细字体：Inter 300 */
+/* F325 极细字体 */
 body {
-  font-family: Inter, "SF Pro Text", -apple-system, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", system-ui, sans-serif;
+  font-family: var(--font);
   font-weight: 300;
   font-size: 12px;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ── 布局骨架：导航区 / 画布区 / 详情区 / 工具栏 / 状态栏 ───────────────── */
+/* 无障碍：键盘焦点环（UI-023），仅键盘导航时出现 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+::selection { background: rgba(41, 151, 255, 0.32); }
+
+/* 细滚动条（统一所有面板） */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.30);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 128, 0.5); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* 数字与签名统一等宽（工业感：密信息对齐） */
+#status b, .zoomval, .level-tag, .sig, #s-hash {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--mono-ls);
+}
+
+/* ── 布局骨架：标题栏 / 活动栏 / 导航 / 画布 / 详情 / 工具栏 / 状态栏 ────── */
 #app {
   display: grid;
-  grid-template-columns: var(--nav-w) 1fr var(--detail-w);
-  grid-template-rows: 1fr var(--toolbar-h) var(--status-h);
+  grid-template-columns: var(--actbar-w) var(--nav-w) 1fr var(--detail-w);
+  grid-template-rows: var(--titlebar-h) 1fr var(--toolbar-h) var(--status-h);
   height: 100%;
   transition: grid-template-columns var(--motion) var(--ease);
 }
-#app.detail-closed { grid-template-columns: var(--nav-w) 1fr 0px; }
-#app.nav-closed { grid-template-columns: 0px 1fr var(--detail-w); }
+#app.detail-closed { grid-template-columns: var(--actbar-w) var(--nav-w) 1fr 0px; }
+#app.nav-closed { grid-template-columns: var(--actbar-w) 0px 1fr var(--detail-w); }
+#app.nav-closed.detail-closed { grid-template-columns: var(--actbar-w) 0px 1fr 0px; }
 
 /* F327 毛玻璃面板 */
 .glass {
@@ -80,9 +127,115 @@ body {
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--glass-border);
   border-radius: var(--r);
+  box-shadow: var(--shadow-2);
 }
 
-/* F326 隐藏非必要 UI：默认收起，鼠标移到屏幕边缘 10px 内才浮现 */
+/* ── 标题栏（28px）：壳A 红绿灯 + 字标 + 风格切换 + 壳徽标 ───────────────── */
+#titlebar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--panel-glass);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--line);
+  user-select: none;
+  z-index: 20;
+}
+.tl-dots { display: none; gap: 6px; align-items: center; }
+body[data-shell="A"] .tl-dots { display: flex; }
+.tl-dots i {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+}
+.tl-dots i:nth-child(1) { background: #FF5F57; }
+.tl-dots i:nth-child(2) { background: #FEBC2E; }
+.tl-dots i:nth-child(3) { background: #28C840; }
+.tl-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+.tl-title small { color: var(--sub); letter-spacing: 0.02em; text-transform: none; }
+.tl-spacer { flex: 1; }
+/* 8 风格切换器：真功能落点（C17/C18），点色板循环壁纸与 token */
+.tl-styles { display: flex; align-items: center; gap: 5px; }
+.tl-styles button {
+  width: 14px; height: 14px; padding: 0;
+  border-radius: 4px; border: 1px solid var(--line);
+  cursor: pointer; position: relative;
+  transition: transform var(--motion) var(--ease-out), border-color var(--motion) var(--ease);
+}
+.tl-styles button:hover { transform: scale(1.25); }
+.tl-styles button.on { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+.tl-styles .style-name {
+  color: var(--sub); font-size: 10px; margin-left: 4px;
+  min-width: 48px; letter-spacing: 0.06em;
+}
+/* 壳徽标：当前壳身份一目了然（三端等价的可见证据） */
+#shell-badge {
+  font-size: 9px; letter-spacing: 0.1em;
+  color: var(--sub);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+#vp-tag { color: var(--faint); font-size: 9px; letter-spacing: 0.08em; min-width: 44px; }
+
+/* ── 活动栏（48px）：面板开关 / 壁纸 / 主题 / 总结 ───────────────────────── */
+#activitybar {
+  grid-column: 1;
+  grid-row: 2 / span 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0;
+  background: var(--panel-glass);
+  border-right: 1px solid var(--line);
+  z-index: 15;
+}
+.act {
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border: 0; border-radius: var(--r);
+  background: none; color: var(--sub);
+  cursor: pointer; position: relative;
+  transition: color var(--motion) var(--ease), background var(--motion) var(--ease);
+}
+.act:hover { color: var(--text); background: var(--node-fill); }
+.act[aria-pressed="true"] { color: var(--accent); }
+.act[aria-pressed="true"]::before {
+  content: "";
+  position: absolute; left: -4px; top: 10px; bottom: 10px;
+  width: 2px; border-radius: 1px; background: var(--accent);
+}
+.act svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.1; }
+.act[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; left: 48px; top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  padding: 4px 8px; border-radius: 6px; font-size: 10px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  opacity: 0; pointer-events: none;
+  transition: opacity 160ms var(--ease-out) 80ms;
+  z-index: 30;
+}
+.act:hover[data-tip]::after { opacity: 1; }
+.act-sep { width: 22px; height: 1px; background: var(--line); margin: 5px 0; }
+.act-spacer { flex: 1; }
+
+/* F326 隐藏非必要 UI：默认收起，鼠标到边缘 10px 内浮现（活动栏常驻） */
 #nav, #detail, #toolbar {
   transition: opacity var(--motion) var(--ease), transform var(--motion) var(--ease);
 }
@@ -93,23 +246,25 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   opacity: 1; transform: none; pointer-events: auto;
 }
 
-/* ── F315 导航区（左上 260×auto，极淡实线） ────────────────────────────── */
+/* ── F315 导航区（260，玻璃化透出壁纸） ────────────────────────────────── */
 #nav {
-  grid-row: 1 / span 3;
+  grid-column: 2;
+  grid-row: 2;
   border-right: 1px solid var(--line);
   border-radius: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   padding: 14px 12px;
   overflow: hidden auto;
-  background: var(--bg);
+  background: var(--panel-glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 #nav::-webkit-scrollbar { width: 4px; }
-#nav::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 4px; }
 
 .brand {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: baseline; gap: 8px;
   font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--text);
 }
@@ -129,6 +284,7 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 .level-row input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%;
   background: var(--accent); cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(41, 151, 255, 0.18);
 }
 .level-row input[type="range"]::-moz-range-thumb {
   width: 10px; height: 10px; border: 0; border-radius: 50%; background: var(--accent); cursor: pointer;
@@ -140,6 +296,11 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   display: flex; align-items: center; gap: 6px;
   border: 1px solid var(--line); border-radius: var(--r);
   padding: 6px 8px; color: var(--sub);
+  transition: border-color var(--motion) var(--ease), box-shadow var(--motion) var(--ease);
+}
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(41, 151, 255, 0.12);
 }
 .search input {
   flex: 1; background: none; border: 0; outline: none;
@@ -153,18 +314,24 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   border: 1px solid var(--line); border-radius: var(--r);
   padding: 5px 9px; font-size: 11px; color: var(--sub);
   background: none; cursor: pointer;
-  transition: all var(--motion) var(--ease);
+  transition: color var(--motion) var(--ease), border-color var(--motion) var(--ease),
+    background var(--motion) var(--ease);
   display: inline-flex; align-items: center; gap: 5px;
+  min-height: 24px;
 }
 .chip:hover { color: var(--text); border-color: var(--sub); }
-.chip[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: var(--node-fill); }
+.chip[aria-pressed="true"] {
+  color: var(--text); border-color: var(--accent);
+  background: var(--node-fill);
+  box-shadow: inset 0 0 0 1px rgba(41, 151, 255, 0.25);
+}
 
 /* 目录树 */
 .tree { font-size: 11px; line-height: 1.9; }
 .tree-row {
   display: flex; align-items: center; gap: 5px;
   padding: 1px 4px; border-radius: 6px; cursor: pointer; color: var(--sub);
-  transition: background var(--motion) var(--ease), color var(--motion) var(--ease);
+  transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
 }
 .tree-row:hover { background: var(--node-fill); color: var(--text); }
 .tree-row.sel { color: var(--text); background: var(--node-fill); }
@@ -177,14 +344,15 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 
 .bookmarks { display: flex; flex-wrap: wrap; gap: 6px; }
 
-/* ── F316 画布区（中央自适应，无边框） ────────────────────────────────── */
+/* ── F316 画布区（中央自适应，无边框；壁纸层在最底面） ──────────────────── */
 #stage {
   position: relative;
-  grid-column: 2; grid-row: 1;
+  grid-column: 3;
+  grid-row: 2;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
 }
-#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; z-index: 1; }
 #scene.panning { cursor: grabbing; }
 #scene.crosshair { cursor: crosshair; }
 
@@ -195,18 +363,19 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 }
 #progress i {
   display: block; height: 100%; width: 0;
-  background: #34C759; transition: width var(--motion) var(--ease);
+  background: #34C759; transition: width var(--motion) var(--ease-out);
 }
 
-/* F255/F286 迷你地图 150×100，半透明黑底 */
+/* F255/F286 迷你地图 */
 #minimap {
   position: absolute; right: 14px; bottom: 14px;
   width: 150px; height: 100px; border-radius: var(--r);
   background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line-almost);
   z-index: 5; cursor: pointer;
+  box-shadow: var(--shadow-1);
 }
 
-/* F319 图例区 180×120，极淡虚线，可折叠 */
+/* F319 图例区，可折叠 */
 #legend {
   position: absolute; right: 178px; bottom: 14px;
   width: 180px; padding: 10px; z-index: 5;
@@ -222,14 +391,12 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 #legend .sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 #legend .lb { width: 14px; height: 1px; background: var(--sub); flex: none; }
 
-/* F303 对照界面：左右分屏 + 可拖拽分割线 */
+/* F303 对照界面分割线 */
 #split {
   position: absolute; top: 0; bottom: 0; width: 1px;
   background: var(--sub); z-index: 7; cursor: col-resize; display: none;
 }
-#split::after {
-  content: ""; position: absolute; inset: 0 -7px;
-}
+#split::after { content: ""; position: absolute; inset: 0 -7px; }
 #split .split-tag {
   position: absolute; top: 8px; left: 10px; font-size: 10px;
   color: var(--sub); white-space: nowrap;
@@ -248,19 +415,20 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   background: var(--glass-bg); backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--glass-border); color: var(--text);
   font-size: 11px; line-height: 1.6; max-width: 260px;
+  box-shadow: var(--shadow-2);
   opacity: 0; transform: translateY(4px);
-  transition: opacity var(--motion) var(--ease), transform var(--motion) var(--ease);
+  transition: opacity var(--motion) var(--ease-out), transform var(--motion) var(--ease-out);
 }
 .float.on { opacity: 1; transform: none; }
 .float b { font-weight: 400; }
 .float .k { color: var(--sub); }
 
-/* F308 点击讲故事（底部滑入 300ms） */
+/* F308 点击讲故事（底部滑入） */
 #story {
   position: absolute; left: 16px; right: 16px; bottom: 14px; z-index: 7;
   display: flex; gap: 18px; padding: 12px 14px;
   transform: translateY(140%); opacity: 0;
-  transition: transform var(--motion) var(--ease), opacity var(--motion) var(--ease);
+  transition: transform var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out);
 }
 #story.on { transform: none; opacity: 1; }
 #story .s { flex: 1; font-size: 12px; line-height: 1.7; }
@@ -271,17 +439,21 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.98);
   width: 420px; padding: 18px 20px; z-index: 9; font-size: 12px; line-height: 1.9;
   opacity: 0; pointer-events: none;
-  transition: opacity var(--motion) var(--ease), transform var(--motion) var(--ease);
+  box-shadow: var(--shadow-3);
+  transition: opacity var(--motion) var(--ease-out), transform var(--motion) var(--ease-out);
 }
 #summary.on { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
 #summary h3 { margin: 0 0 8px; font-size: 13px; font-weight: 300; letter-spacing: 0.08em; }
 #summary .close { float: right; cursor: pointer; color: var(--sub); }
 
-/* ── F317 详情区（右侧 280×auto，点击节点滑出，Esc 收起） ──────────────── */
+/* ── F317 详情区（280，玻璃化） ────────────────────────────────────────── */
 #detail {
-  grid-row: 1 / span 3;
+  grid-column: 4;
+  grid-row: 2;
   border-left: 1px solid var(--line); border-radius: 0;
-  padding: 14px; overflow: hidden auto; background: var(--bg);
+  padding: 14px; overflow: hidden auto; background: var(--panel-glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 #detail h3 { margin: 0 0 4px; font-size: 13px; font-weight: 400; word-break: break-all; }
 #detail .plain { color: var(--sub); font-size: 11px; line-height: 1.8; margin-bottom: 12px; }
@@ -289,19 +461,23 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 #detail .kv span { color: var(--sub); }
 #detail .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 #detail .bar { height: 2px; background: var(--faint); border-radius: 1px; margin-top: 4px; }
-#detail .bar i { display: block; height: 100%; border-radius: 1px; transition: width var(--motion) var(--ease); }
+#detail .bar i { display: block; height: 100%; border-radius: 1px; transition: width var(--motion) var(--ease-out); }
 #detail .sig {
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--mono);
   font-size: 10px; color: var(--sub); word-break: break-all; line-height: 1.7;
   background: var(--node-fill); border-radius: var(--r); padding: 7px 8px; margin: 8px 0;
 }
 #detail .empty { color: var(--faint); font-size: 11px; line-height: 1.9; }
 
-/* ── F318 工具栏（底部 auto×40，极淡实线，悬停 tooltip） ──────────────── */
+/* ── F318 工具栏（40，玻璃化） ─────────────────────────────────────────── */
 #toolbar {
-  grid-column: 2; grid-row: 2;
+  grid-column: 3;
+  grid-row: 3;
   display: flex; align-items: center; gap: 4px; padding: 0 10px;
   border-radius: 0; border-top: 1px solid var(--line);
+  background: var(--panel-glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
 }
 .tool {
   width: 28px; height: 28px; display: grid; place-items: center;
@@ -318,18 +494,21 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   padding: 4px 7px; border-radius: 6px; font-size: 10px;
   background: var(--glass-bg); border: 1px solid var(--glass-border);
   color: var(--text); opacity: 0; pointer-events: none;
-  transition: opacity var(--motion) var(--ease);
+  transition: opacity 160ms var(--ease-out) 80ms;
+  z-index: 30;
 }
 .tool:hover[data-tip]::after { opacity: 1; }
 .tool-sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
 #toolbar .spacer { flex: 1; }
 #toolbar .zoomval { color: var(--sub); font-size: 10px; min-width: 38px; text-align: center; }
 
-/* ── F320 状态栏（最底 auto×22，几乎隐形） ────────────────────────────── */
+/* ── F320 状态栏（22，几乎隐形） ───────────────────────────────────────── */
 #status {
-  grid-column: 1 / span 3; grid-row: 3;
+  grid-column: 2 / span 3;
+  grid-row: 4;
   display: flex; align-items: center; gap: 16px; padding: 0 12px;
   border-top: 1px solid var(--line-almost);
+  background: var(--panel-glass);
   font-size: 10px; color: var(--sub); letter-spacing: 0.04em;
 }
 #status b { font-weight: 400; color: var(--text); }
@@ -342,10 +521,10 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
 }
 #status button:hover { color: var(--text); }
 
-/* 无框节点提示：画布上的标签沿用极细字重 */
+/* 无框节点提示 */
 .canvas-tip { font-size: 10px; color: var(--faint); }
 
-/* 载入外部 IR：拖拽高亮 + 轻提示（300ms，与全局动效一致） */
+/* 载入外部 IR：拖拽高亮 + 轻提示 */
 #stage.dropping { outline: 1px dashed rgba(128, 128, 128, .34); outline-offset: -6px; }
 #toast {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(6px);
@@ -353,17 +532,112 @@ body.reveal-left #nav, body.reveal-right #detail, body.reveal-bottom #toolbar {
   color: var(--text); background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  opacity: 0; pointer-events: none; transition: opacity .3s ease-in-out, transform .3s ease-in-out;
+  box-shadow: var(--shadow-2);
+  opacity: 0; pointer-events: none; transition: opacity .3s var(--ease-out), transform .3s var(--ease-out);
   z-index: 40;
 }
 #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* 窄窗口（嵌入态：虚拟窗口尺寸 ≠ 全屏，UI-021 断点） */
-@media (max-width: 1100px) {
-  :root { --nav-w: 216px; --detail-w: 236px; }
-  #legend { display: none; }
+/* ── C12 嵌入态自适应：body[data-viewport] 五档（阈值对齐 core Viewport） ── */
+/* wide ≥1440：全功能（默认样式即 wide，无需规则） */
+
+/* desktop 1100-1439：图例收起、侧栏收窄（UI-021 33.6 第二档） */
+body[data-viewport="desktop"] { --nav-w: 232px; --detail-w: 252px; }
+body[data-viewport="desktop"] #legend { display: none; }
+
+/* compact 860-1099：侧栏抽屉化（覆盖式浮层），画布全宽 */
+body[data-viewport="compact"] { --nav-w: 0px; --detail-w: 0px; }
+body[data-viewport="compact"] #nav,
+body[data-viewport="compact"] #detail {
+  position: fixed; top: var(--titlebar-h); bottom: calc(var(--toolbar-h) + var(--status-h));
+  width: 264px; z-index: 25;
+  box-shadow: var(--shadow-3);
 }
-@media (max-width: 820px) {
-  :root { --nav-w: 0px; --detail-w: 0px; }
-  #nav, #detail { display: none; }
+body[data-viewport="compact"] #nav { left: var(--actbar-w); }
+body[data-viewport="compact"] #detail { right: 0; }
+body[data-viewport="compact"] #app:not(.nav-closed) #nav { display: flex; }
+body[data-viewport="compact"] #app.nav-closed #nav,
+body[data-viewport="compact"] #app.detail-closed #detail { display: none; }
+body[data-viewport="compact"] #legend { display: none; }
+
+/* narrow 560-859：工具栏折叠次要按钮、状态栏精简、触控目标放大（UI-023） */
+body[data-viewport="narrow"] { --nav-w: 0px; --detail-w: 0px; }
+body[data-viewport="narrow"] .tool { width: 34px; height: 34px; }
+body[data-viewport="narrow"] .tool.fx,
+body[data-viewport="narrow"] .tool-sep { display: none; }
+body[data-viewport="narrow"] #legend,
+body[data-viewport="narrow"] #minimap,
+body[data-viewport="narrow"] #status .aux { display: none; }
+body[data-viewport="narrow"] #nav,
+body[data-viewport="narrow"] #detail {
+  position: fixed; top: var(--titlebar-h); bottom: calc(var(--toolbar-h) + var(--status-h));
+  width: 240px; z-index: 25;
+  box-shadow: var(--shadow-3);
+}
+body[data-viewport="narrow"] #nav { left: var(--actbar-w); }
+body[data-viewport="narrow"] #detail { right: 0; }
+body[data-viewport="narrow"] #app.nav-closed #nav,
+body[data-viewport="narrow"] #app.detail-closed #detail { display: none; }
+
+/* tiny <560：活动栏横排化入标题栏，单栏覆盖式（UI-021 33.6 第四档） */
+body[data-viewport="tiny"] { --nav-w: 0px; --detail-w: 0px; --actbar-w: 40px; }
+body[data-viewport="tiny"] .tool.fx,
+body[data-viewport="tiny"] .tool-sep { display: none; }
+body[data-viewport="tiny"] #legend,
+body[data-viewport="tiny"] #minimap,
+body[data-viewport="tiny"] #status .aux,
+body[data-viewport="tiny"] .tl-styles { display: none; }
+body[data-viewport="tiny"] .act { width: 36px; height: 36px; }
+body[data-viewport="tiny"] #nav,
+body[data-viewport="tiny"] #detail {
+  position: fixed; top: var(--titlebar-h); bottom: calc(var(--toolbar-h) + var(--status-h));
+  width: min(320px, 86vw); z-index: 25;
+  box-shadow: var(--shadow-3);
+}
+body[data-viewport="tiny"] #nav { left: var(--actbar-w); }
+body[data-viewport="tiny"] #detail { right: 0; }
+body[data-viewport="tiny"] #app.nav-closed #nav,
+body[data-viewport="tiny"] #app.detail-closed #detail { display: none; }
+
+/* 工具栏次要按钮标记（narrow/tiny 折叠，核心缩放/定位常驻） */
+.tool.fx { /* 由 index.html 标注 */ }
+
+/* ── 入场编排：一次 stagger 序列（60ms 步进），尊重 reduced-motion ───────── */
+@keyframes tl-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in-bottom {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* 与 auto-ui 边缘浮现共存：入场动画只跑一次（fill both），transform 冲突
+ * 用动画延迟错开 auto-ui 的 transition 时机（600ms 内用户未动鼠标无影响）。 */
+/* fill 用 backwards：动画结束后交还控制权给 auto-ui 的 transform 隐藏机制
+ * （fill both 会永久锁死 transform: none，破坏 F326 边缘浮现）。 */
+#titlebar { animation: tl-in 420ms var(--ease-out) backwards; }
+#activitybar { animation: fade-in 420ms var(--ease-out) 60ms backwards; }
+#nav { animation: slide-in-left 480ms var(--ease-out) 120ms backwards; }
+#detail { animation: slide-in-right 480ms var(--ease-out) 180ms backwards; }
+#toolbar { animation: slide-in-bottom 480ms var(--ease-out) 240ms backwards; }
+#status { animation: fade-in 480ms var(--ease-out) 300ms backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

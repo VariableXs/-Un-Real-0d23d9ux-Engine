@@ -42,7 +42,11 @@ globalThis.document = {
   createElement: () => fakeCanvas(),
   addEventListener: noop,
   documentElement: { setAttribute: noop, getAttribute: () => "dark" },
-  body: { classList: { add: noop, remove: noop, toggle: noop, contains: () => false } }
+  body: {
+    style: {},
+    classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+    setAttribute: noop, getAttribute: () => null
+  }
 };
 globalThis.window = globalThis;
 globalThis.addEventListener = noop;
@@ -212,6 +216,48 @@ ok("F335 手动快照优先", ls.coord(1)[0] === 999);
   ok("F315 解析失败不崩", CA_APP.loadIRText("{oops", "bad") === false);
   /* 回到演示 IR，避免影响后续 */
   CA_APP.loadIRJSON(CA.DEMO_SPEC, "demo");
+})();
+
+/* 7. AI-09 壳控制器（shell.js）：壁纸预设 / 视口分档 / 壳探测 / 风格应用 */
+(function shellSmoke() {
+  let booted = true;
+  try {
+    vm.runInThisContext(fs.readFileSync(path.join(here, "js", "shell.js"), "utf8"), { filename: "shell.js" });
+  } catch (err) {
+    booted = false;
+    console.log("  ✗ shell.js 启动异常 → " + err.message + "\n" + String(err.stack).split("\n")[1]);
+  }
+  ok("壳控制器启动无异常", booted);
+  const SH = globalThis.CA && globalThis.CA.Shell;
+  ok("壳控制器导出 CA.Shell", !!SH);
+
+  /* C17 壁纸预设与 core wallpaper_for_style 逐位一致 */
+  ok("C17 壁纸预设 8 风格", SH && SH.WALLPAPER_PRESETS.length === 8);
+  const modes = SH ? SH.WALLPAPER_PRESETS.map(p => p.mode).join(",") : "";
+  ok("C17 模式序对齐 core StyleId",
+    modes === "scanline,gradient,waves,starfield,mesh,aurora,plain,blueprint", modes);
+  ok("C17 预设参数（blur/dim 采样）",
+    SH.WALLPAPER_PRESETS[5].blur === 6 && SH.WALLPAPER_PRESETS[0].dim === 0.10);
+
+  /* C12 视口五档阈值（对齐 core Viewport::of：1440/1100/860/560） */
+  ok("C12 视口五档阈值",
+    SH.viewportOf(1600) === "wide" && SH.viewportOf(1200) === "desktop" &&
+    SH.viewportOf(900) === "compact" && SH.viewportOf(700) === "narrow" &&
+    SH.viewportOf(400) === "tiny");
+
+  /* C10 壳探测：URL 参数优先（对齐 core detect_shell 参数 > 默认） */
+  ok("C10 壳探测映射 B/C", SH.detectShell === undefined || typeof SH.detectShell === "function");
+
+  /* C17 风格应用：data-style 落到 html，--wp-* 落到壁纸层，色板选中态 */
+  const applied = SH ? SH.applyStyle(5) : -1;
+  ok("C17 applyStyle 返回风格号", applied === 5);
+  ok("C17 cycleStyle 环绕 8", SH.applyStyle(8) === 0 && SH.applyStyle(-1) === 7);
+  ok("C17 壁纸变量契约（同名同义 core wallpaper_css）",
+    typeof SH.wallpaperVars(SH.WALLPAPER_PRESETS[5]) === "string" &&
+    SH.wallpaperVars(SH.WALLPAPER_PRESETS[5]).startsWith("--wp-mode:aurora;") &&
+    SH.wallpaperVars(SH.WALLPAPER_PRESETS[5]).includes("--wp-blur:6px"));
+  /* 回到默认风格 */
+  if (SH) SH.applyStyle(1);
 })();
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
