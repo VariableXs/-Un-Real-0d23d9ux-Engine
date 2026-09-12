@@ -12,6 +12,9 @@
   /* ── 规格常量（Core 契约透传） ─────────────────────────────────────────── */
   var C = (CA.CANVAS = {
     BG_LIGHT: "#FFFFFF", BG_DARK: "#0A0A0F", NEON_BG: "#000000",
+    /* C17 壁纸透出：深色普通态画布底全透明（#wallpaper 1:1 透出）；
+     * Bloom 态 0.9 黑（氛围自持、壁纸微透），浅色态近实底（壁纸是深色系）。 */
+    CANVAS_ALPHA_BLOOM: 0.9, CANVAS_ALPHA_LIGHT: 0.92,
     MINIMAP_W: 150, MINIMAP_H: 100,
     REST: 120, REPULSION_K: 4000, GRAVITY_K: 0.01, STEP: 0.1,
     NODE_MIN: 16, NODE_MAX: 200,
@@ -88,7 +91,7 @@
     var stars = null, rain = [], particles = [];
     var explodeAnim = null;
     var flags = {
-      particles: true, glow: true, bloom: true, heat: false, rain: true,
+      particles: true, glow: true, bloom: false, heat: false, rain: true,
       nebula: true, spectrum: true, breathe: true, orbit: true, trail: true, tint: true, glass: true
     };
     var degraded = false;
@@ -286,8 +289,14 @@
       var bg = dark ? (flags.bloom ? C.NEON_BG : C.BG_DARK) : C.BG_LIGHT;
 
       ctx.clearRect(0, 0, view.w, view.h);
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, view.w, view.h);
+      /* C17 壁纸透出策略：深色普通态不铺底（壁纸 1:1 透出）；
+       * Bloom 态 0.9 黑（保留氛围同时壁纸微透）；浅色态近实底（壁纸是深色系）。 */
+      if (!(dark && !flags.bloom)) {
+        ctx.fillStyle = dark
+          ? U.rgba(C.NEON_BG, C.CANVAS_ALPHA_BLOOM)
+          : U.rgba(C.BG_LIGHT, C.CANVAS_ALPHA_LIGHT);
+        ctx.fillRect(0, 0, view.w, view.h);
+      }
 
       if (!ir || !visible.length) return;
 

@@ -1,0 +1,134 @@
+/* =============================================================================
+ * AI-09 · C18 资产自带 — 8 风格 token + 壁纸层（三端一致，不依赖宿主主题）
+ *   风格序号对齐 ca-core::shell::wallpaper_for_style 的 StyleId 顺序：
+ *   0 像素(Scanline) 1 现代简约(Gradient) 2 清新(Waves) 3 星空(Starfield)
+ *   4 赛博朋克(Mesh) 5 玻璃拟态(Aurora) 6 新拟态(Plain) 7 手绘(Blueprint)
+ *   每风格只改 token 与壁纸层，功能与布局不因风格变化（功能不因端/风格隐藏）。
+ * ========================================================================== */
+
+/* ── 壁纸层：#stage 最底面（C17 应用内背景层，永不碰宿主桌面） ───────────── */
+#wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* --wp-* 由 shell.js 依 core wallpaper_css 契约注入 */
+  --wp-mode: gradient;
+  --wp-opacity: 1;
+  --wp-blur: 0px;
+  --wp-dim: 0;
+  --wp-speed: 1;
+  background: var(--wp-image, none);
+  background-size: cover;
+  opacity: var(--wp-opacity);
+  filter: blur(var(--wp-blur));
+  transition: opacity var(--motion) var(--ease-out);
+}
+/* 压暗罩：保证前景 4.5:1 对比不因壁纸漂移 */
+#wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: var(--wp-dim);
+}
+
+/* ── 8 风格壁纸本体（纯 CSS，零外部资源） ──────────────────────────────── */
+[data-style="0"] #wallpaper {
+  /* 像素 · CRT 扫描线 */
+  --wp-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.07) 0 1px,
+    transparent 1px 3px
+  ), radial-gradient(120% 90% at 50% 0%, #101024 0%, #07070E 70%);
+}
+[data-style="1"] #wallpaper {
+  /* 现代简约 · 深空微光 */
+  --wp-image: radial-gradient(
+    90% 60% at 70% -10%,
+    rgba(41, 151, 255, 0.16) 0%,
+    transparent 60%
+  ), linear-gradient(180deg, #0B0B12 0%, #0A0A0F 100%);
+}
+[data-style="2"] #wallpaper {
+  /* 清新 · 层浪 */
+  --wp-image: repeating-radial-gradient(
+    140% 120% at 85% 115%,
+    rgba(52, 199, 89, 0.085) 0 40px,
+    transparent 40px 90px
+  ), linear-gradient(200deg, #0A1210 0%, #0A0A0F 75%);
+}
+[data-style="3"] #wallpaper {
+  /* 星空 · 三层星点 */
+  --wp-image:
+    radial-gradient(1px 1px at 22% 18%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
+    radial-gradient(1px 1px at 68% 32%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 45% 62%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 82% 74%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
+    radial-gradient(1px 1px at 12% 82%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
+    radial-gradient(1px 1px at 90% 8%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(120% 90% at 30% 110%, #0D1024 0%, #060609 60%);
+  background-size: 340px 340px, 280px 280px, 220px 220px, 260px 260px, 300px 300px, 200px 200px, cover;
+}
+[data-style="4"] #wallpaper {
+  /* 赛博朋克 · 霓虹网格 */
+  --wp-image:
+    linear-gradient(rgba(255, 45, 85, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 209, 0.10) 1px, transparent 1px),
+    radial-gradient(80% 50% at 80% 0%, rgba(255, 45, 85, 0.18) 0%, transparent 55%),
+    radial-gradient(70% 50% at 10% 100%, rgba(0, 255, 209, 0.15) 0%, transparent 55%);
+  background-size: 44px 44px, 44px 44px, cover, cover;
+}
+[data-style="5"] #wallpaper {
+  /* 玻璃拟态 · 极光 */
+  --wp-image:
+    radial-gradient(45% 60% at 18% 22%, rgba(52, 199, 89, 0.22) 0%, transparent 60%),
+    radial-gradient(50% 55% at 80% 18%, rgba(41, 151, 255, 0.26) 0%, transparent 62%),
+    radial-gradient(55% 60% at 62% 88%, rgba(175, 82, 222, 0.20) 0%, transparent 60%),
+    linear-gradient(180deg, #0B0D16 0%, #0A0A0F 100%);
+}
+[data-style="6"] #wallpaper {
+  /* 新拟态 · 素底微浮雕 */
+  --wp-image: linear-gradient(145deg, #0D0D14 0%, #08080C 100%);
+}
+[data-style="7"] #wallpaper {
+  /* 手绘 · 蓝图 */
+  --wp-image:
+    linear-gradient(rgba(41, 151, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 151, 255, 0.12) 1px, transparent 1px),
+    radial-gradient(100% 70% at 50% 0%, rgba(41, 151, 255, 0.10) 0%, transparent 60%),
+    linear-gradient(180deg, #091018 0%, #0A0A0F 80%);
+  background-size: 36px 36px, 36px 36px, cover, cover;
+}
+
+/* ── 8 风格 token（强调色 / 语义色微调 / 字体气质） ────────────────────── */
+[data-style="0"] {
+  --accent: #FFD60A;
+  --mono-ls: 0.06em;
+}
+[data-style="0"] .brand { font-family: var(--mono); letter-spacing: 0.22em; }
+[data-style="1"] { --accent: #2997FF; --mono-ls: 0.02em; }
+[data-style="2"] { --accent: #30D158; --mono-ls: 0.02em; }
+[data-style="3"] { --accent: #BF5AF2; --mono-ls: 0.02em; }
+[data-style="4"] {
+  --accent: #FF375F;
+  --line: rgba(255, 45, 85, 0.14);
+  --mono-ls: 0.03em;
+}
+[data-style="5"] { --accent: #64D2FF; --mono-ls: 0.02em; }
+[data-style="6"] { --accent: #8E8E93; --mono-ls: 0.02em; }
+[data-style="7"] {
+  --accent: #0A84FF;
+  --line: rgba(10, 132, 255, 0.16);
+  --mono-ls: 0.02em;
+}
+
+/* 标题栏风格色板：每钮即该风格强调色的实物样本（资产自带，无图片） */
+#st-0 { background: linear-gradient(135deg, #FFD60A 50%, #101024 50%); }
+#st-1 { background: linear-gradient(135deg, #2997FF 50%, #0B0B12 50%); }
+#st-2 { background: linear-gradient(135deg, #30D158 50%, #0A1210 50%); }
+#st-3 { background: linear-gradient(135deg, #BF5AF2 50%, #0D1024 50%); }
+#st-4 { background: linear-gradient(135deg, #FF375F 50%, #08130F 50%); }
+#st-5 { background: linear-gradient(135deg, #64D2FF 50%, #34C759 120%); }
+#st-6 { background: linear-gradient(135deg, #C7C7CC 50%, #2C2C34 50%); }
+#st-7 { background: linear-gradient(135deg, #0A84FF 50%, #091018 50%); }

@@ -32,6 +32,9 @@ pub mod undo;
 // AI-08 域（UI-001~UI-036）：33 章 UI 规范落地 / 8 风格资产 / 三端渲染差异清零。
 pub mod uispec;
 
+// AI-09 域（C01~C24）：三壳统一底座——一个 core 三个壳（Windows/Variable/VARIX）。
+pub mod shell;
+
 // AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
 pub mod debug;
 pub mod drag;
@@ -271,7 +274,12 @@ pub fn run_ui08_checks() -> Vec<CheckSet> {
     vec![uispec::run_uispec_checks()]
 }
 
-/// 全量自检（W1+W2+W3，共 356 项）。
+/// AI-09 W4 域自检汇总（C01~C24：三壳统一底座，一个 core 三个壳）。
+pub fn run_ai09_checks() -> Vec<CheckSet> {
+    vec![shell::run_shell_checks()]
+}
+
+/// 全量自检（W1+W2+W3+W4）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
     v.extend(run_ai02_checks());
@@ -279,6 +287,7 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ai06_checks());
     v.extend(run_ai07_checks());
     v.extend(run_ui08_checks());
+    v.extend(run_ai09_checks());
     v
 }
 
