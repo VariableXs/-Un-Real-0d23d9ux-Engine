@@ -197,3 +197,13 @@ pub mod m5sched;
 pub mod m5mem;
 pub mod m5srv;
 pub mod m5fs;
+
+// VARIX-M400 W1/W2 domains (AI-01 ~ AI-08).
+pub mod m400boot;
+pub mod m400mem;
+pub mod m400sched;
+pub mod m400syssec;
+pub mod m400store;
+pub mod m400input;
+pub mod m400net;
+pub mod m400gfx;
