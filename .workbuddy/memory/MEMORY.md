@@ -70,9 +70,25 @@
 - 删"未用导入"要连带查 `#[cfg(test)] mod tests`，否则 E0425。
 - 内层 crate 位于别的工作区目录树内时要自带空 `[workspace]` 表。
 
+<<<<<<< Updated upstream
 ## AI-61~AI-65 领域13 落地日志（2026-09-13）
 - W6 领域13 声音与通知 625 项（族0301~0325，F07501~F08125）全部 ✅。
 - 落点：src/features/sound/{groupA~E,checks}.ts + __tests__/sound.test.ts；
   checks.ts runDomain13Checks 625 项逐条断言（「位/预留」按 §15 口径）。
 - 门禁：tsc 本范围 0 错；全仓 vitest 2305 绿（基线 2288 + sound 17 例）。
 - 三图副本两处（根 + docs/）md5 对齐；分工图 W6 置 🔶 625/1250，总览 6875/10000。
+=======
+- **`limine-<ver>.tar.gz` 是源码包，不是二进制包**：v12.1.0 包内只有
+  `limine-12.1.0/{configure,host/limine.c,...}`，**没有任何预编译 `.bin`**。
+  要 `limine-bios-cd.bin` / `limine-uefi-cd.bin` / `limine-bios.sys` 必须下
+  `limine-binary.tar.gz`（同名 tag 下有，v12.1.0 与 v12.9.0 都 200）。
+- **`limine-binary.tar.gz` 的首层目录就是 `limine-binary/`**（本地 `tools/limine/limine-binary.zip` 同构）。
+  因此解包时 **不要加 `--strip-components=1`**，否则文件会落到 `tools/limine/*.bin`，
+  而 `scripts/make-iso.sh` 读的是 `tools/limine/limine-binary/*.bin` → `set -e` 下 B5 直接失败。
+  正确组合：URL 用 `limine-binary.tar.gz` + `tar -xzf … -C tools/limine`（不 strip）。
+- **CI 的 `curl A || curl B` 只在 A 失败时才走 B**：A 是源码包但 HTTP 200，
+  所以回退永远不触发 → 失败被拖到 B5 才暴露。下载后必须在 B1 加
+  `test -f tools/limine/limine-binary/limine-bios-cd.bin || exit 1` 硬门禁。
+- `tools/limine/` 在 `.gitignore` 里，CI 干净检出时不存在，全靠这一步下载。
+- 推送远端时中文文件名会被 git quotepath 转义成字面量：API 推送脚本必须用 core.quotepath=false 解析 diff-tree 输出（push_docs 类脚本两次踩同一坑）。
+>>>>>>> Stashed changes

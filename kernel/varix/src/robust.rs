@@ -1040,6 +1040,10 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::ui::widgets::run_widget_checks());
     checkup.register(crate::ui::motion::run_motion_checks());
     checkup.register(crate::vwm::run_vwm_checks());
+    // UNREAL-X-15000 AI-07 合成器九族
+    for cs in crate::compositor::run_all_family_checks() {
+        checkup.register(cs);
+    }
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());

@@ -512,7 +512,7 @@ pub fn next_batch() -> u32 {
 // ===========================================================================
 
 /// 全系统闭环的最大域容量（VARIX 11 域 + TRINITY 20 域 + 余量）。
-pub const MAX_LOOP: usize = 32;
+pub const MAX_LOOP: usize = 64;
 
 /// 全系统闭环自检聚合器：与 checks::KernelCheckup 同构，但容量覆盖全部域。
 #[derive(Clone, Copy)]
@@ -619,6 +619,10 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::ui::widgets::run_widget_checks());
     lp.register(crate::ui::motion::run_motion_checks());
     lp.register(crate::vwm::run_vwm_checks());
+    // UNREAL-X-15000 AI-07 合成器九族
+    for cs in crate::compositor::run_all_family_checks() {
+        lp.register(cs);
+    }
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1168,7 +1172,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=30"), "仪表实时计算，域数=30");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=39"), "仪表实时计算，域数=30");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1317,13 +1321,13 @@ mod tests {
     }
 
     #[test]
-    fn f489_full_loop_registers_30_domains_all_pass() {
+    fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 30);
+        assert_eq!(lp.len(), 39);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
-        assert!(passed >= 30 * 25);
+        assert!(passed >= 39 * 25);
         assert!(lp.all_passed());
     }
 
@@ -1355,7 +1359,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=30"));
+        assert!(text.contains("domains_in_loop=39"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

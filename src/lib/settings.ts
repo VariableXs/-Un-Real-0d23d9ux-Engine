@@ -242,6 +242,12 @@ export interface Settings {
   // ---- AURORA-10000：AI-01~AI-05 批次，勿删 ----
   /** 领域01 启动与品牌剧场选择表：键 = 剧场族 kind（"arc"/"breath"/…），值 = 全景图 F 编号（如 "F00001"），空串/缺省 = 关闭该族（默认全关，零行为变化）。 */
   bootTheater: Record<string, string>;
+  // ---- UNREAL-X AI-01：启动可靠与恢复（族0001~0010 · X00001~X00250），勿删 ----
+  /** 启动链健康面板选择表：键 = 面板项（"audit"/"health"/"secureboot"/"persona"/"repair"/"recovery"/"logTheater"/"failNarrative"/"pacing"/"multiBoot"/…），值 = 档位或开关（非法值解析时钳回默认）。 */
+  bootchain: Record<string, string>;
+  // ---- UNREAL-X AI-02：电源状态剧场（族0011~0020 · X00251~X00500），勿删 ----
+  /** 电源剧场选择表：键 = 功能项（"ceremony"/"wake"/"quiet"/"hiber"/"events"/"gauge"/"warmup"/"eggs"），值 = 档位或开关（非法值解析时丢弃回默认）。 */
+  powerTheater: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -369,6 +375,10 @@ export const DEFAULT_SETTINGS: Settings = {
   compatSlowOverride: -1,
   // ---- AURORA-10000：AI-01~AI-05 批次，勿删 ----
   bootTheater: {},
+  // ---- UNREAL-X AI-01：启动可靠与恢复，默认全关 = 与现状分毫不差 ----
+  bootchain: {},
+  // ---- UNREAL-X AI-02：电源状态剧场，默认全关 = 与现状分毫不差 ----
+  powerTheater: {},
 };
 
 /**
@@ -563,10 +573,93 @@ function coerce(raw: Record<string, string>): Settings {
         }
       } catch { /* 保留默认 */ }
     }
+    // ---- UNREAL-X AI-01：启动可靠与恢复（选择表；值必须在白名单内，否则丢弃）----
+    if (raw["bootchain"]) {
+      try {
+        const parsed = JSON.parse(raw["bootchain"]) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const sel: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "string" && isBootchainKey(k) && isBootchainValue(k, v)) sel[k] = v;
+          }
+          s.bootchain = sel;
+        }
+      } catch { /* 保留默认 */ }
+    }
+    // ---- UNREAL-X AI-02：电源状态剧场（选择表；值必须在白名单内，否则丢弃）----
+    if (raw["powerTheater"]) {
+      try {
+        const parsed = JSON.parse(raw["powerTheater"]) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const sel: Record<string, string> = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === "string" && isPowerKey(k) && isPowerValue(k, v)) sel[k] = v;
+          }
+          s.powerTheater = sel;
+        }
+      } catch { /* 保留默认 */ }
+    }
   } catch {
     // Corrupt settings fall back to defaults for the affected keys.
   }
   return s;
+}
+
+/** UNREAL-X AI-02：powerTheater 选择表键白名单。 */
+export const POWER_KEYS = [
+  "ceremony", "wake", "quiet", "hiber", "events", "gauge", "warmup", "eggs",
+] as const;
+export type PowerKey = (typeof POWER_KEYS)[number];
+
+/** 每个键的取值白名单（非法值 = 丢弃回默认，绝不带病持久化）。 */
+export const POWER_VALUE_SETS: Record<PowerKey, readonly string[]> = {
+  ceremony: ["off", "instant", "brisk", "balanced", "cinematic", "farewell"],
+  wake: ["off", "blink", "briskWake", "balancedWake", "dawn", "sunrise"],
+  quiet: ["off", "gentle", "hushed", "mute"],
+  hiber: ["off", "on"],
+  events: ["off", "on"],
+  gauge: ["off", "on"],
+  warmup: ["off", "on"],
+  eggs: ["off", "on"],
+};
+
+function isPowerKey(k: string): k is PowerKey {
+  return (POWER_KEYS as readonly string[]).includes(k);
+}
+
+function isPowerValue(k: string, v: string): boolean {
+  return isPowerKey(k) && POWER_VALUE_SETS[k].includes(v);
+}
+
+/** UNREAL-X AI-01：bootchain 选择表键白名单。 */
+export const BOOTCHAIN_KEYS = [
+  "audit", "health", "secureboot", "persona", "repair", "repairRetries",
+  "recovery", "recoveryDegrade", "logTheater", "failNarrative", "pacing", "multiBoot",
+] as const;
+export type BootchainKey = (typeof BOOTCHAIN_KEYS)[number];
+
+/** 每个键的取值白名单（非法值 = 丢弃回默认，绝不带病持久化）。 */
+export const BOOTCHAIN_VALUE_SETS: Record<BootchainKey, readonly string[]> = {
+  audit: ["off", "standard", "deep", "forensic", "custom"],
+  health: ["off", "on"],
+  secureboot: ["off", "audit", "relaxed", "strict", "locked"],
+  persona: ["off", "on"],
+  repair: ["off", "verify-loader", "rebuild-bcd", "repair-entry", "restore-snapshot", "factory-reset"],
+  repairRetries: ["0", "1", "2", "3", "4", "5"],
+  recovery: ["off", "on"],
+  recoveryDegrade: ["0", "1", "2"],
+  logTheater: ["off", "minimal", "timeline", "acts", "spotlight", "cinematic"],
+  failNarrative: ["off", "on"],
+  pacing: ["steady", "balanced", "swift", "sprint", "mute"],
+  multiBoot: ["off", "on"],
+};
+
+function isBootchainKey(k: string): k is BootchainKey {
+  return (BOOTCHAIN_KEYS as readonly string[]).includes(k);
+}
+
+function isBootchainValue(k: string, v: string): boolean {
+  return isBootchainKey(k) && BOOTCHAIN_VALUE_SETS[k].includes(v);
 }
 
 export function clamp(v: number, min: number, max: number): number {

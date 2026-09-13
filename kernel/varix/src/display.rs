@@ -2830,3 +2830,32 @@ mod tests {
         assert!(passed >= 10);
     }
 }
+
+// ---------------------------------------------------------------------------
+// AI-11 · 内核桌面服务（族0101~0110 · X02501~X02750）
+// 落点 kernel/varix/src/display/，每族 25 项 CheckSet，八族合计 200 项。
+// ---------------------------------------------------------------------------
+
+pub mod svc;
+pub mod pipeline;
+pub mod icon_grid;
+pub mod wallpaper;
+pub mod desktop_bus;
+pub mod power_guard;
+pub mod quota;
+pub mod icon_cache;
+pub mod crash_recover;
+
+/// AI-11 内核桌面服务全量自检（200 项）。
+pub fn run_ai11_display_checks() -> [crate::checks::CheckSet; 8] {
+    [
+        pipeline::run_pipeline_checks(),
+        icon_grid::run_icon_grid_checks(),
+        wallpaper::run_wallpaper_checks(),
+        desktop_bus::run_desktop_bus_checks(),
+        power_guard::run_power_guard_checks(),
+        quota::run_quota_checks(),
+        icon_cache::run_icon_cache_checks(),
+        crash_recover::run_crash_recover_checks(),
+    ]
+}

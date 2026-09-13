@@ -6,6 +6,8 @@ import * as B from './groupB';
 import * as C from './groupC';
 import * as D from './groupD';
 import * as E from './groupE';
+import * as X1 from './groupX1';
+import * as X2 from './groupX2';
 
 export interface CheckEntry {
   id: string;
@@ -885,6 +887,28 @@ export function checkF0375(): CheckEntry[] {
     { id: 'F09374', name: '后续入口', check: () => E.nextSteps(['a', 'b']).length === 2 },
     { id: 'F09375', name: 'UI 收官完成', check: () => E.uiFinale(E.UI_FINALE_CHECKLIST) },
   ];
+}
+
+// UNREAL-X AI-01（族0001~0010 · X00001~X00250）聚合：启动可靠与恢复断言组，只增不删。
+export function runAi01Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    X1.checkX0001, X1.checkX0002, X1.checkX0003, X1.checkX0004, X1.checkX0005,
+    X1.checkX0006, X1.checkX0007, X1.checkX0008, X1.checkX0009, X1.checkX0010,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-02（族0011~0020 · X00251~X00500）聚合：电源状态剧场断言组，只增不删。
+export function runAi02Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    X2.checkX0011, X2.checkX0012, X2.checkX0013, X2.checkX0016, X2.checkX0017,
+    X2.checkX0018, X2.checkX0019, X2.checkX0020, X2.checkX0020b,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
 }
 
 /** 领域15 汇总：625 项。 */

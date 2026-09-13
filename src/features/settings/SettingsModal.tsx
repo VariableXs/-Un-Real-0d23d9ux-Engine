@@ -57,6 +57,9 @@ import { SoundNotifyTab } from "./SoundNotifyTab";
 import { AuroraD4Tab } from "./AuroraD4Tab";
 // AURORA-10000：AI-01~AI-05 批次，勿删
 import { BootTheaterTab } from "./BootTheaterTab";
+import { BootchainHealthTab } from "./BootchainHealthTab";
+// UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
+import { PowerTheaterTab } from "./PowerTheaterTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -179,6 +182,10 @@ export function SettingsModal(props: {
     { id: "about", label: t("aboutVariable") },
     // AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场设置页）
     { id: "bootTheater", label: "启动剧场" },
+    // UNREAL-X AI-01：启动可靠与恢复（族0001~0010），勿删
+    { id: "bootchainHealth", label: "启动健康" },
+    // UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
+    { id: "powerTheater", label: "电源剧场" },
   ];
   const sysTabs: { id: string; label: string }[] = [
     { id: "sys-display", label: t("sysDispTitle") },
@@ -829,6 +836,9 @@ export function SettingsModal(props: {
           {tab === "sndnotify" && <SoundNotifyTab settings={props.settings} onPatch={props.onChange} />}
           {/* AURORA-10000：AI-01~AI-05 批次，勿删（领域01 启动与品牌剧场 F00001~F00625 设置页） */}
           {tab === "bootTheater" && <BootTheaterTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "bootchainHealth" && <BootchainHealthTab settings={props.settings} onPatch={props.onChange} />}
+          {/* UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删 */}
+          {tab === "powerTheater" && <PowerTheaterTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

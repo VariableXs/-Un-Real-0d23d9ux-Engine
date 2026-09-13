@@ -13,6 +13,38 @@ use crate::checks::CheckSet;
 use crate::gfxsrv::rgb;
 
 // ---------------------------------------------------------------------------
+// UNREAL-X AI-01（族0001~0010 · X00001~X00250）：启动可靠与恢复子域。
+// 子模块只增不改：audit=族0001 冷启动链路体检；health=族0002 Bootchain 健康度；
+// recovery=族0004 恢复环境重生（内核侧）；secureboot=族0008 安全启动仪式 +
+// 族0010 固件风格定制。聚合自检见 `run_bootchain_ai01_checks()`。
+// ---------------------------------------------------------------------------
+
+pub mod audit;
+pub mod health;
+pub mod recovery;
+pub mod secureboot;
+
+/// UNREAL-X AI-01 聚合自检：四个子模块的代表性断言（各 10 项）。
+pub fn run_bootchain_ai01_checks() -> CheckSet {
+    let mut set = CheckSet::new("bootchain.ai01");
+    for src in [
+        audit::run_audit_checks(),
+        health::run_health_checks(),
+        recovery::run_recovery_checks(),
+        secureboot::run_secureboot_checks(),
+        secureboot::run_fwpersona_checks(),
+    ] {
+        for i in 0..src.len() {
+            if let Some(c) = src.get(i) {
+                set.add(c.name, c.passed, c.detail);
+            }
+        }
+    }
+    set
+}
+
+
+// ---------------------------------------------------------------------------
 // 通用小工具：无分配哈希（完整性/签名共用）
 // ---------------------------------------------------------------------------
 
@@ -3021,6 +3053,18 @@ pub fn run_bootchain_checks() -> CheckSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn x00001_ai01_submodules_all_green() {
+        let set = run_bootchain_ai01_checks();
+        if !set.all_passed() {
+            let mut buf = [0u8; 4096];
+            let n = set.render(&mut buf);
+            panic!("bootchain ai01 self-test failed:\n{}", core::str::from_utf8(&buf[..n]).unwrap_or("<x>"));
+        }
+        assert!(set.len() >= 40, "ai01 aggregate must expose >=40 checks, got {}", set.len());
+        assert!(!set.truncated(), "ai01 aggregate must not be truncated");
+    }
 
     #[test]
     fn f176_default_is_variable() {

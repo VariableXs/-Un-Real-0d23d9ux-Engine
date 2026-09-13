@@ -11,6 +11,33 @@ import { errMessage, ipc } from "../../lib/ipc";
 import type { SysDisplay, SysEnvOverview, AudioState, AudioDeviceInfo, WifiState, BatteryState, FileAssoc } from "../../lib/ipc";
 import type { Settings } from "../../lib/settings";
 import { pushToast } from "../../state/uiStore";
+// UNREAL-X AI-02：性能仪表 2.0（族0017），勿删
+import * as G from "./powerGauge";
+
+/** UNREAL-X AI-02 族0017：电源/性能仪表 2.0（四通道健康度，采样走 powerGauge 纯逻辑）。 */
+function PowerGauge2(): React.ReactElement {
+  const [g] = useState(() => new G.PowerGauge());
+  const [, bump] = useState(0);
+  return (
+    <Field label="性能仪表 2.0">
+      <span className="small">{g.samples.length === 0 ? G.GAUGE_BUDGETS.battery.label + " 待采样" : g.caption()}</span>
+      <button
+        type="button"
+        onClick={() => {
+          g.sample(Date.now(), {
+            battery: 64,
+            cpu: 42,
+            thermal: 55,
+            runtime: 60,
+          });
+          bump((n) => n + 1);
+        }}
+      >
+        采样
+      </button>
+    </Field>
+  );
+}
 
 export type SysSection =
   | "sys-display"
@@ -333,6 +360,7 @@ export function SystemCenterTab(props: {
             </Field>
           )}
           <p className="dim small">{t("sysPowerHint")}</p>
+          <PowerGauge2 />
           <BootIntoVariable />
         </>
       )}

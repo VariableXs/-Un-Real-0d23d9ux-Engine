@@ -9,6 +9,31 @@
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
+// UNREAL-X AI-02（族0011~0020 · X00251~X00500）：电源状态剧场子域（内核侧 2 族）。
+// 子模块只增不改：x2fastboot=族0014 快速启动（预检缓存+跳过阶段）；
+// x2wakesrc=族0015 唤醒源治理（白名单/仲裁/记录）。聚合自检见 run_power_ai02_checks()。
+// ---------------------------------------------------------------------------
+
+pub mod x2fastboot;
+pub mod x2wakesrc;
+
+/// UNREAL-X AI-02 内核侧聚合自检：两个子模块的代表性断言（各 10 项）。
+pub fn run_power_ai02_checks() -> CheckSet {
+    let mut set = CheckSet::new("power.ai02");
+    for src in [
+        x2fastboot::run_fastboot_checks(),
+        x2wakesrc::run_wakesrc_checks(),
+    ] {
+        for i in 0..src.len() {
+            if let Some(c) = src.get(i) {
+                set.add(c.name, c.passed, c.detail);
+            }
+        }
+    }
+    set
+}
+
+// ---------------------------------------------------------------------------
 // F251 — ACPI 电源态 (S0~S5)
 // ---------------------------------------------------------------------------
 
