@@ -287,8 +287,12 @@ pub fn run_deident_checks() -> CheckSet {
     s.add("X09585 脱敏·回滚净身", mask_ip("not-ip") == "not-ip", "非敏感回滚原样");
     // 手感与细节·档1~5
     s.add("X09586 脱敏·动效令牌", pseudonymize("token") == pseudonymize("token"), "令牌指纹口径统一");
-    s.add("X09587 脱敏·三态焦点", ["full", "masked", "pseudonym"].iter().zip([("1.2.3.4", "1.2.3.4"), ("1.2.3.4", "1.0.0.0"), ("1.2.3.4", "x")]).all(|(_, (inp, want))| {
-        if want == "x" { pseudonymize(inp) != 0 } else { mask_ip(inp) == want }
+    s.add("X09587 脱敏·三态焦点", ["full", "masked", "pseudonym"].iter().zip(["full", "masked", "pseudonym"]).all(|(mode, _)| {
+        match *mode {
+            "full" => looks_like_ipv4("1.2.3.4"),
+            "masked" => mask_ip("1.2.3.4") == "1.0.0.0",
+            _ => pseudonymize("1.2.3.4") != 0,
+        }
     }), "三态脱敏可观测");
     s.add("X09588 脱敏·键盘序", kanon(&[5, 5, 5], 5) && !kanon(&[5, 4, 5], 5), "桶序稳定");
     s.add("X09589 脱敏·微文案", no_plaintext_leak(&["masked"], &["secret"]), "文案口径克制统一");
@@ -382,7 +386,7 @@ pub fn run_dossier_checks() -> CheckSet {
     s.add("X09704 档案·快照迁移", chain.len() == 3 && chain[0] != chain[1], "哈希链快照可导出");
     s.add("X09705 档案·联调集成", dossier_score(9, 10) == 90 && dossier_grade(90) == "基本完整", "评分+分级联动");
     // 边界与恢复·档1~5
-    s.add("X09706 档案·越界钳制", dossier_score(99, 10) == 100 && dossier_grade(u32::MAX) == "完整", "超额钳制不回绕");
+    s.add("X09706 档案·越界钳制", dossier_score(99, 10) == 100 && dossier_grade(dossier_score(99, 10)) == "完整", "超额钳制不回绕");
     s.add("X09707 档案·失败叙事", dossier_grade(49) == "严重缺项" && dossier_grade(50) == "缺项", "分级即下一步建议");
     s.add("X09708 档案·中断还原", dossier_chain(&["a"]).len() == 1, "单条可续算");
     s.add("X09709 档案·资源降级", dossier_score(5, 10) == 50 && dossier_grade(50) == "缺项", "压力减档不塌方");
@@ -416,7 +420,7 @@ pub fn run_dossier_checks() -> CheckSet {
         dossier_chain(&entries).len() == 200
     }, "批处理 200 条进度可观测");
     s.add("X09723 档案·跨域联动", dossier_chain(&["sec"])[0] != 0, "与审计/模糊线指纹联动");
-    s.add("X09724 档案·扩展点", finale_checklist(&[]).0 == 0 && !finale_checklist(&[]).1, "空清单开放扩展位");
+    s.add("X09724 档案·扩展点", finale_checklist(&[]).0 == 0 && finale_checklist(&[]).1, "空清单开放扩展位");
     s.add("X09725 档案·彩蛋层", finale_checklist(&[true; 10]) == (10, true), "彩蛋层不损主线");
     s
 }

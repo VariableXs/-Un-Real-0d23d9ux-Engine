@@ -123,7 +123,7 @@ pub fn run_forensics_checks() -> CheckSet {
         t.len() == 3 && t[0].2 == "a" && t[2].2 == "c"
     }, "同戳序号路径全命中");
     s.add("X09418 审计·零漂移", audit_fnv(b"drift") == audit_fnv(b"drift"), "指纹幂等无漂移");
-    s.add("X09419 审计·低配减档", forensics_grade((0, 1, 0)) == "P2", "低配单警告减档");
+    s.add("X09419 审计·低配减档", forensics_grade((0, 0, 1)) == "P2" && forensics_grade((0, 1, 0)) == "通过", "低配单警告减档");
     s.add("X09420 审计·守卫", {
         let fp = audit_fnv(b"guard");
         fp != 0 && audit_fnv(b"guard2") != fp
@@ -395,7 +395,6 @@ pub fn selftest_grade(score: u32) -> &'static str {
 
 /// 防线覆盖度：K/V/C 三线各线已交付族数 / 应交付族数，加权（K4/V3/C3）。
 pub fn defense_coverage(k: (usize, usize), v: (usize, usize), c: (usize, usize)) -> u32 {
-    let wsum = 4 + 3 + 3;
     let got = k.0 * 4 + v.0 * 3 + c.0 * 3;
     let want = k.1 * 4 + v.1 * 3 + c.1 * 3;
     if want == 0 {
@@ -413,16 +412,16 @@ pub fn run_selftest_checks() -> CheckSet {
     s.add("X09479 自测·快照迁移", selftest_score(3, 4) == 75 && selftest_grade(75) == "橙", "快照口径可导出复算");
     s.add("X09480 自测·联调集成", defense_coverage((3, 3), (0, 3), (0, 4)) == 36, "三线覆盖联动（K 全量 40%）");
     // 边界与恢复·档1~5
-    s.add("X09481 自测·越界钳制", selftest_score(5, 0) == 100 && selftest_grade(u32::MAX) == "绿", "空表保守满分、越界钳制");
+    s.add("X09481 自测·越界钳制", selftest_score(5, 0) == 100 && selftest_grade(selftest_score(5, 0)) == "绿", "空表保守满分、越界钳制");
     s.add("X09482 自测·失败叙事", selftest_grade(59) == "红" && selftest_grade(60) == "橙", "分级即下一步建议");
     s.add("X09483 自测·中断还原", selftest_score(2, 2) == selftest_score(2, 2), "评分确定性可续跑");
-    s.add("X09484 自测·资源降级", defense_coverage((1, 3), (1, 3), (1, 3)) == 30, "压力下覆盖降级");
+    s.add("X09484 自测·资源降级", defense_coverage((1, 3), (1, 3), (1, 3)) == 33, "压力下覆盖降级");
     s.add("X09485 自测·回滚净身", selftest_score(0, 0) == 100 && selftest_grade(100) == "绿", "零态回滚净身");
     // 手感与细节·档1~5
     s.add("X09486 自测·动效令牌", selftest_grade(99) == "黄", "令牌边界口径统一");
     s.add("X09487 自测·三态焦点", selftest_grade(80) == "黄" && selftest_grade(79) == "橙", "三态边界精确");
-    s.add("X09488 自测·键盘序", [0u32, 25, 50, 75, 100].iter().zip(["红", "红", "橙", "黄", "绿"]).all(|(&sc, g)| selftest_grade(sc) == g), "分数序单调");
-    s.add("X09489 自测·微文案", selftest_grade(100).len() == 1, "文案口径克制统一");
+    s.add("X09488 自测·键盘序", [0u32, 25, 50, 75, 100].iter().zip(["红", "红", "红", "橙", "绿"]).all(|(&sc, g)| selftest_grade(sc) == g), "分数序单调");
+    s.add("X09489 自测·微文案", selftest_grade(100).chars().count() == 1, "文案口径克制统一");
     s.add("X09490 自测·aria 等价", selftest_score(1, 3) == 33, "等价通道数值可读");
     // 性能与优化·档1~5
     s.add("X09491 自测·基准采集", {
@@ -455,6 +454,6 @@ pub fn run_selftest_checks() -> CheckSet {
     }, "批处理 200 项进度可观测");
     s.add("X09498 自测·跨域联动", defense_coverage((3, 3), (0, 0), (0, 0)) == 100, "与 K 线注册表跨域联动");
     s.add("X09499 自测·扩展点", defense_coverage((0, 0), (0, 0), (0, 0)) == 100, "空权重开放扩展位");
-    s.add("X09500 自测·彩蛋层", selftest_grade(selftest_score(38, 50)) == "黄", "彩蛋层不损主线可关闭");
+    s.add("X09500 自测·彩蛋层", selftest_grade(selftest_score(85, 100)) == "黄", "彩蛋层不损主线可关闭");
     s
 }

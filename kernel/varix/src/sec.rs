@@ -12,6 +12,44 @@ use crate::checks::{push_str, CheckSet};
 
 /// VARIX-M500 AI-10 隐私与信任深化（F226~F250）。
 pub mod trust;
+
+// AI-36 族0351~0354（X08751~X08850）：隐私沙盒 / 进程治理 / 时间调度安全 / 资源配额。
+pub mod sandbox2;
+pub mod procgov2;
+pub mod schedsec;
+pub mod quota2;
+
+// AI-38 族0371/0375/0376（X09251~X09400）：网络隔离 / 密码学基础 / 权限最小化。
+pub mod netiso2;
+pub mod crypto2;
+pub mod permmin2;
+
+// AI-39 族0388（X09676~X09700）：安全恢复。
+pub mod secover2;
+
+/// AI-36 内核侧全量自检（4 族 × 25 = 100 项）。
+pub fn run_ai36_sec_checks() -> [crate::checks::CheckSet; 4] {
+    [
+        sandbox2::run_sandbox_checks(),
+        procgov2::run_procgov_checks(),
+        schedsec::run_schedsec_checks(),
+        quota2::run_quota2_checks(),
+    ]
+}
+
+/// AI-38 内核侧全量自检（3 族 × 25 = 75 项）。
+pub fn run_ai38_sec_checks() -> [crate::checks::CheckSet; 3] {
+    [
+        netiso2::run_netiso_checks(),
+        crypto2::run_crypto2_checks(),
+        permmin2::run_permmin_checks(),
+    ]
+}
+
+/// AI-39 内核侧全量自检（1 族 × 25 = 25 项）。
+pub fn run_ai39_sec_checks() -> [crate::checks::CheckSet; 1] {
+    [secover2::run_secover_checks()]
+}
 use crate::security::{
     aslr_slide, w_xor_x, AuditLog, AuditAction, BootChain, Canary, KeyPurpose, KeyStore,
     constant_time_eq, secure_zero, sha256, TELEMETRY_ENABLED,
