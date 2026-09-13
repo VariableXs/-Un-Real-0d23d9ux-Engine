@@ -139,7 +139,6 @@ export class Screensaver2 {
   tier: SsTier;
   clamped = 0;
   private running = false;
-  private startedAt = 0;
   private framesDrawn = 0;
   private partial = false;
 
@@ -149,10 +148,9 @@ export class Screensaver2 {
   }
 
   /** 最小闭环：空闲触发 → 运行 → 唤醒退出，可观测。 */
-  activate(idleMs: number, now: number): boolean {
+  activate(idleMs: number, _now: number): boolean {
     if (this.tier === 'off' || idleMs < 60_000) return false;
     this.running = true;
-    this.startedAt = now;
     return this.running;
   }
 

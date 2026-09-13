@@ -190,8 +190,8 @@ export class MicroMotion2 {
     return v;
   }
 
-  durationOf(slot: MicroSlot): number {
-    return this.durations.get(slot) ?? 180;
+  durationOf(slot: MicroSlot | 'unset'): number {
+    return this.durations.get(slot as MicroSlot) ?? 180;
   }
 
   curveOf(slot: MicroSlot): string {
@@ -262,7 +262,10 @@ export class SeasonEnv2 {
   }
 
   static paletteFor(s: Season): [number, number, number] {
-    return { spring: [120, 200, 120], summer: [90, 170, 255], autumn: [230, 150, 60], winter: [170, 190, 220] }[s];
+    const PALETTES: Record<Season, [number, number, number]> = {
+      spring: [120, 200, 120], summer: [90, 170, 255], autumn: [230, 150, 60], winter: [170, 190, 220],
+    };
+    return PALETTES[s];
   }
 
   /** 越界月份钳制：负数/超界回当前年循环。 */

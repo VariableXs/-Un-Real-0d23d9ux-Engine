@@ -49,7 +49,7 @@ export function normalizeName(raw: string): string {
 
 /** 尺寸阶梯就近匹配（不全则取最近的上级）。 */
 export function nearestSize(want: number): number {
-  let best = SIZE_LADDER[0]!;
+  let best: number = SIZE_LADDER[0]!;
   let bestD = Number.POSITIVE_INFINITY;
   for (const s of SIZE_LADDER) {
     const d = Math.abs(s - want);

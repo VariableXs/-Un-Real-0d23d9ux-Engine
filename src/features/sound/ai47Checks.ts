@@ -213,10 +213,10 @@ export function checkF0466(): CheckEntry[] {
 export function checkF0467(): CheckEntry[] {
   const t = new T.NotifyTemplate();
   return mk25(11651, '模板', [
-    () => t.set('ok', '{app} 已完成') && t.get('ok') === '{app} 已完成',
+    () => Boolean(t.set('ok', '{app} 已完成')) && t.get('ok') === '{app} 已完成',
     () => t.fill('ok', { app: '备份' }) === '备份 已完成',
     () => T.TEMPLATES.length === 3 && t.setKind('rich') === 'rich',
-    () => t.set('sum', '{n} 条通知') && t.fill('sum', { n: '3' }) === '3 条通知',
+    () => Boolean(t.set('sum', '{n} 条通知')) && t.fill('sum', { n: '3' }) === '3 条通知',
     () => T.NotifyTemplate.complete('{a} {b}', { a: '1', b: '2' }) === true,
     () => t.setKind('nope') === 'plain' && t.clamped >= 1,
     () => t.set('', 'x') === '' && t.clamped >= 2,

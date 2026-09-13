@@ -26,7 +26,7 @@ function memoized(e: CheckEntry): CheckEntry {
 }
 
 const zip = (start: number, checks: Array<() => boolean>): CheckEntry[] =>
-  checks.map((check, i) => ({ id: `X${String(start + i)}`, name: `X${String(start + i)}`, check }));
+  checks.map((check, i) => ({ id: `X${String(start + i).padStart(5, "0")}`, name: `X${String(start + i).padStart(5, "0")}`, check }));
 
 /* -------- AI-10 族0091 壁纸引擎 2.0 X02251~X02275 -------- */
 export function checkF0091(): CheckEntry[] {
@@ -40,7 +40,7 @@ export function checkF0091(): CheckEntry[] {
   const snapEng = new A.WallpaperEngine();
   snapEng.play('custom');
   const src = A.WallpaperEngine.sanitizeSource({ id: 'x', mode: 'bogus' as never, intervalMs: -5 });
-  return zip(20251, [
+  return zip(2251, [
     () => first === 'b' && second === 'c',
     () => { const e = new A.WallpaperEngine(); e.setMode('video'); return e.modeOf() === 'video'; },
     () => new A.WallpaperEngine().modeCount() === 5,
@@ -76,7 +76,7 @@ export function checkF0092(): CheckEntry[] {
   const empty = new A.WallpaperPalette().extract([]);
   const sem = A.WallpaperPalette.semantic(colors);
   const gate = A.WallpaperPalette.contrastGate({ l: 0.9, c: 0.1, h: 30 });
-  return zip(20276, [
+  return zip(2276, [
     () => colors.length === 5,
     () => colors.every((c) => c.l >= 0.55 && c.l <= 0.72),
     () => empty.length === 0,
@@ -117,7 +117,7 @@ export function checkF0093(): CheckEntry[] {
     { id: 'a', name: '', tags: [], favorite: false, bytes: 1 },
     { id: 'b', name: '', tags: [], favorite: false, bytes: 1 },
   ]);
-  return zip(20301, [
+  return zip(2301, [
     () => dup === 'dup' && lib.count() === 2,
     () => lib.get('w1')?.name === '晨雾',
     () => lib.tag('w1', 'dark') === false && lib.get('w1')!.tags.length === 2,
@@ -152,7 +152,7 @@ export function checkF0094(): CheckEntry[] {
   const saved = ws.savePreset('my', { kind: 'mesh', hue: 100, layers: 4, seed: 1 });
   const gen = A.WallpaperWorkshop.generate({ kind: 'gradient', hue: 400, layers: 99, seed: 0 });
   const bad = A.WallpaperWorkshop.sanitize({ kind: 'nope' as never, hue: -80, layers: 0 });
-  return zip(20326, [
+  return zip(2326, [
     () => saved && ws.presetNames()[0] === 'my',
     () => gen.kind === 'gradient' && gen.stops.length === 8,
     () => bad.kind === 'gradient' && bad.hue === 280 && bad.layers === 1,
@@ -197,7 +197,7 @@ export function checkF0095(): CheckEntry[] {
   still.setTier('off');
   const stepBoost = new B.WallpaperPhysics();
   stepBoost.setPointer(0.5, 0.5, true);
-  return zip(20351, [
+  return zip(2351, [
     () => { const d = ph.parallaxOffset(); return d.dx > 0 && d.dy === 0; },
     () => offD.dx === 0 && offD.dy === 0,
     () => ph.tierCount() === 5 && B.PHYSICS_TIERS.length === 5,
@@ -239,7 +239,7 @@ export function checkF0096(): CheckEntry[] {
   quota.setMaxMounted(1);
   quota.register({ id: 'a', name: 'a', size: 'small', refreshMs: 500 });
   quota.register({ id: 'b', name: 'b', size: 'small', refreshMs: 500 });
-  return zip(20376, [
+  return zip(2376, [
     () => fw.stateOf('clock') === 'mounted' && mounted,
     () => dup === 'dup' && fw.count() === 1,
     () => paused && fw.stateOf('clock') === 'mounted' && remount,
@@ -275,7 +275,7 @@ export function checkF0097(): CheckEntry[] {
   const throttled = col.update('clock', '12:01', 1100);
   const later = col.update('clock', '12:02', 2000);
   const freshPayload = '12:00';
-  return zip(20401, [
+  return zip(2401, [
     () => fresh === 'fresh' && freshPayload === '12:00' && col.read('clock')?.payload === '12:02',
     () => throttled === 'throttled' && freshPayload === '12:00',
     () => later === 'fresh' && col.read('clock')?.payload === '12:02',
@@ -316,7 +316,7 @@ export function checkF0098(): CheckEntry[] {
   const collapsed = il.interact('collapse', 'clock');
   const expandedAt = 'clock';
   const clamped = W.WidgetInteractionLayer.clampRect({ x: 500, y: 500, w: 100, h: 50, widgetId: 'x' }, 400, 300);
-  return zip(20426, [
+  return zip(2426, [
     () => il.hitTest(50, 50) === 'clock',
     () => il.hitTest(150, 50) === 'weather',
     () => il.hitTest(250, 250) === null,
@@ -356,7 +356,7 @@ export function checkF0099(): CheckEntry[] {
   cfg.setBlur(4);
   cfg.setDim(2);
   const san = C.LockscreenIntegration.sanitize({ blur: 999, dim: -1, wallpaperId: '' });
-  return zip(20451, [
+  return zip(2451, [
     () => lk.configOf().wallpaperId === 'aurora',
     () => added === 'new' && dupAdd === 'dup' && lk.configOf().widgets.filter((w) => w === 'weather').length === 1,
     () => lk.isLocked() && lk.eventLog() === 1,
@@ -394,7 +394,7 @@ export function checkF0100(): CheckEntry[] {
   const night = new C.DeskTimeAmbience();
   night.setNightShift(true);
   const plan = C.DeskTimeAmbience.dayPlan();
-  return zip(20476, [
+  return zip(2476, [
     () => C.DeskTimeAmbience.phaseOf(7) === 'dawn',
     () => C.DeskTimeAmbience.phaseOf(13) === 'noon',
     () => C.DeskTimeAmbience.phaseOf(23) === 'night' && C.DeskTimeAmbience.phaseOf(2) === 'night',

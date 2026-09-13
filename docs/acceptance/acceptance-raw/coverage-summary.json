@@ -1,0 +1,14 @@
+{
+ "v_entries": 15231,
+ "v_unique": 11466,
+ "k_unique": 2092,
+ "c_unique": 3238,
+ "union": 14248,
+ "missing": 752,
+ "families": {
+  "full": 558,
+  "partial": 42,
+  "zero": 0
+ },
+ "v_failing": 0
+}

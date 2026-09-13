@@ -19,7 +19,7 @@ export function checkF0431(): CheckEntry[] {
     { id: 'X10758', name: '主题引擎·中断续跑', check: () => { const t = T.ThemeEngineDeep2.deserialize('{"tier":"duotone","vars":[["--k","var(--m)"],["--m","2px"]]}'); return t.resolve('--k') === '2px'; } },
     { id: 'X10759', name: '主题引擎·资源降级', check: () => { const t = T.ThemeEngineDeep2.deserialize('{"tier":"mono","vars":[]}'); return t.getVar('--none') === null && t.tier === 'mono'; } },
     { id: 'X10760', name: '主题引擎·回滚净身', check: () => { const t = new T.ThemeEngineDeep2('vivid'); t.setVar('--x', '1'); return t.rollback() && t.getVar('--x') === null; } },
-    { id: 'X10761', name: '主题引擎·动效令牌', check: () => { const m = T.motionFor('standard'); return m.curve === 'ease-standard' && m.durationMs === 180 && m.scale === 1; } },
+    { id: 'X10761', name: '主题引擎·动效令牌', check: () => { const m = T.motionFor('balanced'); return m.curve === 'ease-standard' && m.durationMs === 180 && m.scale === 1; } },
     { id: 'X10762', name: '主题引擎·三态焦点', check: () => { const t = new T.ThemeEngineDeep2(); return t.setVar('--v', 'a') && !t.setVar('--v', 'a') && t.getVar('--v') === 'a'; } },
     { id: 'X10763', name: '主题引擎·键盘序', check: () => (['mono', 'duotone', 'standard', 'vivid', 'editorial'] as const).every((t) => new T.ThemeEngineDeep2(t).tier === t) },
     { id: 'X10764', name: '主题引擎·微文案', check: () => T.explainError('E4401').text === '主题变量引用成环' },

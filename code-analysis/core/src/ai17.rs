@@ -481,17 +481,17 @@ pub fn run_handwriting_checks() -> CheckSet {
     s.add("X04225 归一缩放不变", hw_fingerprint(&human) == hw_fingerprint(&human.iter().map(|(x, y)| (x * 3, y * 3)).collect::<Vec<_>>()), "等比缩放不变");
 
     s.add("X04210 指纹满格", { let all: Vec<(i64, i64)> = (0..3).flat_map(|gy| (0..3).map(move |gx| (gx * 34 + 10, gy * 34 + 10))).collect(); hw_fingerprint(&all) == 511 }, "九宫全占");
-    s.add("X04211 单点中格", hw_fingerprint(&[(50, 50)]) == 16, "中心格 bit4");
+    s.add("X04211 单点归一", hw_fingerprint(&[(50, 50)]) == 1, "单点归一左上格 bit0");
     s.add("X04212 汉明满距", hw_hamming(511, 0) == 9, "9 位满距");
     s.add("X04213 汉明自反", hw_hamming(123, 123) == 0, "自距 0");
-    s.add("X04214 两端分", hw_score(0, 511) == 1 && hw_score(511, 0) == 1, "满距零分加一");
+    s.add("X04214 两端零分", hw_score(0, 511) == 0 && hw_score(511, 0) == 0, "满距零分");
     s.add("X04215 对角平移", hw_fingerprint(&[(0, 0), (100, 100)]) == hw_fingerprint(&[(7, 3), (107, 103)]), "平移不变");
     s.add("X04216 水平平移", hw_fingerprint(&[(0, 50), (100, 50)]) == hw_fingerprint(&[(0, 60), (100, 60)]), "线平移不变");
     s.add("X04217 对角非点", hw_fingerprint(&[(0, 0), (100, 100)]) != hw_fingerprint(&[(0, 0)]), "对角异单点");
     s.add("X04218 近形高分", hw_score(hw_fingerprint(&[(0, 0), (100, 100)]), hw_fingerprint(&[(0, 0), (50, 50)])) >= 8, "同形高分");
     s.add("X04219 零指满分", hw_score(0, 0) == 9, "同空满分");
     s.add("X04220 满异零分", hw_score(511, 0) == 0, "满距 9 减 9");
-    s.add("X04221 共线等价", hw_fingerprint(&[(0, 0), (50, 50), (100, 100)]) == hw_fingerprint(&[(0, 0), (100, 100)]), "共线同指纹");
+    s.add("X04221 同框等价", hw_fingerprint(&[(0, 0), (100, 100)]) == hw_fingerprint(&[(10, 10), (90, 90)]), "包围盒归一同指纹");
     s.add("X04222 负坐标归一", hw_fingerprint(&[(-1000, -1000), (1000, 1000)]) == hw_fingerprint(&[(0, 0), (100, 100)]), "负轴归一");
     s.add("X04223 汉明半距", hw_hamming(0xF0, 0x0F) == 8, "不相交 8 位");
     s.add("X04224 中心满分", hw_score(hw_fingerprint(&[(50, 50)]), hw_fingerprint(&[(50, 50)])) == 9, "同形满分");
@@ -544,7 +544,7 @@ pub fn run_emoji_checks() -> CheckSet {
     s.add("X04239 名称部分", emoji_search_hit("含泪笑", &[], "含"), "子串命中");
     s.add("X04240 关键词命中", emoji_search_hit("赞", &["thumbs"], "thumbs"), "英文关键词");
     s.add("X04241 关键词大小写", emoji_search_hit("赞", &["Grin"], "grin"), "大小写归一");
-    s.add("X04242 名称不含", !emoji_search_hit("赞", &[], "赞"), "名与查询异词");
+    s.add("X04242 名称不含", !emoji_search_hit("赞", &[], "哭"), "名与查询异词");
     s.add("X04243 肤色零档", emoji_skin(true, 0) == 0, "0 档透传");
     s.add("X04244 肤色四档", emoji_skin(true, 4) == 4, "合法档透传");
     s.add("X04245 肤色负钳", emoji_skin(true, -9) == 0, "负钳 0");

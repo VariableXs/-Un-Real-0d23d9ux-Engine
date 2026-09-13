@@ -27,7 +27,7 @@ function memoized(e: CheckEntry): CheckEntry {
 }
 
 const zip = (start: number, checks: Array<() => boolean>): CheckEntry[] =>
-  checks.map((check, i) => ({ id: `X${String(start + i)}`, name: `X${String(start + i)}`, check }));
+  checks.map((check, i) => ({ id: `X${String(start + i).padStart(5, "0")}`, name: `X${String(start + i).padStart(5, "0")}`, check }));
 
 /* -------- AI-09 族0081 图标风格体系 2.0 X02001~X02025 -------- */
 export function checkF0081(): CheckEntry[] {
@@ -49,7 +49,7 @@ export function checkF0081(): CheckEntry[] {
   const degSys = new A.IconStyleSystem();
   degSys.apply({ preset: 'glass', fillMode: 'full', saturation: 1.2 });
   degSys.degrade(3);
-  return zip(20001, [
+  return zip(2001, [
     () => minimal.preset === 'outline' && minimal.strokeWidth === A.ICON_STYLE_DEFAULT.strokeWidth,
     () => full.preset === 'glass' && full.corner === 8 && full.saturation === 1.2,
     () => tiers.length >= 5 && tiers.every((t) => (A.ICON_STYLE_PRESETS as readonly string[]).includes(t.preset)),
@@ -85,7 +85,7 @@ export function checkF0082(): CheckEntry[] {
   m.setTier('emphatic');
   const t1 = m.token;
   const snap = new A.IconMotionSystem();
-  return zip(20026, [
+  return zip(2026, [
     () => t0.dur === 120 && t0.ease === 'standard',
     () => t1.dur === 240 && t1.scale > 1,
     () => A.MOTION_TIERS.length >= 5 && snap.tierCount() === 5,
@@ -121,7 +121,7 @@ export function checkF0083(): CheckEntry[] {
   const snapGrid = new B.IconGrid();
   snapGrid.setDensity('airy');
   const snapJson = snapGrid.exportSpec();
-  return zip(20051, [
+  return zip(2051, [
     () => spec.cell === 72 && spec.icon === 40,
     () => { const x = new B.IconGrid(); x.setSnap(false); return !x.snapPoint(10, 20).snapped; },
     () => g.tierCount() >= 5 && new B.IconGrid().tierCount() === g.tierCount(),
@@ -160,7 +160,7 @@ export function checkF0084(): CheckEntry[] {
   const hc = new B.SemanticColorSystem();
   hc.setHighContrast(true);
   const clampBad = B.SemanticColorSystem.clamp({ hue: 400, chroma: 0.9, tone: 2 });
-  return zip(20076, [
+  return zip(2076, [
     () => base.hue === 262 && base.chroma <= 0.13,
     () => follow.hue === 200,
     () => { const x = new B.SemanticColorSystem(); x.setTier(5); return x.tierOf() === 5; },
@@ -198,7 +198,7 @@ export function checkF0085(): CheckEntry[] {
   smBad.transition('error');
   const sel = new C.IconStateMachine();
   sel.transition('selected');
-  return zip(20101, [
+  return zip(2101, [
     () => { const x = new C.IconStateMachine(); return x.transition('hover') && x.state === 'hover'; },
     () => activeOk && activeOk === true,
     () => C.ICON_STATES.length >= 5,
@@ -240,7 +240,7 @@ export function checkF0086(): CheckEntry[] {
   const edgeHit = edge.attract(8, 500, 1920, 1080);
   const off = new C.IconGravity();
   off.setStrength('off');
-  return zip(20126, [
+  return zip(2126, [
     () => hit.source === 'icon' && hit.x === 96 && hit.y === 96,
     () => { const x = new C.IconGravity(); x.setStrength('strong'); return x.strengthOf() === 'strong'; },
     () => { const x = new C.IconGravity(); x.setStrength('magnetic'); return x.strengthTierCount() === 5; },
@@ -280,7 +280,7 @@ export function checkF0087(): CheckEntry[] {
   snap.place({ id: 'b', x: 10, y: 20, screen: 1 });
   const json = snap.exportAll();
   const clamped = D.IconPositionMemory.clampPlacement({ id: 'c', x: -5, y: 9999, screen: -1 }, 1000, 1000);
-  return zip(20151, [
+  return zip(2151, [
     () => first === 'new' && firstPos?.x === 0,
     () => moved === 'moved' && m.of('a')?.x === 96 && m.moveLog() === 1,
     () => same === 'moved' && m.moveLog() === 1,
@@ -328,7 +328,7 @@ export function checkF0088(): CheckEntry[] {
   const dup = new D.IconStackSystem();
   dup.add({ id: 'd', kind: 'app', name: 'd', at: 0, uses: 0 });
   const dupRes = dup.add({ id: 'd', kind: 'app', name: 'd', at: 0, uses: 0 });
-  return zip(20176, [
+  return zip(2176, [
     () => stacks.length === 2 && stacks.some((s) => s.key === 'app'),
     () => { const x = new D.IconStackSystem(); x.setRule('by-name'); return x.ruleOf() === 'by-name'; },
     () => { const x = new D.IconStackSystem(); x.setRule('manual'); x.add({ id: 'm', kind: 'app', name: 'm', at: 0, uses: 0 }); return x.stacks()[0]!.key === 'manual'; },
@@ -371,7 +371,7 @@ export function checkF0089(): CheckEntry[] {
   const fill = E.DeskTidyPhilosophy.gridFill(['x', 'y', 'z'], 96, 2);
   const tidyItems: E.TidyItem[] = items.map((i, k) => ({ ...i, x: (k % 2) * 96, y: 0 }));
   const neat = E.DeskTidyPhilosophy.tidyScore(tidyItems, 96);
-  return zip(20201, [
+  return zip(2201, [
     () => byKind[0] === '3' && byKind[2] === '2',
     () => { t.setStrategy('name'); return t.strategyOf() === 'name'; },
     () => byRecent[0] === '2',
@@ -408,7 +408,7 @@ export function checkF0090(): CheckEntry[] {
   const snapSys = new E.DeskHealthSystem();
   snapSys.setThreshold('overlaps', 5);
   const snapJson = snapSys.exportThresholds();
-  return zip(20226, [
+  return zip(2226, [
     () => good.score === 100 && good.grade === 'good',
     () => messy.grade === 'messy' && messy.score < 60,
     () => E.DeskHealthSystem.gradeThresholds().length === 3,

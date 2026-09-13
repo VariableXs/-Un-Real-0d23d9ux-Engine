@@ -37,7 +37,7 @@ export function parseProfileSnapshot(text: string, k = 3): ProfileEntry[] {
   return lines
     .slice(1)
     .map((l) => {
-      const [app, ms, sw] = l.split(' ');
+      const [app = '', ms = '', sw = ''] = l.split(' ');
       return { app, focusMs: Number(ms) || 0, switches: Number(sw) || 0 };
     })
     .sort((a, b) => b.focusMs - a.focusMs || a.app.localeCompare(b.app))
@@ -48,7 +48,7 @@ export function parseProfileSnapshot(text: string, k = 3): ProfileEntry[] {
 export function cellsToView(cells: number[], gridW: number): HeatCell[] {
   const out: HeatCell[] = [];
   for (let i = 0; i < cells.length; i++) {
-    const v = cells[i];
+    const v = cells[i]!;
     if (v <= 0) continue;
     const level: HeatCell['level'] = v <= 330 ? 0 : v <= 660 ? 1 : 2;
     out.push({ gx: i % gridW, gy: Math.floor(i / gridW), level });

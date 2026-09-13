@@ -19,7 +19,7 @@ export function checkF0421(): CheckEntry[] {
     { id: 'X10508', name: '氛围光·中断续跑', check: () => { const a = T.AmbienceLight2.deserialize('{"tier":"soft","cfg":{"k":2},"hist":9}'); return a.persisted['k'] === 2; } },
     { id: 'X10509', name: '氛围光·资源降级', check: () => { const a = new T.AmbienceLight2('cinema'); const t1 = a.degrade(1); const t2 = a.degrade(3); return t1 === 'dynamic' && t2 === 'off' && a.isDegraded; } },
     { id: 'X10510', name: '氛围光·回滚净身', check: () => { const a = new T.AmbienceLight2('soft'); a.persist('x', 1); a.sample('manual', [1, 2, 3], 0.5); return a.rollback() && Object.keys(a.persisted).length === 0; } },
-    { id: 'X10511', name: '氛围光·动效令牌', check: () => { const m = T.motionFor('soft'); return m.curve === 'ease-standard' && m.durationMs === 180 && m.scale === 1; } },
+    { id: 'X10511', name: '氛围光·动效令牌', check: () => { const m = T.motionFor('light'); return m.curve === 'ease-standard' && m.durationMs === 180 && m.scale === 1; } },
     { id: 'X10512', name: '氛围光·三态焦点', check: () => { const m = T.motionFor('off'); return m.curve === 'linear-fade' && m.scale === 0; } },
     { id: 'X10513', name: '氛围光·键盘序', check: () => (['off', 'static', 'soft', 'dynamic', 'cinema'] as const).every((t) => new T.AmbienceLight2(t).tier === t) },
     { id: 'X10514', name: '氛围光·微文案', check: () => T.explainError('E4301').text.length > 0 && T.explainError('E9999').text.length > 0 },

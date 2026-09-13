@@ -438,7 +438,7 @@ pub fn run_focus_checks() -> CheckSet {
 
 /// 敏感字段判定。
 pub fn sec_sensitive(label: &str) -> bool {
-    const HINTS: [&str; 9] = ["password", "passwd", "pwd", "secret", "token", "card", "cvv", "otp", "密码"];
+    const HINTS: [&str; 10] = ["password", "passwd", "pwd", "secret", "token", "card", "cvv", "otp", "密码", "卡号"];
     let l = label.to_lowercase();
     HINTS.iter().any(|h| l.contains(h))
 }
