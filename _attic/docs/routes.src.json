@@ -1,0 +1,81 @@
+{
+  "spec": "variable:// 深链路由注册公开表（M-55 Route Registry Spec）结构化声明",
+  "version": 1,
+  "routes": [
+    {
+      "id": "open",
+      "verb": "open",
+      "params": [
+        { "name": "path", "type": "string", "required": true, "desc": "要打开的本地路径（URL 编码）" }
+      ],
+      "owner": "AI-14 开放接口组",
+      "since": "1.5xw",
+      "desc": "打开本地路径（文件管理器语义）",
+      "example": "variable://open?path=C%3A%2Ftemp"
+    },
+    {
+      "id": "lock",
+      "verb": "lock",
+      "params": [],
+      "owner": "AI-14 开放接口组",
+      "since": "1.5xw",
+      "desc": "锁定桌面环境（进入锁定态）",
+      "example": "variable://lock"
+    },
+    {
+      "id": "scene-apply",
+      "verb": "scene/apply",
+      "params": [
+        { "name": "name", "type": "string", "required": true, "desc": "场景名（focus / relax / …）" }
+      ],
+      "owner": "AI-14 开放接口组",
+      "since": "1.5xw",
+      "desc": "应用命名场景（主题+壁纸+氛围组合）",
+      "example": "variable://scene/apply?name=focus"
+    },
+    {
+      "id": "theme-set",
+      "verb": "theme/set",
+      "params": [
+        { "name": "id", "type": "string", "required": true, "desc": "主题 id" }
+      ],
+      "owner": "AI-15 开放工具组",
+      "since": "1.5xw",
+      "desc": "切换主题（与计划任务工坊 theme.set 动作同语义）",
+      "example": "variable://theme/set?id=deep-space"
+    },
+    {
+      "id": "wallpaper-set",
+      "verb": "wallpaper/set",
+      "params": [
+        { "name": "path", "type": "string", "required": true, "desc": "壁纸文件本地路径（URL 编码）" }
+      ],
+      "owner": "AI-15 开放工具组",
+      "since": "1.5xw",
+      "desc": "切换桌面壁纸（仅本地文件，零网络）",
+      "example": "variable://wallpaper/set?path=D%3A%2Fpics%2Fstar.png"
+    },
+    {
+      "id": "perf-set",
+      "verb": "perf/set",
+      "params": [
+        { "name": "mode", "type": "string", "required": true, "desc": "性能模式（eco / balanced / performance）" }
+      ],
+      "owner": "AI-15 开放工具组",
+      "since": "1.5xw",
+      "desc": "切换性能模式（与计划任务工坊 perf.set 动作同语义）",
+      "example": "variable://perf/set?mode=balanced"
+    },
+    {
+      "id": "notify-remind",
+      "verb": "notify/remind",
+      "params": [
+        { "name": "text", "type": "string", "required": true, "desc": "提醒文本" }
+      ],
+      "owner": "AI-15 开放工具组",
+      "since": "1.5xw",
+      "desc": "发送一条本地提醒（仅 UI 通知，零网络）",
+      "example": "variable://notify/remind?text=%E5%96%9D%E6%B0%B4"
+    }
+  ]
+}

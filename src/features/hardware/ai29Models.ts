@@ -108,7 +108,7 @@ export class AudioMixer {
   sceneId: AudioScene;
   clamped = 0;
   muted = false;
-  private volumeLevel = 50;
+  private volume = 50;
 
   constructor(scene?: string) {
     this.sceneId = (AUDIO_SCENES as string[]).includes(scene ?? '')
@@ -122,18 +122,18 @@ export class AudioMixer {
   }
 
   setVolume(v: number): number {
-    this.volumeLevel = clampVolume(v);
-    if (!Number.isFinite(v) || v !== this.volumeLevel) this.clamped++;
-    return this.volumeLevel;
+    this.volume = clampVolume(v);
+    if (!Number.isFinite(v) || v !== this.volume) this.clamped++;
+    return this.volume;
   }
 
   get volume(): number {
-    return this.muted ? 0 : this.volumeLevel;
+    return this.muted ? 0 : this.volume;
   }
 
   /** 声道映射：单声道混音系数（0~100 音量 → 0~1）。 */
   mixFactor(): number {
-    return Math.round((this.muted ? 0 : this.volumeLevel) / 100 * 100) / 100;
+    return Math.round((this.muted ? 0 : this.volume) / 100 * 100) / 100;
   }
 }
 
@@ -218,7 +218,7 @@ export interface Peripheral {
 }
 
 /** 外设电量校验：有线 -1 合法，无线钳制 0~100，非法回 -1。 */
-export function clampPeripheralBattery(_kind: PeripheralKind, v: number): number {
+export function clampPeripheralBattery(kind: PeripheralKind, v: number): number {
   if (v === -1) return -1;
   if (!Number.isFinite(v)) return -1;
   return Math.min(100, Math.max(0, Math.round(v)));
