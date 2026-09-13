@@ -43,6 +43,8 @@ pub mod shell;
 pub mod ai03;
 // UNREAL-X：AI-04 批次（X00751~X01000 领域01 启动收官与遥测），勿删。
 pub mod ai04;
+// UNREAL-X：AI-19 批次（X04501~X04750 领域05 内核输入栈·基准/遥测），勿删。
+pub mod ai19;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai16;
@@ -486,6 +488,11 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-19 批次（内核输入栈基准/遥测 2 族 50 项），勿删。
+pub fn run_ux_ai19_checks() -> Vec<CheckSet> {
+    vec![ai19::run_ink_bench_checks(), ai19::run_ink_telemetry_checks()]
+}
+
 /// AURORA-10000：AI-76 批次，勿删。
 pub fn run_ai76_checks() -> Vec<CheckSet> {
     vec![
@@ -567,6 +574,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-03/AI-04 批次（领域01），勿删。
     v.extend(run_ux_ai03_checks());
     v.extend(run_ux_ai04_checks());
+    // UNREAL-X：AI-19 批次（领域05 内核输入栈），勿删。
+    v.extend(run_ux_ai19_checks());
     // UNREAL-X：AI-20 输入工程与中文（领域05 · C 线 125 检），勿删。
     v.extend(run_ux_ai20_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
@@ -781,6 +790,17 @@ mod aurora_w2_tests {
     fn ux_ai20_150_checks_pass() {
         let sets = run_ux_ai20_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 150);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-19 领域05 50 检，勿删。
+    #[test]
+    fn ux_ai19_50_checks_pass() {
+        let sets = run_ux_ai19_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 50);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:
 {}", s.domain, s.render());

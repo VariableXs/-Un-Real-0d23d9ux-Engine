@@ -8,6 +8,7 @@ import * as D from './groupD';
 import * as E from './groupE';
 import * as X1 from './groupX1';
 import * as X2 from './groupX2';
+import * as X19 from './groupX19';
 
 export interface CheckEntry {
   id: string;
@@ -905,6 +906,17 @@ export function runAi02Checks(): { entries: CheckEntry[]; failed: CheckEntry[] }
   const families = [
     X2.checkX0011, X2.checkX0012, X2.checkX0013, X2.checkX0016, X2.checkX0017,
     X2.checkX0018, X2.checkX0019, X2.checkX0020, X2.checkX0020b,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-19（族0181~0190 · X04501~X04750）聚合：内核输入栈断言组，只增不删。
+export function runAi19Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    X19.checkX0181, X19.checkX0182, X19.checkX0183, X19.checkX0184, X19.checkX0185,
+    X19.checkX0186, X19.checkX0187, X19.checkX0188, X19.checkX0189, X19.checkX0190,
   ];
   const entries = families.flatMap((f) => f().map(memoized));
   const failed = entries.filter((e) => !e.check());

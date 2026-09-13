@@ -34,6 +34,8 @@ pub mod shell;
 pub mod switcher;
 pub mod telemetry;
 pub mod input;
+// UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
+pub mod inkstack;
 pub mod integrity;
 pub mod kaslr;
 pub mod limine;
