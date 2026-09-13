@@ -31,6 +31,8 @@ pub mod undo;
 
 // AI-08 域（UI-001~UI-036）：33 章 UI 规范落地 / 8 风格资产 / 三端渲染差异清零。
 pub mod uispec;
+/// UNREAL-X-15000 · AI-07 族0070 + AI-08 十族（X01726~X02000）：空间分析域。
+pub mod spatial;
 
 // AI-09 域（C01~C24）：三壳统一底座——一个 core 三个壳（Windows/Variable/VARIX）。
 pub mod shell;
@@ -459,6 +461,18 @@ pub fn run_ux_ai04_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-20 批次（输入工程与中文 6 族 150 项），勿删。
+pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
+    vec![
+        input::ai20::run_predict_checks(),
+        input::ai20::run_lexicon_checks(),
+        input::ai20::run_correction_checks(),
+        input::ai20::run_feel_checks(),
+        input::ai20::run_checkup_checks(),
+        input::ai20::run_finale_checks(),
+    ]
+}
+
 /// AURORA-10000：AI-76 批次，勿删。
 pub fn run_ai76_checks() -> Vec<CheckSet> {
     vec![
@@ -538,6 +552,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-03/AI-04 批次（领域01），勿删。
     v.extend(run_ux_ai03_checks());
     v.extend(run_ux_ai04_checks());
+    // UNREAL-X：AI-20 输入工程与中文（领域05 · C 线 125 检），勿删。
+    v.extend(run_ux_ai20_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
     v.extend(desktop::run_desktop_checks());
     v
@@ -732,6 +748,17 @@ mod aurora_w2_tests {
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-20 领域05 C 线 150 检（五族 C 线 CheckSet + 收官聚合集），勿删。
+    #[test]
+    fn ux_ai20_150_checks_pass() {
+        let sets = run_ux_ai20_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 150);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
         }
     }
 

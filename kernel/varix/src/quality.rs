@@ -1157,7 +1157,7 @@ pub fn run_quality_checks() -> CheckSet {
 
     // F489 全系统闭环自检：30 域注册、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 30 && !lp.truncated() && lp.all_passed(), "30 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 39 && !lp.truncated() && lp.all_passed(), "39 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
