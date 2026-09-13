@@ -55,6 +55,14 @@ pub mod ai48;
 pub mod ai49;
 // AURORA-10000：AI-50 批次（F06126~F06250），勿删。
 pub mod ai50;
+// AURORA-10000：AI-76 批次（F09376~F09500），勿删。
+pub mod ai76;
+// AURORA-10000：AI-77 批次（F09501~F09625），勿删。
+pub mod ai77;
+// AURORA-10000：AI-78 批次（F09626~F09750），勿删。
+pub mod ai78;
+// AURORA-10000：AI-79 批次（F09751~F09875），勿删。
+pub mod ai79;
 
 // AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
 pub mod debug;
@@ -410,6 +418,50 @@ pub fn run_ai50_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// AURORA-10000：AI-76 批次，勿删。
+pub fn run_ai76_checks() -> Vec<CheckSet> {
+    vec![
+        ai76::run_tests_checks(),
+        ai76::run_ci_checks(),
+        ai76::run_quality_checks(),
+        ai76::run_perf_checks(),
+        ai76::run_secp_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-77 批次，勿删。
+pub fn run_ai77_checks() -> Vec<CheckSet> {
+    vec![
+        ai77::run_obs_checks(),
+        ai77::run_data_checks(),
+        ai77::run_release_checks(),
+        ai77::run_doc_checks(),
+        ai77::run_iac_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-78 批次，勿删。
+pub fn run_ai78_checks() -> Vec<CheckSet> {
+    vec![
+        ai78::run_collab_checks(),
+        ai78::run_domain_acc_checks(),
+        ai78::run_perf_finale_checks(),
+        ai78::run_quality_finale_checks(),
+        ai78::run_doc_finale_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-79 批次，勿删。
+pub fn run_ai79_checks() -> Vec<CheckSet> {
+    vec![
+        ai79::run_ritual_checks(),
+        ai79::run_handover_checks(),
+        ai79::run_iteration_checks(),
+        ai79::run_ops_checks(),
+        ai79::run_epoch_checks(),
+    ]
+}
+
 /// 全量自检（W1+W2+W3+W4+AURORA-10000 领域05）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
@@ -425,6 +477,11 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ai23_checks());
     v.extend(run_ai24_checks());
     v.extend(run_ai25_checks());
+    // AURORA-10000：AI-76~AI-79 批次（领域16），勿删。
+    v.extend(run_ai76_checks());
+    v.extend(run_ai77_checks());
+    v.extend(run_ai78_checks());
+    v.extend(run_ai79_checks());
     v
 }
 
@@ -650,6 +707,43 @@ mod aurora_w2_tests {
     #[test]
     fn ai50_125_checks_pass() {
         let sets = run_ai50_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// AURORA-10000：AI-76~AI-79 批次测试，勿删。
+    #[test]
+    fn ai76_125_checks_pass() {
+        let sets = run_ai76_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai77_125_checks_pass() {
+        let sets = run_ai77_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai78_125_checks_pass() {
+        let sets = run_ai78_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai79_125_checks_pass() {
+        let sets = run_ai79_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
