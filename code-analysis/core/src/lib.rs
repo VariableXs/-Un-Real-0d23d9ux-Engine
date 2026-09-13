@@ -35,6 +35,11 @@ pub mod uispec;
 // AI-09 域（C01~C24）：三壳统一底座——一个 core 三个壳（Windows/Variable/VARIX）。
 pub mod shell;
 
+// UNREAL-X：AI-03 批次（X00501~X00750 领域01 品牌剧场深化），勿删。
+pub mod ai03;
+// UNREAL-X：AI-04 批次（X00751~X01000 领域01 启动收官与遥测），勿删。
+pub mod ai04;
+
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai21;
 // AURORA-10000：AI-22 批次（F02626~F02750），勿删。
@@ -78,6 +83,9 @@ pub mod colorfix;
 pub mod keymap;
 pub mod oscompat;
 pub mod semantic;
+
+// UNREAL-X 桌面域（族0109~0112 · X02701~X02800）。
+pub mod desktop;
 
 use checks::CheckSet;
 
@@ -419,6 +427,38 @@ pub fn run_ai50_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-03 批次（品牌剧场深化 10 族 250 项），勿删。
+pub fn run_ux_ai03_checks() -> Vec<CheckSet> {
+    vec![
+        ai03::run_dynamic_mark_checks(),
+        ai03::run_soundscape_checks(),
+        ai03::run_color_temp_checks(),
+        ai03::run_wordmark_checks(),
+        ai03::run_countdown_checks(),
+        ai03::run_transition_checks(),
+        ai03::run_moodboard_checks(),
+        ai03::run_boot_a11y_checks(),
+        ai03::run_cold_start_checks(),
+        ai03::run_first_scan_checks(),
+    ]
+}
+
+/// UNREAL-X：AI-04 批次（启动收官与遥测 10 族 250 项），勿删。
+pub fn run_ux_ai04_checks() -> Vec<CheckSet> {
+    vec![
+        ai04::run_telemetry_checks(),
+        ai04::run_failure_checks(),
+        ai04::run_baseline_checks(),
+        ai04::run_oem_checks(),
+        ai04::run_doc_theater_checks(),
+        ai04::run_stress_checks(),
+        ai04::run_memoir_checks(),
+        ai04::run_graduation_checks(),
+        ai04::run_archive_checks(),
+        ai04::run_finale_checks(),
+    ]
+}
+
 /// AURORA-10000：AI-76 批次，勿删。
 pub fn run_ai76_checks() -> Vec<CheckSet> {
     vec![
@@ -495,6 +535,11 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ai78_checks());
     v.extend(run_ai79_checks());
     v.extend(run_ai80_checks());
+    // UNREAL-X：AI-03/AI-04 批次（领域01），勿删。
+    v.extend(run_ux_ai03_checks());
+    v.extend(run_ux_ai04_checks());
+    // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
+    v.extend(desktop::run_desktop_checks());
     v
 }
 
@@ -675,6 +720,25 @@ mod aurora_w2_tests {
     fn ai25_125_checks_pass() {
         let sets = run_ai25_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-03/AI-04 领域01 各 500 检，勿删。
+    #[test]
+    fn ux_ai03_250_checks_pass() {
+        let sets = run_ux_ai03_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ux_ai04_250_checks_pass() {
+        let sets = run_ux_ai04_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }

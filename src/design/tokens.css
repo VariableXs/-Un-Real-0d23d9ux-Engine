@@ -316,9 +316,27 @@
   --w2-tooltip-bg: var(--bg-raised);                         /* F01642 tooltip */
   --w2-menu-shadow: var(--elev-3);                           /* F01643 菜单阴影 */
   --w2-selection: oklch(0.68 0.09 262 / 0.35);               /* F01715 选择色 */
+  --w2-warm-deep: oklch(0.56 0.08 55);                       /* UNREAL-X AI-03 族0023 色温档 2700K */
+  --w2-warm: oklch(0.62 0.08 70);                            /* UNREAL-X AI-03 族0023 色温档 3800K */
+  --w2-neutral: oklch(0.65 0.06 180);                        /* UNREAL-X AI-03 族0023 色温档 5000K */
+  --w2-day: oklch(0.68 0.06 250);                            /* UNREAL-X AI-03 族0023 色温档 6500K */
   --w2-lh: 1.6;                                              /* F01704 行高 */
   --w2-theme-dur: 240ms;                                     /* F01674 明暗过渡 */
   --w2-font-ui: inherit;                                     /* F01788 全局字体 */
   --w2-font-mono: "Cascadia Mono", Consolas, monospace;      /* F01789 等宽字体 */
   --w2-tracking: 0em;                                        /* F01791 字距微调 */
+}
+
+/* ============================================================
+ * UNREAL-X AI-02：电源状态剧场（族0011~0020 · X00251~X00500）氛围令牌。
+ * 环境光五档（0 全亮 = 现状 → 4 全暗），关机/唤醒仪式 veil 层引用；
+ * 只增不改：其余 AI 批次令牌不受影响。
+ * ============================================================ */
+:root {
+  --px2-veil-l0: oklch(1 0 0 / 0);        /* X00261/X00286 全亮（现状） */
+  --px2-veil-l1: oklch(0.15 0.02 260 / 0.12);
+  --px2-veil-l2: oklch(0.15 0.02 260 / 0.28);
+  --px2-veil-l3: oklch(0.15 0.02 260 / 0.48);
+  --px2-veil-l4: oklch(0.15 0.02 260 / 0.72);
+  --px2-veil-dur: var(--dur-6);           /* reduce-motion 走既有降级链 */
 }

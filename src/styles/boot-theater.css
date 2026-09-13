@@ -233,3 +233,159 @@
   from { opacity: 0; }
   to { opacity: 0; }
 }
+
+/* ============================================================
+ * UNREAL-X AI-03 批次（族0021~0028 · X00501~X00700），勿删。
+ * 品牌剧场深化样式层：动态标识/声景可视化/色温曲线/字标动势/
+ * 倒计时美学/转场语法/情绪板/启动无障碍。零硬编码色值与时长 ——
+ * 色相走 --w2-warm*/--w2-day 档位令牌，时长走 --dur-*，曲线走 --ease-*。
+ * ============================================================ */
+
+/* ---- 族0021 动态标识：五档点阵字标 ---- */
+.bt-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.bt-mark-cells {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-1, 4px);
+}
+.bt-mark-cell {
+  border-radius: var(--r-chip, 4px);
+  background: oklch(1 0 0 / 0.08);
+  animation: bt-mark-pulse var(--dur-3) var(--ease-standard) infinite;
+}
+.bt-mark--static .bt-mark-cell { animation: none; opacity: 0.85; }
+.bt-mark--hc .bt-mark-cell { background: none; border: 2px solid currentColor; }
+@keyframes bt-mark-pulse {
+  0%, 100% { opacity: 0.2; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ---- 族0022 声景可视化：包络条（attack/hold/release 三段） ---- */
+.bt-soundscape {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18%;
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-1, 4px);
+}
+.bt-soundscape-bar {
+  width: 3px;
+  height: 48px;
+  transform-origin: bottom;
+  animation: bt-soundscape-env var(--dur-6) var(--ease-standard) infinite;
+}
+.bt-soundscape--muted .bt-soundscape-bar { animation: none; opacity: 0.15; }
+@keyframes bt-soundscape-env {
+  0% { transform: scaleY(0); }
+  25% { transform: scaleY(1); }
+  60% { transform: scaleY(1); }
+  100% { transform: scaleY(0); }
+}
+
+/* ---- 族0023 色温曲线：整场色温覆盖层（档位令牌取色） ---- */
+.bt-colortemp {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: background-color var(--dur-6) var(--ease-standard);
+}
+.bt-colortemp--2700k { background: oklch(from var(--w2-warm-deep) l c h / 0.18); }
+.bt-colortemp--3800k { background: oklch(from var(--w2-warm) l c h / 0.14); }
+.bt-colortemp--5000k { background: oklch(from var(--w2-neutral) l c h / 0.10); }
+.bt-colortemp--6500k { background: transparent; }
+.bt-root--hc .bt-colortemp { background: transparent !important; }
+
+/* ---- 族0024 字标动势：逐字入场 + 字距脉动 ---- */
+.bt-wordmark {
+  display: inline-flex;
+  justify-content: center;
+}
+.bt-wordmark-glyph {
+  display: inline-block;
+  animation: bt-glyph-in var(--dur-4) var(--ease-emphasized) both;
+}
+.bt-wordmark--breath .bt-wordmark-glyph { animation: bt-glyph-breathe var(--dur-6) var(--ease-standard) infinite; }
+@keyframes bt-glyph-in {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+@keyframes bt-glyph-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* ---- 族0025 倒计时美学：进度环 + 紧迫度三态 ---- */
+.bt-countdown {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  font-variant-numeric: tabular-nums;
+}
+.bt-countdown-ring { transform: rotate(-90deg); }
+.bt-countdown-ring circle { fill: none; stroke-width: 3; }
+.bt-countdown-ring-bg { stroke: oklch(1 0 0 / 0.12); }
+.bt-countdown-ring-fg { stroke: var(--text-primary); transition: stroke-dashoffset var(--dur-4) linear; }
+.bt-countdown--warn .bt-countdown-ring-fg { stroke: var(--warn); }
+.bt-countdown--danger .bt-countdown-ring-fg { stroke: var(--danger); }
+
+/* ---- 族0026 转场语法：进场/退场两套（令牌时长） ---- */
+.bt-transition-enter { animation: bt-transition-in var(--dur-3) var(--ease-standard) both; }
+.bt-transition-exit { animation: bt-transition-out calc(var(--dur-3) * 0.8) var(--ease-standard) both; }
+.bt-reduce .bt-transition-enter,
+.bt-reduce .bt-transition-exit { animation-duration: var(--dur-1); animation-name: bt-fade-only; }
+@keyframes bt-transition-in {
+  from { opacity: 0; transform: scale(0.98) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes bt-transition-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.98) translateY(-8px); }
+}
+@keyframes bt-fade-only {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- 族0027 情绪板：三色组背景衬层（取色流水线输出档） ---- */
+.bt-mood {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+}
+.bt-mood--neighbor { background: radial-gradient(60% 60% at 20% 20%, var(--accent-soft) 0%, transparent 70%); }
+.bt-mood--complement { background: radial-gradient(60% 60% at 80% 80%, var(--accent-soft) 0%, transparent 70%); }
+.bt-root--hc .bt-mood { display: none; }
+
+/* ---- 族0028 启动无障碍：字幕条 + Esc 跳过提示 ---- */
+.bt-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  max-width: 80%;
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  border-radius: var(--r-chip, 4px);
+  background: oklch(0.05 0 0 / 0.72);
+  color: oklch(1 0 0 / 0.92);
+  text-align: center;
+  line-height: var(--w2-lh, 1.6);
+}
+.bt-caption[hidden] { display: none; }
+.bt-skip-hint {
+  position: absolute;
+  right: var(--sp-2, 8px);
+  bottom: var(--sp-2, 8px);
+  opacity: 0.7;
+}
