@@ -9,6 +9,8 @@ import * as E from './groupE';
 import * as X1 from './groupX1';
 import * as X2 from './groupX2';
 import * as X19 from './groupX19';
+import * as G from './groupG';
+import * as H from './groupH';
 
 export interface CheckEntry {
   id: string;
@@ -906,6 +908,28 @@ export function runAi02Checks(): { entries: CheckEntry[]; failed: CheckEntry[] }
   const families = [
     X2.checkX0011, X2.checkX0012, X2.checkX0013, X2.checkX0016, X2.checkX0017,
     X2.checkX0018, X2.checkX0019, X2.checkX0020, X2.checkX0020b,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-17（族0161~0170 · X04001~X04250）聚合：输入手感面断言组，只增不删。
+export function runAi17Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    G.checkX0161, G.checkX0162, G.checkX0163, G.checkX0164, G.checkX0165,
+    G.checkX0166, G.checkX0167, G.checkX0168, G.checkX0169, G.checkX0170,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-18（族0171~0180 · X04251~X04500）聚合：输入智能断言组，只增不删。
+export function runAi18Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    H.checkX0171, H.checkX0172, H.checkX0173, H.checkX0174, H.checkX0175,
+    H.checkX0176, H.checkX0177, H.checkX0178, H.checkX0179, H.checkX0180,
   ];
   const entries = families.flatMap((f) => f().map(memoized));
   const failed = entries.filter((e) => !e.check());

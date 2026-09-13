@@ -2,7 +2,7 @@
 
 > **Unreal X 计划**：60 名 AI（AI-01~AI-60），每人 10 族 × 25 项 = 250 项，合计 15000 项（X00001~X15000）。
 > **项级明细**：每人 250 项的逐条明细（【层·档】/工作内容/形态/落点/验收）见《UNREAL-X-15000-功能全景图》**四部本**（第1部领域01~04 / 第2部05~08 / 第3部09~12 / 第4部13~16）对应 AI 块；本图是**落点与验收的权威源**，全景图族块与 AI 区间一一对应。
-> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）· 累计 4250/15000 项交付，其余 ⬜。
+> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33 ✅（领域09）· 累计 4750/15000 项交付，其余 ⬜。
 > 落点缩写：【K】=kernel/varix/src/【V】=src/【C】=code-analysis/。验收门禁见《UNREAL-X-15000-实施总步骤图》§4（G1~G4 四道门禁）。
 > 波次：W1=领域01~03，W2=04~06，W3=07~09，W4=10~12，W5=13~15，W6=16 工程，W7=16 收官。
 
@@ -100,15 +100,17 @@
 
 ## 领域05 · 键盘与输入手感（W2）
 
-**AI-17 输入手感面（族0161~0170 · X04001~X04250）⬜**
+**AI-17 输入手感面（族0161~0170 · X04001~X04250）✅**
 - 主责：V
 - 落点：【V】src/features/inputFeel/、src/styles/input-feel.css
 - 交付：按键手感2.0、编辑手感2.0、代码输入、跨窗输入、输入无障碍2.0、触控板2.0、鼠标2.0、语音2.0、手写2.0、表情符号2.0
+- 落地：src/features/inputFeel/ 六模块（keyFeelX2/crossA11y/pointerFeel/softInput/undoAuto/inputGuard + InputFeelX2Panel 消费面入 InputFeelTab）；src/styles/input-feel.css「AI-17/AI-18 批次」if-key-press/if-cross-halo/if-echo-bar/if-voice-orb/if-ink-trail/if-emoji-dock/if-smart-suggest/if-focus-veil/if-guard-shield/if-layer-chip/if-periph-row 段；src/features/uikit/groupG.ts 断言组入 runAi17Checks；code-analysis/core/src/ai17.rs（10 CheckSet × 25 = 250 检，run_ux_ai17_checks 入 run_all_checks）
 
-**AI-18 输入智能（族0171~0180 · X04251~X04500）⬜**
+**AI-18 输入智能（族0171~0180 · X04251~X04500）✅**
 - 主责：V+C（V8/C2）
 - 落点：【V】翻译/识图/撤销/自动化模块、【C】OCR/统计训练
 - 交付：翻译词典2.0、识图2.0、OCR 提取、统计训练、撤销历史2.0、自动化输入2.0、聚焦书写2.0、输入安全2.0、按键映射2.0、外设键盘
+- 落地：src/features/inputFeel/inputSmart.ts（翻译/识图/OCR/统计训练）+ undoAuto.ts（撤销/自动化/聚焦书写）+ inputGuard.ts（安全/映射/外设键盘）；src/features/uikit/groupH.ts 断言组入 runAi18Checks；code-analysis/core/src/ai18.rs（10 CheckSet × 25 = 250 检，run_ux_ai18_checks 入 run_all_checks）
 
 **AI-19 内核输入栈（族0181~0190 · X04501~X04750）✅**
 - 主责：K（8 族内核 + 2 代码分析）
@@ -185,17 +187,19 @@
 - 落点：【K】kernel/varix/src/（driver.rs、acpi.rs、cpu/、usb/蓝牙/网络栈）【C】基准/HIL
 - 交付：驱动模型2.0、中断 DMA、ACPI、热管理、USB 栈、蓝牙栈、网络栈、GPU 抽象、基准、在环测试
 
-**AI-32 设备场景与收官（族0311~0320 · X07751~X08000）⬜**
+**AI-32 设备场景与收官（族0311~0320 · X07751~X08000）✅**
 - 主责：V+C+三方
 - 落点：【V】场景模式、【C】可靠性/兼容库/健康预测
 - 交付：笔记本2.0、DIY2.0、二合一2.0、IoT、可靠性、兼容库、健康预测、无障碍、生态开放、收官
+- 落点记录：src/features/hardware/ai32Models.ts（AI-32 逻辑核：LaptopScene/DiyTuner/PostureSense/IotMesh/ReliabilityMonitor/HwCompatLib/HealthPredictor/HwA11y/HwEcoOpen/HwFinale 十模型）+ ai32Checks.ts checkF0311~checkF0320（250 项断言全绿，ID 连续无重 X07751~X08000）+ __tests__/ai32.test.ts 3 例绿（tsc 0 错、vitest 全绿）
 
 ## 领域09 · 兼容性防线（W3）
 
-**AI-33 运行时兼容（族0321~0330 · X08001~X08250）⬜**
+**AI-33 兼容性防线·第1组（族0321~0330 · X08001~X08250）✅**
 - 主责：V+K（V6/K4）
 - 落点：【V】src/features/compat/、【K】驱动/管线兼容
 - 交付：嵌入探测2.0、反作弊共存2.0、CEF 兼容2.0、全屏让位2.0、老应用2.0、驱动拦截、Shell 扩展、显示管线、音频管线、网络兼容
+- 落点记录：src/features/compat/ai33Models.ts（AI-33 逻辑核：EmbedProbe/AnticheatCoex/CefCompat/FullscreenYield/LegacyApp/DriverIntercept/ShellExtCompat/DisplayPipeline/AudioPipeline/NetCompat 十模型）+ ai33Checks.ts checkF0321~checkF0330（250 项断言全绿，ID 连续无重 X08001~X08250）+ __tests__/ai33.test.ts 3 例绿（tsc 0 错、vitest 全绿）
 
 **AI-34 兼容工程（族0331~0340 · X08251~X08500）⬜**
 - 主责：C+V+K
@@ -356,11 +360,11 @@
 | 02 窗口与空间 | AI-05~08 | 1000 | 🔶 |
 | 03 桌面与图标 | AI-09~12 | 1000 | 🔶 |
 | 04 任务栏与开始菜单 | AI-13~16 | 1000 | 🔶 |
-| 05 键盘与输入手感 | AI-17~20 | 1000 | 🔶（AI-19/AI-20 ✅ 500/1000） |
+| 05 键盘与输入手感 | AI-17~20 | 1000 | ✅（AI-17~20 全量 1000/1000） |
 | 06 文件与数据能力 | AI-21~24 | 1000 | 🔶（AI-24 ✅ 250/1000） |
 | 07 效率与工具中枢 | AI-25~28 | 1000 | 🔶（AI-25 ✅ 250/1000） |
-| 08 系统集成与硬件 | AI-29~32 | 1000 | ⬜ |
-| 09 兼容性防线 | AI-33~35 | 750 | ⬜ |
+| 08 系统集成与硬件 | AI-29~32 | 1000 | 🔶（AI-32 ✅ 250/1000） |
+| 09 兼容性防线 | AI-33~35 | 750 | 🔶（AI-33 ✅ 250/750） |
 | 10 安全与隐私 | AI-36~39 | 1000 | ⬜ |
 | 11 开放生态 | AI-40~42 | 750 | ⬜ |
 | 12 视觉个性化氛围 | AI-43~46 | 1000 | ⬜ |
@@ -368,4 +372,4 @@
 | 14 无障碍与本地化 | AI-50~52 | 750 | ⬜ |
 | 15 UI 设计与优化 | AI-53~56 | 1000 | ⬜ |
 | 16 工程质量收官 | AI-57~60 | 1000 | ⬜ |
-| **合计** | **AI-01~60** | **15000** | **3250/15000** |
+| **合计** | **AI-01~60** | **15000** | **4750/15000** |

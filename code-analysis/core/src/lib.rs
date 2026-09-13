@@ -47,6 +47,10 @@ pub mod ai03;
 pub mod ai04;
 // UNREAL-X：AI-19 批次（X04501~X04750 领域05 内核输入栈·基准/遥测），勿删。
 pub mod ai19;
+// UNREAL-X：AI-17 批次（X04001~X04250 领域05 输入手感面），勿删。
+pub mod ai17;
+// UNREAL-X：AI-18 批次（X04251~X04500 领域05 输入智能），勿删。
+pub mod ai18;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai16;
@@ -59,6 +63,10 @@ pub mod ai23;
 pub mod ai24;
 // AURORA-10000：AI-25 批次（F03001~F03125），勿删。
 pub mod ai25;
+// UNREAL-X：AI-34 批次（X08251~X08500 领域09 兼容工程 C 线），勿删。
+pub mod ai34;
+// UNREAL-X：AI-35 批次（X08651~X08750 领域09 兼容深化 C 线），勿删。
+pub mod ai35;
 // AURORA-10000：AI-46 批次（F05626~F05750 领域10 安全与隐私），勿删。
 pub mod ai46;
 // AURORA-10000：AI-47 批次（F05751~F05875），勿删。
@@ -462,6 +470,70 @@ pub fn run_ux_ai03_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-19 批次（内核输入栈 2 族 50 项），勿删。
+pub fn run_ux_ai19_checks() -> Vec<CheckSet> {
+    vec![ai19::run_ink_bench_checks(), ai19::run_ink_telemetry_checks()]
+}
+
+/// UNREAL-X：AI-24 批次（数据智能与收官 C 线六族 150 项），勿删。
+pub fn run_ux_ai24_checks() -> Vec<CheckSet> {
+    vec![
+        fs::ai24::run_search_index_checks(),
+        fs::ai24::run_dedup_checks(),
+        fs::ai24::run_profile_checks(),
+        fs::ai24::run_sniffer_checks(),
+        fs::ai24::run_extension_checks(),
+        fs::ai24::run_file_finale_checks(),
+    ]
+}
+
+/// UNREAL-X：AI-34 批次（兼容工程 C 线 4 族 100 项），勿删。
+pub fn run_ux_ai34_checks() -> Vec<CheckSet> {
+    vec![
+        ai34::run_checkup_checks(),
+        ai34::run_lab_checks(),
+        ai34::run_telemetry_checks(),
+        ai34::run_regress_checks(),
+    ]
+}
+
+/// UNREAL-X：AI-35 批次（兼容深化 C 线 2 族 50 项），勿删。
+pub fn run_ux_ai35_checks() -> Vec<CheckSet> {
+    vec![ai35::run_perf_tax_checks(), ai35::run_archive_checks()]
+}
+
+/// UNREAL-X：AI-17 批次（输入手感面 10 族 250 项），勿删。
+pub fn run_ux_ai17_checks() -> Vec<CheckSet> {
+    vec![
+        ai17::run_key_feel_checks(),
+        ai17::run_edit_feel_checks(),
+        ai17::run_code_input_checks(),
+        ai17::run_cross_window_checks(),
+        ai17::run_input_a11y_checks(),
+        ai17::run_touchpad_checks(),
+        ai17::run_mouse_checks(),
+        ai17::run_voice_checks(),
+        ai17::run_handwriting_checks(),
+        ai17::run_emoji_checks(),
+    ]
+}
+
+/// UNREAL-X：AI-18 批次（输入智能 10 族 250 项），勿删。
+pub fn run_ux_ai18_checks() -> Vec<CheckSet> {
+    vec![
+        ai18::run_translate_checks(),
+        ai18::run_screen_read_checks(),
+        ai18::run_ocr_checks(),
+        ai18::run_stats_checks(),
+        ai18::run_undo_checks(),
+        ai18::run_auto_input_checks(),
+        ai18::run_focus_checks(),
+        ai18::run_input_security_checks(),
+        ai18::run_keymap_checks(),
+        ai18::run_peripheral_checks(),
+    ]
+}
+
 /// UNREAL-X：AI-04 批次（启动收官与遥测 10 族 250 项），勿删。
 pub fn run_ux_ai04_checks() -> Vec<CheckSet> {
     vec![
@@ -488,23 +560,6 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
         input::ai20::run_checkup_checks(),
         input::ai20::run_finale_checks(),
     ]
-}
-
-/// UNREAL-X：AI-24 批次（数据智能与收官 C 线六族 150 项），勿删。
-pub fn run_ux_ai24_checks() -> Vec<CheckSet> {
-    vec![
-        fs::ai24::run_search_index_checks(),
-        fs::ai24::run_dedup_checks(),
-        fs::ai24::run_profile_checks(),
-        fs::ai24::run_sniffer_checks(),
-        fs::ai24::run_extension_checks(),
-        fs::ai24::run_file_finale_checks(),
-    ]
-}
-
-/// UNREAL-X：AI-19 批次（内核输入栈基准/遥测 2 族 50 项），勿删。
-pub fn run_ux_ai19_checks() -> Vec<CheckSet> {
-    vec![ai19::run_ink_bench_checks(), ai19::run_ink_telemetry_checks()]
 }
 
 /// AURORA-10000：AI-76 批次，勿删。
@@ -588,12 +643,14 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-03/AI-04 批次（领域01），勿删。
     v.extend(run_ux_ai03_checks());
     v.extend(run_ux_ai04_checks());
-    // UNREAL-X：AI-19 批次（领域05 内核输入栈），勿删。
+    // UNREAL-X：AI-19/AI-20 批次（领域05 输入），勿删。
     v.extend(run_ux_ai19_checks());
+    v.extend(run_ux_ai20_checks());
     // UNREAL-X：AI-20 输入工程与中文（领域05 · C 线 125 检），勿删。
     v.extend(run_ux_ai20_checks());
-    // UNREAL-X：AI-24 数据智能与收官（领域06 · C 线 150 检），勿删。
-    v.extend(run_ux_ai24_checks());
+    // UNREAL-X：AI-17/AI-18 批次（领域05 输入手感面 + 输入智能），勿删。
+    v.extend(run_ux_ai17_checks());
+    v.extend(run_ux_ai18_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
     v.extend(desktop::run_desktop_checks());
     v
@@ -818,8 +875,7 @@ mod aurora_w2_tests {
         let sets = run_ux_ai24_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 150);
         for s in &sets {
-            assert!(s.all_pass(), "domain {} failed:
-{}", s.domain, s.render());
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
     }
 
@@ -837,6 +893,26 @@ mod aurora_w2_tests {
     #[test]
     fn ux_ai04_250_checks_pass() {
         let sets = run_ux_ai04_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-17 批次测试（输入手感面 250 检），勿删。
+    #[test]
+    fn ux_ai17_250_checks_pass() {
+        let sets = run_ux_ai17_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-18 批次测试（输入智能 250 检），勿删。
+    #[test]
+    fn ux_ai18_250_checks_pass() {
+        let sets = run_ux_ai18_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());

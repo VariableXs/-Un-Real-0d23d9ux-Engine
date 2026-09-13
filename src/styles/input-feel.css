@@ -213,3 +213,155 @@
   border-radius: 4px;
   padding: 0 6px;
 }
+
+/* ============================================================
+ * UNREAL-X AI-17/AI-18 批次（族0161~0180 · X04001~X04500），勿删。
+ * 输入手感 2.0 与输入智能 2.0 的可视面：全 token 引用，禁裸值。
+ * ============================================================ */
+
+/* 键按下手感（族0161）：按压深度 + 触感视觉替代 */
+.if-key-press {
+  transition: transform var(--dur-1, 80ms) var(--ease-standard, ease), box-shadow var(--dur-1, 80ms) var(--ease-standard, ease);
+}
+.if-key-press:active {
+  transform: translateY(var(--w2-press-shift, 1px));
+  box-shadow: var(--elev-hover, var(--w2-menu-shadow));
+}
+.if-key-press:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring, 0 0 0 2px var(--accent));
+}
+
+/* 跨窗输入光晕（族0164）：悬停窗归属提示 */
+.if-cross-halo {
+  box-shadow: 0 0 0 var(--sp-1, 4px) var(--accent-soft, oklch(0.68 0.09 262 / 0.16));
+  transition: box-shadow var(--dur-2, 120ms) var(--ease-standard, ease);
+}
+
+/* 输入无障碍回显条（族0165） */
+.if-echo-bar {
+  min-height: var(--ctl-touch, 44px);
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  border-radius: var(--r-ctl, 8px);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  line-height: var(--w2-lh, 1.6);
+  letter-spacing: var(--w2-tracking, 0);
+}
+
+/* 语音听写声纹珠（族0168） */
+.if-voice-orb {
+  width: var(--sp-3, 12px);
+  height: var(--sp-3, 12px);
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.9;
+}
+@media (prefers-reduced-motion: reduce) {
+  .if-voice-orb {
+    animation: none;
+  }
+}
+
+/* 手写墨迹轨（族0169） */
+.if-ink-trail {
+  stroke: var(--text-primary);
+  stroke-width: var(--sp-1, 4px);
+  stroke-linecap: round;
+  fill: none;
+}
+
+/* 表情面板停靠（族0170） */
+.if-emoji-dock {
+  display: grid;
+  gap: var(--sp-1, 4px);
+  padding: var(--sp-2, 8px);
+  border-radius: var(--r-card, 12px);
+  background: var(--bg-surface);
+  box-shadow: var(--w2-menu-shadow);
+}
+
+/* 输入智能建议（族0171~0174） */
+.if-smart-suggest {
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  border-radius: var(--r-chip, 4px);
+  background: var(--accent-soft, oklch(0.68 0.09 262 / 0.16));
+  color: var(--text-primary);
+  font-size: var(--fs-12, 12px);
+  line-height: var(--w2-lh, 1.6);
+}
+
+/* 聚焦书写面纱（族0177） */
+.if-focus-veil {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-canvas);
+  opacity: 0.92;
+  z-index: var(--z-overlay, 100);
+}
+.if-focus-veil[data-phase="done"] {
+  opacity: 0;
+  transition: opacity var(--dur-3, 170ms) var(--ease-standard, ease);
+}
+
+/* 输入安全盾徽（族0178） */
+.if-guard-shield {
+  padding: var(--sp-1, 4px);
+  border-radius: var(--r-ctl, 8px);
+  border: 2px solid var(--success, oklch(0.78 0.14 160));
+  color: var(--text-primary);
+}
+
+/* 映射层指示（族0179） */
+.if-layer-chip {
+  font-size: var(--fs-12, 12px);
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--sp-1, 4px);
+  border-radius: var(--r-chip, 4px);
+  background: var(--bg-raised);
+}
+
+/* 外设键盘叙事行（族0180）+ 自检面板（消费端） */
+.if-periph-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  min-height: var(--ctl-menu, 36px);
+  color: var(--text-secondary);
+  font-size: var(--fs-13, 13px);
+  line-height: var(--w2-lh, 1.6);
+}
+.if-x2-panel {
+  padding: var(--sp-2, 8px) 0;
+}
+.if-x2-summary {
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  border-radius: var(--r-ctl, 8px);
+  background: var(--bg-surface);
+  font-size: var(--fs-13, 13px);
+}
+.if-x2-summary[data-ok="yes"] {
+  border: 1px solid var(--success, oklch(0.78 0.14 160));
+}
+.if-x2-summary[data-ok="no"] {
+  border: 1px solid var(--danger, oklch(0.68 0.19 25));
+}
+.if-x2-list {
+  margin: var(--sp-2, 8px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.if-x2-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  min-height: 22px;
+  font-size: var(--fs-12, 12px);
+  line-height: var(--w2-lh, 1.6);
+}
+.if-x2-item .ok {
+  color: var(--success, oklch(0.78 0.14 160));
+}
+.if-x2-item .bad {
+  color: var(--danger, oklch(0.68 0.19 25));
+}

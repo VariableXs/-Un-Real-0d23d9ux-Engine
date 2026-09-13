@@ -13,6 +13,7 @@ import { errMessage, ipc } from "../../lib/ipc";
 import type { Settings } from "../../lib/settings";
 import { pushToast } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
+import { InputFeelX2Panel } from "../inputFeel/InputFeelX2Panel";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   KEYBOARD_COVERAGE,
@@ -432,6 +433,9 @@ export function InputFeelTab(props: { settings: Settings; onPatch: (p: Partial<S
           </table>
         </div>
       </section>
+
+      {/* ---------------- UNREAL-X AI-17/AI-18：输入手感与输入智能 2.0 自检面 ---------------- */}
+      <InputFeelX2Panel />
     </div>
   );
 }
