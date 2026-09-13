@@ -36,6 +36,10 @@ pub mod telemetry;
 pub mod input;
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
 pub mod inkstack;
+// UNREAL-X AI-34（族0339 · X08451~X08475）：内核兼容 API 层。
+pub mod compatapi;
+// UNREAL-X AI-35（族0341~0343 · X08501~X08575）：Shim 工程/版本协商/兼容沙盒。
+pub mod compatshim;
 pub mod integrity;
 pub mod kaslr;
 pub mod limine;

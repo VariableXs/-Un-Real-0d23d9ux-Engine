@@ -2,7 +2,7 @@
 
 > **Unreal X 计划**：60 名 AI（AI-01~AI-60），每人 10 族 × 25 项 = 250 项，合计 15000 项（X00001~X15000）。
 > **项级明细**：每人 250 项的逐条明细（【层·档】/工作内容/形态/落点/验收）见《UNREAL-X-15000-功能全景图》**四部本**（第1部领域01~04 / 第2部05~08 / 第3部09~12 / 第4部13~16）对应 AI 块；本图是**落点与验收的权威源**，全景图族块与 AI 区间一一对应。
-> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33 ✅（领域09）· 累计 4750/15000 项交付，其余 ⬜。
+> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33/AI-34/AI-35 ✅（领域09）、AI-36/AI-37 ✅（领域10）· 累计 5750/15000 项交付，其余 ⬜。
 > 落点缩写：【K】=kernel/varix/src/【V】=src/【C】=code-analysis/。验收门禁见《UNREAL-X-15000-实施总步骤图》§4（G1~G4 四道门禁）。
 > 波次：W1=领域01~03，W2=04~06，W3=07~09，W4=10~12，W5=13~15，W6=16 工程，W7=16 收官。
 
@@ -179,15 +179,17 @@
 - 落点：【V】src/features/hardware/、src/features/settings/SystemCenterTab.tsx、【K】固件/虚拟化
 - 交付：显示显卡2.0、音频2.0、电池电源2.0、外设中心2.0、存储介质2.0、固件2.0、输入联动2.0、传感2.0、互联2.0、虚拟化2.0
 
-**AI-30 系统服务面（族0291~0300 · X07251~X07500）⬜**
+**AI-30 系统服务面（族0291~0300 · X07251~X07500）✅**
 - 主责：V
 - 落点：【V】src/features/settings/（Perf/Quality/CodeDeploy/Snapshot 各卡）
 - 交付：诊断2.0、更新部署2.0、灾备迁移2.0、安全硬件2.0、调校2.0、触屏笔2.0、摄像头2.0、色准2.0、空间化2.0、扫描2.0
+- 落点记录：src/features/hardware/ai30Models.ts（诊断/更新部署/灾备/安全硬件/调校/触屏笔/摄像头/色准/空间化/扫描十模型，确定性算法）+ ai30Checks.ts checkF0291~checkF0300（250 项断言全绿，ID 连续无重 X07251~X07500）+ __tests__/ai30.test.ts 3 例绿（tsc 0 错、vitest 全绿）
 
-**AI-31 内核硬件栈（族0301~0310 · X07501~X07750）⬜**
+**AI-31 内核硬件栈（族0301~0310 · X07501~X07750）✅**
 - 主责：K（8 族内核 + 2 代码分析）
 - 落点：【K】kernel/varix/src/（driver.rs、acpi.rs、cpu/、usb/蓝牙/网络栈）【C】基准/HIL
 - 交付：驱动模型2.0、中断 DMA、ACPI、热管理、USB 栈、蓝牙栈、网络栈、GPU 抽象、基准、在环测试
+- 落点记录：【K】kernel/varix/src/drivers/（driver/irqdma/acpi/thermal/usb/bt/netstack/gpu 八族各 25 检，drivers/mod.rs run_ai31_hardware_checks 聚合 200 项全绿）【C】code-analysis/core/src/ai31.rs（族0309 硬件基准 + 族0310 HIL 各 25 检，run_all_checks 接线，ID 连续 X07701~X07750）
 
 **AI-32 设备场景与收官（族0311~0320 · X07751~X08000）✅**
 - 主责：V+C+三方
@@ -203,27 +205,31 @@
 - 交付：嵌入探测2.0、反作弊共存2.0、CEF 兼容2.0、全屏让位2.0、老应用2.0、驱动拦截、Shell 扩展、显示管线、音频管线、网络兼容
 - 落点记录：src/features/compat/ai33Models.ts（AI-33 逻辑核：EmbedProbe/AnticheatCoex/CefCompat/FullscreenYield/LegacyApp/DriverIntercept/ShellExtCompat/DisplayPipeline/AudioPipeline/NetCompat 十模型）+ ai33Checks.ts checkF0321~checkF0330（250 项断言全绿，ID 连续无重 X08001~X08250）+ __tests__/ai33.test.ts 3 例绿（tsc 0 错、vitest 全绿）
 
-**AI-34 兼容工程（族0331~0340 · X08251~X08500）⬜**
+**AI-34 兼容工程（族0331~0340 · X08251~X08500）✅**
 - 主责：C+V+K
 - 落点：【C】体检/实验室/遥测/回归、【V】共存/企业/中文/Web、【K】API 层
 - 交付：体检2.0、实验室2.0、多系统共存、企业环境、中文深度兼容、遥测学习、Web 兼容、格式兼容、API 层、回归测试
+- 落点记录：【V】src/features/compat/ai34Models.ts（CoexistMatrix/EnterpriseEnv/CjkCompat/WebCompat/FormatBridge 五模型）+ ai34Checks.ts checkF0333/0334/0335/0337/0338（125 项，X08301~X08375/X08401~X08450）+ __tests__/ai34.test.ts 6 例绿；【C】code-analysis/core/src/ai34.rs 四 CheckSet（体检 2.0/实验室 2.0/遥测学习/回归测试 100 项，X08251~X08300/X08376~X08400/X08476~X08500，run_ux_ai34_checks 登记，ca-core ai34 2 测绿）；【K】kernel/varix/src/compatapi.rs 兼容 API 层（层注册/版本裁决/能力掩码/配额/回退链 25 项，X08451~X08475）；三线合计 250 项 ID 连续无重
 
-**AI-35 兼容深化与收官（族0341~0350 · X08501~X08750）⬜**
+**AI-35 兼容深化与收官（族0341~0350 · X08501~X08750）✅**
 - 主责：K+V+C+三方
 - 落点：【K】Shim/协商/沙盒、【V】文档/无障碍、【C】性能税/档案
 - 交付：Shim 工程、版本协商、兼容沙盒、文档库、社区反馈、认证、性能税、无障碍、档案、收官
+- 落点记录：【V】src/features/compat/ai35Models.ts（CompatDocLibrary/CommunityFeedback/CertSuite/CompatA11y/CompatFinale 五模型 + 25 项收官门禁核对单）+ ai35Checks.ts checkF0344/0345/0346/0348/0350（125 项，X08576~X08650/X08676~X08700/X08726~X08750）+ __tests__/ai35.test.ts 7 例绿；【K】kernel/varix/src/compatshim.rs 三 CheckSet（Shim 注入剥离解析/版本协商三态/兼容沙盒四档降权 75 项，X08501~X08575）；【C】code-analysis/core/src/ai35.rs 两 CheckSet（性能税分层计税熔断/兼容档案指纹封存 50 项，X08651~X08675/X08701~X08725，run_ux_ai35_checks 登记）；三线合计 250 项 ID 连续无重，领域09 X08001~X08750 全量交付
 
 ## 领域10 · 安全与隐私（W4）
 
-**AI-36 隔离与沙盒（族0351~0360 · X08751~X09000）⬜**
+**AI-36 隔离与沙盒（族0351~0360 · X08751~X09000）✅**
 - 主责：K+V（K4/V6）
 - 落点：【K】进程/调度/配额、【V】src/features/settings/SecurityTab.tsx、datavault
 - 交付：沙盒2.0、进程治理2.0、调度安全、配额2.0、保险箱2.0、网络隐私2.0、屏幕隐私2.0、文件隐私2.0、生物认证2.0、防火墙2.0
+- 落地：【K】kernel/varix/src/sec/{sandbox2,procgov2,schedsec,quota2}.rs（族0351~0354 各 25 项 CheckSet，sec.rs 登记 run_ai36_sec_checks 共 100 项）；【V】src/features/security/{core,groupA,groupB}.ts + checks.ts checkF0355~checkF0360（族0355~0360 共 150 项，runAi3637Checks 聚合，__tests__/security.test.ts 全绿）
 
-**AI-37 隐私与身份（族0361~0370 · X09001~X09250）⬜**
+**AI-37 隐私与身份（族0361~0370 · X09001~X09250）✅**
 - 主责：V+C+K
 - 落点：【V】仪表盘/反追踪/通信/主权/身份/物理/备份、【C】漏洞/行为检测、【K】完整性
 - 交付：仪表盘2.0、反追踪2.0、加密通信2.0、数据主权2.0、漏洞管理、异常检测、完整性2.0、会话身份2.0、物理安全2.0、备份安全2.0
+- 落地：【V】src/features/security/{groupC,groupD,groupE}.ts + checks.ts checkF0361~checkF0370（族0361~0370 共 250 项入 runAi3637Checks；core.ts 动效令牌/焦点序/回归守卫/批处理共用核；__tests__/security.test.ts 21 例全绿，X08851~X09250 连续 400 项断言 + tsc 0 错）
 
 **AI-38 防线工程（族0371~0380 · X09251~X09500）⬜**
 - 主责：K+V+C
@@ -366,12 +372,12 @@
 | 06 文件与数据能力 | AI-21~24 | 1000 | 🔶（AI-24 ✅ 250/1000） |
 | 07 效率与工具中枢 | AI-25~28 | 1000 | 🔶（AI-25 ✅ 250/1000） |
 | 08 系统集成与硬件 | AI-29~32 | 1000 | 🔶（AI-32 ✅ 250/1000） |
-| 09 兼容性防线 | AI-33~35 | 750 | 🔶（AI-33 ✅ 250/750） |
-| 10 安全与隐私 | AI-36~39 | 1000 | ⬜ |
+| 09 兼容性防线 | AI-33~35 | 750 | ✅（AI-33~35 全量 750/750） |
+| 10 安全与隐私 | AI-36~39 | 1000 | 🔶（AI-36/AI-37 ✅ 500/1000） |
 | 11 开放生态 | AI-40~42 | 750 | ⬜ |
 | 12 视觉个性化氛围 | AI-43~46 | 1000 | ⬜ |
 | 13 声音与通知 | AI-47~49 | 750 | ⬜ |
 | 14 无障碍与本地化 | AI-50~52 | 750 | ⬜ |
 | 15 UI 设计与优化 | AI-53~56 | 1000 | ⬜ |
 | 16 工程质量收官 | AI-57~60 | 1000 | ⬜ |
-| **合计** | **AI-01~60** | **15000** | **4750/15000** |
+| **合计** | **AI-01~60** | **15000** | **5250/15000** |
