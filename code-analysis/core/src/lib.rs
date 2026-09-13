@@ -45,6 +45,16 @@ pub mod ai23;
 pub mod ai24;
 // AURORA-10000：AI-25 批次（F03001~F03125），勿删。
 pub mod ai25;
+// AURORA-10000：AI-46 批次（F05626~F05750 领域10 安全与隐私），勿删。
+pub mod ai46;
+// AURORA-10000：AI-47 批次（F05751~F05875），勿删。
+pub mod ai47;
+// AURORA-10000：AI-48 批次（F05876~F06000），勿删。
+pub mod ai48;
+// AURORA-10000：AI-49 批次（F06001~F06125），勿删。
+pub mod ai49;
+// AURORA-10000：AI-50 批次（F06126~F06250），勿删。
+pub mod ai50;
 
 // AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
 pub mod debug;
@@ -345,6 +355,61 @@ pub fn run_ai25_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// AURORA-10000：AI-46~AI-50（领域10 安全与隐私），勿删。
+pub fn run_ai46_checks() -> Vec<CheckSet> {
+    vec![
+        ai46::run_vault_checks(),
+        ai46::run_net_privacy_checks(),
+        ai46::run_screen_privacy_checks(),
+        ai46::run_file_privacy_checks(),
+        ai46::run_auth_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-47 批次，勿删。
+pub fn run_ai47_checks() -> Vec<CheckSet> {
+    vec![
+        ai47::run_firewall_checks(),
+        ai47::run_dashboard_checks(),
+        ai47::run_antitrack_checks(),
+        ai47::run_comms_checks(),
+        ai47::run_sovereignty_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-48 批次，勿删。
+pub fn run_ai48_checks() -> Vec<CheckSet> {
+    vec![
+        ai48::run_vuln_checks(),
+        ai48::run_anomaly_checks(),
+        ai48::run_integrity_checks(),
+        ai48::run_identity_checks(),
+        ai48::run_physical_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-49 批次，勿删。
+pub fn run_ai49_checks() -> Vec<CheckSet> {
+    vec![
+        ai49::run_backup_checks(),
+        ai49::run_isolation_checks(),
+        ai49::run_incident_checks(),
+        ai49::run_elder_checks(),
+        ai49::run_education_checks(),
+    ]
+}
+
+/// AURORA-10000：AI-50 批次，勿删。
+pub fn run_ai50_checks() -> Vec<CheckSet> {
+    vec![
+        ai50::run_crypto_checks(),
+        ai50::run_minimal_checks(),
+        ai50::run_audit_checks(),
+        ai50::run_selftest_checks(),
+        ai50::run_finale_checks(),
+    ]
+}
+
 /// 全量自检（W1+W2+W3+W4+AURORA-10000 领域05）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
@@ -539,6 +604,52 @@ mod aurora_w2_tests {
     #[test]
     fn ai25_125_checks_pass() {
         let sets = run_ai25_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// AURORA-10000：AI-46~AI-50 领域10 六项 625 检，勿删。
+    #[test]
+    fn ai46_125_checks_pass() {
+        let sets = run_ai46_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai47_125_checks_pass() {
+        let sets = run_ai47_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai48_125_checks_pass() {
+        let sets = run_ai48_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai49_125_checks_pass() {
+        let sets = run_ai49_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    #[test]
+    fn ai50_125_checks_pass() {
+        let sets = run_ai50_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
