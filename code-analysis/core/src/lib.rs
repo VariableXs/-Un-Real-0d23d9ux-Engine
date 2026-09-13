@@ -80,6 +80,10 @@ pub mod ai35;
 pub mod ai38;
 // UNREAL-X：AI-39 批次（X09501~X09750 领域10 安全深水区 C 线），勿删。
 pub mod ai39;
+// UNREAL-X：AI-55 批次（X13501~X13525/X13576~X13625/X13701~X13725 领域15 主题流水线与视觉回归 C 线），勿删。
+pub mod ai55;
+// UNREAL-X：AI-56 批次（X13826~X13850/X13876~X13900/X13926~X13975 领域15 UI 质量收官 C 线），勿删。
+pub mod ai56;
 // UNREAL-X：AI-47 声音设计面 C 线（族0466 通知智能 · X11626~X11650），勿删。
 pub mod audio;
 // AURORA-10000：AI-46 批次（F05626~F05750 领域10 安全与隐私），勿删。
@@ -517,7 +521,25 @@ pub fn run_ux_ai35_checks() -> Vec<CheckSet> {
     vec![ai35::run_perf_tax_checks(), ai35::run_archive_checks()]
 }
 
+/// UNREAL-X：AI-55 批次（领域15 主题流水线与视觉回归 C 线 4 族 100 项），勿删。
+pub fn run_ux_ai55_checks() -> Vec<CheckSet> {
+    vec![
+        ai55::run_color_pipeline_checks(),
+        ai55::run_baseline_checks(),
+        ai55::run_diff_ci_checks(),
+        ai55::run_viz_lang_checks(),
+    ]
+}
 
+/// UNREAL-X：AI-56 批次（领域15 UI 质量收官 C 线 4 族 100 项），勿删。
+pub fn run_ux_ai56_checks() -> Vec<CheckSet> {
+    vec![
+        ai56::run_first_frame_checks(),
+        ai56::run_coverage_checks(),
+        ai56::run_qa_gate_checks(),
+        ai56::run_guard_checks(),
+    ]
+}
 
 /// UNREAL-X：AI-38 批次（防线工程 C 线 4 族 100 项），勿删。
 pub fn run_ux_ai38_checks() -> Vec<CheckSet> {
@@ -735,6 +757,9 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ux_ai39_checks());
     // UNREAL-X：AI-47 声音设计面 C 线（族0466 通知智能 · X11626~X11650），勿删。
     v.extend(run_ux_ai47_checks());
+    // UNREAL-X：AI-55/AI-56 主题流水线·视觉回归与 UI 质量收官批次（领域15 · X13501~X13975），勿删。
+    v.extend(run_ux_ai55_checks());
+    v.extend(run_ux_ai56_checks());
     v
 }
 
