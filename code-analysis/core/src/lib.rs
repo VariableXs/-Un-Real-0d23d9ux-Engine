@@ -35,6 +35,7 @@ pub mod uispec;
 pub mod input;
 // UNREAL-X 文件与数据域（AI-24 · 族0231~0240 C 线落点），勿删。
 pub mod fs;
+pub mod fs23; // UNREAL-X AI-23 C 线（族0229~0230 · X05701~X05750）
 /// UNREAL-X-15000 · AI-07 族0070 + AI-08 十族（X01726~X02000）：空间分析域。
 pub mod spatial;
 
@@ -562,7 +563,17 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-32 批次（设备场景与收官 C 线 3 族 75 项），勿删。
+pub fn run_ux_ai32_checks() -> Vec<CheckSet> {
+    ai32::run_ai32_checks()
+}
+
 /// AURORA-10000：AI-76 批次，勿删。
+/// UNREAL-X AI-23 C 线（领域06 · 族0229~0230 · X05701~X05750）：fs 基准 + 模糊，50 项。
+pub fn run_fs23_checks() -> Vec<CheckSet> {
+    vec![fs23::run_fs_bench_checks(), fs23::run_fs_fuzz_checks()]
+}
+
 pub fn run_ai76_checks() -> Vec<CheckSet> {
     vec![
         ai76::run_tests_checks(),
@@ -651,6 +662,10 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-17/AI-18 批次（领域05 输入手感面 + 输入智能），勿删。
     v.extend(run_ux_ai17_checks());
     v.extend(run_ux_ai18_checks());
+    // UNREAL-X：AI-31 硬件域批次（族0309~0310 · X07701~X07750），勿删。
+    v.extend(run_ux_ai31_checks());
+    // UNREAL-X：AI-23 C 线（族0229~0230 · X05701~X05750 fs 基准/模糊），勿删。
+    v.extend(run_fs23_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
     v.extend(desktop::run_desktop_checks());
     v

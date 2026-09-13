@@ -7,6 +7,30 @@
 pub mod exfat;
 pub mod fat32;
 
+// UNREAL-X-15000 · AI-23 内核文件系统（族0221~0228 · X05501~X05700），勿删。
+pub mod fs23_abstract;
+pub mod fs23_journal;
+pub mod fs23_cache;
+pub mod fs23_acl;
+pub mod fs23_mount;
+pub mod fs23_notify;
+pub mod fs23_stream;
+pub mod fs23_media;
+
+/// AI-23 内核八族聚合（每族 25 项 = 200 项，只增不删）。
+pub fn run_fs23_checks() -> [CheckSet; 8] {
+    [
+        fs23_abstract::run_fs_abstract_checks(),
+        fs23_journal::run_fs_journal_checks(),
+        fs23_cache::run_fs_cache_checks(),
+        fs23_acl::run_fs_acl_checks(),
+        fs23_mount::run_fs_mount_checks(),
+        fs23_notify::run_fs_notify_checks(),
+        fs23_stream::run_fs_stream_checks(),
+        fs23_media::run_fs_media_checks(),
+    ]
+}
+
 use crate::checks::CheckSet;
 
 // ---------------------------------------------------------------------------
