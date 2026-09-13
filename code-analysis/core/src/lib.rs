@@ -31,6 +31,8 @@ pub mod undo;
 
 // AI-08 域（UI-001~UI-036）：33 章 UI 规范落地 / 8 风格资产 / 三端渲染差异清零。
 pub mod uispec;
+// UNREAL-X 输入域（AI-20 · 族0191~0200 C 线落点），勿删。
+pub mod input;
 /// UNREAL-X-15000 · AI-07 族0070 + AI-08 十族（X01726~X02000）：空间分析域。
 pub mod spatial;
 
