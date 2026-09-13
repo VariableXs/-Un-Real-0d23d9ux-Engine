@@ -2,7 +2,7 @@
 
 > **Unreal X 计划**：60 名 AI（AI-01~AI-60），每人 10 族 × 25 项 = 250 项，合计 15000 项（X00001~X15000）。
 > **项级明细**：每人 250 项的逐条明细（【层·档】/工作内容/形态/落点/验收）见《UNREAL-X-15000-功能全景图》**四部本**（第1部领域01~04 / 第2部05~08 / 第3部09~12 / 第4部13~16）对应 AI 块；本图是**落点与验收的权威源**，全景图族块与 AI 区间一一对应。
-> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33/AI-34/AI-35 ✅（领域09）、AI-36/AI-37 ✅（领域10）· 累计 5750/15000 项交付，其余 ⬜。
+> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33/AI-34/AI-35 ✅（领域09）、AI-36/AI-37 ✅（领域10）、AI-42 ✅（领域11）· 累计 6000/15000 项交付，其余 ⬜。
 > 落点缩写：【K】=kernel/varix/src/【V】=src/【C】=code-analysis/。验收门禁见《UNREAL-X-15000-实施总步骤图》§4（G1~G4 四道门禁）。
 > 波次：W1=领域01~03，W2=04~06，W3=07~09，W4=10~12，W5=13~15，W6=16 工程，W7=16 收官。
 
@@ -195,7 +195,7 @@
 - 主责：V+C+三方
 - 落点：【V】场景模式、【C】可靠性/兼容库/健康预测
 - 交付：笔记本2.0、DIY2.0、二合一2.0、IoT、可靠性、兼容库、健康预测、无障碍、生态开放、收官
-- 落点记录：src/features/hardware/ai32Models.ts（AI-32 逻辑核：LaptopScene/DiyTuner/PostureSense/IotMesh/ReliabilityMonitor/HwCompatLib/HealthPredictor/HwA11y/HwEcoOpen/HwFinale 十模型）+ ai32Checks.ts checkF0311~checkF0320（250 项断言全绿，ID 连续无重 X07751~X08000）+ __tests__/ai32.test.ts 3 例绿（tsc 0 错、vitest 全绿）
+- 落点记录：src/features/hardware/ai32Models.ts（AI-32 逻辑核：LaptopScene/DiyTuner/PostureSense/IotMesh/ReliabilityMonitor/HwCompatLib/HealthPredictor/HwA11y/HwEcoOpen/HwFinale 十模型）+ ai32Checks.ts checkF0311~checkF0320（250 项断言全绿，ID 连续无重 X07751~X08000）+ __tests__/ai32.test.ts 3 例绿（tsc 0 错、vitest 全绿）；C 线 code-analysis/core/src/ai32.rs（族0315 可靠性 stress_plan/mtbf/needs_service + 族0316 兼容库 vid_pid 校验/verdict/suggest + 族0317 健康预测最小二乘斜率/外推/风险分，3 族 75 检入 run_all_checks，cargo test ux_ai32 绿）
 
 ## 领域09 · 兼容性防线（W3）
 
@@ -203,7 +203,7 @@
 - 主责：V+K（V6/K4）
 - 落点：【V】src/features/compat/、【K】驱动/管线兼容
 - 交付：嵌入探测2.0、反作弊共存2.0、CEF 兼容2.0、全屏让位2.0、老应用2.0、驱动拦截、Shell 扩展、显示管线、音频管线、网络兼容
-- 落点记录：src/features/compat/ai33Models.ts（AI-33 逻辑核：EmbedProbe/AnticheatCoex/CefCompat/FullscreenYield/LegacyApp/DriverIntercept/ShellExtCompat/DisplayPipeline/AudioPipeline/NetCompat 十模型）+ ai33Checks.ts checkF0321~checkF0330（250 项断言全绿，ID 连续无重 X08001~X08250）+ __tests__/ai33.test.ts 3 例绿（tsc 0 错、vitest 全绿）
+- 落点记录：src/features/compat/ai33Models.ts（AI-33 逻辑核：EmbedProbe/AnticheatCoex/CefCompat/FullscreenYield/LegacyApp/DriverIntercept/ShellExtCompat/DisplayPipeline/AudioPipeline/NetCompat 十模型）+ ai33Checks.ts checkF0321~checkF0330（250 项断言全绿，ID 连续无重 X08001~X08250）+ __tests__/ai33.test.ts 3 例绿（tsc 0 错、vitest 全绿）；K 线 kernel/varix/src/compatruntime.rs（族0326 驱动拦截 InterceptTable 优先级裁决 + 族0328 显示管线协商回退/色深/刷新钳制 + 族0329 音频管线格式协商/独占守卫 + 族0330 网络协议回退/VPN 代理共存/端口钳制，4 族 100 检入 run_ai33_compatruntime_checks，cargo test compatruntime 绿）
 
 **AI-34 兼容工程（族0331~0340 · X08251~X08500）✅**
 - 主责：C+V+K
@@ -253,10 +253,11 @@
 - 落点：【V】反馈/无障碍开放/格式、【K】内核开放/协议、【C】健康分析
 - 交付：反馈成长2.0、互操作联盟、教育合作、无障碍开放2.0、生态健康、内核开放2.0、桌面协议、AI 生态位2.0、格式开放、治理
 
-**AI-42 生态工程与收官（族0411~0420 · X10251~X10500）⬜**
+**AI-42 生态工程与收官（族0411~0420 · X10251~X10500）✅**
 - 主责：K+V+C+三方
 - 落点：【K】自托管/签名/沙箱运行时、【V】精选/文档、【C】质量开放/数据分析
 - 交付：自托管、可持续、质量开放、精选、签名安全、沙箱运行时、数据分析、开发者文档、里程碑、收官
+- 落点记录：src/features/ecosystem/ai42Models.ts（AI-42 逻辑核：SelfHost 五档自托管部署巡检净身/Sustainability 五模式资金池透明账本跑道/QualityOpen 六维打分徽章榜单申诉/Curation 六槽精选轮换曝光快照/PluginSigning 三算法信任锚吊销/SandboxRuntime 五档预算熔断复准/EcoAnalytics 五指标漏斗 3σ 异常/DevDocs 五类覆盖新鲜度可运行率/EcoMilestone G1~G4 顺序门禁回退/EcoFinale 六项终验一票否决 ID 审计 十模型）+ ai42Checks.ts checkF0411~checkF0420（250 项断言全绿，ID 连续无重 X10251~X10500）+ __tests__/ai42.test.ts 3 例绿（tsc 0 错、vitest 全绿）
 
 ## 领域12 · 视觉·个性化与氛围（W4）
 
@@ -374,7 +375,7 @@
 | 08 系统集成与硬件 | AI-29~32 | 1000 | 🔶（AI-32 ✅ 250/1000） |
 | 09 兼容性防线 | AI-33~35 | 750 | ✅（AI-33~35 全量 750/750） |
 | 10 安全与隐私 | AI-36~39 | 1000 | 🔶（AI-36/AI-37 ✅ 500/1000） |
-| 11 开放生态 | AI-40~42 | 750 | ⬜ |
+| 11 开放生态 | AI-40~42 | 750 | 🔶（AI-42 ✅ 250/750） |
 | 12 视觉个性化氛围 | AI-43~46 | 1000 | ⬜ |
 | 13 声音与通知 | AI-47~49 | 750 | ⬜ |
 | 14 无障碍与本地化 | AI-50~52 | 750 | ⬜ |
