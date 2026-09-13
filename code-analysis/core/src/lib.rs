@@ -60,6 +60,8 @@ pub mod ai31;
 pub mod ai51;
 // UNREAL-X：AI-52 批次（X12876~X12925 领域14 无障碍研究/自动化审计 C 线），勿删。
 pub mod ai52;
+// UNREAL-X：AI-59/AI-60 批次（领域16 工程质量·协作防线与收官 C 线），勿删。
+pub mod eng;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai16;
@@ -541,6 +543,17 @@ pub fn run_ux_ai56_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-59/AI-60 批次（领域16 协作防线与收官 C 线 4 族 100 检），勿删。
+/// AI-59 族0583 回归防线 + 族0585 长稳测试；AI-60 族0593 三线一致性审计 + 族0594 ID 唯一性防线。
+pub fn run_ux_ai59_60_checks() -> Vec<CheckSet> {
+    vec![
+        eng::ai59::run_regression_checks(),
+        eng::ai59::run_soak_checks(),
+        eng::ai60::run_consistency_checks(),
+        eng::ai60::run_id_unique_checks(),
+    ]
+}
+
 /// UNREAL-X：AI-38 批次（防线工程 C 线 4 族 100 项），勿删。
 pub fn run_ux_ai38_checks() -> Vec<CheckSet> {
     vec![
@@ -760,6 +773,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-55/AI-56 主题流水线·视觉回归与 UI 质量收官批次（领域15 · X13501~X13975），勿删。
     v.extend(run_ux_ai55_checks());
     v.extend(run_ux_ai56_checks());
+    // UNREAL-X：AI-59/AI-60 协作防线与收官批次（领域16 · X14501~X15000 C 线），勿删。
+    v.extend(run_ux_ai59_60_checks());
     v
 }
 
@@ -795,8 +810,18 @@ mod tests {
         let sets = run_ux_ai47_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 25);
         for s in &sets {
-            assert!(s.all_pass(), "domain {} failed:
-{}", s.domain, s.render());
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-59/AI-60 批次（领域16 协作防线与收官 C 线 4 族）全量自检。
+    #[test]
+    fn ux_ai59_60_100_checks_pass() {
+        let sets = run_ux_ai59_60_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert_eq!(s.total(), 25, "domain {} 每族恰 25 检", s.domain);
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
     }
 

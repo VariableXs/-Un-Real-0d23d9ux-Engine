@@ -156,6 +156,9 @@ pub mod a11y;
 // UNREAL-X：AI-52 K 线（族0511/0512/0518 · X12751~X12800 · X12926~X12950 内核无障碍），勿删。
 #[path = "a11y/a52k.rs"]
 pub mod a52k;
+// UNREAL-X：AI-59 K 线（族0584 混沌工程 · X14576~X14600），勿删。
+#[path = "stability/ai59.rs"]
+pub mod ai59k;
 #[path = "power/aurora.rs"]
 pub mod apower;
 #[path = "perf/perf.rs"]
