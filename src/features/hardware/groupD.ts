@@ -490,7 +490,7 @@ export function cmykPreview(r: number, g: number, b: number): { c: number; m: nu
   return { c: Math.round(((1 - rr - k) / d) * 100), m: Math.round(((1 - gg - k) / d) * 100), y: Math.round(((1 - bb - k) / d) * 100), k: Math.round(k * 100) };
 }
 /** F04822 护眼报告。 */
-export function eyeCareReport(blueDose: number, nightLightHours: number): { strain: 'low' | 'mid' | 'high'; advice: string } {
+export function eyeCareReport(blueDose: number, _nightLightHours: number): { strain: 'low' | 'mid' | 'high'; advice: string } {
   const strain = blueDose < 500 ? 'low' : blueDose < 1500 ? 'mid' : 'high';
   return { strain, advice: strain === 'high' ? '建议开启夜灯并每 20 分钟远眺' : '用眼状态良好' };
 }

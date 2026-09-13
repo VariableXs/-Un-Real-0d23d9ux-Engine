@@ -206,7 +206,7 @@ export function a11ySlaBreaches(defects: A11yDefect[]): A11yDefect[] {
 
 export interface A11yOneClickProfile {
   name: string;
-  settings: Record<string, boolean | number>;
+  settings: Record<string, boolean | number | string>;
 }
 
 export const A11Y_ONE_CLICK_PROFILES: A11yOneClickProfile[] = [

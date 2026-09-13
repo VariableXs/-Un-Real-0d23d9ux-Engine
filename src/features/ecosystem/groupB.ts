@@ -192,7 +192,7 @@ export const CREATOR_LEVELS = [0, 100, 400, 1200, 3600] as const;
 
 export function creatorLevel(xp: number): number {
   let lvl = 1;
-  for (let i = 1; i < CREATOR_LEVELS.length; i++) if (xp >= CREATOR_LEVELS[i]) lvl = i + 1;
+  for (let i = 1; i < CREATOR_LEVELS.length; i++) if (xp >= CREATOR_LEVELS[i]!) lvl = i + 1;
   return Math.min(lvl, 5);
 }
 

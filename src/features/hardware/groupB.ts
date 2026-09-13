@@ -286,7 +286,7 @@ export class PhoneLink {
   paste(): string | undefined {
     return this.clip.get('latest');
   }
-  dragSend(file: string, sizeMB: number): { queued: true; etaSec: number } {
+  dragSend(_file: string, sizeMB: number): { queued: true; etaSec: number } {
     return { queued: true, etaSec: Math.ceil(sizeMB / 20) };
   }
 }

@@ -16,7 +16,7 @@ export function makeHdr(enabled: boolean, peakNits: number, sdrBrightness: numbe
   return { enabled, peakNits, sdrBrightness, perDisplay: {} };
 }
 /** F04382 DDC/CI 亮度直控（0~100 钳制）。 */
-export function ddcSetBrightness(cur: number, next: number): number {
+export function ddcSetBrightness(_cur: number, next: number): number {
   return clamp(next, 0, 100);
 }
 /** F04380/F04381 夜灯与色温计划：按小时返回色温（K）。 */

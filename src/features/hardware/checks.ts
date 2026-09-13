@@ -1,7 +1,7 @@
 // AURORA-10000: AI-36~AI-40 批次领域08自检注册表（F04376~F05000 共 625 项），勿删。
 // 每项一条可运行断言；「位/预留」条目按 §15 守卫口径 = 接口冻结 + 开关存在。
 
-import { CapabilityRegistry, TutorialCenter, Switch, KvStore, seeded } from './hwModel';
+import { CapabilityRegistry, TutorialCenter, Switch, seeded } from './hwModel';
 import * as A from './groupA';
 import * as B from './groupB';
 import * as C from './groupC';
@@ -36,7 +36,7 @@ export function hwCapabilities(): CapabilityRegistry {
     ['F04908', '内存 RGB 位'], ['F04914', '内存测试位'], ['F04915', '稳定性压测位'], ['F04921', 'BIOS 备份位'],
     ['F04954', '远程开机位'], ['F04955', '智能插座位'], ['F04970', '内网穿透位'], ['F04986', 'RAID 降级告警位'],
     ['F04987', 'SMART 健康预警位'],
-  ].forEach(([id, name]) => reg.register({ id, name, reserved: true }));
+  ].forEach(([id, name]) => reg.register({ id: id!, name: name!, reserved: true }));
   return reg;
 }
 
@@ -227,7 +227,7 @@ export function checkF0180(): CheckEntry[] {
     { id: 'F04494', name: '弹出策略', check: () => A.ejectPolicy(true) === 'quick-removal' && A.ejectPolicy(false) === 'better-performance' },
     { id: 'F04495', name: 'RAID 信息位', check: () => hwCapabilities().isReserved('F04495') },
     { id: 'F04496', name: '软 RAID 存储空间位', check: () => hwCapabilities().isReserved('F04496') },
-    { id: 'F04497', name: 'BitLocker 加密管理', check: () => bl.finishEncrypt() || bl.state === 'on' },
+    { id: 'F04497', name: 'BitLocker 加密管理', check: () => (bl.finishEncrypt(), bl.state === 'on') },
     { id: 'F04498', name: '加密盘解锁', check: () => { const v = new A.BitLockerVol(); v.enable('k1'); v.finishEncrypt(); v.lock(); return v.locked && !v.unlock('bad') && v.unlock('k1') && !v.locked; } },
     { id: 'F04499', name: '磁盘测速基准', check: () => { const s3 = A.benchSpeed(seeded(1), 512); return s3.read >= 200 && s3.read <= 3200; } },
     { id: 'F04500', name: '存储管理教学', check: () => hwTutorials().has('F04500') },
@@ -566,7 +566,7 @@ export function checkF0190(): CheckEntry[] {
   const rp = new C.InstantReplay(30);
   [0, 5, 12, 20, 25].forEach((t) => rp.push(t));
   return [
-    { id: 'F04726', name: '一键性能档切换', check: () => (gov.setMode('performance'), gov.mode === 'performance' && (gov.setMode('silent'), gov.mode === 'silent')) },
+    { id: 'F04726', name: '一键性能档切换', check: () => { gov.setMode('performance'); const a: string = gov.mode; gov.setMode('silent'); const b: string = gov.mode; return a === 'performance' && b === 'silent'; } },
     { id: 'F04727', name: '游戏模式资源倾斜', check: () => (gov.enterGame(), gov.gameActive) },
     { id: 'F04728', name: '游戏时冻结后台', check: () => gov.isFrozen('updater') && gov.isFrozen('indexer') && !gov.isFrozen('shell') && (gov.exitGame(), !gov.gameActive) },
     { id: 'F04729', name: '智能内存清理', check: () => C.memoryClean(2048, 4096).freedMB === 2458 && C.memoryClean(2048, 4096).freeMB === 4506 },

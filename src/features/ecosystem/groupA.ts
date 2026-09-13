@@ -106,7 +106,7 @@ export class PluginStore {
   private data = new Map<string, string>();
   private bytes = 0;
 
-  constructor(private pluginId: string, private quotaKb = SANDBOX_QUOTA.storageKb) {}
+  constructor(_pluginId: string, private quotaKb = SANDBOX_QUOTA.storageKb) {}
 
   set(key: string, value: string): boolean {
     // 平台无关：按字符数计。
