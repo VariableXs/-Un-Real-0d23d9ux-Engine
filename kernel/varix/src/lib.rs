@@ -159,6 +159,9 @@ pub mod a52k;
 // UNREAL-X：AI-59 K 线（族0584 混沌工程 · X14576~X14600），勿删。
 #[path = "stability/ai59.rs"]
 pub mod ai59k;
+// UNREAL-X：AI-58 K 线（族0571~0574 测试矩阵/模糊形式化/性能基准/内存安全 · X14251~X14350），勿删。
+#[path = "checks/ai58.rs"]
+pub mod ai58k;
 #[path = "power/aurora.rs"]
 pub mod apower;
 #[path = "perf/perf.rs"]

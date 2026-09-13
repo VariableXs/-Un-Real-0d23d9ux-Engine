@@ -2,7 +2,7 @@
 
 > **Unreal X 计划**：60 名 AI（AI-01~AI-60），每人 10 族 × 25 项 = 250 项，合计 15000 项（X00001~X15000）。
 > **项级明细**：每人 250 项的逐条明细（【层·档】/工作内容/形态/落点/验收）见《UNREAL-X-15000-功能全景图》**四部本**（第1部领域01~04 / 第2部05~08 / 第3部09~12 / 第4部13~16）对应 AI 块；本图是**落点与验收的权威源**，全景图族块与 AI 区间一一对应。
-> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33/AI-34/AI-35 ✅（领域09）、AI-36~39 ✅（领域10 全量收官）、AI-40/AI-41/AI-42 ✅（领域11）、AI-45/AI-46 ✅（领域12）、AI-47/AI-48/AI-49 ✅（领域13 全量收官）、AI-50/AI-51/AI-52 ✅（领域14 全量收官）、AI-53~56 ✅（领域15 全量收官）· 累计 9500/15000 项交付，其余 ⬜。
+> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）、AI-15/AI-16 ✅（领域04）、AI-19 ✅（领域05）、AI-24 ✅（领域06）、AI-25 ✅（领域07）、AI-32 ✅（领域08）、AI-33/AI-34/AI-35 ✅（领域09）、AI-36~39 ✅（领域10 全量收官）、AI-40/AI-41/AI-42 ✅（领域11）、AI-45/AI-46 ✅（领域12）、AI-47/AI-48/AI-49 ✅（领域13 全量收官）、AI-50/AI-51/AI-52 ✅（领域14 全量收官）、AI-53~56 ✅（领域15 全量收官）、AI-57~60 ✅（领域16 全量收官）· 累计 10500/15000 项交付，其余 ⬜。
 > 落点缩写：【K】=kernel/varix/src/【V】=src/【C】=code-analysis/。验收门禁见《UNREAL-X-15000-实施总步骤图》§4（G1~G4 四道门禁）。
 > 波次：W1=领域01~03，W2=04~06，W3=07~09，W4=10~12，W5=13~15，W6=16 工程，W7=16 收官。
 
@@ -357,15 +357,15 @@
 
 ## 领域16 · 工程质量·性能与收官（W6-W7）
 
-**AI-57 工程基建（族0561~0570 · X14001~X14250）⬜**
+**AI-57 工程基建（族0561~0570 · X14001~X14250）✅**
 - 主责：C+三方（C5/三方5）
-- 落点：【C】code-analysis/（测试/质量/性能/安全/数据）、【三方】CI/发布/文档/IaC/观测
-- 交付：测试体系15000、CI2.0、代码质量2.0、性能工程2.0、安全工程2.0、可观测性2.0、数据工程、发布工程、文档工程、IaC
+- 落点：【C】code-analysis/core/src/eng/ai57.rs（十族 CheckSet × 25 = 250 检入 run_ux_ai57_58_checks → run_all_checks）、【三方】CI/发布/文档/IaC/观测口径以 C 线确定性断言落地
+- 交付：测试体系15000（DOMAIN_STARTS 16 域区间+domain_of/family_of 族号换算+门禁五档 smoke~full 降级+TestRegistry 15000 项登记表覆盖率万分比+断点续跑零丢失）、CI 2.0（Pipeline 五阶段 lint~audit+matrix_count 组合矩阵+ci_cache_key FNV 缓存键+backoff 重试钳制+artifact_chain 哈希链+低内存降档）、代码质量 2.0（cyclomatic 圈复杂度+dup_fingerprint 重复块指纹+QualityReport 质量分 0~100 饱和+debt_hours 债务小时+四态分级）、性能工程 2.0（PerfBudgets 预算表+regress_bp 万分比回归+火焰图 flame_top+p99 分位+告警阈值）、安全工程 2.0（severity 严重度+sbom_chain 供应链哈希链+secret_scan 密钥扫描+security_gate 发布门）、可观测性 2.0（八级日志 level_rank 过滤+trace_sampled 采样万分比+Counter 指标+alert_fires 持续告警）、数据工程（migration_path 迁移路径+DataQuality 质量+lineage_impact 血缘影响+late_data_policy 迟到策略）、发布工程（SemVer 语义版本+三渠道 nightly~stable 晋升+sign/verify 摘要签名+回滚叙事）、文档工程（doc_coverage_bp 覆盖万分比+link_ok 断链+freshness 新鲜度+i18n_sync 键同步）、IaC（Resource 期望/现状+iac_diff 三态 diff+drifted 漂移检测+iac_apply 收敛+redact 计划脱敏）——C 线 250 项 CheckSet 全绿（ux_ai57_58_400_checks_pass），ID 连续无重 X14001~X14250
 
-**AI-58 内核与引擎质量（族0571~0580 · X14251~X14500）⬜**
+**AI-58 内核与引擎质量（族0571~0580 · X14251~X14500）✅**
 - 主责：K+C（K4/C6）
-- 落点：【K】kernel/varix/tests/、QEMU 矩阵、【C】code-analysis/core/（基准/增量/缓存/并行）
-- 交付：QEMU 矩阵、模糊形式化、内核基准、内存安全、引擎基准、增量计算、引擎缓存、引擎并行、结果可视化、API 稳定
+- 落点：【K】kernel/varix/src/checks/ai58.rs（ai58k 四族 4×25 = 100 检，lib.rs #[path] 注册 + ai58k_4x25_checks_pass 入 ktest --lib）、【C】code-analysis/core/src/eng/ai58.rs（六族 6×25 = 150 检入 run_ux_ai57_58_checks → run_all_checks）
+- 交付：内核测试矩阵（QemuArch 五架构↔默认机器配对+125 组合矩阵 matrix_index+QemuPlan 越界钳制+MatrixRun 断点续跑+档位降级 tier_degrade）、内核模糊与形式化（LCG 可重放 fuzz_byte+FuzzRun 覆盖位图 64 位+预算熔断 1~100000+能量五档降级+ModelState 三状态模型检查不变式穷举）、内核性能基准（median 中位数+throughput ops/µs+dev_bp 万分比偏差+BENCH_BUDGETS 五档容忍线+BenchRun 热身剔除断点续跑）、内核内存安全（MemLedger 世代计数台账+隔离区防 UAF+双释放检出+悬挂代次检出+快照续清+16 槽批量）、分析引擎基准（noisy_sample 噪声样本+median+throughput+bench_ok 容忍线+基准叙事）、引擎增量计算（依赖图脏闭包+环检测+断点续跑+防抖）、引擎缓存（LRU 命中/未命中/逐出+键指纹+容量钳制）、引擎并行（level_schedule 层级调度 makespan+加速比+原子任务）、结果可视化（sparkline 趋势线+字符数断言）、API 稳定（语义版本+ABI 指纹+符号表+弃用门）——C 线 150 项 CheckSet + K 线 100 项 ktest 全绿（kernel 2676 测零失败），ID 连续无重 X14251~X14500
 
 **AI-59 协作与防线（族0581~0590 · X14501~X14750）✅**
 - 主责：三方+K+C
@@ -398,5 +398,5 @@
 | 13 声音与通知 | AI-47~49 | 750 | ✅（AI-47~49 全量 750/750） |
 | 14 无障碍与本地化 | AI-50~52 | 750 | ✅（AI-50~52 全量 750/750） |
 | 15 UI 设计与优化 | AI-53~56 | 1000 | ✅（AI-53~56 全量 1000/1000） |
-| 16 工程质量收官 | AI-57~60 | 1000 | 🔶（AI-59/AI-60 ✅ 500/1000） |
-| **合计** | **AI-01~60** | **15000** | **10000/15000** |
+| 16 工程质量收官 | AI-57~60 | 1000 | ✅（AI-57~60 全量 1000/1000） |
+| **合计** | **AI-01~60** | **15000** | **10500/15000** |
