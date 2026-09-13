@@ -9,4 +9,9 @@ pub use crate::taskbar;
 
 pub mod desktop;
 
+// UNREAL-X-15000：AI-15 族0148 浮层层级管理 + AI-16 族0151~0153 任务栏引擎，勿删。
+pub mod overlay;
+pub mod tbengine;
+
 pub use desktop::run_shell_checks;
+pub use overlay::run_zorder_checks;

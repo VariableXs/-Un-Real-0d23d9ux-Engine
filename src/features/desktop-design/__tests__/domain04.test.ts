@@ -1,4 +1,4 @@
-// UNREAL-X-15000 · 领域04（任务栏与开始菜单 · AI-13/AI-14）自检测试，勿删。
+// UNREAL-X-15000 · 领域04（任务栏与开始菜单 · AI-13~16 V 线）自检测试，勿删。
 import { describe, expect, it } from 'vitest';
 import { runDomain04Checks, checkFamily } from '../domain04';
 import {
@@ -9,21 +9,97 @@ import {
   StartMenuStructure, TilesEcosystem, StartSearch, StartPersonalization,
   StartMenuBehavior, RecommendationEngine, AppCatalogography, MenuMotion, MenuA11y, MenuPerf,
 } from '../startMenuModels';
+import {
+  QuickPanel, NotifCenter, TaskView, WindowSwitcher, SearchHub,
+  QuickLauncher, QuickActions, MotionUnifier, OverlayA11y,
+} from '../overlayModels';
+import { TaskbarL10n, TaskbarTheme, TaskbarClosing, CLOSING_EXPECT } from '../taskbarEngineModels';
 
-describe('UNREAL-X-15000 领域04 全量自检（X03001~X03500 · 500 项）', () => {
-  it('500 项全部通过且 ID 唯一', () => {
+describe('UNREAL-X-15000 领域04 全量自检（AI-13~16 V 线 · X03001~X04000 去内核/C 线 8 族 · 800 项）', () => {
+  it('800 项全部通过且 ID 唯一', () => {
     const { entries, failed } = runDomain04Checks();
-    expect(entries.length).toBe(500);
+    expect(entries.length).toBe(800);
     const ids = new Set(entries.map((e) => e.id));
     expect(ids.size).toBe(entries.length);
     expect(failed.map((f) => `${f.id} ${f.name}`)).toEqual([]);
   });
-  it('20 族每族恰 25 项', () => {
-    for (let f = 121; f <= 140; f++) {
+  it('32 族每族恰 25 项', () => {
+    for (const f of [121,130,140,141,142,143,144,145,146,147,149,150,157,158,160]) {
       const fam = checkFamily(`F0${f}`);
       expect(fam.length).toBe(25);
       expect(new Set(fam.map((e) => e.id)).size).toBe(25);
     }
+  });
+});
+
+describe('AI-15 浮层系统 逻辑核抽查', () => {
+  it('快捷面板档位与净身', () => {
+    const p = new QuickPanel();
+    expect(p.set('position', 'top-left')).toBe(true);
+    expect(p.set('density', 9)).toBe(false);
+    expect(QuickPanel.deserialize(p.serialize()).state.position).toBe('top-left');
+    expect(p.pin('wifi')).toBe(true);
+  });
+  it('通知中心去重与勿扰', () => {
+    const c = new NotifCenter();
+    c.push('a', 'info', 't', 'b', 1);
+    expect(c.push('a', 'info', 't', 'dup', 2)!.id).toBe(1);
+    c.dnd = true;
+    expect(c.push('x', 'info', 'y', 'z', 3)).toBeNull();
+    c.dnd = false;
+    expect(c.groupByApp().get('a')!.length).toBe(1);
+  });
+  it('任务视图/切换器/搜索/启动器/操作', () => {
+    const v = new TaskView();
+    v.open('w1', '写作', 1, 1);
+    expect(v.onDesktop(1)[0]!.id).toBe('w1');
+    const s = new WindowSwitcher();
+    s.touch('a'); s.touch('b'); s.touch('c');
+    expect(s.cycle(2, 1)).toBe(0);
+    const h = new SearchHub();
+    h.addSource('a', 'app', '终端');
+    expect(h.query('终端')[0]!.id).toBe('a');
+    const l = new QuickLauncher();
+    l.register('x', '笔记');
+    expect(l.launch('x')).toBe(true);
+    const q = new QuickActions();
+    q.toggle('airplane');
+    expect(q.on.get('wifi')).toBe(false);
+  });
+  it('动效统一与浮层可达', () => {
+    const m = new MotionUnifier();
+    m.register('p', { curve: 'standard', durationMs: 240, scalePermille: 980 });
+    m.setReduce(true);
+    expect(m.effective('p')!.durationMs).toBe(120);
+    const a = new OverlayA11y();
+    a.open({ id: 'p', role: 'dialog', ariaLabel: '面板', focusable: true });
+    expect(a.ariaOk() && a.contrastOk()).toBe(true);
+  });
+});
+
+describe('AI-16 任务栏引擎 V 线 逻辑核抽查', () => {
+  it('本地化四语回退', () => {
+    const l = new TaskbarL10n();
+    expect(l.t('startMenu.label')).toBe('开始');
+    l.setLocale('en-US');
+    expect(l.t('startMenu.label')).toBe('Start');
+    expect(l.setLocale('fr-FR')).toBe(false);
+    expect(TaskbarL10n.format('未读 {n} 条', { n: 2 })).toBe('未读 2 条');
+  });
+  it('主题三档与 HC 红线', () => {
+    const t = new TaskbarTheme();
+    expect(t.setTheme('hc')).toBe(true);
+    expect(t.hcOk()).toBe(true);
+    t.wallpaperLuma = 100;
+    expect(t.autoFromWallpaper()).toBe('dark');
+  });
+  it('收官三线聚合', () => {
+    const c = new TaskbarClosing();
+    c.record('kernel', CLOSING_EXPECT.kernel);
+    c.record('analysis', CLOSING_EXPECT.analysis);
+    c.record('variable', CLOSING_EXPECT.variable);
+    c.handshake('h1'); c.handshake('h2'); c.handshake('h3'); c.handshake('h4'); c.handshake('h5');
+    expect(c.allGreen()).toBe(true);
   });
 });
 

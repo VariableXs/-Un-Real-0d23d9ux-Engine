@@ -45,6 +45,7 @@ pub mod ai03;
 pub mod ai04;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
+pub mod ai16;
 pub mod ai21;
 // AURORA-10000：AI-22 批次（F02626~F02750），勿删。
 pub mod ai22;
@@ -322,6 +323,16 @@ pub fn run_ai09_checks() -> Vec<CheckSet> {
 }
 
 /// AURORA-10000 AI-21 域自检汇总（F02501~F02625：按键手感/编辑手感/代码输入/跨窗输入/输入无障碍）。
+/// UNREAL-X：AI-16 代码分析线（族0154/0155/0156/0159 · 100 项），勿删。
+pub fn run_ai16_checks() -> Vec<CheckSet> {
+    vec![
+        ai16::run_launchrank_checks(),
+        ai16::run_semantic_checks(),
+        ai16::run_telemetry_checks(),
+        ai16::run_health_checks(),
+    ]
+}
+
 pub fn run_ai21_checks() -> Vec<CheckSet> {
     vec![
         ai21::run_keyfeel_checks(),
@@ -540,6 +551,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ui08_checks());
     v.extend(run_ai09_checks());
     // AURORA-10000：AI-21~AI-25 批次，勿删。
+    // UNREAL-X：AI-16 代码分析线，勿删。
+    v.extend(run_ai16_checks());
     v.extend(run_ai21_checks());
     v.extend(run_ai22_checks());
     v.extend(run_ai23_checks());
@@ -697,6 +710,16 @@ mod ui08_tests {
 #[cfg(test)]
 mod aurora_w2_tests {
     use super::*;
+
+    #[test]
+    fn ai16_100_checks_pass() {
+        let sets = run_ai16_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
 
     #[test]
     fn ai21_125_checks_pass() {
