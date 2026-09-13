@@ -2,7 +2,7 @@
 
 > **Unreal X 计划**：60 名 AI（AI-01~AI-60），每人 10 族 × 25 项 = 250 项，合计 15000 项（X00001~X15000）。
 > **项级明细**：每人 250 项的逐条明细（【层·档】/工作内容/形态/落点/验收）见《UNREAL-X-15000-功能全景图》**四部本**（第1部领域01~04 / 第2部05~08 / 第3部09~12 / 第4部13~16）对应 AI 块；本图是**落点与验收的权威源**，全景图族块与 AI 区间一一对应。
-> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-13/AI-14 ✅（领域04）· 累计 2500/15000 项交付，其余 ⬜。
+> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：AI-01/AI-02 ✅（领域01）、AI-03/AI-04 ✅（领域01）、AI-05/AI-06 ✅（领域02）、AI-07/AI-08 ✅（领域02）、AI-09/AI-10 ✅（领域03）、AI-11/AI-12 ✅（领域03）、AI-13/AI-14 ✅（领域04）· 累计 3000/15000 项交付，其余 ⬜。
 > 落点缩写：【K】=kernel/varix/src/【V】=src/【C】=code-analysis/。验收门禁见《UNREAL-X-15000-实施总步骤图》§4（G1~G4 四道门禁）。
 > 波次：W1=领域01~03，W2=04~06，W3=07~09，W4=10~12，W5=13~15，W6=16 工程，W7=16 收官。
 
@@ -66,15 +66,15 @@
 - 落点：【V】src/features/ambience/、src/features/background/、src/system/widgets/
 - 交付：壁纸引擎2.0、取色联动2.0、管理2.0、创作工坊2.0、动态物理、微件框架2.0、微件集2.0、互动层2.0、锁屏一体化2.0、时空感
 
-**AI-11 内核桌面服务（族0101~0110 · X02501~X02750）⬜**
+**AI-11 内核桌面服务（族0101~0110 · X02501~X02750）✅**
 - 主责：K（8 族内核 + 2 代码分析）
-- 落点：【K】kernel/varix/src/（display.rs、desktop 服务、缓存）【C】桌面基准/遥测
-- 交付：渲染管线、栅格引擎、壁纸合成、事件总线、功耗守护、资源配额、图标缓存、崩溃恢复、基准、遥测
+- 落点：【K】kernel/varix/src/display/（pipeline、icon_grid、wallpaper、desktop_bus、power_guard、quota、icon_cache、crash_recover，display.rs 登记 run_ai11_display_checks）【C】code-analysis/core/src/desktop/（benchmark、telemetry）
+- 交付：渲染管线、栅格引擎、壁纸合成、事件总线、功耗守护、资源配额、图标缓存、崩溃恢复、基准、遥测（内核 cargo test 2623 绿）
 
-**AI-12 桌面设计与分析（族0111~0120 · X02751~X03000）⬜**
+**AI-12 桌面设计与分析（族0111~0120 · X02751~X03000）✅**
 - 主责：C+V+三方
-- 落点：【C】布局分析/聚类、【V】截图/打印/导出、无障碍本地化
-- 交付：布局分析、语义聚类、截图美学、桌面打印、桌面导出、图标包互操作、无障碍2.0、本地化2.0、彩蛋学、收官
+- 落点：【C】code-analysis/core/src/desktop/（layout、cluster）【V】src/features/desktop-icons/ai12/（screenshot、print、exporting、packInterop、a11y2、l10n2、egg、finale + checks.ts + __tests__/ai12.test.ts）
+- 交付：布局分析、语义聚类、截图美学、桌面打印、桌面导出、图标包互操作、无障碍2.0、本地化2.0、彩蛋学、收官（ca-core 294 绿 + vitest ai12 9 例绿）
 
 ## 领域04 · 任务栏与开始菜单（W2）
 
