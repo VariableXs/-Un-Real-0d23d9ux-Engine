@@ -63,6 +63,7 @@ pub mod ai77;
 pub mod ai78;
 // AURORA-10000：AI-79 批次（F09751~F09875），勿删。
 pub mod ai79;
+pub mod ai80;
 
 // AI-05 域（#337~#410）：调试与测试 / 学习与导航 / 零基础拖拽修改 / 多风格作品化 UI / 动态壁纸。
 pub mod debug;
@@ -462,6 +463,17 @@ pub fn run_ai79_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// AURORA-10000：AI-80 批次，勿删。
+pub fn run_ai80_checks() -> Vec<CheckSet> {
+    vec![
+        ai80::run_regression_checks(),
+        ai80::run_toolchain_checks(),
+        ai80::run_knowledge_checks(),
+        ai80::run_memory_checks(),
+        ai80::run_finale_checks(),
+    ]
+}
+
 /// 全量自检（W1+W2+W3+W4+AURORA-10000 领域05）。
 pub fn run_all_checks() -> Vec<CheckSet> {
     let mut v = run_ca_checks();
@@ -477,11 +489,12 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ai23_checks());
     v.extend(run_ai24_checks());
     v.extend(run_ai25_checks());
-    // AURORA-10000：AI-76~AI-79 批次（领域16），勿删。
+    // AURORA-10000：AI-76~AI-80 批次（领域16），勿删。
     v.extend(run_ai76_checks());
     v.extend(run_ai77_checks());
     v.extend(run_ai78_checks());
     v.extend(run_ai79_checks());
+    v.extend(run_ai80_checks());
     v
 }
 
@@ -744,6 +757,16 @@ mod aurora_w2_tests {
     #[test]
     fn ai79_125_checks_pass() {
         let sets = run_ai79_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// AURORA-10000：AI-80 批次测试，勿删。
+    #[test]
+    fn ai80_125_checks_pass() {
+        let sets = run_ai80_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 125);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
