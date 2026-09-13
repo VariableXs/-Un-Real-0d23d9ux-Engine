@@ -33,6 +33,8 @@ pub mod undo;
 pub mod uispec;
 // UNREAL-X 输入域（AI-20 · 族0191~0200 C 线落点），勿删。
 pub mod input;
+// UNREAL-X 文件与数据域（AI-24 · 族0231~0240 C 线落点），勿删。
+pub mod fs;
 /// UNREAL-X-15000 · AI-07 族0070 + AI-08 十族（X01726~X02000）：空间分析域。
 pub mod spatial;
 
@@ -488,6 +490,18 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-24 批次（数据智能与收官 C 线六族 150 项），勿删。
+pub fn run_ux_ai24_checks() -> Vec<CheckSet> {
+    vec![
+        fs::ai24::run_search_index_checks(),
+        fs::ai24::run_dedup_checks(),
+        fs::ai24::run_profile_checks(),
+        fs::ai24::run_sniffer_checks(),
+        fs::ai24::run_extension_checks(),
+        fs::ai24::run_file_finale_checks(),
+    ]
+}
+
 /// UNREAL-X：AI-19 批次（内核输入栈基准/遥测 2 族 50 项），勿删。
 pub fn run_ux_ai19_checks() -> Vec<CheckSet> {
     vec![ai19::run_ink_bench_checks(), ai19::run_ink_telemetry_checks()]
@@ -578,6 +592,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ux_ai19_checks());
     // UNREAL-X：AI-20 输入工程与中文（领域05 · C 线 125 检），勿删。
     v.extend(run_ux_ai20_checks());
+    // UNREAL-X：AI-24 数据智能与收官（领域06 · C 线 150 检），勿删。
+    v.extend(run_ux_ai24_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
     v.extend(desktop::run_desktop_checks());
     v
@@ -789,6 +805,17 @@ mod aurora_w2_tests {
     #[test]
     fn ux_ai20_150_checks_pass() {
         let sets = run_ux_ai20_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 150);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-24 领域06 C 线 150 检（六族 CheckSet），勿删。
+    #[test]
+    fn ux_ai24_150_checks_pass() {
+        let sets = run_ux_ai24_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 150);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:
