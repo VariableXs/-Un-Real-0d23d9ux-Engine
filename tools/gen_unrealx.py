@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
-"""UNREAL-X-15000 功能全景图·项级明细生成器。
-从旧版全景图解析 600 族元数据，按「五层×五档」模板展开 15000 项逐条明细。
-用法：python tools/gen_unrealx.py  （输出覆盖 UNREAL-X-15000-功能全景图.md）
-路径安全：仅允许仓库根下两个固定白名单文件，显式 resolve 并校验前缀。
+"""UNREAL-X-15000 功能全景图·项级明细生成器（四部本）。
+从旧版全景图解析 600 族元数据，按「五层×五档」模板展开 15000 项逐条明细，
+切成 4 个独立 MD（每部 4 个领域，自带头部与 ID 声明）。
+用法：python tools/gen_unrealx.py
+路径安全：仅允许仓库根下白名单文件，显式 resolve 并校验前缀。
 """
-import re, sys, io
+import re, io
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SRC_NAME = 'UNREAL-X-15000-功能全景图.md'
-DST_NAME = 'UNREAL-X-15000-功能全景图.md'
-ALLOWED = {REPO / SRC_NAME, REPO / DST_NAME}
+SRC_NAME = 'UNREAL-X-15000-功能全景图-第1部（领域01~04）.md'
+PART_NAMES = [
+    'UNREAL-X-15000-功能全景图-第1部（领域01~04）.md',
+    'UNREAL-X-15000-功能全景图-第2部（领域05~08）.md',
+    'UNREAL-X-15000-功能全景图-第3部（领域09~12）.md',
+    'UNREAL-X-15000-功能全景图-第4部（领域13~16）.md',
+]
+ALLOWED = {REPO / n for n in PART_NAMES}
 
 def safe(name):
     p = (REPO / name).resolve()
@@ -111,59 +117,77 @@ LAYERS = [
   '「{n}」艺术性表达与彩蛋层：不损主线体验、可关闭、有品牌记忆点']),
 ]
 
-def main():
-    src = safe(SRC_NAME)
-    dst = safe(DST_NAME)
-    text = src.read_text(encoding='utf-8')
+def parse_families():
+    """从四部本解析族元数据（重新生成时的数据源）。"""
     pat = re.compile(r'- 族(\d{4}) ([^（\n]+)（([^（）]+?) ×25 · ([^）]+?)）X(\d{5})~X(\d{5})')
     fams = []
-    for m in pat.finditer(text):
-        num, name, axis, owner, s, e = m.groups()
-        fams.append(dict(num=int(num), name=name.strip(), axis=axis.strip(), owner=owner.strip(),
-                         start=int(s), end=int(e)))
-    assert len(fams) == 600, '族解析数=%d' % len(fams)
+    for name in PART_NAMES:
+        for m in pat.finditer(safe(name).read_text(encoding='utf-8')):
+            num, fname, axis, owner, s, e = m.groups()
+            fams.append(dict(num=int(num), name=fname.strip(), axis=axis.strip(), owner=owner.strip(),
+                             start=int(s), end=int(e)))
+    return fams
 
-    out = io.StringIO()
-    w = out.write
-    w('# UNREAL-X-15000 功能全景图（项级明细完整版）\n\n')
+def front_matter(part_no, dom_lo, dom_hi):
+    w = io.StringIO().write
+    out = io.StringIO(); w = out.write
+    w('# UNREAL-X-15000 功能全景图 · 第%d部（领域%02d~%02d）（项级明细完整版）\n\n' % (part_no, dom_lo, dom_hi))
     w('> **Unreal X 计划**：X00001~X15000 共 **15000 项全新功能**，16 大领域 · 600 族 × 25 项，与 NOVA-500（F001~F500）、VARIX-M400、AURORA-10000（F00001~F10000）及仓库全部已交付功能**零重复**。\n')
-    w('> **本版为项级明细版**：15000 条逐条给出【层·档】、详细工作内容、交互形态（界面/开关/按钮）、三线落点与验收口径；「形态」栏即独立界面交互与按钮的设计要求，落点栏标明该条属内核 / Variable 系统 / 代码分析 / 多线。\n')
+    w('> **四部本**：本文件为第 %d/4 部（领域%02d~%02d），四部合计 15000 条，ID 全集连续无缝无重；本版为**项级明细版**，每条给出【层·档】、详细工作内容、交互形态（界面/开关/按钮）、三线落点与验收口径。\n' % (part_no, dom_lo, dom_hi))
     w('> 25 项结构 = **五层 × 五档**（基础实装/边界与恢复/手感与细节/性能与优化/创新拓展，每层 5 档），模板全文统一、内容按族实例化；层档定义见《UNREAL-X-15000-实施总步骤图》§3.1。\n')
-    w('> 领域 15 完整吸收《docs/UI-品质深化完整方案与步骤.md》§0~§18（VS Code 工作台范式 × Win11 系统范式统一为 Variable 设计语言：36 件套 kit、材质五档、数值级规范、逐屏蓝图、动效编排、取色流水线、键位注册表、视觉回归、量化验收），该文档为领域 15 施工规范附册。\n')
+    w('> 领域 15 完整吸收《docs/UI-品质深化完整方案与步骤.md》§0~§18（VS Code 工作台范式 × Win11 系统范式统一为 Variable 设计语言），该文档为领域 15 施工规范附册。\n')
     w('> 归属图例：【内核】=kernel/varix ｜【Variable 桌面】=src/ + src-tauri/ ｜【代码分析】=code-analysis/ ｜【三方】=多线协作。三线按项统计各 ≈5000，均衡规则见总步骤图 §1。\n')
     w('> 状态：⬜ 未开始 / 🔶 进行中 / ✅ 完成。当前：**0/15000（规划完成，未开工）**。\n\n')
-    w('**归属分布（600 族，按主责）**：Variable 桌面 296 族 · 内核 121 族 · 代码分析 122 族 · 三方 61 族（族内 25 项含跨线联动项，按项统计三线各 ≈5000）。\n\n')
-    w('**领域总览**\n\n| # | 领域 | X 区间 | 族 | AI | 波次 |\n|---|------|--------|-----|----|----|\n')
+    w('**领域总览（全集）**\n\n| # | 领域 | X 区间 | 族 | AI | 波次 |\n|---|------|--------|-----|----|----|\n')
     for d in DOMAINS:
         n_fams = 40 if (d[3] - d[2]) >= 999 else 30
-        w('| %02d | %s | X%05d~X%05d | %d | %s | %s |\n' % (d[0], d[1], d[2], d[3], n_fams, d[4], d[5]))
+        mark = ' ←本部' if dom_lo <= d[0] <= dom_hi else ''
+        w('| %02d | %s | X%05d~X%05d | %d | %s | %s |%s\n' % (d[0], d[1], d[2], d[3], n_fams, d[4], d[5], mark))
+    return out.getvalue()
 
-    idx = 0
-    for d in DOMAINS:
-        w('\n---\n\n## 领域%02d · %s（X%05d~X%05d · %s · %s）\n\n' % (d[0], d[1], d[2], d[3], d[4], d[5]))
-        df = [f for f in fams if d[2] <= f['start'] <= d[3]]
-        assert len(df) in (30, 40), (d, len(df))
-        n_ai = len(df) // 10
-        ai_lo = int(d[4].split('~')[0].split('-')[1])
-        for gi in range(n_ai):
-            ai_no = ai_lo + gi
-            grp = df[gi*10:(gi+1)*10]
-            w('**AI-%02d %s·第%d组（族%04d~%04d · X%05d~X%05d · %s）**\n\n' % (
-                ai_no, d[1], gi+1, grp[0]['num'], grp[-1]['num'],
-                grp[0]['start'], grp[-1]['end'], d[5]))
-            for f in grp:
-                w('- 族%04d %s（%s ×25 · %s）X%05d~X%05d\n' % (f['num'], f['name'], f['axis'], f['owner'], f['start'], f['end']))
-                loc = loc_for(d[0], f['owner']); form = form_for(f['owner']); chk = check_for(f['owner'])
-                for li, (lname, items) in enumerate(LAYERS):
-                    for di, tpl in enumerate(items):
-                        idx += 1
-                        body = tpl.format(n=f['name'], a=f['axis'])
-                        w('  - X%05d 【%s·档%d】%s；形态：%s；落点：%s；验收：%s。\n' % (
-                            idx, lname, di+1, body, form, loc, chk))
-                w('\n')
-    w('---\n\n## ID 唯一性声明\n\n- 本计划 ID 区间 **X00001~X15000**，带 X 前缀，与 NOVA-500、AURORA-10000 的 F 集天然不冲突；本文件 15000 条经生成器算术校验连续无缝无重。\n- 收官时执行族0594「ID 唯一性防线」：全集（F 集 + X 集）unique 校验脚本入库 CI。\n- 本文件由 tools/gen_unrealx.py 生成：修改族定义请改生成器数据源后重新生成，勿手改 15000 条明细（防漂移）。\n')
-    dst.write_text(out.getvalue(), encoding='utf-8', newline='\n')
-    print('项数:', idx)
+FOOTER = '''---
+## ID 唯一性声明
+
+- 本计划 ID 区间 **X00001~X15000**，带 X 前缀，与 NOVA-500、AURORA-10000 的 F 集天然不冲突；四部合计 15000 条经生成器算术校验连续无缝无重。
+- 收官时执行族0594「ID 唯一性防线」：全集（F 集 + X 集）unique 校验脚本入库 CI。
+- 本文件由 tools/gen_unrealx.py 生成：修改族定义请改生成器数据源后重新生成，勿手改明细（防漂移）。
+'''
+
+def main():
+    fams = parse_families()
+    assert len(fams) == 600, '族解析数=%d' % len(fams)
+    total = 0
+    for part_no, names in enumerate(PART_NAMES, 1):
+        dom_lo, dom_hi = 1 + (part_no - 1) * 4, part_no * 4
+        out = io.StringIO(); w = out.write
+        w(front_matter(part_no, dom_lo, dom_hi))
+        for d in [d for d in DOMAINS if dom_lo <= d[0] <= dom_hi]:
+            w('\n---\n\n## 领域%02d · %s（X%05d~X%05d · %s · %s）\n\n' % (d[0], d[1], d[2], d[3], d[4], d[5]))
+            df = [f for f in fams if d[2] <= f['start'] <= d[3]]
+            assert len(df) in (30, 40), (d, len(df))
+            n_ai = len(df) // 10
+            ai_lo = int(d[4].split('~')[0].split('-')[1])
+            for gi in range(n_ai):
+                ai_no = ai_lo + gi
+                grp = df[gi*10:(gi+1)*10]
+                w('**AI-%02d %s·第%d组（族%04d~%04d · X%05d~X%05d · %s）**\n\n' % (
+                    ai_no, d[1], gi+1, grp[0]['num'], grp[-1]['num'],
+                    grp[0]['start'], grp[-1]['end'], d[5]))
+                for f in grp:
+                    w('- 族%04d %s（%s ×25 · %s）X%05d~X%05d\n' % (f['num'], f['name'], f['axis'], f['owner'], f['start'], f['end']))
+                    loc = loc_for(d[0], f['owner']); form = form_for(f['owner']); chk = check_for(f['owner'])
+                    for li, (lname, items) in enumerate(LAYERS):
+                        for di, tpl in enumerate(items):
+                            total += 1
+                            body = tpl.format(n=f['name'], a=f['axis'])
+                            w('  - X%05d 【%s·档%d】%s；形态：%s；落点：%s；验收：%s。\n' % (
+                                total, lname, di+1, body, form, loc, chk))
+                    w('\n')
+        w(FOOTER)
+        safe(names).write_text(out.getvalue(), encoding='utf-8', newline='\n')
+        print('%s 完成' % names)
+    print('项数:', total)
+    assert total == 15000
 
 if __name__ == '__main__':
     main()
