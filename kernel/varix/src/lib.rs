@@ -153,6 +153,9 @@ pub mod w3gate;
 // --- AURORA-1000 AI-31~AI-40 (A751~A1000，W4/W5) -----------------------------
 #[path = "a11y/a11y.rs"]
 pub mod a11y;
+// UNREAL-X：AI-52 K 线（族0511/0512/0518 · X12751~X12800 · X12926~X12950 内核无障碍），勿删。
+#[path = "a11y/a52k.rs"]
+pub mod a52k;
 #[path = "power/aurora.rs"]
 pub mod apower;
 #[path = "perf/perf.rs"]

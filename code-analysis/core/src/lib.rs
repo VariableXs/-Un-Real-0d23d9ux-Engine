@@ -56,6 +56,10 @@ pub mod ai18;
 pub mod ai32;
 // UNREAL-X：AI-31 批次（X07701~X07750 领域13 硬件基准/HIL C 线），勿删。
 pub mod ai31;
+// UNREAL-X：AI-51 批次（X12551~X12575 领域14 本地化测试 C 线），勿删。
+pub mod ai51;
+// UNREAL-X：AI-52 批次（X12876~X12925 领域14 无障碍研究/自动化审计 C 线），勿删。
+pub mod ai52;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai16;
@@ -513,6 +517,8 @@ pub fn run_ux_ai35_checks() -> Vec<CheckSet> {
     vec![ai35::run_perf_tax_checks(), ai35::run_archive_checks()]
 }
 
+
+
 /// UNREAL-X：AI-38 批次（防线工程 C 线 4 族 100 项），勿删。
 pub fn run_ux_ai38_checks() -> Vec<CheckSet> {
     vec![
@@ -601,6 +607,16 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
 /// UNREAL-X：AI-32 批次（设备场景与收官 C 线 3 族 75 项），勿删。
 pub fn run_ux_ai32_checks() -> Vec<CheckSet> {
     ai32::run_ai32_checks()
+}
+
+/// UNREAL-X：AI-51 本地化测试 C 线聚合，勿删。
+pub fn run_ux_ai51_checks() -> Vec<CheckSet> {
+    ai51::run_ux_ai51_checks()
+}
+
+/// UNREAL-X：AI-52 无障碍研究/自动化审计 C 线聚合，勿删。
+pub fn run_ux_ai52_checks() -> Vec<CheckSet> {
+    ai52::run_ux_ai52_checks()
 }
 
 /// UNREAL-X：AI-31 批次（领域13 硬件基准/HIL C 线 2 族 50 项），勿删。
@@ -706,6 +722,10 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     v.extend(run_ux_ai32_checks());
     // UNREAL-X：AI-31 硬件域批次（族0309~0310 · X07701~X07750），勿删。
     v.extend(run_ux_ai31_checks());
+    // UNREAL-X：AI-51 本地化测试 C 线（族0503 · X12551~X12575），勿删。
+    v.extend(run_ux_ai51_checks());
+    // UNREAL-X：AI-52 无障碍研究/自动化审计 C 线（族0516~0517 · X12876~X12925），勿删。
+    v.extend(run_ux_ai52_checks());
     // UNREAL-X：AI-23 C 线（族0229~0230 · X05701~X05750 fs 基准/模糊），勿删。
     v.extend(run_fs23_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
