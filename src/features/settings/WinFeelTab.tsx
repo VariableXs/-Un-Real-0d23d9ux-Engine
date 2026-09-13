@@ -6,8 +6,43 @@
  * - 不做「记住全部窗口」类激进默认，仅提供用户显式开启的手感增强。
  */
 
+import { useState } from "react";
 import { useI18n } from "../../i18n";
 import type { Settings } from "../../lib/settings";
+import { GRAMMARS, applyGrammar } from "../../system/windows/windowGeo";
+
+/** AI-05 族0042 布局语法 2.0：五档语法实时预览（预览区按语法铺排，纯几何、零落位副作用）。 */
+function GrammarPreview(): React.ReactElement {
+  const [gid, setGid] = useState("halves");
+  const grammar = GRAMMARS.find((g) => g.id === gid) ?? GRAMMARS[1]!;
+  const rects = applyGrammar(grammar, { x: 0, y: 0, w: 320, h: 180 }, 6);
+  return (
+    <>
+      <div className="wf-geo-row" role="radiogroup" aria-label="布局语法">
+        {GRAMMARS.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            className={g.id === gid ? "wf-geo-chip wf-geo-chip--on" : "wf-geo-chip"}
+            aria-pressed={g.id === gid}
+            onClick={() => setGid(g.id)}
+          >
+            {g.id}
+          </button>
+        ))}
+      </div>
+      <div className="wf-geo-preview" role="img" aria-label={`布局语法预览：${grammar.id}`}>
+        {rects.map((r, i) => (
+          <span
+            key={i}
+            className={i === 0 ? "wf-geo-cell wf-geo-cell--active" : "wf-geo-cell"}
+            style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
 
 export function WinFeelTab(props: { settings: Settings; onPatch: (p: Partial<Settings>) => void }): React.ReactElement {
   const { t } = useI18n();
@@ -83,6 +118,11 @@ export function WinFeelTab(props: { settings: Settings; onPatch: (p: Partial<Set
             <option value="2">{t("wfXmouseRaise")}</option>
           </select>
         </div>
+      </section>
+
+      <section className="wf-feel-group">
+        <h4>窗口几何学 2.0</h4>
+        <GrammarPreview />
       </section>
     </div>
   );

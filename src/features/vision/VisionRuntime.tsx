@@ -10,6 +10,7 @@ import { needsTour } from "../onboarding/onboarding";
 import { SpotlightTour } from "../onboarding/SpotlightTour";
 import { HelpCenter } from "../help/HelpCenter";
 import { EdgeHotspots } from "./EdgeHotspots";
+import { SpaceOpsPanel } from "../desktop-design/SpaceOpsPanel";
 
 export const MOTION_SPEED_KEY = "vision.motionSpeed.v1"; // "0.5" | "1" | "1.5"
 
@@ -47,6 +48,7 @@ export function VisionRuntime(): React.ReactElement {
   return (
     <>
       <EdgeHotspots />
+      <SpaceOpsPanel />
       <HelpCenter />
       {tourOpen ? <SpotlightTour onDone={() => setTourOpen(false)} /> : null}
     </>
