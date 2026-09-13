@@ -20,6 +20,12 @@
 ## Code Analysis（code-analysis/）
 - AI-06 落点 #411~#460：`cmd` / `manual` / `undo` / `multisrc` / `marquee` / `link`，
   聚合 `run_ai06_checks()`（50 项），已纳入 `run_all_checks()`。
+- AI-21~AI-25（领域05）/ AI-46~AI-50（领域10）落点 code-analysis/core/src/aiNN.rs
+  （每 AI 一文件，`run_aiNN_checks` 聚合 125 项，lib.rs 登记 + `aiNN_125` 测试）。
+- 任务文档副本现状（2026-09-13 核实）：**AURORA-10000 三图仅两处副本**（仓库根 + `docs/`），
+  C² 无副本；「四处副本 md5」纪律目前只对 NOVA/VARIX/Code Analysis 系列成立。
+- C² 根实际路径：`D:\C^2 Courage (Un)Real Variable\C^2 Courage (Un)Real Variable\`
+  （其 `code-analysis/core/src/` 需同步仓库的 aiNN.rs + lib.rs）。
 - 任务文档有**四处副本**（仓库根 `docs/`、`code-analysis/docs/`、C² 根、
   C² `code-analysis/docs/`）：分工完成图 / 功能全景图 / 实施总步骤图 / Code Analysis2 /
   Code Analysis3。改完必须四处同步并用 md5（字节级）校验一致。
@@ -63,3 +69,10 @@
 - fuzz 必须偏置到有效号段（纯随机几乎永远走 ENOSYS，"零 panic" 是空证明）。
 - 删"未用导入"要连带查 `#[cfg(test)] mod tests`，否则 E0425。
 - 内层 crate 位于别的工作区目录树内时要自带空 `[workspace]` 表。
+
+## AI-61~AI-65 领域13 落地日志（2026-09-13）
+- W6 领域13 声音与通知 625 项（族0301~0325，F07501~F08125）全部 ✅。
+- 落点：src/features/sound/{groupA~E,checks}.ts + __tests__/sound.test.ts；
+  checks.ts runDomain13Checks 625 项逐条断言（「位/预留」按 §15 口径）。
+- 门禁：tsc 本范围 0 错；全仓 vitest 2305 绿（基线 2288 + sound 17 例）。
+- 三图副本两处（根 + docs/）md5 对齐；分工图 W6 置 🔶 625/1250，总览 6875/10000。
