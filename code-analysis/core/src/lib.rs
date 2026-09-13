@@ -76,6 +76,8 @@ pub mod ai35;
 pub mod ai38;
 // UNREAL-X：AI-39 批次（X09501~X09750 领域10 安全深水区 C 线），勿删。
 pub mod ai39;
+// UNREAL-X：AI-47 声音设计面 C 线（族0466 通知智能 · X11626~X11650），勿删。
+pub mod audio;
 // AURORA-10000：AI-46 批次（F05626~F05750 领域10 安全与隐私），勿删。
 pub mod ai46;
 // AURORA-10000：AI-47 批次（F05751~F05875），勿删。
@@ -531,6 +533,11 @@ pub fn run_ux_ai39_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-47 批次（声音设计面 C 线 1 族 25 项），勿删。
+pub fn run_ux_ai47_checks() -> Vec<CheckSet> {
+    vec![audio::run_notify_intel_checks()]
+}
+
 /// UNREAL-X：AI-17 批次（输入手感面 10 族 250 项），勿删。
 pub fn run_ux_ai17_checks() -> Vec<CheckSet> {
     vec![
@@ -706,6 +713,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-38/AI-39 防线工程与安全深水区批次（族0377~0389 · X09401~X09750），勿删。
     v.extend(run_ux_ai38_checks());
     v.extend(run_ux_ai39_checks());
+    // UNREAL-X：AI-47 声音设计面 C 线（族0466 通知智能 · X11626~X11650），勿删。
+    v.extend(run_ux_ai47_checks());
     v
 }
 
@@ -729,6 +738,17 @@ mod tests {
     fn ux_ai39_100_checks_pass() {
         let sets = run_ux_ai39_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-47 声音设计面 C 线（族0466 通知智能 · X11626~X11650）全量自检。
+    #[test]
+    fn ux_ai47_25_checks_pass() {
+        let sets = run_ux_ai47_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 25);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:
 {}", s.domain, s.render());
