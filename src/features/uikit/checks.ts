@@ -11,6 +11,8 @@ import * as X2 from './groupX2';
 import * as X19 from './groupX19';
 import * as G from './groupG';
 import * as H from './groupH';
+import * as I from './groupI';
+import * as J from './groupJ';
 
 export interface CheckEntry {
   id: string;
@@ -955,6 +957,28 @@ export function runDomain15Checks(): { entries: CheckEntry[]; failed: CheckEntry
     checkF0361, checkF0362, checkF0363, checkF0364, checkF0365,
     checkF0366, checkF0367, checkF0368, checkF0369, checkF0370,
     checkF0371, checkF0372, checkF0373, checkF0374, checkF0375,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-53（族0521~0530 · X13001~X13250）聚合：工作台范式与 kit 基础断言组，只增不删。
+export function runAi53Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    I.checkX0521, I.checkX0522, I.checkX0523, I.checkX0524, I.checkX0525,
+    I.checkX0526, I.checkX0527, I.checkX0528, I.checkX0529, I.checkX0530,
+  ];
+  const entries = families.flatMap((f) => f().map(memoized));
+  const failed = entries.filter((e) => !e.check());
+  return { entries, failed };
+}
+
+// UNREAL-X AI-54（族0531~0540 · X13251~X13500）聚合：kit 系统件与系统范式断言组，只增不删。
+export function runAi54Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
+  const families = [
+    J.checkX0531, J.checkX0532, J.checkX0533, J.checkX0534, J.checkX0535,
+    J.checkX0536, J.checkX0537, J.checkX0538, J.checkX0539, J.checkX0540,
   ];
   const entries = families.flatMap((f) => f().map(memoized));
   const failed = entries.filter((e) => !e.check());
