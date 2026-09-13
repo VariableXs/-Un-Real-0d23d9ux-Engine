@@ -44,6 +44,10 @@ ref = req("GET", "/repos/%s/git/ref/heads/main" % REPO)
 remote_sha = ref["object"]["sha"]
 print("remote main:", remote_sha)
 
+# base_tree 需要 tree SHA；远端 ref 给的是 commit SHA，先解析。
+remote_tree = req("GET", "/repos/%s/git/commits/%s" % (REPO, remote_sha))["tree"]["sha"]
+print("remote tree:", remote_tree)
+
 tree_entries = []
 for f in FILES:
     content = io.open(f, encoding="utf-8").read()
@@ -51,7 +55,7 @@ for f in FILES:
         {"path": f.replace("\\", "/"), "mode": "100644", "type": "blob", "content": content}
     )
 
-tree = req("POST", "/repos/%s/git/trees" % REPO, {"base_tree": remote_sha, "tree": tree_entries})
+tree = req("POST", "/repos/%s/git/trees" % REPO, {"base_tree": remote_tree, "tree": tree_entries})
 print("tree:", tree["sha"])
 
 commit = req(
