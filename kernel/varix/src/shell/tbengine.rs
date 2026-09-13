@@ -7,6 +7,9 @@
 //! 纪律：零分配、全整数 permille、`CheckSet` 自检 75 项全绿（ktest）。
 
 use crate::checks::CheckSet;
+// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 保持 no_std。
+#[cfg(all(not(test), not(feature = "kernel-image")))]
+use std::{string::String, vec::Vec};
 
 // ---------------------------------------------------------------------------
 // 族0151 任务栏合成优化

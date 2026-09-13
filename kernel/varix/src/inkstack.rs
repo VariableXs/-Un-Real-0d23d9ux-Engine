@@ -6,6 +6,9 @@
 //! 代码分析侧的族0189 基准 / 族0190 遥测见 code-analysis/core/src/ai19.rs。
 
 use crate::checks::CheckSet;
+// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 保持 no_std。
+#[cfg(all(not(test), not(feature = "kernel-image")))]
+use std::{format, string::String, string::ToString, vec, vec::Vec};
 
 // ---------------------------------------------------------------------------
 // 族0181 驱动抽象（X04501~X04525）

@@ -12,6 +12,10 @@
 //! The lib is `no_std` on the kernel target and builds against std on the
 //! host so every module's unit tests run natively (`cargo ktest`).
 #![cfg_attr(not(test), no_std)]
+// Host-side non-test builds (integration tests like tests/fuzz.rs) run on the
+// host triple: keep std reachable while the real kernel image stays no_std.
+#[cfg(all(not(test), not(feature = "kernel-image")))]
+extern crate std;
 
 pub mod acpi;
 pub mod audio;
@@ -165,6 +169,11 @@ pub mod ai58k;
 // UNREAL-X：AI-29 K 线（族0286 开机固件/族0290 虚拟化容器 · X07126~X07150 + X07226~X07250），勿删。
 #[path = "checks/ai29.rs"]
 pub mod ai29k;
+// UNREAL-X：AI-27 K 线（族0269 工具间数据总线/族0270 工具沙箱 · X06701~X06750），勿删。
+#[path = "checks/ai27.rs"]
+pub mod ai27k;
+// UNREAL-X：AI-28 K 线全量（族0271~0280 工具内核与收官 · X06751~X07000，task/mod.rs 聚合），勿删。
+pub mod task;
 #[path = "power/aurora.rs"]
 pub mod apower;
 #[path = "perf/perf.rs"]

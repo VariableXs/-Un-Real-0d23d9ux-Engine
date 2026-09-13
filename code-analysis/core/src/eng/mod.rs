@@ -12,6 +12,7 @@
 //!
 //! 零 AI：全部确定性算法，不调用任何网络模型。
 
+pub mod ai27;
 pub mod ai57;
 pub mod ai58;
 pub mod ai59;

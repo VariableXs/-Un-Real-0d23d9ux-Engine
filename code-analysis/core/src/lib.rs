@@ -543,6 +543,12 @@ pub fn run_ux_ai56_checks() -> Vec<CheckSet> {
     ]
 }
 
+/// UNREAL-X：AI-27 C 线（领域07 工具智能与联动 3 族 75 检），勿删。
+/// 族0263 剪贴板历史智能（X06551~X06575）/ 族0267 工具使用画像（X06651~X06675）/ 族0268 工具启动优化（X06676~X06700）。
+pub fn run_ux_ai27_checks() -> Vec<CheckSet> {
+    eng::ai27::run_ux_ai27_all_checks()
+}
+
 /// UNREAL-X：AI-57/AI-58 批次（领域16 工程基建与分析引擎 C 线 16 族 400 检），勿删。
 /// AI-57 工程基建十族（族0561~0570 · X14001~X14250）；AI-58 分析引擎六族（族0575~0580 · X14351~X14500）。
 /// AI-58 K 线四族（族0571~0574 · X14251~X14350）落点 kernel/varix/src/checks/。
@@ -782,6 +788,8 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-55/AI-56 主题流水线·视觉回归与 UI 质量收官批次（领域15 · X13501~X13975），勿删。
     v.extend(run_ux_ai55_checks());
     v.extend(run_ux_ai56_checks());
+    // UNREAL-X：AI-27 C 线（领域07 工具智能与联动 · X06551~X06700 C 线），勿删。
+    v.extend(run_ux_ai27_checks());
     // UNREAL-X：AI-59/AI-60 协作防线与收官批次（领域16 · X14501~X15000 C 线），勿删。
     v.extend(run_ux_ai59_60_checks());
     // UNREAL-X：AI-57/AI-58 工程基建与分析引擎批次（领域16 · X14001~X14500 C 线），勿删。
@@ -830,6 +838,17 @@ mod tests {
     fn ux_ai59_60_100_checks_pass() {
         let sets = run_ux_ai59_60_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert_eq!(s.total(), 25, "domain {} 每族恰 25 检", s.domain);
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-27 C 线（领域07 工具智能与联动 3 族）全量自检。
+    #[test]
+    fn ux_ai27_75_checks_pass() {
+        let sets = run_ux_ai27_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 75);
         for s in &sets {
             assert_eq!(s.total(), 25, "domain {} 每族恰 25 检", s.domain);
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
