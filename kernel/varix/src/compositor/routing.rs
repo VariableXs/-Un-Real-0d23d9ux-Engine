@@ -447,12 +447,23 @@ pub fn run_routing_checks() -> crate::checks::CheckSet {
     }
     let over17 = r17.add(99, 0, 0, 10, 10, 99);
     set.add("X01567 热路径量化", many == MAX_WINDOWS && over17 != E_OK, "批处理收益入册");
-    let mut r18 = Router::new();
-    for g in 0..MAX_GRABS {
-        let _ = r18.grab(g as u16 + 1);
+    // X01568 内存与功耗收敛：反复命中后窗口槽位零漂移、待机零增量。
+    let mut r18z = Router::new();
+    seed_two(&mut r18z);
+    let before18 = r18z.wins.iter().filter(|w| w.is_some()).count();
+    for _ in 0..64 {
+        let _ = r18z.hit(0, 0);
+        let _ = r18z.pointer_focus(0, 0);
     }
-    let busy = r18.grab(9);
-    set.add("X01518 资源守护", busy == E_GRAB_BUSY && describe(E_GRAB_BUSY).contains("释放"), "抓取上限不崩溃");
+    let after18 = r18z.wins.iter().filter(|w| w.is_some()).count();
+    set.add(
+        "X01568 零漂移",
+        before18 == 2 && after18 == before18 && r18z.grabbed_n == 0,
+        "待机零增量泄漏检测入长稳",
+    );
+    // 注：此处原有一条 "X01518 资源守护" 属族0061 编号误植（X01518 归 framesched 的族0061，
+    // 已由 X01518 自身覆盖），且族0063 的 X01559「低资源降级」已完整覆盖该语义，
+    // 故移除误植项而不是重复登记，保持本族 25 项不变量。
     let mut r19 = Router::new();
     r19.mode = RouteMode::FocusFollowsPointer;
     let d1 = r19.degrade(500);

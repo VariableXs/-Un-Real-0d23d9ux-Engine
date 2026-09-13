@@ -3,12 +3,13 @@
 # 用法: scripts/acceptance-gate.sh [--full-kernel]
 #   --full-kernel  额外跑内核全量 cargo ktest（已知有挂点，默认只跑 --lib）
 # 产出:
-#   docs/acceptance/acceptance-raw/  各线原始结果(JSON/日志)
+#   _attic/acceptance/acceptance-raw/  各线原始结果(JSON/日志)
+#     —— 非功能产物（日志/快照 JSON），按仓库约定统一归档到 _attic，不混入 docs/
 #   stdout 汇总表：实际通过数 vs 文档宣称数
 set -uo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-OUT="docs/acceptance/acceptance-raw"
+OUT="_attic/acceptance/acceptance-raw"
 mkdir -p "$OUT"
 FULL_KERNEL=0
 [ "${1:-}" = "--full-kernel" ] && FULL_KERNEL=1

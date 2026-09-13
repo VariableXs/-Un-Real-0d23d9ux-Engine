@@ -53,7 +53,8 @@ describe('V 线运行时 ID 收集', () => {
         }
       }
     }
-    const outDir = path.join(ROOT, 'docs', 'acceptance', 'acceptance-raw');
+    // 非功能产物（快照 JSON）按仓库约定归档到 _attic，不混入 docs/。
+    const outDir = path.join(ROOT, '_attic', 'acceptance', 'acceptance-raw');
     fs.mkdirSync(outDir, { recursive: true });
     fs.writeFileSync(
       path.join(outDir, 'vline-ids.json'),

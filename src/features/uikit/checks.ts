@@ -908,8 +908,9 @@ export function runAi01Checks(): { entries: CheckEntry[]; failed: CheckEntry[] }
 // UNREAL-X AI-02（族0011~0020 · X00251~X00500）聚合：电源状态剧场断言组，只增不删。
 export function runAi02Checks(): { entries: CheckEntry[]; failed: CheckEntry[] } {
   const families = [
-    X2.checkX0011, X2.checkX0012, X2.checkX0013, X2.checkX0016, X2.checkX0017,
-    X2.checkX0018, X2.checkX0019, X2.checkX0020, X2.checkX0020b,
+    X2.checkX0011, X2.checkX0012, X2.checkX0013, X2.checkX0014, X2.checkX0016,
+    X2.checkX0017, X2.checkX0018, X2.checkX0019, X2.checkX0020, X2.checkX0021,
+    X2.checkX0022,
   ];
   const entries = families.flatMap((f) => f().map(memoized));
   const failed = entries.filter((e) => !e.check());

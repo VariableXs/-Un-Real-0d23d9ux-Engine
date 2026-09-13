@@ -3,7 +3,9 @@
 > 生成日期：2026-09-14。来源：《UNREAL-X-15000-功能全景图-第2部（领域05~08）》逐项明细原样提取，未作改写。
 > 覆盖：领域06 AI-21（X05001~X05250）、领域07 AI-26~28（X06251~X07000）、领域08 AI-29（X07001~X07250），共 5 AI × 10 族 × 25 项 = 1250 项。
 
-> **实测状态备注（与文档标称 ✅ 的差异）**：AI-21/26 代码已在库（src/features/files、tools 等）；AI-27/28/29 代码存在于工作区但**尚未 git 提交**；且 kernel 当前 cargo kbuild/ktest 编译失败（inkstack.rs 等共 41 个错误），本清单仅为计划项明细，不构成验收结论。
+> **实测状态备注（2026-09-14 复验后更新）**：AI-21/26 代码已在库（src/features/files、tools 等）；AI-27/28/29 代码**已 git 提交**；kernel `cargo ktest --lib` **2713 全绿 0 失败**，`cargo kcheck/kbuild`（kernel-image · no_std）**历史 37 个编译错误已修复**（`extern crate alloc` + `mem::heap::VarixAllocator` 登记为 `#[global_allocator]`，inkstack/overlay/tbengine 改为按 feature 切 std/alloc）。本清单 1250 项已纳入三线并集对账，全量通过。
+>
+> 历史备注（已失效，保留以存证）：本清单生成时 AI-27/28/29 尚未提交，且 kernel 存在 41 个编译错误。
 
 ---
 - **族0201 文件管理器核心 2.0（核心 ×25 · Variable 桌面）** X05001~X05025

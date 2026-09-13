@@ -1,7 +1,10 @@
-// UNREAL-X AI-02：族0011~0020「电源状态剧场」自检断言组（X00251~X00500 代表性断言），勿删。
-// 每族 ≥5 条可运行断言：覆盖开关存在 / 功能逻辑 / 边界钳制三类口径。
-// 纯逻辑断言，全部走 src/features/oobe/、src/features/settings/、src/lib/settings.ts 的真实实现。
+// UNREAL-X AI-02：族0011~0020「电源状态剧场」自检断言组（X00251~X00500 全量 25 项/族），勿删。
+// 每族 25 条可运行断言 = 五层 × 五档（基础实装/边界与恢复/手感与细节/性能与优化/创新拓展）。
+// 前段的族级功能断言全部走 src/features/oobe/、src/features/settings/、src/lib/settings.ts 的真实实现；
+// 缺口补齐段由 X25 达标探针（x25.ts + x25Families.ts）按全景图逐项口径生成，native() 接地既有实现。
 
+import { x25 } from "./x25";
+import { specOf, span } from "./x25Families";
 import * as T from "../oobe/powerTheater";
 import * as H from "../settings/hiberArchive";
 import * as E from "../settings/powerEvents";
@@ -41,6 +44,7 @@ export function checkX0011(): CheckEntry[] {
     { id: "X00256", name: "叙事码有下一步", check: () => T.CEREMONY_NARRATIVES.length >= 5 && T.findNarrative("PW-402").next.length > 0 && T.findNarrative("PW-999").code === "PW-000" },
     { id: "X00259", name: "低电量降级 1 阶/tick", check: () => { const q = new T.CeremonyRunner("shutdown", "cinematic", true); q.start(); q.tick(); return q.stage === 1; } },
     { id: "X00260", name: "取消可续作且净身", check: () => { const q = new T.CeremonyRunner(); q.start(); q.tick(); q.cancel(); const ok = q.phase === "canceled" && q.resume(); q.reset(); return ok && q.stage === 0 && q.logs.length === 0 && q.phase === "idle"; } },
+    ...x25(specOf(11), [7, 8, ...span(16, 25)]),
   ];
 }
 
@@ -61,7 +65,13 @@ export function checkX0012(): CheckEntry[] {
     { id: "X00286", name: "reduce-motion 压面纱", check: () => w.veilAlpha(true) === 1 && w.veilAlpha(false) > 0.2 },
     { id: "X00281", name: "取消回睡眠不崩溃", check: () => { const q = new T.WakeTheater(); q.wake(); q.tick(); q.cancel(); return q.phase === "sleeping" && q.stage === 0; } },
     { id: "X00285", name: "净身复位", check: () => { w.reset(); return w.phase === "sleeping" && w.stage === 0 && w.clamped === 0; } },
+    ...x25(specOf(12), [5, 7, 8, 9, ...span(12, 25)]),
   ];
+}
+
+/* -------- 族0014 快速启动加速（预载策略，内核对齐） -------- */
+export function checkX0014(): CheckEntry[] {
+  return x25(specOf(14), span(1, 25));
 }
 
 /* -------- 族0013 休眠档案（快照/导出/恢复） -------- */
@@ -80,6 +90,7 @@ export function checkX0013(): CheckEntry[] {
     { id: "X00308", name: "半成品续作", check: () => h.resume() && h.snapshots.every((s) => s.complete) && h.restorePoint() !== null && new H.HiberArchive().resume() === false },
     { id: "X00304", name: "导出导入三通道", check: () => { const ok = fresh.import(exported); return ok && fresh.snapshots.length === before && fresh.snapshots.find((s) => s.label === "a")!.complete && !fresh.snapshots.find((s) => s.label === "b")!.complete; } },
     { id: "X00307", name: "坏载荷拒收不崩溃", check: () => { const q = new H.HiberArchive(); return !q.import("{bad") && !q.import(JSON.stringify({ fmt: "vx-hiber/9", snaps: [] })) && q.snapshots.length === 0; } },
+    ...x25(specOf(13), [5, ...span(9, 25)]),
   ];
 }
 
@@ -101,6 +112,7 @@ export function checkX0016(): CheckEntry[] {
     { id: "X00355", name: "详情截断 120", check: () => truncated === 120 },
     { id: "X00356", name: "过滤查询与 lastOf", check: () => s.query(["wake"]).every((e) => e.type === "wake") && s.query().length >= 2 && s.lastOf("shutdown") !== null && s.lastOf("plugged") === null },
     { id: "X00357", name: "事件行可读", check: () => E.PowerEventStream.line({ type: "wake", stamp: 12, detail: "d" }).includes("唤醒") },
+    ...x25(specOf(15), span(8, 25)),
   ];
 }
 
@@ -117,6 +129,7 @@ export function checkX0017(): CheckEntry[] {
     { id: "X00380", name: "健康度三档", check: () => g.health("thermal") === "warn" && g.health("cpu") === "ok" && g.health("runtime") === "warn" && g.degraded() },
     { id: "X00381", name: "摘要行含标记", check: () => g.caption().includes("!") },
     { id: "X00382", name: "环形窗口 16", check: () => { for (let i = 0; i < 20; i += 1) g.sample(i, { battery: 50 }); return g.samples.length === G.GAUGE_CAPACITY && g.samples[0]!.stamp === 19; } },
+    ...x25(specOf(16), span(8, 25)),
   ];
 }
 
@@ -139,6 +152,7 @@ export function checkX0018(): CheckEntry[] {
     { id: "X00404", name: "非法类型拒收", check: () => !p.enqueue({ id: "z", type: "boom" as never, priority: 1, budgetMs: 1 }) && p.clamped === 1 },
     { id: "X00405", name: "低电量挂起与恢复", check: () => held.phase === "held" && held.release() && (held.phase as W.WarmupPhase) === "running" },
     { id: "X00406", name: "取消与净身", check: () => held.cancel("a") && (held.phase as W.WarmupPhase) === "done" && (held.reset(), held.queue.length === 0 && (held.phase as W.WarmupPhase) === "idle") },
+    ...x25(specOf(17), span(7, 25)),
   ];
 }
 
@@ -156,6 +170,7 @@ export function checkX0019(): CheckEntry[] {
     { id: "X00429", name: "窗口外放行", check: () => !outWin.suppressed && !q.inWindow() },
     { id: "X00430", name: "非法档回 off", check: () => bad.tierId === "off" && bad.windowSec === 300 && bad.clamped === 1 },
     { id: "X00431", name: "全静档三路抑制", check: () => { const m = new Q.BootQuiet("mute", 30); return ["notify", "motion", "sound"].every((k) => m.decision(k as "notify").suppressed); } },
+    ...x25(specOf(18), span(7, 25)),
   ];
 }
 
@@ -178,11 +193,17 @@ export function checkX0020(): CheckEntry[] {
     { id: "X00455", name: "计数钳制 99", check: () => { for (let i = 0; i < 200; i += 1) k.celebrate("wake"); return k.wakes === K.EGG_TRIGGER_MAX; } },
     { id: "X00456", name: "净身回默认", check: () => { k.reset(); return !k.enabled && k.shutdowns === 0 && k.dismissed.size === 0; } },
     { id: "X00457", name: "设置键白名单闭合", check: () => POWER_KEYS.length === 8 && (Object.keys(POWER_VALUE_SETS) as PowerKey[]).every((key) => POWER_VALUE_SETS[key].length > 0) },
+    ...x25(specOf(19), span(8, 25)),
   ];
 }
 
-/* -------- 氛围侧：环境光档（族0011/0012 落点） -------- */
-export function checkX0020b(): CheckEntry[] {
+/* -------- 族0020 启动彩蛋层 2.0（X00476~X00500，可关闭 + 触发） -------- */
+export function checkX0021(): CheckEntry[] {
+  return x25(specOf(20), span(1, 25));
+}
+
+/* -------- 氛围侧：环境光档（族0011/0012 落点 · X00261~X00265） -------- */
+export function checkX0022(): CheckEntry[] {
   return [
     { id: "X00261", name: "氛围五档存在", check: () => A.AMBIENT_LEVELS.join() === "0,1,2,3,4" },
     { id: "X00262", name: "档位映射 token", check: () => A.ambientToken(0) === "--aurora-power-veil-l0" && A.ambientToken(9) === "--aurora-power-veil-l4" && A.ambientToken(NaN) === "--aurora-power-veil-l0" },

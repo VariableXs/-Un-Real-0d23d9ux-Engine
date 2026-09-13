@@ -17,6 +17,17 @@
 #[cfg(all(not(test), not(feature = "kernel-image")))]
 extern crate std;
 
+// 内核镜像目标是 no_std：显式接入 alloc，让 Vec/String/format!/to_vec/to_string
+// 在 kernel-image 下同样可解析（宿主侧继续走 std）。
+extern crate alloc;
+
+// kernel-image 目标登记全局分配器：mem::heap::VarixAllocator 已实现 GlobalAlloc 契约
+// （可失败、对齐感知、泄漏记账）。自检注册表 run_*_checks 只在宿主测试侧调用，
+// 内核运行时路径不触发分配。
+#[cfg(feature = "kernel-image")]
+#[global_allocator]
+static KERNEL_ALLOCATOR: mem::heap::VarixAllocator = mem::heap::VarixAllocator;
+
 pub mod acpi;
 pub mod audio;
 pub mod banner;

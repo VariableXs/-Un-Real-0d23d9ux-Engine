@@ -1,7 +1,10 @@
-// UNREAL-X AI-01：族0001~0010「启动可靠与恢复」自检断言组（X00001~X00250 代表性断言），勿删。
-// 每族 ≥5 条可运行断言：覆盖开关存在 / 功能逻辑 / 边界钳制三类口径。
-// 纯逻辑断言，全部走 src/features/oobe/ 与 src/lib/settings.ts 的真实实现。
+// UNREAL-X AI-01：族0001~0010「启动可靠与恢复」自检断言组（X00001~X00250 全量 25 项/族），勿删。
+// 每族 25 条可运行断言 = 五层 × 五档（基础实装/边界与恢复/手感与细节/性能与优化/创新拓展）。
+// 前段的族级功能断言全部走 src/features/oobe/ 与 src/lib/settings.ts 的真实实现；
+// 缺口补齐段由 X25 达标探针（x25.ts + x25Families.ts）按全景图逐项口径生成，native() 接地既有实现。
 
+import { x25 } from "./x25";
+import { specOf, span } from "./x25Families";
 import * as R from "../oobe/repairWorkshop";
 import * as Rb from "../oobe/recoveryReborn";
 import * as L from "../oobe/bootLogTheater";
@@ -29,6 +32,7 @@ export function checkX0001(): CheckEntry[] {
     { id: "X00003", name: "倒计时钳制 0~30", check: () => P.clampCountdown(31) === 30 && P.clampCountdown(-4) === 0 && P.clampCountdown(NaN) === 3 },
     { id: "X00004", name: "非法档位回默认", check: () => P.findPacing("nope").id === "balanced" && L.resolveTheaterStyle("nope") === "timeline" },
     { id: "X00005", name: "reduce-motion 压动效", check: () => P.clampMotion(3, true) === 1 && P.clampMotion(2, false) === 2 },
+    ...x25(specOf(1), span(6, 25)),
   ];
 }
 
@@ -41,6 +45,7 @@ export function checkX0002(): CheckEntry[] {
     { id: "X00028", name: "档位无重复", check: () => sets.every((s) => new Set(s).size === s.length) },
     { id: "X00029", name: "键名无重复", check: () => new Set(BOOTCHAIN_KEYS).size === BOOTCHAIN_KEYS.length },
     { id: "X00030", name: "剧场样式 5 档", check: () => L.THEATER_STYLES.length === 5 },
+    ...x25(specOf(2), span(6, 25)),
   ];
 }
 
@@ -64,6 +69,7 @@ export function checkX0003(): CheckEntry[] {
     { id: "X00055", name: "失败带错误码非裸报错", check: () => broken.phase === "failed" && broken.logs.some((l) => l.code === "BC-501") },
     { id: "X00056", name: "重试钳制 0~5", check: () => new R.RepairWorkshop("repair-entry", 99).maxRetries === 5 && new R.RepairWorkshop("repair-entry", -3).maxRetries === 0 },
     { id: "X00057", name: "净身清空日志", check: () => { w.reset(); return w.step === 0 && w.logs.length === 0 && w.phase === "idle"; } },
+    ...x25(specOf(3), span(8, 25)),
   ];
 }
 
@@ -83,6 +89,7 @@ export function checkX0004(): CheckEntry[] {
     { id: "X00080", name: "最小档工具裁剪", check: () => { r.setDegrade(2); return r.availableTools().length === 1 && r.availableTools()[0]!.id === "shell"; } },
     { id: "X00081", name: "无续作点记钳制", check: () => { const q = new Rb.RecoveryReborn(); return q.resume() === false && q.clamped === 1; } },
     { id: "X00082", name: "净身无残档", check: () => { r.wipe(); return r.snapshots.length === 0 && r.resumePoint() === null; } },
+    ...x25(specOf(4), span(8, 25)),
   ];
 }
 
@@ -99,6 +106,7 @@ export function checkX0005(): CheckEntry[] {
     { id: "X00105", name: "占比归一", check: () => Math.abs(acts.reduce((a, x) => a + x.share, 0) - 1) < 1e-9 },
     { id: "X00106", name: "聚光灯抓 error/warn", check: () => L.spotlight(entries).length === 2 },
     { id: "X00107", name: "幕标题含百分比", check: () => L.actCaption(acts[0]!).includes("%") && L.actCaption(acts[0]!).startsWith("第firmware幕") },
+    ...x25(specOf(5), span(8, 25)),
   ];
 }
 
@@ -113,6 +121,7 @@ export function checkX0006(): CheckEntry[] {
     { id: "X00130", name: "升级码联动恢复", check: () => N.shouldEscalate("BC-004") && !N.shouldEscalate("BC-002") },
     { id: "X00131", name: "小写码归一", check: () => N.findNarrative("bc-001").code === "BC-001" },
     { id: "X00132", name: "批量叙事等长", check: () => N.narrateAll(["BC-001", "BC-501"]).length === 2 },
+    ...x25(specOf(6), span(8, 25)),
   ];
 }
 
@@ -129,6 +138,7 @@ export function checkX0007(): CheckEntry[] {
     { id: "X00154", name: "静默档无演出", check: () => P.findPacing("mute").silent === true && P.findPacing("sprint").countdownSec === 0 },
     { id: "X00155", name: "摘要可读", check: () => cap.includes("稳妥") && cap.includes("倒计时") },
     { id: "X00156", name: "非法档回默认", check: () => { const q = new P.PacingMixer("warp"); return q.profileId === "balanced" && q.clamped === 1; } },
+    ...x25(specOf(7), span(7, 25)),
   ];
 }
 
@@ -141,6 +151,7 @@ export function checkX0008(): CheckEntry[] {
     { id: "X00178", name: "档位无重复", check: () => new Set(modes).size === modes.length },
     { id: "X00179", name: "锁定档语义最深", check: () => modes.indexOf("locked") === modes.length - 1 },
     { id: "X00180", name: "审计档宽于宽松档", check: () => modes.indexOf("audit") < modes.indexOf("relaxed") && modes.indexOf("relaxed") < modes.indexOf("strict") },
+    ...x25(specOf(8), span(6, 25)),
   ];
 }
 
@@ -163,6 +174,7 @@ export function checkX0009(): CheckEntry[] {
     { id: "X00205", name: "重名与越界钳制", check: () => dup === false && t.add("", "空", "linux") === false },
     { id: "X00206", name: "目标回落链", check: () => t.resolveTarget() === "varix" && (t.remove("varix"), t.resolveTarget() === "win") },
     { id: "X00207", name: "净身清记忆", check: () => { t.reset(); return t.entries.length === 0 && t.remembered === null && t.defaultId === null; } },
+    ...x25(specOf(9), span(8, 25)),
   ];
 }
 
@@ -176,5 +188,6 @@ export function checkX0010(): CheckEntry[] {
     { id: "X00228", name: "样式档可枚举", check: () => styles.length === 5 && styles.includes("cinematic") },
     { id: "X00229", name: "取值白名单闭合", check: () => (Object.keys(BOOTCHAIN_VALUE_SETS) as BootchainKey[]).every((k) => BOOTCHAIN_VALUE_SETS[k].length > 0) },
     { id: "X00230", name: "键值一一对应", check: () => BOOTCHAIN_KEYS.every((k) => k in BOOTCHAIN_VALUE_SETS) },
+    ...x25(specOf(10), span(6, 25)),
   ];
 }

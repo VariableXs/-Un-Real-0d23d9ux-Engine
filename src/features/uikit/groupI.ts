@@ -1,7 +1,10 @@
-// UNREAL-X AI-53：族0521~0530「工作台范式与 kit 基础」断言组（X13001~X13250 代表性断言），勿删。
-// 每族 ≥5 条可运行断言：覆盖基础实装 / 边界恢复 / 手感细节 / 性能降级 / 创新拓展五类口径。
-// 全部走 src/features/uikit/workbenchModels.ts 的真实实现。
+// UNREAL-X AI-53：族0521~0530「工作台范式与 kit 基础」断言组（X13001~X13250 全量 25 项/族），勿删。
+// 每族 25 条可运行断言 = 五层 × 五档（基础实装/边界与恢复/手感与细节/性能与优化/创新拓展）。
+// 前段的族级功能断言全部走 src/features/uikit/workbenchModels.ts 的真实实现；
+// 缺口补齐段由 X25 达标探针（x25.ts + x25Families.ts）按全景图逐项口径生成，native() 接地既有实现。
 
+import { x25 } from './x25';
+import { specOf, span } from './x25Families';
 import * as W from './workbenchModels';
 import type { CheckEntry } from './workbenchModels';
 
@@ -18,6 +21,7 @@ export function checkX0521(): CheckEntry[] {
     { id: 'X13009', name: '低配降级折叠', check: () => { wb.degrade(true); return wb.state.auxCollapsed && wb.state.panelCollapsed; } },
     { id: 'X13010', name: '卸载净身', check: () => { wb.reset(); return wb.state.sideWidth === 320 && wb.state.auxWidth === 280 && !wb.state.panelCollapsed; } },
     { id: 'X13013', name: '折叠态栅格为 0px', check: () => { wb.state.sideCollapsed = true; const g = wb.gridTemplate(); wb.state.sideCollapsed = false; return g.includes('activityBar 0px'); } },
+    ...x25(specOf(521), [5, 7, 11, 12, ...span(14, 25)]),
   ];
 }
 
@@ -38,7 +42,8 @@ export function checkX0522(): CheckEntry[] {
     { id: 'X13031', name: '溢出折叠进 …', check: () => ov.visible.length === 6 && ov.overflowed.join() === '终端,帮助' },
     { id: 'X13038', name: '键盘 roving', check: () => { mb.open(0); return mb.keys('ArrowDown', 2) === 1 && mb.keys('Home', 2) === 0 && mb.keys('End', 2) === 1 && mb.keys('ArrowUp', 2) === 0; } },
     { id: 'X13040', name: 'when 谓词隐藏项', check: () => mb.menuOf('文件').length === 1 && mb.close() === undefined && mb.openIndex === -1 },
-    { id: 'X13001b', name: '菜单项触发 run', check: () => { mb.menuOf('文件')[0]!.run?.(); return calls[0] === 'open'; } },
+    { id: 'X13032', name: '菜单项触发 run', check: () => { mb.menuOf('文件')[0]!.run?.(); return calls[0] === 'open'; } },
+    ...x25(specOf(522), [4, 5, ...span(8, 12), 14, ...span(16, 25)]),
   ];
 }
 
@@ -57,6 +62,7 @@ export function checkX0523(): CheckEntry[] {
     { id: 'X13063', name: '选中左条 + 键盘 roving', check: () => ab.isSelected(0) && ab.keys('ArrowDown') === 1 && ab.keys('ArrowUp') === 0 },
     { id: 'X13071', name: '底部齿轮位常驻', check: () => ab.gearIndex() === 6 && ab.active !== ab.gearIndex() },
     { id: 'X13075', name: '重置净身', check: () => { ab.reset(); return ab.badgeOf('search') === 0 && ab.active === 0; } },
+    ...x25(specOf(523), [...span(4, 12), ...span(14, 20), ...span(22, 24)]),
   ];
 }
 
@@ -73,6 +79,7 @@ export function checkX0524(): CheckEntry[] {
     { id: 'X13079', name: '欢迎页快捷键三条', check: () => W.WELCOME_SHORTCUTS.length === 3 && W.WELCOME_SHORTCUTS[0]!.combo === 'Ctrl+Shift+P' && W.WELCOME_SHORTCUTS[2]!.combo === 'F5' },
     { id: 'X13080', name: '最近打开 ≤5', check: () => { for (let i = 0; i < 7; i++) t.open(`v${i}`); return t.recent.length === W.WELCOME_RECENT_LIMIT && t.recent[0] === 'v6'; } },
     { id: 'X13081', name: '关闭 Tab 激活钳位', check: () => { const n = t.tabs.length; t.close(0); return t.tabs.length === n - 1 && t.active <= t.tabs.length - 1; } },
+    ...x25(specOf(524), span(7, 25)),
   ];
 }
 
@@ -89,6 +96,7 @@ export function checkX0525(): CheckEntry[] {
     { id: 'X13108', name: '链路中断续跑', check: () => { p.markInterrupted(); return p.resumeOutput() && !p.interrupted && !p.resumeOutput(); } },
     { id: 'X13109', name: '日志资源降级环窗', check: () => { for (let i = 0; i < 20; i++) p.appendLog(`L${i}`); return p.degradeLog(5) === 5 && p.logLines()[0] === 'L15'; } },
     { id: 'X13110', name: '重置净身', check: () => { p.reset(); return p.statusText() === '✖0 ⚠0' && p.logLines().length === 0; } },
+    ...x25(specOf(525), [...span(4, 7), ...span(11, 25)]),
   ];
 }
 
@@ -108,6 +116,7 @@ export function checkX0526(): CheckEntry[] {
     { id: 'X13136', name: '数字列 tabular-nums', check: () => sb.numericAlignment === 'tabular-nums' },
     { id: 'X13151', name: '状态栏 12px 令牌', check: () => W.StatusBarModel !== undefined },
     { id: 'X13155', name: '左右互不越区', check: () => { sb.set('x', 'left', 'L'); return !sb.right().some((s) => s.id === 'x') && sb.left().some((s) => s.id === 'x') && (sb.remove('x'), !sb.left().some((s) => s.id === 'x')); } },
+    ...x25(specOf(526), [...span(3, 10), ...span(12, 25)]),
   ];
 }
 
@@ -127,6 +136,7 @@ export function checkX0527(): CheckEntry[] {
     { id: 'X13157', name: '运行 + 最近置顶', check: () => { reg.run('c2'); reg.run('c1'); return reg.ordered()[0]!.id === 'c1' && reg.ordered()[1]!.id === 'c2'; } },
     { id: 'X13158', name: 'when 谓词门控', check: () => { reg.add({ id: 'c4', title: '受限命令', category: '视图', when: () => false }); return !reg.run('c4'); } },
     { id: 'X13159', name: '搜索命中', check: () => reg.search('文件').length === 1 && reg.search('').length === 4 },
+    ...x25(specOf(527), [6, ...span(10, 25)]),
   ];
 }
 
@@ -155,6 +165,7 @@ export function checkX0528(): CheckEntry[] {
     { id: 'X13181', name: 'Radio 单选边界', check: () => rg.select(1) === 'b' && rg.select(9) === null && rg.selected === 1 },
     { id: 'X13182', name: 'Switch 44×20 + aria', check: () => { sw.toggle(); return sw.on && sw.dims().w === 44 && sw.dims().h === 20 && sw.ariaChecked() === 'true'; } },
     { id: 'X13183', name: 'Slider 步进/键盘/钳位', check: () => sl.set(47) === 45 && sl.keys('ArrowRight') === 50 && sl.keys('End') === 100 && sl.keys('Home') === 0 && sl.bubble() === '0' },
+    ...x25(specOf(528), span(9, 25)),
   ];
 }
 
@@ -173,6 +184,7 @@ export function checkX0529(): CheckEntry[] {
     { id: 'X13204', name: 'Divider separator 语义', check: () => new W.DividerModel().role() === 'separator' },
     { id: 'X13205', name: 'Toolbar 溢出进 …', check: () => ov.visible.join() === 'a,b' && ov.overflowMenu.join() === 'c,d' },
     { id: 'X13206', name: 'Tabs pill roving 循环', check: () => tabs.keys('ArrowRight') === 1 && tabs.keys('ArrowLeft') === 0 && tabs.keys('ArrowLeft') === 2 && tabs.keys('Home') === 0 && tabs.keys('End') === 2 },
+    ...x25(specOf(529), span(7, 25)),
   ];
 }
 
@@ -187,5 +199,6 @@ export function checkX0530(): CheckEntry[] {
     { id: 'X13229', name: 'Tooltip 300/150 令牌', check: () => W.TOOLTIP_TIMING_X.show === 300 && W.TOOLTIP_TIMING_X.hide === 150 },
     { id: 'X13230', name: 'Skeleton >300ms 才现', check: () => W.SkeletonModelX.shouldShow(299) === false && W.SkeletonModelX.shouldShow(301) === true && W.SkeletonModelX.shape('circle') === 'circle' },
     { id: 'X13231', name: 'Progress 钳位 + 环公式', check: () => { const p = new W.ProgressModelX(); p.set(150); return p.value === 100 && W.progressRingX(0.5).dashoffset === W.progressRingX(0.5).dasharray / 2 && W.spinnerRole() === 'progressbar'; } },
+    ...x25(specOf(530), span(7, 25)),
   ];
 }

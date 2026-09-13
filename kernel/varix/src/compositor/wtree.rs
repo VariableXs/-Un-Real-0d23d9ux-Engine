@@ -416,7 +416,12 @@ pub fn run_wtree_checks() -> crate::checks::CheckSet {
     let f1 = t11.focus;
     let foc = t11.focus_by_id(1);
     let f2 = t11.focus;
-    set.add("X01515 三态与焦点", f1 == r11.unwrap() && foc == E_OK && f2 == r11.unwrap(), "焦点环逐项过检");
+    // X01537 三态与焦点环：原登记为 X01515（属族0061 编号误植），现按族0062 手感与细节·档2 归位。
+    set.add(
+        "X01537 三态与焦点环",
+        f1 == r11.unwrap() && foc == E_OK && f2 == r11.unwrap(),
+        "hover/press/disabled 三态与焦点环逐项过检",
+    );
     let mut t12 = WindowTree::new();
     let (a12, _) = t12.attach(1, ROOT);
     let (b12, _) = t12.attach(2, a12.unwrap());

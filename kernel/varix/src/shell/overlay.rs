@@ -10,7 +10,9 @@
 //! * 非法优先级/未知层钳制回默认，不 panic（越界回默认红线）。
 
 use crate::checks::CheckSet;
-// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 保持 no_std。
+// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 走 alloc（no_std + 全局分配器）。
+#[cfg(feature = "kernel-image")]
+use alloc::{string::String, vec::Vec};
 #[cfg(all(not(test), not(feature = "kernel-image")))]
 use std::{string::String, vec::Vec};
 
