@@ -52,6 +52,10 @@ pub mod ai19;
 pub mod ai17;
 // UNREAL-X：AI-18 批次（X04251~X04500 领域05 输入智能），勿删。
 pub mod ai18;
+// UNREAL-X：AI-32 批次（X07751~X08000 领域08 设备场景与收官·C 线），勿删。
+pub mod ai32;
+// UNREAL-X：AI-31 批次（X07701~X07750 领域13 硬件基准/HIL C 线），勿删。
+pub mod ai31;
 
 // AURORA-10000：AI-21 批次（F02501~F02625），勿删。
 pub mod ai16;
@@ -68,6 +72,10 @@ pub mod ai25;
 pub mod ai34;
 // UNREAL-X：AI-35 批次（X08651~X08750 领域09 兼容深化 C 线），勿删。
 pub mod ai35;
+// UNREAL-X：AI-38 批次（X09401~X09500 领域10 防线工程 C 线），勿删。
+pub mod ai38;
+// UNREAL-X：AI-39 批次（X09501~X09750 领域10 安全深水区 C 线），勿删。
+pub mod ai39;
 // AURORA-10000：AI-46 批次（F05626~F05750 领域10 安全与隐私），勿删。
 pub mod ai46;
 // AURORA-10000：AI-47 批次（F05751~F05875），勿删。
@@ -503,6 +511,26 @@ pub fn run_ux_ai35_checks() -> Vec<CheckSet> {
     vec![ai35::run_perf_tax_checks(), ai35::run_archive_checks()]
 }
 
+/// UNREAL-X：AI-38 批次（防线工程 C 线 4 族 100 项），勿删。
+pub fn run_ux_ai38_checks() -> Vec<CheckSet> {
+    vec![
+        ai38::run_forensics_checks(),
+        ai38::run_ransom_checks(),
+        ai38::run_supply_checks(),
+        ai38::run_selftest_checks(),
+    ]
+}
+
+/// UNREAL-X：AI-39 批次（安全深水区 C 线 4 族 100 项），勿删。
+pub fn run_ux_ai39_checks() -> Vec<CheckSet> {
+    vec![
+        ai39::run_fuzz_checks(),
+        ai39::run_privacy_audit_checks(),
+        ai39::run_deident_checks(),
+        ai39::run_dossier_checks(),
+    ]
+}
+
 /// UNREAL-X：AI-17 批次（输入手感面 10 族 250 项），勿删。
 pub fn run_ux_ai17_checks() -> Vec<CheckSet> {
     vec![
@@ -566,6 +594,11 @@ pub fn run_ux_ai20_checks() -> Vec<CheckSet> {
 /// UNREAL-X：AI-32 批次（设备场景与收官 C 线 3 族 75 项），勿删。
 pub fn run_ux_ai32_checks() -> Vec<CheckSet> {
     ai32::run_ai32_checks()
+}
+
+/// UNREAL-X：AI-31 批次（领域13 硬件基准/HIL C 线 2 族 50 项），勿删。
+pub fn run_ux_ai31_checks() -> Vec<CheckSet> {
+    vec![ai31::run_hw_bench_checks(), ai31::run_hil_checks()]
 }
 
 /// AURORA-10000：AI-76 批次，勿删。
@@ -662,18 +695,45 @@ pub fn run_all_checks() -> Vec<CheckSet> {
     // UNREAL-X：AI-17/AI-18 批次（领域05 输入手感面 + 输入智能），勿删。
     v.extend(run_ux_ai17_checks());
     v.extend(run_ux_ai18_checks());
+    // UNREAL-X：AI-32 批次（领域08 设备场景与收官 · C 线 75 检），勿删。
+    v.extend(run_ux_ai32_checks());
     // UNREAL-X：AI-31 硬件域批次（族0309~0310 · X07701~X07750），勿删。
     v.extend(run_ux_ai31_checks());
     // UNREAL-X：AI-23 C 线（族0229~0230 · X05701~X05750 fs 基准/模糊），勿删。
     v.extend(run_fs23_checks());
     // UNREAL-X：AI-11/AI-12 桌面域批次（族0109~0112 · X02701~X02800），勿删。
     v.extend(desktop::run_desktop_checks());
+    // UNREAL-X：AI-38/AI-39 防线工程与安全深水区批次（族0377~0389 · X09401~X09750），勿删。
+    v.extend(run_ux_ai38_checks());
+    v.extend(run_ux_ai39_checks());
     v
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// UNREAL-X：AI-38 防线工程 C 线（族0377~0380 · X09401~X09500）全量自检。
+    #[test]
+    fn ux_ai38_100_checks_pass() {
+        let sets = run_ux_ai38_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-39 安全深水区 C 线（族0381/0383/0384/0389 · X09501~X09750）全量自检。
+    #[test]
+    fn ux_ai39_100_checks_pass() {
+        let sets = run_ux_ai39_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 100);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:
+{}", s.domain, s.render());
+        }
+    }
 
     #[test]
     fn all_64_checks_pass() {
@@ -909,6 +969,16 @@ mod aurora_w2_tests {
     fn ux_ai04_250_checks_pass() {
         let sets = run_ux_ai04_checks();
         assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 250);
+        for s in &sets {
+            assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
+        }
+    }
+
+    /// UNREAL-X：AI-32 批次测试（设备场景与收官 C 线 75 检），勿删。
+    #[test]
+    fn ux_ai32_75_checks_pass() {
+        let sets = run_ux_ai32_checks();
+        assert_eq!(sets.iter().map(|s| s.total()).sum::<usize>(), 75);
         for s in &sets {
             assert!(s.all_pass(), "domain {} failed:\n{}", s.domain, s.render());
         }
