@@ -380,7 +380,7 @@ pub fn run_framesched_checks() -> crate::checks::CheckSet {
         ok = ok && s3.apply(i as i32, FrameMode::from_index(i).default_budget() as i32) == E_OK;
     }
     set.add("X01503 档位矩阵≥5档", ok && FrameMode::Immediate.index() == 4, "五档独立可迁移可记忆");
-    let mut s4 = FrameSched::new();
+    let s4 = FrameSched::new();
     let mut buf = [0u8; 8];
     let n = s4.export(&mut buf);
     let mut s5 = FrameSched::new();
@@ -388,7 +388,7 @@ pub fn run_framesched_checks() -> crate::checks::CheckSet {
     set.add("X01504 快照导出导入迁移", n == 4 && imp, "导出/导入/跨版本三通道");
     let mut s6 = FrameSched::new();
     let _ = s6.apply(1, 14);
-    let mut keep = s6.budget_ms;
+    let keep = s6.budget_ms;
     s6.enqueue(10);
     let keep2 = s6.qlen;
     set.add("X01505 联调无回归", keep == 14 && keep2 == 1, "既有手感不被破坏");
@@ -454,7 +454,7 @@ pub fn run_framesched_checks() -> crate::checks::CheckSet {
     set.add("X01520 防劣化守卫", armed && !rearm, "断言只增不删破坏即红");
 
     // —— 创新拓展 X01521~X01525 ——
-    let mut s18 = FrameSched::new();
+    let s18 = FrameSched::new();
     let sug = s18.suggest(80);
     let none = FrameSched::new().suggest(10);
     set.add("X01521 智能建议可拒绝", sug.is_some() && none.is_none() && sug.unwrap().contains("建议"), "隐私边界内可解释");
@@ -463,7 +463,7 @@ pub fn run_framesched_checks() -> crate::checks::CheckSet {
         let _ = s19.enqueue(3);
     }
     set.add("X01522 批量自动化模式", s19.batch_progress().0 == 5, "脚本入口/队列/进度可观测");
-    let mut s20 = FrameSched::new();
+    let s20 = FrameSched::new();
     let mut snap = [0u8; 8];
     let _ = s20.export(&mut snap);
     set.add("X01523 三线跨域联动", snap[0] == 0x07 && snap[1] == 0, "内核/Variable/代码分析协同");

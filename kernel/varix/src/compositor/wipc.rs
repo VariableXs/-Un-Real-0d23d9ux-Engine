@@ -417,7 +417,6 @@ pub fn run_wipc_checks() -> crate::checks::CheckSet {
         }
     }
     set.add("X01647 批量投递", seq19 == 5 && m19.qlen == 5, "脚本入口/队列/进度");
-    let mut m20 = Mailbox::new();
     let e20 = mk_env(77, 9);
     let sum20 = Mailbox::checksum(&e20);
     let mut buf20 = [0u8; 16];

@@ -10,7 +10,6 @@
 
 use std::path::Path;
 
-use crate::bplustree::TreeVal;
 use crate::{CmdResult, ContainerError, StorageBackend, VPath};
 
 /// 单文件迁移结果。

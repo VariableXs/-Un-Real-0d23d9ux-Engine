@@ -324,7 +324,7 @@ pub fn win_health_scan(pids: Vec<u32>) -> Result<Vec<u32>, String> {
             BOOL(1)
         }
         unsafe {
-            EnumWindows(Some(probe), LPARAM(&mut hung as *mut Vec<u32> as isize));
+            let _ = EnumWindows(Some(probe), LPARAM(&mut hung as *mut Vec<u32> as isize));
         }
         Ok(hung.into_iter().filter(|p| want.contains(p)).collect())
     }

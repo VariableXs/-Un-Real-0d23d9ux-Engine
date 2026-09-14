@@ -175,7 +175,7 @@ impl SandboxRegistry {
     pub fn snapshot(&self, task_id: u16, out: &mut [u8; SNAP_TEXT]) -> Option<usize> {
         let s = self.of(task_id)?;
         let mut n = 0;
-        let mut put = |v: u32, out: &mut [u8; SNAP_TEXT], n: &mut usize| {
+        let put = |v: u32, out: &mut [u8; SNAP_TEXT], n: &mut usize| {
             if *n + 11 > SNAP_TEXT {
                 return;
             }
@@ -416,7 +416,7 @@ pub fn run_sandbox_checks() -> CheckSet {
 
     // L3 手感与细节
     let (c1, m1, sc1) = motion_token(false);
-    let (c2, m2, sc2) = motion_token(true);
+    let (c2, m2, _sc2) = motion_token(true);
     s.add("X08761 动效令牌", c1 == "std" && m1 == 180 && sc1 == 960 && c2 == "linear" && m2 == FADE_MS, "reduce-motion 降级");
     let focus_ok = {
         let mut seen = [false; 6];

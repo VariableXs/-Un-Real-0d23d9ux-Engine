@@ -165,7 +165,7 @@ pub fn run_fs_journal_checks() -> CheckSet {
     set.add("X05530 日志·联调集成", j.applied_seq() == 3, "applied 与 seq 对齐");
     set.add("X05531 日志·越界钳制", mk.tier() == JOURNAL_DEFAULT && mk.clamped() == 1, "非法档回默认");
     set.add("X05532 日志·失败叙事", bad_replayed == 0 && bad_torn == 1 && bad_len_before == 1, "CRC 撕裂即弃");
-    set.add("X05533 日志·中断还原", { let mut t = Journal::new(2); let _ = t.append(LogOp::Write { blk: 5 }); t.verify_and_replay() == 1; t.verify_and_replay() == 0 }, "重放幂等");
+    set.add("X05533 日志·中断还原", { let mut t = Journal::new(2); let _ = t.append(LogOp::Write { blk: 5 }); t.verify_and_replay() == 1 && t.verify_and_replay() == 0 }, "重放幂等");
     set.add("X05534 日志·资源降级", !Journal::new(0).triple_write() && Journal::new(4).triple_write(), "off 无三重写");
     set.add("X05535 日志·回滚净身", { let mut d = Journal::new(3); let _ = d.append(LogOp::Write { blk: 1 }); d.discard_all() && d.len() == 0 }, "discard 后空");
     set.add("X05536 日志·动效令牌", JOURNAL_DEFAULT == 3, "默认 writeahead");

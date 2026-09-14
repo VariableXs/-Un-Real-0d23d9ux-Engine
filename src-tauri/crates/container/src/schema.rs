@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::uxv::{SCHEMA_VERSION, SUPERBLOCK_LEN, FOOTER_LEN};
+use crate::uxv::{SCHEMA_VERSION, SUPERBLOCK_LEN};
 use crate::{CmdResult, ContainerError};
 
 /// 版本探测结果（零拷贝，不打开容器）。
@@ -69,12 +69,9 @@ pub struct MigrationReport {
     pub steps_applied: usize,
 }
 
-/// 迁移注册表：v → v+1。`None` = 版本戳迁移（布局不变）。
-type Migrator = fn(CmdResult<()>) -> CmdResult<()>;
-
 /// 就地改写版本戳（SuperBlock + Footer 双副本），数据段与索引 blob 不动。
 fn stamp_version(path: &Path, from: u32, to: u32) -> CmdResult<()> {
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::io::{Seek, SeekFrom, Write};
     let mut f = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
     let len = f.metadata()?.len();
     if len < SUPERBLOCK_LEN {

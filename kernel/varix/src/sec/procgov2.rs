@@ -184,7 +184,7 @@ impl Governor {
     pub fn snapshot(&self, pid: u16, out: &mut [u8; 64]) -> Option<usize> {
         let e = self.of(pid)?;
         let mut n = 0;
-        let mut put = |v: u32, out: &mut [u8; 64], n: &mut usize| {
+        let put = |v: u32, out: &mut [u8; 64], n: &mut usize| {
             let mut tmp = [0u8; 11];
             let mut m = 0;
             let mut x = v;
@@ -204,7 +204,7 @@ impl Governor {
                 *n += 1;
             }
         };
-        let mut put_i = |v: i8, out: &mut [u8; 64], n: &mut usize| {
+        let put_i = |v: i8, out: &mut [u8; 64], n: &mut usize| {
             if v < 0 {
                 out[*n] = b'-';
                 *n += 1;

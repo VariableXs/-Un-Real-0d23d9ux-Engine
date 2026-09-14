@@ -81,7 +81,7 @@ pub mod win {
                 let child = child_of(key);
                 if let Some(c) = child {
                     // WM_CLOSE 链路：应用自行决定退出（不杀进程）
-                    windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                    let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
                         HWND(c as *mut core::ffi::c_void),
                         WM_CLOSE,
                         WPARAM(0),
@@ -192,7 +192,7 @@ pub mod win {
         unsafe {
             let style = GetWindowLongPtrW(c, GWL_STYLE) as isize;
             SetWindowLongPtrW(c, GWL_STYLE, (style as u32 | WS_CHILD.0) as isize);
-            SetParent(c, h);
+            let _ = SetParent(c, h);
             child_of_insert(host, child);
             // 立即同步一次客户区尺寸
             let mut rc = windows::Win32::Foundation::RECT::default();

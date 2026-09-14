@@ -1,15 +1,10 @@
-import { memo, useEffect, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { uiStore, useUi } from "../../state/uiStore";
 import type { Settings } from "../../lib/settings";
 import { isTauriRuntime } from "../../entries/runtime";
 import { CosmicBackground } from "../../features/background/CosmicBackground";
 import { Sidebar } from "../../apps/write/folders/Sidebar";
-import { EditorView } from "../../apps/write/editor/EditorView";
-import { MindmapView } from "../../apps/mind/MindmapView";
-import { ProjectAnalysisView } from "../../apps/code/ProjectAnalysisView";
-import { CodeXrefPanel } from "../../apps/code/XrefPanel";
-import { FateView } from "../../apps/fate/FateView";
 import { closeVwmWin, focusVwmWin, isTpApp, isVwmTool, tpIdOf, vwmWindowTitle, type VwmApp } from "./vwm";
 import {
   useEmbedSessionState,
@@ -42,6 +37,25 @@ import { PrintQueueApp } from "../tools/PrintQueueApp";
 import { SysHubApp } from "../tools/SysHubApp";
 import { TaskManApp } from "../taskman/TaskManApp";
 import { L3CaptureView } from "./L3CaptureView";
+
+// 代码分割（性能）：VWM 内嵌四个重软件视图原本静态打包进环境主 chunk，
+// 与 App.tsx 同步改为按需加载 —— 只有用户真正打开对应窗口时才拉取其代码
+// （含富文本编辑器等重依赖），环境启动不再为空载这些视图付出体积与内存。
+const EditorView = lazy(() =>
+  import("../../apps/write/editor/EditorView").then((m) => ({ default: m.EditorView })),
+);
+const MindmapView = lazy(() =>
+  import("../../apps/mind/MindmapView").then((m) => ({ default: m.MindmapView })),
+);
+const ProjectAnalysisView = lazy(() =>
+  import("../../apps/code/ProjectAnalysisView").then((m) => ({ default: m.ProjectAnalysisView })),
+);
+const CodeXrefPanel = lazy(() =>
+  import("../../apps/code/XrefPanel").then((m) => ({ default: m.CodeXrefPanel })),
+);
+const FateView = lazy(() =>
+  import("../../apps/fate/FateView").then((m) => ({ default: m.FateView })),
+);
 
 /**
  * 虚拟窗口的软件内容宿主：
@@ -187,29 +201,31 @@ export const VwmAppContent = memo(function VwmAppContent(props: {
         <div className="main-row">
           <Sidebar />
           <div className="content-area">
-            {app === "write" ? (
-              <EditorView
-                key={currentDocId ?? "empty"}
-                settings={{
-                  fontFamily: settings.fontFamily,
-                  fontSize: settings.fontSize,
-                  lineHeight: settings.lineHeight,
-                  widthPct: settings.editorWidthPct,
-                  align: settings.editorAlign,
-                  autosaveDelayMs: settings.autosaveDelayMs,
-                  showStatusBar: settings.showStatusBar,
-                }}
-              />
-            ) : app === "project" ? (
-              <>
-                <ProjectAnalysisView settings={settings} />
-                <CodeXrefPanel />
-              </>
-            ) : app === "fate" ? (
-              <FateView />
-            ) : (
-              <MindmapView settings={settings} />
-            )}
+            <Suspense fallback={null}>
+              {app === "write" ? (
+                <EditorView
+                  key={currentDocId ?? "empty"}
+                  settings={{
+                    fontFamily: settings.fontFamily,
+                    fontSize: settings.fontSize,
+                    lineHeight: settings.lineHeight,
+                    widthPct: settings.editorWidthPct,
+                    align: settings.editorAlign,
+                    autosaveDelayMs: settings.autosaveDelayMs,
+                    showStatusBar: settings.showStatusBar,
+                  }}
+                />
+              ) : app === "project" ? (
+                <>
+                  <ProjectAnalysisView settings={settings} />
+                  <CodeXrefPanel />
+                </>
+              ) : app === "fate" ? (
+                <FateView />
+              ) : (
+                <MindmapView settings={settings} />
+              )}
+            </Suspense>
           </div>
         </div>
       </div>

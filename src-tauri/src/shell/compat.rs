@@ -794,7 +794,7 @@ pub struct VolumeInfo {
 pub fn compat_volumes() -> CmdResult<Vec<VolumeInfo>> {
     #[cfg(windows)]
     {
-        use windows::core::PWSTR;
+        
         use windows::Win32::Storage::FileSystem::{
             FindFirstVolumeW, FindNextVolumeW, FindVolumeClose, GetVolumePathNamesForVolumeNameW,
         };
@@ -802,7 +802,7 @@ pub fn compat_volumes() -> CmdResult<Vec<VolumeInfo>> {
         unsafe {
             let mut buf = [0u16; 50];
             let find = FindFirstVolumeW(&mut buf);
-            if let Ok(mut handle) = find {
+            if let Ok(handle) = find {
                 loop {
                     let guid = String::from_utf16_lossy(&buf)
                         .trim_end_matches('\0')

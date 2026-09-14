@@ -356,7 +356,7 @@ pub fn install_commit(
 
     // 5) 清理暂存
     let _ = fs::remove_dir_all(&dir);
-    let mut sessions: Vec<InstallSession> =
+    let sessions: Vec<InstallSession> =
         load_index(&st).into_iter().filter(|s| s.id != id).collect();
     save_index(&st, &sessions)?;
     Ok(third)
@@ -534,7 +534,7 @@ mod tests {
                     redirect.insert(v.to_string(), format!("{dir_s}/{area}"));
                 }
             }
-            let profile = ExecProfile {
+            let _profile = ExecProfile {
                 id: "install-mode".into(),
                 env_redirect: redirect,
                 env_set: Default::default(),

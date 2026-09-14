@@ -1622,7 +1622,7 @@ mod tests {
         }
         assert!(!tray.register(TrayItem { label: Name::new(), icon_id: 99, badge: 0 }));
         // 空托盘命中 None
-        let mut empty = Tray::new();
+        let empty = Tray::new();
         assert_eq!(empty.hit(Point { x: 5, y: 5 }, 0, 0), None);
         // 命中第 4 个
         let h = tray.hit(Point { x: (4 * TRAY_ICON_W + 4) as i32, y: 4 }, 0, 0);

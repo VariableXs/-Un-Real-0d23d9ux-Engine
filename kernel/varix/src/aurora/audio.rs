@@ -1290,16 +1290,16 @@ mod tests {
         assert!((synth_sine_sample(3 * PHASE_TOP / 4) as i32 + 32767).abs() <= 1);
         let mut st = 99u32;
         for _ in 0..256 {
+            // i16 类型已保证幅度上下界；此处验证纯函数确定性（无隐藏状态）
             let s = synth_sine_sample(st);
-            assert!(s >= -32768 && s <= 32767);
+            assert_eq!(s, synth_sine_sample(st), "确定性输出");
             st = st.wrapping_add(137);
         }
         let step = synth_phase_step(440, 48000);
         assert!(step > 0 && step < PHASE_TOP);
         let n1 = synth_noise(&mut st);
         let n2 = synth_noise(&mut st);
-        assert!(n1 >= -32768 && n1 <= 32767);
-        assert_ne!(n1, n2); // 确定性但步进变化
+        assert_ne!(n1, n2); // 确定性但步进变化（i16 幅度边界由类型保证）
     }
 
     #[test]
@@ -1446,9 +1446,7 @@ mod tests {
         let mut out = [0i16; 64];
         let n = render_beep(880, 20, 8000, &mut out);
         assert!(n > 0);
-        for s in out.iter().take(n) {
-            assert!(*s >= -32768 && *s <= 32767);
-        }
+        assert!(out.iter().take(n).any(|&s| s != 0), "蜂鸣应产生非零信号");
     }
 
     #[test]

@@ -219,7 +219,7 @@ fn dir_size(p: &PathBuf) -> (u64, u64) {
 pub fn singu_temp_scan(app: tauri::AppHandle) -> Result<Vec<SinguTempEntry>, String> {
     use tauri::Manager;
     let mut out: Vec<SinguTempEntry> = Vec::new();
-    let mut push = |p: PathBuf, kind: &str, out: &mut Vec<SinguTempEntry>| {
+    let push = |p: PathBuf, kind: &str, out: &mut Vec<SinguTempEntry>| {
         if p.exists() {
             let (bytes, files) = dir_size(&p);
             if bytes > 0 {

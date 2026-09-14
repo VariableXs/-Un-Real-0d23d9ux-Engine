@@ -12,7 +12,6 @@ use crate::error::{AppError, CmdResult};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const BLOCK_SIZE: usize = 64 * 1024;
@@ -215,7 +214,7 @@ fn now_ms_of(t: std::io::Result<std::time::SystemTime>) -> u64 {
         .unwrap_or(0)
 }
 
-fn read_version_bytes(st: &AppState, key: &str, rec: &VerRecord) -> CmdResult<Vec<u8>> {
+fn read_version_bytes(st: &AppState, _key: &str, rec: &VerRecord) -> CmdResult<Vec<u8>> {
     let m: VerManifest = fs::read(manifest_path(st, &rec.id))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
@@ -624,7 +623,7 @@ mod tests {
         let mut idx = load_index(&st);
         idx.keep_versions = Some(2);
         idx.keep_days = Some(0); // 不按天数保留
-        save_index(&st, &idx);
+        let _ = save_index(&st, &idx);
         let rep = ver_gc_inner(&st).unwrap();
         assert_eq!(rep.removed_versions, 2);
         assert!(rep.kept_versions >= 2);

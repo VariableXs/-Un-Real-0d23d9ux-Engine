@@ -1464,7 +1464,7 @@ mod tests {
         let (mut m, a, _b) = boot();
         app_launch(&mut m, a);
         let w1 = window_create(&mut m, a, 800, 600).unwrap();
-        let w2 = window_create(&mut m, a, 640, 480).unwrap();
+        let _ = window_create(&mut m, a, 640, 480).unwrap();
         assert_eq!(window_count(&m, a), 2);
         assert!(window_exists(&m, a, w1));
         assert!(window_destroy(&mut m, a, w1));

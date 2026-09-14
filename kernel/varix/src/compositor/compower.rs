@@ -430,7 +430,7 @@ pub fn run_compower_checks() -> crate::checks::CheckSet {
         }
     }
     set.add("X01622 批量自动化", batch == 6 && g20.frames_skipped == 6, "队列/进度可观测");
-    let mut g21 = PowerGovernor::new();
+    let g21 = PowerGovernor::new();
     let mut snap = [0u8; 8];
     let _ = g21.export(&mut snap);
     set.add("X01623 三线跨域联动", snap[0] == 0x65 && snap[1] == 1, "内核/Variable/代码分析协同");

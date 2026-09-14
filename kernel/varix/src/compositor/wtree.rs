@@ -368,7 +368,7 @@ pub fn run_wtree_checks() -> crate::checks::CheckSet {
     }
     set.add("X01528 档位矩阵分层", depths[4] == 4 && t3.validate(), "≥5 层独立可交付迁移平滑");
     let mut t4 = WindowTree::new();
-    let (r4, _) = t4.attach(9, ROOT);
+    let _ = t4.attach(9, ROOT);
     let mut buf4 = [0u8; 256];
     let n4 = t4.export(&mut buf4);
     set.add("X01529 快照导出导入迁移", n4 > 2 && buf4[0] == 0x62, "导出/导入/跨版本三通道");

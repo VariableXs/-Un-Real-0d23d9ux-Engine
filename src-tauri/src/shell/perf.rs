@@ -737,7 +737,7 @@ pub fn perf_relay_export(st: tauri::State<'_, AppState>, rels: Vec<String>, out_
 }
 
 #[tauri::command(async)]
-pub fn perf_relay_import(st: tauri::State<'_, AppState>, relay_file: String, target_dir: String) -> CmdResult<RelayImportReport> {
+pub fn perf_relay_import(_st: tauri::State<'_, AppState>, relay_file: String, target_dir: String) -> CmdResult<RelayImportReport> {
     relay_import(Path::new(&relay_file), Path::new(&target_dir)).map_err(|e| AppError::io(e.to_string()))
 }
 

@@ -527,7 +527,6 @@ pub fn run_egg_checks() -> crate::checks::CheckSet {
     let mut cab14 = EggCab::new();
     cab14.enabled = false;
     let off14 = cab14.feed(1, 1);
-    cab14.enabled = true;
     set.add("X06969 低配降级链", off14 == EggOutcome::Off, "关总开关即省电旁路");
     let mut cab15 = EggCab::new();
     let mut fired_count = 0u64;

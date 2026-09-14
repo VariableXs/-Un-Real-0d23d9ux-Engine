@@ -243,7 +243,7 @@ unsafe fn query_signer(wpath: &[u16]) -> (String, u64, u64) {
                     vf = ft_to_ms((*info).NotBefore);
                     vt = ft_to_ms((*info).NotAfter);
                 }
-                CertFreeCertificateContext(Some(ctx));
+                let _ = CertFreeCertificateContext(Some(ctx));
                 break;
             }
         }

@@ -36,7 +36,7 @@ const SPI_GETMOUSEBUTTONSWAP: u32 = 0x0021;
 fn spi_get_u32(action: u32) -> u32 {
     let mut v: u32 = 0;
     unsafe {
-        windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
+        let _ = windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
             windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_ACTION(action),
             0,
             Some(&mut v as *mut u32 as *mut core::ffi::c_void),
@@ -64,7 +64,7 @@ fn read_params() -> MouseParamsDto {
     use windows::Win32::UI::WindowsAndMessaging::{SPI_GETMOUSE, SPI_GETMOUSESPEED, SPI_GETWHEELSCROLLLINES};
     let mut mouse = [0i32; 3]; // [thresh1, thresh2, speed] — 速度档在第 3 位
     unsafe {
-        windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
+        let _ = windows::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
             SPI_GETMOUSE,
             0,
             Some(mouse.as_mut_ptr() as *mut core::ffi::c_void),

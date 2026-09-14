@@ -36,3 +36,10 @@ qemu/
 tools/*.png
 tools/*.jpg
 code-analysis/target/
+
+# Python 字节码缓存（非功能性产物，不入库）
+__pycache__/
+*.pyc
+
+# 智能体工作区元数据（本地记忆/日志，非项目功能产物，不入库）
+.workbuddy/

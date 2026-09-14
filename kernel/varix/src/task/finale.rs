@@ -425,7 +425,7 @@ pub fn run_finale_checks() -> crate::checks::CheckSet {
     let mut buf9 = [0u8; 16];
     let _ = t9.export(&mut buf9);
     t9.reset();
-    let mut fresh = CompletionTable::new();
+    let fresh = CompletionTable::new();
     set.add("X06985 回滚净身", t9.overall() == 0 && t9.filled() == 0 && t9.aggregate_sig() == fresh.aggregate_sig(), "净身后签名与新建空表一致");
 
     // —— 手感与细节 X06986~X06990 ——
@@ -483,7 +483,7 @@ pub fn run_finale_checks() -> crate::checks::CheckSet {
     let ok17 = release_verdict(&t17, Ver { major: 2, minor: 0, patch: 0 }, Ver { major: 2, minor: 0, patch: 0 }, 0, GATE_SCORE);
     let s17 = t17.aggregate_sig();
     t17.reset();
-    let mut fresh17 = CompletionTable::new();
+    let fresh17 = CompletionTable::new();
     set.add("X07000 彩蛋与净身", ok17 == E_OK && t17.aggregate_sig() == fresh17.aggregate_sig() && s17 != fresh17.aggregate_sig(), "全绿收官可判发版且净身无痕");
 
     set

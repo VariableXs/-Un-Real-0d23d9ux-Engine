@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
@@ -29,11 +29,6 @@ import { CosmicBackground } from "./features/background/CosmicBackground";
 import { BootScreen, type BootStats } from "./system/boot/BootScreen";
 import { DesktopShell } from "./system/desktop/DesktopShell";
 import { Sidebar } from "./apps/write/folders/Sidebar";
-import { EditorView } from "./apps/write/editor/EditorView";
-import { MindmapView } from "./apps/mind/MindmapView";
-import { ProjectAnalysisView } from "./apps/code/ProjectAnalysisView";
-import { CodeXrefPanel } from "./apps/code/XrefPanel";
-import { FateView } from "./apps/fate/FateView";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { SettingsModal } from "./features/settings/SettingsModal";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
@@ -43,6 +38,26 @@ import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/De
 import { OobeGate } from "./features/oobe/OobeWizard";
 // AURORA-10000：AI-01~AI-05 批次，勿删（族0020 睡眠唤醒剧场触发器）
 import { showWakeCeremony } from "./system/boot/theater/ceremonyFx";
+
+// 代码分割（性能）：桌面环境走下方 `view === "desktop"` 分支提前返回，从不渲染
+// write/mindmap/project/fate 四个视图；但它们原先被静态 import 全部打进主 chunk。
+// 改为按需加载后，环境首屏不必下载这些视图及其重依赖（富文本编辑器等），
+// 只在对应窗口真正打开时再拉起，降低首屏体积与常驻内存。
+const EditorView = lazy(() =>
+  import("./apps/write/editor/EditorView").then((m) => ({ default: m.EditorView })),
+);
+const MindmapView = lazy(() =>
+  import("./apps/mind/MindmapView").then((m) => ({ default: m.MindmapView })),
+);
+const ProjectAnalysisView = lazy(() =>
+  import("./apps/code/ProjectAnalysisView").then((m) => ({ default: m.ProjectAnalysisView })),
+);
+const CodeXrefPanel = lazy(() =>
+  import("./apps/code/XrefPanel").then((m) => ({ default: m.CodeXrefPanel })),
+);
+const FateView = lazy(() =>
+  import("./apps/fate/FateView").then((m) => ({ default: m.FateView })),
+);
 
 export type AppEntryType = "desktop" | AppMode;
 
@@ -658,30 +673,32 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
         <div className="main-row">
           <Sidebar />
           <div className="content-area">
-            {view === "write" ? (
-              <EditorView
-                key={currentDocId ?? "empty"}
-                settings={{
-                  fontFamily: settings.fontFamily,
-                  fontSize: settings.fontSize,
-                  lineHeight: settings.lineHeight,
-                  widthPct: settings.editorWidthPct,
-                  align: settings.editorAlign,
-                  autosaveDelayMs: settings.autosaveDelayMs,
-                  showStatusBar: settings.showStatusBar,
-                }}
-              />
-            ) : view === "project" ? (
-              <>
-                <ProjectAnalysisView settings={settings} />
-                {/* 批次C（规格 5.7.3）：Code 引用 Write 技术文档的面板 */}
-                <CodeXrefPanel />
-              </>
-            ) : view === "fate" ? (
-              <FateView />
-            ) : (
-              <MindmapView settings={settings} />
-            )}
+            <Suspense fallback={null}>
+              {view === "write" ? (
+                <EditorView
+                  key={currentDocId ?? "empty"}
+                  settings={{
+                    fontFamily: settings.fontFamily,
+                    fontSize: settings.fontSize,
+                    lineHeight: settings.lineHeight,
+                    widthPct: settings.editorWidthPct,
+                    align: settings.editorAlign,
+                    autosaveDelayMs: settings.autosaveDelayMs,
+                    showStatusBar: settings.showStatusBar,
+                  }}
+                />
+              ) : view === "project" ? (
+                <>
+                  <ProjectAnalysisView settings={settings} />
+                  {/* 批次C（规格 5.7.3）：Code 引用 Write 技术文档的面板 */}
+                  <CodeXrefPanel />
+                </>
+              ) : view === "fate" ? (
+                <FateView />
+              ) : (
+                <MindmapView settings={settings} />
+              )}
+            </Suspense>
           </div>
         </div>
         <SearchOverlay />

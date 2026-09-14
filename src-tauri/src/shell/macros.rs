@@ -134,7 +134,7 @@ fn now_fields() -> [u32; 5] {
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
+    let _y = if m <= 2 { y + 1 } else { y };
     // 星期：1970-01-01 是周四（dow 4；cron 0=周日）
     let dow = (days.rem_euclid(7) + 4) % 7;
     [min as u32, hour as u32, d as u32, m as u32, dow as u32]

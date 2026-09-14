@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn main_env_home_falls_back_to_container() {
-        let (st, dir) = temp_state("main");
+        let (_st, dir) = temp_state("main");
         assert_eq!(exec::env_home(&dir), dir.join("home"));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -545,7 +545,7 @@ fn base_path(st: &AppState, clone_id: &str) -> PathBuf {
 
 fn write_clone_base(st: &AppState, clone_id: &str) -> CmdResult<()> {
     // 基线来自源剖面 = 当前主档状态
-    let mut r = load_registry(st);
+    let r = load_registry(st);
     let parent = r
         .envs
         .iter()
@@ -773,6 +773,8 @@ fn nested_data_root(st: &AppState, id: &str, depth: u32) -> PathBuf {
 
 /// 生成子进程执行档环境（白名单子集继承：只减不增）。
 /// 父执行档的 net_allow 直接继承（父已授权 ⊆ 子允许，满足"只减不增"）。
+/// 保留：M6 嵌套实例的独立执行档入口（白名单子集继承），等待接线到 spawn_profiled。
+#[allow(dead_code)]
 pub(crate) fn nested_env(
     st: &AppState,
     id: &str,
@@ -829,7 +831,7 @@ pub(crate) fn env_nested_inner(st: &AppState, id: String) -> CmdResult<u32> {
     Ok(pid)
 }
 
-fn parent_allow_cache(st: &AppState) -> Vec<String> {
+fn parent_allow_cache(_st: &AppState) -> Vec<String> {
     // V1：白名单继承的落点=子进程的 netconsent 库（独立数据根内），无需父透传；
     // 预留接口以便 B-28 白名单库落地后改为显式子集注入。
     Vec::new()

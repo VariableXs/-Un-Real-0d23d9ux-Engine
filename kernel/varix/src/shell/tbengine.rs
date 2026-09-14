@@ -7,11 +7,6 @@
 //! 纪律：零分配、全整数 permille、`CheckSet` 自检 75 项全绿（ktest）。
 
 use crate::checks::CheckSet;
-// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 走 alloc（no_std + 全局分配器）。
-#[cfg(feature = "kernel-image")]
-use alloc::{string::String, vec::Vec};
-#[cfg(all(not(test), not(feature = "kernel-image")))]
-use std::{string::String, vec::Vec};
 
 // ---------------------------------------------------------------------------
 // 族0151 任务栏合成优化
@@ -882,15 +877,16 @@ pub fn run_appindex_checks() -> CheckSet {
 }
 
 
-fn render_to_string(set: &crate::checks::CheckSet) -> String {
-    let mut buf = [0u8; 2048];
-    let n = set.render(&mut buf);
-    String::from_utf8_lossy(&buf[..n]).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 仅测试期需要：把失败的 CheckSet 渲染成可读文本（宿主侧 std 提供 String）。
+    fn render_to_string(set: &crate::checks::CheckSet) -> String {
+        let mut buf = [0u8; 2048];
+        let n = set.render(&mut buf);
+        String::from_utf8_lossy(&buf[..n]).into_owned()
+    }
 
     #[test]
     fn f0151_0152_0153_all_pass() {

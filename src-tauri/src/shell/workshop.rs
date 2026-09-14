@@ -165,7 +165,7 @@ pub fn sched_toggle(st: tauri::State<AppState>, id: String, enabled: bool) -> Cm
 }
 
 /// 下次触发时间预览（epoch ms；None = 无法计算）。纯函数（有 vitest 镜像）。
-pub fn next_fire_ms(t: &SchedTask, now_epoch_ms: u64, last_fired: u64) -> Option<u64> {
+pub fn next_fire_ms(t: &SchedTask, now_epoch_ms: u64, _last_fired: u64) -> Option<u64> {
     match &t.trigger {
         SchedTrigger::At { hour, minute } => {
             // 当天该时刻已过 → 明天；用本地时区近似（UTC+8 桌面环境的常见口径，
@@ -188,7 +188,7 @@ pub fn next_fire_ms(t: &SchedTask, now_epoch_ms: u64, last_fired: u64) -> Option
             Some(now_epoch_ms + (*secs as u64) * 1000)
         }
         SchedTrigger::Idle { secs: _ } => None, // 空闲触发依赖运行时观察，无法静态预览
-        SchedTrigger::Login { secs } => {
+        SchedTrigger::Login { secs: _ } => {
             if !t.enabled {
                 return None;
             }
@@ -297,6 +297,9 @@ pub fn sched_run_now(app: tauri::AppHandle, st: tauri::State<AppState>, id: Stri
 // ---------- 运行时线程（启动时拉起；每 5s 扫描） ----------
 
 struct RuntimeCtx {
+    /// 保留：环境就绪基准（调度器启动 +3s）。当前循环用局部量承载传给 should_fire，
+    /// 字段留档以便将来按会话重置或诊断读取。
+    #[allow(dead_code)]
     boot_done_ms: u64,
     last_at_day: u64,
 }

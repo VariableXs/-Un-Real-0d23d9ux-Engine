@@ -1022,7 +1022,7 @@ pub fn who_locks(path: String) -> CmdResult<Vec<LockHolder>> {
         let arr = [PCWSTR(path_w.as_ptr())];
         let hr = RmRegisterResources(session, Some(&arr), None, None);
         if hr.is_err() {
-            RmEndSession(session);
+            let _ = RmEndSession(session);
             return Err(AppError::io("无法注册资源 / Cannot register resource"));
         }
         let mut needed: u32 = 0;
@@ -1031,7 +1031,7 @@ pub fn who_locks(path: String) -> CmdResult<Vec<LockHolder>> {
         // 第一次探测容量
         let _ = RmGetList(session, &mut needed, &mut count, None, &mut reboot);
         if needed == 0 {
-            RmEndSession(session);
+            let _ = RmEndSession(session);
             return Ok(Vec::new()); // 系统未披露占用者（如实空列表）
         }
         let mut infos = vec![RM_PROCESS_INFO::default(); needed as usize];
@@ -1043,7 +1043,7 @@ pub fn who_locks(path: String) -> CmdResult<Vec<LockHolder>> {
             Some(infos.as_mut_ptr()),
             &mut reboot,
         );
-        RmEndSession(session);
+        let _ = RmEndSession(session);
         if hr.is_err() {
             return Ok(Vec::new()); // 权限不足等 → 如实空列表（前端显示未披露文案）
         }
@@ -1092,7 +1092,7 @@ fn window_title_of_pid(pid: u32) -> Option<String> {
     }
     let mut ctx = Ctx { pid, titles: Vec::new() };
     unsafe {
-        EnumWindows(Some(proc), LPARAM(&mut ctx as *mut _ as isize));
+        let _ = EnumWindows(Some(proc), LPARAM(&mut ctx as *mut _ as isize));
     }
     ctx.titles.into_iter().next()
 }
@@ -1400,7 +1400,7 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
         return; // 目录不可打开（权限/离线）→ 线程如实退出
     };
     let Ok(ev) = (unsafe { CreateEventW(None, FALSE, FALSE, None) }) else {
-        unsafe { windows::Win32::Foundation::CloseHandle(handle) };
+        unsafe { let _ = windows::Win32::Foundation::CloseHandle(handle); };
         return;
     };
     let mut buf = vec![0u8; 8 * 1024];
@@ -1420,7 +1420,7 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
             // 缓冲写入；不等待就关句柄并让 OVERLAPPED 离开作用域 = 栈复用后
             // 的未定义行为（MSDN：调用方必须等完成才能复用/释放这些结构）。
             if !watch {
-                unsafe { CancelIoEx(handle, Some(&overlapped)) };
+                unsafe { let _ = CancelIoEx(handle, Some(&overlapped)); };
                 let _ = unsafe {
                     windows::Win32::System::Threading::WaitForSingleObject(ev, 3000)
                 };
@@ -1451,7 +1451,7 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
             // WAIT_OBJECT_0 = 本次读已完成，无挂起操作，直接退出即可；
             // 否则取消并等完成（理由同循环顶部）。
             if !watch && wait != WAIT_OBJECT_0 {
-                unsafe { CancelIoEx(handle, Some(&overlapped)) };
+                unsafe { let _ = CancelIoEx(handle, Some(&overlapped)); };
                 let _ = unsafe {
                     windows::Win32::System::Threading::WaitForSingleObject(ev, 3000)
                 };
@@ -1514,8 +1514,8 @@ fn sentinel_loop(app: tauri::AppHandle, cfg: SentinelCfg, stop: Arc<AtomicBool>)
         }
     }
     unsafe {
-        windows::Win32::Foundation::CloseHandle(ev);
-        windows::Win32::Foundation::CloseHandle(handle);
+        let _ = windows::Win32::Foundation::CloseHandle(ev);
+        let _ = windows::Win32::Foundation::CloseHandle(handle);
     }
 }
 

@@ -20,7 +20,6 @@ use crate::state::AppState;
 type CmdResult<T> = Result<T, AppError>;
 
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_MATCH_LINES: usize = 500;
 const MAX_FILE_RESULTS: usize = 60;
 
 #[derive(Serialize)]

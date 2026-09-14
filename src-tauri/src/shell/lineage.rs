@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn invalid_kind_rejected() {
         let (st, tmp) = temp_state("invalid");
-        let l = load(&st);
+        let _l = load(&st);
         // kind 校验在命令层；这里验证路径归一化
         assert_eq!(norm_key("C:\\Data\\Folder\\"), "c:/data/folder");
         let _ = fs::remove_dir_all(&tmp);

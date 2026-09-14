@@ -642,6 +642,8 @@ pub fn openhub_stream_tail(st: tauri::State<AppState>, n: u32) -> CmdResult<Vec<
 
 struct GatewayHandle {
     stop: Arc<AtomicBool>,
+    /// 保留 JoinHandle：Drop 即分离线程，句柄在案便于将来优雅收尾。
+    #[allow(dead_code)]
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -751,7 +753,7 @@ fn gateway_serve(port: u16, token: &str, scopes: &[String], data_dir: &Path, sto
     }
 }
 
-fn handle_gateway_conn(mut stream: TcpStream, token: &str, scopes: &[String], inbox: &Path, data_dir: &Path) -> std::io::Result<()> {
+fn handle_gateway_conn(stream: TcpStream, token: &str, scopes: &[String], inbox: &Path, data_dir: &Path) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();

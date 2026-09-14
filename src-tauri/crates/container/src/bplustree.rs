@@ -310,6 +310,8 @@ impl<K: TreeKey, V: TreeVal> BPlusTree<K, V> {
         self.len
     }
 
+    /// 测试期断言空树用：调用点只在 `#[cfg(test)]` 内，lib 目标看不到引用。
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }

@@ -1292,7 +1292,8 @@ mod tests {
             for d in [0u16, 1, 600, u16::MAX] {
                 for rm in [true, false] {
                     let v = motion_fuzz(f, d, rm, Curve::EaseInOut);
-                    assert!(v <= 255);
+                    // u8 类型已保证 0..=255；此处验证纯函数确定性（无隐藏状态）
+                    assert_eq!(v, motion_fuzz(f, d, rm, Curve::EaseInOut), "确定性输出");
                 }
             }
         }

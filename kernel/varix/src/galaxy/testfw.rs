@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn g1061_registry_full() {
         let mut reg = TestRegistry::new();
-        for i in 0..TEST_REG_MAX {
+        for _ in 0..TEST_REG_MAX {
             assert!(reg.record("s", "n", true));
         }
         assert!(!reg.record("s", "overflow", true));

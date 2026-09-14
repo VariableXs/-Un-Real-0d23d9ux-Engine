@@ -45,7 +45,7 @@ static LOADED_PLUGINS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 #[tauri::command(async)]
 pub fn ext_plugin_load(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     st: tauri::State<'_, crate::state::AppState>,
     id: String,
     lib_path: String,

@@ -1495,7 +1495,7 @@ mod tests {
 
     #[test]
     fn a037_frame_budget() {
-        let mut c = cv();
+        let c = cv();
         assert_eq!(get_px(&c, CANVAS_W, CANVAS_H, 0, 0), Rgba::new(0, 0, 0, 0));
         assert_eq!(frame_budget_us(60), 16666);
         assert_eq!(frame_budget_us(30), 33333);
@@ -1569,7 +1569,7 @@ mod tests {
 
     #[test]
     fn a043_quality() {
-        let mut c = cv();
+        let c = cv();
         assert_eq!(get_px(&c, CANVAS_W, CANVAS_H, 0, 0), Rgba::new(0, 0, 0, 0));
         assert_eq!(select_quality(20000, 16666), Quality::Low);
         assert_eq!(select_quality(10000, 16666), Quality::Medium);
@@ -1615,16 +1615,7 @@ mod tests {
         let mut c = cv();
         fuzz_draw(&mut c, CANVAS_W, CANVAS_H, 0x1234_5678, 200);
         assert!(canvas_invariant(&c));
-        // 抽查像素仍在合法范围
-        let mut ok = true;
-        let mut p = 3usize;
-        while p < CANVAS_BYTES {
-            if c[p] > 255 {
-                ok = false;
-            }
-            p += 4;
-        }
-        assert!(ok);
+        // 像素通道为 u8，幅度上界由类型系统保证；实质不变量已由上方 canvas_invariant 覆盖。
     }
 
     #[test]

@@ -10,11 +10,6 @@
 //! * 非法优先级/未知层钳制回默认，不 panic（越界回默认红线）。
 
 use crate::checks::CheckSet;
-// 宿主侧（ktest 集成测试编译）允许 std；kernel-image 走 alloc（no_std + 全局分配器）。
-#[cfg(feature = "kernel-image")]
-use alloc::{string::String, vec::Vec};
-#[cfg(all(not(test), not(feature = "kernel-image")))]
-use std::{string::String, vec::Vec};
 
 /// 浮层层别（z 序从低到高）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -440,15 +435,16 @@ pub fn run_zorder_checks() -> CheckSet {
 }
 
 
-fn render_to_string(set: &crate::checks::CheckSet) -> String {
-    let mut buf = [0u8; 2048];
-    let n = set.render(&mut buf);
-    String::from_utf8_lossy(&buf[..n]).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 仅测试期需要：把失败的 CheckSet 渲染成可读文本（宿主侧 std 提供 String）。
+    fn render_to_string(set: &crate::checks::CheckSet) -> String {
+        let mut buf = [0u8; 2048];
+        let n = set.render(&mut buf);
+        String::from_utf8_lossy(&buf[..n]).into_owned()
+    }
 
     #[test]
     fn f0148_25_items_all_pass() {

@@ -19,10 +19,6 @@ use crate::state::AppState;
 
 type CmdResult<T> = Result<T, AppError>;
 
-fn ce(e: container::ContainerError) -> AppError {
-    AppError::new("CONTAINER", e.to_string())
-}
-
 /// 校验仓库路径位于容器数据目录内（防逃逸；git2 只读也只读容器内仓库）。
 pub(crate) fn ensure_in_container(st: &AppState, repo: &str) -> CmdResult<PathBuf> {
     let p = PathBuf::from(repo);
@@ -293,7 +289,7 @@ pub fn ssh_key_generate(
     label: String,
 ) -> CmdResult<SshKeyView> {
     use ssh_key::private::{Ed25519Keypair, KeypairData};
-    use ssh_key::{PrivateKey, PublicKey};
+    use ssh_key::PrivateKey;
     if crate::shell::privacy::vault_key()?.is_none() {
         return Err(AppError::new(
             "VAULT_LOCKED",

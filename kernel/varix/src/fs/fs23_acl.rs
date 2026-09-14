@@ -128,9 +128,9 @@ pub fn run_fs_acl_checks() -> CheckSet {
     let dup_before = a.ace_count();
     let _ = a.grant(2000, W, 0);
     let dup_after = a.ace_count();
-    let mut inh = Acl::new(3, 1, 0o777);
+    let inh = Acl::new(3, 1, 0o777);
     let inh_ok = inh.inherits();
-    let mut strict = Acl::new(4, 1, 0o700);
+    let strict = Acl::new(4, 1, 0o700);
     let strict_ok = strict.strict_guard();
     let mk = Acl::new(9, 0, 0o777);
     let mut off = Acl::new(0, 0, 0);

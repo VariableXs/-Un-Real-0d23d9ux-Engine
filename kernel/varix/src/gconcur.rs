@@ -865,7 +865,7 @@ mod tests {
         for _ in 0..16 {
             assert_eq!(a.next(), b.next());
         }
-        let mut c = DetPrng::new(2);
+        let c = DetPrng::new(2);
         assert_ne!(a.state, c.state);
     }
 

@@ -367,6 +367,9 @@ pub struct ResidueEntry {
     pub kind: String,
 }
 
+// 保留：ResidueEntry 的 serde 默认值入口。该结构当前只派生 Serialize，
+// 属性字符串引用不被编译器计入使用；待补 Deserialize 时即生效。
+#[allow(dead_code)]
 fn default_kind() -> String {
     "file".to_string()
 }

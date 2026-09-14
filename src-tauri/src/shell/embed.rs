@@ -176,6 +176,8 @@ mod win {
     }
 
     /// 批次W-2：进程级 Per-Monitor V2 DPI 感知（幂等；清单已声明时静默失败）。
+    /// 保留为无清单直跑档的兜底入口；环境内主路径由 tauri.conf 清单声明承担。
+    #[allow(dead_code)]
     pub fn ensure_per_monitor_dpi() {
         use windows::Win32::UI::HiDpi::{
             SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
@@ -245,7 +247,7 @@ mod win {
         }
         let mut ctx = Ctx { keep, out: Vec::new() };
         unsafe {
-            EnumWindows(Some(probe), LPARAM(&mut ctx as *mut Ctx as isize));
+            let _ = EnumWindows(Some(probe), LPARAM(&mut ctx as *mut Ctx as isize));
         }
         ctx.out
     }
@@ -409,7 +411,7 @@ pub async fn embed_launch(
         .ok_or_else(|| AppError::validation("登记项路径无效 / invalid path"))?;
 
     // 2) 记录启动前已存在的该应用窗口（避免把旧窗口误嵌）
-    let before = win::collect_handles(&mut |h, img| img.to_lowercase().ends_with(&exe_name));
+    let before = win::collect_handles(&mut |_h, img| img.to_lowercase().ends_with(&exe_name));
 
     // 3) 启动（复用既有通道；本模块不含进程创建代码）。root_pid 用于
     //    按子进程树匹配窗口——启动器型软件（如 Wallpaper Engine）真正的
@@ -581,9 +583,9 @@ pub async fn embed_launch(
             & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0))
             | WS_CHILD.0;
         SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
-        SetParent(h, hwnd_from(desktop));
+        let _ = SetParent(h, hwnd_from(desktop));
         // 先给一个占位边界（随后由前端虚拟窗口上报精确边界）
-        SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
+        let _ = SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
     }
 
     with_registry(|map| {
@@ -864,8 +866,8 @@ fn restyle_and_reparent(new_hwnd: isize) -> bool {
             & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0))
             | WS_CHILD.0;
         SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
-        SetParent(h, hwnd_from(desktop));
-        SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
+        let _ = SetParent(h, hwnd_from(desktop));
+        let _ = SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
     }
     true
 }
@@ -965,7 +967,7 @@ fn detach_by_id(embed_id: &str) -> bool {
         let h = hwnd_from(e.hwnd);
         let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
         SetWindowLongPtrW(h, GWL_STYLE, ((style as u32 & !WS_CHILD.0) | WS_POPUP.0) as isize);
-        SetParent(h, HWND::default());
+        let _ = SetParent(h, HWND::default());
     }
     true
 }
@@ -1045,7 +1047,7 @@ pub fn embed_bounds(embed_id: Option<String>, x: i32, y: i32, w: i32, h: i32) ->
         return Ok(());
     };
     unsafe {
-        SetWindowPos(hwnd_from(hw), HWND::default(), x, y, w.max(1), h.max(1), SWP_NOZORDER);
+        let _ = SetWindowPos(hwnd_from(hw), HWND::default(), x, y, w.max(1), h.max(1), SWP_NOZORDER);
     }
     let new_dpi = win::window_dpi(hw);
     if !dpi_fix && last_dpi != 0 && new_dpi != last_dpi {
@@ -1076,7 +1078,7 @@ pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
     });
     if let Some(h) = target {
         unsafe {
-            ShowWindow(hwnd_from(h), if visible { SW_SHOW } else { SW_HIDE });
+            let _ = ShowWindow(hwnd_from(h), if visible { SW_SHOW } else { SW_HIDE });
         }
     }
     Ok(())
@@ -1104,7 +1106,7 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
         // 批次C-3：L2 会话向宿主发 WM_CLOSE（宿主转发子窗口并脱离自毁）
         let target = e.host.unwrap_or(e.hwnd);
         unsafe {
-            PostMessageW(hwnd_from(target), WM_CLOSE, WPARAM(0), LPARAM(0));
+            let _ = PostMessageW(hwnd_from(target), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
     }
     Ok(())
@@ -1138,7 +1140,7 @@ pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
         // 批次C-3：L2 会话发宿主 WM_CLOSE（转发链路：宿主→子窗口→脱离自毁）
         let target = e.host.unwrap_or(e.hwnd);
         unsafe {
-            PostMessageW(hwnd_from(target), WM_CLOSE, WPARAM(0), LPARAM(0));
+            let _ = PostMessageW(hwnd_from(target), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
     }
     // 30s 超时核对：仍在的窗口脱离回桌面（留在桌面，不终止进程）
@@ -1210,7 +1212,7 @@ fn detach_child(hwnd: isize) {
         let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
         if style as u32 & WS_CHILD.0 != 0 {
             SetWindowLongPtrW(h, GWL_STYLE, ((style as u32 & !WS_CHILD.0) | WS_POPUP.0) as isize);
-            SetParent(h, HWND::default());
+            let _ = SetParent(h, HWND::default());
         }
     }
 }

@@ -32,7 +32,7 @@ fn record_pid(profile_id: &str, pid: u32) {
 
 /// 任务栏运行态（B-19 分组）：每个存活 profile 是独立分组项。
 #[tauri::command(async)]
-pub fn browser_running(st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
+pub fn browser_running(_st: tauri::State<AppState>) -> CmdResult<Vec<String>> {
     let g = LAUNCHED.lock().unwrap_or_else(|e| e.into_inner());
     let map = match g.as_ref() {
         Some(m) => m,

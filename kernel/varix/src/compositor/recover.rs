@@ -284,7 +284,7 @@ mod tests {
         let mut out2 = [0u8; 8];
         assert_eq!(r2.restore(&mut out2), E_OK);
         assert_eq!(out2, [9; 8]);
-        let mut r3 = Recovery::new();
+        let r3 = Recovery::new();
         assert_eq!(r3.restore(&mut out2), E_CORRUPT);
     }
 

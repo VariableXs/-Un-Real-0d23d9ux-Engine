@@ -2,8 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use container::StorageBackend as _;
-
 use serde::Serialize;
 
 use crate::error::AppError;
@@ -144,7 +142,6 @@ pub fn demo_capsule_build(data_dir: &Path) -> CmdResult<PathBuf> {
         extra_volumes: Vec::new(),
     })
     .map_err(|e| AppError::new("CONTAINER", e.to_string()))?;
-    use container::StorageBackend as _;
     be.seal().map_err(|e| AppError::new("CONTAINER", e.to_string()))?;
     Ok(out)
 }

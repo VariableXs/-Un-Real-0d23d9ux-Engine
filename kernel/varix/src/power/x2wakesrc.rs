@@ -129,7 +129,6 @@ pub struct WakeRecord {
 #[derive(Clone, Copy, Debug)]
 pub struct WakeGovernor {
     pub policy: WakePolicy,
-    whitelist: [bool; WAKE_SRC_COUNT],
     /// 用户对单源的开/关覆盖（叠加在档位白名单之上）。
     overrides: [Option<bool>; WAKE_SRC_COUNT],
     log: [Option<WakeRecord>; WAKE_LOG_CAPACITY],
@@ -145,7 +144,6 @@ impl WakeGovernor {
     pub const fn new(policy: WakePolicy) -> WakeGovernor {
         WakeGovernor {
             policy,
-            whitelist: [false; WAKE_SRC_COUNT],
             overrides: [None; WAKE_SRC_COUNT],
             log: [None; WAKE_LOG_CAPACITY],
             log_head: 0,

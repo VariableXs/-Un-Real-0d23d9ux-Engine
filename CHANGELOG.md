@@ -3,6 +3,75 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — 1.0sno9u.vxe（2026-09-14 代码大检查与优化：零告警回归 + 前端按需加载 + 仓库卫生）
+
+> 本轮为"不改变功能语义"的质量/性能治理：三条测试线由改前改后均全绿，
+> 交付物是**更小的首屏、更少的编译告警、更干净的仓库**。
+
+### 性能：桌面环境首屏体积下降约 40%
+- **四个重视图改为按需加载**（`src/App.tsx`、`src/system/windows/VwmAppContent.tsx`）：
+  写作（EditorView）/ 思维导图（MindmapView）/ 项目分析（ProjectAnalysisView +
+  CodeXrefPanel）/ 命运推演（FateView）此前被静态 import 打进环境主 chunk，
+  而桌面分支（`view === "desktop"`）根本不渲染它们。改为 `React.lazy` + `Suspense`
+  后只在用户真正打开对应窗口时拉取，实测主 chunk **2010.79 kB → 1257.37 kB**
+  （gzip **723 kB → 433 kB**，−40%），拆出的 EditorView(342 kB) / MindmapView(101 kB) /
+  FateView(101 kB) / ProjectAnalysisView(90 kB) / XrefPanel(4 kB) 变为独立 chunk。
+  已验证这 5 个模块无顶层副作用，视觉/操作/功能行为零变化（改前改后 vitest 均
+  2629 通过 / 179 文件 / 0 失败）。
+
+### 质量：内核编译告警清零（kcheck + ktest 双零告警）
+- **lib 目标 28 处告警全清**：`shell/overlay.rs`、`shell/tbengine.rs` 的测试专用
+  `render_to_string` 下沉进 `#[cfg(test)] mod tests` 并移除随之无用的 `String/Vec` 导入；
+  删除死代码 `compatruntime::clamp_usize`、`fs23_mount::link_count_of/link_count_pub`；
+  移除 `WakeGovernor` 中从未被读取的冗余 `whitelist` 字段（生效白名单本就走
+  `policy.whitelist() ⊕ overrides`，该字段是死状态）；清理 12 处多余 `mut` /
+  未用变量 / 死语句。
+- **修正一处"末态读取"式弱断言**：`fs/fs23_journal.rs` 的 X05533「重放幂等」原写成
+  `t.verify_and_replay() == 1; t.verify_and_replay() == 0`，前一个比较结果被丢弃
+  （编译器 `unused_must_use`），实际只校验了后半句。改为 `&&` 连接，断言恢复完整语义。
+- **测试目标 16 处告警全清，并诚实化 6 处恒真断言**：`render2d`/`audio`/`motion` 中
+  `c[p] > 255`（u8）、`s <= 32767`（i16）、`v <= 255`（u8）这类比较被类型系统恒真，
+  属"假绿"断言。改为有实质意义的确定性/信号非零断言，或删除并注明类型已保证边界。
+  测试数与通过数不变（kernel 2713 全绿）。
+
+### 仓库卫生：非功能性过程产物归位 `_attic`
+- **46 个一次性调试脚本移入 `_attic/archive/tools-process/`**（`git mv` 保留历史）：
+  `dbg_*.py`（17）、`realclick*/clickcancel*/clickicon/enumwins/checkhung/cancel*` 等
+  PowerShell 点击探针（9）、`mark-*/stage-*/done-*/revert-aurora/strip-landscape/
+  fix-ellipsis/probe-regex/aurora-halfres/check-aurora/ghdata_push/make_cmds_async/
+  debug_ctx_freeze` 等一次性批处理（20）。判定口径：在 `tools/` 与 `_attic/` 之外
+  零引用，且不在 `package.json` / CI / `scripts/` 中出现。功能性工具（bench / audit /
+  keymap-audit / qmon / gen-* / hooks / portable 校验器等 38 个）原样保留。
+- **清理被 git 跟踪的 Python 字节码缓存** `tools/portable/__pycache__/*.pyc`，
+  `.gitignore` 追加 `__pycache__/` 与 `*.pyc`。
+
+### 质量：桌面端后端（src-tauri）编译告警清零（65 → 0，含 --all-targets）
+- **28 处忽略 must_use 返回值的 Win32 调用**统一改为 `let _ = ...`
+  （`SetParent` / `SetWindowPos` / `ShowWindow` / `PostMessageW` / `EnumWindows` /
+  `RmEndSession` / `CloseHandle` / `CancelIoEx` / `CertFreeCertificateContext` /
+  `SystemParametersInfoW` / `ActivateKeyboardLayout` / `save_index` 等）——行为完全等价。
+- **修复单实例守卫的无效泄漏**（`shell/single_instance.rs`）：`std::mem::forget(h)` 作用于
+  `Copy` 类型（`HANDLE`）是空操作，编译器已警告。改为把句柄存进进程级 `AtomicPtr` 静态，
+  显式表达"句柄生命周期 = 进程生命周期"，且不随 windows-rs 对 `HANDLE` Drop 语义的
+  版本差异而改变行为（守卫语义不变，双开防护仍生效）。
+- **清理死代码**：`bplustree` 的 `is_empty`（仅测试期使用，加注保留）、`schema::Migrator`
+  类型别名、`schema` 与 `versions`/`diagnostic` 的未用导入、`search::MAX_MATCH_LINES`
+  常量、`git_panel::ce` 与容器单测里未用的 `blob` 辅助函数；`uxv::apply_remove` 的
+  `let mut pos = 0; … pos = 4;` 死存储改为 `let mut pos = 4;`（语义等价）。
+- **6 处"保留待接线/说明性"条目改为显式 `#[allow(dead_code)]` + 中文注释**，而非粗暴删除：
+  `embed::ensure_per_monitor_dpi`（无清单直跑档兜底入口）、`envs::nested_env`（M6 嵌套
+  实例执行档入口）、`exec::default_kind`（serde 默认值字符串引用）、`uxv::SnapshotState
+  ::data_tail`、`openhub::GatewayHandle::thread`、`workshop::RuntimeCtx::boot_done_ms`。
+  逐条注明"为什么留、谁来接线"，避免下一次检查再误判。
+
+### 验证（如实）
+- `npx tsc --noEmit` 0 错；`npx vitest run` 2629 passed / 4 skipped / 0 failed；
+  `cargo test -p ca-core`（C 线）356 passed；`cargo ktest --lib`（K 线）2713 passed；
+  `cargo kcheck` 与 `cargo ktest --lib` 均 **0 warning**；`cargo kbuild` 成功出 ELF；
+  `npx vite build` 成功（7 个 MPA 入口产物齐全）。
+- 未在本轮改动任何业务逻辑、UI 样式与交互；未做真机/QEMU 视觉验收（无 GUI 环境），
+  按仓库纪律如实标注：视觉效果需真机复核。
+
 ## [Unreleased] — 1.0sno9u.vxe（2026-09-08 窗口路 AI-2 收口：W-1…5 / C-1…8 / B-27 / D-3）
 
 > 窗口路全部批次代码级完成。真机验收项见 `docs/acceptance/ai2-窗口路验收.md`（逐批清单）。

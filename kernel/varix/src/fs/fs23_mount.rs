@@ -175,10 +175,6 @@ pub fn run_fs_mount_checks() -> CheckSet {
     set
 }
 
-fn link_count_of(t: &MountTable) -> usize {
-    t.link_count_pub()
-}
-
 fn static_mnt(i: u8) -> &'static str {
     const M: [&str; 8] = ["/m0", "/m1", "/m2", "/m3", "/m4", "/m5", "/m6", "/m7"];
     M[(i % 8) as usize]
@@ -189,9 +185,6 @@ fn static_link(i: usize) -> &'static str {
 }
 
 impl MountTable {
-    fn link_count_pub(&self) -> usize {
-        self.link_count
-    }
     fn link_count(&self) -> usize {
         self.link_count
     }

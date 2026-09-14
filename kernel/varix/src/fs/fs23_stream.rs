@@ -109,7 +109,7 @@ pub fn run_fs_stream_checks() -> CheckSet {
     let paused_at = p.pause();
     let resume_ok = p.resume() && !p.eof();
     let mk = FileStream::new(9, 1);
-    let mut w = FileStream::new(4, 10000);
+    let w = FileStream::new(4, 10000);
     let win = w.window();
     let mut chunks = FileStream::new(STREAM_DEFAULT, 64);
     for i in 0..64u8 {

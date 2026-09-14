@@ -658,12 +658,12 @@ mod tests {
     #[test]
     fn a852_cap_idempotent() {
         assert_eq!(cap_drop(CAP_NET, CAP_NET), 0);
-        assert_eq!(cap_drop(0, CAP_ALL()), 0);
+        assert_eq!(cap_drop(0, cap_all()), 0);
         assert!(cap_grant_safe(0, 0, 0));
         assert!(!cap_grant_safe(0, CAP_READ, 0));
     }
 
-    fn CAP_ALL() -> u32 {
+    fn cap_all() -> u32 {
         CAP_READ | CAP_WRITE | CAP_EXEC | CAP_NET | CAP_DEVICE
     }
 

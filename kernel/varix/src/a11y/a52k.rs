@@ -344,7 +344,7 @@ pub fn run_a52k_checks() -> [CheckSet; 3] {
     s12.add("X12791 读屏基准采集", {
         let mut q = SpeechTable::new();
         let mut ok = true;
-        for i in 0..16 {
+        for _ in 0..16 {
             ok = ok && q.push(Role::Label, "l");
         }
         q.count() == 16 && ok

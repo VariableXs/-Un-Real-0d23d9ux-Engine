@@ -506,7 +506,7 @@ mod tests {
             s.putc(b'x');
         }
         assert_eq!(s.cy, 1); // 折行
-        for i in 0..TERM_ROWS + 3 {
+        for _ in 0..TERM_ROWS + 3 {
             s.putc(b'\n');
         }
         assert!(s.cy < TERM_ROWS as u16); // 循环滚动

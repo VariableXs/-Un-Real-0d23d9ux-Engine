@@ -921,7 +921,7 @@ mod tests {
     #[test]
     fn f010_tls_isolation() {
         let mut a = TlsBlock::new();
-        let mut b = TlsBlock::new();
+        let b = TlsBlock::new();
         a.set(1, 111);
         assert_eq!(b.get(1), Some(0));
         a.set(1, 222);

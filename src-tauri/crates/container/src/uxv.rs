@@ -284,6 +284,8 @@ pub struct UxvBackend {
 
 #[derive(Clone)]
 struct SnapshotState {
+    /// 保留：快照对应的事务尾位置（当前回滚路径只恢复 files/chunks，见 1398 行注释）。
+    #[allow(dead_code)]
     data_tail: u64,
     files: BPlusTree<String, FileInfo>,
     chunks: BPlusTree<HashKey, ChunkLoc>,
@@ -343,7 +345,7 @@ impl UxvBackend {
     /// cold=true：冷层强制 Zstd-19（挂起项目/冷区归档）；否则热层分级策略。
     /// `index_key`：热层 = 内容哈希；冷层 = blake3(内容哈希)（独立命名空间，
     /// 同一内容允许热/冷两份物理编码共存——挂起/解冻的底层前提）。
-    fn append_chunk_at(&mut self, index_key: [u8; 32], _content: [u8; 32], payload: &[u8], cold: bool) -> CmdResult<ChunkLoc> {
+    fn append_chunk_at(&mut self, _index_key: [u8; 32], _content: [u8; 32], payload: &[u8], cold: bool) -> CmdResult<ChunkLoc> {
         // 单卷：chunk 与 journal/index 共享主卷 meta_tail（魔数分流）；
         // 多卷：条带轮转数据卷，主卷只承载元数据。
         let n = self.volumes.len();
@@ -514,7 +516,7 @@ impl UxvBackend {
             sb[8..12].copy_from_slice(&SCHEMA_VERSION.to_le_bytes());
             sb[12..20].copy_from_slice(&footer_offset.to_le_bytes());
             match (&self.vault, self.vault_meta) {
-                (Some(v), Some((salt, verifier))) => {
+                (Some(_v), Some((salt, verifier))) => {
                     sb[SB_FLAG_VAULT] = 1;
                     sb[SB_SALT].copy_from_slice(&salt);
                     sb[SB_VERIFIER].copy_from_slice(&verifier);
@@ -791,9 +793,8 @@ impl UxvBackend {
     }
 
     fn apply_remove(payload: &[u8], files: &mut BPlusTree<String, FileInfo>, chunks: &mut BPlusTree<HashKey, ChunkLoc>) {
-        let mut pos = 0usize;
+        let mut pos = 4usize;
         let n = u32::from_le_bytes(payload.get(0..4).expect("定长").try_into().expect("定长")) as usize;
-        pos = 4;
         for _ in 0..n {
             let path = match String::decode(payload, &mut pos) {
                 Some(p) => p,
@@ -2077,10 +2078,6 @@ mod multivolume_tests {
 mod b17_tests {
     use super::*;
     use crate::{OpenCfg as Cfg, StorageBackend as Backend};
-
-    fn blob(n: usize, seed: u8) -> Vec<u8> {
-        (0..n).map(|i| (i as u8).wrapping_mul(seed).wrapping_add(seed)).collect()
-    }
 
     /// 验收：挂起项目冷层压缩显著省空间，解冻无损恢复；仪表放大比在健康口径内。
     #[test]

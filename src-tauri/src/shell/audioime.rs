@@ -266,7 +266,7 @@ pub fn ime_switch(lang_id: String) -> CmdResult<()> {
         let got = GetKeyboardLayoutList(Some(&mut buf));
         for h in &buf[..got.max(0) as usize] {
             if h.0 as usize & 0xFFFF == want {
-                ActivateKeyboardLayout(*h, KLF_SETFORPROCESS);
+                let _ = ActivateKeyboardLayout(*h, KLF_SETFORPROCESS);
                 return Ok(());
             }
         }

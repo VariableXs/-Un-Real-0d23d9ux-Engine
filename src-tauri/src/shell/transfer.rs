@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn walk_total_counts() {
-        let (st, tmp) = temp_state("walk");
+        let (_st, tmp) = temp_state("walk");
         let d = tmp.join("src");
         fs::create_dir_all(d.join("sub")).unwrap();
         fs::write(d.join("a.txt"), vec![1u8; 100]).unwrap();
@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn copy_file_progress_writes_all() {
-        let (st, tmp) = temp_state("copy");
+        let (_st, tmp) = temp_state("copy");
         let src = tmp.join("in.bin");
         fs::write(&src, vec![7u8; CHUNK as usize * 2 + 10]).unwrap();
         let dest = tmp.join("out.bin");
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn dest_for_conflict_strategies() {
-        let (st, tmp) = temp_state("conflict");
+        let (_st, tmp) = temp_state("conflict");
         let dir = tmp.join("d");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("a.txt"), b"old").unwrap();
