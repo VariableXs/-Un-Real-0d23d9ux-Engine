@@ -172,8 +172,44 @@ pub fn tool_secure_read(st: State<'_, AppState>, name: String) -> CmdResult<Opti
 /// 会限制只能裁剪 Variable 自身窗口（如实语义）。
 #[tauri::command(async)]
 pub fn snapshot_capture() -> CmdResult<Vec<u8>> {
+    close_snipping_overlays();
     capture_virtual_screen_bmp()
 }
+
+/// 截图前清场：关闭 Windows 自带截图浮层（Snipping Tool / Win+Shift+S 抢注
+/// 生效前已打开的残留）。浮层挡在屏幕最上层会让 BitBlt 抓到它而非 Variable。
+#[cfg(windows)]
+fn close_snipping_overlays() {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+    const SNIP_IMAGES: &[&str] = &[
+        "screenclippinghost.exe", // Win11 Snipping Tool 覆盖层
+        "screenclipping.exe",     // Win10 截图覆盖层
+        "snippingtool.exe",       // 旧版截图工具
+        "screensketch.exe",       // Screen Sketch
+    ];
+    let mut closed = 0usize;
+    for (hwnd, _pid, image) in crate::shell::embed::watch_scan_windows() {
+        let name = image.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+        if SNIP_IMAGES.contains(&name.as_str()) {
+            unsafe {
+                let _ = PostMessageW(
+                    HWND(hwnd as *mut core::ffi::c_void),
+                    WM_CLOSE,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
+            }
+            closed += 1;
+        }
+    }
+    if closed > 0 {
+        crate::shell::applog::log("capture", format!("截图前清场：已关闭 {closed} 个 Snipping 浮层窗口"));
+    }
+}
+
+#[cfg(not(windows))]
+fn close_snipping_overlays() {}
 
 // ---------- Variable 相册：截图落盘共享 ----------
 //

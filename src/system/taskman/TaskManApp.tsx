@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Ban, Cpu, Gauge, ListRestart, RefreshCw, Search, Wrench, X } from "lucide-react";
+import { Activity, Ban, Cpu, Gauge, ListRestart, RefreshCw, Search, Wrench, X, ScrollText } from "lucide-react";
 import { askConfirm } from "../../components/Modal";
 import { pushToast } from "../../state/uiStore";
 import { useI18n } from "../../i18n";
-import { errMessage, ipc, type Shell } from "../../lib/ipc";
+import { errMessage, ipc, type AppLogEntry, type Shell } from "../../lib/ipc";
+import { listen } from "@tauri-apps/api/event";
+import { isTauriRuntime } from "../../entries/runtime";
 
 /**
  * F-3 任务管理器增强（VWM 系统窗口，单实例）：
@@ -14,13 +16,14 @@ import { errMessage, ipc, type Shell } from "../../lib/ipc";
  * - 服务页：VM 档 PowerShell Get-Service；直跑档如实提示跳宿主管理
  */
 
-type Tab = "proc" | "perf" | "startup" | "service";
+type Tab = "proc" | "perf" | "startup" | "service" | "logs";
 
 const TABS: { id: Tab; key: string; icon: typeof Activity }[] = [
   { id: "proc", key: "tmTabProc", icon: Activity },
   { id: "perf", key: "tmTabPerf", icon: Gauge },
   { id: "startup", key: "tmTabStartup", icon: ListRestart },
   { id: "service", key: "tmTabService", icon: Wrench },
+  { id: "logs", key: "tmTabLogs", icon: ScrollText },
 ];
 
 function fmtMem(n: number): string {
@@ -214,6 +217,40 @@ export function TaskManApp(): React.ReactElement {
 
   const memPct = memBrief && memBrief.memTotal > 0 ? (memBrief.memUsed / memBrief.memTotal) * 100 : 0;
   const curCpu = cpuHist.length > 0 ? cpuHist[cpuHist.length - 1]! : 0;
+
+  // ---------- 日志页：启动/嵌入实时日志（后端 applog 总线） ----------
+  const [logs, setLogs] = useState<AppLogEntry[] | null>(null);
+  const logBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tab !== "logs") return;
+    if (logs === null && isTauriRuntime()) {
+      void ipc.applogRecent().then(setLogs).catch(() => setLogs([]));
+    }
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<AppLogEntry>("sys://applog", (e) => {
+      setLogs((cur) => {
+        const next = [...(cur ?? []), e.payload];
+        return next.length > 600 ? next.slice(next.length - 600) : next;
+      });
+    });
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, [tab, logs]);
+  // 新日志到达 → 滚到底部
+  useEffect(() => {
+    const box = logBoxRef.current;
+    if (tab === "logs" && box) box.scrollTop = box.scrollHeight;
+  }, [logs, tab]);
 
   return (
     <div className="tman-app" role="application" aria-label={t("tmTitle")}>
@@ -415,6 +452,32 @@ export function TaskManApp(): React.ReactElement {
             </div>
           )}
           <p className="dim small tman-note">{t("tmServiceNote")}</p>
+        </div>
+      )}
+
+      {tab === "logs" && (
+        <div className="tman-logs">
+          <div className="tman-toolbar">
+            <span className="dim small">{t("tmLogsHint")}</span>
+            <span className="flex-1" />
+            <button type="button" className="icon-btn tiny" title={t("tmLogsClear")} onClick={() => setLogs([])}>
+              <X size={13} />
+            </button>
+          </div>
+          <div className="tman-logbox" ref={logBoxRef} role="log" aria-label={t("tmTabLogs")}>
+            {logs === null && <p className="dim small" style={{ padding: 16 }}>…</p>}
+            {logs !== null && logs.length === 0 && (
+              <p className="dim small" style={{ padding: 16 }}>{t("tmLogsEmpty")}</p>
+            )}
+            {logs !== null &&
+              logs.map((e, i) => (
+                <div key={i} className="tman-logline">
+                  <span className="dim">{new Date(e.ts).toLocaleTimeString()}</span>
+                  <span className="tman-badge fam">{e.tag}</span>
+                  <span className="ellipsis" title={e.msg}>{e.msg}</span>
+                </div>
+              ))}
+          </div>
         </div>
       )}
     </div>

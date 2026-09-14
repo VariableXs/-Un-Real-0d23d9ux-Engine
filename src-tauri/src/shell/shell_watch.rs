@@ -208,6 +208,10 @@ fn watch_loop(app: tauri::AppHandle) {
             }
             let root_pid = pid;
             let title = window_title(hwnd);
+            crate::shell::applog::log(
+                "watchdog",
+                format!("发现逃逸窗口 hwnd={hwnd} image={image} title={title:?} → 收编（policy={}）", s.policy),
+            );
             let _ = app.emit(
                 "watch://escape",
                 serde_json::json!({

@@ -63,6 +63,15 @@ export interface ListFilterT {
   sort?: "updated" | "created";
 }
 
+/** 启动/嵌入实时日志条目（后端 applog 总线；sys://applog 事件同构）。 */
+export interface AppLogEntry {
+  /** ms since epoch（展示时本地格式化） */
+  ts: number;
+  /** 链路标签：launch / embed / adopt / steam / watchdog / capture / hotkey */
+  tag: string;
+  msg: string;
+}
+
 export const ipc = {
   // ---- AI-19 无障碍与本地化组（M-73/M-74 系统辅助功能只读探针）----
   a11yProbe: () => invoke<{
@@ -546,6 +555,8 @@ export const ipc = {
   shotSave: (dataUrl: string) => invoke<string>("shot_save", { dataUrl }),
   /** Variable 相册目录（共享位置；「打开文件夹」与空态提示用）。 */
   shotDir: () => invoke<string>("shot_dir"),
+  /** 启动/嵌入实时日志：拉取环形缓冲内最近 600 条（任务管理器「日志」页）。 */
+  applogRecent: () => invoke<AppLogEntry[]>("applog_recent"),
   // ---- AI-08 基础工具组（Z-22…Z-28 支撑 + V-97/98 打印双件） ----
   /** Z-27：Variable 自身信息（版本/运行档/运行时长/数据目录占用）。 */
   sysSelfInfo: () => invoke<Shell.SysSelfInfo>("sys_self_info"),

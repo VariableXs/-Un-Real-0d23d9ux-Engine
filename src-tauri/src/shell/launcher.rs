@@ -435,6 +435,11 @@ pub(crate) fn tp_launch_inner(
             let _ = desktop.set_always_on_top(false);
         }
     }
+    crate::shell::applog::log(
+        "launch",
+        format!("tp_launch {}: {} root_pid={root_pid:?}（{} 通道）", app_item.id, app_item.name,
+            if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) { "lnk/shell" } else { "exe" }),
+    );
 
     if let Some(slot) = apps.iter_mut().find(|a| a.id == id) {
         slot.last_launch = Some(now_ms());

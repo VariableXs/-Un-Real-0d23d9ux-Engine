@@ -9,6 +9,7 @@
 //! - xflow.rs    跨软件数据流：跨窗口拖拽光标跟踪（批次 C 规格 5.7）
 
 pub mod ai;
+pub mod applog;
 pub mod appman;
 pub mod browsers;
 pub mod code;

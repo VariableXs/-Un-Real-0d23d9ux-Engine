@@ -1084,3 +1084,46 @@
   min-width: 0;
   cursor: pointer;
 }
+
+/* ==================== F-3 任务管理器「日志」页（启动/嵌入实时日志） ==================== */
+.tman-logs {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.tman-logbox {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.tman-logline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.tman-logline > span:first-child {
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.tman-logline .tman-badge {
+  flex: none;
+  min-width: 62px;
+  text-align: center;
+}
+
+.tman-logline .ellipsis { overflow: hidden; text-overflow: ellipsis; }

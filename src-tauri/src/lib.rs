@@ -73,6 +73,13 @@ pub fn run() {
             shell::winman::init_shortcuts(app.handle());
             // 批次E-18：双击 Esc 切环境/Windows；Del+Backspace 真正退出
             shell::kbdhook::spawn_env_monitor(app.handle().clone());
+            // 启动/嵌入实时日志总线（任务管理器「日志」页实时查看 + 落盘 logs/）
+            shell::applog::init(
+                app.handle().clone(),
+                app.state::<AppState>().data_dir.clone(),
+            );
+            // Win+Shift+S 抢注：按键直达 Variable 截图，Windows Snipping 浮层不再弹出
+            shell::applog::spawn_snapshot_hotkey();
             // 批次C-5：L4 智能让位 —— 独占全屏前台监测（让位/恢复）+ 反作弊进程
             // 看护（kbdhook 主动停用 + 前端横幅；进程与数据通道全保留）。
             shell::winman::spawn_fullscreen_watcher(app.handle().clone());
@@ -242,6 +249,7 @@ pub fn run() {
             shell::tools::snapshot_capture,
             shell::tools::shot_save,
             shell::tools::shot_dir,
+            shell::applog::applog_recent,
             // ---- AI-08 基础工具组（Z-22…Z-28 支撑 + V-97/98 打印双件）----
             shell::tools::sys_self_info,
             shell::tools::cursor_pos,

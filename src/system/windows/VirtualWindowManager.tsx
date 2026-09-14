@@ -25,7 +25,7 @@ import { useI18n } from "../../i18n";
 import { askConfirm } from "../../components/Modal";
 import { VirtualWindowFrame } from "./VirtualWindowFrame";
 import { VwmAppContent } from "./VwmAppContent";
-import { isTpApp, closeVwmWin, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
+import { isTpApp, closeVwmWin, openVwmApp, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
 import { setEmbedSessionState, clearEmbedSessionState, bumpEmbedResync, embedStateStore } from "./embedState";
 import { ipc } from "../../lib/ipc";
 // AI-01 窗口手感：M-03 抽屉 / Z-42 切换器（含热区）/ M-06 挂起登记
@@ -444,6 +444,27 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
           if (!ok) closeVwmWinSafe(embedId);
         })
         .catch(() => closeVwmWinSafe(embedId));
+    });
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
+  // Win+Shift+S 已被后端抢注（RegisterHotKey）：按下 → 打开 Variable 截图工具。
+  // Windows Snipping Tool 抢不到同名热键，浮层从此不再弹出挡屏（实机需求）。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen("sys://snapshot-hotkey", () => {
+      openVwmApp("snapshot");
     });
     void p
       .then((f) => {

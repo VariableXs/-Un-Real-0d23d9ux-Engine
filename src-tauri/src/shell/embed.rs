@@ -438,6 +438,10 @@ pub async fn embed_launch(
     let mut hint = hints.get(&id).cloned().unwrap_or_default();
     let timeout_ms = hint.capture_timeout_ms.unwrap_or(30_000);
     let started = std::time::Instant::now();
+    crate::shell::applog::log(
+        "launch",
+        format!("embed_launch {id}: 已启动 {exe_name} root_pid={root_pid:?}，等待主窗（最长 {timeout_ms}ms）"),
+    );
     // 等窗口轮询（最长 30s）是纯阻塞操作：移入阻塞线程池执行，
     // 避免占死 tokio async worker 拖慢其它 IPC。
     let exe_c = exe_name.clone();
@@ -449,6 +453,11 @@ pub async fn embed_launch(
     .map_err(|e| AppError::io(format!("等待窗口线程异常 / wait thread error: {e}")))?;
     let Some(hwnd) = hwnd
     else {
+        let elapsed = started.elapsed().as_millis() as u64;
+        crate::shell::applog::log(
+            "launch",
+            format!("embed_launch {id}: 等待主窗超时（{elapsed}ms）→ 走兜底收编（root_pid={root_pid:?}）"),
+        );
         write_fail_evidence(&st, &id, root_pid.unwrap_or(0), &exe_name);
         // 自适应：超时 → 下次放宽到 60s（快启动命中后由下方收紧）
         if hint.capture_timeout_ms.is_none() {
@@ -456,36 +465,70 @@ pub async fn embed_launch(
             hints.insert(id.clone(), hint);
             save_hints(&st, &hints);
         }
-        // 实机需求（单例兜底收编）：Steam/微信/Spotify 等单例应用二次启动
-        // 只会唤起既有实例、不产生新窗口 —— 此前到这一步就判「未能捕获」，
-        // 应用留在 Windows 桌面，违背「从 Variable 打开 = 在 Variable 里运行」。
-        // 现改为：启动前已存在同家族可见主窗 → 直接收编（attach_by_tier 同一
-        // 裁判：CEF/合成管道照走 L3 采画面），绝不把应用丢回 Windows 桌面。
+        // 实机需求（兜底收编）：应用窗口没按"标准主窗"出现也要进 Variable ——
+        // 三档候选（优先级递降）：
+        //   1) 同家族可见带标题栏主窗（Steam/微信等单例二次启动只唤起既有实例；
+        //      Steam 家族含 steamwebhelper.exe —— 主窗属它，按 exe 名匹配不到）；
+        //   2) 启动进程树内任意可见窗口（冷启动主窗迟迟不带标题栏/非常规框架）；
+        //   3) 同家族任意可见窗口（CEF 无边框窗）。
+        // 命中即收编（attach_by_tier 同一裁判：CEF 合成管道照走 L3 采画面），
+        // 绝不把应用丢回 Windows 桌面。
         let family = family_images(&exe_name);
         let family_pair = family.len() > 1;
-        let old = tauri::async_runtime::spawn_blocking(move || {
+        let tree = match root_pid {
+            Some(r) if r != 0 => win::pid_tree(r),
+            _ => Vec::new(),
+        };
+        let tree_c = tree.clone();
+        let fam_c = family.clone();
+        let buckets = tauri::async_runtime::spawn_blocking(move || {
+            let mut fam_cap: Vec<isize> = Vec::new();
+            let mut tree_win: Vec<isize> = Vec::new();
+            let mut fam_any: Vec<isize> = Vec::new();
             win::collect_handles(&mut |h, img| {
                 let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
-                family.iter().any(|m| *m == name) && has_caption_style(h)
-            })
-            .into_iter()
-            .next()
+                let is_fam = fam_c.iter().any(|m| *m == name);
+                let in_tree = !tree_c.is_empty() && {
+                    win::window_pid(hwnd_from_isize(h)).map(|p| tree_c.contains(&p)).unwrap_or(false)
+                };
+                if is_fam {
+                    if has_caption_style(h) {
+                        fam_cap.push(h);
+                    } else {
+                        fam_any.push(h);
+                    }
+                }
+                if in_tree {
+                    tree_win.push(h);
+                }
+                false
+            });
+            (fam_cap, tree_win, fam_any)
         })
         .await
-        .unwrap_or(None);
-        if let Some(old_hwnd) = old {
+        .unwrap_or((Vec::new(), Vec::new(), Vec::new()));
+        let (fam_cap, tree_win, fam_any) = buckets;
+        crate::shell::applog::log(
+            "launch",
+            format!(
+                "embed_launch {id} 兜底候选: 家族带标题栏={:?} 树内窗口={:?} 家族其它={:?}",
+                fam_cap, tree_win, fam_any
+            ),
+        );
+        if let Some(&old_hwnd) = fam_cap.first().or_else(|| tree_win.first()).or_else(|| fam_any.first()) {
             let pid = win::window_pid(hwnd_from_isize(old_hwnd)).unwrap_or(0);
             // Steam 家族 root 必须锚在 steam.exe（主窗属 steamwebhelper，
             // 游戏进程是其后代——pid 树监护才能同时覆盖）
             let anchor = if family_pair { steam_root_pid(pid) } else { pid };
-            eprintln!(
-                "[embed-launch] singleton fallback: adopt existing {exe_name} window hwnd={old_hwnd} pid={pid} root={anchor}"
+            crate::shell::applog::log(
+                "launch",
+                format!("embed_launch {id}: 兜底收编既有窗口 hwnd={old_hwnd} pid={pid} root={anchor}"),
             );
             return match attach_by_tier(
                 &app,
                 &st,
                 key,
-                id,
+                id.clone(),
                 old_hwnd,
                 anchor,
                 tp.dpi_fix,
@@ -498,10 +541,15 @@ pub async fn embed_launch(
                     capture,
                 }),
                 Attach::Skip { reason } => {
+                    crate::shell::applog::log("launch", format!("embed_launch {id}: 兜底收编被拒：{reason}"));
                     Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
                 }
             };
         }
+        crate::shell::applog::log(
+            "launch",
+            format!("embed_launch {id}: 兜底无候选 → 如实回退独立窗口（应用继续运行，可占位卡「框选窗口」收编）"),
+        );
         return Ok(EmbedResult {
             attached: false,
             reason: "未能捕获应用窗口（启动较慢或无标准窗口）。应用已在系统桌面独立运行，未受影响；可在占位卡上「框选窗口」手动收编。".into(),
@@ -511,6 +559,10 @@ pub async fn embed_launch(
     };
     // 自适应：快启动（<5s 命中）→ 下次收紧到 5s，减少慢启动错觉等待
     let elapsed = started.elapsed().as_millis() as u64;
+    crate::shell::applog::log(
+        "launch",
+        format!("embed_launch {id}: 命中主窗 hwnd={hwnd}（耗时 {elapsed}ms，超时窗 {timeout_ms}ms）"),
+    );
     if elapsed < 5_000 && hint.capture_timeout_ms.unwrap_or(30_000) != 5_000 {
         hint.capture_timeout_ms = Some(5_000);
         hints.insert(id.clone(), hint);
@@ -530,8 +582,17 @@ pub async fn embed_launch(
         tp.dpi_fix,
         Some(&target),
     ) {
-        Attach::Ok { capture } => Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture }),
-        Attach::Skip { reason } => Ok(EmbedResult { attached: false, reason, root_pid, capture: false }),
+        Attach::Ok { capture } => {
+            crate::shell::applog::log(
+                "embed",
+                format!("embed_launch {id}: 接入成功 hwnd={hwnd}（capture={capture}）"),
+            );
+            Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture })
+        }
+        Attach::Skip { reason } => {
+            crate::shell::applog::log("embed", format!("embed_launch {id}: 未接入：{reason}"));
+            Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
+        }
     }
 }
 
@@ -846,6 +907,14 @@ fn attach_by_tier(
 
     // 批次C-6：分级探测（改样式前采样；结果持久化 apps.json，用户覆盖最高优先）
     let compat = crate::shell::compat_probe::probe_and_persist(st, &tp_id, hwnd, target);
+    crate::shell::applog::log(
+        "embed",
+        format!(
+            "attach {tp_id}: hwnd={hwnd} root_pid={root_pid} → 层级 {}（{}）",
+            compat.effective().as_str(),
+            compat.evidence.get("reason").and_then(|v| v.as_str()).unwrap_or("?")
+        ),
+    );
 
     // 登记会话 + 启动监护（三种层级共用的收尾动作）
     let register = |host: Option<isize>, capture: bool| {
@@ -909,13 +978,20 @@ fn attach_by_tier(
         CompatTier::L3 => {
             match crate::shell::capture::win::start_capture(app.clone(), key.clone(), hwnd) {
                 Ok(()) => {
+                    crate::shell::applog::log("capture", format!("attach {tp_id}: L3 画面捕获已启动 hwnd={hwnd}"));
                     let _ = crate::shell::capture::win::hide_offscreen(hwnd);
                     register(None, true);
                     Attach::Ok { capture: true }
                 }
-                Err(e) => Attach::Skip {
-                    reason: format!("「{}」L3 画面捕获不可用（{}）→ 保持独立窗口运行。", tp_id, e),
-                },
+                Err(e) => {
+                    crate::shell::applog::log(
+                        "capture",
+                        format!("attach {tp_id}: L3 画面捕获启动失败（{e}）→ 保持独立窗口"),
+                    );
+                    Attach::Skip {
+                        reason: format!("「{}」L3 画面捕获不可用（{}）→ 保持独立窗口运行。", tp_id, e),
+                    }
+                }
             }
         }
         // L1（标准窗口）→ 重父级嵌入主路径
@@ -947,6 +1023,7 @@ pub async fn embed_adopt(
     embed_id: String,
 ) -> CmdResult<bool> {
     use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+    crate::shell::applog::log("adopt", format!("embed_adopt {tp_id}: hwnd={hwnd} root_pid={root_pid} embed_id={embed_id}"));
     pending_adopt_remove(hwnd);
     if !unsafe { IsWindow(hwnd_from_isize(hwnd)) }.as_bool() {
         return Ok(false);
@@ -965,6 +1042,7 @@ pub async fn embed_adopt(
         // Native / L4 / L2 包裹失败 / L3 采集不可用 → 不接入：应用保持独立窗口运行。
         // 前端据 false 关闭刚开的占位窗（不伪造成功）。
         Attach::Skip { reason } => {
+            crate::shell::applog::log("adopt", format!("embed_adopt {tp_id}: 未接入：{reason}"));
             eprintln!("[embed-adopt] skip {tp_id}: {reason}");
             Ok(false)
         }
@@ -1431,8 +1509,9 @@ pub fn spawn_steam_adopt_watcher(app: tauri::AppHandle) {
                     .collect();
                 if let Some((hwnd, pid)) = pick_steam_window(&cands) {
                     let root = steam_root_pid(pid);
-                    eprintln!(
-                        "[steam-adopt] Steam main window found hwnd={hwnd} pid={pid} root={root} -> popup"
+                    crate::shell::applog::log(
+                        "steam",
+                        format!("steam-adopt: 找到主窗 hwnd={hwnd} pid={pid} root={root} → 广播 embed://popup"),
                     );
                     let _ = app.emit(
                         "embed://popup",
@@ -1447,8 +1526,9 @@ pub fn spawn_steam_adopt_watcher(app: tauri::AppHandle) {
                 }
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
-            eprintln!(
-                "[steam-adopt] no Steam main window in 90s (cold start / login?) — watchdog remains as fallback"
+            crate::shell::applog::log(
+                "steam",
+                "steam-adopt: 90s 内未找到 Steam 主窗（冷启动/登录中？）→ 交给 D-3 看门狗兜底",
             );
         })
         .ok();
