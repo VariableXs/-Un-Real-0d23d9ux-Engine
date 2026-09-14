@@ -4,3 +4,8 @@
 *.ico binary
 *.woff binary
 *.woff2 binary
+
+# Windows 原生脚本必须检出为 CRLF：cmd.exe 解析 LF-only 批处理时会在
+# if ( ) / for 等块处断言失败，导致 build-windows.bat 无法正常打包。
+*.bat text eol=crlf
+*.cmd text eol=crlf

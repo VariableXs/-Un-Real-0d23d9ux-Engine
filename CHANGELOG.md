@@ -64,6 +64,31 @@
   ::data_tail`、`openhub::GatewayHandle::thread`、`workshop::RuntimeCtx::boot_done_ms`。
   逐条注明"为什么留、谁来接线"，避免下一次检查再误判。
 
+### 构建：`build-windows.bat` 打包修复（CRLF 检出 + 脚本加固）
+- **根因（行尾）**：`.gitattributes` 的 `* text=auto eol=lf` 无差别地把**批处理**也强制
+  检出为 LF。`build-windows.bat` 在工作区实测 **0 处 CRLF / 123 处裸 LF**，而 `cmd.exe`
+  解析 LF-only 批处理时会在 `if ( )` / `for` 多行块处断言失败。该属性随
+  「仓库清理」一并生效后，**任何全新克隆拿到的都是坏掉的 .bat**——这正是"无法正常打包"
+  的直接原因。修复：`.gitattributes` 增加 `*.bat text eol=crlf` 与 `*.cmd text eol=crlf`
+  的显式覆盖（gitattributes 优先级高于 `core.autocrlf`），工作区 `build-windows.bat`
+  已重写为 **173 CRLF / 0 裸 LF / 0 非 ASCII 字节**，`git ls-files --eol` 复核为
+  `i/lf w/crlf attr/text eol=crlf`。
+- **脚本加固（行为与四种模式语义不变）**：
+  - 移除两处 cmd 解析高危写法：`copy ... || ( ... )` 的**嵌套括号 + `||`** 组合、
+    以及 `echo ... ^(data ...^)` 的**块内转义括号**（改为纯 ASCII 无括号措辞）。
+  - 未知模式不再静默回落 NSIS，改为打印用法并 `exit /b 2`。
+  - 新增前置校验：`node_modules\.bin\tauri.cmd` 缺失时给出明确指引（避免 `npx` 联网兜底）。
+  - 后端测试由 `cargo test` 改为 `cargo test --workspace`，与仓库门禁口径一致
+    （覆盖 `container` crate）。
+  - 构建后新增产物校验与**绝对路径回显**（NSIS / MSI / 便携），产物缺失即 `exit /b 1`，
+    不再出现"报 BUILD OK 但什么都没产出"。
+  - 便携模式清理 `dist-portable` 失败时给出明确报错（原实现会静默继续）。
+- **仓库卫生**：`.gitignore` 追加 `dist-portable/`（`portable` 模式的构建产物，此前未被忽略）。
+- **验证**：打包链路已原生端到端验证——`npx tauri build --bundles nsis` 成功产出
+  `src-tauri\target\release\bundle\nsis\Variable_1.0.0_x64-setup.exe`，故工具链无问题，
+  缺陷确在 `.bat` 包装层。本轮未改动任何 Rust/前端源码，三条测试线基线不变。
+  说明：本沙箱禁止调用 `cmd.exe`，`.bat` 本身未能在此环境实际执行，需真机双击复核。
+
 ### 验证（如实）
 - `npx tsc --noEmit` 0 错；`npx vitest run` 2629 passed / 4 skipped / 0 failed；
   `cargo test -p ca-core`（C 线）356 passed；`cargo ktest --lib`（K 线）2713 passed；

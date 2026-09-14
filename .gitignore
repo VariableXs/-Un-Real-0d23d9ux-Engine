@@ -43,3 +43,6 @@ __pycache__/
 
 # 智能体工作区元数据（本地记忆/日志，非项目功能产物，不入库）
 .workbuddy/
+
+# 构建产物：便携目录（build-windows.bat portable 生成，不入库）
+dist-portable/
