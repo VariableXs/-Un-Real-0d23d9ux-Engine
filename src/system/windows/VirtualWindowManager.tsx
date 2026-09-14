@@ -22,7 +22,7 @@ import { parseScreenDetails, type ScreenInfo } from "./winfeel";
 import { pushToast } from "../../state/uiStore";
 import { useStore } from "../../lib/store";
 import { useI18n } from "../../i18n";
-import { askChoice, askConfirm } from "../../components/Modal";
+import { askConfirm } from "../../components/Modal";
 import { VirtualWindowFrame } from "./VirtualWindowFrame";
 import { VwmAppContent } from "./VwmAppContent";
 import { isTpApp, closeVwmWin, openVwmTpNew, isVwmWinVisible, type VwmWin } from "./vwm";
@@ -421,9 +421,10 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
     };
   }, []);
 
-  // D-3 全域软件接管看门狗：逃逸窗口事件 → auto 策略直接收编；
-  // ask 策略弹询问卡（收进 Variable / 本次保持在桌面 / 总是忽略）。
-  // 后端已排除白名单、L4 全屏让位与维护模式；默认「询问」不自动回收。
+  // D-3 全域软件接管看门狗：逃逸窗口事件 → 一律直接收编进 Variable。
+  // 实机需求（用户硬约束）：不再弹「是否收进 Variable」询问卡 —— 后端策略
+  // 默认 auto，存量 ask 配置在 load_settings 归一为 auto；此通道只收自动事件。
+  // 后端已排除白名单、L4 全屏让位与维护模式。
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let disposed = false;
@@ -435,40 +436,14 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
       image: string;
       auto: boolean;
     }>("watch://escape", (e) => {
-      const { hwnd, rootPid, title, image, auto } = e.payload;
-      const adopt = (): void => {
-        const embedId = openVwmTpNew(`tp:${image.replace(/\.exe$/i, "") || "watch"}`);
-        void ipc
-          .embedAdopt(image, hwnd, rootPid, embedId)
-          .then((ok) => {
-            if (!ok) closeVwmWinSafe(embedId);
-          })
-          .catch(() => closeVwmWinSafe(embedId));
-      };
-      if (auto) {
-        adopt();
-        return;
-      }
-      void (async () => {
-        const choice = await askChoice({
-          title: t("watchAskTitle"),
-          body: `${t("watchAskBody")} ${title || image}`,
-          options: [
-            { value: "adopt", label: t("watchAdopt") },
-            { value: "once", label: t("watchKeepOnce") },
-            { value: "always", label: t("watchIgnoreAlways") },
-          ],
-        });
-        if (!choice || choice === "once") {
-          void ipc.watchDismiss(image, "once").catch(() => {});
-          return;
-        }
-        if (choice === "always") {
-          void ipc.watchDismiss(image, "always").catch(() => {});
-          return;
-        }
-        adopt();
-      })();
+      const { hwnd, rootPid, image } = e.payload;
+      const embedId = openVwmTpNew(`tp:${image.replace(/\.exe$/i, "") || "watch"}`);
+      void ipc
+        .embedAdopt(image, hwnd, rootPid, embedId)
+        .then((ok) => {
+          if (!ok) closeVwmWinSafe(embedId);
+        })
+        .catch(() => closeVwmWinSafe(embedId));
     });
     void p
       .then((f) => {

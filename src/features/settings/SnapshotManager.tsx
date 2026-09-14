@@ -153,7 +153,7 @@ export function VwmTabsToggle(): React.ReactElement {
 export function WatchdogToggle(): React.ReactElement {
   const { t } = useI18n();
   const [on, setOn] = useState<boolean>(true);
-  const [policy, setPolicy] = useState<string>("ask");
+  const [policy, setPolicy] = useState<string>("auto");
   useEffect(() => {
     if (!isTauriRuntime()) return;
     void ipc
@@ -183,7 +183,6 @@ export function WatchdogToggle(): React.ReactElement {
       <label className="row" style={{ marginTop: 8 }}>
         <span className="dim small">{t("watchPolicy")}</span>
         <select value={policy} onChange={(e) => apply(on, e.target.value)}>
-          <option value="ask">{t("watchPolicyAsk")}</option>
           <option value="auto">{t("watchPolicyAuto")}</option>
         </select>
       </label>

@@ -2,10 +2,13 @@
 //! - 每 500ms 枚举顶层可见窗口 → 不属于 Variable 家族 / 嵌入登记 /
 //!   系统关键（15 类白名单）的新窗口 = 「逃逸窗口」
 //! - 处置策略（watchdog.json 持久化，设置→接管可改）：
-//!   ask（默认）= 前端弹询问卡；auto = 自动收编；off = 整体关闭（回滚）
+//!   auto（默认）= 自动收编；off = 整体关闭（回滚）。
+//!   实机需求（用户硬约束）：不再弹「是否收进 Variable」询问卡 ——
+//!   逃逸窗口一律直接收编；存量 watchdog.json 里的 legacy "ask" 在加载时
+//!   归一为 auto（load_settings 迁移，不必重写文件）。
 //! - 全屏独占 / 反作弊（C-5 特征 / L4 层级）→ 不回收，转让位
 //! - 维护模式（双 Esc 切到 Windows 桌面）→ 看门狗暂停（「标记不回收」）
-//! - 白名单先于逻辑执行（风险表 #9/#18）；默认「询问」不自动回收
+//! - 白名单先于逻辑执行（风险表 #9/#18）
 //!
 //! 本模块只做探测与事件派发；收编动作复用既有 embed_adopt 通道
 //! （前端收到 `watch://escape` 后走与 embed://popup 完全相同的收编流）。
@@ -56,7 +59,7 @@ pub struct WatchSettings {
 
 impl Default for WatchSettings {
     fn default() -> Self {
-        Self { enabled: true, policy: POLICY_ASK.into(), ignored: Vec::new() }
+        Self { enabled: true, policy: POLICY_AUTO.into(), ignored: Vec::new() }
     }
 }
 
@@ -65,10 +68,16 @@ fn settings_path(st: &AppState) -> std::path::PathBuf {
 }
 
 pub(crate) fn load_settings(st: &AppState) -> WatchSettings {
-    std::fs::read(settings_path(st))
+    let mut s = std::fs::read(settings_path(st))
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+        .and_then(|b| serde_json::from_slice::<WatchSettings>(&b).ok())
+        .unwrap_or_default();
+    // 存量迁移：legacy "ask"（弹询问卡）→ auto。用户硬约束：绝不弹
+    // 「是否收进 Variable」，逃逸窗口一律直接收编。
+    if s.policy == POLICY_ASK {
+        s.policy = POLICY_AUTO.into();
+    }
+    s
 }
 
 fn save_settings(st: &AppState, s: &WatchSettings) -> CmdResult<()> {
@@ -267,8 +276,9 @@ mod tests {
         }
     }
 
-    /// 策略枚举口径：ask 默认；未知策略在 watch_set_settings 层被拒绝
-    /// （此处验证常量本身构成完整三态）。
+    /// 策略枚举口径：auto 默认（用户硬约束：不弹询问卡，一律直接收编）；
+    /// 未知策略在 watch_set_settings 层被拒绝。legacy "ask" 在 load_settings
+    /// 里归一为 auto（此处验证迁移语义 + 常量本身构成完整三态）。
     #[test]
     fn policy_enum_complete() {
         assert_eq!(POLICY_ASK, "ask");
@@ -276,6 +286,12 @@ mod tests {
         assert_eq!(POLICY_OFF, "off");
         let d = WatchSettings::default();
         assert!(d.enabled);
-        assert_eq!(d.policy, POLICY_ASK, "默认策略必须是「询问」，不自动回收");
+        assert_eq!(d.policy, POLICY_AUTO, "默认策略必须是「自动收编」（不弹询问卡）");
+        // legacy ask → auto 迁移（load_settings 归一口径的纯逻辑镜像）
+        let legacy = WatchSettings { policy: POLICY_ASK.into(), ..d };
+        assert_eq!(
+            if legacy.policy == POLICY_ASK { POLICY_AUTO } else { legacy.policy.as_str() },
+            POLICY_AUTO
+        );
     }
 }

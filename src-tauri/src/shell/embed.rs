@@ -373,6 +373,21 @@ fn desktop_hwnd(app: &tauri::AppHandle) -> Option<isize> {
     Some(h.0 as isize)
 }
 
+/// 单例/家族应用映像族（basename 小写）：登记 exe + 已知伴生进程映像。
+/// Steam：主窗属 steamwebhelper.exe（CEF），按 exe 名匹配必须带上家族，
+/// 否则单例二次启动（无新进程树）时永远"未能捕获"。
+#[cfg(windows)]
+fn family_images(exe_name: &str) -> Vec<String> {
+    let lower = exe_name.to_lowercase();
+    let mut out = vec![lower.clone()];
+    match lower.as_str() {
+        "steam.exe" => out.push("steamwebhelper.exe".into()),
+        "steamwebhelper.exe" => out.push("steam.exe".into()),
+        _ => {}
+    }
+    out
+}
+
 /// 启动第三方应用并把它的主窗口嵌入 Variable 桌面窗口（环境内打开）。
 /// `embed_id` = 前端 VWM 虚拟窗口实例 id（占位窗口创建时分配；缺省 "0" 兼容旧单嵌）。
 /// 无法嵌入时如实返回 attached=false（应用已按独立窗口方式启动）。
@@ -440,6 +455,52 @@ pub async fn embed_launch(
             hint.capture_timeout_ms = Some(60_000);
             hints.insert(id.clone(), hint);
             save_hints(&st, &hints);
+        }
+        // 实机需求（单例兜底收编）：Steam/微信/Spotify 等单例应用二次启动
+        // 只会唤起既有实例、不产生新窗口 —— 此前到这一步就判「未能捕获」，
+        // 应用留在 Windows 桌面，违背「从 Variable 打开 = 在 Variable 里运行」。
+        // 现改为：启动前已存在同家族可见主窗 → 直接收编（attach_by_tier 同一
+        // 裁判：CEF/合成管道照走 L3 采画面），绝不把应用丢回 Windows 桌面。
+        let family = family_images(&exe_name);
+        let family_pair = family.len() > 1;
+        let old = tauri::async_runtime::spawn_blocking(move || {
+            win::collect_handles(&mut |h, img| {
+                let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+                family.iter().any(|m| *m == name) && has_caption_style(h)
+            })
+            .into_iter()
+            .next()
+        })
+        .await
+        .unwrap_or(None);
+        if let Some(old_hwnd) = old {
+            let pid = win::window_pid(hwnd_from_isize(old_hwnd)).unwrap_or(0);
+            // Steam 家族 root 必须锚在 steam.exe（主窗属 steamwebhelper，
+            // 游戏进程是其后代——pid 树监护才能同时覆盖）
+            let anchor = if family_pair { steam_root_pid(pid) } else { pid };
+            eprintln!(
+                "[embed-launch] singleton fallback: adopt existing {exe_name} window hwnd={old_hwnd} pid={pid} root={anchor}"
+            );
+            return match attach_by_tier(
+                &app,
+                &st,
+                key,
+                id,
+                old_hwnd,
+                anchor,
+                tp.dpi_fix,
+                Some(&target),
+            ) {
+                Attach::Ok { capture } => Ok(EmbedResult {
+                    attached: true,
+                    reason: String::new(),
+                    root_pid,
+                    capture,
+                }),
+                Attach::Skip { reason } => {
+                    Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
+                }
+            };
         }
         return Ok(EmbedResult {
             attached: false,
@@ -1399,6 +1460,21 @@ pub fn spawn_steam_adopt_watcher(_app: tauri::AppHandle) {}
 #[cfg(test)]
 mod tests {
     use super::{with_registry, norm_id};
+
+    /// 单例兜底收编：家族映像族 —— Steam 主 exe 必须带上 steamwebhelper
+    /// （主窗属它），反向登记同理；普通 exe 族内只有自己。
+    #[cfg(windows)]
+    #[test]
+    fn family_images_covers_steam_pair() {
+        let f = super::family_images("steam.exe");
+        assert!(f.contains(&"steam.exe".to_string()));
+        assert!(f.contains(&"steamwebhelper.exe".to_string()));
+        let fb = super::family_images("steamwebhelper.exe");
+        assert!(fb.contains(&"steam.exe".to_string()));
+        assert_eq!(super::family_images("notepad.exe"), vec!["notepad.exe".to_string()]);
+        // 大小写不敏感
+        assert!(super::family_images("STEAM.EXE").contains(&"steamwebhelper.exe".to_string()));
+    }
 
     /// W-1：注册中心语义——多槽位并发、同槽位替换、按 id 移除、旧入口 "0" 兼容。
     #[test]
