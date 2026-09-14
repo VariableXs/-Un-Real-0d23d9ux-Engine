@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../../i18n";
-import { ipc } from "../../lib/ipc";
+import { ipc, errMessage } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
 
 /**
@@ -30,12 +30,15 @@ export function SnapshotApp(): React.ReactElement {
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [textDraft, setTextDraft] = useState("");
   const [region, setRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // Variable 相册（截图共享目录）：挂载时取一次，用于空态提示与「打开文件夹」
+  const [albumDir, setAlbumDir] = useState("");
   const dragRef = useRef<{ x0: number; y0: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const displayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void ipc.shieldGet().then(setShield).catch(() => setShield(false));
+    void ipc.shotDir().then(setAlbumDir).catch(() => setAlbumDir(""));
   }, []);
 
   const capture = useCallback(
@@ -77,22 +80,31 @@ export function SnapshotApp(): React.ReactElement {
     [shield, t],
   );
 
-  // 绘制（截图原图 + 标注 + 区域裁剪）
-  const redraw = useCallback(() => {
-    const cv = canvasRef.current;
-    if (!cv) return;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    if (img) {
-      const crop = region ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
-      ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, 0, 0, cv.width, cv.height);
-      for (const s of strokes) {
-        const x = s.x1 - crop.x;
-        const y = s.y1 - crop.y;
-        const x0 = s.x0 - crop.x;
-        const y0 = s.y0 - crop.y;
-        ctx.lineWidth = 2;
+  /**
+   * 统一绘制管线：标注坐标一律记在「抓取图像坐标系」里，绘制时按 scale 换算到
+   * 画布设备像素 —— 于是同一份 paint 同时服务预览（可能缩放）与导出（1:1 原图），
+   * 预览里的笔迹位置与导出图逐像素一致（此前预览画布缩放时笔迹会整体偏移）。
+   */
+  const paint = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      source: HTMLImageElement,
+      crop: { x: number; y: number; w: number; h: number },
+      list: Stroke[],
+      scale: number,
+    ) => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      if (crop.w <= 0 || crop.h <= 0) return;
+      ctx.drawImage(source, crop.x, crop.y, crop.w, crop.h, 0, 0, ctx.canvas.width, ctx.canvas.height);
+      const X = (v: number): number => (v - crop.x) * scale;
+      const Y = (v: number): number => (v - crop.y) * scale;
+      for (const s of list) {
+        const x = X(s.x1);
+        const y = Y(s.y1);
+        const x0 = X(s.x0);
+        const y0 = Y(s.y0);
+        ctx.lineWidth = Math.max(1, 2 * scale);
         if (s.tool === "pen") {
           ctx.strokeStyle = "#ff5555";
           ctx.beginPath();
@@ -102,45 +114,73 @@ export function SnapshotApp(): React.ReactElement {
         } else if (s.tool === "arrow") {
           ctx.strokeStyle = "#ff5555";
           const ang = Math.atan2(y - y0, x - x0);
+          const head = Math.max(4, 10 * scale);
           ctx.beginPath();
           ctx.moveTo(x0, y0);
           ctx.lineTo(x, y);
           ctx.stroke();
           ctx.beginPath();
           ctx.moveTo(x, y);
-          ctx.lineTo(x - 10 * Math.cos(ang - 0.5), y - 10 * Math.sin(ang - 0.5));
+          ctx.lineTo(x - head * Math.cos(ang - 0.5), y - head * Math.sin(ang - 0.5));
           ctx.moveTo(x, y);
-          ctx.lineTo(x - 10 * Math.cos(ang + 0.5), y - 10 * Math.sin(ang + 0.5));
+          ctx.lineTo(x - head * Math.cos(ang + 0.5), y - head * Math.sin(ang + 0.5));
           ctx.stroke();
         } else if (s.tool === "mosaic") {
+          // 取样块（图像坐标 14px）→ 单色块覆盖。原实现用 putImageData 落设备像素，
+          // 缩放预览下块位置会错位；改用设备坐标 fillRect（scale=1 时像素等价）。
           const size = 14;
-          const sx = Math.max(0, Math.min(x0, img.naturalWidth - size));
-          const sy = Math.max(0, Math.min(y0, img.naturalHeight - size));
-          const patch = ctx.createImageData(size, size);
-          // 从原图区域取块后按块放大 → 马赛克
+          const sx = Math.max(0, Math.min(s.x0, source.naturalWidth - size));
+          const sy = Math.max(0, Math.min(s.y0, source.naturalHeight - size));
           const tmp = document.createElement("canvas");
-          tmp.width = size;
-          tmp.height = size;
+          tmp.width = 1;
+          tmp.height = 1;
           const tctx = tmp.getContext("2d");
-          if (tctx) {
-            tctx.drawImage(img, sx, sy, size, size, 0, 0, 1, 1);
-            const d = tctx.getImageData(0, 0, 1, 1).data;
-            for (let i = 0; i < patch.data.length; i += 4) {
-              patch.data[i] = d[0]!;
-              patch.data[i + 1] = d[1]!;
-              patch.data[i + 2] = d[2]!;
-              patch.data[i + 3] = 255;
-            }
-            ctx.putImageData(patch, sx - crop.x, sy - crop.y);
-          }
+          if (!tctx) continue;
+          tctx.drawImage(source, sx, sy, size, size, 0, 0, 1, 1);
+          const d = tctx.getImageData(0, 0, 1, 1).data;
+          ctx.fillStyle = `rgb(${d[0]}, ${d[1]}, ${d[2]})`;
+          ctx.fillRect(X(sx), Y(sy), size * scale, size * scale);
         } else if (s.tool === "text") {
           ctx.fillStyle = "#ff5555";
-          ctx.font = "16px sans-serif";
+          ctx.font = `${Math.max(10, Math.round(16 * scale))}px sans-serif`;
           ctx.fillText(s.text ?? "", x, y);
         }
       }
+    },
+    [],
+  );
+
+  const redraw = useCallback(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    if (!img) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      return;
     }
-  }, [img, strokes, region]);
+    const crop = region ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    paint(ctx, img, crop, strokes, crop.w > 0 ? cv.width / crop.w : 1);
+  }, [img, paint, strokes, region]);
+
+  /**
+   * 导出画布：与预览无关的 1:1 原图分辨率（区域截图即所选区域尺寸）。
+   * 预览画布为适配窗口常被缩小，直接 toDataURL 会丢分辨率 —— 保存到相册的
+   * 必须是全尺寸原图。
+   */
+  const exportCanvas = (): HTMLCanvasElement | null => {
+    if (!img) return null;
+    const crop = region ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+    if (crop.w <= 0 || crop.h <= 0) return null;
+    const out = document.createElement("canvas");
+    out.width = Math.round(crop.w);
+    out.height = Math.round(crop.h);
+    const ctx = out.getContext("2d");
+    if (!ctx) return null;
+    paint(ctx, img, crop, strokes, 1);
+    return out;
+  };
 
   useEffect(() => {
     const cv = canvasRef.current;
@@ -204,14 +244,8 @@ export function SnapshotApp(): React.ReactElement {
     setTextDraft("");
   };
 
-  const outputCanvas = (): HTMLCanvasElement | null => {
-    if (!img) return null;
-    const cv = canvasRef.current;
-    return cv;
-  };
-
   const copyToClipboard = async () => {
-    const cv = outputCanvas();
+    const cv = exportCanvas();
     if (!cv) return;
     try {
       const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, "image/png"));
@@ -223,14 +257,26 @@ export function SnapshotApp(): React.ReactElement {
     }
   };
 
-  const download = () => {
-    const cv = outputCanvas();
+  /** 保存到 Variable 相册（共享目录）——全系统同一份文件，而非浏览器下载目录。 */
+  const saveToAlbum = async () => {
+    const cv = exportCanvas();
     if (!cv) return;
-    const a = document.createElement("a");
-    a.href = cv.toDataURL("image/png");
-    a.download = `variable-shot-${Date.now()}.png`;
-    a.click();
-    pushToast("success", t("shotTitle"), t("shotSaved"));
+    try {
+      const path = await ipc.shotSave(cv.toDataURL("image/png"));
+      setAlbumDir(path.replace(/[\\/][^\\/]+$/, ""));
+      pushToast("success", t("shotTitle"), t("shotSavedTo", { path }));
+    } catch (e) {
+      pushToast("error", t("shotTitle"), errMessage(e).message);
+    }
+  };
+
+  /** 打开相册所在文件夹（复用系统「在文件夹中显示」）。 */
+  const openAlbum = async () => {
+    try {
+      await ipc.revealPath(albumDir || (await ipc.shotDir()));
+    } catch (e) {
+      pushToast("error", t("shotTitle"), errMessage(e).message);
+    }
   };
 
   const modeBtn = (id: ShotMode, label: string) => (
@@ -247,10 +293,12 @@ export function SnapshotApp(): React.ReactElement {
         {modeBtn("delay", t("shotModeDelay"))}
         {modeBtn("region", t("shotModeRegion"))}
         <span className="flex-1" />
-        <button type="button" className="btn ghost tiny" disabled={!img} onClick={copyToClipboard}>{t("shotCopy")}</button>
-        <button type="button" className="btn ghost tiny" disabled={!img} onClick={download}>{t("shotSave")}</button>
+        <button type="button" className="btn ghost tiny" onClick={() => void openAlbum()}>{t("shotAlbumOpen")}</button>
+        <button type="button" className="btn ghost tiny" disabled={!img} onClick={() => void copyToClipboard()}>{t("shotCopy")}</button>
+        <button type="button" className="btn ghost tiny" disabled={!img} onClick={() => void saveToAlbum()}>{t("shotSave")}</button>
       </div>
       {shield && <p className="dim small" style={{ margin: "4px 8px" }}>{t("shotShieldNotice")}</p>}
+      {albumDir && <p className="dim small" style={{ margin: "4px 8px" }}>{t("shotAlbumHint", { dir: albumDir })}</p>}
       {busy && countdown > 0 && <p className="cal-bigtime">{countdown}</p>}
       {img && (
         <div className="shot-tools">

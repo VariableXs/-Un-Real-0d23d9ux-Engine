@@ -4,10 +4,18 @@
 //!   是否 UWP（GetPackageFullName 成功）。
 //! - 决策树 → CompatTier = L1 | L2 | L3 | L4 | Native：
 //!   · UWP（AppX 包窗口）/ DWM CLOAKED 隐身窗口 → L3（画面捕获 + 输入转发）
+//!   · WS_EX_NOREDIRECTIONBITMAP（DirectComposition 直排：UE/自绘壳）→ L3
+//!   · 合成框架窗口类（CEF/Chromium/Electron/Steam VGUI）→ L3
 //!   · WS_CAPTION 完整 + 标准非客户区 → L1（增强重父化）
 //!   · 无标题栏 / 自绘非客户区（窗口区域与客户区差异异常）→ L2（容器包裹）
 //!   · 类名命中独占全屏/反作弊特征 → L4（智能让位）
 //!   · 其余 → Native（独立窗口如实降级）
+//!
+//! 为什么合成管道必须走 L3（实机根因修复）：
+//! 用 DirectComposition/独立交换链呈现的窗口（Chromium/CEF、Electron、部分
+//! 自绘壳）没有 DWM 重定向表面。SetParent 之后父窗口的客户区里没有任何可
+//! 合成的位图 → 呈现为**纯黑且不吃输入**（Steam 客户端即典型：主窗属
+//! steamwebhelper.exe，CEF 渲染）。这类窗口只能按 L3 采画面 + 转发输入。
 //! - 结果持久化 apps.json 每登记项 compat: { tier, probedAt, evidence }；
 //!   exe mtime 变化（版本更新）→ 下次嵌入自动重探；用户覆盖最高优先。
 
@@ -166,6 +174,10 @@ pub fn probe_hwnd(hwnd: isize) -> CompatInfo {
         (crate::shell::compat_probe::CompatTier::L3, "dwm cloaked")
     } else if l4_hint.is_some() {
         (crate::shell::compat_probe::CompatTier::L4, "exclusive/anticheat class")
+    } else if let Some(r) = composited_reason(&class_name, ex_style) {
+        // 合成管道（DirectComposition / CEF / Chromium / Electron）：
+        // 无重定向表面 → 重父化必呈现纯黑，必须走 L3 采画面。
+        (crate::shell::compat_probe::CompatTier::L3, r)
     } else if has_caption && nonclient_w >= 8 && nonclient_h >= 8 {
         (crate::shell::compat_probe::CompatTier::L1, "standard caption + nonclient frame")
     } else if has_caption && frame_ok && (nonclient_w < 8 || nonclient_h < 8) {
@@ -185,6 +197,7 @@ pub fn probe_hwnd(hwnd: isize) -> CompatInfo {
             "style": style,
             "exStyle": ex_style,
             "hasCaption": has_caption,
+            "composited": composited_reason(&class_name, ex_style),
             "cloaked": if cloaked_ok { Some(cloaked) } else { None },
             "nonClientW": nonclient_w,
             "nonClientH": nonclient_h,
@@ -256,6 +269,31 @@ pub fn compat_set_override(
 }
 
 use crate::error::CmdResult;
+
+/// 合成管道判定（Steam 客户端纯黑窗口的根因）：
+/// - WS_EX_NOREDIRECTIONBITMAP（0x00200000）= DirectComposition 直排窗口，
+///   没有 DWM 重定向表面 → SetParent 后父客户区无任何可合成位图（纯黑）；
+/// - CEF/Chromium/Electron/Valve 自绘框架类名 = 同类合成管道呈现。
+/// 命中即必须走 L3 画面捕获；None = 标准重定向窗口，可安全重父化（L1）。
+fn composited_reason(class_name: &str, ex_style: u32) -> Option<&'static str> {
+    const WS_EX_NOREDIRECTIONBITMAP: u32 = 0x0020_0000;
+    if ex_style & WS_EX_NOREDIRECTIONBITMAP != 0 {
+        return Some("directcomposition window (no redirection surface)");
+    }
+    const COMPOSITED_CLASSES: [&str; 6] = [
+        "chrome_widgetwin",     // Chromium / CEF / Electron 顶层窗（0/1 变体后缀）
+        "cefbrowserwindow",     // CEF
+        "cefwebviewwnd",        // CEF 内嵌 WebView
+        "vgui_platform_window", // Valve VGUI（Steam 客户端框架）
+        "sdl_app",              // SDL 自绘壳
+        "valve001",             // Source 引擎窗口
+    ];
+    let lower = class_name.to_lowercase();
+    if COMPOSITED_CLASSES.iter().any(|m| lower.contains(m)) {
+        return Some("composited framework window (cef/chromium/electron)");
+    }
+    None
+}
 
 /// L4 特征：独占全屏/反作弊窗口类名启发（C-5 联动）。
 /// 返回让位归因 hint：anticheat（反作弊服务/启动器）| fullscreen（独占全屏引擎窗口）；
@@ -330,6 +368,43 @@ mod tests {
         assert_eq!(super::anti_cheat_or_exclusive("BuriedScene_wnd"), Some("anticheat"));
         assert_eq!(super::anti_cheat_or_exclusive("Chrome_WidgetWin_1"), None);
         assert_eq!(super::anti_cheat_or_exclusive("Notepad"), None);
+    }
+
+    /// 合成管道判定（Steam 黑屏根因）：DirectComposition 扩展样式、
+    /// CEF/Chromium/Electron/Valve 类名 → 必须 L3；标准 Win32 窗口 → None。
+    #[test]
+    fn composited_reason_detects_dcomp_and_cef() {
+        // 1) WS_EX_NOREDIRECTIONBITMAP（0x00200000）→ DirectComposition 直排
+        assert_eq!(
+            super::composited_reason("Notepad", 0x0020_0000),
+            Some("directcomposition window (no redirection surface)")
+        );
+        // 与其它扩展样式叠加仍命中（逐位与，不是相等判断）
+        assert!(super::composited_reason("Foo", 0x0020_0000 | 0x0000_0008).is_some());
+
+        // 2) 合成框架类名 → 命中（大小写不敏感，含变体后缀）
+        for cls in [
+            "Chrome_WidgetWin_1",   // Chromium / CEF / Electron 顶层窗
+            "Chrome_WidgetWin_0",
+            "CefBrowserWindow",
+            "CefWebViewWnd",
+            "vgui_platform_window",
+            "SDL_app",
+            "Valve001",
+        ] {
+            assert_eq!(
+                super::composited_reason(cls, 0),
+                Some("composited framework window (cef/chromium/electron)"),
+                "类名 {cls} 应判为合成管道"
+            );
+        }
+
+        // 3) 标准 Win32 窗口（有重定向表面）→ 可安全重父化
+        for cls in ["Notepad", "CabinetWClass", "MozillaWindowClass", "Win32Window"] {
+            assert_eq!(super::composited_reason(cls, 0), None, "类名 {cls} 不应判为合成管道");
+        }
+        // 扩展样式里其它位不得误判
+        assert_eq!(super::composited_reason("Notepad", 0x0000_0100), None);
     }
 
     /// 层级字符串编解码（前端展示/回传用）。

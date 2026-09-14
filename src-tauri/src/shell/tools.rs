@@ -175,6 +175,89 @@ pub fn snapshot_capture() -> CmdResult<Vec<u8>> {
     capture_virtual_screen_bmp()
 }
 
+// ---------- Variable 相册：截图落盘共享 ----------
+//
+// 「在 Variable 里独立截图，截完的图全系统共享」的落点：前端 canvas 已编码好
+// PNG（data URL），这里只做解码 + 原子写盘，写进一个**固定共享目录**——
+// 而不是浏览器下载目录。于是资源管理器、编辑器、便签引用的是同一份文件。
+
+/// 截图共享目录决策（纯逻辑 + 可写探测，可单测）：
+/// 优先 `<程序目录>\Screenshots` —— 用户打开环境所在文件夹即见，截图天然对整个
+/// Variable 共享；程序目录不可写（安装到 Program Files 等）→ 回退 `<数据目录>\Screenshots`。
+fn shots_dir_with(exe_dir: Option<&std::path::Path>, data_dir: &std::path::Path) -> PathBuf {
+    if let Some(dir) = exe_dir {
+        let candidate = dir.join("Screenshots");
+        if candidate.exists() || fs::create_dir_all(&candidate).is_ok() {
+            return candidate;
+        }
+    }
+    data_dir.join("Screenshots")
+}
+
+/// Variable 相册目录（共享位置；程序目录优先，回退数据目录）。
+pub fn shots_dir(st: &AppState) -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    shots_dir_with(exe_dir.as_deref(), &st.data_dir)
+}
+
+/// 图片 data URL → 字节（纯逻辑，可单测）。
+/// 只接受 base64 图片载荷；非图片 data URL 或非法 base64 如实报错，绝不落半截文件。
+pub fn decode_image_data_url(url: &str) -> CmdResult<Vec<u8>> {
+    let (meta, payload) = url
+        .split_once(',')
+        .ok_or_else(|| AppError::validation("截图数据不是 data URL / not a data URL"))?;
+    if !meta.starts_with("data:image/") || !meta.contains("base64") {
+        return Err(AppError::validation(
+            "截图数据必须是 base64 图片 data URL / expected base64 image data URL",
+        ));
+    }
+    base64::engine::general_purpose::STANDARD
+        .decode(payload.trim())
+        .map_err(|e| AppError::validation(format!("截图数据 base64 解码失败 / bad base64: {e}")))
+}
+
+/// 落盘文件名（纯逻辑，可单测）。
+pub fn shot_file_name(ts_ms: u64, seq: u32) -> String {
+    if seq == 0 {
+        format!("variable-shot-{ts_ms}.png")
+    } else {
+        format!("variable-shot-{ts_ms}-{seq}.png")
+    }
+}
+
+/// 保存截图到 Variable 相册（共享目录），返回落盘后的绝对路径。
+#[tauri::command(async)]
+pub fn shot_save(st: State<'_, AppState>, data_url: String) -> CmdResult<String> {
+    let bytes = decode_image_data_url(&data_url)?;
+    if bytes.is_empty() {
+        return Err(AppError::validation("截图为空 / empty image"));
+    }
+    let dir = shots_dir(&st);
+    fs::create_dir_all(&dir).map_err(|e| AppError::io(format!("相册目录创建失败 / mkdir: {e}")))?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    // 同毫秒内重复保存不覆盖（追加序号；上限保护避免病态目录下死循环）
+    let mut path = dir.join(shot_file_name(ts, 0));
+    let mut seq = 1u32;
+    while path.exists() && seq < 1000 {
+        path = dir.join(shot_file_name(ts, seq));
+        seq += 1;
+    }
+    crate::fsutil::atomic_write(&path, &bytes)
+        .map_err(|e| AppError::io(format!("截图写盘失败 / write: {e}")))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Variable 相册目录（只读；前端「打开文件夹」与空态提示用）。
+#[tauri::command]
+pub fn shot_dir(st: State<'_, AppState>) -> String {
+    shots_dir(&st).to_string_lossy().into_owned()
+}
+
 // ---------- AI-08 基础工具组（Z-22…Z-28 / V-97/98 支撑命令） ----------
 
 /// Z-27 系统信息面板：Variable 自身信息（版本 / 运行档 / 运行时长 / 数据目录占用）。
@@ -394,4 +477,54 @@ fn capture_virtual_screen_bmp() -> CmdResult<Vec<u8>> {
 #[cfg(not(windows))]
 fn capture_virtual_screen_bmp() -> CmdResult<Vec<u8>> {
     Err(AppError::validation("截屏仅支持 Windows（当前平台为占位）"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_image_data_url, shot_file_name, shots_dir_with};
+
+    /// 相册目录决策：程序目录可写 → 用之（截图共享给整个环境文件夹可见）；
+    /// 程序目录不可写 → 回退数据目录。
+    #[test]
+    fn shots_dir_prefers_exe_dir_then_falls_back() {
+        let base = std::env::temp_dir().join(format!("var-shots-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let exe = base.join("app");
+        let data = base.join("data");
+
+        // 程序目录可建 → 命中 <程序目录>/Screenshots
+        std::fs::create_dir_all(&exe).unwrap();
+        assert_eq!(shots_dir_with(Some(&exe), &data), exe.join("Screenshots"));
+
+        // 无程序目录（None）→ 回退数据目录
+        assert_eq!(shots_dir_with(None, &data), data.join("Screenshots"));
+
+        // 程序目录存在但是「文件」→ create_dir_all 必失败 → 回退数据目录
+        let not_a_dir = base.join("blocked");
+        std::fs::write(&not_a_dir, b"x").unwrap();
+        assert_eq!(shots_dir_with(Some(&not_a_dir), &data), data.join("Screenshots"));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// data URL 解码：正常 PNG 载荷 → 字节；非图 / 非 base64 / 缺逗号 → 如实报错。
+    #[test]
+    fn decode_image_data_url_accepts_png_only_and_reports_bad_input() {
+        // "iVBORw0=" 恰为 PNG 签名前 5 字节的标准 base64
+        let ok = decode_image_data_url("data:image/png;base64,iVBORw0=").unwrap();
+        assert_eq!(ok, b"\x89PNG\r\n\x1a\n"[..5].to_vec());
+
+        assert!(decode_image_data_url("data:image/png;base64").is_err(), "缺逗号必须报错");
+        assert!(decode_image_data_url("data:text/plain;base64,QQ==").is_err(), "非图片必须报错");
+        assert!(decode_image_data_url("data:image/png,QQ==").is_err(), "非 base64 必须报错");
+        assert!(decode_image_data_url("data:image/png;base64,@@@").is_err(), "非法 base64 必须报错");
+    }
+
+    /// 文件名：首张无序号后缀，同毫秒重名才追加序号（幂等、无覆盖）。
+    #[test]
+    fn shot_file_name_sequence() {
+        assert_eq!(shot_file_name(1000, 0), "variable-shot-1000.png");
+        assert_eq!(shot_file_name(1000, 1), "variable-shot-1000-1.png");
+        assert_eq!(shot_file_name(1000, 42), "variable-shot-1000-42.png");
+    }
 }

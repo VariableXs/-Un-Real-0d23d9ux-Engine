@@ -542,6 +542,10 @@ export const ipc = {
   toolSecureWrite: (name: string, content: string) => invoke<void>("tool_secure_write", { name, content }),
   /** 抓取虚拟屏，返回 BMP 字节（base64 data URL 供 canvas 加载；区域裁剪在前端）。 */
   snapshotCapture: () => invoke<number[]>("snapshot_capture"),
+  /** 截图落盘到 Variable 相册（共享目录），返回落盘绝对路径（原图分辨率 PNG）。 */
+  shotSave: (dataUrl: string) => invoke<string>("shot_save", { dataUrl }),
+  /** Variable 相册目录（共享位置；「打开文件夹」与空态提示用）。 */
+  shotDir: () => invoke<string>("shot_dir"),
   // ---- AI-08 基础工具组（Z-22…Z-28 支撑 + V-97/98 打印双件） ----
   /** Z-27：Variable 自身信息（版本/运行档/运行时长/数据目录占用）。 */
   sysSelfInfo: () => invoke<Shell.SysSelfInfo>("sys_self_info"),

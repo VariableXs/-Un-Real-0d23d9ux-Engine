@@ -240,6 +240,8 @@ pub fn run() {
             shell::tools::tool_secure_read,
             shell::tools::tool_secure_write,
             shell::tools::snapshot_capture,
+            shell::tools::shot_save,
+            shell::tools::shot_dir,
             // ---- AI-08 基础工具组（Z-22…Z-28 支撑 + V-97/98 打印双件）----
             shell::tools::sys_self_info,
             shell::tools::cursor_pos,

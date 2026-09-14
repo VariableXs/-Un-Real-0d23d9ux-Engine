@@ -81,6 +81,9 @@ struct CaptureHint {
     /// 窗口标题正则兜底（pid 树/映像名都匹配不到时用；登记可选）
     #[serde(default)]
     title_regex: Option<String>,
+    /// 单例启动器：接受**启动前就存在**的主窗（缺省按 exe 家族自动判定）。
+    #[serde(default)]
+    adopt_existing: Option<bool>,
 }
 
 fn hints_path(st: &crate::state::AppState) -> std::path::PathBuf {
@@ -382,13 +385,6 @@ pub async fn embed_launch(
     embed_id: Option<String>,
     arg: Option<String>,
 ) -> CmdResult<EmbedResult> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetParent, SetWindowLongPtrW, SetWindowPos, GWL_STYLE,
-        SWP_FRAMECHANGED, SWP_NOZORDER, WS_CAPTION, WS_CHILD, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
-        WS_SYSMENU, WS_THICKFRAME,
-    };
-
     let key = norm_id(embed_id);
     // 同一嵌入槽位重嵌（应用崩溃后重开等）：先脱离旧窗口（留在桌面，不强杀）
     detach_by_id(&key);
@@ -420,7 +416,7 @@ pub async fn embed_launch(
 
     // 4) 等待新主窗口（批次C-2 自适应超时 + 标题正则兜底；超时后应用保持
     //    独立窗口运行，不终止进程，并落地失败证据包）
-    let Some(desktop) = desktop_hwnd(&app) else {
+    let Some(_desktop) = desktop_hwnd(&app) else {
         return Err(AppError::io("桌面窗口不存在 / no desktop window"));
     };
     let mut hints = load_hints(&st);
@@ -460,159 +456,22 @@ pub async fn embed_launch(
         save_hints(&st, &hints);
     }
 
-    // 批次C-6：分级探测（改样式前采样；结果持久化 apps.json，用户覆盖最高优先）。
-    // Native = 独立窗口如实降级；L2 = 容器包裹路由（C-3）。
-    let compat = crate::shell::compat_probe::probe_and_persist(&st, &id, hwnd, Some(&target));
-    match compat.effective() {
-        crate::shell::compat_probe::CompatTier::Native => {
-            return Ok(EmbedResult {
-                attached: false,
-                reason: format!(
-                    "「{}」判定为 Native 层级（{}）→ 保持独立窗口运行。",
-                    id,
-                    compat.evidence.get("reason").and_then(|v| v.as_str()).unwrap_or("?")
-                ),
-                root_pid,
-                capture: false,
-            });
-        }
-        crate::shell::compat_probe::CompatTier::L2 => {
-            // 批次C-3 L2 容器包裹引擎：自绘/非标框架窗口不剥样式，而是包进
-            // Variable 原生宿主窗口（WS_POPUP）→ 宿主作为嵌入对象。
-            let Some(host) = crate::shell::container::win::create_host_on_main_thread(&app) else {
-                // 宿主创建失败 → 如实降级为独立窗口（不留半嵌状态）
-                return Ok(EmbedResult {
-                    attached: false,
-                    reason: "容器宿主窗口创建失败（L2 包裹不可用）。应用保持独立窗口运行。".into(),
-                    root_pid,
-                    capture: false,
-                });
-            };
-            // 第十四轮大检查：命令已 async 化（线程池运行），宿主窗口消息泵在
-            // 主线程 → wrap 的 SetParent/尺寸同步必须经主线程调度。
-            if !crate::shell::container::win::wrap_child_on_main_thread(&app, host, hwnd) {
-                return Ok(EmbedResult {
-                    attached: false,
-                    reason: "容器包裹失败（L2）。应用保持独立窗口运行。".into(),
-                    root_pid,
-                    capture: false,
-                });
-            }
-            with_registry(|map| {
-                map.insert(
-                    key.clone(),
-                    EmbedSession {
-                        hwnd,
-                        tp_id: id.clone(),
-                        dpi_fix: tp.dpi_fix,
-                        last_dpi: win::window_dpi(hwnd),
-                        root_pid: root_pid.unwrap_or(0),
-                        pids: Vec::new(),
-                        host: Some(host),
-                        capture: false,
-                    },
-                );
-            });
-            ensure_event_hook(&app);
-            spawn_session_watcher(app, key, root_pid.unwrap_or(0), hwnd);
-            return Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture: false });
-        }
-        crate::shell::compat_probe::CompatTier::L3 => {
-            // 批次C-4 L3 画面捕获：真实窗口屏外隐藏 + WGC 采集 → 前端合成；
-            // 输入经 embed_input PostMessage 直注。失败降级独立窗口 + 横幅。
-            match crate::shell::capture::win::start_capture(app.clone(), key.clone(), hwnd) {
-                Ok(()) => {
-                    let _ = crate::shell::capture::win::hide_offscreen(hwnd);
-                    with_registry(|map| {
-                        map.insert(
-                            key.clone(),
-                            EmbedSession {
-                                hwnd,
-                                tp_id: id.clone(),
-                                dpi_fix: tp.dpi_fix,
-                                last_dpi: win::window_dpi(hwnd),
-                                root_pid: root_pid.unwrap_or(0),
-                                pids: Vec::new(),
-                                host: None,
-                                capture: true,
-                            },
-                        );
-                    });
-                    ensure_event_hook(&app);
-                    spawn_session_watcher(app, key, root_pid.unwrap_or(0), hwnd);
-                    return Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture: true });
-                }
-                Err(e) => {
-                    return Ok(EmbedResult {
-                        attached: false,
-                        reason: format!(
-                            "「{}」L3 画面捕获不可用（{}）→ 保持独立窗口运行。",
-                            id, e
-                        ),
-                        root_pid,
-                        capture: false,
-                    });
-                }
-            }
-        }
-        crate::shell::compat_probe::CompatTier::L4 => {
-            // 批次C-5：L4 智能让位——绝不嵌入。反作弊窗口强行剥样式/重父级
-            // 可能触发检测误判；独占全屏重排会破坏渲染契约。应用保持独立窗口，
-            // 让位语义由运行时看护承担（fullscreen → 桌面层收起；anticheat →
-            // kbdhook 停用 + 横幅声明）。
-            let hint = compat.hint.as_deref().unwrap_or("fullscreen");
-            return Ok(EmbedResult {
-                attached: false,
-                reason: format!(
-                    "「{}」判定为 L4 层级（让位归因：{}）→ 保持独立窗口运行，Variable 桌面层将智能让位。",
-                    id, hint
-                ),
-                root_pid,
-                capture: false,
-            });
-        }
-        // L1（标准窗口）→ 走下方重父级嵌入主路径
-        _ => {}
+    // 5) 分级接入（L1 重父化 / L2 容器包裹 / L3 画面捕获）——
+    //    与 embed_adopt（WinEventHook 弹窗 / Steam 主动收编）共用同一裁判
+    //    attach_by_tier，杜绝两条入口口径分裂（Steam 客户端纯黑窗口的根因）。
+    match attach_by_tier(
+        &app,
+        &st,
+        key,
+        id.clone(),
+        hwnd,
+        root_pid.unwrap_or(0),
+        tp.dpi_fix,
+        Some(&target),
+    ) {
+        Attach::Ok { capture } => Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture }),
+        Attach::Skip { reason } => Ok(EmbedResult { attached: false, reason, root_pid, capture: false }),
     }
-
-    // 5) 重父级为桌面窗口子窗口：去标题栏/边框/系统菜单（任务栏与 Alt+Tab 消失）
-    unsafe {
-        let h = hwnd_from(hwnd);
-        let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
-        let new_style = ((style as u32)
-            & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0))
-            | WS_CHILD.0;
-        SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
-        let _ = SetParent(h, hwnd_from(desktop));
-        // 先给一个占位边界（随后由前端虚拟窗口上报精确边界）
-        let _ = SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
-    }
-
-    with_registry(|map| {
-        map.insert(
-            key.clone(),
-            EmbedSession {
-                hwnd,
-                tp_id: id.clone(),
-                dpi_fix: tp.dpi_fix,
-                last_dpi: win::window_dpi(hwnd),
-                root_pid: root_pid.unwrap_or(0),
-                pids: Vec::new(),
-                host: None,
-                capture: false,
-            },
-        );
-    });
-
-    // 批次C-1：确保 WinEventHook 常驻监护已启动（首个嵌入会话时初始化，全局一份）
-    ensure_event_hook(&app);
-
-    // 批次W-3 长期监护：每 2s 核对该会话窗口存活（事件线程，随会话结束退出）。
-    // 窗口消失 → 进程树仍在 = Orphaned（应用回到自身窗口）；树全灭 = 退出，
-    // 采样退出码（0 = 正常退出，非 0 = 异常终止）。绝不强杀，只如实上报。
-    spawn_session_watcher(app, key, root_pid.unwrap_or(0), hwnd);
-
-    Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture: false })
 }
 
 /// 批次W-3 + C-1：单会话监护线程（2s 轮询兜底；事件驱动主通道见 ensure_event_hook）。
@@ -806,7 +665,7 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         use tauri::Emitter;
         if was_dead {
             // ① 窗口重建：同会话原地重嵌（不占位、不换 embed_id）
-            if reembed_into_session(&key, h) {
+            if reembed_into_session(app, &key, h) {
                 pending_adopt_remove(h);
                 let _ = app.emit(
                     "embed://state",
@@ -850,15 +709,17 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
     });
 }
 
-/// 批次C-1：剥边框 → 重父化为桌面子窗口 → 占位边界（embed_launch / 重嵌 / 收编共用）。
+/// 批次C-1：剥边框 → 重父化为桌面子窗口 → 占位边界（L1 路径；重嵌/收编共用）。
+/// 桌面句柄经 `app` 现取（HoOK_APP 是进程级 OnceLock，收编路径首调时可能尚未登记
+/// —— 依赖它会让「首个会话来自弹窗收编」的链路静默失败）。
 #[cfg(windows)]
-fn restyle_and_reparent(new_hwnd: isize) -> bool {
+fn restyle_and_reparent(app: &tauri::AppHandle, new_hwnd: isize) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetParent, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
         SWP_NOZORDER, WS_CAPTION, WS_CHILD, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
     };
-    let Some(desktop) = HOOK_APP.get().and_then(desktop_hwnd) else { return false };
+    let Some(desktop) = desktop_hwnd(app) else { return false };
     unsafe {
         let h = hwnd_from_isize(new_hwnd);
         let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
@@ -874,8 +735,8 @@ fn restyle_and_reparent(new_hwnd: isize) -> bool {
 
 /// 批次C-1：把重建的新窗口重嵌进既有会话（剥边框 → SetParent → 更新 hwnd/DPI）。
 #[cfg(windows)]
-fn reembed_into_session(key: &str, new_hwnd: isize) -> bool {
-    if !restyle_and_reparent(new_hwnd) {
+fn reembed_into_session(app: &tauri::AppHandle, key: &str, new_hwnd: isize) -> bool {
+    if !restyle_and_reparent(app, new_hwnd) {
         return false;
     }
     with_registry(|m| {
@@ -890,13 +751,134 @@ fn reembed_into_session(key: &str, new_hwnd: isize) -> bool {
     })
 }
 
+/// 分层接入结果。
+#[cfg(windows)]
+enum Attach {
+    /// 已接入 Variable（capture = true 表示 L3 画面捕获会话）。
+    Ok { capture: bool },
+    /// 该层级不接入 → 调用方按「独立窗口运行」如实处理并回传 reason。
+    Skip { reason: String },
+}
+
+/// 按兼容层级把**已定位的**原生窗口接入 Variable —— `embed_launch` 与
+/// `embed_adopt` 共用同一裁判。
+///
+/// 这是 Steam 黑屏的根因修复：`embed_adopt`（WinEventHook popup / Steam 主动收编
+/// 走的那条）此前**无条件**走 L1 重父化，绕过了 compat_probe。Steam 客户端主窗属
+/// steamwebhelper.exe，是 CEF（DirectComposition，无 DWM 重定向表面）窗口 ——
+/// SetParent 之后父窗口客户区里没有任何可合成位图，于是呈现为一大片纯黑且不吃
+/// 输入。现在两条入口共用同一分级：合成管道窗口一律走 L3（采画面 + 转发输入）。
+///
+/// 绝不强杀进程：Skip 只表示「不接入」，应用继续以独立窗口运行。
+#[cfg(windows)]
+fn attach_by_tier(
+    app: &tauri::AppHandle,
+    st: &crate::state::AppState,
+    key: String,
+    tp_id: String,
+    hwnd: isize,
+    root_pid: u32,
+    dpi_fix: bool,
+    target: Option<&str>,
+) -> Attach {
+    use crate::shell::compat_probe::CompatTier;
+
+    // 批次C-6：分级探测（改样式前采样；结果持久化 apps.json，用户覆盖最高优先）
+    let compat = crate::shell::compat_probe::probe_and_persist(st, &tp_id, hwnd, target);
+
+    // 登记会话 + 启动监护（三种层级共用的收尾动作）
+    let register = |host: Option<isize>, capture: bool| {
+        with_registry(|map| {
+            map.insert(
+                key.clone(),
+                EmbedSession {
+                    hwnd,
+                    tp_id: tp_id.clone(),
+                    dpi_fix,
+                    last_dpi: win::window_dpi(hwnd),
+                    root_pid,
+                    pids: if root_pid != 0 { win::pid_tree(root_pid) } else { Vec::new() },
+                    host,
+                    capture,
+                },
+            );
+        });
+        // 批次C-1：确保 WinEventHook 常驻监护已启动（首个嵌入会话时初始化，全局一份）
+        ensure_event_hook(app);
+        // 批次W-3 长期监护：每 2s 核对该会话窗口存活（事件线程，随会话结束退出）
+        spawn_session_watcher(app.clone(), key.clone(), root_pid, hwnd);
+    };
+
+    match compat.effective() {
+        // Native = 独立窗口如实降级
+        CompatTier::Native => Attach::Skip {
+            reason: format!(
+                "「{}」判定为 Native 层级（{}）→ 保持独立窗口运行。",
+                tp_id,
+                compat.evidence.get("reason").and_then(|v| v.as_str()).unwrap_or("?")
+            ),
+        },
+        // 批次C-5：L4 智能让位——绝不嵌入（反作弊误判 / 独占全屏重排会让渲染契约崩）
+        CompatTier::L4 => {
+            let hint = compat.hint.as_deref().unwrap_or("fullscreen");
+            Attach::Skip {
+                reason: format!(
+                    "「{}」判定为 L4 层级（让位归因：{}）→ 保持独立窗口运行，Variable 桌面层将智能让位。",
+                    tp_id, hint
+                ),
+            }
+        }
+        // 批次C-3 L2 容器包裹：自绘/非标框架窗口不剥样式，包进 Variable 原生宿主窗口
+        CompatTier::L2 => {
+            let Some(host) = crate::shell::container::win::create_host_on_main_thread(app) else {
+                return Attach::Skip {
+                    reason: "容器宿主窗口创建失败（L2 包裹不可用）。应用保持独立窗口运行。".into(),
+                };
+            };
+            // 第十四轮大检查：命令已 async 化（线程池运行），宿主窗口消息泵在主线程
+            // → wrap 的 SetParent/尺寸同步必须经主线程调度。
+            if !crate::shell::container::win::wrap_child_on_main_thread(app, host, hwnd) {
+                return Attach::Skip { reason: "容器包裹失败（L2）。应用保持独立窗口运行。".into() };
+            }
+            register(Some(host), false);
+            Attach::Ok { capture: false }
+        }
+        // 批次C-4 L3 画面捕获：真实窗口屏外隐藏 + WGC 采集 → 前端合成；
+        // 输入经 embed_input PostMessage 直注。失败降级独立窗口 + 如实原因。
+        CompatTier::L3 => {
+            match crate::shell::capture::win::start_capture(app.clone(), key.clone(), hwnd) {
+                Ok(()) => {
+                    let _ = crate::shell::capture::win::hide_offscreen(hwnd);
+                    register(None, true);
+                    Attach::Ok { capture: true }
+                }
+                Err(e) => Attach::Skip {
+                    reason: format!("「{}」L3 画面捕获不可用（{}）→ 保持独立窗口运行。", tp_id, e),
+                },
+            }
+        }
+        // L1（标准窗口）→ 重父级嵌入主路径
+        _ => {
+            if !restyle_and_reparent(app, hwnd) {
+                return Attach::Skip {
+                    reason: "重父级失败（桌面窗口不存在）。应用保持独立窗口运行。".into(),
+                };
+            }
+            register(None, false);
+            Attach::Ok { capture: false }
+        }
+    }
+}
+
 /// 批次C-1：收编同进程树新弹出的主窗口为独立嵌入会话
-/// （WinEventHook 广播 embed://popup → 前端开新占位窗后调用）。
-/// 窗口必须仍然有效且未被登记；剥边框 → SetParent → 注册 → 监护。
+/// （WinEventHook 广播 embed://popup / Steam 主动收编看护 → 前端开新占位窗后调用）。
+/// 窗口必须仍然有效且未被登记；随后走 `attach_by_tier` **分级**接入 ——
+/// 与 embed_launch 同一裁判（CEF/Chromium/Electron/DirectComposition 窗口
+/// 一律 L3 采画面，绝不做会呈现纯黑的 L1 重父化）。
 #[tauri::command]
 #[cfg(windows)]
 pub async fn embed_adopt(
-    _st: tauri::State<'_, crate::state::AppState>,
+    st: tauri::State<'_, crate::state::AppState>,
     app: tauri::AppHandle,
     tp_id: String,
     hwnd: isize,
@@ -912,32 +894,20 @@ pub async fn embed_adopt(
     if already {
         return Ok(false);
     }
-    let dpi_fix = crate::shell::launcher::registry_snapshot(&_st)
+    let dpi_fix = crate::shell::launcher::registry_snapshot(&st)
         .iter()
         .find(|a| a.id == tp_id)
         .map(|a| a.dpi_fix)
         .unwrap_or(false);
-    if !restyle_and_reparent(hwnd) {
-        return Ok(false);
+    match attach_by_tier(&app, &st, embed_id.clone(), tp_id.clone(), hwnd, root_pid, dpi_fix, None) {
+        Attach::Ok { .. } => Ok(true),
+        // Native / L4 / L2 包裹失败 / L3 采集不可用 → 不接入：应用保持独立窗口运行。
+        // 前端据 false 关闭刚开的占位窗（不伪造成功）。
+        Attach::Skip { reason } => {
+            eprintln!("[embed-adopt] skip {tp_id}: {reason}");
+            Ok(false)
+        }
     }
-    with_registry(|m| {
-        m.insert(
-            embed_id.clone(),
-            EmbedSession {
-                hwnd,
-                tp_id: tp_id.clone(),
-                dpi_fix,
-                last_dpi: win::window_dpi(hwnd),
-                root_pid,
-                pids: win::pid_tree(root_pid),
-                host: None,
-                capture: false,
-            },
-        );
-    });
-    ensure_event_hook(&app);
-    spawn_session_watcher(app, embed_id, root_pid, hwnd);
-    Ok(true)
 }
 
 #[cfg(not(windows))]
