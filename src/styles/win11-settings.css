@@ -30,7 +30,15 @@
   overflow: hidden;
   box-shadow: 0 32px 88px rgba(0, 0, 0, 0.56), 0 2px 8px rgba(0, 0, 0, 0.28);
 }
-.modal.modal-w11.modal-w11-max { width: min(98vw, 1400px); height: min(94vh, 900px); }
+/* 全屏态（默认）：Win11 设置最大化后铺满整个窗口，内容区仍限宽 1000 居中 */
+.modal.modal-w11.modal-w11-max {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+}
 [data-theme="paper"] .modal.modal-w11,
 [data-theme="light"] .modal.modal-w11 {
   background: #f3f3f3;
@@ -450,6 +458,38 @@
   margin: 0 0 20px;
   letter-spacing: -0.2px;
   color: var(--w11-text);
+}
+/* 面包屑页头（Win11 实测：灰阶上一级 + › + 白色当前页，28/36 一致） */
+.w11-shell .w11-crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin: 0 0 20px;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.w11-shell .w11-crumb-lv {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--w11-text-3);
+  cursor: default;
+  transition: color 0.12s ease;
+}
+.w11-shell .w11-crumb-lv:hover { color: var(--w11-text); }
+.w11-shell .w11-crumb-sep { flex: none; color: var(--w11-text-3); font-weight: 400; }
+.w11-shell .w11-crumb-cur {
+  min-width: 0;
+  color: var(--w11-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===================== 6. 卡片 ===================== */

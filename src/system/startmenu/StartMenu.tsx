@@ -5,6 +5,7 @@ import {
   HardDrive,
   Flame, FolderMinus, Info, Lock, LogOut, Moon, PackagePlus, Pencil, Pin, PinOff, Power, Printer, RotateCcw,
   ShieldCheck, Settings as SettingsIcon, Search, Smile, StickyNote, Trash2, X, ZoomIn, ArrowLeftRight,
+  MoreHorizontal, Trophy, TrendingUp, Check as CheckIcon,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -21,7 +22,7 @@ import {
 import { useUninstalledOfficial } from "../launcher/official";
 import { openVwmApp, openVwmSystem, vwmStore, VWM_TOOLS } from "../windows/vwm";
 import { pushRecent, useRecent } from "./recent";
-import { bumpUsage, subscribeUsage, usageCount } from "./usage";
+import { bumpUsage, subscribeUsage, usageCount, usageCounts } from "./usage";
 import { HIGH_FREQ_TOP_N, highFreqEnabled, recentlyAdded, setHighFreqEnabled, topUsedItems } from "./groups";
 import {
   createFolder, disbandFolder, folderAddItem, folderGridId, folderIdOfGrid, folderRemoveItem,
@@ -29,6 +30,7 @@ import {
 } from "./folders";
 import { INDEX_THRESHOLD, letterGroups } from "./indexBar";
 import { startLabels } from "./labels";
+import { dailyQuiz, dailyTip, dayLabel, daySerial, pickTrending, weekdayLabel } from "./dailyFeed";
 import { StartPropsPanel, type StartPropsInfo } from "./StartPropsPanel";
 
 /**
@@ -104,6 +106,8 @@ export function StartMenu(props: {
   onOpenLauncher: () => void;
   onOpenSearch: () => void;
   onExit: () => void;
+  /** 「每日一图」卡片图片（本机壁纸的 asset URL；缺省时卡片退化为程序化渐变）。 */
+  heroImage?: string;
 }): React.ReactElement | null {
   const { t, lang } = useI18n();
   const L = startLabels(lang);
@@ -119,6 +123,12 @@ export function StartMenu(props: {
   const [powerOpen, setPowerOpen] = useState(false);
   // AI-03 V-20：开机时长（电源菜单悬停显示；只读 sysBrief）
   const [uptimeSecs, setUptimeSecs] = useState<number | null>(null);
+  // Win11 新版面板：今日内容（本地按日期轮换，零网络）+ 问答作答态
+  const [today] = useState<Date>(() => new Date());
+  const [quizPicked, setQuizPicked] = useState<number | null>(null);
+  useEffect(() => {
+    if (!props.open) setQuizPicked(null);
+  }, [props.open]);
   useEffect(() => {
     if (!powerOpen) return;
     void ipc.sysBrief().then((b) => setUptimeSecs((b as { uptimeSecs?: number }).uptimeSecs ?? null)).catch(() => setUptimeSecs(null));
@@ -395,6 +405,12 @@ export function StartMenu(props: {
     : allItems;
   const filteredRecent = q.trim() ? recent.filter((r) => matchPinyin(r.name, q)) : recent;
 
+  // ---- Win11 新版面板：数据投影（全部读本机，零网络） ----
+  /** 左栏「最近使用」列表：recent 记录按 kind-id 映射回网格项（搜不到的项目自动消失）。 */
+  const recentGrid = (q.trim() ? filteredRecent : recent)
+    .map((r) => itemById.get(`${r.kind}-${r.id}`))
+    .filter((x): x is GridItem => Boolean(x));
+
   // ---- V-11 索引模式：应用数 >30 才出现（文件夹不计入应用数） ----
   const appCount = allItems.filter((it) => it.kind !== "folder").length;
   const indexMode = !q.trim() && appCount > INDEX_THRESHOLD;
@@ -413,6 +429,23 @@ export function StartMenu(props: {
     !q.trim() && !grpHidden.highFreq && hfreqOn
       ? topUsedItems(allItems, HIGH_FREQ_TOP_N).filter(({ item }) => item.kind !== "folder")
       : [];
+
+  // ---- Win11 新版面板：卡片数据投影（全部读本机，零网络） ----
+  /** 中栏「热门应用」：高频计数前四；计数为空时用应用列表前四兜底（保证卡片始终有内容）。 */
+  const boardTop: GridItem[] = (
+    topList.length > 0
+      ? topList.map(({ item }) => item)
+      : allItems.filter((it) => it.kind !== "folder")
+  ).slice(0, 4);
+  /** 底部「热门搜索」：候选 = 最近使用名称 + 应用名（按日期轮换起点取 4 个）。 */
+  const trending = pickTrending(
+    [...recent.map((r) => r.name), ...allItems.filter((it) => it.kind !== "folder").map((it) => it.label)],
+    today,
+    4,
+  );
+  const quiz = dailyQuiz(today);
+  const tip = dailyTip(today);
+  const totalLaunches = Object.values(usageCounts()).reduce((a, b) => a + b, 0);
 
   // ---- V-13：order 维护工具 ----
   const removeFromOrder = (gridId: string): void => {
@@ -752,10 +785,6 @@ export function StartMenu(props: {
     );
   };
 
-  // ---- 批次E：最近使用行（点击直达） ----
-  const recentLabel = (kind: string, name: string): string =>
-    kind === "tp" ? name : name;
-
   // ---- 批次E：电源完整菜单（规格 4.6.3） ----
   // AI-03 V-19/V-20：关机/重启前会话清单 + 30 分钟不再询问 + 睡眠入口
   const power = async (action: "lock" | "logoff" | "reboot" | "shutdown" | "sleep"): Promise<void> => {
@@ -829,36 +858,27 @@ export function StartMenu(props: {
           )}
         </div>
 
-        {recent.length > 0 && (
-          <>
-            <p className="start-section dim small">{t("recent")}</p>
-            <div className="start-recent">
-              {filteredRecent.map((r) => (
+        <div className="sm-body">
+          {/* ── 左栏：最近使用（应用行列表；数据 = 最近记录映射回网格项） ── */}
+          <section className="sm-col sm-col-a">
+            <p className="sm-head start-section dim small">{t("recent")}</p>
+            <div className="sm-recent-list">
+              {recentGrid.map((it) => (
                 <button
-                  key={`${r.kind}-${r.id}`}
+                  key={it.id}
                   type="button"
-                  className="start-recent-chip"
-                  title={recentLabel(r.kind, r.name)}
-                  onClick={() => {
-                    if (r.kind === "app") {
-                      props.onOpenApp(r.id as AppMode);
-                    } else if (r.kind === "tp") {
-                      props.onClose();
-                      void launchThirdApp(r.id, r.name);
-                    } else if (r.kind === "sys") {
-                      props.onClose();
-                      openVwmSystem(r.id as "explorer" | "recycle");
-                    } else {
-                      props.onClose();
-                    }
-                  }}
+                  className="sm-row"
+                  title={it.title ?? it.label}
+                  onClick={it.onClick}
                 >
-                  {r.name}
+                  <span className="desktop-icon-tile sm-row-icon" style={{ ["--hue" as string]: it.hue }}>
+                    {it.icon}
+                  </span>
+                  <span className="sm-row-name">{it.label}</span>
                 </button>
               ))}
+              {recentGrid.length === 0 && <p className="sm-empty dim small">{L.boardNoRecent}</p>}
             </div>
-          </>
-        )}
 
         {/* ---- V-12 「最近添加」自动分组（会话级可隐藏） ---- */}
         {recentAddedItems.length > 0 && (
@@ -1020,57 +1040,173 @@ export function StartMenu(props: {
             {idxFlash}
           </div>
         )}
+          </section>
 
-        <div className="start-foot">
-          <span className="start-user" title={userName || undefined}>
-            <span className="start-avatar" aria-hidden>
-              {(userName || "U").slice(0, 1).toUpperCase()}
-            </span>
-            <span className="start-user-name">{userName || "…"}</span>
-          </span>
-          <span className="start-foot-spacer" />
-          <span className="start-brand">
-            <span className="start-brand-v">V</span> Variable
-          </span>
-          <div className="start-power-wrap">
-            {powerOpen && (
-              <div className="start-power-menu card-pop" role="menu" aria-label={t("powerMenu")}>
-                {/* AI-03 V-20：开机时长（只读，无新窗口） */}
-                {uptimeSecs !== null && (
-                  <span className="dim small start-power-uptime" title={t("powerUptime")}>
-                    {t("powerUptime")}: {Math.floor(uptimeSecs / 3600)}h {Math.floor((uptimeSecs % 3600) / 60)}m
-                  </span>
+          {/* ── 中栏上：今日（日期行 + 每日一图） ── */}
+          <section className="sm-col sm-col-b">
+            <div className="sm-today">
+              <span className="sm-today-l">Today</span>
+              <span className="sm-today-d">· {dayLabel(today, lang)} {weekdayLabel(today, lang)}</span>
+              <span className="sm-flex" />
+              <span className="sm-stat" title={`${L.boardStat}: ${totalLaunches}`}>
+                {totalLaunches} <Trophy size={13} aria-hidden />
+              </span>
+              <button
+                type="button"
+                className="sm-me"
+                title={userName || t("properties")}
+                aria-label={userName || t("properties")}
+                onClick={props.onOpenSettings}
+              >
+                {(userName || "V").slice(0, 1).toUpperCase()}
+              </button>
+              <div className="start-power-wrap">
+                {powerOpen && (
+                  <div className="start-power-menu card-pop" role="menu" aria-label={t("powerMenu")}>
+                    {/* AI-03 V-20：开机时长（只读，无新窗口） */}
+                    {uptimeSecs !== null && (
+                      <span className="dim small start-power-uptime" title={t("powerUptime")}>
+                        {t("powerUptime")}: {Math.floor(uptimeSecs / 3600)}h {Math.floor((uptimeSecs % 3600) / 60)}m
+                      </span>
+                    )}
+                    <button type="button" role="menuitem" onClick={() => void power("sleep")}>
+                      <Moon size={14} /> {t("powerSleep")}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void power("lock")}>
+                      <Lock size={14} /> {t("powerLock")}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void power("logoff")}>
+                      <LogOut size={14} /> {t("powerLogoff")}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void power("reboot")}>
+                      <RotateCcw size={14} /> {t("powerRestart")}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => void power("shutdown")}>
+                      <Power size={14} /> {t("powerShutdown")}
+                    </button>
+                    <button type="button" role="menuitem" className="danger" onClick={props.onExit}>
+                      <Power size={14} /> {t("exitVariable")}
+                    </button>
+                  </div>
                 )}
-                <button type="button" role="menuitem" onClick={() => void power("sleep")}>
-                  <Moon size={14} /> {t("powerSleep")}
-                </button>
-                <button type="button" role="menuitem" onClick={() => void power("lock")}>
-                  <Lock size={14} /> {t("powerLock")}
-                </button>
-                <button type="button" role="menuitem" onClick={() => void power("logoff")}>
-                  <LogOut size={14} /> {t("powerLogoff")}
-                </button>
-                <button type="button" role="menuitem" onClick={() => void power("reboot")}>
-                  <RotateCcw size={14} /> {t("powerRestart")}
-                </button>
-                <button type="button" role="menuitem" onClick={() => void power("shutdown")}>
-                  <Power size={14} /> {t("powerShutdown")}
-                </button>
-                <button type="button" role="menuitem" className="danger" onClick={props.onExit}>
-                  <Power size={14} /> {t("exitVariable")}
+                <button
+                  type="button"
+                  className={`sm-more${powerOpen ? " active" : ""}`}
+                  aria-label={t("powerMenu")}
+                  aria-expanded={powerOpen}
+                  title={L.boardMore}
+                  onClick={() => {
+                    setPowerOpen(!powerOpen);
+                    if (!powerOpen) setPropsInfo(null);
+                  }}
+                >
+                  <MoreHorizontal size={16} aria-hidden />
                 </button>
               </div>
-            )}
-            <button
-              type="button"
-              className={`tb-btn start-power${powerOpen ? " active" : ""}`}
-              aria-label={t("powerMenu")}
-              title={t("powerMenu")}
-              onClick={() => setPowerOpen(!powerOpen)}
-            >
-              <Power size={18} strokeWidth={1.7} />
-            </button>
-          </div>
+            </div>
+            <div className="sm-hero">
+              {props.heroImage ? (
+                <img className="sm-hero-img" src={props.heroImage} alt="" draggable={false} />
+              ) : (
+                <span
+                  className="sm-hero-art"
+                  aria-hidden
+                  style={{ ["--hue" as string]: String((daySerial(today) * 47) % 360) }}
+                />
+              )}
+              <span className="sm-hero-cap">
+                <span className="sm-hero-kicker">{L.boardHero}</span>
+                <span className="sm-hero-title">{dayLabel(today, lang)}</span>
+              </span>
+            </div>
+          </section>
+
+          {/* ── 中栏下：热门应用（本地高频计数；计数为空时取应用列表前四） ── */}
+          <section className="sm-col sm-col-b2">
+            <div className="sm-card sm-topapps">
+              <p className="sm-card-head">{L.boardTopApps}</p>
+              <div className="sm-topapps-grid">
+                {boardTop.map((it) => (
+                  <button
+                    key={it.id}
+                    type="button"
+                    className="sm-topapp"
+                    title={it.title ?? it.label}
+                    onClick={it.onClick}
+                  >
+                    <span className="desktop-icon-tile sm-topapp-icon" style={{ ["--hue" as string]: it.hue }}>
+                      {it.icon}
+                    </span>
+                    <span className="sm-topapp-name">{it.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ── 右栏上：每日问答（本地题库按日期轮换） ── */}
+          <section className="sm-col sm-col-c">
+            <div className="sm-card sm-quiz">
+              <span className={`sm-quiz-art${props.heroImage ? " has-img" : ""}`} aria-hidden>
+                {props.heroImage && <img src={props.heroImage} alt="" draggable={false} />}
+              </span>
+              <p className="sm-quiz-head">{L.boardQuiz}</p>
+              <p className="sm-quiz-q">{quiz.q}</p>
+              <div className="sm-quiz-opts">
+                {quiz.options.map((o, i) => (
+                  <button
+                    key={o}
+                    type="button"
+                    className={`sm-chip sm-quiz-opt${
+                      quizPicked === null ? "" : i === quiz.answer ? " right" : i === quizPicked ? " wrong" : ""
+                    }`}
+                    onClick={() => setQuizPicked(i)}
+                  >
+                    {quizPicked !== null && i === quiz.answer && <CheckIcon size={13} aria-hidden />}
+                    <span>{o}</span>
+                  </button>
+                ))}
+              </div>
+              {quizPicked !== null && (
+                <p className={`sm-quiz-note dim small${quizPicked === quiz.answer ? " right" : ""}`}>
+                  {quizPicked === quiz.answer ? `${L.boardQuizRight} · ${quiz.note}` : `${L.boardQuizWrong} · ${quiz.note}`}
+                </p>
+              )}
+            </div>
+          </section>
+
+          {/* ── 右栏下：今日提示（本地提示库按日期轮换） ── */}
+          <section className="sm-col sm-col-c2">
+            <div className="sm-card sm-tip">
+              <span className={`sm-tip-art${props.heroImage ? " has-img" : ""}`} aria-hidden>
+                {props.heroImage && <img src={props.heroImage} alt="" draggable={false} />}
+              </span>
+              <p className="sm-tip-head">{L.boardTip} · {dayLabel(today, lang)}</p>
+              <p className="sm-tip-title">{tip.title}</p>
+              <p className="sm-tip-note dim small">{tip.note}</p>
+            </div>
+          </section>
+
+          {/* ── 底部（跨中/右栏）：热门搜索（点一下填入搜索框） ── */}
+          <section className="sm-col sm-trend">
+            <p className="sm-card-head sm-trend-head">
+              <TrendingUp size={14} aria-hidden /> {L.boardTrending}
+            </p>
+            <div className="sm-trend-grid">
+              {trending.map((term) => (
+                <button
+                  key={term}
+                  type="button"
+                  className="sm-chip sm-trend-chip"
+                  title={L.boardSearchHint}
+                  onClick={() => setQ(term)}
+                >
+                  <Search size={13} aria-hidden />
+                  <span>{term}</span>
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
 

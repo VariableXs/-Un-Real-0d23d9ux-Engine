@@ -200,9 +200,10 @@ export function SettingsModal(props: {
     void getVersion().then(setAboutVersion).catch(() => {});
   }, [tab, aboutVersion]);
   const binds = bindDraft ?? (s.shortcutBinds ?? {});
-  // Win11 标题栏：搜索框过滤导航项 + 窗口按钮最大化切换（等待用户输入前两者均为默认态）
+  // Win11 标题栏：搜索框过滤导航项 + 窗口按钮切换「全屏 / 窗口」
+  // （Win11 设置默认即为最大化全屏；此处的最大化按钮即「还原为上屏窗口」）
   const [navQuery, setNavQuery] = useState("");
-  const [w11Max, setW11Max] = useState(false);
+  const [w11Max, setW11Max] = useState(true);
 
   if (!isOpen) return null;
 
@@ -263,6 +264,8 @@ export function SettingsModal(props: {
   const visSysTabs = navQ ? sysTabs.filter((tb) => tb.label.toLowerCase().includes(navQ)) : sysTabs;
   const homeTabId = engineTabs[0]?.id ?? "appearance";
   const curTabLabel = [...engineTabs, ...sysTabs].find((tb) => tb.id === tab)?.label ?? t("settings");
+  // Win11 面包屑第一级 = 所属类别（引擎域 / 系统域），点它回首页
+  const curGroupLabel = sysTabs.some((tb) => tb.id === tab) ? t("sysGroup") : t("w11AccountName");
   const navItem = (tb: { id: string; label: string }) => {
     const Icon = tabIcon(tb.id);
     return (
@@ -554,7 +557,18 @@ export function SettingsModal(props: {
           {/* W11 分页容器：外观页走 .w11-card 版式，其余页由 .w11-legacy 桥接既有 .field 版式 */}
           <div className="settings-body w11-page">
             <div className="w11-content">
-              <h2 className="w11-title">{curTabLabel}</h2>
+              {/* Win11 面包屑页头：上一级可点回首页，当前页为白色 */}
+              <nav className="w11-crumb" aria-label={t("settings")}>
+                <button
+                  type="button"
+                  className="w11-crumb-lv"
+                  onClick={() => uiStore.setState({ settingsTab: homeTabId })}
+                >
+                  {curGroupLabel}
+                </button>
+                <span className="w11-crumb-sep" aria-hidden>›</span>
+                <span className="w11-crumb-cur">{curTabLabel}</span>
+              </nav>
               {tab === "appearance" && (
                 <>
 

@@ -66,7 +66,7 @@ const linkRow = (ic, title, sub) =>
   `<div class="w11-row w11-row-click"><span class="w11-rowicon">${T(ic, 20)}</span>${T("chevron-right", 12).replace('class=', 'class="w11-chev" ')}</div>`;
 
 function window_(inner, cls = "") {
-  return `<div class="modal-overlay preview-static"><div class="modal modal-w11 ${cls}"><div class="modal-body">${inner}</div></div></div>`;
+  return `<div class="modal-overlay preview-static preview-viewport"><div class="modal modal-w11 ${cls}"><div class="modal-body">${inner}</div></div></div>`;
 }
 
 const APPEARANCE = `
@@ -90,7 +90,7 @@ const APPEARANCE = `
       </nav>
       <div class="settings-body w11-page">
         <div class="w11-content">
-          <h2 class="w11-title">外观</h2>
+          <nav class="w11-crumb"><button type="button" class="w11-crumb-lv">设置</button><span class="w11-crumb-sep">›</span><span class="w11-crumb-cur">外观</span></nav>
           ${card("桌面壁纸", "", row("桌面壁纸", "", select("视频壁纸", ["引力场", "纯色", "图片", "动态", "视频壁纸"])) + row("桌面图标大小", "", select("中 · 48", ["小 · 32", "中 · 48", "大 · 64"])))}
           ${card("窗口与任务栏", "", row("窗口控制按钮位置", "同步作用于桌面红绿灯与各软件窗口", select("Mac 风格（右上角圆点）", ["Mac 风格（右上角圆点）", "Windows 风格（右上角按钮）"], true)) + row("任务栏位置", "", select("底部（默认）", ["底部（默认）", "左侧", "右侧", "顶部"])) + row("运行指示样式", "", select("Win11 圆点（默认）", ["Win11 圆点（默认）", "下划线", "胶囊"])))}
           ${card("个性化", "", row("媒体呼吸", "播放时钟旁微幅呼吸", sw(true)) + row("主题", "", select("深空", ["深空", "纸张", "极简黑", "高对比", "自定义"])) + row("纯色背景", "", '<input type="color" value="#7ba7d8">'))}
@@ -123,7 +123,7 @@ const LEGACY = `
       </nav>
       <div class="settings-body w11-page">
         <div class="w11-content">
-          <h2 class="w11-title">输入手感</h2>
+          <nav class="w11-crumb"><button type="button" class="w11-crumb-lv">设置</button><span class="w11-crumb-sep">›</span><span class="w11-crumb-cur">输入手感</span></nav>
           <div class="w11-legacy">
           <label class="field"><span class="field-label">指针加速度</span><select><option>跟随系统</option><option>关闭</option></select></label>
           <label class="field"><span class="field-label">双击间隔（ms）</span><input class="text-input" value="500"></label>
@@ -152,11 +152,13 @@ const html = `<!doctype html>
   /* 预览专用：把固定定位的遮罩改为静态排布，便于同页并排截图 */
   .modal-overlay.preview-static { position: static; inset: auto; display: block; background: none; backdrop-filter: none; }
   /* 预览专用：两个窗口统一 1080×720，便于同页并排对比（最大化变体不在此自检范围） */
-  .preview-static .modal.modal-w11.preview-narrow { width: 1080px; height: 720px; }
+  /* 预览专用：在固定视口容器内展示全屏设置面板（100% 相对该容器） */
+  .preview-static.preview-viewport { width: 1360px; height: 820px; overflow: hidden; }
+  .preview-static.preview-windowed .modal.modal-w11 { width: min(94vw, 1080px); height: min(88vh, 720px); }
 </style>
 </head>
 <body class="preview">
-  <div class="preview-label">① 已迁移页（外观）· 1080×720 · 标题栏 48 / 导航 300 / 卡片内边距 24 / 行高 68</div>
+  <div class="preview-label">① 已迁移页（外观）· 全屏面板 · 标题栏 48 / 导航 300 / 卡片内边距 24 / 行高 68 / 面包屑页头 28</div>
   ${window_(APPEARANCE)}
   <div class="preview-label">② 未迁移页（输入手感）· 同一外壳，靠 .w11-legacy 桥接既有 .field 版式</div>
   ${window_(LEGACY, "modal-w11-max")}

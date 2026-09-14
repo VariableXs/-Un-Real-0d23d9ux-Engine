@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { HardDrive, X } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { Settings } from "../../lib/settings";
@@ -214,6 +215,16 @@ export function DesktopShell(props: {
   };
 
   const closeStart = (): void => uiStore.setState({ startOpen: false });
+
+  // Win11 新版开始菜单「每日一图」卡片：图片类壁纸时取当前壁纸，
+  // 其余模式（纯色/星空/视频/Shader）退化为卡片内的程序化渐变（零网络、零额外资源）。
+  const startHeroImage =
+    props.settings.customBg.imagePath &&
+    (props.settings.wallpaperMode === "image" ||
+      props.settings.wallpaperMode === "living" ||
+      props.settings.wallpaperMode === "hybrid")
+      ? convertFileSrc(props.settings.customBg.imagePath)
+      : undefined;
 
   // 批次E（规格 5.9.1）+ 批次F：拖入登记
   // - exe/lnk/bat/cmd 文件 → 直接登记第三方软件（批次E 既有行为）
@@ -772,6 +783,7 @@ export function DesktopShell(props: {
         open={startOpen}
         onClose={closeStart}
         onOpenApp={onOpenApp}
+        heroImage={startHeroImage}
         onOpenSettings={() => {
           closeStart();
           props.onOpenSettings();

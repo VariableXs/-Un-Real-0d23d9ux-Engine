@@ -6,6 +6,8 @@ import App from "../../App";
 import { bootstrapWindowSpace } from "../../system/windows/aurora/bootstrap";
 import "../../styles/global.css";
 import "../../styles/desktop.css";
+// Win11 新版开始菜单面板（三栏棋盘）—— 必须在 desktop.css 之后加载
+import "../../styles/startmenu-board.css";
 import "../../styles/vwm.css";
 import "../../styles/singularity.css";
 
