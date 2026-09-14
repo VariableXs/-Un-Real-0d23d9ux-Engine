@@ -5,6 +5,13 @@ import { getVersion } from "@tauri-apps/api/app";
 import {
   FolderOpen, Download, Trash2, RotateCcw, HardDrive, ShieldCheck, Lock, Unlock, Plus, Monitor,
 } from "lucide-react";
+// Windows 11 设置外壳（.w11-*）：导航图标（与上面一行不重名，避免重复导入）
+import {
+  Accessibility, AppWindow, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
+  GitBranch, Globe, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MousePointer2, Network,
+  Palette, Play, Plug, Power, Puzzle, Rocket, Shield, SlidersHorizontal, Sparkles, User, Volume2,
+  Wifi, Zap, type LucideIcon,
+} from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { Lang } from "../../i18n/dictionaries";
 import {
@@ -77,6 +84,55 @@ const FONT_STACKS = [
   { label: "Serif (Georgia)", value: `Georgia, "Times New Roman", serif` },
   { label: "Mono (Consolas)", value: `Consolas, "Courier New", monospace` },
 ];
+
+/**
+ * Windows 11 设置外壳：每页导航图标。
+ * 未登记的页回落到 Circle（保持视觉一致，不会因为漏配而缺图标）。
+ */
+const TAB_ICONS: Record<string, LucideIcon> = {
+  appearance: Palette,
+  editor: FileText,
+  mindmap: GitBranch,
+  general: SlidersHorizontal,
+  envs: Globe,
+  browsers: AppWindow,
+  code: Code,
+  eco: Puzzle,
+  net: Wifi,
+  security: Shield,
+  profiles: Play,
+  shortcuts: Keyboard,
+  inputFeel: MousePointer2,
+  ambience: Sparkles,
+  winFeel: LayoutTemplate,
+  perf: Gauge,
+  openhub: Plug,
+  sndnotify: Volume2,
+  vision: Eye,
+  a11y: Accessibility,
+  storage: HardDrive,
+  files: FolderOpen,
+  data: Lock,
+  quality: ShieldCheck,
+  aurora4: Layers,
+  about: Info,
+  bootTheater: Rocket,
+  bootchainHealth: HeartPulse,
+  powerTheater: Zap,
+  "sys-display": Monitor,
+  "sys-sound": Volume2,
+  "sys-net": Network,
+  "sys-account": User,
+  "sys-time": Clock,
+  "sys-apps": Boxes,
+  "sys-power": Power,
+  "sys-access": Accessibility,
+};
+
+/** 取导航图标（未登记 → Circle 圆点）。 */
+function tabIcon(id: string): LucideIcon {
+  return TAB_ICONS[id] ?? Circle;
+}
 
 export function SettingsModal(props: {
   settings: Settings;
@@ -401,198 +457,197 @@ export function SettingsModal(props: {
   }
 
   return (
-    <Modal open onClose={() => uiStore.setState({ settingsOpen: false })} title={t("settings")} width={760}>
+    <Modal open onClose={() => uiStore.setState({ settingsOpen: false })} title={t("settings")} width={1000}>
       {/* U-41 RTL 试点面板①：设置中心（rtlPilot 开启时 dir=rtl 正确渲染） */}
-      <div className="settings-layout" dir={s.rtlPilot ? "rtl" : "ltr"} data-testid="settings-modal">
-        <nav className="settings-nav" aria-label={t("settings")}>
-          {engineTabs.map((tb) => (
-            <button key={tb.id} type="button" className={tab === tb.id ? "on" : ""} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
-              {tb.label}
-            </button>
-          ))}
-          <div className="nav-group">{t("sysGroup")}</div>
-          {sysTabs.map((tb) => (
-            <button key={tb.id} type="button" className={tab === tb.id ? "on" : ""} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
-              {tb.label}
-            </button>
-          ))}
+      <div className="settings-layout w11-shell" dir={s.rtlPilot ? "rtl" : "ltr"} data-testid="settings-modal">
+        <nav className="settings-nav w11-nav" aria-label={t("settings")}>
+          {/* Win11 导航顶部账户卡 */}
+          <div className="w11-account">
+            <span className="w11-avatar">V</span>
+            <span className="w11-who">
+              <b>{t("w11AccountName")}</b>
+              <span>{t("w11AccountDesc")}</span>
+            </span>
+          </div>
+          {engineTabs.map((tb) => {
+            const Icon = tabIcon(tb.id);
+            return (
+              <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
+                <Icon size={16} aria-hidden />
+                <span className="w11-lbl">{tb.label}</span>
+              </button>
+            );
+          })}
+          <div className="nav-group w11-navgroup">{t("sysGroup")}</div>
+          {sysTabs.map((tb) => {
+            const Icon = tabIcon(tb.id);
+            return (
+              <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
+                <Icon size={16} aria-hidden />
+                <span className="w11-lbl">{tb.label}</span>
+              </button>
+            );
+          })}
         </nav>
-        <div className="settings-body">
+        {/* W11 分页容器：样板阶段仅「外观」页启用（其余页沿用既有 .field 版式） */}
+        <div className={`settings-body${tab === "appearance" ? " w11-page" : ""}`}>
           {tab === "appearance" && (
             <>
-              <Field label={t("wallpaperMode")}>
-                <select
-                  value={s.wallpaperMode}
-                  onChange={(e) => set("wallpaperMode", e.target.value as Settings["wallpaperMode"])}
-                >
-                  <option value="gravity">{t("wpGravity")}</option>
-                  <option value="solid">{t("wpSolid")}</option>
-                  <option value="image">{t("wpImage")}</option>
-                  <option value="living">{t("wpLiving")}</option>
-                  <option value="video">{t("wpVideo")}</option>
-                  <option value="hybrid">{t("wpHybrid")}</option>
-                  <option value="web">{t("wpWeb")}</option>
-                  <option value="shader">{t("wpShader")}</option>
-                </select>
-              </Field>
-              <Field label={t("iconSize")}>
-                <select
-                  value={String(s.iconSize)}
-                  onChange={(e) => set("iconSize", Number(e.target.value) as Settings["iconSize"])}
-                >
-                  <option value="32">{t("iconSmall")} · 32</option>
-                  <option value="48">{t("iconMedium")} · 48</option>
-                  <option value="64">{t("iconLarge")} · 64</option>
-                </select>
-              </Field>
-              {/* 批次D（规格 4.3.5）：窗口控制按钮位置 */}
-              <Field label={t("winControls")}>
-                <div className="row gap8 wrap">
-                  <select
-                    value={s.winControls}
-                    onChange={(e) => set("winControls", e.target.value as Settings["winControls"])}
-                  >
+              <h2 className="w11-title">{t("appearance")}</h2>
+
+              <W11Card title={t("w11CardWallpaper")}>
+                <W11Row title={t("wallpaperMode")}>
+                  <W11Select value={s.wallpaperMode} onChange={(v) => set("wallpaperMode", v as Settings["wallpaperMode"])}>
+                    <option value="gravity">{t("wpGravity")}</option>
+                    <option value="solid">{t("wpSolid")}</option>
+                    <option value="image">{t("wpImage")}</option>
+                    <option value="living">{t("wpLiving")}</option>
+                    <option value="video">{t("wpVideo")}</option>
+                    <option value="hybrid">{t("wpHybrid")}</option>
+                    <option value="web">{t("wpWeb")}</option>
+                    <option value="shader">{t("wpShader")}</option>
+                  </W11Select>
+                </W11Row>
+                <W11Row title={t("iconSize")}>
+                  <W11Select value={String(s.iconSize)} onChange={(v) => set("iconSize", Number(v) as Settings["iconSize"])}>
+                    <option value="32">{t("iconSmall")} · 32</option>
+                    <option value="48">{t("iconMedium")} · 48</option>
+                    <option value="64">{t("iconLarge")} · 64</option>
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardTaskbar")}>
+                {/* 批次D（规格 4.3.5）：窗口控制按钮位置 */}
+                <W11Row title={t("winControls")} sub={t("winControlsHint")}>
+                  <W11Select wide value={s.winControls} onChange={(v) => set("winControls", v as Settings["winControls"])}>
                     <option value="mac">{t("winControlsMac")}</option>
                     <option value="windows">{t("winControlsWin")}</option>
-                  </select>
-                  <span className="dim small">{t("winControlsHint")}</span>
-                </div>
-              </Field>
-              {/* 批次E（规格 4.4）：任务栏停靠位置四向 */}
-              <Field label={t("taskbarPos")}>
-                <select
-                  value={s.taskbarPos}
-                  onChange={(e) => set("taskbarPos", e.target.value as Settings["taskbarPos"])}
-                >
-                  <option value="bottom">{t("tbPosBottom")}</option>
-                  <option value="left">{t("tbPosLeft")}</option>
-                  <option value="right">{t("tbPosRight")}</option>
-                  <option value="top">{t("tbPosTop")}</option>
-                </select>
-              </Field>
-              {/* AI-03 V-18：运行指示样式三选（dot=默认现状；即时生效零重启） */}
-              <Field label={t("setRunIndicator")}>
-                <select
-                  value={s.runIndicator}
-                  onChange={(e) => set("runIndicator", e.target.value as Settings["runIndicator"])}
-                >
-                  <option value="dot">{t("runIndDot")}</option>
-                  <option value="underline">{t("runIndUnderline")}</option>
-                  <option value="capsule">{t("runIndCapsule")}</option>
-                </select>
-              </Field>
-              {/* AI-03 M-16：媒体呼吸（默认关；幅度 2% / 周期 4s 写死） */}
-              <Field label={t("setMediaBreath")}>
-                <div className="col gap4">
-                  <Check label={t("setMediaBreath")} checked={s.mediaBreath} onChange={(v) => set("mediaBreath", v)} />
-                  <span className="dim small">{t("setMediaBreathHint")}</span>
-                </div>
-              </Field>
+                  </W11Select>
+                </W11Row>
+                {/* 批次E（规格 4.4）：任务栏停靠位置四向 */}
+                <W11Row title={t("taskbarPos")}>
+                  <W11Select value={s.taskbarPos} onChange={(v) => set("taskbarPos", v as Settings["taskbarPos"])}>
+                    <option value="bottom">{t("tbPosBottom")}</option>
+                    <option value="left">{t("tbPosLeft")}</option>
+                    <option value="right">{t("tbPosRight")}</option>
+                    <option value="top">{t("tbPosTop")}</option>
+                  </W11Select>
+                </W11Row>
+                {/* AI-03 V-18：运行指示样式三选（dot=默认现状；即时生效零重启） */}
+                <W11Row title={t("setRunIndicator")}>
+                  <W11Select value={s.runIndicator} onChange={(v) => set("runIndicator", v as Settings["runIndicator"])}>
+                    <option value="dot">{t("runIndDot")}</option>
+                    <option value="underline">{t("runIndUnderline")}</option>
+                    <option value="capsule">{t("runIndCapsule")}</option>
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardPersonalize")}>
+                <W11Row title={t("theme")}>
+                  <W11Select value={s.theme} onChange={(v) => set("theme", v as ThemeId)}>
+                    <option value="deep-space">{t("themeDeepSpace")}</option>
+                    <option value="paper">{t("themePaper")}</option>
+                    <option value="minimal-black">{t("themeMinimalBlack")}</option>
+                    <option value="high-contrast">{t("themeHighContrast")}</option>
+                    <option value="custom">{t("themeCustom")}</option>
+                  </W11Select>
+                </W11Row>
+                {/* AI-03 M-16：媒体呼吸（默认关；幅度 2% / 周期 4s 写死） */}
+                <W11Row title={t("setMediaBreath")} sub={t("setMediaBreathHint")}>
+                  <W11Switch checked={s.mediaBreath} onChange={(v) => set("mediaBreath", v)} />
+                </W11Row>
+              </W11Card>
               {/* AI-03 M-12：时钟多时区（IANA，≤3；非法名保存时如实过滤） */}
-              <Ai03ClockZones set={set} zones={s.clockZones} />
+              <Ai03ClockZones win11 set={set} zones={s.clockZones} />
               {/* AI-03 M-15：任务栏空区右键菜单编辑 */}
-              <Ai03BlankMenu />
-              <Field label={t("theme")}>
-                <select value={s.theme} onChange={(e) => set("theme", e.target.value as ThemeId)}>
-                  <option value="deep-space">{t("themeDeepSpace")}</option>
-                  <option value="paper">{t("themePaper")}</option>
-                  <option value="minimal-black">{t("themeMinimalBlack")}</option>
-                  <option value="high-contrast">{t("themeHighContrast")}</option>
-                  <option value="custom">{t("themeCustom")}</option>
-                </select>
-              </Field>
+              <Ai03BlankMenu win11 />
               {(s.theme === "custom" || wallpaperUsesMedia(s.wallpaperMode)) && (
-                <>
-                  <Field label={t("backgroundType")}>
-                    <select value={s.customBg.type} onChange={(e) => setBg({ type: e.target.value as CustomBg["type"] })}>
+                <W11Card title={t("w11CardBackground")}>
+                  <W11Row title={t("backgroundType")}>
+                    <W11Select value={s.customBg.type} onChange={(v) => setBg({ type: v as CustomBg["type"] })}>
                       <option value="nebula">{t("themeDeepSpace")}</option>
                       <option value="color">{t("bgPureColor")}</option>
                       <option value="gradient">{t("bgGradient")}</option>
                       <option value="image">{t("bgImage")}</option>
                       <option value="video">{t("bgVideo")}</option>
-                    </select>
-                  </Field>
+                    </W11Select>
+                  </W11Row>
                   {(s.customBg.type === "image" || s.customBg.type === "video") && (
-                    <Field label={s.customBg.type === "image" ? t("bgImage") : t("bgVideo")}>
-                      <div className="row gap8">
-                        <input className="text-input flex-1" readOnly value={s.customBg.type === "image" ? s.customBg.imagePath : s.customBg.videoPath} />
-                        <button type="button" className="btn ghost" onClick={() => void pickBackground(s.customBg.type === "image" ? "image" : "video")}>{t("chooseFile")}</button>
-                      </div>
-                    </Field>
+                    <W11Row title={s.customBg.type === "image" ? t("bgImage") : t("bgVideo")}>
+                      <input className="w11-input flex-1" readOnly value={s.customBg.type === "image" ? s.customBg.imagePath : s.customBg.videoPath} />
+                      <button type="button" className="w11-btn" onClick={() => void pickBackground(s.customBg.type === "image" ? "image" : "video")}>{t("chooseFile")}</button>
+                    </W11Row>
                   )}
                   {s.customBg.type === "color" && (
-                    <Field label={t("bgPureColor")}>
+                    <W11Row title={t("bgPureColor")}>
                       <input type="color" value={s.customBg.color} onChange={(e) => setBg({ color: e.target.value })} />
-                    </Field>
+                    </W11Row>
                   )}
                   {s.customBg.type === "gradient" && (
-                    <Field label={`${t("bgGradient")} A → B`}>
-                      <div className="row gap8">
-                        <input type="color" value={s.customBg.gradientFrom} onChange={(e) => setBg({ gradientFrom: e.target.value })} />
-                        <input type="color" value={s.customBg.gradientTo} onChange={(e) => setBg({ gradientTo: e.target.value })} />
-                      </div>
-                    </Field>
+                    <W11Row title={`${t("bgGradient")} A → B`}>
+                      <input type="color" value={s.customBg.gradientFrom} onChange={(e) => setBg({ gradientFrom: e.target.value })} />
+                      <input type="color" value={s.customBg.gradientTo} onChange={(e) => setBg({ gradientTo: e.target.value })} />
+                    </W11Row>
                   )}
-                  <Slider label={t("brightness")} min={20} max={140} value={Math.round(s.customBg.brightness * 100)} suffix="%" onChange={(v) => setBg({ brightness: v / 100 })} />
-                  <Slider label={t("blur")} min={0} max={24} value={s.customBg.blur} suffix="px" onChange={(v) => setBg({ blur: v })} />
-                  <Slider label={t("vignette")} min={0} max={100} value={Math.round(s.customBg.vignette * 100)} suffix="%" onChange={(v) => setBg({ vignette: v / 100 })} />
-                  <Slider label={t("saturation")} min={0} max={200} value={Math.round(s.customBg.saturation * 100)} suffix="%" onChange={(v) => setBg({ saturation: v / 100 })} />
-                  <Slider label={t("maskOpacity")} min={0} max={90} value={Math.round(s.customBg.maskOpacity * 100)} suffix="%" onChange={(v) => setBg({ maskOpacity: v / 100 })} />
-                  <Slider label={t("dynamicStrength")} min={0} max={100} value={Math.round(s.customBg.dynamicStrength * 100)} suffix="%" onChange={(v) => setBg({ dynamicStrength: v / 100 })} />
-                  <Slider label={t("parallaxStrength")} min={0} max={100} value={Math.round(s.customBg.parallaxStrength * 100)} suffix="%" onChange={(v) => setBg({ parallaxStrength: v / 100 })} />
+                  <W11Slider title={t("brightness")} min={20} max={140} value={Math.round(s.customBg.brightness * 100)} suffix="%" onChange={(v) => setBg({ brightness: v / 100 })} />
+                  <W11Slider title={t("blur")} min={0} max={24} value={s.customBg.blur} suffix="px" onChange={(v) => setBg({ blur: v })} />
+                  <W11Slider title={t("vignette")} min={0} max={100} value={Math.round(s.customBg.vignette * 100)} suffix="%" onChange={(v) => setBg({ vignette: v / 100 })} />
+                  <W11Slider title={t("saturation")} min={0} max={200} value={Math.round(s.customBg.saturation * 100)} suffix="%" onChange={(v) => setBg({ saturation: v / 100 })} />
+                  <W11Slider title={t("maskOpacity")} min={0} max={90} value={Math.round(s.customBg.maskOpacity * 100)} suffix="%" onChange={(v) => setBg({ maskOpacity: v / 100 })} />
+                  <W11Slider title={t("dynamicStrength")} min={0} max={100} value={Math.round(s.customBg.dynamicStrength * 100)} suffix="%" onChange={(v) => setBg({ dynamicStrength: v / 100 })} />
+                  <W11Slider title={t("parallaxStrength")} min={0} max={100} value={Math.round(s.customBg.parallaxStrength * 100)} suffix="%" onChange={(v) => setBg({ parallaxStrength: v / 100 })} />
                   {s.customBg.type === "video" && (
-                    <Check label={t("playVideoBg")} checked={s.customBg.playVideo} disabled={s.safeMode}
-                      onChange={(v) => setBg({ playVideo: v })} />
+                    <W11Row title={t("playVideoBg")}>
+                      <W11Switch checked={s.customBg.playVideo} disabled={s.safeMode} onChange={(v) => setBg({ playVideo: v })} />
+                    </W11Row>
                   )}
-                </>
+                </W11Card>
               )}
               {/* 批次E-6：每日自动换（本地缓存池，零网络） */}
-              <Field label={t("wpDaily")}>
-                <div className="row gap8 wrap">
-                  <Check label={t("wpDaily")} checked={s.wallpaperDaily} onChange={(v) => set("wallpaperDaily", v)} />
-                  <input className="text-input flex-1" readOnly value={s.wallpaperPoolDir} placeholder={t("wpPoolDir")} />
-                  <button type="button" className="btn ghost" onClick={() => void pickPoolDir()}>
+              <W11Card title={t("wpDaily")} desc={t("wpDailyHint")}>
+                <W11Row title={t("wpDaily")}>
+                  <W11Switch checked={s.wallpaperDaily} onChange={(v) => set("wallpaperDaily", v)} />
+                </W11Row>
+                <W11Row title={t("wpPoolDir")}>
+                  <input className="w11-input flex-1" readOnly value={s.wallpaperPoolDir} placeholder={t("wpPoolDir")} />
+                  <button type="button" className="w11-btn" onClick={() => void pickPoolDir()}>
                     <FolderOpen size={13} /> {t("chooseFile")}
                   </button>
-                </div>
-                <span className="dim small">{t("wpDailyHint")}</span>
-              </Field>
+                </W11Row>
+              </W11Card>
               {/* 批次E-6：多显示器独立壁纸（IDesktopWallpaper，对 Variable 之外的真实桌面生效） */}
               {monitors !== null && monitors.length > 1 && (
-                <Field label={t("wpMonitors")}>
+                <W11Card title={t("wpMonitors")} desc={t("wpMonitorHint")}>
                   {monitors.map((m) => (
-                    <div key={m.id} className="row gap8" style={{ marginBottom: 4 }}>
-                      <Monitor size={14} className="dim" />
-                      <span className="small flex-1">
-                        {m.primary ? t("wpMonitorPrimary") : t("wpMonitorN")} · {m.width}×{m.height}
-                      </span>
-                      <button type="button" className="btn ghost tiny" onClick={() => void setMonitorWallpaper(m)}>
+                    <W11Row key={m.id} title={m.primary ? t("wpMonitorPrimary") : t("wpMonitorN")} sub={`${m.width}×${m.height}`}>
+                      <button type="button" className="w11-btn" onClick={() => void setMonitorWallpaper(m)}>
                         {t("wpMonitorSet")}
                       </button>
-                    </div>
+                    </W11Row>
                   ))}
-                  <button type="button" className="btn ghost tiny" onClick={() => void applyAllMonitors()}>
-                    {t("wpMonitorAll")}
-                  </button>
-                  <span className="dim small">{t("wpMonitorHint")}</span>
-                </Field>
+                  <div className="w11-cardbody">
+                    <button type="button" className="w11-btn" onClick={() => void applyAllMonitors()}>
+                      {t("wpMonitorAll")}
+                    </button>
+                  </div>
+                </W11Card>
               )}
               {/* 批次E-12：Wallpaper Engine 壁纸导入（本机 Steam 创意工坊/项目，零网络） */}
-              <Field label={t("wpEngineTitle")}>
-                <div className="row gap8 wrap">
-                  <button type="button" className="btn ghost" onClick={() => void scanWpEngine("")}>
-                    <FolderOpen size={13} /> {t("wpEngineScan")}
-                  </button>
-                  <button type="button" className="btn ghost tiny" onClick={() => void scanWpEnginePick()}>
-                    {t("wpEnginePickDir")}
-                  </button>
-                </div>
-                <span className="dim small">{t("wpEngineDesc")}</span>
-                {wpEngine !== null && wpEngine.length === 0 && (
-                  <span className="dim small">{t("wpEngineEmpty")}</span>
-                )}
-                {wpEngine !== null && wpEngine.length > 0 && (
-                  <div className="wp-engine-list">
+              <W11Card title={t("wpEngineTitle")} desc={t("wpEngineDesc")}>
+                <div className="w11-cardbody">
+                  <div className="row gap8 wrap">
+                    <button type="button" className="w11-btn" onClick={() => void scanWpEngine("")}>
+                      <FolderOpen size={13} /> {t("wpEngineScan")}
+                    </button>
+                    <button type="button" className="w11-btn" onClick={() => void scanWpEnginePick()}>
+                      {t("wpEnginePickDir")}
+                    </button>
+                  </div>
+                  {wpEngine !== null && wpEngine.length === 0 && (
+                    <span className="dim small">{t("wpEngineEmpty")}</span>
+                  )}
+                  {wpEngine !== null && wpEngine.length > 0 && (
+                    <div className="wp-engine-list">
                     {wpEngine.map((it) => (
                       <button
                         key={`${it.source}-${it.id}`}
@@ -665,42 +720,42 @@ export function SettingsModal(props: {
                       </button>
                     ))}
                   </div>
-                )}
-              </Field>
-              {/* 批次E-6：Win+Tab 多窗口切换器（可选） */}
-              <Field label={t("winTabTitle")}>
-                <Check label={t("winTabTitle")} checked={s.winTabSwitcher} onChange={(v) => set("winTabSwitcher", v)} />
-                <span className="dim small">{t("winTabHint")}</span>
-              </Field>
-              <Field label={t("perfMode")}>
-                <select value={s.perfMode} onChange={(e) => set("perfMode", e.target.value as Settings["perfMode"])}>
-                  <option value="high">{t("perfHigh")}</option>
-                  <option value="balanced">{t("perfBalanced")}</option>
-                  <option value="eco">{t("perfEco")}</option>
-                  <option value="static">{t("perfStatic")}</option>
-                  <option value="auto">{t("perfAuto")}</option>
-                </select>
-              </Field>
-              <Field label={t("bgTier")}>
-                <select value={String(s.bgTier)} onChange={(e) => set("bgTier", Number(e.target.value))}>
-                  <option value="0">{t("bgTierAuto")}</option>
-                  {TIER_LABELS.map((_, i) => (
-                    <option key={i + 1} value={i + 1}>L{i + 1} · {(lang !== "en" ? TIER_LABELS : TIER_LABELS_EN)[i]}</option>
-                  ))}
-                </select>
-                {/* L-2：显示当前自动档位（手动覆盖优先） */}
-                {s.bgTier === 0 && (
-                  <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
-                    {t("autoTierNow")}: {autoTierLabel ?? "…"}
-                  </div>
-                )}
-              </Field>
-              {/* 批次W-4：布局快照管理（列表/保存/恢复/重命名/删除/导出导入） */}
-              <SnapshotManager />
-              {/* 批次W-5：标签页化开关（可选开启） */}
-              <VwmTabsToggle />
-              {/* D-3：全域软件接管看门狗（策略/开关） */}
-              <WatchdogToggle />
+                  )}
+                </div>
+              </W11Card>
+              <W11Card title={t("w11CardPerf")}>
+                {/* 批次E-6：Win+Tab 多窗口切换器（可选） */}
+                <W11Row title={t("winTabTitle")} sub={t("winTabHint")}>
+                  <W11Switch checked={s.winTabSwitcher} onChange={(v) => set("winTabSwitcher", v)} />
+                </W11Row>
+                <W11Row title={t("perfMode")}>
+                  <W11Select value={s.perfMode} onChange={(v) => set("perfMode", v as Settings["perfMode"])}>
+                    <option value="high">{t("perfHigh")}</option>
+                    <option value="balanced">{t("perfBalanced")}</option>
+                    <option value="eco">{t("perfEco")}</option>
+                    <option value="static">{t("perfStatic")}</option>
+                    <option value="auto">{t("perfAuto")}</option>
+                  </W11Select>
+                </W11Row>
+                <W11Row title={t("bgTier")} sub={s.bgTier === 0 ? `${t("autoTierNow")}: ${autoTierLabel ?? "…"}` : undefined}>
+                  <W11Select value={String(s.bgTier)} onChange={(v) => set("bgTier", Number(v))}>
+                    <option value="0">{t("bgTierAuto")}</option>
+                    {TIER_LABELS.map((_, i) => (
+                      <option key={i + 1} value={i + 1}>L{i + 1} · {(lang !== "en" ? TIER_LABELS : TIER_LABELS_EN)[i]}</option>
+                    ))}
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardTools")}>
+                <div className="w11-cardbody">
+                  {/* 批次W-4：布局快照管理（列表/保存/恢复/重命名/删除/导出导入） */}
+                  <SnapshotManager />
+                  {/* 批次W-5：标签页化开关（可选开启） */}
+                  <VwmTabsToggle />
+                  {/* D-3：全域软件接管看门狗（策略/开关） */}
+                  <WatchdogToggle />
+                </div>
+              </W11Card>
             </>
           )}
           {tab === "editor" && (
@@ -1241,6 +1296,93 @@ export function SettingsModal(props: {
   );
 }
 
+/* ==================== Windows 11 设置外壳组件（.w11-* 命名空间） ====================
+ * 仅用于已迁移到 Win11 版式的设置页（样板阶段：外观页）。
+ * 与既有 Field / Slider / Check 并存，改这套不会碰到未迁移页。
+ */
+
+/** Win11 卡片（分组容器）。 */
+function W11Card(props: { title: string; desc?: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <section className="w11-card">
+      <div className="w11-cardhead">
+        <h3>{props.title}</h3>
+        {props.desc && <p>{props.desc}</p>}
+      </div>
+      {props.children}
+    </section>
+  );
+}
+
+/** Win11 设置行：左文案（标题 + 副标题）/ 右控件。 */
+function W11Row(props: {
+  title: string;
+  sub?: string;
+  stack?: boolean;
+  children?: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className={`w11-row${props.stack ? " w11-row-stack" : ""}`}>
+      <span className="w11-rowtext">
+        <span className="w11-rowtitle">{props.title}</span>
+        {props.sub !== undefined && <span className="w11-rowsub">{props.sub}</span>}
+      </span>
+      {props.children !== undefined && <span className="w11-rowctl">{props.children}</span>}
+    </div>
+  );
+}
+
+/** Win11 下拉选择：原生 select + 自绘 chevron（保留原生键盘/无障碍行为）。 */
+function W11Select(props: {
+  value: string;
+  wide?: boolean;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <span className={`w11-select${props.wide ? " w11-select-wide" : ""}`}>
+      <select value={props.value} onChange={(e) => props.onChange(e.target.value)}>{props.children}</select>
+      <ChevronDown className="w11-chev" aria-hidden />
+    </span>
+  );
+}
+
+/** Win11 开关（40×20，圆点 12；hover 变宽、active 更宽）。 */
+function W11Switch(props: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="w11-switch"
+      aria-checked={props.checked}
+      disabled={props.disabled}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="knob" />
+    </button>
+  );
+}
+
+/** Win11 滑块行（与原 Slider 行为等价：值经 clamp 收敛到 [min,max]）。 */
+function W11Slider(props: {
+  title: string; min: number; max: number; step?: number; value: number; suffix?: string;
+  onChange: (v: number) => void;
+}): React.ReactElement {
+  const v = clamp(props.value, props.min, props.max);
+  return (
+    <W11Row title={props.title} sub={`${v}${props.suffix ?? ""}`}>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step ?? 1}
+        value={v}
+        onChange={(e) => props.onChange(Number(e.target.value))}
+      />
+    </W11Row>
+  );
+}
+
 function Field(props: { label: string; children: React.ReactNode }): React.ReactElement {
   return (
     <label className="field">
@@ -1275,7 +1417,7 @@ function Check(props: { label: string; checked: boolean; disabled?: boolean; onC
 }
 
 /** AI-03 M-12：时钟多时区编辑（≤3 个 IANA 名；非法名保存时如实过滤，零网络）。 */
-function Ai03ClockZones(props: { zones: string[]; set: <K extends keyof Settings>(key: K, value: Settings[K]) => void }): React.ReactElement {
+function Ai03ClockZones(props: { zones: string[]; win11?: boolean; set: <K extends keyof Settings>(key: K, value: Settings[K]) => void }): React.ReactElement {
   const { t } = useI18n();
   const [draft, setDraft] = useState("");
   const full = props.zones.length >= 3;
@@ -1288,34 +1430,46 @@ function Ai03ClockZones(props: { zones: string[]; set: <K extends keyof Settings
     props.set("clockZones", next);
     setDraft("");
   };
+  const body = (
+    <>
+      <div className="row gap8 wrap">
+        {props.zones.map((z) => (
+          <span key={z} className="row gap4 chip">
+            {z}
+            <button
+              type="button" className="icon-btn tiny" aria-label={`× ${z}`}
+              onClick={() => props.set("clockZones", props.zones.filter((x) => x !== z))}
+            >×</button>
+          </span>
+        ))}
+        {props.zones.length === 0 && <span className="dim small">{t("tbClockNoZones")}</span>}
+      </div>
+      <div className="row gap8">
+        <input
+          className={props.win11 ? "w11-input flex-1" : "text-input flex-1"}
+          value={draft}
+          placeholder="Asia/Shanghai"
+          disabled={full}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) add(); }}
+        />
+        <button type="button" className={props.win11 ? "w11-btn" : "btn ghost"} disabled={full || !draft.trim()} onClick={add}>
+          {t("setClockZoneAdd")}
+        </button>
+      </div>
+    </>
+  );
+  if (props.win11) {
+    return (
+      <W11Card title={t("setClockZones")} desc={t("setClockZonesHint")}>
+        <div className="w11-cardbody">{body}</div>
+      </W11Card>
+    );
+  }
   return (
     <Field label={t("setClockZones")}>
       <div className="col gap4">
-        <div className="row gap8 wrap">
-          {props.zones.map((z) => (
-            <span key={z} className="row gap4 chip">
-              {z}
-              <button
-                type="button" className="icon-btn tiny" aria-label={`× ${z}`}
-                onClick={() => props.set("clockZones", props.zones.filter((x) => x !== z))}
-              >×</button>
-            </span>
-          ))}
-          {props.zones.length === 0 && <span className="dim small">{t("tbClockNoZones")}</span>}
-        </div>
-        <div className="row gap8">
-          <input
-            className="text-input flex-1"
-            value={draft}
-            placeholder="Asia/Shanghai"
-            disabled={full}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) add(); }}
-          />
-          <button type="button" className="btn ghost" disabled={full || !draft.trim()} onClick={add}>
-            {t("setClockZoneAdd")}
-          </button>
-        </div>
+        {body}
         <span className="dim small">{t("setClockZonesHint")}</span>
       </div>
     </Field>
@@ -1323,79 +1477,85 @@ function Ai03ClockZones(props: { zones: string[]; set: <K extends keyof Settings
 }
 
 /** AI-03 M-15：任务栏空区右键菜单编辑（仅注册表内安全项；覆盖持久化 localStorage）。 */
-function Ai03BlankMenu(): React.ReactElement {
+function Ai03BlankMenu(props: { win11?: boolean }): React.ReactElement {
   const { t } = useI18n();
   const [menuOverride, setMenuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
   const order = menuOverride.order;
+  const rows = TASKBAR_MENU_REGISTRY.map((entry) => {
+    const visible = !menuOverride.hidden.includes(entry.id);
+    const first = order[0] === entry.id;
+    const last = order[order.length - 1] === entry.id;
+    const toggle = (v: boolean): void => {
+      const hidden = menuOverride.hidden.filter((x) => x !== entry.id);
+      const next = v
+        ? { order: [...order, entry.id], hidden }
+        : { order: order.filter((x) => x !== entry.id), hidden: [...hidden, entry.id] };
+      const nv: TaskbarMenuOverride = { ...next };
+      saveMenuOverride(nv);
+      setMenuOverride(nv);
+    };
+    /** delta = -1 上移 / +1 下移；越界静默（与原分支判断等价）。 */
+    const move = (delta: number): void => {
+      const nextOrder = [...order];
+      const i = nextOrder.indexOf(entry.id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= nextOrder.length) return;
+      const cur = nextOrder[i]!;
+      nextOrder[i] = nextOrder[j]!;
+      nextOrder[j] = cur;
+      const nv = { ...menuOverride, order: nextOrder };
+      saveMenuOverride(nv);
+      setMenuOverride(nv);
+    };
+    if (props.win11) {
+      return (
+        <W11Row key={entry.id} title={t(entry.labelKey)}>
+          <W11Switch checked={visible} onChange={toggle} />
+          <span className="row gap4">
+            <button type="button" className="icon-btn tiny" aria-label="↑" disabled={first || !visible} onClick={() => move(-1)}>↑</button>
+            <button type="button" className="icon-btn tiny" aria-label="↓" disabled={last || !visible} onClick={() => move(1)}>↓</button>
+          </span>
+        </W11Row>
+      );
+    }
+    return (
+      <div key={entry.id} className="row gap8" style={{ alignItems: "center" }}>
+        <Check label={t(entry.labelKey)} checked={visible} onChange={toggle} />
+        {visible && (
+          <span className="row gap4">
+            <button type="button" className="icon-btn tiny" aria-label="↑" disabled={first} onClick={() => move(-1)}>↑</button>
+            <button type="button" className="icon-btn tiny" aria-label="↓" disabled={last} onClick={() => move(1)}>↓</button>
+          </span>
+        )}
+      </div>
+    );
+  });
+  const reset = (
+    <button
+      type="button"
+      className={props.win11 ? "w11-btn" : "btn ghost"}
+      onClick={() => {
+        clearMenuOverride();
+        setMenuOverride(loadMenuOverride());
+      }}
+    >
+      {t("tbMenuReset")}
+    </button>
+  );
+  if (props.win11) {
+    return (
+      <W11Card title={t("tbMenuTitle")} desc={t("tbMenuHint")}>
+        {rows}
+        <div className="w11-cardbody">{reset}</div>
+      </W11Card>
+    );
+  }
   return (
     <Field label={t("tbMenuTitle")}>
       <div className="col gap4">
         <span className="dim small">{t("tbMenuHint")}</span>
-        {TASKBAR_MENU_REGISTRY.map((entry) => {
-          const visible = !menuOverride.hidden.includes(entry.id);
-          const first = order[0] === entry.id;
-          const last = order[order.length - 1] === entry.id;
-          return (
-            <div key={entry.id} className="row gap8" style={{ alignItems: "center" }}>
-              <Check
-                label={t(entry.labelKey)}
-                checked={visible}
-                onChange={(v) => {
-                  const hidden = menuOverride.hidden.filter((x) => x !== entry.id);
-                  const next = v
-                    ? { order: [...order, entry.id], hidden }
-                    : { order: order.filter((x) => x !== entry.id), hidden: [...hidden, entry.id] };
-                  const nv: TaskbarMenuOverride = { ...next };
-                  saveMenuOverride(nv);
-                  setMenuOverride(nv);
-                }}
-              />
-              {visible && (
-                <span className="row gap4">
-                  <button
-                    type="button" className="icon-btn tiny" aria-label="↑" disabled={first}
-                    onClick={() => {
-                      const nextOrder = [...order];
-                      const i = nextOrder.indexOf(entry.id);
-                      if (i > 0) {
-                        const prev = nextOrder[i - 1]!;
-                        nextOrder[i - 1] = nextOrder[i]!;
-                        nextOrder[i] = prev;
-                      }
-                      const nv = { ...menuOverride, order: nextOrder };
-                      saveMenuOverride(nv);
-                      setMenuOverride(nv);
-                    }}
-                  >↑</button>
-                  <button
-                    type="button" className="icon-btn tiny" aria-label="↓" disabled={last}
-                    onClick={() => {
-                      const nextOrder = [...order];
-                      const i = nextOrder.indexOf(entry.id);
-                      if (i >= 0 && i < nextOrder.length - 1) {
-                        const next = nextOrder[i + 1]!;
-                        nextOrder[i + 1] = nextOrder[i]!;
-                        nextOrder[i] = next;
-                      }
-                      const nv = { ...menuOverride, order: nextOrder };
-                      saveMenuOverride(nv);
-                      setMenuOverride(nv);
-                    }}
-                  >↓</button>
-                </span>
-              )}
-            </div>
-          );
-        })}
-        <button
-          type="button" className="btn ghost"
-          onClick={() => {
-            clearMenuOverride();
-            setMenuOverride(loadMenuOverride());
-          }}
-        >
-          {t("tbMenuReset")}
-        </button>
+        {rows}
+        {reset}
       </div>
     </Field>
   );

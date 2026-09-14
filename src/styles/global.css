@@ -27,6 +27,8 @@
 /* AI-20 质量门禁与收官组：M-88 Tooltip 规范 + V-92 倒计时 / M-80 追踪面板 / V-100 毕业页 */
 @import "./tooltip.css";
 @import "./ai20-quality.css";
+/* Windows 11 Fluent 设置界面层（.w11-* 命名空间，纯新增，零冲突） */
+@import "./win11-settings.css";
 :root {
   --bg: #05070d;
   --panel: rgba(10, 15, 28, 0.72);

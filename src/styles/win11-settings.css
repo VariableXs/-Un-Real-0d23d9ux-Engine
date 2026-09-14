@@ -1,0 +1,448 @@
+/* ============================================================
+ * Windows 11 Fluent 设置界面层（.w11-* 命名空间）
+ *
+ * 纪律：
+ * 1) 纯新增——不改写既有 .settings-* / .field / .btn / .check-line 规则；
+ *    冲突处一律用 `.w11-shell .xxx`（特异性 0-2-x > 0-1-x）覆盖，
+ *    因此本文件在 global.css 中的 @import 位置不影响结果。
+ * 2) 令牌优先复用 src/design/tokens.css（--sp-* / --r-* / --fs-* / --dur-* / --ease-*）；
+ *    仅补充 Win11 语义色与控件规格（--w11-*）。
+ * 3) 明暗是令牌交换：[data-theme] 只换 --w11-*，组件规则零改动。
+ * ============================================================ */
+
+.w11-shell {
+  /* ---- Win11 语义色：深色（Mica #202020）---- */
+  --w11-accent: #4cc2ff;
+  --w11-accent-hover: #479fd4;
+  --w11-on-accent: #0a0a0a;
+  --w11-layer: rgba(255, 255, 255, 0.0512);
+  --w11-layer-stroke: rgba(255, 255, 255, 0.0698);
+  --w11-divider: rgba(255, 255, 255, 0.0837);
+  --w11-ctl-fill: rgba(255, 255, 255, 0.0605);
+  --w11-ctl-hover: rgba(255, 255, 255, 0.0837);
+  --w11-ctl-press: rgba(255, 255, 255, 0.0326);
+  --w11-ctl-stroke: rgba(255, 255, 255, 0.0698);
+  --w11-ctl-stroke-bottom: rgba(0, 0, 0, 0.24);
+  --w11-subtle-hover: rgba(255, 255, 255, 0.0605);
+  --w11-subtle-press: rgba(255, 255, 255, 0.0373);
+  --w11-nav-sel: rgba(255, 255, 255, 0.0605);
+  --w11-nav-sel-hover: rgba(255, 255, 255, 0.0837);
+  --w11-text: #ffffff;
+  --w11-text-2: rgba(255, 255, 255, 0.786);
+  --w11-text-3: rgba(255, 255, 255, 0.5446);
+  --w11-text-disabled: rgba(255, 255, 255, 0.3628);
+  --w11-sw-off: #9a9a9a;
+  --w11-sw-knob: #ffffff;
+
+  /* ---- 结构规格 ---- */
+  --w11-nav-w: 232px;
+  --w11-nav-h: 40px;
+  --w11-row-h: 60px;
+  --w11-ctl-h: 32px;
+  --w11-r-card: 8px;
+  --w11-r-ctl: 4px;
+
+  display: flex;
+  min-height: 460px;
+}
+
+/* 浅色（paper / light）：Mica #f3f3f3 */
+[data-theme="paper"] .w11-shell,
+[data-theme="light"] .w11-shell {
+  --w11-accent: #0067c0;
+  --w11-accent-hover: #005ba1;
+  --w11-on-accent: #ffffff;
+  --w11-layer: rgba(255, 255, 255, 0.70);
+  --w11-layer-stroke: rgba(0, 0, 0, 0.0578);
+  --w11-divider: rgba(0, 0, 0, 0.0803);
+  --w11-ctl-fill: rgba(255, 255, 255, 0.70);
+  --w11-ctl-hover: rgba(249, 249, 249, 0.5);
+  --w11-ctl-press: rgba(249, 249, 249, 0.3);
+  --w11-ctl-stroke: rgba(0, 0, 0, 0.0578);
+  --w11-ctl-stroke-bottom: rgba(0, 0, 0, 0.1622);
+  --w11-subtle-hover: rgba(0, 0, 0, 0.0373);
+  --w11-subtle-press: rgba(0, 0, 0, 0.0241);
+  --w11-nav-sel: rgba(0, 0, 0, 0.0373);
+  --w11-nav-sel-hover: rgba(0, 0, 0, 0.0605);
+  --w11-text: #1b1b1b;
+  --w11-text-2: #5d5d5d;
+  --w11-text-3: #767676;
+  --w11-text-disabled: rgba(0, 0, 0, 0.3614);
+  --w11-sw-off: #5d5d5d;
+  --w11-sw-knob: #ffffff;
+}
+
+/* 高对比度：阴影/透明全降级为强描边 */
+[data-theme="high-contrast"] .w11-shell {
+  --w11-accent: #ffd400;
+  --w11-accent-hover: #e6bf00;
+  --w11-on-accent: #000000;
+  --w11-layer: rgba(0, 0, 0, 0.9);
+  --w11-layer-stroke: #9a9a9a;
+  --w11-divider: #9a9a9a;
+  --w11-ctl-fill: rgba(0, 0, 0, 0.9);
+  --w11-ctl-hover: rgba(255, 255, 255, 0.1);
+  --w11-ctl-press: rgba(255, 255, 255, 0.16);
+  --w11-ctl-stroke: #9a9a9a;
+  --w11-ctl-stroke-bottom: #9a9a9a;
+  --w11-subtle-hover: rgba(255, 255, 255, 0.12);
+  --w11-subtle-press: rgba(255, 255, 255, 0.2);
+  --w11-nav-sel: rgba(255, 255, 255, 0.14);
+  --w11-nav-sel-hover: rgba(255, 255, 255, 0.2);
+  --w11-text: #ffffff;
+  --w11-text-2: #d0d0d0;
+  --w11-text-3: #d0d0d0;
+  --w11-text-disabled: #8a8a8a;
+  --w11-sw-off: #ffffff;
+  --w11-sw-knob: #000000;
+}
+
+/* ===================== 左侧导航 ===================== */
+.w11-shell .w11-nav {
+  width: var(--w11-nav-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 10px;
+  margin-right: 16px;
+  border-right: 1px solid var(--w11-divider);
+  max-height: 62vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* 账户卡 */
+.w11-shell .w11-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  background: none;
+  border: none;
+  border-radius: var(--w11-r-ctl);
+  color: var(--w11-text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-account:hover { background: var(--w11-subtle-hover); }
+.w11-shell .w11-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(140deg, #7ba7d8, #3d6ea8);
+}
+.w11-shell .w11-account .w11-who { min-width: 0; display: flex; flex-direction: column; }
+.w11-shell .w11-account .w11-who b {
+  font-size: var(--fs-14, 14px);
+  font-weight: 400;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.w11-shell .w11-account .w11-who span {
+  font-size: var(--fs-12, 12px);
+  line-height: 16px;
+  color: var(--w11-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 导航项：40px 高 / 16px 图标 / 选中态填充 + 左侧 3px 强调竖条 */
+.w11-shell .w11-navitem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: var(--w11-nav-h);
+  padding: 0 12px;
+  margin-bottom: 2px;
+  background: none;
+  border: none;
+  border-radius: var(--w11-r-ctl);
+  font-family: inherit;
+  font-size: var(--fs-14, 14px);
+  line-height: 20px;
+  color: var(--w11-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-navitem:hover { background: var(--w11-subtle-hover); }
+.w11-shell .w11-navitem:active { background: var(--w11-subtle-press); }
+.w11-shell .w11-navitem.on { background: var(--w11-nav-sel); }
+.w11-shell .w11-navitem.on:hover { background: var(--w11-nav-sel-hover); }
+.w11-shell .w11-navitem.on::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--w11-accent);
+}
+.w11-shell .w11-navitem .w11-lbl {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.w11-shell .w11-navgroup {
+  font-size: var(--fs-12, 12px);
+  line-height: 16px;
+  color: var(--w11-text-3);
+  padding: 14px 12px 4px;
+  letter-spacing: 0.2px;
+}
+
+/* ===================== 内容区 ===================== */
+.w11-shell .w11-page {
+  flex: 1;
+  min-width: 0;
+  max-height: 62vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.w11-shell .w11-title {
+  font-size: var(--fs-24, 24px);
+  line-height: 32px;
+  font-weight: 600;
+  margin: 2px 0 16px;
+  letter-spacing: -0.2px;
+  color: var(--w11-text);
+}
+
+/* ===================== 卡片 ===================== */
+.w11-shell .w11-card {
+  background: var(--w11-layer);
+  border: 1px solid var(--w11-layer-stroke);
+  border-radius: var(--w11-r-card);
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.w11-shell .w11-cardhead { padding: 16px 16px 12px; }
+.w11-shell .w11-cardhead h3 {
+  margin: 0;
+  font-size: var(--fs-14, 14px);
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--w11-text);
+}
+.w11-shell .w11-cardhead p {
+  margin: 2px 0 0;
+  font-size: var(--fs-12, 12px);
+  line-height: 16px;
+  color: var(--w11-text-2);
+}
+.w11-shell .w11-cardhead:only-child { padding-bottom: 16px; }
+
+/* 自由内容区（承载既有复杂子组件，不做行高约束） */
+.w11-shell .w11-cardbody {
+  padding: 4px 16px 16px;
+  border-top: 1px solid var(--w11-divider);
+  color: var(--w11-text);
+}
+.w11-shell .w11-cardbody:first-child { border-top: none; }
+
+/* 设置行 */
+.w11-shell .w11-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--w11-row-h);
+  padding: 10px 16px;
+  border-top: 1px solid var(--w11-divider);
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-row:first-child { border-top: none; }
+.w11-shell .w11-row.w11-row-click { cursor: pointer; }
+.w11-shell .w11-row.w11-row-click:hover { background: var(--w11-subtle-hover); }
+.w11-shell .w11-row.w11-row-click:active { background: var(--w11-subtle-press); }
+.w11-shell .w11-row.w11-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 0;
+}
+.w11-shell .w11-rowtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.w11-shell .w11-rowtitle { font-size: var(--fs-14, 14px); line-height: 20px; color: var(--w11-text); }
+.w11-shell .w11-rowsub { font-size: var(--fs-12, 12px); line-height: 16px; color: var(--w11-text-2); }
+.w11-shell .w11-rowctl { flex: none; display: flex; align-items: center; gap: 8px; }
+.w11-shell .w11-rowctl .w11-chev { color: var(--w11-text-2); }
+
+/* ===================== 控件：下拉选择 ===================== */
+.w11-shell .w11-select { position: relative; display: inline-flex; align-items: center; }
+.w11-shell .w11-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: var(--w11-ctl-h);
+  min-width: 170px;
+  max-width: 280px;
+  padding: 0 30px 0 11px;
+  font-family: inherit;
+  font-size: var(--fs-14, 14px);
+  line-height: 20px;
+  color: var(--w11-text);
+  background: var(--w11-ctl-fill);
+  border: 1px solid var(--w11-ctl-stroke);
+  border-bottom-color: var(--w11-ctl-stroke-bottom);
+  border-radius: var(--w11-r-ctl);
+  cursor: pointer;
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-select select:hover { background: var(--w11-ctl-hover); }
+.w11-shell .w11-select select:active { background: var(--w11-ctl-press); color: var(--w11-text-2); }
+.w11-shell .w11-select select:focus-visible {
+  outline: 2px solid var(--w11-text);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.w11-shell .w11-select select option { background: var(--panel-solid, #0b1122); color: var(--text, #dfe7f5); }
+.w11-shell .w11-select.w11-select-wide select { min-width: 220px; max-width: 320px; }
+.w11-shell .w11-select .w11-chev {
+  position: absolute;
+  right: 9px;
+  pointer-events: none;
+  width: 14px;
+  height: 14px;
+  color: var(--w11-text-2);
+}
+
+/* ===================== 控件：开关（40×20 / 圆点 12） ===================== */
+.w11-shell .w11-switch {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid var(--w11-sw-off);
+  transition: background var(--dur-4, 200ms) var(--ease-standard),
+              border-color var(--dur-4, 200ms) var(--ease-standard);
+}
+.w11-shell .w11-switch .knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--w11-sw-off);
+  transition: transform var(--dur-4, 200ms) var(--ease-standard),
+              width var(--dur-4, 200ms) var(--ease-standard),
+              background var(--dur-4, 200ms) var(--ease-standard);
+}
+.w11-shell .w11-switch[aria-checked="true"] {
+  background: var(--w11-accent);
+  border-color: var(--w11-accent);
+}
+.w11-shell .w11-switch[aria-checked="true"] .knob {
+  background: var(--w11-sw-knob);
+  transform: translateX(20px);
+}
+.w11-shell .w11-switch:hover .knob { width: 14px; }
+.w11-shell .w11-switch[aria-checked="true"]:hover .knob { transform: translateX(18px); }
+.w11-shell .w11-switch:active .knob { width: 17px; }
+.w11-shell .w11-switch[aria-checked="true"]:active .knob { transform: translateX(15px); }
+.w11-shell .w11-switch[disabled] { opacity: 0.4; cursor: default; }
+.w11-shell .w11-switch:focus-visible {
+  outline: 2px solid var(--w11-text);
+  outline-offset: 2px;
+}
+
+/* ===================== 控件：按钮 / 输入 / 滑块 ===================== */
+.w11-shell .w11-btn {
+  height: var(--w11-ctl-h);
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: none;
+  font-family: inherit;
+  font-size: var(--fs-14, 14px);
+  line-height: 20px;
+  color: var(--w11-text);
+  background: var(--w11-ctl-fill);
+  border: 1px solid var(--w11-ctl-stroke);
+  border-bottom-color: var(--w11-ctl-stroke-bottom);
+  border-radius: var(--w11-r-ctl);
+  cursor: pointer;
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-btn:hover { background: var(--w11-ctl-hover); }
+.w11-shell .w11-btn:active { background: var(--w11-ctl-press); color: var(--w11-text-2); }
+.w11-shell .w11-btn.w11-btn-accent {
+  background: var(--w11-accent);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--w11-on-accent);
+  font-weight: 600;
+}
+.w11-shell .w11-btn.w11-btn-accent:hover { background: var(--w11-accent-hover); }
+.w11-shell .w11-btn[disabled] { opacity: 0.4; cursor: default; }
+
+.w11-shell .w11-input {
+  height: var(--w11-ctl-h);
+  min-width: 180px;
+  padding: 0 11px;
+  font-family: inherit;
+  font-size: var(--fs-14, 14px);
+  color: var(--w11-text);
+  background: var(--w11-ctl-fill);
+  border: 1px solid var(--w11-ctl-stroke);
+  border-bottom-color: var(--w11-ctl-stroke-bottom);
+  border-radius: var(--w11-r-ctl);
+  outline: none;
+  transition: background var(--dur-1, 80ms) var(--ease-standard);
+}
+.w11-shell .w11-input::placeholder { color: var(--w11-text-3); }
+.w11-shell .w11-input:hover { background: var(--w11-ctl-hover); }
+.w11-shell .w11-input:focus { border-bottom: 2px solid var(--w11-accent); }
+.w11-shell .w11-input:disabled { opacity: 0.5; cursor: default; }
+
+.w11-shell input[type="range"] {
+  accent-color: var(--w11-accent);
+  width: 200px;
+  max-width: 100%;
+}
+.w11-shell input[type="color"] {
+  width: 44px;
+  height: 30px;
+  border: 1px solid var(--w11-ctl-stroke);
+  border-radius: var(--w11-r-ctl);
+  background: none;
+  padding: 1px;
+}
+
+/* 组内说明文字 */
+.w11-shell .w11-note {
+  padding: 10px 16px;
+  border-top: 1px solid var(--w11-divider);
+  font-size: var(--fs-12, 12px);
+  line-height: 16px;
+  color: var(--w11-text-3);
+}
+
+/* 减少动效：全部降级，位移也一并取消 */
+[data-reduce-motion="true"] .w11-shell .w11-switch .knob { transition-duration: 80ms; }
+@media (prefers-reduced-motion: reduce) {
+  .w11-shell * { animation-duration: 80ms !important; transition-duration: 80ms !important; }
+}

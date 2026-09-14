@@ -3043,6 +3043,17 @@ const zh: Dict = {
   d4LockedHint: "配置已锁定，先解锁再修改",
   // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心入口）
   aurW2DesignCenter: "设计中心（领域03）",
+  // Windows 11 设置外壳（.w11-* 命名空间）：导航账户卡与分组卡片标题
+  w11AccountName: "Variable 引擎",
+  w11AccountDesc: "本地账户 · 离线优先",
+  w11CardWallpaper: "桌面壁纸",
+  w11CardTaskbar: "窗口与任务栏",
+  w11CardPersonalize: "个性化",
+  w11CardBackground: "自定义背景",
+  w11CardClock: "时钟与时区",
+  w11CardMenu: "任务栏菜单",
+  w11CardPerf: "性能与壁纸档位",
+  w11CardTools: "工具",
 };
 
 /**
@@ -6207,6 +6218,17 @@ const en: Dict = {
   d4LockedHint: "Config is locked — unlock to edit",
   // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 设计中心入口）
   aurW2DesignCenter: "Design Center (Domain 03)",
+  // Windows 11 settings shell (.w11-* namespace): nav account card & group card titles
+  w11AccountName: "Variable Engine",
+  w11AccountDesc: "Local account · offline-first",
+  w11CardWallpaper: "Desktop wallpaper",
+  w11CardTaskbar: "Window & taskbar",
+  w11CardPersonalize: "Personalization",
+  w11CardBackground: "Custom background",
+  w11CardClock: "Clock & time zones",
+  w11CardMenu: "Taskbar menu",
+  w11CardPerf: "Performance & wallpaper tier",
+  w11CardTools: "Tools",
 };
 
 export const dictionaries: Record<Lang, Dict> = { zh, "zh-TW": zhTW, en };
