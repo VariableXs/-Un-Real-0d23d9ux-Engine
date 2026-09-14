@@ -7,9 +7,9 @@ import {
 } from "lucide-react";
 // Windows 11 设置外壳（.w11-*）：导航图标（与上面一行不重名，避免重复导入）
 import {
-  Accessibility, AppWindow, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
+  Accessibility, AppWindow, ArrowLeft, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
   GitBranch, Globe, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MousePointer2, Network,
-  Palette, Play, Plug, Power, Puzzle, Rocket, Shield, SlidersHorizontal, Sparkles, User, Volume2,
+  Palette, Play, Plug, Power, Puzzle, Rocket, Search, Shield, SlidersHorizontal, Sparkles, User, Volume2,
   Wifi, Zap, type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
@@ -200,6 +200,9 @@ export function SettingsModal(props: {
     void getVersion().then(setAboutVersion).catch(() => {});
   }, [tab, aboutVersion]);
   const binds = bindDraft ?? (s.shortcutBinds ?? {});
+  // Win11 标题栏：搜索框过滤导航项 + 窗口按钮最大化切换（等待用户输入前两者均为默认态）
+  const [navQuery, setNavQuery] = useState("");
+  const [w11Max, setW11Max] = useState(false);
 
   if (!isOpen) return null;
 
@@ -253,6 +256,22 @@ export function SettingsModal(props: {
     { id: "sys-power", label: t("sysPower") },
     { id: "sys-access", label: t("sysAccess") },
   ];
+
+  // Win11 标题栏搜索：仅按名称过滤导航（查询为空时与原列表逐项相等，行为不变）
+  const navQ = navQuery.trim().toLowerCase();
+  const visEngineTabs = navQ ? engineTabs.filter((tb) => tb.label.toLowerCase().includes(navQ)) : engineTabs;
+  const visSysTabs = navQ ? sysTabs.filter((tb) => tb.label.toLowerCase().includes(navQ)) : sysTabs;
+  const homeTabId = engineTabs[0]?.id ?? "appearance";
+  const curTabLabel = [...engineTabs, ...sysTabs].find((tb) => tb.id === tab)?.label ?? t("settings");
+  const navItem = (tb: { id: string; label: string }) => {
+    const Icon = tabIcon(tb.id);
+    return (
+      <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
+        <Icon size={16} aria-hidden />
+        <span className="w11-lbl">{tb.label}</span>
+      </button>
+    );
+  };
   const fullBinds = SHORTCUT_ACTIONS.map((a) => ({ action: a.id, accel: binds[a.id] ?? a.accel }));
   const conflicts = findConflicts(fullBinds);
   const invalidBinds = fullBinds.filter((b) => normalizeAccel(b.accel) === null).map((b) => b.action);
@@ -457,43 +476,87 @@ export function SettingsModal(props: {
   }
 
   return (
-    <Modal open onClose={() => uiStore.setState({ settingsOpen: false })} title={t("settings")} width={1000}>
+    <Modal
+      open
+      onClose={() => uiStore.setState({ settingsOpen: false })}
+      title={t("settings")}
+      width={1080}
+      variant={`modal-w11${w11Max ? " modal-w11-max" : ""}`}
+    >
       {/* U-41 RTL 试点面板①：设置中心（rtlPilot 开启时 dir=rtl 正确渲染） */}
       <div className="settings-layout w11-shell" dir={s.rtlPilot ? "rtl" : "ltr"} data-testid="settings-modal">
-        <nav className="settings-nav w11-nav" aria-label={t("settings")}>
-          {/* Win11 导航顶部账户卡 */}
-          <div className="w11-account">
-            <span className="w11-avatar">V</span>
-            <span className="w11-who">
-              <b>{t("w11AccountName")}</b>
-              <span>{t("w11AccountDesc")}</span>
-            </span>
+        {/* Win11 标题栏（实测 48px：返回 32 + 名称 12px + 居中搜索 515×34 + 窗口按钮 46×32） */}
+        <div className="w11-titlebar">
+          <button
+            type="button"
+            className="w11-back"
+            aria-label={t("back")}
+            data-tip={t("back")}
+            onClick={() => {
+              // Win11 返回语义：非首页 → 回首页；首页 → 收起面板
+              if (tab !== homeTabId) uiStore.setState({ settingsTab: homeTabId });
+              else uiStore.setState({ settingsOpen: false });
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden />
+          </button>
+          <span className="w11-apptitle">{t("w11SetTitle")}</span>
+          <div className="w11-search">
+            <Search size={14} aria-hidden />
+            <input
+              type="text"
+              value={navQuery}
+              placeholder={t("w11SearchSet")}
+              aria-label={t("w11SearchSet")}
+              onChange={(e) => setNavQuery(e.target.value)}
+            />
           </div>
-          {engineTabs.map((tb) => {
-            const Icon = tabIcon(tb.id);
-            return (
-              <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
-                <Icon size={16} aria-hidden />
-                <span className="w11-lbl">{tb.label}</span>
-              </button>
-            );
-          })}
-          <div className="nav-group w11-navgroup">{t("sysGroup")}</div>
-          {sysTabs.map((tb) => {
-            const Icon = tabIcon(tb.id);
-            return (
-              <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
-                <Icon size={16} aria-hidden />
-                <span className="w11-lbl">{tb.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        {/* W11 分页容器：样板阶段仅「外观」页启用（其余页沿用既有 .field 版式） */}
-        <div className={`settings-body${tab === "appearance" ? " w11-page" : ""}`}>
-          {tab === "appearance" && (
-            <>
-              <h2 className="w11-title">{t("appearance")}</h2>
+          <div className="w11-caption">
+            <button
+              type="button" className="w11-cap" aria-label={t("minimize")} data-tip={t("minimize")}
+              onClick={() => uiStore.setState({ settingsOpen: false })}
+            >
+              <span className="w11-glyph w11-glyph-min" aria-hidden />
+            </button>
+            <button
+              type="button" className="w11-cap"
+              aria-label={w11Max ? t("restore") : t("maximize")}
+              data-tip={w11Max ? t("restore") : t("maximize")}
+              onClick={() => setW11Max((v) => !v)}
+            >
+              <span className={`w11-glyph ${w11Max ? "w11-glyph-restore" : "w11-glyph-max"}`} aria-hidden />
+            </button>
+            <button
+              type="button" className="w11-cap w11-cap-close" aria-label={t("close")} data-tip={t("close")}
+              onClick={() => uiStore.setState({ settingsOpen: false })}
+            >
+              <span className="w11-glyph w11-glyph-close" aria-hidden />
+            </button>
+          </div>
+        </div>
+        <div className="w11-main">
+          <nav className="settings-nav w11-nav" aria-label={t("settings")}>
+            {/* Win11 导航顶部账户卡 */}
+            <div className="w11-account">
+              <span className="w11-avatar">V</span>
+              <span className="w11-who">
+                <b>{t("w11AccountName")}</b>
+                <span>{t("w11AccountDesc")}</span>
+              </span>
+            </div>
+            {visEngineTabs.map(navItem)}
+            {visSysTabs.length > 0 && <div className="nav-group w11-navgroup">{t("sysGroup")}</div>}
+            {visSysTabs.map(navItem)}
+            {visEngineTabs.length === 0 && visSysTabs.length === 0 && (
+              <div className="w11-navempty">{t("noResults")}</div>
+            )}
+          </nav>
+          {/* W11 分页容器：外观页走 .w11-card 版式，其余页由 .w11-legacy 桥接既有 .field 版式 */}
+          <div className="settings-body w11-page">
+            <div className="w11-content">
+              <h2 className="w11-title">{curTabLabel}</h2>
+              {tab === "appearance" && (
+                <>
 
               <W11Card title={t("w11CardWallpaper")}>
                 <W11Row title={t("wallpaperMode")}>
@@ -758,6 +821,9 @@ export function SettingsModal(props: {
               </W11Card>
             </>
           )}
+          {/* 未迁移页桥接：以下 30 个 tab 沿用既有 .field 版式，由 .w11-legacy 统一改造为 Win11 卡片行 */}
+          {tab !== "appearance" && (
+            <div className="w11-legacy">
           {tab === "editor" && (
             <>
               <Slider label={t("editorWidth")} min={58} max={72} value={s.editorWidthPct} suffix="%" onChange={(v) => set("editorWidthPct", v)} />
@@ -1290,6 +1356,10 @@ export function SettingsModal(props: {
               </div>
             </>
           )}
+              </div>
+            )}
+            </div>
+          </div>
         </div>
       </div>
     </Modal>
@@ -1377,6 +1447,7 @@ function W11Slider(props: {
         max={props.max}
         step={props.step ?? 1}
         value={v}
+        style={sliderFillStyle(v, props.min, props.max)}
         onChange={(e) => props.onChange(Number(e.target.value))}
       />
     </W11Row>
@@ -1392,6 +1463,15 @@ function Field(props: { label: string; children: React.ReactNode }): React.React
   );
 }
 
+/**
+ * 滑块「已填充比例」变量：按 20px 圆点半径补偿端点，使强调色进度正好停在圆点中心。
+ * 仅在 .w11-shell 内生效（win11-settings.css 读取 --w11-fill），其它场景零影响。
+ */
+function sliderFillStyle(value: number, min: number, max: number): React.CSSProperties {
+  const pct = max > min ? ((clamp(value, min, max) - min) / (max - min)) * 100 : 0;
+  return { "--w11-fill": `calc(${pct.toFixed(3)}% + ${(10 - pct * 0.2).toFixed(2)}px)` } as React.CSSProperties;
+}
+
 function Slider(props: { label: string; min: number; max: number; step?: number; value: number; suffix?: string; onChange: (v: number) => void }): React.ReactElement {
   return (
     <Field label={`${props.label}: ${props.value}${props.suffix ?? ""}`}>
@@ -1401,6 +1481,7 @@ function Slider(props: { label: string; min: number; max: number; step?: number;
         max={props.max}
         step={props.step ?? 1}
         value={clamp(props.value, props.min, props.max)}
+        style={sliderFillStyle(props.value, props.min, props.max)}
         onChange={(e) => props.onChange(Number(e.target.value))}
       />
     </Field>

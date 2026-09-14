@@ -11,6 +11,8 @@ export function Modal(props: {
   children: ReactNode;
   width?: number;
   footer?: ReactNode;
+  /** 追加到 .modal 的变体类名（Win11 设置窗口用 "modal-w11"；缺省时行为与原来一致）。 */
+  variant?: string;
 }) {
   const { t } = useI18n();
   useEffect(() => {
@@ -29,7 +31,7 @@ export function Modal(props: {
   if (!props.open) return null;
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={props.title} className="modal" style={{ maxWidth: props.width ?? 520 }}>
+      <div role="dialog" aria-modal="true" aria-label={props.title} className={`modal${props.variant ? ` ${props.variant}` : ""}`} style={{ maxWidth: props.width ?? 520 }}>
         {props.title !== undefined && (
           <div className="modal-head">
             <h3>{props.title}</h3>

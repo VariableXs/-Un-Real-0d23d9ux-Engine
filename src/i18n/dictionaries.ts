@@ -3046,6 +3046,8 @@ const zh: Dict = {
   // Windows 11 设置外壳（.w11-* 命名空间）：导航账户卡与分组卡片标题
   w11AccountName: "Variable 引擎",
   w11AccountDesc: "本地账户 · 离线优先",
+  w11SetTitle: "设置",
+  w11SearchSet: "搜索设置",
   w11CardWallpaper: "桌面壁纸",
   w11CardTaskbar: "窗口与任务栏",
   w11CardPersonalize: "个性化",
