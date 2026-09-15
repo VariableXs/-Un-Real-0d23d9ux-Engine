@@ -418,6 +418,14 @@ fn family_images(exe_name: &str) -> Vec<String> {
     match lower.as_str() {
         "steam.exe" => out.push("steamwebhelper.exe".into()),
         "steamwebhelper.exe" => out.push("steam.exe".into()),
+        // Wallpaper Engine 2.8+：UI 主窗属独立进程 wallpaperui.exe（CEF），
+        // 登记/启动项通常指向 wallpaper64/32.exe —— 按 exe 名匹配必须带上
+        // 家族，否则 UI 窗口 pid 树匹配落空 → embed-fail / 永久逃逸（实机）。
+        "wallpaper64.exe" | "wallpaper32.exe" => out.push("wallpaperui.exe".into()),
+        "wallpaperui.exe" => {
+            out.push("wallpaper64.exe".into());
+            out.push("wallpaper32.exe".into());
+        }
         _ => {}
     }
     out
@@ -1128,36 +1136,38 @@ fn attach_by_tier(
             // 的误判：唤醒后的 Steam CEF 主窗 reparent 进桌面画面/输入全通。
             // Steam 家族（steam.exe / steamwebhelper.exe，含 embed_adopt 的
             // 无 target 路径）一律 **L1 真实嵌入优先**，失败才回退 L3 冻结帧。
+            // Wallpaper Engine 2.8+ 的 UI 主窗（wallpaperui.exe，CEF）同根
+            // 冲突同策略（实机：L3 藏窗捕获必停渲染黑帧，L1 嵌入画面/输入全通）。
             // 其它 CEF 应用待逐个实机验证后再扩大（避免旧坑）。
-            let is_steam_family = {
+            let is_cef_l1_family = {
                 let img = win::window_pid(hwnd_from_isize(hwnd))
                     .and_then(|p| win::process_image(p))
                     .map(|s| s.to_lowercase())
                     .unwrap_or_default();
                 let base = img.rsplit(['\\', '/']).next().unwrap_or("");
-                base == "steam.exe" || base == "steamwebhelper.exe"
+                base == "steam.exe" || base == "steamwebhelper.exe" || base == "wallpaperui.exe"
             };
             // R5 补：单例重开/托盘旧窗路径的藏窗态必须先唤醒再重父化——
             // 此前 Steam 家族分支在 needs_reveal 检查之前 return，上会话
             // 被 hide 到 -32000 的托盘旧窗未唤醒直接嵌入 → Chromium 停渲染
             // 黑帧（r5 实机复现）。还原+抖动唤醒与下方 R3-B11 治理同构。
-            if is_steam_family && crate::shell::capture::win::needs_reveal(hwnd) {
+            if is_cef_l1_family && crate::shell::capture::win::needs_reveal(hwnd) {
                 crate::shell::capture::win::restore_window(hwnd);
                 let woke = crate::shell::capture::win::jiggle_window(hwnd);
                 crate::shell::applog::log(
                     "capture",
                     format!(
-                        "attach {tp_id}: Steam 家族托盘旧窗处于停渲染态 → 已还原+抖动唤醒（woke={woke}）再 L1 嵌入"
+                        "attach {tp_id}: CEF 家族托盘旧窗处于停渲染态 → 已还原+抖动唤醒（woke={woke}）再 L1 嵌入"
                     ),
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1200));
             }
-            if is_steam_family && restyle_and_reparent(app, hwnd) {
+            if is_cef_l1_family && restyle_and_reparent(app, hwnd) {
                 register(None, false);
                 crate::shell::applog::log(
                     "embed",
                     format!(
-                        "attach {tp_id}: L3→L1 真实嵌入（Steam 家族，藏窗捕获对 Chromium 必停渲染）hwnd={hwnd}（capture=false）"
+                        "attach {tp_id}: L3→L1 真实嵌入（CEF 家族，藏窗捕获对 Chromium 必停渲染）hwnd={hwnd}（capture=false）"
                     ),
                 );
                 return Attach::Ok { capture: false };
@@ -1785,10 +1795,38 @@ fn steam_root_pid(pid: u32) -> u32 {
 /// 主窗特征过滤：带标题栏（CEF 无边框工具窗/气泡不收编，与 WinEventHook
 /// on_show 的 has_caption 口径一致）。
 #[cfg(windows)]
-fn has_caption_style(hwnd: isize) -> bool {
+pub(crate) fn has_caption_style(hwnd: isize) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_STYLE, WS_CAPTION};
     let style = unsafe { GetWindowLongPtrW(hwnd_from_isize(hwnd), GWL_STYLE) } as u32;
     style & WS_CAPTION.0 != 0
+}
+
+/// D-3 看门狗「可收编主窗」闸门（R6 实机根因修复）：CEF 家族会开出大量
+/// 无标题工具窗 / "Menu" 弹出窗 / 截图覆盖层——它们不是应用主窗，收编
+/// 只会得到一个黑框并抢占真正主窗的收编次序（Steam 黑屏实机根因）。
+/// 口径：必须有标题栏样式 + 非工具窗 + 客户区 ≥160×100。
+#[cfg(windows)]
+pub(crate) fn is_adoptable_main_window(hwnd: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, GetWindowRect, GWL_EXSTYLE, WS_EX_TOOLWINDOW,
+    };
+    if !has_caption_style(hwnd) {
+        return false;
+    }
+    let ex = unsafe { GetWindowLongPtrW(hwnd_from_isize(hwnd), GWL_EXSTYLE) } as u32;
+    if ex & WS_EX_TOOLWINDOW.0 != 0 {
+        return false;
+    }
+    let mut rc = windows::Win32::Foundation::RECT::default();
+    if unsafe { GetWindowRect(hwnd_from_isize(hwnd), &mut rc) }.is_err() {
+        return false;
+    }
+    (rc.right - rc.left) >= 160 && (rc.bottom - rc.top) >= 100
+}
+
+#[cfg(not(windows))]
+pub(crate) fn is_adoptable_main_window(_hwnd: isize) -> bool {
+    true
 }
 
 /// steam_launch 后启动的 Steam 主窗看护（见模块注释）。幂等安全：每次
@@ -1853,6 +1891,19 @@ mod tests {
         assert_eq!(super::family_images("notepad.exe"), vec!["notepad.exe".to_string()]);
         // 大小写不敏感
         assert!(super::family_images("STEAM.EXE").contains(&"steamwebhelper.exe".to_string()));
+    }
+
+    /// Wallpaper Engine 2.8+：UI 主窗属 wallpaperui.exe —— 登记 wallpaper64/32
+    /// 时必须互为家族，反向同理（实机回归：UI 窗 pid 树落空 → embed-fail）。
+    #[test]
+    fn family_images_covers_wallpaperui() {
+        let f = super::family_images("wallpaper64.exe");
+        assert!(f.contains(&"wallpaperui.exe".to_string()));
+        let f32 = super::family_images("wallpaper32.exe");
+        assert!(f32.contains(&"wallpaperui.exe".to_string()));
+        let fu = super::family_images("wallpaperui.exe");
+        assert!(fu.contains(&"wallpaper64.exe".to_string()));
+        assert!(fu.contains(&"wallpaper32.exe".to_string()));
     }
 
     /// W-1：注册中心语义——多槽位并发、同槽位替换、按 id 移除、旧入口 "0" 兼容。

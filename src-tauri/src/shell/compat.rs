@@ -45,6 +45,9 @@ const WE_PROCS: &[&str] = &[
     "wallpaperservice32.exe",
     "wallpaperservice.exe",
     "wallpaper engine.exe",
+    // WE 2.8+ 独立 UI 进程（CEF）——UI 主窗属它，缺了它家族检测与
+    // 悬浮层压制都会落空（实机：Wallpaper UI 窗脱离 Variable 漂移）。
+    "wallpaperui.exe",
     "steam.exe",
     "steamwebhelper.exe",
 ];
@@ -1098,6 +1101,12 @@ mod tests {
                 "steam proc {p} should be monitored"
             );
         }
+    }
+
+    #[test]
+    fn cef_procs_cover_wallpaperui() {
+        // WE 2.8+ 独立 UI 进程必须在表（实机回归：UI 窗属 wallpaperui.exe）
+        assert!(WE_PROCS.contains(&"wallpaperui.exe"));
     }
     // ---- AI-12 兼容纵深组 ----
 

@@ -147,14 +147,31 @@ pub fn spawn_watchdog(app: tauri::AppHandle, st: &AppState) {
     std::thread::spawn(move || watch_loop(app));
 }
 
+/// 逃逸事件重报口径（R6 实机根因修复）：watch://escape 是 fire-and-forget
+/// 事件，前端 VWM 未挂载/主窗重建期间收到即丢——此前 emit 后即在 seen 里
+/// 终身去重，窗口永久逃逸（wallpaperui.exe 实机复现）。改为：未确认收编
+/// （未进入 embedded 登记）的窗口每 12s 重报一次，最多 5 次。
+pub(crate) fn should_reemit(emits: u32, elapsed_secs: u64) -> bool {
+    emits < 5 && elapsed_secs >= 12
+}
+
 #[cfg(windows)]
 fn watch_loop(app: tauri::AppHandle) {
     use std::collections::HashMap;
+    use std::time::Instant;
     use tauri::Emitter;
 
+    struct Escape {
+        image: String,
+        emits: u32,
+        last: Instant,
+    }
+
     let own_pid = std::process::id();
-    // 会话内已见窗口（hwnd → 进程映像）：逃逸窗口只报一次，不重复打扰
-    let mut seen: HashMap<isize, String> = HashMap::new();
+    // 已派发收编事件的窗口（hwnd → 状态）：未确认收编前按口径重报
+    let mut reported: HashMap<isize, Escape> = HashMap::new();
+    // 白名单/忽略清单命中的窗口：只记一次，不重复参与判定
+    let mut dismissed: std::collections::HashSet<isize> = std::collections::HashSet::new();
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -184,7 +201,11 @@ fn watch_loop(app: tauri::AppHandle) {
             crate::shell::embed::win::pid_tree(own_pid).into_iter().collect();
 
         for (hwnd, pid, full_image) in crate::shell::embed::watch_scan_windows() {
+            // 已收编：固化状态（永不再报）后跳过
             if embedded.contains(&hwnd) {
+                if let Some(e) = reported.get_mut(&hwnd) {
+                    e.emits = u32::MAX;
+                }
                 continue;
             }
             if pid == own_pid || pid <= 4 {
@@ -201,25 +222,43 @@ fn watch_loop(app: tauri::AppHandle) {
                 continue;
             }
             // 系统白名单 / 用户忽略清单（白名单先于逻辑执行）
-            if image.is_empty()
-                || WHITELIST.contains(&image.as_str())
-                || ignored.contains(&image)
-                || seen.get(&hwnd).map(|prev| *prev == image).unwrap_or(false)
-            {
-                seen.insert(hwnd, image);
+            if image.is_empty() || WHITELIST.contains(&image.as_str()) || ignored.contains(&image) {
+                dismissed.insert(hwnd);
                 continue;
             }
-            // 首次见到的窗口：探层级
+            if dismissed.contains(&hwnd) {
+                continue;
+            }
+            // R6 主窗闸门：无标题栏工具窗 / "Menu" 弹出窗 / 覆盖层不是应用
+            // 主窗（CEF 家族大量此类窗口）——收编它们只得黑框，还会抢占真正
+            // 主窗的收编次序（Steam 黑屏实机根因）。不入 reported：日后若
+            // 获得主窗特征（如托盘还原）仍可被正确收编。
+            if !crate::shell::embed::is_adoptable_main_window(hwnd) {
+                continue;
+            }
+            // 重报判定：已派发但未确认收编的窗口按口径重报
+            if let Some(e) = reported.get(&hwnd) {
+                if e.image == image {
+                    if !should_reemit(e.emits, e.last.elapsed().as_secs()) {
+                        continue;
+                    }
+                }
+            }
+            // 探层级（首次/重报均探：层级可能随窗口状态变化）
             let info = crate::shell::compat_probe::probe_hwnd(hwnd);
-            seen.insert(hwnd, image.clone());
             if info.effective() == crate::shell::compat_probe::CompatTier::L4 {
                 continue; // 全屏独占 / 反作弊 → 不回收，转让位
             }
+            let emits = reported.get(&hwnd).map(|e| e.emits).unwrap_or(0);
+            reported.insert(
+                hwnd,
+                Escape { image: image.clone(), emits: emits + 1, last: Instant::now() },
+            );
             let root_pid = pid;
             let title = window_title(hwnd);
             crate::shell::applog::log(
                 "watchdog",
-                format!("发现逃逸窗口 hwnd={hwnd} image={image} title={title:?} → 收编（policy={}）", s.policy),
+                format!("发现逃逸窗口 hwnd={hwnd} image={image} title={title:?} → 收编（policy={}，第{}次派发）", s.policy, emits + 1),
             );
             let _ = app.emit(
                 "watch://escape",
@@ -232,11 +271,13 @@ fn watch_loop(app: tauri::AppHandle) {
                 }),
             );
         }
-        // 收敛已消失窗口（防 seen 无限增长）
-        seen.retain(|h, _| {
+        // 收敛已消失窗口（防 reported/dismissed 无限增长）
+        let alive = |h: &isize| {
             use windows::Win32::UI::WindowsAndMessaging::IsWindow;
             unsafe { IsWindow(hwnd_from_isize(*h)) }.as_bool()
-        });
+        };
+        reported.retain(|h, _| alive(h));
+        dismissed.retain(alive);
     }
 }
 
@@ -324,5 +365,16 @@ mod tests {
             if legacy.policy == POLICY_ASK { POLICY_AUTO } else { legacy.policy.as_str() },
             POLICY_AUTO
         );
+    }
+
+    /// R6 重报口径：未确认收编的窗口 12s 后重报、最多 5 次；
+    /// 5 次耗尽或间隔不足均不重报；已收编固化（u32::MAX）永不重报。
+    #[test]
+    fn reemit_policy_bounded() {
+        assert!(super::should_reemit(1, 12));
+        assert!(super::should_reemit(4, 99));
+        assert!(!super::should_reemit(5, 99), "最多 5 次派发");
+        assert!(!super::should_reemit(1, 11), "间隔不足 12s 不重报");
+        assert!(!super::should_reemit(u32::MAX, 999), "已收编固化后永不重报");
     }
 }
