@@ -763,7 +763,12 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         }
         // 批次C-1 宽限一拍：WinEventHook 可能正把重建的新窗口重嵌进本会话
         std::thread::sleep(std::time::Duration::from_secs(2));
-        let Some(e) = with_registry(|m| m.get(&key).map(|e| (e.hwnd, e.root_pid, e.host))) else {
+        // M0 取证：一并取出 tp_id（应用真实身份）。第 4 项用于 readopt 广播，
+        // 避免用「注册表键」冒充应用身份自我嵌套（见下方 orphaned 分支）。
+        let Some(e) = with_registry(|m| {
+            m.get(&key)
+                .map(|e| (e.hwnd, e.root_pid, e.host, e.tp_id.clone()))
+        }) else {
             return;
         };
         if unsafe { IsWindow(hwnd_from_isize(e.0)) }.as_bool() {
@@ -824,7 +829,11 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         // 会话已移除 → WinEventHook 重嵌通道（需注册会话）失效，Steam 冷启动
         // 重建的主窗将永远逃逸（r5 实机复现）。派生重收看护兜底。
         if orphaned {
-            spawn_readopt_watcher(app.clone(), e.1, key.clone());
+            // M0：广播的必须是「应用身份」tp_id，不能用注册表键 key。
+            // key 形如 `vwm-tp:<tpId>-<rand>`，此前原样广播 → 前端拿它当新
+            // 应用又生成 `vwm-tp:<上一层>-<rand>`，每轮重收嵌套加深一层
+            // （实机日志已出现 vwm-tp:vwm-tp:tp-…-X-Y），占位窗越叠越多。
+            spawn_readopt_watcher(app.clone(), e.1, e.3.clone());
         }
         use tauri::Emitter;
         let _ = app.emit(

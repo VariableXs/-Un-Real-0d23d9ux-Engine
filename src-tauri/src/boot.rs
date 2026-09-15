@@ -420,7 +420,11 @@ fn run_boot(app: AppHandle) {
         em.send(1.0, &format!("Boot completed with {} warning(s)", warns.len()), "⚠", 1, None, None, None, None);
     }
     em.send(1.0, "Ready", "✓", 0, None, None, None, Some(stats));
-    crate::state::append_log(&st.logs_dir, &format!("boot complete in {}ms", t0.elapsed().as_millis()));
+    crate::state::append_log(
+        &st.logs_dir,
+        // M0 取证：带 pid，便于与 variable.log 的 bootstrap / 窗口事件对齐。
+        &format!("boot complete in {}ms pid={}", t0.elapsed().as_millis(), std::process::id()),
+    );
 }
 
 struct Scan {

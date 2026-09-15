@@ -52,7 +52,9 @@ pub fn run() {
         )
         .setup(|app| {
             let st = AppState::bootstrap()?;
-            log_line(&st, "app bootstrap dirs ok");
+            // M0 取证：带上 pid。同秒多实例并发追加同一份 variable.log 时，
+            // 没有 pid 就无法区分"A 重启"与"B 新起"，历史排查全部卡在这里。
+            log_line(&st, &format!("app bootstrap dirs ok pid={}", std::process::id()));
             // 批次B-6（M1）：残留扫描基线——环境启动即对宿主观测面快照（会话差集用）
             exec::residue_baseline_take();
             app.manage(st);
@@ -142,10 +144,16 @@ pub fn run() {
             // "the window died on its own" (webview crash / system).
             use tauri::Manager;
             let st = window.app_handle().state::<AppState>();
+            // M0 取证：必须带上 pid + window.label()。此前只有事件名，主窗关闭、
+            // 第三方占位窗关闭、扩展窗崩溃在日志里完全同形 —— 这正是"宿主反复
+            // 重启"多年无法归因的直接原因。
+            let who = format!("pid={} label={}", std::process::id(), window.label());
             match event {
-                tauri::WindowEvent::CloseRequested { .. } => log_line(&st, "window close REQUESTED"),
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    log_line(&st, &format!("window close REQUESTED {who}"))
+                }
                 tauri::WindowEvent::Destroyed => {
-                    log_line(&st, "window DESTROYED");
+                    log_line(&st, &format!("window DESTROYED {who}"));
                     // X-1 扩展崩溃隔离：宿主 webview 死亡只标记扩展卡，主进程无感
                     shell::extensions::mark_crashed(window.label());
                 }
