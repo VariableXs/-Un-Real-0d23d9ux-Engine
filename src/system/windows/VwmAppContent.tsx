@@ -9,8 +9,6 @@ import { closeVwmWin, focusVwmWin, isTpApp, isVwmTool, tpIdOf, vwmWindowTitle, t
 import {
   useEmbedSessionState,
   clearEmbedSessionState,
-  clearEmbedSessionAll,
-  embedStateStore,
   type EmbedSessionState,
 } from "./embedState";
 import { getThirdApps } from "../launcher/thirdApps";
@@ -234,9 +232,10 @@ export const VwmAppContent = memo(function VwmAppContent(props: {
 });
 
 /**
- * 批次W-3：第三方占位层 —— running 时透明占位；exited/orphaned/failed 时占位卡。
+ * 批次W-3：第三方占位层 —— running 时透明占位；orphaned 时占位卡。
+ * M2（R9）：exited 事件在监护层直接自动关占位窗（R7 硬约束），failed 态与
+ * 「框选窗口」兜底已下线（捕获失败在 launchThirdApp 层静默关窗）。
  * 占位卡复用嵌入失败占位视觉语言（如实状态 + 动作），绝不自动重启进程。
- * 批次C-2：failed（捕获失败）→「框选窗口」手动收编兜底（5s 内点击目标窗口）。
  */
 function TpPlaceholder(props: {
   winId: string;
@@ -266,35 +265,9 @@ function TpPlaceholder(props: {
       })
       .catch((e: unknown) => pushToast("error", name, errMessage(e).message));
   };
-  // 批次C-2：框选窗口 —— 5s 内点击目标窗口 → embed_adopt 重父化收编；
-  // 超时/未选中如实 toast，占位卡保持。收编成功 → 复位为透明占位。
-  const pick = (): void => {
-    pushToast("info", name, t("tpEmbedPickHint"));
-    ipc
-      .embedPick(5_000)
-      .then((hwnd) => {
-        if (!hwnd) {
-          pushToast("info", name, t("tpEmbedPickTimeout"));
-          return;
-        }
-        const meta = embedStateStore.getState().meta[props.winId];
-        const rootPid = meta?.rootPid ?? 0;
-        void ipc
-          .embedAdopt(tpId, hwnd, rootPid, props.winId)
-          .then((ok) => {
-            if (ok) clearEmbedSessionAll(props.winId);
-            else pushToast("info", name, t("tpEmbedPickTimeout"));
-          })
-          .catch((e: unknown) => pushToast("error", name, errMessage(e).message));
-      })
-      .catch((e: unknown) => pushToast("error", name, errMessage(e).message));
-  };
-  const message =
-    props.state === "orphaned"
-      ? t("tpEmbedOrphaned", { name })
-      : props.state === "failed"
-        ? t("tpEmbedFailed", { name })
-        : t("tpEmbedExited", { name });
+  // M2（R9）：failed 态与「框选窗口」手动收编兜底已随 C-2 通道下线 ——
+  // 捕获失败在 launchThirdApp 层静默关窗，不再产生 failed 占位卡。
+  const message = props.state === "orphaned" ? t("tpEmbedOrphaned", { name }) : t("tpEmbedExited", { name });
   return (
     <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
       <div className="vwm-tp-card" role="status">
@@ -303,11 +276,6 @@ function TpPlaceholder(props: {
           {props.state === "exited" && (
             <button type="button" className="btn primary" onClick={reopen}>
               {t("tpEmbedReopen")}
-            </button>
-          )}
-          {props.state === "failed" && (
-            <button type="button" className="btn primary" onClick={pick}>
-              {t("tpEmbedPick")}
             </button>
           )}
           <button type="button" className="btn" onClick={() => closeVwmWin(props.winId)}>

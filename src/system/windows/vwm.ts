@@ -388,6 +388,22 @@ export function minimizeVwmWin(id: string): void {
   }, 200);
 }
 
+/** M2（R9）：原生 − 按钮同步（WinEventHook MINIMIZESTART/END → embed://native-min）。
+ *  不走 minimizeVwmWin 的飞行动画（那是 Variable 自绘标题栏按钮的语义）；
+ *  只同步状态位，恢复由 EmbedBridge 的 embed_visible(SW_RESTORE) 链路完成。 */
+export function nativeMinimizeVwm(id: string, min: boolean): void {
+  patch((st) => ({
+    wins: st.wins.map((x) =>
+      x.id === id
+        ? min
+          ? { ...x, minimized: true, minimizedAt: Date.now() }
+          : { ...x, minimized: false }
+        : x,
+    ),
+    focusedId: min && st.focusedId === id ? nextFocus(st.wins, id) : st.focusedId,
+  }));
+}
+
 export function minimizeAllVwm(): void {
   const s = vwmStore.getState();
   if (s.wins.length === 0) return;
@@ -605,11 +621,13 @@ function unrollPatch(w: VwmWin): Partial<VwmWin> {
   return w.rolledUp ? { rolledUp: false, h: w.rolledFromH ?? w.h, rolledFromH: undefined } : {};
 }
 
-/** M-02 卷帘：收起仅剩标题栏高度；再展开还原原高。 */
+/** M-02 卷帘：收起仅剩标题栏高度；再展开还原原高。
+ *  M2（R9）：第三方窗口已无 Variable 标题栏（原生外观），卷帘对其关闭。 */
 export function rollVwmWin(id: string, rolled: boolean): void {
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w || w.state !== "normal" || w.rolledUp === rolled) return;
+  if (rolled && isTpApp(w.app)) return;
   patch((st) => ({
     wins: st.wins.map((x) =>
       x.id === id

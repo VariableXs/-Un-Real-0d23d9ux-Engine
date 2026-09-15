@@ -1,12 +1,12 @@
 import { errMessage, ipc, type ThirdApp } from "../../lib/ipc";
-import { pushToast, uiStore } from "../../state/uiStore";
+import { uiStore } from "../../state/uiStore";
 import { createStore, useStore } from "../../lib/store";
 
 /**
  * M7 第三方软件登记（桌面窗口内共享状态）：
  * - 单一数据源 tpStore；DesktopIcons / StartMenu / LauncherManager 共用
  * - 由 DesktopShell 挂载时加载一次，增删改后调用 reloadThirdApps()
- * - 启动失败如实 toast（目标可能已被移动/卸载），不伪造成功
+ * - 无法捕获的启动 = 软件按独立窗口运行，静默让路（M2/R9，不弹占位卡不弹 toast）
  */
 
 const tpStore = createStore<{ apps: ThirdApp[] }>({ apps: [] });
@@ -64,11 +64,11 @@ export function getThirdApps(): ThirdApp[] {
  * 再由后端启动并把原生窗口 SetParent 嵌进来（从任务栏/Alt+Tab 消失）。
  * 批次W-1：占位窗口实例 id 作为 embed_id 传给后端注册中心（多嵌入并发，
  * 每次启动独立进程一一对应新虚拟窗口）。
- * 无法嵌入（UWP/管理员权限等）→ 如实回退独立窗口并关闭占位窗口。
+ * 无法嵌入（UWP/管理员权限等）→ 软件按独立窗口正常运行，静默关闭占位窗口。
  */
-export async function launchThirdApp(id: string, name: string, arg?: string): Promise<void> {
+export async function launchThirdApp(id: string, _name: string, arg?: string): Promise<void> {
   const { openVwmTpNew, closeVwmWin } = await import("../windows/vwm");
-  const { setEmbedSessionState, setEmbedMeta } = await import("../windows/embedState");
+  const { setEmbedMeta } = await import("../windows/embedState");
   const tpApp = `tp:${id}` as Parameters<typeof openVwmTpNew>[0];
   const winId = openVwmTpNew(tpApp);
   try {
@@ -83,15 +83,13 @@ export async function launchThirdApp(id: string, name: string, arg?: string): Pr
     if (r.attached) {
       setEmbedMeta(winId, { tpId: id, rootPid: r.rootPid ?? 0 });
     } else {
-      // 批次C-2：捕获失败不再直接关占位窗 —— 保留占位卡（failed 态），
-      // 提供「框选窗口」手动收编兜底；应用已在系统桌面独立运行。
-      setEmbedMeta(winId, { tpId: id, rootPid: r.rootPid ?? 0 });
-      setEmbedSessionState(winId, "failed");
-      pushToast("info", name, r.reason || "已按独立窗口运行");
+      // M2（R9）：捕获失败 = 软件按独立窗口在系统桌面正常运行（不是错误）。
+      // Variable 静默让路：直接关闭占位窗，不弹占位卡、不弹 toast（用户 R7 硬约束）。
+      closeVwmWin(winId);
     }
-  } catch (e) {
+  } catch {
+    // M2（R9）：embed_launch 本身失败（如目标已卸载）—— 同样静默关占位窗。
     closeVwmWin(winId);
-    pushToast("error", name, errMessage(e).message);
   }
 }
 

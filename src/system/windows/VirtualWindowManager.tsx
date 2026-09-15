@@ -10,9 +10,11 @@ import {
   focusVwmWin,
   minimizeAllVwm,
   minimizeVwmWin,
+  nativeMinimizeVwm,
   resizeVwmWin,
   restoreShakenVwm,
   setVwmWorkArea,
+  settleVwmWin,
   snapVwmWin,
   unhideAllVwm,
   vwmStore,
@@ -393,6 +395,72 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
     };
   }, []);
 
+  // M2（R9）：原生窗口几何写回。用户拖软件自己的标题栏/边框松手时后端
+  // MOVESIZEEND 上报（桌面客户区物理像素）→ ÷该屏 DPR = VWM 逻辑几何。
+  // 1px 内不回写（防取整回环）；最小化/最大化态不回写（iconic 矩形无意义，
+  // 最大化同步留给 M5 的任务栏镜像一起做）。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ embedId: string; hwnd: number; x: number; y: number; w: number; h: number }>(
+      "embed://native-geo",
+      (e) => {
+        const { embedId, x, y, w, h } = e.payload;
+        const win = vwmStore.getState().wins.find((v) => v.id === embedId);
+        if (!win || win.state !== "normal" || win.rolledUp || win.minimized) return;
+        // 两遍 DPR：先用旧中心估 DPR 定位新中心，再按新中心重估（混合 DPI 双屏）
+        let dpr = monitorDprAt(win.x + win.w / 2, win.y + win.h / 2) || 1;
+        dpr = monitorDprAt(x + w / 2 / dpr, y + h / 2 / dpr) || 1;
+        const nx = x / dpr;
+        const ny = y / dpr;
+        const nw = w / dpr;
+        const nh = h / dpr;
+        if (
+          Math.abs(nx - win.x) < 1 &&
+          Math.abs(ny - win.y) < 1 &&
+          Math.abs(nw - win.w) < 1 &&
+          Math.abs(nh - win.h) < 1
+        ) {
+          return;
+        }
+        resizeVwmWin(embedId, { x: nx, y: ny, w: nw, h: nh });
+        settleVwmWin(embedId);
+      },
+    );
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
+  // M2（R9）：软件自己的 − 按钮同步。没有 Windows 任务栏按钮可点，Variable
+  // 任务栏必须知道「它已最小化」才能在点击图标时 embed_visible(SW_RESTORE)。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ embedId: string; hwnd: number; minimized: boolean }>("embed://native-min", (e) => {
+      nativeMinimizeVwm(e.payload.embedId, e.payload.minimized);
+    });
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
   // 批次C-1：同进程树新主窗口（如 Chrome 设置页）自动收编为新嵌入会话：
   // WinEventHook 探测 → embed://popup → 开新占位窗（embed_id）→ embed_adopt 重父化登记。
   // adopt 失败（窗口已销毁）→ 关闭刚开的占位窗，不伪造成功。
@@ -620,9 +688,9 @@ function EmbedBridge({ win, focused, visible = true }: { win: VwmWin; focused: b
       .embedBounds(
         embedId,
         Math.round(win.x * dpr),
-        Math.round((win.y + 38) * dpr),
+        Math.round(win.y * dpr),
         Math.round(win.w * dpr),
-        Math.round((win.h - 38) * dpr),
+        Math.round(win.h * dpr),
       )
       .then(() => ipc.embedVisible(embedId, true))
       .catch(() => {});

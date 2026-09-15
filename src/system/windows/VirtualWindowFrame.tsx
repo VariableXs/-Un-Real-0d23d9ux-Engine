@@ -113,6 +113,9 @@ export function VirtualWindowFrame(props: {
 }): React.ReactElement {
   const { t } = useI18n();
   const win = props.win;
+  // M2（R9）：第三方窗口一律原生外观 —— Variable 不渲染标题栏/红绿灯/缩放把手，
+  // 也不画圆角/边框/阴影/底色；窗口的移动缩放最小化全部走软件自己的原生件。
+  const tpNative = isTpApp(win.app);
   const title = APP_TITLES(win.app);
   // 拖拽中半透明 + 抬起阴影；贴靠/最大化时平滑滑入
   const [dragging, setDragging] = useState(false);
@@ -643,7 +646,7 @@ export function VirtualWindowFrame(props: {
 
   return (
     <div
-      className={`vwm-window${props.focused ? " focused" : ""}${win.minimized && !props.flying ? " minimized" : ""}${maximized ? " maximized" : ""}${dragging ? " dragging" : ""}${snapping ? " snapping" : ""}${props.closing ? " closing" : ""}${props.flying ? " flying" : ""}${inSelection ? " selected" : ""}`}
+      className={`vwm-window${props.focused ? " focused" : ""}${win.minimized && !props.flying ? " minimized" : ""}${maximized ? " maximized" : ""}${dragging ? " dragging" : ""}${snapping ? " snapping" : ""}${props.closing ? " closing" : ""}${props.flying ? " flying" : ""}${inSelection ? " selected" : ""}${tpNative ? " native" : ""}`}
       style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: props.zIndex, opacity: win.opacity < 1 ? win.opacity : undefined }}
       onPointerDown={() => {
         pointerFocusVwm(win.id);
@@ -653,6 +656,8 @@ export function VirtualWindowFrame(props: {
       aria-label={title}
       data-winid={win.id}
     >
+      {/* M2（R9）：第三方窗口不渲染 Variable 标题栏/红绿灯（原生外观） */}
+      {!tpNative && (
       <div
         className={`vwm-titlebar${embedActive && !props.focused ? " embed-active" : ""}`}
         data-winid={win.id}
@@ -723,10 +728,11 @@ export function VirtualWindowFrame(props: {
           </button>
         </div>
       </div>
+      )}
 
       {/* 批次W-5 标签组：标题栏下沿 TabStrip（仅组内窗口渲染）。
           点击切换显示；按住拖出 24px = 拆分（脱离标签组）。 */}
-      {win.group && (
+      {win.group && !tpNative && (
         <div className="vwm-tabstrip" role="tablist">
           {groupMembersOf(vwmStore.getState().wins, win.group).map((m) => (
             <button
@@ -879,7 +885,7 @@ export function VirtualWindowFrame(props: {
         </div>
       )}
 
-      {!maximized && (
+      {!maximized && !tpNative && (
         <>
           {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const).map((dir) => (
             <div key={dir} className={`vwm-rz ${dir}`} data-dir={dir} onPointerDown={(e) => beginResize(e, dir)} />

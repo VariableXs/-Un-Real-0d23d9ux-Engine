@@ -972,6 +972,103 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         return;
     }
     const EVENT_OBJECT_SHOW: u32 = 0x8002;
+    // M2（R9）：原生几何/最小化写回的事件段
+    const EVENT_SYSTEM_MOVESIZEEND: u32 = 0x000B;
+    const EVENT_SYSTEM_MINIMIZESTART: u32 = 0x0016;
+    const EVENT_SYSTEM_MINIMIZEEND: u32 = 0x0017;
+
+    /// M2（R9）：被桌面拥有的第三方窗口「用自己的标题栏拖动、自己的边框缩放、
+    /// 自己的 − 按钮最小化」之后，VWM 的虚拟几何必须跟上 —— 否则任务栏镜像、
+    /// 贴靠、布局快照、最小化恢复全部基于失真数据（M1 之后 Variable 不再代管
+    /// 拖拽，这是唯一的写回通道）。
+    /// MOVESIZEEND 只在用户拖拽/缩放结束时发生（程序化 SetWindowPos 不触发），
+    /// 天然没有「写回 → embed_bounds → 再写回」的回环。
+    unsafe extern "system" fn on_native_state(
+        _hook: HWINEVENTHOOK,
+        event: u32,
+        hwnd: HWND,
+        id_object: i32,
+        id_child: i32,
+        _thread: u32,
+        _time: u32,
+    ) {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+        use windows::Win32::Graphics::Gdi::ClientToScreen;
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindow};
+
+        // 只关心顶层窗口对象（控件级事件直接丢弃——资源护栏）
+        if id_object != OBJID_WINDOW.0 || id_child != 0 {
+            return;
+        }
+        if event != EVENT_SYSTEM_MOVESIZEEND
+            && event != EVENT_SYSTEM_MINIMIZESTART
+            && event != EVENT_SYSTEM_MINIMIZEEND
+        {
+            return;
+        }
+        let h = hwnd.0 as isize;
+        // 只跟踪仍被桌面拥有（= 本会话登记）的窗口；总账查询是 O(1)
+        if !OWNED_HWNDS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(&h)
+        {
+            return;
+        }
+        // hwnd → embed_id 反查（会话个位数，线性扫足够）
+        let Some(embed_id) =
+            with_registry(|m| m.iter().find(|(_, e)| e.hwnd == h).map(|(k, _)| k.clone()))
+        else {
+            return;
+        };
+        let Some(app) = HOOK_APP.get() else { return };
+        use tauri::Emitter;
+
+        if event == EVENT_SYSTEM_MOVESIZEEND {
+            // 可见边界（DWM 扩展框；Win11 阴影不算）→ 屏幕坐标，
+            // 再换算成「桌面客户区物理像素」（与 embed_bounds 的输入同一坐标系）
+            let mut rect = windows::Win32::Foundation::RECT::default();
+            let got = DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &mut rect as *mut _ as *mut core::ffi::c_void,
+                std::mem::size_of::<windows::Win32::Foundation::RECT>() as u32,
+            )
+            .is_ok();
+            if !got && GetWindowRect(hwnd, &mut rect).is_err() {
+                return;
+            }
+            let Some(&dh) = DESKTOP_HWND.get() else { return };
+            if !IsWindow(hwnd_from_isize(dh)).as_bool() {
+                return;
+            }
+            let mut origin = POINT { x: 0, y: 0 };
+            if !ClientToScreen(hwnd_from_isize(dh), &mut origin).as_bool() {
+                return;
+            }
+            let _ = app.emit(
+                "embed://native-geo",
+                serde_json::json!({
+                    "embedId": embed_id,
+                    "hwnd": h,
+                    "x": rect.left - origin.x,
+                    "y": rect.top - origin.y,
+                    "w": (rect.right - rect.left).max(1),
+                    "h": (rect.bottom - rect.top).max(1),
+                }),
+            );
+        } else {
+            let _ = app.emit(
+                "embed://native-min",
+                serde_json::json!({
+                    "embedId": embed_id,
+                    "hwnd": h,
+                    "minimized": event == EVENT_SYSTEM_MINIMIZESTART,
+                }),
+            );
+        }
+    }
 
     unsafe extern "system" fn on_show(
         _hook: HWINEVENTHOOK,
@@ -1050,6 +1147,22 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         );
         if hook.is_invalid() {
             return; // 钩子不可用 → 兜底轮询（W-3 监护线程）继续工作
+        }
+        // M2（R9）：原生几何/最小化写回钩子（同一泵线程；范围段内多余事件由
+        // 回调内的 event 匹配过滤，0x000C~0x0015 的帮助/对话框事件零成本丢弃）
+        let hook2 = SetWinEventHook(
+            EVENT_SYSTEM_MOVESIZEEND,
+            EVENT_SYSTEM_MINIMIZEEND,
+            HMODULE::default(),
+            Some(on_native_state),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+        if hook2.is_invalid() {
+            crate::shell::applog::log("embed", "原生几何写回钩子安装失败（MOVESIZEEND/MINIMIZE 不可用）");
+        } else {
+            crate::shell::applog::log("embed", "原生几何写回钩子已安装（MOVESIZEEND/MINIMIZE）");
         }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {

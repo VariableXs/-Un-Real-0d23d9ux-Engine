@@ -1,0 +1,73 @@
+{
+  "started_at": "2026-09-16T00:41:00",
+  "window_seconds": 22,
+  "interval_seconds": 5,
+  "samples": [
+    {
+      "t": "2026-09-16T00:41:00",
+      "pids": [
+        38600
+      ],
+      "created": {
+        "38600": null
+      },
+      "bootstrap_lines": 221,
+      "visible_windows": {}
+    },
+    {
+      "t": "2026-09-16T00:41:05",
+      "pids": [
+        38600
+      ],
+      "created": {
+        "38600": null
+      },
+      "bootstrap_lines": 221,
+      "visible_windows": {}
+    },
+    {
+      "t": "2026-09-16T00:41:10",
+      "pids": [
+        38600
+      ],
+      "created": {
+        "38600": null
+      },
+      "bootstrap_lines": 221,
+      "visible_windows": {}
+    },
+    {
+      "t": "2026-09-16T00:41:15",
+      "pids": [
+        38600
+      ],
+      "created": {
+        "38600": null
+      },
+      "bootstrap_lines": 221,
+      "visible_windows": {}
+    },
+    {
+      "t": "2026-09-16T00:41:20",
+      "pids": [
+        38600
+      ],
+      "created": {
+        "38600": null
+      },
+      "bootstrap_lines": 221,
+      "visible_windows": {}
+    }
+  ],
+  "events": [
+    {
+      "t": "2026-09-16T00:41:00",
+      "items": [
+        "NEW variable.exe pid=38600 created=None"
+      ]
+    }
+  ],
+  "restart_candidates": 1,
+  "finished_at": "2026-09-16T00:41:25",
+  "samples_taken": 5
+}
