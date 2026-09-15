@@ -82,8 +82,13 @@
   flex: none;
 }
 
-/* 复用 global.css 的 .win-btn / .win-dot 视觉；非聚焦窗口红绿灯降饱和 */
-.vwm-window:not(.focused) .vwm-lights .win-dot { filter: saturate(0.35) brightness(0.8); }
+/* 复用 global.css 的 .win-btn / .win-dot 视觉；非聚焦窗口红绿灯轻度降饱和
+   （R4-B5/R3-B5 修复：原 saturate(0.35) brightness(0.8) 在暗色标题栏上低对比
+   不可见，改为轻度降饱和 + 描边环，任何窗口状态下控制钮均清晰可辨） */
+.vwm-window:not(.focused) .vwm-lights .win-dot { filter: saturate(0.6) brightness(0.95); }
+.vwm-window .vwm-lights .win-dot {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28) inset, 0 0 0 0.5px rgba(0, 0, 0, 0.35);
+}
 
 /* ---- 批次W-5：标签组 TabStrip（标题栏下沿） ---- */
 .vwm-tabstrip {

@@ -73,6 +73,7 @@ fn poll_loop() {
                                     _ => {
                                         let _ = w.show();
                                         let _ = w.unminimize();
+                                        restore_fullscreen_size(&w);
                                         let _ = w.set_focus();
                                         // D-4 幕布语义：展开动画（从收起态反放）
                                         let _ = a.emit("sys://curtain", "in");
@@ -107,6 +108,7 @@ fn poll_loop() {
                     if let Some(w) = a.get_webview_window("desktop") {
                         let _ = w.show();
                         let _ = w.unminimize();
+                        restore_fullscreen_size(&w);
                         let _ = w.set_focus();
                     }
                     use tauri::Emitter;
@@ -125,3 +127,25 @@ fn poll_loop() {
         std::thread::sleep(std::time::Duration::from_secs(3600));
     }
 }
+
+/// R4-B4（R3-B10 修复）：hide→show 后 Tauri 以「逻辑尺寸」恢复窗口
+/// （125% DPI 下 1920×1080 物理 → 1536×864，任务栏坐标整体漂移 0.8×）。
+/// 恢复时按显示器物理分辨率重设尺寸与原点，DPI 适配不再丢失。
+#[cfg(windows)]
+fn restore_fullscreen_size(w: &tauri::WebviewWindow) {
+    use tauri::{PhysicalPosition, PhysicalSize};
+    let mon = match w.current_monitor() {
+        Ok(Some(m)) => m,
+        _ => match w.primary_monitor() {
+            Ok(Some(m)) => m,
+            _ => return, // 拿不到显示器信息时保持现状（不引入回归）
+        },
+    };
+    let size = mon.size();
+    let pos = mon.position();
+    let _ = w.set_size(PhysicalSize::new(size.width, size.height));
+    let _ = w.set_position(PhysicalPosition::new(pos.x, pos.y));
+}
+
+#[cfg(not(windows))]
+fn restore_fullscreen_size(_w: &tauri::WebviewWindow) {}

@@ -335,7 +335,11 @@ export function ProjectAnalysisView(props: { settings: Settings }): React.ReactE
       const inWin = r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       const hitOk = !!hit && (hit === btn || btn.contains(hit));
-      if (!inWin || !hitOk) {
+      // 被其他 VWM 窗口正常遮挡（本窗口不在顶层）不是故障——只有被同窗口内
+      // 的意外覆盖层挡住才算失败，避免多窗口重叠时的假警报刷屏。
+      const occludedBySiblingWin =
+        !!hit && !hitOk && !!hit.closest(".vwm-window") && !hit.closest(".vwm-window")?.contains(btn);
+      if (!inWin || (!hitOk && !occludedBySiblingWin)) {
         console.error("[pv] import button hit-test failed", { inWin, hitOk, hit });
         void ipc.log("warn", `pv import button hit-test failed: inWin=${inWin} hitOk=${hitOk}`).catch(() => {});
       }

@@ -177,6 +177,11 @@ fn watch_loop(app: tauri::AppHandle) {
         let embedded: HashSet<isize> =
             crate::shell::embed::current_embed_hwnds().into_iter().collect();
         let ignored: HashSet<String> = s.ignored.iter().cloned().collect();
+        // 自家进程树快照（每轮一次）：WebView2 子进程（msedgewebview2.exe）会
+        // 拥有可见顶级窗口，绝不能被当成「逃逸窗口」收编 —— 收编自家窗口会
+        // 拆掉主窗的内容宿主，导致整个应用静默退出（实机实测复现）。
+        let own_tree: HashSet<u32> =
+            crate::shell::embed::win::pid_tree(own_pid).into_iter().collect();
 
         for (hwnd, pid, full_image) in crate::shell::embed::watch_scan_windows() {
             if embedded.contains(&hwnd) {
@@ -191,6 +196,10 @@ fn watch_loop(app: tauri::AppHandle) {
                 .next()
                 .unwrap_or("")
                 .to_lowercase();
+            // 自家进程树（含 WebView2 家族）与 Variable 家族映像：跳过
+            if own_tree.contains(&pid) || is_variable_family_image(&image) {
+                continue;
+            }
             // 系统白名单 / 用户忽略清单（白名单先于逻辑执行）
             if image.is_empty()
                 || WHITELIST.contains(&image.as_str())
@@ -231,6 +240,12 @@ fn watch_loop(app: tauri::AppHandle) {
     }
 }
 
+/// 自家/家族映像判定：variable.exe、variable_lib-<hash>.exe（单实例兜底
+/// 收编通道会用到的自家映像）一律不可收编 —— 收编自家主窗 = 自毁。
+fn is_variable_family_image(image: &str) -> bool {
+    image.starts_with("variable")
+}
+
 #[cfg(windows)]
 fn hwnd_from_isize(v: isize) -> windows::Win32::Foundation::HWND {
     windows::Win32::Foundation::HWND(v as *mut core::ffi::c_void)
@@ -261,6 +276,18 @@ fn watch_loop(_app: tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 自家家族映像不可收编（实机回归：收编自家 WebView2/二次启动主窗
+    /// 会拆掉主窗内容宿主 → 整个应用静默退出）。
+    #[test]
+    fn own_family_images_never_adopted() {
+        for img in ["variable.exe", "VARIABLE.EXE", "variable_lib-4416833e4f40c908.exe"] {
+            assert!(super::is_variable_family_image(&img.to_lowercase()), "{img} 应判定为自家家族");
+        }
+        for foreign in ["msedge.exe", "notepad.exe", "steam.exe", "workbuddy.exe"] {
+            assert!(!super::is_variable_family_image(foreign), "{foreign} 是外部软件");
+        }
+    }
 
     /// D-3 契约（联调点 D-1×D-3 冻结口径）：系统关键白名单固定 15 类、
     /// 全部小写进程映像名（与看门狗的 basename 小写比对口径一致）、无重复。

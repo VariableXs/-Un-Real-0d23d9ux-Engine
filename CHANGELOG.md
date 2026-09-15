@@ -3,9 +3,38 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
-## [Unreleased] — 1.0sno9u.vxe（2026-09-14 代码大检查与优化：零告警回归 + 前端按需加载 + 仓库卫生）
+## [Unreleased] — 第四轮实机 QA：交互缺陷清零（2026-09-15：R4-0001~R4-2000）
 
-> 本轮为"不改变功能语义"的质量/性能治理：三条测试线由改前改后均全绿，
+- **Ctrl+W 改绑「关闭当前虚拟窗」**（`src/system/desktop/DesktopShell.tsx`）：捕获阶段拦截，
+  不再落到 WebView2 默认行为导致整体退出；输入框聚焦时仅拦截默认行为，组件级 Ctrl+W 继续生效。
+- **Del+Backspace 输入聚焦豁免**（`src/App.tsx`）：`sys://quit-request` 在可编辑元素聚焦时忽略，
+  杜绝文件操作中 Delete+Backspace 组合误触真退出（R2-S1 遗留建议落地）。
+- **开始菜单搜索词跨开关残留清零**（`src/system/startmenu/StartMenu.tsx`）：菜单关闭时清空查询态（R3-B6）。
+- **curtain 恢复 DPI 修复**（`src-tauri/src/shell/kbdhook.rs`）：hide→show 后按显示器物理分辨率
+  重设窗口尺寸与原点（新增 `restore_fullscreen_size`），125% 缩放下不再缩为逻辑全屏（R3-B10）。
+- **收编窗回桌面通道**（`src-tauri/src/shell/embed.rs` + `src/lib/ipc.ts`）：新增 `desktop_raise`
+  命令，把桌面 WebView2 提到全部收编子窗之上（首轮 B-3）；`embed_visible(false)` 后强制 WebView
+  重绘修复白屏（首轮 B-4）。
+- **虚拟窗控制钮对比度**（`src/styles/vwm.css`）：非聚焦红绿灯降饱和 0.35→0.6 + 双层描边环（R3-B5）。
+- 门禁：tsc 0 错；vitest 2646 passed / 4 skipped；cargo test 253 passed；vite build 成功。
+  实机第四轮 QA 报告（2000 项全新清单）：`docs/Variable系统实机QA检查报告第四轮-2000项-2026-09-15.md`。
+
+## [Unreleased] — Steam 全量收进 Variable（2026-09-15：steam:// 与快捷方式不再落宿主桌面）
+
+- **`open_path` 识别 Steam 产物**（`src-tauri/src/system.rs`）：`steam://` 链接本体、
+  以及内容指向 `steam://` 的 `.url` 快捷方式（Steam 桌面快捷键格式）不再走
+  「宿主 Windows 默认程序」打开，改走 Steam 通道——CEF 兼容态 + ShellExecute +
+  `spawn_steam_adopt_watcher` 收编看护，Steam 主窗与游戏窗收进 Variable 桌面运行。
+- **公共通道 `steam_open_url`**（`src-tauri/src/shell/ecosystem.rs`）：
+  `steam_launch` 与 `open_path` 的 Steam 路由共用同一裁判（兼容态 + 收编看护），
+  并对非 `steam://` 前缀做防御性校验。
+- **资源管理器双击 `.url` 先探测**（`src/system/explorer/ExplorerWindow.tsx`）：
+  命中 Steam 快捷方式直接进收编通道，不再弹出「用宿主 Windows 打开」选择器；
+  非 Steam 的 .url 与读取失败时保持原有流程不变。
+- 门禁：tsc 0 错；vitest 2646 passed / 4 skipped；`cargo test -p variable --lib`
+  system 模块含新增 `steam_probe` 测试全绿；vite build 成功。
+
+## [Unreleased] — 1.0sno9u.vxe（2026-09-14 代码大检查与优化：零告警回归 + 前端按需加载 + 仓库卫生）> 本轮为"不改变功能语义"的质量/性能治理：三条测试线由改前改后均全绿，
 > 交付物是**更小的首屏、更少的编译告警、更干净的仓库**。
 
 ### 性能：桌面环境首屏体积下降约 40%

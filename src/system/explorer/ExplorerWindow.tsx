@@ -649,6 +649,22 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
       void (async () => {
         const dot = e.path.lastIndexOf(".");
         const ext = dot > 0 ? e.path.slice(dot + 1).toLowerCase() : "";
+        // Steam 快捷方式（.url 内容指向 steam://）→ 直接进 Variable 收编通道
+        //（open_path 后端识别 steam 产物 → CEF 兼容态 + 收编看护），
+        // 不弹「用宿主 Windows 打开」选择器（实机需求：Steam 在 Variable 内运行）。
+        if (ext === "url") {
+          try {
+            const text = await ipc.readTextFile(e.path);
+            const m = text.match(/^\s*url\s*=\s*"?([^"\r\n]+)"?\s*$/im);
+            const url = m?.[1]?.trim() ?? "";
+            if (url.toLowerCase().startsWith("steam://")) {
+              await ipc.openPath(url);
+              return;
+            }
+          } catch {
+            /* 读取失败 / 非 steam .url → 走原有关联流程 */
+          }
+        }
         try {
           if (ext) {
             const assoc = await ipc.fileAssocResolve(ext);

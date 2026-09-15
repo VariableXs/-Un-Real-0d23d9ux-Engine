@@ -559,7 +559,18 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     let disposed = false;
     let un: (() => void) | undefined;
     const sub = listen("sys://quit-request", () => {
-      if (!disposed) void requestClose();
+      if (disposed) return;
+      // R4-B2（R2-S1 修复）：输入框聚焦时豁免全局退出热键——文件管理器里
+      // Delete（删除）+ Backspace（改名/导航回退）落在组合窗口内会误触真退出。
+      const el = document.activeElement;
+      const editable =
+        el instanceof HTMLElement &&
+        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (editable) {
+        console.info("[quit] Del+Backspace ignored: text input focused");
+        return;
+      }
+      void requestClose();
     });
     void sub
       .then((u) => {

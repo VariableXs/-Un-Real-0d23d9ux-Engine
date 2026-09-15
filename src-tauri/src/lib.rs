@@ -448,6 +448,7 @@ pub fn run() {
             shell::embed::embed_close_all,
             shell::embed::embed_focus,
             shell::embed::embed_input,
+            shell::embed::desktop_raise,
             shell::privacy::vault_status,
             shell::privacy::vault_init,
             shell::privacy::vault_unlock,

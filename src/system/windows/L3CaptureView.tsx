@@ -131,6 +131,12 @@ export function L3CaptureView(props: { embedId: string }): React.ReactElement {
       onKeyDown={(e) => {
         e.preventDefault();
         void ipc.embedInput(props.embedId, "key", 0, 0, undefined, e.keyCode);
+        // R3-B1 修复：CEF/Chromium 目标窗口只认 WM_CHAR 才出文本；
+        // 仅转发 WM_KEYDOWN 时 ToUnicode 无物理按键状态、不会自动合成 WM_CHAR。
+        // 可打印字符（e.key 长度 1，天然携带 Shift 态：大写/符号）补发 char 注入。
+        if (e.key.length === 1) {
+          void ipc.embedInput(props.embedId, "char", 0, 0, undefined, e.key.charCodeAt(0));
+        }
       }}
     />
   );

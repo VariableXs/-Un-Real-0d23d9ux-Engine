@@ -147,7 +147,7 @@ fn write_fail_evidence(st: &crate::state::AppState, tp_id: &str, root_pid: u32, 
 }
 
 #[cfg(windows)]
-mod win {
+pub(crate) mod win {
     use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM};
     use windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
@@ -230,14 +230,26 @@ mod win {
 
     /// 枚举可见顶层窗口，返回 (hwnd, 进程映像路径) 中满足过滤的句柄集合。
     pub fn collect_handles(keep: &mut dyn FnMut(isize, &str) -> bool) -> Vec<isize> {
+        collect_handles_ex(keep, false)
+    }
+
+    /// collect_handles 变体：`include_hidden=true` 时不过滤 IsWindowVisible。
+    /// R3-B11 单例重开探测 / 兜底收编必须用它——Steam 关闭走 WM_CLOSE 会
+    /// 退托盘隐藏主窗（IsWindowVisible=false 但进程存活），按可见性过滤
+    /// 会让「单例重开」探测与兜底候选双双落空（60s 空转 / 兜底无候选）。
+    pub fn collect_handles_ex(
+        keep: &mut dyn FnMut(isize, &str) -> bool,
+        include_hidden: bool,
+    ) -> Vec<isize> {
         struct Ctx<'a> {
             keep: &'a mut dyn FnMut(isize, &str) -> bool,
             out: Vec<isize>,
+            include_hidden: bool,
         }
         unsafe extern "system" fn probe(hwnd: HWND, lparam: LPARAM) -> BOOL {
             let ctx = unsafe { &mut *(lparam.0 as *mut Ctx) };
             unsafe {
-                if !IsWindowVisible(hwnd).as_bool() {
+                if !ctx.include_hidden && !IsWindowVisible(hwnd).as_bool() {
                     return BOOL(1);
                 }
                 let Some(pid) = window_pid(hwnd) else { return BOOL(1) };
@@ -248,7 +260,7 @@ mod win {
             }
             BOOL(1)
         }
-        let mut ctx = Ctx { keep, out: Vec::new() };
+        let mut ctx = Ctx { keep, out: Vec::new(), include_hidden };
         unsafe {
             let _ = EnumWindows(Some(probe), LPARAM(&mut ctx as *mut Ctx as isize));
         }
@@ -303,19 +315,32 @@ mod win {
     /// 兜底；命中即返回，超时如实回退独立窗口，绝不终止应用进程）。
     /// 匹配优先级：pid ∈ 启动进程的子进程树（覆盖启动器派生场景）→
     /// 映像名以登记 exe 结尾（兜底 pid 拿不到的场景）→ 窗口标题正则（登记可选）。
+    /// `singleton_relaunch`（单例重开 fast-path）：启动前家族已有带标题栏主窗
+    /// 时置 true —— 启动进程树已空（单例转发进程退出，如 steam.exe 二次启动
+    /// 转交旧实例后即退）即提前返回 None，让调用方立即走兜底收编既有主窗，
+    /// 不再空转满超时。短暂空窗期（前 ~600ms）不早退，避开启动瞬时抖动。
     pub fn wait_new_window(
         exe_name: &str,
         root_pid: Option<u32>,
         before: &[isize],
         title_regex: Option<&str>,
         timeout_ms: u64,
+        singleton_relaunch: bool,
     ) -> Option<isize> {
         let suffix = exe_name.to_lowercase();
         let re = title_regex.and_then(|p| regex::Regex::new(p).ok());
         let steps = ((timeout_ms / 200).max(1)) as usize;
-        for _ in 0..steps {
+        for step in 0..steps {
             std::thread::sleep(std::time::Duration::from_millis(200));
             let tree: Vec<u32> = root_pid.map(|r| pid_tree(r)).unwrap_or_default();
+            // 单例重开：转发进程已退出（树空）→ 不可能有"新"窗口了，立即兜底
+            if singleton_relaunch
+                && root_pid.is_some()
+                && step >= 3
+                && tree.is_empty()
+            {
+                return None;
+            }
             let mut title_hit: Option<isize> = None;
             let hit = collect_handles(&mut |h, img| {
                 if before.contains(&h) {
@@ -424,6 +449,25 @@ pub async fn embed_launch(
     // 2) 记录启动前已存在的该应用窗口（避免把旧窗口误嵌）
     let before = win::collect_handles(&mut |_h, img| img.to_lowercase().ends_with(&exe_name));
 
+    // 2b) 单例 fast-path 探测（修复「Steam 二次启动卡 60s / 打不开」）：
+    //     分离后 / 托盘退出后再点图标时，旧实例仍存活，新 steam.exe 只把
+    //     参数转交旧实例便退出——主窗属旧实例的 steamwebhelper.exe，既不
+    //     在 before（按登记 exe 过滤），映像名也不以 steam.exe 结尾，
+    //     wait_new_window 必然空转满超时才走兜底。探测「启动前家族已有
+    //     带标题栏主窗」即判定为单例重开：本次等待压到 8s，并允许
+    //     wait_new_window 在启动进程树已空（转发进程已退出）时提前返回，
+    //     立即走兜底收编既有主窗（秒级）。冷启动（无既有窗）行为不变。
+    //     R3-B11 补充：探测必须包含隐藏窗（include_hidden）——红钮 WM_CLOSE
+    //     后 Steam 退托盘隐藏主窗，且分离还原前窗口可能仍在 -32000 屏外，
+    //     两者 IsWindowVisible 都是 false，按可见性过滤会让探测恒空
+    //     （第二次启动仍 单例重开=false 空转 60s 的根因）。
+    let family_imgs = family_images(&exe_name);
+    let fam_before = win::collect_handles_ex(&mut |h, img| {
+        let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+        family_imgs.iter().any(|m| *m == name) && has_caption_style(h)
+    }, true);
+    let singleton_relaunch = !fam_before.is_empty();
+
     // 3) 启动（复用既有通道；本模块不含进程创建代码）。root_pid 用于
     //    按子进程树匹配窗口——启动器型软件（如 Wallpaper Engine）真正的
     //    主窗口属于它派生的子进程，按 exe 名匹配不到。
@@ -437,17 +481,28 @@ pub async fn embed_launch(
     let mut hints = load_hints(&st);
     let mut hint = hints.get(&id).cloned().unwrap_or_default();
     let timeout_ms = hint.capture_timeout_ms.unwrap_or(30_000);
+    // 单例重开：等待上限压到 8s（不改 hints 自适应，只影响本次）
+    let wait_ms = if singleton_relaunch { timeout_ms.min(8_000) } else { timeout_ms };
     let started = std::time::Instant::now();
     crate::shell::applog::log(
         "launch",
-        format!("embed_launch {id}: 已启动 {exe_name} root_pid={root_pid:?}，等待主窗（最长 {timeout_ms}ms）"),
+        format!(
+            "embed_launch {id}: 已启动 {exe_name} root_pid={root_pid:?}，等待主窗（最长 {wait_ms}ms，单例重开={singleton_relaunch}）"
+        ),
     );
     // 等窗口轮询（最长 30s）是纯阻塞操作：移入阻塞线程池执行，
     // 避免占死 tokio async worker 拖慢其它 IPC。
     let exe_c = exe_name.clone();
     let title_c = hint.title_regex.clone();
     let hwnd = tauri::async_runtime::spawn_blocking(move || {
-        win::wait_new_window(&exe_c, root_pid, &before, title_c.as_deref(), timeout_ms)
+        win::wait_new_window(
+            &exe_c,
+            root_pid,
+            &before,
+            title_c.as_deref(),
+            wait_ms,
+            singleton_relaunch,
+        )
     })
     .await
     .map_err(|e| AppError::io(format!("等待窗口线程异常 / wait thread error: {e}")))?;
@@ -459,8 +514,11 @@ pub async fn embed_launch(
             format!("embed_launch {id}: 等待主窗超时（{elapsed}ms）→ 走兜底收编（root_pid={root_pid:?}）"),
         );
         write_fail_evidence(&st, &id, root_pid.unwrap_or(0), &exe_name);
-        // 自适应：超时 → 下次放宽到 60s（快启动命中后由下方收紧）
-        if hint.capture_timeout_ms.is_none() {
+        // 自适应：超时 → 下次放宽到 60s（快启动命中后由下方收紧）。
+        // 修复：此前只在 capture_timeout_ms 未设置时放宽 —— 一旦被快启动
+        // 收紧成 Some(5000)，慢启动应用（Steam 冷启动 >5s）每次必然超时，
+        // 且永不恢复（连续 embed-fail 的根因）。现在只要当前窗口 <60s 就放宽。
+        if hint.capture_timeout_ms.unwrap_or(30_000) < 60_000 {
             hint.capture_timeout_ms = Some(60_000);
             hints.insert(id.clone(), hint);
             save_hints(&st, &hints);
@@ -485,7 +543,9 @@ pub async fn embed_launch(
             let mut fam_cap: Vec<isize> = Vec::new();
             let mut tree_win: Vec<isize> = Vec::new();
             let mut fam_any: Vec<isize> = Vec::new();
-            win::collect_handles(&mut |h, img| {
+            // R3-B11：与 fam_before 同口径 —— include_hidden（托盘隐藏 /
+            // 屏外的家族主窗也是合法收编对象，attach 前有还原防黑帧兜底）
+            win::collect_handles_ex(&mut |h, img| {
                 let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
                 let is_fam = fam_c.iter().any(|m| *m == name);
                 let in_tree = !tree_c.is_empty() && {
@@ -502,7 +562,7 @@ pub async fn embed_launch(
                     tree_win.push(h);
                 }
                 false
-            });
+            }, true);
             (fam_cap, tree_win, fam_any)
         })
         .await
@@ -976,6 +1036,62 @@ fn attach_by_tier(
         // 批次C-4 L3 画面捕获：真实窗口屏外隐藏 + WGC 采集 → 前端合成；
         // 输入经 embed_input PostMessage 直注。失败降级独立窗口 + 如实原因。
         CompatTier::L3 => {
+            // R3-B11 终局结论（实机三轮实验）：Chromium 窗口与 L3 藏窗捕获
+            // 根本冲突 —— 窗口一旦藏 -32000 / 被完全遮挡，occlusion 检测即
+            // 停渲染（黑帧/冻结帧），重新显示也不会自动恢复（需 resize 或
+            // 交互唤醒）。历史「CEF 一律 L3、L1 重父化呈现纯黑」是渲染挂起
+            // 的误判：唤醒后的 Steam CEF 主窗 reparent 进桌面画面/输入全通。
+            // Steam 家族（steam.exe / steamwebhelper.exe，含 embed_adopt 的
+            // 无 target 路径）一律 **L1 真实嵌入优先**，失败才回退 L3 冻结帧。
+            // 其它 CEF 应用待逐个实机验证后再扩大（避免旧坑）。
+            let is_steam_family = {
+                let img = win::window_pid(hwnd_from_isize(hwnd))
+                    .and_then(|p| win::process_image(p))
+                    .map(|s| s.to_lowercase())
+                    .unwrap_or_default();
+                let base = img.rsplit(['\\', '/']).next().unwrap_or("");
+                base == "steam.exe" || base == "steamwebhelper.exe"
+            };
+            if is_steam_family && restyle_and_reparent(app, hwnd) {
+                register(None, false);
+                crate::shell::applog::log(
+                    "embed",
+                    format!(
+                        "attach {tp_id}: L3→L1 真实嵌入（Steam 家族，藏窗捕获对 Chromium 必停渲染）hwnd={hwnd}（capture=false）"
+                    ),
+                );
+                return Attach::Ok { capture: false };
+            }
+            // R3-B11 黑帧治理：窗口藏在 -32000 屏外（上会话 hide 后被单例
+            // 唤起/重收编）或完全隐藏（Steam 关登录窗后 CEF 主窗退托盘）时，
+            // Chromium occlusion 检测已停渲染，且实测重新显示后渲染管线
+            // 不会自动恢复（resize/交互才触发）——藏回 -32000 又会立刻再停。
+            // 因此对处于停渲染态的窗口：还原 → 尺寸抖动唤醒 → 等渲染恢复 →
+            // **降级 L1 真实嵌入**（可见即渲染，画面与输入均为真实通路），
+            // 不再走"唤醒后藏回"的必黑路径。冷启动（窗口活跃渲染中）零改动。
+            if crate::shell::capture::win::needs_reveal(hwnd) {
+                crate::shell::capture::win::restore_window(hwnd);
+                let woke = crate::shell::capture::win::jiggle_window(hwnd);
+                crate::shell::applog::log(
+                    "capture",
+                    format!(
+                        "attach {tp_id}: 窗口隐藏/屏外 → 已还原+抖动唤醒（woke={woke}），降级 L1 真实嵌入（L3 藏窗对 Chromium 必停渲染）"
+                    ),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1200));
+                if restyle_and_reparent(app, hwnd) {
+                    register(None, false);
+                    crate::shell::applog::log(
+                        "embed",
+                        format!("attach {tp_id}: L3→L1 降级嵌入成功 hwnd={hwnd}（capture=false）"),
+                    );
+                    return Attach::Ok { capture: false };
+                }
+                crate::shell::applog::log(
+                    "capture",
+                    format!("attach {tp_id}: L1 降级失败 → 回退 L3 捕获（可能黑帧/冻结）"),
+                );
+            }
             match crate::shell::capture::win::start_capture(app.clone(), key.clone(), hwnd) {
                 Ok(()) => {
                     crate::shell::applog::log("capture", format!("attach {tp_id}: L3 画面捕获已启动 hwnd={hwnd}"));
@@ -1189,6 +1305,11 @@ pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
         unsafe {
             let _ = ShowWindow(hwnd_from(h), if visible { SW_SHOW } else { SW_HIDE });
         }
+        // R4-B7（首轮 B-4）：收编子窗隐藏/最小化后 WebView2 合成层可能失效白屏，
+        // 立即对桌面 WebView 强制同步重绘（root=Tauri Window 顶层）。
+        if !visible {
+            force_webview_repaint(h);
+        }
     }
     Ok(())
 }
@@ -1396,6 +1517,79 @@ pub fn embed_input(
 #[cfg(windows)]
 pub fn current_embed_hwnds() -> Vec<isize> {
     with_registry(|map| map.values().map(|e| e.hwnd).collect())
+}
+
+// ---------- R4 修复：桌面 WebView 提升与强制重绘（首轮 B-3 / B-4） ----------
+
+/// R4-B5：定位桌面 WebView2 子窗 —— Tauri Window 的直接子窗中，
+/// 不在嵌入注册表且类名为 Chrome_*/WebView* 的那个
+/// （被收编 Edge 与 WebView2 同族类名，用「非嵌入」区分）。
+#[cfg(windows)]
+fn desktop_webview_child(top: isize) -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, GetClassNameW, GetWindow, GA_ROOT, GW_CHILD, GW_HWNDNEXT};
+    let root = unsafe { GetAncestor(hwnd_from(top), GA_ROOT) };
+    let embeds = current_embed_hwnds();
+    let mut child = unsafe { GetWindow(root, GW_CHILD) }.ok();
+    let mut buf = [0u16; 64];
+    while let Some(h) = child {
+        let hval = h.0 as isize;
+        if !embeds.contains(&hval) {
+            let n = unsafe { GetClassNameW(h, &mut buf) };
+            let cls = String::from_utf16_lossy(&buf[..n as usize]);
+            if cls.starts_with("Chrome_") || cls.contains("WebView") {
+                return Some(hval);
+            }
+        }
+        child = unsafe { GetWindow(h, GW_HWNDNEXT) }.ok();
+    }
+    None
+}
+
+/// R4-B7：对桌面 WebView2 子窗强制同步重绘（修复 WebView2 合成层失效白屏）。
+#[cfg(windows)]
+fn force_webview_repaint(top: isize) {
+    use windows::Win32::Graphics::Gdi::{
+        RedrawWindow, HRGN, RDW_ALLCHILDREN, RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW,
+    };
+    let Some(wv) = desktop_webview_child(top) else { return };
+    unsafe {
+        let _ = RedrawWindow(
+            hwnd_from(wv),
+            None,
+            HRGN::default(),
+            RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_FRAME | RDW_UPDATENOW,
+        );
+    }
+}
+
+/// R4-B6（首轮 B-3）：收编子窗置顶盖满全屏时，把桌面 WebView 提回
+/// 全部嵌入子窗之上（不激活，不抢焦点）——用户按 Win 键即可回到桌面壳。
+#[tauri::command(async)]
+#[cfg(windows)]
+pub fn desktop_raise(app: tauri::AppHandle) -> CmdResult<()> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+    };
+    let Some(top) = desktop_hwnd(&app) else { return Ok(()) };
+    let Some(wv) = desktop_webview_child(top) else { return Ok(()) };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd_from(wv),
+            HWND_TOP,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command(async)]
+#[cfg(not(windows))]
+pub fn desktop_raise(_app: tauri::AppHandle) -> CmdResult<()> {
+    Ok(())
 }
 
 /// D-3 看门狗用：枚举全部顶层可见窗口 → (hwnd, pid, 进程完整映像路径)。

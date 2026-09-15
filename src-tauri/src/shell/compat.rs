@@ -450,8 +450,19 @@ pub fn shell_item_icon(path: String) -> CmdResult<ShellIconResult> {
 
 /// Show one item's native IContextMenu.  Multiple selection is intentionally
 /// returned as unsupported for now rather than showing a misleading menu.
+///
+/// 线程亲和（实机 QA 修复）：TrackPopupMenuEx 与 COM STA 都要求调用线程拥有
+/// 消息循环/宿主窗口。本命令 async 化后跑在线程池 —— 菜单从未真正显示，
+/// 却无条件返回 shown=true，前端据此跳过内置回落菜单 → 右键菜单彻底消失。
+/// 修复：与 container.rs 的 create_host_on_main_thread 同范式 —— 整个
+/// COM + 菜单序列派发到桌面主窗所在的主线程执行（命令线程阻塞等待）。
 #[tauri::command(async)]
-pub fn shell_context_menu(paths: Vec<String>, x: i32, y: i32) -> CmdResult<ShellContextMenuResult> {
+pub fn shell_context_menu(
+    app: AppHandle,
+    paths: Vec<String>,
+    x: i32,
+    y: i32,
+) -> CmdResult<ShellContextMenuResult> {
     if paths.len() != 1 {
         return Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None });
     }
@@ -460,87 +471,121 @@ pub fn shell_context_menu(paths: Vec<String>, x: i32, y: i32) -> CmdResult<Shell
     };
     #[cfg(windows)]
     {
-        use std::os::windows::ffi::OsStrExt;
-        use windows::core::{PCSTR, PCWSTR};
-        use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
-        use windows::Win32::UI::Shell::{
-            IContextMenu, SHCreateItemFromParsingName, BHID_SFUIObject, CMF_NORMAL,
-            CMINVOKECOMMANDINFO,
-        };
-        use windows::Win32::UI::WindowsAndMessaging::{
-            CreatePopupMenu, DestroyMenu, GetForegroundWindow, SW_SHOWNORMAL,
-            TrackPopupMenuEx, TPM_NONOTIFY, TPM_RETURNCMD,
+        let path = path.clone();
+        let track = move || -> CmdResult<ShellContextMenuResult> {
+            use std::os::windows::ffi::OsStrExt;
+            use windows::core::{PCSTR, PCWSTR};
+            use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+            use windows::Win32::UI::Shell::{
+                IContextMenu, SHCreateItemFromParsingName, BHID_SFUIObject, CMF_NORMAL,
+                CMINVOKECOMMANDINFO,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::{
+                CreatePopupMenu, DestroyMenu, GetForegroundWindow, SW_SHOWNORMAL,
+                TrackPopupMenuEx, TPM_NONOTIFY, TPM_RETURNCMD,
+            };
+
+            let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+            let need_uninit = hr.is_ok();
+            let result = (|| -> CmdResult<ShellContextMenuResult> {
+                let wide: Vec<u16> =
+                    Path::new(&path).as_os_str().encode_wide().chain(Some(0)).collect();
+                let item: windows::Win32::UI::Shell::IShellItem = unsafe {
+                    SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
+                }
+                .map_err(|e| AppError::not_found(format!("无法解析 Shell 项 / shell item not found: {e}")))?;
+                let menu_handler: IContextMenu = unsafe {
+                    item.BindToHandler::<_, IContextMenu>(None, &BHID_SFUIObject)
+                }
+                .map_err(|e| AppError::io(format!("无法获取右键扩展 / context menu handler: {e}")))?;
+                let menu = unsafe { CreatePopupMenu() }
+                    .map_err(|e| AppError::io(format!("无法创建右键菜单 / CreatePopupMenu: {e}")))?;
+                let first = 1u32;
+                let last = 0x7fffu32;
+                let query = unsafe { menu_handler.QueryContextMenu(menu, 0, first, last, CMF_NORMAL) };
+                if let Err(e) = query {
+                    unsafe { let _ = DestroyMenu(menu); }
+                    return Err(AppError::io(format!("填充右键菜单失败 / QueryContextMenu: {e}")));
+                }
+                let owner = unsafe { GetForegroundWindow() };
+                // windows-rs exposes this Win32 BOOL return as a BOOL wrapper.  With
+                // TPM_RETURNCMD the underlying integer is the selected menu id.
+                let command = unsafe {
+                    TrackPopupMenuEx(
+                        menu,
+                        (TPM_RETURNCMD | TPM_NONOTIFY).0,
+                        x,
+                        y,
+                        owner,
+                        None,
+                    )
+                    .0
+                    .max(0) as u32
+                };
+                let invoked = command >= first;
+                let invoke_result = if invoked {
+                    // IContextMenu verbs are integer offsets relative to the first id.
+                    let verb = (command - first) as usize as *const u8;
+                    let invoke = CMINVOKECOMMANDINFO {
+                        cbSize: std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32,
+                        hwnd: owner,
+                        lpVerb: PCSTR(verb),
+                        nShow: SW_SHOWNORMAL.0,
+                        ..Default::default()
+                    };
+                    Some(unsafe { menu_handler.InvokeCommand(&invoke) })
+                } else {
+                    None
+                };
+                unsafe { let _ = DestroyMenu(menu); }
+                if let Some(result) = invoke_result {
+                    result.map_err(|e| AppError::io(format!("执行右键命令失败 / InvokeCommand: {e}")))?;
+                }
+                Ok(ShellContextMenuResult {
+                    shown: true,
+                    invoked,
+                    command_id: (command >= first).then_some(command - first),
+                })
+            })();
+            if need_uninit {
+                unsafe { CoUninitialize() };
+            }
+            result
         };
 
-        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-        let need_uninit = hr.is_ok();
-        let result = (|| -> CmdResult<ShellContextMenuResult> {
-            let wide: Vec<u16> = Path::new(path).as_os_str().encode_wide().chain(Some(0)).collect();
-            let item: windows::Win32::UI::Shell::IShellItem = unsafe {
-                SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
-            }
-            .map_err(|e| AppError::not_found(format!("无法解析 Shell 项 / shell item not found: {e}")))?;
-        let menu_handler: IContextMenu = unsafe {
-            item.BindToHandler::<_, IContextMenu>(None, &BHID_SFUIObject)
-        }
-        .map_err(|e| AppError::io(format!("无法获取右键扩展 / context menu handler: {e}")))?;
-        let menu = unsafe { CreatePopupMenu() }
-            .map_err(|e| AppError::io(format!("无法创建右键菜单 / CreatePopupMenu: {e}")))?;
-        let first = 1u32;
-        let last = 0x7fffu32;
-        let query = unsafe { menu_handler.QueryContextMenu(menu, 0, first, last, CMF_NORMAL) };
-        if let Err(e) = query {
-            unsafe { let _ = DestroyMenu(menu); }
-            return Err(AppError::io(format!("填充右键菜单失败 / QueryContextMenu: {e}")));
-        }
-        let owner = unsafe { GetForegroundWindow() };
-        // windows-rs exposes this Win32 BOOL return as a BOOL wrapper.  With
-        // TPM_RETURNCMD the underlying integer is the selected menu id.
-        let command = unsafe {
-            TrackPopupMenuEx(
-                menu,
-                (TPM_RETURNCMD | TPM_NONOTIFY).0,
-                x,
-                y,
-                owner,
-                None,
-            )
-            .0
-            .max(0) as u32
-        };
-        let invoked = command >= first;
-        let invoke_result = if invoked {
-            // IContextMenu verbs are integer offsets relative to the first id.
-            let verb = (command - first) as usize as *const u8;
-            let invoke = CMINVOKECOMMANDINFO {
-                cbSize: std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32,
-                hwnd: owner,
-                lpVerb: PCSTR(verb),
-                nShow: SW_SHOWNORMAL.0,
-                ..Default::default()
-            };
-            Some(unsafe { menu_handler.InvokeCommand(&invoke) })
-        } else {
-            None
-        };
-        unsafe { let _ = DestroyMenu(menu); }
-        if let Some(result) = invoke_result {
-            result.map_err(|e| AppError::io(format!("执行右键命令失败 / InvokeCommand: {e}")))?;
-        }
-            Ok(ShellContextMenuResult {
-                shown: true,
-                invoked,
-                command_id: (command >= first).then_some(command - first),
+        // 主线程判定：desktop 窗口所在线程 = Tauri 主线程（与 container.rs 同口径）。
+        // 已在主线程则内联直跑，否则 run_on_main_thread + channel 等待（≤30s：菜单是
+        // 模态交互，用户可能长时间不选择）。
+        use std::sync::mpsc;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::System::Threading::GetCurrentThreadId;
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+        let desktop_thread = app
+            .get_webview_window("desktop")
+            .and_then(|w| w.hwnd().ok())
+            .map(|h| unsafe {
+                GetWindowThreadProcessId(HWND(h.0 as *mut core::ffi::c_void), None)
             })
-        })();
-        if need_uninit {
-            unsafe { CoUninitialize() };
+            .unwrap_or(0);
+        let current_thread = unsafe { GetCurrentThreadId() };
+        if desktop_thread != 0 && desktop_thread == current_thread {
+            return track();
         }
-        result
+        let (tx, rx) = mpsc::channel();
+        let dispatched = app.run_on_main_thread(move || {
+            let _ = tx.send(track());
+        });
+        if dispatched.is_err() {
+            return Err(AppError::io("右键菜单无法派发到主线程 / context menu main-thread dispatch failed"));
+        }
+        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(r) => r,
+            Err(_) => Err(AppError::io("右键菜单等待超时 / context menu timed out")),
+        }
     }
     #[cfg(not(windows))]
     {
-        let _ = (path, x, y);
+        let _ = (app, path, x, y);
         Ok(ShellContextMenuResult { shown: false, invoked: false, command_id: None })
     }
 }

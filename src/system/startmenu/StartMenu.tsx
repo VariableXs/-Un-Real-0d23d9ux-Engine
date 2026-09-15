@@ -104,7 +104,7 @@ export function StartMenu(props: {
   onOpenApp: (app: AppMode) => void;
   onOpenSettings: () => void;
   onOpenLauncher: () => void;
-  onOpenSearch: () => void;
+  onOpenSearch: (query?: string) => void;
   onExit: () => void;
   /** 「每日一图」卡片图片（本机壁纸的 asset URL；缺省时卡片退化为程序化渐变）。 */
   heroImage?: string;
@@ -128,6 +128,11 @@ export function StartMenu(props: {
   const [quizPicked, setQuizPicked] = useState<number | null>(null);
   useEffect(() => {
     if (!props.open) setQuizPicked(null);
+  }, [props.open]);
+  // R4-B3（R3-B6 修复）：菜单关闭时清空搜索词（与 Windows 习惯一致），
+  // 避免下次打开仍停留在上次的过滤态。
+  useEffect(() => {
+    if (!props.open) setQ("");
   }, [props.open]);
   useEffect(() => {
     if (!powerOpen) return;
@@ -846,8 +851,10 @@ export function StartMenu(props: {
                 else props.onClose();
               }
               if (e.key === "Enter" && q.trim()) {
+                // QA-B5：把输入词带给全局搜索（原先直接丢弃 → 浮层永远空查询、必无结果）
+                const term = q.trim();
                 setQ("");
-                props.onOpenSearch();
+                props.onOpenSearch(term);
               }
             }}
           />

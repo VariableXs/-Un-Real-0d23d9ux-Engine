@@ -1,4 +1,5 @@
 import type { AppMode } from "../state/uiStore";
+import { installLogCapture } from "../lib/logger";
 
 /** 窗口入口类型：desktop = 桌面环境窗口；四款独立软件；explorer = 系统窗口（文件管理器/回收站）；datavault = 数据安全中心（AI-10）。 */
 export type EntryType = "desktop" | AppMode | "explorer" | "datavault";
@@ -12,7 +13,8 @@ export function isTauriRuntime(): boolean {
  * 每窗口入口共享的运行时装配（M4 拆窗）：
  * - DEV-ONLY Tauri 运行时 stub：让 `vite dev` 在纯浏览器中也能启动
  *   （打包后的 Tauri webview 定义了 __TAURI_INTERNALS__，stub 永不生效）。
- * - 全局错误钩子：Rust 侧日志可捕获前端错误。
+ * - 全局错误钩子：errBoard 聚合 + 崩溃叙事 + 统一日志时间线
+ *   （采集/存储/导出链路见 src/lib/logger.ts 与 docs/异常日志系统-AI诊断指南.md）。
  */
 export function setupEntryRuntime(entry: EntryType): void {
   type TauriInternals = { invoke: (cmd: string, args?: unknown) => Promise<unknown> };
@@ -31,12 +33,9 @@ export function setupEntryRuntime(entry: EntryType): void {
     } as unknown as TauriInternals;
   }
 
-  window.addEventListener("error", (e) => {
-    console.error("[Variable] uncaught", e.error ?? e.message);
-  });
-  window.addEventListener("unhandledrejection", (e) => {
-    console.error("[Variable] unhandled rejection", e.reason);
-  });
+  // 异常实时分析统一装配：errBoard 全局错误环形 + 崩溃叙事 + console 桥接
+  // + window/promise 兜底（console 镜像保持 "[Variable] uncaught" 原样）+ 落盘。
+  installLogCapture(entry);
 }
 
 /**

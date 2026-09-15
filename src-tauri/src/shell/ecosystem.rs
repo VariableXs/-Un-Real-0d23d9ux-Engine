@@ -327,8 +327,24 @@ pub fn steam_library_scan() -> CmdResult<Vec<SteamGame>> {
     Ok(games)
 }
 
+/// steam:// URL 打开的公共通道：启动前主动进入 CEF 兼容态（不等 3s watcher，
+/// 杜绝启动瞬间 z-order 抖动）→ ShellExecute 拉起 → 收编看护。
+/// 调用方：steam_launch（rungameid）与 system::open_path 的 Steam 产物路由
+/// （steam:// 链接 / Steam 快捷方式 .url —— 从 Variable 打开 = Steam 收进
+/// Variable 运行，不落宿主桌面）。
+pub(crate) fn steam_open_url(app: &tauri::AppHandle, url: &str) -> CmdResult<()> {
+    if !url.to_lowercase().starts_with("steam://") {
+        return Err(AppError::validation("非 steam:// 链接 / not a steam:// URL"));
+    }
+    crate::shell::compat::apply_compat_mode(app);
+    // URI associations belong to Windows Shell; cmd/start is intentionally
+    // not used because it breaks quoting and profile environment semantics.
+    crate::shell::compat::shell_execute_path(Path::new(url), Some("open"), None, None, None)?;
+    crate::shell::embed::spawn_steam_adopt_watcher(app.clone());
+    Ok(())
+}
+
 /// steam:// 协议直通（rungameid / store 前台由 Steam 自管）。
-/// 启动前主动进入 CEF 兼容态：不等 3s watcher，杜绝启动瞬间 z-order 抖动。
 /// 启动后拉起 Steam 主窗看护：从 Variable 启动 = Steam 收进 Variable 运行
 /// （embed://popup → 前端 VWM 占位窗 → embed_adopt 重父化；Steam 已嵌入时
 /// 游戏窗口走 WinEventHook 同树 popup 自动收编；90s 冷启动超时看门狗兜底）。
@@ -337,13 +353,7 @@ pub fn steam_launch(app: tauri::AppHandle, app_id: String) -> CmdResult<()> {
     if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
         return Err(AppError::validation("Steam AppID 必须是数字 / Steam AppID must be numeric"));
     }
-    crate::shell::compat::apply_compat_mode(&app);
-    let url = format!("steam://rungameid/{app_id}");
-    // URI associations belong to Windows Shell; cmd/start is intentionally
-    // not used because it breaks quoting and profile environment semantics.
-    crate::shell::compat::shell_execute_path(Path::new(&url), Some("open"), None, None, None)?;
-    crate::shell::embed::spawn_steam_adopt_watcher(app);
-    Ok(())
+    steam_open_url(&app, &format!("steam://rungameid/{app_id}"))
 }
 
 /// 商店应用 AUMID 启动（IApplicationActivationManager）。

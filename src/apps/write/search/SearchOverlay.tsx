@@ -45,7 +45,10 @@ export function SearchOverlay(): React.ReactElement | null {
 
   useEffect(() => {
     if (open) {
-      setQuery("");
+      // QA-B5：消费开始菜单搜索框带入的初始查询词（用后即清，避免污染下次打开）
+      const seed = uiStore.getState().searchInitialQuery;
+      uiStore.setState({ searchInitialQuery: "" });
+      setQuery(seed);
       setHits([]);
       setFsHits([]);
       setTimeout(() => inputRef.current?.focus(), 30);

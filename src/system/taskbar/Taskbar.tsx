@@ -291,6 +291,26 @@ export function Taskbar(props: {
   const [brief, setBrief] = useState<SysBrief | null>(null);
   const [disks, setDisks] = useState<SysDisk[]>([]);
   const [calOpen, setCalOpen] = useState(false);
+  // R3 修复：日历弹层此前只能靠再次点击时钟关闭——外点与 Esc 均无效，
+  // 且与右键菜单/快速面板可长时间并存。补捕获阶段外点 + Esc 关闭。
+  useEffect(() => {
+    if (!calOpen) return;
+    const onDocPointer = (e: PointerEvent) => {
+      const tEl = e.target as HTMLElement | null;
+      if (tEl?.closest(".tb-calendar")) return;
+      if (tEl?.closest(".tb-clock")) return; // 时钟按钮自身走 onClick toggle
+      setCalOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCalOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointer, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [calOpen]);
   const [calMonth, setCalMonth] = useState(() => new Date());
   const cpuHist = useRef<number[]>([]);
   const cpuCanvas = useRef<HTMLCanvasElement | null>(null);

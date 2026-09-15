@@ -34,7 +34,7 @@ import {
 } from "../launcher/thirdApps";
 import { autosaveSnapshot } from "../windows/snapshots";
 import { handleDisplayChanged, initDisplayMemory } from "../windows/snapshots";
-import { openVwmApp, openVwmSystem, type VwmApp } from "../windows/vwm";
+import { closeVwmWin, openVwmApp, openVwmSystem, vwmStore, type VwmApp } from "../windows/vwm";
 import { VirtualWindowManager } from "../windows/VirtualWindowManager";
 import { applySnap, SnapPreviewHost } from "../windows/snap";
 import { pushRecent } from "../startmenu/recent";
@@ -556,6 +556,9 @@ export function DesktopShell(props: {
       })();
     });
     const unWin = listen("sys://win-key", () => {
+      // R4-B6（首轮 B-3）：裸 Win 键 = 「回到桌面」肌肉记忆——收编子窗置顶
+      // 盖满屏幕时，先把 WebView 提回子窗之上，再展开开始菜单。
+      void ipc.desktopRaise().catch(() => {});
       uiStore.setState((s) => ({ startOpen: !s.startOpen }));
     });
     const unIdx = listen<number>("sys://launch-index", (e) => launchIndex(Number(e.payload)));
@@ -590,6 +593,26 @@ export function DesktopShell(props: {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [win]);
+
+  // R4-B1（R3-B3 修复）：Ctrl+W 不再落到 WebView2 默认行为（整体退出）。
+  // 捕获阶段拦截：非输入场景 = 关闭当前聚焦的 VWM 虚拟窗；输入场景仅拦截默认行为，
+  // 组件级 Ctrl+W（如资源管理器关标签）在各自处理器内继续生效。
+  useEffect(() => {
+    const isEditable = (el: Element | null): boolean =>
+      el instanceof HTMLElement &&
+      (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (!e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
+      if (e.key !== "w" && e.key !== "W") return;
+      e.preventDefault();
+      if (isEditable(document.activeElement)) return; // 组件级 Ctrl+W（如资源管理器关标签）继续处理
+      e.stopPropagation();
+      const focused = vwmStore.getState().focusedId;
+      if (focused) closeVwmWin(focused);
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, []);
 
   // 批次E（规格 4.7）：整表应用快捷键（默认 + 用户覆盖）；变更即重注册。
   // 实机反馈"彻底解决"：被占用的组合后端已自动改用备选组合键（remapped 如实提示），
@@ -788,7 +811,7 @@ export function DesktopShell(props: {
           closeStart();
           props.onOpenSettings();
         }}
-        onOpenSearch={() => uiStore.setState({ searchOpen: true, startOpen: false })}
+        onOpenSearch={(query?: string) => uiStore.setState({ searchOpen: true, startOpen: false, searchInitialQuery: query ?? "" })}
         onOpenLauncher={() => {
           closeStart();
           uiStore.setState({ launcherOpen: true });

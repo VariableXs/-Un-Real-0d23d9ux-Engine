@@ -18,6 +18,8 @@ export interface UiState {
   writePendingOpen: string | null;
   sidebarOpen: boolean;
   searchOpen: boolean;
+  /** QA-B5：开始菜单搜索框带入全局搜索的初始查询词（打开浮层后即清零）。 */
+  searchInitialQuery: string;
   /** 开始菜单展开状态（桌面环境 L1，M3）。 */
   startOpen: boolean;
   /** 批次C：快捷面板展开状态 + 聚焦分区（null = 无聚焦，通知中心入口）。 */
@@ -56,6 +58,7 @@ export const uiStore = createStore<UiState>({
   writePendingOpen: null,
   sidebarOpen: false,
   searchOpen: false,
+  searchInitialQuery: "",
   startOpen: false,
   quickOpen: false,
   quickSection: null,

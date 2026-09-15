@@ -67,7 +67,7 @@ export interface ListFilterT {
 export interface AppLogEntry {
   /** ms since epoch（展示时本地格式化） */
   ts: number;
-  /** 链路标签：launch / embed / adopt / steam / watchdog / capture / hotkey */
+  /** 链路标签：launch / embed / adopt / steam / watchdog / capture / hotkey / fe:<level>（前端日志转发） */
   tag: string;
   msg: string;
 }
@@ -688,6 +688,8 @@ export const ipc = {
   /** W-1 退出会话：全部嵌入窗口发 WM_CLOSE（30s 超时者留在桌面，绝不强杀）。 */
   embedCloseAll: () => invoke<number>("embed_close_all"),
   embedFocus: (embedId: string) => invoke<void>("embed_focus", { embedId }),
+  /** R4-B6（首轮 B-3）：把桌面 WebView 提回全部收编子窗之上（按 Win 键回到桌面壳）。 */
+  desktopRaise: () => invoke<void>("desktop_raise"),
   /** 批次C-4：L3 输入转发 —— 归一化坐标(0..1) PostMessage 直注屏外真实窗口。 */
   embedInput: (
     embedId: string,

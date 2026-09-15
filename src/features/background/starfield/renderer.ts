@@ -339,9 +339,9 @@ export function createGpu(gl: WebGL2RenderingContext): Gpu | null {
     gl.disable(gl.BLEND);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, detailTex);
-    gl.uniform1i(aGrain, 1);
-    gl.useProgram(auroraProg);
+    gl.useProgram(auroraProg); // uniform 必须在 useProgram 之后设置（否则 INVALID_OPERATION）
     gl.bindVertexArray(emptyVao);
+    gl.uniform1i(aGrain, 1);
     gl.uniform2f(aRes, target.w, target.h);
     gl.uniform1f(aTime, f.time);
     gl.uniform1f(aAurora, f.tier.aurora);

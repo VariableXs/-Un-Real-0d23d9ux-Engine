@@ -81,6 +81,20 @@ export function ConfirmHost(): ReactNode {
     current?.resolve(ok);
     confirmStore.setState({ current: null });
   };
+  // QA-B2：Enter = 确认（焦点被桌面壳抢占时浏览器默认按钮行为失效，改为显式监听）
+  useEffect(() => {
+    if (!current) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        done(true);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
   if (!current) return null;
   return (
     <Modal open title={current.title} onClose={() => done(false)} width={460}>

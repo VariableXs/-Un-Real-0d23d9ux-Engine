@@ -63,9 +63,37 @@ fn validate_open_target(p: &str) -> CmdResult<std::path::PathBuf> {
     Ok(path.to_path_buf())
 }
 
+/// Steam 产物识别：`steam://` 链接本体，或内容指向 `steam://` 的 `.url`
+/// 快捷方式（Steam 桌面快捷键即此格式）。命中 → 返回协议 URL。
+/// 供 open_path 把 Steam 产物路由进 Variable 收编通道（不在宿主桌面打开）。
+fn steam_probe(path: &str) -> Option<String> {
+    let lower = path.trim().to_lowercase();
+    if lower.starts_with("steam://") {
+        return Some(path.trim().to_string());
+    }
+    if lower.ends_with(".url") {
+        let content = std::fs::read_to_string(path).ok()?;
+        let line = content
+            .lines()
+            .find(|l| l.trim().to_lowercase().starts_with("url="))?;
+        let url = line.trim()[4..].trim().trim_matches('"').trim();
+        if url.to_lowercase().starts_with("steam://") {
+            return Some(url.to_string());
+        }
+    }
+    None
+}
+
 /// Open a file with the Windows default application or a folder in Explorer.
+/// Steam 产物（steam:// 链接 / Steam 快捷方式 .url）例外：不走宿主默认程序，
+/// 改走 Steam 通道（CEF 兼容态 + 收编看护），Steam 主窗与游戏窗由
+/// spawn_steam_adopt_watcher / WinEventHook 收进 Variable 桌面运行。
 #[tauri::command(async)]
-pub fn open_path(_st: tauri::State<AppState>, path: String) -> CmdResult<()> {
+pub fn open_path(app: tauri::AppHandle, _st: tauri::State<AppState>, path: String) -> CmdResult<()> {
+    if let Some(url) = steam_probe(&path) {
+        crate::shell::ecosystem::steam_open_url(&app, &url)?;
+        return Ok(());
+    }
     let p = validate_open_target(&path)?;
     // One Shell boundary for both folders and files.  Do not use `cmd /C
     // start`: it loses the caller's environment and turns a path into shell
@@ -127,10 +155,77 @@ pub fn check_paths_exist(_st: tauri::State<AppState>, paths: Vec<String>) -> Cmd
         .collect())
 }
 
+/// 剥控制字符 + 截断（log_frontend 与 applog 总线共用；消息永不反向影响调用方）。
+fn sanitize_log_message(msg: &str) -> String {
+    msg.chars().filter(|c| !c.is_control()).take(1000).collect()
+}
+
 #[tauri::command(async)]
 pub fn log_frontend(st: tauri::State<AppState>, level: String, message: String) -> CmdResult<()> {
+    // 实时总线：前端异常（logError / ErrorBoundary）推送 sys://applog，
+    // 任务管理器「日志」页与 applog-*.log 同步可见（tag = fe:<level>）。
+    let clean = sanitize_log_message(&message);
+    // level 只保留字母数字，防止拼进 tag 的字符失控（level 来自前端）
+    let level_tag: String = level.chars().filter(|c| c.is_ascii_alphanumeric()).take(16).collect();
+    crate::shell::applog::log(&format!("fe:{level_tag}"), &clean);
+    // 跨会话文件落盘（variable.log；既有链路保持不变）
     AppState::append_log_public(&st.logs_dir, &level, &message);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sanitize_log_message, steam_probe};
+
+    #[test]
+    fn test_sanitize_log_message_strips_control_and_truncates() {
+        assert_eq!(sanitize_log_message("plain message"), "plain message");
+        assert_eq!(sanitize_log_message("line1\nline2\ttab"), "line1line2tab");
+        let long = "x".repeat(1500);
+        assert_eq!(sanitize_log_message(&long).chars().count(), 1000);
+        assert_eq!(sanitize_log_message(""), "");
+    }
+
+    /// Steam 产物识别：steam:// 链接本体（大小写/首尾空白不敏感）直接命中；
+    /// Steam 桌面快捷键 .url（URL=steam://…，带/不带引号）解析出协议 URL；
+    /// 普通 http .url、其它路径、不存在的 .url 一律不命中。
+    #[test]
+    fn test_steam_probe_detects_protocol_and_url_shortcut() {
+        assert_eq!(steam_probe("steam://rungameid/730"), Some("steam://rungameid/730".into()));
+        assert_eq!(steam_probe("  STEAM://Store/ "), Some("STEAM://Store/".into()));
+
+        let dir = std::env::temp_dir().join(format!("varix_steam_probe_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shortcut = dir.join("steam_game.url");
+        std::fs::write(
+            &shortcut,
+            "[InternetShortcut]\r\nURL=steam://rungameid/570\r\n",
+        )
+        .unwrap();
+        assert_eq!(
+            steam_probe(shortcut.to_str().unwrap()),
+            Some("steam://rungameid/570".into())
+        );
+
+        // 带引号的 URL 值（部分工具写出格式）
+        let quoted = dir.join("steam_quoted.url");
+        std::fs::write(&quoted, "[InternetShortcut]\r\nURL=\"steam://open/main\"\r\n").unwrap();
+        assert_eq!(
+            steam_probe(quoted.to_str().unwrap()),
+            Some("steam://open/main".into())
+        );
+
+        // 普通 http .url → 不命中
+        let web = dir.join("web.url");
+        std::fs::write(&web, "[InternetShortcut]\r\nURL=https://example.com\r\n").unwrap();
+        assert_eq!(steam_probe(web.to_str().unwrap()), None);
+
+        // 非 .url 路径 / 不存在的 .url → 不命中
+        assert_eq!(steam_probe("C:\\notepad.txt"), None);
+        assert_eq!(steam_probe(dir.join("missing.url").to_str().unwrap()), None);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Generic UTF-8 text export to a user-chosen path (never overwrites silently:

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n";
-import { aggregateErrors, boardRecords, buildErrReport, clearErrBoard } from "../../lib/errBoard";
+import { aggregateErrors, boardRecords, clearErrBoard } from "../../lib/errBoard";
+import { buildDiagnosticReport, logRecords } from "../../lib/logger";
 import { formatSmartTime } from "../../lib/formatUnits";
 import { ipc, type DepAuditStateView } from "../../lib/ipc";
 
@@ -25,7 +26,8 @@ export function QualityTab(props: { appVersion?: string }): React.ReactElement {
   const entries = useMemo(() => aggregateErrors(boardRecords(), 7, 10), [nonce]);
 
   const copyReport = async (): Promise<void> => {
-    const report = buildErrReport(entries, props.appVersion ?? "?");
+    // 组合诊断报告：errBoard 近 7 天聚合 + 上一会话尾部（崩溃前现场）+ 本会话日志时间线
+    const report = buildDiagnosticReport(entries, props.appVersion ?? "?");
     try {
       await navigator.clipboard.writeText(report);
       setCopied(true);
@@ -52,7 +54,7 @@ export function QualityTab(props: { appVersion?: string }): React.ReactElement {
       <p className="dim small" style={{ whiteSpace: "pre-line" }}>{t("q20ErrBoardIntro")}</p>
 
       <div className="row gap8" style={{ margin: "12px 0" }}>
-        <button type="button" className="btn" data-testid="err-copy-btn" onClick={() => void copyReport()} disabled={entries.length === 0}>
+        <button type="button" className="btn" data-testid="err-copy-btn" onClick={() => void copyReport()} disabled={entries.length === 0 && logRecords().length === 0}>
           {copied ? t("q20ErrCopied") : t("q20ErrCopy")}
         </button>
         <button type="button" className="btn ghost" onClick={() => { clearErrBoard(); setNonce((n) => n + 1); }} disabled={entries.length === 0}>

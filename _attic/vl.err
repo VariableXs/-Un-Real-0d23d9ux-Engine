@@ -1,0 +1,21 @@
+shortcut super+tab occupied → remapped to shift+super+tab
+[hotkey] Win+Shift+S 注册失败（暂被占用），5s 后重试
+[compat] Wallpaper Engine detected at startup -> entering compat mode
+[compat] CEF app compat mode applied (alwaysOnTop=false) procs=["wallpaperservice64.exe", "wallpaper64.exe", "steam.exe", "steamwebhelper.exe"]
+[watchdog] 发现逃逸窗口 hwnd=197420 image=sodamusic.exe title="" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=131702 image=sodamusic.exe title="" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=1706138 image=workbuddy.exe title="WorkBuddy" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=853610 image=trae cn.exe title="-Un-Real-0d23d9ux-Engine-main - TraeCode CN" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=66916 image=adobe desktop service.exe title="" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=199452 image=workbuddy换号器.exe title="WorkBuddy 换号器 · 终端" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=2036104 image=lenovopcmanager.exe title="联想电脑管家" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=460640 image=trae solo cn.exe title="TraeWork CN" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=131756 image=zcode.exe title="ZCode" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=3409306 image=msedge.exe title="新建标签页 - 个人 - Microsoft\u{200b} Edge" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=131412 image=sodamusic.exe title="汽水音乐" → 收编（policy=auto）
+[watchdog] 发现逃逸窗口 hwnd=263240 image=msedge.exe title="Higgsfield AI — AI原生创意套件 和另外 6 个页面 - 个人 - Microsoft\u{200b} Edge" → 收编（policy=auto）
+[hotkey] Win+Shift+S 重试 12 次仍失败 → 放弃抢注（截图走工具页入口）
+[watchdog] 发现逃逸窗口 hwnd=35325842 image=msedgewebview2.exe title="" → 收编（policy=auto）
+[adopt] embed_adopt msedgewebview2.exe: hwnd=35325842 root_pid=64788 embed_id=vwm-tp:msedgewebview2-mu1ezmha0
+[embed] attach msedgewebview2.exe: hwnd=35325842 root_pid=64788 → 层级 L3（directcomposition window (no redirection surface)）
+[capture] attach msedgewebview2.exe: L3 画面捕获已启动 hwnd=35325842

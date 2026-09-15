@@ -76,16 +76,86 @@ pub mod win {
     }
 
     /// 批次C-4 恢复：还原屏外窗口到可见区（L3 会话关闭时；不杀进程）。
-    pub fn restore_window(hwnd: isize) {
+    /// R3-B11 修复：此前 SetWindowPos 带 SWP_NOMOVE，(100,100) 目标位无效，
+    /// 窗口实际仍留 -32000 屏外（注释与行为不符）。现取当前宽高后真实移动，
+    /// 并 ShowWindow(SW_SHOWNOACTIVATE)——托盘隐藏窗（Steam 收 WM_CLOSE
+    /// 后自行隐藏）仅移动不会变可见，隐藏态下 Chromium 不恢复渲染。
+    pub fn restore_window(hwnd: isize) -> bool {
+        use windows::Win32::Foundation::RECT;
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOP,
-            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_TOOLWINDOW,
+            GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+            GWL_EXSTYLE, HWND_TOP, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, WS_EX_TOOLWINDOW,
         };
         let h = HWND(hwnd as *mut core::ffi::c_void);
         unsafe {
             let ex = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
             SetWindowLongPtrW(h, GWL_EXSTYLE, (ex & !WS_EX_TOOLWINDOW.0) as isize);
-            let _ = SetWindowPos(h, HWND_TOP, 100, 100, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
+            let mut rc = RECT::default();
+            let ok_rect = GetWindowRect(h, &mut rc).is_ok();
+            let mut w = (rc.right - rc.left).max(320);
+            let mut hgt = (rc.bottom - rc.top).max(240);
+            // 尺寸异常防御：钳到工作区内（避免 w/h 抓到 0 或超屏）
+            let (sw, sh) = screen_size();
+            if w > sw - 40 {
+                w = sw - 40;
+            }
+            if hgt > sh - 40 {
+                hgt = sh - 40;
+            }
+            let _ = ShowWindow(h, SW_SHOWNOACTIVATE);
+            SetWindowPos(h, HWND_TOP, 100, 100, w, hgt, SWP_NOACTIVATE).is_ok() && ok_rect
+        }
+    }
+
+    /// 屏幕尺寸（主显示器，物理像素）。
+    fn screen_size() -> (i32, i32) {
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+        unsafe { (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)) }
+    }
+
+    /// 判断窗口是否被 hide_offscreen 藏在屏外（-32000 附近）。
+    /// 阈值 -20000：正常窗口不可能出现在该区域，hide 的 -32000 必命中。
+    pub fn is_offscreen(hwnd: isize) -> bool {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let mut rc = RECT::default();
+            if GetWindowRect(h, &mut rc).is_err() {
+                return false;
+            }
+            rc.left <= -20000 || rc.top <= -20000
+        }
+    }
+
+    /// 窗口处于 Chromium 停渲染风险态：完全隐藏（IsWindowVisible=false）
+    /// 或被藏屏外（-32000）。两者都会触发 occlusion 检测停渲染，L3 直接
+    /// 采集必得黑帧（R3-B11：单例重开收编的家族窗多为托盘隐藏态）。
+    pub fn needs_reveal(hwnd: isize) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::IsWindowVisible;
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        (unsafe { !IsWindowVisible(h).as_bool() }) || is_offscreen(hwnd)
+    }
+
+    /// 尺寸抖动强制重绘（R3-B11 实测：Chromium 窗口从隐藏/屏外恢复显示后
+    /// 渲染管线不会自动恢复，需 resize 或交互触发；WM_SIZE 抖动 ±1px 即可，
+    /// 实机验证真实窗与 WGC 采集帧同步恢复）。
+    pub fn jiggle_window(hwnd: isize) -> bool {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowRect, SetWindowPos, SWP_NOACTIVATE,
+        };
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let mut rc = RECT::default();
+            if GetWindowRect(h, &mut rc).is_err() {
+                return false;
+            }
+            let (w, hgt) = (rc.right - rc.left, rc.bottom - rc.top);
+            let a = SetWindowPos(h, None, rc.left, rc.top, w + 1, hgt, SWP_NOACTIVATE);
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            let b = SetWindowPos(h, None, rc.left, rc.top, w, hgt, SWP_NOACTIVATE);
+            a.is_ok() && b.is_ok()
         }
     }
 
