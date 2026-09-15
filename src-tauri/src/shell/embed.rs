@@ -60,8 +60,6 @@ struct EmbedSession {
     /// 批次C-3 L2 容器包裹：Variable 原生宿主窗口句柄（hwnd 仍为第三方子窗口）。
     /// None = L1 直嵌桌面（无宿主）。
     host: Option<isize>,
-    /// 批次C-4 L3：会话带画面采集（前端经 embed-frame 事件合成；close 时停止+还原窗口）。
-    capture: bool,
 }
 
 /// W-1 嵌入注册中心：embed_id（VWM 虚拟窗口实例 id）→ 会话。
@@ -109,9 +107,6 @@ pub struct EmbedResult {    /// 是否成功嵌入（false = 已回退为独立�
     /// 批次C-2：根 pid（失败后前端「框选窗口」收编用；成功时同样返回）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_pid: Option<u32>,
-    /// 批次C-4：true = L3 画面捕获会话（前端开帧画布 + 输入转发）
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub capture: bool,
 }
 
 // ---------- 批次C-2：捕获可靠性（自适应超时 / 标题正则兜底 / 失败证据包） ----------
@@ -192,14 +187,87 @@ fn write_fail_evidence(st: &crate::state::AppState, tp_id: &str, root_pid: u32, 
 
 #[cfg(windows)]
 pub(crate) mod win {
-    use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM};
+    use windows::Win32::Foundation::{BOOL, CloseHandle, HWND, LPARAM, RECT};
     use windows::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+        EnumWindows, GetSystemMetrics, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId,
+        IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_TOP,
+        SM_CXSCREEN, SM_CYSCREEN, SWP_NOACTIVATE, SW_SHOWNOACTIVATE, WS_EX_TOOLWINDOW,
     };
+
+    // ---------- M3：Chromium 停渲染风险窗口的还原/唤醒辅助（原 capture::win，抓屏删除后随迁） ----------
+
+    /// 恢复屏外/隐藏窗口到可见区（attach 唤醒与历史遗留藏窗清理用；不杀进程）。
+    /// R3-B11 修复：SetWindowPos 真实移动（非 SWP_NOMOVE），并
+    /// ShowWindow(SW_SHOWNOACTIVATE)——托盘隐藏窗仅移动不会变可见，
+    /// 隐藏态下 Chromium 不恢复渲染。
+    pub fn restore_window(hwnd: isize) -> bool {
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let ex = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
+            SetWindowLongPtrW(h, GWL_EXSTYLE, (ex & !WS_EX_TOOLWINDOW.0) as isize);
+            let mut rc = RECT::default();
+            let ok_rect = GetWindowRect(h, &mut rc).is_ok();
+            let mut w = (rc.right - rc.left).max(320);
+            let mut hgt = (rc.bottom - rc.top).max(240);
+            // 尺寸异常防御：钳到工作区内（避免 w/h 抓到 0 或超屏）
+            let (sw, sh) = screen_size();
+            if w > sw - 40 {
+                w = sw - 40;
+            }
+            if hgt > sh - 40 {
+                hgt = sh - 40;
+            }
+            let _ = ShowWindow(h, SW_SHOWNOACTIVATE);
+            SetWindowPos(h, HWND_TOP, 100, 100, w, hgt, SWP_NOACTIVATE).is_ok() && ok_rect
+        }
+    }
+
+    /// 屏幕尺寸（主显示器，物理像素）。
+    fn screen_size() -> (i32, i32) {
+        unsafe { (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)) }
+    }
+
+    /// 判断窗口是否被藏在屏外（-32000 附近）。阈值 -20000：正常窗口
+    /// 不可能出现在该区域，hide 的 -32000 必命中。
+    pub fn is_offscreen(hwnd: isize) -> bool {
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let mut rc = RECT::default();
+            if GetWindowRect(h, &mut rc).is_err() {
+                return false;
+            }
+            rc.left <= -20000 || rc.top <= -20000
+        }
+    }
+
+    /// 窗口处于 Chromium 停渲染风险态：完全隐藏（IsWindowVisible=false）
+    /// 或被藏屏外（-32000）。两者都会触发 occlusion 检测停渲染
+    /// （R3-B11：单例重开收编的家族窗多为托盘隐藏态）。
+    pub fn needs_reveal(hwnd: isize) -> bool {
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        (unsafe { !IsWindowVisible(h).as_bool() }) || is_offscreen(hwnd)
+    }
+
+    /// 尺寸抖动强制重绘（R3-B11 实测：Chromium 窗口从隐藏/屏外恢复显示后
+    /// 渲染管线不会自动恢复，需 resize 或交互触发；WM_SIZE 抖动 ±1px 即可）。
+    pub fn jiggle_window(hwnd: isize) -> bool {
+        let h = HWND(hwnd as *mut core::ffi::c_void);
+        unsafe {
+            let mut rc = RECT::default();
+            if GetWindowRect(h, &mut rc).is_err() {
+                return false;
+            }
+            let (w, hgt) = (rc.right - rc.left, rc.bottom - rc.top);
+            let a = SetWindowPos(h, None, rc.left, rc.top, w + 1, hgt, SWP_NOACTIVATE);
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            let b = SetWindowPos(h, None, rc.left, rc.top, w, hgt, SWP_NOACTIVATE);
+            a.is_ok() && b.is_ok()
+        }
+    }
 
     pub fn window_pid(hwnd: HWND) -> Option<u32> {
         let mut pid: u32 = 0;
@@ -701,16 +769,15 @@ pub async fn embed_launch(
                 tp.dpi_fix,
                 Some(&target),
             ) {
-                Attach::Ok { capture } => Ok(EmbedResult {
+                Attach::Ok => Ok(EmbedResult {
                     attached: true,
                     reason: String::new(),
                     root_pid,
-                    capture,
                 }),
                 Attach::Skip { reason } => {
                     crate::shell::applog::log("launch", format!("embed_launch {id}: 兜底收编被拒：{reason}"));
                     if steam_family { spawn_steam_adopt_watcher(app.clone()); }
-                    Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
+                    Ok(EmbedResult { attached: false, reason, root_pid })
                 }
             };
         }
@@ -723,7 +790,6 @@ pub async fn embed_launch(
             attached: false,
             reason: "未能捕获应用窗口（启动较慢或无标准窗口）。应用已在系统桌面独立运行，未受影响；可在占位卡上「框选窗口」手动收编。".into(),
             root_pid,
-            capture: false,
         });
     };
     // 自适应：快启动（<5s 命中）→ 下次收紧到 5s，减少慢启动错觉等待
@@ -751,20 +817,20 @@ pub async fn embed_launch(
         tp.dpi_fix,
         Some(&target),
     ) {
-        Attach::Ok { capture } => {
+        Attach::Ok => {
             crate::shell::applog::log(
                 "embed",
-                format!("embed_launch {id}: 接入成功 hwnd={hwnd}（capture={capture}）"),
+                format!("embed_launch {id}: 接入成功 hwnd={hwnd}"),
             );
             // R5 隔离底线：嵌入成功后重新断言桌面置顶（tp_launch 撤销过），
             // 嵌入窗已成为桌面子窗，独立 shell 界面不得重新露出。
             reassert_desktop_topmost(&app);
-            Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture })
+            Ok(EmbedResult { attached: true, reason: String::new(), root_pid })
         }
         Attach::Skip { reason } => {
             crate::shell::applog::log("embed", format!("embed_launch {id}: 未接入：{reason}"));
             if steam_family { spawn_steam_adopt_watcher(app.clone()); }
-            Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
+            Ok(EmbedResult { attached: false, reason, root_pid })
         }
     }
 }
@@ -1356,8 +1422,8 @@ fn reembed_into_session(app: &tauri::AppHandle, key: &str, new_hwnd: isize) -> b
 /// 分层接入结果。
 #[cfg(windows)]
 enum Attach {
-    /// 已接入 Variable（capture = true 表示 L3 画面捕获会话）。
-    Ok { capture: bool },
+    /// 已接入 Variable（M3：全部层级统一为拥有式嵌入，不再有画面捕获会话）。
+    Ok,
     /// 该层级不接入 → 调用方按「独立窗口运行」如实处理并回传 reason。
     Skip { reason: String },
 }
@@ -1365,11 +1431,10 @@ enum Attach {
 /// 按兼容层级把**已定位的**原生窗口接入 Variable —— `embed_launch` 与
 /// `embed_adopt` 共用同一裁判。
 ///
-/// 这是 Steam 黑屏的根因修复：`embed_adopt`（WinEventHook popup / Steam 主动收编
-/// 走的那条）此前**无条件**走 L1 重父化，绕过了 compat_probe。Steam 客户端主窗属
-/// steamwebhelper.exe，是 CEF（DirectComposition，无 DWM 重定向表面）窗口 ——
-/// SetParent 之后父窗口客户区里没有任何可合成位图，于是呈现为一大片纯黑且不吃
-/// 输入。现在两条入口共用同一分级：合成管道窗口一律走 L3（采画面 + 转发输入）。
+/// M3 起**全部层级统一拥有式嵌入**（GWLP_HWNDPARENT，M1 方案）：原 L3 抓屏
+/// 管道（WGC 采画面 + 前端合成 + PostMessage 输入直注）整套删除 —— 实机结论
+/// （R3-B11 等）：抓屏前置的藏窗操作对 Chromium 必停渲染（黑帧/冻结帧），
+/// 而拥有式嵌入对 CEF 主窗画面/输入全通（Steam/Wallpaper Engine 实证）。
 ///
 /// 绝不强杀进程：Skip 只表示「不接入」，应用继续以独立窗口运行。
 #[cfg(windows)]
@@ -1396,8 +1461,8 @@ fn attach_by_tier(
         ),
     );
 
-    // 登记会话 + 启动监护（三种层级共用的收尾动作）
-    let register = |host: Option<isize>, capture: bool| {
+    // 登记会话 + 启动监护（全部层级共用的收尾动作）
+    let register = |host: Option<isize>| {
         with_registry(|map| {
             map.insert(
                 key.clone(),
@@ -1409,7 +1474,6 @@ fn attach_by_tier(
                     root_pid,
                     pids: if root_pid != 0 { win::pid_tree(root_pid) } else { Vec::new() },
                     host,
-                    capture,
                 },
             );
         });
@@ -1449,22 +1513,15 @@ fn attach_by_tier(
                     reason: "窗口归属失败（L2）。应用保持独立窗口运行。".into(),
                 };
             }
-            register(None, false);
-            Attach::Ok { capture: false }
+            register(None);
+            Attach::Ok
         }
-        // 批次C-4 L3 画面捕获：真实窗口屏外隐藏 + WGC 采集 → 前端合成；
-        // 输入经 embed_input PostMessage 直注。失败降级独立窗口 + 如实原因。
+        // M3：L3 抓屏管道（WGC 采画面 + 前端合成 + 输入直注）整套删除 ——
+        // 藏窗抓屏对 Chromium 必停渲染（R3-B11 实机结论），而拥有式嵌入对
+        // CEF 主窗画面/输入全通（Steam/Wallpaper Engine 实证）。L3 候选改走
+        // 拥有式嵌入，仅保留 CEF 停渲染窗口的还原/抖动唤醒预处理。
         CompatTier::L3 => {
-            // R3-B11 终局结论（实机三轮实验）：Chromium 窗口与 L3 藏窗捕获
-            // 根本冲突 —— 窗口一旦藏 -32000 / 被完全遮挡，occlusion 检测即
-            // 停渲染（黑帧/冻结帧），重新显示也不会自动恢复（需 resize 或
-            // 交互唤醒）。历史「CEF 一律 L3、L1 重父化呈现纯黑」是渲染挂起
-            // 的误判：唤醒后的 Steam CEF 主窗 reparent 进桌面画面/输入全通。
-            // Steam 家族（steam.exe / steamwebhelper.exe，含 embed_adopt 的
-            // 无 target 路径）一律 **L1 真实嵌入优先**，失败才回退 L3 冻结帧。
-            // Wallpaper Engine 2.8+ 的 UI 主窗（wallpaperui.exe，CEF）同根
-            // 冲突同策略（实机：L3 藏窗捕获必停渲染黑帧，L1 嵌入画面/输入全通）。
-            // 其它 CEF 应用待逐个实机验证后再扩大（避免旧坑）。
+            // CEF 家族判定（Steam / Wallpaper Engine；其余 CEF 待实机验证后扩大）。
             let is_cef_l1_family = {
                 let img = win::window_pid(hwnd_from_isize(hwnd))
                     .and_then(|p| win::process_image(p))
@@ -1473,78 +1530,55 @@ fn attach_by_tier(
                 let base = img.rsplit(['\\', '/']).next().unwrap_or("");
                 base == "steam.exe" || base == "steamwebhelper.exe" || base == "wallpaperui.exe"
             };
-            // R5 补：单例重开/托盘旧窗路径的藏窗态必须先唤醒再重父化——
+            // R5 补：单例重开/托盘旧窗路径的藏窗态必须先唤醒再嵌入——
             // 此前 Steam 家族分支在 needs_reveal 检查之前 return，上会话
             // 被 hide 到 -32000 的托盘旧窗未唤醒直接嵌入 → Chromium 停渲染
             // 黑帧（r5 实机复现）。还原+抖动唤醒与下方 R3-B11 治理同构。
-            if is_cef_l1_family && crate::shell::capture::win::needs_reveal(hwnd) {
-                crate::shell::capture::win::restore_window(hwnd);
-                let woke = crate::shell::capture::win::jiggle_window(hwnd);
+            if is_cef_l1_family && win::needs_reveal(hwnd) {
+                win::restore_window(hwnd);
+                let woke = win::jiggle_window(hwnd);
                 crate::shell::applog::log(
-                    "capture",
+                    "embed",
                     format!(
-                        "attach {tp_id}: CEF 家族托盘旧窗处于停渲染态 → 已还原+抖动唤醒（woke={woke}）再 L1 嵌入"
+                        "attach {tp_id}: CEF 家族托盘旧窗处于停渲染态 → 已还原+抖动唤醒（woke={woke}）再嵌入"
                     ),
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1200));
             }
             if is_cef_l1_family && own_by_desktop(app, hwnd) {
-                register(None, false);
+                register(None);
+                crate::shell::applog::log(
+                    "embed",
+                    format!("attach {tp_id}: L3→拥有式嵌入（CEF 家族）hwnd={hwnd}"),
+                );
+                return Attach::Ok;
+            }
+            // R3-B11 黑帧治理：窗口藏在 -32000 屏外（上会话遗留）或完全隐藏
+            // （Steam 关登录窗后 CEF 主窗退托盘）时，Chromium occlusion 检测
+            // 已停渲染，且重新显示后渲染管线不会自动恢复（resize/交互才触发）
+            // —— 还原 → 尺寸抖动唤醒 → 等渲染恢复 → 拥有式嵌入。
+            if win::needs_reveal(hwnd) {
+                win::restore_window(hwnd);
+                let woke = win::jiggle_window(hwnd);
                 crate::shell::applog::log(
                     "embed",
                     format!(
-                        "attach {tp_id}: L3→L1 真实嵌入（CEF 家族，藏窗捕获对 Chromium 必停渲染）hwnd={hwnd}（capture=false）"
-                    ),
-                );
-                return Attach::Ok { capture: false };
-            }
-            // R3-B11 黑帧治理：窗口藏在 -32000 屏外（上会话 hide 后被单例
-            // 唤起/重收编）或完全隐藏（Steam 关登录窗后 CEF 主窗退托盘）时，
-            // Chromium occlusion 检测已停渲染，且实测重新显示后渲染管线
-            // 不会自动恢复（resize/交互才触发）——藏回 -32000 又会立刻再停。
-            // 因此对处于停渲染态的窗口：还原 → 尺寸抖动唤醒 → 等渲染恢复 →
-            // **降级 L1 真实嵌入**（可见即渲染，画面与输入均为真实通路），
-            // 不再走"唤醒后藏回"的必黑路径。冷启动（窗口活跃渲染中）零改动。
-            if crate::shell::capture::win::needs_reveal(hwnd) {
-                crate::shell::capture::win::restore_window(hwnd);
-                let woke = crate::shell::capture::win::jiggle_window(hwnd);
-                crate::shell::applog::log(
-                    "capture",
-                    format!(
-                        "attach {tp_id}: 窗口隐藏/屏外 → 已还原+抖动唤醒（woke={woke}），降级 L1 真实嵌入（L3 藏窗对 Chromium 必停渲染）"
+                        "attach {tp_id}: 窗口隐藏/屏外 → 已还原+抖动唤醒（woke={woke}），走拥有式嵌入"
                     ),
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1200));
-                if own_by_desktop(app, hwnd) {
-                    register(None, false);
-                    crate::shell::applog::log(
-                        "embed",
-                        format!("attach {tp_id}: L3→L1 降级嵌入成功 hwnd={hwnd}（capture=false）"),
-                    );
-                    return Attach::Ok { capture: false };
-                }
-                crate::shell::applog::log(
-                    "capture",
-                    format!("attach {tp_id}: L1 降级失败 → 回退 L3 捕获（可能黑帧/冻结）"),
-                );
             }
-            match crate::shell::capture::win::start_capture(app.clone(), key.clone(), hwnd) {
-                Ok(()) => {
-                    crate::shell::applog::log("capture", format!("attach {tp_id}: L3 画面捕获已启动 hwnd={hwnd}"));
-                    let _ = crate::shell::capture::win::hide_offscreen(hwnd);
-                    register(None, true);
-                    Attach::Ok { capture: true }
-                }
-                Err(e) => {
-                    crate::shell::applog::log(
-                        "capture",
-                        format!("attach {tp_id}: L3 画面捕获启动失败（{e}）→ 保持独立窗口"),
-                    );
-                    Attach::Skip {
-                        reason: format!("「{}」L3 画面捕获不可用（{}）→ 保持独立窗口运行。", tp_id, e),
-                    }
-                }
+            if !own_by_desktop(app, hwnd) {
+                return Attach::Skip {
+                    reason: "窗口归属失败（L3）。应用保持独立窗口运行。".into(),
+                };
             }
+            register(None);
+            crate::shell::applog::log(
+                "embed",
+                format!("attach {tp_id}: L3 拥有式嵌入成功 hwnd={hwnd}"),
+            );
+            Attach::Ok
         }
         // L1（标准窗口）→ 归属嵌入主路径。M1：只建立拥有关系，不动任何样式位，
         // 窗口保留原生标题栏 / − □ × / 可拖动边框。
@@ -1554,8 +1588,8 @@ fn attach_by_tier(
                     reason: "归属桌面窗口失败（桌面窗口不存在）。应用保持独立窗口运行。".into(),
                 };
             }
-            register(None, false);
-            Attach::Ok { capture: false }
+            register(None);
+            Attach::Ok
         }
     }
 }
@@ -1591,13 +1625,13 @@ pub async fn embed_adopt(
         .map(|a| a.dpi_fix)
         .unwrap_or(false);
     match attach_by_tier(&app, &st, embed_id.clone(), tp_id.clone(), hwnd, root_pid, dpi_fix, None) {
-        Attach::Ok { .. } => {
+        Attach::Ok => {
             // R5 隔离底线：嵌入成功后重新断言桌面置顶（tp_launch 撤销过），
             // 防止 Windows 任务栏/shell 在兼容期露出（r5 实机复现）。
             reassert_desktop_topmost(&app);
             Ok(true)
         }
-        // Native / L4 / L2 包裹失败 / L3 采集不可用 → 不接入：应用保持独立窗口运行。
+        // Native / L4 / 归属失败 → 不接入：应用保持独立窗口运行。
         // 前端据 false 关闭刚开的占位窗（不伪造成功）。
         Attach::Skip { reason } => {
             crate::shell::applog::log("adopt", format!("embed_adopt {tp_id}: 未接入：{reason}"));
@@ -1640,7 +1674,7 @@ pub async fn embed_launch(
     _embed_id: Option<String>,
     _arg: Option<String>,
 ) -> CmdResult<EmbedResult> {
-    Ok(EmbedResult { attached: false, reason: "仅 Windows 支持 / Windows only".into(), root_pid: None, capture: false })
+    Ok(EmbedResult { attached: false, reason: "仅 Windows 支持 / Windows only".into(), root_pid: None })
 }
 
 /// 批次C-2：手动框选窗口（捕获失败占位卡的兜底动作）。
@@ -1799,10 +1833,9 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let key = norm_id(embed_id);
     if let Some(e) = with_registry(|map| map.remove(&key)) {
-        // 批次C-4：L3 会话先停采集并还原屏外窗口
-        if e.capture {
-            crate::shell::capture::win::stop_capture(&key);
-            crate::shell::capture::win::restore_window(e.hwnd);
+        // M3：抓屏管道已删除；若窗口仍被藏屏外（旧版本 L3 会话遗留）则归还可见区
+        if win::is_offscreen(e.hwnd) {
+            win::restore_window(e.hwnd);
         }
         // 批次C-3：L2 会话向宿主发 WM_CLOSE（宿主转发子窗口并脱离自毁）
         let target = e.host.unwrap_or(e.hwnd);
@@ -1844,12 +1877,11 @@ pub fn embed_close_all() -> CmdResult<usize> {
         map.drain().map(|(k, v)| (k, v)).collect::<Vec<_>>()
     });
     let n = sessions.len();
-    for (key, e) in &sessions {
-        // 批次C-4：L3 先停采集并还原屏外窗口（与 embed_close 同语义：采集线程
-        // 立即停转；30s 超时未退的窗口归还桌面可见区，而非留在 -32000 屏外）
-        if e.capture {
-            crate::shell::capture::win::stop_capture(key);
-            crate::shell::capture::win::restore_window(e.hwnd);
+    for (_key, e) in &sessions {
+        // M3：抓屏管道已删除；若窗口仍被藏屏外（旧版本 L3 会话遗留）则归还可见区
+        // （30s 超时未退的窗口同样归还桌面可见区，而非留在 -32000 屏外）
+        if win::is_offscreen(e.hwnd) {
+            win::restore_window(e.hwnd);
         }
         // 批次C-3：L2 会话发宿主 WM_CLOSE（转发链路：宿主→子窗口→脱离自毁）
         let target = e.host.unwrap_or(e.hwnd);
@@ -1934,49 +1966,8 @@ pub fn embed_focus(_embed_id: Option<String>) -> CmdResult<()> {
     Ok(())
 }
 
-/// 批次C-4：L3 输入转发 —— 归一化坐标(0..1) + 事件 → 客户区物理坐标
-/// PostMessage 直注真实窗口（屏外窗口天然不泄漏光标、不抢焦点）。
-/// kind: move | down | up | dbl | wheel | key | char
-#[tauri::command(async)]
-#[cfg(windows)]
-pub fn embed_input(
-    embed_id: Option<String>,
-    kind: String,
-    x: f64,
-    y: f64,
-    button: Option<String>,
-    key: Option<u32>,
-    delta: Option<f64>,
-) -> CmdResult<()> {
-    let key_id = norm_id(embed_id);
-    let hwnd = with_registry(|map| map.get(&key_id).map(|e| e.hwnd));
-    if let Some(h) = hwnd {
-        let _ = crate::shell::capture::win::forward_input(
-            h,
-            &kind,
-            x,
-            y,
-            button.as_deref().unwrap_or("left"),
-            key.unwrap_or(0),
-            delta.unwrap_or(0.0),
-        );
-    }
-    Ok(())
-}
-
-#[tauri::command(async)]
-#[cfg(not(windows))]
-pub fn embed_input(
-    _embed_id: Option<String>,
-    _kind: String,
-    _x: f64,
-    _y: f64,
-    _button: Option<String>,
-    _key: Option<u32>,
-    _delta: Option<f64>,
-) -> CmdResult<()> {
-    Ok(())
-}
+// M3：embed_input（L3 输入转发）随抓屏管道一并删除 —— 拥有式嵌入下
+// 输入走 Windows 原生通路，无需任何转发。
 
 /// 当前全部嵌入会话的子窗口句柄（privacy_shield 防截屏打标用；W-1 多嵌入并发）。
 #[cfg(windows)]
@@ -2271,7 +2262,6 @@ mod tests {
                     root_pid: 4321,
                     pids: vec![4321],
                     host: None,
-                    capture: false,
                 },
             );
         });
@@ -2321,8 +2311,8 @@ mod tests {
 
         // 两个并发槽位互不干扰
         with_registry(|m| {
-            m.insert("0".into(), super::EmbedSession { hwnd: 111, tp_id: "a".into(), dpi_fix: false, last_dpi: 0, root_pid: 0, pids: Vec::new(), host: None, capture: false });
-            m.insert("vwm-tp-x1".into(), super::EmbedSession { hwnd: 222, tp_id: "b".into(), dpi_fix: false, last_dpi: 0, root_pid: 0, pids: Vec::new(), host: None, capture: false });
+            m.insert("0".into(), super::EmbedSession { hwnd: 111, tp_id: "a".into(), dpi_fix: false, last_dpi: 0, root_pid: 0, pids: Vec::new(), host: None });
+            m.insert("vwm-tp-x1".into(), super::EmbedSession { hwnd: 222, tp_id: "b".into(), dpi_fix: false, last_dpi: 0, root_pid: 0, pids: Vec::new(), host: None });
         });
         let (h0, h1) = with_registry(|m| {
             (m.get("0").map(|e| e.hwnd), m.get("vwm-tp-x1").map(|e| e.hwnd))
@@ -2334,7 +2324,7 @@ mod tests {
         with_registry(|m| {
             m.insert(
                 "vwm-tp-x1".into(),
-                super::EmbedSession { hwnd: 333, tp_id: "b".into(), dpi_fix: true, last_dpi: 144, root_pid: 0, pids: Vec::new(), host: None, capture: false },
+                super::EmbedSession { hwnd: 333, tp_id: "b".into(), dpi_fix: true, last_dpi: 144, root_pid: 0, pids: Vec::new(), host: None },
             );
         });
         let n = with_registry(|m| m.len());

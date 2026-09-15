@@ -67,7 +67,7 @@ export interface ListFilterT {
 export interface AppLogEntry {
   /** ms since epoch（展示时本地格式化） */
   ts: number;
-  /** 链路标签：launch / embed / adopt / steam / watchdog / capture / hotkey / fe:<level>（前端日志转发） */
+  /** 链路标签：launch / embed / adopt / steam / watchdog / hotkey / fe:<level>（前端日志转发） */
   tag: string;
   msg: string;
 }
@@ -663,9 +663,9 @@ export const ipc = {
   // ---- 批次E-16：第三方应用嵌入环境（SetParent 子窗口 + 边界跟随） ----
   // 批次W-1：多嵌入并发 —— embedId = VWM 虚拟窗口实例 id；缺省映射 "0" 兼容旧单嵌。
   /** 启动并把主窗口嵌入桌面窗口。attached=false = 已回退为独立窗口运行（rootPid 供框选收编）。
-   *  批次C-4：capture=true = L3 画面捕获会话（前端经 embed-frame 事件合成 + embedInput 转发）。 */
+   *  M3：抓屏会话（capture 字段）已删除 —— 全部层级统一拥有式嵌入，画面/输入走原生通路。 */
   embedLaunch: (id: string, embedId: string, arg?: string) =>
-    invoke<{ attached: boolean; reason: string; rootPid?: number; capture?: boolean }>("embed_launch", { id, embedId, arg }),
+    invoke<{ attached: boolean; reason: string; rootPid?: number }>("embed_launch", { id, embedId, arg }),
   /** 批次C-1：收编同进程树新弹出的主窗口（WinEventHook 探测 → 前端开占位窗后调用）。 */
   embedAdopt: (tpId: string, hwnd: number, rootPid: number, embedId: string) =>
     invoke<boolean>("embed_adopt", { tpId, hwnd, rootPid, embedId }),
@@ -690,16 +690,6 @@ export const ipc = {
   embedFocus: (embedId: string) => invoke<void>("embed_focus", { embedId }),
   /** R4-B6（首轮 B-3）：把桌面 WebView 提回全部收编子窗之上（按 Win 键回到桌面壳）。 */
   desktopRaise: () => invoke<void>("desktop_raise"),
-  /** 批次C-4：L3 输入转发 —— 归一化坐标(0..1) PostMessage 直注屏外真实窗口。 */
-  embedInput: (
-    embedId: string,
-    kind: "move" | "down" | "up" | "dbl" | "wheel" | "key" | "char",
-    x: number,
-    y: number,
-    button?: string,
-    key?: number,
-    delta?: number,
-  ) => invoke<void>("embed_input", { embedId, kind, x, y, button, key, delta }),
 
   // ---- 批次E-7: 数据隐私（保险箱 AES-256-GCM / 焚毁 / 自检，全部本机） ----
   vaultStatus: () => invoke<Shell.VaultStatus>("vault_status"),

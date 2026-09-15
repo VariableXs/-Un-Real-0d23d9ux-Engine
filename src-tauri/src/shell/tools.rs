@@ -204,7 +204,7 @@ fn close_snipping_overlays() {
         }
     }
     if closed > 0 {
-        crate::shell::applog::log("capture", format!("截图前清场：已关闭 {closed} 个 Snipping 浮层窗口"));
+        crate::shell::applog::log("shot", format!("截图前清场：已关闭 {closed} 个 Snipping 浮层窗口"));
     }
 }
 

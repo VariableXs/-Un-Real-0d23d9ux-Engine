@@ -56,7 +56,8 @@ pub mod compat_probe;
 // M1（R9）：旧的 L2 容器包裹引擎（`container.rs`，Variable 自建 WS_POPUP 宿主
 // + SetParent/WS_CHILD）已随拥有式嵌入整体下线并删除 —— 第三方窗口必须保持
 // 完整原生顶层窗，任何 WS_CHILD 化的写法都与 M1 目标直接冲突。
-pub mod capture;
+// M3：`capture.rs`（WGC 抓屏采集 + L3 输入转发）已随 L3 层级归入拥有式嵌入
+// 整体删除 —— 不再有任何抓屏采集通路；窗口还原/唤醒辅助迁入 embed::win。
 pub mod directshell;
 pub mod tray;
 pub mod usb;

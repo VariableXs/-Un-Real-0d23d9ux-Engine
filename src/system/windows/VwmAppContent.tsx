@@ -34,7 +34,6 @@ import { SysInfoApp } from "../tools/SysInfoApp";
 import { PrintQueueApp } from "../tools/PrintQueueApp";
 import { SysHubApp } from "../tools/SysHubApp";
 import { TaskManApp } from "../taskman/TaskManApp";
-import { L3CaptureView } from "./L3CaptureView";
 
 // 代码分割（性能）：VWM 内嵌四个重软件视图原本静态打包进环境主 chunk，
 // 与 App.tsx 同步改为按需加载 —— 只有用户真正打开对应窗口时才拉取其代码
@@ -245,13 +244,9 @@ function TpPlaceholder(props: {
   const { t } = useI18n();
   const tpId = tpIdOf(props.app);
   if (props.state === "running") {
-    // 批次C-4：画布在收到 embed-frame 帧前静默（L1/L2 零开销）；L3 会话自动激活
-    // 帧合成与输入转发。
-    return (
-      <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
-        <L3CaptureView embedId={props.winId} />
-      </div>
-    );
+    // M3：纯透明占位 —— 已收编窗口是完整原生顶层窗（拥有式嵌入），Variable
+    // 不画任何内容；此 div 仅承载 aria-label 与命中测试语义。
+    return <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)} />;
   }
   const name = getThirdApps().find((a) => a.id === tpId)?.name ?? tpId;
   // 重新打开：同一占位窗口（同 embed_id）重嵌新会话；成功则复位为透明占位，
