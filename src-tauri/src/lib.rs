@@ -151,12 +151,10 @@ pub fn run() {
                 }
                 // 批次0（规格 10.1）：桌面窗口获得焦点 → 自动恢复置顶覆盖。
                 // 启动第三方软件时会暂时撤销置顶让其浮于桌面之上，回到桌面即恢复。
-                // 兼容态（Wallpaper Engine 运行中）不动置顶，避免与 WorkerW 抢合成器
-                // 导致 libcef 0x80000003 与 DWM 卡死。
+                // R5：兼容态不再豁免——WE 悬浮层已被 compat::tame 压制，
+                // 桌面置顶覆盖是"一切在 Variable 内"的隔离底线。
                 tauri::WindowEvent::Focused(true) if window.label() == "desktop" => {
-                    if !shell::compat::is_compat_active() {
-                        let _ = window.set_always_on_top(true);
-                    }
+                    let _ = window.set_always_on_top(true);
                 }
                 _ => {}
             }

@@ -56,10 +56,20 @@ fn norm_id(embed_id: Option<String>) -> String {
     embed_id.unwrap_or_else(|| "0".to_string())
 }
 
-#[derive(Serialize)]
+/// R5 隔离底线：把桌面窗口重新提到 always_on_top（tp_launch 启动第三方时
+/// 会撤销置顶让回退独立窗浮出；嵌入成功后必须收回，否则 Windows 任务栏/
+/// shell 会在兼容期露出）。幂等，失败静默（无桌面窗时无意义）。
+#[cfg(windows)]
+fn reassert_desktop_topmost(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("desktop") {
+        let _ = w.set_always_on_top(true);
+    }
+}
+
+#[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct EmbedResult {
-    /// 是否成功嵌入（false = 已回退为独立窗口运行）
+pub struct EmbedResult {    /// 是否成功嵌入（false = 已回退为独立窗口运行）
     pub attached: bool,
     pub reason: String,
     /// 批次C-2：根 pid（失败后前端「框选窗口」收编用；成功时同样返回）
@@ -441,10 +451,30 @@ pub async fn embed_launch(
         .clone()
         .unwrap_or_else(|| tp.path.clone())
         .to_lowercase();
+    // R4-B2 修复：登记项/桌面图标为 Steam 快捷方式（.url 内容指向 steam://）
+    // 时，绝不能走 ShellExecute 通道 —— Windows 会按协议关联从宿主侧拉起
+    // steam.exe，root_pid 与窗口匹配（exe 名是 xxx.url）全部落空，收编看护
+    // 永不触发。改为转交 steam_open_url（CEF 兼容态 + 收编看护），前端收到
+    // "steam:handoff" 后关闭本占位窗，由 embed://popup 流程开真正的占位窗。
+    if target.to_lowercase().ends_with(".url") {
+        if let Some(url) = crate::system::steam_probe(&tp.target.clone().unwrap_or_else(|| tp.path.clone())) {
+            crate::shell::ecosystem::steam_open_url(&app, &url)?;
+            return Ok(EmbedResult {
+                attached: false,
+                reason: "steam:handoff".into(),
+                root_pid: None,
+                ..EmbedResult::default()
+            });
+        }
+    }
     let exe_name = std::path::Path::new(&target)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .ok_or_else(|| AppError::validation("登记项路径无效 / invalid path"))?;
+    // 通道③兜底：Steam 家族 embed_launch 未接入时，强制拉起主动收编看护
+    // （steam-adopt 线程找主窗 → embed://popup → 前端开占位窗收编），
+    // 杜绝"进程起来了但滞留宿主桌面/托盘"的逃逸态。
+    let steam_family = matches!(exe_name.as_str(), "steam.exe" | "steamwebhelper.exe");
 
     // 2) 记录启动前已存在的该应用窗口（避免把旧窗口误嵌）
     let before = win::collect_handles(&mut |_h, img| img.to_lowercase().ends_with(&exe_name));
@@ -602,6 +632,7 @@ pub async fn embed_launch(
                 }),
                 Attach::Skip { reason } => {
                     crate::shell::applog::log("launch", format!("embed_launch {id}: 兜底收编被拒：{reason}"));
+                    if steam_family { spawn_steam_adopt_watcher(app.clone()); }
                     Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
                 }
             };
@@ -610,6 +641,7 @@ pub async fn embed_launch(
             "launch",
             format!("embed_launch {id}: 兜底无候选 → 如实回退独立窗口（应用继续运行，可占位卡「框选窗口」收编）"),
         );
+        if steam_family { spawn_steam_adopt_watcher(app.clone()); }
         return Ok(EmbedResult {
             attached: false,
             reason: "未能捕获应用窗口（启动较慢或无标准窗口）。应用已在系统桌面独立运行，未受影响；可在占位卡上「框选窗口」手动收编。".into(),
@@ -647,10 +679,14 @@ pub async fn embed_launch(
                 "embed",
                 format!("embed_launch {id}: 接入成功 hwnd={hwnd}（capture={capture}）"),
             );
+            // R5 隔离底线：嵌入成功后重新断言桌面置顶（tp_launch 撤销过），
+            // 嵌入窗已成为桌面子窗，独立 shell 界面不得重新露出。
+            reassert_desktop_topmost(&app);
             Ok(EmbedResult { attached: true, reason: String::new(), root_pid, capture })
         }
         Attach::Skip { reason } => {
             crate::shell::applog::log("embed", format!("embed_launch {id}: 未接入：{reason}"));
+            if steam_family { spawn_steam_adopt_watcher(app.clone()); }
             Ok(EmbedResult { attached: false, reason, root_pid, capture: false })
         }
     }
@@ -745,6 +781,12 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
                 }
             }
         }
+        // R5 隔离轮补：orphaned（首窗被应用自毁重建、进程树仍存活）时，
+        // 会话已移除 → WinEventHook 重嵌通道（需注册会话）失效，Steam 冷启动
+        // 重建的主窗将永远逃逸（r5 实机复现）。派生重收看护兜底。
+        if orphaned {
+            spawn_readopt_watcher(app.clone(), e.1, key.clone());
+        }
         use tauri::Emitter;
         let _ = app.emit(
             "embed://state",
@@ -756,6 +798,49 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         );
         return;
     });
+}
+
+/// R5：orphaned 后的重收看护——轮询同 root 进程树的新可见主窗（带标题栏），
+/// 命中即广播 `embed://popup` 走前端既有收编流程（开占位窗 → embed_adopt）。
+/// 45s 未现（应用彻底退出/纯托盘化）→ 交给 D-3 看门狗，线程自然退出。
+#[cfg(windows)]
+fn spawn_readopt_watcher(app: tauri::AppHandle, root_pid: u32, tp_label: String) {
+    use tauri::Emitter;
+    std::thread::Builder::new()
+        .name("embed-readopt".into())
+        .spawn(move || {
+            for _ in 0..45 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let tree: std::collections::HashSet<u32> =
+                    win::pid_tree(root_pid).into_iter().collect();
+                if tree.is_empty() {
+                    return; // 进程树已消失 → 应用真退出，无需重收
+                }
+                for (h, pid, _img) in watch_scan_windows() {
+                    if tree.contains(&pid) && has_caption_style(h) {
+                        crate::shell::applog::log(
+                            "embed",
+                            format!("readopt {tp_label}: 重收重建主窗 hwnd={h} → 广播 embed://popup"),
+                        );
+                        let _ = app.emit(
+                            "embed://popup",
+                            serde_json::json!({
+                                "origin": "readopt",
+                                "tpId": tp_label,
+                                "hwnd": h,
+                                "rootPid": root_pid,
+                            }),
+                        );
+                        return;
+                    }
+                }
+            }
+            crate::shell::applog::log(
+                "embed",
+                format!("readopt {tp_label}: 45s 未现新主窗 → 交给 D-3 看门狗兜底"),
+            );
+        })
+        .ok();
 }
 
 // ---------- 批次C-1：WinEventHook 常驻监护（事件驱动，资源护栏主通道） ----------
@@ -1052,6 +1137,21 @@ fn attach_by_tier(
                 let base = img.rsplit(['\\', '/']).next().unwrap_or("");
                 base == "steam.exe" || base == "steamwebhelper.exe"
             };
+            // R5 补：单例重开/托盘旧窗路径的藏窗态必须先唤醒再重父化——
+            // 此前 Steam 家族分支在 needs_reveal 检查之前 return，上会话
+            // 被 hide 到 -32000 的托盘旧窗未唤醒直接嵌入 → Chromium 停渲染
+            // 黑帧（r5 实机复现）。还原+抖动唤醒与下方 R3-B11 治理同构。
+            if is_steam_family && crate::shell::capture::win::needs_reveal(hwnd) {
+                crate::shell::capture::win::restore_window(hwnd);
+                let woke = crate::shell::capture::win::jiggle_window(hwnd);
+                crate::shell::applog::log(
+                    "capture",
+                    format!(
+                        "attach {tp_id}: Steam 家族托盘旧窗处于停渲染态 → 已还原+抖动唤醒（woke={woke}）再 L1 嵌入"
+                    ),
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1200));
+            }
             if is_steam_family && restyle_and_reparent(app, hwnd) {
                 register(None, false);
                 crate::shell::applog::log(
@@ -1154,7 +1254,12 @@ pub async fn embed_adopt(
         .map(|a| a.dpi_fix)
         .unwrap_or(false);
     match attach_by_tier(&app, &st, embed_id.clone(), tp_id.clone(), hwnd, root_pid, dpi_fix, None) {
-        Attach::Ok { .. } => Ok(true),
+        Attach::Ok { .. } => {
+            // R5 隔离底线：嵌入成功后重新断言桌面置顶（tp_launch 撤销过），
+            // 防止 Windows 任务栏/shell 在兼容期露出（r5 实机复现）。
+            reassert_desktop_topmost(&app);
+            Ok(true)
+        }
         // Native / L4 / L2 包裹失败 / L3 采集不可用 → 不接入：应用保持独立窗口运行。
         // 前端据 false 关闭刚开的占位窗（不伪造成功）。
         Attach::Skip { reason } => {

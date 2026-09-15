@@ -121,9 +121,9 @@ fn recommendation_text(running: bool, compat: bool) -> String {
     if !running {
         String::new()
     } else if compat {
-        "已自动进入 CEF 应用兼容模式（Wallpaper Engine / Steam）：已取消独占置顶并降低壁纸 GPU 负载。\n相关应用全部退出约 30 秒后自动恢复置顶。\nAuto compat mode for CEF apps (Wallpaper Engine / Steam): always-on-top disabled & wallpaper GPU load reduced; auto-restores ~30s after these apps exit.".into()
+        "已自动进入 CEF 应用兼容模式（Wallpaper Engine / Steam）：已压制其悬浮层并降低壁纸 GPU 负载，Variable 桌面保持覆盖。\n相关应用全部退出约 30 秒后自动恢复常规模式。\nAuto compat mode for CEF apps (Wallpaper Engine / Steam): overlays tamed & wallpaper GPU load reduced; Variable desktop stays covering. Auto-restores ~30s after these apps exit.".into()
     } else {
-        "检测到 Wallpaper Engine / Steam 正在运行，与 Variable 的全屏独占 + 双 Chromium GPU 进程存在已知冲突（libcef 0x80000003）。\n建议：点“一键兼容”让 Variable 取消独占置顶并降级壁纸渲染；CEF 应用全部退出约 30 秒后自动恢复。\nWallpaper Engine / Steam detected — known conflict with Variable fullscreen + dual Chromium GPUs (libcef 0x80000003).".into()
+        "检测到 Wallpaper Engine / Steam 正在运行，与 Variable 的全屏独占 + 双 Chromium GPU 进程存在已知冲突（libcef 0x80000003）。\n将自动压制其悬浮层并降低壁纸渲染负载；CEF 应用全部退出约 30 秒后自动恢复。\nWallpaper Engine / Steam detected — known conflict with Variable fullscreen + dual Chromium GPUs (libcef 0x80000003). Overlays will be tamed automatically.".into()
     }
 }
 
@@ -153,15 +153,69 @@ pub fn compat_apply(app: AppHandle) -> CmdResult<CompatStatus> {
 
 pub fn apply_compat_mode(app: &AppHandle) {
     COMPAT_ACTIVE.store(true, Ordering::Relaxed);
+    // R5 隔离策略：不再取消置顶让位。旧做法（alwaysOnTop=false）会让
+    // Windows 任务栏/shell 整个露出，破坏"一切在 Variable 内"的隔离感；
+    // 现在 WE 的置顶悬浮层由 tame_wallpaper_engine_windows 压回普通层
+    // （watcher 每 3s 重放），Variable 桌面保持 always_on_top 覆盖全局。
+    // GPU 冲突面（libcef 0x80000003）不受置顶位影响，维持原判定逻辑。
     if let Some(w) = app.get_webview_window("desktop") {
-        let _ = w.set_always_on_top(false);
+        let _ = w.set_always_on_top(true);
     }
+    // R4-B1：压制 WE 悬浮 UI（"Ctrl+1" 提示条等），使其不悬于 Variable 之上。
+    tame_wallpaper_engine_windows();
     let _ = app.emit("compat://cef-apps", current_status());
     eprintln!(
-        "[compat] CEF app compat mode applied (alwaysOnTop=false) procs={:?}",
+        "[compat] CEF app compat mode applied (tame WE overlays, desktop stays topmost) procs={:?}",
         list_wallpaper_engine_processes()
     );
 }
+
+/// R4-B1 修复：压制 Wallpaper Engine 悬浮层。把 WE 进程名下所有持
+/// WS_EX_TOPMOST 的顶层窗口降为普通层（HWND_NOTOPMOST），使其不再悬于
+/// Variable 桌面/任务栏之上；壁纸窗口（WorkerW 子层）本就非置顶，不受影响。
+/// 幂等、无感（不动窗口位置尺寸、不激活），由 compat watcher 每 3s 重放，
+/// 覆盖"兼容态生效后才弹出的新悬浮窗"。
+#[cfg(windows)]
+pub fn tame_wallpaper_engine_windows() {
+    crate::shell::embed::win::collect_handles_ex(
+        &mut |hwnd, img| {
+            let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+            if WE_PROCS.iter().any(|pat| name.ends_with(pat)) {
+                demote_topmost(hwnd);
+            }
+            false // 只压制不收集
+        },
+        true, // 悬浮提示条常为隐藏→显示瞬态，含隐藏窗一起处理
+    );
+}
+
+#[cfg(windows)]
+fn demote_topmost(hwnd: isize) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, WS_EX_TOPMOST,
+    };
+    let h = HWND(hwnd as *mut core::ffi::c_void);
+    unsafe {
+        let ex = GetWindowLongPtrW(h, GWL_EXSTYLE) as u32;
+        if ex & WS_EX_TOPMOST.0 != 0 {
+            // 位置尺寸全部保持原样，只降 z-order 层级（无感压制）
+            let _ = SetWindowPos(
+                h,
+                HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn tame_wallpaper_engine_windows() {}
 
 #[tauri::command(async)]
 pub fn compat_restore(app: AppHandle) -> CmdResult<CompatStatus> {
@@ -195,6 +249,10 @@ pub fn spawn_compat_watcher(app: AppHandle) {
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(3));
                 let running = is_wallpaper_engine_running();
+                // R4-B1：WE 在运行期间持续压制其置顶悬浮层（幂等；覆盖新弹窗）
+                if running {
+                    tame_wallpaper_engine_windows();
+                }
                 if running != last_running {
                     last_running = running;
                     gone_since = None;

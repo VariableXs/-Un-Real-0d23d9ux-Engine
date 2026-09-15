@@ -65,8 +65,8 @@ fn validate_open_target(p: &str) -> CmdResult<std::path::PathBuf> {
 
 /// Steam 产物识别：`steam://` 链接本体，或内容指向 `steam://` 的 `.url`
 /// 快捷方式（Steam 桌面快捷键即此格式）。命中 → 返回协议 URL。
-/// 供 open_path 把 Steam 产物路由进 Variable 收编通道（不在宿主桌面打开）。
-fn steam_probe(path: &str) -> Option<String> {
+/// 供 open_path / embed_launch 把 Steam 产物路由进收编通道（不在宿主桌面打开）。
+pub(crate) fn steam_probe(path: &str) -> Option<String> {
     let lower = path.trim().to_lowercase();
     if lower.starts_with("steam://") {
         return Some(path.trim().to_string());

@@ -74,6 +74,12 @@ export async function launchThirdApp(id: string, name: string, arg?: string): Pr
   try {
     // 批次B-27：arg = 文件关联「打开方式」传入的文件路径（普通启动为空）
     const r = await ipc.embedLaunch(id, winId, arg);
+    if (r.reason === "steam:handoff") {
+      // R4-B2 修复：Steam .url 快捷方式已转交收编看护通道（steam:// →
+      // embed://popup），看护会另开占位窗收编；本占位窗立即关闭避免双窗。
+      closeVwmWin(winId);
+      return;
+    }
     if (r.attached) {
       setEmbedMeta(winId, { tpId: id, rootPid: r.rootPid ?? 0 });
     } else {
