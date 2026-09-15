@@ -1,18 +1,40 @@
 //! L3 shell — embed.rs（批次E-16 第三方应用环境内嵌；批次W-1 多嵌入并发 + 注册中心）：
-//! - 目标：第三方应用不在 Variable 之外打开 —— 启动后把它的主窗口 SetParent
-//!   成 Variable 桌面窗口的子窗口（WS_CHILD），随虚拟窗口移动/缩放，从任务栏
-//!   与 Alt+Tab 消失，实现与 Windows 桌面的隔离。
+//! - 目标：第三方应用不在 Variable 之外打开 —— 启动后由 Variable 桌面窗口
+//!   「拥有」它的主窗口（M1/R9：`GWLP_HWNDPARENT`，不再是 WS_CHILD 子窗口），
+//!   随虚拟窗口移动/缩放，从任务栏消失，实现与 Windows 桌面的隔离。
+//! - M1（R9）嵌入模型变更：**绝不修改第三方窗口的任何窗口样式**。旧实现用
+//!   SetParent + WS_CHILD 并剥掉 WS_CAPTION/WS_THICKFRAME/−□× 按钮，这正是
+//!   Variable 必须自己画假标题栏与红绿灯的根因。改为拥有关系后软件仍是完整
+//!   原生顶层窗：自己的标题栏、自己的最小化/最大化/关闭、自己的可拖动边框，
+//!   且被拥有窗口恒在宿主之上、随宿主最小化、不出现在任务栏 —— 隔离性不降反升。
+//! - M1 必须同步维护的四件事（漏一件就会出事故，细节见各函数注释）：
+//!   ① `embed_bounds` 要把「桌面客户区坐标 ×DPR」换算成**屏幕坐标** ——
+//!      顶层窗的 SetWindowPos 只认屏幕坐标，子窗时代压根不需要换算；
+//!   ② 所有「扫顶层窗找候选」的收编通道（Steam 看护 / embed_launch 兜底两档）
+//!      必须先用 `is_already_embedded` 排除已收编窗口 —— 拥有式嵌入下它们
+//!      **仍然出现在 EnumWindows 结果里**，不排除会让同一 hwnd 被双头拥有；
+//!   ③ 拥有期间摘掉 `WS_EX_APPWINDOW`（该位会强行给出任务栏按钮），解链时按
+//!      记下的原值还原，保证窗口回到 Windows 后仍能重新出现在任务栏 / Alt+Tab；
+//!   ④ 进程退出前必须经 `release_all_owned` 解链 —— 否则窗口随宿主销毁（等于
+//!      退出 Variable 顺手杀掉所有已嵌入的软件，踩「绝不强杀进程」红线）。
+//!      清扫依据是 `OWNED_HWNDS` 总账而非会话注册表：退出流程第一步就是
+//!      `embedCloseAll()`，它已经把注册表 drain 空了。
+//! - M1 已知副作用（换来的代价，留待后续阶段消化）：
+//!   * 被拥有窗口**永远盖在 Variable 自己的 WebView 之上** → `desktop_raise`
+//!     已无法把壳层 UI 提到嵌入窗口上面。Variable 任务栏 / 开始菜单若要压在
+//!     最大化软件之上，必须搬到独立顶层窗（属 M4/M5）；
+//!   * 顶层窗口不再被 Variable 窗口边缘裁剪 → 越界约束交 M6。
 //! - W-1：单例 EmbedSession → EmbedRegistry（HashMap<embed_id, EmbedSession>），
 //!   embed_id = 前端 VWM 虚拟窗口实例 id（占位窗口创建时分配）；≥3 个第三方
 //!   窗口可同时嵌入、各自拖拽缩放独立。旧单嵌入口（不带 embed_id）映射 id="0" 兼容。
 //! - W-1 焦点仲裁：VWM Z 序顶窗口 = 嵌入移交焦点对象；点击非顶嵌入窗口时前端
 //!   先 pointerFocusVwm 置顶再 embed_focus（VirtualWindowFrame onPointerDown）。
 //! - W-1 退出会话：Variable 退出前逐 session embed_close（WM_CLOSE，应用自行
-//!   退出），30s 超时者**留在桌面**（脱离重父化），绝不强杀（embed_close_all）。
+//!   退出），30s 超时者**留在桌面**（解除拥有关系），绝不强杀（embed_close_all）。
 //! - 进程启动复用已审查的 tp_launch 通道（本模块不新增进程创建代码）。
 //! - 无法嵌入的应用（UWP/管理员权限/无主窗口）如实回退为独立窗口运行。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -44,6 +66,18 @@ struct EmbedSession {
 
 /// W-1 嵌入注册中心：embed_id（VWM 虚拟窗口实例 id）→ 会话。
 static EMBEDS: Mutex<Option<HashMap<String, EmbedSession>>> = Mutex::new(None);
+
+/// M1（R9）**归属总账**：当前被 Variable 桌面窗口拥有的全部第三方 hwnd。
+///
+/// 为什么不能只靠上面那张会话注册表：被拥有的窗口会随宿主销毁而销毁，所以
+/// 「退出前解除拥有」必须覆盖**每一个**还被拥有的 hwnd；而会话条目会被
+/// `embed_close` / `embed_close_all`（退出流第一步就是它，且会 drain 注册表）/
+/// 看护线程提前摘除 —— 届时注册表里已经空空如也，按它清理等于一个都救不回来，
+/// 退出 Variable 会顺手杀掉所有已嵌入的软件（踩「绝不强杀进程」红线）。
+/// 总账独立于会话生命周期：`own_by_desktop` 记账，`release_owned` 销账。
+#[cfg(windows)]
+static OWNED_HWNDS: std::sync::LazyLock<Mutex<HashSet<isize>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
 fn with_registry<R>(f: impl FnOnce(&mut HashMap<String, EmbedSession>) -> R) -> R {
     let mut guard = EMBEDS.lock().unwrap_or_else(|e| e.into_inner());
@@ -587,10 +621,11 @@ pub async fn embed_launch(
                 let in_tree = !tree_c.is_empty() && {
                     win::window_pid(hwnd_from_isize(h)).map(|p| tree_c.contains(&p)).unwrap_or(false)
                 };
-                if is_fam && has_caption_style(h) {
+                // M1（R9）：已收编窗口跳过（它们在顶层枚举里可见，不跳会双头拥有）
+                if is_fam && has_caption_style(h) && !is_already_embedded(h) {
                     fam_cap.push(h);
                 }
-                if in_tree {
+                if in_tree && !is_already_embedded(h) {
                     tree_win.push(h);
                 }
                 false
@@ -623,7 +658,10 @@ pub async fn embed_launch(
                     let mut caps: Vec<isize> = Vec::new();
                     win::collect_handles_ex(&mut |h, img| {
                         let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
-                        if fam_r.iter().any(|m| *m == name) && has_caption_style(h) {
+                        if fam_r.iter().any(|m| *m == name)
+                            && has_caption_style(h)
+                            && !is_already_embedded(h)
+                        {
                             caps.push(h);
                         }
                         false
@@ -797,20 +835,9 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         with_registry(|m| {
             m.remove(&key);
         });
-        // 第十二轮大检查：L2 宿主收场——第三方窗口先退出时，宿主空壳必须
-        // 销毁。此前只有 embed_close 链路会销毁宿主，而本路径先移除了注册
-        // 条目，前端随后的 embed_close 查不到会话，空壳宿主（WS_POPUP
-        // 900×600）永久留在桌面。DestroyWindow 有线程亲和性（宿主在主线程
-        // 创建）→ 必须经 run_on_main_thread；unwrap_child 清 CHILD_OF 映射
-        // （子窗口已死时 SetParent 等调用无害失败）。
-        if let Some(host) = e.2 {
-            crate::shell::container::win::unwrap_child(host);
-            let _ = app.run_on_main_thread(move || unsafe {
-                let _ = windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
-                    windows::Win32::Foundation::HWND(host as *mut core::ffi::c_void),
-                );
-            });
-        }
+        // M1（R9）：第十二轮的「L2 宿主空壳收场」整块下线 —— L2 不再创建
+        // Variable 自己的 WS_POPUP 宿主窗口，第三方窗口直接被桌面拥有，
+        // `host` 恒为 None，不存在空壳泄漏。窗口消失 = 拥有关系自动失效。
         // 尽力采样根进程退出码（进程对象可能已被回收 → code 缺省）
         let mut code: Option<u32> = None;
         if !orphaned && e.1 != 0 {
@@ -912,6 +939,14 @@ fn pending_adopt_insert(h: isize) -> bool {
     g.retain(|&pending| unsafe { IsWindow(hwnd_from_isize(pending)) }.as_bool());
     g.insert(h)
 }
+
+/// M1（R9）：最近一次成功建立拥有关系所用的桌面窗口句柄。
+/// `embed_bounds` 这类命令拿不到 `AppHandle`，而坐标换算必须知道桌面客户区
+/// 原点在屏幕上的位置 —— 与其依赖进程级 OnceLock（首个会话来自弹窗收编时可能
+/// 尚未登记），不如由 `own_by_desktop` 成功时顺手落下：凡是边界需要换算的会话，
+/// 必然先经过它。
+#[cfg(windows)]
+static DESKTOP_HWND: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
 
 #[cfg(windows)]
 fn pending_adopt_remove(h: isize) {
@@ -1024,34 +1059,143 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
     });
 }
 
-/// 批次C-1：剥边框 → 重父化为桌面子窗口 → 占位边界（L1 路径；重嵌/收编共用）。
-/// 桌面句柄经 `app` 现取（HoOK_APP 是进程级 OnceLock，收编路径首调时可能尚未登记
+/// M1（R9）：拥有期间临时摘掉的 `WS_EX_APPWINDOW` 位原值（解链时按位还原）。
+///
+/// 为什么必须摘：Shell 给任务栏按钮的规则是「顶层窗口**没有拥有者**，或自带
+/// `WS_EX_APPWINDOW`」。被拥有的窗口默认已不出现，
+/// 但自带 `WS_EX_APPWINDOW` 的应用仍会强行占位，这是 WS_CHILD 时代不可能出现
+/// 的脏东西（子窗口从不进任务栏）。该位**不影响任何视觉外观**——它只管
+/// 任务栏/Alt+Tab 的存在感，所以不违背「不动软件自己的界面」这条硬约束。
+/// 记原值是为了窗口交还 Windows 后还能重新按一下任务栏切回去。
+#[cfg(windows)]
+static EXSTYLE_RESTORE: std::sync::LazyLock<Mutex<HashMap<isize, isize>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// M1（R9）：让 Variable 桌面窗口**拥有**第三方主窗口（`GWLP_HWNDPARENT`）。
+///
+/// 与旧实现（`restyle_and_reparent`：剥样式 + SetParent + WS_CHILD）的本质差别：
+/// - **一个 GWL_STYLE 位都不改** —— 窗口仍是完整原生顶层窗，保留它自己的标题栏、
+///   自己的 − □ ×、自己的可拖动边框。这是 M1 的核心诉求，也是 Variable 此前
+///   必须自绘假标题栏/红绿灯的根因所在；
+/// - 被拥有窗口恒显示在宿主之上（不必再和 Z 序打架）；
+/// - 宿主最小化时随之隐藏；宿主销毁时随之销毁 → 脱离必须显式解除（见 `release_owned`）；
+/// - 默认不进 Windows 任务栏（被拥有的顶层窗不进，除非带 WS_EX_APPWINDOW）。
+///
+/// 桌面句柄经 `app` 现取（HOOK_APP 是进程级 OnceLock，收编路径首调时可能尚未登记
 /// —— 依赖它会让「首个会话来自弹窗收编」的链路静默失败）。
 #[cfg(windows)]
-fn restyle_and_reparent(app: &tauri::AppHandle, new_hwnd: isize) -> bool {
-    use windows::Win32::Foundation::HWND;
+fn own_by_desktop(app: &tauri::AppHandle, new_hwnd: isize) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetParent, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
-        SWP_NOZORDER, WS_CAPTION, WS_CHILD, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
+        GetWindowLongPtrW, SetWindowLongPtrW, GWLP_HWNDPARENT,
     };
     let Some(desktop) = desktop_hwnd(app) else { return false };
     unsafe {
         let h = hwnd_from_isize(new_hwnd);
-        let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
-        let new_style = ((style as u32)
-            & !(WS_CAPTION.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0))
-            | WS_CHILD.0;
-        SetWindowLongPtrW(h, GWL_STYLE, new_style as isize);
-        let _ = SetParent(h, hwnd_from(desktop));
-        let _ = SetWindowPos(h, HWND::default(), 240, 140, 900, 600, SWP_FRAMECHANGED | SWP_NOZORDER);
+        let want = hwnd_from(desktop).0 as isize;
+        SetWindowLongPtrW(h, GWLP_HWNDPARENT, want);
+        // 回读校验而不是只看返回值：拥有者原本常为 NULL，成功也会返回 0，
+        // 拿返回值判成败会把正常情况误判成失败。
+        if GetWindowLongPtrW(h, GWLP_HWNDPARENT) != want {
+            return false;
+        }
+    }
+    strip_appwindow(new_hwnd);
+    // 顺手落下桌面句柄，供 embed_bounds 做「桌面客户区原点 → 屏幕坐标」换算。
+    let _ = DESKTOP_HWND.set(desktop);
+    // 记总账：退出前必须能把这条拥有关系解开，否则窗口会随宿主一起消失。
+    // 顺手清掉已经死掉的 hwnd（窗口自行关闭时不一定走解链路径，总账要自愈，
+    // 否则长会话里会慢慢攒下一批永不消失的死条目）。
+    {
+        let mut g = OWNED_HWNDS.lock().unwrap_or_else(|e| e.into_inner());
+        use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+        g.retain(|h| unsafe { IsWindow(hwnd_from_isize(*h)) }.as_bool());
+        g.insert(new_hwnd);
     }
     true
 }
 
-/// 批次C-1：把重建的新窗口重嵌进既有会话（剥边框 → SetParent → 更新 hwnd/DPI）。
+/// M1（R9）：摘掉 `WS_EX_APPWINDOW` 并记下原值（幂等 —— 同一窗口重复拥有不会
+/// 把「已摘掉的状态」误当成原值保存，否则归还时永远还原不回去）。
+#[cfg(windows)]
+fn strip_appwindow(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW,
+    };
+    let h = hwnd_from_isize(hwnd);
+    // 幂等闸门（成对的锁只在这一小段，不在 Win32 调用期间持有）
+    {
+        let g = EXSTYLE_RESTORE.lock().unwrap_or_else(|e| e.into_inner());
+        if g.contains_key(&hwnd) {
+            return; // 已登记过 → 真正的原值已在手里，绝不能二次采样
+        }
+    }
+    let ex = unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) } as u32;
+    if ex & WS_EX_APPWINDOW.0 != 0 {
+        unsafe {
+            SetWindowLongPtrW(h, GWL_EXSTYLE, (ex & !WS_EX_APPWINDOW.0) as isize);
+        }
+    }
+    let mut g = EXSTYLE_RESTORE.lock().unwrap_or_else(|e| e.into_inner());
+    g.insert(hwnd, ex as isize);
+}
+
+/// M1（R9）：解除拥有关系，把窗口交还 Windows（恢复独立顶层窗；不杀进程）。
+/// 不解除的话宿主销毁时会连带把第三方窗口一起销毁 —— 退出 Variable 会误杀应用。
+/// 同时按 `EXSTYLE_RESTORE` 里记的原值还原扩展样式（`WS_EX_APPWINDOW` 原样还回去，
+/// 窗口回到 Windows 后能重新在任务栏、Alt+Tab 里出现）。
+#[cfg(windows)]
+fn release_owned(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, IsWindow, SetWindowLongPtrW, GWLP_HWNDPARENT,
+    };
+    let h = hwnd_from_isize(hwnd);
+    // 先销总账再动窗口：窗口已销毁时下面会提前返回，而这条账目必须被抹掉，
+    // 否则 OWNED_HWNDS 会随会话积累死 hwnd（且退出清扫白忙一场）。
+    {
+        let mut g = OWNED_HWNDS.lock().unwrap_or_else(|e| e.into_inner());
+        g.remove(&hwnd);
+    }
+    if !unsafe { IsWindow(h) }.as_bool() {
+        return;
+    }
+    unsafe {
+        SetWindowLongPtrW(h, GWLP_HWNDPARENT, 0);
+    }
+    // 先取走再写回：别拿着锁去调 SetWindowLongPtrW（同进程其它路径可能反向取锁）
+    let saved = {
+        let mut g = EXSTYLE_RESTORE.lock().unwrap_or_else(|e| e.into_inner());
+        g.remove(&hwnd)
+    };
+    if let Some(ex) = saved {
+        unsafe {
+            SetWindowLongPtrW(h, GWL_EXSTYLE, ex);
+        }
+    }
+}
+
+/// M1（R9）：把**全部仍被拥有的窗口**一次性交还 Windows。
+///
+/// 必须在 Variable 进程真正退出前调用 —— 被拥有的窗口会在宿主销毁时被系统
+/// 连带销毁，不解除就等于「退出 Variable 顺手杀掉所有已嵌入的软件」，与
+/// 「绝不强杀进程」的红线直接冲突。这里只解链：不发 WM_CLOSE、不等退出。
+///
+/// 清扫依据是**归属总账 `OWNED_HWNDS`**而非会话注册表：退出流程的第一步就是
+/// `embedCloseAll()`，它已经把注册表 drain 空了，照注册表清理会漏掉全部窗口。
+#[cfg(windows)]
+pub fn release_all_owned() {
+    let all: Vec<isize> = {
+        let g = OWNED_HWNDS.lock().unwrap_or_else(|e| e.into_inner());
+        g.iter().copied().collect()
+    };
+    for hwnd in all {
+        release_owned(hwnd);
+    }
+}
+
+/// M1（R9）：把重建的新窗口重新收进既有会话（改拥有关系 → 更新 hwnd/DPI）。
 #[cfg(windows)]
 fn reembed_into_session(app: &tauri::AppHandle, key: &str, new_hwnd: isize) -> bool {
-    if !restyle_and_reparent(app, new_hwnd) {
+    if !own_by_desktop(app, new_hwnd) {
         return false;
     }
     with_registry(|m| {
@@ -1151,19 +1295,18 @@ fn attach_by_tier(
                 ),
             }
         }
-        // 批次C-3 L2 容器包裹：自绘/非标框架窗口不剥样式，包进 Variable 原生宿主窗口
+        // M1（R9）L2：自绘/非标框架窗口同样走「拥有」关系，不再包进 Variable
+        // 原生宿主窗口。此前 L2 会把第三方窗口塞进宿主客户区（SetParent +
+        // 追加 WS_CHILD），宿主还得兼职做 尺寸同步 / 焦点代理 / WM_CLOSE 转发
+        // 三件事。拥有关系原生就兼具这三点（宿主在上 + embed_bounds +
+        // embed_focus + embed_close 直发 WM_CLOSE），且同样不动任何窗口样式。
         CompatTier::L2 => {
-            let Some(host) = crate::shell::container::win::create_host_on_main_thread(app) else {
+            if !own_by_desktop(app, hwnd) {
                 return Attach::Skip {
-                    reason: "容器宿主窗口创建失败（L2 包裹不可用）。应用保持独立窗口运行。".into(),
+                    reason: "窗口归属失败（L2）。应用保持独立窗口运行。".into(),
                 };
-            };
-            // 第十四轮大检查：命令已 async 化（线程池运行），宿主窗口消息泵在主线程
-            // → wrap 的 SetParent/尺寸同步必须经主线程调度。
-            if !crate::shell::container::win::wrap_child_on_main_thread(app, host, hwnd) {
-                return Attach::Skip { reason: "容器包裹失败（L2）。应用保持独立窗口运行。".into() };
             }
-            register(Some(host), false);
+            register(None, false);
             Attach::Ok { capture: false }
         }
         // 批次C-4 L3 画面捕获：真实窗口屏外隐藏 + WGC 采集 → 前端合成；
@@ -1202,7 +1345,7 @@ fn attach_by_tier(
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1200));
             }
-            if is_cef_l1_family && restyle_and_reparent(app, hwnd) {
+            if is_cef_l1_family && own_by_desktop(app, hwnd) {
                 register(None, false);
                 crate::shell::applog::log(
                     "embed",
@@ -1229,7 +1372,7 @@ fn attach_by_tier(
                     ),
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1200));
-                if restyle_and_reparent(app, hwnd) {
+                if own_by_desktop(app, hwnd) {
                     register(None, false);
                     crate::shell::applog::log(
                         "embed",
@@ -1260,11 +1403,12 @@ fn attach_by_tier(
                 }
             }
         }
-        // L1（标准窗口）→ 重父级嵌入主路径
+        // L1（标准窗口）→ 归属嵌入主路径。M1：只建立拥有关系，不动任何样式位，
+        // 窗口保留原生标题栏 / − □ × / 可拖动边框。
         _ => {
-            if !restyle_and_reparent(app, hwnd) {
+            if !own_by_desktop(app, hwnd) {
                 return Attach::Skip {
-                    reason: "重父级失败（桌面窗口不存在）。应用保持独立窗口运行。".into(),
+                    reason: "归属桌面窗口失败（桌面窗口不存在）。应用保持独立窗口运行。".into(),
                 };
             }
             register(None, false);
@@ -1333,22 +1477,14 @@ pub async fn embed_adopt(
     Ok(false)
 }
 
-/// 脱离指定会话（恢复独立顶层窗口；应用不退出）。返回该会话是否存在。
+/// 脱离指定会话（M1：解除拥有关系即可，窗口本来就是完整原生顶层窗，
+/// 无需再剥 WS_CHILD / SetParent 回桌面）。返回该会话是否存在。
 #[cfg(windows)]
 fn detach_by_id(embed_id: &str) -> bool {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetParent, SetWindowLongPtrW, GWL_STYLE, WS_CHILD, WS_POPUP,
-    };
     let Some(e) = with_registry(|map| map.remove(embed_id)) else {
         return false;
     };
-    unsafe {
-        let h = hwnd_from(e.hwnd);
-        let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
-        SetWindowLongPtrW(h, GWL_STYLE, ((style as u32 & !WS_CHILD.0) | WS_POPUP.0) as isize);
-        let _ = SetParent(h, HWND::default());
-    }
+    release_owned(e.hwnd);
     true
 }
 
@@ -1419,15 +1555,42 @@ pub async fn embed_pick_window(_timeout_ms: Option<u64>) -> CmdResult<Option<isi
 #[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_bounds(embed_id: Option<String>, x: i32, y: i32, w: i32, h: i32) -> CmdResult<()> {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOZORDER};
+    use windows::Win32::Foundation::{HWND, POINT};
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, SetWindowPos, SWP_NOZORDER};
     let key = norm_id(embed_id);
     let cur = with_registry(|map| map.get(&key).map(|e| (e.hwnd, e.dpi_fix, e.last_dpi)));
     let Some((hw, dpi_fix, last_dpi)) = cur else {
         return Ok(());
     };
+    // M1（R9）坐标换算：拥有关系下的第三方窗口仍是**完整的顶层窗口**，
+    // SetWindowPos 要的是屏幕坐标；而前端上报的是「桌面窗口客户区坐标 × DPR」
+    // （物理像素，因为过去窗口是子窗口）。少了这一步换算，所有嵌入窗口会整体
+    // 偏移一个「桌面客户区原点」（Variable 非全屏 / 多显示器时立刻可见）。
+    let origin = DESKTOP_HWND.get().copied().and_then(|d| {
+        let dh = hwnd_from(d);
+        if !unsafe { IsWindow(dh) }.as_bool() {
+            return None;
+        }
+        let mut pt = POINT { x: 0, y: 0 };
+        if !unsafe { ClientToScreen(dh, &mut pt) }.as_bool() {
+            return None;
+        }
+        Some((pt.x, pt.y))
+    });
+    // 取不到桌面句柄时退回原坐标语义：宁可位置不精确，也不让窗口彻底失去跟随。
+    // （正常不会发生 —— 任何需要换算的会话都先经过 own_by_desktop 落句柄。）
+    let (ox, oy) = origin.unwrap_or((0, 0));
     unsafe {
-        let _ = SetWindowPos(hwnd_from(hw), HWND::default(), x, y, w.max(1), h.max(1), SWP_NOZORDER);
+        let _ = SetWindowPos(
+            hwnd_from(hw),
+            HWND::default(),
+            ox + x,
+            oy + y,
+            w.max(1),
+            h.max(1),
+            SWP_NOZORDER,
+        );
     }
     let new_dpi = win::window_dpi(hw);
     if !dpi_fix && last_dpi != 0 && new_dpi != last_dpi {
@@ -1451,14 +1614,24 @@ pub fn embed_bounds(_embed_id: Option<String>, _x: i32, _y: i32, _w: i32, _h: i3
 #[tauri::command(async)]
 #[cfg(windows)]
 pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
-    use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOW};
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, ShowWindow, SW_HIDE, SW_RESTORE, SW_SHOW};
     let key = norm_id(embed_id);
     let target = with_registry(|map| {
         map.get(&key).map(|e| e.host.unwrap_or(e.hwnd))
     });
     if let Some(h) = target {
         unsafe {
-            let _ = ShowWindow(hwnd_from(h), if visible { SW_SHOW } else { SW_HIDE });
+            let h = hwnd_from(h);
+            // M1（R9）：− 按钮现在是软件自己的 —— 用户点它会真的把窗口最小化。
+            // 恢复时必须先识别最小化态并用 SW_RESTORE：SW_SHOW 对已最小化的
+            // 顶层窗是无效/不可靠的，会让窗口「还原不回来」（它没有 Windows 任务栏
+            // 按钮可点，只能靠 Variable 这条通道救回来）。
+            let cmd = if visible {
+                if IsIconic(h).as_bool() { SW_RESTORE } else { SW_SHOW }
+            } else {
+                SW_HIDE
+            };
+            let _ = ShowWindow(h, cmd);
         }
         // R4-B7（首轮 B-4）：收编子窗隐藏/最小化后 WebView2 合成层可能失效白屏，
         // 立即对桌面 WebView 强制同步重绘（root=Tauri Window 顶层）。
@@ -1493,6 +1666,16 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
         unsafe {
             let _ = PostMessageW(hwnd_from(target), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
+        // M1（R9）：会话条目在这里就被摘掉了，但拥有关系还在 —— 必须在给应用
+        // 留出「体面退出」的时间之后把它解链，否则：①窗口一旦不响应 WM_CLOSE，
+        // 就永远被拽在 Variable 上面，既不能再次收编也回不到 Windows；②它已不在
+        // 注册表里，照注册表清扫的旧逻辑会漏掉它。
+        // 已退出的应用届时 hwnd 失效，release_owned 自动空转。
+        let owned = e.hwnd;
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            release_owned(owned);
+        });
     }
     Ok(())
 }
@@ -1504,11 +1687,14 @@ pub fn embed_close(_embed_id: Option<String>) -> CmdResult<()> {
 }
 
 /// W-1 退出会话：对全部嵌入会话发 WM_CLOSE（应用自行退出），随后由后台线程
-/// 在 30s 内核对——仍未退出的窗口**脱离重父化留在桌面**（绝不强杀进程）。
+/// 在 30s 内核对——仍未退出的窗口**解除拥有关系留在桌面**（绝不强杀进程）。
 /// 立即返回，不阻塞退出流程。
+///
+/// M1（R9）：本命令会 drain 会话注册表，因此**不能**依赖它在退出前解除拥有 ——
+/// 真正的兜底是 `RunEvent::Exit` 里的 `release_all_owned`（扫 `OWNED_HWNDS` 总账）。
 #[tauri::command(async)]
 #[cfg(windows)]
-pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
+pub fn embed_close_all() -> CmdResult<usize> {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let sessions = with_registry(|map| {
@@ -1546,26 +1732,11 @@ pub fn embed_close_all(app: tauri::AppHandle) -> CmdResult<usize> {
                     })
                     .collect();
                 if remaining.is_empty() || std::time::Instant::now() >= deadline {
-                    for (host, hwnd) in &remaining {
-                        match host {
-                            // L2：宿主仍存活 → 脱离子窗口并销毁宿主。
-                            // 第十二轮大检查：DestroyWindow 有线程亲和性——
-                            // 本线程不是宿主创建线程（主线程），直接调用会
-                            // 静默失败、宿主照旧泄漏；必须经 run_on_main_thread。
-                            Some(h) => {
-                                crate::shell::container::win::unwrap_child(*h);
-                                let h2 = *h;
-                                let _ = app.run_on_main_thread(move || unsafe {
-                                    let _ =
-                                        windows::Win32::UI::WindowsAndMessaging::DestroyWindow(
-                                            windows::Win32::Foundation::HWND(
-                                                h2 as *mut core::ffi::c_void,
-                                            ),
-                                        );
-                                });
-                            }
-                            None => detach_child(*hwnd),
-                        }
+                    for (_host, hwnd) in &remaining {
+                        // M1（R9）：L2 宿主已下线（第三方窗口直接被桌面拥有，
+                        // host 恒为 None），超时未退出者只解除拥有关系留在桌面上，
+                        // 绝不强杀进程。
+                        detach_child(*hwnd);
                     }
                     break;
                 }
@@ -1582,24 +1753,12 @@ pub fn embed_close_all() -> CmdResult<usize> {
     Ok(0)
 }
 
-/// 把仍是 WS_CHILD 的窗口脱离回桌面（30s 超时兜底；不杀进程）。
+/// 把一个窗口脱离回桌面（30s 超时兜底；不杀进程）。
+/// M1（R9）：窗口从未被切成 WS_CHILD，脱离 = 单纯解除拥有关系。
 #[cfg(windows)]
 fn detach_child(hwnd: isize) {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, IsWindow, SetParent, SetWindowLongPtrW, GWL_STYLE, WS_CHILD, WS_POPUP,
-    };
-    let h = hwnd_from_isize(hwnd);
-    if !unsafe { IsWindow(h) }.as_bool() {
-        return;
-    }
-    unsafe {
-        let style = GetWindowLongPtrW(h, GWL_STYLE) as isize;
-        if style as u32 & WS_CHILD.0 != 0 {
-            SetWindowLongPtrW(h, GWL_STYLE, ((style as u32 & !WS_CHILD.0) | WS_POPUP.0) as isize);
-            let _ = SetParent(h, HWND::default());
-        }
-    }
+    // M1（R9）：窗口从未被改成 WS_CHILD，脱离 = 单纯解除拥有关系。
+    release_owned(hwnd);
 }
 
 /// 让指定嵌入窗口获得键盘焦点（点击/聚焦虚拟窗口时调用；W-1 焦点仲裁：
@@ -1608,11 +1767,19 @@ fn detach_child(hwnd: isize) {
 #[cfg(windows)]
 pub fn embed_focus(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
+    use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
     let key = norm_id(embed_id);
     let hwnd = with_registry(|map| map.get(&key).map(|e| e.hwnd));
     if let Some(h) = hwnd {
+        let h = hwnd_from(h);
         unsafe {
-            let _ = SetFocus(hwnd_from(h));
+            // M1（R9）：焦点对象现在是**别的进程的顶层窗口**。SetFocus 只能把焦点
+            // 交给「已属于当前活动线程队列」的窗口，跨进程顶层窗它会静默失败
+            // （WS_CHILD 时代主窗在我们的队列里，所以从没暴露过这个问题）。
+            // 用户点击虚拟窗口标题栏的那一刻 Variable 正处于前台，此刻
+            // SetForegroundWindow 是合法的（不会被前台锁拒绝）。
+            let _ = SetForegroundWindow(h);
+            let _ = SetFocus(h);
         }
     }
     Ok(())
@@ -1719,6 +1886,11 @@ fn force_webview_repaint(top: isize) {
 
 /// R4-B6（首轮 B-3）：收编子窗置顶盖满全屏时，把桌面 WebView 提回
 /// 全部嵌入子窗之上（不激活，不抢焦点）——用户按 Win 键即可回到桌面壳。
+///
+/// M1（R9）注意：拥有式嵌入下这条**已不可能生效** —— 被拥有窗口恒显示在宿主
+/// （及其所有子窗，含 WebView）之上，把它提到 HWND_TOP 也压不过兄弟关系。
+/// 保留实现只为非 Windows 分支与历史调用方不炸；壳层 UI 想压在最大化软件之上
+/// 必须搬到独立顶层窗（M4/M5）。
 #[tauri::command(async)]
 #[cfg(windows)]
 pub fn desktop_raise(app: tauri::AppHandle) -> CmdResult<()> {
@@ -1869,6 +2041,23 @@ pub(crate) fn is_adoptable_main_window(_hwnd: isize) -> bool {
     true
 }
 
+/// M1（R9）：该窗口是否已经被 Variable 的某个会话收编。
+///
+/// 拥有式嵌入与 WS_CHILD 时代最关键的行为差异：**已嵌入的窗口仍然出现在顶层
+/// 窗口枚举里**（它还是完整顶层窗，只是多了个拥有者）。所有"扫顶层窗找候选"
+/// 的收编通道都必须先过这道闸门，否则会把已经收进去的主窗当成"新窗口"再收一次
+/// —— 两个会话同时驱动同一个 hwnd（互相抢位置 / 重复占位窗），正是 M0 那类
+/// 连锁故障的温床。
+#[cfg(windows)]
+pub(crate) fn is_already_embedded(hwnd: isize) -> bool {
+    with_registry(|m| m.values().any(|e| e.hwnd == hwnd))
+}
+
+#[cfg(not(windows))]
+pub(crate) fn is_already_embedded(_hwnd: isize) -> bool {
+    false
+}
+
 /// steam_launch 后启动的 Steam 主窗看护（见模块注释）。幂等安全：每次
 /// steam_launch 一个看护线程；已嵌入时扫不到候选，90s 后自然退出。
 #[cfg(windows)]
@@ -1880,9 +2069,11 @@ pub fn spawn_steam_adopt_watcher(app: tauri::AppHandle) {
             // ShellExecute 异步拉起 Steam：先等一拍再开扫
             std::thread::sleep(std::time::Duration::from_millis(1500));
             for _ in 0..90 {
+                // M1（R9）：排除已收编窗口 —— 拥有式嵌入下它们仍在顶层枚举里，
+                // 不排除会重复广播 embed://popup（重复占位窗 / 双会话抢同一 hwnd）。
                 let cands: Vec<(isize, u32, String)> = watch_scan_windows()
                     .into_iter()
-                    .filter(|(h, _, _)| has_caption_style(*h))
+                    .filter(|(h, _, _)| has_caption_style(*h) && !is_already_embedded(*h))
                     .collect();
                 if let Some((hwnd, pid)) = pick_steam_window(&cands) {
                     let root = steam_root_pid(pid);
@@ -1917,6 +2108,38 @@ pub fn spawn_steam_adopt_watcher(_app: tauri::AppHandle) {}
 #[cfg(test)]
 mod tests {
     use super::{with_registry, norm_id};
+
+    /// M1（R9）：拥有式嵌入的**关键回归点** —— 已收编窗口仍然是完整顶层窗，
+    /// 依然会出现在 EnumWindows 结果里。所有"扫顶层窗找候选"的收编通道都必须
+    /// 先用 `is_already_embedded` 挡一道，否则同一个 hwnd 会被第二个会话重复
+    /// 拥有（重复占位窗 + 两个虚拟窗互相抢位置）。
+    #[cfg(windows)]
+    #[test]
+    fn already_embedded_blocks_readoption() {
+        let key = "m1-guard";
+        with_registry(|m| {
+            m.insert(
+                key.into(),
+                super::EmbedSession {
+                    hwnd: 0x9c40,
+                    tp_id: "steam".into(),
+                    dpi_fix: false,
+                    last_dpi: 120,
+                    root_pid: 4321,
+                    pids: vec![4321],
+                    host: None,
+                    capture: false,
+                },
+            );
+        });
+        assert!(super::is_already_embedded(0x9c40), "已在注册表中的窗口必须判定为已收编");
+        assert!(!super::is_already_embedded(0x1234), "陌生窗口不得被挡在门外");
+        // 全局注册表是进程共享的 —— 用完必须清干净，避免污染其它测试
+        with_registry(|m| {
+            m.remove(key);
+        });
+        assert!(!super::is_already_embedded(0x9c40), "会话结束后窗口应可再次被收编");
+    }
 
     /// 单例兜底收编：家族映像族 —— Steam 主 exe 必须带上 steamwebhelper
     /// （主窗属它），反向登记同理；普通 exe 族内只有自己。

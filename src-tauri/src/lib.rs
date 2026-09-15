@@ -820,6 +820,13 @@ pub fn run() {
                 if let tauri::RunEvent::Exit = event {
                     shell::shellmode::cleanup_explorer_service();
                 }
+                // M1（R9）：拥有关系必须归还 —— 被 Variable 桌面窗口拥有的第三方
+                // 窗口会随宿主销毁被系统连带销毁。这里同步解链（微秒级），确保「退出
+                // Variable 绝不顺手杀掉已嵌入的软件」（绝不强杀进程红线）。
+                #[cfg(windows)]
+                if let tauri::RunEvent::Exit = event {
+                    shell::embed::release_all_owned();
+                }
                 // AI-11 红线：退出还原宿主状态（gamma 字节级还原 + 解除保持唤醒）
                 // + 写干净关机标记（V-59 断电自检判定基准）
                 #[cfg(windows)]
