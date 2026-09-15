@@ -364,7 +364,9 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
   }, []);
 
   // 批次W-3 + C-1：嵌入监护上报（embed://state）→ 占位卡状态机。
-  // exited/orphaned = 占位卡；running = 自动重嵌成功 → 清占位卡 + 边界重同步。
+  // exited = 进程已退出 → R7 实机需求：不再留「已退出」占位框，占位窗直接
+  // 自动关闭（用户重新点击图标即新开会话）；orphaned = 占位卡；
+  // running = 自动重嵌成功 → 清占位卡 + 边界重同步。
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let disposed = false;
@@ -373,6 +375,8 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
       if (e.payload.state === "running") {
         clearEmbedSessionState(e.payload.embedId);
         bumpEmbedResync(e.payload.embedId);
+      } else if (e.payload.state === "exited") {
+        closeVwmWinSafe(e.payload.embedId);
       } else {
         setEmbedSessionState(e.payload.embedId, e.payload.state);
       }

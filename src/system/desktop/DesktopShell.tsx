@@ -615,17 +615,14 @@ export function DesktopShell(props: {
   }, []);
 
   // 批次E（规格 4.7）：整表应用快捷键（默认 + 用户覆盖）；变更即重注册。
-  // 实机反馈"彻底解决"：被占用的组合后端已自动改用备选组合键（remapped 如实提示），
-  // 仅连备选都失败的组合才提示（failed，需用户手动换键）。
+  // 实机反馈"彻底解决"：被占用的组合后端已自动改用备选组合键。
+  // R7 实机需求（用户硬约束）：remapped 改配不再弹 toast（后端已自动改配，
+  // 功能无损，无需打扰）；仅连备选都失败的组合才提示（failed，需用户手动换键）。
   useEffect(() => {
     const binds = effectiveBinds(props.settings.shortcutBinds ?? {});
     void ipc
       .shortcutsApply(binds)
       .then((res) => {
-        if (res.remapped.length > 0) {
-          const list = res.remapped.map((r) => `${r.from} → ${r.to}`).join(", ");
-          pushToast("info", t("scTitle"), `${t("scRemapped")}: ${list}`);
-        }
         if (res.failed.length > 0) pushToast("info", t("scTitle"), `${t("scRegisterFailed")}: ${res.failed.join(", ")}`);
       })
       .catch((e) => console.warn("[shortcuts] apply failed", errMessage(e).message));

@@ -67,6 +67,12 @@ fn settings_path(st: &AppState) -> std::path::PathBuf {
     st.data_dir.join("watchdog.json")
 }
 
+/// 内置忽略名单（并入用户 ignored，不写入文件）：瞬时系统 UI 收编无意义。
+/// snippingtool.exe —— Win+Shift+S 已被后端抢注给 Variable 截图工具，系统
+/// 截图浮层（Snipping Tool Overlay）是瞬时覆盖层，收编只会留下僵尸占位窗
+///（实机：每次截图都生成一个收编窗）。
+const BUILTIN_IGNORED: &[&str] = &["snippingtool.exe"];
+
 pub(crate) fn load_settings(st: &AppState) -> WatchSettings {
     let mut s = std::fs::read(settings_path(st))
         .ok()
@@ -76,6 +82,12 @@ pub(crate) fn load_settings(st: &AppState) -> WatchSettings {
     // 「是否收进 Variable」，逃逸窗口一律直接收编。
     if s.policy == POLICY_ASK {
         s.policy = POLICY_AUTO.into();
+    }
+    // 内置忽略名单并入（去重，不落盘）
+    for bi in BUILTIN_IGNORED {
+        if !s.ignored.iter().any(|i| i == bi) {
+            s.ignored.push((*bi).into());
+        }
     }
     s
 }

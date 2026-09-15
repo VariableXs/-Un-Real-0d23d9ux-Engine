@@ -562,13 +562,12 @@ pub async fn embed_launch(
             save_hints(&st, &hints);
         }
         // 实机需求（兜底收编）：应用窗口没按"标准主窗"出现也要进 Variable ——
-        // 三档候选（优先级递降）：
+        // 两档候选（优先级递降）：
         //   1) 同家族可见带标题栏主窗（Steam/微信等单例二次启动只唤起既有实例；
         //      Steam 家族含 steamwebhelper.exe —— 主窗属它，按 exe 名匹配不到）；
-        //   2) 启动进程树内任意可见窗口（冷启动主窗迟迟不带标题栏/非常规框架）；
-        //   3) 同家族任意可见窗口（CEF 无边框窗）。
-        // 命中即收编（attach_by_tier 同一裁判：CEF 合成管道照走 L3 采画面），
-        // 绝不把应用丢回 Windows 桌面。
+        //   2) 启动进程树内任意可见窗口（冷启动主窗迟迟不带标题栏/非常规框架）。
+        // R7 删除第三档「同家族任意窗口」：它只会命中 CEF 无标题工具窗/隐藏
+        // 辅助窗，收编进来必然是大黑框（21:52 实机复现）；宁可如实回退。
         let family = family_images(&exe_name);
         let family_pair = family.len() > 1;
         let tree = match root_pid {
@@ -580,7 +579,6 @@ pub async fn embed_launch(
         let buckets = tauri::async_runtime::spawn_blocking(move || {
             let mut fam_cap: Vec<isize> = Vec::new();
             let mut tree_win: Vec<isize> = Vec::new();
-            let mut fam_any: Vec<isize> = Vec::new();
             // R3-B11：与 fam_before 同口径 —— include_hidden（托盘隐藏 /
             // 屏外的家族主窗也是合法收编对象，attach 前有还原防黑帧兜底）
             win::collect_handles_ex(&mut |h, img| {
@@ -589,31 +587,64 @@ pub async fn embed_launch(
                 let in_tree = !tree_c.is_empty() && {
                     win::window_pid(hwnd_from_isize(h)).map(|p| tree_c.contains(&p)).unwrap_or(false)
                 };
-                if is_fam {
-                    if has_caption_style(h) {
-                        fam_cap.push(h);
-                    } else {
-                        fam_any.push(h);
-                    }
+                if is_fam && has_caption_style(h) {
+                    fam_cap.push(h);
                 }
                 if in_tree {
                     tree_win.push(h);
                 }
                 false
             }, true);
-            (fam_cap, tree_win, fam_any)
+            (fam_cap, tree_win)
         })
         .await
-        .unwrap_or((Vec::new(), Vec::new(), Vec::new()));
-        let (fam_cap, tree_win, fam_any) = buckets;
+        .unwrap_or((Vec::new(), Vec::new()));
+        let (mut fam_cap, tree_win) = buckets;
+        // R7：Steam 家族连带标题栏主窗都没有 = 主窗从未创建或已随前会话
+        // 嵌入宿主销毁（单例实例仍在托盘存活，点图标只转发不建窗 → 「Steam
+        // 打不开」实机根因）。用 steam://open/main 让既有实例重建主窗，
+        // 12s 内轮询重扫一次；仍无则如实回退独立窗口，绝不收工具窗充数。
+        if fam_cap.is_empty() && tree_win.is_empty() && steam_family {
+            crate::shell::applog::log(
+                "launch",
+                format!("embed_launch {id}: 兜底无候选 → steam://open/main 唤起主窗后重扫（≤12s）"),
+            );
+            let _ = crate::shell::compat::shell_execute_path(
+                std::path::Path::new("steam://open/main"),
+                Some("open"),
+                None,
+                None,
+                None,
+            );
+            let fam_r = family.clone();
+            fam_cap = tauri::async_runtime::spawn_blocking(move || {
+                for _ in 0..24 {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let mut caps: Vec<isize> = Vec::new();
+                    win::collect_handles_ex(&mut |h, img| {
+                        let name = img.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
+                        if fam_r.iter().any(|m| *m == name) && has_caption_style(h) {
+                            caps.push(h);
+                        }
+                        false
+                    }, true);
+                    if !caps.is_empty() {
+                        return caps;
+                    }
+                }
+                Vec::new()
+            })
+            .await
+            .unwrap_or_default();
+        }
         crate::shell::applog::log(
             "launch",
             format!(
-                "embed_launch {id} 兜底候选: 家族带标题栏={:?} 树内窗口={:?} 家族其它={:?}",
-                fam_cap, tree_win, fam_any
+                "embed_launch {id} 兜底候选: 家族带标题栏={:?} 树内窗口={:?}",
+                fam_cap, tree_win
             ),
         );
-        if let Some(&old_hwnd) = fam_cap.first().or_else(|| tree_win.first()).or_else(|| fam_any.first()) {
+        if let Some(&old_hwnd) = fam_cap.first().or_else(|| tree_win.first()) {
             let pid = win::window_pid(hwnd_from_isize(old_hwnd)).unwrap_or(0);
             // Steam 家族 root 必须锚在 steam.exe（主窗属 steamwebhelper，
             // 游戏进程是其后代——pid 树监护才能同时覆盖）
