@@ -358,7 +358,11 @@
 .vwm-feel-opacity input[type="range"] { flex: 1; accent-color: rgb(96 165 250); }
 
 /* M-03 最小化窗口抽屉（任务栏上方右下角） */
-.wf-drawer-root { position: fixed; right: 10px; bottom: 52px; z-index: 999990; }
+.wf-drawer-root { position: fixed; right: 10px; bottom: 52px; z-index: 999990; pointer-events: auto; }
+/* 2026-09-16 实机自检缺陷修复：.vwm-layer 是 pointer-events:none（空白透传），
+   .vwm-window 等窗口框架恢复了 auto，但本抽屉整棵树（root/panel/item/trigger）
+   漏恢复 → 鼠标点击全部穿透到桌面图标层，onClick 永不触发（键盘 Enter 正常，
+   因为 keydown 不走命中测试）。M1/M2 自检「抽屉鼠标点击无响应」的根因。 */
 .wf-drawer-trigger {
   position: relative;
   display: inline-flex;
@@ -456,6 +460,7 @@
   justify-content: center;
   background: rgb(2 6 14 / 0.5);
   backdrop-filter: blur(4px);
+  pointer-events: auto; /* vwm-layer 内 fixed 浮层：恢复命中（点遮罩关闭/卡片切换） */
 }
 .wf-switcher-panel {
   width: min(560px, 86vw);
@@ -555,6 +560,7 @@
   display: flex;
   flex-direction: column;
   padding: 4px;
+  pointer-events: auto; /* vwm-layer 内 fixed 浮层：菜单项必须可点 */
   border: 1px solid rgb(255 255 255 / 0.14);
   border-radius: 10px;
   background: rgb(10 15 26 / 0.97);

@@ -879,12 +879,13 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
             continue; // 已自动重嵌（C-1），继续监护
         }
         // 窗口消失 → 分类：进程树仍有存活者 = Orphaned
+        let tree_pids: std::collections::HashSet<u32> = win::pid_tree(e.1).into_iter().collect();
         let mut orphaned = false;
-        for p in win::pid_tree(e.1) {
-            if p == 0 {
+        for p in &tree_pids {
+            if *p == 0 {
                 continue;
             }
-            if let Ok(h) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, p) } {
+            if let Ok(h) = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, *p) } {
                 let mut code = 0u32;
                 unsafe {
                     let _ = GetExitCodeProcess(h, &mut code);
@@ -895,6 +896,26 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
                     orphaned = true;
                     break;
                 }
+            }
+        }
+        // 多窗甄别（M1 自检实证缺陷）：同进程树仍有「其它会话登记中的存活窗口」
+        // = 普通多窗应用关掉一扇窗（notepad / Edge 多开），不是「首窗自毁重建」
+        // （Steam 单例重建语义）。误判 orphaned 会派 readopt 把兄弟会话正嵌着的
+        // 窗口重复收编（实机：725630 被第二次 adopt，桌面多出孤儿占位卡）。
+        if orphaned {
+            let sibling_embedded = with_registry(|m| {
+                m.values().any(|x| {
+                    x.hwnd != e.0
+                        && unsafe { IsWindow(hwnd_from_isize(x.hwnd)) }.as_bool()
+                        && x.pids.iter().any(|p| tree_pids.contains(p))
+                })
+            });
+            if sibling_embedded {
+                orphaned = false;
+                crate::shell::applog::log(
+                    "embed",
+                    format!("会话 {key}: hwnd={} 消失但同树仍有登记中的存活嵌入窗 → 按正常退出处理（多窗应用，不派 readopt）", e.0),
+                );
             }
         }
         // 会话移除（占位卡只展示一次；重新打开走新会话）
@@ -929,6 +950,18 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
             spawn_readopt_watcher(app.clone(), e.1, e.3.clone());
         }
         use tauri::Emitter;
+        // M0 取证：会话终态判定落日志（此前 orphaned/exited 判定无日志，
+        // 误判问题只能靠时间线倒推 —— 2026-09-16 M1 自检教训）。
+        crate::shell::applog::log(
+            "embed",
+            format!(
+                "会话 {key}: hwnd={} 消失 → state={} rootPid={} 误派readopt={}",
+                e.0,
+                if orphaned { "orphaned" } else { "exited" },
+                e.1,
+                orphaned // true = 树内进程仍存活却按孤儿重收（多窗甄别已把此类改判 exited）
+            ),
+        );
         let _ = app.emit(
             "embed://state",
             serde_json::json!({
@@ -959,6 +992,18 @@ fn spawn_readopt_watcher(app: tauri::AppHandle, root_pid: u32, tp_label: String)
                 }
                 for (h, pid, _img) in watch_scan_windows() {
                     if tree.contains(&pid) && has_caption_style(h) {
+                        // 防御闸：候选窗已是某活跃会话的嵌入窗 → 不得重复收编。
+                        // （多窗应用误派 readopt 时，树内可收编窗十有八九是兄弟
+                        // 会话正嵌着的窗口；重复收编 = 同 hwnd 双重登记 + 桌面
+                        // 多出一张孤儿占位卡。实机实证：725630 双重 adopt。）
+                        let already = with_registry(|m| m.values().any(|e| e.hwnd == h));
+                        if already {
+                            crate::shell::applog::log(
+                                "embed",
+                                format!("readopt {tp_label}: 候选 hwnd={h} 已在嵌入登记 → 跳过重收（防重复收编）"),
+                            );
+                            return;
+                        }
                         crate::shell::applog::log(
                             "embed",
                             format!("readopt {tp_label}: 重收重建主窗 hwnd={h} → 广播 embed://popup"),
