@@ -52,6 +52,10 @@ zstd = "0.13"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+# M0：WebView2 ProcessFailed 监听（与 wry 锁同一 0.38.x，COM 类型才能对上）
+webview2-com = "0.38"
+# webview2-com-sys 0.38 绑定在 windows 0.61 之上；Interface::cast 来自 windows-core 0.61
+windows-core = "0.61"
 windows = { version = "0.58", features = [
   "Foundation",
   "Foundation_Collections",

@@ -15,6 +15,7 @@ pub mod cli;
 pub mod shell;
 pub mod state;
 pub mod system;
+pub mod webview_watchdog;
 pub mod workspace;
 // L-1/V-1：VM 内 agent（仅引导器编排的 VM 档启用）
 #[cfg(feature = "vm-agent")]
@@ -115,6 +116,9 @@ pub fn run() {
             // AI-13 U-20 内存守护（5s 采样 + 泄漏看门狗）与 M-53 崩溃转储钩子
             shell::perf::spawn_mem_warden();
             shell::perf::install_crash_hook(app.state::<AppState>().data_dir.join("crashes"));
+            // M0（R9）：WebView2 进程故障监听 —— 渲染/浏览器进程死亡落盘，
+            // 补齐「无因 DESTROYED」盲区（后建窗口由看护线程 3s 内补挂）。
+            webview_watchdog::spawn(app.handle().clone());
             // AI-12 M-45：输入设备热插拔监听（只观察，重注册动作由前端执行）
             shell::compat::spawn_hotplug_watcher(app.handle().clone());
             // AI-14 N-28/Z-53：本地网关自动拉起（配置为开时；默认关闭零监听）
