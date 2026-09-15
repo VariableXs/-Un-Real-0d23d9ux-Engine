@@ -71,7 +71,9 @@ fn settings_path(st: &AppState) -> std::path::PathBuf {
 /// snippingtool.exe —— Win+Shift+S 已被后端抢注给 Variable 截图工具，系统
 /// 截图浮层（Snipping Tool Overlay）是瞬时覆盖层，收编只会留下僵尸占位窗
 ///（实机：每次截图都生成一个收编窗）。
-const BUILTIN_IGNORED: &[&str] = &["snippingtool.exe"];
+/// workbuddy.exe —— 运行 Variable 的宿主平台应用（CEF）：收编母体 = 变量把
+/// 自己的运行环境抓进桌面，实机表现为反复派发收编失败死循环（日志 5 连发）。
+const BUILTIN_IGNORED: &[&str] = &["snippingtool.exe", "workbuddy.exe"];
 
 pub(crate) fn load_settings(st: &AppState) -> WatchSettings {
     let mut s = std::fs::read(settings_path(st))

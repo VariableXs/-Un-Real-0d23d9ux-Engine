@@ -166,11 +166,15 @@ pub fn probe_hwnd(hwnd: isize) -> CompatInfo {
 
     let composition = unsafe { IsCompositionActive() }.as_bool();
 
-    // 决策树（顺序即优先级）
+    // 决策树（顺序即优先级）。
+    // M1 实机修正（2026-09-16）：is_uwp 不再一票 L3 —— Win11 新记事本等
+    // 「带 appx 包名的 Win32 桌面应用」有完整标题栏与非客户区（类名 Notepad），
+    // L1 拥有式真实嵌入画面零转译；真 UWP 的框架壳（ApplicationFrameWindow /
+    // CoreWindow）内容窗是独立的 cloaked 顶层窗，嵌壳必得空壳 → 保持 L3。
     let l4_hint = anti_cheat_or_exclusive(&class_name);
-    let (tier, reason) = if is_uwp {
-        (crate::shell::compat_probe::CompatTier::L3, "appx package window")
-    } else if cloaked_ok && cloaked != 0 {
+    let uwp_shell = class_name == "ApplicationFrameWindow"
+        || class_name.starts_with("Windows.UI.Core.");
+    let (tier, reason) = if cloaked_ok && cloaked != 0 {
         (crate::shell::compat_probe::CompatTier::L3, "dwm cloaked")
     } else if l4_hint.is_some() {
         (crate::shell::compat_probe::CompatTier::L4, "exclusive/anticheat class")
@@ -178,8 +182,10 @@ pub fn probe_hwnd(hwnd: isize) -> CompatInfo {
         // 合成管道（DirectComposition / CEF / Chromium / Electron）：
         // 无重定向表面 → 重父化必呈现纯黑，必须走 L3 采画面。
         (crate::shell::compat_probe::CompatTier::L3, r)
-    } else if has_caption && nonclient_w >= 8 && nonclient_h >= 8 {
+    } else if has_caption && nonclient_w >= 8 && nonclient_h >= 8 && !uwp_shell {
         (crate::shell::compat_probe::CompatTier::L1, "standard caption + nonclient frame")
+    } else if is_uwp || uwp_shell {
+        (crate::shell::compat_probe::CompatTier::L3, "appx package window")
     } else if has_caption && frame_ok && (nonclient_w < 8 || nonclient_h < 8) {
         // 有标题栏但非客户区极薄 → 自绘边框（Qt/自绘壳）
         (crate::shell::compat_probe::CompatTier::L2, "custom-drawn frame")

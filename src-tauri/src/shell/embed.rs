@@ -1211,6 +1211,25 @@ fn own_by_desktop(app: &tauri::AppHandle, new_hwnd: isize) -> bool {
         if GetWindowLongPtrW(h, GWLP_HWNDPARENT) != want {
             return false;
         }
+        // 拥有即浮于宿主上：SW_SHOW 对**已可见**窗口是 no-op（不动 Z 序），
+        // 而第三方窗口启动时几乎总在 Variable（前台全屏）之下 —— 不显式提到
+        // 宿主之上，画面再健康也会被宿主 WebView 整个盖住。更关键的是桌面
+        // WebView 常驻 WS_EX_TOPMOST（R5 隔离底线，压住 Windows shell），
+        // 普通层的 HWND_TOP 永远在桌面之下（实机：Notepad 收编后 PrintWindow
+        // 内容完好但永不上屏）→ 被拥有窗口必须同层 TOPMOST 才可见。
+        // 不激活、不抢焦点；TOPMOST 位在解链时由 release_owned 还原。
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        };
+        let _ = SetWindowPos(
+            h,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
     }
     strip_appwindow(new_hwnd);
     // 顺手落下桌面句柄，供 embed_bounds 做「桌面客户区原点 → 屏幕坐标」换算。
@@ -1273,6 +1292,17 @@ fn release_owned(hwnd: isize) {
     }
     unsafe {
         SetWindowLongPtrW(h, GWLP_HWNDPARENT, 0);
+    }
+    // 解链同时退出 TOPMOST 层（own_by_desktop 曾把窗口提为 TOPMOST 才能浮于
+    // 桌面之上）：不还原的话，交还 Windows 后窗口会一直悬在所有普通窗口
+    // （含 Windows 任务栏）之上，用户切回系统桌面会觉得「这窗口黏在屏幕上」。
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_NOTOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE,
+        };
+        let _ = unsafe {
+            SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        };
     }
     // 先取走再写回：别拿着锁去调 SetWindowLongPtrW（同进程其它路径可能反向取锁）
     let saved = {
