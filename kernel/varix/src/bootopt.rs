@@ -4,7 +4,8 @@
 //! the boot screen consumes for its countdown line.
 
 /// Default seconds the menu counts down before booting the default entry.
-pub const DEFAULT_TIMEOUT_SECS: u32 = 3;
+/// 5s per 双域总案·阶段0 requirement (was 3).
+pub const DEFAULT_TIMEOUT_SECS: u32 = 5;
 /// Hard lower bound (0 = boot instantly without showing the menu).
 pub const MIN_TIMEOUT_SECS: u32 = 0;
 /// Hard upper bound — beyond this the menu is considered stuck.
@@ -152,7 +153,7 @@ mod tests {
     #[test]
     fn defaults_point_at_varix() {
         let o = BootOptions::default();
-        assert_eq!(o.timeout_secs, 3);
+        assert_eq!(o.timeout_secs, DEFAULT_TIMEOUT_SECS);
         assert_eq!(o.default_entry, "varix");
         assert!(!o.customized);
         assert!(o.menu_visible());
@@ -184,7 +185,7 @@ mod tests {
 
         // invalid values fall back to defaults
         let o4 = BootOptions::from_cmdline("boot_timeout=abc boot_default=");
-        assert_eq!(o4.timeout_secs, 3);
+        assert_eq!(o4.timeout_secs, DEFAULT_TIMEOUT_SECS);
         assert!(!o4.customized);
     }
 

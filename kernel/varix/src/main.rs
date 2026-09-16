@@ -59,6 +59,25 @@ fn boot() -> ! {
         }
     };
 
+    // --- boot select（双域总案·阶段0）--------------------------------------
+    // 菜单在帧缓冲就绪后、域初始化前亮出：倒计时归零走默认项。
+    // 选中项若非 varix，链式引导（BootNext）由引导器侧负责——当前如实记录。
+    let boot_opts = varix::bootopt::options();
+    if boot_opts.menu_visible() {
+        let tsc_hz = varix::platform::info()
+            .map(|p| p.tsc_hz)
+            .unwrap_or(varix::platform::FALLBACK_TSC_HZ);
+        let sel = varix::bootselect::run_countdown(&surface, boot_opts.timeout_secs, tsc_hz);
+        let chosen = varix::bootselect::ENTRIES[sel].id;
+        varix::kinfo!("boot-select: entry={}", chosen);
+        if sel != 0 {
+            varix::kwarn!(
+                "boot-select: chainload of \"{}\" not wired yet — continuing varix",
+                chosen
+            );
+        }
+    }
+
     // --- logo (F023) ----------------------------------------------------------
     TIMELINE.stage_begin(Stage::Logo, varix::timeline::read_tsc());
     let (lcx, lcy, lsize) = varix::logo::metrics_for(&surface);
