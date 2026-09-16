@@ -27,10 +27,10 @@
 
 ## 阶段 1：U 盘五分区便携基建
 
-- [ ] **任务 6**（AI-P）：五分区 GPT 脚本（ESP/VARIX 系统/引擎 VHDX/共享 exFAT/快照区）＋幂等重跑＋对齐校验。前置：无。
+- [x] **任务 6**（AI-P）：五分区 GPT 脚本（ESP/VARIX 系统/引擎 VHDX/共享 exFAT/快照区）＋幂等重跑＋对齐校验。前置：无。（2026-09-16 AI-P 完成：portable/AI-P/Create-Partitions.ps1 + partition-plan.json；自测 25/25，验收 docs/acceptance/双域-阶段1-六维验收-AI-P任务6任务9-2026-09-16.md）
 - [ ] **任务 7**（AI-P）：ESP 组装——VARIX 引导器与 Windows 引导文件双链共存；VM 首启验证。前置：任务 6。
 - [ ] **任务 8**（AI-P）：Deploy-To-USB 总编排适配五分区（沿用 Preflight/Stage/Verify），断点续作支持。前置：任务 7。
-- [ ] **任务 9**（AI-P）：SHARED 目录契约初始化＋`apps.json` schema 定版（带 version 字段与迁移说明）。前置：任务 6。
+- [x] **任务 9**（AI-P）：SHARED 目录契约初始化＋`apps.json` schema 定版（带 version 字段与迁移说明）。前置：任务 6。（2026-09-16 AI-P 完成：portable/AI-P/Init-Shared.ps1 + README 契约三方表；幂等/损坏留证重建/负向 schema 用例全过）
 - [ ] **任务 10**（AI-P）：强拔演练——各阶段（引导/倒计时/系统运行中）拔盘各 ×3，下次插入可恢复，归档。前置：任务 8。
 - [ ] **任务 11**（AI-P）：多 U 盘版本管理——同盘差分版本命名与回收站区约定。前置：任务 9。
 
