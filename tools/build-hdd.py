@@ -185,7 +185,8 @@ def main() -> int:
     struct.pack_into("<H", bpb, 24, 63)
     struct.pack_into("<H", bpb, 26, 16)
     struct.pack_into("<I", bpb, 28, PART_SECTORS)
-    struct.pack_into("<I", bpb, 32, PART_LBA)
+    struct.pack_into("<I", bpb, 28, PART_LBA)    # HiddSec：分区前隐藏扇区
+    struct.pack_into("<I", bpb, 32, PART_SECTORS)  # TotSec32：分区总扇区数
     struct.pack_into("<I", bpb, 36, FAT_SECTORS)  # FATSz32
     bpb[40] = 0x29
     struct.pack_into("<I", bpb, 41, 0x56415258)

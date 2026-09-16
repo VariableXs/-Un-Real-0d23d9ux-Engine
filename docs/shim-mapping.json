@@ -1,0 +1,5758 @@
+{
+ "$comment": "任务23（AI-B）三色审计映射表。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/双域-垫片协议规范-v1.md 与本表生成脚本头注。",
+ "generatedAt": "2026-09-16",
+ "source": "src/lib/ipc.ts",
+ "stats": {
+  "total": 549,
+  "ok": 314,
+  "okPct": "57.2%",
+  "combo": 222,
+  "comboPct": "40.4%",
+  "missing": 13,
+  "missingPct": "2.4%"
+ },
+ "serviceCatalogue": {
+  "kv": "KV 存储服务（localStorage 语义）",
+  "docStore": "文档/文件夹结构化存储（variable.db）",
+  "mindStore": "思维导图存储（节点/边）",
+  "mediaStore": "媒体与附件存储",
+  "settings": "设置服务（settings://changed 同步）",
+  "backup": "备份/恢复/恢复文件/导出导入",
+  "fsWs": "工作区文件系统（白名单内）",
+  "fsShared": "共享分区文件系统（白名单内）",
+  "vfs": "VFS 白名单裁决层",
+  "search": "全库搜索与索引",
+  "recycle": "回收站语义",
+  "verHistory": "文件版本历史/快照",
+  "arch": "归档（创建/浏览/修复）",
+  "taskQueue": "传输队列（并发/暂停/重试）",
+  "procCtl": "进程控制与隔离（Job 语义）",
+  "windowMgr": "VWM 窗口管理（几何/贴靠/层级）",
+  "embed": "拥有式嵌入（第三方窗收编）",
+  "input": "输入事件总线（键鼠/宏/IME）",
+  "clipboard": "剪贴板（白名单化+历史）",
+  "shell": "壳集成（启动/关联/图标/菜单）",
+  "vault": "保险箱（AES-256-GCM，密钥仅内存）",
+  "privacy": "隐私看护（粉碎/审计/金丝雀）",
+  "sysinfo": "系统信息（磁盘/电池/环境/健康）",
+  "net": "网络栈（状态/代理/规则/许可）",
+  "audio": "音频输出/混音/设备",
+  "display": "显示控制（亮度/多屏/壁纸）",
+  "power": "电源动作与电池",
+  "applog": "日志总线与诊断导出",
+  "sched": "定时任务与提醒",
+  "notify": "通知存档与勿扰",
+  "extLoader": "扩展/插件装载与市场",
+  "openhub": "openhub 网关（token/流/连接器）",
+  "update": "更新扫描与应用",
+  "compat": "兼容性探测/清单/履历",
+  "peTools": "PE 分析/反汇编/沙箱试探",
+  "pkg": "软件包管理（登记/安装/残留）",
+  "steam": "Steam 库与启动",
+  "browser": "浏览器档案管理",
+  "aiTools": "AI 工具链（Node/工具安装/启动）",
+  "gitTools": "git/ssh 开发工具",
+  "term": "终端会话",
+  "ime": "输入法服务",
+  "print": "打印服务",
+  "usb": "U 盘便携（打包/校验/拔出看护）",
+  "container": "Uxv 容器（诊断/修复/救援）",
+  "boot": "启动链（引导/阶段叙事/自检）",
+  "perf": "性能观测（内存/CPU 配额/IO 限速）"
+ },
+ "entries": [
+  {
+   "method": "a11yProbe",
+   "cmd": null,
+   "color": "🔶",
+   "services": [
+    "input",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "无直接 invoke（前端包装方法），随实现归属"
+  },
+  {
+   "method": "compatUwpList",
+   "cmd": "compat_uwp_list",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatElevationProbe",
+   "cmd": "compat_elevation_probe",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatDriverScan",
+   "cmd": "compat_driver_scan",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatHostProbe",
+   "cmd": "compat_host_probe",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatShimReport",
+   "cmd": "compat_shim_report",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatShimStats",
+   "cmd": null,
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "无直接 invoke（前端包装方法），随实现归属"
+  },
+  {
+   "method": "compatIconProbe",
+   "cmd": "compat_icon_probe",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatVolumes",
+   "cmd": "compat_volumes",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatHealPaths",
+   "cmd": "compat_heal_paths",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "bootstrap",
+   "cmd": "app_bootstrap",
+   "color": "✅",
+   "services": [
+    "boot"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openPath",
+   "cmd": "open_path",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "revealPath",
+   "cmd": "reveal_path",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "checkPaths",
+   "cmd": "check_paths_exist",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "log",
+   "cmd": "log_frontend",
+   "color": "✅",
+   "services": [
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "saveTextFile",
+   "cmd": "save_text_file",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listFolders",
+   "cmd": "list_folders",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "createFolder",
+   "cmd": "create_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "renameFolder",
+   "cmd": "rename_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "moveFolder",
+   "cmd": "move_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trashFolder",
+   "cmd": "trash_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "restoreFolder",
+   "cmd": "restore_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "purgeFolder",
+   "cmd": "purge_folder",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listDocuments",
+   "cmd": "list_documents",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "createDocument",
+   "cmd": "create_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "getDocument",
+   "cmd": "get_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "saveDocument",
+   "cmd": "save_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "moveDocument",
+   "cmd": "move_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "setFavorite",
+   "cmd": "set_document_favorite",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "setTags",
+   "cmd": "set_document_tags",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listAllTags",
+   "cmd": "list_document_tags",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trashDocument",
+   "cmd": "trash_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "restoreDocument",
+   "cmd": "restore_document",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "purgeDocuments",
+   "cmd": "purge_documents",
+   "color": "✅",
+   "services": [
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "emptyTrash",
+   "cmd": "empty_trash",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "searchAll",
+   "cmd": "search_all",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listMindmaps",
+   "cmd": "list_mindmaps",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "createMindmap",
+   "cmd": "create_mindmap",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "getMindmap",
+   "cmd": "get_mindmap",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "updateMindmap",
+   "cmd": "update_mindmap",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "renameMindmap",
+   "cmd": "rename_mindmap",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trashMindmap",
+   "cmd": "trash_mindmap",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "saveNodes",
+   "cmd": "save_nodes",
+   "color": "🔶",
+   "services": [
+    "mindStore",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deleteNodes",
+   "cmd": "delete_nodes",
+   "color": "🔶",
+   "services": [
+    "mindStore",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "nodesVersions",
+   "cmd": "nodes_versions",
+   "color": "🔶",
+   "services": [
+    "mindStore",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "saveEdge",
+   "cmd": "save_edge",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deleteEdges",
+   "cmd": "delete_edges",
+   "color": "✅",
+   "services": [
+    "mindStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "importMedia",
+   "cmd": "import_media",
+   "color": "✅",
+   "services": [
+    "mediaStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "importDataUrl",
+   "cmd": "import_data_url",
+   "color": "✅",
+   "services": [
+    "mediaStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listAttachments",
+   "cmd": "list_attachments",
+   "color": "✅",
+   "services": [
+    "mediaStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "resolveMediaPath",
+   "cmd": "resolve_media_path",
+   "color": "✅",
+   "services": [
+    "mediaStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deleteMedia",
+   "cmd": "delete_media",
+   "color": "✅",
+   "services": [
+    "mediaStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "getSettings",
+   "cmd": null,
+   "color": "✅",
+   "services": [
+    "settings"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "无直接 invoke（前端包装方法），随实现归属"
+  },
+  {
+   "method": "setSettings",
+   "cmd": "set_settings",
+   "color": "✅",
+   "services": [
+    "settings"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "resetUiSettings",
+   "cmd": "reset_ui_settings",
+   "color": "✅",
+   "services": [
+    "settings"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "writeRecoveryFile",
+   "cmd": "write_recovery_file",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listRecoveryFiles",
+   "cmd": "list_recovery_files",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "readRecoveryFile",
+   "cmd": "read_recovery_file",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deleteRecoveryFile",
+   "cmd": "delete_recovery_file",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recoverToDocument",
+   "cmd": "recover_to_document",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "createBackup",
+   "cmd": "create_backup",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "listBackups",
+   "cmd": "list_backups",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "restoreBackup",
+   "cmd": "restore_backup",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deleteBackup",
+   "cmd": "delete_backup",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exportBackup",
+   "cmd": "export_backup",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exportDocuments",
+   "cmd": "export_documents",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exportMindmapJson",
+   "cmd": "export_mindmap_json",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exportWorkspace",
+   "cmd": "export_workspace",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "importWorkspace",
+   "cmd": "import_workspace",
+   "color": "🔶",
+   "services": [
+    "backup",
+    "fsWs",
+    "docStore"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsDefaultDir",
+   "cmd": "ws_default_dir",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsList",
+   "cmd": "ws_list",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsReadText",
+   "cmd": "ws_read_text",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsCreateDir",
+   "cmd": "ws_create_dir",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsRename",
+   "cmd": "ws_rename",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsMove",
+   "cmd": "ws_move",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsCopyIn",
+   "cmd": "ws_copy_in",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wsDeleteTrash",
+   "cmd": "ws_delete_trash",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "projectScan",
+   "cmd": "project_scan",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "projectReadFile",
+   "cmd": "project_read_file",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "projectReadBytes",
+   "cmd": "project_read_bytes",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "readTextFile",
+   "cmd": "read_text_file",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "writeTextFile",
+   "cmd": "write_text_file",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "privacyUsage",
+   "cmd": "privacy_usage",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mouseParamsGet",
+   "cmd": "mouse_params_get",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mouseParamsWrite",
+   "cmd": "mouse_params_write",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mouseParamsRollback",
+   "cmd": "mouse_params_rollback",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "pointerSpeedTemp",
+   "cmd": "pointer_speed_temp",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "pointerSpeedRestore",
+   "cmd": "pointer_speed_restore",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "audioGet",
+   "cmd": "audio_get",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "audioSet",
+   "cmd": "audio_set",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wifiGet",
+   "cmd": "wifi_get",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "bluetoothGet",
+   "cmd": "bluetooth_get",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "bluetoothSet",
+   "cmd": "bluetooth_set",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "btDevices",
+   "cmd": "bt_devices",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wifiSet",
+   "cmd": "wifi_set",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "btConnect",
+   "cmd": "bt_connect",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "btDisconnect",
+   "cmd": "bt_disconnect",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wifiScan",
+   "cmd": "wifi_scan",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wifiDisconnect",
+   "cmd": "wifi_disconnect",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "audioDevices",
+   "cmd": "audio_devices",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "audioSetDefault",
+   "cmd": "audio_set_default",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "batteryGet",
+   "cmd": "battery_get",
+   "color": "🔶",
+   "services": [
+    "power",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "brightnessGet",
+   "cmd": "brightness_get",
+   "color": "🔶",
+   "services": [
+    "power",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "brightnessSet",
+   "cmd": "brightness_set",
+   "color": "🔶",
+   "services": [
+    "power",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exHome",
+   "cmd": "ex_home",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exVariableDirs",
+   "cmd": "ex_variable_dirs",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exDrives",
+   "cmd": "ex_drives",
+   "color": "❌",
+   "services": [],
+   "missingService": "fsHost",
+   "missingNote": "VARIX 物理隔离：宿主盘列举按设计不提供，需以共享分区列举服务替代"
+  },
+  {
+   "method": "exList",
+   "cmd": "ex_list",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exMkdir",
+   "cmd": "ex_mkdir",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exRename",
+   "cmd": "ex_rename",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exMove",
+   "cmd": "ex_move",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exCopy",
+   "cmd": "ex_copy",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exTrash",
+   "cmd": "ex_trash",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exSearch",
+   "cmd": "ex_search",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exConflicts",
+   "cmd": "ex_conflicts",
+   "color": "✅",
+   "services": [
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exPurge",
+   "cmd": "ex_purge",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exFavList",
+   "cmd": "ex_fav_list",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exFavAdd",
+   "cmd": "ex_fav_add",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exFavRemove",
+   "cmd": "ex_fav_remove",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exThumbnail",
+   "cmd": "ex_thumbnail",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exViewGet",
+   "cmd": "ex_view_get",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exViewSet",
+   "cmd": "ex_view_set",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recList",
+   "cmd": "rec_list",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recRestore",
+   "cmd": "rec_restore",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recPurge",
+   "cmd": "rec_purge",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recEmpty",
+   "cmd": "rec_empty",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recCount",
+   "cmd": "rec_count",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "checksum",
+   "cmd": "checksum",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "checksumCancel",
+   "cmd": "checksum_cancel",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "dupeScan",
+   "cmd": "dupe_scan",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "spaceScan",
+   "cmd": "space_scan",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "batchRenamePreview",
+   "cmd": "batch_rename_preview",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "batchRenameApply",
+   "cmd": "batch_rename_apply",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "batchRenameUndo",
+   "cmd": "batch_rename_undo",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sendtoList",
+   "cmd": "sendto_list",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sendtoCustomAdd",
+   "cmd": "sendto_custom_add",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sendtoCustomRemove",
+   "cmd": "sendto_custom_remove",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sendtoCopy",
+   "cmd": "sendto_copy",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netDrives",
+   "cmd": "net_drives",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "whoLocks",
+   "cmd": "who_locks",
+   "color": "❌",
+   "services": [],
+   "missingService": "fsHost",
+   "missingNote": "文件锁探测依赖宿主内核句柄表，VARIX 下无对应面"
+  },
+  {
+   "method": "archiveLs",
+   "cmd": "archive_ls",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archiveExtractOne",
+   "cmd": "archive_extract_one",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sentinelList",
+   "cmd": "sentinel_list",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sentinelAdd",
+   "cmd": "sentinel_add",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sentinelRemove",
+   "cmd": "sentinel_remove",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sentinelToggle",
+   "cmd": "sentinel_toggle",
+   "color": "🔶",
+   "services": [
+    "fsWs",
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpAdd",
+   "cmd": "tp_add",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpList",
+   "cmd": "tp_list",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpRemove",
+   "cmd": "tp_remove",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpPurge",
+   "cmd": "tp_purge",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpSetGrade",
+   "cmd": "tp_set_grade",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpSetDpiFix",
+   "cmd": "tp_set_dpi_fix",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatSetOverride",
+   "cmd": "compat_set_override",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpRename",
+   "cmd": "tp_rename",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpLaunch",
+   "cmd": "tp_launch",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpSetIcon",
+   "cmd": "tp_set_icon",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpScanStartMenu",
+   "cmd": "tp_scan_start_menu",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpScanFolder",
+   "cmd": "tp_scan_folder",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpInboxImport",
+   "cmd": "tp_inbox_import",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpPortableize",
+   "cmd": "tp_portableize",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpLaunchAdmin",
+   "cmd": "tp_launch_admin",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "iconDataurl",
+   "cmd": "icon_dataurl",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "iconDataurlHd",
+   "cmd": "icon_dataurl_hd",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpEnsureIcons",
+   "cmd": "tp_ensure_icons",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "profileTemplates",
+   "cmd": "profile_templates",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "profileApply",
+   "cmd": "profile_apply",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "profileSet",
+   "cmd": "profile_set",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "profileDryrun",
+   "cmd": "profile_dryrun",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueScan",
+   "cmd": "residue_scan",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "profileInfer",
+   "cmd": "profile_infer",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "installModeLaunch",
+   "cmd": "install_mode_launch",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "installList",
+   "cmd": "install_list",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "installAnalyze",
+   "cmd": "install_analyze",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "installCommit",
+   "cmd": "install_commit",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "installDiscard",
+   "cmd": "install_discard",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueResolve",
+   "cmd": "residue_resolve",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueWhitelistAdd",
+   "cmd": "residue_whitelist_add",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueWhitelistList",
+   "cmd": "residue_whitelist_list",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "exitPrepare",
+   "cmd": "exit_prepare",
+   "color": "✅",
+   "services": [
+    "power"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "termStatus",
+   "cmd": "term_status",
+   "color": "✅",
+   "services": [
+    "term"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "termOpen",
+   "cmd": "term_open",
+   "color": "✅",
+   "services": [
+    "term"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aiToolStatus",
+   "cmd": "ai_tool_status",
+   "color": "✅",
+   "services": [
+    "aiTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aiInstallNode",
+   "cmd": "ai_install_node",
+   "color": "✅",
+   "services": [
+    "aiTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aiInstallTool",
+   "cmd": "ai_install_tool",
+   "color": "✅",
+   "services": [
+    "aiTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "identityList",
+   "cmd": "identity_list",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "identityAdd",
+   "cmd": "identity_add",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "identityRemove",
+   "cmd": "identity_remove",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aiLaunch",
+   "cmd": "ai_launch",
+   "color": "✅",
+   "services": [
+    "aiTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aiVerify",
+   "cmd": "ai_verify",
+   "color": "✅",
+   "services": [
+    "aiTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserDetect",
+   "cmd": "browser_detect",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfiles",
+   "cmd": "browser_profiles",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfileAdd",
+   "cmd": "browser_profile_add",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfileRename",
+   "cmd": "browser_profile_rename",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfileClone",
+   "cmd": "browser_profile_clone",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfileDelete",
+   "cmd": "browser_profile_delete",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserProfileLaunch",
+   "cmd": "browser_profile_launch",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserRunning",
+   "cmd": "browser_running",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "browserImport",
+   "cmd": "browser_import",
+   "color": "🔶",
+   "services": [
+    "browser",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "codeStatus",
+   "cmd": "code_status",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "codeDeploy",
+   "cmd": "code_deploy",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "codeRegister",
+   "cmd": "code_register",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "codeLaunch",
+   "cmd": "code_launch",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "portabilityAssess",
+   "cmd": "portability_assess",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "ecosystemMigrate",
+   "cmd": "ecosystem_migrate",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "iconJumboDataurl",
+   "cmd": "icon_jumbo_dataurl",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "steamLibraryScan",
+   "cmd": "steam_library_scan",
+   "color": "🔶",
+   "services": [
+    "steam",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "steamLaunch",
+   "cmd": "steam_launch",
+   "color": "🔶",
+   "services": [
+    "steam",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "aumidLaunch",
+   "cmd": "aumid_launch",
+   "color": "🔶",
+   "services": [
+    "steam",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fileAssocList",
+   "cmd": "file_assoc_list",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fileAssocSet",
+   "cmd": "file_assoc_set",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fileAssocResolve",
+   "cmd": "file_assoc_resolve",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fileAssocRemove",
+   "cmd": "file_assoc_remove",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "peAnalyze",
+   "cmd": "pe_analyze",
+   "color": "✅",
+   "services": [
+    "peTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "disasmEntry",
+   "cmd": "disasm_entry",
+   "color": "✅",
+   "services": [
+    "peTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sandboxProbe",
+   "cmd": "sandbox_probe",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sandboxWsbGenerate",
+   "cmd": "sandbox_wsb_generate",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "securityReportExport",
+   "cmd": "security_report_export",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "securityEnvPreset",
+   "cmd": "security_env_preset",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shieldSet",
+   "cmd": "shield_set",
+   "color": "✅",
+   "services": [
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shieldGet",
+   "cmd": "shield_get",
+   "color": "✅",
+   "services": [
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extList",
+   "cmd": "ext_list",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extRescan",
+   "cmd": "ext_rescan",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extSetEnabled",
+   "cmd": "ext_set_enabled",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extOpenWeb",
+   "cmd": "ext_open_web",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extClose",
+   "cmd": "ext_close",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extAudit",
+   "cmd": "ext_audit",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extInstallExample",
+   "cmd": "ext_install_example",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extMarketList",
+   "cmd": "ext_market_list",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extMarketImport",
+   "cmd": "ext_market_import",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extMarketInstall",
+   "cmd": "ext_market_install",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extMarketRemove",
+   "cmd": "ext_market_remove",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extPluginLoad",
+   "cmd": "ext_plugin_load",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extPluginUnload",
+   "cmd": "ext_plugin_unload",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extDaemonStart",
+   "cmd": "ext_daemon_start",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extDaemonStatus",
+   "cmd": "ext_daemon_status",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "extDaemonExample",
+   "cmd": "ext_daemon_example",
+   "color": "✅",
+   "services": [
+    "extLoader"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envList",
+   "cmd": "env_list",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envCreate",
+   "cmd": "env_create",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envSwitch",
+   "cmd": "env_switch",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envDelete",
+   "cmd": "env_delete",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envClone",
+   "cmd": "env_clone",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envNested",
+   "cmd": "env_nested",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envDiff",
+   "cmd": "env_diff",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envDiscard",
+   "cmd": "env_discard",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envMerge",
+   "cmd": "env_merge",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netStatus",
+   "cmd": "net_status",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netProxyStart",
+   "cmd": "net_proxy_start",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netProxyStop",
+   "cmd": "net_proxy_stop",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netKillSwitch",
+   "cmd": "net_kill_switch",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netRulesList",
+   "cmd": "net_rules_list",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netRuleGrant",
+   "cmd": "net_rule_grant",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netRuleRevoke",
+   "cmd": "net_rule_revoke",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "revocationListExport",
+   "cmd": "revocation_list_export",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "diagFlags",
+   "cmd": "diag_flags",
+   "color": "🔶",
+   "services": [
+    "applog",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "diagnosticExport",
+   "cmd": "diagnostic_export",
+   "color": "🔶",
+   "services": [
+    "applog",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "demoCapsule",
+   "cmd": "demo_capsule",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "gitStatus",
+   "cmd": "git_status",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "gitLog",
+   "cmd": "git_log",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "gitBranches",
+   "cmd": "git_branches",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sshKeys",
+   "cmd": "ssh_keys",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sshKeyGenerate",
+   "cmd": "ssh_key_generate",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sshKeyDelete",
+   "cmd": "ssh_key_delete",
+   "color": "✅",
+   "services": [
+    "gitTools"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "workspaceSearch",
+   "cmd": "workspace_search",
+   "color": "🔶",
+   "services": [
+    "search",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "bigfileSlice",
+   "cmd": "bigfile_slice",
+   "color": "✅",
+   "services": [
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "editorGoto",
+   "cmd": "editor_goto",
+   "color": "🔶",
+   "services": [
+    "search",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolchainStatus",
+   "cmd": "toolchain_status",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolchainDeploy",
+   "cmd": "toolchain_deploy",
+   "color": "🔶",
+   "services": [
+    "aiTools",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "containerDiag",
+   "cmd": "container_diag",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "containerRepair",
+   "cmd": "container_repair",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "containerRescueExport",
+   "cmd": "container_rescue_export",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "containerInit",
+   "cmd": "container_init",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "containerStats",
+   "cmd": "container_stats",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vhdxProbe",
+   "cmd": "vhdx_probe",
+   "color": "✅",
+   "services": [
+    "container"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tpRunning",
+   "cmd": "tp_running",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "officialUsage",
+   "cmd": "official_usage",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "officialPurge",
+   "cmd": "official_purge",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "usbStatus",
+   "cmd": "usb_status",
+   "color": "✅",
+   "services": [
+    "usb"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "usbPack",
+   "cmd": "usb_pack",
+   "color": "✅",
+   "services": [
+    "usb"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "usbVerify",
+   "cmd": "usb_verify",
+   "color": "✅",
+   "services": [
+    "usb"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netConsentCheck",
+   "cmd": "net_consent_check",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netConsentSet",
+   "cmd": "net_consent_set",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "winSetAvoidTaskbar",
+   "cmd": "win_set_avoid_taskbar",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "winHideToTray",
+   "cmd": "win_hide_to_tray",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "winHealthScan",
+   "cmd": "win_health_scan",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "procSuspend",
+   "cmd": "win_suspend",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "procResume",
+   "cmd": "win_resume",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysBrief",
+   "cmd": "sys_brief",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysDiskHealth",
+   "cmd": "sys_disk_health",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "directShellStatus",
+   "cmd": "directshell_status",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "directShellSet",
+   "cmd": "directshell_set",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysDisks",
+   "cmd": "sys_disks",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysUser",
+   "cmd": "sys_user",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysenvOverview",
+   "cmd": "sysenv_overview",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysenvDisplaySet",
+   "cmd": "sysenv_display_set",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolDataRead",
+   "cmd": "tool_data_read",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolDataWrite",
+   "cmd": "tool_data_write",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolSecureRead",
+   "cmd": "tool_secure_read",
+   "color": "🔶",
+   "services": [
+    "vault",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "toolSecureWrite",
+   "cmd": "tool_secure_write",
+   "color": "🔶",
+   "services": [
+    "vault",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "snapshotCapture",
+   "cmd": "snapshot_capture",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shotSave",
+   "cmd": "shot_save",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shotDir",
+   "cmd": "shot_dir",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "applogRecent",
+   "cmd": "applog_recent",
+   "color": "✅",
+   "services": [
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysSelfInfo",
+   "cmd": "sys_self_info",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cursorPos",
+   "cmd": "cursor_pos",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "httpFetch",
+   "cmd": "http_fetch",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "printAssocCheck",
+   "cmd": "print_assoc_check",
+   "color": "✅",
+   "services": [
+    "print"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "printFiles",
+   "cmd": "print_files",
+   "color": "✅",
+   "services": [
+    "print"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "printList",
+   "cmd": "print_list",
+   "color": "✅",
+   "services": [
+    "print"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "printJobs",
+   "cmd": "print_jobs",
+   "color": "✅",
+   "services": [
+    "print"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "printJobSet",
+   "cmd": "print_job_set",
+   "color": "✅",
+   "services": [
+    "print"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "procList",
+   "cmd": "proc_list",
+   "color": "✅",
+   "services": [
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "procKill",
+   "cmd": "proc_kill",
+   "color": "✅",
+   "services": [
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfCpu",
+   "cmd": "perf_cpu",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "startupList",
+   "cmd": "startup_list",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "startupDisable",
+   "cmd": "startup_disable",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "serviceList",
+   "cmd": "service_list",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "serviceSet",
+   "cmd": "service_set",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fsIndexStatus",
+   "cmd": "fsindex_status",
+   "color": "✅",
+   "services": [
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fsIndexQuery",
+   "cmd": "fsindex_query",
+   "color": "✅",
+   "services": [
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mixerList",
+   "cmd": "mixer_list",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mixerSet",
+   "cmd": "mixer_set",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "imeStatus",
+   "cmd": "ime_status",
+   "color": "✅",
+   "services": [
+    "ime"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "imeList",
+   "cmd": "ime_list",
+   "color": "✅",
+   "services": [
+    "ime"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "imeSwitch",
+   "cmd": "ime_switch",
+   "color": "✅",
+   "services": [
+    "ime"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "mediaStatus",
+   "cmd": "media_status",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "backupScheduleGet",
+   "cmd": "backup_schedule_get",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "backupScheduleSet",
+   "cmd": "backup_schedule_set",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "backupRunNow",
+   "cmd": "backup_run_now",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "updateScan",
+   "cmd": "update_scan",
+   "color": "✅",
+   "services": [
+    "update"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "updateApply",
+   "cmd": "update_apply",
+   "color": "✅",
+   "services": [
+    "update"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "maintainSelfcheck",
+   "cmd": "maintain_selfcheck",
+   "color": "🔶",
+   "services": [
+    "applog",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "netIp",
+   "cmd": "net_ip",
+   "color": "✅",
+   "services": [
+    "net"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "powerAction",
+   "cmd": "power_action",
+   "color": "✅",
+   "services": [
+    "power"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shortcutsApply",
+   "cmd": "shortcuts_apply",
+   "color": "✅",
+   "services": [
+    "input"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpMonitors",
+   "cmd": "wp_monitors",
+   "color": "🔶",
+   "services": [
+    "power",
+    "display"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpSetMonitor",
+   "cmd": "wp_set_monitor",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpPickDaily",
+   "cmd": "wp_pick_daily",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpEngineScan",
+   "cmd": "wp_engine_scan",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpSceneShader",
+   "cmd": "wp_scene_shader",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wpListImages",
+   "cmd": "wp_list_images",
+   "color": "🔶",
+   "services": [
+    "display",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatCheck",
+   "cmd": "compat_check",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatApply",
+   "cmd": "compat_apply",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "compatRestore",
+   "cmd": "compat_restore",
+   "color": "✅",
+   "services": [
+    "compat"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shellExecute",
+   "cmd": "shell_execute",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shellActivateApplication",
+   "cmd": "shell_activate_application",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shellItemIcon",
+   "cmd": "shell_item_icon",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shellContextMenu",
+   "cmd": "shell_context_menu",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "shellForwardGesture",
+   "cmd": "shell_forward_gesture",
+   "color": "✅",
+   "services": [
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedLaunch",
+   "cmd": "embed_launch",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedAdopt",
+   "cmd": "embed_adopt",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedPick",
+   "cmd": "embed_pick_window",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "watchGetSettings",
+   "cmd": "watch_get_settings",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "watchSetSettings",
+   "cmd": "watch_set_settings",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "watchDismiss",
+   "cmd": "watch_dismiss",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedBounds",
+   "cmd": "embed_bounds",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedVisible",
+   "cmd": "embed_visible",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedClose",
+   "cmd": "embed_close",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "weWallpaperCurrent",
+   "cmd": "we_wallpaper_current",
+   "color": "🔶",
+   "services": [
+    "display",
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "weWallpaperOpen",
+   "cmd": "we_wallpaper_open",
+   "color": "🔶",
+   "services": [
+    "display",
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedCloseAll",
+   "cmd": "embed_close_all",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedFocus",
+   "cmd": "embed_focus",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "desktopRaise",
+   "cmd": "desktop_raise",
+   "color": "✅",
+   "services": [
+    "windowMgr"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultStatus",
+   "cmd": "vault_status",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultInit",
+   "cmd": "vault_init",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultUnlock",
+   "cmd": "vault_unlock",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultLock",
+   "cmd": "vault_lock",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultImport",
+   "cmd": "vault_import",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultList",
+   "cmd": "vault_list",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultExport",
+   "cmd": "vault_export",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vaultDestroy",
+   "cmd": "vault_destroy",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "privacyShred",
+   "cmd": "privacy_shred",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "privacyAudit",
+   "cmd": "privacy_audit",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistList",
+   "cmd": "cliphist_list",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistPin",
+   "cmd": "cliphist_pin",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistRemove",
+   "cmd": "cliphist_remove",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistClear",
+   "cmd": "cliphist_clear",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistBurn",
+   "cmd": "cliphist_burn",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistConfigGet",
+   "cmd": "cliphist_config_get",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistConfigSet",
+   "cmd": "cliphist_config_set",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cliphistWriteBack",
+   "cmd": "cliphist_write_back",
+   "color": "✅",
+   "services": [
+    "clipboard"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroEmergencyStop",
+   "cmd": "macro_emergency_stop",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroEmergencyClear",
+   "cmd": "macro_emergency_clear",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroIsStopped",
+   "cmd": "macro_is_stopped",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroUacForeground",
+   "cmd": "macro_uac_foreground",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroUpsertTrigger",
+   "cmd": "macro_upsert_trigger",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroRemoveTrigger",
+   "cmd": "macro_remove_trigger",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroListTriggers",
+   "cmd": "macro_list_triggers",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "macroSendText",
+   "cmd": "macro_send_text",
+   "color": "🔶",
+   "services": [
+    "input",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verWatch",
+   "cmd": "ver_watch",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verWatchedList",
+   "cmd": "ver_watched_list",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verSnapshot",
+   "cmd": "ver_snapshot",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verList",
+   "cmd": "ver_list",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verDiff",
+   "cmd": "ver_diff",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verRestore",
+   "cmd": "ver_restore",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verGc",
+   "cmd": "ver_gc",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "verPolicySet",
+   "cmd": "ver_policy_set",
+   "color": "✅",
+   "services": [
+    "verHistory"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tagAll",
+   "cmd": "tag_all",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tagFilter",
+   "cmd": "tag_filter",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tagSmartList",
+   "cmd": "tag_smart_list",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tagSmartAdd",
+   "cmd": "tag_smart_add",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "tagSmartRemove",
+   "cmd": "tag_smart_remove",
+   "color": "🔶",
+   "services": [
+    "docStore",
+    "search"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recPolicyGet",
+   "cmd": "rec_policy_get",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recPolicySet",
+   "cmd": "rec_policy_set",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recPolicyPreview",
+   "cmd": "rec_policy_preview",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "recPolicyApply",
+   "cmd": "rec_policy_apply",
+   "color": "🔶",
+   "services": [
+    "recycle",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trEnqueue",
+   "cmd": "tr_enqueue",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trList",
+   "cmd": "tr_list",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trPause",
+   "cmd": "tr_pause",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trResume",
+   "cmd": "tr_resume",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trCancel",
+   "cmd": "tr_cancel",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trRetry",
+   "cmd": "tr_retry",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trClearDone",
+   "cmd": "tr_clear_done",
+   "color": "✅",
+   "services": [
+    "taskQueue"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trustRegister",
+   "cmd": "trust_register",
+   "color": "🔶",
+   "services": [
+    "compat",
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trustVerify",
+   "cmd": "trust_verify",
+   "color": "🔶",
+   "services": [
+    "compat",
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trustWall",
+   "cmd": "trust_wall",
+   "color": "🔶",
+   "services": [
+    "compat",
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trustReverifyAll",
+   "cmd": "trust_reverify_all",
+   "color": "🔶",
+   "services": [
+    "compat",
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "trustRemove",
+   "cmd": "trust_remove",
+   "color": "🔶",
+   "services": [
+    "compat",
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "linList",
+   "cmd": "lin_list",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "linStats",
+   "cmd": "lin_stats",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "linExport",
+   "cmd": "lin_export",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "linBurn",
+   "cmd": "lin_burn",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "insDashboard",
+   "cmd": "ins_dashboard",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "insSuggestions",
+   "cmd": "ins_suggestions",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "insBurn",
+   "cmd": "ins_burn",
+   "color": "🔶",
+   "services": [
+    "privacy",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "privTimeline",
+   "cmd": "priv_timeline",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "canaryList",
+   "cmd": "canary_list",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "canaryPlant",
+   "cmd": "canary_plant",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "canaryRemove",
+   "cmd": "canary_remove",
+   "color": "✅",
+   "services": [
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archCreate",
+   "cmd": "arch_create",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archList",
+   "cmd": "arch_list",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archBrowse",
+   "cmd": "arch_browse",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archAudit",
+   "cmd": "arch_audit",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archExtract",
+   "cmd": "arch_extract",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archRepair",
+   "cmd": "arch_repair",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "archRemove",
+   "cmd": "arch_remove",
+   "color": "🔶",
+   "services": [
+    "arch",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "incStatus",
+   "cmd": "inc_status",
+   "color": "🔶",
+   "services": [
+    "taskQueue",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "incStart",
+   "cmd": "inc_start",
+   "color": "🔶",
+   "services": [
+    "taskQueue",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "incEnd",
+   "cmd": "inc_end",
+   "color": "🔶",
+   "services": [
+    "taskQueue",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "incList",
+   "cmd": "inc_list",
+   "color": "🔶",
+   "services": [
+    "taskQueue",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "incWrite",
+   "cmd": "inc_write",
+   "color": "🔶",
+   "services": [
+    "taskQueue",
+    "fsWs"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "fwProfiles",
+   "cmd": "fw_profiles",
+   "color": "❌",
+   "services": [],
+   "missingService": "netFirewall",
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+  },
+  {
+   "method": "fwProfileSet",
+   "cmd": "fw_profile_set",
+   "color": "❌",
+   "services": [],
+   "missingService": "netFirewall",
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+  },
+  {
+   "method": "fwAlerts",
+   "cmd": "fw_alerts",
+   "color": "❌",
+   "services": [],
+   "missingService": "netFirewall",
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+  },
+  {
+   "method": "fwAlertResolve",
+   "cmd": "fw_alert_resolve",
+   "color": "❌",
+   "services": [],
+   "missingService": "netFirewall",
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+  },
+  {
+   "method": "panicConfigGet",
+   "cmd": "panic_config_get",
+   "color": "🔶",
+   "services": [
+    "power",
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "panicConfigSet",
+   "cmd": "panic_config_set",
+   "color": "🔶",
+   "services": [
+    "power",
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "panicTrigger",
+   "cmd": "panic_trigger",
+   "color": "🔶",
+   "services": [
+    "power",
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "panicDrill",
+   "cmd": "panic_drill",
+   "color": "🔶",
+   "services": [
+    "power",
+    "privacy"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openDatavault",
+   "cmd": "open_datavault",
+   "color": "✅",
+   "services": [
+    "vault"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfMemSnapshot",
+   "cmd": "perf_mem_snapshot",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfMemWardenStatus",
+   "cmd": "perf_mem_warden_status",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfIoCopy",
+   "cmd": "perf_io_copy",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfIoPause",
+   "cmd": "perf_io_pause",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfIoResume",
+   "cmd": "perf_io_resume",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfIoCancel",
+   "cmd": "perf_io_cancel",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfIoProgress",
+   "cmd": "perf_io_progress",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfLogUsage",
+   "cmd": "perf_log_usage",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfLogRotate",
+   "cmd": "perf_log_rotate",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfSettingsPreflight",
+   "cmd": "perf_settings_preflight",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfDbCompact",
+   "cmd": "perf_db_compact",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfInstanceList",
+   "cmd": "perf_instance_list",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfInstanceCreate",
+   "cmd": "perf_instance_create",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfInstanceDelete",
+   "cmd": "perf_instance_delete",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfInstanceHeartbeat",
+   "cmd": "perf_instance_heartbeat",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfRelayExport",
+   "cmd": "perf_relay_export",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfRelayImport",
+   "cmd": "perf_relay_import",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfCpuQuotaSet",
+   "cmd": "perf_cpu_quota_set",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfCrashDumps",
+   "cmd": "perf_crash_dumps",
+   "color": "✅",
+   "services": [
+    "perf"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfBootStage",
+   "cmd": "perf_boot_stage",
+   "color": "✅",
+   "services": [
+    "boot"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "perfBootStages",
+   "cmd": "perf_boot_stages",
+   "color": "✅",
+   "services": [
+    "boot"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubConfigGet",
+   "cmd": "openhub_config_get",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubConfigSet",
+   "cmd": "openhub_config_set",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deeplinkParse",
+   "cmd": "deeplink_parse",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deeplinkRegister",
+   "cmd": "deeplink_register",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "deeplinkUnregister",
+   "cmd": "deeplink_unregister",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "safehouseCheck",
+   "cmd": "safehouse_check",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "safehouseExec",
+   "cmd": "safehouse_exec",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vxsValidate",
+   "cmd": "vxs_validate_cmd",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vxsExtract",
+   "cmd": "vxs_extract",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubDataExport",
+   "cmd": "openhub_data_export",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubStreamEmit",
+   "cmd": "openhub_stream_emit",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubStreamTail",
+   "cmd": "openhub_stream_tail",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "gatewayStatus",
+   "cmd": "gateway_status",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "gatewayTokenRegen",
+   "cmd": "gateway_token_regen",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "openhubConnectorQuery",
+   "cmd": "openhub_connector_query",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "companionInbox",
+   "cmd": "companion_inbox",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "companionInboxClear",
+   "cmd": "companion_inbox_clear",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "webhookRulesGet",
+   "cmd": "webhook_rules_get",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "webhookRulesSet",
+   "cmd": "webhook_rules_set",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "webhookDispatch",
+   "cmd": "webhook_dispatch",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "webhookTest",
+   "cmd": "webhook_test",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "webhookLogList",
+   "cmd": "webhook_log_list",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "embedManifestScan",
+   "cmd": "embed_manifest_scan",
+   "color": "✅",
+   "services": [
+    "embed"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "vxsScan",
+   "cmd": "vxs_scan_cmd",
+   "color": "✅",
+   "services": [
+    "openhub"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "cfgDiff",
+   "cmd": "cfg_diff",
+   "color": "🔶",
+   "services": [
+    "settings",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sandboxTrialBegin",
+   "cmd": "sandbox_trial_begin",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sandboxTrialEnd",
+   "cmd": "sandbox_trial_end",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sandboxTrialList",
+   "cmd": "sandbox_trial_list",
+   "color": "🔶",
+   "services": [
+    "peTools",
+    "procCtl"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "wingetStatus",
+   "cmd": "winget_status",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetSearch",
+   "cmd": "winget_search",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetListInstalled",
+   "cmd": "winget_list_installed",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetUpgradeList",
+   "cmd": "winget_upgrade_list",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetInstall",
+   "cmd": "winget_install",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetUpgradeOne",
+   "cmd": "winget_upgrade_one",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "wingetUninstall",
+   "cmd": "winget_uninstall",
+   "color": "❌",
+   "services": [],
+   "missingService": "pkgRemote",
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+  },
+  {
+   "method": "envOverview",
+   "cmd": "env_overview",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envBackupList",
+   "cmd": "env_backup_list",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envVarSet",
+   "cmd": "env_var_set",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envVarDelete",
+   "cmd": "env_var_delete",
+   "color": "🔶",
+   "services": [
+    "procCtl",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "envRestoreBackup",
+   "cmd": "env_restore_backup",
+   "color": "✅",
+   "services": [
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedList",
+   "cmd": "sched_list",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedUpsert",
+   "cmd": "sched_upsert",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedRemove",
+   "cmd": "sched_remove",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedToggle",
+   "cmd": "sched_toggle",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedLogList",
+   "cmd": "sched_log_list",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "schedRunNow",
+   "cmd": "sched_run_now",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "startdelayGet",
+   "cmd": "startdelay_get",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "startdelaySet",
+   "cmd": "startdelay_set",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "startdelayTimeline",
+   "cmd": "startdelay_timeline",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "assocSnapshotTake",
+   "cmd": "assoc_snapshot_take",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "assocSnapshotList",
+   "cmd": "assoc_snapshot_list",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "assocSnapshotRemove",
+   "cmd": "assoc_snapshot_remove",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "assocSnapshotDiff",
+   "cmd": "assoc_snapshot_diff",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "assocSnapshotRestore",
+   "cmd": "assoc_snapshot_restore",
+   "color": "🔶",
+   "services": [
+    "shell",
+    "backup"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueScanApp",
+   "cmd": "residue_scan_app",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "residueDelete",
+   "cmd": "residue_delete",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "fsShared"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "svcGraph",
+   "cmd": "svc_graph",
+   "color": "🔶",
+   "services": [
+    "sysinfo",
+    "diag"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "svcImpact",
+   "cmd": "svc_impact",
+   "color": "🔶",
+   "services": [
+    "sysinfo",
+    "diag"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "svcTopo",
+   "cmd": "svc_topo",
+   "color": "🔶",
+   "services": [
+    "sysinfo",
+    "diag"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "volmemList",
+   "cmd": "volmem_list",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "volmemSave",
+   "cmd": "volmem_save",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "volmemForget",
+   "cmd": "volmem_forget",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "volmemSync",
+   "cmd": "volmem_sync",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "soundSchemeValidate",
+   "cmd": "sound_scheme_validate",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "audioSetDefaultComm",
+   "cmd": "audio_set_default_comm",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "notifyArchiveInsert",
+   "cmd": "notify_archive_insert",
+   "color": "✅",
+   "services": [
+    "notify"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "notifyArchiveQuery",
+   "cmd": "notify_archive_query",
+   "color": "✅",
+   "services": [
+    "notify"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "notifyArchiveApps",
+   "cmd": "notify_archive_apps",
+   "color": "✅",
+   "services": [
+    "notify"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "notifyArchiveDelete",
+   "cmd": "notify_archive_delete",
+   "color": "✅",
+   "services": [
+    "notify"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "notifyArchiveCleanup",
+   "cmd": "notify_archive_cleanup",
+   "color": "✅",
+   "services": [
+    "notify"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "micUsageState",
+   "cmd": "mic_usage_state",
+   "color": "✅",
+   "services": [
+    "audio"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "reminderAdd",
+   "cmd": "reminder_add",
+   "color": "✅",
+   "services": [
+    "sched"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "reminderList",
+   "cmd": "reminder_list",
+   "color": "✅",
+   "services": [
+    "sched"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "reminderComplete",
+   "cmd": "reminder_complete",
+   "color": "✅",
+   "services": [
+    "sched"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "reminderReschedule",
+   "cmd": "reminder_reschedule",
+   "color": "✅",
+   "services": [
+    "sched"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "reminderDelete",
+   "cmd": "reminder_delete",
+   "color": "✅",
+   "services": [
+    "sched"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysPrefsRead",
+   "cmd": "sys_prefs_read",
+   "color": "✅",
+   "services": [
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "sysdepProbe",
+   "cmd": "sysdep_probe",
+   "color": "✅",
+   "services": [
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  },
+  {
+   "method": "depAuditStatus",
+   "cmd": "dep_audit_status",
+   "color": "✅",
+   "services": [
+    "applog"
+   ],
+   "missingService": null,
+   "missingNote": null
+  }
+ ]
+}

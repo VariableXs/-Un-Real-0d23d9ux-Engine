@@ -6237,6 +6237,8 @@ const en: Dict = {
   // Windows 11 settings shell (.w11-* namespace): nav account card & group card titles
   w11AccountName: "Variable Engine",
   w11AccountDesc: "Local account · offline-first",
+  w11SetTitle: "Settings",
+  w11SearchSet: "Search settings",
   w11CardWallpaper: "Desktop wallpaper",
   w11CardTaskbar: "Window & taskbar",
   w11CardPersonalize: "Personalization",

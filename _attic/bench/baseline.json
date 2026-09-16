@@ -1,0 +1,8 @@
+{
+ "date": "2026-09-16",
+ "budget": {
+  "ktest_lib_ms": 20083,
+  "kcheck_ms": 5617,
+  "tsc_ms": 23773
+ }
+}

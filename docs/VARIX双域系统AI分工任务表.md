@@ -19,7 +19,7 @@
 
 ## 阶段 0：引导选择页（部分已完成）
 
-- [ ] **任务 1**（AI-K）：键盘上下键选择——input 域 PS/2 轮询接出「键事件查询接口」，bootselect 倒计时中响应 ↑/↓/Enter；QEMU 实机验证三种路径（默认超时/选中 varix/选中 windows）。前置：无。
+- [x] **任务 1**（AI-K）：键盘上下键选择——input 域 PS/2 轮询接出「键事件查询接口」，bootselect 倒计时中响应 ↑/↓/Enter；QEMU 实机验证三种路径（默认超时/选中 varix/选中 windows）。前置：无。✅ 2026-09-16 AI-K（新增 `kernel/varix/src/ps2.rs` 轮询+Set-1 解码；bootselect 倒计时 50 片/秒轮询、↑↓即时重画、Enter 即选；宿主 14 例+QEMU 三路径串口/截图归档 `docs/acceptance/2026-09-16-任务1-键盘选择/`；ktest 2728 绿/kcheck 0 告警）
 - [ ] **任务 2**（AI-K）：BootNext 一键切 Windows——UEFI 变量写入 + ResetSystem 路径；QEMU 验证写变量与重启行为。前置：任务 1。
 - [ ] **任务 3**（AI-K）：选择页视觉收口——console 清屏策略消除倒计时残影；多分辨率（800×600/1280×720/1920×1080）截图归档。前置：任务 1。
 - [ ] **任务 4**（AI-K）：`boot-select.json` 配置读取（共享分区路径抽象为参数注入），损坏走内置默认并 kwarn。前置：任务 1。
@@ -49,8 +49,8 @@
 
 ## 阶段 3：Variable 界面上内核
 
-- [ ] **任务 22**（AI-V＋AI-B）：垫片协议定版——invoke 名/参数序列化/错误码三段式规范文档。前置：无。
-- [ ] **任务 23**（AI-B）：三色审计——跑 audit.cjs 产出 554 方法映射表（✅可映射/🔶需内核新服务/❌暂缺），归档 docs。前置：任务 22。
+- [x] **任务 22**（AI-V＋AI-B）：垫片协议定版——invoke 名/参数序列化/错误码三段式规范文档。前置：无。（2026-09-16 AI-V+AI-B：规范 docs/双域-垫片协议规范-v1.md；单源 tools/shim-protocol.source.json + 同源生成；运行时 shimInvoke.ts；TS8+Rust4 用例）
+- [x] **任务 23**（AI-B）：三色审计——跑 audit.cjs 产出 554 方法映射表（✅可映射/🔶需内核新服务/❌暂缺），归档 docs。前置：任务 22。（2026-09-16 AI-B：docs/shim-mapping.json 549 方法/546 命令 100% 归属，✅314/🔶222/❌13；生成器 tools/shim-mapping.cjs 未分类即门禁失败；验收记录 docs/acceptance/双域-垫片协议与三色审计-六维验收-2026-09-16.md）
 - [ ] **任务 24**（AI-K）：内核 KV 存储服务（对应前端 localStorage 语义，差异公示）。前置：任务 15。
 - [x] **任务 25**（AI-V）：Servo 移植评估——Variable 前端依赖的网页特性清单逐项标 Servo 支持度，产出风险表。前置：任务 22。✅ 2026-09-16 AI-V：`docs/双域-Servo移植评估风险表-2026-09-16.md`（特性逐项表+嵌入 API 对接面+补齐排序；联网查证 servo.org 2026-02/07 月报与 book.servo.org 实验特性表；结论：可承载，仅 backdrop-filter/CJK 管线两项需降级方案）。
 - [ ] **任务 26**（AI-V）：输入事件管道（内核→Servo）+ 焦点模型原型。前置：任务 19、任务 25。🔶 2026-09-16 AI-V：前端侧原型 `src/lib/shim/inputBus.ts`（焦点栈/兜底路由/剪贴板白名单预留点）+ 用例 8 条全绿（含 1000 次焦点切换无串键）；**实机链路被任务 19（AI-K 内核输入服务）阻塞**，事件频道名已按协议登记 `shim://input`，19 落地后逐字段核对事件结构。

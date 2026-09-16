@@ -70,6 +70,7 @@ pub mod platform;
 pub mod power;
 pub mod proc;
 pub mod progress;
+pub mod ps2;
 pub mod robust;
 pub mod sched;
 pub mod security;

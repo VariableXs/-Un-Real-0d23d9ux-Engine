@@ -14,3 +14,19 @@ node "$ROOT/tools/keymap-audit.cjs" || {
   echo "  强行绕过（--no-verify）视为破坏 Z-08 铁律，评审直接驳回。"
   exit 1
 }
+
+# ---- 关键路径双确认制（AI-S 任务 79 / 专项 J）----
+# 触碰下列文件的提交，提交信息必须含 [double-confirm] 标记（人工二次确认的落痕）。
+CRITICAL='^(kernel/varix/src/idt\.rs|src-tauri/src/privacy\.rs|src-tauri/src/isolation\.rs|scripts/verify\.sh)$'
+if git diff --cached --name-only HEAD 2>/dev/null | grep -qE "$CRITICAL"; then
+  MSG="$(git log --format=%B -n1 2>/dev/null; cat "$GIT_DIR/COMMIT_EDITMSG" 2>/dev/null)"
+  case "$MSG" in
+    *[dD]ouble-[cC]onfirm*) : ;;
+    *)
+      echo ""
+      echo "[pre-commit] 本次提交触碰关键路径（idt/privacy/isolation/verify），但未见双确认。"
+      echo "  正常途径：在提交信息中加入标记 [double-confirm]，或改用"
+      echo "  scripts/double-confirm.sh 包装执行。强行 --no-verify 视为破坏铁律。"
+      exit 1 ;;
+  esac
+fi

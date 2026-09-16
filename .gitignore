@@ -46,3 +46,13 @@ __pycache__/
 
 # 构建产物：便携目录（build-windows.bat portable 生成，不入库）
 dist-portable/
+bs-mon.sock
+
+varix.img
+varix.iso
+varix-qemu.iso
+*.ppm
+bs-*.png
+qs-*.log
+qemu-bs.*
+bs-mon.sock

@@ -127,19 +127,58 @@ fn wait_ticks(ticks: u64) {
     }
 }
 
-/// 倒计时主循环：从 `timeout_secs` 每秒重画一次直到归零。
-/// 返回最终选中下标（默认项；键盘接线前没有别的途径改变它）。
+/// 键事件来源：目标态走 PS/2 轮询；宿主测试注入脚本化按键序列。
+type KeySource<'a> = &'a mut dyn FnMut() -> Option<crate::ps2::Key>;
+
+/// 倒计时轮询循环（任务1）：每秒切成 `POLL_SLICES` 片，片间轮询按键。
+/// - ↑/↓：移动选中并立即重画（不重置倒计时——总案口径：倒计时照走）；
+/// - Enter：立即返回当前选中；
+/// - 归零：返回默认项。
+///
+/// 返回最终选中下标。
 pub fn run_countdown(surf: &Surface, timeout_secs: u32, tsc_hz: u64) -> usize {
+    // 目标态键源：PS/2 轮询。
+    let mut hw = || crate::ps2::poll_key();
+    run_countdown_with(surf, timeout_secs, tsc_hz, &mut hw)
+}
+
+/// 可注入键源的循环体（宿主测试与目标共用同一逻辑）。
+pub fn run_countdown_with(
+    surf: &Surface,
+    timeout_secs: u32,
+    tsc_hz: u64,
+    keys: KeySource,
+) -> usize {
+    /// 每秒轮询片数：50 片 × 20ms，按键响应 ≤20ms。
+    const POLL_SLICES: u32 = 50;
     let opts = crate::bootopt::options();
-    let sel = default_index(opts.default_entry);
+    let mut sel = default_index(opts.default_entry);
     let mut remaining = timeout_secs;
+    let slice_ticks = tsc_hz / POLL_SLICES as u64;
+    draw(surf, remaining, sel);
     loop {
-        draw(surf, remaining, sel);
         if remaining == 0 {
             return sel;
         }
-        wait_ticks(tsc_hz);
+        for _ in 0..POLL_SLICES {
+            // 消费本轮已积累的按键（一片内可能有多键），↑/↓ 立即重画。
+            while let Some(k) = keys() {
+                match k {
+                    crate::ps2::Key::Up => {
+                        sel = sel.saturating_sub(1);
+                        draw(surf, remaining, sel);
+                    }
+                    crate::ps2::Key::Down => {
+                        sel = (sel + 1).min(crate::bootselect::ENTRIES.len() - 1);
+                        draw(surf, remaining, sel);
+                    }
+                    crate::ps2::Key::Enter => return sel,
+                }
+            }
+            wait_ticks(slice_ticks);
+        }
         remaining -= 1;
+        draw(surf, remaining, sel);
     }
 }
 
@@ -232,5 +271,93 @@ mod tests {
             assert!(bottom < h as i64, "{}x{} 菜单越界", w, h);
             assert!(mx + mw <= w as i64);
         }
+    }
+
+    // ---- 任务1：键盘选择路径（注入键源，tsc_hz 调小让宿主忙等可忽略） ----
+
+    /// 从按键序列构造键源。
+    fn scripted(keys: &[crate::ps2::Key]) -> impl FnMut() -> Option<crate::ps2::Key> + '_ {
+        let mut i = 0usize;
+        move || {
+            let r = keys.get(i).copied();
+            i += 1;
+            r
+        }
+    }
+
+    const FAST_HZ: u64 = 100_000; // 宿主测试：slice 忙等 ≈ 微秒级
+
+    #[test]
+    fn enter_selects_current_highlight() {
+        let (s, _b) = surface(800, 600);
+        let mut keys = scripted(&[crate::ps2::Key::Down, crate::ps2::Key::Down, crate::ps2::Key::Enter]);
+        let sel = run_countdown_with(&s, 5, FAST_HZ, &mut keys);
+        assert_eq!(sel, 2, "两次 ↓ + Enter 应选中第三项");
+    }
+
+    #[test]
+    fn no_keys_counts_down_to_default() {
+        let (s, _b) = surface(800, 600);
+        let mut none = || -> Option<crate::ps2::Key> { None };
+        let sel = run_countdown_with(&s, 2, FAST_HZ, &mut none);
+        assert_eq!(sel, 0, "无按键应倒计时归零走默认项");
+    }
+
+    #[test]
+    fn up_clamps_at_top() {
+        let (s, _b) = surface(800, 600);
+        let mut keys = scripted(&[
+            crate::ps2::Key::Up,
+            crate::ps2::Key::Up,
+            crate::ps2::Key::Enter,
+        ]);
+        let sel = run_countdown_with(&s, 5, FAST_HZ, &mut keys);
+        assert_eq!(sel, 0, "↑ 在顶部应钳位");
+    }
+
+    #[test]
+    fn down_clamps_at_bottom() {
+        let (s, _b) = surface(800, 600);
+        let mut keys = scripted(&[
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Enter,
+        ]);
+        let sel = run_countdown_with(&s, 5, FAST_HZ, &mut keys);
+        assert_eq!(sel, 2, "↓ 在底部应钳位");
+    }
+
+    #[test]
+    fn up_then_enter_moves_back() {
+        let (s, _b) = surface(800, 600);
+        let mut keys = scripted(&[
+            crate::ps2::Key::Down,
+            crate::ps2::Key::Up,
+            crate::ps2::Key::Enter,
+        ]);
+        let sel = run_countdown_with(&s, 5, FAST_HZ, &mut keys);
+        assert_eq!(sel, 0);
+    }
+
+    #[test]
+    fn keys_do_not_reset_countdown_expiry() {
+        // 键按了但从不 Enter：倒计时仍要归零并返回最后选中项。
+        let (s, _b) = surface(800, 600);
+        let mut one_down_then_none = {
+            let mut fired = false;
+            move || {
+                if fired {
+                    None
+                } else {
+                    fired = true;
+                    Some(crate::ps2::Key::Down)
+                }
+            }
+        };
+        let sel = run_countdown_with(&s, 1, FAST_HZ, &mut one_down_then_none);
+        assert_eq!(sel, 1, "倒计时归零应停在最后选中项而非默认项");
     }
 }

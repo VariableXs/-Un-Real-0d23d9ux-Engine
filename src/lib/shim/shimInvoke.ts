@@ -64,8 +64,9 @@ function assertTransport(): ShimTransport {
 
 /** 版本协商握手：前端启动第一步（协议规范 §5）。不兼容抛 SHIM_VERSION_MISMATCH。 */
 export async function shimHello(): Promise<ShimHello> {
-  const t = assertTransport();
-  const res = await t("shim_hello", { frontendVersion: SHIM_PROTOCOL_VERSION });
+  // 注意：局部变量不得叫 t —— audit.cjs 的 i18n 扫描会把 t("...") 误判为词典键。
+  const tp = assertTransport();
+  const res = await tp("shim_hello", { frontendVersion: SHIM_PROTOCOL_VERSION });
   const decoded = decodeShimOutcome<ShimHello>("shim_hello", res);
   if (decoded.kind !== "ok") throw new ShimMappedError("SHIM_INTERNAL", "shim_hello 应答异常", true);
   if (!shimVersionCompatible(decoded.value)) {

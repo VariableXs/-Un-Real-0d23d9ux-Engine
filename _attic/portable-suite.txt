@@ -1,0 +1,71 @@
+== 1. PowerShell 语法解析 ==
+  ok   语法 Create-VHDX.ps1
+  ok   语法 Deploy-To-USB.ps1
+  ok   语法 Test-VM.ps1
+  ok   语法 AI-P\Create-Partitions.ps1
+  ok   语法 AI-P\Init-Shared.ps1
+  ok   语法 AI-P\Test-AIP.ps1
+  ok   语法 AI1\Bench-Storage.ps1
+  ok   语法 AI1\Create-VHDX.ps1
+  ok   语法 AI1\Link-DataApps.ps1
+  ok   语法 AI1\Maintain-VHDX.ps1
+  ok   语法 AI1\Tune-Guest.ps1
+  ok   语法 AI2\Chaos-Scenarios.ps1
+  ok   语法 AI2\Fake-Start.ps1
+  ok   语法 AI2\Test-VM.ps1
+  ok   语法 AI3\Accept-Gate.ps1
+  ok   语法 AI3\Bench-Perf.ps1
+  ok   语法 AI3\Compat-5Principles.ps1
+  ok   语法 AI3\Deploy-To-USB.ps1
+  ok   语法 AI3\Diff-Chain.ps1
+  ok   语法 AI3\Install-VMAgent.ps1
+  ok   语法 AI3\Layer-Chain.ps1
+  ok   语法 AI3\Protect-VHDX.ps1
+  ok   语法 AI3\Self-Check.ps1
+  ok   语法 AI3\Set-VMComfort.ps1
+  ok   语法 AI3\Set-VmShell.ps1
+  ok   语法 AI3\Tune-USB.ps1
+  ok   语法 AI3\Verify-LargeApps.ps1
+  ok   语法 AI4\Benchmark.ps1
+  ok   语法 AI4\Cloud-Sync.ps1
+  ok   语法 AI4\Config-Runtime.ps1
+  ok   语法 AI4\Data-Init.ps1
+  ok   语法 AI4\Merge-Apps.ps1
+  ok   语法 AI4\MSIX-Attach.ps1
+  ok   语法 AI4\Plugin-Host.ps1
+  ok   语法 AI4\Plugin-Manager.ps1
+  ok   语法 AI4\Security-Manager.ps1
+  ok   语法 AI4\SelfTest.ps1
+  ok   语法 AI5\Accept-Gate.ps1
+  ok   语法 AI5\AI-Integration.ps1
+  ok   语法 AI5\AI5-Lib.ps1
+  ok   语法 AI5\Bench-Perf.ps1
+  ok   语法 AI5\Chaos-Inject.ps1
+  ok   语法 AI5\Compat-Matrix.ps1
+  ok   语法 AI5\Deploy-To-USB.ps1
+  ok   语法 AI5\Maintenance.ps1
+  ok   语法 tests\Run-PortableTests.ps1
+== 2. 数据文件校验 ==
+  ok   矩阵条目数=200
+  ok   矩阵 5 类
+  ok   每类 40 条
+  ok   应用名全局唯一
+  ok   A/B 判定枚举合法
+  ok   每条都有 id
+  ok   summary.total 与实际一致
+  ok   点名条目在列: WPS Office
+  ok   点名条目在列: 微信
+  ok   点名条目在列: Blender
+  ok   点名条目在列: Adobe Photoshop
+  ok   点名条目在列: Visual Studio 2022
+  ok   点名条目在列: Trae CN
+  ok   点名条目在列: Steam
+  ok   预算字段齐全
+  ok   混沌场景 ≥10（主计划扩充21）
+  ok   场景 id 唯一
+  ok   automatable 枚举合法
+  ok   每场景有步骤与期望
+  ok   dangerous 场景一律 manual
+== 3. 执行只读动作（已按 -SkipExec 跳过）==
+
+PORTABLE SELFTEST PASS (66 checks)
