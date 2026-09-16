@@ -111,7 +111,7 @@
 - [ ] **任务 66**（AI-P）：差分升级＋断电中途升级演练 ×10 零变砖。前置：任务 11。
 - [ ] **任务 67**（AI-P）：快照滚动调度＋灾备 SOP（半损坏/全损坏）＋「什么救不回来」诚实清单。前置：任务 66。
 - [ ] **任务 68**（AI-P）：三处配置一致性校验器（md5 对齐）。前置：任务 66。
-- [ ] **任务 69**（AI-S）：verify 单命令门禁（三线测试+audit+基准回归收敛）——**已交付待转绿**：`scripts/verify.sh`（npm run verify）已实跑，C/K/V(vitest) 全绿；当前红项均为其他线在途 WIP（V 线 shim tsc/i18n 键、B 线 shim_protocol.gen.rs 缺失+segfault），其收敛后即可打勾。配套：`_attic/bench/baseline.json` 基准线已建，>10% 回归拦截生效。前置：无（可立即做）。
+- [x] **任务 69**（AI-S）：verify 单命令门禁（三线测试+audit+基准回归收敛）——**✅ 2026-09-16 AI-S 验收通过**（scripts/verify.sh 八段全绿实跑：tsc 0 错/vitest 2671 passed/ca-core 356/kcheck 0 错/ktest --lib 2727/variable --lib 267/audit PASS/bench 回归 PASS，基线 _attic/bench/baseline.json）
 - [ ] **任务 70**（AI-S）：六解析器 fuzz 常态化（boot-select/PE/ELF/exFAT/规则/Uxv）。前置：任务 4/39/18/31/35。
 - [ ] **任务 71**（AI-S）：U 盘场景性能基准（引导<8s/首帧<3s/交互 P95<100ms）＋回归门禁。前置：任务 29。
 - [ ] **任务 72**（AI-V）：适配看板（apps.json 可视化）＋i18n 三语扩展＋无障碍全量检查。前置：任务 46。
@@ -124,7 +124,7 @@
 - [ ] **任务 76**（AI-V）：反馈通知规范＋加载感知骨架屏（专项 D/E）。前置：任务 51。
 - [ ] **任务 77**（AI-V）：个性化打磨＋信任透明（通道徽标/隐私仪表盘/隔离演示模式）（专项 F/G）。前置：任务 57。
 - [ ] **任务 78**（AI-P）：升级体验＋数据搬家向导＋退役安全清空（专项 H/I）。前置：任务 66/67。
-- [ ] **任务 79**（AI-S）：工程级质量基建其余项（sanitizer/供应链评审/混沌演练例行化/双确认制）（专项 J）——**四件工具已交付待联跑**：`scripts/sanitizer.sh`（无 nightly 诚实 SKIP）、`scripts/supply-chain-check.sh`（锁文件冻结+npm/cargo audit）、`scripts/chaos-drill.sh`（fs23_journal 掉电注入族+WAL 硬崩持久性演练）、`scripts/double-confirm.sh` + pre-commit 关键路径双确认标记。前置：任务 69（待其转绿后联跑收口）。
+- [x] **任务 79**（AI-S）：工程级质量基建其余项（sanitizer/供应链评审/混沌演练例行化/双确认制）（专项 J）——**✅ 2026-09-16 AI-S 实跑验收通过**（sanitizer.sh 诚实 SKIP 机制验证；supply-chain-check.sh 通过且清零 npm high/critical——vitest 2→3.2.4/vite 5.4.21→7.1.11/plugin-react 5，升级后 vitest 2671 全绿+vite build 成功；chaos-drill.sh fs:: 80 用例+WAL 硬崩 50/50 持久零泄漏；double-confirm.sh+pre-commit 关键路径标记）：`scripts/sanitizer.sh`（无 nightly 诚实 SKIP）、`scripts/supply-chain-check.sh`（锁文件冻结+npm/cargo audit）、`scripts/chaos-drill.sh`（fs23_journal 掉电注入族+WAL 硬崩持久性演练）、`scripts/double-confirm.sh` + pre-commit 关键路径双确认标记。前置：任务 69（待其转绿后联跑收口）。
 - [ ] **任务 80**（AI-S）：可观测诊断（日志统一时间轴/诊断快照/性能追踪/用户可读时间线）（专项 K）。前置：任务 71。
 - [ ] **任务 81**（AI-V）：桌面核心体验打磨（中文字体管线/动效统一表/全局搜索/剪贴板历史复用 ai27）（专项 L）。前置：任务 27。
 - [ ] **任务 82**（AI-V）：高频场景旅程六条端到端打磨（专项 M）。前置：任务 73-78。
