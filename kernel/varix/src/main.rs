@@ -63,7 +63,21 @@ fn boot() -> ! {
     // 菜单在帧缓冲就绪后、域初始化前亮出：↑/↓/Enter 实时选择（任务1），
     // 倒计时归零走默认项。选中 windows → 写 UEFI BootNext + ResetSystem
     // （任务2）；选中 uefi → 直接重启进固件设置。
-    let boot_opts = varix::bootopt::options();
+    let mut boot_opts = varix::bootopt::options();
+    // 任务4：boot-select.json 配置读取（路径参数注入；当前经引导卷模块
+    // 通道读取——limine.conf module_path 挂载；SHARED 分区真盘 FS 于
+    // 任务17/18 落地后替换读取实现，解析与容错零改动）。
+    let mut cfg_buf = [0u8; 4096];
+    let (boot_cfg, cfg_src) = varix::bootcfg::load(
+        Some(&mut |p, b| varix::bootcfg::read_via_limine(p, b)),
+        varix::bootcfg::SHARED_BOOT_SELECT_PATH,
+        &mut cfg_buf,
+    );
+    if cfg_src == varix::bootcfg::CfgSource::Reset {
+        varix::kwarn!("boot-cfg: shared config corrupt — built-in defaults applied (badge shown)");
+        varix::bootselect::set_cfg_reset_badge(true);
+    }
+    boot_opts = varix::bootcfg::effective(boot_opts, &boot_cfg, cfg_src);
     let mut chosen_id: Option<&'static str> = None;
     if boot_opts.menu_visible() {
         let tsc_hz = varix::platform::info()

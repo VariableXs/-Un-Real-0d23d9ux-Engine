@@ -22,6 +22,10 @@ pub struct BootOptions {
     pub default_entry: &'static str,
     /// Whether the user supplied values (vs. defaults).
     pub customized: bool,
+    /// cmdline explicitly set `boot_timeout=`（bootcfg 合并的逐字段优先级用）。
+    pub customized_timeout: bool,
+    /// cmdline explicitly set `boot_default=`（同上）。
+    pub customized_entry: bool,
 }
 
 impl Default for BootOptions {
@@ -30,6 +34,8 @@ impl Default for BootOptions {
             timeout_secs: DEFAULT_TIMEOUT_SECS,
             default_entry: DEFAULT_ENTRY,
             customized: false,
+            customized_timeout: false,
+            customized_entry: false,
         }
     }
 }
@@ -48,6 +54,7 @@ impl BootOptions {
             if let Some(v) = token.strip_prefix("boot_timeout=") {
                 if let Some(secs) = parse_u32(v) {
                     opts.timeout_secs = Self::clamp_timeout(secs);
+                    opts.customized_timeout = true;
                     customized = true;
                 }
             } else if let Some(v) = token.strip_prefix("boot_default=") {
@@ -58,6 +65,7 @@ impl BootOptions {
                         "uefi" => "uefi",
                         _ => "other",
                     };
+                    opts.customized_entry = true;
                     customized = true;
                 }
             }

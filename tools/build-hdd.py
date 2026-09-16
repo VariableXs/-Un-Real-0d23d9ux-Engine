@@ -36,6 +36,18 @@ serial: yes
     kernel_cmdline: desktop=1
 """
 
+# 任务4：boot-select.json 骨架（SHARED 目录契约；真盘 FS 落地前由
+# 引导卷 module 通道携带）。字段与 kernel/varix/src/bootcfg.rs 默认值表一致。
+# 任务5 负向演练可临时改写此内容（损坏/超界/缺字段）验证容错路径。
+BOOT_SELECT_JSON = """{
+  "default_entry": "variable",
+  "timeout_sec": 5,
+  "show_menu": true,
+  "last_boot": "variable",
+  "windows_bootnext": null
+}
+"""
+
 
 def short_checksum(short_11: bytes) -> int:
     s = 0
@@ -180,6 +192,7 @@ def main() -> int:
     root_recs += fat.dir_entry("efi", b"EFI       ", efi_dir_start)
     root_recs += fat.file_entry("limine-bios.sys", b"LIMINE~1SYS", bios_sys)
     root_recs += fat.file_entry("limine.conf", b"LIMINE.CONF", LIMINE_CONF.encode())
+    root_recs += fat.file_entry("boot-select.json", b"BOOTSE~1   ", BOOT_SELECT_JSON.encode())
     root = b"".join(root_recs)
     root = root.ljust(SPC * SECTOR, b"\x00")
     if len(root) > SPC * SECTOR:

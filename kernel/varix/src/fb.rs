@@ -103,10 +103,16 @@ impl PixelFormat {
     }
 
     /// Pack a color into the native u32 of this format (F004 unified layer).
+    ///
+    /// BGR32（QEMU GOP 与多数实机 GOP 的实际布局）：内存字节序为
+    /// [Blue, Green, Red, X]，x86 小端下 u32 = r<<16 | g<<8 | b。
+    /// 此前写成 b<<16|g<<8|r 导致整页 R/B 互换（任务4 实机抓帧发现：
+    /// 蓝色 HL_BOX 显示为橙、琥珀角标显示为蓝），已修正。
+    /// Rgb32 路径当前无实机用例，维持原实现不动。
     pub const fn pack(self, c: Color) -> u32 {
         match self {
             PixelFormat::Rgb32 => (c.r as u32) << 24 | (c.g as u32) << 16 | (c.b as u32) << 8,
-            PixelFormat::Bgr32 => (c.b as u32) << 16 | (c.g as u32) << 8 | (c.r as u32),
+            PixelFormat::Bgr32 => (c.r as u32) << 16 | (c.g as u32) << 8 | (c.b as u32),
             PixelFormat::Rgb24 | PixelFormat::Bgr24 => {
                 (c.r as u32) << 16 | (c.g as u32) << 8 | (c.b as u32)
             }
@@ -334,7 +340,8 @@ mod tests {
     fn format_packing() {
         let c = Color::rgb(0x11, 0x22, 0x33);
         assert_eq!(PixelFormat::Rgb32.pack(c), 0x11223300);
-        assert_eq!(PixelFormat::Bgr32.pack(c), 0x332211);
+        // BGR32 内存序 [B,G,R,X]，小端 u32 = r<<16|g<<8|b（QEMU GOP 实证）
+        assert_eq!(PixelFormat::Bgr32.pack(c), 0x112233);
     }
 
     #[test]
@@ -361,7 +368,8 @@ mod tests {
     fn set_get_pixel_bgr32() {
         let (s, _backing) = test_surface(8, 4, PixelFormat::Bgr32);
         s.set_px(3, 2, Color::rgb(0xAA, 0xBB, 0xCC));
-        assert_eq!(s.get_px(3, 2), Some(0xCCBBAA));
+        // BGR32 小端 u32 = r<<16|g<<8|b
+        assert_eq!(s.get_px(3, 2), Some(0xAABBCC));
     }
 
     #[test]
@@ -388,13 +396,13 @@ mod tests {
         s.fill(Color::rgb(1, 2, 3));
         for y in 0..8 {
             for x in 0..16 {
-                assert_eq!(s.get_px(x, y), Some(0x030201));
+                assert_eq!(s.get_px(x, y), Some(0x010203));
             }
         }
         s.fill_rect(4, 2, 2, 2, Color::rgb(9, 9, 9));
         assert_eq!(s.get_px(4, 2), Some(0x090909));
-        assert_eq!(s.get_px(3, 2), Some(0x030201)); // outside the rect
-        assert_eq!(s.get_px(6, 2), Some(0x030201));
+        assert_eq!(s.get_px(3, 2), Some(0x010203)); // outside the rect
+        assert_eq!(s.get_px(6, 2), Some(0x010203));
     }
 
     #[test]

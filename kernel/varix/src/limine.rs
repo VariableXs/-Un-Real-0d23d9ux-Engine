@@ -155,6 +155,32 @@ pub struct File {
 }
 
 #[repr(C)]
+pub struct ModuleResponse {
+    pub revision: u64,
+    pub module_count: u64,
+    pub modules: *mut *mut File,
+}
+
+/// 内核侧声明的可选模块（MODULE_REQUEST revision 1）。
+/// flags=0 即「可选」：文件缺失 Limine 不报错，response 里不出现——
+/// 配置文件缺失必须静默走内置默认（任务4 契约），绝不能 panic 引导。
+#[repr(C)]
+pub struct InternalModule {
+    pub path: *const u8,
+    pub cmdline: *const u8,
+    pub flags: u64,
+}
+
+#[repr(C)]
+pub struct ModuleRequest {
+    pub id: [u64; 4],
+    pub revision: u64,
+    pub response: *mut ModuleResponse,
+    pub internal_module_count: u64,
+    pub internal_modules: *mut *mut InternalModule,
+}
+
+#[repr(C)]
 pub struct Uuid {
     pub a: u32,
     pub b: u16,
@@ -268,6 +294,28 @@ pub static mut EXECUTABLE_FILE_REQUEST: Request<ExecutableFileResponse> = Reques
     revision: 0,
     response: core::ptr::null_mut(),
 };
+
+/// 引导卷模块文件（任务4：boot-select.json 经内核声明的可选内模块进来；
+/// revision 1 + flags=0 = 缺失不报错，符合「文件不存在→内置默认」契约）。
+#[used]
+#[link_section = ".limine_requests"]
+pub static mut MODULE_REQUEST: ModuleRequest = ModuleRequest {
+    id: [COMMON_MAGIC[0], COMMON_MAGIC[1], 0x3e7e279702be32af, 0xca1c4f3bd1280cee],
+    revision: 1,
+    response: core::ptr::null_mut(),
+    internal_module_count: 1,
+    internal_modules: (&raw mut BOOT_CFG_MODULES) as *mut *mut InternalModule,
+};
+
+/// 可选内模块声明表（路径相对内核位置：内核在 /kernel/varix → 上一级卷根；
+/// string 新版协议要求非 NULL，无模块串就给空串）。
+static mut BOOT_CFG_MODULE: InternalModule = InternalModule {
+    path: b"../boot-select.json\0".as_ptr(),
+    cmdline: b"\0".as_ptr(),
+    flags: 0,
+};
+
+static mut BOOT_CFG_MODULES: [*mut InternalModule; 1] = [&raw mut BOOT_CFG_MODULE];
 
 #[used]
 #[link_section = ".limine_requests"]
@@ -471,6 +519,44 @@ pub fn executable_file() -> Option<&'static File> {
         } else {
             Some(&*f)
         }
+    }
+}
+
+/// 按卷内路径（带前导 `/`）找引导卷模块文件，返回其内容切片。
+/// Limine `File.path` 为 NUL 结尾 C 串；模块数上限 256（同 memmap 防御口径）。
+pub fn module_by_path(path: &str) -> Option<&'static [u8]> {
+    unsafe {
+        // ModuleRequest 的 id/revision/response 前缀与 Request<T> 同布局
+        let resp = response_of(&raw const MODULE_REQUEST as *const Request<ModuleResponse>);
+        if resp.is_null() {
+            return None;
+        }
+        let count = (*resp).module_count as usize;
+        let list = (*resp).modules;
+        if list.is_null() || count == 0 || count > 256 {
+            return None;
+        }
+        for i in 0..count {
+            let f = *list.add(i);
+            if f.is_null() || (*f).path.is_null() {
+                continue;
+            }
+            // C 串逐字节比对（词表全 ASCII，无越界：NUL 必在）
+            let mut p = (*f).path as *const u8;
+            let mut matched = true;
+            for b in path.bytes() {
+                if *p != b {
+                    matched = false;
+                    break;
+                }
+                p = p.add(1);
+            }
+            if matched && *p == 0 && !(*f).address.is_null() && (*f).size > 0 {
+                let size = (*f).size as usize;
+                return Some(core::slice::from_raw_parts((*f).address, size));
+            }
+        }
+        None
     }
 }
 

@@ -77,6 +77,11 @@ pub fn draw(surf: &Surface, remaining: u32, selected: usize) -> i64 {
     let tw = crate::font::text_width_scaled(title, 2);
     crate::font::draw_text_scaled(surf, (w - tw) / 2, my - 72, title, INK_TITLE, 2);
 
+    // 「配置已重置」角标（任务4：boot-select.json 整体损坏时）
+    if cfg_reset_badge_on() {
+        draw_cfg_reset_badge(surf);
+    }
+
     // 三张卡片
     for (i, e) in ENTRIES.iter().enumerate() {
         let cy = my + i as i64 * (ch + gap);
@@ -125,6 +130,39 @@ fn wait_ticks(ticks: u64) {
     while now().wrapping_sub(start) < ticks {
         core::hint::spin_loop();
     }
+}
+
+// ---------------------------------------------------------------------------
+// 「配置已重置」角标（任务4 容错第 3 层的视觉面）
+// ---------------------------------------------------------------------------
+
+use core::sync::atomic::{AtomicBool, Ordering};
+
+static CFG_RESET_BADGE: AtomicBool = AtomicBool::new(false);
+
+/// 共享分区 boot-select.json 整体损坏（`bootcfg::CfgSource::Reset`）时置位：
+/// 菜单右上角逐帧画角标，如实告知用户配置未生效、已回内置默认。
+pub fn set_cfg_reset_badge(on: bool) {
+    CFG_RESET_BADGE.store(on, Ordering::Relaxed);
+}
+
+fn cfg_reset_badge_on() -> bool {
+    CFG_RESET_BADGE.load(Ordering::Relaxed)
+}
+
+const BADGE_BOX: Color = Color::rgb(0xFF, 0xB4, 0x3C);
+const BADGE_INK: Color = Color::rgb(0x1C, 0x14, 0x08);
+
+/// 右上角角标：amber 底 + 深字，与菜单主题区分（警示语义）。
+fn draw_cfg_reset_badge(surf: &Surface) {
+    let text = "CONFIG RESET: DEFAULTS APPLIED";
+    let tw = crate::font::text_width_scaled(text, 1) as i64;
+    let pad = 10i64;
+    let bw = tw + pad * 2;
+    let bh = 26i64;
+    let x = surf.width() as i64 - bw - 16;
+    surf.fill_rect(x, 16, bw, bh, BADGE_BOX);
+    crate::font::draw_text(surf, x + pad, 16 + (bh - 16) / 2, text, BADGE_INK);
 }
 
 /// 键事件来源：目标态走 PS/2 轮询；宿主测试注入脚本化按键序列。
@@ -235,6 +273,18 @@ mod tests {
         // 倒计时文字为亮色，标题文字存在
         assert!(count_px(&s, INK_TITLE) > 0);
         assert!(count_px(&s, INK_DIM) > 0);
+    }
+
+    /// 任务4 容错第 3 层视觉面：角标置位时菜单右上角必须出现 amber 警示块。
+    #[test]
+    fn cfg_reset_badge_renders_when_flag_set() {
+        let (s, _b) = surface(800, 600);
+        set_cfg_reset_badge(true);
+        draw(&s, 5, 0);
+        set_cfg_reset_badge(false);
+        // 角标底色（amber）与角标深色文字都必须出现
+        assert!(count_px(&s, BADGE_BOX) > 500);
+        assert!(count_px(&s, BADGE_INK) > 0);
     }
 
     #[test]
