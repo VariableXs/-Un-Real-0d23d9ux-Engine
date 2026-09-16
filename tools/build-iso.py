@@ -44,10 +44,19 @@ def main() -> int:
             return 1
     old_cfg_path = os.path.join(ROOT, "limine.cfg")
 
+    # 内核 ELF 必须补齐到 2048B 扇区整数倍：Limine 的 iso9660 驱动读
+    # 未对齐的大文件会报 "iso9660: failed to read file data"（QEMU 实证）。
+    kernel_padded = os.path.join(os.environ.get("TEMP", "/tmp"), "varix_padded.elf")
+    with open(KERNEL_ELF, "rb") as f:
+        data = f.read()
+    with open(kernel_padded, "wb") as f:
+        f.write(data)
+        f.write(b"\x00" * ((-len(data)) % 2048))
+
     iso = pycdlib.PyCdlib()
     iso.new(interchange_level=3, joliet=3, rock_ridge="1.09")
     iso.add_directory("/KERNEL", rr_name="kernel")
-    iso.add_file(KERNEL_ELF, ISO_PATH_KERNEL, rr_name="varix")
+    iso.add_file(kernel_padded, ISO_PATH_KERNEL, rr_name="varix")
     conf_tmp = os.path.join(os.environ.get("TEMP", "/tmp"), "limine.conf")
     with open(conf_tmp, "w", newline="\n") as f:
         f.write(LIMINE_CONF)
