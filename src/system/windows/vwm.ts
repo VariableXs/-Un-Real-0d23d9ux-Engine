@@ -425,6 +425,35 @@ export function nativeMinimizeVwm(id: string, min: boolean): void {
   }));
 }
 
+/** M5：原生 □ 按钮 / 还原同步（WinEventHook LOCATIONCHANGE + IsZoomed 翻转 →
+ *  embed://native-max）。rect 为后端实测的 DWM 可见边界（桌面客户区逻辑像素，
+ *  由监听器完成 DPR 换算）。真值是原生窗口：只在状态翻转时改写 ——
+ *  最大化时快照 restore（布局快照/贴靠依据），还原时写回实测几何并清快照。
+ *  不走 toggleMaxVwmWin（那是 Variable 自绘标题栏按钮对自有窗口的语义，
+ *  会把几何设为 VWM 工作区；嵌入窗口以 Windows 实测矩形为准）。 */
+export function nativeMaximizeVwm(id: string, max: boolean, rect: VwmRect): void {
+  const w = vwmStore.getState().wins.find((x) => x.id === id);
+  if (!w) return;
+  // iconic 矩形（最小化动画瞬间，<160×100）无意义 —— 后端 IsIconic 已滤一层，
+  // 这里兜底防 restore 快照被污染（与 is_adoptable_main_window 同阈值）。
+  if (!max && (rect.w < 160 || rect.h < 100)) return;
+  if (max) {
+    if (w.state === "max") return;
+    patch((st) => ({
+      wins: st.wins.map((x) =>
+        x.id === id
+          ? { ...x, state: "max", restore: { x: x.x, y: x.y, w: x.w, h: x.h }, ...rect }
+          : x,
+      ),
+    }));
+  } else {
+    if (w.state !== "max") return;
+    patch((st) => ({
+      wins: st.wins.map((x) => (x.id === id ? { ...x, state: "normal", ...rect, restore: null } : x)),
+    }));
+  }
+}
+
 export function minimizeAllVwm(): void {
   const s = vwmStore.getState();
   if (s.wins.length === 0) return;

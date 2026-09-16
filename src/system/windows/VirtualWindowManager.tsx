@@ -10,6 +10,7 @@ import {
   focusVwmWin,
   minimizeAllVwm,
   minimizeVwmWin,
+  nativeMaximizeVwm,
   nativeMinimizeVwm,
   resizeVwmWin,
   restoreShakenVwm,
@@ -461,6 +462,39 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
     };
   }, []);
 
+  // M5：原生 □ 最大化 / 还原同步。后端 LOCATIONCHANGE + IsZoomed 状态翻转 →
+  // embed://native-max（DWM 可见边界，桌面客户区物理像素）。两遍 DPR 换算后
+  // 写入 VWM（nativeMaximizeVwm 内部只在状态翻转时改写）——此前用户点软件
+  // 自己的最大化按钮时 VWM/任务栏镜像/布局快照全部失真，且 EmbedBridge 的
+  // 重同步会把最大化窗口硬拽回旧矩形，这里一并根治。
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let un: (() => void) | undefined;
+    const p = listen<{ embedId: string; hwnd: number; maximized: boolean; x: number; y: number; w: number; h: number }>(
+      "embed://native-max",
+      (e) => {
+        const { embedId, maximized, x, y, w, h } = e.payload;
+        const win = vwmStore.getState().wins.find((v) => v.id === embedId);
+        if (!win) return;
+        // 两遍 DPR（混合 DPI 双屏），与 native-geo 回写同一换算
+        let dpr = monitorDprAt(win.x + win.w / 2, win.y + win.h / 2) || 1;
+        dpr = monitorDprAt(x + w / 2 / dpr, y + h / 2 / dpr) || 1;
+        nativeMaximizeVwm(embedId, maximized, { x: x / dpr, y: y / dpr, w: w / dpr, h: h / dpr });
+      },
+    );
+    void p
+      .then((f) => {
+        if (disposed) f();
+        else un = f;
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      un?.();
+    };
+  }, []);
+
   // 批次C-1：同进程树新主窗口（如 Chrome 设置页）自动收编为新嵌入会话：
   // WinEventHook 探测 → embed://popup → 开新占位窗（embed_id）→ embed_adopt 重父化登记。
   // adopt 失败（窗口已销毁）→ 关闭刚开的占位窗，不伪造成功。
@@ -682,6 +716,13 @@ function EmbedBridge({ win, focused, visible = true }: { win: VwmWin; focused: b
     // 批次W-5：标签组非显示成员 → 隐藏原生嵌入窗口（保活，不关闭会话）
     if (win.minimized || !visible) {
       void ipc.embedVisible(embedId, false).catch(() => {});
+      return;
+    }
+    // M5：最大化态原生窗口自己是几何真值（用户点软件自己的 □）——此时下行
+    // 旧矩形会把最大化窗口硬拽回去（撤销用户操作）。状态/几何同步由
+    // embed://native-max 链路负责，这里只保证可见性。
+    if (win.state === "max") {
+      void ipc.embedVisible(embedId, true).catch(() => {});
       return;
     }
     void ipc

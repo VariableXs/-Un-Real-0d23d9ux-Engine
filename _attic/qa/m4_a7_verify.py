@@ -34,7 +34,15 @@ def main():
 
     for np in rep["before"]["notepads"]:
         u32.PostMessageW(np["hwnd"], WM_CLOSE, 0, 0)
-    time.sleep(2.5)
+    # 占位卡异步关闭 + 状态传播可能慢于固定 2.5s —— 轮询到 tbw-hidden 消失
+    # （M5 实测 ~4-6s；Steam 事件残留时更久）。
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        st = json.loads(cdp.evaluate(JS_STATE))
+        if "tbw-hidden" not in (st["rootClass"] or ""):
+            break
+        time.sleep(0.5)
+    time.sleep(0.5)
 
     st = json.loads(cdp.evaluate(JS_STATE))
     rep["after_close"] = {"notepads": find_notepad_windows(),

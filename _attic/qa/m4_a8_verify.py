@@ -41,7 +41,11 @@ def main():
     rc = wt.RECT()
     u32.GetWindowRect(h, ctypes.byref(rc))
     rep["max_rect"] = [rc.left, rc.top, rc.right, rc.bottom]
-    rep["true_fullscreen"] = (rc.left, rc.top, rc.right, rc.bottom) == (0, 0, sw, sh)
+    # Win32 最大化标准矩形 = (-9,-9,1929,1089)（9px 不可见调整边框悬出屏外），
+    # 判定必须用**可见区域**（夹取到屏幕）而非原始 rect 直比（v2 修正口径）。
+    vis = (max(rc.left, 0), max(rc.top, 0), min(rc.right, sw), min(rc.bottom, sh))
+    rep["visible_rect"] = list(vis)
+    rep["true_fullscreen"] = vis == (0, 0, sw, sh)
 
     st = json.loads(cdp.evaluate(JS_STATE))
     rep["tb_collapsed_with_embedded"] = "tbw-hidden" in st["rootClass"]

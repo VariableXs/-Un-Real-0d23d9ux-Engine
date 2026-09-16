@@ -41,8 +41,17 @@ def main():
     st = json.loads(cdp.evaluate(JS_STATE))
     chk("summoned", "tbw-hidden" not in st["rootClass"])
 
-    # 3. physical click opens menu
-    move_cursor(int(564 * 1.25), int(834 * 1.25)); time.sleep(0.9)
+    # 3. physical click opens menu（动态定位真按钮：改版后硬坐标落在容器 DIV 上）
+    dpr = st.get("dpr") or 1.25
+    loc = json.loads(cdp.evaluate('''(function(){
+        const b = document.querySelector('button[aria-label="\\u5f00\\u59cb"]');
+        if (!b) return JSON.stringify({err: 1});
+        const r = b.getBoundingClientRect();
+        return JSON.stringify({x: r.x + r.width / 2, y: r.y + r.height / 2});
+    })()'''))
+    if "err" in loc:
+        print(json.dumps({"fatal": "start button not found"})); return
+    move_cursor(int(loc["x"] * dpr), int(loc["y"] * dpr)); time.sleep(0.9)
     phys_click(); time.sleep(0.6)
     st = json.loads(cdp.evaluate(JS_STATE))
     chk("menu_opened_by_click", st["startMenu"])

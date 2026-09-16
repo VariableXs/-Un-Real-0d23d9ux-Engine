@@ -927,6 +927,11 @@ fn spawn_session_watcher(app: tauri::AppHandle, key: String, root_pid: u32, _hwn
         with_registry(|m| {
             m.remove(&key);
         });
+        // M5：最大化缓存随会话一起清（防 hwnd 复用时误用旧状态）
+        MAX_STATE_CACHE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&e.0);
         // M1（R9）：第十二轮的「L2 宿主空壳收场」整块下线 —— L2 不再创建
         // Variable 自己的 WS_POPUP 宿主窗口，第三方窗口直接被桌面拥有，
         // `host` 恒为 None，不存在空壳泄漏。窗口消失 = 拥有关系自动失效。
@@ -1056,6 +1061,46 @@ fn pending_adopt_insert(h: isize) -> bool {
     g.insert(h)
 }
 
+/// M5：正在 attach 中的 hwnd（embed_adopt 幂等预留）。查重（注册表 + 在途集合）
+/// 与占位必须在**同一临界区**内原子完成——否则两个收编通道（launch 兜底 +
+/// 看门狗）会在 attach 完成前的窗口期双双通过查重（实机：同一 notepad 窗
+/// 200ms 内被收编两次 → 两个 embed_id → 双占位卡，v4 验证暴露）。
+#[cfg(windows)]
+static ADOPT_IN_FLIGHT: std::sync::LazyLock<Mutex<std::collections::HashSet<isize>>> =
+    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
+
+/// 原子预留：hwnd 未注册、embed_id 未占用、且无同 hwnd 在途 attach 时占位成功。
+#[cfg(windows)]
+fn adopt_reserve(h: isize, embed_id: &str) -> bool {
+    let mut g = ADOPT_IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner());
+    if g.contains(&h) {
+        return false;
+    }
+    let dup = with_registry(|m| m.values().any(|e| e.hwnd == h) || m.contains_key(embed_id));
+    if dup {
+        return false;
+    }
+    g.insert(h)
+}
+
+/// attach 结束（无论成败）必须释放预留；成功时注册表已接管查重。
+#[cfg(windows)]
+fn adopt_release(h: isize) {
+    ADOPT_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&h);
+}
+
+/// 收编通道（看门狗广播等）在派发前检查：同 hwnd 已有 attach 在途则不再派发。
+#[cfg(windows)]
+fn adopt_in_flight(h: isize) -> bool {
+    ADOPT_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&h)
+}
+
 /// M1（R9）：最近一次成功建立拥有关系所用的桌面窗口句柄。
 /// `embed_bounds` 这类命令拿不到 `AppHandle`，而坐标换算必须知道桌面客户区
 /// 原点在屏幕上的位置 —— 与其依赖进程级 OnceLock（首个会话来自弹窗收编时可能
@@ -1063,6 +1108,72 @@ fn pending_adopt_insert(h: isize) -> bool {
 /// 必然先经过它。
 #[cfg(windows)]
 static DESKTOP_HWND: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+
+/// M5：hwnd → 是否最大化（IsZoomed）的上次广播值。LOCATIONCHANGE 高频触发，
+/// 只在状态翻转（或缓存 miss = 新 hwnd 首见）时 emit，把事件风暴门控成零星广播。
+#[cfg(windows)]
+static MAX_STATE_CACHE: std::sync::LazyLock<Mutex<HashMap<isize, bool>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// M5：窗口矩形（GetWindowRect；含 Win11 不可见边框）→「桌面客户区物理像素」。
+/// **必须用 GDI 语义而非 DWM 扩展框**：embed_bounds 下行走 SetWindowPos（GDI
+/// 语义），回写也必须同语义 —— 否则每次「拖动/还原 → 回写 → 重同步」循环
+/// 窗口会漂 7px（Win11 不可见边框宽），实机 restore 对比暴露（M2 遗留错位，
+/// native-geo 一并修正）。MOVESIZEEND 与 LOCATIONCHANGE 广播共用同一换算。
+#[cfg(windows)]
+fn window_rect_desktop_phys(hwnd: windows::Win32::Foundation::HWND) -> Option<(i32, i32, i32, i32)> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindow};
+    let mut rect = windows::Win32::Foundation::RECT::default();
+    if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+        return None;
+    }
+    let Some(&dh) = DESKTOP_HWND.get() else { return None };
+    if !unsafe { IsWindow(hwnd_from_isize(dh)) }.as_bool() {
+        return None;
+    }
+    let mut origin = POINT { x: 0, y: 0 };
+    if !unsafe { ClientToScreen(hwnd_from_isize(dh), &mut origin) }.as_bool() {
+        return None;
+    }
+    Some((
+        rect.left - origin.x,
+        rect.top - origin.y,
+        (rect.right - rect.left).max(1),
+        (rect.bottom - rect.top).max(1),
+    ))
+}
+
+/// M5：读当前 IsZoomed + DWM 几何并广播 `embed://native-max`（重嵌后状态收敛、
+/// 以及任何需要「立刻回传真实状态」的场合）。缓存同步更新，防后续事件误判翻转。
+#[cfg(windows)]
+fn emit_native_max_state(app: &tauri::AppHandle, embed_id: &str, hwnd: isize) {
+    use tauri::Emitter;
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindow, IsZoomed};
+    let h = hwnd_from_isize(hwnd);
+    if !unsafe { IsWindow(h) }.as_bool() {
+        return;
+    }
+    let maximized = unsafe { IsZoomed(h) }.as_bool();
+    MAX_STATE_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(hwnd, maximized);
+    let Some((x, y, w, hh)) = window_rect_desktop_phys(h) else { return };
+    let _ = app.emit(
+        "embed://native-max",
+        serde_json::json!({
+            "embedId": embed_id,
+            "hwnd": hwnd,
+            "maximized": maximized,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": hh,
+        }),
+    );
+}
 
 #[cfg(windows)]
 fn pending_adopt_remove(h: isize) {
@@ -1092,6 +1203,10 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
     const EVENT_SYSTEM_MOVESIZEEND: u32 = 0x000B;
     const EVENT_SYSTEM_MINIMIZESTART: u32 = 0x0016;
     const EVENT_SYSTEM_MINIMIZEEND: u32 = 0x0017;
+    // M5：最大化/还原感知。Windows 没有专门的 "maximize" 事件；窗口位置/尺寸
+    // 一变就发 LOCATIONCHANGE（最大化、还原、拖动、缩放都会触发）。回调内用
+    // IsZoomed 对比缓存，只有状态翻转才广播 → 高频事件被门控成零星 emit。
+    const EVENT_OBJECT_LOCATIONCHANGE: u32 = 0x800B;
 
     /// M2（R9）：被桌面拥有的第三方窗口「用自己的标题栏拖动、自己的边框缩放、
     /// 自己的 − 按钮最小化」之后，VWM 的虚拟几何必须跟上 —— 否则任务栏镜像、
@@ -1108,10 +1223,7 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         _thread: u32,
         _time: u32,
     ) {
-        use windows::Win32::Foundation::POINT;
-        use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
-        use windows::Win32::Graphics::Gdi::ClientToScreen;
-        use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsWindow};
+        use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsZoomed};
 
         // 只关心顶层窗口对象（控件级事件直接丢弃——资源护栏）
         if id_object != OBJID_WINDOW.0 || id_child != 0 {
@@ -1120,6 +1232,7 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         if event != EVENT_SYSTEM_MOVESIZEEND
             && event != EVENT_SYSTEM_MINIMIZESTART
             && event != EVENT_SYSTEM_MINIMIZEEND
+            && event != EVENT_OBJECT_LOCATIONCHANGE
         {
             return;
         }
@@ -1142,36 +1255,54 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
         use tauri::Emitter;
 
         if event == EVENT_SYSTEM_MOVESIZEEND {
-            // 可见边界（DWM 扩展框；Win11 阴影不算）→ 屏幕坐标，
-            // 再换算成「桌面客户区物理像素」（与 embed_bounds 的输入同一坐标系）
-            let mut rect = windows::Win32::Foundation::RECT::default();
-            let got = DwmGetWindowAttribute(
-                hwnd,
-                DWMWA_EXTENDED_FRAME_BOUNDS,
-                &mut rect as *mut _ as *mut core::ffi::c_void,
-                std::mem::size_of::<windows::Win32::Foundation::RECT>() as u32,
-            )
-            .is_ok();
-            if !got && GetWindowRect(hwnd, &mut rect).is_err() {
-                return;
-            }
-            let Some(&dh) = DESKTOP_HWND.get() else { return };
-            if !IsWindow(hwnd_from_isize(dh)).as_bool() {
-                return;
-            }
-            let mut origin = POINT { x: 0, y: 0 };
-            if !ClientToScreen(hwnd_from_isize(dh), &mut origin).as_bool() {
-                return;
-            }
+            // 窗口矩形（GetWindowRect，GDI 语义）→「桌面客户区物理像素」——
+            // 与 embed_bounds 下行 SetWindowPos 同坐标系，防 DWM/GDI 错位漂 7px。
+            let Some((x, y, w, hh)) = window_rect_desktop_phys(hwnd) else { return };
             let _ = app.emit(
                 "embed://native-geo",
                 serde_json::json!({
                     "embedId": embed_id,
                     "hwnd": h,
-                    "x": rect.left - origin.x,
-                    "y": rect.top - origin.y,
-                    "w": (rect.right - rect.left).max(1),
-                    "h": (rect.bottom - rect.top).max(1),
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": hh,
+                }),
+            );
+        } else if event == EVENT_OBJECT_LOCATIONCHANGE {
+            // M5：最大化/还原同步。IsIconic 期间（最小化动画）矩形与样式位都
+            // 无意义（实机：Win11 记事本最小化动画中窗口缩到 185×27 且 IsZoomed
+            // 瞬间为 false → 产生「还原(iconic rect)→最大化」翻转对，会把
+            // iconic 矩形写进 VWM 的 restore 快照）——最小化语义已由 native-min
+            // 管辖，这里直接丢弃。
+            if IsIconic(hwnd).as_bool() {
+                return;
+            }
+            let maximized = IsZoomed(hwnd).as_bool();
+            let changed = {
+                let mut cache = MAX_STATE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+                let changed = cache.get(&h).copied() != Some(maximized);
+                cache.insert(h, maximized);
+                changed
+            };
+            if !changed {
+                return;
+            }
+            let Some((x, y, w, hh)) = window_rect_desktop_phys(hwnd) else { return };
+            crate::shell::applog::log(
+                "embed",
+                format!("会话 {embed_id}: hwnd={} 原生{}（几何 {x}x{y} {w}×{hh}）", h, if maximized { "最大化" } else { "还原" }),
+            );
+            let _ = app.emit(
+                "embed://native-max",
+                serde_json::json!({
+                    "embedId": embed_id,
+                    "hwnd": h,
+                    "maximized": maximized,
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": hh,
                 }),
             );
         } else {
@@ -1219,9 +1350,9 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
             dead_session
         });
         let Some((key, tp_id, was_dead)) = hit else { return };
-        // 已登记句柄不重复收编；同 hwnd 去抖
+        // 已登记句柄不重复收编；同 hwnd 去抖；attach 在途不再派发（M5 竞态修复）
         let already = with_registry(|m| m.values().any(|e| e.hwnd == h));
-        if already || !pending_adopt_insert(h) {
+        if already || adopt_in_flight(h) || !pending_adopt_insert(h) {
             return;
         }
         let Some(app) = HOOK_APP.get() else { return };
@@ -1279,6 +1410,21 @@ fn ensure_event_hook(app: &tauri::AppHandle) {
             crate::shell::applog::log("embed", "原生几何写回钩子安装失败（MOVESIZEEND/MINIMIZE 不可用）");
         } else {
             crate::shell::applog::log("embed", "原生几何写回钩子已安装（MOVESIZEEND/MINIMIZE）");
+        }
+        // M5：最大化/还原感知钩子（0x800B 不在 hook2 的 0x000B~0x0017 段内，单独注册）
+        let hook3 = SetWinEventHook(
+            EVENT_OBJECT_LOCATIONCHANGE,
+            EVENT_OBJECT_LOCATIONCHANGE,
+            HMODULE::default(),
+            Some(on_native_state),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+        if hook3.is_invalid() {
+            crate::shell::applog::log("embed", "最大化感知钩子安装失败（LOCATIONCHANGE 不可用）");
+        } else {
+            crate::shell::applog::log("embed", "最大化感知钩子已安装（LOCATIONCHANGE→native-max）");
         }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {
@@ -1457,7 +1603,7 @@ fn reembed_into_session(app: &tauri::AppHandle, key: &str, new_hwnd: isize) -> b
     if !own_by_desktop(app, new_hwnd) {
         return false;
     }
-    with_registry(|m| {
+    let ok = with_registry(|m| {
         match m.get_mut(key) {
             Some(e) => {
                 e.hwnd = new_hwnd;
@@ -1466,7 +1612,14 @@ fn reembed_into_session(app: &tauri::AppHandle, key: &str, new_hwnd: isize) -> b
             }
             None => false,
         }
-    })
+    });
+    if ok {
+        // M5：重嵌后立刻回传真实最大化态。EmbedBridge 对 max 态跳过几何下行
+        //（守卫见前端），VWM 的 state/几何必须靠这条显式广播收敛，否则应用
+        // 重建窗口后 VWM 还停留在旧 state 上。
+        emit_native_max_state(app, key, new_hwnd);
+    }
+    ok
 }
 
 /// 分层接入结果。
@@ -1677,11 +1830,13 @@ pub async fn embed_adopt(
     use windows::Win32::UI::WindowsAndMessaging::IsWindow;
     crate::shell::applog::log("adopt", format!("embed_adopt {tp_id}: hwnd={hwnd} root_pid={root_pid} embed_id={embed_id}"));
     pending_adopt_remove(hwnd);
-    if !unsafe { IsWindow(hwnd_from_isize(hwnd)) }.as_bool() {
+    // M5 幂等预留：查重与占位原子完成，堵住「守卫通过 → attach 未入表 →
+    // 第二通道守卫也通过」的 TOCTOU 竞态（实机双收编根因）。
+    if !adopt_reserve(hwnd, &embed_id) {
         return Ok(false);
     }
-    let already = with_registry(|m| m.values().any(|e| e.hwnd == hwnd) || m.contains_key(&embed_id));
-    if already {
+    if !unsafe { IsWindow(hwnd_from_isize(hwnd)) }.as_bool() {
+        adopt_release(hwnd);
         return Ok(false);
     }
     let dpi_fix = crate::shell::launcher::registry_snapshot(&st)
@@ -1689,7 +1844,11 @@ pub async fn embed_adopt(
         .find(|a| a.id == tp_id)
         .map(|a| a.dpi_fix)
         .unwrap_or(false);
-    match attach_by_tier(&app, &st, embed_id.clone(), tp_id.clone(), hwnd, root_pid, dpi_fix, None) {
+    let result =
+        attach_by_tier(&app, &st, embed_id.clone(), tp_id.clone(), hwnd, root_pid, dpi_fix, None);
+    // attach 已出临界区：无论成败都释放在途预留（成功后由注册表接管查重）
+    adopt_release(hwnd);
+    match result {
         Attach::Ok => {
             // R5 隔离底线：嵌入成功后重新断言桌面置顶（tp_launch 撤销过），
             // 防止 Windows 任务栏/shell 在兼容期露出（r5 实机复现）。
@@ -1898,6 +2057,11 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let key = norm_id(embed_id);
     if let Some(e) = with_registry(|map| map.remove(&key)) {
+        // M5：最大化缓存随会话一起清（防 hwnd 复用时误用旧状态）
+        MAX_STATE_CACHE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&e.hwnd);
         // M3：抓屏管道已删除；若窗口仍被藏屏外（旧版本 L3 会话遗留）则归还可见区
         if win::is_offscreen(e.hwnd) {
             win::restore_window(e.hwnd);
@@ -1941,6 +2105,11 @@ pub fn embed_close_all() -> CmdResult<usize> {
     let sessions = with_registry(|map| {
         map.drain().map(|(k, v)| (k, v)).collect::<Vec<_>>()
     });
+    // M5：全部会话清场 → 最大化缓存一并清空
+    MAX_STATE_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
     let n = sessions.len();
     for (_key, e) in &sessions {
         // M3：抓屏管道已删除；若窗口仍被藏屏外（旧版本 L3 会话遗留）则归还可见区
@@ -2337,6 +2506,42 @@ mod tests {
             m.remove(key);
         });
         assert!(!super::is_already_embedded(0x9c40), "会话结束后窗口应可再次被收编");
+    }
+
+    /// M5：adopt 在途预留的原子性 —— 同 hwnd 第二次预留必须失败（堵双收编
+    /// TOCTOU），释放后可再次预留；embed_id 已注册时同 hwnd 预留也必须失败。
+    #[cfg(windows)]
+    #[test]
+    fn adopt_in_flight_blocks_duplicate_reserve() {
+        let h = 0x9c41;
+        // 清场：确保测试 hwnd 不在预留集
+        super::adopt_release(h);
+        assert!(super::adopt_reserve(h, "m5-race-a"), "空闲 hwnd 首次预留应成功");
+        assert!(!super::adopt_reserve(h, "m5-race-b"), "在途 hwnd 的第二次预留必须被拒");
+        super::adopt_release(h);
+        assert!(super::adopt_reserve(h, "m5-race-c"), "释放后应可再次预留");
+        super::adopt_release(h);
+        // embed_id 已在注册表 → 拒绝（同 embed_id 重复 adopt 防护）
+        let key = "m5-race-registered";
+        with_registry(|m| {
+            m.insert(
+                key.into(),
+                super::EmbedSession {
+                    hwnd: 0x9c42,
+                    tp_id: "steam".into(),
+                    dpi_fix: false,
+                    last_dpi: 120,
+                    root_pid: 4322,
+                    pids: vec![4322],
+                    host: None,
+                },
+            );
+        });
+        assert!(!super::adopt_reserve(0x9c42, "m5-race-registered"), "已注册 embed_id 不得重复预留");
+        with_registry(|m| {
+            m.remove(key);
+        });
+        assert!(!super::adopt_in_flight(h), "测试收尾：hwnd 不应残留在途集");
     }
 
     /// 单例兜底收编：家族映像族 —— Steam 主 exe 必须带上 steamwebhelper
