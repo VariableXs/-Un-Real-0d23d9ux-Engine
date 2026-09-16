@@ -469,126 +469,52 @@ pub fn decide(region: Region, err: FaultError, touched: bool) -> DemandAction {
 }
 
 // ---------------------------------------------------------------------------
-// F059 — copy on write
+// F059 — copy on write · 页表位封装（任务13 收紧：位运算只经这些函数）
 // ---------------------------------------------------------------------------
 
-pub const MAX_COW_FRAMES: usize = 256;
-
-/// Reference counts for frames that are currently shared.
-pub struct CowTable {
-    frames: [u32; MAX_COW_FRAMES],
-    counts: [u32; MAX_COW_FRAMES],
-    len: usize,
-    copies: u64,
-    shared_hits: u64,
+/// 组装 4KiB 叶子项标志位（present 基础 + 可写 + NX）。
+///
+/// 不变量：phys 地址由调用方掩好；本函数只产出标志位，不掺地址。
+pub fn leaf_flags(writable: bool, nx: bool) -> u64 {
+    P_PRESENT | if writable { P_WRITE } else { 0 } | if nx { P_NX } else { 0 }
 }
 
-impl CowTable {
-    pub const fn new() -> CowTable {
-        CowTable {
-            frames: [0; MAX_COW_FRAMES],
-            counts: [0; MAX_COW_FRAMES],
-            len: 0,
-            copies: 0,
-            shared_hits: 0,
-        }
+/// 把一个 present 的页表项标记为 COW 共享只读。
+///
+/// 不变量：
+/// - `entry` 必须置 P_PRESENT（非 present 项无 COW 语义，返回 None）；
+/// - 输出清 W：后续写触发 #PF，交 `pfh::handle` 的 COW 路径断裂；
+/// - 输出置 P_COW：软件约定位（bit9，硬件忽略），仅作页表层标签；
+///   置位帧必须已在 `cow::CowTable` 登记+共享（两层一致性由调用方保证）。
+pub fn mark_cow(entry: u64) -> Option<u64> {
+    if entry & P_PRESENT == 0 {
+        return None;
     }
-
-    /// Mark a frame as shared; returns the new reference count.
-    pub fn share(&mut self, phys: u64) -> u32 {
-        let key = (phys >> 12) as u32;
-        for i in 0..self.len {
-            if self.frames[i] == key {
-                self.counts[i] += 1;
-                return self.counts[i];
-            }
-        }
-        if self.len < MAX_COW_FRAMES {
-            self.frames[self.len] = key;
-            self.counts[self.len] = 2; // the original owner + the new sharer
-            self.len += 1;
-        }
-        2
-    }
-
-    pub fn refcount(&self, phys: u64) -> u32 {
-        let key = (phys >> 12) as u32;
-        self.frames[..self.len]
-            .iter()
-            .position(|f| *f == key)
-            .map(|i| self.counts[i])
-            .unwrap_or(1)
-    }
-
-    /// One owner goes away. Returns the remaining count.
-    pub fn release(&mut self, phys: u64) -> u32 {
-        let key = (phys >> 12) as u32;
-        for i in 0..self.len {
-            if self.frames[i] == key {
-                self.counts[i] = self.counts[i].saturating_sub(1);
-                return self.counts[i];
-            }
-        }
-        0
-    }
-
-    /// Decide what a write fault on a shared page requires.
-    pub fn write_fault(&mut self, phys: u64) -> CowOutcome {
-        let rc = self.refcount(phys);
-        if rc <= 1 {
-            // Sole owner: just flip the writable bit, no copy.
-            self.shared_hits += 1;
-            CowOutcome::GrantWrite
-        } else {
-            self.copies += 1;
-            CowOutcome::CopyThenWrite
-        }
-    }
-
-    pub fn copies(&self) -> u64 {
-        self.copies
-    }
-
-    pub fn sole_owner_grants(&self) -> u64 {
-        self.shared_hits
-    }
-
-    pub fn tracked(&self) -> usize {
-        self.len
-    }
+    Some((entry & !P_WRITE) | P_COW)
 }
 
-impl Default for CowTable {
-    fn default() -> CowTable {
-        CowTable::new()
-    }
+/// 该项是否处于 COW 共享态。
+///
+/// 不变量：present 且 P_COW 置位且 W 清零三者齐备——防止半初始化
+/// 状态（如只置位未清 W）被误判为 COW。
+pub fn is_cow(entry: u64) -> bool {
+    entry & P_PRESENT != 0 && entry & P_COW != 0 && entry & P_WRITE == 0
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CowOutcome {
-    /// A copy is required before the write may proceed.
-    CopyThenWrite,
-    /// No copy needed — clear P_COW and set P_WRITE.
-    GrantWrite,
-}
-
-/// The flag transition a CoW resolution performs on the *new* copy.
+/// COW 断裂时*新副本*的标志转换：清 P_COW、置 W（独占可写）。
+///
+/// 不变量：输入必须是已断裂复制的 COW 项（`is_cow` 为真的项）；
+/// 调用前副本内容必须已逐字节复制完成，否则读到共享期数据。
 pub fn cow_flags_for_new_copy(entry: u64) -> u64 {
     (entry & !P_COW) | P_WRITE
 }
 
-/// The flag transition for the *original* page when a copy is made: it stays
-/// read-only but is no longer marked CoW (it now has a single owner).
+/// COW 断裂时*原页*的标志转换：保持只读、摘 P_COW（回到单所有者）。
+///
+/// 不变量：调用时计数表必须已 release 到独占；P_COW 摘除后该帧
+/// 不再参与共享判定（即使 W 仍清零）。
 pub fn cow_flags_for_original(entry: u64) -> u64 {
     (entry & !P_WRITE) & !P_COW
-}
-
-pub fn mark_cow(entry: u64) -> u64 {
-    (entry & !P_WRITE) | P_COW
-}
-
-pub fn is_cow(entry: u64) -> bool {
-    entry & P_COW != 0
 }
 
 // ---------------------------------------------------------------------------
@@ -873,31 +799,32 @@ mod tests {
     }
 
     #[test]
-    fn cow_reference_counting_and_flags() {
-        let mut t = CowTable::new();
-        let phys = 0x30_0000u64;
-        assert_eq!(t.refcount(phys), 1);
-        assert_eq!(t.share(phys), 2);
-        assert_eq!(t.share(phys), 3);
-        assert_eq!(t.refcount(phys), 3);
-        assert_eq!(t.write_fault(phys), CowOutcome::CopyThenWrite);
-        assert_eq!(t.release(phys), 2);
-        assert_eq!(t.release(phys), 1);
-        assert_eq!(t.write_fault(phys), CowOutcome::GrantWrite);
-        assert_eq!(t.copies(), 1);
-        assert_eq!(t.sole_owner_grants(), 1);
-        assert_eq!(t.tracked(), 1);
-
-        let entry = P_PRESENT | P_USER | 0x30_0000;
-        let cow = mark_cow(entry);
+    fn cow_flag_transitions_round_trip() {
+        let entry = P_PRESENT | P_USER | 0x30_0000 | P_WRITE;
+        // mark_cow：拒绝非 present；present 项清 W 置 P_COW。
+        assert_eq!(mark_cow(0), None);
+        assert_eq!(mark_cow(P_WRITE), None);
+        let cow = mark_cow(entry).unwrap();
         assert!(is_cow(cow));
         assert_eq!(cow & P_WRITE, 0, "shared pages are read-only");
+        // 断裂：新副本独占可写；原页保持只读并摘 P_COW。
         let fresh = cow_flags_for_new_copy(cow);
         assert_eq!(fresh & P_WRITE, P_WRITE);
         assert!(!is_cow(fresh));
         let original = cow_flags_for_original(cow);
         assert_eq!(original & P_WRITE, 0);
         assert!(!is_cow(original));
+        // is_cow 三条件：半初始化状态不得误判。
+        assert!(!is_cow(P_COW | P_WRITE), "W 置位即非 COW 态");
+        assert!(!is_cow(P_COW), "非 present 即非 COW 态");
+    }
+
+    #[test]
+    fn leaf_flags_compose_the_three_bits() {
+        assert_eq!(leaf_flags(false, false), P_PRESENT);
+        assert_eq!(leaf_flags(true, false), P_PRESENT | P_WRITE);
+        assert_eq!(leaf_flags(false, true), P_PRESENT | P_NX);
+        assert_eq!(leaf_flags(true, true), P_PRESENT | P_WRITE | P_NX);
     }
 
     #[test]

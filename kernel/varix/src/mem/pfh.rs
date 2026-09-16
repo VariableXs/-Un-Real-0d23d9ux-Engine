@@ -17,6 +17,7 @@
 //! 零 panic 契约：处理路径无 unwrap/无分配（除 pmm 帧），失败一律 Fatal
 //! 交回 idt 既有诊断——行为等价于接线前的 halt，只是先给可恢复者机会。
 
+use super::cow::{CowTable, ReleaseOutcome};
 use super::paging::{self, FaultError};
 
 const PAGE: u64 = 4096;
@@ -132,12 +133,17 @@ pub enum PfOutcome {
 }
 
 /// 四路处理主体：查登记 → decide → 执行。
+///
+/// `reclaim` 是归零回收回调（任务13）：COW 复制路径 `release` 后若
+/// 计数归零（并发 release 抢跑），帧已无所有者，经此回调归还 PMM——
+/// 宿主测试注入记录器，目标态接 `pmm::free_order`。
 pub fn handle(
     va: u64,
     err: FaultError,
     ops: &mut dyn PageTableOps,
     reg: &mut Registry,
-    cow: &mut paging::CowTable,
+    cow: &CowTable,
+    reclaim: &mut dyn FnMut(u64),
 ) -> PfOutcome {
     let idx = match reg.find(va) {
         Some(i) => i,
@@ -182,11 +188,12 @@ pub fn handle(
             };
             let rc = cow.refcount(old);
             if rc <= 1 {
-                // 已是独占者：只翻 W 位，不必复制。
+                // 已是独占者：只翻 W 位，不必复制（诊断记 steal）。
                 if !ops.set_writable(va, true) {
                     return PfOutcome::Fatal;
                 }
                 ops.flush(va);
+                cow.note_steal();
                 return PfOutcome::Resolved("COW-steal");
             }
             let Some(frame) = ops.alloc_zero_frame() else {
@@ -197,7 +204,12 @@ pub fn handle(
                 return PfOutcome::Fatal;
             }
             ops.flush(va);
-            cow.release(old);
+            cow.note_copy();
+            // 断裂后旧帧少一个所有者；并发 release 抢跑可能已把它送到
+            // 归零——Reclaimed 即由回收回调还帧（任务13 归零回收契约）。
+            if cow.release(old) == ReleaseOutcome::Reclaimed {
+                reclaim(old);
+            }
             PfOutcome::Resolved("COW")
         }
     }
@@ -322,9 +334,7 @@ mod real {
             let Some(lp) = leaf_ptr(root, va) else {
                 return false;
             };
-            let flags = paging::P_PRESENT
-                | if writable { paging::P_WRITE } else { 0 }
-                | if nx { paging::P_NX } else { 0 };
+            let flags = paging::leaf_flags(writable, nx);
             // SAFETY: leaf_ptr 保证指向当前 CR3 页表的 4KiB 叶槽。
             unsafe {
                 core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
@@ -390,7 +400,9 @@ mod real {
 use real::RealPt;
 
 static mut REGISTRY: Registry = Registry::new();
-static mut COW: paging::CowTable = paging::CowTable::new();
+/// COW 计数表（任务13 并发安全版）：SpinProtected 自带 Sync，无需
+/// static mut——锁内读改写，中断/多核上下文安全。
+static COW: CowTable = CowTable::new();
 
 /// idt 接入点：vector 14 先走这里；返回 true = 已修复，回触发点重试。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
@@ -401,12 +413,24 @@ pub fn on_page_fault(error_code: u64) -> bool {
         core::arch::asm!("mov {}, cr2", out(reg) cr2, options(nomem, nostack, preserves_flags));
     }
     let err = FaultError::from_bits(error_code);
-    // SAFETY: 引导期单核；#PF 可能在任意中断上下文，但本路径无锁、
-    // 只动当前 CR3 的页表与 PMM（PMM 自带自旋锁）。
+    // SAFETY: REGISTRY 为 static mut，引导期单核写路径；#PF 处理不重入
+    // 同一 Registry（页表操作走 HHDM 不缺页）。
     let out = unsafe {
-        let reg = &raw mut REGISTRY;
-        let cow = &raw mut COW;
-        handle(cr2, err, &mut RealPt, &mut *reg, &mut *cow)
+        let reg = &mut *(&raw mut REGISTRY);
+        handle(
+            cr2,
+            err,
+            &mut RealPt,
+            reg,
+            &COW,
+            &mut |phys| {
+                // 归零回收：帧无所有者，归还 PMM（free_order 失败即
+                // 泄漏一帧，如实 kwarn——不假装成功）。
+                if !crate::mem::pmm::free_order(phys, 0) {
+                    crate::kwarn!("pf: cow reclaim frame {:#x} rejected by pmm", phys);
+                }
+            },
+        )
     };
     match out {
         PfOutcome::Resolved(action) => {
@@ -459,35 +483,84 @@ pub fn target_selftest() -> usize {
         }
     }
 
-    // 3. COW：双 VA 共帧 → 各写一次 → 分家。
+    // 3. COW：双 VA 共帧 → 写满模式 → 分家逐字节保真 → 归零回收。
     let v1 = base + 32 * PAGE;
     let v2 = base + 33 * PAGE;
-    unsafe {
-        // 预写模式到共享帧（经 HHDM 直写物理）。
-        let phys1 = {
-            let reg = &raw mut REGISTRY;
-            let _ = &*reg;
-            RealPt.translate(v1).unwrap_or(0)
-        };
-        if phys1 != 0 {
-            let off = crate::limine::hhdm_offset().unwrap_or(0);
-            core::ptr::write_volatile((phys1 + off) as *mut u64, 0xDEAD_BEEF);
-            // 写 v1 → COW 分家（复制模式帧）
-            core::ptr::write_volatile(v1 as *mut u64, 0x1111_2222);
-            // 写 v2 → COW 分家（独占→steal 或复制）
-            core::ptr::write_volatile(v2 as *mut u64, 0x3333_4444);
-            let r1 = core::ptr::read_volatile(v1 as *const u64);
-            let r2 = core::ptr::read_volatile(v2 as *const u64);
-            if r1 == 0x1111_2222 && r2 == 0x3333_4444 {
-                pass += 1;
+    let cow_ok = unsafe {
+        let off = crate::limine::hhdm_offset().unwrap_or(0);
+        let phys1 = RealPt.translate(v1).unwrap_or(0);
+        if phys1 == 0 {
+            false
+        } else {
+            // 写满共享帧：512 × u64 确定性模式，覆盖整页 4096 字节。
+            for i in 0..512u64 {
+                core::ptr::write_volatile(
+                    (phys1 + off + i * 8) as *mut u64,
+                    0xC0FF_EE00_0000_0000 | i,
+                );
             }
+            // 写 v1 → COW 复制分家 → 新帧 = 断裂前内容（首 u64 被新写覆盖）。
+            core::ptr::write_volatile(v1 as *mut u64, 0x1111_2222);
+            let ok1 = (|| {
+                if core::ptr::read_volatile(v1 as *const u64) != 0x1111_2222 {
+                    return false;
+                }
+                let new1 = RealPt.translate(v1).unwrap_or(0);
+                if new1 == 0 || new1 == phys1 {
+                    return false; // 必须换新帧
+                }
+                for i in 0..512u64 {
+                    let want = if i == 0 {
+                        0x1111_2222
+                    } else {
+                        0xC0FF_EE00_0000_0000 | i
+                    };
+                    if core::ptr::read_volatile((new1 + off + i * 8) as *const u64) != want {
+                        return false;
+                    }
+                }
+                true
+            })();
+            // 写 v2 → 第二次断裂，同样逐字节保真。
+            core::ptr::write_volatile(v2 as *mut u64, 0x3333_4444);
+            let ok2 = (|| {
+                if core::ptr::read_volatile(v2 as *const u64) != 0x3333_4444 {
+                    return false;
+                }
+                let new2 = RealPt.translate(v2).unwrap_or(0);
+                if new2 == 0 || new2 == phys1 {
+                    return false;
+                }
+                for i in 0..512u64 {
+                    let want = if i == 0 {
+                        0x3333_4444
+                    } else {
+                        0xC0FF_EE00_0000_0000 | i
+                    };
+                    if core::ptr::read_volatile((new2 + off + i * 8) as *const u64) != want {
+                        return false;
+                    }
+                }
+                true
+            })();
+            // 归零回收：断裂两次后旧帧只剩原型计数（3-2=1）→ release
+            // 归零 → Reclaimed → 帧归还 PMM（free_order 拒绝即如实失败）。
+            let reclaim_ok = COW.release(phys1) == ReleaseOutcome::Reclaimed
+                && crate::mem::pmm::free_order(phys1, 0);
+            ok1 && ok2 && reclaim_ok
         }
+    };
+    if cow_ok {
+        pass += 1;
     }
 
     // 4. Guard（宿主验证 + fatal 路径归 idt 诊断）——目标态不真踩。
     pass += 1;
 
-    crate::kinfo!("pf: selftest {}/4 (MapZero/GrowStack/COW/guard-host)", pass);
+    crate::kinfo!(
+        "pf: selftest {}/4 (MapZero/GrowStack/COW[bytes+reclaim]/guard-host)",
+        pass
+    );
     pass
 }
 
@@ -499,18 +572,16 @@ fn scratch_setup() -> Option<(u64, bool)> {
     let base = ((vbase + vsize + 2 * 1024 * 1024) & !(2 * 1024 * 1024 - 1)) + 2 * 1024 * 1024;
     let reg = unsafe { &mut *(&raw mut REGISTRY) };
     // guard 页（base-PAGE）：登记但目标态永不触碰。
-    let _ = reg.register(
-        base - PAGE,
-        1,
-        paging::Region::guard(),
-        true,
-    );
+    let _ = reg.register(base - PAGE, 1, paging::Region::guard(), true);
     let _ = reg.register(base, 2, paging::Region::anonymous(), true);
     let _ = reg.register(base + 16 * PAGE, 2, paging::Region::stack(), true);
     // COW：v1/v2 都预映射到同一帧（只读），计数 3（原型 + 两共享者）。
-    let cow = unsafe { &mut *(&raw mut COW) };
+    let cow = &COW;
     let mut pt = RealPt;
     let frame = pt.alloc_zero_frame()?;
+    if !cow.attach(frame) {
+        return None;
+    }
     let ok1 = pt.map_frame(base + 32 * PAGE, frame, false, true);
     let ok2 = pt.map_frame(base + 33 * PAGE, frame, false, true);
     if !ok1 || !ok2 {
@@ -518,14 +589,9 @@ fn scratch_setup() -> Option<(u64, bool)> {
     }
     pt.flush(base + 32 * PAGE);
     pt.flush(base + 33 * PAGE);
-    cow.share(frame);
-    cow.share(frame);
-    let _ = reg.register(
-        base + 32 * PAGE,
-        2,
-        paging::Region::shared(),
-        true,
-    );
+    let _ = cow.share(frame);
+    let _ = cow.share(frame);
+    let _ = reg.register(base + 32 * PAGE, 2, paging::Region::shared(), true);
     Some((base, true))
 }
 
@@ -569,6 +635,14 @@ mod tests {
             let i = self.frame_index(phys).unwrap();
             self.frames[i][0..8].copy_from_slice(&val.to_le_bytes());
         }
+        fn write_frame(&mut self, phys: u64, data: &[u8; 4096]) {
+            let i = self.frame_index(phys).unwrap();
+            self.frames[i] = *data;
+        }
+        fn read_frame(&self, phys: u64) -> [u8; 4096] {
+            let i = self.frame_index(phys).unwrap();
+            self.frames[i]
+        }
         fn is_writable(&self, va: u64) -> bool {
             self.idx(va).map(|i| self.map[i].2).unwrap_or(false)
         }
@@ -610,14 +684,15 @@ mod tests {
     fn mapzero_resolves_lazy_touch() {
         let mut pt = FakePt::new();
         let mut reg = Registry::new();
-        let mut cow = paging::CowTable::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
         assert!(reg.register(0x4000_0000, 2, paging::Region::anonymous(), true).is_some());
         let err = FaultError {
             present: false,
             write: true,
             ..FaultError::default()
         };
-        let out = handle(0x4000_0000, err, &mut pt, &mut reg, &mut cow);
+        let out = handle(0x4000_0000, err, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p));
         assert_eq!(out, PfOutcome::Resolved("MapZero"));
         assert!(pt.translate(0x4000_0000).is_some());
         assert!(pt.is_writable(0x4000_0000));
@@ -627,14 +702,15 @@ mod tests {
     fn growstack_resolves_untouched_stack_page() {
         let mut pt = FakePt::new();
         let mut reg = Registry::new();
-        let mut cow = paging::CowTable::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
         assert!(reg.register(0x5000_0000, 4, paging::Region::stack(), true).is_some());
         let err = FaultError {
             present: false,
             write: true,
             ..FaultError::default()
         };
-        let out = handle(0x5000_0000, err, &mut pt, &mut reg, &mut cow);
+        let out = handle(0x5000_0000, err, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p));
         assert_eq!(out, PfOutcome::Resolved("GrowStack"));
         // 第二次触同一页：已映射已 touched → present+write 不再是 grow；
         // 此后真实 #PF 不发生（页已可写）。
@@ -644,13 +720,15 @@ mod tests {
     fn cow_splits_shared_frame_then_steals() {
         let mut pt = FakePt::new();
         let mut reg = Registry::new();
-        let mut cow = paging::CowTable::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
         let f = pt.alloc_zero_frame().unwrap();
         pt.write_phys(f, 0xABCD_1234);
         // 两个 VA 都只读映射到同一帧，计数 2。
         assert!(pt.map_frame(0x6000_0000, f, false, true));
         assert!(pt.map_frame(0x6000_1000, f, false, true));
-        cow.share(f);
+        assert!(cow.attach(f));
+        assert_eq!(cow.share(f), Ok(2));
         let reg_ok = reg.register(0x6000_0000, 2, paging::Region::shared(), true);
         assert!(reg_ok.is_some());
         let err_w = FaultError {
@@ -659,45 +737,86 @@ mod tests {
             ..FaultError::default()
         };
         // 写 VA1：COW 复制分家，内容保留。
-        let out = handle(0x6000_0000, err_w, &mut pt, &mut reg, &mut cow);
+        let out = handle(0x6000_0000, err_w, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p));
         assert_eq!(out, PfOutcome::Resolved("COW"));
         let new_phys = pt.translate(0x6000_0000).unwrap();
         assert_ne!(new_phys, f, "COW 后必须换新帧");
         assert!(pt.is_writable(0x6000_0000));
         // 写 VA2：rc==1 → 独占快路径（steal）。
-        let out = handle(0x6000_1000, err_w, &mut pt, &mut reg, &mut cow);
+        let out = handle(0x6000_1000, err_w, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p));
         assert_eq!(out, PfOutcome::Resolved("COW-steal"));
         assert!(pt.is_writable(0x6000_1000));
+        // 计数轨迹：attach+share=2 → VA1 复制断裂 release→1（剩 VA2）
+        // → VA2 独占快路径（steal 不 release，独占者继续持有）。因此
+        // 旧帧 rc=1 仍在册，reclaimed 必须为空。
+        assert!(reclaimed.is_empty(), "steal/复制路径旧帧仍被 v2 持有");
+        assert_eq!(cow.refcount(f), 1);
+    }
+
+    /// 验收口径：COW 断裂后页内容与断裂前逐字节一致（4096 字节全比对）。
+    #[test]
+    fn cow_break_keeps_content_byte_identical() {
+        let mut pt = FakePt::new();
+        let mut reg = Registry::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
+        let f = pt.alloc_zero_frame().unwrap();
+        // 断裂前内容：确定性模式铺满 4096 字节。
+        let mut want = [0u8; 4096];
+        for (i, b) in want.iter_mut().enumerate() {
+            *b = (i as u32 * 7 + (i >> 8) as u32 * 251) as u8;
+        }
+        pt.write_frame(f, &want);
+        assert!(pt.map_frame(0x6000_0000, f, false, true));
+        assert!(pt.map_frame(0x6000_1000, f, false, true));
+        assert!(cow.attach(f));
+        assert_eq!(cow.share(f), Ok(2));
+        assert!(reg.register(0x6000_0000, 2, paging::Region::shared(), true).is_some());
+        let err_w = FaultError {
+            present: true,
+            write: true,
+            ..FaultError::default()
+        };
+        let out = handle(0x6000_0000, err_w, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p));
+        assert_eq!(out, PfOutcome::Resolved("COW"));
+        let newf = pt.translate(0x6000_0000).unwrap();
+        assert_ne!(newf, f, "断裂必须换新帧");
+        assert_eq!(pt.read_frame(newf), want, "断裂后页内容必须逐字节一致");
+        // 旧帧仍被 v2 持有：不归零、不回收。
+        assert!(reclaimed.is_empty());
+        assert_eq!(cow.refcount(f), 1);
     }
 
     #[test]
     fn guard_and_foreign_va_are_fatal() {
         let mut pt = FakePt::new();
         let mut reg = Registry::new();
-        let mut cow = paging::CowTable::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
         assert!(reg.register(0x7000_0000, 1, paging::Region::guard(), true).is_some());
         let err = FaultError {
             present: false,
             write: true,
             ..FaultError::default()
         };
-        assert_eq!(handle(0x7000_0000, err, &mut pt, &mut reg, &mut cow), PfOutcome::Fatal);
+        assert_eq!(handle(0x7000_0000, err, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p)), PfOutcome::Fatal);
         // 未登记地址同样 Fatal（交回诊断路径）。
-        assert_eq!(handle(0xDEAD_0000, err, &mut pt, &mut reg, &mut cow), PfOutcome::Fatal);
+        assert_eq!(handle(0xDEAD_0000, err, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p)), PfOutcome::Fatal);
     }
 
     #[test]
     fn reserved_write_is_fatal_even_in_lazy_region() {
         let mut pt = FakePt::new();
         let mut reg = Registry::new();
-        let mut cow = paging::CowTable::new();
+        let cow = CowTable::new();
+        let mut reclaimed: Vec<u64> = Vec::new();
         assert!(reg.register(0x4000_0000, 2, paging::Region::anonymous(), true).is_some());
         let err = FaultError {
             present: false,
             reserved_write: true,
             ..FaultError::default()
         };
-        assert_eq!(handle(0x4000_0000, err, &mut pt, &mut reg, &mut cow), PfOutcome::Fatal);
+        assert_eq!(handle(0x4000_0000, err, &mut pt, &mut reg, &cow, &mut |p: u64| reclaimed.push(p)), PfOutcome::Fatal);
     }
 
     #[test]

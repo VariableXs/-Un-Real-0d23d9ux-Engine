@@ -5,6 +5,7 @@
 //! the watermarks must be armed before the first reclaim decision. `init` walks
 //! that order and reports the numbers it actually observed.
 
+pub mod cow;
 pub mod heap;
 pub mod mm;
 pub mod paging;

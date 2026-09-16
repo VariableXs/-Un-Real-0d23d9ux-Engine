@@ -37,7 +37,7 @@
 ## 阶段 2：内核欠账清零
 
 - [x] **任务 12**（AI-K）：#PF handler 接线——decide() 四路挂入 idt 路径；非法访问测试四路各走通（guard/Fault、COW、GrowStack、MapZero）。前置：无。✅2026-09-16 宿主 FakePt 单测 6 例（四路+reserved+登记表边界）；目标态 RealPt 真页表（拆大叶+invlpg）；idt isr_dispatch 接线；实机自检 MapZero/GrowStack/COW×2 全通（selftest 4/4，guard 走宿主+fatal 路径，SwapIn 如实 Fatal）。连带修复 iretq 错误码帧错位（可修复 #PF 返回必 #GP，common_entry 帧下移 8B 补 drop_error_code）与 fatal 诊断帧全 0 伪寄存器（read_trap_frame 真实化）。ktest 2757 绿/kcheck 0 告警，启动链自检 13/13 行为等价。凭证 docs/acceptance/双域-任务12-pf接线-selftest44-实机串口-2026-09-16.log。
-- [ ] **任务 13**（AI-K）：COW 基建——引用计数页+写时复制，计数归零竞态 ×1000 稳定。前置：任务 12。
+- [x] **任务 13**（AI-K）：COW 基建——引用计数页+写时复制，计数归零竞态 ×1000 稳定。前置：任务 12。✅2026-09-16 新建 mem/cow.rs：并发安全 CowTable（F043 ticket 锁 SpinProtected，替代无锁旧 paging::CowTable 并删除后者）；语义规范化 attach=1/share=+1/release=−1，归零回收 Reclaimed 恰好一个调用者（锁内 1→0 判定+槽紧缩 O(1)），#PF 路径经 reclaim 回调归还 PMM。宿主：race_to_zero_x1000（8 线程并发 release ×1000 轮，归零者恒 1）+share_storm（4000 并发 share 计数精确 1001）+断裂 4096 字节逐字一致+饱和拒绝/表满/审计共 10 用例。溢出策略显式声明（u32 饱和即拒绝绝不回绕）；位操作全封装（paging mark_cow→Option 校验 present/is_cow 三条件/cow_flags_for_*/leaf_flags，RealPt 改走封装），零内联位算术。实机 selftest 4/4（COW 路含 512×u64 模式逐字保真+归零回收还帧），ktest 2769 绿/kcheck 0 告警，boot complete 行为等价。凭证 docs/acceptance/双域-任务13-COW基建-race1000-逐字保真-实机串口-2026-09-16.txt。
 - [ ] **任务 14**（AI-K）：ring3 切换 + 最小 syscall（exit/串口 write）+ 用户态 hello。前置：任务 12。
 - [ ] **任务 15**（AI-K）：进程控制块 + spawn/wait + ELF 装载器；与 PE 共用映像装载原语抽象。前置：任务 14。
 - [ ] **任务 16**（AI-K）：块设备抽象 + NVMe 最小栈读写回环；QEMU NVMe 盘验证。前置：任务 14。
