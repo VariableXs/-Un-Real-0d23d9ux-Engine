@@ -11,6 +11,8 @@ pub mod mindmap;
 pub mod models;
 pub mod project_scan;
 pub mod settings_cmd;
+// 任务22（AI-B）：垫片协议 Rust 侧类型（单源 tools/shim-protocol.source.json 经 gen-shim-protocol.cjs 生成）。
+pub mod shim_protocol;
 pub mod cli;
 pub mod shell;
 pub mod state;

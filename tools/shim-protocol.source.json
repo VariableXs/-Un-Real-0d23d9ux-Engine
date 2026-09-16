@@ -1,0 +1,71 @@
+{
+  "$comment": "Tauri IPC 垫片协议单一事实源（任务22，AI-B）。改此文件后跑 node tools/gen-shim-protocol.cjs 同源再生成 TS/Rust 两侧类型，禁止手改生成物。前端运行时 src/lib/shim/shimInvoke.ts（AI-V）依赖本单源的 protocol.ts。",
+  "protocol": {
+    "name": "varix-shim",
+    "version": 1,
+    "minFrontendVersion": 1,
+    "minBackendVersion": 1,
+    "invokeNaming": "snake_case 命令名原文透传，垫片不改名",
+    "argsSerialization": "JSON 对象一次序列化；args 缺省视为空对象；禁止二段封装",
+    "errorModel": "三段式：OK(载荷直达) | MAPPED_ERR(inner) | MISSING(cmd)",
+    "eventChannel": "后端→前端 emit，频道名见 events[]，语义与 Tauri event 同构",
+    "changeProcess": "见 docs/双域-垫片协议规范-v1.md（版本号递增 + 双侧再生成 + 门禁）"
+  },
+  "errorCodes": [
+    { "code": "SHIM_INVALID_ARGS", "meaning": "参数未通过 schema 校验（缺字段/类型不符）", "retryable": false },
+    { "code": "SHIM_UNSUPPORTED", "meaning": "命令存在但当前后端能力不支持（capability=false）", "retryable": false },
+    { "code": "SHIM_TIMEOUT", "meaning": "内核服务未在预算时间内应答", "retryable": true },
+    { "code": "SHIM_BACKEND_DOWN", "meaning": "后端通道未建立/已断开", "retryable": true },
+    { "code": "SHIM_VERSION_MISMATCH", "meaning": "协议版本协商失败", "retryable": false },
+    { "code": "SHIM_PERM_DENIED", "meaning": "白名单裁决拒绝（默认拒绝面）", "retryable": false },
+    { "code": "SHIM_INTERNAL", "meaning": "垫片内部错误（映射表/序列化异常）", "retryable": true }
+  ],
+  "events": [
+    { "channel": "boot://event", "direction": "backend->frontend", "note": "启动阶段叙事，bootPhase 语义不变" },
+    { "channel": "settings://changed", "direction": "backend->frontend", "note": "设置双向同步" },
+    { "channel": "sys://applog", "direction": "backend->frontend", "note": "日志总线" },
+    { "channel": "sys://curtain", "direction": "backend->frontend", "note": "幕帘/维护模式" },
+    { "channel": "sys://quit-request", "direction": "backend->frontend", "note": "Del+Backspace 退出请求" },
+    { "channel": "sys://shortcut", "direction": "backend->frontend", "note": "快捷键事件" },
+    { "channel": "sys://taskbar-yield", "direction": "backend->frontend", "note": "任务栏让位" },
+    { "channel": "sys://display-changed", "direction": "backend->frontend", "note": "显示器变化" },
+    { "channel": "sys://anticheat", "direction": "backend->frontend", "note": "反作弊让位" },
+    { "channel": "embed://state", "direction": "backend->frontend", "note": "嵌入窗口状态" },
+    { "channel": "embed://popup", "direction": "backend->frontend", "note": "弹窗转发" },
+    { "channel": "embed://native-geo", "direction": "backend->frontend", "note": "原生窗几何回传" },
+    { "channel": "embed://native-max", "direction": "backend->frontend", "note": "最大化同步" },
+    { "channel": "embed://native-min", "direction": "backend->frontend", "note": "最小化同步" },
+    { "channel": "usb://progress", "direction": "backend->frontend", "note": "U 盘便携打包进度" },
+    { "channel": "usb://removed", "direction": "backend->frontend", "note": "拔盘事件" },
+    { "channel": "taskbar://state", "direction": "backend->frontend", "note": "任务栏状态机" },
+    { "channel": "watch://escape", "direction": "backend->frontend", "note": "双 Esc 看护" },
+    { "channel": "shim://input", "direction": "backend->frontend", "note": "输入事件总线（任务26 预留）" }
+  ],
+  "capabilities": [
+    { "flag": "kvStore", "note": "内核 KV 存储（localStorage 语义桥）" },
+    { "flag": "fsWorkspace", "note": "工作区文件读写" },
+    { "flag": "fsShared", "note": "共享分区白名单读写" },
+    { "flag": "windowMgr", "note": "VWM 真窗口管理" },
+    { "flag": "embed", "note": "拥有式嵌入" },
+    { "flag": "inputBus", "note": "输入事件总线" },
+    { "flag": "clipboard", "note": "剪贴板（白名单化）" },
+    { "flag": "processCtl", "note": "进程列表/终止" },
+    { "flag": "vault", "note": "保险箱（AES-256-GCM）" },
+    { "flag": "applog", "note": "日志总线" },
+    { "flag": "netStack", "note": "网络栈" },
+    { "flag": "audioOut", "note": "音频输出" },
+    { "flag": "displayCtl", "note": "显示控制（亮度/分辨率）" },
+    { "flag": "powerCtl", "note": "电源动作" },
+    { "flag": "taskQueue", "note": "传输队列" },
+    { "flag": "scheduler", "note": "定时任务" },
+    { "flag": "extLoader", "note": "扩展/插件装载" },
+    { "flag": "openhubGateway", "note": "openhub 网关" },
+    { "flag": "wineChannel", "note": "Wine 兼容层通道" },
+    { "flag": "engineVm", "note": "隐形 Windows 引擎通道" }
+  ],
+  "hello": {
+    "$comment": "版本协商：前端启动先调 shim_hello（见 shimInvoke.ts），返回双方版本与能力位；protocolVersion 不一致或 backendVersion < min 即 SHIM_VERSION_MISMATCH 并走降级面",
+    "request": { "frontendVersion": 1 },
+    "response": { "protocolVersion": 1, "backendVersion": 1, "capabilities": ["kvStore"] }
+  }
+}
