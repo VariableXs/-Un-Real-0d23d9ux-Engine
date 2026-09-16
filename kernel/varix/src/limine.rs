@@ -611,6 +611,17 @@ pub fn executable_address() -> Option<(u64, u64)> {
     }
 }
 
+/// 内核映像的虚拟地址范围 (virtual_base, image_bytes)。
+/// 任务12 pfh scratch 区计算用：映像之上留间隙登记可修复区域。
+pub fn executable_address_range() -> Option<(u64, u64)> {
+    let (_, vbase) = executable_address()?;
+    let f = executable_file()?;
+    if f.address.is_null() || f.size == 0 {
+        return None;
+    }
+    Some((vbase, f.size))
+}
+
 pub fn cmdline() -> &'static str {
     unsafe {
         let resp = response_of(&raw const EXECUTABLE_FILE_REQUEST);

@@ -8,6 +8,7 @@
 pub mod heap;
 pub mod mm;
 pub mod paging;
+pub mod pfh;
 pub mod pmm;
 
 // --- VARIABLE-200 AI-01 · F001 每进程地址空间 --------------------------------

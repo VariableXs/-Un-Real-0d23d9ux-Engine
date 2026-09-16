@@ -498,6 +498,67 @@ fn fault_addr() -> u64 {
     }
 }
 
+/// Frame slot offsets above `rsp` (= the naked wrapper's `rbp`):
+/// `[rsp+8]` is the vector the stub pushed; the CPU frame follows.
+/// Error-code exceptions lay out as `[16]=code [24]=rip [32]=cs [40]=rflags
+/// [48]=rsp [56]=ss`; plain vectors start at RIP on `[16]`.
+///
+/// The common entry's return path drops exactly one slot (the pushed vector)
+/// before `iretq`, so an error code left in the frame would be popped as RIP —
+/// the first recoverable #PF return used to #GP exactly that way. A handler
+/// that resolves a fault must call [`drop_error_code`] before returning: the
+/// five CPU-pushed slots slide down over the code and `iretq` sees RIP again.
+pub fn drop_error_code(rsp: u64) {
+    // SAFETY: `rsp` points at the wrapper's saved-register base; slots +16..+64
+    // are the CPU frame the interrupted context owns until we `iretq` back.
+    unsafe {
+        core::ptr::copy(
+            (rsp + 24) as *const u64,
+            (rsp + 16) as *mut u64,
+            5, // rip, cs, rflags, rsp, ss
+        );
+    }
+}
+
+/// Build the diagnosis frame for a fatal exception: callee-saved registers
+/// never enter the wrapper (the Rust dispatcher preserves them by ABI), but
+/// rbp is the wrapper's first push and the nine volatiles sit just below it.
+pub fn read_trap_frame(vector: u64, rsp: u64) -> TrapFrame {
+    let read = |off: i64| -> u64 {
+        // SAFETY: slots inside the wrapper's own frame, valid until return.
+        unsafe { core::ptr::read((rsp as i64 + off) as *const u64) }
+    };
+    let has = has_error_code(vector as u8);
+    let cpu = |i: usize| -> u64 { read(16 + 8 * i as i64) };
+    TrapFrame {
+        // r12-r15 stay in the interrupted code (callee-saved, ABI-preserved).
+        r15: 0,
+        r14: 0,
+        r13: 0,
+        r12: 0,
+        r11: read(-72),
+        r10: read(-64),
+        r9: read(-56),
+        r8: read(-48),
+        rbp: read(0),
+        rdi: read(-40),
+        rsi: read(-32),
+        rdx: read(-24),
+        rcx: read(-16),
+        rax: read(-8),
+        // rbx（连同 r12–r15）是 callee-saved，wrapper 不保存——中断现场原值
+        // 由被中断代码自己持有；dump 里如实置 0 并不回写任何东西。
+        rbx: 0,
+        vector,
+        error_code: if has { cpu(0) } else { 0 },
+        rip: if has { cpu(1) } else { cpu(0) },
+        cs: if has { cpu(2) } else { cpu(1) },
+        rflags: if has { cpu(3) } else { cpu(2) },
+        rsp: if has { cpu(4) } else { cpu(3) },
+        ss: if has { cpu(5) } else { cpu(4) },
+    }
+}
+
 /// The single Rust entry every stub reaches. `vector` is the number the stub
 /// pushed; `rsp` points at it (the CPU's own frame sits just above).
 ///
@@ -518,6 +579,13 @@ extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
                 (0u64, core::ptr::read((rsp + 16) as *const u64))
             }
         };
+        // 任务12：#PF 先交 demand-paging 决策路径（MapZero/COW/GrowStack/
+        // Guard 四路）；可修复则移除错误码后 iretq 回触发点重试，不可修复
+        // 才走诊断。错误码不落盘的话 common_entry 会把它当 RIP 弹出。
+        if vector == 14 && crate::mem::pfh::on_page_fault(code) {
+            drop_error_code(rsp);
+            return;
+        }
         let cr2: u64 = fault_addr();
         crate::kerror!(
             "fatal exception {} err={:#x} rip={:#x} cr2={:#x} — halting",
@@ -526,11 +594,7 @@ extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
             rip,
             cr2
         );
-        let frame = TrapFrame {
-            vector,
-            rsp,
-            ..TrapFrame::default()
-        };
+        let frame = read_trap_frame(vector, rsp);
         let mut buf = [0u8; 768];
         let n = dump_frame(&frame, &mut buf);
         if let Some(c) = crate::console::installed_ref() {
@@ -958,5 +1022,71 @@ mod tests {
         let mut out = [0u8; 16];
         let n = dump_frame(&f, &mut out);
         assert_eq!(n, 16);
+    }
+
+    /// 任务12：可恢复 #PF 返回前必须移除错误码，否则 iretq 把它当 RIP。
+    #[test]
+    fn drop_error_code_realigns_the_iretq_frame() {
+        // wrapper rsp 处布局：[0]=saved rbp [1]=vector [2]=err [3]=rip
+        // [4]=cs [5]=rflags [6]=rsp [7]=ss
+        let mut buf: [u64; 8] = [0xAA, 14, 0x2, 0x1234, 0x8, 0x202, 0x7F00, 0x10];
+        let base = buf.as_mut_ptr() as u64;
+        drop_error_code(base);
+        assert_eq!(buf[2], 0x1234, "RIP slides into the code slot");
+        assert_eq!(buf[3], 0x8);
+        assert_eq!(buf[4], 0x202);
+        assert_eq!(buf[5], 0x7F00);
+        assert_eq!(buf[6], 0x10);
+    }
+
+    #[test]
+    fn read_trap_frame_reads_saved_and_cpu_slots() {
+        let mut mem = [0u64; 32];
+        let center = 16usize; // mem[center] = wrapper rsp（saved rbp 槽）
+        let base = mem.as_mut_ptr() as u64 + (center * 8) as u64;
+        // 9 个已保存 volatile（rsp-72 → r11 … rsp-8 → rax）+ saved rbp。
+        mem[center - 9] = 0x111;
+        mem[center - 8] = 0x110;
+        mem[center - 7] = 0x109;
+        mem[center - 6] = 0x108;
+        mem[center - 5] = 0x107;
+        mem[center - 4] = 0x106;
+        mem[center - 3] = 0x105;
+        mem[center - 2] = 0x104;
+        mem[center - 1] = 0x103;
+        mem[center] = 0x100;
+        mem[center + 1] = 14;
+        // 带错误码的 CPU 帧：err, rip, cs, rflags, rsp, ss
+        mem[center + 2] = 0x2;
+        mem[center + 3] = 0xCAF0;
+        mem[center + 4] = 0x8;
+        mem[center + 5] = 0x202;
+        mem[center + 6] = 0x7F00;
+        mem[center + 7] = 0x10;
+        let f = read_trap_frame(14, base);
+        assert_eq!(f.vector, 14);
+        assert_eq!(f.r11, 0x111);
+        assert_eq!(f.rax, 0x103);
+        assert_eq!(f.rbp, 0x100);
+        assert_eq!(f.error_code, 0x2);
+        assert_eq!(f.rip, 0xCAF0);
+        assert_eq!(f.cs, 0x8);
+        assert_eq!(f.rflags, 0x202);
+        assert_eq!(f.rsp, 0x7F00);
+        assert_eq!(f.ss, 0x10);
+        // 无错误码向量（如时钟 32）：CPU 帧直接从 RIP 开始。
+        mem[center + 1] = 32;
+        mem[center + 2] = 0xBEEF; // rip
+        mem[center + 3] = 0x8; // cs
+        mem[center + 4] = 0x302; // rflags
+        mem[center + 5] = 0x8F00; // rsp
+        mem[center + 6] = 0x10; // ss
+        let g = read_trap_frame(32, base);
+        assert_eq!(g.error_code, 0);
+        assert_eq!(g.rip, 0xBEEF);
+        assert_eq!(g.cs, 0x8);
+        assert_eq!(g.rflags, 0x302);
+        assert_eq!(g.rsp, 0x8F00);
+        assert_eq!(g.ss, 0x10);
     }
 }

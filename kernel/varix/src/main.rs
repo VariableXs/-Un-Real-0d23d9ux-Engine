@@ -220,6 +220,15 @@ fn boot() -> ! {
     let mem_state = varix::mem::init();
     varix::mem::render_to_console(&mem_state);
 
+    // --- 任务12 · #PF handler 内核自检 --------------------------------------
+    // 登记 scratch 区后故意踩出真 #PF：MapZero/GrowStack/COW 三路端到端
+    // 走通（Guard/Fault 路由由宿主测试+诊断路径覆盖）。idt 已在 cpu::init
+    // 装好，vector 14 的决策路径此时开始生效。
+    let pf_pass = varix::mem::pfh::target_selftest();
+    if pf_pass < 3 {
+        varix::kwarn!("pf: selftest below pass bar ({}/4)", pf_pass);
+    }
+
     // --- boot-select 非默认项执行点（双域总案·阶段0 任务2）-----------------
     // 内存域上线后再调 UEFI Runtime Services：SetVariable/ResetSystem 需要
     // 可执行、已映射的运行期区域；此前调用会在部分固件上三重故障复位。
