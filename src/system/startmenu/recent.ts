@@ -56,6 +56,12 @@ export function clearRecent(): void {
   persist([]);
 }
 
+/** M4-B：跨窗失效（storage 事件对端刷新；多窗各自缓存 → 读侧重取 localStorage）。 */
+export function reloadRecent(): void {
+  cache = null;
+  for (const l of listeners) l();
+}
+
 export function useRecent(): RecentEntry[] {
   return useSyncExternalStore(
     (cb) => {

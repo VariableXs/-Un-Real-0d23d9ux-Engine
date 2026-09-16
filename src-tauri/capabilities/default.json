@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Variable desktop environment + four standalone app windows",
-  "windows": ["desktop", "app-write", "app-mind", "app-code", "app-fate", "explorer", "explorer-*", "recycle"],
+  "windows": ["desktop", "taskbar", "app-write", "app-mind", "app-code", "app-fate", "explorer", "explorer-*", "recycle"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",

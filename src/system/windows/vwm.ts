@@ -1,6 +1,7 @@
 import { desktopAppLabel } from "../desktop-icons/DesktopIcons";
 import { getThirdApps } from "../launcher/thirdApps";
 import { createStore } from "../../lib/store";
+import { forwardVwm, isTaskbarProjection } from "../../state/projection";
 import { parseScreenDetails, sameMonitor, screenShift } from "./winfeel";
 import type { GuideResult, ScreenInfo } from "./winfeel";
 import type { AppMode } from "../../state/uiStore";
@@ -222,8 +223,13 @@ function patch(p: Partial<VwmState> | ((s: VwmState) => Partial<VwmState>)): voi
   vwmStore.setState(p);
 }
 
-/** 打开一款软件的虚拟窗口：已有未最小化实例 → 聚焦；否则新建实例（多开）。 */
+/** 打开一款软件的虚拟窗口：已有未最小化实例 → 聚焦；否则新建实例（多开）。
+ *  M4-B：任务栏投影窗内调用 → 转发桌面权威窗执行（本地 store 只读投影）。 */
 export function openVwmApp(app: VwmApp, opts?: { forceNew?: boolean }): void {
+  if (isTaskbarProjection()) {
+    forwardVwm("openVwmApp", [app, opts ?? null]);
+    return;
+  }
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === app);
   if (!opts?.forceNew && mine.length > 0) {
@@ -238,8 +244,13 @@ export function openVwmApp(app: VwmApp, opts?: { forceNew?: boolean }): void {
  * 打开系统窗口（文件管理器 / 回收站）的虚拟窗口：
  * - 回收站：单实例（已存在 → 聚焦）
  * - 文件管理器：无 path → 已有实例聚焦（Windows 习惯）；带 path → 新开实例定位
+ *  M4-B：任务栏投影窗内调用 → 转发桌面权威窗执行。
  */
 export function openVwmSystem(kind: "explorer" | "recycle" | "taskman", path?: string): void {
+  if (isTaskbarProjection()) {
+    forwardVwm("openVwmSystem", [kind, path ?? null]);
+    return;
+  }
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === kind);
   if (mine.length > 0 && (kind === "recycle" || !path)) {
@@ -313,8 +324,13 @@ function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {
   return cands.reduce((a, b) => (a.z >= b.z ? a : b)).id;
 }
 
-/** 聚焦窗口（置顶 + 取消最小化；批次F：聚焦即解除隐藏——任务栏点击隐藏窗口 = 恢复）。Z-36：置顶窗口始终浮在焦点窗口之上。 */
+/** 聚焦窗口（置顶 + 取消最小化；批次F：聚焦即解除隐藏——任务栏点击隐藏窗口 = 恢复）。Z-36：置顶窗口始终浮在焦点窗口之上。
+ *  M4-B：任务栏投影窗内调用 → 转发桌面权威窗执行。 */
 export function focusVwmWin(id: string): void {
+  if (isTaskbarProjection()) {
+    forwardVwm("focusVwmWin", [id]);
+    return;
+  }
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w) return;
@@ -341,7 +357,12 @@ export function pointerFocusVwm(id: string): void {
   focusVwmWin(id);
 }
 
+/** M4-B：任务栏投影窗内调用 → 转发桌面权威窗执行（关闭动画在权威窗播放）。 */
 export function closeVwmWin(id: string): void {
+  if (isTaskbarProjection()) {
+    forwardVwm("closeVwmWin", [id]);
+    return;
+  }
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w || s.closing.includes(id)) return;
@@ -644,8 +665,13 @@ export function setVwmSnapPreview(r: VwmRect | null): void {
 }
 
 /** 任务栏图标点击（Windows 习惯）：无窗口→打开；全最小化→恢复最上层；
- *  聚焦中→最小化；否则→聚焦最上层。 */
+ *  聚焦中→最小化；否则→聚焦最上层。
+ *  M4-B：任务栏投影窗内调用 → 转发桌面权威窗执行。 */
 export function taskbarClickVwm(app: VwmApp): void {
+  if (isTaskbarProjection()) {
+    forwardVwm("taskbarClickVwm", [app]);
+    return;
+  }
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === app);
   if (mine.length === 0) {

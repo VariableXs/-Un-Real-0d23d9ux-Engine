@@ -83,6 +83,11 @@ fn with_registry<R>(f: impl FnOnce(&mut HashMap<String, EmbedSession>) -> R) -> 
     f(map)
 }
 
+/// 当前收编会话数（M4 任务栏状态机输入：>0 = 正在使用第三方软件 → 收起任务栏）。
+pub fn embedded_count() -> usize {
+    with_registry(|m| m.len())
+}
+
 /// 旧单嵌入口兼容：缺省 embed_id 一律映射 "0"。
 fn norm_id(embed_id: Option<String>) -> String {
     embed_id.unwrap_or_else(|| "0".to_string())
@@ -1494,6 +1499,21 @@ fn attach_by_tier(
     target: Option<&str>,
 ) -> Attach {
     use crate::shell::compat_probe::CompatTier;
+
+    // M4-5：反作弊/守护服务不强行嵌入（EasyAntiCheat/BattlEye/Vanguard/FACEIT…）。
+    // 这类进程对句柄注入/样式改动高度敏感，嵌入尝试既可能触发游戏保护又无收益
+    // → 按 Skip 处理：软件继续以独立窗口运行，期间 Windows 痕迹已由 taskbar_win 清除。
+    if let Some(exe) = crate::shell::winman::process_image_lower(root_pid) {
+        if crate::shell::winman::is_anticheat_image(&exe) {
+            crate::shell::applog::log(
+                "embed",
+                format!(
+                    "attach {tp_id}: root_pid={root_pid} exe={exe} ∈ 反作弊名单 → 不强行嵌入，独立窗口运行"
+                ),
+            );
+            return Attach::Skip { reason: format!("anticheat:{exe}") };
+        }
+    }
 
     // 批次C-6：分级探测（改样式前采样；结果持久化 apps.json，用户覆盖最高优先）
     let compat = crate::shell::compat_probe::probe_and_persist(st, &tp_id, hwnd, target);

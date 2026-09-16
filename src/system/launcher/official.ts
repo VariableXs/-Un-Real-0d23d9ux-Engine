@@ -41,6 +41,11 @@ export function useUninstalledOfficial(): Partial<Record<AppMode, number>> {
   return useStore(officialStore, (s) => s.uninstalled);
 }
 
+/** M4-B：跨窗失效（storage 事件对端重读 localStorage；卸载操作发生在桌面窗）。 */
+export function reloadOfficial(): void {
+  officialStore.setState({ uninstalled: load() });
+}
+
 export function isOfficialUninstalled(app: AppMode): boolean {
   return officialStore.getState().uninstalled[app] !== undefined;
 }

@@ -743,3 +743,119 @@ fn anticheat_running() -> bool {
         found
     }
 }
+
+/// 按 pid 查进程映像名（小写）。Toolhelp 快照单次查询。
+#[cfg(windows)]
+pub(crate) fn process_image_lower(pid: u32) -> Option<String> {
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    if pid == 0 {
+        return None;
+    }
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return None;
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut found = None;
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                if entry.th32ProcessID == pid {
+                    found = Some(
+                        String::from_utf16_lossy(
+                            &entry.szExeFile[..entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(0)],
+                        )
+                        .to_lowercase(),
+                    );
+                    break;
+                }
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = windows::Win32::Foundation::CloseHandle(snap);
+        found
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn process_image_lower(_pid: u32) -> Option<String> {
+    None
+}
+
+/// 进程映像是否命中反作弊/守护服务名单（M4：这类软件不强行嵌入）。
+#[cfg(windows)]
+pub(crate) fn is_anticheat_image(exe_lower: &str) -> bool {
+    ANTICHEAT_PROCESSES.contains(&exe_lower)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn is_anticheat_image(_exe_lower: &str) -> bool {
+    false
+}
+
+#[cfg(all(test, windows))]
+mod anticheat_tests {
+    use super::*;
+
+    /// M4-D：反作弊进程映像精确匹配（小写全名，非子串）。
+    #[test]
+    fn anticheat_names_match_exactly() {
+        assert!(is_anticheat_image("easyanticheat.exe"));
+        assert!(is_anticheat_image("easyanticheat_eos.exe"));
+        assert!(is_anticheat_image("beservice.exe"));
+        assert!(is_anticheat_image("beservice_x64.exe"));
+        assert!(is_anticheat_image("vanguard.exe"));
+        assert!(is_anticheat_image("vgc.exe"));
+        assert!(is_anticheat_image("faceitclient.exe"));
+        assert!(is_anticheat_image("eseaclient.exe"));
+        assert!(is_anticheat_image("rainbowsix_vc.exe"));
+    }
+
+    /// M4-D：普通软件不误伤（含前缀相近但非同一进程的）。
+    #[test]
+    fn normal_processes_not_flagged() {
+        assert!(!is_anticheat_image("notepad.exe"));
+        assert!(!is_anticheat_image("steam.exe"));
+        assert!(!is_anticheat_image("steamwebhelper.exe"));
+        assert!(!is_anticheat_image("wallpaperui.exe"));
+        assert!(!is_anticheat_image("explorer.exe"));
+        assert!(!is_anticheat_image("variable.exe"));
+    }
+
+    /// M4-D：名单是精确匹配而非子串——"beservice.exe" 命中但
+    /// "xbeservice.exe.exe" 这类伪装名不靠子串误判（嵌入决策不凭模糊特征）。
+    #[test]
+    fn matching_is_exact_not_substring() {
+        // 子串包含关系不会误命中
+        assert!(!is_anticheat_image("mybeservice.exe"));
+        assert!(!is_anticheat_image("easyanticheat.exe.bak"));
+        // 大小写敏感：调用方约定传小写（process_image_lower 已 lowercase）
+        assert!(!is_anticheat_image("BEService.exe"));
+        // 空串 / 带路径不命中
+        assert!(!is_anticheat_image(""));
+        assert!(!is_anticheat_image("C:/Windows/beservice.exe"));
+    }
+
+    /// M4-D：名单内容为全小写规范形（新增条目忘记小写会导致永远不命中）。
+    #[test]
+    fn list_entries_are_canonical_lowercase() {
+        for name in ANTICHEAT_PROCESSES {
+            assert_eq!(
+                *name,
+                name.to_lowercase(),
+                "ANTICHEAT_PROCESSES 条目必须全小写: {name}"
+            );
+            assert!(
+                name.ends_with(".exe"),
+                "ANTICHEAT_PROCESSES 条目必须带 .exe 后缀: {name}"
+            );
+        }
+    }
+}

@@ -141,6 +141,9 @@ pub fn run() {
             if let Some(true) = shell::directshell::boot_selfcheck() {
                 log_line(&app.state::<AppState>(), "D-2 selfcheck: shell crash >3, reverted to explorer");
             }
+            // M4：任务栏独立原生顶层窗 + 隐藏 Windows 任务栏/工作区全屏（痕迹清除）
+            // + 收起/呼出状态机。放 setup 末尾：上述任一初始化失败都不影响 M4 组件。
+            shell::taskbar_win::init(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -160,6 +163,11 @@ pub fn run() {
                     log_line(&st, &format!("window DESTROYED {who}"));
                     // X-1 扩展崩溃隔离：宿主 webview 死亡只标记扩展卡，主进程无感
                     shell::extensions::mark_crashed(window.label());
+                    // M4：桌面主窗销毁 → 任务栏窗一并关闭（否则 app 因它存活无法退出）。
+                    // 任务栏/工作区恢复由 RunEvent::Exit + TraceGuard 双保险执行。
+                    if window.label() == "desktop" {
+                        shell::taskbar_win::close_taskbar_window(window.app_handle());
+                    }
                 }
                 // 批次0（规格 10.1）：桌面窗口获得焦点 → 自动恢复置顶覆盖。
                 // 启动第三方软件时会暂时撤销置顶让其浮于桌面之上，回到桌面即恢复。
@@ -799,6 +807,9 @@ pub fn run() {
             shell::sysmaint::dep_audit_status,
             // ---- SINGULARITY-100 奇点计划（Q-01..Q-100 六组本地命令）----
             shell::singularity::singu_pulse,
+            // ---- M4 任务栏独立窗（hitmap 上报 / desktop ready 通知）----
+            shell::taskbar_win::taskbar_report_hitmap_cmd,
+            shell::taskbar_win::taskbar_desktop_ready_cmd,
             shell::singularity::singu_temp_scan,
             shell::singularity::singu_temp_clear,
             shell::singularity::singu_zone_check,
@@ -812,11 +823,26 @@ pub fn run() {
         .build(tauri::generate_context!());
     match app {
         Ok(app) => {
+            // M4 恢复兜底：app.run 返回（正常退出或 panic 展开到 main）后，
+            // 无论 RunEvent::Exit 是否到达都执行一次 Windows 任务栏/工作区恢复。
+            struct TraceGuard;
+            impl Drop for TraceGuard {
+                fn drop(&mut self) {
+                    #[cfg(windows)]
+                    shell::taskbar_win::restore_windows_traces();
+                }
+            }
+            let _m4_trace_guard = TraceGuard;
             app.run(|_app, event| {
                 // L-1：VM 档引擎退出 → 通知宿主引导器安全卸盘
                 #[cfg(feature = "vm-agent")]
                 if let tauri::RunEvent::Exit = event {
                     vm_agent::notify_host_exit();
+                }
+                // M4：退出恢复 Windows 任务栏可见性与原工作区（TraceGuard 再兜一层）
+                #[cfg(windows)]
+                if let tauri::RunEvent::Exit = event {
+                    shell::taskbar_win::restore_windows_traces();
                 }
                 // D-1：Shell 模式下回收 explorer 服务进程（零残留）
                 #[cfg(windows)]

@@ -24,6 +24,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         desktop: html("desktop"),
+        taskbar: html("taskbar"),
         "app-write": html("app-write"),
         "app-mind": html("app-mind"),
         "app-code": html("app-code"),

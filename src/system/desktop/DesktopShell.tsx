@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow, getAllWindows } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { HardDrive, X } from "lucide-react";
 import { useI18n } from "../../i18n";
 import type { Settings } from "../../lib/settings";
 import { errMessage, ipc } from "../../lib/ipc";
-import { pushToast, uiStore, useUi, type AppMode, type QuickSection } from "../../state/uiStore";
+import { pushToast, uiStore, type AppMode, type QuickSection } from "../../state/uiStore";
 import { openQuickPanel } from "../../state/uiStore";
 import { pushNotify, toggleDnd } from "../../state/notifyStore";
 import { NotifyRuntime } from "../notify/NotifyRuntime";
@@ -17,8 +16,6 @@ import type { BootStats } from "../boot/BootScreen";
 import { WallpaperLayer } from "../wallpaper/WallpaperLayer";
 import { WintabSwitcher } from "../windows/WintabSwitcher";
 import { DesktopIcons } from "../desktop-icons/DesktopIcons";
-import { Taskbar } from "../taskbar/Taskbar";
-import { StartMenu } from "../startmenu/StartMenu";
 import { PrivacyBanner } from "../tray/PrivacyBanner";
 import { CompatBanner } from "../compat/CompatBanner";
 import { LauncherManager } from "../launcher/LauncherManager";
@@ -53,6 +50,8 @@ import { MiniAppsLayer } from "../vwm/miniframe";
 // NOVA-200 S0 地基：新星体系副作用激活（hub 监听 + 运行时按需启动；AI-01 代建）
 import "../nova/activate";
 import { DndLayer } from "../../lib/dnd/DragGhost";
+// M4-B：跨窗投影协议（桌面 = 权威：快照广播 + 任务栏窗命令接收）
+import { initDesktopProjection } from "../../state/projection";
 // AI-08 Z-28：运行对话框（全局浮层；ctrl+alt+r 呼出）
 import { RunDialog } from "../tools/RunDialog";
 // AI-11 N-19：性能 HUD 悬浮窗（localStorage 开关，默认关）
@@ -108,7 +107,6 @@ export function DesktopShell(props: {
 }): React.ReactElement {
   const { t } = useI18n();
   const win = getCurrentWindow();
-  const startOpen = useUi((s) => s.startOpen);
   const [entered, setEntered] = useState(false);
   // AI-08 Z-28：运行对话框开关（sys://open-run 驱动）
   const [runOpen, setRunOpen] = useState(false);
@@ -216,15 +214,30 @@ export function DesktopShell(props: {
 
   const closeStart = (): void => uiStore.setState({ startOpen: false });
 
-  // Win11 新版开始菜单「每日一图」卡片：图片类壁纸时取当前壁纸，
-  // 其余模式（纯色/星空/视频/Shader）退化为卡片内的程序化渐变（零网络、零额外资源）。
-  const startHeroImage =
-    props.settings.customBg.imagePath &&
-    (props.settings.wallpaperMode === "image" ||
-      props.settings.wallpaperMode === "living" ||
-      props.settings.wallpaperMode === "hybrid")
-      ? convertFileSrc(props.settings.customBg.imagePath)
-      : undefined;
+  // M4-B：桌面 = 投影权威窗 —— vwm/notify/ui 三 store 快照广播 + 任务栏窗命令接收
+  //（开始菜单/任务栏已搬独立原生窗；退出指令由任务栏电源菜单经 taskbar://exit 回流）。
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    void initDesktopProjection({ onExit: () => exitDesktop() }).then((d) => {
+      dispose = d;
+    });
+    return () => dispose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // M4-B：启动仪式 exit 期放行任务栏独立窗（与字母落位/任务栏展开交叠）；
+  // BootScreen 异常时 10s 兜底。后端 DESKTOP_READY 幂等，先到先生效。
+  useEffect(() => {
+    const fire = (): void => {
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("taskbar_desktop_ready_cmd"))
+        .catch(() => {});
+    };
+    const t = window.setTimeout(fire, 10000);
+    if (props.entering) fire();
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.entering]);
 
   // 批次E（规格 5.9.1）+ 批次F：拖入登记
   // - exe/lnk/bat/cmd 文件 → 直接登记第三方软件（批次E 既有行为）
@@ -799,36 +812,8 @@ export function DesktopShell(props: {
           （Z 序 / 聚焦 / 拖拽 / 贴靠 / 最小化到任务栏 / 右上角 Mac 红绿灯 / 同软件多开） */}
       <VirtualWindowManager settings={props.settings} />
 
-      <StartMenu
-        open={startOpen}
-        onClose={closeStart}
-        onOpenApp={onOpenApp}
-        heroImage={startHeroImage}
-        onOpenSettings={() => {
-          closeStart();
-          props.onOpenSettings();
-        }}
-        onOpenSearch={(query?: string) => uiStore.setState({ searchOpen: true, startOpen: false, searchInitialQuery: query ?? "" })}
-        onOpenLauncher={() => {
-          closeStart();
-          uiStore.setState({ launcherOpen: true });
-        }}
-        onExit={() => void exitDesktop()}
-      />
-
-      <Taskbar
-        startOpen={startOpen}
-        onToggleStart={() => uiStore.setState({ startOpen: !startOpen })}
-        onOpenSearch={() => uiStore.setState({ searchOpen: true, startOpen: false })}
-        onOpenApp={onOpenApp}
-        onShowDesktop={closeStart}
-        onOpenSettings={() => {
-          closeStart();
-          props.onOpenSettings();
-        }}
-        pos={props.settings.taskbarPos}
-        settings={props.settings}
-      />
+      {/* M4-B：任务栏 + 开始菜单已迁独立原生顶层窗（src/entries/taskbar），
+          状态经投影协议同步（state/projection.ts）；此处不再挂载。 */}
 
       {/* AI-07 N-13：命令面板（Ctrl+K / 全局 ctrl+alt+p → sys://open-palette） */}
       <CommandPalette />

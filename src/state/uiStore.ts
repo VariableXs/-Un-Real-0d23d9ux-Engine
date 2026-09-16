@@ -1,4 +1,5 @@
 import { createStore, useStore } from "../lib/store";
+import { forwardUiPatch, isTaskbarProjection } from "./projection";
 
 export type SaveStatus = "saved" | "saving" | "dirty" | "error";
 
@@ -100,6 +101,31 @@ export function resetGlobalCanvasInteraction(): void {
 
 export function useUi<S>(sel: (s: UiState) => S): S {
   return useStore(uiStore, sel);
+}
+
+// ---------- M4-B 任务栏投影：setState 包装 ----------
+
+/**
+ * 任务栏投影窗内：对象式 setState = 「本地乐观应用 + 转发桌面权威窗」；
+ * 快照回放走 applyProjectionUiPatch（旁路包装，防回声环）。
+ * 函数式 setState 只在本地生效（任务栏树内无此用法，桌面态以快照为准）。
+ */
+let projectionApply:
+  | ((patch: Partial<UiState> | ((s: UiState) => Partial<UiState>)) => void)
+  | null = null;
+
+if (isTaskbarProjection()) {
+  const rawSetState = uiStore.setState.bind(uiStore);
+  projectionApply = rawSetState;
+  uiStore.setState = (patch) => {
+    if (typeof patch !== "function") forwardUiPatch(patch as Partial<Record<string, unknown>>);
+    rawSetState(patch);
+  };
+}
+
+/** 投影快照落地（任务栏投影窗专用；其余环境 no-op）。 */
+export function applyProjectionUiPatch(patch: Partial<UiState>): void {
+  projectionApply?.(patch);
 }
 
 export function setSaveStatus(docId: string, status: SaveStatus): void {

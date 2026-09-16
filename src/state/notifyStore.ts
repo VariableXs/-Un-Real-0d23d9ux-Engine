@@ -1,4 +1,5 @@
 import { createStore, useStore } from "../lib/store";
+import { forwardNotify, isTaskbarProjection } from "./projection";
 import {
   classifySource,
   loadLearn,
@@ -97,6 +98,7 @@ export function setSchedDnd(active: boolean): void {
 }
 
 export function toggleDnd(): boolean {
+  if (isTaskbarProjection()) forwardNotify("toggleDnd", []);
   const dnd = !notifyStore.getState().dnd;
   notifyStore.setState({ dnd });
   if (!dnd && !notifyStore.getState().schedDnd) flushReplay();
@@ -111,8 +113,9 @@ export function useLearnTable(): LearnTable {
   return useStore(notifyStore, (s) => s.learn);
 }
 
-/** N-32：记录用户动作（点开/划掉）——学习信号。 */
+/** N-32：记录用户动作（点开/划掉）——学习信号。M4-B：投影窗内同步转发桌面权威表。 */
 export function recordNotifyAction(item: NotifyItem, action: "opened" | "dismissed"): void {
+  if (isTaskbarProjection()) forwardNotify("recordNotifyAction", [item, action]);
   const source = item.source ?? item.kind;
   const learn = recordAction(notifyStore.getState().learn, source, action);
   notifyStore.setState({ learn });
@@ -278,11 +281,13 @@ export function fireNotifyAction(action: NotifyAction): void {
 }
 
 export function markAllRead(): void {
+  if (isTaskbarProjection()) forwardNotify("markAllRead", []);
   notifyStore.setState((s) => ({
     items: s.items.map((it) => (it.read ? it : { ...it, read: true })),
   }));
 }
 
 export function clearNotifications(): void {
+  if (isTaskbarProjection()) forwardNotify("clearNotifications", []);
   notifyStore.setState({ items: [], replayQueue: [] });
 }

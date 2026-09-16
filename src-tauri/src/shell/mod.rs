@@ -48,6 +48,7 @@ pub mod sysenv;
 pub mod taskman;
 pub mod tools;
 pub mod sysinfo;
+pub mod taskbar_win;
 pub mod taskbar_yield;
 pub mod terminal;
 pub mod toolchains;

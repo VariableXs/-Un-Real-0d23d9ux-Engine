@@ -1,8 +1,8 @@
 import type { AppMode } from "../state/uiStore";
 import { installLogCapture } from "../lib/logger";
 
-/** 窗口入口类型：desktop = 桌面环境窗口；四款独立软件；explorer = 系统窗口（文件管理器/回收站）；datavault = 数据安全中心（AI-10）。 */
-export type EntryType = "desktop" | AppMode | "explorer" | "datavault";
+/** 窗口入口类型：desktop = 桌面环境窗口；四款独立软件；explorer = 系统窗口（文件管理器/回收站）；datavault = 数据安全中心（AI-10）；taskbar = 任务栏独立顶层窗（M4-B）。 */
+export type EntryType = "desktop" | AppMode | "explorer" | "datavault" | "taskbar";
 
 export function isTauriRuntime(): boolean {
   const internals = (window as { __TAURI_INTERNALS__?: { __variableDevStub?: boolean } }).__TAURI_INTERNALS__;
@@ -20,7 +20,7 @@ export function setupEntryRuntime(entry: EntryType): void {
   type TauriInternals = { invoke: (cmd: string, args?: unknown) => Promise<unknown> };
   const w = window as unknown as { __TAURI_INTERNALS__?: TauriInternals };
   if (import.meta.env.DEV && !w.__TAURI_INTERNALS__) {
-    const label = entry === "desktop" || entry === "explorer" ? entry : `app-${entry}`;
+    const label = entry === "desktop" || entry === "explorer" || entry === "datavault" || entry === "taskbar" ? entry : `app-${entry}`;
     w.__TAURI_INTERNALS__ = {
       metadata: {
         currentWindow: { label },
