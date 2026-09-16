@@ -251,6 +251,12 @@ fn boot() -> ! {
     varix::selftest::render_to_console();
     varix::timeline::render_to_console();
 
+    // --- AURORA 桌面演示（`desktop=1` cmdline 触发）：界面栈首画帧缓冲 --------------
+    if varix::cmdline::init().source().contains("desktop=1") {
+        varix::aurora::demo::paint(&surface);
+        varix::kinfo!("aurora: desktop demo painted");
+    }
+
     varix::kinfo!("boot complete — halting");
     halt()
 }

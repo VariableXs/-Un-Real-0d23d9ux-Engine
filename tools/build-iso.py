@@ -28,6 +28,7 @@ serial: yes
 /kernel/varix
     protocol: limine
     kernel_path: boot():/kernel/varix
+    kernel_cmdline: desktop=1
 """
 
 
@@ -44,14 +45,31 @@ def main() -> int:
             return 1
     old_cfg_path = os.path.join(ROOT, "limine.cfg")
 
-    # 内核 ELF 必须补齐到 2048B 扇区整数倍：Limine 的 iso9660 驱动读
-    # 未对齐的大文件会报 "iso9660: failed to read file data"（QEMU 实证）。
-    kernel_padded = os.path.join(os.environ.get("TEMP", "/tmp"), "varix_padded.elf")
+    # 内核 ELF 先做「Limine 净化」再打包：
+    #   1) 截断到最后一个 PT_LOAD 段的文件末尾——节表/symtab 对 Limine 加载
+    #      无用；QEMU 实证 ISO 内核文件 >7.69MB 会触发 Limine iso9660 驱动
+    #      "failed to read file data"（未对齐只是表象，大小才是决定因素）。
+    #   2) 补零对齐到 2048B 扇区整数倍。
+    import struct as _struct
     with open(KERNEL_ELF, "rb") as f:
         data = f.read()
+    e_phoff = _struct.unpack_from("<Q", data, 0x20)[0]
+    e_phentsize = _struct.unpack_from("<H", data, 0x36)[0]
+    e_phnum = _struct.unpack_from("<H", data, 0x38)[0]
+    load_end = 0
+    for i in range(e_phnum):
+        off = e_phoff + i * e_phentsize
+        p_type = _struct.unpack_from("<I", data, off)[0]
+        if p_type == 1:  # PT_LOAD
+            p_offset = _struct.unpack_from("<Q", data, off + 8)[0]
+            p_filesz = _struct.unpack_from("<Q", data, off + 32)[0]
+            load_end = max(load_end, p_offset + p_filesz)
+    assert load_end > 0
+    data = data[:load_end]
+    data += b"\x00" * ((-len(data)) % 2048)
+    kernel_padded = os.path.join(os.environ.get("TEMP", "/tmp"), "varix_padded.elf")
     with open(kernel_padded, "wb") as f:
         f.write(data)
-        f.write(b"\x00" * ((-len(data)) % 2048))
 
     iso = pycdlib.PyCdlib()
     iso.new(interchange_level=3, joliet=3, rock_ridge="1.09")
@@ -82,6 +100,12 @@ def main() -> int:
         boot_load_size=4,
         efi=True,
     )
+    # QEMU/ATAPI 实测：ISO 总扇区为奇数时 Limine 的大文件读取随机失败，
+    # 垫一个尾文件把卷补到偶数扇区。
+    pad_tmp = os.path.join(os.environ.get("TEMP", "/tmp"), "iso_pad.dat")
+    with open(pad_tmp, "wb") as f:
+        f.write(b" " * 2048)
+    iso.add_file(pad_tmp, "/PAD.DAT;1", rr_name="pad.dat")
     iso.write(OUT)
     iso.close()
     print(f"OK: {OUT} ({os.path.getsize(OUT)} bytes)")

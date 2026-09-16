@@ -28,3 +28,5 @@ pub mod integration;
 pub mod w2_integration;
 /// W4 联调集成域（步骤 0969~0980）：八条跨域场景 + CheckSet 汇总。
 pub mod w4_integration;
+/// 桌面演示绘制器：W1/W2 界面栈成果首画到真实帧缓冲（boot 链 `desktop=1` 调用）。
+pub mod demo;
