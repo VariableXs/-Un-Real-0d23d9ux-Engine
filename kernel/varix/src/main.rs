@@ -82,7 +82,9 @@ fn boot() -> ! {
     }
 
     // --- logo (F023) ----------------------------------------------------------
+    // 菜单退出后先重绘背板：清掉选择页残影再落 logo（任务3 视觉收口）。
     TIMELINE.stage_begin(Stage::Logo, varix::timeline::read_tsc());
+    varix::banner::paint_backdrop(&surface);
     let (lcx, lcy, lsize) = varix::logo::metrics_for(&surface);
     let logo_bottom = varix::logo::draw(&surface, lcx, lcy, lsize);
     TIMELINE.stage_end(Stage::Logo, varix::timeline::read_tsc());

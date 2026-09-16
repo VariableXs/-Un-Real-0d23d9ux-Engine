@@ -143,6 +143,7 @@ pub fn run_countdown(surf: &Surface, timeout_secs: u32, tsc_hz: u64) -> usize {
 }
 
 /// 可注入键源的循环体（宿主测试与目标共用同一逻辑）。
+/// 每帧先重绘背板再画菜单——清屏策略单一来源，杜绝倒计时/选中残影（任务3）。
 pub fn run_countdown_with(
     surf: &Surface,
     timeout_secs: u32,
@@ -155,7 +156,7 @@ pub fn run_countdown_with(
     let mut sel = default_index(opts.default_entry);
     let mut remaining = timeout_secs;
     let slice_ticks = tsc_hz / POLL_SLICES as u64;
-    draw(surf, remaining, sel);
+    draw_frame(surf, remaining, sel);
     loop {
         if remaining == 0 {
             return sel;
@@ -166,11 +167,11 @@ pub fn run_countdown_with(
                 match k {
                     crate::ps2::Key::Up => {
                         sel = sel.saturating_sub(1);
-                        draw(surf, remaining, sel);
+                        draw_frame(surf, remaining, sel);
                     }
                     crate::ps2::Key::Down => {
                         sel = (sel + 1).min(crate::bootselect::ENTRIES.len() - 1);
-                        draw(surf, remaining, sel);
+                        draw_frame(surf, remaining, sel);
                     }
                     crate::ps2::Key::Enter => return sel,
                 }
@@ -178,8 +179,14 @@ pub fn run_countdown_with(
             wait_ticks(slice_ticks);
         }
         remaining -= 1;
-        draw(surf, remaining, sel);
+        draw_frame(surf, remaining, sel);
     }
+}
+
+/// 一帧 = 背板重绘 + 菜单绘制。清屏策略在此归口。
+fn draw_frame(surf: &Surface, remaining: u32, sel: usize) {
+    crate::banner::paint_backdrop(surf);
+    draw(surf, remaining, sel);
 }
 
 #[cfg(test)]
@@ -359,5 +366,50 @@ mod tests {
         };
         let sel = run_countdown_with(&s, 1, FAST_HZ, &mut one_down_then_none);
         assert_eq!(sel, 1, "倒计时归零应停在最后选中项而非默认项");
+    }
+
+    #[test]
+    fn frame_repaint_erases_previous_highlight() {
+        // 任务3：帧重绘策略必须抹掉上一帧的选中高亮（零残影）。
+        let (s, _b) = surface(1280, 720);
+        draw(&s, 5, 0);
+        assert!(count_px(&s, HL_BOX) > 10_000);
+        draw_frame(&s, 5, 1); // 下一帧选中下移
+        // 第一张卡片区域的旧高亮必须消失：整屏不再有属于卡片 0 行的高亮色
+        // （卡片 1 的高亮在其行内；断言卡片 0 行带内无高亮像素）。
+        let (_, my, _, ch, _) = metrics(&s);
+        let mut leaked = 0u64;
+        for y in my..(my + ch) {
+            for x in 0..s.width() as i64 {
+                if s.get_px(x, y) == Some(PixelFormat::Bgr32.pack(HL_BOX)) {
+                    leaked += 1;
+                }
+            }
+        }
+        assert_eq!(leaked, 0, "上一帧高亮残影未清除");
+    }
+
+    /// 多分辨率整页渲染归档（任务3）：VARIX_RENDER_MENU=1 cargo ktest -- bootselect::
+    /// 产出 800×600 / 1280×720 / 1920×1080 的 PPM 到 docs/acceptance 归档目录。
+    #[test]
+    fn render_archive_multi_resolution() {
+        if std::env::var("VARIX_RENDER_MENU").unwrap_or_default() != "1" {
+            return;
+        }
+        let dir = "docs/acceptance/2026-09-16-任务3-选择页视觉收口";
+        std::fs::create_dir_all(dir).unwrap();
+        for (w, h) in [(800u32, 600u32), (1280, 720), (1920, 1080)] {
+            let (s, buf) = surface(w, h);
+            draw_frame(&s, 5, 0);
+            let path = format!("{}/menu-{}x{}.ppm", dir, w, h);
+            let mut out = format!("P6\n{} {}\n255\n", w, h).into_bytes();
+            // Surface 背板为 BGR32：转成 RGB 字节序输出。
+            for px in buf.chunks_exact(4) {
+                out.push(px[2]);
+                out.push(px[1]);
+                out.push(px[0]);
+            }
+            std::fs::write(&path, out).unwrap();
+        }
     }
 }
