@@ -101,7 +101,8 @@ def main():
             "content": base64.b64encode(blob).decode(),
             "encoding": "base64",
         })
-        mode = sh(["git", "ls-files", "-s", path]).split()[0]
+        # 用提交本身的 ls-tree 查 mode（当前 index 对历史提交里已被删除的路径会落空）
+        mode = sh(["git", "ls-tree", local, "--", path]).split()[0]
         if len(mode) == 5 and mode.startswith("100"):
             mode = "100644" if mode.endswith("644") else "100755"
         else:
