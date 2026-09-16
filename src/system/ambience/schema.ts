@@ -114,6 +114,8 @@ export interface AmbienceSettings {
   iconTier: IconSizeTier;
   /** V-79：应用窗口模式轨道（inherit = 跟随环境主题 = 现状无损迁移）。 */
   appTheme: ThemeTrack;
+  /** M6-2：桌面壁纸实时跟随 Wallpaper Engine 当前壁纸（默认关 = 现状）。 */
+  weFollow: { on: boolean };
 }
 
 export const DEFAULT_AMBIENCE: AmbienceSettings = {
@@ -147,6 +149,7 @@ export const DEFAULT_AMBIENCE: AmbienceSettings = {
   focusRing: "system",
   iconTier: 20,
   appTheme: "inherit",
+  weFollow: { on: false },
 };
 
 const SCENES: readonly SoundscapeScene[] = ["rain", "forest", "white", "pink", "night"];
@@ -240,6 +243,9 @@ export function coerceAmbience(raw: unknown): AmbienceSettings {
         saturation: num(raw.wallpaperFilter.saturation, 100, 60, 100),
         brightness: num(raw.wallpaperFilter.brightness, 100, 80, 100),
       };
+    }
+    if (isRecord(raw.weFollow)) {
+      s.weFollow = { on: bool(raw.weFollow.on, false) };
     }
     s.lunarCalendar = bool(raw.lunarCalendar, true);
     s.uiDensity = oneOf(raw.uiDensity, ["comfort", "compact"] as const, "comfort");

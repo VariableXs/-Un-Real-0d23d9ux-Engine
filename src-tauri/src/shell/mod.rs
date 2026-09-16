@@ -53,6 +53,7 @@ pub mod taskbar_yield;
 pub mod terminal;
 pub mod toolchains;
 pub mod compat;
+pub mod we_wallpaper;
 pub mod compat_probe;
 // M1（R9）：旧的 L2 容器包裹引擎（`container.rs`，Variable 自建 WS_POPUP 宿主
 // + SetParent/WS_CHILD）已随拥有式嵌入整体下线并删除 —— 第三方窗口必须保持

@@ -1962,6 +1962,11 @@ pub fn embed_bounds(embed_id: Option<String>, x: i32, y: i32, w: i32, h: i32) ->
     let key = norm_id(embed_id);
     let cur = with_registry(|map| map.get(&key).map(|e| (e.hwnd, e.dpi_fix, e.last_dpi)));
     let Some((hw, dpi_fix, last_dpi)) = cur else {
+        // M6 取证：未知 embedId 的几何下行（幽灵占位卡/双重嵌信号）
+        crate::shell::applog::log(
+            "embed",
+            format!("embed_bounds 未知embedId {key} ({x},{y},{w},{h}) ← 忽略"),
+        );
         return Ok(());
     };
     // M1（R9）坐标换算：拥有关系下的第三方窗口仍是**完整的顶层窗口**，
@@ -2020,7 +2025,14 @@ pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
     let target = with_registry(|map| {
         map.get(&key).map(|e| e.host.unwrap_or(e.hwnd))
     });
-    if let Some(h) = target {
+    let Some(h) = target else {
+        // M6 取证：未知 embedId 的显隐下行
+        crate::shell::applog::log(
+            "embed",
+            format!("embed_visible 未知embedId {key} visible={visible} ← 忽略"),
+        );
+        return Ok(());
+    };
         unsafe {
             let h = hwnd_from(h);
             // M1（R9）：− 按钮现在是软件自己的 —— 用户点它会真的把窗口最小化。
@@ -2039,7 +2051,6 @@ pub fn embed_visible(embed_id: Option<String>, visible: bool) -> CmdResult<()> {
         if !visible {
             force_webview_repaint(h);
         }
-    }
     Ok(())
 }
 
@@ -2057,6 +2068,11 @@ pub fn embed_close(embed_id: Option<String>) -> CmdResult<()> {
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
     let key = norm_id(embed_id);
     if let Some(e) = with_registry(|map| map.remove(&key)) {
+        // M6 取证：embed_close 是静默命令，窗口自灭排查必须留痕（调用方 embedId）
+        crate::shell::applog::log(
+            "embed",
+            format!("embed_close {key} hwnd={} ← 会话被显式关闭", e.hwnd),
+        );
         // M5：最大化缓存随会话一起清（防 hwnd 复用时误用旧状态）
         MAX_STATE_CACHE
             .lock()

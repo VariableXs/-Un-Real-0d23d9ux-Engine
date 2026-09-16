@@ -464,6 +464,8 @@ pub fn run() {
             shell::embed::embed_visible,
             shell::embed::embed_close,
             shell::embed::embed_close_all,
+            shell::we_wallpaper::we_wallpaper_current,
+            shell::we_wallpaper::we_wallpaper_open,
             shell::embed::embed_focus,
             shell::embed::desktop_raise,
             shell::privacy::vault_status,

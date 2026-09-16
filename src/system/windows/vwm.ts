@@ -261,7 +261,7 @@ export function openVwmSystem(kind: "explorer" | "recycle" | "taskman", path?: s
   openVwmInstance(kind, path ?? null);
 }
 
-function openVwmInstance(app: VwmApp, path: string | null): string {
+function openVwmInstance(app: VwmApp, path: string | null, focus = true): string {
   const s = vwmStore.getState();
   const mine = s.wins.filter((w) => w.app === app);
   const wa = s.workArea;
@@ -291,7 +291,10 @@ function openVwmInstance(app: VwmApp, path: string | null): string {
       { id, app, path, x: rect.x, y: rect.y, w: rect.w, h: rect.h, state: "normal", minimized: false, z, restore: null, group: null, groupActive: false, rolledUp: false, minimizedAt: null, opacity: 1, topmost: false, hidden: false },
     ],
     topZ: z,
-    focusedId: id,
+    // M6（实机教训）：自动收编（看门狗 popup/escape）不得抢焦点 —— 曾把用户
+    // 正在打字的前台抢走，用户后续按键（Ctrl+W/Alt+F4）直接进了被收编窗口，
+    // 造成「窗口无人碰却自己关闭」。仅用户显式启动的窗口才聚焦。
+    focusedId: focus ? id : st.focusedId,
     seq: st.seq + 1,
   }));
   // N-03 规则引擎开窗钩子（rulesApply.installRuleHook 安装；title 以 app 名近似——
@@ -314,8 +317,8 @@ export function setVwmOpenHook(fn: ((id: string, app: VwmApp, title: string) => 
  * 第三方每次启动都是独立进程，必须一一对应新虚拟窗口（复用既有实例会把
  * 新进程的窗口错嵌到旧占位上）。
  */
-export function openVwmTpNew(app: `tp:${string}`): string {
-  return openVwmInstance(app, null);
+export function openVwmTpNew(app: `tp:${string}`, focus = true): string {
+  return openVwmInstance(app, null, focus);
 }
 
 function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {

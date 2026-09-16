@@ -685,6 +685,8 @@ export const ipc = {
   embedVisible: (embedId: string, visible: boolean) =>
     invoke<void>("embed_visible", { embedId, visible }),
   embedClose: (embedId: string) => invoke<void>("embed_close", { embedId }),
+  weWallpaperCurrent: () => invoke<{ file: string; kind: "video" | "image" | "unsupported" } | null>("we_wallpaper_current"),
+  weWallpaperOpen: (file: string) => invoke<void>("we_wallpaper_open", { file }),
   /** W-1 退出会话：全部嵌入窗口发 WM_CLOSE（30s 超时者留在桌面，绝不强杀）。 */
   embedCloseAll: () => invoke<number>("embed_close_all"),
   embedFocus: (embedId: string) => invoke<void>("embed_focus", { embedId }),

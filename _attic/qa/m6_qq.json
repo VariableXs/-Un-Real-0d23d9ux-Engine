@@ -1,0 +1,141 @@
+{
+ "screen": [
+  1920,
+  1080
+ ],
+ "shell_tray": {
+  "hwnd": 65854,
+  "visible": false,
+  "rect": [
+   0,
+   1020,
+   1920,
+   1080
+  ]
+ },
+ "shell_secondary": [],
+ "spi_get_returned": false,
+ "workarea": [
+  0,
+  0,
+  0,
+  0
+ ],
+ "workarea_fullscreen": false,
+ "variable_taskbar_visible": [
+  {
+   "hwnd": 2100258,
+   "title": "Variable Taskbar",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "topmost": true,
+   "toolwindow": false,
+   "appwindow": true
+  }
+ ],
+ "variable_taskbar_exists_hidden": [
+  {
+   "hwnd": 2100258,
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "topmost": true,
+   "toolwindow": false
+  }
+ ],
+ "variable_windows": [
+  {
+   "hwnd": 2100258,
+   "title": "Variable Taskbar",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  },
+  {
+   "hwnd": 1378880,
+   "title": "Variable — Private Desktop Environment",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  }
+ ]
+}
+{
+ "app": "qq",
+ "log": "applog-20712.log",
+ "tp_before": 0,
+ "tp_before_stable": true,
+ "tier_actual": "L3",
+ "attach_line": "1789541332.666 [embed] attach qq.exe: hwnd=592508 root_pid=27684 → 层级 L3（composited framework window (cef/chromium/electron)）",
+ "hwnd": 592508,
+ "title": "QQ",
+ "cls": "Chrome_WidgetWin_1",
+ "rect_after_adopt": [
+  760,
+  252,
+  1160,
+  827
+ ],
+ "visible_after_adopt": true,
+ "tp_after_adopt": 1,
+ "max_broadcast": [
+  -9,
+  -9,
+  400,
+  575
+ ],
+ "zoomed_after_max": true,
+ "rect_maximized": [
+  -9,
+  -9,
+  409,
+  586
+ ],
+ "fullscreen_achieved": false,
+ "zoomed_after_min_restore": true,
+ "rect_after_min_restore": [
+  -9,
+  -9,
+  391,
+  566
+ ],
+ "min_guard_holds": true,
+ "rect_after_restore": [
+  760,
+  252,
+  1160,
+  827
+ ],
+ "restore_geom_matches_adopt": true,
+ "zoomed_after_restore": false,
+ "post_close_ret": true,
+ "exited_logged": true,
+ "tp_after_exit": 0,
+ "checks": {
+  "adopted": true,
+  "tier_expect": true,
+  "max_sync": true,
+  "min_guard": true,
+  "restore_geom": true,
+  "exited_autoclose": true,
+  "final_clean": true
+ },
+ "pass": true
+}

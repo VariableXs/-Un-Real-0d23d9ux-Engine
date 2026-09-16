@@ -506,7 +506,8 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
       "embed://popup",
       (e) => {
         const { tpId, hwnd, rootPid } = e.payload;
-        const embedId = openVwmTpNew(`tp:${tpId}`);
+        // M6：自动收编不抢焦点（防用户键盘输入误入被收编窗口）
+        const embedId = openVwmTpNew(`tp:${tpId}`, false);
         void ipc
           .embedAdopt(tpId, hwnd, rootPid, embedId)
           .then((ok) => {
@@ -543,7 +544,8 @@ export function VirtualWindowManager(props: { settings: Settings }): React.React
       auto: boolean;
     }>("watch://escape", (e) => {
       const { hwnd, rootPid, image } = e.payload;
-      const embedId = openVwmTpNew(`tp:${image.replace(/\.exe$/i, "") || "watch"}`);
+      // M6：自动收编不抢焦点（防用户键盘输入误入被收编窗口）
+      const embedId = openVwmTpNew(`tp:${image.replace(/\.exe$/i, "") || "watch"}`, false);
       void ipc
         .embedAdopt(image, hwnd, rootPid, embedId)
         .then((ok) => {

@@ -1,0 +1,126 @@
+{
+ "screen": [
+  1920,
+  1080
+ ],
+ "shell_tray": {
+  "hwnd": 65854,
+  "visible": false,
+  "rect": [
+   0,
+   1020,
+   1920,
+   1080
+  ]
+ },
+ "shell_secondary": [],
+ "spi_get_returned": false,
+ "workarea": [
+  0,
+  0,
+  0,
+  0
+ ],
+ "workarea_fullscreen": false,
+ "variable_taskbar_visible": [],
+ "variable_taskbar_exists_hidden": [
+  {
+   "hwnd": 2689642,
+   "visible": false,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "topmost": true,
+   "toolwindow": false
+  }
+ ],
+ "variable_windows": [
+  {
+   "hwnd": 2165160,
+   "title": "Variable — Private Desktop Environment",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  },
+  {
+   "hwnd": 2689642,
+   "title": "Variable Taskbar",
+   "visible": false,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  }
+ ]
+}
+{
+ "app": "notepad",
+ "log": "applog-20712.log",
+ "tp_before": 1,
+ "tp_before_stable": true,
+ "tier_actual": "L1",
+ "attach_line": "1789537134.898 [embed] attach notepad.exe: hwnd=526978 root_pid=32184 → 层级 L1（standard caption + nonclient frame）",
+ "hwnd": 526978,
+ "title": "Untitled - Notepad",
+ "cls": "Notepad",
+ "rect_after_adopt": [
+  320,
+  320,
+  1760,
+  746
+ ],
+ "visible_after_adopt": true,
+ "tp_after_adopt": 2,
+ "max_broadcast": [
+  -9,
+  -9,
+  1938,
+  1098
+ ],
+ "zoomed_after_max": true,
+ "rect_maximized": [
+  -9,
+  -9,
+  1929,
+  1089
+ ],
+ "fullscreen_achieved": true,
+ "zoomed_after_min_restore": true,
+ "rect_after_min_restore": [
+  -9,
+  -9,
+  1929,
+  1089
+ ],
+ "min_guard_holds": true,
+ "rect_after_restore": [
+  320,
+  320,
+  1760,
+  746
+ ],
+ "restore_geom_matches_adopt": true,
+ "zoomed_after_restore": false,
+ "post_close_ret": true,
+ "exited_logged": true,
+ "tp_after_exit": 1,
+ "checks": {
+  "adopted": true,
+  "tier_expect": true,
+  "max_sync": true,
+  "min_guard": true,
+  "restore_geom": true,
+  "exited_autoclose": true,
+  "final_clean": true
+ },
+ "pass": true
+}

@@ -58,6 +58,22 @@ export function AmbienceTab(props: { settings: Settings; onPatch: (p: Partial<Se
 
   // M-64 主色采样候选（OKLCH 元组；渲染时转 CSS）
   const [candidates, setCandidates] = useState<[number, number, number][]>([]);
+  // M6-2：WE 当前壁纸展示（跟随开启时 3s 轮询一次仅用于展示）
+  const [weCurrent, setWeCurrent] = useState<string | null>(null);
+  useEffect(() => {
+    if (!amb.weFollow.on) { setWeCurrent(null); return; }
+    let alive = true;
+    const poll = (): void => {
+      import("../../lib/ipc").then(({ ipc }) =>
+        ipc.weWallpaperCurrent().then((cur) => {
+          if (alive) setWeCurrent(cur ? cur.file : null);
+        }).catch(() => {}),
+      ).catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 3_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [amb.weFollow.on]);
   useEffect(() => {
     const path = props.settings.wallpaperMode === "image"
       || props.settings.wallpaperMode === "living"
@@ -278,6 +294,21 @@ export function AmbienceTab(props: { settings: Settings; onPatch: (p: Partial<Se
             ))}
             <p className="dim small">{t("amb18DayBoundaries")}: {amb.dayAround.boundaries.join(" / ")} {t("amb18DayHour")}</p>
           </div>
+        )}
+      </section>
+
+      {/* ---------------- M6-2 壁纸实时跟随 Wallpaper Engine ---------------- */}
+      <section>
+        <h3>{t("amb18WeFollowTitle")}</h3>
+        <label className="row gap8">
+          <input type="checkbox" checked={amb.weFollow.on} onChange={(e) => set({ weFollow: { on: e.target.checked } })} />
+          <span>{t("amb18WeFollowEnable")}</span>
+        </label>
+        <p className="dim small">{t("amb18WeFollowHint")}</p>
+        {amb.weFollow.on && (
+          <p className="dim small" style={{ marginTop: 4 }}>
+            {t("amb18WeFollowCurrent")}: {weCurrent ?? t("amb18WeFollowNone")}
+          </p>
         )}
       </section>
 

@@ -1,0 +1,4 @@
+2026-09-16T06:53:58Z, 11996: QDC paths 1, modes 2, query 2, method 5
+2026-09-16T06:53:58Z, 11996: QDC Monitor path 0. Source name \\.\DISPLAY1, target name \\?\DISPLAY#AUO7EAD#4&2fa0a050&0&UID8388688#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}, adapter name \\?\PCI#VEN_8086&DEV_A78B&SUBSYS_3D6217AA&REV_04#3&11583659&3&10#{5b45201d-f2f2-4f3b-85bb-30ff1f953599}. Source mode 1 / 0, target mode 0
+2026-09-16T06:53:58Z, 11996: QDC path 0 DISPLAYCONFIG_SOURCE_MODE flags 1 (virtual mode 0, source index 1) position 0 0 width 1920 height 1080 rotation 1
+2026-09-16T06:53:58Z, 11996: Open URL: http://wpx.internal/?skinStyle=styles/main.css&skinColor=%23f3f3f3&skinKey=white&provider=steamint&lang=en-us&win11=1#/

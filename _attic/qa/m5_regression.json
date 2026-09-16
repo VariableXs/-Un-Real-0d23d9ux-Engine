@@ -1,0 +1,162 @@
+{
+ "screen": [
+  1920,
+  1080
+ ],
+ "shell_tray": {
+  "hwnd": 65854,
+  "visible": false,
+  "rect": [
+   0,
+   1020,
+   1920,
+   1080
+  ]
+ },
+ "shell_secondary": [],
+ "spi_get_returned": false,
+ "workarea": [
+  0,
+  0,
+  0,
+  0
+ ],
+ "workarea_fullscreen": false,
+ "variable_taskbar_visible": [
+  {
+   "hwnd": 1182292,
+   "title": "Variable Taskbar",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "topmost": true,
+   "toolwindow": true,
+   "appwindow": true
+  }
+ ],
+ "variable_taskbar_exists_hidden": [
+  {
+   "hwnd": 1182292,
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ],
+   "topmost": true,
+   "toolwindow": true
+  }
+ ],
+ "variable_windows": [
+  {
+   "hwnd": 1182292,
+   "title": "Variable Taskbar",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  },
+  {
+   "hwnd": 1903802,
+   "title": "Variable — Private Desktop Environment",
+   "visible": true,
+   "rect": [
+    0,
+    0,
+    1920,
+    1080
+   ]
+  }
+ ]
+}
+{
+ "log": "applog-20712.log",
+ "pass": true,
+ "tabstate_isolated": [
+  false,
+  false
+ ],
+ "tp_before": 0,
+ "tp_before_stable": true,
+ "hwnd": 2296362,
+ "title_A": "Untitled - Notepad",
+ "rect_after_adopt": [
+  320,
+  320,
+  1760,
+  746
+ ],
+ "tp_after_adopt": 1,
+ "max_broadcast": [
+  -9,
+  -9,
+  1938,
+  1098
+ ],
+ "zoomed_after_max": true,
+ "rect_maximized": [
+  -9,
+  -9,
+  1929,
+  1089
+ ],
+ "zoomed_after_min_restore": true,
+ "rect_after_min_restore": [
+  -9,
+  -9,
+  1929,
+  1089
+ ],
+ "restore_broadcast": "1789546460.380 [embed] 会话 vwm-tp:notepad-mu3tr4y10: hwnd=2296362 原生还原（几何 320x320 1440×426）",
+ "zoomed_after_restore": false,
+ "rect_after_restore": [
+  320,
+  320,
+  1760,
+  746
+ ],
+ "restore_geom_matches_adopt": true,
+ "restore_broadcast_rect": [
+  320,
+  320,
+  1440,
+  426
+ ],
+ "restore_broadcast_matches": true,
+ "post_close_A_ret": true,
+ "hwnd_closed_A": true,
+ "tp_after_exit": 0,
+ "two_windows": [
+  527580,
+  461316
+ ],
+ "titles_C": [
+  "Untitled - Notepad",
+  "Untitled - Notepad"
+ ],
+ "post_close_C_ret": true,
+ "multi_close_line": "1789546472.738 [embed] 会话 vwm-tp:notepad-mu3trex20: hwnd=527580 消失 → state=exited rootPid=31844 误派readopt=false",
+ "multi_close_state": "exited",
+ "h1_closed": true,
+ "sibling_alive": true,
+ "cleanup_all_closed": true,
+ "tp_final": 0,
+ "final_clean": true,
+ "checks": {
+  "adopted": true,
+  "max_broadcast_ok": true,
+  "guard_holds": true,
+  "restore_broadcast_ok": true,
+  "exited_auto_close": true,
+  "multi_window_discriminated": true,
+  "final_clean": true
+ }
+}

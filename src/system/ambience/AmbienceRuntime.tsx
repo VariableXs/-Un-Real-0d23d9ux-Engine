@@ -150,6 +150,38 @@ export function AmbienceRuntime(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [amb.dayAround.enabled, amb.curated.on]);
 
+  // ---- M6-2：壁纸实时跟随 Wallpaper Engine（读 WE config.json 源，不抓屏）----
+  const lastWeFile = useRef<string>("");
+  useEffect(() => {
+    if (!amb.weFollow.on) return;
+    let alive = true;
+    const poll = (): void => {
+      import("../../lib/ipc").then(({ ipc }) =>
+        ipc.weWallpaperCurrent().then((cur) => {
+          if (!alive || !cur || cur.file === lastWeFile.current) return;
+          if (cur.kind === "unsupported") return;
+          lastWeFile.current = cur.file;
+          const s = props.settings;
+          props.onPatchSettings({
+            wallpaperMode: s.wallpaperMode === "living" ? "living" : "video",
+            theme: "custom",
+            customBg: {
+              ...s.customBg,
+              type: cur.kind,
+              ...(cur.kind === "video"
+                ? { videoPath: cur.file }
+                : { imagePath: cur.file }),
+            },
+          });
+        }).catch(() => {}),
+      ).catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 3_000);
+    return () => { alive = false; window.clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amb.weFollow.on]);
+
   // ---- M-67 纯净模式：Ctrl+Alt+P ----
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

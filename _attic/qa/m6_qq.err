@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "d:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\qa\m6_verify.py", line 292, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "d:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\qa\m6_verify.py", line 193, in main
+    line = wait_log_after(t_epoch - 0.5, pat, timeout=30)
+  File "d:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\qa\m6_verify.py", line 67, in wait_log_after
+    raise TimeoutError("log wait timeout (after %.1f): %s" % (t_epoch, pat))
+TimeoutError: log wait timeout (after 1789540989.2): attach [^\n]*?qq\.exe[^\n]*?→ 层级 (L\d)
