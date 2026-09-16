@@ -113,6 +113,12 @@ pub trait PageTableOps {
     fn translate(&mut self, va: u64) -> Option<u64>;
     /// 建/改 4KiB 叶子（含拆大叶）；返回是否成功。
     fn map_frame(&mut self, va: u64, phys: u64, writable: bool, nx: bool) -> bool;
+    /// 任务14：建/改 4KiB 用户叶子（同 map_frame 且置 P_USER）——
+    /// ring3 装载 ELF 段与用户栈的唯一通道。不变量：va 必须用户半区。
+    fn map_user_frame(&mut self, va: u64, phys: u64, writable: bool, nx: bool) -> bool {
+        let _ = (va, phys, writable, nx);
+        false
+    }
     /// 只改 W 位（COW 独占快路径）。
     fn set_writable(&mut self, va: u64, writable: bool) -> bool;
     /// 复制一页内容（经 HHDM / 宿主内存）。
@@ -258,27 +264,42 @@ mod real {
     }
 
     /// 确保中间三级在位，返回 PT（叶表）的 HHDM 地址。
-    fn ensure_pt(root: u64, va: u64) -> Option<u64> {
+    ///
+    /// `user`：目标叶子是否用户页。四级页表权限向下约束——中间任一级缺
+    /// P_USER，用户态访问整片区域即 #PF（实机 cr2=hello 入口，铁证）。
+    /// 因此新建中间项按 `user` 补 P_USER；已存在的内核中间项走用户映射
+    /// 时原位升级补 U（U 只放宽，内核 CPL0 不看 U 位，安全）。改项不 flush：
+    /// 首次用户访问前 TLB 无旧翻译；放宽方向的陈旧翻译无害。
+    fn ensure_pt(root: u64, va: u64, user: bool) -> Option<u64> {
         let off = hhdm()?;
         let mut table = root;
         for shift in [39u64, 30u64, 21u64] {
             let idx = ((va >> shift) & 0x1FF) as usize;
             let e_ptr = (table + (idx as u64) * 8) as *mut u64;
-            let e = unsafe { core::ptr::read_volatile(e_ptr) };
+            let mut e = unsafe { core::ptr::read_volatile(e_ptr) };
             if e & paging::P_PRESENT == 0 {
                 let phys = zalloc()?;
+                let flags = paging::P_PRESENT
+                    | paging::P_WRITE
+                    | if user { paging::P_USER } else { 0 };
                 unsafe {
-                    core::ptr::write_volatile(e_ptr, phys | paging::P_PRESENT | paging::P_WRITE);
+                    core::ptr::write_volatile(e_ptr, phys | flags);
                 }
                 table = (phys & paging::P_ADDR_MASK) + off;
-            } else if e & P_HUGE != 0 && shift != 21 {
-                // 大叶（1GiB/2MiB）：拆成下级 512 项，继承 present/write/NX。
+            } else if e & P_HUGE != 0 {
+                // 大叶（1GiB/2MiB）：拆成下级 512 项，继承 present/write/NX/U。
+                // 2MiB（PD 级）同样必须拆——曾经 `shift != 21` 把它排除，
+                // 走到 else 分支把大叶的目标帧**当页表走**，往活内存里写
+                // 伪 PTE（自洽所以自检还看得过去，实际是内存破坏）。
                 let huge_addr = e & paging::P_ADDR_MASK;
                 let phys = zalloc()?;
                 let child = phys + off;
-                let leaf_shift = if shift == 30 { 21u64 } else { 30u64 };
+                // 39→30（PML4 大叶，架构上不可达但保持一致）、30→21（1GiB）、
+                // 21→12（2MiB→4KiB）。
+                let leaf_shift = shift - 9;
                 let step = 1u64 << leaf_shift;
-                let base_flags = (e & (paging::P_PRESENT | paging::P_WRITE | paging::P_NX)) & !P_HUGE;
+                let base_flags = (e & (paging::P_PRESENT | paging::P_WRITE | paging::P_NX | paging::P_USER))
+                    & !P_HUGE;
                 for k in 0..512u64 {
                     let sub = huge_addr + k * step;
                     unsafe {
@@ -288,19 +309,32 @@ mod real {
                         );
                     }
                 }
+                // 用户路径：新中间项必须带 U（四级权限向下约束），否则拆完
+                // 用户态访问整片区域仍 #PF。
+                let mut new_e = phys | (e & !(P_HUGE | paging::P_ADDR_MASK));
+                if user {
+                    new_e |= paging::P_USER;
+                }
                 unsafe {
-                    core::ptr::write_volatile(e_ptr, phys | (e & !(P_HUGE | paging::P_ADDR_MASK)));
+                    core::ptr::write_volatile(e_ptr, new_e);
                 }
                 table = child;
             } else {
+                // 已存在中间项：用户路径缺 U 则升级补 U（只放宽）。
+                if user && e & paging::P_USER == 0 {
+                    e |= paging::P_USER;
+                    unsafe {
+                        core::ptr::write_volatile(e_ptr, e);
+                    }
+                }
                 table = (e & paging::P_ADDR_MASK) + off;
             }
         }
         Some(table)
     }
 
-    fn leaf_ptr(root: u64, va: u64) -> Option<*mut u64> {
-        let pt = ensure_pt(root, va)?;
+    fn leaf_ptr(root: u64, va: u64, user: bool) -> Option<*mut u64> {
+        let pt = ensure_pt(root, va, user)?;
         Some((pt + (((va >> 12) & 0x1FF) as u64) * 8) as *mut u64)
     }
 
@@ -331,10 +365,29 @@ mod real {
             let Some(root) = root() else {
                 return false;
             };
-            let Some(lp) = leaf_ptr(root, va) else {
+            let Some(lp) = leaf_ptr(root, va, false) else {
                 return false;
             };
             let flags = paging::leaf_flags(writable, nx);
+            // SAFETY: leaf_ptr 保证指向当前 CR3 页表的 4KiB 叶槽。
+            unsafe {
+                core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
+            }
+            true
+        }
+
+        fn map_user_frame(&mut self, va: u64, phys: u64, writable: bool, nx: bool) -> bool {
+            // 用户半区校验：bit63..48 必须全 0（内核高半区一律拒绝）。
+            if va >> 47 != 0 {
+                return false;
+            }
+            let Some(root) = root() else {
+                return false;
+            };
+            let Some(lp) = leaf_ptr(root, va, true) else {
+                return false;
+            };
+            let flags = paging::leaf_flags(writable, nx) | paging::P_USER;
             // SAFETY: leaf_ptr 保证指向当前 CR3 页表的 4KiB 叶槽。
             unsafe {
                 core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
@@ -346,7 +399,8 @@ mod real {
             let Some(root) = root() else {
                 return false;
             };
-            let Some(lp) = leaf_ptr(root, va) else {
+            // U 位按 VA 半区推导：用户半区的 COW-steal 同样需要中间项带 U。
+            let Some(lp) = leaf_ptr(root, va, va >> 47 == 0) else {
                 return false;
             };
             let e = unsafe { core::ptr::read_volatile(lp) };
@@ -399,9 +453,11 @@ mod real {
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 use real::RealPt;
 
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 static mut REGISTRY: Registry = Registry::new();
 /// COW 计数表（任务13 并发安全版）：SpinProtected 自带 Sync，无需
 /// static mut——锁内读改写，中断/多核上下文安全。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
 static COW: CowTable = CowTable::new();
 
 /// idt 接入点：vector 14 先走这里；返回 true = 已修复，回触发点重试。
@@ -444,6 +500,12 @@ pub fn on_page_fault(error_code: u64) -> bool {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn on_page_fault(_error_code: u64) -> bool {
     false
+}
+
+/// 目标态页表操作入口（ring3 装载用；宿主无真页表，不编译）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn target_ops() -> impl PageTableOps {
+    RealPt
 }
 
 /// 内核自检（目标态）：登记 scratch 区并故意踩出真 #PF。
@@ -658,6 +720,12 @@ mod tests {
                 None => self.map.push((va, phys, writable, nx)),
             }
             true
+        }
+        fn map_user_frame(&mut self, va: u64, phys: u64, writable: bool, nx: bool) -> bool {
+            if va >> 47 != 0 {
+                return false;
+            }
+            self.map_frame(va, phys, writable, nx)
         }
         fn set_writable(&mut self, va: u64, writable: bool) -> bool {
             match self.idx(va) {

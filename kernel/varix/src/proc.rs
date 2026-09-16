@@ -9,6 +9,7 @@
 use core::sync::atomic::AtomicU64;
 
 pub mod elf;
+pub mod ring3;
 pub mod syscall;
 
 // --- VARIABLE-200 AI-01 · 用户态进程域（F001~F025，W2）---------------------

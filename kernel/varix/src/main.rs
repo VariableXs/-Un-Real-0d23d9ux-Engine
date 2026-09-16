@@ -344,7 +344,17 @@ fn boot() -> ! {
         varix::kinfo!("aurora: desktop demo painted");
     }
 
-    varix::kinfo!("boot complete — halting");
+    varix::kinfo!("boot complete");
+
+    // --- 任务14 · ring3 演示：装 MSR/TSS → 装载 hello.elf → iretq 进用户态。
+    // hello 两次 write（int 0x80 与 syscall 双入口）后 exit(0)，内核回收
+    // 进程槽并停机——正常路径不会走到下面的 halt()。
+    if varix::proc::ring3::install() {
+        varix::kinfo!("ring3: syscall MSRs + TSS.RSP0 installed");
+        varix::proc::ring3::run_demo();
+    } else {
+        varix::kwarn!("ring3: install unavailable — demo skipped");
+    }
     halt()
 }
 

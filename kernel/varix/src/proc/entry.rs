@@ -33,9 +33,11 @@ pub const GDT_USER_DATA: u64 = 0x23;
 /// syscall 进入时屏蔽的标志位：TF|IF|DF|IOPL|AC|NT。
 pub const FMASK_VALUE: u64 = 0x0000_0000_0004_7700;
 
-/// STAR：sysret 目标（bit63:48）与 syscall 目标（bit47:32）。
+/// STAR：sysret 目标（bit63:48，取 user code 基值=选择子清 RPL，
+/// CPU 回用户态时自动补 RPL3，SS=CS+8 恰为 user data）与 syscall
+/// 目标（bit47:32，内核 code，SS=+8 恰为内核 data）。
 pub const fn build_star() -> u64 {
-    ((GDT_USER_CODE - 16) << 48) | (GDT_KERNEL_CODE << 32)
+    ((GDT_USER_CODE & !0x3) << 48) | (GDT_KERNEL_CODE << 32)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -161,6 +163,7 @@ pub enum ErrNo {
     Eintr = 7,
     Ebadf = 8,
     Enospc = 9,
+    Eio = 10,
 }
 
 impl ErrNo {
@@ -180,6 +183,7 @@ impl ErrNo {
             7 => ErrNo::Eintr,
             8 => ErrNo::Ebadf,
             9 => ErrNo::Enospc,
+            10 => ErrNo::Eio,
             _ => ErrNo::Einval,
         }
     }
@@ -196,6 +200,7 @@ impl ErrNo {
             ErrNo::Eintr => "EINTR",
             ErrNo::Ebadf => "EBADF",
             ErrNo::Enospc => "ENOSPC",
+            ErrNo::Eio => "EIO",
         }
     }
 }
@@ -895,7 +900,7 @@ pub fn run_uspace_checks() -> CheckSet {
             && plan[0].msr == IA32_STAR
             && plan[4].msr == IA32_EFER
             && plan[4].value & EFER_SCE != 0
-            && build_star() == (0x0B << 48) | (0x08 << 32),
+            && build_star() == ((GDT_USER_CODE & !0x3) << 48) | (GDT_KERNEL_CODE << 32),
         "msr plan",
     );
 

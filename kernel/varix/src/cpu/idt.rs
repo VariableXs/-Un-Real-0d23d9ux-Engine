@@ -424,13 +424,18 @@ pub fn init() -> usize {
             18 => crate::cpu::gdt::IST_MACHINE_CHECK as u8,
             _ => 0,
         };
-        // Vectors 3 (int3) and 0x80 stay reachable from ring 3.
+        // Vector 3 (int3) stays reachable from ring 3（0x80=128 在下方
+        // 设备中断循环，EXCEPTION_COUNT=32 覆盖不到它）。
         let dpl = if v == 3 { 3 } else { 0 };
         let handler = stub_for(v as u8);
         idt.set(v, handler, ist, dpl);
     }
     for v in EXCEPTION_COUNT..IDT_VECTORS {
-        idt.set(v, stub_for(v as u8), 0, 0);
+        // 任务14：int 0x80 是用户态 syscall 第二入口，必须 dpl3——
+        // 曾经只在上面的异常循环里写 dpl 判定，0x80 落在本循环拿到
+        // dpl=0，ring3 首次 int 0x80 即 #GP(0x402)。
+        let dpl = if v == 0x80 { 3 } else { 0 };
+        idt.set(v, stub_for(v as u8), 0, dpl);
     }
     idt.set(SPURIOUS_VECTOR as usize, stub_for(SPURIOUS_VECTOR), 0, 0);
     // SAFETY: `IDT` is a `static` and never moves.
@@ -566,6 +571,19 @@ pub fn read_trap_frame(vector: u64, rsp: u64) -> TrapFrame {
 /// through the CPU domain's entry/exit pair, get acknowledged, and return —
 /// the `iretq` is done by the naked wrapper below.
 extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
+    // stub 的 `push imm8` 对 >=0x80 的向量做**符号扩展**（0x80 →
+    // 0xFFFFFFFFFFFFFF80）。真向量恒在 0..256，先归一化——否则 int 0x80
+    // 的分流判断永不命中，还会落进设备中断路径污染 iretq 现场（实测
+    // CS=0x2b/RIP=1 回用户）。
+    let vector = vector & 0xFF;
+    // 任务14：int 0x80（dpl3，用户态 syscall 第二入口）——0x80=128 在
+    // EXCEPTION_COUNT(32) 之外，分流必须放在异常块**之前**（曾经写在
+    // 块内，永不可达，ring3 首次 int 0x80 落进设备路径弄脏 iretq 现场）。
+    if vector == 0x80 {
+        crate::proc::ring3::int80_from_frame(rsp);
+        guard_frame_cs(rsp);
+        return;
+    }
     if vector < EXCEPTION_COUNT as u64 {
         // `rsp` is the frame base: [rsp+8] is the vector the stub pushed, then
         // the CPU's own frame (error code if the exception has one, then RIP).
@@ -584,6 +602,7 @@ extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
         // 才走诊断。错误码不落盘的话 common_entry 会把它当 RIP 弹出。
         if vector == 14 && crate::mem::pfh::on_page_fault(code) {
             drop_error_code(rsp);
+            guard_frame_cs(rsp); // drop 后布局与无错误码向量一致
             return;
         }
         let cr2: u64 = fault_addr();
@@ -597,6 +616,10 @@ extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
         let frame = read_trap_frame(vector, rsp);
         let mut buf = [0u8; 768];
         let n = dump_frame(&frame, &mut buf);
+        // 串口镜像：-display none 下 VGA 不可见——没有这份镜像，fatal 的
+        // 寄存器现场（RFLAGS 的 NT 位、CS/SS 选择子）在串口采集里永远缺席，
+        // 现场只能靠 rip/err 猜。
+        crate::serial::write_bytes(&buf[..n]);
         if let Some(c) = crate::console::installed_ref() {
             for &b in &buf[..n] {
                 c.put_byte(b);
@@ -615,7 +638,41 @@ extern "C" fn isr_dispatch(vector: u64, rsp: u64) {
         }
     }
     let _ = crate::cpu::on_irq_exit();
+    guard_frame_cs(rsp);
 }
+
+/// 任务14 · iretq 前的段槽守卫（正式防御，随验收保留）：设备/int80
+/// 返回前校验 CPU 帧的 CS 槽。实测 QEMU 11.1（v11.1.0-12130）会在
+/// iretq 中断窗口把 CS 槽染成 0x2b（=TSS 选择子|RPL3；GDT[5] 不是代码
+/// 段，真实硬件 iret 弹到它必然 #GP(err=0x28)），并且该 QEMU 还会容忍
+/// 这次非法加载（描述符缓存沿用 GDT[3]+Accessed），用户态带着 CS=0x2b
+/// 跑到下一次 iretq 才炸。内核与用户态代码全程无写坏点（GDT dump 正
+/// 确、STAR 哨兵完好、hello 用户自检 CS=0x1b），定性为 TCG artifact；
+/// 守卫在 iretq 之前按目标特权级（resume RSP 在用户半区 → 0x1b，否则
+/// 0x8）复位 CS 槽并留痕，真实硬件上同样是正确的防御性检查。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn guard_frame_cs(rsp: u64) {
+    // SAFETY: 槽位在 wrapper 自己的帧上方（stub push 区），存活至 iretq。
+    unsafe {
+        let cs_ptr = (rsp + 24) as *mut u64; // 无错误码向量：RIP@+16, CS@+24
+        let cs = core::ptr::read_volatile(cs_ptr);
+        if cs == 0x1b || cs == 0x8 {
+            return;
+        }
+        let resume_rsp = core::ptr::read_volatile(cs_ptr.add(2)); // CS+16 = RSP 槽
+        let want: u64 = if resume_rsp < 0x0000_8000_0000_0000 { 0x1b } else { 0x8 };
+        crate::kwarn!(
+            "isr: frame cs={:#x} (want {:#x}, resume rsp {:#x}) — guard reset",
+            cs,
+            want,
+            resume_rsp
+        );
+        core::ptr::write_volatile(cs_ptr, want);
+    }
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+fn guard_frame_cs(_rsp: u64) {}
 
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 fn halt_forever() -> ! {
@@ -1043,26 +1100,31 @@ mod tests {
     fn read_trap_frame_reads_saved_and_cpu_slots() {
         let mut mem = [0u64; 32];
         let center = 16usize; // mem[center] = wrapper rsp（saved rbp 槽）
-        let base = mem.as_mut_ptr() as u64 + (center * 8) as u64;
+        let p = mem.as_mut_ptr();
+        let base = p as u64 + (center * 8) as u64;
+        // 写入与被测函数的读取走同一条裸指针通道；volatile 让 dead-store
+        // 分析视所有写入为可观察（读取都经指针，直索引写入会被误判）。
+        let set = |i: usize, v: u64| unsafe { p.add(i).write_volatile(v) };
         // 9 个已保存 volatile（rsp-72 → r11 … rsp-8 → rax）+ saved rbp。
-        mem[center - 9] = 0x111;
-        mem[center - 8] = 0x110;
-        mem[center - 7] = 0x109;
-        mem[center - 6] = 0x108;
-        mem[center - 5] = 0x107;
-        mem[center - 4] = 0x106;
-        mem[center - 3] = 0x105;
-        mem[center - 2] = 0x104;
-        mem[center - 1] = 0x103;
-        mem[center] = 0x100;
-        mem[center + 1] = 14;
+        set(center - 9, 0x111);
+        set(center - 8, 0x110);
+        set(center - 7, 0x109);
+        set(center - 6, 0x108);
+        set(center - 5, 0x107);
+        set(center - 4, 0x106);
+        set(center - 3, 0x105);
+        set(center - 2, 0x104);
+        set(center - 1, 0x103);
+        set(center, 0x100);
+        // [rbp+8] 的 vector 槽不写——read_trap_frame 的 vector 来自参数，
+        // 该槽从不被读取。
         // 带错误码的 CPU 帧：err, rip, cs, rflags, rsp, ss
-        mem[center + 2] = 0x2;
-        mem[center + 3] = 0xCAF0;
-        mem[center + 4] = 0x8;
-        mem[center + 5] = 0x202;
-        mem[center + 6] = 0x7F00;
-        mem[center + 7] = 0x10;
+        set(center + 2, 0x2);
+        set(center + 3, 0xCAF0);
+        set(center + 4, 0x8);
+        set(center + 5, 0x202);
+        set(center + 6, 0x7F00);
+        set(center + 7, 0x10);
         let f = read_trap_frame(14, base);
         assert_eq!(f.vector, 14);
         assert_eq!(f.r11, 0x111);
@@ -1075,12 +1137,11 @@ mod tests {
         assert_eq!(f.rsp, 0x7F00);
         assert_eq!(f.ss, 0x10);
         // 无错误码向量（如时钟 32）：CPU 帧直接从 RIP 开始。
-        mem[center + 1] = 32;
-        mem[center + 2] = 0xBEEF; // rip
-        mem[center + 3] = 0x8; // cs
-        mem[center + 4] = 0x302; // rflags
-        mem[center + 5] = 0x8F00; // rsp
-        mem[center + 6] = 0x10; // ss
+        set(center + 2, 0xBEEF); // rip
+        set(center + 3, 0x8); // cs
+        set(center + 4, 0x302); // rflags
+        set(center + 5, 0x8F00); // rsp
+        set(center + 6, 0x10); // ss
         let g = read_trap_frame(32, base);
         assert_eq!(g.error_code, 0);
         assert_eq!(g.rip, 0xBEEF);

@@ -30,7 +30,9 @@ const EFI_RESET_COLD: u32 = 1;
 // 直接调用会在 RS 内部 #PF。因此调用前须把 EfiRuntimeServicesCode/Data
 // 区域按 phys→phys 恒等映射进**当前生效的** CR3 页表（Limine 交付的表）。
 
+#[cfg(target_os = "none")]
 const EFI_MEMORY_RUNTIME_CODE: u32 = 5;
+#[cfg(target_os = "none")]
 const EFI_MEMORY_RUNTIME_DATA: u32 = 6;
 
 #[cfg(target_os = "none")]
@@ -175,6 +177,7 @@ pub fn identity_map_low_4gib() -> usize {
     0
 }
 
+#[cfg(target_os = "none")]
 #[repr(C)]
 struct EfiMemoryDesc {
     kind: u32,

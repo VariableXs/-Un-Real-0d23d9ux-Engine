@@ -15,8 +15,8 @@ pub const GDT_ENTRIES: usize = 7;
 pub const SEL_NULL: u16 = 0x00;
 pub const SEL_KERNEL_CODE: u16 = 0x08;
 pub const SEL_KERNEL_DATA: u16 = 0x10;
-pub const SEL_USER_DATA: u16 = 0x18;
-pub const SEL_USER_CODE: u16 = 0x20;
+pub const SEL_USER_CODE: u16 = 0x18;
+pub const SEL_USER_DATA: u16 = 0x20;
 pub const SEL_TSS: u16 = 0x28;
 
 /// Access byte bits.
@@ -135,8 +135,8 @@ impl Gdt {
                 0, // null (architecturally required)
                 kernel_code(),
                 kernel_data(),
-                user_data(),
                 user_code(),
+                user_data(),
                 0, // TSS low, filled by `set_tss`
                 0, // TSS high
             ],
@@ -344,6 +344,16 @@ pub fn tables() -> &'static GdtTables {
     &TABLES
 }
 
+/// 任务14：int 0x80 从 ring3 进入时的环零栈（TSS.RSP0）。
+/// RSP0 不设真栈的话，用户态第一次 int 0x80 就是 #SS→三重故障。
+///
+/// # Safety
+/// Single-threaded boot path only.
+pub unsafe fn set_rsp0(v: u64) {
+    // SAFETY: 见 Safety 条款；tss_mut 只在此单线程窗口被触碰。
+    unsafe { TABLES.tss_mut().set_rsp0(v) }
+}
+
 /// F026 + F027 bring-up: build the TSS, wire the IST stacks, install.
 ///
 /// Returns `true` when both the GDT and the task register are live. On the host
@@ -462,8 +472,8 @@ mod tests {
     fn selectors_are_eight_bytes_apart() {
         assert_eq!(SEL_KERNEL_CODE, 0x08);
         assert_eq!(SEL_KERNEL_DATA, 0x10);
-        assert_eq!(SEL_USER_DATA, 0x18);
-        assert_eq!(SEL_USER_CODE, 0x20);
+        assert_eq!(SEL_USER_CODE, 0x18);
+        assert_eq!(SEL_USER_DATA, 0x20);
         assert_eq!(SEL_TSS, 0x28);
     }
 

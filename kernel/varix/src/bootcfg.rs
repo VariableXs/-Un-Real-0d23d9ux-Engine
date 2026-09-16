@@ -687,7 +687,7 @@ mod tests {
         assert_eq!(src, CfgSource::BuiltIn);
         assert_eq!(cfg, BootCfg::defaults());
 
-        let (cfg, src) = load(Some(&mut |_, _| None), "/boot-select.json", &mut [0u8; 128]);
+        let (_cfg, src) = load(Some(&mut |_, _| None), "/boot-select.json", &mut [0u8; 128]);
         assert_eq!(src, CfgSource::BuiltIn); // 文件不存在=首次启动常态，静默
 
         let mut rbuf = [0u8; 128];
@@ -737,7 +737,7 @@ mod tests {
             seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             (seed >> 33) as u64
         };
-        for round in 0..1000u32 {
+        for _ in 0..1000u32 {
             let len = (next() % 64) as usize;
             let mut bytes = Vec::with_capacity(len);
             for _ in 0..len {
@@ -747,9 +747,9 @@ mod tests {
             let _ = cfg.timeout_sec;
         }
         // 结构化 fuzz：合法骨架内嵌随机垃圾
-        for round in 0..500u32 {
+        for _ in 0..500u32 {
             let garbage: String = (0..8)
-                .map(|_| (b"abc\":{},[]0123456789"[(next() % 19) as usize] as char))
+                .map(|_| b"abc\":{},[]0123456789"[(next() % 19) as usize] as char)
                 .collect();
             let doc = format!("{{\"timeout_sec\":{},\"x\":\"{}\"}}", next() % 100, garbage);
             let _ = parse(doc.as_bytes());

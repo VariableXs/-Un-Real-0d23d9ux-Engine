@@ -304,18 +304,17 @@ impl Default for SyscallTable {
 // F103 — the fast path
 // ---------------------------------------------------------------------------
 
-/// `IA32_STAR` layout. `SYSCALL` takes CS from bits 47:32 and derives
-/// `SS = CS + 8`; `SYSRET` takes its base from bits 63:48 and derives
-/// `CS = base + 16`, `SS = base + 8`.
-///
-/// So the base is *not* the user code selector — it is the selector one slot
-/// before user data, and the GDT must therefore lay user data out directly
-/// before user code (F026 does). Getting this wrong loads a valid-looking
-/// selector that is actually kernel data on the way back from a syscall, which
-/// is a privilege bug that only shows up under load.
-pub const fn star_value(kernel_code: u16, user_data: u16) -> u64 {
-    let sysret_base = user_data.wrapping_sub(8);
-    ((kernel_code as u64) << 32) | ((sysret_base as u64) << 48)
+/// `IA32_STAR` layout. The CPU forces `SS ← CS + 8` on **both**
+/// directions: `SYSCALL` takes CS from bits 47:32 (SS = CS+8 must be
+/// kernel data), `SYSRET` takes CS from bits 63:48 (SS = CS+8 must be
+/// user data). So the high half is the *user code base selector*
+/// (RPL stripped; the CPU forces RPL 3 on return), and the GDT must lay
+/// user code directly before user data (user_data = user_code + 8, F026
+/// does). Getting this wrong loads a valid-looking selector that is
+/// actually the TSS low half on the way back from a syscall, which is a
+/// privilege bug that only shows up under load.
+pub const fn star_value(kernel_code: u16, user_code: u16) -> u64 {
+    ((kernel_code as u64) << 32) | ((user_code as u64) << 48)
 }
 
 /// `IA32_SFMASK`: the flags cleared on entry. IF kills re-entrancy, TF kills
@@ -342,8 +341,8 @@ impl FastPath {
             return Err("syscall entry point is null");
         }
         let (kernel_code, _kernel_data) = crate::proc::selectors_for(crate::proc::Ring::Zero);
-        let (_user_code, user_data) = crate::proc::selectors_for(crate::proc::Ring::Three);
-        let star = star_value(kernel_code, user_data);
+        let (user_code, _user_data) = crate::proc::selectors_for(crate::proc::Ring::Three);
+        let star = star_value(kernel_code, user_code);
         let fp = FastPath {
             configured: true,
             star,
@@ -560,18 +559,18 @@ mod tests {
     #[test]
     fn star_encoding_survives_the_architectural_derivation() {
         use crate::cpu::gdt;
-        let star = star_value(gdt::SEL_KERNEL_CODE, gdt::SEL_USER_DATA);
+        let star = star_value(gdt::SEL_KERNEL_CODE, gdt::SEL_USER_CODE);
         // SYSCALL: CS = STAR[47:32], SS = that + 8.
         let syscall_cs = star >> 32 & 0xFFFF;
         assert_eq!(syscall_cs, gdt::SEL_KERNEL_CODE as u64);
         assert_eq!(syscall_cs + 8, gdt::SEL_KERNEL_DATA as u64);
-        // SYSRET: CS = base + 16, SS = base + 8.
+        // SYSRET: CS = STAR[63:48]（CPU 强制 RPL3），SS = CS + 8（同强制）。
         let base = star >> 48 & 0xFFFF;
-        assert_eq!(base + 16, gdt::SEL_USER_CODE as u64, "SYSRET CS");
+        assert_eq!(base, gdt::SEL_USER_CODE as u64, "SYSRET CS");
         assert_eq!(base + 8, gdt::SEL_USER_DATA as u64, "SYSRET SS");
         // The GDT layout that derivation depends on.
         assert_eq!(gdt::SEL_KERNEL_DATA, gdt::SEL_KERNEL_CODE + 8);
-        assert_eq!(gdt::SEL_USER_CODE, gdt::SEL_USER_DATA + 8);
+        assert_eq!(gdt::SEL_USER_DATA, gdt::SEL_USER_CODE + 8);
     }
 
     #[test]
