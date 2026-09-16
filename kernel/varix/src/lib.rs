@@ -32,6 +32,7 @@ pub mod acpi;
 pub mod audio;
 pub mod banner;
 pub mod bootopt;
+pub mod bootnext;
 pub mod bootselect;
 pub mod checks;
 pub mod cmdline;

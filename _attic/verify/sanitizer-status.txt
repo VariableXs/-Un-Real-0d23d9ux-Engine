@@ -1,1 +1,1 @@
-sanitizer: SKIP no-nightly
+sanitizer: PASS

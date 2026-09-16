@@ -20,7 +20,7 @@
 ## 阶段 0：引导选择页（部分已完成）
 
 - [x] **任务 1**（AI-K）：键盘上下键选择——input 域 PS/2 轮询接出「键事件查询接口」，bootselect 倒计时中响应 ↑/↓/Enter；QEMU 实机验证三种路径（默认超时/选中 varix/选中 windows）。前置：无。✅ 2026-09-16 AI-K（新增 `kernel/varix/src/ps2.rs` 轮询+Set-1 解码；bootselect 倒计时 50 片/秒轮询、↑↓即时重画、Enter 即选；宿主 14 例+QEMU 三路径串口/截图归档 `docs/acceptance/2026-09-16-任务1-键盘选择/`；ktest 2728 绿/kcheck 0 告警）
-- [ ] **任务 2**（AI-K）：BootNext 一键切 Windows——UEFI 变量写入 + ResetSystem 路径；QEMU 验证写变量与重启行为。前置：任务 1。
+- [x] **任务 2**（AI-K）：BootNext 一键切 Windows——UEFI 变量写入 + ResetSystem 路径；QEMU 验证写变量与重启行为。前置：任务 1。✅ 2026-09-16 AI-K（新增 `kernel/varix/src/bootnext.rs`：Limine EFI 系统表/内存映射请求接入，SetVariable 写 BootNext+GetVariable 读回校验+ResetSystem(EfiResetCold)；RS 调用前置低 4GiB 恒等映射（固件以绝对物理地址自引用）；OVMF UEFI 实机验证「写变量+复位」全链（VM 按复位退出），SeaBIOS BIOS 引导如实降级「UEFI BootNext unavailable」继续引导 varix；证据归档 `docs/acceptance/2026-09-16-任务2-BootNext切Windows/`；ktest 2732 绿/kcheck 0 告警）
 - [ ] **任务 3**（AI-K）：选择页视觉收口——console 清屏策略消除倒计时残影；多分辨率（800×600/1280×720/1920×1080）截图归档。前置：任务 1。
 - [ ] **任务 4**（AI-K）：`boot-select.json` 配置读取（共享分区路径抽象为参数注入），损坏走内置默认并 kwarn。前置：任务 1。
 - [ ] **任务 5**（AI-K）：引导页负向演练矩阵——配置损坏/键盘中途拔除/倒计时中拔盘/无帧缓冲四场景各一遍并归档记录。前置：任务 4。

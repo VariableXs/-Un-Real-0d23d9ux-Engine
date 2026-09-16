@@ -169,6 +169,21 @@ pub struct RsdpResponse {
 }
 
 #[repr(C)]
+pub struct EfiSystemTableResponse {
+    pub revision: u64,
+    pub address: u64,
+}
+
+#[repr(C)]
+pub struct EfiMemmapResponse {
+    pub revision: u64,
+    pub memmap: u64,
+    pub memmap_size: u64,
+    pub desc_size: u64,
+    pub desc_version: u64,
+}
+
+#[repr(C)]
 pub struct SmbiosResponse {
     pub revision: u64,
     pub entry_32: u64,
@@ -278,6 +293,26 @@ pub static mut BOOT_TIME_REQUEST: Request<BootTimeResponse> = Request {
     response: core::ptr::null_mut(),
 };
 
+/// EFI 系统表请求（LIMINE_EFI_SYSTEM_TABLE_REQUEST）— BootNext/ResetSystem
+/// 需要 UEFI Runtime Services，而 RuntimeServices 指针挂在系统表上。
+#[used]
+#[link_section = ".limine_requests"]
+pub static mut EFI_SYSTEM_TABLE_REQUEST: Request<EfiSystemTableResponse> = Request {
+    id: [COMMON_MAGIC[0], COMMON_MAGIC[1], 0x5ceba5163eaaf6d6, 0x0a6981610cf65fcc],
+    revision: 0,
+    response: core::ptr::null_mut(),
+};
+
+/// EFI 内存映射请求（LIMINE_EFI_MEMMAP_REQUEST）— 定位 RuntimeServices
+/// 区域以建恒等映射。
+#[used]
+#[link_section = ".limine_requests"]
+pub static mut EFI_MEMMAP_REQUEST: Request<EfiMemmapResponse> = Request {
+    id: [COMMON_MAGIC[0], COMMON_MAGIC[1], 0x7df62a431d6872d5, 0xa4fcdfb3e57306c8],
+    revision: 0,
+    response: core::ptr::null_mut(),
+};
+
 #[used]
 #[link_section = ".limine_requests"]
 pub static mut EXECUTABLE_ADDRESS_REQUEST: Request<ExecutableAddressResponse> = Request {
@@ -330,6 +365,38 @@ impl Firmware {
             Firmware::Uefi64 => "UEFI 64",
             Firmware::Sbi => "RISC-V SBI",
             Firmware::Unknown(_) => "UNKNOWN",
+        }
+    }
+}
+
+/// EFI 系统表指针（UEFI 引导时非空；BIOS 引导请求无响应返回 None）。
+pub fn efi_system_table() -> Option<u64> {
+    unsafe {
+        let resp = response_of(&raw const EFI_SYSTEM_TABLE_REQUEST);
+        if resp.is_null() {
+            return None;
+        }
+        let addr = (*resp).address;
+        if addr == 0 {
+            None
+        } else {
+            Some(addr)
+        }
+    }
+}
+
+/// EFI 内存映射（memmap 指针/总长/描述符大小/版本；UEFI 引导时非空）。
+pub fn efi_memmap() -> Option<(u64, u64, u64, u64)> {
+    unsafe {
+        let resp = response_of(&raw const EFI_MEMMAP_REQUEST);
+        if resp.is_null() {
+            return None;
+        }
+        let r = &*resp;
+        if r.memmap == 0 || r.memmap_size == 0 || r.desc_size == 0 {
+            None
+        } else {
+            Some((r.memmap, r.memmap_size, r.desc_size, r.desc_version))
         }
     }
 }

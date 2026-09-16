@@ -113,6 +113,11 @@ class FatImage:
         return lfn_records(long_name, short_11) + [bytes(e)]
 
     def make_dir(self, parent_start: int, child_records: list) -> int:
+        content = self.dir_content(parent_start, child_records)
+        return self.alloc(content)
+
+    @staticmethod
+    def dir_content(parent_start: int, child_records: list) -> bytes:
         dot = bytearray(32)
         dot[0:11] = b".          "
         dot[11] = 0x10
@@ -122,8 +127,13 @@ class FatImage:
         if parent_start:
             struct.pack_into("<H", dotdot, 26, parent_start)
         content = bytes(dot) + bytes(dotdot) + b"".join(child_records)
-        content = content.ljust(SPC * SECTOR, b"\x00")
-        return self.alloc(content)
+        return content.ljust(SPC * SECTOR, b"\x00")
+
+    def rewrite(self, start: int, content: bytes):
+        """把单簇目录/文件内容原位重写（用于先占簇后回填父指针的循环依赖）。"""
+        assert len(content) <= SPC * SECTOR, "rewrite overflow"
+        off = (start - 2) * SPC * SECTOR
+        self.data[off:off + len(content)] = content
 
 
 def main() -> int:
@@ -157,9 +167,17 @@ def main() -> int:
     varix_rec = fat.file_entry("varix", b"VARIX   ", kernel)
     kernel_dir_start = fat.make_dir(0, varix_rec)
 
+    # ---- /EFI/BOOT/BOOTX64.EFI（UEFI 引导体，OVMF/真机 UEFI 靠它）----
+    bootx64 = open(os.path.join(LIMINE_DIR, "BOOTX64.EFI"), "rb").read()
+    bootx64_rec = fat.file_entry("BOOTX64.EFI", b"BOOTX64 EFI", bootx64)
+    boot_dir_start = fat.make_dir(0, bootx64_rec)      # 先占簇（dotdot 暂空）
+    efi_dir_start = fat.make_dir(0, fat.dir_entry("boot", b"BOOT      ", boot_dir_start))
+    fat.rewrite(boot_dir_start, FatImage.dir_content(efi_dir_start, bootx64_rec))  # 回填父指针
+
     # ---- 根目录 ----
     root_recs = []
     root_recs += fat.dir_entry("kernel", b"KERNEL   ", kernel_dir_start)
+    root_recs += fat.dir_entry("efi", b"EFI       ", efi_dir_start)
     root_recs += fat.file_entry("limine-bios.sys", b"LIMINE~1SYS", bios_sys)
     root_recs += fat.file_entry("limine.conf", b"LIMINE.CONF", LIMINE_CONF.encode())
     root = b"".join(root_recs)
@@ -180,20 +198,24 @@ def main() -> int:
     bpb[16] = 2
     struct.pack_into("<H", bpb, 17, 0)           # FAT32: 根目录非固定区
     struct.pack_into("<H", bpb, 19, 0)
-    bpb[21] = 0xF8
+    bpb[21] = 0xF8                               # 介质描述符（OVMF FAT 驱动校验）
     struct.pack_into("<H", bpb, 22, 0)           # FAT32: FATSz16=0
-    struct.pack_into("<H", bpb, 24, 63)
-    struct.pack_into("<H", bpb, 26, 16)
-    struct.pack_into("<I", bpb, 28, PART_SECTORS)
+    struct.pack_into("<H", bpb, 24, 63)          # 每磁道扇区
+    struct.pack_into("<H", bpb, 26, 16)          # 磁头数
     struct.pack_into("<I", bpb, 28, PART_LBA)    # HiddSec：分区前隐藏扇区
     struct.pack_into("<I", bpb, 32, PART_SECTORS)  # TotSec32：分区总扇区数
     struct.pack_into("<I", bpb, 36, FAT_SECTORS)  # FATSz32
-    bpb[40] = 0x29
-    struct.pack_into("<I", bpb, 41, 0x56415258)
-    bpb[43:54] = b"VARIXDISK   "
-    bpb[54:62] = b"FAT32   "
-    struct.pack_into("<H", bpb, 46, 6)           # 备份引导扇区
+    struct.pack_into("<H", bpb, 40, 0)           # ExtFlags = 0（镜像所有 FAT）
+    struct.pack_into("<H", bpb, 42, 0)           # FSVer = 0
     struct.pack_into("<I", bpb, 44, 2)           # FAT32: 根目录簇 = 2
+    struct.pack_into("<H", bpb, 48, 1)           # FSInfo   = 分区内扇区 1（与实际写入位置一致）
+    struct.pack_into("<H", bpb, 50, 6)           # BkBootSec= 分区内扇区 6（备份引导扇区本体；7 为备份 FSInfo）
+    bpb[64] = 0x80                               # DriveNum
+    bpb[65] = 0                                  # Reserved
+    bpb[66] = 0x29                               # 扩展引导签名（FAT32 位于偏移 66，OVMF 校验点）
+    struct.pack_into("<I", bpb, 67, 0x56415258)  # 卷序列号
+    bpb[71:82] = b"VARIXDISK   "                 # 卷标（11 字节）
+    bpb[82:90] = b"FAT32    "                    # 文件系统类型（8+1）
     bpb[510:512] = b"\x55\xAA"
     p0 = PART_LBA * SECTOR
     img[p0:p0 + SECTOR] = bpb
@@ -206,6 +228,9 @@ def main() -> int:
     struct.pack_into("<I", fsi, 492, 0xFFFFFFFF)
     struct.pack_into("<I", fsi, 508, 0xAA550000)
     img[(PART_LBA + 1) * SECTOR:(PART_LBA + 2) * SECTOR] = fsi
+    # 备份引导扇区/备份 FSInfo（BPB 声明在分区内扇区 6/7，必须真实在位）
+    img[(PART_LBA + 6) * SECTOR:(PART_LBA + 7) * SECTOR] = bpb
+    img[(PART_LBA + 7) * SECTOR:(PART_LBA + 8) * SECTOR] = fsi
 
     # FAT 两份
     fat_bytes = b"".join(struct.pack("<I", v & 0xFFFFFFFF) for v in fat.fat)

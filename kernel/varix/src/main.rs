@@ -60,9 +60,11 @@ fn boot() -> ! {
     };
 
     // --- boot select（双域总案·阶段0）--------------------------------------
-    // 菜单在帧缓冲就绪后、域初始化前亮出：倒计时归零走默认项。
-    // 选中项若非 varix，链式引导（BootNext）由引导器侧负责——当前如实记录。
+    // 菜单在帧缓冲就绪后、域初始化前亮出：↑/↓/Enter 实时选择（任务1），
+    // 倒计时归零走默认项。选中 windows → 写 UEFI BootNext + ResetSystem
+    // （任务2）；选中 uefi → 直接重启进固件设置。
     let boot_opts = varix::bootopt::options();
+    let mut chosen_id: Option<&'static str> = None;
     if boot_opts.menu_visible() {
         let tsc_hz = varix::platform::info()
             .map(|p| p.tsc_hz)
@@ -70,11 +72,12 @@ fn boot() -> ! {
         let sel = varix::bootselect::run_countdown(&surface, boot_opts.timeout_secs, tsc_hz);
         let chosen = varix::bootselect::ENTRIES[sel].id;
         varix::kinfo!("boot-select: entry={}", chosen);
-        if sel != 0 {
-            varix::kwarn!(
-                "boot-select: chainload of \"{}\" not wired yet — continuing varix",
-                chosen
-            );
+        if chosen == "windows" {
+            // BootNext 写入需要可执行的 Runtime Services 映射，推迟到
+            // cpu/mem 域初始化之后再执行（见下方 boot_next_action）。
+            chosen_id = Some(chosen);
+        } else if chosen == "uefi" {
+            chosen_id = Some(chosen);
         }
     }
 
@@ -200,6 +203,46 @@ fn boot() -> ! {
     // CPU domain has reported its core count.
     let mem_state = varix::mem::init();
     varix::mem::render_to_console(&mem_state);
+
+    // --- boot-select 非默认项执行点（双域总案·阶段0 任务2）-----------------
+    // 内存域上线后再调 UEFI Runtime Services：SetVariable/ResetSystem 需要
+    // 可执行、已映射的运行期区域；此前调用会在部分固件上三重故障复位。
+    if let Some(chosen) = chosen_id {
+        if chosen == "uefi" {
+            varix::kinfo!("boot-select: resetting into firmware setup");
+            if !varix::bootnext::reset_cold() {
+                varix::kwarn!("firmware reset unavailable on this firmware — continuing varix");
+            }
+        } else if chosen == "windows" {
+            let _ = varix::bootnext::prepare_runtime_identity_map();
+            let blocks = varix::bootnext::identity_map_low_4gib();
+            varix::kinfo!("boot-select: low-memory identity-mapped ({} x 2MiB)", blocks);
+            let next = varix::bootnext::entry_from_cmdline(varix::cmdline::init().source());
+            match varix::bootnext::write_bootnext(next) {
+                varix::bootnext::BootNextOutcome::Written { entry } => {
+                    varix::kinfo!(
+                        "boot-select: BootNext=0x{:04X} written & verified — resetting",
+                        entry
+                    );
+                    if varix::bootnext::reset_cold() {
+                        // ResetSystem 正常不返回；保险停在死循环（中断未开）。
+                        loop {
+                            core::hint::spin_loop();
+                        }
+                    }
+                    varix::kwarn!("firmware reset unavailable — continuing varix");
+                }
+                varix::bootnext::BootNextOutcome::NoRuntimeServices => {
+                    varix::kwarn!(
+                        "boot-select: BIOS boot — UEFI BootNext unavailable, continuing varix"
+                    );
+                }
+                other => {
+                    varix::kwarn!("boot-select: BootNext failed ({:?}) — continuing varix", other);
+                }
+            }
+        }
+    }
 
     // --- scheduler domain (F076~F100) --------------------------------------------------
     // Last in the boot chain: it needs CPU vectors, the clock tick and the
