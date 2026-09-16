@@ -1,0 +1,2 @@
+[ WARN] boot-cfg: shared config corrupt — built-in defaults applied (badge shown)
+[ INFO] boot-select: entry=varix

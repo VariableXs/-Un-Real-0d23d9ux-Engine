@@ -171,7 +171,9 @@ type KeySource<'a> = &'a mut dyn FnMut() -> Option<crate::ps2::Key>;
 /// 倒计时轮询循环（任务1）：每秒切成 `POLL_SLICES` 片，片间轮询按键。
 /// - ↑/↓：移动选中并立即重画（不重置倒计时——总案口径：倒计时照走）；
 /// - Enter：立即返回当前选中；
-/// - 归零：返回默认项。
+/// - 归零：返回**默认项**（任务5 键盘拔除演练定版：↑↓ 只是预选，
+///   未经 Enter 确认的选择不生效——倒计时自动执行默认拒绝原则，
+///   切 Windows/固件这类重动作必须显式 Enter）。
 ///
 /// 返回最终选中下标。
 pub fn run_countdown(surf: &Surface, timeout_secs: u32, tsc_hz: u64) -> usize {
@@ -197,7 +199,9 @@ pub fn run_countdown_with(
     draw_frame(surf, remaining, sel);
     loop {
         if remaining == 0 {
-            return sel;
+            // 归零执行默认项（未确认的 ↑↓ 预选不生效——键盘拔除/无人
+            // 操作时系统回落配置默认，见任务5 演练矩阵场景2）。
+            return default_index(opts.default_entry);
         }
         for _ in 0..POLL_SLICES {
             // 消费本轮已积累的按键（一片内可能有多键），↑/↓ 立即重画。
@@ -401,7 +405,8 @@ mod tests {
 
     #[test]
     fn keys_do_not_reset_countdown_expiry() {
-        // 键按了但从不 Enter：倒计时仍要归零并返回最后选中项。
+        // 任务5 定版：键按了但从不 Enter（如键盘中途拔除）——倒计时
+        // 归零回落**默认项**，未经确认的 ↑↓ 预选不生效（默认拒绝）。
         let (s, _b) = surface(800, 600);
         let mut one_down_then_none = {
             let mut fired = false;
@@ -415,7 +420,7 @@ mod tests {
             }
         };
         let sel = run_countdown_with(&s, 1, FAST_HZ, &mut one_down_then_none);
-        assert_eq!(sel, 1, "倒计时归零应停在最后选中项而非默认项");
+        assert_eq!(sel, 0, "归零应回落默认项而非未确认的预选项");
     }
 
     #[test]
