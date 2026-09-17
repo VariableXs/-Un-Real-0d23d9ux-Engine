@@ -818,6 +818,10 @@ pub mod target {
                 // 任务21：里程碑 M2——journal 真盘双会话（fresh 封条 /
                 // powercut 恢复），盘面高区 LBA 40000。
                 crate::milestone::target::ms_journal_probe(&mut ctrl);
+
+                // 任务24：内核 KV 存储服务——跨断电 boot-counter 累加 +
+                // 逐会话 10 键写入/恢复核对（盘1 高区 LBA 60000/70000）。
+                crate::kvsrv::target::kv_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }

@@ -61,6 +61,9 @@ pub mod displaysrv;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×
 /// M4 快照区——「内核可运行用户态程序读写真盘」双会话断电恢复演示）。
 pub mod milestone;
+/// 内核 KV 存储服务（任务24：localStorage 语义+命名空间隔离，复用
+/// fs23_journal 后端作账本——值 inline/溢出槽双模，满容量明确报错）。
+pub mod kvsrv;
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
 pub mod inkstack;
 // UNREAL-X AI-34（族0339 · X08451~X08475）：内核兼容 API 层。

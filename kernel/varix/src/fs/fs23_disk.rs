@@ -226,6 +226,16 @@ impl<B: BlockDevice> DiskJournal<B> {
     /// off 档不落日志；满容量明确拒绝；tier≥2 写后 flush。
     /// 持久化点语义：`Some(seq)` 返回即已按档位完成持久化承诺。
     pub fn append(&mut self, op: LogOp) -> Option<u64> {
+        self.append_slot(op, &[])
+    }
+
+    /// 追加一条账本并携带槽载荷（`payload` 原样拼入槽 24..512 自由区，
+    /// 与 fs23 头同块落盘——任务24 KV 服务：键值随账本条目单块原子写）。
+    /// 撕裂/持久化语义与 [`Self::append`] 完全一致；载荷 >488B 返回 None。
+    pub fn append_slot(&mut self, op: LogOp, payload: &[u8]) -> Option<u64> {
+        if payload.len() > 512 - 24 {
+            return None;
+        }
         if self.tier == 0 {
             return None;
         }
@@ -235,7 +245,8 @@ impl<B: BlockDevice> DiskJournal<B> {
         let seq = self.base_seq + self.count as u64;
         let blk = blk_of(op);
         let tag = tag_of(op);
-        let buf = pack(seq, blk, tag);
+        let mut buf = pack(seq, blk, tag);
+        buf[24..24 + payload.len()].copy_from_slice(payload);
         let lba = self.base_lba + 1 + self.count as u64;
         if self.dev.write_blocks(lba, &buf).is_err() {
             return None;
@@ -309,6 +320,54 @@ impl<B: BlockDevice> DiskJournal<B> {
 
     pub fn len(&self) -> usize {
         self.count
+    }
+
+    /// 读回主区第 i 条 `(seq, blk, tag)`（`i < count`；i 按槽序 = seq 序）。
+    ///
+    /// DiskJournal 自身重放只推进水位、不解释载荷；需要逐条账本语义的
+    /// 上层（任务24 KV 服务：账本条目自由区携带键值）经此读回后自行
+    /// 解释 `blk` 与自由区。读失败/槽坏返回 None（上层按撕裂语义处理）。
+    pub fn read_entry(&mut self, i: usize) -> Option<(u64, u64, u32)> {
+        if i >= self.count {
+            return None;
+        }
+        let mut buf = [0u8; 512];
+        if self
+            .dev
+            .read_blocks(self.base_lba + 1 + i as u64, &mut buf)
+            .is_err()
+        {
+            return None;
+        }
+        match unpack(&buf) {
+            SlotRead::Good(seq, blk, tag) => Some((seq, blk, tag)),
+            _ => None,
+        }
+    }
+
+    /// 主区槽 i 的 LBA（上层读账本槽自由区载荷的定位入口）。
+    pub fn slot_lba(&self, i: usize) -> u64 {
+        self.base_lba + 1 + i as u64
+    }
+
+    /// 上层载荷读通道（KV 服务读账本槽自由区/溢出区用）。
+    pub fn dev_read(&mut self, lba: u64, buf: &mut [u8]) -> Result<(), BlockError> {
+        self.dev.read_blocks(lba, buf)
+    }
+
+    /// 上层载荷写通道（KV 服务写溢出槽用；flush 由调用方显式跟进）。
+    pub fn dev_write(&mut self, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+        self.dev.write_blocks(lba, src)
+    }
+
+    /// 上层载荷 flush 通道（溢出槽持久化点）。
+    pub fn dev_flush(&mut self) -> Result<(), BlockError> {
+        self.dev.flush()
+    }
+
+    /// 收回块设备（重开/重建场景——盘面即真源）。
+    pub fn into_device(self) -> B {
+        self.dev
     }
 
     pub fn is_empty(&self) -> bool {
