@@ -10,6 +10,7 @@ use core::sync::atomic::AtomicU64;
 
 pub mod elf;
 pub mod loader;
+pub mod pe;
 pub mod ring3;
 pub mod syscall;
 
@@ -18,6 +19,7 @@ pub mod uspace;
 pub use uspace::run_uspace_checks;
 
 pub use elf::{ElfError, ElfImage, LoadSegment, MAX_LOAD_SEGMENTS};
+pub use pe::{PeError, PeImage};
 pub use syscall::{SyscallError, SyscallTable, SyscallTableError, MAX_SYSCALLS};
 
 pub const MAX_PROCESSES: usize = 64;

@@ -72,7 +72,7 @@
 ## 阶段 5：Wine 兼容层通道
 
 - [x] **任务 38**（AI-B）：Wine 移植评估报告——NTAPI 对接面→VARIX syscall 映射清单，工作量分级。前置：任务 15。（2026-09-17 AI-B：docs/双域-任务38-Wine移植评估报告-2026-09-17.md，NTAPI→16+32 syscall 扩表映射、五阶段 21~27 人周分级、❌13 项拒绝面与任务32 阻塞项标注）
-- [ ] **任务 39**（AI-B）：PE 装载器＋静态链接 exe 加载运行（不含导入解析）。前置：任务 38。
+- [x] **任务 39**（AI-B）：PE 装载器＋静态链接 exe 加载运行（不含导入解析）。前置：任务 38。（2026-09-17 AI-B：proc/pe.rs PE32+ 解析器+PeSource 接任务15 引擎，14 具名拒绝+W^X；tools/make-pe.py 生成静态 PE64 样例 hello.pe；实机 QEMU ring3 链 spawn_pe→hello from PE→exit→pages_released=17/17 零 PANIC；ktest 2889 绿/kcheck 0；导入目录已解析暴露 import_dir 供任务40；验收 docs/acceptance/双域-任务39-PE装载器-2026-09-17.md）
 - [ ] **任务 40**（AI-B）：导入表解析＋Wine 核心 DLL 绑定。前置：任务 39。
 - [ ] **任务 41**（AI-B）：记事本级闭环（GDI 文本/菜单/文件对话框）。前置：任务 40。
 - [ ] **任务 42**（AI-B）：Job 限额接入（内存/CPU rate/KILL_ON_JOB_CLOSE 语义对齐 src-tauri isolation.rs）。前置：任务 41。

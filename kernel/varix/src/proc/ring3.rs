@@ -76,6 +76,15 @@ const INT_KSTACK_PAGES: u64 = 8;
 #[cfg(any(all(target_arch = "x86_64", target_os = "none"), test))]
 static HELLO_ELF: &[u8] = include_bytes!("hello.elf");
 
+/// 任务39（AI-B）· 静态 PE64 样例（tools/make-pe.py 生成）：
+/// write(1, "hello from PE"(NL), 14) 后 exit(0)，与 hello.elf 同一 syscall ABI。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static HELLO_PE: &[u8] = include_bytes!("hello.pe");
+
+/// PE 实例只跑一轮（监护链状态位）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static PE_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
 // ---------------------------------------------------------------------------
 // 决策层：双入口共用
 // ---------------------------------------------------------------------------
@@ -243,6 +252,11 @@ fn after_exit() -> ! {
     if exits < LIFECYCLES {
         spawn_hello(exits + 1);
     }
+    // 任务39（AI-B）：hello 轮次满后，装载并运行一轮静态 PE64 实例
+    // （PE_DONE 只放行一次；PE 自己 exit 后回到本续体进压力探针）。
+    if !PE_DONE.swap(true, Ordering::Relaxed) {
+        spawn_pe();
+    }
     pressure_probe_and_finish()
 }
 
@@ -307,6 +321,77 @@ fn spawn_hello(instance: u32) -> ! {
         plan.rflags
     );
     // SAFETY: 依赖 loader 已映射的段页与栈页、已写入的 MSR 与 TSS.RSP0。
+    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+}
+
+/// 任务39（AI-B）· 装载静态 PE64 并进入 ring3：与 spawn_hello 走同一条
+/// 监护链（PCB 入表 → 共用装载引擎 → 页账本登记 → iretq）。样例的
+/// .text 是 write(1, "hello from PE"(NL), 14) + exit(0)——PE 运行证据与
+/// hello.elf 同源（syscall 指令 + 双入口决策层），装载差异只在格式
+/// 适配器（PeSource 按首选基址映射，无重定位——静态映像）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spawn_pe() -> ! {
+    let img = match super::pe::parse(HELLO_PE) {
+        Ok(i) => i,
+        Err(e) => {
+            crate::kwarn!("ring3: hello.pe parse failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    if img.has_imports() {
+        // 任务39 边界：不做导入解析（任务40）。样例无导入；带导入的
+        // 映像在此如实拒绝，绝不带着未解析 thunk 进 ring3。
+        crate::kwarn!("ring3: PE has imports — import resolution is task 40 — halting");
+        halt_demo()
+    }
+    let pid = match PROCS.lock().alloc(0, b"hellope") {
+        Ok(p) => p,
+        Err(e) => {
+            crate::kwarn!("ring3: PE proc alloc failed: {:?} — halting", e);
+            halt_demo()
+        }
+    };
+    DEMO_PID.store(pid, core::sync::atomic::Ordering::Relaxed);
+    let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+    let src = super::pe::PeSource {
+        img: &img,
+        blob: HELLO_PE,
+    };
+    let loaded = match super::loader::load_into(
+        &src,
+        &mut mp,
+        entry::DEFAULT_STACK_PAGES as u64,
+        entry::USER_STACK_TOP,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: PE load failed ({:?}) — halting", e);
+            halt_demo()
+        }
+    };
+    let pages_n = loaded.pages.len();
+    let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
+    CHILD_PAGES.lock().push((pid, loaded.pages));
+    crate::kinfo!(
+        "ring3: PE spawned pid={} entry={:#x} pages={} imports={} — 任务39 静态 PE 装载",
+        pid,
+        entry_ip,
+        pages_n,
+        img.has_imports()
+    );
+    let mut plan = super::uspace::EntryPlan::default();
+    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, stack_top, &mut plan) {
+        crate::kwarn!("ring3: PE entry plan rejected: {} — halting", e);
+        halt_demo()
+    }
+    crate::kinfo!(
+        "ring3: iretq → PE user (rip={:#x} rsp={:#x} rflags={:#x})",
+        plan.rip,
+        plan.rsp,
+        plan.rflags
+    );
+    // SAFETY: 同 spawn_hello——loader 已映射段页/栈页，MSR/TSS 已就绪。
     unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
 }
 
