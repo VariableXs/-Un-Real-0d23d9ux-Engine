@@ -5,11 +5,11 @@
 //! 节内容越过文件边界、入口不在任何可执行节内、ImageBase 落进内核
 //! 半区。exec 时一次清楚拒绝，远好过三条指令之后一场莫名故障。
 //!
-//! **任务39 边界（诚实声明）**：只做静态映像装载与运行，**不做导入表
-//! 解析**（任务40）。导入目录 RVA/Size 被如实解析出来暴露在
-//! [`PeImage::import_dir`]，供任务40 直接消费；带导入的映像照常装载
-//! （导入是数据不是装载期依赖），运行期撞上未解析的 thunk 是任务40
-//! 之前的已知边界。
+//! **任务39 边界 → 任务40 兑现**：导入目录 RVA/Size 解析后暴露在
+//! [`PeImage::import_dir`]；任务40 的 [`parse_imports_into`] 把描述符数组、
+//! INT/IAT thunk 链与名字记录解析成结构化 [`ImportTable`]，绑定（registry
+//! 查找 + IAT 补钉 + thunk 页）在 `winapi.rs`。带导入的映像经绑定后照常
+//! 进入 ring3（spawn_pe_imports 链）。
 //!
 //! 装载执行走任务15 引擎：[`PeSource`] 实现 [`super::loader::ImageFormat`]，
 //! 节翻译成 [`SegmentView`]，页账本/同页共享/回滚语义全部复用，引擎
@@ -301,6 +301,304 @@ pub fn parse(image: &[u8]) -> Result<PeImage, PeError> {
     if !covered {
         return Err(PeError::EntryNotExecutable);
     }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// 任务40（AI-B）· 导入表解析
+//
+// 任务39 把导入目录如实解析出来暴露在 [`PeImage::import_dir`]，本节兑现
+// 承诺：把 IMAGE_IMPORT_DESCRIPTOR 数组、INT/IAT thunk 链与 IMAGE_BY_NAME
+// 记录逐字段解析成结构化 [`ImportTable`]，绑定（registry 查找 + IAT 补钉）
+// 在 `winapi.rs`。口径与 parse() 一致——解析器是决定"这批导入能不能绑"
+// 的人，拒绝一切不能完全担保的形态；每个拒绝都带具名原因。
+//
+// 首层边界（如实声明，后续任务放宽）：
+// * TimeDateStamp != 0（旧式 bound import）→ 具名拒绝（BoundImports），
+//   我们永远fresh 解析，不信外部预绑定数据；
+// * 序号导入照常解析（ImportFunc::ordinal），但首层注册表无序号项，
+//   绑定期如实 MissingApi；
+// * ForwarderChain 是老装载器的转发数据，本层不消费（照常解析不拒绝）。
+// ---------------------------------------------------------------------------
+
+/// 导入 DLL 名上限（"KERNEL32.DLL" 12 字节，32 足够且防恶意长名）。
+pub const MAX_DLL_NAME: usize = 32;
+/// 导入函数名上限。
+pub const MAX_FUNC_NAME: usize = 64;
+/// 单 DLL 导入函数数上限。
+pub const MAX_IMPORT_FUNCS: usize = 64;
+/// 导入 DLL 数上限。
+pub const MAX_IMPORT_DLLS: usize = 8;
+/// IMAGE_IMPORT_DESCRIPTOR 长度。
+pub const IMPORT_DESCRIPTOR_SIZE: usize = 20;
+/// thunk 序号导入标志（bit63）。
+pub const THUNK_ORDINAL_FLAG: u64 = 0x8000_0000_0000_0000;
+/// thunk 序号掩码（低 16 位）。
+pub const THUNK_ORDINAL_MASK: u64 = 0xFFFF;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ImportError {
+    NoImportDir,
+    DescriptorRvaBad,
+    DescriptorUnbounded,
+    DllNameRvaBad,
+    DllNameTooLong,
+    DllNameNotTerminated,
+    ThunkRvaBad,
+    ThunkUnbounded,
+    FuncNameRvaBad,
+    FuncNameTooLong,
+    FuncNameNotTerminated,
+    IntIatMismatch,
+    IatNotWritable,
+    BoundImports,
+    TooManyDlls,
+    TooManyFuncs,
+}
+
+impl ImportError {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImportError::NoImportDir => "image declares no import directory",
+            ImportError::DescriptorRvaBad => "import descriptor RVA does not map to file content",
+            ImportError::DescriptorUnbounded => "import descriptor table runs past the file",
+            ImportError::DllNameRvaBad => "DLL name RVA does not map to file content",
+            ImportError::DllNameTooLong => "DLL name exceeds the length cap",
+            ImportError::DllNameNotTerminated => "DLL name is not NUL-terminated within the file",
+            ImportError::ThunkRvaBad => "thunk array RVA does not map to file content",
+            ImportError::ThunkUnbounded => "thunk array runs past the file without a terminator",
+            ImportError::FuncNameRvaBad => "function name RVA does not map to file content",
+            ImportError::FuncNameTooLong => "function name exceeds the length cap",
+            ImportError::FuncNameNotTerminated => "function name is not NUL-terminated within the file",
+            ImportError::IntIatMismatch => "INT and IAT thunk chains disagree in length",
+            ImportError::IatNotWritable => "IAT lives in a non-writable section (cannot patch)",
+            ImportError::BoundImports => "old-style bound imports are refused (fresh resolution only)",
+            ImportError::TooManyDlls => "import DLL count exceeds the cap",
+            ImportError::TooManyFuncs => "import function count exceeds the cap",
+        }
+    }
+}
+
+/// 单个导入函数：名字导入（hint + name）或序号导入。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ImportFunc {
+    pub name_len: usize,
+    pub name: [u8; MAX_FUNC_NAME],
+    pub ordinal: Option<u16>,
+}
+
+impl ImportFunc {
+    const fn empty() -> ImportFunc {
+        ImportFunc { name_len: 0, name: [0; MAX_FUNC_NAME], ordinal: None }
+    }
+}
+
+/// 单个导入 DLL：名字 + INT/IAT thunk 链展开后的函数清单。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ImportDll {
+    pub name_len: usize,
+    pub name: [u8; MAX_DLL_NAME],
+    /// FirstThunk（IAT）RVA——补钉落点。
+    pub iat_rva: u64,
+    /// IAT 所在节可写（补钉前提）。
+    pub iat_writable: bool,
+    pub funcs: [ImportFunc; MAX_IMPORT_FUNCS],
+    pub func_count: usize,
+}
+
+impl ImportDll {
+    const fn empty() -> ImportDll {
+        ImportDll {
+            name_len: 0,
+            name: [0; MAX_DLL_NAME],
+            iat_rva: 0,
+            iat_writable: false,
+            funcs: [ImportFunc::empty(); MAX_IMPORT_FUNCS],
+            func_count: 0,
+        }
+    }
+}
+
+/// 解析后的导入表（借用自由：名字拷入定长缓冲，无生命周期牵连）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ImportTable {
+    pub dlls: [ImportDll; MAX_IMPORT_DLLS],
+    pub count: usize,
+}
+
+impl ImportTable {
+    pub const fn empty() -> ImportTable {
+        ImportTable { dlls: [ImportDll::empty(); MAX_IMPORT_DLLS], count: 0 }
+    }
+
+    pub fn dlls(&self) -> &[ImportDll] {
+        &self.dlls[..self.count]
+    }
+}
+
+/// RVA → 文件偏移。只认有文件内容的区间（VirtualSize 大于原始数据的
+/// 零填充部分不是文件内容，映射 None）。
+fn rva_to_offset(img: &PeImage, rva: u64) -> Option<usize> {
+    let s = img.sections().iter().find(|s| rva >= s.rva && rva < s.rva + s.memsz)?;
+    let delta = rva - s.rva;
+    if delta >= s.filesz {
+        return None;
+    }
+    Some((s.raw_offset + delta) as usize)
+}
+
+/// 节可写查询（IAT 补钉前提校验用）。
+fn section_writable(img: &PeImage, rva: u64) -> bool {
+    img.sections()
+        .iter()
+        .find(|s| rva >= s.rva && rva < s.rva + s.memsz)
+        .map(|s| s.writable)
+        .unwrap_or(false)
+}
+
+/// 读 NUL 结尾 ASCII 串（≤cap）：越文件界或超长都具名拒绝。
+fn read_nul_name(image: &[u8], off: usize, cap: usize, long: ImportError, unterminated: ImportError) -> Result<([u8; MAX_FUNC_NAME], usize), ImportError> {
+    // MAX_FUNC_NAME 是唯一调用方缓冲尺寸；cap 只能更小。
+    let mut out = [0u8; MAX_FUNC_NAME];
+    let mut i = 0usize;
+    loop {
+        let p = off + i;
+        if p >= image.len() {
+            return Err(unterminated);
+        }
+        let b = image[p];
+        if b == 0 {
+            return Ok((out, i));
+        }
+        if i >= cap {
+            return Err(long);
+        }
+        out[i] = b;
+        i += 1;
+    }
+}
+
+/// 解析导入表到调用方提供的暂存（目标态安全路径：调用方给 .bss 静态，
+/// 本函数栈上零大物化——函数清单位置写，最大局部量是单个 ImportFunc）。
+/// `out` 必须先 `*out = ImportTable::empty()` 清底（调用方负责或由本函数
+/// 清——本函数清，语义自洽）。
+pub fn parse_imports_into(image: &[u8], img: &PeImage, out: &mut ImportTable) -> Result<(), ImportError> {
+    *out = ImportTable::empty();
+    let dir = img.import_dir.ok_or(ImportError::NoImportDir)?;
+
+    // 描述符数组起点。
+    let mut desc_off = rva_to_offset(img, dir.rva as u64).ok_or(ImportError::DescriptorRvaBad)?;
+    loop {
+        if desc_off + IMPORT_DESCRIPTOR_SIZE > image.len() {
+            return Err(ImportError::DescriptorUnbounded);
+        }
+        let ofthunk = u32_at(image, desc_off) as u64;
+        let timestamp = u32_at(image, desc_off + 4);
+        let _forwarder = u32_at(image, desc_off + 8);
+        let name_rva = u32_at(image, desc_off + 12) as u64;
+        let first_thunk = u32_at(image, desc_off + 16) as u64;
+        if ofthunk == 0 && timestamp == 0 && name_rva == 0 && first_thunk == 0 {
+            break; // 全零终止描述符。
+        }
+        if timestamp != 0 {
+            return Err(ImportError::BoundImports);
+        }
+        if out.count >= MAX_IMPORT_DLLS {
+            return Err(ImportError::TooManyDlls);
+        }
+
+        // DLL 名。
+        let name_off = rva_to_offset(img, name_rva).ok_or(ImportError::DllNameRvaBad)?;
+        let (name, name_len) =
+            read_nul_name(image, name_off, MAX_DLL_NAME, ImportError::DllNameTooLong, ImportError::DllNameNotTerminated)?;
+
+        // thunk 链：bound 之外的映像 INT 与 IAT 内容一致（未解析 RVA）。
+        let int_rva = if ofthunk != 0 { ofthunk } else { first_thunk };
+
+        // INT 展开：函数清单位置直写，不设 64×80B 局部数组。
+        out.dlls[out.count] = ImportDll::empty();
+        let dll = &mut out.dlls[out.count];
+        let mut nfuncs = 0usize;
+        let mut toff = rva_to_offset(img, int_rva).ok_or(ImportError::ThunkRvaBad)?;
+        loop {
+            if toff + 8 > image.len() {
+                return Err(ImportError::ThunkUnbounded);
+            }
+            let val = u64_at(image, toff);
+            if val == 0 {
+                break;
+            }
+            if nfuncs >= MAX_IMPORT_FUNCS {
+                return Err(ImportError::TooManyFuncs);
+            }
+            if val & THUNK_ORDINAL_FLAG != 0 {
+                dll.funcs[nfuncs] = ImportFunc {
+                    name_len: 0,
+                    name: [0; MAX_FUNC_NAME],
+                    ordinal: Some((val & THUNK_ORDINAL_MASK) as u16),
+                };
+                nfuncs += 1;
+            } else {
+                let nb_off = rva_to_offset(img, val).ok_or(ImportError::FuncNameRvaBad)?;
+                if nb_off + 2 > image.len() {
+                    return Err(ImportError::FuncNameRvaBad);
+                }
+                let (fname, flen) = read_nul_name(
+                    image,
+                    nb_off + 2,
+                    MAX_FUNC_NAME,
+                    ImportError::FuncNameTooLong,
+                    ImportError::FuncNameNotTerminated,
+                )?;
+                dll.funcs[nfuncs] = ImportFunc { name_len: flen, name: fname, ordinal: None };
+                nfuncs += 1;
+            }
+            toff += 8;
+        }
+        if nfuncs == 0 {
+            return Err(ImportError::IntIatMismatch);
+        }
+
+        // IAT：必须在有文件内容的位置，且与 INT 等长。
+        let iat_off = rva_to_offset(img, first_thunk).ok_or(ImportError::ThunkRvaBad)?;
+        let mut iat_len = 0usize;
+        let mut ioff = iat_off;
+        loop {
+            if ioff + 8 > image.len() {
+                return Err(ImportError::ThunkUnbounded);
+            }
+            if u64_at(image, ioff) == 0 {
+                break;
+            }
+            iat_len += 1;
+            ioff += 8;
+            if iat_len > MAX_IMPORT_FUNCS {
+                return Err(ImportError::TooManyFuncs);
+            }
+        }
+        if iat_len != nfuncs {
+            return Err(ImportError::IntIatMismatch);
+        }
+        if !section_writable(img, first_thunk) {
+            return Err(ImportError::IatNotWritable);
+        }
+
+        dll.name[..name_len].copy_from_slice(&name[..name_len]);
+        dll.name_len = name_len;
+        dll.iat_rva = first_thunk;
+        dll.iat_writable = true;
+        dll.func_count = nfuncs;
+        out.count += 1;
+        desc_off += IMPORT_DESCRIPTOR_SIZE;
+    }
+    Ok(())
+}
+
+/// 解析导入表（返回值版）。**宿主/测试专用**——返回值在调用方栈上物化
+/// ≈41KB，目标态 64KB 内核栈装不下两层（见 [`ImportTable`] 栈纪律）。
+pub fn parse_imports(image: &[u8], img: &PeImage) -> Result<ImportTable, ImportError> {
+    let mut out = ImportTable::empty();
+    parse_imports_into(image, img, &mut out)?;
     Ok(out)
 }
 

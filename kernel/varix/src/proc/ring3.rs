@@ -81,9 +81,19 @@ static HELLO_ELF: &[u8] = include_bytes!("hello.elf");
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 static HELLO_PE: &[u8] = include_bytes!("hello.pe");
 
+/// 任务40（AI-B）· 带导入表 PE64 样例（tools/make-pe-imp.py 生成，随源入库）：
+/// kernel32.dll 三导入（WriteFile/GetProcAddress/ExitProcess），运行期经
+/// thunk 陷内核打 "hello from winapi" 并自证 GetProcAddress == IAT 槽内容。
+#[cfg(any(all(target_arch = "x86_64", target_os = "none"), test))]
+static HELLO_IMP_PE: &[u8] = include_bytes!("hello-imp.pe");
+
 /// PE 实例只跑一轮（监护链状态位）。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 static PE_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+/// 任务40 带导入 PE 实例只跑一轮。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static IMP_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
 // 决策层：双入口共用
@@ -94,6 +104,13 @@ static PE_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool:
 /// 的约定值；本模块自产错误用 entry::ErrNo 反号）。
 pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
     CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    // 任务40 · Win32 服务台号段（0x40 起，槽号 = 注册表扁平下标）。
+    // 只转发实际注册的号段；段外垃圾号回落稳定表口径（ENOSYS -38），
+    // 不让 Win32 服务台吞掉不属于它的任何数字。
+    const WIN32_NR_END: u32 = super::winapi::WIN32_NR_BASE + super::winapi::API_COUNT as u32;
+    if (super::winapi::WIN32_NR_BASE..WIN32_NR_END).contains(&nr) {
+        return super::winapi::dispatch((nr - super::winapi::WIN32_NR_BASE) as usize, a1, a2, a3);
+    }
     match nr {
         SYS_WRITE => sys_write(a1, a2, a3),
         SYS_EXIT => sys_exit(a1 as i32),
@@ -102,6 +119,18 @@ pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
         // 号表形态定义在 proc::syscall（F102），处理器随任务16 落地。
         _ => SyscallError::NotImplemented.errno(),
     }
+}
+
+/// 任务40 · Win32 服务台文件组复用入口：WriteFile/NtWriteFile 控制台路
+/// （handle==1 由 dispatch 校验后才到这里）。
+pub(crate) fn user_write(buf: u64, len: u64) -> i64 {
+    sys_write(1, buf, len)
+}
+
+/// 任务40 · Win32 服务台进程组复用入口：ExitProcess 组 → 既有 sys_exit
+/// 监护链（Zombie → wait 收割），永不返回。
+pub(crate) fn user_exit(code: i32) -> ! {
+    sys_exit(code)
 }
 
 /// write(fd=1) 最小实现：缓冲校验（用户半区 + 长度上限）→ 逐字节串口。
@@ -257,6 +286,11 @@ fn after_exit() -> ! {
     if !PE_DONE.swap(true, Ordering::Relaxed) {
         spawn_pe();
     }
+    // 任务40（AI-B）：静态 PE 后运行一轮带导入 PE——导入经 Win32 服务台
+    // 绑定（thunk 页 + IAT 补钉），运行期自证 GetProcAddress == IAT。
+    if !IMP_DONE.swap(true, Ordering::Relaxed) {
+        spawn_pe_imports();
+    }
     pressure_probe_and_finish()
 }
 
@@ -339,9 +373,9 @@ fn spawn_pe() -> ! {
         }
     };
     if img.has_imports() {
-        // 任务39 边界：不做导入解析（任务40）。样例无导入；带导入的
-        // 映像在此如实拒绝，绝不带着未解析 thunk 进 ring3。
-        crate::kwarn!("ring3: PE has imports — import resolution is task 40 — halting");
+        // 静态路不消费导入（hello.pe 本就无导入）；带导入的映像走
+        // spawn_pe_imports（任务40 绑定链），绝不带着未解析 thunk 进 ring3。
+        crate::kwarn!("ring3: PE has imports — use the spawn_pe_imports bind path — halting");
         halt_demo()
     }
     let pid = match PROCS.lock().alloc(0, b"hellope") {
@@ -392,6 +426,96 @@ fn spawn_pe() -> ! {
         plan.rflags
     );
     // SAFETY: 同 spawn_hello——loader 已映射段页/栈页，MSR/TSS 已就绪。
+    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+}
+
+/// 任务40（AI-B）· 装载带导入 PE64 并进入 ring3：任务39 同一条监护链
+/// 之上叠加导入绑定——winapi::plan 全量解析 + 注册表解析（缺失具名拒绝，
+/// 绝不带未解析 thunk 进 ring3）→ load_into → winapi::install（thunk 页
+/// R+X 映射 + IAT 补钉，thunk 页入页账本随进程归还）。样例运行期输出
+/// "hello from winapi" 并自证 GetProcAddress == IAT 槽内容（静态/动态
+/// 两路一致），随后 ExitProcess(0)（失败路 exit(7)）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spawn_pe_imports() -> ! {
+    let img = match super::pe::parse(HELLO_IMP_PE) {
+        Ok(i) => i,
+        Err(e) => {
+            crate::kwarn!("ring3: hello-imp.pe parse failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let bind = match super::winapi::plan(&img, HELLO_IMP_PE) {
+        Ok(t) => t,
+        Err(e) => {
+            crate::kwarn!("ring3: PE import bind refused: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let pid = match PROCS.lock().alloc(0, b"winapipe") {
+        Ok(p) => p,
+        Err(e) => {
+            crate::kwarn!("ring3: PE-imports proc alloc failed: {:?} — halting", e);
+            halt_demo()
+        }
+    };
+    DEMO_PID.store(pid, core::sync::atomic::Ordering::Relaxed);
+    let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+    let src = super::pe::PeSource {
+        img: &img,
+        blob: HELLO_IMP_PE,
+    };
+    let mut loaded = match super::loader::load_into(
+        &src,
+        &mut mp,
+        entry::DEFAULT_STACK_PAGES as u64,
+        entry::USER_STACK_TOP,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: PE-imports load failed ({:?}) — halting", e);
+            halt_demo()
+        }
+    };
+    let (full, partial, stub) = match super::winapi::install(&bind.patches, &mut loaded, &mut mp) {
+        Ok(s) => s,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: PE-imports bind install failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    crate::kinfo!(
+        "ring3: PE imports bound pid={} dlls={} funcs={} full={} partial={} stub={} thunk@{:#x}",
+        pid,
+        bind.dlls,
+        bind.funcs,
+        full,
+        partial,
+        stub,
+        super::winapi::WINAPI_THUNK_BASE
+    );
+    let pages_n = loaded.pages.len();
+    let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
+    CHILD_PAGES.lock().push((pid, loaded.pages));
+    crate::kinfo!(
+        "ring3: PE-imports spawned pid={} entry={:#x} pages={} imports=true — 任务40 导入绑定",
+        pid,
+        entry_ip,
+        pages_n
+    );
+    let mut plan = super::uspace::EntryPlan::default();
+    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, stack_top, &mut plan) {
+        crate::kwarn!("ring3: PE-imports entry plan rejected: {} — halting", e);
+        halt_demo()
+    }
+    crate::kinfo!(
+        "ring3: iretq → PE-imports user (rip={:#x} rsp={:#x} rflags={:#x})",
+        plan.rip,
+        plan.rsp,
+        plan.rflags
+    );
+    // SAFETY: 同 spawn_hello——loader 已映射段页/栈页与 thunk 页，MSR/TSS 已就绪。
     unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
 }
 
@@ -699,6 +823,16 @@ mod tests {
             calls() >= 2000,
             "双入口统计必须如实增长（1000 轮 × 2 路）"
         );
+    }
+
+    #[test]
+    fn win32_band_reaches_service_desk() {
+        // 任务40：syscall_common 的 Win32 号段分流——GetStdHandle(-11)→1，
+        // 稳定号段行为不受影响。
+        const STD_OUT: u64 = (-11i64) as u64;
+        assert_eq!(syscall_common(crate::proc::winapi::WIN32_NR_BASE + 2, STD_OUT, 0, 0), 1);
+        assert_eq!(syscall_common(crate::proc::winapi::WIN32_NR_BASE + 3, 2, 0, 0), -8, "WriteFile handle!=1 → Ebadf");
+        assert_eq!(syscall_common(SYS_WRITE, 1, 0, 0), 0, "稳定号段回归");
     }
 
     /// int 0x80 的保存区偏移读取在宿主的等价复刻（偏移必须与目标态
