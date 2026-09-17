@@ -562,7 +562,7 @@ mod tests {
             if self.crashed {
                 return Err(BlockError::Io);
             }
-            let (s, e) = self.span(lba, src.len())?;
+            let (s, _e) = self.span(lba, src.len())?;
             self.writes += 1;
             if let Some((n, keep)) = self.torn_write {
                 if n == self.writes {

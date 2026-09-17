@@ -396,7 +396,7 @@ pub mod target {
             }
         }
         // 单字节命令通道：写命令口→写数据口→等 ACK。
-        let mut mouse_cmd = |cmd: u8| -> bool {
+        let mouse_cmd = |cmd: u8| -> bool {
             let d = ms(20);
             while unsafe { inp(STAT) } & STAT_IBF != 0 {
                 if crate::timeline::read_tsc() > d {
@@ -630,7 +630,7 @@ mod tests {
     fn queue_full_reader_catches_up_exactly() {
         let mut s = InputService::new();
         let sub = s.subscribe("t").unwrap();
-        for i in 0..QUEUE_CAP as u64 {
+        for _ in 0..QUEUE_CAP as u64 {
             s.publish(InputEvent::Key(Key::Up));
         }
         // 逐条读 64 条后追平

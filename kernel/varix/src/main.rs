@@ -59,6 +59,12 @@ fn boot() -> ! {
         }
     };
 
+    // --- 显示服务收编（任务20：Surface 归口；boot 期单核直写模式）-----------
+    // boot 链的绘制面唯一来源（draw_surface=前台）；双缓冲+脏矩形提交服务
+    // 由 display_probe 用独立 Double 实例实机验证（future shell 接入口）。
+    let mut display_svc = varix::displaysrv::DisplayService::new_direct(surface);
+    varix::displaysrv::install(&mut display_svc);
+
     // --- boot select（双域总案·阶段0）--------------------------------------
     // 菜单在帧缓冲就绪后、域初始化前亮出：↑/↓/Enter 实时选择（任务1），
     // 倒计时归零走默认项。选中 windows → 写 UEFI BootNext + ResetSystem
@@ -290,6 +296,9 @@ fn boot() -> ! {
 
     // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
     varix::inputsvc::target::input_probe();
+
+    // --- display service probe（任务20：双缓冲+脏矩形滚动条带撕裂验证）--------------
+    varix::displaysrv::target::display_probe();
 
     // --- input domain (F151~F175) ------------------------------------------------------
     let input_state = varix::input::init();

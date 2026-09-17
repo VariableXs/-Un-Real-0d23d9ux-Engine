@@ -1186,7 +1186,8 @@ mod tests {
         let mut snap = SnapshotArea::new(disk, 3000);
         snap.append("n", b"data").unwrap();
         // 篡改内容字节 → list 如实报 Io。
-        if let SnapshotArea { dev, .. } = &mut snap {
+        {
+            let SnapshotArea { dev, .. } = &mut snap;
             let mut blk = [0u8; 512];
             // content 在槽内偏移 32 起（槽 0 = LBA 3000），篡改 content[2]。
             dev.read_blocks(3000, &mut blk).unwrap();

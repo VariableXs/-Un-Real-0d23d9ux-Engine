@@ -56,6 +56,8 @@ pub mod telemetry;
 pub mod input;
 /// PS/2 键鼠输入事件服务（任务19：事件队列+订阅者+鼠标最小版）。
 pub mod inputsvc;
+/// 内核显示服务（任务20：Surface 归口+双缓冲+脏矩形提交）。
+pub mod displaysrv;
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
 pub mod inkstack;
 // UNREAL-X AI-34（族0339 · X08451~X08475）：内核兼容 API 层。

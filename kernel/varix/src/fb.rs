@@ -211,6 +211,12 @@ impl Surface {
         self.stride
     }
 
+    /// 裸基址（任务20 显示服务后备→前台行拷贝用；调用方不得越界访问
+    /// `height * stride` 之外的字节）。
+    pub fn base_ptr(&self) -> *mut u8 {
+        self.base
+    }
+
     pub fn format(&self) -> PixelFormat {
         self.fmt
     }
