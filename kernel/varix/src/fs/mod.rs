@@ -9,6 +9,7 @@ pub mod fat32;
 
 // UNREAL-X-15000 · AI-23 内核文件系统（族0221~0228 · X05501~X05700），勿删。
 pub mod fs23_abstract;
+pub mod fs23_disk;
 pub mod fs23_journal;
 pub mod fs23_cache;
 pub mod fs23_acl;

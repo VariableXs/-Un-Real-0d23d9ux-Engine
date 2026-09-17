@@ -796,6 +796,11 @@ pub mod target {
                 if !rep.passed {
                     crate::kwarn!("nvme: loopback FAILED - see err above");
                 }
+
+                // 任务17：fs23_journal 块设备后端——掉电注入探针（跨进程
+                // 持久，外部脚本 kill QEMU 模拟掉电，×11 轮盘面条目单调
+                // 增长零撕裂）。
+                crate::fs::fs23_disk::target::fs23_powercut_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }

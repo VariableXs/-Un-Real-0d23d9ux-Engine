@@ -59,6 +59,26 @@ pub trait BlockDevice {
     fn flush(&mut self) -> Result<(), BlockError>;
 }
 
+/// `&mut T` 透传——探测函数持 `&mut dyn BlockDevice` 时也能直接构造
+/// 泛型上层（fs23_disk 等），零转换零拷贝。
+impl<T: BlockDevice + ?Sized> BlockDevice for &mut T {
+    fn block_size(&self) -> u32 {
+        (**self).block_size()
+    }
+    fn capacity_blocks(&self) -> u64 {
+        (**self).capacity_blocks()
+    }
+    fn read_blocks(&mut self, lba: u64, dst: &mut [u8]) -> Result<(), BlockError> {
+        (**self).read_blocks(lba, dst)
+    }
+    fn write_blocks(&mut self, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+        (**self).write_blocks(lba, src)
+    }
+    fn flush(&mut self) -> Result<(), BlockError> {
+        (**self).flush()
+    }
+}
+
 /// FNV-1a 64 位校验和（回环自检与验收证据用；与 fs23_journal 的
 /// CRC23 是两回事——这里只要"读写通路数据一致"的强区分度）。
 pub fn fnv1a64(data: &[u8]) -> u64 {
