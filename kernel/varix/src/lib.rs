@@ -40,6 +40,7 @@ pub mod cmdline;
 pub mod deploy;
 pub mod deveco;
 pub mod display;
+pub mod drivers;
 pub mod driver;
 pub mod compatruntime; // AI-33 内核兼容运行时（X08126~X08250）
 pub mod console;

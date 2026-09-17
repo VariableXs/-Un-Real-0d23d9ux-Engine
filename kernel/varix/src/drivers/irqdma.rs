@@ -129,7 +129,7 @@ pub fn run_irqdma_checks() -> CheckSet {
 
     // L1 基础实装
     s.add("X07526 中断最小闭环", t.alloc(32) && t.is_used(32) && t.count == 1, "向量分配→占用→释放最小可用闭环");
-    s.add("X07527 参数与配置面", { t.free(32) && !t.is_used(32) && t.count == 0 && t.alloc(40) }, "默认档=现状，向量可记忆");
+    s.add("X07527 参数与配置面", t.free(32) && !t.is_used(32) && t.count == 0 && t.alloc(40), "默认档=现状，向量可记忆");
     s.add("X07528 档位矩阵", COALESCE_US.len() == 5 && COALESCE_US[0] < COALESCE_US[1] && COALESCE_US[1] < COALESCE_US[2] && COALESCE_US[2] < COALESCE_US[3] && COALESCE_US[3] < COALESCE_US[4], "合并窗口五档独立可交付");
     s.add("X07529 快照与迁移", { let mut d = DmaRing::new(); d.submit(DmaDesc { addr: 0x1000, len: 64 }) && d.len() == 1 && d.complete() == Some(DmaDesc { addr: 0x1000, len: 64 }) }, "描述符进出可还原");
     s.add("X07530 三线集成验证", coalesce(100, 2) == 2 && coalesce(100, 0) == 100, "合并计数与显示帧节奏协同");

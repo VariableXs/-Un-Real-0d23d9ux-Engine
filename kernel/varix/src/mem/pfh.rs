@@ -119,6 +119,11 @@ pub trait PageTableOps {
         let _ = (va, phys, writable, nx);
         false
     }
+    /// 任务16：MMIO 窗口映射（ECAM/BAR）——PCD|PWT 双置位防寄存器
+    /// 访问被缓存，NX 防 speculate 取指。默认拒绝（宿主假表无 MMIO 概念）。
+    fn map_mmio(&mut self, _va: u64, _phys: u64) -> bool {
+        false
+    }
     /// 只改 W 位（COW 独占快路径）。
     fn set_writable(&mut self, va: u64, writable: bool) -> bool;
     /// 复制一页内容（经 HHDM / 宿主内存）。
@@ -392,6 +397,29 @@ mod real {
                 return false;
             };
             let flags = paging::leaf_flags(writable, nx) | paging::P_USER;
+            // SAFETY: leaf_ptr 保证指向当前 CR3 页表的 4KiB 叶槽。
+            unsafe {
+                core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
+            }
+            true
+        }
+
+        fn map_mmio(&mut self, va: u64, phys: u64) -> bool {
+            if va & 0xFFF != 0 || phys & 0xFFF != 0 {
+                return false; // MMIO 映射一律页对齐，防御错位访问。
+            }
+            let Some(root) = root() else {
+                return false;
+            };
+            let Some(lp) = leaf_ptr(root, va, false) else {
+                return false;
+            };
+            // PCD=1（禁 cache）：寄存器读必须真进设备；PWT=1 写穿；
+            // NX=1：MMIO 页永不取指。U=0 内核独占。
+            let flags = paging::leaf_flags(true, true)
+                | paging::P_PCD
+                | paging::P_PWT
+                | paging::P_PRESENT;
             // SAFETY: leaf_ptr 保证指向当前 CR3 页表的 4KiB 叶槽。
             unsafe {
                 core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
@@ -759,6 +787,9 @@ mod tests {
                 return false;
             }
             self.map_frame(va, phys, writable, nx)
+        }
+        fn map_mmio(&mut self, va: u64, phys: u64) -> bool {
+            self.map_frame(va, phys, true, true)
         }
         fn unmap_user(&mut self, va: u64) -> Option<u64> {
             if va >> 47 != 0 {

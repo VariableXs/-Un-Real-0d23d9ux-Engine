@@ -285,6 +285,9 @@ fn boot() -> ! {
     let storage_state = varix::storage::init();
     varix::storage::render_to_console(&storage_state);
 
+    // --- block stack probe（任务16：块设备抽象 + NVMe 最小栈）------------------------
+    varix::drivers::nvme::target::probe_and_selftest();
+
     // --- input domain (F151~F175) ------------------------------------------------------
     let input_state = varix::input::init();
     varix::input::render_to_console(&input_state);
