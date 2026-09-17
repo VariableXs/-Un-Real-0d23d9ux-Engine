@@ -118,6 +118,44 @@ pub fn parse_bar0_mmio(ecam: &mut dyn EcamAccess, addr: u64) -> Option<u64> {
 
 /// 扫描一个 segment：返回第一个 NVMe（None=该 segment 无 NVMe）。
 /// 多设备命中顺序 bus→dev→func 稳定可复现。
+/// 枚举全部 NVMe 控制器（任务18：第二控制器挂 SHARED exFAT 卷）。
+pub fn scan_nvme_all(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> alloc_crate_vec::Vec<PciDevice> {
+    let end_bus = seg.end_bus.min(MAX_SCAN_BUSES);
+    let mut hits = alloc_crate_vec::Vec::new();
+    let mut bus = seg.start_bus;
+    loop {
+        for dev in 0..32u8 {
+            for func in 0..8u8 {
+                let addr = ecam_addr(seg, bus, dev, func, 0);
+                if ecam.read32(addr) & 0xFFFF == 0xFFFF {
+                    continue;
+                }
+                let kind = classify(ecam, addr);
+                if kind != PciKind::Nvme {
+                    continue;
+                }
+                match parse_bar0_mmio(ecam, addr) {
+                    Some(bar0) => hits.push(PciDevice { bus, dev, func, kind, bar0 }),
+                    None => {
+                        #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+                        crate::kinfo!("pci-scan: nvme at {:02x}:{:02x}.{} BAR parse FAILED", bus, dev, func);
+                    }
+                }
+            }
+        }
+        if bus >= end_bus {
+            break;
+        }
+        bus += 1;
+    }
+    hits
+}
+
+/// 供 scan_nvme_all 的返回类型别名（no_std 下显式 alloc 路径）。
+pub(crate) mod alloc_crate_vec {
+    pub use alloc::vec::Vec;
+}
+
 pub fn scan_nvme(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> Option<PciDevice> {
     let end_bus = seg.end_bus.min(MAX_SCAN_BUSES);
     let mut bus = seg.start_bus;

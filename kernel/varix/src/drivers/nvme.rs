@@ -653,24 +653,34 @@ pub mod target {
 
     /// MMIO BAR 窗口：PML4[510] 段 0xffffff1000000000 起（避开 ECAM
     /// 窗口 0xffffff0000000000）。每页惰性 map_mmio（PCD|PWT）。
+    /// 多控制器：每实例占独立槽位段（BAR_SPAN），杜绝窗口复用——
+    /// 旧实现单一 BAR_WINDOW，第二个控制器 map 时 translate 命中
+    /// 已映射页而跳过重映射，寄存器访问实际打到第一个控制器。
     pub const BAR_WINDOW: u64 = 0xffff_ff10_0000_0000;
+    /// 每实例槽位段长（64KiB=16 页，覆盖 16KiB BAR 且 4KiB 对齐）。
+    const BAR_SPAN: u64 = 16 * PAGE;
+    /// 槽位分配器（启动期单线程，Relaxed 足够）。
+    static BAR_SLOT: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
     pub struct BarMmio {
+        base: u64,
         pages: u32,
     }
 
     impl BarMmio {
         /// 映射 BAR 前 `pages` 页（QEMU NVMe BAR 16KiB=4 页）。
         pub fn map(bar_phys: u64, pages: u32) -> Option<BarMmio> {
+            let slot = BAR_SLOT.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            let base = BAR_WINDOW + (slot as u64) * BAR_SPAN;
             let mut ops = crate::mem::pfh::target_ops();
             for i in 0..pages {
-                let win = BAR_WINDOW + (i as u64) * PAGE;
+                let win = base + (i as u64) * PAGE;
                 let phys = bar_phys + (i as u64) * PAGE;
                 if ops.translate(win).is_none() && !ops.map_mmio(win, phys) {
                     return None;
                 }
             }
-            Some(BarMmio { pages })
+            Some(BarMmio { base, pages })
         }
         pub fn pages(&self) -> u32 {
             self.pages
@@ -679,12 +689,12 @@ pub mod target {
 
     impl BarAccess for BarMmio {
         fn read32(&mut self, off: u16) -> u32 {
-            let virt = BAR_WINDOW + off as u64;
+            let virt = self.base + off as u64;
             // SAFETY: 窗口已 map_mmio（PCD|PWT），4B 对齐 volatile 读。
             unsafe { core::ptr::read_volatile(virt as *const u32) }
         }
         fn write32(&mut self, off: u16, val: u32) {
-            let virt = BAR_WINDOW + off as u64;
+            let virt = self.base + off as u64;
             // SAFETY: 同上，4B 对齐 volatile 写。
             unsafe { core::ptr::write_volatile(virt as *mut u32, val) }
         }
@@ -756,10 +766,13 @@ pub mod target {
             seg.end_bus
         );
         let mut ecam = super::super::pci::target::EcamMmio::new(seg);
-        let Some(hit) = super::super::pci::scan_nvme(&mut ecam, &seg) else {
+        let hits = super::super::pci::scan_nvme_all(&mut ecam, &seg);
+        if hits.is_empty() {
             crate::kinfo!("blk: no NVMe controller - block selftest skipped (graceful)");
             return;
-        };
+        }
+        let hit = hits[0];
+        let shared_hit = hits.get(1).copied();
         crate::kinfo!(
             "pci: NVMe controller at {:#x}:{:#x}.{} bar0={:#x} ecam_pages={}",
             hit.bus,
@@ -803,6 +816,29 @@ pub mod target {
                 crate::fs::fs23_disk::target::fs23_powercut_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
+        }
+
+        // 任务18：第二 NVMe 控制器 → SHARED exFAT 只读挂载 + 快照区
+        // 写过渡探针（无第二控制器时 graceful 跳过）。
+        if let Some(sh) = shared_hit {
+            crate::kinfo!(
+                "pci: NVMe controller #2 at {:#x}:{:#x}.{} bar0={:#x} (shared)",
+                sh.bus,
+                sh.dev,
+                sh.func,
+                sh.bar0
+            );
+            if let Some(sbar) = BarMmio::map(sh.bar0, 4) {
+                let sbuckets = DmaBuckets::new();
+                match NvmeCtrl::init_with_recovery(sbar, sbuckets, now_ns, 3_000_000_000) {
+                    Ok(mut sctrl) => {
+                        crate::fs::exfat_ro::target::shared_probe(&mut sctrl);
+                    }
+                    Err(e) => crate::kwarn!("shared: nvme init failed {:?} - skipped", e),
+                }
+            } else {
+                crate::kwarn!("shared: BAR0 map failed - skipped");
+            }
         }
     }
 }
