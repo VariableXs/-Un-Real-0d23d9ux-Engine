@@ -290,6 +290,46 @@ impl TableArena {
         Some(e & P_ADDR_MASK)
     }
 
+    /// 任务15 · 释放一个地址空间的整棵用户页表树（表帧归还，映射的
+    /// 物理页不在本 arena，由调用方另行归还）。root 的内核半区（高 256
+    /// 项）指向**共享内核表**——只走用户半区（低 256 项），绝不回收
+    /// 内核帧；深层表全部用户所有，全量遍历。返回归还的表帧数。
+    pub fn free_user_tree(&mut self, root: u16) -> usize {
+        let mut n = 0;
+        let entries = self.frames[root as usize];
+        for (i, e) in entries.iter().enumerate() {
+            if i >= crate::mem::addrspace::KERNEL_PML4_FIRST {
+                break;
+            }
+            n += self.free_child_table(*e);
+        }
+        if root != 0 {
+            self.used[root as usize] = false;
+            self.frames[root as usize] = [0u64; ENTRIES];
+        }
+        n + 1
+    }
+
+    /// 递归释放一棵**全用户所有**的子表树（深层表不存在内核共享）。
+    fn free_child_table(&mut self, e: u64) -> usize {
+        if e & P_PRESENT == 0 || e & P_HUGE != 0 {
+            return 0;
+        }
+        let child = ((e & P_ADDR_MASK) >> 12) as usize;
+        // 防御：条目损坏时不误伤别人的帧（0 = 全局根保留）。
+        if child == 0 || child >= MAX_TABLE_FRAMES || !self.used[child] {
+            return 0;
+        }
+        let mut n = 0;
+        let entries = self.frames[child];
+        for e in entries.iter() {
+            n += self.free_child_table(*e);
+        }
+        self.used[child] = false;
+        self.frames[child] = [0u64; ENTRIES];
+        n + 1
+    }
+
     /// Walk to the entry covering `virt`; returns (entry, level) — the level
     /// matters because a huge page terminates the walk early.
     pub fn walk(&self, root: u16, virt: u64) -> Option<(u64, Level)> {

@@ -164,6 +164,7 @@ pub enum ErrNo {
     Ebadf = 8,
     Enospc = 9,
     Eio = 10,
+    Echild = 11,
 }
 
 impl ErrNo {
@@ -184,6 +185,7 @@ impl ErrNo {
             8 => ErrNo::Ebadf,
             9 => ErrNo::Enospc,
             10 => ErrNo::Eio,
+            11 => ErrNo::Echild,
             _ => ErrNo::Einval,
         }
     }
@@ -201,6 +203,7 @@ impl ErrNo {
             ErrNo::Ebadf => "EBADF",
             ErrNo::Enospc => "ENOSPC",
             ErrNo::Eio => "EIO",
+            ErrNo::Echild => "ECHILD",
         }
     }
 }

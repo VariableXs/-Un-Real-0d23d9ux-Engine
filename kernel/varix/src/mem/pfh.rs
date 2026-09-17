@@ -127,6 +127,10 @@ pub trait PageTableOps {
     fn alloc_zero_frame(&mut self) -> Option<u64>;
     /// TLB 失效（目标态 invlpg；宿主空操作）。
     fn flush(&mut self, va: u64);
+    /// 任务15：摘除一个 4KiB 用户叶子，返回原物理帧——进程退场回收的
+    /// 唯一通道。未映射 / 大叶 / 内核半区 → None（调用方如实记录，不假装
+    /// 成功）。调用方负责随后的 flush 与帧归还（free_order）。
+    fn unmap_user(&mut self, va: u64) -> Option<u64>;
 }
 
 /// 单次 #PF 的处理结论。
@@ -393,6 +397,35 @@ mod real {
                 core::ptr::write_volatile(lp, (phys & paging::P_ADDR_MASK) | flags);
             }
             true
+        }
+
+        fn unmap_user(&mut self, va: u64) -> Option<u64> {
+            if va >> 47 != 0 {
+                return None;
+            }
+            let off = hhdm()?;
+            let mut table = root()?;
+            for shift in [39u64, 30u64, 21u64] {
+                let idx = ((va >> shift) & 0x1FF) as usize;
+                let e = unsafe {
+                    core::ptr::read_volatile((table + (idx as u64) * 8) as *const u64)
+                };
+                if e & paging::P_PRESENT == 0 || e & P_HUGE != 0 {
+                    // 用户装载只造 4KiB 叶；大叶/缺席都如实拒绝。
+                    return None;
+                }
+                table = (e & paging::P_ADDR_MASK) + off;
+            }
+            let lp = (table + (((va >> 12) & 0x1FF) as u64) * 8) as *mut u64;
+            let e = unsafe { core::ptr::read_volatile(lp) };
+            if e & paging::P_PRESENT == 0 {
+                return None;
+            }
+            // SAFETY: lp 指向当前 CR3 页表的 4KiB 叶槽。
+            unsafe {
+                core::ptr::write_volatile(lp, 0);
+            }
+            Some(e & paging::P_ADDR_MASK)
         }
 
         fn set_writable(&mut self, va: u64, writable: bool) -> bool {
@@ -726,6 +759,14 @@ mod tests {
                 return false;
             }
             self.map_frame(va, phys, writable, nx)
+        }
+        fn unmap_user(&mut self, va: u64) -> Option<u64> {
+            if va >> 47 != 0 {
+                return None;
+            }
+            let i = self.idx(va)?;
+            let (_, phys, _, _) = self.map.remove(i);
+            Some(phys)
         }
         fn set_writable(&mut self, va: u64, writable: bool) -> bool {
             match self.idx(va) {

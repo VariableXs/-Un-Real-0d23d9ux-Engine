@@ -267,24 +267,20 @@ impl SpaceArena {
     }
 
     pub fn get(&self, i: usize) -> Option<&AddressSpace> {
-        if i < self.count {
-            self.spaces[i].as_ref()
-        } else {
-            None
-        }
+        // 槽位可回收（destroy 置 None），数组变稀疏——按"槽位在"判定，
+        // 不再用 count 做上界（count 只计存活数）。
+        self.spaces.get(i).and_then(|s| s.as_ref())
     }
 
     fn get_mut(&mut self, i: usize) -> Option<&mut AddressSpace> {
-        if i < self.count {
-            self.spaces[i].as_mut()
-        } else {
-            None
-        }
+        self.spaces.get_mut(i).and_then(|s| s.as_mut())
     }
 
     /// Find a space by pid.
     pub fn find_pid(&self, pid: u32) -> Option<usize> {
-        (0..self.count).find(|&i| self.spaces[i].map(|s| s.pid == pid).unwrap_or(false))
+        self.spaces
+            .iter()
+            .position(|s| s.as_ref().map(|sp| sp.pid == pid).unwrap_or(false))
     }
 
     /// F001 — create a fresh PML4 and copy the kernel half into it.
@@ -292,6 +288,13 @@ impl SpaceArena {
         if self.count >= MAX_SPACES {
             return Err(SpaceError::TooManySpaces);
         }
+        // 任务15 修复：destroy 曾只标记不复位槽位、create 只会追加——
+        // 16 轮 spawn/destroy 后 arena 永久耗尽（waitpid 循环无泄漏验收
+        // 当场暴露）。现在 destroy 置 None 并归还计数，create 找首个空槽
+        // 复用；索引在 destroy 前保持稳定（PCB.space 存的就是它）。
+        let slot = (0..MAX_SPACES)
+            .find(|&i| self.spaces[i].is_none())
+            .ok_or(SpaceError::TooManySpaces)?;
         let root = self.arena.alloc_table().ok_or(SpaceError::OutOfFrames)?;
         // 内核半区共享：PML4 上半 256 项从 boot root 逐项复制，进程切换后
         // 内核照常可执行，同时用户态的 PML4 项一律为空 —— 天然互不可见。
@@ -302,9 +305,9 @@ impl SpaceArena {
             }
         }
         let space = AddressSpace::empty(root, pid);
-        self.spaces[self.count] = Some(space);
+        self.spaces[slot] = Some(space);
         self.count += 1;
-        Ok(self.count - 1)
+        Ok(slot)
     }
 
     /// F001 — map one user page with W^X enforced (F029) and overlap refused.
@@ -597,11 +600,13 @@ impl SpaceArena {
             .get(index)
             .map(|s| s.count)
             .unwrap_or(0);
-        if let Some(s) = self.get_mut(index) {
-            s.destroyed = true;
-            s.count = 0;
-            s.mappings = [None; MAX_MAPPINGS];
-            s.table_frames = 0;
+        // 任务15 修复：槽位真正归还（None + 计数回收），create 可复用；
+        // 不再只原地标记 destroyed 而永不释放槽位。表帧（root+中间表）
+        // 经 free_user_tree 全量归还——用户半区遍历，内核共享表不回收。
+        if self.spaces.get(index).is_some() {
+            let _ = self.arena.free_user_tree(root);
+            self.spaces[index] = None;
+            self.count = self.count.saturating_sub(1);
         }
         self.destroyed += 1;
         let _ = count;
@@ -675,10 +680,8 @@ impl SpaceArena {
     /// Aggregate frame accounting, for the domain HUD.
     pub fn total_table_frames(&self) -> usize {
         let mut n = 0;
-        for i in 0..self.count {
-            if let Some(s) = self.spaces[i] {
-                n += s.table_frames;
-            }
+        for s in self.spaces.iter().flatten() {
+            n += s.table_frames;
         }
         n
     }

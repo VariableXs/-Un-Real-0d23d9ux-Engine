@@ -12,6 +12,7 @@
 //! 纯逻辑 + 固定容量数组，`no_std` 无分配；每个 F 项都有单测与自检断言。
 
 use crate::checks::CheckSet;
+use crate::cpu::sync::SpinProtected;
 use crate::mem::addrspace::{self, AddressSpace, RegionKind, SpaceArena};
 use crate::mem::paging::{self, P_NX, P_WRITE};
 
@@ -499,6 +500,11 @@ impl ProcTable {
             Some(a) => a as usize,
             None => return 0,
         };
+        // 槽位可回收后索引可能被复用——地址空间必须仍属于该 pid，
+        // 否则就是拿陈旧索引拆别人的空间（如实拒绝）。
+        if arena.get(aslot).map(|s| s.pid) != Some(pid) {
+            return 0;
+        }
         let freed = arena.destroy(aslot);
         self.slots[slot].space = None;
         self.slots[slot].owned_pages = 0;
@@ -641,6 +647,49 @@ pub enum HandleKind {
     Pipe,
     SharedMemory,
     Process,
+    /// 运行期注册的类型（F014 开放性：新子系统登记自己的句柄类型）。
+    Registered(u16),
+}
+
+/// 注册表容量与名字长度上限（定容无分配——本模块 no_std 纪律）。
+pub const MAX_REGISTERED_KINDS: usize = 16;
+pub const KIND_NAME_BYTES: usize = 24;
+
+/// 句柄类型注册表：(id → 名字)。id 从 0 递增；同名重注册幂等。
+static KIND_REGISTRY: SpinProtected<[Option<[u8; KIND_NAME_BYTES]>; MAX_REGISTERED_KINDS]> =
+    SpinProtected::new([None; MAX_REGISTERED_KINDS]);
+
+/// 注册一个新句柄类型：返回稳定 id（0..16）。同名 → 返回既有 id（幂等）；
+/// 名字空/超长/注册表满 → None（如实拒绝，不静默复用）。
+pub fn register_handle_kind(name: &[u8]) -> Option<u16> {
+    if name.is_empty() || name.len() > KIND_NAME_BYTES {
+        return None;
+    }
+    let mut r = KIND_REGISTRY.lock();
+    if let Some(id) = r.iter().position(|slot| {
+        slot.as_ref().is_some_and(|n| {
+            &n[..name.len()] == name && n[name.len()..].iter().all(|&b| b == 0)
+        })
+    }) {
+        return Some(id as u16);
+    }
+    let id = r.iter().position(|s| s.is_none())?;
+    let mut buf = [0u8; KIND_NAME_BYTES];
+    buf[..name.len()].copy_from_slice(name);
+    r[id] = Some(buf);
+    Some(id as u16)
+}
+
+/// 读回注册类型的名字（拷出而非借出——锁内状态不外泄）。返回实际长度。
+pub fn handle_kind_name(id: u16, out: &mut [u8]) -> Option<usize> {
+    let r = KIND_REGISTRY.lock();
+    let n = r.get(id as usize)?.as_ref()?;
+    let len = n.iter().position(|&b| b == 0).unwrap_or(KIND_NAME_BYTES);
+    if out.len() < len {
+        return None;
+    }
+    out[..len].copy_from_slice(&n[..len]);
+    Some(len)
 }
 
 impl HandleKind {
@@ -652,6 +701,7 @@ impl HandleKind {
             HandleKind::Pipe => "pipe",
             HandleKind::SharedMemory => "shm",
             HandleKind::Process => "proc",
+            HandleKind::Registered(_) => "registered",
         }
     }
 }
@@ -2092,5 +2142,66 @@ mod tests {
         assert_eq!(st.processes, 2);
         assert_eq!(st.spaces, 2);
         assert_eq!(st.self_test.1, 0);
+    }
+
+    /// F014 开放性（总案任务15 验收）：句柄类型可注册扩展——新子系统
+    /// 运行期登记自己的类型名，拿稳定 id；同名幂等；容量优雅拒绝。
+    #[test]
+    fn f026_handle_kinds_are_registerable() {
+        let gpu = register_handle_kind(b"gpu-dma").expect("首次注册必须成功");
+        assert_eq!(register_handle_kind(b"gpu-dma"), Some(gpu), "同名重注册幂等");
+        let net = register_handle_kind(b"net-qdisc").expect("第二个类型");
+        assert_ne!(gpu, net);
+        // 名字读回（拷出语义，锁内状态不外泄）。
+        let mut buf = [0u8; KIND_NAME_BYTES];
+        let n = handle_kind_name(gpu, &mut buf).expect("已注册的名字必须可读回");
+        assert_eq!(&buf[..n], b"gpu-dma");
+        assert_eq!(handle_kind_name(999, &mut buf), None, "未注册 id → None");
+        // 句柄表全程使用注册类型：开 → 查 → 关，与内置类型同一语义。
+        let mut h = HandleTable::new();
+        let hid = h
+            .open(HandleKind::Registered(gpu), 0b11)
+            .expect("注册类型必须可开句柄");
+        assert!(h.check(hid, HandleKind::Registered(gpu), 0b11));
+        assert!(!h.check(hid, HandleKind::Registered(net), 0b11));
+        assert!(h.close(hid));
+        // 边界：空名/超长名如实拒绝；容量上限被尊重（16 封顶）。
+        assert_eq!(register_handle_kind(b""), None);
+        assert_eq!(register_handle_kind(&[b'x'; KIND_NAME_BYTES + 1]), None);
+        let mut filled = 2usize; // gpu-dma + net-qdisc
+        for i in 0..(MAX_REGISTERED_KINDS + 6) {
+            let mut name = *b"kinda";
+            name[4] = b'a' + (i as u8 % 26);
+            if register_handle_kind(&name[..5]).is_some() {
+                filled += 1;
+            }
+        }
+        assert_eq!(
+            filled, MAX_REGISTERED_KINDS,
+            "注册表恰好 16 封顶，超出优雅拒绝"
+        );
+    }
+
+    /// 总案任务15 验收：waitpid 循环 1000 次无泄漏——表、空间、僵尸三清。
+    #[test]
+    fn f027_waitpid_loop_1000_no_leak() {
+        let (mut table, mut arena, init) = fresh();
+        let base_live = table.live();
+        let base_spaces = arena.live_spaces();
+        for i in 0..1000 {
+            let kid = table
+                .spawn(&mut arena, init, b"kid", 0x40_0000)
+                .expect("64 槽循环复用下 spawn 必须永远成功");
+            table.exit(kid, i as i32, 0);
+            // 空间释放赶在 reap 前（槽没了就找不到 space 槽位）。
+            let _ = table.release_space(&mut arena, kid);
+            let (pid, code) = table.wait(init).expect("刚 exit 的孩子必须可 wait");
+            assert_eq!(pid, kid);
+            assert_eq!(code, i as i32);
+        }
+        assert_eq!(table.live(), base_live, "进程表零泄漏");
+        assert_eq!(arena.live_spaces(), base_spaces, "地址空间零泄漏");
+        assert_eq!(table.zombies_of(init), 0, "僵尸不得残留");
+        assert_eq!(table.exhausted, 0, "全程不得触顶");
     }
 }

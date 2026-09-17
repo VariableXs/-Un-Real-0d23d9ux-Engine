@@ -24,7 +24,7 @@
 //! 诚实边界：内核目标之外汇编路径不编译；宿主单测覆盖决策函数、缓冲
 //! 校验、装载计划校验、退出回收复用与 blob 可解析性。
 
-use super::uspace::ProcTable;
+use super::uspace::{ProcState, ProcTable};
 // elf 解析与进入计划只被 run_demo（内核目标）与宿主测试使用——宿主
 // lib 编译（非 test cfg）下两者都不在场，不门控会挂 unused 告警。
 #[cfg(any(all(target_arch = "x86_64", target_os = "none"), test))]
@@ -33,14 +33,26 @@ use super::elf;
 use super::uspace::{plan_entry, EntryPath};
 use crate::cpu::sync::SpinProtected;
 use crate::entry;
-use crate::proc::syscall::{SyscallError, SYS_EXIT, SYS_WRITE};
+use crate::proc::syscall::{SyscallError, SYS_EXIT, SYS_WAIT, SYS_WRITE};
 
-/// 进程表（任务14 演示期单一实例；任务16 PCB 全局化时收编）。
+/// 进程表（任务14/15 演示期单一实例；任务16 PCB 全局化时收编）。
 static PROCS: SpinProtected<ProcTable> = SpinProtected::new(ProcTable::new());
 
-/// 演示进程的 pid 登记：spawn 后写入，exit 读取（曾硬编码 1 而 hello
-/// 实际是 2，exit/reap 全程空转）。
+/// 演示进程的 pid 登记：spawn 后写入，exit/wait 读取（曾经硬编码
+/// 1，而 hello 实际是 2——exit/reap 全程空转）。
 static DEMO_PID: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// 监护生命周期轮数：两轮完整 spawn→exit→wait 后进入压力探针。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+const LIFECYCLES: u32 = 2;
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static EXITS: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// 任务15 · 逐页账本（pid → 装载页）：退出回收的凭据。装在监护者手里，
+/// reap 时摘叶归还帧——地址空间随进程消亡，一页不留。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static CHILD_PAGES: SpinProtected<alloc::vec::Vec<(u32, alloc::vec::Vec<(u64, u64)>)>> =
+    SpinProtected::new(alloc::vec::Vec::new());
 
 /// 双入口共享的调用统计（实机/测试读数用；完整 SyscallTable 仍由
 /// `proc::syscall` 持有形态定义，演示决策层不重复挂表）。
@@ -76,8 +88,9 @@ pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
     match nr {
         SYS_WRITE => sys_write(a1, a2, a3),
         SYS_EXIT => sys_exit(a1 as i32),
-        // 其余稳定号（read/open/…）按任务14 口径如实 ENOSYS——
-        // 号表形态定义在 proc::syscall（F102），处理器随任务15/16 落地。
+        SYS_WAIT => sys_wait_user(),
+        // 其余稳定号（read/open/…）按任务15 口径如实 ENOSYS——
+        // 号表形态定义在 proc::syscall（F102），处理器随任务16 落地。
         _ => SyscallError::NotImplemented.errno(),
     }
 }
@@ -108,36 +121,6 @@ fn sys_write(fd: u64, buf: u64, len: u64) -> i64 {
     for (i, slot) in line[..len as usize].iter_mut().enumerate() {
         *slot = unsafe { core::ptr::read_volatile((buf + i as u64) as *const u8) };
     }
-    // 诊断（验收后移除，仅内核目标）：CR3 + sys_write 实读首 8 字节 +
-    // 0x401000 页翻译与物理帧直读。曾经写成 0x401_0000——翻译了一个
-    // 从未映射的地址，tr=None 全是红鲱鱼。宿主无真页表（target_ops
-    // 不编译）且 buf=0 不可读，整块 cfg 门控。
-    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
-    {
-        let cr3: u64;
-        // SAFETY: 读控制寄存器无内存副作用。
-        unsafe {
-            core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nomem));
-        }
-        let peek = unsafe { core::ptr::read_volatile(buf as *const u64) };
-        use crate::mem::pfh::PageTableOps as _;
-        let mut ops = crate::mem::pfh::target_ops();
-        let tr = ops.translate(0x401_000);
-        let hhdm = crate::limine::hhdm_offset().unwrap_or(0);
-        let frame_read = match tr {
-            Some(p) => unsafe {
-                core::ptr::read_volatile(((p & 0x000f_ffff_ffff_f000) + 0x70 + hhdm) as *const u64)
-            },
-            None => 0xDEAD_BEEF,
-        };
-        crate::kinfo!(
-            "ring3: write cr3={:#x} peek={:#x} pte={:#x?} frame={:#x}",
-            cr3,
-            peek,
-            tr,
-            frame_read
-        );
-    }
     crate::serial::write_bytes(&line[..len as usize]);
     if let Some(c) = crate::console::installed_ref() {
         for &b in &line[..len as usize] {
@@ -158,30 +141,237 @@ const fn ebadf() -> i64 {
     entry::ErrNo::Ebadf.to_i32() as i64
 }
 
-/// exit：置 Zombie → reap 回 Vacant（64 槽复用）→ 打印证据 → 停机。
-/// 内核侧不返回——syscall stub 的 sysret 永远不会在 exit 之后执行。
-/// pid 取自 spawn 时登记的静态槽（演示期唯一用户进程；曾经硬编码
-/// pid=1，而 hello 实际 pid=2——exit/reap 空转，回收断言假通过）。
+/// exit：置 Zombie 后把控制权交还监护者——回收是 wait（父）的职责，
+/// 这是父子分工的真实语义（任务14 曾在 exit 里就地 reap+停机，回收
+/// 断言是自导自演）。pid 取自 spawn 时登记的静态槽（曾经硬编码
+/// pid=1，而 hello 实际 pid=2——exit/reap 全程空转，断言假通过）。
 fn sys_exit(code: i32) -> ! {
     let pid = DEMO_PID.load(core::sync::atomic::Ordering::Relaxed);
-    let (reaped, slot_free_again) = {
+    let zombie = {
         let mut t = PROCS.lock();
         t.exit(pid, code, 0);
-        let r = t.reap(pid);
-        (r.is_some(), t.find(pid).is_none())
+        t.find(pid)
+            .and_then(|i| t.get(i))
+            .map(|p| p.state == ProcState::Zombie)
+            .unwrap_or(false)
     };
     crate::kinfo!(
-        "ring3: exit({}) pid={} zombie_reaped={} slot_free_again={} — 64-slot reuse ok",
+        "ring3: exit({}) pid={} → zombie={} — 控制权交还监护者，wait 收割",
         code,
         pid,
-        reaped,
-        slot_free_again
+        zombie
     );
-    if !reaped {
-        crate::kwarn!("ring3: exit reap failed — zombie path broken");
+    if !zombie {
+        crate::kwarn!("ring3: exit did not reach Zombie — lifecycle broken");
         halt_demo();
     }
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+    resume_supervisor();
+    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
     halt_demo();
+}
+
+/// wait 语义的纯函数（宿主可测）：收割调用者的一个僵尸孩子。
+/// 返回 (child_pid << 32 | exit_code)；没有可收割的孩子 → -ECHILD。
+fn wait_user_in(t: &mut ProcTable, me: u32) -> i64 {
+    match t.wait(me) {
+        Some((child, code)) => ((child as i64) << 32) | (code as i64 & 0xFFFF_FFFF),
+        None => -(entry::ErrNo::Echild.to_i32() as i64),
+    }
+}
+
+/// 用户态 wait 臂。演示期调用者身份 = 唯一用户进程（DEMO_PID）；
+/// 多进程调用方身份随任务16 PCB 全局化接入 stub。
+fn sys_wait_user() -> i64 {
+    let me = DEMO_PID.load(core::sync::atomic::Ordering::Relaxed);
+    let mut t = PROCS.lock();
+    wait_user_in(&mut t, me)
+}
+
+// ---------------------------------------------------------------------------
+// 目标态：监护生命周期（任务15）——spawn → exit → wait → 复用 + 压力探针
+// ---------------------------------------------------------------------------
+
+/// 从 exit 现场（syscall stub 的 kstack 帧）切回环零栈顶，跳进监护续体。
+/// stub 残帧被有意放弃——exit 之后 sysretq 永不执行；rsp 重置保证监护
+/// 循环每轮从同一栈顶开始，无栈深度累积。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn resume_supervisor() -> ! {
+    let top = target_only::kstack_top();
+    // SAFETY: 跳转目标 after_exit 不返回；kstack 此刻无其他使用者
+    // （演示期单核、用户现场已放弃）。
+    unsafe {
+        core::arch::asm!(
+            "mov rsp, {top}",
+            "xor ebp, ebp",
+            "jmp {after}",
+            top = in(reg) top,
+            after = sym after_exit,
+            options(noreturn)
+        )
+    }
+}
+
+/// 监护续体：收割刚退场的实例（wait=父子语义的真实回收点）+ 页账本
+/// 摘叶归还帧 → 决定下一实例或压力探针。每轮一个实例，先跑满
+/// [`LIFECYCLES`] 轮完整生命周期。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn after_exit() -> ! {
+    use core::sync::atomic::Ordering;
+    let exits = EXITS.fetch_add(1, Ordering::Relaxed) + 1;
+    match PROCS.lock().wait(0) {
+        Some((pid, code)) => {
+            let ledger = CHILD_PAGES
+                .lock()
+                .iter()
+                .find(|e| e.0 == pid)
+                .map(|e| e.1.clone())
+                .unwrap_or_default();
+            let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+            let freed = super::loader::release_pages(&ledger, &mut mp);
+            CHILD_PAGES.lock().retain(|e| e.0 != pid);
+            crate::kinfo!(
+                "ring3: supervisor wait → pid={} code={} pages_released={}/{} — 空间随进程消亡，一页不留",
+                pid,
+                code,
+                freed,
+                ledger.len()
+            );
+        }
+        None => crate::kwarn!("ring3: supervisor wait found no zombie — lifecycle broken"),
+    }
+    if exits < LIFECYCLES {
+        spawn_hello(exits + 1);
+    }
+    pressure_probe_and_finish()
+}
+
+/// 装载 hello 并进入 ring3（任务15 版）：PCB 入表 → 共用装载引擎
+/// （页账本登记进 CHILD_PAGES）→ 进入计划 → iretq。不返回（exit 经
+/// resume_supervisor 交还控制权；失败路径如实 kwarn 后停机）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spawn_hello(instance: u32) -> ! {
+    let img = match elf::parse(HELLO_ELF) {
+        Ok(i) => i,
+        Err(e) => {
+            crate::kwarn!("ring3: hello.elf parse failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let pid = match PROCS.lock().alloc(0, b"hello") {
+        Ok(p) => p,
+        Err(e) => {
+            crate::kwarn!("ring3: proc alloc failed: {:?} — halting", e);
+            halt_demo()
+        }
+    };
+    DEMO_PID.store(pid, core::sync::atomic::Ordering::Relaxed);
+    let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+    let src = super::loader::ElfSource {
+        img: &img,
+        blob: HELLO_ELF,
+    };
+    let loaded = match super::loader::load_into(
+        &src,
+        &mut mp,
+        entry::DEFAULT_STACK_PAGES as u64,
+        entry::USER_STACK_TOP,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: load failed ({:?}) — halting", e);
+            halt_demo()
+        }
+    };
+    let pages_n = loaded.pages.len();
+    let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
+    CHILD_PAGES.lock().push((pid, loaded.pages));
+    crate::kinfo!(
+        "ring3: instance#{} spawned pid={} entry={:#x} pages={} — PCB + 逐页账本登记",
+        instance,
+        pid,
+        entry_ip,
+        pages_n
+    );
+    // 进入计划（既有校验：用户半区 + 对齐 + rflags 硬性要求）。
+    let mut plan = super::uspace::EntryPlan::default();
+    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, stack_top, &mut plan) {
+        crate::kwarn!("ring3: entry plan rejected: {} — halting", e);
+        halt_demo()
+    }
+    crate::kinfo!(
+        "ring3: iretq → user (rip={:#x} rsp={:#x} rflags={:#x})",
+        plan.rip,
+        plan.rsp,
+        plan.rflags
+    );
+    // SAFETY: 依赖 loader 已映射的段页与栈页、已写入的 MSR 与 TSS.RSP0。
+    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+}
+
+/// 压力探针（总案任务15 验收：spawn 压力 64 槽打满/耗尽优雅拒绝）：
+/// 唯一命名填满剩余槽 → 下一次 alloc 必须被优雅拒绝（exhausted 计数）→
+/// 全量 exit+wait 退场回收 → 表清空（无泄漏）→ 证据汇总停机。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn pressure_probe_and_finish() -> ! {
+    fn probe_name(i: u32) -> ([u8; 16], usize) {
+        let mut name = *b"probe0000000000\0";
+        let digits = [
+            b'0' + ((i / 100) % 10) as u8,
+            b'0' + ((i / 10) % 10) as u8,
+            b'0' + (i % 10) as u8,
+        ];
+        name[5..8].copy_from_slice(&digits);
+        (name, 8)
+    }
+    let mut filled: u32 = 0;
+    let mut victims: alloc::vec::Vec<u32> = alloc::vec::Vec::new();
+    loop {
+        let (name, n) = probe_name(filled);
+        // 守卫先释放再分支：match 临时守卫会活到整个 match 结束，
+        // Err 臂里再 PROCS.lock() 就是自旋死锁（实机曾卡死在此）。
+        let res = PROCS.lock().alloc(0, &name[..n]);
+        match res {
+            Ok(pid) => {
+                victims.push(pid);
+                filled += 1;
+            }
+            Err(e) => {
+                let exhausted = PROCS.lock().exhausted;
+                crate::kinfo!(
+                    "ring3: pressure fill: +{} procs → next alloc rejected {:?} (exhausted={}) — 64 槽打满，优雅拒绝",
+                    filled,
+                    e,
+                    exhausted
+                );
+                break;
+            }
+        }
+        if filled > 4096 {
+            crate::kwarn!("ring3: pressure fill runaway — aborting probe");
+            break;
+        }
+    }
+    for &pid in &victims {
+        PROCS.lock().exit(pid, 0, 0);
+    }
+    let mut reaped = 0u32;
+    while PROCS.lock().wait(0).is_some() {
+        reaped += 1;
+    }
+    let live = PROCS.lock().live();
+    crate::kinfo!(
+        "ring3: pressure drain: exited={} reaped={} live={} — 表清空，无泄漏",
+        victims.len(),
+        reaped,
+        live
+    );
+    crate::kinfo!(
+        "ring3: task15 lifecycle complete — {} 轮 spawn/exit/wait + 压力探针全过 — halting",
+        LIFECYCLES
+    );
+    halt_demo()
 }
 
 /// 演示终点停机（行为等价于 boot complete 的 halting，只是先跑完 ring3）。
@@ -338,14 +528,6 @@ pub fn install() -> bool {
     let cur_efer = crate::cpu::msr::read(crate::cpu::msr::Msr::Efer);
     let entry_cfg = entry::SyscallEntry::new(syscall_entry as *const () as u64, cur_efer);
     let ok = entry::commit(&entry_cfg);
-    // 诊断（验收后移除）：两个环零栈的地址——GP 现场的 rsp 归属一目了然。
-    crate::kinfo!(
-        "ring3: kstack={:#x}..{:#x} int_kstack={:#x}..{:#x}",
-        target_only::kstack_top() - KSTACK_PAGES * 4096,
-        target_only::kstack_top(),
-        int_kstack_top() - INT_KSTACK_PAGES * 4096,
-        int_kstack_top()
-    );
     ok
 }
 
@@ -398,230 +580,15 @@ pub fn int80_from_frame(rsp: u64) {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn int80_from_frame(_rsp: u64) {}
 
-/// 装载 hello 并进入 ring3。不返回（exit 停机；任何一步失败也如实
-/// kwarn 后停机——绝不带着半成品地址空间进用户态）。
+/// 监护生命周期入口（任务15）：spawn → 用户态执行 → exit 交还控制权 →
+/// after_exit 收割并驱动下一实例/压力探针 → 停机。不返回。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn run_demo() -> ! {
-    let blob = HELLO_ELF;
     crate::kinfo!(
-        "ring3: loading hello.elf ({} bytes) into user half",
-        blob.len()
+        "ring3: supervised lifecycle demo — {} 轮 spawn/exit/wait，随后压力探针",
+        LIFECYCLES
     );
-    let img = match elf::parse(blob) {
-        Ok(i) => i,
-        Err(e) => {
-            crate::kwarn!("ring3: elf parse failed: {} — demo aborted", e.as_str());
-            halt_demo();
-        }
-    };
-    if img.needs_interpreter() {
-        crate::kwarn!("ring3: dynamically linked ELF refused — demo aborted");
-        halt_demo();
-    }
-
-    // 进程槽先行（exit 要回收它）。
-    let pid = {
-        let mut t = PROCS.lock();
-        match t.alloc(0, b"hello") {
-            Ok(p) => p,
-            Err(e) => {
-                crate::kwarn!("ring3: proc alloc failed: {:?} — demo aborted", e);
-                halt_demo()
-            }
-        }
-    };
-    DEMO_PID.store(pid, core::sync::atomic::Ordering::Relaxed);
-    crate::kinfo!("ring3: hello spawned as pid={} (slot occupied)", pid);
-
-    // 段装载：每 4KiB **页**一帧（不是每段每页一帧）。hello.elf 的
-    // .rodata@0x401000 与 .data@0x401088 同页——曾经各自分配新帧并整体
-    // 覆写 PTE：后者（W 帧）顶掉前者（R 帧），MSG 经页表读出全零。
-    // 同页多段必须：共享一帧、按页内真实偏移拷贝、flags 取并集。
-    use crate::mem::pfh::PageTableOps;
-    let mut pt = crate::mem::pfh::target_ops();
-    let hhdm = crate::limine::hhdm_offset().unwrap_or(0);
-    let mut mapped = 0u64;
-    // 金丝雀（验收后移除）：MSG 页装载后记录物理帧，此后每次新帧分配/
-    // 映射都回读校验——装载期破坏当场报出肇事 va/phys，不再靠终态猜。
-    const CANARY: u64 = 0x7266_206F_6C6C_6568; // "hello fr" 小端 u64
-    let mut seg0_phys = 0u64;
-    // 页账本：(页基址, 帧, writable, nx)；演示 19 页封顶，32 足够。
-    let mut ledger: [(u64, u64, bool, bool); 32] = [(0, 0, false, false); 32];
-    let mut ledger_n = 0usize;
-    for seg in img.segments() {
-        let flags = seg.page_flags();
-        let seg_w = flags & crate::mem::paging::P_WRITE != 0;
-        let seg_nx = flags & crate::mem::paging::P_NX != 0;
-        let pages = seg.memsz.div_ceil(4096).max(1);
-        for k in 0..pages {
-            let va = seg.vaddr + k * 4096;
-            let page_va = va & !0xFFF;
-            let in_page = va & 0xFFF;
-            // 该页是否已有帧（同页多段共享，不得重复分配）。
-            let (phys, w, nx) = match (0..ledger_n).find(|&i| ledger[i].0 == page_va) {
-                Some(i) => {
-                    // flags 并集：任一段要 W 即 W，任一段要 NX 即 NX。
-                    let merged_w = ledger[i].2 || seg_w;
-                    let merged_nx = ledger[i].3 || seg_nx;
-                    ledger[i].2 = merged_w;
-                    ledger[i].3 = merged_nx;
-                    (ledger[i].1, merged_w, merged_nx)
-                }
-                None => {
-                    let Some(p) = crate::mem::pmm::alloc_page() else {
-                        crate::kwarn!("ring3: pmm exhausted — demo aborted");
-                        halt_demo()
-                    };
-                    let page = (p + hhdm) as *mut u8;
-                    // SAFETY: 新帧来自 PMM，HHDM 全覆盖；页内布局本函数独占。
-                    unsafe {
-                        core::ptr::write_bytes(page, 0, 4096);
-                    }
-                    ledger[ledger_n] = (page_va, p, seg_w, seg_nx);
-                    ledger_n += 1;
-                    (p, seg_w, seg_nx)
-                }
-            };
-            // 文件内容按页内真实偏移拷贝（段可以从页中间开始）。
-            if k * 4096 < seg.filesz {
-                let file_off = (seg.offset + k * 4096) as usize;
-                let n = core::cmp::min(4096 - in_page as usize, (seg.filesz - k * 4096) as usize);
-                if file_off + n <= blob.len() {
-                    // SAFETY: blob 只读、帧由本函数独占，区间不重叠。
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            blob.as_ptr().add(file_off),
-                            (phys + hhdm + in_page) as *mut u8,
-                            n,
-                        );
-                    }
-                }
-            }
-            if !pt.map_user_frame(page_va, phys, w, nx) {
-                crate::kwarn!("ring3: map user page failed — demo aborted");
-                halt_demo()
-            }
-            pt.flush(page_va);
-            mapped += 1;
-            // 诊断（验收后移除）：MSG 页（0x401000）首次映射时记录帧。
-            if page_va == 0x401000 && seg0_phys == 0 {
-                seg0_phys = phys;
-                let via_hhdm = unsafe { core::ptr::read_volatile((phys + hhdm + 0x70) as *const u64) };
-                let via_va = unsafe { core::ptr::read_volatile((page_va + 0x70) as *const u64) };
-                crate::kinfo!(
-                    "ring3: msg page phys={:#x} via_hhdm={:#x} via_va={:#x}",
-                    phys,
-                    via_hhdm,
-                    via_va
-                );
-            }
-            // 金丝雀校验：其它帧的分配/映射后回读 MSG 页帧。
-            if seg0_phys != 0 && phys != seg0_phys {
-                let cur = unsafe { core::ptr::read_volatile((seg0_phys + hhdm + 0x70) as *const u64) };
-                if cur != CANARY {
-                    crate::kerror!(
-                        "ring3: msg frame {:#x} clobbered by map va={:#x} phys={:#x} read={:#x} — halting",
-                        seg0_phys,
-                        page_va,
-                        phys,
-                        cur
-                    );
-                    halt_demo();
-                }
-            }
-        }
-    }
-    // 用户栈：DEFAULT_STACK_PAGES 零页（P_USER|W|NX），从栈顶向下。
-    for k in 0..entry::DEFAULT_STACK_PAGES as u64 {
-        let va = entry::USER_STACK_TOP - (k + 1) * 4096;
-        let Some(phys) = crate::mem::pmm::alloc_page() else {
-            crate::kwarn!("ring3: pmm exhausted for stack — demo aborted");
-            halt_demo()
-        };
-        let page = (phys + hhdm) as *mut u8;
-        // SAFETY: 新帧来自 PMM，独占写。
-        unsafe {
-            core::ptr::write_bytes(page, 0, 4096);
-        }
-        if !pt.map_user_frame(va, phys, true, true) {
-            crate::kwarn!("ring3: map stack page failed — demo aborted");
-            halt_demo()
-        }
-        pt.flush(va);
-        mapped += 1;
-        // 金丝雀校验（栈页阶段同样盯 seg0 帧）。
-        if seg0_phys != 0 {
-            let cur = unsafe { core::ptr::read_volatile((seg0_phys + hhdm + 0x70) as *const u64) };
-            if cur != CANARY {
-                crate::kerror!(
-                    "ring3: seg0 frame {:#x} clobbered by stack alloc va={:#x} phys={:#x} read={:#x} — halting",
-                    seg0_phys,
-                    va,
-                    phys,
-                    cur
-                );
-                halt_demo();
-            }
-        }
-    }
-    crate::kinfo!(
-        "ring3: {} user pages mapped (segments+stack), entry {:#x}",
-        mapped,
-        img.entry
-    );
-
-    // 快照（验收后移除）：0x401000 走的四级链原始项 + MSG 帧内容 + CR3
-    // + STAR/FMASK 读回——大叶伪链、装载窗口外的破坏、STAR 高半段错误
-    //（SYSRET 的 SS=CS+8 契约）在此一锤定音。
-    {
-        let rd = |phys: u64| -> u64 { unsafe { core::ptr::read_volatile((phys + hhdm) as *const u64) } };
-        let cr3_snap: u64;
-        // SAFETY: 读控制寄存器无内存副作用。
-        unsafe {
-            core::arch::asm!("mov {}, cr3", out(reg) cr3_snap, options(nomem));
-        }
-        let mask = crate::mem::paging::P_ADDR_MASK;
-        let pml4e0 = rd(cr3_snap & mask);
-        let pdpte0 = rd(pml4e0 & mask);
-        let pde2 = rd((pdpte0 & mask) + 2 * 8);
-        let huge = pde2 & crate::mem::paging::P_HUGE != 0;
-        let pte1 = if huge { 0 } else { rd((pde2 & mask) + 1 * 8) };
-        let seg0 = if seg0_phys != 0 {
-            unsafe { core::ptr::read_volatile((seg0_phys + hhdm + 0x70) as *const u64) }
-        } else {
-            0
-        };
-        let star = crate::cpu::msr::read(crate::cpu::msr::Msr::Star);
-        let fmask = crate::cpu::msr::read(crate::cpu::msr::Msr::SFmask);
-        let lstar = crate::cpu::msr::read(crate::cpu::msr::Msr::LStar);
-        crate::kinfo!(
-            "ring3: pre-iretq cr3={:#x} pml4e0={:#x} pdpte0={:#x} pde2={:#x} huge={} pte1={:#x} seg0={:#x} star={:#x} fmask={:#x} lstar={:#x}",
-            cr3_snap,
-            pml4e0,
-            pdpte0,
-            pde2,
-            huge as u8,
-            pte1,
-            seg0,
-            star,
-            fmask,
-            lstar
-        );
-    }
-
-    // 进入计划（既有校验：用户半区 + 对齐 + rflags 硬性要求）。
-    let mut plan = super::uspace::EntryPlan::default();
-    if let Err(e) = plan_entry(EntryPath::Iret, img.entry, entry::USER_STACK_TOP, &mut plan) {
-        crate::kwarn!("ring3: entry plan rejected: {} — demo aborted", e);
-        halt_demo()
-    }
-    crate::kinfo!(
-        "ring3: iretq → user (rip={:#x} rflags={:#x}) — hello should print twice via int80 & syscall",
-        plan.rip,
-        plan.rflags
-    );
-    // SAFETY: 依赖上面已映射的页、已写入的 MSR 与 TSS.RSP0。
-    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+    spawn_hello(1)
 }
 
 // ---------------------------------------------------------------------------

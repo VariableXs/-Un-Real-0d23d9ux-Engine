@@ -9,6 +9,7 @@
 use core::sync::atomic::AtomicU64;
 
 pub mod elf;
+pub mod loader;
 pub mod ring3;
 pub mod syscall;
 
