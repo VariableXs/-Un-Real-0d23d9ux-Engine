@@ -22,3 +22,7 @@ bench = false
 kernel-image = []
 
 [dependencies]
+
+# 任务35 测试交叉验证：官方 BLAKE3（仅宿主测试链路，内核镜像零依赖不变）。
+[dev-dependencies]
+blake3 = "1"

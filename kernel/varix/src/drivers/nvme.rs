@@ -822,6 +822,8 @@ pub mod target {
                 // 任务24：内核 KV 存储服务——跨断电 boot-counter 累加 +
                 // 逐会话 10 键写入/恢复核对（盘1 高区 LBA 60000/70000）。
                 crate::kvsrv::target::kv_probe(&mut ctrl);
+                // 任务30：VFS 白名单越权审计账本（journal 双会话断电续记）。
+                crate::vfsguard::target::vfs_audit_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }

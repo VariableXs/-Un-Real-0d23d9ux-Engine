@@ -66,6 +66,29 @@ pub mod milestone;
 pub mod kvsrv;
 /// 三方配额服务（任务56：CPU 分配矩阵+内存水位回收+GPU 通道抽象）。
 pub mod quota;
+/// 共享内存块原语+授权模型（任务32：create/map/revoke，句柄不可传递默认）。
+pub mod shmsrv;
+/// VFS 白名单裁决层+越权审计（任务30：默认拒绝+journal 断电审计）。
+pub mod vfsguard;
+/// 消息通道原语（任务33：订阅/广播/单发，慢消费者丢最旧+计数）。
+#[path = "security/msgchan.rs"]
+pub mod msgchan;
+/// 剪贴板/拖放白名单化（任务34：格式白名单+真实性校验+pid 授权位图，
+/// 路径裁决/审计复用 vfsguard）。
+#[path = "security/clip.rs"]
+pub mod clipsrv;
+/// BLAKE3（内核自实现，任务35 Uxv 索引校验依赖；与官方 crate 交叉验证）。
+#[path = "security/blake3.rs"]
+pub mod kblake3;
+/// Uxv 交换格式只读校验门（任务35：整包拒绝+如实错误码，写侧复用
+/// container crate 不复制实现）。
+#[path = "security/uxv_ingest.rs"]
+pub mod uxvingest;
+/// 阶段4 负向演练矩阵（总案步骤10：越权×目录×剪贴板×共享内存全组合）。
+#[path = "security/stage4_matrix.rs"]
+pub mod stage4matrix;
+
+
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
 pub mod inkstack;
 // UNREAL-X AI-34（族0339 · X08451~X08475）：内核兼容 API 层。

@@ -303,6 +303,14 @@ fn boot() -> ! {
     // --- quota service probe（任务56：三方配额矩阵+水位回收+GPU 通道）--------------
     varix::quota::target::quota_probe();
 
+    // --- shm service probe（任务32：授权模型全矩阵）-----------------------------------
+    varix::shmsrv::target::shm_probe();
+
+    // --- vfs guard probe（任务30：白名单裁决矩阵，纯计算）---------------------------
+    varix::vfsguard::target::vfs_decisions_probe();
+
+
+
     // --- input domain (F151~F175) ------------------------------------------------------
     let input_state = varix::input::init();
     varix::input::render_to_console(&input_state);
