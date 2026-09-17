@@ -824,6 +824,9 @@ pub mod target {
                 crate::kvsrv::target::kv_probe(&mut ctrl);
                 // 任务30：VFS 白名单越权审计账本（journal 双会话断电续记）。
                 crate::vfsguard::target::vfs_audit_probe(&mut ctrl);
+                // 任务65：保险箱内核侧全链探针——PBKDF2+AES-GCM+密钥仅内存
+                // 断言+焚毁三步（盘高区 LBA 90000，与其他探针区不重叠）。
+                crate::kvault::vault_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }

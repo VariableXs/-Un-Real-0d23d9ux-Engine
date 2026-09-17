@@ -87,6 +87,18 @@ pub mod uxvingest;
 /// 阶段4 负向演练矩阵（总案步骤10：越权×目录×剪贴板×共享内存全组合）。
 #[path = "security/stage4_matrix.rs"]
 pub mod stage4matrix;
+/// SHA-256/HMAC/PBKDF2（任务65：保险箱口令基元；FIPS 180-4/RFC 4231/公开
+/// PBKDF2 向量交叉锁定）。
+#[path = "security/ksha256.rs"]
+pub mod ksha256;
+/// AES-256-GCM（任务65：保险箱封条原语；NIST SP 800-38D 附录 B 向量锁定，
+/// 仅加密方向、固定 96-bit nonce、认证失败零明文）。
+#[path = "security/kaesgcm.rs"]
+pub mod kaesgcm;
+/// 保险箱内核侧（任务65：privacy.rs AES-256-GCM 语义平移 + 密钥仅内存
+/// 断言 + 焚毁三步 + 掉电损坏即拒绝；blob 布局与桌面侧互通）。
+#[path = "security/kvault.rs"]
+pub mod kvault;
 
 
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
