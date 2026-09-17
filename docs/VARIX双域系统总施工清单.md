@@ -14,7 +14,7 @@
 
 ## 阶段 1：U 盘分区与便携基建改造
 - [x] 扩展 `portable/AI1/Create-VHDX.ps1`：五分区布局（EFI / VARIX 系统 / Windows 引擎 VHDX / 共享 exFAT / 快照区）（2026-09-16 AI-P：落为独立 `portable/AI-P/Create-Partitions.ps1`，容量配置化+幂等+4K 对齐，不动 AI1 文件；SHARED 契约初始化见 `portable/AI-P/Init-Shared.ps1`）
-- [ ] 扩展 `Deploy-To-USB.ps1`：新增 VARIX 产物部署段（内核 ELF+引导器+Variable 运行时）
+- [x] 扩展 `Deploy-To-USB.ps1`：新增 VARIX 产物部署段（内核 ELF+引导器+Variable 运行时）（2026-09-17 AI-P：五分区编排 Deploy-Varix-USB.ps1，Preflight→Stage→Verify→Report + deploy-state.json 断点续作）
 - [ ] Windows 引擎 VHDX 走三级差分链（Base→Apps→User），首次部署脚本化
 - [x] 共享分区挂载约定与目录规范（软件登记表 apps.json、接力队列、白名单）写入共享分区（2026-09-16 AI-P：契约四件套定版 + schema 校验，见 portable/AI-P/README.md）
 - [ ] 验收：一键脚本从零产出可引导 U 盘；`Test-VM.ps1` 可在 VM 中整机验收

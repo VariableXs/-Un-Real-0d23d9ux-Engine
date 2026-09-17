@@ -1,0 +1,41 @@
+== T8 Build-ESP ==
+  PASS  VARIX 链组装退出码 0
+  PASS  产出 EFI\BOOT\BOOTX64.EFI
+  PASS  产出 limine-bios.sys
+  PASS  产出 limine.conf
+  PASS  产出 kernel\varix
+  PASS  产出 initrd.img
+  PASS  产出 ESP-MANIFEST.json
+  PASS  Windows 链组装退出码 0
+  PASS  Windows 链落位 EFI\Microsoft\Boot\bootmgfw.efi
+  PASS  Windows 链落位 EFI\Microsoft\Boot\BCD
+  PASS  VerifyOnly 通过
+  PASS  重入退出码 0
+  PASS  重入后 Windows 链未被破坏
+  PASS  篡改被 VerifyOnly 检出
+== T9 Deploy-Varix-USB PlanOnly ==
+  PASS  PlanOnly 退出码 0
+  PASS  预演含 Preflight
+  PASS  预演含 Partition
+  PASS  预演含 ESP
+  PASS  预演含 Shared
+  PASS  预演含 SysFiles
+  PASS  预演含 Verify
+  PASS  预演含 Report
+  PASS  预演含断点状态文件路径
+== T11 Manage-Versions ==
+  PASS  Snapshot v1.0 退出码 0
+  PASS  MANIFEST 产出
+  PASS  重 Snapshot 退出码 0（MINOR+1）
+  PASS  版本单调递增到 1.1
+  PASS  New-Diff 退出码 0
+  PASS  差分清单产出
+  PASS  差集检出 1 处变更
+  PASS  Compare 相同盘一致
+  PASS  Compare 差异盘拒绝
+  PASS  Retire 退出码 0
+  PASS  原文件已移走
+  PASS  _trash 区留档
+  PASS  Show 无清单退出码非 0
+
+AI-P 自测二：36 项全部通过

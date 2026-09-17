@@ -6,8 +6,12 @@
 |---|---|
 | `partition-plan.json` | 五分区容量配置（version=1，容量/对齐全部参数化，改配置不改脚本） |
 | `Create-Partitions.ps1` | 任务 6：U 盘五分区 GPT 脚本（幂等重跑 + 4K 对齐校验 + 清盘二次确认 + `-PlanOnly` 纯计算模式） |
+| `Build-ESP.ps1` | 任务 7：ESP 双链组装（VARIX Limine 链 + Windows 引导链目录互斥共存，ESP-MANIFEST.json 哈希清单，`-VerifyOnly` 校验） |
+| `Deploy-Varix-USB.ps1` | 任务 8：五分区总编排（Preflight→Partition→ESP→Shared→SysFiles→Verify→Report，deploy-state.json 断点续作，`-PlanOnly` 预演） |
 | `Init-Shared.ps1` | 任务 9：SHARED 契约初始化（幂等 + 损坏留证重建 + `-ValidateOnly` 校验模式） |
-| `Test-AIP.ps1` | 本模块自测（PlanOnly 布局断言 + 契约幂等/损坏恢复/schema 负向用例） |
+| `Manage-Versions.ps1` | 任务 11：多 U 盘版本管理（vMAJOR.MINOR 单调递增 / `_versions\` 差分清单 / `_trash\` 回收站区 / Compare 双盘 Base 相同性） |
+| `Test-AIP.ps1` | 自测一（任务 6/9：布局断言 + 契约幂等/损坏恢复/schema 负向，25 项） |
+| `Test-AIP2.ps1` | 自测二（任务 7/8/11：ESP 双链/篡改检出/编排预演/版本差分/回收站，36 项） |
 
 ## 五分区定版布局（1TB 盘）
 
@@ -70,12 +74,28 @@ SHARED\
 .\Create-Partitions.ps1 -DiskNumber 3
 .\Create-Partitions.ps1 -VhdPath D:\varix-usb.vhdx -Yes
 
+# ESP 双链组装（EspPath 为已挂载 ESP 卷或目录；仅 VARIX 链可省 WindowsBootDir）
+.\Build-ESP.ps1 -EspPath S:\
+.\Build-ESP.ps1 -EspPath S:\ -WindowsBootDir D:\esp-win-src
+.\Build-ESP.ps1 -EspPath S:\ -VerifyOnly
+
+# 五分区一键部署编排（断点续作：重跑自动跳过已完成阶段）
+.\Deploy-Varix-USB.ps1 -DiskNumber 3 -Yes -SysSource D:\varix-runtime -WindowsBootDir D:\esp-win-src
+.\Deploy-Varix-USB.ps1 -PlanOnly
+
 # 契约初始化 / 校验
 .\Init-Shared.ps1 -SharedRoot S:\
 .\Init-Shared.ps1 -SharedRoot S:\ -ValidateOnly
 
-# 自测
+# 多 U 盘版本管理
+.\Manage-Versions.ps1 -Action Snapshot -Root E:\ -Label first-burn
+.\Manage-Versions.ps1 -Action New-Diff  -Root E:\
+.\Manage-Versions.ps1 -Action Compare   -Root E:\ -OtherRoot F:\
+.\Manage-Versions.ps1 -Action Retire    -Root E:\ -Files kernel\varix
+
+# 自测（免管理员，作用于临时目录与真实构建产物）
 powershell -NoProfile -File .\Test-AIP.ps1
+powershell -NoProfile -File .\Test-AIP2.ps1
 ```
 
 ## 安全边界

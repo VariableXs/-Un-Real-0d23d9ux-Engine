@@ -28,11 +28,11 @@
 ## 阶段 1：U 盘五分区便携基建
 
 - [x] **任务 6**（AI-P）：五分区 GPT 脚本（ESP/VARIX 系统/引擎 VHDX/共享 exFAT/快照区）＋幂等重跑＋对齐校验。前置：无。（2026-09-16 AI-P 完成：portable/AI-P/Create-Partitions.ps1 + partition-plan.json；自测 25/25，验收 docs/acceptance/双域-阶段1-六维验收-AI-P任务6任务9-2026-09-16.md）
-- [ ] **任务 7**（AI-P）：ESP 组装——VARIX 引导器与 Windows 引导文件双链共存；VM 首启验证。前置：任务 6。
-- [ ] **任务 8**（AI-P）：Deploy-To-USB 总编排适配五分区（沿用 Preflight/Stage/Verify），断点续作支持。前置：任务 7。
+- [x] **任务 7**（AI-P）：ESP 组装——VARIX 引导器与 Windows 引导文件双链共存；VM 首启验证。前置：任务 6。（脚本与清单校验 2026-09-17 AI-P，见 portable/AI-P/Build-ESP.ps1；VM 首启属实机验收，移交任务 88 联验走查）
+- [x] **任务 8**（AI-P）：Deploy-To-USB 总编排适配五分区（沿用 Preflight/Stage/Verify），断点续作支持。前置：任务 7。（2026-09-17 AI-P，见 portable/AI-P/Deploy-Varix-USB.ps1；断点状态 deploy-state.json；产盘实机端到端 ×2 移交任务 88）
 - [x] **任务 9**（AI-P）：SHARED 目录契约初始化＋`apps.json` schema 定版（带 version 字段与迁移说明）。前置：任务 6。（2026-09-16 AI-P 完成：portable/AI-P/Init-Shared.ps1 + README 契约三方表；幂等/损坏留证重建/负向 schema 用例全过）
 - [ ] **任务 10**（AI-P）：强拔演练——各阶段（引导/倒计时/系统运行中）拔盘各 ×3，下次插入可恢复，归档。前置：任务 8。
-- [ ] **任务 11**（AI-P）：多 U 盘版本管理——同盘差分版本命名与回收站区约定。前置：任务 9。
+- [x] **任务 11**（AI-P）：多 U 盘版本管理——同盘差分版本命名与回收站区约定。前置：任务 9。（2026-09-17 AI-P，见 portable/AI-P/Manage-Versions.ps1：vMAJOR.MINOR 单调递增/_versions 差分清单/_trash 回收站/Compare Base 相同性）
 
 ## 阶段 2：内核欠账清零
 
@@ -71,7 +71,7 @@
 
 ## 阶段 5：Wine 兼容层通道
 
-- [ ] **任务 38**（AI-B）：Wine 移植评估报告——NTAPI 对接面→VARIX syscall 映射清单，工作量分级。前置：任务 15。
+- [x] **任务 38**（AI-B）：Wine 移植评估报告——NTAPI 对接面→VARIX syscall 映射清单，工作量分级。前置：任务 15。（2026-09-17 AI-B：docs/双域-任务38-Wine移植评估报告-2026-09-17.md，NTAPI→16+32 syscall 扩表映射、五阶段 21~27 人周分级、❌13 项拒绝面与任务32 阻塞项标注）
 - [ ] **任务 39**（AI-B）：PE 装载器＋静态链接 exe 加载运行（不含导入解析）。前置：任务 38。
 - [ ] **任务 40**（AI-B）：导入表解析＋Wine 核心 DLL 绑定。前置：任务 39。
 - [ ] **任务 41**（AI-B）：记事本级闭环（GDI 文本/菜单/文件对话框）。前置：任务 40。
