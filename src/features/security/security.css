@@ -1,0 +1,98 @@
+/* 任务 36（AI-V）：白名单管理 + 审计查看页样式。
+ * 令牌化（src/design/tokens.css 单一事实源）；暗色主题一致；焦点环可达性达标。
+ * 不引入裸 hex（项目 AI-17 视觉门禁纪律）。 */
+
+.wl-tab,
+.av-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3, 12px);
+  padding: var(--sp-2, 8px) 0;
+}
+
+/* 本地预览态角标（内核通道未接入） */
+.wl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1, 4px);
+  align-self: flex-start;
+  padding: var(--sp-1, 4px) var(--sp-2, 8px);
+  border-radius: var(--r-chip, 4px);
+  background: var(--warn, #e6b455);
+  color: #1b1b1b;
+  font-size: var(--fs-12, 12px);
+  font-weight: 600;
+}
+
+.wl-rules {
+  border: 1px solid var(--overlay-2, rgba(255, 255, 255, 0.12));
+  border-radius: var(--r-card, 12px);
+  overflow: hidden;
+  background: var(--overlay-1, rgba(255, 255, 255, 0.04));
+}
+
+.wl-rules-head,
+.wl-rule-row {
+  display: grid;
+  grid-template-columns: 1fr 48px 48px 88px;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
+}
+
+.wl-rules-head {
+  font-size: var(--fs-12, 12px);
+  color: var(--text-dim, rgba(255, 255, 255, 0.6));
+  border-bottom: 1px solid var(--overlay-2, rgba(255, 255, 255, 0.12));
+}
+
+.wl-rule-row {
+  border-bottom: 1px solid var(--overlay-2, rgba(255, 255, 255, 0.08));
+}
+.wl-rule-row:last-child {
+  border-bottom: none;
+}
+
+.wl-prefix {
+  word-break: break-all;
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, "Cascadia Code", Consolas, monospace);
+  font-size: var(--fs-12, 12px);
+}
+
+/* 审计查看页：时间线行 */
+.av-row {
+  display: grid;
+  grid-template-columns: 12px 64px 96px 1fr auto;
+  align-items: center;
+  gap: var(--sp-2, 8px);
+  padding: 0 var(--sp-3, 12px);
+  border-bottom: 1px solid var(--overlay-2, rgba(255, 255, 255, 0.08));
+}
+
+.av-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.av-seq {
+  color: var(--text-dim, rgba(255, 255, 255, 0.6));
+}
+
+.av-meta {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 焦点环无障碍（暗色主题一致） */
+.wl-tab input:focus-visible,
+.av-tab input:focus-visible,
+.wl-tab button:focus-visible,
+.av-tab button:focus-visible {
+  outline: 2px solid var(--focus-ring, #4ea1ff);
+  outline-offset: 2px;
+}

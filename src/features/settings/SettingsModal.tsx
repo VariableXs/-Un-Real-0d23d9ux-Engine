@@ -35,6 +35,8 @@ import { ToolchainsCard } from "./ToolchainsCard";
 import { EcoTab } from "./EcoTab";
 import { NetworkTab } from "./NetworkTab";
 import { SecurityTab } from "./SecurityTab";
+import { WhitelistManagerTab } from "../security/WhitelistManagerTab";
+import { AuditViewerTab } from "../security/AuditViewerTab";
 import { ExtensionsTab } from "./ExtensionsTab";
 import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
 import { SystemCenterTab } from "./SystemCenterTab";
@@ -223,6 +225,8 @@ export function SettingsModal(props: {
     { id: "eco", label: t("ecoTitle") },
     { id: "net", label: t("ntTitle") },
     { id: "security", label: t("secTitle") },
+    { id: "whitelist", label: t("wlTitle") },
+    { id: "vfaudit", label: t("avTitle") },
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
@@ -978,6 +982,8 @@ export function SettingsModal(props: {
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}
           {tab === "security" && <SecurityTab />}
+          {tab === "whitelist" && <WhitelistManagerTab />}
+          {tab === "vfaudit" && <AuditViewerTab />}
           {tab === "exts" && <ExtensionsTab />}
           {tab === "code" && (
             <>
