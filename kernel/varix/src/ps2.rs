@@ -56,8 +56,9 @@ impl Decoder {
 /// 目标态：从 PS/2 控制器轮询出一个键事件（非阻塞）。
 /// 控制器缺失/超时返回 `None`，绝不挂死引导。
 #[cfg(target_os = "none")]
-mod port {
-    /// 端口读 — `in al, dx`（与 serial::io 同范式，独立成模块保持本文件自包含）。
+pub(crate) mod port {
+    /// 端口读 — `in al, dx`（与 serial::io 同范式；任务19 起开放给
+    /// inputsvc 泵复用，保持端口 IO 单一来源）。
     #[inline]
     pub unsafe fn inp(port: u16) -> u8 {
         let val: u8;
@@ -70,6 +71,19 @@ mod port {
             )
         }
         val
+    }
+
+    /// 端口写 — `out dx, al`（任务19 鼠标 bring-up 用）。
+    #[inline]
+    pub unsafe fn outp(port: u16, val: u8) {
+        unsafe {
+            core::arch::asm!(
+                "out dx, al",
+                in("al") val,
+                in("dx") port,
+                options(nomem, nostack, preserves_flags)
+            )
+        }
     }
 }
 

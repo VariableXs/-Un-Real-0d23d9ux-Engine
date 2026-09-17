@@ -176,10 +176,15 @@ impl Bpb {
 }
 
 // -- 目录项 ----------------------------------------------------------------
+// ET_BITMAP/ET_UPCASE/ET_VOLUME_LABEL：只读挂载路径按"非 File 条目跳过"处理，
+// 常量留作类型完备表（任务30 VFS 白名单与写路径过渡将按类型精确过滤）。
 
 const ET_END: u8 = 0x00;
+#[allow(dead_code)]
 const ET_BITMAP: u8 = 0x81;
+#[allow(dead_code)]
 const ET_UPCASE: u8 = 0x82;
+#[allow(dead_code)]
 const ET_VOLUME_LABEL: u8 = 0x83;
 const ET_FILE: u8 = 0x85;
 const ET_STREAM: u8 = 0xC0;

@@ -288,6 +288,9 @@ fn boot() -> ! {
     // --- block stack probe（任务16：块设备抽象 + NVMe 最小栈）------------------------
     varix::drivers::nvme::target::probe_and_selftest();
 
+    // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
+    varix::inputsvc::target::input_probe();
+
     // --- input domain (F151~F175) ------------------------------------------------------
     let input_state = varix::input::init();
     varix::input::render_to_console(&input_state);
