@@ -64,6 +64,8 @@ pub mod milestone;
 /// 内核 KV 存储服务（任务24：localStorage 语义+命名空间隔离，复用
 /// fs23_journal 后端作账本——值 inline/溢出槽双模，满容量明确报错）。
 pub mod kvsrv;
+/// 三方配额服务（任务56：CPU 分配矩阵+内存水位回收+GPU 通道抽象）。
+pub mod quota;
 // UNREAL-X AI-19（族0181~0188 · X04501~X04700）：内核输入栈八族逻辑模型。
 pub mod inkstack;
 // UNREAL-X AI-34（族0339 · X08451~X08475）：内核兼容 API 层。

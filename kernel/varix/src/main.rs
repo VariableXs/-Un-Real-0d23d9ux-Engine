@@ -300,6 +300,9 @@ fn boot() -> ! {
     // --- display service probe（任务20：双缓冲+脏矩形滚动条带撕裂验证）--------------
     varix::displaysrv::target::display_probe();
 
+    // --- quota service probe（任务56：三方配额矩阵+水位回收+GPU 通道）--------------
+    varix::quota::target::quota_probe();
+
     // --- input domain (F151~F175) ------------------------------------------------------
     let input_state = varix::input::init();
     varix::input::render_to_console(&input_state);
