@@ -814,6 +814,10 @@ pub mod target {
                 // 持久，外部脚本 kill QEMU 模拟掉电，×11 轮盘面条目单调
                 // 增长零撕裂）。
                 crate::fs::fs23_disk::target::fs23_powercut_probe(&mut ctrl);
+
+                // 任务21：里程碑 M2——journal 真盘双会话（fresh 封条 /
+                // powercut 恢复），盘面高区 LBA 40000。
+                crate::milestone::target::ms_journal_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }
@@ -833,6 +837,10 @@ pub mod target {
                 match NvmeCtrl::init_with_recovery(sbar, sbuckets, now_ns, 3_000_000_000) {
                     Ok(mut sctrl) => {
                         crate::fs::exfat_ro::target::shared_probe(&mut sctrl);
+
+                        // 任务21：里程碑 M3/M4——SHARED exFAT 读 +
+                        // 快照区跨断电持久核对。
+                        crate::milestone::target::ms_shared_probe(&mut sctrl);
                     }
                     Err(e) => crate::kwarn!("shared: nvme init failed {:?} - skipped", e),
                 }
