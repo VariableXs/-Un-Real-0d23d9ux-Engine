@@ -1,0 +1,129 @@
+{
+    "task":  66,
+    "totalRounds":  10,
+    "passed":  10,
+    "allBaseIntact":  true,
+    "allZeroBrick":  true,
+    "rounds":  [
+                   {
+                       "Round":  1,
+                       "KillPoint":  "STAGING",
+                       "DiedAt":  "STAGING",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  2,
+                       "KillPoint":  "STAGED",
+                       "DiedAt":  "STAGED",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  3,
+                       "KillPoint":  "COMMIT_SWAP",
+                       "DiedAt":  "COMMIT_SWAP",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "回滚至 Base 快照（文件/版本还原）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  4,
+                       "KillPoint":  "STAGING",
+                       "DiedAt":  "STAGING",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  5,
+                       "KillPoint":  "STAGED",
+                       "DiedAt":  "STAGED",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  6,
+                       "KillPoint":  "COMMIT_SWAP",
+                       "DiedAt":  "COMMIT_SWAP",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "回滚至 Base 快照（文件/版本还原）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  7,
+                       "KillPoint":  "STAGING",
+                       "DiedAt":  "STAGING",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  8,
+                       "KillPoint":  "STAGED",
+                       "DiedAt":  "STAGED",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  9,
+                       "KillPoint":  "COMMIT_SWAP",
+                       "DiedAt":  "COMMIT_SWAP",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "回滚至 Base 快照（文件/版本还原）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   },
+                   {
+                       "Round":  10,
+                       "KillPoint":  "STAGING",
+                       "DiedAt":  "STAGING",
+                       "BaseIntact":  true,
+                       "VersionAfterKill":  "1.0",
+                       "VersionConsistent":  true,
+                       "AppsJsonOk":  true,
+                       "Recovery":  "丢弃 .staging，Base 未动（一致）",
+                       "ZeroBrickNext":  true,
+                       "CleanApplyVer":  "1.1"
+                   }
+               ]
+}
