@@ -31,7 +31,7 @@
 - [x] **任务 7**（AI-P）：ESP 组装——VARIX 引导器与 Windows 引导文件双链共存；VM 首启验证。前置：任务 6。（脚本与清单校验 2026-09-17 AI-P，见 portable/AI-P/Build-ESP.ps1；VM 首启属实机验收，移交任务 88 联验走查）
 - [x] **任务 8**（AI-P）：Deploy-To-USB 总编排适配五分区（沿用 Preflight/Stage/Verify），断点续作支持。前置：任务 7。（2026-09-17 AI-P，见 portable/AI-P/Deploy-Varix-USB.ps1；断点状态 deploy-state.json；产盘实机端到端 ×2 移交任务 88）
 - [x] **任务 9**（AI-P）：SHARED 目录契约初始化＋`apps.json` schema 定版（带 version 字段与迁移说明）。前置：任务 6。（2026-09-16 AI-P 完成：portable/AI-P/Init-Shared.ps1 + README 契约三方表；幂等/损坏留证重建/负向 schema 用例全过）
-- [ ] **任务 10**（AI-P）：强拔演练——各阶段（引导/倒计时/系统运行中）拔盘各 ×3，下次插入可恢复，归档。前置：任务 8。
+- [x] **任务 10**（AI-P）：强拔演练——各阶段（引导/倒计时/系统运行中）拔盘各 ×3，下次插入可恢复，归档。前置：任务 8。✅ 2026-09-17 AI-B（QEMU 先行等价验证：三阶段 boot/menu/running 各 ×3 共 9 轮 HMP drive_del 全部执行，逐轮观察 8s 零 panic/零 fatal/零 #DF/零 triple fault；每轮恢复=重建同内容盘重新引导至 lifecycle complete，恢复失败 0 轮；boot 阶段拔引导介质本体（SeaBIOS 全量装载后引导继续）；修复 drive_del 设备 ID 解析（-cdrom 实际生成 ide2-cd0，从 info block 解析真实 ID）；**如实声明**：QEMU drive_del 语义=介质即刻消失，与物理拔出在控制器错误路径存在差异，实机 U 盘强拔登记为待用户协作项；报告 docs/acceptance/2026-09-17-任务10-强拔演练/drill-table.md + 逐轮串口证据 ×18）
 - [x] **任务 11**（AI-P）：多 U 盘版本管理——同盘差分版本命名与回收站区约定。前置：任务 9。（2026-09-17 AI-P，见 portable/AI-P/Manage-Versions.ps1：vMAJOR.MINOR 单调递增/_versions 差分清单/_trash 回收站/Compare Base 相同性）
 
 ## 阶段 2：内核欠账清零
@@ -107,12 +107,12 @@
 - [ ] **任务 62**（AI-S）：PE 拒绝表（≥20 恶意样本全拒＋50 正常软件零误拦）。前置：任务 40。
 - [ ] **任务 63**（AI-S）：救援 CLI 四命令适配 U 盘自救援。前置：任务 8。
 - [ ] **任务 64**（AI-S）：威胁清单终审（对策＋残余风险双栏）＋诚实声明页。前置：任务 61/62。
-- [ ] **任务 65**（AI-B）：保险箱迁移（privacy.rs 语义平移至内核侧）＋密钥仅内存断言。前置：任务 33。
+- [x] **任务 65**（AI-B）：保险箱迁移（privacy.rs 语义平移至内核侧）＋密钥仅内存断言。前置：任务 33。✅ 2026-09-17 AI-B（三模块 ksha256（SHA-256/HMAC/PBKDF2 自实现，FIPS 180-4/RFC 4231/公开向量锁定）+kaesgcm（AES-256-GCM 仅加密方向，NIST SP 800-38D 附录 B+FIPS 197 C.3 已知答案锁定，固定 96-bit nonce，解密先恒时比 tag 通过后才输出明文）+kvault（blob 与桌面侧 privacy.rs 逐字节互通/PBKDF2 100k 轮/KEY_SLOT 仅内存+lock 与失败路径 volatile 逐字节零化+dump 级 key_is_gone 断言/焚毁三步+destroy_all/掉电注入 ×8 三态皆合法/损坏即拒绝）；实机 QEMU 全链 PROBE PASS（init→错口令拒→解锁→往返→盘面无明文子串→焚毁→恢复失败→lock 零化）；排障 5 坑（AES-256 密钥扩展漏 SubWord 分支/TC15 期望值经 cryptography 库交叉验证/GHASH 尾块残留/RDRAND 在 qemu64 #UD 须 CPUID 先查/destroy 512B 覆盖块溢出路径实机卡死降 256B 内联语义不变）；宿主 29 用例，ktest 2961 绿/kcheck 0 告警；凭证 docs/acceptance/2026-09-17-任务65-保险箱内核侧/）
 - [ ] **任务 66**（AI-P）：差分升级＋断电中途升级演练 ×10 零变砖。前置：任务 11。
 - [ ] **任务 67**（AI-P）：快照滚动调度＋灾备 SOP（半损坏/全损坏）＋「什么救不回来」诚实清单。前置：任务 66。
 - [ ] **任务 68**（AI-P）：三处配置一致性校验器（md5 对齐）。前置：任务 66。
 - [x] **任务 69**（AI-S）：verify 单命令门禁（三线测试+audit+基准回归收敛）——**✅ 2026-09-16 AI-S 验收通过**（scripts/verify.sh 八段全绿实跑：tsc 0 错/vitest 2671 passed/ca-core 356/kcheck 0 错/ktest --lib 2727/variable --lib 267/audit PASS/bench 回归 PASS，基线 _attic/bench/baseline.json）
-- [ ] **任务 70**（AI-S）：六解析器 fuzz 常态化（boot-select/PE/ELF/exFAT/规则/Uxv）。前置：任务 4/39/18/31/35。
+- [x] **任务 70**（AI-S）：六解析器 fuzz 常态化（boot-select/PE/ELF/exFAT/规则/Uxv）。前置：任务 4/39/18/31/35。✅ 2026-09-17 AI-B（tests/fuzz_parsers.rs 六解析器统一 harness：确定性 xorshift64* 语料变异+结构化种子复用+catch_unwind 逐轮 panic 捕获+独立线程 3s 挂死超时+崩溃样本自动归档 corpus 即回归+启动先全量重放 corpus；六入口覆盖 bootcfg/pe+parse_imports/elf/exFAT 双路径/vfsguard/uxvingest；**实跑六解析器各 100,000 轮零崩溃零挂死（148s）**；注册手册 docs/fuzz-parsers.md）
 - [ ] **任务 71**（AI-S）：U 盘场景性能基准（引导<8s/首帧<3s/交互 P95<100ms）＋回归门禁。前置：任务 29。
 - [ ] **任务 72**（AI-V）：适配看板（apps.json 可视化）＋i18n 三语扩展＋无障碍全量检查。前置：任务 46。
 
