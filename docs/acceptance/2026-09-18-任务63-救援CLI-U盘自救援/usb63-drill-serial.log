@@ -1,0 +1,67 @@
+limine: Loading executable `boot():/kernel/varix`...
+limine: Loading module `boot():/boot-select.json`...
+[ INFO] cmdline: 
+[ INFO] boot-select: entry=varix
+[ INFO] cpu: AMD fam15 mod107 step1 @2500MHz
+[ INFO] acpi: rev 0 tables 5 cpus 1 ioapics 1
+[ INFO] smbios: QEMU Standard PC (Q35 + ICH9, 2009) / SeaBIOS rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org
+[ INFO] memmap: 16 entries, 517341184 usable
+[ INFO] kaslr: seeded=true pool=0xd7671ec4d8e7cea8
+[ INFO] gdt: 7 entries loaded
+[ INFO] tss: TR=0x28
+[ INFO] idt-stubs: mapping Tightened
+[ INFO] idt-stubs: 256 x 16B at 0xffffffff8046d000
+[ INFO] idt: 256/256 vectors live
+[ WARN] msr: refused access to 0x4ff (not allow-listed)
+[ INFO] msr: allow-list armed (probe 0x4ff refused=true)
+[ INFO] pic: all 16 lines masked, delivery handed to APIC
+[ INFO] lapic: mode=Mmio id=0 base=0xfee00000 lvt=5
+[ INFO] ioapic: id=0 gsi_base=0 pins=24
+[ INFO] apic: mode=Mmio ioapics=1 gsis=24
+[ INFO] tsc: 2500000000 Hz via Measured (invariant=true)
+[ INFO] clock: source=tsc tick=1000Hz
+[ INFO] smp: 1 core(s) online (bsp apic 0)
+[ INFO] sync: spin-locks ready, pi-mutex ready, nesting<= 3, irq-off budget 20000 ns
+[ INFO] isa: none xcr0=0x2 avx_pending=true
+[ INFO] irq self-test: 9/9 pass
+[ INFO] cpu: cores=1 vectors=256 apic=Mmio ioapic=1 gsi=24 clk=tsc self-test 9/9
+[ INFO] mem::boot: 126304 usable frames, 2 reserved ranges
+[ INFO] pmm: 126048 frames managed, 126048 free (492 MiB), bitmap+buddy armed
+[ INFO] heap: slab 256 KiB, 64 blocks free, 9 classes, leak-tracker armed (waste=0B)
+[ INFO] memory self-test: 10/10 pass
+[ INFO] mem: 126048 frames (492 MiB) 126048 free, watermarks 8388608/16777216/33554432, self-test 10/10
+[ INFO] pf: MapZero resolved @ 0xffffffff80a00000
+[ INFO] pf: GrowStack resolved @ 0xffffffff80a10000
+[ INFO] pf: COW resolved @ 0xffffffff80a20000
+[ INFO] pf: COW resolved @ 0xffffffff80a21000
+[ INFO] pf: selftest 4/4 (MapZero/GrowStack/COW[bytes+reclaim]/guard-host)
+[ INFO] scheduler self-test: 9/9 pass
+[ INFO] sched: 2 threads, policy=rr energy=balanced latency budget 2000us, self-test 9/9
+[ INFO] process self-test: 11/11 pass
+[ INFO] proc: 1 process(es), init=true self-test 11/11
+[ INFO] storage self-test: 10/10 pass
+[ INFO] storage: 1 devices, 4 mounts (2 writable), self-test 10/10
+[ INFO] pci: ECAM base=0xb0000000 bus 0..=255
+[ INFO] pci: NVMe controller at 0x0:0x3.0 bar0=0xfebd4000 ecam_pages=4352
+[ INFO] nvme: reset begin CC=0x460001 CST=0x1
+[ INFO] nvme: enable CC=0x460001 CST=0x1 (mqes=2048 stride=4)
+[ INFO] nvme: init ok resets=0 block_size=512 blocks=2000409264 (976762 MiB)
+[ WARN] nvme: io cqe mismatch cid=4 got=4 status=0x280
+[ INFO] nvme: loopback x1000 passed=false rounds=1000 write_sum=0x201c43204134c325 read_sum=0x0000000000000000 err=Some(Io)
+[ WARN] nvme: loopback FAILED - see err above
+[ WARN] nvme: io cqe mismatch cid=6 got=6 status=0x280
+[ WARN] fs23-disk format failed base_lba=20000
+[ INFO] milestone: M2 journal fresh — format base_lba=40000
+[ WARN] nvme: io cqe mismatch cid=8 got=8 status=0x280
+[ WARN] milestone: M2 format failed
+[ WARN] nvme: io cqe mismatch cid=10 got=10 status=0x280
+[ WARN] kvsrv: format failed base=70000
+[ WARN] nvme: io cqe mismatch cid=12 got=12 status=0x280
+[ WARN] vfs-probe: audit format failed
+[ INFO] vault: probe begin base=90000
+[ WARN] nvme: io cqe mismatch cid=13 got=13 status=0x280
+[ WARN] vault: format failed - probe abort
+[ INFO] input-probe: flood publishes=70 dropped_oldest=6 expect_drops=6
+[ INFO] input-probe: sub-slots ok (fill/reject/cancel/reuse) sub=0
+[ INFO] input-probe: mouse bringup set-defaults=true enable-report=true (0xFA ack bits)
+[ INFO] input-probe: live (awaiting sendkey/mouse via HMP)

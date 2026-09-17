@@ -1,18 +1,23 @@
-//! CLI 应急通道（B-33 M3 半包）：GUI 之外的抢救入口。
+//! CLI 应急通道（B-33 M3 半包 + 任务63 U 盘自救援适配）：GUI 之外的抢救入口。
 //!
-//! 用法（任意一台电脑，无需 GUI）：
-//! - `Variable.exe --export-rescue <容器.uxv> <输出目录> [口令]`
-//!   文件级救援失败自动降级 chunk 级；
-//! - `Variable.exe --repair <容器.uxv> [口令]`
+//! 用法（任意一台电脑，无需 GUI；容器/输出可省略走自动发现）：
+//! - `Variable.exe --export-rescue [容器.uxv] [输出目录] [口令]`
+//!   文件级救援失败自动降级 chunk 级；U 盘形态输出缺省写回 U 盘 rescue/；
+//! - `Variable.exe --repair [容器.uxv] [口令]`
 //!   journal 重放 + checkpoint 固化；
 //! - `Variable.exe --force-raster`
-//!   写入软件渲染标记文件后正常进入 GUI（黑屏演练的降级开关）。
+//!   写入软件渲染标记文件后正常进入 GUI（黑屏演练的降级开关）；
+//! - `Variable.exe --revoke-list [输出]`
+//!   吊销清单导出（缺省落数据根同级 rescue/）。
+//!
+//! 任务63 自动发现（cli_rescue::discover_data_roots）：环境变量 → exe 便携标记
+//! → 全盘符判据扫描（.portable / data\data.uxv / Variable\.portable）。
+//! U 盘自救援语义：可救援自身，不强依赖宿主——数据根、容器、输出全部
+//! 优先落 U 盘；宿主上零部署也能从插着的 U 盘救援。
 //!
 //! 设计原则：CLI 与 GUI 共用同一套 container crate 实现，零逻辑分叉。
 
 use std::path::{Path, PathBuf};
-
-use container::StorageBackend as _;
 
 use crate::state::AppState;
 
@@ -26,75 +31,85 @@ pub fn run_cli(args: &[String]) -> Option<i32> {
             None => AppState::bootstrap().expect("数据目录初始化失败"),
         }
     };
+    /// 显式容器参数是否为空（空 = 走自动发现，打印发现路径提示）。
+    fn ownerless(explicit: &Option<String>) -> bool {
+        explicit.as_deref().map(|c| c.trim().is_empty()).unwrap_or(true)
+    }
     match first {
         "--export-rescue" => {
-            let container = args.get(1).cloned().unwrap_or_default();
-            let out = args.get(2).cloned().unwrap_or_default();
-            let pass = args.get(3).cloned();
-            if container.is_empty() || out.is_empty() {
-                eprintln!("用法: Variable --export-rescue <容器.uxv> <输出目录> [口令]");
-                return Some(2);
-            }
-            let pass_ref = pass.as_deref();
-            let result = match container::salvage_files(
-                Path::new(&container),
-                Path::new(&out),
-                pass_ref.map(|p| p.as_bytes()),
+            // 任务63：容器/输出均可选——缺省自动发现数据根（U 盘自救援，
+            // 不强依赖宿主）；输出缺省写回数据根同级 rescue/。
+            let explicit_container = args.get(1).cloned();
+            let explicit_out = args.get(2).cloned();
+            // 口令槽位：容器缺省时上移一格（--export-rescue [输出] [口令]）。
+            let pass = if explicit_container.as_deref().map(|c| !c.trim().is_empty()).unwrap_or(false) {
+                args.get(3).cloned().filter(|s| !s.is_empty())
+            } else {
+                args.get(2).cloned().filter(|s| !s.is_empty())
+            };
+            let (container, owner) = match crate::cli_rescue::resolve_container(
+                explicit_container.as_deref().filter(|c| !c.trim().is_empty()),
             ) {
-                Ok(r) => r,
-                Err(files_err) => {
-                    println!("文件级救援失败（{files_err}），降级 chunk 级…");
-                    container::salvage_chunks(Path::new(&container), Path::new(&out))
-                        .expect("chunk 级救援也失败")
-                }
-            };
-            println!("模式: {}", result.mode);
-            println!("文件救回: {} 个", result.files_rescued.len());
-            println!("chunk 救回: {}", result.chunks_rescued);
-            println!("字节: {}", result.bytes_rescued);
-            for e in &result.errors {
-                println!("错误: {e}");
-            }
-            Some(0)
-        }
-        "--repair" => {
-            let container = args.get(1).cloned().unwrap_or_default();
-            let pass = args.get(2).cloned();
-            if container.is_empty() {
-                eprintln!("用法: Variable --repair <容器.uxv> [口令]");
-                return Some(2);
-            }
-            let mut be = container::UxvBackend::new();
-            let opened = match pass.as_deref().map(|p| p.as_bytes().to_vec()).as_deref() {
-                Some(p) => be.open_with_passphrase(
-                    &container::OpenCfg { root: PathBuf::from(&container), extra_volumes: Vec::new() },
-                    p,
-                ),
-                None => be.open(&container::OpenCfg {
-                    root: PathBuf::from(&container),
-                    extra_volumes: Vec::new(),
-                }),
-            };
-            match opened.and_then(|_| be.seal()) {
-                Ok(()) => {
-                    println!("journal 重放完成并已固化（--repair）");
-                    Some(0)
+                Ok(v) => {
+                    if ownerless(&explicit_container) {
+                        println!("自动发现容器: {}", v.0.display());
+                    }
+                    v
                 }
                 Err(e) => {
-                    eprintln!("修复失败: {e}");
-                    Some(1)
+                    eprintln!("{e}");
+                    eprintln!("用法: Variable --export-rescue [容器.uxv] [输出目录] [口令]");
+                    return Some(2);
                 }
-            }
+            };
+            let out = match explicit_out.as_deref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                Some(o) => PathBuf::from(o),
+                None => {
+                    let d = crate::cli_rescue::default_out_dir(owner.as_ref(), &container);
+                    println!("输出缺省（U 盘自救援落盘）: {}", d.display());
+                    d
+                }
+            };
+            Some(crate::cli_rescue::export_rescue_run(&container, &out, pass.as_deref()))
+        }
+        "--repair" => {
+            // 任务63：容器可选——缺省自动发现（U 盘自救援）。
+            let explicit_container = args.get(1).cloned();
+            let pass = if explicit_container.as_deref().map(|c| !c.trim().is_empty()).unwrap_or(false) {
+                args.get(2).cloned()
+            } else {
+                args.get(1).cloned().filter(|s| !s.trim().is_empty())
+            };
+            let (container, owner) = match crate::cli_rescue::resolve_container(
+                explicit_container.as_deref().filter(|c| !c.trim().is_empty()),
+            ) {
+                Ok(v) => {
+                    if ownerless(&explicit_container) {
+                        println!("自动发现容器: {}", v.0.display());
+                    }
+                    v
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    eprintln!("用法: Variable --repair [容器.uxv] [口令]");
+                    return Some(2);
+                }
+            };
+            let _ = owner;
+            Some(crate::cli_rescue::repair_run(&container, pass.as_deref()))
         }
         "--force-raster" => {
-            let st = st();
-            let flag = st.data_dir.join("force-raster.flag");
-            if std::fs::write(&flag, b"software rendering requested").is_ok() {
-                println!("软件渲染标记已写入：{:?}（下次启动生效）", flag);
-                Some(0)
-            } else {
-                eprintln!("标记写入失败");
-                Some(1)
+            // 任务63：数据根自动发现（U 盘形态自动指向 U 盘，无需宿主目录）。
+            let base = crate::cli_rescue::discover_data_roots()
+                .into_iter()
+                .next()
+                .map(|c| c.data_dir);
+            match base {
+                Some(base) => Some(crate::cli_rescue::force_raster_run(&base)),
+                None => {
+                    let st = st();
+                    Some(crate::cli_rescue::force_raster_run(&st.data_dir))
+                }
             }
         }
         // ---- AI-14 N-29 variable-cli：离线子命令族（在线族经 N-28 网关，见 --help）----
@@ -195,24 +210,27 @@ pub fn run_cli(args: &[String]) -> Option<i32> {
         }
         "--help" | "-h" => {
             // 三段式帮助：应急 | 控制 | 生态（N-29 统一入口）
-            println!("应急: --export-rescue <容器> <输出> [口令] | --repair <容器> [口令] | --force-raster | --revoke-list [out]");
+            println!("应急: --export-rescue [容器] [输出] [口令] | --repair [容器] [口令] | --force-raster | --revoke-list [out]");
+            println!("     （任务63 U 盘自救援：容器/输出可省略，自动发现便携数据根，输出写回 U 盘 rescue/）");
             println!("生态: --doctor [--json] | --api-token-gen [--json] | --tour [章节|list] | --plugin-dev <插件目录> | --test-ready");
             println!("控制: 在线命令族经本地网关（设置 → 开放接口 → 网关，默认关闭）");
             Some(0)
         }
         "--revoke-list" => {
-            let out = args.get(1).cloned().unwrap_or_else(|| "revocation-list.md".into());
+            // 任务63：输出缺省落数据根同级 rescue/（U 盘形态写回 U 盘自身）。
+            let out = match args.get(1).cloned().filter(|s| !s.trim().is_empty()) {
+                Some(o) => PathBuf::from(o),
+                None => match crate::cli_rescue::discover_data_roots().into_iter().next() {
+                    Some(c) => {
+                        let d = c.root.join("rescue");
+                        let _ = std::fs::create_dir_all(&d);
+                        d.join("revocation-list.md")
+                    }
+                    None => PathBuf::from("revocation-list.md"),
+                },
+            };
             let st = st();
-            match crate::shell::recovery::revocation_list_export_inner(&st, Path::new(&out)) {
-                Ok(r) => {
-                    println!("吊销清单已导出（{} 项）: {}", r.entries, r.out);
-                    Some(0)
-                }
-                Err(e) => {
-                    eprintln!("导出失败: {e}");
-                    Some(1)
-                }
-            }
+            Some(crate::cli_rescue::revoke_list_run(&st, &out))
         }
         _ => None,
     }
