@@ -49,7 +49,10 @@ const NAME_MAX: usize = 64;
 /// < 64，留 22 条余量给 destroy_all 分批（2 条整箱焚毁实测 50 条内）。
 pub const MAX_ENTRIES: usize = 16;
 /// 单条明文上限（保险箱条目语义，非通用文件存储）。
-pub const MAX_ITEM: usize = 256 << 10;
+/// 边界推导（任务65 根因攻坚）：明文 M → ct = M+28 ≤ kvsrv OVERFLOW_MAX(32744)
+/// → M ≤ 32716。原 256KB 声明照抄桌面侧堆语义，与内核 kheap 256KiB 现实冲突
+/// （实机 alloc panic 根因，见 kvsrv.rs KV_SLOT_BLOCKS 注释），如实修正。
+pub const MAX_ITEM: usize = 32716;
 
 /// 保险箱 ns；焚毁中间态 ns（改名步骤的目标位）。
 const NS: &[u8] = b"vault";
@@ -611,6 +614,29 @@ pub fn vault_probe(mut dev: &mut dyn BlockDevice) {
         return;
     }
     pok!("post-destroy");
+
+    // 溢出路径专项（任务65 根因攻坚）：>INLINE_MAX(352B) 值走溢出槽
+    // （64KiB 大块写 = 16×4KiB 分片连写）。宿主 MemDisk 全过、实机 NVMe
+    // 曾在 destroy 512B（4 次溢出槽写）确定性停摆——本段最小化复现：
+    // 单次溢出槽 put/get + 焚毁，判定根因在溢出路径还是环境因素。
+    pok!("pre-overflow");
+    if let Err(e) = put(&mut store, b"overflow-probe", &[0x5Au8; 512], 12347) {
+        crate::kwarn!("vault: PROBE FAIL - overflow put: {}", e.as_str());
+        return;
+    }
+    match get(&mut store, b"overflow-probe") {
+        Ok(v) => pcheck!(v.len() == 512, "溢出槽 512B 往返长度 (got {}B)", v.len()),
+        Err(e) => {
+            crate::kwarn!("vault: PROBE FAIL - overflow get: {}", e.as_str());
+            return;
+        }
+    }
+    pok!("overflow put/get PASS (溢出槽分片直写)");
+    if let Err(e) = destroy(&mut store, b"overflow-probe") {
+        crate::kwarn!("vault: PROBE FAIL - overflow destroy: {}", e.as_str());
+        return;
+    }
+    pok!("overflow destroy PASS (溢出条目焚毁)");
     pcheck!(matches!(get(&mut store, b"note.bin"), Err(VaultError::AuthFail)), "焚毁后恢复尝试失败");
     match store.get(NS_SHRED, b"note.bin") {
         Ok(None) => pok!("shred ns 无残留"),

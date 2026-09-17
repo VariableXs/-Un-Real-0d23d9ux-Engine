@@ -18,13 +18,13 @@
 //! [44..]   ns || key || val（val 仅 inline；溢出条目 val 区空）
 //! ```
 //!
-//! 溢出槽布局（`KV_SLOT_BLOCKS`=128 块 = 64KiB/槽，`KV_OVERFLOW_SLOTS`=64）：
+//! 溢出槽布局（`KV_SLOT_BLOCKS`=64 块 = 32KiB/槽，`KV_OVERFLOW_SLOTS`=64）：
 //!
 //! ```text
 //! [0..8]   magic u64 = "VARXKVD1"
 //! [8..16]  val_len u64
 //! [16..24] val_fnv u64
-//! [24..]   val bytes（≤ OVERFLOW_MAX=65512）
+//! [24..]   val bytes（≤ OVERFLOW_MAX=32744）
 //! ```
 //!
 //! 重放语义（每次操作现场扫描账本，内存零驻留——真源恒为盘面）：
@@ -40,7 +40,6 @@
 //! `docs/双域-任务24-KV语义差异清单-2026-09-17.md`（如实公示）。
 
 use alloc::format;
-use alloc::vec;
 use alloc::vec::Vec;
 use crate::drivers::blk::{fnv1a64, BlockDevice, BlockError};
 use crate::fs::fs23_disk::{DiskJournal, OpenReport};
@@ -53,8 +52,13 @@ pub const NS_MAX: usize = 16;
 pub const KEY_MAX: usize = 48;
 /// inline 值上限：载荷 468B − 头 20B − ns 16B − key 48B 取整。
 pub const INLINE_MAX: usize = 352;
-/// 溢出槽块数（64KiB）。
-pub const KV_SLOT_BLOCKS: u64 = 128;
+/// 溢出槽块数（32KiB）。
+/// 边界推导（任务65 根因攻坚）：kheap 仅 256KiB（mem/heap.rs ARENA_BYTES），
+/// 槽 64KiB 时 write/read_overflow 的整槽 Vec 物化超 slab 单次分配上限、
+/// 页分配器 fallback 缺位 → alloc.rs:573 panic → panic-in-panic 静默 halt
+/// （实机 NVMe 复现：单次 512B put 确定性停摆；宿主 MemDisk 因 std 分配器
+/// 不复现）。槽减半 + 分片直写后单次堆分配 ≤32KiB（1/8 预算内）。
+pub const KV_SLOT_BLOCKS: u64 = 64;
 /// 溢出槽位数。
 pub const KV_OVERFLOW_SLOTS: u64 = 64;
 /// 溢出值上限。
@@ -208,30 +212,63 @@ impl<B: BlockDevice> KvStore<B> {
             }
         }
         let base = base.ok_or(KvError::Full)?;
-        let mut rec = vec![0u8; (KV_SLOT_BLOCKS * 512) as usize];
-        rec[0..8].copy_from_slice(&OVER_MAGIC.to_le_bytes());
-        rec[8..16].copy_from_slice(&(val.len() as u64).to_le_bytes());
-        rec[16..24].copy_from_slice(&fnv1a64(val).to_le_bytes());
-        rec[24..24 + val.len()].copy_from_slice(val);
-        self.journal.dev_write(base, &rec).map_err(KvError::Io)?;
+        // 分片直写（任务56 戒律）：整槽 64KiB Vec 物化超 kheap slab 上限，
+        // 实机 alloc panic 静默 halt——改为 512B 栈片逐块写，零大堆分配。
+        // 全 128 块（现 64 块）都写：零填充尾块保证整槽覆盖，残留防泄露语义不变。
+        let mut head = [0u8; 512];
+        head[0..8].copy_from_slice(&OVER_MAGIC.to_le_bytes());
+        head[8..16].copy_from_slice(&(val.len() as u64).to_le_bytes());
+        head[16..24].copy_from_slice(&fnv1a64(val).to_le_bytes());
+        let head_data = val.len().min(512 - 24);
+        head[24..24 + head_data].copy_from_slice(&val[..head_data]);
+        self.journal.dev_write(base, &head).map_err(KvError::Io)?;
+        let mut off = head_data;
+        let mut blk = 1usize;
+        while off < val.len() {
+            let n = (val.len() - off).min(512);
+            let mut body = [0u8; 512];
+            body[..n].copy_from_slice(&val[off..off + n]);
+            self.journal.dev_write(base + blk as u64, &body).map_err(KvError::Io)?;
+            off += n;
+            blk += 1;
+        }
+        let zero = [0u8; 512];
+        while blk < KV_SLOT_BLOCKS as usize {
+            self.journal.dev_write(base + blk as u64, &zero).map_err(KvError::Io)?;
+            blk += 1;
+        }
         self.journal.dev_flush().map_err(KvError::Io)?;
         Ok(base)
     }
 
     /// 读溢出槽（magic/len/fnv 校验；坏 = None）。
     fn read_overflow(&mut self, base: u64) -> Option<Vec<u8>> {
-        let mut rec = vec![0u8; (KV_SLOT_BLOCKS * 512) as usize];
-        self.journal.dev_read(base, &mut rec).ok()?;
-        let magic = u64::from_le_bytes(rec[0..8].try_into().ok()?);
+        let mut head = [0u8; 512];
+        self.journal.dev_read(base, &mut head).ok()?;
+        let magic = u64::from_le_bytes(head[0..8].try_into().ok()?);
         if magic != OVER_MAGIC {
             return None;
         }
-        let len = u64::from_le_bytes(rec[8..16].try_into().ok()?) as usize;
+        let len = u64::from_le_bytes(head[8..16].try_into().ok()?) as usize;
         if len > OVERFLOW_MAX {
             return None;
         }
-        let val = rec[24..24 + len].to_vec();
-        if fnv1a64(&val) != u64::from_le_bytes(rec[16..24].try_into().ok()?) {
+        // 分片读：只物化 val 本身（≤ OVERFLOW_MAX ≤ 32KiB，kheap 预算内），
+        // 头片 488B 直接入 Vec，其余 512B 栈片逐块续读。
+        let mut val = Vec::with_capacity(len);
+        let head_data = len.min(512 - 24);
+        val.extend_from_slice(&head[24..24 + head_data]);
+        let mut blk = 1usize;
+        let mut off = head_data;
+        let mut body = [0u8; 512];
+        while off < len {
+            self.journal.dev_read(base + blk as u64, &mut body).ok()?;
+            let n = (len - off).min(512);
+            val.extend_from_slice(&body[..n]);
+            off += n;
+            blk += 1;
+        }
+        if fnv1a64(&val) != u64::from_le_bytes(head[16..24].try_into().ok()?) {
             return None;
         }
         Some(val)
@@ -723,13 +760,14 @@ mod tests {
 
     #[test]
     fn kv_large_value_roundtrip() {
-        // 大值溢出槽往返：60KiB（> 4KiB 堆单块上限场景，逐槽读写）逐字节校验。
+        // 大值溢出槽往返：30KiB（分片直写路径逐字节校验；槽 32KiB 见
+        // KV_SLOT_BLOCKS 边界推导——任务65 根因攻坚）。
         let mut store = fresh(131_072);
-        let big: Vec<u8> = (0..60_000u32).map(|i| (i % 251) as u8).collect();
+        let big: Vec<u8> = (0..30_000u32).map(|i| (i % 251) as u8).collect();
         store.set(b"t", b"big", &big).unwrap();
         assert_eq!(store.get(b"t", b"big").unwrap(), Some(big));
         // 大值覆盖：新槽追加、旧槽成垃圾（v1 不回收，差异清单公示）。
-        let big2 = vec![9u8; 60_000];
+        let big2 = vec![9u8; 30_000];
         store.set(b"t", b"big", &big2).unwrap();
         assert_eq!(store.get(b"t", b"big").unwrap(), Some(big2));
         // 边界值：恰好 OVERFLOW_MAX。
