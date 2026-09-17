@@ -1,13 +1,13 @@
 {
  "$comment": "任务23（AI-B）三色审计映射表。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/双域-垫片协议规范-v1.md 与本表生成脚本头注。",
- "generatedAt": "2026-09-16",
+ "generatedAt": "2026-09-17",
  "source": "src/lib/ipc.ts",
  "stats": {
-  "total": 549,
-  "ok": 314,
-  "okPct": "57.2%",
+  "total": 553,
+  "ok": 318,
+  "okPct": "57.5%",
   "combo": 222,
-  "comboPct": "40.4%",
+  "comboPct": "40.1%",
   "missing": 13,
   "missingPct": "2.4%"
  },
@@ -5753,6 +5753,50 @@
    ],
    "missingService": null,
    "missingNote": null
+  },
+  {
+   "method": null,
+   "cmd": "kv_get",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "任务26 KV桥：读键（缺键=null）"
+  },
+  {
+   "method": null,
+   "cmd": "kv_set",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "任务26 KV桥：写键（满容 Err(Full) 透传）"
+  },
+  {
+   "method": null,
+   "cmd": "kv_remove",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "任务26 KV桥：删键（不存在=no-op）"
+  },
+  {
+   "method": null,
+   "cmd": "kv_keys",
+   "color": "✅",
+   "services": [
+    "kv"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "note": "任务26 KV桥：列键（预热/枚举）"
   }
  ]
 }

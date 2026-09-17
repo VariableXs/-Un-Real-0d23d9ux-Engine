@@ -289,6 +289,16 @@ for (const { method, cmd } of entries) {
   mapping.push({ method, cmd, ...c, missingService: c.missingService ?? null, missingNote: c.missingNote ?? null });
 }
 
+// ---- 垫片新增命令登记（非 ipc.ts 方法；总案"加命令改表不改垫片代码"） ----
+// 任务 26（AI-V）：KV 透明桥命令面，服务=kv（任务 24 内核 kvsrv），ns≤16B 由内核强制。
+const EXTRA_COMMANDS = [
+  { method: null, cmd: "kv_get", color: "✅", services: ["kv"], missingService: null, missingNote: null, note: "任务26 KV桥：读键（缺键=null）" },
+  { method: null, cmd: "kv_set", color: "✅", services: ["kv"], missingService: null, missingNote: null, note: "任务26 KV桥：写键（满容 Err(Full) 透传）" },
+  { method: null, cmd: "kv_remove", color: "✅", services: ["kv"], missingService: null, missingNote: null, note: "任务26 KV桥：删键（不存在=no-op）" },
+  { method: null, cmd: "kv_keys", color: "✅", services: ["kv"], missingService: null, missingNote: null, note: "任务26 KV桥：列键（预热/枚举）" },
+];
+for (const extra of EXTRA_COMMANDS) mapping.push(extra);
+
 if (unclassified.length) {
   console.error("未分类（门禁失败）：", JSON.stringify(unclassified, null, 1));
   process.exit(1);
