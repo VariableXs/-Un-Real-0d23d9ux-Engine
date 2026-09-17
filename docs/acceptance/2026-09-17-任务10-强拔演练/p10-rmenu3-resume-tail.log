@@ -1,0 +1,143 @@
+limine: Loading executable `boot():/kernel/varix`...
+limine: Loading module `boot():/boot-select.json`...
+[ INFO] cmdline: 
+[ INFO] boot-select: entry=varix
+[ INFO] cpu: AMD fam15 mod107 step1 @2500MHz
+[ INFO] acpi: rev 0 tables 5 cpus 1 ioapics 1
+[ INFO] smbios: QEMU Standard PC (Q35 + ICH9, 2009) / SeaBIOS rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org
+[ INFO] memmap: 16 entries, 517341184 usable
+[ INFO] kaslr: seeded=true pool=0xa9fc9f2c2abcea48
+[ INFO] gdt: 7 entries loaded
+[ INFO] tss: TR=0x28
+[ INFO] idt-stubs: mapping Tightened
+[ INFO] idt-stubs: 256 x 16B at 0xffffffff8046d000
+[ INFO] idt: 256/256 vectors live
+[ WARN] msr: refused access to 0x4ff (not allow-listed)
+[ INFO] msr: allow-list armed (probe 0x4ff refused=true)
+[ INFO] pic: all 16 lines masked, delivery handed to APIC
+[ INFO] lapic: mode=Mmio id=0 base=0xfee00000 lvt=5
+[ INFO] ioapic: id=0 gsi_base=0 pins=24
+[ INFO] apic: mode=Mmio ioapics=1 gsis=24
+[ INFO] tsc: 2500000000 Hz via Measured (invariant=true)
+[ INFO] clock: source=tsc tick=1000Hz
+[ INFO] smp: 1 core(s) online (bsp apic 0)
+[ INFO] sync: spin-locks ready, pi-mutex ready, nesting<= 3, irq-off budget 20000 ns
+[ INFO] isa: none xcr0=0x2 avx_pending=true
+[ INFO] irq self-test: 9/9 pass
+[ INFO] cpu: cores=1 vectors=256 apic=Mmio ioapic=1 gsi=24 clk=tsc self-test 9/9
+[ INFO] mem::boot: 126304 usable frames, 2 reserved ranges
+[ INFO] pmm: 126048 frames managed, 126048 free (492 MiB), bitmap+buddy armed
+[ INFO] heap: slab 256 KiB, 64 blocks free, 9 classes, leak-tracker armed (waste=0B)
+[ INFO] memory self-test: 10/10 pass
+[ INFO] mem: 126048 frames (492 MiB) 126048 free, watermarks 8388608/16777216/33554432, self-test 10/10
+[ INFO] pf: MapZero resolved @ 0xffffffff80a00000
+[ INFO] pf: GrowStack resolved @ 0xffffffff80a10000
+[ INFO] pf: COW resolved @ 0xffffffff80a20000
+[ INFO] pf: COW resolved @ 0xffffffff80a21000
+[ INFO] pf: selftest 4/4 (MapZero/GrowStack/COW[bytes+reclaim]/guard-host)
+[ INFO] scheduler self-test: 9/9 pass
+[ INFO] sched: 2 threads, policy=rr energy=balanced latency budget 2000us, self-test 9/9
+[ INFO] process self-test: 11/11 pass
+[ INFO] proc: 1 process(es), init=true self-test 11/11
+[ INFO] storage self-test: 10/10 pass
+[ INFO] storage: 1 devices, 4 mounts (2 writable), self-test 10/10
+[ INFO] pci: ECAM base=0xb0000000 bus 0..=255
+[ INFO] pci: NVMe controller at 0x0:0x3.0 bar0=0xfebd4000 ecam_pages=4352
+[ INFO] nvme: reset begin CC=0x460001 CST=0x1
+[ INFO] nvme: enable CC=0x460001 CST=0x1 (mqes=2048 stride=4)
+[ INFO] nvme: init ok resets=0 block_size=512 blocks=1048576 (512 MiB)
+[ INFO] nvme: loopback x1000 passed=true rounds=1000 write_sum=0x507652ffe4c40325 read_sum=0x507652ffe4c40325 err=None
+[ INFO] fs23-disk open entries=0 torn=0 replayed=0 base_seq=1 base_lba=20000
+[ INFO] fs23-disk appended=3 total=3 next_seq=4 torn=0
+[ INFO] fs23-disk verify verdict=ok
+[ INFO] milestone: M2 journal fresh — format base_lba=40000
+[ INFO] milestone: M2 journal formatted base_seq=1
+[ INFO] milestone: M2 journal sealed entries=3 (tier=3 flush-persisted)
+[ INFO] milestone: ready-for-powercut
+[ INFO] kvsrv: session=1 keys=10 remaining=53 verdict=ok
+[ INFO] vfs-probe: audit-session=1 entries=6 verdict=ok
+[ INFO] vault: probe begin base=90000
+[ INFO] vault: ok - init (pbkdf2 rounds=100000, 耗时 1029687803 ticks)
+[ INFO] vault: ok - 正确口令解锁
+[ INFO] vault: ok - ciphertext-at-rest 无明文泄露
+[ INFO] vault: ok - pre-put2
+[ INFO] vault: ok - pre-destroy
+[ INFO] vault: ok - post-destroy
+[ INFO] vault: ok - shred ns 无残留
+[ INFO] vault: PROBE PASS (全链: init/unlock/put/get/密文核验/焚毁/零化)
+[ INFO] input-probe: flood publishes=70 dropped_oldest=6 expect_drops=6
+[ INFO] input-probe: sub-slots ok (fill/reject/cancel/reuse) sub=0
+[ INFO] input-probe: mouse bringup set-defaults=true enable-report=true (0xFA ack bits)
+[ INFO] input-probe: live (awaiting sendkey/mouse via HMP)
+[ INFO] input-probe: verdict=false keys=[false, false, false] mouse_moves=0 mouse_btn=false missed=0
+[ INFO] display-probe: mode=double 1280x800 band_h=40 frames=360
+[ INFO] display-probe: scroll begin
+[ INFO] display-probe: scroll done frames=361 rects_flushed=361 overflow_merges=1
+[ INFO] display-probe: verdict=ok frames=362 rects=366 merges=1
+[ INFO] quota: matrix shares front=507/1000 engine=342/1000 wine=150/1000 targets=500/350/150 verdict=ok
+[ INFO] quota: monopoly front=494/1000 engine=342/1000 wine=162/1000 max-gap front=21 engine=27 (bound 40) verdict=ok
+[ INFO] quota: watermark drill normal/pressure/critical/normal reclaimed=320 restored=320 order=[ram,engine,wine] verdict=ok
+[ INFO] quota: hysteresis 280-hold/240-up/270-hold/310-down verdict=ok
+[ INFO] quota: gpu soft-channel reserve 400/350/150 overcommit-rejected submit=90/10/0 verdict=ok
+[ INFO] QUOTA PROBE PASS
+[ INFO] shm-probe: owner roundtrip verdict=ok
+[ INFO] shm-probe: no-pass default-deny verdict=ok
+[ INFO] shm-probe: grant-and-no-regrant verdict=ok
+[ INFO] shm-probe: handle-passing-attack denied verdict=ok
+[ INFO] shm-probe: revoke invalidates grant+mapping verdict=ok
+[ INFO] shm-probe: destroy bumps gen (handle never reused same-gen) verdict=ok
+[ INFO] shm-probe: stats after drill used=1 g=0 m=0 verdict=ok
+[ INFO] shm-probe: verdict=true matrix=[roundtrip,default-deny,grant,revoke,attack,destroy-gen]
+[ INFO] vfs-probe: decisions matrix=[allow,opmask,dir-deep,default-deny,case-fold,boundary,escape,inband-deny,inband-allow,wild] verdict=ok
+[ INFO] input self-test: 9/9 pass
+[ INFO] input: path=ps2 plane=host combos=3 conflicts=0 self-test 9/9
+[ INFO] display self-test: 10/10 pass
+[ INFO] display: gpu=soft path=minimal displays=1 fps=0 self-test 10/10
+[ INFO] network self-test: 15/15 pass
+[ INFO] net: 1 nic(s) 1 up, dhcp=init self-test 15/15
+[ INFO] security self-test: 15/15 pass
+[ INFO] security: nx=true telemetry=off keys=0 audit=0 self-test 15/15
+[ INFO] integrity: unverified image=8243552B sha256=3d2795a0
+[ INFO] bootopt: default=varix timeout=5s
+[ INFO] self-test: 13/13 pass
+[ INFO] interrupts enabled — system live
+[ INFO] boot complete
+[ INFO] ring3: syscall MSRs + TSS.RSP0 installed
+[ INFO] ring3: supervised lifecycle demo — 2 轮 spawn/exit/wait，随后压力探针
+[ INFO] ring3: instance#1 spawned pid=2 entry=0x400000 pages=18 — PCB + 逐页账本登记
+[ INFO] ring3: iretq → user (rip=0x400000 rsp=0x7ffffffff000 rflags=0x3200)
+hello from ring3
+[ INFO] ring3: int80 vec=0xffffffffffffff80 rip=0x400018 cs=0x1b fl=0x3202 sp=0x7ffffffff000 ss=0x23 raxw=0x11
+hello from ring3
+[ INFO] ring3: int80 vec=0xffffffffffffff80 rip=0x40003a cs=0x2b fl=0x3202 sp=0x7ffffffff000 ss=0x23 raxw=0xfffffffffffffff8
+[ WARN] isr: frame cs=0x2b (want 0x1b, resume rsp 0x7ffffffff000) — guard reset
+[ INFO] ring3: exit(0) pid=2 → zombie=true — 控制权交还监护者，wait 收割
+[ INFO] ring3: supervisor wait → pid=2 code=0 pages_released=18/18 — 空间随进程消亡，一页不留
+[ INFO] ring3: instance#2 spawned pid=2 entry=0x400000 pages=18 — PCB + 逐页账本登记
+[ INFO] ring3: iretq → user (rip=0x400000 rsp=0x7ffffffff000 rflags=0x3200)
+hello from ring3
+[ INFO] ring3: int80 vec=0xffffffffffffff80 rip=0x400018 cs=0x1b fl=0x13202 sp=0x7ffffffff000 ss=0x23 raxw=0x11
+hello from ring3
+[ INFO] ring3: int80 vec=0xffffffffffffff80 rip=0x40003a cs=0x2b fl=0x3202 sp=0x7ffffffff000 ss=0x23 raxw=0xfffffffffffffff8
+[ WARN] isr: frame cs=0x2b (want 0x1b, resume rsp 0x7ffffffff000) — guard reset
+[ INFO] ring3: exit(0) pid=2 → zombie=true — 控制权交还监护者，wait 收割
+[ INFO] ring3: supervisor wait → pid=2 code=0 pages_released=18/18 — 空间随进程消亡，一页不留
+[ INFO] ring3: PE spawned pid=2 entry=0x140001000 pages=17 imports=false — 任务39 静态 PE 装载
+[ INFO] ring3: iretq → PE user (rip=0x140001000 rsp=0x7ffffffff000 rflags=0x3200)
+hello from PE
+[ WARN] isr: frame cs=0x2b (want 0x1b, resume rsp 0x7ffffffff000) — guard reset
+[ INFO] ring3: exit(0) pid=2 → zombie=true — 控制权交还监护者，wait 收割
+[ INFO] ring3: supervisor wait → pid=2 code=0 pages_released=17/17 — 空间随进程消亡，一页不留
+[ INFO] ring3: PE imports bound pid=2 dlls=1 funcs=3 full=2 partial=1 stub=0 thunk@0x70000000
+[ INFO] ring3: PE-imports spawned pid=2 entry=0x140001000 pages=19 imports=true — 任务40 导入绑定
+[ INFO] ring3: iretq → PE-imports user (rip=0x140001000 rsp=0x7ffffffff000 rflags=0x3200)
+hello from winapi
+[ WARN] isr: frame cs=0x2b (want 0x1b, resume rsp 0x7fffffffeff8) — guard reset
+winapi: getproc == iat
+[ WARN] isr: frame cs=0x2b (want 0x1b, resume rsp 0x7fffffffeff8) — guard reset
+[ INFO] ring3: exit(0) pid=2 → zombie=true — 控制权交还监护者，wait 收割
+[ INFO] ring3: supervisor wait → pid=2 code=0 pages_released=19/19 — 空间随进程消亡，一页不留
+[ INFO] ring3: pressure fill: +64 procs → next alloc rejected TableFull (exhausted=1) — 64 槽打满，优雅拒绝
+[ INFO] ring3: pressure drain: exited=64 reaped=64 live=0 — 表清空，无泄漏
+[ INFO] ring3: task15 lifecycle complete — 2 轮 spawn/exit/wait + 压力探针全过 — halting
+[ INFO] ring3: user program finished — halting
