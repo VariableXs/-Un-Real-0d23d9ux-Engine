@@ -15,6 +15,7 @@ pub mod ring3;
 pub mod syscall;
 /// 任务40（AI-B）· Win32 服务台：导入绑定 + Wine 核心 DLL 首层 API。
 pub mod winapi;
+pub mod winsrv;
 
 // --- VARIABLE-200 AI-01 · 用户态进程域（F001~F025，W2）---------------------
 pub mod uspace;

@@ -47,6 +47,7 @@ pub mod console;
 pub mod cpu;
 pub mod fb;
 pub mod font;
+pub mod stream;
 pub mod fs;
 pub mod gfx;
 pub mod share;

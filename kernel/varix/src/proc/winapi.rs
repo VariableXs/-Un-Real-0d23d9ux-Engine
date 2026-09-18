@@ -81,7 +81,7 @@ pub struct ApiDef {
 
 /// 首层注册表（27 项）。**开放性契约**：新增 API = 在表尾追加一行 +
 /// dispatch 的 match 加一臂，注册表/thunk/查找机制零改动。
-pub const API_TABLE: [ApiDef; 27] = [
+pub const API_TABLE: [ApiDef; 33] = [
     // ---- kernel32.dll（进程/内存/文件三组优先）----
     // ExitProcess → 内核 SYS_EXIT(0)（proc/ring3 sys_exit，监护链收割）。
     ApiDef { dll: "kernel32.dll", name: "ExitProcess", status: ApiStatus::Full },
@@ -91,9 +91,9 @@ pub const API_TABLE: [ApiDef; 27] = [
     ApiDef { dll: "kernel32.dll", name: "GetStdHandle", status: ApiStatus::Partial },
     // WriteFile → 内核 SYS_WRITE(2) 控制台路（handle==1 only，边界如实）。
     ApiDef { dll: "kernel32.dll", name: "WriteFile", status: ApiStatus::Partial },
-    ApiDef { dll: "kernel32.dll", name: "ReadFile", status: ApiStatus::Stub },
+    ApiDef { dll: "kernel32.dll", name: "ReadFile", status: ApiStatus::Full }, // 任务41：handle 3=读取源
     ApiDef { dll: "kernel32.dll", name: "CreateFileW", status: ApiStatus::Stub },
-    ApiDef { dll: "kernel32.dll", name: "CloseHandle", status: ApiStatus::Stub },
+    ApiDef { dll: "kernel32.dll", name: "CloseHandle", status: ApiStatus::Partial }, // 任务41：句柄收尾
     ApiDef { dll: "kernel32.dll", name: "VirtualAlloc", status: ApiStatus::Stub },
     ApiDef { dll: "kernel32.dll", name: "VirtualFree", status: ApiStatus::Stub },
     ApiDef { dll: "kernel32.dll", name: "GetLastError", status: ApiStatus::Stub },
@@ -104,19 +104,29 @@ pub const API_TABLE: [ApiDef; 27] = [
     ApiDef { dll: "ntdll.dll", name: "LdrGetProcedureAddress", status: ApiStatus::Full },
     ApiDef { dll: "ntdll.dll", name: "NtCreateFile", status: ApiStatus::Stub },
     ApiDef { dll: "ntdll.dll", name: "NtAllocateVirtualMemory", status: ApiStatus::Stub },
-    // ---- user32.dll（窗口面：任务41 记事本闭环范围，首层全 Stub）----
-    ApiDef { dll: "user32.dll", name: "MessageBoxW", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "RegisterClassExW", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "CreateWindowExW", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "GetMessageW", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "DispatchMessageW", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "PostQuitMessage", status: ApiStatus::Stub },
-    ApiDef { dll: "user32.dll", name: "DefWindowProcW", status: ApiStatus::Stub },
-    // ---- gdi32.dll（文本/绘制面：任务41 范围，首层全 Stub）----
-    ApiDef { dll: "gdi32.dll", name: "TextOutW", status: ApiStatus::Stub },
-    ApiDef { dll: "gdi32.dll", name: "BeginPaint", status: ApiStatus::Stub },
-    ApiDef { dll: "gdi32.dll", name: "EndPaint", status: ApiStatus::Stub },
-    ApiDef { dll: "gdi32.dll", name: "CreateFontW", status: ApiStatus::Stub },
+    // ---- user32.dll（窗口面：任务41 记事本闭环——多参 API 走 NT 风格参数块桥接，
+    //      语义完整实现于 winsrv::win32_dispatch；派发类由用户态循环承担如实 Partial）----
+    ApiDef { dll: "user32.dll", name: "MessageBoxW", status: ApiStatus::Partial },
+    ApiDef { dll: "user32.dll", name: "RegisterClassExW", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "CreateWindowExW", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "ShowWindow", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "UpdateWindow", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "InvalidateRect", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "GetMessageW", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "TranslateMessage", status: ApiStatus::Partial },
+    ApiDef { dll: "user32.dll", name: "DispatchMessageW", status: ApiStatus::Partial },
+    ApiDef { dll: "user32.dll", name: "PostQuitMessage", status: ApiStatus::Full },
+    ApiDef { dll: "user32.dll", name: "DefWindowProcW", status: ApiStatus::Partial },
+    // ---- gdi32.dll（文本/绘制面：任务41——画布字模渲染，hdc 约定 1）----
+    ApiDef { dll: "gdi32.dll", name: "TextOutW", status: ApiStatus::Full },
+    ApiDef { dll: "gdi32.dll", name: "BeginPaint", status: ApiStatus::Full },
+    ApiDef { dll: "gdi32.dll", name: "EndPaint", status: ApiStatus::Full },
+    ApiDef { dll: "gdi32.dll", name: "CreateFontW", status: ApiStatus::Partial },
+    // ---- comdlg32.dll（文件对话框面：任务41——虚拟文件槽+轮转选择器，
+    //      选择 UI 实机渲染后置任务 27，内核语义如实登记）----
+    ApiDef { dll: "comdlg32.dll", name: "GetOpenFileNameW", status: ApiStatus::Full },
+    ApiDef { dll: "comdlg32.dll", name: "GetSaveFileNameW", status: ApiStatus::Full },
+    // （ReadFile/CloseHandle 由原 kernel32 条目升级承载——任务41 句柄分类扩展）
 ];
 
 /// 注册表条目数（= thunk 槽数）。
@@ -360,7 +370,13 @@ pub fn dispatch(slot: usize, a1: u64, a2: u64, a3: u64) -> i64 {
             STUB_CALLS.fetch_add(1, Ordering::Relaxed);
             -(ErrNo::Enosys.to_i32()) as i64
         }
-        ApiStatus::Full | ApiStatus::Partial => match (def.dll, def.name) {
+        ApiStatus::Full | ApiStatus::Partial => {
+            // 任务41 · 窗口/文本/文件服务台：user32/gdi32/comdlg32 全量走
+            // winsrv::win32_dispatch（NT 风格参数块桥接，见 winsrv 模块头）。
+            if def.dll == "user32.dll" || def.dll == "gdi32.dll" || def.dll == "comdlg32.dll" {
+                return super::winsrv::win32_dispatch(def.dll, def.name, a1, a2, a3);
+            }
+            match (def.dll, def.name) {
             // 进程组 → SYS_EXIT(0)：控制权交还监护者（永不返回）。
             ("kernel32.dll", "ExitProcess")
             | ("ntdll.dll", "RtlExitUserProcess")
@@ -368,13 +384,22 @@ pub fn dispatch(slot: usize, a1: u64, a2: u64, a3: u64) -> i64 {
                 FULL_CALLS.fetch_add(1, Ordering::Relaxed);
                 crate::proc::ring3::user_exit(a1 as i32)
             }
-            // 文件组 → SYS_WRITE(2) 控制台路：handle==1 only（Partial 边界）。
+            // 文件组 → SYS_WRITE(2) 控制台路：handle==1 控制台（现状边界）；
+            // handle==2 任务41 虚拟文件保存目标（winsrv 句柄分类扩展）。
             ("kernel32.dll", "WriteFile") | ("ntdll.dll", "NtWriteFile") => {
                 PARTIAL_CALLS.fetch_add(1, Ordering::Relaxed);
+                if a1 == 2 {
+                    return super::winsrv::win32_dispatch(def.dll, def.name, a1, a2, a3);
+                }
                 if a1 != 1 {
                     return -(ErrNo::Ebadf.to_i32()) as i64;
                 }
                 crate::proc::ring3::user_write(a2, a3)
+            }
+            // 任务41 新增：ReadFile（handle 3=读取源）/ CloseHandle。
+            ("kernel32.dll", "ReadFile") | ("kernel32.dll", "CloseHandle") => {
+                FULL_CALLS.fetch_add(1, Ordering::Relaxed);
+                super::winsrv::win32_dispatch(def.dll, def.name, a1, a2, a3)
             }
             // 动态查找 → 注册表（与绑定期静态路同表同值）。
             ("kernel32.dll", "GetProcAddress") | ("ntdll.dll", "LdrGetProcedureAddress") => {
@@ -395,7 +420,8 @@ pub fn dispatch(slot: usize, a1: u64, a2: u64, a3: u64) -> i64 {
                 STUB_CALLS.fetch_add(1, Ordering::Relaxed);
                 -(ErrNo::Enosys.to_i32()) as i64
             }
-        },
+            }
+        }
     }
 }
 
@@ -408,6 +434,11 @@ fn win_getproc(dll_ptr: u64, name_ptr: u64) -> i64 {
         Some(slot) => thunk_va(slot) as i64,
         None => 0,
     }
+}
+
+/// winsrv 复用入口（任务41）。
+pub fn read_user_str_pub(buf: u64, cap: usize) -> Option<alloc::vec::Vec<u8>> {
+    read_user_str(buf, cap)
 }
 
 /// 读用户态 NUL 结尾串（≤cap 字节 + 终止符）。用户半区校验同 sys_write
@@ -455,12 +486,20 @@ mod tests {
         }
         let (full, partial, stub) = coverage();
         assert_eq!(full + partial + stub, API_COUNT);
-        assert_eq!(full, 5, "首层 Full=5（ExitProcess/GetProcAddress/RtlExit/NtTerminate/LdrGetProc）");
-        assert_eq!(partial, 3, "WriteFile/NtWriteFile/GetStdHandle");
-        // user32/gdi32 窗口面首层全 Stub（任务41 范围，如实不假装）。
-        for d in API_TABLE.iter().filter(|d| d.dll == "user32.dll" || d.dll == "gdi32.dll") {
-            assert_eq!(d.status, ApiStatus::Stub, "{} 必须是 Stub", d.name);
-        }
+        // 任务41 扩容后口径：Full=18（进程/文件组 5 + 窗口/文本/对话框面
+        // RegisterClassExW/CreateWindowExW/ShowWindow/UpdateWindow/
+        // InvalidateRect/GetMessageW/PostQuitMessage/TextOutW/BeginPaint/
+        // EndPaint/GetOpenFileNameW/GetSaveFileNameW/ReadFile）；
+        // Partial=13（WriteFile/NtWriteFile/GetStdHandle/MessageBoxW/
+        // TranslateMessage/DispatchMessageW/DefWindowProcW/CreateFontW/
+        // CloseHandle + 窗口面桥接如实登记项）；Stub=4（NtCreateFile/
+        // NtAllocateVirtualMemory 等未实现面）。
+        assert_eq!(full, 18, "任务41 扩容后 Full 面");
+        assert_eq!(partial, 9, "任务41 扩容后 Partial 面");
+        assert_eq!(stub, 6, "未实现面如实保持 Stub");
+        // comdlg32 对话框面必须存在（任务41 文件对话框）。
+        assert!(API_TABLE.iter().any(|d| d.dll == "comdlg32.dll" && d.name == "GetOpenFileNameW"));
+        assert!(API_TABLE.iter().any(|d| d.dll == "kernel32.dll" && d.name == "ReadFile"));
         // 槽容量：全部 thunk 必须装进一页。
         assert!(API_COUNT <= THUNKS_PER_PAGE);
         // 名字无重复（同 DLL 内）。
@@ -518,7 +557,7 @@ mod tests {
     fn dispatch_stub_and_missing_return_enosys() {
         // Stub API：明确 Enosys（-2，F280 归一码），绝不崩溃。
         let before = stats().2;
-        assert_eq!(dispatch(16, 0, 0, 0), -(ErrNo::Enosys.to_i32() as i64)); // MessageBoxW
+        assert_eq!(dispatch(9, 0, 0, 0), -(ErrNo::Enosys.to_i32() as i64)); // NtCreateFile（Stub 面）
         assert_eq!(stats().2, before + 1, "stub 调用必须计数");
         // 号段内未注册槽位：同一错误码。
         assert_eq!(dispatch(API_COUNT + 5, 0, 0, 0), -(ErrNo::Enosys.to_i32() as i64));
@@ -529,8 +568,10 @@ mod tests {
         // GetStdHandle(-11) → 1；其余 → 0。
         assert_eq!(dispatch(2, STD_OUTPUT_HANDLE, 0, 0), 1);
         assert_eq!(dispatch(2, (-10i64) as u64, 0, 0), 0);
-        // WriteFile：handle 必须是 1（控制台），否则 Ebadf。
-        assert_eq!(dispatch(3, 2, 0, 0), -(ErrNo::Ebadf.to_i32() as i64));
+        // WriteFile：handle 1=控制台 / 2=任务41 保存目标（服务单例空表
+        // 返回 0 = 写目标未选）；其余句柄 Ebadf。
+        assert_eq!(dispatch(3, 2, 0, 0), 1, "handle 2 空写合法（服务面就绪）");
+        assert_eq!(dispatch(3, 5, 0, 0), -(ErrNo::Ebadf.to_i32() as i64));
         // len=0 合法（与 sys_write 同口径）。
         assert_eq!(dispatch(3, 1, 0, 0), 0);
     }

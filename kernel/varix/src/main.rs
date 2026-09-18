@@ -309,6 +309,9 @@ fn boot() -> ! {
     // --- vfs guard probe（任务30：白名单裁决矩阵，纯计算）---------------------------
     varix::vfsguard::target::vfs_decisions_probe();
 
+    // --- picflow probe（任务48：画面流通道 VM帧源→显示栈 全链直写）-----------------
+    varix::stream::picflow::target::picflow_probe();
+
 
 
     // --- input domain (F151~F175) ------------------------------------------------------
