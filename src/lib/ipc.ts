@@ -298,6 +298,11 @@ export const ipc = {
   /** 批次W-2：登记/取消 DPI 例外（不响应 DPI 消息的应用，按主屏渲染）。 */
   tpSetDpiFix: (id: string, dpiFix: boolean) =>
     invoke<Shell.ThirdApp>("tp_set_dpi_fix", { id, dpiFix }),
+  /** 任务46 · 设置通道标记（wine|engine|native-only）＋wine 分级（可选）。 */
+  tpSetChannel: (id: string, channel: Shell.TpChannel, wineTier?: string) =>
+    invoke<Shell.ThirdApp>("tp_set_channel", { id, channel, wineTier: wineTier ?? "" }),
+  /** 任务46 · 分级登记同步 SHARED/apps.json（发现→构建→校验→原子导出）。 */
+  tpSyncSharedApps: () => invoke<{ path: string; count: number; bytes: number }>("tp_sync_shared_apps"),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),
@@ -1643,6 +1648,10 @@ export namespace Shell {
     profile: PortableProfile;
     /** 批次W-2：DPI 例外（不响应 WM_DPICHANGED 的应用按主屏渲染）。 */
     dpiFix: boolean;
+    /** 任务46 · 通道标记（总案 137：wine | engine | native-only；旧文件缺省 native-only）。 */
+    channel: TpChannel;
+    /** 任务46 · wine 通道分级（ok|partial|blocked；空串=未证实）。 */
+    wineTier: string;
     /** 批次C-6：兼容分级（自动探测 + 用户覆盖；旧 apps.json 读出为缺省档）。 */
     compat: {
       tier: CompatTier | null;
@@ -1656,6 +1665,10 @@ export namespace Shell {
   }
   /** 批次C-6：四层兼容层级。 */
   export type CompatTier = "L1" | "L2" | "L3" | "L4" | "Native";
+  /** 任务46 · 通道枚举（总案 137：wine | engine | native-only）。 */
+  export type TpChannel = "wine" | "engine" | "native-only";
+  /** 任务46 · SHARED apps.json 分级枚举（总案 369）。 */
+  export type SharedAppTier = "ok" | "partial" | "blocked";
   /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
   export interface PortableProfile {
     envRedirect: Record<string, string>;

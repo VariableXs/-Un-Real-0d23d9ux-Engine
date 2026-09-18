@@ -18,6 +18,11 @@ pub const GRADE_PORTABLE: &str = "portable";
 pub const GRADE_STANDALONE: &str = "standalone";
 pub const GRADE_SHORTCUT: &str = "shortcut";
 
+/// 任务46 · 通道缺省值（serde default：旧登记文件平滑升级为 native-only）。
+fn default_channel() -> String {
+    crate::shell::shared_apps::CHANNEL_NATIVE.to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ThirdApp {
@@ -46,6 +51,13 @@ pub struct ThirdApp {
     /// 批次C-6：兼容分级探测结果（tier + 证据 + 用户覆盖）。
     #[serde(default)]
     pub compat: crate::shell::compat_probe::CompatInfo,
+    /// 任务46 · 通道标记（总案 137：wine | engine | native-only）。
+    /// serde default 使 v2 登记表平滑升级（旧文件缺省 native-only）。
+    #[serde(default = "default_channel")]
+    pub channel: String,
+    /// 任务46 · wine 通道分级（ok|partial|blocked；空=未证实 → 导出时派生 partial）。
+    #[serde(default)]
+    pub wine_tier: String,
 }
 
 // ---------- 登记表持久化 ----------
@@ -251,7 +263,10 @@ fn add_app_inner(st: &AppState, path: &str, name: Option<String>, grade: Option<
         profile: Default::default(),
         dpi_fix: false,
         compat: Default::default(),
-    };
+    
+        channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+        wine_tier: String::new(),
+        };
     apps.push(app.clone());
     save_registry(st, &apps)?;
     Ok(app)
@@ -1689,6 +1704,8 @@ mod tests {
             profile: Default::default(),
             dpi_fix: false,
             compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
         };
         apps.push(app.clone());
         save_registry(&st, &apps).unwrap();
@@ -1737,6 +1754,8 @@ mod tests {
             profile: Default::default(),
             dpi_fix: false,
             compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
         });
         save_registry(&st, &apps).unwrap();
         tp_purge_inner(&st, "p1").unwrap();
@@ -1762,6 +1781,8 @@ mod tests {
             profile: Default::default(),
             dpi_fix: false,
             compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
         });
         save_registry(&st, &apps).unwrap();
         assert!(tp_purge_inner(&st, "p2").is_err(), "数据目录外应拒绝");
@@ -1803,6 +1824,8 @@ mod tests {
                 dpi_fix: false,
                 profile: Default::default(),
                 compat: Default::default(),
+                channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+                wine_tier: String::new(),
             };
             apps.push(app.clone());
             save_registry(&st, &apps).unwrap();

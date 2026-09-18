@@ -471,6 +471,15 @@ const zh: Dict = {
   tpRemove: "移除登记",
   tpRemoveBody: "将「{name}」从桌面移除登记。软件本身不会被卸载或删除。",
   tpAdded: "已添加到桌面",
+  // ---- 任务46：分级登记通道标记 ----
+  tpChannel: "通道",
+  tpChannelWine: "Wine（内核兼容层）",
+  tpChannelEngine: "Engine（隐形 Windows 引擎）",
+  tpChannelNative: "仅原生 Windows",
+  tpChannelChanged: "通道已切换为 {channel}",
+  tpSyncShared: "同步分级登记到 SHARED",
+  tpSyncSharedOk: "已写入 {path}（{n} 条）",
+  tpSyncSharedNone: "未发现 SHARED 契约根（未部署 U 盘或未初始化）",
   // ---- 批次F：拖入软件文件夹智能登记 ----
   tpFolderScan: "文件夹扫描",
   tpFolderAddedBody: "已自动登记 {n} 个应用（图标与 Windows 一致）",
@@ -3930,6 +3939,15 @@ const en: Dict = {
   tpRemove: "Unregister",
   tpRemoveBody: "\"{name}\" will be removed from the desktop. The software itself will not be uninstalled or deleted.",
   tpAdded: "Added to desktop",
+  // ---- Task 46: channel marker for graded registration ----
+  tpChannel: "Channel",
+  tpChannelWine: "Wine (kernel compat layer)",
+  tpChannelEngine: "Engine (invisible Windows)",
+  tpChannelNative: "Native Windows only",
+  tpChannelChanged: "Channel switched to {channel}",
+  tpSyncShared: "Sync graded registry to SHARED",
+  tpSyncSharedOk: "Written to {path} ({n} entries)",
+  tpSyncSharedNone: "No SHARED contract root found (USB not deployed or not initialized)",
   // ---- Batch F: smart folder-drop registration ----
   tpFolderScan: "Folder scan",
   tpFolderAddedBody: "Auto-registered {n} app(s) with native Windows icons",

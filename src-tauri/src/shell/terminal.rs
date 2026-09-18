@@ -79,7 +79,10 @@ pub fn ensure_terminal_registered(st: &AppState) -> CmdResult<()> {
             env_set: [("VARIABLE_ENV".to_string(), "terminal".to_string())].into_iter().collect(),
             ..Default::default()
         },
-    });
+    
+        channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+        wine_tier: String::new(),
+        });
     crate::shell::launcher::save_registry(st, &apps)
 }
 

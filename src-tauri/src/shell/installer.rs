@@ -347,7 +347,10 @@ pub fn install_commit(
         dpi_fix: false,
         compat: Default::default(),
         profile: generic_redirect_profile(),
-    };
+    
+        channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+        wine_tier: String::new(),
+        };
     if apps.iter().any(|a| a.id == third.id) {
         return Err(AppError::validation(format!("登记项 {} 已存在", third.id)));
     }
@@ -621,6 +624,8 @@ mod tests {
                 dpi_fix: false,
                 compat: Default::default(),
                 profile: generic_redirect_profile(),
+                channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+                wine_tier: String::new(),
             }
         };
         assert_eq!(third.id, "app-fakeapp");

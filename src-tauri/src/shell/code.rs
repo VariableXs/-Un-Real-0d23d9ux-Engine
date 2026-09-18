@@ -213,6 +213,8 @@ pub fn code_register(st: tauri::State<AppState>) -> CmdResult<()> {
             },
             dpi_fix: false,
             compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
         });
     }
     crate::shell::launcher::save_registry(&st, &apps)

@@ -435,6 +435,10 @@ pub fn run() {
             shell::launcher::tp_set_grade,
             shell::launcher::tp_set_dpi_fix,
             shell::launcher::tp_rename,
+            // 任务46 · 分级登记通道标记 + SHARED apps.json 同步
+            shell::shared_apps::tp_set_channel,
+            shell::shared_apps::tp_sync_shared_apps,
+            shell::shared_apps::tp_shared_apps_snapshot,
             shell::launcher::tp_launch,
             shell::launcher::tp_set_icon,
             shell::launcher::tp_scan_start_menu,

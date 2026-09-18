@@ -160,6 +160,20 @@ function thirdIconDef(a: ThirdApp): ThirdIconDef {
   return { id: `tp-${a.id}`, third: a, icon: AppWindow, hue: 158 };
 }
 
+/** 任务46 · 通道角标（native-only 缺省不打标——只标记走 wine/engine 的特例）。 */
+function channelBadge(a: ThirdApp): { label: string; cls: string } | null {
+  if (a.channel === "wine") return { label: "W", cls: "channel-wine" };
+  if (a.channel === "engine") return { label: "E", cls: "channel-engine" };
+  return null;
+}
+
+/** 任务46 · 通道显示名（i18n 键映射）。 */
+function channelLabelKey(c: string): "tpChannelWine" | "tpChannelEngine" | "tpChannelNative" {
+  if (c === "wine") return "tpChannelWine";
+  if (c === "engine") return "tpChannelEngine";
+  return "tpChannelNative";
+}
+
 /** 四款软件显示名（独立软件，恰好由 Variable 官方出品）。 */
 export function desktopAppLabel(app: AppMode): string {
   const map: Record<AppMode, string> = {
@@ -532,6 +546,31 @@ export function DesktopIcons(props: {
   const toastLocked = useCallback((): void => {
     pushToast("info", desktopLabel(lang, "lockIcons"), desktopLabel(lang, "desktopLocked"));
   }, [lang]);
+
+  /** 任务46 · 切换通道标记（wine|engine|native-only）。 */
+  const setThirdChannel = useCallback(
+    async (a: ThirdApp, channel: "wine" | "engine" | "native-only"): Promise<void> => {
+      try {
+        await ipc.tpSetChannel(a.id, channel);
+        await reloadThirdApps();
+        pushToast("success", t("tpChannel"), t("tpChannelChanged", { channel: t(channelLabelKey(channel)) }));
+      } catch (e) {
+        pushToast("error", t("tpChannel"), errMessage(e).message);
+      }
+    },
+    [t],
+  );
+
+  /** 任务46 · 分级登记同步 SHARED/apps.json（未发现契约根如实提示）。 */
+  const syncSharedApps = useCallback(async (): Promise<void> => {
+    try {
+      const r = await ipc.tpSyncSharedApps();
+      pushToast("success", t("tpSyncShared"), t("tpSyncSharedOk", { path: r.path, n: r.count }));
+    } catch (e) {
+      pushToast("info", t("tpSyncShared"), t("tpSyncSharedNone"));
+      void e;
+    }
+  }, [t]);
 
   /** 移除第三方登记（仅删登记，不卸载软件本身）。 */
   const removeThird = useCallback(
@@ -1589,6 +1628,7 @@ export function DesktopIcons(props: {
       },
       { separator: true },
       { label: t("refreshDesktop"), onClick: refresh },
+      { label: t("tpSyncShared"), onClick: () => void syncSharedApps() },
       { label: t("personalize"), onClick: props.onOpenSettings },
       { separator: true },
       { label: t("aboutVariable"), onClick: () => setAbout(true) },
@@ -1604,6 +1644,13 @@ export function DesktopIcons(props: {
     const items: MenuItem[] = [{ label: t("desktopOpen"), onClick: () => openItem(d) }];
     if ("third" in d) {
       items.push({ label: t("runAsAdmin"), onClick: () => void runAsAdmin(d.third) });
+      // 任务46 · 通道标记子菜单（分级登记数据源；SHARED/apps.json 同步走桌面右键）
+      const channelItems: MenuItem[] = (["wine", "engine", "native-only"] as const).map((c) => ({
+        label: t(channelLabelKey(c)),
+        checked: d.third.channel === c,
+        onClick: () => void setThirdChannel(d.third, c),
+      }));
+      items.push({ label: t("tpChannel"), children: channelItems });
     }
     if ("shelfId" in d && d.shelf.linkedPath) {
       items.push({
@@ -1780,7 +1827,7 @@ export function DesktopIcons(props: {
               if (!edit) openItem(d);
             }}
             onContextMenu={(e) => openIconMenu(e, d)}
-            title={labelOf(d)}
+            title={"third" in d ? `${labelOf(d)} · ${t(channelLabelKey(d.third.channel))}` : labelOf(d)}
           >
             <span
               className={`desktop-icon-tile${img ? " has-img" : ""}${"app" in d ? " brand" : ""}`}
@@ -1791,6 +1838,13 @@ export function DesktopIcons(props: {
               {recBadge && recBadge.kind === "count" && (
                 <span className="icon-badge rec-badge" aria-hidden>{recBadge.n > 99 ? "99+" : recBadge.n}</span>
               )}
+              {(() => {
+                // 任务46 · 通道角标：wine=W（紫）/ engine=E（蓝）；native-only 缺省不打标
+                if (!("third" in d)) return null;
+                const ch = channelBadge(d.third);
+                if (!ch) return null;
+                return <span className={`icon-badge channel-badge ${ch.cls}`} aria-hidden>{ch.label}</span>;
+              })()}
             </span>
             <span className={`desktop-icon-label${labelShadeClass(d.id)}`}>{labelOf(d)}</span>
             {edit && ("third" in d || "shelfId" in d) && (

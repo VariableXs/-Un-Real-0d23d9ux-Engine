@@ -3089,6 +3089,21 @@ button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
 .scene-note { margin: 0; font-size: 11px; opacity: 0.55; line-height: 1.6; }
 /* ---- AI04 车道 D：V-08 回收站角标 / V-05 标签字色 / V-10 让位预演 / V-96 归档选择 ---- */
 .icon-badge.rec-badge { background: #b3611e; }
+
+/* 任务46 · 通道角标：wine=W 紫（内核兼容层）/ engine=E 蓝（隐形 Windows 引擎）。 */
+.icon-badge.channel-badge {
+  right: -3px;
+  top: -3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.icon-badge.channel-badge.channel-wine { background: #7c4dbe; }
+.icon-badge.channel-badge.channel-engine { background: #2a6db5; }
 .desktop-icon-label.shade-light {
   color: #fff;
   text-shadow: 0 1px 2px rgb(0 0 0 / 0.8), 0 0 4px rgb(0 0 0 / 0.6);
