@@ -661,12 +661,18 @@ fn guard_frame_cs(rsp: u64) {
         }
         let resume_rsp = core::ptr::read_volatile(cs_ptr.add(2)); // CS+16 = RSP 槽
         let want: u64 = if resume_rsp < 0x0000_8000_0000_0000 { 0x1b } else { 0x8 };
-        crate::kwarn!(
-            "isr: frame cs={:#x} (want {:#x}, resume rsp {:#x}) — guard reset",
-            cs,
-            want,
-            resume_rsp
-        );
+        // 验收轮修复 · 同因去重：cs=0x2b 属 TCG 伪影常态（实机每中断一条），
+        // 全量 kwarn 会驱动 console 镜像/串口风暴——首条保留诊断价值，其后静默修正。
+        static FIRST_WARNED: core::sync::atomic::AtomicBool =
+            core::sync::atomic::AtomicBool::new(false);
+        if !FIRST_WARNED.swap(true, core::sync::atomic::Ordering::Relaxed) {
+            crate::kwarn!(
+                "isr: frame cs={:#x} (want {:#x}, resume rsp {:#x}) — guard reset",
+                cs,
+                want,
+                resume_rsp
+            );
+        }
         core::ptr::write_volatile(cs_ptr, want);
     }
 }

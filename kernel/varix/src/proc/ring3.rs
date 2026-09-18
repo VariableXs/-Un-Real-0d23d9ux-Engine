@@ -197,11 +197,13 @@ fn sys_write(fd: u64, buf: u64, len: u64) -> i64 {
         *slot = unsafe { core::ptr::read_volatile((buf + i as u64) as *const u8) };
     }
     crate::serial::write_bytes(&line[..len as usize]);
-    if let Some(c) = crate::console::installed_ref() {
-        for &b in &line[..len as usize] {
-            c.put_byte(b);
-        }
-    }
+    // 验收轮修复：console 通道改经 mirror_bytes（受 MIRROR_ENABLED 门控）。
+    // 原实现无条件 put_byte 直写 VGA——全速重绘时代每轮被 shell 覆盖不可
+    // 见；按需重绘（画面静止）后回显行 + console 滚动会永久破坏 shell 画
+    // 面（实机像素证据：07 屏底部回显行 + 整屏上移 16px）。shell 接管后
+    // （disable_mirror）fd=1 只走串口；boot 链期 mirror 开启，stdout 上屏
+    // 语义不变。
+    crate::console::mirror_bytes(&line[..len as usize]);
     len as i64
 }
 
@@ -1014,6 +1016,11 @@ static SHELL_ELF: &[u8] = include_bytes!("ushell.elf");
 /// （PCB 入表 → 共用装载引擎 → 页账本登记 → iretq）。shell 常驻不退出。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 fn spawn_shell() -> ! {
+    // 验收轮修复 · shell 接管屏幕前关闭 console 镜像：console 与 ushell
+    // 共用前台 Surface，boot 期镜像诊断使命已毕（探针均在此前完成），
+    // 继续镜像会以字符格覆盖/滚动清行扫掉桌面 UI。日志保持串口输出。
+    crate::console::disable_mirror();
+    crate::kinfo!("usrshell: console mirror disabled — shell owns the screen");
     // 任务27 · shell 注册 inputsvc 订阅（修复漏接线：此前 shell_subscribe
     // 全内核无调用点，SHELL_SUB 恒 usize::MAX → SYS_INPUT 恒 0 事件，
     // ushell 死等按键 — 实机 serial 实证：boot-replay 后仅 cs=0x2b

@@ -2,49 +2,49 @@
  "steps": [
   {
    "marker": "SHELL: boot-replay done",
-   "ms": 95367.8
+   "ms": 96824.5
   },
   {
    "marker": "SHELL: desktop-ready",
-   "ms": 21.9
+   "ms": 17.7
   },
   {
    "marker": "SHELL: fm count=",
-   "ms": 20.7
+   "ms": 0.3
   },
   {
    "marker": "SHELL: startmenu opened",
-   "ms": 18.1
+   "ms": 15.7
   },
   {
    "marker": "SHELL: files opened",
-   "ms": 18.8
+   "ms": 14.2
   },
   {
    "marker": "SHELL: file opened name=",
-   "ms": 38.6
+   "ms": 15.7
   },
   {
    "marker": "SHELL: startmenu opened",
-   "ms": 50.3
+   "ms": 20.5
   },
   {
    "marker": "SHELL: settings opened",
-   "ms": 43.0
+   "ms": 18.3
   },
   {
    "marker": "SHELL: settings set key=boot_timeout rc=0",
-   "ms": 48.1
+   "ms": 13.1
   },
   {
    "marker": "SHELL: startmenu opened",
-   "ms": 41.4
+   "ms": 19.1
   },
   {
    "marker": "SHELL: about opened",
-   "ms": 51.7
+   "ms": 17.9
   }
  ],
- "boot_ms": 896,
- "first_frame_ms": 896
+ "boot_ms": 1037,
+ "first_frame_ms": 1037
 }

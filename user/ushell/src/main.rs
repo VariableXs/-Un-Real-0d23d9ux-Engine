@@ -405,20 +405,15 @@ struct Ui {
 }
 
 impl Ui {
+    // 验收轮修复：原实现按 2px 条带循环 400 次 fill_rect（TCG 下 >50ms，
+    // 桌面帧长期处于「壁纸画完、图标未画」的中间态——实机截图与人眼均见
+    // 闪烁缺件）。三色带本就是纯色分段，改为 3 次整段填充，视觉逐像素等价。
     fn wallpaper(&self) {
-        let mut y = 0i64;
-        while y < self.h {
-            let t = y * 100 / self.h.max(1);
-            let color = if t < 55 {
-                C_WALL0
-            } else if t < 85 {
-                C_WALL1
-            } else {
-                C_BLUE
-            };
-            fill_rect(0, y, self.w, 2, color);
-            y += 2;
-        }
+        let h1 = self.h * 55 / 100;
+        let h2 = self.h * 85 / 100;
+        fill_rect(0, 0, self.w, h1, C_WALL0);
+        fill_rect(0, h1, self.w, h2 - h1, C_WALL1);
+        fill_rect(0, h2, self.w, self.h - h2, C_BLUE);
     }
 
     fn panel(&self, x: i64, y: i64, w: i64, h: i64, border: u64, title: &[u8]) {
@@ -480,8 +475,22 @@ fn draw_bootscreen(ui: &Ui, stages: usize) -> ([u8; 40], usize) {
 
 const MENU_ITEMS: [&[u8]; 3] = [b"Files", b"Settings", b"About"];
 
-fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
+/// 桌面底图=壁纸+任务栏。验收轮修复：窗口页（files/settings/about）此前
+/// 只画自身窗口、不重绘背景——从菜单态切页时菜单浮层/任务栏像素残留
+/// （实机截图 06/07/08 叠着菜单三项文字）。切页时统一重建底图。
+fn draw_backdrop(ui: &Ui) {
     ui.wallpaper();
+    let tb_y = ui.h - 48;
+    fill_rect(0, tb_y, ui.w, 48, C_TASKBAR);
+    fill_rect(0, tb_y, ui.w, 2, C_BLUE);
+    fill_rect(8, tb_y + 8, 88, 32, C_BLUE);
+    text(24, tb_y + 16, b"START", C_WHITE);
+    text(120, tb_y + 16, b"VARIX DESKTOP", C_LGRAY);
+    text(ui.w - 104, tb_y + 16, b"ring3 shell", C_DIM);
+}
+
+fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
+    draw_backdrop(ui);
     let icons: [&[u8]; 3] = [b"FILES", b"SETTINGS", b"ABOUT"];
     for (i, label) in icons.iter().enumerate() {
         let x = 24;
@@ -490,13 +499,6 @@ fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
         outline(x, y, 96, 56, C_LGRAY);
         text(x + 8, y + 20, label, C_WHITE);
     }
-    let tb_y = ui.h - 48;
-    fill_rect(0, tb_y, ui.w, 48, C_TASKBAR);
-    fill_rect(0, tb_y, ui.w, 2, C_BLUE);
-    fill_rect(8, tb_y + 8, 88, 32, C_BLUE);
-    text(24, tb_y + 16, b"START", C_WHITE);
-    text(120, tb_y + 16, b"VARIX DESKTOP", C_LGRAY);
-    text(ui.w - 104, tb_y + 16, b"ring3 shell", C_DIM);
     if menu_open {
         let (mx, my, mw, mh) = (8, ui.h - 48 - 164, 280, 160);
         fill_rect(mx, my, mw, mh, C_PANEL);
@@ -696,6 +698,26 @@ pub extern "C" fn _start() -> ! {
         marker(b"SHELL: display info unavailable - exit");
         exit(1);
     }
+    // 验收轮诊断：报告显示几何协商结果（disp_info vs 内核 Surface）。
+    {
+        let mut line = [0u8; 48];
+        let head = b"SHELL: disp=";
+        let mut p = 0usize;
+        line[p..p + head.len()].copy_from_slice(head);
+        p += head.len();
+        let mut nb = [0u8; 8];
+        let d = u64_bytes(w as u64, &mut nb);
+        line[p..p + d].copy_from_slice(&nb[..d]);
+        p += d;
+        line[p..p + 1].copy_from_slice(b"x");
+        p += 1;
+        let d = u64_bytes(h as u64, &mut nb);
+        line[p..p + d].copy_from_slice(&nb[..d]);
+        p += d;
+        line[p] = b'\n';
+        p += 1;
+        puts(&line[..p]);
+    }
     let ui = Ui { w, h };
 
     // ① BootScreen：boot://event 回放（任务28：内核 timeline 快照 → 记录
@@ -760,24 +782,48 @@ pub extern "C" fn _start() -> ! {
     let mut setting_sel = 0usize;
     let mut about_info = [0u8; 64];
 
+    // 验收轮修复 · 切页重建底图：prev_phase 初始取不可能值强制首帧重建。
+    // 窗口页只画自身窗口，背景（壁纸+任务栏）由切页瞬间一次性画好；
+    // 同页内循环重画窗口自清（浮层如菜单随 phase 切换消失无残留）。
+    //
+    // 验收轮修复 · 按需重绘：原实现每轮循环无条件重画当前页——无按键时
+    // 也以全速空转重绘（TCG 下循环内壁纸三段 fill 约 55 万像素/轮是绝对
+    // 大头），实机截图/人眼会落在「壁纸已覆盖上帧图标、图标未重画」的
+    // 中间态（02 桌面缺图标、03 缺菜单、06 缺设置文字皆此机理：走查脚
+    // 本固定延时命中循环不同相位）。改为仅状态变化时重画：稳态画面静
+    // 止为完整帧（任何时刻截图完整），空闲 CPU 占用同步归零。
+    let mut prev_phase = 99u8;
+    let mut need_redraw = true;
     loop {
-        match phase {
-            0 | 1 => draw_desktop(&ui, phase == 1, menu_sel),
-            2 => draw_files(&ui, &files),
-            3 => draw_file_view(&ui, &files),
-            4 => draw_settings(&ui, &settings, setting_sel),
-            _ => draw_about(&ui, &about_info[..info_len(&about_info)]),
+        if phase != prev_phase {
+            draw_backdrop(&ui);
+            prev_phase = phase;
+            need_redraw = true;
+        }
+        if need_redraw {
+            match phase {
+                0 | 1 => draw_desktop(&ui, phase == 1, menu_sel),
+                2 => draw_files(&ui, &files),
+                3 => draw_file_view(&ui, &files),
+                4 => draw_settings(&ui, &settings, setting_sel),
+                _ => draw_about(&ui, &about_info[..info_len(&about_info)]),
+            }
+            need_redraw = false;
         }
 
         let n = input(&mut ev);
         if n == 0 {
             continue;
         }
+        // 任一有效按键（含未改变状态的键）都触发下轮重绘：重画幂等，
+        // 漏判状态变化的代价（画面陈旧）远大于多画一帧。
+        let mut handled = false;
         'keys: for i in 0..n {
             let key = ev[i];
             if key == 0xFF {
                 continue;
             }
+            handled = true;
             match phase {
                 0 => {
                     if key == K_ENTER || key == 4 {
@@ -901,6 +947,9 @@ pub extern "C" fn _start() -> ! {
                     }
                 }
             }
+        }
+        if handled {
+            need_redraw = true;
         }
     }
 }

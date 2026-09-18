@@ -327,6 +327,14 @@ pub fn enable_mirror() {
     MIRROR_ENABLED.store(true, Ordering::Relaxed);
 }
 
+/// Disable mirroring. 验收轮修复：ring3 shell（ushell）接管屏幕后，console
+/// 与 shell 共用同一前台 Surface——日志镜像会以字符格覆盖/滚动清行扫掉
+/// 已绘制的桌面 UI（实机像素证据：02/03/04 屏图标与列表区被日志格清空）。
+/// shell 会话期日志仍走串口（serial），诊断能力不变。
+pub fn disable_mirror() {
+    MIRROR_ENABLED.store(false, Ordering::Relaxed);
+}
+
 /// Called by the logger for every line — no-op until the console exists
 /// or mirroring is enabled, so early serial-only logging is safe.
 pub fn mirror_bytes(bytes: &[u8]) {
