@@ -916,6 +916,8 @@ fn job_table_probe() -> ! {
         if db_ok { "ok" } else { "FAIL" }
     );
     super::compatdb::compatdb_reset();
+    // 任务49 · 输入注入通道实机面：同源 16B 帧注入→泵取→守恒。
+    let _ = super::super::inputinject::inject_probe();
     pressure_probe_and_finish()
 }
 

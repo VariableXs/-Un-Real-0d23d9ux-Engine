@@ -57,6 +57,8 @@ pub mod telemetry;
 pub mod input;
 /// PS/2 键鼠输入事件服务（任务19：事件队列+订阅者+鼠标最小版）。
 pub mod inputsvc;
+/// 输入注入通道（任务49：Variable→引擎反向注入，16B 同源帧+守恒账本）。
+pub mod inputinject;
 /// 内核显示服务（任务20：Surface 归口+双缓冲+脏矩形提交）。
 pub mod displaysrv;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×
