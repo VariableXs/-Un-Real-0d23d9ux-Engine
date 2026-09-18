@@ -274,7 +274,10 @@ impl Lapic {
 
     pub fn read(&self, reg: u32) -> u32 {
         match self.mode() {
-            ApicMode::X2Apic => crate::cpu::msr::read(crate::cpu::msr::Msr::ApicBase) as u32,
+            // 2026-09-19 实机修复：此前这里恒读 ApicBase——x2APIC 模式下所有
+            // 寄存器读都返回 MSR 0x1B 的值（ID/ESR/ICR 全错），真机 Y7000
+            // (BIOS 默认 x2APIC) 因此 smp 启动卡死。必须走 x2APIC MSR 窗口。
+            ApicMode::X2Apic => crate::cpu::msr::read_x2apic(reg) as u32,
             ApicMode::Mmio => {
                 let addr = self.base() + reg as u64;
                 if addr == 0 {
@@ -340,8 +343,19 @@ impl Lapic {
 
     /// Raw ICR write (used by F042 IPI).
     pub fn send_ipi(&self, dest: u32, command: u32) {
-        self.write(LAPIC_ICR_HIGH, dest);
-        self.write(LAPIC_ICR_LOW, command);
+        match self.mode() {
+            ApicMode::X2Apic => {
+                // x2APIC: ICR 是单个 64 位 MSR 0x830（xAPIC 0x300/0x310 的
+                // 合体），dest 在高 32 位——分写 ICR_HIGH 会落 MSR 0x8C4，
+                // 那是无效地址直接 #GP（2026-09-19 实机卡死根因之一）。
+                let icr = ((dest as u64) << 32) | (command as u64);
+                crate::cpu::msr::write_x2apic(LAPIC_ICR_LOW, icr);
+            }
+            _ => {
+                self.write(LAPIC_ICR_HIGH, dest);
+                self.write(LAPIC_ICR_LOW, command);
+            }
+        }
     }
 
     /// Detect and adopt the LAPIC (F032 + F035).
