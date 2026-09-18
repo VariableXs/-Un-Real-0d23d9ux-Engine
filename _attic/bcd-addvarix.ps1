@@ -1,4 +1,4 @@
-# BCD 加 VARIX 引导项（用户已授权）。安全流程：
+﻿# BCD 加 VARIX 引导项（用户已授权）。安全流程：
 #   备份 BCD -> BitLocker 检查(On 则先暂停，防恢复密钥锁机) -> ESP 盘符 ->
 #   创建 osloader 指向 \EFI\BOOT\BOOTX64.EFI -> 挂 {bootmgr} 菜单第二位(Windows 保持默认) ->
 #   回读验证。回滚：bcdedit /delete {guid} + timeout 还原原值；或 bcdedit /import 备份文件。

@@ -8,7 +8,8 @@ import time
 ROOT = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 LOG = ROOT + r"\_attic\diag-boot.log"
 
-# try/catch 兜异常，语句级 *> 落日志（PS5.1 默认 UTF-16LE）
+# *> 必须在 try 块内部包住命令（try/catch 语句外跟 *> 是 PS5.1 非法语法，
+# 整条 -Command 解析失败、进程闪退无日志）。
 simple = (
     '-NoProfile -ExecutionPolicy Bypass -Command '
     f'try {{ '
@@ -17,7 +18,8 @@ simple = (
     f'  Write-Output "=== Firmware boot entries ==="; '
     f'  (bcdedit /enum firmware 2>&1 | Out-String) | Write-Output; '
     f'  Write-Output "DIAG DONE" '
-    f'}} catch {{ $_ | Out-String }} *> \'{LOG}\''
+    f'}} *> \'{LOG}\' '
+    f'catch {{ $_ | Out-String | Add-Content \'{LOG}\' }}'
 )
 
 if os.path.exists(LOG):

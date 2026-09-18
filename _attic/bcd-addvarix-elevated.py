@@ -9,10 +9,13 @@ ROOT = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 SCRIPT = ROOT + r"\_attic\bcd-addvarix.ps1"
 LOG = ROOT + r"\_attic\bcd-addvarix.log"
 
-# try/catch 兜终止异常；语句级 *> 落日志（PS5.1 默认 UTF-16LE）
+# *> 必须在 try 块内部包住 & 调用（try/catch 语句外跟 *> 是 PS5.1 非法语法：
+# 整条 -Command 解析失败、进程闪退无日志——前几轮 UAC 白点的根因）。
+# catch 兜终止异常（如 throw）落日志。
 params = (
     '-NoProfile -ExecutionPolicy Bypass -Command '
-    f'try {{ & \'{SCRIPT}\' }} catch {{ $_ | Out-String }} *> \'{LOG}\''
+    f'try {{ & \'{SCRIPT}\' *> \'{LOG}\' }} '
+    f'catch {{ $_ | Out-String | Add-Content \'{LOG}\' }}'
 )
 
 if os.path.exists(LOG):
