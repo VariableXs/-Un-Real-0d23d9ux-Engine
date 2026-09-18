@@ -66,14 +66,14 @@
 - [x] **任务 33**（AI-S）：消息通道原语（订阅/广播）。前置：任务 32。✅2026-09-17 msgchan.rs：订阅/广播/单发+FIFO×1000+慢消费者丢最旧计数+通道名注册表，6 用例。
 - [x] **任务 34**（AI-S）：剪贴板/拖放白名单化。前置：任务 33。✅2026-09-17 clip.rs：格式白名单三类+伪装校验+未授权得空+审计+拖放同裁决+Windows 差异公示，5 用例。
 - [x] **任务 35**（AI-S）：Uxv 交换格式接入＋校验失败安全路径。前置：任务 33。✅2026-09-17 uxv_ingest.rs+kblake3.rs：只读校验门（写侧复用 container crate）+BLAKE3 自实现交叉验证+掉电注入×10 整包拒绝+256MiB 上限声明，4 用例。
-- [ ] **任务 36**（AI-V）：设置页白名单管理 UI＋审计查看页。前置：任务 30。
+- [x] **任务 36**（AI-V）：设置页白名单管理 UI＋审计查看页。前置：任务 30。✅2026-09-17 验收通过（commit 5d8e9c5 线，5 截图 docs/acceptance/2026-09-18-视觉验收-白名单UI与审计页/，总验收官 2026-09-18 补勾）。
 - [x] **任务 37**（AI-S）：规则热更新与冲突仲裁机制。前置：任务 36。✅ 2026-09-18 AI-B（vfsguard 扩展：RuleBook 世代热更新（reload 指纹幂等——同文本世代不变/异文本世代+1 即刻生效不重启）+Arbiter 可插裁决器 trait（kind/adjudicate）+deny 语义（解析 allow/deny 双行+拒绝优先与规则顺序无关）+ReloadReport 变更报告；冲突矩阵 10 组断言（宽窄叠加/单操作拒/通配拒/父子压序/deny 后无 allow 覆盖亦拒/规范化越根 Escape 拒）+热更新竞态（reload 中裁决快照一致）+回滚（规则删减生效）；RuleBook::reload 原地重 parse（clear 后覆盖，零 8.5KiB 栈物化）；实机探针追加热更新+冲突段；vfsguard 14 测试/ktest 全绿/kcheck 0；**排障双实证**：探针 4×RuleSet 栈变量 34KiB 打穿内核栈（#DF@memset 取证）→ Box 修复又踩 kheap MAX_ALLOC=4KiB 上限（alloc panic 静默 halt）→ 最终 static .bss SpinProtected 单例=唯一合规放置，戒律再度扩写）
 
 ## 阶段 5：Wine 兼容层通道
 
 - [x] **任务 38**（AI-B）：Wine 移植评估报告——NTAPI 对接面→VARIX syscall 映射清单，工作量分级。前置：任务 15。（2026-09-17 AI-B：docs/双域-任务38-Wine移植评估报告-2026-09-17.md，NTAPI→16+32 syscall 扩表映射、五阶段 21~27 人周分级、❌13 项拒绝面与任务32 阻塞项标注）
 - [x] **任务 39**（AI-B）：PE 装载器＋静态链接 exe 加载运行（不含导入解析）。前置：任务 38。（2026-09-17 AI-B：proc/pe.rs PE32+ 解析器+PeSource 接任务15 引擎，14 具名拒绝+W^X；tools/make-pe.py 生成静态 PE64 样例 hello.pe；实机 QEMU ring3 链 spawn_pe→hello from PE→exit→pages_released=17/17 零 PANIC；ktest 2889 绿/kcheck 0；导入目录已解析暴露 import_dir 供任务40；验收 docs/acceptance/双域-任务39-PE装载器-2026-09-17.md）
-- [ ] **任务 40**（AI-B）：导入表解析＋Wine 核心 DLL 绑定。前置：任务 39。
+- [x] **任务 40**（AI-B）：导入表解析＋Wine 核心 DLL 绑定。前置：任务 39。✅2026-09-17 交付（commit 09-17 23:31，winapi.rs 27 项注册表+thunk 页+IAT 补钉，实机 PE 导入链 DEMO PASS，凭证 docs/acceptance/双域-任务40-导入表解析与Wine核心DLL绑定/，总验收官补勾）。
 - [x] **任务 41**（AI-B）：记事本级闭环（GDI 文本/菜单/文件对话框）。前置：任务 40。✅ 2026-09-18 AI-B（新 proc/winsrv.rs：窗口管理器（RegisterClassExW/CreateWindowExW/ShowWindow/InvalidateRect，HWND 句柄复用）+消息队列（GetMessageW/PostQuitMessage 环形 256 深度+WM_CHAR/WM_PAINT/WM_CLOSE/WM_COMMAND 分发）+GDI 画布（Canvas 320×200 BGRA+TextOutW font.rs 字模逐位绘制+UTF-16 降级 '?'）+虚拟文件服务（VFiles 写/读/列举+GetOpenFileNameW/GetSaveFileNameW 轮转选择+handle 2=保存目标/3=读取源）+notepad_service_flow 单例服务流（注册→建窗→字符流→菜单保存→重开加载逐字节比对）；winapi 服务台 27→33 API（Full 18/Partial 9/Stub 6 如实登记）+win32_dispatch 路由（用户指针 safe 读取窗）；tools/make-pe-notepad.py 手写机器码 PE 生成器（4 DLL 22 导入 kernel32/user32/gdi32/comdlg32+纯 numeric API 编号解析+消息循环 100 万次上限兜底）；ring3 notepad 实例挂载+探针注入（键盘流 open→type→保存→重开→VERDICT）；宿主 winsrv 7 测试全绿含消息循环 100 万次无泄漏；kcheck 0）
 - [ ] **任务 42**（AI-B）：Job 限额接入（内存/CPU rate/KILL_ON_JOB_CLOSE 语义对齐 src-tauri isolation.rs）。前置：任务 41。
 - [ ] **任务 43**（AI-B）：prefix 模板与每进程隔离目录。前置：任务 41。
@@ -83,7 +83,7 @@
 
 ## 阶段 6：隐形 Windows 引擎通道
 
-- [ ] **任务 47**（AI-P）：引擎 VHDX 挂载＋VM 拉起/保活/休眠编排。前置：任务 8、任务 12。
+- [x] **任务 47**（AI-P）：引擎 VHDX 挂载＋VM 拉起/保活/休眠编排。前置：任务 8、任务 12。✅2026-09-17 交付（commit 09-17 22:05，五态状态机+QEMU 先行验证，总验收官补勾；注：QEMU 先行等价，实机 VHDX 属待用户协作项如实登记）。
 - [x] **任务 48**（AI-P）：画面流通道打通（先全屏后窗口级）。前置：任务 47。✅ 2026-09-18 AI-B 代交付（新 stream/picflow.rs：PicChannel 环形 4 槽帧通道（seq 单调+FRAME_MAX=160000B 预算）+帧头 seq/w/h/x/y/crc(fnv1a64) 校验+坏帧丢弃计数（magic/seq 回退/crc 三拒）+全屏 push_full/窗口级 push_window（矩形裁剪边界拒绝）+blit_latest 本地画布/blit_latest_surface 显示栈直写（fb::Surface BGR/RGB 统一层，与 blit_latest 同构可替换后端）+picflow_probe 实机探针（全屏棋盘渐变+窗口红框帧→Surface 上屏，QEMU screendump 存证）；宿主 8 测试（往返/环形覆盖/坏帧丢弃/越界拒绝/千帧压测 seq 单调/裁剪正确性/Surface blit 像素级）；ktest 全绿/kcheck 0）
 - [ ] **任务 49**（AI-P）：输入注入通道。前置：任务 48。
 - [ ] **任务 50**（AI-V）：VWM 外来窗口接管（注册/snap/几何持久化，复用 embed:// 语义）。前置：任务 48。
@@ -108,7 +108,7 @@
 - [x] **任务 63**（AI-S）：救援 CLI 四命令适配 U 盘自救援。前置：任务 8。✅ 2026-09-18 AI-B（新 cli_rescue.rs 适配层：四命令容器/输出参数可选化+数据根自动发现（VARIABLE_DATA_ROOT → exe 便携标记 → 全盘符判据扫描 .portable / data.uxv / Variable\.portable）+输出缺省写回 U 盘 rescue 目录；CLI 与设置页共享同一服务层（salvage_files/chunks、UxvBackend open+seal、revocation_list_export_inner 零逻辑分叉）；**宿主 8 用例**：半损坏三形态（Footer 缺失/journal 撕裂截断/Footer 副本 B 损坏走 A 兜底）四命令各 ×3+自动发现/输出落盘，cargo test -p variable --lib 275 passed（267+8）；**实机验证**（TU200Pro 1T U 盘 E 盘 Variable 便携部署）：新 exe 自动发现形态四命令全 exit=0（自动发现容器/输出落 U 盘 rescue）+旧 exe B-33 显式参数兼容回归+doctor 便携根确认；决策树手册 docs/rescue-usb.md；凭证 docs/acceptance/2026-09-18-任务63-救援CLI-U盘自救援/）
 - [ ] **任务 64**（AI-S）：威胁清单终审（对策＋残余风险双栏）＋诚实声明页。前置：任务 61/62。
 - [x] **任务 65**（AI-B）：保险箱迁移（privacy.rs 语义平移至内核侧）＋密钥仅内存断言。前置：任务 33。✅ 2026-09-17 AI-B（三模块 ksha256（SHA-256/HMAC/PBKDF2 自实现，FIPS 180-4/RFC 4231/公开向量锁定）+kaesgcm（AES-256-GCM 仅加密方向，NIST SP 800-38D 附录 B+FIPS 197 C.3 已知答案锁定，固定 96-bit nonce，解密先恒时比 tag 通过后才输出明文）+kvault（blob 与桌面侧 privacy.rs 逐字节互通/PBKDF2 100k 轮/KEY_SLOT 仅内存+lock 与失败路径 volatile 逐字节零化+dump 级 key_is_gone 断言/焚毁三步+destroy_all/掉电注入 ×8 三态皆合法/损坏即拒绝）；实机 QEMU 全链 PROBE PASS（init→错口令拒→解锁→往返→盘面无明文子串→焚毁→恢复失败→lock 零化）；排障 5 坑（AES-256 密钥扩展漏 SubWord 分支/TC15 期望值经 cryptography 库交叉验证/GHASH 尾块残留/RDRAND 在 qemu64 #UD 须 CPUID 先查/destroy 512B 覆盖块溢出路径实机卡死降 256B 内联语义不变）；宿主 29 用例，ktest 2961 绿/kcheck 0 告警；凭证 docs/acceptance/2026-09-17-任务65-保险箱内核侧/。**2026-09-18 根因收口**：溢出路径卡死根因定位=write_overflow/read_overflow 64KiB 整槽 Vec 物化 vs kheap 256KiB slab（页分配器 fallback 缺位）→ alloc.rs:573 panic → panic-in-panic 静默 halt（HMP 内核栈回溯取证 alloc.rs:573 location 字符串坐实；最小复现=单次 512B put 100% 停摆）；修复=槽 64KiB→32KiB+write/read_overflow 分片直写零大堆物化+MAX_ITEM 262144→32716（kheap 边界推导内嵌常量注释）；实机复验 PROBE PASS（溢出 put/get/destroy 三段全过+全链 PASS），ktest 2961 绿/kcheck 0 告警；详见 docs/acceptance/2026-09-18-任务65溢出根因修复/）
-- [ ] **任务 66**（AI-P）：差分升级＋断电中途升级演练 ×10 零变砖。前置：任务 11。
+- [x] **任务 66**（AI-P）：差分升级＋断电中途升级演练 ×10 零变砖。前置：任务 11。✅2026-09-18 交付（commit 09-18 00:27，10/10 轮逐轮命中断电时机零变砖，凭证 docs/acceptance/2026-09-17-任务66-差分升级断电演练/，总验收官补勾）。
 - [ ] **任务 67**（AI-P）：快照滚动调度＋灾备 SOP（半损坏/全损坏）＋「什么救不回来」诚实清单。前置：任务 66。
 - [ ] **任务 68**（AI-P）：三处配置一致性校验器（md5 对齐）。前置：任务 66。
 - [x] **任务 69**（AI-S）：verify 单命令门禁（三线测试+audit+基准回归收敛）——**✅ 2026-09-16 AI-S 验收通过**（scripts/verify.sh 八段全绿实跑：tsc 0 错/vitest 2671 passed/ca-core 356/kcheck 0 错/ktest --lib 2727/variable --lib 267/audit PASS/bench 回归 PASS，基线 _attic/bench/baseline.json）
