@@ -57,3 +57,9 @@ bs-*.png
 qs-*.log
 qemu-bs.*
 bs-mon.sock
+
+# 测试盘镜像与调试残留（均可由脚本重建，不入库）
+nvme0.img
+kernel/nvme-test.img
+kernel/shared-exfat.img
+_attic/*.img

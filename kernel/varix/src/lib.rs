@@ -69,6 +69,8 @@ pub mod milestone;
 pub mod kvsrv;
 /// 三方配额服务（任务56：CPU 分配矩阵+内存水位回收+GPU 通道抽象）。
 pub mod quota;
+/// 引擎盘 ramcache（任务52：LRU 只读块缓存+关机清空断言+整盘 hash 零残留）。
+pub mod ramcache;
 /// 共享内存块原语+授权模型（任务32：create/map/revoke，句柄不可传递默认）。
 pub mod shmsrv;
 /// VFS 白名单裁决层+越权审计（任务30：默认拒绝+journal 断电审计）。

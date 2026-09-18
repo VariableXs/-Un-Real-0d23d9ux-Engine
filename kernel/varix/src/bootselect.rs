@@ -216,6 +216,8 @@ pub fn run_countdown_with(
                         draw_frame(surf, remaining, sel);
                     }
                     crate::ps2::Key::Enter => return sel,
+                    // 任务55 扩表：其余键与菜单无关，如实忽略。
+                    _ => {}
                 }
             }
             wait_ticks(slice_ticks);

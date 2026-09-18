@@ -23,21 +23,78 @@ export const SHIM_INPUT_EVENT_SIZE = 16;
 
 export const KIND_KEY = 0;
 export const KIND_MOUSE = 1;
-/** 键名取值（契约固定声明序）。 */
+/** 键名取值（契约固定声明序；任务 55 扩表 = 内核 inputsvc::target::key_byte 同序同源，0..57）。 */
 export const KEY_UP = 0;
 export const KEY_DOWN = 1;
 export const KEY_ENTER = 2;
+export const KEY_ESC = 3;
+export const KEY_SPACE = 4;
+export const KEY_BACKSPACE = 5;
+export const KEY_TAB = 6;
+export const KEY_LEFT = 7;
+export const KEY_RIGHT = 8;
+export const KEY_LSHIFT = 9;
+export const KEY_RSHIFT = 10;
+/** 字母 A..Z = 11..36（与内核 ps2::Key 枚举序一致）。 */
+export const KEY_A = 11;
+export const KEY_Z = 36;
+/** 数字 1..0 = 37..46。 */
+export const KEY_D1 = 37;
+export const KEY_D0 = 46;
 /** 鼠标按钮位（契约：bit0 左 bit1 右 bit2 中）。 */
 export const BTN_LEFT = 1;
 export const BTN_RIGHT = 2;
 export const BTN_MIDDLE = 4;
 
-/** 键名 → 前端 KeyboardEvent.code 对齐值（openTools/keymap 既有命名）。 */
+/** 键名 → 前端 KeyboardEvent 对齐值（同源基准：kernel/varix/src/inputsvc.rs key_byte，0..57 全量）。
+ *  任务 55 IME 专项：字母/数字/符号键全量可解码 —— 中文 IME 组合（如拼音串 ni3）依赖
+ *  字母与数字上屏键可达；未知取值仍拒绝并计数（不猜测、不静默改语义）。 */
 const KEY_NAMES: Record<number, { code: string; key: string }> = {
   [KEY_UP]: { code: "ArrowUp", key: "ArrowUp" },
   [KEY_DOWN]: { code: "ArrowDown", key: "ArrowDown" },
   [KEY_ENTER]: { code: "Enter", key: "Enter" },
+  [KEY_ESC]: { code: "Escape", key: "Escape" },
+  [KEY_SPACE]: { code: "Space", key: " " },
+  [KEY_BACKSPACE]: { code: "Backspace", key: "Backspace" },
+  [KEY_TAB]: { code: "Tab", key: "Tab" },
+  [KEY_LEFT]: { code: "ArrowLeft", key: "ArrowLeft" },
+  [KEY_RIGHT]: { code: "ArrowRight", key: "ArrowRight" },
+  [KEY_LSHIFT]: { code: "ShiftLeft", key: "Shift" },
+  [KEY_RSHIFT]: { code: "ShiftRight", key: "Shift" },
+  ...letterEntries(),
+  ...digitEntries(),
+  [47]: { code: "Minus", key: "-" },
+  [48]: { code: "Equal", key: "=" },
+  [49]: { code: "Comma", key: "," },
+  [50]: { code: "Period", key: "." },
+  [51]: { code: "Slash", key: "/" },
+  [52]: { code: "Semicolon", key: ";" },
+  [53]: { code: "Quote", key: "'" },
+  [54]: { code: "BracketLeft", key: "[" },
+  [55]: { code: "BracketRight", key: "]" },
+  [56]: { code: "Backslash", key: "\\" },
+  [57]: { code: "Backquote", key: "`" },
 };
+
+/** A..Z → 11..36（生成式注册，杜绝手抄 26 行错位）。 */
+function letterEntries(): Record<number, { code: string; key: string }> {
+  const out: Record<number, { code: string; key: string }> = {};
+  for (let i = 0; i < 26; i += 1) {
+    const ch = String.fromCharCode(65 + i); // "A".."Z"
+    out[KEY_A + i] = { code: `Key${ch}`, key: ch.toLowerCase() };
+  }
+  return out;
+}
+
+/** 主排数字 1..0 → 37..46（KeyboardEvent.code：Digit1..Digit0；key 为面值字符）。 */
+function digitEntries(): Record<number, { code: string; key: string }> {
+  const faces = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+  const out: Record<number, { code: string; key: string }> = {};
+  for (let i = 0; i < 10; i += 1) {
+    out[KEY_D1 + i] = { code: `Digit${faces[i]}`, key: faces[i]! };
+  }
+  return out;
+}
 
 export type DecodeFailReason = "len" | "pad" | "kind" | "key" | "seq";
 

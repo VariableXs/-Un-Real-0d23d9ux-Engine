@@ -3,6 +3,44 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — VARIX 双域系统：批次收官（2026-09-18：27/28 实机走查全绿 + 58 拔出全链 + 批次任务 29-87 清账）
+
+**内核（kernel/varix）**
+- **嵌入层走查 20/20 PASS**（任务 27/28，`_attic/p27-28-shell-demo.py`）：ushell ring3
+  用户态桌面壳承载 BootScreen 回放→桌面→开始菜单→文件管理器（SHARED exFAT 真实数据源
+  `source=shared-exfat` 实测）→设置页（KV 读写 rc=0）→关于，全程 HMP 键盘驱动+逐屏截图。
+  修复三根因：syscall ABI r8-r11 保存恢复（ushell 用户态 #PF 致命）、`SHIM_VFS_SOURCE`
+  漏接线（页脚数据源恒 demo-tree）、`RamBlk` 由 PMM order-11（运行时分配失败+双倍超额）
+  改 static .bss 4MiB（分配不可能失败，符合大缓冲戒律）。
+- **拔出全链**（任务 58，`_attic/p58-pull-chain-drill.py`）：SHARED 盘运行中移除 → 内核
+  「IO 失效卸载」（`mount::uninstall_io_failed`，与 `mount::healthcheck` PCI vendor 探测
+  双通道）→ 文件管理器数据源**如实降级** demo-tree（零冒充）→ RAM KV 独立照常 → 断电
+  重插恢复挂载+KV 干净重建（**10/10 PASS**）。连带修复 ushell 设置页光标重进不归零
+  （与开始菜单/文件页「页面重进=顶部」约定对齐）。q35 热拔插需 guest ACPI 配合的语义
+  差异如实登记于报告 json。任务 60 机型代理矩阵首轮 3/3 PASS（q35 基线/双核/i440fx
+  诚实降级）。
+- **性能口径**（任务 71，`scripts/perf-gate-usb.py`）：boot_ms=896 / first_frame_ms=896
+  （ushell 首画帧内核时钟打点 `SHELL: first-frame ms=`）/ interaction P95=51.7ms，
+  三指标全 PASS + 基线建档（×1.2 非劣回归带）。
+- 任务 52 ramcache（LRU+水位回收对接+关机清零断言，实机探针 verdict=ok）、61 winecaps
+  （能力收敛+申请式授权+审计，探针 verdict=ok）、62 PE 拒绝表（50 合法变体零误拦/20 恶意
+  全拒具名理由）随批交付；ktest 3026 绿 / kcheck 0 告警。
+
+**前端（src/）**
+- 任务 50/51/53/54 VWM 引擎流窗口+冷启动阶段化叙事+画质三档+异常三场景状态机
+  （engineModel/engineSessions/vwm，engine-model.test 全绿）；任务 55 IME 键表全量
+  （kernelInput 0..57 与内核同序同源）。
+- 任务 57 设置页四组 UI（DualBootTab 引导行为/软件通道/白名单/资源档位 + EngineTab 引擎组）。
+- 任务 76/78/82 新增逻辑核：`skeleton.ts`（E1 骨架屏统一规格，300ms 快路径不闪）、
+  `dataMigration.ts`（I3 搬家四步状态机断点续走+I4 退役两档三轮覆写双确认）、
+  `journeys.ts`（M1-M6 六条旅程跑查器，能力注入缺失=如实 skip）。
+- 门禁：tsc 0 错；vitest 2787 passed / 4 skipped（200 文件，含新增 23 例）。
+
+**文档与工具**
+- 任务 64 威胁清单终审（15 条对策+残余风险双栏+诚实声明页同源）、67 灾备 SOP、
+  68 配置一致性校验器（selftest 4 场景）、60 QEMU 代理机型矩阵首轮三配置
+  （i440fx 无 ECAM 诚实降级路径验证）；任务表/推进总表三处状态同步。
+
 ## [Unreleased] — 第四轮实机 QA：交互缺陷清零（2026-09-15：R4-0001~R4-2000）
 
 - **Ctrl+W 改绑「关闭当前虚拟窗」**（`src/system/desktop/DesktopShell.tsx`）：捕获阶段拦截，

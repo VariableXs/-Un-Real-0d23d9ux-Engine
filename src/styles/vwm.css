@@ -307,6 +307,30 @@
   font-weight: 600;
 }
 
+/* 阶段6（任务51）：引擎冷启动阶段化叙事 + 能力对照表（复用 embed 占位卡视觉语言） */
+.engine-boot-stages {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  text-align: left;
+  min-width: min(320px, 80%);
+}
+.engine-stage { opacity: 0.45; }
+.engine-stage.done { opacity: 1; color: rgb(134 239 172 / 0.95); }
+.engine-eta { opacity: 0.72; font-size: 12px; }
+.engine-cap-table {
+  max-width: 34em;
+  text-align: left;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.engine-cap-table summary { cursor: pointer; user-select: none; }
+.engine-cap-table ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+
 /* ================= AI-01 窗口手感组（Z-36…Z-42、M-01…M-09） ================= */
 
 /* M-07 对齐参考线（纯视觉，不拦截指针） */

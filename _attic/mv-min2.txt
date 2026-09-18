@@ -1,0 +1,4 @@
+count=2
+elem type=String val=[limine.conf]
+elem type=String val=[kernel\varix]
+via-FE count=2 elem0=String

@@ -1,0 +1,16 @@
+existing.Count=2
+GF entry Base=C:\Users\varia\AppData\Local\Temp\mv-test\ RelCount=2
+  rel=[limine.conf] type=String[]
+powershell.exe : Join-Path : 无法将“System.String[]”转换为参数“ChildPath”所需的类型“System.String”。不支持所指定的方法。
+所在位置 行:1 字符: 1
++ & powershell -NoProfile -ExecutionPolicy Bypass -File "D:\2\14\-Un-Re ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Join-Path : 无法将...ing”。不支持所指定的方法。:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+所在位置 D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\mv-min.ps1:9 字符: 26
++     $p = Join-Path $Base $rel
++                          ~~~~
+    + CategoryInfo          : InvalidArgument: (:) [Join-Path]，ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CannotConvertArgument,Microsoft.PowerShell.Commands.JoinPathCommand
+ 

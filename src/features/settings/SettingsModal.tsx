@@ -8,7 +8,7 @@ import {
 // Windows 11 设置外壳（.w11-*）：导航图标（与上面一行不重名，避免重复导入）
 import {
   Accessibility, AppWindow, ArrowLeft, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
-  GitBranch, Globe, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MousePointer2, Network,
+  GitBranch, Globe, HardDriveDownload, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MonitorCog, MousePointer2, Network,
   Palette, Play, Plug, Power, Puzzle, Rocket, Search, Shield, SlidersHorizontal, Sparkles, User, Volume2,
   Wifi, Zap, type LucideIcon,
 } from "lucide-react";
@@ -69,6 +69,8 @@ import { BootTheaterTab } from "./BootTheaterTab";
 import { BootchainHealthTab } from "./BootchainHealthTab";
 // UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
 import { PowerTheaterTab } from "./PowerTheaterTab";
+import { DualBootTab } from "./DualBootTab";
+import { EngineTab } from "./EngineTab";
 
 const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
 const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
@@ -121,6 +123,8 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   bootTheater: Rocket,
   bootchainHealth: HeartPulse,
   powerTheater: Zap,
+  dualboot: HardDriveDownload,
+  engine: MonitorCog,
   "sys-display": Monitor,
   "sys-sound": Volume2,
   "sys-net": Network,
@@ -250,6 +254,9 @@ export function SettingsModal(props: {
     { id: "bootchainHealth", label: "启动健康" },
     // UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
     { id: "powerTheater", label: "电源剧场" },
+    // 阶段6/7：双域系统（任务 53/57/61UI/64UI），勿删
+    { id: "dualboot", label: "双域系统" },
+    { id: "engine", label: "引擎通道" },
   ];
   const sysTabs: { id: string; label: string }[] = [
     { id: "sys-display", label: t("sysDispTitle") },
@@ -978,6 +985,9 @@ export function SettingsModal(props: {
           {tab === "bootchainHealth" && <BootchainHealthTab settings={props.settings} onPatch={props.onChange} />}
           {/* UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删 */}
           {tab === "powerTheater" && <PowerTheaterTab settings={props.settings} onPatch={props.onChange} />}
+          {/* 阶段6/7：双域系统四组 UI（任务 57）+ 引擎组（任务 53/61UI/64UI），勿删 */}
+          {tab === "dualboot" && <DualBootTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "engine" && <EngineTab settings={props.settings} onPatch={props.onChange} />}
           {tab === "files" && <FilesTab />}
           {tab === "eco" && <EcoTab />}
           {tab === "net" && <NetworkTab />}

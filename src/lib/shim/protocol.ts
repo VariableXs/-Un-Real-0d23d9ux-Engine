@@ -42,7 +42,8 @@ export type ShimEventChannel =
   | "usb://removed"
   | "taskbar://state"
   | "watch://escape"
-  | "shim://input";
+  | "shim://input"
+  | "engine://state";
 
 /** 能力位（版本协商返回，见 SHIM_HELLO）。 */
 export type ShimCapability =

@@ -1,0 +1,2 @@
+    Checking varix v0.1.0 (D:\2\14\-Un-Real-0d23d9ux-Engine-main\kernel\varix)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.79s

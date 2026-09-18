@@ -23,6 +23,13 @@ pub mod prefix;
 /// 任务44（AI-B）· 适配数据库：每软件版本/所需 API/结论/缺失清单。
 pub mod compatdb;
 
+/// 任务27/28/55（AI-V）· 内核嵌入层服务：SYS_FRAME/SYS_INPUT/SYS_SHIM
+/// 三支点 + SHARED exFAT 全局挂载 + boot 事件回放（详见模块头）。
+pub mod usrshell;
+pub mod peblock;
+/// 任务61（AI-S）· Wine 进程默认能力收敛（无网络/无宿主盘）＋申请式授权。
+pub mod winecaps;
+
 /// 宿主测试专用：job/prefix/compatdb 三表是进程级全局态，跨模块并行
 /// 测试会互踩——统一门闩串行化（仅 cfg(test) 参与，内核形态零开销）。
 #[cfg(test)]

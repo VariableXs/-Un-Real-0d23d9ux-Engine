@@ -1,0 +1,12 @@
+powershell.exe : D:\2\14\-Un-Real-0d23d9ux-Engine-main\portable\AI-P\Manage-Versions.ps1 : 无法将“System.String[]”转换为参数“Ch
+ildPat
+所在位置 行:1 字符: 1
++ & powershell -NoProfile -ExecutionPolicy Bypass -File "D:\2\14\-Un-Re ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\2\14\-Un-Rea...”转换为参数“ChildPat:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+h”所需的类型“System.String”。不支持所指定的方法。
+    + CategoryInfo          : InvalidArgument: (:) [Manage-Versions.ps1]，ParameterBindingException
+    + FullyQualifiedErrorId : CannotConvertArgument,Manage-Versions.ps1
+ 

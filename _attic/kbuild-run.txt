@@ -1,0 +1,2 @@
+   Compiling varix v0.1.0 (D:\2\14\-Un-Real-0d23d9ux-Engine-main\kernel\varix)
+    Finished `release` profile [optimized] target(s) in 31.85s

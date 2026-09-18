@@ -3122,6 +3122,24 @@ const zh: Dict = {
   avExportDone: "已导出",
   avExportFail: "导出失败",
   avCount: "{n} 条记录",
+  // ---- 任务 29：降级提示全量（zh）——垫片/内核不可用时用户可见文案，禁裸错误码 ----
+  degradeTitle: "功能降级",
+  degradeBackendDown: "系统服务未就绪，正在以本地模式运行；数据保存在本机，服务恢复后自动同步。",
+  degradeUnsupported: "此功能在当前环境不可用（{cmd}）。",
+  degradeMissing: "此功能暂未接入系统服务（{cmd}），已回退到本地实现。",
+  degradeTimeout: "系统服务响应超时，已自动重试通道；若反复出现请重启应用。",
+  degradeVersionMismatch: "前后端版本不匹配（前端 v{front} / 后端 v{back}），部分功能已降级。",
+  degradePermDenied: "出于安全策略，此操作被拒绝（默认拒绝面）。可在共享白名单中调整。",
+  degradeInternal: "系统服务内部错误，已记录日志；此窗口的其它功能不受影响。",
+  degradeInvalidArgs: "操作参数无效，已取消。",
+  degradeCapMissing: "内核尚未提供「{cap}」能力，已回退到本地等价实现。",
+  degradeEnvFallback: "当前运行在 Windows 侧，内核专属功能不可见——这是预期行为。",
+  perfBaselineTitle: "性能基线",
+  perfFirstFrame: "首帧耗时",
+  perfInteractionP95: "交互延迟 P95",
+  perfSamples: "样本 {n} 条",
+  perfNoSamples: "暂无采样数据",
+  perfMs: "{n} ms",
 };
 
 /**
@@ -6365,6 +6383,24 @@ const en: Dict = {
   avExportDone: "Exported",
   avExportFail: "Export failed",
   avCount: "{n} records",
+  // ---- Task 29: degradation notices (en) — user-visible copy when shim/kernel unavailable ----
+  degradeTitle: "Degraded",
+  degradeBackendDown: "System services are not ready; running in local mode. Data stays on this device and syncs when services recover.",
+  degradeUnsupported: "This feature is unavailable in the current environment ({cmd}).",
+  degradeMissing: "This feature is not wired to system services yet ({cmd}); a local fallback is used.",
+  degradeTimeout: "A system service timed out; the retry path took over. If this repeats, restart the app.",
+  degradeVersionMismatch: "Frontend/backend version mismatch (frontend v{front} / backend v{back}); some features are degraded.",
+  degradePermDenied: "Blocked by security policy (default-deny). Adjust in the shared whitelist.",
+  degradeInternal: "An internal service error occurred and was logged; other features in this window are unaffected.",
+  degradeInvalidArgs: "Invalid operation arguments; cancelled.",
+  degradeCapMissing: "The kernel does not expose the \"{cap}\" capability yet; a local equivalent is used.",
+  degradeEnvFallback: "You are on the Windows side; kernel-only features are hidden — this is expected.",
+  perfBaselineTitle: "Performance baseline",
+  perfFirstFrame: "First frame",
+  perfInteractionP95: "Interaction P95",
+  perfSamples: "{n} samples",
+  perfNoSamples: "No samples yet",
+  perfMs: "{n} ms",
 };
 
 export const dictionaries: Record<Lang, Dict> = { zh, "zh-TW": zhTW, en };

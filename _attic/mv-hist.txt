@@ -1,0 +1,37 @@
+    + MANIFEST.json 版本 v1.0（2 个文件入清单）
+    + MANIFEST.json 版本 v1.1（2 个文件入清单）
+--- history.json ---
+[
+    {
+        "version":  "1.0",
+        "label":  "first-burn",
+        "taken":  "2026-09-17T20:07:53.7111243+08:00",
+        "files":  [
+                      {
+                          "file":  "limine.conf",
+                          "sha256":  "D0F631CA1DDBA8DB3BCFCB9E057CDC98D0379F1BEE00E75A545147A27DADD982"
+                      },
+                      {
+                          "file":  "kernel\\varix",
+                          "sha256":  "6AB9F1EB8F7D3388F4F9D586F66E99FD54080DF2C446F0E58668B09C08A16DD0"
+                      }
+                  ]
+    },
+    {
+        "version":  "1.1",
+        "label":  "",
+        "taken":  "2026-09-17T20:07:53.8352385+08:00",
+        "files":  [
+                      {
+                          "file":  "limine.conf",
+                          "sha256":  "D0F631CA1DDBA8DB3BCFCB9E057CDC98D0379F1BEE00E75A545147A27DADD982"
+                      },
+                      {
+                          "file":  "kernel\\varix",
+                          "sha256":  "09D1C384384680719C3C16A67C9A9F9AA00601F3B29F00172674E340363C1ADA"
+                      }
+                  ]
+    }
+]
+hist count=1
+last type=Object[] ver=1.0 1.1

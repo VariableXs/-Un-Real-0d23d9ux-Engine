@@ -1,0 +1,17 @@
+[
+    {
+        "channel":  "VARIX_SYS",
+        "file":  "kernel/varix",
+        "content":  "VARIX_SYS v1.1 round110 patched"
+    },
+    {
+        "channel":  "WIN_ENGINE",
+        "file":  "engine.bin",
+        "content":  "WIN_ENGINE v1.1 round110"
+    },
+    {
+        "channel":  "SHARED",
+        "file":  "apps.json",
+        "content":  "{\r\n    \"apps\":  [\r\n                 {\r\n                     \"id\":  \"a1\",\r\n                     \"name\":  \"App1\",\r\n                     \"updated\":  \"\",\r\n                     \"channel\":  \"engine\",\r\n                     \"icon\":  \"\",\r\n                     \"tier\":  \"ok\"\r\n                 },\r\n                 {\r\n                     \"id\":  \"a2\",\r\n                     \"name\":  \"App2\",\r\n                     \"updated\":  \"\",\r\n                     \"channel\":  \"wine\",\r\n                     \"icon\":  \"\",\r\n                     \"tier\":  \"partial\"\r\n                 }\r\n             ],\r\n    \"version\":  1,\r\n    \"updated\":  \"\"\r\n}"
+    }
+]

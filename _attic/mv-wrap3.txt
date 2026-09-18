@@ -1,0 +1,7 @@
+STEP-A
+STEP-C
+POS: 所在位置 D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\mv-wrap2.ps1:2 字符: 3
++   & "D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\mv-instrument.ps1"  ...
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SCRIPT: D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\mv-wrap2.ps1 LINE 2
+MSG: 无法将“System.String[]”转换为参数“ChildPath”所需的类型“System.String”。不支持所指定的方法。

@@ -373,7 +373,9 @@ fn boot() -> ! {
         varix::kinfo!("aurora: desktop demo painted");
     }
 
-    varix::kinfo!("boot complete");
+    // 任务71 性能门禁口径：boot_ms 由内核时钟源实测（boot-replay/性能基线
+    // 消费该行；"boot complete" 前缀保持兼容既有里程碑 grep）。
+    varix::kinfo!("boot completed {} ms", varix::proc::usrshell::boot_ms());
 
     // --- 任务14 · ring3 演示：装 MSR/TSS → 装载 hello.elf → iretq 进用户态。
     // hello 两次 write（int 0x80 与 syscall 双入口）后 exit(0)，内核回收

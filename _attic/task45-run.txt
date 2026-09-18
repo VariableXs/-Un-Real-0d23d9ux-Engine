@@ -1,0 +1,96 @@
+   Compiling varix v0.1.0 (D:\2\14\-Un-Real-0d23d9ux-Engine-main\kernel\varix)
+warning: unused import: `super::*`
+ --> varix\src\security\stage4_matrix.rs:9:9
+  |
+9 |     use super::*;
+  |         ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Decision`
+  --> varix\src\security\stage4_matrix.rs:14:41
+   |
+14 |     use crate::vfsguard::{AuditJournal, Decision, DenyReason, Op, RuleSet};
+   |                                         ^^^^^^^^
+
+warning: variable does not need to be mutable
+  --> varix\src\security\stage4_matrix.rs:80:47
+   |
+80 |         let (rules, mut audit, mut clip, acl, mut shm, mut bus) = fixture();
+   |                                               ----^^^
+   |                                               |
+   |                                               help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> varix\src\security\stage4_matrix.rs:80:56
+   |
+80 |         let (rules, mut audit, mut clip, acl, mut shm, mut bus) = fixture();
+   |                                                        ----^^^
+   |                                                        |
+   |                                                        help: remove this `mut`
+
+warning: value assigned to `off` is never read
+   --> varix\src\proc\winapi.rs:717:23
+    |
+717 |         let mut off = name_rva as usize - idata + idata; // 文件偏移 = 0x600 + (rva-0x2000)
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this value is reassigned later and never used
+718 |         let file_of = |rva: u32| -> usize { idata + (rva - 0x2000) as usize };
+719 |         off = file_of(name_rva);
+    |         ----------------------- `off` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `e`
+  --> varix\src\proc\prefix.rs:83:18
+   |
+83 |         Some((i, e)) => i,
+   |                  ^ help: if this is intentional, prefix it with an underscore: `_e`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: static `JOBKILL_DONE` is never used
+  --> varix\src\proc\ring3.rs:45:8
+   |
+45 | static JOBKILL_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+   |        ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: static `JOBKILL_ACTIVE` is never used
+  --> varix\src\proc\ring3.rs:46:8
+   |
+46 | static JOBKILL_ACTIVE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+   |        ^^^^^^^^^^^^^^
+
+warning: static `JOBKILL_CALLS_BEFORE` is never used
+  --> varix\src\proc\ring3.rs:47:8
+   |
+47 | static JOBKILL_CALLS_BEFORE: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: static `HELLO_IMP_PE` is never used
+  --> varix\src\proc\ring3.rs:92:8
+   |
+92 | static HELLO_IMP_PE: &[u8] = include_bytes!("hello-imp.pe");
+   |        ^^^^^^^^^^^^
+
+warning: field `epoch` is never read
+  --> varix\src\proc\job.rs:55:5
+   |
+53 | struct JobEntry {
+   |        -------- field in this struct
+54 |     used: bool,
+55 |     epoch: u64,
+   |     ^^^^^
+
+warning: `varix` (lib test) generated 11 warnings (run `cargo fix --lib -p varix --tests` to apply 5 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.80s
+     Running unittests src\lib.rs (target\x86_64-pc-windows-msvc\debug\deps\varix-9a37cb61668ee7e3.exe)
+
+running 1 test
+test proc::tests::task45_ten_software_isolation_stress ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2990 filtered out; finished in 0.00s
+

@@ -21,7 +21,7 @@ import type { TaskbarPos } from "../../lib/settings";
  * （停靠位置四向由 settings.taskbarPos 决定）。
  */
 
-/** VWM 托管对象：四款官方软件 + 系统窗口（explorer / recycle）+ 第三方应用（tp:<id>）+ 实用工具（F-2）。 */
+/** VWM 托管对象：四款官方软件 + 系统窗口（explorer / recycle）+ 第三方应用（tp:<id>）+ 实用工具（F-2）+ 引擎流窗口（阶段6，任务50）。 */
 export type VwmToolApp =
   | "calc"
   | "notes"
@@ -39,7 +39,7 @@ export type VwmToolApp =
   | "sysinfo"
   | "printqueue"
   | "syshub";
-export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp;
+export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp | `engine:${string}`;
 
 /** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。
  *  AI-08 基础工具组并入：时钟中心/Emoji 面板/放大镜取色器/换算中心/系统信息/打印队列。 */
@@ -93,6 +93,16 @@ export function isTpApp(app: VwmApp): app is `tp:${string}` {
 /** tp:<id> → 登记名。 */
 export function tpIdOf(app: VwmApp): string {
   return isTpApp(app) ? (app as `tp:${string}`).slice(3) : "";
+}
+
+/** 是否引擎流窗口（阶段6 任务50：engine:<appKey>，复用 vwm.ts 状态机不 fork）。 */
+export function isEngineApp(app: VwmApp): app is `engine:${string}` {
+  return typeof app === "string" && app.startsWith("engine:");
+}
+
+/** engine:<appKey> → 软件标识。 */
+export function engineSessionOf(app: VwmApp): string {
+  return isEngineApp(app) ? (app as `engine:${string}`).slice(7) : "";
 }
 
 export interface VwmWin {
@@ -319,6 +329,16 @@ export function setVwmOpenHook(fn: ((id: string, app: VwmApp, title: string) => 
  */
 export function openVwmTpNew(app: `tp:${string}`, focus = true): string {
   return openVwmInstance(app, null, focus);
+}
+
+/**
+ * 阶段6（任务50）：引擎流窗口强制新开实例并返回窗口实例 id。
+ * 与 tp: 同语义 —— 流会话与窗口一一对应（每次拉起都是新画面流），
+ * 复用既有实例会把新流错投到旧窗体。贴靠/最小化/Z 序/几何持久化
+ * 全部走 openVwmInstance 同一状态机，零 fork。
+ */
+export function openVwmEngine(appKey: string, opts?: { focus?: boolean }): string {
+  return openVwmInstance(`engine:${appKey}` as `engine:${string}`, null, opts?.focus ?? true);
 }
 
 function nextFocus(wins: VwmWin[], excludeId: string | null): string | null {
@@ -675,12 +695,13 @@ function unrollPatch(w: VwmWin): Partial<VwmWin> {
 }
 
 /** M-02 卷帘：收起仅剩标题栏高度；再展开还原原高。
- *  M2（R9）：第三方窗口已无 Variable 标题栏（原生外观），卷帘对其关闭。 */
+ *  M2（R9）：第三方窗口已无 Variable 标题栏（原生外观），卷帘对其关闭；
+ *  阶段6：引擎流窗口同理（流画面裁剪语义不成立，见 ENGINE_VWM_SUPPORT）。 */
 export function rollVwmWin(id: string, rolled: boolean): void {
   const s = vwmStore.getState();
   const w = s.wins.find((x) => x.id === id);
   if (!w || w.state !== "normal" || w.rolledUp === rolled) return;
-  if (rolled && isTpApp(w.app)) return;
+  if (rolled && (isTpApp(w.app) || isEngineApp(w.app))) return;
   patch((st) => ({
     wins: st.wins.map((x) =>
       x.id === id
@@ -783,6 +804,11 @@ export function vwmWindowTitle(app: VwmApp): string {
     return (
       getThirdApps().find((a) => a.id === id)?.name ?? `应用 ${id}`
     );
+  }
+  // 阶段6：引擎流窗口标题（appKey 同源 apps.json 登记名，缺席走兜底）
+  if (isEngineApp(app)) {
+    const key = engineSessionOf(app);
+    return getThirdApps().find((a) => a.id === key)?.name ?? `引擎应用 ${key}`;
   }
   // F-2 实用工具窗口标题
   if (isVwmTool(app)) {

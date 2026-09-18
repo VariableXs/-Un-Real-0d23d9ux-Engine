@@ -34,6 +34,17 @@ export type WinControls = "mac" | "windows";
 /** 任务栏停靠位置（批次E，规格 4.4）：底（默认）/ 左 / 右 / 顶。 */
 export type TaskbarPos = "bottom" | "left" | "right" | "top";
 
+// ---- 阶段6/7 · 双域系统组（任务 53/57/61）：引导行为/软件通道/资源档位/引擎 ----
+
+/** 引导行为：引导页倒计时结束后默认进入的系统（施工总案 7.2「默认项/倒计时/显隐」）。 */
+export type BootDefaultOs = "varix" | "windows";
+/** 资源档位（任务 53：办公/均衡/游戏三档 → ramcache 尺寸与配额联动）。 */
+export type ResProfile = "office" | "balanced" | "gaming";
+/** 软件通道规则（施工总案 7.2：wine | engine | native-only 的通道优先序）。 */
+export type ChannelPolicy = "auto" | "wine-first" | "engine-first" | "native-only";
+/** 引擎画质档（任务 53 三档画质，参数见 system/engine/engineModel.ts）。 */
+export type EngineQualityTier = "office" | "balanced" | "gaming";
+
 export interface CustomBg {
   type: BgType;
   color: string;
@@ -248,6 +259,27 @@ export interface Settings {
   // ---- UNREAL-X AI-02：电源状态剧场（族0011~0020 · X00251~X00500），勿删 ----
   /** 电源剧场选择表：键 = 功能项（"ceremony"/"wake"/"quiet"/"hiber"/"events"/"gauge"/"warmup"/"eggs"），值 = 档位或开关（非法值解析时丢弃回默认）。 */
   powerTheater: Record<string, string>;
+  // ---- 阶段6/7 · 双域系统组（任务 53/57）：默认全部保守值，行为等价 ----
+  /** 引导行为：倒计时结束默认进入的系统。 */
+  bootDefaultOs: BootDefaultOs;
+  /** 引导行为：引导页倒计时秒数（3/5/10/30）。 */
+  bootTimeoutSec: number;
+  /** 引导行为：引导菜单是否显示（false = 倒计时直进，Esc 仍可呼出）。 */
+  bootMenuVisible: boolean;
+  /** 软件通道规则（全局优先序；逐软件覆盖见 SHARED apps.json channel 字段）。 */
+  channelPolicy: ChannelPolicy;
+  /** 资源档位（办公/均衡/游戏 → ramcache 尺寸、引擎配额、画质档联动）。 */
+  resProfile: ResProfile;
+  /** 隐形 Windows 引擎总开关（施工总案：默认关，可整段禁用）。 */
+  engineEnabled: boolean;
+  /** 引擎自动休眠阈值（空闲分钟数；0 = 从不自动休眠）。 */
+  engineHibernateIdleMin: number;
+  /** 引擎画质档（三档码率参数化，任务 53）。 */
+  engineQuality: EngineQualityTier;
+  /** 引擎资源配额：CPU 核数（0 = 自动 = 物理核一半）。 */
+  engineQuotaCores: number;
+  /** 引擎画质自定义覆盖（开放性验收：档位用户可自定义参数；空 = 纯预设）。 */
+  engineQualityCustom: Partial<{ fps: number; bitrateKbps: number; codecPreset: string; captureIntervalMs: number }> | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -379,6 +411,17 @@ export const DEFAULT_SETTINGS: Settings = {
   bootchain: {},
   // ---- UNREAL-X AI-02：电源状态剧场，默认全关 = 与现状分毫不差 ----
   powerTheater: {},
+  // ---- 阶段6/7 · 双域系统组：默认 = 引导页 5s 进 VARIX（施工总案基线），引擎默认关 ----
+  bootDefaultOs: "varix",
+  bootTimeoutSec: 5,
+  bootMenuVisible: true,
+  channelPolicy: "auto",
+  resProfile: "balanced",
+  engineEnabled: false,
+  engineHibernateIdleMin: 15,
+  engineQuality: "balanced",
+  engineQuotaCores: 0,
+  engineQualityCustom: null,
 };
 
 /**
@@ -598,6 +641,57 @@ function coerce(raw: Record<string, string>): Settings {
           s.powerTheater = sel;
         }
       } catch { /* 保留默认 */ }
+    }
+    // ---- 阶段6/7 · 双域系统组（写坏值回落默认；引导行为三项 + 通道 + 档位 + 引擎）----
+    if (raw["bootDefaultOs"]) {
+      const v = raw["bootDefaultOs"];
+      s.bootDefaultOs = v === "windows" ? "windows" : "varix";
+    }
+    if (raw["bootTimeoutSec"] !== undefined) {
+      const n = Number(raw["bootTimeoutSec"]);
+      s.bootTimeoutSec = n === 3 || n === 10 || n === 30 ? n : 5;
+    }
+    if (raw["bootMenuVisible"] !== undefined) s.bootMenuVisible = raw["bootMenuVisible"] !== "0";
+    if (raw["channelPolicy"]) {
+      const v = raw["channelPolicy"];
+      s.channelPolicy =
+        v === "wine-first" || v === "engine-first" || v === "native-only" ? v : "auto";
+    }
+    if (raw["resProfile"]) {
+      const v = raw["resProfile"];
+      s.resProfile = v === "office" || v === "gaming" ? v : "balanced";
+    }
+    if (raw["engineEnabled"] !== undefined) s.engineEnabled = raw["engineEnabled"] === "1";
+    if (raw["engineHibernateIdleMin"] !== undefined) {
+      const n = Number(raw["engineHibernateIdleMin"]);
+      s.engineHibernateIdleMin = Number.isFinite(n) ? clamp(Math.round(n), 0, 240) : 15;
+    }
+    if (raw["engineQuality"]) {
+      const v = raw["engineQuality"];
+      s.engineQuality = v === "office" || v === "gaming" ? v : "balanced";
+    }
+    if (raw["engineQuotaCores"] !== undefined) {
+      const n = Number(raw["engineQuotaCores"]);
+      s.engineQuotaCores = Number.isFinite(n) ? clamp(Math.round(n), 0, 32) : 0;
+    }
+    if (raw["engineQualityCustom"] !== undefined) {
+      try {
+        const parsed = JSON.parse(raw["engineQualityCustom"]) as Record<string, unknown>;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          const cu: Record<string, number | string> = {};
+          if (parsed["fps"] !== undefined) cu["fps"] = Number(parsed["fps"]);
+          if (parsed["bitrateKbps"] !== undefined) cu["bitrateKbps"] = Number(parsed["bitrateKbps"]);
+          if (parsed["codecPreset"] === "speed" || parsed["codecPreset"] === "balanced" || parsed["codecPreset"] === "quality") {
+            cu["codecPreset"] = parsed["codecPreset"];
+          }
+          if (parsed["captureIntervalMs"] !== undefined) cu["captureIntervalMs"] = Number(parsed["captureIntervalMs"]);
+          s.engineQualityCustom = Object.keys(cu).length > 0 ? cu : null;
+        } else {
+          s.engineQualityCustom = null;
+        }
+      } catch {
+        s.engineQualityCustom = null;
+      }
     }
   } catch {
     // Corrupt settings fall back to defaults for the affected keys.

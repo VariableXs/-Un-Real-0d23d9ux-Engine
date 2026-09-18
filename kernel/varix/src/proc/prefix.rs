@@ -92,6 +92,9 @@ pub fn prefix_create(pid: u32) -> bool {
         e.dirs[i][..b.len()].copy_from_slice(b);
         e.dir_lens[i] = b.len();
     }
+    drop(px);
+    // 任务61 · Wine 进程能力收敛：prefix 创建即登记默认能力（无 NET/无宿主盘）。
+    let _ = super::winecaps::wine_caps_grant(pid);
     true
 }
 
@@ -185,6 +188,11 @@ pub fn prefix_destroy(pid: u32) -> bool {
             *e = PrefixEntry::new();
             existed = true;
         }
+    }
+    drop(px);
+    // 任务61 · 能力表随 prefix 销毁同步退槽（零泄漏，与任务45 同口径）。
+    if existed {
+        let _ = super::winecaps::wine_caps_revoke_all(pid);
     }
     existed
 }

@@ -1,0 +1,244 @@
+limine: Loading executable `boot():/kernel/varix`...
+limine: Loading module `boot():/boot-select.json`...
+[ INFO] cmdline: 
+[ INFO] boot-select: entry=varix
+[ INFO] cpu: AMD fam15 mod107 step1 @2500MHz
+[ INFO] acpi: rev 0 tables 4 cpus 1 ioapics 1
+[ INFO] smbios: QEMU Standard PC (i440FX + PIIX, 1996) / SeaBIOS rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org
+[ INFO] memmap: 14 entries, 1052143616 usable
+[ INFO] kaslr: seeded=true pool=0x8fb446eb8849f5b9
+[ INFO] gdt: 7 entries loaded
+[ INFO] tss: TR=0x28
+[ INFO] idt-stubs: mapping Tightened
+[ INFO] idt-stubs: 256 x 16B at 0xffffffff8009c000
+[ INFO] idt: 256/256 vectors live
+[ WARN] msr: refused access to 0x4ff (not allow-listed)
+[ INFO] msr: allow-list armed (probe 0x4ff refused=true)
+[ INFO] pic: all 16 lines masked, delivery handed to APIC
+[ INFO] lapic: mode=Mmio id=0 base=0xfee00000 lvt=5
+[ INFO] ioapic: id=0 gsi_base=0 pins=24
+[ INFO] apic: mode=Mmio ioapics=1 gsis=24
+[ INFO] tsc: 2500000000 Hz via Measured (invariant=true)
+[ INFO] clock: source=tsc tick=1000Hz
+[ INFO] smp: 1 core(s) online (bsp apic 0)
+[ INFO] sync: spin-locks ready, pi-mutex ready, nesting<= 3, irq-off budget 20000 ns
+[ INFO] isa: none xcr0=0x2 avx_pending=true
+[ INFO] irq self-test: 9/9 pass
+[ INFO] cpu: cores=1 vectors=256 apic=Mmio ioapic=1 gsi=24 clk=tsc self-test 9/9
+[ INFO] mem::boot: 256871 usable frames, 2 reserved ranges
+[ INFO] pmm: 256615 frames managed, 256615 free (1002 MiB), bitmap+buddy armed
+[ INFO] heap: slab 256 KiB, 64 blocks free, 9 classes, leak-tracker armed (waste=0B)
+[ INFO] memory self-test: 10/10 pass
+[ INFO] mem: 256615 frames (1002 MiB) 256615 free, watermarks 10521436/31564308/52607180, self-test 10/10
+[ INFO] pf: COW resolved @ 0xffffffff80820000
+[ INFO] pf: COW resolved @ 0xffffffff80821000
+[ INFO] pf: selftest 4/4 (MapZero/GrowStack/COW[bytes+reclaim]/guard-host)
+[ INFO] scheduler self-test: 9/9 pass
+[ INFO] sched: 2 threads, policy=rr energy=balanced latency budget 2000us, self-test 9/9
+[ INFO] process self-test: 11/11 pass
+[ INFO] proc: 1 process(es), init=true self-test 11/11
+[ INFO] storage self-test: 10/10 pass
+[ INFO] storage: 1 devices, 4 mounts (2 writable), self-test 10/10
+[ INFO] blk: no MCFG table - block stack skipped
+[ INFO] input-probe: flood publishes=70 dropped_oldest=6 expect_drops=6
+[ INFO] input-probe: sub-slots ok (fill/reject/cancel/reuse) sub=0
+[ INFO] input-probe: mouse bringup set-defaults=true enable-report=true (0xFA ack bits)
+[ INFO] input-probe: live (awaiting sendkey/mouse via HMP)
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x7f
+[ INFO] input-probe: raw aux=0xf5
+[ INFO] input-probe: raw aux=0x08
+[ INFO] input-probe: raw aux=0x5e
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: event seq=71 shim=470000000000000001007f00f5ff0000
+[ INFO] input-probe: mouse dx=127 dy=-11 buttons=0x00
+[ INFO] input-probe: event seq=72 shim=480000000000000001005e0000000000
+[ INFO] input-probe: mouse dx=94 dy=0 buttons=0x00
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xe3
+[ INFO] input-probe: raw aux=0xe5
+[ INFO] input-probe: event seq=73 shim=49000000000000000100e3ffe5ff0000
+[ INFO] input-probe: mouse dx=-29 dy=-27 buttons=0x00
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xeb
+[ INFO] input-probe: raw aux=0xed
+[ INFO] input-probe: event seq=74 shim=4a000000000000000100ebffedff0000
+[ INFO] input-probe: mouse dx=-21 dy=-19 buttons=0x00
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xf1
+[ INFO] input-probe: raw aux=0xf7
+[ INFO] input-probe: event seq=75 shim=4b000000000000000100f1fff7ff0000
+[ INFO] input-probe: mouse dx=-15 dy=-9 buttons=0x00
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xfa
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: event seq=76 shim=4c000000000000000100faffffff0000
+[ INFO] input-probe: mouse dx=-6 dy=-1 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xfe
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: event seq=77 shim=4d000000000000000100feff00000000
+[ INFO] input-probe: mouse dx=-2 dy=0 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: event seq=78 shim=4e000000000000000100ffff00000000
+[ INFO] input-probe: mouse dx=-1 dy=0 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: event seq=79 shim=4f000000000000000100ffff00000000
+[ INFO] input-probe: mouse dx=-1 dy=0 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xfd
+[ INFO] input-probe: raw aux=0x02
+[ INFO] input-probe: event seq=80 shim=50000000000000000100fdff02000000
+[ INFO] input-probe: mouse dx=-3 dy=2 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xf8
+[ INFO] input-probe: raw aux=0x09
+[ INFO] input-probe: event seq=81 shim=51000000000000000100f8ff09000000
+[ INFO] input-probe: mouse dx=-8 dy=9 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xfb
+[ INFO] input-probe: raw aux=0x0a
+[ INFO] input-probe: event seq=82 shim=52000000000000000100fbff0a000000
+[ INFO] input-probe: mouse dx=-5 dy=10 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xf9
+[ INFO] input-probe: raw aux=0x07
+[ INFO] input-probe: event seq=83 shim=53000000000000000100f9ff07000000
+[ INFO] input-probe: mouse dx=-7 dy=7 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xf8
+[ INFO] input-probe: raw aux=0x05
+[ INFO] input-probe: event seq=84 shim=54000000000000000100f8ff05000000
+[ INFO] input-probe: mouse dx=-8 dy=5 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xf7
+[ INFO] input-probe: raw aux=0x03
+[ INFO] input-probe: event seq=85 shim=55000000000000000100f7ff03000000
+[ INFO] input-probe: mouse dx=-9 dy=3 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: raw aux=0x01
+[ INFO] input-probe: event seq=86 shim=56000000000000000100ffff01000000
+[ INFO] input-probe: mouse dx=-1 dy=1 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xfc
+[ INFO] input-probe: raw aux=0x06
+[ INFO] input-probe: event seq=87 shim=57000000000000000100fcff06000000
+[ INFO] input-probe: mouse dx=-4 dy=6 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xfb
+[ INFO] input-probe: raw aux=0x0f
+[ INFO] input-probe: event seq=88 shim=58000000000000000100fbff0f000000
+[ INFO] input-probe: mouse dx=-5 dy=15 buttons=0x00
+[ INFO] input-probe: raw aux=0x18
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: raw aux=0x09
+[ INFO] input-probe: event seq=89 shim=59000000000000000100ffff09000000
+[ INFO] input-probe: mouse dx=-1 dy=9 buttons=0x00
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x7f
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x3f
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: event seq=90 shim=5a0000000000000001007f0081ff0000
+[ INFO] input-probe: mouse dx=127 dy=-127 buttons=0x00
+[ INFO] input-probe: event seq=91 shim=5b0000000000000001003f0081ff0000
+[ INFO] input-probe: mouse dx=63 dy=-127 buttons=0x00
+[ INFO] input-probe: event seq=92 shim=5c000000000000000100000081ff0000
+[ INFO] input-probe: mouse dx=0 dy=-127 buttons=0x00
+[ INFO] input-probe: event seq=93 shim=5d000000000000000100000081ff0000
+[ INFO] input-probe: mouse dx=0 dy=-127 buttons=0x00
+[ INFO] input-probe: event seq=94 shim=5e000000000000000100000081ff0000
+[ INFO] input-probe: mouse dx=0 dy=-127 buttons=0x00
+[ INFO] input-probe: raw aux=0xdd
+[ INFO] input-probe: raw aux=0x81
+[ INFO] input-probe: raw aux=0x28
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0xc5
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xf6
+[ INFO] input-probe: raw aux=0xef
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xf9
+[ INFO] input-probe: raw aux=0xf0
+[ INFO] input-probe: raw aux=0x38
+[ INFO] input-probe: raw aux=0xff
+[ INFO] input-probe: raw aux=0xf1
+[ INFO] input-probe: event seq=95 shim=5f000000000000000100ddff81ff0000
+[ INFO] input-probe: mouse dx=-35 dy=-127 buttons=0x00
+[ INFO] input-probe: event seq=96 shim=600000000000000001000000c5ff0000
+[ INFO] input-probe: mouse dx=0 dy=-59 buttons=0x00
+[ INFO] input-probe: event seq=97 shim=61000000000000000100f6ffefff0000
+[ INFO] input-probe: mouse dx=-10 dy=-17 buttons=0x00
+[ INFO] input-probe: event seq=98 shim=62000000000000000100f9fff0ff0000
+[ INFO] input-probe: mouse dx=-7 dy=-16 buttons=0x00
+[ INFO] input-probe: event seq=99 shim=63000000000000000100fffff1ff0000
+[ INFO] input-probe: mouse dx=-1 dy=-15 buttons=0x00
+[ INFO] input-probe: raw aux=0x09
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x08
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: raw aux=0x00
+[ INFO] input-probe: event seq=100 shim=64000000000000000100000000000100
+[ INFO] input-probe: mouse dx=0 dy=0 buttons=0x01
+[ INFO] input-probe: event seq=101 shim=65000000000000000100000000000000
+[ INFO] input-probe: mouse dx=0 dy=0 buttons=0x00
+[ INFO] input-probe: verdict=false keys=[false, false, false] mouse_moves=29 mouse_btn=true missed=0
+[ INFO] display-probe: mode=double 1280x800 band_h=40 frames=360
+[ INFO] display-probe: scroll begin
+[ INFO] display-probe: scroll done frames=361 rects_flushed=361 overflow_merges=1
+[ INFO] display-probe: verdict=ok frames=362 rects=366 merges=1
+[ INFO] quota: matrix shares front=507/1000 engine=342/1000 wine=150/1000 targets=500/350/150 verdict=ok
+[ INFO] quota: monopoly front=494/1000 engine=342/1000 wine=162/1000 max-gap front=21 engine=27 (bound 40) verdict=ok
+[ INFO] quota: watermark drill normal/pressure/critical/normal reclaimed=320 restored=320 order=[ram,engine,wine] verdict=ok
+[ INFO] quota: hysteresis 280-hold/240-up/270-hold/310-down verdict=ok
+[ INFO] quota: gpu soft-channel reserve 400/350/150 overcommit-rejected submit=90/10/0 verdict=ok
+[ INFO] QUOTA PROBE PASS
+[ INFO] shm-probe: owner roundtrip verdict=ok
+[ INFO] shm-probe: no-pass default-deny verdict=ok
+[ INFO] shm-probe: grant-and-no-regrant verdict=ok
+[ INFO] shm-probe: handle-passing-attack denied verdict=ok
+[ INFO] shm-probe: revoke invalidates grant+mapping verdict=ok
+[ INFO] shm-probe: destroy bumps gen (handle never reused same-gen) verdict=ok
+[ INFO] shm-probe: stats after drill used=1 g=0 m=0 verdict=ok
+[ INFO] shm-probe: verdict=true matrix=[roundtrip,default-deny,grant,revoke,attack,destroy-gen]
+[ INFO] vfs-probe: decisions matrix=[allow,opmask,dir-deep,default-deny,case-fold,boundary,escape,inband-deny,inband-allow,wild,deny-wins,hot-reload,reload-idempotent] verdict=ok
+[ INFO] picflow-probe: stage=locked
+[ INFO] picflow-probe: stage=filled
+[ INFO] picflow-probe: stage=push1 ok1=1
+[ INFO] picflow-probe: stage=blit1 r=1
+[ INFO] picflow-probe: surface=1280x800 full+blit=true win+blit=true replay_reject=true oob_reject=true stats=(acc=2 bad=1 stale=1 seq=2) verdict=ok
+[ INFO] input self-test: 9/9 pass
+[ INFO] input: path=ps2 plane=host combos=3 conflicts=0 self-test 9/9
+[ INFO] display self-test: 10/10 pass
+[ INFO] display: gpu=soft path=minimal displays=1 fps=0 self-test 10/10
+[ INFO] network self-test: 15/15 pass
+[ INFO] net: 1 nic(s) 1 up, dhcp=init self-test 15/15
+[ INFO] security self-test: 15/15 pass
+[ INFO] security: nx=true telemetry=off keys=0 audit=0 self-test 15/15
+[ INFO] integrity: unverified image=4526000B sha256=13510761
+[ INFO] bootopt: default=varix timeout=5s
+[ INFO] self-test: 13/13 pass
+[ INFO] interrupts enabled — system live
+[ INFO] boot completed 1099 ms
+[ INFO] ring3: syscall MSRs + TSS.RSP0 installed
+[ INFO] ring3: supervised lifecycle demo — 2 轮 spawn/exit/wait，随后压力探针
+[ INFO] ring3: instance#1 spawned pid=2 entry=0x400000 pages=18 — PCB + 逐页账本登记
+[ INFO] ring3: iretq → user (rip=0x400000 rsp=0x7ffffffff000 rflags=0x3200)
+hello from ring3

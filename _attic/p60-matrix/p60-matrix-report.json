@@ -1,0 +1,72 @@
+{
+ "round": "QEMU 代理矩阵首轮（2026-09-18）",
+ "rows": [
+  {
+   "name": "A-q35-baseline",
+   "boot": true,
+   "checks": [
+    [
+     "boot completed",
+     true
+    ],
+    [
+     "desktop-ready",
+     true
+    ],
+    [
+     "SHARED mounted",
+     true
+    ],
+    [
+     "no panic",
+     true
+    ]
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "name": "B-q35-smp2",
+   "boot": true,
+   "checks": [
+    [
+     "boot completed",
+     true
+    ],
+    [
+     "desktop-ready",
+     true
+    ],
+    [
+     "SHARED mounted",
+     true
+    ],
+    [
+     "no panic",
+     true
+    ]
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "name": "C-i440fx-degraded",
+   "boot": true,
+   "checks": [
+    [
+     "boot completed",
+     true
+    ],
+    [
+     "block stack honestly skipped",
+     true
+    ],
+    [
+     "no panic",
+     true
+    ]
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "physical_machines": "待用户协作项：≥3 台不同厂商实机（任务10/63 同批协作通道）",
+ "verdict": "PASS"
+}

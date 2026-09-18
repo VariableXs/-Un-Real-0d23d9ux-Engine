@@ -1,0 +1,19 @@
+[package]
+name = "ushell"
+version = "0.1.0"
+edition = "2021"
+
+# 任务27（AI-V）· 用户态 shell 壳程序：内核嵌入层演示常驻进程。
+# 独立 crate，与内核零链接（总案步骤7 验收口径，同 hello 纪律）。
+# 裸 ELF：入口 _start（0x400000），栈由内核在进入 ring3 前映射好。
+# ABI：rax=号，rdi/rsi/rdx=参；SYS_FRAME=16 / SYS_INPUT=17 / SYS_SHIM=18。
+
+[[bin]]
+name = "ushell"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+strip = true
+opt-level = "z"

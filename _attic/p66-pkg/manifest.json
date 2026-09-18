@@ -1,0 +1,25 @@
+{
+    "from":  "1.0",
+    "version":  "1.1",
+    "migration":  "轮110：引擎补丁+SHARED 新增 App2（wine/partial），升版需重建 apps 缓存",
+    "channel_files":  {
+                          "SHARED":  [
+                                         {
+                                             "file":  "apps.json",
+                                             "sha256":  "620DE0D9813E65994B00720E253C635CDF69B9EDC6140812FBECF5E229D56C33"
+                                         }
+                                     ],
+                          "VARIX_SYS":  [
+                                            {
+                                                "file":  "kernel/varix",
+                                                "sha256":  "CE5827D03B8085AD73CBA3C90594117895016C6ECC0FDBAE988C27EB62FDFFF4"
+                                            }
+                                        ],
+                          "WIN_ENGINE":  [
+                                             {
+                                                 "file":  "engine.bin",
+                                                 "sha256":  "27D27FFF9A37D45417F5BA2E78602CB19A8E49C1259AFFDC9E201F41B75265CD"
+                                             }
+                                         ]
+                      }
+}

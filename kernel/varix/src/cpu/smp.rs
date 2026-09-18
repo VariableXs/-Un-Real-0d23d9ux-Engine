@@ -530,11 +530,14 @@ pub fn init() -> u32 {
 pub const AP_STACK_SIZE: usize = 64 * 1024;
 pub const AP_STACKS: usize = MAX_CPUS - 1;
 
-static AP_STACK_AREA: [u8; AP_STACK_SIZE * AP_STACKS] = [0u8; AP_STACK_SIZE * AP_STACKS];
+/// .bss 静态区（任务27 实测教训：immutable static 全零仍物化 .rodata，内核文件
+/// >7.69MB 触发 Limine iso9660 "failed to read file data" 引导 PANIC——与
+/// shmsrv::target::STORE 同范式落 .bss：static mut + &raw 访问，运行时零文件占用）。
+static mut AP_STACK_AREA: [u8; AP_STACK_SIZE * AP_STACKS] = [0u8; AP_STACK_SIZE * AP_STACKS];
 
 fn ap_stack_top(cpu_id: u32) -> u64 {
     let idx = (cpu_id as usize).saturating_sub(1).min(AP_STACKS - 1);
-    let base = AP_STACK_AREA.as_ptr() as u64;
+    let base = (&raw const AP_STACK_AREA) as *const u8 as u64;
     // Stacks grow down: hand out the *end* of this core's slice.
     base + ((idx + 1) * AP_STACK_SIZE) as u64
 }
@@ -690,6 +693,6 @@ mod tests {
         let a = ap_stack_top(1);
         let b = ap_stack_top(2);
         assert_eq!(b - a, AP_STACK_SIZE as u64);
-        assert!(a >= AP_STACK_AREA.as_ptr() as u64);
+        assert!(a >= (&raw const AP_STACK_AREA) as *const u8 as u64);
     }
 }

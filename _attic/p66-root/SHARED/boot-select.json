@@ -1,0 +1,7 @@
+{
+    "last_boot":  "",
+    "default_entry":  "variable",
+    "timeout_sec":  5,
+    "windows_bootnext":  -1,
+    "show_menu":  true
+}

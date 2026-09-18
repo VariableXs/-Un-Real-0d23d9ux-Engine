@@ -1,0 +1,41 @@
+powershell.exe : 所在位置 行:1 字符: 187
+所在位置 行:1 字符: 1
++ & powershell -NoProfile -ExecutionPolicy Bypass -Command "Set-Locatio ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (所在位置 行:1 字符: 187:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
++ ... imEnd('\') + '\';  = @('limine.conf','kernel\varix');  = @( | Where-O ...
++                                                                 ~
+不允许使用空管道元素。
+所在位置 行:1 字符: 269
++ ... -Path -LiteralPath (Join-Path  ) }); Write-Output ('count=' + .Count) ...
++                                                                  ~
+必须在“+”运算符后面提供一个值表达式。
+所在位置 行:1 字符: 270
++ ... LiteralPath (Join-Path  ) }); Write-Output ('count=' + .Count) } catc ...
++                                                            ~~~~~~
+表达式或语句中包含意外的标记“.Count”。
+所在位置 行:1 字符: 269
++ ... -Path -LiteralPath (Join-Path  ) }); Write-Output ('count=' + .Count) ...
++                                                                  ~
+表达式中缺少右“)”。
+所在位置 行:1 字符: 73
++ ...  'D:\2\14\-Un-Real-0d23d9ux-Engine-main\portable\AI-P'; try { ='C:\Us ...
++                                                                 ~
+语句块或类型定义中缺少右“}”。
+所在位置 行:1 字符: 276
++ ... LiteralPath (Join-Path  ) }); Write-Output ('count=' + .Count) } catc ...
++                                                                  ~
+Try 语句缺少自己的 Catch 或 Finally 块。
+所在位置 行:1 字符: 276
++ ... iteralPath (Join-Path  ) }); Write-Output ('count=' + .Count) } catch ...
++                                                                 ~
+表达式或语句中包含意外的标记“)”。
+所在位置 行:1 字符: 278
++ ... eralPath (Join-Path  ) }); Write-Output ('count=' + .Count) } catch { ...
++                                                                 ~
+表达式或语句中包含意外的标记“}”。
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : EmptyPipeElement
+ 

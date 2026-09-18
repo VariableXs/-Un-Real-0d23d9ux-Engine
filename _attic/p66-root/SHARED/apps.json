@@ -1,0 +1,22 @@
+{
+    "apps":  [
+                 {
+                     "id":  "a1",
+                     "name":  "App1",
+                     "updated":  "",
+                     "channel":  "engine",
+                     "icon":  "",
+                     "tier":  "ok"
+                 },
+                 {
+                     "id":  "a2",
+                     "name":  "App2",
+                     "updated":  "",
+                     "channel":  "wine",
+                     "icon":  "",
+                     "tier":  "partial"
+                 }
+             ],
+    "version":  1,
+    "updated":  ""
+}

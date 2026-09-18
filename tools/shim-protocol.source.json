@@ -39,7 +39,8 @@
     { "channel": "usb://removed", "direction": "backend->frontend", "note": "拔盘事件" },
     { "channel": "taskbar://state", "direction": "backend->frontend", "note": "任务栏状态机" },
     { "channel": "watch://escape", "direction": "backend->frontend", "note": "双 Esc 看护" },
-    { "channel": "shim://input", "direction": "backend->frontend", "note": "输入事件总线（任务26 预留）" }
+    { "channel": "shim://input", "direction": "backend->frontend", "note": "输入事件总线（任务26 预留）" },
+    { "channel": "engine://state", "direction": "backend->frontend", "note": "引擎生命周期/冷启动阶段/异常三场景（任务50/51/54）" }
   ],
   "capabilities": [
     { "flag": "kvStore", "note": "内核 KV 存储（localStorage 语义桥）" },

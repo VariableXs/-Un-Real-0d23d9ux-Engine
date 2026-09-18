@@ -1,0 +1,4 @@
+step1
+step2 count=2
+step3 map=2
+step4 files=2

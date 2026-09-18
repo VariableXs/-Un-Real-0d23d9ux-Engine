@@ -146,6 +146,12 @@ pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
         SYS_WRITE => sys_write(a1, a2, a3),
         SYS_EXIT => sys_exit(a1 as i32),
         SYS_WAIT => sys_wait_user(),
+        // 任务27/28/55（AI-V）· 内核嵌入层三支点：帧绘制 / 输入泵取 /
+        // 命令垫片（KV/VFS/boot 事件）。宿主态如实 ENOSYS（usrshell 内
+        // cfg 分层），目标态全量实现。
+        super::usrshell::SYS_FRAME => super::usrshell::sys_frame(a1, a2, a3),
+        super::usrshell::SYS_INPUT => super::usrshell::sys_input(a1, a2, a3),
+        super::usrshell::SYS_SHIM => super::usrshell::sys_shim(a1, a2, a3),
         // 其余稳定号（read/open/…）按任务15 口径如实 ENOSYS——
         // 号表形态定义在 proc::syscall（F102），处理器随任务16 落地。
         _ => SyscallError::NotImplemented.errno(),
@@ -712,10 +718,13 @@ fn spawn_pe_notepad() -> ! {
         s.queue.post(super::winsrv::Msg { hwnd: hwnd_pre, message: super::winsrv::WM_COMMAND, wparam: super::winsrv::IDM_EXIT, lparam: 0 });
     });
 
-    let img = match super::pe::parse(NOTEPAD_PE) {
-        Ok(i) => i,
-        Err(e) => {
-            crate::kwarn!("ring3: notepad.pe parse failed: {} — halting", e.as_str());
+    let img = match super::peblock::peblock_gate(NOTEPAD_PE) {
+        Ok(i) => {
+            crate::kinfo!("peblock: notepad gate allow — 拒绝表放行合法演示样本");
+            i
+        }
+        Err((rule, reason)) => {
+            crate::kwarn!("peblock: notepad gate BLOCKED {} ({}) — halting", rule, reason);
             halt_demo()
         }
     };
@@ -918,6 +927,10 @@ fn job_table_probe() -> ! {
     super::compatdb::compatdb_reset();
     // 任务49 · 输入注入通道实机面：同源 16B 帧注入→泵取→守恒。
     let _ = super::super::inputinject::inject_probe();
+    // 任务52 · 引擎盘 ramcache 实机面：LRU/回收账本/关机清空零残留断言。
+    super::super::ramcache::target::target_probe();
+    // 任务61 · Wine 能力收敛实机面：默认无 NET/宿主盘 → 申请 → 审批 → 审计。
+    super::winecaps::winecaps_probe();
     pressure_probe_and_finish()
 }
 
@@ -979,10 +992,90 @@ fn pressure_probe_and_finish() -> ! {
         live
     );
     crate::kinfo!(
-        "ring3: task15 lifecycle complete — {} 轮 spawn/exit/wait + 压力探针全过 — halting",
+        "ring3: task15 lifecycle complete — {} 轮 spawn/exit/wait + 压力探针全过 — 探针收官",
         LIFECYCLES
     );
-    halt_demo()
+    // 任务27（AI-V）· 全探针收官后进入内核嵌入层演示：ushell 常驻桌面
+    // （BootScreen 回放 → 桌面三件套，SYS_FRAME/SYS_INPUT/SYS_SHIM 三支
+    // 点驱动）。演示会话由外部脚本收尾（kill QEMU）；shell exit 走正常
+    // 监护回收（本演示路径 shell 不退出）。
+    // 先清演示期残留 kill flag（任务42 jobkill 演示的 flag 无 syscall 可消费，
+    // 残留会在 ushell 首个 syscall 边界被双路查获误杀 —— 实机 serial 实证）。
+    super::job::job_flags_reset_for_demo();
+    spawn_shell()
+}
+
+/// 任务27（AI-V）· SHELL_ELF（user/ushell 构建产物随源入库）：内核嵌入
+/// 层演示常驻进程——用户态 UI 进程承载桌面三件套渲染与交互。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static SHELL_ELF: &[u8] = include_bytes!("ushell.elf");
+
+/// 任务27（AI-V）· 装载 ushell 并进入 ring3：与 spawn_hello 同一条监护链
+/// （PCB 入表 → 共用装载引擎 → 页账本登记 → iretq）。shell 常驻不退出。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spawn_shell() -> ! {
+    // 任务27 · shell 注册 inputsvc 订阅（修复漏接线：此前 shell_subscribe
+    // 全内核无调用点，SHELL_SUB 恒 usize::MAX → SYS_INPUT 恒 0 事件，
+    // ushell 死等按键 — 实机 serial 实证：boot-replay 后仅 cs=0x2b
+    // TCG 伪影 WARN 连绵，desktop-ready 永不出现）。
+    if !crate::inputsvc::target::shell_subscribe() {
+        crate::kwarn!("usrshell: inputsvc subscribe failed — 键盘输入不可达");
+    } else {
+        crate::kinfo!("usrshell: inputsvc subscribed — SYS_INPUT 已通");
+    }
+    let img = match elf::parse(SHELL_ELF) {
+        Ok(i) => i,
+        Err(e) => {
+            crate::kwarn!("usrshell: ushell.elf parse failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let pid = match PROCS.lock().alloc(0, b"ushell") {
+        Ok(p) => p,
+        Err(e) => {
+            crate::kwarn!("usrshell: proc alloc failed: {:?} — halting", e);
+            halt_demo()
+        }
+    };
+    DEMO_PID.store(pid, core::sync::atomic::Ordering::Relaxed);
+    let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+    let src = super::loader::ElfSource {
+        img: &img,
+        blob: SHELL_ELF,
+    };
+    let loaded = match super::loader::load_into(
+        &src,
+        &mut mp,
+        entry::DEFAULT_STACK_PAGES as u64,
+        entry::USER_STACK_TOP,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("usrshell: load failed ({:?}) — halting", e);
+            halt_demo()
+        }
+    };
+    let pages_n = loaded.pages.len();
+    CHILD_PAGES.lock().push((pid, loaded.pages));
+    crate::kinfo!(
+        "usrshell: shell spawned pid={} entry={:#x} pages={} — 嵌入层演示常驻",
+        pid,
+        loaded.entry,
+        pages_n
+    );
+    let mut plan = super::uspace::EntryPlan::default();
+    if let Err(e) = plan_entry(EntryPath::Iret, loaded.entry, loaded.stack_top, &mut plan) {
+        crate::kwarn!("usrshell: entry plan rejected: {} — halting", e);
+        halt_demo()
+    }
+    crate::kinfo!(
+        "usrshell: iretq → shell (rip={:#x} rsp={:#x})",
+        plan.rip,
+        plan.rsp
+    );
+    // SAFETY: 依赖 loader 已映射的段页与栈页、已写入的 MSR 与 TSS.RSP0。
+    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
 }
 
 /// 演示终点停机（行为等价于 boot complete 的 halting，只是先跑完 ring3）。
@@ -1063,26 +1156,44 @@ unsafe extern "C" fn syscall_entry() -> ! {
         // 换环零栈；用户 rsp 存静态槽（syscall 指令不自动保存它）。
         "mov [rip + {user_rsp}], rsp",
         "mov rsp, [rip + {kstack_top}]",
-        // rcx/r11 必须活到 sysret（rip/rflags），连同用户 rdi/rsi/rdx 入栈。
+        // Linux syscall ABI（man 2 syscall）：内核只允许破坏 rax（返回
+        // 值）/rcx（返回 rip，syscall 指令硬件写入）/r11（rflags）——
+        // **rdi/rsi/rdx/r8/r9/r10/r12-r15 全部保留**。r12-r15/rbx/rbp 由
+        // dispatch 的 SysV callee-saved 纪律天然保全；rdi/rsi/rdx 与
+        // r8/r9/r10 会被 dispatch 当参数/易失寄存器用掉，必须由 stub
+        // 显式保存。实机铁证（p27-28-serial.log）：ushell input() 循环
+        // r8 存 out 指针跨 SYS_INPUT，处理器污染 r8=8 → 用户写 [r8] →
+        // #PF cr2=0x8 fatal——此前 stub 只存 rcx/r11，且错误注释称
+        // rdi/rsi/rdx 为"caller-saved 可破坏"（那是 C 调用 ABI，不是
+        // syscall ABI）。
         "push rcx",
         "push r11",
         "push rdi",
         "push rsi",
         "push rdx",
+        "push r10",
+        "push r9",
+        "push r8",
         // 用户 ABI：rax=nr, rdi/rsi/rdx=a1/a2/a3（与 int 0x80 通道一致）。
         // SysV dispatch：rdi=nr, rsi=a1, rdx=a2, rcx=a3——逐参搬运，
         // 曾经直接拿用户 rsi 当 a1（错位一位，exit 收到 buf 地址当 code）。
+        // 槽布局（低→高）：r8(+0) r9(+8) r10(+16) rdx(+24) rsi(+32)
+        // rdi(+40) r11(+48) rcx(+56)。
         "mov rdi, rax",
-        "mov rsi, [rsp + 16]", // a1 = 用户 rdi
-        "mov rdx, [rsp + 8]",  // a2 = 用户 rsi
-        "mov rcx, [rsp]",      // a3 = 用户 rdx
+        "mov rsi, [rsp + 40]", // a1 = 用户 rdi
+        "mov rdx, [rsp + 32]", // a2 = 用户 rsi
+        "mov rcx, [rsp + 24]", // a3 = 用户 rdx
         "call {dispatch}",
-        // 栈（高→低）= rcx,r11,rdi,rsi,rdx 槽；call 返回后 add rsp,24
-        // 越过 rdx/rsi/rdi 槽（syscall ABI 允许破坏这三个 caller-saved），
-        // 此时 rsp 恰在 r11 槽——依次恢复 rflags 与用户 rip，最后从
-        // 静态槽恢复用户 rsp。**曾经 pop rdx,rsi,rdi 再 pop r11,rcx——
-        // 多弹三层，rcx 吃进栈外垃圾，sysretq 直接跳飞（RIP=1）**。
-        "add rsp, 24",
+        // 全量恢复用户现场（rax=返回值不动；rcx/r11 槽存的是 syscall
+        // 硬件写入的用户 rip/rflags，最后弹出供 sysretq 消费）。曾经
+        // pop rdx,rsi,rdi 再 pop r11,rcx——多弹三层，rcx 吃进栈外垃圾，
+        // sysretq 直接跳飞（RIP=1）。
+        "pop r8",
+        "pop r9",
+        "pop r10",
+        "pop rdx",
+        "pop rsi",
+        "pop rdi",
         "pop r11",
         "pop rcx",
         "mov rsp, [rip + {user_rsp}]",

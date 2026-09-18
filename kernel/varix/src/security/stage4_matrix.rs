@@ -6,12 +6,11 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::clipsrv::{ClipAcl, ClipFormat, ClipStore};
     use crate::drivers::blk::BlockDevice;
     use crate::msgchan::{ChanError, MsgBus};
     use crate::shmsrv::{ShmError, ShmStore};
-    use crate::vfsguard::{AuditJournal, Decision, DenyReason, Op, RuleSet};
+    use crate::vfsguard::{AuditJournal, DenyReason, Op, RuleSet};
     use alloc::vec::Vec;
 
     struct FakeDisk {

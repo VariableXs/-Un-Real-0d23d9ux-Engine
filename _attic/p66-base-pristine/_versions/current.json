@@ -1,0 +1,22 @@
+{
+    "version":  "1.0",
+    "from":  "0.0",
+    "taken":  "2026-09-18T00:25:24.8799653+08:00",
+    "files":  [
+                  {
+                      "channel":  "VARIX_SYS",
+                      "file":  "kernel/varix",
+                      "sha256":  "70A712AEFD0DD50128D408BE390A936DB4DDB5D77AE4B842CA98D8CADDF8B1F0"
+                  },
+                  {
+                      "channel":  "WIN_ENGINE",
+                      "file":  "engine.bin",
+                      "sha256":  "27569BC6587878B7ACB9A15600FD4A781D0843C2C608716F574641E9E928F557"
+                  },
+                  {
+                      "channel":  "SHARED",
+                      "file":  "apps.json",
+                      "sha256":  "54B2B326B4557E88B5F238D4C305FEC6276B9339458D3840B6203E7A5FADC865"
+                  }
+              ]
+}

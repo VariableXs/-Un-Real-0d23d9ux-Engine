@@ -1,0 +1,13 @@
+{
+    "result":  "success",
+    "from":  "1.0",
+    "version":  "1.1",
+    "migration":  "杞?10锛氬紩鎿庤ˉ涓?SHARED 鏂板 App2锛坵ine/partial锛夛紝鍗囩増闇€閲嶅缓 apps 缂撳瓨",
+    "channels":  [
+                     "VARIX_SYS",
+                     "WIN_ENGINE",
+                     "SHARED"
+                 ],
+    "fileCount":  3,
+    "taken":  "2026-09-18T00:26:36.2936753+08:00"
+}

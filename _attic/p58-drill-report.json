@@ -1,0 +1,51 @@
+{
+ "verdict": "PASS",
+ "checks": [
+  [
+   "s1: boot + desktop + SHARED mounted",
+   true
+  ],
+  [
+   "s1: fm via files.refresh (source re-report)",
+   true
+  ],
+  [
+   "s1: kv_set show_menu rc=0",
+   true
+  ],
+  [
+   "pull: kernel IO-failure uninstall",
+   true
+  ],
+  [
+   "pull: fm degrade to demo-tree (honest)",
+   true
+  ],
+  [
+   "pull: kv_set rc=0 after removal (RAM KV independent)",
+   true
+  ],
+  [
+   "pull: no panic/fatal after removal",
+   true
+  ],
+  [
+   "replug: SHARED re-mounted (source=shared-exfat)",
+   true
+  ],
+  [
+   "replug: kv_set rc=0 (clean rebuild)",
+   true
+  ],
+  [
+   "replug: no panic/fatal",
+   true
+  ]
+ ],
+ "monitor": {
+  "drive_del_nv2": "(qemu)",
+  "device_del_nv2dev": "(qemu)",
+  "removal_refused_guest_no_acpi": false,
+  "note": "q35 热拔插需 guest ACPI 配合；介质移除经由后端删除路径，内核以 IO 失效卸载感知（用户可见=数据源如实降级 demo-tree）。"
+ }
+}

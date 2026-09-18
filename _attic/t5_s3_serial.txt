@@ -1,0 +1,3 @@
+[ INFO] boot-select: entry=varix
+[ INFO] aurora: desktop demo painted
+[ INFO] boot complete — halting

@@ -1,0 +1,910 @@
+//! 任务27/28/55（AI-V）· 内核嵌入层服务（usrshell）。
+//!
+//! 用户态 UI 进程（`user/ushell`）承载桌面三件套（桌面壳/文件管理器/
+//! 设置页）的渲染与交互；本模块是它的三个内核支点（嵌入层四要素中的
+//! 「命令垫片 + 帧通路 + 输入泵」，进程承载在 ring3::spawn_shell）：
+//!
+//! - `SYS_FRAME`(16)：绘制命令面——fill_rect/text/hline/vline/outline/
+//!   info。唯一绘制路径 = 显示服务 Surface（任务20 收编归口），零旁路
+//!   直写帧缓冲。
+//! - `SYS_INPUT`(17)：`shim://input` 16B 事件泵取（inputsvc 订阅者，
+//!   任务19 服务化；契约前 3 序号 0=Up 1=Down 2=Enter 不变，任务55 扩展）。
+//! - `SYS_SHIM`(18)：命令垫片——KV（任务24 kvsrv，RAM 盘后端）/VFS
+//!   列取读（任务18 exFAT SHARED 只读挂载，缺失时如实降级内置演示树）/
+//!   `boot://event` 回放（任务28，timeline 快照语义对齐 bootEvents.ts）。
+//!
+//! 错误三段式（垫片协议 v1）：`>=0 = OK`；`<0 = MAPPED_ERR(-ErrNo)`；
+//! 未知命令 = `MISSING(-ENOSYS)`。负值取 `entry::ErrNo` 小值域（与本文件
+//! sys_write 同一口径），与 POSIX -38 值域并存但互不混用。
+//!
+//! 宿主可测面：命令编解码/参数校验/packing 全部纯函数；真绘制与真盘
+//! 路径 `target_os = "none"` 编译（与 ps2/inputsvc 同纪律）。
+
+use crate::entry::ErrNo;
+
+// ---------------------------------------------------------------------------
+// 稳定号段扩展（ring3::syscall_common 分派；表名登记见 syscall.rs）
+// ---------------------------------------------------------------------------
+
+/// SYS_FRAME：绘制命令面。
+pub const SYS_FRAME: u32 = 16;
+/// SYS_INPUT：输入泵取。
+pub const SYS_INPUT: u32 = 17;
+/// SYS_SHIM：命令垫片。
+pub const SYS_SHIM: u32 = 18;
+
+const fn einval() -> i64 {
+    -(ErrNo::Einval.to_i32() as i64)
+}
+const fn efault() -> i64 {
+    -(ErrNo::Efault.to_i32() as i64)
+}
+const fn enosys() -> i64 {
+    -(ErrNo::Enosys.to_i32() as i64)
+}
+const fn enospc() -> i64 {
+    -(ErrNo::Enospc.to_i32() as i64)
+}
+const fn eio() -> i64 {
+    -(ErrNo::Eio.to_i32() as i64)
+}
+
+// ---------------------------------------------------------------------------
+// FRAME：绘制命令编解码（纯函数，宿主可测）
+// ---------------------------------------------------------------------------
+
+/// 调色板（16 色，索引经 a1 高位传入——3 参 ABI 装不下 RGB 三元组）。
+pub const PALETTE: [crate::fb::Color; 16] = [
+    crate::fb::Color::rgb(0x10, 0x10, 0x14),   // 0 black
+    crate::fb::Color::rgb(0xF2, 0xF2, 0xF2),   // 1 white
+    crate::fb::Color::rgb(0x2A, 0x2A, 0x32),   // 2 dark gray
+    crate::fb::Color::rgb(0x9A, 0x9A, 0xA2),   // 3 light gray
+    crate::fb::Color::rgb(0x38, 0x74, 0xD2),   // 4 accent blue
+    crate::fb::Color::rgb(0x3E, 0xA1, 0x4E),   // 5 green
+    crate::fb::Color::rgb(0xC4, 0x3B, 0x3B),   // 6 red
+    crate::fb::Color::rgb(0xD2, 0xA8, 0x38),   // 7 yellow
+    crate::fb::Color::rgb(0x0C, 0x14, 0x30),   // 8 wallpaper deep
+    crate::fb::Color::rgb(0x1A, 0x2A, 0x55),   // 9 wallpaper mid
+    crate::fb::Color::rgb(0x1C, 0x1C, 0x24),   // 10 taskbar
+    crate::fb::Color::rgb(0x24, 0x24, 0x2E),   // 11 menu bg
+    crate::fb::Color::rgb(0x44, 0x86, 0xE0),   // 12 highlight
+    crate::fb::Color::rgb(0xB6, 0xB6, 0xC0),   // 13 text dim
+    crate::fb::Color::rgb(0xD2, 0x74, 0x38),   // 14 orange
+    crate::fb::Color::rgb(0x2E, 0xA8, 0xA8),   // 15 cyan
+];
+
+/// FRAME 子命令号。
+pub const FRAME_FILL_RECT: u64 = 1;
+pub const FRAME_TEXT: u64 = 2;
+pub const FRAME_HLINE: u64 = 3;
+pub const FRAME_VLINE: u64 = 4;
+pub const FRAME_OUTLINE: u64 = 5;
+pub const FRAME_INFO: u64 = 6;
+
+/// 文本长度上限（栈缓冲预算；a1 bit16..24 装载）。
+pub const FRAME_TEXT_MAX: usize = 255;
+
+/// a1 打包：op | color<<8 |（text 专用）len<<16 | scale<<28。
+#[inline]
+pub fn pack_a1(op: u64, color: u64, len: u64, scale: u64) -> u64 {
+    op | (color << 8) | (len << 16) | (scale << 28)
+}
+
+/// a2 打包/解包：四个 u16 槽（x|y|w|h 或 x0|x1|y）。
+#[inline]
+pub fn pack_xywh(x: u64, y: u64, w: u64, h: u64) -> u64 {
+    (x & 0xFFFF) | ((y & 0xFFFF) << 16) | ((w & 0xFFFF) << 32) | ((h & 0xFFFF) << 48)
+}
+
+#[inline]
+pub fn unpack_xywh(a2: u64) -> (i64, i64, i64, i64) {
+    (
+        (a2 & 0xFFFF) as i64,
+        ((a2 >> 16) & 0xFFFF) as i64,
+        ((a2 >> 32) & 0xFFFF) as i64,
+        ((a2 >> 48) & 0xFFFF) as i64,
+    )
+}
+
+/// 调色板取色（越界 = black，绝不 panic）。
+pub fn palette(idx: u64) -> crate::fb::Color {
+    PALETTE.get((idx & 0xFF) as usize).copied().unwrap_or(PALETTE[0])
+}
+
+/// 校验坐标矩形与屏幕相交性（0 尺寸拒绝；完全越界拒绝——绘制层自身
+/// 还会逐像素裁剪，这里把显然无意义的调用挡在语义层）。
+pub fn rect_plausible(x: i64, y: i64, w: i64, h: i64, sw: i64, sh: i64) -> bool {
+    w > 0 && h > 0 && x < sw && y < sh && x + w > 0 && y + h > 0
+}
+
+// ---------------------------------------------------------------------------
+// SHIM：命令块布局常量（纯函数，宿主可测）
+// ---------------------------------------------------------------------------
+
+pub const SHIM_KV_GET: u64 = 1;
+pub const SHIM_KV_SET: u64 = 2;
+pub const SHIM_KV_REMOVE: u64 = 3;
+pub const SHIM_KV_KEYS: u64 = 4;
+pub const SHIM_VFS_LIST: u64 = 5;
+pub const SHIM_VFS_READ: u64 = 6;
+pub const SHIM_BOOT_EVENTS: u64 = 7;
+pub const SHIM_BOOT_MS: u64 = 8;
+/// VFS 数据源查询：出参 block[0]=1（exFAT SHARED 真实挂载）/0（内置
+/// 演示树）。文件管理器页脚如实标注数据源，绝不冒充。
+pub const SHIM_VFS_SOURCE: u64 = 9;
+
+/// 命令块入参区：ns[0..16] key[16..48] len@48 val[52..308]（path 复用 0..64）。
+pub const BLK_NS: usize = 0;
+pub const BLK_KEY: usize = 16;
+pub const BLK_LEN: usize = 48;
+pub const BLK_VAL: usize = 52;
+pub const NS_MAX: usize = 16;
+pub const KEY_MAX: usize = 32;
+pub const PATH_MAX: usize = 64;
+pub const VAL_MAX: usize = 256;
+/// 出参区起点（入参区 512B 预留）。
+pub const BLK_OUT: usize = 512;
+/// vfs_read 数据上限；命令块总预算 4096。
+pub const READ_MAX: usize = 2048;
+pub const BLK_TOTAL: usize = 4096;
+
+/// 命令块最小尺寸表（MISSING 之外的入参闸门第一步）。
+pub fn shim_block_min(cmd: u64) -> Option<usize> {
+    Some(match cmd {
+        SHIM_KV_GET => BLK_OUT + 4 + VAL_MAX,
+        SHIM_KV_SET => BLK_VAL + VAL_MAX,
+        SHIM_KV_REMOVE => BLK_KEY + KEY_MAX,
+        SHIM_KV_KEYS => BLK_OUT + 4 + 512,
+        SHIM_VFS_LIST => BLK_OUT + 4 + 512,
+        SHIM_VFS_READ => BLK_OUT + 4 + READ_MAX,
+        SHIM_BOOT_EVENTS => 4 + 15 * 16,
+        SHIM_BOOT_MS => 8,
+        SHIM_VFS_SOURCE => 8,
+        _ => return None,
+    })
+}
+
+/// 从命令块提取零终止字符串（定长槽；无终止符 = EINVAL）。
+pub fn zstr(block: &[u8], off: usize, max: usize) -> Result<&[u8], i64> {
+    let slot = block.get(off..off + max).ok_or(einval())?;
+    let end = slot.iter().position(|&b| b == 0).ok_or(einval())?;
+    Ok(&slot[..end])
+}
+
+/// boot 事件记录编码（16B 定长）：idx u8 | state u8(1=begin 2=end) |
+/// pad[2] | ms u32 LE | pad[8]。与 boot://event 语义对齐（阶段序号 +
+/// 毫秒时刻；前端 bootEvents.ts 按 seq/进度单调夹取消费同构载荷）。
+pub fn encode_boot_record(idx: u8, state: u8, ms: u32, out: &mut [u8; 16]) {
+    *out = [0u8; 16];
+    out[0] = idx;
+    out[1] = state;
+    out[4..8].copy_from_slice(&ms.to_le_bytes());
+}
+
+// ---------------------------------------------------------------------------
+// 目标态：RAM KV 盘（usrshell 设置存储；4MiB .bss，戒律合规——禁堆物化）
+// ---------------------------------------------------------------------------
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+mod ramblk {
+    use crate::drivers::blk::{BlockDevice, BlockError};
+
+    pub const RAMBLK_BLOCKS: u64 = 8192;
+
+    /// 4MiB 后备存储：static .bss（戒律：>64KB 大缓冲一律 .bss 常驻，禁
+    /// 栈上/Box 中转物化）。NOBITS 段不占 ELF 文件体积，Limine 装载清零，
+    /// 分配不可能失败——原 PMM order-11 方案在 ushell 运行时可能拿不到
+    /// 连续 8MiB（buddy 高阶块已被分裂/占用，实机复现 alloc failed），
+    /// 且按设备容量（4MiB）属双倍超额。
+    #[repr(C, align(4096))]
+    struct Backing([u8; (RAMBLK_BLOCKS * 512) as usize]);
+
+    static mut BACKING: Backing = Backing([0; (RAMBLK_BLOCKS * 512) as usize]);
+
+    /// RAM 块设备（.bss 后端；单核演示语境）。
+    pub struct RamBlk {
+        base: *mut u8,
+    }
+
+    // SAFETY: 单核演示语境；内核当前无 SMP 用户进程并发。
+    unsafe impl Send for RamBlk {}
+
+    impl RamBlk {
+        pub fn new() -> Option<RamBlk> {
+            // .bss 由 Limine 装载清零，无需运行时 memset。
+            Some(RamBlk { base: (&raw mut BACKING) as *mut u8 })
+        }
+    }
+
+    impl BlockDevice for RamBlk {
+        fn capacity_blocks(&self) -> u64 {
+            RAMBLK_BLOCKS
+        }
+        fn block_size(&self) -> u32 {
+            512
+        }
+        fn read_blocks(&mut self, lba: u64, dst: &mut [u8]) -> Result<(), BlockError> {
+            let n = (dst.len() / 512) as u64;
+            if lba.checked_add(n).map(|e| e > RAMBLK_BLOCKS).unwrap_or(true) {
+                return Err(BlockError::InvalidRange);
+            }
+            // SAFETY: 范围已校验；base 指向 PMM 持有帧（HHDM 可达）。
+            unsafe {
+                for (i, chunk) in dst.chunks_exact_mut(512).enumerate() {
+                    let src = self.base.add(((lba + i as u64) * 512) as usize);
+                    core::ptr::copy_nonoverlapping(src, chunk.as_mut_ptr(), 512);
+                }
+            }
+            Ok(())
+        }
+        fn write_blocks(&mut self, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+            let n = (src.len() / 512) as u64;
+            if lba.checked_add(n).map(|e| e > RAMBLK_BLOCKS).unwrap_or(true) {
+                return Err(BlockError::InvalidRange);
+            }
+            unsafe {
+                for (i, chunk) in src.chunks_exact(512).enumerate() {
+                    let dst = self.base.add(((lba + i as u64) * 512) as usize);
+                    core::ptr::copy_nonoverlapping(chunk.as_ptr(), dst, 512);
+                }
+            }
+            Ok(())
+        }
+        fn flush(&mut self) -> Result<(), BlockError> {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+use ramblk::RamBlk;
+
+// ---------------------------------------------------------------------------
+// 目标态：SHARED exFAT 全局只读挂载（任务18 挂载语义复用，零新解析器）
+// ---------------------------------------------------------------------------
+
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub mod mount {
+    use crate::cpu::sync::SpinProtected;
+    use crate::drivers::nvme::target::{BarMmio, DmaBuckets};
+    use crate::drivers::nvme::NvmeCtrl;
+    use crate::fs::exfat_ro::ExfatVolume;
+
+    pub type SharedVol = ExfatVolume<NvmeCtrl<BarMmio, DmaBuckets>>;
+
+    static VOL: SpinProtected<Option<SharedVol>> = SpinProtected::new(None);
+    /// SHARED 控制器 BDF（任务58：运行中移除检测登记）。
+    static SHARED_BDF: SpinProtected<Option<(u8, u8, u8)>> = SpinProtected::new(None);
+
+    /// NVMe ctrl#2（SHARED 分区）接管：探针链结束后把控制器移交全局
+    /// 只读挂载。挂载失败 = 槽位保持 None（文件管理器如实降级演示树）。
+    pub fn install(dev: NvmeCtrl<BarMmio, DmaBuckets>, bdf: (u8, u8, u8)) -> bool {
+        match ExfatVolume::mount(dev) {
+            Ok(v) => {
+                *VOL.lock() = Some(v);
+                *SHARED_BDF.lock() = Some(bdf);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// 使用点移除检测（任务58）：读 SHARED 控制器 PCI vendor——0xFFFF=
+    /// 设备已消失（运行中拔盘）→ 卸载挂载槽并如实返回 false，后续 VFS
+    /// 查询自然回落内置演示树（零冒充）。无 BDF/无法核验时保守放行
+    /// （读取路径自会如实报错），不误伤。
+    pub fn healthcheck() -> bool {
+        let bdf = *SHARED_BDF.lock();
+        let g = VOL.lock();
+        if g.is_none() {
+            return false;
+        }
+        let Some((bus, devn, func)) = bdf else {
+            return true;
+        };
+        drop(g);
+        let Some(rsdp) = crate::limine::rsdp_address() else {
+            return true;
+        };
+        let hhdm = crate::limine::hhdm_offset().unwrap_or(0);
+        let Some(seg) = crate::drivers::pci::target::find_mcfg_phys(rsdp, hhdm)
+            .and_then(|m| crate::drivers::pci::target::read_first_segment(m, hhdm))
+        else {
+            return true;
+        };
+        let mut ecam = crate::drivers::pci::target::EcamMmio::new(seg);
+        let addr = crate::drivers::pci::ecam_addr(&seg, bus, devn, func, 0);
+        if crate::drivers::pci::EcamAccess::read32(&mut ecam, addr) & 0xFFFF == 0xFFFF {
+            *VOL.lock() = None;
+            crate::kwarn!("mount: SHARED controller gone (vendor=FFFF) - uninstalled");
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn available() -> bool {
+        VOL.lock().is_some()
+    }
+
+    /// IO 失效卸载（任务58）：读取路径报错（介质被移除——drive_del/
+    /// 物理拔盘，guest 无 ACPI 弹出处理时 PCI 设备仍在位）→ 卸载槽位。
+    /// 与 healthcheck（PCI vendor 探测）双通道，先触发者生效。
+    pub fn uninstall_io_failed() {
+        let mut g = VOL.lock();
+        if g.is_some() {
+            *g = None;
+            crate::kwarn!("mount: SHARED io failed - uninstalled (media removed?)");
+        }
+    }
+
+    /// 独占访问（列表/读文件；ExfatVolume 方法需要 &mut）。
+    pub fn with<R>(f: impl FnOnce(&mut SharedVol) -> R) -> Option<R> {
+        let mut g = VOL.lock();
+        g.as_mut().map(f)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 目标态：syscall 处理器
+// ---------------------------------------------------------------------------
+
+/// SYS_FRAME 处理器。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_frame(a1: u64, a2: u64, a3: u64) -> i64 {
+    use crate::displaysrv::target::service;
+    use crate::font;
+
+    let op = a1 & 0xFF;
+    let Some(svc) = service() else { return eio() };
+    let surf = svc.draw_surface();
+    let (sw, sh) = (surf.width() as i64, surf.height() as i64);
+    let color = palette((a1 >> 8) & 0xFF);
+    match op {
+        FRAME_INFO => ((surf.width() as i64) & 0xFFFF) | (((surf.height() as i64) & 0xFFFF) << 16),
+        FRAME_FILL_RECT => {
+            let (x, y, w, h) = unpack_xywh(a2);
+            if !rect_plausible(x, y, w, h, sw, sh) {
+                return einval();
+            }
+            surf.fill_rect(x, y, w, h, color);
+            0
+        }
+        FRAME_OUTLINE => {
+            let (x, y, w, h) = unpack_xywh(a2);
+            if !rect_plausible(x, y, w, h, sw, sh) {
+                return einval();
+            }
+            surf.rect_outline(x, y, w, h, color);
+            0
+        }
+        FRAME_HLINE => {
+            let (x0, x1, y, _) = unpack_xywh(a2);
+            if y < 0 || y >= sh || x1 < x0 || x0 >= sw || x1 < 0 {
+                return einval();
+            }
+            surf.hline(x0, x1, y, color);
+            0
+        }
+        FRAME_VLINE => {
+            let (x, y0, y1, _) = unpack_xywh(a2);
+            if x < 0 || x >= sw || y1 < y0 || y0 >= sh || y1 < 0 {
+                return einval();
+            }
+            surf.vline(x, y0, y1, color);
+            0
+        }
+        FRAME_TEXT => {
+            let len = ((a1 >> 16) & 0xFF) as usize;
+            let scale = ((a1 >> 28) & 0xF) as i64;
+            let scale = if scale == 0 { 1 } else { scale };
+            let (x, y, _, _) = unpack_xywh(a2);
+            if len == 0 {
+                return 0;
+            }
+            let Some(end) = a3.checked_add(len as u64) else { return efault() };
+            if end > crate::entry::USER_TOP || !crate::entry::is_user_ip(a3) {
+                return efault();
+            }
+            let mut buf = [0u8; FRAME_TEXT_MAX];
+            // SAFETY: a3..end 已校验用户半区；单核演示地址空间独占。
+            for (i, slot) in buf[..len].iter_mut().enumerate() {
+                *slot = unsafe { core::ptr::read_volatile((a3 + i as u64) as *const u8) };
+            }
+            let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+            font::draw_text_scaled(surf, x, y, text, color, scale);
+            0
+        }
+        _ => enosys(),
+    }
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_frame(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
+/// SYS_INPUT 处理器：泵硬件 + 16B 事件灌入用户缓冲。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_input(a1: u64, a2: u64, _a3: u64) -> i64 {
+    const MAX_EVENTS: usize = 64;
+    let want = a2 as usize;
+    if want == 0 || want > MAX_EVENTS {
+        return einval();
+    }
+    let end = a1.checked_add((want * 16) as u64).unwrap_or(u64::MAX);
+    if end > crate::entry::USER_TOP || !crate::entry::is_user_ip(a1) {
+        return efault();
+    }
+    static mut STAGE: [u8; MAX_EVENTS * 16] = [0u8; MAX_EVENTS * 16];
+    // SAFETY: 单核 syscall 语境独占 staging。
+    let n = {
+        let stage = unsafe { &mut *(&raw mut STAGE) };
+        crate::inputsvc::target::drain_to_shim(&mut stage[..want * 16], want)
+    };
+    if n == 0 {
+        return 0;
+    }
+    // SAFETY: a1..end 已校验用户半区。
+    unsafe {
+        let stage = &*(&raw const STAGE);
+        for i in 0..n * 16 {
+            core::ptr::write_volatile((a1 + i as u64) as *mut u8, stage[i]);
+        }
+    }
+    n as i64
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_input(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
+/// SYS_SHIM 处理器：命令垫片（KV/VFS/boot 事件/时钟）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_shim(a1: u64, a2: u64, a3: u64) -> i64 {
+    let Some(min) = shim_block_min(a1) else { return enosys() };
+    if (a3 as usize) < min {
+        return einval();
+    }
+    let end = a2.checked_add(a3).unwrap_or(u64::MAX);
+    if end > crate::entry::USER_TOP || !crate::entry::is_user_ip(a2) {
+        return efault();
+    }
+    static mut BLK: [u8; BLK_TOTAL] = [0u8; BLK_TOTAL];
+    // SAFETY: 单核 syscall 语境独占块缓冲；a2..end 已校验用户半区。
+    let block: &mut [u8; BLK_TOTAL] = unsafe { &mut *(&raw mut BLK) };
+    unsafe {
+        for i in 0..min {
+            block[i] = core::ptr::read_volatile((a2 + i as u64) as *const u8);
+        }
+    }
+    let rc = shim_dispatch(a1, block);
+    // 出参回写（min 覆盖出参区——出参区在 min 之内的命令才有出参）。
+    if rc >= 0 {
+        unsafe {
+            for i in 0..min {
+                core::ptr::write_volatile((a2 + i as u64) as *mut u8, block[i]);
+            }
+        }
+    }
+    rc
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_shim(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
+/// 命令分发（target 编译；块已拷入内核缓冲，纯内存操作后由调用方回写）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_dispatch(cmd: u64, block: &mut [u8; BLK_TOTAL]) -> i64 {
+    match cmd {
+        SHIM_KV_GET | SHIM_KV_SET | SHIM_KV_REMOVE | SHIM_KV_KEYS => shim_kv(cmd, block),
+        SHIM_VFS_LIST => shim_vfs_list(block),
+        SHIM_VFS_READ => shim_vfs_read(block),
+        SHIM_VFS_SOURCE => shim_vfs_source(block),
+        SHIM_BOOT_EVENTS => shim_boot_events(block),
+        SHIM_BOOT_MS => {
+            let ms = boot_ms();
+            block[0..8].copy_from_slice(&ms.to_le_bytes());
+            8
+        }
+        _ => enosys(),
+    }
+}
+
+/// KV 命令组：ns/key 取槽；设置存储 = kvsrv over RamBlk（RAM 后端，
+/// 会话级持久——如实标注，非断电持久；断电持久 KV 见任务24 盘面探针）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_kv(cmd: u64, block: &mut [u8; BLK_TOTAL]) -> i64 {
+    use core::sync::atomic::{AtomicBool, Ordering};
+    static OPENED: AtomicBool = AtomicBool::new(false);
+    static STORE: crate::cpu::sync::SpinProtected<
+        Option<crate::kvsrv::KvStore<RamBlk>>,
+    > = crate::cpu::sync::SpinProtected::new(None);
+
+    if !OPENED.swap(true, Ordering::AcqRel) {
+        // .bss 后端：new() 实际不可失败；None 分支纯防御（契约保留，
+        // 打点如实——绝不静默伪造成功）。
+        let Some(mut dev) = RamBlk::new() else {
+            crate::kwarn!("shim-kv: ramdisk slot unavailable");
+            return -(ErrNo::Enomem.to_i32() as i64);
+        };
+        if let Err(e) = crate::kvsrv::KvStore::format(&mut dev, 0) {
+            crate::kwarn!("shim-kv: ramdisk format failed: {:?}", e);
+            return eio();
+        }
+        match crate::kvsrv::KvStore::open(dev, 0, 256) {
+            Ok((s, _)) => {
+                *STORE.lock() = Some(s);
+                crate::kinfo!("shim-kv: ramdisk kv ready");
+            }
+            Err(e) => {
+                crate::kwarn!("shim-kv: ramdisk open failed: {:?}", e);
+                return eio();
+            }
+        }
+    }
+    let ns = match zstr(block, BLK_NS, NS_MAX) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let mut g = STORE.lock();
+    let Some(store) = g.as_mut() else { return eio() };
+    match cmd {
+        SHIM_KV_GET => {
+            let key = match zstr(block, BLK_KEY, KEY_MAX) {
+                Ok(s) => s,
+                Err(e) => return e,
+            };
+            match store.get(ns, key) {
+                Ok(Some(val)) => {
+                    let n = val.len().min(VAL_MAX);
+                    let out = &mut block[BLK_OUT..BLK_OUT + 4 + VAL_MAX];
+                    out[0..4].copy_from_slice(&(n as u32).to_le_bytes());
+                    out[4..4 + n].copy_from_slice(&val[..n]);
+                    n as i64
+                }
+                Ok(None) => 0,
+                Err(_) => eio(),
+            }
+        }
+        SHIM_KV_SET => {
+            let key = match zstr(block, BLK_KEY, KEY_MAX) {
+                Ok(s) => s,
+                Err(e) => return e,
+            };
+            let len = u32::from_le_bytes(
+                block[BLK_LEN..BLK_LEN + 4].try_into().unwrap_or([0; 4]),
+            ) as usize;
+            if len > VAL_MAX {
+                return enospc();
+            }
+            match store.set(ns, key, &block[BLK_VAL..BLK_VAL + len]) {
+                Ok(()) => 0,
+                Err(_) => enospc(),
+            }
+        }
+        SHIM_KV_REMOVE => {
+            let key = match zstr(block, BLK_KEY, KEY_MAX) {
+                Ok(s) => s,
+                Err(e) => return e,
+            };
+            match store.remove(ns, key) {
+                Ok(()) => 0,
+                Err(_) => eio(),
+            }
+        }
+        _ => {
+            // SHIM_KV_KEYS：出参 = count u32 + 零分隔键名。
+            match store.keys(ns) {
+                Ok(keys) => {
+                    let out = &mut block[BLK_OUT..BLK_OUT + 4 + 512];
+                    let mut off = 4usize;
+                    let mut count = 0u32;
+                    for k in keys.iter() {
+                        if off + k.len() + 1 > out.len() {
+                            break;
+                        }
+                        out[off..off + k.len()].copy_from_slice(k);
+                        off += k.len();
+                        out[off] = 0;
+                        off += 1;
+                        count += 1;
+                    }
+                    out[0..4].copy_from_slice(&count.to_le_bytes());
+                    count as i64
+                }
+                Err(_) => eio(),
+            }
+        }
+    }
+}
+
+/// VFS 数据源查询：rc=1 当且仅当 SHARED exFAT 全局只读挂载可用（任务18
+/// 挂载语义）；0 = 内置演示树。页脚如实标注数据源，绝不冒充。双通道
+/// 出参（rc 与 block[0] 同值）：ushell 判 rc，契约文档记 block[0]。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_vfs_source(block: &mut [u8; BLK_TOTAL]) -> i64 {
+    // 任务58：使用点移除检测（拔盘→卸载→如实降级）。
+    mount::healthcheck();
+    let src: i64 = if mount::available() { 1 } else { 0 };
+    block[0] = src as u8;
+    src
+}
+
+/// VFS 列表：SHARED 挂载在 → exFAT 真实目录；否则 → 内置演示树（如实
+/// 降级——文件管理器页脚标注数据源，绝不冒充真实 SHARED）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_vfs_list(block: &mut [u8; BLK_TOTAL]) -> i64 {
+    // 任务58：使用点移除检测（拔盘→卸载→如实降级演示树）。
+    mount::healthcheck();
+    let path = match zstr(block, 0, PATH_MAX) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    // path 借用自 block——先拷贝出定长缓冲再交出 &mut（降级树/出参回写）。
+    let mut path_buf = [0u8; PATH_MAX];
+    let plen = path.len().min(PATH_MAX - 1);
+    path_buf[..plen].copy_from_slice(&path[..plen]);
+    let path: &[u8] = &path_buf[..plen];
+    if let Some(entries) = mount::with(|vol| vol.read_dir(core::str::from_utf8(path).unwrap_or(""))) {
+        match entries {
+            Ok(items) => {
+                let out = &mut block[BLK_OUT..BLK_OUT + 4 + 512];
+                let mut off = 4usize;
+                let mut count = 0u32;
+                for it in items.iter() {
+                    // 条目编码：name\0 size\0 is_dir("1"/"0")\0
+                    let size = format_u64(it.size);
+                    for piece in [
+                        it.name.as_bytes(),
+                        &size,
+                        if it.is_dir { b"1" } else { b"0" },
+                    ] {
+                        if off + piece.len() + 1 > out.len() {
+                            break;
+                        }
+                        out[off..off + piece.len()].copy_from_slice(piece);
+                        off += piece.len();
+                        out[off] = 0;
+                        off += 1;
+                    }
+                    count += 1;
+                }
+                out[0..4].copy_from_slice(&count.to_le_bytes());
+                count as i64
+            }
+            Err(_) => {
+                // 任务58：IO 失效检测——块后端被移除（drive_del/拔盘，
+                // guest 无 ACPI 弹出处理时 PCI 设备仍在位、vendor 探测
+                // 探不到）→ 读取必然报错；此刻卸载挂载槽并如实降级
+                // 演示树。后续 VFS_SOURCE 自然返回 0（零冒充）。
+                mount::uninstall_io_failed();
+                demo_tree_list(path, block)
+            }
+        }
+    } else {
+        demo_tree_list(path, block)
+    }
+}
+
+/// 内置演示树（挂载缺失时的如实降级数据源；页脚由 ushell 标注
+/// "DEMO TREE"，不冒充真实 SHARED）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn demo_tree_list(path: &[u8], block: &mut [u8; BLK_TOTAL]) -> i64 {
+    const ROOT: [(&[u8], u64, bool); 5] = [
+        (b"apps.json", 322, false),
+        (b"boot-select.json", 96, false),
+        (b"readme.txt", 48, false),
+        (b"handoff", 0, true),
+        (b"whitelist", 0, true),
+    ];
+    const HANDOFF: [(&[u8], u64, bool); 1] = [(b"intent-001.uxv", 4096, false)];
+    let empty: [(&[u8], u64, bool); 0] = [];
+    let items: &[(&[u8], u64, bool)] = if path.is_empty() || path == b"/" {
+        &ROOT
+    } else if path == b"handoff" || path == b"/handoff" {
+        &HANDOFF
+    } else if path == b"whitelist" || path == b"/whitelist" {
+        &empty
+    } else {
+        return -(ErrNo::Eacces.to_i32() as i64);
+    };
+    let out = &mut block[BLK_OUT..BLK_OUT + 4 + 512];
+    let mut off = 4usize;
+    for (name, size, is_dir) in items.iter() {
+        let size = format_u64(*size);
+        for piece in [*name, &size, if *is_dir { b"1" } else { b"0" }] {
+            if off + piece.len() + 1 > out.len() {
+                break;
+            }
+            out[off..off + piece.len()].copy_from_slice(piece);
+            off += piece.len();
+            out[off] = 0;
+            off += 1;
+        }
+    }
+    out[0..4].copy_from_slice(&(items.len() as u32).to_le_bytes());
+    items.len() as i64
+}
+
+/// VFS 读文件：SHARED 优先，降级演示树内容（逐字节确定）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_vfs_read(block: &mut [u8; BLK_TOTAL]) -> i64 {
+    let path = match zstr(block, 0, PATH_MAX) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let data: alloc::vec::Vec<u8> = if let Some(res) =
+        mount::with(|vol| vol.read_file(core::str::from_utf8(path).unwrap_or("")))
+    {
+        match res {
+            Ok(d) => d,
+            Err(_) => return eio(),
+        }
+    } else {
+        match path {
+            b"apps.json" | b"/apps.json" => {
+                b"{\"version\":3,\"apps\":[{\"id\":\"notepad-classic\",\"channel\":\"wine\",\"tier\":\"partial\"}]}\n".to_vec()
+            }
+            b"boot-select.json" | b"/boot-select.json" => {
+                b"{\"default_entry\":\"variable\",\"timeout_sec\":5,\"show_menu\":true}\n".to_vec()
+            }
+            b"readme.txt" | b"/readme.txt" => {
+                b"VARIX dual-domain SHARED contract demo tree (no exFAT mount).\n".to_vec()
+            }
+            b"handoff/intent-001.uxv" | b"/handoff/intent-001.uxv" => {
+                b"UXV-DEMO-PAYLOAD-001".to_vec()
+            }
+            _ => return -(ErrNo::Eacces.to_i32() as i64),
+        }
+    };
+    let n = data.len().min(READ_MAX);
+    let out = &mut block[BLK_OUT..BLK_OUT + 4 + READ_MAX];
+    out[0..4].copy_from_slice(&(n as u32).to_le_bytes());
+    out[4..4 + n].copy_from_slice(&data[..n]);
+    n as i64
+}
+
+/// boot://event 回放：14 阶段快照（idx/state=2 done/ms）。count+16B 记录。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_boot_events(block: &mut [u8; BLK_TOTAL]) -> i64 {
+    const STAGES: [crate::timeline::Stage; 14] = [
+        crate::timeline::Stage::Serial,
+        crate::timeline::Stage::Cmdline,
+        crate::timeline::Stage::Framebuffer,
+        crate::timeline::Stage::Logo,
+        crate::timeline::Stage::Banner,
+        crate::timeline::Stage::Console,
+        crate::timeline::Stage::Platform,
+        crate::timeline::Stage::Acpi,
+        crate::timeline::Stage::Smios,
+        crate::timeline::Stage::Memmap,
+        crate::timeline::Stage::Kaslr,
+        crate::timeline::Stage::Integrity,
+        crate::timeline::Stage::BootOpt,
+        crate::timeline::Stage::SelfTest,
+    ];
+    let tsc_hz = crate::platform::info()
+        .map(|p| p.tsc_hz)
+        .unwrap_or(crate::platform::FALLBACK_TSC_HZ);
+    let tl = crate::timeline::timeline();
+    let mut count = 0u32;
+    let mut off = 4usize;
+    for st in STAGES.iter() {
+        let ms = crate::timeline::ticks_to_ms(tl.stage_ticks(*st), tsc_hz) as u32;
+        let mut rec = [0u8; 16];
+        encode_boot_record(st.index() as u8, 2, ms, &mut rec);
+        block[off..off + 16].copy_from_slice(&rec);
+        off += 16;
+        count += 1;
+    }
+    block[0..4].copy_from_slice(&count.to_le_bytes());
+    count as i64
+}
+
+/// 开机毫秒（boot://event 时钟源）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn boot_ms() -> u64 {
+    let tsc_hz = crate::platform::info()
+        .map(|p| p.tsc_hz)
+        .unwrap_or(crate::platform::FALLBACK_TSC_HZ);
+    crate::timeline::ticks_to_ms(crate::timeline::timeline().total_ticks(), tsc_hz)
+}
+
+/// 无堆 u64 → 十进制（演示树条目尺寸）。
+fn format_u64(mut v: u64) -> alloc::vec::Vec<u8> {
+    if v == 0 {
+        return alloc::vec![b'0'];
+    }
+    let mut buf = alloc::vec::Vec::with_capacity(20);
+    while v > 0 {
+        buf.push(b'0' + (v % 10) as u8);
+        v /= 10;
+    }
+    buf.reverse();
+    buf
+}
+
+// ---------------------------------------------------------------------------
+// 宿主测试：编解码/校验/降级树纯逻辑
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pack_unpack_roundtrip() {
+        let a1 = pack_a1(FRAME_TEXT, 4, 200, 2);
+        assert_eq!(a1 & 0xFF, FRAME_TEXT);
+        assert_eq!((a1 >> 8) & 0xFF, 4);
+        assert_eq!((a1 >> 16) & 0xFF, 200);
+        assert_eq!((a1 >> 28) & 0xF, 2);
+        let packed = pack_xywh(100, 200, 640, 480);
+        assert_eq!(unpack_xywh(packed), (100, 200, 640, 480));
+        // 16 位槽位：65535 不失真，65536 截断（调用方语义层校验兜底）。
+        assert_eq!(unpack_xywh(pack_xywh(65535, 0, 0, 0)).0, 65535);
+    }
+
+    #[test]
+    fn palette_out_of_range_is_black_no_panic() {
+        assert_eq!(palette(0), PALETTE[0]);
+        assert_eq!(palette(15), PALETTE[15]);
+        assert_eq!(palette(16), PALETTE[0]);
+        assert_eq!(palette(u64::MAX), PALETTE[0]);
+    }
+
+    #[test]
+    fn rect_plausible_boundaries() {
+        assert!(rect_plausible(0, 0, 100, 50, 1280, 800));
+        assert!(!rect_plausible(0, 0, 0, 50, 1280, 800), "零宽拒绝");
+        assert!(!rect_plausible(1300, 0, 10, 10, 1280, 800), "完全越界拒绝");
+        assert!(rect_plausible(1270, 0, 20, 10, 1280, 800), "部分相交放行（绘制层裁剪）");
+        assert!(!rect_plausible(-50, 0, 10, 10, 1280, 800));
+    }
+
+    #[test]
+    fn shim_block_min_table() {
+        assert_eq!(shim_block_min(SHIM_KV_GET), Some(BLK_OUT + 4 + VAL_MAX));
+        assert_eq!(shim_block_min(SHIM_KV_SET), Some(BLK_VAL + VAL_MAX));
+        assert_eq!(shim_block_min(99), None, "未知命令 = MISSING");
+        assert!(shim_block_min(SHIM_VFS_READ).unwrap() >= BLK_OUT + 4 + READ_MAX);
+    }
+
+    #[test]
+    fn zstr_rejects_unterminated_and_oob() {
+        let mut b = [0u8; 64];
+        b[0..5].copy_from_slice(b"hello");
+        assert_eq!(zstr(&b, 0, 16), Ok(&b"hello"[..]));
+        b[16..32].fill(b'x'); // 槽内无终止符
+        assert!(zstr(&b, 16, 16).is_err());
+        assert!(zstr(&b, 60, 16).is_err(), "越槽 = EINVAL");
+    }
+
+    #[test]
+    fn boot_record_layout() {
+        let mut r = [0u8; 16];
+        encode_boot_record(7, 2, 1234, &mut r);
+        assert_eq!(r[0], 7);
+        assert_eq!(r[1], 2);
+        assert_eq!(&r[4..8], &1234u32.to_le_bytes());
+        assert!(r[2..4].iter().all(|&b| b == 0) && r[8..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn format_u64_decimal() {
+        assert_eq!(format_u64(0), b"0".to_vec());
+        assert_eq!(format_u64(322), b"322".to_vec());
+        assert_eq!(format_u64(1_048_576), b"1048576".to_vec());
+    }
+
+    #[test]
+    fn stable_numbers_do_not_clash_win32() {
+        // 稳定号 16/17/18 与 Win32 服务台号段（0x40 起）永不相交。
+        assert!(SYS_FRAME < super::super::winapi::WIN32_NR_BASE);
+        assert!(SYS_SHIM < super::super::winapi::WIN32_NR_BASE);
+    }
+}

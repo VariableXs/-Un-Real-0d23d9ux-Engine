@@ -39,13 +39,137 @@ impl InputEvent {
     pub const KIND_KEY: u8 = 0;
     pub const KIND_MOUSE: u8 = 1;
 
-    /// 键字节：0=Up 1=Down 2=Enter（声明序，契约固定）。
+    /// 键字节：0=Up 1=Down 2=Enter（声明序，契约固定——前 3 序号是
+    /// 任务19/26 定版契约，扩表只追加不重排），3 起=任务55 扩展区
+    /// （Esc/Space/Backspace/Tab/Left/Right/Shift/字母/数字/标点）。
     fn key_byte(k: ps2::Key) -> u8 {
+        use ps2::Key::*;
         match k {
-            ps2::Key::Up => 0,
-            ps2::Key::Down => 1,
-            ps2::Key::Enter => 2,
+            Up => 0,
+            Down => 1,
+            Enter => 2,
+            Esc => 3,
+            Space => 4,
+            Backspace => 5,
+            Tab => 6,
+            Left => 7,
+            Right => 8,
+            LShift => 9,
+            RShift => 10,
+            A => 11,
+            B => 12,
+            C => 13,
+            D => 14,
+            E => 15,
+            F => 16,
+            G => 17,
+            H => 18,
+            I => 19,
+            J => 20,
+            K => 21,
+            L => 22,
+            M => 23,
+            N => 24,
+            O => 25,
+            P => 26,
+            Q => 27,
+            R => 28,
+            S => 29,
+            T => 30,
+            U => 31,
+            V => 32,
+            W => 33,
+            X => 34,
+            Y => 35,
+            Z => 36,
+            D1 => 37,
+            D2 => 38,
+            D3 => 39,
+            D4 => 40,
+            D5 => 41,
+            D6 => 42,
+            D7 => 43,
+            D8 => 44,
+            D9 => 45,
+            D0 => 46,
+            Minus => 47,
+            Equal => 48,
+            Comma => 49,
+            Period => 50,
+            Slash => 51,
+            Semicolon => 52,
+            Apostrophe => 53,
+            BracketL => 54,
+            BracketR => 55,
+            Backslash => 56,
+            Grave => 57,
         }
+    }
+
+    /// 归一化键表反查（验收/文档/注入脚本对账用；与 key_byte 互逆）。
+    pub fn key_from_byte(b: u8) -> Option<ps2::Key> {
+        use ps2::Key::*;
+        Some(match b {
+            0 => Up,
+            1 => Down,
+            2 => Enter,
+            3 => Esc,
+            4 => Space,
+            5 => Backspace,
+            6 => Tab,
+            7 => Left,
+            8 => Right,
+            9 => LShift,
+            10 => RShift,
+            11 => A,
+            12 => B,
+            13 => C,
+            14 => D,
+            15 => E,
+            16 => F,
+            17 => G,
+            18 => H,
+            19 => I,
+            20 => J,
+            21 => K,
+            22 => L,
+            23 => M,
+            24 => N,
+            25 => O,
+            26 => P,
+            27 => Q,
+            28 => R,
+            29 => S,
+            30 => T,
+            31 => U,
+            32 => V,
+            33 => W,
+            34 => X,
+            35 => Y,
+            36 => Z,
+            37 => D1,
+            38 => D2,
+            39 => D3,
+            40 => D4,
+            41 => D5,
+            42 => D6,
+            43 => D7,
+            44 => D8,
+            45 => D9,
+            46 => D0,
+            47 => Minus,
+            48 => Equal,
+            49 => Comma,
+            50 => Period,
+            51 => Slash,
+            52 => Semicolon,
+            53 => Apostrophe,
+            54 => BracketL,
+            55 => BracketR,
+            56 => Backslash,
+            57 => Grave,
+            _ => return None,
+        })
     }
 
     /// `shim://input` 频道事件定长布局（16B，任务26 逐字段核对基准）：
@@ -374,6 +498,47 @@ pub mod target {
         }
     }
 
+    /// 任务27 · shell 订阅槽（惰性注册；usize::MAX = 未注册）。
+    static SHELL_SUB: core::sync::atomic::AtomicUsize =
+        core::sync::atomic::AtomicUsize::new(usize::MAX);
+
+    /// 任务27 · shell 订阅注册（usrshell 初始化时调用一次；重复调用幂等）。
+    pub fn shell_subscribe() -> bool {
+        if SHELL_SUB.load(core::sync::atomic::Ordering::Acquire) != usize::MAX {
+            return true;
+        }
+        match svc().subscribe("usrshell") {
+            Some(idx) => {
+                SHELL_SUB.store(idx, core::sync::atomic::Ordering::Release);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 任务27 · 内核嵌入层输入泵取：泵一次硬件（键/鼠分流同任务19 泵），
+    /// 随后把该订阅者的待发事件按 shim://input 16B 布局灌入用户缓冲。
+    /// 返回已灌入事件数；未订阅/槽满时如实返回 0，绝不伪造输入。
+    pub fn drain_to_shim(buf: &mut [u8], max_events: usize) -> usize {
+        let sub_idx = SHELL_SUB.load(core::sync::atomic::Ordering::Acquire);
+        if sub_idx == usize::MAX {
+            return 0;
+        }
+        let cap = buf.len() / 16;
+        let cap = if cap < max_events { cap } else { max_events };
+        let s = svc();
+        s.pump();
+        let mut n = 0usize;
+        while n < cap {
+            let Some((seq, ev)) = s.poll_with_seq(sub_idx) else {
+                break;
+            };
+            buf[n * 16..n * 16 + 16].copy_from_slice(&ev.to_shim_bytes(seq));
+            n += 1;
+        }
+        n
+    }
+
     const HEX: &[u8; 16] = b"0123456789abcdef";
 
     /// i8042 鼠标 bring-up：复位后 PS/2 鼠标默认**不上报数据**——
@@ -547,6 +712,7 @@ pub mod target {
                             ps2::Key::Up => 0,
                             ps2::Key::Down => 1,
                             ps2::Key::Enter => 2,
+                            _ => continue, // 扩展键不在三键矩阵内（任务55 扩表后如实跳过）
                         };
                         seen[i] = true;
                     }

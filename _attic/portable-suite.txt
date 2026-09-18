@@ -2,9 +2,13 @@
   ok   语法 Create-VHDX.ps1
   ok   语法 Deploy-To-USB.ps1
   ok   语法 Test-VM.ps1
+  ok   语法 AI-P\Build-ESP.ps1
   ok   语法 AI-P\Create-Partitions.ps1
+  ok   语法 AI-P\Deploy-Varix-USB.ps1
   ok   语法 AI-P\Init-Shared.ps1
+  ok   语法 AI-P\Manage-Versions.ps1
   ok   语法 AI-P\Test-AIP.ps1
+  ok   语法 AI-P\Test-AIP2.ps1
   ok   语法 AI1\Bench-Storage.ps1
   ok   语法 AI1\Create-VHDX.ps1
   ok   语法 AI1\Link-DataApps.ps1
@@ -68,4 +72,4 @@
   ok   dangerous 场景一律 manual
 == 3. 执行只读动作（已按 -SkipExec 跳过）==
 
-PORTABLE SELFTEST PASS (66 checks)
+PORTABLE SELFTEST PASS (70 checks)

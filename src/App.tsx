@@ -36,6 +36,8 @@ import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
 import { OobeGate } from "./features/oobe/OobeWizard";
+import { installPerfSampler } from "./lib/shim/perfBaseline";
+import { initEngineChannel, setEngineNotify } from "./system/engine/engineSessions";
 // AURORA-10000：AI-01~AI-05 批次，勿删（族0020 睡眠唤醒剧场触发器）
 import { showWakeCeremony } from "./system/boot/theater/ceremonyFx";
 
@@ -144,6 +146,26 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     if (!isTauriRuntime()) return;
     installDemoModeExitHook();
     void recoverDemoModeOnBoot();
+  }, []);
+
+  // 阶段6（任务 50/51）+ 任务 29：引擎会话事件通道挂载 + 性能采样基线安装。
+  // 非 Tauri 运行时（dev 静态预览/vitest）安全跳过；两者内部自带幂等与降级。
+  useEffect(() => {
+    setEngineNotify((level, message) =>
+      pushToast(level === "warn" ? "info" : level, message),
+    );
+    const unPerf = installPerfSampler();
+    let unEngine: (() => void) | null = null;
+    let disposed = false;
+    void initEngineChannel().then((un) => {
+      if (disposed) un();
+      else unEngine = un;
+    });
+    return () => {
+      disposed = true;
+      unPerf();
+      unEngine?.();
+    };
   }, []);
 
   // AURORA-10000：AI-01~AI-05 批次，勿删 —— 族0020 睡眠唤醒剧场：

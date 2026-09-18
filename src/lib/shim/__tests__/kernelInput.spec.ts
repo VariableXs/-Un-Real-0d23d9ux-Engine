@@ -3,6 +3,10 @@ import {
   BTN_LEFT,
   BTN_MIDDLE,
   BTN_RIGHT,
+  KEY_A,
+  KEY_D0,
+  KEY_D1,
+  KEY_Z,
   KernelInputDecoder,
   SHIM_INPUT_EVENT_SIZE,
   connectKernelInput,
@@ -102,10 +106,40 @@ describe("shim://input 16B 契约解码（实机向量逐字段核对）", () =>
     expect(d.feed(makeEvent(2, 2))).toMatchObject({ ok: false, reason: "kind" });
     const dirtyKey = makeEvent(3, 0, 2, 5); // 键帧 dx 必须 0
     expect(d.feed(dirtyKey)).toMatchObject({ ok: false, reason: "key" });
-    const unknownKey = makeEvent(4, 0, 7); // 未来扩展前未知键名 → 拒绝计数
+    const unknownKey = makeEvent(4, 0, 99); // 任务 55 扩表后 0..57 全量合法；99 仍未知 → 拒绝计数
     expect(d.feed(unknownKey)).toMatchObject({ ok: false, reason: "key" });
     expect(d.getStats().rejected).toBe(6);
     expect(d.getStats().decoded).toBe(0);
+  });
+
+  it("任务 55 键表同源扩表：0..57 全量可解码，字母/数字/IME 依赖键逐段核对（与内核 key_byte 同序）", () => {
+    const got: Array<{ code: string; key: string }> = [];
+    const d = new KernelInputDecoder((e) => {
+      if (e.kind === "key") got.push({ code: e.code, key: e.key });
+    });
+    let seq = 0;
+    for (let kb = 0; kb <= 57; kb += 1) {
+      seq += 1;
+      const r = d.feed(makeEvent(seq, 0, kb));
+      expect(r.ok, `key byte ${kb} 应合法`).toBe(true);
+    }
+    // 逐段抽核（生成式注册防手抄错位，但表本身仍需抽核锚点）
+    expect(got[0]).toEqual({ code: "ArrowUp", key: "ArrowUp" });
+    expect(got[2]).toEqual({ code: "Enter", key: "Enter" });
+    expect(got[4]).toEqual({ code: "Space", key: " " });
+    expect(got[KEY_A]).toEqual({ code: "KeyA", key: "a" });
+    expect(got[KEY_Z]).toEqual({ code: "KeyZ", key: "z" });
+    expect(got[KEY_D1]).toEqual({ code: "Digit1", key: "1" });
+    expect(got[KEY_D0]).toEqual({ code: "Digit0", key: "0" });
+    expect(got[47]).toEqual({ code: "Minus", key: "-" });
+    expect(got[57]).toEqual({ code: "Backquote", key: "`" });
+    // IME 专项锚点：拼音组合依赖字母 + 数字标调（ni3 → "n" "i" "3"）全可达
+    const byCode = new Map(got.map((g) => [g.code, g.key]));
+    expect(byCode.get("KeyN")).toBe("n");
+    expect(byCode.get("KeyI")).toBe("i");
+    expect(byCode.get("Digit3")).toBe("3");
+    expect(d.getStats().decoded).toBe(58);
+    expect(d.getStats().rejected).toBe(0);
   });
 
   it("按钮边沿：按下/抬起由前端推导（内核只报状态位），三位全覆盖", () => {

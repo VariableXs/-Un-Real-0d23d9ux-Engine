@@ -850,6 +850,16 @@ pub mod target {
                         // 任务21：里程碑 M3/M4——SHARED exFAT 读 +
                         // 快照区跨断电持久核对。
                         crate::milestone::target::ms_shared_probe(&mut sctrl);
+
+                        // 任务27（AI-V）：SHARED 控制器移交全局只读挂载
+                        // （嵌入层文件管理器数据源；挂载失败如实降级演示树）。
+                        // 任务58：登记 BDF 供运行中移除检测（拔盘→卸载→降级）。
+                        let mounted =
+                            crate::proc::usrshell::mount::install(sctrl, (sh.bus, sh.dev, sh.func));
+                        crate::kinfo!(
+                            "usrshell: SHARED exFAT global mount available={}",
+                            mounted
+                        );
                     }
                     Err(e) => crate::kwarn!("shared: nvme init failed {:?} - skipped", e),
                 }

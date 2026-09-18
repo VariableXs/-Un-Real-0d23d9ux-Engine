@@ -241,6 +241,15 @@ pub fn job_kill_pending(tid: u32) -> bool {
     KILL_FLAG[ms].swap(0, Ordering::AcqRel) != 0
 }
 
+/// 演示收官清理：探针进程全部收割后，残留 kill flag 属于已死成员（再无 syscall
+/// 可消费），不清会误杀下一个进入 ring3 的进程 —— 任务27 实机教训：ushell 的
+/// 首个 SYS_FRAME 被任务42 jobkill 演示的残留 flag 误杀（exit(0)）。
+pub fn job_flags_reset_for_demo() {
+    for f in KILL_FLAG.iter() {
+        f.store(0, Ordering::Release);
+    }
+}
+
 /// 成员主动退出（正常 exit 路径）：摘除映射（不动 kill flag 语义）。
 pub fn job_detach(tid: u32) {
     let Some(ms) = member_slot(tid) else { return };

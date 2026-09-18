@@ -5,12 +5,21 @@ import type { Settings } from "../../lib/settings";
 import { isTauriRuntime } from "../../entries/runtime";
 import { CosmicBackground } from "../../features/background/CosmicBackground";
 import { Sidebar } from "../../apps/write/folders/Sidebar";
-import { closeVwmWin, focusVwmWin, isTpApp, isVwmTool, tpIdOf, vwmWindowTitle, type VwmApp } from "./vwm";
+import { closeVwmWin, focusVwmWin, isEngineApp, isTpApp, isVwmTool, engineSessionOf, tpIdOf, vwmWindowTitle, type VwmApp } from "./vwm";
 import {
   useEmbedSessionState,
   clearEmbedSessionState,
   type EmbedSessionState,
 } from "./embedState";
+import {
+  ENGINE_BOOT_ESTIMATE,
+  ENGINE_BOOT_STAGES,
+  ENGINE_VWM_SUPPORT,
+} from "../engine/engineModel";
+import {
+  cancelEngineApp,
+  useEngineSession,
+} from "../engine/engineSessions";
 import { getThirdApps } from "../launcher/thirdApps";
 import { ipc, errMessage } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
@@ -128,6 +137,12 @@ export const VwmAppContent = memo(function VwmAppContent(props: {
   // [重新打开] [关闭占位]），嵌入层崩溃只影响本占位卡，不波及 Shell 其它部分。
   if (isTpApp(app)) {
     return <TpPlaceholder winId={props.winId} app={app} state={embedState} />;
+  }
+
+  // 阶段6（任务50/51）：引擎流窗口 —— 拉起协议占位卡（复用 embed 占位卡视觉语言）
+  // + 冷启动阶段化叙事 + 能力对照表。就绪后画面流由引擎代理回传（Hyper-V 底座实机链路）。
+  if (isEngineApp(app)) {
+    return <EngineStreamPane winId={props.winId} app={app} />;
   }
 
   // F-2 实用工具：独立工具 UI（无 Sidebar，走各自样式；背景层按需铺）。
@@ -275,6 +290,90 @@ function TpPlaceholder(props: {
           )}
           <button type="button" className="btn" onClick={() => closeVwmWin(props.winId)}>
             {t("tpEmbedDismiss")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 阶段6（任务50/51）：引擎流窗口内容层。
+ * - starting → 冷启动阶段化叙事卡（命名阶段逐个点亮 + 预期等待 20-40s 如实提示 +
+ *   取消路径）；进度只按「已到达阶段」推进，绝不按时间伪造百分比。
+ * - ready → 画面流承载占位（真实流媒体由 Hyper-V 底座实机链路回传；此处预留
+ *   流协议抽象挂点，协议可替换 RDP/Spice）。
+ * - crashed / closed → 如实状态卡（原因 + 动作），绝不自动重启引擎。
+ * - 能力对照表（任务50 完善性）：哪些 VWM 特性引擎窗不支持，如实列出。
+ */
+function EngineStreamPane(props: { winId: string; app: VwmApp }): React.ReactElement {
+  const appKey = engineSessionOf(props.app);
+  const session = useEngineSession();
+  const stageIdx = session.stage ? ENGINE_BOOT_STAGES.findIndex((s) => s.key === session.stage) : -1;
+  if (session.lifecycle === "starting") {
+    return (
+      <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
+        <div className="vwm-tp-card" role="status">
+          <p className="vwm-tp-card-msg">正在拉起「{appKey}」的 Windows 引擎…</p>
+          <ol className="engine-boot-stages">
+            {ENGINE_BOOT_STAGES.map((s, i) => (
+              <li key={s.key} className={i <= stageIdx ? "engine-stage done" : "engine-stage"}>
+                {i <= stageIdx ? "✓" : "·"} {s.label}
+              </li>
+            ))}
+          </ol>
+          <p className="vwm-tp-card-msg engine-eta">
+            预期等待 {ENGINE_BOOT_ESTIMATE.minS}-{ENGINE_BOOT_ESTIMATE.maxS} 秒（首次冷启动较慢，实际以事件推进为准）
+          </p>
+          <div className="vwm-tp-card-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                cancelEngineApp(appKey);
+                closeVwmWin(props.winId);
+              }}
+            >
+              取消等待
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (session.lifecycle === "ready") {
+    // 就绪：画面流承载面（流协议抽象挂点 —— RDP/Spice 可替换，任务53 延迟探针在此打点）。
+    return (
+      <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
+        <div className="vwm-tp-card" role="status">
+          <p className="vwm-tp-card-msg">引擎就绪 · 画面流连接中（{appKey}）</p>
+          <details className="engine-cap-table">
+            <summary>引擎窗口能力说明</summary>
+            <ul>
+              {ENGINE_VWM_SUPPORT.map((f) => (
+                <li key={f.feature}>
+                  {f.supported ? "✓" : "✕"} {f.feature} —— {f.note}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </div>
+      </div>
+    );
+  }
+  const msg =
+    session.lifecycle === "crashed"
+      ? `引擎已崩溃：${session.reason ?? "未知原因"}。Variable 桌面不受影响。`
+      : session.reason
+        ? `引擎会话已结束：${session.reason}`
+        : "引擎未运行。";
+  return (
+    <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
+      <div className="vwm-tp-card" role="status">
+        <p className="vwm-tp-card-msg">{msg}</p>
+        <div className="vwm-tp-card-actions">
+          <button type="button" className="btn" onClick={() => closeVwmWin(props.winId)}>
+            关闭占位
           </button>
         </div>
       </div>
