@@ -100,7 +100,11 @@ Write-Step "组装 ESP：$espRoot"
 foreach ($f in $varixFiles) {
   if (-not (Test-Path -LiteralPath $f.Src)) { throw "VARIX 链源缺失：$($f.Src)" }
   $dst = Join-Path $espRoot $f.Dst
-  New-Item -ItemType Directory -Force -Path (Split-Path $dst -Parent) | Out-Null
+  # Test-Path 防御：New-Item 对卷根（如 Q:\）非法（父目录为根时无需创建）
+  $parent = Split-Path $dst -Parent
+  if (-not (Test-Path -LiteralPath $parent)) {
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
+  }
   Copy-Item -LiteralPath $f.Src -Destination $dst -Force
   Write-Ok "VARIX 链 $($f.Dst)"
 }

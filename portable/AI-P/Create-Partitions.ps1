@@ -116,6 +116,43 @@ function Format-PartitionPlanAscii {
   return $lines -join [Environment]::NewLine
 }
 
+# 盘符保障：ESP 等 GPT 特殊分区 Windows 不会自动挂盘符，而 Deploy 编排按
+# 卷标签 + DriveLetter 定位（Get-VolByLabel 找到卷但无盘符同样判失败）。
+# 显式从高位字母分配（等价 diskpart assign letter），已有盘符直接跳过。
+function Add-VolDriveLetter {
+  param([Parameter(Mandatory = $true)]$Part)
+  # Storage WMI 分区对象状态陈旧（实测：diskpart 分配成功后 AccessPaths /
+  # DriveLetter 长时间为空）——以 AccessPaths 的 Volume{guid} 映射卷，
+  # 已挂载判定与分配成功判定都用 Get-Volume 视角（实证新鲜可靠）
+  $cur = Get-Partition -DiskNumber $Part.DiskNumber -PartitionNumber $Part.PartitionNumber
+  # ESP 的盘符会被 mount manager 回收（实测），不分配——由 Deploy 编排用
+  # NTFS 文件夹挂载点访问（Get-EspMount）
+  if ($cur.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}') { return }
+  $volGuid = @($cur.AccessPaths | Where-Object { $_ -like '\\?\Volume{*}' } | Select-Object -First 1)
+  if ($volGuid) {
+    $vol = Get-Volume | Where-Object { $_.ObjectId -eq $volGuid }
+    if ($vol -and $vol.DriveLetter) { return }
+  }
+  $used = @(Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object { $_.DriveLetter })
+  $used += @(Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name)
+  foreach ($L in @('Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F')) {
+    if ($used -notcontains $L) {
+      # diskpart assign（Storage cmdlet 参数集/管道绑定实测均不可用）
+      $dp = "select disk $($cur.DiskNumber)`r`nselect partition $($cur.PartitionNumber)`r`nassign letter=$L`r`n"
+      $dpFile = Join-Path $env:TEMP 'varix-assign.txt'
+      [IO.File]::WriteAllText($dpFile, $dp, [Text.Encoding]::ASCII)
+      diskpart /s $dpFile 2>&1 | Out-Null
+      Start-Sleep -Seconds 2
+      if (-not (Get-Volume -DriveLetter $L -ErrorAction SilentlyContinue)) {
+        throw "盘符分配失败（diskpart assign）：P$($cur.PartitionNumber) -> $L`:"
+      }
+      Write-Ok "盘符分配：Disk$($cur.DiskNumber) P$($cur.PartitionNumber) -> $L`:"
+      return
+    }
+  }
+  throw 'D-Z 无可用盘符，无法挂载分区卷'
+}
+
 # 幂等校验：现有分区与计划逐项比对（数量/标签/容量）。一致 $true；不一致 $false 并把差异填到差异表。
 function Test-LayoutMatch {
   param([Parameter(Mandatory = $true)]$Plan, [Parameter(Mandatory = $true)]$Parts)
@@ -204,7 +241,9 @@ try {
     Write-Step "已有 $($existing.Count) 个分区，执行幂等布局校验"
     if (Test-LayoutMatch -Plan $plan -Parts $existing) {
       Write-Ok '布局与计划一致（幂等重跑通过），跳过分区与格式化'
-      return
+      # 幂等路径也补盘符（首次分区后盘符分配失败的重跑场景）
+      foreach ($p in $existing) { Add-VolDriveLetter -Part $p }
+      exit 0
     }
     Write-Note '布局与计划不一致：'
     $script:LayoutDiffs | ForEach-Object { Write-Note "  - $_" }
@@ -223,15 +262,47 @@ try {
 
   Write-Step '清盘（Clear-Disk）+ GPT 初始化'
   Clear-Disk -Number $disk.Number -RemoveData -RemoveOEM -Confirm:$false
-  Initialize-Disk -Number $disk.Number -PartitionStyle GPT | Out-Null
+  # Clear-Disk 后盘可能仍是 GPT 元数据，重复 Initialize 会报错——条件化
+  $d2 = Get-Disk -Number $disk.Number
+  if ($d2.PartitionStyle -ne 'GPT') {
+    Initialize-Disk -Number $disk.Number -PartitionStyle GPT | Out-Null
+  }
+  # Windows GPT 初始化会自动建 16MB MSR 保留分区（Offset 17KB），与 ESP 的
+  # 1MiB 计划起点重叠，必须移除（Remove-Partition 对受保护分区可能拒绝 →
+  # diskpart delete override 兜底）。
+  $msrType = '{e3c9e316-0b5c-4db8-817d-f92df00215ae}'
+  $msr = Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue |
+    Where-Object { $_.GptType -eq $msrType }
+  if ($msr) {
+    Write-Note '移除 GPT 初始化自动创建的 MSR 保留分区'
+    $msr | Remove-Partition -Confirm:$false -ErrorAction SilentlyContinue
+    if (Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue | Where-Object { $_.GptType -eq $msrType }) {
+      $dp = "select disk $($disk.Number)`r`nselect partition $($msr.PartitionNumber)`r`ndelete partition override`r`n"
+      $dpFile = Join-Path $env:TEMP 'varix-delmsr.txt'
+      [IO.File]::WriteAllText($dpFile, $dp, [Text.Encoding]::ASCII)
+      diskpart /s $dpFile | Out-Null
+    }
+    if (Get-Partition -DiskNumber $disk.Number -ErrorAction SilentlyContinue | Where-Object { $_.GptType -eq $msrType }) {
+      throw 'MSR 保留分区移除失败（Remove-Partition 与 diskpart override 均未生效）'
+    }
+    Write-Ok 'MSR 已移除'
+  }
 
   Write-Step '创建五分区并格式化'
   foreach ($e in $plan) {
-    $npParams = @{ DiskNumber = $disk.Number; Offset = $e.OffsetBytes; SizeBytes = $e.SizeBytes }
+    # New-Partition 的容量参数名是 -Size（不是 SizeBytes）
+    $npParams = @{ DiskNumber = $disk.Number; Offset = $e.OffsetBytes; Size = $e.SizeBytes }
     if ($e.Name -eq 'ESP') {
       $npParams.GptType = '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}'
     }
-    $np = New-Partition @npParams
+    if ($e.SizeGB -eq 0) {
+      # 余量分区：-UseMaximumSize 由 Storage 层吃掉剩余 extent（自动避开 GPT
+      # 备份结构与 USB 桥接容量偏差）；按绝对字节硬算会报容量不足
+      $npParams.Remove('Size') | Out-Null
+      $npParams.UseMaximumSize = $true
+    }
+    $np = New-Partition @npParams -ErrorAction Stop
+    if (-not $np) { throw "分区 $($e.Name) 创建失败（New-Partition 返回空）" }
     if (($np.Offset % 4096) -ne 0) { throw "分区 $($e.Name) 落盘 Offset=$($np.Offset) 非 4K 对齐，中止" }
     Format-Volume -Partition $np -FileSystem $e.Fs -NewFileSystemLabel $e.Label -Confirm:$false | Out-Null
     Write-Ok "$($e.Name)  $([math]::Round($e.SizeBytes/1GB,1))GB  $($e.Fs)  $($e.Label)（Offset=$($np.Offset)，4K 对齐 OK）"

@@ -96,6 +96,75 @@ function Get-VolByLabel {
   return Get-Volume -FileSystemLabel $Label -ErrorAction SilentlyContinue | Select-Object -First 1
 }
 
+# ESP 盘符保障：ESP 只接受盘符、不接受装入点（diskpart 实测明确拒绝 mount）。
+# 盘符/ESP 卷仅对提权会话可见（普通会话查不到，勿以非提权视角验证），且在
+# 部署进程（同一提权会话）存续期内有效——足够跑完全部阶段；实机引导由固件
+# 读 ESP，不依赖 Windows 盘符。判定用 Get-Volume（Get-Partition 的 WMI 视图
+# 对盘符分配陈旧不可靠，实测多次误判）。幂等：已有盘符直接返回。
+function Get-EspMount {
+  $espVol = Get-VolByLabel 'VARIX-ESP'
+  if (-not $espVol) { throw '未找到 ESP 卷（VARIX-ESP）' }
+  if ($espVol.DriveLetter) { return "$($espVol.DriveLetter):\" }
+  $used = @(Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object { $_.DriveLetter })
+  # 历次会话给 ESP 试过的字母（Z/Y/X/W）在 VDS 内部留有不可见占位，assign
+  # 会报「驱动器号对于分配不可用」——ESP 从干净字母（Q 起降序）开始选
+  $L = $null
+  foreach ($c in @('Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F', 'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R')) {
+    if ($used -notcontains $c) { $L = $c; break }
+  }
+  if (-not $L) { throw 'D-Z 无可用盘符' }
+  # 先清残留挂载点（历次会话分配的字母在 mount manager 中占位但卷不可见，
+  # 会导致 VDS 报「指定的驱动器号对于分配不可用」）
+  $dp = "select disk $DiskNumber`r`nselect partition 1`r`nremove all dismount`r`nassign letter=$L`r`n"
+  $dpFile = Join-Path $env:TEMP 'varix-esp-letter.txt'
+  [IO.File]::WriteAllText($dpFile, $dp, [Text.Encoding]::ASCII)
+  $mout = diskpart /s $dpFile 2>&1 | Out-String
+  Start-Sleep -Seconds 2
+  # 判定用 Test-Path（文件系统视角，与 Build-ESP 实际读写一致）：
+  # Get-Volume 对 ESP 卷的盘符不反映（实测 diskpart 分配成功后仍查不到）
+  if (-not (Test-Path -LiteralPath "$($L):\")) {
+    Write-Note "diskpart 输出：$($mout.Trim())"
+    throw "ESP 盘符分配失败：$L`:"
+  }
+  Write-Note "ESP 盘符：$L`:（部署会话内有效）"
+  return "$($L):\"
+}
+
+# 盘符兜底：断点续作跳过 Partition 阶段时，Create-Partitions 内的盘符分配
+# 不会执行，而 SHARED/VARIX_SYS 等普通分区需要盘符供后续阶段定位。
+# ESP 跳过（盘符会被回收，走 Get-EspMount 文件夹挂载点）。幂等：已挂载跳过。
+function Ensure-DiskLetters {
+  param([int]$DiskNum)
+  foreach ($p in @(Get-Partition -DiskNumber $DiskNum -ErrorAction SilentlyContinue)) {
+    if ($p.GptType -eq '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}') { continue }
+    $volGuid = @($p.AccessPaths | Where-Object { $_ -like '\\?\Volume{*}' } | Select-Object -First 1)
+    if ($volGuid) {
+      $vol = Get-Volume | Where-Object { $_.ObjectId -eq $volGuid }
+      if ($vol -and $vol.DriveLetter) { continue }
+    }
+    $used = @(Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object { $_.DriveLetter })
+    $used += @(Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Name)
+    $L = $null
+    foreach ($c in @('Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F')) {
+      if ($used -notcontains $c) { $L = $c; break }
+    }
+    if (-not $L) { throw 'D-Z 无可用盘符' }
+    $dp = "select disk $DiskNum`r`nselect partition $($p.PartitionNumber)`r`nassign letter=$L`r`n"
+    $dpFile = Join-Path $env:TEMP 'varix-assign.txt'
+    [IO.File]::WriteAllText($dpFile, $dp, [Text.Encoding]::ASCII)
+    diskpart /s $dpFile 2>&1 | Out-Null
+    # 挂载点传播延迟，等待后按 Get-Volume 视角验证
+    Start-Sleep -Seconds 2
+    if (-not (Get-Volume -DriveLetter $L -ErrorAction SilentlyContinue)) {
+      throw "盘符分配失败：P$($p.PartitionNumber) -> $L`:"
+    }
+    Write-Note "卷盘符分配：P$($p.PartitionNumber) -> $L`:"
+  }
+}
+
+# 盘符兜底（幂等）：断点续作跳过 Partition 时补齐五分区盘符
+if ($DiskNumber -ge 0) { Ensure-DiskLetters -DiskNum $DiskNumber }
+
 foreach ($stage in $stages) {
   $state = Get-State
   if ($state.disk -eq $diskKey -and $state.done -contains $stage -and -not $VerifyOnly) {
@@ -118,27 +187,30 @@ foreach ($stage in $stages) {
       Set-Stage $diskKey 'Preflight'
     }
     'Partition' {
-      $args2 = @()
-      if ($VhdPath) { $args2 += @('-VhdPath', $VhdPath) } else { $args2 += @('-DiskNumber', "$DiskNumber") }
-      if ($Yes) { $args2 += '-Yes' }
-      & (Join-Path $PSScriptRoot 'Create-Partitions.ps1') @args2 -ReportPath (Join-Path $ReportDir 'partition-map.txt')
-      if ($LASTEXITCODE -ne 0) { throw "分区阶段失败（exit=$LASTEXITCODE）" }
+      # 哈希表 splat（命名参数）：数组 splat 会把整个数组当单个位置实参
+      # 绑给 [int]$DiskNumber → 绑定异常终止（实测 EXP1/EXP2 证实）
+      $h = @{ ReportPath = (Join-Path $ReportDir 'partition-map.txt') }
+      if ($VhdPath) { $h.VhdPath = $VhdPath } else { $h.DiskNumber = $DiskNumber }
+      # -Yes 授权整机部署 = 全链危险确认，含布局不符时销毁重建
+      if ($Yes) { $h.Yes = $true; $h.Recreate = $true }
+      & (Join-Path $PSScriptRoot 'Create-Partitions.ps1') @h
+      # PS 子脚本失败以异常传播（ErrorActionPreference=Stop），不查 $LASTEXITCODE
+      #（StrictMode 下未设置时访问即抛；& 调用的脚本 exit 也不更新它）
       Set-Stage $diskKey 'Partition'
     }
     'ESP' {
-      $espVol = Get-VolByLabel 'VARIX-ESP'
-      if (-not $espVol -or -not $espVol.DriveLetter) { throw '未找到 ESP 卷（VARIX-ESP）' }
-      $espArgs = @('-EspPath', "$($espVol.DriveLetter):\")
-      if ($WindowsBootDir) { $espArgs += @('-WindowsBootDir', $WindowsBootDir) }
-      & (Join-Path $PSScriptRoot 'Build-ESP.ps1') @espArgs
-      if ($LASTEXITCODE -ne 0) { throw "ESP 阶段失败（exit=$LASTEXITCODE）" }
+      # ESP 盘符不持久（mount manager 回收），用 NTFS 文件夹挂载点访问
+      $espMount = Get-EspMount
+      # 哈希表 splat（命名参数）：数组 splat 会把整个数组当单个位置实参
+      $h = @{ EspPath = $espMount }
+      if ($WindowsBootDir) { $h.WindowsBootDir = $WindowsBootDir }
+      & (Join-Path $PSScriptRoot 'Build-ESP.ps1') @h
       Set-Stage $diskKey 'ESP'
     }
     'Shared' {
       $shVol = Get-VolByLabel 'SHARED'
       if (-not $shVol -or -not $shVol.DriveLetter) { throw '未找到 SHARED 卷' }
       & (Join-Path $PSScriptRoot 'Init-Shared.ps1') -SharedRoot "$($shVol.DriveLetter):"
-      if ($LASTEXITCODE -ne 0) { throw "SHARED 阶段失败（exit=$LASTEXITCODE）" }
       Set-Stage $diskKey 'Shared'
     }
     'SysFiles' {
@@ -157,15 +229,12 @@ foreach ($stage in $stages) {
       Set-Stage $diskKey 'SysFiles'
     }
     'Verify' {
-      $espVol = Get-VolByLabel 'VARIX-ESP'
-      if ($espVol -and $espVol.DriveLetter) {
-        & (Join-Path $PSScriptRoot 'Build-ESP.ps1') -EspPath "$($espVol.DriveLetter):\" -VerifyOnly
-        if ($LASTEXITCODE -ne 0) { throw "ESP 校验失败" }
-      }
+      # ESP 用挂载点（盘符不持久）；校验失败以异常传播
+      $espMount = Get-EspMount
+      & (Join-Path $PSScriptRoot 'Build-ESP.ps1') -EspPath $espMount -VerifyOnly
       $shVol = Get-VolByLabel 'SHARED'
       if ($shVol -and $shVol.DriveLetter) {
         & (Join-Path $PSScriptRoot 'Init-Shared.ps1') -SharedRoot "$($shVol.DriveLetter):" -ValidateOnly
-        if ($LASTEXITCODE -ne 0) { throw 'SHARED 契约校验失败' }
       }
       Write-Ok 'Verify 段全过'
       Set-Stage $diskKey 'Verify'

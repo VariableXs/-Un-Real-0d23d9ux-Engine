@@ -170,3 +170,6 @@ if ($errs2.Count -gt 0) { throw "初始化后 schema 自检失败：$($errs2 -jo
 Write-Ok 'apps.json schema 自检通过（version=1）'
 Write-Host ''
 Write-Host '>>> 完成。契约三方表（写者/读者）见 portable\AI-P\README.md' -ForegroundColor Green
+# 显式 exit 0：被 Deploy 编排以 & 调用时，PS 脚本正常结束不会更新
+# $LASTEXITCODE（残留 $null），编排侧 `$LASTEXITCODE -ne 0` 会误判失败。
+exit 0
