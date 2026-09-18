@@ -41,6 +41,10 @@ static PROCS: SpinProtected<ProcTable> = SpinProtected::new(ProcTable::new());
 /// 演示进程的 pid 登记：spawn 后写入，exit/wait 读取（曾经硬编码
 /// 1，而 hello 实际是 2——exit/reap 全程空转）。
 static DEMO_PID: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+// 任务42 · KILL_ON_JOB_CLOSE 端到端探针状态。
+static JOBKILL_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static JOBKILL_ACTIVE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+static JOBKILL_CALLS_BEFORE: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
 
 /// 监护生命周期轮数：两轮完整 spawn→exit→wait 后进入压力探针。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
@@ -115,6 +119,22 @@ static NOTEPAD_DONE: core::sync::atomic::AtomicBool = core::sync::atomic::Atomic
 /// 的约定值；本模块自产错误用 entry::ErrNo 反号）。
 pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
     CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    // 任务42 · KILL_ON_JOB_CLOSE：Job 已关闭的成员在 syscall 边界查获
+    // kill flag 即退出（页账本走正常 exit 回收，与 user_exit 同路）。
+    // 实机教训：调度器 CURRENT 在监护模型下持有早期阶段残留 tid（≠
+    // NO_THREAD），单路查旗标必漏——故对「调度器视角」与「监护进程视角」
+    // 双路查获（两路 tid 相同时第二次 swap 自然空读，零副作用）。
+    // 调度器真正接管用户线程后（sched CURRENT adoption）双路合一。
+    {
+        let sched_tid = crate::sched::engine::current_tid();
+        let demo_tid = DEMO_PID.load(core::sync::atomic::Ordering::Relaxed);
+        let killed = super::job::job_kill_pending(sched_tid)
+            || (demo_tid != 0 && demo_tid != sched_tid && super::job::job_kill_pending(demo_tid));
+        if killed {
+            crate::kinfo!("job-probe: kill-fired at boundary (dual-path)");
+            user_exit(0);
+        }
+    }
     // 任务40 · Win32 服务台号段（0x40 起，槽号 = 注册表扁平下标）。
     // 只转发实际注册的号段；段外垃圾号回落稳定表口径（ENOSYS -38），
     // 不让 Win32 服务台吞掉不属于它的任何数字。
@@ -261,6 +281,36 @@ fn resume_supervisor() -> ! {
     }
 }
 
+/// 任务42 · Wine 进程 Job 编入：创建限额 Job（对齐宿主 IsolationLimits：
+/// 内存 256MiB / CPU 30% / KILL_ON_JOB_CLOSE），装入 pid，页账本字节记账。
+/// 超限 → false（调用方按 OOM 拒绝语义处理，绝不带超额进程进 ring3）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn job_enroll_wine(pid: u32, frames_used: u64) -> bool {
+    let limits = super::job::JobLimits::new(
+        256 * 1024 * 1024, // memory_bytes：宿主默认 4GiB 的内核尺度等比
+        30,                // cpu_percent：宿主默认
+        true,              // kill_on_close ≡ KILL_ON_JOB_CLOSE
+    );
+    let id = super::job::job_create(limits);
+    if id == 0 {
+        return false;
+    }
+    if !super::job::job_assign(id, pid) {
+        super::job::job_close(id);
+        return false;
+    }
+    if !super::job::job_mem_charge(pid, frames_used.saturating_mul(4096)) {
+        super::job::job_close(id); // 超限即拒：KILL_ON_JOB_CLOSE 清场，绝不带超额进程进 ring3
+        return false;
+    }
+    // 任务43 · 每进程隔离 prefix（模板物化；失败=表满，回滚 Job）。
+    if !super::prefix::prefix_create(pid) {
+        super::job::job_close(id);
+        return false;
+    }
+    true
+}
+
 /// 监护续体：收割刚退场的实例（wait=父子语义的真实回收点）+ 页账本
 /// 摘叶归还帧 → 决定下一实例或压力探针。每轮一个实例，先跑满
 /// [`LIFECYCLES`] 轮完整生命周期。
@@ -279,6 +329,19 @@ fn after_exit() -> ! {
             let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
             let freed = super::loader::release_pages(&ledger, &mut mp);
             CHILD_PAGES.lock().retain(|e| e.0 != pid);
+            // 任务42 · Job 记账归还 + 成员摘除（正常退出与 KILL_ON_JOB_CLOSE 同路）。
+            // 每进程 Job 与其唯一子进程同生命周期：最后一个成员摘除后 Job
+            // 槽即归还（KILL_ON_JOB_CLOSE 已杀路 job_of=0 自然跳过）——
+            // 实机教训：只 detach 不 close 曾致 2 槽常驻，零泄漏面被打破。
+            let own_job = super::job::job_of(pid);
+            super::job::job_mem_release(pid, (freed as u64).saturating_mul(4096));
+            super::job::job_detach(pid);
+            if own_job != 0 && super::job::job_member_count(own_job) == 0 {
+                crate::kinfo!("job-probe: per-process job auto-closed (slot freed)");
+                super::job::job_close(own_job);
+            }
+            // 任务43 · 每进程隔离 prefix 随进程销毁（槽位归还零泄漏）。
+            super::prefix::prefix_destroy(pid);
             crate::kinfo!(
                 "ring3: supervisor wait → pid={} code={} pages_released={}/{} — 空间随进程消亡，一页不留",
                 pid,
@@ -286,6 +349,17 @@ fn after_exit() -> ! {
                 freed,
                 ledger.len()
             );
+            if JOBKILL_ACTIVE.swap(false, Ordering::Relaxed) {
+                let before = JOBKILL_CALLS_BEFORE.load(Ordering::Relaxed);
+                let now = CALLS.load(Ordering::Relaxed);
+                let ok = now.saturating_sub(before) <= 1 && code == 0;
+                crate::kinfo!(
+                    "job-probe: kill-at-boundary calls_delta={} code={} — 用户首 syscall 边界即杀 verdict={}",
+                    now.saturating_sub(before),
+                    code,
+                    if ok { "ok" } else { "FAIL" }
+                );
+            }
         }
         None => crate::kwarn!("ring3: supervisor wait found no zombie — lifecycle broken"),
     }
@@ -308,6 +382,12 @@ fn after_exit() -> ! {
     // 压力探针。
     if !NOTEPAD_DONE.swap(true, Ordering::Relaxed) {
         spawn_pe_notepad();
+    }
+    // 任务42（AI-B）：KILL_ON_JOB_CLOSE 端到端——Job 在 iretq 前关闭，
+    // 用户首个 syscall 在边界被杀（hello 不打印、wait code=0、syscall
+    // 计数增量 ≤1），页账本走正常退出回收。
+    if !JOBKILL_DONE.swap(true, Ordering::Relaxed) {
+        spawn_pe_jobkill();
     }
     notepad_verify_and_finish()
 }
@@ -447,6 +527,78 @@ fn spawn_pe() -> ! {
     unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
 }
 
+/// 任务42（AI-B）· KILL_ON_JOB_CLOSE 端到端：装载静态 PE（与任务39 同
+/// 镜像）→ 编入 Job（真实限额路径）→ **iretq 前关闭 Job** → 用户首个
+/// syscall 在 syscall_common 边界查获 kill flag → user_exit——"hello from
+/// PE" 永不打印、wait code=0、syscall 计数增量 ≤1。与宿主「随壳退出」
+/// 同语义（进程树连带终止）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spawn_pe_jobkill() -> ! {
+    use core::sync::atomic::Ordering;
+    let img = match super::pe::parse(HELLO_PE) {
+        Ok(i) => i,
+        Err(e) => {
+            crate::kwarn!("ring3: jobkill PE parse failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let pid = match PROCS.lock().alloc(0, b"jobkill") {
+        Ok(p) => p,
+        Err(e) => {
+            crate::kwarn!("ring3: jobkill proc alloc failed: {:?} — halting", e);
+            halt_demo()
+        }
+    };
+    DEMO_PID.store(pid, Ordering::Relaxed);
+    let mut mp = super::loader::KernelMapper::new(crate::mem::pfh::target_ops());
+    let src = super::pe::PeSource { img: &img, blob: HELLO_PE };
+    let loaded = match super::loader::load_into(
+        &src,
+        &mut mp,
+        entry::DEFAULT_STACK_PAGES as u64,
+        entry::USER_STACK_TOP,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: jobkill load failed ({:?}) — halting", e);
+            halt_demo()
+        }
+    };
+    // 编入 Job（限额面走真实路径）→ 立即关闭（KILL_ON_JOB_CLOSE 置位）。
+    let limits = super::job::JobLimits::new(256 * 1024 * 1024, 30, true);
+    let job = super::job::job_create(limits);
+    if job == 0 || !super::job::job_assign(job, pid)
+        || !super::job::job_mem_charge(pid, loaded.frames_used.saturating_mul(4096))
+    {
+        PROCS.lock().exit(pid, -1, 0);
+        crate::kwarn!("ring3: jobkill enroll failed — halting");
+        halt_demo()
+    }
+    JOBKILL_CALLS_BEFORE.store(CALLS.load(Ordering::Relaxed), Ordering::Relaxed);
+    let killed = super::job::job_close(job);
+    JOBKILL_ACTIVE.store(true, Ordering::Relaxed);
+    crate::kinfo!(
+        "job-probe: KILL_ON_JOB_CLOSE closed members={} pre-iretq — 用户首 syscall 应在边界被杀",
+        killed
+    );
+    let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
+    CHILD_PAGES.lock().push((pid, loaded.pages));
+    let mut plan = super::uspace::EntryPlan::default();
+    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, stack_top, &mut plan) {
+        crate::kwarn!("ring3: jobkill entry plan rejected: {} — halting", e);
+        halt_demo()
+    }
+    crate::kinfo!(
+        "ring3: iretq → jobkill user (rip={:#x} rsp={:#x} rflags={:#x}) — 任务42 限额",
+        plan.rip,
+        plan.rsp,
+        plan.rflags
+    );
+    // SAFETY: 同 spawn_hello——loader 已映射段页/栈页，MSR/TSS 已就绪。
+    unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+}
+
 /// 任务40（AI-B）· 装载带导入 PE64 并进入 ring3：任务39 同一条监护链
 /// 之上叠加导入绑定——winapi::plan 全量解析 + 注册表解析（缺失具名拒绝，
 /// 绝不带未解析 thunk 进 ring3）→ load_into → winapi::install（thunk 页
@@ -514,10 +666,16 @@ fn spawn_pe_imports() -> ! {
         super::winapi::WINAPI_THUNK_BASE
     );
     let pages_n = loaded.pages.len();
+    // 任务42 · Wine 进程 Job 编入（限额拒绝即 OOM 语义，不带超额进 ring3）。
+    if !job_enroll_wine(pid, loaded.frames_used) {
+        PROCS.lock().exit(pid, -1, 0);
+        crate::kwarn!("ring3: PE-imports job enroll refused (job table full or over limit) — halting");
+        halt_demo()
+    }
     let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
     CHILD_PAGES.lock().push((pid, loaded.pages));
     crate::kinfo!(
-        "ring3: PE-imports spawned pid={} entry={:#x} pages={} imports=true — 任务40 导入绑定",
+        "ring3: PE-imports spawned pid={} entry={:#x} pages={} imports=true job=true — 任务40 导入绑定+任务42 限额",
         pid,
         entry_ip,
         pages_n
@@ -636,10 +794,16 @@ fn spawn_pe_notepad() -> ! {
         super::winapi::WINAPI_THUNK_BASE
     );
     let pages_n = loaded.pages.len();
+    // 任务42 · notepad（Wine 进程模板）Job 编入。
+    if !job_enroll_wine(pid, loaded.frames_used) {
+        PROCS.lock().exit(pid, -1, 0);
+        crate::kwarn!("ring3: notepad job enroll refused (job table full or over limit) — halting");
+        halt_demo()
+    }
     let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
     CHILD_PAGES.lock().push((pid, loaded.pages));
     crate::kinfo!(
-        "ring3: notepad spawned pid={} entry={:#x} pages={} — 任务41 记事本闭环",
+        "ring3: notepad spawned pid={} entry={:#x} pages={} job=true — 任务41 记事本闭环+任务42 限额",
         pid,
         entry_ip,
         pages_n
@@ -681,6 +845,77 @@ fn notepad_verify_and_finish() -> ! {
     } else {
         crate::kwarn!("notepad: closed loop VERDICT=FAIL — saved content mismatch");
     }
+    job_table_probe()
+}
+
+/// 任务42（AI-B）· Job 表面探针（内核态直证，编译进 ELF）：
+/// ① mem-limit 拒绝语义（notepad 体量 19 页 vs 1 页限额）；
+/// ② 成员/槽位泄漏面（close 后槽数归零）；
+/// ③ CPU rate 预算滚动（窗口耗尽 → 越窗重置）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn job_table_probe() -> ! {
+    // ① 内存限额拒绝：1 页限额 vs notepad 体量 19 页（成员路径记账）。
+    let job_a = super::job::job_create(super::job::JobLimits::new(4096, 100, true));
+    let enrolled = super::job::job_assign(job_a, 2);
+    let refused = enrolled && !super::job::job_mem_charge(2, 19 * 4096);
+    super::job::job_close(job_a);
+    crate::kinfo!(
+        "job-probe: mem-limit 4096B vs 19 页 charge refused={} verdict={}",
+        refused,
+        if refused { "ok" } else { "FAIL" }
+    );
+    // ② 槽位泄漏面：全 close 后应 0 占用（本探针前所有 Job 已关）。
+    let slots = super::job::job_slots_used();
+    crate::kinfo!("job-probe: table slots_used={} (零泄漏面) verdict={}", slots, if slots == 0 { "ok" } else { "FAIL" });
+    // ③ CPU rate：30% × 100tick 窗口 = 30 预算；耗尽后越窗重置。
+    let job_c = super::job::job_create(super::job::JobLimits::new(1 << 20, 30, true));
+    super::job::job_assign(job_c, 2);
+    let mut exhausted_at: u32 = 0;
+    for i in 0..40u32 {
+        if !super::job::job_cpu_charge(2, 1) {
+            exhausted_at = i + 1;
+            break;
+        }
+    }
+    // 推进全局钟越窗（无 Job 的 tid 5 只推钟不记账）。
+    for _ in 0..super::job::CPU_WINDOW_TICKS {
+        let _ = super::job::job_cpu_charge(5, 1);
+    }
+    let recovered = super::job::job_cpu_charge(2, 1);
+    super::job::job_close(job_c);
+    crate::kinfo!(
+        "job-probe: cpu-rate 30% budget exhausted_at_tick={} window-refill recovered={} verdict={}",
+        exhausted_at,
+        recovered,
+        if exhausted_at == 31 && recovered { "ok" } else { "FAIL" }
+    );
+    // 任务43 · prefix 隔离实机面：创建→正常解析→逃逸拒绝→销毁后不可解析。
+    let pid_p = 9001u32;
+    let prefix_ok = super::prefix::prefix_create(pid_p)
+        && super::prefix::prefix_resolve(pid_p, b"drive_c/windows/notepad.exe").is_some()
+        && super::prefix::prefix_resolve(pid_p, b"../escape.txt").is_none()
+        && {
+            super::prefix::prefix_destroy(pid_p);
+            super::prefix::prefix_resolve(pid_p, b"drive_c").is_none()
+        };
+    crate::kinfo!(
+        "prefix-probe: create/resolve/escape-refused/destroy verdict={}",
+        if prefix_ok { "ok" } else { "FAIL" }
+    );
+    // 任务44 · compatdb 自动裁决实机面：画像种子 → notepad=Partial / chat-legacy=Refused。
+    super::compatdb::compatdb_reset();
+    super::compatdb::compatdb_seed_profiles();
+    let v_note = super::compatdb::compatdb_query(b"notepad-classic").map(|(_, v)| v);
+    let v_chat = super::compatdb::compatdb_query(b"chat-legacy").map(|(_, v)| v);
+    let db_ok = v_note == Some(super::compatdb::Verdict::Partial)
+        && v_chat == Some(super::compatdb::Verdict::Refused);
+    crate::kinfo!(
+        "compatdb-probe: notepad={:?} chat={:?} auto-verdict verdict={}",
+        v_note,
+        v_chat,
+        if db_ok { "ok" } else { "FAIL" }
+    );
+    super::compatdb::compatdb_reset();
     pressure_probe_and_finish()
 }
 

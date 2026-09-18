@@ -1159,6 +1159,13 @@ impl ThreadTable {
                     t.runtime_ticks += 1;
                     t.vruntime += (1000 / t.class.weight().max(1)) as u64;
                     t.slice_left = t.slice_left.saturating_sub(1);
+                    // 任务42 · CPU rate 限额：Job 预算耗尽即清 slice，
+                    // 走既有 slice_expired 抢占路径（不新增切换形态）。
+                    if t.slice_left > 0
+                        && !crate::proc::job::job_cpu_charge(t.tid, 1)
+                    {
+                        t.slice_left = 0;
+                    }
                 }
             }
         } else {

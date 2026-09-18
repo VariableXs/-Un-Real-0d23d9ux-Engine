@@ -16,6 +16,26 @@ pub mod syscall;
 /// 任务40（AI-B）· Win32 服务台：导入绑定 + Wine 核心 DLL 首层 API。
 pub mod winapi;
 pub mod winsrv;
+/// 任务42（AI-B）· Job 限额：内存/CPU rate/KILL_ON_JOB_CLOSE（对齐宿主 isolation.rs）。
+pub mod job;
+/// 任务43（AI-B）· Wine prefix 模板与每进程隔离目录。
+pub mod prefix;
+/// 任务44（AI-B）· 适配数据库：每软件版本/所需 API/结论/缺失清单。
+pub mod compatdb;
+
+/// 宿主测试专用：job/prefix/compatdb 三表是进程级全局态，跨模块并行
+/// 测试会互踩——统一门闩串行化（仅 cfg(test) 参与，内核形态零开销）。
+#[cfg(test)]
+pub(crate) mod testgate {
+    static GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    pub fn lock() -> std::sync::MutexGuard<'static, ()> {
+        match GATE.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
 
 // --- VARIABLE-200 AI-01 · 用户态进程域（F001~F025，W2）---------------------
 pub mod uspace;
@@ -2189,6 +2209,78 @@ pub fn stats() -> &'static ProcStats {
 
 #[cfg(test)]
 mod tests {
+    use crate::proc::{compatdb, job, prefix};
+
+    /// 任务45（AI-B）· 10 软件并发隔离压力：十画像并发跑全套隔离面
+    /// （Job 限额 + 每进程 prefix + 适配数据库），断言无串扰/无泄漏。
+    #[test]
+    fn task45_ten_software_isolation_stress() {
+        let _g = crate::proc::testgate::lock();
+        compatdb::compatdb_reset();
+        compatdb::compatdb_seed_profiles();
+        assert_eq!(compatdb::compatdb_count(), 10);
+
+        // 十软件各自入域：Job + prefix + 页账本记账。
+        let base_tid = 50u32; // 与 job.rs 测试段(40..48)隔离，且 50..59 < MEMBER_MAP_MAX(64)
+        let mut job_ids = Vec::new();
+        let mut verdicts = Vec::new();
+        for k in 0..10u32 {
+            let tid = base_tid + k;
+            let names: [&[u8]; 10] = [
+                b"notepad-classic", b"calc-lite", b"paint-basic", b"wordproc-x",
+                b"filemgr-plus", b"chat-legacy", b"game-arcade", b"pdf-view",
+                b"sysinfo-tool", b"meditate",
+            ];
+            let name = names[k as usize];
+            let (_, verdict) = compatdb::compatdb_query(name).expect("画像已预置");
+            verdicts.push(verdict);
+
+            let j = job::job_create(job::JobLimits::new(
+                4 * 1024 * 1024, // 4MiB/软件（内核尺度）
+                30,
+                true,
+            ));
+            assert!(j != 0, "Job 表必须容纳 10 并发（容量 {}）", job::JOB_MAX);
+            assert!(job::job_assign(j, tid));
+            // 页账本记账：10~40 页/软件（体量差异化）
+            let pages = 10 + k * 3;
+            assert!(job::job_mem_charge(tid, pages as u64 * 4096));
+            assert!(prefix::prefix_create(1000 + tid));
+            job_ids.push(j);
+        }
+        assert_eq!(verdicts.iter().filter(|v| **v == compatdb::Verdict::Refused).count(), 1); // 仅 chat-legacy
+        assert_eq!(verdicts.iter().filter(|v| **v == compatdb::Verdict::Full).count(), 8); // 10 - notepad(Partial) - chat(Refused)
+
+        // 串扰断言①：内存账本各自独立（job 间互不可见）。
+        let (used0, _) = job::job_mem_usage(job_ids[0]).unwrap();
+        let (used1, _) = job::job_mem_usage(job_ids[1]).unwrap();
+        assert_ne!(used0, used1, "差异化体量下账本必须互异");
+        // 串扰断言②：prefix 按进程隔离——A 域销毁后其路径不可解析，B 域完好。
+        assert!(prefix::prefix_resolve(1000 + base_tid, b"drive_c/users/user/Documents/a.txt").is_some());
+        assert!(prefix_destroy_then_check(1000 + base_tid));
+        assert!(prefix::prefix_resolve(1000 + base_tid + 1, b"drive_c/users/user/Documents/a.txt").is_some());
+        // 串扰断言③：限额互不影响——把 tid60 的 Job 记满后 tid61 不受牵连。
+        assert!(job::job_mem_charge(base_tid + 1, (4 * 1024 * 1024 - 13 * 4096) as u64));
+        assert!(!job::job_mem_charge(base_tid + 1, 1)); // tid61 Job 满 → 拒
+        assert!(job::job_mem_charge(base_tid + 2, 4096)); // tid62 Job 独立 → 通过
+
+        // 泄漏断言：全退场 → 三表归零。
+        for (k, &j) in job_ids.iter().enumerate() {
+            job::job_mem_release(base_tid + k as u32, u64::MAX); // 全额归还（saturating）
+            assert_eq!(job::job_close(j), 1);
+            if k > 0 {
+                // k=0（pid 1050）的 prefix 已在串扰断言②销毁
+                assert!(prefix::prefix_destroy(1000 + base_tid + k as u32));
+            }
+        }
+        assert_eq!(job::job_slots_used(), 0, "Job 槽零泄漏");
+        assert_eq!(prefix::prefix_slots_used(), 0, "prefix 槽零泄漏");
+        compatdb::compatdb_reset();
+    }
+
+    fn prefix_destroy_then_check(pid: u32) -> bool {
+        prefix::prefix_destroy(pid) && prefix::prefix_resolve(pid, b"drive_c").is_none()
+    }
     use super::*;
 
     #[test]
