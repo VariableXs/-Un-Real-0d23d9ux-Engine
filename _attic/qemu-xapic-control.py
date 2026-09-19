@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-r"""x2APIC 复现/验证测试：-smp 2 -cpu max + kernel_cmdline varix.x2apic 强制 x2APIC 模式，
-复现实机 Y7000（16 核 + BIOS x2APIC 默认开）的 smp 启动路径。
+r"""对照实验：去掉 varix.x2apic（xAPIC/MMIO ICR 模式）跑同一 VHD，
+判别 IPI 投递问题出在源侧（x2APIC MSR 0x830）还是目标侧（OVMF 驻留态）。
 
-红测（修复前）：预期 lapic: mode=X2Apic 后卡死，无 smp online（实机现象复现）。
-绿测（修复后）：预期 smp: 2 core(s) online + boot complete。
-
-用法: python qemu-x2apic-test.py
-前置: cargo kbuild 已产出修复后内核；uefi-esp.vhd 存在。
+绿测判据：smp: 2 core(s) online（AP 经 xAPIC ICR 真实上线）。
+红测特征：smp: apic 1 failed: Timeout（目标侧问题，与 ICR 通道无关）。
 """
 import ctypes
 import os
@@ -17,42 +14,33 @@ import time
 ROOT = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 ATTIC = ROOT + r"\_attic"
 DISK = ATTIC + r"\uefi-esp.vhd"
-KERNEL = ROOT + r"\kernel\target\x86_64-unknown-none\release\varix"
-SERIAL = ATTIC + r"\x2apic-test-serial.log"
-ERRLOG = ATTIC + r"\x2apic-test-stderr.log"
+SERIAL = ATTIC + r"\xapic-control-serial.log"
+ERRLOG = ATTIC + r"\xapic-control-stderr.log"
 UPD_SCRIPT = ATTIC + r"\x2apic-vhd-update.ps1"
 UPD_LOG = ATTIC + r"\x2apic-vhd-update.log"
 CHECK = ROOT + r"\_attic\bcd-fix2-parse-check.py"
-MON_PORT = 14463
+MON_PORT = 14465
 QEMU = r"C:\Program Files\qemu\qemu-system-x86_64"
 EDK2 = ATTIC + r"\edk2-x86_64-code.fd"
 
+# 对照 conf：无 varix.x2apic → APIC_BASE bit10 自动探测（QEMU/OVMF 留 xAPIC）
 TEST_CONF = (
-    "# x2APIC repro test config (generated)\n"
+    "# xAPIC control config (generated)\n"
     "timeout: 0\n"
     "serial: yes\n"
     "\n"
     "/kernel/varix\n"
     "    protocol: limine\n"
     "    kernel_path: boot():/kernel/varix\n"
-    "    kernel_cmdline: varix.x2apic\n"
 )
 
 
-def ps_run(cmd: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["powershell", "-NoProfile", "-Command", cmd], capture_output=True, timeout=120
-    )
-
-
 def update_vhd() -> None:
-    """提权挂载 VHD 并写入测试 conf + 新内核（挂 VHD 需要特权 0x80070522）。"""
     for f in (SERIAL, ERRLOG, UPD_LOG):
         if os.path.exists(f):
             os.remove(f)
     with open(ATTIC + r"\x2apic-limine.conf", "w", encoding="utf-8", newline="\n") as f:
         f.write(TEST_CONF)
-    # ps1 补 BOM + 语法预检 + ShellExecuteW 提权 + 轮询（bcd-fix 范式）
     raw = open(UPD_SCRIPT, "rb").read()
     if not raw.startswith(b"\xef\xbb\xbf"):
         open(UPD_SCRIPT, "wb").write(b"\xef\xbb\xbf" + raw)
@@ -84,7 +72,6 @@ def update_vhd() -> None:
 
 
 def run_qemu() -> str:
-    """跑 QEMU，轮询串口，返回判定。"""
     proc = subprocess.Popen(
         [
             QEMU,
@@ -100,28 +87,22 @@ def run_qemu() -> str:
         ],
         stdout=open(ERRLOG, "wb"), stderr=subprocess.STDOUT,
     )
-    print(f"[test] QEMU pid={proc.pid} (-smp 2 -cpu max)")
-    seen = ""
+    print(f"[ctl] QEMU pid={proc.pid} (xAPIC 对照)")
+    tail = ""
     verdict = ""
     deadline = time.time() + 240
     while time.time() < deadline:
         time.sleep(3)
         if proc.poll() is not None:
-            print(f"[test] QEMU exited rc={proc.returncode}")
             break
         if os.path.exists(SERIAL):
             tail = open(SERIAL, "r", errors="replace").read()
-            if tail != seen:
-                print(tail[len(seen):], end="", flush=True)
-                seen = tail
             if "smp: 2 core(s) online" in tail:
-                verdict = "SMP2-ONLINE"  # AP 真实上线
+                verdict = "SMP2-ONLINE"
                 break
-            if "boot complete" in tail:
-                verdict = "FULL-BOOT"
+            if "smp:" in tail and "core(s) online" in tail:
+                verdict = "SINGLE-ONLY"
                 break
-            if "mode=X2Apic" in tail:
-                verdict = "STUCK-AFTER-X2APIC"  # 红测特征，等满看有没有后续
     try:
         import socket
         s = socket.create_connection(("127.0.0.1", MON_PORT), timeout=3)
@@ -133,24 +114,16 @@ def run_qemu() -> str:
         proc.wait(timeout=8)
     except subprocess.TimeoutExpired:
         proc.kill()
-    # 终判
-    tail = open(SERIAL, "r", errors="replace").read() if os.path.exists(SERIAL) else ""
-    if "smp: 2 core(s) online" in tail:
-        return "SMP2-ONLINE (AP 真实上线" + ("，全链跑通" if "boot complete" in tail else "，后续见日志") + ")"
-    if "boot complete" in tail:
-        return "FULL-BOOT-BUT-SINGLE (单核 fail-open——AP 没上线！)"
-    if "mode=X2Apic" in tail and "smp:" not in tail:
-        return "STUCK-AFTER-X2APIC —— 复现实机卡死特征"
-    if "mode=X2Apic" in tail:
-        return "X2APIC-RAN-BUT-INCOMPLETE (smp 线见日志)"
-    return "NO-X2APIC (检查 -cpu max 是否支持 x2apic)"
+    if os.path.exists(SERIAL):
+        tail = open(SERIAL, "r", errors="replace").read()
+    for line in tail.splitlines():
+        if "lapic:" in line or "smp:" in line:
+            print("  " + line.strip())
+    if not verdict:
+        verdict = "TIMEOUT-NO-SMP-LINE"
+    return verdict
 
 
 if __name__ == "__main__":
-    if not os.path.exists(DISK):
-        raise SystemExit("!! 先跑 uefi-vhd-build-elevated.py 生成 uefi-esp.vhd")
-    if not os.path.exists(KERNEL):
-        raise SystemExit("!! 先 cargo kbuild")
     update_vhd()
-    result = run_qemu()
-    print("\n[test] verdict:", result)
+    print("[ctl] verdict:", run_qemu())

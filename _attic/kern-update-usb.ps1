@@ -29,7 +29,13 @@ try {
   Write-Output ("new: size=" + $new + " sha256=" + $newHash.Substring(0,16) + "...")
   if ($newHash -ne (Get-FileHash $NEWKERN -Algorithm SHA256).Hash) { throw "回读哈希不一致——拷贝损坏" }
 
-  diskpart /s ([IO.File]::WriteAllText(($dpFile + '.rm'), ("select disk 1`r`nselect partition " + $esp.PartitionNumber + "`r`nremove letter=L`r`n"), [Text.Encoding]::ASCII)) | Out-String | Write-Output
+  # 戒律：diskpart /s 参数位置的 [IO.File]::WriteAllText()（返回 void）不能内联——
+  # 内联时 PS 把 void 表达式当参数传给 diskpart 直接报「无法处理这些参数」，
+  # remove 静默失败 → L: 字母残留。必须先赋变量再传。
+  $rmFile = $dpFile + '.rm'
+  $rmScript = "select disk 1`r`nselect partition " + $esp.PartitionNumber + "`r`nremove letter=L`r`n"
+  [IO.File]::WriteAllText($rmFile, $rmScript, [Text.Encoding]::ASCII)
+  diskpart /s $rmFile | Out-String | Write-Output
   Write-Output "KERN-UPDATE-DONE"
 } catch {
   Write-Output ("UPDATE-FAIL: " + $_.Exception.Message)

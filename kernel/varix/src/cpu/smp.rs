@@ -301,8 +301,10 @@ pub fn send(kind: IpiKind, target: IpiTarget) {
         other => (other.vector(), DM_FIXED),
     };
     let low = icr_low(vector, delivery, true, target.shorthand());
-    let high = target.dest() << 24;
-    crate::cpu::apic::lapic().send_ipi(high, low);
+    // RAW APIC id——send_ipi 按模式自行格式化（x2APIC 传预移位值会双重
+    // 移位成 0x1000000 无人匹配，IPI 静默丢失，2026-09-19 实机根因）。
+    let dest = target.dest();
+    crate::cpu::apic::lapic().send_ipi(dest, low);
     IPI_STATS.note_sent(kind);
     if let IpiTarget::ApicId(id) = target {
         if let Some(c) = cpus().iter().find(|c| c.lapic_id.load(Ordering::Relaxed) == id) {
@@ -327,6 +329,252 @@ pub fn handle_ipi(vector: u8) -> Option<IpiKind> {
 // ---------------------------------------------------------------------------
 // F041 — AP trampoline
 // ---------------------------------------------------------------------------
+
+// 2026-09-19 实机戒律：此前「trampoline stub」从未存在——SIPI 把 AP 发到物理
+// 0x8000 执行内存垃圾（QEMU 低内存是零页 → AP 静默死、单核 fail-open 假装全通；
+// 真机 Lenovo UEFI 残留在低内存 → AP 执行固件垃圾乱写内存拖死整机）。
+// 本 stub：16 位实模式 → 32 位保护模式 → 64 位长模式，全部取数在开分页前完成
+// （内核页表无低区恒等映射——由 install_trampoline 注入「单页恒等映射」补上），
+// 寄存器跨模式传递 stack/entry。
+//
+// 2026-09-19 跳板走查修复（stage=0 根因链，8 处全修）：
+//  ① 16 位段 DS=CS=0x0800 已自带 0x8000 线性基址——数据偏移必须用 image 内
+//     偏移（TR_DEBUG_RM），带 0x8000 前缀的 TR_*_OFF 只给 32/64 位平铺段用
+//     （此前 stage=1 写到物理 0x10000，BSP 在 0x8000+off 永远读到 0）；
+//  ② far jump 的 EIP 操作数是「平铺线性地址」：CS 描述符 base=0，必须
+//     0x8000+off，裸 off 会取指到中断向量表垃圾；
+//  ③ 32→64 far jump 选择子必须 0x18（code64），0x08 是 32 位代码段——
+//     LME+PG 开启后跳进去是兼容模式，r15d 等全部乱套。
+core::arch::global_asm!(
+    ".globl ap_trampoline_start",
+    ".globl ap_trampoline_end",
+    ".globl tr_gdt_label",
+    ".globl tr_gdt_base_slot",
+    ".globl tr_cr3_slot",
+    ".globl tr_stack_slot",
+    ".globl tr_entry_slot",
+    ".globl tr_debug_slot",
+    ".globl tr_idt_desc",
+    ".globl tr_idt_base_slot",
+    "ap_trampoline_start:",
+    ".set TR_CR3_OFF, 0x00008000 + (tr_cr3_slot - ap_trampoline_start)",
+    ".set TR_STACK_OFF, 0x00008000 + (tr_stack_slot - ap_trampoline_start)",
+    ".set TR_ENTRY_OFF, 0x00008000 + (tr_entry_slot - ap_trampoline_start)",
+    ".set TR_DEBUG_OFF, 0x00008000 + (tr_debug_slot - ap_trampoline_start)",
+    ".set TR_DEBUG_RM, tr_debug_slot - ap_trampoline_start",
+    ".set TR_GDT_DESC_OFF, tr_gdt_desc - ap_trampoline_start",
+    ".set TR_IDT_DESC_OFF, 0x00008000 + (tr_idt_desc - ap_trampoline_start)",
+    ".set PM32_OFF, pm32_entry - ap_trampoline_start",
+    ".set PM64_OFF, pm64_entry - ap_trampoline_start",
+    ".code16",
+    "    cli",
+    "    cld",
+    "    mov ax, cs",
+    "    mov ds, ax",
+    "    mov es, ax",
+    "    mov ss, ax",
+    "    mov sp, 0xFE00",
+    "    mov word ptr ds:[TR_DEBUG_RM], 1",
+    "    lgdt [TR_GDT_DESC_OFF]",
+    "    mov eax, cr0",
+    "    or eax, 1",
+    "    mov cr0, eax",
+    "    .byte 0xEA",
+    "    .word 0x00008000 + PM32_OFF",
+    "    .word 0x0008",
+    ".code32",
+    "pm32_entry:",
+    "    mov ax, 0x10",
+    "    mov ds, ax",
+    "    mov es, ax",
+    "    mov ss, ax",
+    "    mov fs, ax",
+    "    mov gs, ax",
+    "    mov esp, 0x00017E00",
+    "    mov dword ptr ds:[TR_DEBUG_OFF], 2",
+    "    mov eax, dword ptr ds:[TR_CR3_OFF]",
+    "    mov ebx, dword ptr ds:[TR_STACK_OFF]",
+    "    mov ebp, dword ptr ds:[TR_STACK_OFF + 4]",
+    "    mov esi, dword ptr ds:[TR_ENTRY_OFF]",
+    "    mov edi, dword ptr ds:[TR_ENTRY_OFF + 4]",
+    "    mov cr3, eax",
+    "    mov eax, cr4",
+    "    or eax, 0x20",
+    "    mov cr4, eax",
+    "    mov ecx, 0xC0000080",
+    "    rdmsr",
+    // LME|NXE 一起置位。戒律（2026-09-19 QEMU 取证）：Limine 建的内核页表
+    // 给数据段（含 AP 栈 .bss）打 NX——实测 AP 栈页 PTE=0x8000000018f9f003
+    // 带 bit63；BSP 由 Limine 启动 EFER=0xD00（NXE=1）所以没事，而 AP 复位后
+    // EFER=0，这里若只置 LME，AP 进内核第一条 push rbp 写 NX 栈页即被当成
+    // 保留位违例 → RSVD #PF（err=0xa）→ 嵌套 #DF → 三重故障死循环。
+    "    or eax, 0x900",
+    "    wrmsr",
+    "    mov eax, cr0",
+    "    or eax, 0x80000000",
+    "    mov cr0, eax",
+    "    .byte 0xEA",
+    "    .long 0x00008000 + PM64_OFF",
+    "    .word 0x0018",
+    ".code64",
+    "pm64_entry:",
+    "    mov ax, 0x10",
+    "    mov ds, ax",
+    "    mov es, ax",
+    "    mov ss, ax",
+    "    mov fs, ax",
+    "    mov gs, ax",
+    // 调试痕迹必须用显式内存操作数（[disp32] 绝对寻址，链接期解析）。
+    // 戒律：`mov r15d, TR_DEBUG_OFF` 这类「裸符号当寄存器源」会被 GAS
+    // 汇编成内存加载 mov r15d,[0x8118]——r15 装进的是槽里的值而非地址，
+    // 随后 [r15] 写直接打到 VA 2 页故障（QEMU 监视器取证实锤，
+    // stage 永远停在 2）。
+    "    mov dword ptr ds:[TR_DEBUG_OFF], 3",
+    "    mov rsp, rbp",
+    "    shl rsp, 32",
+    "    or rsp, rbx",
+    "    mov rax, rdi",
+    "    shl rax, 32",
+    "    or rax, rsi",
+    // 内核 IDT 必须在 jmp rax 前就位：入口一旦异常，#PF 要落到真处理器
+    // 而不是 IDT=0 的垃圾门死循环（那会顺带执行垃圾代码破坏内核静态——
+    // 2026-09-19 QEMU 取证：BSP 的 TSC 校准静态被污染、延迟膨胀 1000 倍）。
+    "    lidt [TR_IDT_DESC_OFF]",
+    "    mov dword ptr ds:[TR_DEBUG_OFF], 4",
+    "    jmp rax",
+    "    .align 8",
+    "tr_gdt_desc:",
+    "    .word 8*4 - 1",
+    "tr_gdt_base_slot:",
+    "    .long 0",
+    "    .align 8",
+    "tr_gdt_label:",
+    "    .quad 0",                       // null
+    "    .quad 0x00CF9A000000FFFF",     // code32: base 0, limit 4G, 9A/CF
+    "    .quad 0x00CF92000000FFFF",     // data:   base 0, limit 4G, 92/CF
+    "    .quad 0x00209A0000000000",     // code64: L=1
+    "tr_idt_desc:",
+    "    .word 0xfff",
+    "tr_idt_base_slot:",
+    "    .quad 0",
+    "tr_cr3_slot:",
+    "    .long 0",
+    "    .align 8",
+    "tr_stack_slot:",
+    "    .quad 0",
+    "tr_entry_slot:",
+    "    .quad 0",
+    "tr_debug_slot:",
+    "    .long 0",
+    "ap_trampoline_end:",
+);
+
+extern "C" {
+    static ap_trampoline_start: u8;
+    static ap_trampoline_end: u8;
+    static tr_gdt_label: u8;
+    static tr_gdt_base_slot: u8;
+    static tr_idt_base_slot: u8;
+    static tr_cr3_slot: u8;
+    static tr_stack_slot: u8;
+    static tr_entry_slot: u8;
+    static tr_debug_slot: u8;
+}
+
+/// 恒等映射用的页表结构物理地址（常规内存空闲区，0x9FC00 以下、跳板页之后；
+/// 固定低地址省去内核 VA→PA 换算，QEMU 与真机均为可用 RAM）。
+const ID_PDPT_PA: u64 = 0xA000;
+const ID_PD_PA: u64 = 0xB000;
+const ID_PT_PA: u64 = 0xC000;
+const PTE_PRESENT_RW: u64 = 0x03;
+
+/// 把跳板复制到低物理页 0x8000 并打上固定参数（GDT base / CR3 / 入口）。
+/// 每个 AP 的栈不同，`patch_ap_stack` 在各自 send_ipi 前单独打。
+fn install_trampoline(cr3: u64, entry: u64) -> Result<(), &'static str> {
+    // CR3 低 12 位是 PCID/标志位，不是物理帧——不掩掉整个页表基址就是错的。
+    let cr3 = cr3 & 0x0000_ffff_ffff_f000;
+    if cr3 > 0x000F_FFFF_F000 {
+        // 跳板 32 位阶段用 u32 装载 CR3；Limine 常规布局页表都在 4G 内。
+        return Err("ap cr3 above 4G");
+    }
+    let hhdm = crate::limine::hhdm_offset().ok_or("no hhdm mapping")?;
+    let start = (&raw const ap_trampoline_start) as *const u8 as u64;
+    let end = (&raw const ap_trampoline_end) as *const u8 as u64;
+    let len = (end - start) as usize;
+    if len == 0 || len > 0x1000 {
+        return Err("trampoline size out of page");
+    }
+    // 内核页表注入「单页恒等映射」VA 0x8000 → PA 0x8000（Linux 同范式）。
+    // AP 开 PG 后取指/数据都走页表：没有它，far jump 到 0x8000+off 就是
+    // #PF 三重故障；且 AP 全程用内核 CR3，规避「切 CR3 后下一条取指必死」
+    // 的死结。只映射一页——空指针保护（VA 0 未映射）不受影响。
+    // AP 进入长模式后访存同样依赖它（调试槽 [r15]=0x8000+off）。
+    unsafe {
+        let pml4 = (cr3 + hhdm) as *mut u64;
+        if pml4.read_volatile() & 0x1 != 0 {
+            return Err("pml4[0] already mapped");
+        }
+        for pa in [ID_PDPT_PA, ID_PD_PA, ID_PT_PA] {
+            let tbl = (pa + hhdm) as *mut u64;
+            for i in 0..512 {
+                tbl.add(i).write_volatile(0);
+            }
+        }
+        ((ID_PDPT_PA + hhdm) as *mut u64).write_volatile(ID_PD_PA | PTE_PRESENT_RW);
+        ((ID_PD_PA + hhdm) as *mut u64).write_volatile(ID_PT_PA | PTE_PRESENT_RW);
+        // PT[8]（VA 0x8000>>12=8）→ 物理页 0x8000，4KB 粒度
+        ((ID_PT_PA + hhdm) as *mut u64)
+            .add(8)
+            .write_volatile(0x8000 | PTE_PRESENT_RW);
+        // 链搭完最后挂 PML4[0]，对 AP 是一次性新页表（CR3 装载即见）
+        pml4.write_volatile(ID_PDPT_PA | PTE_PRESENT_RW);
+    }
+    let dst = 0x8000u64 + hhdm;
+    let off = |sym: u64| (sym - start) as u64;
+    unsafe {
+        core::ptr::copy_nonoverlapping(start as *const u8, dst as *mut u8, len);
+        // GDT base = 线性 0x8000 + GDT 在 stub 内的偏移（伪描述符引用它）
+        let gdt_base_slot = dst + off((&raw const tr_gdt_base_slot) as *const u8 as u64);
+        (gdt_base_slot as *mut u32).write_volatile((0x8000u32).wrapping_add(off((&raw const tr_gdt_label) as *const u8 as u64) as u32));
+        // CR3（物理，<4G）
+        let cr3_slot = dst + off((&raw const tr_cr3_slot) as *const u8 as u64);
+        (cr3_slot as *mut u32).write_volatile(cr3 as u32);
+        // 入口（64 位内核虚拟地址）
+        let entry_slot = dst + off((&raw const tr_entry_slot) as *const u8 as u64);
+        (entry_slot as *mut u64).write_volatile(entry);
+        // 内核 IDT（伪描述符：limit 已在镜像里，base 这里补）——AP 的
+        // 任何异常都必须有归宿，跳板阶段就开始兜底。
+        // 戒律：必须用 descriptor() 的 wire 表地址（CPU 真正派发的门表），
+        // table() 的结构体首地址是 entries 逻辑表——差整整 4KB，拿它当
+        // IDTR 的门全是 not-present，任何异常直接嵌套三重故障
+        // （QEMU 取证：AP 的 IDTR=0x803b93a0，CR2=门表取指页）。
+        let idt_base_slot = dst + off((&raw const tr_idt_base_slot) as *const u8 as u64);
+        let (_, idt_wire) = crate::cpu::idt::table().descriptor();
+        (idt_base_slot as *mut u64).write_volatile(idt_wire);
+    }
+    Ok(())
+}
+
+/// 每个 AP 专属：把该核的栈顶打进跳板。
+fn patch_ap_stack(stack_top: u64) {
+    let hhdm = crate::limine::hhdm_offset().expect("hhdm");
+    let start = (&raw const ap_trampoline_start) as *const u8 as u64;
+    let slot = (&raw const tr_stack_slot) as *const u8 as u64;
+    let dst = 0x8000u64 + hhdm + (slot - start);
+    unsafe { (dst as *mut u64).write_volatile(stack_top) };
+}
+
+/// 读 AP 跳板的阶段痕迹（0=未执行 1=16位 2=32位 3=64位 4=跳内核前）。
+fn trampoline_stage() -> u32 {
+    let hhdm = match crate::limine::hhdm_offset() {
+        Some(h) => h,
+        None => return u32::MAX,
+    };
+    let start = (&raw const ap_trampoline_start) as *const u8 as u64;
+    let slot = (&raw const tr_debug_slot) as *const u8 as u64;
+    let addr = 0x8000u64 + hhdm + (slot - start);
+    unsafe { (addr as *const u32).read_volatile() }
+}
 
 /// Why an AP failed to start.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -415,9 +663,11 @@ impl Trampoline {
         Ok(())
     }
 
-    /// The three (ICR high, ICR low) writes that start the core.
+    /// The three (dest, ICR low) writes that start the core. `dest` is the
+    /// RAW architectural APIC id——`send_ipi` 按模式自行格式化（xAPIC 填
+    /// ICR_HIGH[31:24]，x2APIC 放 ICR[63:32]）；在这里预移位就会双重移位。
     pub fn startup_commands(&self, apic_id: u32) -> [(u32, u32); 3] {
-        let high = apic_id << 24;
+        let dest = apic_id;
         let init_deassert = icr_low(0, DM_INIT, false, IpiTarget::ApicId(apic_id).shorthand());
         let init_assert = icr_low(0, DM_INIT, true, IpiTarget::ApicId(apic_id).shorthand());
         let sipi = icr_low(
@@ -426,7 +676,7 @@ impl Trampoline {
             true,
             IpiTarget::ApicId(apic_id).shorthand(),
         );
-        [(high, init_deassert), (high, init_assert), (high, sipi)]
+        [(dest, init_deassert), (dest, init_assert), (dest, sipi)]
     }
 
     /// Poll for the ready flag; returns `Err(Timeout)` instead of hanging.
@@ -476,6 +726,37 @@ fn delay_10ms() {
     }
 }
 
+/// 2026-09-19：Intel MP 规范要求 INIT 与 SIPI 间隔 ≥10ms、两次 SIPI 间隔 ≥200µs；
+/// 连发时 AP 还没从 INIT 复位完成，SIPI 被忽略（QEMU 宽容、真机必死）。
+fn delay_us(us: u64) {
+    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+    {
+        let cal = crate::cpu::clock::calibration();
+        let target = crate::cpu::clock::read_tsc() + cal.ns_to_tsc(us * 1_000);
+        while crate::cpu::clock::read_tsc() < target {}
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+    {
+        let mut spin = 0u64;
+        for i in 0..(us as u64 * 100) {
+            spin = spin.wrapping_add(i);
+        }
+        core::hint::black_box(spin);
+    }
+}
+
+/// 按 MP 规范时序把一颗 AP 拉起来：INIT → 10ms → SIPI → 200µs → SIPI。
+fn send_startup_sequence(apic_id: u32) {
+    let cmds = trampoline().startup_commands(apic_id);
+    let lapic = crate::cpu::apic::lapic();
+    let _ = cmds[0]; // INIT de-assert：老系统兼容位，现代硬件 INIT assert 即复位
+    lapic.send_ipi(cmds[1].0, cmds[1].1); // INIT assert
+    delay_10ms();
+    lapic.send_ipi(cmds[2].0, cmds[2].1); // SIPI #1
+    delay_us(200);
+    lapic.send_ipi(cmds[2].0, cmds[2].1); // SIPI #2（首次 SIPI 时序竞争的兜底）
+}
+
 /// F041 + F047 bring-up: register the BSP, then start every AP the MADT lists.
 pub fn init() -> u32 {
     let bsp_id = crate::cpu::apic::lapic().id();
@@ -483,41 +764,50 @@ pub fn init() -> u32 {
     let mut started = 1u32;
 
     if let Some(madt) = crate::acpi::madt() {
-        for core in madt.cpus().iter() {
-            if !core.enabled || core.acpi_id == 0 {
-                continue;
-            }
-            // The BSP is whichever core is already running.
-            if core.apic_id == bsp_id {
-                continue;
-            }
-            if started as usize >= MAX_CPUS {
-                break;
-            }
-            let cpu_id = started;
-            // Stack: 64 KiB for this core, from the reserved AP stack region.
-            let stack_top = ap_stack_top(cpu_id);
-            let cr3 = current_cr3();
-            let long_mode_entry = ap_entry();
-            match trampoline().prepare(cpu_id, stack_top, cr3, long_mode_entry) {
-                Ok(()) => {
-                    for (high, low) in trampoline().startup_commands(core.apic_id) {
-                        crate::cpu::apic::lapic().send_ipi(high, low);
-                    }
-                    match trampoline().wait_ready(AP_READY_TIMEOUT_10MS) {
-                        Ok(()) => {
-                            register(cpu_id, core.apic_id);
-                            started += 1;
-                        }
-                        Err(e) => {
-                            crate::kwarn!("smp: apic {} failed: {:?}", core.apic_id, e);
-                            trampoline().abort();
-                        }
-                    }
+        // 低 12 位是 PCID/标志位——跳板按物理帧处理，必须掩掉。
+        let cr3 = current_cr3() & 0x0000_ffff_ffff_f000;
+        let long_mode_entry = ap_entry();
+        // 跳板先行：没有 0x8000 处的真实代码，SIPI 就是把 AP 发去执行垃圾。
+        if let Err(e) = install_trampoline(cr3, long_mode_entry) {
+            crate::kwarn!("smp: trampoline not installed ({}), APs skipped", e);
+        } else {
+            for core in madt.cpus().iter() {
+                if !core.enabled || core.acpi_id == 0 {
+                    continue;
                 }
-                Err(e) => {
-                    crate::kwarn!("smp: cannot start apic {}: {:?}", core.apic_id, e);
-                    trampoline().abort();
+                // The BSP is whichever core is already running.
+                if core.apic_id == bsp_id {
+                    continue;
+                }
+                if started as usize >= MAX_CPUS {
+                    break;
+                }
+                let cpu_id = started;
+                // Stack: 64 KiB for this core, from the reserved AP stack region.
+                let stack_top = ap_stack_top(cpu_id);
+                match trampoline().prepare(cpu_id, stack_top, cr3, long_mode_entry) {
+                    Ok(()) => {
+                        patch_ap_stack(stack_top);
+                        send_startup_sequence(core.apic_id);
+                        match trampoline().wait_ready(AP_READY_TIMEOUT_10MS) {
+                            Ok(()) => {
+                                register(cpu_id, core.apic_id);
+                                started += 1;
+                            }
+                            Err(e) => {
+                                let stage = trampoline_stage();
+                                crate::kwarn!(
+                                    "smp: apic {} failed: {:?} (trampoline stage={})",
+                                    core.apic_id, e, stage
+                                );
+                                trampoline().abort();
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        crate::kwarn!("smp: cannot start apic {}: {:?}", core.apic_id, e);
+                        trampoline().abort();
+                    }
                 }
             }
         }
@@ -565,6 +855,21 @@ fn current_cr3() -> u64 {
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 #[no_mangle]
 pub extern "C" fn varix_ap_entry() -> ! {
+    // 本核 IDT：全局表 BSP 已建好，这里只做本核 lidt。AP 任何异常都必须有
+    // 归宿——三重故障静默死是最昂贵的调试方式。
+    // SAFETY: the shared IDT table was fully populated by the BSP before the
+    // first INIT was sent.
+    unsafe { crate::cpu::idt::table().install() };
+    // 本核 APIC 模式切换：INIT 复位后 AP 的 APIC 处于 disabled/xAPIC，而全局
+    // lapic mode 是 BSP 探测的 X2Apic——不先切模式，read_x2apic 一律 #GP
+    // （三重故障静默死，stage 停在 4）。SDM 禁止 disabled 直跳 x2APIC，
+    // 必须两步：xAPIC → x2APIC。
+    let mut base = crate::cpu::msr::read(crate::cpu::msr::Msr::ApicBase);
+    base |= 1 << 11; // APIC global enable（xAPIC）
+    base &= !(1 << 10);
+    let _ = crate::cpu::msr::write(crate::cpu::msr::Msr::ApicBase, base);
+    base |= 1 << 10; // x2APIC enable
+    let _ = crate::cpu::msr::write(crate::cpu::msr::Msr::ApicBase, base);
     let params = ap_params();
     // Acquire pairs with the Release store in `Trampoline::prepare`, so every
     // field below is guaranteed visible.
@@ -581,6 +886,9 @@ pub extern "C" fn varix_ap_entry() -> ! {
         None => crate::kerror!("smp: core {} has no control block", cpu_id),
     }
     // Park with interrupts off; the scheduler owns `sti` on this core too.
+    // ⚠ 调度器（AI-04）给本核派发第一个中断前必须：per-CPU GDT+TSS 安装并
+    // load_tr——当前本核仍载着跳板的最小 GDT（无 TSS），任何走 IST 的向量
+    // （NMI/DF/MC）或 ring3 切换都会三重故障。
     loop {
         // SAFETY: halting until the next interrupt is always correct here.
         unsafe { core::arch::asm!("hlt", options(nomem, nostack, preserves_flags)) };
@@ -677,9 +985,12 @@ mod tests {
         assert_eq!(AP_PARAMS.cpu_id.load(Ordering::Relaxed), 1);
         let cmds = t.startup_commands(4);
         assert_eq!(cmds.len(), 3);
-        assert_eq!(cmds[0].0, 4 << 24); // INIT de-assert
-        assert_eq!(cmds[1].0, 4 << 24); // INIT
-        assert_eq!(cmds[2].0, 4 << 24); // SIPI
+        // 2026-09-19 实机根因回归锁：dest 必须是 RAW id。此前这里断言
+        // `4 << 24`（xAPIC 格式），x2APIC 分支再 <<32 后目标变成 0x1000000，
+        // INIT/SIPI 全部静默丢弃——AP 永不复位，实机卡在加载界面。
+        assert_eq!(cmds[0].0, 4); // INIT de-assert（RAW）
+        assert_eq!(cmds[1].0, 4); // INIT（RAW）
+        assert_eq!(cmds[2].0, 4); // SIPI（RAW）
         assert_eq!(cmds[2].1 & 0xFF, TRAMPOLINE_VECTOR as u32);
         // Busy trampoline refuses a second core.
         assert_eq!(t.prepare(2, 0, 0, 0), Err(ApError::Busy));

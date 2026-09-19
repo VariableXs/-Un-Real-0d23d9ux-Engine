@@ -341,7 +341,13 @@ impl Lapic {
         true
     }
 
-    /// Raw ICR write (used by F042 IPI).
+    /// Raw IPI send. `dest` is the RAW architectural APIC id（未移位）：
+    /// x2APIC 把它放进 ICR[63:32] 原样使用；xAPIC 要放 ICR_HIGH[31:24]——
+    /// 格式化由本函数按模式负责，调用方一律传 RAW id。
+    /// 2026-09-19 实机根因（QEMU 监视器取证 + 寄存器快照实锤）：调用方按
+    /// xAPIC 格式预先 `<<24`，x2APIC 分支又 `<<32`，目标 ID 被污染成
+    /// 0x1000000——没有任何 APIC 匹配，INIT/SIPI 全部被静默丢弃，AP 永远
+    /// 不会复位（监视器取证：CPU#1 始终停留在 OVMF 驻留环，stage=0）。
     pub fn send_ipi(&self, dest: u32, command: u32) {
         match self.mode() {
             ApicMode::X2Apic => {
@@ -352,7 +358,7 @@ impl Lapic {
                 crate::cpu::msr::write_x2apic(LAPIC_ICR_LOW, icr);
             }
             _ => {
-                self.write(LAPIC_ICR_HIGH, dest);
+                self.write(LAPIC_ICR_HIGH, dest << 24);
                 self.write(LAPIC_ICR_LOW, command);
             }
         }
