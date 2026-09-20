@@ -137,6 +137,91 @@ pub fn slp_typ_value(slp_typ: u8) -> u16 {
     (((slp_typ & 0x7) as u16) << SLP_TYP_SHIFT) | SLP_EN
 }
 
+// ---------------------------------------------------------------------------
+// S5 (soft-off) AML decode — SYS_POWEROFF 的宿主可测核心
+// ---------------------------------------------------------------------------
+
+/// 解码 AML 小整数常量：ZeroOp/OneOp/ByteConst/WordConst。返回 (值, 消费字节)。
+fn aml_int(b: &[u8], pos: usize) -> Option<(u64, usize)> {
+    match *b.get(pos)? {
+        0x00 => Some((0, 1)),                       // ZeroOp
+        0x01 => Some((1, 1)),                       // OneOp
+        0x0A => Some((*b.get(pos + 1)? as u64, 2)), // ByteConst
+        0x0B => {
+            let lo = *b.get(pos + 1)? as u64;
+            let hi = *b.get(pos + 2)? as u64;
+            Some((lo | (hi << 8), 3))               // WordConst
+        }
+        _ => None,
+    }
+}
+
+/// DSDT AML 扫描：定位 `Name(\_S5, Package){a, b}` 并解码
+/// (SLP_TYPa, SLP_TYPb)。
+///
+/// 候选模式：NameOp(0x08) [+ RootChar(0x5C)] + "_S5_"（AML NameSeg 定长
+/// 4 字符），后跟 PackageOp(0x12) PkgLength 元素数 元素…（\_S5 按规范必为
+/// 2 元素 Package）。元素解码支持 ZeroOp/OneOp/ByteConst/WordConst（真实
+/// 固件全谱）；SLP_TYP 只有 3 位——解码值 >7 视为错位候选，继续扫描。
+/// 全 DSDT 扫描，找不到/格式不明 → None（调用方如实报错）。纯函数，宿主可测。
+pub fn find_s5_slp_typ(dsdt: &[u8]) -> Option<(u8, u8)> {
+    let mut i = 0usize;
+    while i + 6 <= dsdt.len() {
+        let seg = &dsdt[i..];
+        let off = if seg[0] == 0x08 && seg[1] == 0x5C && seg[2..6] == *b"_S5_" {
+            6
+        } else if seg[0] == 0x08 && seg[1..5] == *b"_S5_" {
+            5
+        } else {
+            i += 1;
+            continue;
+        };
+        let mut p = i + off;
+        match dsdt.get(p) {
+            Some(0x12) => p += 1,
+            _ => {
+                i += 1;
+                continue;
+            }
+        }
+        // PkgLength：单字节（<64，真实 \_S5 全在此档）精确；多字节按
+        // LeadByte[3:0] 为最高 nybble + 后续字节 big-endian 保守解码。
+        let Some(&lead) = dsdt.get(p) else { break };
+        let n = (lead >> 6) as usize;
+        let consumed = 1 + n;
+        let mut len = (lead & 0x3F) as usize;
+        if n > 0 {
+            len = (lead & 0x0F) as usize;
+            let mut k = 0usize;
+            while k < n {
+                let Some(&byte) = dsdt.get(p + 1 + k) else { break };
+                len = (len << 8) | byte as usize;
+                k += 1;
+            }
+        }
+        if consumed == 0 || p + consumed > dsdt.len() || len == 0 {
+            break;
+        }
+        p += consumed;
+        let Some(&cnt) = dsdt.get(p) else { break };
+        p += 1;
+        let Some((a, n1)) = aml_int(dsdt, p) else {
+            i += 1;
+            continue;
+        };
+        let Some((b, _)) = aml_int(dsdt, p + n1) else {
+            i += 1;
+            continue;
+        };
+        if cnt < 1 || a > 0x7 || b > 0x7 {
+            i += 1;
+            continue; // 解码错位——继续找下一个候选
+        }
+        return Some((a as u8, b as u8));
+    }
+    None
+}
+
 /// Registers required to enter a sleep state (F251/F252).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SleepRegs {
@@ -1778,6 +1863,28 @@ mod tests {
         let mut t = fadt_body();
         t[0] = b'X';
         assert!(parse_fadt(&t).is_none());
+    }
+
+    #[test]
+    fn f251_s5_slp_typ_synthetic_aml() {
+        // 标准形式：Name(\_S5, Package(){5, 0}) → (5, 0)。
+        let std_aml: [u8; 12] =
+            [0x08, 0x5C, b'_', b'S', b'5', b'_', 0x12, 0x06, 0x02, 0x0A, 0x05, 0x00];
+        assert_eq!(find_s5_slp_typ(&std_aml), Some((5, 0)));
+        // 相对名（无 RootChar）+ OneOp/ZeroOp → (1, 0)。
+        let rel: [u8; 10] = [0x08, b'_', b'S', b'5', b'_', 0x12, 0x05, 0x02, 0x01, 0x00];
+        assert_eq!(find_s5_slp_typ(&rel), Some((1, 0)));
+        // WordConst 形式：Package(){0x0005, 0} → (5, 0)。
+        let wd: [u8; 13] =
+            [0x08, 0x5C, b'_', b'S', b'5', b'_', 0x12, 0x07, 0x02, 0x0B, 0x05, 0x00, 0x00];
+        assert_eq!(find_s5_slp_typ(&wd), Some((5, 0)));
+        // _S4_ 不误命中。
+        let s4: [u8; 12] =
+            [0x08, 0x5C, b'_', b'S', b'4', b'_', 0x12, 0x06, 0x02, 0x0A, 0x04, 0x00];
+        assert_eq!(find_s5_slp_typ(&s4), None);
+        // 空/短 AML（NameOp 命中但无 Package）→ None。
+        assert_eq!(find_s5_slp_typ(b""), None);
+        assert_eq!(find_s5_slp_typ(&std_aml[..6]), None);
     }
 
     #[test]

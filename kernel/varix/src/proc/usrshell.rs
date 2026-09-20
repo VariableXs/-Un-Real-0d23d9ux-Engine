@@ -34,6 +34,8 @@ pub const SYS_INPUT: u32 = 17;
 pub const SYS_SHIM: u32 = 18;
 /// SYS_REBOOT：重启整机（UEFI 复位 + 8042 兜底）。
 pub const SYS_REBOOT: u32 = 19;
+/// SYS_POWEROFF：关机断电（UEFI ResetSystem(Shutdown) + ACPI S5 阶梯）。
+pub const SYS_POWEROFF: u32 = 20;
 
 const fn einval() -> i64 {
     -(ErrNo::Einval.to_i32() as i64)
@@ -545,6 +547,45 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     enosys()
 }
 
+/// SYS_POWEROFF 处理器（2026-09-19）：关机断电（Variable 系统内关机）。
+///
+/// 两级阶梯（每级落空则下一级，日志逐级留痕；全败如实返回 -EIO 让
+/// shell 回桌面继续可用）：
+/// ① UEFI `ResetSystem(EfiResetShutdown)`（`bootnext::reset_shutdown`；
+///    与 sys_reboot 同序——先建运行期恒等映射，两函数幂等）；
+/// ② ACPI S5（`bootnext::poweroff_s5`：FACP→PM1a_CNT 写
+///    `(SLP_TYP<<10)|SLP_EN`，SLP_TYP 取自 DSDT `\_S5` 包解码）。
+///
+/// 无 8042/0xCF9 类硬件兜底——S5 断电只有 UEFI/ACPI 两条正道；两者都
+/// 不可用（BIOS 引导无 RS、无 FACP）时如实报错回桌面，绝不假装关机。
+/// 写入生效后给平台一个断电窗口再判定失败。正常永不返回。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_poweroff(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    crate::kinfo!("poweroff: SYS_POWEROFF — powering off");
+    let _ = crate::bootnext::prepare_runtime_identity_map();
+    let blocks = crate::bootnext::identity_map_low_4gib();
+    crate::kinfo!("poweroff: runtime identity-mapped ({} x 2MiB)", blocks);
+    // ① UEFI 主路径。
+    if crate::bootnext::reset_shutdown() {
+        // ResetSystem 正常不返回；返回 = 本固件关机路径异常，落 ACPI。
+        crate::kinfo!("poweroff: ResetSystem returned — ACPI S5 next");
+    } else {
+        crate::kinfo!("poweroff: no UEFI runtime services (BIOS boot) — ACPI S5");
+    }
+    // ② ACPI S5。
+    crate::kinfo!("poweroff: acpi s5 (PM1a_CNT <- SLP_TYP|SLP_EN)");
+    let _ = crate::bootnext::poweroff_s5();
+    // 断电生效窗口：QEMU 即刻退出；实机数秒内断电。仍运行 = 寄存器落空。
+    spin_cycles(100_000_000);
+    crate::kwarn!("poweroff: all paths failed — reporting to shell");
+    eio()
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_poweroff(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
 /// SYS_SHIM 处理器：命令垫片（KV/VFS/boot 事件/时钟）。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn sys_shim(a1: u64, a2: u64, a3: u64) -> i64 {
@@ -1009,9 +1050,10 @@ mod tests {
 
     #[test]
     fn stable_numbers_do_not_clash_win32() {
-        // 稳定号 16/17/18/19 与 Win32 服务台号段（0x40 起）永不相交。
+        // 稳定号 16/17/18/19/20 与 Win32 服务台号段（0x40 起）永不相交。
         assert!(SYS_FRAME < super::super::winapi::WIN32_NR_BASE);
         assert!(SYS_SHIM < super::super::winapi::WIN32_NR_BASE);
         assert!(SYS_REBOOT < super::super::winapi::WIN32_NR_BASE);
+        assert!(SYS_POWEROFF < super::super::winapi::WIN32_NR_BASE);
     }
 }

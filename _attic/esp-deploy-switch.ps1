@@ -7,12 +7,13 @@ $BACKUP_DIR = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\esp-backup'
 
 $CONF = @'
 # Varix kernel Limine config (v8+ limine.conf format)
-timeout: 5
+timeout: 0
 serial: yes
 
 /VARIX Kernel
     protocol: limine
     kernel_path: boot():/kernel/varix
+    kernel_cmdline: boot_timeout=0
 
 /Windows 11 (built-in disk)
     protocol: chainload

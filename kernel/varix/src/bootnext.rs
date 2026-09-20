@@ -21,6 +21,8 @@ const EFI_SUCCESS: usize = 0;
 const ATTR_NV_BS_RT: u32 = 0x7;
 /// EfiResetCold。
 const EFI_RESET_COLD: u32 = 1;
+/// EfiResetShutdown（SYS_POWEROFF 主路径：固件级断电）。
+const EFI_RESET_SHUTDOWN: u32 = 2;
 
 // ---------------------------------------------------------------------------
 // UEFI Runtime Services 区域的恒等映射（任务2 前置事实）
@@ -328,6 +330,94 @@ pub fn reset_cold() -> bool {
     true
 }
 
+/// ResetSystem(EfiResetShutdown)：固件级断电（SYS_POWEROFF ①）。
+/// 仅在 UEFI 引导下有效；BIOS 引导返回 false（调用方落 ACPI S5）。
+pub fn reset_shutdown() -> bool {
+    let Some(rs) = runtime_services() else {
+        return false;
+    };
+    let Some(reset) = fn_ptr::<EfiResetSystem>(rs, RS_RESET_SYSTEM) else {
+        return false;
+    };
+    unsafe { reset(EFI_RESET_SHUTDOWN, EFI_SUCCESS, 0, core::ptr::null()) };
+    // ResetSystem 理论上不返回；若返回，调用方继续（如实）。
+    true
+}
+
+/// ACPI S5 关机（SYS_POWEROFF ②）：FACP → PM1a_CNT 写
+/// `(SLP_TYPa<<10)|SLP_EN`。
+///
+/// 链路：`acpi::facp_addr()`（init 表遍历登记）→ HHDM 映射 → 表长校验 →
+/// DSDT 地址（FACP +40，ACPI 1.0 布局）→ DSDT 表长校验 →
+/// `power::find_s5_slp_typ`（`\_S5` 包解码）→ `power::slp_typ_value` 编码
+/// → `ps2::port::outw`（PM1a_CNT 是 16 位寄存器）。任何一环缺失 → false
+/// 如实返回（调用方报错回桌面），绝不乱写端口。写入即断电，正常不返回。
+pub fn poweroff_s5() -> bool {
+    let Some(facp_phys) = crate::acpi::facp_addr() else {
+        crate::kwarn!("poweroff: no FACP — ACPI S5 unavailable");
+        return false;
+    };
+    let Some(off) = limine::hhdm_offset() else {
+        crate::kwarn!("poweroff: no HHDM — ACPI S5 unavailable");
+        return false;
+    };
+    let off = off as u64;
+    let facp = facp_phys + off;
+    // FACP 表长 @ +4；最小 276（ACPI 1.0 FADT 全长），此处宽松下限 92
+    //（与 power::parse_fadt 一致）。
+    let flen = unsafe { core::ptr::read_volatile((facp + 4) as *const u32) } as usize;
+    if flen < 92 || flen > (1 << 20) {
+        crate::kwarn!("poweroff: FACP length implausible ({})", flen);
+        return false;
+    }
+    let facp_bytes =
+        unsafe { core::slice::from_raw_parts(facp as *const u8, flen) };
+    let Some(fadt) = crate::power::parse_fadt(facp_bytes) else {
+        crate::kwarn!("poweroff: FACP parse failed");
+        return false;
+    };
+    if fadt.pm1a_cnt_blk == 0 {
+        crate::kwarn!("poweroff: PM1a_CNT_BLK == 0 — ACPI S5 unavailable");
+        return false;
+    }
+    // DSDT 物理地址 @ +40（ACPI 1.0 FADT；X_DSDT 可选扩展，q35/实机均
+    // 填 32 位域）。
+    let dsdt_phys =
+        unsafe { core::ptr::read_volatile((facp + 40) as *const u32) } as u64;
+    if dsdt_phys == 0 {
+        crate::kwarn!("poweroff: no DSDT — ACPI S5 unavailable");
+        return false;
+    }
+    let dsdt = dsdt_phys + off;
+    let dlen = unsafe { core::ptr::read_volatile((dsdt + 4) as *const u32) } as usize;
+    if dlen < 36 || dlen > (1 << 20) {
+        crate::kwarn!("poweroff: DSDT length implausible ({})", dlen);
+        return false;
+    }
+    let dsdt_bytes =
+        unsafe { core::slice::from_raw_parts(dsdt as *const u8, dlen) };
+    let Some((typ_a, typ_b)) = crate::power::find_s5_slp_typ(dsdt_bytes) else {
+        crate::kwarn!("poweroff: \\_S5 package not found in DSDT");
+        return false;
+    };
+    let val = crate::power::slp_typ_value(typ_a);
+    crate::kinfo!(
+        "poweroff: S5 PM1a_CNT {:#x} <- {:#06x} (slp_typa={} b={})",
+        fadt.pm1a_cnt_blk,
+        val,
+        typ_a,
+        typ_b
+    );
+    // SAFETY: PM1a_CNT 是 ACPI 定义的 16 位电源管理寄存器；地址与值均已
+    // 经 FACP/DSDT 解码校验。ps2::port 仅在内核目标下编译（宿主测试
+    // 走不到这里——acpi::facp_addr() 恒 None 提前返回 false）。
+    #[cfg(target_os = "none")]
+    unsafe { crate::ps2::port::outw(fadt.pm1a_cnt_blk as u16, val) };
+    #[cfg(not(target_os = "none"))]
+    let _ = (fadt.pm1a_cnt_blk, val);
+    true
+}
+
 /// 从内核命令行取 BootNext 目标项号：`boot_next=<dec|0xhex>`，缺省 0x0001。
 /// 目标项号取决于 ESP 上 Windows 引导项的 Boot#### 编号（AI-P 部署线装配）。
 pub fn entry_from_cmdline(cmdline: &str) -> u16 {
@@ -390,5 +480,8 @@ mod tests {
         // 宿主无 EFI 系统表请求响应 → 恒 None/NoRuntimeServices。
         assert_eq!(write_bootnext(2), BootNextOutcome::NoRuntimeServices);
         assert!(!reset_cold());
+        assert!(!reset_shutdown());
+        // 宿主无 FACP 登记 → S5 路径如实 false。
+        assert!(!poweroff_s5());
     }
 }

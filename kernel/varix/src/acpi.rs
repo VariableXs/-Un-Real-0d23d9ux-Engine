@@ -398,6 +398,15 @@ pub fn madt() -> Option<&'static MadtInfo> {
     MADT.get()
 }
 
+/// FACP (FADT) physical address for the S5 poweroff path (set by `init`).
+static FACP_ADDR: OnceLock<u64> = OnceLock::new();
+
+/// FACP 物理地址（SYS_POWEROFF ACPI S5 路径：bootnext::poweroff_s5 经
+/// HHDM 映射读 PM1a_CNT_BLK/DSDT 用）。
+pub fn facp_addr() -> Option<u64> {
+    FACP_ADDR.get().copied()
+}
+
 /// Map a firmware (physical) address through the HHDM when needed.
 fn hhdm_map(addr: u64, hhdm: u64) -> u64 {
     if addr >= hhdm && hhdm != 0 {
@@ -454,6 +463,10 @@ pub fn init() -> Option<AcpiState> {
                     state.has_madt = true;
                     let _ = MADT.set(madt);
                 }
+            } else if &hdr.signature == b"FACP" {
+                // SYS_POWEROFF ACPI S5 路径：登记 FACP 物理地址
+                //（bootnext::poweroff_s5 读 PM1a_CNT_BLK/DSDT 的锚点）。
+                let _ = FACP_ADDR.set(addr);
             }
         }
         Some(state)

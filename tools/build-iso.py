@@ -28,7 +28,7 @@ serial: yes
 /kernel/varix
     protocol: limine
     kernel_path: boot():/kernel/varix
-    kernel_cmdline: desktop=1
+    kernel_cmdline: desktop=1 boot_timeout=0
 """
 
 

@@ -7,12 +7,15 @@
 //!   回放/时钟。
 //!
 //! 旅程（对应总案阶段3 步骤7/8 走查清单）：
-//!   ① BootScreen：boot 事件回放 14 阶段（kernel timeline 快照）→ 任意键
+//!   ① Loading：内核拉起即进加载动画（里程碑+平滑进度条），零按键零
+//!      选项，≥2s 后直落桌面（Variable 是主系统）
 //!   ② 桌面：壁纸渐变 + 任务栏（START）+ 桌面图标
 //!   ③ START → 开始菜单 → 文件管理器（SHARED 列表/读文件预览，数据源
 //!      如实标注 exFAT / demo-tree）
 //!   ④ START → 设置页（引导行为三参数，KV 存储即时读写，←→/Enter）
 //!   ⑤ START → 关于（嵌入层自述 + 运行指标）
+//!   ⑥ START 菜单五项：Restart=重启切回 Windows；Shutdown=关机断电
+//!      （SYS_POWEROFF → UEFI ResetSystem(Shutdown) → ACPI S5 阶梯）
 //!
 //! 全程键盘可达（↑↓←→/Enter/Esc）；里程碑经串口打点供验收脚本断言。
 
@@ -31,6 +34,7 @@ const SYS_FRAME: u64 = 16;
 const SYS_INPUT: u64 = 17;
 const SYS_SHIM: u64 = 18;
 const SYS_REBOOT: u64 = 19;
+const SYS_POWEROFF: u64 = 20;
 
 fn syscall3(nr: u64, a1: u64, a2: u64, a3: u64) -> i64 {
     let ret: i64;
@@ -206,7 +210,7 @@ fn out_u32(off: usize) -> u32 {
 /// 调用前提：BLOCK 刚被 CMD_BOOT_EVENTS 填充。位格式与内核逐位一致：
 /// 记录 16B=[idx][state][4..8 活时钟 ms][8..12 诊断字]；诊断字=低 8 位
 /// 控制器探针、[23:8] 已收键盘原始字节计数、[31:24] 最后原始字节。
-/// 旧内核无此记录 → None（等键循环保持原无限等待行为）。
+/// 旧内核无此记录 → None（加载动画走帧数兜底，绝不死等）。
 fn decode_kbd_rec() -> Option<(u32, u32)> {
     let b = blk();
     let n = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
@@ -286,6 +290,8 @@ fn u64_bytes(mut v: u64, out: &mut [u8]) -> usize {
         v /= 10;
         n += 1;
     }
+    // 防御性钳制：调用方缓冲最小 8 字节，≥10^8 的值截高位不越界。
+    let n = n.min(out.len());
     for i in 0..n {
         out[i] = tmp[n - 1 - i];
     }
@@ -447,120 +453,41 @@ impl Ui {
     }
 }
 
-const BOOT_STAGES: [&[u8]; 14] = [
-    b"serial", b"cmdline", b"framebuffer", b"logo", b"banner", b"console", b"platform", b"acpi",
-    b"smbios", b"memmap", b"kaslr", b"integrity", b"bootopt", b"selftest",
+/// 加载动画里程碑文案（stage 索引 0~2，随进度分段切换）。
+const LOAD_STAGES: [&[u8]; 3] = [
+    b"loading boot events",
+    b"reading shared storage",
+    b"starting desktop",
 ];
 
-fn draw_bootscreen(ui: &Ui, stages: usize) -> ([u8; 40], usize) {
+/// 加载动画屏（2026-09-19 用户验收：Variable 是主系统，内核加载完的
+/// 瞬间自动进入，零选项）：VARIX 品牌大字 + 平滑进度条 + 里程碑状态行
+/// （带 0~3 个动画点循环）。pct=当前平滑百分比（0~100，只升不降），
+/// stage=里程碑索引，dots=动画点数。每帧全量重画（进度与点每帧都在变）。
+fn draw_loading(ui: &Ui, pct: i64, stage: usize, dots: usize) {
     fill_rect(0, 0, ui.w, ui.h, C_WALL0);
     let logo_x = (ui.w - 5 * GLYPH_W * 3) / 2;
-    text3(logo_x, ui.h / 4, b"VARIX", C_WHITE);
-    text((ui.w - 15 * GLYPH_W) / 2, ui.h / 4 + 64, b"Variable System", C_DIM);
-    let bar_w = ui.w * 2 / 3;
+    text3(logo_x, ui.h / 2 - 64, b"VARIX", C_WHITE);
+    text((ui.w - 15 * GLYPH_W) / 2, ui.h / 2 - 8, b"Variable System", C_LGRAY);
+    let bar_w = ui.w / 3;
     let bar_x = (ui.w - bar_w) / 2;
-    let bar_y = ui.h / 2;
-    outline(bar_x - 1, bar_y - 1, bar_w + 2, 18, C_LGRAY);
-    for st in 0..stages.min(14) {
-        let frac = ((st as i64 + 1) * bar_w) / 14;
-        fill_rect(bar_x, bar_y, frac, 16, C_BLUE);
-        fill_rect(bar_x, bar_y + 28, 16 * GLYPH_W, GLYPH_H, C_WALL0);
-        text(bar_x, bar_y + 28, BOOT_STAGES[st], C_LGRAY);
+    let bar_y = ui.h / 2 + 48;
+    let frac = (bar_w * pct.clamp(0, 100)) / 100;
+    outline(bar_x - 1, bar_y - 1, bar_w + 2, 12, C_LGRAY);
+    fill_rect(bar_x, bar_y, frac, 10, C_BLUE);
+    // 里程碑状态行 + 动画点。
+    let mut line = [0u8; 32];
+    let s = LOAD_STAGES[stage.min(2)];
+    line[..s.len()].copy_from_slice(s);
+    let mut p = s.len();
+    for _ in 0..dots.min(3) {
+        line[p] = b'.';
+        p += 1;
     }
-    // boot 毫秒行（CMD_BOOT_MS 出参）。
-    blk_clear();
-    let rc = shim(CMD_BOOT_MS);
-    let ms = if rc >= 0 {
-        let b = blk();
-        u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-    } else {
-        0
-    };
-    let mut line = [0u8; 40];
-    let head = b"boot completed ";
-    line[..head.len()].copy_from_slice(head);
-    let mut nb = [0u8; 8];
-    let d = u64_bytes(ms, &mut nb);
-    line[head.len()..head.len() + d].copy_from_slice(&nb[..d]);
-    let tail = b" ms";
-    let p = head.len() + d;
-    line[p..p + 3].copy_from_slice(tail);
-    let total = p + 3;
-    text((ui.w - (total as i64) * GLYPH_W) / 2, bar_y + 56, &line[..total], C_WHITE);
-    text(
-        (ui.w - 25 * GLYPH_W) / 2,
-        bar_y + 88,
-        b"press any key to continue",
-        C_YELLOW,
-    );
-    (line, total)
+    text((ui.w - 23 * GLYPH_W) / 2, bar_y + 28, &line[..p], C_DIM);
 }
 
-/// 等键提示行（实机戒律 2026-09-20）：带超时倒计时，覆盖原 25 字符
-/// 文案区（30 字符宽居中，完整覆盖旧区域防残影），250ms 刷新一次。
-fn draw_press_line(ui: &Ui, remain_s: u32) {
-    let bar_y = ui.h / 2;
-    let mut line = [0u8; 40];
-    let head = b"press any key - auto in ";
-    line[..head.len()].copy_from_slice(head);
-    let mut nb = [0u8; 8];
-    let d = u64_bytes(remain_s as u64, &mut nb);
-    line[head.len()..head.len() + d].copy_from_slice(&nb[..d]);
-    let p = head.len() + d;
-    line[p..p + 1].copy_from_slice(b"s");
-    let total = p + 1;
-    let x = (ui.w - 30 * GLYPH_W) / 2;
-    let y = bar_y + 88;
-    fill_rect(x, y, 30 * GLYPH_W, GLYPH_H, C_WALL0);
-    text(x, y, &line[..total], C_YELLOW);
-}
-
-/// 键盘诊断行（实机取证 2026-09-20）："kbd: st=OK if=OK raw=12 last=0x1C"。
-/// st=控制器自检、if=键盘接口测试（OK/TO 超时/?? 异常）、raw=已收键盘原始
-/// 字节、last=最后原始字节。实机判读：按了键 raw 恒 0 ⇒ 键盘信号没到
-/// 控制器（内建键盘很可能走 USB，需 USB 栈或固件 Legacy 支持）；
-/// raw 涨了没出键 ⇒ 扫描码集/解码问题（last 即实际编码）。
-fn draw_kbd_diag(ui: &Ui, diag: u32) {
-    let bar_y = ui.h / 2;
-    // 位格式与内核 ps2::pack_probe 逐位一致（独立 crate 零链接，双源对照）。
-    let present = diag & 0x1 != 0;
-    let st = ((diag >> 1) & 0x3) as usize;
-    let ifc = ((diag >> 3) & 0x3) as usize;
-    let raw = (diag >> 8) & 0xFFFF;
-    let last = ((diag >> 24) & 0xFF) as u8;
-    let mut line = [0u8; 44];
-    let mut p = 0usize;
-    let mut put = |s: &[u8]| {
-        line[p..p + s.len()].copy_from_slice(s);
-        p += s.len();
-    };
-    if !present {
-        put(b"kbd: controller absent");
-    } else {
-        const CODE: [&[u8]; 4] = [b"--", b"OK", b"TO", b"??"];
-        put(b"kbd: st=");
-        put(CODE[st]);
-        put(b" if=");
-        put(CODE[ifc]);
-        put(b" raw=");
-        let mut nb = [0u8; 8];
-        let d = u64_bytes(raw as u64, &mut nb);
-        put(&nb[..d]);
-        put(b" last=");
-        if last == 0 {
-            put(b"--");
-        } else {
-            const HEX: [u8; 16] = *b"0123456789ABCDEF";
-            put(&[HEX[(last >> 4) as usize], HEX[(last & 0xF) as usize]]);
-        }
-    }
-    let x = (ui.w - 38 * GLYPH_W) / 2;
-    let y = bar_y + 116;
-    fill_rect(x, y, 38 * GLYPH_W, GLYPH_H, C_WALL0);
-    text(x, y, &line[..p], C_LGRAY);
-}
-
-const MENU_ITEMS: [&[u8]; 4] = [b"Files", b"Settings", b"About", b"Restart"];
+const MENU_ITEMS: [&[u8]; 5] = [b"Files", b"Settings", b"About", b"Restart", b"Shutdown"];
 
 /// 桌面底图=壁纸+任务栏。验收轮修复：窗口页（files/settings/about）此前
 /// 只画自身窗口、不重绘背景——从菜单态切页时菜单浮层/任务栏像素残留
@@ -587,8 +514,8 @@ fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
         text(x + 8, y + 20, label, C_WHITE);
     }
     if menu_open {
-        // 四项菜单：8px 顶 pad + 4x48 行 + 8px 底 pad = 208；距任务栏 4px。
-        let (mx, my, mw, mh) = (8, ui.h - 48 - 212, 280, 208);
+        // 五项菜单：8px 顶 pad + 5x48 行 + 8px 底 pad = 256；距任务栏 4px。
+        let (mx, my, mw, mh) = (8, ui.h - 48 - 260, 280, 256);
         fill_rect(mx, my, mw, mh, C_PANEL);
         outline(mx, my, mw, mh, C_LGRAY);
         for (i, it) in MENU_ITEMS.iter().enumerate() {
@@ -720,19 +647,20 @@ fn draw_about(ui: &Ui, info: &[u8]) {
     let w = ui.w.min(640) - 40;
     let x = 80;
     let y = 80;
-    let h = 308;
+    let h = 336;
     ui.panel(x, y, w, h, C_CYAN, b"ABOUT - VARIABLE SYSTEM");
-    let lines: [&[u8]; 7] = [
+    let lines: [&[u8]; 8] = [
         b"Variable System - VARIX kernel",
         b"UI host: ushell.elf (ring3 process)",
         b"render: SYS_FRAME -> display service",
         b"input: SYS_INPUT (shim://input 16B)",
         b"shim: SYS_SHIM (KV/VFS/boot events)",
         b"restart: SYS_REBOOT -> Windows",
+        b"shutdown: SYS_POWEROFF -> ACPI S5",
         info,
     ];
     for (i, l) in lines.iter().enumerate() {
-        text(x + 16, y + 36 + (i as i64) * 28, l, if i == 6 { C_YELLOW } else { C_LGRAY });
+        text(x + 16, y + 36 + (i as i64) * 28, l, if i == 7 { C_YELLOW } else { C_LGRAY });
     }
 }
 
@@ -809,83 +737,11 @@ pub extern "C" fn _start() -> ! {
     }
     let ui = Ui { w, h };
 
-    // ① BootScreen：boot://event 回放（任务28：内核 timeline 快照 → 记录
-    //    idx 单调推进；渲染端容错=未知记录跳过）。
-    blk_clear();
-    let n_ev = shim(CMD_BOOT_EVENTS);
-    let n_stages = if n_ev < 0 { 0 } else { n_ev as usize };
-    let (_l, _t) = draw_bootscreen(&ui, n_stages);
-    // 任务71 首帧口径：BootScreen 第一帧落屏即打点，毫秒取自内核时钟
-    //（CMD_BOOT_MS，与屏上 "boot completed N ms" 同源同值）——TCG 演示链
-    // 的前置探针耗时不计入首帧，口径如实践录。
-    {
-        blk_clear();
-        let frc = shim(CMD_BOOT_MS);
-        let fms = if frc >= 0 {
-            let b = blk();
-            u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-        } else {
-            0
-        };
-        let mut fline = [0u8; 48];
-        let fhead = b"SHELL: first-frame ms=";
-        fline[..fhead.len()].copy_from_slice(fhead);
-        let mut fnb = [0u8; 8];
-        let fd = u64_bytes(fms, &mut fnb);
-        fline[fhead.len()..fhead.len() + fd].copy_from_slice(&fnb[..fd]);
-        let fp = fhead.len() + fd;
-        marker(&fline[..fp]);
-    }
-    marker(b"SHELL: boot-replay done - press any key");
-
-    // 实机戒律（2026-09-20）：等键循环必须可退出。键盘硬件路径失联
-    // （内建键盘走 USB/控制器未就绪）时 10 秒自动继续进桌面；诊断行实时
-    // 展示键盘原始字节计数——按了键 raw 不涨=信号没到控制器，涨了没出键
-    // =解码问题。活时钟取自诊断记录（内核每次 CMD_BOOT_EVENTS 实时注入）。
-    const BOOT_WAIT_MS: u32 = 10_000;
-    let mut ev = [0u8; IN_MAX];
-    blk_clear();
-    let _ = shim(CMD_BOOT_EVENTS);
-    let first = decode_kbd_rec();
-    let start_ms = first.map(|(ms, _)| ms).unwrap_or(0);
-    let mut last_draw = u32::MAX;
-    let mut last_diag = u32::MAX;
-    loop {
-        let n = input(&mut ev);
-        let mut pressed = false;
-        for i in 0..n {
-            if ev[i] != 0xFF {
-                pressed = true;
-            }
-        }
-        if pressed {
-            break;
-        }
-        blk_clear();
-        let _ = shim(CMD_BOOT_EVENTS);
-        let (now, diag) = decode_kbd_rec().unwrap_or((0, 0));
-        if first.is_none() {
-            // 旧内核无诊断记录（无活时钟）：保持原无限等键行为。
-            continue;
-        }
-        let elapsed = now.wrapping_sub(start_ms);
-        if elapsed >= BOOT_WAIT_MS {
-            break; // 键盘失联兜底：超时自动进桌面
-        }
-        if last_draw == u32::MAX || now.wrapping_sub(last_draw) >= 250 {
-            last_draw = now;
-            let remain = (BOOT_WAIT_MS - elapsed.min(BOOT_WAIT_MS) + 999) / 1000;
-            draw_press_line(&ui, remain);
-            if diag != last_diag {
-                last_diag = diag;
-                draw_kbd_diag(&ui, diag);
-            }
-        }
-    }
-
-    // ② 桌面
-    let mut phase = 0u8; // 0=desktop 1=startmenu 2=files 3=fileview 4=settings 5=about
-    let mut menu_sel = 0usize;
+    // ① Loading（2026-09-19 用户验收）：Variable 是主系统——内核加载完
+    //    的瞬间自动进入加载动画，零按键零选项；里程碑推进 + 平滑进度，
+    //    ≥2s 直落桌面。全程吞键（排队键不穿到桌面误开菜单）。活时钟取
+    //    自诊断记录（内核每次 CMD_BOOT_EVENTS 实时注入）；旧内核无记录
+    //    → 帧数兜底（固定帧数+短自旋后照常进桌面，绝不死等）。
     let mut files = Files {
         names: [[0; 40]; 16],
         sizes: [0; 16],
@@ -894,7 +750,88 @@ pub extern "C" fn _start() -> ! {
         sel: 0,
         source: false,
     };
-    files.refresh();
+    let mut ev = [0u8; IN_MAX];
+    marker(b"SHELL: entering variable-system");
+    blk_clear();
+    let _ = shim(CMD_BOOT_EVENTS);
+    let t0 = decode_kbd_rec().map(|(ms, _)| ms);
+    let mut pct: i64 = 0;
+    let mut target: i64 = 5;
+    let mut stage: usize = 0;
+    let mut did_files = false;
+    let mut frame: u64 = 0;
+    loop {
+        // 吞键：加载期任何按键都不跳过动画（零选项直达桌面）。
+        let _ = input(&mut ev);
+        // 活时钟：每帧重取（诊断记录由内核实时注入）。
+        blk_clear();
+        let _ = shim(CMD_BOOT_EVENTS);
+        let now_ms = decode_kbd_rec().map(|(ms, _)| ms);
+        let elapsed = match (now_ms, t0) {
+            (Some(now), Some(start)) => now.wrapping_sub(start),
+            _ => 0,
+        };
+        // 里程碑推进：帧 0 起 boot 事件随每帧时钟刷新在线 →35%；帧 2 枚
+        // 举共享存储（files.refresh，桌面文件页数据就此就绪）→80%；
+        // ≥2s（无钟=24 帧兜底）→100% 落桌面。
+        if frame == 0 {
+            target = target.max(35);
+        }
+        if frame == 2 && !did_files {
+            files.refresh();
+            did_files = true;
+            stage = 1;
+            target = target.max(80);
+        }
+        let ready = if t0.is_some() { elapsed >= 2_000 } else { frame >= 24 };
+        if ready {
+            stage = 2;
+            target = 100;
+        }
+        // 平滑推进：指数逼近 target，每帧至少 +1（低帧率下 ~30 帧收尾）。
+        let gap = target - pct;
+        if gap > 0 {
+            pct += ((gap + 7) / 8).max(1).min(gap);
+        }
+        let dots = ((frame / 6) % 4) as usize;
+        draw_loading(&ui, pct, stage, dots);
+        if frame == 0 {
+            // 任务71 首帧口径：Loading 第一帧落屏即打点，毫秒取自内核
+            // 时钟（CMD_BOOT_MS）——口径如实践录。
+            blk_clear();
+            let frc = shim(CMD_BOOT_MS);
+            let fms = if frc >= 0 {
+                let b = blk();
+                u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+            } else {
+                0
+            };
+            let mut fline = [0u8; 48];
+            let fhead = b"SHELL: first-frame ms=";
+            fline[..fhead.len()].copy_from_slice(fhead);
+            let mut fnb = [0u8; 8];
+            let fd = u64_bytes(fms, &mut fnb);
+            fline[fhead.len()..fhead.len() + fd].copy_from_slice(&fnb[..fd]);
+            let fp = fhead.len() + fd;
+            marker(&fline[..fp]);
+        }
+        frame += 1;
+        if pct >= 100 && target >= 100 {
+            break;
+        }
+        // 无钟兜底节奏：每帧短自旋，24 帧≈2s 量级；有钟路径完全由活时钟
+        // 驱动，不自旋（TCG 单帧绘制本身就慢）。
+        if t0.is_none() {
+            for _ in 0..200_000 {
+                core::hint::spin_loop();
+            }
+        }
+    }
+    marker(b"SHELL: boot-replay done");
+
+    // ② 桌面（files 已在 Loading 里程碑中枚举就绪，直接上报）
+    let mut phase = 0u8; // 0=desktop 1=startmenu 2=files 3=fileview 4=settings 5=about
+    let mut menu_sel = 0usize;
     marker(b"SHELL: desktop-ready");
     report_count(&files);
 
@@ -995,6 +932,14 @@ pub extern "C" fn _start() -> ! {
                                 let _ = syscall3(SYS_REBOOT, 0, 0, 0);
                                 // 到这里 = 复位失败：如实回到桌面继续可用。
                                 marker(b"SHELL: restart failed - still running");
+                            }
+                            4 => {
+                                // 关机（2026-09-19）：SYS_POWEROFF → 内核
+                                // UEFI ResetSystem(Shutdown) → ACPI S5 阶
+                                // 梯。正常永不返回；全败时如实回到桌面。
+                                marker(b"SHELL: shutdown requested - powering off");
+                                let _ = syscall3(SYS_POWEROFF, 0, 0, 0);
+                                marker(b"SHELL: shutdown failed - still running");
                             }
                             _ => {}
                         }

@@ -325,6 +325,20 @@ pub(crate) mod port {
             )
         }
     }
+
+    /// 16 位端口写 — `out dx, ax`（SYS_POWEROFF ACPI S5：PM1a_CNT 是
+    /// ACPI 定义的 16 位电源管理寄存器，8 位 outp 分两次写时序不对）。
+    #[inline]
+    pub unsafe fn outw(port: u16, val: u16) {
+        unsafe {
+            core::arch::asm!(
+                "out dx, ax",
+                in("ax") val,
+                in("dx") port,
+                options(nomem, nostack, preserves_flags)
+            )
+        }
+    }
 }
 
 #[cfg(target_os = "none")]

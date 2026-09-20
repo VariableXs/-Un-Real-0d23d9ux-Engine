@@ -33,7 +33,7 @@ serial: yes
 / Varix OS (aurora desktop demo)
     protocol: limine
     kernel_path: boot():/kernel/varix
-    kernel_cmdline: desktop=1
+    kernel_cmdline: desktop=1 boot_timeout=0
 """
 
 # 任务4：boot-select.json 骨架（SHARED 目录契约；真盘 FS 落地前由
