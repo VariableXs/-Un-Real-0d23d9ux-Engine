@@ -42,11 +42,22 @@ if rc <= 32:
 
 # 3) 轮询日志
 print("等待部署日志…（UAC 弹窗请点「是」）")
+
+
+def read_log_text():
+    """PS `*>` 重定向默认 UTF-16LE（BOM FF FE）——按 BOM 嗅探解码，
+    否则按 UTF-8。之前恒按 utf-8 读 UTF-16 日志，标记永远匹配不到
+    （实测部署已 DONE 却误报 120s 超时）。"""
+    raw = open(LOG, "rb").read()
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16", errors="replace")
+    return raw.decode("utf-8", errors="replace")
+
+
 for i in range(120):
     time.sleep(2)
     try:
-        with open(LOG, "r", encoding="utf-8", errors="replace") as f:
-            txt = f.read()
+        txt = read_log_text()
         if "ESP-DEPLOY-DONE" in txt or "DEPLOY-FAIL" in txt:
             print(txt)
             raise SystemExit(0 if "ESP-DEPLOY-DONE" in txt else 1)
