@@ -245,21 +245,52 @@ pub fn to_char(k: Key, shift: bool) -> Option<u8> {
 #[derive(Default)]
 pub struct Decoder {
     pending_ext: bool,
+    pending_break: bool,
 }
 
 impl Decoder {
     /// 喂入一个来自 0x60 的原始字节，得到 0 或 1 个键。
+    ///
+    /// 解码顺序（2026-09-20 实机戒律）：先 SET1，无匹配再走 SET2 导航兜底。
+    /// 真机笔记本（Y7000 EC/i8042 兼容层）可能发 SET2 扫描码（Enter=0x5A、
+    /// ↑=0x75），QEMU 的 sendkey 走 SET1——只认 SET1 时真机「press any key」
+    /// 全部静默丢失。SET2 断码=0xF0 前缀，须消化掉防松键误读成按下。
     pub fn feed(&mut self, b: u8) -> Option<Key> {
         if b == 0xE0 {
             self.pending_ext = true;
             return None;
         }
+        if b == 0xF0 {
+            // SET2 断码前缀：下一个字节是 make code，丢弃整对。
+            self.pending_break = true;
+            return None;
+        }
+        if self.pending_break {
+            self.pending_break = false;
+            return None; // SET2 断码的 make 部分：松键，不产事件
+        }
         let ext = core::mem::take(&mut self.pending_ext);
         if b & 0x80 != 0 {
-            return None; // 断码：菜单只关心按下
+            return None; // SET1 断码：菜单只关心按下
         }
-        decode(b, ext)
+        decode(b, ext).or_else(|| if ext { None } else { decode_set2_nav(b) })
     }
+}
+
+/// SET2 导航/常用键兜底（仅收录与 SET1 表不冲突的 make code）。
+/// SET1 已映射的字节（如 0x0D=Equal、0x29=Grave）永远先走 SET1——
+/// 兜底只补 SET1 空位，QEMU/标准键盘的 SET1 行为零变化。
+fn decode_set2_nav(b: u8) -> Option<Key> {
+    Some(match b {
+        0x75 => Key::Up,        // SET2 ↑
+        0x72 => Key::Down,      // SET2 ↓
+        0x6B => Key::Left,      // SET2 ←
+        0x74 => Key::Right,     // SET2 →
+        0x5A => Key::Enter,     // SET2 Enter
+        0x76 => Key::Esc,       // SET2 Esc
+        0x66 => Key::Backspace, // SET2 Bksp
+        _ => return None,
+    })
 }
 
 /// 目标态：从 PS/2 控制器轮询出一个键事件（非阻塞）。
@@ -364,5 +395,26 @@ mod tests {
         assert_eq!(d.feed(0xE0), None);
         assert_eq!(d.feed(0x2A), None); // Shift 通码，消化掉前缀
         assert_eq!(d.feed(0x48), Some(Key::Up)); // 不再处于扩展态
+    }
+
+    /// 实机戒律（2026-09-20）：Y7000 的 EC/i8042 兼容层可能发 SET2 扫描码，
+    /// 只认 SET1 时真机 BootScreen「press any key」全部静默丢失。
+    /// 锁死：SET2 导航键兜底 + 0xF0 断码对消化 + SET1 语义零变化。
+    #[test]
+    fn decoder_set2_fallback_for_real_laptops() {
+        let mut d = Decoder::default();
+        // SET2 导航/常用 make codes
+        assert_eq!(d.feed(0x5A), Some(Key::Enter), "SET2 Enter=0x5A");
+        assert_eq!(d.feed(0x75), Some(Key::Up), "SET2 Up=0x75");
+        assert_eq!(d.feed(0x72), Some(Key::Down), "SET2 Down=0x72");
+        assert_eq!(d.feed(0x6B), Some(Key::Left), "SET2 Left=0x6B");
+        assert_eq!(d.feed(0x74), Some(Key::Right), "SET2 Right=0x74");
+        assert_eq!(d.feed(0x76), Some(Key::Esc), "SET2 Esc=0x76");
+        // SET2 断码对（0xF0 + make）整体消化，松键不产事件
+        assert_eq!(d.feed(0xF0), None, "SET2 断码前缀");
+        assert_eq!(d.feed(0x5A), None, "断码 make 部分被消化");
+        // SET1 语义零变化（QEMU sendkey 路径回归）
+        assert_eq!(d.feed(0x1C), Some(Key::Enter), "SET1 Enter 不变");
+        assert_eq!(d.feed(0x50), Some(Key::Down), "SET1 Down 不变");
     }
 }
