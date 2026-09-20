@@ -280,6 +280,12 @@ pub struct InputService {
     mouse_dec: MouseDecoder,
     /// 泵级原始字节追踪（实机探针诊断用；生产路径恒 false）。
     pub trace: bool,
+    /// 实机取证计数（2026-09-20）：泵到的键盘/鼠标原始字节总数与最后键盘
+    /// 字节。BootScreen 诊断行（boot://event 记录 idx=14）实时展示——
+    /// 按了键 raw 不涨 ⇒ 键盘信号没到控制器；涨了没出键 ⇒ 解码问题。
+    pub raw_kbd: u32,
+    pub raw_aux: u32,
+    pub last_raw: u8,
 }
 
 impl InputService {
@@ -297,6 +303,9 @@ impl InputService {
             key_dec: ps2::Decoder::default(),
             mouse_dec: MouseDecoder::default(),
             trace: false,
+            raw_kbd: 0,
+            raw_aux: 0,
+            last_raw: 0,
         }
     }
 
@@ -454,11 +463,14 @@ impl InputService {
             }
             let b = unsafe { inp(DATA) };
             if st & STAT_AUX != 0 {
+                self.raw_aux = self.raw_aux.wrapping_add(1);
                 if self.trace {
                     crate::kinfo!("input-probe: raw aux={:#04x}", b);
                 }
                 self.feed_mouse_byte(b);
             } else {
+                self.raw_kbd = self.raw_kbd.wrapping_add(1);
+                self.last_raw = b;
                 if self.trace {
                     crate::kinfo!("input-probe: raw kbd={:#04x}", b);
                 }
@@ -537,6 +549,20 @@ pub mod target {
             n += 1;
         }
         n
+    }
+
+    /// BootScreen 键盘诊断字（2026-09-20 实机取证；boot://event 记录 idx=14
+    /// 载荷，ushell 诊断行实时消费）。位格式：bits7:0=控制器探针
+    /// （ps2::pack_probe 低 8 位）、bits23:8=已收键盘原始字节数（16 位饱和）、
+    /// bits31:24=最后一个键盘原始字节。实机判读：按了键 raw 不涨 ⇒ 键盘
+    /// 信号没到控制器（内建键盘很可能走 USB/控制器未就绪）；raw 涨了没出键
+    /// ⇒ 扫描码集/解码问题（last 即实际编码）。
+    pub fn kbd_diag_word() -> u32 {
+        let probe = ps2::probe_word() & 0xFF;
+        let s = svc();
+        let raw = (s.raw_kbd.min(0xFFFF)) as u32;
+        let last = s.last_raw as u32;
+        probe | (raw << 8) | (last << 24)
     }
 
     const HEX: &[u8; 16] = b"0123456789abcdef";
@@ -627,6 +653,11 @@ pub mod target {
 
     /// 任务19 实机探针入口（main.rs 挂在 NVMe 探针之后）。
     pub fn input_probe() {
+        // ⓪ 实机戒律（2026-09-20）：先做控制器初始化再谈轮询——固件移交
+        //    后的 i8042 状态不可假设（真机 BootScreen 按键全无响应的根因
+        //    候选）。QEMU 复现不了这一点（开箱即用），取证靠探针字上屏。
+        ps2::controller_init();
+        crate::kinfo!("kbd-init: probe={:#010x}", ps2::probe_word());
         // ① 定容语义（合成注入，不依赖外设）：发布 CAP+6 条 → 丢最旧 6 条、
         //    计数一致、队列仍可发布（零分配零阻塞的结构性验证）。
         let s = svc();
@@ -677,62 +708,72 @@ pub mod target {
         };
         crate::kinfo!("input-probe: sub-slots ok (fill/reject/cancel/reuse) sub={}", sub);
 
-        // ③ 实机键鼠窗口：等宿主脚本注入。事件齐 → 早退；90s 超时如实上报。
+        // ③ 实机键鼠窗口：QEMU（hypervisor 位）等宿主脚本注入，事件齐早退、
+        //    90s 超时如实上报；**真机跳过**——90s 黑屏窗口在实机上是纯等待，
+        //    且窗口内按的键会被静默吃掉（2026-09-20 实机戒律）。
         let tsc_hz = crate::platform::info().map(|p| p.tsc_hz).unwrap_or(1_000_000_000);
-        let bring = mouse_bringup(tsc_hz);
-        crate::kinfo!(
-            "input-probe: mouse bringup set-defaults={} enable-report={} (0xFA ack bits)",
-            bring & 0x1 != 0,
-            bring & 0x2 != 0
-        );
-        s.trace = true; // 泵级原始字节追踪（诊断窗口内开启）
-        let deadline = crate::timeline::read_tsc() + 90 * tsc_hz;
-        crate::kinfo!("input-probe: live (awaiting sendkey/mouse via HMP)");
+        let on_qemu = crate::platform::info()
+            .map(|p| p.features.hypervisor)
+            .unwrap_or(false);
         let mut seen = [false; 3]; // Up/Down/Enter
         let mut mouse_moves = 0u32;
         let mut mouse_btn = false;
-        loop {
-            // 泵节流：每 ~50µs 泵一次（TSC 步进），兼顾字节不断流与 ioport 开销。
-            let next = crate::timeline::read_tsc() + tsc_hz / 20_000;
-            while crate::timeline::read_tsc() < next {
-                core::hint::spin_loop();
-            }
+        if on_qemu {
+            let bring = mouse_bringup(tsc_hz);
+            crate::kinfo!(
+                "input-probe: mouse bringup set-defaults={} enable-report={} (0xFA ack bits)",
+                bring & 0x1 != 0,
+                bring & 0x2 != 0
+            );
             let s = svc();
-            let _ = s.pump();
-            while let Some((seq, ev)) = s.poll_with_seq(sub) {
-                let shim = ev.to_shim_bytes(seq);
-                crate::kinfo!(
-                    "input-probe: event seq={} shim={}",
-                    seq,
-                    hex16(&shim)
-                );
-                match ev {
-                    InputEvent::Key(k) => {
-                        let i = match k {
-                            ps2::Key::Up => 0,
-                            ps2::Key::Down => 1,
-                            ps2::Key::Enter => 2,
-                            _ => continue, // 扩展键不在三键矩阵内（任务55 扩表后如实跳过）
-                        };
-                        seen[i] = true;
-                    }
-                    InputEvent::Mouse { dx, dy, buttons } => {
-                        if dx != 0 || dy != 0 {
-                            mouse_moves += 1;
+            s.trace = true; // 泵级原始字节追踪（诊断窗口内开启）
+            let deadline = crate::timeline::read_tsc() + 90 * tsc_hz;
+            crate::kinfo!("input-probe: live (awaiting sendkey/mouse via HMP)");
+            loop {
+                // 泵节流：每 ~50µs 泵一次（TSC 步进），兼顾字节不断流与 ioport 开销。
+                let next = crate::timeline::read_tsc() + tsc_hz / 20_000;
+                while crate::timeline::read_tsc() < next {
+                    core::hint::spin_loop();
+                }
+                let s = svc();
+                let _ = s.pump();
+                while let Some((seq, ev)) = s.poll_with_seq(sub) {
+                    let shim = ev.to_shim_bytes(seq);
+                    crate::kinfo!(
+                        "input-probe: event seq={} shim={}",
+                        seq,
+                        hex16(&shim)
+                    );
+                    match ev {
+                        InputEvent::Key(k) => {
+                            let i = match k {
+                                ps2::Key::Up => 0,
+                                ps2::Key::Down => 1,
+                                ps2::Key::Enter => 2,
+                                _ => continue, // 扩展键不在三键矩阵内（任务55 扩表后如实跳过）
+                            };
+                            seen[i] = true;
                         }
-                        if buttons & 0x01 != 0 {
-                            mouse_btn = true;
+                        InputEvent::Mouse { dx, dy, buttons } => {
+                            if dx != 0 || dy != 0 {
+                                mouse_moves += 1;
+                            }
+                            if buttons & 0x01 != 0 {
+                                mouse_btn = true;
+                            }
+                            crate::kinfo!("input-probe: mouse dx={} dy={} buttons={:#04x}", dx, dy, buttons);
                         }
-                        crate::kinfo!("input-probe: mouse dx={} dy={} buttons={:#04x}", dx, dy, buttons);
                     }
                 }
+                if seen[0] && seen[1] && seen[2] && mouse_moves >= 2 && mouse_btn {
+                    break;
+                }
+                if crate::timeline::read_tsc() > deadline {
+                    break;
+                }
             }
-            if seen[0] && seen[1] && seen[2] && mouse_moves >= 2 && mouse_btn {
-                break;
-            }
-            if crate::timeline::read_tsc() > deadline {
-                break;
-            }
+        } else {
+            crate::kinfo!("input-probe: real-hw window skipped (no hypervisor)");
         }
         let s = svc();
         let missed = s.sub_missed(sub).unwrap_or(u64::MAX);

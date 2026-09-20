@@ -363,6 +363,133 @@ pub fn poll_key() -> Option<Key> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// 实机 i8042 控制器初始化 + 取证（2026-09-20 实机戒律）
+// ---------------------------------------------------------------------------
+
+/// 探针字打包（纯函数，宿主测试与目标态共用；ushell 诊断行按同一位格式
+/// 解码——独立 crate 零链接，双源对照）：
+/// bit0=控制器在位，bit2:1=控制器自检结果，bit4:3=键盘接口测试结果。
+/// 结果码 1=OK 2=超时 3=异常响应，0=未执行（控制器不在位）。
+pub fn pack_probe(present: bool, selftest: u8, iface: u8) -> u32 {
+    (present as u32) | ((selftest as u32 & 0x3) << 1) | ((iface as u32 & 0x3) << 3)
+}
+
+/// 从探针字取回 (present, selftest, iface)。
+pub fn unpack_probe(word: u32) -> (bool, u8, u8) {
+    (
+        word & 0x1 != 0,
+        ((word >> 1) & 0x3) as u8,
+        ((word >> 3) & 0x3) as u8,
+    )
+}
+
+#[cfg(target_os = "none")]
+static KBD_PROBE: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+/// 目标态：读回控制器探针字（input_probe 启动期 `controller_init` 写入）。
+#[cfg(target_os = "none")]
+pub fn probe_word() -> u32 {
+    KBD_PROBE.load(core::sync::atomic::Ordering::Acquire)
+}
+
+/// 启动期一次性 i8042 初始化（真机必须，QEMU 容忍）。
+///
+/// 2026-09-20 实机戒律：固件移交后的控制器状态不可假设——真机 BootScreen
+/// 按键全无响应的根因候选就是控制器未被留在可用态（QEMU 开箱即用复现
+/// 不了这一点）。标准序列：关两端口→清输出→控制器自检(0xAA→0x55)→键盘
+/// 接口测试(0xAB→0x00)→配置回写（**保留翻译位 bit6**：固件怎么配就怎么用，
+/// SET1/SET2 解码两侧都兜住；清 IRQ0/IRQ12 进轮询模式；清时钟禁用位=
+/// 开两端口）→开键盘端口(0xAE)→再清输出。每步限次自旋，绝不挂死引导。
+#[cfg(target_os = "none")]
+pub fn controller_init() {
+    use port::{inp, outp};
+    const STAT: u16 = 0x64;
+    const DATA: u16 = 0x60;
+    const STAT_OBF: u8 = 0x01;
+    const STAT_IBF: u8 = 0x02;
+
+    // 等输入缓冲空（IBF=0）再发命令/数据。
+    let send = |c: u8| -> bool {
+        for _ in 0..200_000 {
+            unsafe {
+                if inp(STAT) & STAT_IBF == 0 {
+                    outp(STAT, c);
+                    return true;
+                }
+            }
+            core::hint::spin_loop();
+        }
+        false
+    };
+    // 等输出缓冲有数据（限次自旋）后读一字节。
+    let resp = || -> Option<u8> {
+        for _ in 0..2_000_000 {
+            unsafe {
+                if inp(STAT) & STAT_OBF != 0 {
+                    return Some(inp(DATA));
+                }
+            }
+            core::hint::spin_loop();
+        }
+        None
+    };
+    // 清输出残留（有数据就读掉，最多 64 字节）。
+    let flush = || {
+        for _ in 0..64 {
+            unsafe {
+                if inp(STAT) & STAT_OBF == 0 {
+                    return;
+                }
+                let _ = inp(DATA);
+            }
+        }
+    };
+
+    let st = unsafe { inp(STAT) };
+    if st == 0xFF {
+        // 浮空总线=无控制器：探针字归零，轮询侧自会静默。
+        KBD_PROBE.store(0, core::sync::atomic::Ordering::Release);
+        return;
+    }
+    let _ = send(0xAD); // 关第一端口
+    let _ = send(0xA7); // 关第二端口
+    flush();
+    let st_code = if send(0xAA) {
+        match resp() {
+            Some(0x55) => 1,
+            Some(_) => 3,
+            None => 2,
+        }
+    } else {
+        2
+    };
+    let if_code = if send(0xAB) {
+        match resp() {
+            Some(0x00) => 1,
+            Some(_) => 3,
+            None => 2,
+        }
+    } else {
+        2
+    };
+    flush(); // 自检会复位控制器，重清残留
+    if send(0x20) {
+        let cfg = resp().unwrap_or(0);
+        // 保留 bit6 翻译位；清 IRQ0(0x01)/IRQ12(0x02)；清时钟禁用(0x10/0x20)=开两端口。
+        let cfg2 = cfg & !(0x01 | 0x02 | 0x10 | 0x20);
+        if send(0x60) {
+            unsafe { outp(DATA, cfg2) };
+        }
+    }
+    let _ = send(0xAE); // 开第一端口（键盘）
+    flush();
+    KBD_PROBE.store(
+        pack_probe(true, st_code, if_code),
+        core::sync::atomic::Ordering::Release,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,5 +543,20 @@ mod tests {
         // SET1 语义零变化（QEMU sendkey 路径回归）
         assert_eq!(d.feed(0x1C), Some(Key::Enter), "SET1 Enter 不变");
         assert_eq!(d.feed(0x50), Some(Key::Down), "SET1 Down 不变");
+    }
+
+    /// 实机探针字位格式（2026-09-20）：pack/unpack 往返一致；高 24 位
+    /// （原始字节计数+最后字节，inputsvc::kbd_diag_word 复用同一 u32）
+    /// 不受低 8 位探针字段影响。
+    #[test]
+    fn kbd_probe_word_roundtrip() {
+        for &(present, st, ifc) in
+            &[(true, 1u8, 1u8), (true, 2, 3), (true, 3, 2), (false, 0, 0)]
+        {
+            let w = pack_probe(present, st, ifc);
+            assert_eq!(unpack_probe(w), (present, st, ifc));
+        }
+        let w = pack_probe(true, 1, 1) | (0x1234 << 8) | (0x7F << 24);
+        assert_eq!(unpack_probe(w), (true, 1, 1), "高 24 位不溅入探针字段");
     }
 }

@@ -201,6 +201,28 @@ fn out_u32(off: usize) -> u32 {
     u32::from_le_bytes([blk()[off], blk()[off + 1], blk()[off + 2], blk()[off + 3]])
 }
 
+/// 键盘诊断记录（idx=14，2026-09-20 实机取证）解码：Some((live_ms, diag))。
+/// 调用前提：BLOCK 刚被 CMD_BOOT_EVENTS 填充。位格式与内核逐位一致：
+/// 记录 16B=[idx][state][4..8 活时钟 ms][8..12 诊断字]；诊断字=低 8 位
+/// 控制器探针、[23:8] 已收键盘原始字节计数、[31:24] 最后原始字节。
+/// 旧内核无此记录 → None（等键循环保持原无限等待行为）。
+fn decode_kbd_rec() -> Option<(u32, u32)> {
+    let b = blk();
+    let n = u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize;
+    for i in 0..n {
+        let off = 4 + i * 16;
+        if off + 16 > b.len() {
+            break;
+        }
+        if b[off] == 14 {
+            let ms = u32::from_le_bytes([b[off + 4], b[off + 5], b[off + 6], b[off + 7]]);
+            let diag = u32::from_le_bytes([b[off + 8], b[off + 9], b[off + 10], b[off + 11]]);
+            return Some((ms, diag));
+        }
+    }
+    None
+}
+
 /// 事件读取后 BLOCK 的临时复用规则：每条 shim 命令前 `BLOCK = [0;4096]`
 /// 清零（out_pieces 依赖零终止语义）。
 fn blk_clear() {
@@ -471,6 +493,70 @@ fn draw_bootscreen(ui: &Ui, stages: usize) -> ([u8; 40], usize) {
         C_YELLOW,
     );
     (line, total)
+}
+
+/// 等键提示行（实机戒律 2026-09-20）：带超时倒计时，覆盖原 25 字符
+/// 文案区（30 字符宽居中，完整覆盖旧区域防残影），250ms 刷新一次。
+fn draw_press_line(ui: &Ui, remain_s: u32) {
+    let bar_y = ui.h / 2;
+    let mut line = [0u8; 40];
+    let head = b"press any key - auto in ";
+    line[..head.len()].copy_from_slice(head);
+    let mut nb = [0u8; 8];
+    let d = u64_bytes(remain_s as u64, &mut nb);
+    line[head.len()..head.len() + d].copy_from_slice(&nb[..d]);
+    let p = head.len() + d;
+    line[p..p + 1].copy_from_slice(b"s");
+    let total = p + 1;
+    let x = (ui.w - 30 * GLYPH_W) / 2;
+    let y = bar_y + 88;
+    fill_rect(x, y, 30 * GLYPH_W, GLYPH_H, C_WALL0);
+    text(x, y, &line[..total], C_YELLOW);
+}
+
+/// 键盘诊断行（实机取证 2026-09-20）："kbd: st=OK if=OK raw=12 last=0x1C"。
+/// st=控制器自检、if=键盘接口测试（OK/TO 超时/?? 异常）、raw=已收键盘原始
+/// 字节、last=最后原始字节。实机判读：按了键 raw 恒 0 ⇒ 键盘信号没到
+/// 控制器（内建键盘很可能走 USB，需 USB 栈或固件 Legacy 支持）；
+/// raw 涨了没出键 ⇒ 扫描码集/解码问题（last 即实际编码）。
+fn draw_kbd_diag(ui: &Ui, diag: u32) {
+    let bar_y = ui.h / 2;
+    // 位格式与内核 ps2::pack_probe 逐位一致（独立 crate 零链接，双源对照）。
+    let present = diag & 0x1 != 0;
+    let st = ((diag >> 1) & 0x3) as usize;
+    let ifc = ((diag >> 3) & 0x3) as usize;
+    let raw = (diag >> 8) & 0xFFFF;
+    let last = ((diag >> 24) & 0xFF) as u8;
+    let mut line = [0u8; 44];
+    let mut p = 0usize;
+    let mut put = |s: &[u8]| {
+        line[p..p + s.len()].copy_from_slice(s);
+        p += s.len();
+    };
+    if !present {
+        put(b"kbd: controller absent");
+    } else {
+        const CODE: [&[u8]; 4] = [b"--", b"OK", b"TO", b"??"];
+        put(b"kbd: st=");
+        put(CODE[st]);
+        put(b" if=");
+        put(CODE[ifc]);
+        put(b" raw=");
+        let mut nb = [0u8; 8];
+        let d = u64_bytes(raw as u64, &mut nb);
+        put(&nb[..d]);
+        put(b" last=");
+        if last == 0 {
+            put(b"--");
+        } else {
+            const HEX: [u8; 16] = *b"0123456789ABCDEF";
+            put(&[HEX[(last >> 4) as usize], HEX[(last & 0xF) as usize]]);
+        }
+    }
+    let x = (ui.w - 38 * GLYPH_W) / 2;
+    let y = bar_y + 116;
+    fill_rect(x, y, 38 * GLYPH_W, GLYPH_H, C_WALL0);
+    text(x, y, &line[..p], C_LGRAY);
 }
 
 const MENU_ITEMS: [&[u8]; 3] = [b"Files", b"Settings", b"About"];
@@ -749,7 +835,18 @@ pub extern "C" fn _start() -> ! {
     }
     marker(b"SHELL: boot-replay done - press any key");
 
+    // 实机戒律（2026-09-20）：等键循环必须可退出。键盘硬件路径失联
+    // （内建键盘走 USB/控制器未就绪）时 10 秒自动继续进桌面；诊断行实时
+    // 展示键盘原始字节计数——按了键 raw 不涨=信号没到控制器，涨了没出键
+    // =解码问题。活时钟取自诊断记录（内核每次 CMD_BOOT_EVENTS 实时注入）。
+    const BOOT_WAIT_MS: u32 = 10_000;
     let mut ev = [0u8; IN_MAX];
+    blk_clear();
+    let _ = shim(CMD_BOOT_EVENTS);
+    let first = decode_kbd_rec();
+    let start_ms = first.map(|(ms, _)| ms).unwrap_or(0);
+    let mut last_draw = u32::MAX;
+    let mut last_diag = u32::MAX;
     loop {
         let n = input(&mut ev);
         let mut pressed = false;
@@ -760,6 +857,26 @@ pub extern "C" fn _start() -> ! {
         }
         if pressed {
             break;
+        }
+        blk_clear();
+        let _ = shim(CMD_BOOT_EVENTS);
+        let (now, diag) = decode_kbd_rec().unwrap_or((0, 0));
+        if first.is_none() {
+            // 旧内核无诊断记录（无活时钟）：保持原无限等键行为。
+            continue;
+        }
+        let elapsed = now.wrapping_sub(start_ms);
+        if elapsed >= BOOT_WAIT_MS {
+            break; // 键盘失联兜底：超时自动进桌面
+        }
+        if last_draw == u32::MAX || now.wrapping_sub(last_draw) >= 250 {
+            last_draw = now;
+            let remain = (BOOT_WAIT_MS - elapsed.min(BOOT_WAIT_MS) + 999) / 1000;
+            draw_press_line(&ui, remain);
+            if diag != last_diag {
+                last_diag = diag;
+                draw_kbd_diag(&ui, diag);
+            }
         }
     }
 

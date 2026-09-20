@@ -801,6 +801,16 @@ fn shim_boot_events(block: &mut [u8; BLK_TOTAL]) -> i64 {
         off += 16;
         count += 1;
     }
+    // 第 15 条（idx=14，2026-09-20 实机取证）：键盘诊断 + 活时钟。
+    // [4..8]=活时钟 ms（BootScreen 超时倒计时源；total_ticks 冻结值不可用）、
+    // [8..12]=kbd 诊断字（低 8 位控制器探针、[23:8] 已收键盘原始字节计数、
+    // [31:24] 最后原始字节）。实机判读：按了键 raw 不涨 ⇒ 键盘信号没到
+    // 控制器（内建键盘很可能走 USB）；raw 涨了没出键 ⇒ 扫描码解码问题。
+    let mut rec = [0u8; 16];
+    encode_boot_record(14, 2, live_ms(), &mut rec);
+    rec[8..12].copy_from_slice(&crate::inputsvc::target::kbd_diag_word().to_le_bytes());
+    block[off..off + 16].copy_from_slice(&rec);
+    count += 1;
     block[0..4].copy_from_slice(&count.to_le_bytes());
     count as i64
 }
@@ -812,6 +822,17 @@ pub fn boot_ms() -> u64 {
         .map(|p| p.tsc_hz)
         .unwrap_or(crate::platform::FALLBACK_TSC_HZ);
     crate::timeline::ticks_to_ms(crate::timeline::timeline().total_ticks(), tsc_hz)
+}
+
+/// 活时钟毫秒（2026-09-20）：`total_ticks` 是各阶段时长的冻结和（演示屏
+/// "boot completed N ms" 同源），不能驱动倒计时——BootScreen 超时倒计时
+/// 用当前 TSC 换算，随诊断记录（idx=14）每次 CMD_BOOT_EVENTS 实时带回。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn live_ms() -> u32 {
+    let tsc_hz = crate::platform::info()
+        .map(|p| p.tsc_hz)
+        .unwrap_or(crate::platform::FALLBACK_TSC_HZ);
+    crate::timeline::ticks_to_ms(crate::timeline::read_tsc(), tsc_hz) as u32
 }
 
 /// 无堆 u64 → 十进制（演示树条目尺寸）。
