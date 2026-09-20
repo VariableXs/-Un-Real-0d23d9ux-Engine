@@ -4,7 +4,7 @@ import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n, I18nContext, makeT } from "./i18n";
 import type { Lang } from "./i18n/dictionaries";
-import { setI18nRuntimeOverrides, setPseudoLocale } from "./i18n/dictionaries";
+import { setI18nRuntimeOverrides, setPseudoLocale, ensureEnDict } from "./i18n/dictionaries";
 import { setS2tUserLexicon } from "./i18n/s2t";
 import { applyCvdFilter, startFocusAnnouncer, StickyModifiers, withStickyModifiers, a11yRuntime } from "./lib/a11y";
 import { ipc, errMessage } from "./lib/ipc";
@@ -30,7 +30,6 @@ import { BootScreen, type BootStats } from "./system/boot/BootScreen";
 import { DesktopShell } from "./system/desktop/DesktopShell";
 import { Sidebar } from "./apps/write/folders/Sidebar";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
-import { SettingsModal } from "./features/settings/SettingsModal";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
@@ -60,6 +59,41 @@ const CodeXrefPanel = lazy(() =>
 const FateView = lazy(() =>
   import("./apps/fate/FateView").then((m) => ({ default: m.FateView })),
 );
+// 设置弹窗：2105 行、静态引入几十个 Tab（双域/启动剧场/白名单/安全/扩展……）。
+// 它内部有 `if (!isOpen) return null`，所以功能上只在打开时才可见，但**模块代码
+// 原先被无条件打进主 chunk** —— 用户还没点设置，首屏就先下载了全部 Tab。
+// 改按需加载后首屏省下这一大块；配合下方 `preloadSettingsModal()` 在首屏空闲时
+// 预取，点开设置依然即时，不会用「首屏变快」换「点设置转圈」。
+const SettingsModal = lazy(() =>
+  import("./features/settings/SettingsModal").then((m) => ({ default: m.SettingsModal })),
+);
+
+/**
+ * 首屏空闲时预取设置模块。
+ *
+ * 为什么需要它：懒加载把首屏变快了，但代价是「第一次点设置要等一个 chunk」。
+ * 首屏刚进来那几秒 CPU/网络通常空闲，趁这段时间把模块悄悄拉下来，用户真正
+ * 点开时已经就位——**既省首屏，又不牺牲手感**。
+ *
+ * 为什么用 requestIdleCallback 而不是直接 import：直接 import 会与首屏渲染
+ * 抢带宽，等于没优化。降级到 setTimeout 保证老环境也能预取（不预取只是慢一点，
+ * 功能不受影响，所以这里不做错误处理）。
+ */
+let settingsPreloaded = false;
+export function preloadSettingsModal(): void {
+  if (settingsPreloaded) return;
+  settingsPreloaded = true;
+  const go = (): void => {
+    void import("./features/settings/SettingsModal");
+  };
+  const ric = (
+    globalThis as typeof globalThis & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    }
+  ).requestIdleCallback;
+  if (typeof ric === "function") ric(go, { timeout: 3000 });
+  else window.setTimeout(go, 1500);
+}
 
 export type AppEntryType = "desktop" | AppMode;
 
@@ -305,6 +339,12 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     return () => window.removeEventListener("pointerdown", onPointerDown, true);
   }, []);
 
+  // 首屏空闲时预取设置模块：懒加载省下了首屏体积，这里把「第一次点设置要等」
+  // 的代价也提前消掉（详见 preloadSettingsModal 注释）。
+  useEffect(() => {
+    preloadSettingsModal();
+  }, []);
+
   // ---------- boot (runs only after the real loading sequence finished) ----------
   useEffect(() => {
     if (bootPhase === "loading") return;
@@ -371,13 +411,32 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
     });
   }, []);
 
+  // 语言切换：英文词条是按需加载的，切换时要先把它拉起来再落设置，
+  // 否则用户点了「English」会先看到一小段中文（回退链）才变英文。
+  // 中文/繁体是静态内置的，无需等待。
+  const setLang = useCallback(
+    (l: Lang): void => {
+      if (l === "en") {
+        void ensureEnDict().then(() => patchSettings({ language: l }));
+        return;
+      }
+      patchSettings({ language: l });
+    },
+    [patchSettings],
+  );
+
+  // 用户上次选的就是英文时（设置从磁盘读入），进桌面后补一次加载。
+  useEffect(() => {
+    if (settings?.language === "en") void ensureEnDict();
+  }, [settings?.language]);
+
   const i18n = useMemo(
     () => ({
       lang: settings?.language ?? "zh",
-      setLang: (l: Lang) => patchSettings({ language: l }),
+      setLang,
       t: makeT(settings?.language ?? "zh"),
     }),
-    [settings?.language, patchSettings],
+    [settings?.language, setLang],
   );
   // E-3 残留报告文案（Provider 在渲染期才包裹，本组件内直接取 context 值）
   const tI18n = useI18n().t;
@@ -629,7 +688,11 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
               onPatchSettings={patchSettings}
             />
             <SearchOverlay />
-            <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+            {/* 设置弹窗按需加载：未打开时 fallback 必须是 null（渲染空白会闪一下
+                 空浮层）。预取已在首屏空闲完成，正常路径下这里不会真等。 */}
+            <Suspense fallback={null}>
+              <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+            </Suspense>
             {/* AI-05 键位纪律组：Z-12 速查浮层 / Z-13 命令提示条 / M-33 按键回显 / M-34 全局 Esc */}
             <KeymapOverlay />
             <CommandHintBar settings={settings} />
@@ -735,7 +798,9 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
           </div>
         </div>
         <SearchOverlay />
-        <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+        <Suspense fallback={null}>
+          <SettingsModal settings={settings} onChange={patchSettings} bootstrap={boot} />
+        </Suspense>
         {settings && boot && (
           <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
         )}

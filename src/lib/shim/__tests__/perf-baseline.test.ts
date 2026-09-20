@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   degradeCapMissing,
   degradeMessage,
@@ -8,6 +8,14 @@ import {
   savePerfBaseline,
   type PerfBaseline,
 } from "../perfBaseline";
+
+// 英文词条已改为**按需加载**（性能：中文用户首屏不必下载 3122 行英文）。
+// 未加载时 translate("en", ...) 会按设计回退到中文——这是安全降级，不是缺陷。
+// 因此本文件凡是要断言「英文」的用例，必须先把它加载起来，否则验的是回退值。
+beforeAll(async () => {
+  const { ensureEnDict } = await import("../../../i18n/dictionaries");
+  await ensureEnDict();
+});
 
 describe("任务 29 · 降级提示 i18n（zh/en 全量，禁裸错误码）", () => {
   it("七个 ShimErrorCode 全部有词条映射（无遗漏分支）", () => {
