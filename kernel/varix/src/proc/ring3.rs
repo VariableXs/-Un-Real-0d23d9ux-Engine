@@ -152,6 +152,7 @@ pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
         super::usrshell::SYS_FRAME => super::usrshell::sys_frame(a1, a2, a3),
         super::usrshell::SYS_INPUT => super::usrshell::sys_input(a1, a2, a3),
         super::usrshell::SYS_SHIM => super::usrshell::sys_shim(a1, a2, a3),
+        super::usrshell::SYS_REBOOT => super::usrshell::sys_reboot(a1, a2, a3),
         // 其余稳定号（read/open/…）按任务15 口径如实 ENOSYS——
         // 号表形态定义在 proc::syscall（F102），处理器随任务16 落地。
         _ => SyscallError::NotImplemented.errno(),

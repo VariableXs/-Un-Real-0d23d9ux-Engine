@@ -32,6 +32,8 @@ pub const SYS_FRAME: u32 = 16;
 pub const SYS_INPUT: u32 = 17;
 /// SYS_SHIM：命令垫片。
 pub const SYS_SHIM: u32 = 18;
+/// SYS_REBOOT：重启整机（UEFI 复位 + 8042 兜底）。
+pub const SYS_REBOOT: u32 = 19;
 
 const fn einval() -> i64 {
     -(ErrNo::Einval.to_i32() as i64)
@@ -457,6 +459,89 @@ pub fn sys_input(a1: u64, a2: u64, _a3: u64) -> i64 {
 
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn sys_input(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
+/// SYS_REBOOT 处理器：重启整机，交还固件引导序（Windows 默认第一项）。
+///
+/// 四级复位阶梯（每级落空则下一级，日志逐级留痕）：
+/// ① UEFI `ResetSystem(EfiResetCold)`（`bootnext::reset_cold`；Limine 不调
+///    ExitBootServices，RS 代码内部以绝对物理地址自引用——复位前先建运行
+///    期恒等映射，与 main.rs boot-select windows 路径同序，两函数幂等）；
+/// ② 8042 脉冲复位（0xFE → 0x64，状态寄存器 bit1 等空后发）；
+/// ③ ACPI 复位寄存器 0xCF9（ICH9/q35 与真实 Intel PCH 同寄存器，先 0x04
+///    暖复位再 0x06 全复位）；
+/// ④ 三重故障兜底（IDT 置空 + int3）——零外设依赖，任何 x86 平台一致。
+///
+/// 刻意**不写 BootNext**：目标 Boot#### 项号未在实机确证前盲写，可能把
+/// 重启循环回本 U 盘。纯复位后固件走默认引导序（内置盘 Windows bootmgr，
+/// BCD 菜单 5s 默认进 Windows）；U 盘 limine.conf 亦有
+/// `/Windows 11 (built-in disk)` chainload 项双保险。正常永不返回。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    crate::kinfo!("reboot: SYS_REBOOT — resetting into firmware boot order");
+    let _ = crate::bootnext::prepare_runtime_identity_map();
+    let blocks = crate::bootnext::identity_map_low_4gib();
+    crate::kinfo!("reboot: runtime identity-mapped ({} x 2MiB)", blocks);
+    // ① UEFI 主路径。
+    if crate::bootnext::reset_cold() {
+        // ResetSystem 正常不返回；返回 = 本固件复位路径异常，落硬件阶梯。
+        crate::kinfo!("reboot: ResetSystem returned — hardware ladder next");
+    } else {
+        crate::kinfo!("reboot: no UEFI runtime services (BIOS boot) — hardware ladder");
+    }
+    // ② 8042 脉冲复位。
+    crate::kinfo!("reboot: 8042 pulse (0xFE -> 0x64)");
+    // SAFETY: 端口 IO 单一来源（ps2::port）；0x64 状态寄存器 bit1=输入缓冲满。
+    unsafe {
+        for _ in 0..100_000 {
+            if crate::ps2::port::inp(0x64) & 0x02 == 0 {
+                break;
+            }
+            core::hint::spin_loop();
+        }
+        crate::ps2::port::outp(0x64, 0xFE);
+    }
+    spin_cycles(50_000_000);
+    // ③ ACPI 复位寄存器。
+    crate::kinfo!("reboot: acpi reset (0xCF9 <- 0x04/0x06)");
+    // SAFETY: 同上；0xCF9 为标准 PCH 复位寄存器，非 Intel 平台写入无害。
+    unsafe {
+        crate::ps2::port::outp(0xCF9, 0x04);
+        spin_cycles(1_000);
+        crate::ps2::port::outp(0xCF9, 0x06);
+    }
+    spin_cycles(50_000_000);
+    // ④ 三重故障兜底。
+    crate::kinfo!("reboot: triple-fault fallback");
+    triple_fault_reset();
+}
+
+/// 复位生效窗口的纯自旋等待（此处已是复位不归路）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn spin_cycles(n: u64) {
+    for _ in 0..n {
+        core::hint::spin_loop();
+    }
+}
+
+/// 三重故障复位兜底：IDTR 置空（limit=0）后 int3——#BP 向量查表超限 →
+/// #DF → 三重故障 → CPU 硬复位。零外设依赖，任何 x86 平台/QEMU 一致。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn triple_fault_reset() -> ! {
+    let idtr = [0u64; 2]; // limit=0, base=0
+    unsafe {
+        core::arch::asm!(
+            "lidt [{p}]",
+            "int3",
+            p = in(reg) idtr.as_ptr(),
+            options(noreturn)
+        );
+    }
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     enosys()
 }
 
@@ -924,8 +1009,9 @@ mod tests {
 
     #[test]
     fn stable_numbers_do_not_clash_win32() {
-        // 稳定号 16/17/18 与 Win32 服务台号段（0x40 起）永不相交。
+        // 稳定号 16/17/18/19 与 Win32 服务台号段（0x40 起）永不相交。
         assert!(SYS_FRAME < super::super::winapi::WIN32_NR_BASE);
         assert!(SYS_SHIM < super::super::winapi::WIN32_NR_BASE);
+        assert!(SYS_REBOOT < super::super::winapi::WIN32_NR_BASE);
     }
 }

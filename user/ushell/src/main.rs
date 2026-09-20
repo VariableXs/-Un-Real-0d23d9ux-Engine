@@ -30,6 +30,7 @@ const SYS_WRITE: u64 = 2;
 const SYS_FRAME: u64 = 16;
 const SYS_INPUT: u64 = 17;
 const SYS_SHIM: u64 = 18;
+const SYS_REBOOT: u64 = 19;
 
 fn syscall3(nr: u64, a1: u64, a2: u64, a3: u64) -> i64 {
     let ret: i64;
@@ -455,7 +456,7 @@ fn draw_bootscreen(ui: &Ui, stages: usize) -> ([u8; 40], usize) {
     fill_rect(0, 0, ui.w, ui.h, C_WALL0);
     let logo_x = (ui.w - 5 * GLYPH_W * 3) / 2;
     text3(logo_x, ui.h / 4, b"VARIX", C_WHITE);
-    text((ui.w - 24 * GLYPH_W) / 2, ui.h / 4 + 64, b"embedding layer demo", C_DIM);
+    text((ui.w - 15 * GLYPH_W) / 2, ui.h / 4 + 64, b"Variable System", C_DIM);
     let bar_w = ui.w * 2 / 3;
     let bar_x = (ui.w - bar_w) / 2;
     let bar_y = ui.h / 2;
@@ -559,7 +560,7 @@ fn draw_kbd_diag(ui: &Ui, diag: u32) {
     text(x, y, &line[..p], C_LGRAY);
 }
 
-const MENU_ITEMS: [&[u8]; 3] = [b"Files", b"Settings", b"About"];
+const MENU_ITEMS: [&[u8]; 4] = [b"Files", b"Settings", b"About", b"Restart"];
 
 /// 桌面底图=壁纸+任务栏。验收轮修复：窗口页（files/settings/about）此前
 /// 只画自身窗口、不重绘背景——从菜单态切页时菜单浮层/任务栏像素残留
@@ -571,7 +572,7 @@ fn draw_backdrop(ui: &Ui) {
     fill_rect(0, tb_y, ui.w, 2, C_BLUE);
     fill_rect(8, tb_y + 8, 88, 32, C_BLUE);
     text(24, tb_y + 16, b"START", C_WHITE);
-    text(120, tb_y + 16, b"VARIX DESKTOP", C_LGRAY);
+    text(120, tb_y + 16, b"VARIABLE SYSTEM", C_LGRAY);
     text(ui.w - 104, tb_y + 16, b"ring3 shell", C_DIM);
 }
 
@@ -586,7 +587,8 @@ fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
         text(x + 8, y + 20, label, C_WHITE);
     }
     if menu_open {
-        let (mx, my, mw, mh) = (8, ui.h - 48 - 164, 280, 160);
+        // 四项菜单：8px 顶 pad + 4x48 行 + 8px 底 pad = 208；距任务栏 4px。
+        let (mx, my, mw, mh) = (8, ui.h - 48 - 212, 280, 208);
         fill_rect(mx, my, mw, mh, C_PANEL);
         outline(mx, my, mw, mh, C_LGRAY);
         for (i, it) in MENU_ITEMS.iter().enumerate() {
@@ -718,18 +720,19 @@ fn draw_about(ui: &Ui, info: &[u8]) {
     let w = ui.w.min(640) - 40;
     let x = 80;
     let y = 80;
-    let h = 280;
-    ui.panel(x, y, w, h, C_CYAN, b"ABOUT - EMBEDDING LAYER");
-    let lines: [&[u8]; 6] = [
-        b"VARIX kernel embedding layer demo",
+    let h = 308;
+    ui.panel(x, y, w, h, C_CYAN, b"ABOUT - VARIABLE SYSTEM");
+    let lines: [&[u8]; 7] = [
+        b"Variable System - VARIX kernel",
         b"UI host: ushell.elf (ring3 process)",
         b"render: SYS_FRAME -> display service",
         b"input: SYS_INPUT (shim://input 16B)",
         b"shim: SYS_SHIM (KV/VFS/boot events)",
+        b"restart: SYS_REBOOT -> Windows",
         info,
     ];
     for (i, l) in lines.iter().enumerate() {
-        text(x + 16, y + 36 + (i as i64) * 28, l, if i == 5 { C_YELLOW } else { C_LGRAY });
+        text(x + 16, y + 36 + (i as i64) * 28, l, if i == 6 { C_YELLOW } else { C_LGRAY });
     }
 }
 
@@ -972,7 +975,7 @@ pub extern "C" fn _start() -> ! {
                                 phase = 4;
                                 marker(b"SHELL: settings opened");
                             }
-                            _ => {
+                            2 => {
                                 let (nk, _) = kv_count(b"settings");
                                 let head = b"kv-keys=";
                                 let mut nb = [0u8; 8];
@@ -983,6 +986,17 @@ pub extern "C" fn _start() -> ! {
                                 phase = 5;
                                 marker(b"SHELL: about opened");
                             }
+                            3 => {
+                                // 随时切回 Windows（2026-09-20）：SYS_REBOOT
+                                // 复位整机 → 固件默认引导序 → 内置盘
+                                // Windows bootmgr（BCD 菜单 5s 默认进
+                                // Windows）。正常永不返回。
+                                marker(b"SHELL: restart requested - rebooting");
+                                let _ = syscall3(SYS_REBOOT, 0, 0, 0);
+                                // 到这里 = 复位失败：如实回到桌面继续可用。
+                                marker(b"SHELL: restart failed - still running");
+                            }
+                            _ => {}
                         }
                         break 'keys;
                     }

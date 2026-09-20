@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""键盘失联排障冒烟（2026-09-20）——验证 BootScreen 可退出 + 键盘诊断上屏。
+"""键盘失联排障 + RESTART 复位冒烟（2026-09-20）——BootScreen 可退出、
+键盘诊断上屏、开始菜单 Restart 一键复位回 Windows 引导序。
 
-背景：真机（Y7000）BootScreen「press any key」全无响应、卡死。本轮改动：
+背景：真机（Y7000）BootScreen「press any key」全无响应、卡死。改动链：
   ① kernel ps2.controller_init：启动期 i8042 标准初始化（自检/接口测试/
      配置回写/开端口），全部限次自旋不挂死；
   ② input_probe：真机（无 hypervisor 位）跳过 90s HMP 等待窗口；
   ③ boot://event 第 15 条记录（idx=14）：活时钟 ms + kbd 诊断字
      （控制器探针 + 已收原始字节计数 + 最后原始字节）；
-  ④ ushell BootScreen：诊断行 + 倒计时行实时刷新，10s 无键自动进桌面。
+  ④ ushell BootScreen：诊断行 + 倒计时行实时刷新，10s 无键自动进桌面；
+  ⑤ ushell 开始菜单第四项 Restart → SYS_REBOOT(19)：UEFI ResetSystem
+     （RS 恒等映射后）+ 8042 脉冲兜底，复位回固件默认引导序（Windows）。
 
 本脚本验证链（QEMU）：
   A. kbd-init probe 行出现（controller_init 已跑）；
@@ -15,7 +18,9 @@
      提前退出 90s 窗口）；
   C. BootScreen 全程**不按任何键** → 10s 超时自动 desktop-ready（兜底路径）；
   D. 桌面再按键 → startmenu opened（键路径活着）；
-  E. BootScreen 期间两张 screendump：诊断行 + 倒计时数字在走。
+  E. BootScreen 期间两张 screendump：诊断行 + 倒计时数字在走；
+  F. 开始菜单下移三次选中 Restart → Enter → 串口 reboot 阶梯行出现，
+     随后**同一串口日志出现第二次 kbd-init boot 链**=整机真重启送达。
 
 用法：python _attic/qemu-kbd-smoke.py
 证据：_attic/qemu-kbd-serial.log + _attic/acceptance-kbd/*.png
@@ -118,7 +123,6 @@ def main():
             "-serial", "file:" + SERIAL,
             "-monitor", f"tcp:127.0.0.1:{MON_PORT},server,nowait",
             "-m", "1024",
-            "-no-reboot", "-no-shutdown",
         ],
         cwd=ROOT,
     )
@@ -163,6 +167,28 @@ def main():
         time.sleep(0.6)
         mon.shot("03-startmenu-after-auto-continue.png")
 
+        # F. RESTART：菜单第四项 → SYS_REBOOT → 复位 → 整机真重启（第二次
+        #    boot 链出现在同一串口日志=复位送达；无 -no-reboot，QEMU 走真重启）。
+        for _ in range(3):
+            mon.key("down")
+            time.sleep(0.3)
+        mon.shot("04-startmenu-restart-selected.png")
+        mon.key("ret")
+        ok = wait_marker("SHELL: restart requested", STEP_TIMEOUT)
+        checks.append(("restart requested (SYS_REBOOT dispatched)", ok))
+        ok2 = wait_marker("reboot: 8042 pulse", STEP_TIMEOUT)
+        checks.append(("kernel reboot ladder entered (8042 pulse)", ok2))
+        ok3 = False
+        t0 = time.time()
+        while time.time() - t0 < 120:
+            if read_log().count("kbd-init: probe=") >= 2:
+                ok3 = True
+                break
+            time.sleep(0.2)
+        checks.append(("machine reset delivered (second boot in serial)", ok3))
+        time.sleep(3.0)
+        mon.shot("05-second-boot-bootscreen.png")
+
         # 汇总
         log = read_log()
         print("\n=== KBD SMOKE CHECKS ===")
@@ -171,7 +197,9 @@ def main():
             print(f"  {name}: {'PASS' if ok else 'FAIL'}")
             all_ok = all_ok and ok
         for m in ["kbd-init: probe=", "SHELL: boot-replay done",
-                  "SHELL: desktop-ready", "SHELL: startmenu opened"]:
+                  "SHELL: desktop-ready", "SHELL: startmenu opened",
+                  "SHELL: restart requested", "reboot: SYS_REBOOT",
+                  "reboot: 8042 pulse"]:
             hit = m in log
             print(f"  serial[{m}]: {'PASS' if hit else 'FAIL'}")
             all_ok = all_ok and hit
