@@ -344,6 +344,9 @@ const zh: Dict = {
   powerRestart: "重启",
   powerShutdown: "关机",
   powerConfirmBody: "确定要{action}吗？未保存的数据可能丢失。",
+  switchToWindows: "切回 Windows",
+  switchToWindowsConfirmBody:
+    "确定要切回 Windows 吗？\n\n这会把「开机自动进入 Variable」关掉，然后重启整机，重启后直接进入 Windows 桌面（不再是 Variable）。\n\n想回来随时可以在 Windows 里重新开启，或在开机时选 VARIX + VARIABLE。",
   trayQuick: "快捷面板",
   notifyCenter: "通知中心",
   trayNetwork: "网络",
@@ -3501,6 +3504,9 @@ const en: Dict = {
   powerRestart: "Restart",
   powerShutdown: "Shut down",
   powerConfirmBody: "Are you sure you want to {action}? Unsaved data may be lost.",
+  switchToWindows: "Switch to Windows",
+  switchToWindowsConfirmBody:
+    "Switch back to Windows?\n\nThis turns off \"start Variable automatically at sign-in\", then restarts the machine — you will land on the native Windows desktop instead of Variable.\n\nYou can come back any time by re-enabling it in Windows, or by picking VARIX + VARIABLE at boot.",
   // Batch E (spec 4.7): shortcuts page
   scTitle: "Shortcuts",
   scHint: "Edit then press \"Apply\" to re-register the whole table. Format: modifier+key, e.g. ctrl+shift+k, super+f9. Combos reserved by the system will fail and be reported honestly.",

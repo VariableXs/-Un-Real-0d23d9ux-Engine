@@ -3,13 +3,14 @@ import {
   Activity, AppWindow, Calculator, CalendarClock, Camera, Clock, ClipboardList, Files, Fingerprint, FolderOpen,
   Gauge,
   HardDrive,
-  Flame, FolderMinus, Info, Lock, LogOut, Moon, PackagePlus, Pencil, Pin, PinOff, Power, Printer, RotateCcw,
+  Flame, FolderMinus, Info, Lock, LogOut, Monitor, Moon, PackagePlus, Pencil, Pin, PinOff, Power,
+  Printer, RotateCcw,
   ShieldCheck, Settings as SettingsIcon, Search, Smile, StickyNote, Trash2, X, ZoomIn, ArrowLeftRight,
   MoreHorizontal, Trophy, TrendingUp, Check as CheckIcon,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
-import { requestPowerAction } from "../../system/power/powerGate";
+import { requestPowerAction, requestSwitchToWindows } from "../../system/power/powerGate";
 import { matchPinyin } from "../../lib/pinyin";
 import type { AppMode } from "../../state/uiStore";
 import { pushToast } from "../../state/uiStore";
@@ -829,6 +830,26 @@ export function StartMenu(props: {
       .catch((e) => pushToast("error", t("powerMenu"), errMessage(e).message));
   };
 
+  /**
+   * 需求 8：切回原生 Windows 桌面。
+   *
+   * 与 power("reboot") 的唯一区别：会先摘掉「开机自动进 Variable」再重启，
+   * 所以重启后落到的是 Windows 自己（而不是又回到 Variable）。同样走
+   * 10s 可取消倒计时，且与关机共用门禁（有倒计时在跑时不重复发起）。
+   */
+  const switchToWindows = async (): Promise<void> => {
+    setPowerOpen(false);
+    const label = t("switchToWindows");
+    const ok = await askConfirm({
+      title: label,
+      body: t("switchToWindowsConfirmBody"),
+      danger: true,
+      okLabel: label,
+    });
+    if (!ok) return;
+    requestSwitchToWindows();
+  };
+
   return (
     <div
       className="start-overlay"
@@ -1090,6 +1111,11 @@ export function StartMenu(props: {
                     </button>
                     <button type="button" role="menuitem" onClick={() => void power("shutdown")}>
                       <Power size={14} /> {t("powerShutdown")}
+                    </button>
+                    {/* 需求 8：真正切回原生 Windows —— 摘掉开机自启动后整机重启。
+                        与上面的「重启」区别在于：重启会回到 Variable，这一项回 Windows。 */}
+                    <button type="button" role="menuitem" onClick={() => void switchToWindows()}>
+                      <Monitor size={14} /> {t("switchToWindows")}
                     </button>
                     <button type="button" role="menuitem" className="danger" onClick={props.onExit}>
                       <Power size={14} /> {t("exitVariable")}

@@ -472,6 +472,130 @@ pub fn parse_ping(text: &str, host: &str) -> PingResult {
     }
 }
 
+// ---------- 整机电源动作 ----------
+//
+// 职责边界：**关机/重启/注销/锁屏/睡眠在 shell::winman::power_action**
+//（前端 ipc.powerAction 已在用，本模块不重复造一套电源动作），这里只补它
+// 缺的两块：① 取消已排队的关机；② 开机自动进 Variable（方案 B 的落点）。
+// 所有命令参数都是编译期常量——**不接受前端传自由字符串**，杜绝命令注入。
+
+/// 取消系统已排队但尚未执行的关机/重启（`shutdown /a`）。
+/// 已经走完流程的救不回来——如实返回，不假装成功。
+pub fn power_abort() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::process::{Command, Stdio};
+        let out = Command::new("shutdown")
+            .args(["/a"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|e| format!("无法执行 shutdown /a: {e}"))?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            // 没有待取消的关机时 shutdown /a 也会失败——如实区分这两种。
+            let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            Err(if msg.is_empty() {
+                "没有待取消的关机，或关机已不可中止".into()
+            } else {
+                msg
+            })
+        }
+    }
+    #[cfg(not(windows))]
+    Err("仅支持 Windows / Windows-only".into())
+}
+
+// ---------- 开机自动进 Variable（方案 B 的落点） ----------
+//
+// 不插 U 盘平时开机：Windows 起来后自动全屏进 Variable，做到「秒开秒切」。
+// 写 HKCU（只影响当前用户，不动系统全局、不碰引导区、不删任何既有项），
+// 用户关掉即恢复原状。
+
+/// 自启动状态。
+#[derive(Serialize, Clone, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AutostartState {
+    pub on: bool,
+    /// 注册在 Run 键里的命令行；未设置时为空串。
+    pub command: String,
+}
+
+const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+const AUTOSTART_VALUE: &str = "VariableDesktop";
+
+/// 读自启动状态（只读，失败即视为未设置——不把「读不到」说成「已开启」）。
+pub fn autostart_get() -> AutostartState {
+    #[cfg(windows)]
+    {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+        let hk = winreg::RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(k) = hk.open_subkey_with_flags(RUN_KEY, KEY_READ) {
+            if let Ok(v) = k.get_value::<String, _>(AUTOSTART_VALUE) {
+                return AutostartState {
+                    on: true,
+                    command: v,
+                };
+            }
+        }
+    }
+    AutostartState {
+        on: false,
+        command: String::new(),
+    }
+}
+
+/// 开关自启动。开启时用**当前进程的可执行文件路径**（不猜路径、不让前端传）。
+pub fn autostart_set(on: bool) -> Result<AutostartState, String> {
+    #[cfg(windows)]
+    {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+        let hk = winreg::RegKey::predef(HKEY_CURRENT_USER);
+        let key = hk
+            .open_subkey_with_flags(RUN_KEY, KEY_READ | KEY_WRITE)
+            .map_err(|e| format!("打开 Run 键失败 / cannot open Run key: {e}"))?;
+        if !on {
+            // 值不存在时 delete_value 会报错——先查再删，避免「关闭」也报错。
+            if key.get_value::<String, _>(AUTOSTART_VALUE).is_ok() {
+                key.delete_value(AUTOSTART_VALUE)
+                    .map_err(|e| format!("移除自启动失败 / cannot remove autostart: {e}"))?;
+            }
+            return Ok(AutostartState {
+                on: false,
+                command: String::new(),
+            });
+        }
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("无法定位 Variable 程序路径 / cannot locate exe: {e}"))?;
+        let cmd = format!("\"{}\"", exe.display());
+        key.set_value(AUTOSTART_VALUE, &cmd)
+            .map_err(|e| format!("写入自启动失败 / cannot write autostart: {e}"))?;
+        Ok(AutostartState { on: true, command: cmd })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = on;
+        Err("自启动仅支持 Windows / autostart is Windows-only".into())
+    }
+}
+
+#[tauri::command(async)]
+pub fn power_abort_cmd() -> Result<(), String> {
+    power_abort()
+}
+
+#[tauri::command(async)]
+pub fn autostart_get_cmd() -> AutostartState {
+    autostart_get()
+}
+
+#[tauri::command(async)]
+pub fn autostart_set_cmd(on: bool) -> Result<AutostartState, String> {
+    autostart_set(on)
+}
+
 // ---------- 测试 ----------
 
 #[cfg(test)]
@@ -524,4 +648,21 @@ mod tests {
         let s = keepawake_get();
         assert!(!s.on);
     }
+
+    // ---- 自启动 ----
+    // 红线：测试**绝不真的关机**，也不写注册表（那会改宿主状态）。
+    // 只验证只读调用幂等与状态自洽。
+
+    #[test]
+    fn autostart_read_is_idempotent_and_consistent() {
+        // 只读两遍必须一致（不能每次读出不同结果）。
+        let a = autostart_get();
+        let b = autostart_get();
+        assert_eq!(a, b, "自启动读取必须幂等");
+        // 状态自洽：标记开了就一定带命令行（空命令 = 注册了但拉不起来）。
+        if a.on {
+            assert!(!a.command.is_empty(), "开启了却没命令行，是不一致状态");
+        }
+    }
+
 }

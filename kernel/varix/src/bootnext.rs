@@ -418,9 +418,9 @@ pub fn poweroff_s5() -> bool {
     true
 }
 
-/// 从内核命令行取 BootNext 目标项号：`boot_next=<dec|0xhex>`，缺省 0x0001。
-/// 目标项号取决于 ESP 上 Windows 引导项的 Boot#### 编号（AI-P 部署线装配）。
-pub fn entry_from_cmdline(cmdline: &str) -> u16 {
+/// 从内核命令行取 BootNext 目标项号：`boot_next=<dec|0xhex>`。
+/// **显式写出才有值**——缺省 None，由调用方决定兜底策略（不再静默猜 1）。
+pub fn cmdline_entry(cmdline: &str) -> Option<u16> {
     for token in cmdline.split_whitespace() {
         if let Some(v) = token.strip_prefix("boot_next=") {
             let parsed = if let Some(h) = v.strip_prefix("0x").or_else(|| v.strip_prefix("0X")) {
@@ -429,11 +429,288 @@ pub fn entry_from_cmdline(cmdline: &str) -> u16 {
                 v.parse::<u16>().ok()
             };
             if let Some(e) = parsed {
-                return e;
+                return Some(e);
             }
         }
     }
-    1
+    None
+}
+
+/// 命令行优先，缺省 0x0001（保留旧调用点语义；新代码请用
+/// `resolve_windows_entry`，它能区分「已确认」与「盲猜」）。
+pub fn entry_from_cmdline(cmdline: &str) -> u16 {
+    cmdline_entry(cmdline).unwrap_or(1)
+}
+
+// ---------------------------------------------------------------------------
+// EFI 变量读取 + Boot#### 智能枚举
+// ---------------------------------------------------------------------------
+//
+// 为什么必须枚举而不写死 Boot0001：Boot#### 的编号由固件分配，随「装过几个
+// 系统、有没有插过别的盘、BIOS 有没有重建过引导项」漂移。写死一个号在别人
+// 机器上是蒙的，在本机 BIOS 更新后也可能是蒙的。正确做法是读固件的
+// `BootOrder` 拿到优先序，再逐个读 `Boot####` 解析 EFI_LOAD_OPTION，按
+// 「描述含 Windows」或「设备路径指向 \EFI\Microsoft\Boot\bootmgfw.efi」判定。
+
+/// BootOrder 变量名（CHAR16 + NUL）。
+pub const BOOTORDER_NAME: [u16; 10] = [
+    b'B' as u16, b'o' as u16, b'o' as u16, b't' as u16, b'O' as u16, b'r' as u16, b'd' as u16,
+    b'e' as u16, b'r' as u16, 0,
+];
+
+/// OsIndications 变量名（CHAR16 + NUL）——UEFI 2.4+ 进固件设置的标准通道。
+pub const OSINDICATIONS_NAME: [u16; 14] = [
+    b'O' as u16, b's' as u16, b'I' as u16, b'n' as u16, b'd' as u16, b'i' as u16, b'c' as u16,
+    b'a' as u16, b't' as u16, b'i' as u16, b'o' as u16, b'n' as u16, b's' as u16, 0,
+];
+
+/// `EFI_OS_INDICATIONS_BOOT_TO_FW_UI`：置位后冷重启，固件进设置界面。
+const OS_IND_BOOT_TO_FW_UI: u64 = 0x0000_0000_0000_0001;
+
+/// 引导项扫描缓冲（.bss；4KiB —— 单个 EFI_LOAD_OPTION 的实际上限量级）。
+///
+/// 放 .bss 而非栈：内核栈容量不保证，EFI 变量读取在引导早期执行。
+static mut BOOT_OPT_BUF: [u8; 4096] = [0u8; 4096];
+
+/// 取扫描缓冲（走裸指针，避开 `static_mut_refs` lint）。
+fn opt_buf() -> &'static mut [u8; 4096] {
+    unsafe { &mut *core::ptr::addr_of_mut!(BOOT_OPT_BUF) }
+}
+
+/// 通用 GetVariable：把全局变量内容读进 `buf`，返回实际字节数。
+/// 无 Runtime Services / 变量不存在 / 读取失败 → None（如实，不伪造）。
+pub fn get_variable(name: &[u16], buf: &mut [u8]) -> Option<usize> {
+    if name.last() != Some(&0) {
+        return None; // 变量名必须 NUL 结尾（UEFI 规范），防御性拒绝。
+    }
+    let rs = runtime_services()?;
+    let get_var = fn_ptr::<EfiGetVariable>(rs, RS_GET_VARIABLE)?;
+    let mut size = buf.len();
+    let mut attrs: u32 = 0;
+    let status = unsafe {
+        get_var(
+            name.as_ptr(),
+            GLOBAL_VARIABLE_GUID.as_ptr(),
+            &mut attrs,
+            &mut size,
+            buf.as_mut_ptr().cast::<u16>(),
+        )
+    };
+    if status != EFI_SUCCESS {
+        return None;
+    }
+    Some(size.min(buf.len()))
+}
+
+/// 通用 SetVariable：把 `data` 写进全局变量。成功返回 true。
+pub fn set_variable(name: &[u16], data: &[u8]) -> bool {
+    if name.last() != Some(&0) || data.is_empty() {
+        return false;
+    }
+    let Some(rs) = runtime_services() else {
+        return false;
+    };
+    let Some(set_var) = fn_ptr::<EfiSetVariable>(rs, RS_SET_VARIABLE) else {
+        return false;
+    };
+    let status = unsafe {
+        set_var(
+            name.as_ptr(),
+            GLOBAL_VARIABLE_GUID.as_ptr(),
+            ATTR_NV_BS_RT,
+            data.len(),
+            data.as_ptr().cast::<u16>(),
+        )
+    };
+    status == EFI_SUCCESS
+}
+
+/// `Boot####` 变量名（UEFI 规范：4 位**大写**十六进制）。
+pub fn boot_var_name(num: u16) -> [u16; 9] {
+    const HEX: [u16; 16] = [
+        b'0' as u16, b'1' as u16, b'2' as u16, b'3' as u16, b'4' as u16, b'5' as u16, b'6' as u16,
+        b'7' as u16, b'8' as u16, b'9' as u16, b'A' as u16, b'B' as u16, b'C' as u16, b'D' as u16,
+        b'E' as u16, b'F' as u16,
+    ];
+    let mut n = [0u16; 9];
+    n[0] = b'B' as u16;
+    n[1] = b'o' as u16;
+    n[2] = b'o' as u16;
+    n[3] = b't' as u16;
+    for i in 0..4 {
+        let shift = 12 - i * 4;
+        n[4 + i] = HEX[((num >> shift) & 0xF) as usize];
+    }
+    n[8] = 0;
+    n
+}
+
+/// `Boot####` 变量名反解：非 `Boot` 前缀或含非法十六进制字符 → None。
+/// 用于扫描阶段区分「这是一条引导项」而不是别的 Boot* 变量。
+pub fn boot_var_number(name: &[u16]) -> Option<u16> {
+    if name.len() < 9 || name[0..4] != [b'B' as u16, b'o' as u16, b'o' as u16, b't' as u16] {
+        return None;
+    }
+    if name[8] != 0 {
+        return None;
+    }
+    let mut v: u16 = 0;
+    for &c in &name[4..8] {
+        let d = match c {
+            c if (b'0' as u16..=b'9' as u16).contains(&c) => c - b'0' as u16,
+            c if (b'A' as u16..=b'F' as u16).contains(&c) => c - b'A' as u16 + 10,
+            _ => return None,
+        };
+        v = v * 16 + d;
+    }
+    Some(v)
+}
+
+/// 读 `BootOrder`（固件引导优先序，u16 数组）。返回项数；不可读返回 0。
+pub fn boot_order(out: &mut [u16]) -> usize {
+    let buf = opt_buf();
+    let Some(n) = get_variable(&BOOTORDER_NAME, &mut buf[..]) else {
+        return 0;
+    };
+    let count = (n / 2).min(out.len());
+    for (i, slot) in out.iter_mut().take(count).enumerate() {
+        *slot = u16::from_le_bytes([buf[i * 2], buf[i * 2 + 1]]);
+    }
+    count
+}
+
+/// 在 UTF-16LE 字节流中查找 ASCII 子串（忽略大小写）。
+///
+/// 只在偶数偏移比对：UTF-16LE 的 ASCII 字符是 `(c, 0)` 两字节，从奇数偏移
+/// 起比会跨字符错位，永不命中。
+fn utf16_contains_ascii_ignore_case(bytes: &[u8], needle: &str) -> bool {
+    let nb = needle.len();
+    if nb == 0 || nb > 32 || bytes.len() < nb * 2 {
+        return false;
+    }
+    let mut pat = [0u8; 64];
+    for (i, &c) in needle.as_bytes().iter().enumerate() {
+        pat[i * 2] = c.to_ascii_lowercase();
+    }
+    let plen = nb * 2;
+    let mut i = 0usize;
+    while i + plen <= bytes.len() {
+        let mut ok = true;
+        for k in 0..nb {
+            // 高位必须为 0（否则不是 ASCII 字符，是别的 Unicode）。
+            if bytes[i + k * 2 + 1] != 0
+                || bytes[i + k * 2].to_ascii_lowercase() != pat[k * 2]
+            {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return true;
+        }
+        i += 2;
+    }
+    false
+}
+
+/// 判定一条 `EFI_LOAD_OPTION` 是否指向 Windows。
+///
+/// 布局：`u32 Attributes | u16 FilePathListLength | CHAR16 Description[NUL]
+/// | FilePathList[FilePathListLength] | OptionalData`。
+/// 两级判据——描述命中优先（"Windows Boot Manager"），描述被改写时退到
+/// 设备路径特征（Microsoft + bootmgfw）。
+pub fn option_looks_like_windows(bytes: &[u8]) -> bool {
+    if utf16_contains_ascii_ignore_case(bytes, "windows") {
+        return true;
+    }
+    utf16_contains_ascii_ignore_case(bytes, "microsoft")
+        && utf16_contains_ascii_ignore_case(bytes, "bootmgfw")
+}
+
+/// 读 `Boot####` 并判定是否指向 Windows。
+fn option_number_is_windows(num: u16) -> bool {
+    let buf = opt_buf();
+    let name = boot_var_name(num);
+    let Some(n) = get_variable(&name, &mut buf[..]) else {
+        return false;
+    };
+    option_looks_like_windows(&buf[..n])
+}
+
+/// Windows 引导项解析结果。**是否「已确认」是硬信息**，不许混为一谈。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowsEntry {
+    /// 从固件的 BootOrder/Boot#### 里枚举出来的，或命令行显式钉死的。
+    Resolved(u16),
+    /// 枚举不到（无 Runtime Services / 变量读不动 / 没有匹配项）：
+    /// 退回命令行或内置默认值，**未经验证**——调用方必须如实标注。
+    Unverified(u16),
+}
+
+impl WindowsEntry {
+    pub fn number(self) -> u16 {
+        match self {
+            WindowsEntry::Resolved(n) | WindowsEntry::Unverified(n) => n,
+        }
+    }
+    pub fn verified(self) -> bool {
+        matches!(self, WindowsEntry::Resolved(_))
+    }
+}
+
+/// 解析「切 Windows 要写哪个 BootNext」。优先级：
+/// 1. 命令行 `boot_next=`（部署线可按实机钉死）→ Resolved；
+/// 2. 按 `BootOrder` 优先序逐个读 `Boot####` 匹配 → Resolved；
+/// 3. `BootOrder` 读不到时全扫 `Boot0000..Boot00FF` 兜底 → Resolved；
+/// 4. 全都失败 → Unverified(命令行值或 1)，调用方须如实告知用户。
+pub fn resolve_windows_entry(cmdline: &str) -> WindowsEntry {
+    if let Some(v) = cmdline_entry(cmdline) {
+        return WindowsEntry::Resolved(v);
+    }
+    let mut order = [0u16; 32];
+    let n = boot_order(&mut order);
+    if n > 0 {
+        for &num in &order[..n] {
+            if option_number_is_windows(num) {
+                return WindowsEntry::Resolved(num);
+            }
+        }
+    } else {
+        // BootOrder 不可读（部分固件隐藏该变量）：全量扫描兜底。
+        for num in 0..=0x00FFu16 {
+            if option_number_is_windows(num) {
+                return WindowsEntry::Resolved(num);
+            }
+        }
+    }
+    WindowsEntry::Unverified(entry_from_cmdline(cmdline))
+}
+
+/// 进固件设置（UEFI 2.4+ `OsIndications` 标准通道）。
+///
+/// 流程：读 `OsIndications` → 或上 `BOOT_TO_FW_UI` → 写回 → 冷重启。
+/// 读-改-写而非覆盖：保留固件已有的其他 indication 位（有些厂商用私有位）。
+/// 任一环失败如实 false（调用方退回普通冷重启并告知）。
+pub fn boot_to_firmware_ui() -> bool {
+    let buf = opt_buf();
+    // ① 读现值（读不到视为 0——变量不存在时固件按全零处理）。
+    let mut cur: u64 = 0;
+    if let Some(n) = get_variable(&OSINDICATIONS_NAME, &mut buf[..]) {
+        if n >= 8 {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&buf[..8]);
+            cur = u64::from_le_bytes(b);
+        }
+    } else if runtime_services().is_none() {
+        return false; // 非 UEFI：压根没法进固件设置，别假装。
+    }
+    // ② 或上目标位并写回。
+    let next = cur | OS_IND_BOOT_TO_FW_UI;
+    if !set_variable(&OSINDICATIONS_NAME, &next.to_le_bytes()) {
+        return false;
+    }
+    // ③ 冷重启交给固件兑现。
+    reset_cold()
 }
 
 #[cfg(test)]
@@ -483,5 +760,158 @@ mod tests {
         assert!(!reset_shutdown());
         // 宿主无 FACP 登记 → S5 路径如实 false。
         assert!(!poweroff_s5());
+    }
+
+    // ---- Boot#### 智能枚举（不再盲猜项号） ----
+
+    /// 把 ASCII 串编成 UTF-16LE 字节（含结尾 NUL），用于构造假 LOAD_OPTION。
+    fn utf16(s: &str) -> std::vec::Vec<u8> {
+        let mut v = std::vec::Vec::new();
+        for &c in s.as_bytes() {
+            v.push(c);
+            v.push(0);
+        }
+        v.push(0);
+        v.push(0);
+        v
+    }
+
+    /// 构造一条 EFI_LOAD_OPTION：Attributes + FilePathListLength + 描述 + 路径。
+    fn load_option(desc: &str, path: &str) -> std::vec::Vec<u8> {
+        let mut v = std::vec![0u8; 6];
+        v.extend_from_slice(&utf16(desc));
+        v.extend_from_slice(&utf16(path));
+        v
+    }
+
+    #[test]
+    fn boot_var_name_is_upper_hex() {
+        assert_eq!(boot_var_name(0), ['B' as u16, 'o' as u16, 'o' as u16, 't' as u16,
+            '0' as u16, '0' as u16, '0' as u16, '0' as u16, 0]);
+        assert_eq!(boot_var_name(1), ['B' as u16, 'o' as u16, 'o' as u16, 't' as u16,
+            '0' as u16, '0' as u16, '0' as u16, '1' as u16, 0]);
+        // 大写十六进制（UEFI 规范），小写会被部分固件当成另一个变量。
+        assert_eq!(boot_var_name(0x00AB), ['B' as u16, 'o' as u16, 'o' as u16, 't' as u16,
+            '0' as u16, '0' as u16, 'A' as u16, 'B' as u16, 0]);
+        assert_eq!(boot_var_name(0xFFFF), ['B' as u16, 'o' as u16, 'o' as u16, 't' as u16,
+            'F' as u16, 'F' as u16, 'F' as u16, 'F' as u16, 0]);
+    }
+
+    #[test]
+    fn boot_var_number_roundtrip() {
+        for n in [0u16, 1, 0x0A, 0xAB, 0x1234, 0xFFFF] {
+            assert_eq!(boot_var_number(&boot_var_name(n)), Some(n));
+        }
+        // 非引导项变量（BootOrder / BootNext / BootCurrent）必须拒收，
+        // 否则全量扫描会把它们误当成 Boot####。
+        assert_eq!(boot_var_number(&BOOTORDER_NAME), None);
+        assert_eq!(boot_var_number(&BOOTNEXT_NAME), None);
+    }
+
+    #[test]
+    fn utf16_search_matches_ascii_ignore_case() {
+        let hay = utf16("Windows Boot Manager");
+        assert!(utf16_contains_ascii_ignore_case(&hay, "windows"));
+        assert!(utf16_contains_ascii_ignore_case(&hay, "WINDOWS"));
+        assert!(utf16_contains_ascii_ignore_case(&hay, "Boot Manager"));
+        assert!(!utf16_contains_ascii_ignore_case(&hay, "linux"));
+        // 空串恒不匹配（避免 `contains("")` 恒真的语义陷阱）。
+        assert!(!utf16_contains_ascii_ignore_case(&hay, ""));
+    }
+
+    #[test]
+    fn utf16_search_ignores_odd_offsets() {
+        // 奇数偏移起比会跨字符错位：这里只能从 0 命中，不能从 1 命中。
+        // 构造：一个非 ASCII 字符（高位非 0）在前，ASCII 在后。
+        let mut v = std::vec![0x41u8, 0x04, 0x00, 0x00]; // U+0441 西里尔字母
+        v.extend_from_slice(&utf16("abc"));
+        assert!(utf16_contains_ascii_ignore_case(&v, "abc"));
+        assert!(!utf16_contains_ascii_ignore_case(&v, "\u{0441}a"));
+    }
+
+    #[test]
+    fn windows_option_detected_by_description() {
+        let w = load_option("Windows Boot Manager", r"\EFI\Microsoft\Boot\bootmgfw.efi");
+        assert!(option_looks_like_windows(&w));
+        // 描述被本地化改写时，靠设备路径特征兜底。
+        let zh = load_option("某个操作系统", r"\EFI\Microsoft\Boot\bootmgfw.efi");
+        assert!(option_looks_like_windows(&zh));
+    }
+
+    #[test]
+    fn non_windows_option_rejected() {
+        assert!(!option_looks_like_windows(&load_option(
+            "Linux Boot Manager",
+            r"\EFI\systemd\systemd-bootx64.efi"
+        )));
+        assert!(!option_looks_like_windows(&load_option(
+            "Limine",
+            r"\EFI\limine\limine_x64.efi"
+        )));
+        // 只提到 Microsoft 但不是 bootmgfw（如第三方引导器借路径）不算。
+        assert!(!option_looks_like_windows(&load_option(
+            "Other",
+            r"\EFI\Microsoft\Boot\something.efi"
+        )));
+        assert!(!option_looks_like_windows(&[]));
+    }
+
+    #[test]
+    fn variable_access_absent_on_host() {
+        let mut buf = [0u8; 16];
+        // 宿主无 Runtime Services → 全部如实失败，不伪造读到的值。
+        assert_eq!(get_variable(&BOOTORDER_NAME, &mut buf), None);
+        assert_eq!(boot_order(&mut [0u16; 8]), 0);
+        assert!(!set_variable(&OSINDICATIONS_NAME, &1u64.to_le_bytes()));
+        // 变量名未 NUL 结尾 → 防御性拒绝（UEFI 会把越界名当垃圾）。
+        let bad = ['B' as u16, 'o' as u16, 'o' as u16, 't' as u16];
+        assert_eq!(get_variable(&bad, &mut buf), None);
+        assert!(!set_variable(&bad, &[1, 0]));
+        // 空数据不允许写（SetVariable 语义上也不接受 0 长度）。
+        assert!(!set_variable(&OSINDICATIONS_NAME, &[]));
+    }
+
+    #[test]
+    fn resolve_prefers_cmdline_then_falls_back_unverified() {
+        // 命令行显式钉死 → 已确认（部署线按实机项号固定时的正路）。
+        assert_eq!(
+            resolve_windows_entry("varix.smp boot_next=0x0003"),
+            WindowsEntry::Resolved(3)
+        );
+        assert_eq!(
+            resolve_windows_entry("boot_next=7"),
+            WindowsEntry::Resolved(7)
+        );
+        // 宿主枚举不到任何项 → 未确认，且调用方可见（不许当成已确认）。
+        let e = resolve_windows_entry("");
+        assert_eq!(e, WindowsEntry::Unverified(1));
+        assert!(!e.verified());
+        assert_eq!(e.number(), 1);
+    }
+
+    #[test]
+    fn windows_entry_vocabulary_distinguishes_confidence() {
+        assert!(WindowsEntry::Resolved(2).verified());
+        assert!(!WindowsEntry::Unverified(2).verified());
+        assert_ne!(WindowsEntry::Resolved(2), WindowsEntry::Unverified(2));
+    }
+
+    #[test]
+    fn firmware_ui_unavailable_on_host() {
+        // 宿主无 Runtime Services → 进固件设置如实失败（不假装成功重启）。
+        assert!(!boot_to_firmware_ui());
+    }
+
+    #[test]
+    fn cmdline_entry_distinguishes_explicit_from_default() {
+        assert_eq!(cmdline_entry("boot_next=0x0002"), Some(2));
+        assert_eq!(cmdline_entry("boot_next=5"), Some(5));
+        assert_eq!(cmdline_entry(""), None);
+        assert_eq!(cmdline_entry("varix.smp"), None);
+        // 非法值不静默当 0，而是视为「没指定」交给枚举。
+        assert_eq!(cmdline_entry("boot_next=99999"), None);
+        assert_eq!(cmdline_entry("boot_next=zzz"), None);
+        // 旧 API 语义保持（缺省 1），仅供存量调用点。
+        assert_eq!(entry_from_cmdline(""), 1);
     }
 }

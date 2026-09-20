@@ -12,7 +12,7 @@ import { filterIpcTrace, buildWaterfall, traceInvoke, IPC_SLOW_MS, subscribeIpcT
 import { tooltipLabel, truncateTooltip, tipProps } from "../tooltip";
 import { formatSpeed, formatCapacity, shouldUseRelative, formatSmartTime } from "../formatUnits";
 import { dayKeyOf, DayRolloverWatcher, DAY_ROLLOVER_EVENT } from "../dayRollover";
-import { requestPowerAction, cancelPowerCountdown, powerGateStore, POWER_COUNTDOWN_SEC } from "../../system/power/powerGate";
+import { requestPowerAction, cancelPowerCountdown, powerGateStore, POWER_COUNTDOWN_SEC, requestSwitchToWindows, switchOverrideForTest } from "../../system/power/powerGate";
 
 // ---------- M-79 错误聚合看板 ----------
 
@@ -308,5 +308,50 @@ describe("AI-20 V-92：关机倒计时门禁", () => {
 
   it("非法动作拒绝", () => {
     expect(requestPowerAction("lock" as never, { executor: vi.fn() })).toBe(false);
+  });
+});
+
+// ---------- 需求 8：切回原生 Windows ----------
+
+describe("切回 Windows（真正切出去，不是表面显示）", () => {
+  beforeEach(() => {
+    cancelPowerCountdown();
+  });
+
+  it("走同一套 10s 可取消倒计时，取消后不执行", () => {
+    vi.useFakeTimers();
+    expect(requestSwitchToWindows()).toBe(true);
+    expect(powerGateStore.getState().pending?.remainSec).toBe(POWER_COUNTDOWN_SEC);
+    vi.advanceTimersByTime(3000);
+    expect(cancelPowerCountdown()).toBe(true);
+    expect(powerGateStore.getState().pending).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("取消必须复位切换标记 —— 否则普通重启会被误判成切换", () => {
+    // 回归：switchOverride 若不在取消时复位，用户「切回 Windows → 取消 →
+    // 再点重启」会被静默摘掉自启动（用户没要求切出去却掉出去了）。
+    vi.useFakeTimers();
+    requestSwitchToWindows();
+    expect(switchOverrideForTest()).toBe(true);
+    cancelPowerCountdown();
+    expect(switchOverrideForTest()).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it("倒计时期间重复发起被忽略（不叠加两个定时器）", () => {
+    vi.useFakeTimers();
+    expect(requestSwitchToWindows()).toBe(true);
+    expect(requestSwitchToWindows()).toBe(true);
+    // 仍只有一个 pending，且秒数没有被重置回满值
+    vi.advanceTimersByTime(2000);
+    expect(powerGateStore.getState().pending?.remainSec).toBe(POWER_COUNTDOWN_SEC - 2);
+    cancelPowerCountdown();
+    vi.useRealTimers();
+  });
+
+  it("force 通道跳过倒计时", () => {
+    requestSwitchToWindows({ force: true });
+    expect(powerGateStore.getState().pending).toBeNull();
   });
 });

@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNEL_ELF = os.path.join(ROOT, "kernel", "target", "x86_64-unknown-none", "release", "varix")
 LIMINE_DIR = os.path.join(ROOT, "tools", "limine", "limine-binary")
 OUT = os.path.join(ROOT, "varix.img")
+# UEFI 走查镜像输出路径（GPT + ESP；--uefi 时生效）
+OUT_UEFI = os.path.join(ROOT, "_attic", "varix-uefi.img")
 
 SECTOR = 512
 PART_LBA = 63                 # 分区起始 LBA（bios-install 要求 >=63）
@@ -34,6 +36,18 @@ serial: yes
     protocol: limine
     kernel_path: boot():/kernel/varix
     kernel_cmdline: desktop=1 boot_timeout=0
+"""
+
+# UEFI 走查用配置：让内核三卡菜单亮出并停留 60s（MAX 上限），便于键注入与截图。
+# 正式产物仍用上面的 LIMINE_CONF（boot_timeout=0 直接进 Variable）。
+LIMINE_CONF_MENU = """# 三卡菜单走查（--uefi 时生效；正式盘为 boot_timeout=0）
+timeout: 0
+serial: yes
+
+/kernel/varix
+    protocol: limine
+    kernel_path: boot():/kernel/varix
+    kernel_cmdline: boot_timeout=60 boot_default=varix
 """
 
 # 任务4：boot-select.json 骨架（SHARED 目录契约；真盘 FS 落地前由
@@ -56,6 +70,102 @@ def short_checksum(short_11: bytes) -> int:
     return s
 
 
+def _crc32(data: bytes) -> int:
+    """GPT 用的 CRC32（标准多项式 0xEDB88320，初始/终值取反）。"""
+    import binascii
+    return binascii.crc32(data) & 0xFFFFFFFF
+
+
+def _guid_bytes(mixed: str) -> bytes:
+    """把 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B' 转成 GPT 的 16 字节混合端序。"""
+    a, b, c, d, e = mixed.split("-")
+    out = struct.pack("<IHH", int(a, 16), int(b, 16), int(c, 16))
+    out += bytes.fromhex(d) + bytes.fromhex(e)
+    return out
+
+
+def build_gpt(img: bytearray, first_usable: int, last_usable: int,
+              esp_first: int, esp_last: int, disk_guid_seed: int = 0x5641524958455350) -> None:
+    """在镜像头部写入保护 MBR + GPT 主/备头 + 分区项（UEFI 引导必需）。
+
+    布局：LBA0 保护 MBR；LBA1 GPT 头；LBA2..33 分区项（128 x 128B）；
+    尾部：备用分区项 + 备用 GPT 头（以 1 个 LBA 为粒度按规范镜像到末尾）。
+    """
+    total_lba = len(img) // SECTOR
+
+    # ---- LBA0：保护 MBR（0xEE 类型，覆盖整盘；UEFI 规范要求）----
+    mbr = bytearray(SECTOR)
+    e = bytearray(16)
+    e[0] = 0x00
+    e[1:4] = bytes([0x00, 0x02, 0x00])
+    e[4] = 0xEE
+    e[5:8] = bytes([0xFF, 0xFF, 0xFF])
+    struct.pack_into("<I", e, 8, 1)
+    struct.pack_into("<I", e, 12, min(total_lba - 1, 0xFFFFFFFF))
+    mbr[446:462] = e
+    mbr[510:512] = b"\x55\xAA"
+    img[0:SECTOR] = mbr
+
+    # ---- GPT 分区项（128 x 128B = 32 扇区）----
+    entries = bytearray(128 * 128)
+    pe = bytearray(128)
+    pe[0:16] = _guid_bytes("C12A7328-F81F-11D2-BA4B-00A0C93EC93B")   # ESP 类型
+    # 分区唯一 GUID：用固定种子派生（可复现，便于比对）
+    pe[16:24] = struct.pack("<Q", disk_guid_seed ^ 0x1111111111111111)
+    pe[24:32] = struct.pack("<Q", 0x5641524958455350)
+    struct.pack_into("<Q", pe, 32, esp_first)
+    struct.pack_into("<Q", pe, 40, esp_last)
+    # 属性：bit0 = RequiredPartition，必须置位 —— OVMF BdsDxe 用属性位筛选
+    # 可引导分区，全 0 时会把 ESP 当成普通数据分区，直接报
+    # `failed to load Boot0001 "UEFI QEMU HARDDISK" ... Not Found`（实测确认）。
+    struct.pack_into("<Q", pe, 48, 0x1)
+    name = "VARIX ESP".encode("utf-16-le")
+    pe[56:56 + len(name)] = name
+    entries[0:128] = pe
+    entries_crc = _crc32(bytes(entries))
+
+    # ---- GPT 头（主 LBA1 / 备末 LBA）----
+    def gpt_header(my_lba: int, alt_lba: int, entries_lba: int) -> bytes:
+        # 严格按 UEFI 规范的 GPT 头字段偏移（错一个字节 OVMF 就认不出）：
+        #   0  Signature(8) | 8  Revision(4) | 12 HeaderSize(4) | 16 HeaderCRC(4)
+        #   20 Reserved(4)  | 24 MyLBA(8) | 32 AlternateLBA(8) | 40 FirstUsable(8)
+        #   48 LastUsable(8)| 56 DiskGUID(16) | 72 PartitionEntryLBA(8)
+        #   80 NumberOfPartitionEntries(4) | 84 SizeOfPartitionEntry(4)
+        #   88 PartitionEntryArrayCRC32(4)  → 共 92 字节
+        h = bytearray(SECTOR)
+        h[0:8] = b"EFI PART"
+        struct.pack_into("<I", h, 8, 0x00010000)      # 修订 1.0
+        struct.pack_into("<I", h, 12, 92)             # 头大小
+        struct.pack_into("<I", h, 16, 0)              # 头 CRC（稍后回填）
+        struct.pack_into("<I", h, 20, 0)              # 保留
+        struct.pack_into("<Q", h, 24, my_lba)
+        struct.pack_into("<Q", h, 32, alt_lba)
+        struct.pack_into("<Q", h, 40, first_usable)
+        struct.pack_into("<Q", h, 48, last_usable)
+        h[56:64] = struct.pack("<Q", 0x5641524958455350)   # DiskGUID 低 8 字节
+        h[64:72] = struct.pack("<Q", 0x4F5353454C424156)   # DiskGUID 高 8 字节（"VABLEOSO"）
+        struct.pack_into("<Q", h, 72, entries_lba)         # ★ 分区项数组所在 LBA
+        struct.pack_into("<I", h, 80, 128)                 # 分区项数量
+        struct.pack_into("<I", h, 84, 128)                 # 单项大小
+        struct.pack_into("<I", h, 88, entries_crc)         # ★ 分区项数组 CRC
+        struct.pack_into("<I", h, 16, _crc32(bytes(h[0:92])))
+        return bytes(h)
+
+    img[SECTOR:2 * SECTOR] = gpt_header(1, total_lba - 1, 2)
+    img[2 * SECTOR:34 * SECTOR] = bytes(entries)
+    # 备用：分区项在末尾前 32 扇区，备用头在最后一个扇区
+    img[(total_lba - 33) * SECTOR:(total_lba - 1) * SECTOR] = bytes(entries)
+    img[(total_lba - 1) * SECTOR:total_lba * SECTOR] = gpt_header(
+        total_lba - 1, 1, total_lba - 33)
+
+
+def short_checksum(short_11: bytes) -> int:
+    s = 0
+    for b in short_11:
+        s = (((s & 1) << 7) + (s >> 1) + b) & 0xFF
+    return s
+
+
 def lfn_records(long_name: str, short_11: bytes):
     """LFN 目录项列表（逆序 13-UCS2 槽位，attr 0x0F，带短名校验和）。"""
     chk = short_checksum(short_11)
@@ -65,6 +175,14 @@ def lfn_records(long_name: str, short_11: bytes):
     chunks = [padded[i:i + 13] for i in range(0, len(padded), 13)]
     n = len(chunks)
     out = []
+    # 槽位方向（**微软 FAT32 规范原文**，切勿再按直觉翻转）：
+    #   "firstly comes the last LFN entry (the last part of the filename)...
+    #    The last LFN entry has the largest sequence number which decreases in
+    #    following entries. The first LFN entry has sequence number 1."
+    #   例："File with very long filename.ext" → 0x43"me.ext" | 0x02"y long filena"
+    #       | 0x01"File with ver" | 8.3 项
+    # 即：物理**第一条**装名字**尾部**（序号最大、带 0x40）；序号 1 装名字**开头**、
+    # 紧跟在 8.3 项之前。pyfatfs 的 make_lfn_entry 也是这个顺序，实测互证。
     for idx, chunk in enumerate(reversed(chunks)):
         seq = n - idx
         e = bytearray(32)
@@ -149,15 +267,27 @@ class FatImage:
 
 
 def main() -> int:
+    # --uefi：产出 GPT + ESP 镜像（OVMF/真机 UEFI 引导），供 UEFI 走查用；
+    # 默认（无参数）保持原 BIOS 行为与输出路径，零回归。
+    uefi = "--uefi" in sys.argv
+    out_path = OUT_UEFI if uefi else OUT
     if not os.path.isfile(KERNEL_ELF):
         print("ERROR: kernel ELF missing; run cargo kbuild first", file=sys.stderr)
         return 1
     kernel = open(KERNEL_ELF, "rb").read()
     bios_sys = open(os.path.join(LIMINE_DIR, "limine-bios.sys"), "rb").read()
 
-    img = bytearray(IMG_SECTORS * SECTOR)
+    # UEFI 模式额外留 64 扇区尾部余量：GPT 要求分区必须落在
+    # [FirstUsable, LastUsable] 内，而 LastUsable = 末 LBA - 33（给备用分区项留位）。
+    # 不留余量时 ESP 的末 LBA 会**越过** LastUsable（实测 131071 > 131038），
+    # OVMF PartitionDxe 判定 GPT 表无效 → 不装分区子句柄 → BdsDxe 只能拿裸盘
+    # 去抓 \EFI\BOOT\BOOTX64.EFI → `Not Found`（已用 MBR 对照实验证实）。
+    total_sectors = (IMG_SECTORS + 64) if uefi else IMG_SECTORS
+    img = bytearray(total_sectors * SECTOR)
 
     # ---- MBR：一个占位分区表项（bios-install 覆盖引导代码）----
+    # UEFI 模式下 MBR 会被 build_gpt 的**保护 MBR** 覆盖（0xEE 覆盖整盘），
+    # 这是 UEFI 规范要求的形态，故此处的引导代码段留空即可。
     e = bytearray(16)
     e[0] = 0x80
     # CHS(16 heads/63 spt): start LBA 63 -> C0 H1 S1；end LBA 131071 -> C130 H15 S63
@@ -191,8 +321,13 @@ def main() -> int:
     root_recs += fat.dir_entry("kernel", b"KERNEL   ", kernel_dir_start)
     root_recs += fat.dir_entry("efi", b"EFI       ", efi_dir_start)
     root_recs += fat.file_entry("limine-bios.sys", b"LIMINE~1SYS", bios_sys)
-    root_recs += fat.file_entry("limine.conf", b"LIMINE.CONF", LIMINE_CONF.encode())
-    root_recs += fat.file_entry("boot-select.json", b"BOOTSE~1   ", BOOT_SELECT_JSON.encode())
+    conf_text = LIMINE_CONF_MENU if uefi else LIMINE_CONF
+    # 短名必须严格 8+3：位置 0..7 是名字（不足用空格补齐），8..10 是扩展名。
+    # 写成 b"LIMINE.CONF"（11 字节）会把第 8 字节填成 '.'，落成
+    # "LIMINE.C.ONF" 这种畸形短名（实测 OVMF 能靠 LFN 找到文件，但不符合
+    # 规范，且某些固件只认短名时就会 Not Found）。
+    root_recs += fat.file_entry("limine.conf", b"LIMINE~1CON", conf_text.encode())
+    root_recs += fat.file_entry("boot-select.json", b"BOOTSE~1JSO", BOOT_SELECT_JSON.encode())
     root = b"".join(root_recs)
     root = root.ljust(SPC * SECTOR, b"\x00")
     if len(root) > SPC * SECTOR:
@@ -256,9 +391,24 @@ def main() -> int:
     data_lba = (PART_LBA + DATA_OFF) * SECTOR
     img[data_lba:data_lba + len(fat.data)] = fat.data
 
-    with open(OUT, "wb") as f:
+    if uefi:
+        # GPT：ESP 覆盖本分区（first_usable 取分区前一个 LBA 之后，避免与
+        # 分区项数组（LBA2..33）重叠——PART_LBA=63 已远大于 33，安全）。
+        total_lba = len(img) // SECTOR
+        build_gpt(img, first_usable=34, last_usable=total_lba - 34,
+                  esp_first=PART_LBA, esp_last=PART_LBA + PART_SECTORS - 1)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    # 镜像必须是 512 的整数倍：多出的零头会让 QEMU 把末 LBA 报成 +1，
+    # GPT 头的 AlternateLBA 就与末 LBA 不符（实测产物曾带 4 字节尾巴）。
+    if len(img) % SECTOR != 0:
+        img = img[:(len(img) // SECTOR) * SECTOR]
+
+    with open(out_path, "wb") as f:
         f.write(img)
-    print("OK: %s (FAT32, %d bytes, kernel %d, next_free cluster %d)" % (OUT, len(img), len(kernel), fat.next_free))
+    kind = "GPT+ESP(UEFI)" if uefi else "MBR(FAT32)"
+    print("OK: %s (%s, %d bytes, kernel %d, next_free cluster %d)"
+          % (out_path, kind, len(img), len(kernel), fat.next_free))
     return 0
 
 

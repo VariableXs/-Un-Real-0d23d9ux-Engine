@@ -303,6 +303,16 @@ export const ipc = {
     invoke<Shell.ThirdApp>("tp_set_channel", { id, channel, wineTier: wineTier ?? "" }),
   /** 任务46 · 分级登记同步 SHARED/apps.json（发现→构建→校验→原子导出）。 */
   tpSyncSharedApps: () => invoke<{ path: string; count: number; bytes: number }>("tp_sync_shared_apps"),
+
+  // ---- 双域 ③-a：跨域文件级同步（Windows ↔ Variable 同一份物理字节） ----
+  /** 查同步状态（是否接上 SHARED 卷 / 受管条目数 / 是否被上限截断）。 */
+  filesyncStatus: () => invoke<Shell.SyncStatus>("filesync_status"),
+  /** 查一次差异并推进基线；前端轮询此命令做「秒级看到对方改动」。 */
+  filesyncPoll: () => invoke<[Shell.SyncStatus, Shell.SyncDiff]>("filesync_poll"),
+  /** SHARED 卷在系统里的真实路径（未接盘时 null）。 */
+  filesyncRoot: () => invoke<string | null>("filesync_root"),
+  /** 在系统文件管理器里打开 SHARED 卷。 */
+  filesyncReveal: () => invoke<void>("filesync_reveal"),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),
@@ -624,6 +634,11 @@ export const ipc = {
   netIp: () => invoke<string | null>("net_ip"),
   powerAction: (action: "lock" | "logoff" | "reboot" | "shutdown") =>
     invoke<void>("power_action", { action }),
+  /** 取消已排队但尚未执行的关机/重启（`shutdown /a`）。 */
+  powerAbort: () => invoke<void>("power_abort_cmd"),
+  /** 开机自动全屏进 Variable（HKCU Run；只影响当前用户，不动引导区）。 */
+  autostartGet: () => invoke<{ on: boolean; command: string }>("autostart_get_cmd"),
+  autostartSet: (on: boolean) => invoke<{ on: boolean; command: string }>("autostart_set_cmd", { on }),
   // 批次E（规格 4.7）：整表应用快捷键（unregister_all → 重注册），返回注册失败的 accel
   shortcutsApply: (binds: { action: string; accel: string }[]) =>
     invoke<{ failed: string[]; remapped: { from: string; to: string }[] }>("shortcuts_apply", { binds }),
@@ -1669,6 +1684,38 @@ export namespace Shell {
   export type TpChannel = "wine" | "engine" | "native-only";
   /** 任务46 · SHARED apps.json 分级枚举（总案 369）。 */
   export type SharedAppTier = "ok" | "partial" | "blocked";
+
+  /** 双域 ③-a：同步条目指纹（与 Rust `filesync::SyncEntry` 逐字段一致）。 */
+  export interface SyncEntry {
+    /** 相对 SHARED 根的路径（分隔符统一 `/`）。 */
+    rel: string;
+    /** 是否目录。 */
+    dir: boolean;
+    /** 字节大小（目录恒 0）。 */
+    size: number;
+    /** 修改时间（Unix 毫秒；取不到恒 0——不编造时间）。 */
+    mtimeMs: number;
+  }
+
+  /** 双域 ③-a：两次快照的差异（与 Rust `filesync::SyncDiff` 一致）。 */
+  export interface SyncDiff {
+    /** 新增或内容变化的条目。 */
+    changed: SyncEntry[];
+    /** 消失的条目（相对路径）。 */
+    removed: string[];
+  }
+
+  /** 双域 ③-a：同步状态（与 Rust `filesync::SyncStatus` 一致）。 */
+  export interface SyncStatus {
+    /** 是否找到可用的 SHARED 卷。 */
+    available: boolean;
+    /** 卷根路径（不可用时为空串）。 */
+    root: string;
+    /** 当前受管条目数。 */
+    entries: number;
+    /** 本轮扫描是否被上限截断（`entries` 不再代表全量）。 */
+    truncated: boolean;
+  }
   /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
   export interface PortableProfile {
     envRedirect: Record<string, string>;

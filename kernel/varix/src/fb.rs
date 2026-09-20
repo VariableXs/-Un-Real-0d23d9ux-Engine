@@ -153,9 +153,31 @@ pub struct Surface {
     fmt: PixelFormat,
 }
 
+/// 把 `Limine Framebuffer`（GOP 描述）里的指针搬进 `usize` 再转回指针。
+///
+/// 为什么不直接 `fb.address`（原写法）：Limine 的 null 值是 `0xffffffffffffffff`
+/// 而不是 `0`。裸机下 `*mut T` 的**非零**值一律 non-null，所以 `0xffff...ffff`
+/// 在 `Option<*mut T>` 里会被判成 `Some`，于是 `Surface` 拿到一个指向
+/// `0xffffffffffffffff` 的基址——任何 `set_px` 都会去写那块地址。
+///
+/// 实机（真实 GOP）下 framebuffer 句柄正常、地址合法，所以这条路径从不被触发；
+/// 但 QEMU/无 framebuffer 的降级路径会走进来，把「无 framebuffer」静默变成
+/// 「往 0xffff...ffff 狂写」。**无 framebuffer 必须走 serial-only 降级，不许假装有屏。**
+fn limine_ptr(p: *mut u8) -> Option<*mut u8> {
+    let v = p as usize;
+    if v == 0 || v == usize::MAX {
+        None
+    } else {
+        Some(p)
+    }
+}
+
 impl Surface {
     /// Wrap an already-initialized Limine framebuffer (F003).
     pub fn from_limine(fb: &crate::limine::Framebuffer) -> Result<Surface, FbError> {
+        // 地址合法性先于一切几何校验：null / Limine 的 0xffff...ffff 都视为
+        // 「没有可用帧缓冲」，交由调用方走 serial-only 降级（不许带着坏基址继续画）。
+        let base = limine_ptr(fb.address).ok_or(FbError::InvalidGeometry)?;
         let fmt = PixelFormat::from_masks(
             fb.bpp,
             fb.red_mask_size,
@@ -179,7 +201,7 @@ impl Surface {
             return Err(FbError::InvalidGeometry);
         }
         Ok(Surface {
-            base: fb.address,
+            base,
             width: fb.width as u32,
             height: fb.height as u32,
             stride: fb.pitch as u32,
@@ -438,6 +460,10 @@ mod tests {
         fb.address = core::ptr::null_mut();
         // BGR32 layout
         fb.bpp = 32;
+        // 地址必须先合法，否则下面每一项几何断言都会先撞「无帧缓冲」而失真。
+        // 用一块真实可写的宿主缓冲当基址（只校验描述符，不解引用）。
+        let mut scratch = [0u32; 640 * 400];
+        fb.address = scratch.as_mut_ptr() as *mut u8;
         fb.memory_model = 1;
         fb.red_mask_size = 8;
         fb.red_mask_shift = 16;
@@ -469,5 +495,46 @@ mod tests {
             Surface::from_limine(&fb),
             Err(FbError::UnsupportedMasks)
         ));
+    }
+
+    /// 无帧缓冲必须被**拒绝**，不能拿到坏基址继续画。
+    ///
+    /// 回归护栏：Limine 用 `0xffffffffffffffff` 表示 null，而裸机下 `*mut T`
+    /// 的非零值一律 non-null，`Option<*mut T>` 会把 `0xffff...ffff` 当成 `Some` ——
+    /// 于是 `Surface` 得到一个指向 `0xffffffffffffffff` 的基址，任何 `set_px`
+    /// 都是在写那块地址。这个测试钉死这两条路径都返回 Err。
+    #[test]
+    fn from_limine_rejects_null_and_sentinel_address() {
+        let mut fb: crate::limine::Framebuffer = unsafe { core::mem::zeroed() };
+        fb.bpp = 32;
+        fb.memory_model = 1;
+        fb.red_mask_size = 8;
+        fb.red_mask_shift = 16;
+        fb.green_mask_size = 8;
+        fb.green_mask_shift = 8;
+        fb.blue_mask_size = 8;
+        fb.blue_mask_shift = 0;
+        fb.width = 640;
+        fb.height = 400;
+        fb.pitch = 640 * 4;
+
+        // Limine 的 null 哨兵值
+        fb.address = usize::MAX as *mut u8;
+        assert!(matches!(
+            Surface::from_limine(&fb),
+            Err(FbError::InvalidGeometry)
+        ));
+
+        // 真 null
+        fb.address = core::ptr::null_mut();
+        assert!(matches!(
+            Surface::from_limine(&fb),
+            Err(FbError::InvalidGeometry)
+        ));
+
+        // 反向：合法地址仍应通过（把地址校验加早了不能误伤正常路径）
+        let mut scratch = [0u32; 640 * 400];
+        fb.address = scratch.as_mut_ptr() as *mut u8;
+        assert!(Surface::from_limine(&fb).is_ok());
     }
 }

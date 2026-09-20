@@ -40,6 +40,23 @@ fn boot() -> ! {
     TIMELINE.stage_end(Stage::Cmdline, varix::timeline::read_tsc());
     varix::kinfo!("cmdline: {}", cmdline.source());
 
+    // bootopt 必须**在菜单读取它之前**装载：`bootopt::options()` 读的是全局
+    // `OPTS`，而 `OPTS` 只由 `bootopt::init()` 写入。历史上 init 被放在
+    // 第 381 行（boot-select 菜单之后），于是菜单读到的永远是编译期默认值
+    // `timeout_secs = 5` —— **cmdline 的 `boot_timeout=` / `boot_default=`
+    // 被静默丢弃**（实测：配置 60s 却只倒计时 3~5s 就自动进默认项）。
+    // 这直接损害「用户自主选择要进入的系统」：窗口小到真机键盘来不及响应。
+    // cmdline 解析完就近装载，语义与 F022 一致（cmdline 覆盖编译期默认），
+    // 后续第 381 行的 init() 变成幂等二次调用（OnceLock::set 首次为准）。
+    TIMELINE.stage_begin(Stage::BootOpt, varix::timeline::read_tsc());
+    let boot_opts_cmdline = varix::bootopt::init();
+    TIMELINE.stage_end(Stage::BootOpt, varix::timeline::read_tsc());
+    varix::kinfo!(
+        "bootopt: default={} timeout={}s (from cmdline)",
+        boot_opts_cmdline.default_entry,
+        boot_opts_cmdline.timeout_secs
+    );
+
     // --- framebuffer (F003/F004) --------------------------------------------
     TIMELINE.stage_begin(Stage::Framebuffer, varix::timeline::read_tsc());
     let surface = varix::limine::framebuffer().and_then(|fb| {
@@ -89,6 +106,15 @@ fn boot() -> ! {
         let tsc_hz = varix::platform::info()
             .map(|p| p.tsc_hz)
             .unwrap_or(varix::platform::FALLBACK_TSC_HZ);
+        // 诊断：菜单亮出前把实际生效的超时与 cmdline 打到串口——
+        // 「倒计时起始值」是 boot_timeout 是否被解析的硬证据。
+        varix::kinfo!(
+            "boot-diag: timeout={} default={} customized={} cmdline='{}'",
+            boot_opts.timeout_secs,
+            boot_opts.default_entry,
+            boot_opts.customized,
+            varix::cmdline::init().source()
+        );
         let sel = varix::bootselect::run_countdown(&surface, boot_opts.timeout_secs, tsc_hz);
         let chosen = varix::bootselect::ENTRIES[sel].id;
         varix::kinfo!("boot-select: entry={}", chosen);
@@ -240,16 +266,41 @@ fn boot() -> ! {
     // 可执行、已映射的运行期区域；此前调用会在部分固件上三重故障复位。
     if let Some(chosen) = chosen_id {
         if chosen == "uefi" {
-            varix::kinfo!("boot-select: resetting into firmware setup");
-            if !varix::bootnext::reset_cold() {
-                varix::kwarn!("firmware reset unavailable on this firmware — continuing varix");
+            // 进固件设置走 UEFI 标准通道 OsIndications（置 BOOT_TO_FW_UI 后冷
+            // 重启）；固件不支持该变量时退回普通冷重启并如实告知——绝不把
+            // 「重启了」当成「进设置界面了」。
+            let _ = varix::bootnext::prepare_runtime_identity_map();
+            let blocks = varix::bootnext::identity_map_low_4gib();
+            varix::kinfo!("boot-select: low-memory identity-mapped ({} x 2MiB)", blocks);
+            varix::kinfo!("boot-select: requesting firmware setup via OsIndications");
+            if !varix::bootnext::boot_to_firmware_ui() {
+                varix::kwarn!(
+                    "boot-select: OsIndications unsupported — falling back to plain cold reset"
+                );
+                if !varix::bootnext::reset_cold() {
+                    varix::kwarn!("firmware reset unavailable on this firmware — continuing varix");
+                }
             }
         } else if chosen == "windows" {
             let _ = varix::bootnext::prepare_runtime_identity_map();
             let blocks = varix::bootnext::identity_map_low_4gib();
             varix::kinfo!("boot-select: low-memory identity-mapped ({} x 2MiB)", blocks);
-            let next = varix::bootnext::entry_from_cmdline(varix::cmdline::init().source());
-            match varix::bootnext::write_bootnext(next) {
+            // 项号**不写死**：按固件 BootOrder 逐个读 Boot#### 匹配 Windows，
+            // 匹配不到时如实标注 unverified（写死 Boot0001 在别人机器上就是蒙）。
+            let entry = varix::bootnext::resolve_windows_entry(varix::cmdline::init().source());
+            if entry.verified() {
+                varix::kinfo!(
+                    "boot-select: Windows boot option resolved to 0x{:04X}",
+                    entry.number()
+                );
+            } else {
+                varix::kwarn!(
+                    "boot-select: no Windows boot option found in BootOrder — guessing 0x{:04X} \
+                     (pass boot_next=<num> on the kernel cmdline to pin it)",
+                    entry.number()
+                );
+            }
+            match varix::bootnext::write_bootnext(entry.number()) {
                 varix::bootnext::BootNextOutcome::Written { entry } => {
                     varix::kinfo!(
                         "boot-select: BootNext=0x{:04X} written & verified — resetting",
@@ -343,6 +394,8 @@ fn boot() -> ! {
     );
 
     // --- bootopt (F022) ---------------------------------------------------------------
+    // 已在 cmdline 阶段就近装载（菜单必须在它之前拿到真值）；此处再调一次是
+    // 幂等确认，顺带保持 timeline 的 BootOpt 阶段语义。
     TIMELINE.stage_begin(Stage::BootOpt, varix::timeline::read_tsc());
     let opts = varix::bootopt::init();
     TIMELINE.stage_end(Stage::BootOpt, varix::timeline::read_tsc());

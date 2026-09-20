@@ -18,6 +18,8 @@ pub mod cli_rescue;
 pub mod shell;
 pub mod state;
 pub mod system;
+// 测试串行门：保护共用进程级单例的测试不被并行互相踩（单跑绿、全量红类问题）
+pub mod testgate;
 pub mod webview_watchdog;
 pub mod workspace;
 // L-1/V-1：VM 内 agent（仅引导器编排的 VM 档启用）
@@ -147,6 +149,8 @@ pub fn run() {
             // M4：任务栏独立原生顶层窗 + 隐藏 Windows 任务栏/工作区全屏（痕迹清除）
             // + 收起/呼出状态机。放 setup 末尾：上述任一初始化失败都不影响 M4 组件。
             shell::taskbar_win::init(app.handle());
+            // 双域 ③-a：跨域文件级双向同步看护（SHARED 卷单一事实源 + 秒级变更通知）
+            shell::filesync::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -706,6 +710,16 @@ pub fn run() {
             shell::winpower::proxy_get,
             shell::winpower::proxy_set,
             shell::winpower::net_ping,
+            // 取消已排队关机 + 开机自动进 Variable（双域：秒开秒切）。
+            // 注意关机/重启本体在 shell::winman::power_action，此处不重复注册。
+            shell::winpower::power_abort_cmd,
+            shell::winpower::autostart_get_cmd,
+            shell::winpower::autostart_set_cmd,
+            // 跨域文件级双向同步（双域总案 ③-a）：SHARED 卷状态 / 变更轮询 / 打开
+            shell::filesync::filesync_status,
+            shell::filesync::filesync_poll,
+            shell::filesync::filesync_root,
+            shell::filesync::filesync_reveal,
             // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
             shell::openhub::openhub_config_get,
             shell::openhub::openhub_config_set,

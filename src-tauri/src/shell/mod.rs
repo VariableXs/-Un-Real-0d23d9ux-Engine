@@ -22,6 +22,8 @@ pub mod ext_plugin;
 pub mod extensions;
 pub mod audioime;
 pub mod fsindex;
+// 跨域文件级双向同步（双域总案 ③-a）：SHARED 卷单一事实源 + 秒级变更通知
+pub mod filesync;
 pub mod sysmaint;
 pub mod imwatch;
 pub mod installer;

@@ -7,6 +7,11 @@
 U 盘产物仍以 make-iso.sh 为准。用法：
 
     python scripts/make-iso-qemu.py   # 在仓库根执行，产出 varix-qemu.iso
+
+可选参数（验证用，不改变默认行为）：
+    --conf PATH   指定 limine.conf（默认 build/isoroot/limine.conf），用于
+                  产出「带三卡菜单」的验证 ISO 而不动正式配置
+    --out PATH    指定输出 ISO 路径（默认 <root>/varix-qemu.iso）
 """
 import os
 import shutil
@@ -18,12 +23,37 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNEL_ELF = os.path.join(ROOT, "kernel", "target", "x86_64-unknown-none", "release", "varix")
 ISO_ROOT = os.path.join(ROOT, "build", "isoroot")
 LIMINE_DIR = os.path.join(ROOT, "tools", "limine", "limine-binary")
-OUT = os.path.join(ROOT, "varix-qemu.iso")
+
+
+def _parse_args(argv):
+    """极小参数解析：`--conf FILE` / `--out FILE`（默认走正式产物路径）。"""
+    conf = os.path.join(ISO_ROOT, "limine.conf")
+    out = os.path.join(ROOT, "varix-qemu.iso")
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == "--conf" and i + 1 < len(argv):
+            conf = argv[i + 1]
+            i += 2
+        elif a == "--out" and i + 1 < len(argv):
+            out = argv[i + 1]
+            i += 2
+        else:
+            print(f"ERROR: 未知参数 {a}", file=sys.stderr)
+            return None, None
+    return conf, out
 
 import pycdlib
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    conf, out = _parse_args(list(argv if argv is not None else sys.argv))
+    if conf is None:
+        return 1
+    if not os.path.isfile(conf):
+        print(f"ERROR: limine.conf 不存在: {conf}", file=sys.stderr)
+        return 1
+    OUT = os.path.abspath(out)
     if not os.path.isfile(KERNEL_ELF):
         print("ERROR: 内核 ELF 不存在，先在 kernel/ 运行 cargo kbuild", file=sys.stderr)
         return 1
@@ -55,7 +85,8 @@ def main() -> int:
         ("limine-bios.sys", "limine-bios.sys", "limine-bios.sys", "LIMINE_BIOS_SYS", "/BOOT", "/boot"),
     ]:
         diso, djoliet = ddiso, djoliet2
-        iso.add_file(os.path.join(ISO_ROOT, path),
+        src = conf if path == "limine.conf" else os.path.join(ISO_ROOT, path)
+        iso.add_file(src,
                      iso_path=diso + "/" + iso_name + ".;1",
                      rr_name=rr, joliet_path=djoliet + "/" + joliet)
     # ESP 树（UEFI 从 ISO 文件系统找 /EFI/BOOT/BOOTX64.EFI）
@@ -81,7 +112,7 @@ def main() -> int:
     if blob[16 * 2048:16 * 2048 + 6] != b"\x01CD001":
         print("ERROR: PVD 缺失", file=sys.stderr)
         return 1
-    print(f"OK: varix-qemu.iso 已生成（{n} 字节；注意：无 isohybrid，仅 QEMU 引导用）")
+    print(f"OK: {OUT} 已生成（{n} 字节；注意：无 isohybrid，仅 QEMU 引导用）")
     return 0
 
 

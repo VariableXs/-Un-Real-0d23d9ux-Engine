@@ -389,6 +389,21 @@ unsafe fn proc_nt_call(pid: u32, name: windows::core::PCSTR) -> Result<bool, Str
     Ok(ok)
 }
 
+/// 电源动作 → `shutdown.exe` 参数表（纯函数，可单测）。
+///
+/// 修复记录：此前这里写成 `"/r /t 0"` 一整个字符串、再按空格切分并把**首段
+/// 当程序名丢掉**，实际下发给系统的是 `shutdown /t 0`——没有 /r 也没有 /s，
+/// Windows 既不关机也不重启（只打印用法），按钮看着能点、实际毫无反应。
+/// 现在参数表是显式的静态切片，动作标志绝不会丢。
+pub fn shutdown_args(action: &str) -> Option<&'static [&'static str]> {
+    match action {
+        "logoff" => Some(&["/l"]),
+        "reboot" => Some(&["/r", "/t", "0"]),
+        "shutdown" => Some(&["/s", "/t", "0"]),
+        _ => None,
+    }
+}
+
 /// 开始菜单电源操作（批次E，规格 4.6.3）：
 /// - lock = LockWorkStation（锁屏，无需特权）
 /// - logoff / reboot / shutdown = 调系统 shutdown.exe（诚实走 Windows 既有流程）
@@ -409,20 +424,14 @@ pub fn power_action(app: AppHandle, action: String) -> Result<(), String> {
             }
         }
         "logoff" | "reboot" | "shutdown" => {
-            let flag = match action.as_str() {
-                "logoff" => "/l",
-                "reboot" => "/r /t 0",
-                _ => "/s /t 0",
-            };
-            let mut args = flag.split(' ');
-            let (Some(_prog), rest) = (args.next(), args.collect::<Vec<_>>()) else {
-                return Err("bad action".into());
+            let Some(args) = shutdown_args(action.as_str()) else {
+                return Err(format!("unknown power action: {action}"));
             };
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
                 std::process::Command::new("shutdown")
-                    .args(rest)
+                    .args(args)
                     .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
                     .spawn()
                     .map_err(|e| e.to_string())?;
@@ -430,7 +439,7 @@ pub fn power_action(app: AppHandle, action: String) -> Result<(), String> {
             }
             #[cfg(not(windows))]
             {
-                let _ = (prog, app);
+                let _ = (args, app);
                 Ok(())
             }
         }
@@ -857,5 +866,26 @@ mod anticheat_tests {
                 "ANTICHEAT_PROCESSES 条目必须带 .exe 后缀: {name}"
             );
         }
+    }
+
+    #[test]
+    fn shutdown_args_keep_the_action_flag() {
+        // 回归：曾把 "/r /t 0" 按空格切分后**丢掉首段**（当成了程序名），
+        // 实际下发 `shutdown /t 0` —— 没有 /r、/s，系统既不关机也不重启，
+        // 只打印用法。按钮能点、毫无反应就是从这儿来的。
+        assert_eq!(shutdown_args("shutdown"), Some(["/s", "/t", "0"].as_slice()));
+        assert_eq!(shutdown_args("reboot"), Some(["/r", "/t", "0"].as_slice()));
+        assert_eq!(shutdown_args("logoff"), Some(["/l"].as_slice()));
+    }
+
+    #[test]
+    fn shutdown_args_reject_anything_else() {
+        // 未知/注入类输入必须落空，绝不能拼进命令行。
+        assert_eq!(shutdown_args("sleep"), None);
+        assert_eq!(shutdown_args("lock"), None);
+        assert_eq!(shutdown_args(""), None);
+        assert_eq!(shutdown_args("/s"), None);
+        assert_eq!(shutdown_args("shutdown && format c:"), None);
+        assert_eq!(shutdown_args("shutdown\0"), None);
     }
 }
