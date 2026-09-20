@@ -115,6 +115,17 @@ fn boot() -> ! {
             boot_opts.customized,
             varix::cmdline::init().source()
         );
+        // 鼠标 bring-up 必须排在菜单亮出**之前**（需求 1/6「任意鼠标和键盘」）：
+        // PS/2 鼠标复位后默认**不上报数据**，不显式开 AUX 门 + 使能上报就
+        // 永远收不到包。此前这一步只挂在 QEMU 探针分支里、且探针排在菜单
+        // 之后——真机上鼠标从头到尾没初始化，插着也只能当摆设。
+        // 三步全程 TSC 限次自旋，无鼠标/控制器异常也只是超时返回 0，不挂引导。
+        let mouse_ack = varix::inputsvc::target::mouse_init(tsc_hz);
+        varix::kinfo!(
+            "boot-diag: mouse bringup set-defaults={} enable-report={}",
+            mouse_ack & 0x1 != 0,
+            mouse_ack & 0x2 != 0
+        );
         let sel = varix::bootselect::run_countdown(&surface, boot_opts.timeout_secs, tsc_hz);
         let chosen = varix::bootselect::ENTRIES[sel].id;
         varix::kinfo!("boot-select: entry={}", chosen);

@@ -286,6 +286,15 @@ pub struct InputService {
     pub raw_kbd: u32,
     pub raw_aux: u32,
     pub last_raw: u8,
+    /// 菜单/桌面用**累计**鼠标位移（自上次 `take_mouse` 起累加）。
+    /// 与事件队列解耦：引导菜单期中断未开、也没有订阅者，`poll` 取不到
+    /// 事件；累计量保证「动了就一定读得到」，且零分配。
+    mouse_acc_x: i32,
+    mouse_acc_y: i32,
+    /// 本窗口内出现过的按键位并集（bit0 左 / bit1 右 / bit2 中）。
+    mouse_btn: u8,
+    /// 自上次 `take_mouse` 起是否收到过完整鼠标包。
+    mouse_seen: bool,
 }
 
 impl InputService {
@@ -306,6 +315,10 @@ impl InputService {
             raw_kbd: 0,
             raw_aux: 0,
             last_raw: 0,
+            mouse_acc_x: 0,
+            mouse_acc_y: 0,
+            mouse_btn: 0,
+            mouse_seen: false,
         }
     }
 
@@ -384,9 +397,13 @@ impl InputService {
         Some(ev)
     }
 
-    /// 鼠标 AUX 口字节入服务（3 字节凑包后发布）。
+    /// 鼠标 AUX 口字节入服务（3 字节凑包后发布，并累计进菜单通道）。
     pub fn feed_mouse_byte(&mut self, b: u8) -> Option<InputEvent> {
         let m = self.mouse_dec.feed(b)?;
+        self.mouse_acc_x = self.mouse_acc_x.saturating_add(m.dx as i32);
+        self.mouse_acc_y = self.mouse_acc_y.saturating_add(m.dy as i32);
+        self.mouse_btn |= m.buttons;
+        self.mouse_seen = true;
         let ev = InputEvent::Mouse {
             dx: m.dx,
             dy: m.dy,
@@ -394,6 +411,28 @@ impl InputService {
         };
         self.publish(ev);
         Some(ev)
+    }
+
+    /// 取走自上次调用以来累计的鼠标位移（引导菜单/桌面用）。
+    ///
+    /// 队列之外的一条独立通道：菜单在中断未开、无订阅者的阶段也要能拿到
+    /// 位移，而 `poll` 依赖订阅槽。无数据返回 `None`（键盘路径完全不受影响）。
+    /// 累计值按 i16 饱和截断——单包只有 ±255，跨包累计也不会静默翻转。
+    pub fn take_mouse(&mut self) -> Option<MouseDelta> {
+        if !self.mouse_seen {
+            return None;
+        }
+        let sat = |v: i32| -> i16 { v.clamp(i16::MIN as i32, i16::MAX as i32) as i16 };
+        let d = MouseDelta {
+            dx: sat(self.mouse_acc_x),
+            dy: sat(self.mouse_acc_y),
+            buttons: self.mouse_btn,
+        };
+        self.mouse_acc_x = 0;
+        self.mouse_acc_y = 0;
+        self.mouse_btn = 0;
+        self.mouse_seen = false;
+        Some(d)
     }
 
     /// 统计快照：(已发布总数, 丢最旧计数)。
@@ -492,10 +531,12 @@ impl InputService {
 /// （宿主脚本经 HMP `sendkey`/`mouse_move`/`mouse_button` 注入）。
 #[cfg(target_os = "none")]
 pub mod target {
-    use super::{InputEvent, InputService, MAX_SUBS, QUEUE_CAP};
+    use super::{InputEvent, InputService, KeySourceAdapter, MouseDelta, MAX_SUBS, QUEUE_CAP};
     use crate::ps2;
 
     static mut SVC: Option<InputService> = None;
+    /// 引导菜单键源适配器（一次性注册，键鼠共用同一个端口泵）。
+    static mut KSRC: Option<KeySourceAdapter> = None;
 
     /// 服务全局实例（引导期单核、探针在 enable_interrupts 前，static mut 无并发；
     /// 与 ps2.rs 同一手工 Once 范式）。
@@ -508,6 +549,47 @@ pub mod target {
             }
             (*slot).as_mut().unwrap()
         }
+    }
+
+    /// 引导菜单鼠标 bring-up —— **真机也跑**。
+    ///
+    /// 修复记录：此前 `mouse_bringup` 只挂在 `input_probe()` 的 `if on_qemu`
+    /// 分支里，而探针又排在引导菜单**之后**——真机上鼠标从头到尾没被初始化，
+    /// 插着鼠标也只能当摆设（需求 1/6「任意鼠标和键盘」的真实缺口）。
+    /// 现在菜单亮出前显式初始化：①i8042 控制器 ②AUX 门 ③置默认 + 使能上报。
+    /// 返回 ack 位：bit0=0xF6 置默认成功，bit1=0xF4 使能上报成功。
+    pub fn mouse_init(tsc_hz: u64) -> u8 {
+        ps2::controller_init();
+        mouse_bringup(tsc_hz)
+    }
+
+    /// 菜单键源：与服务共用一次端口泵，鼠标字节不再被键盘路径吃掉。
+    ///
+    /// 为什么不能继续用 `ps2::poll_key`：**两个读者抢同一个 0x60 端口**。
+    /// `poll_key` 只看 OBF 不看 AUX 标志位，AUX 字节会被当成键盘字节喂进
+    /// 键解码器（错位解码），鼠标则永远收不到包。走适配器后，键鼠由
+    /// `pump()` 按 STAT_AUX 分流，各取所需。
+    /// 订阅槽耗尽时退化为直轮询——键盘路径绝不因鼠标接线而失效。
+    pub fn menu_poll_key() -> Option<ps2::Key> {
+        let slot = &raw mut KSRC;
+        // SAFETY: 引导期单核、中断未开，独占访问；与 svc() 同一手工 Once 范式。
+        unsafe {
+            if (*slot).is_none() {
+                *slot = KeySourceAdapter::new(svc());
+            }
+            match (*slot).as_mut() {
+                Some(a) => a.poll_key(svc()),
+                None => ps2::poll_key(),
+            }
+        }
+    }
+
+    /// 菜单鼠标源：泵一次端口后取走累计位移（与键源共用同一泵）。
+    /// 没有鼠标 / 鼠标没动 → `None`，菜单行为与纯键盘时逐帧一致。
+    pub fn menu_poll_mouse() -> Option<MouseDelta> {
+        let s = svc();
+        s.pump();
+        s.take_mouse()
     }
 
     /// 任务27 · shell 订阅槽（惰性注册；usize::MAX = 未注册）。
@@ -962,6 +1044,74 @@ mod tests {
         assert_eq!(d.feed(0x0A), None, "包头（bit3=1，中键）");
         assert_eq!(d.feed(0x00), None, "包中 0x00 是合法数据，不得触发重同步");
         assert_eq!(d.feed(0x05), Some(MouseDelta { dx: 0, dy: 5, buttons: 2 }));
+    }
+
+    /// 喂一个完整 3 字节鼠标包（包头 + dx + dy），返回是否解出。
+    fn feed_packet(s: &mut InputService, flags: u8, dx: u8, dy: u8) -> bool {
+        s.feed_mouse_byte(flags);
+        s.feed_mouse_byte(dx);
+        s.feed_mouse_byte(dy).is_some()
+    }
+
+    #[test]
+    fn take_mouse_is_none_without_data() {
+        let mut s = InputService::new();
+        assert_eq!(
+            s.take_mouse(),
+            None,
+            "从未收到鼠标包时必须返回 None（菜单据此判定「没有鼠标」）"
+        );
+        // 只喂了半个包：未凑满不产生位移
+        s.feed_mouse_byte(0x08);
+        s.feed_mouse_byte(10);
+        assert_eq!(s.take_mouse(), None);
+    }
+
+    #[test]
+    fn take_mouse_accumulates_across_packets() {
+        // 菜单一片只取一次：同一片内多个包必须累加，不能只留最后一个。
+        let mut s = InputService::new();
+        assert!(feed_packet(&mut s, 0x08, 10, 20));
+        assert!(feed_packet(&mut s, 0x08, 5, 30));
+        assert!(feed_packet(&mut s, 0x18, 200, 0)); // dx 负号位：200-256 = -56
+        let m = s.take_mouse().unwrap();
+        assert_eq!(m.dx, 10 + 5 - 56);
+        assert_eq!(m.dy, 20 + 30);
+        assert_eq!(m.buttons, 0);
+    }
+
+    #[test]
+    fn take_mouse_unions_buttons_and_resets() {
+        let mut s = InputService::new();
+        assert!(feed_packet(&mut s, 0x09, 0, 0)); // bit0 左键
+        assert!(feed_packet(&mut s, 0x0A, 0, 0)); // bit1 右键
+        let m = s.take_mouse().unwrap();
+        assert_eq!(m.buttons, 0x03, "本窗口出现过的按键位取并集");
+        // 取走即复位：再次调用必须回到 None（否则菜单会重复确认）
+        assert_eq!(s.take_mouse(), None, "take_mouse 必须清空累计量");
+        assert!(feed_packet(&mut s, 0x08, 1, 1));
+        assert_eq!(s.take_mouse().unwrap().buttons, 0, "复位后按键位不残留");
+    }
+
+    #[test]
+    fn take_mouse_saturates_instead_of_wrapping() {
+        // 累计量远超 i16 时静默翻转会让指针瞬移到屏幕另一头，必须饱和。
+        let mut s = InputService::new();
+        for _ in 0..300 {
+            assert!(feed_packet(&mut s, 0x08, 200, 200));
+        }
+        let m = s.take_mouse().unwrap();
+        assert_eq!(m.dx, i16::MAX, "超上限饱和到 i16::MAX 而非翻转");
+        assert_eq!(m.dy, i16::MAX);
+    }
+
+    #[test]
+    fn mouse_channel_is_independent_of_queue() {
+        // 菜单期没有订阅者：累计通道必须仍然可用（这正是它存在的理由）。
+        let mut s = InputService::new();
+        assert!(feed_packet(&mut s, 0x08, 3, 4));
+        assert_eq!(s.stats().0, 1, "事件照常进队列，两通道互不干扰");
+        assert_eq!(s.take_mouse().unwrap().dx, 3, "无订阅者也能取到位移");
     }
 
     #[test]

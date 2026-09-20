@@ -10,6 +10,7 @@
 //! 入口当前如实记录「chainload 未接线」并继续引导 varix——不假装能切。
 
 use crate::fb::{Color, Surface};
+use crate::inputsvc::MouseDelta;
 
 /// 菜单项：id 与 bootopt 的 default_entry 词表一致。
 pub struct Entry {
@@ -168,6 +169,85 @@ fn draw_cfg_reset_badge(surf: &Surface) {
 /// 键事件来源：目标态走 PS/2 轮询；宿主测试注入脚本化按键序列。
 type KeySource<'a> = &'a mut dyn FnMut() -> Option<crate::ps2::Key>;
 
+/// 鼠标来源：每次调用取走一个累计位移包（`None` = 本片没有鼠标数据）。
+/// 宿主测试与无鼠标机器传恒 `None` 的源，复用同一份循环体。
+type MouseSource<'a> = &'a mut dyn FnMut() -> Option<MouseDelta>;
+
+/// 屏幕指针（纯几何，不碰端口——宿主可完整单测）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pointer {
+    pub x: i64,
+    pub y: i64,
+    /// 是否画出来：收到第一个位移包之前不画，没插鼠标时屏幕保持原样。
+    pub visible: bool,
+}
+
+impl Pointer {
+    /// 初始指针落在屏幕中心，且不可见。
+    pub fn centered(surf: &Surface) -> Pointer {
+        Pointer {
+            x: (surf.width() as i64) / 2,
+            y: (surf.height() as i64) / 2,
+            visible: false,
+        }
+    }
+
+    /// 累加一个位移包并夹在屏幕内。
+    ///
+    /// PS/2 的 `dy` 为正表示**向上**，而屏幕 y 轴向下，故 y 取反。
+    pub fn apply(&mut self, d: &MouseDelta, surf: &Surface) {
+        let w = surf.width() as i64;
+        let h = surf.height() as i64;
+        self.x = (self.x + d.dx as i64).clamp(0, w - 1);
+        self.y = (self.y - d.dy as i64).clamp(0, h - 1);
+        self.visible = true;
+    }
+}
+
+/// 第 i 张卡片的矩形 `(x, y, w, h)`。
+///
+/// 与 [`draw`] 共用同一个 [`metrics`]——「看到的高亮框」和「点得中的区域」
+/// 必须逐像素同源，否则会出现"看着在第一张、点了进第二张"。
+pub fn card_rect(surf: &Surface, i: usize) -> (i64, i64, i64, i64) {
+    let (mx, my, mw, ch, gap) = metrics(surf);
+    (mx, my + i as i64 * (ch + gap), mw, ch)
+}
+
+/// 命中测试：指针落在第几张卡片上，不在任何卡片上返回 `None`。
+///
+/// 外扩 2px 与选中项的描边对齐（`draw` 里描边画在 `mx-2`），让反色卡片
+/// 和它那圈描边一样点得中——不做"看得见却点不到"的手感陷阱。
+pub fn hit_card(surf: &Surface, px: i64, py: i64) -> Option<usize> {
+    for i in 0..ENTRIES.len() {
+        let (x, y, w, h) = card_rect(surf, i);
+        if px >= x - 2 && px < x + w + 2 && py >= y - 2 && py < y + h + 2 {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// 指针形状：实心箭头（尖朝左上）+ 1px 深色描边。
+///
+/// 先画大一圈的暗三角再叠亮芯，等效描边且不引入新原语；深浅两种背板
+/// （卡片高亮是亮蓝、背板是深空）上都保持可辨。
+pub fn draw_cursor(surf: &Surface, p: &Pointer) {
+    if !p.visible {
+        return;
+    }
+    const OUT: Color = Color::rgb(0x0B, 0x0E, 0x14);
+    const IN: Color = Color::rgb(0xF2, 0xF5, 0xFA);
+    for r in 0..16i64 {
+        surf.fill_rect(p.x, p.y + r, r + 1, 1, OUT);
+    }
+    for r in 0..16i64 {
+        let w = r.saturating_sub(2);
+        if w > 0 {
+            surf.fill_rect(p.x + 1, p.y + r, w, 1, IN);
+        }
+    }
+}
+
 /// 倒计时轮询循环（任务1）：每秒切成 `POLL_SLICES` 片，片间轮询按键。
 /// - ↑/↓：移动选中并立即重画（不重置倒计时——总案口径：倒计时照走）；
 /// - Enter：立即返回当前选中；
@@ -176,30 +256,64 @@ type KeySource<'a> = &'a mut dyn FnMut() -> Option<crate::ps2::Key>;
 ///   切 Windows/固件这类重动作必须显式 Enter）。
 ///
 /// 返回最终选中下标。
+///
+/// 鼠标与键盘**权力对等**（需求 1/6）：移动 = 悬停改高亮（等价 ↑↓ 预选，
+/// 不确认），左键单击卡片 = 确认进入（等价 Enter）。倒计时语义一字未改。
+#[cfg(target_os = "none")]
 pub fn run_countdown(surf: &Surface, timeout_secs: u32, tsc_hz: u64) -> usize {
-    // 目标态键源：PS/2 轮询。
-    let mut hw = || crate::ps2::poll_key();
-    run_countdown_with(surf, timeout_secs, tsc_hz, &mut hw)
+    // 键鼠共用一个端口泵：AUX 标志位分流，两边不会互吃字节。
+    let mut hw = || crate::inputsvc::target::menu_poll_key();
+    let mut mw = || crate::inputsvc::target::menu_poll_mouse();
+    run_countdown_with_input(surf, timeout_secs, tsc_hz, &mut hw, &mut mw)
 }
 
-/// 可注入键源的循环体（宿主测试与目标共用同一逻辑）。
-/// 每帧先重绘背板再画菜单——清屏策略单一来源，杜绝倒计时/选中残影（任务3）。
+/// 宿主态：没有端口，键鼠源恒空（宿主测试走注入键源）。
+#[cfg(not(target_os = "none"))]
+pub fn run_countdown(surf: &Surface, timeout_secs: u32, tsc_hz: u64) -> usize {
+    let mut hw = || crate::ps2::poll_key();
+    let mut mw = || None::<MouseDelta>;
+    run_countdown_with_input(surf, timeout_secs, tsc_hz, &mut hw, &mut mw)
+}
+
+/// 可注入键源的循环体（纯键盘；宿主既有测试沿用此入口，行为零变化）。
 pub fn run_countdown_with(
     surf: &Surface,
     timeout_secs: u32,
     tsc_hz: u64,
     keys: KeySource,
 ) -> usize {
-    /// 每秒轮询片数：50 片 × 20ms，按键响应 ≤20ms。
+    let mut no_mouse = || None::<MouseDelta>;
+    run_countdown_with_input(surf, timeout_secs, tsc_hz, keys, &mut no_mouse)
+}
+
+/// 键鼠双源循环体（宿主测试与目标共用同一逻辑）。
+///
+/// 鼠标语义与键盘严格对齐，**不引入键盘没有的权力**：
+/// - 移动 → 显现指针；悬停到某张卡 = 改高亮（等价 ↑↓ 预选，**不确认**）；
+/// - 左键单击卡片 = 确认进入（等价 Enter）；点在卡片外 = 静默忽略；
+/// - 倒计时归零一律走配置默认项（未确认的预选不生效，与键盘语义一致）。
+///
+/// 每帧先重绘背板再画菜单——清屏策略单一来源，杜绝倒计时/选中残影（任务3）。
+pub fn run_countdown_with_input(
+    surf: &Surface,
+    timeout_secs: u32,
+    tsc_hz: u64,
+    keys: KeySource,
+    mice: MouseSource<'_>,
+) -> usize {
+    /// 每秒轮询片数：50 片 × 20ms，键鼠响应 ≤20ms。
     const POLL_SLICES: u32 = 50;
+    /// 左键位（PS/2 包字节 0 的 bit0）。
+    const BTN_LEFT: u8 = 0x01;
     let opts = crate::bootopt::options();
     let mut sel = default_index(opts.default_entry);
     let mut remaining = timeout_secs;
     let slice_ticks = tsc_hz / POLL_SLICES as u64;
-    draw_frame(surf, remaining, sel);
+    let mut ptr = Pointer::centered(surf);
+    draw_frame(surf, remaining, sel, &ptr);
     loop {
         if remaining == 0 {
-            // 归零执行默认项（未确认的 ↑↓ 预选不生效——键盘拔除/无人
+            // 归零执行默认项（未确认的 ↑↓/悬停 预选不生效——键盘拔除/无人
             // 操作时系统回落配置默认，见任务5 演练矩阵场景2）。
             return default_index(opts.default_entry);
         }
@@ -209,28 +323,44 @@ pub fn run_countdown_with(
                 match k {
                     crate::ps2::Key::Up => {
                         sel = sel.saturating_sub(1);
-                        draw_frame(surf, remaining, sel);
+                        draw_frame(surf, remaining, sel, &ptr);
                     }
                     crate::ps2::Key::Down => {
                         sel = (sel + 1).min(crate::bootselect::ENTRIES.len() - 1);
-                        draw_frame(surf, remaining, sel);
+                        draw_frame(surf, remaining, sel, &ptr);
                     }
                     crate::ps2::Key::Enter => return sel,
                     // 任务55 扩表：其余键与菜单无关，如实忽略。
                     _ => {}
                 }
             }
+            // 鼠标：一片只取一个累计包（多包已在服务里累加，位移不会丢）。
+            if let Some(d) = mice() {
+                ptr.apply(&d, surf);
+                // 悬停即改高亮：只动选中，不确认。
+                if let Some(i) = hit_card(surf, ptr.x, ptr.y) {
+                    sel = i;
+                }
+                // 左键按下 = 确认进入；点在卡片外则静默忽略（不做半途动作）。
+                if d.buttons & BTN_LEFT != 0 {
+                    if let Some(i) = hit_card(surf, ptr.x, ptr.y) {
+                        return i;
+                    }
+                }
+                draw_frame(surf, remaining, sel, &ptr);
+            }
             wait_ticks(slice_ticks);
         }
         remaining -= 1;
-        draw_frame(surf, remaining, sel);
+        draw_frame(surf, remaining, sel, &ptr);
     }
 }
 
-/// 一帧 = 背板重绘 + 菜单绘制。清屏策略在此归口。
-fn draw_frame(surf: &Surface, remaining: u32, sel: usize) {
+/// 一帧 = 背板重绘 + 菜单绘制 + 指针。清屏策略在此归口。
+fn draw_frame(surf: &Surface, remaining: u32, sel: usize, ptr: &Pointer) {
     crate::banner::paint_backdrop(surf);
     draw(surf, remaining, sel);
+    draw_cursor(surf, ptr);
 }
 
 #[cfg(test)]
@@ -431,7 +561,7 @@ mod tests {
         let (s, _b) = surface(1280, 720);
         draw(&s, 5, 0);
         assert!(count_px(&s, HL_BOX) > 10_000);
-        draw_frame(&s, 5, 1); // 下一帧选中下移
+        draw_frame(&s, 5, 1, &Pointer::centered(&s)); // 下一帧选中下移
         // 第一张卡片区域的旧高亮必须消失：整屏不再有属于卡片 0 行的高亮色
         // （卡片 1 的高亮在其行内；断言卡片 0 行带内无高亮像素）。
         let (_, my, _, ch, _) = metrics(&s);
@@ -446,6 +576,124 @@ mod tests {
         assert_eq!(leaked, 0, "上一帧高亮残影未清除");
     }
 
+    // ---- 鼠标选择路径（需求 1/6：任意鼠标和键盘） ----
+
+    /// 从位移包序列构造鼠标源。
+    fn scripted_mouse(moves: &[(i16, i16, u8)]) -> impl FnMut() -> Option<MouseDelta> + '_ {
+        let mut i = 0usize;
+        move || {
+            let r = moves.get(i).copied();
+            i += 1;
+            r.map(|(dx, dy, buttons)| MouseDelta { dx, dy, buttons })
+        }
+    }
+
+    /// 第 i 张卡片的中心点（复用同一套几何，避免测试自己另算一套坐标）。
+    fn card_center(s: &Surface, i: usize) -> (i64, i64) {
+        let (x, y, w, h) = card_rect(s, i);
+        (x + w / 2, y + h / 2)
+    }
+
+    #[test]
+    fn pointer_starts_centered_and_invisible() {
+        let (s, _b) = surface(800, 600);
+        let p = Pointer::centered(&s);
+        assert!(!p.visible, "没动过鼠标时不该画指针（无鼠标机器画面保持原样）");
+        assert_eq!(p.x, 400);
+        assert_eq!(p.y, 300);
+    }
+
+    #[test]
+    fn pointer_moves_invert_dy_and_clamps() {
+        let (s, _b) = surface(800, 600);
+        let mut p = Pointer::centered(&s);
+        // PS/2 dy 为正 = 向上 = 屏幕 y 减小
+        p.apply(&MouseDelta { dx: 10, dy: 20, buttons: 0 }, &s);
+        assert_eq!((p.x, p.y), (410, 280));
+        assert!(p.visible, "收到位移包后指针必须显现");
+        // 越界钳位：往左上角反复推仍留在屏内
+        for _ in 0..200 {
+            p.apply(&MouseDelta { dx: -100, dy: -100, buttons: 0 }, &s);
+        }
+        assert_eq!((p.x, p.y), (0, 599));
+    }
+
+    #[test]
+    fn hit_card_matches_drawn_geometry() {
+        let (s, _b) = surface(800, 600);
+        for i in 0..ENTRIES.len() {
+            let (cx, cy) = card_center(&s, i);
+            assert_eq!(hit_card(&s, cx, cy), Some(i), "卡片 {i} 中心必须命中自身");
+        }
+        // 卡片之间的间隙不应命中任何一张
+        let (_, y0, _, ch, gap) = metrics(&s);
+        assert_eq!(hit_card(&s, 400, y0 + ch + gap / 2), None, "卡片间隙不算命中");
+        // 屏幕左上角（标题区）不算命中
+        assert_eq!(hit_card(&s, 0, 0), None);
+    }
+
+    #[test]
+    fn hover_selects_card_and_click_confirms() {
+        let (s, _b) = surface(800, 600);
+        let p = Pointer::centered(&s);
+        let (cx2, cy2) = card_center(&s, 2);
+        // 一步移到第三张卡中心 → 左键确认
+        let script = [
+            (cx2 as i16 - p.x as i16, -(cy2 as i16 - p.y as i16), 0),
+            (0, 0, 1),
+        ];
+        let mut mice = scripted_mouse(&script);
+        let mut no_keys = || -> Option<crate::ps2::Key> { None };
+        let sel = run_countdown_with_input(&s, 5, FAST_HZ, &mut no_keys, &mut mice);
+        assert_eq!(sel, 2, "悬停第三张卡 + 左键应进入第三项");
+    }
+
+    #[test]
+    fn click_outside_cards_does_nothing() {
+        let (s, _b) = surface(800, 600);
+        // 指针推到左上角（不在任何卡片上）后按左键：不得误进入
+        let mut mice = scripted_mouse(&[(-500, 500, 1), (-500, 500, 1)]);
+        let mut no_keys = || -> Option<crate::ps2::Key> { None };
+        let sel = run_countdown_with_input(&s, 1, FAST_HZ, &mut no_keys, &mut mice);
+        assert_eq!(sel, 0, "卡片外点击不应触发进入，应回落默认项");
+    }
+
+    #[test]
+    fn hover_without_click_falls_back_to_default() {
+        // 与键盘语义严格对齐：只移动不点击 = 只改高亮，归零走默认项。
+        let (s, _b) = surface(800, 600);
+        let p = Pointer::centered(&s);
+        let (cx2, cy2) = card_center(&s, 2);
+        let script = [(cx2 as i16 - p.x as i16, -(cy2 as i16 - p.y as i16), 0)];
+        let mut mice = scripted_mouse(&script);
+        let mut no_keys = || -> Option<crate::ps2::Key> { None };
+        let sel = run_countdown_with_input(&s, 1, FAST_HZ, &mut no_keys, &mut mice);
+        assert_eq!(sel, 0, "只悬停不点击 = 未确认的预选，归零走默认项");
+    }
+
+    #[test]
+    fn no_mouse_source_preserves_keyboard_behavior() {
+        // 行为等价闸门：不接鼠标源时，逐字复现既有键盘路径的结果。
+        let (s, _b) = surface(800, 600);
+        let mut keys = scripted(&[crate::ps2::Key::Down, crate::ps2::Key::Enter]);
+        let mut no_mouse = || -> Option<MouseDelta> { None };
+        let sel = run_countdown_with_input(&s, 5, FAST_HZ, &mut keys, &mut no_mouse);
+        assert_eq!(sel, 1, "无鼠标时键盘路径结果必须不变");
+    }
+
+    #[test]
+    fn cursor_is_drawn_only_when_visible() {
+        const OUT: Color = Color::rgb(0x0B, 0x0E, 0x14);
+        let (s1, _b1) = surface(800, 600);
+        draw_cursor(&s1, &Pointer::centered(&s1)); // 不可见
+        assert_eq!(count_px(&s1, OUT), 0, "未动过鼠标时不该留下指针像素");
+        let (s2, _b2) = surface(800, 600);
+        let mut shown = Pointer::centered(&s2);
+        shown.visible = true;
+        draw_cursor(&s2, &shown);
+        assert!(count_px(&s2, OUT) > 20, "指针可见时必须画出描边像素");
+    }
+
     /// 多分辨率整页渲染归档（任务3）：VARIX_RENDER_MENU=1 cargo ktest -- bootselect::
     /// 产出 800×600 / 1280×720 / 1920×1080 的 PPM 到 docs/acceptance 归档目录。
     #[test]
@@ -457,7 +705,7 @@ mod tests {
         std::fs::create_dir_all(dir).unwrap();
         for (w, h) in [(800u32, 600u32), (1280, 720), (1920, 1080)] {
             let (s, buf) = surface(w, h);
-            draw_frame(&s, 5, 0);
+            draw_frame(&s, 5, 0, &Pointer::centered(&s));
             let path = format!("{}/menu-{}x{}.ppm", dir, w, h);
             let mut out = format!("P6\n{} {}\n255\n", w, h).into_bytes();
             // Surface 背板为 BGR32：转成 RGB 字节序输出。
