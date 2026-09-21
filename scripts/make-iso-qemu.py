@@ -103,6 +103,8 @@ def main(argv=None) -> int:
     ]:
         diso, djoliet = ddiso, djoliet2
         src = conf if path == "limine.conf" else os.path.join(ISO_ROOT, path)
+        if path == "boot-select.json" and not os.path.isfile(src):
+            continue  # --no-seed 演练：副本缺席，ISO 不含该文件
         iso.add_file(src,
                      iso_path=diso + "/" + iso_name + ".;1",
                      rr_name=rr, joliet_path=djoliet + "/" + joliet)
