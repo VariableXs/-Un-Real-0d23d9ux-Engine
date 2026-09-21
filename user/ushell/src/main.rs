@@ -1,23 +1,26 @@
-//! 任务27/28（AI-V）· 用户态 shell 壳程序（ushell）。
+//! 任务27/28（AI-V）· 用户态 shell 壳程序（ushell）· AI-4 视觉对齐版。
 //!
 //! 内核嵌入层演示常驻进程：ring3 下经三个内核支点驱动--
 //! - SYS_FRAME(16)：绘制命令（fill_rect/text/hline/vline/outline/info）；
-//! - SYS_INPUT(17)：shim://input 16B 键鼠事件；
+//! - SYS_INPUT(17)：shim://input 16B 键鼠事件（AI-4：鼠标消费端闭环——
+//!   光标/悬停/点击全量接入，键盘可达性完整保留，双通道对等）；
 //! - SYS_SHIM(18)：KV（设置存储）/VFS（SHARED 文件列取读）/boot://event
 //!   回放/时钟。
 //!
 //! 旅程（对应总案阶段3 步骤7/8 走查清单）：
 //!   ① Loading：内核拉起即进加载动画（里程碑+平滑进度条），零按键零
 //!      选项，≥2s 后直落桌面（Variable 是主系统）
-//!   ② 桌面：壁纸渐变 + 任务栏（START）+ 桌面图标
-//!   ③ START → 开始菜单 → 文件管理器（SHARED 列表/读文件预览，数据源
-//!      如实标注 exFAT / demo-tree）
+//!   ② 桌面：壁纸 + 任务栏（四格 logo START + uptime 时钟）+ 桌面图标
+//!   ③ START → 开始菜单（削角面板+图标色块+底部用户区）→ 文件管理器
 //!   ④ START → 设置页（引导行为三参数，KV 存储即时读写，←→/Enter）
 //!   ⑤ START → 关于（嵌入层自述 + 运行指标）
-//!   ⑥ START 菜单五项：Restart=重启切回 Windows；Shutdown=关机断电
-//!      （SYS_POWEROFF → UEFI ResetSystem(Shutdown) → ACPI S5 阶梯）
+//!   ⑥ Restart=重启切回 Windows；Shutdown=关机断电（SYS_POWEROFF）
 //!
-//! 全程键盘可达（↑↓←→/Enter/Esc）；里程碑经串口打点供验收脚本断言。
+//! 视觉契约（AI-4 · R2 对齐 Variable win11 外壳）：暗色面板系与
+//! tokens.css 同向（PALETTE 索引色已对齐 accent #3874D2）；面板削角
+//! 模拟圆角；窗口标题栏 accent 条+[×] 关闭钮+右下阴影；图标语义色块。
+//! 全程键盘可达（↑↓←→/Enter/Esc）；鼠标与键盘能力对等；里程碑经串口
+//! 打点供验收脚本断言（全部既有标记零改动）。
 
 #![no_std]
 #![no_main]
@@ -72,8 +75,6 @@ fn marker(buf: &[u8]) {
 
 // --- FRAME 命令（与内核 usrshell::pack_* 编码逐字段一致） ---
 
-#[allow(dead_code)] // 协议位保留：OP_FILL 由 SYS_FRAME 出参外的内核 fill 语义占位
-const OP_FILL: u64 = 1;
 const OP_TEXT: u64 = 2;
 const OP_OUTLINE: u64 = 5;
 const OP_INFO: u64 = 6;
@@ -83,6 +84,7 @@ const C_WHITE: u64 = 1;
 const C_DARK: u64 = 2;
 const C_LGRAY: u64 = 3;
 const C_BLUE: u64 = 4;
+const C_RED: u64 = 6;
 const C_WALL0: u64 = 8;
 const C_WALL1: u64 = 9;
 const C_TASKBAR: u64 = 10;
@@ -146,6 +148,7 @@ fn disp_info() -> (i64, i64) {
 // --- INPUT：16B 事件（seq u64 | kind u8 | key u8 | dx i16 | dy i16 | btn u8 | pad u8） ---
 
 const KIND_KEY: u8 = 0;
+const KIND_MOUSE: u8 = 1;
 
 // 键字节（与内核 inputsvc::key_byte 同表）：0=Up 1=Down 2=Enter 3=Esc
 // 4=Space 5=Bksp 6=Tab 7=Left 8=Right 9/10=Shift 11..36=A..Z 37..46=1..0。
@@ -159,8 +162,18 @@ const K_RIGHT: u8 = 8;
 const IN_MAX: usize = 16;
 static mut IN_BUF: [u8; IN_MAX * 16] = [0; IN_MAX * 16];
 
-/// 泵取按键（kind!=Key 的事件映射 0xFF=忽略；返回事件数）。
-fn input(out: &mut [u8; IN_MAX]) -> usize {
+/// 输入事件（键盘与鼠标对等——S2.05 R2 消费端闭环）。
+#[derive(Clone, Copy)]
+pub struct InEv {
+    pub key: u8,
+    pub is_mouse: bool,
+    pub dx: i16,
+    pub dy: i16,
+    pub btn: u8,
+}
+
+/// 泵取一批事件（键+鼠标混流；16B 契约逐字段解码）。
+fn input_events(out: &mut [InEv; IN_MAX]) -> usize {
     let n = syscall3(SYS_INPUT, core::ptr::addr_of!(IN_BUF) as u64, IN_MAX as u64, 0);
     let n = if n < 0 { 0 } else { (n as usize).min(IN_MAX) };
     unsafe {
@@ -169,7 +182,16 @@ fn input(out: &mut [u8; IN_MAX]) -> usize {
             let base = i * 16;
             let kind = buf[base + 8];
             let key = buf[base + 9];
-            out[i] = if kind == KIND_KEY { key } else { 0xFF };
+            let dx = i16::from_le_bytes([buf[base + 10], buf[base + 11]]);
+            let dy = i16::from_le_bytes([buf[base + 12], buf[base + 13]]);
+            let btn = buf[base + 14];
+            out[i] = if kind == KIND_KEY {
+                InEv { key, is_mouse: false, dx: 0, dy: 0, btn: 0 }
+            } else if kind == KIND_MOUSE {
+                InEv { key: 0xFF, is_mouse: true, dx, dy, btn }
+            } else {
+                InEv { key: 0xFF, is_mouse: false, dx: 0, dy: 0, btn: 0 } // 未知 kind 丢弃
+            };
         }
     }
     n
@@ -425,7 +447,7 @@ fn kv_set(ns: &[u8], key: &[u8], val: &[u8]) -> i64 {
 }
 
 // ---------------------------------------------------------------------------
-// 绘制
+// 绘制基元扩展（AI-4 · 视觉契约件）
 // ---------------------------------------------------------------------------
 
 struct Ui {
@@ -434,9 +456,7 @@ struct Ui {
 }
 
 impl Ui {
-    // 验收轮修复：原实现按 2px 条带循环 400 次 fill_rect（TCG 下 >50ms，
-    // 桌面帧长期处于「壁纸画完、图标未画」的中间态——实机截图与人眼均见
-    // 闪烁缺件）。三色带本就是纯色分段，改为 3 次整段填充，视觉逐像素等价。
+    /// 壁纸三段色带（与 tokens 暗色画布同向：深→更深→accent 海）。
     fn wallpaper(&self) {
         let h1 = self.h * 55 / 100;
         let h2 = self.h * 85 / 100;
@@ -444,14 +464,121 @@ impl Ui {
         fill_rect(0, h1, self.w, h2 - h1, C_WALL1);
         fill_rect(0, h2, self.w, self.h - h2, C_BLUE);
     }
+}
 
-    fn panel(&self, x: i64, y: i64, w: i64, h: i64, border: u64, title: &[u8]) {
-        fill_rect(x, y, w, h, C_PANEL);
-        outline(x, y, w, h, border);
-        fill_rect(x + 1, y + 1, w - 2, 24, C_DARK);
-        text(x + 8, y + 4, title, C_WHITE);
+/// 壁纸在竖坐标 y 处的段色（削角/浮层角回填依据——浮层永远浮在
+/// 「壁纸+任务栏」底图上，角落回填 = 该处壁纸段色，逐像素无痕）。
+fn wall_color_at(y: i64, ui: &Ui) -> u64 {
+    let h1 = ui.h * 55 / 100;
+    let h2 = ui.h * 85 / 100;
+    if y < h1 {
+        C_WALL0
+    } else if y < h2 {
+        C_WALL1
+    } else {
+        C_BLUE
     }
 }
+
+/// 面板四角削角（两段阶梯≈8px 圆角；角块回填壁纸段色）。
+/// 底部两角以任务栏上缘为界——越界部分不回填（任务栏会覆盖）。
+fn cut_corners(x: i64, y: i64, w: i64, h: i64, ui: &Ui) {
+    let tb_y = ui.h - 48;
+    for (dy, cw) in [(0i64, 8i64), (2, 3), (4, 2)] {
+        // 左上 / 右上
+        fill_rect(x, y + dy, cw, 2, wall_color_at(y + dy, ui));
+        fill_rect(x + w - cw, y + dy, cw, 2, wall_color_at(y + dy, ui));
+        // 左下 / 右下（不越过任务栏）
+        let by = y + h - 2 - dy;
+        if by < tb_y {
+            fill_rect(x, by, cw, 2, wall_color_at(by, ui));
+            fill_rect(x + w - cw, by, cw, 2, wall_color_at(by, ui));
+        }
+    }
+}
+
+/// 浮层面板（削角+描边）。装饰性 1px 边框让位削角（描边画在削角内）。
+fn float_panel(x: i64, y: i64, w: i64, h: i64, border: u64, ui: &Ui) {
+    fill_rect(x, y, w, h, C_PANEL);
+    cut_corners(x, y, w, h, ui);
+    // 描边四直边（角部留白由削角负责）。
+    fill_rect(x + 2, y, w - 4, 1, border);
+    fill_rect(x + 2, y + h - 1, w - 4, 1, border);
+    fill_rect(x, y + 2, 1, h - 4, border);
+    fill_rect(x + w - 1, y + 2, 1, h - 4, border);
+}
+
+/// 任务栏 START 四格 logo（win11 徽标语义：2×2 窗格）。
+fn draw_win_logo(x: i64, y: i64, hot: bool) {
+    let c1 = if hot { C_HILITE } else { C_BLUE };
+    let c2 = if hot { C_WHITE } else { C_CYAN };
+    fill_rect(x, y, 9, 9, c1);
+    fill_rect(x + 11, y, 9, 9, c2);
+    fill_rect(x, y + 11, 9, 9, c2);
+    fill_rect(x + 11, y + 11, 9, 9, c1);
+}
+
+/// 20×20 语义图标（菜单/桌面共用；色=语义：文件蓝/设置青/关于灰/
+/// 重启黄/关机红——与 Variable iconRegistry 语义色一致的方向）。
+fn draw_glyph(kind: usize, x: i64, y: i64) {
+    match kind {
+        0 => {
+            // Files：文件夹（体+突舌+两条内容线）
+            fill_rect(x, y + 5, 20, 12, C_BLUE);
+            fill_rect(x, y + 2, 9, 4, C_BLUE);
+            fill_rect(x + 3, y + 9, 14, 2, C_WHITE);
+            fill_rect(x + 3, y + 13, 10, 2, C_WHITE);
+        }
+        1 => {
+            // Settings：齿轮（四向齿+中心）
+            fill_rect(x + 7, y, 6, 20, C_CYAN);
+            fill_rect(x, y + 7, 20, 6, C_CYAN);
+            fill_rect(x + 5, y + 5, 10, 10, C_CYAN);
+            fill_rect(x + 8, y + 8, 4, 4, C_PANEL);
+        }
+        2 => {
+            // About：信息 i
+            fill_rect(x, y, 20, 20, C_LGRAY);
+            fill_rect(x + 9, y + 3, 2, 3, C_DARK);
+            fill_rect(x + 8, y + 8, 4, 8, C_DARK);
+        }
+        3 => {
+            // Restart：循环箭头（四段环+右上三角）
+            fill_rect(x + 4, y + 2, 12, 3, C_YELLOW);
+            fill_rect(x + 2, y + 4, 3, 12, C_YELLOW);
+            fill_rect(x + 15, y + 4, 3, 12, C_YELLOW);
+            fill_rect(x + 4, y + 15, 12, 3, C_YELLOW);
+            fill_rect(x + 14, y, 6, 5, C_WALL0);
+            fill_rect(x + 13, y + 1, 6, 3, C_YELLOW);
+        }
+        _ => {
+            // Shutdown：电源（竖条+环口）
+            fill_rect(x + 9, y + 2, 2, 8, C_RED);
+            fill_rect(x + 4, y + 5, 2, 7, C_RED);
+            fill_rect(x + 14, y + 5, 2, 7, C_RED);
+            fill_rect(x + 3, y + 11, 14, 3, C_RED);
+            fill_rect(x + 5, y + 14, 10, 2, C_RED);
+        }
+    }
+}
+
+/// 鼠标光标（箭头：黑描底 + 白面；11 行逐行 fill，逐行加宽）。
+fn draw_cursor(cx: i64, cy: i64) {
+    // 黑描边（整体偏移 1px）
+    for i in 0..7 {
+        fill_rect(cx + 1, cy + 1 + i, i + 2, 1, C_DARK);
+    }
+    fill_rect(cx + 1, cy + 8, 4, 4, C_DARK);
+    fill_rect(cx + 3, cy + 8, 3, 4, C_DARK);
+    // 白面
+    for i in 0..7 {
+        fill_rect(cx, cy + i, i + 1, 1, C_WHITE);
+    }
+    fill_rect(cx, cy + 7, 2, 4, C_WHITE);
+    fill_rect(cx + 1, cy + 8, 1, 3, C_WHITE);
+}
+
+// --- 既有绘制件（里程碑文案等） ---
 
 /// 加载动画里程碑文案（stage 索引 0~2，随进度分段切换）。
 const LOAD_STAGES: [&[u8]; 3] = [
@@ -488,52 +615,222 @@ fn draw_loading(ui: &Ui, pct: i64, stage: usize, dots: usize) {
 }
 
 const MENU_ITEMS: [&[u8]; 5] = [b"Files", b"Settings", b"About", b"Restart", b"Shutdown"];
+/// 菜单项图标语义色（与 draw_glyph kind 同序）。
+const MENU_KINDS: [usize; 5] = [0, 1, 2, 3, 4];
 
-/// 桌面底图=壁纸+任务栏。验收轮修复：窗口页（files/settings/about）此前
-/// 只画自身窗口、不重绘背景——从菜单态切页时菜单浮层/任务栏像素残留
-/// （实机截图 06/07/08 叠着菜单三项文字）。切页时统一重建底图。
-fn draw_backdrop(ui: &Ui) {
-    ui.wallpaper();
-    let tb_y = ui.h - 48;
-    fill_rect(0, tb_y, ui.w, 48, C_TASKBAR);
-    fill_rect(0, tb_y, ui.w, 2, C_BLUE);
-    fill_rect(8, tb_y + 8, 88, 32, C_BLUE);
-    text(24, tb_y + 16, b"START", C_WHITE);
-    text(120, tb_y + 16, b"VARIABLE SYSTEM", C_LGRAY);
-    text(ui.w - 104, tb_y + 16, b"ring3 shell", C_DIM);
+/// 几何常量（命中测试与绘制同源——S2.09 语义：几何即契约）。
+const TB_H: i64 = 48;
+const MENU_W: i64 = 300;
+const MENU_ITEM_H: i64 = 48;
+const ICON_W: i64 = 96;
+const ICON_H: i64 = 72;
+
+/// 任务栏（win11 化：四格 logo START + 品牌 + 右侧 uptime 时钟）。
+/// hover_start=START 悬停；up_m/s=uptime 分秒（无钟=不画时钟行）。
+fn draw_taskbar(ui: &Ui, menu_open: bool, hot_start: bool, up: Option<(u64, u64)>) {
+    let tb_y = ui.h - TB_H;
+    fill_rect(0, tb_y, ui.w, TB_H, C_TASKBAR);
+    fill_rect(0, tb_y, ui.w, 2, if menu_open { C_HILITE } else { C_BLUE });
+    // START 按钮：四格 logo + 文案（hover 提亮，开启态常亮描边）。
+    let btn_c = if menu_open || hot_start { C_HILITE } else { C_BLUE };
+    fill_rect(8, tb_y + 8, 108, 32, btn_c);
+    draw_win_logo(16, tb_y + 14, hot_start && !menu_open);
+    text(44, tb_y + 16, b"START", C_WHITE);
+    text(132, tb_y + 16, b"VARIABLE SYSTEM", C_LGRAY);
+    // 右侧：uptime 时钟 + 系统标识（内核无 RTC，活时钟=诚实运行时长）。
+    if let Some((m, s)) = up {
+        let mut line = [0u8; 12];
+        let head = b"UP ";
+        line[..head.len()].copy_from_slice(head);
+        let mut p = head.len();
+        let mut nb = [0u8; 8];
+        let d = u64_bytes(m, &mut nb);
+        line[p..p + d].copy_from_slice(&nb[..d]);
+        p += d;
+        line[p] = b':';
+        p += 1;
+        if s < 10 {
+            line[p] = b'0';
+            p += 1;
+        }
+        let d = u64_bytes(s, &mut nb);
+        line[p..p + d].copy_from_slice(&nb[..d]);
+        p += d;
+        text(ui.w - 190, tb_y + 16, &line[..p], C_LGRAY);
+    }
+    text(ui.w - 104, tb_y + 16, b"VARIX", C_DIM);
 }
 
-fn draw_desktop(ui: &Ui, menu_open: bool, menu_sel: usize) {
-    draw_backdrop(ui);
+/// 桌面底图=壁纸+任务栏。切页时统一重建底图（残留修复语义保持）。
+fn draw_backdrop(ui: &Ui, menu_open: bool, hot_start: bool, up: Option<(u64, u64)>) {
+    ui.wallpaper();
+    draw_taskbar(ui, menu_open, hot_start, up);
+}
+
+/// 悬停语义（命中测试纯数据；绘制与点击共用同一几何常量）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Hot {
+    None,
+    StartBtn,
+    MenuItem(usize),
+    DesktopIcon(usize),
+    WinClose,
+    FileRow(usize),
+    SetRow(usize),
+}
+
+/// 命中测试（光标几何 → Hot；与绘制函数同一套常量）。
+fn hit_test(ui: &Ui, phase: u8, menu_sel: usize, cx: i64, cy: i64, f: &Files, hot_close: bool) -> Hot {
+    let tb_y = ui.h - TB_H;
+    // 任务栏优先（浮层之下）。
+    if cy >= tb_y {
+        if cx >= 8 && cx < 116 {
+            return Hot::StartBtn;
+        }
+        return Hot::None;
+    }
+    // 开始菜单浮层（浮于一切之上）。
+    if phase == 1 {
+        let (mx, my) = (8i64, ui.h - TB_H - 312);
+        if cx >= mx && cx < mx + MENU_W && cy >= my && cy < my + 5 * MENU_ITEM_H + 40 {
+            let row = ((cy - my - 32) / MENU_ITEM_H) as usize; // 顶部 32px=标题行
+            if (cy - my) >= 32 && row < MENU_ITEMS.len() {
+                return Hot::MenuItem(row);
+            }
+            return Hot::None;
+        }
+    }
+    // 桌面图标（phase 0/1 桌面可见）。
+    if phase == 0 || phase == 1 {
+        for i in 0..3 {
+            let x = 24;
+            let y = 24 + (i as i64) * (ICON_H + 16);
+            if cx >= x && cx < x + ICON_W && cy >= y && cy < y + ICON_H {
+                return Hot::DesktopIcon(i);
+            }
+        }
+    }
+    // 窗口页命中（关闭钮在标题栏右上）。
+    let (wx, wy, ww) = win_geo(ui, phase);
+    if hot_close && cx >= wx + ww - 32 && cx < wx + ww - 12 && cy >= wy + 4 && cy < wy + 22 {
+        return Hot::WinClose;
+    }
+    if phase == 2 && f.count > 0 {
+        // 文件行命中
+        let (x, y, w, h) = win_body(ui, 2);
+        let _ = (w, h);
+        if cx >= x + 4 && cx < x + w - 4 && cy >= y + 32 && cy < y + h - 28 {
+            let rows = ((h - 64) / 28) as usize;
+            let row = ((cy - y - 32) / 28) as usize;
+            let start = if f.sel >= rows { f.sel + 1 - rows } else { 0 };
+            let idx = start + row;
+            if idx < f.count {
+                return Hot::FileRow(idx);
+            }
+        }
+    }
+    if phase == 4 {
+        let (x, y, w, h) = win_body(ui, 4);
+        if cx >= x + 4 && cx < x + w - 4 && cy >= y + 40 && cy < y + h - 28 {
+            let row = ((cy - y - 40) / 56) as usize;
+            if row < 3 {
+                return Hot::SetRow(row);
+            }
+        }
+    }
+    let _ = menu_sel;
+    Hot::None
+}
+
+/// 窗口几何（phase 2/3/4/5 共用；绘制与命中同源）。
+fn win_geo(ui: &Ui, phase: u8) -> (i64, i64, i64) {
+    match phase {
+        2 | 3 => (60, 60, ui.w.min(760) - 40),
+        4 => (80, 80, ui.w.min(640) - 40),
+        _ => (80, 80, ui.w.min(640) - 40),
+    }
+}
+
+/// 窗口内容区几何（标题栏 28px 之下）。
+fn win_body(ui: &Ui, phase: u8) -> (i64, i64, i64, i64) {
+    let (x, y, w) = win_geo(ui, phase);
+    let h = if phase == 2 || phase == 3 { ui.h - 60 - 120 } else if phase == 4 { 300 } else { 336 };
+    (x, y, w, h)
+}
+
+/// 窗口面板（win11 化：accent 标题条 + [×] 关闭钮 + 右下阴影）。
+/// 返回关闭钮几何（命中测试同源）。
+fn draw_window(ui: &Ui, phase: u8, border: u64, title: &[u8], hot_close: bool) {
+    let (x, y, w) = win_geo(ui, phase);
+    let (_, by, _, bh) = win_body(ui, phase);
+    // 阴影（右+下 3px，先画被窗口覆盖大半只露边缘）。
+    fill_rect(x + 3, y + 3, w, bh + 25, C_DARK);
+    // 主体。
+    fill_rect(x, y, w, bh, C_PANEL);
+    cut_corners(x, y, w, bh, ui);
+    // 标题栏：accent 条 + 深色底 + 标题。
+    fill_rect(x + 1, y + 1, w - 2, 26, C_DARK);
+    fill_rect(x + 1, y + 1, 4, 26, C_BLUE);
+    text(x + 12, y + 5, title, C_WHITE);
+    // [×] 关闭钮（hot=红底；点击=Esc 等价）。
+    fill_rect(x + w - 32, y + 4, 20, 20, if hot_close { C_RED } else { C_PANEL });
+    text(x + w - 27, y + 4, b"X", if hot_close { C_WHITE } else { C_DIM });
+    // 描边。
+    outline(x, y, w, bh, border);
+    let _ = by;
+}
+
+fn draw_desktop(
+    ui: &Ui,
+    menu_open: bool,
+    menu_sel: usize,
+    hot: Hot,
+    up: Option<(u64, u64)>,
+) {
+    draw_backdrop(ui, menu_open, hot == Hot::StartBtn, up);
+    // 桌面图标（图形区+标签+hover 淡高亮）。
     let icons: [&[u8]; 3] = [b"FILES", b"SETTINGS", b"ABOUT"];
     for (i, label) in icons.iter().enumerate() {
         let x = 24;
-        let y = 24 + (i as i64) * 72;
-        fill_rect(x, y, 96, 56, C_PANEL);
-        outline(x, y, 96, 56, C_LGRAY);
-        text(x + 8, y + 20, label, C_WHITE);
+        let y = 24 + (i as i64) * (ICON_H + 16);
+        let hovered = hot == Hot::DesktopIcon(i);
+        if hovered {
+            fill_rect(x - 4, y - 4, ICON_W + 8, ICON_H + 8, C_HILITE);
+        }
+        fill_rect(x, y, ICON_W, ICON_H, C_PANEL);
+        cut_corners(x, y, ICON_W, ICON_H, ui);
+        draw_glyph(i, x + (ICON_W - 20) / 2, y + 10);
+        let lw = label.len() as i64 * GLYPH_W;
+        text(x + (ICON_W - lw) / 2, y + 44, label, C_WHITE);
     }
     if menu_open {
-        // 五项菜单：8px 顶 pad + 5x48 行 + 8px 底 pad = 256；距任务栏 4px。
-        let (mx, my, mw, mh) = (8, ui.h - 48 - 260, 280, 256);
-        fill_rect(mx, my, mw, mh, C_PANEL);
-        outline(mx, my, mw, mh, C_LGRAY);
+        // 五项菜单：32px 标题行 + 5×48 行 + 削角面板；距任务栏 16px。
+        let (mx, my) = (8i64, ui.h - TB_H - 312);
+        let mh = 32 + 5 * MENU_ITEM_H + 24;
+        float_panel(mx, my, MENU_W, mh, C_LGRAY, ui);
+        text(mx + 12, my + 8, b"START", C_DIM);
         for (i, it) in MENU_ITEMS.iter().enumerate() {
-            let ry = my + 8 + (i as i64) * 48;
-            if i == menu_sel {
-                fill_rect(mx + 4, ry, mw - 8, 44, C_HILITE);
+            let ry = my + 32 + (i as i64) * MENU_ITEM_H;
+            let focused = i == menu_sel;
+            let hovered = hot == Hot::MenuItem(i);
+            if focused {
+                fill_rect(mx + 6, ry, MENU_W - 12, MENU_ITEM_H - 6, C_HILITE);
+            } else if hovered {
+                fill_rect(mx + 6, ry, MENU_W - 12, MENU_ITEM_H - 6, C_DARK);
             }
-            text(mx + 16, ry + 12, it, C_WHITE);
+            draw_glyph(MENU_KINDS[i], mx + 14, ry + 12);
+            text(mx + 44, ry + 14, it, C_WHITE);
         }
+        // 底部用户区（win11 菜单尾行语义）。
+        let uy = my + 32 + 5 * MENU_ITEM_H + 4;
+        fill_rect(mx + 6, uy, MENU_W - 12, 1, C_DARK);
+        text(mx + 14, uy + 6, b"user @ varix", C_DIM);
     }
 }
 
-fn draw_files(ui: &Ui, f: &Files) {
-    let w = ui.w.min(760) - 40;
-    let x = 60;
-    let y = 60;
-    let h = ui.h - 60 - 120;
-    ui.panel(x, y, w, h, C_LGRAY, b"FILES - SHARED");
+fn draw_files(ui: &Ui, f: &Files, hot: Hot) {
+    let (x, y, w, h) = win_body(ui, 2);
+    draw_window(ui, 2, C_LGRAY, b"FILES - SHARED", hot == Hot::WinClose);
     let rows = ((h - 64) / 28) as usize;
     let count = f.count;
     if count > 0 {
@@ -544,10 +841,14 @@ fn draw_files(ui: &Ui, f: &Files) {
             let ry = y + 32 + (r as i64) * 28;
             if idx == f.sel {
                 fill_rect(x + 4, ry, w - 8, 26, C_HILITE);
+            } else if hot == Hot::FileRow(idx) {
+                fill_rect(x + 4, ry, w - 8, 26, C_DARK);
             }
             let slot = &f.names[idx];
             let name = &slot[..slot.iter().position(|&b| b == 0).unwrap_or(40)];
-            text(x + 12, ry + 4, name, C_WHITE);
+            // 文件/目录语义点（目录=青点，文件=灰点）。
+            fill_rect(x + 12, ry + 9, 8, 8, if f.is_dir[idx] { C_CYAN } else { C_LGRAY });
+            text(x + 28, ry + 4, name, C_WHITE);
             let mut nb = [0u8; 12];
             let d = u64_bytes(f.sizes[idx], &mut nb);
             let tag: &[u8] = if f.is_dir[idx] { b"<DIR>" } else { &nb[..d] };
@@ -571,12 +872,9 @@ fn draw_files(ui: &Ui, f: &Files) {
     );
 }
 
-fn draw_file_view(ui: &Ui, f: &Files) {
-    let w = ui.w.min(760) - 40;
-    let x = 60;
-    let y = 60;
-    let h = ui.h - 60 - 120;
-    ui.panel(x, y, w, h, C_CYAN, b"FILE VIEW");
+fn draw_file_view(ui: &Ui, f: &Files, hot: Hot) {
+    let (x, y, w, h) = win_body(ui, 3);
+    draw_window(ui, 3, C_CYAN, b"FILE VIEW", hot == Hot::WinClose);
     let b = blk();
     let n = (out_u32(512) as usize).min(2048);
     let data = &b[516..516 + n];
@@ -600,17 +898,16 @@ fn draw_file_view(ui: &Ui, f: &Files) {
     let _ = f;
 }
 
-fn draw_settings(ui: &Ui, s: &Settings, sel: usize) {
-    let w = ui.w.min(640) - 40;
-    let x = 80;
-    let y = 80;
-    let h = 300;
-    ui.panel(x, y, w, h, C_LGRAY, b"SETTINGS - BOOT BEHAVIOR");
+fn draw_settings(ui: &Ui, s: &Settings, sel: usize, hot: Hot) {
+    let (x, y, w, h) = win_body(ui, 4);
+    draw_window(ui, 4, C_LGRAY, b"SETTINGS - BOOT BEHAVIOR", hot == Hot::WinClose);
     let labels: [&[u8]; 3] = [b"BOOT TIMEOUT", b"SHOW MENU", b"DEFAULT ENTRY"];
     for (i, label) in labels.iter().enumerate() {
         let ry = y + 40 + (i as i64) * 56;
         if i == sel {
             fill_rect(x + 4, ry, w - 8, 52, C_HILITE);
+        } else if hot == Hot::SetRow(i) {
+            fill_rect(x + 4, ry, w - 8, 52, C_DARK);
         }
         text(x + 16, ry + 6, label, C_WHITE);
         let mut vb = [0u8; 24];
@@ -638,22 +935,19 @@ fn draw_settings(ui: &Ui, s: &Settings, sel: usize) {
     text(
         x + 8,
         y + h - 22,
-        b"STORE: KV-RAM (session) - disk-backed KV: task24",
+        b"STORE: KV (task24) - settings persist",
         C_YELLOW,
     );
 }
 
-fn draw_about(ui: &Ui, info: &[u8]) {
-    let w = ui.w.min(640) - 40;
-    let x = 80;
-    let y = 80;
-    let h = 336;
-    ui.panel(x, y, w, h, C_CYAN, b"ABOUT - VARIABLE SYSTEM");
+fn draw_about(ui: &Ui, info: &[u8], hot: Hot) {
+    let (x, y, _, _) = win_body(ui, 5);
+    draw_window(ui, 5, C_CYAN, b"ABOUT - VARIABLE SYSTEM", hot == Hot::WinClose);
     let lines: [&[u8]; 8] = [
         b"Variable System - VARIX kernel",
         b"UI host: ushell.elf (ring3 process)",
         b"render: SYS_FRAME -> display service",
-        b"input: SYS_INPUT (shim://input 16B)",
+        b"input: SYS_INPUT (keys + mouse)",
         b"shim: SYS_SHIM (KV/VFS/boot events)",
         b"restart: SYS_REBOOT -> Windows",
         b"shutdown: SYS_POWEROFF -> ACPI S5",
@@ -662,6 +956,7 @@ fn draw_about(ui: &Ui, info: &[u8]) {
     for (i, l) in lines.iter().enumerate() {
         text(x + 16, y + 36 + (i as i64) * 28, l, if i == 7 { C_YELLOW } else { C_LGRAY });
     }
+    let _ = hot;
 }
 
 // ---------------------------------------------------------------------------
@@ -708,6 +1003,24 @@ fn report_count(f: &Files) {
     puts(b"\n");
 }
 
+/// 鼠标点击动作结果（与键盘动作同表分派——双通道能力对等）。
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Click {
+    None,
+    ToggleMenu,
+    OpenFiles,
+    OpenSettings,
+    OpenAbout,
+    Reboot,
+    PowerOff,
+    CloseWin,
+    OpenSelFile,
+    PickFile(usize),
+    PickSetting(usize),
+    SetToggle,
+    Adjust(i64),
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
     let (w, h) = disp_info();
@@ -737,11 +1050,6 @@ pub extern "C" fn _start() -> ! {
     }
     let ui = Ui { w, h };
 
-    // ① Loading（2026-09-19 用户验收）：Variable 是主系统——内核加载完
-    //    的瞬间自动进入加载动画，零按键零选项；里程碑推进 + 平滑进度，
-    //    ≥2s 直落桌面。全程吞键（排队键不穿到桌面误开菜单）。活时钟取
-    //    自诊断记录（内核每次 CMD_BOOT_EVENTS 实时注入）；旧内核无记录
-    //    → 帧数兜底（固定帧数+短自旋后照常进桌面，绝不死等）。
     let mut files = Files {
         names: [[0; 40]; 16],
         sizes: [0; 16],
@@ -750,7 +1058,7 @@ pub extern "C" fn _start() -> ! {
         sel: 0,
         source: false,
     };
-    let mut ev = [0u8; IN_MAX];
+    let mut evs = [InEv { key: 0, is_mouse: false, dx: 0, dy: 0, btn: 0 }; IN_MAX];
     marker(b"SHELL: entering variable-system");
     blk_clear();
     let _ = shim(CMD_BOOT_EVENTS);
@@ -761,8 +1069,8 @@ pub extern "C" fn _start() -> ! {
     let mut did_files = false;
     let mut frame: u64 = 0;
     loop {
-        // 吞键：加载期任何按键都不跳过动画（零选项直达桌面）。
-        let _ = input(&mut ev);
+        // 吞键吞鼠：加载期任何输入都不跳过动画（零选项直达桌面）。
+        let _ = input_events(&mut evs);
         // 活时钟：每帧重取（诊断记录由内核实时注入）。
         blk_clear();
         let _ = shim(CMD_BOOT_EVENTS);
@@ -839,44 +1147,105 @@ pub extern "C" fn _start() -> ! {
     let mut setting_sel = 0usize;
     let mut about_info = [0u8; 64];
 
+    // 鼠标状态（S2.05 R2 消费端）：光标初始屏幕中心；按钮位边沿检测。
+    let mut cur = (w / 2, h / 2);
+    let mut prev_btn = 0u8;
+    let mut prev_hot = Hot::None;
+    let mut prev_up = (u64::MAX, u64::MAX);
+
     // 验收轮修复 · 切页重建底图：prev_phase 初始取不可能值强制首帧重建。
-    // 窗口页只画自身窗口，背景（壁纸+任务栏）由切页瞬间一次性画好；
-    // 同页内循环重画窗口自清（浮层如菜单随 phase 切换消失无残留）。
-    //
-    // 验收轮修复 · 按需重绘：原实现每轮循环无条件重画当前页——无按键时
-    // 也以全速空转重绘（TCG 下循环内壁纸三段 fill 约 55 万像素/轮是绝对
-    // 大头），实机截图/人眼会落在「壁纸已覆盖上帧图标、图标未重画」的
-    // 中间态（02 桌面缺图标、03 缺菜单、06 缺设置文字皆此机理：走查脚
-    // 本固定延时命中循环不同相位）。改为仅状态变化时重画：稳态画面静
-    // 止为完整帧（任何时刻截图完整），空闲 CPU 占用同步归零。
     let mut prev_phase = 99u8;
     let mut need_redraw = true;
     loop {
-        if phase != prev_phase {
-            draw_backdrop(&ui);
+        let up = uptime_tuple();
+        // 悬停/时钟变化检测（先于重绘判定）。
+        let hot = hit_test(&ui, phase, menu_sel, cur.0, cur.1, &files, true);
+        if phase != prev_phase || hot != prev_hot || up != prev_up {
+            draw_backdrop(&ui, phase == 1, hot == Hot::StartBtn && phase == 0, Some(up));
             prev_phase = phase;
+            prev_hot = hot;
+            prev_up = up;
             need_redraw = true;
         }
         if need_redraw {
             match phase {
-                0 | 1 => draw_desktop(&ui, phase == 1, menu_sel),
-                2 => draw_files(&ui, &files),
-                3 => draw_file_view(&ui, &files),
-                4 => draw_settings(&ui, &settings, setting_sel),
-                _ => draw_about(&ui, &about_info[..info_len(&about_info)]),
+                0 | 1 => draw_desktop(&ui, phase == 1, menu_sel, hot, Some(up)),
+                2 => draw_files(&ui, &files, hot),
+                3 => draw_file_view(&ui, &files, hot),
+                4 => draw_settings(&ui, &settings, setting_sel, hot),
+                _ => draw_about(&ui, &about_info[..info_len(&about_info)], hot),
             }
+            draw_cursor(cur.0, cur.1);
             need_redraw = false;
         }
 
-        let n = input(&mut ev);
+        let n = input_events(&mut evs);
         if n == 0 {
             continue;
         }
-        // 任一有效按键（含未改变状态的键）都触发下轮重绘：重画幂等，
-        // 漏判状态变化的代价（画面陈旧）远大于多画一帧。
         let mut handled = false;
-        'keys: for i in 0..n {
-            let key = ev[i];
+        let mut click = Click::None;
+        'input: for i in 0..n {
+            let e = evs[i];
+            if e.is_mouse {
+                // 鼠标：位移累加+视口钳制；按钮位边沿→点击。
+                if e.dx != 0 || e.dy != 0 {
+                    cur.0 = (cur.0 + e.dx as i64).clamp(0, w - 1);
+                    cur.1 = (cur.1 - e.dy as i64).clamp(0, h - 1); // PS/2 语义 dy 正=向上（与 bootselect 同契约）
+                    handled = true;
+                }
+                let pressed = e.btn & !prev_btn;
+                prev_btn = e.btn;
+                if pressed & 1 != 0 {
+                    // 左键按下：按当前 hover 分派（悬停与命中同一几何）。
+                    let h2 = hit_test(&ui, phase, menu_sel, cur.0, cur.1, &files, true);
+                    click = match h2 {
+                        Hot::StartBtn => Click::ToggleMenu,
+                        Hot::MenuItem(idx) => match idx {
+                            0 => Click::OpenFiles,
+                            1 => Click::OpenSettings,
+                            2 => Click::OpenAbout,
+                            3 => Click::Reboot,
+                            _ => Click::PowerOff,
+                        },
+                        Hot::DesktopIcon(idx) => match idx {
+                            0 => Click::OpenFiles,
+                            1 => Click::OpenSettings,
+                            _ => Click::OpenAbout,
+                        },
+                        Hot::WinClose => Click::CloseWin,
+                        Hot::FileRow(idx) => {
+                            if idx == files.sel {
+                                Click::OpenSelFile
+                            } else {
+                                Click::PickFile(idx)
+                            }
+                        }
+                        Hot::SetRow(row) => {
+                            if row == setting_sel {
+                                if row == 1 {
+                                    Click::SetToggle
+                                } else {
+                                    // 已选中行再点：行中点右侧=+1 左侧=-1
+                                    let (_, _, ww) = win_geo(&ui, 4);
+                                    let (x, _, _, _) = win_body(&ui, 4);
+                                    if cur.0 > x + ww - 220 {
+                                        Click::Adjust(1)
+                                    } else {
+                                        Click::Adjust(-1)
+                                    }
+                                }
+                            } else {
+                                Click::PickSetting(row)
+                            }
+                        }
+                        Hot::None => Click::None,
+                    };
+                    break 'input;
+                }
+                continue;
+            }
+            let key = e.key;
             if key == 0xFF {
                 continue;
             }
@@ -887,7 +1256,7 @@ pub extern "C" fn _start() -> ! {
                         phase = 1;
                         menu_sel = 0;
                         marker(b"SHELL: startmenu opened");
-                        break 'keys;
+                        break 'input;
                     }
                 }
                 1 => match key {
@@ -895,55 +1264,14 @@ pub extern "C" fn _start() -> ! {
                     K_DOWN => menu_sel = (menu_sel + 1) % MENU_ITEMS.len(),
                     K_ESC => phase = 0,
                     K_ENTER => {
-                        match menu_sel {
-                            0 => {
-                                files.refresh();
-                                // 每次进文件页都重报数据源（任务58 拔出全链
-                                // 演练依赖：拔 SHARED 后如实降级 demo-tree）。
-                                report_count(&files);
-                                phase = 2;
-                                marker(b"SHELL: files opened");
-                            }
-                            1 => {
-                                settings.load();
-                                // 重进设置页光标归零（与开始菜单 menu_sel、
-                                // 文件页 files.sel 同一约定：页面重进=顶部）。
-                                setting_sel = 0;
-                                phase = 4;
-                                marker(b"SHELL: settings opened");
-                            }
-                            2 => {
-                                let (nk, _) = kv_count(b"settings");
-                                let head = b"kv-keys=";
-                                let mut nb = [0u8; 8];
-                                let d = u64_bytes(nk, &mut nb);
-                                let total = head.len() + d;
-                                about_info[..head.len()].copy_from_slice(head);
-                                about_info[head.len()..total].copy_from_slice(&nb[..d]);
-                                phase = 5;
-                                marker(b"SHELL: about opened");
-                            }
-                            3 => {
-                                // 随时切回 Windows（2026-09-20）：SYS_REBOOT
-                                // 复位整机 → 固件默认引导序 → 内置盘
-                                // Windows bootmgr（BCD 菜单 5s 默认进
-                                // Windows）。正常永不返回。
-                                marker(b"SHELL: restart requested - rebooting");
-                                let _ = syscall3(SYS_REBOOT, 0, 0, 0);
-                                // 到这里 = 复位失败：如实回到桌面继续可用。
-                                marker(b"SHELL: restart failed - still running");
-                            }
-                            4 => {
-                                // 关机（2026-09-19）：SYS_POWEROFF → 内核
-                                // UEFI ResetSystem(Shutdown) → ACPI S5 阶
-                                // 梯。正常永不返回；全败时如实回到桌面。
-                                marker(b"SHELL: shutdown requested - powering off");
-                                let _ = syscall3(SYS_POWEROFF, 0, 0, 0);
-                                marker(b"SHELL: shutdown failed - still running");
-                            }
-                            _ => {}
-                        }
-                        break 'keys;
+                        click = match menu_sel {
+                            0 => Click::OpenFiles,
+                            1 => Click::OpenSettings,
+                            2 => Click::OpenAbout,
+                            3 => Click::Reboot,
+                            _ => Click::PowerOff,
+                        };
+                        break 'input;
                     }
                     _ => {}
                 },
@@ -959,59 +1287,24 @@ pub extern "C" fn _start() -> ! {
                         }
                     }
                     K_ESC => phase = 0,
-                    K_ENTER => {
-                        if files.count > 0 && !files.is_dir[files.sel] {
-                            blk_clear();
-                            put(0, files.name());
-                            let rc = shim(CMD_VFS_READ);
-                            if rc >= 0 {
-                                let mut line = [0u8; 72];
-                                let head = b"SHELL: file opened name=";
-                                let mut p = 0usize;
-                                line[p..p + head.len()].copy_from_slice(head);
-                                p += head.len();
-                                let nm = files.name();
-                                let m = nm.len().min(line.len() - p - 12);
-                                line[p..p + m].copy_from_slice(&nm[..m]);
-                                p += m;
-                                let mid = b" bytes=";
-                                line[p..p + 7].copy_from_slice(mid);
-                                p += 7;
-                                let mut nb = [0u8; 8];
-                                let d = u64_bytes(rc as u64, &mut nb);
-                                line[p..p + d].copy_from_slice(&nb[..d]);
-                                p += d;
-                                puts(&line[..p]);
-                                puts(b"\n");
-                                phase = 3;
-                            }
-                            break 'keys;
-                        }
-                    }
+                    K_ENTER => click = Click::OpenSelFile,
                     _ => {}
                 },
                 3 => {
                     if key == K_ESC || key == K_ENTER {
                         phase = 2;
-                        break 'keys;
+                        break 'input;
                     }
                 }
                 4 => match key {
                     K_UP => setting_sel = (setting_sel + 2) % 3,
                     K_DOWN => setting_sel = (setting_sel + 1) % 3,
                     K_ESC => phase = 0,
-                    K_LEFT => adjust_setting(&mut settings, setting_sel, -1),
-                    K_RIGHT => adjust_setting(&mut settings, setting_sel, 1),
+                    K_LEFT => click = Click::Adjust(-1),
+                    K_RIGHT => click = Click::Adjust(1),
                     K_ENTER => {
                         if setting_sel == 1 {
-                            settings.show_menu = !settings.show_menu;
-                            let rc = kv_set(
-                                b"settings",
-                                b"show_menu",
-                                if settings.show_menu { b"1" } else { b"0" },
-                            );
-                            report_kv(b"show_menu", rc);
-                            break 'keys;
+                            click = Click::SetToggle;
                         }
                     }
                     _ => {}
@@ -1019,11 +1312,101 @@ pub extern "C" fn _start() -> ! {
                 _ => {
                     if key == K_ESC || key == K_ENTER {
                         phase = 0;
-                        break 'keys;
+                        break 'input;
                     }
                 }
             }
         }
+        // 点击/键盘动作统一执行（双通道同表）。
+        match click {
+            Click::None => {}
+            Click::ToggleMenu => {
+                phase = if phase == 1 { 0 } else { 1 };
+                menu_sel = 0;
+                if phase == 1 {
+                    marker(b"SHELL: startmenu opened");
+                }
+            }
+            Click::OpenFiles => {
+                files.refresh();
+                report_count(&files);
+                setting_sel = 0;
+                phase = 2;
+                marker(b"SHELL: files opened");
+            }
+            Click::OpenSettings => {
+                settings.load();
+                setting_sel = 0;
+                phase = 4;
+                marker(b"SHELL: settings opened");
+            }
+            Click::OpenAbout => {
+                let (nk, _) = kv_count(b"settings");
+                let head = b"kv-keys=";
+                let mut nb = [0u8; 8];
+                let d = u64_bytes(nk, &mut nb);
+                let total = head.len() + d;
+                about_info[..head.len()].copy_from_slice(head);
+                about_info[head.len()..total].copy_from_slice(&nb[..d]);
+                phase = 5;
+                marker(b"SHELL: about opened");
+            }
+            Click::Reboot => {
+                marker(b"SHELL: restart requested - rebooting");
+                let _ = syscall3(SYS_REBOOT, 0, 0, 0);
+                marker(b"SHELL: restart failed - still running");
+            }
+            Click::PowerOff => {
+                marker(b"SHELL: shutdown requested - powering off");
+                let _ = syscall3(SYS_POWEROFF, 0, 0, 0);
+                marker(b"SHELL: shutdown failed - still running");
+            }
+            Click::CloseWin => phase = 0,
+            Click::OpenSelFile => {
+                if phase == 2 && files.count > 0 && !files.is_dir[files.sel] {
+                    blk_clear();
+                    put(0, files.name());
+                    let rc = shim(CMD_VFS_READ);
+                    if rc >= 0 {
+                        let mut line = [0u8; 72];
+                        let head = b"SHELL: file opened name=";
+                        let mut p = 0usize;
+                        line[p..p + head.len()].copy_from_slice(head);
+                        p += head.len();
+                        let nm = files.name();
+                        let m = nm.len().min(line.len() - p - 12);
+                        line[p..p + m].copy_from_slice(&nm[..m]);
+                        p += m;
+                        let mid = b" bytes=";
+                        line[p..p + 7].copy_from_slice(mid);
+                        p += 7;
+                        let mut nb = [0u8; 8];
+                        let d = u64_bytes(rc as u64, &mut nb);
+                        line[p..p + d].copy_from_slice(&nb[..d]);
+                        p += d;
+                        puts(&line[..p]);
+                        puts(b"\n");
+                        phase = 3;
+                    }
+                }
+            }
+            Click::PickFile(idx) => files.sel = idx,
+            Click::PickSetting(row) => setting_sel = row,
+            Click::SetToggle => {
+                settings.show_menu = !settings.show_menu;
+                let rc = kv_set(
+                    b"settings",
+                    b"show_menu",
+                    if settings.show_menu { b"1" } else { b"0" },
+                );
+                report_kv(b"show_menu", rc);
+            }
+            Click::Adjust(dir) => {
+                let sel = if phase == 4 { setting_sel } else { 0 };
+                adjust_setting(&mut settings, sel, dir);
+            }
+        }
+        let _ = click;
         if handled {
             need_redraw = true;
         }
@@ -1032,6 +1415,21 @@ pub extern "C" fn _start() -> ! {
 
 fn info_len(buf: &[u8]) -> usize {
     buf.iter().position(|&b| b == 0).unwrap_or(buf.len())
+}
+
+/// uptime（活时钟 ms → (分, 秒)；无钟=None 不画时钟行——诚实缺数据）。
+fn uptime_tuple() -> (u64, u64) {
+    blk_clear();
+    let rc = shim(CMD_BOOT_MS);
+    if rc < 0 {
+        return (u64::MAX, u64::MAX);
+    }
+    let ms = {
+        let b = blk();
+        u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+    };
+    let s = ms / 1000;
+    ((s / 60) % 1000, s % 60)
 }
 
 /// kv_keys 计数（About 页指标）。

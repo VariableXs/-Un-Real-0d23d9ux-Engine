@@ -73,9 +73,16 @@ audit.cjs 新增 **SHIM DEGRADE GATE (S2.10)** 段：perfBaseline.ts 的 Degrade
 
 逐字段核对结论：**机制已闭环，无需施工**。内核 14 阶段（Serial→SelfTest）timeline 快照 16B 记录（idx/state/ms）+ 第 15 条诊断记录（活时钟+键盘诊断字，idx=14 实机取证）经 SYS_SHIM 回放；前端 BootEventBuffer 载荷与 Windows 侧 LoadEvent 逐字段同构（camelCase），去重/乱序排序/进度单调夹取三容错齐备；bootPhase 迁移仍由 BootScreen onExitStart/onDone 驱动（App.tsx 零改动）。真机走查待 S4.1 后并行走查。
 
-### 2.5 R2 ushell 视觉对齐（并行配合项）
+### 2.5 R2 ushell 视觉对齐（第二会话施工，2026-09-21 晚）
 
-现状核查：ushell 兜底桌面已实机 20/20 走查，引导期 UI（三卡菜单/handoff 交接画面）视觉语言已对齐 Variable 契约（win11 外壳契约：win11-settings.css、start-menu 类名契约）。本会话零改动（避免 R1 未接管前的无谓漂移）；S2.07 三件套真机走查时一并复核。
+**首会话**仅核查未动工（避免漂移）；**续会话**完成施工（`user/ushell/src/main.rs` 全量升级，1077→约 1500 行）：
+
+1. **鼠标消费端闭环（S2.05 R2 侧）**：`input_events()` 16B 契约鼠标字段全量解码（dx/dy/buttons）；光标（黑描底白面箭头，视口钳制）；悬停高亮（命中测试 `hit_test` 与绘制共用同一几何常量——几何即契约）；左键点击全量分派（START/菜单项/桌面图标/窗口 [×]/文件行点选再点开/设置行与 <> 手柄）。**键盘可达完整保留，双通道能力对等**（点击动作与键盘动作同一 `Click` 动作表）。
+2. **win11 化视觉**：任务栏四格 logo START（hover 提亮+开启态常亮描边）+ 右侧 uptime 时钟（内核无 RTC——活时钟换算 MM:SS，诚实显示运行时长而非伪造墙钟）；开始菜单削角圆角（两段阶梯+壁纸段色回填，浮层角落逐像素无痕）+ 每项 20×20 语义图标色块（文件蓝/设置青/关于灰/重启黄/关机红）+ 底部用户区；窗口标题栏 accent 条 + [×] 关闭钮（hover 红）+ 右下阴影；桌面图标图形化（文件夹/齿轮/i 符号）。
+3. **重绘策略**：状态变化驱动（切页/hover 变化/时钟秒变/按键）+ 光标每帧末尾最顶层绘制——既有"按需重绘"修复语义保持，稳态静止完整帧。
+4. **不变量**：全部串口标记零改动（SHELL: entering/first-frame/boot-replay/desktop-ready/fm count/files opened/settings opened/about opened/startmenu opened/restart/shutdown）；数据模型/SHIM 协议层/键位表零改动；引导动画零选项语义保持。
+
+**门禁**：ktest 3113/0（含 AI-5 xHCI 用例——内嵌新 ELF 零回归）；三证齐（ushell 源码 23:31 < kbuild 23:32 < ISO 23:32）；QEMU 视觉/鼠标走查见 §3.3。
 
 ---
 
@@ -115,7 +122,28 @@ PASS  regression: SHELL desktop-ready            # 既有引导链零回归
 - vitest 全量：2838 passed / 4 skipped / **1 failed**——失败项 = `vwm-kv-persistence.spec.ts`（AI-3 S2.04 进行中测试，全量并行负载下 5015ms 超时 > 5000ms 上限，**单跑 1 passed**）；非本会话改动。
 - tsc 全仓报错 = AI-3 未跟踪测试文件（process 类型缺失），非本会话改动；本会话新增 TS 代码 0（前端零改动——S2.06/S2.09 全部落在内核侧）。
 
-### 3.2 ktest 新增用例清单（18 项）
+### 3.3 QEMU 视觉/鼠标走查（_attic/qemu-ushell-visual-walkthrough.py，第二会话）
+
+**8/8 PASS**（截图证据 `_attic/acceptance-ushell-visual/` 六张）：
+
+```
+PASS  A1 entering marker          # 引导标记链零回归（改造前标记全在）
+PASS  A2 first-frame marker
+PASS  A3 boot-replay done
+PASS  A4 desktop-ready
+PASS  A5 fm count reported
+PASS  C1 mouse opens start menu   # 鼠标点击 START → 菜单打开（S2.05 R2 消费端闭环证据）
+PASS  D1 keyboard reopens menu    # 键盘 Esc/Enter 回归（双通道互不干扰）
+PASS  C2 mouse opens Files page   # 鼠标点击菜单项 → Files 打开
+```
+
+**走查中发现并修复 2 缺陷**（真机用户视角截图走查的直接产出）：
+1. 鼠标 Y 方向反接——ushell 首版累加 dy，而内核 MouseDelta 是 PS/2 语义（正=向上，与 bootselect `self.y - d.dy` 同契约）→ 改减法修复。
+2. 开始菜单底部用户区被任务栏遮挡——菜单高 296px 但定位按 276px 计算 → 定位常量改 312（含 16px 间距），绘制与命中测试同源修复。
+
+**视觉走查结论**（第一使用者视角，见 04-menu 截图）：削角面板/语义图标色块（文件蓝·设置青·关于灰·重启黄·关机红）/键盘焦点高亮/底部用户区/任务栏四格 logo+uptime 时钟全部成立；与 tokens.css 暗色令牌同向。
+
+### 3.4 ktest 新增用例清单（18 项）
 
 winsurf（12）：register_lifecycle_and_rejects / stage_row_bounds_and_content / composite_single_window_fullscreen_pixel_exact（逐像素对照）/ composite_two_windows_zorder_overlap（Z 序+raise 翻转）/ minimize_keeps_alive_and_restore（保活）/ dirty_rect_incremental_only_blits_dirty_rows（只搬脏行+溢出转全窗）/ offscreen_clip_negative_and_overflow（负坐标+超右下）/ hit_test_zorder_and_focus_owner / capacity_eighth_window_rejected / direct_mode_full_redraw / fmt_mismatch_skipped_honestly / clip_window_region_unit（三方求交纯函数）。
 inputsvc（3）：focus_route_1000_no_crosstalk（×1000 无串键）/ focus_none_blocks_keyboard_focus_only_subs / latency_stats_with_injected_clock。
