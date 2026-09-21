@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param(
   [string]$IsoPath = 'D:\VarixDeploy\Win11_25H2_Chinese_Simplified_x64_v2.iso',
-  [string]$Edition = 'Pro',
+  [string]$Edition = '专业版',
   [string]$LogPath = 'D:\VarixDeploy\w1-deploy.log'
 )
 Set-StrictMode -Version Latest
@@ -42,6 +42,10 @@ function Finish {
 
 try { New-Item -ItemType Directory -Path (Split-Path $LogPath) -Force | Out-Null } catch {}
 Log ("W1 部署开始 pid=" + $pid + " elevated=True edition=" + $Edition)
+$script:IsoMounted = $false
+
+# ---- 主体（全局异常捕获：任何未预期终止都落日志）----
+try {
 
 # ---- G1-G3 落点实证（按标签定位，绝不猜盘符）----
 $vol = Get-Volume -FileSystemLabel 'WIN_ENGINE' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -52,10 +56,15 @@ $part = Get-Partition -DriveLetter $vol.DriveLetter -ErrorAction SilentlyContinu
 $disk = if ($part) { Get-Disk -Number $part.DiskNumber -ErrorAction SilentlyContinue } else { $null }
 if (-not $disk -or $disk.BusType -ne 'USB') { Finish 'FAIL' "G1 FAIL: 非 USB 盘（BusType=$($disk.BusType)）" }
 Log ("G1 PASS BusType=USB disk=" + $disk.FriendlyName)
-$sizeGB = [math]::Round($vol.Size / 1GB, 1)
+# 容量/空置口径统一走 Win32_LogicalDisk（本机 Get-Volume 的 Size/FreeSpace 属性不可靠——
+# 严格模式下曾实测 FreeSpace 属性缺失直接抛异常）。
+$ld = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$L'"
+$sizeGB = [math]::Round($ld.Size / 1GB, 1)
 if ([math]::Abs($sizeGB - 300) -gt 30) { Finish 'FAIL' "G2 FAIL: 容量 $sizeGB GB 偏离 300±30" }
 Log ("G2 PASS 容量=" + $sizeGB + "GB")
-$usedGB = [math]::Round(($vol.Size - $vol.FreeSpace) / 1GB, 2)
+Log "G3a 进入空置检查"
+$usedGB = [math]::Round(($ld.Size - $ld.FreeSpace) / 1GB, 2)
+Log ("G3b usedGB=" + $usedGB)
 if ($usedGB -gt 5) { Finish 'FAIL' "G3 FAIL: 非空置（已用 $usedGB GB）" }
 Log ("G3 PASS 空置（已用 $usedGB GB）")
 
@@ -65,6 +74,7 @@ Log ("G4 PASS ISO=" + $IsoPath)
 
 # ---- 选版：枚举 WIM 索引（临时提权窗口内 dism 可用）----
 $isoMount = Mount-DiskImage -ImagePath $IsoPath -PassThru
+$script:IsoMounted = $true
 try {
   $isoL = ($isoMount | Get-Volume).DriveLetter
   $wim = "$($isoL):\sources\install.wim"
@@ -99,9 +109,9 @@ try {
 
   # ---- 完工自检 ----
   if (-not (Test-Path -LiteralPath "$L\Windows\System32")) { Finish 'FAIL' "自检 FAIL: $L\Windows\System32 缺失" }
-  $winGB = [math]::Round((Get-Volume -DriveLetter $vol.DriveLetter).Size / 1GB, 1)
-  $usedAfter = [math]::Round(((Get-Volume -DriveLetter $vol.DriveLetter).Size - (Get-Volume -DriveLetter $vol.DriveLetter).FreeSpace) / 1GB, 1)
-  Log ("自检 PASS Windows 目录在位；分区 $winGB GB / 已用 $usedAfter GB")
+  $ld2 = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$L'"
+  $usedAfter = [math]::Round(($ld2.Size - $ld2.FreeSpace) / 1GB, 1)
+  Log ("自检 PASS Windows 目录在位；已用 $usedAfter GB")
   $marker = @{
     deployedAt = (Get-Date -Format 'o')
     edition    = $curName
@@ -116,5 +126,11 @@ try {
   Finish 'DONE' "部署完成：$L Windows 就绪（edition=$curName index=$idx）"
 }
 finally {
-  Dismount-DiskImage -ImagePath $IsoPath -ErrorAction SilentlyContinue | Out-Null
+  if ($script:IsoMounted) { Dismount-DiskImage -ImagePath $IsoPath -ErrorAction SilentlyContinue | Out-Null }
+}
+}
+catch {
+  Log ("EXC|" + $_.Exception.GetType().FullName + "|" + $_.Exception.Message)
+  if ($_.InvocationInfo) { Log ("AT|" + $_.InvocationInfo.PositionMessage) }
+  Finish 'FAIL' "未预期异常（见 EXC 行）"
 }
