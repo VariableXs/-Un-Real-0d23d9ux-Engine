@@ -616,6 +616,9 @@ pub struct XhciCtrl<B: BarAccess, M: DmaMem> {
     evt_phys: u64,
     evt_idx: usize,
     evt_cycle: bool,
+    /// ERDP 已写入的槽号（惰性推进：落后 evt_idx 若干槽，防 QEMU 满环
+    /// 丢弃分支命中——dp_idx 贴近 er_ep_idx 时完成事件会被静默丢弃）。
+    erdp_written: usize,
     // 工作帧。
     ictx_phys: u64,
     ep0_ring_phys: u64,
@@ -661,6 +664,7 @@ fn try_init<B: BarAccess, M: DmaMem>(
         evt_phys: 0,
         evt_idx: 0,
         evt_cycle: true,
+        erdp_written: 0,
         ictx_phys: 0,
         ep0_ring_phys: 0,
         data_phys: 0,
@@ -856,6 +860,7 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         self.rtw32(RT_ERSTBA + 4, (evt_bus >> 32) as u32);
         self.rtw32(RT_ERDP, seg_bus as u32);
         self.rtw32(RT_ERDP + 4, (seg_bus >> 32) as u32);
+        self.erdp_written = 0;
         Ok(())
     }
 
@@ -885,13 +890,25 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         Some(ev)
     }
 
-    /// 推进事件环游标并把 ERDP 让位到下一个待填条目（EHB 顺手清 IP）。
+    /// 推进事件环游标（惰性：ERDP 不立即前推，见 `erdp_flush_if_needed`）。
     fn evt_step(&mut self) {
         self.evt_idx += 1;
         if self.evt_idx >= EVENT_ENTRIES {
             self.evt_idx = 0;
             self.evt_cycle = !self.evt_cycle;
         }
+    }
+
+    /// ERDP 惰性推进：落后达到阈值（8 槽）或调用方要求时，把 ERDP 让位
+    /// 到游标处。**设计依据**：QEMU `xhci_event` 在 `dp_idx == er_ep_idx+1`
+    /// 时静默丢弃事件（满环分支）——急切推进会让 dp_idx 恰好追平
+    /// er_ep_idx+1，完成事件被吞；保持 ERDP 落后 ≥2 槽即绕开该分支。
+    fn erdp_flush_if_needed(&mut self, force: bool) {
+        let lag = (self.evt_idx + EVENT_ENTRIES - self.erdp_written) % EVENT_ENTRIES;
+        if !force && lag < 8 {
+            return;
+        }
+        self.erdp_written = self.evt_idx;
         let erdp_tok = self.evt_phys + 64 + self.evt_idx as u64 * 32;
         let erdp = self.mem.bus_addr(erdp_tok);
         self.rtw32(RT_ERDP, erdp as u32 | ERDP_EHB);
@@ -929,10 +946,7 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
             if slot + 1 >= EVENT_ENTRIES {
                 self.evt_cycle = !self.evt_cycle;
             }
-            let erdp_tok = self.evt_phys + 64 + self.evt_idx as u64 * 32;
-            let erdp = self.mem.bus_addr(erdp_tok);
-            self.rtw32(RT_ERDP, erdp as u32 | ERDP_EHB);
-            self.rtw32(RT_ERDP + 4, (erdp >> 32) as u32);
+            self.erdp_flush_if_needed(false);
             if is_match {
                 hit = Some(ev);
                 break;
@@ -1001,6 +1015,7 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                 re_rung = true;
                 self.doorbell(0, 0); // 门铃丢失类异常兜底：重振铃一次。
             }
+            self.erdp_flush_if_needed(false);
             if (self.now)() > deadline {
                 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
                 {
@@ -1469,6 +1484,7 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                 }
             }
         }
+        self.erdp_flush_if_needed(true);
         n
     }
 
