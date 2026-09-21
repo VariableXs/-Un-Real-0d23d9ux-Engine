@@ -86,6 +86,7 @@ const SERVICES = {
   print: "打印服务",
   usb: "U 盘便携（打包/校验/拔出看护）",
   container: "Uxv 容器（诊断/修复/救援）",
+  engine: "隐形 Windows 引擎通道（编排五态/画面流/内存缓存 ramcache）",
   boot: "启动链（引导/阶段叙事/自检）",
   perf: "性能观测（内存/CPU 配额/IO 限速）",
 };
@@ -228,6 +229,8 @@ const RULES = [
   [/^cfg_diff$/, "combo", ["settings", "backup"]],
 
   // ---- 引擎通道 ----
+  [/^engine_/, "ok", ["engine"]], // 编排五态/心跳/画面流通道（AI-2 S3.2/S3.3/S3.4）
+  [/^ramcache_/, "ok", ["engine"]], // 引擎内存缓存统计/清空（AI-2 S3.8，构造性零落盘）
   [/^(steam_|aumid_launch$)/, "combo", ["steam", "procCtl"]],
   [/^browser_/, "combo", ["browser", "procCtl"]],
   [/^env_/, "combo", ["procCtl", "sysinfo"]],

@@ -4,11 +4,11 @@
  "source": "src/lib/ipc.ts",
  "protocol": "varix-shim v2（tools/shim-protocol.source.json）",
  "stats": {
-  "total": 564,
-  "ok": 321,
-  "okPct": "56.9%",
+  "total": 576,
+  "ok": 333,
+  "okPct": "57.8%",
   "combo": 230,
-  "comboPct": "40.8%",
+  "comboPct": "39.9%",
   "missing": 13,
   "missingPct": "2.3%"
  },
@@ -58,6 +58,7 @@
   "print": "打印服务",
   "usb": "U 盘便携（打包/校验/拔出看护）",
   "container": "Uxv 容器（诊断/修复/救援）",
+  "engine": "隐形 Windows 引擎通道（编排五态/画面流/内存缓存 ramcache）",
   "boot": "启动链（引导/阶段叙事/自检）",
   "perf": "性能观测（内存/CPU 配额/IO 限速）"
  },
@@ -1892,6 +1893,138 @@
    "color": "✅",
    "services": [
     "boot"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineStatus",
+   "cmd": "engine_status",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineReplay",
+   "cmd": "engine_replay",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "enginePreflight",
+   "cmd": "engine_preflight",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineWake",
+   "cmd": "engine_wake",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineSleep",
+   "cmd": "engine_sleep",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineResume",
+   "cmd": "engine_resume",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineStop",
+   "cmd": "engine_stop",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineStreamOpen",
+   "cmd": "engine_stream_open",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineStreamClose",
+   "cmd": "engine_stream_close",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "engineStreamStatus",
+   "cmd": "engine_stream_status",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "ramcacheStats",
+   "cmd": "ramcache_stats",
+   "color": "✅",
+   "services": [
+    "engine"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "ramcacheClear",
+   "cmd": "ramcache_clear",
+   "color": "✅",
+   "services": [
+    "engine"
    ],
    "missingService": null,
    "missingNote": null,
