@@ -136,3 +136,9 @@
 - **Mock 实测（4 标记全绿）**：MARK-PLAN-OK / MARK-BUILD1-OK / MARK-GUARD=CAUGHT（重复 Build 被幂等保护拒绝）/ MARK-VERIFY-OK（PASS 存在+PASS 只读封存+PASS 母本标记 mother|base|index=6|sizeGB=127）。PSParser 0 错。
 - **备料完成**：Win11 25H2 zh-CN x64 ISO ✅（D:\VarixDeploy\，7.96 GiB，微软 CDN 官方直链 15.6 分钟，SHA-256=7408581e67bc455ebaafb9230e531abf45b1c8864a22114a1b03893f897102e4）。S1.2 执行门槛仅剩：用户在场 + WE 壁纸库搬家（§0.3）。
 - 自纠两处：Mock 模式误校验 ISO 路径（改为仅 Real 校验）；测试驱动对只读文件 rmtree 静默失败（Windows 只读文件须先摘属性再删——脚本行为本身正确）。
+
+## 13. ISO 结构验证 + S3.8 公示闭环（2026-09-21 22:52）
+
+- **ISO 结构验证（只读挂载）**：Win11 25H2 ISO 挂载成功，`sources\install.wim` ✓、`sources\boot.wim` ✓、`efi\microsoft\boot\efisys.bin` ✓——UEFI 引导链完整，WTG/Gen2 VM 部署可行；WIM 索引枚举需提权，移交部署会话（Base-Mother Plan real / Hasleo 内部处理）。
+- **S3.8 公示闭环**：EngineTab 新增「引擎热数据缓存（ramcache）」统计卡（条目/占用/预算/命中率/逐出 + 刷新/全部清空双按钮），消费 `ramcache_stats/ramcache_clear` 命令；ipc 增 RamCacheStatsT DTO（与 Rust serde camelCase 契约逐字段一致）。tsc 0 错；引擎前端 35/35 绿。
+- 提交推送：见当批 commit。

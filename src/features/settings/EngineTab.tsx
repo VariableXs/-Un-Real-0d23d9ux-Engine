@@ -5,8 +5,9 @@
  * ⑥ 申请式授权（任务 61UI：Wine/引擎进程能力申请卡）⑦ 诚实声明（任务 64UI：
  * 对策+残余风险双栏；「内核 VMX 未实现、现用 Hyper-V 底座」显式落点）。
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { EngineQualityTier, Settings } from "../../lib/settings";
+import { pushToast } from "../../state/uiStore";
 import {
   qualityParamsFor,
   latencyP95,
@@ -22,6 +23,7 @@ import {
   type CapabilityScope,
 } from "../security/capabilityRequest";
 import { HonestyDeclareCard } from "../security/HonestyDeclareCard";
+import { errMessage, ipc, type RamCacheStatsT } from "../../lib/ipc";
 
 const QUALITY_LABELS: Record<EngineQualityTier, string> = {
   office: "办公（24fps / 4 Mbps）",
@@ -55,6 +57,23 @@ export function EngineTab(props: {
   const requests = useCapabilityRequests();
   const pending = requests.filter((r) => r.status === "pending");
   const [checkedVmx, setCheckedVmx] = useState(false);
+  const [cache, setCache] = useState<RamCacheStatsT | null>(null);
+
+  const refreshCache = (): void => {
+    void ipc
+      .ramcacheStats()
+      .then((s) => setCache(s))
+      .catch((e) => pushToast("error", errMessage(e).message));
+  };
+  const clearCache = (): void => {
+    void ipc
+      .ramcacheClear()
+      .then((s) => {
+        setCache(s);
+        pushToast("info", "缓存已全清（只缓不落盘，清空即消失）");
+      })
+      .catch((e) => pushToast("error", errMessage(e).message));
+  };
 
   // 延迟实测面板：读会话内真实样本（引擎代理经 engine://state 上报；无样本如实显示）。
   const latencyLog = useCapabilityLatency();
@@ -62,6 +81,12 @@ export function EngineTab(props: {
   const p95 = latencyP95(samples.map((x) => latencyTotal(x.seg)));
 
   const effectiveParams = qualityParamsFor(s.engineQuality, s.engineQualityCustom as never);
+
+  // S3.8 公示：ramcache 统计（挂载即查；刷新/清空显式动作）。
+  useEffect(() => {
+    refreshCache();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="tab-body">
@@ -237,6 +262,30 @@ export function EngineTab(props: {
       </div>
 
       {/* ⑦ 诚实声明（任务 64UI；设置页落点） */}
+      <h3 className="w11-sec-title">引擎热数据缓存（ramcache）</h3>
+      <p className="dim small">
+        只缓不落盘：数据只存在内存，关机/拔盘即消失，U 盘零残留（构造性保证）。
+        盘上文件被另一系统改写后自动失效重读。
+      </p>
+      {cache ? (
+        <p className="dim small">
+          条目 {cache.entries} · 占用 {(cache.bytes / 1024 / 1024).toFixed(1)} /{" "}
+          {(cache.budgetBytes / 1024 / 1024).toFixed(0)} MiB · 命中率{" "}
+          {(cache.hitRate * 100).toFixed(0)}%（查询 {cache.hits + cache.misses} 次，逐出{" "}
+          {cache.evictions} 条）
+        </p>
+      ) : (
+        <p className="dim small">尚未读取统计（点刷新）。</p>
+      )}
+      <div className="vwm-tp-card-actions" style={{ marginTop: 6 }}>
+        <button type="button" className="btn" onClick={refreshCache}>
+          刷新统计
+        </button>
+        <button type="button" className="btn" onClick={clearCache}>
+          全部清空
+        </button>
+      </div>
+
       <h3 className="w11-sec-title">诚实声明</h3>
       <label className="field" style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input type="checkbox" checked={checkedVmx} onChange={(e) => setCheckedVmx(e.target.checked)} />

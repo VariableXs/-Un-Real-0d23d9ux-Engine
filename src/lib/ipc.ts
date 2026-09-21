@@ -115,6 +115,18 @@ export interface EngineStreamSessionT {
   mstscPid: number;
 }
 
+/** 阶段6（S3.8）：ramcache 统计（与 Rust `ramcache::CacheStats` 一致）。 */
+export interface RamCacheStatsT {
+  hits: number;
+  misses: number;
+  evictions: number;
+  entries: number;
+  bytes: number;
+  budgetBytes: number;
+  /** 0.0-1.0（零查询恒 0）。 */
+  hitRate: number;
+}
+
 export const ipc = {
   // ---- AI-19 无障碍与本地化组（M-73/M-74 系统辅助功能只读探针）----
   a11yProbe: () => invoke<{
@@ -385,8 +397,13 @@ export const ipc = {
     invoke<EngineStreamSessionT>("engine_stream_open", { appKey, quality, mode }),
   /** 关闭画面流（停 mstsc + 清连接文件；幂等）。 */
   engineStreamClose: (appKey: string) => invoke<void>("engine_stream_close", { appKey }),
-  /** 活跃流会话列表。 */
+/** 活跃流会话列表。 */
   engineStreamStatus: () => invoke<EngineStreamSessionT[]>("engine_stream_status"),
+  // ---- 阶段 6（三体 AI-2 S3.8）：引擎热数据 ramcache ----
+  /** 命中率与占用公示（完善性：命中率统计与公示）。 */
+  ramcacheStats: () => invoke<RamCacheStatsT>("ramcache_stats"),
+  /** 手动全清（关机清空的显式入口）。 */
+  ramcacheClear: () => invoke<RamCacheStatsT>("ramcache_clear"),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),
