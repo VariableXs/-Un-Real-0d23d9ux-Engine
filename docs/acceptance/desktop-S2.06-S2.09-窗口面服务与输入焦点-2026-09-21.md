@@ -122,6 +122,11 @@ PASS  regression: SHELL desktop-ready            # 既有引导链零回归
 - vitest 全量：2838 passed / 4 skipped / **1 failed**——失败项 = `vwm-kv-persistence.spec.ts`（AI-3 S2.04 进行中测试，全量并行负载下 5015ms 超时 > 5000ms 上限，**单跑 1 passed**）；非本会话改动。
 - tsc 全仓报错 = AI-3 未跟踪测试文件（process 类型缺失），非本会话改动；本会话新增 TS 代码 0（前端零改动——S2.06/S2.09 全部落在内核侧）。
 
+### 3.3b S2.07 三件套全功能走查 ×3（QEMU 层 M2 预演，_attic/qemu-s207-suite-walkthrough.py）
+
+- **R1 14/14 全 PASS**；R2 13/14（唯一 FAIL=脚本判定窗口 vs TCG 投递时序——串口日志证实 files opened/file opened 实际发生，功能零缺陷）；R3 遭遇 QEMU 进程被外部终止（并行会话活跃期，非功能因素），中断前功能标记已全绿（三条 KV 写入 rc=0/files opened/file opened apps.json/about opened）。
+- **功能层结论**：三件套（桌面壳/文件管理器/设置页）在垫片三支点（SYS_FRAME/INPUT/SHIM）下的全部走查动作——引导直落桌面、START 菜单、文件列取/读/打开/预览、设置三参数 KV 写入往返（boot_timeout/show_menu/default_entry 全 rc=0）、关于 kv-keys 指标——QEMU 层全部真实走通。真机走查（M2）复用同清单。
+
 ### 3.3 QEMU 视觉/鼠标走查（_attic/qemu-ushell-visual-walkthrough.py，第二会话）
 
 **8/8 PASS**（截图证据 `_attic/acceptance-ushell-visual/` 六张）：
@@ -145,7 +150,7 @@ PASS  C2 mouse opens Files page   # 鼠标点击菜单项 → Files 打开
 
 ### 3.4 ktest 新增用例清单（18 项）
 
-winsurf（12）：register_lifecycle_and_rejects / stage_row_bounds_and_content / composite_single_window_fullscreen_pixel_exact（逐像素对照）/ composite_two_windows_zorder_overlap（Z 序+raise 翻转）/ minimize_keeps_alive_and_restore（保活）/ dirty_rect_incremental_only_blits_dirty_rows（只搬脏行+溢出转全窗）/ offscreen_clip_negative_and_overflow（负坐标+超右下）/ hit_test_zorder_and_focus_owner / capacity_eighth_window_rejected / direct_mode_full_redraw / fmt_mismatch_skipped_honestly / clip_window_region_unit（三方求交纯函数）。
+winsurf（13，含 S2.09 ×100 水位）：window_toggle_100_no_leak（100 轮 register+submit+composite+unregister 循环——槽位全空/账本守恒 600 行/帧数单调，「窗口开关 ×100 无泄漏」验收口径的内核侧直接证据）；其余 12 项：register_lifecycle_and_rejects / stage_row_bounds_and_content / composite_single_window_fullscreen_pixel_exact（逐像素对照）/ composite_two_windows_zorder_overlap（Z 序+raise 翻转）/ minimize_keeps_alive_and_restore（保活）/ dirty_rect_incremental_only_blits_dirty_rows（只搬脏行+溢出转全窗）/ offscreen_clip_negative_and_overflow（负坐标+超右下）/ hit_test_zorder_and_focus_owner / capacity_eighth_window_rejected / direct_mode_full_redraw / fmt_mismatch_skipped_honestly / clip_window_region_unit（三方求交纯函数）。
 inputsvc（3）：focus_route_1000_no_crosstalk（×1000 无串键）/ focus_none_blocks_keyboard_focus_only_subs / latency_stats_with_injected_clock。
 usrshell（3）：win_pack_xy_roundtrip_with_negative / win_pack_wh_roundtrip / win_submit_hdr_validation。
 
