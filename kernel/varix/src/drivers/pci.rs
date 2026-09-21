@@ -79,17 +79,25 @@ pub struct PciDevice {
 pub enum PciKind {
     Nvme,
     Ahci,
+    /// USB xHCI 主机控制器（class 0x0C03，prog-if 0x30）——S4.1（AI-5）。
+    Xhci,
     Other,
 }
 
 /// class code 读取：offset 0x08 = [31:24] base, [23:16] sub, [15:8] prog-if。
 fn classify(ecam: &mut dyn EcamAccess, addr: u64) -> PciKind {
     let cc = ecam.read32(addr + 0x08);
-    if (cc >> 16) != 0x0108 {
-        return PciKind::Other;
-    }
-    match (cc >> 8) & 0xFF {
-        0x02 => PciKind::Nvme,
+    match (cc >> 16) & 0xFFFF {
+        0x0108 => match (cc >> 8) & 0xFF {
+            0x02 => PciKind::Nvme,
+            _ => PciKind::Other,
+        },
+        // Serial bus / USB / xHCI：prog-if 0x30 才是 xHCI（0x00=UHCI 等
+        // 如实归 Other，绝不冒认）。
+        0x0C03 => match (cc >> 8) & 0xFF {
+            0x30 => PciKind::Xhci,
+            _ => PciKind::Other,
+        },
         _ => PciKind::Other,
     }
 }
@@ -154,6 +162,39 @@ pub fn scan_nvme_all(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> alloc_crat
 /// 供 scan_nvme_all 的返回类型别名（no_std 下显式 alloc 路径）。
 pub(crate) mod alloc_crate_vec {
     pub use alloc::vec::Vec;
+}
+
+/// 枚举全部 xHCI 控制器（S4.1·AI-5）：多控制器命中顺序 bus→dev→func
+/// 稳定可复现；prog-if ≠0x30 的 USB 控制器（UHCI/EHCI）如实不收。
+pub fn scan_xhci_all(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> alloc_crate_vec::Vec<PciDevice> {
+    let end_bus = seg.end_bus.min(MAX_SCAN_BUSES);
+    let mut hits = alloc_crate_vec::Vec::new();
+    let mut bus = seg.start_bus;
+    loop {
+        for dev in 0..32u8 {
+            for func in 0..8u8 {
+                let addr = ecam_addr(seg, bus, dev, func, 0);
+                if ecam.read32(addr) & 0xFFFF == 0xFFFF {
+                    continue;
+                }
+                if classify(ecam, addr) != PciKind::Xhci {
+                    continue;
+                }
+                match parse_bar0_mmio(ecam, addr) {
+                    Some(bar0) => hits.push(PciDevice { bus, dev, func, kind: PciKind::Xhci, bar0 }),
+                    None => {
+                        #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+                        crate::kinfo!("pci-scan: xhci at {:02x}:{:02x}.{} BAR parse FAILED", bus, dev, func);
+                    }
+                }
+            }
+        }
+        if bus >= end_bus {
+            break;
+        }
+        bus += 1;
+    }
+    hits
 }
 
 pub fn scan_nvme(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> Option<PciDevice> {

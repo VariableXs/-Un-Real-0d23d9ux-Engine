@@ -685,6 +685,11 @@ impl InputService {
             }
             n += 1;
         }
+        // S4.1（AI-5）：xHCI HID 增量泵——USB 键鼠事件经同构字节汇入同一
+        // 队列（feed_key_byte/feed_mouse_byte 既有公开汇点，菜单/ushell/
+        // 桌面全部既有消费者零改动受益）。未初始化/无控制器时零开销返回；
+        // PS/2 通道的字节序与语义零改动（增量不替代）。
+        crate::drivers::xhci::target::hid_pump(self);
         n
     }
 

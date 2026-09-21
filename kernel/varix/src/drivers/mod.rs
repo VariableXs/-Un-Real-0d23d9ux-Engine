@@ -8,3 +8,5 @@
 pub mod blk;
 pub mod nvme;
 pub mod pci;
+/// S4.1（AI-5）：xHCI 最小栈——真机 USB 键鼠（HID boot 协议，纯轮询）。
+pub mod xhci;

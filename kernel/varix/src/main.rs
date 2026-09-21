@@ -368,6 +368,9 @@ fn boot() -> ! {
     // --- block stack probe（任务16：块设备抽象 + NVMe 最小栈）------------------------
     varix::drivers::nvme::target::probe_and_selftest();
 
+    // --- usb stack probe（S4.1·AI-5：xHCI 最小栈——真机 USB 键鼠，PS/2 增量不替代）----
+    varix::drivers::xhci::target::probe_and_selftest();
+
     // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
     varix::inputsvc::target::input_probe();
 
