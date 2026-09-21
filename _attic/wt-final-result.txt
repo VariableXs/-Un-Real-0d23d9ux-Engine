@@ -1,0 +1,23 @@
+OK: D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\varix-xhci.iso 已生成（9068544 字节；注意：无 isohybrid，仅 QEMU 引导用）
+  [PASS] B1 controller found (count=1)
+  [FAIL] B2 init ok devices=2 (count=0, base=0)
+  [FAIL] B3 kbd enum (count=0, base=0)
+  [FAIL] B4 mouse enum (count=0, base=0)
+  [FAIL] B5 channel live (count=0, base=0)
+  [FAIL] C1 key A (count=0, base=0)
+  [FAIL] D1 mouse move (count=0, base=0)
+  [FAIL] D3 mouse click (count=0, base=0)
+
+==== S4.1 xHCI QEMU 走查结果 ====
+  PASS  B1 xhci controller found (pci scan)
+  FAIL  B2 xhci init ok (resets=0 devices=2)
+  FAIL  B3 keyboard enumerated
+  FAIL  B4 mouse enumerated
+  FAIL  B5 channel live
+  FAIL  C1 usb key A flows to funnel (make=0x1e)
+  FAIL  D1 usb mouse move reaches funnel
+  FAIL  D2 y-axis inverted (no mouse log)
+  FAIL  D3 usb mouse button event
+  PASS  E1 no unknown events (unk_ev=0)
+  PASS  F1 boot completed (no boot regression)
+==== 3/11 PASS ====

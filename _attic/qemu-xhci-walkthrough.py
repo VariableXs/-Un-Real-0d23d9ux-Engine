@@ -175,6 +175,12 @@ def main():
             "-device", "usb-mouse,bus=xhci.0",
             "-serial", f"tcp:127.0.0.1:{SERIAL_PORT},server,nowait",
             "-monitor", f"tcp:127.0.0.1:{MON_PORT},server,nowait",
+            # 取证：fetch/doorbell/oper/queue_event 全程 trace（quit 优雅退出保证刷盘）。
+            "-trace", "enable=usb_xhci_fetch_trb,file=_attic/xhci-wt-trace.log",
+            "-trace", "enable=usb_xhci_doorbell_write,file=_attic/xhci-wt-trace.log",
+            "-trace", "enable=usb_xhci_oper_write,file=_attic/xhci-wt-trace.log",
+            "-trace", "enable=usb_xhci_runtime_write,file=_attic/xhci-wt-trace.log",
+            "-trace", "enable=usb_xhci_queue_event,file=_attic/xhci-wt-trace.log",
             "-m", "1024",
         ],
         cwd=ROOT,
@@ -264,12 +270,17 @@ def main():
                        bool(re.search(r"boot completed", full))))
     finally:
         time.sleep(1.0)
-        ser.close()
+        # 优雅退出：monitor quit 让 QEMU 刷净 trace/serial 缓冲（强杀丢证据）。
         try:
-            proc.terminate()
+            mon.cmd("quit")
             proc.wait(timeout=15)
         except Exception:
-            proc.kill()
+            try:
+                proc.terminate()
+                proc.wait(timeout=10)
+            except Exception:
+                proc.kill()
+        ser.close()
 
     print("\n==== S4.1 xHCI QEMU 走查结果 ====")
     failed = 0
