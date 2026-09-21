@@ -28,6 +28,10 @@ pub mod filesync;
 pub mod dualboot;
 // 阶段 6（三体 AI-2）：隐形 Windows 引擎编排底座——五态状态机/心跳/幂等拉起
 pub mod engine;
+// 阶段 6（三体 AI-2）：引擎热数据 ramcache——只缓不落盘/关机即清/一致性失效
+pub mod ramcache;
+// 阶段 6（三体 AI-2）：引擎画面流通道 v1——传输抽象冻结+mstsc RDP v1 实现
+pub mod engine_stream;
 pub mod sysmaint;
 pub mod imwatch;
 pub mod installer;

@@ -70,3 +70,39 @@
 2. S1.2 执行（手册 §3 步骤卡 + 预检脚本）；执行后：S3.1 真后端 ×10、S3.2 端到端（含 Hyper-V 功能启用）、S3.3-S3.10 依次解锁；
 3. S3.3-S3.6（画面流/输入注入/VWM 接管）施工需先读总案 6.3-6.6 与 RDP/Spice 流协议选型评估；
 4. usb-removed 前端接线核验：usb.rs 已调 engine::usb_removed，`usb://removed` 前端 → resetEngineSession 的既有链路在 M4 联验时走查。
+
+---
+
+## 8. 第二批（同日追加）：S3 批无 S1.2 依赖部分收尾
+
+> 用户指令「继续」后，AI-2 在不依赖 S1.2 实机镜像的前提下，把 S3 批剩余可代码级交付部分全部落地。
+
+| 任务 | 状态 | 交付物 | 证据 |
+|---|---|---|---|
+| S3.3/S3.4 流通道 v1 | ✅ 代码级（传输抽象冻结 + v1 真实传输） | src-tauri/src/shell/engine_stream.rs | 8/8 单测；tsc 0 错 |
+| S3.5 输入注入通道 | ✅ v1 语义定版（注记） | engine_stream.rs 模块头 | mstsc 传输下键鼠/IME 经 RDP 会话原生直达，不做二次注入；30s 无丢键=实机验收 |
+| S3.8 ramcache | ✅ 代码级全交付 | src-tauri/src/shell/ramcache.rs | 10/10 单测；命令 ramcache_stats/clear 已注册 |
+| S3.10 拔盘复位补线 | ✅ 前端接线补齐 | DesktopShell.tsx | usb://removed → resetEngineSession（import+调用回读确认） |
+| S1.1 拍板项 | ⏸ 仍待用户 | — | 顺序门 FAIL（391.9 vs 400）三选项见 §5 |
+
+### 8.1 S3.3/S3.4 流通道 v1 · 设计决策（诚实记录）
+
+- **传输选型**：v1 真实传输 = Windows 内置 mstsc（RDP 协议）——成熟、零新协议代码、其窗口经**既有 embed 管线收编进 VWM**（边框/贴靠/几何持久化零新代码，对齐总案"与 embed.rs 既有语义复用不重写"）。Spice/自研流为可替换项——`build_rdp_file` 与会话注册表冻结的接口不因换传输而变。
+- **双模式定版**：全屏桌面会话（S3.3 先行）与 RemoteApp 单应用窗口（S3.4）共用一套会话生命周期（幂等：同 appKey 重复 open 返回既有会话不双开）。
+- **画质三档映射**：office（16bpp/高压缩/视觉降级）/ balanced（32bpp/压缩）/ gaming（32bpp/零压缩）——`quality_parse_strict` 测试锁定未知档位拒绝不静默回落。
+- **数据隔离红线（RDP 文件级硬门禁，三档 × 逐键测试看护）**：宿主盘重定向强制为空（`drivestoredirect:s:` 空）、打印机/智能卡/串口/POS/PnP 设备全关、剪贴板开（能力对照表声明项）。**SHARED 是唯一互通面，引擎会话内宿主盘不可见。**
+- **断流重连**：RDP 层 `autoreconnection enabled:i:1` + 进程死亡走 embed 占位卡语义 + 再次 open 幂等重连。
+- **S3.5 语义**：mstsc 传输下键鼠/IME 经 RDP 会话原生直达引擎，Variable 侧不做二次注入（总案"输入事件与阶段 3 输入总线同源"的 Windows 侧等价物=会话原生输入）；30s 无丢键与 IME 全流程为 S1.2 后实机验收。
+- 前端落点：EngineStreamPane 就绪态新增「连接画面流（全屏 · RDP）/断开画面流」双按钮（画质取设置总线 engineQuality）；ipc 增 engineStreamOpen/Close/Status 三命令 + StreamSession DTO（serde 契约逐字段一致）。
+
+### 8.2 S3.8 ramcache · 交付要点
+
+- **只缓不落盘（构造性保证）**：模块自身对文件系统零写入（I/O 仅调用方 loader 读盘），数据只存进程内存 `Vec<u8>`——"关机后 U 盘字节级零残留"没有可残留的落盘点；整盘 hash 对比校验为 S1.2 后实机验收项。
+- **关机即清双保险**：进程退出=内存归还（物理）+ 引擎 stop/拔盘联动显式 `global_clear()`（engine.rs 布线层两处已接线）。
+- **一致性失效**：以 (mtime, size) 为凭据——盘上文件被另一系统改写 → 自动失效重读（`consistency_invalidate_*` 两测试）。
+- **预算联动**：默认 256MiB，`set_budget` 随性能档位调整并立即逐出至合规；单条超预算 1/4 整条旁路不挤兑。
+- **命中率公示**：`ramcache_stats` 命令（hits/misses/evictions/bytes/hit_rate，零查询恒 0 不虚构）。
+
+### 8.3 门禁（第二批后，单跑）
+
+- tsc 0 错；vitest **2851 passed / 4 skipped**（与第一批持平——本批前端仅接线无新纯逻辑）；cargo test -p variable --lib **348 passed**（+18：ramcache 10 + engine_stream 8）。

@@ -1126,6 +1126,8 @@ mod wiring {
         let mut sh = engine().lock().map_err(|_| "引擎状态锁中毒".to_string())?;
         let mut sink = no_sink();
         stop(&mut sh, &mut be, &cfg, &mut sink).map_err(|e| e.message)?;
+        // S3.8 双保险：引擎会话收束 → 热数据缓存全清（关机即清语义的另一路）。
+        crate::shell::ramcache::global_clear();
         Ok(status())
     }
 
@@ -1133,6 +1135,8 @@ mod wiring {
     /// 编排线程持锁时由其 abort 路径收束（emit_removed_once 幂等去重）。
     pub fn usb_removed(app: tauri::AppHandle) {
         REMOVED.store(true, Ordering::SeqCst);
+        // S3.8 双保险：拔盘 → 热数据缓存全清（零残留语义的另一路）。
+        crate::shell::ramcache::global_clear();
         if let Ok(sh) = engine().try_lock() {
             if sh.state != EngineState::Closed {
                 drop(sh);

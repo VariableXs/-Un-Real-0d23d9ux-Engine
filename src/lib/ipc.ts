@@ -105,6 +105,16 @@ export interface EnginePreflightT {
   chainComplete: boolean;
 }
 
+/** 阶段6（S3.3/S3.4）：活跃画面流会话（与 Rust `engine_stream::StreamSession` 一致）。 */
+export interface EngineStreamSessionT {
+  appKey: string;
+  /** office | balanced | gaming */
+  quality: string;
+  /** desktop = 全屏桌面；其余 = RemoteApp 程序名。 */
+  mode: string;
+  mstscPid: number;
+}
+
 export const ipc = {
   // ---- AI-19 无障碍与本地化组（M-73/M-74 系统辅助功能只读探针）----
   a11yProbe: () => invoke<{
@@ -369,6 +379,14 @@ export const ipc = {
   engineResume: () => invoke<EngineStatusT>("engine_resume"),
   /** 优雅关闭（停 VM + 卸差分盘）。 */
   engineStop: () => invoke<EngineStatusT>("engine_stop"),
+  // ---- 阶段 6（三体 AI-2 S3.3/S3.4）：引擎画面流通道 v1（mstsc RDP） ----
+  /** 打开画面流（幂等；quality=office|balanced|gaming；mode=desktop 或 RemoteApp 程序名）。 */
+  engineStreamOpen: (appKey: string, quality: string, mode: string) =>
+    invoke<EngineStreamSessionT>("engine_stream_open", { appKey, quality, mode }),
+  /** 关闭画面流（停 mstsc + 清连接文件；幂等）。 */
+  engineStreamClose: (appKey: string) => invoke<void>("engine_stream_close", { appKey }),
+  /** 活跃流会话列表。 */
+  engineStreamStatus: () => invoke<EngineStreamSessionT[]>("engine_stream_status"),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),

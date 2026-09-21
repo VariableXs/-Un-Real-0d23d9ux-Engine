@@ -72,6 +72,8 @@ import {
 } from "../wallpaper/center/centerCore";
 // SINGULARITY-100 奇点计划：100 项能力运行时 + 中枢/工具窗 overlay（零侵入自挂载协议同上）
 import "../singularity/SinguHub";
+// 阶段6（三体 AI-2）：拔盘联动引擎会话复位（S3.10 异常场景一/三）
+import { resetEngineSession } from "../engine/engineSessions";
 import "../singularity/SinguOverlays";
 import { initSingularity } from "../singularity/runtime";
 // AURORA-10000：AI-11~AI-15 批次，勿删（领域03 桌面设计·桌面与图标 F01251~F01875：
@@ -355,6 +357,9 @@ export function DesktopShell(props: {
     const un = listen("usb://removed", () => {
       setUsbRemoved(true);
       pushNotify("system", t("usbDriveRemoved"), t("usbDriveRemovedBody"));
+      // 阶段6（三体 AI-2 S3.10）：拔盘联动引擎会话复位（下次插入干净恢复；
+      // 引擎窗口的收束由后端 engine://state usb-removed 事件驱动）。
+      resetEngineSession();
     });
     return () => {
       void un.then((f) => f()).catch(() => {});

@@ -347,6 +347,37 @@ function EngineStreamPane(props: { winId: string; app: VwmApp }): React.ReactEle
       <div className="vwm-app vwm-tp" aria-label={vwmWindowTitle(props.app)}>
         <div className="vwm-tp-card" role="status">
           <p className="vwm-tp-card-msg">引擎就绪 · 画面流连接中（{appKey}）</p>
+          <div className="vwm-tp-card-actions">
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => {
+                // S3.3 v1：画质档取设置总线（engineQuality），全屏 RDP 会话；
+                // mstsc 窗口出现后由 embed 管线收编进本窗位（复用既有语义）。
+                void (async () => {
+                  try {
+                    const s = await import("../../lib/settings").then((m) => m.loadSettings());
+                    const r = await ipc.engineStreamOpen(appKey, s.engineQuality, "desktop");
+                    pushToast("info", `画面流已发起（${r.quality} 档 · 全屏），连接窗口将自动收编`);
+                  } catch (e) {
+                    const m = errMessage(e);
+                    pushToast("error", m.message);
+                  }
+                })();
+              }}
+            >
+              连接画面流（全屏 · RDP）
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                void ipc.engineStreamClose(appKey).catch(() => {});
+              }}
+            >
+              断开画面流
+            </button>
+          </div>
           <details className="engine-cap-table">
             <summary>引擎窗口能力说明</summary>
             <ul>

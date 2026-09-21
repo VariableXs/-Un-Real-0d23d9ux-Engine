@@ -853,6 +853,13 @@ pub fn run() {
             shell::engine::engine_sleep,
             shell::engine::engine_resume,
             shell::engine::engine_stop,
+            // ---- 阶段 6（三体 AI-2）：引擎热数据 ramcache ----
+            shell::ramcache::ramcache_stats,
+            shell::ramcache::ramcache_clear,
+            // ---- 阶段 6（三体 AI-2）：引擎画面流通道 v1 ----
+            shell::engine_stream::engine_stream_open,
+            shell::engine_stream::engine_stream_close,
+            shell::engine_stream::engine_stream_status,
         ])
         .build(tauri::generate_context!());
     match app {
