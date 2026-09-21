@@ -22,12 +22,13 @@ export type DegradeKey =
   | "degradePermDenied"
   | "degradeInternal"
   | "degradeInvalidArgs"
+  | "degradeKvFull"
   | "degradeCapMissing";
 
-/** 降级码 = 七个 ShimErrorCode + 合成的 MISSING（协议第三段独立于错误码枚举）。 */
+/** 降级码 = 八个 ShimErrorCode（协议 v2）+ 合成的 MISSING（协议第三段独立于错误码枚举）。 */
 export type DegradeCode = ShimErrorCode | "SHIM_MISSING";
 
-/** 错误码 → 词条 key（全量覆盖七个 ShimErrorCode + MISSING，无遗漏分支）。 */
+/** 错误码 → 词条 key（全量覆盖八个 ShimErrorCode + MISSING，无遗漏分支）。 */
 const CODE_TO_KEY: Record<DegradeCode, DegradeKey> = {
   SHIM_BACKEND_DOWN: "degradeBackendDown",
   SHIM_UNSUPPORTED: "degradeUnsupported",
@@ -37,6 +38,7 @@ const CODE_TO_KEY: Record<DegradeCode, DegradeKey> = {
   SHIM_PERM_DENIED: "degradePermDenied",
   SHIM_INTERNAL: "degradeInternal",
   SHIM_INVALID_ARGS: "degradeInvalidArgs",
+  SHIM_KV_FULL: "degradeKvFull",
 };
 
 /** MISSING 场景（命令未接入）的合成码——调用方把 ShimMissingError 归一为它。 */

@@ -1,10 +1,10 @@
 // 本文件由 tools/gen-shim-protocol.cjs 从 tools/shim-protocol.source.json 生成，禁止手改。
-// 协议规范见 docs/双域-垫片协议规范-v1.md（任务22，AI-V+AI-B）。
+// 协议规范见 docs/垫片协议规范.md（任务22 定版，S2.01 v2 · AI-3）。
 
 /** 垫片协议版本（版本协商基准，见 shim_hello）。 */
-export const SHIM_PROTOCOL_VERSION = 1;
+export const SHIM_PROTOCOL_VERSION = 2;
 /** 后端必须支持的最低前端协议版本。 */
-export const SHIM_MIN_BACKEND_VERSION = 1;
+export const SHIM_MIN_BACKEND_VERSION = 2;
 
 /** 三段式错误分类：OK | MAPPED_ERR(inner) | MISSING(cmd)。 */
 export type ShimOutcome<T> =
@@ -20,6 +20,7 @@ export type ShimErrorCode =
   | "SHIM_BACKEND_DOWN"
   | "SHIM_VERSION_MISMATCH"
   | "SHIM_PERM_DENIED"
+  | "SHIM_KV_FULL"
   | "SHIM_INTERNAL";
 
 /** 事件反向通道（后端→前端 emit，语义与 Tauri event 同构）。 */
@@ -76,6 +77,7 @@ export const SHIM_RETRYABLE: Record<ShimErrorCode, boolean> = {
   "SHIM_BACKEND_DOWN": true,
   "SHIM_VERSION_MISMATCH": false,
   "SHIM_PERM_DENIED": false,
+  "SHIM_KV_FULL": false,
   "SHIM_INTERNAL": true,
 };
 

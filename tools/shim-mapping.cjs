@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * 任务23（AI-B）：三色审计——554 方法（实测 549 方法 / 546 唯一命令）逐条映射表。
+ * 任务23（AI-B 初版）→ S2.02 三体三色审计（AI-3 重跑定版）。
  * 产出：docs/shim-mapping.json（数据驱动，加命令改表不改垫片代码）
  *       + 控制台三色占比。
  * 颜色口径（总案阶段3步骤2）：
  *   ✅ 内核原生：单一内核服务可承接
  *   🔶 组合映射：由 ≥2 个目录服务组合而成（services[] 必须写全）
  *   ❌ 暂缺：目录中无对应服务，需内核立项（missingService 必填）
+ *       —— 且 plan 必填：谁（AI 工位）在哪个阶段补（S2.02 验收点）；
+ *          物理边界永不承诺项如实标注「不补，按设计降级」（功能全景图 §6）。
  * 覆盖率门禁：100% 有归属，出现"未分类"即非零退出。
  */
 "use strict";
@@ -93,7 +95,9 @@ const SERVICES = {
 const RULES = [
   // ---- 引导/系统底座 ----
   [/^app_bootstrap$|^boot_replay$|^perf_boot_stage/, "ok", ["boot"]],
-  [/^exit_prepare$|^power_action$/, "ok", ["power"]],
+  [/^dualboot_/, "ok", ["boot"]], // 需求2 handoff：boot-select.json 双世界同源（AI-1 辖区，S0.1 入库）
+  [/^exit_prepare$|^power_abort_cmd$|^power_action$/, "ok", ["power"]],
+  [/^autostart_/, "combo", ["sched", "sysinfo"]], // 自启状态面（与 startup_ 同域口径）
   [/^maintain_selfcheck$|^diag_flags$|^diagnostic_export$/, "combo", ["applog", "sysinfo"]],
   [/^sys_(brief|disks|user|disk_health|self_info|prefs_read)$/, "ok", ["sysinfo"]],
   [/^sysenv_/, "ok", ["sysinfo"]],
@@ -105,7 +109,7 @@ const RULES = [
   [/^http_fetch$/, "ok", ["net"]],
   [/^net_(status|ip|drives)$/, "ok", ["net"]],
   [/^net_(proxy|kill_switch|consent|rule)/, "ok", ["net"]],
-  [/^fw_/, "missing", "netFirewall", "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"],
+  [/^fw_/, "missing", "netFirewall", "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）", { owner: "AI-5", stage: "S4.4 网络栈（内核侧防火墙默认拒绝先行设计）；过渡期走通道三引擎的 Windows 防火墙面（AI-2 第3批）" }],
   [/^open_datavault$/, "ok", ["vault"]],
   [/^win_(set_avoid_taskbar|hide_to_tray|health_scan)$/, "ok", ["windowMgr"]],
 
@@ -126,6 +130,7 @@ const RULES = [
   [/^export_/, "combo", ["backup", "fsWs"]],
   [/^import_workspace$/, "combo", ["backup", "fsWs", "docStore"]],
   [/^ws_/, "ok", ["fsWs"]],
+  [/^filesync_/, "combo", ["fsShared", "vfs"]], // 跨域文件级同步：SHARED 挂载对齐 + 变更轮询（双域总案 ③-a）
 
   // ---- 工程/代码/终端/AI 工具 ----
   [/^project_scan$|^project_read_(file|bytes)$/, "combo", ["fsWs", "search"]],
@@ -139,7 +144,7 @@ const RULES = [
 
   // ---- 文件管理器（宿主面） ----
   [/^ex_(home|variable_dirs)$/, "combo", ["fsShared", "vfs"]],
-  [/^ex_drives$/, "missing", "fsHost", "VARIX 物理隔离：宿主盘列举按设计不提供，需以共享分区列举服务替代"],
+  [/^ex_drives$/, "missing", "fsHost", "VARIX 物理隔离：宿主盘列举按设计不提供，需以共享分区列举服务替代", { owner: "—（按设计不补）", stage: "永不承诺（功能全景图 §6 物理边界）；S2.10 统一降级词条公示" }],
   [/^ex_(list|mkdir|rename|move|copy|trash|search|purge|thumbnail)/, "combo", ["fsShared", "vfs"]],
   [/^ex_(fav|view)/, "ok", ["kv"]],
   [/^ex_conflicts$/, "ok", ["fsShared"]],
@@ -148,7 +153,7 @@ const RULES = [
   [/^(dupe_scan|space_scan)$/, "combo", ["fsShared", "perf"]],
   [/^batch_rename_/, "combo", ["fsShared", "vfs", "verHistory"]],
   [/^sendto_/, "combo", ["fsShared", "shell"]],
-  [/^who_locks$/, "missing", "fsHost", "文件锁探测依赖宿主内核句柄表，VARIX 下无对应面"],
+  [/^who_locks$/, "missing", "fsHost", "文件锁探测依赖宿主内核句柄表，VARIX 下无对应面", { owner: "—（按设计不补）", stage: "永不承诺（功能全景图 §6 物理边界）；S2.10 统一降级词条公示" }],
   [/^archive_(ls|extract_one)$/, "combo", ["arch", "fsShared"]],
   [/^net_drives$/, "ok", ["net"]],
 
@@ -161,7 +166,7 @@ const RULES = [
   [/^official_usage$|^official_purge$/, "combo", ["pkg", "fsShared"]],
   [/^(usb_)/, "ok", ["usb"]],
   [/^portability_assess$|^ecosystem_migrate$/, "combo", ["pkg", "fsWs"]],
-  [/^winget_/, "missing", "pkgRemote", "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"],
+  [/^winget_/, "missing", "pkgRemote", "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代", { owner: "AI-2", stage: "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源" }],
   [/^vhdx_probe$/, "ok", ["container"]],
   [/^container_/, "ok", ["container"]],
 
@@ -249,18 +254,19 @@ const RULES = [
 ];
 
 // ---- 覆盖判定 ----
-// 规则形态：[regex, "ok"|"combo", services[]] 或 [regex, "missing", missingService, missingNote]
+// 规则形态：[regex, "ok"|"combo", services[]] 或 [regex, "missing", missingService, missingNote, plan]
 function classify(cmd) {
-  for (const [re, color, a, b] of RULES) {
+  for (const [re, color, a, b, plan] of RULES) {
     if (re.test(cmd)) {
       if (color === "missing") {
-        return { color: "❌", services: [], missingService: a, missingNote: b ?? "" };
+        return { color: "❌", services: [], missingService: a, missingNote: b ?? "", plan: plan ?? null };
       }
       return {
         color: Array.isArray(a) && a.length > 1 ? "🔶" : "✅",
         services: a,
         missingService: null,
         missingNote: null,
+        plan: null,
       };
     }
   }
@@ -310,9 +316,10 @@ const total = mapping.length;
 const pct = (n) => ((n / total) * 100).toFixed(1) + "%";
 
 const out = {
-  $comment: "任务23（AI-B）三色审计映射表。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/双域-垫片协议规范-v1.md 与本表生成脚本头注。",
+  $comment: "任务23（AI-B 初版）/ S2.02 三体三色审计（AI-3 重跑定版）。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/垫片协议规范.md 与本表生成脚本头注；❌ 项 plan 字段=谁在哪个阶段补（S2.02 验收点）。",
   generatedAt: new Date().toISOString().slice(0, 10),
   source: "src/lib/ipc.ts",
+  protocol: "varix-shim v2（tools/shim-protocol.source.json）",
   stats: { total, ok: counts["✅"], okPct: pct(counts["✅"]), combo: counts["🔶"], comboPct: pct(counts["🔶"]), missing: counts["❌"], missingPct: pct(counts["❌"]) },
   serviceCatalogue: SERVICES,
   entries: mapping,

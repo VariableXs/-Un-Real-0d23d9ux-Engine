@@ -497,8 +497,192 @@ pub mod target {
 }
 
 // ---------------------------------------------------------------------------
+// S2.03 · 内核 KV 命令面（垫片 kv_get/kv_set/kv_remove/kv_keys 的内核半边，AI-3）。
+//
+// 线缆契约（协议规范 §7，与 tools/shim-protocol.source.json v2 同源）：
+// 嵌入层（S2.05+）负责前端 JSON args ⇄ 本帧格式翻译；本模块只认帧、只出帧，
+// 对任意输入字节流零 panic（fuzz 门禁），错误统一映射协议错误码：
+//   BadNamespace/BadKey/TooLarge → SHIM_INVALID_ARGS
+//   Full                         → SHIM_KV_FULL（一等码，绝不静默覆盖）
+//   Io(_)                        → SHIM_INTERNAL
+// ---------------------------------------------------------------------------
+
+pub mod cmd {
+    use super::{KvError, KvStore};
+    use crate::drivers::blk::BlockDevice;
+    use crate::vport::shim_protocol as proto;
+    // 显式导入：宿主测试构建 std prelude 自带 Vec，no_std 镜像构建（kcheck）必须自带。
+    use alloc::vec::Vec;
+
+    /// 请求帧 tag（kv_* 四命令）。
+    pub const TAG_GET: u8 = 1;
+    pub const TAG_SET: u8 = 2;
+    pub const TAG_REMOVE: u8 = 3;
+    pub const TAG_KEYS: u8 = 4;
+
+    /// 请求帧定长头（tag 1 + ns_len 2 + key_len 2 + val_len 4）。
+    pub const REQ_HEAD: usize = 9;
+    /// 应答帧定长头（status 1 + code 1 + msg_len 2 + payload_len 4）。
+    pub const REP_HEAD: usize = 8;
+
+    /// 解析后的请求（全部借自输入帧，零拷贝）。
+    struct Req<'a> {
+        tag: u8,
+        ns: &'a [u8],
+        key: &'a [u8],
+        val: &'a [u8],
+    }
+
+    /// 严格解析：长度精确匹配（尾部垃圾 = 坏帧）、tag 白名单、非 SET 恒 val_len=0。
+    /// 任何不合规 = Err(()) → SHIM_INVALID_ARGS；绝不 panic。
+    fn parse(frame: &[u8]) -> Result<Req<'_>, ()> {
+        if frame.len() < REQ_HEAD {
+            return Err(());
+        }
+        let tag = frame[0];
+        if !matches!(tag, TAG_GET | TAG_SET | TAG_REMOVE | TAG_KEYS) {
+            return Err(());
+        }
+        let rd16 = |o: usize| u16::from_le_bytes([frame[o], frame[o + 1]]) as usize;
+        let val_len =
+            u32::from_le_bytes([frame[5], frame[6], frame[7], frame[8]]) as usize;
+        let ns_len = rd16(1);
+        let key_len = rd16(3);
+        if tag != TAG_SET && val_len != 0 {
+            return Err(());
+        }
+        let body = &frame[REQ_HEAD..];
+        if body.len() != ns_len + key_len + val_len {
+            return Err(());
+        }
+        Ok(Req {
+            tag,
+            ns: &body[..ns_len],
+            key: &body[ns_len..ns_len + key_len],
+            val: &body[ns_len + key_len..],
+        })
+    }
+
+    /// OK 应答（msg 恒空；payload 见协议规范 §7 载荷约定）。
+    fn reply_ok(payload: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(REP_HEAD + payload.len());
+        out.push(proto::REPLY_OK);
+        out.push(0);
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        out.extend_from_slice(payload);
+        out
+    }
+
+    /// MAPPED_ERR 应答（payload 恒空；msg 为诊断文案，非用户直出——前端走降级词条）。
+    fn reply_err(code: u8, msg: &str) -> Vec<u8> {
+        let mut out = Vec::with_capacity(REP_HEAD + msg.len());
+        out.push(proto::REPLY_MAPPED_ERR);
+        out.push(code);
+        out.extend_from_slice(&(msg.len() as u16).to_le_bytes());
+        out.extend_from_slice(&0u32.to_le_bytes());
+        out.extend_from_slice(msg.as_bytes());
+        out
+    }
+
+    /// KvError → 协议错误码映射（单一出口，防映射漂移）。
+    fn kv_err_reply(e: KvError) -> Vec<u8> {
+        match e {
+            KvError::Full => reply_err(proto::err::KV_FULL, "kv: journal/overflow full"),
+            KvError::TooLarge => reply_err(proto::err::INVALID_ARGS, "kv: value too large"),
+            KvError::BadNamespace => reply_err(proto::err::INVALID_ARGS, "kv: bad namespace"),
+            KvError::BadKey => reply_err(proto::err::INVALID_ARGS, "kv: bad key"),
+            KvError::Io(_) => reply_err(proto::err::INTERNAL, "kv: block device io"),
+        }
+    }
+
+    /// 执行一帧：恒返回应答帧，对任意输入零 panic（fuzz 契约）。
+    pub fn exec<B: BlockDevice>(store: &mut KvStore<B>, frame: &[u8]) -> Vec<u8> {
+        let req = match parse(frame) {
+            Ok(r) => r,
+            Err(()) => return reply_err(proto::err::INVALID_ARGS, "kv: malformed frame"),
+        };
+        match req.tag {
+            TAG_GET => match store.get(req.ns, req.key) {
+                Ok(Some(v)) => {
+                    let mut p = Vec::with_capacity(1 + v.len());
+                    p.push(1);
+                    p.extend_from_slice(&v);
+                    reply_ok(&p)
+                }
+                Ok(None) => reply_ok(&[0]),
+                Err(e) => kv_err_reply(e),
+            },
+            TAG_SET => match store.set(req.ns, req.key, req.val) {
+                Ok(()) => reply_ok(&[]),
+                Err(e) => kv_err_reply(e),
+            },
+            TAG_REMOVE => match store.remove(req.ns, req.key) {
+                Ok(()) => reply_ok(&[]),
+                Err(e) => kv_err_reply(e),
+            },
+            TAG_KEYS => match store.keys(req.ns) {
+                Ok(ks) => {
+                    // 键 ≤ KEY_MAX=48 → klen u8 安全；活键 ≤64 → count u16 安全。
+                    let mut p = Vec::with_capacity(2 + ks.len() * 9);
+                    p.extend_from_slice(&(ks.len() as u16).to_le_bytes());
+                    for k in &ks {
+                        p.push(k.len() as u8);
+                        p.extend_from_slice(k);
+                    }
+                    reply_ok(&p)
+                }
+                Err(e) => kv_err_reply(e),
+            },
+            _ => reply_err(proto::err::INVALID_ARGS, "kv: unknown tag"),
+        }
+    }
+
+    /// 应答帧结构校验（fuzz/测试用）：status 合法、长度自洽、错误码界内。
+    #[cfg(test)]
+    pub fn validate_reply(rep: &[u8]) -> Result<(), &'static str> {
+        if rep.len() < REP_HEAD {
+            return Err("帧头不完整");
+        }
+        let msg_len = u16::from_le_bytes([rep[2], rep[3]]) as usize;
+        let payload_len = u32::from_le_bytes([rep[4], rep[5], rep[6], rep[7]]) as usize;
+        if rep.len() != REP_HEAD + msg_len + payload_len {
+            return Err("长度不自洽");
+        }
+        match rep[0] {
+            proto::REPLY_OK => {}
+            proto::REPLY_MAPPED_ERR => {
+                if rep[1] >= proto::err::COUNT {
+                    return Err("错误码越界");
+                }
+                if msg_len == 0 {
+                    return Err("映射错误必须携带诊断文案");
+                }
+            }
+            _ => return Err("未知状态字节"),
+        }
+        Ok(())
+    }
+
+    /// 请求帧组装（嵌入层翻译器的内核侧镜像；测试与文档示例共用）。
+    #[cfg(test)]
+    pub fn build_req(tag: u8, ns: &[u8], key: &[u8], val: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(REQ_HEAD + ns.len() + key.len() + val.len());
+        out.push(tag);
+        out.extend_from_slice(&(ns.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(key.len() as u16).to_le_bytes());
+        out.extend_from_slice(&(val.len() as u32).to_le_bytes());
+        out.extend_from_slice(ns);
+        out.extend_from_slice(key);
+        out.extend_from_slice(val);
+        out
+    }
+}
+
+
+// ---------------------------------------------------------------------------
 // 宿主测试：断电恢复 ×10 零丢失 / 撕裂注入 / 满容量明确报错 / 命名空间隔离 /
-// localStorage 语义边界 / 大值往返。
+// localStorage 语义边界 / 大值往返 / S2.03 命令面（帧往返/fuzz/经面断电）。
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
@@ -778,6 +962,189 @@ mod tests {
         let dev = store.into_device();
         let mut store = KvStore::open(dev, KV_JOURNAL_BASE, KV_DATA_BASE).unwrap().0;
         assert_eq!(store.get(b"t", b"edge").unwrap().unwrap().len(), OVERFLOW_MAX);
+    }
+
+    // -----------------------------------------------------------------------
+    // S2.03 命令面（帧级契约，协议规范 §7）
+    // -----------------------------------------------------------------------
+
+    use crate::vport::shim_protocol as proto;
+    use cmd::{TAG_GET, TAG_KEYS, TAG_REMOVE, TAG_SET};
+
+    fn expect_ok(rep: Vec<u8>) -> Vec<u8> {
+        cmd::validate_reply(&rep).unwrap();
+        assert_eq!(rep[0], proto::REPLY_OK, "期望 OK，实际见上方应答");
+        rep[cmd::REP_HEAD..].to_vec()
+    }
+
+    #[test]
+    fn cmd_roundtrip_all_four() {
+        let mut store = fresh(131_072);
+        // SET → OK。
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"app", b"layout", b"deck-1")));
+        // GET 命中 → found=1 + 值逐字节。
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app", b"layout", &[])));
+        assert_eq!(payload[0], 1);
+        assert_eq!(&payload[1..], b"deck-1");
+        // GET miss → found=0；空串值必须与 miss 可区分。
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app", b"no-such", &[])));
+        assert_eq!(payload, &[0]);
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"app", b"empty", b"")));
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app", b"empty", &[])));
+        assert_eq!(payload, &[1], "空串 ≠ miss");
+        // KEYS → count + (klen,key)*，只含本 ns。
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"app", b"second", b"v")));
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_KEYS, b"app", &[], &[])));
+        let count = u16::from_le_bytes([payload[0], payload[1]]);
+        assert_eq!(count, 3, "layout/empty/second");
+        // REMOVE → OK；GET 回 found=0。
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_REMOVE, b"app", b"second", &[])));
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app", b"second", &[])));
+        assert_eq!(payload, &[0]);
+    }
+
+    #[test]
+    fn cmd_bad_frames_fuzz_1000() {
+        // fuzz 契约：任意输入字节流 → 良序应答（OK | MAPPED_ERR），零 panic；
+        // fuzz 不保证保留垃圾写入，终态在全新盘面上验证存储仍可用。
+        let mut store = fresh(131_072);
+        let mut seed: u64 = 0x243F_6A88_85A3_08D3;
+        let mut next = move || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            seed
+        };
+        let valid = cmd::build_req(TAG_SET, b"app", b"k", b"v");
+        let mut mapped = 0usize;
+        for i in 0..1000u32 {
+            let mut frame: Vec<u8> = if i % 3 == 0 {
+                let mut f = valid.clone();
+                let cut = (next() as usize) % (f.len() + 8);
+                f.truncate(cut.min(f.len()));
+                if next() & 1 == 1 {
+                    f.push((next() & 0xFF) as u8);
+                }
+                f
+            } else {
+                let n = (next() as usize) % 96;
+                (0..n).map(|_| (next() & 0xFF) as u8).collect()
+            };
+            if i % 3 == 0 && !frame.is_empty() {
+                let pos = (next() as usize) % frame.len();
+                frame[pos] ^= 0xFF;
+            }
+            let rep = cmd::exec(&mut store, &frame);
+            cmd::validate_reply(&rep).unwrap_or_else(|e| panic!("round {i}: {e}"));
+            if rep[0] == proto::REPLY_MAPPED_ERR {
+                mapped += 1;
+            }
+        }
+        assert!(mapped > 0, "坏帧变异必须产出过映射错误");
+        // 全新盘面：fuzz 后命令面照常工作。
+        let mut clean = fresh(131_072);
+        expect_ok(cmd::exec(&mut clean, &cmd::build_req(TAG_SET, b"app", b"alive", b"yes")));
+    }
+
+    #[test]
+    fn cmd_full_maps_to_kv_full() {
+        let mut store = fresh(131_072);
+        for i in 0..64u32 {
+            let key = format!("k{:02}", i);
+            expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"t", key.as_bytes(), b"v")));
+        }
+        // 第 65 条 → MAPPED_ERR(SHIM_KV_FULL)：明确拒绝，绝不静默覆盖。
+        let rep = cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"t", b"overflow", b"v"));
+        cmd::validate_reply(&rep).unwrap();
+        assert_eq!(rep[0], proto::REPLY_MAPPED_ERR);
+        assert_eq!(rep[1], proto::err::KV_FULL);
+        assert!(!proto::err::is_retryable(rep[1]));
+        // 已满账本上既有键经命令面仍可读（真源在盘面）。
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"t", b"k00", &[])));
+        assert_eq!(payload, &[1, b'v']);
+    }
+
+    #[test]
+    fn cmd_arg_violations_map_invalid_args() {
+        let mut store = fresh(131_072);
+        // ns 空 / ns 17B / key 空 / key 49B：结构合法帧 + store 校验 → INVALID_ARGS。
+        let cases: [(&[u8], &[u8]); 4] = [
+            (b"", b"k"),
+            (&[b'a'; 17], b"k"),
+            (b"ns", b""),
+            (b"ns", &[b'k'; 49]),
+        ];
+        for (ns, key) in cases {
+            let rep = cmd::exec(&mut store, &cmd::build_req(TAG_SET, ns, key, b"v"));
+            cmd::validate_reply(&rep).unwrap();
+            assert_eq!(rep[1], proto::err::INVALID_ARGS, "ns={:?} key len={}", ns, key.len());
+        }
+        // 值超溢出上限 → TooLarge → INVALID_ARGS（值约束）。
+        let big = vec![7u8; OVERFLOW_MAX + 1];
+        let rep = cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"t", b"big", &big));
+        assert_eq!(rep[1], proto::err::INVALID_ARGS);
+        // 非 SET 带 val_len → 坏帧。
+        let mut f = cmd::build_req(TAG_GET, b"t", b"k", &[]);
+        f[5] = 1;
+        let rep = cmd::exec(&mut store, &f);
+        assert_eq!(rep[1], proto::err::INVALID_ARGS);
+        // 未知 tag → 坏帧（本层不产生 MISSING——tag 白名单在 parse）。
+        let mut f = cmd::build_req(TAG_GET, b"t", b"k", &[]);
+        f[0] = 200;
+        let rep = cmd::exec(&mut store, &f);
+        assert_eq!(rep[1], proto::err::INVALID_ARGS);
+        // 尾部垃圾 → 坏帧（长度必须精确匹配）。
+        let mut f = cmd::build_req(TAG_GET, b"t", b"k", &[]);
+        f.push(0);
+        let rep = cmd::exec(&mut store, &f);
+        assert_eq!(rep[1], proto::err::INVALID_ARGS);
+    }
+
+    #[test]
+    fn cmd_powercut_x10_zero_loss() {
+        // 经命令面的断电 ×10：每轮「收回盘面重开」→ 写 3 键 → 命令面回读精确
+        // → 上一轮首键跨断电零丢失。
+        let mut store = fresh(131_072);
+        for round in 1u8..=10 {
+            let dev = store.into_device();
+            store = KvStore::open(dev, KV_JOURNAL_BASE, KV_DATA_BASE).unwrap().0;
+            for k in 0..3u8 {
+                let key = format!("r{}-k{}", round, k);
+                let val = vec![round; 80];
+                expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"t", key.as_bytes(), &val)));
+            }
+            for k in 0..3u8 {
+                let key = format!("r{}-k{}", round, k);
+                let expect = vec![round; 80];
+                let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"t", key.as_bytes(), &[])));
+                assert_eq!(&payload[1..], &expect[..], "round {} key {}", round, key);
+            }
+            if round > 1 {
+                let key = format!("r{}-k0", round - 1);
+                let expect = vec![round - 1; 80];
+                let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"t", key.as_bytes(), &[])));
+                assert_eq!(&payload[1..], &expect[..], "跨断电零丢失 round {}", round);
+            }
+        }
+    }
+
+    #[test]
+    fn cmd_namespace_isolation() {
+        let mut store = fresh(131_072);
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"app-a", b"same-key", b"from-a")));
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_SET, b"app-b", b"same-key", b"from-b")));
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app-a", b"same-key", &[])));
+        assert_eq!(&payload[1..], b"from-a");
+        // KEYS 只列本 ns。
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_KEYS, b"app-b", &[], &[])));
+        assert_eq!(u16::from_le_bytes([payload[0], payload[1]]), 1);
+        assert_eq!(&payload[3..], b"same-key");
+        // 删 A 不影响 B。
+        expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_REMOVE, b"app-a", b"same-key", &[])));
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app-a", b"same-key", &[])));
+        assert_eq!(payload, &[0]);
+        let payload = expect_ok(cmd::exec(&mut store, &cmd::build_req(TAG_GET, b"app-b", b"same-key", &[])));
+        assert_eq!(&payload[1..], b"from-b");
     }
 }
 

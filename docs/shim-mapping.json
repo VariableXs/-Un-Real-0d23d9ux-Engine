@@ -1,15 +1,16 @@
 {
- "$comment": "任务23（AI-B）三色审计映射表。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/双域-垫片协议规范-v1.md 与本表生成脚本头注。",
- "generatedAt": "2026-09-17",
+ "$comment": "任务23（AI-B 初版）/ S2.02 三体三色审计（AI-3 重跑定版）。数据驱动：新增命令先在此登记归属（services[]），再进 generate_handler。颜色口径见 docs/垫片协议规范.md 与本表生成脚本头注；❌ 项 plan 字段=谁在哪个阶段补（S2.02 验收点）。",
+ "generatedAt": "2026-09-21",
  "source": "src/lib/ipc.ts",
+ "protocol": "varix-shim v2（tools/shim-protocol.source.json）",
  "stats": {
-  "total": 553,
-  "ok": 318,
-  "okPct": "57.5%",
-  "combo": 222,
-  "comboPct": "40.1%",
+  "total": 564,
+  "ok": 321,
+  "okPct": "56.9%",
+  "combo": 230,
+  "comboPct": "40.8%",
   "missing": 13,
-  "missingPct": "2.4%"
+  "missingPct": "2.3%"
  },
  "serviceCatalogue": {
   "kv": "KV 存储服务（localStorage 语义）",
@@ -81,7 +82,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatElevationProbe",
@@ -91,7 +93,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatDriverScan",
@@ -101,7 +104,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatHostProbe",
@@ -111,7 +115,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatShimReport",
@@ -121,7 +126,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatShimStats",
@@ -142,7 +148,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatVolumes",
@@ -152,7 +159,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatHealPaths",
@@ -162,7 +170,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "bootstrap",
@@ -172,7 +181,8 @@
     "boot"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openPath",
@@ -183,7 +193,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "revealPath",
@@ -194,7 +205,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "checkPaths",
@@ -205,7 +217,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "log",
@@ -215,7 +228,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "saveTextFile",
@@ -225,7 +239,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listFolders",
@@ -235,7 +250,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "createFolder",
@@ -245,7 +261,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "renameFolder",
@@ -255,7 +272,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "moveFolder",
@@ -265,7 +283,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trashFolder",
@@ -275,7 +294,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "restoreFolder",
@@ -285,7 +305,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "purgeFolder",
@@ -295,7 +316,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listDocuments",
@@ -305,7 +327,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "createDocument",
@@ -315,7 +338,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "getDocument",
@@ -325,7 +349,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "saveDocument",
@@ -335,7 +360,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "moveDocument",
@@ -345,7 +371,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "setFavorite",
@@ -355,7 +382,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "setTags",
@@ -365,7 +393,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listAllTags",
@@ -375,7 +404,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trashDocument",
@@ -385,7 +415,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "restoreDocument",
@@ -395,7 +426,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "purgeDocuments",
@@ -405,7 +437,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "emptyTrash",
@@ -416,7 +449,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "searchAll",
@@ -427,7 +461,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listMindmaps",
@@ -437,7 +472,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "createMindmap",
@@ -447,7 +483,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "getMindmap",
@@ -457,7 +494,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "updateMindmap",
@@ -467,7 +505,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "renameMindmap",
@@ -477,7 +516,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trashMindmap",
@@ -487,7 +527,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "saveNodes",
@@ -498,7 +539,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deleteNodes",
@@ -509,7 +551,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "nodesVersions",
@@ -520,7 +563,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "saveEdge",
@@ -530,7 +574,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deleteEdges",
@@ -540,7 +585,8 @@
     "mindStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "importMedia",
@@ -550,7 +596,8 @@
     "mediaStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "importDataUrl",
@@ -560,7 +607,8 @@
     "mediaStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listAttachments",
@@ -570,7 +618,8 @@
     "mediaStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "resolveMediaPath",
@@ -580,7 +629,8 @@
     "mediaStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deleteMedia",
@@ -590,7 +640,8 @@
     "mediaStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "getSettings",
@@ -611,7 +662,8 @@
     "settings"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "resetUiSettings",
@@ -621,7 +673,8 @@
     "settings"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "writeRecoveryFile",
@@ -632,7 +685,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listRecoveryFiles",
@@ -643,7 +697,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "readRecoveryFile",
@@ -654,7 +709,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deleteRecoveryFile",
@@ -665,7 +721,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recoverToDocument",
@@ -676,7 +733,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "createBackup",
@@ -686,7 +744,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "listBackups",
@@ -696,7 +755,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "restoreBackup",
@@ -706,7 +766,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deleteBackup",
@@ -716,7 +777,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exportBackup",
@@ -726,7 +788,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exportDocuments",
@@ -737,7 +800,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exportMindmapJson",
@@ -748,7 +812,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exportWorkspace",
@@ -759,7 +824,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "importWorkspace",
@@ -771,7 +837,8 @@
     "docStore"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsDefaultDir",
@@ -781,7 +848,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsList",
@@ -791,7 +859,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsReadText",
@@ -801,7 +870,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsCreateDir",
@@ -811,7 +881,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsRename",
@@ -821,7 +892,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsMove",
@@ -831,7 +903,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsCopyIn",
@@ -841,7 +914,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wsDeleteTrash",
@@ -851,7 +925,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "projectScan",
@@ -862,7 +937,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "projectReadFile",
@@ -873,7 +949,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "projectReadBytes",
@@ -884,7 +961,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "readTextFile",
@@ -894,7 +972,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "writeTextFile",
@@ -904,7 +983,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "privacyUsage",
@@ -914,7 +994,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mouseParamsGet",
@@ -924,7 +1005,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mouseParamsWrite",
@@ -934,7 +1016,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mouseParamsRollback",
@@ -944,7 +1027,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "pointerSpeedTemp",
@@ -954,7 +1038,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "pointerSpeedRestore",
@@ -964,7 +1049,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "audioGet",
@@ -974,7 +1060,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "audioSet",
@@ -984,7 +1071,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wifiGet",
@@ -994,7 +1082,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "bluetoothGet",
@@ -1004,7 +1093,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "bluetoothSet",
@@ -1014,7 +1104,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "btDevices",
@@ -1024,7 +1115,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wifiSet",
@@ -1034,7 +1126,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "btConnect",
@@ -1044,7 +1137,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "btDisconnect",
@@ -1054,7 +1148,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wifiScan",
@@ -1064,7 +1159,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wifiDisconnect",
@@ -1074,7 +1170,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "audioDevices",
@@ -1084,7 +1181,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "audioSetDefault",
@@ -1094,7 +1192,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "batteryGet",
@@ -1105,7 +1204,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "brightnessGet",
@@ -1116,7 +1216,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "brightnessSet",
@@ -1127,7 +1228,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exHome",
@@ -1138,7 +1240,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exVariableDirs",
@@ -1149,7 +1252,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exDrives",
@@ -1157,7 +1261,11 @@
    "color": "❌",
    "services": [],
    "missingService": "fsHost",
-   "missingNote": "VARIX 物理隔离：宿主盘列举按设计不提供，需以共享分区列举服务替代"
+   "missingNote": "VARIX 物理隔离：宿主盘列举按设计不提供，需以共享分区列举服务替代",
+   "plan": {
+    "owner": "—（按设计不补）",
+    "stage": "永不承诺（功能全景图 §6 物理边界）；S2.10 统一降级词条公示"
+   }
   },
   {
    "method": "exList",
@@ -1168,7 +1276,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exMkdir",
@@ -1179,7 +1288,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exRename",
@@ -1190,7 +1300,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exMove",
@@ -1201,7 +1312,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exCopy",
@@ -1212,7 +1324,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exTrash",
@@ -1223,7 +1336,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exSearch",
@@ -1234,7 +1348,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exConflicts",
@@ -1244,7 +1359,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exPurge",
@@ -1255,7 +1371,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exFavList",
@@ -1265,7 +1382,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exFavAdd",
@@ -1275,7 +1393,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exFavRemove",
@@ -1285,7 +1404,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exThumbnail",
@@ -1296,7 +1416,8 @@
     "vfs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exViewGet",
@@ -1306,7 +1427,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exViewSet",
@@ -1316,7 +1438,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recList",
@@ -1327,7 +1450,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recRestore",
@@ -1338,7 +1462,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recPurge",
@@ -1349,7 +1474,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recEmpty",
@@ -1360,7 +1486,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recCount",
@@ -1371,7 +1498,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "checksum",
@@ -1382,7 +1510,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "checksumCancel",
@@ -1393,7 +1522,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "dupeScan",
@@ -1404,7 +1534,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "spaceScan",
@@ -1415,7 +1546,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "batchRenamePreview",
@@ -1427,7 +1559,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "batchRenameApply",
@@ -1439,7 +1572,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "batchRenameUndo",
@@ -1451,7 +1585,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sendtoList",
@@ -1462,7 +1597,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sendtoCustomAdd",
@@ -1473,7 +1609,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sendtoCustomRemove",
@@ -1484,7 +1621,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sendtoCopy",
@@ -1495,7 +1633,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netDrives",
@@ -1505,7 +1644,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "whoLocks",
@@ -1513,7 +1653,11 @@
    "color": "❌",
    "services": [],
    "missingService": "fsHost",
-   "missingNote": "文件锁探测依赖宿主内核句柄表，VARIX 下无对应面"
+   "missingNote": "文件锁探测依赖宿主内核句柄表，VARIX 下无对应面",
+   "plan": {
+    "owner": "—（按设计不补）",
+    "stage": "永不承诺（功能全景图 §6 物理边界）；S2.10 统一降级词条公示"
+   }
   },
   {
    "method": "archiveLs",
@@ -1524,7 +1668,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archiveExtractOne",
@@ -1535,7 +1680,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sentinelList",
@@ -1546,7 +1692,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sentinelAdd",
@@ -1557,7 +1704,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sentinelRemove",
@@ -1568,7 +1716,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sentinelToggle",
@@ -1579,7 +1728,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpAdd",
@@ -1590,7 +1740,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpList",
@@ -1601,7 +1752,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpRemove",
@@ -1612,7 +1764,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpPurge",
@@ -1623,7 +1776,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpSetGrade",
@@ -1634,7 +1788,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpSetDpiFix",
@@ -1645,7 +1800,102 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "tpSetChannel",
+   "cmd": "tp_set_channel",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "tpSyncSharedApps",
+   "cmd": "tp_sync_shared_apps",
+   "color": "🔶",
+   "services": [
+    "pkg",
+    "shell"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "filesyncStatus",
+   "cmd": "filesync_status",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "filesyncPoll",
+   "cmd": "filesync_poll",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "filesyncRoot",
+   "cmd": "filesync_root",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "filesyncReveal",
+   "cmd": "filesync_reveal",
+   "color": "🔶",
+   "services": [
+    "fsShared",
+    "vfs"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "dualbootStatus",
+   "cmd": "dualboot_status",
+   "color": "✅",
+   "services": [
+    "boot"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "dualbootSetHandoff",
+   "cmd": "dualboot_set_handoff",
+   "color": "✅",
+   "services": [
+    "boot"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatSetOverride",
@@ -1655,7 +1905,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpRename",
@@ -1666,7 +1917,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpLaunch",
@@ -1677,7 +1929,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpSetIcon",
@@ -1688,7 +1941,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpScanStartMenu",
@@ -1699,7 +1953,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpScanFolder",
@@ -1710,7 +1965,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpInboxImport",
@@ -1721,7 +1977,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpPortableize",
@@ -1732,7 +1989,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpLaunchAdmin",
@@ -1743,7 +2001,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "iconDataurl",
@@ -1754,7 +2013,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "iconDataurlHd",
@@ -1765,7 +2025,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpEnsureIcons",
@@ -1776,7 +2037,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "profileTemplates",
@@ -1787,7 +2049,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "profileApply",
@@ -1798,7 +2061,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "profileSet",
@@ -1809,7 +2073,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "profileDryrun",
@@ -1820,7 +2085,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueScan",
@@ -1831,7 +2097,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "profileInfer",
@@ -1842,7 +2109,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "installModeLaunch",
@@ -1853,7 +2121,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "installList",
@@ -1864,7 +2133,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "installAnalyze",
@@ -1875,7 +2145,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "installCommit",
@@ -1886,7 +2157,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "installDiscard",
@@ -1897,7 +2169,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueResolve",
@@ -1908,7 +2181,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueWhitelistAdd",
@@ -1919,7 +2193,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueWhitelistList",
@@ -1930,7 +2205,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "exitPrepare",
@@ -1940,7 +2216,8 @@
     "power"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "termStatus",
@@ -1950,7 +2227,8 @@
     "term"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "termOpen",
@@ -1960,7 +2238,8 @@
     "term"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aiToolStatus",
@@ -1970,7 +2249,8 @@
     "aiTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aiInstallNode",
@@ -1980,7 +2260,8 @@
     "aiTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aiInstallTool",
@@ -1990,7 +2271,8 @@
     "aiTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "identityList",
@@ -2000,7 +2282,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "identityAdd",
@@ -2010,7 +2293,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "identityRemove",
@@ -2020,7 +2304,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aiLaunch",
@@ -2030,7 +2315,8 @@
     "aiTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aiVerify",
@@ -2040,7 +2326,8 @@
     "aiTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserDetect",
@@ -2051,7 +2338,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfiles",
@@ -2062,7 +2350,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfileAdd",
@@ -2073,7 +2362,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfileRename",
@@ -2084,7 +2374,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfileClone",
@@ -2095,7 +2386,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfileDelete",
@@ -2106,7 +2398,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserProfileLaunch",
@@ -2117,7 +2410,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserRunning",
@@ -2128,7 +2422,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "browserImport",
@@ -2139,7 +2434,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "codeStatus",
@@ -2150,7 +2446,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "codeDeploy",
@@ -2161,7 +2458,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "codeRegister",
@@ -2172,7 +2470,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "codeLaunch",
@@ -2183,7 +2482,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "portabilityAssess",
@@ -2194,7 +2494,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "ecosystemMigrate",
@@ -2205,7 +2506,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "iconJumboDataurl",
@@ -2216,7 +2518,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "steamLibraryScan",
@@ -2227,7 +2530,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "steamLaunch",
@@ -2238,7 +2542,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "aumidLaunch",
@@ -2249,7 +2554,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fileAssocList",
@@ -2260,7 +2566,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fileAssocSet",
@@ -2271,7 +2578,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fileAssocResolve",
@@ -2282,7 +2590,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fileAssocRemove",
@@ -2293,7 +2602,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "peAnalyze",
@@ -2303,7 +2613,8 @@
     "peTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "disasmEntry",
@@ -2313,7 +2624,8 @@
     "peTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sandboxProbe",
@@ -2324,7 +2636,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sandboxWsbGenerate",
@@ -2335,7 +2648,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "securityReportExport",
@@ -2346,7 +2660,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "securityEnvPreset",
@@ -2357,7 +2672,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shieldSet",
@@ -2367,7 +2683,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shieldGet",
@@ -2377,7 +2694,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extList",
@@ -2387,7 +2705,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extRescan",
@@ -2397,7 +2716,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extSetEnabled",
@@ -2407,7 +2727,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extOpenWeb",
@@ -2417,7 +2738,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extClose",
@@ -2427,7 +2749,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extAudit",
@@ -2437,7 +2760,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extInstallExample",
@@ -2447,7 +2771,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extMarketList",
@@ -2457,7 +2782,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extMarketImport",
@@ -2467,7 +2793,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extMarketInstall",
@@ -2477,7 +2804,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extMarketRemove",
@@ -2487,7 +2815,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extPluginLoad",
@@ -2497,7 +2826,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extPluginUnload",
@@ -2507,7 +2837,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extDaemonStart",
@@ -2517,7 +2848,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extDaemonStatus",
@@ -2527,7 +2859,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "extDaemonExample",
@@ -2537,7 +2870,8 @@
     "extLoader"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envList",
@@ -2548,7 +2882,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envCreate",
@@ -2559,7 +2894,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envSwitch",
@@ -2570,7 +2906,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envDelete",
@@ -2581,7 +2918,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envClone",
@@ -2592,7 +2930,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envNested",
@@ -2603,7 +2942,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envDiff",
@@ -2614,7 +2954,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envDiscard",
@@ -2625,7 +2966,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envMerge",
@@ -2636,7 +2978,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netStatus",
@@ -2646,7 +2989,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netProxyStart",
@@ -2656,7 +3000,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netProxyStop",
@@ -2666,7 +3011,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netKillSwitch",
@@ -2676,7 +3022,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netRulesList",
@@ -2686,7 +3033,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netRuleGrant",
@@ -2696,7 +3044,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netRuleRevoke",
@@ -2706,7 +3055,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "revocationListExport",
@@ -2716,7 +3066,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "diagFlags",
@@ -2727,7 +3078,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "diagnosticExport",
@@ -2738,7 +3090,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "demoCapsule",
@@ -2748,7 +3101,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "gitStatus",
@@ -2758,7 +3112,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "gitLog",
@@ -2768,7 +3123,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "gitBranches",
@@ -2778,7 +3134,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sshKeys",
@@ -2788,7 +3145,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sshKeyGenerate",
@@ -2798,7 +3156,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sshKeyDelete",
@@ -2808,7 +3167,8 @@
     "gitTools"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "workspaceSearch",
@@ -2819,7 +3179,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "bigfileSlice",
@@ -2829,7 +3190,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "editorGoto",
@@ -2840,7 +3202,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolchainStatus",
@@ -2851,7 +3214,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolchainDeploy",
@@ -2862,7 +3226,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "containerDiag",
@@ -2872,7 +3237,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "containerRepair",
@@ -2882,7 +3248,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "containerRescueExport",
@@ -2892,7 +3259,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "containerInit",
@@ -2902,7 +3270,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "containerStats",
@@ -2912,7 +3281,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vhdxProbe",
@@ -2922,7 +3292,8 @@
     "container"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tpRunning",
@@ -2933,7 +3304,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "officialUsage",
@@ -2944,7 +3316,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "officialPurge",
@@ -2955,7 +3328,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "usbStatus",
@@ -2965,7 +3339,8 @@
     "usb"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "usbPack",
@@ -2975,7 +3350,8 @@
     "usb"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "usbVerify",
@@ -2985,7 +3361,8 @@
     "usb"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netConsentCheck",
@@ -2995,7 +3372,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netConsentSet",
@@ -3005,7 +3383,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "winSetAvoidTaskbar",
@@ -3015,7 +3394,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "winHideToTray",
@@ -3025,7 +3405,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "winHealthScan",
@@ -3035,7 +3416,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "procSuspend",
@@ -3045,7 +3427,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "procResume",
@@ -3055,7 +3438,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysBrief",
@@ -3065,7 +3449,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysDiskHealth",
@@ -3075,7 +3460,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "directShellStatus",
@@ -3085,7 +3471,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "directShellSet",
@@ -3095,7 +3482,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysDisks",
@@ -3105,7 +3493,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysUser",
@@ -3115,7 +3504,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysenvOverview",
@@ -3125,7 +3515,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysenvDisplaySet",
@@ -3135,7 +3526,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolDataRead",
@@ -3145,7 +3537,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolDataWrite",
@@ -3155,7 +3548,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolSecureRead",
@@ -3166,7 +3560,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "toolSecureWrite",
@@ -3177,7 +3572,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "snapshotCapture",
@@ -3188,7 +3584,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shotSave",
@@ -3199,7 +3596,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shotDir",
@@ -3210,7 +3608,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "applogRecent",
@@ -3220,7 +3619,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysSelfInfo",
@@ -3230,7 +3630,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cursorPos",
@@ -3240,7 +3641,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "httpFetch",
@@ -3250,7 +3652,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "printAssocCheck",
@@ -3260,7 +3663,8 @@
     "print"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "printFiles",
@@ -3270,7 +3674,8 @@
     "print"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "printList",
@@ -3280,7 +3685,8 @@
     "print"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "printJobs",
@@ -3290,7 +3696,8 @@
     "print"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "printJobSet",
@@ -3300,7 +3707,8 @@
     "print"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "procList",
@@ -3310,7 +3718,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "procKill",
@@ -3320,7 +3729,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfCpu",
@@ -3330,7 +3740,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "startupList",
@@ -3341,7 +3752,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "startupDisable",
@@ -3352,7 +3764,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "serviceList",
@@ -3363,7 +3776,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "serviceSet",
@@ -3374,7 +3788,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fsIndexStatus",
@@ -3384,7 +3799,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fsIndexQuery",
@@ -3394,7 +3810,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mixerList",
@@ -3404,7 +3821,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mixerSet",
@@ -3414,7 +3832,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "imeStatus",
@@ -3424,7 +3843,8 @@
     "ime"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "imeList",
@@ -3434,7 +3854,8 @@
     "ime"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "imeSwitch",
@@ -3444,7 +3865,8 @@
     "ime"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "mediaStatus",
@@ -3454,7 +3876,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "backupScheduleGet",
@@ -3464,7 +3887,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "backupScheduleSet",
@@ -3474,7 +3898,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "backupRunNow",
@@ -3484,7 +3909,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "updateScan",
@@ -3494,7 +3920,8 @@
     "update"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "updateApply",
@@ -3504,7 +3931,8 @@
     "update"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "maintainSelfcheck",
@@ -3515,7 +3943,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "netIp",
@@ -3525,7 +3954,8 @@
     "net"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "powerAction",
@@ -3535,7 +3965,43 @@
     "power"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "powerAbort",
+   "cmd": "power_abort_cmd",
+   "color": "✅",
+   "services": [
+    "power"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "autostartGet",
+   "cmd": "autostart_get_cmd",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
+  },
+  {
+   "method": "autostartSet",
+   "cmd": "autostart_set_cmd",
+   "color": "🔶",
+   "services": [
+    "sched",
+    "sysinfo"
+   ],
+   "missingService": null,
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shortcutsApply",
@@ -3545,7 +4011,8 @@
     "input"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpMonitors",
@@ -3556,7 +4023,8 @@
     "display"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpSetMonitor",
@@ -3567,7 +4035,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpPickDaily",
@@ -3578,7 +4047,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpEngineScan",
@@ -3589,7 +4059,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpSceneShader",
@@ -3600,7 +4071,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wpListImages",
@@ -3611,7 +4083,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatCheck",
@@ -3621,7 +4094,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatApply",
@@ -3631,7 +4105,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "compatRestore",
@@ -3641,7 +4116,8 @@
     "compat"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shellExecute",
@@ -3651,7 +4127,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shellActivateApplication",
@@ -3661,7 +4138,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shellItemIcon",
@@ -3671,7 +4149,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shellContextMenu",
@@ -3681,7 +4160,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "shellForwardGesture",
@@ -3691,7 +4171,8 @@
     "shell"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedLaunch",
@@ -3701,7 +4182,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedAdopt",
@@ -3711,7 +4193,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedPick",
@@ -3721,7 +4204,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "watchGetSettings",
@@ -3731,7 +4215,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "watchSetSettings",
@@ -3741,7 +4226,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "watchDismiss",
@@ -3751,7 +4237,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedBounds",
@@ -3761,7 +4248,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedVisible",
@@ -3771,7 +4259,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedClose",
@@ -3781,7 +4270,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "weWallpaperCurrent",
@@ -3792,7 +4282,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "weWallpaperOpen",
@@ -3803,7 +4294,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedCloseAll",
@@ -3813,7 +4305,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedFocus",
@@ -3823,7 +4316,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "desktopRaise",
@@ -3833,7 +4327,8 @@
     "windowMgr"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultStatus",
@@ -3843,7 +4338,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultInit",
@@ -3853,7 +4349,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultUnlock",
@@ -3863,7 +4360,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultLock",
@@ -3873,7 +4371,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultImport",
@@ -3883,7 +4382,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultList",
@@ -3893,7 +4393,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultExport",
@@ -3903,7 +4404,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vaultDestroy",
@@ -3913,7 +4415,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "privacyShred",
@@ -3923,7 +4426,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "privacyAudit",
@@ -3933,7 +4437,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistList",
@@ -3943,7 +4448,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistPin",
@@ -3953,7 +4459,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistRemove",
@@ -3963,7 +4470,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistClear",
@@ -3973,7 +4481,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistBurn",
@@ -3983,7 +4492,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistConfigGet",
@@ -3993,7 +4503,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistConfigSet",
@@ -4003,7 +4514,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cliphistWriteBack",
@@ -4013,7 +4525,8 @@
     "clipboard"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroEmergencyStop",
@@ -4024,7 +4537,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroEmergencyClear",
@@ -4035,7 +4549,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroIsStopped",
@@ -4046,7 +4561,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroUacForeground",
@@ -4057,7 +4573,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroUpsertTrigger",
@@ -4068,7 +4585,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroRemoveTrigger",
@@ -4079,7 +4597,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroListTriggers",
@@ -4090,7 +4609,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "macroSendText",
@@ -4101,7 +4621,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verWatch",
@@ -4111,7 +4632,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verWatchedList",
@@ -4121,7 +4643,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verSnapshot",
@@ -4131,7 +4654,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verList",
@@ -4141,7 +4665,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verDiff",
@@ -4151,7 +4676,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verRestore",
@@ -4161,7 +4687,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verGc",
@@ -4171,7 +4698,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "verPolicySet",
@@ -4181,7 +4709,8 @@
     "verHistory"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tagAll",
@@ -4192,7 +4721,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tagFilter",
@@ -4203,7 +4733,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tagSmartList",
@@ -4214,7 +4745,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tagSmartAdd",
@@ -4225,7 +4757,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "tagSmartRemove",
@@ -4236,7 +4769,8 @@
     "search"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recPolicyGet",
@@ -4247,7 +4781,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recPolicySet",
@@ -4258,7 +4793,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recPolicyPreview",
@@ -4269,7 +4805,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "recPolicyApply",
@@ -4280,7 +4817,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trEnqueue",
@@ -4290,7 +4828,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trList",
@@ -4300,7 +4839,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trPause",
@@ -4310,7 +4850,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trResume",
@@ -4320,7 +4861,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trCancel",
@@ -4330,7 +4872,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trRetry",
@@ -4340,7 +4883,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trClearDone",
@@ -4350,7 +4894,8 @@
     "taskQueue"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trustRegister",
@@ -4361,7 +4906,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trustVerify",
@@ -4372,7 +4918,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trustWall",
@@ -4383,7 +4930,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trustReverifyAll",
@@ -4394,7 +4942,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "trustRemove",
@@ -4405,7 +4954,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "linList",
@@ -4416,7 +4966,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "linStats",
@@ -4427,7 +4978,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "linExport",
@@ -4438,7 +4990,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "linBurn",
@@ -4449,7 +5002,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "insDashboard",
@@ -4460,7 +5014,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "insSuggestions",
@@ -4471,7 +5026,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "insBurn",
@@ -4482,7 +5038,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "privTimeline",
@@ -4492,7 +5049,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "canaryList",
@@ -4502,7 +5060,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "canaryPlant",
@@ -4512,7 +5071,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "canaryRemove",
@@ -4522,7 +5082,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archCreate",
@@ -4533,7 +5094,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archList",
@@ -4544,7 +5106,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archBrowse",
@@ -4555,7 +5118,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archAudit",
@@ -4566,7 +5130,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archExtract",
@@ -4577,7 +5142,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archRepair",
@@ -4588,7 +5154,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "archRemove",
@@ -4599,7 +5166,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "incStatus",
@@ -4610,7 +5178,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "incStart",
@@ -4621,7 +5190,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "incEnd",
@@ -4632,7 +5202,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "incList",
@@ -4643,7 +5214,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "incWrite",
@@ -4654,7 +5226,8 @@
     "fsWs"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "fwProfiles",
@@ -4662,7 +5235,11 @@
    "color": "❌",
    "services": [],
    "missingService": "netFirewall",
-   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）",
+   "plan": {
+    "owner": "AI-5",
+    "stage": "S4.4 网络栈（内核侧防火墙默认拒绝先行设计）；过渡期走通道三引擎的 Windows 防火墙面（AI-2 第3批）"
+   }
   },
   {
    "method": "fwProfileSet",
@@ -4670,7 +5247,11 @@
    "color": "❌",
    "services": [],
    "missingService": "netFirewall",
-   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）",
+   "plan": {
+    "owner": "AI-5",
+    "stage": "S4.4 网络栈（内核侧防火墙默认拒绝先行设计）；过渡期走通道三引擎的 Windows 防火墙面（AI-2 第3批）"
+   }
   },
   {
    "method": "fwAlerts",
@@ -4678,7 +5259,11 @@
    "color": "❌",
    "services": [],
    "missingService": "netFirewall",
-   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）",
+   "plan": {
+    "owner": "AI-5",
+    "stage": "S4.4 网络栈（内核侧防火墙默认拒绝先行设计）；过渡期走通道三引擎的 Windows 防火墙面（AI-2 第3批）"
+   }
   },
   {
    "method": "fwAlertResolve",
@@ -4686,7 +5271,11 @@
    "color": "❌",
    "services": [],
    "missingService": "netFirewall",
-   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）"
+   "missingNote": "VARIX 内核无防火墙服务，需立项（或走纯 Windows 通道）",
+   "plan": {
+    "owner": "AI-5",
+    "stage": "S4.4 网络栈（内核侧防火墙默认拒绝先行设计）；过渡期走通道三引擎的 Windows 防火墙面（AI-2 第3批）"
+   }
   },
   {
    "method": "panicConfigGet",
@@ -4697,7 +5286,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "panicConfigSet",
@@ -4708,7 +5298,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "panicTrigger",
@@ -4719,7 +5310,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "panicDrill",
@@ -4730,7 +5322,8 @@
     "privacy"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openDatavault",
@@ -4740,7 +5333,8 @@
     "vault"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfMemSnapshot",
@@ -4750,7 +5344,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfMemWardenStatus",
@@ -4760,7 +5355,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfIoCopy",
@@ -4770,7 +5366,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfIoPause",
@@ -4780,7 +5377,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfIoResume",
@@ -4790,7 +5388,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfIoCancel",
@@ -4800,7 +5399,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfIoProgress",
@@ -4810,7 +5410,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfLogUsage",
@@ -4820,7 +5421,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfLogRotate",
@@ -4830,7 +5432,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfSettingsPreflight",
@@ -4840,7 +5443,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfDbCompact",
@@ -4850,7 +5454,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfInstanceList",
@@ -4860,7 +5465,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfInstanceCreate",
@@ -4870,7 +5476,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfInstanceDelete",
@@ -4880,7 +5487,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfInstanceHeartbeat",
@@ -4890,7 +5498,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfRelayExport",
@@ -4900,7 +5509,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfRelayImport",
@@ -4910,7 +5520,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfCpuQuotaSet",
@@ -4920,7 +5531,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfCrashDumps",
@@ -4930,7 +5542,8 @@
     "perf"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfBootStage",
@@ -4940,7 +5553,8 @@
     "boot"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "perfBootStages",
@@ -4950,7 +5564,8 @@
     "boot"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubConfigGet",
@@ -4960,7 +5575,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubConfigSet",
@@ -4970,7 +5586,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deeplinkParse",
@@ -4980,7 +5597,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deeplinkRegister",
@@ -4990,7 +5608,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "deeplinkUnregister",
@@ -5000,7 +5619,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "safehouseCheck",
@@ -5010,7 +5630,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "safehouseExec",
@@ -5020,7 +5641,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vxsValidate",
@@ -5030,7 +5652,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vxsExtract",
@@ -5040,7 +5663,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubDataExport",
@@ -5050,7 +5674,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubStreamEmit",
@@ -5060,7 +5685,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubStreamTail",
@@ -5070,7 +5696,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "gatewayStatus",
@@ -5080,7 +5707,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "gatewayTokenRegen",
@@ -5090,7 +5718,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "openhubConnectorQuery",
@@ -5100,7 +5729,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "companionInbox",
@@ -5110,7 +5740,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "companionInboxClear",
@@ -5120,7 +5751,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "webhookRulesGet",
@@ -5130,7 +5762,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "webhookRulesSet",
@@ -5140,7 +5773,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "webhookDispatch",
@@ -5150,7 +5784,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "webhookTest",
@@ -5160,7 +5795,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "webhookLogList",
@@ -5170,7 +5806,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "embedManifestScan",
@@ -5180,7 +5817,8 @@
     "embed"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "vxsScan",
@@ -5190,7 +5828,8 @@
     "openhub"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "cfgDiff",
@@ -5201,7 +5840,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sandboxTrialBegin",
@@ -5212,7 +5852,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sandboxTrialEnd",
@@ -5223,7 +5864,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sandboxTrialList",
@@ -5234,7 +5876,8 @@
     "procCtl"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "wingetStatus",
@@ -5242,7 +5885,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetSearch",
@@ -5250,7 +5897,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetListInstalled",
@@ -5258,7 +5909,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetUpgradeList",
@@ -5266,7 +5921,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetInstall",
@@ -5274,7 +5933,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetUpgradeOne",
@@ -5282,7 +5945,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "wingetUninstall",
@@ -5290,7 +5957,11 @@
    "color": "❌",
    "services": [],
    "missingService": "pkgRemote",
-   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代"
+   "missingNote": "VARIX 无 winget/远程源；走共享分区登记 + 引擎通道替代",
+   "plan": {
+    "owner": "AI-2",
+    "stage": "第3批 S3.* 引擎通道 + 共享分区软件登记替代；不立项远程源"
+   }
   },
   {
    "method": "envOverview",
@@ -5301,7 +5972,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envBackupList",
@@ -5311,7 +5983,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envVarSet",
@@ -5322,7 +5995,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envVarDelete",
@@ -5333,7 +6007,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "envRestoreBackup",
@@ -5343,7 +6018,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedList",
@@ -5354,7 +6030,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedUpsert",
@@ -5365,7 +6042,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedRemove",
@@ -5376,7 +6054,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedToggle",
@@ -5387,7 +6066,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedLogList",
@@ -5398,7 +6078,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "schedRunNow",
@@ -5409,7 +6090,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "startdelayGet",
@@ -5420,7 +6102,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "startdelaySet",
@@ -5431,7 +6114,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "startdelayTimeline",
@@ -5442,7 +6126,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "assocSnapshotTake",
@@ -5453,7 +6138,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "assocSnapshotList",
@@ -5464,7 +6150,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "assocSnapshotRemove",
@@ -5475,7 +6162,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "assocSnapshotDiff",
@@ -5486,7 +6174,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "assocSnapshotRestore",
@@ -5497,7 +6186,8 @@
     "backup"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueScanApp",
@@ -5508,7 +6198,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "residueDelete",
@@ -5519,7 +6210,8 @@
     "fsShared"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "svcGraph",
@@ -5530,7 +6222,8 @@
     "diag"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "svcImpact",
@@ -5541,7 +6234,8 @@
     "diag"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "svcTopo",
@@ -5552,7 +6246,8 @@
     "diag"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "volmemList",
@@ -5562,7 +6257,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "volmemSave",
@@ -5572,7 +6268,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "volmemForget",
@@ -5582,7 +6279,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "volmemSync",
@@ -5592,7 +6290,8 @@
     "kv"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "soundSchemeValidate",
@@ -5602,7 +6301,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "audioSetDefaultComm",
@@ -5612,7 +6312,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "notifyArchiveInsert",
@@ -5622,7 +6323,8 @@
     "notify"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "notifyArchiveQuery",
@@ -5632,7 +6334,8 @@
     "notify"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "notifyArchiveApps",
@@ -5642,7 +6345,8 @@
     "notify"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "notifyArchiveDelete",
@@ -5652,7 +6356,8 @@
     "notify"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "notifyArchiveCleanup",
@@ -5662,7 +6367,8 @@
     "notify"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "micUsageState",
@@ -5672,7 +6378,8 @@
     "audio"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "reminderAdd",
@@ -5682,7 +6389,8 @@
     "sched"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "reminderList",
@@ -5692,7 +6400,8 @@
     "sched"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "reminderComplete",
@@ -5702,7 +6411,8 @@
     "sched"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "reminderReschedule",
@@ -5712,7 +6422,8 @@
     "sched"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "reminderDelete",
@@ -5722,7 +6433,8 @@
     "sched"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysPrefsRead",
@@ -5732,7 +6444,8 @@
     "sysinfo"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "sysdepProbe",
@@ -5742,7 +6455,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": "depAuditStatus",
@@ -5752,7 +6466,8 @@
     "applog"
    ],
    "missingService": null,
-   "missingNote": null
+   "missingNote": null,
+   "plan": null
   },
   {
    "method": null,

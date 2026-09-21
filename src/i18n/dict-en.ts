@@ -3119,6 +3119,7 @@ export const en: Dict = {
   degradeTimeout: "A system service timed out; the retry path took over. If this repeats, restart the app.",
   degradeVersionMismatch: "Frontend/backend version mismatch (frontend v{front} / backend v{back}); some features are degraded.",
   degradePermDenied: "Blocked by security policy (default-deny). Adjust in the shared whitelist.",
+  degradeKvFull: "Storage is full (journal/overflow area); the write was explicitly rejected and nothing was overwritten. Clean up or export some content, then retry.",
   degradeInternal: "An internal service error occurred and was logged; other features in this window are unaffected.",
   degradeInvalidArgs: "Invalid operation arguments; cancelled.",
   degradeCapMissing: "The kernel does not expose the \"{cap}\" capability yet; a local equivalent is used.",

@@ -13,7 +13,8 @@ for (const m of libSrc.matchAll(/generate_handler!\[([^\]]*)\]/gs)) {
   for (const line of m[1].split(/\r?\n/)) {
     const t = line.trim();
     if (!t || t.startsWith("//")) continue;
-    const mm = t.match(/^(?:[a-z_]+\s*::\s*)*([a-z_]+)\s*,?\s*$/);
+    // [a-z0-9_]+：命令名含数字（如 a11y_probe），纯 [a-z_]+ 会在数字处截断产生幽灵名。
+    const mm = t.match(/^(?:[a-z0-9_]+\s*::\s*)*([a-z0-9_]+)\s*,?\s*$/);
     if (mm) registered.add(mm[1]);
   }
 }
@@ -31,7 +32,8 @@ const cmdFiles = walkRs("src-tauri/src");
 for (const f of cmdFiles) {
   const src = fs.readFileSync(f, "utf8");
   // #[tauri::command]（可带参数如 (async)）与 fn 之间允许夹带其它属性行（#[cfg(windows)] 等）与 /// 文档注释
-  for (const m of src.matchAll(/#\[tauri::command(?:\([^)]*\))?\]((?:\s*#[^\r\n\]]+\]|\s*\/\/\/[^\r\n]*)*)\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z_]+)/g)) {
+  // fn 名用 [a-z0-9_]+：a11y_probe 等含数字名会被 [a-z_]+ 在数字处截断成幽灵命令。
+  for (const m of src.matchAll(/#\[tauri::command(?:\([^)]*\))?\]((?:\s*#[^\r\n\]]+\]|\s*\/\/\/[^\r\n]*)*)\s*(?:pub\s+)?(?:async\s+)?fn\s+([a-z0-9_]+)/g)) {
     cmdAttrs.push({ file: path.relative("src-tauri/src", f), name: m[2] });
   }
 }
@@ -53,10 +55,13 @@ if (unusedBackend.length) console.log("UNUSED BACKEND (no frontend invoke):", un
 else console.log("OK: no unused backend commands");
 
 // ---- 2. i18n keys audit ----
+// 需求15 性能重构后词典拆分：zh/zh-TW 留在 dictionaries.ts，en 懒加载拆至 dict-en.ts
+// （dictionaries.ts 中 en 位为运行期回填的空壳）——解析必须跟着布局走。
 const dictSrc = fs.readFileSync("src/i18n/dictionaries.ts", "utf8");
-const zhBlock = dictSrc.slice(dictSrc.indexOf("const zh"), dictSrc.indexOf("const en"));
-const enBlock = dictSrc.slice(dictSrc.indexOf("const en"), dictSrc.indexOf("export const dictionaries"));
+const zhBlock = dictSrc.slice(dictSrc.indexOf("const zh"), dictSrc.indexOf("const zhTwOverrides"));
 const zhKeys = new Set([...zhBlock.matchAll(/([A-Za-z0-9_]+)\s*:/gm)].map((m) => m[1]));
+const enSrc = fs.readFileSync("src/i18n/dict-en.ts", "utf8");
+const enBlock = enSrc.slice(enSrc.indexOf("export const en"));
 const enKeys = new Set([...enBlock.matchAll(/([A-Za-z0-9_]+)\s*:/gm)].map((m) => m[1]));
 
 function walk(dir, out = []) {
@@ -204,6 +209,86 @@ if (missingZh.length || missingEn.length) failed = true;
     failed = true;
   } else {
     console.log("OK: iconRegistry present");
+  }
+})();
+
+// ---- 6. S2.01 垫片协议生成物一致性门禁（AI-3 三体定版）----
+// 单源 tools/shim-protocol.source.json → 三产物（TS/后端/内核）必须与磁盘逐字节一致；
+// 手改生成物、或改了单源未重跑生成器 → 门禁红（禁手改生成物戒律的机械化执法）。
+(function shimProtocolGate() {
+  console.log("\n== SHIM PROTOCOL GATE (S2.01) ==");
+  const genPath = path.join(__dirname, "gen-shim-protocol.cjs");
+  if (!fs.existsSync(genPath)) {
+    console.log("MISSING: tools/gen-shim-protocol.cjs");
+    failed = true;
+    return;
+  }
+  // 生成器以 buildArtifacts 导入（require.main 守卫保证导入零副作用）。
+  const { buildArtifacts } = require(genPath);
+  const src = JSON.parse(fs.readFileSync(genPath.replace(/gen-shim-protocol\.cjs$/, "shim-protocol.source.json"), "utf8"));
+  const arts = buildArtifacts(src);
+  const targets = [
+    ["src/lib/shim/protocol.ts", arts.ts],
+    ["src-tauri/src/shim_protocol.rs", arts.rs],
+    ["kernel/varix/src/vport/shim_protocol.rs", arts.krs],
+  ];
+  let drift = false;
+  for (const [rel, expected] of targets) {
+    const p = path.join(__dirname, "..", rel);
+    if (!fs.existsSync(p)) {
+      console.log("MISSING GENERATED:", rel);
+      drift = true;
+      continue;
+    }
+    const actual = fs.readFileSync(p, "utf8");
+    if (actual !== expected) {
+      console.log(`DRIFT: ${rel}（与单源不一致——跑 node tools/gen-shim-protocol.cjs）`);
+      drift = true;
+    }
+  }
+  if (drift) failed = true;
+  else console.log("OK: 三产物与单源逐字节一致（生成物禁手改）");
+})();
+
+// ---- 7. S2.10 降级提示 i18n 门禁（AI-4 三体桌面承载）----
+// 全部 ❌ 命令统一降级（禁裸错误码直达用户）：perfBaseline.ts 的 DegradeKey
+// 全量键必须 zh/en 词典在场（zh-TW 走 zh 基底繁体转换，运行期保证）——
+// 缺键即 fail；降级映射无遗漏分支由 perf-baseline.test.ts 单测守护。
+(function shimDegradeGate() {
+  console.log("\n== SHIM DEGRADE GATE (S2.10) ==");
+  const pbPath = path.join(__dirname, "..", "src", "lib", "shim", "perfBaseline.ts");
+  if (!fs.existsSync(pbPath)) {
+    console.log("MISSING: src/lib/shim/perfBaseline.ts（降级面映射单源）");
+    failed = true;
+    return;
+  }
+  const pb = fs.readFileSync(pbPath, "utf8");
+  const typeStart = pb.indexOf("export type DegradeKey");
+  const typeEnd = pb.indexOf(";", typeStart);
+  if (typeStart < 0 || typeEnd < 0) {
+    console.log("BROKEN: DegradeKey 类型声明缺失");
+    failed = true;
+    return;
+  }
+  const degradeKeys = [...pb.slice(typeStart, typeEnd).matchAll(/"(degrade[A-Za-z]+)"/g)].map((m) => m[1]);
+  if (degradeKeys.length === 0) {
+    console.log("BROKEN: DegradeKey 类型零键（降级面空转）");
+    failed = true;
+    return;
+  }
+  const missZh = degradeKeys.filter((k) => !zhKeys.has(k));
+  const missEn = degradeKeys.filter((k) => !enKeys.has(k));
+  console.log("degrade keys:", degradeKeys.length, "| zh:", zhKeys.has(degradeKeys[0]) ? "present" : "missing");
+  if (missZh.length) {
+    console.log("MISSING ZH DEGRADE:", missZh);
+    failed = true;
+  }
+  if (missEn.length) {
+    console.log("MISSING EN DEGRADE:", missEn);
+    failed = true;
+  }
+  if (!missZh.length && !missEn.length) {
+    console.log("OK: 降级词条 zh/en 全量在场（缺键即 fail 门禁已执法）");
   }
 })();
 

@@ -3133,6 +3133,7 @@ const zh: Dict = {
   degradeTimeout: "系统服务响应超时，已自动重试通道；若反复出现请重启应用。",
   degradeVersionMismatch: "前后端版本不匹配（前端 v{front} / 后端 v{back}），部分功能已降级。",
   degradePermDenied: "出于安全策略，此操作被拒绝（默认拒绝面）。可在共享白名单中调整。",
+  degradeKvFull: "存储空间已满（账本/溢出区），写入被明确拒绝、没有覆盖任何数据；请清理或导出部分内容后重试。",
   degradeInternal: "系统服务内部错误，已记录日志；此窗口的其它功能不受影响。",
   degradeInvalidArgs: "操作参数无效，已取消。",
   degradeCapMissing: "内核尚未提供「{cap}」能力，已回退到本地等价实现。",

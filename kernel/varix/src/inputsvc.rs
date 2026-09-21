@@ -695,18 +695,6 @@ impl InputService {
     }
 }
 
-/// SYS_WIN focus 联动（S2.05）：内核级键盘路由切到属主 pid 的订阅者。
-/// 无匹配订阅者返回 false（窗口焦点记录照常成立——桌面进程自持 DOM 焦点）。
-pub fn focus_pid(pid: u32) -> bool {
-    svc().set_focus_pid(pid)
-}
-
-/// SYS_WIN focus(0) 联动：清除内核级键盘焦点（KeyboardFocusOnly 槽此后
-/// 收不到键盘——白名单默认）。
-pub fn clear_focus() {
-    svc().clear_focus();
-}
-
 /// 实机探针（QEMU）：①定容语义合成注入 ②订阅者槽位语义 ③实机键鼠窗口
 /// （宿主脚本经 HMP `sendkey`/`mouse_move`/`mouse_button` 注入）。
 #[cfg(target_os = "none")]
@@ -715,6 +703,18 @@ pub mod target {
     use crate::ps2;
 
     static mut SVC: Option<InputService> = None;
+    /// SYS_WIN focus 联动（S2.05）：内核级键盘路由切到属主 pid 的订阅者。
+    /// 无匹配订阅者返回 false（窗口焦点记录照常成立——桌面进程自持 DOM 焦点）。
+    pub fn focus_pid(pid: u32) -> bool {
+        svc().set_focus_pid(pid)
+    }
+
+    /// SYS_WIN focus(0) 联动：清除内核级键盘焦点（KeyboardFocusOnly 槽此后
+    /// 收不到键盘——白名单默认）。
+    pub fn clear_focus() {
+        svc().clear_focus();
+    }
+
     /// 引导菜单键源适配器（一次性注册，键鼠共用同一个端口泵）。
     static mut KSRC: Option<KeySourceAdapter> = None;
 
@@ -1456,9 +1456,10 @@ mod tests {
             assert!(s.set_focus(if focus_b { b } else { c }));
             s.feed_key_byte(0x1E); // A 键 make（解码无歧义路径）
             // 鼠标 3 字节包（bit3 同步位包头 + dx + dy）：凑包后发布一帧。
-            s.feed_mouse_byte(0x08).unwrap();
-            s.feed_mouse_byte(0x00).unwrap();
-            s.feed_mouse_byte(0x00).unwrap();
+            // 3 字节包：仅包完成（第 3 字节）返回 Some 事件。
+            let _ = s.feed_mouse_byte(0x08);
+            let _ = s.feed_mouse_byte(0x00);
+            assert!(s.feed_mouse_byte(0x00).is_some());
             while let Some(ev) = s.poll(a) {
                 if matches!(ev, InputEvent::Key(_)) {
                     got_a_keys += 1;
@@ -1466,11 +1467,16 @@ mod tests {
                     got_a_mouse += 1;
                 }
             }
-            while s.poll(b).is_some() {
-                got_b += 1;
+            // KFO 槽：键盘按焦点投递、鼠标广播照常——只数键事件。
+            while let Some(ev) = s.poll(b) {
+                if matches!(ev, InputEvent::Key(_)) {
+                    got_b += 1;
+                }
             }
-            while s.poll(c).is_some() {
-                got_c += 1;
+            while let Some(ev) = s.poll(c) {
+                if matches!(ev, InputEvent::Key(_)) {
+                    got_c += 1;
+                }
             }
         }
         // All 槽：1000 键 + 1000 鼠标（焦点不影响广播槽）。

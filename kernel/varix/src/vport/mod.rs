@@ -12,6 +12,7 @@ use crate::checks::CheckSet;
 use crate::gfxsrv::{argb, color_b, color_g, color_r, rgb, Canvas};
 
 pub mod render;
+pub mod shim_protocol;
 pub mod verify;
 
 // ---------------------------------------------------------------------------

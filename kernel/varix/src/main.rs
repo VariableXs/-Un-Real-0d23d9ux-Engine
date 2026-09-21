@@ -374,6 +374,10 @@ fn boot() -> ! {
     // --- display service probe（任务20：双缓冲+脏矩形滚动条带撕裂验证）--------------
     varix::displaysrv::target::display_probe();
 
+    // --- window surface probe（AI-4 · S2.06/S2.09：窗口面注册+行提交+块链+
+    //     Z 序合成+焦点命中全链，serial 断言 win-probe: PASS）--------------------
+    varix::winsurf::win_probe();
+
     // --- quota service probe（任务56：三方配额矩阵+水位回收+GPU 通道）--------------
     varix::quota::target::quota_probe();
 

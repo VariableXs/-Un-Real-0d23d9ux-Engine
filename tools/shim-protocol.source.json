@@ -1,24 +1,25 @@
 {
-  "$comment": "Tauri IPC 垫片协议单一事实源（任务22，AI-B）。改此文件后跑 node tools/gen-shim-protocol.cjs 同源再生成 TS/Rust 两侧类型，禁止手改生成物。前端运行时 src/lib/shim/shimInvoke.ts（AI-V）依赖本单源的 protocol.ts。",
+  "$comment": "Tauri IPC 垫片协议单一事实源（任务22 定版，S2.01 三体定版 v2，AI-3）。改此文件后跑 node tools/gen-shim-protocol.cjs 同源再生成三产物（TS/后端/内核），禁止手改生成物；一致性由 tools/audit.cjs 垫片段门禁看护。前端运行时 src/lib/shim/shimInvoke.ts（AI-V）依赖本单源的 protocol.ts。",
   "protocol": {
     "name": "varix-shim",
-    "version": 1,
-    "minFrontendVersion": 1,
-    "minBackendVersion": 1,
+    "version": 2,
+    "minFrontendVersion": 2,
+    "minBackendVersion": 2,
     "invokeNaming": "snake_case 命令名原文透传，垫片不改名",
     "argsSerialization": "JSON 对象一次序列化；args 缺省视为空对象；禁止二段封装",
     "errorModel": "三段式：OK(载荷直达) | MAPPED_ERR(inner) | MISSING(cmd)",
     "eventChannel": "后端→前端 emit，频道名见 events[]，语义与 Tauri event 同构",
-    "changeProcess": "见 docs/双域-垫片协议规范-v1.md（版本号递增 + 双侧再生成 + 门禁）"
+    "changeProcess": "见 docs/垫片协议规范.md §6（版本号递增 + 三产物再生成 + 门禁）"
   },
   "errorCodes": [
-    { "code": "SHIM_INVALID_ARGS", "meaning": "参数未通过 schema 校验（缺字段/类型不符）", "retryable": false },
+    { "code": "SHIM_INVALID_ARGS", "meaning": "参数未通过 schema 校验（缺字段/类型不符/超限）", "retryable": false },
     { "code": "SHIM_UNSUPPORTED", "meaning": "命令存在但当前后端能力不支持（capability=false）", "retryable": false },
     { "code": "SHIM_TIMEOUT", "meaning": "内核服务未在预算时间内应答", "retryable": true },
     { "code": "SHIM_BACKEND_DOWN", "meaning": "后端通道未建立/已断开", "retryable": true },
     { "code": "SHIM_VERSION_MISMATCH", "meaning": "协议版本协商失败", "retryable": false },
     { "code": "SHIM_PERM_DENIED", "meaning": "白名单裁决拒绝（默认拒绝面）", "retryable": false },
-    { "code": "SHIM_INTERNAL", "meaning": "垫片内部错误（映射表/序列化异常）", "retryable": true }
+    { "code": "SHIM_KV_FULL", "meaning": "KV 账本/溢出区已满，写被明确拒绝（绝不静默覆盖；kv 服务专用）", "retryable": false },
+    { "code": "SHIM_INTERNAL", "meaning": "垫片内部错误（映射表/序列化异常/块设备 IO）", "retryable": true }
   ],
   "events": [
     { "channel": "boot://event", "direction": "backend->frontend", "note": "启动阶段叙事，bootPhase 语义不变" },
@@ -66,7 +67,7 @@
   ],
   "hello": {
     "$comment": "版本协商：前端启动先调 shim_hello（见 shimInvoke.ts），返回双方版本与能力位；protocolVersion 不一致或 backendVersion < min 即 SHIM_VERSION_MISMATCH 并走降级面",
-    "request": { "frontendVersion": 1 },
-    "response": { "protocolVersion": 1, "backendVersion": 1, "capabilities": ["kvStore"] }
+    "request": { "frontendVersion": 2 },
+    "response": { "protocolVersion": 2, "backendVersion": 2, "capabilities": ["kvStore"] }
   }
 }

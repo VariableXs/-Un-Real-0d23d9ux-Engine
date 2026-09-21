@@ -60,8 +60,8 @@ describe("垫片协议三段式", () => {
 describe("版本协商 shim_hello", () => {
   it("兼容应答：记录能力位并返回 hello", async () => {
     const t = transportOf(() => ({
-      protocolVersion: 1,
-      backendVersion: 1,
+      protocolVersion: 2,
+      backendVersion: 2,
       capabilities: ["inputBus", "kvStore"],
     }));
     installShimTransport(t);

@@ -1,12 +1,12 @@
 //! 本文件由 tools/gen-shim-protocol.cjs 从 tools/shim-protocol.source.json 生成，禁止手改。
-//! 垫片协议类型（任务22，AI-B）：三段式错误 + 版本协商 + 能力位。
+//! 垫片协议类型（任务22 定版，S2.01 v2 · AI-3）：三段式错误 + 版本协商 + 能力位。
 
 use serde::{Deserialize, Serialize};
 
 /// 垫片协议版本（版本协商基准）。
-pub const SHIM_PROTOCOL_VERSION: u32 = 1;
+pub const SHIM_PROTOCOL_VERSION: u32 = 2;
 /// 前端必须支持的最低后端协议版本。
-pub const SHIM_MIN_FRONTEND_VERSION: u32 = 1;
+pub const SHIM_MIN_FRONTEND_VERSION: u32 = 2;
 
 /// 映射错误码（三段式第二段 MAPPED_ERR 的内圈错误）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,16 +23,20 @@ pub enum ShimErrorCode {
     VersionMismatch,
     #[serde(rename = "SHIM_PERM_DENIED")]
     PermDenied,
+    #[serde(rename = "SHIM_KV_FULL")]
+    KvFull,
     #[serde(rename = "SHIM_INTERNAL")]
     Internal,
 }
 
 impl ShimErrorCode {
-    /// 是否可重试（同源自 source.json）。
+    /// 是否可重试（同源自 source.json retryable 标志）。
     pub fn retryable(self) -> bool {
         matches!(
             self,
-            ShimErrorCode::Timeout | ShimErrorCode::BackendDown | ShimErrorCode::Internal
+            ShimErrorCode::Timeout
+            | ShimErrorCode::BackendDown
+            | ShimErrorCode::Internal
         )
     }
 }
@@ -158,6 +162,24 @@ mod tests {
     }
 
     #[test]
+    fn kv_full_code_is_first_class() {
+        // S2.03：KV 满容量是一等错误码，不可重试、线缆名稳定。
+        let body = ShimErrorBody {
+            code: ShimErrorCode::KvFull,
+            message: "KV 账本/溢出区已满".into(),
+        };
+        let raw = serde_json::to_value(ShimReply::MappedErr { err: body }).unwrap();
+        assert_eq!(raw["__shim_error"]["code"], "SHIM_KV_FULL");
+        let back: ShimReply = serde_json::from_value(raw).unwrap();
+        if let ShimReply::MappedErr { err } = back {
+            assert_eq!(err.code, ShimErrorCode::KvFull);
+            assert!(!err.code.retryable());
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
     fn missing_path_carries_cmd() {
         let raw = serde_json::to_value(ShimReply::Missing { cmd: "nope".into() }).unwrap();
         let back: ShimReply = serde_json::from_value(raw).unwrap();
@@ -173,7 +195,7 @@ mod tests {
     fn version_negotiation_fields_present() {
         let hello = ShimHello {
             protocol_version: SHIM_PROTOCOL_VERSION,
-            backend_version: 1,
+            backend_version: 2,
             capabilities: vec![ShimCapability::KvStore],
         };
         let raw = serde_json::to_value(&hello).unwrap();
