@@ -31,7 +31,9 @@ SEED_CONF = os.path.join(ROOT, "boot-select.json")
 
 def _parse_args(argv):
     """极小参数解析：`--conf FILE` / `--out FILE` / `--no-seed`。"""
-    conf = os.path.join(ISO_ROOT, "limine.conf")
+    # 单一事实源 = repo 根 limine.conf（isoroot 里那份只是同步目标，
+    # 绝不作输入——09-21 部署预检实测其残留 cmdline 会压掉菜单）
+    conf = os.path.join(ROOT, "limine.conf")
     out = os.path.join(ROOT, "varix-qemu.iso")
     no_seed = False
     i = 1
@@ -75,6 +77,16 @@ def main(argv=None) -> int:
 
     # 刷新 isoroot：新内核 + initrd + boot-select.json 副本
     shutil.copy2(KERNEL_ELF, os.path.join(ISO_ROOT, "kernel", "varix"))
+    # limine.conf 单一事实源 = repo 根（--conf 覆盖时用覆盖件）。
+    # isoroot 里的旧拷贝绝不再当输入（09-21 部署预检实测：它残留
+    # kernel_cmdline: boot_timeout=0，把 ISO 引导的菜单静默压掉——
+    # cmd 优先级契约如实执行了，错的是输入；部署链漂移教训入库）。
+    # 同步为 best-effort：ISO 打包直取 conf 权威源（下行 src 逻辑），
+    # isoroot 拷贝被外部进程短暂锁住时警告继续，不让打包失败。
+    try:
+        shutil.copy2(conf, os.path.join(ISO_ROOT, "limine.conf"))
+    except OSError as e:
+        print(f"WARN: isoroot/limine.conf 同步失败（打包仍用权威源）: {e}", file=sys.stderr)
     # 副本语义：演练者可先改写 isoroot/boot-select.json 再打包（损坏/自定义
     # 变体就是这么做的）；这里只在缺失时从种子回填，绝不覆盖已有变体内容。
     iso_boot_select = os.path.join(ISO_ROOT, "boot-select.json")
