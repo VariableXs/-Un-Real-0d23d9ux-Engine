@@ -1,0 +1,48 @@
+{
+  "gate": {
+    "seqMBs": 400.0,
+    "rand4kMBs": 20.0
+  },
+  "volumes": {
+    "S:\\": {
+      "seqRounds": [
+        {
+          "round": 1,
+          "seqMBs": 393.8,
+          "seqBytes": 1073741824,
+          "seqPasses": 35,
+          "seqSec": 2.6
+        },
+        {
+          "round": 2,
+          "seqMBs": 386.8,
+          "seqBytes": 1073741824,
+          "seqPasses": 35,
+          "seqSec": 2.65
+        },
+        {
+          "round": 3,
+          "seqMBs": 395.0,
+          "seqBytes": 1073741824,
+          "seqPasses": 35,
+          "seqSec": 2.59
+        }
+      ],
+      "seqMBsMin": 386.8,
+      "seqMBsAvg": 391.9,
+      "seqPass": false,
+      "rand4kMBsRound1": 21.48,
+      "rand4kMBs": 21.1,
+      "rand4kIOPS": 5408.0,
+      "rand4kFile": "variable.exe",
+      "rand4kPass": true
+    },
+    "W:\\": {
+      "error": "无 >=16MiB 既有文件可测"
+    },
+    "V:\\": {
+      "error": "无 >=16MiB 既有文件可测"
+    }
+  },
+  "verdict": "FAIL"
+}

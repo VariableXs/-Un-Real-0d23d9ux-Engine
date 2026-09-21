@@ -26,6 +26,8 @@ pub mod fsindex;
 pub mod filesync;
 // 双域引导配置（需求 2）：Variable 侧读写 SHARED 卷的 boot-select.json
 pub mod dualboot;
+// 阶段 6（三体 AI-2）：隐形 Windows 引擎编排底座——五态状态机/心跳/幂等拉起
+pub mod engine;
 pub mod sysmaint;
 pub mod imwatch;
 pub mod installer;

@@ -357,6 +357,10 @@ pub fn spawn_removal_watcher(handle: tauri::AppHandle) {
                 "usb://removed",
                 serde_json::json!({ "dataDir": root.to_string_lossy() }),
             );
+            // 阶段 6（三体 AI-2）：拔盘联动引擎会话收束（异常场景一/三）。
+            // 引擎在跑/拉起中 → 收束 Closed 并发 usb-removed；空闲则零开销。
+            #[cfg(windows)]
+            crate::shell::engine::usb_removed(handle.clone());
             break;
         }
     });

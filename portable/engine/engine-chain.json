@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "volumeLabel": "WIN_ENGINE",
+  "engineDir": "Engine",
+  "base": { "file": "Base.vhdx", "sizeGB": 127, "type": "fixed" },
+  "apps": { "file": "Apps.vhdx" },
+  "user": { "file": "User.vhdx" },
+  "vm": { "name": "VARIX-Engine", "memoryGB": 4 }
+}

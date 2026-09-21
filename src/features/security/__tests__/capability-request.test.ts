@@ -77,11 +77,15 @@ describe("任务 50/51 · 引擎会话 store 集成（副作用接线）", () =>
     expect(engineStore.getState().session.openedWindows).toBe(once);
   });
 
-  it("cancelEngineApp：取消后 ready 只撤卡不开窗", () => {
+  it("cancelEngineApp：取消后 ready 只撤卡不开新窗（S3.7 新协议：占位窗在请求时已开并计数）", () => {
     requestEngineApp("app.foobar", 1000);
+    // S3.7 拉起协议：未就绪点击即开占位窗（+1）；取消后 ready 不得再开任何窗。
+    const afterRequest = engineStore.getState().session.openedWindows;
+    expect(afterRequest).toBe(1);
     cancelEngineApp("app.foobar");
     applyEngineMsg({ seq: 1, kind: "ready" });
-    expect(engineStore.getState().session.openedWindows).toBe(0);
+    expect(engineStore.getState().session.openedWindows).toBe(afterRequest);
+    expect(engineStore.getState().session.pending).toEqual([]);
   });
 
   it("异常三场景经 store：crashed 撤卡 + usb-removed 复位 closed", () => {

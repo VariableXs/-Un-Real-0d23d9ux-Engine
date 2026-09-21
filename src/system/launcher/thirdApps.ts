@@ -67,6 +67,22 @@ export function getThirdApps(): ThirdApp[] {
  * 无法嵌入（UWP/管理员权限等）→ 软件按独立窗口正常运行，静默关闭占位窗口。
  */
 export async function launchThirdApp(id: string, _name: string, arg?: string): Promise<void> {
+  // 阶段6（三体 AI-2 S3.7）：engine 通道软件走拉起协议（占位卡 + 唤醒 + 就绪自动开）。
+  // 引擎开关关闭或设置读取失败 → 既有嵌入路径诚实回落（不静默丢通道语义）。
+  const appMeta = getThirdApps().find((a) => a.id === id);
+  if (appMeta?.channel === "engine") {
+    try {
+      const { loadSettings } = await import("../../lib/settings");
+      const settings = await loadSettings();
+      if (settings.engineEnabled) {
+        const { requestEngineApp } = await import("../engine/engineSessions");
+        requestEngineApp(id);
+        return;
+      }
+    } catch {
+      /* 设置读取失败 → 既有嵌入路径 */
+    }
+  }
   const { openVwmTpNew, closeVwmWin } = await import("../windows/vwm");
   const { setEmbedMeta } = await import("../windows/embedState");
   const tpApp = `tp:${id}` as Parameters<typeof openVwmTpNew>[0];

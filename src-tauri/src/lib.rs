@@ -845,6 +845,14 @@ pub fn run() {
             shell::singularity::singu_batch_attrs,
             shell::singularity::singu_archive_check,
             shell::singularity::singu_data_profile,
+            // ---- 阶段 6（三体 AI-2）：隐形 Windows 引擎通道 ----
+            shell::engine::engine_status,
+            shell::engine::engine_replay,
+            shell::engine::engine_preflight,
+            shell::engine::engine_wake,
+            shell::engine::engine_sleep,
+            shell::engine::engine_resume,
+            shell::engine::engine_stop,
         ])
         .build(tauri::generate_context!());
     match app {

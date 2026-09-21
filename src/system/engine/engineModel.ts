@@ -200,7 +200,10 @@ export function requestEngineLaunch(
   atMs: number,
 ): { next: EngineSession; needWake: boolean } {
   const req: EngineLaunchRequest = { appKey, atMs, cancelled: false };
-  const needWake = s.lifecycle === "closed" || s.lifecycle === "starting";
+  // S3.7（三体 AI-2）：ready 之外一律唤醒 —— closed/starting 正常拉起；crashed
+  // 由后端复位重拉（Failed→Closed→Launching）；hibernated 由后端走恢复语义；
+  // hibernating 由后端如实拒绝（busy，不静默）。ready 幂等吸收（不双开）。
+  const needWake = s.lifecycle !== "ready";
   return {
     next: { ...s, pending: [...s.pending, req] },
     needWake,

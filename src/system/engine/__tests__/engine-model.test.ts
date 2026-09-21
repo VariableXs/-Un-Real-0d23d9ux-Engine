@@ -100,6 +100,18 @@ describe("任务 54 · 异常三场景（占位卡撤除 + 如实原因 + 下次
     // 引擎崩溃不触碰 VWM/Shell 其它状态（本模块零对 vwmStore 写入 —— 由实现约束保证）
   });
 
+  it("S3.7 crashed 后重新 request 需要唤醒（后端 Failed→复位重拉）", () => {
+    let s = requestEngineLaunch(EMPTY_ENGINE_SESSION, "app.foobar", 1000).next;
+    s = reduceEngineMsg(s, msg(5, "crashed", { reason: "虚拟机异常退出" })).next;
+    expect(requestEngineLaunch(s, "app.foobar", 2000).needWake).toBe(true);
+  });
+
+  it("S3.7 starting 态重复 request 持续唤醒（幂等由后端吸收）", () => {
+    let s = requestEngineLaunch(EMPTY_ENGINE_SESSION, "app.foobar", 1000).next;
+    s = reduceEngineMsg(s, msg(2, "boot-stage", { stage: "vhdx-mount" })).next;
+    expect(requestEngineLaunch(s, "app.foobar", 1100).needWake).toBe(true);
+  });
+
   it("场景三 就绪后拔盘：会话结束 + 恢复语义（closed 态可重新 request）", () => {
     let s = reduceEngineMsg(EMPTY_ENGINE_SESSION, msg(1, "ready")).next;
     s = reduceEngineMsg(s, msg(2, "usb-removed", { reason: "U 盘已移除" })).next;

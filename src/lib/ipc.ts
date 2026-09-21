@@ -72,6 +72,39 @@ export interface AppLogEntry {
   msg: string;
 }
 
+/** 阶段6（三体 AI-2 S3.2）：引擎编排状态（与 Rust `engine::Status` 一致）。 */
+export interface EngineStatusT {
+  /** 生命周期：closed | starting | ready | hibernating | hibernated | failed。 */
+  state: string;
+  /** 当前/最后到达的冷启动阶段键（ENGINE_BOOT_STAGES 之一；非启动态为 null）。 */
+  stage: string | null;
+  /** 事件单调水位（幂等去重）。 */
+  lastSeq: number;
+  /** 本会话累计 VM 拉起次数（幂等审计）。 */
+  launchCount: number;
+  /** VM 底座标识（hyperv | unavailable）。 */
+  backend: string;
+}
+
+/** 阶段6：引擎事件（与 Rust `engine::EngineEvent` / 前端 EngineStateMsg 同构）。 */
+export interface EngineEventT {
+  seq: number;
+  kind: string;
+  stage?: string;
+  reason?: string;
+}
+
+/** 阶段6：引擎预检（与 Rust `engine::Preflight` 一致；只读，不动编排状态）。 */
+export interface EnginePreflightT {
+  hypervAvailable: boolean;
+  elevated: boolean;
+  engineVolume: string | null;
+  chainBase: string | null;
+  chainApps: string | null;
+  chainUser: string | null;
+  chainComplete: boolean;
+}
+
 export const ipc = {
   // ---- AI-19 无障碍与本地化组（M-73/M-74 系统辅助功能只读探针）----
   a11yProbe: () => invoke<{
@@ -320,6 +353,22 @@ export const ipc = {
   /** 开关「A 卡加载完交接给 Windows 上的 Variable」。 */
   dualbootSetHandoff: (on: boolean) =>
     invoke<Shell.BootCfgView>("dualboot_set_handoff", { on }),
+
+  // ---- 阶段 6（三体 AI-2）：隐形 Windows 引擎通道编排 ----
+  /** 引擎状态查询（随时可调，不动编排）。 */
+  engineStatus: () => invoke<EngineStatusT>("engine_status"),
+  /** 引擎事件重放缓冲（晚挂监听的前端补事件）。 */
+  engineReplay: () => invoke<EngineEventT[]>("engine_replay"),
+  /** 引擎预检（Hyper-V/差分链/提权；只读）。 */
+  enginePreflight: () => invoke<EnginePreflightT>("engine_preflight"),
+  /** 唤醒/拉起引擎（幂等；冷启动重活在后端线程按步推进）。 */
+  engineWake: () => invoke<EngineStatusT>("engine_wake"),
+  /** 休眠（内存快照写差分盘）。 */
+  engineSleep: () => invoke<EngineStatusT>("engine_sleep"),
+  /** 恢复。 */
+  engineResume: () => invoke<EngineStatusT>("engine_resume"),
+  /** 优雅关闭（停 VM + 卸差分盘）。 */
+  engineStop: () => invoke<EngineStatusT>("engine_stop"),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),
