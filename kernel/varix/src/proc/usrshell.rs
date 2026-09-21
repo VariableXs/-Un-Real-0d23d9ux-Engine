@@ -36,6 +36,70 @@ pub const SYS_SHIM: u32 = 18;
 pub const SYS_REBOOT: u32 = 19;
 /// SYS_POWEROFF：关机断电（UEFI ResetSystem(Shutdown) + ACPI S5 阶梯）。
 pub const SYS_POWEROFF: u32 = 20;
+/// SYS_WIN：窗口面服务（AI-4 · S2.06 渲染通路 + S2.09 多窗合成的
+/// 系统调用面；子命令经 a1 低 8 位，编解码纯函数宿主可测）。
+pub const SYS_WIN: u32 = 21;
+
+// SYS_WIN 子命令字（a1 低 8 位；a2/a3 为参数 p1/p2）。
+pub const WIN_REGISTER: u64 = 1; // p1=owner_pid p2=(w<<32)|h → wid（>0）/负错误
+pub const WIN_UNREGISTER: u64 = 2; // p1=wid → 0
+pub const WIN_GEO: u64 = 3; // p1=wid p2=win_pack_xy(x,y) → 0
+pub const WIN_RAISE: u64 = 4; // p1=wid → 0
+pub const WIN_STATE: u64 = 5; // p1=wid p2=0可见/1最小化 → 0
+pub const WIN_FOCUS: u64 = 6; // p1=wid（0=清除）→ 0；联动内核级键盘焦点
+pub const WIN_SUBMIT: u64 = 7; // p1=wid p2=提交块指针 → 已提交行数
+pub const WIN_COMPOSITE: u64 = 8; // → 合成累计 blit 行数
+pub const WIN_QUERY: u64 = 9; // p1=wid（0=服务统计）→ 打包 u64
+
+// WIN_SUBMIT 提交块布局（用户内存，小端）：
+//   [0..4)   u32 kind     0=整窗 1=脏区
+//   [4..8)   u32 count    脏区数（kind=1 时 1..=16；kind=0 恒 0）
+//   [8..)    Rect16[count]：i32 x, y; u32 w, h（窗口坐标，16B/条）
+//   [..]     像素数据：kind=0 = 整窗按行（w*bpp/行 × h）；kind=1 = 各脏区
+//            按声明顺序紧随（每区 w*bpp/行 × h，无跨区对齐填充）。
+pub const WIN_SUBMIT_KIND_FULL: u32 = 0;
+pub const WIN_SUBMIT_KIND_DIRTY: u32 = 1;
+pub const WIN_SUBMIT_HDR: usize = 8;
+pub const WIN_SUBMIT_RECT: usize = 16;
+/// 单次提交脏区上限（对齐 winsurf::MAX_DIRTY_PER_SUBMIT）。
+pub const WIN_SUBMIT_MAX_RECTS: u32 = 16;
+/// 行拷贝分段大小（内核栈缓冲上限 4KiB——戒律 >64KB 禁栈的保守取值）。
+pub const WIN_ROW_CHUNK: usize = 4096;
+
+// 编译期对齐断言：提交块脏区上限与 winsurf 服务上限漂移即编译失败。
+const _: () = assert!(WIN_SUBMIT_MAX_RECTS as usize == crate::winsurf::MAX_DIRTY_PER_SUBMIT);
+
+/// (x,y) 打包进 u64（各 i32，LE——支持负坐标出屏窗口）。
+pub const fn win_pack_xy(x: i64, y: i64) -> u64 {
+    (((x as i32) as u32) as u64) | ((((y as i32) as u32) as u64) << 32)
+}
+
+/// u64 拆 (x,y)（各 i32 有符号还原）。
+pub const fn win_unpack_xy(v: u64) -> (i64, i64) {
+    let x = (v & 0xFFFF_FFFF) as u32 as i32;
+    let y = ((v >> 32) & 0xFFFF_FFFF) as u32 as i32;
+    (x as i64, y as i64)
+}
+
+/// (w,h) 打包进 u64（各 u32）。
+pub const fn win_pack_wh(w: u64, h: u64) -> u64 {
+    (w & 0xFFFF_FFFF) | ((h & 0xFFFF_FFFF) << 32)
+}
+
+/// u64 拆 (w,h)。
+pub const fn win_unpack_wh(v: u64) -> (u32, u32) {
+    ((v & 0xFFFF_FFFF) as u32, ((v >> 32) & 0xFFFF_FFFF) as u32)
+}
+
+/// 提交块头部合法性校验（纯函数宿主可测）：kind/count 值域与块总长
+/// （像素区按窗口几何推得的最小长度由调用方按 kind 二次核对）。
+pub const fn win_submit_hdr_ok(kind: u32, count: u32) -> bool {
+    match kind {
+        WIN_SUBMIT_KIND_FULL => count == 0,
+        WIN_SUBMIT_KIND_DIRTY => count >= 1 && count <= WIN_SUBMIT_MAX_RECTS,
+        _ => false,
+    }
+}
 
 const fn einval() -> i64 {
     -(ErrNo::Einval.to_i32() as i64)
@@ -622,6 +686,196 @@ pub fn sys_shim(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     enosys()
 }
 
+// ---------------------------------------------------------------------------
+// WIN：窗口面服务系统调用（AI-4 · S2.06 渲染通路 + S2.09 多窗合成）
+// ---------------------------------------------------------------------------
+
+/// SYS_WIN 处理器（目标态）：子命令分派到 winsurf 服务 + inputsvc 焦点联动。
+/// 用户内存访问走 sys_shim 同范式（is_user_ip/USER_TOP 校验 + volatile）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn sys_win(a1: u64, a2: u64, a3: u64) -> i64 {
+    let op = a1 & 0xFF;
+    let Some(wsvc) = crate::winsurf::service() else { return eio() };
+    match op {
+        WIN_REGISTER => {
+            let (w, h) = win_unpack_wh(a3);
+            let Some(disp) = crate::displaysrv::target::service() else { return eio() };
+            let fmt = disp.draw_surface().format();
+            match wsvc.register(a2 as u32, w, h, fmt) {
+                Some(id) => id as i64,
+                None => enospc(), // 槽满/几何越界/容量超限——明确拒绝
+            }
+        }
+        WIN_UNREGISTER => {
+            if wsvc.unregister(a2 as u16) { 0 } else { einval() }
+        }
+        WIN_GEO => {
+            let (x, y) = win_unpack_xy(a3);
+            if wsvc.set_geo(a2 as u16, x, y) { 0 } else { einval() }
+        }
+        WIN_RAISE => {
+            if wsvc.raise(a2 as u16) { 0 } else { einval() }
+        }
+        WIN_STATE => {
+            let st = if a3 & 1 == 1 {
+                crate::winsurf::WinState::Minimized
+            } else {
+                crate::winsurf::WinState::Visible
+            };
+            if wsvc.set_state(a2 as u16, st) { 0 } else { einval() }
+        }
+        WIN_FOCUS => {
+            if a2 == 0 {
+                wsvc.focus(0);
+                crate::inputsvc::target::clear_focus();
+                return 0;
+            }
+            if !wsvc.focus(a2 as u16) {
+                return einval();
+            }
+            // 跨层接线：窗口焦点属主 pid → 内核级键盘路由（S2.05）。
+            // 无匹配订阅者（如属主尚未注册 KFO 订阅）不视为失败——
+            // 桌面进程自持 DOM 焦点语义。
+            if let Some(pid) = wsvc.focus_owner() {
+                crate::inputsvc::target::focus_pid(pid);
+            }
+            0
+        }
+        WIN_SUBMIT => win_submit(wsvc, a2 as u16, a3),
+        WIN_COMPOSITE => {
+            let Some(disp) = crate::displaysrv::target::service() else { return eio() };
+            wsvc.composite(disp);
+            let st = wsvc.stats();
+            (st.blit_rows & 0x7FFF_FFFF_FFFF_FFFF) as i64
+        }
+        WIN_QUERY => {
+            if a2 == 0 {
+                let st = wsvc.stats();
+                return win_pack_wh(st.frames, st.blit_rows) as i64;
+            }
+            let Some(info) = wsvc.window_info(a2 as u16) else { return einval() };
+            match a3 {
+                0 => win_pack_xy(info.x, info.y) as i64,
+                1 => win_pack_wh(info.w as u64, info.h as u64) as i64,
+                _ => {
+                    let bits = (info.minimized as u64)
+                        | ((info.is_focus as u64) << 1)
+                        | ((info.generation as u64 & 0x3FFF_FFFF) << 32);
+                    bits as i64
+                }
+            }
+        }
+        _ => enosys(),
+    }
+}
+
+/// WIN_SUBMIT 实现（目标态）：读用户提交块（头+脏区+像素），逐行分段
+/// volatile 拷入内核行缓冲再 stage_row。返回已提交行数。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn win_submit(wsvc: &mut crate::winsurf::WinService, wid: u16, block: u64) -> i64 {
+    // 用户指针校验（sys_shim 同范式：用户半区 + USER_TOP）。
+    if !crate::entry::is_user_ip(block) {
+        return efault();
+    }
+    let info = match wsvc.window_info(wid) {
+        Some(i) => i,
+        None => return einval(),
+    };
+    let bpp = info.bpp.max(1); // register 已绑定屏幕 fmt；0=异常诚实拒绝
+    if info.bpp == 0 {
+        return eio();
+    }
+    let rd_u32 = |addr: u64| -> u32 {
+        // SAFETY: 调用方已校验 is_user_ip；块内偏移由下方总长校验兜住。
+        unsafe { core::ptr::read_volatile(addr as *const u32) }
+    };
+    if !crate::entry::is_user_ip(block)
+        || block.checked_add(WIN_SUBMIT_HDR as u64).map_or(true, |e| e > crate::entry::USER_TOP)
+    {
+        return efault();
+    }
+    let kind = rd_u32(block);
+    let count = rd_u32(block + 4);
+    if !win_submit_hdr_ok(kind, count) {
+        return einval();
+    }
+    let rects_bytes = WIN_SUBMIT_RECT as u64 * count as u64;
+    let mut pix = match block.checked_add(WIN_SUBMIT_HDR as u64 + rects_bytes) {
+        Some(p) if p <= crate::entry::USER_TOP => p,
+        _ => return efault(),
+    };
+
+    // 脏区列表（内核侧校验副本；kind=FULL 恰一条隐含全窗）。
+    static mut RECTS: [(i64, i64, u32, u32); WIN_SUBMIT_MAX_RECTS as usize] =
+        [(0, 0, 0, 0); WIN_SUBMIT_MAX_RECTS as usize];
+    // SAFETY: 单核 syscall 语境独占；宽 ≤ WIN_SUBMIT_MAX_RECTS。
+    let rects: &mut [(i64, i64, u32, u32)] = unsafe { &mut *(&raw mut RECTS) };
+    let mut rect_n = 0usize;
+    let mut total_px: u64 = 0;
+    if kind == WIN_SUBMIT_KIND_FULL {
+        rects[0] = (0, 0, info.w, info.h);
+        rect_n = 1;
+    } else {
+        for i in 0..count as usize {
+            let base = block + WIN_SUBMIT_HDR as u64 + (i * WIN_SUBMIT_RECT) as u64;
+            let x = rd_u32(base) as i32 as i64;
+            let y = rd_u32(base + 4) as i32 as i64;
+            let w = rd_u32(base + 8);
+            let h = rd_u32(base + 12);
+            rects[i] = (x, y, w, h);
+        }
+        rect_n = count as usize;
+    }
+    for &(rx, ry, rw, rh) in rects[..rect_n].iter() {
+        if rw == 0 || rh == 0 {
+            continue;
+        }
+        if rx < 0 || ry < 0 || rx + rw as i64 > info.w as i64 || ry + rh as i64 > info.h as i64 {
+            return einval();
+        }
+        total_px = total_px.saturating_add(rw as u64 * bpp as u64 * rh as u64);
+    }
+    // 像素区整体不得越过用户半区（先验总长，拷贝路径零再校验）。
+    if pix.checked_add(total_px).map_or(true, |e| e > crate::entry::USER_TOP) {
+        return efault();
+    }
+
+    // 逐区逐行：分段拷像素 → stage_row → 登记脏区。
+    let mut row_buf = [0u8; WIN_ROW_CHUNK];
+    let mut submitted = 0i64;
+    for &(rx, ry, rw, rh) in rects[..rect_n].iter() {
+        if rw == 0 || rh == 0 {
+            continue;
+        }
+        let row_bytes = rw as usize * bpp;
+        for r in 0..rh as i64 {
+            let mut xoff = 0usize;
+            while xoff < row_bytes {
+                let n = (row_bytes - xoff).min(WIN_ROW_CHUNK);
+                for (k, b) in row_buf[..n].iter_mut().enumerate() {
+                    // SAFETY: pix..pix+total_px 已先验落在用户半区内。
+                    *b = unsafe { core::ptr::read_volatile((pix + k as u64) as *const u8) };
+                }
+                if !wsvc.stage_row(wid, ry + r, rx as u32 + xoff as u32, &row_buf[..n]) {
+                    return einval();
+                }
+                pix += n as u64;
+                xoff += n;
+            }
+            submitted += 1;
+        }
+        wsvc.mark_window_dirty(wid, crate::displaysrv::Rect::new(rx, ry, rw as i64, rh as i64));
+    }
+    wsvc.end_submit(wid);
+    submitted
+}
+
+/// SYS_WIN 宿主版：如实 ENOSYS（编解码纯函数另行单测）。
+#[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+pub fn sys_win(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    enosys()
+}
+
 /// 命令分发（target 编译；块已拷入内核缓冲，纯内存操作后由调用方回写）。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 fn shim_dispatch(cmd: u64, block: &mut [u8; BLK_TOTAL]) -> i64 {
@@ -1055,5 +1309,36 @@ mod tests {
         assert!(SYS_SHIM < super::super::winapi::WIN32_NR_BASE);
         assert!(SYS_REBOOT < super::super::winapi::WIN32_NR_BASE);
         assert!(SYS_POWEROFF < super::super::winapi::WIN32_NR_BASE);
+        assert!(SYS_WIN < super::super::winapi::WIN32_NR_BASE);
+    }
+
+    // ---------------- SYS_WIN 编解码纯函数（AI-4 · S2.06/S2.09） ----------------
+
+    #[test]
+    fn win_pack_xy_roundtrip_with_negative() {
+        // 负坐标（出屏窗口）有符号还原。
+        assert_eq!(win_unpack_xy(win_pack_xy(0, 0)), (0, 0));
+        assert_eq!(win_unpack_xy(win_pack_xy(1920, 1080)), (1920, 1080));
+        assert_eq!(win_unpack_xy(win_pack_xy(-4, -2)), (-4, -2));
+        assert_eq!(win_unpack_xy(win_pack_xy(i32::MIN as i64, i32::MAX as i64)), (i32::MIN as i64, i32::MAX as i64));
+    }
+
+    #[test]
+    fn win_pack_wh_roundtrip() {
+        assert_eq!(win_unpack_wh(win_pack_wh(8, 6)), (8, 6));
+        assert_eq!(win_unpack_wh(win_pack_wh(2560, 1440)), (2560, 1440));
+        assert_eq!(win_unpack_wh(win_pack_wh(u32::MAX as u64, 0)), (u32::MAX, 0));
+    }
+
+    #[test]
+    fn win_submit_hdr_validation() {
+        // kind=FULL 恒 count=0；kind=DIRTY 1..=16；未知 kind 拒绝。
+        assert!(win_submit_hdr_ok(WIN_SUBMIT_KIND_FULL, 0));
+        assert!(!win_submit_hdr_ok(WIN_SUBMIT_KIND_FULL, 1));
+        assert!(win_submit_hdr_ok(WIN_SUBMIT_KIND_DIRTY, 1));
+        assert!(win_submit_hdr_ok(WIN_SUBMIT_KIND_DIRTY, WIN_SUBMIT_MAX_RECTS));
+        assert!(!win_submit_hdr_ok(WIN_SUBMIT_KIND_DIRTY, 0));
+        assert!(!win_submit_hdr_ok(WIN_SUBMIT_KIND_DIRTY, WIN_SUBMIT_MAX_RECTS + 1));
+        assert!(!win_submit_hdr_ok(99, 1));
     }
 }

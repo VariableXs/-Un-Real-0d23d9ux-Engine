@@ -154,6 +154,9 @@ pub fn syscall_common(nr: u32, a1: u64, a2: u64, a3: u64) -> i64 {
         super::usrshell::SYS_SHIM => super::usrshell::sys_shim(a1, a2, a3),
         super::usrshell::SYS_REBOOT => super::usrshell::sys_reboot(a1, a2, a3),
         super::usrshell::SYS_POWEROFF => super::usrshell::sys_poweroff(a1, a2, a3),
+        // AI-4 · S2.06/S2.09：窗口面服务（渲染通路客户端提交 + 多窗合成 +
+        // 焦点联动）。宿主态如实 ENOSYS；目标态全量实现（usrshell::sys_win）。
+        super::usrshell::SYS_WIN => super::usrshell::sys_win(a1, a2, a3),
         // 其余稳定号（read/open/…）按任务15 口径如实 ENOSYS——
         // 号表形态定义在 proc::syscall（F102），处理器随任务16 落地。
         _ => SyscallError::NotImplemented.errno(),
