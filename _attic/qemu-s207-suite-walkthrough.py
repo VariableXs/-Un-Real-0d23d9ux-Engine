@@ -184,10 +184,12 @@ def run_round(rnd):
         mon.key("esc")
         time.sleep(1.5)
 
-        # ④ 文件管理器：菜单第 1 项。
+        # ④ 文件管理器：esc 确认回桌面后 ret 开菜单 → ret 进第 1 项
+        # （R2 教训：菜单中间态判定绕且脆——只断言最终标记增量）。
+        mon.key("esc")
+        time.sleep(1.5)
         mon.key("ret")
-        ok = wait_count("SHELL: startmenu opened", b_menu + 1 if count_marker("SHELL: startmenu opened") == b_menu else b_menu)
-        mon.key("ret")
+        time.sleep(1.5)
         b_files = count_marker("SHELL: files opened")
         mon.key("ret")
         checks.append(("files: opens", wait_count("SHELL: files opened", b_files)))
