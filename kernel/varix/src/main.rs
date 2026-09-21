@@ -308,9 +308,23 @@ fn boot() -> ! {
             let _ = varix::bootnext::prepare_runtime_identity_map();
             let blocks = varix::bootnext::identity_map_low_4gib();
             varix::kinfo!("boot-select: low-memory identity-mapped ({} x 2MiB)", blocks);
-            // 项号**不写死**：按固件 BootOrder 逐个读 Boot#### 匹配 Windows，
-            // 匹配不到时如实标注 unverified（写死 Boot0001 在别人机器上就是蒙）。
-            let entry = varix::bootnext::resolve_windows_entry(varix::cmdline::init().source());
+            // 项号**不写死**：按固件 BootOrder 逐个读 Boot#### 匹配 Windows；
+            // handoff_target=usb 时只认设备路径含 U 盘 ESP GUID 的项（S1.3
+            // 登记制）。GUID 缺失时回退任意 Windows 项——手动选择用户在场，
+            // 沿用下方既有 guessing 语义（自动交接路径则是硬拒绝，见 handoff）。
+            let usb_guid = if boot_opts.handoff_target == varix::bootopt::HandoffTarget::Usb {
+                if boot_opts.usb_windows_esp_guid.is_none() {
+                    varix::kwarn!(
+                        "boot-select: handoff_target=usb but usb_windows_esp_guid missing — \
+                         falling back to any Windows entry (manual selection)"
+                    );
+                }
+                boot_opts.usb_windows_esp_guid.as_ref()
+            } else {
+                None
+            };
+            let entry =
+                varix::bootnext::resolve_windows_entry_for(varix::cmdline::init().source(), usb_guid);
             if entry.verified() {
                 varix::kinfo!(
                     "boot-select: Windows boot option resolved to 0x{:04X}",
@@ -471,7 +485,11 @@ fn boot() -> ! {
         match varix::handoff::plan(Some(chosen_entry), boot_opts.handoff_to_variable) {
             varix::handoff::HandoffPlan::ToWindows => {
                 varix::kinfo!("handoff: plan=windows (entry={})", chosen_entry);
-                if !varix::handoff::run(&surface) {
+                if !varix::handoff::run(
+                    &surface,
+                    boot_opts.handoff_target,
+                    boot_opts.usb_windows_esp_guid,
+                ) {
                     varix::kwarn!("handoff: unavailable — continuing into the kernel ushell");
                 }
             }

@@ -19,6 +19,27 @@ pub const DEFAULT_ENTRY: &str = "varix";
 /// 只能交接出去；关掉则落内核自绘 ushell（保留路径，也用于排障）。
 pub const DEFAULT_HANDOFF_TO_VARIABLE: bool = true;
 
+/// 交接目标（A 卡交接与 WINDOWS 卡共用）：内置盘 Windows（默认）或
+/// U 盘 Windows（U 盘双系统形态，S1.3 登记 `usb_windows_esp_guid` 后可用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandoffTarget {
+    Internal,
+    Usb,
+}
+
+pub const DEFAULT_HANDOFF_TARGET: HandoffTarget = HandoffTarget::Internal;
+
+impl HandoffTarget {
+    /// boot-select.json 词表：`"internal"` / `"usb"`；含糊值 → None（容错第 2 层）。
+    pub fn from_json(s: &str) -> Option<HandoffTarget> {
+        match s {
+            "internal" => Some(HandoffTarget::Internal),
+            "usb" => Some(HandoffTarget::Usb),
+            _ => None,
+        }
+    }
+}
+
 /// Boot menu options (F022 result).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootOptions {
@@ -37,6 +58,14 @@ pub struct BootOptions {
     pub handoff_to_variable: bool,
     /// cmdline 显式设了 `handoff=`（bootcfg 合并的逐字段优先级用）。
     pub customized_handoff: bool,
+    /// 交接目标：internal=内置盘 Windows（默认），usb=U 盘 Windows。见
+    /// [`DEFAULT_HANDOFF_TARGET`]。
+    pub handoff_target: HandoffTarget,
+    /// cmdline 显式设了 `handoff_target=`。
+    pub customized_handoff_target: bool,
+    /// U 盘 ESP 分区 GUID（EFI 字节序，设备路径里原样出现）；只来自
+    /// boot-select.json（cmdline 不携带长 GUID）。
+    pub usb_windows_esp_guid: Option<[u8; 16]>,
 }
 
 impl Default for BootOptions {
@@ -49,6 +78,9 @@ impl Default for BootOptions {
             customized_entry: false,
             handoff_to_variable: DEFAULT_HANDOFF_TO_VARIABLE,
             customized_handoff: false,
+            handoff_target: DEFAULT_HANDOFF_TARGET,
+            customized_handoff_target: false,
+            usb_windows_esp_guid: None,
         }
     }
 }
@@ -96,6 +128,16 @@ impl BootOptions {
                         customized = true;
                     }
                     _ => {}
+                }
+            } else if let Some(v) = token.strip_prefix("handoff_target=") {
+                // 交接目标（S1.3/S1.5）：只认 internal/usb，含糊值忽略保留默认。
+                match HandoffTarget::from_json(v) {
+                    Some(t) => {
+                        opts.handoff_target = t;
+                        opts.customized_handoff_target = true;
+                        customized = true;
+                    }
+                    None => {}
                 }
             }
         }

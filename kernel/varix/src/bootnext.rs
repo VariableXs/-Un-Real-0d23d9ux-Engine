@@ -627,14 +627,68 @@ pub fn option_looks_like_windows(bytes: &[u8]) -> bool {
         && utf16_contains_ascii_ignore_case(bytes, "bootmgfw")
 }
 
-/// 读 `Boot####` 并判定是否指向 Windows。
-fn option_number_is_windows(num: u16) -> bool {
-    let buf = opt_buf();
-    let name = boot_var_name(num);
-    let Some(n) = get_variable(&name, &mut buf[..]) else {
+/// 解析 GUID 文本（`{xxxxxxxx-…}` 或裸 8-4-4-4-12，大小写不敏感）为
+/// **EFI 字节序** 16 字节——首三字段小端摆放，与固件设备路径里的
+/// EFI_GUID 布局一致（S1.3 登记的 `usb_windows_esp_guid` 语义）。
+pub fn parse_guid_text(s: &str) -> Option<[u8; 16]> {
+    let mut hex = [0u8; 32];
+    let mut n = 0usize;
+    for c in s.chars() {
+        match c {
+            '{' | '}' | '-' => {}
+            _ => {
+                if n >= 32 {
+                    return None;
+                }
+                hex[n] = c.to_digit(16)? as u8;
+                n += 1;
+            }
+        }
+    }
+    if n != 32 {
+        return None;
+    }
+    let mut raw = [0u8; 16];
+    for i in 0..16 {
+        raw[i] = (hex[i * 2] << 4) | hex[i * 2 + 1];
+    }
+    let mut out = [0u8; 16];
+    out[0] = raw[3];
+    out[1] = raw[2];
+    out[2] = raw[1];
+    out[3] = raw[0];
+    out[4] = raw[5];
+    out[5] = raw[4];
+    out[6] = raw[7];
+    out[7] = raw[6];
+    out[8..16].copy_from_slice(&raw[8..16]);
+    Some(out)
+}
+
+/// 16 字节 GUID 子序列匹配（EFI_LOAD_OPTION 内容里设备路径的
+/// 分区 GUID 节点原样出现）。
+pub fn bytes_contains_guid(bytes: &[u8], guid: &[u8; 16]) -> bool {
+    if bytes.len() < 16 {
         return false;
-    };
-    option_looks_like_windows(&buf[..n])
+    }
+    for i in 0..=(bytes.len() - 16) {
+        if bytes[i..i + 16] == *guid {
+            return true;
+        }
+    }
+    false
+}
+
+/// 目标匹配：Windows 项 + （给定 GUID 时）内容含该 U 盘 ESP GUID。
+/// GUID 是分区级精确判据——指向同一 ESP 的项不可能认错盘。
+pub fn option_matches_target(bytes: &[u8], usb_guid: Option<&[u8; 16]>) -> bool {
+    if !option_looks_like_windows(bytes) {
+        return false;
+    }
+    match usb_guid {
+        Some(g) => bytes_contains_guid(bytes, g),
+        None => true,
+    }
 }
 
 /// Windows 引导项解析结果。**是否「已确认」是硬信息**，不许混为一谈。
@@ -664,6 +718,14 @@ impl WindowsEntry {
 /// 3. `BootOrder` 读不到时全扫 `Boot0000..Boot00FF` 兜底 → Resolved；
 /// 4. 全都失败 → Unverified(命令行值或 1)，调用方须如实告知用户。
 pub fn resolve_windows_entry(cmdline: &str) -> WindowsEntry {
+    resolve_windows_entry_for(cmdline, None)
+}
+
+/// 目标化解析：`usb_guid=Some` 时只认「Windows 项且设备路径含该 U 盘
+/// ESP GUID」——`handoff_target=usb` 语义（S1.5 接线）。优先级不变：
+/// 1. cmdline `boot_next=`（视为已验证）；2. BootOrder 顺序匹配；
+/// 3. BootOrder 读不到时全扫兜底；4. 全失败 → Unverified。
+pub fn resolve_windows_entry_for(cmdline: &str, usb_guid: Option<&[u8; 16]>) -> WindowsEntry {
     if let Some(v) = cmdline_entry(cmdline) {
         return WindowsEntry::Resolved(v);
     }
@@ -671,14 +733,28 @@ pub fn resolve_windows_entry(cmdline: &str) -> WindowsEntry {
     let n = boot_order(&mut order);
     if n > 0 {
         for &num in &order[..n] {
-            if option_number_is_windows(num) {
+            let buf = opt_buf();
+            let name = boot_var_name(num);
+            let Some(sz) = get_variable(&name, &mut buf[..]) else {
+                continue;
+            };
+            if option_matches_target(&buf[..sz], usb_guid) {
                 return WindowsEntry::Resolved(num);
             }
         }
     } else {
         // BootOrder 不可读（部分固件隐藏该变量）：全量扫描兜底。
-        for num in 0..=0x00FFu16 {
-            if option_number_is_windows(num) {
+        let mut all = [0u16; 0x100];
+        for (i, v) in all.iter_mut().enumerate() {
+            *v = i as u16;
+        }
+        for &num in all.iter() {
+            let buf = opt_buf();
+            let name = boot_var_name(num);
+            let Some(sz) = get_variable(&name, &mut buf[..]) else {
+                continue;
+            };
+            if option_matches_target(&buf[..sz], usb_guid) {
                 return WindowsEntry::Resolved(num);
             }
         }
@@ -827,6 +903,56 @@ mod tests {
         v.extend_from_slice(&utf16("abc"));
         assert!(utf16_contains_ascii_ignore_case(&v, "abc"));
         assert!(!utf16_contains_ascii_ignore_case(&v, "\u{0441}a"));
+    }
+
+    #[test]
+    fn guid_text_parses_to_efi_byte_order() {
+        // .NET Guid.ToByteArray 同布局：首三字段小端
+        let g = parse_guid_text("{636786cb-e967-49f6-b0df-7608909d1f11}").unwrap();
+        assert_eq!(g[0], 0xcb);
+        assert_eq!(g[1], 0x86);
+        assert_eq!(g[2], 0x67);
+        assert_eq!(g[3], 0x63);
+        assert_eq!(g[4], 0x67);
+        assert_eq!(g[5], 0xe9);
+        assert_eq!(&g[8..], &[0xb0, 0xdf, 0x76, 0x08, 0x90, 0x9d, 0x1f, 0x11]);
+        // 无花括号 / 大写 等价
+        assert_eq!(parse_guid_text("636786CB-E967-49F6-B0DF-7608909D1F11").unwrap(), g);
+        // 非法：长度不足 / 非 hex
+        assert!(parse_guid_text("636786cb").is_none());
+        assert!(parse_guid_text("zzzzzzcb-e967-49f6-b0df-7608909d1f11").is_none());
+        assert!(parse_guid_text("").is_none());
+    }
+
+    #[test]
+    fn guid_bytes_subsequence_match() {
+        let g = parse_guid_text("636786cb-e967-49f6-b0df-7608909d1f11").unwrap();
+        let mut content = load_option("Windows Boot Manager", r"\EFI\Microsoft\Bootootmgfw.efi");
+        assert!(!bytes_contains_guid(&content, &g), "GUID 未植入时不得命中");
+        content.extend_from_slice(&g);
+        assert!(bytes_contains_guid(&content, &g), "植入后必须命中");
+        let mut other = g;
+        other[0] ^= 0xFF;
+        assert!(!bytes_contains_guid(&content, &other));
+        assert!(!bytes_contains_guid(&g[..8], &g), "短缓冲不得命中");
+    }
+
+    #[test]
+    fn target_match_requires_windows_and_guid() {
+        let g = parse_guid_text("636786cb-e967-49f6-b0df-7608909d1f11").unwrap();
+        let mut win_usb = load_option("Windows Boot Manager", r"\EFI\Microsoft\Bootootmgfw.efi");
+        win_usb.extend_from_slice(&g);
+        // Windows 项 + GUID 在 → 命中
+        assert!(option_matches_target(&win_usb, Some(&g)));
+        // GUID=None（内置盘目标）→ 任意 Windows 项命中
+        assert!(option_matches_target(&win_usb, None));
+        // Windows 项但 GUID 不在 → 不命中（防止误指内置盘）
+        let win_plain = load_option("Windows Boot Manager", r"\EFI\Microsoft\Bootootmgfw.efi");
+        assert!(!option_matches_target(&win_plain, Some(&g)));
+        // 非 Windows 项（如 Limine/UEFI 壳）即使 GUID 在也不命中
+        let mut limine = load_option("UEFI: VARIX", r"\EFI\BOOT\BOOTX64.EFI");
+        limine.extend_from_slice(&g);
+        assert!(!option_matches_target(&limine, Some(&g)));
     }
 
     #[test]

@@ -28,6 +28,8 @@
 //! | `last_boot`        | string  | `variable`| 上次实际进入的系统；`last` 语义据此解析 |
 //! | `windows_bootnext` | integer/null | null | 部署脚本探测的 Windows 引导项号 0..=0xFFFF |
 //! | `handoff`          | bool    | `true`    | A 卡加载完交接给 Windows 上的 Variable（需求 2）；false=落内核自绘 ushell |
+//! | `handoff_target`   | string  | `internal`| 交接目标：internal=内置盘 Windows；usb=U 盘 Windows（S1.3 双系统） |
+//! | `usb_windows_esp_guid` | string | null   | U 盘 ESP 分区 GUID；`handoff_target=usb` 时按「设备路径含该 GUID」匹配固件项 |
 //!
 //! 词表映射：配置词表（variable/windows/last）→ 菜单词表（varix/windows/uefi）
 //! 由 `BootCfg::resolve_default_entry` 完成；`uefi` 不进配置词表（固件设置
@@ -83,6 +85,12 @@ pub struct BootCfg {
     /// A 卡（variable/varix）加载完是否交接给 Windows 上的 Variable（需求 2）。
     /// 内核里跑不了 Tauri，"进入 Variable"= 写 BootNext 进 Windows 由那边自启。
     pub handoff: bool,
+    /// 交接目标（S1.3/S1.5）：internal=内置盘 Windows（默认），usb=U 盘 Windows。
+    pub handoff_target: crate::bootopt::HandoffTarget,
+    /// U 盘 ESP 分区 GUID（EFI 字节序）；`handoff_target=usb` 时按
+    /// 「设备路径含该 GUID」匹配固件项。缺省/解析失败 = None（usb 目标
+    /// 无 GUID 时 handoff 如实拒绝，绝不蒙一个内置盘项）。
+    pub usb_windows_esp_guid: Option<[u8; 16]>,
 }
 
 impl BootCfg {
@@ -95,6 +103,8 @@ impl BootCfg {
             last_boot: LastBoot::Variable,
             windows_bootnext: None,
             handoff: crate::bootopt::DEFAULT_HANDOFF_TO_VARIABLE,
+            handoff_target: crate::bootopt::DEFAULT_HANDOFF_TARGET,
+            usb_windows_esp_guid: None,
         }
     }
 
@@ -185,6 +195,8 @@ struct Parser<'a> {
     f_last_boot: Option<LastBoot>,
     f_bootnext: Option<Option<u16>>,
     f_handoff: Option<bool>,
+    f_handoff_target: Option<crate::bootopt::HandoffTarget>,
+    f_usb_guid: Option<[u8; 16]>,
 }
 
 impl<'a> Parser<'a> {
@@ -203,6 +215,8 @@ impl<'a> Parser<'a> {
             f_last_boot: None,
             f_bootnext: None,
             f_handoff: None,
+            f_handoff_target: None,
+            f_usb_guid: None,
         }
     }
 
@@ -282,6 +296,18 @@ impl<'a> Parser<'a> {
             "show_menu" => self.field(|p| p.bool_field().map(FieldVal::Menu)),
             "windows_bootnext" => self.field(|p| p.u16_field().map(FieldVal::BootNext)),
             "handoff" => self.field(|p| p.bool_field().map(FieldVal::Handoff)),
+            "handoff_target" => self.field(|p| {
+                p.string()
+                    .ok()
+                    .and_then(crate::bootopt::HandoffTarget::from_json)
+                    .map(FieldVal::Target)
+            }),
+            "usb_windows_esp_guid" => self.field(|p| {
+                p.string()
+                    .ok()
+                    .and_then(crate::bootnext::parse_guid_text)
+                    .map(FieldVal::UsbGuid)
+            }),
             _ => self.skip_value(),
         }
     }
@@ -313,6 +339,8 @@ impl<'a> Parser<'a> {
             FieldVal::Menu(m) => self.f_show_menu = Some(m),
             FieldVal::BootNext(b) => self.f_bootnext = Some(b),
             FieldVal::Handoff(h) => self.f_handoff = Some(h),
+            FieldVal::Target(t) => self.f_handoff_target = Some(t),
+            FieldVal::UsbGuid(g) => self.f_usb_guid = Some(g),
         }
     }
 
@@ -502,6 +530,12 @@ impl<'a> Parser<'a> {
         if let Some(h) = self.f_handoff {
             cfg.handoff = h;
         }
+        if let Some(t) = self.f_handoff_target {
+            cfg.handoff_target = t;
+        }
+        if let Some(g) = self.f_usb_guid {
+            cfg.usb_windows_esp_guid = Some(g);
+        }
         cfg
     }
 }
@@ -514,6 +548,8 @@ enum FieldVal {
     Menu(bool),
     BootNext(Option<u16>),
     Handoff(bool),
+    Target(crate::bootopt::HandoffTarget),
+    UsbGuid([u8; 16]),
 }
 
 // field_word 的闭包返回 T，但 set 需要 FieldVal——用一个小适配：
@@ -542,6 +578,11 @@ pub fn effective(cmdline: crate::bootopt::BootOptions, cfg: &BootCfg, src: CfgSo
     if !o.customized_handoff {
         o.handoff_to_variable = cfg.handoff;
     }
+    if !o.customized_handoff_target {
+        o.handoff_target = cfg.handoff_target;
+    }
+    // GUID 只来自配置（cmdline 不携带长 GUID）；config 缺席/损坏时维持 None。
+    o.usb_windows_esp_guid = cfg.usb_windows_esp_guid;
     o
 }
 
@@ -588,6 +629,45 @@ mod tests {
         assert_eq!(c.timeout_sec, 9, "同文档其余字段不受影响");
         // 未知字段照旧忽略
         assert!(parse_ok("{\"handoff_typo\": false}").handoff);
+    }
+
+    #[test]
+    fn handoff_target_parse_and_merge() {
+        use crate::bootopt::{BootOptions, HandoffTarget};
+        let (cfg, src) = parse(
+            b"{\"handoff_target\": \"usb\", \"usb_windows_esp_guid\": \"{636786cb-e967-49f6-b0df-7608909d1f11}\"}",
+        );
+        assert_eq!(src, CfgSource::Parsed);
+        assert_eq!(cfg.handoff_target, HandoffTarget::Usb);
+        assert!(cfg.usb_windows_esp_guid.is_some(), "合法 GUID 必须解析进字段");
+        // 合并：cmdline 未显式 → 配置生效；GUID 随配置透传
+        let o = effective(BootOptions::default(), &cfg, src);
+        assert_eq!(o.handoff_target, HandoffTarget::Usb);
+        assert_eq!(o.usb_windows_esp_guid, cfg.usb_windows_esp_guid);
+        // cmdline 显式 internal → 覆盖配置
+        let o2 = effective(BootOptions::from_cmdline("handoff_target=internal"), &cfg, src);
+        assert_eq!(o2.handoff_target, HandoffTarget::Internal);
+        // 配置损坏 → 维持默认 internal + GUID None
+        let o3 = effective(BootOptions::default(), &cfg, CfgSource::Reset);
+        assert_eq!(o3.handoff_target, HandoffTarget::Internal);
+        assert!(o3.usb_windows_esp_guid.is_none());
+    }
+
+    #[test]
+    fn handoff_target_invalid_values_fall_back() {
+        use crate::bootopt::{BootOptions, HandoffTarget};
+        // 词表外目标 → 字段级回落默认（容错第 2 层，不升级为整体损坏）
+        let (cfg, src) = parse(b"{\"handoff_target\": \"floppy\"}");
+        assert_eq!(src, CfgSource::Parsed);
+        assert_eq!(cfg.handoff_target, HandoffTarget::Internal);
+        // GUID 非法（长度不足）→ 字段级回落 None
+        let (cfg2, _) = parse(b"{\"handoff_target\": \"usb\", \"usb_windows_esp_guid\": \"636786cb\"}");
+        assert_eq!(cfg2.handoff_target, HandoffTarget::Usb);
+        assert!(cfg2.usb_windows_esp_guid.is_none(), "非法 GUID 必须回落 None");
+        // 默认（键缺失）→ internal
+        let (cfg3, _) = parse(b"{\"timeout_sec\": 5}");
+        assert_eq!(cfg3.handoff_target, HandoffTarget::Internal);
+        assert!(cfg3.usb_windows_esp_guid.is_none());
     }
 
     #[test]

@@ -146,8 +146,14 @@ mod target {
     /// 全程复用既有 `bootnext` 域（项号按固件 BootOrder 逐个读 Boot####
     /// 匹配 Windows，不写死）——与三卡菜单选 WINDOWS 走的是同一条通道，
     /// 区别只在触发时机（这里是内核加载完之后）与语义（那边是"进 Windows"，
-    /// 这里是"进 Windows 上的 Variable"）。
-    pub fn run(surf: &Surface) -> bool {
+    /// 这里是"进 Windows 上的 Variable"）。`target=usb` 时只认设备路径
+    /// 含 `usb_windows_esp_guid` 的项（S1.3 登记制）——GUID 缺失/解析失败
+    /// 时如实拒绝落 ushell，绝不蒙一个内置盘项。
+    pub fn run(
+        surf: &Surface,
+        target: crate::bootopt::HandoffTarget,
+        usb_guid: Option<[u8; 16]>,
+    ) -> bool {
         crate::kinfo!("handoff: A-card selected — entering the Variable handoff path");
 
         // 先把「能不能交接」问清楚，再画画面——确认不了就直接落 ushell，
@@ -156,7 +162,26 @@ mod target {
         let blocks = crate::bootnext::identity_map_low_4gib();
         crate::kinfo!("handoff: low-memory identity-mapped ({} x 2MiB)", blocks);
 
-        let entry = crate::bootnext::resolve_windows_entry(crate::cmdline::init().source());
+        let guid_ref = match target {
+            crate::bootopt::HandoffTarget::Usb => match usb_guid.as_ref() {
+                Some(g) => {
+                    crate::kinfo!("handoff: target=usb (ESP GUID registered) — GUID-pinned match");
+                    Some(g)
+                }
+                None => {
+                    crate::kwarn!(
+                        "handoff: handoff_target=usb but usb_windows_esp_guid missing/unparseable \
+                         — refusing to guess; falling back to ushell"
+                    );
+                    return false;
+                }
+            },
+            crate::bootopt::HandoffTarget::Internal => None,
+        };
+        let entry = crate::bootnext::resolve_windows_entry_for(
+            crate::cmdline::init().source(),
+            guid_ref,
+        );
         if !entry.verified() {
             // **防自锁闸门**：交接是自动动作、无人值守——项号没在固件
             // BootOrder 里得到证实就盲写 BootNext，一旦那个项无效，固件会
