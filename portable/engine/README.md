@@ -1,13 +1,26 @@
 # AI-2 · W2 三级差分链（三体 S3.1）
 
-Base→Apps→User 三层差分镜像链的创建/体检/回滚/演练脚本。
+Base→Apps→User 三层差分镜像链的创建/体检/回滚/演练脚本 + Base 母本制作。
 布局契约（与 `src-tauri/src/shell/engine.rs` 的 `EngineConfig::discover` 一致）：
 
 ```
-<WIN_ENGINE 卷>\Engine\Base.vhdx   母本层（干净 Windows，一次成型后只读封存）
+<WIN_ENGINE 卷>\Engine\Base.vhdx   母本层（官方镜像装入的可引导 Windows，只读封存）
                      Apps.vhdx    差分于 Base（软件安装落此层，可独立重置）
                      User.vhdx    差分于 Apps（每会话差分，重置即丢）
 ```
+
+| 文件 | 用途 |
+|---|---|
+| `engine-chain.json` | 链配置（卷标签/Engine 目录/Base 容量与类型/VM 名） |
+| `Base-Mother.ps1` | Base 母本制作（官方 ISO install.wim 装入 VHDX：GPT 三分区+Apply-Image+bcdboot；Plan/Build/Verify；Real=管理员 diskpart+dism，Mock=零管理员文件模拟）。一次成型后只读封存，幂等（-Force 才重建） |
+| `Engine-Chain.ps1` | 三级链创建/体检/回滚/回滚演练 ×10（New/Health/Reset/Drill；Diskpart|HyperV|Mock 三后端逻辑同源） |
+
+## W2 施工序（真后端，部署机上执行）
+
+1. `Base-Mother.ps1 -Action Plan  -IsoPath <ISO>` —— 查 WIM 索引
+2. `Base-Mother.ps1 -Action Build -IsoPath <ISO> -Index <n>` —— 母本成型并封存
+3. `Engine-Chain.ps1 -Action New` —— 建 Apps/User 差分层
+4. `Engine-Chain.ps1 -Action Drill -Rounds 10` —— 回滚演练 ×10（验收主证据）
 
 ## 用法（管理员 PowerShell）
 

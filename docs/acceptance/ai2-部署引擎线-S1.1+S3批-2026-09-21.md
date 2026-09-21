@@ -129,3 +129,10 @@
 - 用户先后提出 LTSC 2024 与"第三方镜像"方案：**实测微软公开下载 API 仅提供消费版 25H2 v2**（Fido=rufus 官方仓库解析实现，Release 列表实测仅此一项）；LTSC 官方渠道=VLSC/MSDN（需订阅）与 90 天评估版（过期需重装，不适合长期 U 盘系统）；第三方镜像未经授权再分发且无法验证完整性——**不采用（版权与供应链硬线）**；消费版数字许可证不能激活 LTSC。
 - **定版：消费版 25H2 简体中文 x64 + 路线三不变**，补偿措施=手册 §3 步骤 5c「LTSC 化」（卸预装/关消费者体验开关，干净度由配置达成）。用户日后取得 MSDN/VLSC LTSC ISO 可换底重来。
 - 备料状态：Hasleo ✅（D:\VarixDeploy\WinToUSB_Free.exe 61.5MiB SHA256=504fd3af…）；ISO 25H2 ⏬ 微软 CDN 官方直链下载中（Fido 现场解析 token，边下边算 SHA-256，落点 D:\VarixDeploy\）。
+
+## 12. W2 工具链收口：Base 母本制作脚本（2026-09-21 22:40）
+
+- **交付**：`portable/engine/Base-Mother.ps1`（Plan/Build/Verify；Real 后端=diskpart 建 GPT 三分区 VHDX[ESP 260MB+MSR+Windows]→dism Apply-Image 官方 install.wim→bcdboot UEFI 引导→卸盘→只读封存；Mock 后端=零管理员文件模拟，逻辑同源）。产出契约=可引导 Gen2 VM 系统盘，与 Engine-Chain.ps1 的链关系 Base(只读)←Apps←User 对齐；幂等（Base 已存在拒绝覆盖，-Force 才重建）。至此 W2 工具链三件套齐：Engine-Chain + Base-Mother + engine-chain.json。
+- **Mock 实测（4 标记全绿）**：MARK-PLAN-OK / MARK-BUILD1-OK / MARK-GUARD=CAUGHT（重复 Build 被幂等保护拒绝）/ MARK-VERIFY-OK（PASS 存在+PASS 只读封存+PASS 母本标记 mother|base|index=6|sizeGB=127）。PSParser 0 错。
+- **备料完成**：Win11 25H2 zh-CN x64 ISO ✅（D:\VarixDeploy\，7.96 GiB，微软 CDN 官方直链 15.6 分钟，SHA-256=7408581e67bc455ebaafb9230e531abf45b1c8864a22114a1b03893f897102e4）。S1.2 执行门槛仅剩：用户在场 + WE 壁纸库搬家（§0.3）。
+- 自纠两处：Mock 模式误校验 ISO 路径（改为仅 Real 校验）；测试驱动对只读文件 rmtree 静默失败（Windows 只读文件须先摘属性再删——脚本行为本身正确）。
