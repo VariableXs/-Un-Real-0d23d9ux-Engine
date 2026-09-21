@@ -66,6 +66,9 @@ struct FileLoc {
     /// 文件首簇（数据起始）。
     first_cluster: u32,
     size: u64,
+    /// STREAM 条目所在（根目录链簇序号, 簇内偏移）——增长改写要更新
+    /// Size/ValidDataLength 字段（单扇区 RMW）。
+    stream_pos: Option<(usize, usize)>,
 }
 
 /// exFAT 受限直写卷。
@@ -149,16 +152,14 @@ impl<B: BlockDevice> ExfatRw<B> {
     }
 
     /// **流式目录扫描**：按扇区读根目录链，32B 条目对齐拼接条目集
-    /// （携带缓冲 ≤ SET_MAX），每完整条目集回调一次。
-    /// 返回每个条目集的链内位置 (chain 簇序号, 簇内字节偏移)。
-    fn scan_root(&mut self, mut on_set: impl FnMut(&EntryView)) -> Result<Vec<(usize, usize)>, FsError> {
+    /// （携带缓冲 ≤ SET_MAX），每完整条目集回调一次（含链内位置 (簇序号, 簇内偏移)）。
+    fn scan_root(&mut self, mut on_set: impl FnMut(&EntryView, (usize, usize))) -> Result<(), FsError> {
         let sb = self.sector_bytes();
         let chain = self.root_chain()?;
         let cb = self.bpb.cluster_bytes() as usize;
         let sectors_per_cluster = cb / sb;
-        let mut positions = Vec::new();
         let mut carry: Vec<u8> = Vec::new();
-        let mut carry_pos: Option<(usize, usize)> = None;
+        let mut carry_pos: (usize, usize) = (0, 0);
         let mut sbuf = vec![0u8; sb];
         for (ci, &cluster) in chain.iter().enumerate() {
             let base_lba = self.cluster_lba(cluster);
@@ -167,6 +168,7 @@ impl<B: BlockDevice> ExfatRw<B> {
                 for e in 0..sb / 32 {
                     let ent = &sbuf[e * 32..e * 32 + 32];
                     let t = ent[0];
+                    let pos = (ci, (s as usize) * sb + e * 32);
                     if carry.is_empty() {
                         if t == ET_END {
                             // End-of-Directory：本簇余下不再有有效条目。
@@ -186,11 +188,10 @@ impl<B: BlockDevice> ExfatRw<B> {
                                 contiguous: false,
                                 raw: ent.to_vec(),
                             };
-                            positions.push((ci, (s as usize) * sb + e * 32));
-                            on_set(&view);
+                            on_set(&view, pos);
                             continue;
                         }
-                        carry_pos = Some((ci, (s as usize) * sb + e * 32));
+                        carry_pos = pos;
                     }
                     carry.extend_from_slice(ent);
                     if carry.len() >= 32 {
@@ -199,7 +200,6 @@ impl<B: BlockDevice> ExfatRw<B> {
                         if nsec == 0 || nsec > 17 || carry.len() > SET_MAX {
                             // 非法 SecondaryCount：放弃本集（如实容错）。
                             carry.clear();
-                            carry_pos = None;
                             continue;
                         }
                         if carry.len() == total {
@@ -250,28 +250,26 @@ impl<B: BlockDevice> ExfatRw<B> {
                                     contiguous,
                                     raw: carry.clone(),
                                 };
-                                positions.push(carry_pos.unwrap_or((ci, 0)));
-                                on_set(&view);
+                                on_set(&view, carry_pos);
                             }
                             carry.clear();
-                            carry_pos = None;
                         }
                     }
                 }
             }
         }
-        Ok(positions)
+        Ok(())
     }
 
-    /// 定位根目录直接子文件（流式；返回首簇+尺寸）。
+    /// 定位根目录直接子文件（流式；返回首簇+尺寸+STREAM 条目位置）。
     fn locate_root_file(&mut self, name: &str) -> Result<FileLoc, FsError> {
         let mut hit = None;
-        self.scan_root(&mut |v: &EntryView| {
+        self.scan_root(&mut |v: &EntryView, pos: (usize, usize)| {
             if v.is_file_set && !v.is_dir && v.name == name && hit.is_none() {
-                hit = Some((v.first_cluster, v.size, v.contiguous));
+                hit = Some((v.first_cluster, v.size, v.contiguous, pos));
             }
         })?;
-        let Some((first, size, contiguous)) = hit else {
+        let Some((first, size, contiguous, pos)) = hit else {
             return Err(FsError::NotFound);
         };
         // 链校验：非连续链沿 FAT 走一环确认起点合法（越界/空簇拒绝）。
@@ -284,14 +282,14 @@ impl<B: BlockDevice> ExfatRw<B> {
         if first < FAT_MIN {
             return Err(FsError::Io(BlockError::Io));
         }
-        Ok(FileLoc { first_cluster: first, size })
+        Ok(FileLoc { first_cluster: first, size, stream_pos: Some(pos) })
     }
 
     /// **同尺寸就地改写**（根目录直接子文件，窗口 ≤ [`MAX_WINDOW_BYTES`]）。
     ///
     /// - `data.len() ≤ size`：内容按扇区边界零填充后写入文件数据起始
     ///   扇区（文件自身簇内，尺寸字段零改动；读侧以 size 截断）。
-    /// - `data.len() > size`：显式拒绝（改尺寸不在本层能力内）。
+    /// - `data.len() > size`：显式拒绝（用 [`Self::grow_rewrite_root_file`]）。
     /// - `size > MAX_WINDOW_BYTES`：拒绝（多簇改写断电撕裂窗口不可接受）。
     pub fn rewrite_same_size(&mut self, name: &str, data: &[u8]) -> Result<(), FsError> {
         let loc = self.locate_root_file(name)?;
@@ -321,6 +319,53 @@ impl<B: BlockDevice> ExfatRw<B> {
             sect[..data.len()].copy_from_slice(data);
             self.dev.write_blocks(self.cluster_lba(loc.first_cluster), &sect)?;
         }
+        self.dev.flush()?;
+        Ok(())
+    }
+
+    /// **同簇增长改写**（根目录直接子文件）：数据可超过原尺寸（≤
+    /// [`MAX_WINDOW_BYTES`]，且必须仍落在首簇内），写数据后更新 STREAM
+    /// 条目的 Size/ValidDataLength（父目录单扇区 RMW，**提交点最后写**）。
+    /// 断电窗口：数据已写而尺寸未更新 = 读侧看到旧尺寸的新前缀
+    /// （last_boot 场景=合法 JSON 前缀，解析回退契约兜底）。
+    pub fn grow_rewrite_root_file(&mut self, name: &str, data: &[u8]) -> Result<(), FsError> {
+        let loc = self.locate_root_file(name)?;
+        if data.len() as u64 > MAX_WINDOW_BYTES {
+            return Err(FsError::TooLarge);
+        }
+        if data.len() as u64 <= loc.size {
+            return self.rewrite_same_size(name, data); // 缩短走同尺寸路径
+        }
+        if loc.first_cluster < FAT_MIN {
+            return Err(FsError::Io(BlockError::Io));
+        }
+        let Some((ci, off)) = loc.stream_pos else {
+            return Err(FsError::Io(BlockError::Io));
+        };
+        // STREAM 条目必须完整落在同一扇区（32B 对齐保证）。
+        let sb = self.sector_bytes();
+        let chain = self.root_chain()?;
+        let dir_lba = self.cluster_lba(chain[ci]) + (off / sb) as u64;
+        // ① 数据扇区（尺寸提交前：读侧仍看旧尺寸）。
+        let mut sect = vec![0u8; sb];
+        let n = data.len().div_ceil(sb);
+        for k in 0..n {
+            let start = k * sb;
+            let end = core::cmp::min(start + sb, data.len());
+            sect[..end - start].copy_from_slice(&data[start..end]);
+            self.dev.write_blocks(self.cluster_lba(loc.first_cluster) + k as u64, &sect)?;
+            sect.fill(0);
+        }
+        // ② 目录项尺寸字段（提交点）：STREAM+8(ValidDataLength)/+24(Size)。
+        let in_off = off % sb;
+        self.dev.read_blocks(dir_lba, &mut sect)?;
+        let stream = in_off + 32; // STREAM = FILE 之后第一条 secondary
+        if stream + 32 > sb {
+            return Err(FsError::Io(BlockError::Io)); // 跨扇区条目：拒绝
+        }
+        sect[stream + 8..stream + 16].copy_from_slice(&(data.len() as u64).to_le_bytes());
+        sect[stream + 24..stream + 32].copy_from_slice(&(data.len() as u64).to_le_bytes());
+        self.dev.write_blocks(dir_lba, &sect)?;
         self.dev.flush()?;
         Ok(())
     }
@@ -523,7 +568,7 @@ impl<B: BlockDevice> ExfatRw<B> {
     /// 列根目录（名字/尺寸/是否目录；流式）。
     pub fn list_root(&mut self) -> Result<Vec<(String, u64, bool)>, FsError> {
         let mut out = Vec::new();
-        self.scan_root(&mut |v: &EntryView| {
+        self.scan_root(&mut |v: &EntryView, _pos: (usize, usize)| {
             if v.is_file_set {
                 out.push((v.name.clone(), v.size, v.is_dir));
             }
@@ -558,11 +603,13 @@ pub fn write_last_boot_via(mut dev: &mut dyn BlockDevice, value: &str) -> bool {
         crate::kinfo!("lastboot: key absent (windows side will create) - skip");
         return false;
     };
-    if newjson.len() > cur.len() {
-        crate::kwarn!("lastboot: new size {} > old {} - skip this cycle", newjson.len(), cur.len());
-        return false;
-    }
-    match vol.rewrite_same_size("boot-select.json", &newjson) {
+    // 等长/缩短 → 零元数据改写；增长 → 同簇增长改写（尺寸字段提交点）。
+    let r = if newjson.len() <= cur.len() {
+        vol.rewrite_same_size("boot-select.json", &newjson)
+    } else {
+        vol.grow_rewrite_root_file("boot-select.json", &newjson)
+    };
+    match r {
         Ok(()) => {
             crate::kinfo!("lastboot: last_boot={} written ({} bytes)", value, newjson.len());
             true
@@ -578,12 +625,16 @@ pub fn write_last_boot_via(mut dev: &mut dyn BlockDevice, value: &str) -> bool {
 /// （usrshell 全局挂载的同一块设备）兜底。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn record_last_boot(value: &str) -> bool {
-    if let Some(mut blk) = crate::drivers::xhci::target::msc_block_device() {
+    let msc = crate::drivers::xhci::target::msc_block_device();
+    crate::kinfo!("lastboot: msc channel present={}", msc.is_some());
+    if let Some(mut blk) = msc {
         if write_last_boot_via(&mut blk, value) {
             return true;
         }
     }
-    crate::proc::usrshell::mount::with_shared_dev(|dev| write_last_boot_via(dev, value))
+    let r = crate::proc::usrshell::mount::with_shared_dev(|dev| write_last_boot_via(dev, value));
+    crate::kinfo!("lastboot: nvme channel r={}", r);
+    r
 }
 
 // -- 宿主测试 ---------------------------------------------------------------
@@ -875,6 +926,7 @@ mod tests {
     fn exfatrw_rewrite_rejects_growth_and_oversize_and_missing() {
         let disk = build_volume();
         let mut vol = ExfatRw::mount(disk).unwrap();
+        // rewrite_same_size 拒绝增长（增长走 grow_rewrite_root_file）。
         let long = vec![0x41u8; 101];
         assert_eq!(vol.rewrite_same_size("boot-select.json", &long), Err(FsError::TooLarge));
         assert_eq!(vol.rewrite_same_size("big.json", &[0u8; 100]), Err(FsError::TooLarge));
@@ -961,6 +1013,26 @@ mod tests {
         let disk = b.finish(&root);
         let mut vol = ExfatRw::mount(disk).unwrap();
         assert!(matches!(vol.create_file_root("varix-loop.txt", b"x"), Err(FsError::Io(_))));
+    }
+
+    #[test]
+    fn exfatrw_grow_rewrite_updates_size_field() {
+        // windows(7)→variable(8) 的真实场景：JSON 增长 1 字节以上的改写。
+        let disk = build_volume();
+        let mut vol = ExfatRw::mount(disk).unwrap();
+        let before = vol.read_root_file("boot-select.json").unwrap();
+        assert_eq!(before.len(), 100);
+        // 构造 134B 新内容（比原 100B 长）：合法 JSON（windows→variable 增长场景）。
+        let mut new_json = b"{\"default_entry\":\"variable\",\"timeout_sec\":5,\"show_menu\":true,\"last_boot\":\"variable\",\"handoff\":true,\"note\":\"grow-case-verified\"}".to_vec();
+        assert!(new_json.len() > 100);
+        vol.grow_rewrite_root_file("boot-select.json", &new_json)
+            .expect("同簇增长改写必须成功");
+        let back = vol.read_root_file("boot-select.json").unwrap();
+        assert_eq!(back.len(), new_json.len(), "尺寸字段必须已更新");
+        assert_eq!(back, new_json);
+        // 卷其余部分不受影响。
+        let items = vol.list_root().unwrap();
+        assert!(items.iter().any(|(n, _, _)| n == "big.json"));
     }
 
     #[test]
