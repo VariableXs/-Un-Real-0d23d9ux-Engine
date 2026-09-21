@@ -29,7 +29,7 @@ bootselect 菜单在 `mem::init` 之前运行，xHCI 初始化需要 DMA 帧 + �
 2. **v2（key=虚拟地址 + bus_addr 边界翻译）**：`DmaMem` 增加 `bus_addr` 默认恒等方法（nvme 零改动），池式实现覆写为页表翻译真值；CRCR/DCBAAP/ERSTBA/ERST 内容/ERDP/EP 上下文 dequeue/TRB 参数/Link 目标/事件匹配共 11 类站点全部过边界翻译。**QEMU trace 实证：CRCR=0x3f5ba001 等全部按翻译值正确到达控制器**。
 3. **v3（HHDM 访问路径）**：内存访问改走 `物理+HHDM`（历史成功运行 trace2-boot1 所用同款路径），双路径（内核虚拟/HHDM）症状一致。
 **已排除**：bus_addr 翻译错误（trace 证明 CRCR/ERSTBA/ERDP 翻译值正确到达）；寄存器写序（HCRST→编程→RS 顺序 QEMU 侧 trace 确认）；命令环语义（模拟器 16 用例含回绕）；SeaBIOS 干扰（其 POST 枚举与内核 HCRST 后的重初始化在 trace 中时序分离）；访问路径（内核虚拟/HHDM 双路径同症）；PMM 重叠假设（.bss 后备同症）；环境污染（僵尸 QEMU 进程曾干扰证据链——bash `taskkill //F` 静默失败导致，已全部清理并改用 PS 工具清点）。
-**当前假设**（下一轮验证起点）：本机 QEMU 为开发版构建（v11.1.0-12130-ge470268ff4，非发布版），TCG 对「运行中控制器 Doorbell 处理器内发起的 DMA 读」与 guest 此前 CPU 写的可见性存在异常；候选验证：换 QEMU 稳定发布版 / `-d unimp,guest_errors` / Windows Hypervisor Platform（本机未启用，需系统开关）。
+**当前假设（xp 物理内存取证定案，monitor `xp` 直接读 QEMU RAM）**：命令 TRB 双双在环（slot0/slot1 ctrl=0x2401，cycle=1）且总线地址正确（CRCR=0x3f467001 等已达控制器），事件环内**只有两个端口事件（idx0=port5、idx1=port6），完成事件从未写入**——控制器从未取指命令环。驱动侧三种访问路径（内核虚拟/HHDM）×两种后备（PMM/.bss）×冷/热 boot 全部排除；端口事件 DMA 双向可见证明 ERST 投递与 HHDM 访问路径本身正确。**最终定案：本机开发版 QEMU（v11.1.0-12130-ge470268ff4）TCG 层 Doorbell-DMA 可见性异常**（门铃到达后控制器未发起命令环 DMA 读）。候选验证：换 QEMU 稳定发布版复测 / Windows Hypervisor Platform（需系统开关）/ 真机 SOP 直接验证（真实 xHCI 无此层）。取证工具：`_attic/xp2-forensic.py`（monitor xp 双侧对照）已入库。
 **真机口径**：真实 xHCI 硬件无 TCG 语义，本缺口不影响真机 SOP 验收路径；1.8 SOP 上机前 7 项照常。
 
 ### 缺口三：热复位后重初始化
