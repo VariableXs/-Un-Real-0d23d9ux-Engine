@@ -92,6 +92,12 @@ fn classify(ecam: &mut dyn EcamAccess, addr: u64) -> PciKind {
             0x02 => PciKind::Nvme,
             _ => PciKind::Other,
         },
+        // SATA 控制器 AHCI 1.0（class 0x0106，prog-if 0x01）——S4 批（AI-5）。
+        // legacy IDE（prog-if 0x00/0x8x）如实归 Other，绝不冒认。
+        0x0106 => match (cc >> 8) & 0xFF {
+            0x01 => PciKind::Ahci,
+            _ => PciKind::Other,
+        },
         // Serial bus / USB / xHCI：prog-if 0x30 才是 xHCI（0x00=UHCI 等
         // 如实归 Other，绝不冒认）。
         0x0C03 => match (cc >> 8) & 0xFF {
@@ -164,8 +170,7 @@ pub(crate) mod alloc_crate_vec {
     pub use alloc::vec::Vec;
 }
 
-/// 枚举全部 xHCI 控制器（S4.1·AI-5）：多控制器命中顺序 bus→dev→func
-/// 稳定可复现；prog-if ≠0x30 的 USB 控制器（UHCI/EHCI）如实不收。
+/// 枚举全部 xHCI 控制器（S4.1·AI-5）：多控制器命中顺序 bus→dev→func/// 稳定可复现；prog-if ≠0x30 的 USB 控制器（UHCI/EHCI）如实不收。
 pub fn scan_xhci_all(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> alloc_crate_vec::Vec<PciDevice> {
     let end_bus = seg.end_bus.min(MAX_SCAN_BUSES);
     let mut hits = alloc_crate_vec::Vec::new();
@@ -195,6 +200,33 @@ pub fn scan_xhci_all(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> alloc_crat
         bus += 1;
     }
     hits
+}
+
+/// 首个 AHCI 控制器（S4 批·AI-5）：class 0x0106 prog-if 0x01；命中顺序
+/// bus→dev→func 稳定可复现。legacy IDE（0x0106 非 0x01 prog-if 或
+/// 0x0101）一律不收。
+pub fn scan_ahci(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> Option<PciDevice> {
+    let end_bus = seg.end_bus.min(MAX_SCAN_BUSES);
+    let mut bus = seg.start_bus;
+    loop {
+        for dev in 0..32u8 {
+            for func in 0..8u8 {
+                let addr = ecam_addr(seg, bus, dev, func, 0);
+                if ecam.read32(addr) & 0xFFFF == 0xFFFF {
+                    continue;
+                }
+                if classify(ecam, addr) != PciKind::Ahci {
+                    continue;
+                }
+                let bar0 = parse_bar0_mmio(ecam, addr)?;
+                return Some(PciDevice { bus, dev, func, kind: PciKind::Ahci, bar0 });
+            }
+        }
+        if bus >= end_bus {
+            return None;
+        }
+        bus += 1;
+    }
 }
 
 pub fn scan_nvme(ecam: &mut dyn EcamAccess, seg: &McfgSegment) -> Option<PciDevice> {

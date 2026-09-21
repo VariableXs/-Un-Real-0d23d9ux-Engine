@@ -385,6 +385,19 @@ fn boot() -> ! {
     // --- usb stack probe（S4.1·AI-5：xHCI 最小栈——真机 USB 键鼠，PS/2 增量不替代）----
     varix::drivers::xhci::target::probe_and_selftest();
 
+    // --- sata stack probe（S4 批·AI-5：AHCI 最小栈——默认只读取证；
+    //     写回环仅在 cmdline 显式 ahci_selftest=1 时执行，绝不自动写真盘）----
+    varix::drivers::ahci::target::probe_and_selftest();
+
+    // --- last_boot 写回（S4.2·AI-5 方案2 根解）-----------------------------------
+    // 走到这里的唯一路径 = 用户三卡选中 varix（或倒计时默认）——「进入过
+    // VARIX」事实成立，写 SHARED 真相源（MSC 优先/QEMU NVMe 兜底；
+    // 尽力而为，失败只记账绝不阻塞引导；windows 侧由 Variable 启动写回）。
+    if chosen_entry == "varix" {
+        let ok = varix::fs::exfat_rw::record_last_boot("variable");
+        varix::kinfo!("boot-select: last_boot=variable recorded ok={}", ok);
+    }
+
     // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
     varix::inputsvc::target::input_probe();
 

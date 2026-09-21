@@ -56,8 +56,8 @@ const BASIC_DATA_GUID: [u8; 16] = [
 ];
 
 /// GPT 探测：返回首个 Basic Data 分区的起始 LBA；无 GPT 返回 None
-/// （调用方决定整盘语义）。
-fn gpt_first_basic_data(dev: &mut dyn BlockDevice) -> Result<Option<u64>, FsError> {
+/// （调用方决定整盘语义）。`pub(crate)`：exfat_rw 写层复用同一定位。
+pub(crate) fn gpt_first_basic_data(dev: &mut dyn BlockDevice) -> Result<Option<u64>, FsError> {
     let mut hdr = [0u8; 512];
     dev.read_blocks(1, &mut hdr)?;
     if &hdr[0..8] != GPT_HEADER_SIG {
@@ -325,6 +325,12 @@ impl<B: BlockDevice> ExfatVolume<B> {
 
     pub fn bpb(&self) -> &Bpb {
         &self.bpb
+    }
+
+    /// 底层块设备访问（S4.2 写层复用同卷设备：`dev_mut()` 交出独占借用，
+    /// 调用方在 with 闭包内使用，语义与 [`Self::with`] 一致）。
+    pub fn dev_mut(&mut self) -> &mut B {
+        &mut self.dev
     }
 
     fn cluster_bytes(&self) -> usize {

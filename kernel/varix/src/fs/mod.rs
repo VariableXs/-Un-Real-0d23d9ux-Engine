@@ -6,6 +6,8 @@
 
 pub mod exfat;
 pub mod exfat_ro;
+/// S4.2-B（AI-5）：exFAT 受限直写层（同尺寸就地改写 + 根目录新建单簇文件）。
+pub mod exfat_rw;
 pub mod fat32;
 
 // UNREAL-X-15000 · AI-23 内核文件系统（族0221~0228 · X05501~X05700），勿删。

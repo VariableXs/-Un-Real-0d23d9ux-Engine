@@ -552,6 +552,50 @@ enum FieldVal {
     UsbGuid([u8; 16]),
 }
 
+// ---------------------------------------------------------------------------
+// last_boot 写回的文本级拼接（S4.2 方案2：内核只改这一个值，其余字节
+// 原样保留——尺寸变化交给 rewrite_same_size 的填充/拒绝语义处理）
+// ---------------------------------------------------------------------------
+
+/// 把 JSON 文本里 `"last_boot":"<旧>"` 的值替换为 `value`。
+/// 键缺失 = None（Windows 侧首次写入前内核不造键）；其余字段逐字节
+/// 不动。返回新字节串（调用方核对长度后走受限改写）。
+pub fn splice_last_boot(json: &[u8], value: &str) -> Option<alloc::vec::Vec<u8>> {
+    let key = b"\"last_boot\"";
+    let mut i = 0usize;
+    while i + key.len() <= json.len() {
+        if &json[i..i + key.len()] == key {
+            // 跳过键后的空白与冒号。
+            let mut j = i + key.len();
+            while j < json.len() && (json[j] as char).is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < json.len() && json[j] == b':' {
+                j += 1;
+                while j < json.len() && (json[j] as char).is_ascii_whitespace() {
+                    j += 1;
+                }
+                if j < json.len() && json[j] == b'"' {
+                    // 值起点 j，找收尾引号（值域内不允许出现引号）。
+                    let mut k = j + 1;
+                    while k < json.len() && json[k] != b'"' {
+                        k += 1;
+                    }
+                    if k < json.len() {
+                        let mut out = alloc::vec::Vec::with_capacity(json.len());
+                        out.extend_from_slice(&json[..j + 1]);
+                        out.extend_from_slice(value.as_bytes());
+                        out.extend_from_slice(&json[k..]);
+                        return Some(out);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
 // field_word 的闭包返回 T，但 set 需要 FieldVal——用一个小适配：
 // （T = FieldVal 的各变体由 value_for 的闭包先包好）
 
@@ -600,6 +644,30 @@ mod tests {
         let (cfg, src) = parse(s.as_bytes());
         assert_eq!(src, CfgSource::Parsed);
         cfg
+    }
+
+    #[test]
+    fn splice_last_boot_swaps_value_byte_exact() {
+        let json = b"{\"handoff\":true,\"timeout\":5,\"last_boot\":\"windows\"}";
+        let out = splice_last_boot(json, "variable").expect("键在位必须可拼接");
+        assert_eq!(
+            &out[..],
+            b"{\"handoff\":true,\"timeout\":5,\"last_boot\":\"variable\"}"
+        );
+        // 往返：variable → windows 还原。
+        let back = splice_last_boot(&out, "windows").unwrap();
+        assert_eq!(&back[..], &json[..]);
+        // 带空白的键对（解析器容忍形态）同样命中。
+        let spaced = b"{ \"last_boot\" : \"windows\" , \"timeout\":5 }";
+        let out2 = splice_last_boot(spaced, "variable").unwrap();
+        assert_eq!(
+            &out2[..],
+            b"{ \"last_boot\" : \"variable\" , \"timeout\":5 }"
+        );
+        // 键缺失 = None。
+        assert!(splice_last_boot(b"{\"timeout\":5}", "variable").is_none());
+        // 损坏值（无收尾引号）= None。
+        assert!(splice_last_boot(b"{\"last_boot\":\"windows}", "variable").is_none());
     }
 
     #[test]

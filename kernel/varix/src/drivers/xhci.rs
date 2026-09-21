@@ -547,6 +547,59 @@ pub enum HidEvent {
     Mouse { dx: i8, dy: i8, buttons: u8 },
 }
 
+// ---- S4.2（AI-5）：USB 大容量存储（MSC/BOT）------------------------------
+/// 每设备 bulk 数据缓冲（1 帧 4KiB；单 TRB 数据段上限）。
+pub const MSC_BUF_LEN: u32 = 4096;
+/// 最多跟踪的 MSC 设备数（最小路径：U 盘 1 只已覆盖；超出如实跳过）。
+pub const MAX_MSC: usize = 2;
+/// bulk 端点最大包（高速 512 / 全速 64，按端口速度选择）。
+pub fn bulk_mps(speed: u8) -> u32 {
+    if speed == PORT_SPEED_HIGH {
+        512
+    } else {
+        64
+    }
+}
+/// 门铃 EP 编号：EP1 OUT = 2，EP1 IN = 3（EP 上下文号 = 端点号×2+方向）。
+pub const EPID_BULK_OUT: u8 = 2;
+pub const EPID_BULK_IN: u8 = 3;
+
+/// 枚举出的设备类别（enumerate_ports 日志与接线判定用）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DevKind {
+    HidKeyboard,
+    HidMouse,
+    Msc,
+}
+
+/// 描述符分类结果（地址+描述符阶段产出，交给对应收尾函数）。
+enum DevClass {
+    Hid(HidKind, u8),
+    Msc,
+}
+
+/// 已枚举 MSC 设备（BOT 串行：out/in 各一个传输环 + 共享 4KiB 缓冲帧）。
+struct MscDevice {
+    slot: u8,
+    #[allow(dead_code)]
+    port: u8,
+    out_ring: u64,
+    out_tail: usize,
+    out_cycle: bool,
+    /// 已投放未完成的 Normal TRB 总线地址（单件在途；BOT 严格串行）。
+    out_outstanding: Option<u64>,
+    in_ring: u64,
+    in_tail: usize,
+    in_cycle: bool,
+    in_outstanding: Option<u64>,
+    /// 数据缓冲帧（CBW/数据段/CSW 分时复用）。
+    buf: u64,
+    /// BOT 初始化（TEST_UNIT_READY/INQUIRY/READ CAPACITY）成功后的几何。
+    inited: bool,
+    pub block_size: u32,
+    pub blocks: u64,
+}
+
 /// 已枚举设备的运行态（每设备固定 3 帧：输出上下文/EP1 环/数据缓冲）。
 struct HidDevice {
     slot: u8,
@@ -631,6 +684,8 @@ pub struct XhciCtrl<B: BarAccess, M: DmaMem> {
     ep0_outstanding: Option<u64>,
     // 已枚举设备。
     devs: [Option<HidDevice>; MAX_TRACKED],
+    // S4.2：已枚举 MSC 设备（与 HID 表互斥占槽——每设备只属一类）。
+    mscs: [Option<MscDevice>; MAX_MSC],
     // 验收证据计数。
     pub resets: u32,
     pub cmd_events: u32,
@@ -673,6 +728,7 @@ fn try_init<B: BarAccess, M: DmaMem>(
         ep0_cycle: true,
         ep0_outstanding: None,
         devs: core::array::from_fn(|_| None),
+        mscs: core::array::from_fn(|_| None),
         resets,
         cmd_events: 0,
         transfer_events: 0,
@@ -1127,15 +1183,9 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                 continue;
             }
             match self.enumerate_device(p + 1, speed) {
-                Ok((kind, iface)) => {
+                Ok(kind) => {
                     #[cfg(all(target_arch = "x86_64", target_os = "none"))]
-                    crate::kinfo!(
-                        "xhci: port {} speed={} enumerated kind={:?} iface={}",
-                        p + 1,
-                        speed,
-                        kind,
-                        iface
-                    );
+                    crate::kinfo!("xhci: port {} speed={} enumerated kind={:?}", p + 1, speed, kind);
                     n += 1;
                 }
                 Err(e) => {
@@ -1147,34 +1197,85 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         n
     }
 
-    /// 单设备完整枚举：Enable Slot → Address Device → 描述符 → 类请求 →
-    /// Configure Endpoint(EP1 IN)。EP0 控制传输串行复用同一环。
-    fn enumerate_device(&mut self, rh_port: u8, speed: u8) -> Result<(HidKind, u8), BlockError> {
-        let free = match self.devs.iter().position(|d| d.is_none()) {
-            Some(i) => i,
-            None => return Err(BlockError::Unsupported), // 追踪表满，如实拒绝。
-        };
-        // 输出上下文 + EP1 环 + 数据缓冲（每设备 3 帧）。
+    /// 单设备完整枚举：Enable Slot → Address Device → 描述符分类 →
+    /// 按（接口类 3=HID / 8=MSC BOT）完成各自配置。EP0 控制传输串行
+    /// 复用同一环；失败路径统一禁用槽位 + 帧归还，不留半挂载态。
+    fn enumerate_device(&mut self, rh_port: u8, speed: u8) -> Result<DevKind, BlockError> {
         let octx = self.alloc_zeroed("dev octx")?;
-        let ep1_ring = self.alloc_zeroed("dev ep1 ring")?;
-        let report = self.alloc_zeroed("dev report buf")?;
-        self.mem
-            .write_bytes(ep1_ring + (RING_ENTRIES - 1) as u64 * 32, 0, &link_trb_bytes(self.mem.bus_addr(ep1_ring), true));
-
         // Enable Slot → DCBAA[slotid] = 输出上下文。
         let (slotid, cc) = self.cmd_submit(CR_ENABLE_SLOT, 0, 0, 0)?;
         if cc != CC_SUCCESS || slotid == 0 {
             self.mem.free_frame(octx);
-            self.mem.free_frame(ep1_ring);
-            self.mem.free_frame(report);
             return Err(self.cc_to_err(cc));
         }
         self.mem
             .write_bytes(self.dcbaa_phys, (slotid as u64) * 8, &self.mem.bus_addr(octx).to_le_bytes());
-
-        let outcome = self.enumerate_hid(slotid, rh_port, speed, ep1_ring);
+        let outcome = match self.address_and_classify(slotid, rh_port, speed) {
+            Ok(DevClass::Hid(kind, iface)) => self.complete_hid(slotid, rh_port, kind, iface),
+            Ok(DevClass::Msc) => self.complete_msc(slotid, rh_port, speed),
+            Err(e) => Err(e),
+        };
         match outcome {
-            Ok((kind, iface)) => {
+            Ok(kind) => Ok(kind),
+            Err(e) => {
+                // 枚举失败：槽位禁用（尽力而为）+ 输出上下文帧归还。
+                let _ = self.cmd_submit(CR_DISABLE_SLOT, slotid, 0, 0);
+                self.mem.free_frame(octx);
+                Err(e)
+            }
+        }
+    }
+
+    /// Address Device + 设备/配置描述符读取 + 接口类分类。
+    fn address_and_classify(&mut self, slotid: u8, rh_port: u8, speed: u8) -> Result<DevClass, BlockError> {
+        self.address_device(slotid, rh_port, speed)?;
+        // GET_DESCRIPTOR(DEVICE, 18B)——设备身份证据（版本/类）。
+        let mut desc = [0u8; 18];
+        self.control_in(slotid, ControlRequest::get_device_desc(18), &mut desc)?;
+        // GET_DESCRIPTOR(CONFIGURATION, 18B) → 接口描述符分类。
+        let mut cfg = [0u8; 18];
+        self.control_in(slotid, ControlRequest::get_config_desc(), &mut cfg)?;
+        if cfg[9 + 1] != 4 {
+            return Err(BlockError::Unsupported); // 接口描述符缺位。
+        }
+        let iface = cfg[9 + 2];
+        match (cfg[9 + 5], cfg[9 + 6], cfg[9 + 7]) {
+            (3, 1, 1) => Ok(DevClass::Hid(HidKind::Keyboard, iface)),
+            (3, 1, 2) => Ok(DevClass::Hid(HidKind::Mouse, iface)),
+            (8, 6, 0x50) => Ok(DevClass::Msc), // SCSI 透明 / BOT。
+            (3, 1, p) => {
+                #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+                crate::kinfo!("xhci: hid protocol {} unsupported (skip)", p);
+                Err(BlockError::Unsupported)
+            }
+            _ => Err(BlockError::Unsupported),
+        }
+    }
+
+    /// HID 收尾：SET_PROTOCOL(boot) → SET_IDLE(0) → SET_CONFIGURATION(1)
+    /// → Configure Endpoint(EP1 IN)；登记 [`HidDevice`]。
+    fn complete_hid(&mut self, slotid: u8, rh_port: u8, kind: HidKind, iface: u8) -> Result<DevKind, BlockError> {
+        let free = match self.devs.iter().position(|d| d.is_none()) {
+            Some(i) => i,
+            None => return Err(BlockError::Unsupported), // 追踪表满，如实拒绝。
+        };
+        let ep1_ring = self.alloc_zeroed("dev ep1 ring")?;
+        let report = self.alloc_zeroed("dev report buf")?;
+        self.mem
+            .write_bytes(ep1_ring + (RING_ENTRIES - 1) as u64 * 32, 0, &link_trb_bytes(self.mem.bus_addr(ep1_ring), true));
+        let mut outcome = self.control_no_data(slotid, ControlRequest::set_protocol_boot(iface));
+        if outcome.is_ok() {
+            outcome = self.control_no_data(slotid, ControlRequest::set_idle(iface));
+        }
+        if outcome.is_ok() {
+            outcome = self.control_no_data(slotid, ControlRequest::set_config());
+        }
+        if outcome.is_ok() {
+            // Configure Endpoint：EP1 IN 上线（add=0x9：槽在位 + EP1 IN 位）。
+            outcome = self.configure_ep1(slotid, ep1_ring);
+        }
+        match outcome {
+            Ok(()) => {
                 self.devs[free] = Some(HidDevice {
                     slot: slotid,
                     port: rh_port,
@@ -1188,12 +1289,12 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                     kbd: HidKbdDecoder::default(),
                     mouse: HidMouseDecoder::default(),
                 });
-                Ok((kind, iface))
+                Ok(match kind {
+                    HidKind::Keyboard => DevKind::HidKeyboard,
+                    HidKind::Mouse => DevKind::HidMouse,
+                })
             }
             Err(e) => {
-                // 枚举失败：槽位禁用（尽力而为）+ 帧归还，不留半挂载态。
-                let _ = self.cmd_submit(CR_DISABLE_SLOT, slotid, 0, 0);
-                self.mem.free_frame(octx);
                 self.mem.free_frame(ep1_ring);
                 self.mem.free_frame(report);
                 Err(e)
@@ -1201,36 +1302,69 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         }
     }
 
-    /// Address Device 之后到 Configure Endpoint 的 HID 专属段。
-    fn enumerate_hid(&mut self, slotid: u8, rh_port: u8, speed: u8, ep1_ring: u64) -> Result<(HidKind, u8), BlockError> {
-        // Address Device（BSR=0）：输入上下文 = 控制(32B) + 槽 + EP0。
-        self.address_device(slotid, rh_port, speed)?;
-        // GET_DESCRIPTOR(DEVICE, 18B)——设备身份证据（版本/类）。
-        let mut desc = [0u8; 18];
-        self.control_in(slotid, ControlRequest::get_device_desc(18), &mut desc)?;
-        // GET_DESCRIPTOR(CONFIGURATION, 18B) → 接口类 3/子类 1/协议 1|2。
-        let mut cfg = [0u8; 18];
-        self.control_in(slotid, ControlRequest::get_config_desc(), &mut cfg)?;
-        if cfg[9 + 1] != 4 || cfg[9 + 5] != 3 || cfg[9 + 6] != 1 {
-            return Err(BlockError::Unsupported); // 非 HID boot 接口。
-        }
-        let iface = cfg[9 + 2];
-        let kind = match cfg[9 + 7] {
-            1 => HidKind::Keyboard,
-            2 => HidKind::Mouse,
-            p => {
-                #[cfg(all(target_arch = "x86_64", target_os = "none"))]
-                crate::kinfo!("xhci: hid protocol {} unsupported (skip)", p);
-                return Err(BlockError::Unsupported);
-            }
+    /// MSC 收尾：SET_CONFIGURATION(1) → Configure Endpoint（bulk 双端点）
+    /// → BOT 初始化（TUR/INQUIRY/READ CAPACITY 走真实 bulk 管道）。
+    fn complete_msc(&mut self, slotid: u8, rh_port: u8, speed: u8) -> Result<DevKind, BlockError> {
+        let free = match self.mscs.iter().position(|d| d.is_none()) {
+            Some(i) => i,
+            None => return Err(BlockError::Unsupported),
         };
-        // 类请求：SET_PROTOCOL(boot) → SET_IDLE(0) → SET_CONFIGURATION(1)。
-        self.control_no_data(slotid, ControlRequest::set_protocol_boot(iface))?;
-        self.control_no_data(slotid, ControlRequest::set_idle(iface))?;
-        self.control_no_data(slotid, ControlRequest::set_config())?;
-        // Configure Endpoint：EP1 IN 上线（add=0x9：槽在位 + EP1 IN 位）。
-        self.configure_ep1(slotid, ep1_ring)?;
-        Ok((kind, iface))
+        let out_ring = self.alloc_zeroed("msc ep-out ring")?;
+        let in_ring = self.alloc_zeroed("msc ep-in ring")?;
+        let buf = self.alloc_zeroed("msc data buf")?;
+        self.mem
+            .write_bytes(out_ring + (RING_ENTRIES - 1) as u64 * 32, 0, &link_trb_bytes(self.mem.bus_addr(out_ring), true));
+        self.mem
+            .write_bytes(in_ring + (RING_ENTRIES - 1) as u64 * 32, 0, &link_trb_bytes(self.mem.bus_addr(in_ring), true));
+        // 先登记半挂载态（BOT 初始化要经 bulk_xfer 找到本表项），
+        // 失败即整项摘除。
+        self.mscs[free] = Some(MscDevice {
+            slot: slotid,
+            port: rh_port,
+            out_ring,
+            out_tail: 0,
+            out_cycle: true,
+            out_outstanding: None,
+            in_ring,
+            in_tail: 0,
+            in_cycle: true,
+            in_outstanding: None,
+            buf,
+            inited: false,
+            block_size: 512,
+            blocks: 0,
+        });
+        let mut outcome = self.control_no_data(slotid, ControlRequest::set_config());
+        if outcome.is_ok() {
+            outcome = self.configure_bulk(slotid, speed, out_ring, in_ring);
+        }
+        if outcome.is_ok() {
+            // BOT 初始化：真实 bulk 管道上跑 TUR/INQUIRY/READ CAPACITY。
+            let pipe = MscPipe { c: self, idx: free };
+            outcome = match super::msc::MscDev::init(pipe) {
+                Ok(mut dev) => {
+                    let (blocks, bs) = dev.capacity();
+                    drop(dev);
+                    if let Some(d) = self.mscs[free].as_mut() {
+                        d.inited = true;
+                        d.block_size = bs;
+                        d.blocks = blocks;
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            };
+        }
+        match outcome {
+            Ok(()) => Ok(DevKind::Msc),
+            Err(e) => {
+                self.mscs[free] = None;
+                self.mem.free_frame(out_ring);
+                self.mem.free_frame(in_ring);
+                self.mem.free_frame(buf);
+                Err(e)
+            }
+        }
     }
 
     /// Address Device：写输入上下文（控制 + 槽 + EP0）并提交命令。
@@ -1282,6 +1416,166 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
             return Err(self.cc_to_err(cc));
         }
         Ok(())
+    }
+
+    /// Configure Endpoint：bulk 双端点（EP1 OUT ctx 号 2 / EP1 IN ctx 号 3，
+    /// ContextEntries=3；add=0xD = 槽 + EP1 OUT(位2) + EP1 IN(位3)，drop=0
+    /// ——QEMU 硬校验 (drop&3)==0 且 (add&3)==0x1 同样满足）。
+    fn configure_bulk(&mut self, slotid: u8, speed: u8, out_ring: u64, in_ring: u64) -> Result<(), BlockError> {
+        self.mem.write_bytes(self.ictx_phys, 0, &u32_bytes(&[0, 0xD]));
+        self.mem.write_bytes(self.ictx_phys + 32, 0, &u32_bytes(&[3u32 << 27, 0, 0, 0]));
+        let mps = bulk_mps(speed);
+        // EP1 OUT 上下文（ictx+32+32*2 = ictx+96）：类型 2（bulk OUT）。
+        let out_ctx = [
+            0u32,
+            (3u32 << 1) | (2u32 << 3) | (mps << 16),
+            (self.mem.bus_addr(out_ring) & !0xF) as u32 | 0x1, // DCS=1
+            (self.mem.bus_addr(out_ring) >> 32) as u32,
+            512, // 平均 TRB 长度
+        ];
+        self.mem.write_bytes(self.ictx_phys + 96, 0, &u32_bytes(&out_ctx));
+        // EP1 IN 上下文（ictx+128）：类型 6（bulk IN）。
+        let in_ctx = [
+            0u32,
+            (3u32 << 1) | (6u32 << 3) | (mps << 16),
+            (self.mem.bus_addr(in_ring) & !0xF) as u32 | 0x1,
+            (self.mem.bus_addr(in_ring) >> 32) as u32,
+            512,
+        ];
+        self.mem.write_bytes(self.ictx_phys + 128, 0, &u32_bytes(&in_ctx));
+        let (_, cc) = self.cmd_submit(CR_CONFIGURE_ENDPOINT, slotid, self.ictx_phys, 0)?;
+        if cc != CC_SUCCESS {
+            return Err(self.cc_to_err(cc));
+        }
+        Ok(())
+    }
+
+    // ---- bulk 传输（S4.2 MSC；BOT 严格串行，单件在途）---------------------
+
+    /// 投放一个 Normal TRB（IOC）并自旋等待 Transfer Event。
+    /// 返回实际传输字节（len − 事件余量）；短包合法（CC_SHORT_PACKET）。
+    fn bulk_xfer(&mut self, mi: usize, dir_in: bool, off: u32, len: u32) -> Result<u32, BlockError> {
+        let (slot, ring, tail, cyc) = {
+            let Some(d) = self.mscs[mi].as_ref() else {
+                return Err(BlockError::Io);
+            };
+            if d.out_outstanding.is_some() || d.in_outstanding.is_some() {
+                return Err(BlockError::Io); // BOT 串行契约：上一笔未收尾。
+            }
+            (
+                d.slot,
+                if dir_in { d.in_ring } else { d.out_ring },
+                if dir_in { d.in_tail } else { d.out_tail },
+                if dir_in { d.in_cycle } else { d.out_cycle },
+            )
+        };
+        let buf_frame = self.mscs[mi].as_ref().expect("表项在上方已判在").buf;
+        let trb_addr = ring + tail as u64 * 32;
+        let trb_bus = self.mem.bus_addr(trb_addr);
+        let buf_bus = self.mem.bus_addr(buf_frame + off as u64);
+        let (nt, nc) = self.ring_put(ring, tail, cyc, Trb::normal(buf_bus, len, cyc));
+        if let Some(d) = self.mscs[mi].as_mut() {
+            if dir_in {
+                d.in_tail = nt;
+                d.in_cycle = nc;
+                d.in_outstanding = Some(trb_bus);
+            } else {
+                d.out_tail = nt;
+                d.out_cycle = nc;
+                d.out_outstanding = Some(trb_bus);
+            }
+        }
+        let epid = if dir_in { EPID_BULK_IN } else { EPID_BULK_OUT };
+        self.doorbell(slot, epid);
+        // 自旋等待：顺序游标优先，未见则全槽扫描（QEMU 写序容错），
+        // 等待过半重振铃一次（门铃丢失类异常兜底）。
+        let deadline = self.deadline();
+        let rerun_at = (self.now)() + self.timeout_ns / 2;
+        let mut re_rung = false;
+        loop {
+            if let Some(ev) = self.evt_peek() {
+                if ev.typ == ER_TRANSFER {
+                    self.transfer_events += 1;
+                    self.evt_step();
+                    if ev.ptr == trb_bus {
+                        self.msc_clear_outstanding(mi, dir_in);
+                        return if ev.ccode == CC_SUCCESS || ev.ccode == CC_SHORT_PACKET {
+                            Ok(len.saturating_sub(ev.length))
+                        } else {
+                            Err(self.cc_to_err(ev.ccode))
+                        };
+                    }
+                    continue; // 非本传输事件：继续等。
+                }
+                match ev.typ {
+                    ER_COMMAND_COMPLETE => self.cmd_events += 1,
+                    ER_PORT_STATUS_CHANGE => self.port_events += 1,
+                    _ => self.unknown_events += 1,
+                }
+                self.evt_step();
+                continue;
+            }
+            if let Some(ev) = self.evt_scan_for(ER_TRANSFER, trb_bus) {
+                self.msc_clear_outstanding(mi, dir_in);
+                return if ev.ccode == CC_SUCCESS || ev.ccode == CC_SHORT_PACKET {
+                    Ok(len.saturating_sub(ev.length))
+                } else {
+                    Err(self.cc_to_err(ev.ccode))
+                };
+            }
+            if !re_rung && (self.now)() >= rerun_at {
+                re_rung = true;
+                self.doorbell(slot, epid);
+            }
+            self.erdp_flush_if_needed(false);
+            if (self.now)() > deadline {
+                self.msc_clear_outstanding(mi, dir_in);
+                #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+                crate::kwarn!("xhci: bulk timeout slot={} dir={} len={}", slot, dir_in as u8, len);
+                return Err(BlockError::Timeout);
+            }
+        }
+    }
+
+    fn msc_clear_outstanding(&mut self, mi: usize, dir_in: bool) {
+        if let Some(d) = self.mscs[mi].as_mut() {
+            if dir_in {
+                d.in_outstanding = None;
+            } else {
+                d.out_outstanding = None;
+            }
+        }
+    }
+
+    /// MSC 设备数（验收证据）。
+    pub fn msc_count(&self) -> usize {
+        self.mscs.iter().filter(|d| d.is_some() && d.as_ref().is_some_and(|m| m.inited)).count()
+    }
+
+    /// MSC 几何：(块数, 块大小)。
+    pub fn msc_geometry(&self, mi: usize) -> Option<(u64, u32)> {
+        self.mscs.get(mi)?.as_ref().filter(|d| d.inited).map(|d| (d.blocks, d.block_size))
+    }
+
+    /// MSC 读块（内部经 MscDev 协议层，几何用枚举期探测值）。
+    pub fn msc_read_blocks(&mut self, mi: usize, lba: u64, dst: &mut [u8]) -> Result<(), BlockError> {
+        let Some((blocks, bs)) = self.msc_geometry(mi) else {
+            return Err(BlockError::Io);
+        };
+        let pipe = MscPipe { c: self, idx: mi };
+        let mut dev = super::msc::MscDev::from_parts(pipe, bs, blocks - 1);
+        dev.read_blocks(lba, dst)
+    }
+
+    /// MSC 写块。**上层闸门**（vfsguard 白名单/快照）由挂载层负责，
+    /// 本入口只提供受控块写原语。
+    pub fn msc_write_blocks(&mut self, mi: usize, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+        let Some((blocks, bs)) = self.msc_geometry(mi) else {
+            return Err(BlockError::Io);
+        };
+        let pipe = MscPipe { c: self, idx: mi };
+        let mut dev = super::msc::MscDev::from_parts(pipe, bs, blocks - 1);
+        dev.write_blocks(lba, src)
     }
 
     // ---- 控制传输（EP0 串行）----------------------------------------------
@@ -1494,6 +1788,53 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
     }
 }
 
+// ---- MSC bulk 管道（S4.2）：把 XhciCtrl 的 bulk 端点适配成协议层管道 ----
+
+/// 借用控制器的单 MSC 设备管道。BOT 串行 → 每命令内分块顺序传输。
+pub struct MscPipe<'a, B: BarAccess, M: DmaMem> {
+    c: &'a mut XhciCtrl<B, M>,
+    idx: usize,
+}
+
+impl<B: BarAccess, M: DmaMem> super::msc::BulkPipe for MscPipe<'_, B, M> {
+    fn bulk_out(&mut self, buf: &[u8]) -> Result<(), BlockError> {
+        for chunk in buf.chunks(MSC_BUF_LEN as usize) {
+            let buf_frame = self
+                .c
+                .mscs[self.idx]
+                .as_ref()
+                .map(|d| d.buf)
+                .ok_or(BlockError::Io)?;
+            self.c.mem.write_bytes(buf_frame, 0, chunk);
+            let got = self.c.bulk_xfer(self.idx, false, 0, chunk.len() as u32)?;
+            if got != chunk.len() as u32 {
+                return Err(BlockError::Io); // OUT 短投 = 相位破坏，绝不静默。
+            }
+        }
+        Ok(())
+    }
+
+    fn bulk_in(&mut self, out: &mut [u8]) -> Result<usize, BlockError> {
+        let mut total = 0usize;
+        for chunk in out.chunks_mut(MSC_BUF_LEN as usize) {
+            let buf_frame = self
+                .c
+                .mscs[self.idx]
+                .as_ref()
+                .map(|d| d.buf)
+                .ok_or(BlockError::Io)?;
+            let want = chunk.len() as u32;
+            let got = self.c.bulk_xfer(self.idx, true, 0, want)?;
+            self.c.mem.read_bytes(buf_frame, 0, &mut chunk[..got as usize]);
+            total += got as usize;
+            if (got as usize) < chunk.len() {
+                break; // 短包 = 数据段提前结束（设备端决定）。
+            }
+        }
+        Ok(total)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 目标态：真 MMIO BAR（复用 NVMe 槽位窗口）+ PMM DMA 池 + 实机探针。
 // 仅内核目标编译。
@@ -1504,7 +1845,7 @@ pub mod target {
     use super::super::nvme::target::{now_ns, BarMmio};
 
     /// DMA 池页数（共享 6 帧 + 每设备 3 帧 ×4 = 18，取整 24）。
-    const DMA_POOL_FRAMES: usize = 24;
+    const DMA_POOL_FRAMES: usize = 32;
     const DMA_POOL_BYTES: usize = DMA_POOL_FRAMES * 4096;
 
     /// .bss 驻留 DMA 池 v2（2026-09-21 晚间改型，修缺口二）：
@@ -1731,6 +2072,59 @@ pub mod target {
             }
         }
     }
+
+    // ---- S4.2 全局 MSC 块设备接口（挂载层：exFAT 读写 / boot-select 写回）--
+
+    /// 已完成 BOT 初始化的 MSC 设备数。
+    pub fn msc_count_global() -> usize {
+        global().map_or(0, |c| c.msc_count())
+    }
+
+    /// MSC 几何：(块数, 块大小)。
+    pub fn msc_geometry_global(idx: usize) -> Option<(u64, u32)> {
+        let c = global()?;
+        c.msc_geometry(idx)
+    }
+
+    /// MSC 读块。
+    pub fn msc_read_global(idx: usize, lba: u64, dst: &mut [u8]) -> Result<(), BlockError> {
+        let c = global().ok_or(BlockError::Io)?;
+        c.msc_read_blocks(idx, lba, dst)
+    }
+
+    /// MSC 写块（上层闸门由挂载层负责，见挂载侧 vfsguard 契约）。
+    pub fn msc_write_global(idx: usize, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+        let c = global().ok_or(BlockError::Io)?;
+        c.msc_write_blocks(idx, lba, src)
+    }
+
+    /// BlockDevice 桥——U 盘 MSC LUN0 以块设备形态交给挂载层。
+    pub struct MscBlock {
+        pub idx: usize,
+    }
+
+    impl crate::drivers::blk::BlockDevice for MscBlock {
+        fn block_size(&self) -> u32 {
+            msc_geometry_global(self.idx).map_or(512, |(_, bs)| bs)
+        }
+        fn capacity_blocks(&self) -> u64 {
+            msc_geometry_global(self.idx).map_or(0, |(n, _)| n)
+        }
+        fn read_blocks(&mut self, lba: u64, dst: &mut [u8]) -> Result<(), BlockError> {
+            msc_read_global(self.idx, lba, dst)
+        }
+        fn write_blocks(&mut self, lba: u64, src: &[u8]) -> Result<(), BlockError> {
+            msc_write_global(self.idx, lba, src)
+        }
+        fn flush(&mut self) -> Result<(), BlockError> {
+            Ok(())
+        }
+    }
+
+    /// 拿到 MSC LUN0 的块设备桥（无 U 盘 / 未初始化 → None）。
+    pub fn msc_block_device() -> Option<MscBlock> {
+        (msc_count_global() > 0).then_some(MscBlock { idx: 0 })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1809,11 +2203,149 @@ mod tests {
     }
 
     // ---- 虚拟设备 ----------------------------------------------------------
+    /// BOT 设备相位（模拟器内部）。
+    enum BotPhase {
+        ExpectCbw,
+        DataIn { data: Vec<u8>, pos: usize },
+        DataOut { total: usize, got: Vec<u8> },
+        SendCsw { pending: Option<[u8; 13]> },
+    }
+
+    /// MSC 虚拟盘（内存 LBA 盘 + BOT 相位机；行为与 msc.rs 的管道级
+    /// 模拟器同构，但直接挂 DMA/TRB 层）。
+    struct MscSim {
+        disk: Vec<u8>,
+        bs: usize,
+        phase: BotPhase,
+        cur_tag: u32,
+        cur_lba: usize,
+    }
+
+    impl MscSim {
+        fn new(blocks: usize, bs: usize) -> MscSim {
+            MscSim {
+                disk: vec![0u8; blocks * bs],
+                bs,
+                phase: BotPhase::ExpectCbw,
+                cur_tag: 0,
+                cur_lba: 0,
+            }
+        }
+
+        fn csw(&self, tag: u32, residue: u32, status: u8) -> [u8; 13] {
+            let mut b = [0u8; 13];
+            b[0..4].copy_from_slice(&super::super::msc::CSW_SIG.to_le_bytes());
+            b[4..8].copy_from_slice(&tag.to_le_bytes());
+            b[8..12].copy_from_slice(&residue.to_le_bytes());
+            b[12] = status;
+            b
+        }
+
+        fn exec_cdb(&mut self, cdb: &[u8], tag: u32) {
+            use super::super::msc::{CSW_PASSED, SCSI_INQUIRY, SCSI_READ10, SCSI_READ_CAPACITY10, SCSI_TEST_UNIT_READY, SCSI_WRITE10};
+            match cdb[0] {
+                SCSI_TEST_UNIT_READY => {
+                    let c = self.csw(tag, 0, CSW_PASSED);
+                    self.phase = BotPhase::SendCsw { pending: Some(c) };
+                }
+                SCSI_INQUIRY => {
+                    let mut d = vec![0u8; 36];
+                    d[0] = 0x00;
+                    d[4] = 0x21;
+                    d[8..16].copy_from_slice(b"VARIXMSD");
+                    d[16..32].copy_from_slice(b"SIM-DMA-DISK001 ");
+                    self.phase = BotPhase::DataIn { data: d, pos: 0 };
+                }
+                SCSI_READ_CAPACITY10 => {
+                    let mut d = [0u8; 8];
+                    let last = (self.disk.len() / self.bs) as u32 - 1;
+                    d[0..4].copy_from_slice(&last.to_be_bytes());
+                    d[4..8].copy_from_slice(&(self.bs as u32).to_be_bytes());
+                    self.phase = BotPhase::DataIn { data: d.to_vec(), pos: 0 };
+                }
+                SCSI_READ10 => {
+                    let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap()) as usize;
+                    let n = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as usize;
+                    let start = lba * self.bs;
+                    let data = self.disk[start..start + n * self.bs].to_vec();
+                    self.phase = BotPhase::DataIn { data, pos: 0 };
+                }
+                SCSI_WRITE10 => {
+                    let lba = u32::from_be_bytes(cdb[2..6].try_into().unwrap());
+                    let n = u16::from_be_bytes(cdb[7..9].try_into().unwrap()) as usize;
+                    self.cur_lba = lba as usize;
+                    self.phase = BotPhase::DataOut { total: n * self.bs, got: Vec::new() };
+                }
+                _ => {
+                    let c = self.csw(tag, 0, 1); // FAILED
+                    self.phase = BotPhase::SendCsw { pending: Some(c) };
+                }
+            }
+        }
+
+        fn on_bulk_out(&mut self, data: &[u8]) {
+            // SendCsw 期间的 OUT = stall 丢弃。
+            if matches!(self.phase, BotPhase::SendCsw { .. }) {
+                return;
+            }
+            match std::mem::replace(&mut self.phase, BotPhase::ExpectCbw) {
+                BotPhase::ExpectCbw => {
+                    assert_eq!(data.len(), 31);
+                    let sig = u32::from_le_bytes(data[0..4].try_into().unwrap());
+                    assert_eq!(sig, super::super::msc::CBW_SIG);
+                    let tag = u32::from_le_bytes(data[4..8].try_into().unwrap());
+                    let cdb_len = data[14] as usize;
+                    let cdb = data[15..15 + cdb_len].to_vec();
+                    self.cur_tag = tag;
+                    self.exec_cdb(&cdb, tag);
+                }
+                BotPhase::DataOut { total, mut got } => {
+                    got.extend_from_slice(data);
+                    if got.len() >= total {
+                        let start = self.cur_lba * self.bs;
+                        self.disk[start..start + total].copy_from_slice(&got[..total]);
+                        let c = self.csw(self.cur_tag, 0, 0);
+                        self.phase = BotPhase::SendCsw { pending: Some(c) };
+                    } else {
+                        self.phase = BotPhase::DataOut { total, got };
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        /// 填充 IN 数据，返回实际字节数。
+        fn fill_in(&mut self, out: &mut [u8], want: usize) -> usize {
+            match &mut self.phase {
+                BotPhase::DataIn { data, pos } => {
+                    let n = want.min(data.len() - *pos);
+                    out[..n].copy_from_slice(&data[*pos..*pos + n]);
+                    *pos += n;
+                    let done = *pos >= data.len();
+                    if done {
+                        let c = self.csw(self.cur_tag, 0, 0);
+                        self.phase = BotPhase::SendCsw { pending: Some(c) };
+                    }
+                    n
+                }
+                BotPhase::SendCsw { pending } => {
+                    let c = pending.take().unwrap();
+                    out[..13].copy_from_slice(&c);
+                    self.phase = BotPhase::ExpectCbw;
+                    13
+                }
+                _ => 0,
+            }
+        }
+    }
+
     struct DevState {
-        /// 接口协议：1=键盘 2=鼠标。
+        /// 接口协议：1=键盘 2=鼠标 8=MSC。
         proto: u8,
         /// 待上送的报告（None = 闲置零报告）。
         pending: Option<Vec<u8>>,
+        /// MSC 虚拟盘（proto=8 时在位）。
+        msc: Option<MscSim>,
     }
 
     impl DevState {
@@ -1840,12 +2372,19 @@ mod tests {
             c[4] = 0x01;
             c[5] = 0x01;
             c[7] = 0x80;
-            // 接口描述符（9B）：类 3 / 子类 1 / 协议=设备类型。
+            // 接口描述符（9B）：HID=类 3/子类 1/协议=设备类型；
+            // MSC=类 8/子类 6（SCSI 透明）/协议 0x50（BOT）。
             c[9] = 0x09;
             c[10] = 0x04;
-            c[14] = 0x03;
-            c[15] = 0x01;
-            c[16] = self.proto;
+            if self.proto == 8 {
+                c[14] = 0x08;
+                c[15] = 0x06;
+                c[16] = 0x50;
+            } else {
+                c[14] = 0x03;
+                c[15] = 0x01;
+                c[16] = self.proto;
+            }
             c
         }
     }
@@ -1863,8 +2402,12 @@ mod tests {
         addressed: bool,
         uport: Option<usize>,
         ep0: Option<(u64, bool)>,
+        /// EP1 IN（ctx 号 3）：HID 中断端点或 MSC bulk IN。
         ep1: Option<(u64, bool)>,
         ep1_mps: u32,
+        /// EP1 OUT（ctx 号 2）：MSC bulk OUT。
+        ep_out: Option<(u64, bool)>,
+        ep_out_mps: u32,
         protocol_set: bool,
         idle_set: bool,
         config_set: bool,
@@ -1909,7 +2452,10 @@ mod tests {
     impl Regs {
         fn new() -> Regs {
             // QEMU nec-usb-xhci 同构：4 端口（USB2），8 槽，键盘 port1/鼠标 port2 全速。
-            let devices = vec![DevState { proto: 1, pending: None }, DevState { proto: 2, pending: None }];
+            let devices = vec![
+                DevState { proto: 1, pending: None, msc: None },
+                DevState { proto: 2, pending: None, msc: None },
+            ];
             let ports = vec![
                 PortState { dev: Some(0), speed: PORT_SPEED_FULL, portsc: 0 },
                 PortState { dev: Some(1), speed: PORT_SPEED_FULL, portsc: 0 },
@@ -1937,6 +2483,8 @@ mod tests {
                         ep0: None,
                         ep1: None,
                         ep1_mps: 0,
+                        ep_out: None,
+                        ep_out_mps: 0,
                         protocol_set: false,
                         idle_set: false,
                         config_set: false,
@@ -1964,6 +2512,20 @@ mod tests {
             r
         }
 
+        /// MSC 用例前置：port3 加一只全速 U 盘（128 块 × 512B）。
+        fn new_with_msc() -> Regs {
+            let mut r = Regs::new();
+            r.devices.push(DevState { proto: 8, pending: None, msc: Some(MscSim::new(128, 512)) });
+            r.ports[2].dev = Some(2);
+            r.ports[2].speed = PORT_SPEED_FULL;
+            r.ports[2].portsc = PORTSC_PP
+                | PORTSC_CCS
+                | ((PORT_SPEED_FULL as u32) << PORTSC_SPEED_SHIFT)
+                | (7 << 5)
+                | PORTSC_CSC;
+            r
+        }
+
         fn do_reset(&mut self) {
             // xhci_reset 同构：全停 + 槽位清 + 端口重读 + 中断器清。
             self.running = false;
@@ -1980,6 +2542,8 @@ mod tests {
                     ep0: None,
                     ep1: None,
                     ep1_mps: 0,
+                    ep_out: None,
+                    ep_out_mps: 0,
                     protocol_set: false,
                     idle_set: false,
                     config_set: false,
@@ -2076,6 +2640,8 @@ mod tests {
                                 ep0: None,
                                 ep1: None,
                                 ep1_mps: 0,
+                                ep_out: None,
+                                ep_out_mps: 0,
                                 protocol_set: false,
                                 idle_set: false,
                                 config_set: false,
@@ -2137,6 +2703,10 @@ mod tests {
                                     let ep = mem.u32s(ictx + 32 + 32 * i as u64, 5);
                                     let deq = ((ep[2] as u64) & !0xF) | ((ep[3] as u64) << 32);
                                     let s = &mut self.slots[slotid - 1];
+                                    if i == 2 {
+                                        s.ep_out = Some((deq, ep[2] & 1 == 1));
+                                        s.ep_out_mps = ep[1] >> 16;
+                                    }
                                     if i == 3 {
                                         s.ep1 = Some((deq, ep[2] & 1 == 1));
                                         s.ep1_mps = ep[1] >> 16;
@@ -2235,8 +2805,34 @@ mod tests {
                         Event { ptr: status_addr, length: remaining, ccode, cycle: false, typ: ER_TRANSFER, epid: 1, slotid: slot },
                     );
                 }
+                2 => {
+                    // bulk OUT（MSC BOT）：CBW / 写数据段。
+                    let Some(mut ring) = self.slots[slotid - 1].ep_out else { return };
+                    let Some((t, addr)) = Self::ring_fetch(mem, &mut ring) else {
+                        self.slots[slotid - 1].ep_out = Some(ring);
+                        return;
+                    };
+                    self.slots[slotid - 1].ep_out = Some(ring);
+                    if t.typ() != TRB_NORMAL {
+                        self.errs.push(format!("bulk-out got TRB type {}", t.typ()));
+                        return;
+                    }
+                    let len = (t.status & 0x1_FFFF) as usize;
+                    let mut tmp = vec![0u8; len];
+                    mem.rd(t.param, 0, &mut tmp);
+                    let uport = self.slots[slotid - 1].uport.unwrap();
+                    let Some(msc) = self.devices[uport].msc.as_mut() else {
+                        self.errs.push("bulk-out on non-msc slot".into());
+                        return;
+                    };
+                    msc.on_bulk_out(&tmp);
+                    self.push_event(
+                        mem,
+                        Event { ptr: addr, length: 0, ccode: CC_SUCCESS, cycle: false, typ: ER_TRANSFER, epid: 2, slotid: slot },
+                    );
+                }
                 3 => {
-                    // 中断 IN：一个 Normal TRB → 一份报告。
+                    // EP1 IN：MSC bulk IN（BOT 数据段/CSW）或 HID 中断报告。
                     let Some(mut ring) = self.slots[slotid - 1].ep1 else { return };
                     let Some((t, addr)) = Self::ring_fetch(mem, &mut ring) else {
                         self.slots[slotid - 1].ep1 = Some(ring);
@@ -2249,6 +2845,26 @@ mod tests {
                     }
                     let uport = self.slots[slotid - 1].uport.unwrap();
                     let len = (t.status & 0x1_FFFF) as usize;
+                    if self.devices[uport].msc.is_some() {
+                        let msc = self.devices[uport].msc.as_mut().unwrap();
+                        let mut tmp = vec![0u8; len];
+                        let got = msc.fill_in(&mut tmp, len);
+                        mem.wr(t.param, 0, &tmp[..got]);
+                        let ccode = if got == len { CC_SUCCESS } else { CC_SHORT_PACKET };
+                        self.push_event(
+                            mem,
+                            Event {
+                                ptr: addr,
+                                length: (len - got) as u32,
+                                ccode,
+                                cycle: false,
+                                typ: ER_TRANSFER,
+                                epid: 3,
+                                slotid: slot,
+                            },
+                        );
+                        return;
+                    }
                     let rpt: Vec<u8> = self.devices[uport].pending.take().unwrap_or_else(|| {
                         // 闲置报告：QEMU HID 键盘恒 8B 零报、鼠标 4B 零报。
                         if self.devices[uport].proto == 1 {
@@ -2822,5 +3438,89 @@ mod tests {
         let regs = dev.regs.borrow();
         let disabled = regs.slots.iter().filter(|s| !s.enabled).count();
         assert_eq!(disabled, 7, "失败的槽位已禁用");
+    }
+
+    // ---- S4.2 MSC（BOT 全链：枚举→几何→读写→环回绕→HID 共存）---------------
+
+    /// MSC 前置：初始化 + 三设备枚举（键盘/鼠标/U 盘）。
+    fn bringup_msc() -> (Dev, XhciCtrl<Dev, Dev>) {
+        reset_clock();
+        let dev = Dev {
+            regs: Rc::new(RefCell::new(Regs::new_with_msc())),
+            mem: Rc::new(RefCell::new(Mem::new(32))),
+        };
+        let mut c = XhciCtrl::init_with_recovery(dev.clone(), dev.clone(), fake_now, 2000)
+            .expect("初始化必须成功");
+        let n = c.enumerate_ports();
+        assert_eq!(n, 3, "键盘+鼠标+U 盘必须都枚举成功；errs={:?}", dev.errs());
+        assert_eq!(c.msc_count(), 1, "U 盘必须完成 BOT 初始化");
+        (dev, c)
+    }
+
+    #[test]
+    fn xhci_msc_enumeration_state() {
+        let (dev, mut _c) = bringup_msc();
+        assert_eq!(_c.device_count(), 2, "HID 表只收键鼠");
+        assert_eq!(_c.msc_geometry(0), Some((128, 512)), "BOT init 后几何必须就位");
+        assert_eq!(_c.msc_geometry(1), None, "第二个 MSC 槽位必须为空");
+        let regs = dev.regs.borrow();
+        let msc_slot = regs.slots.iter().find(|s| s.enabled && s.ep_out.is_some()).unwrap();
+        assert!(msc_slot.addressed && msc_slot.config_set);
+        assert_eq!(msc_slot.ep_out_mps, 64, "全速 bulk MPS=64");
+        assert_eq!(msc_slot.ep1_mps, 64, "全速 bulk IN MPS=64");
+        assert!(regs.errs.is_empty(), "模拟器无错误日志: {:?}", regs.errs);
+    }
+
+    #[test]
+    fn xhci_msc_read_write_loopback() {
+        let (dev, mut c) = bringup_msc();
+        let mut pattern = [0u8; 8 * 512];
+        for (i, b) in pattern.iter_mut().enumerate() {
+            *b = (i * 13 + 5) as u8;
+        }
+        c.msc_write_blocks(0, 4, &pattern).expect("整段写必须成功");
+        let mut back = [0u8; 8 * 512];
+        c.msc_read_blocks(0, 4, &mut back).expect("整段读必须成功");
+        assert_eq!(pattern, back, "读回必须逐字节一致");
+        // 越界拒绝（容量 128 块）。
+        assert_eq!(
+            c.msc_read_blocks(0, 120, &mut [0u8; 16 * 512]),
+            Err(BlockError::InvalidRange)
+        );
+        assert!(dev.errs().is_empty());
+    }
+
+    #[test]
+    fn xhci_msc_bulk_ring_wraps_without_loss() {
+        let (dev, mut c) = bringup_msc();
+        // 80 次单块写（每命令 CBW+数据 2 个 OUT TRB）→ out 环多轮回绕。
+        for i in 0..80u32 {
+            let blk = [i as u8; 512];
+            c.msc_write_blocks(0, i as u64, &blk).expect("写必须成功");
+        }
+        for i in 0..80u32 {
+            let mut blk = [0u8; 512];
+            c.msc_read_blocks(0, i as u64, &mut blk).expect("读必须成功");
+            assert!(blk.iter().all(|&b| b == i as u8), "LBA {} 数据错", i);
+        }
+        assert!(dev.errs().is_empty(), "{:?}", dev.errs());
+    }
+
+    #[test]
+    fn xhci_msc_coexists_with_hid_events() {
+        let (dev, mut c) = bringup_msc();
+        c.msc_write_blocks(0, 0, &[0xAA; 512]).expect("MSC 写成功");
+        let mut chk = [0u8; 512];
+        c.msc_read_blocks(0, 0, &mut chk).expect("MSC 读成功");
+        assert!(chk.iter().all(|&b| b == 0xAA));
+        // HID 通道不受 MSC 流量影响：键盘 Q 仍正常上送。
+        let mut out = [None; MAX_TRACKED * 2];
+        let mut rpt = [0u8; 8];
+        rpt[2] = 0x14;
+        dev.set_pending(0, rpt.to_vec());
+        let n = c.pump(&mut out);
+        assert_eq!(n, 1);
+        assert_eq!(out[0], Some(HidEvent::Key(ps2::Key::Q)));
+        assert!(dev.errs().is_empty());
     }
 }

@@ -411,6 +411,19 @@ pub mod mount {
         let mut g = VOL.lock();
         g.as_mut().map(f)
     }
+
+    /// 底层块设备独占访问（S4.2 last_boot 写回通道：QEMU 第二 NVMe 兜底）。
+    /// 挂载未就绪 = false。先过 healthcheck（拔盘即卸载，不写已消失的卷）。
+    pub fn with_shared_dev(f: impl FnOnce(&mut dyn crate::drivers::blk::BlockDevice) -> bool) -> bool {
+        if !healthcheck() {
+            return false;
+        }
+        let mut g = VOL.lock();
+        match g.as_mut() {
+            Some(vol) => f(vol.dev_mut()),
+            None => false,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
