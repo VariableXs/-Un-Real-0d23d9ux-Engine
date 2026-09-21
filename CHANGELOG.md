@@ -3,6 +3,38 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — VARIX 三体系统：M5 基建批收口（2026-09-22：S4.2 MSC + exFAT 受限直写 + last_boot 闭环 + AHCI + ushell 真壁纸）
+
+**内核（kernel/varix）**
+- **S4.2-A xHCI MSC 传输层**（`drivers/msc.rs` 新文件）：BOT + SCSI 最小指令集
+  （TUR/INQUIRY/READ CAPACITY/READ10/WRITE10/REQUEST_SENSE），`BulkPipe` 泛型协议层
+  与 xHCI bulk 端点扩展（EP1 OUT/IN、传输环、事件容错）解耦；数据段"提前到达 CSW"
+  识别覆盖设备端 stall 失败语义；协议级 + 控制器级模拟器 12 项测试全绿。
+- **S4.2-B exFAT 受限直写层**（`fs/exfat_rw.rs` 新文件）：**扇区粒度**（从不物化整簇，
+  真实 560GiB exFAT 的 128KiB 簇安全）——同尺寸就地改写 + 同簇增长改写（STREAM
+  Size 字段单扇区 RMW 作提交点）+ 根目录新建单簇文件（数据→FAT→位图→目录项顺序，
+  断电=孤儿簇可回收）；断电注入"不可见或完整"二态不变式入 ktest（8 项）。
+- **last_boot 写回闭环**（方案2 根解）：`bootcfg::splice_last_boot` 文本级拼接 +
+  `record_last_boot`（MSC 优先 / QEMU 第二 NVMe 兜底）+ 引导流挂钩；QEMU ×5 交替
+  raw 断言通过；Windows 侧仍写 SHARED 真相源（单一事实源不变）。
+- **S4.6 AHCI 最小栈**（`drivers/ahci.rs` 新文件，追加件）：单端口单槽 LBA48 纯轮询；
+  PCI 0x0106 扫描；目标态探针默认只读，写回环须 cmdline `ahci_selftest=1`；
+  模拟器 6 项全绿。ktest 全量 **3146/0** + kcheck 0。
+- **ushell 真壁纸**：`wallpaper.rs` 经 Limine internal module 装载 1280×720 RGB565
+  （三世界同源静态帧），最近邻整屏 blit + 削角逐像素真色回填
+  （FRAME_WALLPAPER/PX/FILL_RGB 三子命令）；缺席=回退色带，绝不阻塞引导。
+  取证：1.8MiB include_bytes 进 .rodata 引发 RW 段布局敏感 fatal #PF、Limine
+  内模块**子目录路径挂死**（根级正常）——资产模块通道双戒律入库。
+- S4.1 xHCI HID 维持"模拟器全绿、真机 SOP 权威"结论；WHPX 宿主不可用已登记。
+
+**桌面端（src-tauri / src）**
+- 门禁修复：`we_wallpaper` 抽取核存在性检查改可注入谓词（WE 库搬家后夹具路径
+  失效引发的机器相关测试回归）；vitest 2851 / tsc 0 / variable --lib 348 / ca-core 356。
+
+**文档与档案**
+- `docs/acceptance/INDEX.md` 建档（AI-6 档案库索引）+ 三份新验收记录
+  （ai5 S4.2 批 / ai4 真壁纸 / ai6 门禁基线）+ ai1 真机冷启动 ×10 SOP 执行卡。
+
 ## [Unreleased] — VARIX 双域系统：批次收官（2026-09-18：27/28 实机走查全绿 + 58 拔出全链 + 批次任务 29-87 清账）
 
 **内核（kernel/varix）**
