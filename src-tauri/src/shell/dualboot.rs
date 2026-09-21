@@ -50,6 +50,11 @@ pub struct BootCfgView {
     pub show_menu: bool,
     /// 该配置里是否显式写了 `handoff` 键（否则用的是内核默认值）。
     pub handoff_explicit: bool,
+    /// 最近一次写配置后的引导分区（U 盘 ESP）副本同步结果：
+    /// true=已同步；false=未同步或从未尝试（`esp_sync_note` 说明原因）。
+    pub esp_synced: bool,
+    /// 同步结果的人话说明（空串=本次操作没有同步语义，如只读状态查询）。
+    pub esp_sync_note: String,
 }
 
 impl BootCfgView {
@@ -64,6 +69,8 @@ impl BootCfgView {
             default_entry: "variable".to_string(),
             show_menu: true,
             handoff_explicit: false,
+            esp_synced: false,
+            esp_sync_note: String::new(),
         }
     }
 }
@@ -94,6 +101,8 @@ pub fn view_from_doc(doc: &Value, shared_root: &str, path: &str) -> BootCfgView 
             .get("show_menu")
             .and_then(|v| v.as_bool())
             .unwrap_or(true),
+        esp_synced: false,
+        esp_sync_note: String::new(),
     }
 }
 
@@ -119,6 +128,199 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         f.sync_all()?;
     }
     std::fs::rename(&tmp, path)
+}
+
+// ---------------------------------------------------------------------------
+// ESP 副本同步（S0.2 配置桥 · 提权通道）
+// ---------------------------------------------------------------------------
+//
+// 内核在引导期经 Limine internal module 读**引导卷根**的 boot-select.json
+// 副本（SHARED 真盘 FS 尚未落地，这是 S0.2 方案 A 的实机通道）。所以
+// Variable 写完 SHARED 真相源后，要把副本刷到同一块 U 盘的 ESP 分区上。
+//
+// 写 ESP 需要管理员（assign 盘符）+ 落点实证闸门：目标分区必须是
+// 「同一物理盘上的 ESP 且根下有 limine.conf」——两条任一不满足就退出不动，
+// 内置盘在物理上就够不着（我们只按 SHARED 所在盘号找同盘 ESP）。
+
+/// 一次同步尝试的结论（如实三态，绝不把"没同步"说成"同步了"）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EspSyncOutcome {
+    /// 副本已刷新且哈希一致。
+    Synced,
+    /// 用户拒绝了管理员授权（UAC 取消）——SHARED 已写好，ESP 副本保持旧值。
+    Declined,
+    /// 非 Windows 宿主（开发/跨平台构建）：没有 ESP 概念，跳过。
+    NotWindows,
+    /// 同步失败（原因入账，SHARED 真相源不受影响）。
+    Failed(String),
+}
+
+/// 同步日志标记（helper .ps1 与 Rust 侧的契约）。
+const LOG_OK: &str = "ESP-SYNC-OK";
+const LOG_FAIL: &str = "ESP-SYNC-FAIL";
+
+/// helper 脚本与日志的落点（temp 目录，随用随建，幂等覆盖）。
+#[cfg(windows)]
+fn temp_file(name: &str) -> PathBuf {
+    std::env::temp_dir().join(name)
+}
+
+/// 生成提权 helper 脚本（纯函数，可测）。ASCII-only 纪律：PowerShell 对
+/// 无 BOM 非 ASCII 内容会被 GBK 吞引号（实测教训），脚本正文全部英文，
+/// 共享盘根只允许 ASCII 路径（盘符根天然满足），否则拒绝同步。
+#[cfg(windows)]
+pub fn esp_sync_helper_script(shared_root: &str) -> Result<String, EspSyncOutcome> {
+    if !shared_root.bytes().all(|b| b.is_ascii() && b != 0) {
+        return Err(EspSyncOutcome::Failed(
+            "shared root path is not ASCII-safe".to_string(),
+        ));
+    }
+    // 统一成不带尾反斜杠的盘根形态（如 E:），注入脚本前剥掉可能的引号
+    let root = shared_root.trim_end_matches(['"', '\\']);
+    let log = temp_file("vx-esp-sync.log");
+    Ok(format!(
+        r#"$ErrorActionPreference = 'Stop'
+$log = '{log}'
+function Say($m) {{ Add-Content -Path $log -Value $m }}
+$assigned = $false
+try {{
+  $src = '{root}\\boot-select.json'
+  if (-not (Test-Path $src)) {{ throw 'source boot-select.json not found on SHARED' }}
+  $srcHash = (Get-FileHash $src -Algorithm SHA256).Hash
+  # The partition that hosts SHARED (by its drive letter), then the ESP on the SAME disk.
+  $letter = (Get-Item $src).PSDrive.Name
+  $part = Get-Partition -DriveLetter $letter
+  $disk = $part.DiskNumber
+  $esp = Get-Partition -DiskNumber $disk | Where-Object {{
+    $_.GptType -eq '{{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}}'
+  }} | Select-Object -First 1
+  if (-not $esp) {{ throw 'no ESP partition on the SHARED disk' }}
+  $let = $null
+  foreach ($c in @('L','N','O','P','Q','R')) {{
+    if (-not (Get-PSDrive -Name $c -ErrorAction SilentlyContinue)) {{ $let = $c; break }}
+  }}
+  if (-not $let) {{ throw 'no free drive letter' }}
+  $dp = Join-Path $env:TEMP 'vx-esp-assign.txt'
+  [IO.File]::WriteAllText($dp, "select disk $disk`r`nselect partition $($esp.PartitionNumber)`r`nassign letter=$let`r`n", [Text.Encoding]::ASCII)
+  diskpart /s $dp | Out-Null
+  $assigned = $true
+  $espRoot = "${{let}}:"
+  # Placement gate: the target ESP must be the VARIX ESP (limine.conf at root).
+  # Anything else = wrong target: remove the letter and refuse to touch it.
+  if (-not (Test-Path (Join-Path $espRoot 'limine.conf'))) {{
+    throw 'target ESP has no limine.conf - refusing to touch a non-VARIX ESP'
+  }}
+  Copy-Item $src (Join-Path $espRoot 'boot-select.json') -Force
+  $espHash = (Get-FileHash (Join-Path $espRoot 'boot-select.json') -Algorithm SHA256).Hash
+  if ($srcHash -ne $espHash) {{ throw 'hash mismatch after copy' }}
+  Say "{LOG_OK} $espHash"
+}} catch {{
+  Say "{LOG_FAIL} $($_.Exception.Message)"
+}} finally {{
+  if ($assigned) {{
+    try {{
+      $rm = Join-Path $env:TEMP 'vx-esp-remove.txt'
+      [IO.File]::WriteAllText($rm, "select disk $disk`r`nselect partition $($esp.PartitionNumber)`r`nremove letter=$let`r`n", [Text.Encoding]::ASCII)
+      diskpart /s $rm | Out-Null
+    }} catch {{ }}
+  }}
+}}
+"#,
+        log = log.display(),
+        root = root,
+    ))
+}
+
+/// 解析 helper 日志 → 结论（纯函数）。
+pub fn parse_esp_sync_log(content: &str) -> EspSyncOutcome {
+    for line in content.lines() {
+        if let Some(rest) = line.trim().strip_prefix(LOG_OK) {
+            let _ = rest; // 哈希前缀仅作证据留档
+            return EspSyncOutcome::Synced;
+        }
+    }
+    for line in content.lines() {
+        if let Some(rest) = line.trim().strip_prefix(LOG_FAIL) {
+            return EspSyncOutcome::Failed(rest.trim().to_string());
+        }
+    }
+    // 无任何标记：提权进程根本没跑起来（UAC 被取消的最典型表象）
+    EspSyncOutcome::Declined
+}
+
+/// 结论 → 用户可读的一句话（与 HandoffCard 的中文文案同一语言口径）。
+pub fn esp_sync_note(o: &EspSyncOutcome) -> String {
+    match o {
+        EspSyncOutcome::Synced => "已同步到引导分区副本（下次引导即生效）".to_string(),
+        EspSyncOutcome::Declined => {
+            "引导分区副本未同步（需要管理员授权）——下次引导将沿用旧副本；重新开关一次可重试".to_string()
+        }
+        EspSyncOutcome::NotWindows => String::new(), // 非 Windows 宿主静默：界面无此语义
+        EspSyncOutcome::Failed(e) => format!("引导分区副本同步失败：{e}（SHARED 上的配置已保存）"),
+    }
+}
+
+#[cfg(windows)]
+fn run_elevated_helper(ps1: &Path, log: &Path) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+    // 先清掉旧日志：空日志 + 无标记 = UAC 被取消
+    let _ = std::fs::remove_file(log);
+    // 提权拉起：Start-Process -Verb RunAs 弹 UAC；-Wait 等内层跑完。
+    let inner = format!(
+        "Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{}'",
+        ps1.display().to_string().replace('\'', "''")
+    );
+    let mut child = Command::new("powershell.exe")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &inner])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("launch failed: {e}"))?;
+    // 有界等待：UAC 弹窗 + diskpart 两次 + 拷贝，2 分钟绰绰有余
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) => {
+                if std::time::Instant::now() > deadline {
+                    let _ = child.kill();
+                    return Err("elevated helper timed out".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(e) => return Err(format!("wait failed: {e}")),
+        }
+    }
+}
+
+/// 写完 SHARED 后刷新引导卷 ESP 副本（best-effort：真相源在 SHARED，
+/// 同步失败只如实上报，不影响写配置的成功语义）。
+#[cfg(windows)]
+pub fn sync_esp_copy(shared_root: &Path) -> EspSyncOutcome {
+    let root_s = shared_root.display().to_string();
+    let script = match esp_sync_helper_script(&root_s) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let ps1 = temp_file("vx-esp-sync.ps1");
+    // BOM + ASCII 正文：PS5.1 对无 BOM 文件的编码猜测是踩过的坑
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(script.as_bytes());
+    if std::fs::write(&ps1, &bytes).is_err() {
+        return EspSyncOutcome::Failed("cannot write helper script".to_string());
+    }
+    let log = temp_file("vx-esp-sync.log");
+    if let Err(e) = run_elevated_helper(&ps1, &log) {
+        return EspSyncOutcome::Failed(e);
+    }
+    let content = std::fs::read_to_string(&log).unwrap_or_default();
+    parse_esp_sync_log(&content)
+}
+
+/// 非 Windows 宿主：没有 ESP 概念，如实跳过。
+#[cfg(not(windows))]
+pub fn sync_esp_copy(_shared_root: &Path) -> EspSyncOutcome {
+    EspSyncOutcome::NotWindows
 }
 
 /// 读盘 + 解析。返回 `None` 表示文件不存在（正常：还没装配过）。
@@ -281,6 +483,65 @@ mod tests {
         assert!(v.shared_root.is_empty());
         assert!(v.path.is_empty());
         assert!(v.handoff, "空态展示的仍是内核默认值 true");
+        assert!(!v.esp_synced, "空态没有同步语义");
+        assert!(v.esp_sync_note.is_empty());
+    }
+
+    // ---- S0.2 ESP 副本同步（提权通道） -------------------------------------
+
+    #[test]
+    fn helper_script_is_ascii_and_carries_all_gates() {
+        let s = esp_sync_helper_script("E:\\").unwrap();
+        // ASCII-only 纪律（PS5.1 无 BOM 非 ASCII 会吞引号——实测教训）
+        assert!(s.bytes().all(|b| b.is_ascii()), "helper 必须纯 ASCII");
+        // 落点实证闸门：目标 ESP 必须有 limine.conf
+        assert!(s.contains("limine.conf"), "必须有 VARIX ESP 闸门");
+        // 同盘定位：SHARED 所在盘号 → 同盘 ESP（内置盘物理够不着）
+        assert!(s.contains("Get-Partition -DriveLetter"), "必须从 SHARED 盘符反查");
+        assert!(
+            s.contains("c12a7328-f81f-11d2-ba4b-00a0c93ec93b"),
+            "必须钉死 GPT ESP 分区类型"
+        );
+        assert!(s.contains("Get-Partition -DiskNumber $disk"), "必须限同盘");
+        // 哈希回读
+        assert!(s.contains("hash mismatch"), "必须哈希比对");
+        // 日志契约标记
+        assert!(s.contains(LOG_OK) && s.contains(LOG_FAIL));
+        // 根路径注入（去掉尾反斜杠后拼接）
+        assert!(s.contains("E:"), "共享盘根必须注入脚本");
+        // finally 摘字母
+        assert!(s.contains("remove letter"), "用后必须摘盘符");
+    }
+
+    #[test]
+    fn helper_script_rejects_non_ascii_root() {
+        let r = esp_sync_helper_script("E:\\中文\\");
+        assert!(matches!(r, Err(EspSyncOutcome::Failed(_))));
+    }
+
+    #[test]
+    fn sync_log_parses_to_honest_outcomes() {
+        assert_eq!(
+            parse_esp_sync_log("ESP-SYNC-OK 3FA9…"),
+            EspSyncOutcome::Synced
+        );
+        assert_eq!(
+            parse_esp_sync_log("ESP-SYNC-FAIL hash mismatch after copy"),
+            EspSyncOutcome::Failed("hash mismatch after copy".to_string())
+        );
+        // 空日志（UAC 被取消的典型表象）→ Declined，不是 Failed
+        assert_eq!(parse_esp_sync_log(""), EspSyncOutcome::Declined);
+    }
+
+    #[test]
+    fn sync_notes_are_actionable_not_blamey() {
+        let n = esp_sync_note(&EspSyncOutcome::Synced);
+        assert!(n.contains("已同步"), "成功要说清已同步");
+        let d = esp_sync_note(&EspSyncOutcome::Declined);
+        assert!(d.contains("未同步") && d.contains("重试"), "拒绝要说明后果与出路");
+        let f = esp_sync_note(&EspSyncOutcome::Failed("boom".into()));
+        assert!(f.contains("已保存"), "失败必须说明 SHARED 真相源未受影响");
+        assert!(esp_sync_note(&EspSyncOutcome::NotWindows).is_empty());
     }
 
     #[test]

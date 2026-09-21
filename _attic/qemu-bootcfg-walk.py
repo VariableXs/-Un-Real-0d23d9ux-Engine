@@ -48,6 +48,12 @@ def prepare_isoroot():
     dst_initrd = os.path.join(isoroot, "initrd.img")
     if not os.path.isfile(dst_initrd):
         shutil.copy2(os.path.join(ROOT, "build", "initrd.img"), dst_initrd)
+    # El Torito 引导文件（make-iso 从 isoroot 取这三件；gitignore 工件需补齐）
+    limine_bin = os.path.join(WT, "tools", "limine", "limine-binary")
+    for f in ("limine-bios-cd.bin", "limine-uefi-cd.bin", "limine-bios.sys"):
+        dst = os.path.join(isoroot, f)
+        if not os.path.isfile(dst):
+            shutil.copy2(os.path.join(limine_bin, f), dst)
     return isoroot
 
 
@@ -152,8 +158,15 @@ def wait_count(serial, marker, before, timeout=STEP_TIMEOUT):
     return False
 
 
-def run_variant(name, iso, checks):
-    """checks: [(label, marker_or_None, expect)]，None=负向断言（演练结束时核对）。"""
+def run_variant(name, iso, pos_markers, neg_markers):
+    """终点事件等待 + 缓冲存在性判定。
+
+    本演练每变体独占一次 QEMU、独立串口缓冲，标记不存在跨启动歧义，
+    因此直接按「缓冲内出现与否」判定（+1 增量判定只适用于单缓冲跨阶段
+    复用的场景——紧邻标记会踩「基线晚于到达」的假超时，实测踩过）。
+    终点事件 `boot completed` 给足 420s（TCG 时间膨胀：三卡倒计时 +
+    input/display 等慢探针，实测全程可超 180s）。
+    """
     log = os.path.join(ATTIC, f"bootcfg-walk-serial-{name}.log")
     if os.path.exists(log):
         os.remove(log)
@@ -171,59 +184,56 @@ def run_variant(name, iso, checks):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    results = []
-    serial = None
     try:
         serial = SerialTee(SERIAL_PORT, log)
         mon = Mon(MON_PORT)
-        for label, marker, expect in checks:
-            if marker is None:
-                continue
-            before = serial.count(marker)
-            ok = wait_count(serial, marker, before)
-            results.append((label, ok == expect))
+        t0 = time.time()
+        while time.time() - t0 < STEP_TIMEOUT:
+            if serial.count("boot completed") > 0:
+                break
+            time.sleep(1)
         time.sleep(2)
         mon.cmd("quit")
+        results = []
+        for m in pos_markers:
+            ok = serial.count(m) > 0
+            print(f"  [{time.time()-t0:6.1f}s] {m}: {'PASS' if ok else 'FAIL'}")
+            results.append((m, ok))
+        for m in neg_markers:
+            ok = serial.count(m) == 0
+            print(f"  [{time.time()-t0:6.1f}s] {m} (negative): {'PASS' if ok else 'FAIL'}")
+            results.append((m + " (negative)", ok))
     finally:
         try:
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
-        if serial:
+        try:
             serial.close()
-    # 负向断言：全程缓冲里不许出现
-    for label, marker, expect in checks:
-        if marker is None:
-            continue
-        if not expect:
-            results.append((label + " (negative)", serial.count(marker) == 0))
+        except Exception:
+            pass
     return results
 
 
 def main():
     all_ok = True
     plan = [
-        ("present", build_iso("present"), [
-            ("模块通道生效 timeout=2（≠默认5）", "timeout=2 default=varix", True),
-            ("防自锁闸门拒绝盲写 BootNext", "refusing to guess", True),
-            ("如实落 ushell（引导不炸）", "boot completed", True),
-        ]),
-        ("corrupt", build_iso("corrupt"), [
-            ("整体损坏如实上报 kwarn", "shared config corrupt", True),
-            ("损坏回落内置默认 timeout=5", "timeout=5 default=varix", True),
-            ("容错第三层：引导不炸", "boot completed", True),
-        ]),
-        ("absent", build_iso("absent", no_seed=True), [
-            ("副本缺失静默内置默认 timeout=5", "timeout=5 default=varix", True),
-            ("副本缺失：无损坏告警", "shared config corrupt", False),
-            ("契约不破：引导不炸", "boot completed", True),
-        ]),
+        ("present", build_iso("present"),
+         ["timeout=2 default=varix", "refusing to guess", "boot completed"],
+         []),
+        ("corrupt", build_iso("corrupt"),
+         ["shared config corrupt", "timeout=5 default=varix", "boot completed"],
+         []),
+        ("absent", build_iso("absent", no_seed=True),
+         ["timeout=5 default=varix", "boot completed"],
+         ["shared config corrupt"]),
     ]
-    for name, iso, checks in plan:
+    for name, iso, pos, neg in plan:
         print(f"\n===== variant: {name} =====")
-        results = run_variant(name, iso, checks)
+        results = run_variant(name, iso, pos, neg)
         for label, ok in results:
-            print(f"  {label}: {'PASS' if ok else 'FAIL'}")
+            if not ok:
+                print(f"  FAIL: {label}")
             all_ok &= ok
     print("\nBOOTCFG WALKTHROUGH VERDICT:", "PASS" if all_ok else "FAIL")
     return 0 if all_ok else 1

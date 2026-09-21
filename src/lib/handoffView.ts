@@ -22,6 +22,8 @@ export const HANDOFF_FALLBACK: Shell.BootCfgView = {
   timeoutSec: null,
   defaultEntry: "variable",
   showMenu: true,
+  espSynced: false,
+  espSyncNote: "",
 };
 
 /** 共享盘状态四态。 */

@@ -261,9 +261,15 @@ function HandoffCard(): React.ReactElement {
     setBusy(true);
     setNote("");
     try {
-      setCfg(await ipc.dualbootSetHandoff(on));
+      const v = await ipc.dualbootSetHandoff(on);
+      setCfg(v);
       setErr("");
-      setNote(on ? "已开启：内核加载完会自动交接（可在内核侧确认）" : "已关闭：内核会停在自绘 ushell");
+      // 引导分区副本同步结果必须如实带出（S0.2）：同步失败/被拒绝时，
+      // 用户要知道「下次引导会沿用旧副本」以及怎么重试——绝不静默。
+      setNote(
+        (on ? "已开启：内核加载完会自动交接（可在内核侧确认）" : "已关闭：内核会停在自绘 ushell") +
+          (v.espSyncNote ? ` · ${v.espSyncNote}` : ""),
+      );
     } catch (e) {
       setErr(String(e));
     } finally {

@@ -27,6 +27,8 @@ function cfg(patch: Partial<Shell.BootCfgView> = {}): Shell.BootCfgView {
     timeoutSec: 5,
     defaultEntry: "variable",
     showMenu: true,
+    espSynced: false,
+    espSyncNote: "",
     ...patch,
   };
 }
@@ -111,5 +113,10 @@ describe("空态锚点", () => {
     expect(HANDOFF_FALLBACK.handoff).toBe(true);
     expect(HANDOFF_FALLBACK.handoffExplicit).toBe(false);
     expect(HANDOFF_FALLBACK.found).toBe(false);
+  });
+
+  it("HANDOFF_FALLBACK 没有同步语义（espSynced=false 且说明为空）", () => {
+    expect(HANDOFF_FALLBACK.espSynced).toBe(false);
+    expect(HANDOFF_FALLBACK.espSyncNote).toBe("");
   });
 });

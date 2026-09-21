@@ -1745,6 +1745,10 @@ export namespace Shell {
     defaultEntry: string;
     /** 是否显示引导菜单。 */
     showMenu: boolean;
+    /** 最近一次写配置后的引导分区副本同步结果（true=已同步）。 */
+    espSynced: boolean;
+    /** 同步结果说明（空串=无同步语义，如只读查询）。 */
+    espSyncNote: string;
   }
   /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
   export interface PortableProfile {
