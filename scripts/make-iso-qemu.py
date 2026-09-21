@@ -23,12 +23,17 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KERNEL_ELF = os.path.join(ROOT, "kernel", "target", "x86_64-unknown-none", "release", "varix")
 ISO_ROOT = os.path.join(ROOT, "build", "isoroot")
 LIMINE_DIR = os.path.join(ROOT, "tools", "limine", "limine-binary")
+# 引导配置种子（repo 根，与内核 SHARED_BOOT_SELECT_PATH 同名同义）。
+# 内核经 Limine internal module（../boot-select.json，flags=0 可选缺失）读取，
+# ISO 根放了它，QEMU 演练才能覆盖「副本存在→生效」的主路径。
+SEED_CONF = os.path.join(ROOT, "boot-select.json")
 
 
 def _parse_args(argv):
-    """极小参数解析：`--conf FILE` / `--out FILE`（默认走正式产物路径）。"""
+    """极小参数解析：`--conf FILE` / `--out FILE` / `--no-seed`。"""
     conf = os.path.join(ISO_ROOT, "limine.conf")
     out = os.path.join(ROOT, "varix-qemu.iso")
+    no_seed = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -38,10 +43,13 @@ def _parse_args(argv):
         elif a == "--out" and i + 1 < len(argv):
             out = argv[i + 1]
             i += 2
+        elif a == "--no-seed":
+            no_seed = True
+            i += 1
         else:
             print(f"ERROR: 未知参数 {a}", file=sys.stderr)
-            return None, None
-    return conf, out
+            return None, None, None
+    return conf, out, no_seed
 
 import pycdlib
 
@@ -61,9 +69,17 @@ def main(argv=None) -> int:
         if not os.path.isfile(os.path.join(LIMINE_DIR, f)):
             print(f"ERROR: 缺少 {LIMINE_DIR}/{f}", file=sys.stderr)
             return 1
+    if not os.path.isfile(SEED_CONF):
+        print(f"ERROR: 缺少引导配置种子 {SEED_CONF}", file=sys.stderr)
+        return 1
 
-    # 刷新 isoroot：新内核 + initrd
+    # 刷新 isoroot：新内核 + initrd + boot-select.json 副本
     shutil.copy2(KERNEL_ELF, os.path.join(ISO_ROOT, "kernel", "varix"))
+    # 副本语义：演练者可先改写 isoroot/boot-select.json 再打包（损坏/自定义
+    # 变体就是这么做的）；这里只在缺失时从种子回填，绝不覆盖已有变体内容。
+    iso_boot_select = os.path.join(ISO_ROOT, "boot-select.json")
+    if not os.path.isfile(iso_boot_select):
+        shutil.copy2(SEED_CONF, iso_boot_select)
     initrd = os.path.join(ROOT, "build", "initrd.img")
     if not os.path.isfile(initrd):
         py = sys.executable
@@ -79,6 +95,7 @@ def main(argv=None) -> int:
     for path, rr, joliet, iso_name, ddiso, djoliet2 in [
         ("kernel/varix", "varix", "varix", "VARIX_ELF", "/KERNEL", "/kernel"),
         ("limine.conf", "limine.conf", "limine.conf", "LIMINE_CONF", "/", "/"),
+        ("boot-select.json", "boot-select.json", "boot-select.json", "BOOT_SEL_JSON", "/", "/"),
         ("initrd.img", "initrd.img", "initrd.img", "INITRD_IMG", "/", "/"),
         ("limine-bios-cd.bin", "limine-bios-cd.bin", "limine-bios-cd.bin", "LIMINE_BIOS_CD", "/BOOT", "/boot"),
         ("limine-uefi-cd.bin", "limine-uefi-cd.bin", "limine-uefi-cd.bin", "LIMINE_UEFI_CD", "/BOOT", "/boot"),

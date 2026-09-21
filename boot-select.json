@@ -1,0 +1,7 @@
+{
+  "default_entry": "variable",
+  "timeout_sec": 5,
+  "show_menu": true,
+  "last_boot": "variable",
+  "handoff": true
+}
