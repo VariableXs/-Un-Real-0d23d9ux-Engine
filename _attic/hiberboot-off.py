@@ -30,17 +30,19 @@ LOG = os.path.join(ROOT, "_attic", "hiberboot-off.log")
 PS_BODY = r"""
 $ErrorActionPreference = 'Stop'
 $log = '{log}'
-function Say($m) {{ Add-Content -Path $log -Value $m }}
+$out = New-Object System.Collections.Generic.List[string]
 try {{
   $path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
   $val = {value}
   Set-ItemProperty -Path $path -Name HiberbootEnabled -Value $val -Type DWord
   $back = (Get-ItemProperty -Path $path -Name HiberbootEnabled).HiberbootEnabled
   if ($back -ne $val) {{ throw "read-back mismatch: $back" }}
-  Say "HIBERBOOT-SET-OK HiberbootEnabled=$back"
+  $out.Add("HIBERBOOT-SET-OK HiberbootEnabled=$back")
 }} catch {{
-  Say "HIBERBOOT-SET-FAIL $($_.Exception.Message)"
+  $out.Add("HIBERBOOT-SET-FAIL $($_.Exception.Message)")
 }}
+# 原子单次写：只在结尾落盘一次，杜绝与驱动轮询读的文件锁竞态
+Set-Content -Path $log -Value $out -Encoding Unicode
 """
 
 
