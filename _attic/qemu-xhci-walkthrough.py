@@ -165,7 +165,7 @@ def main():
         os.remove(SERIAL)
     proc = subprocess.Popen(
         [
-            "qemu-system-x86_64",
+            os.environ.get("VARIX_QEMU", "qemu-system-x86_64"),
             "-machine", "q35",
             "-cdrom", ISO,
             # S4.1 主角：xHCI 控制器 + USB 键鼠（显式钉到 xhci.0 总线，
