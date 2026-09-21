@@ -35,6 +35,7 @@ pub mod bootopt;
 pub mod bootcfg;
 pub mod bootnext;
 pub mod bootselect;
+pub mod handoff;
 pub mod checks;
 pub mod cmdline;
 pub mod deploy;

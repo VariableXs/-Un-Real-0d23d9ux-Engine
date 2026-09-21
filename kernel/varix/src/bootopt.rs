@@ -13,6 +13,12 @@ pub const MAX_TIMEOUT_SECS: u32 = 60;
 /// Default entry booted when the countdown expires.
 pub const DEFAULT_ENTRY: &str = "varix";
 
+/// A 卡（VARIX + VARIABLE）加载完是否交接给 Windows 上的 Variable（需求 2）。
+///
+/// 默认**开**：内核里跑不了 Tauri（需要 Windows + WebView2），"进入 Variable"
+/// 只能交接出去；关掉则落内核自绘 ushell（保留路径，也用于排障）。
+pub const DEFAULT_HANDOFF_TO_VARIABLE: bool = true;
+
 /// Boot menu options (F022 result).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BootOptions {
@@ -26,6 +32,11 @@ pub struct BootOptions {
     pub customized_timeout: bool,
     /// cmdline explicitly set `boot_default=`（同上）。
     pub customized_entry: bool,
+    /// A 卡加载完交接给 Windows 上的 Variable（需求 2）；见
+    /// [`DEFAULT_HANDOFF_TO_VARIABLE`]。
+    pub handoff_to_variable: bool,
+    /// cmdline 显式设了 `handoff=`（bootcfg 合并的逐字段优先级用）。
+    pub customized_handoff: bool,
 }
 
 impl Default for BootOptions {
@@ -36,6 +47,8 @@ impl Default for BootOptions {
             customized: false,
             customized_timeout: false,
             customized_entry: false,
+            handoff_to_variable: DEFAULT_HANDOFF_TO_VARIABLE,
+            customized_handoff: false,
         }
     }
 }
@@ -67,6 +80,22 @@ impl BootOptions {
                     };
                     opts.customized_entry = true;
                     customized = true;
+                }
+            } else if let Some(v) = token.strip_prefix("handoff=") {
+                // 交接开关（需求 2）：只认明确的 0/1 与常见拼法，含糊值一律
+                // 忽略并保留默认——引导期不猜用户意图。
+                match v {
+                    "0" | "false" | "off" => {
+                        opts.handoff_to_variable = false;
+                        opts.customized_handoff = true;
+                        customized = true;
+                    }
+                    "1" | "true" | "on" => {
+                        opts.handoff_to_variable = true;
+                        opts.customized_handoff = true;
+                        customized = true;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -238,5 +267,39 @@ mod tests {
         let n4 = o.countdown_line(3, &mut tiny);
         assert_eq!(n4, 4);
         assert_eq!(&tiny, b"BOOT");
+    }
+
+    #[test]
+    fn handoff_defaults_to_on() {
+        // 需求 2：A 卡默认交接给 Windows 上的 Variable（内核里跑不了 Tauri）。
+        let d = BootOptions::default();
+        assert!(d.handoff_to_variable, "交接默认必须为开");
+        assert!(!d.customized_handoff, "默认值不算 cmdline 显式指定");
+    }
+
+    #[test]
+    fn handoff_cmdline_overrides() {
+        for off in ["handoff=0", "handoff=false", "handoff=off"] {
+            let o = BootOptions::from_cmdline(off);
+            assert!(!o.handoff_to_variable, "{off} 应关掉交接");
+            assert!(o.customized_handoff, "{off} 应标记为显式指定");
+            assert!(o.customized, "{off} 属于用户定制");
+        }
+        for on in ["handoff=1", "handoff=true", "handoff=on"] {
+            let o = BootOptions::from_cmdline(on);
+            assert!(o.handoff_to_variable, "{on} 应打开交接");
+            assert!(o.customized_handoff);
+        }
+    }
+
+    #[test]
+    fn handoff_ignores_ambiguous_values() {
+        // 含糊值（拼错/空/怪值）一律保留默认并**不**标记为显式指定——
+        // 否则配置文件里的 handoff 会被一个垃圾 cmdline 静默吃掉。
+        for weird in ["handoff=", "handoff=yes", "handoff=2", "handoff=maybe"] {
+            let o = BootOptions::from_cmdline(weird);
+            assert!(o.handoff_to_variable, "{} 应保留默认", weird);
+            assert!(!o.customized_handoff, "{} 不该算显式指定", weird);
+        }
     }
 }

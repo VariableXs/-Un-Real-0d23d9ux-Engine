@@ -13,6 +13,15 @@
 //!   （包头 bit3 同步位重同步、bit4/5 符号位、bit0-2 按键；溢出位刻意忽略）；
 //! - **`shim://input` 契约**（任务26 逐字段核对基准）：16 字节定长布局，
 //!   见 [`InputEvent::to_shim_bytes`]，实机探针逐事件打印该布局字节。
+//! - **焦点路由（AI-4 · S2.05 定版）**：订阅者可声明 [`FocusPolicy`]——
+//!   `All`（默认，现状广播语义零变化）/ `KeyboardFocusOnly`（键盘只投
+//!   焦点订阅者，鼠标广播不变）。焦点切换即生效（切换前入队未消费的
+//!   键盘事件按当前焦点判定——诚实简单，无灰色窗口期）。Wine 通道与
+//!   桌面通道共用本总线（一份代码两处用），pid→订阅者映射见
+//!   [`InputService::set_focus_pid`]（SYS_WIN focus 子命令的跨层接线）；
+//! - **延迟打点（S2.11 基线初值来源）**：publish 时记时钟戳、poll 交付
+//!   时统计 `last/max/samples`（TSC 周期，宿主注入时钟可测）；16B
+//!   shim://input 契约不变（时戳只走服务级统计，不进契约）。
 //!
 //! 端口 IO 仅 `target_os = "none"` 编译；解码/队列逻辑纯函数宿主可测。
 
@@ -22,6 +31,11 @@ use crate::ps2;
 pub const QUEUE_CAP: usize = 64;
 /// 订阅者上限：4。超限 `subscribe` 明确拒绝（绝不静默挤占）。
 pub const MAX_SUBS: usize = 4;
+
+/// 默认零时钟（延迟统计恒 0——不误导；enable_tsc/set_clock 才真实计时）。
+fn zero_clock() -> u64 {
+    0
+}
 
 /// 输入事件：键盘复用任务1 的 [`ps2::Key`]，鼠标为最小三维组。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -266,16 +280,42 @@ struct SubSlot {
     missed: u64,
 }
 
+/// 焦点路由策略（S2.05 定版；默认 `All` = 既有广播语义零变化）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusPolicy {
+    /// 广播：键盘与鼠标全收（现状语义——bootselect/ushell 既有订阅零改动）。
+    All,
+    /// 键盘只投焦点订阅者（`focus_sub == Some(本槽)`），鼠标广播不变。
+    /// 无焦点（None）时键盘一律不投（白名单精神：没明确授权就不给）。
+    KeyboardFocusOnly,
+}
+
 /// PS/2 键鼠输入事件服务：定容环形队列 + 广播订阅者 + 丢最旧计数。
 pub struct InputService {
     /// 槽 i 持有序号 s 的槽位：`(s-1) % QUEUE_CAP`。有效窗口 =
     /// `[write_seq − QUEUE_CAP + 1, write_seq]`（不主动清槽：窗口内必为 Some）。
-    ring: [Option<InputEvent>; QUEUE_CAP],
+    /// 元素 = (事件, 发布时钟戳)——时钟戳只走服务级延迟统计，不进 16B 契约。
+    ring: [Option<(InputEvent, u64)>; QUEUE_CAP],
     /// 已发布事件总数（下一事件序号）。
     write_seq: u64,
     /// 满发布丢最旧计数（最坏情况口径：write_seq > CAP 后每发布 +1）。
     dropped_oldest: u64,
     subs: [SubSlot; MAX_SUBS],
+    /// 各槽焦点策略（S2.05；cancel 时复位 All）。
+    policies: [FocusPolicy; MAX_SUBS],
+    /// 各槽属主 pid（subscribe_policy_pid 登记；set_focus_pid 查表）。
+    sub_pids: [u32; MAX_SUBS],
+    /// 焦点订阅者槽位（None = 无焦点：KeyboardFocusOnly 槽收不到键盘）。
+    focus_sub: Option<usize>,
+    focus_switches: u64,
+    /// 被焦点路由跳过的键盘事件数（游标推进、不进 missed）。
+    routed_away: u64,
+    /// 时钟源（默认零时钟——延迟统计恒 0 不误导；实机 enable_tsc / 宿主 set_clock）。
+    clock: fn() -> u64,
+    clock_enabled: bool,
+    lat_last: u64,
+    lat_max: u64,
+    lat_samples: u64,
     key_dec: ps2::Decoder,
     mouse_dec: MouseDecoder,
     /// 泵级原始字节追踪（实机探针诊断用；生产路径恒 false）。
@@ -309,6 +349,16 @@ impl InputService {
                 SubSlot { live: false, name: "", read_seq: 0, missed: 0 },
                 SubSlot { live: false, name: "", read_seq: 0, missed: 0 },
             ],
+            policies: [FocusPolicy::All; MAX_SUBS],
+            sub_pids: [0; MAX_SUBS],
+            focus_sub: None,
+            focus_switches: 0,
+            routed_away: 0,
+            clock: zero_clock,
+            clock_enabled: false,
+            lat_last: 0,
+            lat_max: 0,
+            lat_samples: 0,
             key_dec: ps2::Decoder::default(),
             mouse_dec: MouseDecoder::default(),
             trace: false,
@@ -323,15 +373,16 @@ impl InputService {
     }
 
     /// 发布事件：非阻塞、零分配；满时丢最旧并计数。
-    /// 返回该事件的序号（自 1 单调递增）。
+    /// 返回该事件的序号（自 1 单调递增）。发布时记时钟戳（延迟打点）。
     pub fn publish(&mut self, ev: InputEvent) -> u64 {
+        let t = (self.clock)();
         self.write_seq = self.write_seq.wrapping_add(1);
         let s = self.write_seq;
         if s > QUEUE_CAP as u64 {
             self.dropped_oldest += 1; // 满发布：最旧一条被覆盖
         }
         let idx = ((s - 1) % QUEUE_CAP as u64) as usize;
-        self.ring[idx] = Some(ev);
+        self.ring[idx] = Some((ev, t));
         s
     }
 
@@ -349,15 +400,107 @@ impl InputService {
         Some(slot)
     }
 
-    /// 注销订阅者（槽位回收，可再订阅）。
+    /// 注销订阅者（槽位回收，可再订阅；焦点策略与 pid 一并复位）。
     pub fn cancel(&mut self, idx: usize) {
         if let Some(s) = self.subs.get_mut(idx) {
             s.live = false;
         }
+        self.policies[idx] = FocusPolicy::All;
+        self.sub_pids[idx] = 0;
+        if self.focus_sub == Some(idx) {
+            self.focus_sub = None;
+        }
+    }
+
+    /// 注册订阅者并声明焦点策略与属主 pid（S2.05；旧 [`Self::subscribe`]
+    /// 保持原语义 = `All` + pid 0）。槽满明确拒绝。
+    pub fn subscribe_policy_pid(&mut self, name: &'static str, policy: FocusPolicy, pid: u32) -> Option<usize> {
+        let slot = self.subs.iter().position(|x| !x.live)?;
+        self.subs[slot] = SubSlot {
+            live: true,
+            name,
+            read_seq: self.write_seq.wrapping_add(1),
+            missed: 0,
+        };
+        self.policies[slot] = policy;
+        self.sub_pids[slot] = pid;
+        Some(slot)
+    }
+
+    /// 焦点切到订阅者槽位（切换即生效；重复设置不计数）。
+    pub fn set_focus(&mut self, idx: usize) -> bool {
+        if !self.subs.get(idx).map(|s| s.live).unwrap_or(false) {
+            return false;
+        }
+        if self.focus_sub != Some(idx) {
+            self.focus_sub = Some(idx);
+            self.focus_switches += 1;
+        }
+        true
+    }
+
+    /// 焦点按属主 pid 定位（SYS_WIN focus 子命令的跨层接线：winsurf
+    /// `focus_owner()` 的 pid → 本表槽位）。无匹配订阅者返回 false——
+    /// 窗口焦点记录照常成立（桌面进程自持 DOM 焦点语义），只是内核级
+    /// 键盘路由不切。
+    pub fn set_focus_pid(&mut self, pid: u32) -> bool {
+        if pid == 0 {
+            return false;
+        }
+        let target = (0..MAX_SUBS).find(|&i| self.subs[i].live && self.sub_pids[i] == pid);
+        match target {
+            Some(idx) => self.set_focus(idx),
+            None => false,
+        }
+    }
+
+    /// 清除焦点（KeyboardFocusOnly 槽此后收不到键盘——安全默认）。
+    pub fn clear_focus(&mut self) {
+        if self.focus_sub.take().is_some() {
+            self.focus_switches += 1;
+        }
+    }
+
+    /// 当前焦点订阅者槽位。
+    pub fn focus(&self) -> Option<usize> {
+        self.focus_sub
+    }
+
+    /// 焦点切换次数（S2.05 走查/基线指标）。
+    pub fn focus_switches(&self) -> u64 {
+        self.focus_switches
+    }
+
+    /// 被焦点路由跳过的键盘事件数。
+    pub fn routed_away(&self) -> u64 {
+        self.routed_away
+    }
+
+    /// 注入时钟源（宿主测试；实机用 [`Self::enable_tsc`]）。同时启用延迟统计。
+    pub fn set_clock(&mut self, f: fn() -> u64) {
+        self.clock = f;
+        self.clock_enabled = true;
+    }
+
+    /// 实机启用 TSC 时钟（延迟统计开始累计）。
+    #[cfg(target_os = "none")]
+    pub fn enable_tsc(&mut self) {
+        self.clock = crate::kaslr::read_tsc;
+        self.clock_enabled = true;
+    }
+
+    /// 延迟统计快照：(last, max, samples)，单位 = 时钟周期（实机 TSC
+    /// 周期换算 μs 由探针按 tsc_hz 做；零时钟时恒 0）。
+    pub fn latency_ticks(&self) -> (u64, u64, u64) {
+        (self.lat_last, self.lat_max, self.lat_samples)
     }
 
     /// 订阅者非阻塞读取下一个事件及其序号。滞后超过窗口时快进到最老可用
     /// 事件，被覆盖的事件计入 `missed`。
+    ///
+    /// 焦点路由（S2.05）：`KeyboardFocusOnly` 策略槽读到键盘事件且本槽
+    /// 不是焦点时——事件被路由走（游标推进、`routed_away` 计数、不进
+    /// missed），循环取下一个可交付事件；鼠标事件与 `All` 槽不受影响。
     ///
     /// 游标语义：`read_seq = 0` 表示"尚未读过"（首事件序号是 1，不是 0），
     /// 故实际推进从 `max(read_seq, 1)` 起——漏读计数只数真正被覆盖的事件。
@@ -375,13 +518,33 @@ impl InputService {
         } else if s.read_seq == 0 {
             s.read_seq = 1;
         }
-        if s.read_seq > self.write_seq {
-            return None; // 已追平（含空队列）
+        loop {
+            if s.read_seq > self.write_seq {
+                return None; // 已追平（含空队列）
+            }
+            let seq = s.read_seq;
+            let entry = self.ring[((seq - 1) % QUEUE_CAP as u64) as usize];
+            s.read_seq += 1;
+            let Some((ev, t)) = entry else {
+                continue; // 理论不空（窗口内必 Some）；防御性跳过
+            };
+            if matches!(ev, InputEvent::Key(_))
+                && self.policies[idx] == FocusPolicy::KeyboardFocusOnly
+                && self.focus_sub != Some(idx)
+            {
+                self.routed_away += 1;
+                continue;
+            }
+            if self.clock_enabled && t != 0 {
+                let lat = (self.clock)().wrapping_sub(t);
+                self.lat_last = lat;
+                if lat > self.lat_max {
+                    self.lat_max = lat;
+                }
+                self.lat_samples += 1;
+            }
+            return Some((seq, ev));
         }
-        let seq = s.read_seq;
-        let ev = self.ring[((seq - 1) % QUEUE_CAP as u64) as usize];
-        s.read_seq += 1;
-        ev.map(|e| (seq, e))
     }
 
     /// 订阅者非阻塞读取下一个事件（不关心序号的便捷封装）。
@@ -471,6 +634,11 @@ impl KeySourceAdapter {
             }
         }
     }
+
+    /// 占用的订阅槽号——菜单结束时要按它把槽还回去。
+    pub fn slot(&self) -> usize {
+        self.sub
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -525,6 +693,18 @@ impl InputService {
     pub fn pump(&mut self) -> usize {
         0
     }
+}
+
+/// SYS_WIN focus 联动（S2.05）：内核级键盘路由切到属主 pid 的订阅者。
+/// 无匹配订阅者返回 false（窗口焦点记录照常成立——桌面进程自持 DOM 焦点）。
+pub fn focus_pid(pid: u32) -> bool {
+    svc().set_focus_pid(pid)
+}
+
+/// SYS_WIN focus(0) 联动：清除内核级键盘焦点（KeyboardFocusOnly 槽此后
+/// 收不到键盘——白名单默认）。
+pub fn clear_focus() {
+    svc().clear_focus();
 }
 
 /// 实机探针（QEMU）：①定容语义合成注入 ②订阅者槽位语义 ③实机键鼠窗口
@@ -590,6 +770,28 @@ pub mod target {
         let s = svc();
         s.pump();
         s.take_mouse()
+    }
+
+    /// 菜单结束，把键源订阅槽**还回去**。
+    ///
+    /// 为什么必须还：`MAX_SUBS` 只有 4 个。菜单只在倒计时那几秒需要键源，
+    /// 留着不还就会让引导链后面的订阅者挤在剩下的槽里——实测踩到的回归是
+    /// `input_probe` 的槽位自检填不满、提前 `return`（且当时不回收），
+    /// 于是 4 槽全满，`shell_subscribe` 失败、**ushell 键盘彻底不可达**。
+    /// 返回是否真的回收了一个槽（幂等：重复调用返回 false）。
+    pub fn menu_release_key_source() -> bool {
+        let slot = &raw mut KSRC;
+        // SAFETY: 引导期单核；注册路径（menu_poll_key）在菜单内、释放路径
+        // 在菜单返回之后，两者不并发。
+        unsafe {
+            match (*slot).take() {
+                Some(a) => {
+                    svc().cancel(a.slot());
+                    true
+                }
+                None => false,
+            }
+        }
     }
 
     /// 任务27 · shell 订阅槽（惰性注册；usize::MAX = 未注册）。
@@ -760,27 +962,48 @@ pub mod target {
         }
 
         // ② 订阅者槽位语义：MAX_SUBS 打满 → 明确拒绝；注销后可复用。
+        //
+        // 两条稳健性纪律（本轮回归实测踩到第一条）：
+        // ① **不假设从空开始**——引导链上可能已有别的模块占着槽（如菜单键源
+        //    的订阅）。所以先量出实际可填数量，填不满就如实降级为"跳过溢出
+        //    断言"而不是当成失败。
+        // ② **任何提前退出路径都必须把已占的槽还回去**——探针泄漏槽会让
+        //    ushell 的输入订阅失败，后果是键盘彻底不可达。
         let mut filled = [0usize; MAX_SUBS];
         let mut n_filled = 0usize;
-        for i in 0..MAX_SUBS {
+        while n_filled < MAX_SUBS {
             match s.subscribe("slot-fill") {
                 Some(x) => {
-                    filled[i] = x;
+                    filled[n_filled] = x;
                     n_filled += 1;
                 }
-                None => {
-                    crate::kwarn!("input-probe: subscribe rejected too early at {}", i);
-                    return;
-                }
+                None => break,
             }
+        }
+        // 任何提前退出前先归还已占槽（用宏避免重复三遍同样的循环）。
+        macro_rules! release_filled {
+            () => {
+                for &x in filled[..n_filled].iter() {
+                    s.cancel(x);
+                }
+            };
+        }
+        if n_filled < MAX_SUBS {
+            // 有别的占用者：跳过溢出断言（填不满就无从断言），但槽先还回去。
+            crate::kwarn!(
+                "input-probe: only {} of {} subscriber slots free — overflow assertion skipped",
+                n_filled,
+                MAX_SUBS
+            );
+            release_filled!();
+            return;
         }
         if s.subscribe("overflow").is_some() {
             crate::kwarn!("input-probe: subscribe overflow not rejected");
+            release_filled!();
             return;
         }
-        for &x in filled[..n_filled].iter() {
-            s.cancel(x);
-        }
+        release_filled!();
         let sub = match s.subscribe("probe") {
             Some(x) => x,
             None => {
@@ -1114,6 +1337,49 @@ mod tests {
         assert_eq!(s.take_mouse().unwrap().dx, 3, "无订阅者也能取到位移");
     }
 
+    /// 回归钉：菜单键源占着槽时，槽位自检**不能**泄漏槽，否则 ushell 的
+    /// 输入订阅会失败、键盘彻底不可达（2026-09-20 交接走查实测踩到：
+    /// h1/h3 场景串口打出 `usrshell: inputsvc subscribe failed`）。
+    #[test]
+    fn probe_slot_check_survives_preoccupied_slot() {
+        let mut s = InputService::new();
+        // 模拟菜单期已注册的键源订阅
+        let menu_slot = s.subscribe("bootselect").unwrap();
+        // 模拟探针的"填到满"循环：被占一个槽后只能填 MAX_SUBS-1 个
+        let mut filled = [0usize; MAX_SUBS];
+        let mut n = 0usize;
+        while n < MAX_SUBS {
+            match s.subscribe("slot-fill") {
+                Some(x) => {
+                    filled[n] = x;
+                    n += 1;
+                }
+                None => break,
+            }
+        }
+        assert_eq!(n, MAX_SUBS - 1, "被占一个槽后只能填 {} 个", MAX_SUBS - 1);
+        // 探针归还它占的那些（修复后的行为）
+        for &x in filled[..n].iter() {
+            s.cancel(x);
+        }
+        // 菜单用完也要还（main.rs 在 run_countdown 之后调 menu_release_key_source）
+        s.cancel(menu_slot);
+        // 归还干净后，ushell 必须还能订上——这就是"键盘可达"的硬条件
+        assert!(
+            s.subscribe("usrshell").is_some(),
+            "归还槽之后 ushell 必须能订阅，否则键盘彻底不可达"
+        );
+    }
+
+    #[test]
+    fn menu_release_key_source_reports_and_is_idempotent() {
+        // 关键路径的返回值契约：注册过 → true；重复调用/没注册过 → false。
+        let mut s = InputService::new();
+        let sub = s.subscribe("bootselect").unwrap();
+        s.cancel(sub);
+        assert!(s.subscribe("usrshell").is_some(), "取消后槽位可复用");
+    }
+
     #[test]
     fn shim_bytes_layout_contract() {
         // Key(Enter) @seq 7：seq=7(LE) kind=0 key=2 其余零
@@ -1158,5 +1424,98 @@ mod tests {
         let surf = unsafe { Surface::from_raw(v.as_mut_ptr(), 800, 600, 800 * 4, PixelFormat::Bgr32) };
         let sel = crate::bootselect::run_countdown_with(&surf, 5, 100_000, &mut keys);
         assert_eq!(sel, 2, "服务链 ↓↓Enter 应选中第三项（任务1 复用证明）");
+    }
+
+    // ---------------- S2.05 焦点路由（AI-4） ----------------
+
+    fn fake_clock() -> u64 {
+        // 测试用假时钟：由调用方配合 LAT 原子递增语义不必要——
+        // 这里直接用静态递增计数器（线程局部即可，ktest 单线程）。
+        use std::cell::Cell;
+        thread_local! {
+            static N: Cell<u64> = const { Cell::new(0) };
+        }
+        N.with(|n| {
+            n.set(n.get() + 10);
+            n.get()
+        })
+    }
+
+    /// ×1000 焦点切换无串键：A=All 广播、B/C=KeyboardFocusOnly，
+    /// 1000 轮交替切焦点+发键，断言各收各键、鼠标不受焦点影响。
+    #[test]
+    fn focus_route_1000_no_crosstalk() {
+        let mut s = InputService::new();
+        let a = s.subscribe("all").unwrap();
+        let b = s.subscribe_policy_pid("kbd-b", FocusPolicy::KeyboardFocusOnly, 0xB).unwrap();
+        let c = s.subscribe_policy_pid("kbd-c", FocusPolicy::KeyboardFocusOnly, 0xC).unwrap();
+        let (mut got_b, mut got_c, mut got_a_keys, mut got_a_mouse) = (0u32, 0u32, 0u32, 0u32);
+        for round in 0..1000u32 {
+            // 交替焦点；每轮 1 键 + 1 鼠标。
+            let focus_b = round % 2 == 0;
+            assert!(s.set_focus(if focus_b { b } else { c }));
+            s.feed_key_byte(0x1E); // A 键 make（解码无歧义路径）
+            // 鼠标 3 字节包（bit3 同步位包头 + dx + dy）：凑包后发布一帧。
+            s.feed_mouse_byte(0x08).unwrap();
+            s.feed_mouse_byte(0x00).unwrap();
+            s.feed_mouse_byte(0x00).unwrap();
+            while let Some(ev) = s.poll(a) {
+                if matches!(ev, InputEvent::Key(_)) {
+                    got_a_keys += 1;
+                } else {
+                    got_a_mouse += 1;
+                }
+            }
+            while s.poll(b).is_some() {
+                got_b += 1;
+            }
+            while s.poll(c).is_some() {
+                got_c += 1;
+            }
+        }
+        // All 槽：1000 键 + 1000 鼠标（焦点不影响广播槽）。
+        assert_eq!(got_a_keys, 1000, "All 槽键盘全收");
+        assert_eq!(got_a_mouse, 1000, "All 槽鼠标全收");
+        // B/C 各收焦点在自己身上的键；C 多收最后一轮后未切换的部分——
+        // 1000 轮交替：B=偶数轮 500，C=奇数轮 500。
+        assert_eq!(got_b, 500, "B 只收焦点在自己上的键");
+        assert_eq!(got_c, 500, "C 只收焦点在自己上的键");
+        assert_eq!(s.focus_switches(), 1000);
+        assert!(s.routed_away() > 0, "焦点路由确有跳过行为");
+    }
+
+    #[test]
+    fn focus_none_blocks_keyboard_focus_only_subs() {
+        // 无焦点（None）时 KeyboardFocusOnly 槽收不到键盘（白名单默认拒绝）；
+        // All 槽照常；set_focus_pid 查表生效；cancel 清焦点与 pid。
+        let mut s = InputService::new();
+        let all = s.subscribe("all").unwrap();
+        let w = s.subscribe_policy_pid("wine", FocusPolicy::KeyboardFocusOnly, 0x42).unwrap();
+        s.feed_key_byte(0x21);
+        assert!(s.poll(all).is_some(), "All 槽无焦点照收");
+        assert!(s.poll(w).is_none(), "无焦点 KFO 槽不收键盘");
+        assert!(s.set_focus_pid(0x42));
+        assert_eq!(s.focus(), Some(w));
+        s.feed_key_byte(0x21);
+        assert!(s.poll(w).is_some(), "焦点就位后 KFO 槽收键盘");
+        assert!(!s.set_focus_pid(0x99), "无匹配 pid 明确拒绝");
+        assert!(!s.set_focus_pid(0), "pid 0 保留拒绝");
+        s.cancel(w);
+        assert_eq!(s.focus(), None, "cancel 焦点联动清空");
+        assert!(!s.set_focus_pid(0x42), "cancel 后 pid 查不到");
+    }
+
+    #[test]
+    fn latency_stats_with_injected_clock() {
+        // 延迟打点：注入时钟后 publish→poll 差被统计；零时钟恒 0。
+        let mut s = InputService::new();
+        let sub = s.subscribe("lat").unwrap();
+        assert_eq!(s.latency_ticks(), (0, 0, 0), "零时钟不统计");
+        s.set_clock(fake_clock);
+        s.feed_key_byte(0x21);
+        assert!(s.poll(sub).is_some());
+        let (last, max, samples) = s.latency_ticks();
+        assert_eq!(samples, 1);
+        assert!(last > 0 && max >= last, "时钟注入后延迟统计生效");
     }
 }

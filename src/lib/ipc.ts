@@ -313,6 +313,13 @@ export const ipc = {
   filesyncRoot: () => invoke<string | null>("filesync_root"),
   /** 在系统文件管理器里打开 SHARED 卷。 */
   filesyncReveal: () => invoke<void>("filesync_reveal"),
+
+  // ---- 需求 2：内核 A 卡交接（内核加载完 → Windows 上的 Variable） ----
+  /** 读共享盘上的 boot-select.json（内核侧读的是同一份文件）。 */
+  dualbootStatus: () => invoke<Shell.BootCfgView>("dualboot_status"),
+  /** 开关「A 卡加载完交接给 Windows 上的 Variable」。 */
+  dualbootSetHandoff: (on: boolean) =>
+    invoke<Shell.BootCfgView>("dualboot_set_handoff", { on }),
   /** 批次C-6：用户强制兼容层级（null = 恢复自动探测）。 */
   compatSetOverride: (id: string, tier: Shell.CompatTier | null) =>
     invoke<void>("compat_set_override", { id, tier }),
@@ -1715,6 +1722,29 @@ export namespace Shell {
     entries: number;
     /** 本轮扫描是否被上限截断（`entries` 不再代表全量）。 */
     truncated: boolean;
+  }
+
+  /**
+   * 需求 2：SHARED 卷上 boot-select.json 的视图
+   * （与 Rust `dualboot::BootCfgView` 一致；内核读的是同一份文件）。
+   */
+  export interface BootCfgView {
+    /** 是否找到了共享盘上的 boot-select.json。 */
+    found: boolean;
+    /** 共享盘根路径（不可用时为空串）。 */
+    sharedRoot: string;
+    /** 配置文件绝对路径（不可用时为空串）。 */
+    path: string;
+    /** A 卡加载完是否交接给 Windows 上的 Variable（内核默认 true）。 */
+    handoff: boolean;
+    /** 该配置里是否**显式**写了 handoff 键（否则用的是内核默认值）。 */
+    handoffExplicit: boolean;
+    /** 倒计时秒数；配置里没有这个键时为 null。 */
+    timeoutSec: number | null;
+    /** 倒计时默认项（variable / windows / last）。 */
+    defaultEntry: string;
+    /** 是否显示引导菜单。 */
+    showMenu: boolean;
   }
   /** 批次B-3（M1，BLUEPRINT 3.3/7.2）：隔离执行档。 */
   export interface PortableProfile {

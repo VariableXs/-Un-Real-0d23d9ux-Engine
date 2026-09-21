@@ -24,6 +24,8 @@ pub mod audioime;
 pub mod fsindex;
 // 跨域文件级双向同步（双域总案 ③-a）：SHARED 卷单一事实源 + 秒级变更通知
 pub mod filesync;
+// 双域引导配置（需求 2）：Variable 侧读写 SHARED 卷的 boot-select.json
+pub mod dualboot;
 pub mod sysmaint;
 pub mod imwatch;
 pub mod installer;

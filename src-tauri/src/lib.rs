@@ -720,6 +720,9 @@ pub fn run() {
             shell::filesync::filesync_poll,
             shell::filesync::filesync_root,
             shell::filesync::filesync_reveal,
+            // 双域引导配置（需求 2）：内核交接开关的 Variable 侧读写面
+            shell::dualboot::dualboot_status,
+            shell::dualboot::dualboot_set_handoff,
             // ---- AI-14 开放接口组（U-37/38/39、Z-51/52/55、N-28/30）----
             shell::openhub::openhub_config_get,
             shell::openhub::openhub_config_set,

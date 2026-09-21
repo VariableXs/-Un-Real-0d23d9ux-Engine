@@ -27,6 +27,7 @@
 //! | `show_menu`        | bool    | `true`    | false=静默走默认项（等价 timeout=0 语义） |
 //! | `last_boot`        | string  | `variable`| 上次实际进入的系统；`last` 语义据此解析 |
 //! | `windows_bootnext` | integer/null | null | 部署脚本探测的 Windows 引导项号 0..=0xFFFF |
+//! | `handoff`          | bool    | `true`    | A 卡加载完交接给 Windows 上的 Variable（需求 2）；false=落内核自绘 ushell |
 //!
 //! 词表映射：配置词表（variable/windows/last）→ 菜单词表（varix/windows/uefi）
 //! 由 `BootCfg::resolve_default_entry` 完成；`uefi` 不进配置词表（固件设置
@@ -79,6 +80,9 @@ pub struct BootCfg {
     pub show_menu: bool,
     pub last_boot: LastBoot,
     pub windows_bootnext: Option<u16>,
+    /// A 卡（variable/varix）加载完是否交接给 Windows 上的 Variable（需求 2）。
+    /// 内核里跑不了 Tauri，"进入 Variable"= 写 BootNext 进 Windows 由那边自启。
+    pub handoff: bool,
 }
 
 impl BootCfg {
@@ -90,6 +94,7 @@ impl BootCfg {
             show_menu: true,
             last_boot: LastBoot::Variable,
             windows_bootnext: None,
+            handoff: crate::bootopt::DEFAULT_HANDOFF_TO_VARIABLE,
         }
     }
 
@@ -179,6 +184,7 @@ struct Parser<'a> {
     f_show_menu: Option<bool>,
     f_last_boot: Option<LastBoot>,
     f_bootnext: Option<Option<u16>>,
+    f_handoff: Option<bool>,
 }
 
 impl<'a> Parser<'a> {
@@ -196,6 +202,7 @@ impl<'a> Parser<'a> {
             f_show_menu: None,
             f_last_boot: None,
             f_bootnext: None,
+            f_handoff: None,
         }
     }
 
@@ -274,6 +281,7 @@ impl<'a> Parser<'a> {
             "timeout_sec" => self.field(|p| p.uint_field().map(FieldVal::Timeout)),
             "show_menu" => self.field(|p| p.bool_field().map(FieldVal::Menu)),
             "windows_bootnext" => self.field(|p| p.u16_field().map(FieldVal::BootNext)),
+            "handoff" => self.field(|p| p.bool_field().map(FieldVal::Handoff)),
             _ => self.skip_value(),
         }
     }
@@ -304,6 +312,7 @@ impl<'a> Parser<'a> {
             FieldVal::Timeout(t) => self.f_timeout_sec = Some(t),
             FieldVal::Menu(m) => self.f_show_menu = Some(m),
             FieldVal::BootNext(b) => self.f_bootnext = Some(b),
+            FieldVal::Handoff(h) => self.f_handoff = Some(h),
         }
     }
 
@@ -490,6 +499,9 @@ impl<'a> Parser<'a> {
         if let Some(b) = self.f_bootnext {
             cfg.windows_bootnext = b;
         }
+        if let Some(h) = self.f_handoff {
+            cfg.handoff = h;
+        }
         cfg
     }
 }
@@ -501,6 +513,7 @@ enum FieldVal {
     Timeout(u32),
     Menu(bool),
     BootNext(Option<u16>),
+    Handoff(bool),
 }
 
 // field_word 的闭包返回 T，但 set 需要 FieldVal——用一个小适配：
@@ -525,6 +538,9 @@ pub fn effective(cmdline: crate::bootopt::BootOptions, cfg: &BootCfg, src: CfgSo
     }
     if !o.customized_entry {
         o.default_entry = cfg.resolve_default_entry();
+    }
+    if !o.customized_handoff {
+        o.handoff_to_variable = cfg.handoff;
     }
     o
 }
@@ -555,6 +571,39 @@ mod tests {
         assert_eq!(d.windows_bootnext, None);
         assert!(d.menu_visible());
         assert_eq!(d.resolve_default_entry(), "varix");
+        assert!(d.handoff, "需求 2：交接默认开");
+    }
+
+    #[test]
+    fn handoff_field_parses_and_defaults() {
+        // 缺字段 → 默认开
+        assert!(parse_ok("{}").handoff);
+        // 显式 false
+        assert!(!parse_ok("{\"handoff\": false}").handoff);
+        // 显式 true（前向兼容：老配置没有这个键，补上也不炸）
+        assert!(parse_ok("{\"handoff\": true}").handoff);
+        // 类型错（字符串）→ 该字段保持默认，其余字段照常生效（容错第 2 层）
+        let c = parse_ok("{\"handoff\": \"no\", \"timeout_sec\": 9}");
+        assert!(c.handoff, "类型错必须回落默认而不是当成 false");
+        assert_eq!(c.timeout_sec, 9, "同文档其余字段不受影响");
+        // 未知字段照旧忽略
+        assert!(parse_ok("{\"handoff_typo\": false}").handoff);
+    }
+
+    #[test]
+    fn handoff_merge_priority_cmdline_wins() {
+        use crate::bootopt::BootOptions;
+        let (cfg, src) = parse(b"{\"handoff\": false}");
+        assert_eq!(src, CfgSource::Parsed);
+        // 无 cmdline 显式值 → 用共享配置
+        let o = effective(BootOptions::default(), &cfg, src);
+        assert!(!o.handoff_to_variable, "共享配置的 false 必须生效");
+        // cmdline 显式 handoff=1 → 覆盖共享配置
+        let o2 = effective(BootOptions::from_cmdline("handoff=1"), &cfg, src);
+        assert!(o2.handoff_to_variable, "cmdline 显式值优先");
+        // 配置整体损坏 → 维持 cmdline（不把 Reset 当成"配置说了 false"）
+        let o3 = effective(BootOptions::default(), &cfg, CfgSource::Reset);
+        assert!(o3.handoff_to_variable);
     }
 
     #[test]

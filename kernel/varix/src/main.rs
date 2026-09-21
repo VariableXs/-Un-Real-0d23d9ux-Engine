@@ -102,6 +102,10 @@ fn boot() -> ! {
     }
     boot_opts = varix::bootcfg::effective(boot_opts, &boot_cfg, cfg_src);
     let mut chosen_id: Option<&'static str> = None;
+    // 需求 2：A 卡（varix）也要被记下来——它的终点不是内核自绘 ushell，
+    // 而是「交接给 Windows 上的 Variable」（见 handoff::plan）。未显示菜单时
+    // 按配置默认项判定，避免"纯 B 路"被误判成 A 卡交接。
+    let mut chosen_entry: &'static str = boot_opts.default_entry;
     if boot_opts.menu_visible() {
         let tsc_hz = varix::platform::info()
             .map(|p| p.tsc_hz)
@@ -109,10 +113,11 @@ fn boot() -> ! {
         // 诊断：菜单亮出前把实际生效的超时与 cmdline 打到串口——
         // 「倒计时起始值」是 boot_timeout 是否被解析的硬证据。
         varix::kinfo!(
-            "boot-diag: timeout={} default={} customized={} cmdline='{}'",
+            "boot-diag: timeout={} default={} customized={} handoff={} cmdline='{}'",
             boot_opts.timeout_secs,
             boot_opts.default_entry,
             boot_opts.customized,
+            boot_opts.handoff_to_variable,
             varix::cmdline::init().source()
         );
         // 鼠标 bring-up 必须排在菜单亮出**之前**（需求 1/6「任意鼠标和键盘」）：
@@ -127,7 +132,14 @@ fn boot() -> ! {
             mouse_ack & 0x2 != 0
         );
         let sel = varix::bootselect::run_countdown(&surface, boot_opts.timeout_secs, tsc_hz);
+        // 菜单用完就把键源订阅槽**还回去**：`MAX_SUBS` 只有 4 个，菜单留着
+        // 不还的话后面的 input_probe 槽位自检填不满、ushell 的输入订阅也会
+        // 失败（实测回归：`usrshell: inputsvc subscribe failed — 键盘输入不可达`）。
+        // 幂等，交接与降级两条路都安全。
+        let released = varix::inputsvc::target::menu_release_key_source();
+        varix::kinfo!("boot-select: key-source slot released={}", released);
         let chosen = varix::bootselect::ENTRIES[sel].id;
+        chosen_entry = chosen;
         varix::kinfo!("boot-select: entry={}", chosen);
         if chosen == "windows" {
             // BootNext 写入需要可执行的 Runtime Services 映射，推迟到
@@ -440,6 +452,29 @@ fn boot() -> ! {
     // 任务71 性能门禁口径：boot_ms 由内核时钟源实测（boot-replay/性能基线
     // 消费该行；"boot complete" 前缀保持兼容既有里程碑 grep）。
     varix::kinfo!("boot completed {} ms", varix::proc::usrshell::boot_ms());
+
+    // --- 需求 2 · A 卡交接（内核 → Variable）----------------------------------
+    // 内核里跑不了 Tauri（要 Windows API + WebView2，结构上不可能），而
+    // ExitBootServices 之后也无法跳转到 Windows Boot Manager——"进入 Variable"
+    // 只能是：内核加载完把 BootNext 指向 Windows，复位后由那边的 Variable
+    // 自启全屏。开关与逐级降级见 varix::handoff（默认开，可在 boot-select.json
+    // 的 "handoff" 或 cmdline handoff=0 关掉以保留 ushell）。
+    // 交接成功即永不返回；失败/关闭则如实继续走下面的 ushell。
+    if boot_opts.handoff_to_variable {
+        match varix::handoff::plan(Some(chosen_entry), boot_opts.handoff_to_variable) {
+            varix::handoff::HandoffPlan::ToWindows => {
+                varix::kinfo!("handoff: plan=windows (entry={})", chosen_entry);
+                if !varix::handoff::run(&surface) {
+                    varix::kwarn!("handoff: unavailable — continuing into the kernel ushell");
+                }
+            }
+            varix::handoff::HandoffPlan::ToKernelShell => {
+                varix::kinfo!("handoff: plan=kernel-shell (entry={})", chosen_entry);
+            }
+        }
+    } else {
+        varix::kinfo!("handoff: disabled by config — entering the kernel ushell");
+    }
 
     // --- 任务14 · ring3 演示：装 MSR/TSS → 装载 hello.elf → iretq 进用户态。
     // hello 两次 write（int 0x80 与 syscall 双入口）后 exit(0)，内核回收

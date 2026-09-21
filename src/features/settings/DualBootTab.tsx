@@ -23,6 +23,12 @@ import {
   type RecentChange,
 } from "../../lib/filesyncView";
 import { useI18n } from "../../i18n";
+import {
+  autostartDisabled,
+  chainHint,
+  handoffDisabled,
+  sharedLabel,
+} from "../../lib/handoffView";
 
 const BOOT_OS_LABELS: Record<BootDefaultOs, string> = {
   varix: "VARIX（Variable 桌面）",
@@ -213,6 +219,161 @@ function FileSyncCard(): React.ReactElement {
   );
 }
 
+/**
+ * 需求 2 卡片：内核 → Variable 的交接。
+ *
+ * 这一张卡是「A 卡（VARIX + VARIABLE）加载完能不能真的进到 Variable 桌面」
+ * 的**唯一界面入口**，所以必须把两个半段都摆出来：
+ *   ① 内核侧交接开关（写 SHARED 卷的 boot-select.json，内核读同一份文件）；
+ *   ② Windows 侧开机自启（HKCU Run）——少了这一段，交接过去只会看到普通
+ *      Windows 桌面，而不是 Variable。
+ * 并且如实交代「中间会有一次重启」——那是 UEFI 的硬约束（内核早期已交还
+ * 引导服务，无法跳转到 Windows Boot Manager），不是实现偷懒。
+ */
+function HandoffCard(): React.ReactElement {
+  const [cfg, setCfg] = useState<Shell.BootCfgView | null>(null);
+  const [auto, setAuto] = useState<{ on: boolean; command: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
+
+  const reload = useCallback(async (): Promise<void> => {
+    try {
+      // 自启状态读不到时不该拖垮整卡（例如非 Windows 宿主）——分别兜住。
+      const c = await ipc.dualbootStatus();
+      setCfg(c);
+      setErr("");
+      try {
+        setAuto(await ipc.autostartGet());
+      } catch {
+        setAuto(null);
+      }
+    } catch (e) {
+      setErr(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const toggleHandoff = async (on: boolean): Promise<void> => {
+    setBusy(true);
+    setNote("");
+    try {
+      setCfg(await ipc.dualbootSetHandoff(on));
+      setErr("");
+      setNote(on ? "已开启：内核加载完会自动交接（可在内核侧确认）" : "已关闭：内核会停在自绘 ushell");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleAuto = async (on: boolean): Promise<void> => {
+    setBusy(true);
+    setNote("");
+    try {
+      setAuto(await ipc.autostartSet(on));
+      setErr("");
+      setNote(on ? "已设为开机自启：Windows 起来后自动全屏进入 Variable" : "已关闭开机自启");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hint = chainHint(cfg, auto);
+  return (
+    <div className="field" style={{ display: "block" }}>
+      <span className="field-label">
+        内核 → Variable 交接
+        <span className="dim small">
+          · 内核里跑不了 Tauri（需要 Windows + WebView2），所以 A 卡加载完会
+          把引导权交回 Windows，由那边的 Variable 自启全屏
+        </span>
+      </span>
+
+      {err ? (
+        <p className="small" role="alert" style={{ margin: "6px 0 0", opacity: 0.9 }}>
+          {err}
+        </p>
+      ) : null}
+
+      <label
+        className="field"
+        style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 6 }}
+      >
+        <input
+          type="checkbox"
+          checked={cfg?.handoff ?? true}
+          disabled={handoffDisabled(cfg, busy)}
+          onChange={(e) => void toggleHandoff(e.target.checked)}
+          aria-label="内核加载完交接给 Windows 上的 Variable"
+        />
+        <span>
+          <strong>内核加载完自动交接</strong>
+          <span className="dim small">
+            {" "}
+            · 开：看到 VARIX 加载后自动进 Variable 桌面（中间有一次重启，这是
+            UEFI 硬约束）；关：停在 VARIX 自绘 ushell
+          </span>
+        </span>
+      </label>
+
+      <label
+        className="field"
+        style={{ display: "flex", gap: 8, alignItems: "flex-start" }}
+      >
+        <input
+          type="checkbox"
+          checked={auto?.on ?? false}
+          disabled={autostartDisabled(auto, busy)}
+          onChange={(e) => void toggleAuto(e.target.checked)}
+          aria-label="Windows 开机自动进入 Variable"
+        />
+        <span>
+          <strong>Windows 开机自动进入 Variable</strong>
+          <span className="dim small">
+            {" "}
+            · 交接的后半段：没有它，交接过去只会看到普通 Windows 桌面
+            {auto?.on && auto.command ? `（当前：${auto.command}）` : ""}
+          </span>
+        </span>
+      </label>
+
+      {hint ? (
+        <p className="dim small" role="status" style={{ margin: "6px 0 0" }}>
+          {hint}
+        </p>
+      ) : null}
+
+      <p className="dim small" style={{ margin: "6px 0 0" }}>
+        {sharedLabel(cfg)}
+      </p>
+
+      {cfg?.sharedRoot ? (
+        <p className="small" style={{ margin: "6px 0 0" }}>
+          <button type="button" className="btn" onClick={() => void ipc.filesyncReveal()}>
+            打开共享盘
+          </button>
+          <button
+            type="button"
+            className="btn"
+            style={{ marginLeft: 8 }}
+            onClick={() => void reload()}
+          >
+            重新读取
+          </button>
+          {note ? <span className="dim small"> · {note}</span> : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function DualBootTab(props: {
   settings: Settings;
   onPatch: (patch: Partial<Settings>) => void;
@@ -274,6 +435,10 @@ export function DualBootTab(props: {
           <span className="dim small"> · 关闭后倒计时直进默认系统（Esc 仍可呼出菜单）</span>
         </span>
       </label>
+
+      {/* ①-b 需求 2：内核 → Variable 交接（A 卡的落点） */}
+      <h3 className="w11-sec-title">内核 → Variable 交接</h3>
+      <HandoffCard />
 
       {/* ② 软件通道规则 */}
       <h3 className="w11-sec-title">软件通道规则</h3>
