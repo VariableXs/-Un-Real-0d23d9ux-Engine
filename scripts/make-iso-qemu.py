@@ -55,7 +55,7 @@ import pycdlib
 
 
 def main(argv=None) -> int:
-    conf, out = _parse_args(list(argv if argv is not None else sys.argv))
+    conf, out, no_seed = _parse_args(list(argv if argv is not None else sys.argv))
     if conf is None:
         return 1
     if not os.path.isfile(conf):
@@ -78,7 +78,7 @@ def main(argv=None) -> int:
     # 副本语义：演练者可先改写 isoroot/boot-select.json 再打包（损坏/自定义
     # 变体就是这么做的）；这里只在缺失时从种子回填，绝不覆盖已有变体内容。
     iso_boot_select = os.path.join(ISO_ROOT, "boot-select.json")
-    if not os.path.isfile(iso_boot_select):
+    if not no_seed and not os.path.isfile(iso_boot_select):
         shutil.copy2(SEED_CONF, iso_boot_select)
     initrd = os.path.join(ROOT, "build", "initrd.img")
     if not os.path.isfile(initrd):
