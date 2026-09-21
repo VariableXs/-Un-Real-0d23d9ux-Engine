@@ -120,6 +120,12 @@ pub fn we_wallpaper_current() -> CmdResult<Option<WeWallpaper>> {
 /// 为空，而原文里 Monitor0.file 明明白白存在）。对每个 selectedwallpapers
 /// 对象做括号配平截取子串，交给 serde 解析（子串内部无重复键）。
 fn extract_first_selected_file(raw: &str) -> Option<String> {
+    // 生产语义：坏路径（WE -control ANSI 乱码写回）绝不跟随。
+    extract_first_selected_file_if(raw, |f| std::fs::metadata(f).is_ok())
+}
+
+/// 可注入存在性谓词的抽取核（测试机器无关：夹具路径不要求真实存在）。
+fn extract_first_selected_file_if(raw: &str, exists: impl Fn(&str) -> bool) -> Option<String> {
     let needle = "\"selectedwallpapers\"";
     let mut from = 0;
     while let Some(rel) = raw[from..].find(needle) {
@@ -137,7 +143,7 @@ fn extract_first_selected_file(raw: &str) -> Option<String> {
                                 // 解析，非 ASCII 文件名会被它自己写成 U+FFFD 乱码
                                 // （实机：openWallpaper 传中文 mp4 → config 损坏）。
                                 // 镜像端绝不跟随坏路径（否则桌面黑屏+缺失弹条）。
-                                if std::fs::metadata(file).is_err() {
+                                if !exists(file) {
                                     continue;
                                 }
                                 return Some(file.to_string());
@@ -312,7 +318,7 @@ mod tests {
   }
 }"#;
         assert_eq!(
-            super::extract_first_selected_file(raw).as_deref(),
+            super::extract_first_selected_file_if(raw, |_| true).as_deref(),
             Some("D:/steam/steamapps/workshop/content/431960/3276921258/序列 01.mp4")
         );
     }

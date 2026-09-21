@@ -148,6 +148,12 @@ pub const FRAME_HLINE: u64 = 3;
 pub const FRAME_VLINE: u64 = 4;
 pub const FRAME_OUTLINE: u64 = 5;
 pub const FRAME_INFO: u64 = 6;
+/// 真壁纸整屏 blit（S4·AI-4/6：三世界同源静态帧，最近邻缩放）。
+pub const FRAME_WALLPAPER: u64 = 7;
+/// 壁纸像素采样（削角回填）：a2 = x|y 打包，返回 0xRRGGBB。
+pub const FRAME_WALLPAPER_PX: u64 = 8;
+/// 原色填充（照片色回填）：a2 = xywh 打包，a3 = 0xRRGGBB。
+pub const FRAME_FILL_RGB: u64 = 9;
 
 /// 文本长度上限（栈缓冲预算；a1 bit16..24 装载）。
 pub const FRAME_TEXT_MAX: usize = 255;
@@ -473,6 +479,30 @@ pub fn sys_frame(a1: u64, a2: u64, a3: u64) -> i64 {
                 return einval();
             }
             surf.vline(x, y0, y1, color);
+            0
+        }
+        FRAME_WALLPAPER => {
+            if crate::wallpaper::blit_scaled(surf) {
+                0
+            } else {
+                enosys() // 壁纸模块缺席：ushell 回退色带
+            }
+        }
+        FRAME_WALLPAPER_PX => {
+            let (x, y, _, _) = unpack_xywh(a2);
+            if x < 0 || y < 0 || x >= sw || y >= sh {
+                return einval();
+            }
+            crate::wallpaper::sample_at(x, y, surf.width(), surf.height())
+        }
+        FRAME_FILL_RGB => {
+            let (x, y, w, h) = unpack_xywh(a2);
+            if !rect_plausible(x, y, w, h, sw, sh) {
+                return einval();
+            }
+            let rgb = a3 & 0xFF_FFFF;
+            let c = crate::fb::Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
+            surf.fill_rect(x, y, w, h, c);
             0
         }
         FRAME_TEXT => {

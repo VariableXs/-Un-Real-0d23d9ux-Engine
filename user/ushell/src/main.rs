@@ -78,6 +78,12 @@ fn marker(buf: &[u8]) {
 const OP_TEXT: u64 = 2;
 const OP_OUTLINE: u64 = 5;
 const OP_INFO: u64 = 6;
+/// 真壁纸整屏 blit（内核最近邻缩放）。
+const OP_WALLPAPER: u64 = 7;
+/// 壁纸像素采样（a2=x|y → 0xRRGGBB）。
+const OP_WALLPAPER_PX: u64 = 8;
+/// 原色填充（a2=xywh，a3=0xRRGGBB）。
+const OP_FILL_RGB: u64 = 9;
 
 // 调色板（与内核 PALETTE 表同序同源）。
 const C_WHITE: u64 = 1;
@@ -456,28 +462,52 @@ struct Ui {
 }
 
 impl Ui {
-    /// 壁纸三段色带（与 tokens 暗色画布同向：深→更深→accent 海）。
+    /// 真壁纸整屏 blit（S4·AI-4/6：与 Windows WE 当前壁纸同源的静态帧，
+    /// 内核最近邻缩放）。壁纸模块缺席 → 回退三段色带（内核诚实契约）。
     fn wallpaper(&self) {
-        let h1 = self.h * 55 / 100;
-        let h2 = self.h * 85 / 100;
-        fill_rect(0, 0, self.w, h1, C_WALL0);
-        fill_rect(0, h1, self.w, h2 - h1, C_WALL1);
-        fill_rect(0, h2, self.w, self.h - h2, C_BLUE);
+        if frame(OP_WALLPAPER, 0, 0, 0, 0, 0) < 0 {
+            let h1 = self.h * 55 / 100;
+            let h2 = self.h * 85 / 100;
+            fill_rect(0, 0, self.w, h1, C_WALL0);
+            fill_rect(0, h1, self.w, h2 - h1, C_WALL1);
+            fill_rect(0, h2, self.w, self.h - h2, C_BLUE);
+        }
     }
 }
 
-/// 壁纸在竖坐标 y 处的段色（削角/浮层角回填依据——浮层永远浮在
-/// 「壁纸+任务栏」底图上，角落回填 = 该处壁纸段色，逐像素无痕）。
-fn wall_color_at(y: i64, ui: &Ui) -> u64 {
+/// 回退段色（壁纸缺席时与旧三段色带逐值一致）。
+fn wall_fallback(y: i64, ui: &Ui) -> u64 {
     let h1 = ui.h * 55 / 100;
     let h2 = ui.h * 85 / 100;
     if y < h1 {
-        C_WALL0
+        0x0C_14_30
     } else if y < h2 {
-        C_WALL1
+        0x1A_2A_55
     } else {
-        C_BLUE
+        0x38_74_D2
     }
+}
+
+/// 壁纸像素采样：屏幕坐标 → 0xRRGGBB（削角回填依据——浮层永远浮在
+/// 「壁纸+任务栏」底图上，角块回填 = 该处壁纸真色，逐像素无痕）。
+fn wall_px(x: i64, y: i64, ui: &Ui) -> u64 {
+    let r = frame(OP_WALLPAPER_PX, 0, 0, 0, pack_xywh(x, y), 0);
+    if r >= 0 {
+        return r as u64 & 0xFF_FFFF;
+    }
+    wall_fallback(y, ui)
+}
+
+/// 原色填充（照片色；palette 之外的真实色彩通道）。
+fn fill_rgb(x: i64, y: i64, w: i64, h: i64, rgb: u64) {
+    let _ = frame(
+        OP_FILL_RGB,
+        0,
+        0,
+        0,
+        pack_xywh(x, y) | ((w as u64 & 0xFFFF) << 32) | ((h as u64 & 0xFFFF) << 48),
+        rgb,
+    );
 }
 
 /// 面板四角削角（两段阶梯≈8px 圆角；角块回填壁纸段色）。
@@ -486,13 +516,13 @@ fn cut_corners(x: i64, y: i64, w: i64, h: i64, ui: &Ui) {
     let tb_y = ui.h - 48;
     for (dy, cw) in [(0i64, 8i64), (2, 3), (4, 2)] {
         // 左上 / 右上
-        fill_rect(x, y + dy, cw, 2, wall_color_at(y + dy, ui));
-        fill_rect(x + w - cw, y + dy, cw, 2, wall_color_at(y + dy, ui));
+        fill_rgb(x, y + dy, cw, 2, wall_px(x, y + dy, ui));
+        fill_rgb(x + w - cw, y + dy, cw, 2, wall_px(x + w - cw, y + dy, ui));
         // 左下 / 右下（不越过任务栏）
         let by = y + h - 2 - dy;
         if by < tb_y {
-            fill_rect(x, by, cw, 2, wall_color_at(by, ui));
-            fill_rect(x + w - cw, by, cw, 2, wall_color_at(by, ui));
+            fill_rgb(x, by, cw, 2, wall_px(x, by, ui));
+            fill_rgb(x + w - cw, by, cw, 2, wall_px(x + w - cw, by, ui));
         }
     }
 }

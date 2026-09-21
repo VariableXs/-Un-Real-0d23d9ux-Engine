@@ -92,6 +92,13 @@ def main(argv=None) -> int:
     iso_boot_select = os.path.join(ISO_ROOT, "boot-select.json")
     if not no_seed and not os.path.isfile(iso_boot_select):
         shutil.copy2(SEED_CONF, iso_boot_select)
+    # S4 壁纸模块（可选资产）：源 bin 在 _attic/wallpaper-src/（构建链
+    # t6-extract-frames.py 产出）；缺席 = ISO 不含该文件，内核回退色带。
+    WALLPAPER_BIN = os.path.join(ROOT, "_attic", "wallpaper-src", "wallpaper-rgb565.bin")
+    wallpaper_present = os.path.isfile(WALLPAPER_BIN)
+    if wallpaper_present:
+        os.makedirs(os.path.join(ISO_ROOT, "boot"), exist_ok=True)
+        shutil.copy2(WALLPAPER_BIN, os.path.join(ISO_ROOT, "wallpaper.rgb565"))
     initrd = os.path.join(ROOT, "build", "initrd.img")
     if not os.path.isfile(initrd):
         py = sys.executable
@@ -112,11 +119,13 @@ def main(argv=None) -> int:
         ("limine-bios-cd.bin", "limine-bios-cd.bin", "limine-bios-cd.bin", "LIMINE_BIOS_CD", "/BOOT", "/boot"),
         ("limine-uefi-cd.bin", "limine-uefi-cd.bin", "limine-uefi-cd.bin", "LIMINE_UEFI_CD", "/BOOT", "/boot"),
         ("limine-bios.sys", "limine-bios.sys", "limine-bios.sys", "LIMINE_BIOS_SYS", "/BOOT", "/boot"),
-    ]:
+    ] + ([("wallpaper.rgb565", "wallpaper.rgb565", "wallpaper.rgb565", "WALLPAPER_RGB565", "/", "/")] if wallpaper_present else []):
         diso, djoliet = ddiso, djoliet2
         src = conf if path == "limine.conf" else os.path.join(ISO_ROOT, path)
         if path == "boot-select.json" and not os.path.isfile(src):
             continue  # --no-seed 演练：副本缺席，ISO 不含该文件
+        if path == "boot/wallpaper.rgb565" and not wallpaper_present:
+            continue  # 壁纸资产缺席：ISO 不含该文件（内核回退色带）
         iso.add_file(src,
                      iso_path=diso + "/" + iso_name + ".;1",
                      rr_name=rr, joliet_path=djoliet + "/" + joliet)

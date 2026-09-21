@@ -297,13 +297,14 @@ pub static mut EXECUTABLE_FILE_REQUEST: Request<ExecutableFileResponse> = Reques
 
 /// 引导卷模块文件（任务4：boot-select.json 经内核声明的可选内模块进来；
 /// revision 1 + flags=0 = 缺失不报错，符合「文件不存在→内置默认」契约）。
+/// S4 壁纸模块：三世界同源静态帧（缺失 → 桌面回退色带，契约同款）。
 #[used]
 #[link_section = ".limine_requests"]
 pub static mut MODULE_REQUEST: ModuleRequest = ModuleRequest {
     id: [COMMON_MAGIC[0], COMMON_MAGIC[1], 0x3e7e279702be32af, 0xca1c4f3bd1280cee],
     revision: 1,
     response: core::ptr::null_mut(),
-    internal_module_count: 1,
+    internal_module_count: 2,
     internal_modules: (&raw mut BOOT_CFG_MODULES) as *mut *mut InternalModule,
 };
 
@@ -315,7 +316,16 @@ static mut BOOT_CFG_MODULE: InternalModule = InternalModule {
     flags: 0,
 };
 
-static mut BOOT_CFG_MODULES: [*mut InternalModule; 1] = [&raw mut BOOT_CFG_MODULE];
+static mut WALLPAPER_MODULE: InternalModule = InternalModule {
+    path: b"../wallpaper.rgb565\0".as_ptr(),
+    cmdline: b"\0".as_ptr(),
+    flags: 0,
+};
+
+static mut BOOT_CFG_MODULES: [*mut InternalModule; 2] = [
+    &raw mut BOOT_CFG_MODULE,
+    &raw mut WALLPAPER_MODULE,
+];
 
 #[used]
 #[link_section = ".limine_requests"]

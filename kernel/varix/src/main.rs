@@ -398,6 +398,9 @@ fn boot() -> ! {
         varix::kinfo!("boot-select: last_boot=variable recorded ok={}", ok);
     }
 
+    // --- wallpaper 装载（S4·AI-4/6：Limine 模块可选，缺席回退色带）--------------
+    varix::wallpaper::init_from_module();
+
     // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
     varix::inputsvc::target::input_probe();
 

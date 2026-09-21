@@ -186,6 +186,15 @@ MANIFEST = b"PortableApps manifest v1\ndemo-writer 1.0.0\ndemo-mind 1.0.0\r\n"
 BIG = bytes((i * 0x9E ^ 0x31) & 0xFF for i in range(7 * CLUSTER_BYTES))
 # /contig/contig.bin：连续簇文件（NoFatChain=1 路径）
 CONTIG = bytes((i * 0x5A ^ 0x77) & 0xFF for i in range(3 * CLUSTER_BYTES))
+# /boot-select.json（S4.2 last_boot 写回演练：L0 配置桥 SHARED 真相源种子；
+# last_boot 初值 = windows（模拟 Windows 侧 Variable 先写过的现场）。
+BOOT_SELECT = b"""{
+  "default_entry": "variable",
+  "timeout_sec": 5,
+  "show_menu": true,
+  "last_boot": "windows",
+  "handoff": true
+}"""
 
 # 构造子目录与文件
 def build():
@@ -225,6 +234,10 @@ def build():
     ROOT_ENTRIES.extend(make_file_entry("apps.json", aj, len(APPS_JSON), False, False))
     rm, _ = alloc_chain(1, False)
     ROOT_ENTRIES.extend(make_file_entry("README.txt", rm, len(README), False, False))
+    # boot-select.json（S4.2：SHARED 真相源种子，内核 last_boot 写回目标）
+    bsj, _ = alloc_chain(1, False)
+    files["boot_select_cluster"] = bsj
+    ROOT_ENTRIES.extend(make_file_entry("boot-select.json", bsj, len(BOOT_SELECT), False, False))
 
     # root 固定占用簇 4（与 BPB FirstClusterOfRootDirectory 一致；
     # 簇 2=bitmap 3=upcase 4=root 为 Windows 惯例分配序）。
@@ -248,6 +261,7 @@ def build():
             "hello": files["hello_data_cluster"],
             "manifest": mc, "apps_json": aj, "readme": rm,
             "big": bc, "contig": cc,
+            "boot_select_cluster": files["boot_select_cluster"],
         },
     }
 
@@ -323,6 +337,7 @@ def main(path):
     put_cluster(fc["manifest"], MANIFEST.ljust(CLUSTER_BYTES, b"\x00"))
     put_cluster(fc["apps_json"], APPS_JSON.ljust(CLUSTER_BYTES, b"\x00"))
     put_cluster(fc["readme"], README.ljust(CLUSTER_BYTES, b"\x00"))
+    put_cluster(fc["boot_select_cluster"], BOOT_SELECT.ljust(CLUSTER_BYTES, b"\x00"))
     put_cluster(fc["contig"], CONTIG)
     # big：7 簇链
     bc = fc["big"]

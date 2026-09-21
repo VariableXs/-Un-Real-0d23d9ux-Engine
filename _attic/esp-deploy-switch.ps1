@@ -64,6 +64,21 @@ try {
   if ($h1 -ne $h2) { throw '回读哈希不一致——拷贝损坏' }
   Write-Output 'kern hash verified'
 
+  # 5.5) wallpaper module (S4 optional asset): absent = fallback bands, never blocks boot.
+  $WALLSRC = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\wallpaper-src\wallpaper-rgb565.bin'
+  if (Test-Path $WALLSRC) {
+    if (-not (Test-Path 'L:\\boot')) { New-Item -ItemType Directory -Path 'L:\\boot' | Out-Null }
+    if (Test-Path 'L:\boot\wallpaper.rgb565') {
+      Copy-Item 'L:\boot\wallpaper.rgb565' (Join-Path $BACKUP_DIR 'wallpaper.rgb565.bak') -Force
+    }
+    Copy-Item $WALLSRC 'L:\boot\wallpaper.rgb565' -Force
+    $w1 = (Get-FileHash $WALLSRC -Algorithm SHA256).Hash
+    $w2 = (Get-FileHash 'L:\boot\wallpaper.rgb565' -Algorithm SHA256).Hash
+    if ($w1 -ne $w2) { throw 'wallpaper hash mismatch' }
+    Write-Output ('wallpaper deployed hash=' + $w1.Substring(0,16))
+  } else {
+    Write-Output 'wallpaper-src absent - skip (desktop falls back to color bands)'
+  }
   # 6) boot-select.json 双落点（S0.2 配置桥）：
   #    按 SHARED 卷标在同盘定位分区（不信卷号不信盘符），assign 后回读标签确认。
   $sharedLetter = $null
