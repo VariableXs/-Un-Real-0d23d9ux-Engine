@@ -30,6 +30,23 @@ use state::AppState;
 use tauri::Manager;
 
 pub fn run() {
+    // panic hook（2026-09-22 异常检测增强）：Rust 侧 panic 落盘 variable.log
+    // （此前只进 stderr——窗口进程不可见，崩溃即失语）。cli 分支之前安装，
+    // 所有运行模式覆盖；后写 hook（若 shell 模块另有安装）不覆盖本行为。
+    std::panic::set_hook(Box::new(|info| {
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "panic (non-string payload)".to_string()
+        };
+        crate::state::panic_log(&format!("rust panic at {loc}: {msg}"));
+    }));
     let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() && args[0].starts_with("--") {
         if let Some(code) = crate::cli::run_cli(&args) {

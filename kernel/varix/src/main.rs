@@ -366,6 +366,9 @@ fn boot() -> ! {
     // --- scheduler domain (F076~F100) --------------------------------------------------
     // Last in the boot chain: it needs CPU vectors, the clock tick and the
     // memory allocators, and it is what finally enables interrupts.
+    // F12 逃生门布防：bootselect 三卡已过（菜单即引导界面，期间关闸），
+    // 此后任意加载阶段按 F12 = 四级复位阶梯回本菜单。
+    varix::ps2::enable_f12_escape();
     let sched_state = varix::sched::init();
     varix::sched::render_to_console(&sched_state);
 
@@ -512,6 +515,26 @@ fn boot() -> ! {
     // 任务71 性能门禁口径：boot_ms 由内核时钟源实测（boot-replay/性能基线
     // 消费该行；"boot complete" 前缀保持兼容既有里程碑 grep）。
     varix::kinfo!("boot completed {} ms", varix::proc::usrshell::boot_ms());
+
+    // --- boot-summary（2026-09-22 诊断增强）：引导链异常征兆一站式汇总 ----
+    // 真机照片判读行：任何一项非 ok 即是排查入口（usb=0 → xHCI init 失败
+    // /键鼠无源；shared=0 → 双 NVMe 缺失或挂载失败；wp=0 → 壁纸模块缺席
+    // 回退色带；storage_probes=off 是默认安全态=存储探针门禁）。
+    {
+        let disp_mode = varix::displaysrv::target::service()
+            .map(|s| s.mode_name())
+            .unwrap_or("none");
+        varix::kinfo!(
+            "boot-summary: display={} usb_hid={} shared={} wallpaper={} f12_armed={} storage_probes={} pmm_free={}MiB",
+            disp_mode,
+            varix::drivers::xhci::target::hid_channel_live(),
+            varix::proc::usrshell::mount::available(),
+            varix::wallpaper::ready(),
+            varix::ps2::f12_armed(),
+            if varix::cmdline::flag("storage_selftest") { "on" } else { "off" },
+            varix::mem::pmm::free_bytes() >> 20
+        );
+    }
 
     // --- 需求 2 · A 卡交接（内核 → Variable）----------------------------------
     // 内核里跑不了 Tauri（要 Windows API + WebView2，结构上不可能），而

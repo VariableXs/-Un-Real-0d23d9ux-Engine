@@ -2027,6 +2027,14 @@ pub mod target {
         }
     }
 
+    /// USB HID 通道就绪态（2026-09-22 boot-summary 汇总用）：
+    /// true = 控制器已 init 且端口枚举过（键鼠泵可用或至少通道在位）。
+    pub fn hid_channel_live() -> bool {
+        let slot = &raw mut GLOBAL;
+        // SAFETY: 引导期单核读（boot-summary 在 probe 之后串行执行）。
+        unsafe { (*slot).is_some() }
+    }
+
     /// S4.1 实机入口：ACPI→MCFG→ECAM 扫描 xHCI→BAR 映射→初始化→端口
     /// 枚举→登记全局。无控制器时优雅跳过（镜像在其他验收配置下照常）。
     pub fn probe_and_selftest() {

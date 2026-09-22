@@ -166,6 +166,33 @@ pub fn append_log(logs_dir: &Path, msg: &str) {
     }
 }
 
+/// panic hook 落盘（2026-09-22 异常检测增强）：Rust 侧 panic 此前只进
+/// stderr（窗口进程里不可见，崩溃即失语）。独立解析数据目录（与 AppState
+/// 同口径：portable/data 优先 → appdata/data），logs/variable.log 追加；
+/// 全路径失败兜底 %TEMP%\variable-panic.log。hook 内禁止再 panic（全程
+/// 吞错误），消息剥控制字符 + 截断（同 log_frontend 口径）。
+pub fn panic_log(msg: &str) {
+    let clean: String = msg.chars().filter(|c| !c.is_control()).take(2000).collect();
+    let line = format!("[panic] {clean}");
+    let dir = portable_base()
+        .map(|b| b.join("data").join("logs"))
+        .or_else(|| dirs_app_data().map(|b| b.join("logs")));
+    if let Some(dir) = dir {
+        if fs::create_dir_all(&dir).is_ok() {
+            append_log(&dir, &line);
+            return;
+        }
+    }
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::temp_dir().join("variable-panic.log"))
+        .and_then(|mut f| {
+            use std::io::Write;
+            writeln!(f, "{line}")
+        });
+}
+
 impl AppState {
     pub fn append_log_public(logs_dir: &Path, level: &str, msg: &str) {
         let clean: String = msg.chars().filter(|c| !c.is_control()).take(2000).collect();
