@@ -84,6 +84,10 @@ const OP_WALLPAPER: u64 = 7;
 const OP_WALLPAPER_PX: u64 = 8;
 /// 原色填充（a2=xywh，a3=0xRRGGBB）。
 const OP_FILL_RGB: u64 = 9;
+/// 指针底图备份（内核 16×16 shadow）：a2=x|y。画指针前必须先 SAVE。
+const OP_CURSOR_SAVE: u64 = 10;
+/// 指针底图恢复（写回最近一次 SAVE 的区域）。擦指针用，零全屏重绘。
+const OP_CURSOR_RESTORE: u64 = 11;
 
 // 调色板（与内核 PALETTE 表同序同源）。
 const C_WHITE: u64 = 1;
@@ -593,6 +597,10 @@ fn draw_glyph(kind: usize, x: i64, y: i64) {
 }
 
 /// 鼠标光标（箭头：黑描底 + 白面；11 行逐行 fill，逐行加宽）。
+///
+/// 2026-09-22 流畅性契约：画指针前必须先 OP_CURSOR_SAVE 备份底图；
+/// 擦指针 = OP_CURSOR_RESTORE（内核写回 shadow），**绝不全屏重绘**。
+/// 位移帧成本 = 2×(16×16 像素) ≈ 2KB 显存访问，vs 全屏重绘 8.3MB。
 fn draw_cursor(cx: i64, cy: i64) {
     // 黑描边（整体偏移 1px）
     for i in 0..7 {
@@ -606,6 +614,14 @@ fn draw_cursor(cx: i64, cy: i64) {
     }
     fill_rect(cx, cy + 7, 2, 4, C_WHITE);
     fill_rect(cx + 1, cy + 8, 1, 3, C_WHITE);
+}
+
+/// 备份底图 + 画指针 + 记录 shadow 位置（2026-09-22 流畅性契约的唯一
+/// 落笔点：任何画指针的路径都经它，保证 RESTORE 永远有有效底图）。
+fn place_cursor(shadow: &mut Option<(i64, i64)>, cur: (i64, i64)) {
+    let _ = frame(OP_CURSOR_SAVE, 0, 0, 0, pack_xywh(cur.0, cur.1), 0);
+    draw_cursor(cur.0, cur.1);
+    *shadow = Some(cur);
 }
 
 // --- 既有绘制件（里程碑文案等） ---
@@ -1179,6 +1195,9 @@ pub extern "C" fn _start() -> ! {
 
     // 鼠标状态（S2.05 R2 消费端）：光标初始屏幕中心；按钮位边沿检测。
     let mut cur = (w / 2, h / 2);
+    // 指针 shadow 状态：Some(位置) = 内核 shadow 持有该位置的底图，
+    // 允许 RESTORE；None = 无有效底图（先 SAVE 再画）。
+    let mut cur_shadow: Option<(i64, i64)> = None;
     let mut prev_btn = 0u8;
     let mut prev_hot = Hot::None;
     let mut prev_up = (u64::MAX, u64::MAX);
@@ -1205,7 +1224,9 @@ pub extern "C" fn _start() -> ! {
                 4 => draw_settings(&ui, &settings, setting_sel, hot),
                 _ => draw_about(&ui, &about_info[..info_len(&about_info)], hot),
             }
-            draw_cursor(cur.0, cur.1);
+            // 全屏重绘盖掉了旧底图：shadow 作废，重新备份再画指针。
+            cur_shadow = None;
+            place_cursor(&mut cur_shadow, cur);
             need_redraw = false;
         }
 
@@ -1220,8 +1241,17 @@ pub extern "C" fn _start() -> ! {
             if e.is_mouse {
                 // 鼠标：位移累加+视口钳制；按钮位边沿→点击。
                 if e.dx != 0 || e.dy != 0 {
+                    // 局部擦/画（2026-09-22 流畅性修复）：恢复旧底图 →
+                    // 备份+画新指针。不做全屏重绘——位移帧只有 2KB 显存
+                    // 访问，鼠标不再断续；悬停态变化仍走上方全屏路径。
+                    // （crate::frame 全路径：局部 `frame` 计数变量遮蔽了 fn。）
+                    if cur_shadow == Some(cur) {
+                        let _ = crate::frame(OP_CURSOR_RESTORE, 0, 0, 0, pack_xywh(cur.0, cur.1), 0);
+                        cur_shadow = None;
+                    }
                     cur.0 = (cur.0 + e.dx as i64).clamp(0, w - 1);
                     cur.1 = (cur.1 - e.dy as i64).clamp(0, h - 1); // PS/2 语义 dy 正=向上（与 bootselect 同契约）
+                    place_cursor(&mut cur_shadow, cur);
                     handled = true;
                 }
                 let pressed = e.btn & !prev_btn;

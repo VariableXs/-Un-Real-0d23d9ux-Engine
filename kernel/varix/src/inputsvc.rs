@@ -117,6 +117,9 @@ impl InputEvent {
             BracketR => 55,
             Backslash => 56,
             Grave => 57,
+            // F12=58：逃生门专用序号（ushell 侧不消费——note_key 在内核
+            // feed 层已拦截复位；此处兜底防枚举加键破坏契约序号）。
+            F12 => 58,
         }
     }
 
@@ -134,8 +137,7 @@ impl InputEvent {
             7 => Left,
             8 => Right,
             9 => LShift,
-            10 => RShift,
-            11 => A,
+            10 => RShift,            11 => A,
             12 => B,
             13 => C,
             14 => D,
@@ -182,6 +184,7 @@ impl InputEvent {
             55 => BracketR,
             56 => Backslash,
             57 => Grave,
+            58 => F12,
             _ => return None,
         })
     }
@@ -555,6 +558,7 @@ impl InputService {
     /// 键盘口字节入服务（同源：解码走任务1 的 [`ps2::Decoder`]）。
     pub fn feed_key_byte(&mut self, b: u8) -> Option<InputEvent> {
         let k = self.key_dec.feed(b)?;
+        crate::ps2::note_key(k); // F12 逃生门过闸（门关时零开销直通）
         let ev = InputEvent::Key(k);
         self.publish(ev);
         Some(ev)
@@ -777,6 +781,15 @@ pub mod target {
         s.take_mouse()
     }
 
+    /// F12 逃生门协作检查点（2026-09-22 用户令）：长循环（win_probe 合成、
+    /// display_probe 撕裂扫描等）周期性调用——泵一次键鼠（PS/2 + USB HID），
+    /// F12 若被按下即经 ps2::note_key 触发四级复位回引导菜单。门关时本
+    /// 函数只有泵成本，零语义。供卡死逃生的调用粒度 ≈ 每 30 行/每帧。
+    pub fn f12_checkpoint() {
+        let s = svc();
+        s.pump();
+    }
+
     /// 菜单结束，把键源订阅槽**还回去**。
     ///
     /// 为什么必须还：`MAX_SUBS` 只有 4 个。菜单只在倒计时那几秒需要键源，
@@ -837,7 +850,44 @@ pub mod target {
             buf[n * 16..n * 16 + 16].copy_from_slice(&ev.to_shim_bytes(seq));
             n += 1;
         }
+        heartbeat_tick();
         n
+    }
+
+    /// 实机心跳（2026-09-22 诊断增强）：ushell 每帧 drain 必经之路，TSC
+    /// 限流每 5s 一行——帧/输入/显示/内存/F12 一站式快照，供用户拍照回传
+    /// 判异常（鼠标断续=rects 长期 0、假死=心跳停走、F12 误触=hits 异常涨）。
+    static HB_LAST_TSC: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+    static HB_SEQ: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+    pub fn heartbeat_tick() {
+        use core::sync::atomic::Ordering;
+        let tsc = crate::cpu::clock::read_tsc();
+        let tsc_hz = crate::platform::info()
+            .map(|p| p.tsc_hz)
+            .unwrap_or(1_000_000_000);
+        let last = HB_LAST_TSC.load(Ordering::Relaxed);
+        if last != 0 && tsc.wrapping_sub(last) < tsc_hz.saturating_mul(5) {
+            return;
+        }
+        HB_LAST_TSC.store(tsc, Ordering::Relaxed);
+        let seq = HB_SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+        let (events, dropped) = svc().stats();
+        let (frames, rects, merges) = crate::displaysrv::target::service()
+            .map(|s| s.stats())
+            .unwrap_or((0, 0, 0));
+        crate::kinfo!(
+            "heartbeat #{}: up~{}s events={} dropped={} frames={} rects={} merges={} pmm_free={}MiB f12={}",
+            seq,
+            tsc / tsc_hz.max(1),
+            events,
+            dropped,
+            frames,
+            rects,
+            merges,
+            crate::mem::pmm::free_bytes() >> 20,
+            crate::ps2::f12_hits()
+        );
     }
 
     /// BootScreen 键盘诊断字（2026-09-20 实机取证；boot://event 记录 idx=14

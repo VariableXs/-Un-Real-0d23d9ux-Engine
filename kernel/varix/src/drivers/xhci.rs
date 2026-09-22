@@ -441,6 +441,7 @@ pub fn key_to_ps2_make(k: ps2::Key) -> u8 {
         BracketR => 0x1B,
         Backslash => 0x2B,
         Grave => 0x29,
+        F12 => 0x58, // SET1 F12；USB HID → make → ps2::decode 逆映射闭环
     }
 }
 
@@ -749,6 +750,37 @@ fn try_init<B: BarAccess, M: DmaMem>(
     Ok(c)
 }
 
+/// 失败现场取证（2026-09-22 诊断增强，实机专用）：读能力/操作段关键寄存器
+/// 落串口——USBSTS bit3=HSE（Host System Error，真机 "status=8" 即它）、
+/// bit11=CNR、bit12=HCE；USBCMD 看 RS/HCRST 残留；CAPLENGTH 校验 BAR 映射
+/// 是否落在有效寄存器区。只读，不改任何寄存器。泛型 B 与 init_with_recovery
+/// 的 BarAccess 约束同源（宿主模拟器不编译本函数）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn xhci_failure_forensics<B: BarAccess>(bar: &mut B) {
+    let cap0 = bar.read32(REG_CAPLENGTH);
+    let op = (cap0 & 0xFF) as u16;
+    crate::kwarn!(
+        "xhci: forensics CAPLENGTH={:#010x} op_off={}",
+        cap0,
+        op
+    );
+    if op == 0 || op > 0x400 {
+        crate::kwarn!("xhci: forensics op offset out of range - BAR mapping suspect");
+        return;
+    }
+    let cmd = bar.read32(op + OP_USBCMD);
+    let sts = bar.read32(op + OP_USBSTS);
+    crate::kwarn!(
+        "xhci: forensics USBCMD={:#010x} USBSTS={:#010x} (HCH={} HSE={} CNR={} HCE={})",
+        cmd,
+        sts,
+        sts & 1,
+        (sts >> 3) & 1,
+        (sts >> 11) & 1,
+        (sts >> 12) & 1
+    );
+}
+
 impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
     /// 完整初始化（含恢复路径）：复位 → 编程环 → 启动。任何一步超时 →
     /// 完整复位重试一次 → 仍失败如实 `DeviceReset`。
@@ -763,8 +795,23 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                     bar = b;
                     mem = m;
                 }
-                Err((_, _, BlockError::Timeout)) => return Err(BlockError::DeviceReset),
-                Err((_, _, e)) => return Err(e),
+                Err((mut b, _, e)) => {
+                    // 失败现场取证（2026-09-22 诊断增强）：真机 status=8 类
+                    // 失败此前只有一句 Err——寄存器现场全部丢失。bar 还在
+                    // 手（本次 try_init 的所有权返回），把 CAPLENGTH/USBCMD/
+                    // USBSTS 落串口，日志直接可判。错误码语义保持原样
+                    // （二次 Timeout → DeviceReset）。
+                    #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+                    xhci_failure_forensics(&mut b);
+                    #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
+                    let _ = b;
+                    let final_e = if matches!(e, BlockError::Timeout) {
+                        BlockError::DeviceReset
+                    } else {
+                        e
+                    };
+                    return Err(final_e);
+                }
             }
         }
     }
@@ -1772,6 +1819,9 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
                 }
             };
             if let Some(ev) = ev_out {
+                if let HidEvent::Key(k) = ev {
+                    crate::ps2::note_key(k); // F12 逃生门过闸（USB 键盘同源）
+                }
                 if n < out.len() {
                     out[n] = Some(ev);
                     n += 1;

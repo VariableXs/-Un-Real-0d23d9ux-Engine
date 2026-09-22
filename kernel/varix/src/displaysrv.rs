@@ -388,6 +388,12 @@ pub mod target {
         svc.commit(&[]);
         let mut y_prev: Option<i64> = None;
         for i in 0..FRAMES {
+            // F12 逃生门协作检查点：每 30 帧泵一次键鼠（撕裂扫描是长循环）。
+            // inputsvc::target 仅 target 态存在（宿主测试走注入字节，无端口）。
+            #[cfg(all(target_arch = "x86_64", target_os = "none"))]
+            if i % 30 == 0 {
+                crate::inputsvc::target::f12_checkpoint();
+            }
             let y_new = (i as i64 * 7) % (h - BAND_H).max(1);
             {
                 let surf = svc.draw_surface();

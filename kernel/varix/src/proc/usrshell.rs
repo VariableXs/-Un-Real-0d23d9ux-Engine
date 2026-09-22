@@ -154,6 +154,15 @@ pub const FRAME_WALLPAPER: u64 = 7;
 pub const FRAME_WALLPAPER_PX: u64 = 8;
 /// 原色填充（照片色回填）：a2 = xywh 打包，a3 = 0xRRGGBB。
 pub const FRAME_FILL_RGB: u64 = 9;
+/// 鼠标指针底图备份：a2 = x|y 打包，把 16×16 区域读进内核 shadow
+/// （2026-09-22 鼠标流畅性修复：指针局部擦/画替代全屏重绘）。
+pub const FRAME_CURSOR_SAVE: u64 = 10;
+/// 鼠标指针底图恢复：a2 = x|y 打包，把 shadow 写回（必须与最近一次
+/// SAVE 同位置；未保存过/已恢复 = no-op 返回 1）。
+pub const FRAME_CURSOR_RESTORE: u64 = 11;
+
+/// 指针底图 shadow 尺寸（包围 9×13 箭头留余量）。
+pub const CURSOR_SHADOW_SIDE: usize = 16;
 
 /// 文本长度上限（栈缓冲预算；a1 bit16..24 装载）。
 pub const FRAME_TEXT_MAX: usize = 255;
@@ -505,6 +514,14 @@ pub fn sys_frame(a1: u64, a2: u64, a3: u64) -> i64 {
             surf.fill_rect(x, y, w, h, c);
             0
         }
+        FRAME_CURSOR_SAVE => {
+            let (x, y, _, _) = unpack_xywh(a2);
+            cursor_shadow_save(surf, x, y)
+        }
+        FRAME_CURSOR_RESTORE => {
+            let (x, y, _, _) = unpack_xywh(a2);
+            cursor_shadow_restore(surf, x, y)
+        }
         FRAME_TEXT => {
             let len = ((a1 >> 16) & 0xFF) as usize;
             let scale = ((a1 >> 28) & 0xF) as i64;
@@ -569,6 +586,54 @@ pub fn sys_input(a1: u64, a2: u64, _a3: u64) -> i64 {
 #[cfg(not(all(target_arch = "x86_64", target_os = "none")))]
 pub fn sys_input(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     enosys()
+}
+
+/// 指针底图 shadow（2026-09-22 鼠标流畅性修复）：内核侧单份 16×16 快照。
+/// ushell 桌面期单线程独占（ring3 主循环串行 syscall），static mut 无并发。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+static mut CURSOR_SHADOW: Option<[u32; CURSOR_SHADOW_SIDE * CURSOR_SHADOW_SIDE]> = None;
+
+/// SAVE：把 (x,y) 起的 16×16 底图读进 shadow（越界像素跳过——RESTORE
+/// 同样跳过越界，视觉无差）。返回 0。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn cursor_shadow_save(surf: &mut crate::fb::Surface, x: i64, y: i64) -> i64 {
+    let mut buf = [0u32; CURSOR_SHADOW_SIDE * CURSOR_SHADOW_SIDE];
+    let mut i = 0usize;
+    for dy in 0..CURSOR_SHADOW_SIDE as i64 {
+        for dx in 0..CURSOR_SHADOW_SIDE as i64 {
+            if let Some(px) = surf.get_px(x + dx, y + dy) {
+                buf[i] = px;
+            }
+            i += 1;
+        }
+    }
+    let slot = &raw mut CURSOR_SHADOW;
+    unsafe {
+        *slot = Some(buf);
+    }
+    0
+}
+
+/// RESTORE：把 shadow 写回 (x,y)（必须与最近一次 SAVE 同位置——ushell
+/// 契约；未保存过/已消费 = no-op 返回 1）。写完消费掉 shadow，防二次
+/// RESTORE 把旧底图盖到新位置。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn cursor_shadow_restore(surf: &mut crate::fb::Surface, x: i64, y: i64) -> i64 {
+    let slot = &raw mut CURSOR_SHADOW;
+    let taken = unsafe { (*slot).take() };
+    let Some(buf) = taken else { return 1 };
+    let fmt = surf.format();
+    let mut i = 0usize;
+    for dy in 0..CURSOR_SHADOW_SIDE as i64 {
+        for dx in 0..CURSOR_SHADOW_SIDE as i64 {
+            let px = buf[i];
+            i += 1;
+            if x + dx >= 0 && y + dy >= 0 {
+                surf.set_px(x + dx, y + dy, fmt.unpack(px));
+            }
+        }
+    }
+    0
 }
 
 /// SYS_REBOOT 处理器：重启整机，交还固件引导序（Windows 默认第一项）。

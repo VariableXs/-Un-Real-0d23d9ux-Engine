@@ -76,6 +76,10 @@ pub enum Key {
     BracketR,
     Backslash,
     Grave,
+    /// F12 逃生门（2026-09-22 用户令）：varix 加载期/卡死时按下 =
+    /// 立即回引导界面（8042 脉冲复位 → Limine → bootselect 三卡）。
+    /// SET1 make=0x58、SET2 make=0x6D；触发开关见 [`F12_GATE`]。
+    F12,
 }
 
 /// 扫描码 → 键。返回 `None` 表示与本层无关（含断码/其它键）。
@@ -152,6 +156,7 @@ pub fn decode(make: u8, ext: bool) -> Option<Key> {
         0x1B => Some(Key::BracketR),
         0x2B => Some(Key::Backslash),
         0x29 => Some(Key::Grave),
+        0x58 => Some(Key::F12), // SET1 F12（SET1 表无冲突空位）
         _ => None,
     }
 }
@@ -289,8 +294,57 @@ fn decode_set2_nav(b: u8) -> Option<Key> {
         0x5A => Key::Enter,     // SET2 Enter
         0x76 => Key::Esc,       // SET2 Esc
         0x66 => Key::Backspace, // SET2 Bksp
+        0x6D => Key::F12,       // SET2 F12（Y7000 EC/i8042 兼容层）
         _ => return None,
     })
+}
+
+// ---------------------------------------------------------------------------
+// F12 逃生门（2026-09-22 用户令，引导设施红线同源）
+// ---------------------------------------------------------------------------
+//
+// 语义：varix 加载期/卡死时按 F12 = 立即重启回引导界面（bootselect 三卡）。
+// 复用 SYS_REBOOT 的四级复位阶梯（UEFI ResetSystem → 8042 脉冲 → ACPI
+// 0xCF9 → 三重故障兜底），**绝不写 NVRAM/BootNext**——复位后固件走默认
+// 引导序（内置盘 Windows 居首），Limine/varix 三卡照常可达。
+//
+// 生效面（诚实声明）：**轮询路径**——bootselect 结束后的一切键盘输入
+// 通道（PS/2 泵、USB 键盘 HID、长循环协作检查点）。纯中断级捕获（IRQ1
+// 路由）尚未启用：IOAPIC legacy 路由全默认 mask，贸然打开有新中断风暴
+// 风险，列入后续批次。已知的 win_probe/display_probe 长循环内置了协作
+// 检查点（每 30 行泵一次键盘），覆盖当前已知的全部卡死点。
+
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+static F12_GATE: AtomicBool = AtomicBool::new(false);
+static F12_HITS: AtomicU64 = AtomicU64::new(0);
+
+/// main.rs 在 bootselect 三卡选定后开启逃生门（菜单本身就是引导界面，
+/// 菜单期间无需逃生，关闸防重启循环）。
+pub fn enable_f12_escape() {
+    F12_GATE.store(true, Ordering::Relaxed);
+    crate::kinfo!("f12: escape armed — F12 anytime = reboot into boot menu");
+}
+
+/// F12 触发计数（诊断快照）。
+pub fn f12_hits() -> u64 {
+    F12_HITS.load(Ordering::Relaxed)
+}
+
+/// 逃生门是否已布防。
+pub fn f12_armed() -> bool {
+    F12_GATE.load(Ordering::Relaxed)
+}
+
+/// 键事件统一过闸：F12 且门开 → 四级复位阶梯（正常不返回）。
+/// 所有键盘输入通道解出 `Key` 后都必须调用本函数（单一过闸点）。
+pub fn note_key(k: Key) {
+    if matches!(k, Key::F12) && F12_GATE.load(Ordering::Relaxed) {
+        let n = F12_HITS.fetch_add(1, Ordering::Relaxed) + 1;
+        crate::kinfo!("f12: ESCAPE triggered (hit #{}) — reboot into boot menu", n);
+        let _ = crate::proc::usrshell::sys_reboot(0, 0, 0);
+        // sys_reboot 正常不返回；返回 = 全阶梯落空（日志已留痕），轮询继续。
+    }
 }
 
 /// 目标态：从 PS/2 控制器轮询出一个键事件（非阻塞）。
