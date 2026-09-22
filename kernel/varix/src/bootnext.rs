@@ -779,11 +779,31 @@ pub fn resolve_windows_entry_for(cmdline: &str, usb_guid: Option<&[u8; 16]>) -> 
 /// 第二梯队匹配（S1.5 补充）：形似 Windows 项 + 描述含 `VARIX`。
 /// 仅在 usb 目标下生效——internal 目标保持原语义（任意 Windows 项），
 /// 不给内置盘引导项引入新的匹配面。
+///
+/// **设备路径有效性闸门（2026-09-23 实机循环根因加固）**：Lenovo 真机
+/// Boot2001 实锤 `FilePathListLength=4`（路径 = 纯 END 节点 `7fff0400`）——
+/// 描述命中但固件无处加载，兑现失败后回落本次引导设备（F12 手选的 U 盘）
+/// → 再进菜单 → 再交接 → **无限复位循环**。凡 Load Option 路径长度 ≤4
+/// （END-only）的项一律不命中：宁可不交接（落 ushell 防自锁语义），
+/// 也不写一个必然兑现失败的 BootNext。
 pub fn option_matches_varix(bytes: &[u8], usb_guid: Option<&[u8; 16]>) -> bool {
     if usb_guid.is_none() {
         return false;
     }
+    match load_option_filepath_len(bytes) {
+        Some(n) if n > 4 => {}
+        _ => return false,
+    }
     option_looks_like_windows(bytes) && utf16_contains_ascii_ignore_case(bytes, "varix")
+}
+
+/// 解析 EFI Load Option 的 `FilePathListLength`（偏移 4..6，u16 LE）。
+/// 少于 6 字节的缓冲无此字段，返回 None。
+pub fn load_option_filepath_len(bytes: &[u8]) -> Option<usize> {
+    if bytes.len() < 6 {
+        return None;
+    }
+    Some(u16::from_le_bytes([bytes[4], bytes[5]]) as usize)
 }
 
 /// 进固件设置（UEFI 2.4+ `OsIndications` 标准通道）。
@@ -877,10 +897,17 @@ mod tests {
     }
 
     /// 构造一条 EFI_LOAD_OPTION：Attributes + FilePathListLength + 描述 + 路径。
+    /// 构造**真实形态**的 EFI Load Option：
+    /// attr=1 | FilePathListLength | desc(UTF-16 NUL) | path(UTF-16 NUL) + END 节点。
+    /// 2026-09-23 起第二梯队校验 FilePathListLength>4——测试数据必须带真头部，
+    /// 全零假头部（fplen=0）会让所有合法项被路径闸门拒收。
     fn load_option(desc: &str, path: &str) -> std::vec::Vec<u8> {
-        let mut v = std::vec![0u8; 6];
+        let mut p = utf16(path);
+        p.extend_from_slice(&[0x7F, 0xFF, 0x04, 0x00]); // END node (Type 7F, Sub FF, Len 4)
+        let mut v = 1u32.to_le_bytes().to_vec();
+        v.extend_from_slice(&(p.len() as u16).to_le_bytes());
         v.extend_from_slice(&utf16(desc));
-        v.extend_from_slice(&utf16(path));
+        v.extend_from_slice(&p);
         v
     }
 
@@ -1020,6 +1047,24 @@ mod tests {
             &load_option("Windows Boot Manager", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
             Some(&g)
         ));
+    }
+
+    #[test]
+    fn varix_second_tier_rejects_empty_filepath() {
+        // 2026-09-23 实机循环根因复刻：Lenovo Boot2001 描述对、路径 END-only
+        // （FilePathListLength=4，hex 7fff0400）——bcdedit set device 清空所致。
+        // 这种项描述完美命中、固件却无处加载 → 兑现失败回落 U 盘 → 无限复位循环。
+        // 路径闸门必须拒收它，退化为防自锁语义（落 ushell，宁缺毋循环）。
+        let g = parse_guid_text("636786cb-e967-49f6-b0df-7608909d1f11").unwrap();
+        let mut broken = load_option("VARIX Windows (USB)", r"\EFI\Microsoft\Boot\bootmgfw.efi");
+        assert!(option_matches_varix(&broken, Some(&g)), "合法形态必须先通过（对照）");
+        broken[4] = 4; // FilePathListLength = 4 = 纯 END 节点
+        broken[5] = 0;
+        assert!(!option_matches_varix(&broken, Some(&g)), "END-only 路径不得命中");
+        // 路径字段解析器本身的边界
+        assert_eq!(load_option_filepath_len(&broken), Some(4));
+        assert_eq!(load_option_filepath_len(&broken[..5]), None, "不足 6 字节无此字段");
+        assert!(option_looks_like_windows(&broken), "路径闸门不影响 looks 判定本身");
     }
 
     #[test]
