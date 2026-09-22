@@ -11,15 +11,7 @@ $BACKUP_DIR = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\esp-backup'
 # boot_timeout=0：倒计时/默认项/交接改由 boot-select.json 驱动——内核经 Limine
 # internal module 读取引导卷根的 boot-select.json，副本缺失=verbose 警告+内置
 # 默认，引导永不失败；cmdline 显式值优先级仍最高，需要时在此加 kernel_cmdline）。
-$CONF = @'
-# Varix kernel Limine config (v8+ limine.conf format)
-timeout: 0
-serial: yes
-
-/VARIX Kernel
-    protocol: limine
-    kernel_path: boot():/kernel/varix
-'@
+# （2026-09-22：$CONF 内嵌副本已删除——第 4 步直接拷贝 repo 根 limine.conf。）
 
 try {
   # 0) 摘历史残留 L:（失败忽略）
@@ -50,8 +42,11 @@ try {
   }
   Write-Output 'backup ok (local + ESP limine.conf.bak)'
 
-  # 4) 写新 limine.conf（UTF-8 无 BOM）
-  [IO.File]::WriteAllText('L:\limine.conf', $CONF, (New-Object System.Text.UTF8Encoding($false)))
+  # 4) 写新 limine.conf——**单一事实源 = repo 根 limine.conf**（2026-09-22 起
+  #    不再内嵌 $CONF 副本，消除双源漂移；UTF-8 无 BOM 写回）。
+  $REPOCONF = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\limine.conf'
+  if (-not (Test-Path $REPOCONF)) { throw "repo limine.conf 缺失: $REPOCONF" }
+  [IO.File]::WriteAllText('L:\limine.conf', (Get-Content $REPOCONF -Raw -Encoding UTF8), (New-Object System.Text.UTF8Encoding($false)))
   Write-Output '===== new limine.conf ====='
   Get-Content 'L:\limine.conf' -Raw | Write-Output
 

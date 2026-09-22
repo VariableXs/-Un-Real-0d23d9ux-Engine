@@ -186,16 +186,26 @@ impl Console {
                 s.row += 1;
                 return;
             }
-            // Scroll: move rows 1..rows up by one, clear the last row.
+            // Scroll：**批滚 8 行**（2026-09-22 真机假死修复）。fb 是不可缓存
+            // MMIO——逐行滚 = 每行日志一次全屏 UC memmove（1080p 单次 8.1MB），
+            // 引导日志几百行累计 GB 级 UC 流量 = 用户看到的「卡死」（实为
+            // 每行 0.2-0.6s 的显存慢搬）。批滚后滚动频次 ÷8，总显存流量 ÷8；
+            // 视觉上新行仍逐行出现（写入位置在滚动区），仅滚动本身一次跳 8 行。
+            let batch: i64 = 8;
+            let batch = batch.min(s.rows as i64 - 1).max(1);
             let cell_h = CELL_H as i64;
-            s.surf.copy_rows(0, cell_h, (s.rows as i64 - 1) * cell_h);
+            s.surf
+                .copy_rows(0, cell_h * batch, (s.rows as i64 - batch) * cell_h);
             s.surf.fill_rect(
                 0,
-                (s.rows as i64 - 1) * cell_h,
+                (s.rows as i64 - batch) * cell_h,
                 s.cols as i64 * GLYPH_W as i64,
-                cell_h,
+                batch * cell_h,
                 s.bg.color(),
             );
+            // 光标落在滚动区顶行：接下来 batch-1 次 newline 走普通行进，
+            // 直到再次触底才物理滚动。
+            s.row = (s.rows as i64 - batch) as u32;
         }
     }
 
