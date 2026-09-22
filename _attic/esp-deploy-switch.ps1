@@ -65,15 +65,16 @@ try {
   Write-Output 'kern hash verified'
 
   # 5.5) wallpaper module (S4 optional asset): absent = fallback bands, never blocks boot.
+  #      落点=ESP 根级（与内核 module 请求 ../wallpaper.rgb565 一致；09-22 实机
+  #      实证 /boot/ 子目录读不到 → module absent → 色带回退）。
   $WALLSRC = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\wallpaper-src\wallpaper-rgb565.bin'
   if (Test-Path $WALLSRC) {
-    if (-not (Test-Path 'L:\\boot')) { New-Item -ItemType Directory -Path 'L:\\boot' | Out-Null }
-    if (Test-Path 'L:\boot\wallpaper.rgb565') {
-      Copy-Item 'L:\boot\wallpaper.rgb565' (Join-Path $BACKUP_DIR 'wallpaper.rgb565.bak') -Force
+    if (Test-Path 'L:\wallpaper.rgb565') {
+      Copy-Item 'L:\wallpaper.rgb565' (Join-Path $BACKUP_DIR 'wallpaper.rgb565.bak') -Force
     }
-    Copy-Item $WALLSRC 'L:\boot\wallpaper.rgb565' -Force
+    Copy-Item $WALLSRC 'L:\wallpaper.rgb565' -Force
     $w1 = (Get-FileHash $WALLSRC -Algorithm SHA256).Hash
-    $w2 = (Get-FileHash 'L:\boot\wallpaper.rgb565' -Algorithm SHA256).Hash
+    $w2 = (Get-FileHash 'L:\wallpaper.rgb565' -Algorithm SHA256).Hash
     if ($w1 -ne $w2) { throw 'wallpaper hash mismatch' }
     Write-Output ('wallpaper deployed hash=' + $w1.Substring(0,16))
   } else {

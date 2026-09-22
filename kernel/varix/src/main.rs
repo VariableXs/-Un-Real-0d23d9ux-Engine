@@ -410,41 +410,60 @@ fn boot() -> ! {
     // --- window surface probe（AI-4 · S2.06/S2.09：窗口面注册+行提交+块链+
     //     Z 序合成+焦点命中全链，serial 断言 win-probe: PASS）--------------------
     varix::winsurf::win_probe();
+    varix::kinfo!("boot-trace: win-probe done");
 
     // --- quota service probe（任务56：三方配额矩阵+水位回收+GPU 通道）--------------
+    varix::kinfo!("boot-trace: quota-probe begin");
     varix::quota::target::quota_probe();
+    varix::kinfo!("boot-trace: quota-probe done");
 
     // --- shm service probe（任务32：授权模型全矩阵）-----------------------------------
+    varix::kinfo!("boot-trace: shm-probe begin");
     varix::shmsrv::target::shm_probe();
+    varix::kinfo!("boot-trace: shm-probe done");
 
     // --- vfs guard probe（任务30：白名单裁决矩阵，纯计算）---------------------------
+    varix::kinfo!("boot-trace: vfs-probe begin");
     varix::vfsguard::target::vfs_decisions_probe();
+    varix::kinfo!("boot-trace: vfs-probe done");
 
     // --- picflow probe（任务48：画面流通道 VM帧源→显示栈 全链直写）-----------------
+    varix::kinfo!("boot-trace: picflow-probe begin");
     varix::stream::picflow::target::picflow_probe();
+    varix::kinfo!("boot-trace: picflow-probe done");
 
 
 
     // --- input domain (F151~F175) ------------------------------------------------------
+    varix::kinfo!("boot-trace: input-domain begin");
     let input_state = varix::input::init();
     varix::input::render_to_console(&input_state);
+    varix::kinfo!("boot-trace: input-domain done");
 
     // --- display domain (F176~F200) ----------------------------------------------------
+    varix::kinfo!("boot-trace: display-domain begin");
     let display_state = varix::display::init();
     varix::display::render_to_console(&display_state);
+    varix::kinfo!("boot-trace: display-domain done");
 
     // --- network domain (F201~F225) ----------------------------------------------------
+    varix::kinfo!("boot-trace: net-domain begin");
     let net_state = varix::net::init();
     varix::net::render_to_console(&net_state);
+    varix::kinfo!("boot-trace: net-domain done");
 
     // --- security domain (F226~F250) ---------------------------------------------------
+    varix::kinfo!("boot-trace: sec-domain begin");
     let sec_state = varix::security::init();
     varix::security::render_to_console(&sec_state);
+    varix::kinfo!("boot-trace: sec-domain done");
 
     // --- integrity (F021) ------------------------------------------------------------
+    varix::kinfo!("boot-trace: integrity begin");
     TIMELINE.stage_begin(Stage::Integrity, varix::timeline::read_tsc());
     let chain = varix::integrity::init();
     TIMELINE.stage_end(Stage::Integrity, varix::timeline::read_tsc());
+    varix::kinfo!("boot-trace: integrity done");
     let prefix = core::str::from_utf8(&chain.digest_prefix).unwrap_or("--------");
     varix::kinfo!(
         "integrity: {} image={}B sha256={}",
@@ -456,6 +475,7 @@ fn boot() -> ! {
     // --- bootopt (F022) ---------------------------------------------------------------
     // 已在 cmdline 阶段就近装载（菜单必须在它之前拿到真值）；此处再调一次是
     // 幂等确认，顺带保持 timeline 的 BootOpt 阶段语义。
+    varix::kinfo!("boot-trace: bootopt begin");
     TIMELINE.stage_begin(Stage::BootOpt, varix::timeline::read_tsc());
     let opts = varix::bootopt::init();
     TIMELINE.stage_end(Stage::BootOpt, varix::timeline::read_tsc());
@@ -466,6 +486,7 @@ fn boot() -> ! {
     );
 
     // --- selftest (F025) — runs its own stage bracket -------------------------------
+    varix::kinfo!("boot-trace: selftest begin");
     TIMELINE.stage_begin(Stage::SelfTest, varix::timeline::read_tsc());
     let (_pass, _fail) = varix::selftest::run_boot_checks();
     TIMELINE.stage_end(Stage::SelfTest, varix::timeline::read_tsc());
@@ -473,7 +494,7 @@ fn boot() -> ! {
     // Every domain is armed; only now do interrupts become useful. This is the
     // single point in the boot chain where the machine goes live.
     varix::cpu::enable_interrupts();
-    varix::kinfo!("interrupts enabled — system live");
+    varix::kinfo!("boot-trace: interrupts enabled — system live");
 
     // --- HUD: progress bar + timeline + self-test (F014/F024/F025) -------------------
     draw_hud(&surface, hud_y);
@@ -497,10 +518,12 @@ fn boot() -> ! {
     // 自启全屏。开关与逐级降级见 varix::handoff（默认开，可在 boot-select.json
     // 的 "handoff" 或 cmdline handoff=0 关掉以保留 ushell）。
     // 交接成功即永不返回；失败/关闭则如实继续走下面的 ushell。
+    varix::kinfo!("boot-trace: handoff plan begin");
     if boot_opts.handoff_to_variable {
         match varix::handoff::plan(Some(chosen_entry), boot_opts.handoff_to_variable) {
             varix::handoff::HandoffPlan::ToWindows => {
                 varix::kinfo!("handoff: plan=windows (entry={})", chosen_entry);
+                varix::kinfo!("boot-trace: handoff run begin (prompt+bootnext)");
                 if !varix::handoff::run(
                     &surface,
                     boot_opts.handoff_target,
