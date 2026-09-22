@@ -1325,6 +1325,18 @@ pub fn run_demo() -> ! {
     spawn_hello(1)
 }
 
+/// 真机快进通道：跳过受监护演示/压力探针带（QEMU-only 诊断件），装完
+/// MSR/TSS 后直接装载常驻 ushell。真机在该带尾部曾发生 #PF（异常帧
+/// RIP/CR3 呈 0x77 毒填充腐坏，2026-09-23 实机实证、QEMU 从不复现）——
+/// 诊断带与生产引导解耦（与 win_probe 快进同判据同理由）。不返回。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+pub fn spawn_ushell_now() -> ! {
+    // 与 pressure_probe_and_finish 收官路径同序：先清演示期残留 kill flag，
+    // 再进 spawn_shell（其内部关 console 镜像、订阅 inputsvc、装载 ushell）。
+    super::job::job_flags_reset_for_demo();
+    spawn_shell()
+}
+
 // ---------------------------------------------------------------------------
 // 宿主测试：双入口一致性 ×1000、缓冲校验、退出回收复用、计划拒绝
 // ---------------------------------------------------------------------------

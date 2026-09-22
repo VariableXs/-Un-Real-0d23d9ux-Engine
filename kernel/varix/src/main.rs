@@ -588,12 +588,20 @@ fn boot() -> ! {
         varix::kinfo!("handoff: disabled by config — entering the kernel ushell");
     }
 
-    // --- 任务14 · ring3 演示：装 MSR/TSS → 装载 hello.elf → iretq 进用户态。
-    // hello 两次 write（int 0x80 与 syscall 双入口）后 exit(0)，内核回收
-    // 进程槽并停机——正常路径不会走到下面的 halt()。
+    // --- 任务14 · ring3 演示/ushell 拉起：装 MSR/TSS 后分两路 -------------
+    // full（QEMU/probes_full）= 走完整受监护演示带（hello→PE→job→压力探针→
+    // spawn_shell）——这是 QEMU-only 的开发自检件。
+    // quick（真机）= **直接拉起 ushell**：演示带在真机曾发生 #PF（RIP/CR3
+    // 呈 0x77 毒填充腐坏，2026-09-23 实机实证、QEMU 从不复现）——诊断带与
+    // 生产引导解耦（与 win_probe 快进同判据同理由）。
     if varix::proc::ring3::install() {
         varix::kinfo!("ring3: syscall MSRs + TSS.RSP0 installed");
-        varix::proc::ring3::run_demo();
+        if probes_full {
+            varix::proc::ring3::run_demo();
+        } else {
+            varix::kinfo!("ring3: quick mode — demo band skipped, straight into ushell");
+            varix::proc::ring3::spawn_ushell_now();
+        }
     } else {
         varix::kwarn!("ring3: install unavailable — demo skipped");
     }
