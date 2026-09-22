@@ -105,4 +105,16 @@ START 任务栏 + UP 时钟照常），与用户 2026-09-20 目标截图对照�
 3. MSC 数据段「设备失败提前回 CSW」必须在协议层首块识别，否则 stall
    语义被误判为相位破坏。
 
+## 8. 真机 U 盘 ESP 重刷（2026-09-22 09:1x，用户在场，已完成）
+
+- `esp-deploy-switch`（UAC 提权）→ **ESP-DEPLOY-DONE**，证据链：
+  - backup ok（本地备份链 + ESP limine.conf.bak，回滚锚点在位）；
+  - 内核双端 sha256 一致：src=esp=**04B62171D087281B**（=QEMU 战役验证的同一内核，
+    源码 mtime < 构建 07:01 < 部署 09:1x，三证齐）；
+  - **wallpaper deployed hash=EFA5262A87105D7F**（壁纸模块首次上盘）；
+  - boot-select 双副本 4E35CFEF（ESP 副本从 SHARED 真相源刷新——真相源未动，
+    与 S1.3 记录一致）。
+- 部署后真机引导（F12 → VARIX）将首次实证：ushell 真壁纸桌面 + MSC 通道
+  last_boot 写回（Windows 侧读 W:\SHAREDoot-select.json 即验）。
+
 ——AI-5 交付 / AI-6 执法签发（2026-09-22）
