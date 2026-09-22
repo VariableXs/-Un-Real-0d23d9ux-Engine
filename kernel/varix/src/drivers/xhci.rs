@@ -2,7 +2,8 @@
 //!
 //! **范围如实声明**：最小路径 = 1 个 xHCI 控制器 × 每设备 1 个中断端点，
 //! 只为 HID 键鼠服务（boot 协议）。不做的：集线器级联、USB3 流协议、
-//! scratchpad（HCSPARAMS2.MaxSpBuf≠0 如实拒掉该控制器）、HID report
+//! scratchpad（HCSPARAMS2 拼接 MaxSpBufs，按 §5.3.7 分配 SBAP+N buffer——
+//! 2026-09-22 真机修复：拒绝即整机零输入）、HID report
 //! descriptor 解析（只用 SET_PROTOCOL(0) 切 boot 协议）、滚轮（报告第 4
 //! 字节 dz 丢弃——现有 MouseDelta 无滚轮词汇）、键盘修饰键只映射 Shift
 //! （`ps2::Key` 词汇表无 Ctrl/Alt，丢弃并计数）、Evaluate Context（EP0
@@ -84,7 +85,7 @@ pub const CC_SHORT_PACKET: u8 = 13;
 // ---- 能力/操作段寄存器（xHCI 规范 5.3/5.4；QEMU cap/oper read 同构）------
 pub const REG_CAPLENGTH: u16 = 0x00; // 低字节 = 操作段基址
 pub const REG_HCSPARAMS1: u16 = 0x04; // ports[31:24] | intrs[15:8] | slots[7:0]
-pub const REG_HCSPARAMS2: u16 = 0x08; // MaxSpBuf=[27:32]（≠0 拒掉）
+pub const REG_HCSPARAMS2: u16 = 0x08; // MaxSpBufs = LO[31:27]<<5 | HI[25:21]
 pub const REG_DBOFF: u16 = 0x14; // 32 位：门铃区偏移
 pub const REG_RTSOFF: u16 = 0x18; // 32 位：运行段偏移
 pub const OP_USBCMD: u16 = 0x00; // RS=bit0 | HCRST=bit1
@@ -678,6 +679,10 @@ pub struct XhciCtrl<B: BarAccess, M: DmaMem> {
     ep0_ring_phys: u64,
     data_phys: u64,
     dcbaa_phys: u64,
+    /// scratchpad（2026-09-22 真机修复）：HCSPARAMS2 拼接出的 buffer 数与
+    /// SBAP（scratchpad buffer array）帧。0 = 控制器无 scratchpad 需求。
+    scratchpads: u32,
+    sbap_phys: u64,
     // EP0 环软件侧指针（跨控制传输持久——控制器侧 dequeue 连续推进）。
     ep0_tail: usize,
     ep0_cycle: bool,
@@ -725,6 +730,8 @@ fn try_init<B: BarAccess, M: DmaMem>(
         ep0_ring_phys: 0,
         data_phys: 0,
         dcbaa_phys: 0,
+        scratchpads: 0,
+        sbap_phys: 0,
         ep0_tail: 0,
         ep0_cycle: true,
         ep0_outstanding: None,
@@ -874,14 +881,32 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         if self.max_slots == 0 || self.max_ports == 0 {
             return Err(BlockError::Unsupported);
         }
-        // scratchpad（[27:32] Log2）：最小栈不支持，≠0 如实拒绝该控制器
-        // （QEMU 恒 0；真机带 scratchpad 的控制器本批不冒进）。
+        // scratchpad（规范 §5.3.7）：MaxSpBufs = LO([31:27])<<5 | HI([25:21])。
+        // 2026-09-22 真机修复：此前取 [27:32] 当 log2、≠0 直接拒——Y7000
+        // IRX9 无 i8042（键鼠全走 USB），拒绝该控制器 = 整机零输入设备。
+        // 现按规范完整分配 SBAP + N 个 4KiB buffer，DCBAA[0] 指向 SBAP。
         let hcs2 = self.r32(REG_HCSPARAMS2);
-        let sp_buf = (hcs2 >> 27) & 0x1F;
-        if sp_buf != 0 {
+        let sp_lo = (hcs2 >> 27) & 0x1F;
+        let sp_hi = (hcs2 >> 21) & 0x1F;
+        let sp_total = (sp_lo << 5) | sp_hi;
+        if sp_total > 96 {
             #[cfg(all(target_arch = "x86_64", target_os = "none"))]
-            crate::kwarn!("xhci: scratchpad required (log2={}) - controller skipped", sp_buf);
+            crate::kwarn!(
+                "xhci: scratchpad buffers={} (LO={} HI={}) exceeds budget 96 - controller skipped",
+                sp_total,
+                sp_lo,
+                sp_hi
+            );
             return Err(BlockError::Unsupported);
+        }
+        self.scratchpads = sp_total;
+        if sp_total != 0 {
+            crate::kinfo!(
+                "xhci: scratchpad buffers={} (LO={} HI={}) - will allocate",
+                sp_total,
+                sp_lo,
+                sp_hi
+            );
         }
         let dboff = self.r32(REG_DBOFF);
         let rtsoff = self.r32(REG_RTSOFF);
@@ -952,6 +977,22 @@ impl<B: BarAccess, M: DmaMem> XhciCtrl<B, M> {
         let cmd_bus = self.mem.bus_addr(self.cmd_phys);
         self.opw32(OP_CRCR, cmd_bus as u32 | 0x1);
         self.opw32(OP_CRCR + 4, (cmd_bus >> 32) as u32);
+        // scratchpad（2026-09-22 真机修复）：DCBAA[0] = SBAP 总线地址，
+        // SBAP[i] = 第 i 个 4KiB buffer 的总线地址。必须先于 DCBAAP 寄存器
+        // 写完成填表（控制器启动后即按 DCBAA[0] 取 buffer）。
+        if self.scratchpads > 0 {
+            let sbap = self.alloc_zeroed("scratchpad array")?;
+            for i in 0..self.scratchpads {
+                let buf = self.alloc_zeroed("scratchpad buffer")?;
+                let buf_bus = self.mem.bus_addr(buf);
+                self.mem
+                    .write_bytes(sbap + i as u64 * 8, 0, &buf_bus.to_le_bytes());
+            }
+            let sbap_bus = self.mem.bus_addr(sbap);
+            self.mem
+                .write_bytes(self.dcbaa_phys, 0, &sbap_bus.to_le_bytes());
+            self.sbap_phys = sbap;
+        }
         let dcbaa_bus = self.mem.bus_addr(self.dcbaa_phys);
         self.opw32(OP_DCBAAP, dcbaa_bus as u32);
         self.opw32(OP_DCBAAP + 4, (dcbaa_bus >> 32) as u32);
@@ -2503,6 +2544,8 @@ mod tests {
         erstba: u64,
         erdp: u64,
         hcrst_fail: u32,
+        /// HCSPARAMS2 覆盖（scratchpad 测试用；None = 默认 0xF → MaxSpBufs=0）。
+        hcs2_override: Option<u32>,
         pending: Option<Pending>,
         pub errs: Vec<String>,
     }
@@ -2554,6 +2597,7 @@ mod tests {
                 erstba: 0,
                 erdp: 0,
                 hcrst_fail: 0,
+                hcs2_override: None,
                 pending: None,
                 errs: Vec::new(),
             };
@@ -2956,7 +3000,7 @@ mod tests {
                 return match off {
                     0x00 => 0x0100_0000 | 0x40,
                     0x04 => ((self.ports.len() as u32) << 24) | (1 << 8) | self.max_slots as u32,
-                    0x08 => 0xF,
+                    0x08 => self.hcs2_override.unwrap_or(0xF),
                     0x10 => 0x1, // 64 位寻址，CSZ=0（32B 上下文）
                     0x14 => self.db_off as u32,
                     0x18 => self.rts_off as u32,
@@ -3350,6 +3394,42 @@ mod tests {
     }
 
     // ---- 全链（初始化 → 枚举 → 事件流）-------------------------------------
+
+    #[test]
+    fn xhci_scratchpad_array_programmed() {
+        // 2026-09-22 真机修复回归：MaxSpBufs≠0（LO=0,HI=2 → n=2）不得拒绝
+        // 控制器（Y7000 IRX9 无 i8042——拒绝即整机零输入），且必须完成
+        // SBAP 分配 + DCBAA[0] 指向 + N 个 buffer 落表。
+        use crate::drivers::nvme::DmaMem;
+        reset_clock();
+        let dev = Dev::new();
+        // HI=[25:21]=2 → MaxSpBufs = LO(0)<<5 | HI(2) = 2。
+        dev.regs.borrow_mut().hcs2_override = Some(2 << 21);
+        let c = XhciCtrl::init_with_recovery(dev.clone(), dev.clone(), fake_now, 2000)
+            .expect("scratchpad=2 必须初始化成功");
+        assert_eq!(c.scratchpads, 2);
+        assert!(c.sbap_phys != 0, "SBAP 帧必须已分配");
+        // DCBAA[0] = SBAP 总线地址。
+        let mut d0 = [0u8; 8];
+        dev.read_bytes(c.dcbaa_phys, 0, &mut d0);
+        assert_eq!(
+            u64::from_le_bytes(d0),
+            dev.bus_addr(c.sbap_phys),
+            "DCBAA[0] 必须指向 SBAP 总线地址"
+        );
+        // SBAP[0]/[1] = 两个非零且互异的总线地址。
+        let mut e0 = [0u8; 8];
+        let mut e1 = [0u8; 8];
+        dev.read_bytes(c.sbap_phys, 0, &mut e0);
+        dev.read_bytes(c.sbap_phys, 8, &mut e1);
+        let b0 = u64::from_le_bytes(e0);
+        let b1 = u64::from_le_bytes(e1);
+        assert!(b0 != 0 && b1 != 0, "scratchpad buffer 地址不得为零");
+        assert_ne!(b0, b1, "两个 buffer 不得同址");
+        // 枚举链不回归：scratchpad 路径后键鼠照常枚举。
+        let mut c = c;
+        assert_eq!(c.enumerate_ports(), 2);
+    }
 
     #[test]
     fn xhci_full_enumeration_kbd_and_mouse() {

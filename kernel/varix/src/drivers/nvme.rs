@@ -708,16 +708,18 @@ pub mod target {
         }
     }
 
-    /// DMA 桶池：PMM 单帧 ×8，HHDM 访问。
+    /// DMA 帧池：PMM 单帧 ×128，HHDM 访问。2026-09-22 由 8 扩容——
+    /// 真机 xHCI scratchpad（LO=2 → 64 buffer）需要 65+ 帧，8 帧池必枯竭
+    /// （Y7000 IRX9 无 i8042，键鼠全走 USB——scratchpad 拒绝=整机零输入）。
     pub struct DmaBuckets {
-        frames: [Option<u64>; 8],
+        frames: [Option<u64>; 128],
         hhdm: u64,
     }
 
     impl DmaBuckets {
         pub fn new() -> DmaBuckets {
             DmaBuckets {
-                frames: [None; 8],
+                frames: [None; 128],
                 hhdm: crate::limine::hhdm_offset().unwrap_or(0),
             }
         }
