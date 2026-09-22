@@ -380,6 +380,8 @@ fn boot() -> ! {
     varix::storage::render_to_console(&storage_state);
 
     // --- block stack probe（任务16：块设备抽象 + NVMe 最小栈）------------------------
+    // 引导设施红线：init 只读 identify；六连直写探针须 cmdline 显式
+    // storage_selftest=1（QEMU 刮擦盘验收用），真机默认绝不写内置盘。
     varix::drivers::nvme::target::probe_and_selftest();
 
     // --- usb stack probe（S4.1·AI-5：xHCI 最小栈——真机 USB 键鼠，PS/2 增量不替代）----

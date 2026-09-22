@@ -751,8 +751,19 @@ pub mod target {
         }
     }
 
-    /// 任务16 实机入口：ACPI→MCFG→ECAM 扫描→BAR 映射→初始化→回环 ×1000。
+    /// 任务16 实机入口：ACPI→MCFG→ECAM 扫描→BAR 映射→初始化（只读 identify）。
     /// 无 NVMe 控制器/无 MCFG 时优雅跳过（镜像在其他验收配置下照常工作）。
+    ///
+    /// **引导设施红线（2026-09-22 实机事故，最高优先级）**：真机上
+    /// `hits[0]` = 内置系统 NVMe（Windows 引导盘）。历史上本函数在
+    /// init 后无条件对它跑六连直写探针——loopback LBA 16..16008（覆盖
+    /// GPT 主分区表项数组 LBA 2..33 的后半 + ESP 开头 ~7MB）、fs23@20000、
+    /// milestone@40000、kvsrv@60000/70000、vfsguard@80000、kvault@90000
+    /// ——全部落在内部 ESP（Windows 引导文件区）范围内。多次引导后写花
+    /// 内置 ESP 与 GPT，正是「BIOS 引导程序丢失 + DiskGenius 报 GPT CRC
+    /// 错误」的根因。故此后：一切直写探针必须 cmdline 显式
+    /// `storage_selftest=1` 才执行（QEMU 专用刮擦盘验收时由 QEMU conf
+    /// 注入）；默认路径只读 identify + 打印几何，绝不写盘面一个扇区。
     pub fn probe_and_selftest() {
         let Some(rsdp) = crate::limine::rsdp_address() else {
             crate::kinfo!("blk: no RSDP - block stack skipped");
@@ -804,37 +815,48 @@ pub mod target {
                     n,
                     n * bs as u64 / (1 << 20)
                 );
-                let mut buf = [0u8; 4096];
-                let rep = super::super::blk::loopback_probe(&mut ctrl, 1000, 8, &mut buf);
-                crate::kinfo!(
-                    "nvme: loopback x1000 passed={} rounds={} write_sum={:#018x} read_sum={:#018x} err={:?}",
-                    rep.passed,
-                    rep.rounds,
-                    rep.write_sum,
-                    rep.read_sum,
-                    rep.err
-                );
-                if !rep.passed {
-                    crate::kwarn!("nvme: loopback FAILED - see err above");
+                // ===== 直写探针门禁（引导设施红线，默认关）=====
+                if crate::cmdline::flag("storage_selftest") {
+                    crate::kinfo!(
+                        "nvme: storage_selftest=1 - write probes enabled (QEMU scratch disk only)"
+                    );
+                    let mut buf = [0u8; 4096];
+                    let rep = super::super::blk::loopback_probe(&mut ctrl, 1000, 8, &mut buf);
+                    crate::kinfo!(
+                        "nvme: loopback x1000 passed={} rounds={} write_sum={:#018x} read_sum={:#018x} err={:?}",
+                        rep.passed,
+                        rep.rounds,
+                        rep.write_sum,
+                        rep.read_sum,
+                        rep.err
+                    );
+                    if !rep.passed {
+                        crate::kwarn!("nvme: loopback FAILED - see err above");
+                    }
+
+                    // 任务17：fs23_journal 块设备后端——掉电注入探针（跨进程
+                    // 持久，外部脚本 kill QEMU 模拟掉电，×11 轮盘面条目单调
+                    // 增长零撕裂）。
+                    crate::fs::fs23_disk::target::fs23_powercut_probe(&mut ctrl);
+
+                    // 任务21：里程碑 M2——journal 真盘双会话（fresh 封条 /
+                    // powercut 恢复），盘面高区 LBA 40000。
+                    crate::milestone::target::ms_journal_probe(&mut ctrl);
+
+                    // 任务24：内核 KV 存储服务——跨断电 boot-counter 累加 +
+                    // 逐会话 10 键写入/恢复核对（盘1 高区 LBA 60000/70000）。
+                    crate::kvsrv::target::kv_probe(&mut ctrl);
+                    // 任务30：VFS 白名单越权审计账本（journal 双会话断电续记）。
+                    crate::vfsguard::target::vfs_audit_probe(&mut ctrl);
+                    // 任务65：保险箱内核侧全链探针——PBKDF2+AES-GCM+密钥仅内存
+                    // 断言+焚毁三步（盘高区 LBA 90000，与其他探针区不重叠）。
+                    crate::kvault::vault_probe(&mut ctrl);
+                } else {
+                    // 默认（真机）：零写入。init 上面只做过只读 identify。
+                    crate::kinfo!(
+                        "nvme: write probes SKIPPED (storage_selftest off - real-disk protection)"
+                    );
                 }
-
-                // 任务17：fs23_journal 块设备后端——掉电注入探针（跨进程
-                // 持久，外部脚本 kill QEMU 模拟掉电，×11 轮盘面条目单调
-                // 增长零撕裂）。
-                crate::fs::fs23_disk::target::fs23_powercut_probe(&mut ctrl);
-
-                // 任务21：里程碑 M2——journal 真盘双会话（fresh 封条 /
-                // powercut 恢复），盘面高区 LBA 40000。
-                crate::milestone::target::ms_journal_probe(&mut ctrl);
-
-                // 任务24：内核 KV 存储服务——跨断电 boot-counter 累加 +
-                // 逐会话 10 键写入/恢复核对（盘1 高区 LBA 60000/70000）。
-                crate::kvsrv::target::kv_probe(&mut ctrl);
-                // 任务30：VFS 白名单越权审计账本（journal 双会话断电续记）。
-                crate::vfsguard::target::vfs_audit_probe(&mut ctrl);
-                // 任务65：保险箱内核侧全链探针——PBKDF2+AES-GCM+密钥仅内存
-                // 断言+焚毁三步（盘高区 LBA 90000，与其他探针区不重叠）。
-                crate::kvault::vault_probe(&mut ctrl);
             }
             Err(e) => crate::kwarn!("nvme: init failed {:?} - selftest skipped", e),
         }

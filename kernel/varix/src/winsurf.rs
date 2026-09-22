@@ -216,6 +216,7 @@ impl WinService {
                     // 生命周期由窗口槽持有至 unregister/Drop 归还。
                     s.block_ptrs[i] = unsafe { (phys + hhdm) as *mut u8 };
                     s.block_phys[i] = Some(phys);
+                    crate::kinfo!("win-probe: pmm block {} phys={:#x}", i, phys);
                 }
                 s.blocks_used = need_blocks;
             }
@@ -671,15 +672,22 @@ pub fn win_probe() {
         (s.width(), s.height(), s.format())
     };
     crate::kinfo!("win-probe: screen {}x{}", sw, sh);
+    crate::kinfo!("win-probe: t1 new begin");
     let mut svc = WinService::new();
+    crate::kinfo!("win-probe: t2 new ok — register begin (PMM order-10)");
     let (w, h) = (160u32, 90u32);
     let Some(wid) = svc.register(0x5749_4E31, w, h, fmt) else {
         crate::kwarn!("win-probe: register failed, abort");
         return;
     };
+    crate::kinfo!("win-probe: t3 register ok wid={}", wid);
     svc.set_geo(wid, (sw as i64 - w as i64) / 2, (sh as i64 - h as i64) / 2);
+    crate::kinfo!("win-probe: t4 geo ok");
     let mut row = [0u8; 160 * 4];
     for y in 0..h as i64 {
+        if y % 30 == 0 {
+            crate::kinfo!("win-probe: t5 stage y={}", y);
+        }
         for x in 0..w as usize {
             row[x * 4] = (x * 255 / w as usize) as u8; // B（Bgr32 布局）
             row[x * 4 + 1] = (y as usize * 255 / h as usize) as u8; // G
@@ -693,9 +701,13 @@ pub fn win_probe() {
     }
     svc.mark_window_dirty(wid, Rect::new(0, 0, w as i64, h as i64));
     svc.end_submit(wid);
+    crate::kinfo!("win-probe: t6 stage+submit done — composite1 begin");
     svc.composite(disp);
+    crate::kinfo!("win-probe: t7 composite1 done");
     svc.composite(disp);
+    crate::kinfo!("win-probe: t8 composite2 done");
     svc.composite(disp);
+    crate::kinfo!("win-probe: t9 composite3 done");
     let st = svc.stats();
     crate::kinfo!(
         "win-probe: frames={} blit_rows={} full_redraws={} submit_rows={}",
