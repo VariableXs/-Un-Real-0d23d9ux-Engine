@@ -65,6 +65,8 @@ pub mod displaysrv;
 /// 窗口面服务（AI-4 · S2.06 渲染通路+S2.09 多窗合成：客户端 copy-in
 /// 提交+块链缓冲+Z 序合成+最小化保活+焦点记录，SYS_WIN(21) 系统调用面）。
 pub mod winsurf;
+/// S4（AI-4/6）：ushell 桌面真壁纸（三世界同源静态帧）。
+pub mod wallpaper;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×
 /// M4 快照区——「内核可运行用户态程序读写真盘」双会话断电恢复演示）。
 pub mod milestone;
