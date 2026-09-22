@@ -1935,8 +1935,10 @@ pub mod target {
     use super::*;
     use super::super::nvme::target::{now_ns, BarMmio};
 
-    /// DMA 池页数（共享 6 帧 + 每设备 3 帧 ×4 = 18，取整 24）。
-    const DMA_POOL_FRAMES: usize = 32;
+    /// DMA 池页数（2026-09-22 实机实证：Y7000 xHCI MaxSpBufs=65（LO2=2 HI1=1），
+    /// scratchpad 数组+缓冲 66 帧 + 环/上下文/数据 6 帧 + 每设备 3 帧 ×4 = 18
+    /// → 需 ~90 帧；32 帧池在 "scratchpad buffer" 处耗尽 = init failed Io）。
+    const DMA_POOL_FRAMES: usize = 96;
     const DMA_POOL_BYTES: usize = DMA_POOL_FRAMES * 4096;
 
     /// .bss 驻留 DMA 池 v2（2026-09-21 晚间改型，修缺口二）：

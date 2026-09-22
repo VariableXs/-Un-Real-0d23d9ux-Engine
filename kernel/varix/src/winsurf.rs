@@ -685,8 +685,10 @@ pub fn win_probe() {
     crate::kinfo!("win-probe: t4 geo ok");
     let mut row = [0u8; 160 * 4];
     for y in 0..h as i64 {
-        if y % 30 == 0 {
+        if y % 10 == 0 {
             crate::kinfo!("win-probe: t5 stage y={}", y);
+        }
+        if y % 30 == 0 {
             // F12 逃生门协作检查点：本探针是真机卡死的第一现场——每 30 行
             // 泵一次键鼠，卡死场景下按 F12 立即复位回引导菜单。
             crate::inputsvc::target::f12_checkpoint();

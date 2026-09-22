@@ -406,26 +406,47 @@ fn boot() -> ! {
     // --- wallpaper 装载（S4·AI-4/6：Limine 模块可选，缺席回退色带）--------------
     varix::wallpaper::init_from_module();
 
+    // --- 实机快进模式（2026-09-22 实机卡死收口）----------------------------------
+    // 证据：两代内核（09:14 旧盘 / 18:38 新盘）都在 win_probe 探针带内部
+    // 不同位置冻结（QEMU 十余次冒烟从不复现）。重型探针 = 开发诊断，不是
+    // 引导功能件——真机（无 CPUID hypervisor 位）默认快进跳过，把 ushell
+    // 从探针带的生死里解耦；QEMU（hypervisor 位=1）照常全量，门禁不动。
+    // cmdline probes_full=1 可在真机强制全量（排障用）。
+    let probes_full = platform.features.hypervisor || varix::cmdline::flag("probes_full");
+    varix::kinfo!(
+        "boot-trace: probe mode = {} (hypervisor={})",
+        if probes_full { "full" } else { "quick" },
+        platform.features.hypervisor
+    );
+
     // --- input service probe（任务19：PS/2 键鼠事件服务化）---------------------------
     varix::inputsvc::target::input_probe();
 
     // --- display service probe（任务20：双缓冲+脏矩形滚动条带撕裂验证）--------------
-    varix::displaysrv::target::display_probe();
+    if probes_full {
+        varix::displaysrv::target::display_probe();
+    }
 
     // --- window surface probe（AI-4 · S2.06/S2.09：窗口面注册+行提交+块链+
     //     Z 序合成+焦点命中全链，serial 断言 win-probe: PASS）--------------------
-    varix::winsurf::win_probe();
-    varix::kinfo!("boot-trace: win-probe done");
+    if probes_full {
+        varix::winsurf::win_probe();
+        varix::kinfo!("boot-trace: win-probe done");
+    }
 
     // --- quota service probe（任务56：三方配额矩阵+水位回收+GPU 通道）--------------
-    varix::kinfo!("boot-trace: quota-probe begin");
-    varix::quota::target::quota_probe();
-    varix::kinfo!("boot-trace: quota-probe done");
+    if probes_full {
+        varix::kinfo!("boot-trace: quota-probe begin");
+        varix::quota::target::quota_probe();
+        varix::kinfo!("boot-trace: quota-probe done");
+    }
 
     // --- shm service probe（任务32：授权模型全矩阵）-----------------------------------
-    varix::kinfo!("boot-trace: shm-probe begin");
-    varix::shmsrv::target::shm_probe();
-    varix::kinfo!("boot-trace: shm-probe done");
+    if probes_full {
+        varix::kinfo!("boot-trace: shm-probe begin");
+        varix::shmsrv::target::shm_probe();
+        varix::kinfo!("boot-trace: shm-probe done");
+    }
 
     // --- vfs guard probe（任务30：白名单裁决矩阵，纯计算）---------------------------
     varix::kinfo!("boot-trace: vfs-probe begin");
@@ -433,9 +454,11 @@ fn boot() -> ! {
     varix::kinfo!("boot-trace: vfs-probe done");
 
     // --- picflow probe（任务48：画面流通道 VM帧源→显示栈 全链直写）-----------------
-    varix::kinfo!("boot-trace: picflow-probe begin");
-    varix::stream::picflow::target::picflow_probe();
-    varix::kinfo!("boot-trace: picflow-probe done");
+    if probes_full {
+        varix::kinfo!("boot-trace: picflow-probe begin");
+        varix::stream::picflow::target::picflow_probe();
+        varix::kinfo!("boot-trace: picflow-probe done");
+    }
 
 
 

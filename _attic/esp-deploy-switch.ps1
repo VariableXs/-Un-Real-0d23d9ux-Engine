@@ -14,10 +14,10 @@ $BACKUP_DIR = 'D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\esp-backup'
 # （2026-09-22：$CONF 内嵌副本已删除——第 4 步直接拷贝 repo 根 limine.conf。）
 
 try {
-  # 0) 摘历史残留 L:（失败忽略）
+  # 0) 摘历史残留 L:/Y:（Y: = 重启后系统可能给 U 盘 ESP 挂的盘符，失败忽略）
   $ErrorActionPreference = 'Continue'
   $pre = Join-Path $env:TEMP 'varix-deploy-pre.txt'
-  [IO.File]::WriteAllText($pre, "select disk 1`r`nselect partition 1`r`nremove letter=L`r`n", [Text.Encoding]::ASCII)
+  [IO.File]::WriteAllText($pre, "select disk 1`r`nselect partition 1`r`nremove letter=L`r`nremove letter=Y`r`n", [Text.Encoding]::ASCII)
   diskpart /s $pre | Out-Null
   $ErrorActionPreference = 'Stop'
 
