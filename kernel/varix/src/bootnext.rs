@@ -725,6 +725,14 @@ pub fn resolve_windows_entry(cmdline: &str) -> WindowsEntry {
 /// ESP GUID」——`handoff_target=usb` 语义（S1.5 接线）。优先级不变：
 /// 1. cmdline `boot_next=`（视为已验证）；2. BootOrder 顺序匹配；
 /// 3. BootOrder 读不到时全扫兜底；4. 全失败 → Unverified。
+///
+/// usb 目标的匹配分两个梯队（2026-09-23 实机实证）：
+/// 第一梯队 = GUID 精确匹配（设备路径含 U 盘 ESP GUID 字节）；
+/// 第二梯队 = 描述含 `VARIX` 字样且形似 Windows 项——**Lenovo 真机固件对
+/// 可移动 U 盘的引导项天生不带分区 HD 节点**（可移动媒体无需分区定位），
+/// GUID 字节结构性缺席；而部署线供应的固件项描述固定为
+/// `VARIX Windows (USB)`，内置项（Windows Boot Manager）与厂商原生项
+/// （EFI USB Device / PXE / DVD）都不含 `varix` 字样，零误伤。
 pub fn resolve_windows_entry_for(cmdline: &str, usb_guid: Option<&[u8; 16]>) -> WindowsEntry {
     if let Some(v) = cmdline_entry(cmdline) {
         return WindowsEntry::Resolved(v);
@@ -739,6 +747,9 @@ pub fn resolve_windows_entry_for(cmdline: &str, usb_guid: Option<&[u8; 16]>) -> 
                 continue;
             };
             if option_matches_target(&buf[..sz], usb_guid) {
+                return WindowsEntry::Resolved(num);
+            }
+            if option_matches_varix(&buf[..sz], usb_guid) {
                 return WindowsEntry::Resolved(num);
             }
         }
@@ -757,9 +768,22 @@ pub fn resolve_windows_entry_for(cmdline: &str, usb_guid: Option<&[u8; 16]>) -> 
             if option_matches_target(&buf[..sz], usb_guid) {
                 return WindowsEntry::Resolved(num);
             }
+            if option_matches_varix(&buf[..sz], usb_guid) {
+                return WindowsEntry::Resolved(num);
+            }
         }
     }
     WindowsEntry::Unverified(entry_from_cmdline(cmdline))
+}
+
+/// 第二梯队匹配（S1.5 补充）：形似 Windows 项 + 描述含 `VARIX`。
+/// 仅在 usb 目标下生效——internal 目标保持原语义（任意 Windows 项），
+/// 不给内置盘引导项引入新的匹配面。
+pub fn option_matches_varix(bytes: &[u8], usb_guid: Option<&[u8; 16]>) -> bool {
+    if usb_guid.is_none() {
+        return false;
+    }
+    option_looks_like_windows(bytes) && utf16_contains_ascii_ignore_case(bytes, "varix")
 }
 
 /// 进固件设置（UEFI 2.4+ `OsIndications` 标准通道）。
@@ -953,6 +977,49 @@ mod tests {
         let mut limine = load_option("UEFI: VARIX", r"\EFI\BOOT\BOOTX64.EFI");
         limine.extend_from_slice(&g);
         assert!(!option_matches_target(&limine, Some(&g)));
+    }
+
+    #[test]
+    fn varix_second_tier_matches_guidless_usb_entry() {
+        let g = parse_guid_text("636786cb-e967-49f6-b0df-7608909d1f11").unwrap();
+        // 真机 Lenovo 实证（vx-enum-bootvars，Boot2001）：描述 `VARIX Windows (USB)`，
+        // 整项仅 52 字节、无分区 HD 节点 → GUID 字节结构性缺席。
+        // 第一梯队（GUID）必然失手，第二梯队必须接住。
+        let fw_entry = load_option("VARIX Windows (USB)", r"\EFI\Microsoft\Boot\bootmgfw.efi");
+        assert!(!bytes_contains_guid(&fw_entry, &g), "本项模拟无 GUID 尾巴的真机形态");
+        assert!(option_matches_varix(&fw_entry, Some(&g)));
+        // 描述大小写不敏感（固件可能给小写 varix）。
+        assert!(option_matches_varix(
+            &load_option("varix windows (usb)", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
+            Some(&g)
+        ));
+    }
+
+    #[test]
+    fn varix_second_tier_zero_false_positives() {
+        let g = parse_guid_text("636786cb-e967-49f6-b0df-7608909d1f11").unwrap();
+        // ① 内置 Windows Boot Manager：无 varix 字样 → 不命中（内置目标走原语义）。
+        assert!(!option_matches_varix(
+            &load_option("Windows Boot Manager", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
+            Some(&g)
+        ));
+        // ② Limine / UEFI 壳项即使描述带 VARIX：非 Windows 形态 → 不命中
+        //    （防误指我们自己的 Limine 项，BootNext 只该指 Windows）。
+        assert!(!option_matches_varix(
+            &load_option("VARIX", r"\EFI\limine\limine_x64.efi"),
+            Some(&g)
+        ));
+        // ③ internal 目标（usb_guid=None）→ 恒不命中，不给内置盘引入新匹配面。
+        assert!(!option_matches_varix(
+            &load_option("VARIX Windows (USB)", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
+            None
+        ));
+        // ④ 形似 Windows 但既无 GUID 又无 varix 字样的他项 → 不命中
+        //    （此时宁可 Unverified 回退，也不可错指）。
+        assert!(!option_matches_varix(
+            &load_option("Windows Boot Manager", r"\EFI\Microsoft\Boot\bootmgfw.efi"),
+            Some(&g)
+        ));
     }
 
     #[test]
