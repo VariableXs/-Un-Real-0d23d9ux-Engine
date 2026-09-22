@@ -64,14 +64,23 @@
 - **模拟器**：HBA 行为模型（PxCI 写入同步处理、CFIS 解码、PRDT DMA、
   RFIS status、HR 自清语义）**6 项测试全绿**。
 
-## 5. QEMU 战役（`_attic/t7-t8-qemu-campaign.py`）
+## 5. QEMU 战役（`_attic/t7-t8-qemu-campaign.py`，2026-09-22 终判）
 
 | 阶段 | 内容 | 结果 |
 |---|---|---|
-| P1 | 壁纸桌面 + last_boot 内核写回取证 + screendump | 见附录（wallpaper 通道修复后） |
-| P2 | last_boot ×5 交替（Windows patch ↔ 内核写回） | 见附录 |
-| P3 | 冷启动 ×10（全新 QEMU 进程，desktop-ready + rc=0） | 见附录 |
-| P4 | handoff 防自锁拒绝路径 ×2（OVMF pflash，BootOrder 无 Windows 项 → 拒绝 → 回落 ushell） | 见附录 |
+| P1 | 壁纸桌面 + last_boot 内核写回取证 + screendump | **PASS**（desktop-ready / 内核写回 marker / 镜像 raw 断言 variable / rc=0 四项全过；壁纸视觉证据 `_attic/acceptance-t7t8/p1-desktop-wallpaper.png`） |
+| P2 | last_boot ×5 交替（重建镜像 windows → 冷启动内核写回 variable → raw 断言） | **PASS ×5**（每轮 desktop=True / write=True / img=variable / rc=0） |
+| P3 | 冷启动 ×10（全新 QEMU 进程，desktop-ready + rc=0） | **PASS ×10**（每轮 101-102s，零失败） |
+| P4 | handoff 防自锁拒绝路径 ×2（OVMF pflash） | **FAIL（环境级）**——edk2 固件 + Limine UEFI 链无串口输出（黑屏），防自锁闸门本体有宿主测试 + S0.1 QEMU 实测背书；OVMF+Limine 链路调试列为独立缺口（非本批回归） |
+
+**战役总判**：P1/P2/P3 全绿；证据链 `_attic/t7-campaign-result.log` + `_attic/t7-serial.log`。
+壁纸桌面视觉：ushell 桌面与 Windows 侧 WE 壁纸同源（FILES/SETTINGS/ABOUT 图标 +
+START 任务栏 + UP 时钟照常），与用户 2026-09-20 目标截图对照成立。
+
+**战役脚本戒律（新增）**：①共享镜像 VBR 带 0xAA55 → SeaBIOS 视为可引导硬盘抢先
+→ `-boot order=d`；②内核 QEMU 流程需要双 NVMe（#1 测试盘 + #2 SHARED，单盘=
+无 SHARED 全局挂载=写回静默 false）；③孤儿 QEMU 占端口必须按进程名强杀
+（TaskStop 只杀 python）；④`python -u` 再 tee（否则缓冲吞进度）。
 
 附录（战役终判）见文末「战役结果」小节——由战役脚本输出回填。
 
