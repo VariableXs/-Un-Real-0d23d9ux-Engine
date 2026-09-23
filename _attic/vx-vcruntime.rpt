@@ -1,0 +1,8 @@
+=== vx-vcruntime start 2026-09-24 02:13:53.391511 ===
+  COPIED vcruntime140.dll: 178616B
+  COPIED vcruntime140_1.dll: 50112B
+  COPIED msvcp140.dll: 643512B
+  COPIED msvcp140_1.dll: 35768B
+  COPIED msvcp140_2.dll: 274872B
+  COPIED concrt140.dll: 374200B
+=== 结果: ALL GREEN ===
