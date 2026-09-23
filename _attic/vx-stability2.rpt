@@ -1,0 +1,15 @@
+=== vx-stability v2 start 2026-09-24 01:59:23.839120 ===
+  pre: uaspstor=120224 usbstor=206240 bak=120224
+STEP1 EXC Traceback (most recent call last):
+  File "D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\vx-stability2.py", line 53, in <module>
+    os.remove(uas)
+    ~~~~~~~~~^^^^^
+PermissionError: [WinError 5] 拒绝访问。: 'X:\\Windows\\System32\\drivers\\uaspstor.sys'
+
+  reg load: 错误: 另一个程序正在使用此文件，进程无法访问。
+  FATAL: hive 加载失败
+  recoveryenabled No: 操作成功完成。
+  bootstatuspolicy: 操作成功完成。
+  验证: recoveryenabled         No
+  验证: bootstatuspolicy        IgnoreAllFailures
+=== v2 done ===

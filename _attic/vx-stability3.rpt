@@ -1,0 +1,8 @@
+=== vx-stability v3 start 2026-09-24 02:00:41.541046 ===
+  load 尝试1: 错误: 另一个程序正在使用此文件，进程无法访问。
+  load 尝试2: 错误: 另一个程序正在使用此文件，进程无法访问。
+  load 尝试3: 错误: 另一个程序正在使用此文件，进程无法访问。
+  FATAL: hive 三次加载均失败
+  BCD 复核: recoveryenabled         No
+  BCD 复核: bootstatuspolicy        IgnoreAllFailures
+=== v3 done ===

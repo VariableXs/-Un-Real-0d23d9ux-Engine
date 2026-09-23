@@ -1,0 +1,22 @@
+=== vx-stability v4 start 2026-09-24 02:03:33.471815 ===
+  身份确认 UASPStor.Start = 0x0（应为 0x0 = U 盘 hive）
+  UASPStor.ImagePath -> \SystemRoot\System32\drivers\usbstor.sys
+  usbstor.Start: 0x0 -> 0x0
+  USBXHCI.Start: 0x0 -> 0x0
+  USBHUB3.Start: 0x0 -> 0x0
+  UASPStor.Start: 0x0 -> 0x0
+  USB.DisableSelectiveSuspend = 0x1
+  UASPStor.Parameters.IoTimeoutValue: 0xf -> 0x50
+  PortableOperatingSystem: 0x1 -> 0x1
+  CrashControl.AutoReboot: 0x0 -> 0x0
+  CrashControl.DumpEnabled: (missing) -> 0x1
+  unload 尝试1: 操作成功完成。
+  VXMC 已卸载（查询确认不存在）
+  卸载结果: True
+  复核重载: 操作成功完成。
+  落盘验证 UASPStor.ImagePath = \SystemRoot\System32\drivers\usbstor.sys
+  落盘验证 UASPStor.Start = 0x0
+  落盘验证 USB.DisableSelectiveSuspend = 0x1
+  落盘验证 IoTimeoutValue = 0x50
+  复核卸载: 操作成功完成。
+=== v4 done ===
