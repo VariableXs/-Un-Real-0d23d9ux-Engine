@@ -1074,6 +1074,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::viddec::run_viddec_checks());
     checkup.register(crate::hdadrv::run_hdadrv_checks());
     checkup.register(crate::mixer::run_mixer_checks());
+    // WP-204 七域：网络栈判据实装层
+    checkup.register(crate::netthr::run_netthr_checks());
+    checkup.register(crate::fdmix::run_fdmix_checks());
+    checkup.register(crate::lstnauth::run_lstnauth_checks());
+    checkup.register(crate::dohsw::run_dohsw_checks());
+    checkup.register(crate::diag3::run_diag3_checks());
+    checkup.register(crate::offln::run_offln_checks());
+    checkup.register(crate::usbnet::run_usbnet_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
