@@ -256,6 +256,21 @@ pub mod lxprocfs;
 /// vxrun 与验收载体（WP-301 · B-402 四步序+LTP 归因闭环+B-406 三类载体
 /// 全绿×封闭树 800MB）。
 pub mod lxrun;
+/// Wine 会话管家（WP-302 · B-1001：wineserver 看门狗失联即重建百次全
+/// 恢复×未恢复如实标记×重建预算与恢复矩阵同源×会话卡片协商对账诚实）。
+pub mod winecare;
+/// Wine 前缀模板（WP-302 · B-1002：模板五要素×生成带版本号可追溯×重建
+/// 优于手术旧实例可查×来源三态裁决——篡改零放行）。
+pub mod winepfx;
+/// Wine 垫片四路（WP-302 · B-1003：SHIM_TABLE 冻结四行全 VarixSide×
+/// Wine 源码 diff 为零审计红线×版本锁漂移四路全重校验）。
+pub mod wineshim;
+/// 星卡判例流水线（WP-302 · B-1004 判例三件套可执行出报告+B-1005 无
+/// 人工确认不转绿——类型面强制门）。
+pub mod winecase;
+/// 崩溃归因与回馈（WP-302 · B-1006 归因五分类穷举且界面呈现×B-1007
+/// issue 模板三要素入库×季度命中率不编数）。
+pub mod wineattr;
 /// S4（AI-4/6）：ushell 桌面真壁纸（三世界同源静态帧）。
 pub mod wallpaper;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×

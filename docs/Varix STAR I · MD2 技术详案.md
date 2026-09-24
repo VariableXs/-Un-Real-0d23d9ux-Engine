@@ -648,6 +648,31 @@ Wine 应用崩溃的归因五分类：应用自身缺陷（星卡登记，等待
 | B-1006 | 归因五分类 | 崩溃报告分类覆盖 100% |
 | B-1007 | 回馈命中 | 季度统计入库 |
 
+### 篇 10 Wine 运营判据实装回写（WP-302 · 宿主侧收口 2026-09-24）
+
+WP-302 将 Wine 支架与运营七判据从文档口径落为**判据实装层**——五个新模块（winecare/winepfx/wineshim/winecase/wineattr），MD3 行 110。两条先行的红线：**预算数字同源**（winecare 直接 `use crate::recovermx::{WATCHDOG_MS, WINESERVER_REBUILD_MS}`——恢复矩阵改预算，Wine 支架自动跟上，两处维护等于没有维护）与**垫片零侵入是表不是承诺**（SHIM_TABLE 冻结四行全 VarixSide + WINE_SOURCE_DIFF_LINES=0 审计常量，WineSide 行在数据面插不进去）。CheckSet **33 项**（winecare 8/winepfx 6/wineshim 6/winecase 7/wineattr 6）+ 单测 **20 项**（fe01~fe05 各 4）；全量 ktest **PASS=3526 FAIL=0**（3506+20 对账吻合），101 域 CheckSet 全 PASS。
+
+| 判据 | 模块 | 项数 | 实装要点 |
+| --- | --- | --- | --- |
+| B-1001 | `winecare.rs` | 8 | Watchdog 四态失联即转重建（PROBE_INTERVAL_MS=1000/LOST_AFTER_MS=2000——看门狗不是轮询是状态机）×rebuild_overdue 预算同源（**直引 recovermx 的 WATCHDOG_MS/WINESERVER_REBUILD_MS**——数字只此一处）×SessionCard 四字段良构（诚实呈现的载体）×Negotiation 两态穷举 + negotiate_report 分组对账（恢复数不虚报）×EnvProfile 模板赢 overrides_app（环境基调归模板）×SessionTeardown 快照后强杀 teardown_ok（先留证据再动手）×hundred_kills_recovery 百轮 LCG 确定性延迟（3200..4800ms 全恢复 ≤5s——**B-1001 达标线的宿主模型**，未恢复如实计数） |
+| B-1002 | `winepfx.rs` | 6 | PrefixTemplate 五要素（win_ver/字体/codepage/env/dpi_bound，complete 缺一即假）×TEMPLATE_V1 + TEMPLATE_VER_FIRST=1（版本链有起点）×instantiate 带版本号返回（非法入口全清洗——生成产物与模板版本可追溯，**B-1002 达标线**）×upgrade_available/upgrade_rebuild（**重建优于手术**——旧实例原样留档可追溯，模板漂移不靠原地补丁）×Provenance 三态（Templated/AppModified/Forged）×provenance_verdict 穷举裁决（Allow/AllowWithStarCard/Reject——**篡改零放行**） |
+| B-1003 | `wineshim.rs` | 6 | ShimRoute 四路穷举（SHIM_ROUTES=4）+ ImplSide 双侧枚举×SHIM_TABLE 四行冻结全 VarixSide（表即宪法——零侵入是数据不是注释）×zero_intrusion_audit（无重复路由 + 失效全隔离——WineSide 行插进去审计必红）×WINE_SOURCE_DIFF_LINES=0 + wine_source_untouched（**B-1003 达标线：Wine 源码 diff 为零是常量不是口号**）×DisplayShim 三要素 complete（deco/cursor/dpi_in_bridge——桥内全登记）×WINE_LOCK 版本锁 + reshim_needed（版本一致零重校验/漂移四路全重校验——重校验是精确报复不是全量恐慌） |
+| B-1004 | `winecase.rs` | 5 | StarCase 三件套（脚本+断言数+预期画像——**零断言判例是空转**，well_formed 拒收）×CaseRun 采集四要素（退出码/界面可达探针/冷启动/内存峰值/CPU 空闲）+ run_matches（判例号匹配+退出零+界面可达+三采样不超画像）×PipelineReport + report_green（全量 12+全过+零未解释偏差——**未解释偏差是绿的死敌**）×PipelineTier 三档穷举（FirstPass/ReReview/SpotCheck——升级触发复评）×spot_check_count 月度三分之一向上取整（十二取四——防漂移） |
+| B-1005 | `winecase.rs` | 2 | promote_to_green **类型面强制门**（`Result<RatingState, RatingState>`：报告绿+人工确认缺一不可——无人工确认不转绿不是流程建议是编译期事实，**B-1005 达标线**；人工不能洗白红报告）×PromotionRecord + audit_promotions（to_green 必带 human_confirmed——审计面回放逐条核对，未确认的转绿无所遁形） |
+| B-1006 | `wineattr.rs` | 4 | RootCause 五分类穷举（应用自身缺陷/Wine 缺陷/垫片缺陷/资源越限/**未知兜底**——第五类是覆盖 100% 的结构面：不存在无处安放的错误码）×classify 穷举 match 单源（与 errno_of 同结构防线——证据加一类编译器强制补行，**表外无静默成功**）×cause_label 五类人话直出（崩溃报告界面呈现归因而非黑箱错误码）×coverage_100 双面审计（类型面必有归因 + 运行面全部呈现——**归因写了没呈现等于覆盖没满**，B-1006 达标线） |
+| B-1007 | `wineattr.rs` | 2 | IssueTemplate 三要素入库门（最小复现+环境指纹+变通方案——缺一拒收，半份 issue 是给上游添堵）×QuarterStats 季度台账良构（编号>0 且命中≤提交——假账无所遁形）+ hit_permille 千分比命中率（**无提交返回 None 不编数**——"没提交过"与 0‰ 是两回事，B-1007 达标线：季度统计入库） |
+
+**结构防线两条族**：
+1. **数字同源与表即宪法**：winecare 看门狗预算直引 recovermx 常量（恢复矩阵与 Wine 支架永远同一个数）；SHIM_TABLE 冻结表 + WINE_SOURCE_DIFF_LINES=0——垫片零侵入从"设计承诺"降为"数据事实"（与 GOV_TABLE/B-2103 按钮函数唯一性同族）；classify/cause_label/provenance_verdict 穷举 match——新增分类编译器强制全改。
+2. **诚实计数是默认返回形态**：negotiate_report 对账、hundred_kills 未恢复如实计数、hit_permille 无提交 None、promote_to_green 无确认 Err(AwaitingConfirm)——**宁可返回"没做过"不返回"零"**（与 B-402 账目守恒/B-703 半写不入账同族）。
+
+**勘误连带**：
+1. **MAX_LOOP 99 将被 101 域突破（落刀前推演捉住，预防修正）**：WP-301 同款 truncated 语义——五域注册后 101 > 99 必红。扩容 105（+4 余量），断言链五处同步 96→101（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +33），"改域必查第九处口径"纪律再次兑现。
+2. **fe05 占位残句（落刀自查即修）**：wineattr fe05_coverage 测试初稿留有一行会被编译器拒绝的占位残句——落刀自查捉住立即删除。教训：残句若不上编译器就是假测试；编译器守门零豁免。
+3. **tail -15 吃掉主计数行（施工环境坑二次变体）**：全量 ktest 后台跑用 `| tail -15` 收尾，lib 主计数行（3526）被截——定向重跑 `cargo ktest --lib` 补取。教训：后台长命令的输出采样窗口必须大于关心的证据面（与 WP-301 cd 剥离坑同族登记）。
+
+**诚实边界（随队跟踪）**：百次杀恢复/hundred_kills 为宿主 LCG 确定性模型——真实 wineserver 杀进程演练随实机窗口（S210 同窗口）；SessionCard/EnvProfile/判例画像为内核侧最小模型面——真实 Wine 前缀实例化、垫片编译产物与十二星卡判例跑批随 Wine 接线窗口；季度回馈统计为台账面——真实上游 issue 与命中率随运营窗口入库。
+
 ---
 
 ## 篇 11 原生应用框架（vx-SDK）实现

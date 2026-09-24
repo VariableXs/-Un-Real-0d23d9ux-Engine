@@ -552,3 +552,32 @@
 
 **WP-301 最丑角落（m4 复盘用）**：classify_num 宿主模型面（登记号 0..GOV_ROWS 直映射表行——真实号表随 ABI 面接线）；lxprocfs synth 为账本快照模型（真实 /proc 数据流随进程账本）；carrier_green 四步齐为模型常数（真实四步在 vxrun 运行时）；errno 16 成员为常用子集（全集随柜台覆盖面扩充——穷举 match 编译器防线保证扩充即全改）；KernelCheckup 栈上定长数组的容量-栈权衡留 m4（结构改造候选：堆分配或分页注册表，均破 no_std/const 构造约束，需专案）。
 - 时序：m2 闸门 ✅ → **WP-301 ✅** → 下一站 WP-302 Wine 运营支架（B-1001~1007，MD3 行 110）。
+
+## WP-302 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：Wine 支架与运营（MD3 行 110，B-1001~1007 全七判据）——会话管家/前缀模板/垫片四路/判例流水线/归因回馈落为**判据实装层**，五个新模块（winecare/winepfx/wineshim/winecase/wineattr），单测前缀 fe01~fe05（避撞验证零占用）。两条先行的红线：**预算数字同源**（winecare 直引 recovermx 的 WATCHDOG_MS/WINESERVER_REBUILD_MS——恢复矩阵改预算支架自动跟上）与**垫片零侵入是表不是承诺**（SHIM_TABLE 冻结四行全 VarixSide + WINE_SOURCE_DIFF_LINES=0，MD2 附录 I 头号陷阱的结构面兑现）。
+
+**交付面**（五文件新建 + 三文件注册 + 一注释口径 + 一文档回写）：
+- `winecare.rs`（新建，B-1001 · 8 项）：`use crate::recovermx::{WATCHDOG_MS, WINESERVER_REBUILD_MS}` 数字同源 + PROBE_INTERVAL_MS=1000/LOST_AFTER_MS=2000 + CareState 四态 + Watchdog（on_probe 失联即转重建/rebuild_overdue 预算同源/rebuilt 转协商）+ SessionCard 四字段良构 + Negotiation 两态穷举 + negotiate_report 分组对账（恢复数不虚报）+ EnvProfile 模板赢 overrides_app + SessionTeardown 快照后强杀 teardown_ok + DRILL_ROUNDS=100 + hundred_kills_recovery LCG 确定性百轮（3200..4800ms 全恢复 ≤5s，未恢复如实计数）+ drill_green。
+- `winepfx.rs`（新建，B-1002 · 6 项）：PrefixTemplate 五要素 complete（win_ver/字体/codepage/env/dpi_bound）+ TEMPLATE_V1 + TEMPLATE_VER_FIRST=1 + instantiate 带版本号（非法入口全清洗——产物与模板版本可追溯）+ upgrade_available/upgrade_rebuild（**重建优于手术**，旧实例原样留档）+ Provenance 三态（Templated/AppModified/Forged）+ provenance_verdict 穷举（Allow/AllowWithStarCard/Reject——**篡改零放行**）。
+- `wineshim.rs`（新建，B-1003 · 6 项）：ShimRoute 四路穷举 + ImplSide 双侧 + SHIM_TABLE 四行冻结全 VarixSide + zero_intrusion_audit（无重复路由+失效全隔离——WineSide 行审计必红）+ WINE_SOURCE_DIFF_LINES=0 + wine_source_untouched（**Wine 源码 diff 为零是常量不是口号**）+ DisplayShim 三要素（deco/cursor/dpi_in_bridge）+ WINE_LOCK 版本锁 + reshim_needed（版本一致零重校验/漂移四路全重校验）。
+- `winecase.rs`（新建，B-1004/1005 · 7 项）：StarCase 三件套（脚本+断言数+预期画像，零断言拒收）+ CaseRun 采集四要素 + run_matches（判例号匹配+退出零+界面可达+三采样不超画像）+ PipelineReport/report_green（全量 12+全过+零未解释偏差）+ PipelineTier 三档（FirstPass/ReReview/SpotCheck）+ spot_check_count 月度三分之一向上取整（十二取四）+ RatingState 四态 + promote_to_green **类型面强制门**（`Result<RatingState, RatingState>`：报告绿+人工确认缺一不可——人工不能洗白红报告）+ PromotionRecord/audit_promotions（to_green 必带 human_confirmed）。
+- `wineattr.rs`（新建，B-1006/1007 · 6 项）：RootCause 五分类穷举（**第五类 Unknown 兜底=覆盖 100% 的结构面**）+ Evidence 五证据 + classify 穷举 match 单源（无默认分支——与 errno_of 同结构防线）+ cause_label 五类人话直出（界面呈现归因而非黑箱错误码）+ triage/present_cause/coverage_100 双面审计（类型面必有归因+运行面全部呈现——归因写了没呈现等于覆盖没满）+ IssueTemplate 三要素入库门（最小复现+环境指纹+变通方案缺一拒收）+ QuarterStats 季度台账良构（编号>0 且命中≤提交）+ hit_permille 千分比命中率（**无提交 None 不编数**）。
+- `lib.rs`：五模块注册（lxrun 后追加，带判据号 doc 注释）；`quality.rs`：五域入 run_full_loop（lxrun 后）+ 断言链五处同步 96→101（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +33）+ **MAX_LOOP 99→105 扩容**（101 域将破 99 上限，+4 余量；"改域必查第九处口径"纪律第三次兑现）；`robust.rs`：五域入 checkup（MAX_DOMAINS=128 容量足够，注释补"WP-302 后 101 域余量 27"口径）。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 10 判据表后插入"篇 10 Wine 运营判据实装回写"段——七判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族（数字同源与表即宪法/诚实计数是默认返回形态）+ 勘误连带三条。
+
+**证据三件套**：`cargo kcheck` 绿（30 个既有 warning 与本包无关）；全量 `cargo ktest` **PASS=3526 FAIL=0 EXIT=0**（较 WP-301 收口 3506 +20 = 五域新单测 20；lib 3526 + fuzz 6 + 收尾 0）；**CheckSet 33 项**（winecare 8/winepfx 6/wineshim 6/winecase 7/wineattr 6）+ **单测 20 项**（fe01~fe05 各 4）；101 域 CheckSet 全 PASS（F489 `lp.len()==101` + 记账下限 `39*25+134+68+56+57+57+73+36+28+28+27+33`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（推演与自查捉住，零带病入库）：
+1. **MAX_LOOP 99 将被 101 域突破（落刀前推演捉住，预防修正）**：WP-301 同款 truncated 语义——扩容 105，+4 余量模式延续；断言链五处 96→101 同步改净（全仓扫残留零命中，checks.rs 容量注释补当前口径）。
+2. **fe05 占位残句（落刀自查即修）**：wineattr fe05 测试初稿一行占位残句会被编译器拒绝——自查捉住立即删除，未上编译器；残句若不修就是假测试，编译器守门零豁免。
+3. **tail -15 吃掉主计数行（施工环境坑二次变体）**：全量 ktest 后台跑 `| tail -15` 截掉 lib 主计数行——定向重跑 `cargo ktest --lib` 补取（3526）。教训：后台长命令输出采样窗口必须大于关心的证据面。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 百次杀恢复/hundred_kills 为宿主 LCG 确定性模型——真实 wineserver 杀进程演练随实机窗口（S210 同窗口，B-1001 达标线的宿主形态）。
+2. SessionCard/EnvProfile/PrefixTemplate 实例化为内核侧最小模型面——真实 Wine 前缀实例化与模板升级随 Wine 接线窗口。
+3. 十二星卡判例跑批/评级发布为流水线模型——真实判例脚本与 vxbench 三采样随实机验收（B-1004/1005 的人工确认环节实机走查）。
+4. 归因五分类的 Evidence 采集为证据登记模型——真实崩溃现场采集随诊断中心接线；季度回馈统计随运营窗口入库。
+
+**WP-302 最丑角落（m4 复盘用）**：hundred_kills_recovery 的延迟带 3200..4800ms 为宿主模型常数（真实 wineserver 重建时长分布随实机测量）；Verdict 的 AllowWithStarCard 仅类型面（星卡标注面与 starmapui 联动待 WP-305 星图后端）；reshim_needed 返回重校验路数为计数模型（真实垫片重编译管线随 Wine 接线）；promote_to_green 的人工确认是布尔入参（真人签字面随验收平台接线）。
+- 时序：m2 闸门 ✅ → WP-301 ✅ → **WP-302 ✅** → 下一站 WP-303 vx-SDK（B-1101~1107，MD3 行 112）。
