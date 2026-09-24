@@ -743,3 +743,32 @@ MD3 阶段三出口仪式五门，逐门核账（宿主可验面 vs 实机欠账
 
 **WP-402 最丑角落（m4 复盘用）**：escalate 的 first_hit 与 detect_* 是同一规则两次实现（阈值常量共享但扫描逻辑重复——收敛为迭代器式单实现随 no_std 抽象窗口）；选择表七规则为静态前缀（路径→子系统映射的动态登记随 CI 接线）；Redline 密封以"无方法"承载（真实构建期扫描脚本随 B-1506/WP-403 联动）。
 - 时序：m2 闸门 ✅ → 阶段三全 ✅ → m3 闸门宿主侧对账 ✅ → WP-401 ✅ → **WP-402 ✅** → 下一站 WP-403 安全执法与取证（B-1501~1506+B-3101~3103，MD3 行 2.4）。
+
+## WP-403 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：安全执法与取证（MD3 行 2.4）——三个新模块（secgate/signchain/netdiag），单测前缀 fe28/fe29/fe30（避撞验证零占用）。三条先行的红线：**能力是类型不是标志位**（Capability 私有字段+grant 唯一构造入口——伪造路径类型面不存在）、**违例构造编译不可能**（PagePerm 枚举无 WX 变体——审计零违例是计算结果不是检查结论）、**下载段终止**（验签失败 landed 恒 false——落盘面碰不到坏包，篇 13.3）。
+
+**交付面**（三文件新建 + 四文件注册/口径 + 两文档回写）：
+- `secgate.rs`（新建，B-1501~1504 · 15 项）：能力对象私有构造（grant 唯一入口）+对抗 100 轮 adversarial_100（无能力/错能力全拒+计数对账，LCG 同源 galaxy::rt 可重放——**B-1501 达标线**）+PagePerm 四态无 WX 变体+WxTable 权限定型+request_perm 受限原语逐次留审计+audit_violations 恒 0（**B-1502 达标线**）+ATTACK_SURFACE==REGISTERED_CALLS 双向对账+无调试接口（**B-1503 达标线**）+四执法点（install_gate/boot_caps/dispatch 验能力留痕/UsageLedger 守恒）共享 PERMISSION_TABLE 五项唯一权威（**B-1504 达标线**）。
+- `signchain.rs`（新建，B-1505/1506 · 7 项）：FNV-1a 签名**版本进签名域**（旧包重放对不上去）+三拒 Verdict（Unsigned/BadSig/StaleVer）+download_gate 下载段终止（landed=Trusted——**B-1505 达标线**）+REDLINE_SIZE 直引 `explog::Redline` 红线类型同源（B-2303 联动——红线只有一份定义）+CALLSITE_HAS_REDLINE 六点全 false+redline_build_audit 逐点扫描（**B-1506 达标线**）。
+- `netdiag.rs`（新建，B-3101~3103 · 11 项）：CaptureRing::offer 旁路复制即返回（零干扰是结构面）+环形覆盖诚实计数 overwritten+loss_permille==20‰（2%<3% **算出来的**——**B-3101 达标线**）+pcap 标准格式（MAGIC/版本/记录头）+DICT_FIELDS 八字段冻结+put_kv 双格式同源+EXIT 四码（**B-3102 达标线**）+forensic_on_fail 自动取证 30s+四象限对账+report_has_bundle 附包引用在册（**B-3103 达标线**）。
+- `lib.rs`：三模块注册（explog 后，带判据号 doc 注释）；`quality.rs`：三域入 run_full_loop+断言链五处同步 123→126（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +33）+MAX_LOOP 130 按兵不动（126 余量 4）；`robust.rs`：三域入 checkup（126 < MAX_DOMAINS 128 **余量仅剩 2**）；`checks.rs`：容量注释更新（**WP-404 落刀前必先扩 MAX_DOMAINS**）。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 15 判据表后与篇 31 判据表后各插入回写段（六判据+三判据×三模块×表格+结构防线+勘误连带；篇 31 明示 B-3201~3204 随 WP-404）。
+
+**证据三件套**：`cargo kcheck` 绿（新模块零新告警基线）；全量 `cargo ktest` **PASS=3630 FAIL=0**（较 WP-402 3618 +12 = fe28×4+fe29×4+fe30×4，对账吻合；fuzz 1+parser 6 亦全绿）；**CheckSet 33 项**（secgate 15/signchain 7/netdiag 11）+**单测 12 项**；126 域 CheckSet 全 PASS（F489 `lp.len()==126`+记账下限 `…+33`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（kcheck/ktest 与落刀自查捉住，零带病入库）：
+1. **前置/后置分隔符语义混淆（ktest 捉住）**：put_kv 的 sep 是前置分隔符，table_line 末字段按后置假设 `n -= 1` 把末位数字覆盖成换行（`port=3`→`port=`）——去掉回退直接换行；教训入册：**调用底座前先读语义注释，别按猜的协议写减法**。
+2. **"测试数据要先算一遍被测公式"第九次重演（ktest 捉住）**：fe30 注释臆写"71 帧投递覆盖 7"，循环实际 CAP_RING+1=65 次（覆盖 1 帧）——注释与断言 overwritten==1 重算修正；同修断言字段名 port→src_port（先查 DICT_FIELDS 再写断言）。
+3. **闭包捕获 &mut 会 move（kcheck 捉住）**：渲染底座初版闭包捕获 &mut 后逐字段调用双重借用——重写独立函数 put_kv（sep+quoted 双参数分离两件事）。
+4. **签名缓冲区尺寸先算（落刀自查捉住）**：sign buf 初稿 260 字节——4+256+8=268 才装得下，重算修正（尺寸也是被测公式）。
+5. **定长数组伴随要求第三次（kcheck 捉住）**：CapturedFrame 补 Copy derive（[None; CAP_RING] 要求元素 Copy——WP-206/WP-402 同族）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 对抗 100 轮为宿主模型面（LCG 同源可重放）——真实进程上下文对抗与越权用例随实机窗口。
+2. 签名 FNV-1a 64 位为宿主侧方案——真实发布链签名算法与根钥管理随发布工程窗口（篇 13.3 联动）。
+3. 抓包为环形模型面零真实 I/O——真实网卡旁路与 BPF 式过滤编译随驱动窗口；pcap 落盘与分卷随存储接线。
+4. 取证时长 30s 为声明常量——真实判例引擎联动随篇 25.1 实装窗口；红线构建期审计为模块内逐点扫描——全仓库脚本化扫描随 CI 接线。
+
+**WP-403 最丑角落（m4 复盘用）**：adversarial_100 的 LCG 与 galaxy::rt 同源（种子面共享——真实对抗需独立熵源）；PERMISSION_TABLE 五项静态注册面（新接口入表流程随 WP-404+ 扩展）；put_kv 的 quoted 参数承载两种格式语义（三格式以上需字典驱动渲染）；detect_* 与 first_hit 双实现的教训在 explog（WP-402 已登记，secgate 四执法点各自独立实现有轻度重复——收敛随 no_std 抽象窗口）。
+- 时序：m2 闸门 ✅ → 阶段三全 ✅ → m3 闸门宿主侧对账 ✅ → WP-401 ✅ → WP-402 ✅ → **WP-403 ✅** → 下一站 WP-404 安装更新与收尾件（B-3201~3204 及收尾组，MD3 行 2.5；**落刀前先扩 MAX_DOMAINS 128→136**）。
