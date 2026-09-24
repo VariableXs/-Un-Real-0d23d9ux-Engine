@@ -244,6 +244,18 @@ pub mod recovermx;
 /// 杀死演练（WP-209 · S210：kill -9 十种姿势全过零损坏×恢复预算与矩阵
 /// 同源×门禁捉坏自证——演练记录即验收证据）。
 pub mod killdrill;
+/// 转译治理边界表（WP-301 · B-401 直通族全覆盖+B-404 差异表诚实性：四类
+/// 穷举冻结×未登记默认拒×拒绝与简化全登记——治理表是这个包的宪法）。
+pub mod lxgov;
+/// errno 单源映射与转译开销（WP-301 · B-403 穷举 match 单源 100% 覆盖+
+/// B-405 百万次空调用 P95 ≤ 2μs 三段预算模型）。
+pub mod lxerrno;
+/// 伪文件系统面（WP-301 · B-407：十六文件在册×清单外 ENOENT×内容按内核
+/// 账本即时合成）。
+pub mod lxprocfs;
+/// vxrun 与验收载体（WP-301 · B-402 四步序+LTP 归因闭环+B-406 三类载体
+/// 全绿×封闭树 800MB）。
+pub mod lxrun;
 /// S4（AI-4/6）：ushell 桌面真壁纸（三世界同源静态帧）。
 pub mod wallpaper;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×

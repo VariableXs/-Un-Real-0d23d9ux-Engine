@@ -519,3 +519,36 @@
 5. **桌面空闲 5% 与拖动手感实口径复测**：⏳ 实机硬项。宿主面双预算模型先行（B-501 空转成本 permille ≤50、B-502 p95 ≤55fps——WP-201 明细），实口径复测需实机窗口。
 
 **对账结论**：宿主侧 **3/4 判成 + 20 维度第一轮全量交卷**（✅9/◐5/⏳6，实机依赖如实标注）；六件套真人走查与桌面手感实口径复测为实机/真人硬项，随实机窗口逐项补账，**宿主可推进面不设阻**——阶段三按 MD3 时间线继续（WP-301 转译层 Linuxulator，前置 WP-105/203/204 三面已齐）。**闸门纪律即时生效**（MD3 第 3 章）：本闸门判成后禁止再动 VXWM 消息表与输入事件 schema——桌面定型的意思就是协议定型（宿主侧 schema 冻结面已于 WP-201/VXWM 锁回归）；闸门期间新功能合入按加塞处理，只修判据相关缺陷。
+
+## WP-301 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：转译层 Linuxulator（MD3 行 108，B-401~407 全七判据）——柜台治理边界/errno 单源/伪文件清单 + vxrun 四步/LTP 归因闭环/三类载体落为**判据实装层**，四个新模块（lxgov/lxerrno/lxprocfs/lxrun），单测前缀 fd01~fd04（避撞验证零占用）。**阶段三首包（m2 闸门后第一包）**：治理表先冻结再写代码（"治理表是这个包的宪法"），拒绝不是失败是登记在册的诚实边界（差异表 7 行 + ENOSYS 指名 + Q23 人话指引）——"诚实的边界"在柜台层兑现。
+
+**交付面**（四文件新建 + 三文件注册 + 一配置修正 + 一文档回写）：
+- `lxgov.rs`（新建，B-401/404 · 8 项）：SysCall 32 成员枚举（直通 16/适配 7/自实现 4/拒绝 5）+ SysClass 四类 + GOV_TABLE 32 行穷举冻结（无重复+四类有人口）+ classify/classify_num 表即唯一权威（不可达处防御性默认拒；表外号码一律 Deny——**表外无静默成功**）+ direct_errno_passthrough（C-4 原值直通）+ ENOSYS=38 + DIVERGENCES 7 行冻结（拒绝 5 + 简化 clone/epoll 2，指名错误码+人话指引 D-01~D-07）+ divergence_for 撞墙查询 + deny_errno。
+- `lxerrno.rs`（新建，B-403/405 · 7 项）：VarixErr 16 成员穷举 + errno_of **穷举 match 无通配**（编译器保证新错误码不加映射编不过——"单源生成"的结构面）+ map_full_coverage（全成员落 1..=133）+ 映射确定性 + checked_len 长度不信任 + BUDGET_NS=2000 与三段成本常量（600+400+700=1700）进代码 + model_percentile_ns（百万次 LCG 确定性延迟 + 20ns 桶百桶直方图 + nearest-rank 取 P95，零堆可复现）+ 分布诚实（P50 ≤ P95 同一直方图）。
+- `lxprocfs.rs`（新建，B-407 · 5 项）：PseudoFile 16 件（/proc 八 + /sys 二 + /dev 六）+ manifest_complete 无重复 + resolve_path 字面路径表（**清单外返回 None = ENOENT 语义**——Q23 的另一半）+ ProcCtx 账本快照 + push_dec/push_ascii 零堆排版 + synth_status（Linux 格式）/synth_uptime/synth_meminfo + read_registered（DevNull 零字节/DevZero 全零/DevUrandom 同 pid 确定性 LCG 熵源模型）。
+- `lxrun.rs`（新建，B-402/406 · 7 项）：VxrunStep 四步（挂载视图/环境注入/ABI 登记/移交装载器——steps_in_order 跳步拒，与 B-2103 安装四段同族）+ CLOSED_TREE_MB_MAX=800 + tree_budget_ok + LtpAttrib 两分归因（CounterDefect/SemanticTradeoff）+ LtpCase（失败必归因）+ batch_report 账目守恒（cases==passed+未归因+开口缺陷+取舍）+ batch_gate（**未归因=0 且开口缺陷=0**——取舍>0 合法，登记了就诚实）+ Carrier 三类 + carrier_green（四步齐+绿，少一步不判绿）。
+- `lib.rs`：四模块注册（killdrill 后追加，带判据号 doc 注释）；`quality.rs`：四域入 run_full_loop（killdrill 后）+ 断言链五处同步 92→96（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +27）+ **MAX_LOOP 95→99 扩容**（96 将破 95 预警线，+3 余量模式延续；注释升级"改域必查第九处口径"）；`robust.rs`：四域入 checkup；`checks.rs`：**MAX_DOMAINS 96→128 扩容**（96 恰满且 KernelCheckup 无 truncated 语义——register 超容静默丢域比恰满更危险，前瞻覆盖阶段三/四）。
+- `kernel/.cargo/config.toml`：**[env] RUST_MIN_STACK=16MiB**（测试栈预算进配置——KernelCheckup 128 容量 ≈331KB 且 F475 leaf 与闭环嵌套两份 ≈662KB，默认测试栈触底；kbuild 内核镜像路径不读此变量）。
+- `docs/Varix STAR I · MD2 技术详案.md`：附录 A 前插入"篇 4 转译层判据实装回写"段——七判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族（宪法表是函数/预算数字同源）+ 勘误连带五条。
+
+**证据三件套**：全量 `cargo ktest` **PASS=3506 FAIL=0 EXIT=0**（较 WP-209 收口 3490 +16 = 四域新单测 16；lib 3506 + fuzz 1 + parser fuzz 6）；**CheckSet 27 项**（lxgov 8/lxerrno 7/lxprocfs 5/lxrun 7）+ **单测 16 项**（fd01~fd04 各 4），四域定向全绿；96 域 CheckSet 全 PASS（F489 `lp.len()==96` + 记账下限 `39*25+134+68+56+57+57+73+36+28+28+27`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（编译与对练捉住的真实缺陷，修复并锁定回归）：
+1. **B-402 归因闭环公式与取舍语义冲突（"测试数据要先算一遍被测公式"第八次重演）**：初稿断言 `passed == cases`（重跑全绿），但语义取舍用例合法地永久不过（取舍不是缺陷，登记后仍 failed）——passed=3 ≠ cases=4 必假。f475 逐域报告定位（"B-402/406 vxrun 与验收载体 FAIL 6/7 → - B-402 归因闭环"），修为账目守恒 `unattributed==0 && open_defects==0 && passed+tradeoffs==cases`——"全归因"不等于"全绿"，B-402 达标线（失败项全部归因）的忠实表达。
+2. **MAX_DOMAINS 96 恰满 + register 静默丢域（落刀前推演捉住，预防修正）**：KernelCheckup 无 truncated 预警，96 域恰满容量后第 97 域被静默吞掉不报警——按"不够即扩"扩容 128。
+3. **MAX_DOMAINS 128 撑爆测试线程栈（f475 STATUS_STACK_OVERFLOW，全量 ktest 捉住）**：KernelCheckup 栈上定长数组 + F475 leaf 嵌套两份 ≈662KB 超默认测试栈——测试栈预算进 config.toml [env]（结构面不进良心），修复后 f475 逐域报告正常输出。
+4. **MAX_LOOP 95 将被 96 域突破（落刀前推演捉住，预防修正）**：WP-209 同款 truncated 语义——扩容 99，+3 余量模式延续。
+5. **闭环红条目定位路径沉淀**：f475_every_domain_reports 的逐域 render 输出（FAIL 域名+失败条目名）是全闭环最快的红项定位器——本次从"f489 failed==1"到"lxrun 归因闭环条目"两跳锁死，比盲读 27 条 CheckSet 快一个量级。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. GOV_TABLE 32 行为四类家族代表面（篇 4.2 直通 16/适配 7/自实现 4/拒绝 5）——Linux 全量 400+ 调用面随 ABI 规范（VARIABLE-200）接线扩充，穷举防线与默认拒策略不变。
+2. LTP 合规子集跑批为宿主映射模型（batch_report/batch_gate 对账逻辑）——真实 LTP 离线跑随实机窗口（篇 4.6 测试三层之语义层）。
+3. 转译开销 P95 为 LCG 确定性模型（宿主零堆直方图）——真实计时随实机 19.1 微基准（空调用百万次取 P95）。
+4. 三类载体绿判为登记模型——静态 CLI×20/VSCode/Java/Python 真实运行行为对照随实机验收（MD1 24.6）。
+5. /proc 内容为 ProcCtx 账本快照合成——真实数据流随进程账本接线；DevUrandom 熵源为同 pid 确定性 LCG 模型——真实 CSPRNG 接线随内核熵源域。
+6. 施工环境：Bash 命令中 `cd <path> && …` 的 cd 段被环境剥离（连续五次 no such command: ktest 假失败）——绕行 `sh -c 'cd … && …'` 包装；一切长命令自包含绝对路径沉淀为施工纪律。
+
+**WP-301 最丑角落（m4 复盘用）**：classify_num 宿主模型面（登记号 0..GOV_ROWS 直映射表行——真实号表随 ABI 面接线）；lxprocfs synth 为账本快照模型（真实 /proc 数据流随进程账本）；carrier_green 四步齐为模型常数（真实四步在 vxrun 运行时）；errno 16 成员为常用子集（全集随柜台覆盖面扩充——穷举 match 编译器防线保证扩充即全改）；KernelCheckup 栈上定长数组的容量-栈权衡留 m4（结构改造候选：堆分配或分页注册表，均破 no_std/const 构造约束，需专案）。
+- 时序：m2 闸门 ✅ → **WP-301 ✅** → 下一站 WP-302 Wine 运营支架（B-1001~1007，MD3 行 110）。

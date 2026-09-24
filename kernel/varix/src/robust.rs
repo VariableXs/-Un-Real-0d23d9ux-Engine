@@ -1112,6 +1112,11 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::benchsix::run_benchsix_checks());
     checkup.register(crate::recovermx::run_recovermx_checks());
     checkup.register(crate::killdrill::run_killdrill_checks());
+    // WP-301 四域：转译层 Linuxulator 判据实装层（MD2 篇 4）。
+    checkup.register(crate::lxgov::run_lxgov_checks());
+    checkup.register(crate::lxerrno::run_lxerrno_checks());
+    checkup.register(crate::lxprocfs::run_lxprocfs_checks());
+    checkup.register(crate::lxrun::run_lxrun_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());

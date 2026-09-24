@@ -6,6 +6,14 @@ kbuild = "build --target x86_64-unknown-none --release --features kernel-image"
 ktest = "test --target x86_64-pc-windows-msvc"
 kcheck = "check --target x86_64-unknown-none --features kernel-image"
 
+# 测试线程栈预算（结构面不进良心）：KernelCheckup 是栈上定长数组
+# （[Option<CheckSet>; MAX_DOMAINS]，WP-301 后 128 容量 ≈ 331KB），且
+# F475 leaf 条目与闭环嵌套两份 ≈ 662KB——默认 2MiB 测试栈在域数增长后
+# 触底（f475 STATUS_STACK_OVERFLOW）。16MiB 只影响宿主测试进程，
+# kbuild 内核镜像路径不读此变量。
+[env]
+RUST_MIN_STACK = "16777216"
+
 [target.x86_64-unknown-none]
 linker = "rust-lld"
 rustflags = [
