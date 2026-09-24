@@ -916,6 +916,35 @@ vx-shot：区域（拖框带放大镜）、窗口（命中高亮）、全屏三�
 | B-1903 | 生效三档 | 语义与提示一致（全表走查） |
 | B-1904 | 通知确认通道 | 模态不可绕过，免打扰可用 |
 
+### 篇 16-19 判据实装回写（WP-205 · 2026-09-24 · 八域宿主全绿）
+
+WP-205 将本四篇 15 项验收判据落为判据实装层：八个新模块（termproc/termfeed/trashbin/fsview/thumbsched/edcore/widgetline/settable），CheckSet 73 项全带判据号（可 grep），单测前缀 f901~f908 与判据组一一对应。全量 ktest PASS=3450 FAIL=0（82 域 CheckSet 全 PASS，MAX_LOOP 前置扩容 88 无截断）。
+
+**八域对照表**：
+
+| 模块 | 判据 | CheckSet | 结构防线/关键面 |
+| --- | --- | --- | --- |
+| termproc | B-1601/1602 | 8 | 吞吐预算模型（1e6×1000ns≤1s，对练 230 万 ops）；OpRing 每帧 ≤64 恒上限 + 背压对账 produced==delivered+dropped；ScrollRing 一万行环形 count+dropped==pushed（内存恒定）；宽字符两格计宽（判例 21）；非法序列忽略计数零网格副作用 |
+| termfeed | B-1603/1604 | 8 | 回显五段预算 9500ns≪16ms 倍余量；EchoStage 环节表穷举零阻塞（新增环节必须进表）；分段和==总预算恒等式；CommandRoute 原生表先查/直插表后查/未知诚实 None；PTY 随会话回收 pty_alive==live；未结束会话如实入快照 |
+| trashbin | B-1701（数据红线） | 9 | **DeleteApi 类型面仅 Trash/PurgeConfirmed——无"直接删除"变体**（ntfsro 同族：危险通路的不存在性由类型面保证）；永久删除二次确认硬门；配额 10% 清最旧（Q45）；一动作一汇总通知；环满自愈删除不失败；条目守恒 put==count+restore+purge |
+| fsview | B-1702/1703 | 10 | 三呈现面一致（角标/置灰/解释）；呈现层与 B-705 强制层分层（双保险语义单一）；FileAction 七操作穷举矩阵；写尝试 attempts==denied+allowed；即席 960ns≤1ms 整数推导；FullSearch 终态机任意步可取消 + open_handles 归零 |
+| thumbsched | B-1704 | 8 | LRU 容量恒 128；按需生成零预扫；**取消无半成品**（out_ready 仅完成时为真——落盘许可结构面）；两槽节流第三任务排队；2ms/步×8≤16ms 不卡 UI |
+| edcore | B-1801（数据红线）/1802 | 10 | **AtomicSave renamed 单步翻转**（磁盘要么旧内容要么新内容——无中间可见态）；两步失败注入 orig_intact 恒真；视口窗口 ≤4096 恒内存；百兆秒开 900ms≤1s 预算；UndoChain 词组级合并 + 链深 500 环形；undo/redo 守恒；Eol roundtrip 不改写 |
+| widgetline | B-1803 | 8 | 四件清单表（新增小件必须进表）；公共线四指标全件过线；four_widget_sweep 单函数遍历（"一个脚本测四件"本体）；shot_path 确定性（"截完在哪"永远可答）；rotate_meta 元数据级（像素锚不变） |
+| settable | B-1901~1904 | 12 | 七字段 schema；**新服务零前端**（add_row→render_label 自动生成）；读表执法同源（schema 不过进不了表）；validate 先于 commit + 越域 current 不动（"取消永远是安全出路"的回滚机制本体）；三档语义在表内声明 + hint 前置告知；NotifyBus 免打扰入队/同主题聚合；ConfirmModal 无 bypass 方法 + 安全类 remember_choice 恒 false |
+
+**结构防线登记（新增三条族）**：
+1. **删除面类型防线（trashbin）**：SDK 删除 API 枚举无 Direct 变体 + SDK_DELETE_APIS 穷举表——"绕过回收站的唯一途径是永久删除（二次确认）"由类型系统保证，与 ntfsro（B-705 无写模式）、evflow（B-901 无注入接口）同族。
+2. **落盘许可面（thumbsched/edcore）**：out_ready 仅完成时为真（取消零半成品）；renamed 单步翻转（原子性本体）——数据红线的"无中间态"由状态机结构保证，不由纪律保证。
+3. **回滚机制面（settable）**：validate 不触状态 → commit 先 validate → 拒绝即 current 不动——"取消永远是安全出路"在设置层是回滚机制不是一句文案。
+
+**勘误连带（施工期实测修正，原判据语义不变）**：
+1. B-1702 与 B-705 分层明确：B-705 是 VFS 强制层（ntfsro，写句柄 100% 拒绝），B-1702 是文件管理器呈现层（角标/置灰/解释）——两判据各自独立成立，呈现层禁用的操作调下去也被强制层拒绝（双保险语义单一）。
+2. B-1704"异步加节流"实装为两槽并发上限 + 每步预算推导——"卡死界面的缩略图是高频事故点"的防线是结构性（槽位 + 落盘许可）而非纪律性。
+3. B-1802"链内存随窗口释放"实装为 close() 全清 + dropped 归零对账——链深 500 是环形容量非累计分配。
+4. B-1903"全表走查"实装为 hint 三档精确匹配 + 三档枚举在 Row 内声明——语义在表不在文案。
+5. B-1801"百兆秒开"宿主面为整数预算推导（100MB × 9ms/MB = 900ms ≤ 1s），实测随实机窗口回填（同 B-1601/1603 口径）。
+
 ---
 
 ## 篇 20 系统监视器与账本可视化实现

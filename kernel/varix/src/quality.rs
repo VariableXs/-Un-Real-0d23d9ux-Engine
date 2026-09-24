@@ -508,13 +508,13 @@ pub fn next_batch() -> u32 {
 }
 
 // ===========================================================================
-// F489 — 全系统闭环自检（CheckSet 汇总，容量 80 覆盖全部域：WP-204 后 67 域，
-// WP-202 七域 74 —— 扩容 80 给 WP-205~209 留余量；改域必查第八处口径）
+// F489 — 全系统闭环自检（CheckSet 汇总，容量 88 覆盖全部域：WP-202 后 74 域，
+// WP-205 八域 82 —— 扩容 88 给 WP-206~209 留余量；改域必查第八处口径）
 // ===========================================================================
 
 /// 全系统闭环的最大域容量（VARIX 11 域 + TRINITY 20 域 + 判据实装层
-/// WP-201/203/208/204/202 卅五域 + 余量）。
-pub const MAX_LOOP: usize = 80;
+/// WP-201/203/208/204/202/205 四十三域 + 余量）。
+pub const MAX_LOOP: usize = 88;
 
 /// 全系统闭环自检聚合器：与 checks::KernelCheckup 同构，但容量覆盖全部域。
 #[derive(Clone, Copy)]
@@ -695,6 +695,29 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::candwin::run_candwin_checks());
     // WP-202 · B-907 焦点环（类型面恒开 × Tab 环形遍历 × 焦点唯一 × 审计零例外）
     lp.register(crate::focring::run_focring_checks());
+    // WP-205 · B-1601 解析器吞吐（百万级预算模型 × SGR 三档全色 × 宽字符两格 × 非法序列忽略计数）
+    lp.register(crate::termproc::run_termproc_checks());
+    // WP-205 · B-1602 大输出解耦（每帧上限恒定 × 背压对账 × 滚动环恒内存）
+    // （B-1601/B-1602 同域承载——termproc CheckSet 内分项记账）
+    // WP-205 · B-1603 回显一帧（五段预算 ≤16ms × 路径零阻塞 × 分段对账）
+    lp.register(crate::termfeed::run_termfeed_checks());
+    // WP-205 · B-1701 回收站全语义（类型面无直接删除 × 二次确认硬门 × 配额 10% 清最旧有通知 × 条目守恒）
+    lp.register(crate::trashbin::run_trashbin_checks());
+    // WP-205 · B-1702 只读树禁写呈现（角标+置灰+解释三面一致 × 拒绝留痕 × ext4 对照）
+    // WP-205 · B-1703 搜索双档（即席毫秒级 × 全盘流式可取消资源回收）
+    lp.register(crate::fsview::run_fsview_checks());
+    // WP-205 · B-1704 缩略图异步（按需零预扫 × LRU 上限 × 可取消无半成品 × 两槽节流 × 不卡 UI）
+    lp.register(crate::thumbsched::run_thumbsched_checks());
+    // WP-205 · B-1801 大文件原子保存（视口窗口恒内存 × 百兆秒开 × 换名单步翻转 × 失败原文件无损）
+    // WP-205 · B-1802 撤销链（词组级 × 链深五百 × undo/redo 守恒 × 换行保留）
+    lp.register(crate::edcore::run_edcore_checks());
+    // WP-205 · B-1803 四小件公共线（冷启动/内存/词典/主题四指标 × 一脚本测四件 × 截图落盘可答 × 旋转不重编码）
+    lp.register(crate::widgetline::run_widgetline_checks());
+    // WP-205 · B-1901 设置总表（七字段 schema × 新服务零前端 × 读表执法同源）
+    // WP-205 · B-1902 失败回滚（校验先于生效 × 完整回滚 × 三要素报错）
+    // WP-205 · B-1903 生效三档（表内声明 × 提示一致 × 前置告知）
+    // WP-205 · B-1904 通知确认通道（免打扰聚合 × 模态不可绕过 × 安全类无不再询问）
+    lp.register(crate::settable::run_settable_checks());
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1227,9 +1250,9 @@ pub fn run_quality_checks() -> CheckSet {
     // F488 质量域自检收口：本域 25 条自检 + 域名标签正确。
     cs.add("F488 质量域自检收口", cs.len() + 1 <= 32 && cs.domain == "quality", "CheckSet 容量与域名自洽");
 
-    // F489 全系统闭环自检：74 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202 卅五域）、无截断、全部 PASS。
+    // F489 全系统闭环自检：82 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205 四十三域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 74 && !lp.truncated() && lp.all_passed(), "74 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 82 && !lp.truncated() && lp.all_passed(), "82 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1244,7 +1267,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=74"), "仪表实时计算，域数=74");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=82"), "仪表实时计算，域数=82");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1395,7 +1418,7 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 74);
+        assert_eq!(lp.len(), 82);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
@@ -1403,8 +1426,9 @@ mod tests {
         // 25+22+18+21+15+14+19 = 134 项 + WP-203 七域 10+12+9+10+8+10+9 = 68 项
         // + WP-208 七域 8+7+7+6+9+10+9 = 56 项 + WP-204 七域 8+9+8+8+8+8+8 = 57 项
         // + WP-202 七域 8+8+9+8+8+8+8 = 57 项
-        // （卅五域 CheckSet 条数受各自 all_checks 断言守护）
-        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57);
+        // + WP-205 八域 8+8+9+10+8+10+8+12 = 73 项
+        // （四十三域 CheckSet 条数受各自 all_checks 断言守护）
+        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73);
         assert!(lp.all_passed());
     }
 
@@ -1436,7 +1460,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=74"));
+        assert!(text.contains("domains_in_loop=82"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

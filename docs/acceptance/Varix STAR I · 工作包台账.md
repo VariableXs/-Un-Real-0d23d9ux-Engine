@@ -356,3 +356,40 @@
 4. B-902 布局表 JSON 分发形态（随 VARIXSYS 分发、用户可加布局）随部署域接线——宿主为固化结构面，schema 校验器已是分发侧验收工具。
 
 **WP-202 最丑角落（m4 复盘用）**：imepinyin 音节表 16 条是模型面（真实声韵母表 + 三万词库 + 前缀索引随词库编译管线）；简拼（首字母为辅）在宿主面未建模（切分器 break 即止——简拼路由随引擎接线面）；hkbind 保留字四条用模型键位（真实键位表随交互词典冻结）；candwin 候选窗尺寸 180×216 是九候选页的估算面（真实渲染尺寸随控件域）；focring 的 Tab 序只含线性环形（首尾跳转/分组 Tab 随控件域 SDK 化）；七域与存量 hidsrv/vxwm-* 输入域的收敛留 m2（同 WP-201/203/208/204 口径）。
+
+## WP-205 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：应用件三包（MD3 行 92）15 判据（B-1601~1604 / B-1701~1704 / B-1801~1803 / B-1901~1904）从 MD2 篇 16-19 落为**判据实装层**——八个新模块（termproc/termfeed/trashbin/fsview/thumbsched/edcore/widgetline/settable），单测前缀 f901~f908 与判据组对应（避撞验证：grep 确认 f9xx 零占用）。三包共用控件基类（SDK 早期形态）由 WP-202 focring ControlBase 承载、WP-303 正式化，本包锁应用件自身判据。**数据红线双落点**：trashbin（B-1701 回收站零真删——SDK 删除面类型上无"直接删除"变体）与 edcore（B-1801 原子保存——renamed 单步翻转无中间可见态 + 两步失败注入原文件恒无损）。
+
+**交付面**（八文件新建 + 三文件注册 + 双文档回写）：
+- `termproc.rs`（B-1601/1602）：网格模型（属性位含宽字符主格/续格——判例 21 两格计宽从模型层正确）+ ANSI/VT 状态机（SGR 十六色/二百五十六色/二十四位真彩归一 xterm 256 立方、光标移动、清屏、模式 h/l、OSC 标题）+ 非法序列忽略并计数（零网格副作用）+ 吞吐预算模型（1e6 ops × 1000ns ≤ 1s；对练 600 轮产生 230 万网格操作）+ OpRing 输出/绘制解耦（每帧 drain ≤64 恒上限 → 帧耗时上限恒定 → UI 不卡 + produced==delivered+dropped 背压对账）+ ScrollRing 一万行环形（count+dropped==pushed + 最近淘汰序号对账——缓冲满滚动淘汰网格内存恒定）。
+- `termfeed.rs`（B-1603/1604）：回显五段整数预算（500+1000+2000+2000+4000 = 9500ns ≪ 16ms 且倍余量）+ EchoStage 环节表穷举零阻塞（新增环节必须进表——结构防线）+ 分段之和恒等于总预算（口径一致无隐性加项）+ CommandRoute 双表（原生 vx-* 六命令先查 / Linux 直插 ls/cat/grep/tar/python/git 经柜台无感混用 / 未知诚实 None）+ SessionTable 槽生命周期（open/close 对账 + PTY 随会话回收 pty_alive==live + 先关槽可复用 + 全满诚实拒绝）+ 快照诚实面（live>0 必列未结束会话条目——"终端会话无法跨域存活"是物理不是缺陷）。
+- `trashbin.rs`（B-1701 数据红线）：**DeleteApi 类型面仅 Trash/PurgeConfirmed 两变体**（无 Direct/Unlink 变体可选——新增删除入口必须进 SDK_DELETE_APIS 穷举表，ntfsro"API 面上不存在写模式"同族防线）+ 条目三字段齐（原路径/删除时间/原文件引用）+ 还原语义（条目出环 + 原路径返回——"可反悔"的兑现面）+ 永久删除二次确认硬门（无令牌拒绝并计数 + 不认账令牌同样拒绝 + 执行留通知）+ 配额 10% 清最旧（Q45：240→100 清 7 条整数对账）+ **一动作一汇总通知**（enforce_quota 批量清理汇总一条 PurgeNotice{count,bytes}——记录面容量与清理规模解耦）+ 跨盘移动=复制+回收站删除（无直接删路径）+ 环满自愈（配额清理优先，未超则清最旧一条腾位——删除不因满而失败）+ 条目守恒对账（put_total == count + restore_total + purge_total）。
+- `fsview.rs`（B-1702/1703）：MountView 三呈现面一致（角标"来自 Windows 域（只读）"/写类操作置灰/禁用带一行解释）+ **呈现层与 ntfsro 强制层分层**（B-705 管 VFS 写句柄 100% 拒绝；B-1702 管文件管理器呈现——呈现禁用的操作调下去也被强制层拒绝，双保险语义单一）+ FileAction 七操作穷举矩阵（读 3 允/写 4 禁）+ 写尝试拒绝留痕（attempts == denied + allowed）+ ext4 对照七操作全通 + 即席过滤毫秒级（64 条 × 15ns = 960ns ≤ 1ms 整数推导 + 子串命中对账 + 空模式全显）+ FullSearch 终态机（Running→Cancelled/Done + 任意步可取消 + 终态拒绝二次操作 + open_handles 归零资源回收 + 流式批次呈现首批先答）。
+- `thumbsched.rs`（B-1704）：ThumbCache LRU（容量恒 128 + 触碰刷新 + 满淘汰最旧 + evictions 对账）+ 按需生成零预扫（初始零生成/访问驱动）+ GenJob 进度单调（peak 对账 + 100% 才置 out_ready）+ 任意进度可取消且**取消无半成品**（out_ready 恒 false + 取消后 step 拒绝诈尸——落盘许可只在完成时存在）+ GenLanes 两槽节流（第三任务排队 None）+ 异步不卡 UI 预算（2ms/步 × 8 步 ≤ 16ms 一帧）。
+- `edcore.rs`（B-1801 数据红线/1802）：ViewWindow 视口映射（map_len ≤ 4096 恒定内存 + jump 换映射 + 尾窗截断/越界钳制——百兆秒开与恒定内存并存）+ 百兆秒开预算（100MB × 9ms/MB = 900ms ≤ 1s）+ AtomicSave 原子保存两步面（write_tmp→rename，**renamed 单步翻转即磁盘上要么旧内容要么新内容**；任一步失败注入 renamed 恒 false + orig_intact 恒真——保存失败原文件无损；未写 tmp 直接 rename 拒绝）+ UndoChain 词组级（连续字母合并单步——"不是每键一步也不是一键回底" + 空格硬边界成步）+ 链深 500 环形淘汰（dropped 对账）+ undo/redo 步数守恒 + close 全清（链内存随窗口释放）+ Eol 检测保留（LF/CRLF roundtrip 不改写用户文件——编辑器不自作主张）。
+- `widgetline.rs`（B-1803）：四小件清单表（shot/img/calc/clock 进册——新增小件必须进表）+ 公共线四指标全件过线（冷启动 ≤1s / 内存 ≤64MB / 快捷键入词典 / 主题全适配）+ four_widget_sweep 单函数遍历全绿（"一个脚本测四件"的验收自动化本体）+ shot_path 确定性（/shots/<日期>/shot_<ts>.png 同输入恒同输出——"截完在哪"永远可答）+ rotate_meta 元数据级旋转（orientation 模 4 单字段翻转 + 像素锚/长度不变——原图无损不重编码）。
+- `settable.rs`（B-1901~1904）：SettingRow 七字段 schema（默认值在域内 / Bool 域恒 {0,1} / Enum 域非空 / 空键名拒）+ **新服务零前端**（add_row → render_label 自动生成 "service.key"——加一项设置不是改界面是加一行表）+ 读表执法同源（schema 不过的行进不了总表——表即执法依据）+ SetFlow 校验先于生效（validate 不触状态 → commit 先 validate；越域拒绝 current 不动——"取消永远是安全出路"在设置层是回滚机制不是文案）+ 三要素报错（what/why/how 全非空）+ 生效三档表内声明（Immediate/Session/Reboot 枚举在 Row 内）+ hint 精确匹配全表走查（"重启后生效"前置告知——commit 前可读）+ NotifyBus 浮层三语义（免打扰入队不弹 + flush 按序补弹队列清零对账 + 同主题聚合合并）+ ConfirmModal 模态不可绕过（confirm/deny 二选一无第三态旁路——类型面无 bypass 方法）+ 安全类无"不再询问"（remember_choice 恒 false；便利类允许）。
+- `lib.rs`：八模块注册；`quality.rs`：八域入 run_full_loop（**74→82 域**）+ 断言链五处同步（F489 `lp.len()==82` / F493 仪表 / f489 测试体 len / 记账下限 `+73` / F493 测试体）+ **MAX_LOOP 前置扩容 80→88**（第八处口径连续第三包前置应用）；`robust.rs`：八域入 checkup + **f475 渲染 buf 2048→8192**（82 域渲染超 2048 截断尾部 FAIL 行——诊断盲区修复）。
+- MD2 篇 16-19 判据实装回写段（八域对照表 + 结构防线登记 + 勘误连带）。
+
+**证据三件套**：全量 `cargo ktest` **PASS=3450 FAIL=0 EXIT=0**（较 WP-202 收口 3418 +32 = 八域新单测 4×8；lib 3450 全绿 + 集成 1 + 6 全绿）；**CheckSet 73 项**（termproc 8 + termfeed 8 + trashbin 9 + fsview 10 + thumbsched 8 + edcore 10 + widgetline 8 + settable 12）+ **单测 32 项**（八域各 4），f9xx 定向 32 全绿；82 域 CheckSet 全 PASS（MAX_LOOP 88 无截断）。复核日期 = 2026-09-24。
+
+**红项处置**（编译器、定向测试与全量 ktest 捉住的真实缺陷，修复并锁定回归）：
+1. **edcore 环形缓冲"最后写入位"索引 bug（一处定义两处复用同错）**：top() 与合并分支都写成 `(head + CAP - 1)` 漏加 len——非满环时读到错误槽位（旧数据/None），词组合并从未命中（"ab" 两键入两步而非一步），合并写入落在 head-1 空槽而真栈顶未变（len 断言过而内容断言挂的隐蔽形态）。修正为 `(head + len + CAP - 1) % CAP`（两处同源）。教训：**环形缓冲"最后写入位" = (head + len - 1) mod CAP——head 单独决定不了栈顶，len 是公式必要项；同一公式在读取侧与写入侧必须同源**。
+2. **trashbin 通知容量语义（记录面与动作粒度错位）**：NOTICE_CAP=8 被批量清理逐条塞满（第 17 次 put 环满自动清理 12 条 → notice_count 卡满 8），后续显式 enforce 的通知静默丢弃，notice_count(8) != rounds(4) 对账挂。修复为**一动作一汇总通知**（enforce_quota 批量清理汇总一条 PurgeNotice{count,bytes}——count/bytes 如实且容量与清理规模解耦）。教训：**diag3"数据面与记录面容量语义分离"的邻域推广——记录面的粒度语义要与动作粒度对齐（一动作一记录，不是一条目一记录）**。
+3. **trashbin put 满自愈缺口**：环满时只依赖配额清理腾位——配额未超（大 disk 场景）时 enforce 清 0 条，find_free 仍 None，put 返回 None（违反"删除永远进回收站"）。修复：配额清理后仍满则清最旧一条腾位（带通知）。教训：**自愈路径要枚举"清理量为零"的分支——判据语义（删除不因满而失败）优先于实现捷径**。
+4. **termproc 非法序列断言笔误**：`grid_ops == ops0 + 1` 应为 `== ops0`——非法序列按"忽略"语义零网格副作用。教训：**"忽略并计数"的断言要写全两个面：illegal 计数上去了 + 网格没动**。
+5. **termproc 滚动环断言语义混淆**：`last_evicted_seq == 1`（首次淘汰序号）与字段实际语义（**最近**淘汰序号 = pushed - CAP）错位。修正为 `== sr.pushed - SCROLL_CAP`。教训：**字段名带"last"时断言前先确认是"最近一次"还是"第一次"**。
+6. **edcore 链深对练自相矛盾**：连续 `push_key(b'x')` × 507 全部合并进同一个词组步（词组级语义的本体！），len 恒 1 永远到不了链深 500——对练设计与被测语义直接冲突。修复：交替键入（字母/空格）每键独立成步。教训：**对练序列要先过一遍被测语义的合并/去重规则——词组级撤销链的链深对练必须制造步边界**。
+7. **settable unwrap_or 类型错（编译 4 错同根因）**：`f.validate(...).unwrap_or(ERR_EMPTY)`——`Result<(), SetError>` 的 Ok 变体是 `()`，unwrap_or 参数须匹配 Ok 侧（E0308）+ 连带 E0609 ×3。修复为 match 提取 Err。教训：**Result 的 Err 提取用 match/unwrap_err，unwrap_or 是给 Ok 侧兜底的**。
+8. **"单测绿≠CheckSet 绿"第四次重演**：termproc 2 项 + edcore 1 项 CheckSet 挂而 f9xx 单测 32 全绿——CheckSet 对练面（600 轮大闭环 / 链深 500 步 / 20 次配额循环）超出单测单点覆盖。**诊断手段升级入库：f475 渲染 buf 扩容 8192**——2048 字节对 82 域渲染截断尾部 FAIL 行，诊断 grep "FAIL" 零匹配造成"checkup 已全过"误判；**渲染截断是诊断盲区，先查 buf 容量再下结论**。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-1601 百万级吞吐**实测**（真实墙钟计时）随实机窗口——宿主为整数预算模型 + 对练操作量对账（230 万 ops），vxbench 回填（翻案不改判据结构只改参数）。
+2. B-1603 回显 16ms **实测**随实机窗口——宿主为五段整数预算推导，真实 PS/2 中断到提交面的路径计时回填。
+3. B-1604 混用 shell 真实命令面（POSIX shell 语法/管道/重定向 + 直插柜台真实混用会话）随 shell 域接线——宿主为路由表模型面。
+4. B-1703 全盘搜索真实 ext4 遍历随 VFS 域——宿主为 JobState 终态机模型。
+5. B-1801 百兆秒开真实 mmap 计时随实机窗口；B-1803 四小件真实冷启动/内存随应用构建管线（宿主为登记表模型面）。
+
+**WP-205 最丑角落（m4 复盘用）**：termproc UTF-8 解码未建模（宽字符经 feed_wide 显式入口——真实 UTF-8 流解码随渲染域）；termfeed 命令路由是表模型（真实 POSIX shell 语法随 shell 域）；trashbin 配额基于条目 size 模型面（真实 DATA 分区配额随存储域）；fsview 即席过滤是子串匹配（真实索引级搜索随搜索域）；edcore mmap 是窗口模型（真实 mmap/缺页随内核存储域）；widgetline 四件指标是登记表（真实冷启动/内存测量随应用构建）；settable 后端执法面是 validate/commit 模型（真实各服务后端随服务域接线）；八域与存量 terminal/fileman/editor/settings/apps 域的收敛留 m2（同 WP-201/203/208/204/202 口径）。

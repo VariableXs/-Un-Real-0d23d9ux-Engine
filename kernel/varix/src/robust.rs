@@ -1090,6 +1090,15 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::hkbind::run_hkbind_checks());
     checkup.register(crate::candwin::run_candwin_checks());
     checkup.register(crate::focring::run_focring_checks());
+    // WP-205 八域：应用件三包判据实装层（MD2 篇 16-19）
+    checkup.register(crate::termproc::run_termproc_checks());
+    checkup.register(crate::termfeed::run_termfeed_checks());
+    checkup.register(crate::trashbin::run_trashbin_checks());
+    checkup.register(crate::fsview::run_fsview_checks());
+    checkup.register(crate::thumbsched::run_thumbsched_checks());
+    checkup.register(crate::edcore::run_edcore_checks());
+    checkup.register(crate::widgetline::run_widgetline_checks());
+    checkup.register(crate::settable::run_settable_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
@@ -1825,7 +1834,8 @@ mod tests {
     fn f475_every_domain_reports() {
         let checkup = run_kernel_checkup();
         if !checkup.all_passed() {
-            let mut buf = [0u8; 2048];
+            // 82 域渲染需要大缓冲（2048 会截断尾部 FAIL 行——诊断盲区）。
+            let mut buf = [0u8; 8192];
             let n = checkup.render(&mut buf);
             panic!("kernel checkup:\n{}", core::str::from_utf8(&buf[..n]).unwrap());
         }
