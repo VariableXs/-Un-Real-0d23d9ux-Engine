@@ -304,12 +304,14 @@ pub static mut MODULE_REQUEST: ModuleRequest = ModuleRequest {
     id: [COMMON_MAGIC[0], COMMON_MAGIC[1], 0x3e7e279702be32af, 0xca1c4f3bd1280cee],
     revision: 1,
     response: core::ptr::null_mut(),
-    internal_module_count: 2,
+    internal_module_count: 3,
     internal_modules: (&raw mut BOOT_CFG_MODULES) as *mut *mut InternalModule,
 };
 
 /// 可选内模块声明表（路径相对内核位置：内核在 /kernel/varix → 上一级卷根；
-/// string 新版协议要求非 NULL，无模块串就给空串）。
+/// string 新版协议要求非 NULL，无模块串就给空串）。WP-101 起第三项挂
+/// limine.conf 自身：bootconf::parse 的菜单契约检查（B-102/WD-003 灰显）
+/// 需要 conf 内容——缺失即灰显，绝不假装交接目标还在。
 static mut BOOT_CFG_MODULE: InternalModule = InternalModule {
     path: b"../boot-select.json\0".as_ptr(),
     cmdline: b"\0".as_ptr(),
@@ -322,9 +324,16 @@ static mut WALLPAPER_MODULE: InternalModule = InternalModule {
     flags: 0,
 };
 
-static mut BOOT_CFG_MODULES: [*mut InternalModule; 2] = [
+static mut LIMINE_CONF_MODULE: InternalModule = InternalModule {
+    path: b"../limine.conf\0".as_ptr(),
+    cmdline: b"\0".as_ptr(),
+    flags: 0,
+};
+
+static mut BOOT_CFG_MODULES: [*mut InternalModule; 3] = [
     &raw mut BOOT_CFG_MODULE,
     &raw mut WALLPAPER_MODULE,
+    &raw mut LIMINE_CONF_MODULE,
 ];
 
 #[used]
@@ -716,9 +725,53 @@ impl BootInfo {
 /// Marker mirroring the C `void *` contract without importing it.
 pub type RawPtr = *mut c_void;
 
+// ---------------------------------------------------------------------------
+// B-101 · BASE_REVISION 协议版本闸（MD2 篇 1.2/篇 1 判据表）
+// ---------------------------------------------------------------------------
+// Limine 协议：内核声明 base revision 请求（两个协议魔数 + 修订号）；引导器
+// 若支持该修订，把整个标记**重写为全零**表示确认。内核入口第一件事就是
+// 检查它——不匹配就拒绝启动并在屏幕上打出人话，绝不带病运行（篇 1.2"引导
+// 可靠性的第一道闸"）。
+
+/// BASE_REVISION 支持判定（纯函数，宿主可测）。
+/// 全零 = 引导器确认支持；任何非零残留 = 引导器不支持或未处理。
+pub fn base_revision_confirmed(marker: &[u64; 3]) -> bool {
+    marker[0] == 0 && marker[1] == 0 && marker[2] == 0
+}
+
+/// 入口检查：BASE_REVISION 未获确认时返回人话原因（B-101 的判定面）。
+/// 目标态下读 `BASE_REVISION` 静态标记；宿主测试注入字面量走纯函数。
+pub fn base_revision_issue() -> Option<&'static str> {
+    let m = unsafe { core::ptr::read_volatile(core::ptr::addr_of!(BASE_REVISION)) };
+    if base_revision_confirmed(&m) {
+        None
+    } else {
+        Some(
+            "VARIX kernel: bootloader does not support the Limine base revision \
+             this kernel was built for. Boot refused - upgrade Limine to a \
+             compatible version (protocol 8.x baseline).",
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_revision_gate_pure_logic() {
+        // 全零 = 确认支持
+        assert!(base_revision_confirmed(&[0, 0, 0]));
+        // 原始声明值残留 = 引导器没确认（不支持或没扫到）
+        assert!(!base_revision_confirmed(&[
+            0xf9562b2d5c95a6c8,
+            0x6a7b384944536bdc,
+            1
+        ]));
+        // 半确认（魔数被清但修订号残留）也不算数
+        assert!(!base_revision_confirmed(&[0, 0, 1]));
+        assert!(!base_revision_confirmed(&[0, 7, 0]));
+    }
 
     #[test]
     fn request_layouts_match_protocol() {

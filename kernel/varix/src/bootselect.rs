@@ -87,8 +87,23 @@ pub fn draw(surf: &Surface, remaining: u32, selected: usize) -> i64 {
     for (i, e) in ENTRIES.iter().enumerate() {
         let cy = my + i as i64 * (ch + gap);
         let is_sel = i == selected;
-        surf.fill_rect(mx, cy, mw, ch, if is_sel { HL_BOX } else { BOX_DIM });
-        if is_sel {
+        // WD-003 灰显：Windows 卡不可达时标题降暗、副标题换人话、
+        // 选中框也保持暗色（不给"点不进去的项"一个亮框）。
+        let grey = i == 1 && windows_entry_grey().is_some();
+        let (title_ink, box_ink, sub) = if grey {
+            (INK_DIM, BOX_DIM, windows_entry_grey().map(|r| r.subtitle()).unwrap_or(e.subtitle))
+        } else {
+            (INK_TITLE, HL_BOX, e.subtitle)
+        };
+        let box_fill = if grey {
+            BOX_DIM
+        } else if is_sel {
+            box_ink
+        } else {
+            BOX_DIM
+        };
+        surf.fill_rect(mx, cy, mw, ch, box_fill);
+        if is_sel && !grey {
             surf.rect_outline(mx - 2, cy - 2, mw + 4, ch + 4, HL_BOX);
         }
         let pad = 20i64;
@@ -97,10 +112,10 @@ pub fn draw(surf: &Surface, remaining: u32, selected: usize) -> i64 {
             mx + pad,
             cy + 12,
             e.title,
-            if is_sel { HL_TITLE } else { INK_TITLE },
+            if is_sel && !grey { HL_TITLE } else { title_ink },
             2,
         );
-        crate::font::draw_text(surf, mx + pad, cy + ch - 22, e.subtitle, INK_SUB);
+        crate::font::draw_text(surf, mx + pad, cy + ch - 22, sub, INK_SUB);
     }
 
     // 倒计时行（bootopt 单一来源）
@@ -125,6 +140,55 @@ fn now() -> u64 {
     crate::timeline::read_tsc()
 }
 
+// ---------------------------------------------------------------------------
+// WP-101 B-102 · Windows 交接条目灰显（WD-003：不存在则灰显 + 人话提示）
+// ---------------------------------------------------------------------------
+
+/// 灰显原因（人话词表，与 bootconf::GreyReason 同族；本层只接引导期能
+/// 探明的两态——目标文件级探针由调用方在能探时注入，探不到不灰显）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowsGreyReason {
+    /// limine.conf 里没有合法的 Windows 条目（契约破坏/配置损坏）。
+    ConfigMissing,
+    /// 探针确认交接目标文件不在（闸门条件一红灯的菜单面）。
+    TargetMissing,
+}
+
+impl WindowsGreyReason {
+    /// 菜单副标题的人话（三要素之一：发生了什么；下一步在日志）。
+    fn subtitle(self) -> &'static str {
+        match self {
+            WindowsGreyReason::ConfigMissing => "Entry missing from boot config",
+            WindowsGreyReason::TargetMissing => "Target not found - handoff disabled",
+        }
+    }
+}
+
+static WINDOWS_GREY: AtomicBool = AtomicBool::new(false);
+static WINDOWS_GREY_REASON: AtomicU8 = AtomicU8::new(0);
+
+/// 置灰 Windows 交接卡片（WD-003）。`on=false` 恢复正常（幂等，引导链
+/// 探针晚于首次绘制到达时允许二次校正）。
+pub fn set_windows_entry_grey(on: bool, reason: WindowsGreyReason) {
+    WINDOWS_GREY.store(on, Ordering::Relaxed);
+    WINDOWS_GREY_REASON.store(match reason {
+        WindowsGreyReason::ConfigMissing => 1,
+        WindowsGreyReason::TargetMissing => 2,
+    }, Ordering::Relaxed);
+}
+
+/// 当前是否置灰（main.rs 的 Enter 路径据此拒绝进入不可达目标）。
+pub fn windows_entry_grey() -> Option<WindowsGreyReason> {
+    if !WINDOWS_GREY.load(Ordering::Relaxed) {
+        return None;
+    }
+    match WINDOWS_GREY_REASON.load(Ordering::Relaxed) {
+        1 => Some(WindowsGreyReason::ConfigMissing),
+        2 => Some(WindowsGreyReason::TargetMissing),
+        _ => Some(WindowsGreyReason::ConfigMissing),
+    }
+}
+
 /// 忙等 `hz` 个 TSC tick ≈ 1 秒（引导期单核、中断未开，忙等即正确）。
 fn wait_ticks(ticks: u64) {
     let start = now();
@@ -137,7 +201,7 @@ fn wait_ticks(ticks: u64) {
 // 「配置已重置」角标（任务4 容错第 3 层的视觉面）
 // ---------------------------------------------------------------------------
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 static CFG_RESET_BADGE: AtomicBool = AtomicBool::new(false);
 
@@ -423,8 +487,58 @@ mod tests {
         assert!(count_px(&s, BADGE_INK) > 0);
     }
 
+    // ---- WP-101 B-102：灰显渲染（WD-003 视觉面）----
+    //
+    // 置灰是进程级 static：并行测试下，任何断言「卡 1 高亮形态」的测试
+    // （draw_selection_moves_highlight）必须与本测试共用同一把锁互斥——
+    // 谁持锁谁才有权翻转全局灰显态，否则对照帧会被偶发灰显打红。
+
+    static GREY_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// RAII 复位：断言失败/panic 也不把灰显态漏给后续测试。
+    struct GreyGuard;
+    impl Drop for GreyGuard {
+        fn drop(&mut self) {
+            set_windows_entry_grey(false, WindowsGreyReason::ConfigMissing);
+        }
+    }
+
+    #[test]
+    fn greyed_windows_card_renders_dim_and_unreachable() {
+        let _gate = GREY_STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _reset = GreyGuard;
+        // 对照帧：正常态、选中卡 1（Windows）→ 高亮填充在场。
+        let (s_norm, _b1) = surface(800, 600);
+        draw(&s_norm, 5, 1);
+        assert!(count_px(&s_norm, HL_BOX) > 10_000, "对照帧卡 1 必须高亮");
+        let dim_norm = count_px(&s_norm, INK_DIM);
+        // 灰显帧：同一选中位置 → 高亮消失（不可达目标不给亮框）。
+        set_windows_entry_grey(true, WindowsGreyReason::ConfigMissing);
+        let (s_grey, _b2) = surface(800, 600);
+        draw(&s_grey, 5, 1);
+        assert_eq!(count_px(&s_grey, HL_BOX), 0, "灰显卡不得出现高亮填充");
+        // 标题降暗：灰显卡标题走 INK_DIM（多出 WINDOWS 大标题的暗像素）。
+        assert!(
+            count_px(&s_grey, INK_DIM) > dim_norm,
+            "灰显卡标题应降为 INK_DIM"
+        );
+        // 副标题人话词表锁定（WD-003 三要素之一：发生了什么）。
+        assert_eq!(
+            WindowsGreyReason::ConfigMissing.subtitle(),
+            "Entry missing from boot config"
+        );
+        // 反向撤销：解除置灰后恢复高亮（引导链探针晚到允许二次校正）。
+        set_windows_entry_grey(false, WindowsGreyReason::ConfigMissing);
+        let (s_back, _b3) = surface(800, 600);
+        draw(&s_back, 5, 1);
+        assert!(count_px(&s_back, HL_BOX) > 10_000, "解除灰显后必须恢复高亮");
+    }
+
     #[test]
     fn draw_selection_moves_highlight() {
+        // 断言卡 1 高亮形态 → 必须与灰显渲染测试互斥（共用 GREY_STATE_LOCK，
+        // 防并行翻转全局置灰态导致本测试偶发无高亮）。
+        let _gate = GREY_STATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let (s1, _b1) = surface(800, 600);
         let (s2, _b2) = surface(800, 600);
         draw(&s1, 3, 0);

@@ -343,17 +343,37 @@ pub fn aurora_splash() -> SplashTimeline {
 // F178 引导时间线 — 上电→内核→init→桌面各阶段耗时真实可视化
 // ---------------------------------------------------------------------------
 
+/// MD2 篇 1.8 的十一个启动打点点位（B-106 的点位契约）。原六段保留语义，
+/// 中间补齐内核自举到桌面的六个新点位——预算对账（篇 1.8）的打点先行。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BootStage {
+    /// 上电基准（第 0 点，非 11 点位之一）。
     PowerOn,
+    /// ① 固件交棒（Limine 最早可打的时间点）。
     Firmware,
+    /// ② 菜单选择完成。
     Limine,
+    /// ③ 内核入口。
     Kernel,
+    /// ④ 页表与内存自举完成。
+    Memory,
+    /// ⑤ 驱动枚举完成。
+    Drivers,
+    /// ⑥ 四板斧校验完成。
+    Hardening,
+    /// ⑦ 块设备就绪。
+    BlockReady,
+    /// ⑧ 根文件系统挂载完成。
+    RootFs,
+    /// ⑨ vx-init 启动。
     Init,
+    /// ⑩ 合成器首帧。
+    Compositor,
+    /// ⑪ 桌面就绪。
     Desktop,
 }
 
-pub const STAGE_COUNT: usize = 6;
+pub const STAGE_COUNT: usize = 12;
 
 fn stage_idx(s: BootStage) -> usize {
     match s {
@@ -361,9 +381,35 @@ fn stage_idx(s: BootStage) -> usize {
         BootStage::Firmware => 1,
         BootStage::Limine => 2,
         BootStage::Kernel => 3,
-        BootStage::Init => 4,
-        BootStage::Desktop => 5,
+        BootStage::Memory => 4,
+        BootStage::Drivers => 5,
+        BootStage::Hardening => 6,
+        BootStage::BlockReady => 7,
+        BootStage::RootFs => 8,
+        BootStage::Init => 9,
+        BootStage::Compositor => 10,
+        BootStage::Desktop => 11,
     }
+}
+
+/// MD2 篇 1.8 的十一个点位，按时间序（B-106"11 点位无缺失"的契约面）。
+pub const ELEVEN_CHECKPOINTS: [BootStage; 11] = [
+    BootStage::Firmware,
+    BootStage::Limine,
+    BootStage::Kernel,
+    BootStage::Memory,
+    BootStage::Drivers,
+    BootStage::Hardening,
+    BootStage::BlockReady,
+    BootStage::RootFs,
+    BootStage::Init,
+    BootStage::Compositor,
+    BootStage::Desktop,
+];
+
+/// B-106 判定：十一个点位全部打上（无缺失）。
+pub fn checkpoints_complete(t: &BootTimeline) -> bool {
+    ELEVEN_CHECKPOINTS.iter().all(|s| t.at(*s).is_some())
 }
 
 #[derive(Clone, Copy)]
@@ -468,14 +514,20 @@ impl BootTimeline {
     }
 }
 
-/// 标准引导时间线（QEMU 实测口径）。
+/// 标准引导时间线（QEMU 实测口径；11 点位全打，B-106 样例）。
 pub fn standard_timeline() -> BootTimeline {
     let mut t = BootTimeline::new();
     let _ = t.mark(BootStage::PowerOn, 0);
     let _ = t.mark(BootStage::Firmware, 900);
     let _ = t.mark(BootStage::Limine, 1400);
     let _ = t.mark(BootStage::Kernel, 1900);
+    let _ = t.mark(BootStage::Memory, 2050);
+    let _ = t.mark(BootStage::Drivers, 2150);
+    let _ = t.mark(BootStage::Hardening, 2200);
+    let _ = t.mark(BootStage::BlockReady, 2280);
+    let _ = t.mark(BootStage::RootFs, 2320);
     let _ = t.mark(BootStage::Init, 2400);
+    let _ = t.mark(BootStage::Compositor, 2900);
     let _ = t.mark(BootStage::Desktop, 3100);
     t
 }
@@ -2492,8 +2544,11 @@ pub fn run_bootchain_checks() -> CheckSet {
     let bad = !fresh.mark(BootStage::Firmware, 3000);
     set.add(
         "F178 boot timeline",
-        tl.stages_seen() == 6
-            && tl.marks == 6
+        // WP-101：BootStage 6→12 段扩容（B-106 十一点位 + 固件交棒），
+        // standard_timeline 全点位打满 → stages_seen/marks 跟进为 12；
+        // 各段耗时断言（fw/kernel/total）与点位插入无关，保持原值。
+        tl.stages_seen() == 12
+            && tl.marks == 12
             && dup
             && out_of_order
             && fw == Some(900)

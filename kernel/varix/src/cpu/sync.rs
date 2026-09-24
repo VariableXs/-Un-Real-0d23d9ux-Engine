@@ -595,11 +595,26 @@ mod tests {
     fn spin_lock_is_mutually_exclusive_under_threads() {
         // Multi-core smoke test: 8 threads × 1000 increments must not lose one.
         let cell = SpinProtected::new(0u64);
+        // 起跑线：8 线程全部就位后才同时开抢——否则 Windows 上线程启动
+        // 参差 + 循环极快，可能一个线程跑完全程、其他线程才第一次 lock
+        // （全程零争用），contentions 断言变成掷硬币（实测偶发红）。
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
         std::thread::scope(|s| {
+            // move 闭包只携 Arc（起跑线）；cell 以共享引用进场（lock 是 &self）。
+            let cell = &cell;
             for _ in 0..8 {
-                s.spawn(|| {
-                    for _ in 0..1000 {
+                let b = std::sync::Arc::clone(&barrier);
+                s.spawn(move || {
+                    b.wait();
+                    for i in 0..1000 {
                         let mut g = cell.lock();
+                        // 首个临界区拉长：后到者必然撞上持锁窗口，
+                        // 争用从「大概率」变「必然」。
+                        if i == 0 {
+                            for _ in 0..4096 {
+                                core::hint::spin_loop();
+                            }
+                        }
                         *g += 1;
                     }
                 });

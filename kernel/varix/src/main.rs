@@ -20,12 +20,104 @@ extern "C" fn _start() -> ! {
 /// Number of timeline stages = progress bar total (F014 truth mapping).
 const TOTAL_STAGES: usize = 14;
 
+/// B-101 拒绝启动出口：屏幕人话 + 串口 + hlt 停机。不返回。
+///
+/// 版式与交接画面同一视觉语言（深空背板 + 亮字），文案走三要素前两条
+/// （发生了什么 + 为什么）；第三要素（下一步）在停机语境下就是文案本体。
+fn refuse_boot(why: &'static str) -> ! {
+    // 串口先行：QEMU 调试通道，16550 自初始化，与 logger 无关（logger 的
+    // 全局状态此时为零初始化，绕开它直接写 COM1）。
+    varix::serial::init();
+    varix::serial::write_bytes(b"BOOT REFUSED: ");
+    varix::serial::write_bytes(why.as_bytes());
+    varix::serial::write_bytes(b"\n");
+    // 屏幕人话：Limine 帧缓冲应答在入口前已就位（引导器职责），失败则
+    // 串口已兜底——两路都断了才算黑屏，而串口断在 QEMU 对练里会当场暴露。
+    if let Some(fb) = varix::limine::framebuffer() {
+        if let Ok(mut s) = varix::fb::Surface::from_limine(fb) {
+            varix::banner::paint_backdrop(&s);
+            let w = s.width() as i64;
+            let h = s.height() as i64;
+            let ink = varix::fb::Color::rgb(0xF2, 0xF5, 0xFA);
+            let red = varix::fb::Color::rgb(0xE8, 0x53, 0x53);
+            let dim = varix::fb::Color::rgb(0x9A, 0xA6, 0xB8);
+            let title = "BOOT REFUSED";
+            let tw = varix::font::text_width_scaled(title, 3);
+            let y0 = h / 2 - 96;
+            varix::font::draw_text_scaled(&s, (w - tw) / 2, y0, title, red, 3);
+            // 折行绘制人话原因（等宽字库 ASCII 域；60 列起步，1920 宽下可读）
+            let cols = ((w / varix::font::char_width_scaled(1)).max(1)) as usize;
+            let cols = cols.min(96).max(24);
+            let mut line_y = y0 + 64;
+            for line in wrap_ascii(why, cols) {
+                varix::font::draw_text_scaled(&s, w / 8, line_y, line, ink, 1);
+                line_y += 18;
+            }
+            let foot = "FIX: boot with a Limine build that supports this protocol revision.";
+            varix::font::draw_text_scaled(&s, w / 8, line_y + 12, foot, dim, 1);
+        }
+    }
+    // 停机：不返回、不重试、不带病走完后续任何初始化。
+    loop {
+        unsafe {
+            core::arch::asm!("hlt", options(nomem, nostack, preserves_flags));
+        }
+    }
+}
+
+/// ASCII 按词折行（B-101 文案专用；词内不拆，超长词硬切）。
+/// 固定 8 行上限 × 96 列——文案域有限，超出截断（诊断全文走串口）。
+fn wrap_ascii(text: &str, cols: usize) -> [&'static str; 8] {
+    let mut out = [""; 8];
+    let bytes = text.as_bytes();
+    let mut start = 0usize;
+    let mut n = 0usize;
+    let mut i = 0usize;
+    while i <= bytes.len() && n < out.len() {
+        let line_end = (start + cols).min(bytes.len());
+        // 找词边界：从 line_end 往回找最后一个空格
+        let mut cut = line_end;
+        if line_end < bytes.len() {
+            let mut j = line_end;
+            while j > start && bytes[j] != b' ' {
+                j -= 1;
+            }
+            if j > start {
+                cut = j;
+            }
+        }
+        // &'static str 提取：why 是 'static，切片同为 'static（安全：
+        // bytes 源自 &'static str 输入）。
+        let s: &'static str = unsafe {
+            core::str::from_utf8_unchecked(&bytes[start..cut])
+        };
+        out[n] = s;
+        n += 1;
+        start = cut;
+        while start < bytes.len() && bytes[start] == b' ' {
+            start += 1;
+        }
+        if start >= bytes.len() {
+            break;
+        }
+        i = start;
+    }
+    out
+}
+
 /// Scratch buffer for the "bootloader name + version" banner line. Kept as a
 /// `static` so the banner can borrow a `&'static str` out of it.
 const ZERO_U8: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
 static BL_LINE: [core::sync::atomic::AtomicU8; 64] = [ZERO_U8; 64];
 
 fn boot() -> ! {
+    // --- B-101: BASE_REVISION 协议版本闸（MD2 篇 1.2，一切初始化之前）---
+    // 引导器不支持本内核声明的协议修订 → 拒绝启动：屏幕人话 + 串口 + 停机，
+    // 绝不带病运行（半初始化状态下继续引导 = 把不确定变成事故）。
+    if let Some(why) = varix::limine::base_revision_issue() {
+        refuse_boot(why);
+    }
+
     TIMELINE.begin_boot(varix::timeline::read_tsc());
 
     // --- serial (F005/F006) ------------------------------------------------
@@ -101,6 +193,38 @@ fn boot() -> ! {
         varix::bootselect::set_cfg_reset_badge(true);
     }
     boot_opts = varix::bootcfg::effective(boot_opts, &boot_cfg, cfg_src);
+    // WP-101 B-102/WD-003：limine.conf 契约检查 → Windows 卡灰显注入。
+    // conf 经 Limine 可选模块通道进内核（../limine.conf，与 boot-select.json
+    // 同通道）；缺失/损坏/无 Windows 条目按 ConfigMissing 灰显——绝不假装
+    // 交接目标还在（防自锁闸门的菜单面）。
+    {
+        let mut conf_windows_missing = true; // conf 拿不到 = 配置缺失（如实灰显）
+        if let Some(bytes) = varix::limine::module_by_path("../limine.conf") {
+            if let Some(text) = core::str::from_utf8(bytes).ok() {
+                let conf = varix::bootconf::parse(text);
+                let contract_ok = conf.windows_entry().is_some()
+                    && !conf
+                        .issue_list()
+                        .any(|i| matches!(i, varix::bootconf::ConfIssue::ContractMissing { .. }));
+                conf_windows_missing = !contract_ok;
+                if !conf.issue_list().is_empty() {
+                    varix::kwarn!(
+                        "bootgate: limine.conf has {} issue(s) — see boot log for details",
+                        conf.n_issues
+                    );
+                }
+            }
+        }
+        if conf_windows_missing {
+            varix::kwarn!(
+                "bootgate: limine.conf Windows entry missing/broken — greying out handoff card"
+            );
+            varix::bootselect::set_windows_entry_grey(
+                true,
+                varix::bootselect::WindowsGreyReason::ConfigMissing,
+            );
+        }
+    }
     let mut chosen_id: Option<&'static str> = None;
     // 需求 2：A 卡（varix）也要被记下来——它的终点不是内核自绘 ushell，
     // 而是「交接给 Windows 上的 Variable」（见 handoff::plan）。未显示菜单时
@@ -141,7 +265,18 @@ fn boot() -> ! {
         let chosen = varix::bootselect::ENTRIES[sel].id;
         chosen_entry = chosen;
         varix::kinfo!("boot-select: entry={}", chosen);
-        if chosen == "windows" {
+        if chosen == "windows" && varix::bootselect::windows_entry_grey().is_some() {
+            // WP-101 B-102：灰显卡三路全拦（键盘 Enter、倒计时归零的默认项、
+            // 鼠标左键点击最终都汇到这一分支）——渲染灰显只解决「看到」，
+            // 执行拦截才解决「进不去」。宁可留在 varix 的 ushell，也绝不把
+            // 用户送进一条配置层面已确认不可达的路（防自锁：错误的交接比
+            // 不交接更糟）。chosen_entry 保持 "windows"：下游 handoff::plan
+            // 对非 varix 条目一律 ToKernelShell（不二次发起交接），
+            // record_last_boot 也不记账——用户没选 varix，域切换真相源不背。
+            varix::kwarn!(
+                "boot-select: windows entry greyed (unreachable) — staying on varix"
+            );
+        } else if chosen == "windows" {
             // BootNext 写入需要可执行的 Runtime Services 映射，推迟到
             // cpu/mem 域初始化之后再执行（见下方 boot_next_action）。
             chosen_id = Some(chosen);

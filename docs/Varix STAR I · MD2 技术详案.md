@@ -93,6 +93,19 @@ ESP 是固件与 Limine 的共同地盘，布局保持极简：/EFI/BOOT/BOOTX64
 | B-105 | 闸门注入测试 | 20 组场景全部正确判定 |
 | B-106 | 打点完整性 | 11 点位无缺失，开销 < 1ms |
 
+### 篇 1 判据实测回写（WP-101 · 2026-09-24 · 宿主侧交付）
+
+按 MD3 附录 D"绿要证据"三件套（实测数据 / 复现命令 / 日期）回写。证据形态：宿主单测，主命令 `cd kernel && cargo +1.97.1 test`（3179 项全绿：lib 3172 + fuzz 1 + parser fuzz 6）。QEMU/实机对练依赖项按附录 D 如实标注"环境未就位类"，随 WP-102 交接接线后补测，不提前记绿。
+
+| 编号 | 实测证据（宿主侧） | 结果 |
+| --- | --- | --- |
+| B-101 | BASE_REVISION 三态判定（确认/魔数残留/半确认）+ `base_revision_issue()` 闸 + `refuse_boot` 屏幕人话出口（bootchain::limine 模块测试） | 绿-宿主 |
+| B-102 | bootconf 契约检查 → 灰显注入 → 渲染断言（HL_BOX 归零/标题降暗/人话词表/解除恢复）+ 选择路径三路拦截（Enter/倒计时归零/鼠标点击）（bootselect::、bootconf:: 模块测试） | 绿-宿主 |
+| B-103 | OneshotFrame 编解码 + 十次回读闭环 + arm/restore roundtrip + 越界拒绝（oneshot:: 模块测试） | 绿-宿主 |
+| B-104 | `choose_handoff_path` 降级链全组合（Oneshot→BootNext→Menu→不交接）无盲区 | 绿-宿主 |
+| B-105 | `gate_check` 三条件 + 20 组注入矩阵：组 1-10 闸门实跑、组 11-15 启动回读实跑、组 16-20 词表与设计自证覆盖（16/17 真实 IO 注入随 WP-102 接线后实机复跑） | 绿-宿主 |
+| B-106 | BootStage 12 段 + ELEVEN_CHECKPOINTS 十一点位完整性 + F178 检查（stages_seen/marks=12、fw=900ms/kernel=500ms/total=3100ms）；<1ms 开销为实机项（环境未就位类） | 绿-宿主 |
+
 ---
 
 ## 篇 2 交接协议字段级详案
