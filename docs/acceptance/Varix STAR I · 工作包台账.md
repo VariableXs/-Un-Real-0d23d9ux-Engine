@@ -610,3 +610,30 @@
 
 **WP-303 最丑角落（m4 复盘用）**：valid_id 仅 ASCII 小写字母数字（真实 id 反域名规范含连字符等细则随 IDN/Unicode 政策专案）；TWELVE_MEMBERS 为 MD1 第 22 章定义序的静态快照（成员增补走 ADR 与清单同步）；QUOTA_* 三常量为 19.3 的 SDK 侧镜像（与 quota 服务真值的同源联动随配额服务接线——当前是"同源策略"而非"同一内存"）；ReviewChecklist 的 clippy 零告警为登记布尔（真实 lint 实跑随 CI 窗口）。
 - 时序：m2 闸门 ✅ → WP-301 ✅ → WP-302 ✅ → **WP-303 ✅** → 下一站 WP-304 运行时画像（B-3301~3303，MD3 行 114）。
+
+## WP-304 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：运行时画像（MD3 行 114，B-3301~3303 全三判据）——Java 运行时画像与 SC-J 双载体/Python 运行时画像与 SC-P 双载体/画像模板与入库制度落为**判据实装层**，三个新模块（rtjava/rtpy/rtmpl），单测前缀 fe11~fe13（避撞验证零占用）。两条先行的红线：**堆七成设参是公式不是玄学**（`jvm_heap_kb = quota/10*7` 先除后乘下取整——不虚高的堆参数才是可信参数，超出配额的堆参数是给 OOM 杀手开的死支票；HEAP_FRAC_NUM/DEN 常量只此一处）与**五步体检单穷举——玄学变 checklist**（内存换算/线程依赖/时钟精度/文件语义/双载体判例，步序即体检序——"单"的意思是缺一步就不是体检是玄学）。
+
+**交付面**（三文件新建 + 三文件注册 + 一注释口径 + 一文档回写）：
+- `rtjava.rs`（新建，B-3301 · 5 项）：jvm_heap_kb 堆七成设参（quota/10*7 先除后乘下取整——1GB 配额 = 733_999KB；配额 9KB 整段归零不留死支票）+ RuntimePreset 进 vxrun 参数表（画像参数的交付形态——vxrun 按预设设参，不猜）+ ThreadDeps/deps_check_order **futex 验收首位**（首位语义：futex 不过整体不过，clone_thread 再绿也翻不了案——JVM 停顿与锁的核心依赖）+ ClockProbe 时钟判据（monotonic && precision_ns>0——**0 精度=未测=不过**，会倒退的时钟与未实测的精度都过不了判；B-903 同源运行时版）+ FsSemantics ext4 锁文件/临时目录两路全绿（fsync 硬承诺的兑现点，与 fsyncp 的 acked⊆flushed 同族）+ JavaCarrier 双载体穷举（SpringBootService 服务端路/SwingDesktop 图形端路）+ scj_series_green（**B-3301 达标线**：两路各至少一条判例且全部绿——判例号 0 无效、同载体重复不算两路、只测服务端不测图形端不算全绿）。
+- `rtpy.rs`（新建，B-3302 · 4 项）：ExtWheel/WheelVerdict 裁决二值（Install/NamedReject——**Q26 指名报错**：不对齐不是含糊失败，是"缺哪个符号、对齐到哪个版本"的指名，缺符号自查指引随报错给出，报错是功能不是失败）+ MAX_SYMLINK_HOPS=40 + follow_symlink 单谓词跟随（逐跳 is_link 落实体返回 Some，撞 40 跳上限仍全是链接判 None=ELOOP——**Q47 循环检测**，循环是指名错误不是崩溃，绝不无限跟随）+ VenvProbe 双要素（no_symlink_loop+path_layout_ok）+ ConcurrencyProbe 并发两路分开记账（**GIL 不适用跨进程**——fork 多进程与多线程是两套账，线程绿不冒充进程绿）+ PyCarrier 双载体穷举（DataScript/WebService）+ scp_series_green（**B-3302 达标线**：同款两路全绿判——红判例污染全系、空判例集不算全绿）。
+- `rtmpl.rs`（新建，B-3303 · 3 项）：CheckupStep 五步穷举 + step_slot 恒等映射（单内步序=五步定义序，乱序登记不算体检完）+ record_step 按槽覆盖（单源下标，同步重复登记不产生影子条目）+ ProfileTemplate::blank 空单起步（体检从零开始，**不许默认绿**）+ complete 判（五步全登记且版本钉死 TEMPLATE_VER=1——版本漂移的单不完整，漂移走 ADR）+ FiledTemplate 成文入库（**B-3303 达标线：成文入库=完整且 filed**——半张单与抽屉里的完整单都不算入库；差异步（文件语义红）不影响入库资格——差异进差异表不是失败）+ ConclusionDispersion 结论双消费者（星卡运行时级注记+差异表补充清单**两处都挂才算沉淀为资产**，只进一处是私有笔记不是制度）。
+- `lib.rs`：三模块注册（sdktemplate 后追加，带判据号 doc 注释）；`quality.rs`：三域入 run_full_loop（sdktemplate 后）+ 断言链五处同步 106→109（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +12）+ **MAX_LOOP 110 按兵不动**（106+3=109<110 余量 1——"不够即扩"纪律首次不扩：按兵不动也是决策，余量 1 如实登记进 F489 注释，WP-305 注册前必破 110 再扩）；`robust.rs`：三域入 checkup；`checks.rs`：容量注释补"WP-304 后 109 域余量 19"口径。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 33 判据表后插入"篇 33 运行时画像判据实装回写"段——三判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族 + 勘误连带三条。
+
+**证据三件套**：`cargo kcheck` 绿（既有 warning 与本包无关，新模块零新告警）；全量 `cargo ktest` **PASS=3558 FAIL=0**（较 WP-303 收口 3546 +12 = 三域新单测 12；lib 3558 + fuzz 1+6 + 收尾 0，3546+12 对账吻合）；**CheckSet 12 项**（rtjava 5/rtpy 4/rtmpl 3）+ **单测 12 项**（fe11~fe13 各 4）；109 域 CheckSet 全 PASS（F489 `lp.len()==109` + 记账下限 `39*25+134+68+56+57+57+73+36+28+28+27+33+25+12`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（推演与自查捉住，零带病入库）：
+1. **"测试数据要先算一遍被测公式"第九次险情（落刀自查重算捉住）**：jvm_heap_kb(1_048_576) 初稿断言 733_721——实为 1048576/10=104857 ×7=**733_999**；jvm_heap_kb(9) 初稿写 6——实为 0（9/10=0 整段放弃，先除后乘的下取整语义让小配额直接归零）。CheckSet 与 fe11 两处同步修正后才上编译器。
+2. **follow_symlink 签名绕弯 + 自赋值残留（落刀自查捉住）**：初稿 `hops` 入参与 MAX_SYMLINK_HOPS 双重语义纠缠且残句 `hops = hops;` 属假逻辑——重写为单谓词 `is_link: impl Fn(u8) -> bool` + 恒定 40 跳上限，两处调用同步修正。
+3. **域数余量 1 的不扩容决策（落刀前推演捉住）**：106+3=109<110——MAX_LOOP 首次不扩。"不够即扩"不等于"提前扩"：余量 1 状态如实登记进 F489 注释，WP-305（约 3~5 域）注册前必破 110，届时再扩。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. jvm_heap_kb 为宿主设参公式（quota/10*7 下取整）——真实 JVM 堆参数注入与 vxrun 预设接线随 Java 载体实机窗口（B-3301 达标线的宿主形态）。
+2. SC-J/SC-P 双载体判例为登记模型（JCase/PCase 登记+两路全绿判）——真实 Spring Boot/Swing/数据处理脚本/Web 服务判例跑批随载体接线窗口。
+3. follow_symlink 为谓词模型（is_link 闭包注入）——真实文件系统 symlink 跟随与 ELOOP 语义随 VFS/Linuxulator 接线窗口（Q47 的宿主形态）。
+4. 五步体检单为成文入库模型（FiledTemplate 完整+filed）——真实体检单渲染与结论下发随画像服务接线窗口；ConclusionDispersion 双消费者为挂号面（星卡注记与差异表的真实挂载随 WP-305 星图后端）。
+
+**WP-304 最丑角落（m4 复盘用）**：HEAP_FRAC 7/10 为常量分数（真实 JVM 建议堆比随载体版本策略——当前"一成不变"而非"可配置"）；futex 首位为检查序约定（deps_check_order 是 futex&&clone 的合取+首位语义注释——真实 futex 探测随 Linuxulator futex 接线）；MAX_SYMLINK_HOPS=40 为 Q47 宿主口径（真实内核 ELOOP 阈值随 VFS 实装对齐）；StepVerdict.recorded 为登记布尔（complete 以五步非空为准——recorded 与非空的强绑定随画像服务接线收紧）。
+- 时序：m2 闸门 ✅ → WP-301 ✅ → WP-302 ✅ → WP-303 ✅ → **WP-304 ✅** → 下一站 WP-305 星图后端与社区通道（B-2101/2102/2104 + B-4301~4303，MD3 行 115）。

@@ -286,6 +286,15 @@ pub mod sdkruntime;
 /// SDK 最小示例集与评审门（WP-303 · B-1107：echo/hello/service 三模板
 /// 过 20 维度代码质量评审——示例即门面）。
 pub mod sdktemplate;
+/// Java 运行时画像与双载体（WP-304 · B-3301：堆七成设参进 vxrun 预设×
+/// futex 验收首位×时钟单调与精度×ext4 文件语义×SC-J 双载体全绿）。
+pub mod rtjava;
+/// Python 运行时画像与双载体（WP-304 · B-3302：C 扩展 glibc 对齐 Q26
+/// 指名报错×venv 循环检测 Q47×并发两路×SC-P 双载体全绿）。
+pub mod rtpy;
+/// 运行时画像模板与入库制度（WP-304 · B-3303：五步体检单穷举×成文入库
+/// ×结论进星卡注记与差异表双消费者——玄学变 checklist）。
+pub mod rtmpl;
 /// S4（AI-4/6）：ushell 桌面真壁纸（三世界同源静态帧）。
 pub mod wallpaper;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×

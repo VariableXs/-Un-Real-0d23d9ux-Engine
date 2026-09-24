@@ -1127,6 +1127,9 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::sdkwidgets::run_sdkwidgets_checks());
     checkup.register(crate::sdkruntime::run_sdkruntime_checks());
     checkup.register(crate::sdktemplate::run_sdktemplate_checks());
+    checkup.register(crate::rtjava::run_rtjava_checks());
+    checkup.register(crate::rtpy::run_rtpy_checks());
+    checkup.register(crate::rtmpl::run_rtmpl_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
