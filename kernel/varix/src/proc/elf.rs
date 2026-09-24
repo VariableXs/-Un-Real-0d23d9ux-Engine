@@ -48,6 +48,15 @@ pub enum ElfError {
     EntryOutsideUserRange,
     NeedsInterpreter,
     NoImage,
+    /// B-2701：PT_LOAD 段数超过 `MAX_LOAD_SEGMENTS`。绝不静默截断——
+    /// 被丢弃的段正是恶意镜像藏代码的地方。
+    TooManySegments,
+    /// B-2701：两个 PT_LOAD 的虚拟区间重叠。合法链接器不产重叠段；
+    /// 重叠意味着某一段的内容会覆盖另一段——装载结果不可指认。
+    SegmentOverlap,
+    /// B-2701：段虚拟区间越过用户半区顶（起点在半区内、终点越界，
+    /// `is_user` 只查起点，这道闸补终点）。
+    SegmentBeyondUser,
 }
 
 impl ElfError {
@@ -68,6 +77,9 @@ impl ElfError {
             ElfError::EntryOutsideUserRange => "entry point is not a user address",
             ElfError::NeedsInterpreter => "image needs a dynamic linker that Varix does not have yet",
             ElfError::NoImage => "no such process image",
+            ElfError::TooManySegments => "too many load segments",
+            ElfError::SegmentOverlap => "load segments overlap in memory",
+            ElfError::SegmentBeyondUser => "a segment extends past the top of the user half",
         }
     }
 }
@@ -297,7 +309,10 @@ pub fn parse(image: &[u8]) -> Result<ElfImage, ElfError> {
         match p_type {
             PT_LOAD => {
                 if out.count >= MAX_LOAD_SEGMENTS {
-                    continue;
+                    // B-2701：拒绝而不是静默丢弃。旧行为是 continue——第 9
+                    // 个起的段从镜像里消失，恶意镜像正好用它藏一段不受
+                    // validate 检查的代码。
+                    return Err(ElfError::TooManySegments);
                 }
                 let flags = u32_at(image, base + 4);
                 let offset = u64_at(image, base + 8);
@@ -320,6 +335,14 @@ pub fn parse(image: &[u8]) -> Result<ElfImage, ElfError> {
                 }
                 if !crate::mem::paging::is_user(vaddr) {
                     return Err(ElfError::EntryOutsideUserRange);
+                }
+                // B-2701：终点也必须留在用户半区。is_user 只看起点，
+                // vaddr 合法 + memsz 巨大就能把映射顶出半区（或直接溢出）。
+                let vend = vaddr
+                    .checked_add(memsz)
+                    .ok_or(ElfError::SegmentBeyondUser)?;
+                if vend > crate::mem::paging::USER_TOP {
+                    return Err(ElfError::SegmentBeyondUser);
                 }
                 out.segments[out.count] = LoadSegment {
                     vaddr,
@@ -356,6 +379,19 @@ pub fn parse(image: &[u8]) -> Result<ElfImage, ElfError> {
 
     if out.count == 0 {
         return Err(ElfError::NoLoadSegments);
+    }
+    // B-2701：两两重叠检查。n ≤ MAX_LOAD_SEGMENTS，O(n²) 无所谓——
+    // 这张表小到不值得更聪明的算法。
+    let segs = out.segments();
+    for i in 0..segs.len() {
+        for j in (i + 1)..segs.len() {
+            let a = &segs[i];
+            let b = &segs[j];
+            let overlap = a.vaddr < b.end() && b.vaddr < a.end();
+            if overlap {
+                return Err(ElfError::SegmentOverlap);
+            }
+        }
     }
     Ok(out)
 }
@@ -407,6 +443,44 @@ pub fn synth_image(entry: u64, vaddr: u64, filesz: usize, memsz: u64, flags: u32
         img[p + 40..p + 48].copy_from_slice(&((bytes.len() + 1) as u64).to_le_bytes());
         img[data_off..data_off + bytes.len()].copy_from_slice(bytes);
         img[data_off + bytes.len()] = 0;
+    }
+    img
+}
+
+/// B-2701 对抗矩阵的构造基座：多段合成镜像，程序头表逐字段完全由调用方
+/// 控制（`synth_image` 只产单段自动布 payload，对抗测试要的是故意违法的
+/// 头字段，payload 区保持全零即可）。
+pub struct SegSpec {
+    pub vaddr: u64,
+    pub offset: u64,
+    pub filesz: u64,
+    pub memsz: u64,
+    pub align: u64,
+    pub flags: u32,
+}
+
+pub fn synth_multi(entry: u64, segs: &[SegSpec]) -> [u8; 2048] {
+    let mut img = [0u8; 2048];
+    img[0..4].copy_from_slice(&ELF_MAGIC);
+    img[4] = ELFCLASS64;
+    img[5] = ELFDATA_LSB;
+    img[6] = 1; // EV_CURRENT
+    img[16..18].copy_from_slice(&ET_EXEC.to_le_bytes());
+    img[18..20].copy_from_slice(&EM_X86_64.to_le_bytes());
+    img[24..32].copy_from_slice(&entry.to_le_bytes());
+    img[32..40].copy_from_slice(&(EHDR_SIZE as u64).to_le_bytes());
+    img[52..54].copy_from_slice(&(EHDR_SIZE as u16).to_le_bytes());
+    img[54..56].copy_from_slice(&(PHDR_SIZE as u16).to_le_bytes());
+    img[56..58].copy_from_slice(&(segs.len() as u16).to_le_bytes());
+    for (i, s) in segs.iter().enumerate() {
+        let b = EHDR_SIZE + i * PHDR_SIZE;
+        img[b..b + 4].copy_from_slice(&PT_LOAD.to_le_bytes());
+        img[b + 4..b + 8].copy_from_slice(&s.flags.to_le_bytes());
+        img[b + 8..b + 16].copy_from_slice(&s.offset.to_le_bytes());
+        img[b + 16..b + 24].copy_from_slice(&s.vaddr.to_le_bytes());
+        img[b + 32..b + 40].copy_from_slice(&s.filesz.to_le_bytes());
+        img[b + 40..b + 48].copy_from_slice(&s.memsz.to_le_bytes());
+        img[b + 48..b + 56].copy_from_slice(&s.align.to_le_bytes());
     }
     img
 }
@@ -550,5 +624,78 @@ mod tests {
         // A static image passes the same check.
         let stat = synth_image(0x40_0000, 0x40_0000, 16, 4096, PF_R | PF_X, None);
         assert!(reject_dynamic(&parse(&stat).unwrap()).is_ok());
+    }
+
+    /// B-2701 对抗矩阵扩展：MD3 施工要点点名的三类拒绝——重叠段、段数
+    /// 超限、越界入口——在既有畸形头八连之上补齐。每一项都必须"有名有姓"
+    /// 地被拒，错误码即拒绝理由。
+    #[test]
+    fn b2701_hostile_matrix_overlap_toomany_beyond_user() {
+        use crate::mem::paging::USER_TOP;
+
+        // ① 重叠段：两段虚拟区间相交。
+        let img = synth_multi(
+            0x40_0010,
+            &[
+                SegSpec { vaddr: 0x40_0000, offset: 1024, filesz: 16, memsz: 0x1000, align: 4096, flags: PF_R | PF_X },
+                SegSpec { vaddr: 0x40_0800, offset: 1040, filesz: 16, memsz: 0x1000, align: 4096, flags: PF_R | PF_W },
+            ],
+        );
+        assert_eq!(parse(&img).unwrap_err(), ElfError::SegmentOverlap);
+
+        // 相邻不重叠（区间相接）必须通过——拒绝清单拒的是相交，不是相接。
+        let img = synth_multi(
+            0x40_0010,
+            &[
+                SegSpec { vaddr: 0x40_0000, offset: 1024, filesz: 16, memsz: 0x1000, align: 4096, flags: PF_R | PF_X },
+                SegSpec { vaddr: 0x40_1000, offset: 1040, filesz: 16, memsz: 0x1000, align: 4096, flags: PF_R | PF_W },
+            ],
+        );
+        assert!(parse(&img).is_ok(), "adjacent segments are legal");
+
+        // ② 段数超限：9 个互不重叠的段 → 拒绝。旧实现静默 continue 丢弃
+        // 第 9 个起——被丢弃的段正是恶意镜像藏代码的地方。
+        let segs: Vec<SegSpec> = (0..9)
+            .map(|i| SegSpec {
+                vaddr: 0x40_0000 + i * 0x1000,
+                offset: 1024 + i * 16,
+                filesz: 16,
+                memsz: 0x1000,
+                align: 4096,
+                flags: PF_R | PF_X,
+            })
+            .collect();
+        let img = synth_multi(0x40_0010, &segs);
+        assert_eq!(parse(&img).unwrap_err(), ElfError::TooManySegments);
+
+        // 8 段恰好达标（MAX_LOAD_SEGMENTS 本身合法）。
+        let img8 = synth_multi(0x40_0010, &segs[..8]);
+        assert!(parse(&img8).is_ok(), "exactly MAX_LOAD_SEGMENTS is legal");
+
+        // ③ 越顶：起点在半区内、memsz 把终点顶出 USER_TOP（is_user 只查
+        // 起点，这道闸补终点）。
+        let hi = (USER_TOP - 0x800) & !0xFFF;
+        let img = synth_multi(
+            0x40_0010,
+            &[
+                SegSpec { vaddr: 0x40_0000, offset: 1024, filesz: 16, memsz: 0x1000, align: 4096, flags: PF_R | PF_X },
+                SegSpec { vaddr: hi, offset: 1040, filesz: 16, memsz: 0x10_0000, align: 4096, flags: PF_R | PF_W },
+            ],
+        );
+        assert_eq!(parse(&img).unwrap_err(), ElfError::SegmentBeyondUser);
+
+        // ④ 起点+memsz 的 u64 环绕攻击：vaddr 合法、加法溢出绕过一切
+        // 区间比较——checked_add 必须接住。
+        let huge = u64::MAX - 0x7FFF_FFFF_F000 + 1; // vaddr + huge 恰好 mod 2^64 归零
+        let img = synth_multi(
+            0x40_0010,
+            &[SegSpec { vaddr: 0x7FFF_FFFF_F000, offset: 1024, filesz: 16, memsz: huge, align: 4096, flags: PF_R | PF_X }],
+        );
+        assert_eq!(parse(&img).unwrap_err(), ElfError::SegmentBeyondUser);
+
+        // ⑤ 错误码人话表完备：新三码都有可读拒绝理由。
+        assert!(ElfError::TooManySegments.as_str().contains("too many"));
+        assert!(ElfError::SegmentOverlap.as_str().contains("overlap"));
+        assert!(ElfError::SegmentBeyondUser.as_str().contains("past the top"));
     }
 }

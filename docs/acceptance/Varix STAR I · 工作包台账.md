@@ -8,7 +8,7 @@
 | WP-103 | 收口（宿主侧） | B-302~307 六绿-宿主（B-301 实机 72h=环境未就位类，B-305"Variable 启动正常"半句随实机补测） | WP-101（已收口） | 新增 `portable/engine/hardening/` 五件（vxlib / harden_quad / harden_vcruntime / recheck / run_all）；deploy↔recheck 契约=deploy_report.json（gate.sha256 + vcruntime.hashes） | 2026-09-24 |
 | WP-104 | 收口（宿主侧对账） | B-2703 绿-宿主（f027b 孤儿风暴 64 轮 + F027 千次循环）；篇 26 十二条款对账全落地面（详见 MD2 篇 26 回写）；页表/APIC 实机面=环境未就位类 | WP-101（已收口） | 无 schema 变更（spawn alive 收紧为 F009 契约对齐修复） | 2026-09-24 |
 | WP-102 | 收口（宿主侧） | B-201~207 七绿-宿主（实机互通/合成器上屏面=环境未就位类，随 WP-22x/WP-201）；schema 冻结=全链第一闸落地（详见 MD2 篇 2 回写） | WP-101/104（均已收口） | 新增 `kernel/varix/src/handoff/` 五协议件（state/snap/flush/arming/screen）+ legacy 迁移 + `portable/engine/handoff/vx_handoff_proto.py` 参考实现 + 双夹具；handoff.json integrity 正则化口径/草稿目录/状态计数口径冻结（schema 先行纪律，WP-22x/WP-203 依此对表） | 2026-09-24 |
-| WP-105 | 未开工 | — | WP-101 | — | — |
+| WP-105 | 收口（宿主侧） | B-2701 绿-宿主（对抗矩阵五组注入全拒有名有姓）；B-2702 纯逻辑面交付（命中率与预算对账实测随 WP-203 存储栈，MD3 施工要点明文回补）；六步流水线缺口补齐（第五步 auxv / 第六步 TLS） | WP-102/104（均已收口） | 新增 `kernel/varix/src/proc/auxv.rs`（SysV ABI 初始栈装配）+ `prefetch.rs`（预取指纹/预读清单/命中记账）+ elf.rs 对抗三码（SegmentOverlap/TooManySegments/SegmentBeyondUser）+ entry.rs TLS 计划与提交面 + ring3.rs 目标态 auxv/TLS 接线 | 2026-09-24 |
 | WP-106 | 未开工 | — | WP-101 | — | — |
 
 ## WP-101 收口明细（2026-09-24）
@@ -112,3 +112,31 @@
 3. 屏幕为 ASCII 字库，zh 列存档不上屏（篇 2.5 双语策略：帧面宽度的物理约束）。
 
 **WP-102 最丑角落（m4 复盘用）**：snap.rs 手写 JSON 解析面无 fuzz 输入语料库（B-207 十二组注入是点覆盖），建议后续用 parser fuzz 通道喂快照语料；state.rs 的体验日志 LogEvent 尚无串口落盘面，实机接线时与体验日志域对账；flush.rs 的 FlushStep 由调用方提供 dyn 切片，实机四步的真实接线面在 WP-203。
+
+## WP-105 收口明细（2026-09-24 · 宿主侧交付）
+
+**定性**：六步流水线的缺口手术，不是从零造。勘察确认第一/二/三步在存量 `proc/elf.rs`（解析+拒绝清单）与 `proc/loader.rs`（逐页落位+回滚+退出回收）已扎实就位——真缺口是第五步（栈与环境装配缺 auxv）、第六步（TLS 基址缺席）与 27.2 预取指纹（全无），外加 B-2701 对抗矩阵对 MD3 施工要点"畸形头、重叠段、越界入口"三类清单只覆盖了第一类。手术式补齐，不重复造轮。
+
+**交付面**（四文件改造 + 两文件新建）：
+- `proc/elf.rs`（B-2701 对抗面）：新增拒绝清单三码——`SegmentOverlap`（两两区间相交，n≤8 的 O(n²)）、`TooManySegments`（超 8 段拒绝而非静默丢弃）、`SegmentBeyondUser`（补段终点校验 + `checked_add` 接 u64 环绕）；`synth_multi` 多段合成构造器（phdr 逐字段调用方控制）+ 对抗矩阵测试五组注入（重叠/相邻对照/9 段/越顶/环绕）。
+- `proc/auxv.rs`（新建，第五步核心）：System V AMD64 ABI 全布局纯逻辑装配器——argc/argv/NULL/envp/NULL/auxv/AT_RANDOM/字符串区，产出有序字节写入计划与 16 字节对齐的最终 rsp；AT_* 键表按 Linux 对齐；`auxv_for_static` 标准条目集；指针类条目回填权威地址；AT_NULL 自动补齐不重复；宿主测试把计划铺进假内存后按 ABI 逐字节读回断言（指针 chasing 到字符串内容）。
+- `proc/prefetch.rs`（新建，B-2702）：段清单指纹（FNV-1a 32 与 bootchain::hash_bytes 同源）+ 4MB 粒度预读清单（文件对齐块边界，BSS 不占 IO）+ `PrefetchCache` 三态判定（Hit/Miss/Rebuilt，升级重建 gen+1、重复 record 幂等、指纹漂移防御重建）+ `PrefetchStats`（read_ms/load_ms 分解 + 万分比命中率，B-707 数据源口径）；"指纹只加速不改变装载语义"正确性论证按 MD2 明文写进模块头。
+- `proc/entry.rs`（第六步 TLS）：IA32_FS_BASE/GS_BASE/KERNEL_GS_BASE 常量 + `tls_msr_write`（非零+规范+用户半区三条件）+ `commit_tls`（目标态 wrmsr/宿主如实 false）。
+- `proc/ring3.rs`（目标态接线）：`apply_stack_and_tls` 把 auxv 写入计划逐条落帧（跨页/越界/页缺失一律拒绝）+ TLS 页紧贴栈底分配；`spawn_hello` 的 iretq 进场 rsp 换为装配后 rsp（指向 argc），FS 基址写入后进场——hello 进程从"裸栈顶"升级为"完整 ABI 初始栈 + TLS"。
+- `proc.rs`：模块注册（auxv/prefetch）。
+
+**证据三件套**：数据 = 全量 `cargo +1.97.1 test`（kernel workspace）**3237 项全绿**（lib 3230 + fuzz 1 + parser fuzz 6，较 WP-102 收口 +18 = elf 1 + auxv 8 + prefetch 8 + entry TLS 1）；镜像 `cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image` 全过（spawn_hello target-only 接线随镜像编译面验证），触碰文件零新增警告。复现命令 = `cd kernel && cargo +1.97.1 test` + `cd kernel && cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image`；日期 = 2026-09-24。
+
+**红项处置**（本包测试捉住的设计缺陷，修复并锁定回归）：
+1. `tls_msr_write(0)` 原契约放行——地址 0 是用户半区规范地址，但 FS=0 让每次 TLS 访问 fault（给进程埋雷）→ 收紧为非零+规范+用户半区三条件。
+2. `prefetch_plan` 测试首版对 offset 非对齐段的块边界断言错误（首块应止于文件 4MB 对齐线）→ 修正断言并补边界推进验证。
+3. auxv 指针类条目（AT_RANDOM/AT_EXECFN）首版留调用方占位值不回填 → 装配器回填权威地址（只有它知道实际落位），测试逐字节捉住。
+
+**对账补刀**：`elf::parse` 对第 9 个起的 PT_LOAD 段**静默 continue 丢弃**（原实现）——被丢弃的段不受 `validate` 入口覆盖检查，恶意镜像正好用它藏代码；改为具名拒绝 `TooManySegments`。合法链接器产物在 8 段内，样例集（hello.elf 等）全过。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-2702 命中率与预算对账的实测依赖存储栈（预读引擎 + 记录持久化随 WP-203 定型）——本包交付全部纯逻辑与记账口径，实测按 MD3 施工要点回补。
+2. `spawn_hello` 的 auxv/TLS 真实进场为 target-only 代码，宿主以镜像 check 验证编译与计划值，实机行为面随 WP-201 对练补测。
+3. AT_RANDOM 现为 PID 播种的确定性 LCG（演示进程 canary 种子），真实熵源接线随安全域对账——模块注释如实标注，不冒充硬件随机。
+
+**WP-105 最丑角落（m4 复盘用）**：auxv 装配器单条写入不做页边界感知（超长 argv 字符串跨页会被 apply 拒绝——生产路径应让装配器感知页界或拆分写入）；预取记录的持久化格式未定（随 WP-203 与读缓存对表）；`prefetch_plan` 块边界按文件偏移对齐，vaddr 与 offset 不同余时目标区间跨块——预读引擎承接时需按块表而非区间映射；第四步动态链接的递归装载骨架随 WP-301 落地时，`auxv_for_static` 需派生 `auxv_for_dynamic`（AT_PHDR/AT_BASE/AT_ENTRY 三键的填充面）。

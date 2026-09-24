@@ -1056,6 +1056,33 @@ HID 类驱动解析报告描述符（键盘、鼠标、触摸板的通用解析�
 | B-2803 | HID 模糊测试 | 畸形描述符零崩溃 |
 | B-2804 | 热拔插打点 | 失联事件链完整可回放 |
 
+### 篇 27 判据实测回写（WP-105 · 2026-09-24 · 宿主侧交付）
+
+按 MD3 附录 D 三件套回写。WP-105 的交付形态是**六步流水线的缺口手术**：第一/二/三步在存量 `proc/elf.rs`（解析+拒绝清单）与 `proc/loader.rs`（逐页落位+回滚）已扎实就位，本包补齐第五步（auxv 栈装配）、第六步（TLS 基址）与 27.2 预取指纹纯逻辑面，并把 B-2701 对抗矩阵扩到 MD3 施工要点点名的全部三类（畸形头/重叠段/越界入口）。证据形态：宿主单测，主命令 `cd kernel && cargo +1.97.1 test`（**3237 项全绿：lib 3230 + fuzz 1 + parser fuzz 6**，较 WP-102 收口 +18 = elf 1 + auxv 8 + prefetch 8 + entry TLS 1）+ 镜像 `cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image` 全过（spawn_hello 目标态接线随镜像编译面验证）。实机项按附录 D 如实标注，不提前记绿。
+
+| 判据/条款 | 实现面（本包交付） | 证据 |
+| --- | --- | --- |
+| B-2701 装载正确性（对抗全拒） | `proc/elf.rs`：既有 8 畸形头矩阵之上，新增拒绝清单三码——`SegmentOverlap`（两两区间相交检查，n≤8 的 O(n²) 可忽略）、`TooManySegments`（第 9 个 PT_LOAD 起**拒绝而非静默截断**——被丢弃的段正是恶意镜像藏代码的地方，这是本包捉住的真安全缺陷）、`SegmentBeyondUser`（`is_user` 只查段起点，补终点校验 + `checked_add` 接 u64 环绕攻击）；相邻段（区间相接）对照断言合法不误伤 | `b2701_hostile_matrix_overlap_toomany_beyond_user` 1 测试覆盖五组注入 |
+| 篇 27.1 第一步（解析+畸形拒） | `elf.rs::parse` 18 错误码全部 `as_str()` 人话；`synth_multi` 多段合成构造器（phdr 逐字段调用方控制）成为对抗矩阵基座 | elf 7 测试 |
+| 篇 27.1 第二步（规划 W^X） | `LoadSegment::page_flags` + `ElfSource`（可写段强制 NX）——存量已达标，本包回归锁定 | loader 6 测试 |
+| 篇 27.1 第三步（按需映射） | `loader::load_into` 现状为 eager 逐页落位（同页共享帧+flags 并集+BSS 零语义+失败全回滚）；懒映射需页缺失处理与存储栈配合——诚实边界：eager 是当前唯一**被验证**的落位路径，lazy 注册面随 WP-203 存储栈定型时改造，不假装已懒 | loader 回滚/回收测试 |
+| 篇 27.1 第四步（动态链接） | F105 预留定性不变（`DYNAMIC_LINKING_SUPPORTED=false`，PT_INTERP 解析+具名拒绝）；解释器所需的 auxv 约定键（AT_PHDR/AT_BASE/AT_ENTRY）已按 Linux 语义备进 `auxv` 键表——递归装载骨架随 WP-301 Linuxulator 复用同一张表，届时 auxv 零改动 | elf interp 测试 + auxv 键表断言 |
+| 篇 27.1 第五步（栈与环境装配） | **`proc/auxv.rs` 新建**：System V AMD64 ABI 全布局（argc/argv/NULL/envp/NULL/auxv/AT_RANDOM/字符串区）——纯逻辑装配器产出有序字节写入计划与最终 rsp（16 字节对齐），AT_* 键表按 Linux 对齐，`auxv_for_static` 标准条目集（AT_PAGESZ/AT_ENTRY/AT_UID/AT_EGID/AT_CLKTCK/AT_SECURE/AT_RANDOM/AT_EXECFN/AT_NULL），指针类条目（AT_RANDOM/AT_EXECFN）由装配器回填权威地址，AT_NULL 缺席自动补齐不重复；宿主测试把写入计划铺进假内存再按 ABI 逐字节读回（argc 读回/argv[i] 指针 chasing 字符串内容/auxv 终止符/AT_RANDOM 16 字节逐位） | auxv 8 测试 |
+| 篇 27.1 第六步（入口起跳+TLS） | `entry.rs` 新增 IA32_FS_BASE/GS_BASE/KERNEL_GS_BASE 与 `tls_msr_write`（FS 必须**非零**+规范+用户半区——内核半区是提权捷径，FS=0 是给自己埋雷，二者都拒）+ `commit_tls`（目标态 wrmsr/宿主如实 false，与 commit 同一诚实边界）；`ring3.rs::spawn_hello` 目标态接线：auxv 计划经 `apply_stack_and_tls` 逐条落帧（跨页/越界/页缺失一律拒绝，绝不带半套启动环境进 ring3）+ TLS 页紧贴栈底分配 + iretq 进场的 rsp 换为装配后 rsp（指向 argc） | entry 1 测试 + 镜像 check；spawn_hello 实机面=环境未就位类随 WP-201 |
+| B-2702 预取命中（27.2） | **`proc/prefetch.rs` 新建**：段清单指纹（FNV-1a 32 与 `bootchain::hash_bytes` 同源——全系统一套哈希口径）+ 4MB 粒度预读清单（文件 4MB 对齐块边界推进，BSS 零页不占 IO）+ `PrefetchCache` 三态判定（Hit/Miss/Rebuilt：app_hash 变化即弃用重建 gen+1，同应用重复 record 幂等不涨代，指纹漂移防御重建）+ `PrefetchStats`（hits/misses/rebuilds + read_ms/load_ms 分解 + 万分比命中率，B-707 vxbench 报表数据源口径）；"指纹只加速不改变装载语义"正确性论证按 MD2 明文写进模块头注释 | prefetch 8 测试；命中率实测随 WP-203（MD3 施工要点明文"基线对账在存储栈就位后回补"） |
+
+**对账补刀（本包手术，一处）**：
+1. `elf::parse` 对超过 `MAX_LOAD_SEGMENTS` 的 PT_LOAD 段原实现**静默 continue 丢弃**——第 9 个起的段从镜像里消失，`validate` 的入口覆盖检查也只看得到前 8 段，恶意镜像正好用第 9 段藏一段不受检查的代码。改为具名拒绝 `TooManySegments`（合法链接器产物在 8 段内，样例集全过）。
+
+**红项处置**（本包测试捉住的设计缺陷，修复并锁定回归）：`tls_msr_write(0)` 原契约放行——地址 0 是用户半区规范地址，但 FS=0 让每次 TLS 访问都 fault，等于给进程埋雷；收紧为非零+规范+用户半区三条件（`tls_plan_only_accepts_user_canonical_fs_base` 捉住）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-2702 命中率与预算对账的实测依赖存储栈（预读引擎+记录持久化随 WP-203 定型）——本包交付全部纯逻辑与记账口径，实测按 MD3 施工要点回补。
+2. `spawn_hello` 的 auxv/TLS 真实进场路径为 target-only 代码，宿主以镜像 check 验证编译与计划值，实机行为面随 WP-201 对练补测。
+3. AT_RANDOM 现为 PID 播种的确定性 LCG（演示进程的 canary 种子），真实熵源接线随安全域对账——模块注释如实标注，不冒充硬件随机。
+
+**WP-105 最丑角落（m4 复盘用）**：auxv 装配器单条写入不做页边界感知（超长 argv 字符串跨页会被 apply 拒绝——演示进程量级远小于页，生产路径应让装配器感知页界或拆分写入）；预取记录的持久化格式未定（随 WP-203 与读缓存对表）；`prefetch_plan` 的块边界按文件偏移对齐，虚拟地址与文件偏移不恒等时（段 vaddr 与 offset 不同余）目标区间跨块——预读引擎承接时需按块表而非区间映射。
+
 ---
 
 ## 篇 29 电源、固件接口与结束路径实现

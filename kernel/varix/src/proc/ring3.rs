@@ -445,28 +445,120 @@ fn spawn_hello(instance: u32) -> ! {
     };
     let pages_n = loaded.pages.len();
     let (entry_ip, stack_top) = (loaded.entry, loaded.stack_top);
+
+    // 篇 27 第五步：初始栈与环境装配——argc/argv/envp/auxv/AT_RANDOM
+    // 按.SysV ABI 落栈（auxv::build 产出写入计划，此处逐条落帧）。
+    // AT_RANDOM 来源：内核确定性生成器（PID 播种的 LCG）——演示进程的
+    // canary 种子；真实熵源接线随安全域对账（诚实边界，不冒充硬件随机）。
+    let aux = super::auxv::auxv_for_static(4096, entry_ip, 1000, 1000, false, 0, 0);
+    let mut rng = entry::Lcg::new((pid as u64) | 1);
+    let mut rnd = [0u8; 16];
+    for chunk in rnd.chunks_mut(8) {
+        chunk.copy_from_slice(&rng.next().to_le_bytes()[..chunk.len()]);
+    }
+    let layout = match super::auxv::build(
+        entry::USER_STACK_TOP,
+        &["hello"],
+        &[],
+        &aux,
+        rnd,
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: stack layout failed: {} — halting", e.as_str());
+            halt_demo()
+        }
+    };
+    let tls_va = match apply_stack_and_tls(
+        &mut mp,
+        &loaded.pages,
+        &layout,
+        stack_top,
+        entry::DEFAULT_STACK_PAGES as u64,
+    ) {
+        Some(a) => a,
+        None => {
+            PROCS.lock().exit(pid, -1, 0);
+            crate::kwarn!("ring3: stack plan apply failed — halting");
+            halt_demo()
+        }
+    };
+
     CHILD_PAGES.lock().push((pid, loaded.pages));
     crate::kinfo!(
-        "ring3: instance#{} spawned pid={} entry={:#x} pages={} — PCB + 逐页账本登记",
+        "ring3: instance#{} spawned pid={} entry={:#x} pages={} auxv_bytes={} tls={:#x} — PCB + 逐页账本 + 初始栈",
         instance,
         pid,
         entry_ip,
-        pages_n
+        pages_n,
+        layout.total_bytes,
+        tls_va
     );
-    // 进入计划（既有校验：用户半区 + 对齐 + rflags 硬性要求）。
+    // 进入计划（既有校验：用户半区 + 对齐 + rflags 硬性要求）——栈指针
+    // 用装配后的 rsp（指向 argc，16 字节对齐），不再是裸栈顶。
     let mut plan = super::uspace::EntryPlan::default();
-    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, stack_top, &mut plan) {
+    if let Err(e) = plan_entry(EntryPath::Iret, entry_ip, layout.rsp, &mut plan) {
         crate::kwarn!("ring3: entry plan rejected: {} — halting", e);
         halt_demo()
     }
+    // 篇 27 第六步：TLS 基址——FS 指向用户半区的 TLS 页（规范地址校验
+    // 在 tls_msr_write；宿主如实不发射，目标态一条 wrmsr 落地）。
+    if entry::tls_msr_write(tls_va).is_err() {
+        crate::kwarn!("ring3: tls plan rejected — halting");
+        halt_demo()
+    }
+    entry::commit_tls(tls_va);
     crate::kinfo!(
-        "ring3: iretq → user (rip={:#x} rsp={:#x} rflags={:#x})",
+        "ring3: iretq → user (rip={:#x} rsp={:#x} rflags={:#x} fs={:#x})",
         plan.rip,
         plan.rsp,
-        plan.rflags
+        plan.rflags,
+        tls_va
     );
-    // SAFETY: 依赖 loader 已映射的段页与栈页、已写入的 MSR 与 TSS.RSP0。
+    // SAFETY: 依赖 loader 已映射的段页与栈页、auxv 已落栈、FS 基址已
+    // 写入、已写入的 MSR 与 TSS.RSP0。
     unsafe { enter_user(plan.rip, plan.rsp, plan.rflags) }
+}
+
+/// 篇 27 第五/六步的目标态落地：把 [`super::auxv`] 的写入计划逐条落到
+/// 已映射的栈帧上，另分配一帧做 TLS 页（栈底再往下一页）。任何一条写
+/// 不进去（计划跨页/栈区外/页缺失）都如实拒绝返回 None——绝不带着半套
+/// 启动环境进 ring3。返回 TLS 页的用户虚拟地址（FS 基址）。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn apply_stack_and_tls(
+    mp: &mut super::loader::KernelMapper<impl crate::mem::pfh::PageTableOps>,
+    pages: &[(u64, u64)],
+    layout: &super::auxv::StackLayout,
+    stack_top: u64,
+    stack_pages: u64,
+) -> Option<u64> {
+    use super::loader::UserMapper;
+    const PAGE: u64 = 4096;
+    // TLS 页：紧贴栈底再往下一页（用户半区、W|NX）。
+    let tls_va = stack_top - stack_pages * PAGE - PAGE;
+    let tls_phys = mp.alloc_zero_frame()?;
+    if !mp.map_user_frame(tls_va, tls_phys, true, true) {
+        mp.free_frame(tls_phys);
+        return None;
+    }
+    mp.flush(tls_va);
+    // 写入计划逐条落帧。装配器保证单条不跨页（当前条目最大为字符串 +
+    // NUL，演示进程量级远小于页）；跨页即计划本身坏了——拒绝。
+    for (va, bytes) in &layout.writes {
+        let page_va = va & !0xFFF;
+        let in_page = (va & 0xFFF) as usize;
+        if in_page + bytes.len() > PAGE as usize {
+            return None;
+        }
+        let phys = if *va >= tls_va && *va < tls_va + PAGE {
+            tls_phys
+        } else {
+            pages.iter().find(|(v, _)| *v == page_va).map(|(_, p)| *p)?
+        };
+        mp.write_frame_bytes(phys, in_page as u64, bytes);
+    }
+    Some(tls_va)
 }
 
 /// 任务39（AI-B）· 装载静态 PE64 并进入 ring3：与 spawn_hello 走同一条

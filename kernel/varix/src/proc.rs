@@ -10,6 +10,10 @@ use core::sync::atomic::AtomicU64;
 
 pub mod elf;
 pub mod loader;
+/// WP-105 篇 27 第五步：进程初始栈与环境装配（argv/envp/auxv/AT_RANDOM）。
+pub mod auxv;
+/// WP-105 篇 27.2：预取指纹与预读清单（B-2702 优化件，实测随 WP-203）。
+pub mod prefetch;
 pub mod pe;
 pub mod ring3;
 pub mod syscall;

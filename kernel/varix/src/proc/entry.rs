@@ -104,6 +104,42 @@ pub fn commit(_entry: &SyscallEntry) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// 篇 27 第六步 · TLS 基址（WP-105）：进程初始上下文的 FS 基面
+// ---------------------------------------------------------------------------
+
+pub const IA32_FS_BASE: u32 = 0xC000_0100;
+pub const IA32_GS_BASE: u32 = 0xC000_0101;
+pub const IA32_KERNEL_GS_BASE: u32 = 0xC000_0102;
+
+/// TLS 基址计划：FS 必须指向用户半区的规范地址且非零——把 FS 指进
+/// 内核半区是最省事的提权捷径（TLS 是用户代码每时每刻都在摸的段）；
+/// FS=0 则是给自己埋雷（NULL 段基址让每次 TLS 访问都 fault）。
+pub fn tls_msr_write(fs_base: u64) -> Result<MsrWrite, ErrNo> {
+    if fs_base == 0 || !is_user_ip(fs_base) {
+        return Err(ErrNo::Efault);
+    }
+    Ok(MsrWrite { msr: IA32_FS_BASE, value: fs_base })
+}
+
+/// 目标态落地：spawn 收尾时一条 wrmsr。宿主如实返回 false（与 `commit`
+/// 同一诚实边界——计划值已被 `tls_msr_write` 的调用方单测覆盖）。
+#[cfg(target_os = "none")]
+pub fn commit_tls(fs_base: u64) -> bool {
+    match tls_msr_write(fs_base) {
+        Ok(w) => unsafe {
+            core::arch::asm!("wrmsr", in("ecx") w.msr, in("eax") w.value as u32, in("edx") (w.value >> 32) as u32);
+            true
+        },
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(target_os = "none"))]
+pub fn commit_tls(_fs_base: u64) -> bool {
+    false
+}
+
+// ---------------------------------------------------------------------------
 // F277 — syscall / sysret 汇编路径
 // ---------------------------------------------------------------------------
 
@@ -1224,6 +1260,21 @@ mod tests {
         assert!(!is_canonical(0xFFFF_0000_0000_0000));
         assert!(is_canonical(0xFFFF_8000_0000_0000));
         assert_eq!(prepare_ring3(0x1_0000, 0, 0), Err(ErrNo::Efault));
+    }
+
+    /// WP-105 篇 27 第六步：TLS 基址计划——用户半区规范地址才放行，
+    /// 内核半区/非规范一律 EFAULT；宿主 commit_tls 如实 false。
+    #[test]
+    fn tls_plan_only_accepts_user_canonical_fs_base() {
+        let ok = tls_msr_write(0x4000_0000).expect("user fs_base");
+        assert_eq!(ok.msr, IA32_FS_BASE);
+        assert_eq!(ok.value, 0x4000_0000);
+        // 内核半区（提权捷径）与非规范地址。
+        assert_eq!(tls_msr_write(KERNEL_BASE + 0x1000), Err(ErrNo::Efault));
+        assert_eq!(tls_msr_write(0x0000_8000_0000_0000), Err(ErrNo::Efault));
+        assert_eq!(tls_msr_write(0), Err(ErrNo::Efault));
+        // 宿主目标不发射 wrmsr——诚实边界与 commit 同一口径。
+        assert_eq!(commit_tls(0x4000_0000), cfg!(target_os = "none"));
     }
 
     #[test]
