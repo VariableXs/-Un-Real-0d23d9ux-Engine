@@ -1044,6 +1044,28 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     for cs in crate::compositor::run_all_family_checks() {
         checkup.register(cs);
     }
+    // WP-201 · B-503 VXWM 帧编解码层（二十四消息 × 定长头/序号/校验和/回放）
+    checkup.register(crate::vxwm::run_vxwm_checks());
+    // WP-201 · B-504 缓冲所有权状态机（零半帧 × 配额 × 代数防陈旧）
+    checkup.register(crate::bufown::run_bufown_checks());
+    // WP-201 · B-506 浮层物理强制（popup_grab 抓取表 × 区域外零投递）
+    checkup.register(crate::popup::run_popup_checks());
+    // WP-201 · B-505 字形图集（LRU 60MB × pin 常驻 × 降密度）
+    checkup.register(crate::atlas::run_atlas_checks());
+    // WP-201 · B-501 事件泵状态机（四源归一 × 不需要就不合成 × 空转 5% 模型）
+    checkup.register(crate::pump::run_pump_checks());
+    // WP-201 · B-502 拖动基准 harness（p95 55fps × 输入不迟滞 × 带宽下界）
+    checkup.register(crate::dragbench::run_dragbench_checks());
+    // WP-201 · B-507 合成器恢复（注册表快照 × D-04 三秒 × 百次对练）
+    checkup.register(crate::comprecover::run_comprecover_checks());
+    // WP-203 · 存储七域（B-701~707 判据实装层）
+    checkup.register(crate::fswl::run_fswl_checks());
+    checkup.register(crate::fsyncp::run_fsyncp_checks());
+    checkup.register(crate::pwrdrl::run_pwrdrl_checks());
+    checkup.register(crate::wmerge::run_wmerge_checks());
+    checkup.register(crate::ntfsro::run_ntfsro_checks());
+    checkup.register(crate::linkloss::run_linkloss_checks());
+    checkup.register(crate::prefacct::run_prefacct_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());

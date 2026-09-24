@@ -623,6 +623,34 @@ pub fn run_full_loop() -> FullLoop {
     for cs in crate::compositor::run_all_family_checks() {
         lp.register(cs);
     }
+    // WP-201 · B-503 VXWM 帧编解码层（二十四消息 × 定长头/序号/校验和/回放）
+    lp.register(crate::vxwm::run_vxwm_checks());
+    // WP-201 · B-504 缓冲所有权状态机（零半帧 × 配额 × 代数防陈旧）
+    lp.register(crate::bufown::run_bufown_checks());
+    // WP-201 · B-506 浮层物理强制（popup_grab 抓取表 × 区域外零投递）
+    lp.register(crate::popup::run_popup_checks());
+    // WP-201 · B-505 字形图集（LRU 60MB × pin 常驻 × 降密度）
+    lp.register(crate::atlas::run_atlas_checks());
+    // WP-201 · B-501 事件泵状态机（四源归一 × 不需要就不合成 × 空转 5% 模型）
+    lp.register(crate::pump::run_pump_checks());
+    // WP-201 · B-502 拖动基准 harness（p95 55fps × 输入不迟滞 × 带宽下界）
+    lp.register(crate::dragbench::run_dragbench_checks());
+    // WP-201 · B-507 合成器恢复（注册表快照 × D-04 三秒 × 百次对练）
+    lp.register(crate::comprecover::run_comprecover_checks());
+    // WP-203 · B-701 ext4 特性白名单（三组旗标逐位过闸 × 白名单外拒挂）
+    lp.register(crate::fswl::run_fswl_checks());
+    // WP-203 · B-702 fsync 硬承诺（窗口让路 × acked⊆flushed 恒等式 × 断电对练）
+    lp.register(crate::fsyncp::run_fsyncp_checks());
+    // WP-203 · B-703 断电一百次（检查点账本 × 零结构损坏 × 重放统计归档）
+    lp.register(crate::pwrdrl::run_pwrdrl_checks());
+    // WP-203 · B-704 写合并收益（相邻归并 × 吞吐模型 × 八成线对练）
+    lp.register(crate::wmerge::run_wmerge_checks());
+    // WP-203 · B-705 NTFS 只读强制（11 类写入口零放行 × 留痕 × 无危险开关）
+    lp.register(crate::ntfsro::run_ntfsro_checks());
+    // WP-203 · B-706 失联保护屏（双条件判死 × 一秒广播 × 侥幸继续防线）
+    lp.register(crate::linkloss::run_linkloss_checks());
+    // WP-203 · B-707 预读命中（二次启动 8s 预算 × 命中率下限推导 × B-2702 回补）
+    lp.register(crate::prefacct::run_prefacct_checks());
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1155,9 +1183,9 @@ pub fn run_quality_checks() -> CheckSet {
     // F488 质量域自检收口：本域 25 条自检 + 域名标签正确。
     cs.add("F488 质量域自检收口", cs.len() + 1 <= 32 && cs.domain == "quality", "CheckSet 容量与域名自洽");
 
-    // F489 全系统闭环自检：30 域注册、无截断、全部 PASS。
+    // F489 全系统闭环自检：46 域注册（39 老域 + WP-201 七域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 39 && !lp.truncated() && lp.all_passed(), "39 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 53 && !lp.truncated() && lp.all_passed(), "53 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1172,7 +1200,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=39"), "仪表实时计算，域数=30");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=53"), "仪表实时计算，域数=53");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1323,11 +1351,14 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 39);
+        assert_eq!(lp.len(), 53);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
-        assert!(passed >= 39 * 25);
+        // 记账下限：39 老域每域恰 25 项（各自 f488 型断言守护）+ WP-201 七域
+        // 25+22+18+21+15+14+19 = 134 项 + WP-203 七域 10+12+9+10+8+10+9 = 68 项
+        // （十四域 CheckSet 条数受各自 all_checks 断言守护）
+        assert!(passed >= 39 * 25 + 134 + 68);
         assert!(lp.all_passed());
     }
 
@@ -1359,7 +1390,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=39"));
+        assert!(text.contains("domains_in_loop=53"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));
