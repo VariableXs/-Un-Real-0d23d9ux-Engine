@@ -734,9 +734,17 @@ pub type RawPtr = *mut c_void;
 // 可靠性的第一道闸"）。
 
 /// BASE_REVISION 支持判定（纯函数，宿主可测）。
-/// 全零 = 引导器确认支持；任何非零残留 = 引导器不支持或未处理。
+/// Limine 协议（PROTOCOL.md "Base protocol revisions"）：引导器支持所请求
+/// 的 base revision 时，**只把第 3 成分（请求的 revision 号）清零**；且
+/// 支持 base revision 3+ 的引导器（Limine 12.x 属之）强制把第 2 成分改写
+/// 为实际使用的 base revision。2026-09-24 QEMU 实证确认后标记 =
+/// [magic0, used_rev=1, 0]——"三词全零"是旧认知误用（WP-101 埋雷，首次
+/// 真引导爆出，当天修复）。判定单一事实 = 第 3 词 == 0：
+///   未处理（不认识标记的旧引导器）→ [magic0, magic1, N] → 拒绝 ✓
+///   不支持且强行引导 → 第 3 词原样保留 → 拒绝 ✓
+///   确认 → [magic0, used_rev, 0] → 通过 ✓
 pub fn base_revision_confirmed(marker: &[u64; 3]) -> bool {
-    marker[0] == 0 && marker[1] == 0 && marker[2] == 0
+    marker[2] == 0
 }
 
 /// 入口检查：BASE_REVISION 未获确认时返回人话原因（B-101 的判定面）。
@@ -760,17 +768,21 @@ mod tests {
 
     #[test]
     fn base_revision_gate_pure_logic() {
-        // 全零 = 确认支持
-        assert!(base_revision_confirmed(&[0, 0, 0]));
-        // 原始声明值残留 = 引导器没确认（不支持或没扫到）
+        // 未处理（不认识标记的旧引导器）：三词原样 → 拒绝
         assert!(!base_revision_confirmed(&[
             0xf9562b2d5c95a6c8,
             0x6a7b384944536bdc,
             1
         ]));
-        // 半确认（魔数被清但修订号残留）也不算数
+        // Limine 12.x 确认后的真实内存形态（2026-09-24 QEMU 实证）：
+        // [magic0, used_rev=1, 0]——第 3 词清零、第 2 词写实际使用版本
+        assert!(base_revision_confirmed(&[0xf9562b2d5c95a6c8, 1, 0]));
+        // 理论上的全零形态（rev 0 路径）也判确认
+        assert!(base_revision_confirmed(&[0, 0, 0]));
+        // 不支持且强行引导：第 3 词原样保留 → 拒绝
+        assert!(!base_revision_confirmed(&[0xf9562b2d5c95a6c8, 0x6a7b384944536bdc, 3]));
+        // 半处理（第 3 词残留）也不算数
         assert!(!base_revision_confirmed(&[0, 0, 1]));
-        assert!(!base_revision_confirmed(&[0, 7, 0]));
     }
 
     #[test]

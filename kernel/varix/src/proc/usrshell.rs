@@ -638,14 +638,16 @@ fn cursor_shadow_restore(surf: &mut crate::fb::Surface, x: i64, y: i64) -> i64 {
 
 /// SYS_REBOOT 处理器：重启整机，交还固件引导序（Windows 默认第一项）。
 ///
-/// 四级复位阶梯（每级落空则下一级，日志逐级留痕）：
+/// 五级复位阶梯（每级落空则下一级，日志逐级留痕）：
 /// ① UEFI `ResetSystem(EfiResetCold)`（`bootnext::reset_cold`；Limine 不调
 ///    ExitBootServices，RS 代码内部以绝对物理地址自引用——复位前先建运行
 ///    期恒等映射，与 main.rs boot-select windows 路径同序，两函数幂等）；
-/// ② 8042 脉冲复位（0xFE → 0x64，状态寄存器 bit1 等空后发）；
-/// ③ ACPI 复位寄存器 0xCF9（ICH9/q35 与真实 Intel PCH 同寄存器，先 0x04
+/// ② FADT RESET_REG（`bootnext::reset_via_fadt`——固件声明的复位端口，
+///    B-2901 最小集第一件；零分配，panic 阶梯同源共用）；
+/// ③ 8042 脉冲复位（0xFE → 0x64，状态寄存器 bit1 等空后发）；
+/// ④ ACPI 复位寄存器 0xCF9（ICH9/q35 与真实 Intel PCH 同寄存器，先 0x04
 ///    暖复位再 0x06 全复位）；
-/// ④ 三重故障兜底（IDT 置空 + int3）——零外设依赖，任何 x86 平台一致。
+/// ⑤ 三重故障兜底（IDT 置空 + int3）——零外设依赖，任何 x86 平台一致。
 ///
 /// 刻意**不写 BootNext**：目标 Boot#### 项号未在实机确证前盲写，可能把
 /// 重启循环回本 U 盘。纯复位后固件走默认引导序（内置盘 Windows bootmgr，
@@ -664,7 +666,14 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     } else {
         crate::kinfo!("reboot: no UEFI runtime services (BIOS boot) — hardware ladder");
     }
-    // ② 8042 脉冲复位。
+    // ② FADT 声明的复位寄存器（B-2901；零分配，与 panic 阶梯同源）。
+    if crate::bootnext::reset_via_fadt() {
+        crate::kinfo!("reboot: FADT reset returned — ladder next");
+    } else {
+        crate::kinfo!("reboot: no FADT reset reg — ladder next");
+    }
+    spin_cycles(10_000_000);
+    // ③ 8042 脉冲复位。
     crate::kinfo!("reboot: 8042 pulse (0xFE -> 0x64)");
     // SAFETY: 端口 IO 单一来源（ps2::port）；0x64 状态寄存器 bit1=输入缓冲满。
     unsafe {
@@ -677,7 +686,7 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
         crate::ps2::port::outp(0x64, 0xFE);
     }
     spin_cycles(50_000_000);
-    // ③ ACPI 复位寄存器。
+    // ④ ACPI 复位寄存器。
     crate::kinfo!("reboot: acpi reset (0xCF9 <- 0x04/0x06)");
     // SAFETY: 同上；0xCF9 为标准 PCH 复位寄存器，非 Intel 平台写入无害。
     unsafe {
@@ -686,7 +695,7 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
         crate::ps2::port::outp(0xCF9, 0x06);
     }
     spin_cycles(50_000_000);
-    // ④ 三重故障兜底。
+    // ⑤ 三重故障兜底。
     crate::kinfo!("reboot: triple-fault fallback");
     triple_fault_reset();
 }
@@ -719,9 +728,13 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     enosys()
 }
 
-/// SYS_POWEROFF 处理器（2026-09-19）：关机断电（Variable 系统内关机）。
+/// SYS_POWEROFF 处理器（2026-09-19 初版；WP-106 B-2902 补软件收尾链）。
 ///
-/// 两级阶梯（每级落空则下一级，日志逐级留痕；全败如实返回 -EIO 让
+/// 关机全链（MD2 篇 29.2 硬序）：**保全 → 冲刷 → 通知链 → ACPI S5**。
+/// "可以拔电了"画面的出现条件是冲刷完成加通知链收束——画面的每一秒
+/// 都有账可查（[`ShutdownLedger`] 四相 verbatim 记账，describe 进日志）。
+///
+/// 硬件两级阶梯（每级落空则下一级，日志逐级留痕；全败如实返回 -EIO 让
 /// shell 回桌面继续可用）：
 /// ① UEFI `ResetSystem(EfiResetShutdown)`（`bootnext::reset_shutdown`；
 ///    与 sys_reboot 同序——先建运行期恒等映射，两函数幂等）；
@@ -729,11 +742,72 @@ pub fn sys_reboot(_a1: u64, _a2: u64, _a3: u64) -> i64 {
 ///    `(SLP_TYP<<10)|SLP_EN`，SLP_TYP 取自 DSDT `\_S5` 包解码）。
 ///
 /// 无 8042/0xCF9 类硬件兜底——S5 断电只有 UEFI/ACPI 两条正道；两者都
-/// 不可用（BIOS 引导无 RS、无 FACP）时如实报错回桌面，绝不假装关机。
-/// 写入生效后给平台一个断电窗口再判定失败。正常永不返回。
+/// 不可用（BIOS 引导无 RS、无 FACP）时按 [`FIRMWARE_TIMEOUT_LINE`] 的
+/// 诚实指引报错回桌面，绝不假装关机。写入生效后给平台一个断电窗口再
+/// 判定失败。正常永不返回。
 #[cfg(all(target_arch = "x86_64", target_os = "none"))]
 pub fn sys_poweroff(_a1: u64, _a2: u64, _a3: u64) -> i64 {
+    use crate::power_shutdown::{PhaseVerdict, ShutdownLedger, ShutdownPhase, UNPLUG_LINE};
     crate::kinfo!("poweroff: SYS_POWEROFF — powering off");
+    let mut ledger = ShutdownLedger::new();
+
+    // ① 保全（快照与草稿）：ushell 会话无挂起草稿（应用面随 m2 桌面
+    //    落地）——账目如实记 Skipped，保全的完整实现随交接链（handoff）。
+    ledger.record(
+        ShutdownPhase::Preserve,
+        0,
+        PhaseVerdict::Skipped("no pending drafts in ushell session"),
+    );
+
+    // ② 冲刷（篇 2.4 全序列）：步序协议 WP-102 冻结、真实执行器 WP-203
+    //    存储栈接线（crate::handoff::flush 的 FlushStep trait 边界）。本
+    //    会话冲刷执行器尚未接线——如实在账，绝不假装冲过（B-2902 的账
+    //    要每一秒经得起对账）。
+    let t0 = crate::timeline::read_tsc();
+    let mounted = mount::available();
+    ledger.record(
+        ShutdownPhase::Flush,
+        crate::timeline::read_tsc().saturating_sub(t0) / crate::platform::info()
+            .map(|p| p.tsc_hz)
+            .unwrap_or(crate::platform::FALLBACK_TSC_HZ)
+            .max(1),
+        if mounted {
+            PhaseVerdict::Skipped("fs mounted but flush executors wire at WP-203")
+        } else {
+            PhaseVerdict::Skipped("no mounted fs — nothing dirty to flush")
+        },
+    );
+
+    // ③ 通知链：服务注册表现状为零（ushell 域尚无长驻服务登记面）——
+    //    空集全绿记账；链路本身已就位（power_shutdown::run_notify_chain
+    //    带超时强收语义），随服务增长逐个挂入。
+    let mut empty: [&mut dyn crate::power_shutdown::NotifyStep; 0] = [];
+    let t1 = crate::timeline::read_tsc();
+    let chain = crate::power_shutdown::run_notify_chain(&mut empty, 5_000);
+    let notify_ms = crate::timeline::read_tsc().saturating_sub(t1) / crate::platform::info()
+        .map(|p| p.tsc_hz)
+        .unwrap_or(crate::platform::FALLBACK_TSC_HZ)
+        .max(1);
+    ledger.record(
+        ShutdownPhase::NotifyChain,
+        notify_ms,
+        if chain.settled { PhaseVerdict::Ok } else { PhaseVerdict::Forced },
+    );
+    crate::kinfo!("poweroff: notify chain settled={} (0 services registered)", chain.settled);
+
+    // "可以拔电了"画面（篇 29.2：冲刷完成 + 通知链收束才许出现；此后的
+    // 硬件阶梯每一毫秒都在账上）。画面走 console best-effort——装了才画。
+    if ledger.unpluggable() {
+        if let Some(c) = crate::console::installed_ref() {
+            c.set_colors(crate::console::Ink::White, crate::console::Ink::Green);
+            c.write_str("\n");
+            c.write_str(UNPLUG_LINE);
+            c.write_str("\n");
+        }
+        crate::kinfo!("poweroff: {}", UNPLUG_LINE);
+    }
+
+    // ④ S5 硬件阶梯。
     let _ = crate::bootnext::prepare_runtime_identity_map();
     let blocks = crate::bootnext::identity_map_low_4gib();
     crate::kinfo!("poweroff: runtime identity-mapped ({} x 2MiB)", blocks);
@@ -746,9 +820,22 @@ pub fn sys_poweroff(_a1: u64, _a2: u64, _a3: u64) -> i64 {
     }
     // ② ACPI S5。
     crate::kinfo!("poweroff: acpi s5 (PM1a_CNT <- SLP_TYP|SLP_EN)");
-    let _ = crate::bootnext::poweroff_s5();
+    let s5_ok = crate::bootnext::poweroff_s5();
+    ledger.record(
+        ShutdownPhase::S5,
+        0,
+        if s5_ok { PhaseVerdict::Ok } else { PhaseVerdict::Failed("no S5 path") },
+    );
+    crate::kinfo!("poweroff: {}", ledger.describe());
     // 断电生效窗口：QEMU 即刻退出；实机数秒内断电。仍运行 = 寄存器落空。
     spin_cycles(100_000_000);
+    // 全败：诚实指引（29.1 超时文案）+ 报错回桌面，绝不假装关机。
+    if let Some(c) = crate::console::installed_ref() {
+        c.set_colors(crate::console::Ink::White, crate::console::Ink::Red);
+        c.write_str("\n");
+        c.write_str(crate::power_shutdown::FIRMWARE_TIMEOUT_LINE);
+        c.write_str("\n");
+    }
     crate::kwarn!("poweroff: all paths failed — reporting to shell");
     eio()
 }

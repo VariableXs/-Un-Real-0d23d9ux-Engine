@@ -9,7 +9,7 @@
 | WP-104 | 收口（宿主侧对账） | B-2703 绿-宿主（f027b 孤儿风暴 64 轮 + F027 千次循环）；篇 26 十二条款对账全落地面（详见 MD2 篇 26 回写）；页表/APIC 实机面=环境未就位类 | WP-101（已收口） | 无 schema 变更（spawn alive 收紧为 F009 契约对齐修复） | 2026-09-24 |
 | WP-102 | 收口（宿主侧） | B-201~207 七绿-宿主（实机互通/合成器上屏面=环境未就位类，随 WP-22x/WP-201）；schema 冻结=全链第一闸落地（详见 MD2 篇 2 回写） | WP-101/104（均已收口） | 新增 `kernel/varix/src/handoff/` 五协议件（state/snap/flush/arming/screen）+ legacy 迁移 + `portable/engine/handoff/vx_handoff_proto.py` 参考实现 + 双夹具；handoff.json integrity 正则化口径/草稿目录/状态计数口径冻结（schema 先行纪律，WP-22x/WP-203 依此对表） | 2026-09-24 |
 | WP-105 | 收口（宿主侧） | B-2701 绿-宿主（对抗矩阵五组注入全拒有名有姓）；B-2702 纯逻辑面交付（命中率与预算对账实测随 WP-203 存储栈，MD3 施工要点明文回补）；六步流水线缺口补齐（第五步 auxv / 第六步 TLS） | WP-102/104（均已收口） | 新增 `kernel/varix/src/proc/auxv.rs`（SysV ABI 初始栈装配）+ `prefetch.rs`（预取指纹/预读清单/命中记账）+ elf.rs 对抗三码（SegmentOverlap/TooManySegments/SegmentBeyondUser）+ entry.rs TLS 计划与提交面 + ring3.rs 目标态 auxv/TLS 接线 | 2026-09-24 |
-| WP-106 | 未开工 | — | WP-101 | — | — |
+| WP-106 | 收口（宿主侧交付 + QEMU 对练） | B-2901 绿（FADT RESET_REG 三件组按 ACPI 6.5 表 5.37 落刀 + 三条件放行 + 三件清单审计锚点）；B-2902 绿（四相账本 verbatim 记账 + unpluggable 判定逐字实现 + 通知链超时强收留名）；B-2903 绿-宿主（四环节序列器全链 + 现场带四道闸 + 零 UEFI RS 四级复位阶梯 + panic_test 注入通道），QEMU 循环对练闭环计数见明细；B-2904 绿（合盖语义改 ShutdownConfirm 与篇 29.3 对齐 + 确认分派 + 诚实文案） | WP-101（已收口） | 新增 `kernel/varix/src/panicseq.rs`（panic 四环节序列器/现场带/复位阶梯）+ `power_shutdown.rs`（关机收尾链与可拔电账目）+ 改造 `power.rs`（RESET_REG/合盖语义）+ `bootnext.rs`（reset_via_fadt）+ `main.rs`（panic_handler 重写/boot 钩子/注入点）+ `proc/usrshell.rs`（sys_poweroff 软件链接线/sys_reboot 五级阶梯）+ `_attic/limine-panic-drill.conf` + `scripts/panic-drill.sh` + `scripts/make-iso.sh`（CONF_SRC 注入点，默认零变化） | 2026-09-24 |
 
 ## WP-101 收口明细（2026-09-24）
 
@@ -140,3 +140,36 @@
 3. AT_RANDOM 现为 PID 播种的确定性 LCG（演示进程 canary 种子），真实熵源接线随安全域对账——模块注释如实标注，不冒充硬件随机。
 
 **WP-105 最丑角落（m4 复盘用）**：auxv 装配器单条写入不做页边界感知（超长 argv 字符串跨页会被 apply 拒绝——生产路径应让装配器感知页界或拆分写入）；预取记录的持久化格式未定（随 WP-203 与读缓存对表）；`prefetch_plan` 块边界按文件偏移对齐，vaddr 与 offset 不同余时目标区间跨块——预读引擎承接时需按块表而非区间映射；第四步动态链接的递归装载骨架随 WP-301 落地时，`auxv_for_static` 需派生 `auxv_for_dynamic`（AT_PHDR/AT_BASE/AT_ENTRY 三键的填充面）。
+
+## WP-106 收口明细（2026-09-24 · 宿主侧交付 + QEMU 对练闭环）
+
+**定性**：m1 最后一包，四判据（B-2901~2904）并行落刀。纯逻辑（宿主可测）与目标态（cfg 门）分离——panic 序列器、关机账本、复位阶梯的核心判定全部宿主可测；`panic_sequence` 总编排只被 panic_handler 调用；`reset_via_fadt` 被 SYS_REBOOT 与 panic 阶梯同源共用（零重复实现）。QEMU 对练管线从三连败（pycdlib base revision 拒绝 → 缺 xorriso → xorriso.exe Exec format error 损坏）攻坚到全链闭环，并连带挖出 WP-101 埋下的 B-101 判定语义雷。
+
+**交付面**（两文件新建 + 五文件改造 + 两脚本 + 一 conf）：
+- `panicseq.rs`（新建）：panic 四环节序列器——保护屏（帧缓冲 best-effort+串口兜底）、现场带（0x60000→动态落位 + `#[repr(C)]` 固定布局 + magic/version/msg_len/CRC 四道闸）、十秒倒计时（TSC 自旋不依赖中断）、四级复位阶梯（fadt-reset-reg → 8042 → 0xCF9 → triple-fault，**零 UEFI RS**——ResetSystem 需恒等映射与分配，panic 栈可能已坏绝不走）；`boot_guard_band_hook` 重放（decode 过闸打印上次现场 → 清魔数防重复报告）+ claim 登记（Purpose::LogRing）+ `armed` 降级兜底。
+- `power_shutdown.rs`（新建）：篇 29.2 硬序四相账本（Preserve→Flush→NotifyChain→S5）+ `PhaseVerdict`（Ok/Skipped 带人话理由/Forced 留名/Failed 拦画面）+ `unpluggable()` 可拔电判定（preserve+flush+notify settled，S5 不在画面条件）+ 通知链超时强收（Err→Forced 留名继续、预算耗尽剩余步全 Forced）+ `UNPLUG_LINE`/`FIRMWARE_TIMEOUT_LINE` 文案常量。
+- `power.rs`（改造）：FADT 复位组四字段（ACPI 6.5 表 5.37：FLAGS@112 bit10、GAS@116、地址@120、值@128）+ `reset_reg()` 三条件放行（声明位+SystemIO+端口 ≤0xFFFF，MMIO 不做）+ `FIRMWARE_MINIMAL_SET` 三件审计锚点 + `LidAction::ShutdownConfirm`（篇 29.3 无休眠支持语义）+ `lid_close_plan` 确认分派 + `LID_CLOSE_NOTICE` 文案。
+- `bootnext.rs`：`reset_via_fadt()`（facp→HHDM→表长校验→parse_fadt→reset_reg→端口写，宿主 cfg 编译门）。
+- `main.rs`：panic_handler 重写（serial init→KERNEL PANIC 直写→panic_sequence）；boot 钩子（重放+登记）；panic_test 注入点（引导全链完成后）。
+- `proc/usrshell.rs`：sys_poweroff 接四相账本 + 可拔电画面 + 三级关机（UEFI Shutdown→ACPI S5→全败文案）；sys_reboot 升五级阶梯。
+- `scripts/panic-drill.sh`（新建）：单 QEMU 进程自动循环对练（不带 -no-reboot），`grep -c "guard-band: last panic"` = 完整闭环计数，DRILL-OK/DRILL-PARTIAL 收账。
+- `scripts/make-iso.sh`：`CONF_SRC` 注入点（默认零变化）；对练 ISO 由 pycdlib 管线（make-iso-qemu.py --conf）产出，落 `build/panic-drill.iso`——varix.iso 真机正统产物全程不被触碰。
+- `_attic/limine-panic-drill.conf`：对练专用 conf（timeout:0 + panic_test=1；注释明示绝不可用于真机）。
+
+**证据三件套**：数据 = 全量 `cargo +1.97.1 test` **3256 项全绿**（lib 3249 + fuzz 1 + parser fuzz 6，较 WP-105 收口 +19 = power_shutdown 9 + panicseq 8 + power 2）；镜像 `cargo +1.97.1 kcheck` 零错误（存量警告非本包引入）。**QEMU 对练闭环实证**（2026-09-24）：`armed at 0x1e401000`（动态落位）→ `KERNEL PANIC: varix\src\main.rs:713` → `guard band written=true` → 十秒倒计时（TSC 真实自旋）→ FADT RESET_REG 复位 → 自动重启 → 第二轮 **`guard-band: last panic @line 713 (tsc 254041650344)`** → 落位逐位复现再 armed——panic 四环节 + 现场带跨复位持久 + 复位阶梯 + 重放消费**单轮完整闭环**。复现命令 = `bash scripts/panic-drill.sh 100`（百次收账数回填于此：见下）；日期 = 2026-09-24。
+
+**红项处置**（测试与对练捉住的真实缺陷，修复并锁定回归）：
+1. `GUARD_BAND_MSG_MAX=256` 溢出：256 写进 u8 `msg_len` 域溢出为 0 → 上限收 255（截断语义不变），布局锁定测试同步。
+2. CRC 标准值误记 0xCBF4_3921：测试期望值错 → python zlib 实证 IEEE CRC-32(b"123456789") = **0xCBF4_3926**，与 power::crc32 逐位一致 → 修期望值并补 `crc_scope(b"")` 对账。
+3. **现场带落位 0x60000 被引导链清零**（对练实证）：第一轮 panic `written=true`、第二轮重放读回全零——Limine BIOS stage 低位工作区覆盖该页，勘察报告"复位不清 RAM、Limine 不触碰"假设证伪 → 落位改 boot 期动态选位（memmap 最大 usable 区间顶部下移 4MB、4KiB 对齐；SeaBIOS 只管低位 1MB 与 EBDA），跨 boot memmap 逐位相同 → 落位逐位复现 → 重放闭环达成。
+4. **B-101 判定语义雷**（WP-101 埋、本包对练挖出）：`base_revision_confirmed` 按"三词全零"判定与 Limine 协议不符——协议明文确认 = 只清第 3 成分，且 base revision 3+ 引导器把第 2 成分写为实际使用版本（QEMU 实证 `[magic0, 1, 0]`）→ 判定改 `marker[2] == 0`，测试字面量换协议真实形态，教训入库（外部 ABI 契约的判定必须在真实对端对练才能记绿）。
+
+**对账补刀**：①勘察报告 RESET_VALUE 偏移 122 系笔误，按 ACPI 6.5 表 5.37 于 128 落刀；②`lid_action` 旧 Suspend 语义与篇 29.3"无休眠支持"冲突，合盖改走 ShutdownConfirm 关机路径；③xorriso.exe（tools/xorriso，1.5MB）损坏"Exec format error"实证登记——对练 ISO 切 pycdlib 管线，真机 U 盘产物仍以 make-iso.sh 为准（pycdlib 无 isohybrid 不可 dd）；④`payload_as_str` 尚未在 1.97.1 core 稳定 → panic 下行保留 `#[allow(deprecated)] info.payload()` 并注释留据。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-2903 实机 panic 面（真机 U 盘引导的四环节走查）随整机对练——QEMU 闭环已实证全链语义。
+2. 合盖/lid 硬件通道（LidAction::Closed 的真实事件源）随 WP-201/202 输入域接线。
+3. 冲刷执行器（Flush 相的真实存储落盘四步）随 WP-203 存储栈——本包账本面已锁定 Skipped/Ok/Forced 三态语义。
+4. 百次对练收账：闭环链路已实证，`bash scripts/panic-drill.sh 100` 后台进行中，收账数回填本行。
+
+**WP-106 最丑角落（m4 复盘用）**：复位代码三处重复（panicseq 自足副本 / bootnext 共用面 / usrshell 阶梯）——刻意自足（panic 路径零外部依赖）与 DRY 的张力，m2 重构时评估收敛；`format_cd` 返回 ([u8;40], usize) 的固定缓冲设计（no_std 无 format! 的诚实取舍）；通知链空集记账（run_notify_chain 空集 = Done 零开销，真实接线后有步骤才走超时路径——WP-203 承接时需验预算切片与真实步骤数的配比）；现场带落位依赖"memmap 逐 boot 相同"的确定性假设（同固件+同配置成立，热插拔内存/固件升级后落位漂移 → 重放静默失效——四道闸保证不误报，但"持久性"承诺在漂移场景降级为"尽力"）。

@@ -107,11 +107,54 @@ pub struct Fadt {
     pub sci_int: u16,
     pub smi_cmd: u32,
     pub profile: u8,
+    // --- B-2901 固件最小集第一件：复位寄存器（ACPI 2.0+，表长 ≥ 129 才有；
+    // ACPI 1.0 旧表按"不支持"诚实降级，绝不猜默认端口）---
+    /// FADT FLAGS（偏移 112）bit10 = RESET_REG_SUPPORTED。
+    pub reset_reg_supported: bool,
+    /// RESET_REG GAS 的 AddressSpaceId（偏移 116）：1=SystemIO。
+    pub reset_reg_space: u8,
+    /// RESET_REG GAS 的 Address（GAS 内偏移 +4，即表内偏移 120）。
+    pub reset_reg_addr: u32,
+    /// RESET_VALUE（偏移 128）：写进复位寄存器的值。
+    pub reset_reg_value: u8,
+}
+
+/// FADT FLAGS bit10：固件声明复位寄存器可用（ACPI 6.5 表 5.37）。
+pub const RESET_REG_FLAGS_BIT: u32 = 1 << 10;
+
+/// B-2901 固件最小集：VARIX 对 ACPI 的全部取用就是这份清单——清单即承诺，
+/// 清单之外零调用（"超集零调用"审计锚点；取法按规范写死，见 29.1）。
+pub const FIRMWARE_MINIMAL_SET: [&str; 3] = [
+    "reset-reg  — FADT RESET_REG/RESET_VALUE：固件声明的复位端口",
+    "s5-package — DSDT \\_S5 睡眠包解码 → FACP PM1a_CNT 编码写入",
+    "battery    — 电池电量查询（阶段 3 前缓期，仅纯逻辑面；判例 30 注记）",
+];
+
+/// 固件最小集清单（审计面：MD2 篇 29.1 的三件东西，可执行可对账）。
+pub fn firmware_minimal_set() -> [&'static str; 3] {
+    FIRMWARE_MINIMAL_SET
+}
+
+/// 固件声明的复位寄存器 → `(io_port, reset_value)`。
+///
+/// 只有同时满足三条件才给出：FLAGS 声明支持、寄存器是 SystemIO（MMIO
+/// 复位寄存器需要页映射，最小集不碰）、端口非零且落在 IO 端口空间内。
+/// 任何一环缺失 → None（调用方如实落硬件阶梯，绝不猜端口）。
+pub fn reset_reg(fadt: &Fadt) -> Option<(u16, u8)> {
+    if !fadt.reset_reg_supported
+        || fadt.reset_reg_space != 1
+        || fadt.reset_reg_addr == 0
+        || fadt.reset_reg_addr > 0xFFFF
+    {
+        return None;
+    }
+    Some((fadt.reset_reg_addr as u16, fadt.reset_reg_value))
 }
 
 /// Parse the fixed fields of a FADT body (header included). Offsets follow
 /// ACPI 6.x: SCI_INT@46, SMI_CMD@48, PM1a_CNT_BLK@64, PM1b_CNT_BLK@68,
-/// PM1_CNT_LEN@89, PreferredPMProfile@45.
+/// PM1_CNT_LEN@89, PreferredPMProfile@45; RESET_REG GAS@116 (address@120)
+/// and RESET_VALUE@128 (ACPI 2.0+, 表长 ≥ 129 才解析).
 pub fn parse_fadt(table: &[u8]) -> Option<Fadt> {
     if table.len() < 92 {
         return None;
@@ -122,6 +165,17 @@ pub fn parse_fadt(table: &[u8]) -> Option<Fadt> {
     let u32_at = |off: usize| -> u32 {
         u32::from_le_bytes([table[off], table[off + 1], table[off + 2], table[off + 3]])
     };
+    // 复位寄存器三件组：旧短表（ACPI 1.0）无此字段，按不支持处理。
+    let (rr_supported, rr_space, rr_addr, rr_value) = if table.len() >= 129 {
+        (
+            u32_at(112) & RESET_REG_FLAGS_BIT != 0,
+            table[116],
+            u32_at(120),
+            table[128],
+        )
+    } else {
+        (false, 0, 0, 0)
+    };
     Some(Fadt {
         profile: table[45],
         sci_int: u16::from_le_bytes([table[46], table[47]]),
@@ -129,6 +183,10 @@ pub fn parse_fadt(table: &[u8]) -> Option<Fadt> {
         pm1a_cnt_blk: u32_at(64),
         pm1b_cnt_blk: u32_at(68),
         pm1_cnt_len: table[89],
+        reset_reg_supported: rr_supported,
+        reset_reg_space: rr_space,
+        reset_reg_addr: rr_addr,
+        reset_reg_value: rr_value,
     })
 }
 
@@ -1102,8 +1160,32 @@ pub enum LidState {
 pub enum LidAction {
     Nothing,
     BlankScreen,
+    /// 篇 29.3：合盖默认语义是"走关机路径"（STAR I 无休眠支持，Q77 明示）。
+    /// 干净时直接执行，有未保存内容先确认（[`lid_close_plan`] 分派）；
+    /// 弹幕文案见 [`LID_CLOSE_NOTICE`]，用户教育一次性完成。
+    ShutdownConfirm,
     Suspend,
     Hibernate,
+}
+
+/// 合盖关机确认的诚实文案（篇 29.3 逐字要求：弹幕明说"无休眠支持"）。
+pub const LID_CLOSE_NOTICE: &str = "无休眠支持，合盖将保存并关机";
+
+/// 合盖后的执行分派（篇 29.3："有未保存内容时弹确认，干净时直接执行"）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LidClosePlan {
+    /// 无未保存内容——直接走关机路径。
+    ExecuteNow,
+    /// 有未保存内容——先弹确认（保存先行），确认后走关机路径。
+    ConfirmFirst,
+}
+
+pub fn lid_close_plan(unsaved: bool) -> LidClosePlan {
+    if unsaved {
+        LidClosePlan::ConfirmFirst
+    } else {
+        LidClosePlan::ExecuteNow
+    }
 }
 
 pub fn lid_action(lid: LidState, on_battery: bool, external_display: bool) -> LidAction {
@@ -1111,11 +1193,14 @@ pub fn lid_action(lid: LidState, on_battery: bool, external_display: bool) -> Li
         LidState::Open | LidState::Unknown => LidAction::Nothing,
         LidState::Closed => {
             if external_display {
+                // 合盖外接显示：只熄内屏，系统继续（外显在场=用户仍在用）。
                 LidAction::BlankScreen
-            } else if on_battery {
-                LidAction::Suspend
             } else {
-                LidAction::Suspend
+                // 篇 29.3：STAR I 无休眠支持——电量不改变合盖语义，一律走
+                // 关机路径（旧的 on_battery→Suspend 是给"有休眠"机器的
+                // 语义，在这台机器上是撒谎）。
+                let _ = on_battery;
+                LidAction::ShutdownConfirm
             }
         }
     }
@@ -1720,10 +1805,39 @@ pub fn run_power_checks() -> CheckSet {
 
     set.add(
         "F264 lid",
-        lid_action(LidState::Closed, true, false) == LidAction::Suspend
+        lid_action(LidState::Closed, true, false) == LidAction::ShutdownConfirm
             && lid_action(LidState::Closed, false, true) == LidAction::BlankScreen
-            && lid_action(LidState::Open, true, false) == LidAction::Nothing,
+            && lid_action(LidState::Open, true, false) == LidAction::Nothing
+            && lid_close_plan(true) == LidClosePlan::ConfirmFirst
+            && lid_close_plan(false) == LidClosePlan::ExecuteNow,
         "lid policy",
+    );
+
+    set.add(
+        "B-2901 firmware minimal set",
+        {
+            // q35 式合成 FADT（129 字节）：FLAGS bit10 置位、RESET_REG 为
+            // SystemIO 0xCF9、RESET_VALUE=0x06 —— 与 QEMU q35 固件一致。
+            let mut t = [0u8; 132];
+            t[0..4].copy_from_slice(b"FACP");
+            t[112..116].copy_from_slice(&RESET_REG_FLAGS_BIT.to_le_bytes());
+            t[116] = 1; // AddressSpaceId = SystemIO
+            t[120..124].copy_from_slice(&0x0CF9u32.to_le_bytes());
+            t[128] = 0x06;
+            let f = parse_fadt(&t).expect("fadt parse");
+            reset_reg(&f) == Some((0x0CF9, 0x06))
+                // 旧短表（ACPI 1.0）诚实降级
+                && parse_fadt(&t[..92]).map(|f| reset_reg(&f)).flatten().is_none()
+                // MMIO(space=0) 不给端口
+                && {
+                    let mut t2 = t;
+                    t2[116] = 0;
+                    parse_fadt(&t2).map(|f| reset_reg(&f)).flatten().is_none()
+                }
+                // 清单三件就位（审计锚点非空）
+                && firmware_minimal_set().len() == 3
+        },
+        "reset-reg minimal set",
     );
 
     let low = LowBatteryPolicy::default();
@@ -2057,9 +2171,68 @@ mod tests {
 
     #[test]
     fn f264_lid_matrix() {
+        // 篇 29.3：合盖默认走关机路径（无休眠支持的诚实语义）。
         assert_eq!(lid_action(LidState::Unknown, true, false), LidAction::Nothing);
         assert_eq!(lid_action(LidState::Closed, true, true), LidAction::BlankScreen);
-        assert_eq!(lid_action(LidState::Closed, false, false), LidAction::Suspend);
+        assert_eq!(lid_action(LidState::Closed, false, false), LidAction::ShutdownConfirm);
+        assert_eq!(lid_action(LidState::Closed, true, false), LidAction::ShutdownConfirm);
+    }
+
+    #[test]
+    fn b2904_lid_close_plan_and_notice() {
+        // 确认弹窗与保存先行：有未保存内容先确认，干净直接执行。
+        assert_eq!(lid_close_plan(true), LidClosePlan::ConfirmFirst);
+        assert_eq!(lid_close_plan(false), LidClosePlan::ExecuteNow);
+        // 文案诚实说明无休眠支持（篇 29.3 逐字要求）。
+        assert!(LID_CLOSE_NOTICE.contains("无休眠支持"));
+        assert!(LID_CLOSE_NOTICE.contains("关机"));
+    }
+
+    #[test]
+    fn b2901_reset_reg_parse() {
+        // 合成 q35 式 FADT：RESET_REG=SystemIO 0xCF9 / RESET_VALUE=0x06。
+        let mut t = [0u8; 132];
+        t[0..4].copy_from_slice(b"FACP");
+        t[112..116].copy_from_slice(&RESET_REG_FLAGS_BIT.to_le_bytes());
+        t[116] = 1;
+        t[120..124].copy_from_slice(&0x0CF9u32.to_le_bytes());
+        t[128] = 0x06;
+        let f = parse_fadt(&t).expect("129-byte FADT parses");
+        assert_eq!(reset_reg(&f), Some((0x0CF9, 0x06)));
+
+        // 旧短表（ACPI 1.0，92 字节）：无复位寄存器字段——诚实 None。
+        let f = parse_fadt(&t[..92]).expect("92-byte FADT parses");
+        assert_eq!(reset_reg(&f), None);
+
+        // FLAGS bit10 未置位：固件没声明——不给端口。
+        let mut t2 = t;
+        t2[112..116].copy_from_slice(&0u32.to_le_bytes());
+        let f = parse_fadt(&t2).unwrap();
+        assert_eq!(reset_reg(&f), None);
+
+        // MMIO（space=0）：最小集不碰内存映射复位——不给端口。
+        let mut t3 = t;
+        t3[116] = 0;
+        let f = parse_fadt(&t3).unwrap();
+        assert_eq!(reset_reg(&f), None);
+
+        // 端口越界（>0xFFFF）与零端口：不给。
+        let mut t4 = t;
+        t4[120..124].copy_from_slice(&0x1_0000u32.to_le_bytes());
+        assert_eq!(parse_fadt(&t4).map(|f| reset_reg(&f)).flatten(), None);
+        let mut t5 = t;
+        t5[120..124].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(parse_fadt(&t5).map(|f| reset_reg(&f)).flatten(), None);
+    }
+
+    #[test]
+    fn b2901_minimal_set_audit_anchor() {
+        // 清单即承诺：三件、各有着落、电量明示缓期（29.1）。
+        let set = firmware_minimal_set();
+        assert_eq!(set.len(), 3);
+        assert!(set[0].starts_with("reset-reg"));
+        assert!(set[1].starts_with("s5-package"));
+        assert!(set[2].starts_with("battery") && set[2].contains("缓期"));
     }
 
     #[test]

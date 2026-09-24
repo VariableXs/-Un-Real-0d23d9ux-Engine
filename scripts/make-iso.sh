@@ -8,6 +8,11 @@ cd "$(dirname "$0")/.."
 
 KERNEL_ELF="kernel/target/x86_64-unknown-none/release/varix"
 ISO_ROOT="build/isoroot"
+# conf 事实源可注入覆盖（默认 repo 根 limine.conf——真机部署唯一事实源，
+# 永不携带 selftest/panic-drill 类开关）。对练/刮擦专用 conf 经
+# CONF_SRC=_attic/limine-panic-drill.conf bash scripts/make-iso.sh 注入；
+# 默认调用零变化。
+CONF_SRC="${CONF_SRC:-limine.conf}"
 
 command -v xorriso >/dev/null 2>&1 || { echo "ERROR: 缺少 xorriso（MSYS2: pacman -S xorriso）" >&2; exit 127; }
 [ -f "$KERNEL_ELF" ] || { echo "ERROR: 内核 ELF 不存在，先运行 cargo kbuild（在 kernel/ 目录）" >&2; exit 1; }
@@ -24,7 +29,7 @@ done
 rm -rf "$ISO_ROOT"
 mkdir -p "$ISO_ROOT/kernel"
 cp "$KERNEL_ELF" "$ISO_ROOT/kernel/varix"
-cp limine.conf "$ISO_ROOT/limine.conf"
+cp "$CONF_SRC" "$ISO_ROOT/limine.conf"
 cp "$LIMINE_DIR/limine-bios-cd.bin" \
    "$LIMINE_DIR/limine-uefi-cd.bin" \
    "$LIMINE_DIR/limine-bios.sys" "$ISO_ROOT/"

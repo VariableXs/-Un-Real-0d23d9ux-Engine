@@ -106,6 +106,10 @@ ESP 是固件与 Limine 的共同地盘，布局保持极简：/EFI/BOOT/BOOTX64
 | B-105 | `gate_check` 三条件 + 20 组注入矩阵：组 1-10 闸门实跑、组 11-15 启动回读实跑、组 16-20 词表与设计自证覆盖（16/17 真实 IO 注入随 WP-102 接线后实机复跑） | 绿-宿主 |
 | B-106 | BootStage 12 段 + ELEVEN_CHECKPOINTS 十一点位完整性 + F178 检查（stages_seen/marks=12、fw=900ms/kernel=500ms/total=3100ms）；<1ms 开销为实机项（环境未就位类） | 绿-宿主 |
 
+### 篇 1 判据勘误回写（WP-106 对练连带 · 2026-09-24 · QEMU 真引导实证）
+
+**B-101 判定语义勘误（红项处置）**：WP-101 交付的 `base_revision_confirmed` 按"确认 = 三词全零"判定，宿主测试用自洽字面量全绿；WP-106 对练首次 QEMU 真引导即 BOOT REFUSED——实证 Limine 12.9 确认后标记实为 `[magic0, used_rev=1, 0]`，**非全零**。协议原文（PROTOCOL.md "Base protocol revisions"）：支持所请求 revision 时**引导器只把第 3 成分（请求号）清零**；且支持 base revision 3+ 的引导器**强制把第 2 成分改写为实际使用的 base revision**。官方判定宏 `LIMINE_BASE_REVISION_SUPPORTED(VAR) ((VAR) == 0)`（VAR = 第 3 成分）与本实证互证。修复：判定改为 `marker[2] == 0`（未处理/不支持/确认三态全覆盖），测试字面量换为协议真实形态（`[0xf9562b2d5c95a6c8, 1, 0]` 判确认）。**教训入库**：宿主单测的自洽字面量不等于引导器语义——凡是与外部系统有 ABI 契约的判定，必须在真实对端上做一次对练才能记"绿"。
+
 ---
 
 ## 篇 2 交接协议字段级详案
@@ -1125,6 +1129,36 @@ VARIX 对固件接口（ACPI）的取用保持最小集：重启寄存器（FADT
 | B-2904 | 合盖语义 | 确认弹窗与保存先行验证 |
 | B-3001 | 回写四通道 | 实测回填演示全过 |
 | B-3002 | 一致性审计 | 每日流水红项清零机制 |
+
+### 篇 29 判据实测回写（WP-106 · 2026-09-24 · 宿主侧交付 + QEMU 对练）
+
+WP-106 电源固件最小集收口（AI01 单编制）。判据对照与证据：
+
+| 判据/条款 | 实现面（本包交付） | 证据 |
+| --- | --- | --- |
+| 29.1 固件最小集·复位寄存器 | `power::Fadt` 补 RESET_REG 三件组（FLAGS@112 bit10、GAS@116 space+addr@120、RESET_VALUE@128，ACPI 6.5 表 5.37；表长 <129 的 ACPI 1.0 旧表诚实降级 None）；`power::reset_reg` 三条件放行（声明位/SystemIO/端口非零 ≤0xFFFF——MMIO 复位与猜端口都不做）；`bootnext::reset_via_fadt` 零分配执行面（HHDM 读 FACP→端口写），SYS_REBOOT 与 panic 阶梯同源共用 | `b2901_reset_reg_parse`（q35 式合成 0xCF9/0x06 全谱）+ 镜像 check |
+| 29.1 固件最小集·超集零调用 | `FIRMWARE_MINIMAL_SET` 三件清单常量（reset-reg / s5-package / battery 缓期注记）+ `firmware_minimal_set()` 审计锚点——清单即承诺，ACPI 取用面收敛为 `parse_fadt`+`find_s5_slp_typ`+`reset_reg` 三入口，全部有测试锁定 | `b2901_minimal_set_audit_anchor` |
+| 29.2 关机承诺（B-2902） | `power_shutdown.rs`（新模块）：`ShutdownPhase` 四相硬序（保全→冲刷→通知链→S5）；`ShutdownLedger` verbatim 记账（Ok / Skipped(理由) / Forced / Failed(原因)——`Skipped` 必须带人话理由）；`unpluggable()` 逐字实现画面条件（冲刷完成+通知链收束才许"可拔电"，Failed 一票拦住）；`NotifyStep` 通知链（单步预算切片、超时强收账留名、总预算耗尽剩余步 Forced）；`UNPLUG_LINE`/`FIRMWARE_TIMEOUT_LINE` 文案常量；`usrshell::sys_poweroff` 接线：软件链记账→可拔电画面（console best-effort）→UEFI Shutdown→ACPI S5→全败诚实指引回桌面 | power_shutdown 9 测试 + `sys_poweroff` 目标态接线 + 镜像 check |
+| 29.2 panic 路径（B-2903） | `panicseq.rs`（新模块）四环节：①保护屏（帧缓冲 best-effort+串口兜底，26.2 三要素版式）；②现场带——物理 `0x60000` 固定落位、boot 期 `claim(Purpose::LogRing)` 登记（被拒即 armed=false 如实降级）、`#[repr(C)]` 固定布局+magic/version/msg_len/CRC 四道闸、CRC32 与 power 域同源（zlib 对账 0xCBF4_3926）、重放后清魔数防重复报告；③十秒倒计时（TSC 自旋、每秒串口+屏幕留痕，不依赖中断）；④复位阶梯四级 **零 UEFI RS**（ResetSystem 需恒等映射+分配，panic 禁走）：FADT RESET_REG→8042→0xCF9→triple fault；`panic_handler` 重写（串口直写先行→`panic_sequence` 总编排）；`boot_guard_band_hook` 重放+登记（"日志重放兜底"入口）；`panic_test=1` cmdline 注入通道 + `_attic/limine-panic-drill.conf` + `scripts/panic-drill.sh` 循环对练 | panicseq 8 测试（编解码往返/四道闸拒收/截断/布局锁定/阶梯清单）+ 镜像 check + QEMU 对练（闭环计数见台账） |
+| 29.3 合盖语义（B-2904） | `lid_action` Closed 分支改 `ShutdownConfirm`（篇 29.3 逐字：STAR I 无休眠支持，合盖走关机路径——旧 `on_battery→Suspend` 是给"有休眠"机器的语义，在这台机器上是撒谎）；`lid_close_plan(unsaved)` 确认分派（有未保存→ConfirmFirst 弹确认，干净→ExecuteNow 直接执行）；`LID_CLOSE_NOTICE` 诚实文案（"无休眠支持，合盖将保存并关机"）；电源键语义不变（短按同合盖/长按硬件强断，29.3 既有定义） | `f264_lid_matrix`（改造）+ `b2904_lid_close_plan_and_notice` + CheckSet F264/B-2901 双项 |
+
+**对账补刀（本包手术，两处）**：
+1. `power.rs::lid_action` 原实现合盖返回 `Suspend`——与篇 29.3"合盖走关机路径"冲突（STAR I 无休眠支持，Q77 明示）；`on_battery` 分支两个方向同值更是死代码味。本包改为 `ShutdownConfirm` 并同步全部既有测试期望——语义冲突在勘察阶段定性，本包落刀。
+2. 勘察记录称 RESET_VALUE 在 FADT 偏移 122——按 ACPI 6.5 表 5.37 实为 116（GAS 12 字节）+128（RESET_VALUE），122 是 GAS 内 Address 域的第 3 字节；本包按规范落刀并在 `b2901_reset_reg_parse` 锁定，台账登记勘误。
+
+**红项处置**（本包测试自捉，修复并锁定回归）：
+1. `GUARD_BAND_MSG_MAX=256` 写进 u8 `msg_len` 域溢出为 0——`guard_band_truncates_honestly` 捉住（decode 恒 None）；上限收 255（单字节域的干净上限），截断语义不变。
+2. CRC 测试初版期望值误记 `0xCBF4_3921`——zlib 对账实证 IEEE CRC-32(b"123456789")=**0xCBF4_3926**，`power::crc32` 与 zlib 逐位一致；同源审计反成校准点（power 域既有 CRC 测试只锁确定性不锁标准值，本次补上标准值锚）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-2903"注入百次"：QEMU 循环对练形态已交付（单进程 panic→复位→重放自动循环，`guard-band: last panic` 行数即闭环次数）；百次实跑计数见台账（对练窗口执行），实机 panic 面随 m1 闸门对账。
+2. 合盖事件的硬件通道（ACPI lid 事件/平台通道）无实体可测（QEMU 无 lid 设备）——本包交付纯逻辑、确认分派与文案全绿，实机合盖事件接线随输入/平台栈（WP-201/202）。
+3. 冲刷真实执行器随 WP-203（WP-102 冻结的 trait 边界不动）——`sys_poweroff` 冲刷相如实 Skipped 记账（"执行器未接线"是如实陈述，不是跳过验收）。
+
+**最丑角落（如实交代）**：
+1. `panicseq::reset_ladder` 与 `usrshell::sys_reboot` 的 8042/0xCF9/triple-fault 代码三处重复——刻意的自足性（panic 路径不依赖 proc 域与任何可能已坏的调用链），不是偷懒；收敛到公共模块的收益抵不过引入 panic 路径依赖的风险。
+2. 现场带 `0x60000` 固定落位依赖"同固件布局两次启动一致 + Limine 不触碰该段"假设——`claim` 被拒即 armed=false 降级（现场带退化为加分项，串口永远兜底）；QEMU 百次对练就是对这个假设的实证。
+3. `sys_poweroff` 通知链以**空集**记账全绿——服务注册面为零是现状如实（ushell 域无长驻服务），链路与强收语义已就位；桌面服务注册后此账自动变真，不需要改链子。
 
 ---
 

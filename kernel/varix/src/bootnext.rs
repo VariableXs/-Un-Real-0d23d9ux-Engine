@@ -317,6 +317,44 @@ pub fn write_bootnext(entry: u16) -> BootNextOutcome {
     BootNextOutcome::Written { entry }
 }
 
+/// ACPI 复位寄存器复位（B-2901 最小集第一件的目标态执行面）：
+/// `acpi::facp_addr()` → HHDM → `power::parse_fadt` → `power::reset_reg`
+/// → 8 位 SystemIO 端口写。
+///
+/// 零分配、零锁、零 UEFI 依赖——SYS_REBOOT 硬件阶梯与 panic 复位阶梯
+/// （B-2903）的首级共用本入口。固件没声明复位寄存器 / MMIO 复位 / 端口
+/// 非法时如实返回 false（调用方落下一级），绝不猜端口。
+pub fn reset_via_fadt() -> bool {
+    let Some(facp_phys) = crate::acpi::facp_addr() else {
+        return false;
+    };
+    let Some(off) = limine::hhdm_offset() else {
+        return false;
+    };
+    let facp = facp_phys + off as u64;
+    // RESET_VALUE 在表内偏移 128——短于 129 的表没有复位寄存器字段。
+    let flen = unsafe { core::ptr::read_volatile((facp + 4) as *const u32) } as usize;
+    if flen < 129 || flen > (1 << 20) {
+        return false;
+    }
+    let facp_bytes = unsafe { core::slice::from_raw_parts(facp as *const u8, flen) };
+    let Some(fadt) = crate::power::parse_fadt(facp_bytes) else {
+        return false;
+    };
+    let Some((port, value)) = crate::power::reset_reg(&fadt) else {
+        return false;
+    };
+    crate::kinfo!("reset: FADT RESET_REG {:#x} <- {:#04x}", port, value);
+    // SAFETY: 端口与值均来自固件 FADT 声明且经 power::reset_reg 三条件
+    // 校验（SystemIO、非零、≤0xFFFF）。ps2::port 仅内核目标编译；宿主
+    // 测试走不到这里（acpi::facp_addr() 恒 None 提前返回 false）。
+    #[cfg(target_os = "none")]
+    unsafe { crate::ps2::port::outp(port, value) };
+    #[cfg(not(target_os = "none"))]
+    let _ = (port, value);
+    true
+}
+
 /// ResetSystem(EfiResetCold)。仅在 UEFI 引导下有效；BIOS 引导返回 false。
 pub fn reset_cold() -> bool {
     let Some(rs) = runtime_services() else {

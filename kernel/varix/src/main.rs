@@ -392,6 +392,13 @@ fn boot() -> ! {
     }
     TIMELINE.stage_end(Stage::Memmap, varix::timeline::read_tsc());
 
+    // --- panic 现场带钩子（WP-106 · B-2903）-----------------------------------
+    // ① 重放：复位不清 RAM——上次 panic 写进 0x60000 现场带的记录若在
+    //    （magic+CRC 过），此刻打印进 boot 日志（"日志重放兜底"的入口）；
+    // ② 登记：claim 本次落位（Purpose::LogRing），claim 被拒则如实降级
+    //    （panic 现场只走串口，绝不写没登记的内存）。
+    varix::panicseq::boot_guard_band_hook();
+
     // --- kaslr (F018) -------------------------------------------------------------
     TIMELINE.stage_begin(Stage::Kaslr, varix::timeline::read_tsc());
     varix::kaslr::init();
@@ -697,6 +704,15 @@ fn boot() -> ! {
         );
     }
 
+    // --- B-2903 对练注入（cmdline panic_test=1）--------------------------------
+    // 故意 panic：QEMU 对练循环的注入入口（引导类百次演练，MD3 4.1 WP-106
+    // 施工要点："panic 打不开的花，m2 桌面期间死给你看"）。注入点在
+    // 引导全链完成之后——现场带已登记，panic 序列四环节全链可达。
+    if varix::cmdline::flag("panic_test") {
+        varix::kinfo!("panic-test: deliberate injection begin (B-2903 drill)");
+        panic!("panic_test injection: B-2903 drill");
+    }
+
     // --- 需求 2 · A 卡交接（内核 → Variable）----------------------------------
     // 内核里跑不了 Tauri（要 Windows API + WebView2，结构上不可能），而
     // ExitBootServices 之后也无法跳转到 Windows Boot Manager——"进入 Variable"
@@ -795,54 +811,16 @@ fn halt() -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    // Best-effort: emit to serial + ring, then park.
-    if let Some(c) = varix::console::installed_ref() {
-        c.set_colors(
-            varix::console::Ink::White,
-            varix::console::Ink::Red,
-        );
-        c.write_str("\nKERNEL PANIC\n");
-        c.write_str(core::str::from_utf8(
-            &format_panic(info),
-        ).unwrap_or(""));
-    }
-    halt()
-}
-
-/// PanicInfo → bytes without fmt machinery on the stack-heavy path.
-fn format_panic(info: &core::panic::PanicInfo<'_>) -> [u8; 256] {
-    let mut out = [0u8; 256];
-    let mut n = 0usize;
-    let push = |bytes: &[u8], out: &mut [u8; 256], n: &mut usize| {
-        for &b in bytes {
-            if *n < out.len() {
-                out[*n] = b;
-                *n += 1;
-            }
-        }
-    };
-    push(info.location().map(|l| l.file()).unwrap_or("?").as_bytes(), &mut out, &mut n);
-    push(b":", &mut out, &mut n);
-    // Location line as decimal.
-    if let Some(l) = info.location() {
-        let mut num = [0u8; 10];
-        let mut w = 0usize;
-        let mut v = l.line();
-        if v == 0 {
-            num[0] = b'0';
-            w = 1;
-        } else {
-            while v > 0 && w < num.len() {
-                num[w] = b'0' + (v % 10) as u8;
-                v /= 10;
-                w += 1;
-            }
-        }
-        while w > 0 {
-            w -= 1;
-            push(&[num[w]], &mut out, &mut n);
-        }
-    }
-    push(b"\n", &mut out, &mut n);
-    out
+    // B-2903 四环节序列（WP-106）：串口直写先行（不依赖任何全局状态，
+    // 是保护屏/现场带都失败时的保底通道），其余四环节全部在 panicseq：
+    // 保护屏（26.2 规范）→ 现场信息写保护内存带 → 十秒倒计时 → 复位
+    // 寄存器。panic 路径故意不走优雅收尾（栈可能已坏），安全承诺只有
+    // 一条：尽快干净地重启，让日志重放兜底（boot_guard_band_hook）。
+    varix::serial::init();
+    varix::serial::write_bytes(b"KERNEL PANIC: ");
+    let raw = varix::panicseq::fmt_panic(info);
+    let n = varix::panicseq::cstr_len(&raw);
+    varix::serial::write_bytes(&raw[..n]);
+    varix::serial::write_bytes(b"\n");
+    varix::panicseq::panic_sequence(info)
 }

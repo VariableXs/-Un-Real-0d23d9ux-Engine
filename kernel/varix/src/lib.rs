@@ -129,8 +129,10 @@ pub mod mem;
 pub mod memmap;
 pub mod net;
 pub mod once;
+pub mod panicseq; // WP-106 B-2903：panic 四环节序列器（保护屏/现场带/倒计时/复位阶梯）
 pub mod platform;
 pub mod power;
+pub mod power_shutdown; // WP-106 B-2902：关机收尾链与"可拔电"账目
 pub mod proc;
 pub mod progress;
 pub mod ps2;
