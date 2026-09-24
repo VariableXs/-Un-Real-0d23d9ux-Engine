@@ -524,6 +524,22 @@ HDA（High Definition Audio）驱动的实现骨架：控制器层管 CORB 与 R
 | B-806 | HDA 拔插 | 耳机切换无爆音，延迟 ≤ 40ms |
 | B-807 | 混音器流管理 | 多流混音、优先级、独立音量全绿 |
 
+### 篇 8 判据实装回写（WP-208 · 2026-09-24 · 七域宿主全绿）
+
+七判据已落为判据实装层七个模块（`kernel/varix/src/`：path3/wingl/esoft/r3scan/viddec/hdadrv/mixer），判据号 `B-80x` 入 CheckSet 命名共 56 项，全量 ktest PASS=3369 FAIL=0（60 域 CheckSet 全 PASS）。架构沿 WP-201/203 定案（不动存量层、CheckSet/Lcg 同源、零堆定长容量、整数运算、无 f32、全部无 Vec——两态编译零风险面）。
+
+| 判据 | 实装锚点 | 结构防线 |
+| --- | --- | --- |
+| B-801 | path3.rs：三层路径分账 + `Composer::submit` 唯一上屏入口 + C-1 全路径对练 | 屏幕状态只经 submit 可变；`BypassWrite` 仅存审计分类（录屏诊断面），上屏通路不存在 |
+| B-802 | wingl.rs：GL 调用八类穷举（舒适区五类/重度三类）+ 三判例应用画像过闸 | 重度 D3D 显式 `HeavyNotPromised` + 星卡诚实标注文案常量（MD1 23.6） |
+| B-803 | esoft.rs：直插即纯软件定型 + 软合成确定性闭环 + 窗口面/输入面齐备 | `InsertionProfile` **类型面无 enable_gpu 选项**（无危险开关防线，B-705 同族） |
+| B-804 | r3scan.rs：硬件清单两条 + `SubmitBackend` trait 双后端 + 口径三指标 | GpuBackendStub 接口位编译即证"换后端不换管线"；**只摸不建**零驱动代码 |
+| B-805 | viddec.rs：两核预算 1666kCycles/帧 + 常见档 1650/1620 实时 + AV1 高档兜底 | 解码帧**类型必选表面提交路由**（构造入口唯一）；破损帧零投屏（不花屏） |
+| B-806 | hdadrv.rs：CORB/RIRB 环 + DMA 位置上报 + 引脚表固化 + 延迟对照测量 | **拔插只对齐 DMA 周期边界切换**（旧周期排空后切）——无爆音的结构语义 |
+| B-807 | mixer.rs：每流环形缓冲 + 独立音量静音 + 定长周期混音（64 样本与 B-806 同源） | **i32 累加 + i16 饱和不绕回**（绕回即爆音）；通话压媒体 duck 30% 不静音 |
+
+**实装勘误连带**（对练与 CheckSet 捉住，修复并锁定回归）：①mixer CheckSet 环形复用断言写反——**"单测绿"≠"CheckSet 绿"**（两者断言路径不同，CheckSet 是闭环对账面必须独立过）；②path3 对练一致标志 Default 语义（bool Default=false 不是对练语义，"无问题是常态"需显式置 true）；③hdadrv 对练随机同态失能（判据有效性与随机性解耦——首轮强制真实切换）；④**改域必查清单第七处口径**：域数断言链五处之外，`f500 run_final_check`（final verdict 联动）与 `f475 checkup`（checkup 联动）是域状态变化的传导面——七域 CheckSet 失败曾传导为 final verdict Blocked。
+
 ---
 
 ## 篇 9 输入子系统与输入法实现

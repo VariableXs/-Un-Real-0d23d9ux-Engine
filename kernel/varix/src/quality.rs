@@ -651,6 +651,20 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::linkloss::run_linkloss_checks());
     // WP-203 · B-707 预读命中（二次启动 8s 预算 × 命中率下限推导 × B-2702 回补）
     lp.register(crate::prefacct::run_prefacct_checks());
+    // WP-208 · B-801 三层渲染路径（C-1 提交面唯一入口 × 三层互不混线 × 绕过仅存审计分类）
+    lp.register(crate::path3::run_path3_checks());
+    // WP-208 · B-802 Wine GL 承诺面（llvmpipe 舒适区 × 重度 D3D 不承诺 × 诚实标注）
+    lp.register(crate::wingl::run_wingl_checks());
+    // WP-208 · B-803 Electron 软件路径（直插纯软件定型 × 类型面无 GPU 开关 × 确定性合成）
+    lp.register(crate::esoft::run_esoft_checks());
+    // WP-208 · B-804 R3 摸底包（清单/抽象/口径三件齐 × 只摸不建）
+    lp.register(crate::r3scan::run_r3scan_checks());
+    // WP-208 · B-805 视频软解（两核预算 × 常见档实时 × 同步容差 125ms × 兜底不花屏）
+    lp.register(crate::viddec::run_viddec_checks());
+    // WP-208 · B-806 HDA 驱动骨架（命令环保序 × 周期边界切换无爆音 × 延迟 40ms 对照）
+    lp.register(crate::hdadrv::run_hdadrv_checks());
+    // WP-208 · B-807 混音器流管理（独立音量静音 × duck 不静音 × i16 饱和不绕回）
+    lp.register(crate::mixer::run_mixer_checks());
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1185,7 +1199,7 @@ pub fn run_quality_checks() -> CheckSet {
 
     // F489 全系统闭环自检：46 域注册（39 老域 + WP-201 七域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 53 && !lp.truncated() && lp.all_passed(), "53 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 60 && !lp.truncated() && lp.all_passed(), "60 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1200,7 +1214,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=53"), "仪表实时计算，域数=53");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=60"), "仪表实时计算，域数=60");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1351,14 +1365,15 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 53);
+        assert_eq!(lp.len(), 60);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
         // 记账下限：39 老域每域恰 25 项（各自 f488 型断言守护）+ WP-201 七域
         // 25+22+18+21+15+14+19 = 134 项 + WP-203 七域 10+12+9+10+8+10+9 = 68 项
-        // （十四域 CheckSet 条数受各自 all_checks 断言守护）
-        assert!(passed >= 39 * 25 + 134 + 68);
+        // + WP-208 七域 8+7+7+6+9+10+9 = 56 项
+        // （廿一域 CheckSet 条数受各自 all_checks 断言守护）
+        assert!(passed >= 39 * 25 + 134 + 68 + 56);
         assert!(lp.all_passed());
     }
 
@@ -1390,7 +1405,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=53"));
+        assert!(text.contains("domains_in_loop=60"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

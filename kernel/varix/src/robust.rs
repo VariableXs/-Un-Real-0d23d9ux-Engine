@@ -1066,6 +1066,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::ntfsro::run_ntfsro_checks());
     checkup.register(crate::linkloss::run_linkloss_checks());
     checkup.register(crate::prefacct::run_prefacct_checks());
+    // WP-208 七域：图形多媒体与音频判据实装层
+    checkup.register(crate::path3::run_path3_checks());
+    checkup.register(crate::wingl::run_wingl_checks());
+    checkup.register(crate::esoft::run_esoft_checks());
+    checkup.register(crate::r3scan::run_r3scan_checks());
+    checkup.register(crate::viddec::run_viddec_checks());
+    checkup.register(crate::hdadrv::run_hdadrv_checks());
+    checkup.register(crate::mixer::run_mixer_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
