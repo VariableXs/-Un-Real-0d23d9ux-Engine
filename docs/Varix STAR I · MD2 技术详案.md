@@ -216,6 +216,22 @@ Windows 域每次大版本更新（或用户手动跑过"优化工具"）后执�
 | B-306 | 复检清单 | 模拟大更新后复检正确报警 |
 | B-307 | 遗言机制 | 人为注入故障，遗言日志完整 |
 
+### 篇 3 判据实测回写（WP-103 · 2026-09-24 · 宿主侧交付）
+
+按 MD3 附录 D"绿要证据"三件套回写。证据形态：加固包 selftest（fake 注册表后端 + 临时目录 + System32 真六件样本，零真实系统接触），主命令 `python portable/engine/hardening/run_all.py selftest`（八组证据全绿，两连跑稳定）。B-301 的 0xED 七十二小时实机长跑依赖 U 盘整机与 Y7000 实机，按附录 D 如实标注"环境未就位类"，随 WP-102 交接接线后补测，不提前记绿。
+
+| 编号 | 实测证据（宿主侧） | 结果 |
+| --- | --- | --- |
+| B-301 | 四板斧实机有效性：0xED 连续七十二小时无复发——实机长跑项（环境未就位类） | 环境未就位类 |
+| B-302 | 静态审计：harden_quad.py（四板斧本体）对 shutil / os.remove / os.unlink / os.rename / os.replace / copyfile / copy2 / rmtree / open( 九类禁用 token 扫描零命中；文件操作仅存于有清单+哈希的豁免件 harden_vcruntime（证据⑥） | 绿-宿主 |
+| B-303 | ensure_value 写→立即重读→不符即 fail 的单步原语；fresh 后端 deploy 后终态逐键==SPEC（证据②） | 绿-宿主 |
+| B-304 | 同一 fake 后端连续三跑：第 2/3 遍全 SKIP（10/10），三遍终态快照逐键一致、零漂移（证据③） | 绿-宿主 |
+| B-305 | System32 真六件样本三段校验：段一哈希幂等复制（首跑 copied 6、复跑 skip-existing 6）、段二版本提取（FileVersion=14.51.36247.0）、段三加载探针双向（真件 True / 不存在件 False，探后 FreeLibrary 不留映射）。"Variable 启动正常"半句为实机项（环境未就位类）（证据⑦） | 绿-宿主 |
+| B-306 | 破坏后报警：注入篡改 IoTimeoutValue 0x50→0xf + BCD 文件字节翻转 → recheck 四项复检全红、退出码 2（证据④） | 绿-宿主 |
+| B-307 | 遗言机制：fail_on 注入致命异常 → 遗言日志含 FATAL@时间戳 + 死亡步骤 + 全量 traceback，无 CLEAN EXIT 标记；单值写失败 → fail 行如实记红、汇总 not ok、不无声跳过（证据⑤/⑤b） | 绿-宿主 |
+
+附带证据：身份防呆（PortableOperatingSystem=0 → 零写动作中止并输出人话，证据①）；装载纪律（异常路径也卸载）+ 回滚账本还原部署前快照（证据⑧）；绿面 recheck（健康部署复检 all_ok=True）与 cmd 层 fake deploy 对 BCD 缺失如实 exit 2。
+
 ---
 
 ## 篇 4 Linux 系统调用转译层（Linuxulator）

@@ -1,0 +1,3 @@
+# 运行时产物：selftest/deploy/recheck 的日志与报告，可用下列命令再生
+#   python portable/engine/hardening/run_all.py selftest
+reports/
