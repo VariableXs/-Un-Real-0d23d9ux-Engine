@@ -1142,6 +1142,8 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::reprobuild::run_reprobuild_checks());
     checkup.register(crate::imgwrite::run_imgwrite_checks());
     checkup.register(crate::rollback72::run_rollback72_checks());
+    checkup.register(crate::reggate::run_reggate_checks());
+    checkup.register(crate::explog::run_explog_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
