@@ -508,16 +508,16 @@ pub fn next_batch() -> u32 {
 }
 
 // ===========================================================================
-// F489 — 全系统闭环自检（CheckSet 汇总，容量 110 覆盖全部域：WP-202 后 74 域，
+// F489 — 全系统闭环自检（CheckSet 汇总，容量 120 覆盖全部域：WP-202 后 74 域，
 // WP-205 八域 82 + WP-206 四域 86 + WP-207 三域 89 + WP-209 三域 92 + WP-301
-// 四域 96 + WP-302 五域 101 + WP-303 五域 106 + WP-304 三域 109（余量 1——
-// WP-305 将按"不够即扩"纪律再扩容；KernelCheckup 同理已扩 128；改域必查
-// 第九处口径）
+// 四域 96 + WP-302 五域 101 + WP-303 五域 106 + WP-304 三域 109 + WP-305
+// 六域 115（余量 5——阶段四 WP-401 起按"不够即扩"纪律再扩；KernelCheckup
+// 同理已扩 128；改域必查第九处口径）
 // ===========================================================================
 
 /// 全系统闭环的最大域容量（VARIX 11 域 + TRINITY 20 域 + 判据实装层
-/// WP-201/203/208/204/202/205/206/207/209/301/302/303/304 七十四域 + 余量）。
-pub const MAX_LOOP: usize = 110;
+/// WP-201/203/208/204/202/205/206/207/209/301/302/303/304/305 八十域 + 余量）。
+pub const MAX_LOOP: usize = 120;
 
 /// 全系统闭环自检聚合器：与 checks::KernelCheckup 同构，但容量覆盖全部域。
 #[derive(Clone, Copy)]
@@ -776,6 +776,18 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::rtpy::run_rtpy_checks());
     // WP-304 · B-3303 画像模板（五步体检单成文入库——玄学变 checklist）
     lp.register(crate::rtmpl::run_rtmpl_checks());
+    // WP-305 · B-2101 目录校验链（schema+哈希双关×假目录坏哈希全拒）
+    lp.register(crate::starmapdir::run_starmapdir_checks());
+    // WP-305 · B-2102 流水线门禁（物料三查×合规三要素×缺料零上架）
+    lp.register(crate::starmapgate::run_starmapgate_checks());
+    // WP-305 · B-2104 卸载无残留（账本守恒×关联诚实×SC-133 全绿）
+    lp.register(crate::unisweep::run_unisweep_checks());
+    // WP-305 · B-4301 自测包安全（只读形态×采集范围限定×防伪造）
+    lp.register(crate::selftestpkg::run_selftestpkg_checks());
+    // WP-305 · B-4302 升级双签（降级单签升级双签×流程审计）
+    lp.register(crate::dualsign::run_dualsign_checks());
+    // WP-305 · B-4303 反馈可见（四态穷举×未收录给差距×全链路可查）
+    lp.register(crate::feedback::run_feedback_checks());
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1308,9 +1320,9 @@ pub fn run_quality_checks() -> CheckSet {
     // F488 质量域自检收口：本域 25 条自检 + 域名标签正确。
     cs.add("F488 质量域自检收口", cs.len() + 1 <= 32 && cs.domain == "quality", "CheckSet 容量与域名自洽");
 
-    // F489 全系统闭环自检：109 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205/206/207/209 五十三域 + WP-301 四域 + WP-302 五域 + WP-303 五域 + WP-304 三域）、无截断、全部 PASS。
+    // F489 全系统闭环自检：115 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205/206/207/209 五十三域 + WP-301 四域 + WP-302 五域 + WP-303 五域 + WP-304 三域 + WP-305 六域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 109 && !lp.truncated() && lp.all_passed(), "109 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 115 && !lp.truncated() && lp.all_passed(), "115 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1325,7 +1337,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=109"), "仪表实时计算，域数=109");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=115"), "仪表实时计算，域数=115");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1476,7 +1488,7 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 109);
+        assert_eq!(lp.len(), 115);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
@@ -1487,9 +1499,9 @@ mod tests {
         // + WP-205 八域 8+8+9+10+8+10+8+12 = 73 项 + WP-206 四域 = 36 项
         // + WP-207 三域 = 28 项 + WP-209 三域 = 28 项 + WP-301 四域 8+7+5+7 = 27 项
         // + WP-302 五域 8+6+6+7+6 = 33 项 + WP-303 五域 4+6+5+6+4 = 25 项
-        // + WP-304 三域 5+4+3 = 12 项
+        // + WP-304 三域 5+4+3 = 12 项 + WP-305 六域 5+5+4+4+4+5 = 27 项
         // （七十域 CheckSet 条数受各自 all_checks 断言守护）
-        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73 + 36 + 28 + 28 + 27 + 33 + 25 + 12);
+        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73 + 36 + 28 + 28 + 27 + 33 + 25 + 12 + 27);
         assert!(lp.all_passed());
     }
 
@@ -1521,7 +1533,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=109"));
+        assert!(text.contains("domains_in_loop=115"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

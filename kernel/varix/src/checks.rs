@@ -193,7 +193,7 @@ pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
 /// Maximum domains in the kernel checkup registry. WP-301 后 96 域恰满容量，
 /// register 超容静默丢域（KernelCheckup 无 truncated 预警）比恰满更危险——
 /// 按"不够即扩"纪律扩容 128，覆盖阶段三/四全部新增域仍有余量
-/// （WP-304 后 109 域，余量 19）。
+/// （WP-305 后 115 域，余量 13）。
 pub const MAX_DOMAINS: usize = 128;
 
 /// Aggregate result of `run_kernel_checkup()`.
