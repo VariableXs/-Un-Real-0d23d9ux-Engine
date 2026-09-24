@@ -453,3 +453,33 @@
 
 **WP-207 最丑角落（m4 复盘用）**：clipown 文本内容段 buf 定长 32 仅建模引用面（真实 256KB 随进程域）；dragdrop 光标三态与 MD1 附录 H 报文序的完整对齐随合成器域；a11ygate 焦点环 Tab 序为视觉序模型（树序随 SDK 控件基类）；对比度 gamma 2.0 近似口径需实机校准回填；三域与存量 a11y/（AURORA 域）收敛留 m2。
 - 时序：WP-201 ✅ → WP-203 ✅ → WP-208 ✅ → WP-204 ✅ → WP-202 ✅ → WP-205 ✅ → WP-206 ✅ → **WP-207 ✅** → 下一包 WP-209（测量与恢复面：vxbench 骨架/崩溃恢复/杀死演练，MD3 行 100）→【m2 闸门】。
+
+## WP-209 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：测量与恢复面（MD3 行 100，S208/S209/S210）——B-1401~1403 首轮 + 恢复矩阵组 + 杀死演练全套落为**判据实装层**，三个新模块（benchsix/recovermx/killdrill），单测前缀 fc01/fc02/fc03（避撞验证零占用）。**阶段二收官包**：vxbench 六类基准立骨架（回归门全量随 WP-402），基准数字与监视器账本同源（B-2001 契约的测量面兑现）；崩溃恢复全书落地（九行矩阵宪法表）；杀死演练十姿势是阶段二的验收方式本身（演练记录即判据 2 的验收证据）。
+
+**交付面**（三文件新建 + 三文件注册 + 一文档回写）：
+- `benchsix.rs`（新建，B-1401~1403 首轮 · 10 项）：ProbeRing 27 点位环形打点（篇 1.8+5.1+14.1 点位全集：启动 11+帧 2+交接 5+应用 4+存储 3+网络 2，RING_CAP=256 覆盖最旧）+ 三消费者同环快照（LiveRing/Aggregated/Archived 逐位一致——不许各插各的桩）+ cost_per_kilo_ns 千点 400µs 预算模型 + LedgerAudit 分账合计==总账恒等式 + drift_permille 千分比红线（1‰ 过线 12‰ 标红）+ BenchKind 六类 + Dist3 三线（插入排序零堆取 49/94/98 nearest-rank——输出是分布不是均值）+ regress_red P95 偏差>10% 红线（尾部免疫+整体必报双向）+ synth_samples LCG 与 galaxy 同源。
+- `recovermx.rs`（新建，恢复矩阵组 · 10 项）：CrashClass 九类（内核 panic/合成器/服务/wineserver/原生/Wine/Electron/ext4/U 盘失联）+ Recovery 七路径 + UserFace 三知情面 + matrix_row 唯一映射函数（呈现面无权改写）+ know_face_order_holds（越底层越自动越上层越尊重知情权）+ drill_all_recoverable（九类恢复终态全可达）+ CrashReport 三要素（what/cause/next+详情折叠）+ ProtectScreen 五条（缺一不合规）+ restart_gate（第三次起显式确认——26.4 防自锁）+ WATCHDOG_MS=3000/WINESERVER_REBUILD_MS=5000 预算常量进代码 + ext4 重放失败转只读（B-703/706 承接）+ U 盘失联冻结（判例 17 承接）。
+- `killdrill.rs`（新建，S210 · 8 项）：KillWay 十种姿势（原生 SIGKILL/Electron/wineserver/合成器/服务/半写崩溃/检查点间隙断电/shm 持有者/拖放源/剪贴板所有者——阶段二各域崩溃语义串联粗暴验证）+ Outcome 三分类（Unharmed/Recoverable/**Corrupted 零容忍**）+ run_drill 姿势→恢复语义唯一映射 + DrillArchive run_all（十姿势全跑+损坏即红）+ budget_holds（合成器 ≤3s/wineserver ≤5s 与矩阵同源——两套数字等于没有数字）+ budget_catches_regression（3500ms 注入必红——门禁有效性自证）+ 演练归档（rounds 单调+逐姿势记录可重放）。
+- `lib.rs`：三模块注册（a11ygate 后追加，带判据号 doc 注释）；`quality.rs`：三域入 run_full_loop（a11ygate 后）+ 断言链五处同步 89→92（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +28）+ **MAX_LOOP 92→95 扩容**（92 恰满触发 truncated 预警线，+3 余量模式延续）；`robust.rs`：三域入 checkup。
+- `docs/Varix STAR I · MD2 技术详案.md`：附录 A 前插入"篇 14/24/26 恢复面判据实测回写"段——五判据组×模块×CheckSet×实装要点完整表格 + 结构防线两条族（映射函数唯一性/预算数字同源）+ 勘误连带五条。
+
+**证据三件套**：全量 `cargo ktest` **PASS=3490 FAIL=0 EXIT=0**（较 WP-207 收口 3478 +12 = 三域新单测 12；lib 3490 + fuzz 1 + parser fuzz 6）；**CheckSet 28 项**（benchsix 10/recovermx 10/killdrill 8）+ **单测 12 项**（fc01×2/fc02×5/fc03×5），三域定向全绿；92 域 CheckSet 全 PASS（F489 `lp.len()==92` + 记账下限 `39*25+134+68+56+57+57+73+36+28+28`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（编译与对练捉住的真实缺陷，修复并锁定回归）：
+1. **B-1403 回归判定测试数据未过被测公式（"测试数据要先算一遍被测公式"第七次重演）**：初稿 `flat[99]=12_000` 只抬 P99 位（排序后 s[94] 仍 10_000），"超 10% 标红"断言必假——全量 ktest 四测试连锁（f488/f489/f475/f500）捉住，修为**双向三案例**（基线绿/仅尾部抬升不误报/整体抬升 20% 必红），门禁语义更完整。
+2. **B-1401 三消费者同源断言混用单位（同族教训）**：`read_by` 第二返回值是最新写入位下标（fc01_ring_wraparound 锁定的语义），CheckSet 断言把它当命中条目数与 n3_count 对比（2 命中时下标 1 ≠ 计数 2）必假——修断言为"三消费者最新位一致+命中逐位一致"，API 语义不动。
+3. **MAX_LOOP 92 恰满触发截断预警（落刀前推演捉住，预防修正）**：truncated() 定义 count==MAX_LOOP——92 域恰装 92 容量时 F489 "无截断"断言必红（原计划"恰满 92"没跑被测公式）——按"不够即扩"纪律扩容 95，门禁语义不动。
+4. **数组按值传参三处（E0308）**：`BenchReport::record` 签名 `&[u64;100]`，三处调用补 `&` 引用——同型调用点全查确认无漏网。
+5. **恶化注入类型错（写码期自纠）**：注入记录原用旁路结构体 DriftRecord4Compositor 绕类型——改为直接构造 DrillRecord 并删除旁路结构体，注入的就是真实的记录。
+6. **recovermx three_elements_ok 优先级怪味（预防修正）**：`|| true` 使逻辑失效——改三要素独立判定（归因枚举面不存在"无归因"）。
+7. **benchsix fc02 断言与注释矛盾（预防修正）**：50‰ 偏差注释"红"而初稿断言"绿"——改 `assert_eq!(drift_permille(), 50)` + `assert!(!consistent())`。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-1401~1403 基准数字为宿主整数模型（400ns/点）+ LCG 合成样本（与 galaxy::rt 同源范式）——真实计时随实机 WP-402 回归门全量取数（S208 主承接 WP-209 骨架、WP-402 全量，MD3 行 303）。
+2. S209 九行矩阵恢复语义为宿主映射模型——真实恢复路径执行随各域接线（合成器 B-507/wineserver 篇 10.1/ext4 B-703 各有宿主对练）。
+3. S210 演练为 run_drill 语义映射模型——真实 kill -9 注入随实机验收（m2 闸门对账按附录 D 如实标注）。
+
+**WP-209 最丑角落（m4 复盘用）**：ProbeRing 拷贝快照建模读面（真实无锁单写多读随内核并发域）；LedgerAudit 八池定长模型（真实账本池随 WP-402 接线）；recovermx 知情面序为映射表（真实通报呈现随诊断中心/通知域）；killdrill recover_ms 为模型常数（真实时延随实机标定）；三域与存量 observ/m7bench（成熟化域）的收敛留 m2。
+- 时序：WP-201 ✅ → WP-203 ✅ → WP-208 ✅ → WP-204 ✅ → WP-202 ✅ → WP-205 ✅ → WP-206 ✅ → WP-207 ✅ → **WP-209 ✅** → **阶段二全绿收官** → 下一站【m2 闸门】阶段出口对账。

@@ -1108,6 +1108,10 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::clipown::run_clipown_checks());
     checkup.register(crate::dragdrop::run_dragdrop_checks());
     checkup.register(crate::a11ygate::run_a11y_checks());
+    // WP-209：测量与恢复面三域（性能基准首轮/恢复矩阵组/杀死演练）。
+    checkup.register(crate::benchsix::run_benchsix_checks());
+    checkup.register(crate::recovermx::run_recovermx_checks());
+    checkup.register(crate::killdrill::run_killdrill_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
