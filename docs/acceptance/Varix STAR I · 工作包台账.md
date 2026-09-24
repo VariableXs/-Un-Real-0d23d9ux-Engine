@@ -426,3 +426,30 @@
 
 **WP-206 最丑角落（m4 复盘用）**：ledgerhub 节流以宿主虚拟时钟建模（真实单调钟读取随内核时间域）；moncards 卡面为声明直通模型（真实渲染随合成器域）；winegrp 归并策略"成员入最近卡"是模型简化（真实 wineserver 组关系随 Wine 支架域接线）；starmapui 目录数据为内存表（真实 JSON 目录加载与版本化随 WP-305）；四域与存量 sysmon（AURORA A676~A700 域）的收敛留 m2（同各包口径）。
 - 时序：WP-201 ✅ → WP-203 ✅ → WP-208 ✅ → WP-204 ✅ → WP-202 ✅ → WP-205 ✅ → **WP-206 ✅** → 下一包 WP-207（协议件：剪贴板/拖放/无障碍，MD3 行 96）。
+
+## WP-207 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：协议件（MD3 行 96）八判据（B-3901~3903 / B-4001~4005）从 MD2 篇 39/40 落为**判据实装层**——三个新模块（clipown/dragdrop/a11ygate），单测前缀 fb01~fb03（避撞验证零占用；a11ygate 命名避让存量 `a11y/` 目录模块）。**隐私红线落点**：后台读剪贴板零成功（B-3901——显式授权语义 C-8 姊妹约束）+ 读取必经合成器单一路径（Q56 敏感类型判定执法位）。**构建期门禁落地**：对比度不达标构建期拒绝 + 减弱动效 SDK 原语层强制——门禁写在 CI 里不写在良心里。
+
+**交付面**（三文件新建 + 三文件注册 + 一文档回写）：
+- `clipown.rs`（新建，B-3901 · 7 项 + B-3903 · 3 项）：Clipboard 所有权对象（select 只对焦点窗口生效）+ 描述段/内容段两段模型（描述随所有权即时可得，内容按需经合成器拉取）+ read 三裁决（DeniedNotFocused 后台读零成功/DeniedBypass 旁路拒/DeniedEmpty）+ 审计环留痕 + denied_bg_reads 计数（100 轮对抗全拒对账）+ owner_gone 即时回收（描述与内容随所有权同灭）+ 类型上限（text_desc 256KB/bitmap_desc 4096 见方截断如实标记）+ paste_op 删除=TrashOnly（与 B-1701 零真删咬合）+ paste_sensitive 敏感类型执法（Q56）+ 位图 shm 引用传递（报文不含像素）+ paste_progress_cancelable（面积 1M 像素阈值）+ text_paste_budget_ns（8ns/B+2ms 固定 ≤16ms）。
+- `dragdrop.rs`（新建，B-3902 · 8 项）：DragSession 四报文相位机（Idle/Dragging/Done/Cancelled）+ try_mutate_payload 拖动中一律拒绝（载荷定型——事故源协议层消灭）+ cursor_for 光标三态裁决（按命中目标 DropTargetDecl 声明）+ 高亮必选位 + **三取消一清理**（cancel_esc/cancel_invalid_target/cancel_src_destroyed 共用 cleanup——cleanup_runs 恰一次 + 终态幂等 + 仅源窗口销毁触发兜底）+ translate_effect 跨域效果位映射（COPY/MOVE 翻译，NONE 与未知位如实返 None 不臆造）。
+- `a11ygate.rs`（新建，B-4001~4005 · 10 项）：FocusRing 自动登记 + tab_order 视觉序推导（y 主序 x 次序，插入排序零堆）+ manual_move 评审标记（manual_override——例外要交代）+ popup_close_restore 还焦点协议级（无旁路）+ srgb_lin gamma 2.0 整数近似 + rel_luma 万分比加权 + contrast_ratio 百分之一单位（AA=450/大字=300）+ theme_contrast_gate 构建期拒绝 + status_glyph 四状态形状互异穷举 + anim_primitive 减弱动效两档（Instant/Fade 120ms/Stopped 呼吸全停/关=Full）+ reduce_all_effective 混合组零 Full 出口。
+- `lib.rs`：三模块注册（starmapui 后追加，带判据号 doc 注释）；`quality.rs`：三域入 run_full_loop + **MAX_LOOP 88→92**（89≤92，剩 3 槽给 WP-209）+ 断言链五处同步 86→89（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +28）；`robust.rs`：三域入 checkup。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 40 判据表后插入"篇 39 与 40 判据实测回写"段——八判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族（门禁机制化/定型与单一路径）+ 勘误连带四条。
+
+**证据三件套**：全量 `cargo ktest` **PASS=3478 FAIL=0 EXIT=0**（较 WP-206 收口 3466 +12 = 三域新单测 4×3）；**CheckSet 28 项**（clipown 10/dragdrop 8/a11ygate 10）+ **单测 12 项**，三域定向全绿（fb01~fb03 12/12 ok）；89 域 CheckSet 全 PASS（F489 `lp.len()==89` + 记账下限 `39*25+134+68+56+57+57+73+36+28`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（对练捉住的真实缺陷，修复并锁定回归）：
+1. **大字档选色错误（CheckSet 挂 1 项→四测试连锁传导）**：0x888888 对黑底对比度按 gamma 2.0 近似算出 668 ≥ 450——断言"r6 < CONTRAST_AA"不成立，f489/f488/f475/f500 四测试连锁挂。修为 0x5A5A5A（349，落在 300..450 区间，大字过普通字拒两档差异可演示）。教训：**测试数据要先算一遍被测公式**（"对练序列先过被测语义"的公式版，第六次重演）；一处 CheckSet 挂项会沿闭环断言链四处传导（f475 渲染 buf 8192 这次直接现形 FAIL 行——WP-205 诊断改进生效）。
+2. **a11ygate 命名撞存量模块**：初稿写 `a11y.rs` 与存量 `a11y/` 目录（lib.rs `pub mod a11y;`）同名冲突——落刀前先 ls 模块名，改名 a11ygate。
+3. gamma 2.0 近似口径如实标注：真 WCAG 线性化是 gamma 2.4，整数近似有偏差——门禁阈值按同口径校准自洽，不谎称精确 WCAG（模型先行实机校准既定口径）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-3901 剪贴板内容段为引用面建模（定长缓冲+实长）——真实 256KB 大缓冲随所有者进程地址空间（WP-401）；真实 VXWM 报文（四条 clipboard 报文）随合成器域接线。
+2. B-3902 三取消"每条取消路径真人拖一遍"随实机走查（宿主为相位机模型面+清理对账）；跨域翻译真实 Win32 拖放语义随 Wine 支架域。
+3. B-4003 真实 WCAG 2.4 线性化与主题构建管线（CI 挂钩）随 WP-303 SDK 正式化——门禁函数已就位，接线即用。
+4. B-4004 真实图标形状渲染随主题域；B-4005 真实动画原语随 SDK 动画面。
+
+**WP-207 最丑角落（m4 复盘用）**：clipown 文本内容段 buf 定长 32 仅建模引用面（真实 256KB 随进程域）；dragdrop 光标三态与 MD1 附录 H 报文序的完整对齐随合成器域；a11ygate 焦点环 Tab 序为视觉序模型（树序随 SDK 控件基类）；对比度 gamma 2.0 近似口径需实机校准回填；三域与存量 a11y/（AURORA 域）收敛留 m2。
+- 时序：WP-201 ✅ → WP-203 ✅ → WP-208 ✅ → WP-204 ✅ → WP-202 ✅ → WP-205 ✅ → WP-206 ✅ → **WP-207 ✅** → 下一包 WP-209（测量与恢复面：vxbench 骨架/崩溃恢复/杀死演练，MD3 行 100）→【m2 闸门】。

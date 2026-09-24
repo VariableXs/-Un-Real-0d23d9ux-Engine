@@ -1104,6 +1104,10 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::moncards::run_moncards_checks());
     checkup.register(crate::winegrp::run_winegrp_checks());
     checkup.register(crate::starmapui::run_starmapui_checks());
+    // WP-207 三域：协议件判据实装层（MD2 篇 39/40）
+    checkup.register(crate::clipown::run_clipown_checks());
+    checkup.register(crate::dragdrop::run_dragdrop_checks());
+    checkup.register(crate::a11ygate::run_a11y_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
