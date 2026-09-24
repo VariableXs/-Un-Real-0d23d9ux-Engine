@@ -1082,6 +1082,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::diag3::run_diag3_checks());
     checkup.register(crate::offln::run_offln_checks());
     checkup.register(crate::usbnet::run_usbnet_checks());
+    // WP-202 七域：输入与输入法判据实装层
+    checkup.register(crate::evflow::run_evflow_checks());
+    checkup.register(crate::kblayout::run_kblayout_checks());
+    checkup.register(crate::imepinyin::run_imepinyin_checks());
+    checkup.register(crate::composesw::run_composesw_checks());
+    checkup.register(crate::hkbind::run_hkbind_checks());
+    checkup.register(crate::candwin::run_candwin_checks());
+    checkup.register(crate::focring::run_focring_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());
