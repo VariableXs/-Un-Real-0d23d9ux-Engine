@@ -64,10 +64,10 @@ pub fn plan(chosen: Option<&str>, handoff_enabled: bool) -> HandoffPlan {
 // 交接画面（与三卡菜单同一套视觉语言：深空背板 + 亮字 + 横向进度条）
 // ---------------------------------------------------------------------------
 
-const INK_TITLE: Color = Color::rgb(0xF2, 0xF5, 0xFA);
-const INK_SUB: Color = Color::rgb(0x9A, 0xA6, 0xB8);
-const INK_DIM: Color = Color::rgb(0x6B, 0x74, 0x86);
-const ACCENT: Color = Color::rgb(0x53, 0xB1, 0xFF);
+pub(crate) const INK_TITLE: Color = Color::rgb(0xF2, 0xF5, 0xFA);
+pub(crate) const INK_SUB: Color = Color::rgb(0x9A, 0xA6, 0xB8);
+pub(crate) const INK_DIM: Color = Color::rgb(0x6B, 0x74, 0x86);
+pub(crate) const ACCENT: Color = Color::rgb(0x53, 0xB1, 0xFF);
 
 /// 交接画面的停留时长（毫秒）。给用户看清"VARIX 已加载完、正在进入
 /// Variable"，而不是一黑屏就跳走——一帧不留会让人以为机器挂了。

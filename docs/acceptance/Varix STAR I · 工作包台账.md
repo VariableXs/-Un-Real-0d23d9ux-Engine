@@ -7,7 +7,7 @@
 | WP-101 | 收口（宿主侧） | B-101~106 六绿-宿主（实机/QEMU 依赖项=环境未就位类，随 WP-102 补测） | 无前置 | limine.conf 固化（interface_version + hash 元数据、default_entry、comment 字段；bootconf::render 单源） | 2026-09-24 |
 | WP-103 | 收口（宿主侧） | B-302~307 六绿-宿主（B-301 实机 72h=环境未就位类，B-305"Variable 启动正常"半句随实机补测） | WP-101（已收口） | 新增 `portable/engine/hardening/` 五件（vxlib / harden_quad / harden_vcruntime / recheck / run_all）；deploy↔recheck 契约=deploy_report.json（gate.sha256 + vcruntime.hashes） | 2026-09-24 |
 | WP-104 | 收口（宿主侧对账） | B-2703 绿-宿主（f027b 孤儿风暴 64 轮 + F027 千次循环）；篇 26 十二条款对账全落地面（详见 MD2 篇 26 回写）；页表/APIC 实机面=环境未就位类 | WP-101（已收口） | 无 schema 变更（spawn alive 收紧为 F009 契约对齐修复） | 2026-09-24 |
-| WP-102 | 未开工 | — | WP-101/104 | — | — |
+| WP-102 | 收口（宿主侧） | B-201~207 七绿-宿主（实机互通/合成器上屏面=环境未就位类，随 WP-22x/WP-201）；schema 冻结=全链第一闸落地（详见 MD2 篇 2 回写） | WP-101/104（均已收口） | 新增 `kernel/varix/src/handoff/` 五协议件（state/snap/flush/arming/screen）+ legacy 迁移 + `portable/engine/handoff/vx_handoff_proto.py` 参考实现 + 双夹具；handoff.json integrity 正则化口径/草稿目录/状态计数口径冻结（schema 先行纪律，WP-22x/WP-203 依此对表） | 2026-09-24 |
 | WP-105 | 未开工 | — | WP-101 | — | — |
 | WP-106 | 未开工 | — | WP-101 | — | — |
 
@@ -80,3 +80,35 @@
 2. clippy 门禁仍以 +stable 代跑（1.97.1 组件损坏，同 WP-101 偏差 1）。
 
 **WP-104 最丑角落（m4 复盘用）**：engine.rs 的 64 槽固定容量在未来进程数增长时需要扩容路径评估；policy.rs F087 延迟仪表的导出格式与 WP-402 基准体系的对接契约待 WP-402 时对账；quota.rs 三方配额目前只有内核态压测记账，用户态进程的真实扣减面要等 WP-205 进程 API 接线后才能实证。
+
+## WP-102 收口明细（2026-09-24 · 宿主侧交付）
+
+**定性**：交接协议全链第一闸——schema 冻结先行。五个协议件 + 助手侧参考实现 + 双夹具四端对锁（Rust 写/读 + Python 写/读）；存量 handoff.rs（需求 2 时代菜单 A 卡直通路径）git mv 迁移为 legacy.rs 原样保留，main.rs 调用点经 re-export 零变化。
+
+**交付面**（`kernel/varix/src/handoff/` 六件 + 助手侧一件）：
+- `mod.rs`：模块地图 + 对表纪律（WP-22x 助手侧与 WP-203 存储快照依 schema 对表）+ 状态计数口径文档。
+- `state.rs`（B-201）：五状态机七迁移表驱动——`TRANSITIONS: [Transition; 7]` 单源（正向主干四边 + 取消边 + 失败边 + 中止确认边），`HandoffMachine::submit` 迁移与拒绝双入体验日志，拒绝不 mutate 状态；Q10 双请求 preserving 锁定 = "没有这条表边"的自然结果，不是特判。8 测试。
+- `snap.rs`（B-202/206/207，最大模块）：handoff.json schema 冻结——手写紧凑 JSON（无 serde，内核零依赖）+ integrity SHA-256 封条（正则化口径：body = 不含 integrity 成员的完整文本，读方剥除补回后哈希全等才解析，Q6 先验哈希再解析）+ 版本协商三态（v1 严格缺必填拒收 / 更高版本"能读多少读多少"降级 + 注记 / 更低拒收）+ 256KB 截断为写方职责（字符边界截断 + truncated 置标，读方拒"超限不置标"）+ 重复键一律拒绝 + 解析护栏（深度 64 / 节点 4096 / 字符串 512KB / 全文 1MiB）+ 草稿目录常量冻结（/vx-snap /var-snap /diag /vx-drafts /var-drafts）+ surrogate pair。13 测试。
+- `flush.rs`（B-203）：冲刷四步硬序（AppBuffers→Ext4Commit→FatFlush→BlockDrain）+ 15s 总预算两道闸（步自报 Timeout + 管线累计总额守门）+ 超时停 flushing 报错绝不带病重启 + WD-040 五步时序账 `FiveStepLedger`（保全→冲刷→闸门→写变量→重启 ≤25s）。5 测试。
+- `arming.rs`（B-204）：武装序列编排——gate_check 先行→Blocked 零写中止→NeedUserConfirm 未确认不硬闯→arm_conf_text→**十次读回**（达标线 READBACK_ROUNDS=10）→不一致降级 BootNext 重试一次（DegradeEvent::OneshotArmFailed 可观测）→兜底也失败 aborted 三路径人话。6 测试。
+- `screen.rs`（B-205）：四帧画面字符串表 FRAME_TABLE 单源（render ASCII 实绘 + zh 列存档篇 2.5 原文）；帧 3 无进度条——"装进度条就是撒谎"实证化为像素计数为零断言（帧 2 对照为正）；帧 4 呼吸三角波 breath_alpha + 目标域文案；错误分支三要素模板；FrameLog 四帧无缝衔接且与 WD-040 五步账逐毫秒对账（covers_ledger）。7 测试。
+- `legacy.rs`（git mv 自 handoff.rs）：直通路径原样保留，色彩常量改 pub(crate)。7 测试迁移。
+- `portable/engine/handoff/vx_handoff_proto.py`：助手侧参考实现（篇 22 协议面种子）——schema 常量镜像、seal/strip_seal/verify_seal、object_pairs_hook 重复键拒绝、字段表校验、gen-fixtures 生成双夹具、selftest 九断言（生成读回/跨实现互通/顶层键序零差异/篡改现行/十组损坏/版本协商/仓库夹具与生成器逐字节一致）。
+- `kernel/varix/src/handoff/fixtures/handoff-varix.json` + `handoff-windows.json`：双夹具——varix 夹具与 Rust `serialize(&canonical())` 逐字节对锁；windows 夹含 files 类剪贴板 + `clipboard_skipped_reason`。
+
+**对账补刀**：`kernel/varix/src/main.rs` 三处存量 bin 编译漂移修复（`char_width_scaled` 从未存在的 API→`GLYPH_W`；`wrap_ascii` 返回型矛盾→`&'static str`；`issue_list().is_empty()` 对 impl Iterator 不存在→`next().is_some()`）。`git show HEAD:main.rs` 核实三行 HEAD 即在、本包零改动——定性 WP-101 起 bin 编译从未进验证环（历次只跑 lib test），镜像 check 补上这块验证盲区；本包触碰文件零警告。
+
+**证据三件套**：数据 = 全量 `cargo +1.97.1 test`（kernel workspace）**3219 项全绿**（lib 3212 + fuzz 1 + parser fuzz 6，+39 handoff 新测试 + 7 legacy 迁移）；镜像 `cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image` 全过（bin 编译面首次入验证环）；`python portable/engine/handoff/vx_handoff_proto.py selftest` **9/9 PASS CLEAN EXIT**。复现命令 = `cd kernel && cargo +1.97.1 test` + `cd kernel && cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image` + `python portable/engine/handoff/vx_handoff_proto.py selftest`；日期 = 2026-09-24。
+
+**红项处置**（selftest/测试捉住的真实缺陷，均已修复并锁定回归）：
+1. Writer 嵌套丢逗号（7 测试红：`[{...}{...}]`）——单一 `first: bool` 在数组/对象嵌套穿层丢上下文 → 重写为 `first: Vec<bool>` 分层栈 + `after_key` 标志。
+2. `clipboard_skipped_reason` 被当 v1 必填误拒（可选字段）→ 改直查不进 take()，走降级注记。
+3. higher_version 测试没真删字段（restore_hint 置空串 ≠ 缺席）→ 真删 `,"restore_hint":""` 片段。
+4. B-207 注入 #1 原地打空转（'R'→'R' 无操作）→ 'R'→'X'。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-202 实机互通（内核写 handoff.json ↔ 助手侧实读）依赖 U 盘整机——环境未就位类，随 WP-22x 助手侧接线补测；四端互证（Rust 写/读 + Python 写/读）已在夹具层完成，实机只差接线。
+2. B-205 合成器上屏面依赖 WP-201 显示管线——四帧文案/结构/断言已锁，上屏走查随 WP-201。
+3. 屏幕为 ASCII 字库，zh 列存档不上屏（篇 2.5 双语策略：帧面宽度的物理约束）。
+
+**WP-102 最丑角落（m4 复盘用）**：snap.rs 手写 JSON 解析面无 fuzz 输入语料库（B-207 十二组注入是点覆盖），建议后续用 parser fuzz 通道喂快照语料；state.rs 的体验日志 LogEvent 尚无串口落盘面，实机接线时与体验日志域对账；flush.rs 的 FlushStep 由调用方提供 dyn 切片，实机四步的真实接线面在 WP-203。

@@ -162,6 +162,34 @@ Windows 域的"重启到 VARIX"由 Variable 侧的交接助手执行，它实现
 | B-206 | 双向快照互通 | VARIX↔Windows 快照互读正确 |
 | B-207 | 快照损坏容错 | 注入损坏 10 次，全部优雅放弃 |
 
+### 篇 2 判据实测回写（WP-102 · 2026-09-24 · 宿主侧交付）
+
+按 MD3 附录 D 三件套回写。WP-102 的交付形态是**协议面新建**：handoff.rs 改造为模块目录（需求 2 时代的 BootNext+ResetSystem 直通路径原样保留为 legacy 件，新增 state / snap / flush / arming / screen 五个协议件与助手侧参考实现 `portable/engine/handoff/vx_handoff_proto.py`）。证据形态：宿主单测 + Python selftest，主命令 `cd kernel && cargo +1.97.1 test`（3219 项全绿：lib 3212 + fuzz 1 + parser fuzz 6，lib 较 WP-104 收口时 +39 = 本包 handoff 协议面 39 个新测试，legacy 迁移 7 测试原样计入）；助手侧 `python portable/engine/handoff/vx_handoff_proto.py selftest`（9 项断言全绿 CLEAN EXIT）。实机/QEMU 依赖项按附录 D 如实标注，不提前记绿。
+
+| 编号 | 实测证据（宿主侧） | 结果 |
+| --- | --- | --- |
+| B-201 | TRANSITIONS 七条边逐一走通（主干四边+preserving 取消+武装失败+中止确认）；表外组合全拒且不 mutate 状态（拒绝也入体验日志）；Q10 双请求在 preserving 即锁定并有提示语；flushing 拒取消（"请勿断电"）；rebooting 无事件出口；零无出口状态断言（aborted 有且仅有 AbortAck） | 绿-宿主 |
+| B-202 | 写方键序与字段表零差异（顶层七键 / windows 五键 / geometry 五键 / drafts 三键 / clipboard 三键）；目录常量冻结（/vx-snap /var-snap /diag /vx-drafts /var-drafts）；integrity 封条不含自身（篡改 body、篡改声明值均现行）；黄金夹具逐字节对锁 + roundtrip 字节稳定 + 转义保真 + 256KB 截断在字符边界置标 | 绿-宿主 |
+| B-203 | 步超时停管线（后续步不执行、指认到步）；总额守门（步自称没超时但累计出线一样停）；IO 失败停管线；报告人话三件（指认到步 / 请勿断电 / 绝不带病重启）；状态机侧停在 flushing——rebooting 无事件出口，"差不多就重启"结构性不存在 | 绿-宿主 |
+| B-204 | 闸门 Blocked 零字节写入即中止；NeedUserConfirm 未确认不硬闯、确认后放行；十次读回全过 → Armed{rounds:10}；第 3 次读回不一致 → 降级 BootNext 可观测（DegradeEvent::OneshotArmFailed + bootnext_ok）；兜底也失败 → aborted 三路径人话（指向菜单人工与域健康自检）；目标下标越界拒绝且不降级 | 绿-宿主 |
+| B-205 | 字符串表单源（四帧词条 + 进度条语义，zh 列存档篇 2.5 原文）；四帧全渲染版面不越界（640×480~2560×1440 五档）；帧 3 无进度条（撒谎检测=进度条像素计数为零，帧 2 对照为正）；帧 4 呼吸相位改变光带颜色 + 目标域文案可辨；错误分支三要素模板；FrameLog 四帧无缝衔接且与 WD-040 五步时序账逐毫秒对账（2.0+4.0+0.3+3.5+2.5=12.3s ≤ 25s 达标） | 绿-宿主（合成器上屏面=环境未就位类，随 WP-201） |
+| B-206 | Rust 读面解析 Windows 助手样本（files 类剪贴板 + Q13 跳过原因如实可读）；Python 参考实现读 VARIX 黄金夹具（selftest ③④）；仓库夹具与双端生成器逐字节一致（selftest ⑨，跨实现契约锚）；Q18 版本协商：更高版本降级读 + 注记（Rust 与 Python 双侧同证）、v1 缺必填拒收不冒充降级 | 绿-宿主（实机互通随 WP-22x 助手） |
+| B-207 | Rust 侧 12 组损坏注入（翻字节 / 截尾 / 摘封条 / 封条声明作废 / 裸控制字符 / 类型错 / 结构错 / 枚举错 / 整数给浮点 / 深度炸弹 / 重复键 / 非十六进制封条）全部优雅放弃 + 人话原因；Python 侧 10 组同证；原文由调用方保留供诊断（Q6 宁可放弃恢复也不解析半截） | 绿-宿主 |
+
+**schema 冻结补刀（本包定案——篇 2.2 未定死的实现契约，冻结于此，两端同源）**：
+1. **integrity 正则化口径**：写方先序列化出**不含 integrity 成员**的 body（以 `}` 收尾），封条 = body 去尾 `}` + `,"integrity":"<64位小写hex>"}`；读方要求全文以 `,"integrity":"<64hex>"}` 收尾，剥除封条补回 `}` 得 body，`sha256(body)` 与内嵌 hex 全等才解析。
+2. **草稿共享目录定名**：`/vx-drafts/`（VARIX 侧）与 `/var-drafts/`（Windows 侧）——与快照目录命名对称，进 schema 常量表。
+3. **状态计数口径**：正向主干五步 = idle→preserving→flushing→arming→rebooting；aborted 是 arming 失败的错误分支状态（计入枚举、不计入主干）。七迁移 = 主干四边 + preserving 取消边 + arming 失败边 + aborted 中止确认边；rebooting 的出口是物理重启（协议终点事件），aborted 的出口是用户确认。
+4. **256KB 截断为写方职责**：schema 上限由写方结构性保证（超出在字符边界截断并置 truncated），读方对"超限又不置 truncated"的快照拒收。
+5. **重复键一律拒绝**：写方永不产生重复键（确定性序列化），读方（Rust 解析面与 Python object_pairs_hook）见到即拒——integrity 剥除规则依赖确定性。
+
+**对账补刀（本包手术，一处）**：main.rs 三处存量 bin 编译漂移（`font::char_width_scaled` 从未存在 → `GLYPH_W` 常量；`issue_list().is_empty()` 对 `impl Iterator` 不存在 → `next().is_some()`；`wrap_ascii` 入参 `&str` 与 `'static` 返回矛盾 → 入参收紧 `&'static str`，refuse_boot 的 why 本就是 'static）——kernel-image bin 自 WP-101 起编不过（历次验证只跑 lib test，bin 面漏检），本包修复并核实 `cargo +1.97.1 check --target x86_64-unknown-none --features kernel-image` 全过、触碰文件零警告（存量文件 13 条警告不属本包，另见台账）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 实机互通（VARIX 读真实 /var-snap/、助手读真实 /vx-snap/）依赖 WP-22x 助手与 U 盘整机——环境未就位类。
+2. 四帧画面的"合成器之上独立全屏层"（篇 2.5 实现位置）依赖 WP-201——m1 期渲染落点为内核自绘层（与菜单同层），合成器就位后绘制函数原样上移。
+3. 内核字库现为 ASCII 面（95 字形），四帧中文文案以字符串表 zh 列存档，CJK 字形就位后零改动切换。
+
 ---
 
 ## 篇 3 Windows 域加固实录

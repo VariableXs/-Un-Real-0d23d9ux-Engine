@@ -34,7 +34,7 @@ fn refuse_boot(why: &'static str) -> ! {
     // 屏幕人话：Limine 帧缓冲应答在入口前已就位（引导器职责），失败则
     // 串口已兜底——两路都断了才算黑屏，而串口断在 QEMU 对练里会当场暴露。
     if let Some(fb) = varix::limine::framebuffer() {
-        if let Ok(mut s) = varix::fb::Surface::from_limine(fb) {
+        if let Ok(s) = varix::fb::Surface::from_limine(fb) {
             varix::banner::paint_backdrop(&s);
             let w = s.width() as i64;
             let h = s.height() as i64;
@@ -45,8 +45,9 @@ fn refuse_boot(why: &'static str) -> ! {
             let tw = varix::font::text_width_scaled(title, 3);
             let y0 = h / 2 - 96;
             varix::font::draw_text_scaled(&s, (w - tw) / 2, y0, title, red, 3);
-            // 折行绘制人话原因（等宽字库 ASCII 域；60 列起步，1920 宽下可读）
-            let cols = ((w / varix::font::char_width_scaled(1)).max(1)) as usize;
+            // 折行绘制人话原因（等宽字库 ASCII 域；scale-1 字格宽 GLYPH_W，
+            // 60 列起步，1920 宽下可读）
+            let cols = ((w / varix::font::GLYPH_W as i64).max(1)) as usize;
             let cols = cols.min(96).max(24);
             let mut line_y = y0 + 64;
             for line in wrap_ascii(why, cols) {
@@ -67,7 +68,9 @@ fn refuse_boot(why: &'static str) -> ! {
 
 /// ASCII 按词折行（B-101 文案专用；词内不拆，超长词硬切）。
 /// 固定 8 行上限 × 96 列——文案域有限，超出截断（诊断全文走串口）。
-fn wrap_ascii(text: &str, cols: usize) -> [&'static str; 8] {
+/// 入参与 refuse_boot 同为 &'static str：切片免拷贝直取（折行产物就是
+/// 输入的子切片，'static 是真约束不是装饰）。
+fn wrap_ascii(text: &'static str, cols: usize) -> [&'static str; 8] {
     let mut out = [""; 8];
     let bytes = text.as_bytes();
     let mut start = 0usize;
@@ -207,7 +210,7 @@ fn boot() -> ! {
                         .issue_list()
                         .any(|i| matches!(i, varix::bootconf::ConfIssue::ContractMissing { .. }));
                 conf_windows_missing = !contract_ok;
-                if !conf.issue_list().is_empty() {
+                if conf.issue_list().next().is_some() {
                     varix::kwarn!(
                         "bootgate: limine.conf has {} issue(s) — see boot log for details",
                         conf.n_issues
