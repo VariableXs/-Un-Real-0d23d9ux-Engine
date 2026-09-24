@@ -271,6 +271,21 @@ pub mod winecase;
 /// 崩溃归因与回馈（WP-302 · B-1006 归因五分类穷举且界面呈现×B-1007
 /// issue 模板三要素入库×季度命中率不编数）。
 pub mod wineattr;
+/// SDK 目标三元组与十二件套矩阵（WP-303 · B-1101：三元组冻结×sysroot
+/// 双层分工×十二件套全部经 SDK 构建成功）。
+pub mod sdktriplet;
+/// vxapp 清单校验器（WP-303 · B-1102：字段取值域构建期全查×缺档告警与
+/// 违规拒收分账×对抗样例全拒——违规产物零放行）。
+pub mod sdkmanifest;
+/// 控件宪章默认与主题 token（WP-303 · B-1103 焦点环/三态/动画词典全默认
+/// + B-1104 硬编码色值零例审计——合规不靠自觉靠默认）。
+pub mod sdkwidgets;
+/// 生命周期托管与调试链路（WP-303 · B-1105 退出路径保全回调覆盖率 100%
+/// + B-1106 日志/符号化崩溃/QEMU gdb 三件齐）。
+pub mod sdkruntime;
+/// SDK 最小示例集与评审门（WP-303 · B-1107：echo/hello/service 三模板
+/// 过 20 维度代码质量评审——示例即门面）。
+pub mod sdktemplate;
 /// S4（AI-4/6）：ushell 桌面真壁纸（三世界同源静态帧）。
 pub mod wallpaper;
 /// 里程碑整合探针（任务21：M1 ring3 用户程序 × M2 journal × M3 exFAT 读 ×

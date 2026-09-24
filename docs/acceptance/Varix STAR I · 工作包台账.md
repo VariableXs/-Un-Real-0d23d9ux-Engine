@@ -581,3 +581,32 @@
 
 **WP-302 最丑角落（m4 复盘用）**：hundred_kills_recovery 的延迟带 3200..4800ms 为宿主模型常数（真实 wineserver 重建时长分布随实机测量）；Verdict 的 AllowWithStarCard 仅类型面（星卡标注面与 starmapui 联动待 WP-305 星图后端）；reshim_needed 返回重校验路数为计数模型（真实垫片重编译管线随 Wine 接线）；promote_to_green 的人工确认是布尔入参（真人签字面随验收平台接线）。
 - 时序：m2 闸门 ✅ → WP-301 ✅ → **WP-302 ✅** → 下一站 WP-303 vx-SDK（B-1101~1107，MD3 行 112）。
+
+## WP-303 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：vx-SDK 正式化（MD3 行 112，B-1101~1107 全七判据）——目标三元组/清单校验器/控件宪章默认/主题 token/生命周期托管/调试链路/三模板评审落为**判据实装层**，五个新模块（sdktriplet/sdkmanifest/sdkwidgets/sdkruntime/sdktemplate），单测前缀 fe06~fe10（避撞验证零占用）。两条先行的红线：**合规不靠开发者自觉，靠默认**（charter_default() 出生即合规、篡改即红——MD3 行 112"把宪章条款变成 SDK 的默认值"的结构面兑现）与**违规产物零放行**（对抗样例八样全拒——坏 id/大写/绝对路径/目录穿越/超配额/漂移 schema/零版本/点开头，缺档告警与违规拒收分两本账）。
+
+**交付面**（五文件新建 + 三文件注册 + 一注释口径 + 一文档回写）：
+- `sdktriplet.rs`（新建，B-1101 · 4 项）：TargetTriplet 六要素冻结（x86_64/varix/vxelf/kernel/static/relibc+vx——与内核 kbuild 同源约定）+ SysrootLayer 双层分工（POSIX 进 relibc/VARIX 特性进 vx crate——C-4 执行面）+ TWELVE_MEMBERS 十二件套清单（前六主力+小件四枚+播放/更新，MD1 第 22 章定义序）+ BuildRecord/twelve_pack_green（全员在册+全经 SDK 构建+编号手滑/重复登记不算过——**B-1101 达标线**）。
+- `sdkmanifest.rs`（新建，B-1102 · 6 项）：Manifest 字段面（id/name/version/leg/entry+env 显式列举/icon 四档/limits/权限逐项/schema）+ valid_id 反域名逐字节校验 + valid_entry 相对路径无 `..`（逐段检查）+ icons_complete 缺档告警分账（AcceptWithWarning ≠ Reject）+ limits_within_quota 配额对账（QUOTA_* 三常量恰满合法超 1KB 打回）+ ManifestVerdict 三态 + validate 总入口 + **对抗样例八样全拒**（**B-1102 达标线：违规产物零放行**）。
+- `sdkwidgets.rs`（新建，B-1103/1104 · 5 项）：WidgetBase::charter_default 宪章默认内嵌（焦点环默认开/三态默认齐/缩进一像素/色阶变化——开发者不写也对）+ charter_compliant 篡改即红（四根支柱动任意一根即不合规）+ WIDGET_FAMILY 封闭清单六件（新控件过 ADR 不走后门）+ 动画词典（ANIM_ENTER_MS=120/ANIM_EXIT_MS=80/EASING_CURVE 统一）+ state_index 三态下标穷举 + TOKENS 六语义名下发集 + StyleRef 类型面无 rgb 字段（**值不过手**）+ audit_no_hardcoded 逐引用命中（**B-1104 达标线：硬编码色值零例**）。
+- `sdkruntime.rs`（新建，B-1105/1106 · 6 项）：Lifecycle 四态穷举 + SysCallback 两回调在册（会话保全/权限变更——应用代码只在回调里做事）+ ExitPath 四路径穷举 + ExitRecord/exit_save_coverage（**退出路径保全回调覆盖率 100%——漏一条冷门路径即不满，B-1105 达标线**；路径账本四条全在——"没遇到过"不是"没登记"的理由）+ LogChannel 级别五档采样千分比 + CrashReport 符号化必真（天书不是崩溃报告）+ QemuGdb 直连登记 + debug_link_ok 三件齐判（**缺一即断，B-1106 达标线**）。
+- `sdktemplate.rs`（新建，B-1107 · 4 项）：TemplateKind 三模板穷举（终端 echo/窗口 hello/后台服务）+ ReviewChecklist 四要素合取（clippy 零告警+文档齐+错误三要素+宪章默认复用——20 维度第 8 项可计算子集）+ ReviewRecord 评审记录即发布凭证（带病示例不许进 sysroot）+ templates_green（**三模板全过，B-1107 达标线**；少一件/重复登记/单件带病整体判红）。
+- `lib.rs`：五模块注册（wineattr 后追加，带判据号 doc 注释）；`quality.rs`：五域入 run_full_loop（wineattr 后）+ 断言链五处同步 101→106（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +25）+ **MAX_LOOP 105→110 扩容**（106 域将破 105 上限——"不够即扩"纪律连续第三次兑现）；`robust.rs`：五域入 checkup；`checks.rs`：容量注释补"WP-303 后 106 域余量 22"口径。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 11 判据表后插入"篇 11 vx-SDK 判据实装回写"段——七判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族（合规是默认值不是自觉/值不过手）+ 勘误连带三条。
+
+**证据三件套**：`cargo kcheck` 绿（既有 warning 与本包无关，新模块零新告警）；全量 `cargo ktest` **PASS=3546 FAIL=0 EXIT=0**（较 WP-302 收口 3526 +20 = 五域新单测 20；lib 3546 + fuzz 1+6 + 收尾 0）；**最终代码定向复跑 lib 段确认 3546/0**（收口自查补面后按账目守恒纪律复验证据口径）；**CheckSet 25 项**（sdktriplet 4/sdkmanifest 6/sdkwidgets 5/sdkruntime 6/sdktemplate 4）+ **单测 20 项**（fe06~fe10 各 4）；106 域 CheckSet 全 PASS（F489 `lp.len()==106` + 记账下限 `39*25+134+68+56+57+57+73+36+28+28+27+33+25`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（推演与自查捉住，零带病入库）：
+1. **MAX_LOOP 105 将被 106 域突破（落刀前推演捉住，预防修正）**：WP-301/302 三连同款——扩容 110，+4 余量模式延续；断言链五处 101→106 同步改净。
+2. **三处死表面自查（落刀自查即修）**：ICON_SIZES/entry_env_vars/WidgetState 初稿只定义未消费（判据实装层里"定义了但没人读"的字段是装饰品）——立即补进判据面：字段取值域合取（ICON_SIZES 四档常量+entry_env_vars 显式列举）+ state_index 三态下标穷举映射。
+3. **边跑边改的证据口径（账目守恒）**：收口自查补面发生在全量 ktest 启动之后——按"证据必须对应交付物"纪律用最终代码定向复跑 lib 段确认计数不变（3546/0，无新增测试仅恒真合取追加）。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 十二件套构建绿判为账本模型（BuildRecord 登记）——真实三元组构建十二件套随 SDK 工具链正式化窗口（B-1101 达标线的宿主形态）。
+2. vxapp.toml 校验为宿主结构面（字段/取值域/交叉一致性规则引擎）——真实 TOML 解析与星图安装服务对接随 WP-305。
+3. QEMU gdb 直连为登记面（gdb_port 接线语义）——真实 gdbstub 接线随篇 12.2 冒烟套窗口；崩溃符号化为 symbolized 布尔面——真实栈回滚符号化随构建产物管线。
+4. 三模板为评审记录面（ReviewChecklist 四要素）——真实模板代码与 clippy 实跑随 SDK 分发窗口（B-1107 达标线的宿主形态）。
+
+**WP-303 最丑角落（m4 复盘用）**：valid_id 仅 ASCII 小写字母数字（真实 id 反域名规范含连字符等细则随 IDN/Unicode 政策专案）；TWELVE_MEMBERS 为 MD1 第 22 章定义序的静态快照（成员增补走 ADR 与清单同步）；QUOTA_* 三常量为 19.3 的 SDK 侧镜像（与 quota 服务真值的同源联动随配额服务接线——当前是"同源策略"而非"同一内存"）；ReviewChecklist 的 clippy 零告警为登记布尔（真实 lint 实跑随 CI 窗口）。
+- 时序：m2 闸门 ✅ → WP-301 ✅ → WP-302 ✅ → **WP-303 ✅** → 下一站 WP-304 运行时画像（B-3301~3303，MD3 行 114）。
