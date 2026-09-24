@@ -1099,6 +1099,11 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::edcore::run_edcore_checks());
     checkup.register(crate::widgetline::run_widgetline_checks());
     checkup.register(crate::settable::run_settable_checks());
+    // WP-206 四域：监视器与星图前端判据实装层（MD2 篇 20/21 前端）
+    checkup.register(crate::ledgerhub::run_ledgerhub_checks());
+    checkup.register(crate::moncards::run_moncards_checks());
+    checkup.register(crate::winegrp::run_winegrp_checks());
+    checkup.register(crate::starmapui::run_starmapui_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());

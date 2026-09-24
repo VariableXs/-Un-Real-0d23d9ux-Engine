@@ -509,7 +509,8 @@ pub fn next_batch() -> u32 {
 
 // ===========================================================================
 // F489 — 全系统闭环自检（CheckSet 汇总，容量 88 覆盖全部域：WP-202 后 74 域，
-// WP-205 八域 82 —— 扩容 88 给 WP-206~209 留余量；改域必查第八处口径）
+// WP-205 八域 82 + WP-206 四域 86（88 容量剩 2 槽给 WP-207/209，不够即扩——
+// 改域必查第八处口径）
 // ===========================================================================
 
 /// 全系统闭环的最大域容量（VARIX 11 域 + TRINITY 20 域 + 判据实装层
@@ -718,6 +719,14 @@ pub fn run_full_loop() -> FullLoop {
     // WP-205 · B-1903 生效三档（表内声明 × 提示一致 × 前置告知）
     // WP-205 · B-1904 通知确认通道（免打扰聚合 × 模态不可绕过 × 安全类无不再询问）
     lp.register(crate::settable::run_settable_checks());
+    // WP-206 · B-2001 账本订阅面（六频道×一秒节流×六十点窗口×多消费者对表逐字段一致）
+    lp.register(crate::ledgerhub::run_ledgerhub_checks());
+    // WP-206 · B-2002 降级原因呈现（四卡与状态机实时一致×受控杀进程×占位诚实×开发者门）
+    lp.register(crate::moncards::run_moncards_checks());
+    // WP-206 · B-2003 Wine 组透明（组聚合==成员之和×展开独立可见×超限留痕×多组不串账）
+    lp.register(crate::winegrp::run_winegrp_checks());
+    // WP-206 · B-2103 按钮即评级（兜底级走交接×桥接级标注×推荐位无商业位×安装四段×卸载关联）
+    lp.register(crate::starmapui::run_starmapui_checks());
     lp.register(crate::shell::run_shell_checks());
     lp.register(crate::shell::taskbar::run_taskbar_checks());
     // TRINITY-500 AI-12~AI-19
@@ -1250,9 +1259,9 @@ pub fn run_quality_checks() -> CheckSet {
     // F488 质量域自检收口：本域 25 条自检 + 域名标签正确。
     cs.add("F488 质量域自检收口", cs.len() + 1 <= 32 && cs.domain == "quality", "CheckSet 容量与域名自洽");
 
-    // F489 全系统闭环自检：82 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205 四十三域）、无截断、全部 PASS。
+    // F489 全系统闭环自检：86 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205/206 四十七域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 82 && !lp.truncated() && lp.all_passed(), "82 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 86 && !lp.truncated() && lp.all_passed(), "86 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1267,7 +1276,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=82"), "仪表实时计算，域数=82");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=86"), "仪表实时计算，域数=86");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1418,7 +1427,7 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 82);
+        assert_eq!(lp.len(), 86);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
@@ -1428,7 +1437,7 @@ mod tests {
         // + WP-202 七域 8+8+9+8+8+8+8 = 57 项
         // + WP-205 八域 8+8+9+10+8+10+8+12 = 73 项
         // （四十三域 CheckSet 条数受各自 all_checks 断言守护）
-        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73);
+        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73 + 36);
         assert!(lp.all_passed());
     }
 
@@ -1460,7 +1469,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=82"));
+        assert!(text.contains("domains_in_loop=86"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

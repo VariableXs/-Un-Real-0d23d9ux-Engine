@@ -393,3 +393,36 @@
 5. B-1801 百兆秒开真实 mmap 计时随实机窗口；B-1803 四小件真实冷启动/内存随应用构建管线（宿主为登记表模型面）。
 
 **WP-205 最丑角落（m4 复盘用）**：termproc UTF-8 解码未建模（宽字符经 feed_wide 显式入口——真实 UTF-8 流解码随渲染域）；termfeed 命令路由是表模型（真实 POSIX shell 语法随 shell 域）；trashbin 配额基于条目 size 模型面（真实 DATA 分区配额随存储域）；fsview 即席过滤是子串匹配（真实索引级搜索随搜索域）；edcore mmap 是窗口模型（真实 mmap/缺页随内核存储域）；widgetline 四件指标是登记表（真实冷启动/内存测量随应用构建）；settable 后端执法面是 validate/commit 模型（真实各服务后端随服务域接线）；八域与存量 terminal/fileman/editor/settings/apps 域的收敛留 m2（同 WP-201/203/208/204/202 口径）。
+
+## WP-206 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：监视器与星图前端（MD3 行 94）四判据（B-2001 / B-2002 / B-2003 / B-2103；B-2101/2102/2104 归 WP-305 阶段三）从 MD2 篇 20/21 落为**判据实装层**——四个新模块（ledgerhub/moncards/winegrp/starmapui），单测前缀 fa01~fa04（避撞验证：grep 确认 fa0x 零占用）。**同源契约先行**：账本订阅面（B-2001）的"一份打点三个消费者不许各插各的桩"在本包落为对表演练恒等式，WP-209 vxbench 骨架与 WP-402 性能体系依此对表——监视器看到的数必须就是基准体系记录的数。
+
+**交付面**（四文件新建 + 三文件注册 + 一文档回写）：
+- `ledgerhub.rs`（新建，B-2001 · 9 项）：六频道订阅（Mem/Proc/Cpu/BlockIo/Net/ThermalFan 预留）+ Reading 值单位同行（口径随读数走）+ 内存三段口径（MemReading 恒等式 app+cache+kernel==total + MEM_NOTE 固定注释）+ Ledger record 唯一写入口/read 只读/seq 单调 + SubHub 多消费者（Monitor/Updater/DiagCenter）+ 一秒节流（首帧直推、窗口内重复广播不推、满一秒新帧可推）+ Window 六十点滚动（第 61 点覆盖最旧 + evicted=推送-容量）+ WindowAgg sum/min/max/mean 整数自洽 + **run_recon_drill 对表演练**（三消费者同帧逐字段一致）+ 订阅槽位守恒（幂等不占新槽/注销回收可再订阅/重复注销返 false 不误伤）。
+- `moncards.rs`（新建，B-2002 · 9 项）：ServiceDecl 声明面（服务写）/CardView 视图面（呈现读）分离 + 三态颜色映射（绿/黄/红）+ **卡面实时一致恒等式**（声明一变卡面即变+文案==声明原文直通不转写）+ CardBoard 降级历史环（每卡 10 槽×4 卡=40 槽定长 + 新→旧 + **同态刷新不记**）+ verdict_kill 三出口（Protected 拒杀带解释/NeedsConfirm/Allowed——关键清单 KEY_PROCS 启动表声明 + 确认与否都拒）+ ThermalCardView 恒占位（**类型面无 value 槽——呈现假数据编译面不可能**）+ fps_panel_visible 开发者门。
+- `winegrp.rs`（新建，B-2003 · 8 项）：ProcRow/WineGroup 组模型 + **聚合恒等式**（agg==server+Σ成员，CPU/内存两面）+ expanded_rows 展开（每成员独立可见，聚合不隐藏个体）+ merge_groups 组归并（wineserver 立卡/成员入最近卡/非 Wine 跳过）+ 非 Wine 入组拒绝留痕 + MEMBER_CAP 满员拒绝留痕（rejected 计数不静默丢）+ 多组不串账（两组各自聚合零混线）+ 无 Wine 零卡 + 展开读数与录入同源。
+- `starmapui.rs`（新建，B-2103 · 10 项）：Rating 五档（**MD1 18.1 表序**：原生/直插/兼容/桥接/兜底）+ primary_action 唯一映射函数（兜底→SwitchToWindows 走交接/桥接→OpenViaWebShell 经网页壳/其余→Open——**呈现面无权改写，类型面防线**）+ RecoBoard 推荐位（只收新上架与判例更新/无标记不入位/商业位拒绝留痕）+ ListFilter 三轴过滤（名称子串+评级+腿别，filter_cards 定长收集体）+ StarCard 详情四要素（判例数/指标带单位/复评日期/目录版本）+ InstallFlow 四段顺序状态机（解析→校验→落盘→登记，跳段一律拒绝）+ uninstall_check 关联检查（MIME/自启如实报告不静默清除）。
+- `lib.rs`：四模块注册（settable 后追加，带判据号 doc 注释）；`quality.rs`：四域入 run_full_loop（settable 后）+ 断言链五处同步 82→86（F489 条目+注释/F493 仪表/f489 测试体/F493 测试体/记账下限 +36）+ **MAX_LOOP 88 不扩容**（86≤88，剩 2 槽给 WP-207/209，不够即扩）；`robust.rs`：四域入 checkup。
+- `docs/Varix STAR I · MD2 技术详案.md`：篇 21 判据表后插入"篇 20 与 21 前端判据实测回写"段——四判据×模块×CheckSet×实装要点完整表格 + 结构防线两条族（按钮语义函数唯一性/占位诚实类型化）+ 勘误连带四条。
+
+**证据三件套**：全量 `cargo ktest` **PASS=3466 FAIL=0 EXIT=0**（较 WP-205 收口 3450 +16 = 四域新单测 4×4）；**CheckSet 36 项**（ledgerhub 9/moncards 9/winegrp 8/starmapui 10）+ **单测 16 项**，四域定向全绿（fa01~fa04 16/16 ok）；86 域 CheckSet 全 PASS（F489 `lp.len()==86` + 记账下限 `39*25+134+68+56+57+57+73+36`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（编译与对练捉住的真实缺陷，修复并锁定回归）：
+1. **中文字节串 b"" 编译错（193 错同根因）**：`b"中文"` 字节串字面量只允许 ASCII——四个新模块的中文文案常量全部改 `&str`（既有范式：fsview NTFS_BADGE）。教训入库：**含中文字面量的常量直接声明 &str，不写 b""**。
+2. **SubSlot 数组初始化缺 Copy**：`[SubSlot::empty(); CAP]` 要求元素 Copy——加 derive(Clone, Copy)。
+3. **WindowAgg/Window 方法挂错对象**：CheckSet 项 6 把 Window 的 evicted_total() 写到 agg 上（E0599）——聚合结果与方法宿主分开核对。
+4. **ThermalCardView.note 批量替换漏网**：&[u8]→&str 脚本化替换只中第一处（CardView），同型第二处（ThermalCardView）漏改（E0308 连带 E0277）——**批量替换后必须全文件复查同型字段**。
+5. **winegrp u32/usize 两处**：MEMBER_CAP 是 usize，循环变量 u32 比较报 E0308（CheckSet 项 6 与单测各一）——容量常量循环统一 usize，pid 参数处显式 as u32。
+6. **KillVerdict 缺 Debug derive**：assert_eq! 需要 Debug——枚举派生 PartialEq 时同步想到 Debug。
+7. **fa04_filter_axes 断言自相矛盾（单测自捉）**：三轴过滤断言"命中 0"但测试数据 "alpha" 本身就是 Native+leg1 全中（应命中 1）——**对练序列没过一遍被测语义，WP-205 教训第 ⑥ 条重演（第五次）**。
+8. **starmapui 评级五档初稿发明档位（设计面缺陷，写码时回读勘正）**：初稿枚举漏"直插级"且自造 bridged_A 防呆位——回读 MD1 18.1 勘实五档名与顺序。教训：**判据引用的宪章条款（评级档位名）必须回读原文，不凭记忆**。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. B-2001 账本数据面为宿主模型（record 整数读数）——真实内核账本（篇 14.1 分配路径记账）随 WP-402 打点全覆盖接线，同源契约（对表演练恒等式）已冻结。
+2. B-2002 四卡真实服务降级声明源随服务域接线（宿主为 ServiceDecl 声明模型）；真实 EC 温度通道随实机（阶段 3 占位明示与本包类型面兼容——数据到位即填）。
+3. B-2003 组聚合数据源随进程账本接线（宿主为 ProcTable 模型）。
+4. B-2103 星图目录 JSON 加载/哈希校验（B-2101）与流水线门禁（B-2102）归 WP-305——本包锁前端按钮语义与过滤/安装/卸载呈现面。
+
+**WP-206 最丑角落（m4 复盘用）**：ledgerhub 节流以宿主虚拟时钟建模（真实单调钟读取随内核时间域）；moncards 卡面为声明直通模型（真实渲染随合成器域）；winegrp 归并策略"成员入最近卡"是模型简化（真实 wineserver 组关系随 Wine 支架域接线）；starmapui 目录数据为内存表（真实 JSON 目录加载与版本化随 WP-305）；四域与存量 sysmon（AURORA A676~A700 域）的收敛留 m2（同各包口径）。
+- 时序：WP-201 ✅ → WP-203 ✅ → WP-208 ✅ → WP-204 ✅ → WP-202 ✅ → WP-205 ✅ → **WP-206 ✅** → 下一包 WP-207（协议件：剪贴板/拖放/无障碍，MD3 行 96）。
