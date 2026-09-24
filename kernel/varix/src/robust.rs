@@ -1147,6 +1147,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::secgate::run_secgate_checks());
     checkup.register(crate::signchain::run_signchain_checks());
     checkup.register(crate::netdiag::run_netdiag_checks());
+    checkup.register(crate::instup::run_instup_checks());
+    checkup.register(crate::fontsub::run_fontsub_checks());
+    checkup.register(crate::timesrv::run_timesrv_checks());
+    checkup.register(crate::dispout::run_dispout_checks());
+    checkup.register(crate::drvframe::run_drvframe_checks());
+    checkup.register(crate::syslogd::run_syslogd_checks());
+    checkup.register(crate::qemuenv::run_qemuenv_checks());
+    checkup.register(crate::idledn::run_idledn_checks());
     checkup.register(crate::shell::run_shell_checks());
     // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
     checkup.register(crate::gdist::run_gdist_checks());

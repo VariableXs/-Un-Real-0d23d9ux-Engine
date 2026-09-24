@@ -508,16 +508,17 @@ pub fn next_batch() -> u32 {
 }
 
 // ===========================================================================
-// F489 — 全系统闭环自检（CheckSet 汇总，容量 130 覆盖全部域：WP-202 后 74 域，
+// F489 — 全系统闭环自检（CheckSet 汇总，容量 140 覆盖全部域：WP-202 后 74 域，
 // WP-205 八域 82 + WP-206 四域 86 + WP-207 三域 89 + WP-209 三域 92 + WP-301
 // 四域 96 + WP-302 五域 101 + WP-303 五域 106 + WP-304 三域 109 + WP-305
-// 六域 115 + WP-401 六域 121 + WP-402 两域 123 + WP-403 三域 126（余量 4——按
-// "不够即扩"纪律再扩；KernelCheckup 同理 128 待查；改域必查第九处口径）
+// 六域 115 + WP-401 六域 121 + WP-402 两域 123 + WP-403 三域 126 + WP-404
+// 八域 134（余量 6——按"不够即扩"纪律再扩；KernelCheckup 同理 144 已扩；
+// 改域必查第九处口径）
 // ===========================================================================
 
 /// 全系统闭环的最大域容量（VARIX 11 域 + TRINITY 20 域 + 判据实装层
-/// WP-201/203/208/204/202/205/206/207/209/301/302/303/304/305/401/402/403 九十一域 + 余量）。
-pub const MAX_LOOP: usize = 130;
+/// WP-201/203/208/204/202/205/206/207/209/301/302/303/304/305/401/402/403/404 九十九域 + 余量）。
+pub const MAX_LOOP: usize = 140;
 
 /// 全系统闭环自检聚合器：与 checks::KernelCheckup 同构，但容量覆盖全部域。
 #[derive(Clone, Copy)]
@@ -821,6 +822,15 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::sync::run_sync_checks());
     lp.register(crate::sec::run_sec_checks());
     lp.register(crate::verify::run_verify_checks());
+    // WP-404 安装更新与收尾件八域（B-3201~3204 + 收尾组 B-34xx~B-42xx）
+    lp.register(crate::instup::run_instup_checks());
+    lp.register(crate::fontsub::run_fontsub_checks());
+    lp.register(crate::timesrv::run_timesrv_checks());
+    lp.register(crate::dispout::run_dispout_checks());
+    lp.register(crate::drvframe::run_drvframe_checks());
+    lp.register(crate::syslogd::run_syslogd_checks());
+    lp.register(crate::qemuenv::run_qemuenv_checks());
+    lp.register(crate::idledn::run_idledn_checks());
     lp
 }
 
@@ -1342,9 +1352,9 @@ pub fn run_quality_checks() -> CheckSet {
     // F488 质量域自检收口：本域 25 条自检 + 域名标签正确。
     cs.add("F488 质量域自检收口", cs.len() + 1 <= 32 && cs.domain == "quality", "CheckSet 容量与域名自洽");
 
-    // F489 全系统闭环自检：126 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205/206/207/209 五十三域 + WP-301 四域 + WP-302 五域 + WP-303 五域 + WP-304 三域 + WP-305 六域 + WP-401 六域 + WP-402 两域 + WP-403 三域）、无截断、全部 PASS。
+    // F489 全系统闭环自检：134 域注册（39 老域 + 判据实装层 WP-201/203/208/204/202/205/206/207/209 五十三域 + WP-301 四域 + WP-302 五域 + WP-303 五域 + WP-304 三域 + WP-305 六域 + WP-401 六域 + WP-402 两域 + WP-403 三域 + WP-404 八域）、无截断、全部 PASS。
     let lp = run_full_loop();
-    cs.add("F489 全系统闭环自检", lp.len() == 126 && !lp.truncated() && lp.all_passed(), "126 域 CheckSet 全 PASS");
+    cs.add("F489 全系统闭环自检", lp.len() == 134 && !lp.truncated() && lp.all_passed(), "134 域 CheckSet 全 PASS");
 
     // F490 覆盖率门禁：TRINITY 各域自检均满 25 项。
     cs.add("F490 覆盖率门禁", coverage_gate(&lp) && coverage_pmil(25) == 1000, "已知 TRINITY 域 len>=25，25 项=1000‰");
@@ -1359,7 +1369,7 @@ pub fn run_quality_checks() -> CheckSet {
     let mut buf = [0u8; 512];
     let n = render_dashboard(&mut buf);
     let text = core::str::from_utf8(&buf[..n]).unwrap_or("");
-    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=126"), "仪表实时计算，域数=126");
+    cs.add("F493 质量度量仪表", n > 0 && text.contains("domains_in_loop=134"), "仪表实时计算，域数=134");
 
     // F494 缺陷管理：无未闭合 Critical。
     cs.add("F494 缺陷管理", open_critical_defects(&DEFECTS) == 0 && DEFECTS.len() == 2, "2 条暂缓项如实登记，0 critical");
@@ -1510,7 +1520,7 @@ mod tests {
     #[test]
     fn f489_full_loop_registers_32_domains_all_pass() {
         let lp = run_full_loop();
-        assert_eq!(lp.len(), 126);
+        assert_eq!(lp.len(), 134);
         assert!(!lp.truncated());
         let (passed, failed) = lp.tally();
         assert_eq!(failed, 0, "closed loop has failures");
@@ -1525,7 +1535,7 @@ mod tests {
         // + WP-401 六域 6+5+5+6+5+5 = 32 项 + WP-402 两域 8+14 = 22 项
         // + WP-403 三域 15+7+11 = 33 项
         // （七十五域 CheckSet 条数受各自 all_checks 断言守护）
-        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73 + 36 + 28 + 28 + 27 + 33 + 25 + 12 + 27 + 32 + 22 + 33);
+        assert!(passed >= 39 * 25 + 134 + 68 + 56 + 57 + 57 + 73 + 36 + 28 + 28 + 27 + 33 + 25 + 12 + 27 + 32 + 22 + 33 + 61);
         assert!(lp.all_passed());
     }
 
@@ -1557,7 +1567,7 @@ mod tests {
         let mut buf = [0u8; 512];
         let n = render_dashboard(&mut buf);
         let text = core::str::from_utf8(&buf[..n]).unwrap();
-        assert!(text.contains("domains_in_loop=126"));
+        assert!(text.contains("domains_in_loop=134"));
         assert!(text.contains("keybind_conflicts=0"));
         assert!(text.contains("third_party_deps=0"));
         assert!(text.contains("gate_families=9"));

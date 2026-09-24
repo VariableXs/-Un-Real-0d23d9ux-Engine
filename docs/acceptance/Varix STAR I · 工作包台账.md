@@ -772,3 +772,43 @@ MD3 阶段三出口仪式五门，逐门核账（宿主可验面 vs 实机欠账
 
 **WP-403 最丑角落（m4 复盘用）**：adversarial_100 的 LCG 与 galaxy::rt 同源（种子面共享——真实对抗需独立熵源）；PERMISSION_TABLE 五项静态注册面（新接口入表流程随 WP-404+ 扩展）；put_kv 的 quoted 参数承载两种格式语义（三格式以上需字典驱动渲染）；detect_* 与 first_hit 双实现的教训在 explog（WP-402 已登记，secgate 四执法点各自独立实现有轻度重复——收敛随 no_std 抽象窗口）。
 - 时序：m2 闸门 ✅ → 阶段三全 ✅ → m3 闸门宿主侧对账 ✅ → WP-401 ✅ → WP-402 ✅ → **WP-403 ✅** → 下一站 WP-404 安装更新与收尾件（B-3201~3204 及收尾组，MD3 行 2.5；**落刀前先扩 MAX_DOMAINS 128→136**）。
+
+## WP-404 收口明细（2026-09-24 · 宿主侧交付 · 判据实装层）
+
+**定性**：安装更新与收尾件（MD3 行 2.5）——八个新模块（instup/fontsub/timesrv/dispout/drvframe/syslogd/qemuenv/idledn），单测前缀 fe31~fe38（避撞验证零占用；syslog 概念名被 52 号 syscall 占用故定名 syslogd）。三条先行的红线：**呈现开关与安装完成是同一时刻**（presented 只挂 STAGE_REGISTER——半安装零呈现）、**"连续"是门槛不是口径**（IdleWatch 打断清零重数做进结构——累计冒充连续类型面不可表达）、**故障注入是一等公民不是临时 hack**（InjectSpec 三元组+声明位——齐而未声明不算）。落刀前扩容兑现：MAX_DOMAINS 128→**144**（余 10）、MAX_LOOP 130→**140**（余 6）。
+
+**交付面**（八文件新建 2618 行 + 四文件注册/扩容 + 两文档回写）：
+- `instup.rs`（新建，B-3201~3204 · 10 项）：InstallPipeline 四段段序机（解析/校验/落盘/登记乱序即拒）+呈现只挂登记段（**B-3201 达标线**）+UpgradeSlots 先装后切回滚幂等+old_present 不在册按钮置灰（**B-3202 达标线**）+RefTable 拒卸指名（MIME/AutostartBusy 分别指名）+解引用不越零（**B-3203 达标线**）+UpdMachine 五态序贯+handover_lock 交接互斥（**B-3204 达标线**）。
+- `fontsub.rs`（新建，B-3401~3403 · 7 项）：覆盖位图+字符类分区+fallback_chain 四档序列（**B-3401 达标线**）+unified_line_height 取最大度量混排不跳行+missing_diag 码位与建议包（无候选如实零——**B-3402 达标线**）+FontVerdict 三态畸形拒绝+RasterLedger 降级计数 50‰ 阈值告警（**B-3403 达标线**）。
+- `timesrv.rs`（新建，B-3501~3503 · 7 项）：MonoClock/WallClock 分型**无互转通道混用编译不可能**（**B-3501 达标线**）+HandoverSnap 差值校准 ±2s+Timer 不补发过期按拍 missed 计数（**B-3502 达标线**）+drift_align 漂移修正对齐理论拍点（**B-3503 达标线**）。
+- `dispout.rs`（新建，B-3601~3603 · 7 项）：SwitchTx 四态安全序列预检先行失败回退（**B-3601 达标线**）+MirrorPair 相位差容忍 1 帧插拔不断流+auto_scale 物理尺寸夹逼 [1000,3000]（**B-3602 达标线**）+broadcast_scale 三消费者全联动（wm/tokens/dpi_shim——**半联动不算联动**；**B-3603 达标线**）。
+- `drvframe.rs`（新建，B-3701~3703 · 7 项）：DeviceObj 含 ever_bound 痕+probe 失败留痕不阻断+refs>0 拒消亡零悬空（**B-3701 达标线**）+no_dangle 僵尸判据（`!(ever_bound && !bound && refs==0)`——合法暂态只有 probe 失败的未绑定设备；**B-3702 达标线**）+HealthLedger 四类守恒+ModChannel 白名单 8 项空载预留（**B-3703 达标线**）。
+- `syslogd.rs`（新建，B-3801~3803 · 7 项）：LogRing 64 槽覆盖诚实计数（**B-3801 达标线**）+PersistQueue 批量异步 512MB 硬顶 quota_drops 计数+keep_policy 五档映射磁盘不替调试信息陪葬（**B-3802 达标线**）+Signer 签发表 8 项+admit 守门验签伪造入库前拒（**B-3803 达标线**）。
+- `qemuenv.rs`（新建，B-4101~4104 · 9 项）：InjectSpec 三元组四替身+declared_in_cfg 声明位（**B-4101 达标线**）+PowerDrill 百次断电恢复三件缺一即败（**B-4102 达标线**）+VTime 快进倒拨墙钟回退单调不动（**B-4103 达标线**）+HandoverDrill 四步协议闭环乱序全拒（**B-4104 达标线**）。
+- `idledn.rs`（新建，B-4201~4203 · 7 项）：IdleTri 三判据+连续性门槛任一打断清零重数（**B-4201 达标线**）+wake_to_full 立即满档+WAKE_BUDGET_MS=100 恰 100 过 101 不过与深度无关（**B-4202 达标线**）+IdleTask 四态让路语义+YIELD_QUANTUM_SECS=1200 水表强制让位让位后停走重计（**B-4203 达标线**）。
+- `lib.rs`：八模块注册（netdiag 后追加，带判据号 doc 注释）；`quality.rs`：八域入 run_full_loop+断言链同步 126→134（F489/F493/两测试体/注释/记账下限 +26→+61）+MAX_LOOP 140；`robust.rs`：八域入 checkup（134 < MAX_DOMAINS 144 余 10）；`checks.rs`：MAX_DOMAINS 144 容量注释更新。
+- `docs/Varix STAR I · MD2 技术详案.md`：六段回写全插（篇 32/篇 34/篇 35 与 36/篇 37 与 38/篇 41/篇 42——判据×模块×项数×实装要点表格+结构防线+勘误连带+诚实边界；篇 42 明示 B-4301~4303 随 WP-405 与 m4 闸门）。
+
+**证据三件套**：`cargo kcheck` 绿（31 warnings 存量基线零新告警零新 error）；全量 `cargo ktest` **PASS=3662 FAIL=0**（较 WP-403 3630 +32 = fe31~fe38×4×8，对账吻合；fuzz 1+parser 6 亦全绿）；**CheckSet 61 项**（instup 10/fontsub 7/timesrv 7/dispout 7/drvframe 7/syslogd 7/qemuenv 9/idledn 7）+**单测 32 项**；**134 域** CheckSet 全 PASS（F489 `lp.len()==134`+记账下限 `…+61`）。复现 = `cd kernel && cargo ktest`；日期 = 2026-09-24。
+
+**红项处置**（落刀自查/kcheck/ktest 三层捉住，零带病入库）：
+1. **kcheck 盲区第五次兑现（ktest 编译红）**：fe37 单测 `cfg.set(9, spec)` 引用 CheckSet 函数局部 `spec`——E0425；kcheck 只编 lib 不编 test，修复内联 `InjectSpec { delay_ms: 0, err_rate_permille: 0, fault_at: None }`。
+2. **判据定义错不是实现错（ktest 捉住）**：drvframe no_dangle 初版 `d.bound || d.refs == 0` 把"解绑但使用中"合法过渡态（U 盘拔出瞬间）误判悬空——加 ever_bound 痕+僵尸判据 `!(ever_bound && !bound && refs==0)`；**判据定义错比实现错更隐蔽**。
+3. **断言语义两态对称（落刀自查+修复）**：fe35 `assert!(bus.probe(0, i%3!=0))` 把"probe 失败返回 false"（正确行为）当断言失败——改 `assert_eq!(bus.probe(0, i%3!=0), i%3!=0)`。
+4. **水表语义臆写（ktest 捉住）**：fe38 断言"让位后 continuous_secs==300"——实际 tick_run 对非运行任务直接返回不累计，改 `assert_eq!(t.continuous_secs, 0)`（"先算被测公式"第十次重演）。
+5. **缺字场景要真缺字（ktest 捉住）**：fontsub missing_diag 测试码位 0x4E2D 被首家族 CJK 覆盖→0x1F6D5 又被三家族符号字体覆盖——**最终用 `&fonts[..2]`"用户只装正文两家族"子集场景**才构成真缺字。
+6. **record 参数语义颠倒（落刀自查）**：RasterLedger `record(i >= 990)` 让前 990 次全记失败（990‰）——record 参数是"是否成功"，改 `record(i < 990)`。
+7. **心算三处（落刀自查捉住）**：fe33 missed 断言 8→9（拍点 1100~1900 共 9 拍不是 8）；dispout auto_scale 625 下夹逼=1000 不是 <1000；fontsub 项 7 record 颠倒同上——**断言写的是期望行为还是猜测行为，跑一次就知道**。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 安装四段/更新五态/引用计数为宿主状态机面——真实包管理器与存储事务随实机窗口（篇 32 联动）。
+2. 字体度量/光栅/缺字诊断为模型面——真实字体文件解析与光栅化随篇 34 实装窗口。
+3. 双钟/定时器/交接校准为时钟模型——真实 HPET/TSC 接线随驱动窗口（篇 35 联动）。
+4. 显示切换/DPI 广播为模式面——真实显示输出与 EDID 随篇 36 驱动窗口。
+5. 设备框架/总线探测为对象模型——真实总线枚举（PCI/USB）随驱动窗口（篇 37 联动）。
+6. 日志落盘 512MB 配额为声明常量——真实持久化随存储接线（篇 38 联动）。
+7. QEMU 替身注入为参数模型——真实 QEMU 设备替身与 OVMF 随 QEMU 环境实装窗口（篇 41 联动）。
+8. 空闲判定为事件计数模型——真实输入事件源（键鼠/触控）与唤醒路径耗时随实机窗口（篇 42 联动）。
+
+**WP-404 最丑角落（m4 复盘用）**：fe37 盲区再次证明 kcheck/ktest 分工缺口——测试体编译只有 ktest 能验（第五次，收敛方案入 m4 复盘议题）；fontsub 缺字测试要构造"用户只装两家族"子集才成立——**全家族装齐时缺字诊断无候选可用，测试场景设计比断言更难**；quality.rs 记账下限公式已 19 项加数（+61）——可读性逼近边界（m4 后考虑分段记账）；syslogd Signer 令牌位布局 svc<<16|inst|0x5150 为魔数常量面（真实令牌体系随篇 13.3 发布链）。
+- 时序：m2 闸门 ✅ → 阶段三全 ✅ → m3 闸门宿主侧对账 ✅ → WP-401 ✅ → WP-402 ✅ → WP-403 ✅ → **WP-404 ✅** → 下一站 WP-405 结项复盘与预研立项（20 维度终验+STAR II 立项+复盘三件套 S405/S406/S407，MD1 第 20/33 章）→ 收官【m4 闸门】。
