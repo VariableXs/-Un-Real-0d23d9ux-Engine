@@ -957,6 +957,29 @@ Variable 侧的窗口清单采集走其应用框架的窗口枚举（HTML/Tauri 
 
 内核不做"沉默的美德"：关键路径全打点（篇 14.1）、异常全分类（可恢复的返回错误、不可恢复的 panic 走保护屏，26.1）、账本全记账。内核自证的最后一道是启动自检（引导链 B-101 之后内核入口的第二次自检：协议应答完整性、内存图合理性、HHDM 可用性——自检不过拒绝继续启动，屏显人话）。这部分实现的代码质量标准最高（评审双签，35.4 闸门加严一档）：内核 panic 的每一次都按事故处理（复盘、根因、回归用例），零容忍"偶发重启不影响使用"的自我安慰。
 
+### 篇 26 判据实测回写（WP-104 · 2026-09-24 · 宿主侧对账收口）
+
+按 MD3 附录 D 三件套回写。WP-104 的交付形态是**对账收口**：篇 26 的实现面在存量内核（F051~F100 编号域）已全面就位，本包完成逐条款勘察对账、两处手术补刀与全量回归。证据形态：宿主单测，主命令 `cd kernel && cargo +1.97.1 test`（3180 项全绿：lib 3173 + fuzz 1 + parser fuzz 6，其中 lib 较 WP-101 收口时 +1 = 本包新增孤儿风暴压测）。实机/QEMU 依赖项按附录 D 如实标注，不提前记绿。
+
+| 篇 26 条款 | 存量实现（勘察对账） | 证据 |
+| --- | --- | --- |
+| 26.1 页帧分配器（4KB、伙伴、按阶） | `mem/pmm.rs` F051 FrameBitmap + F052 BuddyAllocator：自由链内嵌于空闲帧（零额外元数据）、split/coalesce 计数、双击 buddies 合并、坏页隔离 F070；2GiB 位图每页 1 bit ≈ 0.03 B/页（"每页不足一字节"红线达标） | pmm 8 测试 |
+| 26.1 内存图建池 | `memmap.rs` 解析 Limine memmap（Kind 全枚举）→ `mem.rs` 接线 `pmm::init()` | memmap/mem 接线测试 |
+| 26.1 slab 对象池（常数时间、零碎化、账本） | `mem/heap.rs` F053 SlabHeap（4KiB 块分级）+ F054 VarixAllocator（可失败/对齐感知）+ F055 泄漏检测：`live_slots` 每级实时可查、refused-frees 记账 | heap 11 测试 |
+| 26.1 分配失败路径全覆盖 | GlobalAlloc 可失败契约（lib.rs 登记处明注"可失败、对齐感知、泄漏记账"），全链 Option/Result 上抛由调用者裁决 | lib.rs 契约 + heap 测试 |
+| 26.1 DMA 一致性单独通道 | `mem/mm.rs` F066 DmaPool/DmaBuffer（DMA_ALIGN=64、方向标注 ToDevice/FromDevice/Bidi、专用接口供给不与通用池混用） | mm 14 测试 |
+| 26.2 地址空间 / W^X / 懒分配 / 无交换 | `mem/addrspace.rs`、`mem/paging.rs`、`mem/pfh.rs`（缺页处理）、`mem/cow.rs`、`kaslr.rs`；无交换=U 盘整机的诚实缺席 | 各模块单测（页表实机面=环境未就位类，随 WP-201 对练） |
+| 26.3 优先级抢占轮转 | `sched/engine.rs` F076~F082/F089/F090：64 槽零分配、每核就绪队列、时间片 10 tick、RT 运行 200 tick 上限（RT 线程有 bug 也不许挂机）、PRIO_TOP/RT/INTERACTIVE/NORMAL/BATCH/IDLE 分层严格抢占 | engine 17 测试 |
+| 26.3 负载均衡 / 交互绑核 | `sched/policy.rs` F092 CPU 亲和性 + `isolate_for` 隔离核预留（物理核层保底） | policy 13 测试 |
+| 26.3 计量钩子（WP-402 取数面） | 每线程 `runtime_ticks`/`switches`/`vruntime` 记账 + F087 SchedLatency 调度延迟仪表（含导出）+ F094 调度事件追踪 + F100 策略档案导出——钩子是数据面不是装饰 | engine/policy 测试 |
+| 26.3 配额账从第一天记账 | `quota.rs` 三方配额服务：CPU 分配矩阵（min_permil 保底）+ 内存三档滞回水位（Normal/Pressure/Critical）分级回收（降级路径与分配路径同期在库）+ GPU 通道 trait | quota 11 测试 |
+| 26.4 内核自证 | F099 调度自检 + uspace 快照/自检注册表（checks/），panic 路径保护屏 | 各模块自检测试 |
+| 篇 27 B-2703 僵尸回收（本包硬判据） | `proc/uspace.rs` F010/F011（exit 过继 + wait 收养 + reap）+ F027 waitpid 千次循环三清 + **本包新增 f027b 孤儿×僵尸风暴 64 轮**（两代家庭乱序死亡、exit 路径收养断言、init 清场四具僵尸、轮轮表/空间/僵尸三清） | uspace 23 测试 |
+
+**对账补刀（本包手术，两处）**：
+1. `spawn` alive 收紧——F009 契约写明"父进程必须活着"，实现只查槽位在不在（僵尸父进程下也能 spawn，孩子挂上永远等不回的父）。补 `alive()` 检查 + 死父拒育回归断言（勘察确认全部存量调用点均从活父 spawn，无行为面破坏）。
+2. f027b 压测补齐 B-2703 的"孤儿"组合维度——F027 只验顺序 spawn/exit/wait，孤孩子在"父先亡"场景下的收养与回收此前无压测覆盖。
+
 ---
 
 ## 篇 27 进程装载器实现

@@ -381,6 +381,12 @@ impl ProcTable {
         entry: u64,
     ) -> Result<u32, SpawnError> {
         let pslot = self.find(parent).ok_or(SpawnError::NoParent)?;
+        // B-2703（WP-104 对账补刀）：契约写的是"父进程必须活着"，实现却只查
+        // 槽位在不在——僵尸父进程下也能 spawn，孩子会挂在一个永远等不回来的
+        // 父上（只能等收养兜底）。按契约补 alive 检查：死父拒绝生育。
+        if !self.slots[pslot].state.alive() {
+            return Err(SpawnError::NoParent);
+        }
         if !self.slots[pslot].caps.has(ProcCaps::PROC) {
             return Err(SpawnError::NoCapability);
         }
@@ -2202,6 +2208,92 @@ mod tests {
         assert_eq!(table.live(), base_live, "进程表零泄漏");
         assert_eq!(arena.live_spaces(), base_spaces, "地址空间零泄漏");
         assert_eq!(table.zombies_of(init), 0, "僵尸不得残留");
+        assert_eq!(table.exhausted, 0, "全程不得触顶");
+    }
+
+    /// B-2703（MD2 篇 27 判据表，WP-104 对账补测）：孤儿与僵尸压测零泄漏。
+    /// 与 F027 互补：F027 验"顺序 spawn/exit/wait 一千次"；本测验"两代
+    /// 家庭 + 乱序死亡"——孙先死、父后死（孤儿经 exit 过继 init）、init
+    /// 清场后全表归零。64 轮风暴，轮轮三清（表/空间/僵尸）。
+    #[test]
+    fn f027b_orphan_zombie_storm_zero_leak() {
+        let (mut table, mut arena, init) = fresh();
+        let base_live = table.live();
+        let base_spaces = arena.live_spaces();
+
+        // 前置回归（WP-104 对账补刀）：死父拒绝生育——僵尸父 spawn 必须
+        // 报 NoParent（F009 契约的 alive 面；修复前僵尸父也能 spawn）。
+        let dad = table.spawn(&mut arena, init, b"dad", 0x40_0000).expect("dad");
+        table.exit(dad, 0, 0);
+        assert_eq!(
+            table.spawn(&mut arena, dad, b"from-zombie", 0x40_0000),
+            Err(SpawnError::NoParent),
+            "僵尸父进程必须拒绝 spawn（F009：父进程必须活着）"
+        );
+        let _ = table.release_space(&mut arena, dad);
+        assert!(table.wait(init).is_some(), "dad 僵尸可回收");
+
+        for round in 0..64u32 {
+            // 两代家庭：init -> p1 -> (g1, g2)；init -> p2 -> g3。
+            let p1 = table
+                .spawn(&mut arena, init, b"p1", 0x40_0000)
+                .expect("64 槽轮换下 spawn 必须成功");
+            let p2 = table
+                .spawn(&mut arena, init, b"p2", 0x40_0000)
+                .expect("p2");
+            let g1 = table.spawn(&mut arena, p1, b"g1", 0x40_0000).expect("g1");
+            let g2 = table.spawn(&mut arena, p1, b"g2", 0x40_0000).expect("g2");
+            let g3 = table.spawn(&mut arena, p2, b"g3", 0x40_0000).expect("g3");
+
+            // 乱序死亡：孙先死（僵尸挂父）→ 父死（父成僵尸，活孙过继 init）。
+            table.exit(g1, 1, 0);
+            let _ = table.release_space(&mut arena, g1);
+            table.exit(p1, 2, 0);
+            let _ = table.release_space(&mut arena, p1);
+            let g2_slot = table.find(g2).expect("g2 必须在表上");
+            assert_eq!(
+                table.get(g2_slot).map(|p| p.ppid),
+                Some(PID_INIT),
+                "父死后孤儿必须已过继 init（exit 路径收养）"
+            );
+            // init 回收 p1 僵尸。
+            let (pid, code) = table.wait(init).expect("p1 僵尸必须可 wait");
+            assert_eq!((pid, code), (p1, 2));
+
+            // 剩余成员全灭：g2（init 之子）→ g3 → p2（死前把 g3 的僵尸过继 init）。
+            table.exit(g2, 3, 0);
+            let _ = table.release_space(&mut arena, g2);
+            table.exit(g3, 4, 0);
+            let _ = table.release_space(&mut arena, g3);
+            table.exit(p2, 5, 0);
+            let _ = table.release_space(&mut arena, p2);
+
+            // init 清场：g1（随父过继）+ g2 + g3 + p2 共四具僵尸必须恰好排空。
+            assert_eq!(
+                table.zombies_of(init),
+                4,
+                "第 {} 轮：init 名下必须恰好四具僵尸",
+                round
+            );
+            let mut reaped = 0;
+            while table.zombies_of(init) > 0 {
+                table
+                    .wait(init)
+                    .expect("init 清场时每具僵尸都必须可回收");
+                reaped += 1;
+            }
+            assert_eq!(reaped, 4, "第 {} 轮：init 必须收满四具", round);
+
+            // 轮轮三清：表、空间、僵尸全部回到基线（B-2703 的"零"字）。
+            assert_eq!(table.live(), base_live, "第 {} 轮后进程表零泄漏", round);
+            assert_eq!(
+                arena.live_spaces(),
+                base_spaces,
+                "第 {} 轮后地址空间零泄漏",
+                round
+            );
+            assert_eq!(table.zombies_of(init), 0, "第 {} 轮后僵尸不得残留", round);
+        }
         assert_eq!(table.exhausted, 0, "全程不得触顶");
     }
 }

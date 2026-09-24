@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- | --- |
 | WP-101 | 收口（宿主侧） | B-101~106 六绿-宿主（实机/QEMU 依赖项=环境未就位类，随 WP-102 补测） | 无前置 | limine.conf 固化（interface_version + hash 元数据、default_entry、comment 字段；bootconf::render 单源） | 2026-09-24 |
 | WP-103 | 收口（宿主侧） | B-302~307 六绿-宿主（B-301 实机 72h=环境未就位类，B-305"Variable 启动正常"半句随实机补测） | WP-101（已收口） | 新增 `portable/engine/hardening/` 五件（vxlib / harden_quad / harden_vcruntime / recheck / run_all）；deploy↔recheck 契约=deploy_report.json（gate.sha256 + vcruntime.hashes） | 2026-09-24 |
-| WP-104 | 未开工 | — | WP-101（与 WP-103 交错） | — | — |
+| WP-104 | 收口（宿主侧对账） | B-2703 绿-宿主（f027b 孤儿风暴 64 轮 + F027 千次循环）；篇 26 十二条款对账全落地面（详见 MD2 篇 26 回写）；页表/APIC 实机面=环境未就位类 | WP-101（已收口） | 无 schema 变更（spawn alive 收紧为 F009 契约对齐修复） | 2026-09-24 |
 | WP-102 | 未开工 | — | WP-101/104 | — | — |
 | WP-105 | 未开工 | — | WP-101 | — | — |
 | WP-106 | 未开工 | — | WP-101 | — | — |
@@ -54,3 +54,29 @@
 2. 生产路径（cli 后端 + 离线 hive 挂载 + reg.exe）本机未实跑（零真实注册表接触是 selftest 的设计前提）；首次实机部署按 MD2 3.7 复检清单走人工监督。
 
 **WP-103 最丑角落（m4 复盘用）**：recheck.py 的 run_recheck 判定布尔拼装（None 参与的"未执行不记绿"口径）可读性一般，随复检项增多应改为逐项 verdict 表驱动；SPEC 附带项的 `..\Control` 相对回退语法偏隐晦；version_of 码页只试 040904B0/040904E4 两种，非英文语言资源提取不到时如实 degraded（可扩全码页遍历）。
+
+## WP-104 收口明细（2026-09-24 · 宿主侧对账收口）
+
+**定性**：对账收口，非新建模块。勘察确认篇 26 全部条款的实现面在存量内核编号域已就位（mem/sched/quota/uspace 各模块自带 8~22 个测试），真缺口只有两处——手术式补齐，不重复造轮。
+
+**对账审计面**（12 条款 → 存量文件映射，逐条证据见 MD2 篇 26 回写小节）：
+- 26.1 内存：`pmm.rs` F051 FrameBitmap + F052 BuddyAllocator（自由链内嵌空闲帧、2GiB 位图 ≈0.03B/页）；`heap.rs` F053~F055 slab / 可失败 GlobalAlloc / 泄漏检测；`mm.rs` F066 DMA 单独通道。
+- 26.2 地址空间：`addrspace.rs` + `paging.rs`（页表实机走查=环境未就位类）。
+- 26.3 调度：`engine.rs` F076~F100（64 槽、每核队列、10 tick 时间片、RT 200 tick 上限、分层严格抢占）；`policy.rs` F087 延迟仪表 / F092 亲和性；`quota.rs` 三方配额（min_permil 保底 + 三档滞回水位 + 分级回收）。
+- 26.4 自证：存量 F027 千次循环 + 本包新增 f027b 组合维度。
+
+**两处手术**（`kernel/varix/src/proc/uspace.rs`）：
+1. spawn 补 alive 检查：F009 契约写"父进程必须活着"，原实现只查槽位在不在——僵尸父下也能 spawn，孩子挂永远等不回来的父上（只能等收养兜底）。补 `!state.alive()` 拒绝，死父不生育。勘察确认全部存量调用点均从活父 spawn，无行为面破坏。
+2. 新增 `f027b_orphan_zombie_storm_zero_leak`（B-2703 组合维度）：死父拒育前置回归（dad exit → spawn 报 NoParent）+ 64 轮两代家庭乱序死亡风暴（g1 先死挂父 → p1 死孤儿 g2 过继 init 断言 ppid==PID_INIT → wait 回 p1 → 全灭），轮轮断言 live/spaces/zombies 三清回基线 + exhausted==0。
+
+**文档回写**：MD2 篇 26.4 后新增"篇 26 判据实测回写（WP-104 · 宿主侧对账收口）"小节——12 条款对账表 + B-2703 补刀说明。
+
+**证据三件套**：数据 = 全量 `cargo +1.97.1 test`（kernel workspace）3180 项全绿（lib 3173 + fuzz 1 + parser fuzz 6，+1 新压测）；uspace 定向 23/23 绿先行；存量警告 5 条核实全为存量文件（bootcfg/xhci/ahci/msc/exfat_rw/stage4_matrix），触碰文件零新增。复现命令 = `cd kernel && cargo +1.97.1 test`；日期 = 2026-09-24。
+
+**红项处置**：spawn 文档-代码失配 1 处（F009 契约）→ 修复并锁定回归（f027b 前置断言：死父 spawn 报 NoParent）。无其他红项。
+
+**环境偏差登记（不阻断，随队跟踪）**：
+1. 26.2 页表实机走查 / 26.3 APIC 实机调度面依赖 U 盘整机 + Y7000——环境未就位类，随 WP-201 对练补测。
+2. clippy 门禁仍以 +stable 代跑（1.97.1 组件损坏，同 WP-101 偏差 1）。
+
+**WP-104 最丑角落（m4 复盘用）**：engine.rs 的 64 槽固定容量在未来进程数增长时需要扩容路径评估；policy.rs F087 延迟仪表的导出格式与 WP-402 基准体系的对接契约待 WP-402 时对账；quota.rs 三方配额目前只有内核态压测记账，用户态进程的真实扣减面要等 WP-205 进程 API 接线后才能实证。
