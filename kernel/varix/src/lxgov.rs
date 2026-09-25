@@ -185,7 +185,7 @@ pub const DIVERGENCE_ROWS: usize = 7;
 pub const DIVERGENCES: [(SysCall, i32, &str); DIVERGENCE_ROWS] = [
     (SysCall::IoUring, ENOSYS, "io_uring 全族不支持：异步 IO 语义与 U 盘整机 IO 模型不合，应用应有退化路径（Q23 详见差异手册 D-01）"),
     (SysCall::CgroupCtl, ENOSYS, "cgroup 管控族不支持：单机整机的资源治理走配额服务（Q23 详见差异手册 D-02）"),
-    (SysCall::Namespace, ENOSYS, "namespace 族不支持：容器隔离语义随 STAR II 预研（Q23 详见差异手册 D-03）"),
+    (SysCall::Namespace, ENOSYS, "namespace 族不支持：容器隔离语义随 STAR I start 预研（Q23 详见差异手册 D-03）"),
     (SysCall::InitModule, ENOSYS, "模块加载族不支持：内核模块清单封闭，无运行期加载（Q23 详见差异手册 D-04）"),
     (SysCall::Bpf, ENOSYS, "bpf 族不支持：观测面走诊断三件套（Q23 详见差异手册 D-05）"),
     (SysCall::Clone, ENOSYS, "clone 仅支持新线程/新进程两种标志形态，其余标志位返回不支持（Q23 详见差异手册 D-06）"),
