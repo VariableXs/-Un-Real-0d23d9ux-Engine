@@ -833,3 +833,48 @@ MD3 阶段三出口仪式五门，逐门核账（宿主可验面 vs 实机欠账
 
 **闸门结论**：宿主侧 **6/8 判成 + 2 项 ◐ 实机半**，实机硬项清单如实登记不虚判——**m4-release 宿主侧就绪**。判成即 STAR I 发布：真发布 = 实机窗口补齐硬项 + 20 维度全 ✅ 终轮复验后走发布工程七步（工具链已就绪且已被结项流程首用）。STAR I 判据实装层 25 包全序收官。
 - 时序终线：m1 ✅ → m2 ✅ → m3-compat 宿主侧 ✅ → 阶段四五包全 ✅ → WP-405 ✅ → **m4-release 宿主侧对账 ✅（实机硬项随队跟踪，清单见 WP-405 文档 3.3）**。
+
+## 外部清单对账（2026-09-25 · WP-405 后外部盘点单 22 条 vs 仓库实况）
+
+**对账方法**：逐条以仓库硬证据核验（`ls kernel/varix/src/` 269 模块 / `cargo ktest` 复跑 **PASS=3662 FAIL=0** + fuzz 1 + parser 6 全绿 / 台账 24 份 WP 明细 / commit 链 067a675…e09c7f1 / CheckSet 判据号可 grep）。**结论：22 条中 21 条与仓库实况不符（基于过时盘点），1 条命中真实缺口（借力件登记册），当包补齐。**
+
+**一、声称"完全空白（零实现）"13 条 → 全部已实装收口**：
+
+| # | 外部清单条目 | 仓库实况证据 |
+| --- | --- | --- |
+| 1 | Linuxulator 转译层（WP-301） | lxgov/lxerrno/lxprocfs/lxrun 四模块在库；B-401~407 CheckSet 27 项；commit 067a675；ktest 3506 全绿（台账 WP-301 明细） |
+| 2 | Wine 本体移植（WP-302） | **判据面即"本体零侵入"（B-1003 WINE_SOURCE_DIFF_LINES=0 是常量）**——本体是借力件非交付物；winecare 看门狗/winepfx 前缀模板/wineshim 四路垫片/winecase 判例流水线/wineattr 五模块在库；commit 719948d；ktest 3526 |
+| 3 | Servo 壳（WP-302） | **非 WP-302 判据交付件**（B-1001~1007 无 Servo 条目）——Servo 壳是 18.1 桥接级评级的承载形态（MD2 行 1133 勘误注明）；集成协议在 MD1 第 6 章补 |
+| 4 | vx-SDK 正式化（WP-303） | sdktriplet/sdkmanifest/sdkwidgets/sdkruntime/sdktemplate 五模块在库；B-1101~1107；commit b8a8095；ktest 3546 |
+| 5 | 运行时画像（WP-304） | rtjava/rtpy/rtmpl 三模块在库；B-3301~3303；commit 44d1c58；ktest 3558 |
+| 6 | 星图后端与社区通道（WP-305） | starmapdir/starmapgate/unisweep/selftestpkg/dualsign/feedback 六模块在库；commit bc0c977；ktest 3582 |
+| 7 | LTP 合规子集（WP-301） | lxrun 四步归因+LTP 归因账本**宿主模型**在库（B-402/407）；实机 LTP 跑批=登记实机欠账（m3 闸门对账行） |
+| 8 | vxbench 基准体系（WP-402） | benchsix 六类基准（WP-209）+ reggate 回归门红即阻断+同 seed 重放（WP-402，B-1401~1405）；commit 0697128/915049b；ktest 3606→3618 |
+| 9 | vx-updater 双槽（WP-404） | rollback72 五分钟窗口+三路径（WP-401 B-1305）+ instup UpgradeSlots 先装后切回滚幂等（WP-404 B-3202） |
+| 10 | 发布工程（WP-401） | reprobuild 可复现四件套+imgwrite 镜像单源/写盘四段（WP-401 B-1301/1302） |
+| 11 | 安装四段原子化（WP-404） | instup INSTALL_STAGES=4 段序机乱序即拒+呈现只挂登记段（B-3201） |
+| 12 | 取证三件套（WP-403） | netdiag CaptureRing 零干扰+pcap 标准格式+forensic_on_fail 30s 四象限（B-3101~3103）；commit d545870 |
+| 13 | QEMU 替身注入框架（WP-404） | qemuenv InjectSpec 三元组四替身+PowerDrill 百次+VTime+HandoverDrill（B-4101~4104）；commit f196dc4 |
+
+**二、声称"有雏形离达标还远"6 条 → 判据实装层全在册，实机口径为登记欠账**：
+
+| # | 条目 | 仓库实况 |
+| --- | --- | --- |
+| 1 | 伪文件系统面 | lxprocfs B-405/406 CheckSet 在库（伪文件清单+清单外标准报错） |
+| 2 | 崩溃恢复矩阵 | recovermx 九类矩阵全可达（WP-209 S209，B-1403 组） |
+| 3 | 杀死演练十姿势/20 维度 | killdrill 十姿势零损坏（S210，m2 闸门四件套之二判成）+ dims20 20 维恰好证据化（WP-401 B-1204）+ m2 第一轮全量交卷 + WP-405 终轮 ✅13/◐3/⏳4 |
+| 4 | 测试金字塔 | pyramid 四层不倒挂闭环（WP-401 B-1201）；m4/m5/m6/m7 系列为历史演化层与金字塔并存不冲突 |
+| 5 | 交接协议代码面 | handoff/snap.rs SCHEMA_VERSION 冻结机制+bufown/oneshot/bootnext 在库；**schema 冻结签署=m1 闸门四件套之三 ✅ 判成**；防自锁 20 组+双向快照互通实测=登记实机欠账（m1 对账行） |
+| 6 | 显示合成栈 | vxwm 消息协议 CheckSet 25 项（WP-201）+dragbench B-502 p95≥55fps 宿主基准；空闲 5%/拖动手感**实机复测**=登记欠账（m2 对账第五件） |
+
+**三、声称"账目与文档缺口"5 条 → 4 条已在册 + 1 条真缺口当包补齐**：
+
+| # | 条目 | 仓库实况 |
+| --- | --- | --- |
+| 1 | B 判据台账不存在 | **不成立**：台账 29 段（24 份 WP 明细+四闸门对账+本段）；127 项判据入 CheckSet 命名可 grep；F489 lp.len()==134+记账下限逐包对账 |
+| 2 | 存量对账未做 | **已在册**：MD3 附录 A 三向速查表（WP↔MD2 篇↔B 判据组逐包绑定）+ MD2 附录 A 全册判据编号总表（B-101~4303 对账） |
+| 3 | S 事项映射空转 | **已在册**：MD3 附录 G S101-S407→25 包逐项承接表（行 299~307），承接漂移零登记 |
+| 4 | 借力件版本锁定清单 | **真缺口命中**：docs/upstream-registry.md 此前不存在（MD1 第 6 章补+18.4 规定、T-302 承接）——**本包补齐**：14 件逐件登记（Wine L1 WINE_LOCK=9 实装/Servo relibc smoltcp rustls cosmic-text iced·egui Mesa L3 计划锚/ext4_rs L2 "=1.3.3"/FFmpeg L2/Limine·QEMU L1-锚/软件池 ReactOS 不适用），许可/补丁集/节奏/跟进人+勾稽判据台账 |
+| 5 | 结项复盘未到时点 | **已完成**：commit e09c7f1（S405 终轮/S406 立项包/S407 复盘+STAR II 草案/m4 对账八项） |
+
+**对账结论**：外部清单基于过时仓库状态（多数条目的"零实现"判断早于 WP-301~405 收口链）；唯一真实缺口（upstream-registry 登记册）已补齐并勾稽台账。**判据实装层 25 包全绿 3662 的收官状态不变；实机口径欠账 16 项维持随队登记不虚判。**
