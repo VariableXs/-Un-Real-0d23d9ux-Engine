@@ -330,6 +330,13 @@ def main() -> int:
             "kernel_cmdline: desktop=1 boot_timeout=0",
             "kernel_cmdline: desktop=1 boot_timeout=0 panic_halt=1",
         )
+    # 外部 conf 覆盖（诊断实验用）：VARIX_CONF_FILE 指向的文件整体替换 conf。
+    # 用途：把 repo 根 limine.conf（真机部署唯一事实源）灌进镜像，QEMU 串口
+    # 对比 BIOS/UEFI 两种模式下内核实收 cmdline（limine.rs cmdline() 日志）。
+    env_conf = os.environ.get("VARIX_CONF_FILE")
+    if env_conf:
+        with open(env_conf, "rb") as cf:
+            conf_text = cf.read().decode("utf-8")
     # 短名必须严格 8+3：位置 0..7 是名字（不足用空格补齐），8..10 是扩展名。
     # 写成 b"LIMINE.CONF"（11 字节）会把第 8 字节填成 '.'，落成
     # "LIMINE.C.ONF" 这种畸形短名（实测 OVMF 能靠 LFN 找到文件，但不符合
