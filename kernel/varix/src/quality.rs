@@ -757,6 +757,8 @@ pub fn run_full_loop() -> FullLoop {
     lp.register(crate::winepfx::run_winepfx_checks());
     // WP-302 · B-1003 垫片四路（冻结表全 VarixSide×Wine 源码零 diff 红线）
     lp.register(crate::wineshim::run_wineshim_checks());
+    // 交叉走查第一项 · Wine 启动通道（注册表×受理×缺席如实×出参编码）
+    lp.register(crate::winelaunch::run_winelaunch_checks());
     // WP-302 · B-1004/1005 判例流水线与评级（三档全量×无人工确认不转绿）
     lp.register(crate::winecase::run_winecase_checks());
     // WP-302 · B-1006/1007 归因五分类与回馈（穷举呈现×模板入库×季度命中率）

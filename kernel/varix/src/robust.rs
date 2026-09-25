@@ -1120,6 +1120,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     checkup.register(crate::winecare::run_winecare_checks());
     checkup.register(crate::winepfx::run_winepfx_checks());
     checkup.register(crate::wineshim::run_wineshim_checks());
+    checkup.register(crate::winelaunch::run_winelaunch_checks());
     checkup.register(crate::winecase::run_winecase_checks());
     checkup.register(crate::wineattr::run_wineattr_checks());
     checkup.register(crate::sdktriplet::run_sdktriplet_checks());

@@ -262,6 +262,9 @@ pub mod winecare;
 /// Wine 前缀模板（WP-302 · B-1002：模板五要素×生成带版本号可追溯×重建
 /// 优于手术旧实例可查×来源三态裁决——篡改零放行）。
 pub mod winepfx;
+/// Wine 应用启动通道（交叉走查第一项配套：注册表×拉起受理×运行时缺席
+/// 如实回报×出参定长编码——受理≠谎报启动，清单外标准报错）。
+pub mod winelaunch;
 /// Wine 垫片四路（WP-302 · B-1003：SHIM_TABLE 冻结四行全 VarixSide×
 /// Wine 源码 diff 为零审计红线×版本锁漂移四路全重校验）。
 pub mod wineshim;

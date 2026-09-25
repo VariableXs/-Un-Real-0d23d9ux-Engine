@@ -215,6 +215,11 @@ pub const SHIM_BOOT_MS: u64 = 8;
 /// VFS 数据源查询：出参 block[0]=1（exFAT SHARED 真实挂载）/0（内置
 /// 演示树）。文件管理器页脚如实标注数据源，绝不冒充。
 pub const SHIM_VFS_SOURCE: u64 = 9;
+/// Wine 应用拉起（交叉走查第一项入口）：key 槽放应用名（如
+/// "notepad-classic"）→ 注册表查表 + 前缀实例化 + 运行时如实状态。
+/// 出参：[0]=state u8 [1]=runtime u8 [2..6]=app_id [6..10]=templ_ver
+/// [10..12]=msg_len [12..]=消息（winelaunch::encode_status 布局）。
+pub const SHIM_WINE_RUN: u64 = 10;
 
 /// 命令块入参区：ns[0..16] key[16..48] len@48 val[52..308]（path 复用 0..64）。
 pub const BLK_NS: usize = 0;
@@ -243,6 +248,7 @@ pub fn shim_block_min(cmd: u64) -> Option<usize> {
         SHIM_BOOT_EVENTS => 4 + 15 * 16,
         SHIM_BOOT_MS => 8,
         SHIM_VFS_SOURCE => 8,
+        SHIM_WINE_RUN => BLK_OUT + 4 + 128,
         _ => return None,
     })
 }
@@ -1079,6 +1085,7 @@ fn shim_dispatch(cmd: u64, block: &mut [u8; BLK_TOTAL]) -> i64 {
         SHIM_VFS_LIST => shim_vfs_list(block),
         SHIM_VFS_READ => shim_vfs_read(block),
         SHIM_VFS_SOURCE => shim_vfs_source(block),
+        SHIM_WINE_RUN => shim_wine_run(block),
         SHIM_BOOT_EVENTS => shim_boot_events(block),
         SHIM_BOOT_MS => {
             let ms = boot_ms();
@@ -1207,6 +1214,38 @@ fn shim_vfs_source(block: &mut [u8; BLK_TOTAL]) -> i64 {
     let src: i64 = if mount::available() { 1 } else { 0 };
     block[0] = src as u8;
     src
+}
+
+/// Wine 应用拉起（交叉走查第一项入口）：key 槽应用名 → winelaunch
+/// 受理（注册表查表 + 前缀实例化 + 运行时如实状态）→ 出参编码 +
+/// kinfo 打点一行（实机证据源）。缺席/未知应用照常返回——标准报错，
+/// 绝不静默伪造启动成功。
+#[cfg(all(target_arch = "x86_64", target_os = "none"))]
+fn shim_wine_run(block: &mut [u8; BLK_TOTAL]) -> i64 {
+    let app = match zstr(block, BLK_KEY, KEY_MAX) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let now_ms = boot_ms() as u64;
+    let outcome = crate::winelaunch::launch(app, now_ms);
+    let out_len = crate::winelaunch::encode_status(&mut block[BLK_OUT..], &outcome);
+    if out_len == 0 {
+        return eio();
+    }
+    // 实机证据打点：一行可 grep 的拉起记录（走查日志面）。
+    crate::kinfo!(
+        "wine-launch: state={} runtime={} app_id={:#x} templ_ver={} bytes={}",
+        outcome.state as u8,
+        match outcome.runtime {
+            crate::winelaunch::RuntimeState::Present => 0u8,
+            crate::winelaunch::RuntimeState::Absent => 1u8,
+            crate::winelaunch::RuntimeState::LockMismatch => 2u8,
+        },
+        outcome.prefix.as_ref().map(|p| p.app_id).unwrap_or(0),
+        outcome.prefix.as_ref().map(|p| p.templ_ver).unwrap_or(0),
+        out_len,
+    );
+    out_len as i64
 }
 
 /// VFS 列表：SHARED 挂载在 → exFAT 真实目录；否则 → 内置演示树（如实
