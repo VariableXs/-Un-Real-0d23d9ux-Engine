@@ -141,8 +141,9 @@ impl Reject {
 pub fn admit(compat: u32, incompat: u32, ro_compat: u32) -> Result<(), [Option<Reject>; 96]> {
     let mut out = [None; 96];
     let mut n = 0usize;
-    // 基础集缺失检查（missing_base）
-    if compat & BASE_COMPAT != BASE_COMPAT {
+    // 基础集缺失检查（missing_base）——空必需集（BASE_COMPAT=0）短路跳过：
+    // ext4 compat 旗标对只读挂载无强制必需位是域语义，恒零掩码不构成检查。
+    if BASE_COMPAT != 0 && compat & BASE_COMPAT != BASE_COMPAT {
         out[n] = Some(Reject { group: 0, bit: BASE_COMPAT & !compat, missing_base: true });
         n += 1;
     }

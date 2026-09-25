@@ -878,3 +878,24 @@ MD3 阶段三出口仪式五门，逐门核账（宿主可验面 vs 实机欠账
 | 5 | 结项复盘未到时点 | **已完成**：commit e09c7f1（S405 终轮/S406 立项包/S407 复盘+STAR II 草案/m4 对账八项） |
 
 **对账结论**：外部清单基于过时仓库状态（多数条目的"零实现"判断早于 WP-301~405 收口链）；唯一真实缺口（upstream-registry 登记册）已补齐并勾稽台账。**判据实装层 25 包全绿 3662 的收官状态不变；实机口径欠账 16 项维持随队登记不虚判。**
+
+## 验收复核（2026-09-25 · 验收标准逐项核对——发现两缺口，当包闭合）
+
+**触发**：验收标准复核问询（MD1 33.2 五步仪式 + 35.4 四道质量闸门逐项核对，不空口判成）。
+
+**发现**（两项真实缺口 + 两项环境项）：
+1. **33.2 第④步里程碑 git tag 全缺**：MD1 33.2 规定"全过则判据标记通过并 git tag（m1-handoff/m2-desktop/m3-compat/m4-release）"——四枚一个未打（仓库仅有历史别的线的 aurora-m1/m2/m3 三枚）。第④步裁决动作缺失。
+2. **35.4 第一道闸门（fmt/clippy）从未实跑**：25 包证据三件套均为 kcheck/ktest/CheckSet，fmt 与 clippy 零实跑记录——"clippy 全量零告警存档"此前为计划表述非实跑证据。
+3. **环境项：pinned 1.97.1 工具链 clippy/rustfmt 组件损坏**（bin 目录文件缺失，rustup remove 报 panic、add 报 up-to-date 但文件不落地）——1.97.1 口径的 clippy 实跑暂不可得，以 stable 1.98.1 旁证跑代替（新 lint 面更严，告警只多不少——旁证可信方向）。
+4. 1.98.1 旁证跑结果：**30 errors + 2633 warnings**（2633 条为 1.98 新增风格 lint 在存量代码上的噪音面：'static 默认/hex 分组/doc 空行等，非缺陷）。
+
+**裁决与处置**：
+1. **tag 四枚补打（33.2 ④兑现）**：m1-handoff→227b986（m1 四件套 4/4 判成所在 commit）/ m2-desktop→502f178 / m3-compat→91302a8 / m4-release→本复核 commit（四闸门宿主侧判成后的最终状态）。
+2. **fmt 全库重排不采纳（裁决记录）**：实跑发现全库 8816 处 diff（8.1 万行重排）——经评估回退：①blame 史断裂代价大于收益（25 包"+N 行"证据账目可追性优先）②仓库风格权威是 **F479 军规门禁**（CheckSet 验收面、20 维第 8 项引用依据，269 模块全过闸），与 rustfmt 默认风格是两套体系③35.4"fmt 零告警"口径以 F479 实装为准（判据冲突修口径原则，MD3 R7 同族）——偏差如实登记，本条为 ADR 式裁决记录。
+3. **clippy error 三类分置**：
+   - **修复两处（真实质量面）**：fswl.rs admit 基础集检查——BASE_COMPAT=0（ext4 compat 无强制必需位是域语义）恒零掩码空转，加空集短路（零语义变更）；ntfsro.rs B-705 CheckSet——`MOUNT_POINT == MOUNT_POINT` 恒真自等断言空转（"断言写的是期望还是猜测"教训新变体），改为真实钉死检查 `MOUNT_POINT == "/windows" && E_RO_FS == 30`（改常量即红）。
+   - **登记不修三类**：gdt/idt/displaysrv `mut_from_immutable`/`not_unsafe_ptr_arg_deref`——内核 GDT/IDT/FB 面标准安全抽象形态（&self+内部裸指针是 OS 惯用法），且属 1.98 新/严 lint 面在 pinned 口径外的旁证告警；surface.rs LN2/PI 手写常量——数值锚定面（替换 core 常量像素行为微变，CheckSet 像素和对账风险>收益）；imepinyin first_page_ok 构建期判据自检恒真——**有意形态**（参数改坏即红的自检位，注释已声明"实机回填翻案只改参数"）。
+   - **环境缺口登记**：1.97.1 clippy/rustfmt 组件修复（rustup 重装）随环境窗口；2633 warnings 为 1.98 风格 lint 噪音非缺陷面。
+4. **ktest 复跑零回归**：修复后全量 **PASS=3662 FAIL=0**（+fuzz 1+parser 6 全绿）——fswl 三档闸与 ntfsro B-705 CheckSet 均绿（断言增强后仍过）。
+
+**复核结论**：验收标准核对共两缺口——tag 裁决（33.2 ④）与 fmt/clippy 实跑（35.4 第一道），本包闭合：tag 四枚补打、clippy 真实缺陷面修复两处零回归、fmt 口径裁决入册。**宿主可判面验收标准全项达成；实机硬项（烤机/断电终验/回滚演练/真人走查等 16 项）维持随队登记。**

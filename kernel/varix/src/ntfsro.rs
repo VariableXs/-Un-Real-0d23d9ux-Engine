@@ -244,11 +244,13 @@ pub fn run_ntfsro_checks() -> crate::checks::CheckSet {
         // 结构性防线：无写模式切换接口（API 面穷举论证——
         // 本模块全部 pub 项 = mount_ro/deny_write/allow_read/last_event
         // + 常量 + 类型定义；不存在 set_writable/enable_write 类入口）
-        set.add(
-            "B-705 无危险开关",
-            MOUNT_POINT == MOUNT_POINT && E_RO_FS == 30,
-            "API 面无写模式切换（MD3：危险开关的存在本身就是事故）",
-        );
+            // 钉死检查（非恒真自等）：挂载点必须钉在 /windows、错误码必须钉在 30——
+            // 任何人改这两个常量（即引入写路径或换错误语义）CheckSet 此项必红。
+            set.add(
+                "B-705 无危险开关",
+                MOUNT_POINT == "/windows" && E_RO_FS == 30,
+                "API 面无写模式切换（MD3：危险开关的存在本身就是事故）",
+            );
     }
     set
 }
