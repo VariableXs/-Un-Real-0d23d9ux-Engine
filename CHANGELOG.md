@@ -3,6 +3,28 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-K2 内核底盘域·后段（F058-F075 十八项落地）
+
+**kernel/varix/src/star/**（AI-K2 泳道一 B 后段，域聚合器 `run_star_checks` blocks=19，
+隔离舱实测 **143 通过 / 0 失败 / 0 警告**）：
+
+- **F058-F067 底盘十件**（memcomp/netbatch/battery/reggate/selfcheck/touchpad/
+  audiolow/wakegov/fsjournal/coldhot）：内存压缩前瞻评估件、网络小包批处理
+  （SSH P99 ≤30ms 线）、应用能耗账本、基准回归门、性能自检、触控板手势前瞻、
+  音频低延迟链（单流 ≤20ms）、唤醒源治理（合盖 2h ≤2 次）、FS 日志策略、
+  启动 IO 冷热分离（P99 <2ms）。
+- **F068-F070 底盘后段三件**：渲染资产按需装载（单主题 ≤80MB、切换无白屏）、
+  性能模式三档（静音/均衡/性能 12 旋钮 + F197 75℃ 强制静音、原子生效）、
+  性能域总判据（四层门 + 全帧集合分位 P95 ≤12.5ms/P99 ≤16.6ms + 版本漂移防护）。
+- **F071-F075 桌面体验五件**：开始菜单搜索直达（三类首结果 10/10 + 空查询
+  短路）、最近使用引擎（frecency 毫倍定点 + 三消费面同源）、任务栏预览缩略图
+  （应用分组卡列 ≤5 + 2Hz/1Hz 刷新降档 + 一致性对账）、跳转清单（F072 同源
+  最近区 + 应用域固定集 + 静态任务组 + 键盘可达）、托盘系统（三件套 + 折叠区 +
+  幽灵图标 30s 清道夫 + 滑杆 80fps 帧账闭环 + 点击 <100ms 闭环对账）。
+- 自检判据逐条钉死：每项 `run_*_checks() -> CheckSet`，聚合全绿；施工期缺陷
+  账本 40 项修复记录与行数对账（含低于 90% 目标项如实登记）见
+  `_attic/aik2-f058-f075/行数对账与缺陷账本.md`。
+
 ## [Unreleased] — VARIX 三体系统：M5 基建批收口（2026-09-22：S4.2 MSC + exFAT 受限直写 + last_boot 闭环 + AHCI + ushell 真壁纸）
 
 **内核（kernel/varix）**
