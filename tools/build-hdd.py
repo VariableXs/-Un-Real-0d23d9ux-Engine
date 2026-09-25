@@ -270,7 +270,10 @@ def main() -> int:
     # --uefi：产出 GPT + ESP 镜像（OVMF/真机 UEFI 引导），供 UEFI 走查用；
     # 默认（无参数）保持原 BIOS 行为与输出路径，零回归。
     uefi = "--uefi" in sys.argv
-    out_path = OUT_UEFI if uefi else OUT
+    # --diag：诊断专用镜像——kernel_cmdline 追加 panic_halt=1，panic 后保护屏
+    # 停机不复位（实机排障：错误码可从容拍摄）。输出 varix-diag.img。
+    diag = "--diag" in sys.argv
+    out_path = OUT_UEFI if uefi else (OUT.replace(".img", "-diag.img") if diag else OUT)
     if not os.path.isfile(KERNEL_ELF):
         print("ERROR: kernel ELF missing; run cargo kbuild first", file=sys.stderr)
         return 1
@@ -322,6 +325,11 @@ def main() -> int:
     root_recs += fat.dir_entry("efi", b"EFI       ", efi_dir_start)
     root_recs += fat.file_entry("limine-bios.sys", b"LIMINE~1SYS", bios_sys)
     conf_text = LIMINE_CONF_MENU if uefi else LIMINE_CONF
+    if diag:
+        conf_text = conf_text.replace(
+            "kernel_cmdline: desktop=1 boot_timeout=0",
+            "kernel_cmdline: desktop=1 boot_timeout=0 panic_halt=1",
+        )
     # 短名必须严格 8+3：位置 0..7 是名字（不足用空格补齐），8..10 是扩展名。
     # 写成 b"LIMINE.CONF"（11 字节）会把第 8 字节填成 '.'，落成
     # "LIMINE.C.ONF" 这种畸形短名（实测 OVMF 能靠 LFN 找到文件，但不符合

@@ -475,6 +475,32 @@ pub fn panic_sequence(info: &core::panic::PanicInfo<'_>) -> ! {
     let line = info.location().map(|l| l.line()).unwrap_or(0);
     let wrote = write_guard_band(line, tsc, detail);
     crate::kinfo!("panic: guard band written={}", wrote);
+    // ②.5 诊断停机（panic_halt=1）：保护屏 + 现场带就位后**不倒计时不复位**，
+    //     原地停机——实机排障专用（屏幕不再被循环冲掉，错误码可从容拍摄）。
+    //     默认（无此旗标）保持生产语义：十秒复位。
+    if crate::cmdline::flag("panic_halt") {
+        crate::kinfo!("panic-halt: panic_halt=1 — halting for diagnosis (no reset)");
+        let _ = paint_protect_screen(detail, 0);
+        if let Some(fb) = crate::limine::framebuffer() {
+            if let Ok(s) = crate::fb::Surface::from_limine(fb) {
+                let w = s.width() as i64;
+                let h = s.height() as i64;
+                let dim = crate::fb::Color::rgb(0x9A, 0xA6, 0xB8);
+                let text = "panic_halt=1: halted for diagnosis (no reboot)";
+                crate::font::draw_text_scaled(
+                    &s,
+                    w / 8,
+                    h - 24,
+                    text,
+                    dim,
+                    1,
+                );
+            }
+        }
+        loop {
+            core::hint::spin_loop();
+        }
+    }
     // ③ 十秒倒计时（TSC 自旋，不依赖中断与时钟域）。
     let mut left = COUNTDOWN_SECS;
     while left > 0 {
