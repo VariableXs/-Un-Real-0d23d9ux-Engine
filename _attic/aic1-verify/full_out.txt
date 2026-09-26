@@ -1,0 +1,111 @@
+
+running 22 tests
+test checkup::domain_count_matches ... ok
+test checks::tests::kernel_checkup_aggregates ... ok
+test checkup::f001 ... ok
+test checkup::f008 ... ok
+test checkup::f002 ... FAILED
+test checkup::f012 ... FAILED
+test checkup::f014 ... FAILED
+test checkup::f013 ... FAILED
+test checkup::f015 ... ok
+test checkup::f007 ... FAILED
+test checkup::f016 ... ok
+test checkup::f018 ... ok
+test checkup::f019 ... ok
+test checkup::f020 ... FAILED
+test checkup::f017 ... ok
+test checkup::f009 ... ok
+test checkup::f005 ... ok
+test checkup::f003 ... FAILED
+test checkup::f010 ... ok
+test checkup::f004 ... ok
+test checkup::f011 ... FAILED
+test checkup::f006 ... ok
+
+failures:
+
+---- checkup::f002 stdout ----
+
+thread 'checkup::f002' (2956) panicked at src\lib.rs:47:38:
+domain failed:
+F002-peblend FAIL 8/10
+  - adversarial_30_rejected: constructed malformed set
+  - reloc_highlow_dir64_applied: 
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- checkup::f012 stdout ----
+
+thread 'checkup::f012' (36112) panicked at src\lib.rs:117:39:
+domain failed:
+F012-condrv FAIL 8/10
+  - vt_suite_40_of_40: 
+  - flood_throttled_keeps_latest: 
+
+
+---- checkup::f014 stdout ----
+
+thread 'checkup::f014' (14872) panicked at src\lib.rs:131:39:
+domain failed:
+F014-persrc FAIL 6/10
+  - icon_exact_match: 
+  - icon_nearest_larger: 
+  - icon_upscale_flagged: 
+  - version_info_strings: 
+
+
+---- checkup::f013 stdout ----
+
+thread 'checkup::f013' (2820) panicked at src\lib.rs:124:39:
+domain failed:
+F013-lnkfile FAIL 10/11
+  - sample2_unicode_icon_index: 
+
+
+---- checkup::f007 stdout ----
+
+thread 'checkup::f007' (37056) panicked at src\lib.rs:82:38:
+domain failed:
+F007-gdiplus FAIL 13/14
+  - pool_and_streaming: 
+
+
+---- checkup::f020 stdout ----
+
+thread 'checkup::f020' (5592) panicked at src\lib.rs:173:39:
+domain failed:
+F020-excface FAIL 14/15
+  - frame_stack_32_cap: 
+
+
+---- checkup::f003 stdout ----
+
+thread 'checkup::f003' (33716) panicked at src\lib.rs:54:38:
+domain failed:
+F003-pebind FAIL 12/13
+  - hit_rate_above_80pct: 
+
+
+---- checkup::f011 stdout ----
+
+thread 'checkup::f011' (25328) panicked at src\lib.rs:110:39:
+domain failed:
+F011-envsess FAIL 9/11
+  - expansion_chain: 
+  - cycle_truncated_with_warn: 
+
+
+
+failures:
+    checkup::f002
+    checkup::f003
+    checkup::f007
+    checkup::f011
+    checkup::f012
+    checkup::f013
+    checkup::f014
+    checkup::f020
+
+test result: FAILED. 14 passed; 8 failed; 0 ignored; 0 measured; 125 filtered out; finished in 0.29s
+

@@ -1,0 +1,61 @@
+
+running 22 tests
+test checkup::domain_count_matches ... ok
+test checks::tests::kernel_checkup_aggregates ... ok
+test checkup::f001 ... ok
+test checkup::f002 ... FAILED
+test checkup::f008 ... ok
+test checkup::f012 ... ok
+test checkup::f007 ... ok
+test checkup::f014 ... ok
+test checkup::f013 ... ok
+test checkup::f015 ... ok
+test checkup::f016 ... ok
+test checkup::f018 ... ok
+test checkup::f019 ... ok
+test checkup::f020 ... ok
+test checkup::f017 ... ok
+test checkup::f005 ... ok
+test checkup::f009 ... ok
+test checkup::f003 ... FAILED
+test checkup::f010 ... ok
+test checkup::f004 ... ok
+test checkup::f011 ... FAILED
+test checkup::f006 ... ok
+
+failures:
+
+---- checkup::f002 stdout ----
+
+thread 'checkup::f002' (10044) panicked at src\lib.rs:47:38:
+domain failed:
+F002-peblend FAIL 8/10
+  - adversarial_30_rejected: constructed malformed set
+  - reloc_highlow_dir64_applied: 
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- checkup::f003 stdout ----
+
+thread 'checkup::f003' (36396) panicked at src\lib.rs:54:38:
+domain failed:
+F003-pebind FAIL 12/13
+  - hit_rate_above_80pct: 
+
+
+---- checkup::f011 stdout ----
+
+thread 'checkup::f011' (7428) panicked at src\lib.rs:110:39:
+domain failed:
+F011-envsess FAIL 10/11
+  - cycle_truncated_with_warn: 
+
+
+
+failures:
+    checkup::f002
+    checkup::f003
+    checkup::f011
+
+test result: FAILED. 19 passed; 3 failed; 0 ignored; 0 measured; 129 filtered out; finished in 0.27s
+

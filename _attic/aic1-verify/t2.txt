@@ -1,0 +1,210 @@
+
+running 187 tests
+test checks::tests::numbers_render_as_decimal ... ok
+test checks::tests::kernel_checkup_aggregates ... ok
+test checks::tests::set_records_and_tallies ... ok
+test checks::tests::set_capacity_is_bounded ... ok
+test checks::tests::set_renders_failures_only ... ok
+test checkup::f008 ... ok
+test checks::tests::exactly_full_is_not_truncated ... ok
+test checkup::f001 ... ok
+test checkup::domain_count_matches ... ok
+test checkup::f002 ... ok
+test checkup::f013 ... ok
+test checkup::f012 ... ok
+test checkup::f014 ... ok
+test checkup::f007 ... ok
+test checkup::f016 ... ok
+test checkup::f015 ... ok
+test checkup::f018 ... ok
+test checkup::f019 ... ok
+test checkup::f020 ... ok
+test compatstar::clipfmt::ext_tests::ansi_to_unicode_synthesis ... ok
+test compatstar::clipfmt::ext_tests::synthesis_honest_failures ... ok
+test checkup::f017 ... ok
+test compatstar::clipfmt::tests::negotiation_downgrade_honest ... ok
+test compatstar::clipfmt::ext_tests::synthesis_matrix ... ok
+test compatstar::clipfmt::tests::history_eviction_ring ... ok
+test compatstar::comdlg::tests::crash_reclaim_only_when_modal_open ... ok
+test compatstar::comdlg::tests::filter_bad_segments_never_crash ... ok
+test compatstar::comdlg::tests::filter_wildcard_edges ... ok
+test compatstar::clipfmt::tests::registered_formats_session_scoped ... ok
+test checkup::f005 ... ok
+test compatstar::clipfmt::ext_tests::unicode_to_ansi_synthesis ... ok
+test compatstar::clipfmt::tests::delayed_render_wrong_handle_rejected ... ok
+test compatstar::comdlg::tests::hsv_primary_colors ... ok
+test compatstar::comdlg::tests::memory_upsert_per_family ... ok
+test compatstar::comdlg::tests::modal_exactly_one_owner ... ok
+test compatstar::clipfmt::tests::text_content_round_trip ... ok
+test compatstar::clipfmt::tests::takeover_only_for_owner ... ok
+test compatstar::comdlg::tests::budgets_boundary_exact ... ok
+test compatstar::comloc::ext_tests::class_factory_standard_activation ... ok
+test compatstar::comloc::tests::error_cards_three_elements_all ... ok
+test compatstar::comloc::ext_tests::persist_file_lifecycle ... ok
+test compatstar::comloc::tests::qi_matrix_per_family ... ok
+test compatstar::comloc::tests::leak_report_zero_after_clean_exit ... ok
+test compatstar::comloc::tests::object_table_cap_honest ... ok
+test compatstar::comloc::tests::register_idempotent ... ok
+test compatstar::comloc::tests::release_below_zero_clamped ... ok
+test checkup::f009 ... ok
+test compatstar::dblrun::ext_tests::ring_capacity_and_eviction ... ok
+test compatstar::dblrun::ext_tests::consecutive_failure_streak ... ok
+test compatstar::dblrun::tests::dedup_merge_window ... ok
+test compatstar::dblrun::tests::breath_alpha_sweep ... ok
+test compatstar::dblrun::tests::placeholder_required_when_over_500ms ... ok
+test compatstar::condrv::tests::erase_display_2_clears_all ... ok
+test compatstar::dblrun::tests::gui_happy_path_under_3s ... ok
+test compatstar::dblrun::tests::refusal_paths_are_distinct ... ok
+test compatstar::condrv::tests::seven_zip_full_flow_exit_code_fidelity ... ok
+test compatstar::dblrun::tests::esc_cancel_zero_residue ... ok
+test compatstar::condrv::tests::osc_oversize_dropped_safely ... ok
+test compatstar::condrv::ext_tests::console_mode_gating ... ok
+test compatstar::condrv::tests::cursor_clamped_in_grid ... ok
+test compatstar::dblrun::tests::zero_disk_and_cpu_cap_accounting ... ok
+test compatstar::dblrun::tests::three_entry_single_pipeline ... ok
+test compatstar::condrv::tests::stdin_blocked_killed_on_close ... ok
+test compatstar::condrv::ext_tests::decset_decrst_parsing ... ok
+test compatstar::dblrun::tests::residue_reporting_is_honest ... ok
+test compatstar::dblrun::ext_tests::audit_ring_records_and_counts ... ok
+test compatstar::condrv::tests::vt_param_overflow_clamped ... ok
+test compatstar::dragdrop::ext_tests::query_continue_semantics ... ok
+test compatstar::dragdrop::ext_tests::feedback_cursor_mapping ... ok
+test compatstar::dragdrop::ext_tests::source_loop_integration ... ok
+test compatstar::dragdrop::tests::commit_only_from_entered ... ok
+test compatstar::dragdrop::tests::dead_drag_counts_from_last_move ... ok
+test compatstar::dragdrop::tests::enter_requires_acceptance ... ok
+test compatstar::dragdrop::tests::full_success_path_five_states ... ok
+test compatstar::dragdrop::tests::hub_reap_counts_both_ends ... ok
+test compatstar::dragdrop::tests::leave_from_entered_also_cancels ... ok
+test checkup::f004 ... ok
+test compatstar::excface::tests::dump_lru_evicts_oldest_stamp ... ok
+test compatstar::excface::tests::veh_before_seh_ordering ... ok
+test compatstar::excface::tests::restart_snapshot_preserved ... ok
+test compatstar::fontchain::ext_tests::lf_height_semantics ... ok
+test compatstar::excface::ext_tests::dump_serialization_round_trip ... ok
+test compatstar::excface::ext_tests::dump_serialization_honest_rejections ... ok
+test compatstar::excface::tests::six_samples_full_matrix ... ok
+test checkup::f003 ... ok
+test checkup::f010 ... ok
+test compatstar::excface::tests::tracker_multiple_files_independent ... ok
+test compatstar::fontchain::ext_tests::logfont_full_request ... ok
+test compatstar::fontchain::tests::all_twenty_resolve ... ok
+test compatstar::excface::tests::translator_frames_hold_code_and_addr ... ok
+test compatstar::fontchain::tests::pt_to_px_rounding_within_1px ... ok
+test compatstar::fontchain::tests::pt_clamp_honored ... ok
+test compatstar::fontchain::tests::synthesis_only_when_lacking ... ok
+test compatstar::fsredir::ext_tests::known_folder_table ... ok
+test compatstar::fsredir::ext_tests::override_declaration_and_hits ... ok
+test compatstar::fsredir::tests::normalize_edge_cases ... ok
+test compatstar::fsredir::tests::sandbox_visible_as_normal_folder ... ok
+test compatstar::fsredir::tests::mirror_hash_unchanged_after_50_writes ... ok
+test compatstar::fsredir::tests::read_layers_match_tiers ... ok
+test compatstar::gdiface::tests::invalid_handles_honest_failures ... ok
+test compatstar::gdiface::tests::double_buffer_one_shot_commit ... ok
+test compatstar::envsess::tests::first_case_wins_windows_semantics ... ok
+test compatstar::envsess::tests::expansion_single_pass_and_nested ... ok
+test compatstar::gdiplus::tests::path_cap_honest_reject ... ok
+test compatstar::fsredir::tests::audit_entries_explainable_sample_20 ... ok
+test compatstar::envsess::tests::temp_points_to_sandbox_tmp ... ok
+test compatstar::envsess::tests::computername_sourced_from_device ... ok
+test compatstar::envsess::tests::std_names_round_trip ... ok
+test compatstar::gdiface::tests::pressure_100k_stable ... ok
+test compatstar::envsess::tests::remove_and_refilter ... ok
+test compatstar::gdiface::tests::dc_types_distinct ... ok
+test compatstar::gdiplus::tests::png_crc_genuine ... ok
+test compatstar::fsredir::tests::traversal_attempts_denied_and_audited ... ok
+test compatstar::gdiplus::tests::pool_quota_returns_oom_semantics ... ok
+test compatstar::envsess::tests::snapshot_immutable ... ok
+test compatstar::gdiplus::tests::streaming_large_bitmap_no_spike ... ok
+test compatstar::lnkfile::tests::broken_link_action_set ... ok
+test compatstar::lnkfile::tests::chain_resolution_depth ... ok
+test compatstar::gdiplus::tests::brush_gradient_endpoints ... ok
+test compatstar::gdiplus::tests::flush_without_pending_is_noop ... ok
+test compatstar::gdiplus::tests::ssim_extremes ... ok
+test compatstar::gdiface::tests::rop_support_table_semantics ... ok
+test compatstar::lnkfile::tests::corrupt_inputs_rejected ... ok
+test compatstar::lnkfile::tests::fifteen_constructed_samples_all_parse ... ok
+test compatstar::lnkfile::tests::icon_location_with_index ... ok
+test compatstar::lnkfile::tests::unicode_flag_does_not_break_ascii_paths ... ok
+test compatstar::mlangres::tests::big5_and_sjis_tables_present ... ok
+test compatstar::mlangres::tests::gbk_cjk_sample ... ok
+test compatstar::mlangres::tests::decode_output_buffer_bounded ... ok
+test compatstar::mlangres::tests::language_selection_matrix ... ok
+test compatstar::mlangres::tests::mixed_ascii_and_gbk ... ok
+test compatstar::mlangres::tests::truncated_double_byte_is_fffd ... ok
+test compatstar::peblend::ext_tests::import_bad_rva_rejected ... ok
+test compatstar::pebind::ext_tests::cache_file_corruption_self_heal_path ... ok
+test compatstar::pebind::ext_tests::cache_file_round_trip ... ok
+test compatstar::peblend::ext_tests::import_walk_full_chain ... FAILED
+test compatstar::peblend::ext_tests::import_bound_flag_and_empty ... FAILED
+test compatstar::peblend::tests::adversarial_rejections ... ok
+test compatstar::peblend::tests::lazy_commit_stays_under_ratio ... ok
+test compatstar::peblend::tests::error_strings_are_honest ... ok
+test compatstar::peblend::tests::reloc_full_semantics ... ok
+test compatstar::peblend::tests::static_samples_all_load ... ok
+test compatstar::persrc::tests::icon_priority_chain_full ... ok
+test compatstar::persrc::tests::ids_of_type_enumerates_groups ... ok
+test compatstar::peblend::tests::subsystem_routing ... ok
+test compatstar::persrc::tests::resdir_overflow_safety ... ok
+test compatstar::persrc::tests::manifest_permonitorv2_accepted ... ok
+test compatstar::persrc::tests::version_binary_fixed_info ... ok
+test compatstar::reghive::ext_tests::enumeration_and_export ... ok
+test compatstar::reghive::tests::record_helpers ... ok
+test compatstar::winmgr::ext_tests::extended_message_surface ... ok
+test compatstar::winmgr::ext_tests::style_validation_semantics ... ok
+test compatstar::winmgr::tests::def_window_proc_documented_set ... ok
+test compatstar::winmgr::tests::high_freq_surface_40 ... ok
+test compatstar::winmgr::tests::nc_hit_test_grid ... ok
+test compatstar::reghive::tests::over_alarm_only_past_256mb ... ok
+test compatstar::winmgr::tests::queue_backpressure_honest ... ok
+test compatstar::winmgr::tests::seven_families_round_trip ... ok
+test compatstar::wow64::tests::mixed_package_distinct_from_plain_32 ... ok
+test compatstar::wow64::tests::corrupt_headers_not_our_business ... ok
+test compatstar::wow64::tests::ledger_second_click_quiet ... ok
+test compatstar::wow64::tests::no_bare_reject_wording ... ok
+test compatstar::wow64::tests::peblock_ordering_redline ... ok
+test diag3::diag3::adversarial_labels ... ok
+test compatstar::wow64::tests::ten_thirtytwo_samples_all_card ... ok
+test diag4::diag4::each_case ... ok
+test compatstar::reghive::ext_tests::export_bounded_truncation_honest ... ok
+test compatstar::reghive::tests::install_use_uninstall_cycle_template_zero_write ... ok
+test compatstar::reghive::tests::clsid_subtree_path ... ok
+test compatstar::reghive::tests::two_apps_same_key_no_interference ... ok
+test checkup::f011 ... ok
+test diag::diag::icon_pick_detail ... ok
+test diag::diag2::peblend_reloc_detail ... ok
+test diag::diag2::peblend_adversarial_count ... ok
+test diag::diag::lnk_sample2_detail ... ok
+test diag::diag::vt_suite_mismatch_detail ... ok
+test diag::diag::version_parse_detail ... ok
+test diag::diag2::pebind_rate_detail ... ok
+test diag::diag::rva_to_off_detail ... ok
+test compatstar::winmgr::tests::atom_table_windows_rules ... ok
+test compatstar::reghive::tests::oversized_key_or_value_rejected ... ok
+test diag::diag2::envsess_cycle_detail ... ok
+test compatstar::winmgr::tests::per_window_queues_do_not_block_each_other ... ok
+test compatstar::reghive::tests::power_cut_100_recoveries ... ok
+test compatstar::wow64::tests::ledger_ring_overflow_is_capped ... ok
+test checkup::f006 ... ok
+test compatstar::gdiface::tests::cap_10000_and_leak_dump ... ok
+
+failures:
+
+---- compatstar::peblend::ext_tests::import_walk_full_chain stdout ----
+
+thread 'compatstar::peblend::ext_tests::import_walk_full_chain' (9556) panicked at src\compatstar\peblend.rs:1085:62:
+called `Result::unwrap()` on an `Err` value: BadSectionTable
+
+---- compatstar::peblend::ext_tests::import_bound_flag_and_empty stdout ----
+
+thread 'compatstar::peblend::ext_tests::import_bound_flag_and_empty' (35592) panicked at src\compatstar\peblend.rs:1103:63:
+called `Result::unwrap()` on an `Err` value: BadSectionTable
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    compatstar::peblend::ext_tests::import_bound_flag_and_empty
+    compatstar::peblend::ext_tests::import_walk_full_chain
+
+test result: FAILED. 185 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
