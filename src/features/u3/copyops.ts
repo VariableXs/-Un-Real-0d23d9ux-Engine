@@ -83,7 +83,7 @@ export type SpaceDecision = "proceed" | "change-target" | "cancel";
 export function spaceCheck(input: SpaceCheckInput): { ok: boolean; shortfalls: Array<{ volume: string; freeGB: number; needGB: number }> } {
   const shortfalls: Array<{ volume: string; freeGB: number; needGB: number }> = [];
   for (const vol of Object.keys(input.perTargetNeed)) {
-    const need = input.perTargetNeed[vol] * (1 + SPACE_CHECK_BUFFER_PCT / 100);
+    const need = (input.perTargetNeed[vol] ?? 0) * (1 + SPACE_CHECK_BUFFER_PCT / 100);
     const free = input.perTargetFree[vol] ?? 0;
     if (free < need) shortfalls.push({ volume: vol, freeGB: free / 1024 ** 3, needGB: need / 1024 ** 3 });
   }
@@ -271,8 +271,8 @@ export function copyopsSelfCheck(): Array<{ name: string; pass: boolean }> {
   checks.push({ name: "F524 超时真释放", pass: rt3.released && undoBinRestore(rt3) === null });
   // 空间预检
   const sc = spaceCheck({ totalBytes: 0, perTargetFree: { "D:": 2.1 * 1024 ** 3 }, perTargetNeed: { "D:": 3.4 * 1024 ** 3 } });
-  checks.push({ name: "F529 预检拦截", pass: !sc.ok && sc.shortfalls[0].volume === "D:" });
-  checks.push({ name: "F529 人话文案", pass: shortfallMessage(sc.shortfalls[0]).includes("10% 缓冲") });
+  checks.push({ name: "F529 预检拦截", pass: !sc.ok && sc.shortfalls[0]?.volume === "D:" });
+  checks.push({ name: "F529 人话文案", pass: !sc.ok && shortfallMessage(sc.shortfalls[0]!).includes("10% 缓冲") });
   // 校验决策
   const vr: VerifyRt = { enabled: true, autoAboveBytes: COPY_VERIFY_AUTO_ABOVE };
   checks.push({ name: "F530 >1GB 自动开", pass: shouldVerify(vr, 2 * 1024 ** 3) && !shouldVerify(vr, 100 * 1024 * 1024) && !shouldVerify({ ...vr, enabled: false }, 2 * 1024 ** 3) });
@@ -285,12 +285,12 @@ export function copyopsSelfCheck(): Array<{ name: string; pass: boolean }> {
   const picks = scheduleQueue(q, new Set(), 2);
   checks.push({ name: "F531 同盘串行异盘并行", pass: picks.length === 2 && picks.every((p) => p.volume !== "C:" || picks.filter((x) => x.volume === "C:").length === 1) });
   const jumped = jumpQueue(q, "3");
-  checks.push({ name: "F531 插队", pass: scheduleQueue(jumped, new Set(), 2)[0].id === "3" });
+  checks.push({ name: "F531 插队", pass: scheduleQueue(jumped, new Set(), 2)[0]?.id === "3" });
   // 诊断四类
   const d1 = diagnoseOpenFail(new Uint8Array([0x50, 0x4b, 0x00, 0x00]), "编辑器", false);
   const d2 = diagnoseOpenFail(null, null, false);
   const d3 = diagnoseOpenFail(null, "编辑器", true);
-  checks.push({ name: "F532 四类归因+三问", pass: d1.kind === "corrupt" && d2.kind === "app-missing" && d3.kind === "permission" && d1.what && d1.why && d1.next });
+  checks.push({ name: "F532 四类归因+三问", pass: d1.kind === "corrupt" && d2.kind === "app-missing" && d3.kind === "permission" && d1.what !== "" && d1.why !== "" && d1.next !== "" });
   // 只读提醒一次
   const seen = new Set<string>();
   const u = readOnlyReminder({ volume: "E:", readOnly: true, cause: "switch" }, seen);

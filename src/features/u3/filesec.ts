@@ -16,8 +16,6 @@
  *   通知一次）；历史持久仅含已保存项的引用」。
  */
 
-import { u3Store } from "./u3store";
-
 /* ------------------------------- F509 文件粉碎 ------------------------------- */
 
 /** 覆写遍数（默认 3：全 0/全 1/随机—— gutmann 简化族）。 */
@@ -35,6 +33,7 @@ export function shredPlan(medium: ShredMediumCapability, files: string[]): {
   warning: string;
   estSecondsPerMB: number;
 } {
+  void files; // 策略层不消费文件清单（界面警示层消费）
   if (medium === "overwrite-ok") {
     return {
       mode: "overwrite",

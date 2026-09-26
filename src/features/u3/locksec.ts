@@ -182,6 +182,7 @@ export function redactRects(markers: Record<string, WindowRect>, shot: WindowRec
   const out: WindowRect[] = [];
   for (const id of Object.keys(markers)) {
     const m = markers[id];
+    if (!m) continue;
     const x1 = Math.max(m.x, shot.x);
     const y1 = Math.max(m.y, shot.y);
     const x2 = Math.min(m.x + m.w, shot.x + shot.w);
@@ -223,7 +224,7 @@ export function locksecSelfCheck(): Array<{ name: string; pass: boolean }> {
   btLockTick(rt, false, 1000);
   const glitch = btLockTick(rt, true, 5000); // 闪现 4s
   btLockTick(rt, false, 8000);
-  const early = btLockTick(rt, 8000 + 26_000, 34_000); // 恢复失联 26s（自波动点起算 <30s）
+  const early = btLockTick(rt, false, 34_000); // 恢复失联 26s（自波动点起算 <30s）
   checks.push({ name: "F505 30s 触发+波动豁免", pass: !glitch.lock && !early.lock });
   const rt2: BtLockRuntimeState = { lastSeenMs: 0, awaySinceMs: null };
   btLockTick(rt2, false, 0);
@@ -237,7 +238,7 @@ export function locksecSelfCheck(): Array<{ name: string; pass: boolean }> {
   checks.push({ name: "F507 三路+API 全拒/非锁屏零开销", pass: blocked.every(Boolean) && open });
   // 防截黑块：几何对齐 + 未标记零影响
   const rects = redactRects({ a: { x: 100, y: 100, w: 200, h: 80 } }, { x: 150, y: 120, w: 400, h: 300 });
-  checks.push({ name: "F508 黑块几何对齐", pass: rects.length === 1 && rects[0].x === 150 && rects[0].y === 120 && rects[0].w === 150 && rects[0].h === 60 });
+  checks.push({ name: "F508 黑块几何对齐", pass: rects.length === 1 && rects[0]?.x === 150 && rects[0]?.y === 120 && rects[0]?.w === 150 && rects[0]?.h === 60 });
   checks.push({ name: "F508 未标记零影响", pass: redactRects({}, { x: 0, y: 0, w: 100, h: 100 }).length === 0 });
   return checks;
 }

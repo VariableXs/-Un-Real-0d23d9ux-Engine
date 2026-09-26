@@ -428,7 +428,7 @@ describe("资源管理器七件", () => {
     ];
     const card = keycardModel(rows);
     expect(card.format).toBe("png-1page");
-    expect(card.pages[0].length + card.pages[1].length).toBe(4);
+    expect(card.pages[0]!.length + card.pages[1]!.length).toBe(4); // keycardModel 恒返两页
     // 分色：custom=true 标为 custom
     const flat = card.pages.flat();
     expect(flat.filter((r) => r.tone === "custom").map((r) => r.keys)).toEqual(["Ctrl+Shift+Delete", "Ctrl+Q"]);
@@ -488,8 +488,8 @@ describe("复制链七件", () => {
       perTargetNeed: { "D:": 3.4 * 1024 ** 3, "E:": 1 * 1024 ** 3 },
     });
     expect(sc.ok).toBe(false); // 3.4*1.1=3.74 > 3.7 拦下
-    expect(sc.shortfalls[0].volume).toBe("D:");
-    expect(shortfallMessage(sc.shortfalls[0])).toContain("10% 缓冲");
+    expect(sc.shortfalls[0]!.volume).toBe("D:");
+    expect(shortfallMessage(sc.shortfalls[0]!)).toContain("10% 缓冲");
     const ok = spaceCheck({ totalBytes: 0, perTargetFree: { "D:": 4 * 1024 ** 3 }, perTargetNeed: { "D:": 3.4 * 1024 ** 3 } });
     expect(ok.ok).toBe(true);
   });
@@ -644,7 +644,7 @@ describe("系统与设备八件", () => {
     expect(pass.advice).toContain("通过");
     const fail = memDiagReportShape(true, [{ from: "0x1A2B", to: "0x1A3F" }]);
     expect(fail.verdict).toBe("fail");
-    expect(fail.badRanges[0].from).toBe("0x1A2B");
+    expect(fail.badRanges[0]!.from).toBe("0x1A2B");
     expect(fail.advice).toContain("送检");
   });
 
@@ -770,8 +770,8 @@ describe("F549 时钟悬停完整日期（农历离线引擎）", () => {
 
   it("农历年天数与位表解码", () => {
     // 2025 乙巳闰六月：384 天；2026 丙午：354 天
-    expect(lunarYearDays(LUNAR_INFO[0])).toBe(384);
-    expect(lunarYearDays(LUNAR_INFO[1])).toBe(354);
+    expect(lunarYearDays(LUNAR_INFO[0]!)).toBe(384);
+    expect(lunarYearDays(LUNAR_INFO[1]!)).toBe(354);
   });
 
   it("Tooltip 三要素一行 + 农历开关", () => {
@@ -784,8 +784,8 @@ describe("F549 时钟悬停完整日期（农历离线引擎）", () => {
 /* ------------------------------- F550 ------------------------------- */
 
 describe("F550 批次六验收锚点（前端面九域自检）", () => {
-  it("九域注册齐全且检查点 ≥ 25", () => {
-    expect(U3_ANCHOR_DOMAINS.length).toBe(9);
+  it("十域注册齐全（九功能域+F550 锚点域自身）且检查点 ≥ 25", () => {
+    expect(U3_ANCHOR_DOMAINS.length).toBe(10);
     const total = U3_ANCHOR_DOMAINS.reduce((a, d) => a + d.run().length, 0);
     expect(total).toBeGreaterThanOrEqual(U3_ANCHOR_MIN_CHECKS);
   });

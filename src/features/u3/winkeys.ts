@@ -83,6 +83,7 @@ export type WinNumVerdict =
 export function winNumberResolve(slots: TaskbarSlot[], digit: number, shift: boolean, focusedAppId: string | null): WinNumVerdict {
   if (digit < 0 || digit > 9 || digit >= slots.length) return { action: "none" };
   const slot = slots[digit];
+  if (!slot) return { action: "none" }; // 防御（上方越界守卫已覆盖）
   if (shift) return { action: "new-instance", appId: slot.appId };
   if (!slot.running) return { action: "launch", appId: slot.appId };
   if (focusedAppId === slot.appId) return { action: "minimize-toggle", appId: slot.appId };
@@ -140,7 +141,8 @@ export interface AltEscRt { altHeld: boolean }
 export function altEscStep(rt: AltEscRt, zOrder: string[], now: number, lastStepMs: number): { focusId: string | null; minimizedRestored: boolean } {
   if (!rt.altHeld || zOrder.length === 0) return { focusId: null, minimizedRestored: false };
   if (now - lastStepMs < 100) return { focusId: null, minimizedRestored: false }; // 连按节奏保护
-  const next = zOrder[zOrder.length - 1]; // Z 序最后 = 最久未用 → 循环后退
+  const next = zOrder[zOrder.length - 1] ?? null; // Z 序最后 = 最久未用 → 循环后退
+  if (!next) return { focusId: null, minimizedRestored: false };
   return { focusId: next, minimizedRestored: true };
 }
 

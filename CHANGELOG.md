@@ -3,6 +3,34 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次三 · 接线面+隔离验证+检查项对账）
+
+**src/features/u3/actions|ledger|reconcile|deskiconLayer + U3Runtime/anchor/U3Tab 增强**
+（AI-U3 泳道四三分队，2026-09-26 v3 批次；Variable 指令「继续大量深化 + 隔离验证 +
+检查项对账」三件全落地）：
+
+- **vx-u3-action 动作路由中心**（actions.ts）：12 动作登记表（F520 中键最小化/
+  F535 Win+数字/F539 布局锁定/F542 ClickLock/F524 后悔窗/F511 清空/F505 锁屏…）
+  + 应用>全局两级路由 + winnum-N/lockscreen: 别名事件 + 未处理显性化——对齐
+  J1 actions.ts 同构哲学，桌面标题栏加 data-u3-titlebar 即接入中键最小化
+  （开放扩展点不越权）。
+- **F542 ClickLock 真鼠标管线**：mousedown/mouseup/click/Esc 四事件驱动状态机，
+  抓起态 html 级光环标记 + 抓起/放下/放弃三出口动作化。
+- **F550 三面对账引擎**（reconcile.ts + ledger.ts 数据层 + U3Tab 实时面板）：
+  主册 50 判据 × 内核 616 CheckSet/307 单测账册（对源码实测自证——copyops 43
+  勘误 v1 报告笔误 42）× 前端十域自检 74 检查点现场重跑，50/50 三面在位，
+  缺面显性化 + 破坏注入测试钉住；F400/F575 编号空间合并无冲突断言。
+- **桌面接线件**（deskiconLayer.tsx）：IconLabel 渲染件（双层渲染+两行封顶+
+  亮度选字）、vx-u3-resnap 网格重排出口、vx-u3-shake 布局锁定拒绝反馈、
+  F549 ClockHoverTip 悬停件。
+- **隔离验证（worktree 干净快照）**：HEAD=e205239e 快照 + 仅本包 17 文件 →
+  vitest 96/96 全绿、tsc U3 领地 0 错；纯 HEAD 对照证实 windowRuntime 6 错
+  （AI-J1 既有）与 DesktopD2Panels 2 错（AI-D2 在制品）与本包无关。隔离验证
+  即时兑现：揪出并清零 v2 遗留严格模式债约 70 处（含 GridDensity 类型缺
+  "custom" 档真 bug）+ 循环依赖消环（ledger.ts）+ 递归自调用栈溢出修复。
+- **行数对账**：v1 19,480 + v2 2,566 + v3 ≈540 = 22,586 / 46,540（48.5%，
+  如实呈报）；96 前端单测 + 616 内核 CheckSet + 307 内核单测全绿。
+
 ## [Unreleased] — Varix STAR I · AI-H2 H 域二分队深化批次二（F251-F300 · 引擎接线+检查项对账）
 
 **kernel/varix/src/h2star/ 引擎五件新增 + 模块群纵深十二件 + 检查项对账总表**（2026-09-26，域 14,231 → 16,689 行，累计 33.0%）：

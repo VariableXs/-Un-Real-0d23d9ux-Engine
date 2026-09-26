@@ -15,23 +15,26 @@ import {
   effectiveGrid, resnapToGrid, type GridDensity,
 } from "../u3/deskicons";
 import {
-  pinShapeOk, pinCooldownMs, PIN_COOLDOWN_BASE_MS, setPin, GUEST_SESSION_CAP_MIN,
+  pinShapeOk, pinCooldownMs, setPin, GUEST_SESSION_CAP_MIN,
   GUEST_SANDBOX_AXES, guestCapability, SCREENSHOT_CHANNELS, lockScreenShotPolicy, redactRects, REDACT_NOTE,
 } from "../u3/locksec";
-import { shredPlan, shredWarningItems, ONE_CRYPT_KEEP_NOTE, CLIP_WIPE_HOTKEY, CLIP_SECRET_PROMPT_MS, SHOT_HISTORY_CAP, SHOT_TARGET_LABELS, type ShotTarget } from "../u3/filesec";
+import { shredPlan, shredWarningItems, ONE_CRYPT_KEEP_NOTE, CLIP_WIPE_HOTKEY, CLIP_SECRET_PROMPT_MS, SHOT_HISTORY_CAP } from "../u3/filesec";
 import {
   CTRL_FIND_HOLD_MS, CTRL_COMBO_EXEMPT, SV_EDGE_PX, CAPS_TONE_HZ, titleBarAction,
   TRAIL_LEN_MS, TYPE_HIDE_OPACITY, TYPE_HIDE_RESUME_MS, type TrailLen,
 } from "../u3/pointerfx";
 import {
   EXPLORER_HOME_NOTES, type ExplorerHome, shotFileName, keycardModel,
-  statusBarSegments, TREE_COMMAND_KEYS, TREE_SYNC_FOCUS_NOTE,
+  statusBarSegments, TREE_COMMAND_KEYS, TREE_SYNC_FOCUS_NOTE, SHOT_TARGET_LABELS, type ShotTarget,
 } from "../u3/explorerx";
 import {
   UNDO_BIN_WINDOW_MS, UNDO_BIN_EXTEND_MS, SPACE_CHECK_BUFFER_PCT, COPY_VERIFY_AUTO_ABOVE,
-  shortfallMessage, DEVICE_VOLUME_CAP, NEW_DEVICE_DEFAULT, NOTIFY_VOLUME_DEFAULT,
-  BT_LOW_PCT, BT_LOW_THROTTLE_MS, BALANCE_SW_DELAY_MS,
+  shortfallMessage,
 } from "../u3/copyops";
+import {
+  DEVICE_VOLUME_CAP, NEW_DEVICE_DEFAULT, NOTIFY_VOLUME_DEFAULT,
+  BT_LOW_PCT, BT_LOW_THROTTLE_MS, BALANCE_SW_DELAY_MS,
+} from "../u3/sysdev";
 import {
   IME_SCHEMES, CAPS_LONG_PRESS_MS, capsVerdict, bannerStackDirection, OSD_SEPARATE_NOTE,
   PEEK_OPACITY, PEEK_FADE_MS, LOCK_SHAKE_MS, UNLOCK_PATH,
@@ -40,6 +43,7 @@ import {
 import {
   MEM_DIAG_EST_MINUTES, NET_RESET_CLEAR_LIST, NET_RESET_COUNTDOWN_SEC, CLICK_LOCK_THRESHOLD_MS,
 } from "../u3/sysdev";
+void DEVICE_VOLUME_CAP;
 import { humanBytes } from "../u3/explorerx";
 import { hoverDateLine } from "../u3/clockcal";
 import { anchorRuntime, U3_ANCHOR_MIN_CHECKS } from "../u3/anchor";
@@ -334,7 +338,7 @@ function ExplorerGroup(): React.ReactElement {
       </Row>
       <Row fno="F525" name="快捷键速查卡导出" desc="PNG 一页/PDF 双页；与 F244 注册表同源；默认灰/自定义蓝分色">
         <Pick value={keycard.format as string} options={[{ v: "png", label: "PNG 一页版" }, { v: "pdf", label: "PDF 双页版" }]} onChange={(v) => setKeycard({ format: v })} />
-        <span className="u3-stat">样张 <b>{card.pages[0].length}+{card.pages[1].length}</b> 行 · {card.legend.slice(0, 18)}…</span>
+        <span className="u3-stat">样张 <b>{(card.pages[0]?.length ?? 0)}+{(card.pages[1]?.length ?? 0)}</b> 行 · {card.legend.slice(0, 18)}…</span>
       </Row>
       <Row fno="F526" name="状态栏" desc={statusBarSegments({ items: 128, selected: 5, selectedBytes: 245 * 1024 * 1024, volumeFreeBytes: 2 * 1024 ** 3 }).join(" | ")}>
         <Toggle checked={!!bar.visible} onChange={(v) => setBar({ visible: v })} label="显示状态栏" />
@@ -402,7 +406,6 @@ function WinKeysGroup(): React.ReactElement {
   const [banner, setBanner] = useSection<Cfg>("bannerPos");
   const [ime, setIme] = useSection<Cfg>("imeToggle");
   const [wn, setWn] = useSection<Cfg>("winNumber");
-  const [peek, setPeek] = useSection<Cfg>("peekDesk");
   const [lock, setLock] = useSection<Cfg>("layoutLock");
   const [top, setTop] = useSection<Cfg>("taskmgrTop");
 
@@ -444,9 +447,9 @@ function WinKeysGroup(): React.ReactElement {
 
 function SysDevGroup(): React.ReactElement {
   const [mem, setMem] = useSection<Cfg>("memDiag");
-  const [net, setNet] = useSection<Cfg>("netReset");
+  const [, setNet] = useSection<Cfg>("netReset");
   const [cl, setCl] = useSection<Cfg>("clickLock");
-  const [dv, setDv] = useSection<Cfg>("devVolume");
+  const [dv] = useSection<Cfg>("devVolume");
   const [nv, setNv] = useSection<Cfg>("notifyVolume");
   const [btb, setBtb] = useSection<Cfg>("btBattery");
   const [bal, setBal] = useSection<Cfg>("balance");
@@ -494,6 +497,12 @@ function SysDevGroup(): React.ReactElement {
 function ClockAnchorGroup(): React.ReactElement {
   const [ch, setCh] = useSection<Cfg>("clockHover");
   const [run, setRun] = useState<ReturnType<typeof anchorRuntime> | null>(null);
+  const [rec, setRec] = useState<ReturnType<typeof import("../u3/reconcile").reconcileF501F550> | null>(null);
+
+  const runReconcile = () => {
+    void import("../u3/reconcile").then((m) => setRec(m.reconcileF501F550())).catch((e: unknown) => console.error("[u3:F550] 对账执行失败", e));
+    setRun(anchorRuntime());
+  };
 
   return (
     <SectionCard title="时钟与验收锚点" f="F549·F550">
@@ -511,6 +520,20 @@ function ClockAnchorGroup(): React.ReactElement {
         {run && run.results.map((r) => (
           <span key={r.domain} className="u3-stat">{r.fRange} <b>{r.checks.filter((c) => c.pass).length}/{r.checks.length}</b></span>
         ))}
+      </Row>
+      <Row fno="F550" name="三面对账（账册检）" desc="主册 50 判据 × 内核 616 CheckSet × 前端九域自检——逐项三面在位才算对账绿；含 F400/F575 编号空间合并无冲突验证">
+        <button type="button" className="j1x-btn" onClick={runReconcile}>执行三面对账</button>
+        {rec && (
+          <span className={`u3-badge ${rec.allGreen ? "ok" : "warn"}`}>
+            {rec.allGreen ? "✓ 三面对平" : "✗"} {rec.ok}/{rec.total} 项 · 内核账册 {rec.kernelLedger.checksTotal} 项{rec.kernelLedger.ledgerOk ? "（616✓）" : "（账册不符!）"} · 前端 {rec.frontendRuntime.passed}/{rec.frontendRuntime.total}
+          </span>
+        )}
+        {rec && rec.missing.length > 0 && (
+          <span className="u3-badge warn">缺面：{rec.missing.map((m) => `${m.fno}(${m.faces.join("/")})`).join("、")}</span>
+        )}
+        {rec && (
+          <span className="u3-stat">编号空间 <b>{String(rec.allGreen)}</b> · 抽查 <b>{rec.rows.filter((r) => r.ok).slice(0, 5).map((r) => r.fno).join("/")}</b></span>
+        )}
       </Row>
     </SectionCard>
   );

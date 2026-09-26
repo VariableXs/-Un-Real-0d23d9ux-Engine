@@ -136,7 +136,7 @@ export function resolveDeviceVolume(devices: DeviceVolumeEntry[], deviceId: stri
   const next = [...devices, { deviceId, name, volume: NEW_DEVICE_DEFAULT, lastUsed: now }];
   while (next.length > DEVICE_VOLUME_CAP) {
     let oldest = 0;
-    for (let i = 1; i < next.length; i++) if (next[i].lastUsed < next[oldest].lastUsed) oldest = i;
+    for (let i = 1; i < next.length; i++) if ((next[i]?.lastUsed ?? 0) < (next[oldest]?.lastUsed ?? 0)) oldest = i;
     next.splice(oldest, 1);
   }
   return { volume: NEW_DEVICE_DEFAULT, devices: next, isNew: true };

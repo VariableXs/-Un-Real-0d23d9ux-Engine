@@ -47,7 +47,7 @@ export function luma(r: number, g: number, b: number): number {
 export function hexLuma(hex: string): number {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) throw new Error(`[u3:F501] 非法颜色值 ${hex}——只接受 #rgb/#rrggbb`);
-  let h = m[1];
+  let h = m[1]!; // 正则已保证捕获组存在
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
   return luma(
     parseInt(h.slice(0, 2), 16) / 255,
@@ -137,8 +137,8 @@ export function wrapIconLabel(name: string): { lines: [string, string]; truncate
   for (const word of words) {
     if (truncated) break;
     // 整词可入当前行 → 直接收下
-    if (width(lines[line]) + width(word) <= budgetPerLine) {
-      lines[line] += word;
+    if (width(lines[line] ?? "") + width(word) <= budgetPerLine) {
+      lines[line] = (lines[line] ?? "") + word;
       continue;
     }
     if (isAsciiWordTok(word) && width(word) <= budgetPerLine && lines[line] !== "") {
@@ -150,7 +150,7 @@ export function wrapIconLabel(name: string): { lines: [string, string]; truncate
     // 逐字符走：CJK 可逐字拆；无空格超长 token 可硬拆；英文整词在行首放不下也硬拆（否则永远放不进任何行）
     let chars = [...word];
     while (chars.length > 0) {
-      const space = budgetPerLine - width(lines[line]);
+      const space = budgetPerLine - width(lines[line] ?? "");
       if (space <= 0) {
         if (line === 0) { line = 1; continue; }
         truncated = true;
@@ -158,14 +158,14 @@ export function wrapIconLabel(name: string): { lines: [string, string]; truncate
       }
       let take = 0;
       let used = 0;
-      while (take < chars.length && used + charWidth(chars[take]) <= space) {
-        used += charWidth(chars[take]);
+      while (take < chars.length && used + charWidth(chars[take]!) <= space) {
+        used += charWidth(chars[take]!);
         take++;
       }
       if (take === 0) { // 单字符超预算（不可能：charWidth ≤2 ≤ 预算）——防御
         take = 1;
       }
-      lines[line] += chars.slice(0, take).join("");
+      lines[line] = (lines[line] ?? "") + chars.slice(0, take).join("");
       chars = chars.slice(take);
       if (chars.length > 0) {
         if (line === 0) { line = 1; continue; }
@@ -176,17 +176,17 @@ export function wrapIconLabel(name: string): { lines: [string, string]; truncate
   }
   // 收尾：截断时第二行末尾替换为省略号（判据：省略号永远表示「还有内容」）
   if (truncated) {
-    let tail = [...lines[1]];
+    let tail = [...(lines[1] ?? "")];
     while (width(tail.join("")) + width(ELLIPSIS) > budgetPerLine && tail.length > 0) tail.pop();
     lines[1] = tail.join("") + ELLIPSIS;
-  } else if (width(lines[1]) > budgetPerLine) {
+  } else if (width(lines[1] ?? "") > budgetPerLine) {
     // 防御：未标记截断但第二行超宽（理论不可达）——同样收尾
-    let tail = [...lines[1]];
+    let tail = [...(lines[1] ?? "")];
     while (width(tail.join("")) + width(ELLIPSIS) > budgetPerLine && tail.length > 0) tail.pop();
     lines[1] = tail.join("") + ELLIPSIS;
     truncated = true;
   }
-  return { lines: [lines[0], lines[1]], truncated };
+  return { lines: [lines[0] ?? "", lines[1] ?? ""], truncated };
 }
 
 /** 全文三路可达语义（判据：Tooltip F205/重命名 F260/属性 F264 三条路可达）。 */
@@ -196,7 +196,7 @@ export const LABEL_FULLTEXT_ROUTES = ["tooltip", "rename", "properties"] as cons
 
 /** 三档格距（主册 F503 判据：宽松/标准/紧凑 = 96/80/64px）。 */
 export const GRID_DENSITY_PX = { loose: 96, standard: 80, compact: 64 } as const;
-export type GridDensity = keyof typeof GRID_DENSITY_PX;
+export type GridDensity = keyof typeof GRID_DENSITY_PX | "custom";
 /** 自定义步进 8px（主册 F503 判据）。 */
 export const GRID_CUSTOM_STEP_PX = 8;
 
@@ -208,7 +208,7 @@ export interface GridConfig {
 
 /** 生效格距：三档取预设；custom 取自定义（钳制到 8px 步进与合理范围）。 */
 export function effectiveGrid(cfg: GridConfig): { colPx: number; rowPx: number } {
-  if (cfg.density !== "custom" as GridDensity) {
+  if (cfg.density !== "custom") {
     const p = GRID_DENSITY_PX[cfg.density];
     return { colPx: p, rowPx: p };
   }
@@ -224,9 +224,10 @@ export function effectiveGrid(cfg: GridConfig): { colPx: number; rowPx: number }
  */
 export function resnapToGrid(
   points: Array<{ x: number; y: number }>,
-  from: { colPx: number; rowPx: number },
+  from: { colPx: number; rowPx: number }, // 语义参数：调用方记录换档前格距（算法只依赖 to）
   to: { colPx: number; rowPx: number },
 ): Array<{ x: number; y: number }> {
+  void from;
   const occupied = new Set<string>();
   const out: Array<{ x: number; y: number }> = [];
   for (const p of points) {

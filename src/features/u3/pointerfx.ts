@@ -82,6 +82,7 @@ export const SV_PULSE_MS = 300;
 /** 勿扰联动镜像（判据：仅声音档=只闪不响、全静=都不来但中心记录）。 */
 export type DisturbMode = "normal" | "sound-only" | "silent";
 export function soundLightPolicy(kind: SoundEventKind, mode: DisturbMode, perEventEnabled: boolean): { flash: boolean; sound: boolean; logToCenter: boolean } {
+  void kind; // 逐事件开关由调用方读配置后传入（perEventEnabled）——本函数只做档位裁决
   const evOn = perEventEnabled;
   switch (mode) {
     case "normal":     return { flash: evOn, sound: true, logToCenter: true };

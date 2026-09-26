@@ -34,8 +34,27 @@ import { copyopsSelfCheck } from "./copyops";
 import { winkeysSelfCheck } from "./winkeys";
 import { sysdevSelfCheck } from "./sysdev";
 import { clockcalSelfCheck } from "./clockcal";
+import { KERNEL_DOMAIN_CHECKS, kernelLedgerSelfCheck, NEIGHBOR_ANCHOR_SPACES, anchorSpaceConflictFree } from "./ledger";
 
-/** 九域检查点注册表。 */
+/** F550 锚点域自身自检（对账面自证：聚合完整性 + 内核账册 + 编号空间）。
+ *  注意：遍历时排除 anchor 自身（run() 递归防火墙——否则栈溢出）。 */
+function anchorSelfCheck(): Array<{ name: string; pass: boolean }> {
+  const checks: Array<{ name: string; pass: boolean }> = [];
+  // 十域注册齐全（九功能域 + anchor 自身——缺域即锚点失义）
+  checks.push({ name: "F550 十域自检注册齐全", pass: U3_ANCHOR_DOMAINS.length === 10 });
+  // 功能域检查点总数 ≥ 主册 25 检查点判据（只数九功能域，不递归自身）
+  const total = U3_ANCHOR_DOMAINS.filter((d) => d.domain !== "anchor").reduce((a, d) => a + d.run().length, 0);
+  checks.push({ name: "F550 检查点 ≥25", pass: total >= 25 });
+  // 内核账册自证（616/307 与源码实测一致——账册检对账）
+  checks.push({ name: "F550 内核账册 616/307", pass: kernelLedgerSelfCheck().ledgerOk });
+  // 内核十域检查项登记齐全（含 anchor 自身 25）
+  checks.push({ name: "F550 内核十域登记", pass: Object.keys(KERNEL_DOMAIN_CHECKS).length === 10 && KERNEL_DOMAIN_CHECKS.anchor?.checks === 25 });
+  // 编号空间合并无冲突（F400/F575 相邻锚点）
+  checks.push({ name: "F550 编号空间无冲突", pass: anchorSpaceConflictFree().conflictFree && NEIGHBOR_ANCHOR_SPACES.length === 4 });
+  return checks;
+}
+
+/** 十域检查点注册表（九功能域 + F550 锚点域自身）。 */
 export const U3_ANCHOR_DOMAINS: Array<{ domain: string; fRange: string; run: () => Array<{ name: string; pass: boolean }> }> = [
   { domain: "deskicons", fRange: "F501-F503", run: deskiconsSelfCheck },
   { domain: "locksec", fRange: "F504-F508", run: locksecSelfCheck },
@@ -46,6 +65,7 @@ export const U3_ANCHOR_DOMAINS: Array<{ domain: string; fRange: string; run: () 
   { domain: "winkeys", fRange: "F516·F518·F535-F539·F548", run: winkeysSelfCheck },
   { domain: "sysdev", fRange: "F540-F547", run: sysdevSelfCheck },
   { domain: "clockcal", fRange: "F549", run: clockcalSelfCheck },
+  { domain: "anchor", fRange: "F550", run: anchorSelfCheck },
 ];
 
 /** 全量执行（判据：25 检查点入脚本并全绿基线）。 */
@@ -62,7 +82,7 @@ export function anchorSpotCheck(n = 5): Array<{ domain: string; name: string; pa
   const flat = results.flatMap((r) => r.checks.map((c) => ({ domain: r.domain, ...c })));
   const picked: Array<{ domain: string; name: string; pass: boolean }> = [];
   const step = Math.max(1, Math.floor(flat.length / n));
-  for (let i = 0; i < flat.length && picked.length < n; i += step) picked.push(flat[i]);
+  for (let i = 0; i < flat.length && picked.length < n; i += step) { const p = flat[i]; if (p) picked.push(p); }
   return picked;
 }
 

@@ -45,10 +45,10 @@ export function findMatches(text: string, needle: string, opt: FindOptions): Arr
 export function replacePreview(text: string, needle: string, opt: FindOptions, ctx = 24): { count: number; firstContext: string } {
   const hits = findMatches(text, needle, opt);
   if (hits.length === 0) return { count: 0, firstContext: "" };
-  const h = hits[0];
+  const h = hits[0]!; // 早退守卫后非空
   return {
     count: hits.length,
-    firstContext: `${text.slice(Math.max(0, h.start - ctx), h.start)}【${text.slice(h.start, h.end)}】${text.slice(h.end, h.end + ctx)}`,
+    firstContext: `${text.slice(Math.max(0, h.start - ctx), h.start)}【${text.slice(h.start, h.end)}】${text.slice(h.end, h.end + ctx)}`, // h 由上方早退守卫
   };
 }
 

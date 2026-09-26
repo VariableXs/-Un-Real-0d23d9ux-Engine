@@ -4,11 +4,15 @@
  * 生效面声明（诚实边界）：
  * - 本运行时在 Varix 桌面窗口内接管：F513 Ctrl 定位涟漪、F514 声音视觉
  *   光带、F519 Caps 提示音、F523 打字隐藏指针、F537 瞥桌面、F511 剪贴板
- *   清空热键、F505 蓝牙动态锁计时、F545 蓝牙电量平滑推进。
+ *   清空热键、F535 Win+数字动作出口、F542 ClickLock 真鼠标管线、F520
+ *   标题栏中键出口（data-u3-titlebar 声明元素）、F505 蓝牙动态锁计时、
+ *   F545 蓝牙电量平滑推进。
  * - 系统级生效（真实蓝牙 RSSI、锁屏截图通道拦截、录屏黑块合成）依赖内核
  *   侧实装层（kernel/varix/src/ustar3/ v1）与宿主集成，随闸门登记。
- * - 事件出口：窗口系统按 `--vx-u3-window-opacity` CSS 变量消费瞥桌面透明度
- *   （开放扩展点——十四章）；声音事件源发 `vx-sound-event` CustomEvent。
+ * - 事件出口：交互动作统一走 dispatchU3Action（actions.ts 两级路由 +
+ *   未处理显性化）；窗口系统按 `--vx-u3-window-opacity` CSS 变量消费瞥
+ *   桌面透明度；桌面标题栏加 data-u3-titlebar 标记即接入中键最小化
+ *   （开放扩展点——十四章，不越权改写桌面 DOM）。
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -19,7 +23,8 @@ import { CAPS_TONE_HZ, type CapsTone } from "./pointerfx";
 import { typeHideOpacity, TYPE_HIDE_RESUME_MS, type TypeHideRt } from "./pointerfx";
 import { peekStyle, PEEK_FADE_MS } from "./winkeys";
 import { btLockTick, type BtLockRuntimeState } from "./locksec";
-import { smoothBattery } from "./sysdev";
+import { clickLockStep, smoothBattery, type ClickLockRt } from "./sysdev";
+import { dispatchU3Action } from "./actions";
 import { pushToast } from "../../state/uiStore";
 import type { Toast } from "../../state/uiStore";
 
@@ -35,7 +40,7 @@ function CtrlRippleLayer({ ripples }: { ripples: Ripple[] }) {
       {ripples.map((r) => (
         <div key={r.id} style={{ position: "fixed", left: r.x, top: r.y }}>
           {[0, 1, 2].map((i) => {
-            const delay = starts[i];
+            const delay = starts[i] ?? 0;
             return (
               <span
                 key={i}
@@ -111,10 +116,11 @@ export function U3Runtime(): React.ReactElement {
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [soundEvent, setSoundEvent] = useState<{ id: number; kind: SoundEventKind } | null>(null);
   const [peeking, setPeeking] = useState(false);
-  const [pointerOpacity, setPointerOpacity] = useState(1);
+  const [, setPointerOpacity] = useState(1); // 值经 CSS 变量下发（documentElement），组件内不直读
   const rtCtrl = useRef<CtrlFindRt>({ downAtMs: null, otherKeyDown: false });
   const rtTypeHide = useRef<TypeHideRt>({ lastKeyMs: -1e9, mouseMovedMs: -1e9 });
   const rtBtLock = useRef<BtLockRuntimeState>({ lastSeenMs: Date.now(), awaySinceMs: null });
+  const rtClickLock = useRef<ClickLockRt>({ state: "idle", pressAtMs: 0 });
   const rtBtBattery = useRef({ displayed: 80, lastLowWarnAt: {} as Record<string, number> });
   const rippleSeq = useRef(0);
   const mousePos = useRef({ x: innerWidth / 2, y: innerHeight / 2 });
@@ -162,6 +168,17 @@ export function U3Runtime(): React.ReactElement {
         e.preventDefault();
         setPeeking(true);
       }
+      // F535 Win+数字快捷启动（1-9,0 → winnum-N 别名动作，任务栏消费）
+      if (e.getModifierState("Meta") && !e.ctrlKey && !e.altKey && /^[0-9]$/.test(e.key)) {
+        const n = e.key === "0" ? 9 : Number(e.key) - 1;
+        e.preventDefault();
+        void dispatchU3Action(`winnum-${n}`, "runtime", { shift: e.shiftKey });
+      }
+      // F542 ClickLock 抓起态 Esc 放弃
+      if (e.key === "Escape" && rtClickLock.current.state === "grabbed") {
+        const r = clickLockStep(rtClickLock.current, { t: "esc", atMs: Date.now() });
+        if (r.dropOrDrag === "cancel") void dispatchU3Action("clicklock.drop", "runtime", { how: "cancel" });
+      }
       // F505 蓝牙动态锁：钥匙回连信号（真实 RSSI 源随闸门；键盘事件作为回连心跳占位不入判据）
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -198,6 +215,56 @@ export function U3Runtime(): React.ReactElement {
     };
     window.addEventListener("vx-sound-event", onSound);
     return () => window.removeEventListener("vx-sound-event", onSound);
+  }, []);
+
+  /* F542 ClickLock 鼠标管线 + F520 标题栏中键出口（真实 DOM 事件驱动）。
+   * 中键出口只对带 data-u3-titlebar 声明元素生效（桌面标题栏加标记即接入——
+   * 开放扩展点，不越权改写桌面 DOM）；ClickLock 全局管线按 1.1s 阈值裁决。 */
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const r = clickLockStep(rtClickLock.current, { t: "press", atMs: Date.now() });
+      if (r.state === "held-pending") {
+        document.documentElement.setAttribute("data-u3-clicklock-pending", "1");
+      }
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const wasPending = rtClickLock.current.state === "held-pending";
+      const r = clickLockStep(rtClickLock.current, { t: "release", atMs: Date.now() });
+      document.documentElement.removeAttribute("data-u3-clicklock-pending");
+      if (r.grabbed) {
+        document.documentElement.setAttribute("data-u3-clicklock-grabbed", "1"); // 抓起光环（CSS 消费）
+      } else if (wasPending) {
+        // 短按（<1.1s）不进入抓起——普通点击语义，交给页面默认行为
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      // F520：中键点击带 data-u3-titlebar 标记的标题栏 → 最小化动作
+      if (e.button === 1) {
+        const bar = (e.target as HTMLElement | null)?.closest?.("[data-u3-titlebar]");
+        if (bar && u3Store.getWith("midMinimize", "enabled", true)) {
+          e.preventDefault();
+          void dispatchU3Action("window.minimize-mid", "runtime", { windowId: bar.getAttribute("data-u3-titlebar") });
+        }
+        return;
+      }
+      if (e.button === 0 && rtClickLock.current.state === "grabbed") {
+        const r = clickLockStep(rtClickLock.current, { t: "click", atMs: Date.now() });
+        document.documentElement.removeAttribute("data-u3-clicklock-grabbed");
+        if (r.dropOrDrag === "drop") void dispatchU3Action("clicklock.drop", "runtime", { how: "drop", x: e.clientX, y: e.clientY });
+      }
+    };
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("mouseup", onMouseUp, true);
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("auxclick", onClick, true);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("mouseup", onMouseUp, true);
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("auxclick", onClick, true);
+    };
   }, []);
 
   /* F523 打字隐藏指针：2s 恢复计时 + CSS 变量下发 */

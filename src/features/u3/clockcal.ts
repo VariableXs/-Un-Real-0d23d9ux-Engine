@@ -104,9 +104,13 @@ export function lunarYearDays(info: number): number {
 export function yearWalkLandsOnNextCny(lunarYear: number): boolean {
   const i = lunarYear - LUNAR_DATA_FIRST_YEAR;
   if (i < 0 || i + 1 >= CNY_ANCHORS.length || i + 1 > LUNAR_INFO.length) return false;
-  const [sy, sm, sd] = CNY_ANCHORS[i];
-  const [ny, nm, nd] = CNY_ANCHORS[i + 1];
-  return daysFromCivil(sy, sm, sd) + lunarYearDays(LUNAR_INFO[i]) === daysFromCivil(ny, nm, nd);
+  const cur = CNY_ANCHORS[i];
+  const nxt = CNY_ANCHORS[i + 1];
+  const info = LUNAR_INFO[i];
+  if (!cur || !nxt || info === undefined) return false;
+  const [sy, sm, sd] = cur;
+  const [ny, nm, nd] = nxt;
+  return daysFromCivil(sy, sm, sd) + lunarYearDays(info) === daysFromCivil(ny, nm, nd);
 }
 
 /**
@@ -116,13 +120,17 @@ export function yearWalkLandsOnNextCny(lunarYear: number): boolean {
 export function solarToLunar(y: number, m: number, d: number): LunarDate | null {
   const days = daysFromCivil(y, m, d);
   for (let i = 0; i + 1 < CNY_ANCHORS.length && i < LUNAR_INFO.length; i++) {
-    const [sy, sm, sd] = CNY_ANCHORS[i];
-    const [ny, nm, nd] = CNY_ANCHORS[i + 1];
+    const cur = CNY_ANCHORS[i];
+    const nxt = CNY_ANCHORS[i + 1];
+    const info0 = LUNAR_INFO[i];
+    if (!cur || !nxt || info0 === undefined) return null;
+    const [sy, sm, sd] = cur;
+    const [ny, nm, nd] = nxt;
     const start = daysFromCivil(sy, sm, sd);
     const next = daysFromCivil(ny, nm, nd);
     if (days < start || days >= next) continue;
     let rest = days - start;
-    const info = LUNAR_INFO[i];
+    const info = info0;
     const leap = leapMonthOf(info);
     for (let mo = 1; mo <= 12; mo++) {
       if (leap > 0 && mo === leap + 1) {
