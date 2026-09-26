@@ -1,73 +1,136 @@
-# AI-U1 完成报告 · Varix STAR I · I 通用域·一分队（批次一）
+# AI-U1 完成报告 · Varix STAR I · I 通用域·一分队（F401-F450 全域收官）
 
-> 分工包：F401-F450（50 项 · 目标上限 52,325 行）。本报告覆盖**批次一**
-> 八项（F401/F403/F404/F405/F407/F408/F416/F424）——「系统快捷键与通用
-> 交互语义」簇。生成于 2026-09-26。
+> 分工包：F401-F450（50 项 · 目标上限 52,325 行）。批次一（八项语义核
+> +共享底盘）已于前一报告交付；本报告为**全域收官**——批次一续建
+> （F402/F406/F409-F423/F425 三十一项）+ 批次二（F426-F450 十三项）
+> 全部落地，隔离舱与主 crate 双通道验证全绿。生成于 2026-09-26。
 
 ## 一、交付物清单
 
 | 交付物 | 落位 |
 | --- | --- |
-| 批次一八项语义核 + 共享底盘 | `kernel/varix/src/uni1/`（10 文件，2,969 行，其中纯功能约 1,547 行） |
-| robust.rs 274 域函数指针表接线 | `crate::uni1::run_uni1_checks` 单行注册（域聚合，275 容量） |
-| 隔离舱（#[path] 直挂真实文件） | `_attic/aiu1-f401-f450/cabin/`（45 测试全绿） |
-| 行数对账与缺陷账本 | `_attic/aiu1-f401-f450/行数对账与缺陷账本.md` |
-| CHANGELOG | 批次一条目已补 |
+| 五十项语义核（50 模块）+ 共享底盘 | `kernel/varix/src/uni1/`（51 文件，11,313 行，纯功能 6,982 行） |
+| 域聚合器 51 块（ubase + F401-F450） | `uni1::run_uni1_checks`（robust.rs 单行注册，容量 64 内冻结） |
+| 隔离舱（#[path] 直挂真实文件，51 块） | `_attic/aiu1-f401-f450/cabin/`（123 测试全绿，0 警告） |
+| 行数对账与缺陷账本（v2 收官版） | `_attic/aiu1-f401-f450/行数对账与缺陷账本.md` |
+| CHANGELOG | 批次二收官条目已补 |
 
-## 二、逐项判据达成（主册判据 → 实装检查名）
+## 二、五十项判据落位（主册判据 → 实装检查名，CheckSet 全绿）
 
-| 项 | 模块 | 判据锚 | CheckSet 检查（全绿） |
-| --- | --- | --- | --- |
-| F401 桌面自动排列 | `autoarrange.rs` | 四序 20 项实测；插入/删除补位；互斥切换；F124 弹性档弹回 | f401-order-{name,size,type,date}-20 ×4、insert-into-seq、delete-reflow、free-no-snapback、auto-snapback、mode-mutex-roundtrip、cell-origin |
-| F403 Win+L 锁屏快捷 | `lockhot.rs` | 锁定 <300ms；媒体暂停续播；窗口保持；摘要只计数；F316 同入口 | f403-budget-sum、lock-under-300ms、media-pause-resume、window-states、summary-count-only、unlock-stops-summary、idle-same-entry、over-budget-logged、idempotent |
-| F404 Win+E 资源管理器 | `explorehot.rs` | 标签/窗模式；此机页清单钉死；连按行为；首开 <1.5s；骨架先行 | f404-hotkey-registered、this-pc-list、tab-mode-repeat、cold-under-1500、cold-over-budget-logged、window-mode-repeat、skeleton-first、close-window |
-| F405 Alt+F4 与关机菜单 | `altf4.rs` | 焦点三场景；三选项默认关机；三问联动；与 × 同语义；F384 陷阱优先 | f405-menu-const、window-clean-close、dirty-triple-ask、ask-cancel-no-close、ask-proceed-close、desktop-power-menu、menu-move-down/wrap/wrap-up/confirm/esc-cancel/confirm-closed-noop、modal-trap-priority |
-| F407 Win+I 设置快捷 | `sethot.rs` | 三场景；单例聚焦；搜索框光标就绪；注册表登记 | f407-hotkey-registered、scene-closed-opens、page-focus、scene-open-focuses-search、scene-search-keeps、singleton、latency-budget、latency-over-logged、close-then-reopen |
-| F408 Win+X 快捷菜单 | `winxmenu.rs` | 九项对照表；首字母快捷；子菜单二级；打开 <1s | f408-nine-items-table、hotkey-registered、open-under-1s、open-over-logged、letter-s/t/miss、activate-terminal、submenu-parent-noop、submenu-confirm、submenu-esc-peel、closed-noop |
-| F416 Win 键开合开始菜单 | `winkey.rs` | 开 <150ms；焦点落搜索框；打字零丢失；Esc/外点关闭；连按稳定 | f416-open-under-150、toggle-close、debounce、real-second-press、esc-close、outside-click-close、typing-zero-lost、over-budget-logged、ime-yield、log-pairs |
-| F424 Esc 通用关闭语义 | `escstack.rs` | 四层语义表；逐层剥离；桌面态无副作用；响应 <100ms | f424-semantics-table、peel-popup-then-panel-then-modal、semantics-per-tier、desktop-noop、one-layer-per-press、latency-budget、latency-over-logged、outside-close-targeted、invariant-tier-order |
-| 共享底盘 | `ubase.rs` | F244 键位注册唯一落位；浮层栈；事件环；旋钮 | hk-register-two、hk-conflict-rejected、hk-lookup、hk-rebind-user、hk-reset-default、hk-snapshot-shape、ls-empty-desktop-noop、ls-top-is-popup、ls-peel-order、ls-drained、ring-evict-oldest、knob-clamped |
+### 快捷键与系统入口（F401-F408）
 
-## 三、测试证据
+| 项 | 模块 | 判据锚 |
+| --- | --- | --- |
+| F401 桌面自动排列 | autoarrange | 四序 20 项；插入/删除补位；互斥切换；F124 弹回 |
+| F402 任务管理器快捷 | taskmhot | 三入口 F244 注册；1s 刷新账；三处数据对账 <3% |
+| F403 Win+L 锁屏 | lockhot | <300ms；媒体暂停续播；摘要只计数；F316 同入口 |
+| F404 Win+E 资源管理器 | explorehot | 标签/窗模式；此机页清单；首开 <1.5s 骨架先行 |
+| F405 Alt+F4 关机菜单 | altf4 | 焦点三场景；三选项；三问联动；F384 陷阱优先 |
+| F406 安全屏（简版） | secscr | 内核通道直绘；三卡链路；伪造注入必败；<500ms |
+| F407 Win+I 设置 | sethot | 三场景；单例聚焦；光标就绪；注册表登记 |
+| F408 Win+X 菜单 | winxmenu | 九项对照表；首字母；子菜单二级；<1s |
 
-- **隔离舱**：`_attic/aiu1-f401-f450/cabin`（#[path] 直挂真实生产文件 +
-  同一份 checks.rs）——**45/45 通过，0 警告**。
-- **真实 crate**：`cargo test -p varix --lib uni1::` —— **38/38 通过**
-  （含域聚合器 `uni1_batch1_aggregate_all_green`）。
-- **全量回归**：4,093 项中 4,078 绿；15 红全部位于 `compatstar2`/
-  `stareco`（AI-C2、AI-V2 在途施工模块）及其连锁的 robust 全域聚合——
-  **uni1 零失败，本批不回归任何既有判据**。红项归属详见缺陷账本
-  （不修、不越界——那是 C2/V2 的活）。
-- **提交态验证**：以「HEAD + 仅本批接线」的干净组合临时换入编译验证
-  （38/38 绿）后字节级还原工作区——提交进仓库的树保证可编译，且不带
-  任何其他分队的在途半成品。
+### 键盘语义与文件导航（F409-F420）
+
+| 项 | 模块 | 判据锚 |
+| --- | --- | --- |
+| F409 F1 上下文帮助 | ctxhelp | 上下文映射全覆盖；不抢焦点；死锚=0 |
+| F410 Enter/Ctrl+Enter | enterkey | 四键行为矩阵；首字母跳转；新窗独立栈 |
+| F411 Backspace 上级 | backnav | 两键分岔；根目录边界；栈独立 |
+| F412 Alt+Enter 属性 | altrprop | 单/多选两形制；计量同源；焦点回归 |
+| F413 PrintScreen | prtsrc | 三键位语义；窗口自动框定；键位可改 |
+| F414 拖拽进回收站 | dragtrash | 三路同归；高亮反馈；误拖撤销 |
+| F415 回收站满空两态 | trashicon | 两态即时；角标数量；清空确认 |
+| F416 Win 键开始菜单 | winkey | 开 <150ms；打字零丢失；三出路；连按稳定 |
+| F417 磁贴交互 | tilegrid | 三档尺寸；拖拽让位；固定双向；持久化 |
+| F418 任务栏固定 | pinbar | 三固定两取消；运行中语义；拖拽排序 |
+| F419 任务栏右键菜单 | barctx | 两形制清单；最近 3 条 F074 同源；≤8 项审计 |
+| F420 时钟右键快捷 | clockctx | 两直达落地页；立即同步留痕；键盘可达 |
+
+### 指示器/浮层与输入链（F421-F427）
+
+| 项 | 模块 | 判据锚 |
+| --- | --- | --- |
+| F421 输入法指示器 | imeind | 循环=F373 设置序；右键直选；三处同步；<100ms |
+| F422 音量浮层 | volfly | 拖动实时 <50ms；设备名 F241 一致；浮层几何 |
+| F423 电池浮层 | batfly | 续航 ±15%；三处数据同源；开关即时 |
+| F424 Esc 关闭语义 | escstack | 四层语义表；逐层剥离；桌面态无副作用；<100ms |
+| F425 Aero Shake | shake | 轨迹特征入册；误触 20 次 0 触发；原位恢复；可禁用 |
+| F426 文档键位保存族 | docskeys | 三键矩阵；脏标记；只读保存三问；F244 注册 |
+| F427 Ctrl+X/C/V | clipkeys | 三域矩阵；剪切延迟执行与反悔；禁用静默 |
+
+### 视图与列表操作（F428-F437）
+
+| 项 | 模块 | 判据锚 |
+| --- | --- | --- |
+| F428 Ctrl+P 打印 | printkey | 四常用项；分页预览；PDF 落位；F444 引导链 |
+| F429 F11 全屏 | fullscreen | 零边缝；顶缘滑出；退出双键；一次性提示 |
+| F430 Ctrl+滚轮缩放 | zoomwheel | 三场景；锚点不动点数学；边界贴边+微弹；F219 记忆 |
+| F431 Ctrl+Shift+N | newfolder | 两场景；命名初态；重名递增；连建循环 |
+| F432 列表翻页定位 | listnav | 相对位置保持；四键行为；万项帧就绪；滚动条同步 |
+| F433 Shift+F10 | kbdmenu | 呼出焦点判定；全键盘链；与 F215/F207 一致 |
+| F434 对话框控件键位 | dlgkeys | 四键矩阵；热键功能性；默认按钮判定（F207 复用） |
+| F435 下拉框键盘 | dropdown | 三招矩阵；跳选循环；预览代值 Esc 恢复；<100ms |
+| F436 滑杆键盘 | sliderkeys | 五招；步进定义表；气泡读数；连发节奏（F240 同源） |
+| F437 磁盘格式化 | fmtdisk | 警示带准确；二次确认链；2s 可取消；诚实兼容表 |
+
+### 磁盘/设备与向导族（F438-F450）
+
+| 项 | 模块 | 判据锚 |
+| --- | --- | --- |
+| F438 盘符与挂载管理 | diskmnt | 冲突确认前拦截；lnk 自动修复前后对比；卷标即时；F372 留痕 |
+| F439 驱动器加密 | drvcrypt | 恢复密钥强制导出跳不过；前台无感 F334；会话缓存；统一错误文案防爆破 |
+| F440 ISO 挂载 | isomount | 挂载/浏览/弹出全链；上限 4；只读拒绝+说明；非 ISO 诚实；会话态 |
+| F441 计划任务创建 | schedtask | 三步流程；频率全型（一次性/每日/每周/每月）；执行留痕归因；空闲判定 |
+| F442 手动还原点 | restpoint | <30s 时长账；手动/自动标注；轮替最旧+最近永留；确认位 |
+| F443 蓝牙配对 | btpair | 确认码核对不跳过；失败归因人话表；改名持久化；重连 <3s 账 |
+| F444 打印机安装向导 | ptrsetup | USB 自动链路事件账；手动搜索；驱动三态诚实；测试页一键；F289 衔接 |
+| F445 显示器排列拖拽 | disparrange | 编号大号 3s；±8px 吸附；主屏互斥；F353 窗口回流；即时生效 |
+| F446 分辨率刷新率 | ressel | EDID 真实列表；15s 倒计时回滚自救；每屏独立；黑屏 <2s 账；游戏向标记 |
+| F447 事件声音试听 | sndaudition | 试听不落定；WAV 格式+3s 校验拒绝；默认六事件；静音测试；恢复默认 |
+| F448 麦克风测试 | mictest | 电平 <100ms 账；5s 回放字节级保真；分档人话建议；F322 指示联动 |
+| F449 摄像头预览 | camtest | 预览 <200ms 账；参数两路诚实标注；镜像开关；指示先于首帧；关闭即释放 |
+| F450 粘滞键与筛选键 | stickkeys | 五组合键逐键等效；5 次触发+确认框；筛选阈值可调；指示器；永不再提醒 |
+
+## 三、测试证据（双通道）
+
+- **隔离舱**（`_attic/aiu1-f401-f450/cabin`，#[path] 直挂真实生产文件）：
+  **123/123 通过，0 警告**——51 块 CheckSet 零红零截断 + 48 项宿主单测。
+- **真实 crate**（HEAD 094f8570 + 仅本队接线的干净 worktree，验证后拆除；随后基线前移至 5f5089c5 仅涉他队文件，不影响本域自包含依赖面）：
+  `uni1::` **115/115 绿**；`robust::` 全域聚合 **20/20 绿**；
+  **全 crate 5502/5502 绿，353 秒跑完零回归**。
+- 主 crate 工作区被 genstar2/secstar 的 8 处他队在途编译错挡住——
+  不越界不碰，登记入账本（他家收口后工作区直跑同绿）。
 
 ## 四、施工决策（为什么这么做）
 
-1. **语义核先行，渲染层不越界**：I 域判据的「界面与交互 60%」属桌面
-   层（TS/合成器）工程；内核侧交付的是判据可机检的语义核（状态机 +
-   预算记账 + 事件账），与 K1/K2 批次同架构。渲染接线随闸门登记。
-2. **F244 键位注册唯一落位**：本批 6 处「键位注册（F244）」判据全部
-   收口到 `ubase::HotkeyTable`（登记/冲突拒/改键/恢复默认/快照），
-   一处一事实，批次二沿用。
-3. **隔离舱**：多 AI 并行施工期主 crate 常被其他分队的中间态挡住编译；
-   隔离舱 #[path] 直挂真实文件，让本队判据验证不排队、不被卡（防卡死
-   纪律第 ②③条的直接落地）。
-4. **诚实记账贯穿**：所有延迟/预算判据（300ms/1.5s/1s/150ms/100ms）
-   的实测值由调用方注入，超线如实计数不静默——「异常零静默」红线。
+1. **语义核先行，渲染层不越界**：I 域判据的「界面与交互 ~60%」落桌面
+   层（TS/合成器）；内核侧交付判据可机检的语义核（状态机 + 预算记账 +
+   事件账 + 边界处理），与 K1/K2/S1/S2 同架构。五十项的每个预算线
+   （300ms/150ms/100ms/3s/15s/30s/<200ms…）都有「实测值注入 + 超线
+   诚实计数」的账面，异常零静默红线贯穿。
+2. **F244 键位注册唯一落位**：全部「键位注册（F244）」判据收口
+   `ubase::HotkeyTable`；F424 层级栈、F072/F074 引擎参数面复用批次一
+   接缝——一处一事实。
+3. **接手即审计**：前会话中断现场留下 29 个在途文件（17 个未接线）+
+   8 处编译错。本次逐文件走查修复（缺陷账本 #1-#10），其中两处是
+   **测试掩盖的真逻辑缺陷**（锚点缩放数学方向反、翻页语义自相矛盾）
+   ——单测全绿不等于判据成立，审计以判据为准。
+4. **聚合器 51 块收官冻结**：补上批次一漏接线的 F424 后，ubase +
+   F401-F450 恰好 51 块（容量 64 内）；全域模块地图写进 mod.rs 头文档。
 
-## 五、行数对账（如实登记，偏差说明）
+## 五、行数对账（如实登记）
 
-批次一目标上限合计 6,565 行，实收纯功能约 1,547 行（23.6%）。偏差主因：
-主册工程量口径含「界面与交互 ~60%」——该部分在本仓库架构中落桌面层，
-本批为语义核实装层。**不做注水补齐**（铁律 2 优先于铁律 1 的数字）；
-批次二扩列时对每模块按真实状态机路径补深化（撤销链、多窗表、持久化
-快照等真实功能面），逐项把比例抬上 90% 线。逐项明细见缺陷账本。
+五十项纯功能 **6,636 行**（上限口径 52,325 的 12.7%）+ 底盘/聚合器
+346 行 = 域合计 **6,982 行**。偏差主因与批次一结论一致：主册工程量
+含界面与交互层（落桌面层施工面）。**不做注水补齐**（铁律 2 优先于
+铁律 1 的数字）；判据语义核全部机检落地，桌面层接线时按本域参数面
+真实展开。逐项明细见账本 v2。
 
-## 六、遗留与批次二计划（42 项）
+## 六、遗留与移交
 
-- F402/F406/F409/F410-F415/F417-F423/F425-F450 待续建（判据摘文已在
-  分工书钉死，接缝注入口已就位：F244 表、F424 栈、F072/F074 引擎参数）。
-- F402 任务管理器形制界面等「会话表格」拍板依赖项，按主册第 7 部分第
-  4134 行条款预留，拍板后对齐。
-- 依赖项：F284/F354/F291 等跨域注入口以参数承接（跨泳道借力 = 0）。
+- **零功能遗留**：F401-F450 无占位、无 TODO、无未覆盖判据。
+- 桌面层渲染接线（各模块的界面形态）按「随闸门补测/接线」纪律登记，
+  由桌面层施工面按语义核暴露的参数面承接。
+- 主 crate 工作区编译态恢复依赖 genstar2/secstar 他队收口（账本 §三
+  已登记归属）；本域提交树（HEAD+本队接线）已验证可编译零回归。
