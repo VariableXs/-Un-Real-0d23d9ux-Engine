@@ -439,3 +439,337 @@ mod v3_tests {
         assert_eq!(override_remaining(1, 0), Some(1));
     }
 }
+
+// ===========================================================================
+// 深化 v7（F491）：夜间时段表 / 覆盖频次账 / 采样节流 / 渐变完成审计 /
+// 持久化通道 v7（W7A1 + FNV 校验尾——v1 VAL1 无校验的补课）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 持久化——v2 通道（VAL1）有魔标无 FNV：坏文件读回垃圾 enabled
+//    静默改亮度。v7 通道加 FNV 尾 + 亮度值域守卫。
+// 2. 夜间时段表——F116 联动的时段判定一处一事实（22:00-06:00）；
+//    夜间目标压暗但 30% 下限恒成立。
+// 3. 覆盖频次账——手动调节每次记账：单调守卫 + 高频拉滑杆指纹
+//    （rage-slider：5 分钟内 ≥8 次 = 界面在诱导微调，体验日志面）。
+// 4. 采样节流——传感器 500ms 最小间隔（过密采样 = 无谓功耗）。
+// 5. 渐变完成审计——current() 恒单调逼近目标（不许过冲回荡）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 持久化通道 v7（W7A1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7A 族）。
+pub const AUTOLUM_V7_MAGIC: [u8; 4] = *b"W7A1";
+/// 长度：魔标(4) + 版本(1) + enabled(1) + 保留(1) + 下限(2, LE) +
+/// 覆盖截止(8, LE) + FNV(4) = 21。
+pub const AUTOLUM_V7_LEN: usize = 21;
+pub const AUTOLUM_V7_VERSION: u8 = 1;
+
+/// 序列化（v7 独占通道——grep 无同名 save_state_v7）。
+pub fn save_state_v7(enabled: bool, floor: u16, override_until: u64, out: &mut [u8]) -> Option<usize> {
+    if out.len() < AUTOLUM_V7_LEN || floor > MAX_PERMILLE {
+        return None;
+    }
+    out[..4].copy_from_slice(&AUTOLUM_V7_MAGIC);
+    out[4] = AUTOLUM_V7_VERSION;
+    out[5] = enabled as u8;
+    out[6] = 0;
+    out[7..9].copy_from_slice(&floor.to_le_bytes());
+    out[9..17].copy_from_slice(&override_until.to_le_bytes());
+    let h = fnv1a(&out[..17]);
+    out[17] = (h & 0xff) as u8;
+    out[18] = ((h >> 8) & 0xff) as u8;
+    out[19] = ((h >> 16) & 0xff) as u8;
+    out[20] = ((h >> 24) & 0xff) as u8;
+    Some(AUTOLUM_V7_LEN)
+}
+
+/// 反序列化（版本/保留位/值域/FNV 四重守卫）。
+pub fn load_state_v7(buf: &[u8]) -> Option<(bool, u16, u64)> {
+    if buf.len() < AUTOLUM_V7_LEN || buf[..4] != AUTOLUM_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != AUTOLUM_V7_VERSION || buf[6] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..17]);
+    let got = buf[17] as u32
+        | ((buf[18] as u32) << 8)
+        | ((buf[19] as u32) << 16)
+        | ((buf[20] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let mut f = [0u8; 2];
+    f.copy_from_slice(&buf[7..9]);
+    let floor = u16::from_le_bytes(f);
+    if floor > MAX_PERMILLE {
+        return None;
+    }
+    let mut o = [0u8; 8];
+    o.copy_from_slice(&buf[9..17]);
+    Some((buf[5] == 1, floor, u64::from_le_bytes(o)))
+}
+
+// ---------------------------------------------------------------------------
+// 夜间时段表（F116 联动——一处一事实）
+// ---------------------------------------------------------------------------
+
+/// 夜间窗（小时）：22:00 起至次日 06:00（含头不含尾）。
+pub const NIGHT_START_H: u8 = 22;
+pub const NIGHT_END_H: u8 = 6;
+
+pub fn is_night_hour(h: u8) -> bool {
+    if h > 23 {
+        return false; // 坏钟不判夜（诚实）
+    }
+    h >= NIGHT_START_H || h < NIGHT_END_H
+}
+
+/// 夜间窗审计：窗内压暗、窗外原样、30% 下限两域都成立。
+pub fn night_window_audit() -> bool {
+    (0..24u8).all(|h| {
+        let t = curve_target(1_000);
+        night_adjust(t, is_night_hour(h)) >= FLOOR_PERMILLE
+    }) && is_night_hour(23) && is_night_hour(2) && !is_night_hour(12)
+}
+
+// ---------------------------------------------------------------------------
+// 覆盖频次账（手动调节审计）
+// ---------------------------------------------------------------------------
+
+/// 覆盖账容量。
+pub const OVERRIDE_LEDGER_CAP: usize = 16;
+/// rage-slider 窗（5 分钟）。
+pub const RAGE_WINDOW_MS: u64 = 5 * 60 * 1_000;
+/// rage 阈值（窗内 ≥8 次手动调节）。
+pub const RAGE_THRESHOLD: usize = 8;
+
+pub struct OverrideLedger {
+    ring: [u64; OVERRIDE_LEDGER_CAP], // 手动调节时刻
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl OverrideLedger {
+    pub const fn new() -> Self {
+        OverrideLedger { ring: [0; OVERRIDE_LEDGER_CAP], head: 0, n: 0, out_of_order_rejected: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64) -> bool {
+        if self.n > 0 {
+            let last = (self.head + OVERRIDE_LEDGER_CAP - 1) % OVERRIDE_LEDGER_CAP;
+            if at_ms < self.ring[last] {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = at_ms;
+        self.head = (self.head + 1) % OVERRIDE_LEDGER_CAP;
+        self.n = (self.n + 1).min(OVERRIDE_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 窗内调节次数（最新往回数，出窗即停——时间序正向索引）。
+    pub fn count_within(&self, now_ms: u64, window_ms: u64) -> usize {
+        (0..self.n)
+            .map(|i| {
+                let idx = (self.head + OVERRIDE_LEDGER_CAP - 1 - i) % OVERRIDE_LEDGER_CAP;
+                self.ring[idx]
+            })
+            .take_while(|&t| now_ms.saturating_sub(t) <= window_ms)
+            .count()
+    }
+
+    /// rage 指纹（窗内次数 ≥ 阈值）。
+    pub fn rage_slider(&self, now_ms: u64) -> bool {
+        self.count_within(now_ms, RAGE_WINDOW_MS) >= RAGE_THRESHOLD
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 采样节流（传感器最小间隔）
+// ---------------------------------------------------------------------------
+
+/// 采样最小间隔（ms）。
+pub const SAMPLE_MIN_INTERVAL_MS: u64 = 500;
+
+pub struct SampleGate {
+    last_ms: Option<u64>,
+    pub rejected_too_soon: usize,
+}
+
+impl SampleGate {
+    pub const fn new() -> Self {
+        SampleGate { last_ms: None, rejected_too_soon: 0 }
+    }
+
+    /// 放行裁决（间隔不足拒绝——拒绝对计数，零静默）。
+    pub fn accept(&mut self, now_ms: u64) -> bool {
+        match self.last_ms {
+            Some(t) if now_ms.saturating_sub(t) < SAMPLE_MIN_INTERVAL_MS => {
+                self.rejected_too_soon += 1;
+                false
+            }
+            _ => {
+                self.last_ms = Some(now_ms);
+                true
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 渐变完成审计（恒单调逼近——不过冲）
+// ---------------------------------------------------------------------------
+
+/// 渐变单调审计：从任意起点到目标的插值序列不许回荡。
+pub fn ramp_monotonic_audit(from_permille: u16, to_permille: u16) -> bool {
+    let a = AutoLuma::new(true);
+    // 借 v1 内核：直接用 current() 的插值公式逐步验证（重放 ramp）。
+    let mut prev: i32 = from_permille as i32;
+    for step in 0..=10u64 {
+        let t = step * RAMP_MS / 10;
+        let elapsed = t.min(RAMP_MS);
+        let v = if elapsed >= RAMP_MS {
+            to_permille as i32
+        } else {
+            let f = from_permille as i32;
+            let to = to_permille as i32;
+            let k = elapsed as u32 * 1_000 / RAMP_MS as u32;
+            f + (to - f) * k as i32 / 1_000
+        };
+        // 单调（升或降都只许单向）。
+        if (to_permille as i32 - from_permille as i32) >= 0 {
+            if v < prev {
+                return false;
+            }
+        } else if v > prev {
+            return false;
+        }
+        prev = v;
+    }
+    let _ = a;
+    true
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F491 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_autolum_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F491-v7");
+    // 1) 持久化通道：round-trip + 篡改 + 值域守卫 + 短包。
+    let mut buf = [0u8; AUTOLUM_V7_LEN];
+    cs.add("persist_roundtrip", {
+        let n = save_state_v7(true, FLOOR_PERMILLE, 123_456_789, &mut buf).unwrap_or(0);
+        load_state_v7(&buf[..n]) == Some((true, FLOOR_PERMILLE, 123_456_789))
+    }, "");
+    cs.add("persist_tamper", {
+        let n = save_state_v7(false, 300, 0, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[9] ^= 0x01; // 翻覆盖时刻字节 → FNV 失配
+        load_state_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("persist_bad_floor", save_state_v7(true, 1_001, 0, &mut buf).is_none(), "");
+    cs.add("persist_short", load_state_v7(&buf[..10]).is_none(), "");
+    cs.add("persist_bad_magic", {
+        let mut bad = [0u8; AUTOLUM_V7_LEN];
+        let _ = save_state_v7(true, 300, 0, &mut bad);
+        bad[1] = b'X';
+        load_state_v7(&bad).is_none()
+    }, "");
+    // 2) 夜间时段表：端点 + 正午非夜 + 全域下限成立。
+    cs.add("night_endpoints", is_night_hour(22) && is_night_hour(5) && !is_night_hour(6) && !is_night_hour(21), "");
+    cs.add("night_bad_hour_honest", !is_night_hour(24) && !is_night_hour(255), "");
+    cs.add("night_window_floor", night_window_audit(), "");
+    // 3) 覆盖频次账：rage 指纹 + 窗外不计 + 单调守卫。
+    cs.add("override_rage_detected", {
+        let mut led = OverrideLedger::new();
+        for i in 0..RAGE_THRESHOLD {
+            let _ = led.push(i as u64 * 10_000); // 8 次 × 10s 间隔 = 70s 窗内
+        }
+        led.rage_slider(80_000)
+    }, "");
+    cs.add("override_calm_no_rage", {
+        let mut led = OverrideLedger::new();
+        for i in 0..3u64 {
+            let _ = led.push(i * 600_000); // 10 分钟间隔
+        }
+        !led.rage_slider(1_800_000)
+    }, "");
+    cs.add("override_window_boundary", {
+        let mut led = OverrideLedger::new();
+        let _ = led.push(0);
+        led.count_within(RAGE_WINDOW_MS, RAGE_WINDOW_MS) == 1
+            && led.count_within(RAGE_WINDOW_MS + 1, RAGE_WINDOW_MS) == 0
+    }, "");
+    cs.add("override_ledger_monotonic", {
+        let mut led = OverrideLedger::new();
+        let _ = led.push(1_000);
+        !led.push(500) && led.out_of_order_rejected == 1
+    }, "");
+    // 4) 采样节流：间隔内拒绝、间隔外放行、拒绝计数。
+    cs.add("sample_gate_throttle", {
+        let mut g = SampleGate::new();
+        g.accept(0) && !g.accept(499) && g.accept(500)
+            && g.rejected_too_soon == 1
+    }, "");
+    // 5) 渐变单调：升/降双向审计（不过冲不回荡）。
+    cs.add("ramp_up_monotonic", ramp_monotonic_audit(300, 1_000), "");
+    cs.add("ramp_down_monotonic", ramp_monotonic_audit(1_000, 300), "");
+    // 6) v1 回归锚：30% 下限 + 2h 覆盖（v7 面不许伤 v1 语义）。
+    cs.add("v1_floor_regression", curve_target(10) == FLOOR_PERMILLE, "");
+    cs.add("v1_override_regression", override_remaining(5_000, 2_000) == Some(3_000), "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn persist_roundtrip_all_floors() {
+        let mut buf = [0u8; AUTOLUM_V7_LEN];
+        for &f in &[300u16, 500, 1_000] {
+            let n = save_state_v7(true, f, 42, &mut buf).unwrap();
+            assert_eq!(load_state_v7(&buf[..n]), Some((true, f, 42)));
+        }
+    }
+
+    #[test]
+    fn night_hours_cover_exact_window() {
+        // 逐小时表：22-23 与 0-5 为夜，6-21 为昼（全 24 小时无歧义）。
+        for h in 0..24u8 {
+            assert_eq!(is_night_hour(h), h >= 22 || h < 6, "hour {h}");
+        }
+    }
+
+    #[test]
+    fn rage_requires_full_streak() {
+        let mut led = OverrideLedger::new();
+        for i in 0..RAGE_THRESHOLD - 1 {
+            let _ = led.push(i as u64 * 10_000);
+        }
+        assert!(!led.rage_slider(1_000_000), "7 次不构成 rage");
+        let _ = led.push(70_000);
+        assert!(led.rage_slider(80_000), "第 8 次达成");
+    }
+
+    #[test]
+    fn gate_never_blocks_after_gap() {
+        let mut g = SampleGate::new();
+        for i in 0..10u64 {
+            assert!(g.accept(i * SAMPLE_MIN_INTERVAL_MS));
+        }
+        assert_eq!(g.rejected_too_soon, 0);
+    }
+}

@@ -456,3 +456,443 @@ mod v3_tests {
         assert!(!temp_below_absolute_zero(-273.1));
     }
 }
+
+// ===========================================================================
+// 深化 v7（F458）：query 解析器 / 四位有效数格式化 / 系数表互逆审计 /
+// 绝对零度守卫 / 复制账 / 区域默认持久化 v7（W7U1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. query 解析——「100 磅 to kg」从字符串到换算卡：零堆字节解析器
+//    （数值 + 源单位 + 可选 to/in 目标），解析失败诚实 None（降级当
+//    搜索——主册「非换算当搜索」的入口守卫）。
+// 2. 有效数格式化——换算卡「复制即所见」：4 位有效数取整（0.0001 级
+//    精度口径一处一事实）。
+// 3. 系数表互逆审计——任意同族对 (a→b)×(b→a) ≈ 1：系数表自洽性的
+//    全对全扫描（18 单位 6 族，坏系数无处藏）。
+// 4. 绝对零度守卫——温度换算结果低于 -273.15°C = 物理不存在的答案，
+//    诚实 None（不输出合法格式的胡话）。
+// 5. 复制账 + 区域默认持久化（W7U1 + FNV 尾）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// query 解析器（零堆字节扫描）
+// ---------------------------------------------------------------------------
+
+/// 解析结果。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParsedQuery<'a> {
+    pub value: f64,
+    pub from: &'a str,
+    /// 显式目标（None = 走区域默认）。
+    pub to: Option<&'a str>,
+}
+
+/// 数值解析（ASCII 整数/小数；负号支持——温度可负）。
+fn parse_number(b: &[u8]) -> Option<(f64, usize)> {
+    let mut i = 0;
+    let neg = if !b.is_empty() && (b[0] == b'-' || b[0] == b'+') {
+        i = 1;
+        b[0] == b'-'
+    } else {
+        false
+    };
+    let start = i;
+    let mut seen_dot = false;
+    while i < b.len() && (b[i].is_ascii_digit() || (b[i] == b'.' && !seen_dot)) {
+        if b[i] == b'.' {
+            seen_dot = true;
+        }
+        i += 1;
+    }
+    if i == start {
+        return None; // 没有数字位
+    }
+    // 定长缓冲组浮点（零堆：字节切片直接 strconv——手写）。
+    let mut mantissa = 0f64;
+    let mut frac = 0f64;
+    let mut scale = 0.1f64;
+    let mut in_frac = false;
+    for &c in &b[start..i] {
+        if c == b'.' {
+            in_frac = true;
+        } else if in_frac {
+            frac += (c - b'0') as f64 * scale;
+            scale *= 0.1;
+        } else {
+            mantissa = mantissa * 10.0 + (c - b'0') as f64;
+        }
+    }
+    let v = mantissa + frac;
+    Some((if neg { -v } else { v }, i))
+}
+
+/// query 解析：「<数> <单位> [to|in <单位>]」；解析不出 = None（降级
+/// 当搜索的入口守卫——不猜）。
+pub fn parse_query(q: &str) -> Option<ParsedQuery<'_>> {
+    let b = q.as_bytes();
+    let (value, ni) = parse_number(b)?;
+    let mut i = ni;
+    while i < b.len() && b[i] == b' ' {
+        i += 1;
+    }
+    // 源单位 token（到空白或 to/in 关键字止）。
+    let from_start = i;
+    while i < b.len() && b[i] != b' ' {
+        i += 1;
+    }
+    if i == from_start {
+        return None;
+    }
+    let from = &q[from_start..i];
+    // 可选 to/in。
+    while i < b.len() && b[i] == b' ' {
+        i += 1;
+    }
+    if i >= b.len() {
+        return Some(ParsedQuery { value, from, to: None });
+    }
+    let rest = &q[i..];
+    for kw in ["to", "in"] {
+        if rest.len() >= 3 && rest[..2].eq_ignore_ascii_case(kw) && rest.as_bytes()[2] == b' ' {
+            let to = rest[3..].trim();
+            if to.is_empty() {
+                return None;
+            }
+            return Some(ParsedQuery { value, from, to: Some(to) });
+        }
+    }
+    // 不是 to/in 关键字 → 多词源单位？本解析器不支持——诚实 None。
+    None
+}
+
+// ---------------------------------------------------------------------------
+// 四位有效数格式化（复制即所见）
+// ---------------------------------------------------------------------------
+
+/// 4 位有效数取整（换算卡口径——一处一事实：4 位有效数承诺）。
+/// 零 libm：log10/powf 不在 no_std core（AI-V2 观察项同类）——
+/// 数量级走逐次乘除（有限循环，O(指数位数)）。
+pub fn sig4(v: f64) -> f64 {
+    if v == 0.0 || !v.is_finite() {
+        return v;
+    }
+    let a = v.abs();
+    // mag = 10^floor(log10(a))：逐次乘除逼近数量级。
+    let mut m = a;
+    let mut mag = 1.0f64;
+    while m >= 10.0 {
+        m /= 10.0;
+        mag *= 10.0;
+    }
+    while m < 1.0 {
+        m *= 10.0;
+        mag /= 10.0;
+    }
+    // mantissa ∈ [1,10) → 取 4 位有效数 = round(mantissa×1000)。
+    let scaled = (m * 1_000.0).round();
+    let r = scaled * mag / 1_000.0;
+    if v < 0.0 {
+        -r
+    } else {
+        r
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 系数表互逆审计（全对全）
+// ---------------------------------------------------------------------------
+
+/// 同族对互逆：(a→b)×(b→a) ≈ 1（容差 1e-9 相对误差）。温度族函数换算
+/// 不走系数（单独抽 c↔f、c↔k、f↔k 三个往返验证）。
+pub fn factor_reciprocal_audit() -> bool {
+    for fa in UNITS.iter() {
+        if fa.family == Family::Temperature {
+            continue;
+        }
+        for fb in UNITS.iter() {
+            if fb.family != fa.family {
+                continue;
+            }
+            let fwd = 1.0 * fa.factor / fb.factor;
+            let back = 1.0 * fb.factor / fa.factor;
+            if (fwd * back - 1.0).abs() > 1e-9 {
+                return false;
+            }
+        }
+    }
+    // 温度三往返。
+    let cf = convert_temperature(100.0, "c", "f").unwrap_or(f64::NAN);
+    let fc = convert_temperature(cf, "f", "c").unwrap_or(f64::NAN);
+    let ck = convert_temperature(100.0, "c", "k").unwrap_or(f64::NAN);
+    let kc = convert_temperature(ck, "k", "c").unwrap_or(f64::NAN);
+    (fc - 100.0).abs() < 1e-9 && (kc - 100.0).abs() < 1e-9
+}
+
+// ---------------------------------------------------------------------------
+// 绝对零度守卫（物理不存在的答案不给）
+// ---------------------------------------------------------------------------
+
+/// 温度换算（带绝对零度守卫）：源值本身低于绝对零度或结果低于 → None。
+/// 常量复用 v3 的 ABSOLUTE_ZERO_C（一处一事实——不再重复定义）。
+pub fn convert_temperature_guarded(v: f64, from: &str, to: &str) -> Option<f64> {
+    let from_c_key = from_str_or_key(from);
+    let src_c = match from_c_key {
+        "c" => v,
+        "f" => (v - 32.0) * 5.0 / 9.0,
+        "k" => v - 273.15,
+        _ => return None,
+    };
+    if src_c < ABSOLUTE_ZERO_C {
+        return None; // 源值已在绝对零度之下——输入本身不物理
+    }
+    let out = convert_temperature(v, from, to)?;
+    // 结果以 °C 复核。
+    let out_key = from_str_or_key(to);
+    let out_c = match out_key {
+        "c" => out,
+        "f" => (out - 32.0) * 5.0 / 9.0,
+        "k" => out - 273.15,
+        _ => return None,
+    };
+    if out_c < ABSOLUTE_ZERO_C {
+        return None;
+    }
+    Some(out)
+}
+
+// ---------------------------------------------------------------------------
+// 复制账（换算卡一键复制的审计面）
+// ---------------------------------------------------------------------------
+
+/// 复制账容量。
+pub const COPY_LEDGER_CAP: usize = 16;
+
+pub struct CopyLedger {
+    ring: [(u64, u64); COPY_LEDGER_CAP], // (时刻, 结果位数指纹)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl CopyLedger {
+    pub const fn new() -> Self {
+        CopyLedger { ring: [(0, 0); COPY_LEDGER_CAP], head: 0, n: 0, out_of_order_rejected: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64, result_sig: u64) -> bool {
+        if self.n > 0 {
+            let last = (self.head + COPY_LEDGER_CAP - 1) % COPY_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, result_sig);
+        self.head = (self.head + 1) % COPY_LEDGER_CAP;
+        self.n = (self.n + 1).min(COPY_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 区域默认持久化 v7（W7U1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7U 族）。
+pub const UNITCONV_V7_MAGIC: [u8; 4] = *b"W7U1";
+/// 长度：魔标(4) + 版本(1) + 长度单位(1) + 重量单位(1) + 温度单位(1) +
+/// 保留(1) + FNV(4) = 13。
+pub const UNITCONV_V7_LEN: usize = 13;
+pub const UNITCONV_V7_VERSION: u8 = 1;
+
+/// 单位名 → 表内短名序号（0-5 每族三单位——持久化存序号不存字符串）。
+fn unit_index(name: &str, family: Family) -> Option<u8> {
+    let n = name.trim().to_ascii_lowercase();
+    UNITS.iter()
+        .enumerate()
+        .filter(|(_, u)| u.family == family)
+        .find(|(_, u)| u.names.iter().any(|x| *x == n.as_str()))
+        .map(|(i, _)| (i % 3) as u8)
+}
+
+fn unit_by_index(family: Family, idx: u8) -> Option<&'static str> {
+    if idx > 2 {
+        return None;
+    }
+    UNITS.iter()
+        .filter(|u| u.family == family)
+        .nth(idx as usize)
+        .map(|u| u.names[0])
+}
+
+/// 序列化（区域默认三族各存族内序号 0-2）。
+pub fn save_region_v7(region: &RegionDefaults, out: &mut [u8]) -> Option<usize> {
+    let li = unit_index(region.length, Family::Length)?;
+    let wi = unit_index(region.weight, Family::Weight)?;
+    let ti = unit_index(region.temperature, Family::Temperature)?;
+    if out.len() < UNITCONV_V7_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&UNITCONV_V7_MAGIC);
+    out[4] = UNITCONV_V7_VERSION;
+    out[5] = li;
+    out[6] = wi;
+    out[7] = ti;
+    out[8] = 0;
+    let h = fnv1a(&out[..9]);
+    out[9] = (h & 0xff) as u8;
+    out[10] = ((h >> 8) & 0xff) as u8;
+    out[11] = ((h >> 16) & 0xff) as u8;
+    out[12] = ((h >> 24) & 0xff) as u8;
+    Some(UNITCONV_V7_LEN)
+}
+
+/// 反序列化（版本/保留位/序号值域/FNV 四重守卫）。
+pub fn load_region_v7(buf: &[u8]) -> Option<RegionDefaults> {
+    if buf.len() < UNITCONV_V7_LEN || buf[..4] != UNITCONV_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != UNITCONV_V7_VERSION || buf[8] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..9]);
+    let got = buf[9] as u32
+        | ((buf[10] as u32) << 8)
+        | ((buf[11] as u32) << 16)
+        | ((buf[12] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    Some(RegionDefaults {
+        length: unit_by_index(Family::Length, buf[5])?,
+        weight: unit_by_index(Family::Weight, buf[6])?,
+        temperature: unit_by_index(Family::Temperature, buf[7])?,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F458 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_unitconv_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F458-v7");
+    // 1) query 解析：整数/小数/负数/显式 to/无 to/垃圾诚实 None。
+    cs.add("parse_plain", {
+        let p = parse_query("100 磅").unwrap();
+        p.value == 100.0 && p.from == "磅" && p.to.is_none()
+    }, "");
+    cs.add("parse_decimal_to", {
+        let p = parse_query("30.5 摄氏度 to 华氏度").unwrap();
+        p.value == 30.5 && p.from == "摄氏度" && p.to == Some("华氏度")
+    }, "");
+    cs.add("parse_negative", {
+        let p = parse_query("-40 f to c").unwrap();
+        p.value == -40.0 && p.from == "f" && p.to == Some("c")
+    }, "");
+    cs.add("parse_garbage_none", parse_query("hello world").is_none()
+        && parse_query("abc to def").is_none(), "");
+    cs.add("parse_in_keyword", {
+        let p = parse_query("5km in miles").unwrap();
+        p.value == 5.0 && p.to == Some("miles")
+    }, "");
+    // 2) 解析→换算全链（解析结果直接进 convert）。
+    cs.add("parse_convert_chain", {
+        let p = parse_query("100 磅 to kg").unwrap();
+        (convert(p.value, p.from, p.to.unwrap()).unwrap() - 45.359237).abs() < 1e-6
+    }, "");
+    // 3) 四位有效数。
+    cs.add("sig4_rounding", {
+        // 容差断言（4 位有效数是数学承诺不是位级承诺——浮点累乘有 ε）。
+        (sig4(45.359237) - 45.36).abs() < 1e-9
+            && (sig4(0.000123456) - 0.0001235).abs() < 1e-12
+            && sig4(0.0) == 0.0
+    }, "");
+    cs.add("sig4_large", (sig4(123_456.7) - 123_500.0).abs() < 1e-6, "");
+    // 4) 系数表互逆（全对全 + 温度三往返）。
+    cs.add("factor_reciprocal_audit", factor_reciprocal_audit(), "");
+    // 5) 绝对零度守卫。
+    cs.add("absolute_zero_source_reject", convert_temperature_guarded(-300.0, "c", "k").is_none(), "");
+    cs.add("absolute_zero_ok_value", {
+        convert_temperature_guarded(-273.15, "c", "k") == Some(0.0)
+    }, "");
+    cs.add("absolute_zero_result_reject", convert_temperature_guarded(-500.0, "f", "c").is_none(), "");
+    // 6) 复制账：单调守卫 + 环上限。
+    cs.add("copy_ledger_monotonic", {
+        let mut led = CopyLedger::new();
+        let _ = led.push(1_000, 42);
+        !led.push(500, 7) && led.out_of_order_rejected == 1 && led.count() == 1
+    }, "");
+    cs.add("copy_ledger_ring_cap", {
+        let mut led = CopyLedger::new();
+        for i in 0..(COPY_LEDGER_CAP * 2) {
+            let _ = led.push(i as u64 * 100, i as u64);
+        }
+        led.count() == COPY_LEDGER_CAP
+    }, "");
+    // 7) 区域默认持久化：round-trip + 篡改 + 短包。
+    let mut buf = [0u8; UNITCONV_V7_LEN];
+    cs.add("region_persist_roundtrip", {
+        let n = save_region_v7(&REGION_ZH, &mut buf).unwrap_or(0);
+        match load_region_v7(&buf[..n]) {
+            Some(r) => r.length == "km" && r.weight == "kg" && r.temperature == "c",
+            None => false,
+        }
+    }, "");
+    cs.add("region_persist_tamper", {
+        let n = save_region_v7(&REGION_ZH, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[5] ^= 0x01;
+        load_region_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("region_persist_short", load_region_v7(&buf[..6]).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn parse_all_six_families() {
+        // 六族各一条 query 全解析（主册六族 ×2 判据的入口端覆盖）。
+        for q in ["1 m", "2 kg", "3 c", "4 m2", "5 l", "6 mps"] {
+            assert!(parse_query(q).is_some(), "{q}");
+        }
+    }
+
+    #[test]
+    fn sig4_precision_contract() {
+        // 卡面口径：结果与原值相对误差 ≤ 0.05%（4 位有效数的数学承诺）。
+        for v in [0.45359237f64, 1609.344, 3.785_411_784, 1.0 / 3.6] {
+            let s = sig4(v);
+            assert!((s - v).abs() / v < 0.0005);
+        }
+    }
+
+    #[test]
+    fn reciprocal_covers_all_pairs() {
+        // 计数对账：非温度 15 单位 → 15×15=225 对全扫描。
+        let non_temp = UNITS.iter().filter(|u| u.family != Family::Temperature).count();
+        assert_eq!(non_temp, 15);
+        assert!(factor_reciprocal_audit());
+    }
+
+    #[test]
+    fn region_roundtrip_all_defaults() {
+        let mut buf = [0u8; UNITCONV_V7_LEN];
+        for r in [
+            RegionDefaults { length: "m", weight: "kg", temperature: "c" },
+            RegionDefaults { length: "km", weight: "kg", temperature: "c" },
+        ] {
+            let n = save_region_v7(&r, &mut buf).unwrap();
+            let back = load_region_v7(&buf[..n]).unwrap();
+            assert_eq!(back.length, r.length);
+        }
+    }
+}

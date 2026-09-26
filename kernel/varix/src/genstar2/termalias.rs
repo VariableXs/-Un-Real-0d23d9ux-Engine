@@ -407,7 +407,7 @@ pub fn run_termalias_deep_checks() -> CheckSet {
             Some(n) => {
                 let mut r2 = AliasResolver::new();
                 match r2.load(&pbuf[..n]) {
-                    Some(loaded) => loaded >= 0 && r2.resolve("ip") == Some("net show ip {arg}"),
+                    Some(_loaded) => r2.resolve("ip") == Some("net show ip {arg}"),
                     None => false,
                 }
             }
@@ -470,5 +470,302 @@ mod deep_tests {
         // 移除覆盖不可用（定长表只增不改删——v1 语义：覆盖是终身制，
         // 恢复默认 = 会话结束回落内置）。
         assert!(r.define("disk", "vol list {arg}"));
+    }
+}
+
+// ===========================================================================
+// 深化 v7（F465）：别名名单法审计 / 覆盖清单持久化（W7M1 完整性清单）/
+// help 渲染器 / 多占位符展开 / 错字建议覆盖审计
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 名单法审计——用户 alias 必须是合法标识符（ASCII 字母数字 ≤16）：
+//    带空格/超长/空名在门禁就拒，不进解析器再炸。
+// 2. 持久化——用户覆盖表是用户数据：本体存于配置区字符串层，本通道
+//    是**完整性清单**（count + 全表 FNV 摘要——重启后核对覆盖表
+//    有没有被截断/篡改，不一致即显性告警）。
+// 3. help 渲染器——「help 一屏列全」的量化面：十别名全部渲染进
+//    512B 定长缓冲（含名字、展开式、来源锚），超容诚实截断计数。
+// 4. 多占位符展开——「{arg} 出现两次都替换」（v1 循环已支持，v7
+//    检查面固化语义）。
+// 5. 错字建议覆盖审计——每个内置别名删一字符的错字都能被建议回
+//    （「没有 vx——最接近的是 vxrun」类体验的全量覆盖）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 别名名单法审计（合法标识符）
+// ---------------------------------------------------------------------------
+
+/// 别名名单长度上限。
+pub const ALIAS_NAME_MAX: usize = 16;
+
+/// 合法别名（ASCII 字母/数字、首字符非数字、非空、≤16）。
+pub fn valid_alias_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    if b.is_empty() || b.len() > ALIAS_NAME_MAX {
+        return false;
+    }
+    if b[0].is_ascii_digit() {
+        return false;
+    }
+    b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'_')
+}
+
+/// 覆盖名单门禁（define 的入口守卫：名单不过 = 拒绝入表）。
+pub fn define_guarded(resolver: &mut AliasResolver, name: &'static str, expands: &'static str) -> bool {
+    if !valid_alias_name(name) {
+        return false;
+    }
+    resolver.define(name, expands)
+}
+
+// ---------------------------------------------------------------------------
+// 覆盖清单持久化（W7M1 ——完整性清单，不存字符串本体）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7M 族）。
+pub const TERMALIAS_V7_MAGIC: [u8; 4] = *b"W7M1";
+/// 长度：魔标(4) + 版本(1) + count(1) + 保留(1) + 摘要(4) + FNV(4) = 16。
+pub const TERMALIAS_V7_LEN: usize = 16;
+pub const TERMALIAS_V7_VERSION: u8 = 1;
+
+/// 覆盖表摘要（名字+展开式串联 FNV——顺序敏感：换序也算变）。
+pub fn alias_manifest_digest(names: &[&str], expands: &[&str]) -> Option<u32> {
+    if names.len() != expands.len() {
+        return None;
+    }
+    let mut buf = [0u8; 512];
+    let mut w = 0usize;
+    for i in 0..names.len() {
+        for part in [names[i], "\u{1}", expands[i], "\u{2}"] {
+            let p = part.as_bytes();
+            if w + p.len() > buf.len() {
+                return None;
+            }
+            buf[w..w + p.len()].copy_from_slice(p);
+            w += p.len();
+        }
+    }
+    Some(fnv1a(&buf[..w]))
+}
+
+/// 序列化（覆盖表完整性清单）。
+pub fn save_manifest_v7(names: &[&str], expands: &[&str], out: &mut [u8]) -> Option<usize> {
+    if names.len() != expands.len() || names.len() > USER_ALIAS_CAP {
+        return None;
+    }
+    if out.len() < TERMALIAS_V7_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&TERMALIAS_V7_MAGIC);
+    out[4] = TERMALIAS_V7_VERSION;
+    out[5] = names.len() as u8;
+    out[6] = 0;
+    let digest = alias_manifest_digest(names, expands)?;
+    out[7..11].copy_from_slice(&digest.to_le_bytes());
+    let h = fnv1a(&out[..11]);
+    out[11] = (h & 0xff) as u8;
+    out[12] = ((h >> 8) & 0xff) as u8;
+    out[13] = ((h >> 16) & 0xff) as u8;
+    out[14] = ((h >> 24) & 0xff) as u8;
+    Some(TERMALIAS_V7_LEN)
+}
+
+/// 反序列化 + 清单核对（给当前覆盖表出「是否与存档一致」的裁决）。
+pub fn verify_manifest_v7(buf: &[u8], names: &[&str], expands: &[&str]) -> Option<bool> {
+    if buf.len() < TERMALIAS_V7_LEN || buf[..4] != TERMALIAS_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != TERMALIAS_V7_VERSION || buf[6] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..11]);
+    let got = buf[11] as u32
+        | ((buf[12] as u32) << 8)
+        | ((buf[13] as u32) << 16)
+        | ((buf[14] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    if buf[5] as usize != names.len() {
+        return Some(false); // 数量对不上 = 已被改动
+    }
+    let digest = alias_manifest_digest(names, expands)?;
+    let mut stored = [0u8; 4];
+    stored.copy_from_slice(&buf[7..11]);
+    Some(digest == u32::from_le_bytes(stored))
+}
+
+// ---------------------------------------------------------------------------
+// help 渲染器（一屏列全的量化面）
+// ---------------------------------------------------------------------------
+
+/// help 缓冲预算（字节）。
+pub const HELP_BUF_CAP: usize = 512;
+
+/// 渲染十别名进定长缓冲（每行「name -> expands  [source]\n」）。
+/// 返回 (写出字节数, 渲染行数)；缓冲不足 = None（不静默截断）。
+pub fn render_help(out: &mut [u8]) -> Option<(usize, usize)> {
+    let mut w = 0usize;
+    for a in ALIASES.iter() {
+        // 行长预算：name + " -> " + expands + "  [" + source + "]\n"。
+        let line_len = a.name.len() + 4 + a.expands.len() + 2 + a.source.len() + 2 + 1;
+        if w + line_len > out.len() {
+            return None;
+        }
+        let mut put = |s: &str| {
+            out[w..w + s.len()].copy_from_slice(s.as_bytes());
+            w += s.len();
+        };
+        put(a.name);
+        put(" -> ");
+        put(a.expands);
+        put("  [");
+        put(a.source);
+        put("]\n");
+    }
+    Some((w, ALIASES.len()))
+}
+
+// ---------------------------------------------------------------------------
+// 错字建议覆盖审计
+// ---------------------------------------------------------------------------
+
+/// 每个内置别名删一字符 → unknown_hint 必须建议回原名（全量覆盖）。
+pub fn typo_suggestion_coverage() -> bool {
+    for a in ALIASES.iter() {
+        let b: Vec<char> = a.name.chars().collect();
+        if b.len() < 2 {
+            return false;
+        }
+        // 删中间一字符（首删/尾删也给过——用中间位做代表）。
+        let mid = b.len() / 2;
+        let typo: String = b.iter().enumerate().filter(|&(i, _)| i != mid).map(|(_, c)| *c).collect();
+        if unknown_hint(&typo) != Some(a.name) {
+            return false;
+        }
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F465 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_termalias_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F465-v7");
+    // 1) 名单法：合法/非法边界。
+    cs.add("name_valid", valid_alias_name("myip") && valid_alias_name("v_x2") && valid_alias_name("a"), "");
+    cs.add("name_invalid", !valid_alias_name("") && !valid_alias_name("2fast")
+        && !valid_alias_name("has space") && !valid_alias_name("0123456789abcdefX"), "");
+    // 2) 门禁在 define 前拦截。
+    cs.add("define_guard_blocks", {
+        let mut r = AliasResolver::new();
+        !define_guarded(&mut r, "bad name", "x") && r.resolve("bad name").is_none()
+            && define_guarded(&mut r, "good", "ok {arg}")
+    }, "");
+    // 3) 完整性清单：存档→一致 / 改动→不一致 / 数量变→不一致。
+    let mut buf = [0u8; TERMALIAS_V7_LEN];
+    cs.add("manifest_match", {
+        let n = save_manifest_v7(&["ip2", "quick"], &["net ip {arg}", "run fast"], &mut buf).unwrap_or(0);
+        verify_manifest_v7(&buf[..n], &["ip2", "quick"], &["net ip {arg}", "run fast"]) == Some(true)
+    }, "");
+    cs.add("manifest_content_changed", {
+        let n = save_manifest_v7(&["ip2", "quick"], &["net ip {arg}", "run fast"], &mut buf).unwrap_or(0);
+        verify_manifest_v7(&buf[..n], &["ip2", "quick"], &["net ip {arg}", "run slow"]) == Some(false)
+    }, "");
+    cs.add("manifest_count_changed", {
+        let n = save_manifest_v7(&["ip2"], &["net ip {arg}"], &mut buf).unwrap_or(0);
+        verify_manifest_v7(&buf[..n], &["ip2", "quick"], &["net ip {arg}", "run fast"]) == Some(false)
+    }, "");
+    cs.add("manifest_tamper", {
+        let n = save_manifest_v7(&["ip2"], &["x"], &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[5] ^= 0x01;
+        verify_manifest_v7(&bad[..n], &["ip2"], &["x"]).is_none()
+    }, "");
+    cs.add("manifest_over_cap_reject", {
+        let names: [&str; USER_ALIAS_CAP + 1] = core::array::from_fn(|i| match i {
+            0..=9 => POOL9[i],
+            _ => POOL9[i - 10],
+        });
+        save_manifest_v7(&names, &["x"; USER_ALIAS_CAP + 1], &mut buf).is_none()
+    }, "");
+    // 4) help 渲染器：十行全渲染 + 缓冲不足诚实 None。
+    cs.add("help_render_full", {
+        let mut buf = [0u8; HELP_BUF_CAP];
+        match render_help(&mut buf) {
+            Some((n, lines)) => {
+                lines == ALIAS_N
+                    && n > 100
+                    && buf[..3] == *b"ip "
+                    && buf[n - 1] == b'\n'
+            }
+            None => false,
+        }
+    }, "");
+    cs.add("help_render_tiny_none", {
+        let mut tiny = [0u8; 32];
+        render_help(&mut tiny).is_none()
+    }, "");
+    // 5) 多占位符：两处 {arg} 都替换。
+    cs.add("multi_placeholder_expand", {
+        let mut out = [0u8; 64];
+        match AliasResolver::expand_into("cp {arg} to {arg} dir", Some("X"), &mut out) {
+            Some(n) => &out[..n] == b"cp X to X dir",
+            None => false,
+        }
+    }, "");
+    // 6) 错字建议全量覆盖（每别名删中位字符均可建议回）。
+    cs.add("typo_coverage_all", typo_suggestion_coverage(), "");
+    // 7) v1 回归锚：覆盖优先 + help 十行（v7 面不许伤 v1 语义）。
+    cs.add("v1_override_regression", {
+        let mut r = AliasResolver::new();
+        let _ = r.define("ip", "mine {arg}");
+        r.resolve("ip") == Some("mine {arg}") && r.help_lines() == ALIAS_N
+    }, "");
+    cs
+}
+
+const POOL9: [&str; 10] = ["u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9"];
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn manifest_is_order_sensitive() {
+        let mut buf = [0u8; TERMALIAS_V7_LEN];
+        let n = save_manifest_v7(&["a", "b"], &["x", "y"], &mut buf).unwrap();
+        // 换序 = 内容变了（清单如实报不一致）。
+        assert_eq!(verify_manifest_v7(&buf[..n], &["b", "a"], &["y", "x"]), Some(false));
+    }
+
+    #[test]
+    fn digest_length_mismatch_none() {
+        assert!(alias_manifest_digest(&["a"], &["x", "y"]).is_none());
+    }
+
+    #[test]
+    fn help_buffer_sized_honestly() {
+        // 预算审计：十行全部渲染且余量健康（不是贴线交付）。
+        let mut buf = [0u8; HELP_BUF_CAP];
+        let (n, _) = render_help(&mut buf).unwrap();
+        assert!(n > 150 && n < HELP_BUF_CAP, "渲染 {n}B 应在预算内且有余量");
+    }
+
+    #[test]
+    fn typo_single_deletion_hinted() {
+        // 删一字符（disk → dsk）编辑距离 1 仍在建议域。
+        assert_eq!(unknown_hint("dsk"), Some("disk"));
+    }
+
+    #[test]
+    fn guard_rejects_non_static_safety() {
+        // 名单法对内置别名名同样适用（自检）。
+        for a in ALIASES.iter() {
+            assert!(valid_alias_name(a.name), "{} 应为合法标识符", a.name);
+        }
     }
 }

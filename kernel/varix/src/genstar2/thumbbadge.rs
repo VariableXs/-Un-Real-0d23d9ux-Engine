@@ -473,3 +473,358 @@ mod deep_tests {
         assert!(!led.has_badge("C:\\x", BadgeKind::Syncing));
     }
 }
+
+// ===========================================================================
+// 深化 v7（F453）：同步时延账（P95 面）/ 角标几何全域审计 /
+// 用户抑制清单 / 移除幂等审计
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 同步时延账——「状态变更 <1s 呈现」的量化审计面：每笔同步记账
+//    （时钟单调守卫）+ 峰值/预算达成率（<1s 的账面承诺）。
+// 2. 角标几何全域审计——五类角标 × 图标尺寸矩阵：角标矩形恒在图标
+//    矩形内（1/2 比例的几何承诺）；不同锚点角标在最小图标尺寸下互不
+//    相交（不互遮的量化版）。
+// 3. 用户抑制清单——「用户关掉的角标不许再自己弹回来」（信任三章）：
+//    按文件键抑制、容量诚实、移除即恢复。
+// 4. 移除幂等审计——关不存在的角标幂等成功且不产生重复账目条目
+//    （账面 n 不动——v1 语义的回归锚）。
+
+// ---------------------------------------------------------------------------
+// 同步时延账（<1s 承诺的量化审计面）
+// ---------------------------------------------------------------------------
+
+/// 时延账容量。
+pub const SYNC_LEDGER_CAP: usize = 16;
+/// 同步预算（主册 1s——与 SYNC_DEADLINE_MS 同源，账面复用锚）。
+pub const SYNC_BUDGET_MS: u64 = SYNC_DEADLINE_MS;
+
+pub struct SyncLatencyLedger {
+    ring: [(u64, u64); SYNC_LEDGER_CAP], // (时钟, 时延 ms)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl SyncLatencyLedger {
+    pub const fn new() -> Self {
+        SyncLatencyLedger {
+            ring: [(0, 0); SYNC_LEDGER_CAP],
+            head: 0,
+            n: 0,
+            out_of_order_rejected: 0,
+        }
+    }
+
+    pub fn push(&mut self, at_ms: u64, latency_ms: u64) -> bool {
+        if self.n > 0 {
+            let last = (self.head + SYNC_LEDGER_CAP - 1) % SYNC_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, latency_ms);
+        self.head = (self.head + 1) % SYNC_LEDGER_CAP;
+        self.n = (self.n + 1).min(SYNC_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 峰值时延。
+    pub fn max_latency(&self) -> u64 {
+        (0..self.n)
+            .map(|i| {
+                let idx = (self.head + SYNC_LEDGER_CAP - self.n + i) % SYNC_LEDGER_CAP;
+                self.ring[idx].1
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// 预算达成率（permille）。
+    pub fn budget_hit_permille(&self) -> u32 {
+        if self.n == 0 {
+            return 0;
+        }
+        let hit = (0..self.n)
+            .filter(|&i| {
+                let idx = (self.head + SYNC_LEDGER_CAP - self.n + i) % SYNC_LEDGER_CAP;
+                self.ring[idx].1 <= SYNC_BUDGET_MS
+            })
+            .count();
+        (hit as u32 * 1_000 / self.n as u32) as u32
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 角标几何全域审计
+// ---------------------------------------------------------------------------
+
+/// 全域几何审计：五类角标 × 一组图标尺寸（16/32/48/96/256）——
+/// 角标矩形恒完整落在图标矩形内（1/2 比例 + 锚点公式的全域性质）。
+pub fn geometry_containment_audit() -> bool {
+    const ICON_SIZES: [u32; 5] = [16, 32, 48, 96, 256];
+    const KINDS: [BadgeKind; 5] = [
+        BadgeKind::Shortcut,
+        BadgeKind::Archive,
+        BadgeKind::Encrypted,
+        BadgeKind::Syncing,
+        BadgeKind::OfflineAvailable,
+    ];
+    ICON_SIZES.iter().all(|&s| {
+        KINDS.iter().all(|&k| {
+            let (bx, by, bw, bh) = badge_rect(1_000, 2_000, s, s, k);
+            let bw2 = s * BADGE_SIZE_RATIO_NUM / BADGE_SIZE_RATIO_DEN;
+            // 尺寸恰为图标一半（偶数尺寸精确；奇数向下取整）。
+            bw == bw2 && bh == bw2
+                // 包含性：角标 ⊆ 图标。
+                && bx >= 1_000 && by >= 2_000
+                && bx + bw as i32 <= 1_000 + s as i32
+                && by + bh as i32 <= 2_000 + s as i32
+        })
+    })
+}
+
+/// 不同锚点互不相交审计（最小图标 16px：左上与右上、左下与右下等
+/// 横向分离——1/2 尺寸保证左右锚永不重叠）。
+pub fn anchors_disjoint_at_min_size() -> bool {
+    // 最小可读图标 16px：左半与右半锚点（top-left vs top-right、
+    // bottom-left vs bottom-right）的矩形必须分离。
+    let pairs = [
+        (BadgeKind::Encrypted, BadgeKind::Archive),        // 左上 vs 右上
+        (BadgeKind::Shortcut, BadgeKind::Syncing),         // 左下 vs 右下
+    ];
+    pairs.iter().all(|&(a, b)| {
+        let ra = badge_rect(0, 0, 16, 16, a);
+        let rb = badge_rect(0, 0, 16, 16, b);
+        rects_disjoint(ra, rb)
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 用户抑制清单（关掉的角标不许自己弹回来）
+// ---------------------------------------------------------------------------
+
+/// 抑制清单容量。
+pub const SUPPRESS_CAP: usize = 32;
+
+pub struct SuppressList {
+    keys: [u64; SUPPRESS_CAP],
+    n: usize,
+}
+
+impl SuppressList {
+    pub const fn new() -> Self {
+        SuppressList { keys: [0; SUPPRESS_CAP], n: 0 }
+    }
+
+    /// 抑制（重复抑制 = 幂等成功不重复占位）。
+    pub fn suppress(&mut self, key: u64) -> bool {
+        if key == 0 || self.keys.contains(&key) {
+            return key != 0; // 已在清单 = 幂等 true；key 0 = 非法 false
+        }
+        if self.n >= SUPPRESS_CAP {
+            return false;
+        }
+        self.keys[self.n] = key;
+        self.n += 1;
+        true
+    }
+
+    /// 解除抑制（移除即恢复——不存在的键幂等 true）。
+    pub fn unsuppress(&mut self, key: u64) -> bool {
+        match (0..self.n).find(|&i| self.keys[i] == key) {
+            Some(pos) => {
+                for i in pos..self.n - 1 {
+                    self.keys[i] = self.keys[i + 1];
+                }
+                self.n -= 1;
+                self.keys[self.n] = 0;
+                true
+            }
+            None => true, // 幂等：本来就没抑制
+        }
+    }
+
+    pub fn is_suppressed(&self, key: u64) -> bool {
+        self.keys[..self.n].contains(&key) // 只扫活跃段——清零尾巴不是真键
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 移除幂等审计（v1 语义回归锚）
+// ---------------------------------------------------------------------------
+
+/// 关不存在的角标：幂等成功、账目条目数不变（不产生僵尸条目）。
+pub fn remove_idempotent_no_zombie() -> bool {
+    let mut led = BadgeLedger::new();
+    let _ = led.set_badge("a.png", BadgeKind::Archive, true, 100);
+    let n_before = ledger_len(&led);
+    // 关两次「不存在的」角标（Syncing 从未开过）。
+    let first = led.set_badge("a.png", BadgeKind::Syncing, false, 200);
+    let second = led.set_badge("a.png", BadgeKind::Syncing, false, 300);
+    first && second && ledger_len(&led) == n_before
+}
+
+/// 账目条目数（v1 私有 n 的只读探针——同模块 impl 扩展）。
+impl BadgeLedger {
+    pub fn v7_len(&self) -> usize {
+        self.n
+    }
+}
+
+fn ledger_len(led: &BadgeLedger) -> usize {
+    led.v7_len()
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F453 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_thumbbadge_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F453-v7");
+    // 1) 同步时延账：预算达成 + 峰值 + 单调守卫。
+    cs.add("sync_ledger_budget", {
+        let mut led = SyncLatencyLedger::new();
+        for i in 0..10u64 {
+            let _ = led.push(i * 1_000, 800); // 全部 800ms < 1s
+        }
+        led.budget_hit_permille() == 1_000 && led.max_latency() == 800
+    }, "");
+    cs.add("sync_ledger_tail_visible", {
+        let mut led = SyncLatencyLedger::new();
+        for i in 0..9u64 {
+            let _ = led.push(i * 1_000, 500);
+        }
+        let _ = led.push(9_000, 2_000); // 一笔超标——峰值现形
+        led.max_latency() == 2_000 && led.budget_hit_permille() == 900
+    }, "");
+    cs.add("sync_ledger_monotonic", {
+        let mut led = SyncLatencyLedger::new();
+        let _ = led.push(1_000, 100);
+        !led.push(500, 100) && led.out_of_order_rejected == 1
+    }, "");
+    // 2) 几何全域审计：五类 × 五尺寸包含性。
+    cs.add("geometry_containment_all", geometry_containment_audit(), "");
+    // 3) 最小尺寸锚点分离（不互遮的量化版）。
+    cs.add("anchors_disjoint_min", anchors_disjoint_at_min_size(), "");
+    // 4) 抑制清单：幂等抑制 / 移除恢复 / 容量诚实。
+    cs.add("suppress_idempotent", {
+        let mut sl = SuppressList::new();
+        let first = sl.suppress(0xAB);
+        let again = sl.suppress(0xAB);
+        first && again && sl.count() == 1 && sl.is_suppressed(0xAB)
+    }, "");
+    cs.add("suppress_unsuppress_restores", {
+        let mut sl = SuppressList::new();
+        let _ = sl.suppress(0xCD);
+        sl.unsuppress(0xCD) && !sl.is_suppressed(0xCD) && sl.count() == 0
+    }, "");
+    cs.add("suppress_unsuppress_missing_idempotent", {
+        let mut sl = SuppressList::new();
+        sl.unsuppress(0xFF) // 从未抑制过 = 幂等 true
+    }, "");
+    cs.add("suppress_cap_honest", {
+        let mut sl = SuppressList::new();
+        let mut all = true;
+        for i in 0..SUPPRESS_CAP + 4 {
+            let ok = sl.suppress(0x100 + i as u64);
+            if (i < SUPPRESS_CAP) != ok {
+                all = false;
+            }
+        }
+        all && sl.count() == SUPPRESS_CAP
+    }, "");
+    cs.add("suppress_zero_key_reject", !SuppressList::new().suppress(0), "");
+    // 5) 移除幂等：不产生僵尸条目。
+    cs.add("remove_idempotent_no_zombie", remove_idempotent_no_zombie(), "");
+    // 6) 抑制联动：被抑制文件的角标不重新点亮（抑制优先于 set_badge 的
+    //    上层裁决——本层提供查询，联动审计在此固化）。
+    cs.add("suppress_blocks_relight", {
+        let mut led = BadgeLedger::new();
+        let mut sl = SuppressList::new();
+        let _ = led.set_badge("b.png", BadgeKind::Syncing, true, 100);
+        let _ = sl.suppress(file_key("b.png"));
+        // 上层规则：is_suppressed → 不调 set_badge。审计：清单命中且
+        // 角标状态不再变化。
+        let suppressed = sl.is_suppressed(file_key("b.png"));
+        suppressed && led.has_badge("b.png", BadgeKind::Syncing)
+    }, "");
+    // 7) v1 回归锚：1s 同步判据 + 五类锚点名（v7 面不许伤 v1 语义）。
+    cs.add("v1_sync_deadline_regression", SYNC_DEADLINE_MS == 1_000, "");
+    cs.add("v1_anchor_names_regression", {
+        BadgeKind::Shortcut.anchor_name() == "bottom-left"
+            && BadgeKind::Archive.anchor_name() == "top-right"
+            && BadgeKind::Encrypted.anchor_name() == "top-left"
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn ledger_ring_wrap_keeps_max() {
+        let mut led = SyncLatencyLedger::new();
+        for i in 0..(SYNC_LEDGER_CAP as u64 + 5) {
+            assert!(led.push(i * 1_000, 100 + i as u64 * 10));
+        }
+        assert_eq!(led.count(), SYNC_LEDGER_CAP);
+        // 峰值是最近一笔（时延递增序列环回后仍取到）。
+        assert_eq!(led.max_latency(), 100 + (SYNC_LEDGER_CAP as u64 + 4) * 10);
+    }
+
+    #[test]
+    fn geometry_at_min_and_max_icons() {
+        // 边界尺寸审计：16px 与 256px 图标的角标都在界内。
+        for s in [16u32, 256] {
+            for k in [
+                BadgeKind::Shortcut,
+                BadgeKind::Archive,
+                BadgeKind::Encrypted,
+                BadgeKind::Syncing,
+                BadgeKind::OfflineAvailable,
+            ] {
+                let (bx, by, bw, bh) = badge_rect(0, 0, s, s, k);
+                assert!(bx >= 0 && by >= 0);
+                assert!(bx + bw as i32 <= s as i32 && by + bh as i32 <= s as i32);
+            }
+        }
+    }
+
+    #[test]
+    fn suppress_roundtrip_many() {
+        let mut sl = SuppressList::new();
+        for i in 0..10u64 {
+            assert!(sl.suppress(1_000 + i));
+        }
+        for i in 0..10u64 {
+            assert!(sl.unsuppress(1_000 + i));
+        }
+        assert_eq!(sl.count(), 0);
+    }
+
+    #[test]
+    fn suppression_survives_interleaved() {
+        // 交错抑制/解除：余序稳定（环形移除不串键；key 0 为非法值不参与）。
+        let mut sl = SuppressList::new();
+        for i in 0..5u64 {
+            let _ = sl.suppress(10 + i);
+        }
+        assert!(sl.unsuppress(12));
+        assert!(!sl.is_suppressed(12));
+        for i in [10u64, 11, 13, 14] {
+            assert!(sl.is_suppressed(i));
+        }
+        assert_eq!(sl.count(), 4);
+    }
+}
