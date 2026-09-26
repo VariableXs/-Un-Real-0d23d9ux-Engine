@@ -179,10 +179,26 @@ pub struct PointerGuard {
     pub budget_ms: u32,
     /// 最近一次熔断的通知条文案（供通知系统取用）。
     pub last_notice: Option<String>,
+    /// 环形台账超容丢弃计数。
+    events_dropped: usize,
+    /// 管理员解黑日志（(时刻, 方案名)——恢复路径留痕）。
+    unblacklist_log: Vec<(u64, String)>,
 }
 
 /// 单次熔断的操作计数上界（O(1) 换绑：查表+换绑+留痕+通知 = 4 步）。
 pub const FUSE_OPS_MAX: u32 = 4;
+
+/// 熔断事件环形台账容量。
+pub const FUSE_EVENTS_CAP: usize = 64;
+
+/// 阈值变更审计记录（管理员面的留痕——谁改的档、何时、改成什么）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThresholdAudit {
+    pub at_ms: u64,
+    pub frame_px: u32,
+    pub fps: u32,
+    pub total_bytes: u64,
+}
 
 impl PointerGuard {
     pub fn new(budget_ms: u32) -> PointerGuard {
@@ -192,6 +208,8 @@ impl PointerGuard {
             events: Vec::new(),
             budget_ms,
             last_notice: None,
+            events_dropped: 0,
+            unblacklist_log: Vec::new(),
         }
     }
 
@@ -199,7 +217,33 @@ impl PointerGuard {
         self.active = Some(String::from(name));
     }
 
-    /// 熔断：立即回退默认 + 留痕 + 通知归因。返回通知条文案。
+    /// 启用方案（判据「该方案累计三次异常将被拒绝再次启用」的机制面
+    /// ——拉黑方案启用被拒并给两句话：发生了什么/下一步怎么办）。
+    pub fn activate(&mut self, name: &str) -> Result<(), &'static str> {
+        if self.is_blacklisted(name) {
+            return Err("该方案已因连续三次运行异常被拒绝启用——下一步：在方案库移除它，或联系管理员复位熔断计数后重试");
+        }
+        self.active = Some(String::from(name));
+        Ok(())
+    }
+
+    /// 管理员解黑（复位熔断计数——三振不是无期，恢复路径留痕）。
+    pub fn unblacklist(&mut self, scheme: &str, at_ms: u64) -> bool {
+        if let Some(pos) = self.fuse_counts.iter().position(|(s, _)| s == scheme) {
+            self.fuse_counts.remove(pos);
+            self.unblacklist_log.push((at_ms, String::from(scheme)));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 解黑记录只读视图。
+    pub fn unblacklist_log(&self) -> &[(u64, String)] {
+        &self.unblacklist_log
+    }
+
+    /// 熔断：立即回退默认 + 留痕 + 通知归因 + 下一步指引。返回通知条文案。
     pub fn fuse(&mut self, fault: RuntimeFault, scheme: &str, at_ms: u64) -> &str {
         // 预算证明：熔断路径恒为 FUSE_OPS_MAX 个 O(1) 操作、零像素工作
         // ——<200ms 判据的机制面上界（实机耗时会远低于预算）。
@@ -218,14 +262,23 @@ impl PointerGuard {
                 }
             }
         };
+        // 通知三要素：发生了什么/为什么(归因)/下一步（已回退保底 + 移除或复位路径）。
         let notice = if count >= 3 {
             alloc::format!(
-                "指针方案「{scheme}」{}已第 {count} 次——已回退默认指针；该方案累计三次异常将被拒绝再次启用",
+                "指针方案「{scheme}」{}，已立即回退默认指针（第 {count} 次，已达三次上限——该方案被拒绝再次启用）。下一步：在方案库移除该方案，或联系管理员复位熔断计数",
                 fault.zh()
             )
         } else {
-            alloc::format!("指针方案「{scheme}」{}，已立即回退默认指针（第 {count} 次）", fault.zh())
+            alloc::format!(
+                "指针方案「{scheme}」{}，已立即回退默认指针（第 {count} 次）。下一步：可再次启用观察，若复发两次将被拒绝启用",
+                fault.zh()
+            )
         };
+        // 环形台账：超容丢最旧并计数（容量纪律，不无界增长）。
+        if self.events.len() >= FUSE_EVENTS_CAP {
+            self.events.remove(0);
+            self.events_dropped += 1;
+        }
         self.events.push(FuseEvent {
             at_ms,
             fault,
@@ -238,12 +291,90 @@ impl PointerGuard {
         self.last_notice.as_deref().unwrap_or("")
     }
 
+    /// 熔断事件环形台账超容丢弃计数。
+    pub fn events_dropped(&self) -> usize {
+        self.events_dropped
+    }
+
     /// 三振拉黑判定。
     pub fn is_blacklisted(&self, scheme: &str) -> bool {
         self.fuse_counts
             .iter()
             .any(|(s, c)| s == scheme && *c >= 3)
     }
+}
+
+/// 三闸完整体检单（不短路——三闸全跑出完整体检面，详情页显示
+/// 「过闸状态」用；`check_gates` 是首错即停的导入快路径，两者共用
+/// 同一判定函数体，一处一事实）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GateAudit {
+    pub size_ok: bool,
+    pub fps_ok: bool,
+    pub mem_ok: bool,
+    /// 实测最大单帧边长（体检单数字面）。
+    pub max_frame_px_seen: u32,
+    /// 实测位图总量（字节）。
+    pub total_bytes: u64,
+    /// 首个拒绝（全过为 None——与 check_gates 结论一致）。
+    pub first_rejection: Option<GateRejection>,
+}
+
+/// 对方案跑三闸完整体检单。
+pub fn gate_report(m: &CursorSchemeModel, th: &GateThresholds) -> GateAudit {
+    let mut size_ok = true;
+    let mut fps_ok = true;
+    let mut max_seen: u32 = 0;
+    let mut first: Option<GateRejection> = None;
+    for e in &m.entries {
+        for (fi, f) in e.frames.iter().enumerate() {
+            max_seen = max_seen.max((f.w as u32).max(f.h as u32));
+            if size_ok && (f.w as u32).max(f.h as u32) > th.max_frame_px {
+                size_ok = false;
+                if first.is_none() {
+                    first = Some(GateRejection {
+                        gate: "尺寸闸",
+                        detail: alloc::format!(
+                            "「{}」态第 {} 帧 {}×{} 超过 {}px 上限——防「指针当壁纸」滥用",
+                            e.state.zh_name(),
+                            fi,
+                            f.w,
+                            f.h,
+                            th.max_frame_px
+                        ),
+                    });
+                }
+            }
+            if fps_ok && f.delay_ms > 0 && f.delay_ms < 17 {
+                fps_ok = false;
+                if first.is_none() {
+                    first = Some(GateRejection {
+                        gate: "帧率闸",
+                        detail: alloc::format!(
+                            "「{}」态第 {} 帧延时 {}ms 低于 17ms 下限（有效帧率超过 {}fps 上限）——防频闪不适",
+                            e.state.zh_name(),
+                            fi,
+                            f.delay_ms,
+                            th.max_fps
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    let total = m.total_bitmap_bytes();
+    let mem_ok = total <= th.max_total_bytes;
+    if !mem_ok && first.is_none() {
+        first = Some(GateRejection {
+            gate: "内存闸",
+            detail: alloc::format!(
+                "解压后位图总量 {}KB 超过 {}KB 上限——防资源型炸弹",
+                total / 1024,
+                th.max_total_bytes / 1024
+            ),
+        });
+    }
+    GateAudit { size_ok, fps_ok, mem_ok, max_frame_px_seen: max_seen, total_bytes: total, first_rejection: first }
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +518,69 @@ pub fn run_gate_checks() -> CheckSet {
         "",
     );
 
+    // 11. 拉黑方案启用拦截（"拒绝再次启用"的机制面兑现）+ 管理员解黑。
+    let mut guard3 = PointerGuard::new(200);
+    for i in 0..3u64 {
+        let _ = guard3.fuse(RuntimeFault::RenderCrash, "三振包", i);
+    }
+    let blocked = guard3.activate("三振包").is_err();
+    let notice3 = guard3.last_notice.clone().unwrap_or_default();
+    let unblack = guard3.unblacklist("三振包", 9000);
+    let reactivated = guard3.activate("三振包").is_ok();
+    set.add(
+        "activate rejects blacklisted and admin restores",
+        blocked
+            && notice3.contains("下一步")
+            && unblack
+            && reactivated
+            && guard3.unblacklist_log().len() == 1
+            && !guard3.unblacklist("查无", 9001),
+        "",
+    );
+
+    // 12. 熔断事件环形台账：65 件只留 64，丢最旧计数。
+    let mut guard4 = PointerGuard::new(200);
+    for i in 0..65u64 {
+        let _ = guard4.fuse(RuntimeFault::RenderTimeout, &alloc::format!("包{i}"), i);
+    }
+    set.add(
+        "fuse events ring capped at 64",
+        guard4.events.len() == FUSE_EVENTS_CAP
+            && guard4.events_dropped() == 1
+            && guard4.events[0].at_ms == 1,
+        "",
+    );
+
+    // 13. 三闸完整体检单：不短路——三闸结论 + 实测数字全列出。
+    let audit_big = gate_report(&big, &th);
+    set.add(
+        "gate report lists full verdicts",
+        !audit_big.size_ok && audit_big.fps_ok && audit_big.mem_ok
+            && audit_big.max_frame_px_seen == 300
+            && audit_big.first_rejection.as_ref().map(|r| r.gate == "尺寸闸").unwrap_or(false),
+        "",
+    );
+    let audit_bomb = gate_report(&bomb, &th);
+    set.add(
+        "gate report memory verdict with totals",
+        audit_bomb.size_ok && !audit_bomb.mem_ok && audit_bomb.total_bytes > th.max_total_bytes,
+        "",
+    );
+    let audit_clean = gate_report(&admitted_model, &th);
+    set.add(
+        "gate report clean pass",
+        audit_clean.size_ok && audit_clean.fps_ok && audit_clean.mem_ok && audit_clean.first_rejection.is_none(),
+        "",
+    );
+
+    // 14. 通知条三要素：发生了什么（归因）+ 已回退（保底）+ 下一步。
+    let n4 = guard4.last_notice.clone().unwrap_or_default();
+    set.add(
+        "fuse notice carries three elements",
+        n4.contains("回退默认指针") && n4.contains("下一步"),
+        "",
+    );
+
     set
 }
 
@@ -456,6 +650,34 @@ mod tests {
         assert!(t.admin_override(128, 30, 1024 * 1024).is_ok());
         assert!(t.admin_override(999, 30, 1024 * 1024).is_err(), "放宽拒绝");
         assert!(t.admin_override(0, 30, 1024 * 1024).is_err(), "零值拒绝");
+    }
+
+    #[test]
+    fn activate_gate_and_recovery_path() {
+        let mut g = PointerGuard::new(200);
+        for i in 0..3u64 {
+            g.fuse(RuntimeFault::RenderCrash, "惯犯", i);
+        }
+        let err = g.activate("惯犯").unwrap_err();
+        assert!(err.contains("三次"), "拦截说明引用三次上限");
+        assert!(g.unblacklist("惯犯", 100));
+        assert!(g.activate("惯犯").is_ok(), "解黑后可再启用");
+        assert!(!g.unblacklist("无名", 101));
+    }
+
+    #[test]
+    fn gate_report_never_short_circuits() {
+        let mut m = builtin_default_scheme();
+        let e = m.state_mut(PointerState::Normal).unwrap();
+        let mut f = e.frames[0].clone();
+        f.w = 300; // 尺寸闸红
+        f.h = 300;
+        f.px = alloc::vec![0u8; 300 * 300 * 4];
+        f.delay_ms = 2; // 帧率闸也红
+        e.frames[0] = f;
+        let a = gate_report(&m, &GateThresholds::default());
+        assert!(!a.size_ok && !a.fps_ok, "两闸都红——体检单不短路");
+        assert_eq!(a.max_frame_px_seen, 300);
     }
 
     #[test]

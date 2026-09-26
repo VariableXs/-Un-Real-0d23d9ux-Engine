@@ -393,6 +393,85 @@ impl ThemeImporter {
 // ---------------------------------------------------------------------------
 
 /// F623 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：版本迁移 / 同步冲突差异报告
+// ---------------------------------------------------------------------------
+
+/// 字段级差异（同步冲突报告的行：字段路径 + 两边值的人话呈现）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SectionDiff {
+    /// 字段路径（如 "speed.gain_cap_m"）。
+    pub field: &'static str,
+    pub local: String,
+    pub incoming: String,
+}
+
+/// 本地段与包内段的字段级差异报告（F147 随身同步的冲突面：同步前
+/// 先把"哪些会被覆盖"逐字段列出来——覆盖不是黑箱动作）。
+pub fn diff_sections(local: &MouseBehaviorSection, incoming: &MouseBehaviorSection) -> Vec<SectionDiff> {
+    let mut out = Vec::new();
+    if local.pointer_scheme != incoming.pointer_scheme {
+        out.push(SectionDiff {
+            field: "pointer_scheme",
+            local: local.pointer_scheme.clone(),
+            incoming: incoming.pointer_scheme.clone(),
+        });
+    }
+    if local.speed.curve_id != incoming.speed.curve_id {
+        out.push(SectionDiff {
+            field: "speed.curve_id",
+            local: local.speed.curve_id.clone(),
+            incoming: incoming.speed.curve_id.clone(),
+        });
+    }
+    if local.speed.gain_cap_m != incoming.speed.gain_cap_m {
+        out.push(SectionDiff {
+            field: "speed.gain_cap_m",
+            local: alloc::format!("{}", local.speed.gain_cap_m),
+            incoming: alloc::format!("{}", incoming.speed.gain_cap_m),
+        });
+    }
+    if local.wheel.global != incoming.wheel.global {
+        out.push(SectionDiff {
+            field: "wheel.global",
+            local: local.wheel.global.clone(),
+            incoming: incoming.wheel.global.clone(),
+        });
+    }
+    if local.sidekeys != incoming.sidekeys {
+        out.push(SectionDiff {
+            field: "sidekeys.bindings",
+            local: alloc::format!("{}条", local.sidekeys.bindings.len()),
+            incoming: alloc::format!("{}条", incoming.sidekeys.bindings.len()),
+        });
+    }
+    if local.gestures != incoming.gestures {
+        out.push(SectionDiff {
+            field: "gestures.gestures",
+            local: alloc::format!("{}条", local.gestures.gestures.len()),
+            incoming: alloc::format!("{}条", incoming.gestures.gestures.len()),
+        });
+    }
+    out
+}
+
+/// 旧版段迁移（v1 首发的兼容面）：v1 段缺 v2 字段时以默认值补齐
+/// ——迁移不是拒绝（旧包照常进，缺的如实补），迁移结果再走
+/// validate_and_downgrade 的合法性闸。
+pub fn migrate_legacy_v1(d: &[u8]) -> Result<(MouseBehaviorSection, Vec<&'static str>), String> {
+    let text = core::str::from_utf8(d).map_err(|_| String::from("非 UTF-8 字节——包损坏"))?;
+    let mut filled: Vec<&'static str> = Vec::new();
+    // v1 与 v1 差异字段在当前模型里的呈现：v1 无手势库段。
+    let has_gestures = text.lines().any(|l| l.starts_with("gesture="));
+    let mut s = parse_section(d)?;
+    if !has_gestures {
+        s.gestures = GestureSpec::default();
+        filled.push("gestures.gestures");
+    }
+    Ok((s, filled))
+}
+
 pub fn run_vtheme_checks() -> CheckSet {
     let mut set = CheckSet::new("jstar2-F623");
     let base = MouseBehaviorSection::default();
@@ -499,6 +578,40 @@ pub fn run_vtheme_checks() -> CheckSet {
     set.add(
         "section fingerprint stable",
         fnv1a64(&serialize_section(&base)) == fnv1a64(&serialize_section(&parse_section(&serialize_section(&base)).unwrap())),
+        "",
+    );
+
+
+    // 5. 同步冲突差异报告：改三处 → 恰好三行 diff；不改 → 空清单。
+    let mut local5 = base.clone();
+    local5.speed.gain_cap_m = 2500;
+    local5.wheel.global = String::from("always-notch");
+    local5.pointer_scheme = String::from("夜行箭");
+    let diffs = diff_sections(&local5, &base);
+    set.add(
+        "sync conflict diff lists changed fields",
+        diffs.len() == 3
+            && diffs.iter().any(|d| d.field == "speed.gain_cap_m")
+            && diffs.iter().any(|d| d.field == "wheel.global")
+            && diffs.iter().any(|d| d.field == "pointer_scheme"),
+        "",
+    );
+    set.add("sync diff empty when identical", diff_sections(&base, &base).is_empty(), "");
+
+    // 6. 旧版段迁移：无手势库段 → 默认补齐并如实列出补了什么。
+    let mut legacy = serialize_section(&base);
+    // 摘掉 gesture 行（v1 无手势库段的形态）。
+    let legacy_text = core::str::from_utf8(&legacy)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with("gesture="))
+        .map(|l| alloc::format!("{}\n", l))
+        .collect::<String>();
+    legacy = legacy_text.into_bytes();
+    let (migrated, filled) = migrate_legacy_v1(&legacy).expect("legacy migrate");
+    set.add(
+        "legacy v1 migration fills defaults honestly",
+        filled == alloc::vec!["gestures.gestures"] && migrated.gestures == GestureSpec::default(),
         "",
     );
 

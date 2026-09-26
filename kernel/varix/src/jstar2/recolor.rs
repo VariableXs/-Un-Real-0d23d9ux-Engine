@@ -126,6 +126,66 @@ pub fn accent_dye_params(m: &CursorSchemeModel, accent: Rgb) -> RecolorParams {
 }
 
 // ---------------------------------------------------------------------------
+// v2 深化：预设面板 / 批量重染 / 色相直方图 / 参数钳制
+// ---------------------------------------------------------------------------
+
+/// 色相直方图（12 桶 × 30°，桶序 = 0..360；不透明且近彩像素计数——
+/// 方案详情页「色相分布」的数据面，与 `dominant_hue` 同一采样口径）。
+pub fn hue_histogram(m: &CursorSchemeModel) -> [u64; 12] {
+    let mut hist = [0u64; 12];
+    for e in &m.entries {
+        for f in &e.frames {
+            for chunk in f.px.chunks_exact(4) {
+                if chunk[3] < 128 {
+                    continue;
+                }
+                let (h, s, _l) = Rgb::new(chunk[0], chunk[1], chunk[2]).to_hsl();
+                if s < 100 {
+                    continue; // 近灰像素不参与（与 dominant_hue 同口径）
+                }
+                hist[(h as usize / 30).min(11)] += 1;
+            }
+        }
+    }
+    hist
+}
+
+/// 预设面板（滑杆组合的命名包装——「暖色/冷色/去饱和/黑白/原味」，
+/// 预设即判据的参数化：每格参数有名字、可复现、可微调起步）。
+pub const RECOLOR_PRESETS: [(&str, RecolorParams); 5] = [
+    ("原味", RecolorParams { hue_shift_deg: 0, sat_scale_m: 1000, light_scale_m: 1000 }),
+    ("暖色", RecolorParams { hue_shift_deg: -25, sat_scale_m: 1100, light_scale_m: 1050 }),
+    ("冷色", RecolorParams { hue_shift_deg: 160, sat_scale_m: 1050, light_scale_m: 1000 }),
+    ("去饱和", RecolorParams { hue_shift_deg: 0, sat_scale_m: 400, light_scale_m: 1000 }),
+    ("黑白", RecolorParams { hue_shift_deg: 0, sat_scale_m: 0, light_scale_m: 1100 }),
+];
+
+/// 批量重染：一次产出全部预设的副本（预览面板一次出图——用户不用
+/// 手动切五次滑杆；命名「原名·预设名·重染」如实标注来源预设）。
+pub fn batch_recolor(m: &CursorSchemeModel) -> Vec<RecolorOutcome> {
+    RECOLOR_PRESETS
+        .iter()
+        .map(|(name, prm)| {
+            let mut out = recolor(m, prm);
+            out.copy.name = alloc::format!("{}·{}·重染", m.name, name);
+            out
+        })
+        .collect()
+}
+
+impl RecolorParams {
+    /// 参数钳制（滑杆脏数据/外部包参数的诚实归位：色相取最短环、
+    /// 缩放钳 0..2000‰——不崩溃不产生未定义变换）。
+    pub fn clamped(&self) -> RecolorParams {
+        RecolorParams {
+            hue_shift_deg: self.hue_shift_deg.clamp(-180, 180),
+            sat_scale_m: self.sat_scale_m.clamp(0, 2000),
+            light_scale_m: self.light_scale_m.clamp(0, 2000),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 重染主入口（非破坏副本）
 // ---------------------------------------------------------------------------
 
@@ -291,6 +351,46 @@ pub fn run_recolor_checks() -> CheckSet {
     let boundary_ok = matches!(dyed.copy.origin, OriginKind::Recolored(_))
         && !matches!(dyed.copy.origin, OriginKind::Derived(_));
     set.add("boundary with F629 origin kinds", boundary_ok, "");
+
+    // 8. 预设面板 + 批量重染：五预设一次出全套，命名带预设名，
+    //    origin 一律 Recolored，五产物两两互异。
+    let batch = batch_recolor(&base);
+    let mut all_ok = batch.len() == 5;
+    let mut sigs: Vec<u64> = Vec::new();
+    for (i, (name, _)) in RECOLOR_PRESETS.iter().enumerate() {
+        all_ok &= batch[i].copy.name.contains(name)
+            && batch[i].copy.name.contains("重染")
+            && matches!(batch[i].copy.origin, OriginKind::Recolored(_));
+        sigs.push(crate::jstar2::jbase::vxcur_fingerprint(&batch[i].copy));
+    }
+    let distinct = {
+        let mut uniq = sigs.clone();
+        uniq.sort();
+        uniq.dedup();
+        uniq.len() == 5
+    };
+    set.add(
+        "batch recolor full preset set with distinct outputs",
+        all_ok && distinct,
+        "",
+    );
+
+    // 9. 色相直方图：12 桶全露出（详情页色相分布的数据面）。
+    let hist = hue_histogram(&base);
+    set.add(
+        "hue histogram twelve buckets",
+        hist.len() == 12 && hist.iter().sum::<u64>() > 0,
+        "",
+    );
+
+    // 10. 参数越界钳制（滑杆脏数据诚实处理）。
+    let dirty = RecolorParams { hue_shift_deg: 900, sat_scale_m: -50, light_scale_m: 99999 };
+    let clean = dirty.clamped();
+    set.add(
+        "params clamped honestly",
+        clean.hue_shift_deg == 180 && clean.sat_scale_m == 0 && clean.light_scale_m == 2000,
+        "",
+    );
 
     set
 }

@@ -24,6 +24,9 @@ use crate::jstar2::jbase::{CursorSchemeModel, OriginKind, PointerState, ALL_STAT
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
+/// .reg 版本头（reg export 产物的身份证行）。
+pub const REG_HEADER: &str = "Windows Registry Editor Version 5.00";
+
 // ---------------------------------------------------------------------------
 // .reg 解析（Windows Registry Editor Version 5.00 格式）
 // ---------------------------------------------------------------------------
@@ -37,6 +40,11 @@ pub struct RegistryView {
     pub current: Vec<(PointerState, String)>,
     /// 解析注记（空 key 区/无法识别行数——对账面）。
     pub skipped_lines: usize,
+    /// .reg 版本头校验（缺版本头 = 不是 reg export 产物——如实标出，
+    /// 迁移入口据此提醒；REG_HEADER 常量一处一事实）。
+    pub header_ok: bool,
+    /// dword 值行计数（如 Scheme Source——解析器不装看不见）。
+    pub dword_lines: usize,
 }
 
 /// 值行类型。
@@ -44,6 +52,8 @@ pub struct RegistryView {
 enum RegLine {
     Section(String),
     Value(String, String),
+    /// dword:xxxx 行（REG_DWORD——非指针内容，计数不丢弃）。
+    DWord(String),
 }
 
 fn reg_decode_utf16(bytes: &[u8]) -> Option<String> {
@@ -78,6 +88,10 @@ fn parse_reg_text(text: &str) -> Vec<RegLine> {
                 out.push(RegLine::Value(key, String::from("\u{0}HEXRAW")));
                 continue;
             }
+            if val.starts_with("dword:") {
+                out.push(RegLine::DWord(key));
+                continue;
+            }
             let unquoted = val.trim().trim_matches('"');
             let unescaped = unquoted.replace("\\\\", "\\");
             out.push(RegLine::Value(key, unescaped));
@@ -91,6 +105,7 @@ pub fn parse_reg_export(bytes: &[u8]) -> RegistryView {
     let text = reg_decode_utf16(bytes).unwrap_or_else(|| String::from_utf8_lossy(bytes).into_owned());
     let lines = parse_reg_text(&text);
     let mut view = RegistryView::default();
+    view.header_ok = text.lines().any(|l| l.trim().starts_with(REG_HEADER));
     let mut in_current = false;
     let mut in_schemes = false;
     for l in lines {
@@ -99,6 +114,9 @@ pub fn parse_reg_export(bytes: &[u8]) -> RegistryView {
                 let norm = s.replace("\\\\", "\\");
                 in_current = norm.ends_with("Control Panel\\Cursors");
                 in_schemes = norm.ends_with("Control Panel\\Cursors\\Schemes");
+            }
+            RegLine::DWord(_) => {
+                view.dword_lines += 1;
             }
             RegLine::Value(k, v) => {
                 if v == "\u{0}HEXRAW" {
@@ -193,6 +211,160 @@ fn resolve_path(name: &str) -> String {
         name.to_string()
     } else {
         alloc::format!("%SystemRoot%\\Cursors\\{name}")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 迁移计划预览（安装向导第二步的清单面——先看将迁什么再执行）
+// ---------------------------------------------------------------------------
+
+/// 单方案的迁移预判（ready = 文件全齐可迁；missing = 缺哪些文件）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchemePlan {
+    pub name: String,
+    pub ready: bool,
+    /// 缺失文件清单（ready 时为空）。
+    pub missing: Vec<String>,
+}
+
+/// 迁移计划（逐方案 ready/missing——不盲迁是流程属性：向导先展示
+/// 这张单，用户确认后才进 commit）。
+#[derive(Clone, Debug, Default)]
+pub struct MigrationPlan {
+    pub entries: Vec<SchemePlan>,
+    pub header_ok: bool,
+}
+
+impl MigrationPlan {
+    /// ready 方案数（向导汇总行的数字面）。
+    pub fn ready_count(&self) -> usize {
+        self.entries.iter().filter(|p| p.ready).count()
+    }
+
+    /// 全空判定（清单零方案——空态语义的依据）。
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// 生成迁移计划（只读面：逐方案查文件仓，不解析不迁移）。
+pub fn migration_plan(view: &RegistryView, store: &FileStore) -> MigrationPlan {
+    let mut entries = Vec::new();
+    for (name, files) in &view.schemes {
+        let mut missing = Vec::new();
+        for fname in files {
+            if fname.is_empty() || fname == "-" {
+                continue;
+            }
+            if store.get(&resolve_path(fname)).is_none() {
+                missing.push(alloc::format!("{name}: {fname}"));
+            }
+        }
+        entries.push(SchemePlan {
+            name: name.clone(),
+            ready: missing.is_empty(),
+            missing,
+        });
+    }
+    MigrationPlan { entries, header_ok: view.header_ok }
+}
+
+// ---------------------------------------------------------------------------
+// 迁移会话与留痕台账
+// ---------------------------------------------------------------------------
+
+/// 迁移会话阶段（Parsed → Planned → Committed/Aborted——与 F630/F635
+/// 同款状态机纪律：分步可中断，中断零迁移）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MigrationStage {
+    Parsed,
+    Planned,
+    Committed,
+    Aborted,
+}
+
+/// 迁移会话（安装向导/设置页共用的分步推进面）。
+pub struct MigrationSession<'a> {
+    view: &'a RegistryView,
+    store: &'a FileStore,
+    stage: MigrationStage,
+    plan: Option<MigrationPlan>,
+}
+
+impl<'a> MigrationSession<'a> {
+    pub fn start(view: &'a RegistryView, store: &'a FileStore) -> MigrationSession<'a> {
+        MigrationSession { view, store, stage: MigrationStage::Parsed, plan: None }
+    }
+
+    pub fn stage(&self) -> MigrationStage {
+        self.stage
+    }
+
+    /// 生成计划（Parsed → Planned；版本头缺失时计划如实带 header_ok=false
+    /// ——可继续但 UI 应提示来源可疑）。
+    pub fn plan(&mut self) -> &MigrationPlan {
+        if self.stage == MigrationStage::Parsed {
+            self.plan = Some(migration_plan(self.view, self.store));
+            self.stage = MigrationStage::Planned;
+        }
+        self.plan.as_ref().unwrap()
+    }
+
+    /// 提交迁移（Planned → Committed；未出计划直接提交被拒——不盲迁）。
+    pub fn commit(&mut self) -> MigrationOutcome {
+        if self.stage != MigrationStage::Planned {
+            return MigrationOutcome::Empty("迁移会话未出计划——先看清单再执行（不盲迁）");
+        }
+        self.stage = MigrationStage::Committed;
+        migrate_all(self.view, self.store)
+    }
+
+    /// 显式取消（Planned 后悔 = 零迁移零留痕）。
+    pub fn abort(&mut self) -> bool {
+        if self.stage == MigrationStage::Committed {
+            return false;
+        }
+        self.stage = MigrationStage::Aborted;
+        true
+    }
+}
+
+/// 迁移留痕记录。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationRecord {
+    pub at_ms: u64,
+    pub scheme: String,
+    pub fidelity: &'static str,
+}
+
+/// 迁移留痕台账（环形 32——F372 留痕纪律的迁移面）。
+#[derive(Clone, Debug, Default)]
+pub struct MigrationLedger {
+    records: Vec<MigrationRecord>,
+    dropped: usize,
+}
+
+impl MigrationLedger {
+    pub const CAP: usize = 32;
+
+    pub fn record(&mut self, at_ms: u64, scheme: &str, fidelity: &'static str) {
+        if self.records.len() >= Self::CAP {
+            self.records.remove(0);
+            self.dropped += 1;
+        }
+        self.records.push(MigrationRecord {
+            at_ms,
+            scheme: String::from(scheme),
+            fidelity,
+        });
+    }
+
+    pub fn records(&self) -> &[MigrationRecord] {
+        &self.records
+    }
+
+    pub fn dropped(&self) -> usize {
+        self.dropped
     }
 }
 
@@ -456,6 +628,83 @@ pub fn run_winbridge_checks() -> CheckSet {
     set.add(
         "hex values skipped and counted",
         vh.schemes.is_empty() && vh.skipped_lines == 1,
+        "",
+    );
+
+    // 8. 版本头校验 + dword 行计数。
+    let no_header = "随机文本不是 reg export";
+    let vh2 = parse_reg_export(no_header.as_bytes());
+    set.add(
+        "reg header validated",
+        v10.header_ok && !vh2.header_ok,
+        "",
+    );
+    set.add(
+        "dword lines counted",
+        v10.dword_lines == 1,
+        "",
+    );
+
+    // 9. 迁移计划预览：ready/missing 逐方案判定（不盲迁的清单面）。
+    // 全齐仓 → 两案皆 ready；缺 link 文件的仓 → 缺项如实进清单。
+    let plan = migration_plan(&v10, &store);
+    let plan_broken = migration_plan(&v10, &broken_store);
+    set.add(
+        "migration plan previews ready and missing",
+        plan.entries.len() == 2
+            && plan.ready_count() == 2
+            && plan.entries[0].ready
+            && plan.entries[0].missing.is_empty()
+            && plan.header_ok
+            && plan_broken.ready_count() == 1
+            && plan_broken.entries[1].missing.len() == 1
+            && plan_broken.entries[1].missing[0].contains("ten_link.cur"),
+        "",
+    );
+
+    // 10. 迁移会话：未出计划提交被拒；出计划后提交走同一管线；
+    //     中止语义诚实（已提交后 abort 拒绝）。
+    let mut sess = MigrationSession::start(&v10, &store);
+    let early = matches!(sess.commit(), MigrationOutcome::Empty(_));
+    sess.plan();
+    let after_plan_stage = sess.stage() == MigrationStage::Planned;
+    let committed = matches!(sess.commit(), MigrationOutcome::Migrated(_));
+    let late_abort = !sess.abort();
+    set.add(
+        "migration session staged commit",
+        early && after_plan_stage && committed && late_abort,
+        "",
+    );
+    let mut sess2 = MigrationSession::start(&v10, &store);
+    sess2.plan();
+    set.add("migration session abort clean", sess2.abort() && sess2.stage() == MigrationStage::Aborted, "");
+
+    // 11. 双入口字节级对账：批量与单方案产物内容指纹一致（同一管线
+    //     同一输入 → 同一内容）。
+    let (fp_all, fp_one) = match (migrate_all(&v10, &store), migrate_one("我的十年方案", &v10, &store)) {
+        (MigrationOutcome::Migrated(a), MigrationOutcome::Migrated(b)) => {
+            let fpa = a.iter().map(|m| crate::jstar2::jbase::content_fingerprint(m)).collect::<Vec<u64>>();
+            let fpb = b.iter().map(|m| crate::jstar2::jbase::content_fingerprint(m)).collect::<Vec<u64>>();
+            (fpa, fpb)
+        }
+        _ => (Vec::new(), Vec::new()),
+    };
+    set.add(
+        "dual entry byte-identical products",
+        fp_one.len() == 1 && fp_all.contains(&fp_one[0]),
+        "",
+    );
+
+    // 12. 迁移留痕台账：记录、封顶滚动。
+    let mut ledger = MigrationLedger::default();
+    for i in 0..40u64 {
+        ledger.record(i, "方案", "PixelPerfect");
+    }
+    set.add(
+        "migration ledger records and caps",
+        ledger.records().len() == MigrationLedger::CAP
+            && ledger.dropped() == 8
+            && ledger.records()[0].at_ms == 8,
         "",
     );
 

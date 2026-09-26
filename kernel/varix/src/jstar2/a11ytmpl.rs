@@ -24,6 +24,7 @@ use crate::jstar2::jbase::{
 };
 use crate::jstar2::library::{AddOutcome, SchemeLibrary};
 use alloc::string::String;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（判据数值原文）
@@ -192,6 +193,29 @@ pub fn template_survives_edit(
 // ---------------------------------------------------------------------------
 
 /// F631 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：模板注册表 / 全量构建 / 免检理由查询
+// ---------------------------------------------------------------------------
+
+/// 模板注册表（id → 判据摘要——工坊起步面板的数据源，一处一事实：
+/// 面板渲染与免检映射共用这张表）。
+pub const TEMPLATE_REGISTRY: [(TemplateId, &'static str); 3] = [
+    (TemplateId::HighContrast, "黑形白边双版，任意底色对比度 ≥4.5:1"),
+    (TemplateId::BigHotspot, "热点实体邻域 8×8px，运动障碍易对准"),
+    (TemplateId::LowLoad, "纯静态零动画 + 2px 加粗描边"),
+];
+
+/// 三模板全量构建（工坊「起步模板」墙的一次性出图口）。
+pub fn build_all_templates() -> Vec<CursorSchemeModel> {
+    TEMPLATE_REGISTRY.iter().map(|(id, _)| build_template(*id)).collect()
+}
+
+/// 免检理由查询（键 → F627 免检项凭据；查无此键诚实 None）。
+pub fn exempt_reason(key: &str) -> Option<&'static str> {
+    EXEMPT_MAP.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+}
+
 pub fn run_a11ytmpl_checks() -> CheckSet {
     let mut set = CheckSet::new("jstar2-F631");
 
@@ -289,6 +313,24 @@ pub fn run_a11ytmpl_checks() -> CheckSet {
     // 8. 全帧延时 ≤ 60fps 底线（帧率闸镜像）。
     let fps_ok = build_template(TemplateId::HighContrast).max_fps() <= MAX_FPS;
     set.add("template fps within gate", fps_ok, "");
+
+
+    // 5. 模板注册表与免检映射同源（三件互相对得上——键集一致）。
+    set.add(
+        "template registry covers three ids",
+        TEMPLATE_REGISTRY.len() == 3
+            && TEMPLATE_REGISTRY.iter().all(|(id, _)| EXEMPT_MAP.iter().any(|(k, _)| *k == id.key()))
+            && build_all_templates().len() == 3,
+        "",
+    );
+
+    // 6. 免检理由查询：命中返回原文、查无诚实 None。
+    set.add(
+        "exempt reason lookup honest",
+        exempt_reason("high-contrast").map(|v| v.contains("内建")).unwrap_or(false)
+            && exempt_reason("查无此键").is_none(),
+        "",
+    );
 
     set
 }

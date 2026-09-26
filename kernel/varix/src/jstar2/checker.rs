@@ -416,6 +416,48 @@ pub fn resolve_with_fallback<'a>(
 // ---------------------------------------------------------------------------
 
 /// F627 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：批量体检 / 体检阈值域内可配
+// ---------------------------------------------------------------------------
+
+/// 体检阈值（F627 判据线的域内可配面——与 F639 阈值文档同哲学：
+/// 管理员可收紧、不可放宽过出厂线）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CheckerThresholds {
+    /// 单帧尺寸提示线（px，判据 64px 提示——过大遮挡内容）。
+    pub size_warn_px: u32,
+    /// 帧率纪律线（fps）。
+    pub fps_cap: u32,
+}
+
+impl Default for CheckerThresholds {
+    fn default() -> Self {
+        CheckerThresholds { size_warn_px: 64, fps_cap: crate::jstar2::jbase::MAX_FPS }
+    }
+}
+
+impl CheckerThresholds {
+    /// 管理员覆盖（只许收紧——放宽过出厂线拒绝）。
+    pub fn admin_override(&mut self, size_px: u32, fps: u32) -> Result<(), &'static str> {
+        if size_px > 64 || fps > crate::jstar2::jbase::MAX_FPS {
+            return Err("体检线只能收紧、不能放宽过出厂判据");
+        }
+        if size_px == 0 || fps == 0 {
+            return Err("阈值为零等于全拒——请给出正数");
+        }
+        self.size_warn_px = size_px;
+        self.fps_cap = fps;
+        Ok(())
+    }
+}
+
+/// 批量体检（方案库全量走查口——每方案一份报告，与 F628 的
+/// health_sweep 过期扫描配套：扫出旧的就批量补新报告）。
+pub fn batch_inspect(schemes: &[CursorSchemeModel]) -> Vec<HealthReport> {
+    schemes.iter().map(inspect).collect()
+}
+
 pub fn run_checker_checks() -> CheckSet {
     use crate::jstar2::jbase::builtin_glyph;
     let mut set = CheckSet::new("jstar2-F627");
@@ -549,6 +591,31 @@ pub fn run_checker_checks() -> CheckSet {
     set.add(
         "repaired fingerprint differs from original",
         vxcur_fingerprint(&fix.repaired) != original_fp,
+        "",
+    );
+
+
+    // 6. 批量体检：多方案逐个出报告、指纹各归各案。
+    let mut second6 = builtin_default_scheme();
+    second6.name = alloc::format!("{}乙", second6.name);
+    second6.author = alloc::format!("{}乙", second6.author);
+    let batch = batch_inspect(&[good.clone(), second6]);
+    set.add(
+        "batch inspect per-scheme fingerprints",
+        batch.len() == 2
+            && batch[0].scheme_fingerprint != batch[1].scheme_fingerprint
+            && batch[0].scheme_fingerprint == vxcur_fingerprint(&good),
+        "",
+    );
+
+    // 7. 体检阈值可配：收紧放行、放宽拒绝、零值拒绝。
+    let mut th = CheckerThresholds::default();
+    let tighten = th.admin_override(48, 30);
+    let loosen = th.admin_override(128, 30);
+    let zero = th.admin_override(0, 30);
+    set.add(
+        "checker thresholds tighten-only",
+        tighten.is_ok() && th.size_warn_px == 48 && loosen.is_err() && zero.is_err(),
         "",
     );
 

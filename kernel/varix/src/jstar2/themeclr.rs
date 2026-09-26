@@ -186,6 +186,58 @@ pub fn min_outline_contrast_x100(m: &CursorSchemeModel, tokens: &ThemeTokens) ->
 // ---------------------------------------------------------------------------
 
 /// F629 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：默认令牌 / 深浅成对派生 / 逐态对比度报告
+// ---------------------------------------------------------------------------
+
+/// 深浅主题默认令牌（预设起步——不要求用户先配四个值；浅色 = 白底深
+/// 灰主体蓝强调，深色 = 深底浅灰主体青强调。判据对拍的确定性输入）。
+pub fn default_tokens(dark: bool) -> ThemeTokens {
+    if dark {
+        ThemeTokens {
+            dark: true,
+            accent: Rgb::new(80, 200, 220),
+            background: Rgb::new(24, 24, 28),
+            neutral: Rgb::new(210, 210, 215),
+        }
+    } else {
+        ThemeTokens {
+            dark: false,
+            accent: Rgb::new(0, 110, 200),
+            background: Rgb::new(245, 245, 248),
+            neutral: Rgb::new(40, 40, 45),
+        }
+    }
+}
+
+/// 深浅两主题成对派生（主册「深浅两主题派生对拍」的成对面）：同一
+/// 基础令牌的明暗两版各派生一份——浅色主题出深描边、深色主题出浅
+/// 描边，两份都是完整方案（命名带「浅色/深色」段以互辨）。
+pub fn derive_scheme_pair(m: &CursorSchemeModel, base: ThemeTokens) -> (CursorSchemeModel, CursorSchemeModel) {
+    let light_tok = ThemeTokens { dark: false, ..base };
+    let dark_tok = ThemeTokens { dark: true, ..base };
+    let mut light = derive_scheme(m, &light_tok);
+    let mut dark = derive_scheme(m, &dark_tok);
+    light.name = alloc::format!("{}·浅色派生", m.name);
+    dark.name = alloc::format!("{}·深色派生", m.name);
+    (light, dark)
+}
+
+/// 逐态描边对比度报告（态 id → 该态描边像素对主题底色的最低对比度
+/// ×100；派生描边是统一色，报告值即派生色对底色的对比度——在场态
+/// 全覆盖，缺态不进表，报告如实反映）。
+pub fn outline_contrast_report(m: &CursorSchemeModel, tokens: &ThemeTokens) -> Vec<(u8, i64)> {
+    let outline = push_contrast(tokens.accent, tokens.background, 300);
+    let mut out = Vec::new();
+    for e in &m.entries {
+        let d = contrast_x100(outline, tokens.background);
+        out.push((e.state.id(), d));
+    }
+    out.sort_by_key(|(id, _)| *id);
+    out
+}
+
 pub fn run_themeclr_checks() -> CheckSet {
     use crate::jstar2::jbase::builtin_default_scheme;
     let mut set = CheckSet::new("jstar2-F629");
@@ -297,6 +349,40 @@ pub fn run_themeclr_checks() -> CheckSet {
         "deleting derivative leaves theme intact",
         lib2.get("深色派生").is_none()
             && crate::jstar2::jbase::vxcur_fingerprint(&base) == fp_base,
+        "",
+    );
+
+
+    // 5. 成对派生：深浅两版对各自底色的描边对比度都 ≥3:1，命名互辨。
+    let base5 = crate::jstar2::jbase::builtin_default_scheme();
+    let (pair_light, pair_dark) = derive_scheme_pair(&base5, default_tokens(false));
+    let l_ok = min_outline_contrast_x100(&pair_light, &default_tokens(false)).map(|c| c >= 300).unwrap_or(false);
+    let d_ok = min_outline_contrast_x100(&pair_dark, &default_tokens(true)).map(|c| c >= 300).unwrap_or(false);
+    set.add(
+        "default token pair derivation named and contrasted",
+        l_ok && d_ok && pair_light.name.contains("浅色") && pair_dark.name.contains("深色"),
+        "",
+    );
+
+    // 6. 逐态对比度报告：在场态全覆盖 + 逐态恒等于派生描边色对比度
+    //    （派生描边统一色 → 报告逐格同值）且闭环 ≥3:1。
+    let tok6 = default_tokens(false);
+    let report = outline_contrast_report(&base5, &tok6);
+    let outline_c = contrast_x100(push_contrast(tok6.accent, tok6.background, 300), tok6.background);
+    set.add(
+        "per-state outline report consistent",
+        report.len() == 15
+            && report.iter().all(|(_, c)| *c == outline_c)
+            && outline_c >= 300,
+        "",
+    );
+
+    // 7. 默认令牌：明暗两版确有区分（对拍输入不重合）。
+    set.add(
+        "default tokens light dark distinct",
+        default_tokens(false).background != default_tokens(true).background
+            && !default_tokens(false).dark
+            && default_tokens(true).dark,
         "",
     );
 

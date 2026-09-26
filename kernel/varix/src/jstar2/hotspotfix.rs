@@ -215,6 +215,42 @@ impl CompensationBook {
 // ---------------------------------------------------------------------------
 
 /// F637 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：簿记完整性 / 全态批量扫描
+// ---------------------------------------------------------------------------
+
+impl CompensationBook {
+    /// 已登记补偿条数（簿记对账面）。
+    pub fn len(&self) -> usize {
+        self.records.len()
+    }
+
+    /// 空簿判定。
+    pub fn is_empty(&self) -> bool {
+        self.records.is_empty()
+    }
+
+    /// 全部撤销（一键回原——补偿层非破坏的成批出口）。
+    pub fn revoke_all(&mut self) -> usize {
+        let n = self.records.len();
+        self.records.clear();
+        n
+    }
+}
+
+/// 全态批量扫描：15 态逐态首帧检测（体检面批量口——一次跑出全部
+/// 推荐清单；缺态/无偏移的态不进表，清单即"值得修的名单"）。
+pub fn batch_detect(m: &CursorSchemeModel) -> Vec<(PointerState, Recommendation)> {
+    let mut out = Vec::new();
+    for st in crate::jstar2::jbase::ALL_STATES {
+        if let Some(rec) = detect_and_recommend(m, st, 0) {
+            out.push((st, rec));
+        }
+    }
+    out
+}
+
 pub fn run_hotspotfix_checks() -> CheckSet {
     let mut set = CheckSet::new("jstar2-F637");
     let arrow = builtin_glyph(PointerState::Normal); // 尖在 (4,2)
@@ -354,6 +390,22 @@ pub fn run_hotspotfix_checks() -> CheckSet {
             && book3.records.is_empty(),
         "",
     );
+
+
+    // 5. 全态批量扫描：出界件的 Normal 态进清单（值得修的名单）。
+    let scan = batch_detect(&oob);
+    let scan_ok = scan.iter().any(|(st, rec)| *st == PointerState::Normal && rec.kind != OffsetKind::None);
+
+    // 6. 簿记完整性：len/空判/一键回原。
+    let mut book2 = CompensationBook::default();
+    let empty_ok = book2.is_empty() && book2.len() == 0;
+    let adopt_ok = scan.len() > 0 && book2.adopt(&oob, PointerState::Normal, 0, &scan[0].1, 500);
+    set.add(
+        "batch detect lists worthwhile fixes",
+        scan_ok && empty_ok && adopt_ok && book2.len() == 1,
+        "",
+    );
+    set.add("book revoke all returns count", book2.revoke_all() == 1 && book2.is_empty(), "");
 
     set
 }

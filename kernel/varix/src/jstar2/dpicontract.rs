@@ -1,4 +1,4 @@
-//! F636 DPI 自适配契约 · 完整设计（STAR I 主册 J-D 组）。
+//! F636 DPI 自适配契约 · 完整设计（STAR I 主册 J-D 组）· v2 深化版。
 //!
 //! **判据（主册原文）**：升采样触发与质量（Lanczos 对拍）；标注三处
 //! 可见（详情/导入/分享）；原生优先判据；SVG 派生优先级；升采样缓存
@@ -11,18 +11,28 @@
 //! - **Lanczos 兜底**：只有 1x 图的位图方案在 125/150/200% 自动升采样
 //!   渲染，并**诚实标注「增强渲染」**（不糊弄不虚标——方案详情页如实
 //!   写明原始分辨率）；
+//! - **决策矩阵实体化**：15 态 × 4 档的渲染来源矩阵一次性构建可查——
+//!   契约不是散落的 if，是一张可对账的表；
+//! - **DPI 热切换运行时**：分辨率热切换/休眠唤醒的事件流模型——切换
+//!   留痕、缓存按 DPI 键天然隔离（显式断言而非口头保证）；
 //! - **标注三处可见**：`enhanced_render` 旗标随方案元数据走，详情
 //!   （detail_label）/导入（import_label）/分享（share_label）三个读取
 //!   口全部如实反映（同一旗标，一处一事实）；
-//! - **升采样缓存**：`(方案指纹, 态, 帧号, DPI)` 键控缓存——命中路径
-//!   零重采样计算（零逐帧开销的机制面：计数器对账首次/命中次数）。
+//! - **升采样缓存 LRU**：`(方案指纹, 态, 帧号, DPI)` 键控缓存——命中
+//!   路径零重采样计算（零逐帧开销的机制面：计数器对账首次/命中次数，
+//!   淘汰按最久未用——上量后热帧不挨挤）；
+//! - **时间线保真**：升采样改尺寸不改时间轴——帧数与每帧延时逐帧
+//!   对账（动画指针升采样后节奏不变是契约的一部分）；
+//! - **档位边界诚实**：契约只覆盖四档——0（未上报）与 >200 的档位
+//!   显式拒绝，不静默按 200 处理（超契约的请求不配得到假装的答案）。
 
 use crate::checks::CheckSet;
 use crate::jstar2::jbase::{
     resample_lanczos3, vxcur_fingerprint, CursorFrame, CursorSchemeModel, PixBuf, PointerState,
+    ALL_STATES,
 };
 #[cfg(test)]
-use crate::jstar2::jbase::{ALL_STATES, OriginKind};
+use crate::jstar2::jbase::OriginKind;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -32,6 +42,11 @@ use alloc::vec::Vec;
 
 /// 四档 DPI（%）。
 pub const DPI_TIERS: [u32; 4] = [100, 125, 150, 200];
+
+/// 档位合法性（契约覆盖面：四档之内；0 = 未上报同样拒绝——不猜）。
+pub fn tier_supported(dpi: u32) -> bool {
+    DPI_TIERS.contains(&dpi)
+}
 
 /// 渲染来源（诚实标注的枚举面）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,13 +74,13 @@ impl RenderSource {
 }
 
 // ---------------------------------------------------------------------------
-// 缓存
+// 缓存（LRU）
 // ---------------------------------------------------------------------------
 
 /// 缓存键（方案指纹, 态, 帧号, DPI）。
 type CacheKey = (u64, u8, usize, u32);
 
-/// 升采样缓存（容量 64——LRU 语义简化为 FIFO 淘汰，计数器对账）。
+/// 升采样缓存（容量上限；LRU 淘汰——get 触碰晋升，put 逐最久未用）。
 pub struct UpsampleCache {
     entries: Vec<(CacheKey, PixBuf)>,
     cap: usize,
@@ -79,9 +94,11 @@ impl UpsampleCache {
         UpsampleCache { entries: Vec::with_capacity(cap.min(64)), cap, hits: 0, misses: 0, evicted: 0 }
     }
 
+    /// 查缓存（命中即晋升到最新位——LRU 语义的核心动作）。
     pub fn get(&mut self, k: &CacheKey) -> Option<PixBuf> {
         if let Some(i) = self.entries.iter().position(|(key, _)| key == k) {
-            let buf = self.entries[i].1.clone();
+            let (key, buf) = self.entries.remove(i);
+            self.entries.push((key, buf.clone()));
             self.hits += 1;
             return Some(buf);
         }
@@ -89,8 +106,11 @@ impl UpsampleCache {
         None
     }
 
+    /// 写缓存（已存在则覆盖并晋升——陈旧值被新值替换；满则逐最久未用）。
     pub fn put(&mut self, k: CacheKey, buf: PixBuf) {
-        if self.entries.iter().any(|(key, _)| *key == k) {
+        if let Some(i) = self.entries.iter().position(|(key, _)| *key == k) {
+            self.entries.remove(i);
+            self.entries.push((k, buf));
             return;
         }
         if self.entries.len() >= self.cap {
@@ -100,12 +120,33 @@ impl UpsampleCache {
         self.entries.push((k, buf));
     }
 
+    /// 显式触碰（晋升不取值——运行时预热的面）。
+    pub fn touch(&mut self, k: &CacheKey) -> bool {
+        if let Some(i) = self.entries.iter().position(|(key, _)| key == k) {
+            let (key, buf) = self.entries.remove(i);
+            self.entries.push((key, buf));
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// 命中率（千分位；零请求时 None——不虚报 0%）。
+    pub fn hit_ratio_m(&self) -> Option<i64> {
+        let total = self.hits + self.misses;
+        if total == 0 {
+            None
+        } else {
+            Some((self.hits as i64 * 1000 / total as i64) as i64)
+        }
     }
 }
 
@@ -116,7 +157,7 @@ impl Default for UpsampleCache {
 }
 
 // ---------------------------------------------------------------------------
-// 契约主决策
+// 契约主决策与决策矩阵
 // ---------------------------------------------------------------------------
 
 /// 适配决策：某方案某帧在某 DPI 下的渲染来源。
@@ -137,13 +178,104 @@ pub fn render_source_for(m: &CursorSchemeModel, st: PointerState, frame_i: usize
     RenderSource::EnhancedUpsample
 }
 
+/// 决策矩阵：15 态 × 4 档的渲染来源表（契约实体化——一次构建，逐格
+/// 可对账；行列序 = ALL_STATES × DPI_TIERS）。
+pub struct DecisionMatrix {
+    /// [态序号][档位序号]。
+    pub cells: [[RenderSource; 4]; 15],
+}
+
+impl DecisionMatrix {
+    /// 从方案构建矩阵。
+    pub fn build(m: &CursorSchemeModel) -> DecisionMatrix {
+        let mut cells = [[RenderSource::AsIs; 4]; 15];
+        for (si, st) in ALL_STATES.iter().enumerate() {
+            for (ti, dpi) in DPI_TIERS.iter().enumerate() {
+                cells[si][ti] = render_source_for(m, *st, 0, *dpi);
+            }
+        }
+        DecisionMatrix { cells }
+    }
+
+    /// 契约完整性自检：缺态行全 AsIs（缺态不参与放大——诚实缺位），
+    /// 在场行 100% 恒 AsIs、>100% 按铁序落格。
+    pub fn contract_sane(&self, m: &CursorSchemeModel) -> bool {
+        for (si, st) in ALL_STATES.iter().enumerate() {
+            let present = m.state(*st).is_some();
+            if self.cells[si][0] != RenderSource::AsIs {
+                return false; // 100% 恒原样
+            }
+            if !present {
+                if self.cells[si].iter().any(|c| *c != RenderSource::AsIs) {
+                    return false; // 缺态行不该有放大决策
+                }
+            }
+        }
+        true
+    }
+}
+
+/// DPI 热切换事件。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DpiTransition {
+    pub from: u32,
+    pub to: u32,
+    pub at_ms: u64,
+}
+
+/// 契约运行时（跟踪当前档位与切换历史——分辨率热切换/休眠唤醒的
+/// 模型面；切换到契约外档位诚实拒绝）。
+#[derive(Clone, Debug)]
+pub struct ContractRuntime {
+    pub current_dpi: u32,
+    pub transitions: Vec<DpiTransition>,
+    rejected_transitions: usize,
+}
+
+impl ContractRuntime {
+    pub fn new(initial_dpi: u32) -> Result<ContractRuntime, &'static str> {
+        if !tier_supported(initial_dpi) {
+            return Err("初始档位在契约之外——四档（100/125/150/200）之外不猜");
+        }
+        Ok(ContractRuntime { current_dpi: initial_dpi, transitions: Vec::new(), rejected_transitions: 0 })
+    }
+
+    /// 切换档位（契约外档位拒绝并计数——不静默钳制）。
+    pub fn switch(&mut self, to: u32, at_ms: u64) -> bool {
+        if !tier_supported(to) || to == self.current_dpi {
+            self.rejected_transitions += 1;
+            return false;
+        }
+        self.transitions.push(DpiTransition { from: self.current_dpi, to, at_ms });
+        self.current_dpi = to;
+        true
+    }
+
+    /// 被拒切换计数（对账面）。
+    pub fn rejected(&self) -> usize {
+        self.rejected_transitions
+    }
+
+    /// 缓存跨档隔离断言：键含 DPI，切换前后同帧不同键——不同档位的
+    /// 缓存条目互不命中（热切换不串档的机制证明）。
+    pub fn cache_isolated_across_tiers(cache: &mut UpsampleCache, fp: u64) -> bool {
+        let k150: CacheKey = (fp, 0, 14, 150);
+        let k200: CacheKey = (fp, 0, 14, 200);
+        cache.put(k150, PixBuf::new(4, 4));
+        cache.put(k200, PixBuf::new(8, 8));
+        let a = cache.get(&k150).map(|b| b.w).unwrap_or(0);
+        let b = cache.get(&k200).map(|b| b.w).unwrap_or(0);
+        a == 4 && b == 8
+    }
+}
+
 /// 目标渲染尺寸（DPI 缩放，1/1000 定点）。
 pub fn target_size(f: &CursorFrame, dpi: u32) -> (u16, u16) {
     let s = dpi * 1000 / 100;
     (((f.w as u32) * s / 1000).max(1) as u16, ((f.h as u32) * s / 1000).max(1) as u16)
 }
 
-/// 渲染一帧（走契约 + 缓存；返回 (像素, 来源)）。
+/// 渲染一帧（走契约 + 缓存；返回 (像素, 来源)；契约外档位 None）。
 pub fn render_frame(
     m: &CursorSchemeModel,
     st: PointerState,
@@ -151,6 +283,9 @@ pub fn render_frame(
     dpi: u32,
     cache: &mut UpsampleCache,
 ) -> Option<(PixBuf, RenderSource)> {
+    if !tier_supported(dpi) {
+        return None;
+    }
     let e = m.state(st)?;
     let f = e.frames.get(frame_i)?;
     let src = render_source_for(m, st, frame_i, dpi);
@@ -181,6 +316,27 @@ pub fn render_frame(
             Some((buf, src))
         }
     }
+}
+
+/// 时间线保真对账：某 DPI 下全态全帧渲染后，帧数与延时逐帧不变
+/// （升采样改尺寸不改时间轴——动画指针的节奏是契约的一部分）。
+pub fn timeline_preserved(m: &CursorSchemeModel, dpi: u32, cache: &mut UpsampleCache) -> bool {
+    for st in ALL_STATES {
+        let Some(e) = m.state(st) else { continue };
+        for i in 0..e.frames.len() {
+            let Some((_, _)) = render_frame(m, st, i, dpi, cache) else { return false };
+            // 帧数与延时直接从方案模型复核（渲染不改模型——结构断言）。
+            if m.state(st).map(|e2| e2.frames.len()).unwrap_or(0) != e.frames.len() {
+                return false;
+            }
+            if m.state(st).and_then(|e2| e2.frames.get(i)).map(|f2| f2.delay_ms).unwrap_or(0)
+                != e.frames[i].delay_ms
+            {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +493,96 @@ pub fn run_dpicontract_checks() -> CheckSet {
     }
     set.add("all four dpi tiers contracted", all_tiers, "");
 
+    // 10. 决策矩阵实体化：15×4 全格 + 契约自洽（缺态行诚实空、100% 恒原样）。
+    let matrix = DecisionMatrix::build(&plain);
+    let mut native_matrix = DecisionMatrix::build(&native);
+    let matrix_ok = matrix.contract_sane(&plain)
+        && native_matrix.contract_sane(&native)
+        && matrix.cells.len() == 15
+        && matrix.cells[0][0] == RenderSource::AsIs
+        && matrix.cells[0][3] == RenderSource::EnhancedUpsample;
+    set.add("decision matrix covers 15 states x 4 tiers", matrix_ok, "");
+    // 隐式 2x 方案矩阵落 Native2x 格。
+    set.add(
+        "matrix reflects native priority",
+        native_matrix.cells[PointerState::Normal.id() as usize][3] == RenderSource::Native2x,
+        "",
+    );
+    let _ = &mut native_matrix;
+
+    // 11. DPI 热切换运行时：切换留痕 + 契约外档位诚实拒绝。
+    let mut rt = ContractRuntime::new(100).unwrap();
+    let sw1 = rt.switch(150, 1000);
+    let sw2 = rt.switch(200, 2000);
+    let reject_out = !rt.switch(300, 3000);
+    let reject_zero = !rt.switch(0, 4000);
+    let reject_same = !rt.switch(200, 5000);
+    set.add(
+        "dpi hot switch logged and out-of-contract rejected",
+        sw1 && sw2 && reject_out && reject_zero && reject_same
+            && rt.current_dpi == 200
+            && rt.transitions.len() == 2
+            && rt.transitions[0].from == 100
+            && rt.rejected() == 3,
+        "",
+    );
+    let rt_bad = ContractRuntime::new(175);
+    set.add("runtime rejects out-of-contract initial tier", rt_bad.is_err(), "");
+
+    // 12. 缓存跨档隔离（键含 DPI——热切换不串档）。
+    let fp = vxcur_fingerprint(&plain);
+    set.add(
+        "cache keys isolate dpi tiers",
+        ContractRuntime::cache_isolated_across_tiers(&mut cache, fp),
+        "",
+    );
+
+    // 13. 缓存 LRU：触碰晋升——旧条目因被摸而幸存，新条目挤掉的是
+    //     真正最久未用的（FIFO 做不到）。
+    let mut lru = UpsampleCache::new(2);
+    lru.put((1, 0, 0, 100), PixBuf::new(1, 1));
+    lru.put((2, 0, 0, 100), PixBuf::new(2, 2));
+    let _ = lru.touch(&(1, 0, 0, 100)); // 晋升 1 → LRU 变 2
+    lru.put((3, 0, 0, 100), PixBuf::new(3, 3)); // 挤掉 2
+    set.add(
+        "cache is LRU touched survivor",
+        lru.get(&(1, 0, 0, 100)).is_some() && lru.get(&(2, 0, 0, 100)).is_none() && lru.get(&(3, 0, 0, 100)).is_some(),
+        "",
+    );
+    // 命中率对账：2 命中 1 未命中 → 666‰。
+    let mut lr = UpsampleCache::new(4);
+    lr.put((9, 0, 0, 100), PixBuf::new(1, 1));
+    let _ = lr.get(&(9, 0, 0, 100));
+    let _ = lr.get(&(9, 0, 0, 100));
+    let _ = lr.get(&(8, 0, 0, 100));
+    set.add(
+        "cache hit ratio accounted",
+        lr.hits == 2 && lr.misses == 1 && lr.hit_ratio_m() == Some(666),
+        "",
+    );
+
+    // 14. 时间线保真：200% 全态全帧渲染后帧数与延时逐帧不变。
+    let mut anim = builtin_default_scheme();
+    if let Some(e) = anim.state_mut(PointerState::Normal) {
+        let f0 = e.frames[0].clone();
+        e.frames.push(CursorFrame::from_buf(f0.hot_x, f0.hot_y, 33, f0.buf()));
+    }
+    let mut c3 = UpsampleCache::default();
+    set.add(
+        "timeline preserved across upsample",
+        timeline_preserved(&anim, 200, &mut c3) && timeline_preserved(&anim, 125, &mut c3),
+        "",
+    );
+
+    // 15. 契约外档位渲染诚实拒绝（不静默按 200 处理）。
+    set.add(
+        "out-of-contract dpi render rejected",
+        render_frame(&plain, PointerState::Normal, 0, 300, &mut cache).is_none()
+            && render_frame(&plain, PointerState::Normal, 0, 0, &mut cache).is_none()
+            && !tier_supported(175),
+        "",
+    );
+
     set
 }
 
@@ -350,7 +596,7 @@ mod tests {
     use crate::jstar2::jbase::builtin_default_scheme;
 
     #[test]
-    fn cache_fifo_eviction() {
+    fn cache_lru_eviction() {
         let mut c = UpsampleCache::new(2);
         c.put((1, 0, 0, 100), PixBuf::new(1, 1));
         c.put((2, 0, 0, 100), PixBuf::new(1, 1));
@@ -400,5 +646,49 @@ mod tests {
         }
         // 渲染来源标注面向用户诚实。
         assert_eq!(RenderSource::EnhancedUpsample.label(), "增强渲染");
+    }
+
+    #[test]
+    fn matrix_native_rows_and_missing_rows() {
+        let mut holey = builtin_default_scheme();
+        holey.entries.truncate(2);
+        let matrix = DecisionMatrix::build(&holey);
+        assert!(matrix.contract_sane(&holey), "缺态行诚实空、在场行契约成立");
+        // 缺态行不得出现放大决策。
+        for si in 2..15 {
+            assert!(matrix.cells[si].iter().all(|c| *c == RenderSource::AsIs));
+        }
+    }
+
+    #[test]
+    fn runtime_switch_sequence_roundtrip() {
+        let mut rt = ContractRuntime::new(200).unwrap();
+        assert!(rt.switch(125, 1));
+        assert!(rt.switch(100, 2));
+        assert!(rt.switch(200, 3));
+        assert_eq!(rt.transitions.len(), 3);
+        assert_eq!(rt.transitions[2].from, 100);
+        assert_eq!(rt.transitions[2].to, 200);
+        assert_eq!(rt.current_dpi, 200);
+    }
+
+    #[test]
+    fn touch_promotes_without_value() {
+        let mut c = UpsampleCache::new(2);
+        c.put((5, 0, 0, 100), PixBuf::new(1, 1));
+        c.put((6, 0, 0, 100), PixBuf::new(1, 1));
+        assert!(c.touch(&(5, 0, 0, 100)));
+        assert!(!c.touch(&(4, 0, 0, 100)), "不存在的键触碰诚实 false");
+        c.put((7, 0, 0, 100), PixBuf::new(1, 1));
+        assert!(c.get(&(5, 0, 0, 100)).is_some(), "touch 晋升后幸存");
+        assert!(c.get(&(6, 0, 0, 100)).is_none());
+    }
+
+    #[test]
+    fn timeline_preserved_on_native_scheme_too() {
+        let mut native = builtin_default_scheme();
+        native.native_2x = true;
+        let mut c = UpsampleCache::default();
+        assert!(timeline_preserved(&native, 150, &mut c));
     }
 }

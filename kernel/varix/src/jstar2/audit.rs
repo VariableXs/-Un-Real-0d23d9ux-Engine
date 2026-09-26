@@ -217,6 +217,80 @@ pub struct AuditReport {
 }
 
 /// 对方案执行 24 组合审计（Normal 态首帧；模型面确定性渲染）。
+
+// ---------------------------------------------------------------------------
+// v2 深化：汇总行 / 批量审计 / 留痕台账
+// ---------------------------------------------------------------------------
+
+/// 审计汇总行（详情页头部数字面：过几格、红几格、最差项是什么）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditSummary {
+    pub total: usize,
+    pub passed: usize,
+    pub red: usize,
+    /// 最差边缘锐度（最低值——锐度越高越大，取最小为最差）。
+    pub worst_edge_x100: i64,
+    /// 最低主体对比度。
+    pub worst_contrast_x100: i64,
+}
+
+/// 从完整报告提取汇总行。
+pub fn summarize(rep: &AuditReport) -> AuditSummary {
+    let passed = rep.combos.iter().filter(|c| c.passed).count();
+    AuditSummary {
+        total: rep.combos.len(),
+        passed,
+        red: rep.combos.len() - passed,
+        worst_edge_x100: rep.combos.iter().map(|c| c.edge_x100).min().unwrap_or(0),
+        worst_contrast_x100: rep.combos.iter().map(|c| c.contrast_x100).min().unwrap_or(0),
+    }
+}
+
+/// 批量审计（方案库全量走查口：每方案一份报告——库房详情页逐条挂载
+/// 的数据源）。
+pub fn batch_audit(schemes: &[CursorSchemeModel]) -> Vec<AuditReport> {
+    schemes.iter().map(audit).collect()
+}
+
+/// 审计留痕记录。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuditRecord {
+    pub at_ms: u64,
+    pub scheme_fingerprint: u64,
+    pub passed: bool,
+}
+
+/// 审计留痕台账（环形 32——何时审了谁、过没过，F372 口径）。
+#[derive(Clone, Debug, Default)]
+pub struct AuditLedger {
+    records: Vec<AuditRecord>,
+    dropped: usize,
+}
+
+impl AuditLedger {
+    pub const CAP: usize = 32;
+
+    pub fn record(&mut self, at_ms: u64, rep: &AuditReport) {
+        if self.records.len() >= Self::CAP {
+            self.records.remove(0);
+            self.dropped += 1;
+        }
+        self.records.push(AuditRecord {
+            at_ms,
+            scheme_fingerprint: rep.scheme_fingerprint,
+            passed: rep.all_passed,
+        });
+    }
+
+    pub fn records(&self) -> &[AuditRecord] {
+        &self.records
+    }
+
+    pub fn dropped(&self) -> usize {
+        self.dropped
+    }
+}
+
 pub fn audit(m: &CursorSchemeModel) -> AuditReport {
     let frame = m
         .state(crate::jstar2::jbase::PointerState::Normal)
@@ -373,6 +447,35 @@ pub fn run_audit_checks() -> CheckSet {
     set.add(
         "report attaches to library entry",
         lib.record_report("被审件", to_library_report(rep)).is_ok(),
+        "",
+    );
+
+
+    // 6. 汇总行：过/红/最差值与逐组合明细一致（数字面对账）。
+    let rep6 = audit(&base);
+    let sum = summarize(&rep6);
+    set.add(
+        "audit summary tallies consistent",
+        sum.total == 24
+            && sum.passed + sum.red == 24
+            && sum.passed == rep6.combos.iter().filter(|c| c.passed).count()
+            && sum.worst_edge_x100 == rep6.combos.iter().map(|c| c.edge_x100).min().unwrap_or(0),
+        "",
+    );
+
+    // 7. 批量审计：多方案逐个出报告 + 台账留痕 + 封顶滚动。
+    let mut second = base.clone();
+    second.name = alloc::format!("{}乙", second.name);
+    let batch = batch_audit(&[base.clone(), second]);
+    let mut ledger = AuditLedger::default();
+    for (i, r) in batch.iter().enumerate() {
+        ledger.record(i as u64, r);
+    }
+    set.add(
+        "batch audit with ledger trail",
+        batch.len() == 2
+            && ledger.records().len() == 2
+            && ledger.records()[0].passed == batch[0].all_passed,
         "",
     );
 

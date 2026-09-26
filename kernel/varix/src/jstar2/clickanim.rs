@@ -188,9 +188,12 @@ pub fn audit_f350_consistency(entries: &[HapticEntry]) -> Result<(), String> {
         return Err(String::from("F350 谱中缺少 pointer-click 条目——指针域未对齐"));
     };
     if (e.scale_m - LIGHT_SCALE_MIN_M).abs() > 5 {
+        // 定点千分位呈现（内核路径零浮点纪律）。
+        let whole = e.scale_m / 1000;
+        let frac = e.scale_m.rem_euclid(1000);
         return Err(alloc::format!(
-            "触感谱缩放 {} 与指针域 0.940 不一致（±0.005 容差外）",
-            e.scale_m as f64 / 1000.0
+            "触感谱缩放 {}.{:03} 与指针域 0.940 不一致（±0.005 容差外）",
+            whole, frac
         ));
     }
     if e.duration_ms.abs_diff(LIGHT_DURATION_MS) > 10 {
@@ -207,6 +210,66 @@ pub fn audit_f350_consistency(entries: &[HapticEntry]) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 /// F621 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：连点引擎 / 减少动效联动 / 涟漪环带几何
+// ---------------------------------------------------------------------------
+
+/// 点击动效引擎（连点状态机——第三章「连续快速点击不触发双份动作」：
+/// 每次按下重启同一条时间线，引擎同时最多持有一条活动时间线）。
+pub struct ClickAnimEngine {
+    pub prefs: ClickAnimPrefs,
+    /// F113 减少动效（系统无障碍开关——开启时动效完全禁用，
+    /// 无障碍优先级高于档位偏好）。
+    pub reduce_motion: bool,
+    timeline: Option<ClickTimeline>,
+    /// 引擎累计处理的按下次数（连点对账面）。
+    pub press_count: u64,
+    /// 重启次数（连点导致时间线重置的计数）。
+    pub restarts: u64,
+}
+
+impl ClickAnimEngine {
+    pub fn new(prefs: ClickAnimPrefs, reduce_motion: bool) -> ClickAnimEngine {
+        ClickAnimEngine { prefs, reduce_motion, timeline: None, press_count: 0, restarts: 0 }
+    }
+
+    /// 按下（关档/减少动效 → 不产时间线；已有活动时间线 → 重启并计数）。
+    pub fn press(&mut self, at_ms: u64) {
+        self.press_count += 1;
+        if self.prefs.tier == ClickAnimTier::Off || self.reduce_motion {
+            self.timeline = None;
+            return;
+        }
+        if self.timeline.as_ref().map(|t| t.active(at_ms)).unwrap_or(false) {
+            self.restarts += 1;
+        }
+        self.timeline = Some(ClickTimeline::new(self.prefs.tier, at_ms));
+    }
+
+    /// 当前缩放（引擎视角；无活动时间线恒 1000）。
+    pub fn scale_m(&self, now_ms: u64) -> i64 {
+        self.timeline.as_ref().map(|t| t.scale_m(now_ms)).unwrap_or(1000)
+    }
+
+    /// 时间线只读视图。
+    pub fn timeline(&self) -> Option<&ClickTimeline> {
+        self.timeline.as_ref()
+    }
+
+    /// 涟漪环带（满档渲染层几何）：t 毫秒时刻的 (内半径, 外半径) px
+    /// ——环带宽 1.5px，半径线性外扩；轻档/关/非活动恒 (0,0)。
+    pub fn ripple_band(&self, now_ms: u64) -> (i64, i64) {
+        let Some(t) = self.timeline.as_ref() else { return (0, 0) };
+        if self.prefs.tier != ClickAnimTier::Full || !t.active(now_ms) {
+            return (0, 0);
+        }
+        let r = t.ripple_r_m(now_ms) / 1000;
+        let inner = r.saturating_sub(1);
+        (inner, r)
+    }
+}
+
 pub fn run_clickanim_checks() -> CheckSet {
     let mut set = CheckSet::new("jstar2-F621");
 
@@ -288,6 +351,56 @@ pub fn run_clickanim_checks() -> CheckSet {
 
     // 7. 默认轻档。
     set.add("default tier is light", ClickAnimPrefs::default().tier == ClickAnimTier::Light, "");
+
+
+    // 7. 连点引擎：连点重启同一条时间线（无双份动作）+ 计数对账。
+    let mut eng = ClickAnimEngine::new(
+        ClickAnimPrefs { tier: ClickAnimTier::Light, rec_highlight: false },
+        false,
+    );
+    eng.press(1000);
+    eng.press(1050); // 50ms 后连点 → 重启（不叠加第二条）
+    let restarts_ok = eng.press_count == 2 && eng.restarts == 1;
+    let scale_now = eng.scale_m(1060);
+    eng.press(1300); // 上条已过期 → 新时间线不算重启
+    set.add(
+        "rapid clicks restart single timeline",
+        restarts_ok && scale_now > 930 && scale_now < 1000 && eng.restarts == 1 && eng.press_count == 3,
+        "",
+    );
+
+    // 8. F113 减少动效：开启时任何档位动效完全禁用（无障碍优先）。
+    let mut rm = ClickAnimEngine::new(
+        ClickAnimPrefs { tier: ClickAnimTier::Full, rec_highlight: false },
+        true,
+    );
+    rm.press(100);
+    set.add(
+        "reduce motion disables all tiers",
+        rm.scale_m(150) == 1000 && rm.ripple_band(150) == (0, 0) && rm.timeline().is_none(),
+        "",
+    );
+
+    // 9. 涟漪环带几何：半径单调外扩 + 环带宽 1px + 非满档恒零。
+    let mut full = ClickAnimEngine::new(
+        ClickAnimPrefs { tier: ClickAnimTier::Full, rec_highlight: false },
+        false,
+    );
+    full.press(0);
+    let band_50 = full.ripple_band(50);
+    let band_150 = full.ripple_band(150);
+    set.add(
+        "ripple band grows monotonically",
+        band_50 == (1, 2) && band_150 == (5, 6) && band_150.1 > band_50.1,
+        "",
+    );
+
+    // 10. F594 独立开关在引擎面依旧互不牵动（录屏高亮随 prefs 带入）。
+    set.add(
+        "rec highlight independent at engine level",
+        ClickAnimPrefs { tier: ClickAnimTier::Off, rec_highlight: true }.rec_highlight,
+        "",
+    );
 
     set
 }

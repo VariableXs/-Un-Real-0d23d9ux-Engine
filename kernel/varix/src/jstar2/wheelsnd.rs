@@ -225,6 +225,49 @@ impl NotchSyncPlayer {
 // ---------------------------------------------------------------------------
 
 /// F622 自检。
+
+// ---------------------------------------------------------------------------
+// v2 深化：包络采样模型 / 勿扰阶梯 / cue 时长
+// ---------------------------------------------------------------------------
+
+/// 包络采样（t 毫秒时刻的振幅 0..1000 千分位；attack 线性升到峰值后
+/// decay 线性衰减到零——确定性整数模型，载波波形归 E5 引擎，
+/// 本模块只钉「响多久、多响」的行为面）。
+pub fn envelope_sample(timbre: Timbre, t_ms: u32) -> i64 {
+    let (attack, decay, _f) = timbre.envelope();
+    let total = attack + decay;
+    if t_ms == 0 || t_ms > total {
+        return 0;
+    }
+    if t_ms <= attack {
+        return 1000 * t_ms as i64 / attack.max(1) as i64;
+    }
+    let into_decay = (t_ms - attack) as i64;
+    1000 - 1000 * into_decay / decay.max(1) as i64
+}
+
+/// SoundCue 时长（attack + decay——调度器据此排音频时间线）。
+pub fn cue_duration_ms(cue: &SoundCue) -> u32 {
+    let (a, d, _) = cue.timbre.envelope();
+    a + d
+}
+
+/// 勿扰阶梯（F341 三档：强=250‰、弱=600‰、关=1000‰——深夜自动轻
+/// 下去的档位化口径，与 DndState 自定义缩放并存）。
+pub const DND_LADDER: [(&str, i64); 3] = [("strong", 250), ("weak", 600), ("off", 1000)];
+
+impl DndState {
+    /// 从阶梯档构造（查无档位 → 关档 1000‰——不猜）。
+    pub fn from_ladder(level: &str) -> DndState {
+        let scale = DND_LADDER
+            .iter()
+            .find(|(k, _)| *k == level)
+            .map(|(_, v)| *v)
+            .unwrap_or(1000);
+        DndState { active: scale != 1000, volume_scale_m: scale }
+    }
+}
+
 pub fn run_wheelsnd_checks() -> CheckSet {
     let mut set = CheckSet::new("jstar2-F622");
     let on = WheelSoundPrefs { enabled: true, timbre: Timbre::Mechanical };
@@ -298,6 +341,47 @@ pub fn run_wheelsnd_checks() -> CheckSet {
 
     // 7. Auto 模式不在音效层解析（显式注入纪律：调用方 resolve 后喂实际模式）。
     set.add("auto mode silent at cue layer", notch_event(&on, WheelMode::Auto, &no_dnd, 0).is_none(), "");
+
+
+    // 7. 包络采样：attack 段升、decay 段降、总时长外归零、同参同出。
+    let (at, de, _) = Timbre::Mechanical.envelope();
+    let s0 = envelope_sample(Timbre::Mechanical, 0);
+    let s_attack = envelope_sample(Timbre::Mechanical, at);
+    let s_mid = envelope_sample(Timbre::Mechanical, at + de / 2);
+    let s_end = envelope_sample(Timbre::Mechanical, at + de);
+    let s_again = envelope_sample(Timbre::Mechanical, at + de / 2);
+    set.add(
+        "envelope rises decays and is deterministic",
+        s0 == 0 && s_attack == 1000 && s_mid > 0 && s_mid < 1000 && s_end == 0 && s_mid == s_again,
+        "",
+    );
+
+    // 8. 两音色时长不同（机械短促、软胶圆润——参数族的可闻差异面）。
+    let mech_cue = SoundCue { category: E5_INTERACTIVE_CATEGORY, timbre: Timbre::Mechanical, volume_m: 400, at_ms: 0 };
+    let soft_cue = SoundCue { category: E5_INTERACTIVE_CATEGORY, timbre: Timbre::Soft, volume_m: 400, at_ms: 0 };
+    set.add(
+        "cue duration follows timbre",
+        cue_duration_ms(&mech_cue) == 19 && cue_duration_ms(&soft_cue) == 31,
+        "",
+    );
+
+    // 9. 勿扰阶梯：强/弱/关三档有效音量逐级递增 + 未知档诚实回关。
+    let mut prefs9 = WheelSoundPrefs::default();
+    prefs9.enabled = true;
+    let strong = notch_event(&prefs9, WheelMode::Notch, &DndState::from_ladder("strong"), 1).unwrap();
+    let weak = notch_event(&prefs9, WheelMode::Notch, &DndState::from_ladder("weak"), 1).unwrap();
+    let off = notch_event(&prefs9, WheelMode::Notch, &DndState::from_ladder("off"), 1).unwrap();
+    let unknown_dnd = DndState::from_ladder("深夜");
+    let unknown = notch_event(&prefs9, WheelMode::Notch, &unknown_dnd, 1).unwrap();
+    set.add(
+        "dnd ladder scales volume honestly",
+        strong.volume_m == 100
+            && weak.volume_m == 240
+            && off.volume_m == BASE_VOLUME_M
+            && unknown.volume_m == BASE_VOLUME_M
+            && !unknown_dnd.active,
+        "",
+    );
 
     set
 }
