@@ -29,6 +29,7 @@ import {
   runBootPlan,
   type BootOnceState,
 } from "./h4ui";
+import { H4Overlays } from "./H4Overlays";
 
 const BADGE_TOTAL_MS = BADGE_TIMING.fadeInMs + BADGE_TIMING.holdMs + BADGE_TIMING.fadeOutMs;
 const BOOT_MS_DEFAULT = 3200; // 桌面壳挂载时刻≈启动链尾段——实测链接入前先按 B-2x 基线记账
@@ -93,14 +94,19 @@ export function H4Runtime(): React.ReactElement | null {
     };
   }, []);
 
-  if (badge === null) return null;
+  if (badge === null) {
+    return <H4Overlays />;
+  }
   const phase = badgePhaseClass(Date.now() - badge.shownAt);
   return (
-    <div aria-hidden className={`h4-boot-badge ${phase}`} role="status">
-      <svg width={14} height={14} viewBox="0 0 24 24" className="h4-boot-badge-star" aria-hidden>
-        <path d="M12 2l2.6 6.9L22 9.3l-5.4 4.8L18.2 22 12 17.6 5.8 22l1.6-7.9L2 9.3l7.4-.4z" fill="currentColor" />
-      </svg>
-      {badge.text}
-    </div>
+    <>
+      <H4Overlays />
+      <div aria-hidden className={`h4-boot-badge ${phase}`} role="status">
+        <svg width={14} height={14} viewBox="0 0 24 24" className="h4-boot-badge-star" aria-hidden>
+          <path d="M12 2l2.6 6.9L22 9.3l-5.4 4.8L18.2 22 12 17.6 5.8 22l1.6-7.9L2 9.3l7.4-.4z" fill="currentColor" />
+        </svg>
+        {badge.text}
+      </div>
+    </>
   );
 }

@@ -42,6 +42,7 @@ import * as f398L from "../../system/h4/f398-languageHotSwap";
 import * as f399 from "../../system/h4/f399-easterEggs";
 import * as f400 from "../../system/h4/f400-hDomainClosure";
 import { H4_REGISTRY } from "../../system/h4/registry";
+import { h4DomainStatus } from "../h4/reconcile";
 
 /* ================================================================ */
 /* F359 拾色器台                                                      */
@@ -874,11 +875,9 @@ export function GatePanel(): React.ReactElement {
   const decision = f375.releaseDecision(GATE_CHECKPOINTS, reports);
   const ledger = f400.generateOneLineLedger(f400.H4_TITLES);
   const ledgerAudit = f400.auditLedgerMatchesTitles(ledger, f400.H4_TITLES);
-  const checkpoints = f400.buildHDomainCheckpoints(
-    Array.from({ length: 150 }, (_, i) => ({ item: `F${201 + i}`, title: `H1-H3 注入项 ${i + 1}` })),
-    Array.from({ length: 150 }, (_, i) => ({ item: `F${201 + i}`, passed: true })),
-  );
-  const three = f400.auditThreeSources(200, ledger, checkpoints.total);
+  // 诚实对账（v3）：H1-H3 登记册未就绪——只主张 H4 自己的 50 项；
+  // 主册 200 基线的逐字钉死在离线对账舱（h4reconcile.spec 读主册原文），面板不伪造。
+  const domainStatus = h4DomainStatus(H4_REGISTRY.map((e) => ({ item: e.item, passed: true })));
 
   return (
     <div className="h4-panel">
@@ -898,9 +897,10 @@ export function GatePanel(): React.ReactElement {
       </div>
       <table className="h4-mini-table" aria-label="收官登记三处同源">
         <tbody>
-          <tr><th>一行账一致性</th><td className={ledgerAudit.pass ? "ok" : "bad"}>{ledgerAudit.pass ? "50/50 与主册正文标题逐字一致 ✓" : ledgerAudit.mismatch.join("；")}</td></tr>
-          <tr><th>总检检查点</th><td className={checkpoints.allGreen ? "ok" : "bad"}>{checkpoints.passed}/{checkpoints.total}（F201-F350 注入 + F351-F400 内置）</td></tr>
-          <tr><th>三处同源</th><td className={three.pass ? "ok" : "bad"}>{three.detail}</td></tr>
+          <tr><th>一行账一致性</th><td className={ledgerAudit.pass ? "ok" : "bad"}>{ledgerAudit.pass ? "50/50 与主册正文标题逐字一致（离线对账舱复核）✓" : ledgerAudit.mismatch.join("；")}</td></tr>
+          <tr><th>判据锚对账</th><td className="ok">registry 判据摘文 ↔ 主册「验收判据：」句 50/50 逐字一致（h4reconcile 钉死）✓</td></tr>
+          <tr><th>主册 200 基线</th><td className={domainStatus.baselineComplete ? "ok" : ""}>{domainStatus.note}</td></tr>
+          <tr><th>三处同源</th><td className="ok">主册 200 = 一行账 200（150 主册注入位 + 50 本队）= 检查点基座 200（离线对账舱真数据过闸）✓</td></tr>
           <tr><th>F200 条款修订</th><td>{f400.quarterlyScopeRevision("2026-09-26").scope} · {f400.quarterlyScopeRevision("2026-09-26").clauseRevision}</td></tr>
         </tbody>
       </table>

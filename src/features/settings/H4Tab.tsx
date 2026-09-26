@@ -33,6 +33,7 @@ import * as f392 from "../../system/h4/f392-folderSize";
 import * as f395 from "../../system/h4/f395-usbHealth";
 import { memStore } from "../../system/h4/internal/store";
 import { announceFilterChanged, announceReadingChanged } from "../h4/h4ui";
+import { FOCUS_EVENT, SUMMON_PICKER, SUMMON_RULER } from "../h4/overlays";
 import {
   BackupPanel,
   CleanupPanel,
@@ -141,11 +142,17 @@ function FocusTimerInline(): React.ReactElement {
           <option value="90">自定 90</option>
         </select>
         {!run || run.outcome !== "running" ? (
-          <button type="button" disabled={!validation.ok} onClick={() => setRun({ day, plannedMinutes: minutes, startedAt: Date.now(), endedAt: null, outcome: "running" })}>
+          <button type="button" disabled={!validation.ok} onClick={() => {
+            setRun({ day, plannedMinutes: minutes, startedAt: Date.now(), endedAt: null, outcome: "running" });
+            window.dispatchEvent(new CustomEvent(FOCUS_EVENT, { detail: { type: "start", minutes } })); // 全局芯片同源跟显
+          }}>
             开始专注
           </button>
         ) : (
-          <button type="button" onClick={abandonRun}>放弃（记真实时长）</button>
+          <button type="button" onClick={() => {
+            abandonRun();
+            window.dispatchEvent(new CustomEvent(FOCUS_EVENT, { detail: { type: "abandon" } }));
+          }}>放弃（记真实时长）</button>
         )}
         {run?.outcome === "running" && <span className="h4-badge-live">{f363b.badgeText(run, Date.now())}</span>}
       </div>
@@ -497,8 +504,11 @@ export function H4Tab(): React.ReactElement {
         <SectionCard title="全局屏幕拾色器" f="F359">
           <PickerPanel />
         </SectionCard>
-        <Row label="像素标尺与网格叠加" hint="读数零误差 · 点击穿透恒真 · 网格 20% 透明度 · Esc 秒退——快捷面板呼出，区域录制同款框选辅助。">
-          <span className="h4-readonly">叠加层跟随屏幕（无独立设置项）</span>
+        <Row label="像素标尺与网格叠加" hint="真指针真读数：点击设起点、G 切 8px/20% 网格、Esc 秒退——区域录制同款框选辅助。">
+          <span className="h4-row-actions">
+            <button type="button" className="h4-btn-mini" onClick={() => window.dispatchEvent(new CustomEvent(SUMMON_PICKER))}>呼出拾色器</button>
+            <button type="button" className="h4-btn-mini" onClick={() => window.dispatchEvent(new CustomEvent(SUMMON_RULER))}>呼出标尺</button>
+          </span>
         </Row>
         <SectionCard title="屏幕录制与产物管理" f="F361 + F362">
           <RecorderPanel />
