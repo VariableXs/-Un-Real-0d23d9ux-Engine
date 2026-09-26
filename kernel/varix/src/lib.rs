@@ -30,6 +30,11 @@ static KERNEL_ALLOCATOR: mem::heap::VarixAllocator = mem::heap::VarixAllocator;
 
 pub mod acpi;
 pub mod audio;
+/// 性能域深化（Varix STAR I start · B 域 F041~F057 · AI-K1 分工包）：
+/// 帧率账本/归因器/冷启动画像/预取指纹/页缓存水位/写合并自适应/调度预算/
+/// CPU 频率/空转清零/中断合并/大页/堆碎片/启动并行/图像 SIMD/字形缓存/
+/// 脏区深化/IO 分级，十七项判据实装层。
+pub mod perfstar;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -562,6 +567,8 @@ pub mod task;
 pub mod apower;
 #[path = "perf/perf.rs"]
 pub mod perf;
+// Varix STAR I · 泳道一 B 域后段（AI-K2 · F058-F075）：十八项功能 + 共享底盘。
+pub mod star;
 #[path = "stability/stability.rs"]
 pub mod stability;
 #[path = "security/aurora.rs"]

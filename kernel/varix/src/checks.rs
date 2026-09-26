@@ -193,28 +193,74 @@ pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
 /// Maximum domains in the kernel checkup registry. WP-301 后 96 域恰满容量，
 /// register 超容静默丢域（KernelCheckup 无 truncated 预警）比恰满更危险——
 /// 按"不够即扩"纪律扩容，WP-403 撞 128 余量 2 后 WP-404 八域前扩到 144，
-/// 覆盖 WP-404 八域 134 与 WP-405 收尾域仍留余量
-/// （WP-404 后 134 域，余量 10——按"不够即扩"纪律再扩）。
-pub const MAX_DOMAINS: usize = 144;
+/// STAR I 分工阶段（AI-K1 收口实测）注册面已达 258 域 > 144——既有 114 个
+/// 注册被静默丢弃，AI-K1 追加 B 性能域 17 域（F041~F057，robust.rs）后
+/// 共 275，按同一纪律扩到 288（余量 13 供后续收尾域）。
+pub const MAX_DOMAINS: usize = 288;
+
+/// 每域聚合摘要（register 时从 CheckSet 提取）。CheckSet 全量值拷贝入
+/// `[Option<CheckSet>; MAX_DOMAINS]` 会让 KernelCheckup 达 ~870KB——栈上
+/// 构造（run_kernel_checkup / aggregate_checksets 的局部量 + 返回槽三份）
+/// 直接爆测试线程栈（STATUS_STACK_OVERFLOW 实锤，MAX_DOMAINS=288 后暴露）。
+/// 失败明细的 name/detail 恒为 'static 字面量，以引用保留前 8 条；超出
+/// render 中如实标注（不静默吞）。
+#[derive(Clone, Copy, Debug)]
+struct DomainRecord {
+    domain: &'static str,
+    passed: u16,
+    failed: u16,
+    dropped: u32,
+    fail_name: [&'static str; 8],
+    fail_detail: [&'static str; 8],
+    fail_n: usize,
+}
+
+/// 每域保留的失败明细条数。
+const FAIL_DETAIL_KEEP: usize = 8;
 
 /// Aggregate result of `run_kernel_checkup()`.
 #[derive(Clone, Copy, Debug)]
 pub struct KernelCheckup {
-    sets: [Option<CheckSet>; MAX_DOMAINS],
+    records: [Option<DomainRecord>; MAX_DOMAINS],
     count: usize,
 }
 
 impl KernelCheckup {
     pub const fn new() -> KernelCheckup {
         KernelCheckup {
-            sets: [None; MAX_DOMAINS],
+            records: [None; MAX_DOMAINS],
             count: 0,
         }
     }
 
+    /// Register one domain's result. 提取摘要而非拷贝整个 CheckSet——
+    /// 275+ 域 × ~3KB/域的值数组在栈上不可承受（见 DomainRecord 注释）。
     pub fn register(&mut self, set: CheckSet) {
         if self.count < MAX_DOMAINS {
-            self.sets[self.count] = Some(set);
+            let mut r = DomainRecord {
+                domain: set.domain,
+                passed: 0,
+                failed: 0,
+                dropped: set.dropped as u32,
+                fail_name: [""; FAIL_DETAIL_KEEP],
+                fail_detail: [""; FAIL_DETAIL_KEEP],
+                fail_n: 0,
+            };
+            for i in 0..set.count {
+                if let Some(c) = set.checks[i] {
+                    if c.passed {
+                        r.passed += 1;
+                    } else {
+                        r.failed += 1;
+                        if r.fail_n < FAIL_DETAIL_KEEP {
+                            r.fail_name[r.fail_n] = c.name;
+                            r.fail_detail[r.fail_n] = c.detail;
+                            r.fail_n += 1;
+                        }
+                    }
+                }
+            }
+            self.records[self.count] = Some(r);
             self.count += 1;
         }
     }
@@ -223,41 +269,55 @@ impl KernelCheckup {
         self.count
     }
 
-    pub fn get(&self, index: usize) -> Option<CheckSet> {
-        if index < self.count {
-            self.sets[index]
-        } else {
-            None
-        }
-    }
-
     pub fn tally(&self) -> (usize, usize) {
         let mut passed = 0usize;
-        let mut total = 0usize;
+        let mut failed = 0usize;
         for i in 0..self.count {
-            if let Some(s) = self.get(i) {
-                let (p, f) = s.tally();
-                passed += p;
-                total += p + f;
+            if let Some(r) = self.records[i] {
+                passed += r.passed as usize;
+                failed += r.failed as usize;
             }
         }
-        (passed, total - passed)
+        (passed, failed)
     }
 
     pub fn all_passed(&self) -> bool {
-        (0..self.count).all(|i| self.get(i).map(|s| s.all_passed()).unwrap_or(true))
+        (0..self.count).all(|i| self.records[i].map(|r| r.failed == 0).unwrap_or(true))
     }
 
-    /// Render every domain line into `out`.
+    /// Render every domain line into `out`（格式与 CheckSet::render 一致：
+    /// `domain PASS p/n` / `domain FAIL p/n` + `  - name: detail` 失败行；
+    /// 超出 FAIL_DETAIL_KEEP 的失败与被 drop 的检查如实标注，不留诊断盲区）。
     pub fn render(&self, out: &mut [u8]) -> usize {
         let mut n = 0usize;
         for i in 0..self.count {
-            if let Some(s) = self.get(i) {
-                if n >= out.len() {
-                    break;
+            if n >= out.len() {
+                break;
+            }
+            if let Some(r) = self.records[i] {
+                push_str(out, &mut n, r.domain);
+                push_str(out, &mut n, if r.failed == 0 { " PASS " } else { " FAIL " });
+                push_usize(out, &mut n, r.passed as usize);
+                push_str(out, &mut n, "/");
+                push_usize(out, &mut n, (r.passed + r.failed) as usize);
+                push_str(out, &mut n, "\n");
+                for k in 0..r.fail_n {
+                    push_str(out, &mut n, "  - ");
+                    push_str(out, &mut n, r.fail_name[k]);
+                    push_str(out, &mut n, ": ");
+                    push_str(out, &mut n, r.fail_detail[k]);
+                    push_str(out, &mut n, "\n");
                 }
-                let written = s.render(&mut out[n..]);
-                n += written;
+                if r.failed as usize > r.fail_n {
+                    push_str(out, &mut n, "  - ... and ");
+                    push_usize(out, &mut n, r.failed as usize - r.fail_n);
+                    push_str(out, &mut n, " more failed checks\n");
+                }
+                if r.dropped > 0 {
+                    push_str(out, &mut n, "  - truncated: ");
+                    push_usize(out, &mut n, r.dropped as usize);
+                    push_str(out, &mut n, " results dropped\n");
+                }
             }
         }
         n

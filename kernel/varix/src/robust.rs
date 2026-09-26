@@ -1019,309 +1019,341 @@ pub fn isolate_driver_failures(outcomes: &[DriverLoadOutcome]) -> LoadSummary {
 /// result is consumed by the boot path and the QEMU headless assertions.
 pub fn run_kernel_checkup() -> KernelCheckup {
     let mut checkup = KernelCheckup::new();
-    checkup.register(crate::power::run_power_checks());
-    checkup.register(crate::audio::run_audio_checks());
-    checkup.register(crate::driver::run_driver_checks());
-    checkup.register(crate::virt::run_virt_checks());
-    checkup.register(crate::service::run_service_checks());
-    checkup.register(crate::ui::run_ui_checks());
-    checkup.register(crate::vsem::run_vsem_checks());
-    checkup.register(crate::deploy::run_install_checks());
-    checkup.register(crate::deploy::run_deploy_checks());
-    checkup.register(crate::robust::run_robust_checks());
-    checkup.register(crate::deveco::run_deveco_checks());
+    // 函数指针表：274 个域自检入口，统一经表迭代注册。禁止改回直排
+    // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
+    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 275 ≈ 852KB），
+    // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
+    // 仅一个 CheckSet 临时存活。
+    let domains: [fn() -> CheckSet; 274] = [
+        crate::power::run_power_checks,
+        crate::audio::run_audio_checks,
+        crate::driver::run_driver_checks,
+        crate::virt::run_virt_checks,
+        crate::service::run_service_checks,
+        crate::ui::run_ui_checks,
+        crate::vsem::run_vsem_checks,
+        crate::deploy::run_install_checks,
+        crate::deploy::run_deploy_checks,
+        crate::robust::run_robust_checks,
+        crate::deveco::run_deveco_checks,
     // --- TRINITY-500 AI-01~AI-10 (F001~F250) --------------------------------
-    checkup.register(crate::switcher::bootnext::run_boot_checks());
-    checkup.register(crate::switcher::hibernate::run_hibernate_checks());
-    checkup.register(crate::fs::run_fs_checks());
-    checkup.register(crate::share::run_share_checks());
-    checkup.register(crate::gfx::run_gfx_checks());
-    checkup.register(crate::gfx::text::run_text_checks());
-    checkup.register(crate::ui::widgets::run_widget_checks());
-    checkup.register(crate::ui::motion::run_motion_checks());
-    checkup.register(crate::vwm::run_vwm_checks());
-    // UNREAL-X-15000 AI-07 合成器九族
+        crate::switcher::bootnext::run_boot_checks,
+        crate::switcher::hibernate::run_hibernate_checks,
+        crate::fs::run_fs_checks,
+        crate::share::run_share_checks,
+        crate::gfx::run_gfx_checks,
+        crate::gfx::text::run_text_checks,
+        crate::ui::widgets::run_widget_checks,
+        crate::ui::motion::run_motion_checks,
+        crate::vwm::run_vwm_checks,
+    // WP-201 · B-503 VXWM 帧编解码层（二十四消息 × 定长头/序号/校验和/回放）
+        crate::vxwm::run_vxwm_checks,
+    // WP-201 · B-504 缓冲所有权状态机（零半帧 × 配额 × 代数防陈旧）
+        crate::bufown::run_bufown_checks,
+    // WP-201 · B-506 浮层物理强制（popup_grab 抓取表 × 区域外零投递）
+        crate::popup::run_popup_checks,
+    // WP-201 · B-505 字形图集（LRU 60MB × pin 常驻 × 降密度）
+        crate::atlas::run_atlas_checks,
+    // WP-201 · B-501 事件泵状态机（四源归一 × 不需要就不合成 × 空转 5% 模型）
+        crate::pump::run_pump_checks,
+    // WP-201 · B-502 拖动基准 harness（p95 55fps × 输入不迟滞 × 带宽下界）
+        crate::dragbench::run_dragbench_checks,
+    // WP-201 · B-507 合成器恢复（注册表快照 × D-04 三秒 × 百次对练）
+        crate::comprecover::run_comprecover_checks,
+    // WP-203 · 存储七域（B-701~707 判据实装层）
+        crate::fswl::run_fswl_checks,
+        crate::fsyncp::run_fsyncp_checks,
+        crate::pwrdrl::run_pwrdrl_checks,
+        crate::wmerge::run_wmerge_checks,
+        crate::ntfsro::run_ntfsro_checks,
+        crate::linkloss::run_linkloss_checks,
+        crate::prefacct::run_prefacct_checks,
+    // WP-208 七域：图形多媒体与音频判据实装层
+        crate::path3::run_path3_checks,
+        crate::wingl::run_wingl_checks,
+        crate::esoft::run_esoft_checks,
+        crate::r3scan::run_r3scan_checks,
+        crate::viddec::run_viddec_checks,
+        crate::hdadrv::run_hdadrv_checks,
+        crate::mixer::run_mixer_checks,
+    // WP-204 七域：网络栈判据实装层
+        crate::netthr::run_netthr_checks,
+        crate::fdmix::run_fdmix_checks,
+        crate::lstnauth::run_lstnauth_checks,
+        crate::dohsw::run_dohsw_checks,
+        crate::diag3::run_diag3_checks,
+        crate::offln::run_offln_checks,
+        crate::usbnet::run_usbnet_checks,
+    // WP-202 七域：输入与输入法判据实装层
+        crate::evflow::run_evflow_checks,
+        crate::kblayout::run_kblayout_checks,
+        crate::imepinyin::run_imepinyin_checks,
+        crate::composesw::run_composesw_checks,
+        crate::hkbind::run_hkbind_checks,
+        crate::candwin::run_candwin_checks,
+        crate::focring::run_focring_checks,
+    // WP-205 八域：应用件三包判据实装层（MD2 篇 16-19）
+        crate::termproc::run_termproc_checks,
+        crate::termfeed::run_termfeed_checks,
+        crate::trashbin::run_trashbin_checks,
+        crate::fsview::run_fsview_checks,
+        crate::thumbsched::run_thumbsched_checks,
+        crate::edcore::run_edcore_checks,
+        crate::widgetline::run_widgetline_checks,
+        crate::settable::run_settable_checks,
+    // WP-206 四域：监视器与星图前端判据实装层（MD2 篇 20/21 前端）
+        crate::ledgerhub::run_ledgerhub_checks,
+        crate::moncards::run_moncards_checks,
+        crate::winegrp::run_winegrp_checks,
+        crate::starmapui::run_starmapui_checks,
+    // WP-207 三域：协议件判据实装层（MD2 篇 39/40）
+        crate::clipown::run_clipown_checks,
+        crate::dragdrop::run_dragdrop_checks,
+        crate::a11ygate::run_a11y_checks,
+    // WP-209：测量与恢复面三域（性能基准首轮/恢复矩阵组/杀死演练）。
+        crate::benchsix::run_benchsix_checks,
+        crate::recovermx::run_recovermx_checks,
+        crate::killdrill::run_killdrill_checks,
+    // WP-301 四域：转译层 Linuxulator 判据实装层（MD2 篇 4）。
+        crate::lxgov::run_lxgov_checks,
+        crate::lxerrno::run_lxerrno_checks,
+        crate::lxprocfs::run_lxprocfs_checks,
+        crate::lxrun::run_lxrun_checks,
+        crate::winecare::run_winecare_checks,
+        crate::winepfx::run_winepfx_checks,
+        crate::wineshim::run_wineshim_checks,
+        crate::winelaunch::run_winelaunch_checks,
+        crate::winecase::run_winecase_checks,
+        crate::wineattr::run_wineattr_checks,
+        crate::sdktriplet::run_sdktriplet_checks,
+        crate::sdkmanifest::run_sdkmanifest_checks,
+        crate::sdkwidgets::run_sdkwidgets_checks,
+        crate::sdkruntime::run_sdkruntime_checks,
+        crate::sdktemplate::run_sdktemplate_checks,
+        crate::rtjava::run_rtjava_checks,
+        crate::rtpy::run_rtpy_checks,
+        crate::rtmpl::run_rtmpl_checks,
+        crate::starmapdir::run_starmapdir_checks,
+        crate::starmapgate::run_starmapgate_checks,
+        crate::unisweep::run_unisweep_checks,
+        crate::selftestpkg::run_selftestpkg_checks,
+        crate::dualsign::run_dualsign_checks,
+        crate::feedback::run_feedback_checks,
+        crate::pyramid::run_pyramid_checks,
+        crate::drillscale::run_drillscale_checks,
+        crate::dims20::run_dims20_checks,
+        crate::reprobuild::run_reprobuild_checks,
+        crate::imgwrite::run_imgwrite_checks,
+        crate::rollback72::run_rollback72_checks,
+        crate::reggate::run_reggate_checks,
+        crate::explog::run_explog_checks,
+        crate::secgate::run_secgate_checks,
+        crate::signchain::run_signchain_checks,
+        crate::netdiag::run_netdiag_checks,
+        crate::instup::run_instup_checks,
+        crate::fontsub::run_fontsub_checks,
+        crate::timesrv::run_timesrv_checks,
+        crate::dispout::run_dispout_checks,
+        crate::drvframe::run_drvframe_checks,
+        crate::syslogd::run_syslogd_checks,
+        crate::qemuenv::run_qemuenv_checks,
+        crate::idledn::run_idledn_checks,
+        crate::shell::run_shell_checks,
+    // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
+        crate::gdist::run_gdist_checks,
+        crate::gcons::run_gcons_checks,
+        crate::gcont::run_gcont_checks,
+        crate::guni::run_guni_checks,
+        crate::gpm::run_gpm_checks,
+        crate::gperf::run_gperf_checks,
+        crate::gobs::run_gobs_checks,
+        crate::gsec::run_gsec_checks,
+        crate::grtc::run_grtc_checks,
+    // --- AURORA-1000 AI-16~AI-30 (A376~A750) --------------------------------
+        crate::workspace::run_workspace_checks,
+        crate::designsys::run_designsys_checks,
+        crate::fileman::run_fileman_checks,
+        crate::settings::run_settings_checks,
+        crate::apps::run_apps_checks,
+        crate::terminal::run_terminal_checks,
+        crate::editor::run_editor_checks,
+        crate::imageview::run_imageview_checks,
+        crate::player::run_player_checks,
+        crate::netweb::run_netweb_checks,
+        crate::notify::run_notify_checks,
+        crate::search::run_search_checks,
+        crate::sysmon::run_sysmon_checks,
+        crate::pkgstore::run_pkgstore_checks,
+        crate::printing::run_printing_checks,
+    // --- AURORA-1000 W1 十五域 + 跨域集成收口（步骤 0257 domain-gate 汇总） ---
+        crate::aurora::display::run_display_checks,
+        crate::aurora::render2d::run_render2d_checks,
+        crate::aurora::typography::run_typography_checks,
+        crate::aurora::gpu::run_gpu_checks,
+        crate::aurora::compositor::run_compositor_checks,
+        crate::aurora::image::run_image_checks,
+        crate::aurora::input::run_ainput_checks,
+        crate::aurora::audio::run_aaudio_checks,
+        crate::aurora::window::run_window_checks,
+        crate::aurora::motion::run_motion_checks,
+        crate::aurora::desktop::run_desktop_checks,
+        crate::aurora::appfw::run_appfw_checks,
+        crate::aurora::widgets::run_widgets_checks,
+        crate::aurora::clipboard::run_clipboard_checks,
+        crate::aurora::session::run_session_checks,
+        crate::aurora::integration::run_w1_integration_checks,
+    // --- AURORA-1000 W2 联调集成域（步骤 0490~0499）--------------------------
+        crate::aurora::w2_integration::run_w2_checks,
+    // --- AURORA-1000 W3 收口门禁（步骤 0729~0737） ---------------------------
+        crate::w3gate::run_w3gate_checks,
+    // --- AURORA-1000 W4/W5 AI-31~AI-40 域 CheckSet 收口（步骤 0968~1202）------
+        crate::a11y::run_a11y_checks,
+        crate::apower::run_apower_checks,
+        crate::perf::run_perf_checks,
+        crate::stability::run_stability_checks,
+        crate::asecurity::run_asecurity_checks,
+        crate::testing::run_testing_checks,
+        crate::help::run_help_checks,
+        crate::acceptance::run_acceptance_checks,
+        crate::release::run_release_checks,
+        crate::finalize::run_finalize_checks,
+    // --- VARIABLE-200 AI-01 用户态进程域（F001~F025，W2）--------------------
+    // 页表隔离、ring3 双路切换、进程生命周期与崩溃隔离。
+        crate::proc::run_uspace_checks,
+    // --- VARIABLE-200 AI-02 可执行加载与 ABI 域（F026~F050，W2）--------------
+    // VXELF 加载、W^X、ASLR、入口栈/auxv/TLS、重定位、失败回收。
+        crate::exec::run_exec_checks,
+    // --- VARIABLE-200 AI-03 系统调用域（F051~F075，W2）----------------------
+    // 号表/参数安全层/错误码/调用面/能力审计配额/seccomp/vDSO/fuzz/仪表。
+        crate::syscall::run_syscall_checks,
+    // --- VARIABLE-200 AI-04~AI-08（F076~F200）--------------------------------
+        crate::srv::run_srv_checks,
+        crate::gfxsrv::run_gfxsrv_checks,
+        crate::hidsrv::run_hidsrv_checks,
+        crate::vport::run_vport_checks,
+        crate::bootchain::run_bootchain_checks,
+    // --- VARIX-M500 AI-06~AI-10（F126~F250）---------------------------------
+        crate::gfxsrv::vision::run_vision_checks,
+        crate::hidsrv::feel::run_feel_checks,
+        crate::audio::tone::run_tone_checks,
+        crate::net::netxp::run_netxp_checks,
+        crate::sec::trust::run_trust_checks,
+    // --- VARIX-M500 AI-11~AI-15（F251~F375，内核成熟化）----------------------
+        crate::envpower::run_energy_checks,
+        crate::theme::run_theme_checks,
+        crate::hwcompat::run_hwcompat_checks,
+        crate::appmgr::run_appmgr_checks,
+        crate::automation::run_automation_checks,
+    // --- VARIX-M500 AI-01~AI-05（F001~F125，M1 底座 + M3 生态门口）----------
+        crate::m5boot::run_bootm5_checks,
+        crate::m5sched::run_m5sched_checks,
+        crate::m5mem::run_m5mem_checks,
+        crate::m5srv::run_m5srv_checks,
+        crate::m5fs::run_m5fs_checks,
+    // --- VARIX-M600 AI-01 / VARIX-M700 AI-01（各域 CheckSet 闭环）------------
+        crate::m600boot::run_m600boot_checks,
+        crate::m700proc::run_m700proc_checks,
+    // --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）----------------------
+        crate::deskwis::run_deskwis_checks,
+        crate::dataflow::run_dataflow_checks,
+        crate::selfheal::run_selfheal_checks,
+        crate::observ::run_observ_checks,
+        crate::i18n::run_i18n_checks,
+    // --- VARIX-M400 AI-09~AI-16（F201~F400，成品体验与看不见的质量）----------
+        crate::m4shell::run_m4shell_checks,
+        crate::m4compat::run_m4compat_checks,
+        crate::m4perf::run_m4perf_checks,
+        crate::m4privsec::run_m4privsec_checks,
+        crate::m4release::run_m4release_checks,
+        crate::m4quality::run_m4quality_checks,
+        crate::m4docseco::run_m4docseco_checks,
+        crate::m4arts::run_m4arts_checks,
+    // --- VARIX-M600 AI-21~AI-24（F501~F600，作品交付波次）--------------------
+        crate::m6sync::run_m6sync_checks,
+        crate::m6assist::run_m6assist_checks,
+        crate::m6a11y::run_m6a11y_checks,
+        crate::m6deliver::run_m6deliver_checks,
+    // --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）--------------
+        crate::m7sched::run_m7sched_checks,
+        crate::m7cgroup::run_m7cgroup_checks,
+    // --- VARIX-M600 AI-02~AI-10（F026~F250，各域 CheckSet 闭环）--------------
+        crate::m600mem::run_m600mem_checks,
+        crate::m600sched::run_m600sched_checks,
+        crate::m600relia::run_m600relia_checks,
+        crate::m600perf::run_m600perf_checks,
+        crate::m600pwr::run_m600pwr_checks,
+        crate::m600gfx::run_m600gfx_checks,
+        crate::m600input::run_m600input_checks,
+        crate::m600audio::run_m600audio_checks,
+        crate::m600theme::run_m600theme_checks,
+    // --- VARIX-M700 AI-02~AI-10（F026~F250，各域 CheckSet 闭环）--------------
+        crate::m700vmm::run_m700vmm_checks,
+        crate::m700sysc::run_m700sysc_checks,
+        crate::m700intr::run_m700intr_checks,
+        crate::m700ipc::run_m700ipc_checks,
+        crate::m700lock::run_m700lock_checks,
+        crate::m700ksec::run_m700ksec_checks,
+        crate::m700kdbg::run_m700kdbg_checks,
+        crate::m700vfs::run_m700vfs_checks,
+        crate::m700blk::run_m700blk_checks,
+    // --- VARIX-M600 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
+        crate::m600media::run_m600media_checks,
+        crate::m600motion::run_m600motion_checks,
+        crate::m600shell::run_m600shell_checks,
+        crate::m600files::run_m600files_checks,
+        crate::m600sdk::run_m600sdk_checks,
+        crate::m600auto::run_m600auto_checks,
+        crate::m600net::run_m600net_checks,
+        crate::m600svc::run_m600svc_checks,
+        crate::m600priv::run_m600priv_checks,
+        crate::m600hw::run_m600hw_checks,
+    // --- VARIX-M700 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
+        crate::m700cache::run_m700cache_checks,
+        crate::m700dev::run_m700dev_checks,
+        crate::m700drv::run_m700drv_checks,
+        crate::m700input::run_m700input_checks,
+        crate::m700gpu::run_m700gpu_checks,
+        crate::m700disp::run_m700disp_checks,
+        crate::m700net::run_m700net_checks,
+        crate::m700rf::run_m700rf_checks,
+        crate::m700pwr::run_m700pwr_checks,
+        crate::m700smp::run_m700smp_checks,
+        crate::m7timelog::run_m7timelog_checks,
+        crate::m7bootfw::run_m7bootfw_checks,
+        crate::m7testing::run_m7testing_checks,
+        crate::m7bench::run_m7bench_checks,
+        crate::m7compat::run_m7compat_checks,
+        crate::m7docrel::run_m7docrel_checks,
+
+    // ------------------------------------------------------------------
+    // B 性能域深化（AI-K1 · F041~F057 · 主册 B-3 报告 G-B-01~G-B-17）。
+    // 代码落 perfstar/ 新目录（与旧 F 编号体系并存，接线随闸门）。
+    // ------------------------------------------------------------------
+        crate::perfstar::frameledger::run_frameledger_checks,
+        crate::perfstar::frameattr::run_frameattr_checks,
+        crate::perfstar::startprof::run_startprof_checks,
+        crate::perfstar::prefetch2::run_prefetch2_checks,
+        crate::perfstar::pagewater::run_pagewater_checks,
+        crate::perfstar::wcoalesce::run_wcoalesce_checks,
+        crate::perfstar::latbudget::run_latbudget_checks,
+        crate::perfstar::cpufreq::run_cpufreq_checks,
+        crate::perfstar::idlezero::run_idlezero_checks,
+        crate::perfstar::intrcoal::run_intrcoal_checks,
+        crate::perfstar::bigpage::run_bigpage_checks,
+        crate::perfstar::heapfrag::run_heapfrag_checks,
+        crate::perfstar::bootpar::run_bootpar_checks,
+        crate::perfstar::imgsimd::run_imgsimd_checks,
+        crate::perfstar::glyphcache::run_glyphcache_checks,
+        crate::perfstar::dirtyrect::run_dirtyrect_checks,
+        crate::perfstar::iotier::run_iotier_checks,
+    ];
+    for f in domains {
+        checkup.register(f());
+    }
+    // UNREAL-X-15000 AI-07 合成器九族（族内多个 CheckSet，循环注册）
     for cs in crate::compositor::run_all_family_checks() {
         checkup.register(cs);
     }
-    // WP-201 · B-503 VXWM 帧编解码层（二十四消息 × 定长头/序号/校验和/回放）
-    checkup.register(crate::vxwm::run_vxwm_checks());
-    // WP-201 · B-504 缓冲所有权状态机（零半帧 × 配额 × 代数防陈旧）
-    checkup.register(crate::bufown::run_bufown_checks());
-    // WP-201 · B-506 浮层物理强制（popup_grab 抓取表 × 区域外零投递）
-    checkup.register(crate::popup::run_popup_checks());
-    // WP-201 · B-505 字形图集（LRU 60MB × pin 常驻 × 降密度）
-    checkup.register(crate::atlas::run_atlas_checks());
-    // WP-201 · B-501 事件泵状态机（四源归一 × 不需要就不合成 × 空转 5% 模型）
-    checkup.register(crate::pump::run_pump_checks());
-    // WP-201 · B-502 拖动基准 harness（p95 55fps × 输入不迟滞 × 带宽下界）
-    checkup.register(crate::dragbench::run_dragbench_checks());
-    // WP-201 · B-507 合成器恢复（注册表快照 × D-04 三秒 × 百次对练）
-    checkup.register(crate::comprecover::run_comprecover_checks());
-    // WP-203 · 存储七域（B-701~707 判据实装层）
-    checkup.register(crate::fswl::run_fswl_checks());
-    checkup.register(crate::fsyncp::run_fsyncp_checks());
-    checkup.register(crate::pwrdrl::run_pwrdrl_checks());
-    checkup.register(crate::wmerge::run_wmerge_checks());
-    checkup.register(crate::ntfsro::run_ntfsro_checks());
-    checkup.register(crate::linkloss::run_linkloss_checks());
-    checkup.register(crate::prefacct::run_prefacct_checks());
-    // WP-208 七域：图形多媒体与音频判据实装层
-    checkup.register(crate::path3::run_path3_checks());
-    checkup.register(crate::wingl::run_wingl_checks());
-    checkup.register(crate::esoft::run_esoft_checks());
-    checkup.register(crate::r3scan::run_r3scan_checks());
-    checkup.register(crate::viddec::run_viddec_checks());
-    checkup.register(crate::hdadrv::run_hdadrv_checks());
-    checkup.register(crate::mixer::run_mixer_checks());
-    // WP-204 七域：网络栈判据实装层
-    checkup.register(crate::netthr::run_netthr_checks());
-    checkup.register(crate::fdmix::run_fdmix_checks());
-    checkup.register(crate::lstnauth::run_lstnauth_checks());
-    checkup.register(crate::dohsw::run_dohsw_checks());
-    checkup.register(crate::diag3::run_diag3_checks());
-    checkup.register(crate::offln::run_offln_checks());
-    checkup.register(crate::usbnet::run_usbnet_checks());
-    // WP-202 七域：输入与输入法判据实装层
-    checkup.register(crate::evflow::run_evflow_checks());
-    checkup.register(crate::kblayout::run_kblayout_checks());
-    checkup.register(crate::imepinyin::run_imepinyin_checks());
-    checkup.register(crate::composesw::run_composesw_checks());
-    checkup.register(crate::hkbind::run_hkbind_checks());
-    checkup.register(crate::candwin::run_candwin_checks());
-    checkup.register(crate::focring::run_focring_checks());
-    // WP-205 八域：应用件三包判据实装层（MD2 篇 16-19）
-    checkup.register(crate::termproc::run_termproc_checks());
-    checkup.register(crate::termfeed::run_termfeed_checks());
-    checkup.register(crate::trashbin::run_trashbin_checks());
-    checkup.register(crate::fsview::run_fsview_checks());
-    checkup.register(crate::thumbsched::run_thumbsched_checks());
-    checkup.register(crate::edcore::run_edcore_checks());
-    checkup.register(crate::widgetline::run_widgetline_checks());
-    checkup.register(crate::settable::run_settable_checks());
-    // WP-206 四域：监视器与星图前端判据实装层（MD2 篇 20/21 前端）
-    checkup.register(crate::ledgerhub::run_ledgerhub_checks());
-    checkup.register(crate::moncards::run_moncards_checks());
-    checkup.register(crate::winegrp::run_winegrp_checks());
-    checkup.register(crate::starmapui::run_starmapui_checks());
-    // WP-207 三域：协议件判据实装层（MD2 篇 39/40）
-    checkup.register(crate::clipown::run_clipown_checks());
-    checkup.register(crate::dragdrop::run_dragdrop_checks());
-    checkup.register(crate::a11ygate::run_a11y_checks());
-    // WP-209：测量与恢复面三域（性能基准首轮/恢复矩阵组/杀死演练）。
-    checkup.register(crate::benchsix::run_benchsix_checks());
-    checkup.register(crate::recovermx::run_recovermx_checks());
-    checkup.register(crate::killdrill::run_killdrill_checks());
-    // WP-301 四域：转译层 Linuxulator 判据实装层（MD2 篇 4）。
-    checkup.register(crate::lxgov::run_lxgov_checks());
-    checkup.register(crate::lxerrno::run_lxerrno_checks());
-    checkup.register(crate::lxprocfs::run_lxprocfs_checks());
-    checkup.register(crate::lxrun::run_lxrun_checks());
-    checkup.register(crate::winecare::run_winecare_checks());
-    checkup.register(crate::winepfx::run_winepfx_checks());
-    checkup.register(crate::wineshim::run_wineshim_checks());
-    checkup.register(crate::winelaunch::run_winelaunch_checks());
-    checkup.register(crate::winecase::run_winecase_checks());
-    checkup.register(crate::wineattr::run_wineattr_checks());
-    checkup.register(crate::sdktriplet::run_sdktriplet_checks());
-    checkup.register(crate::sdkmanifest::run_sdkmanifest_checks());
-    checkup.register(crate::sdkwidgets::run_sdkwidgets_checks());
-    checkup.register(crate::sdkruntime::run_sdkruntime_checks());
-    checkup.register(crate::sdktemplate::run_sdktemplate_checks());
-    checkup.register(crate::rtjava::run_rtjava_checks());
-    checkup.register(crate::rtpy::run_rtpy_checks());
-    checkup.register(crate::rtmpl::run_rtmpl_checks());
-    checkup.register(crate::starmapdir::run_starmapdir_checks());
-    checkup.register(crate::starmapgate::run_starmapgate_checks());
-    checkup.register(crate::unisweep::run_unisweep_checks());
-    checkup.register(crate::selftestpkg::run_selftestpkg_checks());
-    checkup.register(crate::dualsign::run_dualsign_checks());
-    checkup.register(crate::feedback::run_feedback_checks());
-    checkup.register(crate::pyramid::run_pyramid_checks());
-    checkup.register(crate::drillscale::run_drillscale_checks());
-    checkup.register(crate::dims20::run_dims20_checks());
-    checkup.register(crate::reprobuild::run_reprobuild_checks());
-    checkup.register(crate::imgwrite::run_imgwrite_checks());
-    checkup.register(crate::rollback72::run_rollback72_checks());
-    checkup.register(crate::reggate::run_reggate_checks());
-    checkup.register(crate::explog::run_explog_checks());
-    checkup.register(crate::secgate::run_secgate_checks());
-    checkup.register(crate::signchain::run_signchain_checks());
-    checkup.register(crate::netdiag::run_netdiag_checks());
-    checkup.register(crate::instup::run_instup_checks());
-    checkup.register(crate::fontsub::run_fontsub_checks());
-    checkup.register(crate::timesrv::run_timesrv_checks());
-    checkup.register(crate::dispout::run_dispout_checks());
-    checkup.register(crate::drvframe::run_drvframe_checks());
-    checkup.register(crate::syslogd::run_syslogd_checks());
-    checkup.register(crate::qemuenv::run_qemuenv_checks());
-    checkup.register(crate::idledn::run_idledn_checks());
-    checkup.register(crate::shell::run_shell_checks());
-    // --- GALAXY-1800 AI-08~AI-16 (G421~G960) --------------------------------
-    checkup.register(crate::gdist::run_gdist_checks());
-    checkup.register(crate::gcons::run_gcons_checks());
-    checkup.register(crate::gcont::run_gcont_checks());
-    checkup.register(crate::guni::run_guni_checks());
-    checkup.register(crate::gpm::run_gpm_checks());
-    checkup.register(crate::gperf::run_gperf_checks());
-    checkup.register(crate::gobs::run_gobs_checks());
-    checkup.register(crate::gsec::run_gsec_checks());
-    checkup.register(crate::grtc::run_grtc_checks());
-    // --- AURORA-1000 AI-16~AI-30 (A376~A750) --------------------------------
-    checkup.register(crate::workspace::run_workspace_checks());
-    checkup.register(crate::designsys::run_designsys_checks());
-    checkup.register(crate::fileman::run_fileman_checks());
-    checkup.register(crate::settings::run_settings_checks());
-    checkup.register(crate::apps::run_apps_checks());
-    checkup.register(crate::terminal::run_terminal_checks());
-    checkup.register(crate::editor::run_editor_checks());
-    checkup.register(crate::imageview::run_imageview_checks());
-    checkup.register(crate::player::run_player_checks());
-    checkup.register(crate::netweb::run_netweb_checks());
-    checkup.register(crate::notify::run_notify_checks());
-    checkup.register(crate::search::run_search_checks());
-    checkup.register(crate::sysmon::run_sysmon_checks());
-    checkup.register(crate::pkgstore::run_pkgstore_checks());
-    checkup.register(crate::printing::run_printing_checks());
-    // --- AURORA-1000 W1 十五域 + 跨域集成收口（步骤 0257 domain-gate 汇总） ---
-    checkup.register(crate::aurora::display::run_display_checks());
-    checkup.register(crate::aurora::render2d::run_render2d_checks());
-    checkup.register(crate::aurora::typography::run_typography_checks());
-    checkup.register(crate::aurora::gpu::run_gpu_checks());
-    checkup.register(crate::aurora::compositor::run_compositor_checks());
-    checkup.register(crate::aurora::image::run_image_checks());
-    checkup.register(crate::aurora::input::run_ainput_checks());
-    checkup.register(crate::aurora::audio::run_aaudio_checks());
-    checkup.register(crate::aurora::window::run_window_checks());
-    checkup.register(crate::aurora::motion::run_motion_checks());
-    checkup.register(crate::aurora::desktop::run_desktop_checks());
-    checkup.register(crate::aurora::appfw::run_appfw_checks());
-    checkup.register(crate::aurora::widgets::run_widgets_checks());
-    checkup.register(crate::aurora::clipboard::run_clipboard_checks());
-    checkup.register(crate::aurora::session::run_session_checks());
-    checkup.register(crate::aurora::integration::run_w1_integration_checks());
-    // --- AURORA-1000 W2 联调集成域（步骤 0490~0499）--------------------------
-    checkup.register(crate::aurora::w2_integration::run_w2_checks());
-    // --- AURORA-1000 W3 收口门禁（步骤 0729~0737） ---------------------------
-    checkup.register(crate::w3gate::run_w3gate_checks());
-    // --- AURORA-1000 W4/W5 AI-31~AI-40 域 CheckSet 收口（步骤 0968~1202）------
-    checkup.register(crate::a11y::run_a11y_checks());
-    checkup.register(crate::apower::run_apower_checks());
-    checkup.register(crate::perf::run_perf_checks());
-    checkup.register(crate::stability::run_stability_checks());
-    checkup.register(crate::asecurity::run_asecurity_checks());
-    checkup.register(crate::testing::run_testing_checks());
-    checkup.register(crate::help::run_help_checks());
-    checkup.register(crate::acceptance::run_acceptance_checks());
-    checkup.register(crate::release::run_release_checks());
-    checkup.register(crate::finalize::run_finalize_checks());
-    // --- VARIABLE-200 AI-01 用户态进程域（F001~F025，W2）--------------------
-    // 页表隔离、ring3 双路切换、进程生命周期与崩溃隔离。
-    checkup.register(crate::proc::run_uspace_checks());
-    // --- VARIABLE-200 AI-02 可执行加载与 ABI 域（F026~F050，W2）--------------
-    // VXELF 加载、W^X、ASLR、入口栈/auxv/TLS、重定位、失败回收。
-    checkup.register(crate::exec::run_exec_checks());
-    // --- VARIABLE-200 AI-03 系统调用域（F051~F075，W2）----------------------
-    // 号表/参数安全层/错误码/调用面/能力审计配额/seccomp/vDSO/fuzz/仪表。
-    checkup.register(crate::syscall::run_syscall_checks());
-    // --- VARIABLE-200 AI-04~AI-08（F076~F200）--------------------------------
-    checkup.register(crate::srv::run_srv_checks());
-    checkup.register(crate::gfxsrv::run_gfxsrv_checks());
-    checkup.register(crate::hidsrv::run_hidsrv_checks());
-    checkup.register(crate::vport::run_vport_checks());
-    checkup.register(crate::bootchain::run_bootchain_checks());
-    // --- VARIX-M500 AI-06~AI-10（F126~F250）---------------------------------
-    checkup.register(crate::gfxsrv::vision::run_vision_checks());
-    checkup.register(crate::hidsrv::feel::run_feel_checks());
-    checkup.register(crate::audio::tone::run_tone_checks());
-    checkup.register(crate::net::netxp::run_netxp_checks());
-    checkup.register(crate::sec::trust::run_trust_checks());
-    // --- VARIX-M500 AI-11~AI-15（F251~F375，内核成熟化）----------------------
-    checkup.register(crate::envpower::run_energy_checks());
-    checkup.register(crate::theme::run_theme_checks());
-    checkup.register(crate::hwcompat::run_hwcompat_checks());
-    checkup.register(crate::appmgr::run_appmgr_checks());
-    checkup.register(crate::automation::run_automation_checks());
-    // --- VARIX-M500 AI-01~AI-05（F001~F125，M1 底座 + M3 生态门口）----------
-    checkup.register(crate::m5boot::run_bootm5_checks());
-    checkup.register(crate::m5sched::run_m5sched_checks());
-    checkup.register(crate::m5mem::run_m5mem_checks());
-    checkup.register(crate::m5srv::run_m5srv_checks());
-    checkup.register(crate::m5fs::run_m5fs_checks());
-    // --- VARIX-M600 AI-01 / VARIX-M700 AI-01（各域 CheckSet 闭环）------------
-    checkup.register(crate::m600boot::run_m600boot_checks());
-    checkup.register(crate::m700proc::run_m700proc_checks());
-    // --- VARIX-M500 AI-16~AI-20（F376~F500，成熟化系列）----------------------
-    checkup.register(crate::deskwis::run_deskwis_checks());
-    checkup.register(crate::dataflow::run_dataflow_checks());
-    checkup.register(crate::selfheal::run_selfheal_checks());
-    checkup.register(crate::observ::run_observ_checks());
-    checkup.register(crate::i18n::run_i18n_checks());
-    // --- VARIX-M400 AI-09~AI-16（F201~F400，成品体验与看不见的质量）----------
-    checkup.register(crate::m4shell::run_m4shell_checks());
-    checkup.register(crate::m4compat::run_m4compat_checks());
-    checkup.register(crate::m4perf::run_m4perf_checks());
-    checkup.register(crate::m4privsec::run_m4privsec_checks());
-    checkup.register(crate::m4release::run_m4release_checks());
-    checkup.register(crate::m4quality::run_m4quality_checks());
-    checkup.register(crate::m4docseco::run_m4docseco_checks());
-    checkup.register(crate::m4arts::run_m4arts_checks());
-    // --- VARIX-M600 AI-21~AI-24（F501~F600，作品交付波次）--------------------
-    checkup.register(crate::m6sync::run_m6sync_checks());
-    checkup.register(crate::m6assist::run_m6assist_checks());
-    checkup.register(crate::m6a11y::run_m6a11y_checks());
-    checkup.register(crate::m6deliver::run_m6deliver_checks());
-    // --- VARIX-M700 AI-21~AI-28（F501~F700，内核成熟化收口波次）--------------
-    checkup.register(crate::m7sched::run_m7sched_checks());
-    checkup.register(crate::m7cgroup::run_m7cgroup_checks());
-    // --- VARIX-M600 AI-02~AI-10（F026~F250，各域 CheckSet 闭环）--------------
-    checkup.register(crate::m600mem::run_m600mem_checks());
-    checkup.register(crate::m600sched::run_m600sched_checks());
-    checkup.register(crate::m600relia::run_m600relia_checks());
-    checkup.register(crate::m600perf::run_m600perf_checks());
-    checkup.register(crate::m600pwr::run_m600pwr_checks());
-    checkup.register(crate::m600gfx::run_m600gfx_checks());
-    checkup.register(crate::m600input::run_m600input_checks());
-    checkup.register(crate::m600audio::run_m600audio_checks());
-    checkup.register(crate::m600theme::run_m600theme_checks());
-    // --- VARIX-M700 AI-02~AI-10（F026~F250，各域 CheckSet 闭环）--------------
-    checkup.register(crate::m700vmm::run_m700vmm_checks());
-    checkup.register(crate::m700sysc::run_m700sysc_checks());
-    checkup.register(crate::m700intr::run_m700intr_checks());
-    checkup.register(crate::m700ipc::run_m700ipc_checks());
-    checkup.register(crate::m700lock::run_m700lock_checks());
-    checkup.register(crate::m700ksec::run_m700ksec_checks());
-    checkup.register(crate::m700kdbg::run_m700kdbg_checks());
-    checkup.register(crate::m700vfs::run_m700vfs_checks());
-    checkup.register(crate::m700blk::run_m700blk_checks());
-    // --- VARIX-M600 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
-    checkup.register(crate::m600media::run_m600media_checks());
-    checkup.register(crate::m600motion::run_m600motion_checks());
-    checkup.register(crate::m600shell::run_m600shell_checks());
-    checkup.register(crate::m600files::run_m600files_checks());
-    checkup.register(crate::m600sdk::run_m600sdk_checks());
-    checkup.register(crate::m600auto::run_m600auto_checks());
-    checkup.register(crate::m600net::run_m600net_checks());
-    checkup.register(crate::m600svc::run_m600svc_checks());
-    checkup.register(crate::m600priv::run_m600priv_checks());
-    checkup.register(crate::m600hw::run_m600hw_checks());
-    // --- VARIX-M700 AI-11~AI-20（F251~F500，各域 CheckSet 闭环）--------------
-    checkup.register(crate::m700cache::run_m700cache_checks());
-    checkup.register(crate::m700dev::run_m700dev_checks());
-    checkup.register(crate::m700drv::run_m700drv_checks());
-    checkup.register(crate::m700input::run_m700input_checks());
-    checkup.register(crate::m700gpu::run_m700gpu_checks());
-    checkup.register(crate::m700disp::run_m700disp_checks());
-    checkup.register(crate::m700net::run_m700net_checks());
-    checkup.register(crate::m700rf::run_m700rf_checks());
-    checkup.register(crate::m700pwr::run_m700pwr_checks());
-    checkup.register(crate::m700smp::run_m700smp_checks());
-    checkup.register(crate::m7timelog::run_m7timelog_checks());
-    checkup.register(crate::m7bootfw::run_m7bootfw_checks());
-    checkup.register(crate::m7testing::run_m7testing_checks());
-    checkup.register(crate::m7bench::run_m7bench_checks());
-    checkup.register(crate::m7compat::run_m7compat_checks());
-    checkup.register(crate::m7docrel::run_m7docrel_checks());
     checkup
 }
 
@@ -1891,8 +1923,9 @@ mod tests {
     fn f475_every_domain_reports() {
         let checkup = run_kernel_checkup();
         if !checkup.all_passed() {
-            // 82 域渲染需要大缓冲（2048 会截断尾部 FAIL 行——诊断盲区）。
-            let mut buf = [0u8; 8192];
+            // 275+ 域渲染需要大缓冲（2048/8192 都会在尾部 FAIL 行前截断——
+            // 诊断盲区；~30B/域 × 275 ≈ 8.2KB，取 16384）。
+            let mut buf = [0u8; 16384];
             let n = checkup.render(&mut buf);
             panic!("kernel checkup:\n{}", core::str::from_utf8(&buf[..n]).unwrap());
         }
