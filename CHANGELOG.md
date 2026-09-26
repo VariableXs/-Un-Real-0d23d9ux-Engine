@@ -3,6 +3,7 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+<<<<<<< Updated upstream
 ## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 五十项落地）
 
 **kernel/varix/src/ustar3/**（AI-U3 泳道四，主册 I 通用域 F501~F550 判据实装层；
@@ -52,6 +53,48 @@ robust.rs 域函数指针表 274→324，50 域直排注册接线）：
   `docs/AI-U3-完成报告.md`。
 ## [Unreleased] — Varix STAR I · AI-H2 H 基础通用域·二分队（F251-F300 五十项落地）
 =======
+=======
+## [Unreleased] — Varix STAR I · AI-H3 H 基础通用域·三分队（F301-F350 五十项落地）
+
+**kernel/varix/src/h3star/**（AI-H3 泳道三，主册 G-H 区段 F301-F350 判据实装层，
+37 文件 13,083 行（纯功能 7,955 行），域聚合器 `run_h3star_checks` blocks=51 +
+145 项宿主测试全绿 0 警告（隔离舱 `#[path]` 直挂实测，对齐 K2 纪律）；
+完成报告见 `docs/AI-H3-完成报告.md`，逐文件行数对账见
+`_attic/aih3-f301-f350/行数对账.md`）：
+
+- **设置与搜索八件**（setsearch/pagehier/instantfx/pagedflt/themepack/fulltext/
+  srchhist/runbox/pyfault）：同义词 100% 登记 + Top3 就地操作 + 混输（CJK/ASCII
+  分字段合账）+ 空态三建议；两级封顶登记门 + 走查违规清单（三级=缺陷/≤15 条/
+  死链=0）；即时生效 ≥95% + 五类例外徽标五处；页级还原只碰已改项 + 确认流状
+  态机；.vxtheme 白名单审计 + FNV-1a 校验拒载 + 跨版本兼容；空闲驱动全文索引
+  + 高亮行片段 + 1MB 截断 + 损坏自重建；无痕不落盘 + 开关跨重启；Win+R 三类
+  输入 + 别名登记制 + 1.5s 键盘全程；拼音三层容错（切分 20 组歧义 + 三因子定
+  点排序 + 造词三次入库 + 离线结构性成立）。
+- **窗口与输入八件**（winkeys/saveask/sesrestore/sympanel/cnensw/shuangpin/
+  clipbig/keyrep/caretbold）：六键位对照 + 连按轮转 + Win+D 恢复 <1px；三问默
+  认焦点=保存 + 批量勾选一次问清；30s 恢复点双写 + 崩溃窗口 ≤35s + 拒绝路径
+  同样清理；符号三页签 + 最近 24 + 不抢焦点 + 多光标取当前；Shift/Caps 双路 +
+  标点跟随 + 100 键零吞键；双拼四方案键位表 + 双轨混输 + 词库共享；50MB 引用
+  条 + 流式分块 + 预估 ±20%；四档延迟 + 速率滑杆 + 终端覆盖文档化；插入符
+  1-4px + 指针三档矢量 + 单一定义点审计。
+- **电源与隐私八件**（ocrtake/draghover/idlelock/pwbtn/wakeresume/nearshare/
+  micind/filevers）：OCR 离线管道 + 预览可改 + 历史 5 条；500ms 悬停前置 +
+  300ms 划过豁免 + 落点高亮；三档+电池档 + 媒体豁免 + 演示 2h + 氛围模式职责
+  分离；三档×双场景 + 长按 4s 软件路径优先；唤醒全链 <2s + 分级起 + 5s 黑屏
+  自愈；飞行模式物理扫描 + 恢复 <5s + 三冻结项诚实降级；就近共享四步 + 断点
+  续传 + 默认隐身；麦摄指示 <200ms + 权限矩阵 + purpose 缺失默认拒 + 热撤；
+  版本快照 <1s + 对比还原可撤销 + 30 天/500 清理。
+- **体验与系统十件**（ntfgrp/animdegrade/loadresp/copypath/multibar/sndmode/
+  sysgov/haptic）：通知分组 + 全清撤销 5s + 钉选上限 3；合成器 >90% 动画让路
+  （终态一致）+ 三级帧率自适应逐级回升 + 低电量 <20% 四项视觉降级零功能缺失；
+  五级优先级 + 满载 <100ms + 指针直通 <16ms/1000Hz 不丢/独立平面计数审计；路
+  径引号策略单源 + 互通四入口 + 工作目录同步；多选 ≥2 操作条 + Quick Look 首帧
+  <300ms + 预览渲染器单点三处同源 + 三失败注入；静音四档矩阵 + 轮切 + 例外名
+  单；磁盘人话报告 + 忙时排队 + 内存三级链永不静默杀 + 卸载三步一致 + 默认应
+  用不抢 + 自启动默认全关；触感谱五项参数实测 + 私设=0 + 性能模式瞬时降级 +
+  F124 过冲曲线。
+
+>>>>>>> Stashed changes
 ## [Unreleased] — Varix STAR I · AI-C1 应用兼容域·前段（F001-F020 二十项落地）
 
 **kernel/varix/src/compatstar/**（AI-C1 泳道二，主册 A-5 深化设计报告 G-A-01~G-A-20
@@ -99,6 +142,44 @@ robust.rs 域函数指针表 274→324，50 域直排注册接线）：
 
 接线：`lib.rs` 注册域目录；`robust.rs` 追加 20 域自检；`checks.rs`
 MAX_DOMAINS 288→320（「不够即扩」纪律，注释留痕）。
+
+## [Unreleased] — Varix STAR I · AI-V1 服务守护域·前段（F111-F130 二十项落地）
+
+**kernel/varix/src/svstar/**（AI-V1 泳道四，主册体验域 G-C-41~55 + 生态开放域
+G-D-01~05 判据实装层；vbase 共享底盘 + 二十项功能模块 + mod.rs 域聚合器
+（21 块 227 检查项全绿）+ 隔离舱 varix-svcabin（#[path] 直挂真实验证））：
+
+- **辅助五件**（magnifier/narrator/highcontrast/colorfilter/nightlight）：
+  放大镜 2x-16x（<8x 最近邻/≥8x 双线性/80fps 预算/三跟随/边缘平移三档/
+  16x 网格/截图所见即所得）；讲述人（两场景 100% 可读名门禁/打断队列/
+  中文语境化读法/静默停用报备/进程隔离声明）；高对比双主题（WCAG 全表
+  ≥7:1 实测/违例描边兜底/2px-3px-12px 规格）；色弱三滤镜（Machado 2009
+  模拟矩阵对拍/daltonize 误差重分配校正/0.5ms 预算降档/混淆对分离度
+  ≥+50%）；夜间模式（锚点曲线 24h 扫描/强度三档/±200K 门/伽马诚实降级/
+  300ms 深色交叉）。
+- **引导两件**（oobe/welcome）：五步向导（步进式提交/断电续走/双路径/
+  汇总准确/网络失败跳过）；欢迎五卡（三大心智/直跳注册制/不二弹/可重置/
+  插画降级）。
+- **求助三件**（helpcenter/diagcenter/restorept）：MD 渲染器（四形态全支持/
+  直跳标记/死链回落/50 页对拍）；诊断中心（四体检灯 F062 同源/三修复项
+  注册制回滚全链/脱敏三查分卷导出/时间线连续性）；系统还原点（四触发/
+  点级哈希锁定/滚动 10+锁 1/回滚重试+二次回滚/断电百次）。
+- **系统三件**（updateux/aboutpage/motioncore）：更新全状态机（断点续传/
+  预约关机装/校验前可取消/进度环绑真实阶段/失败页三要素）；关于本机
+  （Y7000 锚点直拍/诚实留白/复制保真）；动画总谱（五曲线+三时长/Bezier
+  求值器/强度三档缩放/未登记曲线门禁/帧预算降级直线）。
+- **开放五件**（walkcheck/openformat/vxapp/stardata/casesub/ossreg）：
+  体验域总判据（55 项映射覆盖率 100%/证据三件套强制/回流审批/20 维度
+  权值）；开放格式宪法页（四规范 schema 校验器/双读条款 90 天）；vxapp
+  打包工具（五形态全绿/双计哈希/签名-验签双向/退出码规范/打包缓存/
+  交互向导）；星图开放数据面（JSON 快照/增量 since 协议/签名双向/90 天
+  快照/镜像指南）；社区判例提交线（五态时间戳/两人复核硬门/证据哈希链/
+  24h 限频）；开源项目登记册（12 字段 schema/CI 双向零 diff/GPL 隔离
+  必标/法律面留痕）。
+- **共享底盘 vbase**：SHA-256（FIPS 向量对拍）/WCAG 对比度/色温换算/
+  semver/JSON 写出器/脱敏三查/证据哈希链——全域唯一算法源。
+- 判据唯一源：docs/Varix STAR I start.md G-C-41~55 / G-D-01~05；行数
+  对账与缺陷账本（17 项实录）见 _attic/aiv1-f111-f130/。
 
 ## [Unreleased] — Varix STAR I · AI-U4 I 通用域·四分队（F551-F600 五十项落地）
 
