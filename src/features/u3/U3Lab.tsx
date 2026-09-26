@@ -25,6 +25,8 @@ import {
 import {
   lockMountInit, lockMountPinFail, lockMountCooldownTick, lockMountUnlock,
   U3_ZORDER, bannerWindowSpec,
+  walkDictEntries, dictWalkVerdict, U3_DICT_ENTRIES,
+  bridgeVerdict, KERNEL_CHECK_COUNTS,
 } from "./engines";
 import { U3_ENGINE_LABELS, U3_LAB_LABELS, labelsSelfCheck, u3Label } from "./labels";
 
@@ -247,6 +249,72 @@ export function U3LockMountSection(): React.ReactElement {
           {bannerWindowSpec().exits.map((x) => <span key={x} className="u3-badge ok">✓ {x}</span>)}
         </div>
       </div>
+    </SectionCard>
+  );
+}
+
+/* ------------------------------ v6 词典走查区 ------------------------------ */
+
+/** U3Lab v6 交互词典走查实况（dictwalk 引擎活体驱动——红项显性不冒领）。 */
+export function U3DictWalkSection(): React.ReactElement {
+  const [lang] = useState<"zh" | "en">("zh");
+  const [verdicts, setVerdicts] = useState<ReturnType<typeof dictWalkVerdict> | null>(null);
+  const rows = verdicts === null ? null : walkDictEntries();
+
+  return (
+    <SectionCard title={u3Label("dictGroup", lang, U3_LAB_LABELS)} f="十章·一致性·v6">
+      <div className="u3-lab-intro">
+        U3 领地 {U3_DICT_ENTRIES.length} 个浮层/面板逐条走查：四条关闭出路（点外部/Esc/再点触发钮/失焦）+ 焦点归还链 + 埋点域——系统层锁屏 PIN 豁免 outside-click，其余缺一即红。
+      </div>
+      <Row fno="十章" name="浮层出路账本机检" desc="新增浮层必须先入 dictwalk 账本再写码——出路清单是需求不是优化">
+        <button
+          type="button"
+          className="j1x-btn"
+          onClick={() => setVerdicts(dictWalkVerdict(walkDictEntries(), U3_DICT_ENTRIES))}
+        >执行走查</button>
+        {verdicts && (
+          <span className={`u3-badge ${verdicts.every((v) => v.pass) ? "ok" : "warn"}`}>
+            {verdicts.filter((v) => v.pass).length}/{verdicts.length} {verdicts.every((v) => v.pass) ? u3Label("allGreen", lang, U3_LAB_LABELS) : u3Label("hasRed", lang, U3_LAB_LABELS)}
+          </span>
+        )}
+      </Row>
+      {verdicts && rows && verdicts.map((v, i) => (
+        <Row key={v.id} fno={U3_DICT_ENTRIES[i]!.layer} name={v.id} desc={v.reason}>
+          <span className={`u3-badge ${v.pass ? "ok" : "warn"}`}>{v.pass ? "✓" : "✗"}</span>
+          <span className="u3-stat">出路 {rows[i]!.dismissalsOk ? "齐" : "缺"} · 焦点 {rows[i]!.focusOk ? "还" : "断"}</span>
+        </Row>
+      ))}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------ v6 内核桥对账区 ------------------------------ */
+
+/** U3Lab v6 内核域桥接对账实况（kernelbridge 引擎活体驱动）。 */
+export function U3KernelBridgeSection(): React.ReactElement {
+  const [lang] = useState<"zh" | "en">("zh");
+  const [v, setV] = useState<ReturnType<typeof bridgeVerdict> | null>(null);
+
+  return (
+    <SectionCard title={u3Label("bridgeGroup", lang, U3_LAB_LABELS)} f="F501-F550·内核桥·v6">
+      <div className="u3-lab-intro">
+        内核 ustar3 十域镜像账本 ↔ 前端承接面对账：50 编号连续性、检查点计数溯源（共 {Object.values(KERNEL_CHECK_COUNTS).reduce((a, b) => a + b, 0)} 条）、差异显性化——红绿随闸门以 cargo test 为准，此处钉住结构面。
+      </div>
+      <Row fno="v6" name="两侧承接对账" desc="每编号内核有 run_fXXX_checks、前端有承接域——缺一侧即差异显性">
+        <button type="button" className="j1x-btn" onClick={() => setV(bridgeVerdict())}>执行对账</button>
+        {v && (
+          <span className={`u3-badge ${v.total50 && v.diffs.length === 0 ? "ok" : "warn"}`}>
+            50 编号 {v.total50 ? "连续" : "断"} · 差异 {v.diffs.length}
+          </span>
+        )}
+      </Row>
+      {v && (
+        <Row fno="v6" name="内核十域检查点计数" desc="grep 实测口径誊写——内核深化后手工同步此表">
+          {Object.entries(KERNEL_CHECK_COUNTS).map(([file, n]) => (
+            <span key={file} className="u3-stat">{file.replace(".rs", "")} <b>{n}</b></span>
+          ))}
+        </Row>
+      )}
     </SectionCard>
   );
 }

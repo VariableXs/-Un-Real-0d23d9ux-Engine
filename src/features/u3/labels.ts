@@ -35,6 +35,9 @@ export const U3_ENGINE_LABELS: Readonly<Record<string, U3LabelPair>> = {
   despaint:   { zh: "桌面实绘引擎", en: "Desktop Paint Engine" },
   expui:      { zh: "资源管理器装配引擎", en: "Explorer Assembly Engine" },
   lockmount:  { zh: "锁屏横幅挂接引擎", en: "Lock & Banner Mount Engine" },
+  shellbar:   { zh: "shell 层装配引擎", en: "Shell Bar Engine" },
+  dictwalk:   { zh: "交互词典走查引擎", en: "Dict Walk Engine" },
+  kernelbridge: { zh: "内核域桥接引擎", en: "Kernel Bridge Engine" },
 };
 
 /** 面板区组标签。 */
@@ -55,6 +58,9 @@ export const U3_LAB_LABELS: Readonly<Record<string, U3LabelPair>> = {
   deskGroup:   { zh: "桌面实绘装配区", en: "Desktop paint assembly" },
   expGroup:    { zh: "资源管理器装配区", en: "Explorer assembly" },
   lockGroup:   { zh: "锁屏横幅挂接区", en: "Lock & banner mount" },
+  shellTitle:  { zh: "shell 层活体", en: "Shell bar live" },
+  dictGroup:   { zh: "交互词典走查区", en: "Interaction dictionary walk" },
+  bridgeGroup: { zh: "内核域桥接对账区", en: "Kernel bridge reconciliation" },
 };
 
 /** 取词 selector（缺键显性回退键名——零静默漏翻）。 */
@@ -73,8 +79,8 @@ export function labelsSelfCheck(): Array<{ name: string; pass: boolean }> {
     pass: allDicts.every((d) => Object.values(d).every((p) => p.zh.length > 0 && p.en.length > 0)),
   });
   checks.push({
-    name: "labels 十六引擎在册",
-    pass: Object.keys(U3_ENGINE_LABELS).length === 16,
+    name: "labels 十九引擎在册",
+    pass: Object.keys(U3_ENGINE_LABELS).length === 19,
   });
   // 缺键显性回退：不存在的键返回键名（不静默给空串）
   checks.push({ name: "labels 缺键显性回退", pass: u3Label("no-such-key", "zh", U3_LAB_LABELS) === "no-such-key" });

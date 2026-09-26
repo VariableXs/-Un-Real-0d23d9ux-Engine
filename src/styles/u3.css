@@ -428,3 +428,137 @@ html[data-u3-clicklock-pending] body { cursor: progress; }
 .u3-exp-statusbar span:nth-child(2) { text-align: center; }
 .u3-exp-statusbar span:nth-child(3) { text-align: right; }
 .u3-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+
+/* ------- v6 shell 层（AI-U3 · 批次六：ShellBar + 词典走查 + 内核桥） ------- */
+
+.u3-shell-stage {
+  position: relative;
+  margin-top: 10px;
+  height: 240px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(70, 110, 190, 0.10), transparent 55%),
+    var(--vx-surface-deep, rgba(10, 14, 22, 0.55));
+  border: 1px solid var(--vx-border-subtle, rgba(255, 255, 255, 0.08));
+  overflow: hidden;
+}
+.u3-shell-taskbar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  background: rgba(16, 20, 30, 0.72);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.u3-shell-start {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--vx-text-strong, #e8ebf2);
+  background: linear-gradient(145deg, rgba(110, 168, 255, 0.35), rgba(110, 168, 255, 0.12));
+}
+.u3-shell-slot {
+  position: absolute;
+  bottom: 8px;
+  height: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vx-text, #e8ebf2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.u3-shell-slot:hover { background: rgba(255, 255, 255, 0.12); }
+.u3-shell-slot.is-focus {
+  background: var(--vx-select, rgba(110, 168, 255, 0.22));
+  outline: 1px solid rgba(110, 168, 255, 0.5);
+}
+.u3-shell-dots { font-size: 7px; line-height: 1; letter-spacing: 1px; opacity: 0.8; }
+.u3-shell-tray {
+  position: absolute;
+  right: 96px;
+  bottom: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.u3-shell-tray-icon { font-size: 12px; opacity: 0.85; }
+.u3-shell-tray-arrow {
+  width: 20px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vx-text, #e8ebf2);
+  cursor: pointer;
+}
+.u3-shell-tray-arrow:hover, .u3-shell-tray-arrow.is-open { background: rgba(255, 255, 255, 0.14); }
+.u3-shell-clock {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vx-text, #e8ebf2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.u3-shell-clock:hover { background: rgba(255, 255, 255, 0.12); }
+.u3-shell-flyout {
+  position: absolute;
+  z-index: 3;
+  min-width: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(22, 26, 38, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+.u3-shell-flyout-head {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--vx-text-strong, #e8ebf2);
+  margin-bottom: 6px;
+}
+.u3-shell-flyout-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--vx-text, #dfe3ec);
+}
+.u3-shell-flyout-row:hover { background: rgba(255, 255, 255, 0.07); }
+.u3-shell-tip {
+  padding: 6px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--vx-text, #e8ebf2);
+}
+.u3-shell-center { max-height: 180px; overflow-y: auto; }
+.u3-shell-band { margin-bottom: 6px; }
+.u3-shell-band-name {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vx-text-dim, rgba(220, 224, 232, 0.6));
+  margin-bottom: 2px;
+}

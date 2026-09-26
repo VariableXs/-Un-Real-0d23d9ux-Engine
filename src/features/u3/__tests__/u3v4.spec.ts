@@ -63,7 +63,7 @@ describe("v4 引擎群总自检", () => {
 
   it("labels 双语零缺键", () => {
     for (const c of labelsSelfCheck()) expect(c.pass, c.name).toBe(true);
-    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(16);
+    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(19);
     expect(u3Label("runAll", "en", U3_LAB_LABELS)).toBe("Run all engine self-checks");
   });
 });

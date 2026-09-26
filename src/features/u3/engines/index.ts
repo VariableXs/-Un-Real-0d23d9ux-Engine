@@ -32,6 +32,9 @@ import { hotkeymapSelfCheck } from "./hotkeymap";
 import { sysdiagSelfCheck } from "./sysdiag";
 import { explogSelfCheck } from "./explog";
 import { walkcheckSelfCheck } from "./walkcheck";
+import { shellbarSelfCheck } from "./shellbar";
+import { dictwalkSelfCheck } from "./dictwalk";
+import { kernelbridgeSelfCheck } from "./kernelbridge";
 import { despaintSelfCheck } from "./despaint";
 import { expuiSelfCheck } from "./expui";
 import { lockmountSelfCheck } from "./lockmount";
@@ -60,6 +63,13 @@ export const V5_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: strin
   { engine: "lockmount", fScope: "F504/F507/F508/F516", run: lockmountSelfCheck },
 ];
 
+/** v6 shell/词典/内核桥注册表（批次六）。 */
+export const V6_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
+  { engine: "shellbar", fScope: "F516/F521/F535/F536/F548/F549", run: shellbarSelfCheck },
+  { engine: "dictwalk", fScope: "十章交互词典走查面", run: dictwalkSelfCheck },
+  { engine: "kernelbridge", fScope: "内核域镜像对账", run: kernelbridgeSelfCheck },
+];
+
 /** v4 引擎群总自检（供锚点域与实验室面板调用）。 */
 export function v4EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V4_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
@@ -70,7 +80,15 @@ export function v5EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V5_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
 }
 
-/** 全引擎群总自检（v4+v5 一口出——锚点域与实验室消费）。 */
-export function u3EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
-  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck()];
+/** v6 引擎群总自检（供锚点域与实验室面板调用）。 */
+export function v6EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return V6_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
 }
+
+/** 全引擎群总自检（v4+v5+v6 一口出——锚点域与实验室消费）。 */
+export function u3EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck(), ...v6EnginesSelfCheck()];
+}
+export * from "./shellbar";
+export * from "./dictwalk";
+export * from "./kernelbridge";

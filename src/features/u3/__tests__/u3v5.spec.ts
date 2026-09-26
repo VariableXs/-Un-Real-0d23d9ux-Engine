@@ -360,8 +360,8 @@ describe("v5 桶出口与锚点对账", () => {
     expect(rec.rows.filter((r) => !r.ok)).toEqual([]);
   });
 
-  it("labels 十六引擎双语零缺键", () => {
-    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(16);
+  it("labels 十九引擎双语零缺键", () => {
+    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(19);
     expect(labelsSelfCheck().filter((c) => !c.pass)).toEqual([]);
   });
 
