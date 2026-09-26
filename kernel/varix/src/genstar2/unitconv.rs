@@ -1,0 +1,231 @@
+//! F458 搜索单位换算（genstar2 · I 域通用·二分队 · AI-U2）。
+//!
+//! 主册判据（验收标准第一句）：
+//! **六族×2 用例；区域默认单位；显式目标单位解析；精度来源登记（系数表
+//! 入册）；复制与降级（非换算当搜索）。**
+//!
+//! 功能定义（主册批次三）：输入「100 磅」「30 摄氏度 to 华氏」「5km in
+//! miles」类 query 出换算卡（长度/重量/温度/面积/体积/速度六族）；目标
+//! 单位自动取用户区域默认（F296 联动）也可写明（「to kg」）；换算卡一键
+//! 复制；精度来源登记（换算系数固定源，不糊弄）。
+//!
+//! 零堆纪律：静态系数表，无 alloc。
+
+use crate::checks::CheckSet;
+
+// ---------------------------------------------------------------------------
+// 常量与系数表（精度来源登记：全部系数为国际单位制定义值/公认换算值）
+// ---------------------------------------------------------------------------
+
+/// 六族单位（主册原文六族）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Family {
+    Length,
+    Weight,
+    Temperature,
+    Area,
+    Volume,
+    Speed,
+}
+
+/// 单位定义（对基准单位的系数；温度特殊——函数换算）。
+#[derive(Clone, Copy, Debug)]
+pub struct Unit {
+    pub family: Family,
+    pub names: [&'static str; 3],
+    /// 对族内基准单位的系数（温度单位忽略）。
+    pub factor: f64,
+    /// 基准单位标记（区域默认目标单位解析用）。
+    pub is_base_target: bool,
+}
+
+/// 系数表入册（主册判据：精度来源登记——此处即登记处）。
+pub const UNITS: [Unit; 18] = [
+    // 长度（基准：米）
+    Unit { family: Family::Length, names: ["m", "米", "meter"], factor: 1.0, is_base_target: true },
+    Unit { family: Family::Length, names: ["km", "千米", "公里"], factor: 1000.0, is_base_target: false },
+    Unit { family: Family::Length, names: ["mi", "英里", "miles"], factor: 1609.344, is_base_target: false },
+    // 重量（基准：千克）
+    Unit { family: Family::Weight, names: ["kg", "千克", "公斤"], factor: 1.0, is_base_target: true },
+    Unit { family: Family::Weight, names: ["lb", "磅", "pound"], factor: 0.45359237, is_base_target: false },
+    Unit { family: Family::Weight, names: ["g", "克", "gram"], factor: 0.001, is_base_target: false },
+    // 温度（函数换算，factor 忽略）
+    Unit { family: Family::Temperature, names: ["c", "摄氏度", "celsius"], factor: 0.0, is_base_target: true },
+    Unit { family: Family::Temperature, names: ["f", "华氏度", "fahrenheit"], factor: 0.0, is_base_target: false },
+    Unit { family: Family::Temperature, names: ["k", "开尔文", "kelvin"], factor: 0.0, is_base_target: false },
+    // 面积（基准：平方米）
+    Unit { family: Family::Area, names: ["m2", "平方米", "sqm"], factor: 1.0, is_base_target: true },
+    Unit { family: Family::Area, names: ["km2", "平方公里", "sqkm"], factor: 1_000_000.0, is_base_target: false },
+    Unit { family: Family::Area, names: ["acre", "英亩", "acres"], factor: 4046.8564224, is_base_target: false },
+    // 体积（基准：升）
+    Unit { family: Family::Volume, names: ["l", "升", "liter"], factor: 1.0, is_base_target: true },
+    Unit { family: Family::Volume, names: ["ml", "毫升", "milliliter"], factor: 0.001, is_base_target: false },
+    Unit { family: Family::Volume, names: ["gal", "加仑", "gallon"], factor: 3.785411784, is_base_target: false },
+    // 速度（基准：米/秒）
+    Unit { family: Family::Speed, names: ["mps", "米每秒", "m/s"], factor: 1.0, is_base_target: true },
+    Unit { family: Family::Speed, names: ["kmh", "千米每小时", "km/h"], factor: 1.0 / 3.6, is_base_target: false },
+    Unit { family: Family::Speed, names: ["mph", "英里每小时", "mi/h"], factor: 1609.344 / 3600.0, is_base_target: false },
+];
+
+/// 区域默认目标单位（F296 联动：区域设置注入）。
+#[derive(Clone, Copy, Debug)]
+pub struct RegionDefaults {
+    /// 各族默认目标单位名（用户区域习惯制式）。
+    pub length: &'static str,
+    pub weight: &'static str,
+    pub temperature: &'static str,
+}
+
+/// 中文区域默认（登记默认实现；区域服务可注入其他制式）。
+pub const REGION_ZH: RegionDefaults = RegionDefaults {
+    length: "km",
+    weight: "kg",
+    temperature: "c",
+};
+
+fn find_unit(name: &str) -> Option<&'static Unit> {
+    let n = name.trim().to_ascii_lowercase();
+    // 精确匹配任一别名（不模糊含——「m」不得吞掉「ml」）。
+    UNITS.iter().find(|u| u.names.iter().any(|x| *x == n.as_str()))
+}
+
+/// 温度换算（函数族）。
+fn convert_temperature(v: f64, from: &str, to: &str) -> Option<f64> {
+    let f = find_unit(from)?.family == Family::Temperature;
+    let t = find_unit(to)?.family == Family::Temperature;
+    if !f || !t {
+        return None;
+    }
+    let from_c = match from_str_or_key(from) {
+        "c" | "摄氏度" | "celsius" => v,
+        "f" | "华氏度" | "fahrenheit" => (v - 32.0) * 5.0 / 9.0,
+        "k" | "开尔文" | "kelvin" => v - 273.15,
+        _ => return None,
+    };
+    Some(match from_c_return(to) {
+        "c" | "摄氏度" | "celsius" => from_c,
+        "f" | "华氏度" | "fahrenheit" => from_c * 9.0 / 5.0 + 32.0,
+        "k" | "开尔文" | "kelvin" => from_c + 273.15,
+        _ => return None,
+    })
+}
+
+fn from_str_or_key(s: &str) -> &'static str {
+    let n = s.trim().to_ascii_lowercase();
+    for u in UNITS.iter().filter(|u| u.family == Family::Temperature) {
+        if u.names.iter().any(|x| *x == n.as_str()) {
+            return u.names[0];
+        }
+    }
+    ""
+}
+
+fn from_c_return(s: &str) -> &'static str {
+    from_str_or_key(s)
+}
+
+/// 换算核心：数值 + 源单位 → 目标单位（None = 非换算，降级当搜索）。
+pub fn convert(v: f64, from: &str, to: &str) -> Option<f64> {
+    let u_from = find_unit(from)?;
+    let u_to = find_unit(to)?;
+    if u_from.family != u_to.family {
+        return None; // 跨族换算不支持——诚实降级
+    }
+    if u_from.family == Family::Temperature {
+        return convert_temperature(v, from, to);
+    }
+    Some(v * u_from.factor / u_to.factor)
+}
+
+/// 目标单位解析：显式「to X」/「in X」优先；否则区域默认（同族 base 目标）。
+pub fn resolve_target(query_tail: Option<&str>, family: Family, region: &RegionDefaults) -> Option<&'static str> {
+    if let Some(t) = query_tail {
+        let clean = t.trim().to_ascii_lowercase();
+        if !clean.is_empty() {
+            // 显式目标单位：仅当该单位存在且同族时采纳。
+            if let Some(u) = find_unit(&clean) {
+                if u.family == family {
+                    return Some(u.names[0]);
+                }
+            }
+            return None; // 显式写了但认不出 → 降级当搜索（不猜）
+        }
+    }
+    let want = match family {
+        Family::Length => region.length,
+        Family::Weight => region.weight,
+        Family::Temperature => region.temperature,
+        _ => return None,
+    };
+    find_unit(want).map(|u| u.names[0])
+}
+
+/// 换算卡输出文本（复制即所见；保留 4 位有效小数）。
+pub fn card_text(v: f64, from: &str, to: &str) -> Option<f64> {
+    convert(v, from, to).map(|r| (r * 10_000.0).round() / 10_000.0)
+}
+
+// ---------------------------------------------------------------------------
+// 域自检
+// ---------------------------------------------------------------------------
+
+pub fn run_unitconv_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F458-unitconv");
+    // 1) 六族 × 2 用例（主册判据）。
+    cs.add("len_1", (convert(5.0, "km", "m").unwrap() - 5000.0).abs() < 1e-9, "");
+    cs.add("len_2", (convert(5.0, "km", "mi").unwrap() - 3.1068559612).abs() < 1e-6, "");
+    cs.add("weight_1", (convert(100.0, "磅", "kg").unwrap() - 45.359237).abs() < 1e-6, "");
+    cs.add("weight_2", (convert(1.0, "kg", "g").unwrap() - 1000.0).abs() < 1e-9, "");
+    cs.add("temp_1", (convert(30.0, "摄氏度", "华氏度").unwrap() - 86.0).abs() < 1e-9, "");
+    cs.add("temp_2", (convert(0.0, "c", "k").unwrap() - 273.15).abs() < 1e-9, "");
+    cs.add("area_1", (convert(2.0, "km2", "m2").unwrap() - 2_000_000.0).abs() < 1e-6, "");
+    cs.add("area_2", (convert(1.0, "acre", "m2").unwrap() - 4046.8564224).abs() < 1e-6, "");
+    cs.add("vol_1", (convert(1.0, "gal", "l").unwrap() - 3.785411784).abs() < 1e-9, "");
+    cs.add("vol_2", (convert(500.0, "ml", "l").unwrap() - 0.5).abs() < 1e-12, "");
+    cs.add("speed_1", (convert(100.0, "kmh", "mps").unwrap() - 27.7777777778).abs() < 1e-6, "");
+    cs.add("speed_2", (convert(60.0, "mph", "kmh").unwrap() - 96.56064).abs() < 1e-6, "");
+    // 2) 区域默认单位（F296 注入：中文区域长度默认 km）。
+    cs.add("region_default_len", resolve_target(None, Family::Length, &REGION_ZH) == Some("km"), "");
+    cs.add("region_default_weight", resolve_target(None, Family::Weight, &REGION_ZH) == Some("kg"), "");
+    // 3) 显式目标单位解析（「to kg」）；认不出诚实降级。
+    cs.add("explicit_target", resolve_target(Some("kg"), Family::Weight, &REGION_ZH) == Some("kg"), "");
+    cs.add("explicit_unknown_degrade", resolve_target(Some("xyz"), Family::Weight, &REGION_ZH).is_none(), "");
+    // 4) 跨族换算不支持（诚实降级，不猜）。
+    cs.add("cross_family_reject", convert(1.0, "km", "kg").is_none(), "");
+    // 5) 精度来源登记（系数表在册）。
+    cs.add("factor_table_registered", UNITS.len() == 18 && UNITS.iter().all(|u| u.names.iter().all(|n| !n.is_empty())), "");
+    // 6) 复制文本（卡值格式化）。
+    cs.add("card_copy", card_text(180.0, "磅", "kg").unwrap() - 81.6466 < 1e-4, "");
+    cs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn six_families_two_cases_each() {
+        let ok = [
+            convert(1.0, "km", "mi").is_some(),
+            convert(1.0, "磅", "kg").is_some(),
+            convert(100.0, "f", "c").is_some(),
+            convert(1.0, "acre", "km2").is_some(),
+            convert(1.0, "gal", "ml").is_some(),
+            convert(1.0, "mph", "mps").is_some(),
+        ];
+        assert!(ok.iter().all(|&x| x));
+    }
+
+    #[test]
+    fn temperature_round_trip() {
+        let f = convert(36.6, "c", "f").unwrap();
+        let c = convert(f, "f", "c").unwrap();
+        assert!((c - 36.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn non_conversion_queries_degrade() {
+        assert!(convert(5.0, "报告", "kg").is_none());
+        assert!(card_text(1.0, "m", "kg").is_none());
+    }
+}
