@@ -473,6 +473,30 @@ pub fn feather_alpha(step: u32) -> u8 {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：全屏视口平滑平移（顶边触发的跟手感）
+// ---------------------------------------------------------------------------
+
+impl Magnifier {
+    /// 全屏视口平滑平移（fullscreen_pan 的插值版：边缘触发给出目标
+    /// 方向 → 视口按档位速度 × alpha 步进逼近——与镜头 smooth_follow
+    /// 同一插值纪律，平移不跳格）。返回新视口。
+    pub fn smooth_pan_step(&mut self, dir: (i32, i32), alpha_bp: u32) -> (u32, u32) {
+        let speed = EDGE_PAN_SPEEDS_PX[self.pan_speed_tier.min(2)] as i64;
+        let (w, h) = self.screen;
+        let max_x = w.saturating_sub(1) as i64;
+        let max_y = h.saturating_sub(1) as i64;
+        let (vx, vy) = self.viewport;
+        let target_x = (vx as i64 + dir.0 as i64 * speed).clamp(0, max_x) as u32;
+        let target_y = (vy as i64 + dir.1 as i64 * speed).clamp(0, max_y) as u32;
+        let a = alpha_bp.min(10_000) as u64;
+        let nx = ((vx as u64 * (10_000 - a)) + target_x as u64 * a) / 10_000;
+        let ny = ((vy as u64 * (10_000 - a)) + target_y as u64 * a) / 10_000;
+        self.viewport = (nx as u32, ny as u32);
+        self.viewport
+    }
+}
+
 pub fn run_magnifier_checks() -> CheckSet {
     let mut set = CheckSet::new("F111-magnifier");
 
@@ -706,6 +730,22 @@ pub fn run_magnifier_checks() -> CheckSet {
     let z0 = m.zoom();
     let z1 = m.wheel_zoom(true);
     set.add("wheel zoom same step semantics", z1 == z0 + 1, "");
+
+
+    // 19. 全屏视口平滑平移（深化 v5）：α 贴齐时视口推进恰一档速度、
+    //     边界钳制不越屏。
+    let mut m = Magnifier::new(1000, 1000);
+    m.turn_on();
+    let v1 = m.smooth_pan_step((1, 0), 10_000);
+    let tier = EDGE_PAN_SPEEDS_PX[m.pan_speed_tier.min(2)] as u32;
+    let stepped = v1.0 == tier.min(999);
+    let _ = m.smooth_pan_step((-5, 0), 10_000);
+    let clamped = m.viewport.0 == 0;
+    set.add(
+        "fullscreen smooth pan step + clamp",
+        stepped && clamped,
+        "",
+    );
 
     set
 }

@@ -544,9 +544,70 @@ pub fn export_volume_plan(total_bytes: u64, cap_bytes: u64) -> (usize, u64) {
     (volumes, cap.min(total_bytes))
 }
 // ---------------------------------------------------------------------------
-// 自检（判据逐条钉死）
+// 深化批次 v4/v5：修复注册门禁 / 甘特导出 / 导出 manifest 全文
 // ---------------------------------------------------------------------------
 
+/// 修复项注册门禁（主册【设计细节】「修复项注册制（新增修复必须登记
+/// 风险级与回滚方案——门禁）」的机器面）：名称/说明/风险级/回滚方案
+/// 四件缺一即拒——没有回滚方案的修复不许上架。
+pub fn repair_registration_gate(
+    name: &str,
+    desc: &str,
+    risk: Risk,
+    rollback_plan: &str,
+) -> Result<(), &'static str> {
+    if name.trim().is_empty() {
+        return Err("repair name mandatory");
+    }
+    if desc.chars().count() < 8 {
+        return Err("repair desc too short (explain what it does)");
+    }
+    if rollback_plan.trim().is_empty() {
+        return Err("rollback plan mandatory — no rollback, no repair");
+    }
+    let _ = risk; // 风险级必须显式选择（枚举无默认——类型系统保证）
+    Ok(())
+}
+
+impl BootTimeline {
+    /// 甘特导出（时间线页复用 F053 甘特组件的数据面：每段一行，段名
+    /// + 起止 + 占总启动时长百分比——诊断页直接渲染）。
+    pub fn gantt_lines(&self) -> Vec<String> {
+        let total = self.segs.iter().map(|s| s.end_ms.saturating_sub(s.start_ms)).sum::<u64>().max(1);
+        let mut sorted: Vec<&TimelineSeg> = self.segs.iter().collect();
+        sorted.sort_by_key(|s| s.start_ms);
+        sorted
+            .iter()
+            .map(|s| {
+                let dur = s.end_ms.saturating_sub(s.start_ms);
+                let pct = dur * 100 / total;
+                alloc::format!("{} {}ms ({}%)", s.name, dur, pct)
+            })
+            .collect()
+    }
+
+    /// 最耗时段（甘特首行高亮——归因入口）。
+    pub fn slowest_seg(&self) -> Option<&TimelineSeg> {
+        self.segs
+            .iter()
+            .max_by_key(|s| s.end_ms.saturating_sub(s.start_ms))
+    }
+}
+
+/// 导出包 manifest 全文（主册「导出包 zip 含 manifest（脱敏声明）」的
+/// 文本形态：版本/时刻/脱敏声明/卷数/内容清单）。
+pub fn export_manifest_text(version: &str, at_ms: u64, volumes: usize, sanitized: bool, items: &[&str]) -> String {
+    let mut s = String::new();
+    s.push_str(&alloc::format!("VARIX 诊断导出 manifest v{}\n", version));
+    s.push_str(&alloc::format!("时刻: {} ms\n", at_ms));
+    s.push_str(&alloc::format!("脱敏: {}\n", if sanitized { "已启用（路径用户段/序列号/密钥类三查）" } else { "未启用（原始日志——仅限本机查看）" }));
+    s.push_str(&alloc::format!("分卷: {}\n", volumes));
+    s.push_str("内容清单:\n");
+    for i in items {
+        s.push_str(&alloc::format!("  - {}\n", i));
+    }
+    s
+}
 pub fn run_diagcenter_checks() -> CheckSet {
     let mut set = CheckSet::new("F120-diagcenter");
 
@@ -728,6 +789,45 @@ pub fn run_diagcenter_checks() -> CheckSet {
     set.add(
         "volume plan math",
         v1 == 3 && b1 == EXPORT_SPLIT_BYTES && v2 == 2 && v3 == 1 && b3 == 0,
+        "",
+    );
+
+
+    // 14. 修复注册门禁（深化 v5）：缺回滚方案拒绝——没有回滚的修复
+    //     不许上架；合法四件套放行。
+    let gate_ok = repair_registration_gate("引导菜单重建", "重建 BCD 引导菜单条目（只写 ESP 白名单区）", Risk::Medium, "回滚：备份 BCD 原文回写").is_ok();
+    let gate_no_rb = repair_registration_gate("清缓存", "清空图标缓存目录", Risk::Low, "").is_err();
+    let gate_no_name = repair_registration_gate("", "说明文字足够长", Risk::Low, "回滚方案").is_err();
+    set.add(
+        "repair registration gate",
+        gate_ok && gate_no_rb && gate_no_name,
+        "",
+    );
+
+    // 15. 甘特导出（深化 v5）：逐段行含占比、最耗段点名（归因入口）。
+    let tl = BootTimeline { segs: vec![
+        TimelineSeg { name: "firmware", start_ms: 0, end_ms: 800 },
+        TimelineSeg { name: "kernel", start_ms: 800, end_ms: 2800 },
+    ] };
+    let g = tl.gantt_lines();
+    let slowest = tl.slowest_seg();
+    set.add(
+        "gantt export + slowest seg",
+        g.len() == 2
+            && g[0].contains("firmware") && g[0].contains("28%")
+            && g[1].contains("71%")
+            && slowest.map(|s| s.name == "kernel") == Some(true),
+        "",
+    );
+
+    // 16. 导出 manifest 全文（深化 v5）：版本/时刻/脱敏/分卷/清单五节。
+    let mf = export_manifest_text("1.0.0", 1_000, 2, true, &["snapshot.json", "logs.vol1"]);
+    set.add(
+        "export manifest text",
+        mf.contains("VARIX 诊断导出 manifest v1.0.0")
+            && mf.contains("脱敏: 已启用")
+            && mf.contains("分卷: 2")
+            && mf.contains("logs.vol1"),
         "",
     );
 

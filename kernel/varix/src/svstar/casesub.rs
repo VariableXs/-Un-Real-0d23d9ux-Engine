@@ -215,6 +215,37 @@ impl CaseLine {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：复核分歧第三人仲裁
+// ---------------------------------------------------------------------------
+
+/// 仲裁状态（主册【状态与异常】「复核分歧 → 第三人仲裁（流程文档化
+/// F148）」：两人复核票不一致时进入仲裁——第三人票裁决）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Arbitration {
+    /// 无分歧（常规流）。
+    None,
+    /// 待第三人仲裁（受理中）。
+    Pending,
+    /// 仲裁通过 → 收录。
+    Upheld,
+    /// 仲裁驳回 → 终态退回。
+    Overturned,
+}
+
+/// 仲裁裁定（主册票面语义：AI01 一票 + 社区轮值一票 + 第三人仲裁票
+/// ——分歧时第三人裁决；无分歧走共识不进仲裁）。
+pub fn arbitrate(vote_ai01: bool, vote_community: bool, vote_third: bool) -> (Arbitration, bool) {
+    if vote_ai01 == vote_community {
+        return (Arbitration::None, vote_ai01);
+    }
+    if vote_third {
+        (Arbitration::Upheld, true)
+    } else {
+        (Arbitration::Overturned, false)
+    }
+}
+
 pub fn run_casesub_checks() -> CheckSet {
     let mut set = CheckSet::new("F129-casesub");
 
@@ -328,6 +359,22 @@ pub fn run_casesub_checks() -> CheckSet {
     set.add(
         "constants: votes + states + target",
         CO_REVIEW_VOTES == 2 && STATE_COUNT == 5 && E2E_TARGET_SECS == 2_592_000,
+        "",
+    );
+
+
+    // 9. 复核分歧第三人仲裁（深化 v5）：无分歧走共识、分歧由第三人裁
+    //     决、四态齐备。
+    let (a1, r1) = arbitrate(true, true, false); // 共识通过，不进仲裁
+    let (a2, r2) = arbitrate(false, false, true); // 共识否决
+    let (a3, r3) = arbitrate(true, false, true); // 分歧 → 第三人通过
+    let (a4, r4) = arbitrate(true, false, false); // 分歧 → 第三人驳回
+    set.add(
+        "arbitration third-vote on split",
+        a1 == Arbitration::None && r1
+            && a2 == Arbitration::None && !r2
+            && a3 == Arbitration::Upheld && r3
+            && a4 == Arbitration::Overturned && !r4,
         "",
     );
 

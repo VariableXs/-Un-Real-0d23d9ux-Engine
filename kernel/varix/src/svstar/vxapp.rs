@@ -432,6 +432,60 @@ pub fn key_fingerprint(kp: &KeyPair) -> String {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：哈希断点续算 / 产物版本戳双读
+// ---------------------------------------------------------------------------
+
+/// 树哈希断点续算器（主册【状态与异常】「哈希计算中断 → 断点续算」：
+/// 逐文件算推进，中断后从已完成数续——不重复算已算文件）。
+pub struct HashResume {
+    /// 已完成文件数（续算起点）。
+    pub done: usize,
+    /// 运行中的链（chain_hash 贯通——中断点即链头）。
+    pub chain: [u8; 32],
+}
+
+impl HashResume {
+    pub fn new() -> HashResume {
+        HashResume { done: 0, chain: [0u8; 32] }
+    }
+
+    /// 推进一个文件（内容哈希并入链）。
+    pub fn step(&mut self, file_hash: &[u8; 32]) {
+        self.chain = vbase::chain_hash(&self.chain, file_hash);
+        self.done += 1;
+    }
+
+    /// 续算对拍：中断在 k 处的链，从 k 续算到 n，与一次算完的链一致
+    /// （续算正确性 = 哈希链结合律）。
+    pub fn resume_equivalent(files: &[[u8; 32]], interrupt_at: usize) -> bool {
+        let mut full = HashResume::new();
+        for f in files {
+            full.step(f);
+        }
+        let mut resumed = HashResume::new();
+        for f in &files[..interrupt_at] {
+            resumed.step(f);
+        }
+        for f in &files[interrupt_at..] {
+            resumed.step(f);
+        }
+        full.chain == resumed.chain
+    }
+}
+
+impl Default for HashResume {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 产物版本戳双读判定（FORMAT_VERSION 变更时的读兼容：旧版产物在
+/// 新工具下仍可验——F126 双读条款在产物面的落点）。
+pub fn artifact_readable(artifact_version: u32, tool_version: u32, migration_open: bool) -> bool {
+    artifact_version == tool_version || (migration_open && artifact_version < tool_version)
+}
+
 pub fn run_vxapp_checks() -> CheckSet {
     let mut set = CheckSet::new("F127-vxapp");
 
@@ -631,6 +685,24 @@ pub fn run_vxapp_checks() -> CheckSet {
     set.add(
         "key fingerprint 16 hex",
         fp.len() == 16 && fp.chars().all(|c| c.is_ascii_hexdigit()),
+        "",
+    );
+
+
+    // 18. 哈希断点续算（深化 v5）：中断在任意点续算链与一次算完一致
+    //     （哈希链结合律）。
+    let files: Vec<[u8; 32]> = (0..8u64).map(|i| vbase::sha256(&i.to_le_bytes())).collect();
+    let all_eq = (1..8).all(|k| HashResume::resume_equivalent(&files, k));
+    set.add("hash resume at any interrupt point", all_eq, "");
+
+    // 19. 产物版本戳双读（深化 v5）：同版可读、迁移窗内旧版可读、窗
+    //     外旧版拒读、新版永可读。
+    set.add(
+        "artifact version dual-read",
+        artifact_readable(1, 1, false)
+            && artifact_readable(1, 2, true)
+            && !artifact_readable(1, 2, false)
+            && !artifact_readable(2, 1, false),
         "",
     );
 

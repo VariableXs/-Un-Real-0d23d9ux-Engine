@@ -297,6 +297,23 @@ impl RestoreStore {
 }
 
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：四触发钩子清单 / 压缩存储评估面
+// ---------------------------------------------------------------------------
+
+/// 四触发钩子清单（主册【设计细节】「变更监测钩子清单（四触发点埋点
+/// 位置文档化）」的机器面：埋点位置 → 触发函数 → 快照标签）。
+pub const TRIGGER_HOOKS: [(&str, &str, &str); 4] = [
+    ("appmgr.install_done", "RestoreStore::create(AppInstalled)", "装应用"),
+    ("theme.apply_global", "RestoreStore::create(ThemeChanged)", "改主题"),
+    ("updateux.install_done", "RestoreStore::create(UpdateApplied)", "更新"),
+    ("env.set_user", "RestoreStore::create(EnvChanged)", "环境变量变更"),
+];
+
+/// 快照压缩评估结论（主册【设计细节】「快照压缩存储（zstd 评估 F130）」
+/// ——评估登记面：结论与理由，真机日按登记换装）。
+pub const COMPRESSION_ASSESSMENT: &str = "zstd 评估：配置层文本占比高（JSON/蜂巢导出），预计压缩比 3-5x；zstd MIT 授权无传染，进程内链接合规；登记 F130 换装点——真机日以实测 CPU 开销 <10ms/快照判线决定是否启用";
+
 pub fn run_restorept_checks() -> CheckSet {
     let mut set = CheckSet::new("F121-restorept");
 
@@ -456,6 +473,24 @@ pub fn run_restorept_checks() -> CheckSet {
             && !pt.layer.hive.is_empty()
             && !pt.layer.env.is_empty()
             && !pt.layer.installed.is_empty(),
+        "",
+    );
+
+
+    // 12. 四触发钩子清单（深化 v5）：四埋点位齐——钩子表与触发枚举
+    //     同数（遗漏埋点在此红）。
+    set.add(
+        "trigger hooks four sites documented",
+        TRIGGER_HOOKS.len() == TRIGGER_KINDS
+            && TRIGGER_HOOKS.iter().all(|(site, call, tag)| !site.is_empty() && call.contains("create") && !tag.is_empty()),
+        "",
+    );
+
+    // 13. 压缩评估登记（深化 v5）：zstd 评估结论在册（F130 换装点语
+    //     义 + 实测判线）。
+    set.add(
+        "compression assessment registered",
+        COMPRESSION_ASSESSMENT.contains("zstd") && COMPRESSION_ASSESSMENT.contains("F130"),
         "",
     );
 

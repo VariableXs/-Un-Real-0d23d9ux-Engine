@@ -320,6 +320,32 @@ impl OobeWizard {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：网络步 WiFi 扫描注入面
+// ---------------------------------------------------------------------------
+
+/// WiFi 扫描条目（网络步列表数据源——真实扫描由网络栈注入；向导侧
+/// 只消费列表：信号强度排序 + 密码框校验）。
+pub struct WifiEntry {
+    pub ssid: &'static str,
+    /// 信号强度 0-100（越强越前）。
+    pub strength: u32,
+    pub needs_password: bool,
+}
+
+/// 列表整理（强度降序、同名去重——注入面契约）。
+pub fn wifi_entries_sorted(list: &[WifiEntry]) -> Vec<&WifiEntry> {
+    let mut v: Vec<&WifiEntry> = list.iter().collect();
+    v.sort_by(|a, b| b.strength.cmp(&a.strength).then(a.ssid.cmp(b.ssid)));
+    v.dedup_by(|a, b| a.ssid == b.ssid);
+    v
+}
+
+/// 密码框校验（WPA 最短 8 位——B-607 手机热点文档指引的邻位判据）。
+pub fn wifi_password_valid(pw: &str) -> bool {
+    pw.len() >= 8
+}
+
 pub fn run_oobe_checks() -> CheckSet {
     let mut set = CheckSet::new("F117-oobe");
 
@@ -472,6 +498,25 @@ pub fn run_oobe_checks() -> CheckSet {
     set.add(
         "theme preview only on theme step",
         rejected && applied == 0,
+        "",
+    );
+
+
+    // 11. WiFi 扫描注入面（深化 v5）：强度降序 + 同名去重 + 密码最短
+    //     8 位（B-607 邻位判据）。
+    let list = [
+        WifiEntry { ssid: "弱信号", strength: 20, needs_password: true },
+        WifiEntry { ssid: "强信号", strength: 90, needs_password: true },
+        WifiEntry { ssid: "强信号", strength: 85, needs_password: true },
+        WifiEntry { ssid: "开放网", strength: 50, needs_password: false },
+    ];
+    let sorted = wifi_entries_sorted(&list);
+    set.add(
+        "wifi list sorted + dedup + password gate",
+        sorted[0].ssid == "强信号"
+            && sorted.iter().filter(|e| e.ssid == "强信号").count() == 1
+            && wifi_password_valid("12345678")
+            && !wifi_password_valid("1234567"),
         "",
     );
 

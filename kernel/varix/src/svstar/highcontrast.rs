@@ -314,6 +314,28 @@ impl HighContrastMgr {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：切换预览缩略图采样（缩略图即真实渲染缩放——甲节禁模糊）
+// ---------------------------------------------------------------------------
+
+impl ThemePalette {
+    /// 预览缩略图采样（主题卡缩略的取色面：按缩放比例位置从主题锚点
+    /// 色采样——非贴图模糊，是令牌真值的真实缩小渲染）。
+    pub fn thumbnail_sample(&self, x_bp: u32, y_bp: u32) -> (u8, u8, u8) {
+        // 布局（与设置页主题卡构图一致）：上 60% 背景/文字对比区，
+        // 下 30% 边框带，右下角焦点环角标。
+        if x_bp >= 7_000 && y_bp >= 7_000 {
+            self.focus
+        } else if y_bp >= 7_000 {
+            self.border
+        } else if (3_000..=6_000).contains(&x_bp) && (2_500..=3_500).contains(&y_bp) {
+            self.fg
+        } else {
+            self.bg
+        }
+    }
+}
+
 pub fn run_highcontrast_checks() -> CheckSet {
     let mut set = CheckSet::new("F113-highcontrast");
 
@@ -479,6 +501,19 @@ pub fn run_highcontrast_checks() -> CheckSet {
         }
     }
     set.add("icon variants registered 8 distinct", ICON_VARIANTS.len() == 8 && distinct, "");
+
+
+    // 16. 预览缩略图采样（深化 v5）：四区取样落各自令牌真值（真实渲
+    //     染缩放——非贴图模糊）。
+    let t = &THEME_BLACK;
+    set.add(
+        "thumbnail sample four zones",
+        t.thumbnail_sample(1_000, 1_000) == t.bg
+            && t.thumbnail_sample(4_000, 3_000) == t.fg
+            && t.thumbnail_sample(5_000, 8_000) == t.border
+            && t.thumbnail_sample(9_000, 9_500) == t.focus,
+        "",
+    );
 
     set
 }

@@ -192,6 +192,34 @@ pub const Y7000_ANCHORS: [(&str, &str); 4] = [
     ("显示分辨率", "1920x1080"),
 ];
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：盘健康度注入行（F183 联动）
+// ---------------------------------------------------------------------------
+
+/// 盘健康等级（F183 盘 health 联动——只读注入：About 行不采写 SMART，
+/// 由 F183 面推值；三态语义与 F183 同源）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiskHealth {
+    Good,
+    Caution,
+    Critical,
+}
+
+impl DiskHealth {
+    pub fn tag(self) -> &'static str {
+        match self {
+            DiskHealth::Good => "健康",
+            DiskHealth::Caution => "关注",
+            DiskHealth::Critical => "建议更换",
+        }
+    }
+}
+
+/// 健康行文本生成（盘 0 行的值位：容量 + 健康度双值——读少量双值纪律）。
+pub fn disk_health_value(capacity: &str, health: DiskHealth) -> String {
+    alloc::format!("{} · 寿命{}", capacity, health.tag())
+}
+
 pub fn run_aboutpage_checks() -> CheckSet {
     let mut set = CheckSet::new("F123-aboutpage");
 
@@ -316,6 +344,17 @@ pub fn run_aboutpage_checks() -> CheckSet {
             && report.contains("[存储]")
             && report.contains("[显示]")
             && report.contains("本机不可读"),
+        "",
+    );
+
+
+    // 9. 盘健康注入行（深化 v5）：三态标签 + 双值文本（容量·寿命）。
+    set.add(
+        "disk health injection row",
+        DiskHealth::Good.tag() == "健康"
+            && DiskHealth::Caution.tag() == "关注"
+            && DiskHealth::Critical.tag() == "建议更换"
+            && disk_health_value("512GB SSD", DiskHealth::Good) == "512GB SSD · 寿命健康",
         "",
     );
 

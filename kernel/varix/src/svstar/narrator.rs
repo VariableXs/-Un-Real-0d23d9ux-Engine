@@ -476,6 +476,46 @@ pub fn walk_scene(n: &mut Narrator, scene: Scene, ctrls: &[Ctrl], now_ms: u64) -
 // ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化批次 v5：eSpeak IPC 命令帧 / 音调设置面
+// ---------------------------------------------------------------------------
+
+/// 音调域（千分比：200 = 20% 低音 … 2000 = 200% 高音；默认 1000）。
+pub const PITCH_MIN_MILI: u32 = 200;
+pub const PITCH_MAX_MILI: u32 = 2000;
+pub const PITCH_DEFAULT_MILI: u32 = 1000;
+
+/// eSpeak IPC 命令帧（进程隔离协议的线上格式——主册「独立进程+IPC」：
+/// `SAY<rate>|<pitch>|<text>` 与 `STOP`；帧格式公开（F126 模板公开
+/// 条款），eSpeak 侧桥接进程按此解析）。
+pub fn ipc_frame_say(rate_mili: u32, pitch_mili: u32, text: &str) -> String {
+    alloc::format!(
+        "SAY{}|{}|{}",
+        rate_mili.clamp(RATE_MIN_MILI, RATE_MAX_MILI),
+        pitch_mili.clamp(PITCH_MIN_MILI, PITCH_MAX_MILI),
+        text
+    )
+}
+
+pub const IPC_FRAME_STOP: &str = "STOP";
+
+/// 帧解析（桥接侧消费面：合法帧还原三元组；STOP 识别；坏帧拒绝）。
+pub fn ipc_frame_parse(frame: &str) -> Result<(u32, u32, Option<&str>), &'static str> {
+    if frame == IPC_FRAME_STOP {
+        return Ok((0, 0, None));
+    }
+    let body = frame.strip_prefix("SAY").ok_or("bad frame prefix")?;
+    let mut parts = body.splitn(3, '|');
+    let rate: u32 = parts.next().ok_or("missing rate")?.parse().map_err(|_| "bad rate")?;
+    let pitch: u32 = parts.next().ok_or("missing pitch")?.parse().map_err(|_| "bad pitch")?;
+    let text = parts.next().ok_or("missing text")?;
+    if !(RATE_MIN_MILI..=RATE_MAX_MILI).contains(&rate)
+        || !(PITCH_MIN_MILI..=PITCH_MAX_MILI).contains(&pitch)
+    {
+        return Err("rate/pitch out of range");
+    }
+    Ok((rate, pitch, Some(text)))
+}
 
 pub fn run_narrator_checks() -> CheckSet {
     let mut set = CheckSet::new("F112-narrator");
@@ -621,6 +661,31 @@ pub fn run_narrator_checks() -> CheckSet {
         ESPEAK_ISOLATION_DOC.contains("separate process + IPC") && HOTKEY_TOGGLE == "Ctrl+Win+Enter",
         "",
     );
+
+
+    // 14. eSpeak IPC 命令帧（深化 v5）：帧格式往返 + STOP 识别 + 坏帧
+    //     拒绝（进程隔离协议的线上契约）。
+    let frame = ipc_frame_say(1_200, 1_000, "你好，世界");
+    let parsed = ipc_frame_parse(&frame);
+    let stop = ipc_frame_parse(IPC_FRAME_STOP);
+    let bad = ipc_frame_parse("SAYabc|1000|text").is_err()
+        && ipc_frame_parse("SAY99999|1000|text").is_err()
+        && ipc_frame_parse("WAVE1|1000|text").is_err();
+    set.add(
+        "espeak ipc frame roundtrip",
+        parsed == Ok((1_200, 1_000, Some("你好，世界")))
+            && stop == Ok((0, 0, None))
+            && bad,
+        "",
+    );
+
+    // 15. 音调设置（深化 v5）：域钳制 200-2000，默认 1000 在册。
+    let mut n = Narrator::new();
+    n.set_pitch(5_000);
+    let clamped = n.pitch_mili() == PITCH_MAX_MILI;
+    n.set_pitch(1_000);
+    let normal = n.pitch_mili() == 1_000;
+    set.add("pitch clamp + default registered", clamped && normal && PITCH_DEFAULT_MILI == 1000, "");
 
     set
 }

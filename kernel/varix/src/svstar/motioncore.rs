@@ -417,6 +417,58 @@ pub fn render_motion_doc() -> String {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：全系统动画站点点名（30 处抽查的真实登记语料）
+// ---------------------------------------------------------------------------
+
+/// 全系统 30 处动画站点（真实点名——主册「全系统动画抽查 30 处」的
+/// 登记母表：站点名与用途一处一事实，audit 引擎据此全量在谱审计）。
+pub const SYSTEM_MOTION_SITES: [(&str, MotionUse); 30] = [
+    ("win-open", MotionUse::Enter),
+    ("win-close", MotionUse::ExitExit),
+    ("menu-drop", MotionUse::Enter),
+    ("menu-collapse", MotionUse::ExitExit),
+    ("panel-slide-in", MotionUse::Panel),
+    ("panel-slide-out", MotionUse::ExitExit),
+    ("toast-enter", MotionUse::Enter),
+    ("toast-exit", MotionUse::ExitExit),
+    ("hover-lift", MotionUse::MicroFeedback),
+    ("press-sink", MotionUse::MicroFeedback),
+    ("focus-ring-in", MotionUse::MicroFeedback),
+    ("snap-engage", MotionUse::Panel),
+    ("taskview-enter", MotionUse::Panel),
+    ("taskview-exit", MotionUse::ExitExit),
+    ("alttab-fade", MotionUse::MicroFeedback),
+    ("desk-switch", MotionUse::Panel),
+    ("thumb-reveal", MotionUse::Enter),
+    ("quick-panel", MotionUse::Panel),
+    ("oobe-step", MotionUse::Enter),
+    ("welcome-slide", MotionUse::Panel),
+    ("help-toc-expand", MotionUse::Enter),
+    ("detail-pane-open", MotionUse::Panel),
+    ("progress-loop", MotionUse::Progress),
+    ("update-stage", MotionUse::Progress),
+    ("restore-flash", MotionUse::Panel),
+    ("night-crossfade", MotionUse::Progress),
+    ("lens-follow", MotionUse::Progress),
+    ("recycle-shrink", MotionUse::ExitExit),
+    ("magnify-zoom", MotionUse::Panel),
+    ("imewin-follow", MotionUse::MicroFeedback),
+];
+
+/// 30 站点全量在谱预检（登记母表自身对账——站点落谱才可上架）。
+pub fn system_sites_in_score() -> bool {
+    SYSTEM_MOTION_SITES.iter().all(|(name, u)| {
+        !name.is_empty() && {
+            let (c, d) = lookup(*u);
+            match c {
+                Curve::Spring => d == DURATION_PANEL_MS,
+                _ => c.bezier().map(|b| curve_registered(&b)).unwrap_or(false),
+            }
+        }
+    })
+}
+
 pub fn run_motioncore_checks() -> CheckSet {
     let mut set = CheckSet::new("F124-motioncore");
 
@@ -642,6 +694,22 @@ pub fn run_motioncore_checks() -> CheckSet {
     set.add(
         "downgrade ledger records",
         down && down2 && reg.downgrade_count() == 2 && reg.last_downgrade() == Some(Curve::Spring),
+        "",
+    );
+
+
+    // 18. 全系统 30 站点点名（深化 v5）：登记母表全量在谱 + 名字互异。
+    let mut distinct = true;
+    for i in 0..SYSTEM_MOTION_SITES.len() {
+        for j in (i + 1)..SYSTEM_MOTION_SITES.len() {
+            if SYSTEM_MOTION_SITES[i].0 == SYSTEM_MOTION_SITES[j].0 {
+                distinct = false;
+            }
+        }
+    }
+    set.add(
+        "system motion sites 30 named in score",
+        SYSTEM_MOTION_SITES.len() == 30 && distinct && system_sites_in_score(),
         "",
     );
 

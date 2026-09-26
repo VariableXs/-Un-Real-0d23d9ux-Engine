@@ -266,6 +266,26 @@ pub fn swipe_verdict(dx_px: i32) -> SwipeVerdict {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v5：插画资产清单与降级判定
+// ---------------------------------------------------------------------------
+
+/// 五卡插画资产清单（4K 原生——主册「每卡一个核心图示（4K 插画资产）」；
+/// 资产缺席走纯文字降级的判定输入）。
+pub const ILLUSTRATION_ASSETS: [&str; CARD_COUNT] = [
+    "assets/welcome/dual-domain.svg",
+    "assets/welcome/no-store.svg",
+    "assets/welcome/handoff.svg",
+    "assets/welcome/personalize.svg",
+    "assets/welcome/help-center.svg",
+];
+
+/// 插画可用判定（资产路径在清单且在位标记为真——降级面：缺图卡以纯
+/// 文字版渲染，不留空白占位）。
+pub fn illustration_available(card_index: usize, present: &[bool]) -> bool {
+    card_index < CARD_COUNT && present.get(card_index).copied().unwrap_or(false)
+}
+
 pub fn run_welcome_checks() -> CheckSet {
     let mut set = CheckSet::new("F118-welcome");
 
@@ -374,6 +394,19 @@ pub fn run_welcome_checks() -> CheckSet {
             && swipe_verdict(0) == SwipeVerdict::RubberBand
             && swipe_verdict(119) == SwipeVerdict::RubberBand
             && swipe_verdict(-120) == SwipeVerdict::Advance,
+        "",
+    );
+
+
+    // 9. 插画资产清单（深化 v5）：五卡资产路径齐、降级判定三态（在位/
+    //     缺席/越界）。
+    set.add(
+        "illustration assets + degrade verdict",
+        ILLUSTRATION_ASSETS.len() == CARD_COUNT
+            && ILLUSTRATION_ASSETS.iter().all(|a| a.starts_with("assets/welcome/"))
+            && illustration_available(0, &[true, false, true, false, true])
+            && !illustration_available(1, &[true, false, true, false, true])
+            && !illustration_available(9, &[true; 5]),
         "",
     );
 
