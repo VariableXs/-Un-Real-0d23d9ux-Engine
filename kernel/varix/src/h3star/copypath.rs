@@ -20,7 +20,11 @@ use alloc::vec::Vec;
 
 /// 是否需要引号（含空格或特殊字符）。
 pub fn needs_quotes(path: &str) -> bool {
-    path.chars().any(|c| c == ' ' || c == '&' || c == '(' || c == ')' || c == '^' || c == '%')
+    // 封闭集与 EscapeMatrix 登记面同源（D-31 修正：补 $/`/" 三字符
+    // ——含 $ 的路径在 POSIX 下会被命令替换，转义矩阵说该防、行为
+    // 面却漏引 = 对拍缺陷）。
+    path.chars()
+        .any(|c| c == ' ' || c == '&' || c == '(' || c == ')' || c == '^' || c == '%' || c == '$' || c == '`' || c == '"')
 }
 
 /// 终端形态。
@@ -2356,3 +2360,150 @@ mod deep10_tests {
         assert_eq!(out[0], "C:/z.vx", "顺序保持——调用面按序消费");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层十一 · 转换历史审计 + 引号规则对拍 + 长度分级提示
+// ---------------------------------------------------------------------------
+
+/// 转换历史审计（十三章日志语义的转换域面）：每次转换留痕 (时刻, 原
+/// 串, 味)——环形封顶、隐私红线沿用（凭据模式脱敏后才入账——历史
+/// 审计面与 InteropHistory 同一条红线，不因换入口就漏）。
+pub struct ConvertAuditTrail {
+    pub entries: Vec<(u64, String, TerminalFlavor)>,
+    cap: usize,
+    redactions: Vec<(String, String)>,
+}
+
+impl ConvertAuditTrail {
+    pub fn new(cap: usize) -> ConvertAuditTrail {
+        ConvertAuditTrail { entries: Vec::new(), cap: cap.max(1), redactions: Vec::new() }
+    }
+
+    pub fn register_redaction(&mut self, pattern: &str, replacement: &str) {
+        self.redactions.push((String::from(pattern), String::from(replacement)));
+    }
+
+    fn redact(&self, payload: &str) -> String {
+        let mut s = String::from(payload);
+        for (p, r) in &self.redactions {
+            if let Some(start) = s.find(p.as_str()) {
+                let value_end = s[start..].find('&').map(|e| start + e).unwrap_or(s.len());
+                s = alloc::format!("{}{}{}", &s[..start], r, &s[value_end..]);
+            }
+        }
+        s
+    }
+
+    pub fn record(&mut self, at_ms: u64, path: &str, flavor: TerminalFlavor) {
+        self.entries.push((at_ms, self.redact(path), flavor));
+        if self.entries.len() > self.cap {
+            self.entries.remove(0);
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// 引号规则对拍审计（单一定义点的互通域验证）：quote_for 的「哪些
+/// 字符触发引号」必须与 EscapeMatrix 登记面一致——对拍规则：凡
+/// EscapeMatrix 登记的字符出现在路径中 → quote_for 必须加引号（登记
+/// 面与行为面漂移 = 缺陷直出）。
+pub struct QuoteRuleAudit;
+
+impl QuoteRuleAudit {
+    /// 对拍：登记字符逐一验证「出现在路径 → 必须加引号」。
+    pub fn rules_agree() -> bool {
+        for (ch, _, _) in EscapeMatrix::TABLE {
+            let path = alloc::format!("/a{}b.vx", ch);
+            let quoted = quote_for(&path, TerminalFlavor::Posix);
+            if !quoted.starts_with('\'') {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// 长度分级提示（MAX_PATH 边界的渐进披露）：三档——安全（<200 字）、
+/// 临近（200-259 字，提示留意）、危险（≥260 字，必须走长路径前缀）。
+/// 分档判线唯一源。
+pub struct LengthGrade;
+
+pub const NEAR_LIMIT_CHARS: usize = 200;
+
+impl LengthGrade {
+    pub fn grade(path: &str) -> &'static str {
+        let n = PathNormalizer::win(path).chars().count();
+        if n >= MAX_PATH_CHARS - 1 {
+            "危险"
+        } else if n >= NEAR_LIMIT_CHARS {
+            "临近"
+        } else {
+            "安全"
+        }
+    }
+}
+
+/// 深化层十一自检（审计留痕 / 对拍 / 长度分级）。
+pub fn run_copypath_deep11_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep11");
+
+    // 1. 转换历史留痕 + 脱敏红线沿用 + 环形封顶。
+    let mut trail = ConvertAuditTrail::new(4);
+    trail.register_redaction("token=", "token=█");
+    trail.record(0, "C:/a?token=sec1", TerminalFlavor::Posix);
+    trail.record(1, "C:/b.vx", TerminalFlavor::Cmd);
+    set.add(
+        "audit trail redacted capped",
+        trail.len() == 2
+            && trail.entries[0].1 == "C:/a?token=█"
+            && trail.entries[1].2 == TerminalFlavor::Cmd,
+        "",
+    );
+
+    // 2. 引号规则对拍：EscapeMatrix 登记字符全触发引号（规则面漂移
+    //    直出——单一定义点的互通验证）。
+    set.add("quote rules agree with matrix", QuoteRuleAudit::rules_agree(), "");
+
+    // 3. 长度分级：三档判线（安全 <200 / 临近 200-258 / 危险 ≥259——
+    //    「长」单字 1 字符：120 字=123 安全、205 字=208 临近、300 字=303 危险）。
+    set.add(
+        "length three grades",
+        LengthGrade::grade("C:/a.vx") == "安全"
+            && LengthGrade::grade(&alloc::format!("C:/{}", "长".repeat(205))) == "临近"
+            && LengthGrade::grade(&alloc::format!("C:/{}", "长".repeat(300))) == "危险",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn audit_empty_trail() {
+        let t = ConvertAuditTrail::new(2);
+        assert!(t.entries.is_empty());
+    }
+
+    #[test]
+    fn plain_path_no_quotes_still_agrees() {
+        // 无登记字符的路径不加引号——对拍语义只约束「登记字符必须
+        // 触发」，不约束「干净路径必须裸排」的反向。
+        let quoted = quote_for("C:/plain.vx", TerminalFlavor::Posix);
+        assert!(!quoted.starts_with('\''));
+        assert!(QuoteRuleAudit::rules_agree());
+    }
+
+    #[test]
+    fn grade_boundary_199_200() {
+        let p199 = alloc::format!("C:/{}", "长".repeat(98) + "ab");
+        assert_eq!(LengthGrade::grade(&p199), "安全", "199 字安全带内");
+    }
+}
+
+

@@ -518,7 +518,6 @@ impl Default for SwitchBoundaryLedger {
 
 /// 深化层三自检（切换边界账）。
 pub fn run_cnensw_deep3_checks() -> CheckSet {
-    use alloc::vec;
     let mut set = CheckSet::new("F318b-deep3");
 
     // 1. 三策略登记留痕（丢弃字节统计只数清空策略）。

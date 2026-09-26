@@ -3613,3 +3613,209 @@ mod deep10_tests {
         assert_eq!(cr.waiting[0].1, 2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层十一 · 干跑清单哈希锚定 + 服务残留自检 + 同厂商模板
+// ---------------------------------------------------------------------------
+
+/// 干跑清单哈希锚定（铁律③「先干跑列清单」的防篡改面）：干跑清单
+/// 生成时算 FNV 锚；实际执行前重算比对——清单与执行之间有任何改动
+/// （多删一项/路径被改）必须被拦（用户确认的是 A，执行的必须是 A）。
+pub struct ManifestAnchor {
+    /// 干跑清单（冻结快照）。
+    pub manifest: Vec<String>,
+    anchor: u64,
+    pub tamper_blocks: u64,
+}
+
+impl ManifestAnchor {
+    pub fn freeze(manifest: &[String]) -> ManifestAnchor {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for item in manifest {
+            for b in item.bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            h ^= 0x1f as u64; // 条目分隔——顺序敏感。
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        ManifestAnchor {
+            manifest: manifest.to_vec(),
+            anchor: h,
+            tamper_blocks: 0,
+        }
+    }
+
+    /// 执行闸门：执行清单与锚比对——一致放行，不一致拦截留痕。
+    pub fn execute_gate(&mut self, actual: &[String]) -> bool {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for item in actual {
+            for b in item.bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+            h ^= 0x1f as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        if h == self.anchor {
+            true
+        } else {
+            self.tamper_blocks += 1;
+            false
+        }
+    }
+
+    pub fn anchor(&self) -> u64 {
+        self.anchor
+    }
+}
+
+/// 卸载后服务残留自检（卸载干净的第五关联面——服务注册）：应用卸载
+/// 后其注册的服务项应清零（服务账登记制）；残留服务显性直出（挂在
+/// 后台吃资源的服务 = 卸载不彻底的隐形尾巴）。
+#[derive(Default)]
+pub struct ServiceResidueAudit {
+    /// (服务名, 属主应用, 残留?)。
+    pub services: Vec<(String, String, bool)>,
+}
+
+impl ServiceResidueAudit {
+    pub fn register(&mut self, service: &str, owner: &str) {
+        self.services.push((String::from(service), String::from(owner), false));
+    }
+
+    /// 属主应用卸载后：其服务应标记清除（残留 = 红）。
+    pub fn mark_owner_gone(&mut self, owner: &str) -> Vec<String> {
+        let mut residue = Vec::new();
+        for (s, o, gone) in self.services.iter_mut() {
+            if o == owner {
+                *gone = true; // 应随主卸载清除。
+                residue.push(s.clone());
+            }
+        }
+        residue
+    }
+
+    /// 残留清单（仍标记「应清未清」的服务——修理面直出）。
+    pub fn lingering(&self) -> Vec<&str> {
+        self.services.iter().filter(|(_, _, gone)| *gone).map(|(s, _, _)| s.as_str()).collect()
+    }
+
+    /// 清除确认（服务实际注销后翻转）。
+    pub fn confirm_cleared(&mut self, service: &str) -> bool {
+        match self.services.iter_mut().find(|(s, _, _)| s == service) {
+            Some((_, _, gone)) => {
+                *gone = false;
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// 同厂商批量模板（同厂商多应用一次卸载的效率面）：厂商 → 应用清单；
+/// 模板展开 = 全部应用入批量账（逐件裁决语义复用）；空厂商/未知厂商
+/// 展开空清单（诚实不猜）。
+#[derive(Default)]
+pub struct VendorTemplate {
+    /// (厂商, 应用清单)。
+    pub vendors: Vec<(String, Vec<String>)>,
+}
+
+impl VendorTemplate {
+    pub fn register(&mut self, vendor: &str, apps: &[&str]) {
+        let list: Vec<String> = apps.iter().map(|s| String::from(*s)).collect();
+        match self.vendors.iter_mut().find(|(v, _)| v == vendor) {
+            Some((_, l)) => *l = list,
+            None => self.vendors.push((String::from(vendor), list)),
+        }
+    }
+
+    /// 展开为批量卸载账（逐件入队——冲突裁决复用 BatchUninstallBook）。
+    pub fn expand(&self, vendor: &str) -> BatchUninstallBook {
+        let mut book = BatchUninstallBook::default();
+        if let Some((_, apps)) = self.vendors.iter().find(|(v, _)| v == vendor) {
+            for a in apps {
+                let _ = book.enqueue(a);
+            }
+        }
+        book
+    }
+}
+
+/// 深化层十一自检（哈希锚定 / 服务自检 / 模板）。
+pub fn run_sysgov_deep11_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F342-346-deep11");
+
+    // 1. 哈希锚定：清单一致放行；改一项拦（确认的是 A 执行的必须是 A）。
+    let manifest = vec![String::from("删 Cache/x"), String::from("摘 .vxd")];
+    let mut anchor = ManifestAnchor::freeze(&manifest);
+    let same = anchor.execute_gate(&manifest);
+    let tampered = anchor.execute_gate(&vec![String::from("删 Cache/x")]);
+    set.add(
+        "manifest anchor blocks tamper",
+        same && !tampered && anchor.tamper_blocks == 1,
+        "",
+    );
+
+    // 2. 顺序敏感（同集合不同序 = 不同清单——用户确认的顺序即执行序）。
+    let mut a2 = ManifestAnchor::freeze(&vec![String::from("A"), String::from("B")]);
+    let reordered = a2.execute_gate(&vec![String::from("B"), String::from("A")]);
+    set.add("anchor order sensitive", !reordered, "");
+
+    // 3. 服务残留自检：属主卸载 → 服务标记残留直出 → 清除确认翻转。
+    let mut sa = ServiceResidueAudit::default();
+    sa.register("画板守护", "画板Pro");
+    sa.register("无关服务", "别的应用");
+    let residue = sa.mark_owner_gone("画板Pro");
+    set.add(
+        "service residue surfaced",
+        residue == alloc::vec![String::from("画板守护")]
+            && sa.lingering() == alloc::vec!["画板守护"],
+        "",
+    );
+    let cleared = sa.confirm_cleared("画板守护");
+    set.add("service cleared flips", cleared && sa.lingering().is_empty(), "");
+
+    // 4. 同厂商模板：展开入批量账、未知厂商空清单（诚实不猜）。
+    let mut vt = VendorTemplate::default();
+    vt.register("云山软件", &["云山笔记", "云山日历"]);
+    let book = vt.expand("云山软件");
+    let empty = vt.expand("未知厂商");
+    set.add(
+        "vendor template expand",
+        book.items.len() == 2 && empty.items.is_empty(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn anchor_empty_manifest() {
+        let mut a = ManifestAnchor::freeze(&[]);
+        assert!(a.execute_gate(&[]), "空清单锚对空执行放行");
+        assert!(!a.execute_gate(&alloc::vec![String::from("x")]), "空锚对非空执行拦");
+    }
+
+    #[test]
+    fn service_unknown_owner_noop() {
+        let mut sa = ServiceResidueAudit::default();
+        sa.register("svc", "owner");
+        assert!(sa.mark_owner_gone("别的").is_empty(), "无关属主不误伤");
+        assert!(sa.lingering().is_empty());
+    }
+
+    #[test]
+    fn vendor_re_register_replaces() {
+        let mut vt = VendorTemplate::default();
+        vt.register("云山", &["旧应用"]);
+        vt.register("云山", &["新应用"]);
+        assert_eq!(vt.expand("云山").items.len(), 1, "重登记覆盖（模板唯一源）");
+    }
+}

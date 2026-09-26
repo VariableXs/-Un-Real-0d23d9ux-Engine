@@ -412,3 +412,101 @@ mod tests {
         assert!(!ImportError::ChecksumMismatch.label().is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 主题包导出迁移（十四章开放性的主题域落法）
+// ---------------------------------------------------------------------------
+
+/// 主题包导出迁移（配置可备份可迁移的主题面）：主题键值 → 人话行
+/// 导出；导入校验（键白名单 + 值非空）；round-trip 可迁移证明；
+/// 键白名单外拒绝留痕（与调速器配置快照同纪律）。
+pub struct ThemePackExport {
+    pub entries: Vec<(&'static str, String)>,
+}
+
+/// 主题键白名单。
+pub const THEME_KEYS: [&str; 5] = ["accent", "wallpaper", "font_scale", "dark_mode", "transparency"];
+
+impl ThemePackExport {
+    pub fn capture(entries: Vec<(&'static str, String)>) -> ThemePackExport {
+        ThemePackExport { entries }
+    }
+
+    pub fn export(&self) -> String {
+        self.entries
+            .iter()
+            .map(|(k, v)| alloc::format!("{}={}\n", k, v))
+            .collect()
+    }
+
+    /// 导入解析：键白名单 + 值非空双闸；拒绝留痕。
+    pub fn import(text: &str) -> (Vec<(&'static str, String)>, Vec<String>) {
+        let mut ok = Vec::new();
+        let mut rejected = Vec::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match line.split_once('=') {
+                Some((k, v)) if THEME_KEYS.contains(&k) && !v.is_empty() => {
+                    let key = THEME_KEYS.iter().find(|c| **c == k).unwrap();
+                    ok.push((*key, String::from(v)));
+                }
+                _ => rejected.push(String::from(line)),
+            }
+        }
+        (ok, rejected)
+    }
+
+    /// round-trip 自证。
+    pub fn round_trip(&self) -> bool {
+        let (parsed, rej) = Self::import(&self.export());
+        rej.is_empty() && parsed == self.entries
+    }
+}
+
+/// 深化层二自检（主题包迁移）。
+pub fn run_themepack_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F305-deep2");
+
+    // 1. 导出人话行。
+    let pack = ThemePackExport::capture(alloc::vec![
+        ("accent", alloc::string::String::from("vx-blue")),
+        ("dark_mode", alloc::string::String::from("on")),
+    ]);
+    set.add(
+        "theme export human",
+        pack.export().contains("accent=vx-blue") && pack.export().contains("dark_mode=on"),
+        "",
+    );
+
+    // 2. round-trip 可迁移。
+    set.add("theme round trip", pack.round_trip(), "");
+
+    // 3. 导入防呆：未知键、空值拒绝留痕；空行跳过。
+    let (_, rej) = ThemePackExport::import("evil_key=1\naccent=\n\naccent=vx-red\n");
+    set.add(
+        "theme import guards",
+        rej.len() == 2 && rej[0] == "evil_key=1" && rej[1] == "accent=",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn theme_keys_pinned() {
+        assert_eq!(THEME_KEYS.len(), 5, "主题键白名单五键钉死");
+    }
+
+    #[test]
+    fn empty_pack_round_trip() {
+        let pack = ThemePackExport::capture(alloc::vec::Vec::new());
+        assert!(pack.round_trip(), "空主题包往返平凡绿");
+    }
+}

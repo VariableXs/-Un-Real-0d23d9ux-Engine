@@ -2156,6 +2156,132 @@ mod deep8_tests {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层十 · 内存占用审计 + 面板空账降级
+// ---------------------------------------------------------------------------
+
+/// 调速器内存占用审计（十四章「内存有上限」的调速域落法）：三类账本
+/// 的字节数估算（模式账/事件流/驻留统计）——合计 ≤ 上限绿；超限 =
+/// 缺陷显性（内存不许随运行时间无界增长）。
+pub struct MemoryAudit;
+
+/// 单条估算（模式账/事件流条目 32B——两个 u64 + 枚举 + 指针宽度的
+/// 保守上界；审计面用同一常数——口径唯一）。
+pub const ENTRY_ESTIMATE_BYTES: usize = 32;
+
+impl MemoryAudit {
+    /// 估算字节数（条目数 × 单条上界）。
+    pub fn estimate_bytes(entries: usize) -> usize {
+        entries * ENTRY_ESTIMATE_BYTES
+    }
+
+    /// 上限判定（含 10% 余量——贴线即预警）。
+    pub fn within_budget(entries: usize, cap_bytes: usize) -> bool {
+        Self::estimate_bytes(entries) <= cap_bytes - cap_bytes / 10
+    }
+
+    /// 贴线预警（超 80% 上限 → 预警位——不等到爆才报）。
+    pub fn near_limit(entries: usize, cap_bytes: usize) -> bool {
+        !Self::within_budget(entries, cap_bytes)
+            && Self::estimate_bytes(entries) <= cap_bytes
+    }
+}
+
+/// 面板空账降级（八章「先骨架后内容」的面板语义）：模式账为空 →
+/// 面板视图走降级形态（显示「启动中」而非全零占比——零数据不虚报
+/// 满效）；首条采样落地后自动升级为完整视图（骨架→内容的边界显性）。
+pub enum PanelState {
+    /// 骨架（账空——启动中）。
+    Skeleton,
+    /// 完整视图（有账）。
+    Full(PanelView),
+}
+
+pub struct PanelAggregator2;
+
+impl PanelAggregator2 {
+    /// 状态判定：空账 → 骨架；有账 → 完整视图。
+    pub fn state(log: &[(u64, GovernorMode)], total_ms: u64, ledger_cap: usize) -> PanelState {
+        if log.is_empty() || total_ms == 0 {
+            PanelState::Skeleton
+        } else {
+            PanelState::Full(PanelAggregator::view(log, total_ms, ledger_cap))
+        }
+    }
+}
+
+/// 深化层十自检（内存审计 / 空账降级）。
+pub fn run_animdegrade_deep10_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F331-333-deep10");
+
+    // 1. 内存估算：100 条 = 3200B（口径钉死）；界内绿。
+    set.add(
+        "memory estimate pinned",
+        MemoryAudit::estimate_bytes(100) == 3200
+            && MemoryAudit::within_budget(100, 4000),
+        "",
+    );
+
+    // 2. 贴线预警带（(3600, 4000] 字节 = 80%~100% 上限）：50 条 1600B
+    //    界内不预警；120 条 3840B 落预警带；500 条 16000B 超上限红
+    //    （不预警——预警带只覆盖贴线未爆段）。
+    set.add(
+        "near limit warning band",
+        !MemoryAudit::near_limit(50, 4000)
+            && MemoryAudit::near_limit(120, 4000)
+            && !MemoryAudit::near_limit(500, 4000),
+        "",
+    );
+
+    // 3. 空账 → 骨架（不虚报全零占比）；有账 → 完整视图。
+    let skeleton = PanelAggregator2::state(&[], 0, 100);
+    let log = vec![(0u64, GovernorMode::Full), (500, GovernorMode::Budget)];
+    let full = PanelAggregator2::state(&log, 1000, 100);
+    set.add(
+        "skeleton then full",
+        matches!(skeleton, PanelState::Skeleton)
+            && matches!(full, PanelState::Full(ref v) if v.current_mode == GovernorMode::Budget),
+        "",
+    );
+
+    // 4. 首条采样落地即升级（骨架→内容边界显性）。
+    let first = PanelAggregator2::state(&[(0u64, GovernorMode::Full)], 100, 100);
+    set.add(
+        "first sample upgrades",
+        matches!(first, PanelState::Full(ref v) if v.heartbeat_ok),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn memory_zero_entries_zero_bytes() {
+        assert_eq!(MemoryAudit::estimate_bytes(0), 0);
+        assert!(MemoryAudit::within_budget(0, 100));
+    }
+
+    #[test]
+    fn budget_tiny_cap_still_works() {
+        // 极小上限（<10B）——余量计算下界（cap/10=0）不回绕。
+        assert!(MemoryAudit::within_budget(0, 8));
+        assert!(!MemoryAudit::within_budget(1, 8), "1 条 32B 超 8B 上限——超限红");
+    }
+
+    #[test]
+    fn skeleton_becomes_full_at_first_sample() {
+        let mut log: alloc::vec::Vec<(u64, GovernorMode)> = alloc::vec::Vec::new();
+        assert!(matches!(PanelAggregator2::state(&log, 0, 100), PanelState::Skeleton));
+        log.push((0, GovernorMode::Full));
+        assert!(matches!(PanelAggregator2::state(&log, 100, 100), PanelState::Full(_)));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 深化层九 · 降级面板聚合视图 + 调速器事件流
 // ---------------------------------------------------------------------------
 

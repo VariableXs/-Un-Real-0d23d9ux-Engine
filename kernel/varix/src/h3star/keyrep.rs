@@ -341,3 +341,108 @@ mod tests {
         assert_eq!(DELAY_STEPS_MS, [250, 500, 750, 1000]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 重复率统计（键盘重复的健康观测面）
+// ---------------------------------------------------------------------------
+
+/// 重复率统计（键盘重复功能的健康观测面）：逐秒按键账 → 重复次数
+/// （按住不放的自动重复）/ 总按键 = 重复率‰——重复率异常高 = 键卡
+/// 键或设置过敏感（用户可感知的运营数据，不是静默行为）。
+#[derive(Default)]
+pub struct RepeatStats {
+    /// (秒桶, 总按键, 其中重复)。
+    pub buckets: Vec<(u64, u32, u32)>,
+}
+
+impl RepeatStats {
+    pub fn observe(&mut self, sec: u64, is_auto_repeat: bool) {
+        match self.buckets.iter_mut().find(|(s, _, _)| *s == sec) {
+            Some((_, total, reps)) => {
+                *total += 1;
+                if is_auto_repeat {
+                    *reps += 1;
+                }
+            }
+            None => {
+                self.buckets
+                    .push((sec, 1, u32::from(is_auto_repeat)));
+            }
+        }
+    }
+
+    /// 全账重复率‰（总口径）。
+    pub fn rate_permille(&self) -> u32 {
+        let total: u32 = self.buckets.iter().map(|(_, t, _)| t).sum();
+        let reps: u32 = self.buckets.iter().map(|(_, _, r)| r).sum();
+        if total == 0 {
+            return 0;
+        }
+        (reps * 1000 / total) as u32
+    }
+
+    /// 异常秒桶清单（重复率 >800‰ 的秒——键卡键指纹直出）。
+    pub fn hot_buckets(&self) -> Vec<u64> {
+        self.buckets
+            .iter()
+            .filter(|(_, t, r)| *t >= 10 && r * 1000 > *t * 800)
+            .map(|(s, _, _)| *s)
+            .collect()
+    }
+}
+
+/// 深化层三自检（重复率统计）。
+pub fn run_keyrep_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F319b-deep3");
+
+    // 1. 正常打字：重复率低、无异常桶。
+    let mut st = RepeatStats::default();
+    for _ in 0..20u64 {
+        st.observe(0, false);
+    }
+    st.observe(0, true); // 1/21 重复。
+    set.add(
+        "normal typing low rate",
+        st.rate_permille() == 47 && st.hot_buckets().is_empty(),
+        "",
+    );
+
+    // 2. 键卡键：单秒 30 按全重复 → 异常桶直出。
+    let mut st2 = RepeatStats::default();
+    for _ in 0..30 {
+        st2.observe(5, true);
+    }
+    set.add(
+        "stuck key hot bucket",
+        st2.rate_permille() == 1000 && st2.hot_buckets() == alloc::vec![5],
+        "",
+    );
+
+    // 3. 空账零率（不虚报）。
+    let empty = RepeatStats::default();
+    set.add("empty zero rate", empty.rate_permille() == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn observe_creates_bucket_on_demand() {
+        let mut st = RepeatStats::default();
+        st.observe(42, false);
+        assert_eq!(st.buckets, vec![(42, 1, 0)]);
+    }
+
+    #[test]
+    fn hot_bucket_needs_volume() {
+        // 样本 <10 的秒桶不判异常（小样本不虚报键卡键）。
+        let mut st = RepeatStats::default();
+        for _ in 0..5 {
+            st.observe(1, true);
+        }
+        assert!(st.hot_buckets().is_empty());
+    }
+}

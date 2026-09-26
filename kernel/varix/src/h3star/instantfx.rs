@@ -474,3 +474,109 @@ mod deep2_tests {
         assert_eq!(q.pending[0].1, 3);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 延迟项恢复时长账（「重启后生效」要多久才真生效）
+// ---------------------------------------------------------------------------
+
+/// 延迟项恢复时长账（徽标语义的兑现面）：延迟项在重启后的实际生效
+/// 耗时逐次记账 (时刻, 项名, 耗时 ms)——p95 判定（延迟项生效 ≤2s
+/// 判线，与唤醒全链同口径）；样本不足不虚报；「放弃的条目」不参与
+/// 统计（反悔的不算数）。
+pub struct RestoreDurationBook {
+    /// (时刻, 项名, 耗时 ms)。
+    pub samples: Vec<(u64, &'static str, u64)>,
+    /// 已放弃条目名（不参与统计）。
+    pub discarded: Vec<&'static str>,
+}
+
+/// 延迟项生效判线（ms——与 F319 唤醒全链 <2s 同口径）。
+pub const RESTORE_LIMIT_MS: u64 = 2_000;
+
+impl RestoreDurationBook {
+    pub fn new() -> RestoreDurationBook {
+        RestoreDurationBook { samples: Vec::new(), discarded: Vec::new() }
+    }
+
+    pub fn record(&mut self, at_ms: u64, name: &'static str, duration_ms: u64) -> bool {
+        if self.discarded.contains(&name) {
+            return false; // 反悔条目不参与统计。
+        }
+        self.samples.push((at_ms, name, duration_ms));
+        true
+    }
+
+    pub fn discard(&mut self, name: &'static str) {
+        if !self.discarded.contains(&name) {
+            self.discarded.push(name);
+        }
+    }
+
+    /// p95 生效耗时（最近邻口径）。
+    pub fn p95_ms(&self) -> u64 {
+        let mut v: Vec<u64> = self.samples.iter().map(|(_, _, d)| *d).collect();
+        v.sort_unstable();
+        super::hbase::percentile(&v, 950)
+    }
+
+    /// 判定：样本满 10 次且 p95 ≤ 2s（不足不虚报）。
+    pub fn within_limit(&self) -> bool {
+        self.samples.len() >= 10 && self.p95_ms() <= RESTORE_LIMIT_MS
+    }
+}
+
+impl Default for RestoreDurationBook {
+    fn default() -> RestoreDurationBook {
+        RestoreDurationBook::new()
+    }
+}
+
+/// 深化层三自检（恢复时长账）。
+pub fn run_instantfx_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F303-deep3");
+
+    // 1. 样本不足不虚报（诚实失败面）。
+    let mut b = RestoreDurationBook::new();
+    for i in 0..5u64 {
+        b.record(i, "缩放", 1500);
+    }
+    set.add("undersampled not green", !b.within_limit(), "");
+
+    // 2. 满样本 p95 ≤2s 绿；一枚超线样本落 p95 位即红（10 样本诚实口径）。
+    let mut b2 = RestoreDurationBook::new();
+    for i in 0..10u64 {
+        b2.record(i, "缩放", 1800);
+    }
+    let green = b2.within_limit();
+    b2.record(100, "缩放", 2500);
+    set.add(
+        "restore p95 gate",
+        green && !b2.within_limit() && b2.p95_ms() == 2500,
+        "",
+    );
+
+    // 3. 反悔条目不参与统计（record 拒绝——放弃的不算数）。
+    b2.discard("语言");
+    let rejected = b2.record(200, "语言", 100);
+    set.add("discarded not counted", !rejected, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn restore_limit_pinned() {
+        assert_eq!(RESTORE_LIMIT_MS, 2_000, "延迟项生效 2s 判线钉死");
+    }
+
+    #[test]
+    fn discard_idempotent() {
+        let mut b = RestoreDurationBook::new();
+        b.discard("语言");
+        b.discard("语言");
+        assert_eq!(b.discarded.len(), 1, "重复放弃不重复登记");
+    }
+}
