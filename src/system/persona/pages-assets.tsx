@@ -22,6 +22,7 @@ import {
 import { iconInvalidationBus, auditSvgAsset } from "./icon-engine";
 import { renderPlan, evaluateCurAniCompatibility } from "./pointer-engine";
 import { AtlasLabCard, CursorPhysicsCard } from "./pages-lab";
+import { AssetPipelineCard } from "./pages-lab2";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F154 壁纸每日一换 ----------
@@ -337,6 +338,7 @@ export function PointerPage(): React.ReactNode {
         </Row>
       </Card>
       <CursorPhysicsCard />
+      <AssetPipelineCard />
     </div>
   );
 }

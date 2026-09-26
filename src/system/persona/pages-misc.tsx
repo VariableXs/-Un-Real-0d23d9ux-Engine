@@ -22,6 +22,7 @@ import { parseComboFromEvent, classifyConflict, exportKeymap, importKeymap, buil
 import { feedUsageFromRecentEngine, restorePointPathReverify } from "./integrations";
 import { loadTokenTable } from "./tokens";
 import { CtxNavCard, ChordLabCard, ReportLabCard } from "./pages-lab";
+import { UsageRankCard, CheatSheetCard, CopyAuditCard, ShardRunnerCard } from "./pages-lab2";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -144,6 +145,7 @@ function AssembledMenuPreviewCard(): React.ReactNode {
         <span />
       </Row>
     </Card>
+    <UsageRankCard />
     <CtxNavCard />
     </>
   );
@@ -344,6 +346,7 @@ export function ShortcutsPage(): React.ReactNode {
       </Row>
       <KeymapExchangeRow overrides={overrides} onMsg={setMsg} />
       <ChordLabCard />
+      <CheatSheetCard />
     </div>
   );
 }
@@ -467,6 +470,8 @@ export function VerdictPage(): React.ReactNode {
       </Row>
       <DualPathRow />
       <ReportLabCard />
+      <ShardRunnerCard />
+      <CopyAuditCard />
     </div>
   );
 }

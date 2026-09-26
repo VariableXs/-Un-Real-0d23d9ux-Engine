@@ -31,6 +31,7 @@ import {
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, ColorChip, MiniDesktop, useT, usePersonaSection } from "./ui";
 import type { LaneT } from "./labels";
 import { PaletteLabCard, SchemaLabCard, SolarLabCard } from "./pages-lab";
+import { AccentRampCard, DirtyRectCard } from "./pages-lab2";
 
 const GROUP_ZH: Record<ColorGroup, Parameters<LaneT>[0]> = {
   bg: "groupBg", fg: "groupFg", brand: "groupBrand", state: "groupState", line: "groupLine", misc: "groupMisc",
@@ -185,6 +186,7 @@ export function TokensPage(): React.ReactNode {
       </Card>
       <SchemaLabCard />
       <PaletteLabCard />
+      <AccentRampCard />
     </div>
   );
 }
@@ -308,6 +310,7 @@ export function PreviewPage(): React.ReactNode {
           <span />
         </Row>
       </Card>
+      <DirtyRectCard />
     </div>
   );
 }
