@@ -517,6 +517,33 @@ pub fn ipc_frame_parse(frame: &str) -> Result<(u32, u32, Option<&str>), &'static
     Ok((rate, pitch, Some(text)))
 }
 
+// ---------------------------------------------------------------------------
+// 深化批次 v7 · 朗读高亮双视觉（主册「被读元素描边——与焦点环区分的
+// 双视觉」：焦点环标结构焦点、朗读描边标朗读中元素，两套并存不互替）
+// ---------------------------------------------------------------------------
+
+/// 朗读高亮描边宽度（3px——比焦点环加粗态 2px 更宽一层，宽度即视觉
+/// 层级：结构焦点 < 朗读焦点）。
+pub const HIGHLIGHT_OUTLINE_PX: u32 = 3;
+/// 朗读高亮描边色（青蓝——焦点环走主题色/金色系，色相区分不靠明度）。
+pub const HIGHLIGHT_OUTLINE_RGB: (u8, u8, u8) = (0x2E, 0xC7, 0xFF);
+
+/// 朗读高亮样式裁决：仅朗读进行中显示（静默即消失——浮层纪律同源：
+/// 出现了必须有明确消失路径）；与焦点环撞色拒绝（双视觉必须可区分，
+/// 主题定制把两者调成同色 = 高亮失明，宁可不显示也不骗人）。
+pub fn highlight_outline(
+    speaking: bool,
+    focus_ring_rgb: (u8, u8, u8),
+) -> Option<((u8, u8, u8), u32)> {
+    if !speaking {
+        return None;
+    }
+    if focus_ring_rgb == HIGHLIGHT_OUTLINE_RGB {
+        return None;
+    }
+    Some((HIGHLIGHT_OUTLINE_RGB, HIGHLIGHT_OUTLINE_PX))
+}
+
 pub fn run_narrator_checks() -> CheckSet {
     let mut set = CheckSet::new("F112-narrator");
 
@@ -687,6 +714,19 @@ pub fn run_narrator_checks() -> CheckSet {
     let normal = n.pitch_mili() == 1_000;
     set.add("pitch clamp + default registered", clamped && normal && PITCH_DEFAULT_MILI == 1000, "");
 
+    // 16. 朗读高亮双视觉（深化 v7）：朗读中出描边且与焦点环不同色不同
+    //     宽；静默即消失；撞色拒绝（双视觉可区分是显示前提）。
+    let hl = highlight_outline(true, (0xFF, 0xD7, 0x00));
+    let hl_ok = hl == Some((HIGHLIGHT_OUTLINE_RGB, HIGHLIGHT_OUTLINE_PX));
+    let silent_none = highlight_outline(false, (0xFF, 0xD7, 0x00)).is_none();
+    let clash_none = highlight_outline(true, HIGHLIGHT_OUTLINE_RGB).is_none();
+    let wider_than_focus = HIGHLIGHT_OUTLINE_PX > FOCUS_RING_BOLD_PX;
+    set.add(
+        "narration highlight dual-visual distinct",
+        hl_ok && silent_none && clash_none && wider_than_focus,
+        "",
+    );
+
     set
 }
 
@@ -740,5 +780,15 @@ mod tests {
         let _ = n.read_focus(&Ctrl::slider("音量", 40), 0);
         assert_eq!(n.queue().len(), 1);
         assert_eq!(n.health(), TtsHealth::Ok);
+    }
+
+    #[test]
+    fn f112_highlight_constant_distinct_from_ring() {
+        // 常量层双视觉：朗读描边色既不是焦点环金也不是纯黑纯白——色相
+        // 独立，色弱用户靠宽度差（3px vs 2px）仍可辨。
+        assert_ne!(HIGHLIGHT_OUTLINE_RGB, (0xFF, 0xD7, 0x00));
+        assert_ne!(HIGHLIGHT_OUTLINE_RGB, (0x00, 0x00, 0x00));
+        assert_ne!(HIGHLIGHT_OUTLINE_RGB, (0xFF, 0xFF, 0xFF));
+        assert_eq!(HIGHLIGHT_OUTLINE_PX, 3);
     }
 }

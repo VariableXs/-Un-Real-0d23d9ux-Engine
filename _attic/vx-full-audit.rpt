@@ -1,0 +1,11 @@
+[kernel/varix] MATCH
+[limine.conf] MATCH
+[wallpaper.rgb565] MATCH
+[BOOTX64.EFI(信息性)] MATCH
+repo cfg: {"default_entry": "variable", "timeout_sec": 5, "show_menu": true, "last_boot": "variable", "handoff": true, "handoff_target": "usb", "usb_windows_esp_guid": "{636786cb-e967-49f6-b0df-7608909d1f11}"}
+[boot-select.json/ESP] SAME-AS-REPO mtime=2026-09-22 23:55:28
+[boot-select.json/SHARED] SAME-AS-REPO mtime=2026-09-22 23:55:28
+[X:\Variable\Variable.exe] MATCH
+ESP root: ['EFI', 'ESP-MANIFEST.json', 'System Volume Information', 'boot', 'boot-select.json', 'initrd.img', 'kernel', 'limine-bios.sys', 'limine.conf', 'limine.conf.bak', 'wallpaper.rgb565']
+ESP kernel dir: ['varix']
+VX-FULL-AUDIT-DONE

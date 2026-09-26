@@ -1,0 +1,30 @@
+[assign T:] rc=0
+Microsoft DiskPart 版本 10.0.26100.1150
+
+Copyright (C) Microsoft Corporation.
+在计算机上: VARIABLE
+
+磁盘 1 现在是所选磁盘。
+
+分区 4 现在是所选分区。
+
+DiskPart 成功地分配了驱动器号或装载点。
+[vol check] rc=0
+驱动器 T 中的卷是 SHARED
+ 卷的序列号是 AC76-CE26
+write cfg: ok (shutil)
+hash repo =3485967aa176d8bc8f56712b1c7839cf46bea4bb6c18af074d334494fc5ea72b
+hash shared=3485967aa176d8bc8f56712b1c7839cf46bea4bb6c18af074d334494fc5ea72b
+match=True
+[remove T:] rc=0
+Microsoft DiskPart 版本 10.0.26100.1150
+
+Copyright (C) Microsoft Corporation.
+在计算机上: VARIABLE
+
+磁盘 1 现在是所选磁盘。
+
+分区 4 现在是所选分区。
+
+DiskPart 成功地删除了驱动器号或装载点。
+SHARED-CFG-DONE

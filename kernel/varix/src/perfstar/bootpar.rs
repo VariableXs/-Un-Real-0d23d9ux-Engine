@@ -285,7 +285,13 @@ pub fn run_bootpar_checks() -> CheckSet {
     cs.add("segment_deviation", segment_deviation_permille(2_100, SEGMENT_KERNEL_MS) == 0 && segment_deviation_permille(2_300, SEGMENT_KERNEL_MS) < 100, "");
     // 9) 锁等待归因入时间线（并行竞争）。
     cs.add("lock_wait_attributed", tl.lock_waits >= 1, "");
-    cs
+    // 深化件（深化批次三）：依赖矩阵（真依赖 vs 惯性串行）/ 逐链超时策略
+    // （USB 宽限·存储严格）/ 失败传播与跳过标注 / 锁等待归因账 / 动画 80%
+    // 起播点 / 甘特图并行段时长与串行基准 / 8 秒预算逐段偏差判定。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::bootpar_ext::run_checks()),
+        crate::perfstar::mech_dag::run_checks(),
+    )
 }
 
 #[cfg(test)]

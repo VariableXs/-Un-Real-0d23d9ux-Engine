@@ -495,7 +495,26 @@ pub fn run_frameledger_checks() -> CheckSet {
     );
     // 9) 自适应降采样保 60s：1000fps → ratio=10（ceil(60_000/6553)）。
     cs.add("adaptive_ratio_1000fps", FrameLedger::ratio_for_fps(1000) == 10 && FrameLedger::ratio_for_fps(80) == 1, "");
-    cs
+    // 深化件（深化批次三）：呈现面数据契约 + 账本落盘格式 + 降采样回落链 +
+    // 打点成对自检——主册【交互设计】【数据与存储】【设计细节】尚未落地为
+    // 可测接口的部分。
+    // 通用十二查登记册（分工书通用验收标准第 3/4/5/6/7/8 查）挂 F041——
+    // 账本是 B 域共同前提，十二查是全域通用纪律，故由本域合并注册。
+    // 深化批次四：确定性仿真底盘（mech_sim）与落盘压缩编码面（mech_deflate）
+    // 挂 F041——账本数据的可信采集与落盘体积同为本域判据面。
+    CheckSet::merge(
+        CheckSet::merge(
+            CheckSet::merge(
+                CheckSet::merge(cs, crate::perfstar::frameledger_ext::run_checks()),
+                crate::perfstar::k1walk::run_checks(),
+            ),
+            crate::perfstar::k1scene::run_checks_a(),
+        ),
+        CheckSet::merge(
+            crate::perfstar::mech_sim::run_checks(),
+            crate::perfstar::mech_deflate::run_checks(),
+        ),
+    )
 }
 
 // ---------------------------------------------------------------------------

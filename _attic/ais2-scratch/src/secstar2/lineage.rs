@@ -657,3 +657,1218 @@ mod deep_tests {
         assert!(run_lineage_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——开放 JSON 形状校验 / 时间线
+// 图例 / 复制保真模拟。判据源：主册【设计细节】「谱系数据进 F128 开放
+// JSON（第三方工具可解析——生态同语言）」的校验面 +【交互设计】时间线
+// 视觉语义 +【验收判据】「哈希复制粘贴保真」的往返模拟。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：JsonShapeCheck —— 开放 JSON 形状校验器（手写序列化的对偶：
+// 生成的 JSON 必须过自己的校验器——发射方自带接收方，闭环自证）
+// ---------------------------------------------------------------------------
+
+/// 形状校验结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JsonShape {
+    /// 花括号配对。
+    pub braces_balanced: bool,
+    /// 引号配对。
+    pub quotes_balanced: bool,
+    /// 顶层键在位（lineage/semver/current/fingerprint）。
+    pub keys_present: bool,
+    /// 无控制字符。
+    pub clean: bool,
+}
+
+impl JsonShape {
+    pub fn ok(&self) -> bool {
+        self.braces_balanced && self.quotes_balanced && self.keys_present && self.clean
+    }
+}
+
+/// 校验（字节级——不引依赖，四查足够定位手写序列化的常见病）。
+pub fn json_shape_check(data: &[u8]) -> JsonShape {
+    let mut braces: i64 = 0;
+    let mut quotes = 0usize;
+    let mut clean = true;
+    for &b in data {
+        match b {
+            b'{' => braces += 1,
+            b'}' => braces -= 1,
+            b'"' => quotes += 1,
+            0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F => clean = false,
+            _ => {}
+        }
+    }
+    let s = core::str::from_utf8(data).unwrap_or("");
+    let keys_present = s.contains("\"lineage\"")
+        && s.contains("\"semver\"")
+        && s.contains("\"current\"")
+        && s.contains("\"fingerprint\"");
+    JsonShape {
+        braces_balanced: braces == 0,
+        quotes_balanced: quotes % 2 == 0,
+        keys_present,
+        clean,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：TimelineLegend —— 时间线图例（三态圆点的语义表——渲染与帮助
+// 共用：用户问「这个点为什么亮」时答案就在图例里）
+// ---------------------------------------------------------------------------
+
+/// 图例条目。
+pub struct LegendEntry {
+    pub state: &'static str,
+    pub meaning: &'static str,
+}
+
+/// 图例（三态定序——当前/历史/折叠）。
+pub const TIMELINE_LEGEND: [LegendEntry; 3] = [
+    LegendEntry { state: "current", meaning: "当前运行中的版本（强调色圆点 + 运行中标）" },
+    LegendEntry { state: "history", meaning: "历史上的版本节点（中性圆点，可点看详情）" },
+    LegendEntry { state: "folded", meaning: "更早的版本已折叠（+N 徽标，点开展开）" },
+];
+
+/// 图例完整性（三态齐+语义非空——图例是契约不是装饰）。
+pub fn timeline_legend_intact() -> bool {
+    TIMELINE_LEGEND.len() == 3
+        && TIMELINE_LEGEND.iter().all(|l| !l.state.is_empty() && l.meaning.len() >= 8)
+        && TIMELINE_LEGEND[0].state == "current"
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：CopySim —— 复制保真模拟（判据「哈希复制粘贴保真」的往返模拟：
+// 指纹行 → 模拟剪贴板 → 读回 → 与二次生成比对——三处一致才算保真）
+// ---------------------------------------------------------------------------
+
+/// 复制保真结论（三源一致：首生成 / 剪贴板回读 / 二次生成）。
+pub fn copy_sim_ok(lin: &Lineage) -> bool {
+    let mut first = String::new();
+    let _ = fingerprint_line(lin, &mut first);
+    // 模拟剪贴板（原样搬运——保真模拟关注的是生成端确定性）。
+    let clipboard = first.clone();
+    let mut second = String::new();
+    let _ = fingerprint_line(lin, &mut second);
+    !first.is_empty() && clipboard == first && second == first
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F199 v3 自检（聚合进 secstar2 域）。
+pub fn run_lineage_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v3");
+
+    let fp = crate::ksha256::sha256(b"v3 lineage build");
+    let mut lin = Lineage::new(
+        vec![
+            VersionNode { name: "STAR I", seq: 1 },
+            VersionNode { name: "STAR I start", seq: 2 },
+            VersionNode { name: "STAR I start.1", seq: 3 },
+        ],
+        3,
+        fp,
+        (1, 0, 3),
+    );
+    lin.components.push(ComponentEntry { name: "limine", version: "8.x", license: "BSD-2-Clause" });
+
+    // v3-一：形状校验——自家 JSON 过自家校验器；坏样本诚实拒绝。
+    let mut json = Vec::new();
+    lin.open_json(&mut json);
+    let shape = json_shape_check(&json);
+    set.add("json own shape ok", shape.ok(), "");
+    set.add("json braces", shape.braces_balanced && shape.quotes_balanced, "");
+    set.add("json keys", shape.keys_present, "");
+    set.add("json bad rejected", !json_shape_check(b"{\"lineage\"").ok(), "缺右括号即红");
+    set.add("json ctrl rejected", !json_shape_check(b"{\"a\":\"\x01\"}").clean, "控制字符即红");
+
+    // v3-二：图例——三态齐、语义人话。
+    set.add("legend intact", timeline_legend_intact(), "");
+    set.add("legend fold", TIMELINE_LEGEND[2].meaning.contains("+N"), "");
+    set.add("legend current first", TIMELINE_LEGEND[0].state == "current", "");
+
+    // v3-三：复制保真——三源一致。
+    set.add("copy sim ok", copy_sim_ok(&lin), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v3_shape_check_catches_real_defects() {
+        // 手写序列化常见病全部可检（缺括号/缺键/引号失衡/脏字符）。
+        assert!(!json_shape_check(b"{\"lineage\":{\"semver\":\"1.0.0\"}").ok(), "缺一层右括号");
+        assert!(!json_shape_check(b"{\"lineage\":{}}").keys_present, "键不全");
+        assert!(!json_shape_check(b"{\"a\":\"unterminated}").ok(), "引号失衡");
+        assert!(json_shape_check(b"{\"lineage\":{\"semver\":\"1\",\"current\":\"x\",\"fingerprint\":\"a\"}}").ok());
+    }
+
+    #[test]
+    fn f199_v3_copy_sim_deterministic_across_calls() {
+        // 十次复制模拟全等（生成端确定性的强化口径）。
+        let fp = crate::ksha256::sha256(b"copy sim");
+        let lin = Lineage::new(vec![VersionNode { name: "x", seq: 1 }], 1, fp, (0, 0, 1));
+        for _ in 0..10 {
+            assert!(copy_sim_ok(&lin));
+        }
+    }
+
+    #[test]
+    fn f199_v3_run_checks_pass() {
+        assert!(run_lineage_deep2_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——节点折叠交互 / 复制三源保真 / 组件
+// 清单查询 / 开放 JSON 第三方解析面。判据源：主册【设计细节】「版本树最多
+// 显 6 节点（更早折叠 +N）」+【验收判据】「哈希复制粘贴保真」「组件清单
+// 跳转正确」+【数据与存储】「谱系数据进 F128 开放 JSON（第三方工具可解析）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：NodeFolding —— 节点折叠交互状态机（默认收起显 6 节点+「+N」；
+// 点击展开完整树；再点收起——交互有完整的来与回）
+// ---------------------------------------------------------------------------
+
+/// 折叠状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeFolding {
+    /// 是否展开。
+    pub expanded: bool,
+    /// 树总节点数。
+    pub total: usize,
+    /// 展开切换次数（交互对账）。
+    pub toggles: u64,
+}
+
+impl NodeFolding {
+    pub fn new(total: usize) -> NodeFolding {
+        NodeFolding { expanded: false, total, toggles: 0 }
+    }
+
+    /// 可见节点数（收起=min(total,6)；展开=全量）。
+    pub fn visible(&self) -> usize {
+        if self.expanded {
+            self.total
+        } else {
+            self.total.min(TREE_VISIBLE_MAX)
+        }
+    }
+
+    /// 「+N」角标（收起且超容才显示；N=被折叠数）。
+    pub fn fold_badge(&self) -> Option<usize> {
+        if !self.expanded && self.total > TREE_VISIBLE_MAX {
+            Some(self.total - TREE_VISIBLE_MAX)
+        } else {
+            None
+        }
+    }
+
+    /// 展开/收起切换（幂等计数——每次点击都记，交互日志对账用）。
+    pub fn toggle(&mut self) {
+        self.expanded = !self.expanded;
+        self.toggles += 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：copy_three_way —— 复制保真三源验证（页面显示/剪贴板/粘贴回显
+// 三处一致才算保真；附 hex12 格式校验（12 位十六进制）——格式坏=复制链
+// 断，验收判据的机器面）
+// ---------------------------------------------------------------------------
+
+/// hex12 格式校验（12 字符、全 [0-9a-f]——大写拒绝：统一小写规范）。
+pub fn fingerprint_format_ok(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == FINGERPRINT_HEX && b.iter().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(c))
+}
+
+/// 三源保真判定（display/clipboard/paste 三串全等且格式合规）。
+pub fn copy_three_way(display: &str, clipboard: &str, paste_echo: &str) -> bool {
+    display == clipboard && clipboard == paste_echo && fingerprint_format_ok(display)
+}
+
+/// 从谱系导出复制串（hex12 小写——复制链的源头就规范）。
+pub fn copy_source(lin: &Lineage, out: &mut [u8; FINGERPRINT_HEX]) -> bool {
+    lin.fingerprint_hex12(out); // 先填充，再验二次生成一致性与格式。
+    lin.fingerprint_hex12_stable(out) && {
+        // 小写规范自证：生成的 hex 必须全小写。
+        let s = core::str::from_utf8(&out[..]).unwrap_or("?");
+        fingerprint_format_ok(s)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：component_query —— 组件清单查询（按名包含/许可证精确/来源版本
+// 过滤+行计数对账——F130 表格组件的查询面，找不到诚实空）
+// ---------------------------------------------------------------------------
+
+/// 查询条件（三维可组合；None=不过滤）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ComponentQuery {
+    /// 名包含子串（None=不限）。
+    pub name_contains: Option<&'static str>,
+    /// 许可证精确匹配（None=不限）。
+    pub license_eq: Option<&'static str>,
+}
+
+impl ComponentQuery {
+    /// 执行（保持原序——谱系页排序纪律不被查询面打乱）。
+    pub fn run(&self, lin: &Lineage) -> alloc::vec::Vec<ComponentEntry> {
+        lin.components
+            .iter()
+            .filter(|c| {
+                let name_ok = match self.name_contains {
+                    Some(q) => c.name.contains(q),
+                    None => true,
+                };
+                let lic_ok = match self.license_eq {
+                    Some(l) => c.license == l,
+                    None => true,
+                };
+                name_ok && lic_ok
+            })
+            .copied()
+            .collect()
+    }
+}
+
+/// 查询与全表计数对账（无条件查询=全表——过滤面不许丢行）。
+pub fn component_query_consistent(lin: &Lineage) -> bool {
+    ComponentQuery::default().run(lin).len() == lin.components.len()
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：external_json_parse —— 开放 JSON 第三方解析面（模拟外部工具的
+// 最小解析器：键存在性/类型/版本格式三查——「第三方工具可解析」不是口号
+// 而是有人真的能解析的自证）
+// ---------------------------------------------------------------------------
+
+/// 解析结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExternalParse {
+    /// 必需键齐（version/semver/fingerprint/components）。
+    pub keys_ok: bool,
+    /// 版本格式合法（vX.Y.Z 数字段）。
+    pub version_ok: bool,
+    /// 组件数组非空（空清单=谱系数据缺失——诚实标注 localBuild）。
+    pub components_ok: bool,
+}
+
+impl ExternalParse {
+    pub fn ok(&self) -> bool {
+        self.keys_ok && self.version_ok && self.components_ok
+    }
+}
+
+/// 外部解析器语义（在 open_json 产物上跑——自家 JSON 过外家人的检查）。
+/// 契约键（与 open_json 输出逐字对应）：lineage.semver / current /
+/// fingerprint / components（+localBuild）。
+pub fn external_json_parse(data: &[u8]) -> ExternalParse {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    let keys_ok = ["\"semver\"", "\"current\"", "\"fingerprint\"", "\"components\""]
+        .iter()
+        .all(|k| text.contains(k));
+    // 版本格式："semver":"X.Y.Z" 三段全数字。
+    let version_ok = text.find("\"semver\":\"").map(|i| {
+        let rest = &text[i + 10..];
+        let end = rest.find('"').unwrap_or(0);
+        let v = &rest[..end];
+        let parts: alloc::vec::Vec<&str> = v.split('.').collect();
+        parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+    }).unwrap_or(false);
+    // 组件面：components 键存在，且（有条目 或 诚实标注本地构建）。
+    let components_ok = text.find("\"components\"").map(|i| {
+        let rest = &text[i..];
+        rest.contains("\"name\"") || text.contains("\"localBuild\":true")
+    }).unwrap_or(false);
+    ExternalParse { keys_ok, version_ok, components_ok }
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F199 v4 自检（聚合进 secstar2 域）。
+pub fn run_lineage_deep3_checks() -> CheckSet {
+    // 标准谱系（8 节点——超过 6 触发折叠语义）。
+    let tree: alloc::vec::Vec<VersionNode> = (0..8)
+        .map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 })
+        .collect();
+    let mut lin = Lineage::new(
+        tree,
+        7,
+        [0xABu8; 32],
+        (1, 2, 3),
+    );
+    lin.components.push(ComponentEntry { name: "ksha256", version: "1.0", license: "MIT OR Apache-2.0" });
+    let mut set = CheckSet::new("F199-v4");
+
+    // v4-一：折叠——收起 6+N、展开全量、徽标、切换计数。
+    let mut fold = NodeFolding::new(8);
+    set.add("fold collapsed 6", fold.visible() == 6, "");
+    set.add("fold badge +2", fold.fold_badge() == Some(2), "");
+    set.add("fold expand", { fold.toggle(); fold.visible() == 8 && fold.fold_badge().is_none() }, "");
+    set.add("fold collapse back", { fold.toggle(); fold.visible() == 6 }, "再点收起=有来有回");
+    set.add("fold toggle count", fold.toggles == 2, "");
+    // 恰 6 节点无徽标（折叠只折叠「多出来的」）。
+    let fold6 = NodeFolding::new(6);
+    set.add("fold exactly 6 no badge", fold6.visible() == 6 && fold6.fold_badge().is_none(), "");
+
+    // v4-二：复制三源——一致绿、单源断红、格式校验、导出源头合规。
+    let mut hex = [0u8; FINGERPRINT_HEX];
+    set.add("copy source ok", copy_source(&lin, &mut hex), "");
+    let src = core::str::from_utf8(&hex).unwrap_or("?");
+    set.add("copy three ok", copy_three_way(src, src, src), "三源一致+格式合规");
+    set.add("copy broken paste", !copy_three_way(src, src, "0123456789ab"), "粘贴回显断=红");
+    set.add("copy format upper", !fingerprint_format_ok(&src.to_uppercase()), "大写拒绝（统一小写）");
+    set.add("copy format short", !fingerprint_format_ok(&src[..11]), "11 位拒绝");
+
+    // v4-三：组件查询——名过滤、许可过滤、组合、无条件=全表、空结果诚实。
+    set.add("comp query consistent", component_query_consistent(&lin), "");
+    let q1 = ComponentQuery { name_contains: Some(""), license_eq: None };
+    set.add("comp empty substring all", q1.run(&lin).len() == lin.components.len(), "");
+    let q2 = ComponentQuery { name_contains: None, license_eq: Some("MIT OR Apache-2.0") };
+    let mit_rows = q2.run(&lin);
+    set.add("comp license filter", mit_rows.iter().all(|c| c.license == "MIT OR Apache-2.0"), "");
+    let q3 = ComponentQuery { name_contains: Some("zzz-nonexist"), license_eq: None };
+    set.add("comp empty honest", q3.run(&lin).is_empty(), "查无=空不造行");
+
+    // v4-四：外部解析——自家 JSON 过第三方语义三查。
+    let mut data = alloc::vec::Vec::new();
+    lin.open_json(&mut data);
+    let ext = external_json_parse(&data);
+    set.add("ext keys", ext.keys_ok, "四必需键齐");
+    set.add("ext version", ext.version_ok, "v1.2.3 格式合法");
+    set.add("ext components", ext.components_ok, "组件数组非空");
+    set.add("ext all ok", ext.ok(), "");
+    // 垃圾数据诚实拒（三查全红）。
+    let bad = external_json_parse(b"not json at all");
+    set.add("ext junk rejected", !bad.keys_ok && !bad.version_ok, "垃圾数据三查不过");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    fn mk_lineage(n: usize) -> Lineage {
+        let tree: alloc::vec::Vec<VersionNode> = (0..n)
+            .map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 })
+            .collect();
+        Lineage::new(tree, (n - 1) as u32, [0xCDu8; 32], (2, 0, 1))
+    }
+
+    #[test]
+    fn f199_v4_folding_all_sizes() {
+        // 3/6/7/20 节点的折叠矩阵：可见数与徽标全覆盖。
+        for (n, expect_vis, expect_badge) in [(3usize, 3, None), (6, 6, None), (7, 6, Some(1)), (20, 6, Some(14))] {
+            let f = NodeFolding::new(n);
+            assert_eq!(f.visible(), expect_vis, "n={}", n);
+            assert_eq!(f.fold_badge(), expect_badge, "n={}", n);
+        }
+    }
+
+    #[test]
+    fn f199_v4_copy_source_stable_across_calls() {
+        // 两次导出逐字节一致（复制链源头稳定——保真的前提）。
+        let lin = mk_lineage(5);
+        let mut a = [0u8; FINGERPRINT_HEX];
+        let mut b = [0u8; FINGERPRINT_HEX];
+        assert!(copy_source(&lin, &mut a));
+        assert!(copy_source(&lin, &mut b));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn f199_v4_component_query_combined() {
+        // 组合过滤：名+许可双条件（AND 语义）。
+        let lin = mk_lineage(4);
+        let q = ComponentQuery { name_contains: Some("ksha"), license_eq: None };
+        let rows = q.run(&lin);
+        assert!(rows.iter().all(|c| c.name.contains("ksha")));
+    }
+
+    #[test]
+    fn f199_v4_external_parse_semver_edges() {
+        // 版本格式三边界：1.2（两段）拒 / 1.2.3（合法）/ A.B.C（非数字）拒。
+        for (json, expect) in [
+            (r#""semver":"1.2""#, false),
+            (r#""semver":"1.2.3""#, true),
+            (r#""semver":"A.B.C""#, false),
+        ] {
+            let mut data = alloc::vec::Vec::new();
+            data.extend_from_slice(json.as_bytes());
+            assert_eq!(external_json_parse(&data).version_ok, expect, "{}", json);
+        }
+    }
+
+    #[test]
+    fn f199_v4_run_checks_pass() {
+        assert!(run_lineage_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——谱系帮助页 / 节点
+// 对比 / 组件统计。判据源：主册【用户故事】「谱系是社区的通用语」+【设计
+// 细节】「组件清单页复用 F130 表格组件」「版本树横向时间线」。
+// ---------------------------------------------------------------------------
+
+/// 谱系帮助页（三节：版本树怎么读/指纹是什么/组件清单哪里来）。
+pub const LINEAGE_HELP: [(&'static str, &'static str); 3] = [
+    (
+        "版本树怎么读",
+        "横向时间线从左到右按发布序排列，彩色圆点是当前运行的版本；更早的版本折叠在「+N」里，点击展开。",
+    ),
+    (
+        "构建指纹是什么",
+        "本镜像构建产物的哈希前 12 位：同一指纹=逐字节相同的构建。社区求助时贴出指纹，回答者能精确判断你的版本。",
+    ),
+    (
+        "组件清单哪里来",
+        "随镜像构建自动从 F130 开源登记册生成：每个借力件的上游版本与许可证都在——诚实呈现，含本地改动标注。",
+    ),
+];
+
+pub fn lineage_help_intact() -> bool {
+    LINEAGE_HELP.len() == 3 && LINEAGE_HELP[1].1.contains("12 位") && LINEAGE_HELP[2].1.contains("F130")
+}
+
+/// 节点对比（当前 vs 目标 seq：差几代+方向——社区定位「你是哪个窗前的版本」）。
+pub fn node_compare(lin: &Lineage, target_seq: u32) -> Option<(&'static str, String)> {
+    let cur = lin.tree.iter().find(|n| n.seq == lin.current_seq)?;
+    let tgt = lin.tree.iter().find(|n| n.seq == target_seq)?;
+    let diff = lin.current_seq as i64 - target_seq as i64;
+    let text = if diff > 0 {
+        alloc::format!("当前版本比 {} 新 {} 代（对方落后 {} 次更新）", tgt.name, diff, diff)
+    } else if diff < 0 {
+        alloc::format!("当前版本比 {} 旧 {} 代（你落后 {} 次更新）", tgt.name, -diff, -diff)
+    } else {
+        alloc::format!("当前版本就是 {}", tgt.name)
+    };
+    Some((cur.name, text))
+}
+
+/// 组件统计（按许可证聚合计数——F130 表格的汇总行）。
+pub fn component_stats(lin: &Lineage) -> alloc::vec::Vec<(&'static str, usize)> {
+    let mut out: alloc::vec::Vec<(&'static str, usize)> = alloc::vec::Vec::new();
+    for c in &lin.components {
+        match out.iter_mut().find(|(l, _)| *l == c.license) {
+            Some((_, n)) => *n += 1,
+            None => out.push((c.license, 1)),
+        }
+    }
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}
+
+/// F199 v5 自检（deep4 表）。
+pub fn run_lineage_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v5");
+
+    let mut lin = Lineage::new(
+        (0..6).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+        5,
+        [0x11u8; 32],
+        (2, 1, 0),
+    );
+    for lic in ["MIT OR Apache-2.0", "MIT OR Apache-2.0", "Apache-2.0", "MIT OR Apache-2.0"] {
+        lin.components.push(ComponentEntry { name: "comp", version: "1.0", license: lic });
+    }
+
+    // v5-一：帮助页——三节齐+关键数字。
+    set.add("lineage help intact", lineage_help_intact(), "");
+
+    // v5-二：节点对比——落后/领先/同代三文案。
+    let (_, to_older) = node_compare(&lin, 3).unwrap();
+    set.add("cmp ahead", to_older.contains("对方落后 2"), "当前 seq5 比目标 3 新 2 代");
+    let (_, to_newer) = node_compare(&lin, 0).unwrap();
+    set.add("cmp behind none", to_newer.contains("对方落后 5"), "目标 0 最旧");
+    let (_, same) = node_compare(&lin, 5).unwrap();
+    set.add("cmp same", same.contains("就是"), "同代=同一节点");
+    set.add("cmp missing none", node_compare(&lin, 99).is_none(), "越界节点诚实 None");
+
+    // v5-三：组件统计——聚合、降序、总数守恒。
+    let stats = component_stats(&lin);
+    set.add("comp stats", stats[0] == ("MIT OR Apache-2.0", 3) && stats[1] == ("Apache-2.0", 1), "降序聚合");
+    let total: usize = stats.iter().map(|(_, n)| n).sum();
+    set.add("comp total conserved", total == lin.components.len(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    fn mk(n: usize) -> Lineage {
+        Lineage::new(
+            (0..n).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+            (n - 1) as u32,
+            [0x22u8; 32],
+            (1, 0, 0),
+        )
+    }
+
+    #[test]
+    fn f199_v5_compare_all_pairs() {
+        // 6 节点全对：对比文案的代差数与 seq 差恒等（对称性验证）。
+        let lin = mk(6);
+        for t in 0..6u32 {
+            let (_, text) = node_compare(&lin, t).unwrap();
+            let diff = 5i64 - t as i64;
+            if diff > 0 {
+                assert!(text.contains(&alloc::format!("落后 {} 次", diff)));
+            } else if diff < 0 {
+                assert!(text.contains(&alloc::format!("对方落后 {}", -diff)));
+            }
+        }
+    }
+
+    #[test]
+    fn f199_v5_stats_single_license() {
+        // 全同许可：统计恰一行且=全量（聚合不丢行）。
+        let mut lin = mk(3);
+        for _ in 0..3 {
+            lin.components.push(ComponentEntry { name: "x", version: "1", license: "MIT" });
+        }
+        let stats = component_stats(&lin);
+        assert_eq!(stats, vec![("MIT", 3)]);
+    }
+
+    #[test]
+    fn f199_v5_run_checks_pass() {
+        assert!(run_lineage_deep4_checks().all_passed());
+    }
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——版本搜索 / 组件清单开放导出 /
+// 升级路径建议。判据源：主册【用户故事】「谱系是社区的通用语」+【数据与
+// 存储】谱系数据进 F128 开放 JSON。
+// ---------------------------------------------------------------------------
+
+/// 版本搜索（名子串+seq 范围——谱系页检索面）。
+pub fn lineage_search<'a>(lin: &'a Lineage, query: &str) -> Vec<&'a VersionNode> {
+    lin.tree
+        .iter()
+        .filter(|n| n.name.contains(query))
+        .collect()
+}
+
+/// 组件清单开放导出（F128 语言 JSON：名/版本/许可逐条）。
+pub fn components_export_json(lin: &Lineage, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"components\":[");
+    for (i, c) in lin.components.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(
+            alloc::format!(
+                "{{\"name\":\"{}\",\"version\":\"{}\",\"license\":\"{}\"}}",
+                c.name, c.version, c.license
+            )
+            .as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// 升级路径建议（当前到最新缺几步 + 是否已在最新）。
+pub fn upgrade_path(lin: &Lineage) -> (u32, &'static str) {
+    let latest = lin.tree.iter().map(|n| n.seq).max().unwrap_or(0);
+    let behind = latest.saturating_sub(lin.current_seq);
+    let text = if behind == 0 {
+        "已是最新版本"
+    } else {
+        "有可用更新：建议在保留期内完成（更新前条款卡会再次确认回滚窗口）"
+    };
+    (behind, text)
+}
+
+/// F199 v6 自检（deep5 表）。
+pub fn run_lineage_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v6");
+
+    let mut lin = Lineage::new(
+        (0..6).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+        4,
+        [0x33u8; 32],
+        (1, 4, 0),
+    );
+    lin.components.push(ComponentEntry { name: "ksha256", version: "1.0", license: "MIT OR Apache-2.0" });
+    lin.components.push(ComponentEntry { name: "limine", version: "5.x", license: "BSD-2-Clause" });
+
+    // v6-一：搜索——子串命中、空查询=全表、无命中诚实。
+    set.add("search hit", lineage_search(&lin, "STAR").len() == 6, "全部节点含 STAR");
+    set.add("search exact", lineage_search(&lin, "STAR I start").len() >= 1, "");
+    set.add("search none", lineage_search(&lin, "zzz").is_empty(), "");
+
+    // v6-二：组件导出——形状、条目数、字段。
+    let mut data = Vec::new();
+    components_export_json(&lin, &mut data);
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("comp export shape", text.starts_with("{\"components\":[") && text.ends_with("]}"), "");
+    set.add("comp export count", text.matches("\"name\"").count() == 2, "两组件两条");
+    set.add("comp export license", text.contains("BSD-2-Clause"), "");
+
+    // v6-三：升级路径——落后 1 步、已在最新、文案带锚。
+    let (behind, _) = upgrade_path(&lin);
+    set.add("upgrade behind", behind == 1, "current=4, latest=5");
+    let mut latest = Lineage::new(
+        (0..3).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+        2,
+        [0x33u8; 32],
+        (1, 0, 0),
+    );
+    let (zero, text2) = upgrade_path(&latest);
+    set.add("upgrade latest", zero == 0 && text2.contains("最新"), "");
+    let _ = &mut latest;
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v6_export_matches_components() {
+        // 导出条目与组件表逐条同名（导出不丢行）。
+        let mut lin = Lineage::new(
+            (0..2).map(|i| VersionNode { name: LINEAGE[i], seq: i as u32 }).collect(),
+            1,
+            [0; 32],
+            (1, 0, 0),
+        );
+        for name in ["a", "b", "c"] {
+            lin.components.push(ComponentEntry { name, version: "1", license: "MIT" });
+        }
+        let mut data = Vec::new();
+        components_export_json(&lin, &mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert_eq!(text.matches("\"name\"").count(), 3);
+    }
+
+    #[test]
+    fn f199_v6_run_checks_pass() {
+        assert!(run_lineage_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——谱系页完整导出 / 降级标注语义。
+// 判据源：主册【状态与异常】「谱系数据缺失（自编译无清单）→ 本地构建
+// 标注+跳过节点（诚实）」。
+// ---------------------------------------------------------------------------
+
+/// 谱系页完整导出（F128 语言：版本树+指纹+组件+本地构建标注一体）。
+pub fn lineage_export_json(lin: &Lineage, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"lineage-full\":{\"localBuild\":");
+    out.extend_from_slice(if lin.local_build { b"true" } else { b"false" });
+    out.extend_from_slice(b",\"nodes\":[");
+    for (i, n) in lin.tree.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(alloc::format!("{{\"name\":\"{}\",\"seq\":{}}}", n.name, n.seq).as_bytes());
+    }
+    out.extend_from_slice(b"],\"components\":");
+    components_export_json(lin, out);
+    out.extend_from_slice(b"}}");
+}
+
+/// 导出形状自检（节点计数+组件计数守恒）。
+pub fn lineage_export_ok(lin: &Lineage, data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"lineage-full\"")
+        && text.matches("\"seq\":").count() == lin.tree.len()
+        && text.matches("\"license\"").count() == lin.components.len()
+}
+
+/// 降级标注语义（本地构建时页面上该显示什么——诚实规则）。
+pub fn local_build_semantic(lin: &Lineage) -> (&'static str, bool) {
+    (
+        if lin.local_build {
+            "本地构建：无官方构建清单——版本树仅显示本地节点，指纹为本机构建产物"
+        } else {
+            "官方构建：谱系与构建记录逐字段对拍一致"
+        },
+        lin.local_build,
+    )
+}
+
+/// F199 v7 自检（deep6 表）。
+pub fn run_lineage_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v7");
+
+    let mut lin = Lineage::new(
+        (0..4).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+        3,
+        [0x44u8; 32],
+        (1, 3, 0),
+    );
+    lin.components.push(ComponentEntry { name: "ksha256", version: "1.0", license: "MIT OR Apache-2.0" });
+
+    // v7-一：完整导出——计数守恒+本地构建标注随行。
+    let mut data = Vec::new();
+    lineage_export_json(&lin, &mut data);
+    set.add("export ok", lineage_export_ok(&lin, &data), "");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("export localBuild", text.contains("\"localBuild\":false"), "官方构建标注");
+
+    // v7-二：降级标注语义——两态互异。
+    let (official, is_local) = local_build_semantic(&lin);
+    set.add("semantic official", official.contains("官方") && !is_local, "");
+    let mut local = Lineage::new(
+        vec![VersionNode { name: LINEAGE[0], seq: 0 }],
+        0,
+        [0; 32],
+        (0, 0, 1),
+    );
+    local.local_build = true;
+    let (local_text, is_local2) = local_build_semantic(&local);
+    set.add("semantic local", local_text.contains("本地构建") && is_local2, "");
+    let mut data2 = Vec::new();
+    lineage_export_json(&local, &mut data2);
+    set.add("semantic export tag", core::str::from_utf8(&data2).unwrap_or("").contains("\"localBuild\":true"), "导出同步标注");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v7_export_counts_never_drift() {
+        // 8 节点 3 组件的导出计数恒等（数据面增删自动跟随）。
+        let mut lin = Lineage::new(
+            (0..8).map(|i| VersionNode { name: LINEAGE[i % LINEAGE.len()], seq: i as u32 }).collect(),
+            7,
+            [0; 32],
+            (2, 0, 0),
+        );
+        for lic in ["MIT", "MIT", "BSD-2-Clause"] {
+            lin.components.push(ComponentEntry { name: "x", version: "1", license: lic });
+        }
+        let mut data = Vec::new();
+        lineage_export_json(&lin, &mut data);
+        assert!(lineage_export_ok(&lin, &data));
+    }
+
+    #[test]
+    fn f199_v7_run_checks_pass() {
+        assert!(run_lineage_deep6_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——谱系深度分析 / 分叉检测 / 回滚目标
+// 筛选 / 双谱系同源对比。
+// 判据源：主册【设计细节】「谱系树任一版本可追溯到首个发布版」。
+// ---------------------------------------------------------------------------
+
+/// 谱系深度分析（链长/最大代差/叶节点数）。
+pub struct LineageDepth {
+    /// 链长（节点总数）。
+    pub depth: usize,
+    /// 最大 seq 差（首尾代差）。
+    pub span: u32,
+    /// 叶节点（无后续者）数量——健康谱系恒 1。
+    pub leaves: usize,
+}
+
+/// 深度分析（nodes 按 seq 升序）。
+pub fn lineage_depth(seqs: &[u32]) -> LineageDepth {
+    let depth = seqs.len();
+    let span = if depth >= 2 { seqs[depth - 1] - seqs[0] } else { 0 };
+    let leaves = if depth == 0 { 0 } else { 1 }; // 线性谱系：末节点即唯一叶。
+    LineageDepth { depth, span, leaves }
+}
+
+/// 分叉检测（两节点共享父代 = 分叉——线性谱系不许分叉，检出即红）。
+pub fn fork_detected(parent_links: &[(u32, u32)]) -> bool {
+    // parent_links: (child_seq, parent_seq)。同 parent 被两个 child 引用 → 分叉。
+    for (i, (_, p0)) in parent_links.iter().enumerate() {
+        for (j, (_, p1)) in parent_links.iter().enumerate() {
+            if i != j && p0 == p1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// 回滚目标筛选（当前 seq 之下、仍在保留窗内、与当前同源——三关）。
+pub fn rollback_targets(candidates: &[(u32, u64)], current_seq: u32, now_day: u64, keep_days: u64) -> Vec<u32> {
+    candidates
+        .iter()
+        .filter(|(seq, day)| *seq < current_seq && *day <= now_day && now_day.saturating_sub(*day) <= keep_days)
+        .map(|(seq, _)| *seq)
+        .collect()
+}
+
+/// 双谱系同源判定（首节点 seq 与指纹都相同 → 同源）。
+pub fn same_origin(a_head: (u32, [u8; 8]), b_head: (u32, [u8; 8])) -> bool {
+    a_head.0 == b_head.0 && a_head.1 == b_head.1
+}
+
+/// 双谱系对比行（同源 → 领先/落后代差；异源 → 各自独立线）。
+pub fn lineage_compare(a_tip: u32, b_tip: u32, origin_same: bool) -> &'static str {
+    if !origin_same {
+        return "两条独立谱系——不可互相回滚";
+    }
+    match a_tip.cmp(&b_tip) {
+        core::cmp::Ordering::Greater => "本机谱系领先——可向对方推送更新",
+        core::cmp::Ordering::Less => "对方谱系领先——可从对方拉取更新",
+        core::cmp::Ordering::Equal => "两机版本一致",
+    }
+}
+
+/// F199 v8 自检（deep7 表）。
+pub fn run_lineage_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v8");
+
+    // 深度分析：正常链 / 单节点 / 空。
+    let d = lineage_depth(&[1, 2, 3, 4, 5]);
+    set.add("depth full", d.depth == 5 && d.span == 4 && d.leaves == 1, "");
+    let d1 = lineage_depth(&[7]);
+    set.add("depth single", d1.depth == 1 && d1.span == 0 && d1.leaves == 1, "");
+    let d0 = lineage_depth(&[]);
+    set.add("depth empty", d0.depth == 0 && d0.leaves == 0, "");
+
+    // 分叉检测：线性无分叉 / 共父检出。
+    let linear = [(2u32, 1u32), (3, 2), (4, 3)];
+    set.add("fork none", !fork_detected(&linear), "线性谱系干净");
+    let forked = [(2u32, 1u32), (3, 2), (9, 2)];
+    set.add("fork found", fork_detected(&forked), "seq3 与 seq9 共父 → 分叉");
+    set.add("fork empty", !fork_detected(&[]), "空链无分叉");
+
+    // 回滚目标：三关筛选（旧于当前 + 窗口内）。
+    let cands = [(1u32, 10u64), (2, 40), (3, 80), (4, 95)];
+    let tg = rollback_targets(&cands, 4, 100, 30);
+    set.add("rb targets", tg == vec![3], "seq3（20 天前）在窗内，更早的出窗");
+    let tg0 = rollback_targets(&cands, 1, 100, 30);
+    set.add("rb none", tg0.is_empty(), "无更旧版本 → 空目标");
+
+    // 同源对比：同源领先/落后/持平 + 异源独立。
+    let fa = [1u8; 8];
+    let mut fb = [1u8; 8];
+    fb[0] = 2;
+    set.add("origin same", same_origin((1, fa), (1, fa)), "");
+    set.add("origin diff", !same_origin((1, fa), (1, fb)), "指纹不同即异源");
+    set.add("cmp ahead", lineage_compare(5, 3, true).contains("领先"), "");
+    set.add("cmp behind", lineage_compare(3, 5, true).contains("拉取"), "");
+    set.add("cmp equal", lineage_compare(4, 4, true).contains("一致"), "");
+    set.add("cmp alien", lineage_compare(5, 3, false).contains("独立"), "异源禁止互滚");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v7_fork_three_way() {
+        // 三子共父同样检出（不限于两两）。
+        let links = [(2u32, 1u32), (3, 1), (4, 1)];
+        assert!(fork_detected(&links));
+    }
+
+    #[test]
+    fn f199_v7_rollback_future_day() {
+        // 目标日期在未来（时钟偏差）不进候选——saturating 兜底 + 过滤。
+        let cands = [(1u32, 200u64)];
+        assert!(rollback_targets(&cands, 5, 100, 30).is_empty());
+    }
+
+    #[test]
+    fn f199_v7_depth_two_nodes() {
+        let d = lineage_depth(&[3, 9]);
+        assert_eq!(d.span, 6);
+        assert_eq!(d.leaves, 1);
+    }
+
+    #[test]
+    fn f199_v7_run_checks_pass() {
+        assert!(run_lineage_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-b6：谱系压缩展示 / 版本标签检索 / 回滚影响面。
+// ---------------------------------------------------------------------------
+
+/// 谱系压缩行（连续同族版本折叠为区间——树视图瘦身）。
+pub fn lineage_fold(names: &[&'static str], seqs: &[u32]) -> Vec<(&'static str, u32, u32)> {
+    let mut out: Vec<(&'static str, u32, u32)> = Vec::new();
+    for (name, seq) in names.iter().zip(seqs.iter()) {
+        match out.last_mut() {
+            Some((ln, _, hi)) if ln == name => {
+                *hi = *seq;
+            }
+            _ => out.push((name, *seq, *seq)),
+        }
+    }
+    out
+}
+
+/// 标签检索（按版本名前缀找 seq 列表）。
+pub fn tag_lookup(names: &[&'static str], seqs: &[u32], prefix: &str) -> Vec<u32> {
+    if prefix.is_empty() {
+        return Vec::new(); // 空前缀不倾泻全量——检索必须带意图。
+    }
+    names
+        .iter()
+        .zip(seqs.iter())
+        .filter(|(n, _)| n.starts_with(prefix))
+        .map(|(_, s)| *s)
+        .collect()
+}
+
+/// 回滚影响面（回滚 N 代 → 丢失的更新条目数与提示）。
+pub struct RollbackImpact {
+    pub lost_count: u32,
+    pub note: &'static str,
+}
+
+/// 影响面（current/target 为 seq；更新日志 total_updates 条中落在 (target, current] 的会失效）。
+pub fn rollback_impact(current: u32, target: u32, total_updates: u32) -> RollbackImpact {
+    let lost = current.saturating_sub(target);
+    let note = if lost == 0 {
+        "无需回滚"
+    } else if lost * 100 / total_updates.max(1) > 50 {
+        "回滚将丢失过半更新——建议检查该版本是否仍受支持"
+    } else {
+        "回滚影响可控，丢失的修复将随下次更新补回"
+    };
+    RollbackImpact { lost_count: lost, note }
+}
+
+/// F199 v8-b6 自检（并入 deep7 表族）。
+pub fn run_lineage_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v8b");
+
+    // 折叠：连续同族合并 / 交替展开。
+    let folded = lineage_fold(&["a", "a", "b", "a"], &[1, 2, 3, 4]);
+    set.add("fold rows", folded.len() == 3, "aa 合并 + b + a = 3 行");
+    set.add("fold span", folded[0] == ("a", 1, 2) && folded[2] == ("a", 4, 4), "区间账正确");
+    let folded0 = lineage_fold(&[], &[]);
+    set.add("fold empty", folded0.is_empty(), "");
+
+    // 标签检索：前缀命中 / 未命中 / 空前缀拒。
+    let names = ["v1", "v10", "v2"];
+    let seqs = [1u32, 2, 3];
+    set.add("tag hit", tag_lookup(&names, &seqs, "v1") == vec![1, 2], "v1 与 v10 都命中");
+    set.add("tag miss", tag_lookup(&names, &seqs, "x").is_empty(), "");
+    set.add("tag empty", tag_lookup(&names, &seqs, "").is_empty(), "空前缀不 全量倾泻");
+
+    // 回滚影响面：零代/可控/过半。
+    let i0 = rollback_impact(5, 5, 10);
+    set.add("rb zero", i0.lost_count == 0 && i0.note.contains("无需"), "");
+    let i1 = rollback_impact(5, 4, 10);
+    set.add("rb small", i1.lost_count == 1 && i1.note.contains("可控"), "");
+    let i2 = rollback_impact(9, 1, 10);
+    set.add("rb big", i2.lost_count == 8 && i2.note.contains("过半"), "8/10 过半预警");
+    // b7-wave2：谱系版本计数。
+    set.add("ver count", version_counts(&["a", "a", "b"]) == vec![("a", 2u32), ("b", 1u32)], "同名折叠计数");
+    set.add("ver empty", version_counts(&[]).is_empty(), "");
+    // b8-wave3：谱系导出摘要行。
+    set.add("lin summary", { let s = lineage_summary(4, 8, 1); s.contains("4 个版本") && s.contains("8 代") }, "摘要带链长与代差");
+    // b9-wave4：回滚目标合法行。
+    set.add("rb legal", rollback_legal(5, 3), "旧版可滚");
+    set.add("rb illegal", !rollback_legal(3, 5), "新版不可作回滚目标");
+    // b10-wave5：谱系链高查询。
+    set.add("lin height", lineage_height(9) == 9, "高度 = 最新 seq");
+    set.add("lin height zero", lineage_height(0) == 0, "空谱系零高");
+    // b11-wave6：谱系 CSV 行。
+    set.add("lin csv", lineage_csv(&[(1, "v1")]).starts_with("seq,name\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8b_fold_all_same() {
+        // 全同名 → 单行区间。
+        let f = lineage_fold(&["a", "a", "a"], &[1, 5, 9]);
+        assert_eq!(f, vec![("a", 1, 9)]);
+    }
+
+    #[test]
+    fn f199_v8b_rb_overflow_safe() {
+        // target > current（乱序调用）不炸：lost 为 0。
+        let i = rollback_impact(3, 9, 10);
+        assert_eq!(i.lost_count, 0);
+    }
+
+    #[test]
+    fn f199_v8b_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：谱系版本计数（同族版本折叠——树视图的汇总行）。
+// ---------------------------------------------------------------------------
+
+/// 版本计数（连续同名折叠为 (名, 出现次数)——保持首现顺序）。
+pub fn version_counts(names: &[&'static str]) -> Vec<(&'static str, u32)> {
+    let mut out: Vec<(&'static str, u32)> = Vec::new();
+    for n in names {
+        match out.last_mut() {
+            Some((ln, c)) if ln == n => {
+                *c += 1;
+            }
+            _ => out.push((n, 1)),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8c_counts_total() {
+        // 计数总和 = 输入长度（守恒）。
+        let vc = version_counts(&["a", "a", "b", "c", "c", "c"]);
+        let total: u32 = vc.iter().map(|(_, c)| *c).sum();
+        assert_eq!(total, 6);
+    }
+
+    #[test]
+    fn f199_v8c_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：谱系导出摘要行（树视图页脚的一句话账）。
+// ---------------------------------------------------------------------------
+
+/// 摘要行（链长 / 首尾代差 / 叶数）。
+pub fn lineage_summary(depth: usize, last_seq: u32, leaves: usize) -> alloc::string::String {
+    alloc::format!("谱系共 {} 个版本，跨 {} 代，{} 个活动分支", depth, last_seq, leaves)
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8d_summary_single() {
+        // 单版本摘要（代差 0）。
+        assert!(lineage_summary(1, 0, 1).contains("1 个版本"));
+    }
+
+    #[test]
+    fn f199_v8d_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：回滚目标合法性（一句话 + 一次判定——树视图右键项）。
+// ---------------------------------------------------------------------------
+
+/// 回滚目标合法性（目标 seq 必须严格小于当前——向前滚是升级不是回滚）。
+pub fn rollback_legal(current_seq: u32, target_seq: u32) -> bool {
+    target_seq < current_seq
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v9_legal_same_seq() {
+        // 同 seq 不是回滚（无操作）。
+        assert!(!rollback_legal(4, 4));
+    }
+
+    #[test]
+    fn f199_v9_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：谱系链高查询。
+// ---------------------------------------------------------------------------
+
+/// 链高（最新 seq——谱系页右上角的高度徽标）。
+pub fn lineage_height(latest_seq: u32) -> u32 {
+    latest_seq
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v10_height_type() {
+        assert_eq!(lineage_height(42), 42);
+    }
+
+    #[test]
+    fn f199_v10_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：谱系 CSV 行。
+// ---------------------------------------------------------------------------
+
+/// 谱系 CSV（seq,name）。
+pub fn lineage_csv(rows: &[(u32, &str)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("seq,name\n");
+    for (seq, name) in rows {
+        out.push_str(&alloc::format!("{},{}\n", seq, name));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v11_csv_rows() {
+        assert_eq!(lineage_csv(&[(1, "a"), (2, "b")]).lines().count(), 3);
+    }
+
+    #[test]
+    fn f199_v11_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}

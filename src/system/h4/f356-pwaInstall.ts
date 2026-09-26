@@ -139,3 +139,48 @@ export function auditListParity(app: PwaApp | null): ParityAuditRow[] {
     fieldsParity: present && app.displayName.length > 0 && app.iconSrc.length > 0,
   }));
 }
+
+/* ================= v4 深化批次四：清单深校验 / 图标择优 / 安装 Dry-Run ================= */
+
+/** 图标尺寸解析（"512x512" → 尺寸；无法解析 → 0×0）。 */
+export function iconSizeOf(sizes: string): { w: number; h: number } {
+  const m = /(\d+)x(\d+)/.exec(sizes ?? "");
+  return m ? { w: Number(m[1]), h: Number(m[2]) } : { w: 0, h: 0 };
+}
+
+/** 清单深校验（判据「清单字段取用」的防错面）：逐字段规格化校验，问题带字段名（零模糊报错）。 */
+export function validateManifestStrict(m: SiteManifest): string[] {
+  const problems: string[] = [];
+  if (!m.name?.trim()) problems.push("name：缺失或为空");
+  else if (m.name.length > 64) problems.push(`name：超长（${m.name.length} > 64）`);
+  if (!/^https?:\/\//.test(m.startUrl ?? "")) problems.push("start_url：必须是 http(s) 绝对地址");
+  if (m.scope && m.startUrl && !m.startUrl.startsWith(m.scope)) problems.push("scope：不是 start_url 的前缀——安装后页面会跳出应用作用域");
+  if (m.display !== undefined && !["standalone", "fullscreen", "minimal-ui", "browser"].includes(m.display)) problems.push(`display：非法值 ${String(m.display)}`);
+  if (m.themeColor && !/^#[0-9a-fA-F]{3,8}$/.test(m.themeColor)) problems.push(`theme_color：非法颜色格式 ${m.themeColor}`);
+  const best = [...(m.icons ?? [])].map((i) => iconSizeOf(i.sizes)).sort((a, b) => b.w * b.h - a.w * a.h)[0];
+  if (!best || best.w < 192) problems.push("icons：缺 ≥192px 图标（高分屏任务栏会糊——4K 验收红线）");
+  return problems;
+}
+
+/** 图标择优：按面积降序取第一个（缺格如实降级，不编造占位尺寸）。 */
+export function bestIcon(m: SiteManifest): { src: string; sizes: string } | null {
+  const sorted = [...(m.icons ?? [])].sort((a, b) => {
+    const sa = iconSizeOf(a.sizes);
+    const sb = iconSizeOf(b.sizes);
+    return sb.w * sb.h - sa.w * sa.h;
+  });
+  return sorted[0] ?? null;
+}
+
+/** 安装 Dry-Run（判据「安装/卸载全链」的前置预演）：只校验与预览、零持久化。 */
+export function installDryRun(m: SiteManifest): { ok: boolean; problems: string[]; preview: { id: string; displayName: string; iconSrc: string } | null } {
+  const problems = validateManifestStrict(m);
+  const hardFail = problems.some((p) => p.startsWith("name") || p.startsWith("start_url"));
+  if (hardFail) return { ok: false, problems, preview: null };
+  const icon = bestIcon(m);
+  return {
+    ok: true,
+    problems,
+    preview: { id: pwaIdOf(m.startUrl), displayName: (m.shortName?.trim() || m.name).trim(), iconSrc: icon?.src ?? "" },
+  };
+}

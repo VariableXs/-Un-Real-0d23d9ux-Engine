@@ -113,3 +113,41 @@ export function persistLedger(ledger: LedgerLine[], store: KvStore = defaultStor
 export function loadLedger(store: KvStore = defaultStore()): LedgerLine[] {
   return readJson<LedgerLine[]>(store, KEY, [], Array.isArray);
 }
+
+/* ================= v5 深化批次五：覆盖率统计 / 登记册 diff ================= */
+
+export interface CoverageStats {
+  total: number;
+  /** 已注入判据锚（H1-H3 注入 + H4 内置）。 */
+  anchored: number;
+  /** 待注入（H1-H3 未落库部分——如实待注入不代绿）。 */
+  pendingInjection: number;
+  coveragePct: number;
+}
+
+/** 检查点覆盖率统计：域门禁面板的诚实数字源（多少在册、多少待注入）。 */
+export function coverageStats(injectedTitles: ReadonlyArray<{ item: string }>): CoverageStats {
+  const total = H4_TITLES.length + injectedTitles.length;
+  const anchored = H4_TITLES.length + injectedTitles.length;
+  return { total, anchored, pendingInjection: 200 - total > 0 ? 200 - total : 0, coveragePct: Math.round((anchored / 200) * 100) };
+}
+
+export interface LedgerDiffRow {
+  item: string;
+  kind: "added" | "removed" | "renamed";
+  from: string | null;
+  to: string | null;
+}
+
+/** 登记册 diff（一行账演进审计）：两版逐项对比——增/删/改名三类（登记册不是化石）。 */
+export function ledgerDiff(prev: LedgerLine[], curr: LedgerLine[]): LedgerDiffRow[] {
+  const rows: LedgerDiffRow[] = [];
+  const prevMap = new Map(prev.map((l) => [l.item, l.title]));
+  const currMap = new Map(curr.map((l) => [l.item, l.title]));
+  for (const [item, title] of currMap) {
+    if (!prevMap.has(item)) rows.push({ item, kind: "added", from: null, to: title });
+    else if (prevMap.get(item) !== title) rows.push({ item, kind: "renamed", from: prevMap.get(item) ?? null, to: title });
+  }
+  for (const [item, title] of prevMap) if (!currMap.has(item)) rows.push({ item, kind: "removed", from: title, to: null });
+  return rows.sort((a, b) => a.item.localeCompare(b.item));
+}

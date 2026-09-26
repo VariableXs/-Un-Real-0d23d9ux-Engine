@@ -1,0 +1,23 @@
+clean VXHB rc=0
+clean VXAS rc=87 (not loaded?)
+clean VXMC rc=87 (not loaded?)
+clean VXPOST rc=87 (not loaded?)
+clean VXSAC_S rc=87 (not loaded?)
+clean VXSAC_F rc=87 (not loaded?)
+clean VXSOFT rc=87 (not loaded?)
+clean VXU2 rc=87 (not loaded?)
+clean VXU_Default rc=87 (not loaded?)
+clean VXU_defaultu rc=87 (not loaded?)
+clean VXU_Varia rc=87 (not loaded?)
+-- now mount SYSTEM --
+X=X:
+[1] \DosDevices\C:  len=24  444d494f3a49443acf4d6db77c0ce04d88bbbfeec7f0e76e
+[2] \DosDevices\D:  len=24  444d494f3a49443ac624c41f37f970499636a705a8575c30
+[3] \DosDevices\E:  len=24  444d494f3a49443a043f485285977a45935240c34d71f5b1
+[4] \DosDevices\F:  len=24  444d494f3a49443a6c692b40957a834299c39fa06fd8c84d
+[5] \DosDevices\G:  len=24  444d494f3a49443ad4c301774b2e2f4f81c33ebd6a97a896
+[6] \DosDevices\H:  len=24  444d494f3a49443a2344aa13ddd7194082652bc75012c1c0
+CrashControl AutoReboot=0
+CrashControl CrashDumpEnabled=7
+unload VXMC rc=5
+done

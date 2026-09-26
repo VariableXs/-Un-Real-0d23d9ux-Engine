@@ -108,3 +108,44 @@ export function comparator<T>(keys: SortKey[], field: (row: T, columnId: string)
     return 0;
   };
 }
+
+/* ================= v5 深化批次五：类型感知比较器 / 稳定性审计 / aria-sort ================= */
+
+export type SortValueType = "number" | "string" | "date" | "size";
+
+/** 类型感知比较器注册表：数值/日期按值比、文本走 zh locale（类型错了不装对）。 */
+export const VALUE_KINDS: Record<SortValueType, (a: string | number, b: string | number) => number> = {
+  number: (a, b) => Number(a) - Number(b),
+  date: (a, b) => new Date(a as string).getTime() - new Date(b as string).getTime(),
+  string: (a, b) => String(a).localeCompare(String(b), "zh-Hans-CN"),
+  size: (a, b) => Number(a) - Number(b),
+};
+
+export function typedComparator<T>(keys: Array<SortKey & { type?: SortValueType }>, field: (row: T, columnId: string) => number | string): (a: T, b: T) => number {
+  return (a, b) => {
+    for (const k of keys) {
+      const va = field(a, k.columnId);
+      const vb = field(b, k.columnId);
+      if (va === vb) continue;
+      const cmp = VALUE_KINDS[k.type ?? "string"](va, vb);
+      return k.dir === "asc" ? cmp : -cmp;
+    }
+    return 0;
+  };
+}
+
+/** 稳定排序审计：同值行的相对次序必须保持输入序（Array.sort 稳定性 + 比较 0 恒等）。 */
+export function auditStability<T>(rows: T[], keyOf: (r: T) => number): { pass: boolean; orderAfter: number[] } {
+  const indexed = rows.map((r, i) => ({ r, i }));
+  const sorted = [...indexed].sort((a, b) => keyOf(a.r) - keyOf(b.r) || 0);
+  const sameGroup = sorted.filter((x) => keyOf(x.r) === keyOf(sorted[0]!.r)).map((x) => x.i);
+  const pass = sameGroup.every((v, i) => i === 0 || v > sameGroup[i - 1]!);
+  return { pass, orderAfter: sorted.map((x) => x.i) };
+}
+
+/** aria-sort 语义（无障碍对齐 F385）：表头可读排序态（none/ascending/descending）。 */
+export function ariaSortFor(state: HeaderSortState, columnId: string): "none" | "ascending" | "descending" {
+  const k = state.keys.find((x) => x.columnId === columnId);
+  if (!k) return "none";
+  return k.dir === "asc" ? "ascending" : "descending";
+}

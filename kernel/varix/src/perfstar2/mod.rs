@@ -89,29 +89,39 @@ pub const DOMAIN_NAMES: [&str; 18] = [
 /// 负责裁剪。域内逐判据红绿在各模块 `run_*_checks` 的子行展开。
 pub fn run_perfstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(PERFSTAR2_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 18] = [
-        ("F058", memcomp::run_memcomp_checks()),
-        ("F059", smallpkt::run_smallpkt_checks()),
-        ("F060", powerledger::run_powerledger_checks()),
-        ("F061", benchgate::run_benchgate_checks()),
-        ("F062", perfselfchk::run_perfselfchk_checks()),
-        ("F063", touchpad::run_touchpad_checks()),
-        ("F064", audiolat::run_audiolat_checks()),
-        ("F065", wakegov::run_wakegov_checks()),
-        ("F066", fsjournal::run_fsjournal_checks()),
-        ("F067", bootio::run_bootio_checks()),
-        ("F068", assetload::run_assetload_checks()),
-        ("F069", perfmodes::run_perfmodes_checks()),
-        ("F070", perfgate::run_perfgate_checks()),
-        ("F071", menusearch::run_menusearch_checks()),
-        ("F072", frecency::run_frecency_checks()),
-        ("F073", thumbcard::run_thumbcard_checks()),
-        ("F074", jumplist::run_jumplist_checks()),
-        ("F075", trayhub::run_trayhub_checks()),
+    // 五层（主检/深化/深化3/深化4/深化5）行级 AND：每域一行 = 五层全绿
+    // 且无一层超容截断（merge 会撞 64 容量上限——行级 AND 保全部判据
+    // 独立可查，聚合行只报域级红绿）。
+    let domains: [(&'static str, fn() -> CheckSet, fn() -> CheckSet, fn() -> CheckSet, fn() -> CheckSet, fn() -> CheckSet); 18] = [
+        ("F058", memcomp::run_memcomp_checks, memcomp::run_memcomp_deep_checks, memcomp::run_memcomp_deep3_checks, memcomp::run_memcomp_deep4_checks, memcomp::run_memcomp_deep5_checks),
+        ("F059", smallpkt::run_smallpkt_checks, smallpkt::run_smallpkt_deep_checks, smallpkt::run_smallpkt_deep3_checks, smallpkt::run_smallpkt_deep4_checks, smallpkt::run_smallpkt_deep5_checks),
+        ("F060", powerledger::run_powerledger_checks, powerledger::run_powerledger_deep_checks, powerledger::run_powerledger_deep3_checks, powerledger::run_powerledger_deep4_checks, powerledger::run_powerledger_deep5_checks),
+        ("F061", benchgate::run_benchgate_checks, benchgate::run_benchgate_deep_checks, benchgate::run_benchgate_deep3_checks, benchgate::run_benchgate_deep4_checks, benchgate::run_benchgate_deep5_checks),
+        ("F062", perfselfchk::run_perfselfchk_checks, perfselfchk::run_perfselfchk_deep_checks, perfselfchk::run_perfselfchk_deep3_checks, perfselfchk::run_perfselfchk_deep4_checks, perfselfchk::run_perfselfchk_deep5_checks),
+        ("F063", touchpad::run_touchpad_checks, touchpad::run_touchpad_deep_checks, touchpad::run_touchpad_deep3_checks, touchpad::run_touchpad_deep4_checks, touchpad::run_touchpad_deep5_checks),
+        ("F064", audiolat::run_audiolat_checks, audiolat::run_audiolat_deep_checks, audiolat::run_audiolat_deep3_checks, audiolat::run_audiolat_deep4_checks, audiolat::run_audiolat_deep5_checks),
+        ("F065", wakegov::run_wakegov_checks, wakegov::run_wakegov_deep_checks, wakegov::run_wakegov_deep3_checks, wakegov::run_wakegov_deep4_checks, wakegov::run_wakegov_deep5_checks),
+        ("F066", fsjournal::run_fsjournal_checks, fsjournal::run_fsjournal_deep_checks, fsjournal::run_fsjournal_deep3_checks, fsjournal::run_fsjournal_deep4_checks, fsjournal::run_fsjournal_deep5_checks),
+        ("F067", bootio::run_bootio_checks, bootio::run_bootio_deep_checks, bootio::run_bootio_deep3_checks, bootio::run_bootio_deep4_checks, bootio::run_bootio_deep5_checks),
+        ("F068", assetload::run_assetload_checks, assetload::run_assetload_deep_checks, assetload::run_assetload_deep3_checks, assetload::run_assetload_deep4_checks, assetload::run_assetload_deep5_checks),
+        ("F069", perfmodes::run_perfmodes_checks, perfmodes::run_perfmodes_deep_checks, perfmodes::run_perfmodes_deep3_checks, perfmodes::run_perfmodes_deep4_checks, perfmodes::run_perfmodes_deep5_checks),
+        ("F070", perfgate::run_perfgate_checks, perfgate::run_perfgate_deep_checks, perfgate::run_perfgate_deep3_checks, perfgate::run_perfgate_deep4_checks, perfgate::run_perfgate_deep5_checks),
+        ("F071", menusearch::run_menusearch_checks, menusearch::run_menusearch_deep_checks, menusearch::run_menusearch_deep3_checks, menusearch::run_menusearch_deep4_checks, menusearch::run_menusearch_deep5_checks),
+        ("F072", frecency::run_frecency_checks, frecency::run_frecency_deep_checks, frecency::run_frecency_deep3_checks, frecency::run_frecency_deep4_checks, frecency::run_frecency_deep5_checks),
+        ("F073", thumbcard::run_thumbcard_checks, thumbcard::run_thumbcard_deep_checks, thumbcard::run_thumbcard_deep3_checks, thumbcard::run_thumbcard_deep4_checks, thumbcard::run_thumbcard_deep5_checks),
+        ("F074", jumplist::run_jumplist_checks, jumplist::run_jumplist_deep_checks, jumplist::run_jumplist_deep3_checks, jumplist::run_jumplist_deep4_checks, jumplist::run_jumplist_deep5_checks),
+        ("F075", trayhub::run_trayhub_checks, trayhub::run_trayhub_deep_checks, trayhub::run_trayhub_deep3_checks, trayhub::run_trayhub_deep4_checks, trayhub::run_trayhub_deep5_checks),
     ];
-    for (tag, sub) in blocks {
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(tag, passed, if passed { "" } else { "sub-checks red" });
+    for (tag, main, deep, deep3, deep4, deep5) in domains {
+        let layers = [main(), deep(), deep3(), deep4(), deep5()];
+        let all_green = layers.iter().all(|l| l.all_passed() && !l.truncated());
+        let total: usize = layers.iter().map(|l| l.len()).sum();
+        set.add(
+            tag,
+            all_green,
+            if all_green { "" } else { "sub-checks red/truncated" },
+        );
+        let _ = total;
     }
     set
 }

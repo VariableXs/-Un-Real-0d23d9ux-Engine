@@ -92,3 +92,55 @@ export function readerInterfaceDoc(): { version: string; standard: string; endpo
     endpoints: ["getTree(): SemanticNode[]", "subscribe(cb): unsubscribe", "announce(a: Announcement): void"],
   };
 }
+
+/* ================= v5 深化批次五：全角色中文映射 / 朗读三段合成 / 角色完备性 ================= */
+
+/** 角色中文映射（朗读一致性：每个角色只有一种读法——交互词典的无障碍面）。 */
+export const ROLE_LABELS_ZH: Record<AriaRole, string> = {
+  button: "按钮",
+  checkbox: "复选框",
+  switch: "开关",
+  textbox: "文本框",
+  list: "列表",
+  listitem: "列表项",
+  dialog: "对话框",
+  menu: "菜单",
+  menuitem: "菜单项",
+  tab: "标签页",
+  tree: "树",
+  treeitem: "树节点",
+  progressbar: "进度条",
+  slider: "滑块",
+};
+
+/** 朗读三段合成：名称 + 角色 + 状态（「导出，按钮」/「自动保存，开关，开」）。 */
+export function composeUtterance(node: SemanticNode): string {
+  const parts = [node.name ?? "", ROLE_LABELS_ZH[node.role] ?? node.role];
+  if (node.state && node.state.trim()) parts.push(node.state);
+  return parts.filter((p) => p.length > 0).join("，");
+}
+
+/** 角色完备性审计：INTERACTIVE_ROLES 必须是 ROLES 的子集且全部有中文读法（词表自洽）。 */
+export function auditRoleVocabulary(): { pass: boolean; problems: string[] } {
+  const problems: string[] = [];
+  for (const r of INTERACTIVE_ROLES) {
+    if (!ROLES.includes(r)) problems.push(`交互角色 ${r} 不在角色词表内`);
+    if (!ROLE_LABELS_ZH[r]) problems.push(`交互角色 ${r} 缺中文读法`);
+  }
+  for (const r of ROLES) {
+    if (!ROLE_LABELS_ZH[r]) problems.push(`角色 ${r} 缺中文读法`);
+  }
+  return { pass: problems.length === 0, problems };
+}
+
+/** 树遍历读序：父链展开的先序朗读序（读屏 Tab 顺序 = 视觉顺序的语义面）。 */
+export function traversalOrder(tree: SemanticTree, rootIds: string[]): string[] {
+  const out: string[] = [];
+  const visit = (id: string): void => {
+    if (!tree.nodes.has(id) || out.includes(id)) return;
+    out.push(id);
+    for (const n of tree.nodes.values()) if (n.parentIds[n.parentIds.length - 1] === id) visit(n.id);
+  };
+  for (const r of rootIds) visit(r);
+  return out;
+}

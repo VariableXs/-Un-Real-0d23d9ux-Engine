@@ -11,6 +11,7 @@
  */
 
 import { defaultStore, h4Key, readJson, type KvStore, writeJson } from "./internal/store";
+import { checksumOf, fnv1a32 } from "./internal/hash";
 
 export type BackupTarget = "second-media" | "network" | "another-usb";
 export type BackupScope = { systemPartition: boolean; userFiles: boolean };
@@ -135,4 +136,70 @@ export function reminderDue(cycle: ReminderCycle, lastBackupAt: number | null, n
   const days = cycle === "monthly" ? 30 : 90;
   const due = lastBackupAt === null || now - lastBackupAt > days * 24 * 3600 * 1000;
   return { due, autoRun: false };
+}
+
+/* ================= v4 深化批次四：清单校验 / 链完整性 / 保留策略 / 还原顺序 ================= */
+
+/** 分块清单条目（可恢复性校验的粒度面：文件 = 分块哈希序列 + 尺寸）。 */
+export interface ManifestEntry {
+  path: string;
+  sizeBytes: number;
+  chunkDigests: string[];
+}
+
+/** 文件清单摘要：分块哈希链式 FNV + 路径/尺寸（与 f365 全量哈希同源算法——一处一事实）。 */
+export function manifestDigest(e: ManifestEntry): string {
+  let chain = "genesis";
+  for (const c of e.chunkDigests) chain = fnv1a32(`${chain}|${c}`);
+  return fnv1a32(`${chain}|${e.path}|${e.sizeBytes}`);
+}
+
+export interface VerifyReport {
+  ok: boolean;
+  missing: string[];
+  mismatched: string[];
+}
+
+/** 可恢复性校验的实做面（判据「验过能还原」）：清单 vs 实际分块逐文件核对，缺/坏逐项点名。 */
+export function verifyManifest(expected: ManifestEntry[], actual: Array<{ path: string; sizeBytes: number; chunkDigests: string[] }>): VerifyReport {
+  const actualMap = new Map(actual.map((a) => [a.path, a]));
+  const missing: string[] = [];
+  const mismatched: string[] = [];
+  for (const e of expected) {
+    const got = actualMap.get(e.path);
+    if (!got) {
+      missing.push(e.path);
+      continue;
+    }
+    if (manifestDigest(e) !== manifestDigest({ path: got.path, sizeBytes: got.sizeBytes, chunkDigests: got.chunkDigests })) {
+      mismatched.push(e.path);
+    }
+  }
+  return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+}
+
+/** 备份链完整性：链级校验和（规范化指纹）——链被改任何一条即检出。 */
+export function chainIntegrity(chain: BackupChain): string {
+  return checksumOf(chain);
+}
+
+export function verifyChainIntegrity(chain: BackupChain, expected: string): boolean {
+  return chainIntegrity(chain) === expected;
+}
+
+/** 保留策略：最多保留 maxChain 条链，超出淘汰最旧（磁盘不是无底洞——存量管理）。 */
+export function retentionPrune(chains: BackupChain[], maxChains = 3): { keep: BackupChain[]; evicted: number } {
+  const sorted = [...chains].sort((a, b) => (b.entries[0]?.at ?? 0) - (a.entries[0]?.at ?? 0));
+  const keep = sorted.slice(0, maxChains);
+  return { keep, evicted: chains.length - keep.length };
+}
+
+/** 还原顺序（判据「连做三次增量后整体还原比对」的执行序）：基线先行、增量按 seq 升序。 */
+export function restoreOrdering(chain: BackupChain): number[] {
+  return [...chain.entries].sort((a, b) => a.seq - b.seq).map((e) => e.seq);
+}
+
+/** 链存储估算（执行前的诚实预期）：各条 sizeBytes 之和。 */
+export function storageEstimate(chain: BackupChain): number {
+  return chain.entries.reduce((s, e) => s + e.sizeBytes, 0);
 }

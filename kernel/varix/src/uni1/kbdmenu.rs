@@ -54,8 +54,11 @@ impl KbdCtxMenu {
         true
     }
 
-    /// 方向键：下/上循环（子菜单开时交给子菜单）。
+    /// 方向键：下/上循环（子菜单开时交给子菜单；空菜单无动作）。
     pub fn arrow(&mut self, delta: i32) {
+        if self.items.is_empty() {
+            return;
+        }
         if !self.submenu_open {
             let n = self.items.len() as i32;
             self.selected = ((self.selected as i32 + delta).rem_euclid(n)) as usize;
@@ -69,7 +72,11 @@ impl KbdCtxMenu {
     }
 
     /// 右方向：父项有子菜单 → 进入；左方向：子菜单开 → 退回。
+    /// 空菜单无动作（结构性安全——不 panic）。
     pub fn right_left(&mut self, right: bool) -> bool {
+        if self.items.is_empty() {
+            return false;
+        }
         if right {
             if !self.submenu_open && self.items[self.selected].submenu.is_some() {
                 self.submenu_open = true;
@@ -113,7 +120,11 @@ impl KbdCtxMenu {
     }
 
     /// Enter：父项 → 进子菜单；叶子 → 返回 (路径, 名) 并关菜单。
+    /// 空菜单 → 无动作（结构性安全——不 panic）。
     pub fn enter(&mut self) -> Option<(bool, &'static str)> {
+        if self.items.is_empty() {
+            return None;
+        }
         if self.submenu_open {
             let sub = self.items[self.selected].submenu.as_ref()?;
             let (name, _) = &sub[self.submenu_selected];
@@ -158,6 +169,20 @@ impl KbdCtxMenu {
         ls.dedup();
         ls.len() == self.items.len()
     }
+
+    /// 子菜单热键审计（v6）：每个子菜单内首字母唯一（局部唯一性——
+    /// 不同父项的子菜单之间允许重字）。
+    pub fn submenu_letters_unique(&self) -> bool {
+        self.items.iter().all(|i| match i.submenu.as_ref() {
+            Some(s) => {
+                let mut ls: Vec<u8> = s.iter().map(|(_, l)| *l).collect();
+                ls.sort_unstable();
+                ls.dedup();
+                ls.len() == s.len()
+            }
+            None => true,
+        })
+    }
 }
 
 pub fn run_kbdmenu_checks() -> CheckSet {
@@ -193,6 +218,25 @@ pub fn run_kbdmenu_checks() -> CheckSet {
     // 语义一致审计。
     set.add("f433-depth-two-max", m.depth_ok(), "");
     set.add("f433-letters-unique", m.letters_unique(), "");
+    set.add("f433-submenu-letters-unique", m.submenu_letters_unique(), "");
+    // 重开状态清零（v6）：子菜单开着时再呼出 → 回到首项收起子菜单。
+    m.selected = 1;
+    let _ = m.enter(); // 开着排序方式的子菜单
+    set.add(
+        "f433-reopen-resets-submenu",
+        m.open() && !m.submenu_open && m.selected == 0 && m.submenu_selected == 0,
+        "",
+    );
+    // 空菜单全链安全（v6）：呼出拒、导航/Enter/跳字无动作不 panic。
+    let mut e = KbdCtxMenu::new(alloc::vec![]);
+    set.add(
+        "f433-empty-menu-safe",
+        !e.open() && {
+            e.arrow(1);
+            e.enter().is_none() && !e.jump_letter(b'O') && !e.right_left(true)
+        },
+        "",
+    );
     set
 }
 

@@ -414,7 +414,13 @@ pub fn run_latbudget_checks() -> CheckSet {
         p0.is_some() && p0.unwrap() <= BUDGET_INPUT_US && lane[58].is_none() && over,
         "",
     );
-    cs
+    // 深化件（深化批次三）：预算表自洽与 ADR 登记 / 优先级映射表 / 老化自修正
+    // 状态机（冷却·上限·回落）/ 零样本观察窗说明 / energy 大核联动 /
+    // 采样环 160KB 内存预算自证 / 超标点线程快照下钻面。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::latbudget_ext::run_checks()),
+        crate::perfstar::mech_tokens::run_checks(),
+    )
 }
 
 #[cfg(test)]

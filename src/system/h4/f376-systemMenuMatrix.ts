@@ -80,3 +80,55 @@ export function auditMatrix(): { pass: boolean; missing: string[] } {
   }
   return { pass: missing.length === 0, missing };
 }
+
+/* ================= v5 深化批次五：键盘导航 / 双击标题语义 / 菜单加速键 ================= */
+
+/** 菜单键盘导航：上下循环、置灰项跳过、Enter 触发、Esc 关闭（F207 语义对齐）。 */
+export type MenuKeyResult = { focusId: SystemMenuItemId | null; activated: SystemMenuItemId | null; closed: boolean };
+export function menuKeyboardNav(status: WindowStatus, focusedId: SystemMenuItemId | null, key: string): MenuKeyResult {
+  const menu = buildMenu(status);
+  const enabled = menu.filter((m) => !m.disabled);
+  if (enabled.length === 0) return { focusId: null, activated: null, closed: false };
+  if (key === "Escape") return { focusId: focusedId, activated: null, closed: true };
+  if (key === "Enter" && focusedId) {
+    const item = menu.find((m) => m.id === focusedId);
+    return item && !item.disabled ? { focusId: focusedId, activated: focusedId, closed: true } : { focusId: focusedId, activated: null, closed: false };
+  }
+  const idx = enabled.findIndex((m) => m.id === focusedId);
+  if (key === "ArrowDown") return { focusId: enabled[(idx + 1 + enabled.length) % enabled.length]!.id, activated: null, closed: false };
+  if (key === "ArrowUp") return { focusId: enabled[(idx - 1 + enabled.length * 2) % enabled.length]!.id, activated: null, closed: false };
+  if (key === "Home") return { focusId: enabled[0]!.id, activated: null, closed: false };
+  if (key === "End") return { focusId: enabled[enabled.length - 1]!.id, activated: null, closed: false };
+  return { focusId: focusedId, activated: null, closed: false };
+}
+
+/** 双击标题栏语义：normal↔maximized 切换；minimized 不响应（不凭空弹出）；snapped→restore。 */
+export function doubleClickTitle(status: WindowStatus): { action: "maximize" | "restore" | "none" } {
+  switch (status) {
+    case "normal":
+    case "snapped":
+      return { action: status === "normal" ? "maximize" : "restore" };
+    case "maximized":
+      return { action: "restore" };
+    case "minimized":
+      return { action: "none" };
+  }
+}
+
+/** 菜单加速键：六项固定助记（R/M/S/N/X/C——与 Windows 词典一致的字母记忆）。 */
+export const MENU_MNEMONICS: Record<SystemMenuItemId, string> = {
+  restore: "R",
+  move: "M",
+  size: "S",
+  minimize: "N",
+  maximize: "X",
+  close: "C",
+};
+
+/** 加速键命中（置灰项不响应——键盘也不许绕过置灰状态机）。 */
+export function mnemonicHit(status: WindowStatus, key: string): SystemMenuItemId | null {
+  const id = MENU_ORDER.find((m) => MENU_MNEMONICS[m] === key.toUpperCase());
+  if (!id) return null;
+  const matrix = disabledMatrix(status);
+  return matrix[id] ? null : id;
+}

@@ -310,7 +310,13 @@ pub fn run_wcoalesce_checks() -> CheckSet {
         cur_sec == 61 && curve[0] == 0 && curve[1] == 1 && curve[2] == 0,
         "",
     );
-    cs
+    // 深化件（深化批次三）：三档条件表与旋钮清单 / F045 共享数据源接收面 /
+    // 切档审计（驻留迟滞 + 入诊断快照）/ 断电丢失窗口估算 / 三档断电演练账 /
+    // 分档 fsync P99 账 / 交互诊断文案面。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::wcoalesce_ext::run_checks()),
+        crate::perfstar::mech_radix::run_checks(),
+    )
 }
 
 #[cfg(test)]

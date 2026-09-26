@@ -560,7 +560,11 @@ pub fn run_heapfrag_checks() -> CheckSet {
         fc.iter().filter(|f| f.is_some()).count() == 7 && fc[6].is_some(),
         "",
     );
-    cs
+    // 深化件（深化批次三）：位图分配器（O(1) 分配/释放 + 重复释放检出）/
+    // 六档与 512B 直通分界表 + 内部碎片计算 / 相邻档切分（带开销标注）/
+    // 分配失败四阶段路径演练（B-2903）/ 碎片率告警迟滞状态机 /
+    // 六档分配延迟 P99 账。
+    CheckSet::merge(cs, crate::perfstar::heapfrag_ext::run_checks())
 }
 
 #[cfg(test)]

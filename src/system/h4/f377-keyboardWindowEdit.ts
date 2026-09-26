@@ -78,3 +78,58 @@ export function auditEdgeClamp(s0: KeyboardEditSession, dir: "up" | "down" | "le
   const within = r.x >= s.workArea.x && r.y >= s.workArea.y && r.x + r.w <= s.workArea.x + s.workArea.w && r.y + r.h <= s.workArea.y + s.workArea.h;
   return { pass: within, final: r };
 }
+
+/* ================= v4 深化批次四：边缘吸附 / 步进撤销栈 / 300 步自检走查 ================= */
+
+/** 吸附阈值（判据「边界贴边」的量化口径）：距工作区边缘 ≤8px 即吸齐——手抖差 3px 也算到边。 */
+export const SNAP_PX = 8;
+
+/** 全量钳制：几何强制落回工作区（宽高超工作区时先缩再移）。 */
+export function clampRect(rect: Rect, workArea: { x: number; y: number; w: number; h: number }): Rect {
+  const w = Math.min(rect.w, workArea.w);
+  const h = Math.min(rect.h, workArea.h);
+  const x = Math.min(Math.max(rect.x, workArea.x), workArea.x + workArea.w - w);
+  const y = Math.min(Math.max(rect.y, workArea.y), workArea.y + workArea.h - h);
+  return { x, y, w, h };
+}
+
+/** 边缘吸附：四边 8px 内吸齐工作区边缘（键盘编排的「到位感」）。 */
+export function snapToEdges(rect: Rect, workArea: { x: number; y: number; w: number; h: number }): Rect {
+  const c = clampRect(rect, workArea);
+  const snap = (v: number, target: number) => (Math.abs(v - target) <= SNAP_PX ? target : v);
+  const x = snap(c.x, workArea.x);
+  const y = snap(c.y, workArea.y);
+  const w = Math.abs(c.x + c.w - (workArea.x + workArea.w)) <= SNAP_PX ? workArea.x + workArea.w - x : c.w;
+  const h = Math.abs(c.y + c.h - (workArea.y + workArea.h)) <= SNAP_PX ? workArea.y + workArea.h - y : c.h;
+  return { x, y, w, h };
+}
+
+/** 编排内步进历史：Esc 是「还原全部」（origin）；Ctrl+Z 是「退一步」（本栈）——两层撤销。 */
+export interface EditHistory {
+  past: Rect[];
+}
+
+export function pushStep(h: EditHistory, rect: Rect): EditHistory {
+  return { past: [...h.past.slice(-49), { ...rect }] };
+}
+
+export function undoStep(h: EditHistory): { history: EditHistory; rect: Rect | null } {
+  if (h.past.length === 0) return { history: h, rect: null };
+  const past = [...h.past];
+  const rect = past.pop()!;
+  return { history: { past }, rect };
+}
+
+/** 300 步自检走查（判据「边界贴边」加强版）：四方向+快慢循环 300 步，每步钳制不变量全查。 */
+export function selfCheckWalk(s0: KeyboardEditSession, steps = 300): { pass: boolean; violations: number; final: Rect } {
+  const dirs = ["up", "right", "down", "left"] as const;
+  let s = s0;
+  let violations = 0;
+  for (let i = 0; i < steps; i++) {
+    s = arrowKey(s, dirs[i % 4]!, i % 7 === 0);
+    const r = s.current;
+    const within = r.x >= s.workArea.x && r.y >= s.workArea.y && r.x + r.w <= s.workArea.x + s.workArea.w && r.y + r.h <= s.workArea.y + s.workArea.h;
+    if (!within) violations++;
+  }
+  return { pass: violations === 0, violations, final: s.current };
+}

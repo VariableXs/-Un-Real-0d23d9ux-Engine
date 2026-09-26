@@ -70,3 +70,20 @@ export function bulkClearPerformance(selection: ListSelection): { cleared: boole
   const r = clickBlank(selection);
   return { cleared: r.selection.selectedIds.length === 0 && r.selection.anchorId === null, complexity: "O(1)" };
 }
+
+/* ================= v5 深化批次五：空白拖拽衔接 / 双击新建位 / Shift 语义 ================= */
+
+/** 空白处按下并拖动 = 框选启动（F203 衔接的起点面）：返回框选起点锚。 */
+export function dragOnBlank(startAt: { x: number; y: number }): { rubberBandStart: { x: number; y: number }; selectionCleared: ListSelection } {
+  return { rubberBandStart: { ...startAt }, selectionCleared: clickBlank({ selectedIds: [], anchorId: null }).selection };
+}
+
+/** 双击空白 = 新建语义位（可发现性：空白不是死区——返回建议动作由调用面执行）。 */
+export function dblClickBlank(): { action: "new-item"; hint: string } {
+  return { action: "new-item", hint: "双击空白新建——空态引导的落点之一" };
+}
+
+/** Shift+点击空白：无对象可扩展 → 选择原样保留（不丢选择、不误清——无效但不破坏）。 */
+export function shiftClickBlank(selection: ListSelection): { selection: ListSelection; consumed: false } {
+  return { selection: { selectedIds: [...selection.selectedIds], anchorId: selection.anchorId }, consumed: false };
+}

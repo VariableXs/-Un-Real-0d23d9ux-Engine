@@ -77,3 +77,35 @@ export const SHEET_MAX_VISIBLE_ROWS = 40;
 export function sheetRenderBudget(totalRows: number): { rows: number; collapsed: boolean } {
   return { rows: Math.min(totalRows, SHEET_MAX_VISIBLE_ROWS), collapsed: totalRows > SHEET_MAX_VISIBLE_ROWS };
 }
+
+/* ================= v5 深化批次五：键位规范化 / 卡内搜索 / 分组折叠 ================= */
+
+/** 键位规范化：修饰键稳定序（Ctrl+Alt+Shift+Win）+ 主键后置——同一组合永远同一写法（一致性）。 */
+const MOD_ORDER = ["ctrl", "alt", "shift", "win"] as const;
+export function chordNormalize(combo: string): string {
+  const parts = combo.split("+").map((p) => p.trim()).filter((p) => p.length > 0);
+  const cap = (m: string) => m.charAt(0).toUpperCase() + m.slice(1);
+  const mods = MOD_ORDER.filter((m) => parts.some((p) => p.toLowerCase() === m)).map(cap);
+  const mains = parts.filter((p) => !MOD_ORDER.includes(p.toLowerCase() as (typeof MOD_ORDER)[number]));
+  return [...mods, ...mains].join("+");
+}
+
+/** 卡内搜索：动作/键位双字段子串匹配（速查卡也是要找东西的）。 */
+export function searchFilter(entries: HotkeyEntry[], query: string): HotkeyEntry[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return entries;
+  return entries.filter((e) => e.action.toLowerCase().includes(q) || e.combo.toLowerCase().includes(q));
+}
+
+/** 分组折叠：每组默认显示前 5 条 + 「还有 N 条」摘要（40 条上限之下的层级递进）。 */
+export const GROUP_PREVIEW_ROWS = 5;
+export function groupCollapse(groups: Array<{ group: HotkeyEntry["group"]; entries: HotkeyEntry[] }>, expandedGroups: ReadonlySet<string>): Array<{ group: HotkeyEntry["group"]; visible: HotkeyEntry[]; hiddenCount: number }> {
+  return groups.map((g) => {
+    const expanded = expandedGroups.has(g.group);
+    return {
+      group: g.group,
+      visible: expanded ? g.entries : g.entries.slice(0, GROUP_PREVIEW_ROWS),
+      hiddenCount: expanded ? 0 : Math.max(0, g.entries.length - GROUP_PREVIEW_ROWS),
+    };
+  });
+}

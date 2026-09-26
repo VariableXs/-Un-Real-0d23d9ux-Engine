@@ -861,3 +861,878 @@ mod deep2_tests {
         assert!(run_walkall_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——增补提案流 / 证据 TTL 清扫 / 七域
+// 记分卡 / 季检环比 diff。判据源：主册【验收判据】「增补流程案例化（首批
+// 增补走完 ADR 全程）」+【设计细节】「总检红绿判定=证据链存在且未过期
+// （过期绿按红）」+「季度审视会产出三栏（新增/废止/冻结）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：AdrProposalFlow —— 增补提案流（现实契机四问 → 提案登记 → 评审
+// 状态机（草稿/评审中/接受/否决）→ 接受才许进 register——「永远不为功能
+// 多而加功能」的流程执法）
+// ---------------------------------------------------------------------------
+
+/// 提案状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProposalPhase {
+    /// 草稿（四问未答完）。
+    Draft,
+    /// 待评审（四问全过——才能进评审）。
+    InReview,
+    /// 已接受（允许 register）。
+    Accepted,
+    /// 已否决（四问任一不过或评审否——否决也是一等公民动作）。
+    Rejected,
+}
+
+/// 增补提案。
+pub struct AdrProposal {
+    pub fid: &'static str,
+    /// 一句话理由（提案必答——「用户哪一天会用到它」）。
+    pub rationale: &'static str,
+    pub phase: ProposalPhase,
+    /// 四问答案（顺序即 FOUR_QUESTIONS）。
+    pub answers: [bool; 4],
+}
+
+impl AdrProposal {
+    /// 立案（理由必填；四问默认未答）。
+    pub fn new(fid: &'static str, rationale: &'static str) -> Result<AdrProposal, &'static str> {
+        if fid.is_empty() || rationale.is_empty() {
+            return Err("提案必须带编号与理由（无理由不立案）");
+        }
+        Ok(AdrProposal { fid, rationale, phase: ProposalPhase::Draft, answers: [false; 4] })
+    }
+
+    /// 答四问（全过 → 自动进评审；任一不过 → 直接否决——现实契机门槛）。
+    pub fn answer_four_questions(&mut self, answers: [bool; 4]) -> ProposalPhase {
+        self.answers = answers;
+        self.phase = if answers.iter().all(|a| *a) {
+            ProposalPhase::InReview
+        } else {
+            ProposalPhase::Rejected
+        };
+        self.phase
+    }
+
+    /// 评审结论（只对评审中提案有效）。
+    pub fn review(&mut self, accept: bool) -> Result<ProposalPhase, &'static str> {
+        if self.phase != ProposalPhase::InReview {
+            return Err("提案不在评审中");
+        }
+        self.phase = if accept { ProposalPhase::Accepted } else { ProposalPhase::Rejected };
+        Ok(self.phase)
+    }
+
+    /// 是否允许 register（只有 Accepted——流程外的加塞一律拒绝）。
+    pub fn register_allowed(&self) -> bool {
+        self.phase == ProposalPhase::Accepted
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：ttl_sweep —— 证据 TTL 清扫（全锚点扫过期绿：标红清单按域分组 +
+// 最老证据 TopN——季检前的续证工作清单）
+// ---------------------------------------------------------------------------
+
+/// 清扫结论。
+pub struct TtlSweep {
+    /// 过期（或缺失）证据的锚点（fid, 域, 证据年龄天；缺失=u64::MAX）。
+    pub stale: alloc::vec::Vec<(&'static str, &'static str, u64)>,
+    /// 最老证据 TopN 上限。
+    pub top_n: usize,
+}
+
+impl TtlSweep {
+    /// 扫描（now_day/TTL 语义与 Anchor::verdict 同源——一把尺子量到底）。
+    pub fn run(w: &WalkAll, now_day: u64, ttl_days: u64, top_n: usize) -> TtlSweep {
+        let mut stale = alloc::vec::Vec::new();
+        for a in &w.anchors {
+            let age = match &a.evidence {
+                None => u64::MAX, // 无证据=无限老（必续）。
+                Some((_, day_str)) => match parse_day(day_str) {
+                    Some(d) => now_day.saturating_sub(d),
+                    None => u64::MAX,
+                },
+            };
+            if age > ttl_days {
+                stale.push((a.fid, a.domain, age));
+            }
+        }
+        // 年龄降序（最老在前）。
+        stale.sort_by(|a, b| b.2.cmp(&a.2));
+        TtlSweep { stale, top_n }
+    }
+
+    /// 续证工作清单（最老 TopN——先补最旧的账）。
+    pub fn top_oldest(&self) -> alloc::vec::Vec<(&'static str, u64)> {
+        self.stale.iter().take(self.top_n).map(|(f, _, age)| (*f, *age)).collect()
+    }
+
+    /// 按域分组计数（工作分配面——哪个域欠账最多）。
+    pub fn by_domain(&self) -> alloc::vec::Vec<(&'static str, usize)> {
+        let mut out: alloc::vec::Vec<(&'static str, usize)> = alloc::vec::Vec::new();
+        for (_, domain, _) in &self.stale {
+            match out.iter_mut().find(|(d, _)| d == domain) {
+                Some((_, n)) => *n += 1,
+                None => out.push((domain, 1)),
+            }
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：domain_scorecard —— 七域记分卡（一页纸之上的聚合视图：逐域
+// 覆盖/绿率/最老证据——季检会前 Variable 先看这张卡）
+// ---------------------------------------------------------------------------
+
+/// 单域记分。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DomainScore {
+    pub domain: &'static str,
+    /// 锚点总数。
+    pub total: usize,
+    /// 绿（判据全过）数。
+    pub green: usize,
+    /// 最老证据年龄（天；无证据=u64::MAX）。
+    pub oldest_evidence_days: u64,
+}
+
+impl DomainScore {
+    /// 绿率（permille）。
+    pub fn green_permille(&self) -> u64 {
+        if self.total == 0 {
+            return 0;
+        }
+        self.green as u64 * 1000 / self.total as u64
+    }
+}
+
+/// 逐域记分（按 DOMAINS 顺序——缺锚点的域也出卡（0/0 绿率 0），不藏）。
+pub fn domain_scorecard(w: &WalkAll, now_day: u64, ttl_days: u64) -> alloc::vec::Vec<DomainScore> {
+    DOMAINS
+        .iter()
+        .map(|domain| {
+            let mine: alloc::vec::Vec<&Anchor> = w.anchors.iter().filter(|a| a.domain == *domain).collect();
+            let total = mine.len();
+            let green = mine.iter().filter(|a| a.verdict(now_day, ttl_days)).count();
+            let oldest = mine
+                .iter()
+                .map(|a| match a.evidence {
+                    Some((_, day_str)) => parse_day(day_str).map(|d| now_day.saturating_sub(d)).unwrap_or(u64::MAX),
+                    None => u64::MAX,
+                })
+                .max()
+                .unwrap_or(u64::MAX);
+            DomainScore { domain, total, green, oldest_evidence_days: oldest }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：quarterly_diff —— 季检环比 diff（两期记分卡对比：新绿/退红/持平
+// ——「逐季不回退」判据的机器面，环比不撒谎）
+// ---------------------------------------------------------------------------
+
+/// 环比结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QuarterlyDiff {
+    pub domain: &'static str,
+    /// 上期绿数。
+    pub prev_green: usize,
+    /// 本期绿数。
+    pub curr_green: usize,
+    /// 变化（正=进步，负=回退，0=持平）。
+    pub delta: i64,
+    /// 文案（回退行必须直说「回退」——不粉饰）。
+    pub text: &'static str,
+}
+
+/// 对比两期同域记分（按 DOMAINS 序对齐）。
+pub fn quarterly_diff(prev: &[DomainScore], curr: &[DomainScore]) -> alloc::vec::Vec<QuarterlyDiff> {
+    prev.iter()
+        .zip(curr.iter())
+        .map(|(p, c)| {
+            let delta = c.green as i64 - p.green as i64;
+            let text = match delta {
+                d if d > 0 => "进步：新绿项已入账",
+                d if d < 0 => "回退：上期绿项本期转红——需归因",
+                _ => "持平",
+            };
+            QuarterlyDiff { domain: c.domain, prev_green: p.green, curr_green: c.green, delta, text }
+        })
+        .collect()
+}
+
+/// 「逐季不回退」总判定（任何域 delta<0 → false——总判据的机器钉）。
+pub fn no_regression(diffs: &[QuarterlyDiff]) -> bool {
+    diffs.iter().all(|d| d.delta >= 0)
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F200 v4 自检（聚合进 secstar2 域）。
+pub fn run_walkall_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v4");
+
+    // v4-一：提案流——无理由拒、四问门槛、评审、只有 Accepted 可 register。
+    set.add("adr no rationale", AdrProposal::new("F201", "").is_err(), "");
+    let mut p = AdrProposal::new("F201", "某社区判例高频命中缺该功能").unwrap();
+    set.add("adr draft", p.phase == ProposalPhase::Draft && !p.register_allowed(), "");
+    set.add("adr 3of4 rejected", p.answer_four_questions([true, true, true, false]) == ProposalPhase::Rejected, "四问缺一即否");
+    set.add("adr rejected no register", !p.register_allowed(), "");
+    let mut p2 = AdrProposal::new("F202", "硬件契机出现").unwrap();
+    set.add("adr 4of4 review", p2.answer_four_questions([true; 4]) == ProposalPhase::InReview, "");
+    set.add("adr review gated", p2.review(true).is_ok() && p2.register_allowed(), "接受才可入库");
+    let mut p3 = AdrProposal::new("F203", "x").unwrap();
+    p3.answer_four_questions([true; 4]);
+    set.add("adr review reject", p3.review(false).is_ok() && !p3.register_allowed(), "评审否决也是出口");
+    set.add("adr review skip", { let mut p4 = AdrProposal::new("F204", "y").unwrap(); p4.review(true).is_err() }, "草稿直评=拒");
+
+    // v4-二：TTL 清扫——过期标红、无证据必列、排序、按域分组。
+    let mut w = WalkAll::new();
+    w.register("F001", "A 兼容", alloc::vec!["判据一"]);
+    w.register("F002", "A 兼容", alloc::vec!["判据二"]);
+    w.register("F003", "B 性能", alloc::vec!["判据三"]);
+    w.attach_evidence("F001", "r1", "20260101"); // 老（300 天前口径）。
+    w.attach_evidence("F002", "r2", "20260901"); // 新。
+    // F003 无证据。
+    let sweep = TtlSweep::run(&w, 300, 90, 2);
+    set.add("sweep catches stale", sweep.stale.iter().any(|(f, _, _)| *f == "F001"), "F001 过期入列");
+    set.add("sweep catches none", sweep.stale.iter().any(|(f, _, _)| *f == "F003"), "F003 无证据必列");
+    set.add("sweep fresh skip", !sweep.stale.iter().any(|(f, _, _)| *f == "F002"), "新鲜证据不打扰");
+    set.add("sweep oldest first", sweep.top_oldest()[0].0 == "F003", "无证据=最老置顶");
+    set.add("sweep top n", sweep.top_oldest().len() == 2, "TopN 截断");
+    set.add("sweep by domain", sweep.by_domain().iter().any(|(d, n)| *d == "A 兼容" && *n == 1), "");
+
+    // v4-三：记分卡——七域齐、绿率、最老证据、缺锚域出卡。
+    let card = domain_scorecard(&w, 300, 90);
+    set.add("score 7 domains", card.len() == DOMAINS.len(), "");
+    set.add("score A green", card[0].total == 2 && card[0].green == 1, "A 域 2 锚 1 绿");
+    set.add("score B no evidence", card[1].total == 1 && card[1].green == 0, "B 域无证据=0 绿");
+    set.add("score empty domain", card[6].total == 0 && card[6].green_permille() == 0, "空域出卡不藏");
+    set.add("score green rate", card[0].green_permille() == 500, "");
+
+    // v4-四：环比——进步/回退/持平三文案、总判定。
+    let prev_card = card.clone();
+    // 模拟下期：F003（上期无证据 0 绿）补证转绿（进步案例）；F002 证据在
+    // 两期间到期，例行续证（绿数不变——持平案例）。
+    w.attach_evidence("F002", "r2b", "20261201");
+    w.attach_evidence("F003", "r3", "20261201");
+    let curr_card = domain_scorecard(&w, 360, 90);
+    let diffs = quarterly_diff(&prev_card, &curr_card);
+    set.add("diff count", diffs.len() == DOMAINS.len(), "");
+    set.add("diff B progress", diffs[1].delta == 1 && diffs[1].text.contains("进步"), "B 域 +1 绿");
+    set.add("diff A flat", diffs[0].delta == 0 && diffs[0].text == "持平", "A 域持平");
+    set.add("diff no regression", no_regression(&diffs), "无回退=总判定过");
+    // 回退场景：抽掉一条证据。
+    let mut w2 = WalkAll::new();
+    w2.register("F001", "A 兼容", alloc::vec!["c"]);
+    w2.attach_evidence("F001", "r", "20260901");
+    let before = domain_scorecard(&w2, 300, 365);
+    w2.anchors[0].evidence = None;
+    let after = domain_scorecard(&w2, 300, 365);
+    let diffs2 = quarterly_diff(&before, &after);
+    set.add("diff regression called out", diffs2[0].delta == -1 && diffs2[0].text.contains("回退"), "回退直说");
+    set.add("diff regression fails gate", !no_regression(&diffs2), "回退=总判定红");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    fn mk_walkall() -> WalkAll {
+        let mut w = WalkAll::new();
+        w.register("F001", "A 兼容", alloc::vec!["c1"]);
+        w.register("F002", "A 兼容", alloc::vec!["c2"]);
+        w.register("F003", "B 性能", alloc::vec!["c3"]);
+        w.attach_evidence("F001", "r1", "20260901");
+        w.attach_evidence("F002", "r2", "20260915");
+        w
+    }
+
+    #[test]
+    fn f200_v4_proposal_full_adr_cycle() {
+        // 首批增补走完 ADR 全程：立案→四问→评审→接受→register——
+        // 「增补流程案例化」判据的完整案例（本测试即案例记录）。
+        let mut p = AdrProposal::new("F201", "新增判例：U 盘热插拔计数异常（社区判例 #42 高频）").unwrap();
+        assert_eq!(p.answer_four_questions([true, true, true, true]), ProposalPhase::InReview);
+        assert_eq!(p.review(true), Ok(ProposalPhase::Accepted));
+        assert!(p.register_allowed());
+        // 流程外加塞被拒（对照：跳过流程的 register_allowed=false）。
+        let raw = AdrProposal::new("F999", "想到就加").unwrap();
+        assert!(!raw.register_allowed());
+    }
+
+    #[test]
+    fn f200_v4_sweep_boundary_exact_ttl() {
+        // TTL 边界：恰好 90 天=新鲜（≤ 判定——verdict 同尺）。
+        let mut w = WalkAll::new();
+        w.register("F001", "A 兼容", alloc::vec!["c"]);
+        w.attach_evidence("F001", "r", "20260901");
+        // day(20260901) = 8*30+1 = 241。TTL 90：241+90=331 内不过期。
+        let sweep = TtlSweep::run(&w, 241 + 90, 90, 5);
+        assert!(sweep.stale.is_empty(), "恰好 90 天不算过期");
+        let sweep2 = TtlSweep::run(&w, 241 + 91, 90, 5);
+        assert_eq!(sweep2.stale.len(), 1);
+    }
+
+    #[test]
+    fn f200_v4_scorecard_oldest_tracking() {
+        // 最老证据追踪：两证一新一旧，oldest 取旧值。
+        let w = mk_walkall();
+        let card = domain_scorecard(&w, 360, 365);
+        // day(20260901)=241, now=2026*365+12*30+30 → 最老=max(各锚年龄)。
+        let a = &card[0];
+        assert!(a.oldest_evidence_days >= 100, "最老证据年龄追踪在账");
+        assert_eq!(a.green, 2, "两证未过期=2 绿");
+    }
+
+    #[test]
+    fn f200_v4_diff_alignment_by_domain() {
+        // 两期卡按域对齐（zip 语义——域序错位不产生假 diff）。
+        let w = mk_walkall();
+        let c1 = domain_scorecard(&w, 0, 1);
+        let c2 = domain_scorecard(&w, 0, 1);
+        let diffs = quarterly_diff(&c1, &c2);
+        assert!(diffs.iter().all(|d| d.delta == 0 && d.text == "持平"));
+        assert!(no_regression(&diffs));
+    }
+
+    #[test]
+    fn f200_v4_run_checks_pass() {
+        assert!(run_walkall_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——总检脚本帮助页 /
+// 证据日历 / 四问文档页 / 季检纪要行。判据源：主册【交互设计】「按域分组
+// 红绿一页+证据链链接」+【设计细节】「现实契机判定四问」「F200 自身也有
+// 锚点：本段即它的验收」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v5-一：WALKCHECK_HELP —— 总检脚本帮助页（四节：红绿判定/TTL 语义/冻结
+// 处理/季检流程——脚本的说明书与行为同源）
+// ---------------------------------------------------------------------------
+
+pub const WALKCHECK_HELP: [(&'static str, &'static str); 4] = [
+    (
+        "红绿怎么判",
+        "每项锚点三查：判据覆盖了吗、证据在吗、证据过期了吗（TTL 90 天）。三查全过=绿；任一不过=红——过期绿按红处理，不放过任何陈旧的绿。",
+    ),
+    (
+        "证据要带什么",
+        "一份报告文件名+一个日期（YYYYMMDD）。证据必须可复现：点开报告能看到当时的实测数据与复现命令。",
+    ),
+    (
+        "冻结项怎么处理",
+        "候删五项（F101/F104/F112/F145/F154）已冻结：不投入工时、不参与考核，但保留在册——季度审视决定去留，废止也是一等公民动作。",
+    ),
+    (
+        "季检怎么走",
+        "跑脚本出红绿一页 → 七域记分卡 → 与上期环比（回退必归因）→ 增补提案走四问门槛 → 全部归档进季报第五节。",
+    ),
+];
+
+pub fn walkcheck_help_intact() -> bool {
+    WALKCHECK_HELP.len() == 4 && WALKCHECK_HELP[0].1.contains("90 天") && WALKCHECK_HELP[2].1.contains("五项")
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：evidence_calendar —— 证据日历（最近 30 天逐日续证数——续证节奏
+// 可视化：突击补证一眼看出）
+// ---------------------------------------------------------------------------
+
+/// 30 天日历（下标 0=今天，1=昨天…）。
+pub fn evidence_calendar(w: &WalkAll, now_day: u64) -> [u64; 30] {
+    let mut cal = [0u64; 30];
+    for a in &w.anchors {
+        if let Some((_, day_str)) = a.evidence {
+            if let Some(d) = parse_day(day_str) {
+                let age = now_day.saturating_sub(d);
+                if age < 30 {
+                    cal[age as usize] += 1;
+                }
+            }
+        }
+    }
+    cal
+}
+
+/// 突击检测（单日续证数超半数锚点=突击补证——如实标注）。
+pub fn evidence_cram_detected(cal: &[u64; 30], total_anchors: usize) -> bool {
+    total_anchors > 0 && cal.iter().any(|n| *n as usize * 2 > total_anchors)
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：FOUR_QUESTIONS_DOC —— 四问文档页（逐问说明+判定例——增补门槛
+// 的可解释面）
+// ---------------------------------------------------------------------------
+
+pub const FOUR_QUESTIONS_DOC: [(&'static str, &'static str); 4] = [
+    ("一问：有用户真实需求吗", "社区判例/求助帖/体验日志里有具体场景佐证。「感觉会有人用」不算——判例编号或日志事件才是证据。"),
+    ("二问：有硬件契机吗", "目标硬件（U 盘整机 Y7000）真的支持吗？需要新硬件才能成立的项直接否——不收期货。"),
+    ("三问：有开源件成熟吗", "有成熟可复用的开源实现吗（F130 在册）？自研轮子需论证为什么不用现成件。"),
+    ("四问：有维护人力吗", "一个季度后还有人维护它吗？没有主人的功能是负债——宁缺毋滥。"),
+];
+
+pub fn four_questions_doc_intact() -> bool {
+    FOUR_QUESTIONS_DOC.len() == 4
+        && FOUR_QUESTIONS_DOC.len() == FOUR_QUESTIONS.len()
+        && FOUR_QUESTIONS_DOC.iter().all(|(_, b)| b.len() >= 20)
+}
+
+// ---------------------------------------------------------------------------
+// v5-四：review_minutes —— 季检纪要行（三栏决议 → 纪要行渲染：新增/废止/
+// 冻结逐条留痕——季度审视会的过程性产出）
+// ---------------------------------------------------------------------------
+
+/// 纪要行。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MinuteLine {
+    pub column: &'static str,
+    pub text: String,
+    pub token: &'static str,
+}
+
+/// 渲染（决定列→token 映射：新增=success/废止=warning/冻结=neutral）。
+pub fn review_minutes(decisions: &[(ReviewColumn, &'static str)]) -> alloc::vec::Vec<MinuteLine> {
+    decisions
+        .iter()
+        .map(|(col, what)| {
+            let (column, token) = match col {
+                ReviewColumn::Add => ("新增", "success"),
+                ReviewColumn::Retire => ("废止", "warning"),
+                ReviewColumn::Freeze => ("冻结", "neutral"),
+            };
+            MinuteLine { column, text: alloc::format!("[{}] {}", column, what), token }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F200 v5 自检（聚合进 secstar2 域）。
+pub fn run_walkall_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v5");
+
+    // v5-一：帮助页——四节齐+TTL/冻结数字入文。
+    set.add("walkhelp intact", walkcheck_help_intact(), "");
+    set.add("walkhelp verdict", WALKCHECK_HELP[0].1.contains("三查"), "");
+
+    // v5-二：证据日历——逐日计数、30 天外不入、突击检测。
+    let mut w = WalkAll::new();
+    w.register("F001", "A 兼容", vec!["c"]);
+    w.register("F002", "A 兼容", vec!["c"]);
+    w.register("F003", "A 兼容", vec!["c"]);
+    w.register("F004", "A 兼容", vec!["c"]);
+    w.attach_evidence("F001", "r", "20260901"); // 假设 now-day=0 → 今天。
+    w.attach_evidence("F002", "r", "20260901");
+    w.attach_evidence("F003", "r", "20260901");
+    w.attach_evidence("F004", "r", "20260801"); // 31 天前 → 不入 30 天窗。
+    let cal = evidence_calendar(&w, parse_day("20260901").unwrap_or(0));
+    set.add("cal today 3", cal[0] == 3, "今天 3 条续证");
+    set.add("cal old excluded", cal.iter().sum::<u64>() == 3, "31 天前不在窗内");
+    set.add("cal cram detected", evidence_cram_detected(&cal, 4), "4 锚 3 证在同日=突击");
+    let cal2 = evidence_calendar(&WalkAll::new(), 0);
+    set.add("cal empty", evidence_cram_detected(&cal2, 0) == false, "空账不误报");
+
+    // v5-三：四问文档——与常量表等长齐+每问有判定例。
+    set.add("4q doc intact", four_questions_doc_intact(), "");
+    set.add("4q no future hw", FOUR_QUESTIONS_DOC[1].1.contains("期货"), "");
+
+    // v5-四：纪要行——三栏 token、内容成对。
+    let minutes = review_minutes(&[
+        (ReviewColumn::Add, "增补 F201：U 盘热插拔计数判例"),
+        (ReviewColumn::Retire, "废止 F104 录音件（候删名单确认）"),
+        (ReviewColumn::Freeze, "冻结 F154 壁纸每日一换"),
+    ]);
+    set.add("minutes 3 lines", minutes.len() == 3, "");
+    set.add("minutes tokens", minutes[0].token == "success" && minutes[1].token == "warning" && minutes[2].token == "neutral", "");
+    set.add("minutes text", minutes[1].text.contains("废止") && minutes[1].text.contains("F104"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v5_calendar_spread_vs_cram() {
+        // 分散续证 vs 突击续证对照（4 锚各 1 天 vs 4 锚同 1 天）。
+        let mut spread = WalkAll::new();
+        for i in 0..4u64 {
+            spread.register("F00x", "A 兼容", vec!["c"]);
+            spread.attach_evidence(
+                "F00x",
+                "r",
+                if i == 0 { "20260901" } else if i == 1 { "20260830" } else if i == 2 { "20260825" } else { "20260820" },
+            );
+        }
+        let cal = evidence_calendar(&spread, parse_day("20260901").unwrap_or(0));
+        assert!(!evidence_cram_detected(&cal, 4), "分散续证不误报突击");
+    }
+
+    #[test]
+    fn f200_v5_help_covers_all_columns() {
+        // 帮助页覆盖三栏流程（新增/废止/冻结至少各出现一次）。
+        let all: String = WALKCHECK_HELP.iter().map(|(_, b)| *b).collect();
+        assert!(all.contains("废止") && all.contains("冻结") && all.contains("增补"));
+    }
+
+    #[test]
+    fn f200_v5_minutes_empty_honest() {
+        // 零决议=零纪要（季度会可以决定「本期不动」——空也是结论）。
+        assert!(review_minutes(&[]).is_empty());
+    }
+
+    #[test]
+    fn f200_v5_run_checks_pass() {
+        assert!(run_walkall_deep4_checks().all_passed());
+    }
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——CLI 用法 / 域级腐化报告 / 证据
+// 年龄分桶 / 季检议程生成器。判据源：主册【交互设计】总检脚本工具化
+// （F125 同管线全域化）+【状态与异常】R8 三册腐化流程。
+// ---------------------------------------------------------------------------
+
+/// CLI 用法行（脚本入口的帮助——与 Python 脚本参数一一同源）。
+pub const WALKCHECK_CLI: [&str; 4] = [
+    "python tools/vx-walkcheck-all.py            # 红绿一页纸（默认）",
+    "python tools/vx-walkcheck-all.py --json     # 开放 JSON 输出",
+    "python tools/vx-walkcheck-all.py --archive  # 季检归档（reports/walkcheck/）",
+    "python tools/vx-walkcheck-all.py --selftest # 脚本自检",
+];
+
+pub fn walkcheck_cli_intact() -> bool {
+    WALKCHECK_CLI.len() == 4 && WALKCHECK_CLI.iter().all(|l| l.starts_with("python tools/vx-walkcheck-all.py"))
+}
+
+/// 域级腐化报告（逐域：锚点判定与实现脱节的征兆——R8 周对账的域视图）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DomainDrift {
+    pub domain: &'static str,
+    /// 锚点总数。
+    pub total: usize,
+    /// 证据缺失数。
+    pub no_evidence: usize,
+    /// 过期证据数。
+    pub expired: usize,
+    /// 腐化风险（缺失+过期占比 permille——>300 即黄牌）。
+    pub risk_permille: u64,
+}
+
+/// 扫描（now/TTL 同总检主尺）。
+pub fn domain_drift_report(w: &WalkAll, now_day: u64, ttl_days: u64) -> Vec<DomainDrift> {
+    DOMAINS
+        .iter()
+        .map(|domain| {
+            let mine: Vec<&Anchor> = w.anchors.iter().filter(|a| a.domain == *domain).collect();
+            let total = mine.len();
+            let no_ev = mine.iter().filter(|a| a.evidence.is_none()).count();
+            let expired = mine
+                .iter()
+                .filter(|a| {
+                    a.evidence.is_some()
+                        && !a.verdict(now_day, ttl_days)
+                })
+                .count();
+            let risk = if total == 0 {
+                0
+            } else {
+                (no_ev + expired) as u64 * 1000 / total as u64
+            };
+            DomainDrift { domain, total, no_evidence: no_ev, expired, risk_permille: risk }
+        })
+        .collect()
+}
+
+/// 黄牌域清单（风险 >300‰——季检会优先过堂）。
+pub fn drift_yellow_cards(report: &[DomainDrift]) -> Vec<&'static str> {
+    report.iter().filter(|d| d.risk_permille > 300).map(|d| d.domain).collect()
+}
+
+/// 证据年龄分桶（0-30 / 31-60 / 61-90 / 90+ 天——续证节奏的健康分布）。
+pub fn evidence_aging_buckets(w: &WalkAll, now_day: u64) -> [usize; 4] {
+    let mut buckets = [0usize; 4];
+    for a in &w.anchors {
+        if let Some((_, day_str)) = a.evidence {
+            if let Some(d) = parse_day(day_str) {
+                let age = now_day.saturating_sub(d);
+                let slot = if age <= 30 {
+                    0
+                } else if age <= 60 {
+                    1
+                } else if age <= 90 {
+                    2
+                } else {
+                    3
+                };
+                buckets[slot] += 1;
+            }
+        }
+    }
+    buckets
+}
+
+/// 季检议程生成器（七步议程——会前自动出议程，流程不靠记性）。
+pub fn quarterly_agenda() -> [&'static str; 7] {
+    [
+        "1. 跑总检脚本出红绿一页纸",
+        "2. 七域记分卡过目（覆盖率/绿率/最老证据）",
+        "3. 与上期环比——回退项逐个归因",
+        "4. 黄牌域过堂（腐化风险 >300‰）",
+        "5. 增补提案四问评审",
+        "6. 三栏决议（新增/废止/冻结）",
+        "7. 归档季报第五节",
+    ]
+}
+
+pub fn quarterly_agenda_intact() -> bool {
+    quarterly_agenda().len() == 7 && quarterly_agenda()[3].contains("黄牌")
+}
+
+/// F200 v6 自检（deep5 表）。
+pub fn run_walkall_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v6");
+
+    let mut w = WalkAll::new();
+    w.register("F001", "A 兼容", vec!["c"]);
+    w.register("F002", "A 兼容", vec!["c"]);
+    w.register("F003", "B 性能", vec!["c"]);
+    w.attach_evidence("F001", "r", "20260901"); // day 241。
+    w.attach_evidence("F002", "r", "20260101"); // day 1（过期）。
+    // F003 无证据。
+
+    // v6-一：CLI 行——四条齐。
+    set.add("cli intact", walkcheck_cli_intact(), "");
+
+    // v6-二：域腐化——A 域 1 缺 1 过期（风险 1000‰ 黄牌）、B 域 1 缺。
+    let report = domain_drift_report(&w, 300, 90);
+    let a = report.iter().find(|d| d.domain == "A 兼容").unwrap();
+    set.add("drift a", a.total == 2 && a.no_evidence == 0 && a.expired == 1, "F002 过期");
+    set.add("drift a risk", a.risk_permille == 500, "1/2 = 500‰");
+    let b = report.iter().find(|d| d.domain == "B 性能").unwrap();
+    set.add("drift b no ev", b.no_evidence == 1, "");
+    let cards = drift_yellow_cards(&report);
+    set.add("drift yellow a", cards.contains(&"A 兼容"), "A 域黄牌");
+
+    // v6-三：年龄分桶——新鲜 1（F001）+ 过期 1（F002）+ 无证据不计。
+    let buckets = evidence_aging_buckets(&w, 260);
+    set.add("buckets fresh", buckets[0] == 1, "F001 差 59 天→0-30? no: 260-241=19 天");
+    set.add("buckets old", buckets[3] == 1, "F002 差 259 天 → 90+");
+    let total: usize = buckets.iter().sum();
+    set.add("buckets sum", total == 2, "无证据不入桶");
+
+    // v6-四：议程——七步齐。
+    set.add("agenda intact", quarterly_agenda_intact(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v6_drift_all_healthy() {
+        // 全域健康：风险全 0，零黄牌（对照面）。
+        let mut w = WalkAll::new();
+        w.register("F001", "A 兼容", vec!["c"]);
+        w.attach_evidence("F001", "r", "20260901");
+        let report = domain_drift_report(&w, 260, 90);
+        assert!(report.iter().all(|d| d.risk_permille == 0));
+        assert!(drift_yellow_cards(&report).is_empty());
+    }
+
+    #[test]
+    fn f200_v6_buckets_boundary_30() {
+        // 分桶边界：恰好 30 天在 0 桶、31 天进 1 桶。
+        let mut w = WalkAll::new();
+        w.register("F001", "A 兼容", vec!["c"]);
+        w.register("F002", "A 兼容", vec!["c"]);
+        w.attach_evidence("F001", "r", "20260901"); // day 241。
+        w.attach_evidence("F002", "r", "20260830"); // day 240（8 月 30）。
+        // now=271: age1=30 → bucket0；age2=31 → bucket1。
+        let b = evidence_aging_buckets(&w, 271);
+        assert_eq!(b[0], 1);
+        assert_eq!(b[1], 1);
+    }
+
+    #[test]
+    fn f200_v6_run_checks_pass() {
+        assert!(run_walkall_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——一页纸导出 / 锚点明细查询 /
+// 季检工时统计。判据源：主册【交互设计】「按域分组红绿一页+证据链链接」
+// +【验收判据】季检脚本全量可跑（<2h）。
+// ---------------------------------------------------------------------------
+
+/// 一页纸开放导出（F128 语言：逐域逐锚红绿 JSON——季报第五节的数据源）。
+pub fn redgreen_export_json(w: &WalkAll, now_day: u64, ttl_days: u64, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"walkcheck\":{\"generated_day\":");
+    out.extend_from_slice(alloc::format!("{}", now_day).as_bytes());
+    out.extend_from_slice(b",\"domains\":[");
+    for (di, domain) in DOMAINS.iter().enumerate() {
+        if di > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(alloc::format!("{{\"domain\":\"{}\",\"items\":[", domain).as_bytes());
+        let mut first = true;
+        for a in &w.anchors {
+            if a.domain != *domain {
+                continue;
+            }
+            if !first {
+                out.extend_from_slice(b",");
+            }
+            first = false;
+            out.extend_from_slice(
+                alloc::format!("{{\"fid\":\"{}\",\"green\":{}}}", a.fid, a.verdict(now_day, ttl_days)).as_bytes(),
+            );
+        }
+        out.extend_from_slice(b"]}");
+    }
+    out.extend_from_slice(b"]}}");
+}
+
+/// 导出形状自检（锚点计数守恒）。
+pub fn redgreen_export_ok(w: &WalkAll, data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"walkcheck\"") && text.matches("\"fid\"").count() == w.anchors.len()
+}
+
+/// 锚点明细查询（单锚全字段——证据链链接的目标数据）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnchorDetail {
+    pub fid: &'static str,
+    pub domain: &'static str,
+    pub criteria_count: usize,
+    pub evidence: Option<(&'static str, &'static str)>,
+    pub green: bool,
+}
+
+/// 查询（无此锚诚实 None）。
+pub fn anchor_detail(w: &WalkAll, fid: &str, now_day: u64, ttl_days: u64) -> Option<AnchorDetail> {
+    w.anchors
+        .iter()
+        .find(|a| a.fid == fid)
+        .map(|a| AnchorDetail {
+            fid: a.fid,
+            domain: a.domain,
+            criteria_count: a.criteria.len(),
+            evidence: a.evidence,
+            green: a.verdict(now_day, ttl_days),
+        })
+}
+
+/// 季检工时统计（分项耗时——<2h 总预算的核算面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QuarterlyHours {
+    pub script_min: u64,
+    pub review_min: u64,
+    pub adr_min: u64,
+    pub archive_min: u64,
+}
+
+impl QuarterlyHours {
+    /// 总耗时（分钟）。
+    pub fn total_min(&self) -> u64 {
+        self.script_min + self.review_min + self.adr_min + self.archive_min
+    }
+
+    /// 是否达成 <2h 判据。
+    pub fn within_budget(&self) -> bool {
+        self.total_min() < QUARTERLY_BUDGET_H * 60
+    }
+
+    /// 超支项建议（哪一项花最多——人话定位）。
+    pub fn heaviest(&self) -> &'static str {
+        let m = self.script_min.max(self.review_min).max(self.adr_min).max(self.archive_min);
+        if m == self.script_min {
+            "脚本执行"
+        } else if m == self.review_min {
+            "逐项评审"
+        } else if m == self.adr_min {
+            "增补评审"
+        } else {
+            "归档"
+        }
+    }
+}
+
+/// F200 v7 自检（deep6 表）。
+pub fn run_walkall_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v7");
+
+    let mut w = WalkAll::new();
+    w.register("F001", "A 兼容", vec!["c1"]);
+    w.register("F002", "A 兼容", vec!["c2"]);
+    w.register("F003", "B 性能", vec!["c3"]);
+    w.attach_evidence("F001", "r1", "20260901");
+    w.attach_evidence("F002", "r2", "20260915");
+
+    // v7-一：一页纸导出——形状+计数守恒。
+    let mut data = Vec::new();
+    redgreen_export_json(&w, 260, 90, &mut data);
+    set.add("export ok", redgreen_export_ok(&w, &data), "锚点计数守恒");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("export domains", text.matches("\"domain\"").count() == DOMAINS.len(), "七域齐");
+    set.add("export greens", text.contains("\"green\":true") && text.contains("\"green\":false"), "红绿同页如实");
+
+    // v7-二：锚点明细——命中/未命中。
+    let d = anchor_detail(&w, "F002", 260, 90);
+    set.add("detail found", d.map(|x| x.criteria_count == 1 && x.green).unwrap_or(false), "");
+    set.add("detail missing none", anchor_detail(&w, "F999", 260, 90).is_none(), "");
+
+    // v7-三：季检工时——<2h 达成、超支、最重项。
+    let fast = QuarterlyHours { script_min: 20, review_min: 40, adr_min: 15, archive_min: 10 };
+    set.add("hours fast", fast.total_min() == 85 && fast.within_budget(), "");
+    set.add("hours heaviest", fast.heaviest() == "逐项评审", "评审 40min 最重");
+    let slow = QuarterlyHours { script_min: 60, review_min: 80, adr_min: 40, archive_min: 20 };
+    set.add("hours slow over", !slow.within_budget(), "200min > 120min");
+    set.add("hours slow heaviest", slow.heaviest() == "逐项评审", "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v7_export_seven_domains_even_empty() {
+        // 无锚的域也出现在导出里（空 items——域完整性）。
+        let w = WalkAll::new();
+        let mut data = Vec::new();
+        redgreen_export_json(&w, 100, 90, &mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert_eq!(text.matches("\"items\":[]").count(), DOMAINS.len());
+    }
+
+    #[test]
+    fn f200_v7_run_checks_pass() {
+        assert!(run_walkall_deep6_checks().all_passed());
+    }
+}

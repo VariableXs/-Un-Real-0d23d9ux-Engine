@@ -45,8 +45,13 @@ pub enum PairState {
     Discovered,
     AwaitingConfirm,
     Paired,
+    Connected,
     Failed,
 }
+
+/// 配对确认等待窗（ms）——超时回落到 Discovered（设备端早已放弃，
+/// 本端不能再「确认成功」）。
+pub const PAIR_CONFIRM_WINDOW_MS: u64 = 30_000;
 
 /// 发现列表条目。
 #[derive(Clone, Debug)]
@@ -130,12 +135,61 @@ impl BtPairing {
     /// 已配对设备改名（持久化登记——custom_name 字段）。
     pub fn rename(&mut self, id: u64, name: &str) -> bool {
         match self.devices.iter_mut().find(|d| d.id == id) {
-            Some(d) if d.state == PairState::Paired => {
+            Some(d) if d.state == PairState::Paired || d.state == PairState::Connected => {
                 d.custom_name = Some(String::from(name));
                 true
             }
             _ => false,
         }
+    }
+
+    /// 已配对设备连接（Paired → Connected；重复连接幂等拒绝）。
+    pub fn connect(&mut self, id: u64) -> bool {
+        match self.devices.iter_mut().find(|d| d.id == id) {
+            Some(d) if d.state == PairState::Paired => {
+                d.state = PairState::Connected;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 断开连接（Connected → Paired；配对关系保留——只是链路断）。
+    pub fn disconnect(&mut self, id: u64) -> bool {
+        match self.devices.iter_mut().find(|d| d.id == id) {
+            Some(d) if d.state == PairState::Connected => {
+                d.state = PairState::Paired;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 忘记设备（删除配对关系——用户主动；Unpair 不可撤销需重配）。
+    pub fn forget(&mut self, id: u64) -> bool {
+        let before = self.devices.len();
+        self.devices.retain(|d| !(d.id == id && matches!(d.state, PairState::Paired | PairState::Connected | PairState::Failed)));
+        self.devices.len() < before
+    }
+
+    /// 配对确认等待超时：超窗回落 Discovered（设备端早放弃——本端
+    /// 不能再补确认；结构性堵死「过期确认成功」）。
+    pub fn confirm_timeout_tick(&mut self, id: u64, waited_ms: u64) -> bool {
+        match self.devices.iter_mut().find(|d| d.id == id) {
+            Some(d) if d.state == PairState::AwaitingConfirm && waited_ms > PAIR_CONFIRM_WINDOW_MS => {
+                d.state = PairState::Discovered;
+                d.expect_code = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 发现列表按信号强度降序（最近的可点设备排最上——一屏读完）。
+    pub fn sorted_by_signal(&self) -> Vec<&BtDevice> {
+        let mut v: Vec<&BtDevice> = self.devices.iter().collect();
+        v.sort_by(|a, b| b.rssi_pct.cmp(&a.rssi_pct));
+        v
     }
 
     /// 自动重连：信号恢复 → 计时；超 3s 记账（诚实）。
@@ -189,6 +243,40 @@ pub fn run_btpair_checks() -> CheckSet {
     set.add("f443-reconnect-under-3s", b.last_reconnect_ms == Some(1_800) && b.reconnects_over_budget == 0, "");
     b.reconnect_tick(4_000);
     set.add("f443-reconnect-over-logged", b.reconnects_over_budget == 1, "");
+    // 连接/断开：Paired → Connected → 断开回 Paired（配对关系保留）；
+    // 重复连接幂等拒绝。
+    set.add("f443-connect-paired", b.connect(1) && b.devices[0].state == PairState::Connected, "");
+    set.add("f443-connect-idempotent-refused", !b.connect(1), "");
+    set.add(
+        "f443-disconnect-keeps-pairing",
+        b.disconnect(1) && b.devices[0].state == PairState::Paired && !b.disconnect(1),
+        "",
+    );
+    // 已连接设备同样可改名（连接态改名是高频操作）。
+    let _ = b.connect(1);
+    set.add("f443-rename-while-connected", b.rename(1, "耳机-书房") && b.devices[0].custom_name.as_deref() == Some("耳机-书房"), "");
+    let _ = b.disconnect(1);
+    // 配对确认超时：超 30s 窗回落 Discovered（过期确认结构性堵死）。
+    b.begin_pair(2, 555);
+    set.add("f443-confirm-window-held", !b.confirm_timeout_tick(2, PAIR_CONFIRM_WINDOW_MS), "");
+    set.add(
+        "f443-confirm-timeout-falls-back",
+        b.confirm_timeout_tick(2, PAIR_CONFIRM_WINDOW_MS + 1)
+            && b.devices[1].state == PairState::Discovered
+            && b.devices[1].expect_code.is_none(),
+        "",
+    );
+    // 忘记设备：配对/失败态可删；发现中的不入此门。
+    set.add("f443-forget-paired", b.forget(1) && !b.devices.iter().any(|d| d.id == 1), "");
+    set.add("f443-forget-discovered-refused", !b.forget(2), "");
+    // 发现列表按信号降序（一屏读完，最近在上）。
+    b.discover(3, "Near", BtKind::Phone, 95);
+    let order = b.sorted_by_signal();
+    set.add(
+        "f443-sorted-by-signal",
+        order.len() == 2 && order[0].name == "Near" && order[1].name == "StarKeys",
+        "",
+    );
     set
 }
 

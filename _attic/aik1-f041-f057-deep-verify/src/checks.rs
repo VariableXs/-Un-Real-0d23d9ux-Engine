@@ -75,6 +75,11 @@ impl CheckSet {
         out
     }
 
+    /// 深化调试面（AI-U2）：逐行枚举检查项（红项定位用——聚合器不调）。
+    pub fn red_items(&self) -> ([Option<Check>; MAX_CHECKS], usize) {
+        (self.checks, self.count)
+    }
+
     /// Record a failing check.
     pub fn fail(&mut self, name: &'static str, detail: &'static str) {
         self.add(name, false, detail);

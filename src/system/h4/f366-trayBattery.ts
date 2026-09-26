@@ -109,3 +109,42 @@ export function auditBandReconciliation(): { pass: boolean; cases: Array<{ perce
   ];
   return { pass: cases.every((c) => c.expect === c.got), cases };
 }
+
+/* ================= v5 深化批次五：剩余时间 / 阈值边沿 / 双电池分列 ================= */
+
+/** 剩余使用时间估算：当前放电速率注入（mA/h 语义由调用方给——本层不编硬件读数）。 */
+export function runtimeEstimate(r: BatteryReading, drainPctPerHour: number | null): { minutes: number | null; honest: string } {
+  if (drainPctPerHour === null || !Number.isFinite(drainPctPerHour) || drainPctPerHour <= 0) {
+    return { minutes: null, honest: "无放电速率数据——不估算（不编数）" };
+  }
+  if (r.plugged) return { minutes: null, honest: "插电中——不适用续航估算" };
+  const minutes = Math.round((clampPercent(r.percent) / drainPctPerHour) * 60);
+  return { minutes, honest: `按当前耗电速率约可再用 ${Math.floor(minutes / 60)} 时 ${minutes % 60} 分` };
+}
+
+export interface ThresholdEdge {
+  crossed: boolean;
+  level: LowLevel;
+  /** 边沿触发只提醒一次（同级别不重复轰炸——不惊扰纪律）。 */
+  notify: boolean;
+}
+
+/** 阈值边沿检测：上一读数级别 → 当前级别，级别恶化才通知（恶化一级提一次）。 */
+export function thresholdEdge(prevLevel: LowLevel, r: BatteryReading): ThresholdEdge {
+  const cur = lowLevel(r.percent, r.plugged);
+  const rank: Record<LowLevel, number> = { none: 0, notice: 1, warning: 2, critical: 3 };
+  const crossed = rank[cur] > rank[prevLevel];
+  return { crossed, level: cur, notify: crossed };
+}
+
+export interface DualBatteryReading {
+  batteries: Array<{ id: string; label: string } & BatteryReading>;
+}
+
+/** 双电池分列（多电池设备一等公民）：每块独立判级、聚合读数取均值。 */
+export function dualBatteryRender(bs: DualBatteryReading, mode: BatteryDisplayMode): { perBattery: TrayRender[]; aggregate: TrayRender } {
+  const perBattery = bs.batteries.map((b) => renderTray(b, mode));
+  const aggPct = bs.batteries.length === 0 ? 0 : Math.round(bs.batteries.reduce((s, b) => s + b.percent, 0) / bs.batteries.length);
+  const plugged = bs.batteries.length > 0 && bs.batteries.every((b) => b.plugged);
+  return { perBattery, aggregate: renderTray({ percent: aggPct, plugged }, mode) };
+}

@@ -486,6 +486,40 @@ pub fn artifact_readable(artifact_version: u32, tool_version: u32, migration_ope
     artifact_version == tool_version || (migration_open && artifact_version < tool_version)
 }
 
+// ---------------------------------------------------------------------------
+// 深化批次 v7 · keygen 保管指引（主册「签名密钥对生成与保管指引
+// （vxapp keygen）」的指引半边——keygen 生成指纹在册，保管指引缺位）
+// ---------------------------------------------------------------------------
+
+/// 保管指引四条（keygen 命令输出第四段，随指纹一并打印——指引不在
+/// 输出里等于没有指引）。
+pub const KEYGEN_CUSTODY_GUIDE: [&str; 4] = [
+    "1. 私钥即身份：丢失 = 无法再签同源更新——离线备份一份（加密盘或纸面）",
+    "2. 私钥不进仓库不入镜像：.gitignore 与打包排除名单默认拦截",
+    "3. 轮换走双钥窗：新钥签新包、旧钥验旧包 30 天（F128 KeyRing 同语义）",
+    "4. 泄露即废弃：公布指纹拉黑 + 换钥重签 + 公告（F142 披露通道）",
+];
+
+/// keygen 完整报告（指纹 + 四条指引一次拿全——`vxapp keygen` 的输出
+/// 形态；指引缺失 = 报告不完整）。
+pub fn keygen_report(seed: &[u8]) -> String {
+    let mut s = alloc::format!("密钥指纹：{}\n", key_fingerprint(&keygen(seed)));
+    for line in KEYGEN_CUSTODY_GUIDE.iter() {
+        s.push_str(line);
+        s.push('\n');
+    }
+    s
+}
+
+/// 指引完整性（四条齐 + 关键词逐条在位：备份/排除/双钥窗/披露）。
+pub fn keygen_guide_complete() -> bool {
+    KEYGEN_CUSTODY_GUIDE.len() == 4
+        && KEYGEN_CUSTODY_GUIDE[0].contains("离线备份")
+        && KEYGEN_CUSTODY_GUIDE[1].contains("排除")
+        && KEYGEN_CUSTODY_GUIDE[2].contains("双钥窗")
+        && KEYGEN_CUSTODY_GUIDE[3].contains("披露")
+}
+
 pub fn run_vxapp_checks() -> CheckSet {
     let mut set = CheckSet::new("F127-vxapp");
 
@@ -706,6 +740,17 @@ pub fn run_vxapp_checks() -> CheckSet {
         "",
     );
 
+    // 深化 v7 · keygen 保管指引：报告含指纹与四条指引；指引四关键词
+    // 逐条在位（备份/排除/双钥窗/披露）。
+    let kr = keygen_report(b"custody-seed");
+    set.add(
+        "keygen custody guide complete in report",
+        keygen_guide_complete()
+            && kr.contains("密钥指纹：")
+            && KEYGEN_CUSTODY_GUIDE.iter().all(|g| kr.contains(g)),
+        "",
+    );
+
     set
 }
 
@@ -762,5 +807,12 @@ mod tests {
         let fp3 = key_fingerprint(&keygen(b"other-seed"));
         assert_eq!(fp1, fp2);
         assert_ne!(fp1, fp3);
+    }
+
+    #[test]
+    fn f127_keygen_report_deterministic() {
+        // 同种子报告逐字一致（指纹确定性 + 指引常量同源）。
+        assert_eq!(keygen_report(b"k1"), keygen_report(b"k1"));
+        assert_ne!(keygen_report(b"k1"), keygen_report(b"k2"));
     }
 }

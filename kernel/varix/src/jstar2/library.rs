@@ -31,8 +31,8 @@
 use crate::checks::CheckSet;
 use crate::jstar2::checker::HealthReport;
 use crate::jstar2::jbase::{
-    parse_vxcur, serialize_vxcur, vxcur_fingerprint, CursorSchemeModel, PointerState,
-    ALL_STATES, VXCUR_MAX_BYTES,
+    content_fingerprint, parse_vxcur, serialize_vxcur, vxcur_fingerprint, CursorSchemeModel,
+    PointerState, ALL_STATES, VXCUR_MAX_BYTES,
 };
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -65,6 +65,11 @@ pub struct SchemeEntry {
     thumb_frame: usize,
     /// 墙面播放开关（悬停播放语义——默认播放）。
     wall_playing: bool,
+    /// 使用计数（v3：record_apply 的累加面——top_used 的数源）。
+    pub apply_count: u64,
+    /// 归档软删标记（v3：归档 ≠ 消失——恢复路径存在）。
+    pub archived: bool,
+    pub archived_at: Option<u64>,
 }
 
 impl SchemeEntry {
@@ -90,6 +95,8 @@ pub struct SchemeLibrary {
     /// 只如实记录——切换动作归 E4/设置页）。
     pub active_name: String,
     now_ms: u64,
+    /// 归档区（v3：软删条目住这里——不在任何视图露出，可恢复可清除）。
+    archived: Vec<SchemeEntry>,
 }
 
 /// 入库结果（上限提醒不静默删的机制面）。
@@ -118,7 +125,7 @@ pub enum LibraryView {
 
 impl SchemeLibrary {
     pub fn new(now_ms: u64) -> SchemeLibrary {
-        SchemeLibrary { entries: Vec::new(), active_name: String::new(), now_ms }
+        SchemeLibrary { entries: Vec::new(), active_name: String::new(), now_ms, archived: Vec::new() }
     }
 
     pub fn len(&self) -> usize {
@@ -148,6 +155,9 @@ impl SchemeLibrary {
             report: None,
             thumb_frame: 0,
             wall_playing: true,
+            apply_count: 0,
+            archived: false,
+            archived_at: None,
         });
         fp
     }
@@ -966,5 +976,354 @@ mod tests {
         assert_eq!(prev.size, 8);
         assert!(prev.solid_count() > 0, "内置方案首帧有实体");
         assert_eq!(prev.get(0, 0), Some([0, 0, 0, 0]), "空白角块透明");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 深化批：收藏分组 · 排序视图 · 使用计数 · 内容指纹去重 ·
+// 重命名校验 · 归档软删 · 存储配额账 · 冲突自动改名
+// ---------------------------------------------------------------------------
+
+/// 排序键（列表视图的三种合法序——稳定、可复现）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortKey {
+    Name,
+    AddedAsc,
+    LastUsedDesc,
+}
+
+/// 归档软删：条目还在库房、但全部视图默认不露（找回路径存在——
+/// 「删了会怎样」的诚实答案：归档 ≠ 消失）。
+#[derive(Clone, Debug)]
+pub struct ArchiveRecord {
+    pub name: String,
+    pub fingerprint: u64,
+    pub at_ms: u64,
+}
+
+/// 存储账：库房总量与配额（8MB 软配额——超线只提醒不拒收，
+/// 与 LIBRARY_CAP 的条数上限互补）。
+pub const STORAGE_QUOTA_BYTES: u64 = 8 * 1024 * 1024;
+
+impl SchemeLibrary {
+    // —— 排序视图 ——（不改动 entries 顺序；返回排序后的名字快照）
+
+    /// 按排序键产出名字序（Name: 字典序；AddedAsc: 入库序；
+    /// LastUsedDesc: 最近使用优先——未用过的排最后）。
+    pub fn sorted_names(&self, key: SortKey) -> Vec<String> {
+        let mut items: Vec<(String, u64, u64)> = self
+            .entries
+            .iter()
+            .map(|e| (e.name().to_string(), e.added_ms, e.last_used_ms))
+            .collect();
+        match key {
+            SortKey::Name => items.sort_by(|a, b| a.0.cmp(&b.0)),
+            SortKey::AddedAsc => items.sort_by_key(|x| x.1),
+            SortKey::LastUsedDesc => items.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.cmp(&b.1))),
+        }
+        items.into_iter().map(|x| x.0).collect()
+    }
+
+    // —— 使用计数面 ——
+
+    /// 记录一次「应用」（touch + 用途计数入口；active_name 由 E4 面登记）。
+    pub fn record_apply(&mut self, name: &str) -> bool {
+        if !self.touch(name) {
+            return false;
+        }
+        match self.entries.iter_mut().find(|e| e.name() == name) {
+            Some(e) => {
+                e.apply_count = e.apply_count.saturating_add(1);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 使用排行（前 n 名；按 apply_count 降序、同数按最近使用）。
+    pub fn top_used(&self, n: usize) -> Vec<(String, u64)> {
+        let mut items: Vec<(String, u64, u64)> = self
+            .entries
+            .iter()
+            .map(|e| (e.name().to_string(), e.apply_count, e.last_used_ms))
+            .collect();
+        items.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)));
+        items.into_iter().take(n).map(|(n, c, _)| (n, c)).collect()
+    }
+
+    // —— 内容指纹去重 ——
+
+    /// 重复组（同内容指纹 ≥2 条目 = 一组；返回 [指纹, [名字…]]——
+    /// 导入/分享链路的去重对账面）。
+    pub fn duplicate_groups(&self) -> Vec<(u64, Vec<String>)> {
+        // 内容指纹（不含名字元数据）——克隆改名后仍算同源重复。
+        let mut by_fp: Vec<(u64, Vec<String>)> = Vec::new();
+        for e in &self.entries {
+            let fp = content_fingerprint(&e.model);
+            match by_fp.iter_mut().find(|(f, _)| *f == fp) {
+                Some((_, names)) => names.push(e.name().to_string()),
+                None => by_fp.push((fp, alloc::vec![e.name().to_string()])),
+            }
+        }
+        by_fp.into_iter().filter(|(_, names)| names.len() > 1).collect()
+    }
+
+    // —— 重命名 ——
+
+    /// 重命名（三校验：非空 / 不与既有重名 / 目标存在；返回错误人话）。
+    pub fn rename(&mut self, old: &str, new: &str) -> Result<(), String> {
+        if new.trim().is_empty() {
+            return Err(String::from("新名字不能为空"));
+        }
+        if self.entries.iter().any(|e| e.name() == new) {
+            return Err(alloc::format!("「{new}」已存在——重命名会撞名"));
+        }
+        let e = self
+            .entries
+            .iter_mut()
+            .find(|e| e.name() == old)
+            .ok_or_else(|| alloc::format!("「{old}」不在库房——无从改名"))?;
+        e.model.name = String::from(new);
+        if self.active_name == old {
+            self.active_name = String::from(new);
+        }
+        Ok(())
+    }
+
+    // —— 归档软删 ——
+
+    /// 归档（视图默认不露；返回归档记录——撤销凭据）。
+    pub fn archive(&mut self, name: &str) -> Option<ArchiveRecord> {
+        let e = self.entries.iter().find(|e| e.name() == name)?;
+        let rec = ArchiveRecord { name: String::from(name), fingerprint: e.fingerprint(), at_ms: self.now_ms };
+        let idx = self.entries.iter().position(|e| e.name() == name)?;
+        let mut e = self.entries.remove(idx);
+        e.archived = true;
+        e.archived_at = Some(self.now_ms);
+        self.archived.push(e);
+        Some(rec)
+    }
+
+    /// 从归档恢复（名字重新进库；撞名 → 自动挂后缀）。
+    pub fn restore(&mut self, name: &str) -> bool {
+        let idx = match self.archived.iter().position(|e| e.name() == name) {
+            Some(i) => i,
+            None => return false,
+        };
+        let mut e = self.archived.remove(idx);
+        e.archived = false;
+        e.archived_at = None;
+        if self.entries.iter().any(|x| x.name() == name) {
+            e.model.name = alloc::format!("{name}·恢复");
+        }
+        self.entries.push(e);
+        true
+    }
+
+    pub fn archived_names(&self) -> Vec<String> {
+        self.archived.iter().map(|e| e.name().to_string()).collect()
+    }
+
+    /// 彻底清除归档条目（破坏性——调用方必须已过确认门；返回清除数）。
+    pub fn purge_archived(&mut self, name: &str) -> usize {
+        let before = self.archived.len();
+        self.archived.retain(|e| e.name() != name);
+        before - self.archived.len()
+    }
+
+    // —— 存储账 ——
+
+    /// 存储账（条目容器字节总量 + 配额判）。
+    pub fn storage_report(&self) -> (u64, bool) {
+        let total: u64 = self.entries.iter().map(|e| e.model.container_bytes()).sum();
+        (total, total <= STORAGE_QUOTA_BYTES)
+    }
+
+    // —— 导入冲突自动改名 ——
+
+    /// 导入时撞名自动挂后缀（·2、·3……——「保留两者」的机制面，
+    /// 不静默覆盖用户既有条目）。
+    pub fn auto_rename_for_import(&self, base: &str) -> String {
+        if !self.entries.iter().any(|e| e.name() == base) {
+            return String::from(base);
+        }
+        for n in 2..1000 {
+            let cand = alloc::format!("{base}·{n}");
+            if !self.entries.iter().any(|e| e.name() == cand) {
+                return cand;
+            }
+        }
+        alloc::format!("{base}·{}", self.now_ms)
+    }
+}
+
+/// v3 自检。
+pub fn run_library_v3_checks() -> CheckSet {
+    use crate::jstar2::jbase::builtin_default_scheme;
+    let mut set = CheckSet::new("jstar2-F628-v3");
+    let mut lib = SchemeLibrary::new(1000);
+
+    // 造 3 个方案入库（默认 + 两个改名克隆）。
+    let base = builtin_default_scheme();
+    let _ = lib.add(base.clone());
+    let mut second = base.clone();
+    second.name = String::from("深色变体");
+    let _ = lib.add(second);
+    let mut third = base.clone();
+    third.name = String::from("冷色变体");
+    let _ = lib.add(third);
+
+    // 1. 排序视图：三种键序稳定且互不相同（构造时间差后）。
+    let by_name = lib.sorted_names(SortKey::Name);
+    set.add(
+        "sorted by name stable",
+        by_name == alloc::vec![String::from("VARIX 默认指针"), String::from("冷色变体"), String::from("深色变体")],
+        "",
+    );
+
+    // 2. 使用计数：record_apply 两次 → top_used 第一名对账。
+    lib.set_now(2000);
+    let hit = lib.record_apply("深色变体");
+    lib.set_now(3000);
+    let _ = lib.record_apply("深色变体");
+    let top = lib.top_used(1);
+    set.add(
+        "apply count feeds top used",
+        hit && top.first().map(|(n, c)| n == "深色变体" && *c == 2).unwrap_or(false),
+        "",
+    );
+
+    // 3. 内容指纹去重：三个克隆内容同源 → 一个重复组 3 名。
+    let groups = lib.duplicate_groups();
+    set.add(
+        "duplicate groups by content fingerprint",
+        groups.len() == 1 && groups[0].1.len() == 3,
+        "",
+    );
+
+    // 4. 重命名三校验（空/撞名/缺目标）+ active_name 联动。
+    let e1 = lib.rename("", "新名").is_err();
+    let e2 = lib.rename("冷色变体", "深色变体").is_err();
+    let e3 = lib.rename("不存在", "随便").is_err();
+    let _ = lib.mark_active("冷色变体");
+    let ok = lib.rename("冷色变体", "青色变体");
+    set.add(
+        "rename validates and follows active",
+        e1 && e2 && e3 && ok.is_ok() && lib.active_name == "青色变体" && lib.get("青色变体").is_some(),
+        "",
+    );
+
+    // 5. 归档软删：视图消失、归档名单在、恢复回来（撞名自动挂后缀）。
+    let _ = lib.mark_active("青色变体");
+    let rec = lib.archive("青色变体");
+    let gone_from_all = lib.view(LibraryView::All).iter().all(|e| e.name() != "青色变体");
+    let in_archive = lib.archived_names() == alloc::vec![String::from("青色变体")];
+    let restored = lib.restore("青色变体");
+    let restored_name = if lib.get("青色变体").is_some() { "青色变体" } else { "青色变体·恢复" };
+    set.add(
+        "archive hides restore brings back",
+        rec.is_some() && gone_from_all && in_archive && restored && lib.get(restored_name).is_some(),
+        "",
+    );
+
+    // 6. 归档清除是精确目标：归档后彻底清除，其余条目分毫不动。
+    let _ = lib.archive("青色变体");
+    let count_before = lib.len();
+    let purged = lib.purge_archived("青色变体");
+    set.add(
+        "purge archived removes thoroughly",
+        purged == 1 && lib.len() == count_before && lib.archived_names().is_empty(),
+        "",
+    );
+
+    // 7. 存储账：总量>0 且在配额内（内置方案 32px 全套 ≈ 数百 KB）。
+    let (total, within) = lib.storage_report();
+    set.add(
+        "storage report within quota",
+        total > 0 && within && total <= STORAGE_QUOTA_BYTES,
+        "",
+    );
+
+    // 8. 导入撞名自动改名：·2 后缀、既有名不受影响。
+    let cand = lib.auto_rename_for_import("VARIX 默认指针");
+    let cand2 = lib.auto_rename_for_import("全新名字");
+    set.add(
+        "auto rename on import collision",
+        cand == "VARIX 默认指针·2" && cand2 == "全新名字" && lib.get("VARIX 默认指针").is_some(),
+        "",
+    );
+
+    // 9. 二次撞名递增（·2 存在后自动给 ·3）。
+    let mut two = base.clone();
+    two.name = String::from("VARIX 默认指针·2");
+    let _ = lib.add(two);
+    set.add(
+        "auto rename increments",
+        lib.auto_rename_for_import("VARIX 默认指针") == "VARIX 默认指针·3",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+    use crate::jstar2::jbase::builtin_default_scheme;
+
+    #[test]
+    fn last_used_sort_descends() {
+        let mut lib = SchemeLibrary::new(100);
+        let base = builtin_default_scheme();
+        let _ = lib.add(base.clone());
+        let mut a = base.clone();
+        a.name = String::from("A");
+        let _ = lib.add(a);
+        lib.set_now(500);
+        let _ = lib.record_apply("A");
+        lib.set_now(900);
+        let _ = lib.record_apply("VARIX 默认指针");
+        let order = lib.sorted_names(SortKey::LastUsedDesc);
+        assert_eq!(order.first().map(|s| s.as_str()), Some("VARIX 默认指针"));
+        assert_eq!(order.last().map(|s| s.as_str()), Some("A"));
+    }
+
+    #[test]
+    fn archive_restore_with_collision_suffixes() {
+        let mut lib = SchemeLibrary::new(100);
+        let base = builtin_default_scheme();
+        let _ = lib.add(base.clone());
+        let mut twin = base.clone();
+        twin.name = String::from("T");
+        let _ = lib.add(twin);
+        assert!(lib.archive("T").is_some());
+        // 恢复时原名没被占 → 原名回来。
+        assert!(lib.restore("T"));
+        assert!(lib.get("T").is_some());
+    }
+
+    #[test]
+    fn purge_is_exact_target() {
+        let mut lib = SchemeLibrary::new(100);
+        let base = builtin_default_scheme();
+        let _ = lib.add(base.clone());
+        let mut a = base.clone();
+        a.name = String::from("甲");
+        let _ = lib.add(a);
+        let mut b = base.clone();
+        b.name = String::from("乙");
+        let _ = lib.add(b);
+        let _ = lib.archive("甲");
+        let _ = lib.archive("乙");
+        assert_eq!(lib.purge_archived("甲"), 1);
+        assert_eq!(lib.archived_names(), alloc::vec![String::from("乙")]);
+        assert_eq!(lib.purge_archived("不在"), 0);
+    }
+
+    #[test]
+    fn top_used_empty_library_safe() {
+        let lib = SchemeLibrary::new(0);
+        assert!(lib.top_used(3).is_empty());
+        assert!(lib.duplicate_groups().is_empty());
     }
 }

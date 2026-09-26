@@ -38,6 +38,9 @@ pub const SAMPLE_CAP_BYTES: u64 = 100 * 1024;
 pub const MIGRATION_WINDOW_DAYS: u64 = 90;
 /// 四规范页数。
 pub const SPEC_COUNT: usize = 4;
+/// JSON Schema 公共规范元键（深化 v6：$schema 声明——第三方校验器的
+/// 兼容性代际钉死在此，一处一事实）。
+pub const JSON_SCHEMA_META: &str = "https://json-schema.org/draft/2020-12/schema";
 
 // ---------------------------------------------------------------------------
 // schema 模型与校验器（JSON Schema 标准语义子集）
@@ -555,8 +558,9 @@ pub fn changelog_gate(spec: &Spec, new_version: (u32, u32, u32), note: &'static 
 
 impl Spec {
     /// JSON Schema 标准形态全文（主册「schema 表达采用 JSON Schema
-    /// 标准」的机器面：type/properties/required 三键骨架——第三方校验
-    /// 器可直接消费）。
+    /// 标准」的机器面：$schema 元键 + $id/type/required/properties 骨架
+    /// ——第三方校验器可直接消费；$schema 钉死公共规范代际，兼容性
+    /// 声明不走口头承诺）。
     pub fn schema_json(&self) -> String {
         let mut props: Vec<String> = Vec::new();
         let mut required: Vec<String> = Vec::new();
@@ -575,14 +579,15 @@ impl Spec {
             }
         }
         let mut root = vbase::JsonObj::new();
+        root.str_field("$schema", JSON_SCHEMA_META);
         root.str_field("$id", &alloc::format!("https://varix.dev/schemas/{}.json", self.id));
         root.str_field("type", "object");
         root.raw_array_field("required", &required);
         // properties 为对象——以 raw 形态拼装（JsonObj 无嵌套对象出口）。
         let props_body = props.join(",");
         let head = root.finish();
-        // head 形如 {"$id":...,"type":...,"required":[...]}——在收尾括号
-        // 前插入 properties。
+        // head 形如 {"$schema":...,"$id":...,"type":...,"required":[...]}
+        // ——在收尾括号前插入 properties。
         let trimmed = &head[..head.len() - 1];
         alloc::format!("{},\"properties\":{{{}}}}}", trimmed, props_body)
     }
@@ -668,9 +673,289 @@ pub fn ci_negative_replay_extended() -> (usize, Vec<String>) {
     }
     (rejected, failures)
 }
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 一：页内锚点唯一性校验（主册「页内 schema 字段表支持
+// 锚点跳转」——跳转的前提是锚 id 唯一，重复 id = 渲染层跳错行）
+// ---------------------------------------------------------------------------
+
+/// 字段锚 id 唯一性（schema 层对拍）：字段名即锚 id，重复字段名 = 跳转
+/// 永远命中第一处 = 后续字段不可达。返回首个重复名（None = 全唯一）。
+pub fn duplicate_anchor(spec: &Spec) -> Option<&'static str> {
+    for i in 0..spec.fields.len() {
+        for j in (i + 1)..spec.fields.len() {
+            if spec.fields[i].name == spec.fields[j].name {
+                return Some(spec.fields[i].name);
+            }
+        }
+    }
+    None
+}
+
+/// 渲染产物锚点对拍：页面里每个字段的 `<a id="名">` 恰好出现一次
+///（渲染层与 schema 层双对拍——改名/漏渲染都算页缺陷）。
+pub fn page_anchors_render_once(spec: &Spec) -> bool {
+    let page = render_spec_page(spec);
+    spec.fields.iter().all(|f| {
+        let needle = alloc::format!("<a id=\"{}\"></a>", f.name);
+        page.matches(&needle).count() == 1
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 二：宪法页合集（四规范页聚合 + 版本化承诺条款写进
+// 规范正文——主册「版本化承诺（破格必双读过渡）写进规范正文」的
+// 合集交付形态：一个入口读完四格式与全部条款）
+// ---------------------------------------------------------------------------
+
+/// 宪法页合集渲染：条款正文（semver/双读）→ 四格式关系图 → 四规范
+/// 页全文依序聚合。条款在合集正文内 = 「写进规范正文」的机器判据。
+pub fn render_constitution() -> String {
+    let mut s = String::new();
+    s.push_str("# VARIX 开放格式宪法页（合集）\n\n");
+    s.push_str("## 版本化承诺（正文条款）\n\n");
+    s.push_str(SEMVER_CLAUSE);
+    s.push_str("\n\n");
+    s.push_str(DUAL_READ_CLAUSE);
+    s.push_str("\n\n## 四格式关系图\n\n");
+    s.push_str(RELATION_DIAGRAM);
+    s.push_str("\n\n---\n\n");
+    for spec in official_specs().iter() {
+        s.push_str(&render_spec_page(spec));
+        s.push_str("\n---\n\n");
+    }
+    s
+}
+
+/// 宪法页合集完整性：双条款逐字在正文 + 关系图在正文 + 四规范页标题
+/// 各出现一次（聚合不丢页、不重复聚合）。
+pub fn constitution_complete() -> bool {
+    let page = render_constitution();
+    let all_specs = official_specs();
+    page.contains(SEMVER_CLAUSE)
+        && page.contains(DUAL_READ_CLAUSE)
+        && page.contains(RELATION_DIAGRAM)
+        && all_specs.iter().all(|s| page.matches(&alloc::format!("# {}（{}", s.title, s.id)).count() == 1)
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 三：破格公告稿生成（双读引擎公告义务的产出面——窗
+// 内最后 7 天发布；公告四段缺一不可）
+// ---------------------------------------------------------------------------
+
+/// 破格公告稿（Markdown 形态）：发生了什么（主版本破格）/ 为什么
+/// （schema 演进）/ 旧版用户怎么办（双读窗内照常可读）/ 窗什么时候关
+///（第 90 天关闭——MIGRATION_WINDOW_DAYS 唯一源）。空 spec_id 拒绝。
+pub fn breaking_notice(spec_id: &str, old_major: u32, new_major: u32, opened_ms: u64) -> Option<String> {
+    if spec_id.is_empty() || new_major <= old_major {
+        return None;
+    }
+    let mut s = String::new();
+    s.push_str(&alloc::format!(
+        "# 格式破格公告：{} v{} → v{}\n\n",
+        spec_id, old_major, new_major
+    ));
+    s.push_str("发生了什么：该格式主版本升级（破格变更），旧文档结构与新实现不再逐字段兼容。\n\n");
+    s.push_str("为什么：schema 按版本语义演进（主版本=破格），演进前已走 ADR 并开迁移窗。\n\n");
+    s.push_str(&alloc::format!(
+        "旧版用户怎么办：迁移窗（{} 天）内实现双读——旧版 v{} 文档照常读取，无需立即迁移。\n\n",
+        MIGRATION_WINDOW_DAYS, old_major
+    ));
+    s.push_str(&alloc::format!(
+        "窗口关闭：自公告开启（Unix 毫秒 {}）起第 {} 天关闭，关闭前 7 天将再次提醒。\n",
+        opened_ms, MIGRATION_WINDOW_DAYS
+    ));
+    Some(s)
+}
+
+/// 公告稿四段完整性（发生了什么/为什么/怎么办/窗口关闭——错误三要素
+/// 在公告面的扩展形态）。
+pub fn breaking_notice_complete(notice: &str) -> bool {
+    notice.contains("发生了什么")
+        && notice.contains("为什么")
+        && notice.contains("旧版用户怎么办")
+        && notice.contains("窗口关闭")
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 四：规范版本升级落地（变更历史强制门禁的执行件——
+// 真升版本、真记历史；破格强制 ADR 编号）
+// ---------------------------------------------------------------------------
+
+/// 规范版本升级：门禁（新版本更大 + 说明非空）→ 破格追判（主版本
+/// 升级时说明必须含 "ADR"——主册「破格流程 ADR」的机器门）→ 真升
+/// 版本 + 真推变更历史。version_tag 必须与 new_version 一致（提交面
+/// 双写一致性门——版本号与标签各说各话 = 拒绝合入）。
+pub fn apply_update(
+    spec: &mut Spec,
+    new_version: (u32, u32, u32),
+    version_tag: &'static str,
+    note: &'static str,
+) -> Result<(), &'static str> {
+    changelog_gate(spec, new_version, note)?;
+    if new_version.0 > spec.version.0 && !note.contains("ADR") {
+        return Err("breaking change requires ADR reference in note");
+    }
+    if vbase::parse_semver(version_tag) != Some(new_version) {
+        return Err("version tag does not match new version tuple");
+    }
+    spec.version = new_version;
+    spec.changelog.push((version_tag, note));
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 深化批次 v7 · 规范页打印友好样式（主册「规范页打印样式友好（导出
+// PDF 走 F025）」——纸面上不可点的外链地址必须随文可见）
+// ---------------------------------------------------------------------------
+
+/// 打印规则三条（外链转脚注形态 / schema 表格不截断 / 单栏）。
+pub const SPEC_PRINT_RULES: [&str; 3] = [
+    "external-links-inline-address",
+    "schema-table-never-truncated",
+    "single-column",
+];
+
+/// 打印变换：`[文本](URL)` → `文本（URL）`——纸面不可点，地址随文
+/// 可见才是「友好」；非链接的方括号原文通过（逐字符扫描按 UTF-8 步进）。
+pub fn spec_print_form(md: &str) -> String {
+    let mut out = String::new();
+    let bytes = md.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            if let Some(close) = md[i..].find(']') {
+                let after = i + close;
+                if md[after..].starts_with("](") {
+                    if let Some(rc) = md[after + 2..].find(')') {
+                        let text = &md[i + 1..after];
+                        let url = &md[after + 2..after + 2 + rc];
+                        out.push_str(text);
+                        out.push('（');
+                        out.push_str(url);
+                        out.push('）');
+                        i = after + 2 + rc + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        let ch_len = md[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        out.push_str(&md[i..i + ch_len]);
+        i += ch_len;
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v9 · 示例包变体（主册「示例包 CI 自动重打（永不腐烂）」+
+// 「分钟级上手」——每规范三档：最小必填集（上手第一步）/全量（含可选
+// 字段）/边界（值域上界自证）——三档全过当前实现校验才算 schema 自证）
+// ---------------------------------------------------------------------------
+
+/// 最小必填示例（每规范仅必填字段——「复制最小例 → validate 过 → 打
+/// 包」五分钟路径的起点件）。
+pub fn minimal_packages() -> Vec<(&'static str, Vec<(String, String)>)> {
+    vec![
+        (
+            "vxapp",
+            vec![
+                (String::from("id"), String::from("tiny.app")),
+                (String::from("version"), String::from("0.1.0")),
+                (String::from("entry"), String::from("main.exe")),
+            ],
+        ),
+        (
+            "vxtheme",
+            vec![
+                (String::from("id"), String::from("bare")),
+                (String::from("mode"), String::from("auto")),
+                (String::from("tokens"), String::from("tokens.json")),
+            ],
+        ),
+        (
+            "starmap-json",
+            vec![
+                (String::from("snapshot_at"), String::from("1727000000")),
+                (String::from("cards"), String::from("cards.json")),
+                (String::from("license"), String::from("CC-BY")),
+            ],
+        ),
+        (
+            "case-submission",
+            vec![
+                (String::from("program"), String::from("App")),
+                (String::from("program_version"), String::from("1.0.0")),
+                (String::from("cases"), String::from("cases.lst")),
+                (String::from("evidence_hash"), String::from("cd").repeat(32)),
+            ],
+        ),
+    ]
+}
+
+/// 边界示例（全部字段填满 + 字符串值域上界——schema 上界自证件：上界
+/// 值必须过校验，否则实现与 schema 双双说谎）。
+pub fn boundary_packages() -> Vec<(&'static str, Vec<(String, String)>)> {
+    let id64 = alloc::format!("a{}.z", "b".repeat(60)); // 63 字符反域名（64 上界内贴边）
+    let name64 = "名".repeat(64); // 64 字符上界贴边（UTF-8 按字计）
+    vec![
+        (
+            "vxapp",
+            vec![
+                (String::from("id"), id64),
+                (String::from("version"), String::from("99.99.99")),
+                (String::from("entry"), String::from("b").repeat(256)),
+                (String::from("name"), name64.clone()),
+                (String::from("icon"), String::from("i").repeat(128)),
+            ],
+        ),
+        (
+            "vxtheme",
+            vec![
+                (String::from("id"), name64),
+                (String::from("mode"), String::from("light")),
+                (String::from("tokens"), String::from("t").repeat(256)),
+            ],
+        ),
+        (
+            "case-submission",
+            vec![
+                (String::from("program"), String::from("P").repeat(128)),
+                (String::from("program_version"), String::from("1.0.0")),
+                (String::from("cases"), String::from("c.lst")),
+                (String::from("evidence_hash"), String::from("ef").repeat(32)),
+                (String::from("submitter"), String::from("u").repeat(64)),
+            ],
+        ),
+    ]
+}
+
+/// 变体 CI 回放：最小档 + 边界档逐份过当前实现校验（全量档由
+/// ci_sample_replay 覆盖）——三档齐 = schema 值域两端与必填面都被
+/// 现实执行过。
+pub fn ci_variant_replay() -> (usize, Vec<String>) {
+    let specs = official_specs();
+    let mut failures = Vec::new();
+    let mut passed = 0usize;
+    for (id, payload) in minimal_packages().into_iter().chain(boundary_packages()) {
+        match specs.iter().find(|s| s.id == id) {
+            Some(spec) => {
+                let errs = spec.validate(&payload);
+                if errs.is_empty() {
+                    passed += 1;
+                } else {
+                    failures.push(alloc::format!("{}: {}", id, errs.join("; ")));
+                }
+            }
+            None => failures.push(alloc::format!("{}: spec not found", id)),
+        }
+    }
+    (passed, failures)
+}
 
 pub fn run_openformat_checks() -> CheckSet {
     let mut set = CheckSet::new("F126-openformat");
@@ -877,13 +1162,15 @@ pub fn run_openformat_checks() -> CheckSet {
     set.add("required fields carry constraint attrs", attrs_covered, "");
 
 
-    // 18. JSON Schema 标准形态全文（深化 v4）：$id/type/required/
-    //     properties 四键齐；required 与必填字段一致。
+    // 18. JSON Schema 标准形态全文（深化 v4；v6 加 $schema 元键）：
+    //     $schema/$id/type/required/properties 五键齐；required 与必填
+    //     字段一致；公共规范代际钉死。
     let specs = official_specs();
     let sj = specs[0].schema_json();
     set.add(
         "json schema full form",
-        sj.contains("\"$id\":\"https://varix.dev/schemas/vxapp.json\"")
+        sj.contains(alloc::format!("\"$schema\":\"{}\"", JSON_SCHEMA_META).as_str())
+            && sj.contains("\"$id\":\"https://varix.dev/schemas/vxapp.json\"")
             && sj.contains("\"type\":\"object\"")
             && sj.contains("\"required\":[\"id\",\"version\",\"entry\"]")
             && sj.contains("\"properties\":{")
@@ -909,6 +1196,82 @@ pub fn run_openformat_checks() -> CheckSet {
     set.add(
         "negative extended 12/12 rejected",
         rej12 == negative_samples_extended().len() && fail12.is_empty(),
+        "",
+    );
+
+    // 21. 页内锚点唯一性（深化 v6）：四规范 schema 层零重名 + 渲染层
+    //     每字段锚恰好一次（双对拍——跳转可达的结构前提）。
+    let schema_unique = official_specs().iter().all(|s| duplicate_anchor(s).is_none());
+    let render_once = official_specs().iter().all(|s| page_anchors_render_once(s));
+    set.add("page anchors unique schema+render", schema_unique && render_once, "");
+
+    // 22. 宪法页合集（深化 v6）：双条款 + 关系图写进正文 + 四页聚合
+    //     不丢页不重页。
+    set.add("constitution page clauses in body + four specs", constitution_complete(), "");
+
+    // 23. 破格公告稿四段（深化 v6）：合法破格出稿且四段齐；同版本拒绝
+    //     出稿；空 id 拒绝。
+    let notice = breaking_notice("vxapp", 1, 2, 0);
+    let notice_ok = notice
+        .as_ref()
+        .map(|n| breaking_notice_complete(n) && n.contains("v1 → v2") && n.contains("90 天"))
+        .unwrap_or(false);
+    let fake_rejected = breaking_notice("vxapp", 1, 1, 0).is_none();
+    let empty_id_rejected = breaking_notice("", 1, 2, 0).is_none();
+    set.add(
+        "breaking notice four segments + gates",
+        notice_ok && fake_rejected && empty_id_rejected,
+        "",
+    );
+
+    // 24. 规范版本升级落地（深化 v6）：次版本升级真记历史；修订号回退
+    //     拒绝；主版本破格无 ADR 拒绝；带 ADR 放行；版本标签与元组不
+    //     一致拒绝。
+    let mut sp = official_specs().remove(0);
+    let minor_ok = apply_update(&mut sp, (1, 1, 0), "1.1.0", "加字段：authors").is_ok();
+    let hist_grown = sp.changelog.len() == 2 && sp.version == (1, 1, 0);
+    let downgrade_rejected = apply_update(&mut sp, (1, 0, 9), "1.0.9", "回退").is_err();
+    let breaking_no_adr = apply_update(&mut sp, (2, 0, 0), "2.0.0", "改主程序语义").is_err();
+    let breaking_adr_ok = apply_update(&mut sp, (2, 0, 0), "2.0.0", "破格：清单重构（ADR-0042）").is_ok();
+    let tag_mismatch = apply_update(&mut sp, (2, 1, 0), "9.9.9", "加字段").is_err();
+    set.add(
+        "apply update gate + history recorded",
+        minor_ok && hist_grown && downgrade_rejected && breaking_no_adr && breaking_adr_ok && tag_mismatch,
+        "",
+    );
+
+    // 25. 公告义务联动（深化 v6）：窗剩 ≤7 天公告必须已发——公告稿与
+    //     双读引擎在同一迁移窗常量上对齐（一处一事实）。
+    let mut dr = DualReadEngine::new(1);
+    let _ = dr.open_window(2, 1, 0);
+    let due = dr.announce_required(84 * 86_400_000);
+    let notice_due_ready = due && breaking_notice("vxtheme", 1, 2, 0).is_some();
+    set.add("announce duty linked to notice generator", notice_due_ready, "");
+
+    // 26. 规范页打印友好（深化 v7）：外链转括号脚注形态；非链接方括号
+    //     原文通过；三条规则在册。
+    let printed = spec_print_form("见 [讨论区](https://c.dev/t) 与 [说明]，非链接[原文]保持");
+    set.add(
+        "spec page print friendly",
+        SPEC_PRINT_RULES.len() == 3
+            && printed.contains("讨论区（https://c.dev/t）")
+            && printed.contains("[说明]")
+            && printed.contains("[原文]")
+            && !printed.contains("]("),
+        "",
+    );
+
+    // 27. 示例包变体三档（深化 v9）：最小档 4/4 + 边界档 3/3 全过当前
+    //     实现校验（全量档既有 ci_sample_replay 覆盖）——值域两端与
+    //     必填面都被现实执行。
+    let (var_pass, var_fail) = ci_variant_replay();
+    set.add(
+        "sample variants minimal+boundary pass",
+        var_pass == minimal_packages().len() + boundary_packages().len()
+            && var_fail.is_empty()
+            && minimal_packages().iter().all(|(_, p)| p.iter().all(|(k, _)| {
+                official_specs().iter().any(|s| s.fields.iter().any(|f| f.name == k.as_str() && f.required))
+            })),
         "",
     );
 
@@ -1007,5 +1370,87 @@ mod tests {
     fn f126_extended_negative_superset() {
         // 扩充族包含基础族全部 9 路（超集关系）。
         assert!(negative_samples_extended().len() == 12);
+    }
+
+    #[test]
+    fn f126_schema_meta_constant_pinned() {
+        // $schema 元键唯一源 + 四规范 schema 全部携带。
+        assert!(JSON_SCHEMA_META.starts_with("https://json-schema.org/draft/"));
+        for s in official_specs() {
+            assert!(s.schema_json().contains("\"$schema\":"));
+        }
+    }
+
+    #[test]
+    fn f126_duplicate_anchor_detection() {
+        // 构造重名 spec：锚点重复必须被点名。
+        let mut specs = official_specs();
+        let mut dup = specs.remove(0);
+        dup.fields.push(dup.fields[0].clone());
+        assert_eq!(duplicate_anchor(&dup), Some("id"));
+        // Field 是 Copy——克隆无副作用，原 specs[0] 仍唯一。
+        assert!(duplicate_anchor(&official_specs()[0]).is_none());
+    }
+
+    #[test]
+    fn f126_constitution_contains_all_discussion_links() {
+        // 合集页内四规范讨论入口外链全在（一个入口可达全部讨论区）。
+        let page = render_constitution();
+        for (_, link) in DISCUSSION_LINKS.iter() {
+            assert!(page.contains(link));
+        }
+    }
+
+    #[test]
+    fn f126_notice_window_constant_synced() {
+        // 公告稿的窗天数必须与 MIGRATION_WINDOW_DAYS 一致（常量漂移检出）。
+        let n = breaking_notice("starmap-json", 2, 3, 123).unwrap();
+        assert!(n.contains(&alloc::format!("迁移窗（{} 天）", MIGRATION_WINDOW_DAYS)));
+        assert!(n.contains("第 90 天关闭") || MIGRATION_WINDOW_DAYS != 90);
+        assert!(n.contains("Unix 毫秒 123"));
+    }
+
+    #[test]
+    fn f126_apply_update_changelog_versions_parse() {
+        // 升级落地后的变更历史逐条可解析（历史面不积垃圾）。
+        let mut sp = official_specs().remove(1);
+        assert!(apply_update(&mut sp, (1, 1, 0), "1.1.0", "加字段").is_ok());
+        for (v, note) in sp.changelog.iter() {
+            assert!(vbase::parse_semver(v).is_some());
+            assert!(!note.is_empty());
+        }
+        assert_eq!(sp.changelog[1].0, "1.1.0");
+    }
+
+    #[test]
+    fn f126_print_form_edge_cases() {
+        // 边界：空串/未闭合链接/嵌套括号 URL/纯文本逐类安全。
+        assert_eq!(spec_print_form(""), "");
+        // 未闭合的 [ 不吞后续文本。
+        let p = spec_print_form("前缀 [断了 https://x.dev 后续");
+        assert!(p.contains("后续"));
+        assert!(p.contains("https://x.dev"));
+        // 多链接逐个转换。
+        let two = spec_print_form("[a](u1) 中 [b](u2)");
+        assert!(two.contains("a（u1）") && two.contains("b（u2）"));
+        assert!(!two.contains("]("));
+        // 中文文本逐字符步进不劈 UTF-8。
+        assert_eq!(spec_print_form("纯中文一行"), "纯中文一行");
+    }
+
+    #[test]
+    fn f126_variant_counts_stable() {
+        // 三档数量规约：最小 4 / 全量 4 / 边界 3（starmap 无上界字段不
+        // 设边界档）——变体面缩水即红。
+        assert_eq!(minimal_packages().len(), 4);
+        assert_eq!(sample_packages().len(), 4);
+        assert_eq!(boundary_packages().len(), 3);
+        // 最小档字段集 ⊆ 全量档字段集（同 spec 内）。
+        for (id, mini) in minimal_packages() {
+            let full = sample_packages().into_iter().find(|(i, _)| *i == id).unwrap();
+            for (k, _) in mini.iter() {
+                assert!(full.1.iter().any(|(fk, _)| fk == k), "{} 最小字段 {} 必须在全量档内", id, k);
+            }
+        }
     }
 }

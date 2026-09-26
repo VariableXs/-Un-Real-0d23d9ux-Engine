@@ -116,6 +116,57 @@ impl ScreenRes {
     }
 }
 
+/// 多屏分辨率管理器（v4 深化新增）：每屏独立的聚合面——统一记账
+/// （全局回滚/黑屏超线计数）、每屏独立寻址。
+pub struct ResManager {
+    pub screens: Vec<ScreenRes>,
+}
+
+impl ResManager {
+    pub fn new() -> ResManager {
+        ResManager { screens: Vec::new() }
+    }
+
+    pub fn add(&mut self, screen: ScreenRes) {
+        self.screens.push(screen);
+    }
+
+    pub fn screen(&self, id: u64) -> Option<&ScreenRes> {
+        self.screens.iter().find(|s| s.screen_id == id)
+    }
+
+    pub fn screen_mut(&mut self, id: u64) -> Option<&mut ScreenRes> {
+        self.screens.iter_mut().find(|s| s.screen_id == id)
+    }
+
+    /// 全局账：确认倒计时仍在走屏数（诊断面「有 N 屏待确认」）。
+    pub fn pending_count(&self) -> usize {
+        self.screens.iter().filter(|s| s.pending.is_some()).count()
+    }
+
+    /// 全局账：回滚总数（跨屏聚合——诊断面一处可读）。
+    pub fn total_rollbacks(&self) -> u64 {
+        self.screens.iter().map(|s| s.rollbacks).sum()
+    }
+
+    /// 全局确认（「全部保留」一键——每屏独立状态逐一落定）。
+    pub fn confirm_all(&mut self) -> usize {
+        let mut n = 0;
+        for s in self.screens.iter_mut() {
+            if s.pending.is_some() && s.confirm() {
+                n += 1;
+            }
+        }
+        n
+    }
+}
+
+/// 仅刷新率切换：同分辨率只改刷新率（游戏/视频向快速切换）——黑屏
+/// 期通常远小于完整模式切换，仍走同一确认回滚链（判据一致）。
+pub fn is_refresh_only(from: ModeCombo, to: ModeCombo) -> bool {
+    from.width == to.width && from.height == to.height && from.refresh_centi_hz != to.refresh_centi_hz
+}
+
 pub fn run_ressel_checks() -> CheckSet {
     let mut set = CheckSet::new("uni1-F446");
     let edid = alloc::vec![
@@ -164,6 +215,42 @@ pub fn run_ressel_checks() -> CheckSet {
     set.add(
         "f446-scale-suggestion",
         s1.scale_suggestion() == 125 && s2.scale_suggestion() == 100,
+        "",
+    );
+    // —— v4 深化批次新增 ——
+    // 仅刷新率切换：同分辨率改刷新率（60→165Hz）判定为真；跨分辨率假。
+    let only_hz = ModeCombo { width: 2560, height: 1440, refresh_centi_hz: 6_000 };
+    set.add(
+        "f446-refresh-only-detect",
+        is_refresh_only(only_hz, edid[1]) && !is_refresh_only(edid[3], edid[1]),
+        "",
+    );
+    // 仅刷新率切换走同一确认回滚链（判据一致——不因切换快就免确认）。
+    let mut s3 = ScreenRes::new(3, edid.clone(), only_hz);
+    set.add(
+        "f446-refresh-only-same-chain",
+        s3.apply(edid[1], 900) && s3.tick(CONFIRM_WINDOW_MS + 1) == Some(only_hz) && s3.rollbacks == 1,
+        "",
+    );
+    // 多屏管理器：每屏独立寻址 + 全局账（待确认数/回滚总数）。
+    let mut mgr = ResManager::new();
+    mgr.add(ScreenRes::new(1, edid.clone(), edid[0]));
+    mgr.add(ScreenRes::new(2, alloc::vec![edid[3]], edid[3]));
+    set.add("f446-mgr-independent", mgr.screen(1).map(|s| s.supported.len()) == Some(4) && mgr.screen(2).map(|s| s.supported.len()) == Some(1), "");
+    let _ = mgr.screen_mut(1).unwrap().apply(edid[2], 1_000);
+    let _ = mgr.screen_mut(2).unwrap().apply(edid[3], 1_000);
+    set.add("f446-mgr-pending-count", mgr.pending_count() == 2, "");
+    set.add("f446-mgr-confirm-all", mgr.confirm_all() == 2 && mgr.pending_count() == 0, "");
+    // 全局回滚账：屏 1 制造一次回滚 → 总数跨屏聚合。
+    let _ = mgr.screen_mut(1).unwrap().apply(edid[1], 1_000);
+    let _ = mgr.screen_mut(1).unwrap().tick(CONFIRM_WINDOW_MS + 1);
+    set.add("f446-mgr-total-rollbacks", mgr.total_rollbacks() == 1, "");
+    // 自定义分辨率诚实门：EDID 表外的任意组合（如 3440×1440）不可选
+    // ——不支持的根本不出现，选错的坑从源头铲掉（判据同源复述）。
+    let custom = ModeCombo { width: 3440, height: 1440, refresh_centi_hz: 14_400 };
+    set.add(
+        "f446-custom-res-honest-gate",
+        !mgr.screen(1).map(|s| s.can_select(custom)).unwrap_or(true),
         "",
     );
     set

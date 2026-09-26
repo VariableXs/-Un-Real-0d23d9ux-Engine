@@ -102,3 +102,53 @@ export function reconcile(history: ResourcePoint[], source: { cpu: number; mem: 
   }
   return rows;
 }
+
+/* ================= v5 深化批次五：降采样 / 统计 / 空闲通道审计 ================= */
+
+/** 降采样（长视图）：30 点 ×1s → 30 点 ×2s（相邻两点取均值——历史 60 秒仍 30 槽）。 */
+export function downsampleHistory(history: ResourcePoint[]): ResourcePoint[] {
+  const out: ResourcePoint[] = [];
+  for (let i = 0; i + 1 < history.length; i += 2) {
+    const a = history[i]!;
+    const b = history[i + 1]!;
+    out.push({
+      t: a.t,
+      cpu: Math.round(((a.cpu + b.cpu) / 2) * 10) / 10,
+      mem: Math.round(((a.mem + b.mem) / 2) * 10) / 10,
+      disk: Math.round(((a.disk + b.disk) / 2) * 10) / 10,
+    });
+  }
+  return out;
+}
+
+export interface SeriesStats {
+  min: number;
+  max: number;
+  avg: number;
+}
+
+/** 单序列统计（悬停读数扩展：均值/峰值一眼可见）。 */
+export function seriesStats(values: number[]): SeriesStats | null {
+  if (values.length === 0) return null;
+  const clamped = values.map((v) => clampReading(v).value);
+  return {
+    min: Math.round(Math.min(...clamped) * 10) / 10,
+    max: Math.round(Math.max(...clamped) * 10) / 10,
+    avg: Math.round((clamped.reduce((a, b) => a + b, 0) / clamped.length) * 10) / 10,
+  };
+}
+
+export interface IdleChannelAuditRow {
+  slot: number;
+  fgFrameMs: number;
+  compliant: boolean;
+}
+
+/** 空闲通道审计（判据机检化）：历史窗口内每次采样都必须发生在前台让路门槛内——违规点逐槽点名。 */
+export function auditIdleChannel(_history: ResourcePoint[], fgFramesBySlot: number[]): { pass: boolean; violations: IdleChannelAuditRow[] } {
+  const violations: IdleChannelAuditRow[] = [];
+  fgFramesBySlot.forEach((fg, slot) => {
+    if (fg > FG_FRAME_YIELD_MS) violations.push({ slot, fgFrameMs: fg, compliant: false });
+  });
+  return { pass: violations.length === 0, violations };
+}

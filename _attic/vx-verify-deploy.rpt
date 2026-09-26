@@ -1,0 +1,17 @@
+ISO exists=True size=10909696
+ISO mounted at E:
+ISO kernel sha256=1ABB54507C5F558ADB1EA27EEBB837D7E810393E799D3F721A8DC0438AD221BA
+ESP-ALREADY
+ESP kernel mtime=2026-09-23 02:31:28 size=4698048
+ESP kernel sha256=1ABB54507C5F558ADB1EA27EEBB837D7E810393E799D3F721A8DC0438AD221BA
+DEPLOY-VERIFY: MATCH
+EXCEPTION:
+Traceback (most recent call last):
+  File "d:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\vx-verify-deploy.py", line 76, in <module>
+    main()
+    ~~~~^^
+  File "d:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\vx-verify-deploy.py", line 69, in main
+    f"Dismount-DiskImage -ImagePath '{iso}' | Out-Null; 'CLEANED'"])
+                                      ^^^
+NameError: name 'iso' is not defined. Did you mean: 'ISO'?
+

@@ -6,7 +6,9 @@
 //! 设计：任务栏钉选语义核——固定三路（磁贴右键/运行中右键/拖入）与
 //! 取消两路（右键取消/拖出删除）同表；运行中取消固定不关窗（钉选态与
 //! 进程态解耦的双标记模型）；拖拽排序持久化；图标常驻（没开也显示）；
-//! 上限 20（满额提示记账）。
+//! 上限 20（满额提示记账）。v6 深化：拖出删除路（拖到桌面=卸下，钉选
+//! 运行皆可）、快照恢复 round-trip（重启还原序）、临时图标追加在尾
+//! （不打扰钉选区）、再固定回位账、取消两路对账。
 
 use crate::checks::CheckSet;
 
@@ -28,11 +30,13 @@ pub struct PinBar {
     icons: Vec<BarIcon>,
     /// 满额提示次数。
     pub cap_warnings: u64,
+    /// 拖出删除账（v6）。
+    pub drag_outs: u64,
 }
 
 impl PinBar {
     pub fn new() -> PinBar {
-        PinBar { icons: Vec::new(), cap_warnings: 0 }
+        PinBar { icons: Vec::new(), cap_warnings: 0, drag_outs: 0 }
     }
 
     fn find(&self, app: &str) -> Option<usize> {
@@ -54,7 +58,7 @@ impl PinBar {
         true
     }
 
-    /// 运行中应用出现在任务栏（未钉选 → 临时图标）。
+    /// 运行中应用出现在任务栏（未钉选 → 临时图标，追加在尾）。
     pub fn set_running(&mut self, app: &'static str, running: bool) {
         match self.find(app) {
             Some(p) => {
@@ -85,6 +89,19 @@ impl PinBar {
         }
     }
 
+    /// 拖出删除（v6）：拖到桌面 = 卸下——钉选/运行中皆可移除（运行中
+    /// 拖出同时结束驻留——图标与进程态一并出任务栏）。
+    pub fn drag_out(&mut self, app: &str) -> bool {
+        match self.find(app) {
+            Some(p) => {
+                self.icons.remove(p);
+                self.drag_outs += 1;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// 拖拽排序（钉选图标之间换位；持久化快照即 icons 序）。
     pub fn reorder(&mut self, from: usize, to: usize) -> bool {
         if from >= self.icons.len() || to >= self.icons.len() || from == to {
@@ -103,6 +120,14 @@ impl PinBar {
     /// 持久化快照（重启恢复序）。
     pub fn snapshot(&self) -> Vec<(&'static str, bool, bool)> {
         self.icons.iter().map(|i| (i.app, i.pinned, i.running)).collect()
+    }
+
+    /// 快照恢复 round-trip（v6）：重启后按快照序还原（调用方注入）。
+    pub fn restore_from_snapshot(&mut self, snap: Vec<(&'static str, bool, bool)>) {
+        self.icons = snap
+            .into_iter()
+            .map(|(app, pinned, running)| BarIcon { app, pinned, running })
+            .collect();
     }
 
     pub fn icon_count(&self) -> usize {
@@ -132,6 +157,32 @@ pub fn run_pinbar_checks() -> CheckSet {
     set.add("f418-unpin-running-keeps", b.unpin("编辑器") && b.icon("编辑器").map(|i| i.running).unwrap_or(false) && !b.icon("编辑器").map(|i| i.pinned).unwrap_or(true), "");
     // 未运行取消固定 → 退场。
     set.add("f418-unpin-idle-gone", b.unpin("画图") && b.icon("画图").is_none(), "");
+    // 再固定回位（v6）：取消固定后再固定 → 重新入场。
+    set.add(
+        "f418-repin-returns",
+        b.pin("画图", false) && b.icon("画图").map(|i| i.pinned).unwrap_or(false),
+        "",
+    );
+    // 对不存在的应用取消固定：诚实拒绝。
+    set.add("f418-unpin-missing-false", !b.unpin("不存在"), "");
+    // 拖出删除（v6）：钉选+运行皆可卸下；缺席拒绝且不记账。
+    let cnt_before = b.icon_count();
+    set.add("f418-drag-out-missing", !b.drag_out("不存在") && b.drag_outs == 0, "");
+    set.add("f418-drag-out-pinned", b.drag_out("画图") && b.icon("画图").is_none(), "");
+    b.set_running("浏览器", true);
+    set.add("f418-drag-out-running", b.drag_out("浏览器") && b.icon("浏览器").is_none() && b.drag_outs == 2, "");
+    set.add("f418-count-consistent", b.icon_count() == cnt_before - 1, "三进一出对账");
+    // 临时图标追加在尾（v6）：不打扰钉选区顺序。
+    let mut c = PinBar::new();
+    c.pin("钉A", false);
+    c.pin("钉B", false);
+    c.set_running("临时X", true);
+    let snap_c = c.snapshot();
+    set.add(
+        "f418-temp-appended-last",
+        snap_c.last().map(|(a, p, _)| *a == "临时X" && !*p).unwrap_or(false),
+        "",
+    );
     // 拖拽排序 + 持久化快照。
     b.pin("浏览器", false);
     b.pin("音乐", false);
@@ -148,6 +199,10 @@ pub fn run_pinbar_checks() -> CheckSet {
             && snap.iter().any(|(_, p, r)| !*p && *r),
         "",
     );
+    // 快照恢复 round-trip（v6）：重建实例按快照序还原，逐位一致。
+    let mut r = PinBar::new();
+    r.restore_from_snapshot(snap.clone());
+    set.add("f418-snapshot-roundtrip", r.snapshot() == snap && r.icon_count() == snap.len(), "");
     // 越界拖拽拒绝。
     set.add("f418-reorder-bounds", !b.reorder(0, 99) && !b.reorder(0, 0), "");
     // 上限 20 + 提示记账：直接构造满额（20 枚钉选）。
@@ -157,6 +212,12 @@ pub fn run_pinbar_checks() -> CheckSet {
     }
     set.add("f418-cap-at-limit", !full.pin("溢出者", false) && full.cap_warnings == 1, "");
     set.add("f418-cap-count", full.icon_count() == PIN_CAP, "");
+    // 满额时拖出一枚再固定：出路存在（拒绝不是死局）。
+    set.add(
+        "f418-cap-escape-hatch",
+        full.drag_out("a1") && full.pin("溢出者", false) && full.cap_warnings == 1,
+        "",
+    );
     set
 }
 
@@ -191,5 +252,27 @@ mod tests {
         assert_eq!(b.icon_count(), 1);
         assert!(b.pin("x", false), "重复固定幂等");
         assert_eq!(b.icon_count(), 1);
+    }
+
+    #[test]
+    fn drag_out_ledger_honest() {
+        let mut b = PinBar::new();
+        b.pin("a", false);
+        assert!(b.drag_out("a"));
+        assert_eq!(b.drag_outs, 1);
+        assert!(!b.drag_out("a"), "已移除再拖出拒绝");
+        assert_eq!(b.drag_outs, 1, "失败不记账");
+    }
+
+    #[test]
+    fn roundtrip_preserves_mixed_states() {
+        let mut b = PinBar::new();
+        b.pin("p1", false);
+        b.set_running("t1", true);
+        let snap = b.snapshot();
+        let mut r = PinBar::new();
+        r.restore_from_snapshot(snap);
+        assert!(r.icon("p1").map(|i| i.pinned && !i.running).unwrap_or(false));
+        assert!(r.icon("t1").map(|i| !i.pinned && i.running).unwrap_or(false));
     }
 }

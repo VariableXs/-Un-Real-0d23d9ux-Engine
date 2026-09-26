@@ -32,6 +32,22 @@ pub const SCHEMA_FIELDS: usize = 12;
 /// 季度升级窗（天）。
 pub const UPGRADE_WINDOW_DAYS: u64 = 90;
 
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 关于本机尾部入口（主册「系统内『关于本机』（F123）
+// 尾部入口」的机器面——文档提及至此落为常量与挂接函数）
+// ---------------------------------------------------------------------------
+
+/// 入口文案（F123 报告尾部渲染源——挂接点唯一源）。
+pub const ABOUT_PAGE_ENTRY: &str = "开源与许可：查看组件登记册";
+/// 深链目标（帮助中心分区锚——与 F119 直跳注册表同形态）。
+pub const ABOUT_PAGE_TARGET: &str = "help:oss-licenses";
+
+/// 关于页尾部行渲染：登记册组件计数进文案（用户看到的是「共 N 个
+/// 组件」——入口必须携带真实账目，不是死链接）。
+pub fn about_page_line(entry_count: usize) -> String {
+    alloc::format!("{}（共 {} 个组件）", ABOUT_PAGE_ENTRY, entry_count)
+}
+
 /// 许可证族（分类标注——SPDX 惯例子集）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LicenseFamily {
@@ -341,6 +357,17 @@ pub fn run_ossreg_checks() -> CheckSet {
         "",
     );
 
+    // 深化 v6 · 关于本机尾部入口：尾部行带组件计数（F123 挂接面）+
+    // 深链目标在册。
+    let line = about_page_line(12);
+    set.add(
+        "about page entry with live count",
+        line.contains("共 12 个组件")
+            && line.contains(ABOUT_PAGE_ENTRY)
+            && ABOUT_PAGE_TARGET.starts_with("help:"),
+        "",
+    );
+
     set
 }
 
@@ -383,5 +410,13 @@ mod tests {
             // 空表满值语义已由自检覆盖；此处登记面由既有 API 构造。
         }
         assert!(reg.snapshot_completeness_bp() <= 10_000);
+    }
+
+    #[test]
+    fn f130_about_entry_line_variants() {
+        // 尾部行随计数变化；零组件也是合法账目（诚实空态）。
+        assert!(about_page_line(0).contains("共 0 个组件"));
+        assert!(about_page_line(1).contains("共 1 个组件"));
+        assert_ne!(about_page_line(3), about_page_line(4));
     }
 }

@@ -7,6 +7,10 @@
 //! 统一档位步进模型；五档图标（超大/大/中/小/列表）阈值切换；锚点
 //! 缩放数学（鼠标点为不动点：content_offset' = mouse - (mouse-offset)*k'/k）；
 //! 边界停住 + 微弹提示账；档位记忆（F219 联动）。
+//!
+//! v5 纵深：触屏双指捏合（同一锚点数学、同一边界语义）；双击 100%
+//! 复位（锚点保持——内容不跳）；人话百分比读数；按宽适配；快照
+//! round-trip（记忆联动的另一半）。
 
 use crate::checks::CheckSet;
 
@@ -18,6 +22,8 @@ pub const ZOOM_MIN_PERMILLE: u64 = 100;
 pub const ZOOM_MAX_PERMILLE: u64 = 8_000;
 /// 每格滚轮步进（25%）。
 pub const ZOOM_STEP_PERMILLE: u64 = 250;
+/// 复位倍率（100%）。
+pub const ZOOM_RESET_PERMILLE: u64 = 1_000;
 
 /// 档位步进核（图标五档 / 文本字号四档共用同一模型——三场景判据）。
 pub struct StepZoom {
@@ -50,11 +56,30 @@ pub struct AnchorZoom {
     pub offset: (i64, i64),
     /// 边界微弹提示账。
     pub bounce_hints: u64,
+    /// 捏合步数账（触屏双指）。
+    pub pinch_steps: u64,
 }
 
 impl AnchorZoom {
     pub fn new() -> AnchorZoom {
-        AnchorZoom { permille: 1_000, offset: (0, 0), bounce_hints: 0 }
+        AnchorZoom { permille: 1_000, offset: (0, 0), bounce_hints: 0, pinch_steps: 0 }
+    }
+
+    /// 通用缩放到目标倍率（锚点数学唯一实现——滚轮/捏合/复位/适配共用）。
+    /// 边界：越界钳到边界值（末段半步贴边）；已贴边 → 停住。
+    fn zoom_to(&mut self, target: i64, mouse: (i64, i64)) -> bool {
+        let old = self.permille as i64;
+        let (min, max) = (ZOOM_MIN_PERMILLE as i64, ZOOM_MAX_PERMILLE as i64);
+        let new = target.clamp(min, max);
+        if new == old {
+            return false;
+        }
+        self.permille = new as u64;
+        self.offset = (
+            mouse.0 - (mouse.0 - self.offset.0) * new / old,
+            mouse.1 - (mouse.1 - self.offset.1) * new / old,
+        );
+        true
     }
 
     /// 锚点缩放：以鼠标点（视口坐标）为不动点。
@@ -83,6 +108,36 @@ impl AnchorZoom {
         true
     }
 
+    /// 触屏双指捏合：ratio_permille = 新/旧（如 2_000 = 放大一倍）。
+    /// 同一锚点数学、同一边界语义（滚轮能到的捏合也能到，反之亦然）。
+    pub fn pinch(&mut self, ratio_permille: u64, mouse: (i64, i64)) -> bool {
+        let old = self.permille as i64;
+        let target = old * ratio_permille as i64 / 1_000;
+        if target < ZOOM_MIN_PERMILLE as i64 || target > ZOOM_MAX_PERMILLE as i64 {
+            self.bounce_hints += 1;
+        }
+        let moved = self.zoom_to(target, mouse);
+        if moved {
+            self.pinch_steps += 1;
+        }
+        moved
+    }
+
+    /// 双击复位：100% 且鼠标下内容不动（锚点保持——画面不跳）。
+    pub fn reset_at(&mut self, mouse: (i64, i64)) -> bool {
+        self.zoom_to(ZOOM_RESET_PERMILLE as i64, mouse)
+    }
+
+    /// 按宽适配：viewport_w / content_w → 目标倍率（钳制入界）。
+    pub fn fit_width(&mut self, viewport_w: i64, content_w: i64, mouse: (i64, i64)) -> u64 {
+        if content_w <= 0 {
+            return self.permille; // 非法输入不动现状（诚实）
+        }
+        let target = viewport_w * 1_000 / content_w;
+        let _ = self.zoom_to(target, mouse);
+        self.permille
+    }
+
     /// 锚点准确性：缩放前后鼠标点下的内容坐标不变。
     /// 内容坐标 = (mouse - offset) / scale = (mouse - offset) * 1000 / permille。
     pub fn content_under_mouse(&self, mouse: (i64, i64)) -> (i64, i64) {
@@ -92,9 +147,20 @@ impl AnchorZoom {
         )
     }
 
+    /// 人话读数：千分比 → 百分比整数。
+    pub fn percent_label(&self) -> u64 {
+        self.permille / 10
+    }
+
     /// 记忆联动快照（F219）。
     pub fn snapshot(&self) -> (u64, (i64, i64)) {
         (self.permille, self.offset)
+    }
+
+    /// 快照恢复（round-trip 的另一半——只收自己产出的快照）。
+    pub fn apply_snapshot(&mut self, permille: u64, offset: (i64, i64)) {
+        self.permille = permille.clamp(ZOOM_MIN_PERMILLE, ZOOM_MAX_PERMILLE);
+        self.offset = offset;
     }
 }
 
@@ -161,6 +227,35 @@ pub fn run_zoomwheel_checks() -> CheckSet {
     set.add("f430-boundary-min", s.permille == ZOOM_MIN_PERMILLE && s.bounce_hints >= 1, "");
     // 记忆联动快照。
     set.add("f430-memory-snapshot", z.snapshot() == (1_250, (-125, -100)), "");
+    // v5：触屏捏合——同一锚点数学（不动点判据与滚轮一致）。
+    let mut pz = AnchorZoom::new();
+    pz.offset = (0, 0);
+    let pb = pz.content_under_mouse((400, 300));
+    set.add(
+        "f430-pinch-anchor",
+        pz.pinch(2_000, (400, 300)) && pz.permille == 2_000 && pz.pinch_steps == 1 && pz.content_under_mouse((400, 300)) == pb,
+        "",
+    );
+    // v5：双击复位——100% 且锚点保持。
+    set.add(
+        "f430-reset-anchor",
+        pz.reset_at((400, 300)) && pz.permille == ZOOM_RESET_PERMILLE && pz.content_under_mouse((400, 300)) == pb,
+        "",
+    );
+    // v5：人话读数（千分比 → 百分比）。
+    set.add(
+        "f430-percent-label",
+        pz.pinch(1_250, (0, 0)) && pz.percent_label() == 125,
+        "",
+    );
+    // v5：按宽适配——500px 视口看 2000px 宽内容 → 25%。
+    let mut f = AnchorZoom::new();
+    set.add("f430-fit-width", f.fit_width(500, 2_000, (0, 0)) == 250, "");
+    // v5：快照 round-trip（记忆联动另一半）。
+    let snap = f.snapshot();
+    let mut g = AnchorZoom::new();
+    g.apply_snapshot(snap.0, snap.1);
+    set.add("f430-snapshot-roundtrip", g.snapshot() == snap && g.permille == 250, "");
     set
 }
 
@@ -178,5 +273,27 @@ mod tests {
         let after = z.content_under_mouse(m);
         assert_eq!(before, after, "锚点不动点判据（非中心鼠标位）");
         assert_eq!(z.permille, 750);
+    }
+
+    #[test]
+    fn pinch_at_boundary_bounces() {
+        let mut z = AnchorZoom::new();
+        z.permille = ZOOM_MAX_PERMILLE;
+        assert!(!z.pinch(2_000, (0, 0)), "已在 8x 再捏合放大 → 停住");
+        assert_eq!(z.bounce_hints, 1, "微弹记账");
+        assert_eq!(z.pinch_steps, 0);
+    }
+
+    #[test]
+    fn fit_width_invalid_content_holds() {
+        let mut z = AnchorZoom::new();
+        assert_eq!(z.fit_width(500, 0, (0, 0)), 1_000, "内容宽 0 → 不动现状");
+    }
+
+    #[test]
+    fn snapshot_clamped_on_apply() {
+        let mut z = AnchorZoom::new();
+        z.apply_snapshot(99_999, (0, 0)); // 越界快照钳入界
+        assert_eq!(z.permille, ZOOM_MAX_PERMILLE);
     }
 }

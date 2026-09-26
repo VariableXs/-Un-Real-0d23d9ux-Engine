@@ -363,3 +363,182 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 深化批：台账人话汇总行 / 下一季度审视到期推算
+// ---------------------------------------------------------------------------
+
+// ----- v4 深化批：台账人话汇总 / 审视到期推算 -----
+
+impl CompatLedger {
+    /// 台账人话汇总行（页脚/导出面——各评级计数一行说完，确定性渲染：
+    /// 同台账同字节；评级序按 Fidelity 枚举口径分列，不混数）。
+    pub fn summary_line(&self) -> String {
+        let mut pixel = 0usize;
+        let mut visual = 0usize;
+        let mut degraded = 0usize;
+        let mut rejected = 0usize;
+        for r in &self.records {
+            match r.fidelity {
+                Fidelity::PixelPerfect => pixel += 1,
+                Fidelity::VisualMatch => visual += 1,
+                Fidelity::Degraded => degraded += 1,
+                Fidelity::Rejected => rejected += 1,
+            }
+        }
+        alloc::format!(
+            "兼容台账共 {} 条实测：像素级 {}、视觉一致 {}、有损可用 {}、拒入 {}；季度审视周期 {} 天",
+            self.records.len(),
+            pixel,
+            visual,
+            degraded,
+            rejected,
+            self.quarter_period_ms / (24 * 3600 * 1000)
+        )
+    }
+
+    /// 下一季度审视到期时刻（None = 从未审视——首查即到期的机制面；
+    /// 到期时刻 = 上次审视落章时刻 + 节律周期，饱和加法防钟表回拨溢出）。
+    pub fn next_review_due_ms(&self) -> Option<u64> {
+        self.last_review_ms.map(|t| t.saturating_add(self.quarter_period_ms))
+    }
+
+    /// 审视状态人话（通知条取用处——从未审视/已到期/在轨三态各一句，
+    /// 到期与剩余天数按整天折算）。
+    pub fn review_status_text(&self, now_ms: u64) -> String {
+        match self.next_review_due_ms() {
+            None => String::from("兼容台账从未审视——季度审视首查即到期，请尽快开审"),
+            Some(due) => {
+                if now_ms >= due {
+                    let overdue_days = (now_ms - due) / (24 * 3600 * 1000);
+                    alloc::format!("兼容台账季度审视已到期（逾期 {} 天）——请开季审视", overdue_days)
+                } else {
+                    let remain_days = (due - now_ms) / (24 * 3600 * 1000);
+                    alloc::format!("兼容台账审视在轨：距下次季度审视还有 {} 天", remain_days)
+                }
+            }
+        }
+    }
+}
+
+/// F640 v4 深化自检。
+pub fn run_ledger_v4_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F640-v4");
+    let period = 90 * 24 * 3600 * 1000u64;
+
+    // 底座台账：像素级 1 条 + 拒入 1 条（评级计数与汇总行对账用）。
+    let mut ledger = CompatLedger::new(period);
+    ledger.record(CompatRecord {
+        package: String::from("社区青柠指针包"),
+        source: String::from("社区镜像 A"),
+        fidelity: Fidelity::PixelPerfect,
+        gate_rejection: None,
+        issues: Vec::new(),
+        tested_at_ms: 100,
+    });
+    ledger.record(CompatRecord {
+        package: String::from("野站闪烁包"),
+        source: String::from("来源不明"),
+        fidelity: Fidelity::Rejected,
+        gate_rejection: Some(String::from("帧率闸：120fps 超限")),
+        issues: alloc::vec![String::from("有效帧率超 60fps——频闪风险")],
+        tested_at_ms: 200,
+    });
+
+    // 1. 汇总行计数对账：总数与各评级计数各就位。
+    let sum = ledger.summary_line();
+    set.add(
+        "summary line counts grades",
+        sum.contains("共 2 条实测") && sum.contains("像素级 1") && sum.contains("拒入 1") && sum.contains("视觉一致 0"),
+        "",
+    );
+
+    // 2. 汇总行确定性（同台账同字节——导出面可复算）。
+    set.add("summary line deterministic", sum == ledger.summary_line(), "");
+
+    // 3. 空台账汇总不虚数。
+    let empty = CompatLedger::new(period);
+    set.add(
+        "empty ledger summary sane",
+        empty.summary_line().contains("共 0 条实测") && empty.summary_line().contains("像素级 0"),
+        "",
+    );
+
+    // 4. 从未审视 → 到期时刻 None。
+    set.add("next due none before first review", ledger.next_review_due_ms().is_none(), "");
+
+    // 5. 落章后到期时刻 = 落章 + 周期（整毫秒精确）。
+    ledger.complete_review(1000);
+    set.add("next due adds period exactly", ledger.next_review_due_ms() == Some(1000 + period), "");
+
+    // 6. 状态人话三态：在轨（剩 89 天）/ 到期 / 从未审视。
+    let on_track = ledger.review_status_text(1000 + 24 * 3600 * 1000);
+    let overdue = ledger.review_status_text(1000 + period + 24 * 3600 * 1000);
+    let never = CompatLedger::new(period).review_status_text(0);
+    set.add(
+        "review status text three states",
+        on_track.contains("在轨") && on_track.contains("89 天")
+            && overdue.contains("已到期") && overdue.contains("逾期 1 天")
+            && never.contains("从未审视"),
+        "",
+    );
+
+    // 7. 周期天数入文本（90 天入句——节律文档随配置走）。
+    set.add("summary carries period days", sum.contains("周期 90 天"), "");
+
+    // 8. 到期边界：恰好第 90 天整为「在轨最后一天」（now < due）。
+    let last_day = ledger.review_status_text(1000 + period - 1);
+    set.add("due boundary exclusive", last_day.contains("在轨"), "");
+
+    set
+}
+
+// ---------------------------------------------------------------------------
+// v4 单元测试
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+
+    fn sample(fidelity: Fidelity) -> CompatRecord {
+        CompatRecord {
+            package: String::from("样本包"),
+            source: String::from("测试源"),
+            fidelity,
+            gate_rejection: None,
+            issues: Vec::new(),
+            tested_at_ms: 0,
+        }
+    }
+
+    #[test]
+    fn v4_summary_counts_all_grades() {
+        let mut ledger = CompatLedger::new(90 * 24 * 3600 * 1000);
+        ledger.record(sample(Fidelity::PixelPerfect));
+        ledger.record(sample(Fidelity::VisualMatch));
+        ledger.record(sample(Fidelity::Degraded));
+        ledger.record(sample(Fidelity::Rejected));
+        let s = ledger.summary_line();
+        assert!(s.contains("共 4 条实测"));
+        assert!(s.contains("像素级 1") && s.contains("视觉一致 1") && s.contains("有损可用 1") && s.contains("拒入 1"));
+    }
+
+    #[test]
+    fn v4_next_due_adds_period_exactly() {
+        let mut ledger = CompatLedger::new(1000);
+        assert_eq!(ledger.next_review_due_ms(), None);
+        ledger.complete_review(5000);
+        assert_eq!(ledger.next_review_due_ms(), Some(6000));
+    }
+
+    #[test]
+    fn v4_status_text_transitions() {
+        let period = 90 * 24 * 3600 * 1000;
+        let mut ledger = CompatLedger::new(period);
+        assert!(ledger.review_status_text(0).contains("从未审视"));
+        ledger.complete_review(1000);
+        assert!(ledger.review_status_text(1000).contains("在轨"), "落章当刻在轨");
+        assert!(ledger.review_status_text(1000 + period).contains("已到期"), "到期一刻翻转");
+    }
+}

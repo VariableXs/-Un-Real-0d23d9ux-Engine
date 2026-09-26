@@ -570,6 +570,48 @@ fn tan_deg(x: f64) -> f64 {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v9 · 手动色温滑杆临时覆盖（主册【交互设计】「色温滑杆+
+// 曲线图」——滑杆设定即临时覆盖自动曲线；不永久劫持：超时自动回曲线）
+// ---------------------------------------------------------------------------
+
+/// 手动覆盖最长保持（分钟——12 小时后自动回曲线：滑杆是临时微调不是
+/// 第二条曲线，永久改曲线走锚点拖动 drag_anchor）。
+pub const OVERRIDE_MAX_HOLD_MIN: u64 = 12 * 60;
+
+/// 手动色温覆盖档（滑杆设定的机器面）。
+pub struct ManualOverride {
+    /// 滑杆色温（K）。
+    pub kelvin: u32,
+    /// 设定时刻（分钟——到期判定基准）。
+    set_at_min: u64,
+}
+
+impl ManualOverride {
+    /// 设定滑杆档（色温域外拒绝——滑杆物理行程 1900-6500，越界输入
+    /// 不是钳制而是拒绝：用户该知道滑杆没接住）。
+    pub fn new(kelvin: u32, now_min: u64) -> Result<ManualOverride, &'static str> {
+        if kelvin < KELVIN_MIN || kelvin > KELVIN_MAX {
+            return Err("kelvin out of slider range");
+        }
+        Ok(ManualOverride { kelvin, set_at_min: now_min })
+    }
+
+    /// 是否已到期（超 12h 自动回曲线——覆盖不永久劫持）。
+    pub fn expired(&self, now_min: u64) -> bool {
+        now_min.saturating_sub(self.set_at_min) >= OVERRIDE_MAX_HOLD_MIN
+    }
+
+    /// 生效色温：覆盖期内用滑杆值，到期回自动曲线值。
+    pub fn effective(&self, curve_kelvin: u32, now_min: u64) -> u32 {
+        if self.expired(now_min) {
+            curve_kelvin
+        } else {
+            self.kelvin
+        }
+    }
+}
+
 pub fn run_nightlight_checks() -> CheckSet {
     let mut set = CheckSet::new("F116-nightlight");
 
@@ -788,6 +830,20 @@ pub fn run_nightlight_checks() -> CheckSet {
         "",
     );
 
+    // 深化 v9 · 手动色温滑杆覆盖：域外拒绝；覆盖期生效滑杆值；超 12h
+    // 自动回曲线（不永久劫持）。
+    let out = ManualOverride::new(9_000, 0);
+    let ov = ManualOverride::new(4_200, 0).unwrap();
+    let during = ov.effective(6_500, 60) == 4_200;
+    let after = ov.effective(6_500, OVERRIDE_MAX_HOLD_MIN + 1) == 6_500;
+    let boundary_in = ManualOverride::new(KELVIN_MIN, 0).is_ok()
+        && ManualOverride::new(KELVIN_MAX, 0).is_ok();
+    set.add(
+        "manual kelvin slider override",
+        out.is_err() && during && after && boundary_in,
+        "",
+    );
+
     set
 }
 
@@ -888,5 +944,18 @@ mod tests {
         n.set_schedule(SchedMode::Scheduled, 99, 99); // 天文参数被忽略
         assert!(n.is_night_window(21 * 60));
         assert!(!n.is_night_window(6 * 60), "定时档 21-5 窗外为日间");
+    }
+
+    #[test]
+    fn f116_override_expiry_monotonic() {
+        // 到期判定单调：过期后永不过期回去（时间只向前）。
+        let ov = ManualOverride::new(5_000, 100).unwrap();
+        let mut prev = false;
+        for m in 101..(100 + OVERRIDE_MAX_HOLD_MIN + 5) {
+            let cur = ov.expired(m);
+            assert!(cur >= prev, "到期判定必须单调不减");
+            prev = cur;
+        }
+        assert!(prev, "超窗后必已到期");
     }
 }

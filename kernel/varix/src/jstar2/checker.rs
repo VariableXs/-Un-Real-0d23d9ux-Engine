@@ -754,3 +754,406 @@ mod tests {
         assert!(log.is_empty(), "在态不走回退");
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：扩展五检（透明态/重复帧/延时一致性/跨态尺寸/热点重心）
+// · 深化修复三路（补齐内置/尺寸归一/邻帧去重）· 报告确定性渲染
+// ---------------------------------------------------------------------------
+
+use crate::jstar2::jbase::ALL_STATES;
+
+/// v3 扩展检查 ID（四主检之外的第二层——「更难看的角落也要看得见」）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtendedCheckId {
+    /// 全透明态（一个态 15 帧全透明 = 指针在屏幕上消失——红）。
+    InvisibleState,
+    /// 邻帧全同（动画态里相邻帧逐字节相等 = 假动画——警）。
+    DuplicateAdjacentFrames,
+    /// 帧延时一致性（同态内延时参差 = 播放节奏抖——警）。
+    DelayUniformity,
+    /// 跨态尺寸一致（同方案内画布尺寸不一 = 切换态时跳——警）。
+    CrossStateSizeConsistency,
+    /// 热点重心离群（热点远离视觉重心超出内容半径 = 点不准——警）。
+    HotspotCentroidOutlier,
+}
+
+impl ExtendedCheckId {
+    pub fn zh(self) -> &'static str {
+        match self {
+            ExtendedCheckId::InvisibleState => "全透明态",
+            ExtendedCheckId::DuplicateAdjacentFrames => "邻帧全同",
+            ExtendedCheckId::DelayUniformity => "帧延时一致性",
+            ExtendedCheckId::CrossStateSizeConsistency => "跨态尺寸一致",
+            ExtendedCheckId::HotspotCentroidOutlier => "热点重心离群",
+        }
+    }
+}
+
+/// 单条扩展发现。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExtendedFinding {
+    pub check: ExtendedCheckId,
+    pub red: bool,
+    pub where_: String,
+    pub detail: String,
+}
+
+/// 扩展五检主体（纯函数；逐条产出含定位的发现清单）。
+pub fn inspect_extended(m: &CursorSchemeModel) -> Vec<ExtendedFinding> {
+    let mut out: Vec<ExtendedFinding> = Vec::new();
+
+    // 1. 全透明态。
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            let all_transparent = sf.frames.iter().all(|f| f.px.chunks_exact(4).all(|c| c[3] == 0));
+            if all_transparent {
+                out.push(ExtendedFinding {
+                    check: ExtendedCheckId::InvisibleState,
+                    red: true,
+                    where_: alloc::format!("{}", st.zh_name()),
+                    detail: String::from("该态全部帧全透明——指针在该态下不可见"),
+                });
+            }
+        }
+    }
+
+    // 2. 邻帧全同（仅动画态：帧数 >1）。
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            if sf.frames.len() > 1 {
+                for (i, pair) in sf.frames.windows(2).enumerate() {
+                    if pair[0].px == pair[1].px {
+                        out.push(ExtendedFinding {
+                            check: ExtendedCheckId::DuplicateAdjacentFrames,
+                            red: false,
+                            where_: alloc::format!("{}#{}", st.zh_name(), i),
+                            detail: String::from("相邻两帧逐字节相同——假动画帧"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 帧延时一致性。
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            if sf.frames.len() > 1 {
+                let d0 = sf.frames[0].delay_ms;
+                if sf.frames.iter().any(|f| f.delay_ms != d0) {
+                    out.push(ExtendedFinding {
+                        check: ExtendedCheckId::DelayUniformity,
+                        red: false,
+                        where_: alloc::format!("{}", st.zh_name()),
+                        detail: alloc::format!("帧延时参差（首帧 {}ms）——播放节奏抖", d0),
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. 跨态尺寸一致。
+    let mut sizes: Vec<(u16, u16)> = Vec::new();
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            if let Some(f) = sf.frames.first() {
+                let s = (f.w, f.h);
+                if !sizes.contains(&s) {
+                    sizes.push(s);
+                }
+            }
+        }
+    }
+    if sizes.len() > 1 {
+        out.push(ExtendedFinding {
+            check: ExtendedCheckId::CrossStateSizeConsistency,
+            red: false,
+            where_: String::from("全方案"),
+            detail: alloc::format!("存在 {} 种画布尺寸——态切换时视觉跳变", sizes.len()),
+        });
+    }
+
+    // 5. 热点重心离群（对静态语义态抽查：内容 bbox 对角线一半之外=离群）。
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            if let Some(f) = sf.frames.first() {
+                if let Some((cx, cy)) = f.buf().visual_centroid() {
+                    let dx = (f.hot_x as i64 - cx as i64).abs();
+                    let dy = (f.hot_y as i64 - cy as i64).abs();
+                    let dist2 = dx * dx + dy * dy;
+                    let radius = ((f.w as i64 * f.w as i64 + f.h as i64 * f.h as i64) / 4).max(1);
+                    if dist2 * 4 > radius * 16 {
+                        // 距离 > 2×内容半径（对角线一半）→ 离群
+                        out.push(ExtendedFinding {
+                            check: ExtendedCheckId::HotspotCentroidOutlier,
+                            red: false,
+                            where_: alloc::format!("{}", st.zh_name()),
+                            detail: alloc::format!("热点 ({},{}) 距视觉重心 ({},{}) 过远", f.hot_x, f.hot_y, cx, cy),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// 扩展修复：缺态从内置方案补齐（同态同帧——比逐态克隆默认 glyph 更
+/// 明确的事实源），返回补齐的态清单（空 = 无缺）。
+pub fn fill_missing_from_builtin(m: &mut CursorSchemeModel) -> Vec<PointerState> {
+    let missing = m.missing_states();
+    let builtin = builtin_default_scheme();
+    for st in &missing {
+        if let Some(sf) = builtin.state(*st) {
+            m.set_state(*st, sf.frames.clone());
+        }
+    }
+    missing
+}
+
+/// 扩展修复：跨态尺寸归一（全部态补边到最大画布；热点不动——补边在
+/// 右/下方向，不影响既有热点坐标的有效性）。
+pub fn normalize_canvas(m: &mut CursorSchemeModel) -> (u16, u16) {
+    let mut mw = 0u16;
+    let mut mh = 0u16;
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            for f in &sf.frames {
+                mw = mw.max(f.w);
+                mh = mh.max(f.h);
+            }
+        }
+    }
+    if mw == 0 || mh == 0 {
+        return (0, 0);
+    }
+    for st in ALL_STATES {
+        let Some(sf) = m.state_mut(st) else { continue };
+        for f in sf.frames.iter_mut() {
+            if f.w == mw && f.h == mh {
+                continue;
+            }
+            let src = f.buf();
+            let mut buf = crate::jstar2::jbase::PixBuf::new(mw, mh);
+            for y in 0..f.h {
+                for x in 0..f.w {
+                    if let Some(px) = src.get(x, y) {
+                        buf.set(x, y, px);
+                    }
+                }
+            }
+            let hot = (f.hot_x, f.hot_y);
+            *f = crate::jstar2::jbase::CursorFrame::from_buf(hot.0, hot.1, f.delay_ms, buf);
+        }
+    }
+    (mw, mh)
+}
+
+/// 扩展修复：邻帧去重（动画态里逐字节相同的相邻帧只保留第一帧；
+/// 返回删除帧数——非破坏，调用方持有原件）。
+pub fn dedupe_adjacent_frames(m: &mut CursorSchemeModel) -> usize {
+    let mut removed = 0usize;
+    for st in ALL_STATES {
+        let Some(sf) = m.state_mut(st) else { continue };
+        if sf.frames.len() <= 1 {
+            continue;
+        }
+        // 手动折叠：与前一个「保留帧」比较——相同则丢。
+        let mut kept: Vec<crate::jstar2::jbase::CursorFrame> = Vec::new();
+        for f in sf.frames.drain(..) {
+            match kept.last() {
+                Some(prev) if prev.px == f.px => {
+                    removed += 1;
+                }
+                _ => kept.push(f),
+            }
+        }
+        sf.frames = kept;
+    }
+    removed
+}
+
+/// 超尺寸态计数（审计面：超过 64px 提示线的态数——修复路由的依据）。
+pub fn oversize_state_count(m: &CursorSchemeModel) -> usize {
+    let mut n = 0;
+    for st in ALL_STATES {
+        if let Some(sf) = m.state(st) {
+            if sf.frames.iter().any(|f| f.w.max(f.h) as u32 > WARN_FRAME_PX) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// 报告确定性渲染（F628 详情页导出面：同一报告永远渲染出同一字节——
+/// 行序 = 检查序 = 稳定，不哈希迭代）。
+pub fn render_report(r: &HealthReport) -> String {
+    let mut out = String::new();
+    out.push_str(&alloc::format!("report fp={:016x}\n", r.scheme_fingerprint));
+    for c in IDS {
+        let v = r.verdict_of(c);
+        let tag = match v {
+            Verdict::Green => "GREEN",
+            Verdict::Warn => "WARN",
+            Verdict::Red => "RED",
+        };
+        out.push_str(&alloc::format!("{} {}\n", c.zh(), tag));
+    }
+    if !r.missing_states.is_empty() {
+        out.push_str("missing:");
+        for st in &r.missing_states {
+            out.push(' ');
+            out.push_str(st.zh_name());
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// v3 自检。
+pub fn run_checker_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F627-v3");
+
+    // 基线：内置方案扩展五检零发现（内置是全绿的锚）。
+    let base = builtin_default_scheme();
+    set.add(
+        "builtin extended findings empty",
+        inspect_extended(&base).is_empty(),
+        "",
+    );
+
+    // 1. 全透明态检出：清空一个态的所有帧像素。
+    let mut ghost = base.clone();
+    if let Some(sf) = ghost.state_mut(PointerState::Busy) {
+        for f in sf.frames.iter_mut() {
+            for c in f.px.chunks_exact_mut(4) {
+                c[3] = 0;
+            }
+        }
+    }
+    let gfind = inspect_extended(&ghost);
+    set.add(
+        "invisible state flagged red with state name",
+        gfind.iter().any(|f| f.check == ExtendedCheckId::InvisibleState && f.red && f.where_.contains("忙")),
+        "",
+    );
+
+    // 2. 邻帧全同：构造一个两帧逐字节相同的动画态。
+    let mut dup = base.clone();
+    let f0 = dup.state(PointerState::Busy).and_then(|s| s.frames.first().cloned());
+    if let Some(f) = f0 {
+        let f2 = crate::jstar2::jbase::CursorFrame::from_buf(f.hot_x, f.hot_y, f.delay_ms, f.buf());
+        dup.set_state(PointerState::Busy, alloc::vec![f.clone(), f2]);
+    }
+    let dfind = inspect_extended(&dup);
+    set.add(
+        "duplicate adjacent frames warned with index",
+        dfind.iter().any(|f| f.check == ExtendedCheckId::DuplicateAdjacentFrames && !f.red),
+        "",
+    );
+    // 去重修复：删 1 帧、剩 1 帧、原发现消失。
+    let removed = dedupe_adjacent_frames(&mut dup);
+    set.add(
+        "dedupe removes adjacent twins",
+        removed == 1 && dup.state(PointerState::Busy).map(|s| s.frames.len()).unwrap_or(0) == 1,
+        "",
+    );
+
+    // 3. 延时一致性：同态两帧不同延时 → 警（内置 Busy 为单帧——克隆一份制造参差）。
+    let mut jit = base.clone();
+    if let Some(sf) = jit.state_mut(PointerState::Busy) {
+        let extra = sf.frames[0].clone();
+        sf.frames.push(extra);
+        let n = sf.frames.len();
+        sf.frames[n - 1].delay_ms = sf.frames[0].delay_ms + 50;
+    }
+    set.add(
+        "delay uniformity warned",
+        inspect_extended(&jit).iter().any(|f| f.check == ExtendedCheckId::DelayUniformity),
+        "",
+    );
+
+    // 4. 跨态尺寸：把一个态缩成 8x8 → 尺寸发现 + 归一修复回统一画布。
+    let mut mixed = base.clone();
+    let small = crate::jstar2::jbase::CursorFrame::from_buf(0, 0, 0, crate::jstar2::jbase::PixBuf::new(8, 8));
+    mixed.set_state(PointerState::Text, alloc::vec![small]);
+    let mfind = inspect_extended(&mixed);
+    set.add(
+        "cross state size inconsistency flagged",
+        mfind.iter().any(|f| f.check == ExtendedCheckId::CrossStateSizeConsistency),
+        "",
+    );
+    let (w, h) = normalize_canvas(&mut mixed);
+    set.add(
+        "normalize canvas unifies sizes",
+        w == 32 && h == 32 && inspect_extended(&mixed).iter().all(|f| f.check != ExtendedCheckId::CrossStateSizeConsistency),
+        "",
+    );
+
+    // 5. 缺态补齐：摘除一个态的条目 → fill_missing_from_builtin 补回。
+    let mut hole = base.clone();
+    hole.entries.retain(|e| e.state != PointerState::Link);
+    let hole_before = hole.missing_states().len();
+    let filled = fill_missing_from_builtin(&mut hole);
+    set.add(
+        "fill missing from builtin repairs",
+        hole_before == 1 && filled.len() == 1 && hole.missing_states().is_empty()
+            && hole.state(PointerState::Link).map(|s| !s.frames.is_empty()).unwrap_or(false),
+        "",
+    );
+
+    // 6. 超尺寸计数：>64px 的态被点出（修复路由依据）。
+    let mut big = base.clone();
+    let bigf = crate::jstar2::jbase::CursorFrame::from_buf(0, 0, 0, crate::jstar2::jbase::PixBuf::new(80, 80));
+    big.set_state(PointerState::Unavailable, alloc::vec![bigf]);
+    set.add("oversize state counted", oversize_state_count(&big) >= 1 && oversize_state_count(&base) == 0, "");
+
+    // 7. 报告渲染确定性：同一报告渲染两次逐字节相等 + 行含指纹。
+    let rep = inspect(&base);
+    let a = render_report(&rep);
+    let b = render_report(&inspect(&base));
+    set.add(
+        "report render deterministic",
+        a == b && a.contains("fp=") && a.contains("齐全性 GREEN"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn extended_findings_carry_zh_names() {
+        assert!(!ExtendedCheckId::InvisibleState.zh().is_empty());
+        assert_eq!(ExtendedCheckId::DelayUniformity.zh(), "帧延时一致性");
+    }
+
+    #[test]
+    fn normalize_canvas_idempotent() {
+        let mut m = builtin_default_scheme();
+        let (w1, h1) = normalize_canvas(&mut m);
+        let (w2, h2) = normalize_canvas(&mut m);
+        assert_eq!((w1, h1), (w2, h2));
+        assert_eq!((w1, h1), (32, 32));
+    }
+
+    #[test]
+    fn dedupe_on_static_scheme_is_noop() {
+        let mut m = builtin_default_scheme();
+        let removed = dedupe_adjacent_frames(&mut m);
+        assert_eq!(removed, 0, "内置方案无邻帧全同");
+    }
+
+    #[test]
+    fn render_report_lists_all_four() {
+        let m = builtin_default_scheme();
+        let text = render_report(&inspect(&m));
+        for c in IDS {
+            assert!(text.contains(c.zh()));
+        }
+    }
+}

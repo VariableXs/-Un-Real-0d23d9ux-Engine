@@ -118,3 +118,48 @@ export function auditDailyLedger(day: string, perRun: number[], store: KvStore =
   const s = dailySummary(day, store);
   return { consistent: s.minutes === perRun.reduce((a, b) => a + b, 0), ledgerMinutes: s.minutes, sumOfRuns: perRun.reduce((a, b) => a + b, 0) };
 }
+
+/* ================= v5 深化批次五：番茄连击 / 打断归类 / 周报 / 提醒降级 ================= */
+
+/** 番茄连击：连续 4 个完成 → 建议长休息（经典番茄节奏，建议制不强制）。 */
+export const POMODORO_CYCLE = 4;
+export function pomodoroAdvice(completedStreak: number): { longBreak: boolean; advice: string } {
+  return completedStreak > 0 && completedStreak % POMODORO_CYCLE === 0
+    ? { longBreak: true, advice: `连续 ${POMODORO_CYCLE} 轮完成——建议长休息 15 分钟` }
+    : { longBreak: false, advice: "继续下一轮，或按需休息" };
+}
+
+/** 打断归类（放弃真实性深化）：自打断（自己点放弃）vs 外部打断（系统事件打断）分开记账。 */
+export type Interruption = "self" | "external";
+export interface InterruptedRun extends FocusRun {
+  interruption: Interruption;
+}
+
+export function classifyInterruption(run: FocusRun, bySystemEvent: boolean): InterruptedRun {
+  return { ...run, interruption: run.outcome === "abandoned" ? (bySystemEvent ? "external" : "self") : "self" };
+}
+
+/** 周报（7 天聚合）：专注分钟/轮数/放弃率——趋势比单日更诚实。 */
+export function weeklySummary(today: string, dailyLookback: (day: string) => { minutes: number; runs: number; abandoned: number }, days = 7): { minutes: number; runs: number; abandonRatePct: number } {
+  const base = new Date(`${today}T00:00:00`);
+  let minutes = 0;
+  let runs = 0;
+  let abandoned = 0;
+  for (let i = 0; i < days; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const s = dailyLookback(key);
+    minutes += s.minutes;
+    runs += s.runs;
+    abandoned += s.abandoned;
+  }
+  return { minutes, runs, abandonRatePct: runs === 0 ? 0 : Math.round((abandoned / runs) * 100) };
+}
+
+/** 提醒通道降级：音效通道失败 → 通知单通道仍达（双通道判据的降级面——提醒永不静默丢失）。 */
+export function reminderFallback(chimeOk: boolean): { channels: Array<"chime" | "notification">; honest: string } {
+  return chimeOk
+    ? { channels: ["chime", "notification"], honest: "双通道齐发（一声 + 一条通知）" }
+    : { channels: ["notification"], honest: "音效通道不可用——通知通道独立送达（提醒不丢）" };
+}

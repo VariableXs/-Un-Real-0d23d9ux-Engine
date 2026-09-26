@@ -10,6 +10,19 @@
 //! **lnk 自动修复**——改符成功即对登记的快捷方式目标路径做前缀重写
 //! （改符前后目标有效性对比 = 判据机检）；全部变更进事件账（F372 时间
 //! 线事件形态：时间戳 + 类别 + 人话描述）。
+//!
+//! **v4 深化批次新增（AI-U1）**：
+//! - 盘符域验证 [`DriveLetterMgr::letter_in_domain`]：只接受 C-Z
+//!   （A/B 保留软驱历史、盘符越界直接拒——不是所有 char 都能当盘符）；
+//! - 自动分配 [`DriveLetterMgr::auto_assign_letter`]：从域内找第一个
+//!   空闲字母（新卷接入的默认落位——不给随机字母）；
+//! - 挂载点冲突检测：两个卷挂到同一空目录 → 后者被拒（一个挂载点
+//!   只能有一个卷——确认前拦截）；
+//! - 卷移除 [`DriveLetterMgr::remove_volume`]：U 盘拔出语义——登记的
+//!   lnk 目标瞬间断链，用 [`DriveLetterMgr::broken_lnks`] 扫描器诚实
+//!   报告（不假装链接还活着）；
+//! - 事件过滤 [`DriveLetterMgr::events_of_kind`]：时间线按类别检索
+//!   （诊断面按「改符/卷标/挂载/修复」分面查看——F372 消费端）。
 
 use crate::checks::CheckSet;
 
@@ -17,11 +30,16 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::format;
 
+/// 盘符域下界（C: 起——A/B 保留软驱历史位）。
+pub const LETTER_DOMAIN_LO: u8 = b'C';
+/// 盘符域上界。
+pub const LETTER_DOMAIN_HI: u8 = b'Z';
+
 /// 一条变更留痕（F372 时间线事件形态）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MountEvent {
     pub t_ms: u64,
-    /// 事件类别：letter-change / label-change / mount-dir / lnk-fix。
+    /// 事件类别：letter-change / label-change / mount-dir / lnk-fix / volume-remove。
     pub kind: &'static str,
     /// 人话描述。
     pub detail: String,
@@ -48,6 +66,12 @@ pub struct LnkEntry {
     pub target: String,
 }
 
+/// 盘符是否在合法域内（C-Z；A/B 与非字母一律拒绝）。
+pub fn letter_in_domain(c: char) -> bool {
+    let b = c as u32;
+    (LETTER_DOMAIN_LO as u32..=LETTER_DOMAIN_HI as u32).contains(&b)
+}
+
 /// 盘符与挂载管理核。
 pub struct DriveLetterMgr {
     pub volumes: Vec<Volume>,
@@ -71,9 +95,38 @@ impl DriveLetterMgr {
         self.volumes.iter().find(|v| v.letter == letter).map(|v| v.volume_id)
     }
 
+    /// 自动分配：域内第一个空闲字母（新卷默认落位）。
+    /// 域满（C-Z 全占）返回 None——诚实，不溢出域外。
+    pub fn auto_assign_letter(&self) -> Option<char> {
+        (LETTER_DOMAIN_LO..=LETTER_DOMAIN_HI)
+            .map(|b| b as char)
+            .find(|&c| self.letter_holder(c).is_none())
+    }
+
+    /// 登记新卷：盘符在域内且未占用才收。
+    pub fn add_volume(&mut self, volume_id: u64, letter: char, label: &str) -> Result<(), &'static str> {
+        if !letter_in_domain(letter) {
+            return Err("盘符必须在 C-Z 域内");
+        }
+        if self.letter_holder(letter).is_some() {
+            return Err("盘符已被占用——换一个或用自动分配");
+        }
+        self.volumes.push(Volume {
+            volume_id,
+            letter,
+            label: String::from(label),
+            mount_dir: None,
+        });
+        self.log("volume-add", format!("新卷 {} 已登记为 {}:", label, letter));
+        Ok(())
+    }
+
     /// 改盘符：先冲突检测（确认前拦截），成功后自动修复 lnk 前缀并留痕。
     /// 返回 Err(占用者卷 id) = 冲突被拦；Ok(修复的 lnk 数) = 成功。
     pub fn change_letter(&mut self, volume_id: u64, to: char) -> Result<usize, u64> {
+        if !letter_in_domain(to) {
+            return Err(u64::MAX);
+        }
         if let Some(holder) = self.letter_holder(to) {
             if holder != volume_id {
                 return Err(holder);
@@ -114,10 +167,18 @@ impl DriveLetterMgr {
         }
     }
 
-    /// 挂载到空目录：目录须为空串前缀合法（非根），登记挂载点。
+    /// 挂载到空目录：路径合法 + 无他卷占用该挂载点（冲突确认前拦截）。
     pub fn mount_to_dir(&mut self, volume_id: u64, dir: &str) -> bool {
         if dir.is_empty() || !dir.starts_with('\\') {
             return false; // 挂载点必须是合法空目录路径
+        }
+        if self
+            .volumes
+            .iter()
+            .any(|v| v.volume_id != volume_id && v.mount_dir.as_deref() == Some(dir))
+        {
+            self.log("mount-dir", format!("挂载点 {} 已被其他卷占用——拒绝", dir));
+            return false;
         }
         match self.volumes.iter_mut().find(|v| v.volume_id == volume_id) {
             Some(v) => {
@@ -129,6 +190,30 @@ impl DriveLetterMgr {
         }
     }
 
+    /// 移除卷（U 盘拔出语义）：卷出表；指向该卷的 lnk 立即成为断链——
+    /// 诚实记账（不假装链接还活着），留痕待查。
+    pub fn remove_volume(&mut self, volume_id: u64) -> bool {
+        let Some(pos) = self.volumes.iter().position(|v| v.volume_id == volume_id) else {
+            return false;
+        };
+        let letter = self.volumes[pos].letter;
+        self.volumes.remove(pos);
+        self.log("volume-remove", format!("卷 {} 已移除——指向 {} 的快捷方式可能断链", volume_id, letter));
+        true
+    }
+
+    /// 断链扫描：目标盘符已无持有者的 lnk 清单（拔盘/改符后的对账面）。
+    pub fn broken_lnks(&self) -> Vec<&LnkEntry> {
+        self.lnks
+            .iter()
+            .filter(|lnk| {
+                let bytes = lnk.target.as_bytes();
+                bytes.len() >= 2 && bytes[1] == b':'
+                    && !self.volumes.iter().any(|v| v.letter as u8 == bytes[0])
+            })
+            .collect()
+    }
+
     /// lnk 有效性对拍：改符前后目标盘符与卷当前盘符一致（判据机检）。
     pub fn lnk_targets_valid(&self) -> bool {
         self.lnks.iter().all(|lnk| {
@@ -136,6 +221,11 @@ impl DriveLetterMgr {
                 .iter()
                 .any(|v| lnk.target.starts_with(v.letter) && lnk.target.as_bytes()[1] == b':')
         })
+    }
+
+    /// 时间线按类别检索（F372 消费端——诊断面分面查看）。
+    pub fn events_of_kind(&self, kind: &str) -> Vec<&MountEvent> {
+        self.events.iter().filter(|e| e.kind == kind).collect()
     }
 }
 
@@ -176,26 +266,75 @@ pub fn run_diskmnt_checks() -> CheckSet {
             && m.lnk_targets_valid(),
         "",
     );
+    // 盘符域验证：A/B 与非字母直接拒（不是所有 char 都能当盘符）。
+    set.add(
+        "f438-letter-domain-guard",
+        m.change_letter(2, 'A') == Err(u64::MAX)
+            && m.change_letter(2, '1') == Err(u64::MAX)
+            && letter_in_domain('C')
+            && letter_in_domain('Z')
+            && !letter_in_domain('B')
+            && !letter_in_domain('a'),
+        "",
+    );
+    // 自动分配：域内第一个空闲（当前占 C/E → 应给 D）。
+    set.add("f438-auto-assign-first-free", m.auto_assign_letter() == Some('D'), "");
+    // 登记新卷：占用拒绝 + 越域拒绝 + 空闲成功。
+    set.add(
+        "f438-add-volume-guards",
+        m.add_volume(3, 'C', "重复") == Err("盘符已被占用——换一个或用自动分配")
+            && m.add_volume(3, 'A', "越域") == Err("盘符必须在 C-Z 域内")
+            && m.add_volume(3, 'D', "新卷").is_ok()
+            && m.auto_assign_letter() == Some('F'),
+        "",
+    );
     // 卷标即时生效 + 留痕。
     set.add(
         "f438-label-instant",
         m.rename_label(2, "仓库") && m.volumes[1].label == "仓库",
         "",
     );
-    // 挂载到空目录。
+    // 挂载到空目录 + 冲突拦截（同挂载点只许一个卷）。
     set.add(
         "f438-mount-dir",
         m.mount_to_dir(2, "\\mounts\\data") && m.volumes[1].mount_dir.as_deref() == Some("\\mounts\\data"),
         "",
     );
     set.add("f438-mount-dir-invalid", !m.mount_to_dir(2, ""), "");
-    // 变更留痕（F372 形态：类别 + 时间戳 + 人话）。
+    set.add(
+        "f438-mount-dir-conflict",
+        !m.mount_to_dir(3, "\\mounts\\data")
+            && m.events.iter().any(|e| e.detail.contains("已被其他卷占用")),
+        "",
+    );
+    // 卷移除 + 断链扫描（拔盘语义：诚实报告断链，不假装链接活着）。
+    m.lnks.push(LnkEntry {
+        lnk_path: String::from("\\\\桌面\\资料.lnk"),
+        target: String::from("D:\\docs\\a.docx"),
+    });
+    set.add("f438-remove-volume", m.remove_volume(3) && !m.remove_volume(99), "");
+    set.add(
+        "f438-broken-lnk-scan",
+        m.broken_lnks().len() == 1 && m.broken_lnks()[0].target == "D:\\docs\\a.docx",
+        "",
+    );
+    // 拔卷释放的盘符立即可复用（D 被移除 → 自动分配回到 D）。
+    set.add("f438-letter-reuse-after-remove", m.auto_assign_letter() == Some('D'), "");
+    // 变更留痕（F372 形态：类别 + 时间戳 + 人话）+ 按类别检索。
     set.add(
         "f438-events-ledger",
-        m.events.len() >= 3
+        m.events.len() >= 6
             && m.events[0].kind == "letter-change"
             && m.events.iter().any(|e| e.kind == "lnk-fix")
             && m.events.iter().all(|e| e.t_ms == 1_000 && !e.detail.is_empty()),
+        "",
+    );
+    set.add(
+        "f438-events-filter",
+        m.events_of_kind("lnk-fix").len() == 1
+            && m.events_of_kind("mount-dir").len() == 2
+            && m.events_of_kind("volume-remove").len() == 1
+            && m.events_of_kind("不存在类别").is_empty(),
         "",
     );
     set
@@ -228,5 +367,34 @@ mod tests {
         // 同名改符 = 无冲突、零修复。
         assert_eq!(m.change_letter(1, 'D'), Ok(0));
         assert_eq!(m.events.len(), 1, "留痕仍记一笔（变更透明）");
+    }
+
+    #[test]
+    fn domain_exhaustion_is_honest() {
+        let mut m = DriveLetterMgr::new();
+        // 占满 C..H 六个位（小域测试——真实域 24 位同理）。
+        for (i, b) in (b'C'..=b'H').enumerate() {
+            assert!(m.add_volume(i as u64 + 1, b as char, "v").is_ok());
+        }
+        assert_eq!(m.auto_assign_letter(), Some('I'), "下一个空闲顺延");
+        // 全域占满（24 个卷）→ None，不溢出域外。
+        for (i, b) in (b'I'..=b'Z').enumerate() {
+            assert!(m.add_volume(100 + i as u64, b as char, "v").is_ok());
+        }
+        assert_eq!(m.auto_assign_letter(), None, "域满诚实返回 None");
+    }
+
+    #[test]
+    fn broken_scan_and_repair_cycle() {
+        let mut m = DriveLetterMgr::new();
+        m.volumes.push(Volume { volume_id: 1, letter: 'D', label: String::from("x"), mount_dir: None });
+        m.lnks.push(LnkEntry { lnk_path: String::from("a.lnk"), target: String::from("D:\\a.exe") });
+        m.lnks.push(LnkEntry { lnk_path: String::from("b.lnk"), target: String::from("Q:\\b.exe") });
+        // Q 盘不存在 → 只 b.lnk 断链；D 卷还在 → a.lnk 健康。
+        assert_eq!(m.broken_lnks().len(), 1);
+        assert_eq!(m.broken_lnks()[0].lnk_path, "b.lnk");
+        // 拔掉 D → a.lnk 也断。
+        assert!(m.remove_volume(1));
+        assert_eq!(m.broken_lnks().len(), 2);
     }
 }

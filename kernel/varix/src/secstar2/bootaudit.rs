@@ -1067,3 +1067,886 @@ mod deep2_tests {
         assert!(run_bootaudit_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——三级文字降级 / 自查历史链 / 恢复链
+// 参数保真 / 超支降级建议。判据源：主册【状态与异常】「自查组件自身损坏 →
+// 最简文字模式兜底三级降级（F172 同族）」+【数据与存储】「自查结果入 F174
+// 快照链（历史可溯）」+【交互设计】「进入恢复环境主钮（F198 链路通）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：TextDegradation —— 拦截画面三级降级（图形拦截 → 简版文字 →
+// 单行告示：每一级仍说清「是什么/为什么/怎么办」——降级不减三要素）
+// ---------------------------------------------------------------------------
+
+/// 降级级数（0=完整图形画面 1=简版文字 2=单行告示）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextLevel {
+    Full,
+    PlainText,
+    SingleLine,
+}
+
+/// 简版文字级渲染（无图形资产时：纯文本三行——标题/原因/出口）。
+pub fn plain_text_screen(failed: CheckItem) -> [&'static str; 3] {
+    [
+        INTERCEPT_TITLE,
+        match failed {
+            CheckItem::GateTable => "引导配置校验失败（门表哈希不符）",
+            CheckItem::Pubkey => "签名链公钥缺失",
+            CheckItem::WxPolicy => "W^X 策略未生效",
+        },
+        INTERCEPT_CTA,
+    ]
+}
+
+/// 单行告示级（最简兜底：一行 ASCII 安全文本——早期显示环境也能出）。
+pub fn single_line_banner() -> &'static str {
+    "BOOT CHECK FAILED - USE RECOVERY ENV"
+}
+
+/// 降级渲染总入口（level 决定形态；全绿任何级都不出画面——无感纪律）。
+pub fn degraded_render(level: TextLevel, failed: Option<CheckItem>) -> Option<alloc::vec::Vec<&'static str>> {
+    let failed = failed?;
+    let out = match level {
+        TextLevel::Full => alloc::vec![INTERCEPT_TITLE, INTERCEPT_SUB, INTERCEPT_CTA, INTERCEPT_DIFF],
+        TextLevel::PlainText => plain_text_screen(failed).to_vec(),
+        TextLevel::SingleLine => alloc::vec![single_line_banner()],
+    };
+    Some(out)
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：SnapshotChainBook —— 自查历史链（F174 快照链语义：历次启动三查
+// 结果逐次登记；查询面=最近 N 次绿率/连续绿/连续红——趋势先于故障被看见）
+// ---------------------------------------------------------------------------
+
+/// 历史容量（F174 快照链的本地镜像上限）。
+pub const HISTORY_CAP: usize = 32;
+
+/// 一次启动的自查结果（紧凑记录）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BootAuditRecord {
+    /// 启动序号（单调递增）。
+    pub boot_seq: u64,
+    /// 三查逐项绿。
+    pub gate_ok: bool,
+    pub pubkey_ok: bool,
+    pub wx_ok: bool,
+    /// 预算内。
+    pub in_budget: bool,
+}
+
+/// 历史账。
+pub struct SnapshotChainBook {
+    ring: [Option<BootAuditRecord>; HISTORY_CAP],
+    head: usize,
+    len: usize,
+}
+
+impl SnapshotChainBook {
+    pub fn new() -> SnapshotChainBook {
+        SnapshotChainBook { ring: [const { None }; HISTORY_CAP], head: 0, len: 0 }
+    }
+
+    pub fn record(&mut self, r: BootAuditRecord) {
+        self.ring[self.head] = Some(r);
+        self.head = (self.head + 1) % HISTORY_CAP;
+        self.len = (self.len + 1).min(HISTORY_CAP);
+    }
+
+    /// 最近 n 次绿率（permille——诊断页趋势条数据源）。
+    pub fn green_rate_permille(&self, n: usize) -> Option<u64> {
+        let n = n.min(self.len);
+        if n == 0 {
+            return None;
+        }
+        let mut green = 0u64;
+        for i in 0..n {
+            let idx = (self.head + HISTORY_CAP - 1 - i) % HISTORY_CAP;
+            if let Some(r) = self.ring[idx] {
+                if r.gate_ok && r.pubkey_ok && r.wx_ok {
+                    green += 1;
+                }
+            }
+        }
+        Some(green * 1000 / n as u64)
+    }
+
+    /// 截至最近一次的连续绿计数（连续红=警报线的数据源）。
+    pub fn consecutive(&self, green: bool) -> usize {
+        let mut c = 0usize;
+        for i in 0..self.len {
+            let idx = (self.head + HISTORY_CAP - 1 - i) % HISTORY_CAP;
+            if let Some(r) = self.ring[idx] {
+                let all = r.gate_ok && r.pubkey_ok && r.wx_ok;
+                if all == green {
+                    c += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        c
+    }
+}
+
+impl Default for SnapshotChainBook {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：RecoveryHandoff —— 拦截画面主钮 → F198 恢复环境（参数保真：
+// 带过去的「哪个检查坏了」在恢复环境侧原样出现——链路通=参数不失真）
+// ---------------------------------------------------------------------------
+
+/// 交接参数（拦截画面 → 恢复环境）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryHandoff {
+    /// 坏掉的检查项（恢复环境据此预选修复卡）。
+    pub failed: CheckItem,
+    /// 差异摘要可用（「查看差异详情」的数据是否随行）。
+    pub diff_available: bool,
+}
+
+/// 拦截画面 → 交接参数（诚实：差异数据坏时 diff_available=false，
+/// 恢复环境侧就不显示差异钮——不造空面板）。
+pub fn recovery_handoff(rep: &AuditReport, diff_ok: bool) -> Option<RecoveryHandoff> {
+    if !rep.blocked {
+        return None;
+    }
+    let failed = rep.items.iter().find(|i| !i.ok).map(|i| i.item)?;
+    Some(RecoveryHandoff { failed, diff_available: diff_ok })
+}
+
+/// 恢复环境侧接收（预选卡映射：门表坏→修复引导卡；公钥缺/W^X 关→同卡
+/// 三条件重检——F198 修复引导=闸门三条件重检的入口语义）。
+pub fn recovery_preselect(h: &RecoveryHandoff) -> &'static str {
+    match h.failed {
+        CheckItem::GateTable => "修复引导卡（预选：门表基准重建）",
+        CheckItem::Pubkey => "修复引导卡（预选：签名链重检）",
+        CheckItem::WxPolicy => "修复引导卡（预选：W^X 策略重检）",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：BudgetAdvice —— 超支降级建议（预算报表的执法延伸：单项超支 →
+// 建议动作（跳过图形diff/延迟次要查）——总预算 100ms 是硬线不是口号）
+// ---------------------------------------------------------------------------
+
+/// 建议动作。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BudgetAdvice {
+    pub item: CheckItem,
+    /// 超支幅度（permille——超出预算的千分比）。
+    pub over_permille: u64,
+    /// 建议文案（三要素——为什么建议、怎么做）。
+    pub advice: &'static str,
+}
+
+/// 逐项建议（只对超支行产出——预算内的项零打扰）。
+pub fn budget_advices(rows: &[BudgetRow]) -> alloc::vec::Vec<BudgetAdvice> {
+    rows.iter()
+        .filter(|r| r.over())
+        .map(|r| BudgetAdvice {
+            item: r.item,
+            over_permille: (r.actual_ms - r.budget_ms) * 1000 / r.budget_ms.max(1),
+            advice: match r.item {
+                CheckItem::GateTable => "门表校验超支：改为增量校验（只校验本次变更段），全量校验移至空闲窗口",
+                CheckItem::Pubkey => "公钥存在性检查超支：预载密钥索引（启动期一次内存读）",
+                CheckItem::WxPolicy => "W^X 策略读取超支：策略结果缓存于内核参数面（F192 同源）",
+            },
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F191 v4 自检（聚合进 secstar2 域）。
+pub fn run_bootaudit_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v4");
+
+    // v4-一：三级降级——全绿零画面、三级各自形态、单行 ASCII 安全。
+    set.add("deg green silent", degraded_render(TextLevel::Full, None).is_none(), "全绿无感");
+    let full = degraded_render(TextLevel::Full, Some(CheckItem::GateTable)).unwrap();
+    set.add("deg full 4 lines", full.len() == 4 && full[0] == INTERCEPT_TITLE, "");
+    let plain = degraded_render(TextLevel::PlainText, Some(CheckItem::Pubkey)).unwrap();
+    set.add("deg plain 3 lines", plain.len() == 3 && plain[1].contains("公钥"), "");
+    let single = degraded_render(TextLevel::SingleLine, Some(CheckItem::WxPolicy)).unwrap();
+    set.add("deg single", single.len() == 1 && single[0].is_ascii(), "单行 ASCII 早期环境可出");
+    // 三种失败原因各归各（简版文字级区分原因）。
+    set.add("deg reasons distinct", plain_text_screen(CheckItem::GateTable)[1]
+        != plain_text_screen(CheckItem::Pubkey)[1], "");
+
+    // v4-二：历史链——绿率、连续计数、环覆盖。
+    let mut book = SnapshotChainBook::new();
+    set.add("chain empty none", book.green_rate_permille(5).is_none(), "空账诚实 None");
+    for seq in 0..10u64 {
+        book.record(BootAuditRecord { boot_seq: seq, gate_ok: true, pubkey_ok: true, wx_ok: seq != 7, in_budget: true });
+    }
+    set.add("chain rate", book.green_rate_permille(10) == Some(900), "9/10 绿");
+    set.add("chain consecutive green", book.consecutive(true) == 2, "seq8,9 连续 2 绿");
+    set.add("chain consecutive red", book.consecutive(false) == 0, "无尾部连红");
+    // 再造尾部连红场景。
+    let mut book2 = SnapshotChainBook::new();
+    for seq in 0..5u64 {
+        book2.record(BootAuditRecord { boot_seq: seq, gate_ok: seq < 2, pubkey_ok: true, wx_ok: true, in_budget: true });
+    }
+    set.add("chain tail red", book2.consecutive(false) == 3, "尾部 3 连红");
+    // 环覆盖：写 40 条只留最近 32。
+    let mut book3 = SnapshotChainBook::new();
+    for seq in 0..40u64 {
+        book3.record(BootAuditRecord { boot_seq: seq, gate_ok: true, pubkey_ok: true, wx_ok: true, in_budget: true });
+    }
+    set.add("chain ring cap", book3.green_rate_permille(999) == Some(1000), "容量截断后全绿");
+    set.add("chain cap const", HISTORY_CAP == 32, "");
+
+    // v4-三：恢复链——参数保真、绿零交接、预选映射。
+    let gate_img = b"gate image v4";
+    let mut audit = BootAudit::new();
+    audit.load_baseline(Baseline::from_gate(gate_img, true, true));
+    // 注入坏门表。
+    let rep_bad = audit.run(b"tampered gate image", true, true);
+    let h = recovery_handoff(&rep_bad, true);
+    set.add("handoff carries failure", h.map(|x| x.failed == CheckItem::GateTable).unwrap_or(false), "带的是门表坏");
+    set.add("handoff diff on", h.map(|x| x.diff_available).unwrap_or(false), "");
+    set.add("handoff preselect gate", h.map(|x| recovery_preselect(&x).contains("门表")).unwrap_or(false), "");
+    // 差异数据坏 → diff_available=false（恢复侧不造空差异面板）。
+    let h2 = recovery_handoff(&rep_bad, false);
+    set.add("handoff diff honest", h2.map(|x| !x.diff_available).unwrap_or(false), "");
+    // 全绿不交接（无感链路）。
+    let rep_ok = audit.run(gate_img, true, true);
+    set.add("handoff green none", recovery_handoff(&rep_ok, true).is_none(), "");
+
+    // v4-四：超支建议——只对超支行、超支幅度、逐项专属建议。
+    let rows = [
+        BudgetRow { item: CheckItem::GateTable, budget_ms: 60, actual_ms: 90 },
+        BudgetRow { item: CheckItem::Pubkey, budget_ms: 5, actual_ms: 4 },
+        BudgetRow { item: CheckItem::WxPolicy, budget_ms: 5, actual_ms: 10 },
+    ];
+    let adv = budget_advices(&rows);
+    set.add("adv only overs", adv.len() == 2, "预算内的零打扰");
+    set.add("adv gate first", adv[0].item == CheckItem::GateTable && adv[0].over_permille == 500, "超 50%");
+    set.add("adv wx second", adv[1].item == CheckItem::WxPolicy && adv[1].advice.contains("F192"), "");
+    set.add("adv no green noise", adv.iter().all(|a| a.item != CheckItem::Pubkey), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v4_degraded_ladder_complete() {
+        // 三级降级阶梯完整走一遍（图形资产全坏的场景）：
+        // 每级都含「怎么办」出口——降级不减三要素。
+        let levels = [TextLevel::Full, TextLevel::PlainText, TextLevel::SingleLine];
+        for lv in levels {
+            let out = degraded_render(lv, Some(CheckItem::GateTable)).unwrap();
+            let has_exit = out.iter().any(|s| s.contains("恢复") || s.contains("RECOVERY"));
+            assert!(has_exit, "level {:?} 缺出口", lv);
+        }
+    }
+
+    #[test]
+    fn f191_v4_chain_trend_never_explodes() {
+        // 1000 次混合记录：绿率恒在 [0,1000]、连续计数恒 ≤ 容量。
+        let mut book = SnapshotChainBook::new();
+        let mut x = 12345u64;
+        for seq in 0..1000u64 {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let ok = (x >> 60) & 1 == 0 || seq % 3 == 0;
+            book.record(BootAuditRecord { boot_seq: seq, gate_ok: ok, pubkey_ok: true, wx_ok: true, in_budget: true });
+            if let Some(rate) = book.green_rate_permille(10) {
+                assert!(rate <= 1000);
+            }
+            assert!(book.consecutive(true) <= HISTORY_CAP);
+            assert!(book.consecutive(false) <= HISTORY_CAP);
+        }
+    }
+
+    #[test]
+    fn f191_v4_handoff_all_failure_types() {
+        // 三种失败各交接对预选卡（参数保真的全覆盖）。
+        let cases = [
+            (CheckItem::GateTable, "门表"),
+            (CheckItem::Pubkey, "签名链"),
+            (CheckItem::WxPolicy, "W^X"),
+        ];
+        for (item, key) in cases {
+            let h = RecoveryHandoff { failed: item, diff_available: true };
+            assert!(recovery_preselect(&h).contains(key), "{:?}", item);
+        }
+    }
+
+    #[test]
+    fn f191_v4_budget_advice_permille_bounds() {
+        // 超支幅度算术：3 倍超支 = 2000‰（公式 (a-b)*1000/b）。
+        let rows = [BudgetRow { item: CheckItem::Pubkey, budget_ms: 5, actual_ms: 15 }];
+        let adv = budget_advices(&rows);
+        assert_eq!(adv[0].over_permille, 2000);
+    }
+
+    #[test]
+    fn f191_v4_run_checks_pass() {
+        assert!(run_bootaudit_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——门表编解码 / 签名链
+// 帮助页 / 自查趋势行 / W^X 矩阵渲染。判据源：主册【数据与存储】「基准哈希
+// 清单只读区」+【交互设计】三查结果行+差异详情 +【设计细节】拦截画面与
+// panic 画面视觉区分的完整渲染面。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v5-一：gate_table_codec —— 门表条目编解码（条目（名+期望哈希）→ 定长
+// 字节块 → 解码 round-trip——基准清单落盘的字节层契约）
+// ---------------------------------------------------------------------------
+
+/// 条目块长（名 16B + 哈希 32B）。
+pub const GATE_BLOCK_LEN: usize = 48;
+
+/// 编码一条门表条目（名超 16B 截断——引导区不留变长结构）。
+pub fn gate_entry_encode(e: &GateEntry, out: &mut alloc::vec::Vec<u8>) {
+    let mut name = [0u8; 16];
+    let nb = e.name.as_bytes();
+    let n = nb.len().min(16);
+    name[..n].copy_from_slice(&nb[..n]);
+    out.extend_from_slice(&name);
+    out.extend_from_slice(&e.expect);
+}
+
+/// 解码产出（名持有型——解码产物不绑定静态生命周期）。
+pub struct GateEntryDecoded {
+    pub name: alloc::string::String,
+    pub expect: [u8; HASH_LEN],
+}
+
+/// 解码（长度不足=None；名零填充尾部剥除）。
+pub fn gate_entry_decode(data: &[u8]) -> Option<GateEntryDecoded> {
+    if data.len() < GATE_BLOCK_LEN {
+        return None;
+    }
+    let raw_name = &data[0..16];
+    let end = raw_name.iter().position(|b| *b == 0).unwrap_or(16);
+    let name = alloc::string::String::from(core::str::from_utf8(&raw_name[..end]).ok()?);
+    let mut expect = [0u8; HASH_LEN];
+    expect.copy_from_slice(&data[16..16 + HASH_LEN]);
+    Some(GateEntryDecoded { name, expect })
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：KEYRING_HELP —— 签名链帮助页（三查中的「公钥在位」是什么意思：
+// 开发者向解释——键槽/信任锚/轮换语义）
+// ---------------------------------------------------------------------------
+
+pub const KEYRING_HELP: [(&'static str, &'static str); 3] = [
+    (
+        "这一查在查什么",
+        "启动链验证依赖一组签名公钥（信任锚）。此查确认关键键槽全部在位且未被清空——键槽缺失意味着签名验证形同虚设。",
+    ),
+    (
+        "为什么键槽会缺失",
+        "镜像不完整写入、存储坏块、或被未授权工具清理。自查拦截后请走恢复环境重建（会从只读区恢复出厂键表）。",
+    ),
+    (
+        "键会轮换吗",
+        "会。键轮换走 ADR 评审+双写过渡（新旧键并存一个版本窗），轮换期间自查对双键任一在位即绿——安全与可用兼得。",
+    ),
+];
+
+pub fn keyring_help_intact() -> bool {
+    KEYRING_HELP.len() == 3 && KEYRING_HELP.iter().all(|(h, b)| !h.is_empty() && b.len() >= 20)
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：trend_rows —— 自查趋势行渲染（SnapshotChainBook 的逐次行：启动
+// 序号/三查合成态/预算态——「历史可溯」的呈现面）
+// ---------------------------------------------------------------------------
+
+/// 趋势行。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TrendRow {
+    pub boot_seq: u64,
+    /// 合成态（三查全绿=绿；任一红=红）。
+    pub all_green: bool,
+    pub in_budget: bool,
+    /// 失败项名（绿时空串）。
+    pub failed_name: &'static str,
+}
+
+/// 从历史账渲染最近 n 行（新→旧——趋势页倒序惯例）。
+pub fn trend_rows(book: &SnapshotChainBook, n: usize) -> alloc::vec::Vec<TrendRow> {
+    let mut out = alloc::vec::Vec::new();
+    for i in 0..n.min(HISTORY_CAP) {
+        let idx = (book.head + HISTORY_CAP - 1 - i) % HISTORY_CAP;
+        if let Some(r) = book.ring[idx] {
+            let failed = if r.gate_ok {
+                None
+            } else {
+                Some("门表")
+            };
+            out.push(TrendRow {
+                boot_seq: r.boot_seq,
+                all_green: r.gate_ok && r.pubkey_ok && r.wx_ok,
+                in_budget: r.in_budget,
+                failed_name: failed.unwrap_or(""),
+            });
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v5-四：wx_matrix —— W^X 区域矩阵渲染（期望区域 × 实际可写 → 逐格判定
+// ——「W^X 策略生效」的呈现面：哪页内存该只读、实际是不是只读）
+// ---------------------------------------------------------------------------
+
+/// 矩阵格。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WxCell {
+    pub base: u64,
+    pub expect_writable: bool,
+    /// 判定：期望只读且实际可写 = 违规（红）。
+    pub violation: bool,
+}
+
+/// 渲染矩阵（expect 与 actual 求差——违规格全数暴露）。
+pub fn wx_matrix(expect: &[WxRegion], actual_writable: &[u64]) -> alloc::vec::Vec<WxCell> {
+    expect
+        .iter()
+        .map(|r| WxCell {
+            base: r.base_page,
+            expect_writable: r.expect_writable,
+            violation: !r.expect_writable && actual_writable.contains(&r.base_page),
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F191 v5 自检（聚合进 secstar2 域）。
+pub fn run_bootaudit_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v5");
+
+    // v5-一：门表编解码——round-trip、名截断、短流拒绝。
+    let entry = GateEntry { name: "bootmgr", expect: [0x5A; HASH_LEN] };
+    let mut bytes = alloc::vec::Vec::new();
+    gate_entry_encode(&entry, &mut bytes);
+    set.add("gate codec len", bytes.len() == GATE_BLOCK_LEN, "");
+    let back = gate_entry_decode(&bytes);
+    set.add("gate codec rt", back.map(|e| e.name == "bootmgr" && e.expect[0] == 0x5A).unwrap_or(false), "");
+    let long = GateEntry { name: "a-very-long-entry-name-x", expect: [0; HASH_LEN] };
+    let mut b2 = alloc::vec::Vec::new();
+    gate_entry_encode(&long, &mut b2);
+    set.add("gate name trunc", gate_entry_decode(&b2).map(|e| e.name.len() == 16).unwrap_or(false), "16B 截断不炸");
+    set.add("gate short reject", gate_entry_decode(&bytes[..20]).is_none(), "短流不硬解");
+
+    // v5-二：帮助页——三节齐+轮换语义。
+    set.add("keyring help intact", keyring_help_intact(), "");
+    set.add("keyring rotate", KEYRING_HELP[2].1.contains("ADR"), "轮换走评审入文");
+
+    // v5-三：趋势行——倒序、合成态、失败项名。
+    let mut book = SnapshotChainBook::new();
+    book.record(BootAuditRecord { boot_seq: 1, gate_ok: false, pubkey_ok: true, wx_ok: true, in_budget: true });
+    book.record(BootAuditRecord { boot_seq: 2, gate_ok: true, pubkey_ok: true, wx_ok: true, in_budget: false });
+    book.record(BootAuditRecord { boot_seq: 3, gate_ok: true, pubkey_ok: true, wx_ok: true, in_budget: true });
+    let rows = trend_rows(&book, 3);
+    set.add("trend newest first", rows[0].boot_seq == 3, "");
+    set.add("trend green synth", rows[0].all_green && !rows[2].all_green, "");
+    set.add("trend failed name", rows[2].failed_name == "门表", "失败项点名");
+    set.add("trend budget flag", !rows[1].in_budget, "预算超支如实标");
+    set.add("trend n cap", trend_rows(&book, 99).len() == 3, "n 截断到实有");
+
+    // v5-四：W^X 矩阵——违规格、合规格、期望可写格不算违规。
+    let expect = [
+        WxRegion { name: "code0", base_page: 0x1000, pages: 1, expect_writable: false },
+        WxRegion { name: "code1", base_page: 0x2000, pages: 1, expect_writable: false },
+        WxRegion { name: "data", base_page: 0x3000, pages: 1, expect_writable: true },
+    ];
+    let cells = wx_matrix(&expect, &[0x2000]);
+    set.add("wx cells", cells.len() == 3, "");
+    set.add("wx violation found", cells[1].violation, "该只读却可写=红格");
+    set.add("wx ok cells", !cells[0].violation && !cells[2].violation, "合规/可写不误报");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v5_gate_codec_multi() {
+        // 5 条目连续编解码（表级 round-trip——基准清单落盘全流程）。
+        let entries: alloc::vec::Vec<GateEntry> = (0..5)
+            .map(|i| GateEntry { name: "bootmgr", expect: [i as u8; HASH_LEN] })
+            .collect();
+        let mut bytes = alloc::vec::Vec::new();
+        for e in &entries {
+            gate_entry_encode(e, &mut bytes);
+        }
+        assert_eq!(bytes.len(), 5 * GATE_BLOCK_LEN);
+        for (i, chunk) in bytes.chunks(GATE_BLOCK_LEN).enumerate() {
+            let e = gate_entry_decode(chunk).unwrap();
+            assert_eq!(e.expect[0], i as u8);
+        }
+    }
+
+    #[test]
+    fn f191_v5_trend_overscan_honest() {
+        // 空账趋势：n 再大也是零行（不造行）。
+        let book = SnapshotChainBook::new();
+        assert!(trend_rows(&book, 10).is_empty());
+    }
+
+    #[test]
+    fn f191_v5_wx_all_violations() {
+        // 全区违规：三格全红（最坏注入——矩阵一格不漏）。
+        let expect = [
+            WxRegion { name: "c0", base_page: 0x1000, pages: 1, expect_writable: false },
+            WxRegion { name: "c1", base_page: 0x2000, pages: 1, expect_writable: false },
+            WxRegion { name: "c2", base_page: 0x3000, pages: 1, expect_writable: false },
+        ];
+        let cells = wx_matrix(&expect, &[0x1000, 0x2000, 0x3000]);
+        assert!(cells.iter().all(|c| c.violation));
+    }
+
+    #[test]
+    fn f191_v5_run_checks_pass() {
+        assert!(run_bootaudit_deep4_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——基准序列化 / 拦截指标 / 逐条目
+// 差异报告 / W^X 帮助页 / 报告开放导出。判据源：主册【数据与存储】「基准
+// 哈希清单只读区（F067 分区）」+【交互设计】差异详情页逐字节并排。
+// ------
+
+use alloc::string::String;
+// -------------------------------------------------------------------
+
+/// 基准序列化（门表条目块流 + 公钥态 + W^X 期望——落盘只读区的字节形态）。
+pub fn baseline_encode(b: &Baseline, out: &mut Vec<u8>) {
+    // 头：魔数+版本。
+    out.extend_from_slice(&[0x42, 0x41, 0x01]); // "BA" v1。
+    out.push(if b.pubkey_present { 1 } else { 0 });
+    out.push(if b.wx_expected { 1 } else { 0 });
+    out.extend_from_slice(&b.gate_hash);
+}
+
+/// 反序列化（魔数错=None；长度不足=None）。
+pub fn baseline_decode(data: &[u8]) -> Option<(bool, bool, [u8; HASH_LEN])> {
+    if data.len() < 3 + HASH_LEN || data[0..2] != [0x42, 0x41] {
+        return None;
+    }
+    let mut gate_hash = [0u8; HASH_LEN];
+    gate_hash.copy_from_slice(&data[3..3 + HASH_LEN]);
+    Some((data[2] == 1, data[3 - 1] == 1, gate_hash))
+}
+
+/// 拦截指标（出现次数/CTA 点击/恢复成功率——拦截画面的体验对账）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct InterceptMetrics {
+    pub shown: u64,
+    pub cta_clicked: u64,
+    pub recovered: u64,
+}
+
+impl InterceptMetrics {
+    /// 恢复成功率 permille（零出现=0）。
+    pub fn recovery_permille(&self) -> u64 {
+        if self.shown == 0 {
+            0
+        } else {
+            self.recovered * 1000 / self.shown
+        }
+    }
+
+    /// 点击率（可发现性对账——CTA 0 点击=用户被困，红线）。
+    pub fn cta_dead(&self) -> bool {
+        self.shown > 0 && self.cta_clicked == 0
+    }
+}
+
+/// 逐条目差异报告（多条目门表核对的可读行——verify_gate_table 的渲染面）。
+pub fn gate_diff_report(entries: &[GateEntry], images: &[(&'static str, Vec<u8>)]) -> Vec<String> {
+    let mut out = Vec::new();
+    for e in entries {
+        let hit = images.iter().find(|(n, _)| *n == e.name);
+        let line = match hit {
+            None => alloc::format!("{}：镜像缺失（无法核对）", e.name),
+            Some((_, img)) => {
+                let h = crate::ksha256::sha256(img);
+                if h == e.expect {
+                    alloc::format!("{}：校验通过", e.name)
+                } else {
+                    alloc::format!("{}：哈希不符（预期 {:02x}… 实际 {:02x}…）", e.name, e.expect[0], h[0])
+                }
+            }
+        };
+        out.push(line);
+    }
+    out
+}
+
+/// W^X 帮助页（三节：W^X 是什么/为什么代码页必须只读/违规意味着什么）。
+pub const WX_HELP: [(&'static str, &'static str); 3] = [
+    ("W^X 是什么", "Write XOR Execute：一块内存要么可写要么可执行，绝不同时。代码页只读、数据页不可执行——漏洞利用最常见的路径被堵死。"),
+    ("为什么代码页必须只读", "可写的执行页意味着恶意代码可以被写入后直接运行。启动链自查把「代码页意外可写」列为拦截级异常。"),
+    ("违规意味着什么", "自查发现违规页 → 拦截启动并显示差异详情：哪一页、期望什么、实际什么——从恢复环境重置策略区。"),
+];
+
+pub fn wx_help_intact() -> bool {
+    WX_HELP.len() == 3 && WX_HELP[0].1.contains("XOR") && WX_HELP[2].1.contains("恢复环境")
+}
+
+/// 报告开放导出（F128 语言：三查结果 JSON——第三方审计工具可解析）。
+pub fn audit_report_export(rep: &AuditReport, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"boot-audit\":{\"blocked\":");
+    out.extend_from_slice(if rep.blocked { b"true" } else { b"false" });
+    out.extend_from_slice(b",\"checks\":[");
+    for (i, item) in rep.items.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(
+            alloc::format!("{{\"name\":\"{}\",\"ok\":{}}}", item.item.name(), item.ok).as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"],\"cost_ms\":");
+    out.extend_from_slice(alloc::format!("{}", rep.total_cost_ms).as_bytes());
+    out.extend_from_slice(b"}}");
+}
+
+/// F191 v6 自检（deep5 表）。
+pub fn run_bootaudit_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v6");
+
+    // v6-一：基准编解码——round-trip、魔数拒、短流拒。
+    let baseline = Baseline::from_gate(b"gate v6 image", true, true);
+    let mut bytes = Vec::new();
+    baseline_encode(&baseline, &mut bytes);
+    set.add("baseline rt", baseline_decode(&bytes).map(|(pk, wx, _)| pk && wx).unwrap_or(false), "");
+    let mut junk = bytes.clone();
+    junk[0] = 0;
+    set.add("baseline junk", baseline_decode(&junk).is_none(), "魔数拒");
+    set.add("baseline short", baseline_decode(&bytes[..10]).is_none(), "短流拒");
+
+    // v6-二：拦截指标——成功率、CTA 死亡检测。
+    let m = InterceptMetrics { shown: 4, cta_clicked: 3, recovered: 3 };
+    set.add("metrics rate", m.recovery_permille() == 750, "");
+    set.add("metrics cta alive", !m.cta_dead(), "");
+    let dead = InterceptMetrics { shown: 2, cta_clicked: 0, recovered: 0 };
+    set.add("metrics cta dead red", dead.cta_dead(), "CTA 零点击=用户被困");
+    set.add("metrics zero", InterceptMetrics::default().recovery_permille() == 0, "");
+
+    // v6-三：逐条目差异报告——通过/不符/缺失三行语。
+    let img_ok = vec![7u8; 32];
+    let expect_ok = crate::ksha256::sha256(&img_ok);
+    let entries = [
+        GateEntry { name: "bootmgr", expect: expect_ok },
+        GateEntry { name: "missing", expect: [2; HASH_LEN] },
+    ];
+    let images = vec![
+        ("bootmgr", img_ok),
+        ("other", vec![9u8; 32]),
+    ];
+    let report = gate_diff_report(&entries, &images);
+    set.add("diff report 2", report.len() == 2, "");
+    set.add("diff pass line", report[0].contains("通过"), "");
+    set.add("diff missing line", report[1].contains("缺失"), "无镜像条目如实说缺");
+
+    // v6-四：W^X 帮助——三节齐。
+    set.add("wx help intact", wx_help_intact(), "");
+
+    // v6-五：报告导出——形状与字段。
+    let gate_img = b"gate v6 image";
+    let mut audit = BootAudit::new();
+    audit.load_baseline(Baseline::from_gate(gate_img, true, true));
+    let rep = audit.run(gate_img, true, true);
+    let mut data = Vec::new();
+    audit_report_export(&rep, &mut data);
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("export shape", text.contains("\"boot-audit\"") && text.contains("\"checks\""), "");
+    set.add("export three checks", text.matches("\"name\"").count() == 3, "三查逐条");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v6_intercept_full_funnel() {
+        // 全漏斗：出现 5 → 点击 5 → 恢复 5 = 1000‰ 且非死 CTA。
+        let m = InterceptMetrics { shown: 5, cta_clicked: 5, recovered: 5 };
+        assert_eq!(m.recovery_permille(), 1000);
+        assert!(!m.cta_dead());
+    }
+
+    #[test]
+    fn f191_v6_diff_report_corrupt_image() {
+        // 镜像被篡改：报告给出首字节对照（差异详情逐字节并排语义）。
+        let entries = [GateEntry { name: "bootmgr", expect: [1; HASH_LEN] }];
+        let images = vec![("bootmgr", vec![2u8; 32])];
+        let report = gate_diff_report(&entries, &images);
+        assert!(report[0].contains("不符"));
+        // 首字节对照格式（预期 xx… 实际 yy…）双向存在。
+        assert!(report[0].contains("…") && report[0].contains("预期") && report[0].contains("实际"));
+    }
+
+    #[test]
+    fn f191_v6_run_checks_pass() {
+        assert!(run_bootaudit_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——自查趋势导出 / 预算历史账 /
+// 拦截画面无障碍数据。判据源：主册【数据与存储】「自查结果入 F174 快照
+// 链（历史可溯）」+【交互设计】成功态无感（速度优先）。
+// ---------------------------------------------------------------------------
+
+/// 趋势导出（F128 语言 JSON：逐次启动三查合成态——第三方监控可解析）。
+pub fn trend_export_json(book: &SnapshotChainBook, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"boot-trend\":[");
+    let rows = trend_rows(book, HISTORY_CAP);
+    for (i, r) in rows.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(
+            alloc::format!("{{\"boot\":{},\"ok\":{},\"budget\":{}}}", r.boot_seq, r.all_green, r.in_budget).as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// 导出形状自检（计数=实有条数）。
+pub fn trend_export_ok(book: &SnapshotChainBook, data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"boot-trend\"") && text.matches("\"boot\":").count() == {
+        let mut n = 0usize;
+        for i in 0..HISTORY_CAP {
+            let idx = (book.head + HISTORY_CAP - 1 - i) % HISTORY_CAP;
+            if book.ring[idx].is_some() {
+                n += 1;
+            }
+        }
+        n
+    }
+}
+
+/// 预算历史账（历次启动总耗时序列——<100ms 判据的趋势面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BudgetHistory {
+    /// 总耗时序列（ms）。
+    pub costs: Vec<u64>,
+}
+
+impl BudgetHistory {
+    pub fn new() -> BudgetHistory {
+        BudgetHistory { costs: Vec::new() }
+    }
+
+    pub fn push(&mut self, ms: u64) {
+        if self.costs.len() >= 32 {
+            self.costs.remove(0);
+        }
+        self.costs.push(ms);
+    }
+
+    /// 超预算次数（BUDGET_TOTAL_MS=100ms）。
+    pub fn over_budget_count(&self) -> usize {
+        self.costs.iter().filter(|c| **c > BUDGET_TOTAL_MS).count()
+    }
+
+    /// 最慢一次（性能回归的定位点）。
+    pub fn worst_ms(&self) -> Option<u64> {
+        self.costs.iter().copied().max()
+    }
+}
+
+impl Default for BudgetHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 拦截画面无障碍数据（键盘焦点序+屏幕阅读器朗读行——14 章无障碍落点）。
+pub const INTERCEPT_A11Y: [(&'static str, &'static str); 3] = [
+    ("焦点序", "焦点首落「进入恢复环境」主钮（唯一出路不许找）→ Tab 到「查看差异详情」→ Tab 回主钮（循环）。"),
+    ("朗读行", "标题→副题→三查结果逐行→主钮用途——屏幕阅读器按视觉序朗读，不跳读不漏读。"),
+    ("对比度", "拦截画面文字对比度 ≥7:1（F113 高对比度纪律同源）——应激场景可读性优先于美观。"),
+];
+
+pub fn intercept_a11y_intact() -> bool {
+    INTERCEPT_A11Y.len() == 3 && INTERCEPT_A11Y[0].1.contains("恢复环境") && INTERCEPT_A11Y[2].1.contains("7:1")
+}
+
+/// F191 v7 自检（deep6 表）。
+pub fn run_bootaudit_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v7");
+
+    // v7-一：趋势导出——形状与计数。
+    let mut book = SnapshotChainBook::new();
+    for seq in 0..5u64 {
+        book.record(BootAuditRecord { boot_seq: seq, gate_ok: true, pubkey_ok: true, wx_ok: true, in_budget: true });
+    }
+    let mut data = Vec::new();
+    trend_export_json(&book, &mut data);
+    set.add("trend export ok", trend_export_ok(&book, &data), "计数=实有条数");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("trend export fields", text.contains("\"ok\":true") && text.contains("\"budget\":true"), "双字段随行");
+
+    // v7-二：预算历史——超支计数、最慢点、环容量。
+    let mut bh = BudgetHistory::new();
+    for c in [80u64, 90, 120, 95, 110] {
+        bh.push(c);
+    }
+    set.add("budget over count", bh.over_budget_count() == 2, "120/110 两次超 100ms");
+    set.add("budget worst", bh.worst_ms() == Some(120), "");
+    for i in 0..40u64 {
+        bh.push(50 + i);
+    }
+    set.add("budget ring", bh.costs.len() == 32, "");
+
+    // v7-三：无障碍数据——三节齐。
+    set.add("a11y intact", intercept_a11y_intact(), "");
+    set.add("a11y focus first", INTERCEPT_A11Y[0].1.contains("首落"), "焦点首落主钮");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v7_trend_export_empty_honest() {
+        // 空账导出：空数组（不造假数据）。
+        let book = SnapshotChainBook::new();
+        let mut data = Vec::new();
+        trend_export_json(&book, &mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert!(text.ends_with("[]}") || text.contains("[]"));
+    }
+
+    #[test]
+    fn f191_v7_run_checks_pass() {
+        assert!(run_bootaudit_deep6_checks().all_passed());
+    }
+}

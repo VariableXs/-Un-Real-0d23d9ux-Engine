@@ -102,17 +102,37 @@ impl ListNav {
         (a, self.selected)
     }
 
-    /// 翻页帧就绪：目标页所有行号在数据界内（虚拟化无白帧的结构性
-    /// 证据——任何页的首尾行都能立即渲染）。
+    /// 翻页帧就绪：页首行在数据界内即可立即渲染（虚拟化无白帧的结构性
+    /// 证据——末页不满时也只渲染存在的行，不空转不白帧）。
     pub fn page_ready(&self, page_index: usize) -> bool {
-        let start = page_index * self.page_rows;
-        start < self.count && start + self.page_rows <= self.count
+        page_index * self.page_rows < self.count
     }
 
     /// 滚动条永不脱节：滚动位 + 页行 ≤ 总数（或贴底）。
     pub fn scrollbar_consistent(&self) -> bool {
         self.scroll_top + self.page_rows <= self.count
             || self.scroll_top >= self.count.saturating_sub(self.page_rows)
+    }
+
+    /// Ctrl+A 全选（v6）：区间恒为整个列表；空列表 → 无区间。
+    pub fn select_all(&self) -> Option<(usize, usize)> {
+        if self.count == 0 {
+            None
+        } else {
+            Some((0, self.count - 1))
+        }
+    }
+
+    /// Shift+点击扩选（v6）：锚点到点击位的闭区间（方向无关——双向都
+    /// 是合法扩选）。
+    pub fn shift_extend(&mut self, to: usize) -> Option<(usize, usize)> {
+        if to >= self.count {
+            return None; // 越界点击不产生区间。
+        }
+        let a = self.anchor.unwrap_or(self.selected);
+        self.selected = to;
+        self.sync_scroll_to_selection();
+        Some((a.min(to), a.max(to)))
     }
 }
 
@@ -163,6 +183,49 @@ pub fn run_listnav_checks() -> CheckSet {
         ready &= ListNav::new(10_000, 40).page_ready(p);
     }
     set.add("f432-page-frame-ready", ready && ListNav::new(10_000, 40).page_ready(0), "");
+    // 末页不满也就绪（v6）：45 项 40 行/页——第 1 页只有 5 行但立即可渲染，
+    // 第 2 页不存在。
+    let partial = ListNav::new(45, 40);
+    set.add(
+        "f432-partial-page-ready",
+        partial.page_ready(1) && !partial.page_ready(2),
+        "",
+    );
+    // PgUp 同样保持相对位置（v6——与 PgDn 对称的回归锚）。
+    let mut p2 = ListNav::new(10_000, 40);
+    p2.scroll_top = 120;
+    p2.selected = 122;
+    let rel = p2.relative_row();
+    set.add(
+        "f432-pageup-relative-kept",
+        p2.page_up() && p2.scroll_top == 80 && p2.selected == 82 && p2.relative_row() == rel,
+        "",
+    );
+    // Ctrl+A 全选（v6）：万项 → (0, 9999)；空列表 → 无。
+    let all = ListNav::new(10_000, 40);
+    let none = ListNav::new(0, 40);
+    set.add(
+        "f432-select-all",
+        all.select_all() == Some((0, 9_999)) && none.select_all().is_none(),
+        "",
+    );
+    // Shift+点击扩选（v6）：锚在上、点在下 → 正序区间；越界点 → 无区间。
+    let mut x = ListNav::new(100, 20);
+    x.selected = 30;
+    x.anchor = Some(30);
+    set.add(
+        "f432-shift-extend-down",
+        x.shift_extend(45) == Some((30, 45)) && x.selected == 45,
+        "",
+    );
+    x.anchor = Some(60);
+    set.add(
+        "f432-shift-extend-up",
+        x.shift_extend(40) == Some((40, 60)) && x.selected == 40,
+        "",
+    );
+    x.anchor = Some(10);
+    set.add("f432-shift-extend-bounds", x.shift_extend(999).is_none(), "");
     set
 }
 

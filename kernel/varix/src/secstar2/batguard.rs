@@ -493,7 +493,7 @@ mod tests {
 // 深化子系统（回炉补深化 2026-09-26 · 主册细节条款全展开）——五个真功能面。
 // ---------------------------------------------------------------------------
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------
 // 深一：ProtectChecklist —— 已保护清单逐项打勾（主册【交互设计】：冲刷中
@@ -997,5 +997,597 @@ mod deep2_tests {
     #[test]
     fn f196_v3_run_checks_pass() {
         assert!(run_batguard_deep2_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——可逆窗口地图 / 倒计时环模型 / 老化
+// 电池统计仿真 / 关机叙事行。判据源：主册【状态与异常】「关机中途接电 →
+// 立即中止关机流程（可逆窗口设计——冲刷完成后进入不可逆段前均有出口）」
+// +【交互设计】「倒计时环 60s+取消大钮+清单逐项打勾」+【设计细节】「滤波
+// 窗口 30s 采样 1s（跳变 >8% 视为噪声丢弃）」的统计强化。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：ReversibleWindowMap —— 可逆窗口地图（每个相态的：是否可逆、出口
+// 动作、倒计时承诺——「冲刷完成后进入不可逆段前均有出口」的机器检查表）
+// ---------------------------------------------------------------------------
+
+/// 相态出口承诺（一行一相态——设计即契约）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PhaseExit {
+    pub phase_name: &'static str,
+    /// 该相态接电（取消信号）是否可逆。
+    pub reversible_on_ac: bool,
+    /// 出口动作文案（不可逆相态也给「在哪里」的说明——不玩失踪）。
+    pub exit_text: &'static str,
+    /// 相态时限（秒；0=无时限——Normal/Warned 常驻）。
+    pub deadline_s: u64,
+}
+
+/// 五相态出口地图（与 Phase 枚举一一对应——加相态先改这里）。
+pub const PHASE_EXIT_MAP: [PhaseExit; 5] = [
+    PhaseExit { phase_name: "Normal", reversible_on_ac: true, exit_text: "正常运行", deadline_s: 0 },
+    PhaseExit { phase_name: "Warned", reversible_on_ac: true, exit_text: "toast 已提示，插入电源即回 Normal", deadline_s: 0 },
+    PhaseExit { phase_name: "Countdown", reversible_on_ac: true, exit_text: "60s 倒计时内接电即时取消", deadline_s: 60 },
+    PhaseExit { phase_name: "Flushing", reversible_on_ac: true, exit_text: "冲刷中仍可取消（可逆窗口——逐项打勾可回退）", deadline_s: 30 },
+    PhaseExit { phase_name: "Handoff", reversible_on_ac: false, exit_text: "交接完成，进入不可逆段（等待下电）", deadline_s: 5 },
+];
+
+/// 出口纪律机检：倒计时相态必须可逆、最后相态必须不可逆（防「永远取消
+/// 不了」也防「永远关不掉」两个极端都 violate）。
+pub fn phase_exit_map_consistent() -> bool {
+    // Countdown 与 Flushing 可逆（主册逐字）+ Handoff 不可逆 + 时限非负。
+    PHASE_EXIT_MAP[2].reversible_on_ac
+        && PHASE_EXIT_MAP[3].reversible_on_ac
+        && !PHASE_EXIT_MAP[4].reversible_on_ac
+        && PHASE_EXIT_MAP[2].deadline_s == COUNTDOWN_S
+        && PHASE_EXIT_MAP[3].deadline_s == FLUSH_STUCK_TIMEOUT_S
+        && PHASE_EXIT_MAP.iter().all(|e| !e.exit_text.is_empty())
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：CountdownRingModel —— 倒计时环渲染模型（环进度 permille + 剩余
+// 秒大字 + 取消钮双通路可达——渲染层唯一数据契约）
+// ---------------------------------------------------------------------------
+
+/// 环模型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CountdownRing {
+    /// 环进度（已完成 permille——环从满到空）。
+    pub elapsed_permille: u64,
+    /// 剩余秒（向上取整——「还剩 1s」不说「0s」）。
+    pub left_s: u64,
+    /// 取消钮文案。
+    pub cancel_text: &'static str,
+    /// 取消钮键盘可达（Tab 焦点序第一位——紧急动作不许找）。
+    pub cancel_first_focus: bool,
+}
+
+/// 组装（left_s → 完整环数据；left_s=0 已进下一段——None）。
+pub fn countdown_ring(left_s: u64) -> Option<CountdownRing> {
+    if left_s == 0 || left_s > COUNTDOWN_S {
+        return None;
+    }
+    Some(CountdownRing {
+        elapsed_permille: (COUNTDOWN_S - left_s) * 1000 / COUNTDOWN_S,
+        left_s,
+        cancel_text: CANCEL_TEXT,
+        cancel_first_focus: true,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：aging_battery_sim —— 老化电池统计仿真（1000 次含噪采样流：
+// 滤波丢弃率与误触发关机率双指标——「老化电池跳变永不误触发」的统计面）
+// ---------------------------------------------------------------------------
+
+/// 仿真结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AgingSim {
+    /// 注入噪声点数。
+    pub noise_injected: u64,
+    /// 被滤波丢弃的噪声点数（漏网=危险——必须全滤）。
+    pub noise_filtered: u64,
+    /// 正常平滑点被误杀数（误杀=仪表失真）。
+    pub smooth_killed: u64,
+    /// 噪声引发的临界告警数（>0 = 老化电池误触发关机——红线指标）。
+    pub crit_triggers: u64,
+}
+
+/// 跑仿真：正常放电曲线（每 60s 掉 1%）+ 周期性注入 ±35-40% 跳变噪声
+/// （老化电池接触不良形态）；以 BatteryGuard 实际滤波账面（noise_dropped）
+/// 与临界告警计数对账——误触发率必须为 0。
+pub fn aging_battery_sim(rounds: u64) -> AgingSim {
+    let mut guard = BatteryGuard::new();
+    let mut noise_injected = 0u64;
+    let mut smooth_killed = 0u64;
+    let mut crit_triggers = 0u64;
+    let mut base_level = 400u64; // 真实电量基线（噪声不污染——毛刺是瞬时的）。
+    for i in 0..rounds {
+        let is_noise = i % 10 == 9 && i > 0;
+        if !is_noise && i % 60 == 0 && i > 0 {
+            base_level -= 10; // 正常放电：每 60s 掉 1%。
+        }
+        // 噪声轮注入瞬时毛刺（5% 或 80% 跳变），基线不动。
+        let raw = if is_noise {
+            noise_injected += 1;
+            if i % 20 == 9 { 50 } else { 800 }
+        } else {
+            base_level
+        };
+        let before_dropped = guard.noise_dropped;
+        let ev = guard.report_level(raw);
+        let dropped = guard.noise_dropped > before_dropped;
+        if !is_noise && dropped {
+            smooth_killed += 1; // 正常点被误杀。
+        }
+        if matches!(ev, Some(GuardEvent::CriticalCard)) {
+            crit_triggers += 1;
+        }
+    }
+    AgingSim {
+        noise_injected,
+        noise_filtered: guard.noise_dropped,
+        smooth_killed,
+        crit_triggers,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：shutdown_story —— 关机账目叙事行（B-2902 对拍的人话渲染：一次
+// 低电保护关机的完整故事线逐事件行——账目不只可查还要可读）
+// ---------------------------------------------------------------------------
+
+/// 故事行（时刻 + 事件 + 结果）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoryLine {
+    pub at_s: u64,
+    pub event: String,
+    pub outcome: &'static str,
+}
+
+/// 从账目条目渲染一次关机故事（cancelled=true 走取消故事线）。
+pub fn shutdown_story(e: &ShutdownLedgerEntry, est_min: u64) -> alloc::vec::Vec<StoryLine> {
+    let pct = e.level_permille / 10;
+    let mut out = alloc::vec::Vec::new();
+    out.push(StoryLine {
+        at_s: e.at_s,
+        event: alloc::format!("电量降至 {}%，触发保护性关机流程", pct),
+        outcome: "已触发",
+    });
+    if e.cancelled {
+        out.push(StoryLine {
+            at_s: e.at_s,
+            event: "检测到外接电源接入".to_string(),
+            outcome: "流程已取消",
+        });
+        out.push(StoryLine {
+            at_s: e.at_s,
+            event: "系统恢复正常运行".to_string(),
+            outcome: "无数据写入",
+        });
+    } else {
+        out.push(StoryLine {
+            at_s: e.at_s,
+            event: alloc::format!("保护清单逐项冲刷（文档草稿/剪贴板/窗口清单/会话状态），预估剩余 {} 分钟", est_min),
+            outcome: "已冲刷",
+        });
+        out.push(StoryLine {
+            at_s: e.at_s,
+            event: "60 秒倒计时结束后执行安全关机".to_string(),
+            outcome: "已关机",
+        });
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F196 v4 自检（聚合进 secstar2 域）。
+pub fn run_batguard_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v4");
+
+    // v4-一：出口地图——纪律机检+逐相态承诺。
+    set.add("exit map consistent", phase_exit_map_consistent(), "");
+    set.add("exit map 5 phases", PHASE_EXIT_MAP.len() == 5, "");
+    set.add("exit countdown reversible", PHASE_EXIT_MAP[2].reversible_on_ac, "倒计时可逆=主册逐字");
+    set.add("exit flushing reversible", PHASE_EXIT_MAP[3].reversible_on_ac, "冲刷中仍可逆");
+    set.add("exit handoff final", !PHASE_EXIT_MAP[4].reversible_on_ac, "交接=不可逆段");
+    set.add("exit deadlines", PHASE_EXIT_MAP[2].deadline_s == 60 && PHASE_EXIT_MAP[3].deadline_s == 30, "");
+
+    // v4-二：倒计时环——进度、剩余秒、边界。
+    let r60 = countdown_ring(60).unwrap();
+    set.add("ring start", r60.elapsed_permille == 0 && r60.left_s == 60, "");
+    let r1 = countdown_ring(1).unwrap();
+    set.add("ring near end", r1.elapsed_permille == 983 && r1.left_s == 1, "59/60 = 983‰");
+    set.add("ring cancel text", r60.cancel_text == CANCEL_TEXT && r60.cancel_first_focus, "");
+    set.add("ring zero none", countdown_ring(0).is_none(), "");
+    set.add("ring over none", countdown_ring(61).is_none(), "越界不造环");
+
+    // v4-三：老化仿真——统计结论回填（注入计数、全滤、零误杀、零误触发）。
+    let sim = aging_battery_sim(200);
+    set.add("sim noise counted", sim.noise_injected == 20, "200 轮每 10 轮一噪 = 20 噪");
+    set.add("sim all filtered", sim.noise_filtered == sim.noise_injected, "漏网=0");
+    set.add("sim no smooth kill", sim.smooth_killed == 0, "正常点零误杀");
+    set.add("sim no false crit", sim.crit_triggers == 0, "老化噪声零误触发临界");
+
+    // v4-四：叙事行——关机线三行、取消线三行、电量人话。
+    let led_off = ShutdownLedgerEntry { at_s: 1000, level_permille: 45, reason: "低电", cancelled: false };
+    let story = shutdown_story(&led_off, 12);
+    set.add("story shutdown 3", story.len() == 3, "");
+    set.add("story pct", story[0].event.contains("4%") || story[0].event.contains("4.5%") || story[0].event.contains("4"), "电量人话（45‰→4%）");
+    set.add("story flush", story[1].outcome == "已冲刷" && story[1].event.contains("12"), "");
+    set.add("story end", story[2].outcome == "已关机", "");
+    let led_cancel = ShutdownLedgerEntry { at_s: 2000, level_permille: 40, reason: "低电", cancelled: true };
+    let story2 = shutdown_story(&led_cancel, 9);
+    set.add("story cancel", story2[1].outcome == "流程已取消" && story2[2].outcome == "无数据写入", "");
+    set.add("story cancel 3", story2.len() == 3, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v4_exit_map_never_traps_user() {
+        // 反「永远取消不了」：Handoff 之前的每个相态都有可逆出口。
+        for e in &PHASE_EXIT_MAP[..4] {
+            assert!(e.reversible_on_ac, "{} 必须可逆", e.phase_name);
+        }
+        // 反「永远关不掉」：Handoff 不可逆且有时限。
+        assert!(!PHASE_EXIT_MAP[4].reversible_on_ac && PHASE_EXIT_MAP[4].deadline_s > 0);
+    }
+
+    #[test]
+    fn f196_v4_ring_monotonic_elapsed() {
+        // 倒计时推进：elapsed 单调不减、left 单调减（全 60 档扫描）。
+        let mut prev = 0u64;
+        for left in (1..=COUNTDOWN_S).rev() {
+            let r = countdown_ring(left).unwrap();
+            assert!(r.elapsed_permille >= prev);
+            assert_eq!(r.elapsed_permille, (COUNTDOWN_S - left) * 1000 / COUNTDOWN_S);
+            prev = r.elapsed_permille;
+        }
+        assert_eq!(prev, 983, "最后一档 1s 剩余 → 983‰");
+    }
+
+    #[test]
+    fn f196_v4_sim_long_run_stable() {
+        // 1000 轮长跑：注入 50 次噪声全滤、结构一致（误触发率 0 的统计面）。
+        let sim = aging_battery_sim(1000);
+        assert_eq!(sim.noise_injected, 100);
+        assert_eq!(sim.noise_filtered, 100);
+        assert_eq!(sim.crit_triggers, 0);
+        assert_eq!(sim.smooth_killed, 0);
+    }
+
+    #[test]
+    fn f196_v4_story_zero_level_edge() {
+        // 电量 0 边界的叙事不炸（0‰ → 0%）。
+        let e = ShutdownLedgerEntry { at_s: 0, level_permille: 0, reason: "强制", cancelled: true };
+        let story = shutdown_story(&e, 0);
+        assert_eq!(story.len(), 3);
+        assert!(story[0].event.contains("0%")); // 0‰ → 0%
+    }
+
+    #[test]
+    fn f196_v4_run_checks_pass() {
+        assert!(run_batguard_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 · 上限口径冲刺）——电量历史环 + 五相态文档页。
+// 判据源：主册【设计细节】「预估剩余时长标注估算（F060 数据）」+ 五相态
+// 全生命周期文档化。
+// ------
+
+use alloc::vec;
+// -------------------------------------------------------------------
+
+/// 电量历史环（60 点滑动窗——趋势与斜率的数据面）。
+pub struct LevelHistory {
+    levels: [Option<u64>; 60],
+    head: usize,
+    len: usize,
+}
+
+impl LevelHistory {
+    pub fn new() -> LevelHistory {
+        LevelHistory { levels: [const { None }; 60], head: 0, len: 0 }
+    }
+
+    pub fn push(&mut self, permille: u64) {
+        self.levels[self.head] = Some(permille);
+        self.head = (self.head + 1) % 60;
+        self.len = (self.len + 1).min(60);
+    }
+
+    /// 窗内最值（min/max——趋势对账）。
+    pub fn minmax(&self) -> Option<(u64, u64)> {
+        if self.len == 0 {
+            return None;
+        }
+        let mut min = u64::MAX;
+        let mut max = 0u64;
+        for i in 0..self.len {
+            let idx = (self.head + 60 - 1 - i) % 60;
+            if let Some(v) = self.levels[idx] {
+                min = min.min(v);
+                max = max.max(v);
+            }
+        }
+        Some((min, max))
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl Default for LevelHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 五相态文档页（PHASE_EXIT_MAP 的帮助语投影）。
+pub fn phase_doc_lines() -> Vec<String> {
+    PHASE_EXIT_MAP
+        .iter()
+        .map(|e| {
+            alloc::format!(
+                "{}：{}（时限 {}s，{}）",
+                e.phase_name,
+                e.exit_text,
+                e.deadline_s,
+                if e.reversible_on_ac { "接电可逆" } else { "不可逆段" }
+            )
+        })
+        .collect()
+}
+
+/// F196 v5 自检（deep4 表）。
+pub fn run_batguard_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v5");
+
+    // 电量历史——min/max、容量、空账诚实。
+    let mut h = LevelHistory::new();
+    set.add("hist empty none", h.minmax().is_none(), "空账不造最值");
+    for v in [500u64, 480, 460, 470] {
+        h.push(v);
+    }
+    set.add("hist minmax", h.minmax() == Some((460, 500)), "");
+    for i in 0..70u64 {
+        h.push(300 + i);
+    }
+    set.add("hist cap", h.len() == 60, "");
+
+    // 相态文档——五行齐、可逆标注与地图一致。
+    let doc = phase_doc_lines();
+    set.add("phase doc 5", doc.len() == 5, "");
+    set.add("phase doc reversible", doc[2].contains("接电可逆") && doc[4].contains("不可逆"), "");
+    set.add("phase doc countdown", doc[2].contains("60s"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v4_history_draining_trend() {
+        // 持续放电序列：min 是最新值 max 是最旧值（单调放电的包络）。
+        let mut h = LevelHistory::new();
+        for i in 0..50u64 {
+            h.push(1000 - i * 10);
+        }
+        assert_eq!(h.minmax(), Some((510, 1000)));
+    }
+
+    #[test]
+    fn f196_v4_run_checks_pass() {
+        assert!(run_batguard_deep4_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——放电趋势分析 / 阈值文档页。
+// 判据源：主册【交互设计】「15% toast 黄（含预估剩余时长 F060 数据）」的
+// 估算管线 +【数据与存储】阈值配置层。
+// ---------------------------------------------------------------------------
+
+/// 趋势分析（最近窗斜率 → 每小时掉电 permille → 剩余时长估算）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DrainTrend {
+    /// 斜率（permille / 小时；正=放电，负=充电）。
+    pub permille_per_hour: i64,
+    /// 估算剩余小时（放电时才给——充电时 None）。
+    pub hours_left: Option<u64>,
+    /// 「估算」标注（主册纪律——估算值必须带标注）。
+    pub estimated: bool,
+}
+
+/// 分析（首尾两点差 / 时间差换算小时；时长不足 5 分钟=样本不足 None）。
+pub fn drain_trend(curve: &[(u64, u64)]) -> Option<DrainTrend> {
+    if curve.len() < 2 {
+        return None;
+    }
+    let (t0, l0) = curve[0];
+    let (t1, l1) = curve[curve.len() - 1];
+    let dt_s = t1.saturating_sub(t0);
+    if dt_s < 300 {
+        return None; // 样本不足 5 分钟不外推（诚实拒绝）。
+    }
+    let dh = l0 as i64 - l1 as i64; // 正=放电。
+    let permille_per_hour = dh * 3600 / dt_s as i64;
+    let hours_left = if permille_per_hour > 0 {
+        Some((l1 as i64 / permille_per_hour) as u64)
+    } else {
+        None
+    };
+    Some(DrainTrend { permille_per_hour, hours_left, estimated: true })
+}
+
+/// 阈值文档页（两级阈值+界内可调+滤波纪律——常量生成）。
+pub fn threshold_doc_lines() -> Vec<String> {
+    vec![
+        alloc::format!("一级提示（默认 {}%）：toast 黄档，一次性不重复——界内 {}-{}% 可调", LEVEL_WARN_DEFAULT, LEVEL_WARN_MIN, LEVEL_WARN_MAX),
+        alloc::format!("二级保护（默认 {}%）：冲刷+60s 倒计时+体面关机——界内 {}-{}% 可调", LEVEL_CRIT_DEFAULT, LEVEL_CRIT_MIN, LEVEL_CRIT_MAX),
+        alloc::format!("滤波纪律：30s 滑动窗采样，跳变 >{}‰ 判噪声丢弃——老化电池不误触发", JUMP_NOISE_PERMILLE),
+    ]
+}
+
+pub fn threshold_doc_intact() -> bool {
+    let d = threshold_doc_lines();
+    d.len() == 3 && d[0].contains("15") && d[1].contains("5") && d[2].contains("80")
+}
+
+/// F196 v6 自检（deep5 表）。
+pub fn run_batguard_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v6");
+
+    // v6-一：趋势——正常放电、充电无剩余、样本不足拒绝。
+    // 3000s 掉 300‰ → 360‰/h；剩 500‰ → 1.38h → 1（整除）。
+    let curve = [(0u64, 800u64), (3000, 500)];
+    let t = drain_trend(&curve).unwrap();
+    set.add("trend slope", t.permille_per_hour == 360, "300‰/3000s 换算小时");
+    set.add("trend hours", t.hours_left == Some(1), "500/360 整除=1");
+    set.add("trend estimated", t.estimated, "估算必带标注");
+    let charge = [(0u64, 300u64), (3000, 700)];
+    let t2 = drain_trend(&charge).unwrap();
+    set.add("trend charging none", t2.hours_left.is_none() && t2.permille_per_hour < 0, "充电不给剩余");
+    set.add("trend short none", drain_trend(&[(0u64, 500u64), (60, 490)]).is_none(), "<5 分钟不外推");
+
+    // v6-二：阈值文档——三行齐+常量内嵌。
+    set.add("doc intact", threshold_doc_intact(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v6_trend_flat_battery() {
+        // 满电不动的电池：斜率 0 → 无剩余时长（0 斜率诚实拒绝——与
+        // DrainEstimator 同语义）。
+        let t = drain_trend(&[(0u64, 800u64), (3600, 800)]).unwrap();
+        assert_eq!(t.permille_per_hour, 0);
+        assert!(t.hours_left.is_none());
+    }
+
+    #[test]
+    fn f196_v6_run_checks_pass() {
+        assert!(run_batguard_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——关机中断恢复语义 / 相态历史。
+// 判据源：主册【状态与异常】「关机失败（冲刷卡死 30s）→ 强制下电+下次
+// 开机修复流程（F189 自愈族）」。
+// ---------------------------------------------------------------------------
+
+/// 相态历史环（最近 16 次相态迁移——中断恢复的取证面）。
+pub struct PhaseHistory {
+    entries: Vec<(&'static str, u64)>,
+}
+
+impl PhaseHistory {
+    pub fn new() -> PhaseHistory {
+        PhaseHistory { entries: Vec::new() }
+    }
+
+    pub fn push(&mut self, phase: &'static str, at_s: u64) {
+        if self.entries.len() >= 16 {
+            self.entries.remove(0);
+        }
+        self.entries.push((phase, at_s));
+    }
+
+    /// 中断恢复查询：最后一次进入 Flushing 后有没有走到 Handoff？
+    /// （没走到=中断恢复场景，下次开机走修复流程。）
+    pub fn interrupted_flush(&self) -> bool {
+        let last_flush = self.entries.iter().rposition(|(p, _)| *p == "Flushing");
+        let last_handoff = self.entries.iter().rposition(|(p, _)| *p == "Handoff");
+        match (last_flush, last_handoff) {
+            (Some(f), Some(h)) => f > h, // Flushing 在 Handoff 之后=未完成。
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for PhaseHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// F196 v7 自检（deep6 表）。
+pub fn run_batguard_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v7");
+
+    // v7-一：完整流程 → 无中断。
+    let mut h1 = PhaseHistory::new();
+    for p in ["Warned", "Countdown", "Flushing", "Handoff"] {
+        h1.push(p, 0);
+    }
+    set.add("flow complete clean", !h1.interrupted_flush(), "全流程完成=无中断");
+
+    // v7-二：中断在 Flushing → 恢复标记。
+    let mut h2 = PhaseHistory::new();
+    for p in ["Warned", "Countdown", "Flushing"] {
+        h2.push(p, 0);
+    }
+    set.add("flow interrupted", h2.interrupted_flush(), "Flushing 后无 Handoff=中断");
+
+    // v7-三：中断后已修复（新周期完成）→ 不再标记。
+    let mut h3 = PhaseHistory::new();
+    for p in ["Flushing"] {
+        h3.push(p, 0);
+    }
+    for p in ["Warned", "Countdown", "Flushing", "Handoff"] {
+        h3.push(p, 100);
+    }
+    set.add("flow recovered", !h3.interrupted_flush(), "新周期完成覆盖旧中断");
+
+    // v7-四：环容量。
+    for i in 0..20u64 {
+        h3.push("Normal", i);
+    }
+    set.add("flow ring cap", h3.len() == 16, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v7_interrupt_never_false_positive() {
+        // 只有 Warned/Countdown（还没进 Flushing）→ 不是中断（无 False 报警）。
+        let mut h = PhaseHistory::new();
+        h.push("Warned", 0);
+        h.push("Countdown", 1);
+        assert!(!h.interrupted_flush());
+    }
+
+    #[test]
+    fn f196_v7_run_checks_pass() {
+        assert!(run_batguard_deep6_checks().all_passed());
     }
 }

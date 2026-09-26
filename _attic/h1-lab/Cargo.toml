@@ -1,0 +1,9 @@
+[package]
+name = "h1-lab"
+version = "0.1.0"
+edition = "2021"
+description = "AI-H1 隔离验证舱：h1star 模块独立编译/测试（依赖仅镜像 checks+sbase），收口前回主树接线跑全量门禁"
+
+[lib]
+name = "varix"
+path = "src/lib.rs"

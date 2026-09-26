@@ -90,3 +90,38 @@ export function gridPaintSpec(): { step: number; opacity: number; lines: "rgba(1
 export function rulerReadout(at: Point): { horizontal: number; vertical: number } {
   return { horizontal: at.x, vertical: at.y };
 }
+
+/* ================= v5 深化批次五：量测账 / 物理单位 / 网格吸附量测 ================= */
+
+/** 量测历史容量（最近 10 条——反复量同一处不用重拖）。 */
+export const MEASURE_HISTORY_CAP = 10;
+
+export interface MeasureRecord {
+  rect: Rect;
+  at: number;
+}
+
+/** 量测入账：拖完松手记一条（LRU 10 条）。 */
+export function pushMeasure(history: MeasureRecord[], rect: Rect, at: number): MeasureRecord[] {
+  return [...history, { rect: { ...rect }, at }].slice(-MEASURE_HISTORY_CAP);
+}
+
+/** 物理单位换算（设计稿对拍用）：px → mm / pt，DPI 注入（本层不猜屏幕）。 */
+export function pxToPhysical(px: number, dpi: number): { mm: number; pt: number } {
+  if (!Number.isFinite(dpi) || dpi <= 0) return { mm: 0, pt: 0 };
+  const inches = px / dpi;
+  return { mm: Math.round(inches * 25.4 * 100) / 100, pt: Math.round(inches * 72 * 100) / 100 };
+}
+
+/** 量测矩形网格吸附：宽高吸到 8px 网格（「它到底是 8 的几倍」一眼可读）。 */
+export function snapMeasureToGrid(rect: Rect): Rect & { wAligned: boolean; hAligned: boolean } {
+  const gw = Math.round(rect.w / GRID_STEP_PX) * GRID_STEP_PX;
+  const gh = Math.round(rect.h / GRID_STEP_PX) * GRID_STEP_PX;
+  return { ...rect, w: gw, h: gh, wAligned: rect.w === gw, hAligned: rect.h === gh };
+}
+
+/** Esc 秒退审计：任何模式下 Esc 都必须一步到 off（判据机检面——逐模式穷举）。 */
+export function escapeAudit(): { pass: boolean; modes: OverlayMode[] } {
+  const modes: OverlayMode[] = ["rulers", "measure", "grid", "all"];
+  return { pass: modes.every((m) => escapeExit(initialOverlay(m)).mode === "off"), modes };
+}

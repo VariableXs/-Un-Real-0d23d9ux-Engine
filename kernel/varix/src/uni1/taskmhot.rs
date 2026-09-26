@@ -147,6 +147,16 @@ impl TaskMgr {
     pub fn rows(&self) -> &[ProcRow] {
         &self.rows
     }
+
+    /// 按 pid 查行（v6：三源对账的路由口）。
+    pub fn row(&self, pid: u64) -> Option<&ProcRow> {
+        self.rows.iter().find(|r| r.pid == pid)
+    }
+
+    /// 采样账容量判据（v6）：抖动账封顶 64——长会话不涨内存。
+    pub fn gap_ledger_capped(&self) -> bool {
+        self.refresh_gaps_ms.len() <= 64
+    }
 }
 
 pub fn run_taskmhot_checks() -> CheckSet {
@@ -180,6 +190,20 @@ pub fn run_taskmhot_checks() -> CheckSet {
     // 三源对账：2% 误差过、5% 误差拒。
     set.add("f402-reconcile-within-3pct", t.reconcile(2, 816, 784), "");
     set.add("f402-reconcile-beyond-3pct", !t.reconcile(2, 840, 800), "");
+    // 不存在的 pid：结束拒绝 + 对账拒绝（v6——不虚报）。
+    set.add(
+        "f402-missing-pid-honest",
+        !t.end_task(99, true) && !t.reconcile(99, 100, 100) && t.row(99).is_none(),
+        "",
+    );
+    // 空采样账：刷新判据空真（无样本不冤枉）（v6）。
+    let mut m = TaskMgr::new();
+    set.add("f402-empty-budget-vacuous", m.refresh_in_budget() && m.gap_ledger_capped(), "");
+    // 抖动账封顶（v6）：70 次采样 → 账面恒 ≤64，最老被淘汰。
+    for i in 0..70u64 {
+        m.sample(alloc::vec![], 900 + (i % 200));
+    }
+    set.add("f402-gap-ledger-cap", m.gap_ledger_capped() && m.refresh_gaps_ms.len() == 64, "");
     set
 }
 

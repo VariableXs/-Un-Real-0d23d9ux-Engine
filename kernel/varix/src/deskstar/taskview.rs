@@ -327,6 +327,17 @@ impl TaskView {
         }
     }
 
+    /// 翻页回退（与 next_page 同一钳制语义——末页页位不越界）。
+    pub fn prev_page(&mut self) {
+        self.page = self.page.saturating_sub(1);
+    }
+
+    /// 页码指示（渲染面：当前页/总页，1 基；单页显示 1/1——
+    /// 分页判据的可视对账面）。
+    pub fn page_indicator(&self) -> (usize, usize) {
+        (self.page + 1, self.wall_pages().max(1))
+    }
+
     /// 网格列数自适应（3-4 列按窗口数）。
     pub fn grid_cols(&self) -> usize {
         let n = self.wall_windows().len();
@@ -360,6 +371,8 @@ impl TaskView {
     }
 
     /// Enter 激活焦点项（墙内=切窗口前台；条卡=切桌面）。
+    /// 切桌面后页位归零 + 焦点环同步（新桌面墙内容已变——旧页位与
+    /// 旧环长都是脏状态，一并复位不留半空）。
     pub fn key_activate(&mut self) -> Option<u64> {
         let idx = self.ring.activate();
         let wall = self.wall_windows().len();
@@ -371,6 +384,8 @@ impl TaskView {
             let card = idx - wall;
             if card < self.desks.len() {
                 self.active_desk = card;
+                self.page = 0;
+                self.sync_ring();
             }
             None
         }
@@ -378,6 +393,18 @@ impl TaskView {
 
     pub fn focus_index(&self) -> usize {
         self.ring.index()
+    }
+
+    // -- 深化层三（D1-v4-TV*）---------------------------------------------
+
+    /// 焦点分组查询（焦点可见性渲染面：当前焦点在墙内还是桌面条——
+    /// 两组各自画焦点环，分组是渲染的前提账）。
+    pub fn focus_group(&self) -> &'static str {
+        if self.focus_index() < self.wall_windows().len() {
+            "墙"
+        } else {
+            "桌面条"
+        }
     }
 }
 
@@ -1111,5 +1138,104 @@ mod tests_deep2 {
         let set = run_taskview_deep2_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F081-deep2 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检三（D1-v4）——翻页回退 / 页码指示 / 键盘切桌状态一致性 /
+// 焦点分组。判据唯一源：主册 G-C-11（「缩略墙窗口过多 → 分页（每页
+// 12 格）」「键盘路径：Win+Tab 后方向键+Enter 全可达」）。
+// ---------------------------------------------------------------------------
+
+/// F081 深化自检三：四族逐条记账。
+pub fn run_taskview_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F081-deep3");
+    // 1. 翻页回退与页码指示（15 窗 → 2 页；回退钳 0）。
+    let mut tv = TaskView::new();
+    for w in 0..15u64 {
+        tv.place_window(0, w);
+    }
+    tv.enter(0);
+    let ind0 = tv.page_indicator();
+    tv.next_page();
+    let ind1 = tv.page_indicator();
+    tv.prev_page();
+    tv.prev_page(); // 超额回退 → 钳首页
+    let ind_back = tv.page_indicator();
+    set.add(
+        "paging-roundtrip",
+        ind0 == (1, 2) && ind1 == (2, 2) && ind_back == (1, 2),
+        "pager honest 1-based",
+    );
+    // 2. 键盘切桌后页位归零 + 焦点环同步（旧页位不留半空）。
+    tv.next_page(); // 停在页 2
+    tv.create_desk(1_000);
+    tv.place_window(1, 100);
+    // 焦点移到桌面条卡 1 并 Enter 切过去（页 2 墙长 3 → 第 wall+1 步）。
+    let wall_len = tv.wall_windows().len();
+    for _ in 0..wall_len + 1 {
+        tv.key_move(true);
+    }
+    tv.key_activate(); // 切到桌 2
+    let page_reset = tv.page_indicator() == (1, 1);
+    let desk_now = tv.active_id() == 2;
+    set.add(
+        "desk-switch-resets-page",
+        page_reset && desk_now,
+        "no stale page across desks",
+    );
+    // 3. 焦点分组：墙内 vs 桌面条（渲染焦点环的分组前提）。
+    let g1 = tv.focus_group(); // 切桌后焦点环已同步：index 0 → 墙
+    let mut tv2 = TaskView::new();
+    tv2.create_desk(2_000);
+    tv2.enter(2_100);
+    let wall2 = tv2.wall_windows().len();
+    for _ in 0..wall2 {
+        tv2.key_move(true);
+    }
+    let g2 = tv2.focus_group();
+    set.add(
+        "focus-group",
+        g1 == "墙" && g2 == "桌面条",
+        "ring group render-ready",
+    );
+    // 4. 单页指示 1/1（空桌也诚实显示——不为空态编页）。
+    let mut tv3 = TaskView::new();
+    tv3.enter(3_000);
+    set.add(
+        "empty-desk-indicator",
+        tv3.page_indicator() == (1, 1) && tv3.wall_windows().is_empty(),
+        "1/1 on empty",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn pager_clamps_both_ends() {
+        let mut tv = TaskView::new();
+        for w in 0..30u64 {
+            tv.place_window(0, w);
+        }
+        tv.enter(0);
+        assert_eq!(tv.wall_pages(), 3);
+        for _ in 0..5 {
+            tv.next_page();
+        }
+        assert_eq!(tv.page_indicator().0, 3, "末页不越界");
+        for _ in 0..5 {
+            tv.prev_page();
+        }
+        assert_eq!(tv.page_indicator().0, 1, "首页不越界");
+    }
+
+    #[test]
+    fn taskview_deep3_checks_all_green() {
+        let set = run_taskview_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F081-deep3 红项：{}/{} 绿", p, p + f);
     }
 }

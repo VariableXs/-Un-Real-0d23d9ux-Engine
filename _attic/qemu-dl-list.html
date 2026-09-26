@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <title>QEMU for Windows – Installers (64 bit)</title>
+  <meta name="author" content="Stefan Weil">
+  <meta name="description" lang="en" content="QEMU Binaries for Windows">
+  <meta name="keywords" content="QEMU, binaries, installer, Windows, Windows XP, Windows 7, Windows 8, Windows 10">
+ </head>
+  <body>
+    <h1>QEMU Binaries for Windows (64 bit)</h1>
+<p>Here you get QEMU related binaries for 64 bit versions of Microsoft Windows.</p>
+<pre><img src="/icons/blank.gif" alt="Icon "> <a href="?C=N;O=D">Name</a>                           <a href="?C=M;O=A">Last modified</a>      <a href="?C=S;O=A">Size</a>  <a href="?C=D;O=A">Description</a><hr><img src="/icons/back.gif" alt="[PARENTDIR]"> <a href="/">Parent Directory</a>                                    -   
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2011/">2011/</a>                          2016-04-15 10:48    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2012/">2012/</a>                          2016-04-15 10:48    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2013/">2013/</a>                          2016-04-15 10:48    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2014/">2014/</a>                          2016-04-15 10:48    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2015/">2015/</a>                          2016-04-15 10:47    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2016/">2016/</a>                          2017-02-19 08:41    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2017/">2017/</a>                          2018-03-21 21:24    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2018/">2018/</a>                          2018-11-28 15:44    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2019/">2019/</a>                          2020-02-01 15:42    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2020/">2020/</a>                          2020-11-24 13:00    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2021/">2021/</a>                          2021-12-16 22:19    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2022/">2022/</a>                          2022-12-30 20:07    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2023/">2023/</a>                          2023-12-24 14:32    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2024/">2024/</a>                          2024-12-20 08:49    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2025/">2025/</a>                          2025-12-24 11:00    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="2026/">2026/</a>                          2026-08-11 21:37    -   experimental QEMU for Windows
+<img src="/icons/folder.gif" alt="[DIR]"> <a href="old/">old/</a>                           2023-06-02 21:50    -   
+<img src="/icons/binary.gif" alt="[   ]"> <a href="qemu-w64-setup-20260729.exe">qemu-w64-setup-20260729.exe</a>    2026-07-29 15:39  197M  QEMU Installer for Windows (64 bit)
+<img src="/icons/unknown.gif" alt="[   ]"> <a href="qemu-w64-setup-20260729.sha512">qemu-w64-setup-20260729.sha512</a> 2026-07-29 15:39  158   SHA-512 for installer
+<img src="/icons/binary.gif" alt="[   ]"> <a href="qemu-w64-setup-20260805.exe">qemu-w64-setup-20260805.exe</a>    2026-08-05 09:04  197M  QEMU Installer for Windows (64 bit)
+<img src="/icons/unknown.gif" alt="[   ]"> <a href="qemu-w64-setup-20260805.sha512">qemu-w64-setup-20260805.sha512</a> 2026-08-05 09:04  158   SHA-512 for installer
+<img src="/icons/binary.gif" alt="[   ]"> <a href="qemu-w64-setup-20260811.exe">qemu-w64-setup-20260811.exe</a>    2026-08-11 21:37  197M  QEMU Installer for Windows (64 bit)
+<img src="/icons/unknown.gif" alt="[   ]"> <a href="qemu-w64-setup-20260811.sha512">qemu-w64-setup-20260811.sha512</a> 2026-08-11 21:37  158   SHA-512 for installer
+<hr></pre>
+<h2>Overview</h2>
+<p>This website provides <a href="http://www.qemu.org/" target="_blank">QEMU</a> related documentation
+and binaries (installers) for <a href="/w32/">32 bit</a> and <a href="/w64/">64 bit</a>
+versions of Microsoft Windows.
+In addition there are also untested <a href="/aarch64/">QEMU installers for Windows on ARM</a>.</p>
+<p>Please note that newer versions of QEMU require at least Windows 8.</p>
+<p>QEMU for Windows is experimental software and may contain even serious bugs,
+so use the binaries at your own risk.</p>
+
+<h3>Build instructions</h3>
+<p>The installers are built from my latest <a href="http://repo.or.cz/w/qemu/ar7.git/" target="_blank">QEMU sources</a>
+(<a href="https://github.com/stweil/qemu/tree/ar7">GitHub mirror</a>)
+and are updated frequently. Due to my limited resources I typically only build installers based on the master branch, but not for bugfix releases.</p>
+<p>The required cross packages from msys2 must be installed in /mingw64.
+They are typically updated before each new build.
+See the build script make-installers-all or the GitHub workflow (both are included in the sources) for details.</p>
+
+<h2>History</h2>
+<p><strong>2026-08-11</strong>: New QEMU installer (11.1.0).
+<p><strong>2026-08-05</strong>: New QEMU installer (11.1.0-rc3).
+<p><strong>2026-07-29</strong>: New QEMU installer (11.1.0-rc2).
+<p><strong>2026-07-23</strong>: New QEMU installer (11.1.0-rc1).
+<p><strong>2026-07-22</strong>: New QEMU installer (11.1.0-rc0).
+<p><strong>2026-04-22</strong>: New QEMU installer (11.0.0).
+<p><strong>2026-04-16</strong>: New QEMU installer (11.0.0-rc4).
+<p><strong>2026-04-15</strong>: New QEMU installer (11.0.0-rc3).
+<p><strong>2026-04-01</strong>: New QEMU installer (11.0.0-rc2).
+<p><strong>2026-03-24</strong>: New QEMU installer (11.0.0-rc1).
+<p><strong>2026-03-18</strong>: New QEMU installer (11.0.0-rc0). u2f emulation for x86_64 and WoA.
+<p><strong>2026-03-07</strong>: New QEMU installer from git master. Added u2f emulation for x86_64 (untested), no WHPX for WoA.
+<p><strong>2025-12-24</strong>: New QEMU installer (10.2.0).
+<p><strong>2025-12-17</strong>: New QEMU installer (10.2.0-rc4). Initial support for WHPX with WoA.
+<p><strong>2025-12-10</strong>: New QEMU installer (10.2.0-rc3).
+<p><strong>2025-12-04</strong>: New QEMU installer (10.2.0-rc2).
+<p><strong>2025-12-03</strong>: New QEMU installer (10.2.0-rc1).
+<p><strong>2025-08-26</strong>: New QEMU installer (10.1.0).
+<p><strong>2025-08-19</strong>: New QEMU installer (10.1.0-rc4).
+<p><strong>2025-08-14</strong>: New QEMU installer (10.1.0-rc3).
+<p><strong>2025-08-06</strong>: New QEMU installer (10.1.0-rc2).
+<p><strong>2025-07-30</strong>: New QEMU installer (10.1.0-rc1).
+<p><strong>2025-07-23</strong>: New QEMU installer (10.1.0-rc0).
+<p><strong>2025-04-22</strong>: New QEMU installer (10.0.0).
+<p><strong>2025-04-16</strong>: New QEMU installer (10.0.0-rc4).
+<p><strong>2025-04-13</strong>: New QEMU installer (10.0.0-rc3).
+<p><strong>2025-04-12</strong>: New QEMU installer (10.0.0-rc2).
+<p><strong>2025-03-26</strong>: New QEMU installer (10.0.0-rc1).
+<p><strong>2025-03-24</strong>: New QEMU installer (10.0.0-rc0). Now with experimental installer for Windows on ARM.
+<p><strong>2025-02-10</strong>: New QEMU installer from git master. New build option -D_FORTIFY_SOURCE=2.</p>
+<p><strong>2024-12-20</strong>: New QEMU installer (9.2.0).
+<p><strong>2024-12-19</strong>: New QEMU installer (9.2.0-rc2).
+<p><strong>2024-11-24</strong>: New QEMU installer (build test).
+<p><strong>2024-11-21</strong>: New QEMU installer (9.2.0-rc1).
+<p><strong>2024-11-20</strong>: New QEMU installer (9.2.0-rc0).
+<p><strong>2024-09-03</strong>: New QEMU installer (9.1.0).
+<p><strong>2024-08-28</strong>: New QEMU installer (9.1.0-rc4).
+<p><strong>2024-08-22</strong>: New QEMU installer (9.1.0-rc3).
+<p><strong>2024-08-15</strong>: New QEMU installer (9.1.0-rc2).
+<p><strong>2024-08-13</strong>: New QEMU installer (9.1.0-rc1).
+<p><strong>2024-08-12</strong>: New QEMU installer (9.1.0-rc0). Includes fixed virglrenderer.</p>
+<p><strong>2024-07-20</strong>: New QEMU installer from git master.</p>
+<p><strong>2024-04-23</strong>: New QEMU installer (9.0.0).</p>
+<p><strong>2024-04-11</strong>: New QEMU installer (9.0.0-rc3).</p>
+<p><strong>2024-04-03</strong>: New QEMU installer (9.0.0-rc2).</p>
+<p><strong>2024-03-28</strong>: New QEMU installer (9.0.0-rc1).</p>
+<p><strong>2024-03-27</strong>: New QEMU installer (9.0.0-rc0).</p>
+<p><strong>2023-12-24</strong>: New QEMU installer (8.2.0).</p>
+<p><strong>2023-12-14</strong>: New QEMU installer (8.2.0-rc4).</p>
+<p><strong>2023-12-08</strong>: New QEMU installer (8.2.0-rc3).</p>
+<p><strong>2023-12-07</strong>: New QEMU installer (8.2.0-rc2).</p>
+<p><strong>2023-11-26</strong>: New QEMU installer (8.2.0-rc1). Now with plugin support.</p>
+<p><strong>2023-11-25</strong>: New QEMU installer (8.2.0-rc0).</p>
+<hr>
+<p><strong>All newer installers are signed with an expired certificate.
+Sorry, but a new certificate for code signing is too expensive.</strong></p>
+<hr>
+<p><strong>2023-08-22</strong>: New QEMU installer (8.1.0).</p>
+<p><strong>2023-08-17</strong>: New QEMU installer (8.1.0-rc4).</p>
+<p><strong>2023-08-10</strong>: New QEMU installer (8.1.0-rc3).</p>
+<p><strong>2023-08-02</strong>: New QEMU installer (8.1.0-rc2).</p>
+<p><strong>2023-07-25</strong>: New QEMU installer (8.1.0-rc1).</p>
+<p><strong>2023-07-19</strong>: New QEMU installer (8.1.0-rc0).</p>
+<p><strong>2023-06-29</strong>: New QEMU installer from git master.</p>
+<p><strong>2023-05-31</strong>: New QEMU installer (8.0.2). Added missing libssp-0.dll.</p>
+<p><strong>2023-05-30</strong>: New QEMU installer (8.0.1). Missing libssp-0.dll.</p>
+<p><strong>2023-04-24</strong>: New QEMU installer (8.0.0).</p>
+<p><strong>2023-04-14</strong>: New QEMU installer (8.0.0-rc4).</p>
+<p><strong>2023-04-11</strong>: New QEMU installer (8.0.0-rc3).</p>
+<p><strong>2023-04-10</strong>: New QEMU installer (8.0.0-rc2).</p>
+<p><strong>2023-04-09</strong>: New QEMU installer (8.0.0-rc1).</p>
+<p><strong>2023-04-07</strong>: New QEMU installer (8.0.0-rc0). Build only 64 bit installer.</p>
+<p><strong>2022-12-30</strong>: New QEMU installers (7.2.0).</p>
+<p><strong>2022-12-08</strong>: New QEMU installers (7.2.0-rc4).</p>
+<p><strong>2022-11-30</strong>: New QEMU installers (7.2.0-rc3).</p>
+<p><strong>2022-11-23</strong>: New QEMU installers (7.2.0-rc2). Signed uninstaller, enhanced file properties.</p>
+<p><strong>2022-11-17</strong>: New QEMU installers (7.2.0-rc1).</p>
+<p><strong>2022-11-10</strong>: New QEMU installers (7.2.0-rc0).</p>
+<p><strong>2022-08-31</strong>: New QEMU installers (7.1.0).</p>
+<p><strong>2022-08-25</strong>: New QEMU installers (7.1.0-rc4).</p>
+<p><strong>2022-08-17</strong>: New QEMU installers (7.1.0-rc3).</p>
+<p><strong>2022-08-12</strong>: New QEMU installers (7.1.0-rc2).</p>
+<p><strong>2022-08-09</strong>: New QEMU installers (7.1.0-rc1). Added missing DLL files.</p>
+<p><strong>2022-08-05</strong>: New QEMU installers (7.1.0-rc1). Missing DLL files.</p>
+<p><strong>2022-08-04</strong>: New QEMU installers (7.1.0-rc0). Missing DLL files.</p>
+<hr>
+<p><strong>Windows 7 no longer supported for newer versions!</strong></p>
+<hr>
+<p><strong>2022-04-19</strong>: New QEMU installers (7.0.0). Experimental, now uses msys2 instead of cygwin packages.</p>
+<p><strong>2022-04-18</strong>: New QEMU installers (7.0.0-rc4). Broken dlls, experimental, now uses msys2 instead of cygwin packages.</p>
+<p><strong>2021-12-15</strong>: New QEMU installers (6.2.0).</p>
+<p><strong>2021-12-09</strong>: New QEMU installers (6.2.0-rc4).</p>
+<p><strong>2021-12-01</strong>: New QEMU installers (6.2.0-rc3).</p>
+<p><strong>2021-11-25</strong>: New QEMU installers (6.2.0-rc2).</p>
+<p><strong>2021-08-25</strong>: New QEMU installers (6.1.0).</p>
+<p><strong>2021-08-17</strong>: New QEMU installers (6.1.0-rc4).</p>
+<p><strong>2021-08-10</strong>: New QEMU installers (6.1.0-rc3).</p>
+<p><strong>2021-08-06</strong>: New QEMU installers (6.1.0-rc2).</p>
+<p><strong>2021-08-05</strong>: New QEMU installers (6.1.0-rc1).</p>
+<p><strong>2021-07-21</strong>: New QEMU installers (6.1.0-rc0).</p>
+<p><strong>2021-07-06</strong>: New QEMU installers.</p>
+<p><strong>2021-05-05</strong>: New QEMU installers (6.0.0). New libcurl-4 with native Windows support for https.</p>
+<p><strong>2021-04-21</strong>: New QEMU installers (6.0.0-rc4). Now includes qemu-nbd (untested) which was missing in previous installers.</p>
+<p><strong>2021-04-15</strong>: New QEMU installers (6.0.0-rc3).</p>
+<p><strong>2021-04-09</strong>: New QEMU installers (6.0.0-rc2). Add support for SPICE (untested, currently only for 64 bit install).</p>
+<p><strong>2021-04-08</strong>: New QEMU installers (6.0.0-rc1).</p>
+<p><strong>2021-04-07</strong>: New QEMU installers (6.0.0-rc0).</p>
+<p><strong>2021-02-08</strong>: New QEMU installers (5.2.0). Fixed issue with lookup of firmware files.</p>
+<p><strong>2021-02-03</strong>: New QEMU installers (5.2.0). Add support for braille and zstd (untested). Known issue: currently requires start from installation directory or -L option to specify the location of the firmware files.</p>
+<p><strong>2020-11-24</strong>: New QEMU installers (5.2.0-rc2). Fixed DLL files for 64 bit installion.</p>
+<p><strong>2020-11-20</strong>: New QEMU installers (5.2.0-rc2).</p>
+<p><strong>2020-11-19</strong>: New QEMU installers (5.2.0-rc1).</p>
+<p><strong>2020-11-18</strong>: New QEMU installers (5.2.0-rc0). Untested, using new meson build, so parts might be missing. Wrong DLL files for 64 bit installation. Missing translations for GTK UI.</p>
+<p><strong>2020-08-14</strong>: New QEMU installers (5.1.0).</p>
+<p><strong>2020-08-05</strong>: New QEMU installers (5.1.0-rc3).</p>
+<p><strong>2020-07-29</strong>: New QEMU installers (5.1.0-rc2).</p>
+<p><strong>2020-07-23</strong>: New QEMU installers (5.1.0-rc1).</p>
+<p><strong>2020-07-22</strong>: New QEMU installers (5.1.0-rc0). Updated signatures for exe files.</p>
+<p><strong>2020-06-12</strong>: New QEMU installers (5.0.0).</p>
+<p><strong>2020-02-01</strong>: New QEMU installers (4.2.0).</p>
+<p><strong>2019-08-15</strong>: New QEMU installers (4.1.0).</p>
+<p><strong>2019-08-13</strong>: New QEMU installers (4.1.0-rc5).</p>
+<p><strong>2019-08-08</strong>: New QEMU installers (4.1.0-rc4). Fixed serial i/o (ARM). Added more languages to installer.</p>
+<p><strong>2019-07-31</strong>: New QEMU installers (4.1.0-rc3).</p>
+<p><strong>2019-07-24</strong>: New QEMU installers (4.1.0-rc2).</p>
+<p><strong>2019-07-17</strong>: New QEMU installers (4.1.0-rc1).</p>
+<p><strong>2019-07-13</strong>: New QEMU installers (4.1.0-rc0).</p>
+<p><strong>2019-02-18</strong>: New QEMU installers. Added support for WHPX (untested).</p>
+<p><strong>2018-12-11</strong>: New QEMU installers (3.1.0).</p>
+<p><strong>2018-11-28</strong>: New QEMU installers (3.1.0-rc3).</p>
+<p><strong>2018-11-27</strong>: New QEMU installers (3.1.0-rc2). Added qemu-edid and qemu-ga (untested).</p>
+<p><strong>2018-11-26</strong>: New QEMU installers (3.1.0-rc1).</p>
+<p><strong>2018-11-08</strong>: New QEMU installers (3.1.0-rc0).</p>
+<p><strong>2018-08-15</strong>: New QEMU installers (3.0.0).</p>
+<p><strong>2018-08-07</strong>: New QEMU installers (3.0.0-rc4).</p>
+<p><strong>2018-08-01</strong>: New QEMU installers (3.0.0-rc3).</p>
+<p><strong>2018-07-25</strong>: New QEMU installers (3.0.0-rc2).</p>
+<p><strong>2018-07-18</strong>: New QEMU installers (3.0.0-rc1).</p>
+<p><strong>2018-07-11</strong>: New QEMU installers (3.0.0-rc0).</p>
+<p><strong>2018-04-30</strong>: New QEMU installers (2.12.0). Added empty file loaders.cache to suppress a warning.</p>
+<p><strong>2018-04-24</strong>: New QEMU installers (2.12.0).</p>
+<p><strong>2018-04-18</strong>: New QEMU installers (2.12.0-rc4).</p>
+<p><strong>2018-04-12</strong>: New QEMU installers (2.12.0-rc3). Update libraries.</p>
+<p><strong>2018-04-05</strong>: New QEMU installers (2.12.0-rc2).</p>
+<p><strong>2018-04-04</strong>: New QEMU installers (2.12.0-rc1).</p>
+<p><strong>2018-03-21</strong>: New QEMU installers (2.12.0-rc0).</p>
+<p><strong>2017-12-17</strong>: New QEMU installers (2.11.0).</p>
+<p><strong>2017-12-11</strong>: New QEMU installers (2.11.0-rc5).</p>
+<p><strong>2017-11-29</strong>: New QEMU installers (2.11.0-rc3).</p>
+<p><strong>2017-11-22</strong>: New QEMU installers (2.11.0-rc2).</p>
+<p><strong>2017-11-16</strong>: New QEMU installers (2.11.0-rc1). Fixed command line.</p>
+<p><strong>2017-11-08</strong>: New QEMU installers (2.11.0-rc0). Broken command line.</p>
+<p><strong>2017-10-06</strong>: New QEMU installers (2.10.1).</p>
+<p><strong>2017-08-30</strong>: New QEMU installers (2.10.0).</p>
+<p><strong>2017-08-24</strong>: New QEMU installers (2.10.0-rc4).</p>
+<p><strong>2017-08-16</strong>: New QEMU installers (2.10.0-rc3).</p>
+<p><strong>2017-08-08</strong>: New QEMU installers (2.10.0-rc2).</p>
+<p><strong>2017-08-04</strong>: New QEMU installers (2.10.0-rc1).</p>
+<p><strong>2017-08-03</strong>: New QEMU installers (2.10.0-rc0). Fixed MIPS Malta.</p>
+<p><strong>2017-04-20</strong>: New QEMU installers (2.9.0).</p>
+<p><strong>2017-04-18</strong>: New QEMU installers (2.9.0-rc5).</p>
+<p><strong>2017-04-11</strong>: New QEMU installers (2.9.0-rc4).</p>
+<p><strong>2017-04-05</strong>: New QEMU installers (2.9.0-rc3). Fixed dead lock issues for Windows.</p>
+<p><strong>2017-03-29</strong>: New QEMU installers (2.9.0-rc2).</p>
+<p><strong>2017-03-21</strong>: New QEMU installers (2.9.0-rc1).</p>
+<p><strong>2017-01-31</strong>: New QEMU installers. Fixed HAXM support.</p>
+<p><strong>2017-01-24</strong>: New QEMU installers. Broken HAXM support.</p>
+<p><strong>2017-01-13</strong>: New QEMU installers. Update HAXM support.</p>
+<p><strong>2016-12-22</strong>: New QEMU installers (2.8.0). Fixed HAXM support.</p>
+<p><strong>2016-12-21</strong>: New QEMU installers (2.8.0). Added SDL 2 (slow!), updated HAXM.</p>
+<p><strong>2016-12-07</strong>: New QEMU installers (2.8.0-r3). Fixed libstdc++-6.dll for 64 bit ARM system emulations.</p>
+<p><strong>2016-11-30</strong>: New QEMU installers (2.8.0-r2). Experimental support for <a href="https://software.intel.com/en-us/android/articles/intel-hardware-accelerated-execution-manager">Intel HAXM</a> (currently no real mode).</p>
+<hr>
+<p><strong>Windows XP no longer supported for newer versions!</strong></p>
+<hr>
+<p><strong>2016-10-16</strong>: New QEMU installers. Drop SDL and Windows XP support, use updated third party DLLs, support more QEMU features.</p>
+<p><strong>2016-09-03</strong>: New QEMU installers (2.7.0).</p>
+<p><strong>2016-08-31</strong>: New QEMU installers (2.7.0-rc5).</p>
+<p><strong>2016-08-23</strong>: New QEMU installers (2.7.0-rc4).</p>
+<p><strong>2016-08-17</strong>: New QEMU installers (2.7.0-rc3).</p>
+<p><strong>2016-08-08</strong>: New QEMU installers (2.7.0-rc2). Fixed ATA register transitions.</p>
+<p><strong>2016-07-30</strong>: New QEMU installers (2.7.0-rc1).</p>
+<p><strong>2016-07-23</strong>: New QEMU installers (2.7.0-rc0). Now sends trace events to stderr.</p>
+<p><strong>2016-05-23</strong>: New QEMU installers. Several fixes.</p>
+<p><strong>2016-05-16</strong>: New QEMU installers (2.6.0+). Fixed Pentium III SSE.</p>
+<p><strong>2016-05-14</strong>: New QEMU installers (2.6.0).</p>
+<p><strong>2016-05-11</strong>: New QEMU installers (2.6.0-rc5).</p>
+<p><strong>2016-05-02</strong>: New QEMU installers (2.6.0-rc4).</p>
+<p><strong>2016-04-22</strong>: New QEMU installers (2.6.0-rc3).</p>
+<p><strong>2016-04-14</strong>: New QEMU installers (2.6.0-rc2). Fixed networking.</p>
+<p><strong>2016-04-06</strong>: New QEMU installers (2.6.0-rc1). Broken networking.</p>
+<p><strong>2016-04-01</strong>: New QEMU installers (2.6.0-rc0). Broken networking, broken Pentium III SSE.</p>
+<p><strong>2016-03-03</strong>: New QEMU installers. Fixed, first version with support for Raspberry Pi 1 and 2.</p>
+<p><strong>2016-02-15</strong>: New QEMU installers. Reported to be buggy, no SDL window.</p>
+<p><strong>2015-12-16</strong>: New QEMU installers (2.5.0).</p>
+<p><strong>2015-12-12</strong>: New QEMU installers (2.5.0-rc4).</p>
+<p><strong>2015-12-08</strong>: New QEMU installers (2.5.0-rc3).</p>
+<p><strong>2015-11-27</strong>: New QEMU installers (2.5.0-rc2). Fixed MIPS system emulation.</p>
+<p><strong>2015-11-15</strong>: New QEMU installers (2.5.0-rc0).</p>
+<p><strong>2015-08-11</strong>: New QEMU installers (2.4.0).</p>
+<p><strong>2015-08-05</strong>: New QEMU installers (2.4.0-rc4).</p>
+<p><strong>2015-07-31</strong>: New QEMU installers (2.4.0-rc3). Fixed networking.</p>
+<p><strong>2015-07-26</strong>: New QEMU installers (2.4.0-rc2). Build fixed for 32 and 64 bits.</p>
+<p><strong>2015-07-22</strong>: New QEMU installers (2.4.0-rc2). Buggy, don't use.</p>
+<p><strong>2015-07-18</strong>: New QEMU installers (2.4.0-rc1). Buggy, don't use.</p>
+<p><strong>2015-05-10</strong>: New QEMU installers (2.3.0). Fixed list of included DLLs.</p>
+<p><strong>2015-05-03</strong>: New QEMU installers (2.3.0). Now built with Debian Jessie. Added registry key DisplayVersion.</p>
+<p><strong>2015-04-24</strong>: New QEMU installers (2.3.0).</p>
+<p><strong>2015-04-13</strong>: New QEMU installers (2.3.0-rc3).</p>
+<p><strong>2015-04-02</strong>: New QEMU installers (2.3.0-rc2).</p>
+<p><strong>2015-03-21</strong>: New QEMU installers (2.3.0-rc0).</p>
+<p><strong>2014-12-10</strong>: New QEMU installers (2.2.0).</p>
+<p><strong>2014-12-05</strong>: New QEMU installers (2.2.0-rc5).</p>
+<p><strong>2014-12-01</strong>: New QEMU installers (2.2.0-rc4).</p>
+<p><strong>2014-11-26</strong>: New QEMU installers (2.2.0-rc3).</p>
+<p><strong>2014-11-20</strong>: New QEMU installers (2.2.0-rc2).</p>
+<p><strong>2014-11-12</strong>: New QEMU installers (2.2.0-rc1).</p>
+<p><strong>2014-11-07</strong>: New QEMU installers (2.2.0-rc0).</p>
+<p><strong>2014-08-01</strong>: New QEMU installers (2.1.0).</p>
+<p><strong>2014-07-29</strong>: New QEMU installers (2.1.0-rc4).</p>
+<p><strong>2014-07-22</strong>: New QEMU installers (2.1.0-rc3).</p>
+<p><strong>2014-07-15</strong>: New QEMU installers (2.1.0-rc2). Fixed ARM system emulation.</p>
+<p><strong>2014-07-09</strong>: All ARM system emulations of QEMU for Windows are broken since October 2012 (commit d8cdd46def3aa970560932536db40e6e747bf809).</p>
+<p><strong>2014-07-08</strong>: New QEMU installers (2.1.0-rc1).</p>
+<p><strong>2014-07-02</strong>: New QEMU installers (2.1.0-rc0).</p>
+<p><strong>2014-05-29</strong>: New QEMU installers. Fixed 64 bit version.</p>
+<p><strong>2014-05-28</strong>: All 64 bit versions of QEMU for Windows are broken since end of August 2013.</p>
+<p><strong>2014-05-17</strong>: New QEMU installers. Fixed broken disk I/O. Added missing DLL. Now uses GTK+ 3.0 for 64 bit version.</p>
+<p><strong>2014-05-10</strong>: New QEMU installers. Much faster thanks to fixed g_poll. Known problem: Disk I/O is broken.</p>
+<p><strong>2014-04-18</strong>: New QEMU installers (2.0.0).</p>
+<p><strong>2014-04-14</strong>: New QEMU installers (2.0.0-rc3).</p>
+<p><strong>2014-04-09</strong>: New QEMU installers (2.0.0-rc2).</p>
+<p><strong>2014-04-04</strong>: New QEMU installers (2.0.0-rc1). Fixed missing dll.</p>
+<p><strong>2014-03-14</strong>: New QEMU installers (2.0.0-rc0). Known problem: libgcc_s_sjlj-1.dll is missing.</p>
+<p><strong>2014-03-02</strong>: New QEMU installers. Known problem: libgcc_s_sjlj-1.dll is missing.</p>
+<p><strong>2014-02-06</strong>: New QEMU installers.</p>
+<p><strong>2014-01-18</strong>: New QEMU installers.</p>
+<p><strong>2013-11-28</strong>: New QEMU installers (1.7.0).</p>
+<p><strong>2013-11-26</strong>: New QEMU installers (1.7.0-rc2).</p>
+<p><strong>2013-11-21</strong>: New QEMU installers (1.7.0-rc1). Removed compiler option -fstack-protector-all. This reduces the code size and might improve the performance a little bit.</p>
+<p><strong>2013-11-18</strong>: New QEMU installers (1.7.0-rc0). The system emulations now support curses. Keyboard input in GTK should be fixed.</p>
+<p><strong>2013-08-17</strong>: New QEMU installers. Added experimental system emulation for Raspberry Pi (based on code from Gregory Estrade).</p>
+<p><strong>2013-06-16</strong>: New QEMU (1.5.50) installers. Known bugs: \\.\PhysicalDrive0 does not work.</p>
+<p><strong>2012-12-04</strong>: New QEMU (1.3.50.0) installers.</p>
+<p><strong>2012-11-25</strong>: New QEMU (1.2.90.0) installers (32 and 64 bit).</p>
+<p><strong>2011-11-19</strong>: New QEMU (0.15.92.0) installer.</p>
+<p><strong>2011-03-13</strong>: New QEMU (0.14.50.0) installer (32 bit only).</p>
+
+<h2>About me</h2>
+<p>The owner of this website is Stefan Weil, Kirchenstra&szlig;e 5, 68526 Ladenburg, Germany.
+I can be contacted by mail or e-mail (qemu-website at weilnetz dot de).
+
+<h2>Acknowledgement</h2>
+<p>
+<a href="https://www.netcup.de"><img src="https://www.netcup.de/werbemittel/netcup-setA-88x31.png" width="88" height="31" alt="netcup.de"></a> 
+This website is kindly hosted by <a href="https://www.netcup.de" target="_blank">netcup GmbH</a>
+on a <a href="https://www.netcup.de/vserver/">vServer VPS 4000 G7</a> which is based on KVM / QEMU.
+
+<!--
+<a href="http://www.netcup.de"><img src="https://www.netcup.de/werbemittel/netcup-oekostrom2.png" alt="netcup Ökostrom" /></a>
+-->
+
+</p>
+
+</body>
+</html>

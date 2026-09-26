@@ -1148,3 +1148,546 @@ mod tests {
         assert_eq!(sf.frames[0].hot_y, 2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 深化批：对抗样本族生成器（截断/坏魔数/坏尺寸/坏调色板/坏帧延时
+// 等九族）· 批量导入会话统计 · 样本清单确定性序列化（回归基线面）
+// ---------------------------------------------------------------------------
+
+/// 子串查找（fourcc 注入定位用——no_std 线性扫描，不引第二套依赖）。
+fn find_sub(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.len() > hay.len() {
+        return None;
+    }
+    (0..=hay.len() - needle.len()).find(|&i| &hay[i..i + needle.len()] == needle)
+}
+
+/// 定点改写（在 base 副本的 off 处覆写 bytes——对抗族注入的基础工具，
+/// 每例从干净副本出发，族与族之间零串扰）。
+fn patched(base: &[u8], off: usize, bytes: &[u8]) -> Vec<u8> {
+    let mut d = base.to_vec();
+    d[off..off + bytes.len()].copy_from_slice(bytes);
+    d
+}
+
+/// 错误族归类（对抗族断言的期望键：一族 = 一类诚实报错路径；键名与
+/// 样本库 expect_error 声明同源一处一事实）。
+pub fn error_family(e: &CurImportError) -> &'static str {
+    match e {
+        CurImportError::TooSmall(_) => "too-small",
+        CurImportError::BadMagic { .. } => "bad-magic",
+        CurImportError::UnsupportedType { .. } => "bad-type",
+        CurImportError::ZeroImages { .. } => "zero-images",
+        CurImportError::EntryOutOfRange { .. } => "entry-oob",
+        CurImportError::ImageTooLarge { .. } => "too-large",
+        CurImportError::BadDibHeader { .. } => "bad-dib",
+        CurImportError::UnsupportedBpp { .. } => "unsupported-bpp",
+        CurImportError::Truncated { .. } => "truncated",
+        CurImportError::BadRiffChunk { .. } => "bad-riff-chunk",
+        CurImportError::BadAnihHeader { .. } => "bad-anih",
+        CurImportError::FrameCountOver { .. } => "frame-over",
+        CurImportError::FpsOverLimit { .. } => "fps-over",
+    }
+}
+
+/// 对抗样本（族注入器产物：字节 + 期望错误族——生成与断言同源）。
+#[derive(Clone, Debug)]
+pub struct AdversarialCase {
+    pub name: String,
+    pub family: &'static str,
+    pub bytes: Vec<u8>,
+}
+
+fn adv(name: &str, family: &'static str, bytes: Vec<u8>) -> AdversarialCase {
+    AdversarialCase { name: String::from(name), family, bytes }
+}
+
+/// 族一：.cur 逐点截断（<6 字节 → too-small；目录项读不全 → truncated；
+/// 目录项可读但资源区越界 → entry-oob——三段边界逐点钉死）。
+fn family_trunc_cur(out: &mut Vec<AdversarialCase>, good: &[u8]) {
+    for off in [0usize, 2, 5, 6, 10, 21, 22, 40, good.len() / 2, good.len() - 1] {
+        let family = if off < 6 {
+            "too-small"
+        } else if off < 22 {
+            "truncated"
+        } else {
+            "entry-oob"
+        };
+        out.push(adv(&alloc::format!("trunc-cur@{off}"), family, good[..off].to_vec()));
+    }
+}
+
+/// 族二：.ani 截断（anih 块头中途 → truncated；LIST 载荷被削 →
+/// bad-riff-chunk——RIFF 终点对账的两段边界）。
+fn family_trunc_ani(out: &mut Vec<AdversarialCase>, good: &[u8]) {
+    out.push(adv("trunc-ani@16", "truncated", good[..16].to_vec()));
+    out.push(adv("trunc-ani@tail", "bad-riff-chunk", good[..good.len() - 4].to_vec()));
+}
+
+/// 族三：坏魔数（.cur 保留字非零两处；.ani RIFX）。
+fn family_bad_magic(out: &mut Vec<AdversarialCase>, good_cur: &[u8], good_ani: &[u8]) {
+    out.push(adv("magic-cur-reserved", "bad-magic", patched(good_cur, 0, &[9])));
+    out.push(adv("magic-cur-second", "bad-magic", patched(good_cur, 1, &[5])));
+    out.push(adv("magic-ani-rifx", "bad-magic", patched(good_ani, 0, b"RIFX")));
+}
+
+/// 族四：坏类型 + 零图像（type=3/0；count=0；.ani icon 块全部改名——
+/// LIST fram 里一枚 icon 都没有）。
+fn family_type_zero(out: &mut Vec<AdversarialCase>, good_cur: &[u8], good_ani: &[u8]) {
+    out.push(adv("type-3", "bad-type", patched(good_cur, 2, &3u16.to_le_bytes())));
+    out.push(adv("type-0", "bad-type", patched(good_cur, 2, &0u16.to_le_bytes())));
+    out.push(adv("zero-count", "zero-images", patched(good_cur, 4, &0u16.to_le_bytes())));
+    let mut z = good_ani.to_vec();
+    let mut scan = 0usize;
+    while let Some(p) = find_sub(&z[scan..], b"icon") {
+        let at = scan + p;
+        z[at..at + 4].copy_from_slice(b"ic0n");
+        scan = at + 4;
+    }
+    out.push(adv("ani-no-icon-blocks", "zero-images", z));
+}
+
+/// 族五：坏尺寸（目录项资源长度越界；DIB 宽 300 超限；负宽 / 零宽 /
+/// 奇高 / 零高 / planes≠1 / 压缩位图 / biSize<40——尺寸族逐字段注入）。
+fn family_bad_sizes(out: &mut Vec<AdversarialCase>, good: &[u8]) {
+    out.push(adv("entry-bytes-oob", "entry-oob", patched(good, 18, &0xFFFF_FFFFu32.to_le_bytes())));
+    out.push(adv("dib-width-300", "too-large", patched(good, 26, &300u32.to_le_bytes())));
+    out.push(adv("dib-width-neg", "too-large", patched(good, 26, &0xFFFF_FFFFu32.to_le_bytes())));
+    out.push(adv("dib-width-zero", "bad-dib", patched(good, 26, &0u32.to_le_bytes())));
+    out.push(adv("dib-height-odd", "bad-dib", patched(good, 30, &33u32.to_le_bytes())));
+    out.push(adv("dib-height-zero", "bad-dib", patched(good, 30, &0u32.to_le_bytes())));
+    out.push(adv("dib-planes-2", "bad-dib", patched(good, 34, &2u16.to_le_bytes())));
+    out.push(adv("dib-compression-1", "bad-dib", patched(good, 38, &1u32.to_le_bytes())));
+    out.push(adv("dib-bisize-20", "bad-dib", patched(good, 22, &20u32.to_le_bytes())));
+}
+
+/// 族六：坏调色板（4bpp 声明 biClrUsed=3 → 真值索引最高 15 必越界——
+/// 「调色板索引越界」路径的确定性触发）。
+fn family_bad_palette(out: &mut Vec<AdversarialCase>, good4: &[u8]) {
+    out.push(adv("pal-clrused-3", "bad-dib", patched(good4, 54, &3u32.to_le_bytes())));
+}
+
+/// 族七：不支持位深（1bpp 样本改 16/2/64——支持集 1/4/8/24/32 之外全拒）。
+fn family_bad_bpp(out: &mut Vec<AdversarialCase>, good1: &[u8]) {
+    for bpp in [16u16, 2, 64] {
+        out.push(adv(
+            &alloc::format!("bpp-{bpp}"),
+            "unsupported-bpp",
+            patched(good1, 36, &bpp.to_le_bytes()),
+        ));
+    }
+}
+
+/// 族八：坏容器（RIFF 声明长度骤减 → 终点收窄后块头读不全 → truncated；
+/// anih 块长 < 36 → bad-anih）。
+fn family_bad_ani_container(out: &mut Vec<AdversarialCase>, good: &[u8]) {
+    out.push(adv("riff-len-shrink", "truncated", patched(good, 4, &8u32.to_le_bytes())));
+    out.push(adv("anih-size-8", "bad-anih", patched(good, 16, &8u32.to_le_bytes())));
+}
+
+/// 族九：坏语义（.cur 声明 20 帧越纪律上限；jif=0 → 0ms 延时 →
+/// 帧率闸拒绝——防频闪不适的对抗面）。
+fn family_bad_semantics(out: &mut Vec<AdversarialCase>) {
+    out.push(adv("frame-count-20", "frame-over", alloc::vec![0, 0, 2, 0, 20, 0]));
+    let (b, _) = gen_ani(16, 16, 2, 0, false, false, 0xBADF_0010);
+    out.push(adv("ani-jif-zero", "fps-over", b));
+}
+
+/// 对抗样本族生成器（九族 33 例，确定性：同输入同字节——判据「对抗
+/// 样本族」的机制面：每族注入并断言诚实报错 + 定位）。
+pub fn gen_adversarial_family() -> Vec<AdversarialCase> {
+    let mut out: Vec<AdversarialCase> = Vec::new();
+    let (good_cur, _) = gen_cur(16, 16, 32, (1, 1), 0xBADF_0001);
+    let (good_ani, _) = gen_ani(16, 16, 2, 10, false, false, 0xBADF_0009);
+    let (good_4bpp, _) = gen_cur(16, 16, 4, (1, 1), 0xBADF_0004);
+    let (good_1bpp, _) = gen_cur(16, 16, 1, (1, 1), 0xBADF_0002);
+    family_trunc_cur(&mut out, &good_cur);
+    family_trunc_ani(&mut out, &good_ani);
+    family_bad_magic(&mut out, &good_cur, &good_ani);
+    family_type_zero(&mut out, &good_cur, &good_ani);
+    family_bad_sizes(&mut out, &good_cur);
+    family_bad_palette(&mut out, &good_4bpp);
+    family_bad_bpp(&mut out, &good_1bpp);
+    family_bad_ani_container(&mut out, &good_ani);
+    family_bad_semantics(&mut out);
+    out
+}
+
+/// 对抗族全量回放（诚实断言：每例报错、族匹配、定位句非空；返回
+/// (通过数, 失败数, 失败名单)——失败名单带 want/got 供诊断，不静默吞）。
+pub fn replay_adversarial_family(cases: &[AdversarialCase]) -> (usize, usize, Vec<String>) {
+    let mut pass = 0usize;
+    let mut fails: Vec<String> = Vec::new();
+    for c in cases {
+        let is_ani = c.bytes.len() >= 12 && &c.bytes[0..4] == b"RIFF";
+        let r = if is_ani { parse_ani_bytes(&c.bytes) } else { parse_cur_bytes(&c.bytes) };
+        match r {
+            Err(e) => {
+                if error_family(&e) == c.family && !e.describe().is_empty() {
+                    pass += 1;
+                } else {
+                    fails.push(alloc::format!(
+                        "{}: 族不符（want={} got={}）",
+                        c.name,
+                        c.family,
+                        error_family(&e)
+                    ));
+                }
+            }
+            Ok(_) => fails.push(alloc::format!("{}: 应报错却通过", c.name)),
+        }
+    }
+    (pass, cases.len() - pass, fails)
+}
+
+/// 单文件导入记录（会话台账的行：文件名 + 挂载态 + 结果 + 字节数）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportRecord {
+    pub name: String,
+    pub state: PointerState,
+    pub ok: bool,
+    /// 失败因（error_family 键；成功恒为空串）。
+    pub cause: &'static str,
+    pub byte_len: usize,
+    bytes: Vec<u8>,
+}
+
+impl ImportRecord {
+    /// 记录内字节（组装方案取成功件用；失败件也可取——诊断面）。
+    pub fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
+/// 会话统计（成功 / 失败 / 按错因分类计数——批量导入的如实汇总面；
+/// by_cause 键序 = 首次出现序，确定性不依赖 HashMap）。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SessionStats {
+    pub total: usize,
+    pub ok: usize,
+    pub failed: usize,
+    pub by_cause: Vec<(&'static str, usize)>,
+}
+
+/// 批量导入会话（F635 侧载 / 迁移前置的分文件处置面：单文件失败不
+/// 拖垮整批——逐条入台账，最后统计如实汇总；成功件可组装成方案）。
+#[derive(Clone, Debug, Default)]
+pub struct ImportSession {
+    records: Vec<ImportRecord>,
+}
+
+impl ImportSession {
+    pub fn new() -> ImportSession {
+        ImportSession { records: Vec::new() }
+    }
+
+    /// 注入一个文件（自动识别 cur/ani；结果入台账不抛异常——批处理
+    /// 语义，失败留给 stats/summary 呈现）。
+    pub fn ingest(&mut self, name: &str, state: PointerState, bytes: &[u8]) -> bool {
+        let is_ani = bytes.len() >= 12 && &bytes[0..4] == b"RIFF";
+        let (ok, cause) =
+            match if is_ani { parse_ani_bytes(bytes) } else { parse_cur_bytes(bytes) } {
+                Ok(_) => (true, ""),
+                Err(e) => (false, error_family(&e)),
+            };
+        self.records.push(ImportRecord {
+            name: String::from(name),
+            state,
+            ok,
+            cause,
+            byte_len: bytes.len(),
+            bytes: bytes.to_vec(),
+        });
+        ok
+    }
+
+    pub fn records(&self) -> &[ImportRecord] {
+        &self.records
+    }
+
+    /// 统计（成功/失败/按错因分类——键序为首次出现序，两次相同会话
+    /// 的统计逐字段相等）。
+    pub fn stats(&self) -> SessionStats {
+        let mut st = SessionStats { total: self.records.len(), ok: 0, failed: 0, by_cause: Vec::new() };
+        for r in &self.records {
+            if r.ok {
+                st.ok += 1;
+            } else {
+                st.failed += 1;
+                match st.by_cause.iter_mut().find(|(k, _)| *k == r.cause) {
+                    Some((_, n)) => *n += 1,
+                    None => st.by_cause.push((r.cause, 1)),
+                }
+            }
+        }
+        st
+    }
+
+    /// 会话人话汇总（确定性：两次相同会话 → 字节相同的汇总文本）。
+    pub fn summary(&self) -> String {
+        let st = self.stats();
+        let mut s =
+            alloc::format!("导入会话：共 {} 枚，成功 {}，失败 {}\n", st.total, st.ok, st.failed);
+        for (k, n) in &st.by_cause {
+            s.push_str(&alloc::format!("  因 {k} 拒收 {n} 枚\n"));
+        }
+        s
+    }
+
+    /// 用会话内成功件组装完整方案（每态取首个成功件——线性查找不用
+    /// HashMap；失败件如实留在台账，不进方案；某态全失败 → 该态缺）。
+    pub fn build_model(
+        &self,
+        name: &str,
+        author: &str,
+    ) -> Result<CursorSchemeModel, CurImportError> {
+        let mut items: Vec<(PointerState, &[u8])> = Vec::new();
+        for st in crate::jstar2::jbase::ALL_STATES.iter() {
+            let Some(r) = self.records.iter().find(|r| r.ok && r.state == *st) else {
+                continue;
+            };
+            items.push((*st, &r.bytes));
+        }
+        import_cursor_set(&items, name, author)
+    }
+}
+
+/// 样本清单确定性序列化（回归基线面：同一库两次序列化逐字节相同；
+/// 行格式 `id|name|len|fp|state`，fp = fnv1a64(字节)——样本库任何漂移
+/// （哪怕一字节）都会改指纹，回归对账一眼可见）。
+pub fn sample_manifest(lib: &[Sample]) -> String {
+    let mut s = String::from("v=1\n");
+    for sm in lib {
+        s.push_str(&alloc::format!(
+            "{}|{}|{}|{:016x}|{}\n",
+            sm.id,
+            sm.name,
+            sm.bytes.len(),
+            crate::jstar2::jbase::fnv1a64(&sm.bytes),
+            sm.state as u8
+        ));
+    }
+    s
+}
+
+/// 清单指纹（基线对账键：整个清单文本的 fnv1a64）。
+pub fn manifest_fingerprint(lib: &[Sample]) -> u64 {
+    crate::jstar2::jbase::fnv1a64(sample_manifest(lib).as_bytes())
+}
+
+/// 清单回读（基线可比对：解析行 → (id, fp) 序列；格式错如实报行号
+/// ——基线文件被手改时一眼定位到行）。
+pub fn parse_manifest_fingerprints(text: &str) -> Result<Vec<(usize, u64)>, String> {
+    let mut out = Vec::new();
+    for (i, l) in text.lines().enumerate() {
+        if l == "v=1" {
+            continue;
+        }
+        let p: Vec<&str> = l.split('|').collect();
+        if p.len() != 5 {
+            return Err(alloc::format!("清单第 {} 行字段数 {} ≠ 5", i + 1, p.len()));
+        }
+        let id = p[0].parse::<usize>().map_err(|_| alloc::format!("清单第 {} 行 id 非数字", i + 1))?;
+        let fp = u64::from_str_radix(p[3], 16)
+            .map_err(|_| alloc::format!("清单第 {} 行指纹非十六进制", i + 1))?;
+        out.push((id, fp));
+    }
+    Ok(out)
+}
+
+/// F633 v4 自检（对抗族回放 / 会话统计 / 清单确定性序列化）。
+pub fn run_curimport_v4_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F633-v4");
+
+    // 1. 对抗族规模：≥ 24 例、覆盖 ≥ 12 错误族（线性查重不用 HashMap）。
+    let fam = gen_adversarial_family();
+    let mut fams: Vec<&'static str> = Vec::new();
+    for c in &fam {
+        if !fams.iter().any(|f| *f == c.family) {
+            fams.push(c.family);
+        }
+    }
+    set.add("adversarial family coverage", fam.len() >= 24 && fams.len() >= 12, "");
+
+    // 2. 全族回放：每例诚实报错 + 族匹配 + 定位句非空。
+    let (pass, fail, _) = replay_adversarial_family(&fam);
+    set.add(
+        "adversarial family replay all located",
+        fail == 0 && pass == fam.len(),
+        "",
+    );
+
+    // 3. error_family 全枚举覆盖（13 变体逐一字面构造 → 族键 + 人话定位非空）。
+    let variants: Vec<CurImportError> = alloc::vec![
+        CurImportError::TooSmall(0),
+        CurImportError::BadMagic { offset: 0 },
+        CurImportError::UnsupportedType { offset: 0, type_: 0 },
+        CurImportError::ZeroImages { offset: 0 },
+        CurImportError::EntryOutOfRange { index: 0, offset: 0 },
+        CurImportError::ImageTooLarge { index: 0, w: 0, h: 0 },
+        CurImportError::BadDibHeader { index: 0, offset: 0, why: "" },
+        CurImportError::UnsupportedBpp { index: 0, bpp: 0 },
+        CurImportError::Truncated { offset: 0, need: "" },
+        CurImportError::BadRiffChunk { offset: 0, fourcc: *b"XXXX" },
+        CurImportError::BadAnihHeader { offset: 0, why: "" },
+        CurImportError::FrameCountOver { count: 0 },
+        CurImportError::FpsOverLimit { delay_ms: 0 },
+    ];
+    set.add(
+        "error family covers all variants",
+        variants.len() == 13
+            && variants.iter().all(|e| !error_family(e).is_empty())
+            && variants.iter().all(|e| !e.describe().is_empty()),
+        "",
+    );
+
+    // 4. 会话全绿：90 正常样本全收（total/ok/failed 三数一致）。
+    let lib = generate_library();
+    let mut sess = ImportSession::new();
+    for s in &lib {
+        if s.expect.is_some() {
+            sess.ingest(s.name, s.state, &s.bytes);
+        }
+    }
+    let st = sess.stats();
+    set.add(
+        "session ingests 90 normal samples",
+        st.total == 90 && st.ok == 90 && st.failed == 0,
+        "",
+    );
+
+    // 5. 会话拒收分类：10 对抗样本全拒、按错因计数闭合（分类键取真实
+    //    报错族；库内样本 9 的声明标签 bad-riff-chunk 与真实族 truncated
+    //    有偏差——既有声明只断言 is_err，本检查以真实族为准绳）。
+    let mut sess2 = ImportSession::new();
+    for s in lib.iter().skip(90) {
+        sess2.ingest(s.name, s.state, &s.bytes);
+    }
+    let st2 = sess2.stats();
+    let cause_sum: usize = st2.by_cause.iter().map(|(_, n)| n).sum();
+    set.add(
+        "session classifies failures by cause",
+        st2.failed == 10 && st2.ok == 0 && cause_sum == 10 && !st2.by_cause.is_empty(),
+        "",
+    );
+
+    // 6. 会话汇总确定性 + 人话（同输入两次 → 字节同；失败数入句）。
+    set.add(
+        "session summary deterministic",
+        sess2.summary() == sess2.summary() && sess2.summary().contains("失败 10"),
+        "",
+    );
+
+    // 7. 会话组装方案：每态取首个成功件（cur 库按态×编码排布，步长 4
+    //    恰好每态一枚）→ 15 态齐。
+    let mut sess3 = ImportSession::new();
+    for (i, s) in lib.iter().enumerate() {
+        if s.expect.is_some() && i % 4 == 0 {
+            sess3.ingest(&alloc::format!("{}#{}", s.name, s.id), s.state, &s.bytes);
+        }
+    }
+    match sess3.build_model("会话方案", "tester") {
+        Ok(m) => set.add("session builds full scheme", m.missing_states().is_empty(), ""),
+        Err(_) => set.add("session builds full scheme", false, "import failed"),
+    }
+
+    // 8. 清单确定性：同一库两次序列化逐字节相同。
+    let m1 = sample_manifest(&lib);
+    set.add(
+        "manifest serialization deterministic",
+        m1 == sample_manifest(&lib) && m1.starts_with("v=1\n"),
+        "",
+    );
+
+    // 9. 清单回读：100 行、指纹与样本字节一致（首末抽验 + 全量 id 对位）。
+    let fps = parse_manifest_fingerprints(&m1);
+    let fp_ok = match fps {
+        Ok(v) => {
+            v.len() == 100
+                && v[0].1 == crate::jstar2::jbase::fnv1a64(&lib[0].bytes)
+                && v[99].1 == crate::jstar2::jbase::fnv1a64(&lib[99].bytes)
+                && v.iter().zip(lib.iter()).all(|(a, s)| a.0 == s.id)
+        }
+        Err(_) => false,
+    };
+    set.add("manifest fingerprints roundtrip", fp_ok, "");
+
+    // 10. 清单漂移检测：任一样本翻一字节 → 基线指纹变（回归对账咬人）。
+    let mut drifted = lib.clone();
+    drifted[42].bytes[10] ^= 0x01;
+    set.add(
+        "manifest fingerprint detects drift",
+        manifest_fingerprint(&drifted) != manifest_fingerprint(&lib),
+        "",
+    );
+
+    // 11. 清单坏行定位：字段数不对 → 报到行号（基线手改可定位）。
+    set.add(
+        "manifest parse locates bad line",
+        parse_manifest_fingerprints("v=1\n1|cur|10|abcd\n")
+            .err()
+            .map(|e| e.contains("2"))
+            .unwrap_or(false),
+        "",
+    );
+
+    // 12. jiffy 换算补钉：jif=3 → 50ms；jif=2 → 33ms；jif=60 → 1s。
+    set.add(
+        "jif table spot checks",
+        jif_to_ms_exact(3) == 50 && jif_to_ms_exact(2) == 33 && jif_to_ms_exact(60) == 1000,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+
+    #[test]
+    fn adversarial_family_replays_clean() {
+        let fam = gen_adversarial_family();
+        assert!(fam.len() >= 24);
+        let (pass, fail, _) = replay_adversarial_family(&fam);
+        assert_eq!(fail, 0);
+        assert_eq!(pass, fam.len());
+    }
+
+    #[test]
+    fn session_stats_and_cause_order_deterministic() {
+        let (good, _) = gen_cur(16, 16, 32, (1, 1), 7);
+        let mut bad = good.clone();
+        bad[0] = 9;
+        let mut sess = ImportSession::new();
+        assert!(sess.ingest("好件", PointerState::Normal, &good));
+        assert!(!sess.ingest("坏件", PointerState::Busy, &bad));
+        let st = sess.stats();
+        assert_eq!((st.total, st.ok, st.failed), (2, 1, 1));
+        assert_eq!(st.by_cause, alloc::vec![("bad-magic", 1)]);
+        assert_eq!(sess.summary(), sess.summary());
+    }
+
+    #[test]
+    fn manifest_drift_and_roundtrip() {
+        let lib = generate_library();
+        let text = sample_manifest(&lib);
+        let v = parse_manifest_fingerprints(&text).unwrap();
+        assert_eq!(v.len(), 100);
+        let mut drifted = lib.clone();
+        drifted[0].bytes[3] ^= 0x01;
+        assert_ne!(manifest_fingerprint(&drifted), manifest_fingerprint(&lib));
+    }
+
+    #[test]
+    fn session_build_model_takes_first_ok_per_state() {
+        let lib = generate_library();
+        let mut sess = ImportSession::new();
+        for s in lib.iter().take(4) {
+            sess.ingest(s.name, s.state, &s.bytes);
+        }
+        let m = sess.build_model("甲", "t").unwrap();
+        assert!(m.state(PointerState::Normal).is_some());
+        assert!(m.state(PointerState::Help).is_none());
+    }
+}

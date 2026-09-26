@@ -120,6 +120,11 @@ impl KernelRing {
         self.buf.len()
     }
 
+    /// 当前字节占用（容量审计面——v5）。
+    pub fn bytes_used(&self) -> usize {
+        self.bytes
+    }
+
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
@@ -1181,5 +1186,651 @@ mod deep2_tests {
     #[test]
     fn f188_v3_run_checks_pass() {
         assert!(run_logring_deep2_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——搜索高亮定位 / 时间窗滑杆模型 /
+// 泳道源选择 / 过滤预览计数 / 轮转策略公开文档。判据源：主册【交互设计】
+// 「源选择（内核/系统/应用/合并）+时间窗滑杆+级别过滤+搜索」四件的模型层
+// 落点 +【数据与存储】「轮转策略在册公开」。
+// ---------------------------------------------------------------------------
+
+use alloc::string::{String, ToString};
+
+// ---------------------------------------------------------------------------
+// v4-一：HighlightScanner —— 搜索命中高亮定位（命中不只数出来，还要标出
+// 位置：字节区间互不重叠、单条上限 16 处（超限截断如实标注）、大小写
+// 不敏感——与 contains_ci 同语义但产出区间）
+// ---------------------------------------------------------------------------
+
+/// 单条日志内一处命中。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HitRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+/// 单条命中上限（防一条超长日志把高亮层拖死——超限截断如实标注）。
+pub const HIGHLIGHT_CAP: usize = 16;
+
+/// 扫描一条正文（字节级 ASCII 大小写折叠；中文按字节精确匹配 UTF-8 序列）
+/// 的全部命中区间。
+pub fn highlight_ranges(text: &[u8], needle: &[u8]) -> (alloc::vec::Vec<HitRange>, bool) {
+    let mut out = alloc::vec::Vec::new();
+    if needle.is_empty() || needle.len() > text.len() {
+        return (out, false);
+    }
+    let fold = |b: u8| -> u8 {
+        if b.is_ascii_uppercase() { b + 32 } else { b }
+    };
+    let n = needle.len();
+    let mut i = 0usize;
+    while i + n <= text.len() {
+        let m = (0..n).all(|k| fold(text[i + k]) == fold(needle[k]));
+        if m {
+            out.push(HitRange { start: i, end: i + n });
+            i += n; // 不重叠——命中区跳过。
+            if out.len() >= HIGHLIGHT_CAP {
+                return (out, true); // true = 截断发生（诚实标注）。
+            }
+        } else {
+            i += 1;
+        }
+    }
+    (out, false)
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：TimeWindowModel —— 时间窗滑杆模型（两柄 [from,to]：拖动钳制在
+// 数据范围与最小窗宽内；窗口收窄只筛不改数据——过滤无副作用）
+// ---------------------------------------------------------------------------
+
+/// 时间窗最小宽度（ms——两柄贴死等于没有窗口，最小 1s 保底）。
+pub const WINDOW_MIN_SPAN_MS: u64 = 1_000;
+
+/// 滑杆窗口（含数据范围边界）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TimeWindow {
+    /// 数据全范围（滑杆两端硬边界）。
+    pub data_from_ms: u64,
+    pub data_to_ms: u64,
+    /// 当前窗口（两柄）。
+    pub from_ms: u64,
+    pub to_ms: u64,
+}
+
+impl TimeWindow {
+    /// 初始窗=全范围。
+    pub fn full(data_from_ms: u64, data_to_ms: u64) -> TimeWindow {
+        TimeWindow { data_from_ms, data_to_ms, from_ms: data_from_ms, to_ms: data_to_ms }
+    }
+
+    /// 拖动柄（which: 0=左柄 1=右柄）到 target——钳制三重：数据边界内 /
+    /// 最小窗宽 / 不得越过对柄。
+    pub fn drag(&mut self, which: u8, target: u64) {
+        let target = target.max(self.data_from_ms).min(self.data_to_ms);
+        match which {
+            0 => {
+                let cap = self.to_ms.saturating_sub(WINDOW_MIN_SPAN_MS);
+                self.from_ms = target.min(cap);
+            }
+            _ => {
+                let floor = self.from_ms + WINDOW_MIN_SPAN_MS;
+                self.to_ms = target.max(floor);
+            }
+        }
+        // 右柄不得超数据上界（floor 可能推过界——再钳一次）。
+        self.to_ms = self.to_ms.min(self.data_to_ms);
+        // 极窄数据本身不足最小窗宽时：窗=全范围（诚实降级）。
+        if self.data_to_ms - self.data_from_ms < WINDOW_MIN_SPAN_MS {
+            self.from_ms = self.data_from_ms;
+            self.to_ms = self.data_to_ms;
+        }
+    }
+
+    /// 窗口内条数预览。
+    pub fn count_in(&self, items: &[MergedItem]) -> usize {
+        items.iter().filter(|m| m.e.at_ms >= self.from_ms && m.e.at_ms <= self.to_ms).count()
+    }
+
+    /// 重置（双击滑杆轨道 = 回全范围）。
+    pub fn reset(&mut self) {
+        self.from_ms = self.data_from_ms;
+        self.to_ms = self.data_to_ms;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：LaneSelector —— 泳道源选择（「源选择（内核/系统/应用/合并）」的
+// 模型层：位掩码四源独立开关；合并=三源全开；全关=诚实空视图不是全显）
+// ---------------------------------------------------------------------------
+
+/// 泳道位（Lane 枚举的位掩码镜像——选择面用位运算，渲染面用枚举）。
+pub const LANE_KERNEL: u8 = 1;
+pub const LANE_SYSTEM: u8 = 2;
+pub const LANE_APP: u8 = 4;
+/// 合并预设 = 三源全开。
+pub const LANE_MERGED: u8 = LANE_KERNEL | LANE_SYSTEM | LANE_APP;
+
+/// 泳道选择器。
+#[derive(Clone, Copy, Debug)]
+pub struct LaneSelector {
+    pub mask: u8,
+    /// 全关后用户尝试查看的次数（诊断：全关视图容易让人误以为「没日志」）。
+    pub empty_view_hits: u64,
+}
+
+impl LaneSelector {
+    pub fn merged() -> LaneSelector {
+        LaneSelector { mask: LANE_MERGED, empty_view_hits: 0 }
+    }
+
+    pub fn toggle(&mut self, lane: u8) {
+        self.mask ^= lane;
+    }
+
+    /// 过滤合并时间轴（mask 之外的泳道被剔除；全关 → 计数空视图命中）。
+    pub fn apply<'a>(&mut self, items: &'a [MergedItem]) -> alloc::vec::Vec<&'a MergedItem> {
+        if self.mask == 0 {
+            self.empty_view_hits += 1;
+            return alloc::vec::Vec::new();
+        }
+        items
+            .iter()
+            .filter(|m| {
+                let bit = match m.lane {
+                    Lane::Kernel => LANE_KERNEL,
+                    Lane::System => LANE_SYSTEM,
+                    Lane::App => LANE_APP,
+                };
+                self.mask & bit != 0
+            })
+            .collect()
+    }
+
+    /// 当前是否合并预设（页面标题随源选择变化——「合并视图」vs「内核日志」）。
+    pub fn is_merged(&self) -> bool {
+        self.mask == LANE_MERGED
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：FacetPreview —— 过滤预览计数（级别 × 泳道 5×3 计数矩阵：过滤前
+// 先看到「这一刀下去每个桶还剩几条」——10 万条流畅的聚合面铺垫）
+// ---------------------------------------------------------------------------
+
+/// 5 级别 × 3 泳道计数矩阵（行=级别 fatal..debug，列=内核/系统/应用）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FacetMatrix {
+    pub cells: [[usize; 3]; 5],
+    pub total: usize,
+}
+
+impl FacetMatrix {
+    /// 从合并时间轴统计。
+    pub fn build(items: &[MergedItem]) -> FacetMatrix {
+        let mut m = FacetMatrix { cells: [[0; 3]; 5], total: items.len() };
+        for it in items {
+            let row = match it.e.level {
+                LogLevel::Fatal => 0,
+                LogLevel::Error => 1,
+                LogLevel::Warn => 2,
+                LogLevel::Info => 3,
+                LogLevel::Debug => 4,
+            };
+            let col = match it.lane {
+                Lane::Kernel => 0,
+                Lane::System => 1,
+                Lane::App => 2,
+            };
+            m.cells[row][col] += 1;
+        }
+        m
+    }
+
+    /// 级别过滤后剩余总数（allow_debug=false 时 debug 行整行剔除——与
+    /// MergedTimeline::filter_level 同语义的计数面）。
+    pub fn remaining(&self, allow_debug: bool) -> usize {
+        let mut n = 0;
+        for (i, row) in self.cells.iter().enumerate() {
+            if i == 4 && !allow_debug {
+                continue;
+            }
+            n += row.iter().sum::<usize>();
+        }
+        n
+    }
+
+    /// 某泳道在某级别的计数（诊断页气泡查询）。
+    pub fn cell(&self, level_row: usize, lane_col: usize) -> usize {
+        self.cells[level_row.min(4)][lane_col.min(2)]
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-五：ROTATION_DOC —— 轮转策略公开文档（「轮转策略在册公开」——把
+// 常量翻译成用户可读的文档行，常量改动文档自动跟随（生成而非手写））
+// ---------------------------------------------------------------------------
+
+/// 文档行（标题 + 内容——「在册公开」的页面条目）。
+pub fn rotation_doc_lines() -> alloc::vec::Vec<(&'static str, String)> {
+    let mut out = alloc::vec::Vec::new();
+    out.push((
+        "内核环形日志",
+        alloc::format!("内存定长 {} KB，写满后覆盖最旧条目，覆盖位置留洞标记", KERNEL_RING_BYTES / 1024),
+    ));
+    out.push((
+        "系统日志",
+        alloc::format!("文件轮转 {} 个 × {} MB，滚满后最旧档封存入账", SYS_ROTATE_FILES, SYS_FILE_BYTES / (1024 * 1024)),
+    ));
+    out.push((
+        "应用日志",
+        "各应用沙盒内自管，受应用配额约束（F195），超配额拒写并留账".to_string(),
+    ));
+    out.push((
+        "时间对齐",
+        alloc::format!("三环统一时钟源打点，对齐精度承诺 ±{} ms", ALIGN_TOLERANCE_MS),
+    ));
+    out
+}
+
+/// 文档行完整性（四行齐+数值行内嵌了真实常量——文档与实现永不脱节）。
+pub fn rotation_doc_intact() -> bool {
+    let lines = rotation_doc_lines();
+    lines.len() == 4
+        && lines[0].1.contains("256")
+        && lines[1].1.contains("10")
+        && lines[3].1.contains("50")
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F188 v4 自检（聚合进 secstar2 域）。
+pub fn run_logring_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F188-v4");
+
+    // v4-一：高亮扫描——命中区间、大小写折叠、中文、截断标注、空针诚实空。
+    let text = b"Error: Disk I/O error at disk0; retry ERROR path";
+    let (hits, trunc) = highlight_ranges(text, b"error");
+    set.add("hl case fold", hits.len() == 3, "Error/error/ERROR 三处（大小写折叠）");
+    set.add("hl ranges", hits[0] == HitRange { start: 0, end: 5 }
+        && hits[1] == HitRange { start: 16, end: 21 }
+        && hits[2] == HitRange { start: 38, end: 43 }, "");
+    set.add("hl no trunc", !trunc, "");
+    let (cn, cn_trunc) = highlight_ranges("内核慢在前，应用超时在后".as_bytes(), "超时".as_bytes());
+    set.add("hl utf8 hit", cn.len() == 1 && !cn_trunc, "中文按 UTF-8 序列命中");
+    set.add("hl empty needle", highlight_ranges(text, b"").0.is_empty(), "空针零命中不炸");
+    // 截断：17 处命中 → 16 + 截断标志（"a" 用 "-" 分隔防重叠）。
+    let mut big = alloc::vec::Vec::new();
+    for i in 0..17usize {
+        if i > 0 {
+            big.extend_from_slice(b"-");
+        }
+        big.push(b'a');
+    }
+    let (many_hits, many_trunc) = highlight_ranges(&big, b"a");
+    set.add("hl cap", many_hits.len() == HIGHLIGHT_CAP && many_trunc, "");
+
+    // v4-二：时间窗滑杆——钳制三重、重置、窗口计数。
+    let items = alloc::vec![
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(1000, LogLevel::Info, b"k boot ok") },
+        MergedItem { lane: Lane::System, e: LogEntry::new(2000, LogLevel::Warn, b"s rotate") },
+        MergedItem { lane: Lane::App, e: LogEntry::new(3000, LogLevel::Error, b"a quota") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(4000, LogLevel::Info, b"k tick") },
+    ];
+    let mut w = TimeWindow::full(1000, 4000);
+    set.add("win full count", w.count_in(&items) == 4, "");
+    w.drag(0, 1500);
+    w.drag(1, 3500);
+    set.add("win narrowed", w.from_ms == 1500 && w.to_ms == 3500 && w.count_in(&items) == 2, "");
+    // 左柄不许越过右柄-最小窗宽。
+    w.drag(0, 3400);
+    set.add("win min span", w.from_ms == 2500 && w.to_ms - w.from_ms == WINDOW_MIN_SPAN_MS, "");
+    // 越数据边界钳制。
+    w.drag(1, 99999);
+    set.add("win bound clamp", w.to_ms == 4000, "");
+    w.reset();
+    set.add("win reset", w.from_ms == 1000 && w.to_ms == 4000, "");
+    // 极窄数据诚实降级=全范围。
+    let mut tiny = TimeWindow::full(5000, 5400);
+    tiny.drag(0, 5200);
+    set.add("win tiny degrade", tiny.from_ms == 5000 && tiny.to_ms == 5400, "");
+
+    // v4-三：泳道选择——合并预设、独立开关、全关诚实空+计数。
+    let mut sel = LaneSelector::merged();
+    set.add("lane merged default", sel.is_merged() && sel.apply(&items).len() == 4, "");
+    sel.toggle(LANE_APP);
+    set.add("lane toggle", sel.apply(&items).len() == 3, "关应用后剩 3 条");
+    sel.toggle(LANE_KERNEL);
+    set.add("lane system only", sel.apply(&items).len() == 1, "");
+    sel.toggle(LANE_SYSTEM);
+    let empty = sel.apply(&items);
+    set.add("lane all off honest", empty.is_empty() && sel.empty_view_hits == 1, "全关=空视图并计数");
+    set.add("lane merged preset const", LANE_MERGED == 7, "");
+
+    // v4-四：过滤预览矩阵——聚合与 filter_level 同语义。
+    let fm = FacetMatrix::build(&items);
+    set.add("facet total", fm.total == 4, "");
+    set.add("facet cell", fm.cell(1, 2) == 1, "App Error=1");
+    set.add("facet kernel info", fm.cell(3, 0) == 2, "内核 Info=2");
+    set.add("facet debug off", fm.remaining(false) == 4, "样本无 debug：全留");
+    set.add("facet debug on", fm.remaining(true) == 4, "");
+    // 带 debug 样本再验一次行剔除。
+    let with_dbg = alloc::vec![
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(100, LogLevel::Debug, b"d") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(200, LogLevel::Info, b"i") },
+    ];
+    let fm2 = FacetMatrix::build(&with_dbg);
+    set.add("facet row cut", fm2.remaining(false) == 1 && fm2.remaining(true) == 2, "debug 行整行剔除");
+
+    // v4-五：轮转文档——四行齐且内嵌真实常量。
+    set.add("rot doc intact", rotation_doc_intact(), "");
+    let doc = rotation_doc_lines();
+    set.add("rot doc app line", doc[2].1.contains("F195"), "应用日志行挂配额锚");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    fn mk_entry(at_ms: u64, level: LogLevel, text: &[u8]) -> LogEntry {
+        LogEntry::new(at_ms, level, text)
+    }
+
+    #[test]
+    fn f188_v4_highlight_overlapping_skipped() {
+        // 重叠命中不重复计（"aaa" 搜 "aa" → 只 1 处，跳过重叠）。
+        let (h, t) = highlight_ranges(b"aaaa", b"aa");
+        assert_eq!(h.len(), 2, "非重叠推进：0-2 与 2-4");
+        assert!(!t);
+        // 边界：针比文长。
+        assert!(highlight_ranges(b"ab", b"abc").0.is_empty());
+    }
+
+    #[test]
+    fn f188_v4_window_never_inverts() {
+        // 乱拖 1000 次两柄永不交叉且窗宽永不小于最小值（不变式压测）。
+        let mut w = TimeWindow::full(0, 60_000);
+        for i in 0..1000u64 {
+            let t = (i * 977) % 70_000;
+            w.drag((i & 1) as u8, t);
+            assert!(w.to_ms >= w.from_ms + WINDOW_MIN_SPAN_MS, "iter {} [{},{}]", i, w.from_ms, w.to_ms);
+            assert!(w.to_ms <= 60_000);
+        }
+    }
+
+    #[test]
+    fn f188_v4_lane_apply_preserves_order() {
+        // 过滤保序（合并时间轴的时间序不许被选择面打乱）。
+        let items = (0..50u64)
+            .map(|i| {
+                let lane = if i % 3 == 0 { Lane::Kernel } else if i % 3 == 1 { Lane::System } else { Lane::App };
+                MergedItem { lane, e: LogEntry::new(i * 100, LogLevel::Info, b"order") }
+            })
+            .collect::<alloc::vec::Vec<_>>();
+        let mut sel = LaneSelector::merged();
+        sel.toggle(LANE_APP);
+        let out = sel.apply(&items);
+        assert_eq!(out.len(), 34); // 非 App 的 2/3 ≈ 33.3 → 50 - 17 = 33? 逐项算：i%3!=2
+        // 严格校验：保序且全为非 App。
+        let mut last = 0u64;
+        for it in out {
+            assert!(it.e.at_ms >= last);
+            last = it.e.at_ms;
+            assert!(matches!(it.lane, Lane::Kernel | Lane::System));
+        }
+    }
+
+    #[test]
+    fn f188_v4_facet_matrix_matches_filter() {
+        // 矩阵计数与 LogQuery 过滤互证（同一数据两条路径算出同一个数）。
+        let entries: alloc::vec::Vec<LogEntry> = (0..100u64)
+            .map(|i| {
+                let lvl = match i % 5 {
+                    0 => LogLevel::Fatal,
+                    1 => LogLevel::Error,
+                    2 => LogLevel::Warn,
+                    3 => LogLevel::Info,
+                    _ => LogLevel::Debug,
+                };
+                mk_entry(i, lvl, b"x")
+            })
+            .collect();
+        let items: alloc::vec::Vec<MergedItem> = entries
+            .iter()
+            .map(|e| MergedItem { lane: Lane::Kernel, e: *e })
+            .collect();
+        let fm = FacetMatrix::build(&items);
+        // Fatal 行 20 条（i%5==0）。
+        assert_eq!(fm.cell(0, 0), 20);
+        // debug off = 80。
+        assert_eq!(fm.remaining(false), 80);
+    }
+
+    #[test]
+    fn f188_v4_run_checks_pass() {
+        assert!(run_logring_deep3_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 · 上限口径冲刺）——三环容量审计导出。判据源：主册
+// 【数据与存储】「各环上限与覆盖策略在册」+【状态与异常】诊断报备。
+// ---------------------------------------------------------------------------
+
+/// 容量审计结论（三环逐环：上限/现用/占比 permille）。
+pub struct CapacityAudit {
+    pub kernel_used: usize,
+    pub kernel_cap: usize,
+    pub sys_files_used: usize,
+    pub sys_files_cap: usize,
+    pub kernel_permille: u64,
+    pub sys_permille: u64,
+}
+
+/// 组装（KernelRing + RotatedLog → 三环审计——诊断中心「日志健康」格）。
+pub fn capacity_audit(k: &KernelRing, r: &RotatedLog) -> CapacityAudit {
+    let kernel_used = k.bytes_used();
+    // 系统环现用段数：非空段计数。
+    let sys_used = r.seg_counts.iter().filter(|c| **c > 0).count();
+    CapacityAudit {
+        kernel_used,
+        kernel_cap: KERNEL_RING_BYTES,
+        sys_files_used: sys_used,
+        sys_files_cap: SYS_ROTATE_FILES,
+        kernel_permille: kernel_used as u64 * 1000 / KERNEL_RING_BYTES as u64,
+        sys_permille: sys_used as u64 * 1000 / SYS_ROTATE_FILES as u64,
+    }
+}
+
+/// F188 v5 自检（deep4 表）。
+pub fn run_logring_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F188-v5");
+
+    let mut k = KernelRing::new();
+    let e = LogEntry::new(1000, LogLevel::Info, b"cap audit probe entry");
+    let unit = e.cost_bytes();
+    for _ in 0..10 {
+        k.push(LogEntry::new(1000, LogLevel::Info, b"cap audit probe entry"));
+    }
+    let mut r = RotatedLog::new();
+    for _ in 0..3 {
+        r.push(&LogEntry::new(2000, LogLevel::Info, b"sys line"));
+    }
+    let a = capacity_audit(&k, &r);
+    set.add("cap kernel used", a.kernel_used == 10 * unit, "");
+    set.add("cap sys used", a.sys_files_used == 1, "3 条同段未轮转 → 1 个非空段");
+    set.add("cap kernel permille", a.kernel_permille == (10 * unit) as u64 * 1000 / KERNEL_RING_BYTES as u64, "");
+    set.add("cap sys permille", a.sys_permille == 100, "1/10 段 = 100‰");
+    set.add("cap within bounds", a.kernel_used <= KERNEL_RING_BYTES && a.sys_files_used <= SYS_ROTATE_FILES, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f188_v4_cap_audit_full_ring() {
+        // 灌满内核环：占比 1000‰（上限即满——审计面如实报满）。
+        let mut k = KernelRing::new();
+        let big = [b'x'; 32];
+        while k.bytes_used() + 48 < KERNEL_RING_BYTES {
+            k.push(LogEntry::new(1, LogLevel::Info, &big));
+        }
+        let a = capacity_audit(&k, &RotatedLog::new());
+        assert!(a.kernel_permille >= 990, "接近满载如实呈现（{}‰）", a.kernel_permille);
+    }
+
+    #[test]
+    fn f188_v4_run_checks_pass() {
+        assert!(run_logring_deep4_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——日志健康摘要行 + 级别分布健康判定。
+// 判据源：主册【状态与异常】「日志系统自身故障 → 降级内存环+诊断报备」。
+// ---------------------------------------------------------------------------
+
+/// 健康摘要行（三环现状一句——诊断中心格文案）。
+pub fn health_summary_line(k: &KernelRing, r: &RotatedLog) -> String {
+    let a = capacity_audit(k, r);
+    alloc::format!(
+        "日志健康：内核环 {}‰ / 系统环 {} 段在用 —— 三环时间对齐 ±{}ms",
+        a.kernel_permille, a.sys_files_used, ALIGN_TOLERANCE_MS
+    )
+}
+
+/// 级别分布健康判定（fatal 占比超 5% = 系统在喊救命——诊断面红旗）。
+pub fn level_census_healthy(items: &[MergedItem]) -> bool {
+    if items.is_empty() {
+        return true; // 无日志=无 fatal（空即健康）。
+    }
+    let fatal = items.iter().filter(|m| m.e.level == LogLevel::Fatal).count();
+    fatal * 100 <= items.len() * 5
+}
+
+/// F188 v6 自检（deep5 表）。
+pub fn run_logring_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F188-v6");
+
+    let mut k = KernelRing::new();
+    k.push(LogEntry::new(1000, LogLevel::Info, b"health probe"));
+    let mut r = RotatedLog::new();
+    r.push(&LogEntry::new(2000, LogLevel::Info, b"sys"));
+    let line = health_summary_line(&k, &r);
+    set.add("health line", line.contains("内核环") && line.contains("±50ms"), "对齐承诺入文");
+
+    // 级别健康——正常流绿、fatal 风暴红、空流绿。
+    let normal = vec![
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(1, LogLevel::Info, b"a") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(2, LogLevel::Warn, b"b") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(3, LogLevel::Error, b"c") },
+    ];
+    set.add("census healthy", level_census_healthy(&normal), "无 fatal=绿");
+    let storm = vec![
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(1, LogLevel::Fatal, b"x") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(2, LogLevel::Info, b"y") },
+        MergedItem { lane: Lane::Kernel, e: LogEntry::new(3, LogLevel::Info, b"z") },
+    ];
+    set.add("census fatal storm", !level_census_healthy(&storm), "1/3 fatal > 5% 红旗");
+    set.add("census empty", level_census_healthy(&[]), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f188_v5_census_boundary_5pct() {
+        // 恰 5%（20 条 1 fatal）= 绿（<= 语义——边界不误报）。
+        let mut items = Vec::new();
+        items.push(MergedItem { lane: Lane::Kernel, e: LogEntry::new(0, LogLevel::Fatal, b"f") });
+        for i in 1..20u64 {
+            items.push(MergedItem { lane: Lane::Kernel, e: LogEntry::new(i, LogLevel::Info, b"i") });
+        }
+        assert!(level_census_healthy(&items));
+    }
+
+    #[test]
+    fn f188_v5_run_checks_pass() {
+        assert!(run_logring_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——合并视图分页统计。
+// 判据源：主册【验收判据】「合并视图 10 万条流畅」的分页数据面。
+// ---------------------------------------------------------------------------
+
+/// 分页模型（页大小 × 页序 → 切片——10 万条流畅的分页语义）。
+pub fn merged_page(items: &[MergedItem], page_size: usize, page_no: usize) -> Vec<&MergedItem> {
+    let start = page_no * page_size;
+    items.iter().skip(start).take(page_size).collect()
+}
+
+/// 总页数（向上取整——尾页不满也占一页）。
+pub fn merged_page_count(total: usize, page_size: usize) -> usize {
+    if page_size == 0 {
+        return 0;
+    }
+    total.div_ceil(page_size)
+}
+
+/// F188 v7 自检（deep6 表）。
+pub fn run_logring_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F188-v7");
+
+    let items: Vec<MergedItem> = (0..25u64)
+        .map(|i| MergedItem { lane: Lane::Kernel, e: LogEntry::new(i, LogLevel::Info, b"page") })
+        .collect();
+    let p0 = merged_page(&items, 10, 0);
+    let p2 = merged_page(&items, 10, 2);
+    set.add("page full", p0.len() == 10, "");
+    set.add("page tail", p2.len() == 5, "尾页 5 条");
+    set.add("page beyond empty", merged_page(&items, 10, 9).is_empty(), "越页=空");
+    set.add("page count", merged_page_count(25, 10) == 3, "25/10 → 3 页");
+    set.add("page count exact", merged_page_count(20, 10) == 2, "整除不加页");
+    set.add("page size zero", merged_page_count(25, 0) == 0, "除零防呆");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f188_v6_page_no_overlap() {
+        // 分页互不重叠且并集=全量（分页数学完备性）。
+        let items: Vec<MergedItem> = (0..23u64)
+            .map(|i| MergedItem { lane: Lane::Kernel, e: LogEntry::new(i, LogLevel::Info, b"p") })
+            .collect();
+        let pages = 3;
+        let mut seen = Vec::new();
+        for p in 0..pages {
+            seen.extend(merged_page(&items, 10, p).iter().map(|m| m.e.at_ms));
+        }
+        assert_eq!(seen.len(), 23);
+        let mut sorted = seen.clone();
+        sorted.sort();
+        assert_eq!(sorted, (0..23u64).collect::<Vec<u64>>());
+    }
+
+    #[test]
+    fn f188_v6_run_checks_pass() {
+        assert!(run_logring_deep6_checks().all_passed());
     }
 }

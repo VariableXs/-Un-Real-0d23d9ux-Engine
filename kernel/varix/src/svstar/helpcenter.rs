@@ -409,6 +409,44 @@ impl SearchIndex {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 手册版本绑定横幅 + 打印友好样式（主册设计细节两点：
+// 「本手册对应 vX」版本绑定显示；打印友好样式——导出 PDF 走 F025 打印面）
+// ---------------------------------------------------------------------------
+
+/// 手册版本绑定横幅（版本绑定显示的机器面）：空版本拒绝（无版本的
+/// 横幅是假绑定）；横幅形态固定「本手册对应 VARIX v<版本>」，渲染层
+/// 置于每页页首（版本与内容同升同降——判据文本改了版本不改 = 三册
+/// 腐化的文档面变体，R8 对账有 digest 兜底）。
+pub fn manual_version_banner(version: &str) -> Option<String> {
+    if version.is_empty() || !version.chars().next().unwrap_or('0').is_ascii_digit() {
+        return None;
+    }
+    Some(alloc::format!("本手册对应 VARIX v{}", version))
+}
+
+/// 打印友好样式规则（导出 PDF 前的排版变换——四条规则在册）：
+/// 1) 隐藏交互件（直跳钮/搜索框/目录树折叠钮——纸面上不可点的东西
+///    不留尸位）；
+/// 2) 单栏重排（左目录树收起，正文通栏）；
+/// 3) 代码块不断行（横向溢出改缩放——截断代码 = 假文档）；
+/// 4) 页眉页脚（页眉=手册版本横幅，页脚=页码）。
+pub const PRINT_STYLE_RULES: [&str; 4] = [
+    "hide-interactive-widgets",
+    "single-column-reflow",
+    "code-blocks-never-truncated",
+    "header-banner-footer-pagenum",
+];
+
+/// 打印变换执行器（对渲染块清单的纸面化：交互块剔除——返回保留块
+/// 数，0 = 无可印内容）。
+pub fn print_transform(blocks: &[Block]) -> Vec<&Block> {
+    blocks
+        .iter()
+        .filter(|b| !matches!(b, Block::JumpButton(_)))
+        .collect()
+}
+
 pub fn run_helpcenter_checks() -> CheckSet {
     let mut set = CheckSet::new("F119-helpcenter");
 
@@ -541,6 +579,26 @@ pub fn run_helpcenter_checks() -> CheckSet {
         "",
     );
 
+    // 14. 手册版本绑定横幅（深化 v6）：合法版本出横幅且含版本串；空
+    //     版本 / 非数字开头拒绝（假绑定拦截）。
+    let banner = manual_version_banner("1.4.2");
+    let banner_ok = banner.map(|b| b.contains("本手册对应 VARIX v1.4.2")).unwrap_or(false);
+    let empty_ver = manual_version_banner("").is_none();
+    let bad_ver = manual_version_banner("v-next").is_none();
+    set.add("manual version banner bound", banner_ok && empty_ver && bad_ver, "");
+
+    // 15. 打印友好样式（深化 v6）：四规则在册 + 打印变换剔除直跳钮
+    //     且保留正文块。
+    let sample = render_md("# 页\n\n正文一段\n\n[[设置:个性化]]\n\n```\ncode\n```");
+    let printable = print_transform(&sample);
+    let no_jump = printable.iter().all(|b| !matches!(b, Block::JumpButton(_)));
+    let kept_some = !printable.is_empty();
+    set.add(
+        "print style rules + jump stripped",
+        PRINT_STYLE_RULES.len() == 4 && PRINT_STYLE_RULES[0] == "hide-interactive-widgets" && no_jump && kept_some,
+        "",
+    );
+
     set
 }
 
@@ -603,5 +661,22 @@ mod tests {
                 all_hits.push(h);
             }
         }
+    }
+
+    #[test]
+    fn f119_banner_versions_matrix() {
+        // 版本横幅矩阵：三位 semver / 两位 / 单段全通过；纯字母拒。
+        assert!(manual_version_banner("2.0").unwrap().contains("v2.0"));
+        assert!(manual_version_banner("3").is_some());
+        assert!(manual_version_banner("rc1").is_none());
+    }
+
+    #[test]
+    fn f119_print_transform_keeps_code_and_table() {
+        // 打印变换保留代码块与表格（纸面文档不许丢技术内容）。
+        let blocks = render_md("```\nlet x = 1;\n```\n\n| a | b |\n| --- | --- |\n| 1 | 2 |");
+        let p = print_transform(&blocks);
+        assert!(p.iter().any(|b| matches!(b, Block::Code(_, _))));
+        assert!(p.iter().any(|b| matches!(b, Block::Table(_))));
     }
 }

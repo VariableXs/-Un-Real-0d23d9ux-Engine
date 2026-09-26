@@ -364,7 +364,11 @@ pub fn run_cpufreq_checks() -> CheckSet {
     cs.add("fail_then_lock_safe", !g9.is_locked_safe(), "");
     g9.inject_switch_failure();
     cs.add("fail_twice_locks", g9.is_locked_safe() && g9.current_level() == PSTATE_LEVELS as u8 / 2, "");
-    cs
+    // 深化件（深化批次三）：ACPI _PSS 频率表装载与降序校验 / 不可读固定中档
+    // 并诊断标注 / 切换守卫（重试一次后锁定安全档）/ 温度越权（F197 优先）/
+    // 30s 负载类型判定与构建工具名单 / 切换耗时·突发响应·续航对照三账 /
+    // 全策略旋钮清单。
+    CheckSet::merge(cs, crate::perfstar::cpufreq_ext::run_checks())
 }
 
 #[cfg(test)]

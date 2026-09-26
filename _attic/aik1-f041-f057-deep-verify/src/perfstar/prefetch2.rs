@@ -472,7 +472,13 @@ pub fn run_prefetch2_checks() -> CheckSet {
     cs.add("priority_below_fg", PRIORITY_NOTE == "below-foreground", "");
     pf_check_hit_rate(&mut cs);
     pf_check_lru_evict(&mut cs);
-    cs
+    // 深化件（深化批次三）：开放格式指纹头（CRC/版本）/ 有效性三态裁定 /
+    // 8MB 配额与 LRU 指纹库 / 八页成批预读计划 / 退出后 30 秒生成调度 /
+    // 命中率账。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::prefetch2_ext::run_checks()),
+        crate::perfstar::mech_clocklru::run_checks(),
+    )
 }
 
 #[cfg(test)]

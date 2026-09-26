@@ -10,6 +10,7 @@
  */
 
 import { defaultStore, h4Key, readJson, type KvStore, writeJson } from "./internal/store";
+import { fnv1a32 } from "./internal/hash";
 
 /** 三参数（判据口径，一处定义）。 */
 export const READING_SPEC = {
@@ -37,15 +38,10 @@ export function withSerif(style: ReadingStyle, serif: boolean): ReadingStyle {
 /**
  * 内容零修改（判据核心）：阅读模式只产排版参数，绝不触碰文本本体——
  * 本函数签名上就收不到「修改后的文本」这种东西（结构性保证）。
- * FNV-1a 哈希用于开关前后一致性自证。
+ * FNV-1a 哈希用于开关前后一致性自证（实现委托 internal/hash 单点——v4 门禁收编私抄件）。
  */
 export function contentHash(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16);
+  return fnv1a32(text);
 }
 
 /** 页宽换算：45 字符 → 容器宽度（CJK 按全角 1em、ASCII 半角 0.5em 估算）。 */
@@ -91,4 +87,59 @@ export function appMode(appId: string, store: KvStore = defaultStore()): { on: b
 export const READING_MODE_ENTRY = "view-menu.reading-mode";
 export function unifiedEntry(): string {
   return READING_MODE_ENTRY;
+}
+
+/* ================= v5 深化批次五：段落重排视图 / 衬线字体栈 / 截词审计 ================= */
+
+/** 段落重排视图（只产视图行、不碰原文——软换行是纯投影）：按 maxCharsPerLine 折行，CJK 逐字、英文词完整（不截词）。 */
+export function reflowParagraphs(text: string, style: ReadingStyle): string[] {
+  const lines: string[] = [];
+  for (const para of text.split("\n")) {
+    if (para.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let cur = "";
+    let curWidth = 0;
+    for (const token of para.match(/[\x00-\xff]+|[^\x00-\xff]/g) ?? []) {
+      const w = /[\x00-\xff]/.test(token) ? token.length * 0.5 : token.length;
+      if (curWidth + w > style.maxCharsPerLine && cur.length > 0) {
+        lines.push(cur);
+        cur = token;
+        curWidth = w;
+      } else {
+        cur += token;
+        curWidth += w;
+      }
+    }
+    lines.push(cur);
+  }
+  return lines;
+}
+
+/** 视图行零侵入审计：软换行只增换行符——剥掉全部换行后与原文逐字一致（折行不增删字符）。 */
+export function auditViewIntegrity(text: string, style: ReadingStyle): { pass: boolean; hashBefore: string; hashAfter: string } {
+  const lines = reflowParagraphs(text, style);
+  const flatten = (s: string) => s.replace(/\n/g, "");
+  const joined = lines.join("\n");
+  return { pass: flatten(joined) === flatten(text), hashBefore: contentHash(text), hashAfter: contentHash(joined) };
+}
+
+/** 衬线字体族解析（判据「衬线可选」的落地面）：衬线开走宋体系、关走黑体系（栈一处定义）。 */
+export const SERIF_STACK = '"Source Han Serif SC", "Noto Serif CJK SC", serif';
+export const SANS_STACK = '"Source Han Sans SC", "Noto Sans CJK SC", sans-serif';
+export function fontStackFor(style: ReadingStyle): string {
+  return style.serif ? SERIF_STACK : SANS_STACK;
+}
+
+/** 截词审计：重排行内不允许出现被截断的 ASCII 词（词完整性 = 阅读体验底线）。 */
+export function auditNoBrokenWords(lines: string[], original: string): { pass: boolean; broken: string[] } {
+  const origWords = new Set(original.match(/[A-Za-z]+/g) ?? []);
+  const broken: string[] = [];
+  for (const line of lines) {
+    for (const w of line.match(/[A-Za-z]+/g) ?? []) {
+      if (!origWords.has(w) && w.length > 1 && !origWords.has(w.replace(/-$/, ""))) broken.push(w);
+    }
+  }
+  return { pass: broken.length === 0, broken };
 }

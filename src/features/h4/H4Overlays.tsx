@@ -17,10 +17,8 @@ import { pushToast } from "../../state/uiStore";
 import * as f359 from "../../system/h4/f359-colorPicker";
 import * as f363 from "../../system/h4/f363-focusTimer";
 import { effectiveKeymap } from "../../lib/keys/registry";
+import { h4Bus } from "./bus";
 import {
-  FOCUS_EVENT,
-  SUMMON_PICKER,
-  SUMMON_RULER,
   entriesFromKeymap,
   focusChipTick,
   pickerHostEscape,
@@ -244,23 +242,26 @@ function FocusChip(): React.ReactElement | null {
   const [badge, setBadge] = useState<string | null>(null);
 
   useEffect(() => {
-    const onFocus = (e: Event): void => {
-      const detail = (e as CustomEvent<{ type: string; minutes?: number }>).detail;
-      if (detail?.type === "start" && detail.minutes) {
-        setState({ run: { day: new Date().toISOString().slice(0, 10), plannedMinutes: detail.minutes, startedAt: Date.now(), endedAt: null, outcome: "running" }, recorded: false });
+    // v10 通道唯一化：专注/召唤指令全部走 h4Bus 契约事件（settings.* 域，v9 契约演进登记）
+    const offStart = h4Bus.on("settings.focus-start", (p) => {
+      const minutes = (p as { minutes?: number } | null)?.minutes;
+      if (minutes) {
+        setState({ run: { day: new Date().toISOString().slice(0, 10), plannedMinutes: minutes, startedAt: Date.now(), endedAt: null, outcome: "running" }, recorded: false });
       }
-      if (detail?.type === "abandon") {
-        setState((s) => {
-          if (!s.run) return s;
-          const a = f363.abandon(s.run, Date.now());
-          f363.recordRun(a, Date.now()); // 放弃入账（真实时长）——同一引擎，不复制账本
-          return { run: a, recorded: true };
-        });
-        setBadge(null);
-      }
+    });
+    const offAbandon = h4Bus.on("settings.focus-abandon", () => {
+      setState((s) => {
+        if (!s.run) return s;
+        const a = f363.abandon(s.run, Date.now());
+        f363.recordRun(a, Date.now()); // 放弃入账（真实时长）——同一引擎，不复制账本
+        return { run: a, recorded: true };
+      });
+      setBadge(null);
+    });
+    return () => {
+      offStart();
+      offAbandon();
     };
-    window.addEventListener(FOCUS_EVENT, onFocus);
-    return () => window.removeEventListener(FOCUS_EVENT, onFocus);
   }, []);
 
   useEffect(() => {
@@ -293,13 +294,11 @@ export function H4Overlays(): React.ReactElement {
   const [ruler, setRuler] = useState(false);
 
   useEffect(() => {
-    const onPick = (): void => setPicker(true);
-    const onRuler = (): void => setRuler(true);
-    window.addEventListener(SUMMON_PICKER, onPick);
-    window.addEventListener(SUMMON_RULER, onRuler);
+    const offPick = h4Bus.on("settings.summon-picker", () => setPicker(true));
+    const offRuler = h4Bus.on("settings.summon-ruler", () => setRuler(true));
     return () => {
-      window.removeEventListener(SUMMON_PICKER, onPick);
-      window.removeEventListener(SUMMON_RULER, onRuler);
+      offPick();
+      offRuler();
     };
   }, []);
 

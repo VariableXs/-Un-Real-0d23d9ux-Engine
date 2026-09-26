@@ -108,3 +108,41 @@ export function fillPhase(hasResult: boolean, requested: boolean): FillPhase {
   if (hasResult) return "filled";
   return requested ? "measuring" : "placeholder";
 }
+
+/* ================= v4 深化批次四：缓存上限 / 计量队列 / 单点对账强化 ================= */
+
+/** 缓存容量上限（防目录漫游把内存吃爆——MD2 配额纪律的计量侧）。 */
+export const SIZE_CACHE_CAP = 2000;
+
+/** 带上限的缓存写入：超限按插入序淘汰最旧（Map 保序 = 确定性淘汰口径）。 */
+export function cachePut(cache: SizeCache, path: string, version: string, bytes: number): void {
+  if (!cache.entries.has(path) && cache.entries.size >= SIZE_CACHE_CAP) {
+    const oldest = cache.entries.keys().next().value as string;
+    cache.entries.delete(oldest);
+  }
+  cache.entries.set(path, { version, bytes });
+}
+
+/** 计量队列（异步淡入的调度面）：FIFO 逐项受预算约束——超预算的项本轮不动（下轮续，不抢前台）。 */
+export interface MeasureRequest {
+  node: FsNode;
+}
+
+export function tickQueue(cache: SizeCache, requests: MeasureRequest[], budgetMs: number, startedAt: number, now: () => number = (() => 0)): { results: SizeResult[]; remaining: MeasureRequest[] } {
+  const results: SizeResult[] = [];
+  let i = 0;
+  while (i < requests.length && now() - startedAt < budgetMs) {
+    const { result } = measureCached(requests[i]!.node, cache, startedAt, now);
+    results.push(result);
+    i++;
+  }
+  return { results, remaining: requests.slice(i) };
+}
+
+/** 同源对账强化（判据「与三功能同源」）：三消费者必须引用同一缓存实例（实例 id 比对）。 */
+export function auditCacheIdentity(cacheIds: Array<{ consumer: SizeConsumer; cacheId: number }>): { pass: boolean; detail: string } {
+  const ids = new Set(cacheIds.map((c) => c.cacheId));
+  return ids.size === 1 && cacheIds.length >= 3
+    ? { pass: true, detail: "F268/F365/F393 同一缓存实例——一处一事实" }
+    : { pass: false, detail: `发现 ${ids.size} 个缓存实例——计量已分叉（缺陷）` };
+}

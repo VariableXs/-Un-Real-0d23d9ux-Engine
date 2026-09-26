@@ -43,6 +43,18 @@ pub const WINX_ITEMS: [(&str, u8, &str, bool); 9] = [
     ("关机或注销", b'U', "f405.power", true),
 ];
 
+/// 用户自定义项上限（v7 深化）：菜单不失控——九项之外最多钉 4 项。
+pub const CUSTOM_CAP: usize = 4;
+
+/// 用户自定义菜单项（钉选）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CustomItem {
+    pub name: &'static str,
+    /// 首字母索引键（不得与内置/既有自定义冲突）。
+    pub letter: u8,
+    pub page: &'static str,
+}
+
 // ---------------------------------------------------------------------------
 // 菜单状态机
 // ---------------------------------------------------------------------------
@@ -59,6 +71,8 @@ pub struct WinXMenu {
     pub over_budget: u64,
     /// 各项最近打开耗时（体验账，升序注入由调用方保证）。
     pub last_open_ms: Vec<u64>,
+    /// 用户自定义项（v7 深化：钉在九项之后——菜单尾部追加，不插队）。
+    pub customs: Vec<CustomItem>,
     /// 键位注册位（F244）。
     pub hotkeys: HotkeyTable,
 }
@@ -75,8 +89,69 @@ impl WinXMenu {
             opened: 0,
             over_budget: 0,
             last_open_ms: Vec::new(),
+            customs: Vec::new(),
             hotkeys,
         }
+    }
+
+    /// 生效条目总数（内置九项 + 自定义）——导航/循环的长度基准。
+    pub fn effective_len(&self) -> usize {
+        WINX_ITEMS.len() + self.customs.len()
+    }
+
+    /// 第 i 条生效条目（内置区 0..9 → 自定义区 9..）。
+    /// 返回（显示名, 首字母, 落地页, 是否子菜单父项）。
+    fn entry(&self, i: usize) -> Option<(&'static str, u8, &'static str, bool)> {
+        if i < WINX_ITEMS.len() {
+            let (n, k, p, par) = WINX_ITEMS[i];
+            Some((n, k, p, par))
+        } else {
+            self.customs.get(i - WINX_ITEMS.len()).map(|c| (c.name, c.letter, c.page, false))
+        }
+    }
+
+    /// 钉自定义项（v7 深化）：冲突三检全过才收——首字母被内置或既有
+    /// 自定义占用 → 拒；落地页重复 → 拒；超上限 → 拒（诚实拒绝，不静默
+    /// 挤掉旧项）。
+    pub fn add_custom(&mut self, item: CustomItem) -> Result<(), &'static str> {
+        if self.customs.len() >= CUSTOM_CAP {
+            return Err("cap-full");
+        }
+        if WINX_ITEMS.iter().any(|(_, k, _, _)| *k == item.letter)
+            || self.customs.iter().any(|c| c.letter == item.letter)
+        {
+            return Err("letter-taken");
+        }
+        if WINX_ITEMS.iter().any(|(_, _, p, _)| *p == item.page)
+            || self.customs.iter().any(|c| c.page == item.page)
+        {
+            return Err("page-dup");
+        }
+        self.customs.push(item);
+        Ok(())
+    }
+
+    /// 摘除自定义项（按落地页标识）。
+    pub fn remove_custom(&mut self, page: &str) -> bool {
+        let before = self.customs.len();
+        self.customs.retain(|c| c.page != page);
+        self.customs.len() != before
+    }
+
+    /// 自定义项快照（持久化 round-trip 用——用户钉选不能重启即丢）。
+    pub fn custom_snapshot(&self) -> Vec<(&'static str, u8, &'static str)> {
+        self.customs.iter().map(|c| (c.name, c.letter, c.page)).collect()
+    }
+
+    /// 滚动时延均账（v7 深化）：最近 8 次打开的均值——单次快照会骗人，
+    /// 均值才反映真实手感；无记录返回 0。
+    pub fn avg_open_ms(&self) -> u64 {
+        if self.last_open_ms.is_empty() {
+            return 0;
+        }
+        let tail = if self.last_open_ms.len() > 8 { &self.last_open_ms[self.last_open_ms.len() - 8..] } else { &self.last_open_ms[..] };
+        let sum: u64 = tail.iter().sum();
+        sum / tail.len() as u64
     }
 
     /// 打开（Win+X 或右键开始按钮）：选中复位首项。
@@ -91,22 +166,25 @@ impl WinXMenu {
         }
     }
 
-    /// 方向键导航（上/下循环；不开时无动作）。
+    /// 方向键导航（上/下循环；不开时无动作；覆盖内置+自定义全表）。
     pub fn move_sel(&mut self, delta: i32) {
         if !self.open || self.submenu_open {
             return;
         }
-        let n = WINX_ITEMS.len() as i32;
+        let n = self.effective_len() as i32;
         self.selected = ((self.selected as i32 + delta).rem_euclid(n)) as usize;
     }
 
-    /// 首字母直达（判据「首字母快捷」）：命中唯一项则选中它；
-    /// 未命中返回 false（不乱跳）。
+    /// 首字母直达（判据「首字母快捷」；覆盖内置+自定义）：命中唯一项
+    /// 则选中它；未命中返回 false（不乱跳）。
     pub fn jump_letter(&mut self, ch: u8) -> bool {
         if !self.open {
             return false;
         }
-        match WINX_ITEMS.iter().position(|(_, key, _, _)| *key == ch) {
+        let builtin_hit = WINX_ITEMS.iter().position(|(_, key, _, _)| *key == ch);
+        let custom_hit = self.customs.iter().position(|c| c.letter == ch);
+        let hit = builtin_hit.or(custom_hit.map(|p| p + WINX_ITEMS.len()));
+        match hit {
             Some(i) => {
                 self.selected = i;
                 true
@@ -115,12 +193,13 @@ impl WinXMenu {
         }
     }
 
-    /// Enter：子菜单父项 → 展开二级；普通项 → 返回落地页并关菜单。
+    /// Enter：子菜单父项 → 展开二级；普通项（含自定义）→ 返回落地页
+    /// 并关菜单。
     pub fn activate(&mut self) -> Option<&'static str> {
         if !self.open {
             return None;
         }
-        let (_, _, page, is_parent) = WINX_ITEMS[self.selected];
+        let (_, _, page, is_parent) = self.entry(self.selected)?;
         if is_parent {
             self.submenu_open = true;
             self.submenu_selected = 0;
@@ -267,6 +346,78 @@ pub fn run_winxmenu_checks() -> CheckSet {
         "",
     );
 
+    // ---- v7 深化：用户自定义项 / 滚动时延账 ----
+
+    // 钉选成功 + 生效表扩列。
+    let mut u = WinXMenu::new();
+    set.add(
+        "f408-custom-add",
+        u.add_custom(CustomItem { name: "备份", letter: b'B', page: "f442.restore" }).is_ok() && u.effective_len() == 10,
+        "",
+    );
+
+    // 冲突三检：字母被内置占 → 拒；页重复 → 拒。
+    set.add(
+        "f408-custom-conflicts",
+        u.add_custom(CustomItem { name: "错", letter: b'S', page: "x.y" }) == Err("letter-taken")
+            && u.add_custom(CustomItem { name: "错", letter: b'N', page: "f407.settings" }) == Err("page-dup"),
+        "",
+    );
+
+    // 字母被既有自定义占 → 拒；摘除后字母回收可再钉。
+    set.add(
+        "f408-custom-letter-recycle",
+        u.add_custom(CustomItem { name: "错", letter: b'B', page: "z.z" }) == Err("letter-taken")
+            && u.remove_custom("f442.restore")
+            && u.add_custom(CustomItem { name: "归档", letter: b'B', page: "f437.fmt" }).is_ok()
+            && !u.remove_custom("ghost.page"),
+        "",
+    );
+
+    // 上限 4：第五个诚实拒绝（cap-full，不挤旧项）。
+    let mut v = WinXMenu::new();
+    let ok = v.add_custom(CustomItem { name: "一", letter: b'B', page: "p.1" }).is_ok()
+        && v.add_custom(CustomItem { name: "二", letter: b'N', page: "p.2" }).is_ok()
+        && v.add_custom(CustomItem { name: "三", letter: b'M', page: "p.3" }).is_ok()
+        && v.add_custom(CustomItem { name: "四", letter: b'Q', page: "p.4" }).is_ok()
+        && v.add_custom(CustomItem { name: "五", letter: b'J', page: "p.5" }) == Err("cap-full");
+    set.add("f408-custom-cap", ok && v.effective_len() == 9 + CUSTOM_CAP, "");
+
+    // 钉选后全键位可达：字母直达自定义项 + Enter 落地 + 方向键覆盖 10 项。
+    let mut w = WinXMenu::new();
+    let _ = w.add_custom(CustomItem { name: "备份", letter: b'B', page: "f442.restore" });
+    w.open_menu(300);
+    set.add(
+        "f408-custom-jump-activate",
+        w.jump_letter(b'B') && w.selected == 9 && w.activate() == Some("f442.restore") && !w.is_open(),
+        "",
+    );
+    w.open_menu(300);
+    for _ in 0..10 {
+        w.move_sel(1);
+    }
+    set.add("f408-custom-cycle-ten", w.selected == 0, "");
+
+    // 快照 round-trip：钉选可持久化（用户钉选不能重启即丢）。
+    let snap_custom = w.custom_snapshot();
+    set.add(
+        "f408-custom-snapshot",
+        snap_custom == alloc::vec![("备份", b'B', "f442.restore")],
+        "",
+    );
+
+    // 滚动时延均账：均值反映真实手感（尾部 8 拍），超线如实计数。
+    let mut lat = WinXMenu::new();
+    for ms in [900u64, 900, 900, 900, 900, 900, 900, 2_100] {
+        lat.open_menu(ms);
+        lat.cancel();
+    }
+    set.add(
+        "f408-avg-latency",
+        lat.avg_open_ms() == 1_050 && lat.over_budget == 1,
+        "",
+    );
+
     set
 }
 
@@ -340,5 +491,52 @@ mod tests {
         m.cancel();
         m.open_menu(OPEN_BUDGET_MS + 1);
         assert_eq!(m.over_budget, 1);
+    }
+
+    // ---- v7 深化单测 ----
+
+    #[test]
+    fn custom_items_full_lifecycle() {
+        let mut m = WinXMenu::new();
+        // 空表钉/摘往返。
+        assert!(m.add_custom(CustomItem { name: "网络", letter: b'N', page: "f395.net" }).is_ok());
+        assert_eq!(m.custom_snapshot(), alloc::vec![("网络", b'N', "f395.net")]);
+        assert!(m.remove_custom("f395.net"));
+        assert!(m.custom_snapshot().is_empty());
+        assert_eq!(m.effective_len(), 9);
+        // 摘除后字母回收（与 f408-custom-letter-recycle 对拍）。
+        assert!(m.add_custom(CustomItem { name: "回收测试", letter: b'N', page: "f396.net2" }).is_ok());
+    }
+
+    #[test]
+    fn avg_ignores_old_beyond_window() {
+        let mut m = WinXMenu::new();
+        // 12 拍：前 4 拍慢（3s），后 8 拍快（500ms）→ 均账只看尾部 8 拍。
+        for ms in [3_000u64, 3_000, 3_000, 3_000] {
+            m.open_menu(ms);
+            m.cancel();
+        }
+        for _ in 0..8 {
+            m.open_menu(500);
+            m.cancel();
+        }
+        assert_eq!(m.avg_open_ms(), 500, "均值只反映最近 8 次（手感改善可见）");
+        assert_eq!(m.over_budget, 4, "历史超线仍如实计数（两本账独立）");
+    }
+
+    #[test]
+    fn builtin_letter_jump_unaffected_by_customs() {
+        let mut m = WinXMenu::new();
+        let _ = m.add_custom(CustomItem { name: "备份", letter: b'B', page: "f442.restore" });
+        m.open_menu(200);
+        // 内置九项字母全部仍然命中（自定义不影响既有键位）。
+        for (i, (_, key, _, _)) in WINX_ITEMS.iter().enumerate() {
+            assert!(m.jump_letter(*key));
+            assert_eq!(m.selected, i);
+            m.selected = 0;
+        }
+        // 自定义字母命中尾区。
+        assert!(m.jump_letter(b'B'));
+        assert_eq!(m.selected, 9);
     }
 }

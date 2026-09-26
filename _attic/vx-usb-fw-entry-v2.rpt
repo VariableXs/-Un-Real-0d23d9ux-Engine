@@ -1,0 +1,57 @@
+=== [enum-v] rc=0
+固件启动管理器
+---------------------
+标识符                  {a5a30fa2-3d06-4e9f-b5f4-a01df9d1fcba}
+displayorder            {9dea862c-5cdd-4e70-acc1-f32b344d4795}
+                        {2d55a06f-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a070-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a06e-b66a-11f1-ab8d-806e6f6e6963}
+timeout                 0
+=== [detail {a5a30fa] rc=0
+固件启动管理器
+---------------------
+标识符                  {a5a30fa2-3d06-4e9f-b5f4-a01df9d1fcba}
+displayorder            {9dea862c-5cdd-4e70-acc1-f32b344d4795}
+                        {2d55a06f-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a070-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a06e-b66a-11f1-ab8d-806e6f6e6963}
+timeout                 0
+candidate {a5a30fa2-3d06-4e9f-b5f4-a01df9d1fcba}: desc_hit=False guid_hit=False
+=== [detail {2d55a06] rc=0
+固件应用程序(101fffff)
+-------------------------------
+标识符                  {2d55a06f-b66a-11f1-ab8d-806e6f6e6963}
+description             EFI DVD/CDROM
+candidate {2d55a06f-b66a-11f1-ab8d-806e6f6e6963}: desc_hit=False guid_hit=False
+=== [detail {2d55a07] rc=0
+固件应用程序(101fffff)
+-------------------------------
+标识符                  {2d55a070-b66a-11f1-ab8d-806e6f6e6963}
+description             EFI Network
+candidate {2d55a070-b66a-11f1-ab8d-806e6f6e6963}: desc_hit=False guid_hit=False
+=== [detail {2d55a06] rc=0
+固件应用程序(101fffff)
+-------------------------------
+标识符                  {2d55a06e-b66a-11f1-ab8d-806e6f6e6963}
+description             EFI USB Device
+candidate {2d55a06e-b66a-11f1-ab8d-806e6f6e6963}: desc_hit=True guid_hit=False
+chosen source={2d55a06e-b66a-11f1-ab8d-806e6f6e6963}
+=== [copy-entry] rc=0
+已将该项成功复制到 {1300a859-b6a1-11f1-ab93-c4c6e62c8a4c}。
+=== [set-device] rc=0
+操作成功完成。
+=== [set-path] rc=0
+操作成功完成。
+=== [append-order] rc=0
+操作成功完成。
+=== [verify] rc=0
+固件启动管理器
+---------------------
+标识符                  {fwbootmgr}
+displayorder            {bootmgr}
+                        {2d55a06f-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a070-b66a-11f1-ab8d-806e6f6e6963}
+                        {2d55a06e-b66a-11f1-ab8d-806e6f6e6963}
+                        {1300a859-b6a1-11f1-ab93-c4c6e62c8a4c}
+timeout                 0
+USB-FW-ENTRY-DONE new={1300a859-b6a1-11f1-ab93-c4c6e62c8a4c}

@@ -113,3 +113,50 @@ export function archiveReport(decision: ReleaseDecision, nowIso: string, store: 
 export function archivedReports(store: KvStore = defaultStore()): ArchivedReport[] {
   return readJson<ArchivedReport[]>(store, KEY, [], Array.isArray);
 }
+
+/* ================= v5 深化批次五：回归对比 / 豁免登记 / 人话摘要 ================= */
+
+export interface GateDiff {
+  newlyRed: string[];
+  newlyGreen: string[];
+  stillRed: string[];
+  /** 回归方向：true = 比上次差（新红出现）——回归即点名。 */
+  regressed: boolean;
+}
+
+/** 两次门禁回归对比：检查点逐项对齐，新增红/转绿/持续红三清单（改进是否有回潮一目了然）。 */
+export function diffReports(prev: Checkpoint[], curr: Checkpoint[]): GateDiff {
+  const prevMap = new Map(prev.map((c) => [`${c.item}/${c.name}`, c.passed]));
+  const currMap = new Map(curr.map((c) => [`${c.item}/${c.name}`, c.passed]));
+  const newlyRed = [...currMap].filter(([k, p]) => p === false && prevMap.get(k) === true).map(([k]) => k);
+  const newlyGreen = [...currMap].filter(([k, p]) => p === true && prevMap.get(k) === false).map(([k]) => k);
+  // stillRed = 当前红且并非「上次绿转红」——含上次就红与新增检查点即红（未解决项全在此列）
+  const stillRed = [...currMap].filter(([k, p]) => p === false && prevMap.get(k) !== true).map(([k]) => k).filter((k) => !newlyRed.includes(k));
+  return { newlyRed, newlyGreen, stillRed, regressed: newlyRed.length > 0 };
+}
+
+export interface Exemption {
+  item: string;
+  name: string;
+  reason: string;
+  /** 豁免期限（ISO 日期）——过期自动失效回红（豁免不是永久牌）。 */
+  untilIso: string;
+}
+
+/** 豁免判定：未过期且有理由才生效；过期豁免如实失效（不静默续期）。 */
+export function exemptionActive(ex: Exemption, nowIso: string): { active: boolean; reason: string } {
+  if (!ex.reason.trim()) return { active: false, reason: "豁免缺理由——无效" };
+  if (ex.untilIso < nowIso) return { active: false, reason: "豁免已过期——检查点恢复计红" };
+  return { active: true, reason: `豁免至 ${ex.untilIso}（${ex.reason}）` };
+}
+
+/** 门禁人话摘要（报告的第一行）：三走查 + 检查点 → 一句话结论。 */
+export function walkthroughDigest(d: ReleaseDecision): string {
+  const parts = [
+    `检查点 ${d.checkpointsPass ? "全绿" : `${d.rework.length} 项未过`}`,
+    `一致性 ${d.walkthroughs.consistency.pass ? "过" : "红"}`,
+    `任务链 ${d.walkthroughs.taskChain.pass ? `${d.walkthroughs.taskChain.totalSeconds}s 过` : "红"}`,
+    `降级 ${d.walkthroughs.degraded.pass ? "过" : "红"}`,
+  ];
+  return `${d.release ? "【可发布】" : "【回炉】"}${parts.join(" · ")}`;
+}

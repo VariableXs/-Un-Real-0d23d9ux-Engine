@@ -802,3 +802,537 @@ mod tests {
         ));
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 深化批：.reg 导出（迁移的双向面）· 32bpp .cur 重编码 · 迁移逐态
+// 保真对账报告 · 迁移批次台账
+// ---------------------------------------------------------------------------
+
+/// 库内态 → Windows 注册表值名（`state_key_to_state` 的逆映射——导入
+/// 与导出共用同一张 15 态约定的两面，一处一事实）。
+pub fn state_to_key_name(st: PointerState) -> &'static str {
+    match st {
+        PointerState::Normal => "Arrow",
+        PointerState::Help => "Help",
+        PointerState::Work => "AppStarting",
+        PointerState::Busy => "Wait",
+        PointerState::Precise => "Crosshair",
+        PointerState::Text => "IBeam",
+        PointerState::Hand => "NWPen",
+        PointerState::Unavailable => "No",
+        PointerState::VResize => "SizeNS",
+        PointerState::HResize => "SizeWE",
+        PointerState::D1Resize => "SizeNWSE",
+        PointerState::D2Resize => "SizeNESW",
+        PointerState::Move => "SizeAll",
+        PointerState::Alternate => "UpArrow",
+        PointerState::Link => "Hand",
+    }
+}
+
+/// 合成导出文件名（方案内容指纹 + 态键名——同一方案导出两次同名：
+/// 确定性是「导出 → reg import → 再迁移」对账的前提）。
+pub fn synth_cursor_filename(m: &CursorSchemeModel, st: PointerState) -> String {
+    let fp = crate::jstar2::jbase::content_fingerprint(m);
+    alloc::format!("vx_{fp:016x}_{}.cur", state_to_key_name(st))
+}
+
+/// .reg 值文本转义（反斜杠翻倍——reg import 语法要求）。
+fn reg_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+}
+
+/// 单帧重编码为 32bpp .cur（导出双面：库内帧 → Windows 指针文件字节。
+/// XOR 色面自底向上 BGRA + AND 掩码（alpha=0 处置 1）；热点走目录项
+/// planes/bitcount 位——与 F633 解码口径逐字段互逆，可原路读回）。
+pub fn encode_cur_32bpp(frame: &crate::jstar2::jbase::CursorFrame) -> Vec<u8> {
+    let buf = frame.buf();
+    let (w, h) = (buf.w as usize, buf.h as usize);
+    let mask_row = (w + 31) / 32 * 4;
+    let mut dib: Vec<u8> = Vec::with_capacity(40 + w * h * 4 + mask_row * h);
+    // BITMAPINFOHEADER（图标 DIB 口径：biHeight = XOR+AND 双面高）。
+    dib.extend_from_slice(&40u32.to_le_bytes());
+    dib.extend_from_slice(&(w as u32).to_le_bytes());
+    dib.extend_from_slice(&((h as u32) * 2).to_le_bytes());
+    dib.extend_from_slice(&1u16.to_le_bytes());
+    dib.extend_from_slice(&32u16.to_le_bytes());
+    for _ in 0..6 {
+        dib.extend_from_slice(&0u32.to_le_bytes());
+    }
+    // XOR 色面：自底向上 BGRA。
+    for y in (0..h).rev() {
+        for x in 0..w {
+            let p = buf.get(x as u16, y as u16).unwrap_or([0, 0, 0, 0]);
+            dib.extend_from_slice(&[p[2], p[1], p[0], p[3]]);
+        }
+    }
+    // AND 掩码：alpha=0 → 1（透明），MSB-first，行 4 字节对齐。
+    for y in (0..h).rev() {
+        let mut row = alloc::vec![0u8; mask_row];
+        for x in 0..w {
+            if buf.get(x as u16, y as u16).map(|p| p[3] == 0).unwrap_or(false) {
+                row[x / 8] |= 0x80 >> (x % 8);
+            }
+        }
+        dib.extend_from_slice(&row);
+    }
+    let mut d: Vec<u8> = Vec::new();
+    d.extend_from_slice(&0u16.to_le_bytes()); // reserved
+    d.extend_from_slice(&2u16.to_le_bytes()); // type = cursor
+    d.extend_from_slice(&1u16.to_le_bytes()); // count = 1
+    d.push(if w == 256 { 0 } else { w as u8 });
+    d.push(if h == 256 { 0 } else { h as u8 });
+    d.push(0); // colorcount
+    d.push(0); // reserved
+    d.extend_from_slice(&frame.hot_x.to_le_bytes()); // CUR: planes = 热点 X
+    d.extend_from_slice(&frame.hot_y.to_le_bytes()); // CUR: bitcount = 热点 Y
+    d.extend_from_slice(&(dib.len() as u32).to_le_bytes());
+    d.extend_from_slice(&22u32.to_le_bytes());
+    d.extend_from_slice(&dib);
+    d
+}
+
+/// 导出注册表方案值行（15 逗号段，序 = ALL_STATES 序；缺态 → Err——
+/// 导出不假装完整，缺哪些态如实列出）。
+pub fn export_scheme_reg(m: &CursorSchemeModel) -> Result<String, Vec<String>> {
+    let missing = m.missing_states();
+    if !missing.is_empty() {
+        let names: Vec<String> = missing.iter().map(|s| alloc::format!("{s:?}")).collect();
+        return Err(names);
+    }
+    let files: Vec<String> = crate::jstar2::jbase::ALL_STATES
+        .iter()
+        .map(|st| synth_cursor_filename(m, *st))
+        .collect();
+    Ok(alloc::format!("\"{}\"=\"{}\"\r\n", reg_escape(&m.name), files.join(",")))
+}
+
+/// 导出整库为 .reg 文本（版本头 + Schemes 键区——迁移的双向面：库内
+/// 方案反写成 Windows 注册表格式，实机 reg import 即可回写）。缺态方案
+/// 整行跳过（跳了多少数得出来：值行数 < 方案数）。
+pub fn export_library_reg(schemes: &[CursorSchemeModel]) -> String {
+    let mut out = String::from(REG_HEADER);
+    out.push_str("\r\n\r\n[HKEY_CURRENT_USER\\Control Panel\\Cursors\\Schemes]\r\n");
+    for m in schemes {
+        if let Ok(line) = export_scheme_reg(m) {
+            out.push_str(&line);
+        }
+    }
+    out
+}
+
+/// 导出携带包（.reg 值行 + 逐态合成 .cur 字节，键 = 合成文件名——
+/// 一次导出即可离线带走整个方案，回程走 F633 原管线）。
+pub fn export_bundle(
+    m: &CursorSchemeModel,
+) -> Result<(String, Vec<(String, Vec<u8>)>), Vec<String>> {
+    let text = export_scheme_reg(m)?;
+    let mut files = Vec::new();
+    for st in crate::jstar2::jbase::ALL_STATES.iter() {
+        let e = m.state(*st).expect("15 态已验齐");
+        files.push((synth_cursor_filename(m, *st), encode_cur_32bpp(&e.frames[0])));
+    }
+    Ok((text, files))
+}
+
+/// 导出 → 再导入往返保真核验（F633 对拍口径：重编码文件解析回帧，
+/// 逐态像素 + 热点对拍；返回核验态数——判据「逐态迁移保真」在导出
+/// 方向的等价物）。
+pub fn verify_export_roundtrip(m: &CursorSchemeModel) -> Result<usize, String> {
+    let files = export_bundle(m)
+        .map_err(|e| alloc::format!("导出被拒：缺态 {e:?}"))?
+        .1;
+    let mut checked = 0usize;
+    for st in crate::jstar2::jbase::ALL_STATES.iter() {
+        let want_name = synth_cursor_filename(m, *st);
+        let (_, bytes) = files
+            .iter()
+            .find(|(n, _)| *n == want_name)
+            .ok_or_else(|| alloc::format!("缺导出文件 {want_name}"))?;
+        let parsed = crate::jstar2::curimport::parse_cur_bytes(bytes)
+            .map_err(|e| alloc::format!("{want_name}: {e:?}"))?;
+        let e = m
+            .state(*st)
+            .ok_or_else(|| alloc::format!("{want_name}: 库内缺态"))?;
+        let got = &parsed.frames[0];
+        let want = &e.frames[0];
+        if got.buf().diff_pixels(&want.buf()) != Some(0)
+            || got.hot_x != want.hot_x
+            || got.hot_y != want.hot_y
+        {
+            return Err(alloc::format!("{want_name}: 往返像素/热点失真"));
+        }
+        checked += 1;
+    }
+    Ok(checked)
+}
+
+/// 帧序列指纹（像素字节 + 热点 + 延时——迁移对账口径一处一事实；
+/// 与 jbase::content_fingerprint 的方案级指纹互补，粒度到态）。
+pub fn frames_fingerprint(frames: &[crate::jstar2::jbase::CursorFrame]) -> u64 {
+    let mut feed: Vec<u8> = Vec::new();
+    for f in frames {
+        feed.extend_from_slice(&f.buf().px);
+        feed.extend_from_slice(&f.hot_x.to_le_bytes());
+        feed.extend_from_slice(&f.hot_y.to_le_bytes());
+        feed.extend_from_slice(&f.delay_ms.to_le_bytes());
+    }
+    crate::jstar2::jbase::fnv1a64(&feed)
+}
+
+/// 迁移保真对账行（迁移差异报告的一行：源文件帧指纹 vs 迁入模型帧指纹）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StateFidelityRow {
+    pub scheme: String,
+    pub state: PointerState,
+    pub src_fp: u64,
+    pub dst_fp: u64,
+    pub ok: bool,
+}
+
+/// 迁移差异报告：迁移前（源 .cur/.ani 逐态解析帧指纹）与迁移后（同一
+/// 管线入库模型）逐态指纹对账表——「逐态迁移保真」从一次性断言升级
+/// 为可呈现的账面（哪一态红了一眼看见；源解析失败 src_fp=0、迁入缺
+/// 态 dst_fp=0，红因可从指纹区分）。
+pub fn migration_fidelity_report(view: &RegistryView, store: &FileStore) -> Vec<StateFidelityRow> {
+    let mut rows = Vec::new();
+    for (name, files) in &view.schemes {
+        let migrated = match migrate_one(name, view, store) {
+            MigrationOutcome::Migrated(list) => list.into_iter().next(),
+            _ => None,
+        };
+        for (i, fname) in files.iter().enumerate() {
+            if fname.is_empty() || fname == "-" {
+                continue;
+            }
+            let Some(st) = ALL_STATES.get(i) else { continue };
+            let Some(bytes) = store.get(&resolve_path(fname)) else { continue };
+            let is_ani = bytes.len() >= 12 && &bytes[0..4] == b"RIFF";
+            let parsed = if is_ani {
+                crate::jstar2::curimport::parse_ani_bytes(bytes)
+            } else {
+                crate::jstar2::curimport::parse_cur_bytes(bytes)
+            };
+            let src_fp = parsed.map(|f| frames_fingerprint(&f.frames)).unwrap_or(0);
+            let (dst_fp, ok) = match migrated.as_ref().and_then(|m| m.state(*st)) {
+                Some(sf) => {
+                    let fp = frames_fingerprint(&sf.frames);
+                    (fp, src_fp != 0 && fp == src_fp)
+                }
+                None => (0, false),
+            };
+            rows.push(StateFidelityRow {
+                scheme: String::from(name),
+                state: *st,
+                src_fp,
+                dst_fp,
+                ok,
+            });
+        }
+    }
+    rows
+}
+
+/// 迁移批次记录（批次台账的一行：一次批量迁移的汇总事实）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BatchRecord {
+    pub at_ms: u64,
+    pub schemes_seen: usize,
+    pub migrated: usize,
+    pub missing: usize,
+}
+
+/// 迁移批次台账（每次 migrate_all 观察一条；环形 64——留痕台账
+/// MigrationLedger 记逐方案，本账记逐批，两层互不顶替）。
+#[derive(Clone, Debug, Default)]
+pub struct MigrationBatchLog {
+    records: Vec<BatchRecord>,
+    dropped: usize,
+}
+
+impl MigrationBatchLog {
+    pub const CAP: usize = 64;
+
+    /// 观察一次迁移结果并登记（只记账——不改变结果本身）。
+    pub fn observe(&mut self, at_ms: u64, outcome: &MigrationOutcome) {
+        let rec = match outcome {
+            MigrationOutcome::Migrated(list) => BatchRecord {
+                at_ms,
+                schemes_seen: list.len(),
+                migrated: list.len(),
+                missing: 0,
+            },
+            MigrationOutcome::Partial { migrated, missing } => BatchRecord {
+                at_ms,
+                schemes_seen: migrated.len() + missing.len(),
+                migrated: migrated.len(),
+                missing: missing.len(),
+            },
+            MigrationOutcome::Empty(_) => {
+                BatchRecord { at_ms, schemes_seen: 0, migrated: 0, missing: 0 }
+            }
+        };
+        if self.records.len() >= Self::CAP {
+            self.records.remove(0);
+            self.dropped += 1;
+        }
+        self.records.push(rec);
+    }
+
+    pub fn records(&self) -> &[BatchRecord] {
+        &self.records
+    }
+
+    pub fn dropped(&self) -> usize {
+        self.dropped
+    }
+
+    /// 批次人话摘要（逐批一行：时刻 / 迁入 / 见案 / 缺件——向导
+    /// 「本机已迁过什么」的问询面）。
+    pub fn summary(&self) -> String {
+        let mut s = alloc::format!(
+            "迁移批次：{} 批（环形挤出 {}）\n",
+            self.records.len(),
+            self.dropped
+        );
+        for r in &self.records {
+            s.push_str(&alloc::format!(
+                "  t={} 迁入 {} 案 / 见案 {} / 缺件 {}\n",
+                r.at_ms, r.migrated, r.schemes_seen, r.missing
+            ));
+        }
+        s
+    }
+}
+
+/// F638 v4 自检（逆映射回环 / 重编码往返 / .reg 双向 / 保真对账 / 批次台账）。
+pub fn run_winbridge_v4_checks() -> CheckSet {
+    use crate::jstar2::curimport::gen_cur;
+    let mut set = CheckSet::new("jstar2-F638-v4");
+
+    // 造迁移夹具：15 态全齐的「导出样本」+ 单态「半残样本」（导出面
+    // 的输入与真实迁移产物同源——不另造第二套方案事实）。
+    let mut reg = String::from(REG_HEADER);
+    reg.push_str("\r\n\r\n[HKEY_CURRENT_USER\\Control Panel\\Cursors\\Schemes]\r\n");
+    let names: Vec<String> = (0..15).map(|i| alloc::format!("exp{i}.cur")).collect();
+    reg.push_str(&alloc::format!("\"导出样本\"=\"{}\"\r\n", names.join(",")));
+    reg.push_str("\"半残样本\"=\"exp14.cur\"\r\n");
+    let view = parse_reg_export(reg.as_bytes());
+    let mut store = FileStore::new();
+    for (i, n) in names.iter().enumerate() {
+        let (bytes, _) = gen_cur(16, 16, 32, (1 + i as u16, 2), 0xE400 + i as u32);
+        store.put(&alloc::format!("%SystemRoot%\\Cursors\\{n}"), &bytes);
+    }
+    let model = match migrate_one("导出样本", &view, &store) {
+        MigrationOutcome::Migrated(list) => list,
+        _ => Vec::new(),
+    };
+    set.add("migration fixture ready", model.len() == 1, "");
+
+    // 1. 逆映射自洽：state_to_key_name → state_key_to_state 全 15 态回环。
+    let inv_ok = crate::jstar2::jbase::ALL_STATES
+        .iter()
+        .all(|st| state_key_to_state(state_to_key_name(*st)) == Some(*st));
+    set.add("state key name inverse mapping closed", inv_ok, "");
+
+    // 2. 32bpp 重编码 → F633 解析逐像素往返（含热点）。
+    let (_, truth) = gen_cur(16, 16, 32, (2, 3), 0xBEEF);
+    let rt_ok = match crate::jstar2::curimport::parse_cur_bytes(&encode_cur_32bpp(&truth[0])) {
+        Ok(f) => {
+            f.frames.len() == 1
+                && f.frames[0].buf().diff_pixels(&truth[0].buf()) == Some(0)
+                && f.frames[0].hot_x == 2
+                && f.frames[0].hot_y == 3
+        }
+        Err(_) => false,
+    };
+    set.add("encode cur reparse pixel exact", rt_ok, "");
+
+    // 3. 透明环掩码保真：alpha=0 边环经重编码 → AND 掩码 → 再解码仍透明。
+    let (_, ring_truth) = gen_cur(16, 16, 32, (1, 1), 0x7A11);
+    let ring_ok = match crate::jstar2::curimport::parse_cur_bytes(&encode_cur_32bpp(&ring_truth[0]))
+    {
+        Ok(f) => f.frames[0].buf().get(0, 0).map(|p| p[3] == 0).unwrap_or(false),
+        Err(_) => false,
+    };
+    set.add("encode preserves transparent ring via mask", ring_ok, "");
+
+    // 4. 缺态方案导出被拒且缺态清单如实列出（14 缺态）。
+    let (pbytes, _) = gen_cur(16, 16, 32, (1, 1), 0x51);
+    let partial = match crate::jstar2::curimport::import_cursor_file(
+        &pbytes,
+        PointerState::Text,
+        "残案",
+        "t",
+    ) {
+        Ok(m) => m,
+        Err(_) => model[0].clone(),
+    };
+    match export_scheme_reg(&partial) {
+        Err(missing) => set.add("export rejects incomplete scheme honestly", missing.len() == 14, ""),
+        Ok(_) => set.add("export rejects incomplete scheme honestly", false, "unexpected"),
+    }
+
+    // 5. 全态导出值行 = 方案名 + 15 逗号段。
+    let line = export_scheme_reg(&model[0]).unwrap_or_default();
+    let value = line
+        .split_once('=')
+        .map(|(_, v)| v.trim().trim_matches('"'))
+        .unwrap_or("");
+    set.add(
+        "export value row has 15 fields",
+        line.starts_with('"') && value.split(',').count() == 15,
+        "",
+    );
+
+    // 6. 整库导出 .reg 文本可被同一解析器读回（双向面闭环；方案名以
+    //     入库事实为准——迁移产物带「迁移自」前缀，导出照实反写）。
+    let exported = export_library_reg(&model);
+    let back = parse_reg_export(exported.as_bytes());
+    set.add(
+        "exported reg parses back to same scheme",
+        back.schemes.len() == 1
+            && back.schemes[0].0 == model[0].name
+            && back.schemes[0].1.len() == 15
+            && back.header_ok,
+        "",
+    );
+
+    // 7. 导出往返保真：重编码 → 再解析 → 逐态像素对拍全过（15 态）。
+    set.add(
+        "export roundtrip pixel fidelity",
+        verify_export_roundtrip(&model[0]) == Ok(15),
+        "",
+    );
+
+    // 8. 携带包文件全部是合法 type=2 .cur。
+    let bundle = export_bundle(&model[0]).unwrap_or_default();
+    let all_cur = bundle.1.len() == 15
+        && bundle.1.iter().all(|(_, b)| {
+            b.len() > 6 && b[0] == 0 && b[1] == 0 && u16::from_le_bytes([b[2], b[3]]) == 2
+        });
+    set.add("bundle files are legal cursors", all_cur, "");
+
+    // 9. 保真对账报告：净仓 16 行全绿（15 态 + 半残样本的 Normal 态）。
+    let report = migration_fidelity_report(&view, &store);
+    set.add(
+        "fidelity report all green on clean store",
+        report.len() == 16 && report.iter().all(|r| r.ok),
+        "",
+    );
+
+    // 10. 保真对账报告红行：坏魔数文件 → 管线全或无 → 该案 15 态全红、
+    //     源解析失败那一态 src_fp=0、半残样本仍绿（红因可从账面区分）。
+    let mut broken = store.clone_store();
+    let (bad_bytes, _) = gen_cur(16, 16, 32, (1, 1), 0x99);
+    let mut bad = bad_bytes;
+    bad[0] = 9;
+    broken.put("%SystemRoot%\\Cursors\\exp7.cur", &bad);
+    let report_b = migration_fidelity_report(&view, &broken);
+    set.add(
+        "fidelity report flags corrupted pipeline",
+        report_b.len() == 16
+            && report_b.iter().filter(|r| r.ok).count() == 1
+            && report_b.iter().filter(|r| r.src_fp == 0).count() == 1,
+        "",
+    );
+
+    // 11. 批次台账：Migrated / Empty / Partial 三态观察 + 人话摘要。
+    let mut log = MigrationBatchLog::default();
+    log.observe(100, &MigrationOutcome::Empty("无"));
+    log.observe(200, &migrate_all(&view, &store));
+    log.observe(300, &migrate_all(&view, &broken));
+    let sum = log.summary();
+    set.add(
+        "batch log observes all outcome kinds",
+        log.records().len() == 3
+            && log.records()[0].migrated == 0
+            && log.records()[1].migrated == 2
+            && log.records()[2].migrated == 1
+            && log.records()[2].missing == 1
+            && sum.contains("迁入 2 案")
+            && sum.contains("缺件 1"),
+        "",
+    );
+
+    // 12. 批次台账环形封顶：70 连发 → 挤出 9、首条时刻可推。
+    for i in 0..70u64 {
+        log.observe(1000 + i, &MigrationOutcome::Empty("无"));
+    }
+    set.add(
+        "batch log ring caps at 64",
+        log.records().len() == MigrationBatchLog::CAP
+            && log.dropped() == 9
+            && log.records()[0].at_ms == 1006,
+        "",
+    );
+
+    // 13. 导出确定性：同一方案两次导出逐字节相同（指纹定名的前提）。
+    set.add(
+        "export deterministic across calls",
+        exported == export_library_reg(&model),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+    use crate::jstar2::curimport::gen_cur;
+
+    fn fixture() -> (RegistryView, FileStore, Vec<CursorSchemeModel>) {
+        let mut reg = String::from(REG_HEADER);
+        reg.push_str("\r\n\r\n[HKEY_CURRENT_USER\\Control Panel\\Cursors\\Schemes]\r\n");
+        let names: Vec<String> = (0..15).map(|i| alloc::format!("exp{i}.cur")).collect();
+        reg.push_str(&alloc::format!("\"导出样本\"=\"{}\"\r\n", names.join(",")));
+        let view = parse_reg_export(reg.as_bytes());
+        let mut store = FileStore::new();
+        for (i, n) in names.iter().enumerate() {
+            let (bytes, _) = gen_cur(16, 16, 32, (1 + i as u16, 2), 0xE400 + i as u32);
+            store.put(&alloc::format!("%SystemRoot%\\Cursors\\{n}"), &bytes);
+        }
+        let model = match migrate_one("导出样本", &view, &store) {
+            MigrationOutcome::Migrated(list) => list,
+            _ => Vec::new(),
+        };
+        (view, store, model)
+    }
+
+    #[test]
+    fn key_name_mapping_roundtrips_all_states() {
+        for st in crate::jstar2::jbase::ALL_STATES.iter() {
+            assert_eq!(state_key_to_state(state_to_key_name(*st)), Some(*st));
+        }
+    }
+
+    #[test]
+    fn encode_decode_roundtrip_hotspot_and_pixels() {
+        for (w, h, hx, hy) in [(16u16, 16u16, 2u16, 3u16), (32, 32, 31, 0), (8, 8, 0, 7)] {
+            let (_, truth) = gen_cur(w, h, 32, (hx, hy), 0xCAFE + w as u32);
+            let parsed =
+                crate::jstar2::curimport::parse_cur_bytes(&encode_cur_32bpp(&truth[0])).unwrap();
+            assert_eq!(parsed.frames[0].buf().diff_pixels(&truth[0].buf()), Some(0));
+            assert_eq!((parsed.frames[0].hot_x, parsed.frames[0].hot_y), (hx, hy));
+        }
+    }
+
+    #[test]
+    fn export_roundtrip_full_scheme() {
+        let (_, _, model) = fixture();
+        assert_eq!(verify_export_roundtrip(&model[0]), Ok(15));
+    }
+
+    #[test]
+    fn batch_log_rings_and_summarizes() {
+        let mut log = MigrationBatchLog::default();
+        for i in 0..70u64 {
+            log.observe(i, &MigrationOutcome::Empty("无"));
+        }
+        assert_eq!(log.records().len(), MigrationBatchLog::CAP);
+        assert_eq!(log.dropped(), 6);
+        assert_eq!(log.records()[0].at_ms, 6);
+        assert!(log.summary().contains("环形挤出 6"));
+    }
+}

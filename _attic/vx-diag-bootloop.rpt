@@ -1,0 +1,127 @@
+privilege: tok=0x14c
+Boot2001: total=52 attr=0x1 FilePathListLength=4 desc='VARIX Windows (USB)'
+  path[46:50] hex=7fff0400
+  VERDICT: FilePathListLength=4 -> 路径实质为空/仅 END 节点，固件无法兑现此项（循环根因嫌疑成立）
+Boot0002: total=182 attr=0x1 FilePathListLength=96 desc='EFI USB Device (Lenovo  thinkplus 1TB)'
+  path[84:180] hex=0310320000004c17ae384100410030003000300030003000300030003000300030003000300030003000300030003200360004012a000100000000080000000000000000200000000000cb86676367e9f649b0df7608909d1f1102027fff0400
+  VERDICT: 路径长度正常
+Boot0003: total=300 attr=0x1 FilePathListLength=116 desc='Windows Boot Manager'
+  path[48:164] hex=04012a000100000000080000000000000020080000000000ee1452427c25ec4ab69c40178a4e847b0202040446005c004500460049005c004d006900630072006f0073006f00660074005c0042006f006f0074005c0062006f006f0074006d006700660077002e0065006600690000007fff0400
+  VERDICT: 路径长度正常
+
+=== usb esp mount ===
+USB-DISK-NUMBER=1
+USB-DISK-MODEL=Lenovo thinkplus 1TB
+ESP-PARTITION-NUMBER=1
+ALREADY-MOUNTED=Y:\
+
+=== usb BCD (READ-ONLY enum) ===
+Windows 启动管理器
+--------------------
+标识符                  {bootmgr}
+device                  partition=Y:
+path                    \EFI\Microsoft\Boot\bootmgfw.efi
+description             Windows Boot Manager
+locale                  en-us
+inherit                 {globalsettings}
+default                 {default}
+resumeobject            {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+displayorder            {default}
+toolsdisplayorder       {memdiag}
+timeout                 30
+
+Windows 启动加载器
+-------------------
+标识符                  {default}
+device                  partition=X:
+path                    \Windows\system32\winload.efi
+description             Windows 11
+locale                  en-us
+inherit                 {bootloadersettings}
+isolatedcontext         Yes
+allowedinmemorysettings 0x15000075
+osdevice                partition=X:
+systemroot              \Windows
+resumeobject            {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+nx                      OptIn
+bootmenupolicy          Standard
+
+从休眠状态恢复
+---------------------
+标识符                  {a22a1f71-b5db-11f1-ab88-c4c6e62c8a4c}
+device                  partition=X:
+path                    \Windows\system32\winresume.efi
+description             Windows Resume Application
+locale                  en-us
+inherit                 {resumeloadersettings}
+isolatedcontext         Yes
+allowedinmemorysettings 0x15000075
+filepath                \hiberfil.sys
+bootmenupolicy          Standard
+
+从休眠状态恢复
+---------------------
+标识符                  {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+device                  partition=X:
+path                    \Windows\system32\winresume.efi
+description             Windows Resume Application
+locale                  en-us
+inherit                 {resumeloadersettings}
+isolatedcontext         Yes
+allowedinmemorysettings 0x15000075
+filepath                \hiberfil.sys
+bootmenupolicy          Standard
+
+Windows 内存测试程序
+---------------------
+标识符                  {memdiag}
+device                  partition=Y:
+path                    \EFI\Microsoft\Boot\memtest.efi
+description             Windows Memory Diagnostic
+locale                  en-us
+inherit                 {globalsettings}
+badmemoryaccess         Yes
+
+EMS 设置
+------------
+标识符                  {emssettings}
+bootems                 No
+
+调试器设置
+-----------------
+标识符                  {dbgsettings}
+debugtype               Local
+
+RAM 故障
+-----------
+标识符                  {badmemory}
+
+全局设置
+---------------
+标识符                  {globalsettings}
+inherit                 {dbgsettings}
+                        {emssettings}
+                        {badmemory}
+
+启动加载器设置
+--------------------
+标识符                  {bootloadersettings}
+inherit                 {globalsettings}
+                        {hypervisorsettings}
+
+虚拟机监控程序设置
+-------------------
+标识符                  {hypervisorsettings}
+hypervisordebugtype     Serial
+hypervisordebugport     1
+hypervisorbaudrate      115200
+
+恢复加载器设置
+----------------------
+标识符                  {resumeloadersettings}
+inherit                 {globalsettings}
+
+=== unmount ===
+UNMOUNTED=Y:
+
+VX-DIAG-BOOTLOOP-DONE (read-only)

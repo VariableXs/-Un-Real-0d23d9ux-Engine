@@ -17,20 +17,26 @@ import * as eggs from "../../system/h4/f399-easterEggs";
 import * as grayscale from "../../system/h4/f387-grayscaleMode";
 import * as reading from "../../system/h4/f386-readingMode";
 import type { KvStore } from "../../system/h4/internal/store";
+import { h4Bus } from "./bus";
 
 /* ------------------------------- 广播通道 ------------------------------- */
 
-/** 滤镜位变更事件（载荷：{ now: ColorFilter }）。 */
+/**
+ * 广播通道（v9 通道唯一化）：滤镜变更**只走 h4Bus 契约事件**（f387.filter-changed
+ * 已在 BINDINGS 登记——事件通道全系统一套规则，v9 迁移自 window CustomEvent 双轨）；
+ * 阅读模式暂留 window 通道（H4_READING_EVENT——迁移面登记于批次九账册）。
+ */
+/** @deprecated v9 起滤镜变更走 h4Bus（常量保留供外部兼容读取，不再派发）。 */
 export const H4_FILTER_EVENT = "vx-h4-filter-changed";
 /** 阅读模式变更事件（载荷：{ appId, on }）。 */
 export const H4_READING_EVENT = "vx-h4-reading-changed";
 
 export function announceFilterChanged(now: grayscale.ColorFilter): void {
-  window.dispatchEvent(new CustomEvent(H4_FILTER_EVENT, { detail: { now } }));
+  h4Bus.emit("f387.filter-changed", { now }); // 契约登记事件恒可投递（未登记才拒——本事件在册）
 }
 
 export function announceReadingChanged(appId: string, on: boolean): void {
-  window.dispatchEvent(new CustomEvent(H4_READING_EVENT, { detail: { appId, on } }));
+  h4Bus.emit("f386.style-applied", { appId, on }); // v10：阅读通道同样唯一化（bus 单通道）
 }
 
 /* ------------------------------- 开机序列 ------------------------------- */

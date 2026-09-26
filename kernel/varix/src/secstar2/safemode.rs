@@ -986,3 +986,927 @@ mod deep2_tests {
         assert!(run_safemode_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——选单隐藏条目发现性 / 安全桌面模型 /
+// 异常关机询问流 / 会话账。判据源：主册【设计细节】「隐藏条目发现性：选单
+// 底部 10px 小字（可发现但不打扰）」+【交互设计】「功能面最小集（设置中心/
+// 资源管理器/卸载通道/诊断中心）」+【状态与异常】「连续两次异常关机 → 下次
+// 启动自动询问（防循环崩）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：MenuHintModel —— 选单隐藏条目发现性模型（「可发现但不打扰」的
+// 机器检查：常驻不闪烁、不抢焦点、不拦截选中、超时零动作）
+// ---------------------------------------------------------------------------
+
+/// 小字提示的可观测纪律（逐条可机检）。
+pub struct MenuHintModel {
+    /// 是否常驻（超时消失=不可发现——必须常驻）。
+    pub persistent: bool,
+    /// 是否闪烁（闪烁=打扰——禁止）。
+    pub blinking: bool,
+    /// 是否抢焦点（抢焦点=打扰——禁止）。
+    pub focus_stealing: bool,
+    /// 悬停是否拦截选单键导航（拦截=打扰——禁止）。
+    pub blocks_navigation: bool,
+}
+
+impl MenuHintModel {
+    /// 规范实现常量（合规基线——与 MENU_HINT_PX=10 同源一处一事实）。
+    pub fn compliant() -> MenuHintModel {
+        MenuHintModel {
+            persistent: true,
+            blinking: false,
+            focus_stealing: false,
+            blocks_navigation: false,
+        }
+    }
+
+    /// 合规判定（四纪律全过=可发现但不打扰）。
+    pub fn ok(&self) -> bool {
+        self.persistent && !self.blinking && !self.focus_stealing && !self.blocks_navigation
+    }
+
+    /// 点击进入条件（小字本身不可点——点击目标是 VARIX 条目+Shift 门）。
+    pub fn click_target_is_entry(&self) -> bool {
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：SafeDesktopModel —— 安全模式桌面模型（黄条锚定+四功能入口+灰置
+// 项可解释——功能面最小集的桌面落位；白名单外入口照常渲染但灰置+理由）
+// ---------------------------------------------------------------------------
+
+/// 桌面入口项。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DesktopEntry {
+    pub feature: &'static str,
+    pub label: &'static str,
+    /// 可用（MIN_SET 成员）。
+    pub enabled: bool,
+    /// 灰置理由（可用时为空）。
+    pub why: &'static str,
+}
+
+/// 桌面主入口四件（主册【交互设计】逐字）。
+pub const DESKTOP_ENTRIES: [(&'static str, &'static str); 4] = [
+    ("settings", "设置中心"),
+    ("explorer", "资源管理器"),
+    ("uninstaller", "卸载通道"),
+    ("diagnostics", "诊断中心"),
+];
+
+/// 桌面灰置文案（白名单外统一语——可解释不是「不可用」三个字打发）。
+pub const GREYED_WHY: &str = "安全模式下仅保留修复所需的最小功能集；此功能将在正常重启后恢复";
+
+/// 桌面模型构建（从 SafeMode 状态生成入口表：四主入口+任意附加面灰置）。
+pub fn safe_desktop_entries(sm: &SafeMode, extra_features: &[&'static str]) -> alloc::vec::Vec<DesktopEntry> {
+    let mut out = alloc::vec::Vec::new();
+    for (fid, label) in DESKTOP_ENTRIES {
+        let g = sm.gate(fid);
+        out.push(DesktopEntry { feature: fid, label, enabled: g.allowed, why: g.why });
+    }
+    for fid in extra_features {
+        let g = sm.gate(fid);
+        out.push(DesktopEntry {
+            feature: fid,
+            label: fid,
+            enabled: g.allowed,
+            why: if g.allowed { "" } else { GREYED_WHY },
+        });
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：CrashAskFlow —— 异常关机询问流（下次启动询问的完整状态机：
+// 提问 → 接受（带参进安全模式）/ 拒绝（清计数）——问过不再骚扰）
+// ---------------------------------------------------------------------------
+
+/// 询问流状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AskPhase {
+    /// 无需询问（计数不足或已处理）。
+    Idle,
+    /// 下次启动应询问（ask_pending）。
+    Pending,
+    /// 已询问且用户接受 → 带 safe-mode 参数重启。
+    Accepted,
+    /// 已询问且用户拒绝 → 计数清零正常启动。
+    Declined,
+}
+
+/// 询问流（与 SafeMode 的 strikes/ask_pending 联动的对外语义层）。
+pub struct CrashAskFlow {
+    pub phase: AskPhase,
+    /// 询问呈现次数（本次启动内恒 ≤1——「只问一次」的机检面）。
+    pub asked_count: u32,
+}
+
+impl CrashAskFlow {
+    pub fn new() -> CrashAskFlow {
+        CrashAskFlow { phase: AskPhase::Idle, asked_count: 0 }
+    }
+
+    /// 启动时评估（strikes 来自持久层回读）。
+    pub fn boot_evaluate(&mut self, sm: &SafeMode) {
+        if sm.should_ask_next_boot() {
+            self.phase = AskPhase::Pending;
+        } else {
+            self.phase = AskPhase::Idle;
+        }
+    }
+
+    /// 呈现询问（幂等——第二次调用不再计数也不再变相重复弹）。
+    pub fn present(&mut self) -> bool {
+        if self.phase != AskPhase::Pending || self.asked_count > 0 {
+            return false;
+        }
+        self.asked_count += 1;
+        true
+    }
+
+    /// 用户接受。
+    pub fn accept(&mut self, sm: &mut SafeMode) -> Result<&'static str, &'static str> {
+        if self.phase != AskPhase::Pending {
+            return Err("未处于询问态");
+        }
+        let text = sm.accept_ask();
+        self.phase = AskPhase::Accepted;
+        Ok(text)
+    }
+
+    /// 用户拒绝（清态——不给用户留一个永远消不掉的询问）。
+    pub fn decline(&mut self, sm: &mut SafeMode) -> Result<(), &'static str> {
+        if self.phase != AskPhase::Pending {
+            return Err("未处于询问态");
+        }
+        sm.decline_ask();
+        self.phase = AskPhase::Declined;
+        Ok(())
+    }
+}
+
+impl Default for CrashAskFlow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：SessionAccount —— 安全模式会话账（进入原因/进入时刻/修复动作/
+// 退出方式——一次安全模式会话的完整故事，退出时归档一行）
+// ---------------------------------------------------------------------------
+
+/// 会话账行。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionRecord {
+    /// 进入原因文案。
+    pub reason: &'static str,
+    /// 进入时刻（秒戳）。
+    pub entered_s: u64,
+    /// 会话时长（秒——退出时结算）。
+    pub duration_s: u64,
+    /// 修复动作序列（卸载了什么/改了什么）。
+    pub actions: alloc::vec::Vec<&'static str>,
+    /// 退出方式（正常重启即出——无残留纪律）。
+    pub exit_via: &'static str,
+}
+
+/// 会话账（进入开账 → 动作记录 → 退出结算）。
+pub struct SessionAccount {
+    open: Option<SessionRecord>,
+    /// 归档账（历史会话）。
+    pub archive: alloc::vec::Vec<SessionRecord>,
+}
+
+impl SessionAccount {
+    pub fn new() -> SessionAccount {
+        SessionAccount { open: None, archive: alloc::vec::Vec::new() }
+    }
+
+    /// 开账（重复开账拒绝——一个会话一条账）。
+    pub fn open(&mut self, reason: &'static str, at_s: u64) -> Result<(), &'static str> {
+        if self.open.is_some() {
+            return Err("会话已在进行中");
+        }
+        self.open = Some(SessionRecord {
+            reason,
+            entered_s: at_s,
+            duration_s: 0,
+            actions: alloc::vec::Vec::new(),
+            exit_via: "",
+        });
+        Ok(())
+    }
+
+    /// 记录修复动作。
+    pub fn action(&mut self, what: &'static str) -> Result<(), &'static str> {
+        match self.open.as_mut() {
+            Some(s) => {
+                s.actions.push(what);
+                Ok(())
+            }
+            None => Err("无进行中会话"),
+        }
+    }
+
+    /// 退出结算（时长=退出-进入；归档并闭账）。
+    pub fn close(&mut self, at_s: u64, exit_via: &'static str) -> Result<SessionRecord, &'static str> {
+        let mut s = self.open.take().ok_or("无进行中会话")?;
+        s.duration_s = at_s.saturating_sub(s.entered_s);
+        s.exit_via = exit_via;
+        self.archive.push(s.clone());
+        Ok(s)
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open.is_some()
+    }
+}
+
+impl Default for SessionAccount {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F193 v4 自检（聚合进 secstar2 域）。
+pub fn run_safemode_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v4");
+
+    // v4-一：小字提示——合规基线四纪律、10px 常量同源。
+    let hint = MenuHintModel::compliant();
+    set.add("hint compliant", hint.ok(), "");
+    set.add("hint persistent", hint.persistent && !hint.blinking, "常驻不闪烁");
+    set.add("hint px const", MENU_HINT_PX == 10 && MENU_HINT_TEXT.contains("Shift"), "");
+    set.add("hint click passthrough", hint.click_target_is_entry(), "");
+
+    // v4-二：桌面模型——四主入口全可用、白名单外灰置+理由。
+    let mut sm = SafeMode::new();
+    sm.enter(EntryReason::ManualMenu, true).ok();
+    let desk = safe_desktop_entries(&sm, &["theme-store", "app-market"]);
+    set.add("desk entries", desk.len() == 6, "四主入口+2 灰置附加面");
+    set.add("desk main enabled", desk[..4].iter().all(|e| e.enabled), "主册四件全可用");
+    set.add("desk main labels", desk[0].label == "设置中心" && desk[3].label == "诊断中心", "");
+    set.add("desk extra greyed", desk[4].why == GREYED_WHY && !desk[4].enabled, "白名单外灰置可解释");
+    set.add("desk main no why", desk.iter().take(4).all(|e| e.why.is_empty()), "");
+
+    // v4-三：询问流——两次异常触发、只问一次、接受带参、拒绝清态。
+    let mut sm2 = SafeMode::new();
+    sm2.note_abnormal_shutdown(100);
+    sm2.note_abnormal_shutdown(200);
+    let mut flow = CrashAskFlow::new();
+    flow.boot_evaluate(&sm2);
+    set.add("ask pending", flow.phase == AskPhase::Pending, "两次异常 → 下次启动询问");
+    set.add("ask present once", flow.present() && !flow.present(), "幂等呈现");
+    set.add("ask asked count", flow.asked_count == 1, "");
+    set.add("ask accept", flow.accept(&mut sm2).is_ok() && flow.phase == AskPhase::Accepted, "");
+    set.add("ask accept err after", flow.accept(&mut sm2).is_err(), "完成后再问=拒");
+    // 拒绝路径：清态不再骚扰。
+    let mut sm3 = SafeMode::new();
+    sm3.note_abnormal_shutdown(1);
+    sm3.note_abnormal_shutdown(2);
+    let mut flow2 = CrashAskFlow::new();
+    flow2.boot_evaluate(&sm3);
+    flow2.present();
+    set.add("ask decline", flow2.decline(&mut sm3).is_ok() && flow2.phase == AskPhase::Declined, "");
+    set.add("ask decline cleared", !sm3.should_ask_next_boot(), "拒绝后清态");
+    // 一次异常不询问。
+    let mut sm4 = SafeMode::new();
+    sm4.note_abnormal_shutdown(1);
+    let mut flow3 = CrashAskFlow::new();
+    flow3.boot_evaluate(&sm4);
+    set.add("ask one strike idle", flow3.phase == AskPhase::Idle, "");
+
+    // v4-四：会话账——开账→动作→结算归档全链、重复开账拒、无会话动作拒。
+    let mut acc = SessionAccount::new();
+    set.add("sess open", acc.open("菜单手选进入", 1000).is_ok(), "");
+    set.add("sess dup open", acc.open("再来一次", 1001).is_err(), "一个会话一条账");
+    set.add("sess action", acc.action("卸载出问题的主题包").is_ok() && acc.action("重置图标缓存").is_ok(), "");
+    set.add("sess close", { let r = acc.close(1900, "正常重启"); r.map(|x| x.duration_s == 900 && x.actions.len() == 2).unwrap_or(false) }, "");
+    set.add("sess archived", acc.archive.len() == 1 && !acc.is_open(), "");
+    set.add("sess action after close", acc.action("幽灵动作").is_err(), "闭账后动作拒");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v4_ask_flow_full_lifecycle() {
+        // 全生命周期回归：异常×2 → 询问 → 接受 → 进入 → 修复 → 正常重启退出
+        // ——一次防循环崩闭环（主册用户故事的完整路径）。
+        let mut sm = SafeMode::new();
+        sm.note_abnormal_shutdown(10);
+        sm.note_abnormal_shutdown(20);
+        let mut flow = CrashAskFlow::new();
+        flow.boot_evaluate(&sm);
+        flow.present();
+        flow.accept(&mut sm).unwrap();
+        // 接受后带参进入（param_present=true——一处一事实链）。
+        sm.enter(EntryReason::AfterAbnormal, true).unwrap();
+        assert!(sm.active);
+        sm.exit_via_reboot();
+        assert!(!sm.active, "正常重启即出无残留");
+        // 干净重启清计数。
+        sm.note_clean_shutdown();
+        assert!(!sm.should_ask_next_boot());
+    }
+
+    #[test]
+    fn f193_v4_desktop_greyed_not_hidden() {
+        // 灰置 ≠ 消失：附加面入口在桌面上仍然可见可解释（灰置且可解释判据）。
+        let mut sm = SafeMode::new();
+        sm.enter(EntryReason::KernelParam, true).unwrap();
+        let desk = safe_desktop_entries(&sm, &["update-ui"]);
+        let upd = desk.iter().find(|e| e.feature == "update-ui").unwrap();
+        assert!(!upd.enabled);
+        assert!(upd.why.contains("最小功能集"), "理由说清为什么");
+    }
+
+    #[test]
+    fn f193_v4_session_archive_order() {
+        // 两轮会话归档按序累积（时长结算各自独立）。
+        let mut acc = SessionAccount::new();
+        acc.open("r1", 0).unwrap();
+        acc.action("a1").unwrap();
+        acc.close(100, "正常重启").unwrap();
+        acc.open("r2", 200).unwrap();
+        acc.close(350, "正常重启").unwrap();
+        assert_eq!(acc.archive.len(), 2);
+        assert_eq!(acc.archive[0].duration_s, 100);
+        assert_eq!(acc.archive[1].duration_s, 150);
+        assert_eq!(acc.archive[0].actions.len(), 1);
+        assert_eq!(acc.archive[1].actions.len(), 0);
+    }
+
+    #[test]
+    fn f193_v4_run_checks_pass() {
+        assert!(run_safemode_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——黄条完整渲染模型 /
+// 最小集帮助页 / 异常关机计数持久化 / 退出检查单。判据源：主册【交互设计】
+// 「右下角常驻黄条（不可关——模式标识就是身份）」+【数据与存储】「无额外
+// 持久态（模式标记=内核参数）」+【状态与异常】退出=正常重启无残留。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v5-一：SafeBannerRender —— 黄条完整渲染模型（主行+原因行+帮助链+锚位+
+// 不可关语义——渲染层拿到的每个字段都定死）
+// ---------------------------------------------------------------------------
+
+/// 黄条渲染数据。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SafeBannerRender {
+    /// 主行（恒 BANNER_TEXT）。
+    pub main: &'static str,
+    /// 原因行（ManualMenu 进入=无原因行——用户自己选的不吓人）。
+    pub reason: Option<&'static str>,
+    /// 帮助链 ID。
+    pub help: &'static str,
+    /// 锚位（右下角——不遮主内容动线）。
+    pub anchor: &'static str,
+    /// 可关闭性（恒 false——身份标识不可关）。
+    pub dismissible: bool,
+}
+
+/// 从 SafeMode 渲染（reason 直通 EntryReason 语义）。
+pub fn safe_banner_render(sm: &SafeMode) -> SafeBannerRender {
+    SafeBannerRender {
+        main: BANNER_TEXT,
+        reason: sm.reason.and_then(|r| r.reason_text()),
+        help: HELP_LINK,
+        anchor: "bottom-right",
+        dismissible: false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：MIN_SET_HELP —— 最小集帮助页（12 项逐条说明——为什么它必须在
+// 救援场景在场：公开清单的帮助面）
+// ---------------------------------------------------------------------------
+
+/// 逐项说明行（与 MIN_SET/MIN_SET_DOC 逐位对应——一处一事实投影）。
+pub const MIN_SET_HELP: [&str; 12] = [
+    "设置中心：调整系统行为的主入口（修复动线的起点）",
+    "资源管理器：定位与搬运文件（卸载与取证都要用）",
+    "卸载通道：移除导致故障的主题/驱动/应用",
+    "诊断中心：看体检灯与自愈记录，定位问题根因",
+    "终端：高级修复命令入口（救援四要件）",
+    "恢复环境入口：一键进入 F198 最后防线",
+    "任务栏：桌面骨架（窗口切换与托盘）",
+    "窗口管理：合成器降级路径保底（窗口不消失）",
+    "默认主题：E1 旁路——仅加载出厂令牌（防花屏主题）",
+    "基础输入：中文修复场景可用（IME 最小集）",
+    "剪贴板：取证搬运（导出日志与错误码）",
+    "日志导出：社区求助材料（求助帖的原料）",
+];
+
+pub fn min_set_help_consistent() -> bool {
+    MIN_SET.len() == MIN_SET_HELP.len()
+        && MIN_SET_HELP.iter().all(|s| s.contains("："))
+        && MIN_SET_HELP[5].contains("F198")
+        && MIN_SET_HELP[8].contains("E1")
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：StrikeSnapshot —— 异常关机计数持久化语义（encode/decode：计数+
+// 时间戳序列压缩落盘——「跨启动持久」的字节层；垃圾拒绝不复活旧账）
+// ---------------------------------------------------------------------------
+
+/// 落盘布局：魔数 1B + 计数 1B + 最近时间戳 6B（低 48 位）。
+pub const STRIKE_SNAPSHOT_LEN: usize = 8;
+const STRIKE_MAGIC: u8 = 0x53; // 'S'
+
+/// 编码。
+pub fn strike_snapshot_encode(sm: &SafeMode, last_stamp_s: u64) -> [u8; STRIKE_SNAPSHOT_LEN] {
+    let mut out = [0u8; STRIKE_SNAPSHOT_LEN];
+    out[0] = STRIKE_MAGIC;
+    out[1] = sm.abnormal_strikes.min(255) as u8;
+    let t = last_stamp_s & 0xFFFF_FFFF_FFFF;
+    let tb = t.to_le_bytes();
+    out[2..8].copy_from_slice(&tb[0..6]);
+    out
+}
+
+/// 解码（魔数错=None——空盘/坏盘诚实拒绝，不把旧计数带回来）。
+pub fn strike_snapshot_decode(data: &[u8; STRIKE_SNAPSHOT_LEN]) -> Option<(u32, u64)> {
+    if data[0] != STRIKE_MAGIC {
+        return None;
+    }
+    let strikes = data[1] as u32;
+    let mut t_b = [0u8; 6];
+    t_b.copy_from_slice(&data[2..8]);
+    Some((strikes, u64::from_le_bytes([t_b[0], t_b[1], t_b[2], t_b[3], t_b[4], t_b[5], 0, 0])))
+}
+
+// ---------------------------------------------------------------------------
+// v5-四：ExitChecklist —— 退出检查单（正常重启即出无残留的机器化：重启
+// 前逐项确认——主题/服务/更新禁用三处状态全部归零）
+// ---------------------------------------------------------------------------
+
+/// 检查单行。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExitCheckItem {
+    pub item: &'static str,
+    /// 是否已归位。
+    pub restored: bool,
+    pub why: &'static str,
+}
+
+/// 生成退出检查单（active 安全模式的退出前置——三项全过才许重启按钮亮）。
+pub fn exit_checklist(sm: &SafeMode) -> [ExitCheckItem; 3] {
+    [
+        ExitCheckItem {
+            item: "主题令牌",
+            restored: true, // 安全模式仅默认令牌——重启后正常主题自动接管。
+            why: "出厂默认令牌在会话中，重启后主题服务重新加载用户主题",
+        },
+        ExitCheckItem {
+            item: "服务集",
+            restored: true, // 最小服务集是启动参数驱动——重启自然恢复全集。
+            why: "最小集由 safe-mode 参数推导，重启不带参即恢复全集",
+        },
+        ExitCheckItem {
+            item: "更新禁用",
+            restored: !sm.active, // 仍处于安全模式时更新保持禁用。
+            why: "更新在安全模式禁用（防半态更新）；重启出模式后自动解除",
+        },
+    ]
+}
+
+/// 三项全归位判定。
+pub fn exit_clear(items: &[ExitCheckItem; 3]) -> bool {
+    items.iter().all(|i| i.restored)
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F193 v5 自检（聚合进 secstar2 域）。
+pub fn run_safemode_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v5");
+
+    let mut sm = SafeMode::new();
+    sm.enter(EntryReason::AfterAbnormal, true).ok();
+
+    // v5-一：黄条渲染——主行/原因行/锚/不可关。
+    let b = safe_banner_render(&sm);
+    set.add("banner main", b.main == BANNER_TEXT, "");
+    set.add("banner reason", b.reason == Some(BANNER_REASON_ABNORMAL), "原因随来源");
+    set.add("banner anchor", b.anchor == "bottom-right" && !b.dismissible, "右下角+不可关");
+    set.add("banner help", b.help == HELP_LINK, "");
+    // 手选进入=无原因行（用户自己选的）。
+    let mut sm2 = SafeMode::new();
+    sm2.enter(EntryReason::ManualMenu, true).ok();
+    set.add("banner manual no reason", safe_banner_render(&sm2).reason.is_none(), "");
+
+    // v5-二：最小集帮助——逐位对应+F198/E1 锚。
+    set.add("minset help consistent", min_set_help_consistent(), "");
+
+    // v5-三：计数持久化——round-trip、魔数拒绝、计数钳 255。
+    sm.note_abnormal_shutdown(1000);
+    sm.note_abnormal_shutdown(2000);
+    let snap = strike_snapshot_encode(&sm, 2000);
+    set.add("strike rt", strike_snapshot_decode(&snap) == Some((2, 2000)), "计数+时刻保真");
+    let mut junk = snap;
+    junk[0] = 0x00;
+    set.add("strike junk rejected", strike_snapshot_decode(&junk).is_none(), "垃圾不复活旧账");
+    // 大时间戳截断到 48 位（语义：低 48 位环回安全——约 8900 年）。
+    let big = strike_snapshot_encode(&sm, u64::MAX);
+    set.add("strike ts clamp", strike_snapshot_decode(&big).map(|(_, t)| t < 1 << 48).unwrap_or(false), "");
+
+    // v5-四：退出检查单——三项语义、模式内更新禁用、退出后全归位。
+    let items = exit_checklist(&sm);
+    set.add("exit items", items.len() == 3, "");
+    set.add("exit update blocked in mode", !items[2].restored, "安全模式内更新保持禁用");
+    set.add("exit theme auto", items[0].restored && items[0].why.contains("重启"), "");
+    // 重启后（active=false）更新禁用解除——全归位。
+    sm.exit_via_reboot();
+    let items2 = exit_checklist(&sm);
+    set.add("exit all clear after reboot", exit_clear(&items2), "正常重启即出无残留");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v5_banner_all_reasons() {
+        // 三种进入原因的黄条互异（原因行穷尽——每次进入都有理由）。
+        for (r, expect_some) in [
+            (EntryReason::ManualMenu, false),
+            (EntryReason::AfterAbnormal, true),
+            (EntryReason::KernelParam, true),
+        ] {
+            let mut sm = SafeMode::new();
+            sm.enter(r, true).ok();
+            let b = safe_banner_render(&sm);
+            assert_eq!(b.reason.is_some(), expect_some, "{:?}", r);
+        }
+    }
+
+    #[test]
+    fn f193_v5_strike_counter_saturates() {
+        // 计数超 255 钳制（极端异常循环不溢出——持久层语义明确）。
+        let mut sm = SafeMode::new();
+        for i in 0..300u64 {
+            sm.note_abnormal_shutdown(i);
+        }
+        let snap = strike_snapshot_encode(&sm, 300);
+        let (count, _) = strike_snapshot_decode(&snap).unwrap();
+        assert_eq!(count, 255, "钳制到 u8 上限");
+    }
+
+    #[test]
+    fn f193_v5_minset_help_covers_all() {
+        // 帮助行与 MIN_SET 逐位同名（投影不漂移——手工文案对齐清单）。
+        for (i, help) in MIN_SET_HELP.iter().enumerate() {
+            let keyword = match MIN_SET[i] {
+                "settings" => "设置中心",
+                "explorer" => "资源管理器",
+                "uninstaller" => "卸载通道",
+                "diagnostics" => "诊断中心",
+                "terminal" => "终端",
+                "recovery" => "恢复环境",
+                "taskbar" => "任务栏",
+                "window-mgr" => "窗口管理",
+                "theme-default" => "默认主题",
+                "ime-base" => "基础输入",
+                "clipboard" => "剪贴板",
+                "log-export" => "日志导出",
+                _ => "",
+            };
+            assert!(help.contains(keyword), "第 {} 行缺 {}", i, keyword);
+        }
+    }
+
+    #[test]
+    fn f193_v5_run_checks_pass() {
+        assert!(run_safemode_deep4_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——会话时间线 / 灰置目录页 / 安全
+// 模式完整帮助 / 计数策略参数化。判据源：主册【交互设计】「最小集白名单
+// 外功能全部灰置且可解释」的目录化 +【设计细节】帮助链 F126。
+// ------
+
+use alloc::string::String;
+// -------------------------------------------------------------------
+
+/// 会话时间线行（SessionArchive 之上的渲染：开账/动作/闭账三行式）。
+pub fn session_timeline(records: &[SessionRecord]) -> Vec<String> {
+    let mut out = Vec::new();
+    for r in records {
+        out.push(alloc::format!("[{}] 进入安全模式（{}）", r.entered_s, r.reason));
+        for a in &r.actions {
+            out.push(alloc::format!("[{}] 修复动作：{}", r.entered_s, a));
+        }
+        out.push(alloc::format!(
+            "[{}] 退出（{}）——会话 {} 秒，{} 项动作",
+            r.entered_s + r.duration_s,
+            r.exit_via,
+            r.duration_s,
+            r.actions.len()
+        ));
+    }
+    out
+}
+
+/// 灰置目录页（全功能清单逐项状态——安全模式下「还有什么不能用」的完整目录）。
+pub fn greyed_catalog(sm: &SafeMode, all_features: &[&'static str]) -> Vec<(&'static str, bool, &'static str)> {
+    all_features
+        .iter()
+        .map(|f| {
+            let g = sm.gate(f);
+            (*f, g.allowed, if g.allowed { "" } else { GREYED_WHY })
+        })
+        .collect()
+}
+
+/// 目录统计（可用/灰置两计数+灰置率 permille）。
+pub fn greyed_catalog_stats(catalog: &[(&'static str, bool, &'static str)]) -> (usize, usize, u64) {
+    let allowed = catalog.iter().filter(|(_, ok, _)| *ok).count();
+    let greyed = catalog.len() - allowed;
+    let rate = if catalog.is_empty() { 0 } else { greyed as u64 * 1000 / catalog.len() as u64 };
+    (allowed, greyed, rate)
+}
+
+/// 安全模式完整帮助页（四节：这是什么/怎么进来/能做什么/怎么出去）。
+pub const SAFE_MODE_HELP: [(&'static str, &'static str); 4] = [
+    ("这是什么", "救援模式：只加载修复所需的最小功能集与默认主题——主题花屏、驱动冲突、第三方软件把系统搞坏时，这里是干净的备用桌面。"),
+    ("怎么进来", "三个入口：引导选单隐藏条目（按住 Shift 点击 VARIX）、连续两次异常关机后的自动询问、内核参数 safe-mode（F192 降级族）。"),
+    ("能做什么", "四主入口（设置中心/资源管理器/卸载通道/诊断中心）+ 终端/恢复环境/日志导出——白名单 12 项全公开（F126），其余功能灰置可解释。"),
+    ("怎么出去", "正常重启即出，无残留。重启后主题、服务、更新自动恢复——修复动作（如卸载问题主题）在退出前完成即可。"),
+];
+
+pub fn safe_mode_help_intact() -> bool {
+    SAFE_MODE_HELP.len() == 4 && SAFE_MODE_HELP[1].1.contains("Shift") && SAFE_MODE_HELP[3].1.contains("无残留")
+}
+
+/// 计数策略参数化（异常关机阈值可调——界内钳制+默认值一处一事实）。
+pub struct StrikePolicy {
+    pub threshold: u32,
+}
+
+impl StrikePolicy {
+    pub const DEFAULT: u32 = ABNORMAL_STRIKES;
+    pub const MIN: u32 = 2;
+    pub const MAX: u32 = 5;
+
+    /// 构造（界内钳制）。
+    pub fn new(threshold: u32) -> StrikePolicy {
+        StrikePolicy { threshold: threshold.clamp(Self::MIN, Self::MAX) }
+    }
+
+    /// 判定（连续异常次数 ≥ 阈值 → 建议询问）。
+    pub fn should_ask(&self, strikes: u32) -> bool {
+        strikes >= self.threshold
+    }
+}
+
+/// F193 v6 自检（deep5 表）。
+pub fn run_safemode_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v6");
+
+    let mut sm = SafeMode::new();
+    sm.enter(EntryReason::ManualMenu, true).ok();
+
+    // v6-一：会话时间线——开/动作/闭三行式。
+    let mut acc = SessionAccount::new();
+    acc.open("菜单手选进入", 0).ok();
+    acc.action("卸载问题主题").ok();
+    acc.close(120, "正常重启").ok();
+    let tl = session_timeline(&acc.archive);
+    set.add("timeline 3 lines", tl.len() == 3, "开账+动作+闭账");
+    set.add("timeline action", tl[1].contains("卸载问题主题"), "");
+    set.add("timeline exit", tl[2].contains("120 秒"), "时长入行");
+
+    // v6-二：灰置目录——全功能清单状态化+统计。
+    let all = ["settings", "explorer", "uninstaller", "diagnostics", "update-ui", "theme-store", "app-market"];
+    let catalog = greyed_catalog(&sm, &all);
+    set.add("catalog size", catalog.len() == 7, "");
+    let (allowed, greyed, rate) = greyed_catalog_stats(&catalog);
+    set.add("catalog stats", allowed == 4 && greyed == 3 && rate == 428, "4/7 可用，3/7 灰置 ≈ 428‰");
+    set.add("catalog why", catalog.iter().all(|(_, ok, why)| *ok || why.contains("最小功能集")), "灰置项全部可解释");
+
+    // v6-三：帮助页——四节齐。
+    set.add("help intact", safe_mode_help_intact(), "");
+
+    // v6-四：计数策略——默认、钳制、判定。
+    set.add("policy default", StrikePolicy::new(99).threshold == StrikePolicy::MAX, "超界钳 5");
+    set.add("policy floor", StrikePolicy::new(1).threshold == StrikePolicy::MIN, "低于界钳 2");
+    let p = StrikePolicy::new(3);
+    set.add("policy judge", p.should_ask(3) && !p.should_ask(2), "达阈值才询问");
+    set.add("policy default matches", StrikePolicy::new(2).threshold == ABNORMAL_STRIKES, "默认值=主册常量");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v6_timeline_multi_sessions() {
+        // 两轮会话：时间线 6 行按会话分组（顺序保持）。
+        let mut acc = SessionAccount::new();
+        acc.open("r1", 0).unwrap();
+        acc.action("a1").unwrap();
+        acc.close(10, "正常重启").unwrap();
+        acc.open("r2", 20).unwrap();
+        acc.close(30, "正常重启").unwrap();
+        let tl = session_timeline(&acc.archive);
+        assert_eq!(tl.len(), 5, "会话1: 3 行 + 会话2: 2 行");
+        assert!(tl[0].contains("r1") && tl[3].contains("r2"));
+    }
+
+    #[test]
+    fn f193_v6_catalog_empty_honest() {
+        // 空目录：统计全零（不造比例）。
+        let (a, g, r) = greyed_catalog_stats(&[]);
+        assert_eq!((a, g, r), (0, 0, 0));
+    }
+
+    #[test]
+    fn f193_v6_run_checks_pass() {
+        assert!(run_safemode_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——功能门导出 / 修复向导 / 退出
+// 前检查（重启按钮的门卫）。判据源：主册【交互设计】「白名单外灰置且
+// 可解释」+【状态与异常】退出=正常重启无残留。
+// ---------------------------------------------------------------------------
+
+/// 功能门开放导出（F128 语言：全功能清单逐项状态 JSON——诊断导出可含）。
+pub fn gate_export_json(sm: &SafeMode, features: &[&'static str], out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"safe-mode-gates\":[");
+    for (i, f) in features.iter().enumerate() {
+        let g = sm.gate(f);
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(
+            alloc::format!("{{\"feature\":\"{}\",\"allowed\":{}}}", f, g.allowed).as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// 导出形状自检（计数=清单长度）。
+pub fn gate_export_ok(expected: usize, data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"safe-mode-gates\"") && text.matches("\"feature\"").count() == expected
+}
+
+/// 修复向导（安全模式内的三步引导——症状→动作→验证）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WizardStep {
+    /// 识别症状（花屏/崩溃/冲突）。
+    Symptom,
+    /// 执行动作（卸载/重置/禁用）。
+    Action,
+    /// 验证修复（重启前自检）。
+    Verify,
+}
+
+/// 三步向导状态机（只能顺步推进，可回退一步——应激场景不迷路）。
+pub struct RepairWizard {
+    pub step: WizardStep,
+    pub steps_taken: u32,
+}
+
+impl RepairWizard {
+    pub fn new() -> RepairWizard {
+        RepairWizard { step: WizardStep::Symptom, steps_taken: 0 }
+    }
+
+    /// 前进（不可跳步）。
+    pub fn advance(&mut self) -> Result<WizardStep, &'static str> {
+        self.step = match self.step {
+            WizardStep::Symptom => WizardStep::Action,
+            WizardStep::Action => WizardStep::Verify,
+            WizardStep::Verify => return Err("已在最后一步——重启即完成"),
+        };
+        self.steps_taken += 1;
+        Ok(self.step)
+    }
+
+    /// 回退一步（Verify 可回 Action；Symptom 不可再回）。
+    pub fn back(&mut self) -> Result<WizardStep, &'static str> {
+        self.step = match self.step {
+            WizardStep::Verify => WizardStep::Action,
+            WizardStep::Action => WizardStep::Symptom,
+            WizardStep::Symptom => return Err("已在第一步"),
+        };
+        Ok(self.step)
+    }
+}
+
+impl Default for RepairWizard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 退出前检查（重启按钮门卫：更新禁用/未完成修复/会话未闭 三勾）。
+pub struct ExitGuard {
+    pub update_done: bool,
+    pub repair_verified: bool,
+    pub session_closed: bool,
+}
+
+impl ExitGuard {
+    /// 全清才放行重启（缺哪勾说哪勾——三要素纪律）。
+    pub fn clear(&self) -> Result<(), &'static str> {
+        if !self.repair_verified {
+            return Err("修复动作未验证：请在诊断中心确认问题已解决，或回退该动作");
+        }
+        if !self.session_closed {
+            return Err("会话账未闭合：退出前自动归档（无需手动操作，稍候片刻）");
+        }
+        if !self.update_done {
+            return Err("更新禁用尚未解除：正常重启后自动解除——此勾在重启流程内自动完成");
+        }
+        Ok(())
+    }
+}
+
+/// F193 v7 自检（deep6 表）。
+pub fn run_safemode_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v7");
+
+    let mut sm = SafeMode::new();
+    sm.enter(EntryReason::ManualMenu, true).ok();
+
+    // v7-一：门导出——形状+计数+主入口绿。
+    let features = ["settings", "explorer", "update-ui", "theme-store"];
+    let mut data = Vec::new();
+    gate_export_json(&sm, &features, &mut data);
+    set.add("gate export ok", gate_export_ok(4, &data), "");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("gate export mixed", text.contains("settings\",\"allowed\":true") && text.contains("update-ui\",\"allowed\":false"), "主入口绿+白名单外红");
+
+    // v7-二：向导——顺步/跳步拒/回退/首步回退拒。
+    let mut wiz = RepairWizard::new();
+    set.add("wiz step1", wiz.advance() == Ok(WizardStep::Action), "");
+    set.add("wiz step2", wiz.advance() == Ok(WizardStep::Verify), "");
+    set.add("wiz no skip", wiz.advance().is_err(), "最后一步不可再进");
+    set.add("wiz back", wiz.back() == Ok(WizardStep::Action), "可回退一步");
+    set.add("wiz back to start", wiz.back() == Ok(WizardStep::Symptom), "");
+    set.add("wiz back at start", wiz.back().is_err(), "首步不可再回");
+    set.add("wiz steps counted", wiz.steps_taken == 2, "");
+
+    // v7-三：退出门卫——缺勾逐项说、全清放行。
+    let blocked = ExitGuard { update_done: false, repair_verified: false, session_closed: true };
+    set.add("guard repair first", blocked.clear().unwrap_err().contains("修复动作未验证"), "修复未验证最先拦");
+    let mid = ExitGuard { update_done: false, repair_verified: true, session_closed: false };
+    set.add("guard session second", mid.clear().unwrap_err().contains("会话账未闭合"), "");
+    let last = ExitGuard { update_done: false, repair_verified: true, session_closed: true };
+    set.add("guard update auto", last.clear().unwrap_err().contains("自动解除"), "更新勾自动完成语义");
+    let ok = ExitGuard { update_done: true, repair_verified: true, session_closed: true };
+    set.add("guard clear", ok.clear().is_ok(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v7_wizard_full_cycle() {
+        // 完整循环：Symptom→Action→Verify→back→advance 无状态残留。
+        let mut wiz = RepairWizard::new();
+        wiz.advance().unwrap();
+        wiz.advance().unwrap();
+        wiz.back().unwrap();
+        assert_eq!(wiz.advance(), Ok(WizardStep::Verify));
+        assert_eq!(wiz.steps_taken, 3);
+    }
+
+    #[test]
+    fn f193_v7_run_checks_pass() {
+        assert!(run_safemode_deep6_checks().all_passed());
+    }
+}

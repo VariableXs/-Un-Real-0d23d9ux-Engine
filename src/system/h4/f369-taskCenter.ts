@@ -113,3 +113,65 @@ export function persistState(state: TaskCenterState, store: KvStore = defaultSto
 export function loadPersisted(store: KvStore = defaultStore()): TaskCenterState {
   return readJson<TaskCenterState>(store, KEY, initialState(), isState);
 }
+
+/* ================= v4 深化批次四：ETA 平滑 / 单调守卫 / 饿死看门狗 / 准入与摘要 ================= */
+
+const TIER_WEIGHT: Record<IoTier, number> = { interactive: 0, background: 1, batch: 2 };
+
+/** ETA 指数平滑（四字段准确性的稳定面）：新样本 30% 权重——抖动读数不直传用户。 */
+export function etaEwma(prevEtaMs: number | null, sampleMs: number, alpha = 0.3): number {
+  if (prevEtaMs === null || !Number.isFinite(prevEtaMs) || prevEtaMs < 0) return Math.max(0, Math.round(sampleMs));
+  return Math.round(prevEtaMs * (1 - alpha) + Math.max(0, sampleMs) * alpha);
+}
+
+/** 进度单调守卫：进度回退 = 计量缺陷——如实拒绝并报告原因（不静默覆盖、零吞错）。 */
+export function advanceGuarded(state: TaskCenterState, id: string, progressPct: number, etaMs: number | null): { state: TaskCenterState; accepted: boolean; reason: string } {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t) return { state, accepted: false, reason: "任务不存在" };
+  if (progressPct < t.progressPct) return { state, accepted: false, reason: `进度回退（${t.progressPct}% → ${progressPct}%）——已拒绝（单调守卫）` };
+  return { state: advance(state, id, progressPct, etaMs), accepted: true, reason: "ok" };
+}
+
+export interface StarvationReport {
+  starved: Array<{ id: string; tier: IoTier; ageMs: number }>;
+  escalate: string[];
+}
+
+/** 饿死看门狗（判据「任务之间不互相饿死」的机检面）：注册久、零进度、非交互级 → 升级名单。 */
+export function starvationWatchdog(state: TaskCenterState, registeredAt: Record<string, number>, nowMs: number, waitThresholdMs = 60_000): StarvationReport {
+  const starved = state.tasks
+    .filter((t) => effectivelyRunning(t, state) && t.progressPct === 0 && t.tier !== "interactive" && nowMs - (registeredAt[t.id] ?? nowMs) >= waitThresholdMs)
+    .map((t) => ({ id: t.id, tier: t.tier, ageMs: nowMs - (registeredAt[t.id] ?? nowMs) }))
+    .sort((a, b) => b.ageMs - a.ageMs);
+  return { starved, escalate: starved.map((s) => s.id) };
+}
+
+/** 准入控制（F057 分级对账的执行面）：前台忙时 batch 让路、background 限流推进（不饿死）。 */
+export function admissionControl(t: BackgroundTask, foregroundBusy: boolean): { admitted: boolean; reason: string } {
+  if (t.tier === "interactive") return { admitted: true, reason: "交互级任务直通" };
+  if (!foregroundBusy) return { admitted: true, reason: "前台空闲——放行" };
+  return t.tier === "batch"
+    ? { admitted: false, reason: "前台活跃——批量任务让路（F057）" }
+    : { admitted: true, reason: "后台级任务限流推进（不全让路——饿死防线）" };
+}
+
+/** 下一个可运行任务（中心调度的确定性口径）：tier 升序 → 进度降序 → id 字典序。 */
+export function nextRunnable(state: TaskCenterState): BackgroundTask | null {
+  const runnable = state.tasks.filter((t) => effectivelyRunning(t, state));
+  if (runnable.length === 0) return null;
+  return [...runnable].sort((a, b) => TIER_WEIGHT[a.tier] - TIER_WEIGHT[b.tier] || b.progressPct - a.progressPct || a.id.localeCompare(b.id))[0]!;
+}
+
+/** 中心行文案（四字段信息准确性的人话面）：「文件索引 · 45% · 剩约 2 分 · 已暂停」。 */
+export function summaryRow(t: BackgroundTask, globalPaused: boolean): string {
+  const eta = t.etaMs === null ? "" : t.etaMs < 60_000 ? ` · 剩约 ${Math.round(t.etaMs / 1000)} 秒` : ` · 剩约 ${Math.round(t.etaMs / 60_000)} 分`;
+  const paused = globalPaused || t.paused ? " · 已暂停" : "";
+  return `${t.name} · ${t.progressPct}%${eta}${paused}`;
+}
+
+/** 注册完整性审计（判据「系统任务全入册」）：SYSTEM_TASK_KINDS 逐一核对，缺类点名。 */
+export function auditRegistrationCompleteness(state: TaskCenterState): { pass: boolean; missing: SystemTaskKind[] } {
+  const have = new Set(state.tasks.map((t) => t.kind));
+  const missing = SYSTEM_TASK_KINDS.filter((k) => !have.has(k));
+  return { pass: missing.length === 0, missing };
+}

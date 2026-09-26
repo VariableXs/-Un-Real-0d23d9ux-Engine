@@ -91,3 +91,42 @@ export function restoreMemory(mem: ColumnMemory | null, columns: ColumnSpec[]): 
   if (!mem) return Object.fromEntries(columns.map((c) => [c.id, c.width]));
   return Object.fromEntries(columns.map((c) => [c.id, mem.widths[c.id] ?? c.width]));
 }
+
+/* ================= v5 深化批次五：预算内多列自适应 / 手动宽度优先 / CJK 计量 ================= */
+
+/** 多列同时自适应：逐列 autofit；总宽超表宽时按比例缩（每列不低于 40px）。 */
+export function autofitAll(cells: CellText[], columns: ColumnSpec[], tableWidth: number, measure: TextMeasurer): { widths: Record<string, number>; squeezed: boolean } {
+  const widths: Record<string, number> = {};
+  let total = 0;
+  for (const c of columns) {
+    widths[c.id] = autofitWidth(cells, c.id, measure);
+    total += widths[c.id]!;
+  }
+  let squeezed = false;
+  if (total > tableWidth) {
+    squeezed = true;
+    const scale = tableWidth / total;
+    for (const c of columns) widths[c.id] = Math.max(MIN_COLUMN_PX, Math.floor(widths[c.id]! * scale));
+  }
+  return { widths, squeezed };
+}
+
+/** 手动宽度优先：用户拖过的列（manual 标记）不再被 autofit 覆盖——尊重用户决定。 */
+export interface ManualWidths {
+  manual: Record<string, number>;
+}
+
+export function autofitRespectingManual(cells: CellText[], columns: ColumnSpec[], manual: ManualWidths, measure: TextMeasurer): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of columns) {
+    out[c.id] = c.id in manual.manual ? Math.max(MIN_COLUMN_PX, manual.manual[c.id]!) : autofitWidth(cells, c.id, measure);
+  }
+  return out;
+}
+
+/** CJK 感知测量器（无 DOM 的确定性近似）：全角=2 半角单位、ASCII=1——对拍用基准测量器。 */
+export function measureCjkAware(text: string): number {
+  let units = 0;
+  for (const ch of text) units += /[\x00-\xff]/.test(ch) ? 1 : 2;
+  return units * 8; // 半角单位 ≈ 8px（8pt 字号的近似常量，供引擎级测试）
+}

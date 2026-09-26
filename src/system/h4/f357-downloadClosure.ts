@@ -110,3 +110,110 @@ export function logClosure(entry: ClosureLogEntry, store: KvStore = defaultStore
 export function closureLog(store: KvStore = defaultStore()): ClosureLogEntry[] {
   return readJson<ClosureLogEntry[]>(store, h4Key("f357", "log"), [], Array.isArray);
 }
+
+/* ================= v4 深化批次四：收口编排器（观察侧状态机——系统只观察不拥有） ================= */
+
+/** 下载观察态（Edge 侧事实在系统层的投影；系统侧零命令面——宪法边界的结构保持）。 */
+export type DownloadPhase = "active" | "completed" | "verify-failed";
+
+/** 下载事件流（Edge 上报：started/progress/completed/verifyFailed）。 */
+export type DownloadEvent =
+  | { type: "started"; id: string; fileName: string; totalBytes: number; at: number }
+  | { type: "progress"; id: string; doneBytes: number; at: number }
+  | { type: "completed"; id: string; fileName: string; sizeBytes: number; at: number }
+  | { type: "verifyFailed"; id: string; fileName: string; at: number };
+
+export interface DownloadObservation {
+  id: string;
+  fileName: string;
+  phase: DownloadPhase;
+  doneBytes: number;
+  totalBytes: number;
+  updatedAt: number;
+}
+
+/** 事件归约器：把 Edge 事件流折叠成系统侧观察态（进度外推与豁免判定的数据源）。 */
+export function reduceEvents(events: DownloadEvent[]): Map<string, DownloadObservation> {
+  const map = new Map<string, DownloadObservation>();
+  for (const e of events) {
+    const cur = map.get(e.id);
+    if (e.type === "started") {
+      map.set(e.id, { id: e.id, fileName: e.fileName, phase: "active", doneBytes: 0, totalBytes: e.totalBytes, updatedAt: e.at });
+    } else if (e.type === "progress" && cur) {
+      map.set(e.id, { ...cur, doneBytes: Math.max(cur.doneBytes, e.doneBytes), updatedAt: e.at });
+    } else if (e.type === "completed" && cur) {
+      map.set(e.id, { ...cur, phase: "completed", doneBytes: cur.totalBytes, updatedAt: e.at });
+    } else if (e.type === "verifyFailed" && cur) {
+      map.set(e.id, { ...cur, phase: "verify-failed", updatedAt: e.at });
+    }
+  }
+  return map;
+}
+
+/** 托盘聚合态（多下载并存时的单点呈现：活动优先、余量取和、步进取整复用 trayProgress 口径）。 */
+export function traySummary(obs: Map<string, DownloadObservation>): { activeCount: number; remainingBytes: number; steppedPct: number; exempt: boolean } {
+  const all = [...obs.values()];
+  const active = all.filter((o) => o.phase === "active");
+  const remaining = active.reduce((s, o) => s + Math.max(0, o.totalBytes - o.doneBytes), 0);
+  const donePct = active.length === 0 ? 100 : (active.reduce((s, o) => s + (o.totalBytes > 0 ? o.doneBytes / o.totalBytes : 1), 0) / active.length) * 100;
+  const stepped = Math.floor(donePct / TRAY_STEP_PCT) * TRAY_STEP_PCT;
+  return { activeCount: active.length, remainingBytes: remaining, steppedPct: stepped, exempt: remaining >= SLEEP_EXEMPT_REMAINING_BYTES };
+}
+
+/** 完成通知合并窗口与阈值（完成风暴不轰炸——通知也是一种体验）。 */
+export const NOTICE_COALESCE_WINDOW_MS = 4000;
+export const NOTICE_COALESCE_THRESHOLD = 3;
+
+export interface CoalescedNotice {
+  digest: boolean;
+  title: string;
+  body: string;
+  ids: string[];
+}
+
+/** 完成通知合并：窗口内 ≥3 条合一摘要；散条走双钮原文案（双钮链路判据不因合并丢失）。 */
+export function coalesceNotices(completions: Array<{ id: string; fileName: string; sizeBytes: number; at: number }>): CoalescedNotice[] {
+  const sorted = [...completions].sort((a, b) => a.at - b.at);
+  const out: CoalescedNotice[] = [];
+  let bucket: typeof sorted = [];
+  const flush = () => {
+    if (bucket.length === 0) return;
+    if (bucket.length >= NOTICE_COALESCE_THRESHOLD) {
+      const totalMb = bucket.reduce((s, c) => s + c.sizeBytes, 0) / (1024 * 1024);
+      out.push({ digest: true, title: `${bucket.length} 个下载已完成`, body: `共 ${totalMb.toFixed(1)} MB`, ids: bucket.map((c) => c.id) });
+    } else {
+      for (const c of bucket) {
+        const n = completionNotice(c.id, c.fileName, c.sizeBytes);
+        out.push({ digest: false, title: n.title, body: n.body, ids: [c.id] });
+      }
+    }
+    bucket = [];
+  };
+  for (const c of sorted) {
+    if (bucket.length > 0 && c.at - bucket[0]!.at > NOTICE_COALESCE_WINDOW_MS) flush();
+    bucket.push(c);
+  }
+  flush();
+  return out;
+}
+
+/** 完整性校验判定（verifyFailedPlan 的判定面）：期望哈希存在且不符才走重下路径——无期望哈希如实 unknown。 */
+export function verifyVerdict(expectedHash: string | null, actualHash: string): { verdict: "match" | "mismatch" | "unknown"; plan: VerifyFailPlan | null } {
+  if (expectedHash === null) return { verdict: "unknown", plan: null };
+  if (expectedHash === actualHash) return { verdict: "match", plan: null };
+  return { verdict: "mismatch", plan: verifyFailedPlan("下载文件") };
+}
+
+/** 豁免时间线（体验日志十三章：豁免何时开始、因何开始——可回放不黑箱）。 */
+export interface ExemptionSpan {
+  from: number;
+  to: number | null;
+  reason: string;
+}
+
+export function exemptionTimeline(events: DownloadEvent[]): ExemptionSpan[] {
+  const obs = reduceEvents(events);
+  return [...obs.values()]
+    .filter((o) => o.phase === "active" && o.totalBytes - o.doneBytes >= SLEEP_EXEMPT_REMAINING_BYTES)
+    .map((o) => ({ from: o.updatedAt, to: null, reason: `「${o.fileName}」余量 ${Math.round((o.totalBytes - o.doneBytes) / 1048576)} MB` }));
+}

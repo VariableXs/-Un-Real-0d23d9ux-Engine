@@ -672,8 +672,8 @@ describe("ledger 检查项对账（与 tally.rs 同数）", () => {
     const t = ledgerTotals();
     expect(t.blocks).toBe(51);
     expect(t.items).toBe(50);
-    expect(t.checks).toBe(492);   // 2026-09-26 tally 机数
-    expect(t.unitTests).toBe(114); // 各文件 #[test] 机数（主 crate 115 = 114 + 域聚合 1）
+    expect(t.checks).toBe(877);   // v7 深化批次 2026-09-26 tally 机数（804 + 深化 73，含 ubase 12）
+    expect(t.unitTests).toBe(186); // 51 文件 #[test] 机数（隔离舱 lib 195 = 186 + mod.rs 域聚合 1 + cabin 2 + checks 6）
   });
 
   it("数字全部为正（无占位）", () => {

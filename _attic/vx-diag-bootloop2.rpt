@@ -1,0 +1,71 @@
+DISK=1 Lenovo thinkplus 1TB
+ESP mounted Y:
+ESP_CFG mtime=2026-09-22 23:55:28
+--- ESP boot-select.json ---
+{
+  "default_entry": "variable",
+  "timeout_sec": 5,
+  "show_menu": true,
+  "last_boot": "variable",
+  "handoff": true,
+  "handoff_target": "usb",
+  "usb_windows_esp_guid": "{636786cb-e967-49f6-b0df-7608909d1f11}"
+}
+
+=== BCD {default} raw ===
+
+Windows 启动加载器
+-------------------
+标识符                  {a8897e9f-b5ed-11f1-ab88-c4c6e62c8a4c}
+device                  partition=X:
+path                    \Windows\system32\winload.efi
+description             Windows 11
+locale                  en-us
+inherit                 {6efb52bf-1766-41db-a6b3-0ee5eff72bd7}
+isolatedcontext         Yes
+allowedinmemorysettings 0x15000075
+osdevice                partition=X:
+systemroot              \Windows
+resumeobject            {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+nx                      OptIn
+bootmenupolicy          Standard
+PART already S: #2
+  guid={402b696c-7a95-4283-99c3-9fa06fd8c84d} fs=NTFS label=VARIX_SYS size=64GB
+  winload.efi=False
+  SYSTEM hive=False
+  boot-select.json=False
+  Variable.exe=False
+  Default NTUSER.DAT=False
+PART already X: #3
+  guid={b76d4dcf-0c7c-4de0-88bb-bfeec7f0e76e} fs=NTFS label=WIN_ENGINE size=300GB
+  winload.efi=True
+  SYSTEM hive=True
+  boot-select.json=False
+  Variable.exe=True
+  Default NTUSER.DAT=True
+PART mounted S: #4
+  guid={7701c3d4-2e4b-4f2f-81c3-3ebd6a97a896} fs=exFAT label=SHARED size=560GB
+  winload.efi=False
+  SYSTEM hive=False
+  boot-select.json=True
+  Variable.exe=False
+  Default NTUSER.DAT=False
+  CFG mtime=2026-09-22 23:55:28
+  CFG content: {
+  "default_entry": "variable",
+  "timeout_sec": 5,
+  "show_menu": true,
+  "last_boot": "variable",
+  "handoff": true,
+  "handoff_target": "usb",
+  "usb_windows_esp_guid": "{636786cb-e967-49f6-b0df-7608909d1f11}"
+}
+
+PART already V: #5
+  guid={13aa4423-d7dd-4019-8265-2bc75012c1c0} fs=NTFS label=SNAPSHOT size=28.9GB
+  winload.efi=False
+  SYSTEM hive=False
+  boot-select.json=False
+  Variable.exe=False
+  Default NTUSER.DAT=False
+PS-DIAG-DONE

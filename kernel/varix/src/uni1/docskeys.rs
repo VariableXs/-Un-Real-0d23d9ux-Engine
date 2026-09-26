@@ -7,6 +7,10 @@
 //! 文档静默快写、未命名弹对话框）；脏标记状态机（编辑置脏、保存后
 //! 「安静地」变干净——无成功弹窗）；另存命名「原名- 副本」且永不覆盖
 //! 原文档；只读位置保存失败 → F310 三问钩子；键位注册（F244）。
+//! v6 深化：Ctrl+N 新建（重置为未命名、脏标记清零、注册表登记）、
+//! 只读自愈路径（权限恢复后保存照常——失败不是死局）、另存重名链
+//! （副本名被占 → 顺延 (2)/(3)，全占诚实回落）、关窗守卫（脏文档
+//! 关窗走 F310 钩子——防丢失硬线）。
 
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_CTRL, MOD_SHIFT};
@@ -35,6 +39,10 @@ pub struct DocKeys {
     pub save_as_names: Vec<&'static str>,
     /// F310 三问触发账（只读保存失败路径）。
     pub ask_triggered: u64,
+    /// 新建账（v6 Ctrl+N）。
+    pub new_docs: u64,
+    /// 关窗拦截账（v6：脏文档关窗被守卫拦下的次数）。
+    pub close_blocked: u64,
 }
 
 impl DocKeys {
@@ -43,6 +51,7 @@ impl DocKeys {
         let _ = hotkeys.register("f426.save", Chord::new(MOD_CTRL, b'S'));
         let _ = hotkeys.register("f426.saveas", Chord::new(MOD_CTRL | MOD_SHIFT, b'S'));
         let _ = hotkeys.register("f426.open", Chord::new(MOD_CTRL, b'O'));
+        let _ = hotkeys.register("f426.new", Chord::new(MOD_CTRL, b'N'));
         DocKeys {
             hotkeys,
             dirty: false,
@@ -51,6 +60,8 @@ impl DocKeys {
             quiet_saves: 0,
             save_as_names: Vec::new(),
             ask_triggered: 0,
+            new_docs: 0,
+            close_blocked: 0,
         }
     }
 
@@ -93,6 +104,37 @@ impl DocKeys {
         final_name
     }
 
+    /// 另存重名链（v6）：目标目录里副本名已被占时顺延 (2)/(3)——
+    /// 永不覆盖任何既有文档（含之前的副本）；全占则诚实回落「未命名
+    /// - 副本」（渲染层弹对话框让用户起名，不静默覆盖）。
+    pub fn ctrl_shift_s_avoiding(&mut self, taken: &[&str]) -> &'static str {
+        let base = match self.target {
+            SaveTarget::Named(n) => n,
+            SaveTarget::Unnamed => "未命名",
+        };
+        let candidates = Self::copy_candidates(base);
+        let final_name = candidates
+            .iter()
+            .copied()
+            .find(|c| !taken.contains(c))
+            .unwrap_or("未命名 - 副本");
+        self.save_as_names.push(final_name);
+        self.target = SaveTarget::Named(final_name);
+        self.dirty = false;
+        self.quiet_saves += 1;
+        final_name
+    }
+
+    /// 候选名链（唯一实现点）：原名 - 副本 → (2) → (3)。
+    fn copy_candidates(base: &str) -> Vec<&'static str> {
+        match base {
+            "报告" => alloc::vec!["报告 - 副本", "报告 - 副本(2)", "报告 - 副本(3)"],
+            "笔记" => alloc::vec!["笔记 - 副本", "笔记 - 副本(2)", "笔记 - 副本(3)"],
+            "未命名" => alloc::vec!["未命名 - 副本", "未命名 - 副本(2)", "未命名 - 副本(3)"],
+            _ => alloc::vec!["副本 - 副本", "副本 - 副本(2)", "副本 - 副本(3)"],
+        }
+    }
+
     /// 另存命名规则（唯一实现点）。
     pub fn copy_name(base: &str) -> &'static str {
         // 静态串受限（&'static str）——内核侧以查表承接常用根名；
@@ -110,11 +152,34 @@ impl DocKeys {
         true // 弹 F233 打开对话框；脏标记不因此丢失。
     }
 
-    /// 三键注册审计。
+    /// Ctrl+N：新建（v6）——重置为未命名空档；**脏文档不静默丢弃**：
+    /// 脏标记在位时拒绝并交给调用方走 F310 三问（返回 false）。
+    pub fn ctrl_n(&mut self) -> bool {
+        if self.dirty {
+            return false; // 未保存的改动不静默丢——三问后由调用方重试。
+        }
+        self.target = SaveTarget::Unnamed;
+        self.readonly_path = false;
+        self.new_docs += 1;
+        true
+    }
+
+    /// 关窗守卫（v6）：脏文档关窗必须走 F310 钩子（防丢失硬线）；
+    /// 干净文档放行。拦截如实记账。
+    pub fn request_close(&mut self) -> bool {
+        if self.dirty {
+            self.close_blocked += 1;
+            return false;
+        }
+        true
+    }
+
+    /// 四键注册审计（v6：+Ctrl+N）。
     pub fn keys_registered(&self) -> bool {
         self.hotkeys.lookup(Chord::new(MOD_CTRL, b'S')) == Some("f426.save")
             && self.hotkeys.lookup(Chord::new(MOD_CTRL | MOD_SHIFT, b'S')) == Some("f426.saveas")
             && self.hotkeys.lookup(Chord::new(MOD_CTRL, b'O')) == Some("f426.open")
+            && self.hotkeys.lookup(Chord::new(MOD_CTRL, b'N')) == Some("f426.new")
     }
 }
 
@@ -130,6 +195,28 @@ pub fn run_docskeys_checks() -> CheckSet {
         d.ctrl_s() && !d.dirty && d.quiet_saves == 1 && d.ask_triggered == 0,
         "",
     );
+    // 只读自愈（v6）：失败三问 → 权限恢复 → 保存照常，脏标记不残。
+    d.readonly_path = true;
+    d.edit();
+    set.add("f426-readonly-fail-again", !d.ctrl_s() && d.ask_triggered == 1, "");
+    d.readonly_path = false;
+    set.add(
+        "f426-readonly-heals",
+        d.ctrl_s() && !d.dirty && d.quiet_saves == 2 && d.ask_triggered == 1,
+        "",
+    );
+    // Ctrl+N 新建（v6）：干净文档 → 重置未命名；脏文档 → 守卫拦截。
+    set.add("f426-new-clean", d.ctrl_n() && d.target == SaveTarget::Unnamed && d.new_docs == 1, "");
+    d.target = SaveTarget::Named("报告");
+    d.edit();
+    set.add(
+        "f426-new-dirty-guarded",
+        !d.ctrl_n() && d.new_docs == 1 && matches!(d.target, SaveTarget::Named("报告")),
+        "",
+    );
+    // 关窗守卫（v6）：脏 → 拦截记账；保存后 → 放行。
+    set.add("f426-close-guard-dirty", !d.request_close() && d.close_blocked == 1, "");
+    set.add("f426-save-then-close-ok", d.ctrl_s() && d.request_close() && d.close_blocked == 1, "");
     // 未命名：Ctrl+S 弹对话框（不走静默）。
     let mut u = DocKeys::new();
     u.edit();
@@ -146,14 +233,30 @@ pub fn run_docskeys_checks() -> CheckSet {
         name == "笔记 - 副本" && u.save_as_names == alloc::vec!["笔记 - 副本"] && !u.dirty,
         "",
     );
-    // 未命名直接另存。
+    // 另存重名链（v6）：副本名被占 → 顺延 (2)；链全占 → 诚实回落。
+    let mut w = DocKeys::new();
+    w.target = SaveTarget::Named("报告");
+    set.add(
+        "f426-saveas-collision-2",
+        w.ctrl_shift_s_avoiding(&["报告 - 副本"]) == "报告 - 副本(2)",
+        "",
+    );
     let mut v = DocKeys::new();
-    let n2 = v.ctrl_shift_s("");
+    v.target = SaveTarget::Named("报告");
+    set.add(
+        "f426-saveas-collision-exhausted",
+        v.ctrl_shift_s_avoiding(&["报告 - 副本", "报告 - 副本(2)", "报告 - 副本(3)"])
+            == "未命名 - 副本",
+        "",
+    );
+    // 未命名直接另存。
+    let mut o = DocKeys::new();
+    let n2 = o.ctrl_shift_s("");
     set.add("f426-saveas-unnamed", n2 == "未命名 - 副本", "");
     // Ctrl+O 任何状态合法。
-    let mut o = DocKeys::new();
-    o.edit();
-    set.add("f426-open-anytime", o.ctrl_o() && o.dirty, "");
+    let mut p = DocKeys::new();
+    p.edit();
+    set.add("f426-open-anytime", p.ctrl_o() && p.dirty, "");
     // 只读保存失败 → 三问。
     let mut r = DocKeys::new();
     r.target = SaveTarget::Named("报告");
@@ -193,5 +296,27 @@ mod tests {
         // 原文档名未被覆盖：save_as_names 只有副本名，且当前目标已切到副本。
         assert_eq!(d.save_as_names.len(), 1);
         assert!(matches!(d.target, SaveTarget::Named("报告 - 副本")));
+    }
+
+    #[test]
+    fn collision_chain_picks_first_free() {
+        let mut d = DocKeys::new();
+        d.target = SaveTarget::Named("笔记");
+        assert_eq!(d.ctrl_shift_s_avoiding(&[]), "笔记 - 副本");
+        let mut e = DocKeys::new();
+        e.target = SaveTarget::Named("笔记");
+        assert_eq!(e.ctrl_shift_s_avoiding(&["笔记 - 副本", "笔记 - 副本(2)"]), "笔记 - 副本(3)");
+    }
+
+    #[test]
+    fn close_guard_never_loses_silently() {
+        let mut d = DocKeys::new();
+        d.target = SaveTarget::Named("报告");
+        assert!(d.request_close(), "干净文档关窗放行");
+        d.edit();
+        assert!(!d.request_close(), "脏文档关窗拦截");
+        assert!(d.ctrl_n() == false, "脏文档新建同样拦截");
+        d.ctrl_s();
+        assert!(d.request_close() && d.ctrl_n(), "保存后放行");
     }
 }

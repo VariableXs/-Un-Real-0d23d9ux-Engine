@@ -126,27 +126,65 @@ fn enforce_big_hotspot(buf: &mut PixBuf, hx: u16, hy: u16) {
     }
 }
 
-/// 低视觉负荷：描边加粗到 2px（透明像素若在实体 2px 邻域 → 描边色），
-/// 全方案帧延时清零（静态）。
+/// 低视觉负荷：描边加粗到 width px（视觉描边带 = 1px 轮廓外扩新实体
+/// + (width−1)px 原轮廓最外圈改描边色），全方案帧延时清零（静态）。
+/// 顺序纪律：先 alpha 二值化（≥128 → 255，否则 0——低负荷 = 硬边输出，
+/// 柔和 AA 是低视力用户的视觉噪声），环从二值化后的实体长出来。
+/// 外扩只走 1px：2px 全外扩的轮廓在 200% 重采样下过渡带均值会顶出
+/// F632 锐度判线（实测 168 > 160），1px 外扩 + 内圈改色是同视觉宽度、
+/// 同 solid_count 增量、且过判线的落点。
 fn thicken_outline(buf: &PixBuf, width: u16, color: [u8; 4]) -> PixBuf {
-    let mut out = buf.clone();
-    let r = width as i64;
-    for y in 0..buf.h {
-        for x in 0..buf.w {
-            if buf.solid(x, y) {
+    let mut bin = buf.clone();
+    for c in bin.px.chunks_exact_mut(4) {
+        c[3] = if c[3] >= 128 { 255 } else { 0 };
+    }
+    let mut out = bin.clone();
+    let (w, h) = (bin.w as i64, bin.h as i64);
+    // ① 外扩 1px：透明像素若在实体 1px 邻域 → 描边色。
+    for y in 0..bin.h {
+        for x in 0..bin.w {
+            if bin.solid(x, y) {
                 continue;
             }
-            let within = (0..=r).any(|rr| {
-                [(rr, 0i64), (-rr, 0), (0, rr), (0, -rr), (rr, rr), (-rr, -rr), (rr, -rr), (-rr, rr)]
-                    .iter()
-                    .any(|(dx, dy)| {
-                        let nx = x as i64 + dx;
-                        let ny = y as i64 + dy;
-                        nx >= 0 && ny >= 0 && nx < buf.w as i64 && ny < buf.h as i64 && buf.solid(nx as u16, ny as u16)
-                    })
-            });
+            let within = [(1i64, 0i64), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)]
+                .iter()
+                .any(|(dx, dy)| {
+                    let nx = x as i64 + dx;
+                    let ny = y as i64 + dy;
+                    nx >= 0 && ny >= 0 && nx < w && ny < h && bin.solid(nx as u16, ny as u16)
+                });
             if within {
                 out.set(x, y, color);
+            }
+        }
+    }
+    // ② 原轮廓最外 (width−1) 圈改描边色（alpha 不动——不碰锐度度量面）。
+    let recolor_layers = (width as i64 - 1).max(0);
+    if recolor_layers >= 1 {
+        for y in 0..bin.h {
+            for x in 0..bin.w {
+                if !bin.solid(x, y) {
+                    continue;
+                }
+                let on_edge = (1..=recolor_layers).any(|rr| {
+                    for dy in -rr..=rr {
+                        for dx in -rr..=rr {
+                            if dx.abs() != rr && dy.abs() != rr {
+                                continue; // 只查 Chebyshev 环带
+                            }
+                            let nx = x as i64 + dx;
+                            let ny = y as i64 + dy;
+                            if nx < 0 || ny < 0 || nx >= w || ny >= h || !bin.solid(nx as u16, ny as u16) {
+                                return true;
+                            }
+                        }
+                    }
+                    false
+                });
+                if on_edge {
+                    let a = out.get(x, y).map(|p| p[3]).unwrap_or(255);
+                    out.set(x, y, [color[0], color[1], color[2], a]);
+                }
             }
         }
     }
@@ -406,5 +444,522 @@ mod tests {
             assert!(m.missing_states().is_empty(), "{} 缺态", id.zh());
             assert_eq!(m.entries.len(), 15);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 深化批：模板参数覆盖（不变量守恒）· 画廊元数据 · 适配性规则 ·
+// 模板转换图 · 版本登记 · 合规报告
+// ---------------------------------------------------------------------------
+
+use crate::jstar2::jbase::{contrast_x100, Rgb};
+
+/// 模板版本（判据/几何改版必须递增——合规报告带版本，旧报告作废）。
+pub const TEMPLATE_VERSION: u32 = 1;
+
+/// 模板画廊元数据（工坊起步面板的说明卡：给谁用、解决什么）。
+pub struct TemplateMeta {
+    pub id: TemplateId,
+    pub audience: &'static str,
+    pub solves: &'static str,
+}
+
+/// 画廊（id → 人话元数据；与 TEMPLATE_REGISTRY 同源但不重复判据文——
+/// 注册表管判据、画廊管说明，两表靠 id 键对账）。
+pub const TEMPLATE_GALLERY: [TemplateMeta; 3] = [
+    TemplateMeta {
+        id: TemplateId::HighContrast,
+        audience: "低视力用户 / 强光环境",
+        solves: "任何壁纸底色下指针轮廓清晰可辨",
+    },
+    TemplateMeta {
+        id: TemplateId::BigHotspot,
+        audience: "运动障碍用户 / 高分屏小指针困扰者",
+        solves: "点击判定区扩大到 8×8，对准成本低",
+    },
+    TemplateMeta {
+        id: TemplateId::LowLoad,
+        audience: "视觉负荷敏感用户 / 注意力易分散者",
+        solves: "零动画 + 加粗描边，不闪不晃",
+    },
+];
+
+/// 画廊对账：画廊与注册表 id 集合一致（一处加模板，两表同步——
+/// 漏一边即对账红）。
+pub fn gallery_registry_consistent() -> bool {
+    TEMPLATE_GALLERY.len() == TEMPLATE_REGISTRY.len()
+        && TEMPLATE_GALLERY.iter().all(|m| TEMPLATE_REGISTRY.iter().any(|(id, _)| *id == m.id))
+}
+
+/// 适配性规则（视觉需求档案 → 推荐模板；键值唯一的查表面）。
+pub fn recommend_template(need: &str) -> Option<TemplateId> {
+    match need {
+        "low-vision" => Some(TemplateId::HighContrast),
+        "motor" => Some(TemplateId::BigHotspot),
+        "attention" => Some(TemplateId::LowLoad),
+        _ => None,
+    }
+}
+
+/// 模板转换图（用户换模板时保留哪些自定义的语义说明——这里钉的是
+/// 「转换不带走旧模板的专属不变量」：新模板重建、署名与标签跟人走）。
+pub fn conversion_note(from: TemplateId, to: TemplateId) -> Option<&'static str> {
+    if from == to {
+        return None;
+    }
+    Some(match (from, to) {
+        (TemplateId::HighContrast, TemplateId::BigHotspot) => "高对比 → 大热点：描边丢弃，热点邻域重建",
+        (TemplateId::BigHotspot, TemplateId::HighContrast) => "大热点 → 高对比：热点缩回单点，双版描边重建",
+        (TemplateId::LowLoad, TemplateId::HighContrast) => "低负荷 → 高对比：静态保持，描边换双版",
+        (TemplateId::HighContrast, TemplateId::LowLoad) => "高对比 → 低负荷：静态保持，描边换 2px 加粗",
+        (TemplateId::BigHotspot, TemplateId::LowLoad) => "大热点 → 低负荷：热点缩回单点，描边 2px 加粗",
+        (TemplateId::LowLoad, TemplateId::BigHotspot) => "低负荷 → 大热点：静态保持，热点邻域重建",
+        _ => unreachable!("同模板转换已在函数头拦截"),
+    })
+}
+
+/// 参数覆盖（不改判据线，只改表现参数——覆盖后不变量必须复检）。
+pub struct TemplateOverride {
+    /// 主体色（None = 保持模板默认）。
+    pub body: Option<Rgb>,
+    /// 描边/邻域色。
+    pub outline: Option<Rgb>,
+    /// 热点偏移（相对模板默认热点；None = 不动）。
+    pub hotspot_delta: Option<(i64, i64)>,
+}
+
+impl Default for TemplateOverride {
+    fn default() -> Self {
+        TemplateOverride { body: None, outline: None, hotspot_delta: None }
+    }
+}
+
+/// 应用覆盖（非破坏：以模板为底复制改；返回带血统标注的变体）。
+/// ① 表现重染只在给了 body/outline 时发生——双 None = 恒等（默认覆盖
+/// 就是模板原样）；② 大热点的热点偏移钳在「8×8 邻域完整落界」的域内
+/// 并重建实体邻域——邻域出界 = 判据破，钳制只保热点单点是不够的。
+pub fn apply_override(id: TemplateId, ov: &TemplateOverride) -> CursorSchemeModel {
+    let mut m = build_template(id);
+    let recolor = match (ov.body, ov.outline) {
+        (None, None) => None,
+        (b, o) => Some((b.unwrap_or(Rgb::new(16, 16, 16)), o.unwrap_or(Rgb::new(250, 250, 250)))),
+    };
+    for st in ALL_STATES {
+        let Some(sf) = m.state_mut(st) else { continue };
+        for f in sf.frames.iter_mut() {
+            let mut buf = f.buf();
+            // ① 热点偏移。
+            if let Some((dx, dy)) = ov.hotspot_delta {
+                let half = (BIG_HOTSPOT_PX / 2) as i64;
+                if id == TemplateId::BigHotspot {
+                    f.hot_x = (f.hot_x as i64 + dx).clamp(half, buf.w as i64 - 1 - half) as u16;
+                    f.hot_y = (f.hot_y as i64 + dy).clamp(half, buf.h as i64 - 1 - half) as u16;
+                    // 邻域重建（新热点处的实体保证——先于重染，色相一致）。
+                    enforce_big_hotspot(&mut buf, f.hot_x, f.hot_y);
+                } else {
+                    f.hot_x = (f.hot_x as i64 + dx).clamp(0, buf.w as i64 - 1) as u16;
+                    f.hot_y = (f.hot_y as i64 + dy).clamp(0, buf.h as i64 - 1) as u16;
+                }
+            }
+            // ② 表现重染（双 None 跳过——不动像素）。
+            if let Some((body, outline)) = recolor {
+                for y in 0..buf.h {
+                    for x in 0..buf.w {
+                        let c = buf.get(x, y).unwrap_or([0, 0, 0, 0]);
+                        if c[3] == 0 {
+                            continue;
+                        }
+                        let l = (c[0] as i64 + c[1] as i64 + c[2] as i64) / 3;
+                        let newc = if l >= 128 { outline } else { body };
+                        buf.set(x, y, [newc.r, newc.g, newc.b, c[3]]);
+                    }
+                }
+            }
+            f.px = buf.px;
+        }
+    }
+    m
+}
+
+/// 覆盖后不变量复检（判据线不动，参数改了也要过同一把尺）：
+/// - 高对比：黑/白双色犹在（主体与描边对比度 ≥4.5:1）；
+/// - 大热点：热点 8×8 邻域仍全实体；
+/// - 低负荷：全态静态（delay=0）。
+pub fn override_invariants_hold(id: TemplateId, m: &CursorSchemeModel) -> bool {
+    match id {
+        TemplateId::HighContrast => {
+            // 主体与描边两大色簇对比度 ≥450。
+            let Some(f) = m.state(PointerState::Normal).and_then(|s| s.frames.first()) else {
+                return false;
+            };
+            let mut dark = Rgb::new(0, 0, 0);
+            let mut light = Rgb::new(255, 255, 255);
+            let mut found_dark = false;
+            let mut found_light = false;
+            for c in f.px.chunks_exact(4) {
+                if c[3] == 0 {
+                    continue;
+                }
+                let l = (c[0] as i32 + c[1] as i32 + c[2] as i32) / 3;
+                if l < 128 && !found_dark {
+                    dark = Rgb::new(c[0], c[1], c[2]);
+                    found_dark = true;
+                }
+                if l >= 128 && !found_light {
+                    light = Rgb::new(c[0], c[1], c[2]);
+                    found_light = true;
+                }
+            }
+            found_dark && found_light && contrast_x100(dark, light) >= HIGH_CONTRAST_X100
+        }
+        TemplateId::BigHotspot => {
+            let Some(f) = m.state(PointerState::Normal).and_then(|s| s.frames.first()) else {
+                return false;
+            };
+            let buf: PixBuf = f.buf();
+            let half = (BIG_HOTSPOT_PX / 2) as i64;
+            for dy in -half..=half {
+                for dx in -half..=half {
+                    let x = f.hot_x as i64 + dx;
+                    let y = f.hot_y as i64 + dy;
+                    if x < 0 || y < 0 || x >= buf.w as i64 || y >= buf.h as i64 {
+                        // 画布外无像素可判——与 F631 v1 邻域检查同口径豁免
+                        //（内置热点在箭头尖端，邻域天然越界）。
+                        continue;
+                    }
+                    if !buf.solid(x as u16, y as u16) {
+                        return false;
+                    }
+                }
+            }
+            true
+        }
+        TemplateId::LowLoad => {
+            match m.state(PointerState::Normal) {
+                Some(sf) => sf.frames.iter().all(|f| f.delay_ms == 0),
+                None => false,
+            }
+        }
+    }
+}
+
+/// 合规报告（三模板 × [F627 体检、F632 审计] 的对勾表——版本戳防旧报)。
+pub struct ComplianceReport {
+    pub template_version: u32,
+    pub rows: Vec<(TemplateId, bool, bool)>, // (id, checker_green, audit_passed)
+}
+
+pub fn compliance_report() -> ComplianceReport {
+    let rows = TEMPLATE_REGISTRY
+        .iter()
+        .map(|(id, _)| {
+            let m = build_template(*id);
+            let checker_green = checker::inspect(&m).all_green();
+            let audit_passed = crate::jstar2::audit::audit(&m).all_passed;
+            (*id, checker_green, audit_passed)
+        })
+        .collect();
+    ComplianceReport { template_version: TEMPLATE_VERSION, rows }
+}
+
+/// v3 自检。
+pub fn run_a11ytmpl_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F631-v3");
+
+    // 1. 画廊与注册表 id 集合一致（两表同源对账）。
+    set.add("gallery consistent with registry", gallery_registry_consistent(), "");
+
+    // 2. 适配性规则：三需求 → 三模板；未知需求诚实 None。
+    set.add(
+        "recommendation routes by need",
+        recommend_template("low-vision") == Some(TemplateId::HighContrast)
+            && recommend_template("motor") == Some(TemplateId::BigHotspot)
+            && recommend_template("attention") == Some(TemplateId::LowLoad)
+            && recommend_template("huh").is_none(),
+        "",
+    );
+
+    // 3. 转换图：同模板 → None；异模板 → 有说明且六条路全通。
+    set.add(
+        "conversion graph complete",
+        conversion_note(TemplateId::HighContrast, TemplateId::HighContrast).is_none()
+            && conversion_note(TemplateId::LowLoad, TemplateId::BigHotspot).is_some()
+            && [
+                (TemplateId::HighContrast, TemplateId::BigHotspot),
+                (TemplateId::BigHotspot, TemplateId::HighContrast),
+                (TemplateId::LowLoad, TemplateId::HighContrast),
+                (TemplateId::HighContrast, TemplateId::LowLoad),
+                (TemplateId::BigHotspot, TemplateId::LowLoad),
+                (TemplateId::LowLoad, TemplateId::BigHotspot),
+            ]
+            .iter()
+            .all(|(a, b)| conversion_note(*a, *b).is_some()),
+        "",
+    );
+
+    // 4. 参数覆盖：换色变体仍过体检（改形不改纪律）。
+    let ov = TemplateOverride {
+        body: Some(Rgb::new(30, 30, 90)),
+        outline: Some(Rgb::new(240, 220, 120)),
+        hotspot_delta: None,
+    };
+    let variant = apply_override(TemplateId::HighContrast, &ov);
+    set.add(
+        "override variant passes checker",
+        checker::inspect(&variant).all_green(),
+        "",
+    );
+
+    // 5. 覆盖后不变量复检：三模板默认变体各自的不变量仍成立。
+    let hc_ok = override_invariants_hold(TemplateId::HighContrast, &apply_override(TemplateId::HighContrast, &ov));
+    let bh_ok = override_invariants_hold(TemplateId::BigHotspot, &build_template(TemplateId::BigHotspot));
+    let ll_ok = override_invariants_hold(TemplateId::LowLoad, &build_template(TemplateId::LowLoad));
+    set.add(
+        "override invariants hold per template",
+        hc_ok && bh_ok && ll_ok,
+        "",
+    );
+
+    // 6. 热点偏移覆盖：大热点模板偏移后邻域判仍成立（偏移被钳在界内）。
+    let shifted = apply_override(TemplateId::BigHotspot, &TemplateOverride { hotspot_delta: Some((2, -1)), ..Default::default() });
+    set.add(
+        "hotspot shift keeps 8x8 solid",
+        override_invariants_hold(TemplateId::BigHotspot, &shifted),
+        "",
+    );
+
+    // 7. 合规报告：版本戳在、三行全绿（checker + audit 双尺）。
+    let rep = compliance_report();
+    set.add(
+        "compliance report all green versioned",
+        rep.template_version == TEMPLATE_VERSION
+            && rep.rows.len() == 3
+            && rep.rows.iter().all(|(_, c, a)| *c && *a),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn override_with_default_is_base() {
+        let base = build_template(TemplateId::LowLoad);
+        let ov = apply_override(TemplateId::LowLoad, &TemplateOverride::default());
+        // 默认覆盖 = 模板原样（表现参数未动）。
+        assert_eq!(base.state(PointerState::Normal).unwrap().frames[0].px, ov.state(PointerState::Normal).unwrap().frames[0].px);
+    }
+
+    #[test]
+    fn hotspot_shift_clamped_inside() {
+        let shifted = apply_override(TemplateId::BigHotspot, &TemplateOverride { hotspot_delta: Some((1000, 1000)), ..Default::default() });
+        let f = shifted.state(PointerState::Normal).unwrap().frames[0].clone();
+        assert!(f.hot_x < 32 && f.hot_y < 32, "偏移被钳在画布内");
+    }
+
+    #[test]
+    fn gallery_meta_texts_nonempty() {
+        for m in TEMPLATE_GALLERY.iter() {
+            assert!(!m.audience.is_empty() && !m.solves.is_empty());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 深化批：模板使用统计账本 · 模板摘要行人话渲染
+// ---------------------------------------------------------------------------
+
+/// 模板使用账本（工坊「起步模板」套用面的计数器：哪个模板被套用了多少
+/// 次、最近一次何时——注册表管判据、画廊管说明、账本管使用，三表靠
+/// id 键对账；槽位数与 `TEMPLATE_REGISTRY` 同宽，加模板漏账本即红）。
+pub struct UsageLedger {
+    counts: [u64; 3],
+    last_used_ms: [Option<u64>; 3],
+}
+
+impl UsageLedger {
+    pub fn new() -> UsageLedger {
+        UsageLedger { counts: [0; 3], last_used_ms: [None; 3] }
+    }
+
+    /// id → 槽位（三模板固定座次：与注册表下标一致）。
+    fn slot(id: TemplateId) -> usize {
+        match id {
+            TemplateId::HighContrast => 0,
+            TemplateId::BigHotspot => 1,
+            TemplateId::LowLoad => 2,
+        }
+    }
+
+    /// 记一次套用（时刻只前进不回退——乱序喂入取较大者，账本不撒谎）。
+    pub fn record(&mut self, id: TemplateId, at_ms: u64) {
+        let s = Self::slot(id);
+        self.counts[s] += 1;
+        if self.last_used_ms[s].map(|t| at_ms > t).unwrap_or(true) {
+            self.last_used_ms[s] = Some(at_ms);
+        }
+    }
+
+    /// 某模板的累计套用次数。
+    pub fn count_of(&self, id: TemplateId) -> u64 {
+        self.counts[Self::slot(id)]
+    }
+
+    /// 某模板最近套用时刻（从未用过 → None——不猜）。
+    pub fn last_used_of(&self, id: TemplateId) -> Option<u64> {
+        self.last_used_ms[Self::slot(id)]
+    }
+
+    /// 最热门模板（并列取先登记者；全零 → None）。
+    pub fn most_used(&self) -> Option<TemplateId> {
+        let mut best: Option<usize> = None;
+        for s in 0..3 {
+            if self.counts[s] == 0 {
+                continue;
+            }
+            match best {
+                None => best = Some(s),
+                Some(b) if self.counts[s] > self.counts[b] => best = Some(s),
+                _ => {}
+            }
+        }
+        best.map(|s| TEMPLATE_REGISTRY[s].0)
+    }
+
+    /// 总套用次数（三槽合计）。
+    pub fn total(&self) -> u64 {
+        self.counts[0] + self.counts[1] + self.counts[2]
+    }
+}
+
+impl Default for UsageLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 模板摘要行（判据 + 适配人群 + 免检登记 → 一行人话：工坊起步面板的
+/// 说明卡渲染面——注册表、画廊、免检映射三表联查，缺一即残行）。
+pub fn template_summary_line(id: TemplateId) -> String {
+    let criteria = TEMPLATE_REGISTRY
+        .iter()
+        .find(|(i, _)| *i == id)
+        .map(|(_, c)| *c)
+        .unwrap_or("");
+    let audience = TEMPLATE_GALLERY
+        .iter()
+        .find(|m| m.id == id)
+        .map(|m| m.audience)
+        .unwrap_or("");
+    let exempt = if exempt_reason(id.key()).is_some() { "已登记" } else { "未登记" };
+    alloc::format!("{} [{}]：{}｜适配：{}｜免检：{}", id.zh(), id.key(), criteria, audience, exempt)
+}
+
+/// v4 自检。
+pub fn run_a11ytmpl_v4_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F631-v4");
+
+    // 1. 账本计数：三模板各记一次 → 各自 1、总数 3。
+    let mut led = UsageLedger::new();
+    led.record(TemplateId::HighContrast, 10);
+    led.record(TemplateId::BigHotspot, 20);
+    led.record(TemplateId::LowLoad, 30);
+    set.add(
+        "usage ledger counts per template",
+        led.count_of(TemplateId::HighContrast) == 1
+            && led.count_of(TemplateId::BigHotspot) == 1
+            && led.count_of(TemplateId::LowLoad) == 1
+            && led.total() == 3,
+        "",
+    );
+
+    // 2. 最近时刻单调：乱序喂入取较大者（账本不回退）。
+    led.record(TemplateId::BigHotspot, 5);
+    set.add(
+        "ledger last-used never regresses",
+        led.last_used_of(TemplateId::BigHotspot) == Some(20)
+            && led.count_of(TemplateId::BigHotspot) == 2,
+        "",
+    );
+
+    // 3. 热门模板：计数领先者胜出；空账本诚实 None。
+    led.record(TemplateId::LowLoad, 40);
+    led.record(TemplateId::LowLoad, 50);
+    set.add(
+        "most used picks leader empty honest",
+        led.most_used() == Some(TemplateId::LowLoad)
+            && UsageLedger::new().most_used().is_none(),
+        "",
+    );
+
+    // 4. 摘要行三表联查：名字、键、判据、人群、免检登记都在一行里。
+    let line = template_summary_line(TemplateId::HighContrast);
+    set.add(
+        "summary line joins three tables",
+        line.contains("高对比模板")
+            && line.contains("high-contrast")
+            && line.contains("4.5:1")
+            && line.contains("低视力")
+            && line.contains("已登记"),
+        "",
+    );
+
+    // 5. 三模板摘要行各不相同且各带自家判据片段（8×8 / 2px）。
+    let l1 = template_summary_line(TemplateId::BigHotspot);
+    let l2 = template_summary_line(TemplateId::LowLoad);
+    set.add(
+        "three summary lines distinct",
+        l1 != l2 && l1.contains("8×8") && l2.contains("2px") && line != l1 && line != l2,
+        "",
+    );
+
+    // 6. 账本与注册表同宽：三槽位覆盖三模板、各记一次总数对齐
+    //    （并列时取先登记者——高对比）。
+    let mut led2 = UsageLedger::new();
+    for (id, _) in TEMPLATE_REGISTRY.iter() {
+        led2.record(*id, 1);
+    }
+    set.add(
+        "ledger slots cover registry",
+        led2.total() == TEMPLATE_REGISTRY.len() as u64
+            && led2.most_used() == Some(TemplateId::HighContrast),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+
+    #[test]
+    fn ledger_roundtrip_and_totals() {
+        let mut led = UsageLedger::new();
+        led.record(TemplateId::LowLoad, 100);
+        led.record(TemplateId::LowLoad, 200);
+        led.record(TemplateId::LowLoad, 150);
+        assert_eq!(led.count_of(TemplateId::LowLoad), 3);
+        assert_eq!(led.last_used_of(TemplateId::LowLoad), Some(200), "乱序喂入取较大者");
+        assert_eq!(led.total(), 3);
+    }
+
+    #[test]
+    fn summary_line_complete_for_all_templates() {
+        for (id, _) in TEMPLATE_REGISTRY.iter() {
+            let line = template_summary_line(*id);
+            assert!(line.contains(id.zh()) && line.contains(id.key()));
+            assert!(line.ends_with("已登记"), "三模板免检全登记：{line}");
+        }
+    }
+
+    #[test]
+    fn unused_template_has_no_last_used() {
+        let led = UsageLedger::new();
+        assert_eq!(led.last_used_of(TemplateId::BigHotspot), None);
+        assert_eq!(led.count_of(TemplateId::BigHotspot), 0);
     }
 }

@@ -451,3 +451,437 @@ mod tests {
         assert!(err.contains("pointer-click"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：按下/抬起分离时间线 · 多设备枢纽 · 体验日志环（主册十三章）
+// · 偏好序列化 · F350 全谱审计
+// ---------------------------------------------------------------------------
+
+use alloc::vec::Vec;
+
+/// 抬起回弹时长（ms）——释放段的对称半波（120ms 轻档同源）。
+pub const RELEASE_DURATION_MS: u32 = 120;
+/// 长按阈值（ms）：超过此值的按压释放不再播回弹（长按 suppress——
+/// 交互状态机纪律：按住不放的释放不该有「弹一下」的错觉）。
+pub const HOLD_SUPPRESS_MS: u64 = 500;
+
+/// 按压会话：一次完整的按下→抬起（分离时间线的状态机单元）。
+///
+/// 按下开时间线（缩放谷值半波）；抬起时若按压时长 < HOLD_SUPPRESS_MS
+/// 则开回弹半波，否则静默复位。两条时间线共用一条缩放输出：
+/// `combined_scale_m` 在释放段从 1.000 起压一个 0.97 浅谷回 1.000。
+pub struct PressSession {
+    pub tier: ClickAnimTier,
+    pub pressed_at_ms: u64,
+    released_at_ms: Option<u64>,
+}
+
+impl PressSession {
+    pub fn new(tier: ClickAnimTier, pressed_at_ms: u64) -> PressSession {
+        PressSession { tier, pressed_at_ms, released_at_ms: None }
+    }
+
+    /// 抬起（幂等：二次抬起不改变状态——乱点/连点状态机纪律）。
+    pub fn release(&mut self, at_ms: u64) {
+        if self.released_at_ms.is_none() {
+            self.released_at_ms = Some(at_ms);
+        }
+    }
+
+    pub fn is_released(&self) -> bool {
+        self.released_at_ms.is_some()
+    }
+
+    /// 按压时长（未释放按 now 计）。
+    pub fn held_ms(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.pressed_at_ms)
+    }
+
+    /// 释放回弹是否生效（已释放 + 未超长按阈值 + 档位非关）。
+    pub fn rebound_active(&self) -> bool {
+        match (self.tier, self.released_at_ms) {
+            (ClickAnimTier::Off, _) | (_, None) => false,
+            (_, Some(rel)) => rel.saturating_sub(self.pressed_at_ms) < HOLD_SUPPRESS_MS,
+        }
+    }
+
+    /// 组合缩放（千分位定点；关档恒 1000）。
+    pub fn combined_scale_m(&self, now_ms: u64) -> i64 {
+        if self.tier == ClickAnimTier::Off {
+            return 1000;
+        }
+        match self.released_at_ms {
+            None => {
+                let tl = ClickTimeline::new(self.tier, self.pressed_at_ms);
+                tl.scale_m(now_ms)
+            }
+            Some(rel) => {
+                if !self.rebound_active() {
+                    return 1000; // 长按抑制/关档——回弹不发（判据「长按跳过回弹」）
+                }
+                let t = now_ms.saturating_sub(rel) as i64;
+                if t >= RELEASE_DURATION_MS as i64 {
+                    return 1000;
+                }
+                let dur = RELEASE_DURATION_MS as i64;
+                let phase = crate::jstar2::jbase::sin_fp(3142 * t / dur);
+                1000 - 30 * phase / 1000
+            }
+        }
+    }
+
+    fn released_at_ms_is(&self, v: u64) -> bool {
+        self.released_at_ms == Some(v)
+    }
+}
+
+/// 动效事件种类（体验日志面——十三章「记录到交互细节层」）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnimEventKind {
+    PressStarted,
+    PressRestarted,
+    Released,
+    ReboundSkippedHold,
+    TierSwitched,
+}
+
+impl AnimEventKind {
+    pub fn zh(self) -> &'static str {
+        match self {
+            AnimEventKind::PressStarted => "按压动效开始",
+            AnimEventKind::PressRestarted => "连点重启时间线",
+            AnimEventKind::Released => "释放回弹",
+            AnimEventKind::ReboundSkippedHold => "长按跳过回弹",
+            AnimEventKind::TierSwitched => "档位切换",
+        }
+    }
+}
+
+/// 一条动效事件（时间戳 + 种类 + 设备 + 体验结论字段）。
+#[derive(Clone, Copy, Debug)]
+pub struct AnimEvent {
+    pub at_ms: u64,
+    pub kind: AnimEventKind,
+    /// 设备序号（0=鼠标 / 1=触控板 / 2=笔）。
+    pub device: u8,
+    /// 按下到动效首帧的模型延迟（μs）——「100ms 内有反馈」的打点面。
+    pub latency_us: u32,
+    /// 体验结论：顺畅 = true（延迟入界且未被减少动效拦截）。
+    pub smooth: bool,
+}
+
+/// 体验日志环（64 槽环形——十三章「写入绝不阻塞交互」的模型面：
+/// 写入恒 O(1)、满槽覆盖最旧、回放按时间升序）。
+pub struct AnimEventLog {
+    ring: [Option<AnimEvent>; 64],
+    head: usize,
+    pub total: u64,
+    pub overwritten: u64,
+}
+
+impl AnimEventLog {
+    pub fn new() -> AnimEventLog {
+        AnimEventLog { ring: [None; 64], head: 0, total: 0, overwritten: 0 }
+    }
+
+    pub fn push(&mut self, ev: AnimEvent) {
+        if self.ring[self.head].is_some() {
+            self.overwritten += 1;
+        }
+        self.ring[self.head] = Some(ev);
+        self.head = (self.head + 1) % 64;
+        self.total += 1;
+    }
+
+    /// 按时间升序回放（最新在后——可回放操作故事线）。
+    pub fn replay(&self) -> Vec<AnimEvent> {
+        let mut out = Vec::new();
+        let n = self.total.min(64) as usize;
+        let start = (self.head + 64 - n) % 64;
+        for k in 0..n {
+            if let Some(ev) = self.ring[(start + k) % 64] {
+                out.push(ev);
+            }
+        }
+        out
+    }
+
+    /// 挫败信号：连续 PressRestarted ≥ 3 次（狂点指纹，十三章）。
+    pub fn rage_click_streak(&self) -> u32 {
+        let evs = self.replay();
+        let mut streak = 0u32;
+        let mut best = 0u32;
+        for ev in &evs {
+            if ev.kind == AnimEventKind::PressRestarted {
+                streak += 1;
+                if streak > best {
+                    best = streak;
+                }
+            } else {
+                streak = 0;
+            }
+        }
+        best
+    }
+}
+impl Default for AnimEventLog {
+    fn default() -> Self {
+        AnimEventLog::new()
+    }
+}
+
+/// 多设备动效枢纽：鼠标 / 触控板 / 笔 各自独立会话（互不抢时间线），
+/// 脏区 = 各设备活动脏区并集。
+pub struct MultiPointerHub {
+    sessions: [Option<PressSession>; 3],
+    pub tier: ClickAnimTier,
+}
+
+impl MultiPointerHub {
+    pub fn new(tier: ClickAnimTier) -> MultiPointerHub {
+        MultiPointerHub { sessions: [None, None, None], tier }
+    }
+
+    /// 按下（幂等覆盖同设备旧会话——同设备连点 = 重启语义）。
+    pub fn press(&mut self, device: u8, at_ms: u64) {
+        if device as usize >= 3 {
+            return;
+        }
+        self.sessions[device as usize] = Some(PressSession::new(self.tier, at_ms));
+    }
+
+    pub fn release(&mut self, device: u8, at_ms: u64) {
+        if let Some(s) = self.sessions.get_mut(device as usize).and_then(|o| o.as_mut()) {
+            s.release(at_ms);
+        }
+    }
+
+    pub fn scale_m(&self, device: u8, now_ms: u64) -> i64 {
+        self.sessions
+            .get(device as usize)
+            .and_then(|o| o.as_ref())
+            .map(|s| s.combined_scale_m(now_ms))
+            .unwrap_or(1000)
+    }
+
+    /// 并集脏区（px）：任一设备活动即覆盖该设备指针矩形∪涟漪外接方。
+    pub fn union_dirty_rect(
+        &self,
+        now_ms: u64,
+        ptrs: &[(u8, i64, i64, u16, u16)],
+    ) -> (i64, i64, u32, u32) {
+        let mut acc: Option<(i64, i64, u32, u32)> = None;
+        for &(dev, x, y, w, h) in ptrs {
+            let sess = self.sessions.get(dev as usize).and_then(|o| o.as_ref());
+            let pressing = sess.map(|s| !s.is_released() && s.held_ms(now_ms) < LIGHT_DURATION_MS as u64).unwrap_or(false);
+            let rebounding = sess.map(|s| s.rebound_active() && s.combined_scale_m(now_ms) != 1000).unwrap_or(false);
+            if !pressing && !rebounding {
+                continue;
+            }
+            let r = if self.tier == ClickAnimTier::Full && pressing { FULL_RIPPLE_PX as i64 } else { 0 };
+            let (rx, ry, rw, rh) = (x - r, y - r, w as i64 + 2 * r, h as i64 + 2 * r);
+            acc = Some(match acc {
+                None => (rx, ry, rw.max(0) as u32, rh.max(0) as u32),
+                Some((ax, ay, aw, ah)) => {
+                    let nx = ax.min(rx);
+                    let ny = ay.min(ry);
+                    let ne_x = (ax + aw as i64).max(rx + rw);
+                    let ne_y = (ay + ah as i64).max(ry + rh);
+                    (nx, ny, (ne_x - nx).max(0) as u32, (ne_y - ny).max(0) as u32)
+                }
+            });
+        }
+        acc.unwrap_or((0, 0, 0, 0))
+    }
+}
+
+/// 偏好序列化（8 字节 KV：魔数 | tier | rec | 保留位全 0 校验）。
+///
+/// 反序列化逐字节校验：非法 tier 值 / 保留位非零 → None（不猜）。
+pub fn prefs_to_kv(p: &ClickAnimPrefs) -> [u8; 8] {
+    let tier = match p.tier {
+        ClickAnimTier::Off => 0u8,
+        ClickAnimTier::Light => 1,
+        ClickAnimTier::Full => 2,
+    };
+    [0xCA, 0xFE, tier, u8::from(p.rec_highlight), 0, 0, 0, 0]
+}
+
+pub fn prefs_from_kv(kv: &[u8]) -> Option<ClickAnimPrefs> {
+    if kv.len() != 8 || kv[0] != 0xCA || kv[1] != 0xFE || kv[4] != 0 || kv[5] != 0 || kv[6] != 0 || kv[7] != 0 {
+        return None;
+    }
+    let tier = match kv[2] {
+        0 => ClickAnimTier::Off,
+        1 => ClickAnimTier::Light,
+        2 => ClickAnimTier::Full,
+        _ => return None,
+    };
+    Some(ClickAnimPrefs { tier, rec_highlight: kv[3] == 1 })
+}
+
+/// F350 全谱审计：指针域三段（click/release/hold）逐条对表（±5 千分位
+/// / ±10ms 容差，与 v1 单段审计同容差口径）。
+pub fn audit_f350_full_spectrum(entries: &[HapticEntry]) -> Result<(), String> {
+    let want: [(&str, i64, u32); 3] = [
+        ("pointer-click", LIGHT_SCALE_MIN_M, LIGHT_DURATION_MS),
+        ("pointer-release", 970, RELEASE_DURATION_MS),
+        ("pointer-hold", 1000, 0),
+    ];
+    for (dom, scale, dur) in want {
+        match entries.iter().find(|e| e.domain == dom) {
+            None => return Err(alloc::format!("F350 谱中缺少 {} 条目", dom)),
+            Some(e) => {
+                if (e.scale_m - scale).abs() > 5 {
+                    return Err(alloc::format!("{} 缩放 {} 偏离 {}", dom, e.scale_m, scale));
+                }
+                if e.duration_ms.abs_diff(dur) > 10 {
+                    return Err(alloc::format!("{} 时长 {}ms 偏离 {}ms", dom, e.duration_ms, dur));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// v3 自检（与 v1/v2 段并账——mod.rs 聚合器 merge）。
+pub fn run_clickanim_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F621-v3");
+
+    // 1. 分离时间线：按压谷值段正常；未释放段语义与 v1 时间线一致。
+    let mut s = PressSession::new(ClickAnimTier::Light, 1000);
+    set.add(
+        "press segment dips then rebinds",
+        s.combined_scale_m(1060) <= 945 && s.combined_scale_m(1120) == 1000,
+        "",
+    );
+
+    // 2. 释放浅谷回弹：0.970 谷值、120ms 窗口、窗后恒 1.000。
+    s.release(1180); // 按压 180ms < 500ms → 回弹生效
+    set.add(
+        "release rebound shallow dip 0.97",
+        s.rebound_active()
+            && s.combined_scale_m(1180) == 1000
+            && s.combined_scale_m(1240) < 1000
+            && s.combined_scale_m(1240) >= 965
+            && s.combined_scale_m(1310) == 1000,
+        "",
+    );
+
+    // 3. 长按抑制：>500ms 释放不回弹（交互状态机公理）。
+    let mut h = PressSession::new(ClickAnimTier::Full, 1000);
+    h.release(1600);
+    set.add(
+        "long press skips rebound",
+        !h.rebound_active() && h.combined_scale_m(1620) == 1000,
+        "",
+    );
+
+    // 4. 抬起幂等：二次抬起不改状态（乱点防护）。
+    let mut d = PressSession::new(ClickAnimTier::Light, 0);
+    d.release(100);
+    let first = d.released_at_ms_is(100);
+    d.release(200);
+    set.add("release idempotent", first && d.released_at_ms_is(100), "");
+
+    // 5. 多设备枢纽：双设备独立会话、并集脏区覆盖两指针。
+    let mut hub = MultiPointerHub::new(ClickAnimTier::Light);
+    hub.press(0, 1000);
+    hub.press(1, 1020);
+    let (x, y, w, hh) = hub.union_dirty_rect(
+        1040,
+        &[(0u8, 10i64, 10i64, 32u16, 32u16), (1u8, 200i64, 200i64, 24u16, 24u16)],
+    );
+    set.add(
+        "multi pointer union dirty rect",
+        x == 10 && y == 10 && w == 214 && hh == 214,
+        "",
+    );
+
+    // 6. 关档枢纽：并集恒空（零干预）。
+    let hub_off = MultiPointerHub::new(ClickAnimTier::Off);
+    let (x, y, w, hh) = hub_off.union_dirty_rect(100, &[(0u8, 5i64, 5i64, 32u16, 32u16)]);
+    set.add("hub off empty union", (x, y, w, hh) == (0, 0, 0, 0), "");
+
+    // 7. 体验日志环：64 槽覆盖写 + 时间序回放 + 狂点指纹。
+    let mut log = AnimEventLog::new();
+    for i in 0..70u64 {
+        // 5 个一组：1 起始 + 4 连点——构成狂点指纹（连续重启 ≥3）。
+        let kind = if i % 5 == 0 { AnimEventKind::PressStarted } else { AnimEventKind::PressRestarted };
+        log.push(AnimEvent { at_ms: i * 10, kind, device: 0, latency_us: 80, smooth: true });
+    }
+    let evs = log.replay();
+    set.add(
+        "event log ring 64 overwrite and ordered replay",
+        log.total == 70 && log.overwritten == 6 && evs.len() == 64 && evs[0].at_ms == 60 && evs[63].at_ms == 690,
+        "",
+    );
+    set.add("rage click streak detected", log.rage_click_streak() >= 3, "");
+
+    // 8. 偏好 KV 序列化往返 + 篡改拒绝。
+    let p = ClickAnimPrefs { tier: ClickAnimTier::Full, rec_highlight: true };
+    let kv = prefs_to_kv(&p);
+    let round = prefs_from_kv(&kv);
+    let mut bad = kv;
+    bad[2] = 9;
+    set.add(
+        "prefs kv roundtrip and tamper reject",
+        round.map(|r| r == p).unwrap_or(false)
+            && prefs_from_kv(&bad).is_none()
+            && prefs_from_kv(&[0u8; 8]).is_none(),
+        "",
+    );
+
+    // 9. F350 全谱：三段全对绿；缺 hold 段红。
+    let full = audit_f350_full_spectrum(&[
+        HapticEntry { domain: "pointer-click", scale_m: 940, duration_ms: 120 },
+        HapticEntry { domain: "pointer-release", scale_m: 970, duration_ms: 120 },
+        HapticEntry { domain: "pointer-hold", scale_m: 1000, duration_ms: 0 },
+    ]);
+    let missing = audit_f350_full_spectrum(&[
+        HapticEntry { domain: "pointer-click", scale_m: 940, duration_ms: 120 },
+        HapticEntry { domain: "pointer-release", scale_m: 970, duration_ms: 120 },
+    ]);
+    set.add("F350 full spectrum pass", full.is_ok(), "");
+    set.add("F350 full spectrum missing red", missing.is_err(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn rebound_window_is_120ms() {
+        let mut s = PressSession::new(ClickAnimTier::Light, 0);
+        s.release(50);
+        assert!(s.combined_scale_m(110) < 1000);
+        assert_eq!(s.combined_scale_m(170), 1000);
+    }
+
+    #[test]
+    fn hub_scale_per_device_independent() {
+        let mut hub = MultiPointerHub::new(ClickAnimTier::Light);
+        hub.press(0, 1000);
+        assert!(hub.scale_m(0, 1060) < 1000);
+        assert_eq!(hub.scale_m(2, 1060), 1000, "未按下的设备恒 1.0");
+    }
+
+    #[test]
+    fn kv_rejects_wrong_magic() {
+        assert!(prefs_from_kv(&[0x00; 8]).is_none());
+        assert!(prefs_from_kv(&[0xCA, 0xFE, 1, 0]).is_none(), "长度错");
+    }
+
+    #[test]
+    fn f350_drift_on_release_detected() {
+        let err = audit_f350_full_spectrum(&[
+            HapticEntry { domain: "pointer-click", scale_m: 940, duration_ms: 120 },
+            HapticEntry { domain: "pointer-release", scale_m: 960, duration_ms: 120 },
+            HapticEntry { domain: "pointer-hold", scale_m: 1000, duration_ms: 0 },
+        ])
+        .unwrap_err();
+        assert!(err.contains("pointer-release"));
+    }
+}

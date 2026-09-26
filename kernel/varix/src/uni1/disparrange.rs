@@ -124,6 +124,76 @@ impl DisplayArrangement {
     pub fn effective_immediately(&self) -> bool {
         true
     }
+
+    // ----------------------- v4 深化批次新增 -----------------------
+
+    /// 重叠检测：两块屏矩形相交 = 排布非法（拖拽重叠是用户失误，
+    /// 诊断面必须显性报告——不静默接受）。
+    pub fn overlapping(&self) -> Vec<(u64, u64)> {
+        let mut out = Vec::new();
+        for i in 0..self.screens.len() {
+            for j in (i + 1)..self.screens.len() {
+                let a = &self.screens[i];
+                let b = &self.screens[j];
+                let overlap = a.x < b.x + b.width
+                    && b.x < a.x + a.width
+                    && a.y < b.y + b.height
+                    && b.y < a.y + a.height;
+                if overlap {
+                    out.push((a.id, b.id));
+                }
+            }
+        }
+        out
+    }
+
+    /// 相邻关系：与指定屏贴边（共享边界线）的屏清单——多屏工作流
+    /// 「鼠标往哪边走会到哪块屏」的依据。
+    pub fn adjacent(&self, id: u64) -> Vec<u64> {
+        let Some(me) = self.screens.iter().find(|s| s.id == id) else {
+            return Vec::new();
+        };
+        self.screens
+            .iter()
+            .filter(|o| {
+                o.id != id
+                    && ((o.x + o.width == me.x || me.x + me.width == o.x)
+                        && o.y < me.y + me.height
+                        && me.y < o.y + o.height
+                        || (o.y + o.height == me.y || me.y + me.height == o.y)
+                            && o.x < me.x + me.width
+                            && me.x < o.x + o.width)
+            })
+            .map(|o| o.id)
+            .collect()
+    }
+
+    /// 分辨率变更：改尺寸保持锚点（左上角不动——相邻关系尽量不破坏）；
+    /// 变更后重叠要显性报告（拖拽几何由调用方修复）。
+    pub fn set_resolution(&mut self, id: u64, w: i32, h: i32) -> bool {
+        match self.screens.iter_mut().find(|s| s.id == id) {
+            Some(s) if w > 0 && h > 0 => {
+                s.width = w;
+                s.height = h;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 拓扑变化批量回流（F353 判据复用——多窗口形态）：屏拔除时一批
+    /// 窗口各自按相对位置迁回存活屏。返回 (窗口序号, 落点) 表。
+    pub fn rehome_batch(&self, dead_screen: u64, win_rels: &[(u64, (f64, f64))]) -> Vec<(u64, (i32, i32))> {
+        win_rels
+            .iter()
+            .filter_map(|(win, rel)| self.window_rehome(dead_screen, *rel).map(|p| (*win, p)))
+            .collect()
+    }
+
+    /// 主屏查询（托盘/任务栏落位依据）。
+    pub fn primary_id(&self) -> Option<u64> {
+        self.screens.iter().find(|s| s.is_primary).map(|s| s.id)
+    }
 }
 
 pub fn run_disparrange_checks() -> CheckSet {
@@ -163,6 +233,44 @@ pub fn run_disparrange_checks() -> CheckSet {
     );
     // 即时生效（无应用按钮）。
     set.add("f445-immediate", a.effective_immediately(), "");
+    // 重叠检测：合法排布零重叠；人为拖成重叠显性报告。
+    set.add("f445-no-overlap-clean", a.overlapping().is_empty(), "");
+    let _ = a.drag_to(2, 0, 0); // 拖到与主屏完全重合
+    set.add(
+        "f445-overlap-reported",
+        a.overlapping() == alloc::vec![(1, 2)],
+        "",
+    );
+    let _ = a.drag_to(2, 1920, 100); // 拖回贴边
+    // 相邻关系：屏 2 贴主屏右缘 → 主屏是它唯一的邻居。
+    set.add(
+        "f445-adjacency",
+        a.adjacent(2) == alloc::vec![1] && a.adjacent(99).is_empty(),
+        "",
+    );
+    // 分辨率变更：锚点（左上角）不动；尺寸真实变化。
+    set.add(
+        "f445-resolution-anchor",
+        a.set_resolution(2, 2560, 1440)
+            && a.screens[1].width == 2560
+            && a.screens[1].height == 1440
+            && a.screens[1].x == 1920
+            && !a.set_resolution(2, 0, 1080),
+        "",
+    );
+    // 批量窗口回流（F353 多窗口形态）：拔主屏 → 两窗各回存活屏。
+    let wins = alloc::vec![
+        (1u64, (0.25, 0.25)),
+        (2u64, (0.75, 0.75)),
+    ];
+    let rehomed = a.rehome_batch(1, &wins);
+    set.add(
+        "f445-rehome-batch",
+        rehomed.len() == 2 && rehomed[0].0 == 1 && rehomed[1].0 == 2 && rehomed.iter().all(|(_, p)| p.0 >= 1920),
+        "",
+    );
+    // 主屏查询（托盘落位依据——前段已把主屏切到屏 2）。
+    set.add("f445-primary-query", a.primary_id() == Some(2), "");
     set
 }
 

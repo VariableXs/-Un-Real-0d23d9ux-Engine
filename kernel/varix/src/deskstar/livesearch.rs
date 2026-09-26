@@ -45,6 +45,9 @@ pub const FIRST_HIT_BUDGET_MS: u64 = 300;
 /// 递归深度上限（层，可配）。
 pub const DEPTH_CAP: u8 = 8;
 
+/// 深度上限可配域顶（主册「8 层（可配）」——配置边界 1..=16）。
+pub const DEPTH_CAP_MAX: u8 = 16;
+
 /// 结果上限（条，超出提示细化）。
 pub const RESULT_CAP: usize = 2000;
 
@@ -279,6 +282,7 @@ impl LiveSearch {
         if self.first_hit_ms.is_none() && !self.hits.is_empty() {
             self.first_hit_ms = Some(now_ms.saturating_sub(self.query_started_ms));
         }
+        self.sort_hits_by_tier(); // 收口排序：直配先于拼音档
         self.state = SearchState::Active;
     }
 
@@ -725,6 +729,7 @@ impl LiveSearch {
             self.first_hit_ms = Some(now_ms.saturating_sub(self.query_started_ms));
         }
         if to >= entries.len() {
+            self.sort_hits_by_tier(); // 收口排序：直配先于拼音档
             self.state = SearchState::Active;
         }
         self.now_ms = now_ms;
@@ -789,6 +794,22 @@ impl LiveSearch {
     /// 结果视图模式（会话锁定——结果列表保留原视图的数据面）。
     pub fn retained_view(session: &SearchSession) -> ViewMode {
         session.retained_view
+    }
+
+    /// 深度上限配置入口（可配的真实边界：1..=16；越界拒收返回
+    /// false——坏配置不静默生效）。
+    pub fn set_depth_cap(&mut self, v: u8) -> bool {
+        if v == 0 || v > DEPTH_CAP_MAX {
+            return false;
+        }
+        self.depth_cap = v;
+        true
+    }
+
+    /// 命中档位排序（tier 升序稳定排序：子串直配先于拼音首字母档，
+    /// 同档保持扫描序——首结果正确性的排序面；扫描收口时调用）。
+    pub fn sort_hits_by_tier(&mut self) {
+        self.hits.sort_by(|a, b| a.tier.cmp(&b.tier));
     }
 }
 
@@ -1198,5 +1219,72 @@ mod tests_deep {
         let set = run_livesearch_deep_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F088-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（D1-v4）——深度上限可配边界 / 命中档位排序。判据唯一源：
+// 主册 G-C-18 设计要点（「递归深度上限 8 层（可配）」「文件名子串+拼音
+// 首字母（F071 同引擎分档）」）。
+// ---------------------------------------------------------------------------
+
+/// F088 深化自检二：两族逐条记账。
+pub fn run_livesearch_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F088-deep2");
+    // 1. 深度上限可配：0 与 >16 拒收、边界 1/16 受理、缺省 8。
+    let mut ls = LiveSearch::new();
+    let dflt = ls.depth_cap == DEPTH_CAP;
+    let bad0 = !ls.set_depth_cap(0);
+    let bad17 = !ls.set_depth_cap(DEPTH_CAP_MAX + 1);
+    let ok1 = ls.set_depth_cap(1) && ls.depth_cap == 1;
+    let ok16 = ls.set_depth_cap(DEPTH_CAP_MAX) && ls.depth_cap == DEPTH_CAP_MAX;
+    set.add(
+        "depth-cap-config",
+        dflt && bad0 && bad17 && ok1 && ok16,
+        "configurable 1..=16",
+    );
+    // 2. 档位排序：拼音档命中先入列（扫描序）→ 收口后子串直配在前。
+    let mut ls2 = LiveSearch::new();
+    ls2.input('j', 0);
+    ls2.tick(200, |_, _, _| {
+        vec![
+            (String::from("季度报告.docx"), 0u8, String::from("jdbb")),
+            (String::from("j工具.exe"), 0u8, String::new()),
+        ]
+    });
+    let tiers: Vec<u8> = ls2.hits().iter().map(|h| h.tier).collect();
+    set.add(
+        "tier-order",
+        tiers == vec![0, 1]
+            && ls2.hits()[0].name == "j工具.exe"
+            && ls2.hits()[1].name == "季度报告.docx",
+        "tier0 before tier1",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn sort_keeps_scan_order_within_tier() {
+        let mut ls = LiveSearch::new();
+        ls.input('a', 0);
+        ls.tick(200, |_, _, _| {
+            vec![
+                (String::from("a2"), 0u8, String::new()),
+                (String::from("a1"), 0u8, String::new()),
+            ]
+        });
+        let names: Vec<&str> = ls.hits().iter().map(|h| h.name.as_str()).collect();
+        assert_eq!(names, vec!["a2", "a1"], "同档保持扫描序——稳定排序");
+    }
+
+    #[test]
+    fn livesearch_deep2_checks_all_green() {
+        let set = run_livesearch_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F088-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

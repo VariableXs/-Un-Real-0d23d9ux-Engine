@@ -564,7 +564,12 @@ pub fn run_frameattr_checks() -> CheckSet {
             && sh[0] > sh[2] && sh[2] > sh[3], // 风暴 > IO > 抢占（贡献降序呈现）
         "",
     );
-    cs
+    // 深化件（深化批次三）：证据引用链 / 7 天案例簿 / 归因器健康状态机 /
+    // 误报率账——主册【交互设计】【数据与存储】【状态与异常】落到可测接口。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::frameattr_ext::run_checks()),
+        crate::perfstar::mech_stats::run_checks(),
+    )
 }
 
 #[cfg(test)]

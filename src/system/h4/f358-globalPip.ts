@@ -130,3 +130,80 @@ export function applyDocking(session: PipSession, screen: { w: number; h: number
 export function focusPolicy(): { alwaysOnTop: true; stealsFocus: false; rationale: string } {
   return { alwaysOnTop: true, stealsFocus: false, rationale: "F248 语义：置顶不抢焦点——打字不被 PiP 打断" };
 }
+
+/* ================= v4 深化批次四：停靠几何解算 / 多窗无重叠布局 / 回原窗计划 ================= */
+
+/** 停靠边距：贴角时与屏幕边缘保持的呼吸距离（贴边不粘边）。 */
+export const PIP_MARGIN = 8;
+
+/** 停靠几何解算：角 → 具体矩形（含边距），尺寸任意（缩放档切换后仍可解）。 */
+export function dockGeometry(corner: DockCorner, size: { w: number; h: number }, screen: { w: number; h: number }): Rect {
+  const w = Math.min(size.w, Math.max(1, screen.w - PIP_MARGIN * 2));
+  const h = Math.min(size.h, Math.max(1, screen.h - PIP_MARGIN * 2));
+  const x = corner === "topLeft" || corner === "bottomLeft" ? PIP_MARGIN : screen.w - w - PIP_MARGIN;
+  const y = corner === "topLeft" || corner === "topRight" ? PIP_MARGIN : screen.h - h - PIP_MARGIN;
+  return { x, y, w, h };
+}
+
+/** 工作区钳制：自由拖动不越屏（任何一轴越界即拉回）。 */
+export function freeMoveClamp(rect: Rect, screen: { w: number; h: number }): Rect {
+  const x = Math.min(Math.max(rect.x, 0), Math.max(0, screen.w - rect.w));
+  const y = Math.min(Math.max(rect.y, 0), Math.max(0, screen.h - rect.h));
+  return { ...rect, x, y };
+}
+
+/** 16:9 保形缩放：只给目标宽，高按基准比例回推（整数像素，形制不走样）。 */
+export function aspectPreservingResize(newW: number): { w: number; h: number } {
+  const w = Math.max(80, Math.round(newW));
+  const h = Math.round((w * PIP_BASE.h) / PIP_BASE.w);
+  return { w, h };
+}
+
+/**
+ * 多 PiP 无重叠布局（并发上限内的碰撞解算）：已停靠的按角就位；
+ * 自由窗若与已布局窗相交 → 沿 Y 轴逐格下移找第一个空位——解算只动位置不动尺寸，
+ * 体验承诺是「新窗永远完整可见」。
+ */
+export function layoutPips(sessions: PipSession[], screen: { w: number; h: number }): Map<string, Rect> {
+  const placed: Rect[] = [];
+  const out = new Map<string, Rect>();
+  const overlaps = (r: Rect) => placed.some((p) => r.x < p.x + p.w && p.x < r.x + r.w && r.y < p.y + p.h && p.y < r.y + r.h);
+  for (const s of sessions) {
+    let rect = s.docked ? dockGeometry(s.docked, s.rect, screen) : freeMoveClamp(s.rect, screen);
+    if (overlaps(rect)) {
+      for (let y = PIP_MARGIN; y + rect.h <= screen.h - PIP_MARGIN; y += rect.h + PIP_MARGIN) {
+        const cand = { ...rect, y };
+        if (!overlaps(cand)) {
+          rect = cand;
+          break;
+        }
+      }
+    }
+    placed.push(rect);
+    out.set(s.winId, rect);
+  }
+  return out;
+}
+
+/** 布局无重叠审计（「不叠罗汉」的 PiP 面）：两两相交 = 0。 */
+export function auditNoOverlap(rects: Rect[]): boolean {
+  for (let i = 0; i < rects.length; i++) {
+    for (let j = i + 1; j < rects.length; j++) {
+      const a = rects[i]!;
+      const b = rects[j]!;
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) return false;
+    }
+  }
+  return true;
+}
+
+/** 回原窗计划（判据「回原窗状态接续」）：几何还原 + 播放位置原样带回 + 焦点归源窗（时间点不跳）。 */
+export function returnPlan(session: PipSession, originRect: Rect): { restoreRect: Rect; resumeAtSec: number; playing: boolean; focusTarget: "source-window" } {
+  return { restoreRect: { ...originRect }, resumeAtSec: session.resumeAtSec, playing: session.playing, focusTarget: "source-window" };
+}
+
+/** 队列快照（排队提示的数据面）：「第 N 位」的 N 从 1 起——排队也要有数。 */
+export function queuePosition(reg: PiPRegistry, winId: string): { queued: boolean; position: number | null } {
+  const idx = reg.queue.indexOf(winId);
+  return { queued: idx >= 0, position: idx >= 0 ? idx + 1 : null };
+}

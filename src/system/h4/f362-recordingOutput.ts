@@ -9,6 +9,7 @@
  */
 
 import { defaultStore, h4Key, readJson, type KvStore, writeJson } from "./internal/store";
+import { checksumOf } from "./internal/hash";
 
 /** 分节时长（判据：5 分钟）。 */
 export const SEGMENT_MS = 5 * 60 * 1000;
@@ -115,4 +116,73 @@ export function closingBar(base: Date, totalMs: number, saveDir: string, videoBp
     segments: plan.length,
     previewNote: "预览缩略图取末节首帧",
   };
+}
+
+/* ================= v4 深化批次四：账链完整性 / 配额驱逐 / 连续性审计 ================= */
+
+/** 账本完整性校验和（断电恢复后先验链再恢复——账本身不可信时拒绝静默采用）。 */
+export function ledgerChecksum(l: RecordingLedger): string {
+  return checksumOf({ sessionId: l.sessionId, baseName: l.baseName, segments: l.segments });
+}
+
+/** 账本校验核对：不符 = 账被改过或半写（恢复面据此走诚实降级而不是拿坏账当真）。 */
+export function verifyLedgerIntegrity(l: RecordingLedger, expected: string): { ok: boolean; actual: string } {
+  const actual = ledgerChecksum(l);
+  return { ok: actual === expected, actual };
+}
+
+/** 分节连续性审计：index 严格递增且 writtenAt 单调——断链逐条点名（恢复面据此提示）。 */
+export function segmentContinuity(l: RecordingLedger): { ok: boolean; breaks: string[] } {
+  const breaks: string[] = [];
+  const sorted = [...l.segments].sort((a, b) => a.index - b.index);
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i]!.index !== i) breaks.push(`节序断裂：期待第 ${i} 节，实得第 ${sorted[i]!.index} 节`);
+    if (i > 0) {
+      const prev = sorted[i - 1]!;
+      const cur = sorted[i]!;
+      if (prev.writtenAt !== null && cur.writtenAt !== null && cur.writtenAt < prev.writtenAt) {
+        breaks.push(`时间回挂：第 ${cur.index} 节落盘时刻早于第 ${prev.index} 节`);
+      }
+    }
+  }
+  return { ok: breaks.length === 0, breaks };
+}
+
+/** 配额账目单元（产物总量管理的最小单元）。 */
+export interface QuotaItem {
+  fileName: string;
+  bytes: number;
+  writtenAt: number;
+  sessionId: string;
+}
+
+/** 存储配额驱逐：产物总量超配额时按最旧优先清；当前会话分节受保护（正在录的不动）。 */
+export function quotaEviction(items: QuotaItem[], quotaBytes: number, protectSessionId: string): { keep: QuotaItem[]; evicted: string[]; totalAfter: number } {
+  const total = items.reduce((s, i) => s + i.bytes, 0);
+  if (total <= quotaBytes) return { keep: items, evicted: [], totalAfter: total };
+  const sorted = [...items].sort((a, b) => a.writtenAt - b.writtenAt);
+  let running = total;
+  const evicted: string[] = [];
+  const keepNames = new Set(items.map((i) => i.fileName));
+  for (const i of sorted) {
+    if (running <= quotaBytes) break;
+    if (i.sessionId === protectSessionId) continue;
+    running -= i.bytes;
+    keepNames.delete(i.fileName);
+    evicted.push(i.fileName);
+  }
+  const kept = items.filter((i) => keepNames.has(i.fileName));
+  return { keep: kept, evicted, totalAfter: kept.reduce((s, i) => s + i.bytes, 0) };
+}
+
+/** 配额可录时长：给码率与配额反推能录多久（录制前的诚实预期管理）。 */
+export function projectQuotaDuration(videoBps: number, audioTracks: number, quotaBytes: number): number {
+  const bps = videoBps + audioTracks * 128_000;
+  return Math.floor((quotaBytes * 8000) / bps);
+}
+
+/** 收账：会话结束把账本定稿（interrupted=false）+ 终态校验和（后续完整性核对的锚）。 */
+export function finalizeLedger(l: RecordingLedger): { ledger: RecordingLedger; checksum: string } {
+  const fixed = { ...l, interrupted: false };
+  return { ledger: fixed, checksum: ledgerChecksum(fixed) };
 }

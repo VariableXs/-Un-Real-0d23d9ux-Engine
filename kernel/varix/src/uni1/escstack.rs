@@ -18,6 +18,8 @@
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{LayerStack, LayerTier, RingLog};
 
+use alloc::vec::Vec;
+
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）
 // ---------------------------------------------------------------------------
@@ -43,6 +45,8 @@ pub struct EscOutcome {
     pub latency_ms: u64,
     /// 语义动作（人话，供体验日志与提示面）。
     pub semantics: &'static str,
+    /// 本次是否取消了输入法组合（v7：组合期门命中）。
+    pub ime_cancelled: bool,
 }
 
 /// 全局 Esc 分发器。
@@ -53,6 +57,16 @@ pub struct EscDispatcher {
     pub press_count: u64,
     /// 体验日志：每次 Esc 一条（第十三章纪律——事件可回放）。
     pub log: RingLog,
+    /// 输入法组合中（v7 深化）：组合期 Esc 优先取消组合——比任何浮层
+    /// 都「浮」的一层（用户正在打字，误剥浮层会打断输入流）。
+    pub composing: bool,
+    pub ime_cancels: u64,
+    /// 各层焦点归属登记（层名 → 关闭时应归还的焦点元素）。
+    focus_registry: Vec<(&'static str, &'static str)>,
+    /// 焦点归还次数（体验账——每次剥层归还一次）。
+    pub focus_returns: u64,
+    /// 最近一次归还的焦点归属（调用方据此执行真实聚焦）。
+    pub last_focus_returned: Option<&'static str>,
 }
 
 impl EscDispatcher {
@@ -62,6 +76,11 @@ impl EscDispatcher {
             over_budget: 0,
             press_count: 0,
             log: RingLog::new(64),
+            composing: false,
+            ime_cancels: 0,
+            focus_registry: Vec::new(),
+            focus_returns: 0,
+            last_focus_returned: None,
         }
     }
 
@@ -71,11 +90,44 @@ impl EscDispatcher {
         self.stack.open(tier, name);
     }
 
-    /// 按 Esc：按一次关一层（从最浮开始）；空栈 = 无动作。
+    /// 开层并登记焦点归属（v7 深化）：该层关闭时焦点应归还给 owner
+    /// ——键盘用户的焦点永不丢在宇宙里（第四章纪律的语义核落位）。
+    pub fn open_layer_with_focus(&mut self, tier: LayerTier, name: &'static str, owner: &'static str) {
+        self.stack.open(tier, name);
+        self.focus_registry.push((name, owner));
+    }
+
+    /// 焦点归属查询（诊断面——层没关时归属还挂着）。
+    pub fn focus_owner_of(&self, name: &str) -> Option<&'static str> {
+        self.focus_registry.iter().find(|(n, _)| *n == name).map(|(_, o)| *o)
+    }
+
+    /// 输入法组合期登记/解除（v7 深化：组合是「比浮层更浮」的一层）。
+    pub fn begin_composition(&mut self) {
+        self.composing = true;
+    }
+
+    pub fn end_composition(&mut self) {
+        self.composing = false;
+    }
+
+    /// 按 Esc：组合期优先取消组合（层不动）；否则按一次关一层
+    /// （从最浮开始）；空栈 = 无动作。剥层时按登记归还焦点。
     pub fn press_esc(&mut self, latency_ms: u64) -> EscOutcome {
         self.press_count += 1;
         if latency_ms > ESC_BUDGET_MS {
             self.over_budget += 1;
+        }
+        if self.composing {
+            self.composing = false;
+            self.ime_cancels += 1;
+            self.log.push(0, "esc", "ime-cancel", "");
+            return EscOutcome {
+                closed: None,
+                latency_ms,
+                semantics: "取消输入法组合（浮层不动）",
+                ime_cancelled: true,
+            };
         }
         let closed = self.stack.close_top();
         let outcome = match closed {
@@ -85,18 +137,38 @@ impl EscDispatcher {
                     .find(|(t, _, _)| *t == tier)
                     .map(|(_, _, s)| *s)
                     .unwrap_or("");
-                EscOutcome { closed: Some((tier, name)), latency_ms, semantics }
+                // 焦点归还：登记在案则归还并留账（第十四章——焦点不丢）。
+                if let Some(pos) = self.focus_registry.iter().position(|(n, _)| *n == name) {
+                    let (_, owner) = self.focus_registry.remove(pos);
+                    self.focus_returns += 1;
+                    self.last_focus_returned = Some(owner);
+                }
+                EscOutcome { closed: Some((tier, name)), latency_ms, semantics, ime_cancelled: false }
             }
-            None => EscOutcome { closed: None, latency_ms, semantics: "无动作（桌面态）" },
+            None => EscOutcome {
+                closed: None,
+                latency_ms,
+                semantics: "无动作（桌面态）",
+                ime_cancelled: false,
+            },
         };
         let verdict = if latency_ms > ESC_BUDGET_MS { "slow" } else { "" };
         self.log.push(0, "esc", if outcome.closed.is_some() { "peel" } else { "noop" }, verdict);
         outcome
     }
 
-    /// 外点关闭指定层（浮层出路清单的另一出口——不改 Esc 语义）。
+    /// 外点关闭指定层（浮层出路清单的另一出口——不改 Esc 语义；
+    /// 焦点归还与 Esc 同源——登记在案即归还）。
     pub fn outside_click_close(&mut self, name: &'static str) -> bool {
-        self.stack.close_named(name)
+        let peeled = self.stack.close_named(name);
+        if peeled {
+            if let Some(pos) = self.focus_registry.iter().position(|(n, _)| *n == name) {
+                let (_, owner) = self.focus_registry.remove(pos);
+                self.focus_returns += 1;
+                self.last_focus_returned = Some(owner);
+            }
+        }
+        peeled
     }
 
     /// 不变量：栈内从底到顶 tier 递减（枚举序 Popup<Panel<Modal——
@@ -186,6 +258,59 @@ pub fn run_escstack_checks() -> CheckSet {
     d3.open_layer(LayerTier::Popup, "c");
     set.add("f424-invariant-tier-order", d3.invariant_ok(), "");
 
+    // ---- v7 深化：IME 组合期门 / 焦点归还登记表 ----
+
+    // 组合期门：Esc 先取消组合（层不动、不计数剥层），再按才剥层。
+    let mut g = EscDispatcher::new();
+    g.open_layer(LayerTier::Popup, "menu");
+    g.begin_composition();
+    let o_g1 = g.press_esc(20);
+    set.add(
+        "f424-ime-gate-cancels-first",
+        o_g1.ime_cancelled && o_g1.closed.is_none() && g.stack.depth() == 1 && g.ime_cancels == 1,
+        "",
+    );
+    let o_g2 = g.press_esc(20);
+    set.add(
+        "f424-ime-gate-then-peels",
+        !o_g2.ime_cancelled && o_g2.closed == Some((LayerTier::Popup, "menu")) && g.stack.is_empty(),
+        "",
+    );
+
+    // 组合提交后 Esc 直剥层（门只在组合期生效）。
+    let mut g2 = EscDispatcher::new();
+    g2.open_layer(LayerTier::Popup, "menu2");
+    g2.begin_composition();
+    g2.end_composition();
+    set.add(
+        "f424-ime-gate-off-after-commit",
+        g2.press_esc(20).closed == Some((LayerTier::Popup, "menu2")) && g2.ime_cancels == 0,
+        "",
+    );
+
+    // 焦点归还：登记 → Esc 剥层 → 归还目标落账；未登记层不虚计。
+    let mut f = EscDispatcher::new();
+    f.open_layer_with_focus(LayerTier::Modal, "dlg", "doc.editor");
+    f.open_layer(LayerTier::Popup, "tooltip"); // Tooltip 不接管焦点——无登记
+    set.add("f424-focus-registry-lookup", f.focus_owner_of("dlg") == Some("doc.editor") && f.focus_owner_of("tooltip").is_none(), "");
+    let _ = f.press_esc(20); // 剥 tooltip——无归还
+    set.add("f424-focus-return-only-registered", f.focus_returns == 0 && f.last_focus_returned.is_none(), "");
+    let _ = f.press_esc(20); // 剥 dlg——归还
+    set.add(
+        "f424-focus-return-on-peel",
+        f.focus_returns == 1 && f.last_focus_returned == Some("doc.editor") && f.focus_owner_of("dlg").is_none(),
+        "",
+    );
+
+    // 外点关闭同源归还：焦点不因出路不同而丢。
+    let mut f2 = EscDispatcher::new();
+    f2.open_layer_with_focus(LayerTier::Panel, "quickset", "taskbar.clock");
+    set.add(
+        "f424-focus-return-on-outside",
+        f2.outside_click_close("quickset") && f2.last_focus_returned == Some("taskbar.clock") && f2.focus_returns == 1,
+        "",
+    );
+
     set
 }
 
@@ -246,5 +371,58 @@ mod tests {
         assert_eq!(snap.len(), 2);
         assert_eq!(snap[0].what, "peel");
         assert_eq!(snap[1].what, "noop");
+    }
+
+    // ---- v7 深化单测 ----
+
+    #[test]
+    fn ime_gate_ordering_with_layers() {
+        // 组合 + 三层叠：Esc 序 = 取消组合 → 浮层 → 面板 → 对话框 → 桌面。
+        let mut d = EscDispatcher::new();
+        d.open_layer(LayerTier::Modal, "dlg");
+        d.open_layer(LayerTier::Panel, "panel");
+        d.open_layer(LayerTier::Popup, "menu");
+        d.begin_composition();
+        assert!(d.press_esc(10).ime_cancelled);
+        assert!(!d.press_esc(10).ime_cancelled);
+        assert_eq!(d.press_esc(10).closed.map(|(_, n)| n), Some("panel"));
+        assert_eq!(d.press_esc(10).closed.map(|(_, n)| n), Some("dlg"));
+        let last = d.press_esc(10);
+        assert!(last.closed.is_none() && !last.ime_cancelled && last.semantics.contains("无动作"));
+        assert_eq!(d.ime_cancels, 1);
+        assert_eq!(d.press_count, 5);
+    }
+
+    #[test]
+    fn composition_can_toggle_repeatedly() {
+        let mut d = EscDispatcher::new();
+        d.begin_composition();
+        assert!(d.press_esc(10).ime_cancelled);
+        // 组合再开再取消——每次都走门。
+        d.begin_composition();
+        assert!(d.press_esc(10).ime_cancelled);
+        assert_eq!(d.ime_cancels, 2);
+        // 空栈 + 非组合：桌面态无动作。
+        let o = d.press_esc(10);
+        assert!(o.closed.is_none() && !o.ime_cancelled);
+    }
+
+    #[test]
+    fn focus_never_lost_across_mixed_closes() {
+        let mut d = EscDispatcher::new();
+        d.open_layer_with_focus(LayerTier::Modal, "save-ask", "doc.editor");
+        d.open_layer(LayerTier::Panel, "notify");
+        d.open_layer_with_focus(LayerTier::Popup, "ctxmenu", "explorer.list");
+        // 外点关 ctxmenu → 焦点回 explorer.list。
+        assert!(d.outside_click_close("ctxmenu"));
+        assert_eq!(d.last_focus_returned, Some("explorer.list"));
+        // Esc 关 notify（无登记）→ 焦点账不动。
+        d.press_esc(10);
+        assert_eq!(d.focus_returns, 1);
+        // Esc 关 save-ask → 焦点回 doc.editor。
+        d.press_esc(10);
+        assert_eq!(d.last_focus_returned, Some("doc.editor"));
+        assert_eq!(d.focus_returns, 2);
+        assert!(d.focus_registry.is_empty(), "登记表随层清空——无悬挂归属");
     }
 }

@@ -36,6 +36,13 @@ use alloc::string::ToString;
 /// 排队播出间隔（ms，不叠音）。
 pub const QUEUE_GAP_MS: u64 = 80;
 
+/// 队列风暴闸（同刻事件洪峰只保留前 16 条——极端场景不失控；
+/// 超限拒绝并计数，不静默丢）。
+pub const QUEUE_CAP: usize = 16;
+
+/// 开机音触发点（C-2 开机动画幕二「聚合」点——其他幕触发一律拒）。
+pub const BOOT_CUE_PHASE: u8 = 2;
+
 /// 响度归一目标（LUFS，防炸耳）。
 pub const TARGET_LUFS: i16 = -18;
 
@@ -171,6 +178,13 @@ pub struct SfxHub {
     /// 试听独立队列（不与事件队列混排）。
     preview_queue: Vec<(SfxEvent, u64)>,
     last_preview_ms: Option<u64>,
+    /// 风暴闸拒绝计数（超 QUEUE_CAP 的入队请求——如实记账不静默）。
+    pub stat_storm_dropped: u64,
+    /// 错误音 ↔ F035 三要素对话框绑定账（待消费的绑定 id 队列）。
+    pending_error_binds: Vec<u64>,
+    next_error_bind_id: u64,
+    /// 开机音错幕拒绝计数（非幕二触发——编排同步账）。
+    pub boot_cue_rejected: u64,
 }
 
 impl SfxHub {
@@ -200,6 +214,10 @@ impl SfxHub {
             load_retries: [0; 6],
             preview_queue: Vec::new(),
             last_preview_ms: None,
+            stat_storm_dropped: 0,
+            pending_error_binds: Vec::new(),
+            next_error_bind_id: 1,
+            boot_cue_rejected: 0,
         }
     }
 
@@ -290,6 +308,18 @@ impl SfxHub {
         if self.entries[event.index()].volume == 0 {
             self.stat_skipped += 1;
             return false;
+        }
+        // 风暴闸：队列满则拒绝并计数（如实——不静默丢）。
+        if self.queue.len() >= QUEUE_CAP {
+            self.stat_storm_dropped += 1;
+            return false;
+        }
+        // 错误音与 F035 三要素对话框绑定：错误事件入队即签发绑定 id，
+        // 对话框层凭 id 消费（异常显性化——错误音永不裸放）。
+        if event == SfxEvent::Error {
+            let id = self.next_error_bind_id;
+            self.next_error_bind_id += 1;
+            self.pending_error_binds.push(id);
         }
         self.queue.push(PlayReq {
             event,
@@ -524,6 +554,78 @@ impl SfxHub {
             (100, 2000 * (100i32 - 80) / 400),
         ]
     }
+
+    // -- 深化层二（D1-v4-SX*）---------------------------------------------
+
+    /// 开机音编排同步点（主册「开机音在动画幕二『聚合』点触发——C-2
+    /// 编排同步」）：只有幕二（BOOT_CUE_PHASE）受理，其他幕一律拒并
+    /// 计数（编排错拍如实记账，不静默吞）。
+    pub fn boot_cue(&mut self, anim_phase: u8, now_ms: u64) -> bool {
+        if anim_phase != BOOT_CUE_PHASE {
+            self.boot_cue_rejected += 1;
+            return false;
+        }
+        self.trigger(SfxEvent::Boot, now_ms)
+    }
+
+    /// 待消费错误绑定数（F035 对话框层对账面）。
+    pub fn pending_error_binds(&self) -> usize {
+        self.pending_error_binds.len()
+    }
+
+    /// 消费错误绑定（F035 对话框打开时凭 id 认领——先到先得，id 校验）。
+    pub fn consume_error_bind(&mut self, id: u64) -> bool {
+        if let Some(pos) = self.pending_error_binds.iter().position(|b| *b == id) {
+            self.pending_error_binds.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 最新签发的错误绑定 id（对话框层在错误 toast 后查询）。
+    pub fn last_error_bind_id(&self) -> Option<u64> {
+        self.pending_error_binds.last().copied()
+    }
+
+    /// 持久化快照（主册「静音总闸状态持久化」+「音量记忆配置层」：
+    /// 总闸 + 六事件音量 + 方案——配置层落盘的传输结构）。
+    pub fn export_state(&self) -> SfxPersist {
+        SfxPersist {
+            master_mute: self.master_mute,
+            volumes: [
+                self.entries[0].volume,
+                self.entries[1].volume,
+                self.entries[2].volume,
+                self.entries[3].volume,
+                self.entries[4].volume,
+                self.entries[5].volume,
+            ],
+            scheme: self.scheme,
+        }
+    }
+
+    /// 恢复持久化快照（越界音量钳回 0..100——坏行不污染运行态；
+    /// 方案名按枚举严格还原，未知值拒收保持现状）。
+    pub fn restore_state(&mut self, s: SfxPersist) {
+        self.master_mute = s.master_mute;
+        for (i, v) in s.volumes.iter().enumerate() {
+            self.entries[i].volume = (*v).min(100);
+        }
+        self.scheme = s.scheme;
+        for e in self.entries.iter_mut() {
+            e.asset = format!("sfx/{}-{}.flac", scheme_tag(s.scheme), tag_of(e.event));
+            e.loaded = false;
+        }
+    }
+}
+
+/// 持久化快照（配置层传输结构——导出/恢复 round-trip 的唯一载体）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SfxPersist {
+    pub master_mute: bool,
+    pub volumes: [u8; 6],
+    pub scheme: Scheme,
 }
 
 /// F079 深化自检：装载状态机、规格校验、试听独立通道、清单导出校验、
@@ -646,6 +748,133 @@ mod tests_deep {
         let set = run_sndfx_deep_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F079-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（D1-v4）——开机音编排同步 / 错误音绑定账 / 风暴闸 / 持久化
+// round-trip。判据唯一源：主册 G-C-09 设计要点（C-2 同步、F035 绑定、
+// 状态持久化）。
+// ---------------------------------------------------------------------------
+
+/// F079 深化自检二：四族逐条记账。
+pub fn run_sndfx_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F079-deep2");
+    // 1. 开机音编排同步：幕二受理、其他幕拒并计数。
+    let mut h = SfxHub::new();
+    let p1 = h.boot_cue(1, 1_000);
+    let p3 = h.boot_cue(3, 2_000);
+    let rej = h.boot_cue_rejected == 2;
+    let p2_ok = h.boot_cue(BOOT_CUE_PHASE, 3_000);
+    set.add(
+        "boot-cue-phase2",
+        !p1 && !p3 && rej && p2_ok,
+        "C-2 aggregate point only",
+    );
+    // 2. 错误音绑定账：触发即签发、消费即回收、错误 id 拒收。
+    let mut h2 = SfxHub::new();
+    let enq = h2.trigger(SfxEvent::Error, 100);
+    let bind = h2.last_error_bind_id();
+    let consumed = h2.consume_error_bind(bind.unwrap_or(0));
+    let bogus_rejected = !h2.consume_error_bind(9_999);
+    set.add(
+        "error-bind",
+        enq && h2.pending_error_binds() == 0 && consumed && bogus_rejected,
+        "F035 co-trigger ledger",
+    );
+    // 3. 静音总闸下错误音不签发绑定（不播不发——一致裁决）。
+    let mut h3 = SfxHub::new();
+    h3.set_master_mute(true);
+    let muted = !h3.trigger(SfxEvent::Error, 100);
+    set.add(
+        "error-bind-muted",
+        muted && h3.pending_error_binds() == 0,
+        "no bind when muted",
+    );
+    // 4. 风暴闸：连发 QUEUE_CAP+5 条——前 16 入队、5 条拒并计数。
+    let mut h4 = SfxHub::new();
+    let mut accepted = 0;
+    for i in 0..(QUEUE_CAP + 5) as u64 {
+        if h4.trigger(SfxEvent::Notify, 1_000 + i) {
+            accepted += 1;
+        }
+    }
+    set.add(
+        "storm-gate",
+        accepted == QUEUE_CAP
+            && h4.queue_len() == QUEUE_CAP
+            && h4.stat_storm_dropped == 5,
+        "cap-16 honest drop count",
+    );
+    // 5. 持久化 round-trip：总闸+音量+方案全量还原；越界音量钳制。
+    let mut h5 = SfxHub::new();
+    h5.set_master_mute(true);
+    h5.set_volume(SfxEvent::Boot, 100);
+    h5.set_volume(SfxEvent::Error, 20);
+    let snap = h5.export_state();
+    let mut h6 = SfxHub::new();
+    h6.restore_state(snap);
+    let rt = h6.master_mute()
+        && h6.volume_of(SfxEvent::Boot) == 100
+        && h6.volume_of(SfxEvent::Error) == 20
+        && h6.volume_of(SfxEvent::Notify) == 80
+        && h6.scheme() == snap.scheme;
+    let clamped = {
+        let mut bad = snap;
+        bad.volumes[2] = 250;
+        let mut h7 = SfxHub::new();
+        h7.restore_state(bad);
+        h7.volume_of(SfxEvent::Notify) == 100
+    };
+    set.add(
+        "persist-roundtrip",
+        rt && clamped,
+        "mute+volume+scheme memory",
+    );
+    // 6. 恢复后资产名随方案重建（装载态复位——下次播出重装载）。
+    let reloaded = {
+        let mut h8 = SfxHub::new();
+        h8.request_load(SfxEvent::Boot);
+        let snap2 = h8.export_state();
+        let mut h9 = SfxHub::new();
+        h9.restore_state(snap2);
+        h9.load_state(SfxEvent::Boot) == LoadState::Pending
+    };
+    set.add("persist-reload-reset", reloaded, "load state reset");
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn boot_cue_reject_counts_are_visible() {
+        let mut h = SfxHub::new();
+        h.boot_cue(0, 0);
+        h.boot_cue(1, 1);
+        h.boot_cue(3, 2);
+        assert_eq!(h.boot_cue_rejected, 3, "错幕触发全量记账不静默");
+    }
+
+    #[test]
+    fn error_binds_queue_in_order() {
+        let mut h = SfxHub::new();
+        h.trigger(SfxEvent::Error, 0);
+        h.trigger(SfxEvent::Error, 1);
+        let first = h.last_error_bind_id().unwrap() - 1;
+        assert!(h.consume_error_bind(first), "先签发先消费");
+        assert!(h.consume_error_bind(first + 1), "后签发后消费");
+        assert_eq!(h.pending_error_binds(), 0);
+    }
+
+    #[test]
+    fn sndfx_deep2_checks_all_green() {
+        let set = run_sndfx_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F079-deep2 红项：{}/{} 绿", p, p + f);
     }
 }
 

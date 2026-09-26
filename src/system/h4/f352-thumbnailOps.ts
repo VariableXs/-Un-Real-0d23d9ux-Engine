@@ -139,3 +139,51 @@ export function transferProgress(bytesDone: number, bytesTotal: number): { ratio
   const clamped = raw > 1;
   return { ratio: Math.min(1, Math.max(0, raw)), clamped, valid: true };
 }
+
+/* ================= v5 深化批次五：刷新节流 / 网格布局 / 连点防抖 / 键盘等价 ================= */
+
+/** 内容刷新节流：缩略图画面 16ms 内只刷一次（脏标记去重——悬停不因刷新抖动）。 */
+export function refreshThrottle(lastRenderAtMs: number, nowMs: number, dirty: boolean): { render: boolean; nextLastAt: number } {
+  if (!dirty) return { render: false, nextLastAt: lastRenderAtMs };
+  if (nowMs - lastRenderAtMs < 16) return { render: false, nextLastAt: lastRenderAtMs };
+  return { render: true, nextLastAt: nowMs };
+}
+
+/** 多缩略图网格布局：任务栏悬停组内逐窗排布（列数自适应，重叠=0）。 */
+export function gridLayout(thumbCount: number, thumbW: number, thumbH: number, maxWidth: number): Array<{ index: number; x: number; y: number }> {
+  const gap = 8;
+  const cols = Math.max(1, Math.floor((maxWidth + gap) / (thumbW + gap)));
+  const rows = Math.ceil(thumbCount / cols);
+  const totalW = Math.min(maxWidth, cols * thumbW + (cols - 1) * gap);
+  const offsetX = Math.max(0, Math.round((maxWidth - totalW) / 2));
+  const out: Array<{ index: number; x: number; y: number }> = [];
+  for (let i = 0; i < thumbCount; i++) {
+    out.push({ index: i, x: offsetX + (i % cols) * (thumbW + gap), y: Math.floor(i / cols) * (thumbH + gap) });
+  }
+  void rows;
+  return out;
+}
+
+/** 连点防抖：同键 200ms 内第二次点击忽略（防双份动作——关闭两连点不关两个窗）。 */
+export const DEBOUNCE_MS = 200;
+export function debounceRapidClicks(lastAtMs: number | null, nowMs: number): { accept: boolean; nextLastAt: number } {
+  if (lastAtMs !== null && nowMs - lastAtMs < DEBOUNCE_MS) return { accept: false, nextLastAt: lastAtMs };
+  return { accept: true, nextLastAt: nowMs };
+}
+
+/** 键盘等价（键盘用户与鼠标用户能力对等）：Enter=激活窗口、Shift+Del=关闭、Space=播放暂停。 */
+export type ThumbKeyAction = "activate" | "close" | "playpause" | null;
+export function keyboardEquivalent(kind: ThumbKind, key: string, shift: boolean): ThumbKeyAction {
+  if (key === "Enter") return "activate";
+  if (key === "Delete" && shift && kind !== "transfer") return "close";
+  if (key === " " && kind === "media") return "playpause";
+  return null;
+}
+
+/** 悬停稳定性机检（判据「操作中缩略图不消失」）：指针在区内任意位置时 hideQueued 必须为 false。 */
+export function auditHoverStability(zone: HoverZone, hideQueued: boolean): { pass: boolean; detail: string } {
+  const stable = zone === "thumb" || zone === "action" ? !hideQueued : true;
+  return stable
+    ? { pass: true, detail: "指针在区内——隐藏被抑制（操作不中断）" }
+    : { pass: false, detail: "指针在区内但隐藏已排队——缩略图将在操作中消失（缺陷）" };
+}

@@ -415,7 +415,14 @@ pub fn run_imgsimd_checks() -> CheckSet {
         tail.is_some() && plan_decode_buf(tail, DECODE_BUF_TYPICAL_BYTES) == BufPlan::HugeTail { slot: tail.unwrap() },
         "",
     );
-    cs
+    // 深化件（深化批次三）：指令集档探测与回退 / PNG 行过滤五型（含 Paeth）
+    // 标量与通道化双路径逐位对拍 / JPEG 8×8 IDCT 分离式与朴素实现对拍 /
+    // 解码错误三要素与半图拦截 / 超大图流式分块计划 / vxbench 三样本与双线
+    // 耗时账（正确性优先于速度）。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::imgsimd_ext::run_checks()),
+        crate::perfstar::mech_inflate::run_checks(),
+    )
 }
 
 #[cfg(test)]

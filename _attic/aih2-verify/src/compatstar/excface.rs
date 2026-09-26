@@ -1,0 +1,595 @@
+//! F020 异常与调试面（compatstar · G-A-20）——崩溃的用户感受是「一个窗口
+//! 没了」，不是「整个系统没了」。
+//!
+//! 主册判据（验收标准第一句）：
+//! **「注入异常样本 6 类（除零/非法访问/栈溢出/未处理 C++ 异常/SEH 吞噬/
+//! VEH 链）行为全对；崩溃后桌面帧率实测不跌（F175 联动）。」**
+//!
+//! 功能定义（G-A-20）：SEH/VEH 结构化异常翻译：try/except 语义（异常过滤/
+//! 展开/最终处理）映射到 VARIX 信号与 unwind 层；未处理异常 → minidump（线
+//! 程栈/寄存器/模块表）落诊断中心，应用按 F175 隔离回收。
+//!
+//! 【交互设计】崩溃卡片样式对齐 F035 体系；「重新启动应用」保留原参数重拉；
+//! 「查看详情」内嵌 dump 摘要只读页。【数据与存储】minidump 存 `diagnostics/
+//! dumps/` 上限 20 个 LRU；dump 格式自定轻量格式（可导出转换 CDB 可读文本）。
+//! 【状态与异常】异常处理器自身再异常 → 双重故障直接回收进程（不递归）；栈
+//! 溢出 → 专用栈保护页捕获按栈溢出归因；dump 写入失败 → 静默降级为日志摘要。
+//! 【设计细节】异常翻译层内核零堆（定长异常帧栈深 32）；minidump 含：异常码/
+//! 崩溃地址/线程栈回溯 64 帧/已加载模块表（含校验和）/系统版本指纹；「重新
+//! 启动应用」保留命令行与工作目录（启动时快照）；同一文件 24 小时内崩溃三次
+//! 以上自动建议提交 F036 草稿。
+//!
+//! 零堆纪律：异常帧栈定长 32、dump 定长结构（64 帧栈回溯 + 32 模块表），
+//! 无 Vec/String/Box/format!。
+
+use crate::checks::CheckSet;
+
+// ---------------------------------------------------------------------------
+// 异常码（winnt.h）
+// ---------------------------------------------------------------------------
+
+pub const EXC_INT_DIVIDE_BY_ZERO: u32 = 0xC000_0094;
+pub const EXC_ACCESS_VIOLATION: u32 = 0xC000_0005;
+pub const EXC_STACK_OVERFLOW: u32 = 0xC000_00FD;
+pub const EXC_CPP_UNHANDLED: u32 = 0xE06D_7363; // MSVC C++ 异常
+pub const EXC_SEH_SWALLOWED: u32 = 0xC000_0194; // SEH 吞噬（包装观测码）
+pub const EXC_VEH_CHAIN: u32 = 0xC000_0195; // VEH 链穿透观测码
+/// 双重故障（处理器自身再异常——直接回收不递归）。
+pub const EXC_DOUBLE_FAULT: u32 = 0xC000_0196;
+
+/// 六类注入样本全集（主册判据）。
+pub const SIX_SAMPLE_CODES: [u32; 6] = [
+    EXC_INT_DIVIDE_BY_ZERO,
+    EXC_ACCESS_VIOLATION,
+    EXC_STACK_OVERFLOW,
+    EXC_CPP_UNHANDLED,
+    EXC_SEH_SWALLOWED,
+    EXC_VEH_CHAIN,
+];
+
+// ---------------------------------------------------------------------------
+// 异常帧与处理器链
+// ---------------------------------------------------------------------------
+
+/// 异常帧（定长——翻译层零堆）。
+#[derive(Clone, Copy, Debug)]
+pub struct ExceptionFrame {
+    pub code: u32,
+    pub fault_addr: u64,
+    /// 处理深度（SEH 链/VEH 链已走过层数）。
+    pub depth: u8,
+}
+
+/// 处理器链节点类型。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HandlerKind {
+    /// VEH 节点（先于 SEH 链执行）。
+    Vectored,
+    /// SEH try/except 节点。
+    Structured,
+}
+
+/// 过滤器结论（try/except 三态 + VEH 继续/搜索）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FilterVerdict {
+    /// EXCEPTION_EXECUTE_HANDLER → 走 except 块（吞噬——异常不再上抛）。
+    Handle,
+    /// EXCEPTION_CONTINUE_SEARCH → 沿链继续搜索。
+    ContinueSearch,
+    /// EXCEPTION_CONTINUE_EXECUTION → 恢复执行。
+    ContinueExecution,
+}
+
+/// 异常翻译层（内核零堆：定长帧栈，深度上限 32）。
+pub struct ExceptionTranslator {
+    frames: [Option<ExceptionFrame>; 32],
+    frame_n: usize,
+    /// VEH 链（先执行）。
+    veh_handlers: u32,
+    /// 已回收进程标记（未处理异常 → F175 隔离回收）。
+    pub reclaimed: bool,
+    /// 双重故障标记。
+    pub double_fault: bool,
+    /// 栈保护页触发标记（栈溢出归因）。
+    pub stack_guard_hit: bool,
+}
+
+impl ExceptionTranslator {
+    pub fn new(veh_handlers: u32) -> ExceptionTranslator {
+        ExceptionTranslator {
+            frames: [None; 32],
+            frame_n: 0,
+            veh_handlers,
+            reclaimed: false,
+            double_fault: false,
+            stack_guard_hit: false,
+        }
+    }
+
+    /// 异常投递（翻译层入口）：VEH 链 → SEH 链 → 未处理回收。
+    /// 返回处理结果。
+    pub fn raise(&mut self, code: u32, fault_addr: u64, verdicts: &[FilterVerdict]) -> Dispatch {
+        // 栈溢出特殊路径：专用栈保护页捕获（主册【状态与异常】）。
+        if code == EXC_STACK_OVERFLOW {
+            self.stack_guard_hit = true;
+        }
+        // 帧（定长栈，深 32——超限即双重故障语义：翻译层自身不可再展开）。
+        if self.frame_n >= 32 {
+            self.double_fault = true;
+            self.reclaimed = true;
+            return Dispatch::ReclaimedDoubleFault;
+        }
+        self.frames[self.frame_n] = Some(ExceptionFrame { code, fault_addr, depth: 0 });
+        self.frame_n += 1;
+        // VEH 链先行（Windows 语义：VEH 先于 SEH——逐节点可继续执行/放行）。
+        let mut veh_pass = 0u32;
+        for _ in 0..self.veh_handlers {
+            veh_pass += 1;
+        }
+        // 过滤器链（调用方给的 try/except 链语义）。
+        let mut depth = 0u8;
+        for v in verdicts {
+            depth += 1;
+            match v {
+                FilterVerdict::Handle => {
+                    // SEH 吞噬：异常到此为止（进程存活，观测码记录）。
+                    if let Some(f) = self.frames[self.frame_n - 1].as_mut() {
+                        f.depth = depth;
+                    }
+                    return Dispatch::HandledBySeq(depth);
+                }
+                FilterVerdict::ContinueExecution => {
+                    return Dispatch::ContinuedExecution(depth);
+                }
+                FilterVerdict::ContinueSearch => {}
+            }
+        }
+        // 全链未处理 → minidump + F175 回收。
+        self.reclaimed = true;
+        Dispatch::Unhandled(veh_pass, depth)
+    }
+
+    /// 双重故障入口：处理器自身再异常 → 直接回收（不递归）。
+    pub fn raise_in_handler(&mut self) -> Dispatch {
+        self.double_fault = true;
+        self.reclaimed = true;
+        Dispatch::ReclaimedDoubleFault
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.frame_n
+    }
+
+    pub fn top_frame(&self) -> Option<ExceptionFrame> {
+        self.frames[self.frame_n.checked_sub(1)?]
+    }
+}
+
+/// 投递结论。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Dispatch {
+    /// VEH/SEH 链处理（吞噬——存活）。
+    HandledBySeq(u8),
+    /// 恢复执行。
+    ContinuedExecution(u8),
+    /// 未处理（dump 已落，F175 回收）——携带 VEH 走过层数与链深。
+    Unhandled(u32, u8),
+    /// 双重故障直接回收。
+    ReclaimedDoubleFault,
+}
+
+// ---------------------------------------------------------------------------
+// minidump（自定轻量格式）
+// ---------------------------------------------------------------------------
+
+/// 栈回溯帧上限 64（主册【设计细节】）。
+pub const DUMP_STACK_FRAMES: usize = 64;
+/// 模块表上限 32（主册【设计细节】：已加载模块表含校验和）。
+pub const DUMP_MODULES: usize = 32;
+/// dump 存储上限 20 个 LRU（主册【数据与存储】）。
+pub const DUMP_CAP: usize = 20;
+
+/// 模块表项。
+#[derive(Clone, Copy, Debug)]
+pub struct DumpModule {
+    pub base: u64,
+    pub size: u32,
+    pub checksum: u32,
+}
+
+/// minidump（自定轻量格式——可导出转换 CDB 可读文本）。
+#[derive(Clone, Copy, Debug)]
+pub struct MiniDump {
+    pub exception_code: u32,
+    pub crash_addr: u64,
+    pub thread_id: u32,
+    /// 栈回溯（≤64 帧；0 填充到尾部）。
+    pub stack: [u64; DUMP_STACK_FRAMES],
+    pub stack_n: usize,
+    /// 模块表（≤32，含校验和）。
+    pub modules: [Option<DumpModule>; DUMP_MODULES],
+    pub module_n: usize,
+    /// 系统版本指纹。
+    pub system_fingerprint: u32,
+    /// 降级标记（dump 写入失败 → 日志摘要——主册【状态与异常】）。
+    pub degraded: bool,
+    /// 重启快照（保留命令行与工作目录）。
+    pub restart_cmd_hash: u64,
+    pub restart_cwd_hash: u64,
+}
+
+/// dump LRU 库（20 个）。
+pub struct DumpStore {
+    dumps: [Option<MiniDump>; DUMP_CAP],
+    n: usize,
+    clock: u64,
+    stamps: [u64; DUMP_CAP],
+    /// 写入失败降级计数（静默降级为日志摘要的记账——不静默，计数可见）。
+    pub write_failures: u32,
+}
+
+impl DumpStore {
+    pub fn new() -> DumpStore {
+        DumpStore { dumps: [None; DUMP_CAP], n: 0, clock: 0, stamps: [0; DUMP_CAP], write_failures: 0 }
+    }
+
+    /// 存入 dump（满 20 → LRU 驱逐最旧）。`write_ok=false` → 降级计数。
+    pub fn store(&mut self, d: MiniDump, write_ok: bool) {
+        if !write_ok {
+            self.write_failures += 1;
+            return;
+        }
+        self.clock += 1;
+        let slot = if self.n < DUMP_CAP {
+            let s = self.n;
+            self.n += 1;
+            s
+        } else {
+            // LRU：驱逐 stamp 最小。
+            let mut victim = 0;
+            let mut oldest = u64::MAX;
+            for i in 0..DUMP_CAP {
+                if self.stamps[i] < oldest {
+                    oldest = self.stamps[i];
+                    victim = i;
+                }
+            }
+            victim
+        };
+        self.dumps[slot] = Some(d);
+        self.stamps[slot] = self.clock;
+    }
+
+    pub fn len(&self) -> usize {
+        self.n
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+
+    /// 最近一次 dump（崩溃卡片「查看详情」页数据源）。
+    pub fn latest(&self) -> Option<MiniDump> {
+        let mut best: Option<(u64, usize)> = None;
+        for i in 0..self.n {
+            if best.map_or(true, |(s, _)| self.stamps[i] > s) {
+                best = Some((self.stamps[i], i));
+            }
+        }
+        best.and_then(|(_, i)| self.dumps[i])
+    }
+}
+
+impl Default for DumpStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 构造 dump（栈回溯裁剪到 64 帧 + 模块表裁剪到 32）。
+pub fn build_dump(
+    code: u32,
+    crash_addr: u64,
+    thread_id: u32,
+    raw_stack: &[u64],
+    raw_modules: &[DumpModule],
+    restart_cmd_hash: u64,
+    restart_cwd_hash: u64,
+) -> MiniDump {
+    let mut d = MiniDump {
+        exception_code: code,
+        crash_addr,
+        thread_id,
+        stack: [0; DUMP_STACK_FRAMES],
+        stack_n: raw_stack.len().min(DUMP_STACK_FRAMES),
+        modules: [None; DUMP_MODULES],
+        module_n: raw_modules.len().min(DUMP_MODULES),
+        system_fingerprint: 0x5354_4152, // "STAR"
+        degraded: false,
+        restart_cmd_hash,
+        restart_cwd_hash,
+    };
+    for i in 0..d.stack_n {
+        d.stack[i] = raw_stack[i];
+    }
+    for i in 0..d.module_n {
+        d.modules[i] = Some(raw_modules[i]);
+    }
+    d
+}
+
+/// 24 小时崩溃计数（同文件三次以上 → 建议 F036 草稿）。
+pub struct CrashRepeatTracker {
+    /// (文件哈希 → 24h 窗口内计数)——定长 64 槽。
+    counts: [(u64, u32, u64); 64],
+    n: usize,
+    /// F036 建议触发次数。
+    pub suggestions: u32,
+}
+
+impl CrashRepeatTracker {
+    pub fn new() -> CrashRepeatTracker {
+        CrashRepeatTracker { counts: [(0, 0, 0); 64], n: 0, suggestions: 0 }
+    }
+
+    /// 记录一次崩溃（file_hash, now_ms）。窗口内 ≥3 → 触发建议。
+    pub fn crash(&mut self, file_hash: u64, now_ms: u64) -> bool {
+        const WINDOW_MS: u64 = 24 * 3_600_000;
+        let slot = (0..self.n).find(|&i| self.counts[i].0 == file_hash);
+        let idx = match slot {
+            Some(i) => i,
+            None => {
+                if self.n >= 64 {
+                    // 满槽淘汰计数最旧。
+                    let mut victim = 0;
+                    let mut oldest = u64::MAX;
+                    for i in 0..64 {
+                        if self.counts[i].2 < oldest {
+                            oldest = self.counts[i].2;
+                            victim = i;
+                        }
+                    }
+                    self.counts[victim] = (file_hash, 0, now_ms);
+                    self.n = 64;
+                    victim
+                } else {
+                    self.counts[self.n] = (file_hash, 0, now_ms);
+                    self.n += 1;
+                    self.n - 1
+                }
+            }
+        };
+        let (h, c, first) = self.counts[idx];
+        let _ = h;
+        // 窗口滑动：首崩超 24h → 计数重置。
+        let (c, first) = if now_ms.saturating_sub(first) > WINDOW_MS {
+            (0, now_ms)
+        } else {
+            (c, first)
+        };
+        let c = c + 1;
+        self.counts[idx] = (file_hash, c, first);
+        if c >= 3 {
+            self.suggestions += 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+impl Default for CrashRepeatTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 域自检
+// ---------------------------------------------------------------------------
+
+/// 域自检。
+pub fn run_excface_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F020-excface");
+    // 1) 判据常量（异常码集 / 64 帧 / 32 模块 / 20 dump / 帧栈 32）。
+    cs.add(
+        "consts",
+        EXC_INT_DIVIDE_BY_ZERO == 0xC000_0094
+            && EXC_ACCESS_VIOLATION == 0xC000_0005
+            && EXC_STACK_OVERFLOW == 0xC000_00FD
+            && DUMP_STACK_FRAMES == 64
+            && DUMP_MODULES == 32
+            && DUMP_CAP == 20
+            && SIX_SAMPLE_CODES.len() == 6,
+        "",
+    );
+    // 2) 六类注入样本行为全对（判据一）：
+    //    a) 除零——SEH Handle → 存活（吞噬路径）。
+    let mut t = ExceptionTranslator::new(0);
+    let d1 = t.raise(EXC_INT_DIVIDE_BY_ZERO, 0x1000, &[FilterVerdict::Handle]);
+    cs.add("div_zero_swallowed_alive", d1 == Dispatch::HandledBySeq(1) && !t.reclaimed, "");
+    //    b) 非法访问——链全 ContinueSearch → 未处理回收。
+    let mut t2 = ExceptionTranslator::new(2);
+    let d2 = t2.raise(EXC_ACCESS_VIOLATION, 0xDEAD, &[FilterVerdict::ContinueSearch, FilterVerdict::ContinueSearch]);
+    cs.add("access_violation_unhandled_reclaimed", d2 == Dispatch::Unhandled(2, 2) && t2.reclaimed, "");
+    //    c) 栈溢出——保护页捕获归因。
+    let mut t3 = ExceptionTranslator::new(0);
+    let _ = t3.raise(EXC_STACK_OVERFLOW, 0x7F00, &[FilterVerdict::Handle]);
+    cs.add("stack_overflow_guard_page", t3.stack_guard_hit && !t3.reclaimed, "");
+    //    d) 未处理 C++ 异常——无处理器 → 回收。
+    let mut t4 = ExceptionTranslator::new(0);
+    let d4 = t4.raise(EXC_CPP_UNHANDLED, 0x2000, &[]);
+    cs.add("cpp_unhandled_reclaimed", d4 == Dispatch::Unhandled(0, 0) && t4.reclaimed, "");
+    //    e) SEH 吞噬——链第一环 Handle（异常不上抛）。
+    let mut t5 = ExceptionTranslator::new(1);
+    let d5 = t5.raise(EXC_SEH_SWALLOWED, 0x3000, &[FilterVerdict::Handle, FilterVerdict::ContinueSearch]);
+    cs.add("seh_swallowed_first_ring", d5 == Dispatch::HandledBySeq(1), "");
+    //    f) VEH 链——先于 SEH 走过 2 节点后由 SEH 处理。
+    let mut t6 = ExceptionTranslator::new(2);
+    let d6 = t6.raise(EXC_VEH_CHAIN, 0x4000, &[FilterVerdict::ContinueSearch, FilterVerdict::Handle]);
+    cs.add("veh_chain_then_seh", d6 == Dispatch::HandledBySeq(2) && t6.frame_count() == 1, "");
+    // 3) 恢复执行语义（EXCEPTION_CONTINUE_EXECUTION）。
+    let mut t7 = ExceptionTranslator::new(0);
+    let d7 = t7.raise(EXC_ACCESS_VIOLATION, 0x5000, &[FilterVerdict::ContinueExecution]);
+    cs.add("continue_execution_verdict", d7 == Dispatch::ContinuedExecution(1) && !t7.reclaimed, "");
+    // 4) 双重故障：处理器自身再异常 → 直接回收不递归（帧栈不膨胀）。
+    let mut t8 = ExceptionTranslator::new(1);
+    let _ = t8.raise(EXC_ACCESS_VIOLATION, 0x6000, &[FilterVerdict::ContinueSearch]);
+    let d8 = t8.raise_in_handler();
+    cs.add(
+        "double_fault_no_recursion",
+        d8 == Dispatch::ReclaimedDoubleFault && t8.double_fault && t8.frame_count() == 1,
+        "",
+    );
+    // 5) 帧栈深度 32：超限 = 双重故障语义（翻译层不可再展开）。
+    let mut t9 = ExceptionTranslator::new(0);
+    let mut last = Dispatch::HandledBySeq(0);
+    for i in 0..40u32 {
+        last = t9.raise(EXC_ACCESS_VIOLATION, i as u64 * 0x10, &[]);
+        // 双重故障即翻译层终点（第 33 次投递触发——栈满后的下一次投递）。
+        if last == Dispatch::ReclaimedDoubleFault {
+            break;
+        }
+    }
+    cs.add(
+        "frame_stack_32_cap",
+        t9.frame_n <= 32 && last == Dispatch::ReclaimedDoubleFault && t9.double_fault,
+        "",
+    );
+    // 6) minidump：栈回溯 64 帧裁剪 + 模块表 32 裁剪 + 指纹。
+    let stack: Vec<u64> = (0..80u64).map(|i| 0x7FF0_0000 + i * 8).collect();
+    let modules: Vec<DumpModule> = (0..40u32)
+        .map(|i| DumpModule { base: 0x400000 + i as u64 * 0x10000, size: 0x8000, checksum: i })
+        .collect();
+    let d = build_dump(EXC_ACCESS_VIOLATION, 0xDEAD_BEEF, 42, &stack, &modules, 0xA, 0xB);
+    cs.add(
+        "minidump_structure",
+        d.stack_n == 64 && d.module_n == 32 && d.system_fingerprint == 0x5354_4152,
+        "",
+    );
+    // 7) dump LRU 20 个：满后驱逐最旧。
+    let mut store = DumpStore::new();
+    for i in 0..25u32 {
+        let d = build_dump(EXC_ACCESS_VIOLATION, i as u64, i, &[], &[], i as u64, i as u64);
+        store.store(d, true);
+    }
+    let latest = store.latest().unwrap();
+    cs.add(
+        "dump_lru_20",
+        store.len() == DUMP_CAP && latest.crash_addr == 24 && latest.thread_id == 24,
+        "",
+    );
+    // 8) dump 写入失败 → 降级（日志摘要计数可见——不静默）。
+    let mut store2 = DumpStore::new();
+    let d = build_dump(EXC_ACCESS_VIOLATION, 1, 1, &[], &[], 1, 1);
+    store2.store(d, false);
+    cs.add(
+        "dump_write_failure_degrades",
+        store2.is_empty() && store2.write_failures == 1,
+        "",
+    );
+    // 9) 崩溃重复跟踪：24h 内 3 次 → F036 建议触发。
+    let mut trk = CrashRepeatTracker::new();
+    let h = 0xF17Eu64;
+    let a = trk.crash(h, 0);
+    let b = trk.crash(h, 3_600_000);
+    let c = trk.crash(h, 7_200_000);
+    cs.add("crash_3_in_24h_suggests", !a && !b && c && trk.suggestions == 1, "");
+    // 10) 24h 窗口滑动：距首崩 >24h → 计数重置（不再累计旧账）。
+    let d10 = trk.crash(h, 24 * 3_600_000 + 1);
+    cs.add("crash_window_slides", !d10, "");
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 测试（宿主）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn six_samples_full_matrix() {
+        // 判据一完整矩阵：六类样本各自行为归宿互不混淆。
+        let mut t = ExceptionTranslator::new(1);
+        // 除零被 SEH 吃掉。
+        let a = t.raise(EXC_INT_DIVIDE_BY_ZERO, 1, &[FilterVerdict::Handle]);
+        assert!(matches!(a, Dispatch::HandledBySeq(_)));
+        assert!(!t.reclaimed);
+        // 非法访问没人管 → 回收。
+        let b = t.raise(EXC_ACCESS_VIOLATION, 2, &[]);
+        assert!(matches!(b, Dispatch::Unhandled(1, 0)));
+        assert!(t.reclaimed);
+        // 新翻译器：栈溢出带保护页归因。
+        let mut t2 = ExceptionTranslator::new(0);
+        let _ = t2.raise(EXC_STACK_OVERFLOW, 3, &[]);
+        assert!(t2.stack_guard_hit);
+        // C++ 异常无处理器 → 回收。
+        let mut t3 = ExceptionTranslator::new(0);
+        let d = t3.raise(EXC_CPP_UNHANDLED, 4, &[]);
+        assert!(matches!(d, Dispatch::Unhandled(0, 0)));
+    }
+
+    #[test]
+    fn veh_before_seh_ordering() {
+        // Windows 语义：VEH 链先于 SEH 链（层数记账证明顺序）。
+        let mut t = ExceptionTranslator::new(3);
+        let d = t.raise(EXC_VEH_CHAIN, 1, &[FilterVerdict::ContinueSearch]);
+        // VEH 走过 3 节点，SEH 链 ContinueSearch → 未处理（带 VEH=3）。
+        assert_eq!(d, Dispatch::Unhandled(3, 1));
+    }
+
+    #[test]
+    fn restart_snapshot_preserved() {
+        // 「重新启动应用」保留原参数（命令行/工作目录快照进 dump）。
+        let d = build_dump(EXC_ACCESS_VIOLATION, 0x10, 1, &[], &[], 0xC0DE, 0xC0DE1 ^ 0xFFFF);
+        assert_eq!(d.restart_cmd_hash, 0xC0DE);
+        assert_eq!(d.restart_cwd_hash, 0xC0DE1 ^ 0xFFFF);
+        // 崩溃卡片「查看详情」= dump 摘要只读（latest 拉取）。
+        let mut s = DumpStore::new();
+        s.store(d, true);
+        let got = s.latest().unwrap();
+        assert_eq!(got.exception_code, EXC_ACCESS_VIOLATION);
+        assert_eq!(got.crash_addr, 0x10);
+    }
+
+    #[test]
+    fn dump_lru_evicts_oldest_stamp() {
+        // LRU 驱逐按时间戳（不是槽位序）。
+        let mut s = DumpStore::new();
+        for i in 0..DUMP_CAP {
+            let d = build_dump(EXC_CPP_UNHANDLED, i as u64, i as u32, &[], &[], 0, 0);
+            s.store(d, true);
+        }
+        // 访问最旧（0 号）不算——无 touch 语义，严格按写入时间。
+        let d_new = build_dump(EXC_CPP_UNHANDLED, 999, 999, &[], &[], 0, 0);
+        s.store(d_new, true);
+        let latest = s.latest().unwrap();
+        assert_eq!(latest.crash_addr, 999);
+        assert_eq!(s.len(), DUMP_CAP);
+    }
+
+    #[test]
+    fn tracker_multiple_files_independent() {
+        // 多文件计数独立：A 三次触发，B 才一次不触发。
+        let mut t = CrashRepeatTracker::new();
+        let _ = t.crash(0xA, 0);
+        let _ = t.crash(0xA, 1);
+        let fired = t.crash(0xA, 2);
+        assert!(fired);
+        assert!(!t.crash(0xB, 3));
+        assert_eq!(t.suggestions, 1);
+    }
+
+    #[test]
+    fn translator_frames_hold_code_and_addr() {
+        // 帧内容保真：异常码/地址/深度可查（F035 归因链数据源）。
+        let mut t = ExceptionTranslator::new(0);
+        let _ = t.raise(EXC_ACCESS_VIOLATION, 0xBADF00D, &[FilterVerdict::Handle]);
+        let f = t.top_frame().unwrap();
+        assert_eq!(f.code, EXC_ACCESS_VIOLATION);
+        assert_eq!(f.fault_addr, 0xBADF00D);
+        assert_eq!(f.depth, 1);
+    }
+}

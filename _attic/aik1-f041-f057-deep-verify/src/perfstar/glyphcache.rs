@@ -558,7 +558,11 @@ pub fn run_glyphcache_checks() -> CheckSet {
     gc_check_hitrate_over_90(&mut cs);
     gc_check_font_version_rebuild(&mut cs);
     gc_check_memory_accounting(&mut cs);
-    cs
+    // 深化件（深化批次三）：常用字集预热（3500 汉字 + ASCII）/ 当前帧钉住与
+    // 双缓冲原子换页 / 资产版本（AA·hinting·字体哈希）全重建决策与显式原因 /
+    // 命中率扩页状态机（迟滞 + 32MB 硬顶）/ 光栅耗时超 2ms 转后台与占位代价账 /
+    // 16MB 配额账与不做持久化登记。
+    CheckSet::merge(cs, crate::perfstar::glyphcache_ext::run_checks())
 }
 
 #[cfg(test)]

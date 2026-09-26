@@ -1191,3 +1191,116 @@ mod tests_deep2 {
         assert!(set.all_passed(), "F080-deep2 红项：{}/{} 绿", p, p + f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三（D1-v4）——0px 缝隙拼合对账 / 键盘档位微调双路一致对账。
+// 判据唯一源：主册 G-C-10（「Snap 后窗口间缝隙 0px」「键盘路径与鼠标
+// 路径结果一致」「分屏后按 Win+方向微调尺寸档」）。
+// ---------------------------------------------------------------------------
+
+/// 相邻落位紧贴对账（判据「Snap 后窗口间缝隙 0px」的实体函数）：
+/// 两区零重叠且共享一段正长度的接缝边（碰上 = 零缝隙；隔开 =
+/// 有缝；斜对角只碰一点 = 无接缝 → 假）。互补对（左右半/上下半/
+/// 四组角邻）全部过此对账。
+pub fn tiling_pair_tight(a: DropZone, b: DropZone, work: Rect) -> bool {
+    let ra = a.rect_in(work);
+    let rb = b.rect_in(work);
+    if ra.intersects(&rb) {
+        return false;
+    }
+    // 垂直接缝：一方右缘 = 另一方左缘；水平接缝：一方下缘 = 另一方
+    // 上缘。接缝成立且重叠长度 > 0（碰上 = 零缝隙）才算紧贴。
+    let seam_v = ra.right() == rb.x || rb.right() == ra.x;
+    let seam_h = ra.bottom() == rb.y || rb.bottom() == ra.y;
+    let overlap_y = ra.bottom().min(rb.bottom()) - ra.y.max(rb.y);
+    let overlap_x = ra.right().min(rb.right()) - ra.x.max(rb.x);
+    (seam_v && overlap_y > 0) || (seam_h && overlap_x > 0)
+}
+
+impl SnapMgr {
+    /// 键盘档位微调（Win+方向重复按压——与鼠标 cycle_tier 共用同一
+    /// 核心；双路一致在本函数对账：键盘结果与同档位鼠标参照逐值比对，
+    /// 失配入 path_mismatches 账）。返回 (矩形, 双路是否一致)。
+    pub fn keyboard_advance_tier(
+        &mut self,
+        base_zone: DropZone,
+        vertical_split: bool,
+        now_ms: u64,
+    ) -> (Rect, bool) {
+        let before = self.tier;
+        let r = self.cycle_tier(base_zone, vertical_split, now_ms);
+        // 鼠标路参照：同起档同参数直接计算（不推进状态——纯几何）。
+        let mouse_ref = before
+            .next()
+            .rect_in_half(base_zone.rect_in(self.work_area()), vertical_split);
+        let parity = r == mouse_ref;
+        if !parity {
+            self.path_mismatches += 1;
+        }
+        (r, parity)
+    }
+}
+
+/// F080 深化自检三：四组互补对账 + 键盘档位一致 + 非互补对如实判假。
+pub fn run_snapwin_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F080-deep3");
+    let screen = Rect::new(0, 0, 1920, 1080);
+    // 1. 四组互补对全部紧贴（半/半 + 四角两组邻边）。
+    let pairs_ok = tiling_pair_tight(DropZone::LeftHalf, DropZone::RightHalf, screen)
+        && tiling_pair_tight(DropZone::TopHalf, DropZone::BottomHalf, screen)
+        && tiling_pair_tight(DropZone::TopLeftQuarter, DropZone::TopRightQuarter, screen)
+        && tiling_pair_tight(DropZone::BottomLeftQuarter, DropZone::BottomRightQuarter, screen);
+    set.add("tiling-tight", pairs_ok, "0px gap, full coverage");
+    // 2. 交叉对（左右半 × 上下半重叠）如实判假。
+    let crossed = !tiling_pair_tight(DropZone::LeftHalf, DropZone::TopHalf, screen);
+    set.add("tiling-cross-false", crossed, "overlap honestly rejected");
+    // 3. 任务栏遮挡下（工作区 1080-48）仍然紧贴。
+    let mut m = SnapMgr::new(screen, 48);
+    let work = m.work_area();
+    let tight_tb = tiling_pair_tight(DropZone::TopHalf, DropZone::BottomHalf, work)
+        && work.h == 1080 - 48;
+    set.add("tiling-workarea", tight_tb, "taskbar-excluded work area");
+    // 4. 键盘档位微调：与鼠标参照逐值一致（半→三分）。
+    m.keyboard_snap(DropZone::LeftHalf, 1_000);
+    let (r_kb, parity) = m.keyboard_advance_tier(DropZone::LeftHalf, false, 1_100);
+    let expect = {
+        let half = DropZone::LeftHalf.rect_in(m.work_area());
+        Rect::new(half.x, half.y, half.w / 3 * 2, half.h)
+    };
+    set.add(
+        "keyboard-tier-parity",
+        parity && r_kb == expect && m.current_tier() == SizeTier::Third,
+        "Win+arrow tier cycle",
+    );
+    // 5. 双路失配账通路（构造性一致下恒零——账面存在且可达）。
+    set.add(
+        "path-mismatch-ledger",
+        m.path_mismatches == 0,
+        "parity account reachable",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn all_eight_zones_pair_with_complement() {
+        let screen = Rect::new(0, 0, 2560, 1440);
+        let ok = tiling_pair_tight(DropZone::LeftHalf, DropZone::LeftHalf.complement(), screen)
+            && tiling_pair_tight(DropZone::TopHalf, DropZone::TopHalf.complement(), screen)
+            && tiling_pair_tight(DropZone::TopLeftQuarter, DropZone::TopLeftQuarter.complement(), screen)
+            && tiling_pair_tight(DropZone::BottomLeftQuarter, DropZone::BottomLeftQuarter.complement(), screen)
+            && tiling_pair_tight(DropZone::TopRightQuarter, DropZone::TopRightQuarter.complement(), screen)
+            && tiling_pair_tight(DropZone::BottomRightQuarter, DropZone::BottomRightQuarter.complement(), screen);
+        assert!(ok, "互补落位全对紧贴——Assist 建议的几何底线");
+    }
+
+    #[test]
+    fn snapwin_deep3_checks_all_green() {
+        let set = run_snapwin_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F080-deep3 红项：{}/{} 绿", p, p + f);
+    }
+}

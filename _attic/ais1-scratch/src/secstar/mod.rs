@@ -38,20 +38,100 @@
 use crate::checks::CheckSet;
 
 pub mod bootmenu;
+pub mod bootmenu_b3;
+pub mod bootmenu_b4;
+pub mod bootmenu_b5;
+pub mod bootmenu_b7;
 pub mod capenforce;
+pub mod capenforce_b3;
+pub mod capenforce_b4;
+pub mod capenforce_b5;
+pub mod capenforce_b6;
+pub mod capenforce_b7;
 pub mod crashiso;
+pub mod crashiso_b3;
+pub mod crashiso_b4;
+pub mod crashiso_b5;
+pub mod crashiso_b6;
+pub mod crashiso_b7;
 pub mod diagsnap;
+pub mod diagsnap_b3;
+pub mod diagsnap_b4;
+pub mod diagsnap_b5;
+pub mod diagsnap_b7;
 pub mod diskhealth;
+pub mod diskhealth_b3;
+pub mod diskhealth_b4;
+pub mod diskhealth_b5;
+pub mod diskhealth_b6;
+pub mod diskhealth_b7;
+pub mod diskhealth_b8;
 pub mod duoclock;
+pub mod duoclock_b3;
+pub mod duoclock_b4;
+pub mod duoclock_b5;
+pub mod duoclock_b6;
+pub mod duoclock_b7;
+pub mod duoclock_b8;
 pub mod handoffchk;
+pub mod handoffchk_b3;
+pub mod handoffchk_b4;
+pub mod handoffchk_b5;
+pub mod handoffchk_b6;
+pub mod handoffchk_b7;
+pub mod handoffchk_b8;
 pub mod hotplug;
+pub mod hotplug_b3;
+pub mod hotplug_b4;
+pub mod hotplug_b5;
+pub mod hotplug_b6;
+pub mod hotplug_b7;
 pub mod memguard;
+pub mod memguard_b3;
+pub mod memguard_b4;
+pub mod memguard_b5;
+pub mod memguard_b6;
+pub mod memguard_b7;
+pub mod memguard_b8;
 pub mod panicscreen;
+pub mod panicscreen_b3;
+pub mod panicscreen_b4;
+pub mod panicscreen_b5;
+pub mod panicscreen_b6;
+pub mod panicscreen_b7;
 pub mod permaudit;
+pub mod permaudit_b3;
+pub mod permaudit_b4;
+pub mod permaudit_b5;
+pub mod permaudit_b6;
+pub mod permaudit_b7;
 pub mod pwrdrill;
+pub mod pwrdrill_b3;
+pub mod pwrdrill_b4;
+pub mod pwrdrill_b5;
+pub mod pwrdrill_b6;
+pub mod pwrdrill_b7;
+pub mod pwrdrill_b8;
 pub mod romount;
+pub mod romount_b3;
+pub mod romount_b4;
+pub mod romount_b5;
+pub mod romount_b6;
+pub mod romount_b7;
 pub mod selftestviz;
+pub mod selftestviz_b3;
+pub mod selftestviz_b4;
+pub mod selftestviz_b5;
+pub mod selftestviz_b6;
+pub mod selftestviz_b7;
+pub mod selftestviz_b8;
 pub mod signbadge;
+pub mod signbadge_b3;
+pub mod signbadge_b4;
+pub mod signbadge_b5;
+pub mod signbadge_b6;
+pub mod signbadge_b7;
+pub mod signbadge_b8;
 
 /// 域标识（CheckSet 聚合用）。
 pub const SECSTAR_DOMAIN: &str = "secstar-s1";
@@ -87,29 +167,42 @@ pub fn run_secstar_checks() -> CheckSet {
     set
 }
 
-/// 域深化自检聚合（检查项对账层——各模块 run_*_deep_checks 汇总；
-/// 深化自检对账主册【设计细节】子句，与主判据层互补不重叠）。
+/// 域深化自检聚合（检查项对账层——各模块 run_*_deep_checks 与批次三
+/// run_*_b3_checks、批次四 run_*_b4_checks 三层合并汇总；深化自检对账
+/// 主册【设计细节】子句，与主判据层互补不重叠）。
+/// 空检查集（F171/F174 无 b6 批次——占位行不影响全绿判定）。
+fn no_checks_placeholder() -> CheckSet {
+    CheckSet::new("b6-none")
+}
+
 pub fn run_secstar_deep_checks() -> CheckSet {
     let mut set = CheckSet::new("secstar-s1-deep");
-    let blocks: [(&'static str, CheckSet); 15] = [
-        ("F171d", bootmenu::run_bootmenu_deep_checks()),
-        ("F172d", selftestviz::run_selftestviz_deep_checks()),
-        ("F173d", panicscreen::run_panicscreen_deep_checks()),
-        ("F174d", diagsnap::run_diagsnap_deep_checks()),
-        ("F175d", crashiso::run_crashiso_deep_checks()),
-        ("F176d", memguard::run_memguard_deep_checks()),
-        ("F177d", capenforce::run_capenforce_deep_checks()),
-        ("F178d", signbadge::run_signbadge_deep_checks()),
-        ("F179d", permaudit::run_permaudit_deep_checks()),
-        ("F180d", pwrdrill::run_pwrdrill_deep_checks()),
-        ("F181d", handoffchk::run_handoffchk_deep_checks()),
-        ("F182d", duoclock::run_duoclock_deep_checks()),
-        ("F183d", diskhealth::run_diskhealth_deep_checks()),
-        ("F184d", hotplug::run_hotplug_deep_checks()),
-        ("F185d", romount::run_romount_deep_checks()),
+    // 函数指针表（8B/项）而非物化 CheckSet——多批次 × 15 模块的 CheckSet
+    // 若在栈上同时物化会撑爆测试线程栈。指针表 + 循环内逐层判定把峰值
+    // 压到单模块一层临时集合。
+    type CheckFn = fn() -> CheckSet;
+    let blocks: [(&'static str, CheckFn, CheckFn, CheckFn, CheckFn, CheckFn, CheckFn, CheckFn); 15] = [
+        ("F171d", bootmenu::run_bootmenu_deep_checks, bootmenu_b3::run_bootmenu_b3_checks, bootmenu_b4::run_bootmenu_b4_checks, bootmenu_b5::run_bootmenu_b5_checks, no_checks_placeholder, bootmenu_b7::run_bootmenu_b7_checks, no_checks_placeholder),
+        ("F172d", selftestviz::run_selftestviz_deep_checks, selftestviz_b3::run_selftestviz_b3_checks, selftestviz_b4::run_selftestviz_b4_checks, selftestviz_b5::run_selftestviz_b5_checks, selftestviz_b6::run_selftestviz_b6_checks, selftestviz_b7::run_selftestviz_b7_checks, selftestviz_b8::run_selftestviz_b8_checks),
+        ("F173d", panicscreen::run_panicscreen_deep_checks, panicscreen_b3::run_panicscreen_b3_checks, panicscreen_b4::run_panicscreen_b4_checks, panicscreen_b5::run_panicscreen_b5_checks, panicscreen_b6::run_panicscreen_b6_checks, panicscreen_b7::run_panicscreen_b7_checks, no_checks_placeholder),
+        ("F174d", diagsnap::run_diagsnap_deep_checks, diagsnap_b3::run_diagsnap_b3_checks, diagsnap_b4::run_diagsnap_b4_checks, diagsnap_b5::run_diagsnap_b5_checks, no_checks_placeholder, diagsnap_b7::run_diagsnap_b7_checks, no_checks_placeholder),
+        ("F175d", crashiso::run_crashiso_deep_checks, crashiso_b3::run_crashiso_b3_checks, crashiso_b4::run_crashiso_b4_checks, crashiso_b5::run_crashiso_b5_checks, crashiso_b6::run_crashiso_b6_checks, crashiso_b7::run_crashiso_b7_checks, no_checks_placeholder),
+        ("F176d", memguard::run_memguard_deep_checks, memguard_b3::run_memguard_b3_checks, memguard_b4::run_memguard_b4_checks, memguard_b5::run_memguard_b5_checks, memguard_b6::run_memguard_b6_checks, memguard_b7::run_memguard_b7_checks, memguard_b8::run_memguard_b8_checks),
+        ("F177d", capenforce::run_capenforce_deep_checks, capenforce_b3::run_capenforce_b3_checks, capenforce_b4::run_capenforce_b4_checks, capenforce_b5::run_capenforce_b5_checks, capenforce_b6::run_capenforce_b6_checks, capenforce_b7::run_capenforce_b7_checks, no_checks_placeholder),
+        ("F178d", signbadge::run_signbadge_deep_checks, signbadge_b3::run_signbadge_b3_checks, signbadge_b4::run_signbadge_b4_checks, signbadge_b5::run_signbadge_b5_checks, signbadge_b6::run_signbadge_b6_checks, signbadge_b7::run_signbadge_b7_checks, signbadge_b8::run_signbadge_b8_checks),
+        ("F179d", permaudit::run_permaudit_deep_checks, permaudit_b3::run_permaudit_b3_checks, permaudit_b4::run_permaudit_b4_checks, permaudit_b5::run_permaudit_b5_checks, permaudit_b6::run_permaudit_b6_checks, permaudit_b7::run_permaudit_b7_checks, no_checks_placeholder),
+        ("F180d", pwrdrill::run_pwrdrill_deep_checks, pwrdrill_b3::run_pwrdrill_b3_checks, pwrdrill_b4::run_pwrdrill_b4_checks, pwrdrill_b5::run_pwrdrill_b5_checks, pwrdrill_b6::run_pwrdrill_b6_checks, pwrdrill_b7::run_pwrdrill_b7_checks, pwrdrill_b8::run_pwrdrill_b8_checks),
+        ("F181d", handoffchk::run_handoffchk_deep_checks, handoffchk_b3::run_handoffchk_b3_checks, handoffchk_b4::run_handoffchk_b4_checks, handoffchk_b5::run_handoffchk_b5_checks, handoffchk_b6::run_handoffchk_b6_checks, handoffchk_b7::run_handoffchk_b7_checks, handoffchk_b8::run_handoffchk_b8_checks),
+        ("F182d", duoclock::run_duoclock_deep_checks, duoclock_b3::run_duoclock_b3_checks, duoclock_b4::run_duoclock_b4_checks, duoclock_b5::run_duoclock_b5_checks, duoclock_b6::run_duoclock_b6_checks, duoclock_b7::run_duoclock_b7_checks, duoclock_b8::run_duoclock_b8_checks),
+        ("F183d", diskhealth::run_diskhealth_deep_checks, diskhealth_b3::run_diskhealth_b3_checks, diskhealth_b4::run_diskhealth_b4_checks, diskhealth_b5::run_diskhealth_b5_checks, diskhealth_b6::run_diskhealth_b6_checks, diskhealth_b7::run_diskhealth_b7_checks, diskhealth_b8::run_diskhealth_b8_checks),
+        ("F184d", hotplug::run_hotplug_deep_checks, hotplug_b3::run_hotplug_b3_checks, hotplug_b4::run_hotplug_b4_checks, hotplug_b5::run_hotplug_b5_checks, hotplug_b6::run_hotplug_b6_checks, hotplug_b7::run_hotplug_b7_checks, no_checks_placeholder),
+        ("F185d", romount::run_romount_deep_checks, romount_b3::run_romount_b3_checks, romount_b4::run_romount_b4_checks, romount_b5::run_romount_b5_checks, romount_b6::run_romount_b6_checks, romount_b7::run_romount_b7_checks, no_checks_placeholder),
     ];
-    for (tag, sub) in blocks {
-        let passed = sub.all_passed() && !sub.truncated();
+    for (tag, f0, f1, f2, f3, f4, f5, f6) in blocks {
+        // 逐层判定再 AND——七层合并后的集合会超 CheckSet 64 条上限
+        // （truncated 误红）；各层独立 ≤64，行语义 = 全层全绿。
+        let sets = [f0(), f1(), f2(), f3(), f4(), f5(), f6()];
+        let passed = sets.iter().all(|s| s.all_passed() && !s.truncated());
         set.add(tag, passed, if passed { "" } else { "sub-checks red" });
     }
     set

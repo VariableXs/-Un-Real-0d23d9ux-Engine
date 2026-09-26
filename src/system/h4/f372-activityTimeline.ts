@@ -8,6 +8,8 @@
  * 依赖锚点：F194 审计日志 / F295 时间源。
  */
 
+import { fnv1a32 } from "./internal/hash";
+
 /** 系统事件大类（判据「映射表覆盖率」——全类目必须有人话映射）。 */
 export const EVENT_KINDS = ["appOpen", "appClose", "crash", "abnormalShutdown", "selfHeal", "update", "restore", "devicePlug"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
@@ -70,14 +72,9 @@ export const WINDOW_MS = 24 * 60 * 60 * 1000;
 /** 存储上限（判据「存储上限」）。 */
 export const TIMELINE_CAP = 500;
 
-/** FNV-1a 哈希（哈希链节点的轻量实现——只读完整性校验用）。 */
+/** FNV-1a 哈希（哈希链节点的轻量实现——只读完整性校验用；实现委托 internal/hash 单点）。 */
 export function fnv1a(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
+  return fnv1a32(text);
 }
 
 export interface ChainedRow extends TimelineRow {

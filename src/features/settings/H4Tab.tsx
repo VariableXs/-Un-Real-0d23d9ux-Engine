@@ -33,7 +33,8 @@ import * as f392 from "../../system/h4/f392-folderSize";
 import * as f395 from "../../system/h4/f395-usbHealth";
 import { memStore } from "../../system/h4/internal/store";
 import { announceFilterChanged, announceReadingChanged } from "../h4/h4ui";
-import { FOCUS_EVENT, SUMMON_PICKER, SUMMON_RULER } from "../h4/overlays";
+import { H4WiringPanel } from "../h4/H4Wiring";
+import { h4Bus } from "../h4/bus";
 import {
   BackupPanel,
   CleanupPanel,
@@ -144,14 +145,14 @@ function FocusTimerInline(): React.ReactElement {
         {!run || run.outcome !== "running" ? (
           <button type="button" disabled={!validation.ok} onClick={() => {
             setRun({ day, plannedMinutes: minutes, startedAt: Date.now(), endedAt: null, outcome: "running" });
-            window.dispatchEvent(new CustomEvent(FOCUS_EVENT, { detail: { type: "start", minutes } })); // 全局芯片同源跟显
+            h4Bus.emit("settings.focus-start", { minutes }); // v10 通道唯一化：全局芯片同源跟显
           }}>
             开始专注
           </button>
         ) : (
           <button type="button" onClick={() => {
             abandonRun();
-            window.dispatchEvent(new CustomEvent(FOCUS_EVENT, { detail: { type: "abandon" } }));
+            h4Bus.emit("settings.focus-abandon", {});
           }}>放弃（记真实时长）</button>
         )}
         {run?.outcome === "running" && <span className="h4-badge-live">{f363b.badgeText(run, Date.now())}</span>}
@@ -506,8 +507,8 @@ export function H4Tab(): React.ReactElement {
         </SectionCard>
         <Row label="像素标尺与网格叠加" hint="真指针真读数：点击设起点、G 切 8px/20% 网格、Esc 秒退——区域录制同款框选辅助。">
           <span className="h4-row-actions">
-            <button type="button" className="h4-btn-mini" onClick={() => window.dispatchEvent(new CustomEvent(SUMMON_PICKER))}>呼出拾色器</button>
-            <button type="button" className="h4-btn-mini" onClick={() => window.dispatchEvent(new CustomEvent(SUMMON_RULER))}>呼出标尺</button>
+            <button type="button" className="h4-btn-mini" onClick={() => h4Bus.emit("settings.summon-picker", {})}>呼出拾色器</button>
+            <button type="button" className="h4-btn-mini" onClick={() => h4Bus.emit("settings.summon-ruler", {})}>呼出标尺</button>
           </span>
         </Row>
         <SectionCard title="屏幕录制与产物管理" f="F361 + F362">
@@ -627,6 +628,12 @@ export function H4Tab(): React.ReactElement {
         </SectionCard>
         <SectionCard title="H 域总判据 · 收官登记" f="F375 + F400">
           <GatePanel />
+        </SectionCard>
+      </Group>
+
+      <Group title="接线总览" f="F351-F400 · 消费面契约" desc="五十项挂在桌面的哪些表面、收发哪些事件——接线审计四道实时灯，点行看契约详情。">
+        <SectionCard title="桌面接线矩阵" f="消费面接线契约层">
+          <H4WiringPanel />
         </SectionCard>
       </Group>
     </div>

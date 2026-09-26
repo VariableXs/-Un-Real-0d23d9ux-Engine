@@ -97,3 +97,38 @@ export function declaredBehavior(appId: string, store: KvStore = defaultStore())
   const prefs = readJson<BehaviorPrefs>(store, KEY, {}, isPrefs);
   return prefs[appId] ?? "normal";
 }
+
+/* ================= v5 深化批次五：托盘右键菜单 / 徽标读数 / 恢复焦点语义 ================= */
+
+export interface TrayMenuItem {
+  id: "open" | "pause" | "resume" | "quit";
+  label: string;
+  /** 菜单项与声明行为的一致性：quit 永远在（真退出路径判据）；pause/resume 视活动而定。 */
+  enabled: boolean;
+}
+
+/** 托盘右键菜单模型：打开主窗 / 暂停或恢复活动 / 退出（真退出判据的入口面）。 */
+export function trayContextMenu(app: TrayApp): TrayMenuItem[] {
+  const active = app.activityPct !== null;
+  return [
+    { id: "open", label: "打开主窗口", enabled: true },
+    { id: active ? "pause" : "resume", label: active ? "暂停活动" : "恢复活动", enabled: active || app.behavior === "closeToTray" },
+    { id: "quit", label: "退出", enabled: true }, // 真退出永远可达——托盘不是牢笼
+  ];
+}
+
+/** 徽标读数：活动进度 → 图标角标语义（0-99 显示数字、100/完成显示对勾语义位）。 */
+export function badgePctFor(app: TrayApp): { show: boolean; text: string | null; done: boolean } {
+  if (app.activityPct === null) return { show: false, text: null, done: false };
+  if (app.activityPct >= 100) return { show: true, text: null, done: true };
+  return { show: true, text: String(app.activityPct), done: false };
+}
+
+/** 恢复焦点语义：点托盘图标 = 恢复已有窗并聚焦——绝不创建第二实例（单实例纪律）。 */
+export function restoreFocusPolicy(runtime: TrayRuntime, appId: string): { action: "restore-focus"; createsNewInstance: false; residentAfter: TrayRuntime } {
+  return {
+    action: "restore-focus",
+    createsNewInstance: false,
+    residentAfter: { ...runtime, resident: runtime.resident.filter((r) => r.appId !== appId) },
+  };
+}

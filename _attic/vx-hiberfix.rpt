@@ -1,0 +1,17 @@
+== hiberfast fix 2026-09-24T01:05:46.077814
+X=X:
+hiberfil.sys not present
+Power: old HibernateEnabled=(absent) -> HibernateEnabled=0, HiberbootEnabled=0
+  verify HibernateEnabled=0
+  verify HiberbootEnabled=0
+unload VXHB rc=5
+chkdsk: 坏扇区          0 KB。
+chkdsk: 系统正在使用     252831 KB。
+chkdsk: 日志文件占用了      65536 KB。
+chkdsk: 磁盘上  281437320 KB 可用。
+chkdsk: 每个分配单元中有       4096 字节。
+chkdsk: 磁盘上共有   78643199 个分配单元。
+chkdsk: 磁盘上有   70359330 个可用的分配单元。
+chkdsk: 总持续时间: 6.94 秒 (6948 毫秒)。
+no Minidump dir
+fix done

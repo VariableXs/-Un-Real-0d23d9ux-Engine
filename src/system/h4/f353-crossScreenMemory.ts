@@ -168,3 +168,41 @@ export function plugCycleStability(state0: MemoryState, win: TrackedWindow, disp
   const afterKeys = state.memories.filter((m) => m.displayId === display.id).map(placementKey);
   return { rounds, stable: JSON.stringify(afterKeys) === JSON.stringify(snapshotKeys) };
 }
+
+/* ================= v5 深化批次五：拓扑签名 / 记忆上限 / 回流次序 / 提示复位 ================= */
+
+export interface DisplayNode {
+  id: string;
+  /** 相对主屏的方位（拓扑签名参与匹配——「副屏在右边」与「在左边」是不同拓扑）。 */
+  side: "left" | "right" | "above" | "below" | "primary";
+}
+
+/** 拓扑签名：主屏 + 各屏方位的稳定串（重接时拓扑一致才走回原位——排列变了 = 布局语境变了）。 */
+export function topologySignature(nodes: DisplayNode[]): string {
+  const primary = nodes.find((n) => n.side === "primary");
+  const others = nodes.filter((n) => n.side !== "primary").sort((a, b) => a.id.localeCompare(b.id));
+  return `${primary?.id ?? "?"}|${others.map((n) => `${n.id}:${n.side}`).join(",")}`;
+}
+
+/** 记忆容量上限（LRU——窗口无限拖会让 memories 无界增长）。 */
+export const MEMORY_CAP = 200;
+
+/** 记忆修剪：超上限按 at 淘汰最旧（确定性口径）。 */
+export function pruneMemory(state: MemoryState): MemoryState {
+  if (state.memories.length <= MEMORY_CAP) return state;
+  const sorted = [...state.memories].sort((a, b) => a.at - b.at);
+  const drop = new Set(sorted.slice(0, state.memories.length - MEMORY_CAP).map((m) => placementKey(m)));
+  return { ...state, memories: state.memories.filter((m) => !drop.has(placementKey(m))) };
+}
+
+/** 批量回流次序：先大后小、同尺寸按 y 再 x（确定性——回流不是随机散落）。 */
+export function reflowOrder(entries: ReflowEntry[]): ReflowEntry[] {
+  return [...entries].sort(
+    (a, b) => b.from.w * b.from.h - a.from.w * a.from.h || a.from.y - b.from.y || a.from.x - b.from.x || a.winId.localeCompare(b.winId),
+  );
+}
+
+/** 提示复位：重接成功后清除缺席标记——下次再拔还能提示一次（提示一次 ≠ 一生一次）。 */
+export function resetAbsenceNotice(state: MemoryState, displayId: string): MemoryState {
+  return { ...state, absenceNotified: state.absenceNotified.filter((id) => id !== displayId) };
+}

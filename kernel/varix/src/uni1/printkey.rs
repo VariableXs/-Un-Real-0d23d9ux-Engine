@@ -15,6 +15,9 @@ use alloc::vec::Vec;
 /// PDF 产物落位目录。
 pub const PDF_TARGET_DIR: &str = "文档";
 
+/// 份数上限（打印对话框通用判线——防手滑 999 份）。
+pub const COPIES_MAX: u32 = 99;
+
 /// 四常用项。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PrintOpts {
@@ -25,6 +28,21 @@ pub struct PrintOpts {
     pub duplex: bool,
     /// 方向：false 纵向 / true 横向。
     pub landscape: bool,
+    /// 每纸张数（v6：1/2/4 版——N 上打印）。
+    pub pages_per_sheet: u32,
+}
+
+impl PrintOpts {
+    fn defaults(total: u32) -> PrintOpts {
+        PrintOpts {
+            from_page: 1,
+            to_page: total,
+            copies: 1,
+            duplex: false,
+            landscape: false,
+            pages_per_sheet: 1,
+        }
+    }
 }
 
 /// 打印对话框核。
@@ -36,6 +54,8 @@ pub struct PrintDialog {
     /// 文档总页数（预览准确性基准）。
     pub total_pages: u32,
     pub pdf_jobs: u64,
+    /// 任务取消账（v6：执行前撤销——取消不虚计产物）。
+    pub jobs_cancelled: u64,
 }
 
 impl PrintDialog {
@@ -46,32 +66,51 @@ impl PrintDialog {
             hotkeys,
             printers: Vec::new(),
             selected: None,
-            opts: PrintOpts { from_page: 1, to_page: total_pages, copies: 1, duplex: false, landscape: false },
+            opts: PrintOpts::defaults(total_pages),
             total_pages,
             pdf_jobs: 0,
+            jobs_cancelled: 0,
         }
     }
 
     /// 页码范围校验（越界收敛 + 逆序翻转——不产生非法范围）。
+    /// 零页文档：范围归 0（诚实空态，不造出「第 1 页」）。
     pub fn normalize_range(&mut self, from: u32, to: u32) -> (u32, u32) {
+        if self.total_pages == 0 {
+            self.opts.from_page = 0;
+            self.opts.to_page = 0;
+            return (0, 0);
+        }
         let (a, b) = if from <= to { (from, to) } else { (to, from) };
         self.opts.from_page = a.max(1).min(self.total_pages);
         self.opts.to_page = b.max(1).min(self.total_pages);
         (self.opts.from_page, self.opts.to_page)
     }
 
+    /// 份数设定（v6）：1..=99 钳制（防手滑，超限收敛到界）。
+    pub fn set_copies(&mut self, copies: u32) -> u32 {
+        self.opts.copies = copies.clamp(1, COPIES_MAX);
+        self.opts.copies
+    }
+
     /// 分页预览：实际将打印的页清单（与输出一致的核算基准）。
     pub fn preview_pages(&self) -> Vec<u32> {
         match self.selected {
-            Some(_) => (self.opts.from_page..=self.opts.to_page).collect(),
-            None => Vec::new(),
+            Some(_) if self.opts.to_page >= self.opts.from_page && self.opts.to_page > 0 => {
+                (self.opts.from_page..=self.opts.to_page).collect()
+            }
+            _ => Vec::new(),
         }
     }
 
-    /// 总输出张数（份数 × 页数；双面按张纸两面计）。
+    /// 总输出张数（份数 × 张数；双面按张纸两面计；N 上按每张 N 页计）。
     pub fn sheets(&self) -> u32 {
+        if self.total_pages == 0 || self.opts.to_page < self.opts.from_page || self.opts.to_page == 0 {
+            return 0; // 零页文档/非法范围：0 张——诚实，不虚报。
+        }
         let pages = self.opts.to_page.saturating_sub(self.opts.from_page) + 1;
-        let per_copy = if self.opts.duplex { pages.div_ceil(2) } else { pages };
+        let slots = self.opts.pages_per_sheet.max(1) * if self.opts.duplex { 2 } else { 1 };
+        let per_copy = pages.div_ceil(slots);
         per_copy * self.opts.copies.max(1)
     }
 
@@ -104,6 +143,15 @@ impl PrintDialog {
             Some(_) => Some((PDF_TARGET_DIR, self.sheets())), // 物理打印机同样产计数
             None => None,
         }
+    }
+
+    /// 执行前取消（v6）：未产文件不虚计产物，取消如实入账。
+    pub fn cancel(&mut self) -> bool {
+        if self.pdf_jobs > 0 {
+            return false; // 已执行的产物没有「取消」——撤销是执行前的权利。
+        }
+        self.jobs_cancelled += 1;
+        true
     }
 }
 
@@ -159,6 +207,46 @@ pub fn run_printkey_checks() -> CheckSet {
     // 未选打印机不执行。
     let mut q = PrintDialog::new(5);
     set.add("f428-no-selection-no-print", q.print_to_pdf().is_none(), "");
+    // 份数钳制（v6）：0 → 1、200 → 99（防手滑 999 份）。
+    set.add(
+        "f428-copies-clamp",
+        q.set_copies(0) == 1 && q.set_copies(200) == COPIES_MAX && q.opts.copies == 99,
+        "",
+    );
+    // N 上打印（v6）：10 页 2 上 → 5 张；4 上双面 → ceil(10/8)=2 张。
+    let mut n = PrintDialog::new(10);
+    n.printers = alloc::vec!["虚拟 PDF"];
+    let _ = n.select(0);
+    let _ = n.normalize_range(1, 10);
+    n.opts.pages_per_sheet = 2;
+    set.add("f428-2up-sheets", n.sheets() == 5, "");
+    n.opts.pages_per_sheet = 4;
+    n.opts.duplex = true;
+    set.add("f428-4up-duplex-sheets", n.sheets() == 2, "");
+    // N 上不改默认行为（v6 回归锚）：pps=1 时老算式不变。
+    n.opts.pages_per_sheet = 1;
+    n.opts.duplex = false;
+    set.add("f428-1up-default", n.sheets() == 10, "");
+    // 执行前取消（v6）：不产文件、账分记；执行后无取消。
+    set.add("f428-cancel-before-print", n.cancel() && n.jobs_cancelled == 1, "");
+    let _ = n.print_to_pdf();
+    set.add(
+        "f428-no-cancel-after-print",
+        !n.cancel() && n.jobs_cancelled == 1 && n.pdf_jobs == 1,
+        "",
+    );
+    // 零页文档诚实门（v6）：范围归 0、预览空、张数 0——不造「第 1 页」。
+    let mut z = PrintDialog::new(0);
+    z.printers = alloc::vec!["虚拟 PDF"];
+    let _ = z.select(0);
+    set.add(
+        "f428-zero-page-doc",
+        z.normalize_range(1, 5) == (0, 0)
+            && z.preview_pages().is_empty()
+            && z.sheets() == 0
+            && z.print_to_pdf() == Some(("文档", 0)),
+        "",
+    );
     set
 }
 
@@ -173,7 +261,7 @@ mod tests {
         let _ = p.select(0);
         let _ = p.normalize_range(1, 7);
         // 单面 1 份。
-        p.opts = PrintOpts { from_page: 1, to_page: 7, copies: 1, duplex: false, landscape: false };
+        p.opts = PrintOpts { from_page: 1, to_page: 7, copies: 1, duplex: false, landscape: false, pages_per_sheet: 1 };
         assert_eq!(p.sheets(), 7);
         // 双面 1 份（7 页 → 4 张）。
         p.opts.duplex = true;

@@ -286,6 +286,103 @@ pub fn illustration_available(card_index: usize, present: &[bool]) -> bool {
     card_index < CARD_COUNT && present.get(card_index).copied().unwrap_or(false)
 }
 
+// ---------------------------------------------------------------------------
+// 深化批次 v8 · 一：行动钮文案面（主册「每卡……+ 行动钮（直跳对应
+// 功能）」——按钮上写什么此前缺位；文案与跳转目标语义对位登记）
+// ---------------------------------------------------------------------------
+
+/// 五卡行动钮文案（与 CARDS 逐卡对位——按钮文案说的是动作，跳转目标
+/// 是动作的落点，两者错位 = 误导点击）。
+pub const ACTION_LABELS: [&str; CARD_COUNT] = [
+    "去了解域切换",
+    "打开浏览器下载",
+    "查看切换流程",
+    "打开个性化设置",
+    "进入帮助中心",
+];
+
+/// 行动钮文案对位校验：逐卡 label 语义与 jump 目标一一映射（下载卡
+/// 必须说浏览器、帮助卡必须说帮助——错位即红）。
+pub fn action_labels_consistent() -> bool {
+    let says = |i: usize, kw: &str| ACTION_LABELS[i].contains(kw);
+    says(0, "域切换")
+        && says(1, "浏览器")
+        && says(2, "切换")
+        && says(3, "个性化")
+        && says(4, "帮助")
+        && jump_paths_consistent()
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v8 · 二：进度点三态语义（主册「卡片流……+ 进度点」——
+/// 进度点不是装饰：看过/正在看/未达三态各有所指）
+// ---------------------------------------------------------------------------
+
+/// 进度点状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DotState {
+    /// 已看（浏览历史里翻过的卡）。
+    Done,
+    /// 正在看。
+    Current,
+    /// 未达。
+    Pending,
+}
+
+/// 进度点计算：seen_max = 已看最远卡（含当前）；current = 当前卡。
+/// 约束：current ≤ seen_max（正在看的必然已看——违例返回全 Pending，
+/// 不产出矛盾态）。
+pub fn progress_dots(seen_max: usize, current: usize) -> [DotState; CARD_COUNT] {
+    let mut dots = [DotState::Pending; CARD_COUNT];
+    if current > seen_max || seen_max >= CARD_COUNT {
+        return dots;
+    }
+    for (i, d) in dots.iter_mut().enumerate() {
+        *d = if i < current {
+            DotState::Done
+        } else if i == current {
+            DotState::Current
+        } else if i <= seen_max {
+            DotState::Done
+        } else {
+            DotState::Pending
+        };
+    }
+    dots
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v8 · 三：完成态收尾卡「开始使用」（主册「完成态卡『开始
+// 使用』收尾」——看完五卡后的收尾屏：不转发不拉扯，一口「去用」）
+// ---------------------------------------------------------------------------
+
+/// 收尾卡文案（标题 + 一句话——收尾卡不再放行动钮之外的东西）。
+pub const FINALE_TITLE: &str = "开始使用";
+pub const FINALE_COPY: &str = "五张卡看完即走。设置中心与帮助中心随时找回本页。";
+
+impl WelcomeCenter {
+    /// 进收尾卡（仅末卡可进——前四卡连点不跳收尾，轮播纪律不破）。
+    pub fn finish_to_finale(&mut self, now_ms: u64) -> bool {
+        if self.cursor == CARD_COUNT - 1 {
+            self.cursor = CARD_COUNT;
+            self.slide_started_ms = Some(now_ms);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 收尾态判定（cursor == CARD_COUNT 即收尾屏）。
+    pub fn at_finale(&self) -> bool {
+        self.cursor == CARD_COUNT
+    }
+
+    /// 收尾屏「开始使用」：置完成标记（持久）——看完即走的出口。
+    pub fn start_using(&mut self) {
+        self.complete();
+    }
+}
+
 pub fn run_welcome_checks() -> CheckSet {
     let mut set = CheckSet::new("F118-welcome");
 
@@ -410,6 +507,42 @@ pub fn run_welcome_checks() -> CheckSet {
         "",
     );
 
+    // 12. 行动钮文案对位（深化 v8）：五卡按钮文案与跳转目标语义对位。
+    set.add("action labels match jump targets", action_labels_consistent(), "");
+
+    // 13. 进度点三态（深化 v8）：已看/正在看/未达各有所指；矛盾入参
+    //     （current > seen_max / 越界）拒绝产出（全 Pending 兜底）。
+    let dots = progress_dots(3, 2);
+    let dots_ok = dots[0] == DotState::Done
+        && dots[1] == DotState::Done
+        && dots[2] == DotState::Current
+        && dots[3] == DotState::Done
+        && dots[4] == DotState::Pending;
+    let contradiction = progress_dots(1, 3).iter().all(|d| *d == DotState::Pending);
+    let out_of_range = progress_dots(9, 0).iter().all(|d| *d == DotState::Pending);
+    set.add(
+        "progress dots three states + guards",
+        dots_ok && contradiction && out_of_range,
+        "",
+    );
+
+    // 14. 完成态收尾卡「开始使用」（深化 v8）：仅末卡可进收尾；收尾屏
+    //     「开始使用」置完成标记（不二弹出口）；前四卡连点不跳收尾。
+    let mut w = WelcomeCenter::new(true);
+    let early_refused = !w.finish_to_finale(0) && !w.at_finale();
+    let mut w2 = WelcomeCenter::new(true);
+    for t in 0..4u64 {
+        w2.next(t * 10);
+    }
+    let from_last = w2.finish_to_finale(100) && w2.at_finale();
+    w2.start_using();
+    let exit_ok = !w2.should_auto_popup();
+    set.add(
+        "finale card last-only + start-using completes",
+        early_refused && from_last && exit_ok,
+        "",
+    );
+
     set
 }
 
@@ -465,6 +598,26 @@ mod tests {
                 matches!(a, SwipeVerdict::Advance),
                 matches!(b, SwipeVerdict::Back)
             );
+        }
+    }
+
+    #[test]
+    fn f118_finale_copy_within_bounds() {
+        // 收尾卡文案非空且不超卡片文案上限（同 60 字纪律）。
+        assert!(!FINALE_TITLE.is_empty());
+        let n = FINALE_COPY.chars().count();
+        assert!(n > 10 && n <= COPY_MAX_CHARS);
+    }
+
+    #[test]
+    fn f118_progress_dots_full_walk() {
+        // 全程走查：逐步推进时 Current 恒唯一且前缀全 Done。
+        let mut seen = 0usize;
+        for cur in 0..CARD_COUNT {
+            seen = seen.max(cur);
+            let dots = progress_dots(seen, cur);
+            assert_eq!(dots[cur], DotState::Current);
+            assert!(dots[..cur].iter().all(|d| *d == DotState::Done));
         }
     }
 }

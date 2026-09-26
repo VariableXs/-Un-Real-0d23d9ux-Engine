@@ -104,3 +104,76 @@ export const RTL_LANGS: ReadonlySet<string> = new Set(["ar", "he", "fa"]);
 export function directionFor(lang: UiLanguage): "ltr" | "rtl" {
   return RTL_LANGS.has(lang.split("-")[0] ?? "") ? "rtl" : "ltr";
 }
+
+/* ================= v4 深化批次四：占位符校验 / 复数规则 / 词表差异 / 缺译分组 / 镜像令牌 ================= */
+
+/** 占位符校验：译文与基准（英文）的 {slot} 必须一致——多占少占都是缺陷（回退标注的防线上移）。 */
+export function validatePlaceholders(reference: string, translation: string): { ok: boolean; missing: string[]; extra: string[] } {
+  const slots = (s: string) => new Set([...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!));
+  const ref = slots(reference);
+  const got = slots(translation);
+  const missing = [...ref].filter((k) => !got.has(k));
+  const extra = [...got].filter((k) => !ref.has(k));
+  return { ok: missing.length === 0 && extra.length === 0, missing, extra };
+}
+
+/** 复数范畴（zh：无单复数恒 other；en：one/other——F140 开放本地化的接口实做面）。 */
+export type PluralCategory = "zero" | "one" | "other";
+
+export function pluralCategory(lang: UiLanguage, n: number): PluralCategory {
+  const base = lang.split("-")[0] ?? "";
+  if (base === "en") return n === 1 ? "one" : "other";
+  return "other";
+}
+
+export function pickPlural(bundle: Bundle | undefined, key: string, lang: UiLanguage, n: number): { text: string; issue: TranslationIssue | null } {
+  const k = `${key}.${pluralCategory(lang, n)}`;
+  const hit = bundle?.[k];
+  if (hit !== undefined && hit !== "") return { text: hit, issue: null };
+  const fb = bundle?.[key] ?? k;
+  return { text: fb, issue: { key: k, lang, fallbackText: fb, annotated: true } };
+}
+
+export interface BundleDiffRow {
+  key: string;
+  kind: "added" | "removed" | "changed";
+  from: string | null;
+  to: string | null;
+}
+
+/** 词表差异（F132 联动的结构化面）：两词表间的新增/缺失/改动三类逐键列出。 */
+export function bundleDiff(from: Bundle, to: Bundle): BundleDiffRow[] {
+  const rows: BundleDiffRow[] = [];
+  const keys = new Set([...Object.keys(from), ...Object.keys(to)]);
+  for (const k of [...keys].sort()) {
+    const a = from[k];
+    const b = to[k];
+    if (a === undefined && b !== undefined) rows.push({ key: k, kind: "added", from: null, to: b });
+    else if (a !== undefined && b === undefined) rows.push({ key: k, kind: "removed", from: a, to: null });
+    else if (a !== b) rows.push({ key: k, kind: "changed", from: a ?? null, to: b ?? null });
+  }
+  return rows;
+}
+
+/** 缺译报告（按命名空间分组——翻译派单的直读面，多大的洞一眼可见）。 */
+export function missingKeyReport(bundles: Partial<Record<UiLanguage, Bundle>>, lang: UiLanguage): Array<{ namespace: string; keys: string[] }> {
+  const byNs = new Map<string, string[]>();
+  for (const issue of diffTable(bundles, lang)) {
+    const ns = issue.key.split(".")[0] ?? issue.key;
+    byNs.set(ns, [...(byNs.get(ns) ?? []), issue.key]);
+  }
+  return [...byNs.entries()].map(([namespace, keys]) => ({ namespace, keys })).sort((a, b) => b.keys.length - a.keys.length);
+}
+
+/** 镜像令牌（RTL 接口的存在性实做面）：方向感符号在 RTL 下镜像（接口从「存在」到「可用」）。 */
+const MIRROR_TOKENS: ReadonlyMap<string, string> = new Map([
+  ["→", "←"],
+  ["←", "→"],
+  ["»", "«"],
+  ["«", "»"],
+]);
+
+export function mirrorToken(token: string, dir: "ltr" | "rtl" = "ltr"): string {
+  if (dir !== "rtl") return token;
+  return MIRROR_TOKENS.get(token) ?? token;
+}

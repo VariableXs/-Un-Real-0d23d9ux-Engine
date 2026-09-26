@@ -25,6 +25,7 @@ import { ContextMenuHost } from "../../components/ContextMenu";
 import { ConfirmBubbleHost, ChoiceHost, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
 import { setupEntryRuntime } from "../runtime";
 import { createWindowRuntime } from "../../features/mouse/windowRuntime";
+import { H4TaskbarLayer } from "../../features/h4/H4TaskbarLayer";
 import "../../styles/global.css";
 import "../../styles/desktop.css";
 // Win11 新版开始菜单面板（三栏棋盘）—— 必须在 desktop.css 之后加载
@@ -208,6 +209,7 @@ function TaskbarEntry(): React.ReactElement {
         />
         {/* 任务栏树内浮层的宿主（toast/右键菜单/确认框等；缺宿主 = 点了没反应） */}
         <ToastHost />
+        <H4TaskbarLayer />
         <ContextMenuHost />
         <ConfirmHost />
         <ChoiceHost />

@@ -105,3 +105,81 @@ export function auditModalUniqueness(layers: ActiveLayer[]): boolean {
 export function auditFifo(enqueued: string[], promoted: string[]): boolean {
   return enqueued.join("|") === promoted.join("|");
 }
+
+/* ================= v4 深化批次四：焦点归还账 / 溢流摘要 / 弹层生命周期日志 ================= */
+
+/** 焦点归还账（判据「焦点唯一」的关闭侧）：每层记录唤起者，关闭时焦点回家（F206 联动）。 */
+export class FocusReturnLedger {
+  private readonly invokerByLayer = new Map<string, string>();
+
+  register(layerId: string, invokerElementId: string): void {
+    this.invokerByLayer.set(layerId, invokerElementId);
+  }
+
+  /** 层关闭 → 焦点归还唤起者；未登记的层如实返回 null（不编造归还目标）。 */
+  returnTargetOf(layerId: string): string | null {
+    return this.invokerByLayer.get(layerId) ?? null;
+  }
+
+  forget(layerId: string): void {
+    this.invokerByLayer.delete(layerId);
+  }
+
+  get size(): number {
+    return this.invokerByLayer.size;
+  }
+}
+
+/** 递补时机审计（判据「排队 200ms 间隔」的机检面）：早于间隔 = 违规。 */
+export function requeueTimingOk(prevClosedAt: number, presentedAt: number): boolean {
+  return presentedAt - prevClosedAt >= DEQUEUE_GAP_MS;
+}
+
+/** 溢流摘要（判据「溢流进通知中心」的人话面）：N 条溢流并成一条摘要行。 */
+export function overflowDigest(overflowed: string[]): { count: number; text: string } | null {
+  if (overflowed.length === 0) return null;
+  return { count: overflowed.length, text: `${overflowed.length} 条通知未展开——已收入通知中心` };
+}
+
+/** 弹层生命周期行（体验日志十三章：每次出现/消失都留时间轴，谁关的、怎么关的可回放）。 */
+export interface LayerLifecycleRow {
+  layerId: string;
+  kind: LayerKind;
+  openedAt: number;
+  closedAt: number | null;
+  closedBy: "user" | "system" | "timeout" | null;
+}
+
+export class LayerLifecycleLog {
+  /** 同层可多次开闭——按实例存数组，不以 id 键控（v4 修复：Map 键控会让多次开闭互相覆盖）。 */
+  private readonly rows: LayerLifecycleRow[] = [];
+
+  open(layerId: string, kind: LayerKind, at: number): void {
+    this.rows.push({ layerId, kind, openedAt: at, closedAt: null, closedBy: null });
+  }
+
+  close(layerId: string, at: number, by: NonNullable<LayerLifecycleRow["closedBy"]>): void {
+    const r = [...this.rows].reverse().find((x) => x.layerId === layerId && x.closedAt === null);
+    if (r) {
+      r.closedAt = at;
+      r.closedBy = by;
+    }
+  }
+
+  /** 挫败信号（十三章）：同层 30s 窗口内反复开闭 ≥3 次 = 指纹事件。 */
+  frustrationSignals(windowMs = 30_000): Array<{ layerId: string; cycles: number }> {
+    const all = [...this.rows].sort((a, b) => a.openedAt - b.openedAt);
+    const counts = new Map<string, number>();
+    for (const r of all) {
+      const prevClosed = all.filter((x) => x.layerId === r.layerId && x.closedAt !== null && x.closedAt < r.openedAt).at(-1);
+      if (prevClosed && r.openedAt - prevClosed.openedAt <= windowMs) {
+        counts.set(r.layerId, (counts.get(r.layerId) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()].filter(([, n]) => n >= 2).map(([layerId, n]) => ({ layerId, cycles: n + 1 }));
+  }
+
+  all(): LayerLifecycleRow[] {
+    return [...this.rows].sort((a, b) => a.openedAt - b.openedAt);
+  }
+}

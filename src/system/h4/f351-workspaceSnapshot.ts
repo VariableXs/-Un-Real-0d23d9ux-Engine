@@ -11,6 +11,7 @@
  */
 
 import { defaultStore, h4Key, readJson, type KvStore, writeJson } from "./internal/store";
+import { checksumOf } from "./internal/hash";
 
 /** 快照中单个窗口的完整几何与归属。 */
 export interface SnapshotWindow {
@@ -225,4 +226,158 @@ export function validateSnapshot(s: WorkspaceSnapshot): string[] {
     problems.push("存在重复窗口记录");
   }
   return problems;
+}
+
+/* ================= v4 深化批次四：完整性校验 / 快照差异 / 导出导入 / 恢复演练 ================= */
+
+/** 快照完整性校验和（规范化结构指纹）：导出/导入防篡改与损坏检测的锚。 */
+export function snapshotChecksum(s: WorkspaceSnapshot): string {
+  return checksumOf({ name: s.name, createdAt: s.createdAt, displays: s.displays, windows: s.windows });
+}
+
+/** 校验和核对：expected 不符 = 快照被改过或损坏（导入面据此拒收）。 */
+export function verifySnapshotIntegrity(s: WorkspaceSnapshot, expected: string): { ok: boolean; actual: string } {
+  const actual = snapshotChecksum(s);
+  return { ok: actual === expected, actual };
+}
+
+export type SnapshotDiffKind = "added" | "removed" | "moved" | "resized" | "state" | "unchanged";
+
+export interface SnapshotDiffRow {
+  /** 窗口身份键（appId|title）。 */
+  key: string;
+  kind: SnapshotDiffKind;
+  from: SnapshotWindow | null;
+  to: SnapshotWindow | null;
+}
+
+/**
+ * 快照差异（管理面的「这个快照和那个差在哪」）：按窗口身份对齐，
+ * moved/resized/state 三类细分让差异一眼可读（不糊成一锅「有变化」）。
+ */
+export function diffSnapshots(a: WorkspaceSnapshot, b: WorkspaceSnapshot): SnapshotDiffRow[] {
+  const keyOf = (w: SnapshotWindow) => `${w.appId}|${w.title ?? ""}`;
+  const mapA = new Map(a.windows.map((w) => [keyOf(w), w]));
+  const mapB = new Map(b.windows.map((w) => [keyOf(w), w]));
+  const rows: SnapshotDiffRow[] = [];
+  for (const [key, wa] of mapA) {
+    const wb = mapB.get(key);
+    if (!wb) {
+      rows.push({ key, kind: "removed", from: wa, to: null });
+      continue;
+    }
+    if (wa.x !== wb.x || wa.y !== wb.y) rows.push({ key, kind: "moved", from: wa, to: wb });
+    else if (wa.w !== wb.w || wa.h !== wb.h) rows.push({ key, kind: "resized", from: wa, to: wb });
+    else if (wa.minimized !== wb.minimized || wa.vdesk !== wb.vdesk) rows.push({ key, kind: "state", from: wa, to: wb });
+    else rows.push({ key, kind: "unchanged", from: wa, to: wb });
+  }
+  for (const [key, wb] of mapB) if (!mapA.has(key)) rows.push({ key, kind: "added", from: null, to: wb });
+  return rows;
+}
+
+/** 启动队列口径（判据「未开应用自动启动」）：按快照 Z 序去重——前排先起、同应用只起一次。 */
+export function launchOrder(snapshot: WorkspaceSnapshot): string[] {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const w of [...snapshot.windows].sort((a, b) => b.z - a.z)) {
+    if (seen.has(w.appId)) continue;
+    seen.add(w.appId);
+    order.push(w.appId);
+  }
+  return order;
+}
+
+/** 快照重命名：同名语义与 saveSnapshot 一致（改到已存在名 = 覆盖合并并删旧条目）。 */
+export function renameSnapshot(oldName: string, newName: string, store: KvStore = defaultStore()): { ok: boolean; reason: "ok" | "missing" | "empty-name" | "persist-failed"; mergedOver: string | null } {
+  if (!newName.trim()) return { ok: false, reason: "empty-name", mergedOver: null };
+  const all = loadAll(store);
+  const idx = all.findIndex((s) => s.name === oldName);
+  if (idx < 0) return { ok: false, reason: "missing", mergedOver: null };
+  const snap = all[idx]!;
+  const targetIdx = newName === oldName ? idx : all.findIndex((s) => s.name === newName);
+  const renamed = { ...snap, name: newName };
+  if (targetIdx >= 0 && targetIdx !== idx) {
+    all[targetIdx] = renamed;
+    all.splice(idx, 1);
+    return { ok: saveAll(store, all), reason: "ok", mergedOver: newName };
+  }
+  all[idx] = renamed;
+  return { ok: saveAll(store, all), reason: "ok", mergedOver: null };
+}
+
+/* ---------- 导出 / 导入（跨机迁移面：规范信封 + 校验和防篡改） ---------- */
+
+const EXPORT_KIND = "varix-h4-snapshot";
+
+export interface SnapshotEnvelope {
+  kind: typeof EXPORT_KIND;
+  v: 1;
+  checksum: string;
+  payload: WorkspaceSnapshot;
+}
+
+/** 导出：规范化信封 + 校验和（接收方据此验完整性）。 */
+export function exportSnapshot(s: WorkspaceSnapshot): string {
+  const envelope: SnapshotEnvelope = { kind: EXPORT_KIND, v: 1, checksum: snapshotChecksum(s), payload: s };
+  return JSON.stringify(envelope, null, 2);
+}
+
+/** 导入：三道闸——可解析、信封种类/版本、校验和与快照自检全过才收（防损坏防篡改）。 */
+export function importSnapshot(text: string): { ok: boolean; snapshot: WorkspaceSnapshot | null; problems: string[] } {
+  let envelope: unknown;
+  try {
+    envelope = JSON.parse(text);
+  } catch {
+    return { ok: false, snapshot: null, problems: ["不是合法 JSON——导入被拒收"] };
+  }
+  const e = envelope as Partial<SnapshotEnvelope> | null;
+  if (!e || e.kind !== EXPORT_KIND || e.v !== 1 || typeof e.checksum !== "string" || !e.payload) {
+    return { ok: false, snapshot: null, problems: ["信封种类或版本不符——不是 Varix 工作区快照"] };
+  }
+  const integrity = verifySnapshotIntegrity(e.payload, e.checksum);
+  if (!integrity.ok) {
+    return { ok: false, snapshot: null, problems: [`校验和不符（期待 ${e.checksum}，实得 ${integrity.actual}）——快照已损坏或被篡改`] };
+  }
+  const structural = validateSnapshot(e.payload);
+  if (structural.length > 0) {
+    return { ok: false, snapshot: null, problems: structural };
+  }
+  return { ok: true, snapshot: e.payload, problems: [] };
+}
+
+/* ---------- 恢复演练（Dry-Run：不真的动窗口，先把恢复计划核一遍） ---------- */
+
+export interface DryRunReport {
+  mode: "exact" | "scaled";
+  /** 逐窗动作摘要：改几何 / 启动 / 改几何且保持最小化。 */
+  actions: Array<{ appId: string; action: "reposition" | "launch" | "reposition-minimized" }>;
+  maxDriftPx: number;
+  /** 越界警告：映射后落点超出当前显示器的窗（恢复前就该知道）。 */
+  outOfBounds: string[];
+  pass: boolean;
+}
+
+/** 恢复演练：精确模式必须零漂移；比例模式给最大漂移；越界窗提前点名（<1px 判据的预检面）。 */
+export function dryRunRestore(snapshot: WorkspaceSnapshot, openWindows: OpenWindowRef[], currentDisplays: { w: number; h: number }[]): DryRunReport {
+  const plan = planRestore(snapshot, openWindows, currentDisplays);
+  const actions = plan.entries.map((e) => ({
+    appId: e.appId,
+    action: (e.matched ? (e.minimized ? "reposition-minimized" : "reposition") : "launch") as DryRunReport["actions"][number]["action"],
+  }));
+  const outOfBounds: string[] = [];
+  for (const e of plan.entries) {
+    const snapWin = snapshot.windows.find((w) => w.appId === e.appId);
+    const dispIdx = Math.min(snapWin?.display ?? 0, Math.max(0, currentDisplays.length - 1));
+    const disp = currentDisplays[dispIdx] ?? { w: 1920, h: 1080 };
+    if (e.rect.x < 0 || e.rect.y < 0 || e.rect.x + e.rect.w > disp.w || e.rect.y + e.rect.h > disp.h) {
+      outOfBounds.push(`${e.appId} → (${e.rect.x},${e.rect.y} ${e.rect.w}x${e.rect.h}) 超出 ${disp.w}x${disp.h}`);
+    }
+  }
+  return {
+    mode: plan.mode,
+    actions,
+    maxDriftPx: plan.maxDriftPx,
+    outOfBounds,
+    pass: plan.mode === "exact" ? plan.maxDriftPx === 0 && outOfBounds.length === 0 : outOfBounds.length === 0,
+  };
 }

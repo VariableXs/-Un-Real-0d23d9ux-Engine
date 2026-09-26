@@ -8,6 +8,11 @@
 //! 防闹铃党，校验拒绝给归因）；默认方案清单（F079 六事件——一处
 //! 登记）；「全部静音测试」（F341 静音档下全事件触发 → 零出声账——
 //! 静音总闸压制的当场验证）；恢复默认一键（全部事件回默认绑定）。
+//!
+//! v5 纵深：试听单实例打断账（新试听顶掉旧的——不叠音）；死绑定
+//! 扫描（绑定音不在音库 → 点名事件；未挂音库不判定）；方案导出/
+//! 导入 round-trip（开放性：方案是用户数据，可带走）；导入拒收野
+//! 事件（清单外事件名不收）。
 
 use crate::checks::CheckSet;
 
@@ -33,10 +38,16 @@ pub struct SoundScheme {
     pub bindings: Vec<(&'static str, String)>,
     /// 试听账（试听不改绑定）。
     pub auditions: u64,
-    /// 校验拒绝账：((原因, ) )。
+    /// 校验拒绝账。
     pub rejections: Vec<&'static str>,
     /// 静音档下触发的出声计数（恒 0——总闸压制证明）。
     pub audible_in_mute: u64,
+    /// 当前试听（单实例——新试听顶掉旧的）。
+    pub playing: Option<String>,
+    /// 试听打断账。
+    pub interrupted: u64,
+    /// 音库（死绑定扫描基准；None = 未挂载不判定）。
+    pub library: Option<Vec<&'static str>>,
 }
 
 impl SoundScheme {
@@ -49,16 +60,53 @@ impl SoundScheme {
             auditions: 0,
             rejections: Vec::new(),
             audible_in_mute: 0,
+            playing: None,
+            interrupted: 0,
+            library: None,
         }
     }
 
     /// 试听：即时（试听动作本身即反馈——记账，不改绑定）。
+    /// 单实例：前一个还在放 → 打断有账。
     pub fn audition(&mut self, event: &str) -> Option<&str> {
         self.auditions += 1;
-        self.bindings
+        let found = self
+            .bindings
             .iter()
             .find(|(ev, _)| *ev == event)
-            .map(|(_, snd)| snd.as_str())
+            .map(|(_, snd)| snd.as_str());
+        if let Some(snd) = found {
+            if self.playing.is_some() {
+                self.interrupted += 1;
+            }
+            self.playing = Some(String::from(snd));
+        }
+        found
+    }
+
+    /// 停止试听（显式停——有账）。
+    pub fn audition_stop(&mut self) -> bool {
+        let had = self.playing.is_some();
+        self.playing = None;
+        had
+    }
+
+    /// 音库挂载（死绑定扫描基准）。
+    pub fn mount_library(&mut self, lib: &[&'static str]) {
+        self.library = Some(lib.to_vec());
+    }
+
+    /// 死绑定扫描：绑定音不在音库的事件点名。音库未挂载返回 None
+    /// （无法判定——不谎报通过）。
+    pub fn dead_binding_scan(&self) -> Option<Vec<&'static str>> {
+        let lib = self.library.as_ref()?;
+        Some(
+            self.bindings
+                .iter()
+                .filter(|(_, snd)| !lib.iter().any(|l| l == snd))
+                .map(|(ev, _)| *ev)
+                .collect(),
+        )
     }
 
     /// WAV 校验：RIFF/WAVE 签名 + 时长上限（防闹铃党）。
@@ -104,6 +152,20 @@ impl SoundScheme {
                 b.1 = String::from(*snd);
             }
         }
+        true
+    }
+
+    /// 方案导出（开放性：方案是用户数据，可带走可迁移）。
+    pub fn export_bindings(&self) -> Vec<(&'static str, String)> {
+        self.bindings.clone()
+    }
+
+    /// 方案导入：事件名必须与默认清单对齐（不收野事件）。
+    pub fn import_bindings(&mut self, v: Vec<(&'static str, String)>) -> bool {
+        if v.iter().any(|(ev, _)| !DEFAULT_SCHEME.iter().any(|(d, _)| d == ev)) {
+            return false;
+        }
+        self.bindings = v;
         true
     }
 }
@@ -152,6 +214,52 @@ pub fn run_sndaudition_checks() -> CheckSet {
         s.reset_all() && s.audition("notify") == Some("默认-叮咚"),
         "",
     );
+    // v5：试听单实例打断——新试听顶掉旧的，有账；显式停有账。
+    let mut i = SoundScheme::new();
+    let _ = i.audition("notify");
+    set.add(
+        "f447-interrupt-accounted",
+        i.audition("error").is_some() && i.interrupted == 1,
+        "",
+    );
+    set.add("f447-stop-audition", i.audition_stop() && !i.audition_stop(), "");
+    // v5：死绑定扫描——音库未挂载不判定（不谎报）。
+    let mut d = SoundScheme::new();
+    set.add("f447-dead-scan-no-book-no-claim", d.dead_binding_scan().is_none(), "");
+    // v5：音库挂载后——默认六音全在库；换上野音 → 该事件被点名。
+    d.mount_library(&[
+        "默认-叮咚",
+        "默认-上行琶音",
+        "默认-下行琶音",
+        "默认-低语提示",
+        "默认-钝响",
+        "默认-碎纸声",
+    ]);
+    set.add(
+        "f447-defaults-all-in-library",
+        d.dead_binding_scan().map(|x| x.is_empty()).unwrap_or(false),
+        "",
+    );
+    let _ = d.apply_custom("error", "野音-不在库");
+    set.add(
+        "f447-dead-binding-named",
+        d.dead_binding_scan() == Some(alloc::vec!["error"]),
+        "",
+    );
+    // v5：方案导出/导入 round-trip（用户数据可带走）。
+    let ex = d.export_bindings();
+    let mut e = SoundScheme::new();
+    set.add(
+        "f447-export-import-roundtrip",
+        e.import_bindings(ex.clone())
+            && e.audition("notify") == Some("默认-叮咚")
+            && e.audition("error") == Some("野音-不在库"),
+        "",
+    );
+    // v5：导入拒收野事件（清单外事件名不收）。
+    let mut bad = ex.clone();
+    bad.push(("not-an-event", String::from("x")));
+    set.add("f447-import-rejects-unknown", !e.import_bindings(bad), "");
     set
 }
 
@@ -178,5 +286,14 @@ mod tests {
         assert!(s.validate_custom(b"RIFFxxxxWAVE", 44_100 * 2 * 3 + 44).is_ok());
         // 3 秒 + 1ms：拒（264_602 字节数据 = 3000ms；再多 89 字节 → 3001ms）。
         assert!(s.validate_custom(b"RIFFxxxxWAVE", 44_100 * 2 * 3 + 44 + 89).is_err());
+    }
+
+    #[test]
+    fn audition_unknown_leaves_playing_alone() {
+        let mut s = SoundScheme::new();
+        let _ = s.audition("notify");
+        assert!(s.audition("不存在的事件").is_none());
+        assert_eq!(s.playing.as_deref(), Some("默认-叮咚"), "未知事件不打断当前试听");
+        assert_eq!(s.interrupted, 0);
     }
 }

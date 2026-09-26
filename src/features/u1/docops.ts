@@ -176,6 +176,45 @@ export function a11yIndicator(stickyOn: boolean, filterOn: boolean): boolean {
   return stickyOn || filterOn;
 }
 
+/* ------------------------------- F450（v7：回弹键 / 锁存超时 / 提示音账） ------------------------------- */
+
+/** 回弹键再武装窗（ms）——同键窗内连击抑制（与内核 BOUNCE_REARM_MS 同源）。 */
+export const BOUNCE_REARM_MS = 200;
+
+export interface BounceState { enabled: boolean; rearmMs: number; lastAt: Record<string, number>; suppressed: number }
+
+/** 按键判定：同键窗内重复 → 抑制（false）；异键/窗外放行并登记。 */
+export function bouncePress(s: BounceState, key: string, nowMs: number): { pass: boolean; next: BounceState } {
+  if (!s.enabled) return { pass: true, next: s };
+  const t0 = s.lastAt[key];
+  if (t0 !== undefined && nowMs - t0 <= s.rearmMs) {
+    return { pass: false, next: { ...s, suppressed: s.suppressed + 1 } };
+  }
+  return { pass: true, next: { ...s, lastAt: { ...s.lastAt, [key]: nowMs } } };
+}
+
+/** 粘滞键锁存超时（ms）——忘了关修饰键不至于污染后续输入（可关）。 */
+export const STICKY_LATCH_TIMEOUT_MS = 5_000;
+
+/** 锁存超时判定：带时刻锁存后超窗且未合成 → 清锁（返回清掉的键数）。 */
+export function latchExpired(
+  latchedAtMs: number | null,
+  latchedCount: number,
+  nowMs: number,
+  timeoutMs: number | null,
+): number {
+  if (timeoutMs === null || latchedAtMs === null || latchedCount === 0) return 0;
+  return nowMs - latchedAtMs > timeoutMs ? latchedCount : 0;
+}
+
+/** 提示音事件账：静音期记 skip（诚实计数，不当无事发生）。 */
+export interface SoundLedger { muted: boolean; events: { atMs: number; kind: string }[]; mutedSkips: number }
+
+export function soundRecord(s: SoundLedger, atMs: number, kind: string): SoundLedger {
+  if (s.muted) return { ...s, mutedSkips: s.mutedSkips + 1 };
+  return { ...s, events: [...s.events, { atMs, kind }] };
+}
+
 /* ------------------------------- 面板读数 ------------------------------- */
 
 export function stickyPref(): { filterMinHoldMs: number; neverRemind: boolean } {

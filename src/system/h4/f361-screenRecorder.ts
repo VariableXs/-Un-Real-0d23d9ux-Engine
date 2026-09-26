@@ -108,3 +108,58 @@ export function fileNameFor(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `录屏 ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`;
 }
+
+/* ================= v4 深化批次四：帧预算 / 码率模型 / 区域钳制 / 丢帧策略 ================= */
+
+/** 合成器帧预算（80fps 判据的每帧口径）。 */
+export const FRAME_BUDGET_MS = 16.6;
+
+export interface FrameCost {
+  captureMs: number;
+  encodeMs: number;
+  totalMs: number;
+  withinBudget: boolean;
+}
+
+/** 帧成本模型：捕获 ≈ 像素读回经验常数；编码 ≈ 码率/帧率折算——录制开销（<5fps 判据）的推演面。 */
+export function frameBudget(w: number, h: number, fps: number): FrameCost {
+  const captureMs = (w * h) / 3_000_000; // 4K 读回 ≈ 8.3ms 量级（3M px/ms 经验常数）
+  const encodeMs = (OUTPUT_SPEC.videoBitrate / fps / 1_000_000) * 8; // 20Mbps@60fps ≈ 2.7ms
+  const totalMs = captureMs + encodeMs;
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return { captureMs: r2(captureMs), encodeMs: r2(encodeMs), totalMs: r2(totalMs), withinBudget: totalMs <= FRAME_BUDGET_MS };
+}
+
+/** 码率模型：bpp（每像素每帧比特）× 分辨率 × 帧率——产物规格入册的推演入口。 */
+export function bitrateFor(w: number, h: number, fps: number, bpp = 0.08): number {
+  return Math.round(w * h * fps * bpp);
+}
+
+/** 区域最小尺寸（区域模式零容错校验的下限）。 */
+export const MIN_REGION_PX = 16;
+
+/** 区域钳制：录制区域必须完整落在显示器内且 ≥16px（越界拉回、超界拒绝）。 */
+export function clampRegionToDisplay(rect: RecordRect, display: { w: number; h: number }): { ok: boolean; rect: RecordRect | null; error: string | null } {
+  if (rect.w < MIN_REGION_PX || rect.h < MIN_REGION_PX) {
+    return { ok: false, rect: null, error: `录制区域过小（最小 ${MIN_REGION_PX}px）` };
+  }
+  if (rect.w > display.w || rect.h > display.h) {
+    return { ok: false, rect: null, error: "录制区域超出显示器范围" };
+  }
+  const x = Math.min(Math.max(rect.x, 0), display.w - rect.w);
+  const y = Math.min(Math.max(rect.y, 0), display.h - rect.h);
+  return { ok: true, rect: { ...rect, x, y }, error: null };
+}
+
+/** 丢帧策略（诚实降级）：编码队列积压就降采样率——档位与动作显式可审计，绝不静默糊弄。 */
+export function dropFramePolicy(encoderQueueDepth: number, fps: number): { keepFps: number; action: "full" | "half" | "quarter"; honest: string } {
+  if (encoderQueueDepth < 2) return { keepFps: fps, action: "full", honest: "队列健康——全帧率" };
+  if (encoderQueueDepth <= 5) return { keepFps: Math.round(fps / 2), action: "half", honest: "队列积压——降半帧率（产物规格如实标注）" };
+  return { keepFps: Math.max(1, Math.round(fps / 4)), action: "quarter", honest: "严重积压——降四分之一帧率（建议降分辨率重录）" };
+}
+
+/** 音轨混合模型：双轨并存时的通道数与码率（判据「双轨音频」）。 */
+export function audioTrackMix(tracks: AudioTracks): { trackCount: 0 | 1 | 2; bitrateBps: number } {
+  const n = (tracks.system ? 1 : 0) + (tracks.mic ? 1 : 0);
+  return { trackCount: n as 0 | 1 | 2, bitrateBps: n * OUTPUT_SPEC.audioBitratePerTrack };
+}

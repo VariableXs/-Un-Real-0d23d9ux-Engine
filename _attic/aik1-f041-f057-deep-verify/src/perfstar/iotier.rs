@@ -648,7 +648,20 @@ pub fn run_iotier_checks() -> CheckSet {
     let dl_id = io7.submit(Workload::Download, IoOp::Write, 1 << 20, 0).unwrap();
     let audited = io7.audit_iter().any(|a| a.req_id == dl_id && a.why == "download-degraded");
     cs.add("audit_records_degrade_why", audited, "");
-    cs
+    // 深化件（深化批次三）：分级双因子判定（进程标签 + 请求特征，冲突裁决
+    // 写死）/ 截止期计算（批量无截止期 ≠ 0）/ 三队列深度投影与吞吐曲线 /
+    // 降级通知节流与文案 / 降级审计环（谁被降级·为什么·入诊断快照）/
+    // 「下载中打开目录」场景对拍账。
+    // 用户故事场景验收后段（F051~F057 十三项）挂 F057：与十二查登记册同款
+    // 拆段纪律——单域检查项不得超过 CheckSet::MAX_CHECKS，否则会被静默丢弃。
+    // 深化批次四：调度本体（EDF 堆 + WFQ 虚拟时间 + 批量老化）挂 F057。
+    CheckSet::merge(
+        CheckSet::merge(
+            CheckSet::merge(cs, crate::perfstar::iotier_ext::run_checks()),
+            crate::perfstar::k1scene::run_checks_b(),
+        ),
+        crate::perfstar::mech_edfq::run_checks(),
+    )
 }
 
 // ---------------------------------------------------------------------------

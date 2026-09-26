@@ -1,0 +1,21 @@
+=== vx-fix-0xed start ===
+vol label='Windows-SSD' dev=
+vol label='' dev=
+vol label='WinRE_DRV' dev=
+vol label='VARIX_SYS' dev=
+vol label='WIN_ENGINE' dev=
+vol label='SHARED' dev=
+vol label='SNAPSHOT' dev=
+vol label='' dev=
+vol label='VARIX-ESP' dev=
+win_engine=True shared=True esp=False
+X: assigned
+$ chkdsk X:\ /f
+  | 驱动器、路径或文件名无效。
+chkdsk /f rc=3
+OK X:\Windows\System32\ntoskrnl.exe size=13039048
+OK X:\Windows\System32\config\SYSTEM size=11534336
+OK X:\Variable\Variable.exe size=33850880
+$ fsutil dirty query C:
+  | 卷 - C: 没有损坏
+=== fix done ===

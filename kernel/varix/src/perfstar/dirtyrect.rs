@@ -791,7 +791,11 @@ pub fn run_dirtyrect_checks() -> CheckSet {
     // 9) 全屏重绘词典删除：正常序列（打字+光标+弹窗）后全屏计数恒 0。
     cs.add("no_fullscreen_path", cd2.full_repaints() == 0 && cd3.full_repaints() == 0
         && cd5.full_repaints() == 0, "");
-    cs
+    // 深化件（深化批次三）：区间树相交合并（定长零堆）/ 16px 阴影环带预渲染
+    // 面 / 动画矩形声明登记 / 光标层硬件·软双路径与零内容重绘判据 /
+    // 脏区爆炸限频 30fps 并通知 F042 / 层间脏区求交裁剪 / 每窗口脏矩形 8 上限
+    // 与溢出合并整窗 / 弹窗合成矩形 = 矩形 + 阴影环带判据。
+    CheckSet::merge(cs, crate::perfstar::dirtyrect_ext::run_checks())
 }
 
 // ---------------------------------------------------------------------------

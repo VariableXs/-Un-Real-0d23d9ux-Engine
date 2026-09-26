@@ -191,11 +191,11 @@ export function focusChipPlacement(_screenH: number): { bottom: number; left: nu
   return { bottom: 48 + 16, left: 16 };
 }
 
-/* ------------------------------- 召唤事件（开放性扩展点） ------------------------------- */
+/* ------------------------------- 召唤事件（v10 起通道唯一化：deprecated） ------------------------------- */
 
-/** 拾色器召唤事件（设置页/快捷面板派发）。 */
+/** @deprecated v10 起召唤/专注指令走 h4Bus 契约事件（settings.* 域）——常量保留供外部兼容读取。 */
 export const SUMMON_PICKER = "vx-h4-pick";
-/** 像素标尺召唤事件。 */
+/** @deprecated v10 起召唤/专注指令走 h4Bus 契约事件（settings.* 域）——常量保留供外部兼容读取。 */
 export const SUMMON_RULER = "vx-h4-ruler";
-/** 专注计时事件（载荷 { type: "start"; minutes: number }）。 */
+/** @deprecated v10 起召唤/专注指令走 h4Bus 契约事件（settings.* 域）——常量保留供外部兼容读取。 */
 export const FOCUS_EVENT = "vx-h4-focus";

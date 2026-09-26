@@ -87,3 +87,46 @@ export function aboutPageView(store: KvStore = defaultStore()): { lastDrillAt: n
     nextReminderAt: last === null ? null : last + DRILL_CYCLE_DAYS * 24 * 3600 * 1000,
   };
 }
+
+/* ================= v4 深化批次四：调度数学 / 连续统计 / 加练排程 / 沙盒白名单 ================= */
+
+/** 下次提醒时刻（纯函数面）：从未演练 = 立即到期；否则上次 + 90 天（时区无关的账面口径）。 */
+export function nextDrillDueAt(lastDrillAt: number | null, now: number): number | null {
+  return lastDrillAt === null ? now : lastDrillAt + DRILL_CYCLE_DAYS * 24 * 3600 * 1000;
+}
+
+export interface DrillStats {
+  total: number;
+  /** 连续有效次数（从最新往回数全步骤、零副作用的记录）。 */
+  validStreak: number;
+  lastAt: number | null;
+  avgSteps: number;
+}
+
+/** 演练统计：制度执行度的量化面（连续性比总量更能说明习惯是否养成）。 */
+export function drillStats(records: DrillRecord[]): DrillStats {
+  let streak = 0;
+  for (const r of [...records].reverse()) {
+    if (r.completedSteps.length === DRILL_STEPS.length && r.sideEffectWrites === 0) streak++;
+    else break;
+  }
+  const avgSteps = records.length === 0 ? 0 : Math.round((records.reduce((s, r) => s + r.completedSteps.length, 0) / records.length) * 10) / 10;
+  return { total: records.length, validStreak: streak, lastAt: records.length ? records[records.length - 1]!.at : null, avgSteps };
+}
+
+/** 加练窗口（判据「首次恢复加练提示」）：首次真恢复后 7 天内补一次演练。 */
+export const EXTRA_DRILL_WINDOW_DAYS = 7;
+
+export function extraDrillSchedule(records: DrillRecord[], restoredAt: number): { due: boolean; deadline: number; reason: string } {
+  const drilledBefore = records.some((r) => r.at < restoredAt);
+  if (drilledBefore) return { due: false, deadline: 0, reason: "恢复前已演练过——无需加练" };
+  return { due: true, deadline: restoredAt + EXTRA_DRILL_WINDOW_DAYS * 24 * 3600 * 1000, reason: "首次真恢复——7 天内加练一次（判据）" };
+}
+
+/** 演练沙盒白名单（零副作用判据的路径级执法）：白名单外写路径 = 违规。 */
+export const DRILL_SANDBOX_PREFIXES = ["S:/Varix/drill/", "memory://"] as const;
+
+export function auditSandboxWrites(writePaths: string[]): { pass: boolean; violations: string[] } {
+  const violations = writePaths.filter((p) => !DRILL_SANDBOX_PREFIXES.some((pre) => p.startsWith(pre)));
+  return { pass: violations.length === 0, violations };
+}

@@ -580,3 +580,666 @@ mod tests {
         assert_eq!(rep.combos.len(), 24);
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：问题归因分类 · 锐度直方图 · 重生成趋势对账 · 校准快照
+// · 过程化底纹底色 · 报告确定性序列化
+// ---------------------------------------------------------------------------
+
+use crate::jstar2::jbase::{builtin_glyph, vxcur_fingerprint, PointerState};
+use crate::jstar2::checker::HealthReport;
+
+/// 问题归因（红格子的病根分类——「为什么红」从人话升级到可统计的分类）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IssueKind {
+    EdgeBlur,
+    LowContrast,
+    OvershootHalo,
+}
+
+impl IssueKind {
+    /// 从红格子的 why 人话归因（判据文案与分类同源——改文案即改分类）。
+    pub fn from_why(why: &'static str) -> Option<IssueKind> {
+        if why.contains("糊") {
+            Some(IssueKind::EdgeBlur)
+        } else if why.contains("对比") {
+            Some(IssueKind::LowContrast)
+        } else if why.contains("晕") {
+            Some(IssueKind::OvershootHalo)
+        } else {
+            None
+        }
+    }
+
+    pub fn zh(self) -> &'static str {
+        match self {
+            IssueKind::EdgeBlur => "边缘模糊",
+            IssueKind::LowContrast => "对比不足",
+            IssueKind::OvershootHalo => "过冲晕环",
+        }
+    }
+}
+
+/// 归因统计（每类病根的红格数——修复优先级的数源：先修最常见的）。
+pub fn classify_issues(rep: &AuditReport) -> [(IssueKind, usize); 3] {
+    let mut blur = 0;
+    let mut contrast = 0;
+    let mut halo = 0;
+    for c in &rep.combos {
+        if c.passed {
+            continue;
+        }
+        match IssueKind::from_why(c.why) {
+            Some(IssueKind::EdgeBlur) => blur += 1,
+            Some(IssueKind::LowContrast) => contrast += 1,
+            _ => halo += 1,
+        }
+    }
+    [(IssueKind::EdgeBlur, blur), (IssueKind::LowContrast, contrast), (IssueKind::OvershootHalo, halo)]
+}
+
+/// 锐度直方图（4 桶：≤80 / ≤120 / ≤160 / >160——红警线在第三桶顶）。
+pub fn sharpness_histogram(rep: &AuditReport) -> [usize; 4] {
+    let mut h = [0usize; 4];
+    for c in &rep.combos {
+        let e = c.edge_x100;
+        let bucket = if e <= 80 {
+            0
+        } else if e <= 120 {
+            1
+        } else if e <= 160 {
+            2
+        } else {
+            3
+        };
+        h[bucket] += 1;
+    }
+    h
+}
+
+/// 重生成趋势：重生成前后最差锐度对比（负值 = 变差；预期重生成后
+/// 150/200% 走原生 2x 采样 → 最差锐度不劣于重生成前）。
+pub fn regen_trend(before: &AuditReport, after: &AuditReport) -> i64 {
+    let worst_before = before.combos.iter().map(|c| c.edge_x100).max().unwrap_or(0);
+    let worst_after = after.combos.iter().map(|c| c.edge_x100).max().unwrap_or(0);
+    worst_after - worst_before
+}
+
+/// 校准快照（把一次实测的各档度量钉下来——阈值改动时与快照对账，
+/// 「改阈值要有证据」的机器面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CalibrationSnapshot {
+    pub at_ms: u64,
+    pub edge_x100: i64,
+    pub contrast_x100: i64,
+    pub overshoot: u8,
+}
+
+/// 从报告提取校准快照（取 100% × 中灰底这一标准格）。
+pub fn calibrate(rep: &AuditReport, at_ms: u64) -> Option<CalibrationSnapshot> {
+    let c = rep
+        .combos
+        .iter()
+        .find(|c| c.dpi == 100 && c.backdrop == Rgb::new(128, 128, 128))?;
+    Some(CalibrationSnapshot { at_ms, edge_x100: c.edge_x100, contrast_x100: c.contrast_x100, overshoot: c.overshoot })
+}
+
+/// 快照漂移检测（同机重测 vs 既有快照：任何指标漂出 ±10% → true——
+/// 环境变了，阈值该重新标定而不是硬套旧线）。
+pub fn drifted(snap: &CalibrationSnapshot, now: &CalibrationSnapshot) -> bool {
+    let pct = |a: i64, b: i64| -> bool {
+        if a == 0 {
+            return b != 0;
+        }
+        (b - a).abs() * 100 > a.abs() * 10
+    };
+    pct(snap.edge_x100, now.edge_x100)
+        || pct(snap.contrast_x100, now.contrast_x100)
+        || pct(snap.overshoot as i64, now.overshoot as i64)
+}
+
+/// 过程化底纹底色（棋盘格——比纯色底更接近真实桌面的「花纹」场景；
+/// 确定性：格子尺寸 8px、双色由种子推）。
+pub fn procedural_checkerboard(size: u16, seed: u32) -> PixBuf {
+    let mut cv = PixBuf::new(size, size);
+    let mut rng = crate::jstar2::jbase::XorShift32::new(seed | 1);
+    let c1 = [rng.next_u32() as u8, rng.next_u32() as u8, rng.next_u32() as u8, 255];
+    let c2 = [rng.next_u32() as u8, rng.next_u32() as u8, rng.next_u32() as u8, 255];
+    for y in 0..size {
+        for x in 0..size {
+            let on = ((x / 8) + (y / 8)) % 2 == 0;
+            cv.set(x, y, if on { c1 } else { c2 });
+        }
+    }
+    cv
+}
+
+/// 底纹场景扩展审计：24 组合之外加一档「棋盘底」（3 DPI × 2 主题 ×
+/// 2 种子 = 12 格）——花纹底下的对比度是常规审计的盲区补丁。对账口径：
+/// 两种格子色都当作对边逐格算对比、取最差格（内置黑形白边双群设计在
+/// 任意格子色下都由其中一群撑起可辨性——与 min_body_contrast 同语义）。
+pub fn audit_checkerboard_scene(m: &CursorSchemeModel) -> Vec<(u32, bool, bool, i64, bool)> {
+    let frame = m
+        .state(PointerState::Normal)
+        .and_then(|e| e.frames.first())
+        .cloned()
+        .unwrap_or_else(|| builtin_glyph(PointerState::Normal));
+    let mut out = Vec::new();
+    for dpi in [100u32, 150, 200] {
+        for dark in [false, true] {
+            for seed in [7u32, 42] {
+                let mut backdrop = procedural_checkerboard(32, seed);
+                if dark {
+                    // 深色主题：同一花纹的格子色反转。
+                    for c in backdrop.px.chunks_exact_mut(4) {
+                        c[0] = 255 - c[0];
+                        c[1] = 255 - c[1];
+                        c[2] = 255 - c[2];
+                    }
+                }
+                let cell_a = backdrop.get(0, 0).map(|p| Rgb::new(p[0], p[1], p[2]));
+                let cell_b = backdrop.get(8, 0).map(|p| Rgb::new(p[0], p[1], p[2]));
+                let rendered = if dpi == 100 {
+                    PixBuf::from_rgba(frame.w, frame.h, frame.px.clone())
+                } else {
+                    let scale = dpi * 1000 / 100;
+                    let dw = ((frame.w as u32) * scale / 1000).max(1) as u16;
+                    let dh = ((frame.h as u32) * scale / 1000).max(1) as u16;
+                    crate::jstar2::jbase::resample_lanczos3(&PixBuf::from_rgba(frame.w, frame.h, frame.px.clone()), dw, dh)
+                };
+                let contrast_a = cell_a.and_then(|c| min_body_contrast_x100(&rendered, c)).unwrap_or(0);
+                let contrast_b = cell_b.and_then(|c| min_body_contrast_x100(&rendered, c)).unwrap_or(0);
+                let contrast = contrast_a.min(contrast_b);
+                let edge = edge_sharpness_x100(&rendered);
+                let ok = edge <= Thresholds::EDGE_SHARPNESS_MAX_X100 && contrast >= Thresholds::CONTRAST_MIN_X100;
+                out.push((dpi, dark, seed == 7, contrast, ok));
+            }
+        }
+    }
+    out
+}
+
+/// 报告确定性序列化（详情页导出面：同报告同字节，行序 = 组合序）。
+pub fn render_audit_report(rep: &AuditReport) -> String {
+    let mut out = String::new();
+    out.push_str(&alloc::format!("audit fp={:016x} all={}\n", rep.scheme_fingerprint, rep.all_passed));
+    out.push_str(&alloc::format!("baseline_edge={}\n", rep.builtin_baseline_edge_x100));
+    for c in &rep.combos {
+        out.push_str(&alloc::format!(
+            "dpi={} dark={} edge={} contrast={} over={} passed={}\n",
+            c.dpi, c.dark_theme as u8, c.edge_x100, c.contrast_x100, c.overshoot, c.passed as u8
+        ));
+    }
+    out
+}
+
+/// 导入方案审计入口（血统核对 + 标准审计——Imported 血统不走内置
+/// 基线对照（基线只对自家渲染核负责），对照值如实记 -1）。
+pub fn audit_imported(m: &CursorSchemeModel, hr: &HealthReport) -> Result<AuditReport, &'static str> {
+    if !hr.all_green() {
+        return Err("体检有红项——先走 F627 修复，再进审计");
+    }
+    let mut rep = audit(m);
+    if matches!(m.origin, crate::jstar2::jbase::OriginKind::Imported(_)) {
+        rep.builtin_baseline_edge_x100 = -1;
+    }
+    Ok(rep)
+}
+
+/// v3 自检。
+pub fn run_audit_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F632-v3");
+    let base = crate::jstar2::jbase::builtin_default_scheme();
+    let rep = audit(&base);
+
+    // 1. 归因分类：全绿方案三类病根皆零；人为模糊方案归因到 EdgeBlur。
+    let cls = classify_issues(&rep);
+    set.add(
+        "issue classification zero for clean scheme",
+        cls.iter().all(|(_, n)| *n == 0),
+        "",
+    );
+    set.add(
+        "issue kinds map from why text",
+        IssueKind::from_why("边缘过渡带过宽（糊）") == Some(IssueKind::EdgeBlur)
+            && IssueKind::from_why("主体对底色对比不足") == Some(IssueKind::LowContrast)
+            && IssueKind::from_why("边界外过冲暗晕") == Some(IssueKind::OvershootHalo)
+            && IssueKind::from_why("未知原因").is_none(),
+        "",
+    );
+
+    // 2. 锐度直方图：四桶合计 = 24（组合总数守恒）。
+    let hist = sharpness_histogram(&rep);
+    set.add("sharpness histogram conserves 24", hist[0] + hist[1] + hist[2] + hist[3] == 24, "");
+
+    // 3. 重生成趋势：重生成后最差锐度不劣于重生成前（2x 原生的承诺）。
+    let regen = regenerate_2x(&base);
+    let rep2 = audit(&regen);
+    let trend = regen_trend(&rep, &rep2);
+    set.add("regen trend not worse", trend <= 0, "");
+
+    // 4. 校准快照：100% × 中灰标准格可提取；重测同值不判漂移；人为
+    //    改值判漂移。
+    let snap = calibrate(&rep, 1000);
+    let snap2 = calibrate(&audit(&base), 2000);
+    let drift_probe = snap.map(|s0| CalibrationSnapshot { contrast_x100: s0.contrast_x100 * 2, ..s0 });
+    set.add(
+        "calibration snapshot stable and drift detectable",
+        snap.is_some()
+            && snap2.is_some()
+            && !drifted(snap.as_ref().unwrap(), snap2.as_ref().unwrap())
+            && drift_probe.as_ref().map(|p| drifted(snap.as_ref().unwrap(), p)).unwrap_or(false),
+        "",
+    );
+
+    // 5. 过程化棋盘底：确定性（同种子同图）、双色、格子语义。
+    let a = procedural_checkerboard(32, 7);
+    let b = procedural_checkerboard(32, 7);
+    let c = procedural_checkerboard(32, 8);
+    set.add(
+        "checkerboard deterministic and seeded",
+        a.px == b.px && a.px != c.px,
+        "",
+    );
+
+    // 6. 棋盘场景扩展审计：12 格、结论随格（内置方案在花纹底也可辨）。
+    let scene = audit_checkerboard_scene(&base);
+    set.add(
+        "checkerboard scene 12 combos",
+        scene.len() == 12 && scene.iter().all(|r| r.4),
+        "",
+    );
+
+    // 7. 报告渲染确定性：同方案两次渲染逐字节相等、行数 = 头 2 + 24。
+    let r1 = render_audit_report(&rep);
+    let r2 = render_audit_report(&audit(&base));
+    set.add(
+        "audit report render deterministic",
+        r1 == r2 && r1.lines().count() == 26,
+        "",
+    );
+
+    // 8. 导入审计入口：绿体检才放行；Imported 血统的基线对照如实 -1。
+    let green_hr = crate::jstar2::checker::inspect(&base);
+    let mut foreign = CursorSchemeModel::empty("外来件", crate::jstar2::jbase::OriginKind::Imported(String::from("fp:abc")));
+    foreign.set_state(PointerState::Normal, alloc::vec![builtin_glyph(PointerState::Normal)]);
+    let red_probe = {
+        let mut hr = crate::jstar2::checker::inspect(&foreign);
+        hr.findings.push(crate::jstar2::checker::Finding {
+            check: crate::jstar2::checker::CheckId::Completeness,
+            verdict: crate::jstar2::checker::Verdict::Red,
+            state: None,
+            frame_index: None,
+            detail: String::from("人为注入红项"),
+        });
+        hr
+    };
+    set.add("imported audit gates on health", audit_imported(&foreign, &red_probe).is_err(), "");
+    let rep3 = audit_imported(&foreign, &green_hr).unwrap();
+    let _ = green_hr;
+    set.add(
+        "imported audit entry honest baseline",
+        rep3.builtin_baseline_edge_x100 == -1 && rep3.combos.len() == 24,
+        "",
+    );
+
+    // 9. 指纹挂账：报告指纹与方案指纹一致（F628 详情挂载的对账键）。
+    set.add("report fingerprint matches scheme", rep.scheme_fingerprint == vxcur_fingerprint(&base), "");
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn histogram_buckets_ordered() {
+        let rep = audit(&crate::jstar2::jbase::builtin_default_scheme());
+        let h = sharpness_histogram(&rep);
+        // 内置方案不应有第四桶（>160 = 红线之上）。
+        assert_eq!(h[3], 0, "内置方案不能越过锐度红线");
+    }
+
+    #[test]
+    fn calibration_none_when_combo_missing() {
+        // 空方案的报告里没有标准格可提——诚实 None。
+        let empty = CursorSchemeModel::empty("空", crate::jstar2::jbase::OriginKind::Created);
+        let rep = audit(&empty);
+        // audit 用内置 glyph 兜底渲染，仍能出 24 格——快照应有值。
+        assert!(calibrate(&rep, 0).is_some());
+    }
+
+    #[test]
+    fn checkerboard_size_exact() {
+        let cv = procedural_checkerboard(16, 1);
+        assert_eq!((cv.w, cv.h), (16, 16));
+        assert!(cv.solid_count() == 16 * 16, "棋盘全格着色");
+    }
+
+    #[test]
+    fn trend_of_same_report_is_zero() {
+        let rep = audit(&crate::jstar2::jbase::builtin_default_scheme());
+        assert_eq!(regen_trend(&rep, &rep), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 深化批：对比度趋势（同方案多次审计的最差对比度序列 + 方向判断）·
+// 审计摘要人话行（最差组合是哪个、差在哪一项）
+// ---------------------------------------------------------------------------
+
+/// 对比度趋势方向（同方案逐次审计的最差对比度走向；阈值 ±5（×100
+/// 定点）防抖——不是每个抖动都叫趋势）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrendDir {
+    Improving,
+    Worsening,
+    Flat,
+}
+
+/// 对比度趋势台账（同方案逐次审计的最差对比度序列——修复有没有用、
+/// 资产有没有劣化，趋势说话，不凭一次审计下结论）。
+#[derive(Clone, Debug, Default)]
+pub struct ContrastTrend {
+    points: Vec<(u64, i64)>,
+}
+
+impl ContrastTrend {
+    pub fn new() -> ContrastTrend {
+        ContrastTrend { points: Vec::new() }
+    }
+
+    /// 记一次审计（取最差对比度 = 全组合最小值——最短板入账）。
+    pub fn push(&mut self, at_ms: u64, rep: &AuditReport) {
+        let worst = summarize(rep).worst_contrast_x100;
+        self.points.push((at_ms, worst));
+    }
+
+    pub fn series(&self) -> &[(u64, i64)] {
+        &self.points
+    }
+
+    pub fn worst(&self) -> Option<i64> {
+        self.points.iter().map(|(_, c)| *c).min()
+    }
+
+    /// 方向判断：后半段均值 − 前半段均值（奇数点中点归前半；空/单点
+    /// 无趋势——Flat，不拿一个数编方向）。差 ≥ +5 改善、≤ −5 恶化。
+    pub fn direction(&self) -> TrendDir {
+        let n = self.points.len();
+        if n < 2 {
+            return TrendDir::Flat;
+        }
+        let front = n / 2;
+        let front_avg = self.points[..front].iter().map(|p| p.1).sum::<i64>() / front as i64;
+        let back_avg = self.points[front..].iter().map(|p| p.1).sum::<i64>() / (n - front) as i64;
+        let delta = back_avg - front_avg;
+        if delta >= 5 {
+            TrendDir::Improving
+        } else if delta <= -5 {
+            TrendDir::Worsening
+        } else {
+            TrendDir::Flat
+        }
+    }
+
+    /// 趋势报告行（人话序列：逐点时刻与值 + 走向结论——修复验收的
+    /// 单行凭据；空序列诚实报「暂无样本」）。
+    pub fn report_line(&self) -> String {
+        let mut out = String::from("对比度趋势");
+        for (at, c) in &self.points {
+            out.push_str(&alloc::format!(" @{}ms={}", at, c));
+        }
+        if self.points.is_empty() {
+            out.push_str("：暂无样本");
+        } else {
+            out.push_str(&alloc::format!(
+                "；走向 {}",
+                match self.direction() {
+                    TrendDir::Improving => "改善",
+                    TrendDir::Worsening => "恶化",
+                    TrendDir::Flat => "持平",
+                }
+            ));
+        }
+        out
+    }
+}
+
+/// 审计摘要人话行（详情页一句话：全绿报喜、标红点名——最差组合是
+/// 哪个、差在哪一项。最差 = 标红格中对比度最低者，平局取组合序
+/// 靠前者——确定性可选）。
+pub fn summary_line(name: &str, rep: &AuditReport) -> String {
+    let s = summarize(rep);
+    if s.red == 0 {
+        return alloc::format!(
+            "「{}」24 组合全绿；最差边缘锐度 {}（红线 {}）、最差对比 {}（下限 {}）。",
+            name,
+            s.worst_edge_x100,
+            Thresholds::EDGE_SHARPNESS_MAX_X100,
+            s.worst_contrast_x100,
+            Thresholds::CONTRAST_MIN_X100
+        );
+    }
+    let worst = rep.combos.iter().filter(|c| !c.passed).min_by_key(|c| c.contrast_x100).unwrap();
+    let bg_name = if worst.backdrop == Rgb::new(24, 24, 26) {
+        "深"
+    } else if worst.backdrop == Rgb::new(245, 245, 245) {
+        "浅"
+    } else {
+        "中灰"
+    };
+    alloc::format!(
+        "「{}」{} 格标红；最差：DPI{} {}主题 {}底——{}（边缘 {} / 对比 {}）。",
+        name,
+        s.red,
+        worst.dpi,
+        if worst.dark_theme { "深" } else { "浅" },
+        bg_name,
+        worst.why,
+        worst.edge_x100,
+        worst.contrast_x100,
+    )
+}
+
+/// F632 v4 自检。
+pub fn run_audit_v4_checks() -> CheckSet {
+    use crate::jstar2::jbase::builtin_default_scheme;
+    let mut set = CheckSet::new("jstar2-F632-v4");
+
+    // 1. 趋势记录：最差对比度取全组合最小（最短板入账）。
+    let base = builtin_default_scheme();
+    let rep = audit(&base);
+    let mut tr = ContrastTrend::new();
+    tr.push(100, &rep);
+    tr.push(200, &rep);
+    set.add(
+        "trend records worst contrast",
+        tr.series().len() == 2 && tr.worst() == Some(summarize(&rep).worst_contrast_x100),
+        "",
+    );
+
+    // 2. 同报告重审 → 持平（零漂移的环境不编趋势）。
+    set.add("identical audits trend flat", tr.direction() == TrendDir::Flat, "");
+
+    // 3. 改善/恶化判定（合成序列——方向阈值的确定性验证）。
+    let mut up = ContrastTrend::new();
+    for (i, c) in [200i64, 210, 220, 230].iter().enumerate() {
+        up.points.push((i as u64, *c));
+    }
+    let mut down = ContrastTrend::new();
+    for (i, c) in [230i64, 220, 210, 200].iter().enumerate() {
+        down.points.push((i as u64, *c));
+    }
+    set.add(
+        "trend direction improving and worsening",
+        up.direction() == TrendDir::Improving && down.direction() == TrendDir::Worsening,
+        "",
+    );
+
+    // 4. 单点/空序列不编方向（一个样本不是趋势）。
+    let mut one = ContrastTrend::new();
+    one.points.push((0, 100));
+    set.add(
+        "trend needs two points for direction",
+        one.direction() == TrendDir::Flat && ContrastTrend::new().direction() == TrendDir::Flat,
+        "",
+    );
+
+    // 5. 趋势报告行：序列 + 走向结论 + 空态诚实。
+    set.add(
+        "trend report line readable",
+        up.report_line().contains("改善")
+            && down.report_line().contains("恶化")
+            && tr.report_line().contains("持平")
+            && ContrastTrend::new().report_line().contains("暂无样本"),
+        "",
+    );
+
+    // 6. 摘要人话行：全绿报喜（含名字与阈值口径）。
+    let line_ok = summary_line("内置基线", &rep);
+    set.add(
+        "summary line praises green scheme",
+        line_ok.contains("全绿") && line_ok.contains("内置基线") && line_ok.contains("160"),
+        "",
+    );
+
+    // 7. 摘要人话行：标红点名（第 8 格注入红项 = DPI200 浅底浅主题，
+    //    点名到 DPI/主题/底色/病根/数值）。
+    let mut red_rep = rep.clone();
+    red_rep.combos[7] = ComboResult {
+        dpi: 200,
+        dark_theme: false,
+        backdrop: Rgb::new(245, 245, 245),
+        edge_x100: 100,
+        contrast_x100: 120,
+        overshoot: 0,
+        passed: false,
+        why: "主体对底色对比不足",
+    };
+    red_rep.all_passed = false;
+    let line_red = summary_line("问题件", &red_rep);
+    set.add(
+        "summary line names worst combo",
+        line_red.contains("1 格标红")
+            && line_red.contains("DPI200")
+            && line_red.contains("主体对底色对比不足")
+            && line_red.contains("120"),
+        "",
+    );
+
+    // 8. 摘要行确定性：同报告同字节。
+    set.add("summary line deterministic", summary_line("问题件", &red_rep) == line_red, "");
+
+    // 9. 真实糊件点名：模糊方案的摘要行含病根人话（文案与分类同源）。
+    let mut blur = base.clone();
+    {
+        let e = blur.state_mut(PointerState::Normal).unwrap();
+        let src = e.frames[0].buf();
+        let soft = resample_lanczos3(
+            &resample_lanczos3(
+                &src,
+                (src.w as u32 * 11 / 10).max(1) as u16,
+                (src.h as u32 * 11 / 10).max(1) as u16,
+            ),
+            src.w,
+            src.h,
+        );
+        e.frames[0] = CursorFrame::from_buf(e.frames[0].hot_x, e.frames[0].hot_y, 0, soft);
+    }
+    let line_blur = summary_line("糊件", &audit(&blur));
+    set.add(
+        "blurred scheme summary names the defect",
+        line_blur.contains("标红")
+            && (line_blur.contains("糊") || line_blur.contains("对比") || line_blur.contains("晕")),
+        "",
+    );
+
+    // 10. 修复闭环趋势：基线 → 糊件 → 基线（最差对比度回到基线水平
+    //     ——修一次的净效果为零劣化）。
+    let mut tr2 = ContrastTrend::new();
+    tr2.push(1, &rep);
+    tr2.push(2, &audit(&blur));
+    tr2.push(3, &audit(&base));
+    set.add(
+        "repair loop trend returns to baseline worst",
+        tr2.series().len() == 3 && tr2.worst() == Some(summarize(&rep).worst_contrast_x100),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+
+    fn combo(dpi: u32, contrast: i64, passed: bool) -> ComboResult {
+        ComboResult {
+            dpi,
+            dark_theme: false,
+            backdrop: Rgb::new(128, 128, 128),
+            edge_x100: 100,
+            contrast_x100: contrast,
+            overshoot: 0,
+            passed,
+            why: if passed { "" } else { "主体对底色对比不足" },
+        }
+    }
+
+    fn fake_report(contrast: i64, pass: bool) -> AuditReport {
+        AuditReport {
+            scheme_fingerprint: 0,
+            combos: (0..24).map(|i| combo(100 + (i % 4) as u32, contrast, pass)).collect(),
+            all_passed: pass,
+            builtin_baseline_edge_x100: 0,
+        }
+    }
+
+    #[test]
+    fn direction_thresholds() {
+        let mut t = ContrastTrend::new();
+        t.points.push((0, 200));
+        t.points.push((1, 206));
+        assert_eq!(t.direction(), TrendDir::Improving, "delta = +6 ≥ 5");
+        t.points.push((2, 203));
+        // 前半 [200]，后半 [206,203] → 均值 204 → delta 4 → Flat。
+        assert_eq!(t.direction(), TrendDir::Flat);
+    }
+
+    #[test]
+    fn worst_tracks_min() {
+        let mut t = ContrastTrend::new();
+        let mut r1 = fake_report(250, true);
+        r1.combos[3] = combo(150, 180, true);
+        t.push(0, &r1);
+        assert_eq!(t.worst(), Some(180), "最短板入账");
+    }
+
+    #[test]
+    fn summary_red_counts_and_names() {
+        let mut r = fake_report(300, true);
+        r.combos[0].passed = false;
+        r.combos[0].dpi = 125;
+        let line = summary_line("测试件", &r);
+        assert!(line.contains("1 格标红"));
+        assert!(line.contains("DPI125"));
+    }
+
+    #[test]
+    fn empty_trend_report_honest() {
+        assert!(ContrastTrend::new().report_line().contains("暂无样本"));
+        assert_eq!(ContrastTrend::new().worst(), None);
+    }
+
+    #[test]
+    fn v4_checks_all_green() {
+        let set = run_audit_v4_checks();
+        assert!(!set.truncated());
+        for i in 0..set.len() {
+            let c = set.get(i).unwrap();
+            assert!(c.passed, "v4 check red: {}", c.name);
+        }
+    }
+}

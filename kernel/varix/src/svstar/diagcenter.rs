@@ -608,6 +608,95 @@ pub fn export_manifest_text(version: &str, at_ms: u64, volumes: usize, sanitized
     }
     s
 }
+// ---------------------------------------------------------------------------
+// 深化批次 v8 · 一：修复执行前简报（主册【交互设计】「执行前说明做什
+// 么可回滚」——执行钮按下先出简报再确认，简报不是摆设是确认页正文）
+// ---------------------------------------------------------------------------
+
+/// 修复执行前简报（三段：做什么 / 风险级 / 怎么回滚——执行确认页正文
+/// 的唯一来源；三段缺一 = 不许出确认页）。
+pub struct RepairBriefing {
+    /// 做什么（修复动作的人话描述——直接取注册说明，不另写一套）。
+    pub what: String,
+    /// 风险级（三档文本）。
+    pub risk: &'static str,
+    /// 怎么回滚（注册回滚方案——一处一事实）。
+    pub rollback: String,
+}
+
+/// 风险级文本（简报第二段——中文直出，不露枚举名）。
+pub fn risk_text(r: Risk) -> &'static str {
+    match r {
+        Risk::Low => "低风险",
+        Risk::Medium => "中风险（执行前请读回滚方案）",
+        Risk::High => "高风险（强烈建议先看回滚方案再确认）",
+    }
+}
+
+/// 执行前简报生成（从注册件直取——简报与注册制同源，不各写一套）。
+pub fn repair_briefing(r: &Repair) -> RepairBriefing {
+    RepairBriefing {
+        what: String::from(r.desc),
+        risk: risk_text(r.risk),
+        rollback: String::from(r.rollback_plan),
+    }
+}
+
+/// 简报三段完整性门（what 非空 / risk 文本在位 / rollback 非空——
+/// 缺段 = 不许出确认页 = 执行钮灰置的依据）。
+pub fn briefing_complete(b: &RepairBriefing) -> bool {
+    !b.what.is_empty() && !b.risk.is_empty() && !b.rollback.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v8 · 二：导出 zip 装配清单（主册【数据与存储】「导出包
+// zip 含 manifest（脱敏声明）」——装配对账面：entry 表 + 总量 +
+// manifest 恒为末位规约）
+// ---------------------------------------------------------------------------
+
+/// zip 装配规约（消费方按此拆包——manifest 恒为末位 entry，先读尾
+/// 即可定位声明，不必全包扫描）。
+pub const ZIP_RULES: [&str; 3] = [
+    "manifest-last-entry",
+    "log-volume-files-ordered-by-index",
+    "entry-names-ascii-safe",
+];
+
+/// 一条 zip 装配项（文件名 + 字节量）。
+pub struct ZipEntry {
+    pub name: String,
+    pub bytes: u64,
+}
+
+/// zip 装配清单生成：日志分卷逐卷一项 + manifest 恒末位；返回
+/// (entry 表, 总字节量, manifest 下标)。空日志 = 仅 manifest（诚实
+/// 空包——不造假分卷）。
+pub fn zip_assembly_plan(volume_bytes: &[u64], manifest: &str) -> (Vec<ZipEntry>, u64, usize) {
+    let mut entries: Vec<ZipEntry> = Vec::new();
+    for (i, &b) in volume_bytes.iter().enumerate() {
+        entries.push(ZipEntry {
+            name: alloc::format!("logs-part{:03}.log", i + 1),
+            bytes: b,
+        });
+    }
+    let manifest_idx = entries.len();
+    entries.push(ZipEntry {
+        name: String::from("manifest.txt"),
+        bytes: manifest.len() as u64,
+    });
+    let total = entries.iter().map(|e| e.bytes).sum();
+    (entries, total, manifest_idx)
+}
+
+/// 装配清单自检（manifest 末位 + 文件名规约 + 总量守恒——拆包方可
+/// 复算对账）。
+pub fn zip_plan_valid(entries: &[ZipEntry], total: u64, manifest_idx: usize) -> bool {
+    manifest_idx + 1 == entries.len()
+        && entries[manifest_idx].name == "manifest.txt"
+        && entries.iter().map(|e| e.bytes as u128).sum::<u128>() == total as u128
+        && entries.iter().all(|e| e.name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.' || b == b'_'))
+}
+
 pub fn run_diagcenter_checks() -> CheckSet {
     let mut set = CheckSet::new("F120-diagcenter");
 
@@ -831,6 +920,36 @@ pub fn run_diagcenter_checks() -> CheckSet {
         "",
     );
 
+    // 深化 v8 · 修复执行前简报：三项官方修复逐项出简报且三段齐；简
+    // 报与注册件同源（desc/rollback 直取不另写）；高风险文案含提示。
+    let repairs = official_repairs();
+    let briefs_ok = repairs.iter().all(|r| {
+        let b = repair_briefing(r);
+        briefing_complete(&b) && b.what == r.desc && b.rollback == r.rollback_plan
+    });
+    let high_text = risk_text(Risk::High);
+    set.add(
+        "repair pre-flight briefing complete",
+        briefs_ok && repairs.len() == 3 && high_text.contains("高风险") && high_text.contains("回滚方案"),
+        "",
+    );
+
+    // 深化 v8 · zip 装配清单：分卷逐项 + manifest 恒末位 + 总量守恒 +
+    // 文件名 ASCII 安全；空日志 = 仅 manifest（诚实空包）。
+    let mf = "manifest-body";
+    let (entries, total, midx) = zip_assembly_plan(&[1200, 3400], mf);
+    let plan_ok = zip_plan_valid(&entries, total, midx)
+        && entries.len() == 3
+        && entries[0].name == "logs-part001.log"
+        && entries[midx].bytes == mf.len() as u64;
+    let (empty_entries, empty_total, empty_midx) = zip_assembly_plan(&[], mf);
+    let empty_ok = empty_entries.len() == 1 && empty_midx == 0 && empty_total == mf.len() as u64;
+    set.add(
+        "zip assembly plan manifest-last",
+        ZIP_RULES[0] == "manifest-last-entry" && plan_ok && empty_ok,
+        "",
+    );
+
     set
 }
 
@@ -902,5 +1021,27 @@ mod tests {
         // 恰好 100MB → 1 卷（边界不空转）。
         let (v, _) = export_volume_plan(EXPORT_SPLIT_BYTES, EXPORT_SPLIT_BYTES);
         assert_eq!(v, 1);
+    }
+
+    #[test]
+    fn f120_briefing_risk_tiers_distinct() {
+        // 三档风险文案互不相同且中低档不吓唬、高档必提示。
+        let l = risk_text(Risk::Low);
+        let m = risk_text(Risk::Medium);
+        let h = risk_text(Risk::High);
+        assert_ne!(l, m);
+        assert_ne!(m, h);
+        assert!(l.contains("低风险"));
+        assert!(m.contains("中风险"));
+    }
+
+    #[test]
+    fn f120_zip_plan_name_rule_enforced() {
+        // 文件名规约门：非 ASCII 名被判无效（拆包方兼容性红线）。
+        let bad = vec![ZipEntry {
+            name: String::from("日志-分卷.log"),
+            bytes: 10,
+        }];
+        assert!(!zip_plan_valid(&bad, 10, 0));
     }
 }

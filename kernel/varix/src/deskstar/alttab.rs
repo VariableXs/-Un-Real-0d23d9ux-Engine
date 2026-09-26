@@ -990,3 +990,164 @@ mod tests_deep2 {
         assert!(set.all_passed(), "F082-deep2 红项：{}/{} 绿", p, p + f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三（D1-v4）——方向键蛇形几何导航 / 鼠标悬停与点击双路一致。
+// 判据唯一源：主册 G-C-12（「加 Tab 或方向键选择」「最近使用序从左上
+// 蛇形排列」；十二查键盘/鼠标双路一致）。
+// ---------------------------------------------------------------------------
+
+/// 蛇形视觉列（第 i 卡在墙面的视觉列——偶数行左→右、奇数行右→左）。
+fn visual_col(i: usize) -> usize {
+    let c = i % 4;
+    if (i / 4) % 2 == 0 { c } else { 3 - c }
+}
+
+/// 视觉坐标 → 卡下标（蛇形行内回折的逆映射）。
+fn index_from_visual(row: usize, col: usize) -> usize {
+    row * 4 + if row % 2 == 0 { col } else { 3 - col }
+}
+
+impl AltTab {
+    /// 方向键几何导航（主册「方向键选择」的几何面：左右 ±1 视觉列、
+    /// 上下 ±1 视觉行——蛇形行进下「视觉正下方」才是真下邻；越界
+    /// 钳制、尾行不满钳到末卡——焦点永不丢出墙）。返回新焦点下标。
+    pub fn arrow_move(&mut self, dx: i32, dy: i32) -> usize {
+        if self.state != SwitchState::Wall || self.cards.is_empty() {
+            return self.sel;
+        }
+        let n = self.cards.len();
+        let cur = self.sel.min(n - 1);
+        let rows = (n + 3) / 4;
+        let row = (cur / 4) as i32;
+        let col = visual_col(cur) as i32;
+        let new_row = (row + dy).clamp(0, rows as i32 - 1) as usize;
+        let new_col = (col + dx).clamp(0, 3) as usize;
+        let mut idx = index_from_visual(new_row, new_col);
+        if idx >= n {
+            idx = n - 1;
+        }
+        self.sel = idx;
+        idx
+    }
+
+    /// 鼠标悬停选中（焦点跟随——键盘与鼠标共用同一焦点池，双路一致）。
+    pub fn hover_card(&mut self, idx: usize) -> bool {
+        if self.state != SwitchState::Wall || idx >= self.wall_cards().len() {
+            return false;
+        }
+        self.sel = idx;
+        true
+    }
+
+    /// 点击卡片切换（与键盘 commit 同一出口——双路一致判据的鼠标面；
+    /// 与 quickset.toggle/activate 同纪律：鼠标键盘结果一致）。
+    pub fn click_card(&mut self, idx: usize, now_ms: u64) -> Option<u64> {
+        if !self.hover_card(idx) {
+            return None;
+        }
+        self.commit(now_ms)
+    }
+}
+
+/// F082 深化自检三：蛇形导航几何 / 悬停点击双路 / 越界钳制。
+pub fn run_alttab_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F082-deep3");
+    let card = |i: u64| TabCard {
+        window: i,
+        title: alloc::format!("窗{}", i),
+        icon_token: 0,
+        hung: false,
+        system: false,
+        minimized: false,
+    };
+    // 1. 十二窗墙：方向键下 = 视觉正下（奇数行蛇形回折）。
+    let mut t = AltTab::new();
+    t.set_candidates((0..12u64).map(card).collect());
+    t.alt_down(0);
+    t.hold_tick(400); // 出墙
+    let wall = t.state() == SwitchState::Wall;
+    let down = t.arrow_move(0, 1); // 卡 0（行 0 列 0）→ 行 1 视觉列 0 = 卡 7
+    let up_back = t.arrow_move(0, -1); // 卡 7 → 回卡 0
+    set.add(
+        "serpentine-nav",
+        wall && down == 7 && up_back == 0,
+        "visual-down is true neighbor",
+    );
+    // 2. 行内左右 ±1 与边界钳制。
+    let right0 = t.arrow_move(1, 0); // 卡 0 → 卡 1
+    let left_clamp = { t.arrow_move(-9, 0); t.arrow_move(-9, 0) }; // 连按左 → 钳列 0（卡 0）
+    set.add("row-clamp", right0 == 1 && left_clamp == 0, "edges hold focus");
+    // 3. 尾行不满：钳到末卡不出墙。
+    let mut t2 = AltTab::new();
+    t2.set_candidates((0..10u64).map(card).collect());
+    t2.alt_down(0);
+    t2.hold_tick(400);
+    t2.arrow_move(1, 1); // 行 0 列 1 → 行 1 视觉列 1
+    let tail = t2.arrow_move(0, 1); // 行 1 视觉列 1 → 行 2 列越界 → 钳末卡 9
+    set.add("tail-clamp", tail == 9, "partial row clamps");
+    // 4. 悬停 + 点击：与键盘路径同一出口、同一结果。
+    let mut t3 = AltTab::new();
+    t3.set_candidates((0..6u64).map(card).collect());
+    t3.alt_down(0);
+    t3.hold_tick(400);
+    let hover_bad = !t3.hover_card(99);
+    let hover_ok = t3.hover_card(3);
+    let clicked = t3.click_card(3, 2_000);
+    // 键盘参照：同起点 sel=3 → commit 同窗。
+    let mut t4 = AltTab::new();
+    t4.set_candidates((0..6u64).map(card).collect());
+    t4.alt_down(0);
+    t4.hold_tick(400);
+    t4.arrow_move(1, 0);
+    t4.arrow_move(1, 0);
+    t4.arrow_move(1, 0);
+    let kb = t4.commit(2_100);
+    set.add(
+        "mouse-keyboard-parity",
+        hover_bad && hover_ok && clicked == Some(3) && kb == Some(3),
+        "same pool same exit",
+    );
+    // 5. 非墙态导航与点击如实无效（不出墙不切换）。
+    let mut t5 = AltTab::new();
+    t5.set_candidates((0..4u64).map(card).collect());
+    let idle_move = t5.arrow_move(1, 0);
+    let idle_click = t5.click_card(0, 3_000);
+    set.add(
+        "idle-honest",
+        idle_move == 0 && idle_click.is_none(),
+        "no wall no selection",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    fn card(i: u64) -> TabCard {
+        TabCard {
+            window: i,
+            title: alloc::format!("窗{}", i),
+            icon_token: 0,
+            hung: false,
+            system: false,
+            minimized: false,
+        }
+    }
+
+    #[test]
+    fn arrow_nav_requires_wall_state() {
+        let mut t = AltTab::new();
+        t.set_candidates((0..8u64).map(card).collect());
+        assert_eq!(t.arrow_move(1, 0), 0, "非墙态焦点不动");
+        assert!(!t.hover_card(1), "非墙态悬停拒收");
+    }
+
+    #[test]
+    fn alttab_deep3_checks_all_green() {
+        let set = run_alttab_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F082-deep3 红项：{}/{} 绿", p, p + f);
+    }
+}

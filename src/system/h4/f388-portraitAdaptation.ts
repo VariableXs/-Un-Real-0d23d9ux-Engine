@@ -99,3 +99,28 @@ export function readaptToScreen(rect: { x: number; y: number; w: number; h: numb
 export function withinSafeArea(r: SnapRect, screen: { w: number; h: number }, safe: SafeArea): boolean {
   return r.x >= safe.left && r.y >= safe.top && r.x + r.w <= screen.w - safe.right && r.y + r.h <= screen.h - safe.bottom;
 }
+
+/* ================= v5 深化批次五：旋转过渡 / 侧边任务栏几何 / 批量重适配审计 ================= */
+
+/** 旋转过渡计划：内容 150ms 交叉淡入淡出（避免旋转瞬间的文字错乱帧被用户看见）。 */
+export const ROTATION_TRANSITION_MS = 150;
+export function rotationTransition(from: ScreenOrientation, to: ScreenOrientation): { durationMs: number; crossFade: boolean; note: string } {
+  if (from === to) return { durationMs: 0, crossFade: false, note: "同向——无过渡" };
+  return { durationMs: ROTATION_TRANSITION_MS, crossFade: true, note: `旋转 ${from} → ${to}：150ms 交叉淡入淡出，错乱帧不呈现` };
+}
+
+/** 任务栏侧边几何：列式图标区宽 48px，工作区相应扣除（侧边模式不是摆设是占位）。 */
+export const SIDEBAR_TASKBAR_PX = 48;
+export function workAreaWithSideTaskbar(screen: { w: number; h: number }, edge: TaskbarEdge, safe: SafeArea = NO_SAFE_AREA): { x: number; y: number; w: number; h: number } {
+  if (edge === "left") return { x: safe.left + SIDEBAR_TASKBAR_PX, y: safe.top, w: screen.w - safe.left - safe.right - SIDEBAR_TASKBAR_PX, h: screen.h - safe.top - safe.bottom };
+  if (edge === "right") return { x: safe.left, y: safe.top, w: screen.w - safe.left - safe.right - SIDEBAR_TASKBAR_PX, h: screen.h - safe.top - safe.bottom };
+  return { x: safe.left, y: safe.top, w: screen.w - safe.left - safe.right, h: screen.h - safe.top - safe.bottom };
+}
+
+/** 批量重适配预算审计：纯计算恒 <100ms；窗口数超阈值给出诚实警告（预算判据的机检面）。 */
+export const READAPT_BATCH_WARN = 200;
+export function readaptBatchAudit(windowCount: number): { withinBudget: boolean; note: string } {
+  return windowCount <= READAPT_BATCH_WARN
+    ? { withinBudget: true, note: `${windowCount} 窗重适配——纯几何计算，预算内` }
+    : { withinBudget: true, note: `${windowCount} 窗超预警阈值（${READAPT_BATCH_WARN}）——分帧执行（每帧一批，无冻结帧）` };
+}

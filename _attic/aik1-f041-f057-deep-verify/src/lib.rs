@@ -2,5 +2,7 @@
 //! （他域在途修改使全 crate 暂不可编译），本舱隔离编译 perfstar 17 域，
 //! 验证深化批次的 CheckSet 与单测全绿。验证后即归档，不入版本库构建链。
 
+extern crate alloc;
+
 pub mod checks;
 pub mod perfstar;

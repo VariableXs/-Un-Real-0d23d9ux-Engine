@@ -143,3 +143,34 @@ export function recordCompatIssue(url: string, issue: string, at: number, store:
 export function listCompatIssues(store: KvStore = defaultStore()): CompatIssueRecord[] {
   return readJson<CompatIssueRecord[]>(store, h4Key("f355", "compat"), [], Array.isArray);
 }
+
+/* ================= v5 深化批次五：三管子健康状态机 / UA 哨兵 ================= */
+
+export type PipeState = "open" | "stalled" | "broken";
+
+export interface PipeHealth {
+  pipe: "download" | "drag" | "treatment";
+  state: PipeState;
+  /** 人话诊断（三要素的简版：现状 + 下一步）。 */
+  detail: string;
+}
+
+/** 三管子健康状态机：事件流超时=stalled（降级可用）、通道失效=broken（如实可闻）。 */
+export function pipeHealth(input: { downloadEventsLast5Min: number; dragDeliveriesLast5Min: number; treatmentFailures: number }): PipeHealth[] {
+  const dl = input.downloadEventsLast5Min === 0 ? "stalled" : "open";
+  const drag = input.dragDeliveriesLast5Min === 0 ? "stalled" : "open";
+  const treat: PipeState = input.treatmentFailures === 0 ? "open" : input.treatmentFailures < 3 ? "stalled" : "broken";
+  return [
+    { pipe: "download", state: dl, detail: dl === "open" ? "下载通知联动正常" : "近 5 分钟无下载事件——管道静默（可能是真的没下载，持续静默才需排查）" },
+    { pipe: "drag", state: drag, detail: drag === "open" ? "网页拖拽全语义正常" : "近 5 分钟无拖拽投递——管道静默" },
+    { pipe: "treatment", state: treat, detail: treat === "open" ? "系统待遇清单全项享受" : treat === "stalled" ? `${input.treatmentFailures} 项待遇失格——走回退路径登记` : "待遇大面积失格——兼容性事件，须走 A2 判例工厂" },
+  ];
+}
+
+/** UA 哨兵（诚实边界的机检面）：UA 串出现伪装标记（Windows NT / Chrome 组合冒充）即违规。 */
+export function auditUaSentinel(ua: string): { pass: boolean; reason: string } {
+  const spoofMarks = ["Windows NT", "Macintosh", "X11; Linux"];
+  const hit = spoofMarks.find((m) => ua.includes(m));
+  if (hit) return { pass: false, reason: `UA 含「${hit}」——在伪装其他平台身份，违反诚实边界（VARIX 身份访问）` };
+  return { pass: true, reason: "UA 以 VARIX 身份如实上报" };
+}

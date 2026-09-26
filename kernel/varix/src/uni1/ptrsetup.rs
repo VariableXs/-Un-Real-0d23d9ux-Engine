@@ -60,6 +60,8 @@ pub struct Printer {
     pub state: InstallState,
     /// 已登记进 F289 打印队列。
     pub queue_registered: bool,
+    /// 是否默认打印机（全局唯一——互斥纪律）。
+    pub is_default: bool,
 }
 
 /// 打印机安装向导核。
@@ -93,8 +95,25 @@ impl PrinterWizard {
             source,
             state: InstallState::Installing,
             queue_registered: false,
+            is_default: false,
         });
         true
+    }
+
+    /// 安装进度推进（分段账：驱动 0-400 / 队列 400-800 / 收尾 800-1000
+    /// ——进度条会动、剩余可信；Ready 只在 1000 落定）。
+    pub fn tick(&mut self, model: &str, permille: u64) -> bool {
+        match self.installed.iter_mut().find(|p| p.model == model) {
+            Some(p) if p.state == InstallState::Installing => {
+                let p8 = permille.min(1_000);
+                if p8 >= 1_000 {
+                    p.state = InstallState::Ready;
+                    p.queue_registered = true;
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     /// 安装推进 → Ready + 自动登记 F289 队列。
@@ -124,6 +143,36 @@ impl PrinterWizard {
             Some(p) if p.state == InstallState::Ready && p.queue_registered => true,
             _ => false,
         }
+    }
+
+    /// 默认打印机：全局唯一（切换互斥——新默认顶掉旧默认）。
+    pub fn set_default(&mut self, model: &str) -> bool {
+        let Some(pos) = self.installed.iter().position(|p| p.model == model) else {
+            return false;
+        };
+        if self.installed[pos].state != InstallState::Ready {
+            return false; // 没装好的不能当默认
+        }
+        for (i, p) in self.installed.iter_mut().enumerate() {
+            p.is_default = i == pos;
+        }
+        true
+    }
+
+    /// 移除打印机：出队（F289 反向衔接）；默认被移走 → 无默认（诚实
+    /// 状态——不自动指定下一个，让用户明选）。
+    pub fn remove(&mut self, model: &str) -> bool {
+        let before = self.installed.len();
+        self.installed.retain(|p| p.model != model);
+        self.installed.len() < before
+    }
+
+    /// 默认打印机查询。
+    pub fn default_printer(&self) -> Option<&str> {
+        self.installed
+            .iter()
+            .find(|p| p.is_default)
+            .map(|p| p.model.as_str())
     }
 
     /// USB 自动链路：插入 → 识别 → 匹配 → 装好（事件账逐步留痕）。
@@ -189,6 +238,30 @@ pub fn run_ptrsetup_checks() -> CheckSet {
             && !PrinterWizard::failure_guidance(DriverSource::BuiltIn).is_empty(),
         "",
     );
+    // 手动安装进度分段：装完才 Ready+入队；中途不可打测试页。
+    let mut w2 = PrinterWizard::new();
+    let _ = w2.install("StarJet 5000", DriverSource::VendorPackage);
+    set.add("f444-install-progress-mid", w2.tick("StarJet 5000", 400) && w2.installed[0].state == InstallState::Installing, "");
+    set.add("f444-mid-no-test-page", !w2.print_test_page("StarJet 5000"), "");
+    set.add(
+        "f444-install-progress-done",
+        w2.tick("StarJet 5000", 1_000)
+            && w2.installed[0].state == InstallState::Ready
+            && w2.installed[0].queue_registered,
+        "",
+    );
+    // 默认打印机：全局唯一互斥；没装好的不能当默认。
+    let mut w3 = PrinterWizard::new();
+    let _ = w3.install("A 型", DriverSource::BuiltIn);
+    let _ = w3.install("B 型", DriverSource::BuiltIn);
+    let _ = w3.finish("A 型");
+    set.add("f444-default-ready-only", !w3.set_default("B 型"), "");
+    set.add("f444-default-set", w3.set_default("A 型") && w3.default_printer() == Some("A 型"), "");
+    let _ = w3.finish("B 型");
+    set.add("f444-default-exclusive", w3.set_default("B 型") && w3.default_printer() == Some("B 型"), "");
+    // 移除打印机：默认被移走 → 无默认（诚实，不自动指定）。
+    set.add("f444-remove-removes", w3.remove("B 型") && !w3.remove("B 型"), "");
+    set.add("f444-remove-default-honest", w3.default_printer().is_none(), "");
     set
 }
 

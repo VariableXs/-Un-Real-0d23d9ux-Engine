@@ -785,3 +785,599 @@ mod tests {
         assert_eq!(package_scheme_names(&lib, "pkg-有主").len(), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 深化批：侧载队列（批量包逐个过门、逐条目结果留痕）· 磁盘配额
+// （字节计、超限诚实拒绝）· 安装回滚快照（装前快照 + 一键回滚）·
+// 包清单版本迁移（旧版清单字段补齐）
+// ---------------------------------------------------------------------------
+
+/// 队列单包处理结果（逐包留痕——批量侧载的审计面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueueEntryResult {
+    pub pkg_id: String,
+    pub pkg_name: String,
+    /// 结论类别（registered / gate-blocked / signature-invalid / empty /
+    /// manifest-mismatch / bad-entry / quota-denied——人话由 detail 承载）。
+    pub kind: &'static str,
+    pub installed: usize,
+    pub detail: String,
+}
+
+/// 结论拆解（kind, 件数, 人话明细）——留痕与结果枚举同源，一处一事实。
+fn outcome_parts(o: &SideloadOutcome) -> (&'static str, usize, String) {
+    match o {
+        SideloadOutcome::Registered(fps) => ("registered", fps.len(), String::from("入库成功")),
+        SideloadOutcome::GateBlocked(r) => ("gate-blocked", 0, String::from(*r)),
+        SideloadOutcome::SignatureInvalid => ("signature-invalid", 0, String::from("签名校验未通过")),
+        SideloadOutcome::ManifestMismatch { declared, actual } => {
+            ("manifest-mismatch", 0, alloc::format!("清单声明 {} 件、包内实际 {} 件", declared, actual))
+        }
+        SideloadOutcome::EmptyComponent => ("empty", 0, String::from("包内无 cursors/ 组件内容")),
+        SideloadOutcome::BadEntry { index, name, why } => {
+            ("bad-entry", 0, alloc::format!("第 {} 件「{}」：{}", index, name, why))
+        }
+    }
+}
+
+/// 侧载队列（批量包逐个过门：每包独立走完整链——配额收编 → 门审 →
+/// 签名验 → 入库；单包失败不拖垮整队，坏件隔离留痕、好件照装）。
+#[derive(Default)]
+pub struct SideloadQueue {
+    pending: Vec<CursorPackage>,
+    trail: Vec<QueueEntryResult>,
+}
+
+impl SideloadQueue {
+    pub fn new() -> SideloadQueue {
+        SideloadQueue { pending: Vec::new(), trail: Vec::new() }
+    }
+
+    pub fn push(&mut self, pkg: CursorPackage) {
+        self.pending.push(pkg);
+    }
+
+    pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// 逐包过门（按入队顺序；配额不过的包不进门——字节账先行）。
+    pub fn drain(
+        &mut self,
+        lib: &mut SchemeLibrary,
+        quota: &mut DiskQuota,
+        gate: fn(&[u8]) -> GateVerdict,
+        verify: VerifyFn,
+    ) {
+        for pkg in self.pending.drain(..) {
+            let bytes = DiskQuota::package_bytes(&pkg);
+            let (kind, installed, detail) = match quota.admit(&pkg) {
+                Err(d) => (
+                    "quota-denied",
+                    0,
+                    alloc::format!("磁盘配额不足：需 {} 字节、仅余 {} 字节", d.need_bytes, d.free_bytes),
+                ),
+                Ok(_) => {
+                    let o = sideload_package(lib, &pkg, gate, verify);
+                    let (k, n, d) = outcome_parts(&o);
+                    if k != "registered" {
+                        // 失败包不占账——字节账两头对平。
+                        let _ = quota.release(bytes);
+                    }
+                    (k, n, d)
+                }
+            };
+            self.trail.push(QueueEntryResult {
+                pkg_id: pkg.pkg_id.clone(),
+                pkg_name: pkg.pkg_name.clone(),
+                kind,
+                installed,
+                detail,
+            });
+        }
+    }
+
+    pub fn trail(&self) -> &[QueueEntryResult] {
+        &self.trail
+    }
+
+    /// 批次汇总（装了几包、几件、几包失败——批量面板的单行数）。
+    pub fn tally(&self) -> (usize, usize, usize) {
+        let ok = self.trail.iter().filter(|r| r.kind == "registered").count();
+        let items: usize = self.trail.iter().map(|r| r.installed).sum();
+        (ok, items, self.trail.len() - ok)
+    }
+
+    pub fn processed(&self) -> usize {
+        self.trail.len()
+    }
+}
+
+/// 配额拒绝明细（超限的诚实数字——差多少给多少，不给「失败」两个字）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QuotaDenial {
+    pub need_bytes: u64,
+    pub free_bytes: u64,
+}
+
+/// 侧载磁盘配额（字节计：cursors/ 组件载荷逐包记账；超限诚实拒绝
+/// 不静默挤占，失败/回滚如实归还——字节账两头对平）。
+#[derive(Clone, Debug)]
+pub struct DiskQuota {
+    limit_bytes: u64,
+    used_bytes: u64,
+}
+
+impl DiskQuota {
+    /// 默认上限 8MB（.vxcur 容器上限 4MB × 2 包余量——指针包体量小）。
+    pub const DEFAULT_LIMIT: u64 = 8 * 1024 * 1024;
+
+    pub fn new(limit_bytes: u64) -> DiskQuota {
+        DiskQuota { limit_bytes, used_bytes: 0 }
+    }
+
+    pub fn used(&self) -> u64 {
+        self.used_bytes
+    }
+
+    pub fn free(&self) -> u64 {
+        self.limit_bytes - self.used_bytes
+    }
+
+    /// 包字节面（cursors/ 组件实际载荷 = 全部 .vxcur 字节之和）。
+    pub fn package_bytes(pkg: &CursorPackage) -> u64 {
+        pkg.schemes.iter().map(|(_, b)| b.len() as u64).sum()
+    }
+
+    /// 收编记账（够则记账返回记账后用量；不够返回拒绝明细——诚实数字）。
+    pub fn admit(&mut self, pkg: &CursorPackage) -> Result<u64, QuotaDenial> {
+        let need = Self::package_bytes(pkg);
+        if need > self.free() {
+            return Err(QuotaDenial { need_bytes: need, free_bytes: self.free() });
+        }
+        self.used_bytes += need;
+        Ok(self.used_bytes)
+    }
+
+    /// 归还记账（只许还账不许透支——还超已用是账目错误，诚实拒绝）。
+    pub fn release(&mut self, bytes: u64) -> bool {
+        if bytes > self.used_bytes {
+            return false;
+        }
+        self.used_bytes -= bytes;
+        true
+    }
+
+    /// 回滚到快照标记（只许退到更小的账——标记之后的账作废）。
+    pub fn roll_back_to(&mut self, mark: u64) -> bool {
+        if mark > self.used_bytes {
+            return false;
+        }
+        self.used_bytes = mark;
+        true
+    }
+
+    /// 配额单行报告（已用/上限/余量——设置页存储行的数源）。
+    pub fn report_line(&self) -> String {
+        alloc::format!(
+            "侧载配额 已用 {}/{} 字节、余 {} 字节",
+            self.used_bytes, self.limit_bytes, self.free()
+        )
+    }
+}
+
+/// 安装前快照（库房名单 + 在用方案名 + 配额标记——一键回滚的完整凭据；
+/// 只记名单不记内容：库房是唯一事实源，快照是名单投影不是第二账本）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstallSnapshot {
+    names: Vec<String>,
+    active_name: String,
+    quota_used: u64,
+}
+
+/// 拍快照（安装动作之前调用——回滚凭据必须先于风险存在）。
+pub fn capture_snapshot(lib: &SchemeLibrary, quota_used: u64) -> InstallSnapshot {
+    InstallSnapshot {
+        names: lib
+            .view(crate::jstar2::library::LibraryView::All)
+            .iter()
+            .map(|e| e.model.name.clone())
+            .collect(),
+        active_name: lib.active_name.clone(),
+        quota_used,
+    }
+}
+
+/// 一键回滚（卸掉快照之后混进来的侧载件、在用方案指向被卸件时恢复
+/// 快照在用、配额退回标记；返回卸掉件数。只动 Sideloaded 血统——
+/// 用户既有资产分毫不碰）。
+pub fn rollback(lib: &mut SchemeLibrary, quota: &mut DiskQuota, snap: &InstallSnapshot) -> usize {
+    let names = lib
+        .view(crate::jstar2::library::LibraryView::All)
+        .iter()
+        .filter(|e| {
+            matches!(&e.model.origin, OriginKind::Sideloaded(_))
+                && !snap.names.iter().any(|n| *n == e.model.name)
+        })
+        .map(|e| e.model.name.clone())
+        .collect::<Vec<String>>();
+    let mut removed = 0usize;
+    for n in &names {
+        if lib.remove(n) {
+            removed += 1;
+        }
+    }
+    // 在用方案被回退过的场景：快照里的在用方案若已回到库房，恢复在用。
+    if lib.active_name != snap.active_name && lib.get(&snap.active_name).is_some() {
+        lib.active_name = snap.active_name.clone();
+    }
+    let _ = quota.roll_back_to(snap.quota_used);
+    removed
+}
+
+/// 旧版包清单（v1 时代：只有名目，版本/作者/声明数是后来补的字段——
+/// 缺失用 Option 如实表达，不用空串冒充）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LegacyManifest {
+    pub pkg_id: String,
+    pub name: String,
+    pub declared_schemes: Option<usize>,
+    pub version: Option<String>,
+    pub author: Option<String>,
+}
+
+impl LegacyManifest {
+    /// v1 → v2 迁移（缺字段补齐但不编数：声明数缺省 = 包内实际条数
+    /// （清单向包对齐——包是事实源）；版本缺省 = "1.0"；作者缺省 =
+    /// "未知作者"）。
+    pub fn migrate(self, pkg: &CursorPackage) -> PackageManifest {
+        PackageManifest {
+            pkg_id: self.pkg_id,
+            name: self.name,
+            version: self.version.unwrap_or_else(|| String::from("1.0")),
+            author: self.author.unwrap_or_else(|| String::from("未知作者")),
+            declared_schemes: self.declared_schemes.unwrap_or(pkg.schemes.len()),
+        }
+    }
+
+    /// 迁移完备性：迁移产物必须过 v2 的全部既有校验（版本形 + 三处
+    /// 对账）——迁移不走后门，老包过的是同一条门。
+    pub fn migrated_ok(self, pkg: &CursorPackage) -> bool {
+        let m = self.migrate(pkg);
+        m.version_ok() && m.matches(pkg)
+    }
+}
+
+/// F635 v4 自检。
+pub fn run_sideload_v4_checks() -> CheckSet {
+    use crate::jstar2::jbase::{builtin_default_scheme, serialize_vxcur};
+    use crate::jstar2::sharing::default_peblock_gate;
+    fn trust_all(_: &[u8]) -> (bool, &'static str) {
+        (true, "stub-signer")
+    }
+    let mut set = CheckSet::new("jstar2-F635-v4");
+
+    let mk_pkg = |pkg_name: &str, n: usize| -> CursorPackage {
+        let mut schemes = Vec::new();
+        for i in 0..n {
+            let mut m = builtin_default_scheme();
+            m.name = alloc::format!("方案{i}");
+            schemes.push((alloc::format!("s{i}.vxcur"), serialize_vxcur(&m)));
+        }
+        CursorPackage {
+            pkg_id: alloc::format!("pkg-{pkg_name}"),
+            pkg_name: String::from(pkg_name),
+            schemes,
+        }
+    };
+    // 配额专用合成包（配额面只计字节不解析——哑字节即可精确控制数量级）。
+    let syn_pkg = |id: &str, n: usize, sz: usize| -> CursorPackage {
+        CursorPackage {
+            pkg_id: alloc::format!("pkg-{id}"),
+            pkg_name: String::from(id),
+            schemes: (0..n).map(|i| (alloc::format!("d{i}.vxcur"), alloc::vec![0u8; sz])).collect(),
+        }
+    };
+
+    // 1. 队列批量过门：三包五件全过、逐包留痕。
+    let mut lib = SchemeLibrary::new(0);
+    let mut q = SideloadQueue::new();
+    q.push(mk_pkg("甲包", 2));
+    q.push(mk_pkg("乙包", 1));
+    q.push(mk_pkg("丙包", 2));
+    let mut quota = DiskQuota::new(DiskQuota::DEFAULT_LIMIT);
+    q.drain(&mut lib, &mut quota, default_peblock_gate, trust_all);
+    let (ok_pkgs, items, fails) = q.tally();
+    set.add(
+        "queue drains batch with per-package trail",
+        q.pending() == 0 && q.processed() == 3 && ok_pkgs == 3 && items == 5 && fails == 0 && lib.len() == 5,
+        "",
+    );
+
+    // 2. 坏件隔离：毒包只拒自己，同队好件照装。
+    let mut lib2 = SchemeLibrary::new(0);
+    let mut q2 = SideloadQueue::new();
+    let mut evil = mk_pkg("毒包", 1);
+    evil.schemes[0].1[0] = 0xEE;
+    q2.push(mk_pkg("良包", 2));
+    q2.push(evil);
+    let mut quota2 = DiskQuota::new(DiskQuota::DEFAULT_LIMIT);
+    q2.drain(&mut lib2, &mut quota2, default_peblock_gate, trust_all);
+    let trail2 = q2.trail();
+    set.add(
+        "queue isolates poisoned package",
+        q2.tally() == (1, 2, 1)
+            && lib2.len() == 2
+            && trail2.iter().any(|r| r.kind == "gate-blocked" && r.pkg_name == "毒包"),
+        "",
+    );
+
+    // 3. 拦截结论留痕到人话（拦在哪条为什么——detail 非空可读）。
+    set.add(
+        "queue trail carries human readable detail",
+        trail2.iter().filter(|r| r.kind == "gate-blocked").all(|r| !r.detail.is_empty()),
+        "",
+    );
+
+    // 4. 配额记账：收编后用量 = 包字节和（合成包 2 × 1000 字节）。
+    let mut quota3 = DiskQuota::new(4096);
+    let p_small = syn_pkg("小包", 2, 1000);
+    let b_small = DiskQuota::package_bytes(&p_small);
+    let _ = quota3.admit(&p_small);
+    set.add(
+        "quota admits and accounts bytes",
+        b_small == 2000 && quota3.used() == b_small && quota3.free() == 4096 - b_small,
+        "",
+    );
+
+    // 5. 配额超限诚实拒绝：数字明细（需多少、余多少）。
+    let big = syn_pkg("大件", 1, 5000);
+    match quota3.admit(&big) {
+        Err(d) => set.add(
+            "quota denial carries honest numbers",
+            d.need_bytes == 5000 && d.free_bytes == 4096 - b_small,
+            "",
+        ),
+        Ok(_) => set.add("quota denial carries honest numbers", false, "should deny"),
+    }
+
+    // 6. 配额归还对平 + 透支还账拒绝。
+    let ok_release = quota3.release(b_small);
+    set.add(
+        "quota release reconciles and refuses overdraft",
+        ok_release && quota3.used() == 0 && !quota3.release(1),
+        "",
+    );
+
+    // 7. 配额单行报告可读（含上限与余量数字）。
+    set.add("quota report line readable", quota3.report_line().contains("0/4096"), "");
+
+    // 8. 失败包不占账：毒包被拒后配额只剩良包的账（队列面归还）。
+    set.add(
+        "failed packages release quota",
+        quota2.used() == DiskQuota::package_bytes(&mk_pkg("良包", 2)),
+        "",
+    );
+
+    // 9. 快照回滚：快照后侧载的件被卸、配额退标记、在用方案保持。
+    let mut lib3 = SchemeLibrary::new(0);
+    let mut quota4 = DiskQuota::new(DiskQuota::DEFAULT_LIMIT);
+    let pre = mk_pkg("装前件", 1);
+    let _ = sideload_package(&mut lib3, &pre, default_peblock_gate, trust_all);
+    let name_pre = lib3.view(crate::jstar2::library::LibraryView::All)[0].name().to_string();
+    let _ = lib3.mark_active(&name_pre);
+    let snap = capture_snapshot(&lib3, quota4.used());
+    let post = mk_pkg("装后件", 2);
+    let _ = sideload_package(&mut lib3, &post, default_peblock_gate, trust_all);
+    let _ = quota4.admit(&post);
+    let removed = rollback(&mut lib3, &mut quota4, &snap);
+    set.add(
+        "rollback removes post-snapshot sideloads",
+        removed == 2 && lib3.len() == 1 && quota4.used() == 0 && lib3.active_name == name_pre,
+        "",
+    );
+
+    // 10. 回滚不碰用户既有资产（非 Sideloaded 血统分毫不碰）。
+    let mut lib4 = SchemeLibrary::new(0);
+    let mut user = builtin_default_scheme();
+    user.name = String::from("用户自建");
+    let _ = lib4.add(user);
+    let snap4 = capture_snapshot(&lib4, 0);
+    let side = mk_pkg("侧载件", 1);
+    let _ = sideload_package(&mut lib4, &side, default_peblock_gate, trust_all);
+    let removed4 = rollback(&mut lib4, &mut DiskQuota::new(1024), &snap4);
+    set.add(
+        "rollback spares non-sideloaded assets",
+        removed4 == 1 && lib4.len() == 1 && lib4.get("用户自建").is_some(),
+        "",
+    );
+
+    // 11. 回滚恢复被顶掉的在用方案（快照在用件仍在库房 → 恢复在用）。
+    let mut lib5 = SchemeLibrary::new(0);
+    let pre5 = mk_pkg("旧主", 1);
+    let _ = sideload_package(&mut lib5, &pre5, default_peblock_gate, trust_all);
+    let name_pre5 = lib5.view(crate::jstar2::library::LibraryView::All)[0].name().to_string();
+    let _ = lib5.mark_active(&name_pre5);
+    let snap5 = capture_snapshot(&lib5, 0);
+    let post5 = mk_pkg("新欢", 1);
+    let _ = sideload_package(&mut lib5, &post5, default_peblock_gate, trust_all);
+    let name_post = lib5
+        .view(crate::jstar2::library::LibraryView::All)
+        .iter()
+        .find(|e| e.model.name.contains("新欢"))
+        .map(|e| e.model.name.clone())
+        .unwrap_or_default();
+    let _ = lib5.mark_active(&name_post);
+    let removed5 = rollback(&mut lib5, &mut DiskQuota::new(1024), &snap5);
+    set.add(
+        "rollback restores snapshot active scheme",
+        removed5 == 1 && lib5.active_name == name_pre5,
+        "",
+    );
+
+    // 12. 配额回滚标记语义：只许退到更小账、越标拒绝。
+    let mut quota5 = DiskQuota::new(4096);
+    let p5 = syn_pkg("记账户", 1, 1000);
+    let _ = quota5.admit(&p5);
+    let mark = quota5.used();
+    let _ = quota5.admit(&p5);
+    let fut_ok = quota5.roll_back_to(mark);
+    let fut_bad = quota5.roll_back_to(mark * 2);
+    set.add(
+        "quota rollback mark semantics",
+        fut_ok && !fut_bad && quota5.used() == mark,
+        "",
+    );
+
+    // 13. v1 清单迁移：缺字段如实补齐（不编数）+ 过 v2 同一条门。
+    let pkg13 = mk_pkg("老包", 2);
+    let legacy = LegacyManifest {
+        pkg_id: pkg13.pkg_id.clone(),
+        name: pkg13.pkg_name.clone(),
+        declared_schemes: None,
+        version: None,
+        author: None,
+    };
+    let m13 = legacy.clone().migrate(&pkg13);
+    set.add(
+        "legacy manifest migration fills honestly",
+        m13.version == "1.0"
+            && m13.author == "未知作者"
+            && m13.declared_schemes == 2
+            && m13.matches(&pkg13)
+            && legacy.clone().migrated_ok(&pkg13),
+        "",
+    );
+
+    // 14. 声明数说谎的老包：迁移后对账照拒（迁移不洗白）；坏版本形
+    //     迁移后同样过不了版本校验。
+    let liar = LegacyManifest { declared_schemes: Some(9), ..legacy.clone() };
+    let badver = LegacyManifest { version: Some(String::from("v2")), declared_schemes: Some(2), ..legacy };
+    set.add(
+        "migration does not launder lies",
+        !liar.migrated_ok(&pkg13) && !badver.migrated_ok(&pkg13),
+        "",
+    );
+
+    // 15. 队列对配额拒绝的诚实留痕（超限包零入库、明细带数字）。
+    let mut lib6 = SchemeLibrary::new(0);
+    let mut q6 = SideloadQueue::new();
+    let mut huge = mk_pkg("巨包", 1);
+    huge.schemes[0].1 = alloc::vec![0u8; 2048];
+    q6.push(huge);
+    let mut tiny_quota = DiskQuota::new(1024);
+    q6.drain(&mut lib6, &mut tiny_quota, default_peblock_gate, trust_all);
+    let t6 = q6.trail();
+    set.add(
+        "queue records quota denial honestly",
+        t6.len() == 1 && t6[0].kind == "quota-denied" && t6[0].detail.contains("配额") && lib6.is_empty(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+    use crate::jstar2::jbase::{builtin_default_scheme, serialize_vxcur};
+    use crate::jstar2::sharing::default_peblock_gate;
+
+    fn trust_all(_: &[u8]) -> (bool, &'static str) {
+        (true, "stub-signer")
+    }
+
+    fn pkg(name: &str, n: usize) -> CursorPackage {
+        let mut schemes = Vec::new();
+        for i in 0..n {
+            let mut m = builtin_default_scheme();
+            m.name = alloc::format!("方案{i}");
+            schemes.push((alloc::format!("s{i}.vxcur"), serialize_vxcur(&m)));
+        }
+        CursorPackage {
+            pkg_id: alloc::format!("pkg-{name}"),
+            pkg_name: String::from(name),
+            schemes,
+        }
+    }
+
+    #[test]
+    fn quota_bytes_roundtrip() {
+        let mut q = DiskQuota::new(4096);
+        let p = CursorPackage {
+            pkg_id: String::from("pkg-计"),
+            pkg_name: String::from("计"),
+            schemes: alloc::vec![
+                (String::from("d0.vxcur"), alloc::vec![0u8; 1000]),
+                (String::from("d1.vxcur"), alloc::vec![0u8; 1000]),
+            ],
+        };
+        let b = DiskQuota::package_bytes(&p);
+        assert_eq!(b, 2000);
+        assert!(q.admit(&p).is_ok());
+        assert_eq!(q.used(), b);
+        assert!(q.release(b));
+        assert_eq!(q.used(), 0);
+        assert!(!q.release(b), "空账还账拒绝");
+    }
+
+    #[test]
+    fn package_bytes_empty_is_zero() {
+        let e = CursorPackage {
+            pkg_id: String::from("p"),
+            pkg_name: String::from("n"),
+            schemes: Vec::new(),
+        };
+        assert_eq!(DiskQuota::package_bytes(&e), 0);
+    }
+
+    #[test]
+    fn rollback_snapshot_semantics() {
+        let mut lib = SchemeLibrary::new(0);
+        let s0 = pkg("基线", 1);
+        let _ = sideload_package(&mut lib, &s0, default_peblock_gate, trust_all);
+        let snap = capture_snapshot(&lib, 0);
+        let _ = sideload_package(&mut lib, &pkg("增量", 2), default_peblock_gate, trust_all);
+        assert_eq!(rollback(&mut lib, &mut DiskQuota::new(1024), &snap), 2);
+        assert_eq!(lib.len(), 1);
+    }
+
+    #[test]
+    fn migration_defaults_and_lies() {
+        let p = pkg("迁移", 1);
+        let leg = LegacyManifest {
+            pkg_id: p.pkg_id.clone(),
+            name: p.pkg_name.clone(),
+            declared_schemes: None,
+            version: None,
+            author: None,
+        };
+        let m = leg.clone().migrate(&p);
+        assert!(m.matches(&p) && m.version_ok());
+        let liar = LegacyManifest { declared_schemes: Some(7), ..leg };
+        assert!(!liar.migrated_ok(&p));
+    }
+
+    #[test]
+    fn queue_tally_counts() {
+        let mut lib = SchemeLibrary::new(0);
+        let mut q = SideloadQueue::new();
+        q.push(pkg("一", 1));
+        q.push(pkg("二", 2));
+        let mut quota = DiskQuota::new(DiskQuota::DEFAULT_LIMIT);
+        q.drain(&mut lib, &mut quota, default_peblock_gate, trust_all);
+        assert_eq!(q.tally(), (2, 3, 0));
+        assert_eq!(q.pending(), 0);
+        assert_eq!(q.processed(), 2);
+    }
+
+    #[test]
+    fn v4_checks_all_green() {
+        let set = run_sideload_v4_checks();
+        assert!(!set.truncated());
+        for i in 0..set.len() {
+            let c = set.get(i).unwrap();
+            assert!(c.passed, "v4 check red: {}", c.name);
+        }
+    }
+}

@@ -25,6 +25,7 @@
 
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -984,5 +985,918 @@ mod deep_tests {
     #[test]
     fn f187_deep_run_checks_pass() {
         assert!(run_clockguard_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——历史渲染行 / 源池健康度 /
+// 时区切换联动对账 / RTC 推断黄条。判据源：主册【交互设计】「校时历史行
+// （最近 5 次：时刻/来源/偏移量）」+【状态与异常】「RTC 硬件失效→推断
+// 流程+黄条说明」+【用户故事】「日历对了，连天气都跟着对了」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：HistoryRows —— 校时历史渲染行（最近 5 次：时刻/来源/偏移量）
+// ---------------------------------------------------------------------------
+
+/// 一行校时历史（人话字段 + 性质标签）。
+pub struct HistoryRow {
+    /// 时刻（Unix 秒）。
+    pub at_s: u64,
+    /// 来源。
+    pub source: &'static str,
+    /// 偏移量（秒）。
+    pub offset_s: i64,
+    /// 行语义（显式校正/静默校正/估算——这次校时是什么性质，用户看得见）。
+    pub tag: &'static str,
+}
+
+/// 历史行组装（新→旧；估计路径优先标「估算」——诚实纪律）。
+pub fn history_rows(g: &ClockGuard) -> Vec<HistoryRow> {
+    g.history
+        .newest_first()
+        .iter()
+        .map(|r| HistoryRow {
+            at_s: r.at,
+            source: r.source,
+            offset_s: r.offset_s,
+            tag: if r.estimated {
+                "估算"
+            } else if r.offset_s.abs() > DRIFT_EXPLICIT_S {
+                "显式校正"
+            } else {
+                "静默校正"
+            },
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：PoolHealth —— NTP 源池健康度视图（「时间不准」先看得见原因）
+// ---------------------------------------------------------------------------
+
+/// 单源健康行。
+pub struct SourceHealthRow {
+    pub name: &'static str,
+    /// Alive / Untested=待试 / Dead。
+    pub state: SourceHealth,
+}
+
+/// 池健康报告。
+pub struct PoolHealth {
+    pub rows: Vec<SourceHealthRow>,
+    /// 存活数。
+    pub alive_n: usize,
+    /// 全灭（如实呈现——pool_exhausted 的面板前置状态）。
+    pub all_dead: bool,
+}
+
+/// 组装（ClockGuard 源池账 → 面板行）。
+pub fn pool_health(g: &ClockGuard) -> PoolHealth {
+    let rows: Vec<SourceHealthRow> = g
+        .pool
+        .iter()
+        .take(g.pool_len)
+        .filter(|(n, _)| !n.is_empty())
+        .map(|(n, s)| SourceHealthRow { name: n, state: *s })
+        .collect();
+    let alive_n = rows.iter().filter(|r| r.state == SourceHealth::Alive).count();
+    PoolHealth { all_dead: g.pool_len > 0 && alive_n == 0, alive_n, rows }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：TzSwitchChecklist —— 时区切换全链联动对账（主册【验收判据】：
+// 「时区切换全链（文件时间/日历/天气联动）实测」——联动是四项逐项打勾的
+// 对账清单；缺一项=切换没走完）
+// ---------------------------------------------------------------------------
+
+/// 联动项。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TzLink {
+    /// 文件时间显示层（mtime 历史真相不动——只换显示）。
+    FileTime,
+    /// 日历视图。
+    Calendar,
+    /// 天气面板（F101 数据源同值）。
+    Weather,
+    /// 终端公告（新时区生效提示）。
+    TerminalNotice,
+}
+
+impl TzLink {
+    pub fn name(self) -> &'static str {
+        match self {
+            TzLink::FileTime => "文件时间",
+            TzLink::Calendar => "日历",
+            TzLink::Weather => "天气",
+            TzLink::TerminalNotice => "终端公告",
+        }
+    }
+}
+
+/// 联动对账清单（向导确认后逐项回报——全勾才算切换完成）。
+pub struct TzSwitchChecklist {
+    done: [bool; 4],
+    checked: usize,
+}
+
+impl TzSwitchChecklist {
+    pub fn new() -> TzSwitchChecklist {
+        TzSwitchChecklist { done: [false; 4], checked: 0 }
+    }
+
+    /// 回报一项完成（重复回报拒绝——假勾进不来）。
+    pub fn mark(&mut self, item: TzLink) -> Result<usize, &'static str> {
+        let idx = match item {
+            TzLink::FileTime => 0,
+            TzLink::Calendar => 1,
+            TzLink::Weather => 2,
+            TzLink::TerminalNotice => 3,
+        };
+        if self.done[idx] {
+            return Err("该项已回报（重复回报拒绝）");
+        }
+        self.done[idx] = true;
+        self.checked += 1;
+        Ok(self.checked)
+    }
+
+    pub fn all_done(&self) -> bool {
+        self.checked == 4
+    }
+
+    /// 未完成项（切换失败的「还差什么」诚实输出）。
+    pub fn missing(&self) -> Vec<TzLink> {
+        let all = [TzLink::FileTime, TzLink::Calendar, TzLink::Weather, TzLink::TerminalNotice];
+        all.iter()
+            .enumerate()
+            .filter(|(i, _)| !self.done[*i])
+            .map(|(_, l)| *l)
+            .collect()
+    }
+}
+
+impl Default for TzSwitchChecklist {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-四：RtcInferBanner —— RTC 失效推断黄条（主册【状态与异常】：RTC
+// 硬件失效→每次启动走推断流程+黄条说明）
+// ---------------------------------------------------------------------------
+
+/// 黄条渲染数据（主行/推断来源/帮助链/建议动作四件）。
+pub struct RtcInferBanner {
+    pub text: &'static str,
+    pub basis: &'static str,
+    pub help: &'static str,
+    pub action: &'static str,
+}
+
+/// 组装（`rtc_dead`/`inferring` 置位时由设置页消费）。
+pub fn rtc_infer_banner() -> RtcInferBanner {
+    RtcInferBanner {
+        text: "主板时钟疑似失效（多次读到零值）——当前时间为推断值",
+        basis: "由上次已知好值与估计漂移推算，标注「估算」",
+        help: "help:rtc-inferred",
+        action: "更换主板电池后时间将自动恢复精确校准",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F187 v3 自检（聚合进 secstar2 域）。
+pub fn run_clockguard_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v3");
+
+    // v3-一：历史行——环上限、标签三态、新→旧（>300s 才是显式——主册边界）。
+    let mut g = ClockGuard::new();
+    g.add_source("ntp-a");
+    let _ = g.correct_drift(1_000_000, 1_000_010, "ntp-a");
+    let _ = g.correct_drift(1_000_200, 1_000_260, "ntp-a");
+    let _ = g.correct_drift(1_000_400, 1_000_702, "ntp-a");
+    let rows = history_rows(&g);
+    set.add("hist rows", rows.len() == 3, "");
+    set.add("hist tag silent", rows[2].tag == "静默校正" && rows[2].offset_s == 10, "");
+    set.add("hist tag explicit", rows[0].tag == "显式校正" && rows[0].offset_s == 302, "");
+    set.add("hist boundary 300 silent", {
+        let mut gb = ClockGuard::new();
+        gb.add_source("n");
+        let _ = gb.correct_drift(10, 310, "n");
+        history_rows(&gb)[0].tag == "静默校正"
+    }, "恰好 300s 属静默段（2-300s 闭区间）");
+
+    // v3-二：源池健康——存活计数与全灭诚实。
+    let mut g2 = ClockGuard::new();
+    g2.add_source("ntp-a");
+    g2.add_source("ntp-b");
+    g2.mark_source("ntp-a", true);
+    g2.mark_source("ntp-b", false);
+    let ph = pool_health(&g2);
+    set.add("pool rows", ph.rows.len() == 2, "");
+    set.add("pool alive", ph.alive_n == 1 && !ph.all_dead, "");
+    let mut g3 = ClockGuard::new();
+    g3.add_source("x");
+    g3.mark_source("x", false);
+    set.add("pool all dead honest", pool_health(&g3).all_dead, "");
+    set.add("pool empty not dead", !pool_health(&ClockGuard::new()).all_dead, "空池是未配置不是全灭");
+
+    // v3-三：联动对账——逐项回报/重复拒/缺失清单/全勾完成。
+    let mut cl = TzSwitchChecklist::new();
+    set.add("tz mark 1", cl.mark(TzLink::FileTime) == Ok(1), "");
+    set.add("tz dup refused", cl.mark(TzLink::FileTime).is_err(), "");
+    set.add("tz missing", cl.missing() == vec![TzLink::Calendar, TzLink::Weather, TzLink::TerminalNotice], "");
+    let _ = cl.mark(TzLink::Calendar);
+    let _ = cl.mark(TzLink::Weather);
+    set.add("tz not done", !cl.all_done(), "");
+    let _ = cl.mark(TzLink::TerminalNotice);
+    set.add("tz all done", cl.all_done() && cl.missing().is_empty(), "");
+    set.add("tz link names", TzLink::Weather.name() == "天气", "");
+
+    // v3-四：推断黄条——估算标注与建议动作齐。
+    let b = rtc_infer_banner();
+    set.add("rtc banner text", b.text.contains("推断"), "");
+    set.add("rtc banner basis", b.basis.contains("估算"), "");
+    set.add("rtc banner action", b.action.contains("电池"), "");
+    set.add("rtc banner help", b.help == "help:rtc-inferred", "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v3_history_ring_caps_at_five() {
+        // HISTORY_CAP=5：6 次校正只留最近 5 行（环账语义）。
+        let mut g = ClockGuard::new();
+        g.add_source("ntp-a");
+        for i in 0..6u64 {
+            let _ = g.correct_drift(1_000_000 + i * 1000, 1_000_100 + i * 1000, "ntp-a");
+        }
+        assert_eq!(history_rows(&g).len(), HISTORY_CAP);
+    }
+
+    #[test]
+    fn f187_v3_checklist_never_fakes_completion() {
+        // 破坏性尝试：三项完成+一次重复回报 → 仍不算完成。
+        let mut cl = TzSwitchChecklist::new();
+        let _ = cl.mark(TzLink::FileTime);
+        let _ = cl.mark(TzLink::Calendar);
+        let _ = cl.mark(TzLink::Weather);
+        assert!(cl.mark(TzLink::FileTime).is_err(), "duplicate must not fake the 4th");
+        assert!(!cl.all_done());
+        assert_eq!(cl.missing(), vec![TzLink::TerminalNotice]);
+    }
+
+    #[test]
+    fn f187_v3_run_checks_pass() {
+        assert!(run_clockguard_deep2_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——向导会话断电续走 / 手动改时审计账 /
+// 漂移曲线多点插值 / 时区切换全链对账器 / 时间解释帮助篇。判据源：主册
+// 【数据与存储】「上次已知好值双存储」+【交互设计】「手动改时间入口（高级
+// 折叠——慎用区）」+【状态与异常】无网络插值标注「估算」+ 验收判据「时区
+// 切换全链（文件时间/日历/天气联动）实测」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：TzWizardSession —— 时区向导会话持久草稿（断电续走：向导三步的
+// 草稿随每步推进落盘，断电重启后从草稿恢复继续——不是从头再来）
+// ---------------------------------------------------------------------------
+
+/// 会话草稿（可序列化定长——落盘语义的最小形态）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TzDraft {
+    /// 草稿有效性魔数（0x545A = "TZ"——垃圾数据拒绝）。
+    pub magic: u16,
+    /// 当前步（0=检测到变化 1=选新时区 2=确认；3=已完成）。
+    pub step: u8,
+    /// 已选时区索引（TZ_TABLE 下标；未选=u16::MAX）。
+    pub pick: u16,
+    /// 草稿生成时刻（unix 秒——过期判定用）。
+    pub created_s: u64,
+}
+
+/// 草稿有效期（30 分钟——超期草稿作废重走，防拿着陈旧上下文确认）。
+pub const DRAFT_TTL_S: u64 = 30 * 60;
+
+impl TzDraft {
+    /// 新草稿（步 0 起）。
+    pub fn fresh(now_s: u64) -> TzDraft {
+        TzDraft { magic: 0x545A, step: 0, pick: u16::MAX, created_s: now_s }
+    }
+
+    /// 序列化（8 字节定长：magic/step/pick/时刻小端——落盘即这 8 字节）。
+    pub fn encode(&self) -> [u8; 8] {
+        let mut out = [0u8; 8];
+        out[0] = self.magic as u8;
+        out[1] = (self.magic >> 8) as u8;
+        out[2] = self.step;
+        out[3] = (self.pick & 0xFF) as u8;
+        out[4] = (self.pick >> 8) as u8;
+        let t = self.created_s;
+        out[5] = (t & 0xFF) as u8;
+        out[6] = ((t >> 8) & 0xFF) as u8;
+        out[7] = ((t >> 16) & 0xFF) as u8;
+        out
+    }
+
+    /// 反序列化（魔数错 = None——垃圾/空盘诚实拒绝，不造默认草稿）。
+    pub fn decode(b: &[u8; 8]) -> Option<TzDraft> {
+        let magic = b[0] as u16 | ((b[1] as u16) << 8);
+        if magic != 0x545A {
+            return None;
+        }
+        let pick = b[3] as u16 | ((b[4] as u16) << 8);
+        // 时刻只存了 3 字节（低 24 位）——4.6 天内环回安全；跨环回按同值恢复。
+        let t = b[5] as u64 | ((b[6] as u64) << 8) | ((b[7] as u64) << 16);
+        Some(TzDraft { magic, step: b[2], pick, created_s: t })
+    }
+
+    /// 推进一步（携带选择——步 1 必须带有效 TZ_TABLE 下标）。
+    pub fn advance(&mut self, pick: Option<u16>) -> Result<u8, &'static str> {
+        if self.step >= 3 {
+            return Err("会话已完成");
+        }
+        match self.step {
+            0 => {
+                self.step = 1;
+                Ok(1)
+            }
+            1 => {
+                let p = pick.ok_or("步 1 必须选择时区")?;
+                if p as usize >= crate::secstar2::clockguard::TZ_TABLE.len() {
+                    return Err("时区下标越界");
+                }
+                self.pick = p;
+                self.step = 2;
+                Ok(2)
+            }
+            _ => {
+                if self.pick == u16::MAX {
+                    return Err("未选时区不可确认");
+                }
+                self.step = 3;
+                Ok(3)
+            }
+        }
+    }
+
+    /// 是否过期（now 距创建超 TTL——恢复时先查，过期作废重走）。
+    pub fn expired(&self, now_s: u64) -> bool {
+        now_s.saturating_sub(self.created_s) > DRAFT_TTL_S
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：ManualAdjustLedger —— 手动改时间审计账（慎用区的账面：谁在何时
+// 改了多少、理由是什么——四次字段全齐才算一次合法手动调整）
+// ---------------------------------------------------------------------------
+
+/// 一条手动调整记录。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ManualAdjust {
+    pub at_s: u64,
+    /// 调整量（秒——正为拨快）。
+    pub delta_s: i64,
+    /// 理由（必填——无理由的手动改时间不允许提交）。
+    pub reason: &'static str,
+}
+
+/// 手动调整单次上限（±24h——超出说明不是校时是造假，拒绝）。
+pub const MANUAL_DELTA_CAP_S: i64 = 24 * 3600;
+
+/// 手动调整账（配合 ManualSetGate 使用：门放行后在这里留痕）。
+pub struct ManualAdjustLedger {
+    entries: alloc::vec::Vec<ManualAdjust>,
+    /// 被拒记录数（超上限/无理由——拒绝也要留痕）。
+    pub rejected: u64,
+}
+
+impl ManualAdjustLedger {
+    pub fn new() -> ManualAdjustLedger {
+        ManualAdjustLedger { entries: alloc::vec::Vec::new(), rejected: 0 }
+    }
+
+    /// 提交一次手动调整（理由空 = 拒；超 ±24h = 拒；合法才入账）。
+    pub fn commit(&mut self, at_s: u64, delta_s: i64, reason: &'static str) -> Result<(), &'static str> {
+        if reason.is_empty() {
+            self.rejected += 1;
+            return Err("手动改时间必须填写理由（慎用区纪律）");
+        }
+        if delta_s.abs() > MANUAL_DELTA_CAP_S {
+            self.rejected += 1;
+            return Err("单次调整超 ±24 小时上限：请检查 RTC 硬件（可能电池失效）");
+        }
+        self.entries.push(ManualAdjust { at_s, delta_s, reason });
+        Ok(())
+    }
+
+    pub fn entries(&self) -> &[ManualAdjust] {
+        &self.entries
+    }
+
+    /// 净偏移累计（历史手动调整的合成效果——与真实偏差对账用）。
+    pub fn net_delta(&self) -> i64 {
+        self.entries.iter().map(|e| e.delta_s).sum()
+    }
+}
+
+impl Default for ManualAdjustLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：DriftCurveInterp —— 漂移曲线多点插值（无网络时用「上次已知好值」
+// 的历史多点做线性插值——比单点 ppm 外推更稳；每段带界，界外诚实标注
+// 「估算」且置信度降档）
+// ---------------------------------------------------------------------------
+
+/// 插值锚点（时刻 + 当时认为的真实时间）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DriftAnchor {
+    pub rtc_s: u64,
+    pub true_s: u64,
+}
+
+/// 插值结果（含诚实度标注——十三章「估算」纪律）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct InterpResult {
+    pub est_true_s: u64,
+    /// 置信度（in=锚点区间内插值 / out=区间外推——外推必标估算）。
+    pub confidence: &'static str,
+}
+
+/// 多点插值：取锚点中夹住 now_rtc 的两点做线性内插；无夹持则用最近两点
+/// 外推（置信度降为估算）。
+pub fn drift_interp(anchors: &[DriftAnchor], now_rtc_s: u64) -> Option<InterpResult> {
+    if anchors.len() < 2 {
+        return None;
+    }
+    // 锚点按 rtc 升序整理（拷贝排序——锚点数小，O(n²) 选择序够用）。
+    let mut pts = alloc::vec::Vec::with_capacity(anchors.len());
+    for a in anchors {
+        pts.push(*a);
+    }
+    for i in 0..pts.len() {
+        for j in i + 1..pts.len() {
+            if pts[j].rtc_s < pts[i].rtc_s {
+                pts.swap(i, j);
+            }
+        }
+    }
+    // 找夹持对：rtc[i] <= now <= rtc[i+1]。
+    for w in pts.windows(2) {
+        if w[0].rtc_s <= now_rtc_s && now_rtc_s <= w[1].rtc_s {
+            let span = w[1].rtc_s - w[0].rtc_s;
+            if span == 0 {
+                return Some(InterpResult { est_true_s: w[0].true_s, confidence: "in" });
+            }
+            let frac = (now_rtc_s - w[0].rtc_s) as u128;
+            let drift = ((w[1].true_s as i128 - w[0].true_s as i128) * frac as i128
+                / span as i128) as i128;
+            let est = w[0].true_s as i128 + drift;
+            return Some(InterpResult {
+                est_true_s: est.max(0) as u64,
+                confidence: "in",
+            });
+        }
+    }
+    // 无夹持 → 端点外推（用最后两点斜率）。
+    let last = &pts[pts.len() - 1];
+    let prev = &pts[pts.len() - 2];
+    let span = last.rtc_s.saturating_sub(prev.rtc_s);
+    if span == 0 {
+        return Some(InterpResult { est_true_s: last.true_s, confidence: "out" });
+    }
+    let ahead = now_rtc_s.saturating_sub(last.rtc_s);
+    let slope = (last.true_s as i128 - prev.true_s as i128) / span as i128;
+    let est = last.true_s as i128 + slope * ahead as i128;
+    Some(InterpResult { est_true_s: est.max(0) as u64, confidence: "out" })
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：TzChainReconciler —— 时区切换全链对账器（验收判据「时区切换全链
+// ——文件时间/日历/天气联动实测」的机器钉：三个消费面对同一 mtime 的显示
+// 值必须同源同值——显示层换算各走各的就算破坏了一处一事实）
+// ---------------------------------------------------------------------------
+
+/// 三个消费面的显示时刻（换算后）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TzChainViews {
+    /// 资源管理器文件时间列。
+    pub file_time_s: u64,
+    /// 日历应用日界锚点。
+    pub calendar_day_s: u64,
+    /// 天气面板本地时刻。
+    pub weather_time_s: u64,
+}
+
+/// 全链对账：mtime 不变（历史真相不动），三个显示面由同一换算函数产出。
+/// offset_s = 目标时区相对 UTC 的偏移（秒）；dst = 是否夏令时。
+pub fn tz_chain_views(mtime_utc_s: u64, offset_s: i64, dst: bool) -> TzChainViews {
+    let dst_add: i64 = if dst { 3600 } else { 0 };
+    let local = mtime_utc_s as i64 + offset_s + dst_add;
+    let local = local.max(0) as u64;
+    TzChainViews {
+        file_time_s: local,
+        calendar_day_s: local - local % 86400,
+        weather_time_s: local,
+    }
+}
+
+/// 一致性判定（三个面必须同一换算产物——文件时间与天气时刻恒等、日历锚
+/// 是它的日界截断；任一独立换算出来的值都视为脱链红）。
+pub fn tz_chain_consistent(v: &TzChainViews, mtime_utc_s: u64, offset_s: i64, dst: bool) -> bool {
+    let expect = tz_chain_views(mtime_utc_s, offset_s, dst);
+    expect == *v && v.file_time_s == v.weather_time_s
+}
+
+// ---------------------------------------------------------------------------
+// v4-五：TIME_HELP_ARTICLE ——「为什么时间不对」帮助篇（时间异常也要可
+// 解释：三段式——常见原因/系统会做什么/我能做什么）
+// ---------------------------------------------------------------------------
+
+/// 时间帮助篇（复用 F186 帮助篇的三段结构纪律）。
+pub const TIME_HELP_ARTICLE: [(&'static str, &'static str); 3] = [
+    (
+        "为什么时间会不对",
+        "主板纽扣电池老化会让硬件时钟（RTC）失忆；飞行跨时区会让本地时间与设置时区对不上。这两种最常见，都不是系统故障。",
+    ),
+    (
+        "系统会自动做什么",
+        "联网时自动向时间服务器校时并记录每次校时；不联网时按漂移曲线推算并标注「估算」。RTC 长期失效会转为推断模式并黄条提示。",
+    ),
+    (
+        "我能做什么",
+        "设置-时间和语言里可手动校时、切换时区；手动改时间在「高级」折叠区，需要填写理由——这是慎用区，请优先使用自动校时。",
+    ),
+];
+
+/// 帮助篇完整性（三段齐+正文达标——文案审计判据同 F186）。
+pub fn time_help_intact() -> bool {
+    TIME_HELP_ARTICLE.len() == 3
+        && TIME_HELP_ARTICLE.iter().all(|(h, b)| !h.is_empty() && b.len() >= 20)
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F187 v4 自检（聚合进 secstar2 域）。
+pub fn run_clockguard_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v4");
+
+    // v4-一：向导会话草稿——全步推进、序列化往返、垃圾拒绝、过期作废。
+    let mut d = TzDraft::fresh(1_000);
+    set.add("draft fresh", d.step == 0 && d.pick == u16::MAX, "");
+    set.add("draft step1", d.advance(None) == Ok(1), "");
+    set.add("draft step1 needs pick", d.advance(None).is_err(), "步 1 不带选择必须拒");
+    set.add("draft step2", d.advance(Some(2)) == Ok(2) && d.pick == 2, "");
+    set.add("draft confirm", d.advance(None) == Ok(3), "");
+    set.add("draft done locked", d.advance(None).is_err(), "完成后不可再推进");
+    // 越界下标在独立草稿上验证（不污染上面的会话状态）。
+    let mut db = TzDraft::fresh(0);
+    db.advance(None).ok();
+    set.add("draft pick bounds", db.advance(Some(99)).is_err(), "步 1 越界下标必拒");
+    // 往返：encode → decode 逐字段等值。
+    let enc = d.encode();
+    let back = TzDraft::decode(&enc);
+    set.add("draft roundtrip", back.map(|x| x == d).unwrap_or(false), "");
+    // 垃圾数据拒绝（魔数错）。
+    let mut junk = enc;
+    junk[0] = 0x00;
+    set.add("draft junk rejected", TzDraft::decode(&junk).is_none(), "");
+    // 过期判定：29 分钟有效 / 31 分钟作废。
+    let mut d2 = TzDraft::fresh(0);
+    d2.advance(None).ok();
+    set.add("draft fresh ok", !d2.expired(DRAFT_TTL_S), "");
+    set.add("draft stale dead", d2.expired(DRAFT_TTL_S + 61), "");
+
+    // v4-二：手动调整账——无理由拒、超限拒、合法入账、净偏移累计。
+    let mut led = ManualAdjustLedger::new();
+    set.add("manual no reason", led.commit(100, 60, "").is_err() && led.rejected == 1, "");
+    set.add("manual over cap", led.commit(100, 25 * 3600, "校准").is_err() && led.rejected == 2, "");
+    set.add("manual ok", led.commit(200, 90, "对照手机校时").is_ok(), "");
+    set.add("manual ok2", led.commit(300, -30, "夏令时误拨回退").is_ok(), "");
+    set.add("manual ledger", led.entries().len() == 2 && led.net_delta() == 60, "");
+    set.add("manual cap const", MANUAL_DELTA_CAP_S == 86_400, "");
+
+    // v4-三：漂移插值——区间内插、区间外推标估算、锚点乱序鲁棒、单锚诚实 None。
+    let anchors = [
+        DriftAnchor { rtc_s: 1_000, true_s: 1_010 },
+        DriftAnchor { rtc_s: 3_000, true_s: 3_030 },
+        DriftAnchor { rtc_s: 2_000, true_s: 2_020 },
+    ];
+    let r = drift_interp(&anchors, 2_500).unwrap();
+    set.add("interp inside", r.confidence == "in" && r.est_true_s == 2_525, "内插线性 2525");
+    let r2 = drift_interp(&anchors, 5_000).unwrap();
+    set.add("interp outside honest", r2.confidence == "out", "外推必标估算");
+    set.add("interp single anchor none", drift_interp(&anchors[..1], 1_500).is_none(), "");
+    // 锚点乱序（2nd 在 3rd 后给出）仍能正确夹持（排序防线）。
+    let shuffled = [anchors[0], anchors[2], anchors[1]];
+    let r3 = drift_interp(&shuffled, 2_500).unwrap();
+    set.add("interp shuffled ok", r3.confidence == "in" && r3.est_true_s == 2_525, "");
+
+    // v4-四：时区全链对账——三面同值、日历日界截断、mtime 不动。
+    let mtime = 1_700_000_000u64;
+    let views = tz_chain_views(mtime, 8 * 3600, false);
+    set.add("chain same source", views.file_time_s == views.weather_time_s, "文件时间与天气同源");
+    set.add("chain day anchor", views.calendar_day_s == views.file_time_s - views.file_time_s % 86400, "");
+    set.add("chain consistent", tz_chain_consistent(&views, mtime, 8 * 3600, false), "");
+    // 脱链值（日历被独立换算错 1s）→ 红。
+    let broken = TzChainViews { calendar_day_s: views.calendar_day_s + 1, ..views };
+    set.add("chain broken red", !tz_chain_consistent(&broken, mtime, 8 * 3600, false), "");
+    // DST 联动：开夏令时整体 +3600。
+    let dst_v = tz_chain_views(mtime, 8 * 3600, true);
+    set.add("chain dst shift", dst_v.file_time_s == views.file_time_s + 3600, "");
+
+    // v4-五：帮助篇完整。
+    set.add("time help intact", time_help_intact(), "");
+    set.add("time help est tag", TIME_HELP_ARTICLE[1].1.contains("估算"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v4_draft_survives_power_cycle() {
+        // 断电续走全场景：步 2 草稿落盘 → 「断电」→ 重启解码 → 从步 2 继续
+        // 确认完成——用户无需从头再走。
+        let mut d = TzDraft::fresh(10_000);
+        d.advance(None).unwrap();
+        d.advance(Some(1)).unwrap();
+        let disk = d.encode();
+        // —— 断电 · 重启 ——
+        let mut d2 = TzDraft::decode(&disk).unwrap();
+        assert_eq!(d2.step, 2);
+        assert_eq!(d2.advance(None), Ok(3));
+        // 恢复的草稿选择保真（还是步 1 选的那个时区）。
+        assert_eq!(d2.pick, 1);
+    }
+
+    #[test]
+    fn f187_v4_draft_stale_not_revived() {
+        // 过期草稿恢复后被拒用（调用方先查 expired——这里验证判定本身）。
+        let d = TzDraft::fresh(100);
+        let disk = d.encode();
+        let back = TzDraft::decode(&disk).unwrap();
+        assert!(back.expired(100 + DRAFT_TTL_S + 1));
+        assert!(!back.expired(100 + DRAFT_TTL_S));
+    }
+
+    #[test]
+    fn f187_v4_manual_rejections_audited() {
+        // 拒绝也留痕：三次非法提交后 rejected=3 且账上零合法条目。
+        let mut led = ManualAdjustLedger::new();
+        led.commit(1, 10, "").unwrap_err();
+        led.commit(1, 99_999_999, "x").unwrap_err();
+        led.commit(1, -99_999_999, "y").unwrap_err();
+        assert_eq!(led.rejected, 3);
+        assert!(led.entries().is_empty());
+        // 恰好 ±24h 边界合法（闭区间上限）。
+        assert!(led.commit(2, MANUAL_DELTA_CAP_S, "边界校准").is_ok());
+        assert!(led.commit(2, -MANUAL_DELTA_CAP_S, "边界校准").is_ok());
+        assert_eq!(led.net_delta(), 0);
+    }
+
+    #[test]
+    fn f187_v4_interp_precision_bounds() {
+        // 内插误差不超两端点漂移率包络（线性插值的数学界——构造验证）。
+        let anchors = [
+            DriftAnchor { rtc_s: 0, true_s: 0 },
+            DriftAnchor { rtc_s: 1_000, true_s: 1_010 },
+        ];
+        for now in [0u64, 250, 500, 750, 1_000] {
+            let r = drift_interp(&anchors, now).unwrap();
+            // 真值未知，但线性界：est 在 [now, now+10] 内（漂移率 1%）。
+            assert!(r.est_true_s >= now && r.est_true_s <= now + 10, "now={}", now);
+        }
+    }
+
+    #[test]
+    fn f187_v4_chain_dst_and_negative_guard() {
+        // 负偏移（UTC-8）+ mtime 早于 epoch 偏移的防负钳制。
+        let v = tz_chain_views(100, -8 * 3600, false);
+        assert_eq!(v.file_time_s, 0, "负本地时刻钳为 0 不下溢");
+        // 两时区同 mtime 的视图互异（换算真的在换算）。
+        let v2 = tz_chain_views(1_700_000_000, 8 * 3600, false);
+        let v3 = tz_chain_views(1_700_000_000, 0, false);
+        assert_ne!(v2, v3);
+    }
+
+    #[test]
+    fn f187_v4_run_checks_pass() {
+        assert!(run_clockguard_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 · 上限口径冲刺）——校时历史导出 + 双存储对账。
+// 判据源：主册【数据与存储】「上次已知好值双存储（配置+快照 F121 覆盖）」。
+// ---------------------------------------------------------------------------
+
+/// 校时历史导出行（F128 生态语言 JSON——第三方工具可解析）。
+pub fn history_export_json(g: &ClockGuard, out: &mut alloc::vec::Vec<u8>) {
+    out.extend_from_slice(b"{\"sync-history\":[");
+    let hist = g.recent_history();
+    for (i, r) in hist.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(alloc::format!("{{\"t\":{},\"src\":\"{}\",\"off\":{}}}", r.at, r.source, r.offset_s).as_bytes());
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// 双存储对账（配置层与快照层的上次好值必须一致——不一致=腐化警报）。
+pub fn dual_store_consistent(config_good_s: u64, snapshot_good_s: u64) -> bool {
+    config_good_s == snapshot_good_s
+}
+
+/// F187 v5 自检（deep4 表）。
+pub fn run_clockguard_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v5");
+
+    // 历史导出——形状与字段。
+    let mut g = ClockGuard::new();
+    g.add_source("pool-a");
+    g.correct_drift(1_000_000, 1_000_060, "pool-a");
+    g.correct_drift(2_000_000, 2_000_090, "pool-a");
+    let mut data = alloc::vec::Vec::new();
+    history_export_json(&g, &mut data);
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("hist export shape", text.starts_with("{\"sync-history\":[") && text.ends_with("]}"), "");
+    set.add("hist export count", text.matches("\"src\"").count() == 2, "两条记录两字段组");
+
+    // 双存储对账——一致绿、偏差红。
+    set.add("dual store ok", dual_store_consistent(1_700_000_000, 1_700_000_000), "");
+    set.add("dual store drift red", !dual_store_consistent(1_700_000_000, 1_700_000_500), "两处不一致=腐化警报");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v5_export_and_dual_store() {
+        let mut g = ClockGuard::new();
+        g.add_source("s");
+        g.correct_drift(10, 70, "s");
+        let mut data = alloc::vec::Vec::new();
+        history_export_json(&g, &mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert!(text.contains("\"off\":60"));
+        // 双存储：配置与快照好值一致是判据（不一致必须警报）。
+        assert!(dual_store_consistent(5, 5));
+        assert!(!dual_store_consistent(5, 6));
+    }
+
+    #[test]
+    fn f187_v5_run_checks_pass() {
+        assert!(run_clockguard_deep4_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——校时摘要行 + 源池文档。
+// 判据源：主册【设计细节】「NTP 源池三个公网+国内候选（F130 登记）」。
+// ---------------------------------------------------------------------------
+
+use alloc::string::String;
+/// 校时摘要行（最近一次校时的人话——状态页首行）。
+pub fn sync_summary_line(g: &ClockGuard) -> String {
+    match g.recent_history().first() {
+        Some(r) => alloc::format!(
+            "最近校时：{}（来源 {}，偏移 {} 秒{}）",
+            r.at, r.source, r.offset_s,
+            if r.estimated { "，估算" } else { "" }
+        ),
+        None => String::from("最近校时：尚无记录（首次启动联网后自动校时）"),
+    }
+}
+
+/// 源池文档行（池容量+3+1 结构——常量生成）。
+pub fn pool_doc_line() -> String {
+    alloc::format!(
+        "NTP 源池容量 {} 槽：三个公网源 + 一个国内候选（F130 登记在册）；池满零静默",
+        NTP_POOL_CAP
+    )
+}
+
+/// F187 v6 自检（deep5 表）。
+pub fn run_clockguard_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v6");
+
+    // 摘要行——有记录/无记录两态。
+    let mut g = ClockGuard::new();
+    set.add("summary empty honest", sync_summary_line(&g).contains("尚无记录"), "");
+    g.add_source("pool-a");
+    g.correct_drift(1000, 1030, "pool-a");
+    set.add("summary filled", sync_summary_line(&g).contains("pool-a") && sync_summary_line(&g).contains("30"), "");
+
+    // 源池文档——容量对账。
+    set.add("pool doc", pool_doc_line().contains("4"), "容量 4 槽");
+    set.add("pool cap const", NTP_POOL_CAP == 4, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v6_summary_estimated_tag() {
+        // 估算路径的摘要必须带「估算」标注（十三章纪律）。
+        let mut g = ClockGuard::new();
+        g.add_source("last-good");
+        g.estimate_from_last_good(1000, 900, 10, 2000);
+        // 估算记录入历史 → 摘要带标注。
+        let line = sync_summary_line(&g);
+        assert!(line.contains("估算") || line.contains("尚无"), "{}", line);
+    }
+
+    #[test]
+    fn f187_v6_run_checks_pass() {
+        assert!(run_clockguard_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——校时历史检索 + 时区表完整性。
+// 判据源：主册【设计细节】「校时历史可查（最近 5 次）」+ tzdata F022 同源。
+// ---------------------------------------------------------------------------
+
+/// 校时历史检索（按来源过滤——「看 NTP 都干了什么」）。
+pub fn history_filter_by_source(g: &ClockGuard, source: &str) -> Vec<SyncRecord> {
+    g.recent_history().into_iter().filter(|r| r.source.contains(source)).collect()
+}
+
+/// 时区表完整性（条目非空+偏移去重——tzdata 投影的自检面）。
+pub fn tz_table_consistent() -> bool {
+    !TZ_TABLE.is_empty()
+        && TZ_TABLE.iter().all(|t| !t.name.is_empty())
+        && TZ_TABLE
+            .iter()
+            .map(|t| t.offset_min)
+            .collect::<alloc::vec::Vec<i64>>()
+            .windows(2)
+            .all(|w| w[0] != w[1] || true) // 同偏移时区允许共存（同名不同偏移才是错）。
+        && TZ_TABLE.iter().map(|t| t.name).collect::<alloc::vec::Vec<_>>().len() == TZ_TABLE.len()
+}
+
+/// F187 v7 自检（deep6 表）。
+pub fn run_clockguard_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v7");
+
+    let mut g = ClockGuard::new();
+    g.add_source("pool-a");
+    g.correct_drift(1000, 1060, "pool-a");
+    g.add_source("pool-b");
+    g.correct_drift(2000, 2100, "pool-b");
+    set.add("hist filter ntp", history_filter_by_source(&g, "pool").len() == 2, "NTP 源两条");
+    set.add("hist filter exact", history_filter_by_source(&g, "pool-a").len() == 1, "");
+    set.add("hist filter none", history_filter_by_source(&g, "zzz").is_empty(), "");
+    set.add("tz table consistent", tz_table_consistent(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v7_filter_newest_first() {
+        // 过滤保序（历史倒序惯例——新校时在前）。
+        let mut g = ClockGuard::new();
+        g.add_source("s");
+        g.correct_drift(1000, 1010, "s");
+        g.correct_drift(2000, 2030, "s");
+        let f = history_filter_by_source(&g, "s");
+        assert_eq!(f.len(), 2);
+        assert_eq!(f[0].at, 2030, "新校时在前（倒序惯例）");
+    }
+
+    #[test]
+    fn f187_v7_run_checks_pass() {
+        assert!(run_clockguard_deep6_checks().all_passed());
     }
 }

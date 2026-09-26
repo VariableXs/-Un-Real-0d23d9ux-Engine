@@ -62,3 +62,38 @@ export const HOTKEY_COMBO = "F387-hotkey";
 export function entries(): string[] {
   return [QUICK_TILE_ID, HOTKEY_COMBO];
 }
+
+/* ================= v5 深化批次五：强度档位 / 过渡计划 / 豁免登记 ================= */
+
+/** 强度档位（半灰度护眼档）：100% 全灰 / 60% 柔灰 / 30% 淡灰——强度也是可调三通则。 */
+export type GrayscaleIntensity = 1 | 0.6 | 0.3;
+export const INTENSITY_PRESETS: ReadonlyArray<{ label: string; value: GrayscaleIntensity }> = [
+  { label: "全灰", value: 1 },
+  { label: "柔灰", value: 0.6 },
+  { label: "淡灰", value: 0.3 },
+];
+
+/** 灰度混合（强度语义的实现面）：原色与 BT.601 灰度按强度线性插值。 */
+export function toGrayscaleWithIntensity(r: number, g: number, b: number, intensity: GrayscaleIntensity): { r: number; g: number; b: number } {
+  const y = toGrayscale(r, g, b);
+  const mix = (c: number) => Math.round(c + (y - c) * intensity);
+  return { r: mix(r), g: mix(g), b: mix(b) };
+}
+
+/** 切换过渡计划：150ms 滤镜强度淡入（无跳变帧——F124 谱登记值）。 */
+export const FILTER_TRANSITION_MS = 150;
+export function transitionPlan(from: ColorFilter, to: ColorFilter): { durationMs: number; interpolate: boolean; note: string } {
+  if (from === to) return { durationMs: 0, interpolate: false, note: "同滤镜——零过渡" };
+  return { durationMs: FILTER_TRANSITION_MS, interpolate: true, note: `滤镜 ${from} → ${to}：强度 150ms 线性淡入，无跳变帧` };
+}
+
+/** 豁免登记（默认空——「单点审计」不因豁免破洞；豁免必须显式登记且有理由）。 */
+export interface FilterExemption {
+  windowClass: string;
+  reason: string;
+}
+
+export function auditExemptWindows(exemptions: FilterExemption[]): { pass: boolean; unreasoned: string[] } {
+  const unreasoned = exemptions.filter((e) => !e.reason.trim()).map((e) => e.windowClass);
+  return { pass: unreasoned.length === 0, unreasoned };
+}

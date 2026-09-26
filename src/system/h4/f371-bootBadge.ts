@@ -91,3 +91,49 @@ export function isEnabled(store: KvStore = defaultStore()): boolean {
 export function setEnabled(on: boolean, store: KvStore = defaultStore()): boolean {
   return writeJson(store, KEY_ENABLED, on);
 }
+
+/* ================= v5 深化批次五：五段分解 / 周趋势 / 慢启动归因 ================= */
+
+/** 启动五段分解（F043 冷启动画像联动）：徽标点开看「时间花在哪」。 */
+export const BOOT_PHASES = ["固件", "引导", "内核", "会话", "桌面"] as const;
+export type BootPhase = (typeof BOOT_PHASES)[number];
+
+export interface PhaseBreakdown {
+  phases: Record<BootPhase, number>;
+}
+
+/** 分解校验：五段之和必须等于实测总时长（±1ms 容差）——分解不是装饰是对账。 */
+export function validateBreakdown(b: PhaseBreakdown, measuredMs: number): { ok: boolean; sumMs: number } {
+  const sum = BOOT_PHASES.reduce((s, p) => s + b.phases[p], 0);
+  return { ok: Math.abs(sum - measuredMs) <= 1, sumMs: sum };
+}
+
+/** 最慢段归因：占比最大的一段（诊断提示的落点）。 */
+export function slowestPhase(b: PhaseBreakdown): { phase: BootPhase; ms: number; pct: number } {
+  let worst: BootPhase = BOOT_PHASES[0]!;
+  for (const p of BOOT_PHASES) if (b.phases[p] > b.phases[worst]) worst = p;
+  const total = BOOT_PHASES.reduce((s, p) => s + b.phases[p], 0);
+  return { phase: worst, ms: b.phases[worst], pct: total === 0 ? 0 : Math.round((b.phases[worst] / total) * 100) };
+}
+
+/** 周趋势：按周聚合均值（曲线的季节视角）。 */
+export function weeklyTrend(history: BootRecord[], now: number): Array<{ weekIndex: number; avgMs: number; boots: number }> {
+  const weeks = new Map<number, number[]>();
+  for (const r of history) {
+    const wk = Math.floor((now - r.at) / (7 * 24 * 3600 * 1000));
+    weeks.set(wk, [...(weeks.get(wk) ?? []), r.measuredMs]);
+  }
+  return [...weeks.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([weekIndex, ms]) => ({ weekIndex, avgMs: Math.round(ms.reduce((a, b) => a + b, 0) / ms.length), boots: ms.length }));
+}
+
+/** 慢启动归因提示：超中位数 50% 的开机点名最慢段（改进方向给人话）。 */
+export function slowBootHint(record: BootRecord, breakdown: PhaseBreakdown, history: BootRecord[]): { slow: boolean; hint: string } {
+  if (history.length < 3) return { slow: false, hint: "历史样本不足——暂不归因" };
+  const sorted = [...history].map((r) => r.measuredMs).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)]!;
+  if (record.measuredMs < median * 1.5) return { slow: false, hint: "本次开机速度正常" };
+  const s = slowestPhase(breakdown);
+  return { slow: true, hint: `本次开机比平常慢——最慢的环节是${s.phase}（占 ${s.pct}%），可到性能中心看详情` };
+}

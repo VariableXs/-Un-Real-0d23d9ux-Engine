@@ -96,3 +96,29 @@ export function auditEviction(store: KvStore = defaultStore()): { size: number; 
   const entries = Object.entries(book).sort((a, b) => a[1].at - b[1].at);
   return { size: entries.length, oldestSurvivor: entries[0]?.[0] ?? null };
 }
+
+/* ================= v5 深化批次五：尺寸记忆 / 工作区感知 / 焦屏落位 ================= */
+
+/** 尺寸记忆（位置+尺寸双记忆）：用户调过大小才记——变化 <10% 视为误触不记（防抖）。 */
+export const SIZE_DELTA_THRESHOLD = 0.1;
+export function shouldRememberSize(prev: { w: number; h: number } | null, next: { w: number; h: number }): boolean {
+  if (!prev) return true;
+  const dw = Math.abs(next.w - prev.w) / Math.max(1, prev.w);
+  const dh = Math.abs(next.h - prev.h) / Math.max(1, prev.h);
+  return dw >= SIZE_DELTA_THRESHOLD || dh >= SIZE_DELTA_THRESHOLD;
+}
+
+/** 工作区感知：记忆落点钳进工作区（任务栏区域不放对话框——避让是默认礼貌）。 */
+export function fitToWorkArea(pos: { x: number; y: number }, dlg: { w: number; h: number }, workArea: { x: number; y: number; w: number; h: number }): { x: number; y: number; clamped: boolean } {
+  const x = Math.min(Math.max(pos.x, workArea.x), Math.max(workArea.x, workArea.x + workArea.w - dlg.w));
+  const y = Math.min(Math.max(pos.y, workArea.y), Math.max(workArea.y, workArea.y + workArea.h - dlg.h));
+  return { x, y, clamped: x !== pos.x || y !== pos.y };
+}
+
+/** 焦屏落位（多屏判据强化）：给出焦点屏索引 → 记忆位置相对该屏解释并钳进该屏（不劈叉）。 */
+export function placementOnFocusedScreen(group: DialogGroup, screens: Array<{ x: number; y: number; w: number; h: number }>, focusedIndex: number, dlg: { w: number; h: number }, store: KvStore = defaultStore()): PlacementResult & { screenIndex: number } {
+  const idx = Math.min(Math.max(focusedIndex, 0), screens.length - 1);
+  const base = placementFor(group, screens[idx]!, dlg, store);
+  const fit = fitOnScreen(base, dlg, screens[idx]!);
+  return { x: fit.x, y: fit.y, fromMemory: base.fromMemory, screenIndex: idx };
+}

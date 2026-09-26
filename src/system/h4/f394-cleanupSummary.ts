@@ -85,3 +85,42 @@ export function visualClass(item: CleanupItem): "safe" | "caution" {
 export function defaultChecked(item: Omit<CleanupItem, "checked">): CleanupItem {
   return { ...item, checked: !item.irreversible };
 }
+
+/* ================= v4 深化批次四：不可逆闸门 / 重复项审计 / 排序视图 / 执行报告 ================= */
+
+/** 不可逆闸门（判据「不可逆标注与二次确认」的执行前硬闸）：缺代价说明 = 阻断执行（零静默）。 */
+export function irreversibilityGate(ledger: CleanupLedger): { pass: boolean; blocked: Array<{ id: string; reason: string }> } {
+  const blocked = ledger.items
+    .filter((i) => i.checked && i.irreversible && !(i.costNote ?? "").trim())
+    .map((i) => ({ id: i.id, reason: "不可逆项缺人话代价说明——执行被闸门阻断" }));
+  return { pass: blocked.length === 0, blocked };
+}
+
+/** 重复项审计：同 id 或（同来源+同标题）出现两次 = 账面缺陷（四来源汇总对账的防重面）。 */
+export function auditDuplicateItems(ledger: CleanupLedger): { pass: boolean; duplicates: string[] } {
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  for (const i of ledger.items) {
+    for (const k of [i.id, `${i.source}|${i.title}`]) {
+      if (seen.has(k)) duplicates.push(k);
+      seen.add(k);
+    }
+  }
+  return { pass: duplicates.length === 0, duplicates };
+}
+
+/** 按可释放量降序视图（「最值得清的在前」——决策动线）。 */
+export function sortBySavings(ledger: CleanupLedger): CleanupItem[] {
+  return [...ledger.items].sort((a, b) => b.reclaimableBytes - a.reclaimableBytes || a.id.localeCompare(b.id));
+}
+
+/** 执行后报告（判据「执行后空间实测回收 ≥90%」的人话收口）。 */
+export function postExecutionReport(result: ExecutionResult): { headline: string; passLine: string } {
+  const mb = result.actuallyFreedBytes / 1048576;
+  const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(result.actuallyFreedBytes / 1024))} KB`;
+  const pct = Math.round(result.recoveryRate * 100);
+  return {
+    headline: `清理完成：${result.executed.length} 项，实测释放 ${size}`,
+    passLine: `回收率 ${pct}%（判据 ≥90%）——${result.pass ? "达标" : "未达标：账面与实测差异过大，需核对源头计量"}`,
+  };
+}

@@ -8,6 +8,8 @@
  * 依赖锚点：F098 截图 / F361 屏幕录制。
  */
 
+import { fnv1a32 } from "./internal/hash";
+
 /** 捕获帧（区域内的像素行；本层以行哈希表示内容——拼接算法与像素解耦）。 */
 export interface CaptureFrame {
   /** 帧内各行内容的哈希（自上而下）。 */
@@ -98,4 +100,88 @@ export function productSpec(result: StitchResult, rowHeightPx: number, regionWid
     h: result.totalRows * rowHeightPx,
     fileName: `长截图 ${takenAt.getFullYear()}-${p(takenAt.getMonth() + 1)}-${p(takenAt.getDate())} ${p(takenAt.getHours())}-${p(takenAt.getMinutes())}.png`,
   };
+}
+
+/* ================= v4 深化批次四：归一化行哈希 / 动态内容检测 / 通配重叠稳健拼接 ================= */
+
+/** 行内容归一化：时间戳/日期/百分比/长数字 → 占位符——动态数字不再撕裂重叠匹配。 */
+export function normalizeRowText(text: string): string {
+  return text
+    .replace(/\d{1,2}:\d{2}(:\d{2})?/g, "{t}")
+    .replace(/\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?/g, "{d}")
+    .replace(/\d+(?:\.\d+)?%/g, "{p}")
+    .replace(/\b\d{4,}\b/g, "{n}");
+}
+
+/** 归一化行哈希：拼接算法的更稳行指纹（滚动页面上的时钟/计数器不再造成假失配）。 */
+export function rowHash(text: string): string {
+  return fnv1a32(normalizeRowText(text));
+}
+
+/** 动态内容检测：跨帧指纹不一致的行位集合——诚实失败的定位面（不只说失败，还说哪行在变）。 */
+export function detectDynamicRows(frames: CaptureFrame[]): { volatileRowPositions: number[]; dynamic: boolean } {
+  const seen = new Map<number, Set<string>>();
+  for (const f of frames) {
+    f.rowHashes.forEach((h, i) => {
+      const pos = f.scrollTop + i;
+      const set = seen.get(pos) ?? new Set<string>();
+      set.add(h);
+      seen.set(pos, set);
+    });
+  }
+  const volatileRowPositions = [...seen.entries()].filter(([, set]) => set.size > 1).map(([pos]) => pos).sort((a, b) => a - b);
+  return { volatileRowPositions, dynamic: volatileRowPositions.length > 0 };
+}
+
+/** 通配重叠：重叠区内已知易变的行位按通配符处理——只有真正的内容冲突才算失配。 */
+export function overlapWithWildcards(a: string[], b: string[], wildcardB: Set<number>): number {
+  const max = Math.min(a.length, b.length);
+  for (let len = max; len > 0; len--) {
+    let ok = true;
+    for (let i = 0; i < len; i++) {
+      if (wildcardB.has(i)) continue;
+      if (a[a.length - len + i] !== b[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return len;
+  }
+  return 0;
+}
+
+export interface RobustStitchResult extends StitchResult {
+  /** 每条接缝的重叠行数（接缝评审的质量数据——重叠越大越稳）。 */
+  seamOverlaps: number[];
+  /** 检出的动态行数。 */
+  volatileRows: number;
+}
+
+/**
+ * 稳健拼接：先测动态行，重叠匹配走通配口径——时钟/计数器类动态行不再一票否决整图；
+ * 只有「稳定内容真冲突」才走诚实失败路径（判据的精准化，不是放宽）。
+ */
+export function stitchRobust(frames: CaptureFrame[]): RobustStitchResult {
+  const dyn = detectDynamicRows(frames);
+  const volatilePos = new Set(dyn.volatileRowPositions);
+  if (frames.length === 0) return { totalRows: 0, seams: [], failure: "无捕获帧", seamOverlaps: [], volatileRows: 0 };
+  if (frames.length === 1) return { totalRows: frames[0]!.rowHashes.length, seams: [{ row: 0, fromFrame: 0 }], failure: null, seamOverlaps: [], volatileRows: dyn.volatileRowPositions.length };
+  const rows: string[] = [...frames[0]!.rowHashes];
+  const seams: StitchResult["seams"] = [{ row: 0, fromFrame: 0 }];
+  const seamOverlaps: number[] = [];
+  for (let i = 1; i < frames.length; i++) {
+    const prevTail = rows.slice(Math.max(0, rows.length - frames[i]!.rowHashes.length));
+    const wild = new Set<number>();
+    frames[i]!.rowHashes.forEach((_, j) => {
+      if (volatilePos.has(frames[i]!.scrollTop + j)) wild.add(j);
+    });
+    const overlap = overlapWithWildcards(prevTail, frames[i]!.rowHashes, wild);
+    if (overlap === 0 && frames[i]!.rowHashes.length > 0 && rows.length > 0) {
+      return { totalRows: rows.length, seams, failure: "拼接失败：相邻捕获无稳定重叠内容——此区域不适合长截图", seamOverlaps, volatileRows: dyn.volatileRowPositions.length };
+    }
+    seams.push({ row: rows.length - overlap, fromFrame: i });
+    seamOverlaps.push(overlap);
+    rows.push(...frames[i]!.rowHashes.slice(overlap));
+  }
+  return { totalRows: rows.length, seams, failure: null, seamOverlaps, volatileRows: dyn.volatileRowPositions.length };
 }

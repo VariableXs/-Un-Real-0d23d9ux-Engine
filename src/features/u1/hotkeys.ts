@@ -122,6 +122,133 @@ export function typingDuringOpen(imeComposing: boolean): boolean {
   return !imeComposing; // 组合期让路 IME（吞键=0 判据的姊妹条款）
 }
 
+/* ------------------------------- F403 Win+L 锁屏（v7：解锁退避） ------------------------------- */
+
+/** 解锁退避封顶（ms）——与内核 lockhot::UNLOCK_BACKOFF_CAP_MS 同源。 */
+export const UNLOCK_BACKOFF_CAP_MS = 30_000;
+
+/** 第 n 次连续失败的退避时长：1s 起翻倍，30s 封顶（防爆破——判据同源）。 */
+export function unlockBackoffMs(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 0) return 0;
+  return Math.min(1000 * 2 ** Math.min(consecutiveFailures - 1, 5), UNLOCK_BACKOFF_CAP_MS);
+}
+
+/** 退避窗内正确密码也拒绝（安全窗纪律——诚实拒绝不假装通过）。 */
+export function unlockAttempt(
+  state: { failures: number; lockedOutUntil: number | null },
+  nowMs: number,
+  correct: boolean,
+): { ok: boolean; next: { failures: number; lockedOutUntil: number | null }; reason?: "lockout" | "wrong" } {
+  if (correct) {
+    if (state.lockedOutUntil !== null && nowMs < state.lockedOutUntil) {
+      return { ok: false, next: state, reason: "lockout" };
+    }
+    return { ok: true, next: { failures: 0, lockedOutUntil: null } };
+  }
+  const failures = state.failures + 1;
+  return {
+    ok: false,
+    next: { failures, lockedOutUntil: nowMs + unlockBackoffMs(failures) },
+    reason: "wrong",
+  };
+}
+
+/* ------------------------------- F405 Alt+F4（v7：关闭链 + 确认倒计时） ------------------------------- */
+
+/** 电源动作确认倒计时（ms）——关机/重启必须按满（睡眠可逆免确认）。 */
+export const POWER_CONFIRM_MS = 2_000;
+
+export function powerNeedsConfirm(action: string): boolean {
+  return action === "关机" || action === "重启";
+}
+
+/** 按住确认进度（千分比 0..=1000，供进度环渲染）。 */
+export function powerConfirmPermille(startedAtMs: number | null, nowMs: number): number {
+  if (startedAtMs === null) return 0;
+  return Math.min(1000, Math.floor(((nowMs - startedAtMs) * 1000) / POWER_CONFIRM_MS));
+}
+
+/** 关闭链：多窗从栈顶逐个关，脏窗三问，取消放弃余下（与内核 CloseChain 同语义）。 */
+export type CloseChainState = { pending: string[]; activeAsk: string | null; closed: number; abandoned: number };
+
+export function closeChainStep(
+  s: CloseChainState,
+  headDirty: boolean,
+): { kind: "ask" | "closing" | "done"; id: string | null; next: CloseChainState } {
+  if (s.activeAsk !== null) {
+    // 三问挂起中：不允许再取下一窗（链头停住）。
+    return { kind: "ask", id: s.activeAsk, next: s };
+  }
+  const [head, ...rest] = s.pending;
+  if (head === undefined) return { kind: "done", id: null, next: s };
+  if (headDirty) return { kind: "ask", id: head, next: { ...s, pending: rest, activeAsk: head } };
+  const next = { ...s, pending: rest, closed: s.closed + 1 };
+  return { kind: "closing", id: head, next };
+}
+
+export function closeChainResolve(
+  s: CloseChainState,
+  proceed: boolean,
+): { kind: "closing" | "done"; id: string | null; next: CloseChainState } {
+  if (s.activeAsk === null) return { kind: "done", id: null, next: s };
+  if (proceed) {
+    return { kind: "closing", id: s.activeAsk, next: { ...s, activeAsk: null, closed: s.closed + 1 } };
+  }
+  return {
+    kind: "done",
+    id: null,
+    next: { pending: [], activeAsk: null, closed: s.closed, abandoned: s.abandoned + s.pending.length },
+  };
+}
+
+/* ------------------------------- F408 Win+X（v7：用户自定义项） ------------------------------- */
+
+export interface WinXItem { letter: string; label: string; page: string }
+
+/** 自定义项上限——菜单不失控（与内核 CUSTOM_CAP 同源）。 */
+export const WINX_CUSTOM_CAP = 4;
+
+/** 钉自定义项三检：字母冲突 / 页重复 / 超上限——诚实拒绝（不静默挤旧项）。 */
+export function winXAddCustom(
+  builtin: readonly { letter: string; page: string }[],
+  customs: readonly WinXItem[],
+  item: WinXItem,
+): { ok: true; customs: WinXItem[] } | { ok: false; reason: "letter-taken" | "page-dup" | "cap-full" } {
+  if (customs.length >= WINX_CUSTOM_CAP) return { ok: false, reason: "cap-full" };
+  if ([...builtin, ...customs].some((i) => i.letter === item.letter)) return { ok: false, reason: "letter-taken" };
+  if ([...builtin, ...customs].some((i) => i.page === item.page)) return { ok: false, reason: "page-dup" };
+  return { ok: true, customs: [...customs, item] };
+}
+
+/* ------------------------------- F416 Win 键开始菜单（v7：搜索框状态机） ------------------------------- */
+
+/** 搜索框容量（字节）——超限诚实拒绝（与内核 SEARCH_MAX_BYTES 同源）。 */
+export const SEARCH_MAX_BYTES = 64;
+
+export type StartSearchState = { open: boolean; text: string; composing: boolean };
+
+/** 打字进框：开+非组合才接收；容量满诚实拒绝；UTF-8 字节计长。 */
+export function startTypeChar(s: StartSearchState, c: string): { ok: boolean; next: StartSearchState } {
+  if (!s.open || s.composing) return { ok: false, next: s };
+  const bytes = new TextEncoder().encode(s.text + c).length;
+  if (bytes > SEARCH_MAX_BYTES) return { ok: false, next: s };
+  return { ok: true, next: { ...s, text: s.text + c } };
+}
+
+/** Esc 分段语义：组合中取消组合 → 有文本先清 → 空才关（输入流不被打断）。 */
+export function startEscStep(s: StartSearchState): { kind: "ime-cancel" | "clear" | "close" | "noop"; next: StartSearchState } {
+  if (!s.open) return { kind: "noop", next: s };
+  if (s.composing) return { kind: "ime-cancel", next: { ...s, composing: false } };
+  if (s.text.length > 0) return { kind: "clear", next: { ...s, text: "" } };
+  return { kind: "close", next: { ...s, open: false } };
+}
+
+/** Enter 提交：返回查询词并清框，菜单保持（连续搜不逼重开）。 */
+export function startSubmit(s: StartSearchState): { query: string | null; next: StartSearchState } {
+  if (!s.open || s.composing || s.text.length === 0) return { query: null, next: s };
+  return { query: s.text, next: { ...s, text: "" } };
+}
+
 /* ------------------------------- 面板读数 ------------------------------- */
 
 /** 三入口当前注册态（消费 u1Store——即时生效）。 */

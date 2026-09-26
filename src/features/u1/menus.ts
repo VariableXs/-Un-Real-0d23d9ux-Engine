@@ -68,6 +68,33 @@ export function escStackInvariant(stack: EscTier[]): boolean {
 
 export const ESC_BUDGET_MS = 100;
 
+/* ------------------------------- F424（v7：IME 组合期门 / 焦点归还） ------------------------------- */
+
+export type EscStepResult =
+  | { kind: "ime-cancel"; peeled: null; next: { composing: boolean } }
+  | { kind: "peel"; peeled: EscTier; next: { composing: boolean } }
+  | { kind: "noop"; peeled: null; next: { composing: boolean } };
+
+/** Esc 分发（与内核 press_esc 同语义）：组合期优先取消组合（层不动）；
+ * 否则剥一层；空栈无动作。 */
+export function escDispatch(
+  stack: EscTier[],
+  composing: boolean,
+): EscStepResult {
+  if (composing) return { kind: "ime-cancel", peeled: null, next: { composing: false } };
+  const top = stack[stack.length - 1];
+  if (top === undefined) return { kind: "noop", peeled: null, next: { composing: false } };
+  return { kind: "peel", peeled: top, next: { composing: false } };
+}
+
+/** 焦点归属登记表：层名 → 关闭时归还的焦点元素（键盘用户焦点不丢）。 */
+export type FocusRegistry = Readonly<Record<string, string>>;
+
+/** 剥层后的焦点归还目标（未登记层 → null——不虚计）。 */
+export function focusReturnOnPeel(registry: FocusRegistry, peeled: string): string | null {
+  return registry[peeled] ?? null;
+}
+
 /* ------------------------------- F433 Shift+F10 键盘右键 ------------------------------- */
 
 /** 呼出位置：焦点元素几何中心（无焦点 → 视口中心）。 */

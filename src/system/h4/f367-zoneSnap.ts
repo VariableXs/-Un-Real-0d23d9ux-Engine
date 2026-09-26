@@ -107,3 +107,55 @@ export function disabledZeroDifference(layout: ZoneLayout, px: number, py: numbe
   const plain = snapToGrid(px, py, gridStep);
   return zoneAt(layout, px, py) === null && plain.snapped;
 }
+
+/* ================= v5 深化批次五：自定义模板 / 面积守卫 / 分区绑定 ================= */
+
+/** 自定义分区模板：保存/加载 + 非重叠校验（用户自己划区——四区语义不变、几何可自定）。 */
+export function validateZoneTemplate(rects: Record<ZoneId, { x: number; y: number; w: number; h: number }>): { ok: boolean; problems: string[] } {
+  const problems: string[] = [];
+  const list = ZONES.map((z) => ({ id: z.id, ...rects[z.id] }));
+  for (const r of list) {
+    if (r.w <= 0 || r.h <= 0) problems.push(`${r.id}: 尺寸非法`);
+  }
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i]!, b = list[j]!;
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) {
+        problems.push(`${a.id} 与 ${b.id} 重叠——分区必须互斥`);
+      }
+    }
+  }
+  return { ok: problems.length === 0, problems };
+}
+
+export function saveZoneTemplate(rects: Record<ZoneId, { x: number; y: number; w: number; h: number }>): { layout: ZoneLayout | null; problems: string[] } {
+  const v = validateZoneTemplate(rects);
+  if (!v.ok) return { layout: null, problems: v.problems };
+  return { layout: { enabled: true, rects: { ...rects } }, problems: [] };
+}
+
+/** 拖入面积守卫：图标目标格必须能完整放进分区（最小可用面积 = 4×4 网格）。 */
+export const MIN_ZONE_CELLS = 16;
+export function dropGuard(layout: ZoneLayout, zone: ZoneId, cell = 100): { ok: boolean; reason: string } {
+  if (!layout.enabled) return { ok: false, reason: "分区未启用" };
+  const r = layout.rects[zone];
+  const cells = Math.floor(r.w / cell) * Math.floor(r.h / cell);
+  return cells >= MIN_ZONE_CELLS
+    ? { ok: true, reason: "分区可容纳图标" }
+    : { ok: false, reason: `分区过小（${cells} 格 < ${MIN_ZONE_CELLS} 格）——不放进去挤成一团` };
+}
+
+/** 分区绑定记忆：图标→分区绑定（绑定必须指向真实存在的图标——悬空绑定被静默丢弃不如拒绝）。 */
+export interface ZoneBinding {
+  iconId: string;
+  zone: ZoneId;
+}
+
+export function applyBindings(items: Array<{ id: string }>, bindings: ZoneBinding[]): Map<string, ZoneId> {
+  const known = new Set(items.map((i) => i.id));
+  const map = new Map<string, ZoneId>();
+  for (const b of bindings) {
+    if (known.has(b.iconId)) map.set(b.iconId, b.zone);
+  }
+  return map;
+}

@@ -598,6 +598,16 @@ impl DeskRefresh {
     pub fn reason_counts(&self) -> [u32; 3] {
         self.reason_counts
     }
+
+    /// 原因分解行（诊断报告的人话形态：三类计数拼一行——与
+    /// honesty_line 配对展示，零静默维度）。
+    pub fn reason_breakdown_line(&self) -> alloc::string::String {
+        let c = self.reason_counts;
+        format!(
+            "F5 {} · 右键 {} · 自愈 {}",
+            c[0], c[1], c[2]
+        )
+    }
 }
 
 #[cfg(test)]
@@ -642,6 +652,13 @@ pub fn run_deskrefresh_deep2_checks() -> CheckSet {
             && RefreshReason::ContextMenu.name() == "右键菜单"
             && RefreshReason::SelfHeal.name() == "缓存自愈",
         "diagnostic labels",
+    );
+    // 分解行（与诚实计数行配对的诊断维度）。
+    let line = dr.reason_breakdown_line();
+    set.add(
+        "reason-breakdown",
+        line == "F5 1 · 右键 1 · 自愈 1",
+        "paired with honesty line",
     );
     set
 }

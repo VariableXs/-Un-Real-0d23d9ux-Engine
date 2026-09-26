@@ -7,12 +7,19 @@
 //! 极值 / 拖拽同值域 / 滚轮 1 步）；步进定义表（每滑杆登记最小刻度——
 //! 一处一事实）；气泡读数账（调节后即显）；连发节奏（与 F240 同源：
 //! 首发即时、连发阶梯——两档速率常量）；焦点环形态位。
+//!
+//! v5 纵深：禁用态（输入全拒且有账——不给假反馈）；Shift 粗调（10 步
+//! 同钳制）；气泡 1.5s 自动收（不常驻挡内容）；连发到极值停发（计数
+//! 冻结，不空转）。
 
 use crate::checks::CheckSet;
 
 /// 连发节奏（F240 同源）：首发放松前单发；按住后阶梯速率（ms/发）。
 pub const REPEAT_FIRST_DELAY_MS: u64 = 400;
 pub const REPEAT_STEP_MS: u64 = 60;
+
+/// 气泡读数自动收起时长（ms）。
+pub const BUBBLE_HIDE_MS: u64 = 1_500;
 
 /// 步进定义表条目：滑杆名 → 最小刻度。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,11 +37,19 @@ pub struct Slider {
     pub value: u64,
     /// 气泡读数显示态。
     pub bubble_visible: bool,
+    /// 气泡显示计时（ms）。
+    bubble_timer_ms: u64,
     /// 焦点环在位（F206 形态）。
     pub focused: bool,
-    /// 连发账：首牙时刻与累计发数。
+    /// 禁用态（输入全拒）。
+    pub enabled: bool,
+    /// 被拒输入计数（可观测——不是静默吞）。
+    pub blocked_inputs: u64,
+    /// 连发账：累计发数。
     pub repeat_holding: bool,
     pub repeats: u64,
+    /// 连发饱和（已在极值——停发）。
+    pub repeat_saturated: bool,
 }
 
 impl Slider {
@@ -43,39 +58,79 @@ impl Slider {
             spec,
             value: spec.min,
             bubble_visible: false,
+            bubble_timer_ms: 0,
             focused: false,
+            enabled: true,
+            blocked_inputs: 0,
             repeat_holding: false,
             repeats: 0,
+            repeat_saturated: false,
         }
     }
 
-    /// 五招统一入口：步数（方向键 ±1 / Pg ±10 / Home -∞ / End +∞）。
-    /// 钳制入档；调节即出气泡读数。
+    fn show_bubble(&mut self) {
+        self.bubble_visible = true;
+        self.bubble_timer_ms = 0;
+    }
+
+    /// 气泡超时账：调节即显；BUBBLE_HIDE_MS 后自动收（不常驻挡内容）。
+    pub fn bubble_tick(&mut self, ms: u64) {
+        if self.bubble_visible {
+            self.bubble_timer_ms += ms;
+            if self.bubble_timer_ms >= BUBBLE_HIDE_MS {
+                self.bubble_visible = false;
+            }
+        }
+    }
+
+    /// 五招统一入口：步数（方向键 ±1 / Pg ±10 / Shift 粗调 ±10 步）。
+    /// 钳制入档；调节即出气泡读数；禁用态全拒且有账。
     pub fn step_by(&mut self, steps: i64) -> u64 {
+        if !self.enabled {
+            self.blocked_inputs += 1;
+            return self.value;
+        }
         let s = self.spec.step as i64;
         let v = self.value as i64 + steps * s;
         self.value = v.clamp(self.spec.min as i64, self.spec.max as i64) as u64;
-        self.bubble_visible = true;
+        self.show_bubble();
         self.value
+    }
+
+    /// Shift 粗调：10 倍步进（与 PgUp/PgDn 同量级——专家捷径）。
+    pub fn step_coarse(&mut self, dir: i64) -> u64 {
+        self.step_by(dir * 10)
     }
 
     /// Home：极小。End：极大。
     pub fn home(&mut self) -> u64 {
+        if !self.enabled {
+            self.blocked_inputs += 1;
+            return self.value;
+        }
         self.value = self.spec.min;
-        self.bubble_visible = true;
+        self.show_bubble();
         self.value
     }
 
     pub fn end(&mut self) -> u64 {
+        if !self.enabled {
+            self.blocked_inputs += 1;
+            return self.value;
+        }
         self.value = self.spec.max;
-        self.bubble_visible = true;
+        self.show_bubble();
         self.value
     }
 
     /// 拖拽（F217 三通路之一）：与键盘同值域（同一 clamp）。
     pub fn drag_to(&mut self, v: u64) -> u64 {
+        if !self.enabled {
+            self.blocked_inputs += 1;
+            return self.value;
+        }
         self.value = v.clamp(self.spec.min, self.spec.max);
-        self.bubble_visible = true;
+        self.show_bubble();
         self.value
     }
 
@@ -85,13 +140,19 @@ impl Slider {
     }
 
     /// 连发节奏：首牙 400ms，之后 60ms/发（一致性判据——三通路共享）。
+    /// 到极值停发：值不再变化即饱和（计数冻结，不空转）。
     pub fn repeat_tick(&mut self, held_ms: u64, steps: i64) -> u64 {
-        if held_ms < REPEAT_FIRST_DELAY_MS {
+        if !self.enabled || held_ms < REPEAT_FIRST_DELAY_MS {
             return self.value; // 首发窗内不发
         }
         let due = (held_ms - REPEAT_FIRST_DELAY_MS) / REPEAT_STEP_MS + 1;
         while self.repeats < due {
+            let before = self.value;
             let _ = self.step_by(steps);
+            if self.value == before {
+                self.repeat_saturated = true; // 已在极值——停发
+                break;
+            }
             self.repeats += 1;
         }
         self.value
@@ -151,6 +212,33 @@ pub fn run_sliderkeys_checks() -> CheckSet {
         let _ = m.step_by(1);
     }
     set.add("f436-paths-agree", m.value == r.value, "");
+    // v5：禁用态——输入全拒且有账（不给假反馈）。
+    let mut d = Slider::new(reg[0]);
+    d.enabled = false;
+    set.add(
+        "f436-disabled-blocks",
+        d.step_by(1) == 0 && d.drag_to(50) == 0 && d.home() == 0 && d.end() == 0
+            && d.blocked_inputs == 4 && !d.bubble_visible,
+        "",
+    );
+    // v5：Shift 粗调 = 10 步（同钳制）。
+    let mut c = Slider::new(reg[0]);
+    set.add("f436-coarse-step", c.step_coarse(1) == 20 && c.step_coarse(-4) == 0, "");
+    // v5：气泡 1.5s 自动收。
+    c.bubble_tick(1_400);
+    set.add("f436-bubble-keep-before-1p5s", c.bubble_visible, "");
+    c.bubble_tick(200);
+    set.add("f436-bubble-hides-at-1p5s", !c.bubble_visible, "");
+    set.add("f436-bubble-stays-hidden", { c.bubble_tick(5_000); !c.bubble_visible }, "");
+    // v5：连发到极值停发（计数冻结，不空转）。
+    let mut x = Slider::new(reg[2]); // 缩放 100..200 step 25
+    let _ = x.drag_to(150);
+    let _ = x.repeat_tick(1_000, 4); // 每发 +100：150→175→200→饱和
+    set.add(
+        "f436-repeat-saturates",
+        x.value == 200 && x.repeat_saturated && x.repeats == 1,
+        "",
+    );
     set
 }
 
@@ -171,5 +259,14 @@ mod tests {
         let mut s = Slider::new(Slider::registry()[2]);
         assert_eq!(s.step_by(2), 150);
         assert_eq!(s.end(), 200);
+    }
+
+    #[test]
+    fn repeat_at_extreme_freezes_count() {
+        let mut s = Slider::new(Slider::registry()[2]);
+        let _ = s.end(); // 200（上极值）
+        let _ = s.repeat_tick(2_000, 2);
+        assert_eq!(s.repeats, 0, "极值上连发一发不发——计数冻结");
+        assert!(s.repeat_saturated);
     }
 }

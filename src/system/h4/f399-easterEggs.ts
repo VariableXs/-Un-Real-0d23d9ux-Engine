@@ -98,3 +98,44 @@ export function auditNoFeatureGating(unlockedFeatures: string[]): { pass: boolea
 export function lineageDataForEgg(f199Loader: () => Array<{ version: string; codename: string }>): Array<{ version: string; codename: string }> {
   return f199Loader();
 }
+
+/* ================= v5 深化批次五：场景参数 / 变奏谱 / 触发日志 ================= */
+
+/** 星野粒子场景参数（F124 谱登记数据——粒子数/速度/寿命一处定义，渲染面只消费）。 */
+export const STARFIELD_SCENE = {
+  particles: 240,
+  speedPxPerSec: 40,
+  lifeSec: 6,
+  /** 帧预算（与合成器帧成本对齐——彩蛋不掉帧）。 */
+  frameBudgetMs: 16.6,
+} as const;
+
+/** 星徽变奏场景（一次性）：基础进入动画的粒子变奏（时长不超原进入动画 110%——不拖开机）。 */
+export const EMBLEM_VARIANT_SCENE = {
+  particles: 120,
+  extraMs: 400,
+  /** 一次性纪律：变奏只在 boot100 播放一次（复用 bootEgg 的一次性旗标）。 */
+  once: true,
+} as const;
+
+/** 彩蛋触发日志（体验日志十三章联动：何时放过哪个——只记事件不记内容）。 */
+export interface EggJournalEntry {
+  egg: EggId;
+  at: number;
+}
+
+export function recordEggPlayed(journal: EggJournalEntry[], egg: EggId, at: number): EggJournalEntry[] {
+  return [...journal.slice(-29), { egg, at }];
+}
+
+export function lastPlayedAt(journal: EggJournalEntry[], egg: EggId): number | null {
+  const hits = journal.filter((j) => j.egg === egg);
+  return hits.length === 0 ? null : hits[hits.length - 1]!.at;
+}
+
+/** 口碑可发现性守卫：彩蛋不进任何提示/引导/搜索面（discoverability 靠口碑不靠提示——审计面）。 */
+export function auditNotInDiscoverabilitySurfaces(surfaces: string[]): { pass: boolean; leaked: string[] } {
+  const eggMarks = ["boot100", "about7taps", "terminalStar", "starfield", "星野", "彩蛋"];
+  const leaked = surfaces.filter((s) => eggMarks.some((m) => s.includes(m)));
+  return { pass: leaked.length === 0, leaked };
+}

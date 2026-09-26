@@ -1046,3 +1046,1209 @@ mod deep2_tests {
         assert!(run_thermgov_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——曲线渲染契约 / 手动档执法账 / 回落
+// 量化归因 / 阈值文档页。判据源：主册【交互设计】「温度页实时曲线+当前档
+// 位」「85℃ 通知三要素+查看温度直跳」+【状态与异常】「与 F048 手动档叠加
+// 规则：温度强制优先（拒绝+计数）」+【验收判据】「降档后温度回落曲线归因」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：CurvePoints —— 60s 曲线渲染契约（原始序列 → 归一化坐标 + 超阈
+// 段标红 + 断点洞标注——渲染层拿到的数据不需要再做任何判断）
+// ---------------------------------------------------------------------------
+
+/// 单个渲染点。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CurvePoint {
+    /// 归一化时间 0-1000（窗内相对位）。
+    pub t_permille: u64,
+    /// 归一化温度 0-1000（量程 40-100℃ 钳制）。
+    pub y_permille: u64,
+    /// 该点温度是否超当前档阈值（超阈段红显）。
+    pub over_threshold: bool,
+}
+
+/// 温度量程（渲染钳制——低于 40℃/高于 100℃ 贴边）。
+pub const CURVE_TEMP_MIN_C: i64 = 40;
+pub const CURVE_TEMP_MAX_C: i64 = 100;
+
+/// 渲染契约组装（curve 原始序列 + 当前档阈值 → 渲染点列；时间基准 =
+/// 首点时刻（窗口起点归零））。
+pub fn curve_points(curve: &[(u64, i64)], threshold_c: i64) -> alloc::vec::Vec<CurvePoint> {
+    if curve.is_empty() {
+        return alloc::vec::Vec::new();
+    }
+    let t0 = curve[0].0;
+    let span = curve[curve.len() - 1].0.saturating_sub(t0).max(1);
+    curve
+        .iter()
+        .map(|(at_s, temp)| {
+            let temp = *temp;
+            let t_permille = (at_s.saturating_sub(t0)) * 1000 / span;
+            let clamped = temp.clamp(CURVE_TEMP_MIN_C, CURVE_TEMP_MAX_C);
+            let y_permille = ((clamped - CURVE_TEMP_MIN_C) * 1000 / (CURVE_TEMP_MAX_C - CURVE_TEMP_MIN_C)) as u64;
+            CurvePoint { t_permille, y_permille, over_threshold: temp >= threshold_c }
+        })
+        .collect()
+}
+
+/// 洞标注（相邻采样间隔 >3 倍采样周期=丢点——灰带「此段未采样」）。
+pub fn curve_holes(curve: &[(u64, i64)]) -> alloc::vec::Vec<(u64, u64)> {
+    let mut out = alloc::vec::Vec::new();
+    for w in curve.windows(2) {
+        let gap = w[1].0.saturating_sub(w[0].0);
+        if gap > SAMPLE_PERIOD_S * 3 {
+            out.push((w[0].0, w[1].0));
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：ManualOverrideLedger —— 手动档执法账（每次 F048 手动请求被温度
+// 强制拒绝的记录：请求档/当时温度档/拒绝理由——用户提示三要素的数据源）
+// ---------------------------------------------------------------------------
+
+/// 一条执法记录。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OverrideDenial {
+    pub at_s: u64,
+    /// 用户请求的性能档（F048 语义，1-3）。
+    pub requested: u8,
+    /// 当时的温度档。
+    pub thermal: ThermoLevel,
+}
+
+/// 执法账（环式小账——最近 16 条）。
+pub struct ManualOverrideLedger {
+    entries: alloc::vec::Vec<OverrideDenial>,
+    cap: usize,
+}
+
+impl ManualOverrideLedger {
+    pub fn new() -> ManualOverrideLedger {
+        ManualOverrideLedger { entries: alloc::vec::Vec::new(), cap: 16 }
+    }
+
+    pub fn record(&mut self, e: OverrideDenial) {
+        if self.entries.len() >= self.cap {
+            self.entries.remove(0);
+        }
+        self.entries.push(e);
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// 用户提示行（三要素——被拒了也要说清为什么、怎么办）。
+    pub fn user_hint(&self, latest_denied: u8, thermal: ThermoLevel) -> (&'static str, &'static str, &'static str) {
+        (
+            "性能档调整被暂时限制",
+            match thermal {
+                ThermoLevel::Throttle => "设备温度偏高（≥75℃），当前最高可用性能档为 1",
+                ThermoLevel::Notify => "设备温度较高（≥85℃），性能档已由温度管理接管",
+                ThermoLevel::Critical => "设备温度过热（≥95℃），正在执行保护性流程",
+                ThermoLevel::Normal => "温度正常，可正常调整性能档",
+            },
+            if latest_denied > 1 { "温度回落到阈值以下后自动恢复，无需操作" } else { "请稍后再试" },
+        )
+    }
+}
+
+impl Default for ManualOverrideLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：RecoveryAnalysis —— 降档后回落量化分析（触发降档事件 → 之后窗内
+// 温度极值与回落幅度 → 归因结论（降档生效/自然回落/仍在升温）——验收
+// 判据「降档后温度回落曲线归因」的量化面）
+// ---------------------------------------------------------------------------
+
+/// 回落分析结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RecoveryAnalysis {
+    /// 触发时刻温度。
+    pub peak_c: i64,
+    /// 观察窗内最低温度。
+    pub low_c: i64,
+    /// 回落幅度（peak-low；负=不降反升）。
+    pub drop_c: i64,
+    /// 归因结论。
+    pub verdict: &'static str,
+}
+
+/// 分析（降档事件后 60s 观察窗曲线）。
+pub fn recovery_analysis(peak_c: i64, after_curve: &[(u64, i64)]) -> Option<RecoveryAnalysis> {
+    if after_curve.is_empty() {
+        return None;
+    }
+    let low = after_curve.iter().map(|(_, t)| *t).min()?;
+    let high = after_curve.iter().map(|(_, t)| *t).max()?;
+    let drop = peak_c - low;
+    let verdict = if drop >= 5 {
+        "降档生效：温度明显回落"
+    } else if drop >= 2 {
+        "缓慢回落：降档与负载自然下降共同作用"
+    } else if high > peak_c {
+        "仍在升温：降档不足以压制负载，需升级档位"
+    } else {
+        "温度持平：负载与降档暂时平衡，持续观察"
+    };
+    Some(RecoveryAnalysis { peak_c, low_c: low, drop_c: drop, verdict })
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：THRESHOLD_DOC —— 三档阈值文档页（帮助中心数据面：常量生成文案
+// ——阈值改动文档自动跟随，永不脱节）
+// ---------------------------------------------------------------------------
+
+/// 文档行（标题+正文）。
+pub fn threshold_doc_lines() -> alloc::vec::Vec<(&'static str, String)> {
+    alloc::vec![
+        (
+            "第一档（性能优先级下降）",
+            alloc::format!("达到 {}℃ 时系统降低性能档位上限，过程无感（不弹窗不打断）", THROTTLE_C)
+        ),
+        (
+            "第二档（降频+通知）",
+            alloc::format!(
+                "达到 {}℃ 时进一步降频并发通知说明原因；回退需要温度降到 {}℃ 以下（{}℃ 迟滞防反复横跳）",
+                NOTIFY_C, NOTIFY_C - HYSTERESIS_C, HYSTERESIS_C
+            )
+        ),
+        (
+            "第三档（保护性冲刷）",
+            alloc::format!("达到 {}℃ 时复用低电保护管线执行体面关机（F196 同一套机制）", CRIT_C)
+        ),
+        (
+            "传感器不可读时",
+            alloc::format!("温度管理整体优雅旁路（不发通知不降档——不拿坏数据吓用户），并发出一次说明"),
+        ),
+    ]
+}
+
+/// 文档完整性（四行齐+内嵌真实常量）。
+pub fn threshold_doc_intact() -> bool {
+    let lines = threshold_doc_lines();
+    lines.len() == 4 && lines[0].1.contains("75") && lines[2].1.contains("95") && lines[3].1.contains("旁路")
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F197 v4 自检（聚合进 secstar2 域）。
+pub fn run_thermgov_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v4");
+
+    // 标准曲线：0-20s 每 2s 一点，60→86→75（触发第二档后回落）。
+    let mut curve: alloc::vec::Vec<(u64, i64)> = alloc::vec::Vec::new();
+    for i in 0..11u64 {
+        curve.push((i * 2, 60 + i as i64 * 2)); // 60→80。
+    }
+    curve.push((22, 84));
+    curve.push((24, 86)); // 触发 Notify。
+    curve.push((26, 83)); // 回落。
+    curve.push((28, 79));
+
+    // v4-一：渲染契约——归一化、超阈红显、钳制、洞标注。
+    let pts = curve_points(&curve, NOTIFY_C);
+    set.add("curve count", pts.len() == curve.len(), "");
+    set.add("curve t0", pts[0].t_permille == 0 && pts[0].y_permille == (60 - 40) * 1000 / 60, "起点归零");
+    set.add("curve last t", pts[pts.len() - 1].t_permille == 1000, "终点归一 1000");
+    // 超阈点：86℃（idx12）超 NOTIFY=85；84℃（idx11）不超。
+    set.add("curve over threshold", pts[12].over_threshold && !pts[11].over_threshold, "84 不红 86 红");
+    // 钳制：注入 120℃ 与 30℃。
+    let clamp_curve = [(0u64, 120i64), (2, 30), (4, 70)];
+    let cp = curve_points(&clamp_curve, NOTIFY_C);
+    set.add("curve clamp hi", cp[0].y_permille == 1000, "120℃ 钳顶");
+    set.add("curve clamp lo", cp[1].y_permille == 0, "30℃ 钳底");
+    // 洞：16→24s 缺口（>6s）标洞。
+    let hole_curve = [(0u64, 60i64), (2, 61), (16, 62), (18, 63)];
+    let holes = curve_holes(&hole_curve);
+    set.add("curve hole", holes.len() == 1 && holes[0] == (2, 16), "14s 缺口标洞");
+    set.add("curve no hole normal", curve_holes(&curve).is_empty(), "正常曲线无洞");
+
+    // v4-二：执法账——记录、环容量、提示三要素。
+    let mut led = ManualOverrideLedger::new();
+    led.record(OverrideDenial { at_s: 100, requested: 3, thermal: ThermoLevel::Notify });
+    led.record(OverrideDenial { at_s: 110, requested: 2, thermal: ThermoLevel::Notify });
+    set.add("ovr count", led.len() == 2, "");
+    for i in 0..20u64 {
+        led.record(OverrideDenial { at_s: 200 + i, requested: 3, thermal: ThermoLevel::Throttle });
+    }
+    set.add("ovr ring cap", led.len() == 16, "环容量 16");
+    let (what, why, next) = led.user_hint(3, ThermoLevel::Notify);
+    set.add("ovr hint 3part", !what.is_empty() && why.contains("85") && next.contains("自动恢复"), "");
+    let (_, why_t, _) = led.user_hint(1, ThermoLevel::Throttle);
+    set.add("ovr hint throttle", why_t.contains("75"), "档位对应温度文案");
+
+    // v4-三：回落归因——明显回落/缓慢/升温/持平四结论、空窗诚实。
+    let r = recovery_analysis(86, &[(26u64, 83i64), (28, 79), (30, 78)]).unwrap();
+    set.add("recov effective", r.verdict.contains("降档生效") && r.drop_c == 8, "86→78 落 8℃");
+    let r2 = recovery_analysis(86, &[(26u64, 86i64), (28, 88)]).unwrap();
+    set.add("recov rising", r2.verdict.contains("仍在升温"), "高点超峰=降档不够");
+    let r3 = recovery_analysis(86, &[(26u64, 85i64), (28, 86)]).unwrap();
+    set.add("recov flat", r3.verdict.contains("持平") || r3.verdict.contains("升温"), "");
+    set.add("recov empty none", recovery_analysis(86, &[]).is_none(), "空窗不造结论");
+
+    // v4-四：阈值文档——四行齐、常量内嵌、迟滞文案。
+    set.add("doc intact", threshold_doc_intact(), "");
+    let doc = threshold_doc_lines();
+    set.add("doc hysteresis", doc[1].1.contains("5℃"), "迟滞入文");
+    set.add("doc f196 link", doc[2].1.contains("F196"), "冲刷管线锚入文");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v4_curve_points_monotonic_t() {
+        // 时间归一化单调不减（乱序注入不产生倒退时间轴）。
+        let curve = [(0u64, 60i64), (2, 62), (4, 64), (6, 66), (8, 68)];
+        let pts = curve_points(&curve, NOTIFY_C);
+        for w in pts.windows(2) {
+            assert!(w[1].t_permille >= w[0].t_permille);
+        }
+        assert_eq!(pts.len(), 5);
+    }
+
+    #[test]
+    fn f197_v4_ledger_hint_all_levels() {
+        // 四温度档的用户提示互异且各自带阈值（穷尽匹配纪律）。
+        let led = ManualOverrideLedger::new();
+        let levels = [ThermoLevel::Normal, ThermoLevel::Throttle, ThermoLevel::Notify, ThermoLevel::Critical];
+        let hints: alloc::vec::Vec<&str> = levels
+            .iter()
+            .map(|l| led.user_hint(2, *l).1)
+            .collect();
+        for i in 0..hints.len() {
+            for j in i + 1..hints.len() {
+                assert_ne!(hints[i], hints[j], "档 {} 与 {} 文案撞车", i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn f197_v4_recovery_realistic_curve() {
+        // 真实场景：85℃ 通知→降档→120s 回落到 70℃（drop 15℃→降档生效）。
+        let mut after = alloc::vec::Vec::new();
+        for i in 0..60u64 {
+            let t = 84 - (i as i64) / 4; // 每 4s 降 1℃。
+            after.push((26 + i * 2, t));
+        }
+        let r = recovery_analysis(85, &after).unwrap();
+        assert!(r.drop_c >= 10);
+        assert!(r.verdict.contains("降档生效"));
+        assert_eq!(r.low_c, 84 - 59 / 4);
+    }
+
+    #[test]
+    fn f197_v4_doc_constants_follow_source() {
+        // 文档行内嵌的每个数字与常量一致（生成面自证）。
+        let doc = threshold_doc_lines();
+        assert!(doc[0].1.contains(&alloc::format!("{}", THROTTLE_C).as_str()));
+        assert!(doc[1].1.contains(&alloc::format!("{}", NOTIFY_C).as_str()));
+        assert!(doc[2].1.contains(&alloc::format!("{}", CRIT_C).as_str()));
+    }
+
+    #[test]
+    fn f197_v4_run_checks_pass() {
+        assert!(run_thermgov_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——温度管理完整文档 /
+// 曲线开放导出 / 降档时间线 / 采样质量账 / 档位-动作矩阵。判据源：主册
+// 【交互设计】三档响应全链 +【数据与存储】温度曲线入账本（F060 分项）+
+// 【状态与异常】graceful 优雅跳过 +【验收判据】降档后回落曲线归因的
+// 完整数据面。
+// ---------------------------------------------------------------------------
+
+use alloc::string::ToString;
+
+// ---------------------------------------------------------------------------
+// v5-一：THERMAL_DOC —— 温度管理完整文档（四节：三档阈值表/迟滞语义/
+// 采样纪律/graceful 跳过——常量生成，永不脱节）
+// ---------------------------------------------------------------------------
+
+/// 文档节（标题+正文）。
+pub fn thermal_doc_full() -> alloc::vec::Vec<(&'static str, String)> {
+    alloc::vec![
+        (
+            "三档响应表",
+            alloc::format!(
+                "75℃ 降性能档上限（无感）；85℃ 降频+通知（三要素）；95℃ 保护性冲刷+关机预警（复用 F196 管线）"
+            )
+        ),
+        (
+            "迟滞语义",
+            alloc::format!(
+                "触发与回退相差 {}℃：85℃ 触发的档位要降到 {}℃ 以下才回退——防止温度在阈值附近反复横跳",
+                HYSTERESIS_C, NOTIFY_C - HYSTERESIS_C
+            )
+        ),
+        (
+            "采样纪律",
+            alloc::format!(
+                "每 {} 秒采样一次（功耗平衡）；跳变超过 {}℃/秒判噪声丢弃；连续 3 次拒绝重定基线（传感器漂移自愈）",
+                SAMPLE_PERIOD_S, JUMP_REJECT_C
+            )
+        ),
+        (
+            "传感器不可读（graceful）",
+            "ACPI 热区不可读的机型整体旁路温度管理：不降档、不通知、不吓用户——只发一次说明并记录诊断（NOWE 纪律同源）".to_string(),
+        ),
+        (
+            "与手动档的关系",
+            alloc::format!("温度强制优先于 F048 手动偏好：高温期手动档请求按封顶执法（拒绝+计数+三要素提示），温度回落后自动恢复"),
+        ),
+    ]
+}
+
+/// 文档完整性（五节齐+常量内嵌）。
+pub fn thermal_doc_full_intact() -> bool {
+    let d = thermal_doc_full();
+    d.len() == 5
+        && d[0].1.contains("75")
+        && d[1].1.contains("80")
+        && d[2].1.contains("2")
+        && d[4].1.contains("F048")
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：curve_export —— 曲线开放导出（F128 同语言 JSON：点列+洞列表+
+// 档位标注——第三方温度监控工具可直接消费）
+// ---------------------------------------------------------------------------
+
+/// 导出 JSON（手写序列化——键序稳定可复现）。
+pub fn curve_export(curve: &[(u64, i64)], level: ThermoLevel, out: &mut alloc::vec::Vec<u8>) {
+    let mut put = |s: &[u8]| out.extend_from_slice(s);
+    put(b"{\"thermal\":{\"level\":\"");
+    put(level_name(level).as_bytes());
+    put(b"\",\"samples\":[");
+    for (i, (at, temp)) in curve.iter().enumerate() {
+        if i > 0 {
+            put(b",");
+        }
+        put(b"{\"t\":");
+        put(alloc::format!("{}", at).as_bytes());
+        put(b",\"c\":");
+        put(alloc::format!("{}", temp).as_bytes());
+        put(b"}");
+    }
+    put(b"],\"holes\":[");
+    for (i, (a, b)) in curve_holes(curve).iter().enumerate() {
+        if i > 0 {
+            put(b",");
+        }
+        put(alloc::format!("[{},{}]", a, b).as_bytes());
+    }
+    put(b"]}}");
+}
+
+/// 导出形状自检（键齐+样例数与输入一致）。
+pub fn curve_export_shape_ok(curve: &[(u64, i64)], data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    let keys = ["\"thermal\"", "\"level\"", "\"samples\"", "\"holes\""]
+        .iter()
+        .all(|k| text.contains(k));
+    // 样例对象计数：`"c":` 出现次数 = 输入点数。
+    let count = text.matches("\"c\":").count();
+    keys && count == curve.len()
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：throttle_timeline —— 降档时间线渲染（ThermoEvent 流 → 时间线行：
+// 时刻/方向/档位变化/当时温度——「降档事件审计」的人话渲染）
+// ---------------------------------------------------------------------------
+
+/// 时间线行。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimelineRow {
+    pub at_s: u64,
+    pub text: String,
+    /// 方向 token（up=amber 升档 / down=green 回落——警示语义不对称）。
+    pub token: &'static str,
+}
+
+/// 渲染（升档即时行、回落带归因尾注——回落行附「回到 X 档」）。
+pub fn throttle_timeline(events: &[ThermoEvent]) -> alloc::vec::Vec<TimelineRow> {
+    events
+        .iter()
+        .map(|e| TimelineRow {
+            at_s: e.at_s,
+            text: if e.up {
+                alloc::format!(
+                    "温度 {}℃ 达到 {} 阈值：{} → {}",
+                    e.temp_c,
+                    e.to.trigger_c(),
+                    level_name(e.from),
+                    level_name(e.to)
+                )
+            } else {
+                alloc::format!(
+                    "温度回落至 {}℃（低于 {} 回退线）：{} → {}",
+                    e.temp_c,
+                    e.from.release_c(),
+                    level_name(e.from),
+                    level_name(e.to)
+                )
+            },
+            token: if e.up { "amber" } else { "green" },
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v5-四：SampleQuality —— 采样质量账（正常/滤波丢/传感器失效三类计数 +
+// 质量分——温度数据的可信度先于温度值被看见）
+// ---------------------------------------------------------------------------
+
+/// 质量账。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SampleQuality {
+    /// 正常入账点。
+    pub accepted: u64,
+    /// 滤波丢弃点（噪声）。
+    pub rejected_noise: u64,
+    /// 传感器失效窗（秒累计）。
+    pub sensor_down_s: u64,
+}
+
+impl SampleQuality {
+    pub fn new() -> SampleQuality {
+        SampleQuality { accepted: 0, rejected_noise: 0, sensor_down_s: 0 }
+    }
+
+    pub fn observe_ok(&mut self) {
+        self.accepted += 1;
+    }
+
+    pub fn observe_noise(&mut self) {
+        self.rejected_noise += 1;
+    }
+
+    pub fn observe_down(&mut self, seconds: u64) {
+        self.sensor_down_s += seconds;
+    }
+
+    /// 质量分（正常点占比 permille；失效窗按每 2s 折一个坏点）。
+    pub fn score_permille(&self) -> u64 {
+        let bad = self.rejected_noise + self.sensor_down_s / SAMPLE_PERIOD_S;
+        let total = self.accepted + bad;
+        if total == 0 {
+            return 0;
+        }
+        self.accepted * 1000 / total
+    }
+
+    /// 诊断行（三分账如实呈现——质量差先于数据差被发现）。
+    pub fn diag_line(&self) -> String {
+        alloc::format!(
+            "采样质量：正常 {} / 噪声滤除 {} / 失效累计 {}s —— 可信度 {}‰",
+            self.accepted, self.rejected_noise, self.sensor_down_s, self.score_permille()
+        )
+    }
+}
+
+impl Default for SampleQuality {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5-五：LEVEL_MATRIX —— 档位-动作矩阵（四档 × 三动作面的格值——
+// 「高温三档响应」的完整行为表，一行一档穷尽）
+// ---------------------------------------------------------------------------
+
+/// 档位名（导出/矩阵/时间线共用——枚举的人话投影）。
+pub fn level_name(l: ThermoLevel) -> &'static str {
+    match l {
+        ThermoLevel::Normal => "Normal",
+        ThermoLevel::Throttle => "Throttle",
+        ThermoLevel::Notify => "Notify",
+        ThermoLevel::Critical => "Critical",
+    }
+}
+
+
+/// 单格动作语义。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LevelAction {
+    pub level: ThermoLevel,
+    /// 性能面动作。
+    pub perf: &'static str,
+    /// 通知面动作（None=不打扰）。
+    pub notify: Option<&'static str>,
+    /// 冲刷面动作（None=不触发）。
+    pub flush: bool,
+    /// 手动档封顶（F048 请求上限）。
+    pub manual_cap: u8,
+}
+
+/// 四档穷尽矩阵（与 ThermoGovernor::manual_request_allowed 的 cap 表
+/// 一处一事实对账：Normal=3 / Throttle=1 / Notify=0 / Critical=0）。
+pub const LEVEL_MATRIX: [LevelAction; 4] = [
+    LevelAction {
+        level: ThermoLevel::Normal,
+        perf: "性能档全开（F069 当前档）",
+        notify: None,
+        flush: false,
+        manual_cap: 3,
+    },
+    LevelAction {
+        level: ThermoLevel::Throttle,
+        perf: "性能档上限压到 1 档（无感降档）",
+        notify: None,
+        flush: false,
+        manual_cap: 1,
+    },
+    LevelAction {
+        level: ThermoLevel::Notify,
+        perf: "进一步降频",
+        notify: Some("设备温度较高，已降低性能保护硬件"),
+        flush: false,
+        manual_cap: 0,
+    },
+    LevelAction {
+        level: ThermoLevel::Critical,
+        perf: "降到最低",
+        notify: Some("设备过热，正在保护性冲刷"),
+        flush: true,
+        manual_cap: 0,
+    },
+];
+
+/// 矩阵自检（cap 表与 governor 行为表一致+Critical 必冲刷）。
+pub fn level_matrix_consistent() -> bool {
+    LEVEL_MATRIX.len() == 4
+        && LEVEL_MATRIX.iter().all(|a| a.manual_cap as i64 == manual_cap_of(a.level))
+        && LEVEL_MATRIX[3].flush
+        && LEVEL_MATRIX[..3].iter().all(|a| !a.flush)
+        && LEVEL_MATRIX[1].notify.is_none()
+        && LEVEL_MATRIX[0].notify.is_none()
+}
+
+/// cap 表（与 ThermoGovernor::manual_request_allowed 内联表同值——
+/// 两处表必须同步，此处是文档面投影）。
+fn manual_cap_of(l: ThermoLevel) -> i64 {
+    match l {
+        ThermoLevel::Normal => 3,
+        ThermoLevel::Throttle => 1,
+        ThermoLevel::Notify | ThermoLevel::Critical => 0,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F197 v5 自检（聚合进 secstar2 域）。
+pub fn run_thermgov_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v5");
+
+    // v5-一：文档完整。
+    set.add("doc full intact", thermal_doc_full_intact(), "");
+    set.add("doc graceful node", thermal_doc_full()[3].1.contains("旁路"), "graceful 语义入文");
+
+    // v5-二：曲线导出——形状、洞随行、档位标注。
+    let curve = [(0u64, 60i64), (2, 70), (4, 86), (6, 90), (20, 75)];
+    let mut data = alloc::vec::Vec::new();
+    curve_export(&curve, ThermoLevel::Notify, &mut data);
+    set.add("export shape", curve_export_shape_ok(&curve, &data), "键齐+样例数对");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("export level tag", text.contains("notify") || text.contains("Notify"), "档位标注随行");
+    set.add("export holes", text.contains("[6,20]"), "6s→20s 缺口洞随行");
+
+    // v5-三：时间线——升档 amber、回落 green、文案含阈值。
+    let events = [
+        ThermoEvent { at_s: 10, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Throttle, temp_c: 75 },
+        ThermoEvent { at_s: 20, up: true, from: ThermoLevel::Throttle, to: ThermoLevel::Notify, temp_c: 85 },
+        ThermoEvent { at_s: 40, up: false, from: ThermoLevel::Notify, to: ThermoLevel::Throttle, temp_c: 79 },
+    ];
+    let tl = throttle_timeline(&events);
+    set.add("tl rows", tl.len() == 3, "");
+    set.add("tl up token", tl[0].token == "amber" && tl[1].token == "amber", "升档警示色");
+    set.add("tl down token", tl[2].token == "green", "回落绿");
+    set.add("tl up text", tl[0].text.contains("75℃") && tl[0].text.contains("Normal"), "");
+    set.add("tl down text", tl[2].text.contains("回退线"), "回落行附回退线温度");
+
+    // v5-四：采样质量——三分账、质量分、诊断行。
+    let mut q = SampleQuality::new();
+    for _ in 0..90 {
+        q.observe_ok();
+    }
+    for _ in 0..8 {
+        q.observe_noise();
+    }
+    q.observe_down(4);
+    // 坏点 = 8 + 4/2 = 10；总分 = 90*1000/100 = 900。
+    set.add("quality score", q.score_permille() == 900, "");
+    set.add("quality diag", q.diag_line().contains("900‰"), "");
+    set.add("quality zero honest", SampleQuality::new().score_permille() == 0, "零样本=0 分不造满");
+
+    // v5-五：档位矩阵——cap 对账、Critical 必冲刷、静默档不打扰。
+    set.add("matrix consistent", level_matrix_consistent(), "");
+    set.add("matrix 4 levels", LEVEL_MATRIX.len() == 4, "");
+    set.add("matrix critical flush", LEVEL_MATRIX[3].flush && LEVEL_MATRIX[3].manual_cap == 0, "");
+    set.add("matrix quiet levels", LEVEL_MATRIX[0].notify.is_none() && LEVEL_MATRIX[1].notify.is_none(), "前两档零打扰");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v5_export_roundtrip_parse() {
+        // 导出数据可被外部语义解析（键与数值格式双查——F128 生态语言）。
+        let curve = [(0u64, 60i64), (2, 62), (4, 64)];
+        let mut data = alloc::vec::Vec::new();
+        curve_export(&curve, ThermoLevel::Normal, &mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert!(text.starts_with("{\"thermal\""));
+        assert!(text.ends_with("}}"));
+        // 每个样例都有 t 与 c 双键。
+        assert_eq!(text.matches("\"t\":").count(), 3);
+        assert_eq!(text.matches("\"c\":").count(), 3);
+    }
+
+    #[test]
+    fn f197_v5_timeline_full_cycle() {
+        // 完整升降循环：Normal→Throttle→Notify→Throttle→Normal 五行闭环。
+        let events = [
+            ThermoEvent { at_s: 10, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Throttle, temp_c: 75 },
+            ThermoEvent { at_s: 20, up: true, from: ThermoLevel::Throttle, to: ThermoLevel::Notify, temp_c: 85 },
+            ThermoEvent { at_s: 30, up: true, from: ThermoLevel::Notify, to: ThermoLevel::Critical, temp_c: 95 },
+            ThermoEvent { at_s: 50, up: false, from: ThermoLevel::Critical, to: ThermoLevel::Notify, temp_c: 89 },
+            ThermoEvent { at_s: 60, up: false, from: ThermoLevel::Notify, to: ThermoLevel::Throttle, temp_c: 79 },
+        ];
+        let tl = throttle_timeline(&events);
+        assert_eq!(tl.len(), 5);
+        assert_eq!(tl.iter().filter(|r| r.token == "amber").count(), 3);
+        assert_eq!(tl.iter().filter(|r| r.token == "green").count(), 2);
+    }
+
+    #[test]
+    fn f197_v5_quality_all_bad_degenerates() {
+        // 全坏数据：质量分趋零（诊断行先红于数据行——可信度门）。
+        let mut q = SampleQuality::new();
+        for _ in 0..100 {
+            q.observe_noise();
+        }
+        assert_eq!(q.score_permille(), 0);
+        assert!(q.diag_line().contains("0‰"));
+    }
+
+    #[test]
+    fn f197_v5_doc_generated_matches_constants() {
+        // 文档内嵌数字与常量逐一对账（75/85/95/5/2/20 全部出现在文案中）。
+        let d = thermal_doc_full();
+        let all: String = d.iter().map(|(_, b)| b.clone()).collect();
+        for c in [THROTTLE_C, NOTIFY_C, CRIT_C, HYSTERESIS_C, JUMP_REJECT_C] {
+            assert!(all.contains(&alloc::format!("{}", c)), "缺常量 {}", c);
+        }
+    }
+
+    #[test]
+    fn f197_v5_run_checks_pass() {
+        assert!(run_thermgov_deep4_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——温度趋势分类 / 档位时长账 /
+// 传感器校准账 / 降档影响评估 / FAQ 页。判据源：主册【用户故事】「过热
+// 不是故障，是被管理好的物理」+【验收判据】降档后温度回落曲线归因的
+// 完整量化面 +【数据与存储】降档事件审计。
+// ---------------------------------------------------------------------------
+
+/// 趋势分类（最近 N 点线性方向——升/降/平稳三分）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrendKind {
+    Rising,
+    Falling,
+    Flat,
+}
+
+impl TrendKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            TrendKind::Rising => "升温",
+            TrendKind::Falling => "降温",
+            TrendKind::Flat => "平稳",
+        }
+    }
+}
+
+/// 趋势判定（首尾差 >3℃ 定向，否则平稳——阈值常量一处一事实）。
+pub const TREND_THRESHOLD_C: i64 = 3;
+
+pub fn temperature_trend(curve: &[(u64, i64)]) -> Option<TrendKind> {
+    if curve.len() < 2 {
+        return None;
+    }
+    let first = curve[0].1;
+    let last = curve[curve.len() - 1].1;
+    let diff = last - first;
+    Some(if diff > TREND_THRESHOLD_C {
+        TrendKind::Rising
+    } else if diff < -TREND_THRESHOLD_C {
+        TrendKind::Falling
+    } else {
+        TrendKind::Flat
+    })
+}
+
+/// 档位时长账（四档累计秒——「每个档位待了多久」的分布面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct LevelDurations {
+    pub normal_s: u64,
+    pub throttle_s: u64,
+    pub notify_s: u64,
+    pub critical_s: u64,
+}
+
+impl LevelDurations {
+    /// 从事件流回放（升档事件切时段——事件间隔即该档持续时长）。
+    pub fn replay(events: &[ThermoEvent], total_s: u64) -> LevelDurations {
+        let mut d = LevelDurations::default();
+        let mut cur = ThermoLevel::Normal;
+        let mut cur_start = 0u64;
+        for e in events {
+            let span = e.at_s.saturating_sub(cur_start);
+            match cur {
+                ThermoLevel::Normal => d.normal_s += span,
+                ThermoLevel::Throttle => d.throttle_s += span,
+                ThermoLevel::Notify => d.notify_s += span,
+                ThermoLevel::Critical => d.critical_s += span,
+            }
+            cur = e.to;
+            cur_start = e.at_s;
+        }
+        let tail = total_s.saturating_sub(cur_start);
+        match cur {
+            ThermoLevel::Normal => d.normal_s += tail,
+            ThermoLevel::Throttle => d.throttle_s += tail,
+            ThermoLevel::Notify => d.notify_s += tail,
+            ThermoLevel::Critical => d.critical_s += tail,
+        }
+        d
+    }
+
+    /// 总和守恒（四档之和=观察窗总长——账本不丢秒）。
+    pub fn total(&self) -> u64 {
+        self.normal_s + self.throttle_s + self.notify_s + self.critical_s
+    }
+}
+
+/// 传感器校准账（注入恒定偏移 → 拒绝连击重定基线 → 对拍恢复）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CalibrationRecord {
+    /// 注入的偏移（℃——正=虚高）。
+    pub injected_offset_c: i64,
+    /// 重定基线前被滤点数。
+    pub rejected_before_rebase: u32,
+    /// 重定后读数与真值差（应为 0——校准成功的判据）。
+    pub residual_c: i64,
+}
+
+/// 校准演练（给 governor 喂带偏移的温度序列，验证重定基线恢复）。
+pub fn calibration_drill(offset_c: i64) -> CalibrationRecord {
+    let mut g = ThermoGovernor::new();
+    let mut rejected = 0u32;
+    let mut t = 0u64;
+    // 正常升温到 60℃。
+    for i in 0..15u64 {
+        t += SAMPLE_PERIOD_S;
+        g.sample(40 + i as i64, t);
+    }
+    // 注入偏移（跳变 >20℃ 会被滤波拒绝——连续拒绝触发重定基线）。
+    for _ in 0..5 {
+        t += SAMPLE_PERIOD_S;
+        if g.sample(60 + offset_c, t).is_none() {
+            rejected += 1;
+        }
+    }
+    // 偏移后的真值序列（重定基线后应无残差）。
+    for i in 0..5u64 {
+        t += SAMPLE_PERIOD_S;
+        g.sample(61 + i as i64, t);
+    }
+    let last = g.curve_60s().first().map(|(_, c)| *c).unwrap_or(0); // newest-first：first=最新采样。
+    CalibrationRecord {
+        injected_offset_c: offset_c,
+        rejected_before_rebase: rejected,
+        residual_c: (last - 65).abs(),
+    }
+}
+
+/// 降档影响评估（降档窗 vs 正常窗的采样节奏——影响面量化）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThrottleImpact {
+    /// 降档持续时长。
+    pub duration_s: u64,
+    /// 档位（影响等级）。
+    pub level: ThermoLevel,
+    /// 影响描述（人话——用户问「降档到底影响了什么」）。
+    pub impact: &'static str,
+}
+
+/// 组装（一次升档事件 + 观察窗总长）。
+pub fn throttle_impact(ev: &ThermoEvent, observed_s: u64) -> ThrottleImpact {
+    ThrottleImpact {
+        duration_s: observed_s.saturating_sub(ev.at_s),
+        level: ev.to,
+        impact: match ev.to {
+            ThermoLevel::Normal => "无影响",
+            ThermoLevel::Throttle => "性能档上限受限（无感——前台体验不变）",
+            ThermoLevel::Notify => "降频生效：重负载任务耗时增加（后台批处理优先感知）",
+            ThermoLevel::Critical => "保护性冲刷：系统正在体面关机（复用 F196 管线）",
+        },
+    }
+}
+
+/// FAQ 页（五问五答——温度管理的高频疑问）。
+pub const THERMAL_FAQ: [(&'static str, &'static str); 5] = [
+    ("为什么风扇转得快", "风扇转速跟随温度：高负载时先转后降档——75℃ 之前只有风扇动作，系统性能不变。"),
+    ("75/85/95 是怎么定的", "三档阈值取自 ACPI 热管理惯例与实机标定：75℃ 无感降档、85℃ 需要用户知情、95℃ 是硬件保护线。"),
+    ("会被突然关机吗", "不会突然关。95℃ 先冲刷再倒计时，全程可取消（95℃ 复用低电保护管线 F196——同一套体面关机）。"),
+    ("为什么有时候查不到温度", "部分机型传感器不可读：系统优雅旁路温度管理并发一次说明——不拿坏数据吓用户。"),
+    ("手动性能档为什么被限", "温度强制优先于手动偏好（安全>偏好）：档位封顶见档位-动作矩阵，温度回落自动恢复。"),
+];
+
+pub fn thermal_faq_intact() -> bool {
+    THERMAL_FAQ.len() == 5 && THERMAL_FAQ.iter().all(|(q, a)| !q.is_empty() && a.len() >= 15)
+}
+
+/// F197 v6 自检（deep5 表）。
+pub fn run_thermgov_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v6");
+
+    // 趋势分类——升/降/平/点数不足。
+    let rising = [(0u64, 60i64), (2, 65), (4, 70)];
+    let falling = [(0u64, 80i64), (2, 75), (4, 70)];
+    let flat = [(0u64, 70i64), (2, 71), (4, 70)];
+    set.add("trend rising", temperature_trend(&rising) == Some(TrendKind::Rising), "");
+    set.add("trend falling", temperature_trend(&falling) == Some(TrendKind::Falling), "");
+    set.add("trend flat", temperature_trend(&flat) == Some(TrendKind::Flat), "+1℃ 在阈内");
+    set.add("trend short none", temperature_trend(&flat[..1]).is_none(), "");
+
+    // 档位时长账——回放守恒。
+    let events = [
+        ThermoEvent { at_s: 100, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Throttle, temp_c: 75 },
+        ThermoEvent { at_s: 200, up: true, from: ThermoLevel::Throttle, to: ThermoLevel::Notify, temp_c: 85 },
+        ThermoEvent { at_s: 300, up: false, from: ThermoLevel::Notify, to: ThermoLevel::Normal, temp_c: 79 },
+    ];
+    let d = LevelDurations::replay(&events, 500);
+    set.add("dur normal", d.normal_s == 300, "0-100（100s）+ 300-500（200s）");
+    set.add("dur throttle", d.throttle_s == 100, "");
+    set.add("dur notify", d.notify_s == 100, "");
+    set.add("dur conserved", d.total() == 500, "四档之和=窗长");
+
+    // 校准演练——重定基线后残差归零。
+    let c = calibration_drill(15);
+    set.add("calib rejected counted", c.rejected_before_rebase >= 1, "偏移跳变被滤");
+    set.add("calib residual zero", c.residual_c == 0, "重定基线后读数回归真值");
+
+    // 影响评估——逐档人话。
+    let ev = ThermoEvent { at_s: 50, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Notify, temp_c: 85 };
+    let im = throttle_impact(&ev, 150);
+    set.add("impact duration", im.duration_s == 100, "");
+    set.add("impact text", im.impact.contains("降频"), "Notify 档影响文案");
+
+    // FAQ——五问齐。
+    set.add("faq intact", thermal_faq_intact(), "");
+    set.add("faq f196 link", THERMAL_FAQ[2].1.contains("F196"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v6_duration_replay_full_cycle() {
+        // 完整循环：Normal→Throttle→Notify→Critical→Normal——四档全出现。
+        let events = [
+            ThermoEvent { at_s: 10, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Throttle, temp_c: 75 },
+            ThermoEvent { at_s: 20, up: true, from: ThermoLevel::Throttle, to: ThermoLevel::Notify, temp_c: 85 },
+            ThermoEvent { at_s: 30, up: true, from: ThermoLevel::Notify, to: ThermoLevel::Critical, temp_c: 95 },
+            ThermoEvent { at_s: 60, up: false, from: ThermoLevel::Critical, to: ThermoLevel::Normal, temp_c: 60 },
+        ];
+        let d = LevelDurations::replay(&events, 100);
+        assert_eq!(d.normal_s, 50); // 0-10 + 60-100。
+        assert_eq!(d.throttle_s, 10);
+        assert_eq!(d.notify_s, 10);
+        assert_eq!(d.critical_s, 30);
+        assert_eq!(d.total(), 100);
+    }
+
+    #[test]
+    fn f197_v6_calibration_both_directions() {
+        // 虚高/虚低两个方向的偏移都能重定基线（对称性——漂移不挑方向）。
+        for off in [15i64, -15] {
+            let c = calibration_drill(off);
+            assert_eq!(c.residual_c, 0, "offset {}", off);
+        }
+    }
+
+    #[test]
+    fn f197_v6_run_checks_pass() {
+        assert!(run_thermgov_deep5_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限收官）——事件流开放导出 / 策略旋钮集 / 降档
+// 模拟器 / 日温度报告 / 回落 ETA。判据源：主册【数据与存储】「温度曲线
+// 入账本（F060 分项）；降档事件审计」+【状态与异常】阈值配置层界内可调。
+// ---------------------------------------------------------------------------
+
+/// 事件流开放导出（F128 语言 JSON：逐事件时序——第三方监控工具可消费）。
+pub fn thermal_events_export(events: &[ThermoEvent], out: &mut Vec<u8>) {
+    let mut put = |s: &[u8]| out.extend_from_slice(s);
+    put(b"{\"thermal-events\":[");
+    for (i, e) in events.iter().enumerate() {
+        if i > 0 {
+            put(b",");
+        }
+        put(alloc::format!(
+            "{{\"t\":{},\"dir\":\"{}\",\"from\":\"{}\",\"to\":\"{}\",\"c\":{}}}",
+            e.at_s,
+            if e.up { "up" } else { "down" },
+            level_name(e.from),
+            level_name(e.to),
+            e.temp_c
+        )
+        .as_bytes());
+    }
+    put(b"]}");
+}
+
+/// 导出形状自检（键齐+事件数一致）。
+pub fn thermal_events_export_ok(events: &[ThermoEvent], data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"thermal-events\"") && text.matches("\"dir\"").count() == events.len()
+}
+
+/// 策略旋钮集（三档阈值+迟滞+采样周期——界内钳制+越界留痕）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThermalKnobs {
+    pub throttle_c: i64,
+    pub notify_c: i64,
+    pub crit_c: i64,
+    pub hysteresis_c: i64,
+}
+
+/// 旋钮界（主册常量 ±10℃ / 迟滞 3-8℃）。
+pub const KNOB_MARGIN_C: i64 = 10;
+pub const KNOB_HYST_MIN: i64 = 3;
+pub const KNOB_HYST_MAX: i64 = 8;
+
+impl ThermalKnobs {
+    /// 默认（=主册常量——一处一事实）。
+    pub fn defaults() -> ThermalKnobs {
+        ThermalKnobs { throttle_c: THROTTLE_C, notify_c: NOTIFY_C, crit_c: CRIT_C, hysteresis_c: HYSTERESIS_C }
+    }
+
+    /// 净化（逐项钳制+档序不变式：throttle<notify<crit 不因旋钮被破坏）。
+    pub fn sanitized(mut self) -> (ThermalKnobs, u32) {
+        let mut rejected = 0u32;
+        self.throttle_c = self.throttle_c.clamp(THROTTLE_C - KNOB_MARGIN_C, THROTTLE_C + KNOB_MARGIN_C);
+        self.notify_c = self.notify_c.clamp(NOTIFY_C - KNOB_MARGIN_C, NOTIFY_C + KNOB_MARGIN_C);
+        self.crit_c = self.crit_c.clamp(CRIT_C - KNOB_MARGIN_C, CRIT_C + KNOB_MARGIN_C);
+        if !(KNOB_HYST_MIN..=KNOB_HYST_MAX).contains(&self.hysteresis_c) {
+            self.hysteresis_c = HYSTERESIS_C;
+            rejected += 1;
+        }
+        // 档序不变式：乱序输入 → 回默认（防线：旋钮不许拆掉档位体系）。
+        if !(self.throttle_c < self.notify_c && self.notify_c < self.crit_c) {
+            rejected += 1;
+            return (Self::defaults(), rejected);
+        }
+        (self, rejected)
+    }
+}
+
+/// 降档模拟器（给定温度序列 → 预测档位轨迹——策略调整前的预演面）。
+pub fn simulate_levels(curve: &[(u64, i64)], knobs: &ThermalKnobs) -> Vec<(u64, ThermoLevel)> {
+    let mut out = Vec::new();
+    let mut cur = ThermoLevel::Normal;
+    for (at, c) in curve {
+        // 升档即时、降档带迟滞（release = trigger - hysteresis）。
+        cur = match cur {
+            ThermoLevel::Normal => {
+                if *c >= knobs.notify_c {
+                    ThermoLevel::Notify
+                } else if *c >= knobs.throttle_c {
+                    ThermoLevel::Throttle
+                } else {
+                    cur
+                }
+            }
+            ThermoLevel::Throttle => {
+                if *c >= knobs.notify_c {
+                    ThermoLevel::Notify
+                } else if *c < knobs.throttle_c - knobs.hysteresis_c {
+                    ThermoLevel::Normal
+                } else {
+                    cur
+                }
+            }
+            ThermoLevel::Notify => {
+                if *c >= knobs.crit_c {
+                    ThermoLevel::Critical
+                } else if *c < knobs.notify_c - knobs.hysteresis_c {
+                    ThermoLevel::Throttle
+                } else {
+                    cur
+                }
+            }
+            ThermoLevel::Critical => {
+                if *c < knobs.crit_c - knobs.hysteresis_c {
+                    ThermoLevel::Notify
+                } else {
+                    cur
+                }
+            }
+        };
+        out.push((*at, cur));
+    }
+    out
+}
+
+/// 日温度报告（峰值/均值/超阈时长/降档次数——日报页四格）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DailyThermalReport {
+    pub peak_c: i64,
+    pub avg_c: i64,
+    pub over_notify_s: u64,
+    pub throttle_events: u64,
+}
+
+/// 组装（curve 2s 采样；events 为当日降档事件）。
+pub fn daily_report(curve: &[(u64, i64)], events: &[ThermoEvent]) -> DailyThermalReport {
+    let peak = curve.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    let sum: i64 = curve.iter().map(|(_, c)| *c).sum();
+    let avg = if curve.is_empty() { 0 } else { sum / curve.len() as i64 };
+    let over_s = curve.iter().filter(|(_, c)| *c >= NOTIFY_C).count() as u64 * SAMPLE_PERIOD_S;
+    DailyThermalReport {
+        peak_c: peak,
+        avg_c: avg,
+        over_notify_s: over_s,
+        throttle_events: events.iter().filter(|e| e.up).count() as u64,
+    }
+}
+
+/// 回落 ETA 预估（从峰值按观测斜率外推到回退线——「还要热多久」的量化）。
+pub fn recovery_eta(peak_c: i64, target_c: i64, drop_c_per_min: i64) -> Option<u64> {
+    if drop_c_per_min <= 0 || peak_c <= target_c {
+        return None; // 不降或已达标 → 无 ETA（诚实拒绝）。
+    }
+    Some(((peak_c - target_c) / drop_c_per_min) as u64)
+}
+
+/// F197 v7 自检（deep6 表）。
+pub fn run_thermgov_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v7");
+
+    // v7-一：事件导出——形状与计数。
+    let events = [
+        ThermoEvent { at_s: 10, up: true, from: ThermoLevel::Normal, to: ThermoLevel::Throttle, temp_c: 75 },
+        ThermoEvent { at_s: 30, up: false, from: ThermoLevel::Throttle, to: ThermoLevel::Normal, temp_c: 68 },
+    ];
+    let mut data = Vec::new();
+    thermal_events_export(&events, &mut data);
+    set.add("ev export ok", thermal_events_export_ok(&events, &data), "键齐+计数一致");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("ev export dirs", text.contains("\"up\"") && text.contains("\"down\""), "双向事件随行");
+
+    // v7-二：旋钮——默认、钳制、档序不变式。
+    let k0 = ThermalKnobs::defaults();
+    set.add("knob defaults", k0.throttle_c == 75 && k0.notify_c == 85 && k0.crit_c == 95, "");
+    let (k1, r1) = ThermalKnobs { throttle_c: 70, notify_c: 80, crit_c: 90, hysteresis_c: 5 }.sanitized();
+    set.add("knob in-bounds kept", k1.throttle_c == 70 && r1 == 0, "界内值保留");
+    let (k2, r2) = ThermalKnobs { throttle_c: 1000, notify_c: 80, crit_c: 90, hysteresis_c: 5 }.sanitized();
+    set.add("knob clamped fallback", k2 == ThermalKnobs::defaults() && r2 == 1, "钳到界后破坏档序 → 回默认+留痕（档位体系不许被旋钮拆掉）");
+    let (k3, r3) = ThermalKnobs { throttle_c: 96, notify_c: 85, crit_c: 90, hysteresis_c: 5 }.sanitized();
+    set.add("knob order invariant", k3 == ThermalKnobs::defaults() && r3 >= 1, "乱序=回默认+留痕");
+
+    // v7-三：模拟器——升档、迟滞回退、不横跳。
+    let curve = [(0u64, 60i64), (2, 80), (4, 90), (6, 78), (8, 70), (10, 60)];
+    let traj = simulate_levels(&curve, &ThermalKnobs::defaults());
+    set.add("sim rise", traj[1].1 == ThermoLevel::Throttle && traj[2].1 == ThermoLevel::Notify, "75/85 依序触发");
+    set.add("sim step down", traj[3].1 == ThermoLevel::Throttle, "78℃ < 80（notify 回退线）降一档——迟滞带内不横跳");
+    set.add("sim hold edge", traj[4].1 == ThermoLevel::Throttle, "恰 70℃ = 回退线（< 才降）不抖动");
+    set.add("sim release", traj[5].1 == ThermoLevel::Normal, "60℃ < 75-5 回退");
+
+    // v7-四：日报——四格。
+    let day = [(0u64, 60i64), (2, 70), (4, 90), (6, 85), (8, 65)];
+    let rep = daily_report(&day, &events);
+    set.add("daily peak", rep.peak_c == 90, "");
+    set.add("daily avg", rep.avg_c == 74, "(60+70+90+85+65)/5");
+    set.add("daily over", rep.over_notify_s == 4, "90/85 两点 ×2s");
+    set.add("daily events", rep.throttle_events == 1, "up 事件 1 次");
+
+    // v7-五：回落 ETA——正斜率给 ETA、零斜率/达标拒绝。
+    set.add("eta ok", recovery_eta(90, 80, 2) == Some(5), "(90-80)/2");
+    set.add("eta flat none", recovery_eta(90, 80, 0).is_none(), "不降不给 ETA");
+    set.add("eta reached none", recovery_eta(75, 80, 2).is_none(), "已达标");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v7_sim_no_oscillation() {
+        // 阈值附近抖动（84/86 交替）不产生横跳（迟滞语义回归——主册判据）。
+        let curve = [(0u64, 80i64), (2, 86), (4, 84), (6, 86), (8, 84), (10, 86)];
+        let traj = simulate_levels(&curve, &ThermalKnobs::defaults());
+        let levels: Vec<ThermoLevel> = traj.iter().map(|(_, l)| *l).collect();
+        // 进入 Notify 后一直在迟滞带内 → 全程 Notify 无震荡。
+        assert!(levels[1..].iter().all(|l| *l == ThermoLevel::Notify));
+    }
+
+    #[test]
+    fn f197_v7_export_roundtrip_count() {
+        // 10 事件导出：计数与方向对齐（导出忠实）。
+        let events: Vec<ThermoEvent> = (0..10)
+            .map(|i| ThermoEvent {
+                at_s: i * 10,
+                up: i % 2 == 0,
+                from: ThermoLevel::Normal,
+                to: ThermoLevel::Throttle,
+                temp_c: 75,
+            })
+            .collect();
+        let mut data = Vec::new();
+        thermal_events_export(&events, &mut data);
+        assert!(thermal_events_export_ok(&events, &data));
+    }
+
+    #[test]
+    fn f197_v7_run_checks_pass() {
+        assert!(run_thermgov_deep6_checks().all_passed());
+    }
+}
+

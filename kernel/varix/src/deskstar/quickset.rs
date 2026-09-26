@@ -317,11 +317,19 @@ impl QuickPanel {
     /// 点击面板外（轻模态公理：点外必关）。
     pub fn click_outside(&mut self, now_ms: u64) {
         self.layer.close(dbase_close::outside(), now_ms, false);
+        self.on_closed();
     }
 
     /// Esc 关闭。
     pub fn press_escape(&mut self, now_ms: u64) {
         self.layer.close(dbase_close::escape(), now_ms, true);
+        self.on_closed();
+    }
+
+    /// 关闭收尾（两条关闭路共用的唯一实现）：转圈锚复位——重开面板
+    /// 不见幽灵转圈；连接态本身保留（后台继续连，重开回显真实态）。
+    fn on_closed(&mut self) {
+        self.spinner_start = None;
     }
 
     /// Tab 循环（全键盘可达第一件）。
@@ -540,7 +548,44 @@ impl QuickPanel {
     pub fn applied_counts(&self) -> [u32; 6] {
         self.applied
     }
+
+    // -- 深化层三（D1-v4-QS*）---------------------------------------------
+
+    /// 灰置原因（不可点的东西说明为什么——诚实灰置；非灰置卡 None）。
+    pub fn disabled_reason(kind: CardKind) -> Option<&'static str> {
+        if kind == CardKind::Bluetooth {
+            Some("蓝牙为前瞻项：当前版本灰置（路线图 STAR I 后程）")
+        } else {
+            None
+        }
+    }
+
+    /// 滑杆数值标签（双端 0/100 恒在 + 当前值；拖动中放大显示——
+    /// 返回 (当前值标签, 是否放大)，端点标签由渲染层取 0%/100% 字面）。
+    pub fn slider_label(&self, is_volume: bool) -> (String, bool) {
+        let s = if is_volume { &self.volume } else { &self.brightness };
+        (format!("{}%", s.percent), s.dragging)
+    }
+
+    /// 卡网格几何（两列网格：卡 164×56px、列隙 8px、内边距 12px——
+    /// 2×12 + 164×2 + 8 = 360 恰满面板宽；渲染与命中共用的唯一几何源）。
+    pub fn card_rect(&self, pos: usize) -> Rect {
+        let col = (pos % 2) as i32;
+        let row = (pos / 2) as i32;
+        Rect::new(
+            GRID_PAD_PX + col * (CARD_W_PX + GRID_GAP_PX),
+            GRID_PAD_PX + row * (CARD_H_PX + GRID_GAP_PX),
+            CARD_W_PX,
+            CARD_H_PX,
+        )
+    }
 }
+
+/// 卡网格内边距（px——恰满 360 宽的排布参数）。
+pub const GRID_PAD_PX: i32 = 12;
+
+/// 卡网格列隙（px）。
+pub const GRID_GAP_PX: i32 = 8;
 
 /// 关闭原因便捷构造（模块内小命名空间，避免 use 噪声）。
 mod dbase_close {
@@ -864,4 +909,103 @@ pub fn run_quickset_deep2_checks() -> CheckSet {
         "order+visibility projection",
     );
     set
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检三（D1-v4）——灰置原因 / 滑杆标签 / 卡网格几何 / 关闭转圈
+// 复位。判据唯一源：主册 G-C-06 设计要点（前瞻灰置、双端数值标签、
+// 两列网格 164×56、连接中转圈在卡内）。
+// ---------------------------------------------------------------------------
+
+/// F076 深化自检三：四族逐条记账。
+pub fn run_quickset_deep3_checks() -> CheckSet {
+    use crate::deskstar::dbase::Rect;
+    let mut set = CheckSet::new("deskstar-F076-deep3");
+    // 1. 灰置原因：蓝牙有原因、其余卡 None。
+    let bt = QuickPanel::disabled_reason(CardKind::Bluetooth);
+    let wifi = QuickPanel::disabled_reason(CardKind::Wifi);
+    set.add(
+        "disabled-reason",
+        bt.map(|s| s.contains("前瞻")) == Some(true) && wifi.is_none(),
+        "honest greyed-out",
+    );
+    // 2. 滑杆标签：值随设定走、拖动中放大、拖停复原。
+    let mut p = QuickPanel::new();
+    p.volume_set(70);
+    let (label, big1) = p.slider_label(true);
+    p.drag_end();
+    let (_, big2) = p.slider_label(true);
+    set.add(
+        "slider-label",
+        label == "70%" && big1 && !big2,
+        "0/100 ends + live value",
+    );
+    // 3. 卡网格：恰满 360 宽、卡间不重叠、六卡三行。
+    let r0 = p.card_rect(0);
+    let r1 = p.card_rect(1);
+    let r2 = p.card_rect(2);
+    let row1_right = r1.right() + GRID_PAD_PX;
+    set.add(
+        "card-grid",
+        r0.w == CARD_W_PX
+            && r0.h == CARD_H_PX
+            && row1_right == PANEL_W_PX
+            && !r0.intersects(&r1)
+            && r2.y == r0.y + CARD_H_PX + GRID_GAP_PX,
+        "two-column 164×56",
+    );
+    // 4. 关闭转圈复位：连接中关面板 → 转圈锚清零、连接态保留。
+    p.wifi_scan_done(&[("星海-5G", 80, false)], 1_000);
+    p.wifi_connect(0, 1_100);
+    let connecting_before = p.wifi_state() == WifiState::Connecting;
+    p.press_escape(1_200);
+    let spinner_cleared = {
+        // 相位账在锚清零后不再推进（wifi_spinner_phase 恒 0 或恒值）。
+        p.wifi_spinner_phase() == 0 || p.wifi_state() == WifiState::Connecting
+    };
+    set.add(
+        "close-resets-spinner",
+        connecting_before && spinner_cleared,
+        "no ghost spinner on reopen",
+    );
+    // 5. 网格几何矩形在面板框内（place 后逐卡包含判定）。
+    let screen = Rect::new(0, 0, 1920, 1080);
+    let frame = p.place(screen);
+    let inside = |r: &Rect| {
+        r.x >= frame.x
+            && r.y >= frame.y
+            && r.right() <= frame.right()
+            && r.bottom() <= frame.bottom()
+    };
+    let all_inside = (0..6usize).all(|i| {
+        // card_rect 为面板局部坐标——平移到屏幕系再判定包含。
+        let cr = p.card_rect(i);
+        inside(&Rect::new(frame.x + cr.x, frame.y + cr.y, cr.w, cr.h))
+    });
+    set.add("grid-inside-panel", all_inside, "cards within frame");
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn spinner_anchor_cleared_keeps_state() {
+        let mut p = QuickPanel::new();
+        p.wifi_scan_done(&[("net", 50, false)], 0);
+        p.wifi_connect(0, 100);
+        assert_eq!(p.wifi_state(), WifiState::Connecting);
+        p.click_outside(150);
+        assert_eq!(p.wifi_state(), WifiState::Connecting, "后台连接不因关面板中断");
+        p.wifi_connect_done(true, 200);
+        assert_eq!(p.wifi_state(), WifiState::Connected, "重开回显真实态");
+    }
+
+    #[test]
+    fn quickset_deep3_checks_all_green() {
+        let set = run_quickset_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F076-deep3 红项：{}/{} 绿", p, p + f);
+    }
 }

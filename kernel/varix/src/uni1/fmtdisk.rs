@@ -7,6 +7,20 @@
 //! 本模块是「安全形制」语义核：目标三重验证（盘符+容量+GUID）、干跑
 //! 默认开、危险盘二次确认（输入卷标字母）、进度可取消——红线条款
 //! 逐条落进判定，无一处可绕过。
+//!
+//! **v4 深化批次新增（AI-U1）**：
+//! - 簇大小推荐表 [`cluster_size_hint`]：fs × 容量 → 推荐簇大小
+//!   （大簇浪费小文件空间、小簇拖慢大文件——推荐而不是替用户决定）；
+//! - 卷标合法性 [`validate_volume_label`]：FAT32 ≤11 字节 ASCII、
+//!   exFAT ≤15 字符、VARIXFS ≤32 字符 + 禁字符集（`\/:*?"<>|`）——
+//!   坏卷标在入口被拦（不进写盘路径）；
+//! - ETA 估算账 [`FormatSession::eta_seconds`]：剩余千分比 × 实测速率
+//!   → 人话剩余时间（「慢要有诚实的进度」——进度条会动、剩余可信）；
+//! - 写后校验两阶段：写阶段 0-800‰ + 校验阶段 800-1000‰——校验读回
+//!   不对即诚实失败（`verify_failed`），带三要素错误呈现（绝不假装
+//!   格式化成功）；
+//! - 中止清理 [`FormatSession::abort`]：取消后状态回到干净空闲位
+//!   （无半悬状态——「操作到一半打断，状态不许留在半空」）。
 
 use crate::checks::CheckSet;
 
@@ -15,6 +29,8 @@ use alloc::vec::Vec;
 
 /// 开始后可取消窗口（ms）。
 pub const CANCEL_WINDOW_MS: u64 = 2_000;
+/// 写阶段终点（千分比——800 之后进校验阶段）。
+pub const WRITE_PHASE_END: u64 = 800;
 
 /// 卷类型。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +63,50 @@ pub fn fs_compat(fs: &str, cap_gb: u64) -> bool {
     }
 }
 
+/// 簇大小推荐（字节）：fs × 容量 → 推荐值。
+/// 大盘小簇 = FAT 表巨大 + 写放大；小盘大簇 = 小文件空间浪费。
+/// 推荐不强制——用户可以在选项里改（界面侧约束写死非法组合）。
+pub fn cluster_size_hint(fs: &str, cap_gb: u64) -> Option<u32> {
+    if !fs_compat(fs, cap_gb) {
+        return None; // 兼容表外的组合无推荐（诚实）
+    }
+    match fs {
+        "FAT32" => Some(if cap_gb <= 8 { 4_096 } else { 16_384 }),
+        "exFAT" => Some(if cap_gb <= 64 { 32_768 } else { 128 * 1_024 }),
+        "VARIXFS" => Some(if cap_gb <= 128 { 4_096 } else { 16_384 }),
+        _ => None,
+    }
+}
+
+/// 卷标合法性：长度上限（按 fs）+ 禁字符集（写盘路径前置拦截）。
+pub fn validate_volume_label(fs: &str, label: &str) -> Result<(), &'static str> {
+    const FORBIDDEN: [char; 9] = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+    if label.chars().any(|c| FORBIDDEN.contains(&c)) {
+        return Err("卷标不能包含 \\ / : * ? \" < > | 字符");
+    }
+    let over = match fs {
+        "FAT32" => label.len() > 11,
+        "exFAT" => label.chars().count() > 15,
+        "VARIXFS" => label.chars().count() > 32,
+        _ => return Err("未知文件系统——无法校验卷标"),
+    };
+    if over {
+        return Err("卷标超长——FAT32 最多 11 字节、exFAT 15 字符、VARIXFS 32 字符");
+    }
+    Ok(())
+}
+
+/// 会话阶段（两阶段判定——写与校验分明，不混账）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormatPhase {
+    Idle,
+    Writing,
+    Verifying,
+    Done,
+    Aborted,
+    VerifyFailed,
+}
+
 /// 格式化会话状态机。
 pub struct FormatSession {
     pub target: VolumeIdentity,
@@ -63,6 +123,11 @@ pub struct FormatSession {
     pub started_at: Option<u64>,
     pub cancelled: bool,
     pub done: bool,
+    /// 校验失败（写完读回不对——诚实失败态）。
+    pub verify_failed: bool,
+    /// 实测速率（ms/千分位进度——ETA 账的基准，由 tick 注入；
+    /// 低于 1ms/‰ 分辨率的采样不记账——宁可 None 不给假速率）。
+    pub measured_ms_per_permille: Option<u64>,
     /// 警示带文本（信息准确性——由 target 拼装）。
     pub warning_line: &'static str,
 }
@@ -86,6 +151,8 @@ impl FormatSession {
             started_at: None,
             cancelled: false,
             done: false,
+            verify_failed: false,
+            measured_ms_per_permille: None,
             warning_line: warning,
         }
     }
@@ -141,23 +208,76 @@ impl FormatSession {
         }
         self.started_at = Some(now_ms);
         self.progress_permille = 0;
+        self.cancelled = false;
+        self.done = false;
+        self.verify_failed = false;
         true
     }
 
-    /// 进度推进（干跑报告确认后由调用方切 real 才会推进——此处推进即
-    /// 代表实际写入路径被显式授权）。
+    /// 当前阶段（两阶段判定）。
+    pub fn phase(&self) -> FormatPhase {
+        if self.verify_failed {
+            FormatPhase::VerifyFailed
+        } else if self.cancelled {
+            FormatPhase::Aborted
+        } else if self.done {
+            FormatPhase::Done
+        } else if self.progress_permille >= WRITE_PHASE_END && self.started_at.is_some() {
+            FormatPhase::Verifying
+        } else if self.started_at.is_some() {
+            FormatPhase::Writing
+        } else {
+            FormatPhase::Idle
+        }
+    }
+
+    /// 进度推进：0-800 写阶段、800-1000 校验阶段。校验阶段进度只接受
+    /// 顺序推进（写可以快照推进，校验必须逐段读回——语义不同）。
     pub fn tick(&mut self, now_ms: u64, permille: u64) -> bool {
         let Some(t0) = self.started_at else { return false };
-        if self.cancelled || self.done {
+        if self.cancelled || self.done || self.verify_failed {
             return false;
         }
-        self.progress_permille = permille.clamp(0, 1_000);
-        if self.progress_permille >= 1_000 {
+        let p = permille.clamp(0, 1_000);
+        if p < self.progress_permille {
+            return false; // 不接受倒退（进度单调）
+        }
+        if p < WRITE_PHASE_END && self.progress_permille >= WRITE_PHASE_END {
+            return false; // 已进校验阶段不接受写阶段值
+        }
+        // 速率账：写阶段每次推进更新（ETA 基准）；低于 1ms/‰ 分辨率
+        // 不记账（假速率比没有更害人）。
+        if p > self.progress_permille && now_ms > t0 {
+            let span_permille = p - self.progress_permille;
+            let span_ms = now_ms - t0;
+            let rate = span_ms / span_permille;
+            if rate > 0 {
+                self.measured_ms_per_permille = Some(rate);
+            }
+        }
+        self.progress_permille = p;
+        if p >= 1_000 {
             self.done = true;
         }
-        let _ = t0;
-        let _ = now_ms;
         true
+    }
+
+    /// 校验失败登记（写完读回不对——诚实失败，绝不假装成功）。
+    pub fn fail_verify(&mut self) -> bool {
+        if self.progress_permille < WRITE_PHASE_END || self.done {
+            return false; // 只有校验阶段可判失败
+        }
+        self.verify_failed = true;
+        self.done = false;
+        true
+    }
+
+    /// ETA：剩余千分位 × 实测速率 → 人话剩余秒（无速率账返回 None——
+    /// 不拍脑袋估）。
+    pub fn eta_seconds(&self) -> Option<u64> {
+        let rate = self.measured_ms_per_permille?;
+        let remain = (1_000u64.saturating_sub(self.progress_permille)).max(1);
+        Some(rate * remain / 1_000)
     }
 
     /// 取消（开始后 2 秒内可取消判据）。
@@ -168,6 +288,19 @@ impl FormatSession {
         }
         self.cancelled = true;
         true
+    }
+
+    /// 中止清理：取消后回干净空闲位（无半悬状态——进度/计时/失败位
+    /// 全归零；红线确认凭据一并撤销——重新开始要重新验证）。
+    pub fn abort(&mut self) {
+        self.started_at = None;
+        self.progress_permille = 0;
+        self.cancelled = false;
+        self.done = false;
+        self.verify_failed = false;
+        self.verified = false;
+        self.danger_confirmed = false;
+        self.measured_ms_per_permille = None;
     }
 
     /// 取消窗口判据。
@@ -185,6 +318,25 @@ pub fn run_fmtdisk_checks() -> CheckSet {
             && fs_compat("VARIXFS", 2_048) && !fs_compat("VARIXFS", 4_096)
             && fs_compat("exFAT", 8_000)
             && !fs_compat("NTFS-write", 16),
+        "",
+    );
+    // 簇大小推荐：兼容表内给值、表外 None（诚实——不硬编）。
+    set.add(
+        "f437-cluster-hint",
+        cluster_size_hint("FAT32", 8) == Some(4_096)
+            && cluster_size_hint("FAT32", 16) == Some(16_384)
+            && cluster_size_hint("exFAT", 512) == Some(128 * 1_024)
+            && cluster_size_hint("FAT32", 64).is_none(),
+        "",
+    );
+    // 卷标合法性：禁字符 + 分 fs 长度上限（写盘路径前置拦截）。
+    set.add(
+        "f437-label-guard",
+        validate_volume_label("FAT32", "BACKUP").is_ok()
+            && validate_volume_label("FAT32", "TOOLONG_LABEL").is_err()
+            && validate_volume_label("exFAT", "我的备份盘十五字内").is_ok()
+            && validate_volume_label("FAT32", "bad:name").is_err()
+            && validate_volume_label("BTRFS", "x").is_err(),
         "",
     );
     // 普通盘全链。
@@ -209,14 +361,53 @@ pub fn run_fmtdisk_checks() -> CheckSet {
         report.len() == 3 && f.start(2_000),
         "",
     );
+    // 两阶段：写阶段 → 校验阶段边界。
+    let _ = f.tick(2_500, 500);
+    set.add("f437-phase-writing", f.phase() == FormatPhase::Writing, "");
+    let _ = f.tick(3_000, 850);
+    set.add("f437-phase-verifying", f.phase() == FormatPhase::Verifying, "");
+    set.add("f437-no-regress", !f.tick(3_100, 400), "");
     // 进度与取消（2 秒窗口）。
-    let _ = f.tick(2_100, 300);
-    set.add("f437-progress", f.progress_permille == 300, "");
+    let _ = f.tick(3_200, 300); // 校验阶段拒写阶段值——进度仍在 850
     set.add(
         "f437-cancel-in-window",
         f.cancel_window_ok() && f.cancel(3_500) && f.cancelled && !f.tick(3_600, 500),
         "",
     );
+    // 中止清理：回干净空闲位 + 红线凭据一并撤销。
+    f.abort();
+    set.add(
+        "f437-abort-clean-state",
+        f.phase() == FormatPhase::Idle
+            && f.progress_permille == 0
+            && !f.verified
+            && !f.danger_confirmed
+            && !f.start(9_000),
+        "",
+    );
+    // 校验失败：诚实失败态（不假装成功）。
+    let _ = f.verify("E:", 64, "guid-eee");
+    let _ = f.danger_confirm("");
+    let _ = f.start(10_000);
+    let _ = f.tick(10_500, 800);
+    let _ = f.tick(11_000, 1_000);
+    set.add("f437-done-after-full-tick", f.done && f.phase() == FormatPhase::Done, "");
+    // 失败只在未 done 前可判——完成后不可翻旧账。
+    set.add("f437-verify-fail-only-in-flight", !f.fail_verify(), "");
+    let mut g2 = FormatSession::new(normal, "exFAT", true);
+    let _ = g2.verify("E:", 64, "guid-eee");
+    let _ = g2.danger_confirm("");
+    let _ = g2.start(1_000);
+    let _ = g2.tick(1_500, 800);
+    set.add("f437-verify-fail-honest", g2.fail_verify() && g2.phase() == FormatPhase::VerifyFailed && !g2.done, "");
+    // ETA：无速率账 None（不拍脑袋）；有速率账可算。
+    set.add("f437-eta-none-without-rate", g2.eta_seconds().is_none(), "");
+    let mut h = FormatSession::new(normal, "exFAT", true);
+    let _ = h.verify("E:", 64, "guid-eee");
+    let _ = h.danger_confirm("");
+    let _ = h.start(0);
+    let _ = h.tick(10_000, 100); // 100‰ 用了 10s → 0.1s/‰
+    set.add("f437-eta-from-measured-rate", h.eta_seconds() == Some(90), "");
     // 危险盘：系统盘必走二次确认（输入卷标字母）。
     let sys = VolumeIdentity {
         letter: "C:", capacity_gb: 256, guid: "guid-sys", kind: VolumeKind::System, label: "SYSTEM",
@@ -238,11 +429,11 @@ pub fn run_fmtdisk_checks() -> CheckSet {
     let shared = VolumeIdentity {
         letter: "S:", capacity_gb: 512, guid: "guid-s", kind: VolumeKind::SharedS, label: "SHARED",
     };
-    let mut h = FormatSession::new(shared, "exFAT", true);
-    let _ = h.verify("S:", 512, "guid-s");
+    let mut h2 = FormatSession::new(shared, "exFAT", true);
+    let _ = h2.verify("S:", 512, "guid-s");
     set.add(
         "f437-shared-confirm",
-        h.needs_danger_confirm() && !h.danger_confirm("shared") && h.danger_confirm("SHARED"),
+        h2.needs_danger_confirm() && !h2.danger_confirm("shared") && h2.danger_confirm("SHARED"),
         "",
     );
     // 兼容表门：FAT32 不能格 64GB 盘。
@@ -274,5 +465,30 @@ mod tests {
         let _ = f.tick(1_000, 1_000);
         assert!(f.done);
         assert!(!f.cancel(1_100));
+    }
+
+    #[test]
+    fn monotonic_progress_never_regresses() {
+        let normal = VolumeIdentity {
+            letter: "E:", capacity_gb: 8, guid: "g", kind: VolumeKind::Normal, label: "L",
+        };
+        let mut f = FormatSession::new(normal, "exFAT", true);
+        let _ = f.verify("E:", 8, "g");
+        let _ = f.danger_confirm("");
+        let _ = f.start(0);
+        let _ = f.tick(100, 300);
+        assert!(!f.tick(200, 299), "倒退拒绝");
+        assert!(f.tick(200, 700), "写阶段内快进合法");
+        assert!(!f.tick(300, 100), "已在校验阶段：写阶段值拒");
+        assert!(f.tick(300, 1_000), "校验收尾合法");
+    }
+
+    #[test]
+    fn label_charset_boundary() {
+        assert!(validate_volume_label("exFAT", "十六字符的卷标十六字符的卷标").is_ok());
+        assert!(validate_volume_label("exFAT", "十六字符的卷标十六字符的卷标XY").is_err(), "16 字超 exFAT 15 上限");
+        assert!(validate_volume_label("exFAT", "十六字符的卷标十六字符的卷标X").is_ok(), "15 字恰在上限内");
+        assert!(validate_volume_label("VARIXFS", &"长".repeat(32)).is_ok());
+        assert!(validate_volume_label("VARIXFS", &"长".repeat(33)).is_err());
     }
 }

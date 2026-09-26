@@ -37,8 +37,9 @@ export interface TreemapResult {
 }
 
 /**
- * Squarified treemap（Bruls et al. 简化版）：按字节量降序逐行排布，
- * 长边优先切分；面积占比 = 字节占比（±2% 对账的算法保证）。
+ * Squarified treemap（Bruls et al. 完整算法 · v4 深化升级）：按字节量降序，
+ * 逐行贪心装箱——行内矩形沿短边铺开，行宽高比开始恶化即收行换向；
+ * 面积占比 = 字节占比（±2% 对账的算法保证），且长宽比显著优于切分式布图。
  */
 export function treemap(node: FsNode, canvas: Rect, depth = 0, maxDepth = 3): TreemapResult {
   const total = measureDir(node, 0).bytes;
@@ -47,25 +48,94 @@ export function treemap(node: FsNode, canvas: Rect, depth = 0, maxDepth = 3): Tr
   return { tiles, totalBytes: total };
 }
 
+interface Weighted {
+  node: FsNode;
+  bytes: number;
+}
+
+/** 行内矩形宽高比的最差值（贪心装箱的判据：恶化即收行）。 */
+function worstRowRatio(row: Weighted[], rowSum: number, w: number, h: number, remainingSum: number): number {
+  if (rowSum === 0 || remainingSum === 0 || w === 0 || h === 0) return Number.POSITIVE_INFINITY;
+  const horizontal = w >= h;
+  const thickness = (rowSum / remainingSum) * (horizontal ? h : w);
+  let worst = 0;
+  for (const it of row) {
+    const len = (it.bytes / rowSum) * (horizontal ? w : h);
+    const ratio = len === 0 ? Number.POSITIVE_INFINITY : Math.max(len / thickness, thickness / len);
+    worst = Math.max(worst, ratio);
+  }
+  return worst;
+}
+
+/** Squarified 装箱：子节点矩形排布（经典贪心——逐步加项直到宽高比恶化）。 */
+function squarifyChildren(items: Weighted[], rect: Rect): Array<{ node: FsNode; rect: Rect }> {
+  const out: Array<{ node: FsNode; rect: Rect }> = [];
+  const remaining: Rect = { ...rect };
+  let remainingSum = items.reduce((s, it) => s + it.bytes, 0);
+  let i = 0;
+  while (i < items.length) {
+    const { w, h } = remaining;
+    const horizontal = w >= h;
+    let row: Weighted[] = [items[i]!];
+    let rowSum = items[i]!.bytes;
+    let worst = worstRowRatio(row, rowSum, w, h, remainingSum);
+    let j = i + 1;
+    while (j < items.length) {
+      const candidate = [...row, items[j]!];
+      const candidateWorst = worstRowRatio(candidate, rowSum + items[j]!.bytes, w, h, remainingSum);
+      if (candidateWorst <= worst) {
+        row = candidate;
+        rowSum += items[j]!.bytes;
+        worst = candidateWorst;
+        j++;
+      } else break;
+    }
+    const thickness = remainingSum === 0 ? 0 : (rowSum / remainingSum) * (horizontal ? h : w);
+    let offset = horizontal ? remaining.x : remaining.y;
+    const span = horizontal ? remaining.w : remaining.h;
+    for (const it of row) {
+      const len = rowSum === 0 ? 0 : (it.bytes / rowSum) * span;
+      const r: Rect = horizontal
+        ? { x: offset, y: remaining.y, w: len, h: thickness }
+        : { x: remaining.x, y: offset, w: thickness, h: len };
+      out.push({ node: it.node, rect: r });
+      offset += len;
+    }
+    if (horizontal) remaining.y += thickness;
+    else remaining.x += thickness;
+    if (horizontal) remaining.h = Math.max(0, remaining.h - thickness);
+    else remaining.w = Math.max(0, remaining.w - thickness);
+    remainingSum -= rowSum;
+    i = j;
+  }
+  return out;
+}
+
 function layout(node: FsNode, rect: Rect, parentBytes: number, depth: number, maxDepth: number, out: Tile[]): void {
   const bytes = measureDir(node, 0).bytes;
   out.push({ path: node.path, bytes, rect, heat: parentBytes === 0 ? 0 : bytes / parentBytes, depth, isDir: node.isDir });
   if (!node.isDir || depth >= maxDepth) return;
   const children = [...(node.children ?? [])].map((c) => ({ node: c, bytes: measureDir(c, 0).bytes })).filter((c) => c.bytes > 0).sort((a, b) => b.bytes - a.bytes);
   if (children.length === 0) return;
-  const sum = children.reduce((s, c) => s + c.bytes, 0);
-  const horizontal = rect.w >= rect.h; // 长边切分
-  let offset = horizontal ? rect.x : rect.y;
-  const span = horizontal ? rect.w : rect.h;
-  for (const c of children) {
-    const frac = c.bytes / sum;
-    const size = span * frac;
-    const childRect: Rect = horizontal
-      ? { x: offset, y: rect.y, w: size, h: rect.h }
-      : { x: rect.x, y: offset, w: rect.w, h: size };
-    layout(c.node, childRect, bytes, depth + 1, maxDepth, out);
-    offset += size;
+  for (const placed of squarifyChildren(children, rect)) {
+    layout(placed.node, placed.rect, bytes, depth + 1, maxDepth, out);
   }
+}
+
+/** 布局质量（v4 新增）：全 tile 最差长宽比——squarified 装箱相对切分式的收益度量。 */
+export function worstAspectRatio(result: TreemapResult): number {
+  let worst = 1;
+  for (const t of result.tiles) {
+    if (t.rect.w <= 0 || t.rect.h <= 0) continue;
+    worst = Math.max(worst, Math.max(t.rect.w / t.rect.h, t.rect.h / t.rect.w));
+  }
+  return Math.round(worst * 100) / 100;
+}
+
+/** 质量审计：最差长宽比 ≤ 阈值（默认 4）判合格——下钻三层内矩形可辨识（判据「下钻流畅」的视觉面）。 */
+export function layoutQuality(result: TreemapResult, threshold = 4): { worst: number; pass: boolean } {
+  const worst = worstAspectRatio(result);
+  return { worst, pass: worst <= threshold };
 }
 
 /** 面积对账（判据 ±2%）：单 tile 面积占比 vs 字节占比偏差。 */

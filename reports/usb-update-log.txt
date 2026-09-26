@@ -1,0 +1,11 @@
+﻿=== wrapper run 2026-09-26T02:36:52 ===
+=== worker run 2026-09-26T02:36:52 ===
+ESP root: Y:
+survey written
+dump written (5 targets)
+backup: Y:\kernel\varix -> Y:\kernel\varix.bak-20260926-023656
+kernel updated+verified: Y:\kernel\varix 4739568 bytes
+conf old=D425DB6FF0FBB750030701A0F7B77A2C new=D425DB6FF0FBB750030701A0F7B77A2C
+conf identical - skipped
+boot-select.json identical - skipped
+=== DONE OK ===

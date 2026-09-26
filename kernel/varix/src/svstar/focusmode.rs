@@ -409,6 +409,72 @@ impl FocusMode {
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// 深化批次 v9 · 任务栏专注图标强调色（主册【交互设计】「激活态：任务
+// 栏专注图标强调色 + 倒计时环」——图标三态：常规/激活/临近收尾）
+// ---------------------------------------------------------------------------
+
+/// 任务栏专注图标强调态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrayAccent {
+    /// 常规（未激活）。
+    Normal,
+    /// 激活（自由/计时专注进行中）。
+    Active,
+    /// 临近收尾（计时档剩余 <5 分钟——收尾预告不惊跳）。
+    EndingSoon,
+}
+
+/// 强调色（RGB——三态色相区分不靠明度，色弱可辨：Normal 灰蓝 / Active
+/// 专注紫 / EndingSoon 琥珀）。
+pub fn accent_rgb(a: TrayAccent) -> (u8, u8, u8) {
+    match a {
+        TrayAccent::Normal => (0x8A, 0x97, 0xA6),
+        TrayAccent::Active => (0x7C, 0x5C, 0xFF),
+        TrayAccent::EndingSoon => (0xE8, 0xA1, 0x2D),
+    }
+}
+
+/// 强调态裁决（剩余分钟仅计时档有意义——自由专注永不 EndingSoon：
+/// 没有计时就没有收尾，假装有倒计时 = 骗人）。
+pub fn tray_accent(state: FocusState, remaining_min: u64) -> TrayAccent {
+    match state {
+        FocusState::Off => TrayAccent::Normal,
+        FocusState::Free => TrayAccent::Active,
+        FocusState::Timed => {
+            if remaining_min > 0 && remaining_min < 5 {
+                TrayAccent::EndingSoon
+            } else {
+                TrayAccent::Active
+            }
+        }
+    }
+}
+
+/// 倒计时环逐帧采样（主册「倒计时环 60fps」的数据面）：真机渲染每
+/// 16.67ms 取一次 `ring_progress_bp`；本采样面在 [start, end] 窗内取
+/// `frames` 个均匀点（60 = 一秒 60 帧）做序列验证——非增、首帧起始值、
+/// 窗走完归零（环不回弹不跳变）。
+pub fn ring_frame_series(total_ms: u64, start_ms: u64, end_ms: u64, frames: usize) -> Vec<u32> {
+    let mut out = Vec::with_capacity(frames);
+    let span = end_ms.saturating_sub(start_ms);
+    for f in 0..frames {
+        let elapsed = if frames <= 1 {
+            span
+        } else {
+            span * f as u64 / (frames as u64 - 1)
+        };
+        let elapsed = elapsed.min(total_ms);
+        let bp = if total_ms == 0 {
+            0
+        } else {
+            ((total_ms - elapsed) * 10_000 / total_ms) as u32
+        };
+        out.push(bp);
+    }
+    out
+}
+
 pub fn run_focusmode_checks() -> CheckSet {
     let mut set = CheckSet::new("F115-focusmode");
 
@@ -655,6 +721,34 @@ pub fn run_focusmode_checks() -> CheckSet {
     let fired = f.hotkey_release(1_500) == Some(FocusState::Free);
     set.add("hold debounce ignores re-press", still_none && fired, "");
 
+    // 深化 v9 · 任务栏图标强调色：Off=常规；Free=激活（永不 EndingSoon
+    // ——无计时假装倒计时=骗人）；Timed 剩余<5min=临近收尾。
+    let a_off = tray_accent(FocusState::Off, 0) == TrayAccent::Normal;
+    let a_free = tray_accent(FocusState::Free, 0) == TrayAccent::Active;
+    let a_late = tray_accent(FocusState::Timed, 4) == TrayAccent::EndingSoon;
+    let a_early = tray_accent(FocusState::Timed, 10) == TrayAccent::Active;
+    let a_boundary = tray_accent(FocusState::Timed, 5) == TrayAccent::Active;
+    let colors_distinct = accent_rgb(TrayAccent::Normal) != accent_rgb(TrayAccent::Active)
+        && accent_rgb(TrayAccent::Active) != accent_rgb(TrayAccent::EndingSoon);
+    set.add(
+        "tray accent three states + free never ending-soon",
+        a_off && a_free && a_late && a_early && a_boundary && colors_distinct,
+        "",
+    );
+
+    // 深化 v9 · 倒计时环 60fps 采样：60 帧序列非增、首帧起始值、走完
+    // 归零（环不回弹不跳变）。
+    let total = 25 * 60 * 1000u64;
+    let series = ring_frame_series(total, 0, total, 60);
+    let first_ok = series[0] > 9_900;
+    let last_ok = series[59] == 0;
+    let monotonic = series.windows(2).all(|w| w[0] >= w[1]);
+    set.add(
+        "ring 60fps series monotonic to zero",
+        series.len() == 60 && first_ok && last_ok && monotonic,
+        "",
+    );
+
     set
 }
 
@@ -691,5 +785,17 @@ mod tests {
     fn hotkey_release_without_press_none() {
         let mut f = FocusMode::new(0);
         assert_eq!(f.hotkey_release(1_000), None);
+    }
+
+    #[test]
+    fn f115_ring_series_partial_window() {
+        // 部分窗（走查到一半截断）：末帧不到零但递减——采样按帧距钳制
+        // 不越过窗界。
+        let total = 60_000u64;
+        let series = ring_frame_series(total, 0, 30_000, 60);
+        assert!(series.windows(2).all(|w| w[0] >= w[1]));
+        assert!(series[59] > 4_000 && series[59] <= 5_100, "半程末帧约 5000bp");
+        // 零时长环：全零（不除零）。
+        assert!(ring_frame_series(0, 0, 1_000, 10).iter().all(|&b| b == 0));
     }
 }

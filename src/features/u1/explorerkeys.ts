@@ -56,6 +56,71 @@ export function arrangeMutex(autoOn: boolean): { auto: boolean; free: boolean } 
   return { auto: autoOn, free: !autoOn };
 }
 
+/* ------------------------------- F401（v7：铺排方向 / 框选 / 批量移动） ------------------------------- */
+
+export type FlowAxis = "column" | "row";
+
+/** 自动排列下的格位铺排（列优先 = Windows 纵向流动；行优先 = 横向流动）。 */
+export function flowCell(index: number, cols: number, rows: number, flow: FlowAxis): { col: number; row: number } {
+  return flow === "column"
+    ? { col: index % cols, row: Math.floor(index / cols) }
+    : { col: Math.floor(index / rows), row: index % rows };
+}
+
+/** 框选：格位落在矩形区间（含边界）内的项入选（返回入选 id 集）。 */
+export function marqueeSelect(
+  placed: { id: number; col: number; row: number }[],
+  cornerA: { col: number; row: number },
+  cornerB: { col: number; row: number },
+): number[] {
+  const minC = Math.min(cornerA.col, cornerB.col), maxC = Math.max(cornerA.col, cornerB.col);
+  const minR = Math.min(cornerA.row, cornerB.row), maxR = Math.max(cornerA.row, cornerB.row);
+  return placed.filter((p) => p.col >= minC && p.col <= maxC && p.row >= minR && p.row <= maxR).map((p) => p.id);
+}
+
+/** 批量落点：从 to 起网格内回绕找第一个空格（组外占格跳过——碰撞让位）。 */
+export function batchMoveTargets(
+  occupied: ReadonlySet<string>,
+  count: number,
+  to: { col: number; row: number },
+  cols: number,
+  rows: number,
+  flow: FlowAxis,
+): { col: number; row: number }[] {
+  const total = cols * rows;
+  const start = flow === "column" ? to.row * cols + to.col : to.col * rows + to.row;
+  const targets: { col: number; row: number }[] = [];
+  for (let k = 0; k < total && targets.length < count; k++) {
+    const idx = (start + k) % total;
+    const cand = flowCell(idx, cols, rows, flow);
+    if (!occupied.has(`${cand.col},${cand.row}`)) targets.push(cand);
+  }
+  return targets;
+}
+
+/* ------------------------------- F404 Win+E（v7：标签生命周期） ------------------------------- */
+
+/** 单窗标签上限——超限诚实拒绝（与内核 TAB_CAP 同源）。 */
+export const WIN_E_TAB_CAP = 32;
+
+export type TabOpenResult = { kind: "opened" | "jumped" | "cap-full"; tabs: string[]; active: number };
+
+/** 开标签：同路径已开 → 跳转既有（去重）；满 32 → 诚实拒绝。 */
+export function winEOpenTab(tabs: readonly string[], path: string): TabOpenResult {
+  const existing = tabs.indexOf(path);
+  if (existing >= 0) return { kind: "jumped", tabs: [...tabs], active: existing };
+  if (tabs.length >= WIN_E_TAB_CAP) return { kind: "cap-full", tabs: [...tabs], active: tabs.length - 1 };
+  return { kind: "opened", tabs: [...tabs, path], active: tabs.length };
+}
+
+/** 关标签激活规则：右邻优先（视觉延续）；右邻越界 → 左邻；末标签 = 关窗。 */
+export function winECloseTab(tabs: readonly string[], idx: number): { tabs: string[]; active: number; windowClosed: boolean } {
+  if (idx < 0 || idx >= tabs.length) return { tabs: [...tabs], active: Math.max(0, tabs.length - 1), windowClosed: false };
+  const rest = [...tabs.slice(0, idx), ...tabs.slice(idx + 1)];
+  if (rest.length === 0) return { tabs: rest, active: 0, windowClosed: true };
+  return { tabs: rest, active: idx < rest.length ? idx : rest.length - 1, windowClosed: false };
+}
+
 /* ------------------------------- F404 Win+E ------------------------------- */
 
 /** 此机页内容清单（判据：清单钉死——六区）。 */

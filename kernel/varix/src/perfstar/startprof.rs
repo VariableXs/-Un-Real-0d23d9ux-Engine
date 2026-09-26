@@ -348,7 +348,9 @@ pub fn run_startprof_checks() -> CheckSet {
     let median_ok = pr5.star_card_median(6).is_some();
     let cv21 = pr5.stability_cv_pct(6, 20);
     cs.add("history_20_cap", oldest_evicted && median_ok && cv21.is_some(), "");
-    cs
+    // 深化件（深化批次三）：五段条形图段宽配平 / 首次 vs 二次对比视图 /
+    // (版本,序号) 复合键与 20 次保留 / 中止画像标注 / 隐私总闸 / 方差账。
+    CheckSet::merge(cs, crate::perfstar::startprof_ext::run_checks())
 }
 
 #[cfg(test)]

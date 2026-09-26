@@ -1223,6 +1223,473 @@ pub fn export_checklist_full_md(engine: &WalkEngine) -> String {
 
 /// 日期槽（证据三件套第三件：对账批次日期——批次唯一源常量）。
 pub const AUDIT_BATCH_DATE: &str = "2026-09-26";
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 一：走查结果归档路径（主册「走查结果归档验收目录
+// （docs/acceptance/ 惯例）；版本随设计案版本绑定」——路径形态生成器）
+// ---------------------------------------------------------------------------
+
+/// 归档路径生成：`docs/acceptance/v<version>/walkcheck-<date>.md`。
+///
+/// 版本与日期段做路径安全校验（非空、无分隔符、无 `..`、无空格）——
+/// 归档面即安全面：路径逃逸段直接拒绝返回 None，不生成畸形路径。
+pub fn archive_path(version: &str, date: &str) -> Option<String> {
+    let bad = |s: &str| {
+        s.is_empty()
+            || s.contains('/')
+            || s.contains('\\')
+            || s.contains("..")
+            || s.contains(' ')
+    };
+    if bad(version) || bad(date) {
+        return None;
+    }
+    let dir = ACCEPTANCE_DIR.trim_end_matches('/');
+    Some(alloc::format!("{}/v{}/walkcheck-{}.md", dir, version, date))
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 二：并行会话收口合并（主册「并行会话各持引擎互不串写，
+// 会话收口时显式合并结果」——合并半边的确定性实现）
+// ---------------------------------------------------------------------------
+
+/// 合并冲突裁决（确定性唯一源）：同 F 双落点冲突时取证据更强的状态
+/// ——Green > Red > Pending；双 Red 不互相覆盖（保持 Red，开单仍在）。
+pub fn merge_status(a: WalkStatus, b: WalkStatus) -> WalkStatus {
+    let rank = |s: WalkStatus| match s {
+        WalkStatus::Green => 2u8,
+        WalkStatus::Red => 1,
+        WalkStatus::Pending => 0,
+    };
+    if rank(a) >= rank(b) {
+        a
+    } else {
+        b
+    }
+}
+
+/// 显式合并：把一个**已收口**会话的引擎记录并入主引擎。未收口会话
+/// 拒绝并入（收口前状态仍在流动——中途并入等于偷跑）。返回实际改变
+/// 主引擎状态的条数（零 = 未收口或无增量）。
+pub fn merge_session(master: &mut WalkEngine, s: &WalkSession) -> usize {
+    if s.closed_ms.is_none() {
+        return 0;
+    }
+    let mut changed = 0usize;
+    for rec in &s.engine.records {
+        if rec.status == WalkStatus::Pending {
+            continue;
+        }
+        if let Some(mr) = master.records.iter_mut().find(|r| r.fid == rec.fid) {
+            let new = merge_status(mr.status, rec.status);
+            if new != mr.status {
+                mr.status = new;
+                changed += 1;
+            }
+        }
+    }
+    changed
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 三：主册卷判据段自动提取器（三列映射「自动生成 +
+// 人工复核双轨」的自动半轨真正实现——扫主册风格文本产映射行草稿）
+// ---------------------------------------------------------------------------
+
+/// 一条映射行草稿（提取产物：锚号/F 编号/功能名/判据全文）。
+#[derive(Clone)]
+pub struct DraftRow {
+    pub anchor: String,
+    pub fid: u32,
+    pub name: String,
+    /// 判据全文（主册【验收判据】段原文——比 MAP 摘文更全，供人工
+    /// 复核时对拍收敛）。
+    pub criterion: String,
+}
+
+/// 主册卷扫描器：识别 `### G-C-xx Fyyy 名称 · 完整设计` 标题行，取其后
+/// 首个 `**【验收判据】**` 行产出草稿。锚号与 fid 双解析互证（标题行
+/// 锚号数字 ≠ fid-70 时丢弃——主册锚号规则 corrupted 的结构检出）。
+pub fn extract_map_draft(master_text: &str) -> Vec<DraftRow> {
+    let mut rows: Vec<DraftRow> = Vec::new();
+    let mut cur: Option<(String, u32, String)> = None;
+    for line in master_text.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("### G-C-") {
+            let mut it = rest.splitn(2, ' ');
+            let anchor_num = it.next().unwrap_or("");
+            let rest2 = it.next().unwrap_or("");
+            if let Some(fid_str) = rest2.strip_prefix('F') {
+                let digits_end = fid_str
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(fid_str.len());
+                let fid: u32 = fid_str[..digits_end].parse().unwrap_or(0);
+                let mut name = fid_str[digits_end..].trim();
+                if let Some(stripped) = name.strip_suffix("· 完整设计") {
+                    name = stripped.trim();
+                }
+                // 锚号互证：标题锚号必须等于 fid-70（两位不补零原文形态）。
+                let anchor_num_ok = anchor_num
+                    .parse::<u32>()
+                    .map(|n| fid > 0 && n == fid - 70)
+                    .unwrap_or(false);
+                if anchor_num_ok {
+                    cur = Some((alloc::format!("G-C-{}", anchor_num), fid, String::from(name)));
+                } else {
+                    cur = None;
+                }
+                continue;
+            }
+            cur = None;
+        } else if t.contains("【验收判据】") {
+            if let Some((anchor, fid, name)) = cur.take() {
+                let crit = match t.find("】**") {
+                    Some(p) => t[p + 5..].trim(),
+                    None => "",
+                };
+                let crit = crit.trim_start_matches('*').trim().trim_end_matches('。');
+                if !crit.is_empty() {
+                    rows.push(DraftRow {
+                        anchor,
+                        fid,
+                        name,
+                        criterion: String::from(crit),
+                    });
+                }
+            }
+        }
+    }
+    rows
+}
+
+/// 草稿 × 在册 MAP 对拍（自动半轨 × 人工半轨闭环）：fid 未登记 / 名称
+/// 不一致 / 锚号与生成器不一致 = 漂移，返回漂移 fid 清单（空 = 双轨
+/// 就绪——映射表可以从草稿侧再生而不失真）。
+pub fn draft_matches_map(draft: &[DraftRow]) -> Vec<u32> {
+    let mut drift = Vec::new();
+    for d in draft {
+        match MAP.iter().find(|m| m.fid == d.fid) {
+            None => drift.push(d.fid),
+            Some(m) => {
+                if m.name != d.name.as_str() || d.anchor != criterion_anchor(d.fid) {
+                    drift.push(d.fid);
+                }
+            }
+        }
+    }
+    drift
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 四：最弱维度改进清单（加权热力的行动化出口——走查
+// 收口后先修什么由本清单唯一决定）
+// ---------------------------------------------------------------------------
+
+/// 弱维度 Top-N：得分升序（最弱在前）→ 权值降序（同分先修重权）→
+/// 维度下标升序（确定性 tiebreak）。返回 (维度, 得分, 权值)。
+pub fn weak_dimensions_top(scores: &[(usize, u32)], top_n: usize) -> Vec<(usize, u32, u32)> {
+    let mut rows: Vec<(usize, u32, u32)> = scores
+        .iter()
+        .map(|&(d, s)| (d, s, DIMENSIONS[d].1))
+        .collect();
+    rows.sort_by(|a, b| a.1.cmp(&b.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
+    rows.truncate(top_n);
+    rows
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 五：R8 指纹登记导出与抽回（周对账的登记文件形态）
+// ---------------------------------------------------------------------------
+
+/// R8 指纹登记导出：55 项全表 fid/判据指纹 JSON——审计台账的登记文件
+/// 形态（drift_scan 的登记输入直接由 parse_digest_ledger 抽回）。
+pub fn export_digest_ledger() -> String {
+    let mut items: Vec<String> = Vec::new();
+    for m in MAP.iter() {
+        let mut o = vbase::JsonObj::new();
+        o.num_field("fid", m.fid as u64);
+        o.str_field("digest", &criterion_digest(m.fid));
+        items.push(o.finish());
+    }
+    let mut root = vbase::JsonObj::new();
+    root.str_field("tool", WALKCHECK_TOOL);
+    root.str_field("batch", AUDIT_BATCH_DATE);
+    root.raw_array_field("digests", &items);
+    root.finish()
+}
+
+/// 登记文件抽回（导出 → 抽回 round-trip——登记文件必须能被 drift_scan
+/// 直接消费；抽不回 = 登记文件损坏 = 本周对账强制人工兜底）。
+pub fn parse_digest_ledger(json: &str) -> Vec<(u32, String)> {
+    let mut out: Vec<(u32, String)> = Vec::new();
+    let bytes = json.as_bytes();
+    let mut i = 0usize;
+    while i + 6 <= bytes.len() {
+        if &json[i..i + 6] == "\"fid\":" {
+            let rest = &json[i + 6..];
+            let end = rest.find(',').unwrap_or(rest.len());
+            if let Ok(fid) = rest[..end].parse::<u32>() {
+                if let Some(dp) = rest.find("\"digest\":\"") {
+                    let seg = &rest[dp + 10..];
+                    if let Some(de) = seg.find('"') {
+                        out.push((fid, String::from(&seg[..de])));
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v7 · 一：宪章条款登记册（G-C-55 核心语义「宪章手感条款逐条
+// 映射到 F071-F125 验收锚点」的条款侧全集——此前只有维度表与每维度三
+// 代表锚，条款册缺位；本册登记后「三列映射表的宪章条款列」有册可查）
+// ---------------------------------------------------------------------------
+
+/// 宪章章名（16 章：十三补单列——异常显性化是 Variable 明令独立章）。
+pub const CHARTER_CHAPTERS: [&str; 16] = [
+    "一 归属与隔离",
+    "二 浮层生命周期",
+    "三 交互状态机",
+    "四 键盘与焦点",
+    "五 真实操作手感",
+    "六 文本与输入",
+    "七 窗口与环境",
+    "八 性能感知",
+    "九 错误与引导",
+    "十 全局一致性",
+    "十一 可发现性与学习曲线",
+    "十二 数据安全与信任",
+    "十三 体验日志",
+    "十三补 异常显性化与全景日志",
+    "十四 开放性与可拓展性",
+    "十五 验收协议",
+];
+
+/// 一条宪章条款（章号 / 条款名 / 要点摘文 / 归属 20 维度下标 / 涉及
+/// C 域 F 锚点——三列映射表的条款列展开为可对账的四元组）。
+pub struct CharterClause {
+    /// 章号（1..=16，对应 CHARTER_CHAPTERS 下标 +1）。
+    pub chapter: u8,
+    pub clause: &'static str,
+    /// 要点摘文（宪章正文一句——登记不复述，原文在宪章卷）。
+    pub gist: &'static str,
+    /// 归属走查维度（DIMENSIONS 下标，可多属——条款天然跨维度）。
+    pub dims: &'static [usize],
+    /// 涉及 C 域锚点（MAP 内 fid——出域锚点不属于本册）。
+    pub anchors: &'static [u32],
+}
+
+/// 宪章条款册（每章 ≥2 条；每条款的 anchors 覆盖该维度代表锚——
+/// dimension_anchor_examples 的三锚必须出现在同维度条款锚并集内，
+/// 两侧漂移即本册自检红）。
+pub const CHARTER_CLAUSES: [CharterClause; 46] = [
+    // 一 归属与隔离
+    CharterClause { chapter: 1, clause: "系统软件完整活在系统内", gist: "窗口/弹窗/托盘/通知任一部件逃逸宿主即隔离失败", dims: &[15], anchors: &[121, 122] },
+    CharterClause { chapter: 1, clause: "跨界部件归属清单化", gist: "嵌入/双域类功能跨界后归谁管当需求写清，不靠默认行为漏", dims: &[15], anchors: &[117, 120] },
+    CharterClause { chapter: 1, clause: "逃逸即缺陷", gist: "隔离失败无论看起来多正常都是 bug——欢迎卡归属走查", dims: &[15, 18], anchors: &[118, 121, 122] },
+    // 二 浮层生命周期
+    CharterClause { chapter: 2, clause: "点外即收", gist: "右键浮层点击框外任意位置消失——桌面软件公理", dims: &[16], anchors: &[77, 90, 87] },
+    CharterClause { chapter: 2, clause: "浮层出路五查", gist: "点外/Esc/再点触发钮/失焦/遮挡——每浮层交付前过清单", dims: &[16], anchors: &[77, 115, 118] },
+    CharterClause { chapter: 2, clause: "反面模式清零", gist: "关不掉的框/死胡同/弹回/抢焦点——一律消灭", dims: &[16, 0], anchors: &[90, 87, 107] },
+    // 三 交互状态机
+    CharterClause { chapter: 3, clause: "乱点路径全有出口", gist: "连点/点一半打断/拖一半松手/切走再切回——每条路径有落点", dims: &[0], anchors: &[77, 82, 84] },
+    CharterClause { chapter: 3, clause: "可取消可重试不重复", gist: "加载可取消/失败可重试/重试不重复提交", dims: &[0], anchors: &[107, 122, 86] },
+    CharterClause { chapter: 3, clause: "百毫秒反馈红线", gist: "任何点击 100ms 内有可见反馈——没反应与反应错同罪", dims: &[0, 4], anchors: &[115, 75] },
+    CharterClause { chapter: 3, clause: "动画打断与对称", gist: "进出对称、打断不跳变——窗口开合/任务视图走查", dims: &[3, 0], anchors: &[80, 82, 124] },
+    // 四 键盘与焦点
+    CharterClause { chapter: 4, clause: "焦点永远可见", gist: "Tab 顺序合视觉序、焦点环不许删——快速设置全键盘可达", dims: &[6], anchors: &[76, 106, 119] },
+    CharterClause { chapter: 4, clause: "快捷键是承诺", gist: "声明的快捷键必须真实生效且不与系统/输入法冲突", dims: &[6, 13], anchors: &[108, 110, 111] },
+    CharterClause { chapter: 4, clause: "键鼠能力对等", gist: "鼠标能触达的键盘也要能触达——键盘 HUD/屏幕键盘兜底", dims: &[6], anchors: &[110, 106, 119] },
+    // 五 真实操作手感
+    CharterClause { chapter: 5, clause: "悬停按压有反馈", gist: "可点的悬停变化、按压有压缩、移出取消不误触", dims: &[5], anchors: &[86, 103, 98] },
+    CharterClause { chapter: 5, clause: "拖拽跟手有回路", gist: "拖拽跟手/合法落点提示/出界有回路/Esc 放弃复原", dims: &[5, 1], anchors: &[84, 103, 87] },
+    CharterClause { chapter: 5, clause: "滚动自然边界清晰", gist: "滚轮方向自然、到底有边界感、跟随元素不抖", dims: &[5], anchors: &[97, 88, 99] },
+    // 六 文本与输入
+    CharterClause { chapter: 6, clause: "输入框三态齐", gist: "占位/校验/错误提示三态齐全，错误说怎么改对", dims: &[13], anchors: &[107, 108, 112] },
+    CharterClause { chapter: 6, clause: "剪贴板保真", gist: "复制粘贴保真、粘贴内容清洗校验、大文本不卡 UI", dims: &[13], anchors: &[109, 110] },
+    CharterClause { chapter: 6, clause: "撤销重做链", gist: "用户内容操作有 undo 链，粒度合理", dims: &[13], anchors: &[103, 97] },
+    // 七 窗口与环境
+    CharterClause { chapter: 7, clause: "缩放多屏成立", gist: "缩放/最大化/多显示器/DPI 下布局不破", dims: &[14, 2], anchors: &[123, 113, 116] },
+    CharterClause { chapter: 7, clause: "亮暗对比达标", gist: "亮暗主题/壁纸深浅/夜间下对比度达标，色弱可辨", dims: &[14, 2], anchors: &[113, 116] },
+    CharterClause { chapter: 7, clause: "唤醒恢复不丢态", gist: "休眠唤醒/断电恢复/热切换后状态不丢画面不乱", dims: &[14, 8], anchors: &[100, 121] },
+    CharterClause { chapter: 7, clause: "状态浮层环境适配", gist: "HUD/浮窗在缩放与全屏降级路径下成立", dims: &[14], anchors: &[106, 100] },
+    // 八 性能感知
+    CharterClause { chapter: 8, clause: "P95 无卡顿感", gist: "点击百毫秒反馈、动画稳帧、长任务不冻结主线程", dims: &[4], anchors: &[75, 111] },
+    CharterClause { chapter: 8, clause: "重负载滚动不掉帧", gist: "万张目录/长文档滚动帧率不掉——账本验证不凭感觉", dims: &[4], anchors: &[93, 105, 75] },
+    CharterClause { chapter: 8, clause: "进度诚实启动有节奏", gist: "慢有诚实进度、先骨架后内容、懒加载不打断操作", dims: &[4, 7], anchors: &[117, 120, 122] },
+    // 九 错误与引导
+    CharterClause { chapter: 9, clause: "错误三要素", gist: "发生了什么/为什么/下一步——技术细节收进详情折叠", dims: &[7], anchors: &[117, 122, 120] },
+    CharterClause { chapter: 9, clause: "破坏性操作二次确认", gist: "高频不骚扰、危险钮不放常按位、取消永远安全", dims: &[7, 8], anchors: &[85, 121, 97] },
+    CharterClause { chapter: 9, clause: "空态是设计资源", gist: "首次打开显示能做什么怎么开始，不是一片荒凉", dims: &[7, 12], anchors: &[117, 118, 119] },
+    // 十 全局一致性
+    CharterClause { chapter: 10, clause: "交互词典全符合", gist: "同一系统一套规则：关闭键/右键结构/确定取消次序/加载样式", dims: &[11], anchors: &[124, 113, 119] },
+    CharterClause { chapter: 10, clause: "细节一致性可放大", gist: "间距 1px 级对齐、放大三倍看不尴尬——详情窗格/关于页抽查", dims: &[1, 11], anchors: &[91, 123, 84] },
+    CharterClause { chapter: 10, clause: "特色是设计出来的", gist: "克制差异化——允许特色，不许顺手造成；总谱是特色的唯一源", dims: &[11, 2], anchors: &[118, 124] },
+    // 十一 可发现性与学习曲线
+    CharterClause { chapter: 11, clause: "功能三问", gist: "怎么发现/怎么找回/用错怎么带回——好功能没入口等于没做", dims: &[12], anchors: &[117, 118, 119] },
+    CharterClause { chapter: 11, clause: "学习曲线分层", gist: "新手五分钟核心操作、进阶渐进披露、专家有捷径", dims: &[12], anchors: &[117, 119, 76] },
+    // 十二 数据安全与信任
+    CharterClause { chapter: 12, clause: "防丢失最高优先", gist: "自动保存/草稿恢复/崩溃找回/未保存提示——用户劳动成果神圣", dims: &[8], anchors: &[85, 121, 97] },
+    CharterClause { chapter: 12, clause: "占用诚实透明", gist: "磁盘/内存/后台/同步/删除后果——看得见、能控制、能撤销", dims: &[8], anchors: &[123, 120, 102] },
+    CharterClause { chapter: 12, clause: "确定性不丢", gist: "同操作同结果、状态持久可靠、升级不破坏旧数据", dims: &[8], anchors: &[121, 122] },
+    // 十三 体验日志
+    CharterClause { chapter: 13, clause: "日志记到交互细节层", gist: "每次点击/拖拽/快捷键记界面/元素/时刻/反馈/耗时", dims: &[9], anchors: &[120, 77, 88] },
+    CharterClause { chapter: 13, clause: "挫败信号主动捕获", gist: "rage click/dead click/反复开关浮层自动标记体验事件", dims: &[9], anchors: &[88, 86] },
+    CharterClause { chapter: 13, clause: "隐私与代价红线", gist: "不记输入内容、写日志不阻塞交互、可关闭", dims: &[9, 8], anchors: &[120, 125] },
+    // 十三补 异常显性化
+    CharterClause { chapter: 14, clause: "异常零静默", gist: "有异常必须三要素显性化，不许只留技术码", dims: &[10], anchors: &[122, 117, 121] },
+    CharterClause { chapter: 14, clause: "隐蔽异常主动捕获", gist: "静默 catch/后台失败/早期失败有专门捕获路径", dims: &[10], anchors: &[120, 121] },
+    // 十四 开放性与可拓展性
+    CharterClause { chapter: 15, clause: "开放入口可达", gist: "帮助/搜索/导出入口开放——发现性即开放性的第一里", dims: &[17, 12], anchors: &[119, 109, 88] },
+    CharterClause { chapter: 15, clause: "数据与能力开放", gist: "开放格式/导出迁移/扩展点沙箱——本体规则好，可能性给用户（D 域细则 F126-F128 在册，本册只挂 C 域锚）", dims: &[17], anchors: &[119, 118] },
+    // 十五 验收协议
+    CharterClause { chapter: 16, clause: "真机走查二十维", gist: "常规/乱点/打断/并发/全输入/盲操作走查——用手不用报告", dims: &[18, 19], anchors: &[125, 113, 111] },
+    CharterClause { chapter: 16, clause: "整体感受一问", gist: "它配不配叫作品——差一口气不算完成", dims: &[19], anchors: &[82, 105, 122] },
+];
+
+/// 章内条款检索（章号 1..=16；越界返回空——不 panic，调用方自行判空）。
+pub fn clauses_of_chapter(ch: u8) -> Vec<&'static CharterClause> {
+    CHARTER_CLAUSES
+        .iter()
+        .filter(|c| c.chapter == ch)
+        .collect()
+}
+
+/// 维度内条款检索（20 维度下标——条款天然跨维度，一维多款）。
+pub fn clauses_of_dimension(dim: usize) -> Vec<&'static CharterClause> {
+    CHARTER_CLAUSES
+        .iter()
+        .filter(|c| c.dims.contains(&dim))
+        .collect()
+}
+
+/// 条款锚并集（某维度的全部条款锚——与该维度代表锚对拍用）。
+pub fn dimension_clause_anchors(dim: usize) -> Vec<u32> {
+    let mut v: Vec<u32> = Vec::new();
+    for c in clauses_of_dimension(dim) {
+        for &a in c.anchors {
+            if !v.contains(&a) {
+                v.push(a);
+            }
+        }
+    }
+    v
+}
+
+/// 登记册结构自洽（五查，红一条即登记册腐化）：
+/// 1) 章号 1..=16 全覆盖且每章 ≥2 条；
+/// 2) 维度下标全部 < 20（越界 = 表错行）；
+/// 3) 锚点全部落在 C 域 71..=125 且在 MAP 在册（出域锚点不属于本册）；
+/// 4) 每维度代表锚 ⊆ 该维度条款锚并集（dimension_anchor_examples 与
+///    条款册双侧零漂移——一处一事实的对账闭环）；
+/// 5) 条款名唯一（重名 = 词典歧义）。
+pub fn charter_registry_selfcheck() -> Vec<&'static str> {
+    let mut bad: Vec<&'static str> = Vec::new();
+    // 1) 章覆盖。
+    for ch in 1u8..=16 {
+        if clauses_of_chapter(ch).len() < 2 {
+            bad.push("chapter under-covered");
+            break;
+        }
+    }
+    // 2) 维度下标合法。
+    if CHARTER_CLAUSES
+        .iter()
+        .any(|c| c.dims.iter().any(|&d| d >= WALK_DIMENSIONS))
+    {
+        bad.push("dimension index out of range");
+    }
+    // 3) 锚点在册。
+    if CHARTER_CLAUSES.iter().any(|c| {
+        c.anchors
+            .iter()
+            .any(|&a| a < 71 || a > 125 || !MAP.iter().any(|m| m.fid == a))
+    }) {
+        bad.push("anchor outside C-domain map");
+    }
+    // 4) 代表锚 ⊆ 条款锚并集。
+    for d in 0..WALK_DIMENSIONS {
+        let union = dimension_clause_anchors(d);
+        for &ex in dimension_anchor_examples(d).iter() {
+            if !union.contains(&ex) {
+                bad.push("example anchor missing from clause union");
+                break;
+            }
+        }
+    }
+    // 5) 条款名唯一。
+    for i in 0..CHARTER_CLAUSES.len() {
+        for j in (i + 1)..CHARTER_CLAUSES.len() {
+            if CHARTER_CLAUSES[i].clause == CHARTER_CLAUSES[j].clause {
+                bad.push("duplicate clause name");
+                break;
+            }
+        }
+    }
+    bad
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v7 · 二：走查脚本工具化产出面（G-C-55「走查脚本工具化：
+// tools/vx-walkcheck-c.py 形态」——Rust 侧生成脚本全文，产物可执行）
+// ---------------------------------------------------------------------------
+
+/// 走查脚本全文生成（嵌入 55 项锚点表 + 20 维度权值 + checklist 输出
+/// 器；产物落 `tools/vx-walkcheck-c.py` 即走查材料族惯例形态）。
+pub fn render_walkcheck_script() -> String {
+    let mut s = String::new();
+    s.push_str("#!/usr/bin/env python3\n");
+    s.push_str("# -*- coding: utf-8 -*-\n");
+    s.push_str("# vx-walkcheck-c.py — C 域体验走查 checklist 生成器（F125 工具化）\n");
+    s.push_str("# 数据源：svstar/walkcheck.rs MAP（唯一源）；本脚本由 render_walkcheck_script 生成，勿手改。\n");
+    s.push_str("import argparse, json, sys\n\n");
+    s.push_str("ANCHORS = [\n");
+    for m in MAP.iter() {
+        s.push_str(&alloc::format!(
+            "    ({}, \"{}\", \"{}\"),\n",
+            m.fid,
+            m.name.replace('"', "\\\""),
+            m.criterion.replace('"', "\\\"")
+        ));
+    }
+    s.push_str("]\n\n");
+    s.push_str("DIMENSIONS = [\n");
+    for (name, w) in DIMENSIONS.iter() {
+        s.push_str(&alloc::format!("    (\"{}\", {}),\n", name, w));
+    }
+    s.push_str("]\n\n");
+    s.push_str("def emit(md=True):\n");
+    s.push_str("    if md:\n");
+    s.push_str("        for fid, name, crit in ANCHORS:\n");
+    s.push_str("            print(f\"- [ ] F{fid} {name}：{crit}\")\n");
+    s.push_str("    else:\n");
+    s.push_str("        print(json.dumps({\"anchors\": ANCHORS, \"dimensions\": DIMENSIONS}, ensure_ascii=False, indent=1))\n\n");
+    s.push_str("def main():\n");
+    s.push_str("    ap = argparse.ArgumentParser(description=\"C 域走查 checklist 生成\")\n");
+    s.push_str("    ap.add_argument(\"--json\", action=\"store_true\", help=\"JSON 形态输出\")\n");
+    s.push_str("    a = ap.parse_args()\n");
+    s.push_str("    emit(md=not a.json)\n\n");
+    s.push_str("if __name__ == \"__main__\":\n");
+    s.push_str("    main()\n");
+    s
+}
+
+/// 脚本产物自检（判据「生成即跑通」的结构冒烟——生成器红 = 工具化失守）：
+/// shebang/主入口/参数门/双形态输出/锚点条数与 MAP 一致/维度条数一致。
+pub fn walkcheck_script_selfcheck() -> bool {
+    let s = render_walkcheck_script();
+    s.starts_with("#!/usr/bin/env python3")
+        && s.contains("def main():")
+        && s.contains("argparse")
+        && s.contains("--json")
+        && s.matches("    (").count() >= C_DOMAIN_ITEMS
+        && s.matches("(\"").count() >= WALK_DIMENSIONS
+        && s.contains("if __name__ == \"__main__\":")
+}
+
 // ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
@@ -1534,6 +2001,131 @@ pub fn run_walkcheck_checks() -> CheckSet {
     // 27. 证据三件套日期槽（深化 v4）：批次日期常量唯一源在册。
     set.add("audit batch date registered", AUDIT_BATCH_DATE == "2026-09-26", "");
 
+    // 28. 归档路径生成器（深化 v6）：合法段生成版本绑定路径；路径逃逸
+    //     段（../、分隔符、空格、空串）逐类拒绝。
+    let p_ok = archive_path("1.1.0", AUDIT_BATCH_DATE)
+        == Some(alloc::format!("docs/acceptance/v1.1.0/walkcheck-{}.md", AUDIT_BATCH_DATE));
+    let p_traversal = archive_path("../../etc", "2026-09-26").is_none();
+    let p_slash = archive_path("1.0/0", "2026-09-26").is_none();
+    let p_space = archive_path("1.0.0", "2026 09 26").is_none();
+    let p_empty = archive_path("", "2026-09-26").is_none();
+    set.add(
+        "archive path versioned + traversal rejected",
+        p_ok && p_traversal && p_slash && p_space && p_empty,
+        "",
+    );
+
+    // 29. 并行会话收口合并（深化 v6）：未收口拒绝并入；已收口 Green>
+    //     Red>Pending 确定裁决；Pending 不覆盖已有状态。
+    let mut master = WalkEngine::new("1.0.0");
+    master.generate_checklist();
+    let _ = master.record(111, true, Some(Evidence { data: "d", command: "c", date: "z" }), "");
+    let mut s1 = WalkSession::open(1, "A", "1.0.0", 0);
+    let _ = s1.record_guarded(112, false, None, "s1 red");
+    let _ = s1.close(100);
+    let merged_s1 = merge_session(&mut master, &s1) == 1; // 112 Pending→Red
+    let mut s2 = WalkSession::open(2, "B", "1.0.0", 0);
+    let _ = s2.record_guarded(111, false, None, "conflict red"); // master Green vs s2 Red → 保 Green
+    let _ = s2.record_guarded(113, true, Some(Evidence { data: "d", command: "c", date: "z" }), "");
+    let unclosed_merge = merge_session(&mut master, &s2) == 0; // s2 未收口拒并
+    let _ = s2.close(200);
+    let merged_s2 = merge_session(&mut master, &s2) == 1; // 仅 113 增量
+    let g_kept = master.records.iter().find(|r| r.fid == 111).unwrap().status == WalkStatus::Green;
+    let new_red = master.records.iter().find(|r| r.fid == 112).unwrap().status == WalkStatus::Red;
+    let new_green = master.records.iter().find(|r| r.fid == 113).unwrap().status == WalkStatus::Green;
+    let conflict_rule = merge_status(WalkStatus::Red, WalkStatus::Green) == WalkStatus::Green
+        && merge_status(WalkStatus::Red, WalkStatus::Pending) == WalkStatus::Red
+        && merge_status(WalkStatus::Green, WalkStatus::Green) == WalkStatus::Green;
+    set.add(
+        "session merge closed-only + deterministic verdict",
+        merged_s1 && unclosed_merge && merged_s2 && g_kept && new_red && new_green && conflict_rule,
+        "",
+    );
+
+    // 30. 主册卷判据段自动提取器（深化 v6）：样卷三行解析出锚号/fid/
+    //     名称/判据全文；锚号与 fid 互证失败行丢弃；草稿 × MAP 对拍零漂移。
+    const SAMPLE_MASTER: &str = "### G-C-41 F111 放大镜 · 完整设计\n\n**【验收判据】**2x-16x 全档文字锐利（4K 放大三倍不糊条款验证）；镜头模式 80fps 跟手；三跟随策略切换实测。\n\n### G-C-42 F112 讲述人雏形 · 完整设计\n\n**【验收判据】**两场景全控件遍历朗读测试（100% 控件有可读名——无障碍门禁 B-39xx 联动）；开关快捷键全流程实测。\n\n### G-C-99 F999 伪造锚 · 完整设计\n\n**【验收判据】**此行锚号与 fid 互证失败必须被丢弃。\n";
+    let draft = extract_map_draft(SAMPLE_MASTER);
+    let mut no_drift = draft_matches_map(&draft).is_empty();
+    let d111 = draft.iter().find(|d| d.fid == 111);
+    let anchor_ok = d111.map(|d| d.anchor == "G-C-41" && d.name == "放大镜").unwrap_or(false);
+    let crit_ok = d111.map(|d| d.criterion.contains("2x-16x") && d.criterion.contains("80fps")).unwrap_or(false);
+    let forged_dropped = !draft.iter().any(|d| d.fid == 999);
+    // 反向漂移注入：名称篡改必须被检出。
+    let mut tampered: Vec<DraftRow> = draft.clone();
+    for d in tampered.iter_mut() {
+        if d.fid == 112 {
+            d.name = String::from("错名");
+        }
+    }
+    no_drift = no_drift && draft_matches_map(&tampered) == vec![112];
+    set.add(
+        "master-scroll extractor draft x map zero drift",
+        draft.len() == 2 && anchor_ok && crit_ok && forged_dropped && no_drift,
+        "",
+    );
+
+    // 31. 最弱维度改进清单（深化 v6）：合成评分三键稳定序——零分维
+    //     度在前（同分权值降序：dim8 w3 先于 dim3 w2），低分次之。
+    let mut scores: Vec<(usize, u32)> = (0..WALK_DIMENSIONS).map(|d| (d, 3u32)).collect();
+    scores[3].1 = 0; // w2 零分
+    scores[8].1 = 0; // w3 零分
+    scores[9].1 = 1; // w2 一分
+    let top = weak_dimensions_top(&scores, 3);
+    set.add(
+        "weak dimensions top3 ordering",
+        top == vec![(8usize, 0u32, 3u32), (3, 0, 2), (9, 1, 2)],
+        "",
+    );
+
+    // 32. R8 指纹登记导出/抽回（深化 v6）：导出 55 条 → 抽回 → drift_scan
+    //     全净；指纹篡改抽回后必被检出。
+    let ledger_json = export_digest_ledger();
+    let pairs = parse_digest_ledger(&ledger_json);
+    let refs: Vec<(u32, &str)> = pairs.iter().map(|&(f, ref d)| (f, d.as_str())).collect();
+    let clean_scan = AuditLedger::drift_scan(&refs).is_empty();
+    let mut tampered_pairs = pairs.clone();
+    tampered_pairs[0].1 = String::from("0000000000000000");
+    let tamper_refs: Vec<(u32, &str)> = tampered_pairs.iter().map(|&(f, ref d)| (f, d.as_str())).collect();
+    let tamper_caught = AuditLedger::drift_scan(&tamper_refs) == vec![MAP[0].fid];
+    set.add(
+        "r8 digest ledger round-trip + tamper caught",
+        pairs.len() == C_DOMAIN_ITEMS && clean_scan && tamper_caught,
+        "",
+    );
+
+    // 33. 宪章条款登记册结构自洽（深化 v7）：五查全净（章覆盖/维度下
+    //     标/锚点在册/代表锚⊆条款锚并集/条款名唯一）。
+    let reg_bad = charter_registry_selfcheck();
+    set.add(
+        "charter registry self-consistent 5 checks",
+        reg_bad.is_empty(),
+        "",
+    );
+
+    // 34. 宪章条款检索（深化 v7）：章检索/维度检索/锚并集去重三通路
+    //     与登记册一致。
+    let ch13 = clauses_of_chapter(13);
+    let dim6 = clauses_of_dimension(6);
+    let union6 = dimension_clause_anchors(6);
+    set.add(
+        "charter clause retrieval three paths",
+        ch13.len() == 3
+            && !dim6.is_empty()
+            && dim6.iter().all(|c| c.dims.contains(&6))
+            && union6.contains(&76)
+            && union6.len() <= CHARTER_CLAUSES.len() * 3,
+        "",
+    );
+
+    // 35. 走查脚本工具化产物（深化 v7）：脚本全文可生成且结构冒烟六项
+    //     全过（shebang/主入口/参数门/双形态/锚点数/维度数）。
+    set.add(
+        "walkcheck script generation smoke",
+        walkcheck_script_selfcheck(),
+        "",
+    );
+
     set
 }
 
@@ -1683,5 +2275,86 @@ mod tests {
         e.generate_checklist();
         let md = export_checklist_full_md(&e);
         assert!(md.contains("⬜"), "未走条目带待走标记");
+    }
+
+    #[test]
+    fn f125_archive_path_shape() {
+        // 版本绑定目录形态逐段对拍（惯例目录 + 版本目录 + 文件名三段）。
+        let p = archive_path("2.0.0", "2026-10-01").unwrap();
+        assert!(p.starts_with("docs/acceptance/v2.0.0/"));
+        assert!(p.ends_with("walkcheck-2026-10-01.md"));
+        assert!(archive_path("..", "x").is_none());
+    }
+
+    #[test]
+    fn f125_merge_session_pending_only_noop() {
+        // 纯 Pending 会话（未记任何条目）收口合并 = 零变更。
+        let mut master = WalkEngine::new("1.0.0");
+        master.generate_checklist();
+        let mut s = WalkSession::open(3, "C", "1.0.0", 0);
+        let _ = s.close(1);
+        assert_eq!(merge_session(&mut master, &s), 0);
+    }
+
+    #[test]
+    fn f125_extractor_no_header_no_row() {
+        // 无标题行直接出现判据行 = 无归属丢弃（不产孤儿草稿）。
+        assert!(extract_map_draft("**【验收判据】**孤儿判据一行。").is_empty());
+        // 标题行后无判据行 = 不产半行草稿。
+        assert!(extract_map_draft("### G-C-41 F111 放大镜 · 完整设计\n\n正文无判据段").is_empty());
+    }
+
+    #[test]
+    fn f125_weak_dims_full_engine_no_zero_dim_top() {
+        // 全绿引擎的弱维度 Top1 得分必为 3（无红无 pending 的下界）。
+        let mut e = WalkEngine::new("1.0.0");
+        e.generate_checklist();
+        for m in MAP.iter() {
+            let _ = e.record(m.fid, true, Some(Evidence { data: "x", command: "y", date: "z" }), "");
+        }
+        let top = weak_dimensions_top(&dimension_scores(&e), 1);
+        assert_eq!(top[0].1, 3);
+    }
+
+    #[test]
+    fn f125_digest_ledger_tool_and_batch_header() {
+        let j = export_digest_ledger();
+        assert!(j.starts_with("{\"tool\":\"tools/vx-walkcheck-c.py\""));
+        assert!(j.contains("\"batch\":\"2026-09-26\""));
+        // 损坏登记文件抽回 = 空（人工兜底信号）。
+        assert!(parse_digest_ledger("not-json").is_empty());
+    }
+
+    #[test]
+    fn f125_charter_chapter_names_and_retrieval() {
+        // 章名表 16 章、章号检索越界安全返回空。
+        assert_eq!(CHARTER_CHAPTERS.len(), 16);
+        assert!(CHARTER_CHAPTERS[13].contains("异常显性化"));
+        assert!(clauses_of_chapter(0).is_empty());
+        assert!(clauses_of_chapter(17).is_empty());
+        assert_eq!(clauses_of_chapter(1).len(), 3);
+    }
+
+    #[test]
+    fn f125_charter_anchor_union_dedup() {
+        // 锚并集去重：并集长度 ≤ 全册锚总数，且无重复元素。
+        let u = dimension_clause_anchors(9);
+        let total: usize = CHARTER_CLAUSES.iter().map(|c| c.anchors.len()).sum();
+        assert!(u.len() <= total);
+        for i in 0..u.len() {
+            for j in (i + 1)..u.len() {
+                assert_ne!(u[i], u[j], "锚并集必须去重");
+            }
+        }
+    }
+
+    #[test]
+    fn f125_walkcheck_script_embeds_all_anchors() {
+        // 脚本产物内嵌全部 55 锚：逐 fid 在脚本文本中可找到。
+        let s = render_walkcheck_script();
+        for m in MAP.iter() {
+            assert!(s.contains(&alloc::format!("({}, \"", m.fid)), "F{} 未入脚本", m.fid);
+        }
+        assert!(s.contains("ensure_ascii=False"), "JSON 形态保中文");
     }
 }

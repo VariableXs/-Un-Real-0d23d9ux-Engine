@@ -140,6 +140,14 @@ mod ais2debug5 {
         reds("F198d", &recenv::run_recenv_deep_checks());
         reds("F199d", &lineage::run_lineage_deep_checks());
         reds("F200d", &walkall::run_walkall_deep_checks());
+        reds("F186v3", &syspart::run_syspart_deep2_checks());
+        reds("F187v3", &clockguard::run_clockguard_deep2_checks());
+        reds("F188v3", &logring::run_logring_deep2_checks());
+        reds("F192v3", &paramwl::run_paramwl_deep2_checks());
+        reds("F194v3", &auditchain::run_auditchain_deep2_checks());
+        reds("F195v3", &resquota::run_resquota_deep2_checks());
+        reds("F196v3", &batguard::run_batguard_deep2_checks());
+        reds("F197v3", &thermgov::run_thermgov_deep2_checks());
     }
 }
 
@@ -160,5 +168,19 @@ mod ais2debug6 {
             }
         }
         println!("records={}", att.len());
+    }
+}
+
+#[cfg(test)]
+mod ais2debug7 {
+    #[test]
+    fn dump_ledger() {
+        let ledger = crate::secstar2::check_ledger();
+        let mut total = 0;
+        for (tag, counts) in ledger {
+            println!("LEDGER {} tables={:?} sum={}", tag, counts, counts.iter().sum::<usize>());
+            total += counts.iter().sum::<usize>();
+        }
+        println!("LEDGER TOTAL = {}", total);
     }
 }

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>真实感 UI 实验室 · Realism Lab</title>
+<style>
+  :root {
+    --glass-blur: 22px;
+    --glass-alpha: 0.55;
+    --shadow-depth: 40;
+    --corner: 24px;
+    --tint: 255, 255, 255;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    background: #0a0e1a;
+    color: #fff;
+    overflow-x: hidden;
+  }
+  /* ===== 壁纸层：深空渐变 + 彩色光斑（真实感的舞台） ===== */
+  .stage {
+    position: relative;
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse 900px 600px at 15% 20%, rgba(88, 101, 242, 0.35), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 85% 30%, rgba(163, 74, 212, 0.28), transparent 60%),
+      radial-gradient(ellipse 800px 600px at 60% 95%, rgba(14, 165, 164, 0.30), transparent 60%),
+      linear-gradient(160deg, #0a0e1a 0%, #101528 50%, #0b1220 100%);
+  }
+  .stars {
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 12% 25%, rgba(255,255,255,.7) 50%, transparent 51%),
+      radial-gradient(1px 1px at 34% 70%, rgba(255,255,255,.5) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 56% 15%, rgba(255,255,255,.8) 50%, transparent 51%),
+      radial-gradient(1px 1px at 71% 55%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 88% 80%, rgba(255,255,255,.6) 50%, transparent 51%),
+      radial-gradient(1px 1px at 45% 42%, rgba(255,255,255,.5) 50%, transparent 51%);
+  }
+  .wrap { position: relative; max-width: 1180px; margin: 0 auto; padding: 56px 32px 80px; }
+  .eyebrow { font-size: 12px; letter-spacing: 3px; color: rgba(255,255,255,.55); text-transform: uppercase; margin-bottom: 10px; }
+  h1 { font-size: 40px; font-weight: 600; letter-spacing: -0.5px; line-height: 1.15; }
+  h1 .grad {
+    background: linear-gradient(92deg, #9db4ff 0%, #d0a5ff 50%, #7de3d8 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { margin-top: 14px; font-size: 15px; line-height: 1.7; color: rgba(255,255,255,.65); max-width: 640px; }
+
+  .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 28px; margin-top: 44px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ===== 毛玻璃控制中心（主角） ===== */
+  .glass {
+    position: relative;
+    background: rgba(var(--tint), var(--glass-alpha));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.5);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: var(--corner);
+    padding: 26px;
+    box-shadow:
+      0 calc(var(--shadow-depth) * 1px) calc(var(--shadow-depth) * 1.6px) rgba(4, 8, 24, calc(var(--shadow-depth) / 100)),
+      inset 0 1px 0 rgba(255,255,255,.5),
+      inset 0 -1px 0 rgba(255,255,255,.08);
+    color: #101528;
+    transition: background .2s ease, border-radius .15s ease;
+  }
+  .glass::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(115deg, rgba(255,255,255,.28) 0%, rgba(255,255,255,0) 28%);
+  }
+  .g-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .g-icon {
+    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+    background: linear-gradient(135deg, #5865f2, #a34ad4);
+    box-shadow: 0 6px 14px rgba(88,101,242,.45), inset 0 1px 0 rgba(255,255,255,.4);
+  }
+  .g-title { font-size: 17px; font-weight: 600; color: #0d1224; }
+  .g-sub { font-size: 12.5px; color: rgba(13,18,36,.62); }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+  .tile {
+    border-radius: 16px; padding: 14px 12px; text-align: center; cursor: pointer; user-select: none;
+    background: rgba(255,255,255,.5); border: 1px solid rgba(255,255,255,.45);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+    transition: transform .12s cubic-bezier(.34,1.56,.64,1), background .15s ease;
+    font-size: 12.5px; font-weight: 500; color: #141a30;
+  }
+  .tile:hover { transform: translateY(-2px) scale(1.02); background: rgba(255,255,255,.72); }
+  .tile:active { transform: scale(.96); }
+  .tile .dot { width: 26px; height: 26px; border-radius: 9px; margin: 0 auto 8px; display: grid; place-items: center; }
+  .dot svg { width: 14px; height: 14px; }
+  .row { display: flex; align-items: center; gap: 12px; margin: 14px 0; color: #141a30; font-size: 13px; }
+  .row label { width: 58px; font-weight: 500; }
+  input[type=range] { flex: 1; accent-color: #5865f2; height: 4px; cursor: pointer; }
+  .val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: rgba(13,18,36,.6); font-size: 12px; }
+
+  /* 呼吸光按钮：动效节奏演示 */
+  .breath {
+    margin-top: 18px; width: 100%; padding: 13px; border: none; border-radius: 14px; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: #fff; font-family: inherit;
+    background: linear-gradient(135deg, #5865f2, #8b5cf6);
+    box-shadow: 0 8px 20px rgba(88,101,242,.5);
+    animation: breath 2.8s ease-in-out infinite;
+    transition: transform .12s cubic-bezier(.34,1.56,.64,1);
+  }
+  .breath:hover { transform: translateY(-1px); }
+  .breath:active { transform: scale(.97); }
+  @keyframes breath {
+    0%, 100% { box-shadow: 0 8px 20px rgba(88,101,242,.5), 0 0 0 0 rgba(120,130,255,.35); }
+    50% { box-shadow: 0 10px 26px rgba(88,101,242,.65), 0 0 0 9px rgba(120,130,255,0); }
+  }
+
+  /* ===== 控制台：实时调节真实感参数 ===== */
+  .panel {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 20px;
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    padding: 22px;
+  }
+  .panel h3 { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.9); margin-bottom: 4px; }
+  .panel p.hint { font-size: 12px; color: rgba(255,255,255,.5); margin-bottom: 16px; line-height: 1.6; }
+  .ctl { margin: 15px 0; }
+  .ctl .lab { display: flex; justify-content: space-between; font-size: 12.5px; color: rgba(255,255,255,.75); margin-bottom: 7px; }
+  .ctl input[type=range] { width: 100%; }
+  .swatch-row { display: flex; gap: 8px; margin-top: 14px; }
+  .swatch { flex: 1; height: 34px; border-radius: 10px; cursor: pointer; border: 2px solid transparent; transition: border-color .15s, transform .12s; }
+  .swatch:hover { transform: scale(1.04); }
+  .swatch.on { border-color: #fff; }
+
+  /* 3D 倾斜卡：真实感的指针物理 */
+  .tilt3d { perspective: 900px; margin-top: 20px; }
+  .tilt-card {
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 18px; padding: 20px;
+    transform-style: preserve-3d;
+    transition: transform .08s linear;
+    color: rgba(255,255,255,.85); font-size: 13px; line-height: 1.65;
+  }
+  .tilt-card b { display: block; font-size: 14px; margin-bottom: 6px; color: #fff; }
+  .shine {
+    position: relative; overflow: hidden;
+  }
+  .shine::before {
+    content: ""; position: absolute; inset: -60%;
+    background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,255,255,.22), transparent 45%);
+    opacity: 0; transition: opacity .2s;
+  }
+  .shine:hover::before { opacity: 1; }
+
+  .foot { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media (max-width: 900px) { .foot { grid-template-columns: 1fr; } }
+  .fact {
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 14px; padding: 16px 18px; font-size: 12.5px; line-height: 1.7; color: rgba(255,255,255,.68);
+  }
+  .fact b { color: #fff; font-size: 13px; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="stars"></div>
+  <div class="wrap">
+    <div class="eyebrow">Realism Lab · 真实感 UI 配方现场</div>
+    <h1>高清晰度 + 真实感，<span class="grad">全代码渲染</span></h1>
+    <p class="sub">这一页没有一张位图贴图——毛玻璃、光影、呼吸灯、指针物理全部由代码实时计算。右边滑块拧一拧，左边玻璃立刻变脸。矢量渲染意味着放大 400% 依然锐利。</p>
+
+    <div class="grid">
+      <div>
+        <div class="glass" id="glass">
+          <div class="g-head">
+            <div class="g-icon">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M13 3 4 14h6l-1 7 9-11h-6l1-7z" fill="#fff"/></svg>
+            </div>
+            <div>
+              <div class="g-title">控制中心</div>
+              <div class="g-sub">backdrop-filter · 实时合成</div>
+            </div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="dot" style="background:linear-gradient(135deg,#3b82f6,#22d3ee)"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" fill="#fff"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>亮度</div>
+            <div class="tile"><div class="dot" style="background:linear-gradient(135deg,#8b5cf6,#ec4899)"><svg viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l6 5V4L8 9H4z" fill="#fff"/></svg></div>声音</div>
+            <div class="tile"><div class="dot" style="background:linear-gradient(135deg,#10b981,#84cc16)"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5L20 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>专注</div>
+          </div>
+          <div class="row"><label>亮度</label><input type="range" min="10" max="100" value="80"><span class="val">80</span></div>
+          <div class="row"><label>音量</label><input type="range" min="0" max="100" value="45"><span class="val">45</span></div>
+          <button class="breath">呼吸光 · 动效节奏演示</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h3>配方控制台</h3>
+          <p class="hint">拖动滑块，实时改写左卡的 CSS 变量——真实感不是玄学，是可量化的参数。</p>
+          <div class="ctl"><div class="lab"><span>玻璃模糊度</span><span id="v1">22px</span></div><input type="range" id="c1" min="0" max="40" value="22"></div>
+          <div class="ctl"><div class="lab"><span>玻璃透明度</span><span id="v2">0.55</span></div><input type="range" id="c2" min="10" max="90" value="55"></div>
+          <div class="ctl"><div class="lab"><span>阴影深度</span><span id="v3">40</span></div><input type="range" id="c3" min="0" max="90" value="40"></div>
+          <div class="ctl"><div class="lab"><span>圆角</span><span id="v4">24px</span></div><input type="range" id="c4" min="4" max="36" value="24"></div>
+          <div class="lab" style="font-size:12.5px;color:rgba(255,255,255,.75);margin-top:16px;">玻璃色</div>
+          <div class="swatch-row">
+            <div class="swatch on" data-tint="255,255,255" style="background:#fff"></div>
+            <div class="swatch" data-tint="255,236,200" style="background:#ffecc8"></div>
+            <div class="swatch" data-tint="200,220,255" style="background:#c8dcff"></div>
+            <div class="swatch" data-tint="225,205,255" style="background:#e1cdff"></div>
+          </div>
+        </div>
+        <div class="tilt3d">
+          <div class="tilt-card shine" id="tilt">
+            <b>指针物理 · 3D 倾斜 + 追光</b>
+            鼠标在这张卡上移动——它以真实物体的方式轻微翻转，光泽跟随光标游走。松手回弹用的是弹簧曲线，不是生硬的瞬移。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="fact"><b>清晰度的真相</b>代码 UI 是矢量渲染：文字、图标、形状在任何 DPI 和缩放下都锐利如初；位图贴图素材则用 AI 出 4K 原图再缩放嵌入。</div>
+      <div class="fact"><b>真实感的三层配方</b>光影（多层阴影+高光+环境反射）、材质（模糊+饱和+噪点+渐变高光）、动效（弹簧曲线+呼吸节奏+打断接续）。</div>
+      <div class="fact"><b>性能的底线</b>动画只动 transform 和 opacity（GPU 合成层），60fps 稳如老狗；backdrop-filter 只在容器层用，绝不逐帧重算布局。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const glass = document.getElementById('glass');
+  const bind = (id, vid, fn) => {
+    const el = document.getElementById(id), v = document.getElementById(vid);
+    el.addEventListener('input', () => { v.textContent = fn(el.value)[0]; fn(el.value)[1]; });
+    el.addEventListener('input', () => {}, { once: true });
+  };
+  const c1 = document.getElementById('c1'), v1 = document.getElementById('v1');
+  const c2 = document.getElementById('c2'), v2 = document.getElementById('v2');
+  const c3 = document.getElementById('c3'), v3 = document.getElementById('v3');
+  const c4 = document.getElementById('c4'), v4 = document.getElementById('v4');
+  function apply() {
+    document.documentElement.style.setProperty('--glass-blur', c1.value + 'px');
+    document.documentElement.style.setProperty('--glass-alpha', (c2.value / 100).toFixed(2));
+    document.documentElement.style.setProperty('--shadow-depth', c3.value);
+    document.documentElement.style.setProperty('--corner', c4.value + 'px');
+    v1.textContent = c1.value + 'px';
+    v2.textContent = (c2.value / 100).toFixed(2);
+    v3.textContent = c3.value;
+    v4.textContent = c4.value + 'px';
+  }
+  [c1, c2, c3, c4].forEach(el => el.addEventListener('input', apply));
+  apply();
+
+  document.querySelectorAll('.swatch').forEach(s => {
+    s.addEventListener('click', () => {
+      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('on'));
+      s.classList.add('on');
+      document.documentElement.style.setProperty('--tint', s.dataset.tint);
+    });
+  });
+
+  const tilt = document.getElementById('tilt');
+  tilt.addEventListener('mousemove', e => {
+    const r = tilt.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    tilt.style.transform = `rotateY(${(px - .5) * 10}deg) rotateX(${(.5 - py) * 10}deg) translateZ(6px)`;
+    tilt.style.setProperty('--mx', px * 100 + '%');
+    tilt.style.setProperty('--my', py * 100 + '%');
+  });
+  tilt.addEventListener('mouseleave', () => { tilt.style.transform = 'rotateY(0) rotateX(0)'; });
+</script>
+</body>
+</html>

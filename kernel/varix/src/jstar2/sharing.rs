@@ -881,3 +881,567 @@ mod tests {
         assert!(f133_reconcile(&bytes).is_ok());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：许可声明面 · 分块传输模型 · 血统链 · 导出配额 ·
+// 包 ID 碰撞对账 · 导入前重命名通道
+// ---------------------------------------------------------------------------
+
+
+
+/// 许可证枚举（分享的法治面：不写许可的包不给出预览黄条——三不承诺
+/// 的「不托管」不等于「无规则」）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum License {
+    Cc0,
+    CcBy,
+    AllRightsReserved,
+}
+
+impl License {
+    pub fn key(self) -> &'static str {
+        match self {
+            License::Cc0 => "CC0",
+            License::CcBy => "CC-BY",
+            License::AllRightsReserved => "ARR",
+        }
+    }
+
+    pub fn zh(self) -> &'static str {
+        match self {
+            License::Cc0 => "公有领域（CC0）",
+            License::CcBy => "署名（CC-BY）",
+            License::AllRightsReserved => "保留所有权利",
+        }
+    }
+
+    /// 许可是否允许再分发（ARR 只许个人导入不许转传——黄条升级红条的依据）。
+    pub fn allows_reshare(self) -> bool {
+        !matches!(self, License::AllRightsReserved)
+    }
+
+    fn from_key(k: &str) -> Option<License> {
+        match k {
+            "CC0" => Some(License::Cc0),
+            "CC-BY" => Some(License::CcBy),
+            "ARR" => Some(License::AllRightsReserved),
+            _ => None,
+        }
+    }
+}
+
+/// 清单（license = author + license 键，行式文本挂在包字节头后不再改——
+/// 清单是导出者写的，导入者只能读到，不能改写）。
+pub fn manifest_line(author: &str, license: License) -> String {
+    alloc::format!("license={}|{}\n", license.key(), author)
+}
+
+/// 从包字节读清单（无清单 = None——旧包兼容：预览黄条注明「未声明许可」）。
+/// 清单只可能是头部第一行（导出者先写清单再拼包体）——只对首行做
+/// UTF-8 解析，包体二进制不参与（整体解析会被二进制毒死）。
+pub fn manifest_of(bytes: &[u8]) -> Option<(License, String)> {
+    let head_end = bytes.iter().position(|&b| b == b'\n').unwrap_or(bytes.len().min(4096));
+    let head = core::str::from_utf8(&bytes[..head_end]).ok()?;
+    let rest = head.strip_prefix("license=")?;
+    let (k, author) = rest.split_once('|')?;
+    License::from_key(k).map(|l| (l, String::from(author)))
+}
+
+/// 分块传输模型：把包切成 chunk 字节块（序号 | 总数 | 载荷），对端
+/// 重组后哈希对账（传输层损坏/丢块在重组时如实检出）。
+pub const CHUNK_SIZE: usize = 64;
+
+/// 切块（每块头 4 字节：序号 u16LE | 总数 u16LE——64KB+ 包体也够编，
+/// u8 总数在内置方案 16KB+ 容器上溢是已修缺陷）。
+pub fn chunkify(data: &[u8]) -> Vec<Vec<u8>> {
+    let total = data.len().div_ceil(CHUNK_SIZE).max(1);
+    let mut out = Vec::new();
+    for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
+        let seq = i as u16;
+        let tot = total as u16;
+        let mut block = alloc::vec![
+            (seq & 0xFF) as u8,
+            (seq >> 8) as u8,
+            (tot & 0xFF) as u8,
+            (tot >> 8) as u8
+        ];
+        block.extend_from_slice(chunk);
+        out.push(block);
+    }
+    out
+}
+
+/// 重组（乱序进块也收——按序号重排；块数不足/序号越界 → None）。
+pub fn reassemble(blocks: &[Vec<u8>], expect_fp: u64) -> Option<Vec<u8>> {
+    if blocks.is_empty() || blocks[0].len() < 4 {
+        return None;
+    }
+    let total = u16::from_le_bytes([blocks[0][2], blocks[0][3]]) as usize;
+    if total == 0 || blocks.len() != total {
+        return None;
+    }
+    let mut slots: Vec<Option<Vec<u8>>> = alloc::vec![None; total];
+    for b in blocks {
+        if b.len() < 4 {
+            return None;
+        }
+        let idx = u16::from_le_bytes([b[0], b[1]]) as usize;
+        if idx >= total {
+            return None;
+        }
+        slots[idx] = Some(b[4..].to_vec());
+    }
+    let mut data = Vec::new();
+    for s in slots {
+        data.extend_from_slice(&s?);
+    }
+    if vxcur_fingerprint_payload(&data) != expect_fp {
+        return None; // 重组产物与预期指纹不符——传输损坏，诚实拒绝
+    }
+    Some(data)
+}
+
+/// 载荷指纹（fnv1a64 直出——与 vxcur 指纹解耦：传输层对的是字节面）。
+fn vxcur_fingerprint_payload(d: &[u8]) -> u64 {
+    crate::jstar2::jbase::fnv1a64(d)
+}
+
+/// 血统链（包的旅行史：每次导出/导入追加一站——「这包从哪来」的
+/// 可追溯面；环形 8，只保最近 8 站）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineageStop {
+    pub device_tag: String,
+    pub at_ms: u64,
+    pub action: &'static str, // "export" | "import"
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LineageChain {
+    stops: Vec<LineageStop>,
+}
+
+impl LineageChain {
+    pub fn new() -> LineageChain {
+        LineageChain { stops: Vec::new() }
+    }
+
+    pub fn record(&mut self, device_tag: &str, at_ms: u64, action: &'static str) {
+        if self.stops.len() >= 8 {
+            self.stops.remove(0);
+        }
+        self.stops.push(LineageStop { device_tag: String::from(device_tag), at_ms, action });
+    }
+
+    /// 血统健康：至少一站、动作交替合法（export 后才能 import——
+    /// 凭空 import 的包是伪造包）。
+    pub fn healthy(&self) -> bool {
+        if self.stops.is_empty() {
+            return false;
+        }
+        self.stops.first().map(|s| s.action == "export").unwrap_or(false)
+            && self.stops.windows(2).all(|w| {
+                (w[0].action == "export" && w[1].action == "import")
+                    || (w[0].action == "import" && w[1].action == "export")
+            })
+    }
+
+    pub fn len(&self) -> usize {
+        self.stops.len()
+    }
+}
+
+/// 导出配额（每 24h 窗口 10 件——防爬防刷的节流面；环形计数）。
+pub struct ExportQuota {
+    stamps: Vec<u64>,
+    pub window_ms: u64,
+    pub limit: u32,
+}
+
+impl ExportQuota {
+    pub fn new() -> ExportQuota {
+        ExportQuota { stamps: Vec::new(), window_ms: 24 * 3_600_000, limit: 10 }
+    }
+
+    /// 申请导出（返回 false = 配额尽——诚实拒绝并提示何时恢复）。
+    pub fn try_export(&mut self, at_ms: u64) -> bool {
+        self.stamps.retain(|t| at_ms.saturating_sub(*t) < self.window_ms);
+        if self.stamps.len() as u32 >= self.limit {
+            return false;
+        }
+        self.stamps.push(at_ms);
+        true
+    }
+
+    /// 配额恢复倒计时（ms；未满 → 0）。
+    pub fn recovery_in_ms(&mut self, at_ms: u64) -> u64 {
+        self.stamps.retain(|t| at_ms.saturating_sub(*t) < self.window_ms);
+        if (self.stamps.len() as u32) < self.limit {
+            return 0;
+        }
+        self.window_ms - at_ms.saturating_sub(self.stamps[0])
+    }
+}
+impl Default for ExportQuota {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 包 ID 碰撞对账：同指纹包重复导入的幂等语义在库房侧（Duplicate）；
+/// 本函数是分享链侧的对账口径——同 ID 重导 = 幂等，不同 ID 撞名 =
+/// 走库房自动改名（返回该走哪条路的决策）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollisionDecision {
+    /// 同指纹——幂等命中，无事发生。
+    Idempotent,
+    /// 同名不同物——走库房 rename 通道。
+    RenameNeeded,
+}
+
+pub fn decide_collision(existing_fp: u64, incoming_fp: u64, existing_name: &str, incoming_name: &str) -> CollisionDecision {
+    if existing_fp == incoming_fp {
+        CollisionDecision::Idempotent
+    } else if existing_name == incoming_name {
+        CollisionDecision::RenameNeeded
+    } else {
+        CollisionDecision::Idempotent
+    }
+}
+
+/// 导入前重命名通道（分享链内置的合法改名点——改的是包名不是包体，
+/// 指纹以内容面计不变；返回改名后的方案）。
+pub fn rename_incoming(m: &CursorSchemeModel, new_name: &str) -> Result<CursorSchemeModel, &'static str> {
+    if new_name.trim().is_empty() {
+        return Err("包名不能为空");
+    }
+    let mut out = m.clone();
+    out.name = String::from(new_name);
+    Ok(out)
+}
+
+/// v3 自检。
+pub fn run_sharing_v3_checks() -> CheckSet {
+    use crate::jstar2::jbase::builtin_default_scheme;
+    let mut set = CheckSet::new("jstar2-F630-v3");
+    let base = builtin_default_scheme();
+
+    // 1. 许可面：三种许可键与再分发语义。
+    set.add(
+        "license keys and reshare rules",
+        License::Cc0.allows_reshare()
+            && License::CcBy.allows_reshare()
+            && !License::AllRightsReserved.allows_reshare()
+            && License::from_key("CC-BY") == Some(License::CcBy)
+            && License::from_key("WTF") .is_none(),
+        "",
+    );
+
+    // 2. 清单写读往返；无清单包 → None（旧包兼容路径）。
+    let pkg = export_scheme(&base).unwrap();
+    let with_manifest_bytes = {
+        let mut b = Vec::new();
+        b.extend_from_slice(manifest_line("VARIX", License::CcBy).as_bytes());
+        b.extend_from_slice(&pkg.bytes);
+        b
+    };
+    let manifest = manifest_of(&with_manifest_bytes);
+    set.add(
+        "manifest roundtrip and absent honest",
+        manifest.as_ref().map(|(l, a)| *l == License::CcBy && a == "VARIX").unwrap_or(false)
+            && manifest_of(&pkg.bytes).is_none(),
+        "",
+    );
+
+    // 3. 分块传输：切块→重组逐字节复原；丢块 → 诚实 None。
+    let chunks = chunkify(&pkg.bytes);
+    let ok = reassemble(&chunks, vxcur_fingerprint_payload(&pkg.bytes));
+    let mut short = chunks.clone();
+    short.pop();
+    set.add(
+        "chunked transfer reassembles and detects loss",
+        ok.map(|d| d == pkg.bytes).unwrap_or(false)
+            && reassemble(&short, vxcur_fingerprint_payload(&pkg.bytes)).is_none(),
+        "",
+    );
+
+    // 4. 乱序重组照收（传输层乱序是常态不是错误）。
+    let mut shuffled = chunks.clone();
+    shuffled.reverse();
+    let ok2 = reassemble(&shuffled, vxcur_fingerprint_payload(&pkg.bytes));
+    set.add("out of order reassembly ok", ok2.map(|d| d == pkg.bytes).unwrap_or(false), "");
+
+    // 5. 血统链：export→import 交替合法；凭空 import / 连续 export 判 unhealthy。
+    let mut chain = LineageChain::new();
+    set.add("empty lineage unhealthy", !chain.healthy(), "");
+    chain.record("y7000", 100, "export");
+    chain.record("pad", 200, "import");
+    set.add("alternating lineage healthy", chain.healthy() && chain.len() == 2, "");
+    chain.record("pad", 300, "import");
+    set.add("double import breaks lineage", !chain.healthy(), "");
+
+    // 6. 血统环形 8（最旧站被挤掉但健康性仍可判）。
+    let mut long_chain = LineageChain::new();
+    for i in 0..12u64 {
+        let action = if i % 2 == 0 { "export" } else { "import" };
+        long_chain.record("dev", i * 10, action);
+    }
+    set.add(
+        "lineage ring capped at 8",
+        long_chain.len() == 8 && long_chain.healthy(),
+        "",
+    );
+
+    // 7. 导出配额：10 件内全过、第 11 件拒、倒计时非零、窗口滑出恢复。
+    let mut q = ExportQuota::new();
+    let mut all_ok = true;
+    for i in 0..10u64 {
+        all_ok &= q.try_export(i * 1_000);
+    }
+    let denied = !q.try_export(10_000);
+    let wait = q.recovery_in_ms(20_000);
+    let recovered = q.try_export(24 * 3_600_000 + 1_000);
+    set.add(
+        "export quota throttles honestly",
+        all_ok && denied && wait > 0 && recovered,
+        "",
+    );
+
+    // 8. 碰撞决策：同指纹幂等；同名不同物走改名（改帧延时造「不同物」）。
+    let pkg2 = export_scheme(&base).unwrap();
+    let mut other = crate::jstar2::jbase::builtin_default_scheme();
+    if let Some(sf) = other.state_mut(crate::jstar2::jbase::PointerState::Normal) {
+        sf.frames[0].delay_ms = sf.frames[0].delay_ms + 7;
+    }
+    let pkg3 = export_scheme(&other).unwrap();
+    set.add(
+        "collision decision routes correctly",
+        decide_collision(pkg.fingerprint, pkg2.fingerprint, "A", "A") == CollisionDecision::Idempotent
+            && decide_collision(pkg.fingerprint, pkg3.fingerprint, "同名", "同名") == CollisionDecision::RenameNeeded,
+        "",
+    );
+
+    // 9. 导入前重命名：空名拒绝、合法名改成功且内容指纹不变（内容面对账）。
+    let renamed = rename_incoming(&base, "我的新名字").unwrap();
+    let content_same = crate::jstar2::jbase::content_fingerprint(&renamed) == crate::jstar2::jbase::content_fingerprint(&base);
+    set.add(
+        "incoming rename keeps content",
+        renamed.name == "我的新名字" && content_same && rename_incoming(&base, "  ").is_err(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+    use crate::jstar2::jbase::builtin_default_scheme;
+
+    #[test]
+    fn chunkify_single_small_package() {
+        let d = alloc::vec![1u8, 2, 3];
+        let c = chunkify(&d);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0][0], 0); // 序号 u16LE 低字节
+        assert_eq!(c[0][1], 0); // 序号 u16LE 高字节
+        assert_eq!(c[0][2], 1); // 总数 u16LE 低字节
+        assert_eq!(c[0][3], 0); // 总数 u16LE 高字节
+    }
+
+    #[test]
+    fn reassemble_tampered_payload_rejected() {
+        let base = builtin_default_scheme();
+        let pkg = export_scheme(&base).unwrap();
+        let mut chunks = chunkify(&pkg.bytes);
+        chunks[0][4] ^= 0x01;
+        assert!(reassemble(&chunks, vxcur_fingerprint_payload(&pkg.bytes)).is_none());
+    }
+
+    #[test]
+    fn quota_recovery_zero_when_below_limit() {
+        let mut q = ExportQuota::new();
+        assert!(q.try_export(0));
+        assert_eq!(q.recovery_in_ms(1_000), 0);
+    }
+
+    #[test]
+    fn lineage_first_stop_must_be_export() {
+        let mut c = LineageChain::new();
+        c.record("pad", 1, "import");
+        assert!(!c.healthy(), "凭空出现的 import = 伪造包");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3·二：包体量级分档 · 密钥签名 MAC · 预览像素卡
+// ---------------------------------------------------------------------------
+
+/// 包体量级分档（人话：预览页「这个包多大」的三档口径）。
+pub enum SizeClass {
+    /// ≤ 8KB——聊天窗口直发无压力。
+    Tiny,
+    /// ≤ 256KB——论坛附件正常档。
+    Medium,
+    /// 更大——建议走轻量件导出。
+    Heavy,
+}
+
+impl SizeClass {
+    pub fn zh(self) -> &'static str {
+        match self {
+            SizeClass::Tiny => "轻量（≤8KB）",
+            SizeClass::Medium => "标准（≤256KB）",
+            SizeClass::Heavy => "重量级——建议改用轻量件导出",
+        }
+    }
+
+    pub fn classify(bytes_len: usize) -> SizeClass {
+        if bytes_len <= 8 * 1024 {
+            SizeClass::Tiny
+        } else if bytes_len <= 256 * 1024 {
+            SizeClass::Medium
+        } else {
+            SizeClass::Heavy
+        }
+    }
+}
+
+/// 密钥签名（键控 MAC 模型：fnv1a64(key || data)——导出者持 key 签、
+/// 导入者持同 key 验；实机接 A 域签名链后由平台密钥面替换本模型）。
+pub fn sign_keyed(data: &[u8], key: &[u8]) -> u64 {
+    let mut feed = Vec::with_capacity(key.len() + data.len());
+    feed.extend_from_slice(key);
+    feed.extend_from_slice(data);
+    crate::jstar2::jbase::fnv1a64(&feed)
+}
+
+pub fn verify_keyed(data: &[u8], key: &[u8], want: u64) -> bool {
+    sign_keyed(data, key) == want
+}
+
+/// 预览像素卡：Normal 态首帧盒式降采样到 8×8（分享卡片封面——
+/// 真图预览，不是名字占位；缺 Normal 态 → None 诚实）。
+pub fn preview_card(bytes: &[u8]) -> Option<crate::jstar2::jbase::PixBuf> {
+    let m = parse_vxcur(bytes).ok()?;
+    let f = m.state(crate::jstar2::jbase::PointerState::Normal)?.frames.first()?.buf();
+    Some(box_downsample(&f, 8))
+}
+
+/// 盒式降采样（整数倍收缩；目标小于源时逐盒取均值——透明像素按
+/// alpha 加权，不让透明区把颜色冲淡）。
+pub fn box_downsample(src: &crate::jstar2::jbase::PixBuf, target: u16) -> crate::jstar2::jbase::PixBuf {
+    let t = target.max(1);
+    let mut out = crate::jstar2::jbase::PixBuf::new(t, t);
+    let (sw, sh) = (src.w as u64, src.h as u64);
+    for ty in 0..t {
+        for tx in 0..t {
+            let x0 = tx as u64 * sw / t as u64;
+            let x1 = ((tx as u64 + 1) * sw / t as u64).max(x0 + 1);
+            let y0 = ty as u64 * sh / t as u64;
+            let y1 = ((ty as u64 + 1) * sh / t as u64).max(y0 + 1);
+            let (mut r, mut g, mut b, mut a, mut wsum, mut n) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+            for y in y0..y1.min(sh) {
+                for x in x0..x1.min(sw) {
+                    if let Some(px) = src.get(x as u16, y as u16) {
+                        let w = px[3] as u64 + 1; // +1：全透明盒不除零
+                        r += px[0] as u64 * w;
+                        g += px[1] as u64 * w;
+                        b += px[2] as u64 * w;
+                        a += px[3] as u64;
+                        wsum += w;
+                        n += 1;
+                    }
+                }
+            }
+            if n > 0 {
+                // 颜色按 alpha 加权均值；alpha 按像素数直均（覆盖率语义
+                // —— alpha 均值混用加权分母会把 255/256 整除成 0，全图
+                // 变全透明的已修缺陷）。
+                out.set(
+                    tx,
+                    ty,
+                    [(r / wsum) as u8, (g / wsum) as u8, (b / wsum) as u8, (a / n) as u8],
+                );
+            }
+        }
+    }
+    out
+}
+
+/// v3·二 自检。
+pub fn run_sharing_v3b_checks() -> CheckSet {
+    use crate::jstar2::jbase::builtin_default_scheme;
+    let mut set = CheckSet::new("jstar2-F630-v3b");
+    let base = builtin_default_scheme();
+    let pkg = export_scheme(&base).unwrap();
+
+    // 1. 量级分档：内置方案属轻量/标准档；人为大包归 Heavy。
+    let cls = SizeClass::classify(pkg.bytes.len());
+    let heavy = SizeClass::classify(300 * 1024);
+    set.add(
+        "size classes classify honestly",
+        !matches!(cls, SizeClass::Heavy) && matches!(heavy, SizeClass::Heavy),
+        "",
+    );
+
+    // 2. 密钥签名：对签对验绿；换 key 验签红；改字节验签红。
+    let sig = sign_keyed(&pkg.bytes, b"share-key-2026");
+    set.add(
+        "keyed sign verify roundtrip",
+        verify_keyed(&pkg.bytes, b"share-key-2026", sig)
+            && !verify_keyed(&pkg.bytes, b"wrong-key", sig),
+        "",
+    );
+    let mut tampered = pkg.bytes.clone();
+    let mid = tampered.len() / 2;
+    tampered[mid] ^= 0x01;
+    set.add("keyed sign catches tamper", !verify_keyed(&tampered, b"share-key-2026", sig), "");
+
+    // 3. 预览像素卡：8×8 真图（非全透明——内置方案 Normal 态有内容）。
+    let card = preview_card(&pkg.bytes);
+    set.add(
+        "preview card is real thumbnail",
+        card.as_ref().map(|c| c.w == 8 && c.h == 8 && c.solid_count() > 0).unwrap_or(false),
+        "",
+    );
+
+    // 4. 盒式降采样：纯色图收缩后仍是该纯色（均值语义对拍）。
+    let mut solid = crate::jstar2::jbase::PixBuf::new(32, 32);
+    for y in 0..32 {
+        for x in 0..32 {
+            solid.set(x, y, [10, 20, 30, 255]);
+        }
+    }
+    let ds = box_downsample(&solid, 4);
+    set.add(
+        "box downsample preserves solid color",
+        ds.w == 4 && (0..4).all(|y| (0..4).all(|x| ds.get(x, y) == Some([10, 20, 30, 255]))),
+        "",
+    );
+
+    // 5. 缺 Normal 态的包：预览卡诚实 None。
+    let mut broken = base.clone();
+    broken.entries.retain(|e| e.state != crate::jstar2::jbase::PointerState::Normal);
+    let pkg2 = export_scheme(&broken).unwrap();
+    set.add("missing normal state honest none", preview_card(&pkg2.bytes).is_none(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3b {
+    use super::*;
+
+    #[test]
+    fn sign_is_key_dependent() {
+        let a = sign_keyed(b"data", b"k1");
+        let b = sign_keyed(b"data", b"k2");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn tiny_size_boundary() {
+        assert!(matches!(SizeClass::classify(8 * 1024), SizeClass::Tiny));
+        assert!(matches!(SizeClass::classify(8 * 1024 + 1), SizeClass::Medium));
+    }
+}

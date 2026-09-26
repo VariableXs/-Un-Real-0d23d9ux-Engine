@@ -164,6 +164,38 @@ pub fn run_secscr_checks() -> CheckSet {
     // 超预算诚实记账。
     s.ctrl_alt_del(600);
     set.add("f406-over-budget-logged", s.over_budget == 1 && !s.within_budget(), "");
+    // 令牌序号递增（v6）：每次重开铸新令牌，serial 单调——审计可追溯。
+    let first_serial = {
+        let mut t = SecureScreen::new();
+        t.ctrl_alt_del(100);
+        t.token.as_ref().map(|k| k.serial).unwrap_or(0)
+    };
+    s.ctrl_alt_del(100);
+    let second_serial = s.token.as_ref().map(|k| k.serial).unwrap_or(0);
+    set.add(
+        "f406-token-serial-monotonic",
+        second_serial == first_serial + 3 && second_serial > 0,
+        "",
+    );
+    // 关屏后选卡无动作（v6）：方向键不移动、激活返回 None。
+    s.activate();
+    set.add(
+        "f406-closed-inert",
+        !s.open && {
+            s.move_sel(1);
+            s.selected == 0 && s.activate().is_none()
+        },
+        "",
+    );
+    // 底部登录提示常在（v6：判据「底部登录提示」的语义锚）。
+    set.add("f406-footer-shown", !s.footer.is_empty() && s.footer.contains("登录"), "");
+    // Esc 关屏清令牌（v6）：dismiss 与 activate 同样焚毁直绘凭据。
+    s.ctrl_alt_del(100);
+    set.add(
+        "f406-dismiss-burns-token",
+        s.dismiss() && s.token.is_none() && !s.kernel_path_active(),
+        "",
+    );
     set
 }
 

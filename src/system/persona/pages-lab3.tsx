@@ -55,7 +55,6 @@ export function MotionCurveCard(): React.ReactNode {
 // ---------- 悬停与焦点面板 ----------
 
 export function HoverFocusCard(): React.ReactNode {
-  const t = useT();
   const demo = useMemo(() => {
     const m = new TooltipMachine();
     const log: string[] = [];
@@ -144,7 +143,6 @@ export function InteractionLedgerCard(): React.ReactNode {
 // ---------- 异常显性化面板 ----------
 
 export function ErrorSurfaceCard(): React.ReactNode {
-  const t = useT();
   const demo = useMemo(() => {
     const surfacer = makeCatalogSurfacer((page) => pageMessages(page, "zh")?.error ?? null);
     const surfaced = surfacer("tokens/save", "error", new Error("quota exceeded"), Date.now());
@@ -216,7 +214,6 @@ export function AssetPackageCard(): React.ReactNode {
 // ---------- 多屏与窗口几何面板 ----------
 
 export function WindowMetricsCard(): React.ReactNode {
-  const t = useT();
   const demo = useMemo(() => {
     const screen: ScreenRect = { x: 0, y: 0, w: 1920, h: 1080, workTop: 0, workBottom: 1048 };
     const zones: Array<[number, number]> = [[4, 500], [1916, 500], [960, 4], [4, 4], [1916, 1044], [960, 500]];
@@ -264,7 +261,6 @@ export function WindowMetricsCard(): React.ReactNode {
 // ---------- 性能预算面板 ----------
 
 export function PerfBudgetCard(): React.ReactNode {
-  const t = useT();
   const demo = useMemo(() => {
     const now = Date.now();
     const samples: PerfSample[] = [];

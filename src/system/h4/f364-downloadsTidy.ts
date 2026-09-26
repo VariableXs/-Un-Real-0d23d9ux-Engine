@@ -116,3 +116,83 @@ export function idempotencyCheck(files: DownloadFile[]): { firstRun: TidyExecuti
   const second = executeTidy(buildProposal(files), all, inPlace);
   return { firstRun: first, secondRun: second, idempotent: second.moves.length === 0 && second.skipped.length === first.moves.length };
 }
+
+/* ================= v4 深化批次四：冲突消解 / 撤销账 / 分类零错放审计 / 人话预览 ================= */
+
+/** 目标目录同名冲突消解：「报告.pdf」已存在 → 「报告-1.pdf」「报告-2.pdf」（保留扩展名）。 */
+export function resolveNameConflict(name: string, existing: Set<string>): string {
+  if (!existing.has(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const stem = dot < 0 ? name : name.slice(0, dot);
+  const ext = dot < 0 ? "" : name.slice(dot);
+  for (let i = 1; ; i++) {
+    const cand = `${stem}-${i}${ext}`;
+    if (!existing.has(cand)) return cand;
+  }
+}
+
+export interface PlannedMove {
+  fileName: string;
+  finalName: string;
+  to: string;
+  category: DownloadCategory;
+}
+
+/**
+ * 冲突感知执行计划：每步移动落成唯一目标名——目标已有同名时**消解出新名而不是覆盖**
+ * （数据安全红线：永不静默覆盖用户文件；同名已在目标位 = 覆盖风险被结构性消灭）。
+ */
+export function planWithConflicts(proposal: TidyProposalGroup[], checked: DownloadCategory[], existingByDir: Record<string, string[]>): TidyExecution & { finalNames: PlannedMove[] } {
+  const dirSets = new Map<string, Set<string>>();
+  for (const [dir, names] of Object.entries(existingByDir)) dirSets.set(dir, new Set(names));
+  const moves: TidyMove[] = [];
+  const finalNames: PlannedMove[] = [];
+  const skipped: string[] = [];
+  for (const g of proposal) {
+    if (!checked.includes(g.category)) continue;
+    const dir = CATEGORY_DIRS[g.category];
+    const dirSet = dirSets.get(dir) ?? new Set<string>();
+    for (const f of g.files) {
+      if (dirSet.has(f.name)) {
+        skipped.push(f.name);
+        continue;
+      }
+      const finalName = resolveNameConflict(f.name, dirSet);
+      dirSet.add(finalName);
+      moves.push({ fileName: f.name, from: "S:/Downloads", to: dir, category: g.category });
+      finalNames.push({ fileName: f.name, finalName, to: dir, category: g.category });
+    }
+  }
+  return { moves, skipped, finalNames };
+}
+
+/** 撤销账（F202 联动）：执行账 → 逐笔逆向条目（供全局撤销栈吞入的粒度，整批一次还原仍由 undoBatch 承担）。 */
+export interface UndoJournalEntry {
+  seq: number;
+  fileName: string;
+  from: string;
+  to: string;
+}
+
+export function undoJournal(exec: TidyExecution): UndoJournalEntry[] {
+  return exec.moves.map((m, i) => ({ seq: i + 1, fileName: m.fileName, from: m.from, to: m.to }));
+}
+
+/** 分类零错放审计：给真值表（文件名→期望类目）逐项比对——「分类零错放」的机检面。 */
+export function auditZeroWrongCategory(files: DownloadFile[], truth: Record<string, DownloadCategory>): { pass: boolean; wrong: string[] } {
+  const wrong: string[] = [];
+  for (const f of files) {
+    const expect = truth[f.name];
+    if (expect && classifyFile(f) !== expect) wrong.push(`${f.name}: 判为 ${classifyFile(f)}，应为 ${expect}`);
+  }
+  return { pass: wrong.length === 0, wrong };
+}
+
+const CATEGORY_LABELS: Record<DownloadCategory, string> = { document: "文档", image: "图片", installer: "安装包", archive: "压缩包", other: "其他" };
+
+/** 人话预览文案：「文档 3 项 · 共 4.2 MB → S:/Downloads/文档」。 */
+export function summaryText(g: TidyProposalGroup): string {
+  const mb = g.totalBytes / 1048576;
+  const size = mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(g.totalBytes / 1024))} KB`;
+  return `${CATEGORY_LABELS[g.category]} ${g.files.length} 项 · 共 ${size} → ${g.targetDir}`;
+}

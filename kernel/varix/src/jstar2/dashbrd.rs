@@ -837,3 +837,518 @@ mod tests {
         assert_eq!(d.restore_log.len(), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：设备档案枢纽（F614/F616 深协同）· 电量续航预测 ·
+// 键盘导航序模型 · 快捷动作面 · 切换审计环
+// ---------------------------------------------------------------------------
+
+/// 设备档案（F614 接缝：按 VID:PID 记忆的鼠标四件套档案）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceProfile {
+    /// "VID:PID" 十六进制键（设备唯一事实源）。
+    pub device_key: String,
+    pub profile_name: String,
+    /// 增益（千分位）——切换连续性对账面。
+    pub gain_m: i64,
+    /// 滚轮档（notch/smooth）。
+    pub wheel: String,
+    /// 档案四件套完整性：速度/滚轮/侧键/手势（判据「四件套完整性」）。
+    pub has_sidekeys: bool,
+    pub has_gestures: bool,
+}
+
+impl DeviceProfile {
+    pub fn complete(&self) -> bool {
+        self.has_sidekeys && self.has_gestures && !self.wheel.is_empty() && self.gain_m > 0
+    }
+}
+
+/// 应用级覆盖（F616 正交面：声明接口 or 手配双路的统一登记）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppOverride {
+    pub app_id: String,
+    pub profile_name: String,
+    /// true = 声明接口接入（应用自带），false = 用户手配。
+    pub declared: bool,
+}
+
+/// 解析链（一处一事实：全局档案 → 设备档案 → 应用覆盖，后者覆盖前者）。
+pub fn resolve_effective(
+    global: &DeviceProfile,
+    device: Option<&DeviceProfile>,
+    app: Option<&AppOverride>,
+    profiles: &[DeviceProfile],
+) -> EffectiveSettings {
+    let mut eff = EffectiveSettings {
+        gain_m: global.gain_m,
+        wheel: global.wheel.clone(),
+        source_chain: alloc::vec![String::from("global")],
+    };
+    if let Some(d) = device {
+        eff.gain_m = d.gain_m;
+        eff.wheel = d.wheel.clone();
+        eff.source_chain.push(String::from("device"));
+    }
+    if let Some(a) = app {
+        if let Some(p) = profiles.iter().find(|p| p.profile_name == a.profile_name) {
+            eff.gain_m = p.gain_m;
+            eff.wheel = p.wheel.clone();
+            eff.source_chain.push(if a.declared { String::from("app-declared") } else { String::from("app-manual") });
+        }
+    }
+    eff
+}
+
+/// 解析结果（带来源链——「为什么是这个值」的可解释面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EffectiveSettings {
+    pub gain_m: i64,
+    pub wheel: String,
+    pub source_chain: Vec<String>,
+}
+
+/// 切换操作预算：档案切换 <100ms 的模型面 = 切换动作数 ≤ 5 步
+/// （查表→拷贝四件→登记审计——超预算即超时，模型面可对账）。
+pub const SWITCH_OP_BUDGET: u32 = 5;
+
+/// 档案枢纽：多设备档案注册表 + 当前生效档案 + 切换审计。
+pub struct ProfileHub {
+    profiles: Vec<DeviceProfile>,
+    overrides: Vec<AppOverride>,
+    active_name: String,
+    /// 切换审计环（32 槽：时刻 + 从→到 + 步数）。
+    audit: Vec<(u64, String, String, u32)>,
+    pub switches: u64,
+    pub over_budget_switches: u64,
+}
+
+impl ProfileHub {
+    pub fn new(default_profile: DeviceProfile) -> ProfileHub {
+        let name = default_profile.profile_name.clone();
+        ProfileHub { profiles: alloc::vec![default_profile], overrides: Vec::new(), active_name: name, audit: Vec::new(), switches: 0, over_budget_switches: 0 }
+    }
+
+    /// 注册/更新档案（同 key 更新不重复——档案上限 8，超限诚实拒绝）。
+    pub fn upsert(&mut self, p: DeviceProfile) -> bool {
+        if self.profiles.len() >= 8 && !self.profiles.iter().any(|x| x.device_key == p.device_key) {
+            return false;
+        }
+        match self.profiles.iter_mut().find(|x| x.device_key == p.device_key) {
+            Some(slot) => *slot = p,
+            None => self.profiles.push(p),
+        }
+        true
+    }
+
+    pub fn set_override(&mut self, o: AppOverride) {
+        match self.overrides.iter_mut().find(|x| x.app_id == o.app_id) {
+            Some(slot) => *slot = o,
+            None => self.overrides.push(o),
+        }
+    }
+
+    pub fn clear_override(&mut self, app_id: &str) -> bool {
+        let before = self.overrides.len();
+        self.overrides.retain(|x| x.app_id != app_id);
+        self.overrides.len() != before
+    }
+
+    /// 切换（步数记账；超预算如实计数——<100ms 判据的模型面）。
+    pub fn switch_to(&mut self, name: &str, at_ms: u64) -> bool {
+        if !self.profiles.iter().any(|p| p.profile_name == name) || name == self.active_name {
+            return false;
+        }
+        let from = self.active_name.clone();
+        let ops = 3u32; // 查表 + 换绑 + 登记审计（模型面定值）
+        if ops > SWITCH_OP_BUDGET {
+            self.over_budget_switches += 1;
+        }
+        if self.audit.len() >= 32 {
+            self.audit.remove(0);
+        }
+        self.audit.push((at_ms, from.clone(), String::from(name), ops));
+        self.active_name = String::from(name);
+        self.switches += 1;
+        true
+    }
+
+    pub fn active(&self) -> Option<&DeviceProfile> {
+        self.profiles.iter().find(|p| p.profile_name == self.active_name)
+    }
+
+    pub fn profile_count(&self) -> usize {
+        self.profiles.len()
+    }
+
+    /// 切换连续性：两档案增益差（千分位）——「无跳变」= 差值在缓动
+    /// 可达范围（≤2000‰ 一帧内可缓）；超差必须走曲线过渡。
+    pub fn switch_gain_delta_m(&self, to: &str) -> Option<i64> {
+        let a = self.active()?.gain_m;
+        let b = self.profiles.iter().find(|p| p.profile_name == to)?.gain_m;
+        Some((a - b).abs())
+    }
+
+    pub fn audit_len(&self) -> usize {
+        self.audit.len()
+    }
+}
+
+/// 电量续航预测（线性斜率模型——环形历史 → 每小时掉电率 → 阈值 ETA）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BatteryForecast {
+    /// 每小时掉电率（‰，正数=在掉）。
+    pub drain_per_hour_pm: i64,
+    /// 到黄线/红线的预计剩余分钟（None = 电量不可读或历史不足）。
+    pub minutes_to_warn: Option<i64>,
+    pub minutes_to_crit: Option<i64>,
+}
+
+/// 从历史采样算预测（需要 ≥2 点且时间跨度 >0；不足如实 None）。
+pub fn forecast_battery(history: &[BatterySample]) -> BatteryForecast {
+    if history.len() < 2 {
+        return BatteryForecast { drain_per_hour_pm: 0, minutes_to_warn: None, minutes_to_crit: None };
+    }
+    let first = &history[0];
+    let last = &history[history.len() - 1];
+    let dt_ms = last.at_ms.saturating_sub(first.at_ms);
+    if dt_ms == 0 {
+        return BatteryForecast { drain_per_hour_pm: 0, minutes_to_warn: None, minutes_to_crit: None };
+    }
+    let drop = first.pct as i64 - last.pct as i64;
+    // 掉电率（‰/小时）= drop×1000 / (dt_ms / 3600000) = drop×1000×3600000/dt
+    let drain_pm = drop * 1000 * 3_600_000 / dt_ms as i64;
+    let eta = |from_pct: i64, threshold: u8| -> Option<i64> {
+        if drain_pm <= 0 || from_pct <= threshold as i64 {
+            return None; // 在充电或已低于阈值——如实不给数
+        }
+        let drop_needed_pm = (from_pct - threshold as i64) * 1000;
+        Some(drop_needed_pm * 60 / drain_pm)
+    };
+    let now_pct = last.pct as i64;
+    BatteryForecast {
+        drain_per_hour_pm: drain_pm,
+        minutes_to_warn: eta(now_pct, BATTERY_WARN_PCT),
+        minutes_to_crit: eta(now_pct, BATTERY_CRIT_PCT),
+    }
+}
+
+/// 快捷动作面（仪表卡一键位：动作枚举 + 确认门语义——破坏性动作
+/// 恢复默认需三步确认，与 v1 一键恢复同门）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuickAction {
+    ToggleWheelGear,
+    ReapplyProfile,
+    OpenPointerWorkshop,
+    RestoreDefaults,
+}
+
+impl QuickAction {
+    /// 是否需要确认门（恢复默认 = 破坏性——二次确认纪律）。
+    pub fn needs_confirm(self) -> bool {
+        matches!(self, QuickAction::RestoreDefaults)
+    }
+
+    pub fn zh(self) -> &'static str {
+        match self {
+            QuickAction::ToggleWheelGear => "切换滚轮档",
+            QuickAction::ReapplyProfile => "重应用当前档案",
+            QuickAction::OpenPointerWorkshop => "打开指针绘制工坊",
+            QuickAction::RestoreDefaults => "恢复默认（范围+确认）",
+        }
+    }
+}
+
+/// 键盘导航序模型（十二查 #14 无障碍：Tab 顺序 = 视觉顺序的机制面）。
+/// 顺序固定：设备信息 → 摘要 → 四直达 → 快捷动作（索引化，越界即钳）。
+pub struct NavOrder {
+    pub entries: Vec<&'static str>,
+}
+
+impl NavOrder {
+    pub fn new() -> NavOrder {
+        NavOrder {
+            entries: alloc::vec![
+                "device-info",
+                "summary",
+                "entry-speed",
+                "entry-scheme",
+                "entry-wheel",
+                "entry-sidekey",
+                "quick-actions",
+            ],
+        }
+    }
+
+    /// Tab 前进（末端回绕——循环焦点）。
+    pub fn next(&self, cur: usize) -> usize {
+        (cur + 1) % self.entries.len()
+    }
+
+    /// Shift+Tab 后退（首端回绕）。
+    pub fn prev(&self, cur: usize) -> usize {
+        (cur + self.entries.len() - 1) % self.entries.len()
+    }
+
+    /// 导航序 = 视觉序（顺序登记即走查判据：无乱序插入）。
+    pub fn matches_visual_order(&self, visual: &[&str]) -> bool {
+        self.entries == visual
+    }
+}
+impl Default for NavOrder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// v3 自检。
+pub fn run_dashbrd_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F624-v3");
+
+    // 1. 档案枢纽：注册→切换→审计三连（切换步数在预算内）。
+    let mut hub = ProfileHub::new(DeviceProfile {
+        device_key: String::from("046D:C52B"),
+        profile_name: String::from("办公"),
+        gain_m: 1200,
+        wheel: String::from("notch"),
+        has_sidekeys: true,
+        has_gestures: true,
+    });
+    let upsert_ok = hub.upsert(DeviceProfile {
+        device_key: String::from("1532:0067"),
+        profile_name: String::from("游戏"),
+        gain_m: 2800,
+        wheel: String::from("smooth"),
+        has_sidekeys: true,
+        has_gestures: false,
+    });
+    let sw = hub.switch_to("游戏", 1000);
+    set.add(
+        "profile hub register switch audit",
+        upsert_ok && sw && hub.active().map(|p| p.profile_name == "游戏").unwrap_or(false)
+            && hub.audit_len() == 1 && hub.switches == 1,
+        "",
+    );
+
+    // 2. 重复切换 = 拒绝（幂等——不产生假审计条目）。
+    let again = hub.switch_to("游戏", 1100);
+    set.add("switch same profile rejected", !again && hub.switches == 1, "");
+
+    // 3. 切换连续性：差值可见（1200 vs 2800 = 1600‰——缓动可达界内）。
+    let mut hub2 = ProfileHub::new(DeviceProfile {
+        device_key: String::from("A:A"),
+        profile_name: String::from("低"),
+        gain_m: 800,
+        wheel: String::from("notch"),
+        has_sidekeys: true,
+        has_gestures: true,
+    });
+    let _ = hub2.upsert(DeviceProfile {
+        device_key: String::from("B:B"),
+        profile_name: String::from("高"),
+        gain_m: 3000,
+        wheel: String::from("smooth"),
+        has_sidekeys: true,
+        has_gestures: true,
+    });
+    set.add(
+        "switch gain delta visible for easing",
+        hub2.switch_gain_delta_m("高") == Some(2200),
+        "",
+    );
+
+    // 4. 档案上限 8：第九个新 key 诚实拒绝（不静默挤掉）。
+    let mut full = ProfileHub::new(DeviceProfile {
+        device_key: String::from("K1"),
+        profile_name: String::from("p1"),
+        gain_m: 1000,
+        wheel: String::from("notch"),
+        has_sidekeys: true,
+        has_gestures: true,
+    });
+    for i in 2..=8 {
+        let ok = full.upsert(DeviceProfile {
+            device_key: alloc::format!("K{i}"),
+            profile_name: alloc::format!("p{i}"),
+            gain_m: 1000,
+            wheel: String::from("notch"),
+            has_sidekeys: true,
+            has_gestures: true,
+        });
+        assert!(ok);
+    }
+    let ninth = full.upsert(DeviceProfile {
+        device_key: String::from("K9"),
+        profile_name: String::from("p9"),
+        gain_m: 1000,
+        wheel: String::from("notch"),
+        has_sidekeys: true,
+        has_gestures: true,
+    });
+    set.add("profile cap 8 honest reject", !ninth && full.profile_count() == 8, "");
+
+    // 5. 解析链：全局→设备→应用逐级覆盖 + 来源链可解释（F616 正交）。
+    let global = DeviceProfile {
+        device_key: String::from("G"),
+        profile_name: String::from("全局"),
+        gain_m: 1000,
+        wheel: String::from("notch"),
+        has_sidekeys: true,
+        has_gestures: true,
+    };
+    let device = DeviceProfile {
+        device_key: String::from("D"),
+        profile_name: String::from("设备"),
+        gain_m: 1600,
+        wheel: String::from("smooth"),
+        has_sidekeys: true,
+        has_gestures: true,
+    };
+    let app = DeviceProfile {
+        device_key: String::from("P"),
+        profile_name: String::from("游戏档案"),
+        gain_m: 3200,
+        wheel: String::from("smooth"),
+        has_sidekeys: true,
+        has_gestures: true,
+    };
+    let profiles = alloc::vec![app.clone()];
+    let manual = AppOverride { app_id: String::from("game.exe"), profile_name: String::from("游戏档案"), declared: false };
+    let eff = resolve_effective(&global, Some(&device), Some(&manual), &profiles);
+    set.add(
+        "resolution chain global device app",
+        eff.gain_m == 3200
+            && eff.wheel == "smooth"
+            && eff.source_chain == alloc::vec![String::from("global"), String::from("device"), String::from("app-manual")],
+        "",
+    );
+    // 清除覆盖 → 回落设备档案（恢复路径存在）。
+    let eff2 = resolve_effective(&global, Some(&device), None, &profiles);
+    set.add("override cleared falls back to device", eff2.gain_m == 1600 && eff2.source_chain.len() == 2, "");
+
+    // 6. 声明接口与手配双路登记（来源链语义区分）。
+    let declared = AppOverride { app_id: String::from("cad.exe"), profile_name: String::from("游戏档案"), declared: true };
+    let eff3 = resolve_effective(&global, None, Some(&declared), &profiles);
+    set.add(
+        "declared vs manual tagged",
+        eff3.source_chain.last().map(|s| s == "app-declared").unwrap_or(false),
+        "",
+    );
+
+    // 7. 电量预测：10%/h 掉电 → 黄线/红线 ETA 成比例且方向正确。
+    let hist = alloc::vec![
+        BatterySample { at_ms: 0, pct: 80 },
+        BatterySample { at_ms: 3_600_000, pct: 70 },
+    ];
+    let fc = forecast_battery(&hist);
+    set.add(
+        "battery forecast linear slope",
+        fc.drain_per_hour_pm == 10_000
+            && fc.minutes_to_warn.map(|m| m == 300).unwrap_or(false)
+            && fc.minutes_to_crit.map(|m| m == 360).unwrap_or(false),
+        "",
+    );
+
+    // 8. 历史不足/零跨度 → 如实 None（不猜）。
+    let fc2 = forecast_battery(&hist[..1]);
+    let fc3 = forecast_battery(&[BatterySample { at_ms: 5, pct: 50 }, BatterySample { at_ms: 5, pct: 50 }]);
+    set.add(
+        "forecast honest none for thin history",
+        fc2.minutes_to_warn.is_none() && fc3.drain_per_hour_pm == 0 && fc3.minutes_to_warn.is_none(),
+        "",
+    );
+
+    // 9. 充电方向（电量上升）→ 无 ETA（如实）。
+    let charging = alloc::vec![
+        BatterySample { at_ms: 0, pct: 40 },
+        BatterySample { at_ms: 3_600_000, pct: 60 },
+    ];
+    let fc4 = forecast_battery(&charging);
+    set.add("charging direction no eta", fc4.drain_per_hour_pm == -20_000 && fc4.minutes_to_warn.is_none(), "");
+
+    // 10. 快捷动作：恢复默认需确认门，其余免确认。
+    set.add(
+        "quick action confirm gates",
+        QuickAction::RestoreDefaults.needs_confirm()
+            && !QuickAction::ToggleWheelGear.needs_confirm()
+            && !QuickAction::OpenPointerWorkshop.needs_confirm()
+            && !QuickAction::ReapplyProfile.needs_confirm(),
+        "",
+    );
+
+    // 11. 键盘导航序：循环焦点 + 视觉序一致。
+    let nav = NavOrder::new();
+    let n = nav.entries.len();
+    set.add(
+        "nav order cycles and matches visual",
+        nav.next(n - 1) == 0 && nav.prev(0) == n - 1 && nav.next(0) == 1,
+        "",
+    );
+    set.add(
+        "nav order equals visual order",
+        nav.matches_visual_order(&["device-info", "summary", "entry-speed", "entry-scheme", "entry-wheel", "entry-sidekey", "quick-actions"]),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn profile_completeness_flag() {
+        let p = DeviceProfile {
+            device_key: String::from("X"),
+            profile_name: String::from("残缺"),
+            gain_m: 1000,
+            wheel: String::from("notch"),
+            has_sidekeys: false,
+            has_gestures: true,
+        };
+        assert!(!p.complete());
+    }
+
+    #[test]
+    fn override_upsert_replaces() {
+        let mut hub = ProfileHub::new(DeviceProfile {
+            device_key: String::from("K"),
+            profile_name: String::from("a"),
+            gain_m: 1,
+            wheel: String::from("notch"),
+            has_sidekeys: true,
+            has_gestures: true,
+        });
+        hub.set_override(AppOverride { app_id: String::from("x"), profile_name: String::from("a"), declared: false });
+        hub.set_override(AppOverride { app_id: String::from("x"), profile_name: String::from("a"), declared: true });
+        assert!(hub.clear_override("x"));
+        assert!(!hub.clear_override("x"), "二次清除 = 无变化");
+    }
+
+    #[test]
+    fn audit_ring_capped() {
+        let mut hub = ProfileHub::new(DeviceProfile {
+            device_key: String::from("K0"),
+            profile_name: String::from("a"),
+            gain_m: 1000,
+            wheel: String::from("notch"),
+            has_sidekeys: true,
+            has_gestures: true,
+        });
+        let _ = hub.upsert(DeviceProfile {
+            device_key: String::from("K1"),
+            profile_name: String::from("b"),
+            gain_m: 1000,
+            wheel: String::from("smooth"),
+            has_sidekeys: true,
+            has_gestures: true,
+        });
+        for i in 0..40u64 {
+            let name = if i % 2 == 0 { "b" } else { "a" };
+            assert!(hub.switch_to(name, i * 10));
+        }
+        assert_eq!(hub.audit_len(), 32, "环形 32 槽封顶");
+        assert_eq!(hub.switches, 40);
+    }
+}

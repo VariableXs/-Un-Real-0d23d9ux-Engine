@@ -10,6 +10,7 @@ import { pushToast } from "../../state/uiStore";
 import { fireNotifyAction } from "../../state/notifyStore";
 import { errMessage, ipc } from "../../lib/ipc";
 import { DemoModeButton } from "./DemoMode";
+import { H4QuickTiles } from "../../features/h4/H4QuickTiles";
 import {
   clearNotifications,
   markAllRead,
@@ -164,6 +165,8 @@ export function QuickPanel(props: {
           </button>
           {/* AI-20 V-91：演示模式一键（免打扰 + 保持唤醒 + 指针增强；退出原样恢复） */}
           <DemoModeButton />
+          {/* AI-H4 v9：F387 判据「快速设置磁贴+快捷键双入口」——灰度磁贴 + 创造者工具呼出 */}
+          <H4QuickTiles />
           {battery.kind === "ok" && battery.value.hasBattery && (
             <div
               className={`qp-tile qp-static${battery.value.acOnline ? " on" : ""}`}

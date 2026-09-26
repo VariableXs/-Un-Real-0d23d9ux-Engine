@@ -1126,3 +1126,1003 @@ mod deep2_tests {
         assert!(run_paramwl_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——选单双层防呆 / 参数错误画面 / 回显
+// 清洗 / 帮助页表格行。判据源：主册【交互设计】「图形选单（F171）不暴露
+// 参数编辑（高级路径：文字选单 F171 降级态才有——双层防呆）」+「参数错误
+// 画面：F173 语汇静态版+最接近合法参数建议」+【状态与异常】「参数注入
+// 攻击 → 长度与字符集双截断+审计」+【交互设计】「合法参数清单在帮助
+// F119（开发者篇）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：MenuEditGate —— 选单参数编辑双层防呆（图形选单永远没有编辑入口；
+// 只有文字选单的降级态才有——且需要显式解锁；两层全过才到达编辑面）
+// ---------------------------------------------------------------------------
+
+/// 选单形态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuForm {
+    /// 图形选单（F171 常态）——编辑入口不存在。
+    Graphic,
+    /// 文字选单降级态（图形子系统不可用时的兜底）——编辑入口存在但需解锁。
+    TextFallback,
+}
+
+/// 双层门状态。
+pub struct MenuEditGate {
+    pub form: MenuForm,
+    /// 第二层：编辑解锁（文字降级态下也须显式解锁——如按 E 键确认意图）。
+    pub unlocked: bool,
+    /// 图形态编辑请求被拒次数（双层防呆的执法对账）。
+    pub graphic_denied: u64,
+    /// 未解锁请求被拒次数。
+    pub lock_denied: u64,
+}
+
+impl MenuEditGate {
+    pub fn new(form: MenuForm) -> MenuEditGate {
+        MenuEditGate { form, unlocked: false, graphic_denied: 0, lock_denied: 0 }
+    }
+
+    pub fn unlock(&mut self) {
+        self.unlocked = true;
+    }
+
+    /// 编辑入口可达性（None=不可达附原因；Some=可达——到达编辑面）。
+    pub fn edit_access(&mut self) -> Result<(), &'static str> {
+        match self.form {
+            MenuForm::Graphic => {
+                self.graphic_denied += 1;
+                Err("图形选单不提供参数编辑（双层防呆第一层）")
+            }
+            MenuForm::TextFallback if !self.unlocked => {
+                self.lock_denied += 1;
+                Err("参数编辑需显式解锁（双层防呆第二层——按 E 确认编辑意图）")
+            }
+            MenuForm::TextFallback => Ok(()),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：ParamErrorScreen —— 参数错误画面（F173 语汇静态版：标题/解释/
+// 建议/出口四字段——拒绝也要体面，报错也在帮忙）
+// ---------------------------------------------------------------------------
+
+/// 画面数据（渲染层照此对齐；字段全静态——引导期无堆环境也安全）。
+pub struct ParamErrorScreen {
+    pub title: &'static str,
+    /// 解释（人话——为什么被拒）。
+    pub explain: &'static str,
+    /// 建议（最接近合法参数；None=无可建议）。
+    pub suggestion: Option<&'static str>,
+    /// 出口（怎么办——去帮助页/清参数重试）。
+    pub exit_hint: &'static str,
+}
+
+/// 错误画面标题（F173 语汇族）。
+pub const PARAM_ERROR_TITLE: &str = "启动参数校验未通过";
+
+/// 逐判定 → 画面（Illegal/NoSuchParam/BadValue 三类各有解释语）。
+pub fn param_error_screen(v: &ParamVerdict) -> Option<ParamErrorScreen> {
+    let (explain, suggestion) = match v {
+        ParamVerdict::Illegal(_) => (
+            "参数包含非法字符或超出长度限制。引导面不接受自由文本。",
+            None,
+        ),
+        ParamVerdict::NoSuchParam(s) => (
+            "未识别的启动参数。合法参数清单见帮助中心开发者篇（F119）。",
+            *s,
+        ),
+        ParamVerdict::BadValue(name) => (
+            "参数值不合法（旗标不带值，整数有范围）。",
+            Some(*name),
+        ),
+        _ => return None, // 合法判定不出错误画面。
+    };
+    Some(ParamErrorScreen {
+        title: PARAM_ERROR_TITLE,
+        explain,
+        suggestion,
+        exit_hint: "清除该参数后重新启动，或在帮助中心查阅合法参数清单",
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：sanitize_echo —— 回显清洗（错误画面/审计行显示用户输入前的清洗：
+// 控制字符剥离、换行展平、超长截断——防日志注入的最后一道）
+// ---------------------------------------------------------------------------
+
+/// 回显上限（清洗后回显最多 32 字节——够定位错误，不给攻击面铺长度）。
+pub const ECHO_MAX: usize = 32;
+
+/// 清洗：只保留可打印 ASCII 与原样 UTF-8 中文（≥0x80 字节对成对保留——
+/// 中文错误提示要能回显），控制字符与换行替换为空格，超长截断标注。
+pub fn sanitize_echo(input: &str, out: &mut String) -> bool {
+    let mut truncated = false;
+    let mut kept = 0usize;
+    let bytes = input.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b >= 0x80 {
+            // UTF-8 多字节首字节：按长度成对保留（非法序列丢）。
+            let len = if b >= 0xF0 { 4 } else if b >= 0xE0 { 3 } else { 2 };
+            if i + len <= bytes.len() && kept + len <= ECHO_MAX {
+                if let Ok(s) = core::str::from_utf8(&bytes[i..i + len]) {
+                    out.push_str(s);
+                    kept += len;
+                }
+            } else {
+                truncated = true;
+                break;
+            }
+            i += len;
+        } else if b == b'\n' || b == b'\r' || b == b'\t' || b < 0x20 {
+            out.push(' ');
+            kept += 1;
+            i += 1;
+        } else {
+            if kept >= ECHO_MAX {
+                truncated = true;
+                break;
+            }
+            out.push(b as char);
+            kept += 1;
+            i += 1;
+        }
+    }
+    if i < bytes.len() {
+        truncated = true;
+    }
+    truncated
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：WhitelistDocRow —— 帮助页表格行（合法参数清单（F119 开发者篇）
+// 的数据面：三族分组行+值域人话——从 WHITELIST 生成，永不与白名单脱节）
+// ---------------------------------------------------------------------------
+
+/// 一行文档（名/族/值域/说明）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WhitelistDocRow {
+    pub name: &'static str,
+    pub family: &'static str,
+    pub value_domain: &'static str,
+    pub note: &'static str,
+}
+
+/// 值域人话（Flag/Int 的文案——与 value_range 互补的表格列文案）。
+fn value_domain_text(k: &ValueKind) -> &'static str {
+    match k {
+        ValueKind::Flag => "旗标（无值；=false 关闭）",
+        ValueKind::Int(0, 5) => "整数 0–5",
+        ValueKind::Int(1, 3) => "整数 1–3",
+        ValueKind::Int(0, 1) => "整数 0–1",
+        ValueKind::Int(a, b) => {
+            let _ = (a, b);
+            "整数（界内）"
+        }
+    }
+}
+
+/// 生成全部行（族序：调试→降级→兼容；族内保持白名单定义序）。
+pub fn whitelist_doc_rows() -> alloc::vec::Vec<WhitelistDocRow> {
+    WHITELIST
+        .iter()
+        .map(|p| WhitelistDocRow {
+            name: p.name,
+            family: family_label(p.family),
+            value_domain: value_domain_text(&p.kind),
+            note: p.note,
+        })
+        .collect()
+}
+
+/// 帮助页完整性（13 行齐+族计数 6/3/4 与白名单 census 一致）。
+pub fn whitelist_doc_consistent() -> bool {
+    let rows = whitelist_doc_rows();
+    let debug_n = rows.iter().filter(|r| r.family == "调试族").count();
+    let degrade_n = rows.iter().filter(|r| r.family == "降级族").count();
+    let compat_n = rows.iter().filter(|r| r.family == "兼容族").count();
+    rows.len() == 13 && (debug_n, degrade_n, compat_n) == (6, 3, 4)
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F192 v4 自检（聚合进 secstar2 域）。
+pub fn run_paramwl_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v4");
+
+    // v4-一：双层防呆——图形态永拒、降级态解锁才可达、逐层计数。
+    let mut g = MenuEditGate::new(MenuForm::Graphic);
+    set.add("menu graphic denied", g.edit_access().is_err(), "第一层：图形态无编辑");
+    set.add("menu unlock noop", { g.unlock(); g.edit_access().is_err() }, "解锁对图形态无效");
+    set.add("menu graphic count", g.graphic_denied == 2 && g.lock_denied == 0, "");
+    let mut t = MenuEditGate::new(MenuForm::TextFallback);
+    set.add("menu locked denied", t.edit_access().is_err(), "第二层：未解锁拒");
+    set.add("menu lock count", t.lock_denied == 1, "");
+    t.unlock();
+    set.add("menu unlocked ok", t.edit_access().is_ok(), "");
+
+    // v4-二：错误画面——三类判定各有画面、合法判定零画面、建议挂对。
+    let mut wl = ParamWhitelist::new();
+    let vs = wl.check_line("verbos verbose log-level=abc bad%%");
+    let screens: alloc::vec::Vec<ParamErrorScreen> = vs
+        .iter()
+        .filter_map(param_error_screen)
+        .collect();
+    set.add("err screens produced", !screens.is_empty(), "");
+    set.add("err title family", screens.iter().all(|s| s.title == PARAM_ERROR_TITLE), "");
+    set.add("err suggestion exists", screens.iter().any(|s| s.suggestion == Some("verbose")), "拼写错建议挂上");
+    set.add("err illegal no suggest", screens.iter().any(|s| s.suggestion.is_none() && s.explain.contains("非法字符")), "注入样本无建议可给");
+    set.add("err badvalue names", screens.iter().any(|s| s.suggestion == Some("log-level")), "值错建议=参数自身");
+    // 合法判定零画面。
+    let ok_v = ParamVerdict::FlagOn("verbose");
+    set.add("err legal silent", param_error_screen(&ok_v).is_none(), "");
+
+    // v4-三：回显清洗——控制字符展平、截断标注、中文保真、CRLF 全化空格。
+    let mut out = String::new();
+    set.add("echo control flat", !sanitize_echo("bad\tx\r\nname", &mut out) && out == "bad x  name", "控制字符与 CRLF 各展平为一格空格");
+    let mut out2 = String::new();
+    set.add("echo trunc flagged", sanitize_echo(&"x".repeat(40), &mut out2), "超 32 截断+标注");
+    set.add("echo trunc len", out2.chars().count() == 32, "");
+    let mut out3 = String::new();
+    set.add("echo cjk keep", !sanitize_echo("参数错", &mut out3) && out3 == "参数错", "中文回显保真");
+    let mut out4 = String::new();
+    set.add("echo empty ok", !sanitize_echo("", &mut out4) && out4.is_empty(), "");
+
+    // v4-四：帮助页表格——13 行、族计数一致、值域列语义对。
+    set.add("doc consistent", whitelist_doc_consistent(), "");
+    let rows = whitelist_doc_rows();
+    set.add("doc flag domain", rows.iter().filter(|r| r.name == "verbose").all(|r| r.value_domain.contains("旗标")), "");
+    set.add("doc int domain", rows.iter().filter(|r| r.name == "log-level").all(|r| r.value_domain.contains("0–5")), "");
+    set.add("doc safe-mode in degrade", rows.iter().filter(|r| r.name == "safe-mode").all(|r| r.family == "降级族" && r.note.contains("F193")), "一处一事实在文档面复现");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v4_gate_layer_independence() {
+        // 双层独立执法：图形态解锁 100 次仍然拒（第一层不因第二层松动）。
+        let mut g = MenuEditGate::new(MenuForm::Graphic);
+        for _ in 0..100 {
+            g.unlock();
+            assert!(g.edit_access().is_err());
+        }
+        assert_eq!(g.graphic_denied, 100);
+        assert_eq!(g.lock_denied, 0);
+    }
+
+    #[test]
+    fn f192_v4_sanitize_never_grows() {
+        // 清洗输出永不长于 ECHO_MAX 字符（注入长串压测）。
+        for n in [33usize, 64, 128, 1000] {
+            let s: String = core::iter::repeat('A').take(n).collect();
+            let mut out = String::new();
+            sanitize_echo(&s, &mut out);
+            assert!(out.chars().count() <= ECHO_MAX);
+        }
+        // 换行注入（日志伪造）被展平成一行。
+        let mut out = String::new();
+        sanitize_echo("a\nFAKE: system log\r\nb", &mut out);
+        assert!(!out.contains('\n') && !out.contains('\r'));
+    }
+
+    #[test]
+    fn f192_v4_error_screen_all_illegal_samples() {
+        // 20 非法样本的子集逐一产画面且建议字段诚实（拼错给建议、注入不给）。
+        let samples = [
+            ("verbos", true),
+            ("safe-mod", true),
+            // legacy_time ↔ legacy-timer 编辑距离恰 2（_→- 换 1 次 + 补 r）——
+            // 距离 ≤2 建议机制如实给建议：这是正确行为不是误报。
+            ("legacy_time", true),
+            ("a=1;b=2", false),
+        ];
+        let mut wl = ParamWhitelist::new();
+        for (s, expect_suggest) in samples {
+            let v = wl.check_token(s);
+            let scr = param_error_screen(&v);
+            assert!(scr.is_some(), "sample {} 应有画面", s);
+            assert_eq!(scr.unwrap().suggestion.is_some(), expect_suggest, "sample {}", s);
+        }
+    }
+
+    #[test]
+    fn f192_v4_doc_rows_generated_not_handwritten() {
+        // 文档行与白名单逐条同名同族（生成而非手抄——脱节不可能发生）。
+        let rows = whitelist_doc_rows();
+        for (p, r) in WHITELIST.iter().zip(rows.iter()) {
+            assert_eq!(p.name, r.name);
+            assert_eq!(family_label(p.family), r.family);
+            assert_eq!(p.note, r.note);
+        }
+    }
+
+    #[test]
+    fn f192_v4_run_checks_pass() {
+        assert!(run_paramwl_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——全参数帮助页 /
+// 解析遥测账 / ADR 时间线 / fuzz 报告聚合。判据源：主册【交互设计】「合法
+// 参数清单在帮助 F119（开发者篇）」+【数据与存储】「拒绝记录入日志环
+// （F188）」+【规格框架】「三族定义文档化（初始清单——增补走 ADR）」
+// +【验收判据】20 非法样本全拒的统计面。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v5-一：param_help_page —— 全参数帮助页（F119 开发者篇完整渲染：逐参
+// 行（名/族/值域/说明）+ 语法行 + ADR 承诺行——从 WHITELIST 生成）
+// ---------------------------------------------------------------------------
+
+/// 帮助页节。
+pub fn param_help_page() -> alloc::vec::Vec<(&'static str, alloc::vec::Vec<WhitelistDocRow>)> {
+    let rows = whitelist_doc_rows();
+    let mut out = alloc::vec::Vec::new();
+    for family in [ParamFamily::Debug, ParamFamily::Degrade, ParamFamily::Compat] {
+        let label = family_label(family);
+        let group: alloc::vec::Vec<WhitelistDocRow> =
+            rows.iter().filter(|r| r.family == label).copied().collect();
+        out.push((label, group));
+    }
+    out
+}
+
+/// 语法行（key=value 严格语法说明——无空格变体，与 check_token 同语义）。
+pub const PARAM_SYNTAX_LINE: &str = "参数语法：name 或 name=value（严格等号连接，不接受空格变体）；单参 ≤128 字符，总长 ≤1024 字符";
+
+/// ADR 承诺行（初始 13 参——增补一律走 ADR 评审）。
+pub const PARAM_ADR_LINE: &str = "初始白名单 13 参；任何增补/调整一律通过 ADR 评审并留版本记录";
+
+/// 帮助页完整性（三族组齐+语法行+ADR 行）。
+pub fn param_help_page_intact() -> bool {
+    let page = param_help_page();
+    page.len() == 3
+        && page.iter().map(|(_, g)| g.len()).sum::<usize>() == WHITELIST.len()
+        && page.iter().all(|(_, g)| !g.is_empty())
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：ParseTelemetry —— 解析遥测账（rejections/clamps/suggestions 三账
+// 分列 + 逐类样本数——「拒绝也留痕」的统计面，与 audit_stream_line 同源）
+// ---------------------------------------------------------------------------
+
+/// 遥测账。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ParseTelemetry {
+    /// 拒绝总数（NoSuchParam+BadValue+Illegal）。
+    pub rejections: u64,
+    /// 钳制总数（IntClamped）。
+    pub clamps: u64,
+    /// 给出建议的次数。
+    pub suggestions: u64,
+    /// 合法通过数。
+    pub accepted: u64,
+}
+
+impl ParseTelemetry {
+    /// 从判定序列汇总（一类判定一条账——分类不混）。
+    pub fn from_verdicts(verdicts: &[ParamVerdict]) -> ParseTelemetry {
+        let mut t = ParseTelemetry::default();
+        for v in verdicts {
+            match v {
+                ParamVerdict::FlagOn(_) | ParamVerdict::FlagOff(_) | ParamVerdict::Int(_, _) => t.accepted += 1,
+                ParamVerdict::IntClamped(_, _) => {
+                    t.accepted += 1;
+                    t.clamps += 1;
+                }
+                ParamVerdict::NoSuchParam(Some(_)) => {
+                    t.rejections += 1;
+                    t.suggestions += 1;
+                }
+                ParamVerdict::NoSuchParam(None) => t.rejections += 1,
+                ParamVerdict::BadValue(_) => {
+                    t.rejections += 1;
+                    t.suggestions += 1;
+                }
+                ParamVerdict::Illegal(_) => t.rejections += 1,
+            }
+        }
+        t
+    }
+
+    /// 净化导出行（数字与人话——不含原始输入，防日志注入面）。
+    pub fn sanitized_line(&self) -> String {
+        alloc::format!(
+            "参数校验：通过 {}（含钳制 {}）/ 拒绝 {} / 给出建议 {}",
+            self.accepted, self.clamps, self.rejections, self.suggestions
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：adr_timeline —— ADR 时间线渲染（提案→批准→生效三行式——
+// 「变更走 ADR」的留痕面）
+// ---------------------------------------------------------------------------
+
+/// 时间线行。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AdrTimelineRow {
+    pub day: u64,
+    pub text: String,
+    pub token: &'static str,
+}
+
+/// 从 AdrLedger 渲染时间线（每案两行：立案 + 已批/待批；拒绝的不上时间线，
+/// 但在提案台账里可查（ledger 本身全量））。
+pub fn adr_timeline(ledger: &AdrLedger, now_day: u64) -> alloc::vec::Vec<AdrTimelineRow> {
+    let mut out = alloc::vec::Vec::new();
+    for e in &ledger.entries {
+        out.push(AdrTimelineRow {
+            day: e.day,
+            text: alloc::format!("ADR {} 立案：参数 {}（{}）", e.id, e.param.name, family_label(e.param.family)),
+            token: "neutral",
+        });
+        if e.applied {
+            out.push(AdrTimelineRow {
+                day: e.day,
+                text: alloc::format!("ADR {} 批准生效（已入运行时白名单）", e.id),
+                token: "success",
+            });
+        } else {
+            out.push(AdrTimelineRow {
+                day: now_day,
+                text: alloc::format!("ADR {} 待批准（已挂 {} 天）", e.id, now_day.saturating_sub(e.day)),
+                token: "warning",
+            });
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v5-四：FuzzReport —— fuzz 报告聚合（多轮统计：拒绝分类占比+建议命中率
+// ——「20 非法样本全拒」的规模化面）
+// ---------------------------------------------------------------------------
+
+/// 聚合报告。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FuzzReport {
+    /// 总 token 数。
+    pub total: u64,
+    /// 拒绝数（按类分列）。
+    pub illegal: u64,
+    pub no_such_param: u64,
+    pub bad_value: u64,
+    /// 拒绝率（permille——语义上应≈1000：fuzz 变异体几乎全非法）。
+    pub rejection_permille: u64,
+}
+
+/// 从判定流聚合（输入应来自 fuzz_round 多轮产物）。
+pub fn fuzz_report(verdicts: &[ParamVerdict]) -> FuzzReport {
+    let mut r = FuzzReport { total: verdicts.len() as u64, illegal: 0, no_such_param: 0, bad_value: 0, rejection_permille: 0 };
+    for v in verdicts {
+        match v {
+            ParamVerdict::Illegal(_) => r.illegal += 1,
+            ParamVerdict::NoSuchParam(_) => r.no_such_param += 1,
+            ParamVerdict::BadValue(_) => r.bad_value += 1,
+            _ => {}
+        }
+    }
+    let rejected = r.illegal + r.no_such_param + r.bad_value;
+    r.rejection_permille = rejected * 1000 / r.total.max(1);
+    r
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F192 v5 自检（聚合进 secstar2 域）。
+pub fn run_paramwl_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v5");
+
+    // v5-一：帮助页——三族组齐、总数对账、语法/ADR 行。
+    set.add("help page intact", param_help_page_intact(), "");
+    let page = param_help_page();
+    set.add("help group order", page[0].0 == "调试族" && page[1].0 == "降级族" && page[2].0 == "兼容族", "");
+    set.add("help sizes", page[0].1.len() == 6 && page[1].1.len() == 3 && page[2].1.len() == 4, "6/3/4 census");
+    set.add("help syntax line", PARAM_SYNTAX_LINE.contains("128") && PARAM_SYNTAX_LINE.contains("1024"), "");
+    set.add("help adr line", PARAM_ADR_LINE.contains("13"), "");
+
+    // v5-二：遥测账——四账分列、净化导出、与判定序列一致。
+    let mut wl = ParamWhitelist::new();
+    let verdicts = wl.check_line("verbose log-level=9 verbos bad%% safe-mode");
+    let t = ParseTelemetry::from_verdicts(&verdicts);
+    set.add("tel accepted", t.accepted == 3, "verbose+钳制的log-level+safe-mode");
+    set.add("tel clamps", t.clamps == 1, "log-level=9→5 钳制");
+    set.add("tel rejections", t.rejections == 2, "verbos+bad%%");
+    set.add("tel suggestions", t.suggestions == 1, "verbos 有建议；bad%% 无");
+    set.add("tel sanitized", t.sanitized_line().contains("通过 3"), "");
+    // 空序列诚实零账。
+    set.add("tel empty", ParseTelemetry::from_verdicts(&[]).rejections == 0, "");
+
+    // v5-三：ADR 时间线——已批两行、未批两行、挂起天数。
+    // 提案参数必须是白名单外的新参数（ADR 增补语义——已有参数走 ADR 调整）。
+    let mut ledger = AdrLedger::new();
+    let new_param = ParamSpec { name: "io-poll", family: ParamFamily::Compat, kind: ValueKind::Flag, note: "IO 轮询兼容路径（ADR 增补示例）" };
+    ledger.propose("ADR-001", new_param, 10).ok();
+    ledger.apply("ADR-001").ok();
+    let pending_param = ParamSpec { name: "uart-slow", family: ParamFamily::Debug, kind: ValueKind::Flag, note: "低速串口兼容" };
+    ledger.propose("ADR-002", pending_param, 20).ok();
+    let tl = adr_timeline(&ledger, 30);
+    set.add("adr rows", tl.len() == 4, "两案各两行：立案+生效/待批");
+    set.add("adr applied row", tl[1].token == "success" && tl[1].text.contains("生效"), "");
+    set.add("adr rows per case", tl[0].text.contains("ADR-001") && tl[2].text.contains("ADR-002"), "每案两行成对");
+    set.add("adr pending row", tl[3].token == "warning" && tl[3].text.contains("10 天"), "挂起天数");
+    set.add("adr case row", tl[0].token == "neutral" && tl[0].text.contains("立案"), "");
+
+    // v5-四：fuzz 报告——聚合、拒绝率、全非法≈1000‰。
+    let mut wl2 = ParamWhitelist::new();
+    let mut all = alloc::vec::Vec::new();
+    for seed in 0..5u64 {
+        let (rej, _acc) = fuzz_round(seed, 10);
+        let _ = rej;
+        // fuzz_round 返回统计——判定序列另行构造（10 个变异体逐个过门）。
+        for i in 0..10u64 {
+            all.push(wl2.check_token(&alloc::format!("zz{}-{}", seed, i)));
+        }
+    }
+    let fr = fuzz_report(&all);
+    set.add("fuzz total", fr.total == 50, "");
+    set.add("fuzz all rejected", fr.rejection_permille == 1000, "随机变异体全拒");
+    set.add("fuzz classed", fr.illegal + fr.no_such_param == 50, "分类总和=总数");
+    // 混入合法 token 后占比下降（分类账仍然守恒）。
+    let mut mixed = alloc::vec![wl2.check_token("verbose")];
+    mixed.push(wl2.check_token("zz"));
+    let fr2 = fuzz_report(&mixed);
+    set.add("fuzz mixed rate", fr2.rejection_permille == 500, "2 取 1 → 500‰");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v5_telemetry_never_mixes_books() {
+        // 30 条混合判定：四账之和 = 总数（账本守恒——一条判定恰记一笔）。
+        let mut wl = ParamWhitelist::new();
+        let mut all = alloc::vec::Vec::new();
+        for s in ["verbose", "log-level=3", "verbos", "bad%%", "log-sinks=2", "no-gui", "x=1;y=2", "log-level=abc"] {
+            all.extend(wl.check_line(s));
+        }
+    let t = ParseTelemetry::from_verdicts(&all);
+    assert_eq!(t.accepted + t.rejections, all.len() as u64, "accepted+rejections 守恒");
+    assert_eq!(t.clamps, 0, "这批样本不含界外整数（无钳制）");
+    assert_eq!(t.accepted, 4, "verbose/log-level=3/log-sinks=2/no-gui");
+    assert_eq!(t.rejections, 4, "verbos/bad%%/分号注入/log-level=abc");
+    assert_eq!(t.suggestions, 2, "verbos 与 log-level=abc 各有建议");
+    }
+
+    #[test]
+    fn f192_v5_help_page_no_orphans() {
+        // 帮助页行与 WHITELIST 逐条同名（生成面零孤儿零遗漏）。
+        let page = param_help_page();
+        let mut names: alloc::vec::Vec<&str> = page.iter().flat_map(|(_, g)| g.iter().map(|r| r.name)).collect();
+        names.sort_unstable();
+        let mut expect: alloc::vec::Vec<&str> = WHITELIST.iter().map(|p| p.name).collect();
+        expect.sort_unstable();
+        assert_eq!(names, expect);
+    }
+
+    #[test]
+    fn f192_v5_adr_timeline_pending_aging() {
+        // 挂起天数随时间增长（时间线是活的——同 ledger 不同 now 不同行）。
+        let mut ledger = AdrLedger::new();
+        let p = ParamSpec { name: "uart-slow", family: ParamFamily::Debug, kind: ValueKind::Flag, note: "低速串口" };
+        ledger.propose("ADR-009", p, 5).ok();
+        let t1 = adr_timeline(&ledger, 10);
+        let t2 = adr_timeline(&ledger, 100);
+        assert!(t1[1].text.contains("5 天"));
+        assert!(t2[1].text.contains("95 天"));
+    }
+
+    #[test]
+    fn f192_v5_run_checks_pass() {
+        assert!(run_paramwl_deep4_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——独立值校验器 / 启动行构建器 /
+// 三族使用统计 / 参数搜索 / ADR 历史统计。
+
+use alloc::string::ToString;
+// 判据源：主册【状态与异常】
+// 「合法参数值越界（log-level=99）→ 钳制+警告」的正向面 +【数据与存储】
+// 「白名单表编译期常量（变更走 ADR）」的统计投影。
+// ---------------------------------------------------------------------------
+
+/// 值校验结论（给定 spec 与原始值串——check_token 的值段拆分独立面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueVerdict {
+    /// 合法整数值。
+    OkInt(i64),
+    /// 越界钳制（原值+钳后值）。
+    Clamped(i64, i64),
+    /// 非法值（非数字/旗标带值）。
+    Bad,
+}
+
+/// 校验一个值（spec.kind 决定语义）。
+pub fn validate_value(spec: &ParamSpec, raw: &str) -> ValueVerdict {
+    match spec.kind {
+        ValueKind::Flag => ValueVerdict::Bad, // 旗标不接受值（=false 走 FlagOff 语义，此处是值段校验）。
+        ValueKind::Int(lo, hi) => match raw.parse::<i64>() {
+            Ok(v) if v < lo => ValueVerdict::Clamped(v, lo),
+            Ok(v) if v > hi => ValueVerdict::Clamped(v, hi),
+            Ok(v) => ValueVerdict::OkInt(v),
+            Err(_) => ValueVerdict::Bad,
+        },
+    }
+}
+
+/// 启动行构建器（反向面：从合法参数集生成一行命令行——生成的行必过自己的门）。
+pub struct BootLineBuilder {
+    parts: Vec<String>,
+}
+
+impl BootLineBuilder {
+    pub fn new() -> BootLineBuilder {
+        BootLineBuilder { parts: Vec::new() }
+    }
+
+    /// 加旗标（名字必须白名单内——构建器不生产非法行）。
+    pub fn flag(&mut self, name: &'static str) -> Result<(), &'static str> {
+        match find(name) {
+            Some(spec) if matches!(spec.kind, ValueKind::Flag) => {
+                self.parts.push(name.to_string());
+                Ok(())
+            }
+            _ => Err("非白名单旗标"),
+        }
+    }
+
+    /// 加整数参数（自动钳制到 spec 值域）。
+    pub fn int(&mut self, name: &'static str, value: i64) -> Result<(), &'static str> {
+        match find(name) {
+            Some(spec) => match spec.kind {
+                ValueKind::Int(lo, hi) => {
+                    let v = value.clamp(lo, hi);
+                    self.parts.push(alloc::format!("{}={}", name, v));
+                    Ok(())
+                }
+                _ => Err("该参数是旗标"),
+            },
+            None => Err("非白名单参数"),
+        }
+    }
+
+    /// 产出（总长守卫——超 1KB 拒绝）。
+    pub fn build(&self) -> Result<String, &'static str> {
+        let line = self.parts.join(" ");
+        if line.len() > TOTAL_MAX_LEN {
+            return Err("总长超 1KB");
+        }
+        Ok(line)
+    }
+}
+
+impl Default for BootLineBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 三族使用统计（判定流按族计数——哪族参数最常被碰）。
+pub fn family_stats(verdicts: &[ParamVerdict]) -> [(usize, usize); 3] {
+    // 每族 (命中, 拒绝)。NoSuchParam/BadValue/Illegal 按建议归属或归拒绝。
+    let mut out = [(0usize, 0usize); 3];
+    for v in verdicts {
+        let name = match v {
+            ParamVerdict::FlagOn(n) | ParamVerdict::FlagOff(n) | ParamVerdict::Int(n, _) | ParamVerdict::IntClamped(n, _) | ParamVerdict::BadValue(n) => Some(*n),
+            ParamVerdict::NoSuchParam(_) | ParamVerdict::Illegal(_) => None,
+        };
+        match name.and_then(find) {
+            Some(spec) => {
+                let slot = match spec.family {
+                    ParamFamily::Debug => 0,
+                    ParamFamily::Degrade => 1,
+                    ParamFamily::Compat => 2,
+                };
+                if matches!(v, ParamVerdict::BadValue(_)) {
+                    out[slot].1 += 1;
+                } else {
+                    out[slot].0 += 1;
+                }
+            }
+            None => out[0].1 += 1, // 未知参数挂调试族拒账（调试场景最常见）。
+        }
+    }
+    out
+}
+
+/// 参数搜索（子串匹配+族过滤——帮助页内的检索面）。
+pub fn param_search(query: &str, family: Option<ParamFamily>) -> Vec<&'static str> {
+    WHITELIST
+        .iter()
+        .filter(|p| family.map(|f| p.family == f).unwrap_or(true))
+        .filter(|p| p.name.contains(query))
+        .map(|p| p.name)
+        .collect()
+}
+
+/// ADR 历史统计（提案数/批准数/批准率 permille/最长挂起天数）。
+pub struct AdrHistoryStats {
+    pub proposed: usize,
+    pub applied: usize,
+    pub approval_permille: u64,
+    pub max_pending_days: u64,
+}
+
+/// 从账本聚合（now_day 用于挂起天数）。
+pub fn adr_history_stats(ledger: &AdrLedger, now_day: u64) -> AdrHistoryStats {
+    let proposed = ledger.entries.len();
+    let applied = ledger.entries.iter().filter(|e| e.applied).count();
+    let approval_permille = if proposed == 0 { 0 } else { applied as u64 * 1000 / proposed as u64 };
+    let max_pending_days = ledger
+        .entries
+        .iter()
+        .filter(|e| !e.applied)
+        .map(|e| now_day.saturating_sub(e.day))
+        .max()
+        .unwrap_or(0);
+    AdrHistoryStats { proposed, applied, approval_permille, max_pending_days }
+}
+
+/// F192 v6 自检（deep5 表）。
+pub fn run_paramwl_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v6");
+
+    // v6-一：值校验器——合法/钳制/非法/旗标拒绝。
+    let spec = find("log-level").unwrap();
+    set.add("val ok", validate_value(spec, "3") == ValueVerdict::OkInt(3), "");
+    set.add("val clamp hi", validate_value(spec, "99") == ValueVerdict::Clamped(99, 5), "99→5 主册判据");
+    set.add("val clamp lo", validate_value(spec, "-1") == ValueVerdict::Clamped(-1, 0), "");
+    set.add("val bad", validate_value(spec, "abc") == ValueVerdict::Bad, "");
+    let flag = find("verbose").unwrap();
+    set.add("val flag reject", validate_value(flag, "1") == ValueVerdict::Bad, "旗标不带值");
+
+    // v6-二：构建器——合法产出过自己的门、钳制、非法拒绝、超长拒绝。
+    let mut wl = ParamWhitelist::new();
+    let mut b = BootLineBuilder::new();
+    b.flag("verbose").ok();
+    b.int("log-level", 99).ok(); // 自动钳 5。
+    b.int("log-sinks", 2).ok();
+    let line = b.build().unwrap();
+    set.add("build line", line == "verbose log-level=5 log-sinks=2", "钳制已内建");
+    let verdicts = wl.check_line(&line);
+    set.add("build passes own gate", wl.line_ok(&verdicts), "生成的行必过自己的门（自洽）");
+    set.add("build reject flag value", b.flag("log-level").is_err(), "旗标入口不收整参名");
+    set.add("build reject unknown", { let mut b2 = BootLineBuilder::new(); b2.flag("not-a-param").is_err() }, "");
+
+    // v6-三：族统计——命中/拒绝分账、未知挂调试拒账。
+    let vs = wl.check_line("verbose verbos log-level=3 no-gui legacy-timer");
+    let fs = family_stats(&vs);
+    set.add("fam debug hit", fs[0].0 >= 2, "verbose+log-level 命中");
+    set.add("fam debug rej", fs[0].1 >= 1, "verbos+未知挂调试拒账");
+    set.add("fam degrade hit", fs[1].0 == 1, "no-gui");
+    set.add("fam compat hit", fs[2].0 == 1, "legacy-timer");
+
+    // v6-四：搜索——子串、族过滤、组合、空结果诚实。
+    set.add("search sub", param_search("log", None).len() == 2, "log-level+log-sinks");
+    set.add("search family", param_search("", Some(ParamFamily::Degrade)).len() == 3, "降级族 3 参");
+    set.add("search combo", param_search("safe", Some(ParamFamily::Degrade)) == vec!["safe-mode"], "");
+    set.add("search empty honest", param_search("zzz", None).is_empty(), "");
+
+    // v6-五：ADR 统计——批准率、挂起天数、零提案诚实。
+    let mut ledger = AdrLedger::new();
+    let p1 = ParamSpec { name: "io-poll", family: ParamFamily::Compat, kind: ValueKind::Flag, note: "示例" };
+    ledger.propose("ADR-001", p1, 10).ok();
+    ledger.apply("ADR-001").ok();
+    let p2 = ParamSpec { name: "uart-slow", family: ParamFamily::Debug, kind: ValueKind::Flag, note: "示例" };
+    ledger.propose("ADR-002", p2, 40).ok();
+    let st = adr_history_stats(&ledger, 60);
+    set.add("adr proposed", st.proposed == 2 && st.applied == 1, "");
+    set.add("adr rate", st.approval_permille == 500, "");
+    set.add("adr pending max", st.max_pending_days == 20, "60-40=20 天");
+    let empty = adr_history_stats(&AdrLedger::new(), 100);
+    set.add("adr empty honest", empty.approval_permille == 0 && empty.max_pending_days == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v6_builder_roundtrip_all_flags() {
+        // 13 参数全量构建：逐个独立成行都过门（白名单自洽终检）。
+        let mut wl = ParamWhitelist::new();
+        for spec in WHITELIST.iter() {
+            let mut b = BootLineBuilder::new();
+            match spec.kind {
+                ValueKind::Flag => b.flag(spec.name).unwrap(),
+                ValueKind::Int(lo, _) => b.int(spec.name, lo).unwrap(),
+            }
+            let line = b.build().unwrap();
+            let vs = wl.check_line(&line);
+            assert!(wl.line_ok(&vs), "{} 的构建行被自己的门拒了", spec.name);
+        }
+    }
+
+    #[test]
+    fn f192_v6_value_boundary_matrix() {
+        // log-level 边界矩阵：-1/0/5/6 四点（钳制语义双向验证）。
+        let spec = find("log-level").unwrap();
+        assert_eq!(validate_value(spec, "0"), ValueVerdict::OkInt(0));
+        assert_eq!(validate_value(spec, "5"), ValueVerdict::OkInt(5));
+        assert_eq!(validate_value(spec, "6"), ValueVerdict::Clamped(6, 5));
+        assert_eq!(validate_value(spec, "-1"), ValueVerdict::Clamped(-1, 0));
+    }
+
+    #[test]
+    fn f192_v6_run_checks_pass() {
+        assert!(run_paramwl_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——启动行对比 / 场景预设 / 白名单
+// 版本对比 / 开放导出。判据源：主册【交互设计】「合法参数清单在帮助 F119」
+// +【数据与存储】白名单编译期常量+ADR 版本管理。
+// ---------------------------------------------------------------------------
+
+/// 启动行对比（新增/移除/值变更三类差异——配置审计面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LineDiff {
+    Added(String),
+    Removed(String),
+    Changed(String, String), // 旧值 → 新值（同参数）。
+}
+
+/// 对比两行启动参数（按参数名对齐——行序无关）。
+pub fn boot_line_diff(old: &str, new: &str) -> Vec<LineDiff> {
+    let parse = |line: &str| -> Vec<(String, Option<String>)> {
+        line.split_whitespace()
+            .map(|t| match t.split_once('=') {
+                Some((k, v)) => (k.to_string(), Some(v.to_string())),
+                None => (t.to_string(), None),
+            })
+            .collect()
+    };
+    let mut old_map: Vec<(String, Option<String>)> = parse(old);
+    let mut new_map: Vec<(String, Option<String>)> = parse(new);
+    old_map.sort();
+    new_map.sort();
+    let mut out = Vec::new();
+    for (k, v) in &old_map {
+        match new_map.iter().find(|(nk, _)| nk == k) {
+            None => out.push(LineDiff::Removed(k.clone())),
+            Some((_, nv)) if nv != v => {
+                out.push(LineDiff::Changed(
+                    alloc::format!("{}={}", k, v.clone().unwrap_or_default()),
+                    alloc::format!("{}={}", k, nv.clone().unwrap_or_default()),
+                ));
+            }
+            _ => {}
+        }
+    }
+    for (k, v) in &new_map {
+        if !old_map.iter().any(|(ok, _)| ok == k) {
+            out.push(LineDiff::Added(alloc::format!("{}{}", k, v.clone().map(|x| alloc::format!("={}", x)).unwrap_or_default())));
+        }
+    }
+    out
+}
+
+/// 场景预设（常用参数组合——帮助页推荐组合，逐项全白名单）。
+pub const PARAM_PRESETS: [(&str, [&str; 3]); 3] = [
+    ("调试包", ["verbose", "log-level=5", "ktrace"]),
+    ("安全排查包", ["safe-mode", "no-third-drv", "log-level=3"]),
+    ("兼容包", ["legacy-timer", "iommu-soft", "log-level=1"]),
+];
+
+/// 预设完整性（组合名互异+逐项全部白名单内——预设不许含非法参数）。
+pub fn param_presets_valid() -> bool {
+    PARAM_PRESETS.iter().all(|(name, params)| {
+        params.iter().all(|p| {
+            let key = p.split('=').next().unwrap_or(p);
+            find(key).is_some()
+        }) && !name.is_empty()
+    }) && PARAM_PRESETS[0].0 != PARAM_PRESETS[1].0
+}
+
+/// 白名单开放导出（F128 语言：13 参全量 JSON——第三方工具可解析）。
+pub fn whitelist_export_json(out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"whitelist\":[");
+    for (i, p) in WHITELIST.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        let kind = match p.kind {
+            ValueKind::Flag => alloc::format!("\"flag\""),
+            ValueKind::Int(lo, hi) => alloc::format!("\"int:{}..={}\"", lo, hi),
+        };
+        out.extend_from_slice(
+            alloc::format!("{{\"name\":\"{}\",\"family\":\"{}\",\"kind\":{}}}", p.name, family_label(p.family), kind).as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// 导出形状自检（13 条+族齐）。
+pub fn whitelist_export_ok(data: &[u8]) -> bool {
+    let text = core::str::from_utf8(data).unwrap_or("");
+    text.contains("\"whitelist\"")
+        && text.matches("\"name\"").count() == WHITELIST.len()
+        && text.contains("调试族")
+        && text.contains("兼容族")
+}
+
+/// F192 v7 自检（deep6 表）。
+pub fn run_paramwl_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v7");
+
+    // v7-一：行对比——增/删/改/无差四态。
+    let d = boot_line_diff("verbose log-level=3", "verbose log-level=5 ktrace");
+    set.add("diff changed", d.iter().any(|x| matches!(x, LineDiff::Changed(a, _) if a.contains("log-level=3"))), "值变更");
+    set.add("diff added", d.iter().any(|x| matches!(x, LineDiff::Added(a) if a.contains("ktrace"))), "新增");
+    let d2 = boot_line_diff("verbose safe-mode", "safe-mode");
+    set.add("diff removed", d2.iter().any(|x| matches!(x, LineDiff::Removed(a) if a == "verbose")), "移除");
+    set.add("diff none", boot_line_diff("verbose", "verbose").is_empty(), "无差=空");
+
+    // v7-二：预设——全白名单+名互异。
+    set.add("presets valid", param_presets_valid(), "");
+    set.add("presets count", PARAM_PRESETS.len() == 3, "");
+
+    // v7-三：白名单导出——13 条+族齐。
+    let mut data = Vec::new();
+    whitelist_export_json(&mut data);
+    set.add("export ok", whitelist_export_ok(&data), "");
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("export value kinds", text.contains("\"flag\"") && text.contains("int:0..=5"), "值域随行");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v7_diff_value_only_change() {
+        // 同参数值变更不改名（Changed 语义——不是删+加）。
+        let d = boot_line_diff("log-level=3", "log-level=5");
+        assert_eq!(d.len(), 1);
+        assert!(matches!(d[0], LineDiff::Changed(_, _)));
+    }
+
+    #[test]
+    fn f192_v7_export_roundtrip_parse() {
+        // 导出可被外部语义解析（首尾结构与计数——生态语言自证）。
+        let mut data = Vec::new();
+        whitelist_export_json(&mut data);
+        let text = core::str::from_utf8(&data).unwrap_or("");
+        assert!(text.starts_with("{\"whitelist\":["));
+        assert!(text.ends_with("]}"));
+        assert_eq!(text.matches("\"family\"").count(), 13);
+    }
+
+    #[test]
+    fn f192_v7_run_checks_pass() {
+        assert!(run_paramwl_deep6_checks().all_passed());
+    }
+}

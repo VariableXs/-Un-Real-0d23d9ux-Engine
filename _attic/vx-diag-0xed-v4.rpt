@@ -1,0 +1,43 @@
+=== 0xED v4 三方对账（只读） ===
+esp=\\?\Volume{636786cb-e967-49f6-b0df-7608909d1f11}\ eng=\\?\Volume{b76d4dcf-0c7c-4de0-88bb-bfeec7f0e76e}\
+$ bcdedit /store Y:\EFI\Microsoft\Boot\BCD /enum {default} /v
+  | Windows 启动加载器
+  | -------------------
+  | 标识符                  {a8897e9f-b5ed-11f1-ab88-c4c6e62c8a4c}
+  | device                  partition=X:
+  | path                    \Windows\system32\winload.efi
+  | description             Windows 11
+  | locale                  en-us
+  | inherit                 {6efb52bf-1766-41db-a6b3-0ee5eff72bd7}
+  | recoverysequence        {03e8a6a4-b6c1-11f1-8f1d-c035321b0fae}
+  | recoveryenabled         No
+  | isolatedcontext         Yes
+  | allowedinmemorysettings 0x15000075
+  | osdevice                partition=X:
+  | systemroot              \Windows
+  | resumeobject            {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+  | nx                      OptIn
+  | bootmenupolicy          Standard
+  | bootstatuspolicy        IgnoreAllFailures
+$ powershell -NoProfile -Command Get-Disk | Select-Object Number, DiskId, FriendlyName, Size | Format-List | Out-String
+  | Number       : 1
+  | DiskId       :
+  | FriendlyName : Lenovo thinkplus 1TB
+  | Size         : 1024209543168
+  | Number       : 0
+  | DiskId       :
+  | FriendlyName : CT1000P3PSSD8
+  | Size         : 1000204886016
+$ reg load HKLM\VXSYS2 X:\Windows\System32\config\SYSTEM
+  | 操作成功完成。
+$ reg query HKLM\VXSYS2\MountedDevices
+  | HKEY_LOCAL_MACHINE\VXSYS2\MountedDevices
+  | \DosDevices\C:    REG_BINARY    444D494F3A49443ACF4D6DB77C0CE04D88BBBFEEC7F0E76E
+  | \DosDevices\D:    REG_BINARY    444D494F3A49443AC624C41F37F970499636A705A8575C30
+  | \DosDevices\E:    REG_BINARY    444D494F3A49443A043F485285977A45935240C34D71F5B1
+  | \DosDevices\F:    REG_BINARY    444D494F3A49443A6C692B40957A834299C39FA06FD8C84D
+  | \DosDevices\G:    REG_BINARY    444D494F3A49443AD4C301774B2E2F4F81C33EBD6A97A896
+  | \DosDevices\H:    REG_BINARY    444D494F3A49443A2344AA13DDD7194082652BC75012C1C0
+$ reg unload HKLM\VXSYS2
+  | 操作成功完成。
+=== done v4 ===

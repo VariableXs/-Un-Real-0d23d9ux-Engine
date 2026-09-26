@@ -521,7 +521,13 @@ pub fn run_intrcoal_checks() -> CheckSet {
             && aggs[0].max_batch == 10,
         "",
     );
-    cs
+    // 深化件（深化批次三）：合并键（设备+类型）与可覆盖性二分 / 2000ns 硬预算
+    // 闸门 / 网络侧按 flow 合并 / flood 70 级零丢弃账 / 中断风暴熔断状态机 /
+    // 合并统计（每秒合并率·最大批）入账本。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::intrcoal_ext::run_checks()),
+        crate::perfstar::mech_wheel::run_checks(),
+    )
 }
 
 #[cfg(test)]

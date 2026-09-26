@@ -1124,3 +1124,553 @@ mod deep2_tests {
         assert!(run_resquota_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——用量采样账 / 仪表刻度模型 / 单应用
+// 收紧流 / 资源页汇总排序。判据源：主册【数据与存储】「用量实时自账本
+// （F045/F057/F060 数据源同源）」+【交互设计】「配额线可视化（仪表条）+
+// 用户可对单应用收紧」+【设计细节】「仪表条绿黄红三段」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：UsageSampler —— 用量采样账（与账本族同源的采样面：周期采样 +
+// 8 点滑动平均 + 突刺滤波（单点跳变 >40% 判噪声丢弃）——配额执法吃到
+// 的用量是滤过的，不是传感器毛刺）
+// ---------------------------------------------------------------------------
+
+/// 滑动窗口点数。
+pub const SAMPLE_WINDOW: usize = 8;
+/// 突刺滤波阈值（与上一点比跳变超 400‰ 判噪声）。
+pub const SPIKE_PERMILLE: u64 = 400;
+
+/// 采样账。
+pub struct UsageSampler {
+    window: [Option<u64>; SAMPLE_WINDOW],
+    head: usize,
+    len: usize,
+    /// 被滤掉的突刺数（诊断面——滤波不能是黑箱）。
+    pub spikes_dropped: u64,
+}
+
+impl UsageSampler {
+    pub fn new() -> UsageSampler {
+        UsageSampler { window: [const { None }; SAMPLE_WINDOW], head: 0, len: 0, spikes_dropped: 0 }
+    }
+
+    /// 采一个点（首点直入；后续跳变超阈值且窗口已满半才判噪声——冷启动
+    /// 期不做噪声判定）。
+    pub fn sample(&mut self, value: u64) -> bool {
+        if self.len >= SAMPLE_WINDOW / 2 {
+            let last = self.ring_last();
+            if let Some(last) = last {
+                let base = last.max(1);
+                let jump = value.abs_diff(last) * 1000 / base;
+                if jump > SPIKE_PERMILLE {
+                    self.spikes_dropped += 1;
+                    return false;
+                }
+            }
+        }
+        self.window[self.head] = Some(value);
+        self.head = (self.head + 1) % SAMPLE_WINDOW;
+        self.len = (self.len + 1).min(SAMPLE_WINDOW);
+        true
+    }
+
+    fn ring_last(&self) -> Option<u64> {
+        if self.len == 0 {
+            return None;
+        }
+        self.window[(self.head + SAMPLE_WINDOW - 1) % SAMPLE_WINDOW]
+    }
+
+    /// 滑动平均（评估配额线用的平滑值——毛刺不进执法）。
+    pub fn smoothed(&self) -> Option<u64> {
+        if self.len == 0 {
+            return None;
+        }
+        let mut sum = 0u128;
+        for i in 0..self.len {
+            let idx = (self.head + SAMPLE_WINDOW - 1 - i) % SAMPLE_WINDOW;
+            sum += self.window[idx].unwrap_or(0) as u128;
+        }
+        Some((sum / self.len as u128) as u64)
+    }
+
+    pub fn count(&self) -> usize {
+        self.len
+    }
+}
+
+impl Default for UsageSampler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：GaugeModel —— 仪表条刻度模型（绿黄红三段 + 60/85 阈值刻度线 +
+// 当前值指针——渲染层的唯一数据契约，与 gauge_zone 同语义不同职责）
+// ---------------------------------------------------------------------------
+
+/// 刻度线。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GaugeTick {
+    /// 位置（permille）。
+    pub at: u64,
+    pub label: &'static str,
+    pub token: &'static str,
+}
+
+/// 仪表模型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GaugeModel {
+    /// 指针位置（permille 钳制 0-1000）。
+    pub pointer: u64,
+    /// 段色（与 gauge_zone 一致）。
+    pub zone: GaugeZone,
+    /// 刻度线（60% 黄线 + 85% 红线——两根，位置即主册常量）。
+    pub ticks: [GaugeTick; 2],
+}
+
+/// 组装（used/limit → 完整仪表数据；limit=0 诚实空表不造指针）。
+pub fn gauge_model(used: u64, limit: u64) -> Option<GaugeModel> {
+    if limit == 0 {
+        return None;
+    }
+    let pointer = used.min(limit) * 1000 / limit;
+    Some(GaugeModel {
+        pointer,
+        zone: gauge_zone(used, limit),
+        ticks: [
+            GaugeTick { at: GAUGE_GREEN_PERMILLE, label: "软顶线", token: "warning" },
+            GaugeTick { at: GAUGE_YELLOW_PERMILLE, label: "硬顶线", token: "danger" },
+        ],
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：TightenFlow —— 单应用收紧会话（面板选中 → 三档预设（严格/标准/
+// 宽松）→ 应用 → 回显新仪表；放宽仍走 RelaxAuditLog 双确认——本流只管收紧）
+// ---------------------------------------------------------------------------
+
+/// 收紧预设三档（内存配额相对系统默认的比例）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TightenPreset {
+    /// 严格：默认硬顶的 50%。
+    Strict,
+    /// 标准：默认硬顶的 75%。
+    Standard,
+    /// 宽松：默认硬顶的 90%（接近放开但仍是收紧——语义不与「放宽」混淆）。
+    Relaxed,
+}
+
+impl TightenPreset {
+    /// 比例（‰）。
+    pub fn permille(self) -> u64 {
+        match self {
+            TightenPreset::Strict => 500,
+            TightenPreset::Standard => 750,
+            TightenPreset::Relaxed => 900,
+        }
+    }
+
+    /// 应用到默认配额（只动内存硬顶/软顶——IO/进程数收紧走专属入口，
+    /// 一个流只做一件事）。
+    pub fn apply(self, base: Quota) -> Quota {
+        let p = self.permille();
+        Quota {
+            mem_hard: base.mem_hard * p / 1000,
+            mem_soft: base.mem_soft * p / 1000,
+            io_weight: base.io_weight,
+            proc_cap: base.proc_cap,
+        }
+    }
+}
+
+/// 收紧会话（选中 → 预设 → 应用 → 回显四步状态）。
+pub struct TightenFlow {
+    pub app: Option<&'static str>,
+    pub preset: Option<TightenPreset>,
+    /// 已应用次数（回显对账）。
+    pub applied: u64,
+}
+
+impl TightenFlow {
+    pub fn new() -> TightenFlow {
+        TightenFlow { app: None, preset: None, applied: 0 }
+    }
+
+    pub fn select(&mut self, app: &'static str) {
+        self.app = Some(app);
+        self.preset = None;
+    }
+
+    pub fn choose(&mut self, p: TightenPreset) -> Result<(), &'static str> {
+        if self.app.is_none() {
+            return Err("未选中应用");
+        }
+        self.preset = Some(p);
+        Ok(())
+    }
+
+    /// 应用（产出新配额——调用方交给 QuotaEnforcer::tighten；本流记账）。
+    pub fn commit(&mut self, base: Quota) -> Result<Quota, &'static str> {
+        let p = self.preset.ok_or("未选预设档")?;
+        self.applied += 1;
+        Ok(p.apply(base))
+    }
+}
+
+impl Default for TightenFlow {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：summary_rows —— 「应用-资源」页汇总排序（超限置顶（红）→ 达软顶
+// （黄）→ 其余按用量比降序；豁免应用灰显置底——一眼看到谁是麻烦制造者）
+// ---------------------------------------------------------------------------
+
+/// 汇总行（panel_row 的排序视图）。
+pub fn summary_rows(enforcer: &QuotaEnforcer, apps: &[(&'static str, Usage)]) -> alloc::vec::Vec<(u64, u64, bool)> {
+    // 输出：(排序键_风险段位, 用量比 permille, 是否豁免)。
+    let mut out = alloc::vec::Vec::new();
+    for (app, usage) in apps {
+        let exempt = is_exempt(app);
+        let row = enforcer.panel_row(app, *usage);
+        let hard = row.usage.mem_bytes * 1000 / row.quota.mem_hard.max(1);
+        let risk = if exempt {
+            3 // 豁免置底。
+        } else if hard >= GAUGE_YELLOW_PERMILLE {
+            0 // 红：≥85%。
+        } else if hard >= GAUGE_GREEN_PERMILLE {
+            1 // 黄：60-85%。
+        } else {
+            2
+        };
+        out.push((risk * 100_000 + (if risk == 3 { 0 } else { 1000 - hard.min(999) }), hard, exempt));
+    }
+    out.sort_by_key(|r| r.0);
+    out.into_iter().map(|(_, p, e)| (p, 0, e)).collect()
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F195 v4 自检（聚合进 secstar2 域）。
+pub fn run_resquota_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v4");
+
+    // v4-一：采样账——平滑、突刺滤、冷启动不误滤、窗口环。
+    let mut s = UsageSampler::new();
+    for v in [100u64, 102, 98, 101, 99] {
+        s.sample(v);
+    }
+    set.add("sample count", s.count() == 5, "");
+    set.add("sample smoothed", s.smoothed() == Some(100), "滑动平均 100");
+    // 突刺：600（跳 500‰）被滤；随后回落正常点照收。
+    set.add("sample spike dropped", !s.sample(600) && s.spikes_dropped == 1, "");
+    set.add("sample normal ok", s.sample(103) && s.count() == 6, "");
+    // 窗口环：渐变 10 点滚动（步幅 1 不触发突刺滤波）。
+    for v in 103..113u64 {
+        s.sample(v);
+    }
+    set.add("sample ring cap", s.count() == SAMPLE_WINDOW, "");
+    set.add("sample spike const", SPIKE_PERMILLE == 400, "");
+
+    // v4-二：仪表模型——指针、段色、双刻度线、零限诚实。
+    let g = gauge_model(700, 1000).unwrap();
+    set.add("gauge pointer", g.pointer == 700, "");
+    set.add("gauge zone yellow", g.zone == GaugeZone::Yellow, "");
+    set.add("gauge ticks", g.ticks[0].at == 600 && g.ticks[1].at == 850, "");
+    set.add("gauge tick labels", g.ticks[0].label == "软顶线" && g.ticks[1].label == "硬顶线", "");
+    set.add("gauge none on zero", gauge_model(10, 0).is_none(), "零限不造指针");
+    let g2 = gauge_model(2000, 1000).unwrap();
+    set.add("gauge clamp", g2.pointer == 1000 && g2.zone == GaugeZone::Red, "超限钳 1000");
+
+    // v4-三：收紧流——未选应用拒、未选预设拒、三档比例、commit 记账。
+    let base = Quota::default_4g();
+    let mut tf = TightenFlow::new();
+    set.add("tighten no app", tf.choose(TightenPreset::Strict).is_err(), "");
+    set.add("tighten no preset", { tf.select("browser"); tf.commit(base).is_err() }, "");
+    tf.choose(TightenPreset::Strict).ok();
+    let strict = tf.commit(base).unwrap();
+    set.add("tighten strict", strict.mem_hard == base.mem_hard / 2 && strict.mem_soft == base.mem_soft / 2, "严格=50%");
+    set.add("tighten io untouched", strict.io_weight == base.io_weight && strict.proc_cap == base.proc_cap, "本流不动 IO/进程");
+    tf.select("game");
+    tf.choose(TightenPreset::Standard).ok();
+    set.add("tighten standard", tf.commit(base).unwrap().mem_hard * 4 == base.mem_hard * 3, "标准=75%");
+    tf.choose(TightenPreset::Relaxed).ok();
+    set.add("tighten relaxed", tf.commit(base).unwrap().mem_hard * 10 == base.mem_hard * 9, "宽松=90%");
+    set.add("tighten applied 3", tf.applied == 3, "");
+
+    // v4-四：汇总排序——红置顶、黄次之、绿按用量降序、豁免置底。
+    let qe = QuotaEnforcer::new();
+    let hard = MEM_HARD_DEFAULT;
+    let soft = MEM_SOFT_DEFAULT;
+    let mk_usage = |bytes: u64| Usage { mem_bytes: bytes, background: false, proc_count: 1 };
+    let apps: alloc::vec::Vec<(&'static str, Usage)> = alloc::vec![
+        ("varix-kernel", mk_usage(1)),            // 豁免清单成员。
+        ("app-a", mk_usage(hard * 9 / 10)),      // 红 90%。
+        ("app-b", mk_usage(soft * 9 / 10)),      // 黄 67.5%。
+        ("app-c", mk_usage(hard / 4)),           // 绿 25%。
+        ("app-d", mk_usage(hard / 2)),           // 绿 50%。
+    ];
+    let rows = summary_rows(&qe, &apps);
+    set.add("summary count", rows.len() == 5, "");
+    // 首行=红（90%）；末行=豁免。
+    set.add("summary red top", rows[0].0 >= GAUGE_YELLOW_PERMILLE, "");
+    set.add("summary exempt bottom", rows[4].2, "豁免置底");
+    set.add("summary yellow second", rows[1].0 >= GAUGE_GREEN_PERMILLE && rows[1].0 < GAUGE_YELLOW_PERMILLE, "");
+    // 绿段两位按用量降序（50% 在 25% 前）。
+    set.add("summary green desc", rows[2].0 == 500 && rows[3].0 == 250, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v4_sampler_cold_start_no_filter() {
+        // 冷启动期（<窗半）跳变不滤——首两点差异大是启动常态不是噪声。
+        let mut s = UsageSampler::new();
+        assert!(s.sample(10));
+        assert!(s.sample(100), "冷启动第二点不判噪声");
+        assert_eq!(s.count(), 2);
+    }
+
+    #[test]
+    fn f195_v4_sampler_negative_spike_also_filtered() {
+        // 向下突刺同样滤（传感器毛刺是双向的）。
+        let mut s = UsageSampler::new();
+        for v in [100u64; 5] {
+            s.sample(v);
+        }
+        assert!(!s.sample(10), "100→10 跳 900‰ 判噪声");
+        assert_eq!(s.spikes_dropped, 1);
+    }
+
+    #[test]
+    fn f195_v4_gauge_zone_pointer_consistent() {
+        // 指针位置与段色跨 20 档全一致（模型自洽——两个视图不许打架）。
+        for i in 0..20u64 {
+            let used = i * 60;
+            let g = gauge_model(used, 1000).unwrap();
+            let expect = if g.pointer >= GAUGE_YELLOW_PERMILLE {
+                GaugeZone::Red
+            } else if g.pointer >= GAUGE_GREEN_PERMILLE {
+                GaugeZone::Yellow
+            } else {
+                GaugeZone::Green
+            };
+            assert_eq!(g.zone, expect, "used={}", used);
+        }
+    }
+
+    #[test]
+    fn f195_v4_tighten_presets_monotonic() {
+        // 三档严格单调：Strict < Standard < Relaxed < 默认。
+        let base = Quota::default_4g();
+        let s = TightenPreset::Strict.apply(base).mem_hard;
+        let m = TightenPreset::Standard.apply(base).mem_hard;
+        let r = TightenPreset::Relaxed.apply(base).mem_hard;
+        assert!(s < m && m < r && r < base.mem_hard);
+    }
+
+    #[test]
+    fn f195_v4_run_checks_pass() {
+        assert!(run_resquota_deep3_checks().all_passed());
+    }
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 · 上限口径冲刺）——默认配额文档页 + 豁免清单展示行。
+// 判据源：主册【设计细节】「默认配额按内存档推导（4GB 机型硬顶 1.5GB/
+// 软顶 1.2GB——旋钮表）」+【状态与异常】豁免清单固定。
+// ---------------------------------------------------------------------------
+
+/// 机型档文档行（profile_rows 的表格投影：档位/硬顶/软顶）。
+pub fn quota_doc_lines() -> Vec<String> {
+    let mut out = Vec::new();
+    for (mem_gib, hard_mib, soft_mib) in profile_rows() {
+        out.push(alloc::format!(
+            "{} GiB 机型：单应用硬顶 {} MiB / 软顶 {} MiB",
+            mem_gib,
+            hard_mib,
+            soft_mib
+        ));
+    }
+    out
+}
+
+/// 豁免清单展示行（「关键系统进程豁免」——清单公开面）。
+pub fn exempt_doc_line() -> String {
+    let mut s = String::from("豁免清单（固定，不可增删）：");
+    for (i, e) in EXEMPT.iter().enumerate() {
+        if i > 0 {
+            s.push_str("、");
+        }
+        s.push_str(e);
+    }
+    s
+}
+
+/// F195 v5 自检（deep4 表）。
+pub fn run_resquota_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v5");
+
+    // 文档行——档数齐、行内数值与 profile 表一致。
+    let doc = quota_doc_lines();
+    set.add("doc rows", doc.len() == profile_rows().len(), "");
+    set.add("doc hard values", {
+        profile_rows().iter().all(|(g, hard, _)| {
+            doc.iter().any(|l| l.contains(&alloc::format!("{} GiB", g)) && l.contains(&alloc::format!("硬顶 {}", hard)))
+        })
+    }, "逐档硬顶对账");
+    set.add("doc exempt count", exempt_doc_line().contains("compositor") && EXEMPT.len() == 6, "豁免清单全列出（6 项）");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v4_doc_matches_profile_table() {
+        // 文档行内嵌的硬顶值与 quota_for_machine 逐档一致（生成不自抄错）。
+        for (mem_gib, hard, _) in profile_rows() {
+            let q = quota_for_machine(mem_gib);
+            assert_eq!(q.mem_hard, hard);
+            assert!(quota_doc_lines().iter().any(|l| l.contains(&alloc::format!("{} GiB", mem_gib))));
+        }
+    }
+
+    #[test]
+    fn f195_v4_run_checks_pass() {
+        assert!(run_resquota_deep4_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——预设档命名与说明行。
+// 判据源：主册【交互设计】「配额线系统默认（按机型档），用户可对单应用
+// 收紧」的预设命名面。
+// ---------------------------------------------------------------------------
+
+/// 收紧预设命名（TightenPreset 的人话+适用场景——设置页下拉项数据）。
+pub fn preset_doc_lines() -> [(&'static str, &'static str); 3] {
+    [
+        ("严格（50%）", "后台挂机类应用：只留基本功能所需的内存"),
+        ("标准（75%）", "轻度使用应用：浏览/文档等日常场景"),
+        ("宽松（90%）", "主力应用：接近放开但保留应急余量"),
+    ]
+}
+
+pub fn preset_doc_intact() -> bool {
+    let l = preset_doc_lines();
+    l.len() == 3 && l[0].0.contains("50%") && l[2].0.contains("90%")
+}
+
+/// F195 v6 自检（deep5 表）。
+pub fn run_resquota_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v6");
+    set.add("preset doc intact", preset_doc_intact(), "");
+    set.add("preset three", preset_doc_lines().len() == 3, "");
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v5_preset_lines_unique() {
+        // 三行名称互异（下拉项不许撞车）。
+        let l = preset_doc_lines();
+        assert_ne!(l[0].0, l[1].0);
+        assert_ne!(l[1].0, l[2].0);
+        assert_ne!(l[0].0, l[2].0);
+    }
+
+    #[test]
+    fn f195_v5_run_checks_pass() {
+        assert!(run_resquota_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——配额执法日报。
+// 判据源：主册【交互设计】通知三要素的日聚合面。
+// ---------------------------------------------------------------------------
+
+/// 配额执法日报（逐阶梯触发计数+豁免命中——一天一张执法卡）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct QuotaDaily {
+    pub cache_evictions: u64,
+    pub io_downgrades: u64,
+    pub growth_freezes: u64,
+    pub hard_rejects: u64,
+    pub exempt_hits: u64,
+}
+
+impl QuotaDaily {
+    /// 总动作数。
+    pub fn total(&self) -> u64 {
+        self.cache_evictions + self.io_downgrades + self.growth_freezes + self.hard_rejects
+    }
+
+    /// 阶梯顺序健康（硬顶拒绝数不应超过增长冻结数——跳级为异常）。
+    pub fn ladder_healthy(&self) -> bool {
+        self.hard_rejects <= self.growth_freezes + self.io_downgrades
+    }
+
+    /// 日报行。
+    pub fn daily_line(&self) -> String {
+        alloc::format!(
+            "配额执法日报：回收 {} / 降权 {} / 冻结 {} / 硬顶 {} / 豁免 {}",
+            self.cache_evictions, self.io_downgrades, self.growth_freezes, self.hard_rejects, self.exempt_hits
+        )
+    }
+}
+
+/// F195 v7 自检（deep6 表）。
+pub fn run_resquota_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v7");
+
+    let d1 = QuotaDaily { cache_evictions: 10, io_downgrades: 5, growth_freezes: 3, hard_rejects: 2, exempt_hits: 0 };
+    set.add("daily total", d1.total() == 20, "");
+    set.add("daily ladder ok", d1.ladder_healthy(), "阶梯递减=健康");
+    let d2 = QuotaDaily { cache_evictions: 0, io_downgrades: 0, growth_freezes: 0, hard_rejects: 5, exempt_hits: 0 };
+    set.add("daily ladder bad", !d2.ladder_healthy(), "硬顶 > 前级=跳级异常");
+    set.add("daily exempt", d1.daily_line().contains("豁免 0"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v6_daily_line_counts() {
+        // 行内五计数与字段一致（渲染守恒）。
+        let d = QuotaDaily { cache_evictions: 1, io_downgrades: 2, growth_freezes: 3, hard_rejects: 4, exempt_hits: 5 };
+        let line = d.daily_line();
+        assert!(line.contains("回收 1") && line.contains("硬顶 4") && line.contains("豁免 5"));
+    }
+
+    #[test]
+    fn f195_v6_run_checks_pass() {
+        assert!(run_resquota_deep6_checks().all_passed());
+    }
+}

@@ -1385,3 +1385,749 @@ mod tests {
         assert_eq!(m.raw_points, 602);
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：图层栈 · 洪水填充 · 对称镜像 · 选区（裁/复/贴）·
+// 压感宽度 · 网格叠加 · PingPong 排程 · 近期色板 · 整数 N 倍预览
+// ---------------------------------------------------------------------------
+
+
+
+/// 图层容量上限（超出诚实拒绝——不让无界图层拖垮工坊）。
+pub const LAYER_CAP: usize = 8;
+/// 近期色板容量（第四章一致性：最近 8 色判据的同族扩展，工坊侧 16）。
+pub const RECENT_COLORS_CAP: usize = 16;
+
+/// 单个图层：位图 + 可见性 + 整体透明度（千分位 0..1000）。
+pub struct Layer {
+    pub name: String,
+    pub buf: PixBuf,
+    pub visible: bool,
+    pub alpha_m: i64,
+}
+
+impl Layer {
+    pub fn opaque(name: &str, buf: PixBuf) -> Layer {
+        Layer { name: String::from(name), buf, visible: true, alpha_m: 1000 }
+    }
+}
+
+/// 图层栈：底稿起、向上叠；合成自底向顶 alpha 混合（隐藏层跳过）。
+pub struct LayerStack {
+    layers: Vec<Layer>,
+    active: usize,
+}
+
+impl LayerStack {
+    /// 以底稿建栈（第一层恒存在——空栈不是合法状态）。
+    pub fn new(base: PixBuf) -> LayerStack {
+        LayerStack { layers: alloc::vec![Layer::opaque("底稿", base)], active: 0 }
+    }
+
+    pub fn len(&self) -> usize {
+        self.layers.len()
+    }
+
+    pub fn active_index(&self) -> usize {
+        self.active
+    }
+
+    pub fn active_buf(&mut self) -> Option<&mut PixBuf> {
+        self.layers.get_mut(self.active).map(|l| &mut l.buf)
+    }
+
+    /// 新建图层（透明，置于栈顶）——超容诚实拒绝。
+    pub fn add_layer(&mut self, name: &str) -> Result<usize, String> {
+        if self.layers.len() >= LAYER_CAP {
+            return Err(alloc::format!("图层已达上限 {}——请先合并或删除", LAYER_CAP));
+        }
+        let base = &self.layers[0].buf;
+        let blank = PixBuf::new(base.w, base.h);
+        self.layers.push(Layer::opaque(name, blank));
+        self.active = self.layers.len() - 1;
+        Ok(self.active)
+    }
+
+    /// 删除图层（至少保 1 层；删活动层 → 焦点落到下层/新栈顶）。
+    pub fn remove_layer(&mut self, i: usize) -> bool {
+        if self.layers.len() <= 1 || i >= self.layers.len() {
+            return false;
+        }
+        self.layers.remove(i);
+        if self.active >= self.layers.len() {
+            self.active = self.layers.len() - 1;
+        }
+        true
+    }
+
+    pub fn set_active(&mut self, i: usize) -> bool {
+        if i < self.layers.len() {
+            self.active = i;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn toggle_visible(&mut self, i: usize) -> Option<bool> {
+        let l = self.layers.get_mut(i)?;
+        l.visible = !l.visible;
+        Some(l.visible)
+    }
+
+    /// 整层透明度（钳制 0..1000——脏输入不崩）。
+    pub fn set_alpha(&mut self, i: usize, alpha_m: i64) -> bool {
+        if let Some(l) = self.layers.get_mut(i) {
+            l.alpha_m = alpha_m.clamp(0, 1000);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 重排（拖拽换位语义：from 摘出插到 to——越界 false）。
+    pub fn move_layer(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.layers.len() || to >= self.layers.len() || from == to {
+            return false;
+        }
+        let l = self.layers.remove(from);
+        self.layers.insert(to, l);
+        self.active = to;
+        true
+    }
+
+    /// 向下合并：i 层压进 i-1 层（i>0；合并后活动层落 i-1）。
+    pub fn merge_down(&mut self, i: usize) -> bool {
+        if i == 0 || i >= self.layers.len() {
+            return false;
+        }
+        let top = self.layers.remove(i);
+        let under = &mut self.layers[i - 1];
+        under.buf.blend_over(&top.buf, 0, 0);
+        under.alpha_m = under.alpha_m.max(top.alpha_m);
+        self.active = i - 1;
+        true
+    }
+
+    /// 逐像素 alpha 合成（上层像素 alpha × 层透明度 覆盖下层）。
+    fn blend_px(top: [u8; 4], bottom: [u8; 4], layer_alpha_m: i64) -> [u8; 4] {
+        // 有效覆盖力（千分位）= 层透明度 × 像素 alpha 归一——两个标度先归一再混合。
+        let cover_m = (top[3] as i64 * layer_alpha_m / 255).clamp(0, 1000);
+        let inv_m = 1000 - cover_m;
+        let mix = |t: i64, b: i64| -> u8 { ((t * cover_m + b * inv_m) / 1000).clamp(0, 255) as u8 };
+        [
+            mix(top[0] as i64, bottom[0] as i64),
+            mix(top[1] as i64, bottom[1] as i64),
+            mix(top[2] as i64, bottom[2] as i64),
+            {
+                let na = top[3] as i64 * layer_alpha_m / 1000 + bottom[3] as i64 * inv_m / 1000;
+                na.clamp(0, 255) as u8
+            },
+        ]
+    }
+
+    /// 合成（自底向顶；隐藏层跳过——「看见了什么」的唯一事实源）。
+    pub fn compose(&self) -> PixBuf {
+        let w = self.layers[0].buf.w;
+        let h = self.layers[0].buf.h;
+        let mut out = PixBuf::new(w, h);
+        for (i, l) in self.layers.iter().enumerate() {
+            if !l.visible {
+                continue;
+            }
+            let mut layer_out = PixBuf::new(w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    if let Some(px) = l.buf.get(x, y) {
+                        if px[3] > 0 {
+                            layer_out.set(x, y, px);
+                        }
+                    }
+                }
+            }
+            let _ = i;
+            // 层透明度混合进输出。
+            for y in 0..h {
+                for x in 0..w {
+                    let top = layer_out.get(x, y).unwrap_or([0, 0, 0, 0]);
+                    if top[3] == 0 {
+                        continue;
+                    }
+                    let bottom = out.get(x, y).unwrap_or([0, 0, 0, 0]);
+                    out.set(x, y, Self::blend_px(top, bottom, l.alpha_m));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// 洪水填充（扫描线族 BFS）：以 (x,y) 的原色为种子、逐通道差之和
+/// ≤ tol 为连通判据；返回填充像素数（0 = 出界/同色——幂等不虚计）。
+pub fn flood_fill(cv: &mut PixBuf, x: i64, y: i64, rgba: [u8; 4], tol: i64) -> u64 {
+    let (w, h) = (cv.w as i64, cv.h as i64);
+    if x < 0 || y < 0 || x >= w || y >= h {
+        return 0;
+    }
+    let seed = match cv.get(x as u16, y as u16) {
+        Some(c) => c,
+        None => return 0,
+    };
+    let same = |a: [u8; 4], b: [u8; 4]| -> bool {
+        (a[0] as i64 - b[0] as i64).abs()
+            + (a[1] as i64 - b[1] as i64).abs()
+            + (a[2] as i64 - b[2] as i64).abs()
+            + (a[3] as i64 - b[3] as i64).abs()
+            <= tol
+    };
+    if same(seed, rgba) && tol == 0 {
+        return 0; // 幂等：目标色与替换色相同且零容差——不虚计
+    }
+    let mut visited = alloc::vec![false; (w * h) as usize];
+    let mut queue = alloc::vec![(x, y)];
+    let mut count = 0u64;
+    while let Some((cx, cy)) = queue.pop() {
+        let idx = (cy * w + cx) as usize;
+        if visited[idx] {
+            continue;
+        }
+        let cur = match cv.get(cx as u16, cy as u16) {
+            Some(c) => c,
+            None => continue,
+        };
+        if !same(cur, seed) {
+            continue;
+        }
+        visited[idx] = true;
+        cv.set(cx as u16, cy as u16, rgba);
+        count += 1;
+        if cx > 0 {
+            queue.push((cx - 1, cy));
+        }
+        if cx + 1 < w {
+            queue.push((cx + 1, cy));
+        }
+        if cy > 0 {
+            queue.push((cx, cy - 1));
+        }
+        if cy + 1 < h {
+            queue.push((cx, cy + 1));
+        }
+    }
+    count
+}
+
+/// 直线约束（Shift 语义）：吸附到 0°/45°/90°——主轴取差较大者。
+pub fn constrain_axis(x0: i64, y0: i64, x1: i64, y1: i64) -> (i64, i64) {
+    let dx = (x1 - x0).abs();
+    let dy = (y1 - y0).abs();
+    if dx > 2 * dy {
+        (x1, y0)
+    } else if dy > 2 * dx {
+        (x0, y1)
+    } else {
+        // 45°：按主轴对齐
+        let d = dx.min(dy);
+        let sx = if x1 >= x0 { d } else { -d };
+        let sy = if y1 >= y0 { d } else { -d };
+        (x0 + sx, y0 + sy)
+    }
+}
+
+/// 对称模式（工坊第 v3 层能力：镜像笔画不重手）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SymmetryMode {
+    None,
+    /// 垂直轴镜像（画左出右）。
+    Vertical,
+    /// 水平轴镜像。
+    Horizontal,
+    /// 四象限全镜像。
+    Quad,
+}
+
+impl SymmetryMode {
+    /// 给定画布尺寸，返回 (x,y) 及其全部镜像点（含自身去重后）。
+    pub fn mirrors(&self, x: i64, y: i64, w: i64, h: i64) -> Vec<(i64, i64)> {
+        let mut out = alloc::vec![(x, y)];
+        let mx = w - 1 - x;
+        let my = h - 1 - y;
+        match self {
+            SymmetryMode::None => {}
+            SymmetryMode::Vertical => out.push((mx, y)),
+            SymmetryMode::Horizontal => out.push((x, my)),
+            SymmetryMode::Quad => {
+                out.push((mx, y));
+                out.push((x, my));
+                out.push((mx, my));
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
+/// 近期色板：去重置顶、容量 16、满槽挤最旧（与 F234 最近 8 色同族语义）。
+pub struct RecentPalette {
+    slots: Vec<[u8; 4]>,
+}
+
+impl RecentPalette {
+    pub fn new() -> RecentPalette {
+        RecentPalette { slots: Vec::new() }
+    }
+
+    pub fn push(&mut self, c: [u8; 4]) {
+        self.slots.retain(|s| *s != c);
+        self.slots.insert(0, c);
+        self.slots.truncate(RECENT_COLORS_CAP);
+    }
+
+    pub fn slots(&self) -> &[[u8; 4]] {
+        &self.slots
+    }
+
+    /// 序列化（4 字节/色行式——随档案导出走）。
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for c in &self.slots {
+            out.extend_from_slice(c);
+        }
+        out
+    }
+
+    pub fn from_bytes(d: &[u8]) -> RecentPalette {
+        let mut rp = RecentPalette::new();
+        let mut seq: Vec<[u8; 4]> = Vec::new();
+        for chunk in d.chunks(4) {
+            if chunk.len() == 4 {
+                seq.push([chunk[0], chunk[1], chunk[2], chunk[3]]);
+            }
+        }
+        // push 置顶语义 = 逆序重放才还原原顺序（序列化按槽序，重放按旧→新）。
+        for c in seq.into_iter().rev() {
+            rp.push(c);
+        }
+        rp
+    }
+}
+impl Default for RecentPalette {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// PingPong 排程：0..n-1 顺放再 n-2..1 逆放（单帧/双帧退化为顺放）。
+pub fn pingpong_schedule(n: usize) -> Vec<usize> {
+    if n <= 2 {
+        return (0..n).collect();
+    }
+    let mut out: Vec<usize> = (0..n).collect();
+    let mut back = (1..n - 1).rev();
+    out.extend(&mut back);
+    out
+}
+
+/// 帧延时统一性（审计面：全部帧同延时才叫「匀速动画」）。
+pub fn uniform_delays(delays: &[u32]) -> bool {
+    match delays.split_first() {
+        None => true,
+        Some((first, rest)) => rest.iter().all(|d| d == first),
+    }
+}
+
+/// 选区（矩形；坐标可为负——由 clip 负责落界）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Region {
+    pub x: i64,
+    pub y: i64,
+    pub w: i64,
+    pub h: i64,
+}
+
+/// 选区落界（完全出界 → None——诚实拒绝而不是空转）。
+pub fn clip_region(r: Region, w: u16, h: u16) -> Option<Region> {
+    let x0 = r.x.max(0);
+    let y0 = r.y.max(0);
+    let x1 = (r.x + r.w).min(w as i64);
+    let y1 = (r.y + r.h).min(h as i64);
+    if x1 <= x0 || y1 <= y0 {
+        return None;
+    }
+    Some(Region { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })
+}
+
+/// 复制选区到新位图。
+pub fn copy_region(src: &PixBuf, r: Region) -> Option<PixBuf> {
+    let c = clip_region(r, src.w, src.h)?;
+    let mut out = PixBuf::new(c.w as u16, c.h as u16);
+    for y in 0..c.h {
+        for x in 0..c.w {
+            if let Some(px) = src.get((c.x + x) as u16, (c.y + y) as u16) {
+                out.set(x as u16, y as u16, px);
+            }
+        }
+    }
+    Some(out)
+}
+
+/// 剪切：复制 + 原区域清成 clear_to（拖拽移动语义的两步合一）。
+pub fn cut_region(cv: &mut PixBuf, r: Region, clear_to: [u8; 4]) -> Option<PixBuf> {
+    let c = clip_region(r, cv.w, cv.h)?;
+    let patch = copy_region(cv, c)?;
+    for y in 0..c.h {
+        for x in 0..c.w {
+            cv.set((c.x + x) as u16, (c.y + y) as u16, clear_to);
+        }
+    }
+    Some(patch)
+}
+
+/// 粘贴（transparent_skip = true 时跳过 alpha=0 像素——不挖洞）。
+/// 返回实际着色像素数（对账面）。
+pub fn paste_region(dst: &mut PixBuf, patch: &PixBuf, at_x: i64, at_y: i64, transparent_skip: bool) -> u64 {
+    let mut painted = 0u64;
+    let (w, h) = (dst.w as i64, dst.h as i64);
+    for py in 0..patch.h as i64 {
+        for px in 0..patch.w as i64 {
+            let dx = at_x + px;
+            let dy = at_y + py;
+            if dx < 0 || dy < 0 || dx >= w || dy >= h {
+                continue; // 越界静默裁掉（画布语义：贴出界不炸）
+            }
+            let src = patch.get(px as u16, py as u16).unwrap_or([0, 0, 0, 0]);
+            if transparent_skip && src[3] == 0 {
+                continue;
+            }
+            dst.set(dx as u16, dy as u16, src);
+            painted += 1;
+        }
+    }
+    painted
+}
+
+/// 压感宽度（千分位压力 0..1000 → 笔宽 1..=base）：轻按细线重按粗笔。
+pub fn pressure_width(base: u16, pressure_m: i64) -> u16 {
+    let p = pressure_m.clamp(0, 1000);
+    (1 + base as i64 * p / 1000).min(base.max(1) as i64) as u16
+}
+
+/// 网格叠加（对齐辅助线——只影响预览不改稿）。
+pub struct GridOverlay {
+    pub visible: bool,
+    pub step: u16,
+    pub color: [u8; 4],
+}
+
+impl GridOverlay {
+    pub fn new(step: u16) -> GridOverlay {
+        GridOverlay { visible: false, step: step.max(1), color: [128, 128, 128, 160] }
+    }
+
+    /// 画网格线（步距均匀；0 步距已钳 1）。
+    pub fn draw(&self, cv: &mut PixBuf) {
+        if !self.visible {
+            return;
+        }
+        let (w, h) = (cv.w, cv.h);
+        let mut x = self.step as i64;
+        while x < w as i64 {
+            for y in 0..h as i64 {
+                let cur = cv.get(x as u16, y as u16).unwrap_or([0, 0, 0, 0]);
+                if cur[3] < 200 {
+                    cv.set(x as u16, y as u16, self.color);
+                }
+            }
+            x += self.step as i64;
+        }
+        let mut y = self.step as i64;
+        while y < h as i64 {
+            for x in 0..w as i64 {
+                let cur = cv.get(x as u16, y as u16).unwrap_or([0, 0, 0, 0]);
+                if cur[3] < 200 {
+                    cv.set(x as u16, y as u16, self.color);
+                }
+            }
+            y += self.step as i64;
+        }
+    }
+}
+
+/// 整数 N 倍复制放大（1x 语义的推广；n=0 诚实拒绝）。
+pub fn scale_integer_n(src: &PixBuf, n: u16) -> Option<PixBuf> {
+    if n == 0 {
+        return None;
+    }
+    if n == 1 {
+        return Some(crate::jstar2::jbase::PixBuf::from_rgba(src.w, src.h, src.px.clone()));
+    }
+    let (w, h) = (src.w, src.h);
+    let mut out = PixBuf::new(w * n, h * n);
+    for y in 0..h {
+        for x in 0..w {
+            let px = src.get(x, y)?;
+            for dy in 0..n {
+                for dx in 0..n {
+                    out.set(x * n + dx, y * n + dy, px);
+                }
+            }
+        }
+    }
+    Some(out)
+}
+
+/// v3 自检。
+pub fn run_workshop_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F625-v3");
+
+    // —— 图层栈 ——
+    let base = PixBuf::new(16, 16);
+    let mut ls = LayerStack::new(base);
+    let added = ls.add_layer("描边");
+    set.add(
+        "layer stack add and active follows",
+        added.is_ok() && ls.len() == 2 && ls.active_index() == 1,
+        "",
+    );
+    // 超容诚实拒绝（8 层上限）。
+    let mut full = LayerStack::new(PixBuf::new(4, 4));
+    let mut ok_all = true;
+    for _i in 1..LAYER_CAP {
+        ok_all &= full.add_layer("层").is_ok();
+    }
+    set.add(
+        "layer cap 8 honest reject",
+        ok_all && full.len() == LAYER_CAP && full.add_layer("第九层").is_err(),
+        "",
+    );
+    // 不可删最后一层。
+    let mut solo = LayerStack::new(PixBuf::new(4, 4));
+    set.add("last layer undeletable", !solo.remove_layer(0), "");
+    // 隐藏层跳过合成：隐藏后 solid_count 归零。
+    let mut vis = LayerStack::new(PixBuf::new(8, 8));
+    let _ = vis.add_layer("色块");
+    if let Some(b) = vis.active_buf() {
+        crate::jstar2::jbase::fill_rect(b, 0, 0, 3, 3, [255, 0, 0, 255]);
+    }
+    let composed_with = vis.compose().solid_count();
+    let _ = vis.toggle_visible(1);
+    let composed_without = vis.compose().solid_count();
+    set.add(
+        "hidden layer skipped in compose",
+        composed_with == 16 && composed_without == 0,
+        "",
+    );
+    // 层透明度 50%：合成 alpha 减半（逐像素对拍）。
+    let mut half = LayerStack::new(PixBuf::new(4, 4));
+    let _ = half.add_layer("半透");
+    if let Some(b) = half.active_buf() {
+        b.set(0, 0, [255, 255, 255, 255]);
+    }
+    let _ = half.set_alpha(1, 500);
+    let px = half.compose().get(0, 0).unwrap_or([0, 0, 0, 0]);
+    set.add("layer alpha 50% halves coverage", px[3] == 127, "");
+    // set_alpha 钳制。
+    let _ = half.set_alpha(1, 5000);
+    set.add(
+        "layer alpha clamped",
+        half.compose().get(0, 0).unwrap_or([0, 0, 0, 0])[3] == 255,
+        "",
+    );
+    // merge_down：两层合一层，内容保留。
+    let mut md = LayerStack::new(PixBuf::new(8, 8));
+    if let Some(b) = md.active_buf() {
+        crate::jstar2::jbase::fill_rect(b, 0, 0, 1, 1, [0, 0, 255, 255]);
+    }
+    let _ = md.add_layer("上层");
+    if let Some(b) = md.active_buf() {
+        crate::jstar2::jbase::fill_rect(b, 2, 0, 3, 1, [255, 0, 0, 255]);
+    }
+    let merged = md.merge_down(1);
+    let comp = md.compose();
+    set.add(
+        "merge down keeps both contents",
+        merged && md.len() == 1 && comp.solid_count() == 8,
+        "",
+    );
+    // move_layer 重排。
+    let mut mv = LayerStack::new(PixBuf::new(4, 4));
+    let _ = mv.add_layer("A");
+    let _ = mv.add_layer("B");
+    let moved = mv.move_layer(2, 1);
+    set.add("layer reorder to index", moved && mv.active_index() == 1, "");
+
+    // —— 洪水填充 ——
+    let mut ff = PixBuf::new(8, 8);
+    crate::jstar2::jbase::fill_rect(&mut ff, 0, 0, 3, 3, [10, 20, 30, 255]);
+    let n = flood_fill(&mut ff, 1, 1, [200, 200, 200, 255], 0);
+    set.add(
+        "flood fill bounded region",
+        n == 16 && ff.get(0, 0) == Some([200, 200, 200, 255]) && ff.get(5, 5) == Some([0, 0, 0, 0]),
+        "",
+    );
+    // 同色幂等（零容差下目标=替换 → 不虚计）。
+    let n2 = flood_fill(&mut ff, 1, 1, [200, 200, 200, 255], 0);
+    set.add("flood fill idempotent same color", n2 == 0, "");
+    // 出界 0。
+    set.add("flood fill out of bounds zero", flood_fill(&mut ff, -1, 0, [1, 2, 3, 4], 0) == 0, "");
+
+    // —— 直线约束 ——
+    let c1 = constrain_axis(0, 0, 30, 4);
+    let c2 = constrain_axis(0, 0, 4, 30);
+    let c3 = constrain_axis(0, 0, 10, 9);
+    set.add(
+        "shift constrain snaps axis and 45",
+        c1 == (30, 0) && c2 == (0, 30) && c3 == (9, 9) && constrain_axis(0, 0, 10, 10) == (10, 10),
+        "",
+    );
+
+    // —— 对称镜像 ——
+    let vpts = SymmetryMode::Vertical.mirrors(2, 3, 8, 8);
+    let qpts = SymmetryMode::Quad.mirrors(2, 3, 8, 8);
+    let center = SymmetryMode::Vertical.mirrors(4, 3, 9, 9);
+    set.add(
+        "symmetry mirrors dedup at axis",
+        vpts == alloc::vec![(2, 3), (5, 3)]
+            && qpts.len() == 4
+            && center.len() == 1
+            && qpts.contains(&(5, 4)),
+        "",
+    );
+
+    // —— 近期色板 ——
+    let mut pal = RecentPalette::new();
+    for i in 0..20u8 {
+        pal.push([i, i, i, 255]);
+    }
+    pal.push([7, 7, 7, 255]); // 已在板中 → 置顶不重复
+    let bytes = pal.to_bytes();
+    let back = RecentPalette::from_bytes(&bytes);
+    set.add(
+        "recent palette dedup cap roundtrip",
+        pal.slots().len() == RECENT_COLORS_CAP
+            && pal.slots()[0] == [7, 7, 7, 255]
+            && back.slots() == pal.slots(),
+        "",
+    );
+
+    // —— PingPong 排程与匀速审计 ——
+    let sched = pingpong_schedule(4);
+    set.add(
+        "pingpong schedule forward and back",
+        sched == alloc::vec![0, 1, 2, 3, 2, 1] && pingpong_schedule(1) == alloc::vec![0] && pingpong_schedule(2) == alloc::vec![0, 1],
+        "",
+    );
+    set.add(
+        "uniform delays audit",
+        uniform_delays(&[100, 100, 100]) && !uniform_delays(&[100, 120]) && uniform_delays(&[]),
+        "",
+    );
+
+    // —— 选区 ——
+    let mut sel = PixBuf::new(8, 8);
+    crate::jstar2::jbase::fill_rect(&mut sel, 1, 1, 2, 2, [0, 255, 0, 255]);
+    let region = Region { x: 0, y: 0, w: 4, h: 4 };
+    let patch = copy_region(&sel, region).unwrap();
+    let cut = cut_region(&mut sel, region, [0, 0, 0, 0]).unwrap();
+    set.add(
+        "copy then cut clears source",
+        patch.solid_count() == 4 && cut.solid_count() == 4 && sel.solid_count() == 0,
+        "",
+    );
+    // 完全出界的选区诚实拒绝。
+    set.add(
+        "fully out of bounds region rejected",
+        clip_region(Region { x: 10, y: 10, w: 2, h: 2 }, 8, 8).is_none(),
+        "",
+    );
+    // 贴回（透明跳过）：贴回原位恢复 4 像素。
+    let painted = paste_region(&mut sel, &cut, 0, 0, true);
+    set.add("paste restores cut content", painted == 4 && sel.solid_count() == 4, "");
+    // 贴出界不炸、计数只算界内：贴到 (6,6) 时第 2 实心像素 (8,8) 出界被裁。
+    let painted2 = paste_region(&mut sel, &cut, 6, 6, true);
+    set.add("paste clipped at edge honest count", painted2 == 1, "");
+
+    // —— 压感宽度 ——
+    set.add(
+        "pressure width maps linearly",
+        pressure_width(8, 0) == 1 && pressure_width(8, 1000) == 8 && pressure_width(8, 500) == 5 && pressure_width(8, 5000) == 8,
+        "",
+    );
+
+    // —— 网格叠加 ——
+    let mut grid = PixBuf::new(8, 8);
+    let g = GridOverlay { visible: true, step: 4, color: [255, 255, 0, 255] };
+    g.draw(&mut grid);
+    let on_x4 = (0..8).filter(|&y| grid.get(4, y).map(|p| p == [255, 255, 0, 255]).unwrap_or(false)).count();
+    let mut grid_off = PixBuf::new(8, 8);
+    GridOverlay::new(4).draw(&mut grid_off);
+    set.add(
+        "grid overlay lines when visible only",
+        on_x4 == 8 && grid_off.solid_count() == 0,
+        "",
+    );
+
+    // —— 整数 N 倍 ——
+    let tiny = PixBuf::new(2, 2);
+    let x4 = scale_integer_n(&tiny, 4).unwrap();
+    let x0 = scale_integer_n(&tiny, 0);
+    let x1 = scale_integer_n(&tiny, 1).unwrap();
+    set.add(
+        "integer n-scale and honest rejects",
+        x4.w == 8 && x4.h == 8 && x0.is_none() && x1.w == 2,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn compose_order_bottom_to_top() {
+        let mut ls = LayerStack::new(PixBuf::new(2, 2));
+        if let Some(b) = ls.active_buf() {
+            b.set(0, 0, [255, 0, 0, 255]);
+        }
+        let _ = ls.add_layer("上");
+        if let Some(b) = ls.active_buf() {
+            b.set(0, 0, [0, 0, 255, 255]);
+        }
+        let px = ls.compose().get(0, 0).unwrap();
+        assert_eq!(px, [0, 0, 255, 255], "上层覆盖下层");
+    }
+
+    #[test]
+    fn flood_fill_with_tolerance_crosses_antialias() {
+        let mut cv = PixBuf::new(4, 4);
+        crate::jstar2::jbase::fill_rect(&mut cv, 0, 0, 0, 0, [100, 100, 100, 255]);
+        cv.set(1, 0, [103, 100, 100, 255]); // 邻域反锯齿边：与种子差 3 → 容差 5 内连通
+        let n = flood_fill(&mut cv, 0, 0, [255, 255, 255, 255], 5);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn palette_roundtrip_empty() {
+        let rp = RecentPalette::new();
+        let back = RecentPalette::from_bytes(&rp.to_bytes());
+        assert!(back.slots().is_empty());
+    }
+
+    #[test]
+    fn region_negative_origin_clipped() {
+        let mut cv = PixBuf::new(4, 4);
+        crate::jstar2::jbase::fill_rect(&mut cv, 0, 0, 3, 3, [9, 9, 9, 255]);
+        let r = clip_region(Region { x: -2, y: -2, w: 4, h: 4 }, 4, 4).unwrap();
+        assert_eq!((r.x, r.y, r.w, r.h), (0, 0, 2, 2));
+        let _ = cv;
+    }
+
+    #[test]
+    fn merge_down_at_bottom_rejected() {
+        let mut ls = LayerStack::new(PixBuf::new(2, 2));
+        assert!(!ls.merge_down(0));
+    }
+}

@@ -878,3 +878,812 @@ mod deep_tests {
         assert!(run_selfheal2_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——降级默认态映射 / 快照协同
+// 对账 / 通知升级显目。判据源：主册【状态与异常】「重建失败 → 降级默认态
+// （图标默认集/主题默认令牌/缩略图占位）+通知升级显目」+【设计细节】
+// 「自愈与 F121 还原点协同（重建前不留快照——缓存类无价值；令牌类留）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：FallbackMap —— 降级默认态映射（每类损坏失败后的落点+人话——
+// 降级是设计出来的出口，不是碰运气的残局）
+// ---------------------------------------------------------------------------
+
+/// 降级默认态（三类各自的兜底）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FallbackState {
+    /// 图标默认集（缓存类——重建失败回到出厂图标）。
+    IconDefaults,
+    /// 主题默认令牌（令牌类——回到 F151 默认 24 色）。
+    TokenDefaults,
+    /// 缩略图占位图（库类——占位图直到下次重建成功）。
+    ThumbPlaceholder,
+}
+
+impl FallbackState {
+    /// 兜底人话（通知正文——三要素的「下一步」）。
+    pub fn text(self) -> &'static str {
+        match self {
+            FallbackState::IconDefaults => "图标已回到默认集，显示不受影响",
+            FallbackState::TokenDefaults => "主题已回到默认令牌，可重新应用你的主题",
+            FallbackState::ThumbPlaceholder => "缩略图暂以占位图显示，后台会再次尝试重建",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            FallbackState::IconDefaults => "icon-defaults",
+            FallbackState::TokenDefaults => "token-defaults",
+            FallbackState::ThumbPlaceholder => "thumb-placeholder",
+        }
+    }
+}
+
+/// 损坏种类 → 兜底态（映射是查表不是分支逻辑——一处一事实）。
+pub fn fallback_of(kind: HealKind) -> Option<FallbackState> {
+    // 三类各有兜底（穷尽匹配——新增种类时编译器会强制补映射）。
+    match kind {
+        HealKind::IconCache => Some(FallbackState::IconDefaults),
+        HealKind::ThemeToken => Some(FallbackState::TokenDefaults),
+        HealKind::ThumbLib => Some(FallbackState::ThumbPlaceholder),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：SnapshotAudit —— 快照协同对账（主册【设计细节】逐字：重建前
+// 不留快照——缓存类无价值；令牌类留——配置级变更。对账=执行账与策略
+// 表逐位等值，豁免也要留痕）
+// ---------------------------------------------------------------------------
+
+/// 快照协同账条目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SnapAuditEntry {
+    pub kind: HealKind,
+    /// 是否实际留了快照。
+    pub taken: bool,
+    /// 策略豁免原因（taken=false 时非空）。
+    pub why_not: &'static str,
+}
+
+/// 对账账本。
+pub struct SnapshotAudit {
+    pub entries: Vec<SnapAuditEntry>,
+}
+
+impl SnapshotAudit {
+    pub fn new() -> SnapshotAudit {
+        SnapshotAudit { entries: Vec::new() }
+    }
+
+    /// 重建前登记（策略唯一源=HealKind::snapshot_before）。
+    pub fn record(&mut self, kind: HealKind) {
+        let taken = kind.snapshot_before();
+        let why_not = if taken { "" } else { "缓存类无快照价值——重建即全新" };
+        self.entries.push(SnapAuditEntry { kind, taken, why_not });
+    }
+
+    /// 守恒式：执行账与策略表逐位等值、豁免必带因。
+    pub fn consistent(&self) -> bool {
+        self.entries.iter().all(|e| e.taken == e.kind.snapshot_before() && (e.taken || !e.why_not.is_empty()))
+    }
+}
+
+impl Default for SnapshotAudit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：NoticeEscalation —— 通知升级显目（主册【状态与异常】：重建失败
+// → 降级默认态+通知**升级显目**——成功是低优先历史档，失败必须抢眼）
+// ---------------------------------------------------------------------------
+
+/// 通知优先级（F077 档位语义——自愈域只用两档）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NoticePriority {
+    /// 低优先历史档（成功自愈——「做过什么如实说」）。
+    Low,
+    /// 显目档（降级失败——必须被看见）。
+    Prominent,
+}
+
+/// 通知升级判定：成功 → Low；降级/升级工单 → Prominent。
+pub fn notice_priority(outcome: HealOutcome) -> NoticePriority {
+    match outcome {
+        HealOutcome::Rebuilt => NoticePriority::Low,
+        HealOutcome::DegradedDefault | HealOutcome::Escalated => NoticePriority::Prominent,
+    }
+}
+
+/// 显目通知的完整文案（三要素：发生了什么/为什么/下一步——降级态的兜底
+/// 人话由 FallbackMap 提供）。
+pub fn prominent_notice(kind: HealKind) -> (&'static str, NoticePriority) {
+    let body = match fallback_of(kind) {
+        Some(fb) => fb.text(),
+        None => "已自动修复",
+    };
+    (body, NoticePriority::Prominent)
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F189 v3 自检（聚合进 secstar2 域）。
+pub fn run_selfheal2_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v3");
+
+    // v3-一：降级映射——三类各有兜底+人话；未知类诚实 None。
+    set.add("fb icon", fallback_of(HealKind::IconCache) == Some(FallbackState::IconDefaults), "");
+    set.add("fb token", fallback_of(HealKind::ThemeToken) == Some(FallbackState::TokenDefaults), "");
+    set.add("fb thumb", fallback_of(HealKind::ThumbLib) == Some(FallbackState::ThumbPlaceholder), "");
+    set.add("fb text human", [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib]
+        .iter().all(|k| fallback_of(*k).map(|f| f.text().len() >= 10).unwrap_or(false)), "");
+    set.add("fb names", FallbackState::TokenDefaults.name() == "token-defaults", "");
+
+    // v3-二：快照协同——策略执行逐位等值、豁免带因。
+    let mut sa = SnapshotAudit::new();
+    sa.record(HealKind::IconCache);
+    sa.record(HealKind::ThemeToken);
+    sa.record(HealKind::ThumbLib);
+    set.add("snap consistent", sa.consistent(), "");
+    // 策略面：令牌类留、缓存类不留（主册逐字的对账）。
+    let token = sa.entries.iter().find(|e| e.kind == HealKind::ThemeToken).unwrap();
+    let cache = sa.entries.iter().find(|e| e.kind == HealKind::IconCache).unwrap();
+    set.add("snap token kept", token.taken, "");
+    set.add("snap cache exempt", !cache.taken && cache.why_not.contains("无快照价值"), "");
+
+    // v3-三：通知升级——成功低档、失败显目；显目文案带兜底人话。
+    set.add("prio low on ok", notice_priority(HealOutcome::Rebuilt) == NoticePriority::Low, "");
+    set.add("prio prominent on degraded", notice_priority(HealOutcome::DegradedDefault) == NoticePriority::Prominent, "");
+    set.add("prio prominent on escalate", notice_priority(HealOutcome::Escalated) == NoticePriority::Prominent, "");
+    let (text, prio) = prominent_notice(HealKind::ThemeToken);
+    set.add("prominent text", prio == NoticePriority::Prominent && text.contains("默认令牌"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v3_fallback_covers_every_heal_kind() {
+        // 枚举全覆盖：HealKind 的每个成员要么有兜底要么有明确理由（不落空）。
+        let kinds = [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib];
+        for k in kinds {
+            assert!(fallback_of(k).is_some(), "{:?} must have a fallback", k);
+        }
+    }
+
+    #[test]
+    fn f189_v3_snapshot_audit_survives_mixed_sequence() {
+        // 十轮混合序列：账随执行增长且守恒式始终绿。
+        let mut sa = SnapshotAudit::new();
+        let kinds = [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib];
+        for i in 0..10 {
+            sa.record(kinds[i % 3]);
+            assert!(sa.consistent());
+        }
+        assert_eq!(sa.entries.len(), 10);
+    }
+
+    #[test]
+    fn f189_v3_run_checks_pass() {
+        assert!(run_selfheal2_deep2_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——空闲窗口规划器 / 诊断页渲染模型 /
+// 检测器自检 / 通知合并。判据源：主册【状态与异常】「重建占用资源超预算 →
+// 分时批处理（F049 空闲窗口）」+【交互设计】「诊断中心自愈记录页（时间/
+// 损坏类型/修复结果/耗时）」+【数据与存储】「三类检测器触发条件文档化」
+// + F077 风暴合并联动。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：IdleWindowPlanner —— F049 空闲窗口分时计划（多作业 × 有限空闲
+// 窗口的排程：后台类让路即时类、每窗口预算不超、窗口不够诚实给 ETA）
+// ---------------------------------------------------------------------------
+
+/// 待排作业（从 RebuildJob 提炼的最小排程面：类型+剩余条目+每窗预算）。
+#[derive(Clone, Copy, Debug)]
+pub struct PlanJob {
+    pub kind: HealKind,
+    pub remaining: u32,
+    pub budget_per_window: u32,
+}
+
+/// 单窗口分配决定。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WindowSlice {
+    pub kind: HealKind,
+    /// 本窗口分到的条目数。
+    pub items: u32,
+}
+
+/// 排程结果。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScheduleResult {
+    /// 各窗口分配序列（空窗口不落行——空闲就是空闲，不硬塞）。
+    pub slices: alloc::vec::Vec<WindowSlice>,
+    /// 完成全部作业所需窗口数（ETA——给进度条「预计还有 N 个空闲窗口」）。
+    pub windows_needed: u32,
+    /// 排程窗数不足以完成（诚实：false 时 slices 只是前缀进度）。
+    pub all_fit: bool,
+}
+
+/// 排序纪律：即时(Immediate)=0 → 原子(AtomicSwap)=1 → 后台(Background)=2
+/// （交互影响小的先做——主册重建顺序的排程面）。
+fn strategy_rank(k: HealKind) -> u8 {
+    match k.strategy() {
+        RebuildStrategy::Immediate => 0,
+        RebuildStrategy::AtomicSwap => 1,
+        RebuildStrategy::Background => 2,
+    }
+}
+
+/// 排程：按策略序逐窗口分配（每窗口内先到先得，预算封顶）。
+pub fn schedule_windows(jobs: &[PlanJob], idle_windows: u32) -> ScheduleResult {
+    let mut left: alloc::vec::Vec<(u8, u32, u32, HealKind)> = jobs
+        .iter()
+        .map(|j| (strategy_rank(j.kind), j.remaining, j.budget_per_window.max(1), j.kind))
+        .collect();
+    let mut slices = alloc::vec::Vec::new();
+    let mut windows_used = 0u32;
+    let mut all_done = false;
+    for _ in 0..idle_windows {
+        // 策略序稳定排序（rank 升序——同 rank 保持原序）。
+        left.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut made_progress = false;
+        for e in left.iter_mut() {
+            if e.1 == 0 {
+                continue;
+            }
+            let take = e.1.min(e.2);
+            slices.push(WindowSlice { kind: e.3, items: take });
+            e.1 -= take;
+            made_progress = true;
+        }
+        windows_used += 1;
+        if !made_progress {
+            windows_used -= 1; // 全员完成后的空窗口不计 ETA。
+            all_done = true;
+            break;
+        }
+        if left.iter().all(|e| e.1 == 0) {
+            all_done = true;
+            break;
+        }
+    }
+    let all_fit = all_done && left.iter().all(|e| e.1 == 0);
+    ScheduleResult { slices, windows_needed: windows_used, all_fit }
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：HealPageModel —— 诊断中心「自愈记录」页渲染模型（时间/类型/
+// 结果/耗时四列行；新→旧排序；结果三态过滤统计；空态三件套）
+// ---------------------------------------------------------------------------
+
+/// 记录页一行（渲染契约——列序固定，UI 层照此对齐）。
+pub const HEAL_PAGE_COLUMNS: [&str; 4] = ["时间", "损坏类型", "结果", "耗时"];
+
+/// 一行渲染数据（结果列带语义 token——正常绿 / 降级琥珀 / 升级红）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HealPageRow {
+    pub at_min: u64,
+    pub kind_name: &'static str,
+    pub outcome_text: &'static str,
+    pub cost_ms: u64,
+    pub token: &'static str,
+}
+
+/// 结果 → 人话+token（三态全覆盖——穷尽匹配，加枚举变体先改这里）。
+fn outcome_render(o: HealOutcome) -> (&'static str, &'static str) {
+    match o {
+        HealOutcome::Rebuilt => ("已重建", "success"),
+        HealOutcome::DegradedDefault => ("已降级默认态", "warning"),
+        HealOutcome::Escalated => ("已升级工单", "danger"),
+    }
+}
+
+/// 渲染记录页（新→旧；(records 任意序进入，输出恒时间倒序)）。
+pub fn heal_page_rows(records: &[HealRecord]) -> alloc::vec::Vec<HealPageRow> {
+    let mut rows: alloc::vec::Vec<(u64, HealPageRow)> = records
+        .iter()
+        .map(|r| {
+            let (text, token) = outcome_render(r.outcome);
+            (
+                r.at_min,
+                HealPageRow {
+                    at_min: r.at_min,
+                    kind_name: r.kind.name(),
+                    outcome_text: text,
+                    cost_ms: r.cost_ms,
+                    token,
+                },
+            )
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.into_iter().map(|(_, r)| r).collect()
+}
+
+/// 记录页空态文案（三件套纪律 F210——发生了什么/为什么/下一步）。
+pub const HEAL_PAGE_EMPTY: &str = "暂无自愈记录。系统运行正常，或损坏刚被预防。发生自愈时这里会逐条留痕。";
+
+/// 耗时合计（页脚「本周自愈总耗时」——资源去向诚实呈现）。
+pub fn heal_page_total_cost(records: &[HealRecord]) -> u64 {
+    records.iter().map(|r| r.cost_ms).sum()
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：detector_selftest —— 检测器自检（「触发条件文档化」的自证面：
+// 三类齐、文案非空、开销档合法、启动计划轻重有序——坏了先于用户知道）
+// ---------------------------------------------------------------------------
+
+/// 自检结论（逐条可断言）。
+pub struct DetectorSelftest {
+    pub three_kinds: bool,
+    pub docs_nonempty: bool,
+    pub cost_tier_valid: bool,
+    pub boot_plan_ordered: bool,
+}
+
+impl DetectorSelftest {
+    pub fn ok(&self) -> bool {
+        self.three_kinds && self.docs_nonempty && self.cost_tier_valid && self.boot_plan_ordered
+    }
+}
+
+pub fn detector_selftest() -> DetectorSelftest {
+    let three_kinds = DETECTORS.len() == 3
+        && DETECTORS[0].kind != DETECTORS[1].kind
+        && DETECTORS[1].kind != DETECTORS[2].kind
+        && DETECTORS[0].kind != DETECTORS[2].kind;
+    let docs_nonempty = DETECTORS
+        .iter()
+        .all(|d| !d.boot_check.is_empty() && !d.runtime_trigger.is_empty());
+    let cost_tier_valid = DETECTORS.iter().all(|d| (1..=3).contains(&d.cost_tier));
+    // 启动计划有序：预算=6（全装）时输出按 cost_tier 升序。
+    let plan = boot_scan_plan(6);
+    let boot_plan_ordered = plan.len() == 3
+        && plan[0] == HealKind::IconCache
+        && plan[1] == HealKind::ThemeToken
+        && plan[2] == HealKind::ThumbLib;
+    DetectorSelftest { three_kinds, docs_nonempty, cost_tier_valid, boot_plan_ordered }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：NotifyDedup —— 通知合并窗（同类型通知在合并窗内只出一条+次数
+// 合计——F077 风暴合并联动：连续自愈不让通知中心刷屏）
+// ---------------------------------------------------------------------------
+
+/// 合并窗（分钟）。
+pub const NOTIFY_MERGE_MIN: u64 = 5;
+
+/// 合并器状态。
+pub struct NotifyDedup {
+    /// 各类型最近一次发出的分钟戳。
+    last_sent: [Option<u64>; 3],
+    /// 窗内被合并吞掉的通知数（按类型累计——报备 100% 的「合并也算报备」账）。
+    pub merged_away: [u64; 3],
+}
+
+impl NotifyDedup {
+    pub fn new() -> NotifyDedup {
+        NotifyDedup { last_sent: [None; 3], merged_away: [0; 3] }
+    }
+
+    fn slot(kind: HealKind) -> usize {
+        match kind {
+            HealKind::IconCache => 0,
+            HealKind::ThemeToken => 1,
+            HealKind::ThumbLib => 2,
+        }
+    }
+
+    /// 提交通知 → 返回是否真正发出（窗内同类 = 合并吞掉并计数）。
+    /// 降级显目通知（prominent）不受合并窗约束——失败通知永不吞。
+    pub fn submit(&mut self, kind: HealKind, at_min: u64, prominent: bool) -> bool {
+        let s = Self::slot(kind);
+        if !prominent {
+            if let Some(last) = self.last_sent[s] {
+                if at_min.saturating_sub(last) < NOTIFY_MERGE_MIN {
+                    self.merged_away[s] += 1;
+                    return false;
+                }
+            }
+        }
+        self.last_sent[s] = Some(at_min);
+        true
+    }
+
+    /// 合并总数（诊断对账）。
+    pub fn merged_total(&self) -> u64 {
+        self.merged_away.iter().sum()
+    }
+}
+
+impl Default for NotifyDedup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F189 v4 自检（聚合进 secstar2 域）。
+pub fn run_selfheal2_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v4");
+
+    // v4-一：空闲窗口排程——策略序、预算封顶、ETA、不足诚实。
+    let jobs = [
+        PlanJob { kind: HealKind::ThumbLib, remaining: 10, budget_per_window: 3 },
+        PlanJob { kind: HealKind::IconCache, remaining: 4, budget_per_window: 2 },
+        PlanJob { kind: HealKind::ThemeToken, remaining: 1, budget_per_window: 1 },
+    ];
+    let sch = schedule_windows(&jobs, 10);
+    set.add("sched fits", sch.all_fit, "10 窗足够完成");
+    set.add("sched eta", sch.windows_needed == 4, "IconCache 2 窗 + 令牌 1 窗 + 缩略图 4 窗 = 4 窗（并行语义每窗全员出力）");
+    set.add("sched budget cap", sch.slices.iter().all(|s| s.items <= 3), "");
+    // 窗口不足：2 窗只够前缀（all_fit=false 诚实）。
+    let sch2 = schedule_windows(&jobs, 2);
+    set.add("sched shortfall honest", !sch2.all_fit && sch2.windows_needed == 2, "");
+    // 策略序：首窗首个切片必是即时类（IconCache）。
+    set.add("sched strategy order", sch.slices[0].kind == HealKind::IconCache, "即时类最先");
+
+    // v4-二：记录页渲染——倒序、token 三态、空态、耗时合计。
+    let recs = [
+        HealRecord { at_min: 100, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 12, notified: true, snapshotted: false },
+        HealRecord { at_min: 105, kind: HealKind::ThemeToken, outcome: HealOutcome::DegradedDefault, cost_ms: 30, notified: true, snapshotted: true },
+        HealRecord { at_min: 98, kind: HealKind::ThumbLib, outcome: HealOutcome::Escalated, cost_ms: 5, notified: true, snapshotted: false },
+    ];
+    let page = heal_page_rows(&recs);
+    set.add("page columns", HEAL_PAGE_COLUMNS == ["时间", "损坏类型", "结果", "耗时"], "");
+    set.add("page newest first", page[0].at_min == 105 && page[2].at_min == 98, "");
+    set.add("page tokens", page[0].token == "warning" && page[1].token == "success" && page[2].token == "danger", "");
+    set.add("page names", page[0].kind_name == "主题令牌" && page[1].kind_name == "图标缓存", "");
+    set.add("page total cost", heal_page_total_cost(&recs) == 47, "");
+    set.add("page empty text", HEAL_PAGE_EMPTY.contains("暂无自愈记录"), "");
+    set.add("page empty render", heal_page_rows(&[]).is_empty(), "");
+
+    // v4-三：检测器自检——四结论全绿。
+    let st = detector_selftest();
+    set.add("det three kinds", st.three_kinds, "");
+    set.add("det docs", st.docs_nonempty, "");
+    set.add("det tiers", st.cost_tier_valid, "");
+    set.add("det plan order", st.boot_plan_ordered, "");
+    set.add("det all ok", st.ok(), "");
+
+    // v4-四：通知合并——窗内吞、窗外发、显目不吞、合并留账。
+    let mut dd = NotifyDedup::new();
+    set.add("dedup first out", dd.submit(HealKind::IconCache, 10, false), "");
+    set.add("dedup window merged", !dd.submit(HealKind::IconCache, 12, false), "5 分钟窗内吞掉");
+    set.add("dedup merged counted", dd.merged_away[0] == 1, "");
+    set.add("dedup after window", dd.submit(HealKind::IconCache, 16, false), "窗过即发");
+    set.add("dedup prominent always", dd.submit(HealKind::IconCache, 16, true), "降级显目永不吞");
+    set.add("dedup per kind", dd.submit(HealKind::ThumbLib, 10, false), "不同类型互不合并");
+    set.add("dedup total", dd.merged_total() == 1, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v4_schedule_all_background_stress() {
+        // 全后台类大作业压测：预算/窗与窗口数的关系是纯算术（可预算 ETA）。
+        let jobs = [PlanJob { kind: HealKind::ThumbLib, remaining: 99, budget_per_window: 10 }];
+        let sch = schedule_windows(&jobs, 20);
+        // 99 条 / 10 条每窗 = 向上取整 10 窗，20 窗预算装得下。
+        assert!(sch.all_fit);
+        assert_eq!(sch.windows_needed, 10);
+        let done: u32 = sch.slices.iter().map(|s| s.items).sum();
+        assert_eq!(done, 99, "全部条目分配且不超不欠");
+    }
+
+    #[test]
+    fn f189_v4_schedule_zero_remaining_edge() {
+        // 剩余 0 的作业不占窗口（空转防线）。
+        let jobs = [
+            PlanJob { kind: HealKind::IconCache, remaining: 0, budget_per_window: 5 },
+            PlanJob { kind: HealKind::ThumbLib, remaining: 2, budget_per_window: 2 },
+        ];
+        let sch = schedule_windows(&jobs, 5);
+        assert!(sch.all_fit && sch.windows_needed == 1);
+        assert!(sch.slices.iter().all(|s| s.kind == HealKind::ThumbLib));
+    }
+
+    #[test]
+    fn f189_v4_page_sort_stability() {
+        // 同分钟记录保序（稳定排序——同刻记录按输入序展示，不抖动）。
+        let recs = [
+            HealRecord { at_min: 50, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 1, notified: true, snapshotted: false },
+            HealRecord { at_min: 50, kind: HealKind::ThemeToken, outcome: HealOutcome::Rebuilt, cost_ms: 2, notified: true, snapshotted: true },
+        ];
+        let page = heal_page_rows(&recs);
+        assert_eq!(page[0].kind_name, "图标缓存");
+        assert_eq!(page[1].kind_name, "主题令牌");
+    }
+
+    #[test]
+    fn f189_v4_dedup_window_boundary() {
+        // 边界：恰好 NOTIFY_MERGE_MIN 分钟差 = 窗外（发）。
+        let mut dd = NotifyDedup::new();
+        assert!(dd.submit(HealKind::ThumbLib, 0, false));
+        assert!(!dd.submit(HealKind::ThumbLib, NOTIFY_MERGE_MIN - 1, false));
+        assert!(dd.submit(HealKind::ThumbLib, NOTIFY_MERGE_MIN, false));
+        assert_eq!(dd.merged_away[2], 1);
+    }
+
+    #[test]
+    fn f189_v4_run_checks_pass() {
+        assert!(run_selfheal2_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 · 上限口径冲刺）——周统计账 + 重建 ETA 行。
+// 判据源：主册【交互设计】「连续自愈同项 ≥3 次/周 → 升级为工单」的
+// 统计数据源 + 进度 ETA 人话化。
+// ---------------------------------------------------------------------------
+
+use alloc::string::String;
+
+/// 周统计行（kind × 周序 → 次数——升级判定的账面）。
+pub fn heal_week_stats(records: &[HealRecord], week_len_min: u64) -> Vec<(HealKind, u64, usize)> {
+    let mut out: Vec<(HealKind, u64, usize)> = Vec::new();
+    for r in records {
+        let week = r.at_min / week_len_min.max(1);
+        match out.iter_mut().find(|(k, w, _)| *k == r.kind && *w == week) {
+            Some((_, _, n)) => *n += 1,
+            None => out.push((r.kind, week, 1)),
+        }
+    }
+    out
+}
+
+/// 升级预警（周内同项 >=3 次——与 SelfHealSet 的升级语义同尺）。
+pub fn week_escalation_candidates(records: &[HealRecord], week_len_min: u64, threshold: u32) -> Vec<(HealKind, u64)> {
+    heal_week_stats(records, week_len_min)
+        .into_iter()
+        .filter(|(_, _, n)| *n as u32 >= threshold)
+        .map(|(k, w, _)| (k, w))
+        .collect()
+}
+
+/// 重建 ETA 人话行（剩余条目 / 每窗预算 → 「预计 N 个空闲窗口」）。
+pub fn rebuild_eta_text(remaining: u32, budget_per_window: u32) -> String {
+    if remaining == 0 {
+        return String::from("重建已完成");
+    }
+    let windows = remaining.div_ceil(budget_per_window.max(1));
+    alloc::format!("预计还需 {} 个空闲窗口（每窗 {} 条）", windows, budget_per_window.max(1))
+}
+
+/// F189 v5 自检（deep4 表）。
+pub fn run_selfheal2_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v5");
+
+    let recs = [
+        HealRecord { at_min: 10, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 5, notified: true, snapshotted: false },
+        HealRecord { at_min: 20, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 6, notified: true, snapshotted: false },
+        HealRecord { at_min: 30, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 7, notified: true, snapshotted: false },
+        HealRecord { at_min: 2000, kind: HealKind::ThumbLib, outcome: HealOutcome::Rebuilt, cost_ms: 40, notified: true, snapshotted: false },
+    ];
+    // 周统计：week_len=1000min → 周 0（3 次图标）+ 周 2（1 次缩略图）。
+    let stats = heal_week_stats(&recs, 1000);
+    set.add("week stats", stats.iter().any(|(k, w, n)| *k == HealKind::IconCache && *w == 0 && *n == 3), "");
+    set.add("week other", stats.iter().any(|(k, w, n)| *k == HealKind::ThumbLib && *w == 2 && *n == 1), "");
+    // 升级候选：阈值 3 → 图标缓存命中。
+    let cand = week_escalation_candidates(&recs, 1000, 3);
+    set.add("week escalate", cand.len() == 1 && cand[0].0 == HealKind::IconCache, "");
+    let cand2 = week_escalation_candidates(&recs, 1000, 4);
+    set.add("week escalate below", cand2.is_empty(), "阈值 4 无命中");
+
+    // ETA 行——0 剩余、正常除法、向上取整。
+    set.add("eta done", rebuild_eta_text(0, 10).contains("已完成"), "");
+    set.add("eta exact", rebuild_eta_text(20, 10).contains("2 个"), "");
+    set.add("eta ceil", rebuild_eta_text(21, 10).contains("3 个"), "21/10 向上取整");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v4_week_stats_multiple_kinds() {
+        // 三类混排 12 条：各 kind 各周的计数互不串账。
+        let mut recs = Vec::new();
+        for i in 0..12u64 {
+            recs.push(HealRecord {
+                at_min: i * 10,
+                kind: match i % 3 {
+                    0 => HealKind::IconCache,
+                    1 => HealKind::ThemeToken,
+                    _ => HealKind::ThumbLib,
+                },
+                outcome: HealOutcome::Rebuilt,
+                cost_ms: 1,
+                notified: true,
+                snapshotted: false,
+            });
+        }
+        let stats = heal_week_stats(&recs, 40);
+        let total: usize = stats.iter().map(|(_, _, n)| n).sum();
+        assert_eq!(total, 12);
+        assert_eq!(stats.len(), 9, "3 类 x 3 周 = 9 组");
+    }
+
+    #[test]
+    fn f189_v4_run_checks_pass() {
+        assert!(run_selfheal2_deep4_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——各类平均耗时统计。
+// 判据源：主册【交互设计】诊断中心「自愈记录页（时间/损坏类型/修复结果/
+// 耗时）」的聚合面。
+// ---------------------------------------------------------------------------
+
+/// 各类平均耗时（µs 级精度不装——ms 均值四舍五入）。
+pub fn heal_avg_cost(records: &[HealRecord]) -> Vec<(HealKind, u64)> {
+    let mut out: Vec<(HealKind, (u64, u64))> = Vec::new(); // (kind, (sum, n))
+    for r in records {
+        match out.iter_mut().find(|(k, _)| *k == r.kind) {
+            Some((_, (s, n))) => {
+                *s += r.cost_ms;
+                *n += 1;
+            }
+            None => out.push((r.kind, (r.cost_ms, 1))),
+        }
+    }
+    out.into_iter().map(|(k, (s, n))| (k, s / n.max(1))).collect()
+}
+
+/// F189 v6 自检（deep5 表）。
+pub fn run_selfheal2_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v6");
+
+    let recs = [
+        HealRecord { at_min: 1, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 10, notified: true, snapshotted: false },
+        HealRecord { at_min: 2, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 20, notified: true, snapshotted: false },
+        HealRecord { at_min: 3, kind: HealKind::ThumbLib, outcome: HealOutcome::Rebuilt, cost_ms: 90, notified: true, snapshotted: false },
+    ];
+    let avg = heal_avg_cost(&recs);
+    set.add("avg icon", avg.iter().any(|(k, c)| *k == HealKind::IconCache && *c == 15), "(10+20)/2 = 15");
+    set.add("avg thumb", avg.iter().any(|(k, c)| *k == HealKind::ThumbLib && *c == 90), "");
+    set.add("avg empty", heal_avg_cost(&[]).is_empty(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v5_avg_rounding() {
+        // 整除截断语义（10+11)/2 = 10——均值向下取整，页脚注明口径。
+        let recs = [
+            HealRecord { at_min: 1, kind: HealKind::ThemeToken, outcome: HealOutcome::Rebuilt, cost_ms: 10, notified: true, snapshotted: true },
+            HealRecord { at_min: 2, kind: HealKind::ThemeToken, outcome: HealOutcome::Rebuilt, cost_ms: 11, notified: true, snapshotted: true },
+        ];
+        let avg = heal_avg_cost(&recs);
+        assert_eq!(avg[0].1, 10);
+    }
+
+    #[test]
+    fn f189_v5_run_checks_pass() {
+        assert!(run_selfheal2_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——自愈健康度评分。
+// 判据源：主册【验收判据】「三类损坏注入各 5 次自愈成功率 100%」的评分面。
+// ---------------------------------------------------------------------------
+
+/// 健康度评分（成功率 permille + 升级工单数 → 0-1000 分）。
+pub fn selfheal_health_score(records: &[HealRecord], open_tickets: usize) -> u64 {
+    if records.is_empty() {
+        return 1000; // 无自愈=满分（没生病就是健康）。
+    }
+    let rebuilt = records.iter().filter(|r| r.outcome == HealOutcome::Rebuilt).count() as u64;
+    let rate = rebuilt * 1000 / records.len() as u64;
+    // 每张未闭工单扣 100 分（慢性病直接拉低健康度）。
+    rate.saturating_sub(open_tickets as u64 * 100)
+}
+
+/// F189 v7 自检（deep6 表）。
+pub fn run_selfheal2_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v7");
+
+    let perfect = [
+        HealRecord { at_min: 1, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 1, notified: true, snapshotted: false },
+        HealRecord { at_min: 2, kind: HealKind::IconCache, outcome: HealOutcome::Rebuilt, cost_ms: 2, notified: true, snapshotted: false },
+    ];
+    set.add("score perfect", selfheal_health_score(&perfect, 0) == 1000, "全愈无票=1000");
+    set.add("score empty", selfheal_health_score(&[], 0) == 1000, "无自愈=满分");
+
+    let degraded = [
+        HealRecord { at_min: 1, kind: HealKind::ThemeToken, outcome: HealOutcome::DegradedDefault, cost_ms: 5, notified: true, snapshotted: true },
+        HealRecord { at_min: 2, kind: HealKind::ThemeToken, outcome: HealOutcome::Rebuilt, cost_ms: 5, notified: true, snapshotted: true },
+    ];
+    set.add("score half", selfheal_health_score(&degraded, 0) == 500, "1/2 愈 = 500");
+    set.add("score ticket penalty", selfheal_health_score(&degraded, 2) == 300, "500 - 200（2 票）= 300");
+    set.add("score floor", selfheal_health_score(&degraded, 9) == 0, "扣到底不转负（saturating）");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v6_score_all_escalated() {
+        // 全升级场景：0% 成功率 - 票 → 0（不转负）。
+        let recs = [HealRecord { at_min: 1, kind: HealKind::ThumbLib, outcome: HealOutcome::Escalated, cost_ms: 1, notified: true, snapshotted: false }];
+        assert_eq!(selfheal_health_score(&recs, 1), 0);
+    }
+
+    #[test]
+    fn f189_v6_run_checks_pass() {
+        assert!(run_selfheal2_deep6_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9：探活节奏旋钮（自愈探测间隔的可调账）。
+// 判据源：主册【设计细节】「自愈探活节奏分级（忙时稀疏/闲时密集）」。
+// ---------------------------------------------------------------------------
+
+/// 探活间隔决策（系统负载档 → 探活间隔秒；忙时稀疏不打扰）。
+pub fn probe_interval_s(busy_level: u8) -> u64 {
+    match busy_level {
+        0 => 30,  // 空闲：密集探活。
+        1 => 120, // 中载。
+        _ => 600, // 忙时：稀疏（10 分钟一探）。
+    }
+}
+
+/// F189 v8 自检（deep7 表）。
+pub fn run_selfheal2_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v8");
+
+    set.add("probe idle", probe_interval_s(0) == 30, "空闲 30s 一探");
+    set.add("probe busy", probe_interval_s(2) == 600, "忙时 10min 一探");
+    set.add("probe monotone", probe_interval_s(0) < probe_interval_s(1) && probe_interval_s(1) < probe_interval_s(2), "越忙越稀疏");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v8_probe_high_level() {
+        // 任意高负载档都取最稀疏档（兜底分支覆盖）。
+        assert_eq!(probe_interval_s(9), 600);
+    }
+
+    #[test]
+    fn f189_v8_run_checks_pass() {
+        assert!(run_selfheal2_deep7_checks().all_passed());
+    }
+}

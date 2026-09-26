@@ -9,6 +9,10 @@
 //! 调好了；镜像开关（视频会议习惯——预览水平翻转语义）；F323 指示
 //! 常亮判据（预览开着 = 指示亮——不逃避「我也在被监视」的自觉）；
 //! 关闭即释放（帧缓冲清空 + 指示灭 + 释放账——资源不留后台）。
+//!
+//! v5 纵深：模式表热切换（分辨率/帧率档；切换即清延迟账——新模式
+//! 新账）；暂停态（暂停 ≠ 关闭：指示保持亮——摄像头仍被占用；暂停期
+//! 来帧 = 异常记账）；帧率实测账；快照捕获（仅活动预览可拍）。
 
 use crate::checks::CheckSet;
 
@@ -16,6 +20,15 @@ use alloc::vec::Vec;
 
 /// 预览延迟判线（ms）。
 pub const PREVIEW_LATENCY_BUDGET_MS: u64 = 200;
+
+/// 一档预览模式（名称 + 分辨率 + 帧率）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CamMode {
+    pub name: &'static str,
+    pub w: u32,
+    pub h: u32,
+    pub fps: u32,
+}
 
 /// 画面参数。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +54,19 @@ pub struct CameraPreview {
     pub indicator_on: bool,
     /// 释放账（正常关闭 = 1；异常丢失 = 由自检发现）。
     pub releases: u64,
+    /// 模式表（能力探测注入；空表 = 单默认模式）。
+    pub modes: Vec<CamMode>,
+    pub active_mode: usize,
+    /// 暂停态（暂停 ≠ 关闭——摄像头仍被占用）。
+    pub paused: bool,
+    /// 暂停期来帧（异常账——暂停就不该有帧）。
+    pub frames_while_paused: u64,
+    /// 快照账。
+    pub snapshots: u64,
+    /// 模式切换账。
+    pub switches: u64,
+    /// 最近实测帧率。
+    pub fps_last: Option<u64>,
 }
 
 impl CameraPreview {
@@ -54,7 +80,19 @@ impl CameraPreview {
             over_budget_frames: 0,
             indicator_on: false,
             releases: 0,
+            modes: Vec::new(),
+            active_mode: 0,
+            paused: false,
+            frames_while_paused: 0,
+            snapshots: 0,
+            switches: 0,
+            fps_last: None,
         }
+    }
+
+    /// 模式表挂载（能力探测结果）。
+    pub fn mount_modes(&mut self, modes: &[CamMode]) {
+        self.modes = modes.to_vec();
     }
 
     /// 开预览：指示立即亮（隐私优先——指示先于第一帧）。
@@ -63,12 +101,64 @@ impl CameraPreview {
         self.indicator_on = true;
     }
 
-    /// 帧入窗：延迟记账。
+    /// 帧入窗：延迟记账；暂停期来帧 = 异常记账（暂停就不该有帧）。
     pub fn frame_tick(&mut self, latency_ms: u64) {
+        if self.paused {
+            self.frames_while_paused += 1;
+            return;
+        }
         if latency_ms > PREVIEW_LATENCY_BUDGET_MS {
             self.over_budget_frames += 1;
         }
         self.frame_latencies_ms.push(latency_ms);
+    }
+
+    /// 模式热切换：仅活动预览可切；切换即清延迟账（新模式新账）。
+    pub fn switch_mode(&mut self, idx: usize) -> bool {
+        if !self.open || self.paused || idx >= self.modes.len() {
+            return false;
+        }
+        self.active_mode = idx;
+        self.frame_latencies_ms.clear();
+        self.switches += 1;
+        true
+    }
+
+    /// 暂停（≠ 关闭：指示保持亮——还在占用摄像头）。
+    pub fn pause(&mut self) -> bool {
+        if !self.open || self.paused {
+            return false;
+        }
+        self.paused = true;
+        true
+    }
+
+    pub fn resume(&mut self) -> bool {
+        if !self.open || !self.paused {
+            return false;
+        }
+        self.paused = false;
+        true
+    }
+
+    /// 帧率实测：frames 帧 / elapsed ms → fps（整数截断；零时长诚实 None）。
+    pub fn fps_sample(&mut self, frames: u64, elapsed_ms: u64) -> Option<u64> {
+        if elapsed_ms == 0 {
+            return None;
+        }
+        let fps = frames * 1_000 / elapsed_ms;
+        self.fps_last = Some(fps);
+        Some(fps)
+    }
+
+    /// 快照：仅活动预览可拍（暂停/关闭都拒——没画面就没有快照）。
+    pub fn snapshot_capture(&mut self) -> bool {
+        if self.open && !self.paused {
+            self.snapshots += 1;
+            true
+        } else {
+            false
+        }
     }
 
     /// 参数调节两路：硬件支持 → 生效；不支持 → 诚实标注（不假装）。
@@ -89,12 +179,13 @@ impl CameraPreview {
         self.mirrored
     }
 
-    /// 关闭即释放：指示灭 + 帧缓冲停 + 释放账 +1。
+    /// 关闭即释放：指示灭 + 帧缓冲停 + 释放账 +1（暂停态一并解除）。
     pub fn close_preview(&mut self) -> bool {
         if !self.open {
             return false;
         }
         self.open = false;
+        self.paused = false;
         self.indicator_on = false;
         self.frame_latencies_ms.clear();
         self.releases += 1;
@@ -148,6 +239,39 @@ pub fn run_camtest_checks() -> CheckSet {
         matches!(c.set_param(CamParam::Brightness, 50), Err("预览未开启——先打开预览再调节")),
         "",
     );
+    // v5：模式表热切换——切换即清延迟账（新模式新账）。
+    let mut m = CameraPreview::new([true, true, false]);
+    m.mount_modes(&[
+        CamMode { name: "1080p30", w: 1920, h: 1080, fps: 30 },
+        CamMode { name: "720p60", w: 1280, h: 720, fps: 60 },
+    ]);
+    m.open_preview();
+    m.frame_tick(90);
+    set.add(
+        "f449-mode-switch",
+        m.switch_mode(1) && m.active_mode == 1 && m.frame_latencies_ms.is_empty() && m.switches == 1,
+        "",
+    );
+    set.add("f449-mode-switch-bounds", !m.switch_mode(9), "");
+    // v5：暂停 ≠ 关闭——指示保持亮（摄像头仍被占用，诚实）。
+    set.add("f449-pause-keeps-indicator", m.pause() && m.paused && m.indicator_on, "");
+    m.frame_tick(50);
+    set.add("f449-frame-while-paused-anomaly", m.frames_while_paused == 1, "");
+    set.add("f449-resume", m.resume() && !m.paused && !m.resume(), "");
+    // v5：帧率实测——30 帧 / 1000ms = 30fps；零时长诚实 None。
+    set.add(
+        "f449-fps-metered",
+        m.fps_sample(30, 1_000) == Some(30) && m.fps_last == Some(30),
+        "",
+    );
+    set.add("f449-fps-zero-elapsed-honest", m.fps_sample(10, 0).is_none(), "");
+    // v5：快照——仅活动预览可拍（暂停拒、关闭拒）。
+    set.add("f449-snapshot-live", m.snapshot_capture() && m.snapshots == 1, "");
+    let _ = m.pause();
+    set.add("f449-snapshot-needs-live", !m.snapshot_capture() && m.snapshots == 1, "");
+    let _ = m.resume();
+    let _ = m.close_preview();
+    set.add("f449-snapshot-after-close", !m.snapshot_capture(), "");
     set
 }
 
@@ -179,5 +303,20 @@ mod tests {
         c.open_preview();
         assert!(c.close_preview());
         assert_eq!(c.releases, 2);
+    }
+
+    #[test]
+    fn switch_mode_needs_open() {
+        let mut c = CameraPreview::new([true; 3]);
+        c.mount_modes(&[CamMode { name: "a", w: 640, h: 480, fps: 30 }]);
+        assert!(!c.switch_mode(0), "未开预览不许切模式");
+        c.open_preview();
+        assert!(c.switch_mode(0));
+    }
+
+    #[test]
+    fn pause_needs_open() {
+        let mut c = CameraPreview::new([true; 3]);
+        assert!(!c.pause(), "未开预览无暂停可言");
     }
 }

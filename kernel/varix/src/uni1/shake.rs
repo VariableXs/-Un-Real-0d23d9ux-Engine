@@ -207,6 +207,53 @@ pub fn run_shake_checks() -> CheckSet {
     // 关闭开关：禁用后恒不触发。
     e.set_enabled(false);
     set.add("f425-disable-switch", !e.detect(&shake) && !e.minimized_others, "");
+    // 禁用不清账（v6）：已最小化的窗口不静默恢复（恢复须经用户路径）；
+    // 原位登记保留。
+    let mut g = ShakeDetector::new();
+    let _ = g.detect(&shake);
+    let _ = g.minimize_others(&[(5, (10, 20))]);
+    g.set_enabled(false);
+    set.add(
+        "f425-disable-keeps-positions",
+        !g.minimized_others && g.restore_positions == alloc::vec![(5, (10, 20))],
+        "",
+    );
+    // 重开开关：账本延续（触发/恢复计数不清零——历史诚实）。
+    g.triggers = 3;
+    g.set_enabled(true);
+    set.add("f425-reenable-preserves-ledger", g.enabled && g.triggers == 3, "");
+    // 时窗边界含端（v6）：t0+150 恰好计入（`>` 不是 `>=`——规格原文
+    // 「窗口内」含边界采样）。
+    let edge = [
+        TracePoint { t_ms: 0, x: 1000 },
+        TracePoint { t_ms: 50, x: 1100 },
+        TracePoint { t_ms: 100, x: 900 },
+        TracePoint { t_ms: 150, x: 1100 },
+    ];
+    let mut b1 = ShakeDetector::new();
+    set.add("f425-window-edge-inclusive", b1.detect(&edge), "");
+    // 振幅恰达阈值（v6）：40px = 阈值 → 过（≥ 语义）。
+    let exact = [
+        TracePoint { t_ms: 0, x: 1000 },
+        TracePoint { t_ms: 40, x: 1040 },
+        TracePoint { t_ms: 80, x: 960 },
+        TracePoint { t_ms: 120, x: 1040 },
+    ];
+    let mut b2 = ShakeDetector::new();
+    set.add("f425-amplitude-exact-threshold", b2.detect(&exact), "");
+    // 同侧不重复计数（v6）：单调同向大幅移动——0 次过中线，不触发。
+    let mono = [
+        TracePoint { t_ms: 0, x: 1000 },
+        TracePoint { t_ms: 40, x: 1045 },
+        TracePoint { t_ms: 80, x: 1090 },
+        TracePoint { t_ms: 120, x: 1120 },
+    ];
+    let mut b3 = ShakeDetector::new();
+    set.add(
+        "f425-same-side-no-cross",
+        !b3.detect(&mono) && b3.false_alarms_rejected == 1,
+        "",
+    );
     set
 }
 

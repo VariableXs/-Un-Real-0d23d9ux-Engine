@@ -233,7 +233,13 @@ pub fn run_bigpage_checks() -> CheckSet {
     // 8) 尾部空闲槽：常规需求落位后尾槽 = 15（F054 解码缓冲「走大页池尾部」
     //    的查询面——主册 G-B-14 设计细节）；低槽占用不影响尾槽选取。
     cs.add("tail_free_slot", pool.tail_free_slot() == Some(15), "");
-    cs
+    // 深化件（深化批次三）：三区预算表与 4K 双口径登记 / 冻结降级顺序的预留
+    // 计划（帧缓冲先降·内核最后）/ 分区降级标注 / 只增不减防碎片守卫 /
+    // TLB miss 对拍账 / 核显侧可行性评估记录 / 占用与命中率只读投影。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::bigpage_ext::run_checks()),
+        crate::perfstar::mech_buddy::run_checks(),
+    )
 }
 
 #[cfg(test)]

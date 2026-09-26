@@ -1,0 +1,55 @@
+=== forensic v2 start 2026-09-23 04:43:58.113307 ===
+=== 0. 盘符重挂 ===
+  FindFirstVolumeW handle=2492834973920
+  卷数=8
+  卷 \\?\Volume{1fc424c6-f937-4970-9636-a705a8575c30}\ label='Windows-SSD' size=299GB
+  卷 \\?\Volume{52483f04-9785-457a-9352-40c34d71f5b1}\ label='' size=629GB
+  卷 \\?\Volume{b7476afa-d19c-4298-8d74-d83f32a2951a}\ label='WinRE_DRV' size=1GB
+  卷 \\?\Volume{402b696c-7a95-4283-99c3-9fa06fd8c84d}\ label='VARIX_SYS' size=63GB
+  卷 \\?\Volume{b76d4dcf-0c7c-4de0-88bb-bfeec7f0e76e}\ label='WIN_ENGINE' size=299GB
+    挂 X: 失败 gle=145（可能已占用，无妨）
+  卷 \\?\Volume{7701c3d4-2e4b-4f2f-81c3-3ebd6a97a896}\ label='SHARED' size=559GB
+    已挂载 S:
+  卷 \\?\Volume{425214ee-257c-4aec-b69c-40178a4e847b}\ label='' size=0GB
+  卷 \\?\Volume{636786cb-e967-49f6-b0df-7608909d1f11}\ label='VARIX-ESP' size=0GB
+  X(Win11)=True Y(ESP)=True
+=== 1. 崩溃转储 ===
+  X:\Windows\Minidump: FileNotFoundError
+  无 .dmp —— 崩溃在 winload 阶段（内核未起）或转储被禁用
+=== 2. 启动关键驱动 Start（0=引导启动） ===
+  hive 存在: True
+  reg load: 操作成功完成。
+  控制集: ControlSet001
+  usbstor: Start=0x3
+  USBXHCI: Start=0x3
+  USBHUB3: Start=0x3
+  UASPStor: Start=0x3
+  stornvme: Start=0x0
+  storahci: Start=0x0
+  partmgr: Start=0x0
+  volume: Start=0x0
+  vdrvroot: Start=0x0
+  mountmgr: Start=0x0
+  pci: Start=0x0
+  acpi: Start=0x0
+  hive 已卸载
+=== 3. U盘 BCD 恢复设置 ===
+  BCD 存在: True
+  Windows 启动加载器
+  -------------------
+  标识符                  {default}
+  device                  partition=X:
+  path                    \Windows\system32\winload.efi
+  description             Windows 11
+  locale                  en-us
+  inherit                 {bootloadersettings}
+  recoverysequence        {03e8a6a4-b6c1-11f1-8f1d-c035321b0fae}
+  recoveryenabled         Yes
+  isolatedcontext         Yes
+  allowedinmemorysettings 0x15000075
+  osdevice                partition=X:
+  systemroot              \Windows
+  resumeobject            {a8897e9e-b5ed-11f1-ab88-c4c6e62c8a4c}
+  nx                      OptIn
+  bootmenupolicy          Standard
+=== forensic v2 done ===

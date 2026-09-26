@@ -36,6 +36,7 @@
 //! | [`walkall`]    | F200 全域总检       | 覆盖率 100%；季检 <2h；增补走 ADR |
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 pub mod auditchain;
 pub mod batguard;
@@ -56,34 +57,40 @@ pub mod walkall;
 /// 域标识（CheckSet 聚合用）。
 pub const SECSTAR2_DOMAIN: &str = "secstar-s2";
 
-/// 本域自检聚合：逐模块「基检 + 深检 + 深2检」三表合并为一行（v3 起三表
-/// 同登）——聚合器恒 15 行，单行绿=该模块三表全绿且均未截断。
+/// 模块清单（聚合与对账共用一份——一处一事实）。
+const MODULES: [(&str, &str); 15] = [
+    ("F186", "syspart"),
+    ("F187", "clockguard"),
+    ("F188", "logring"),
+    ("F189", "selfheal2"),
+    ("F190", "slotview"),
+    ("F191", "bootaudit"),
+    ("F192", "paramwl"),
+    ("F193", "safemode"),
+    ("F194", "auditchain"),
+    ("F195", "resquota"),
+    ("F196", "batguard"),
+    ("F197", "thermgov"),
+    ("F198", "recenv"),
+    ("F199", "lineage"),
+    ("F200", "walkall"),
+];
+
+/// 本域自检聚合：逐模块七表（基检/深检/深2检/深3检/深4检/深5检/深6检）
+/// 合并为一行——聚合器恒 15 行，单行绿=该模块七表全绿且均未截断。
 ///
-/// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`）——三表各自容量
+/// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`）——七表各自容量
 /// 由 `check_ledger()` 逐块机检（全部 ≤64）；聚合器行数恒 15，永不超容。
+///
+/// 栈安全纪律：聚合改为循环内逐模块求值（函数指针 + 迭代结束即析构）——
+/// 一次性持有全部 CheckSet 会溢出测试线程栈（v6 收口实测教训）。
 pub fn run_secstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(SECSTAR2_DOMAIN);
-    let blocks: [(&'static str, CheckSet, CheckSet, CheckSet); 15] = [
-        ("F186", syspart::run_syspart_checks(), syspart::run_syspart_deep_checks(), syspart::run_syspart_deep2_checks()),
-        ("F187", clockguard::run_clockguard_checks(), clockguard::run_clockguard_deep_checks(), clockguard::run_clockguard_deep2_checks()),
-        ("F188", logring::run_logring_checks(), logring::run_logring_deep_checks(), logring::run_logring_deep2_checks()),
-        ("F189", selfheal2::run_selfheal2_checks(), selfheal2::run_selfheal2_deep_checks(), selfheal2::run_selfheal2_deep2_checks()),
-        ("F190", slotview::run_slotview_checks(), slotview::run_slotview_deep_checks(), slotview::run_slotview_deep2_checks()),
-        ("F191", bootaudit::run_bootaudit_checks(), bootaudit::run_bootaudit_deep_checks(), bootaudit::run_bootaudit_deep2_checks()),
-        ("F192", paramwl::run_paramwl_checks(), paramwl::run_paramwl_deep_checks(), paramwl::run_paramwl_deep2_checks()),
-        ("F193", safemode::run_safemode_checks(), safemode::run_safemode_deep_checks(), safemode::run_safemode_deep2_checks()),
-        ("F194", auditchain::run_auditchain_checks(), auditchain::run_auditchain_deep_checks(), auditchain::run_auditchain_deep2_checks()),
-        ("F195", resquota::run_resquota_checks(), resquota::run_resquota_deep_checks(), resquota::run_resquota_deep2_checks()),
-        ("F196", batguard::run_batguard_checks(), batguard::run_batguard_deep_checks(), batguard::run_batguard_deep2_checks()),
-        ("F197", thermgov::run_thermgov_checks(), thermgov::run_thermgov_deep_checks(), thermgov::run_thermgov_deep2_checks()),
-        ("F198", recenv::run_recenv_checks(), recenv::run_recenv_deep_checks(), recenv::run_recenv_deep2_checks()),
-        ("F199", lineage::run_lineage_checks(), lineage::run_lineage_deep_checks(), lineage::run_lineage_deep2_checks()),
-        ("F200", walkall::run_walkall_checks(), walkall::run_walkall_deep_checks(), walkall::run_walkall_deep2_checks()),
-    ];
-    for (tag, base, deep, deep2) in blocks {
-        let ok = base.all_passed() && !base.truncated()
-            && deep.all_passed() && !deep.truncated()
-            && deep2.all_passed() && !deep2.truncated();
+    for (tag, module) in MODULES {
+        let ok = seven_tables(module).iter().all(|f| {
+            let cs = f();
+            cs.all_passed() && !cs.truncated()
+        });
         set.add(tag, ok, if ok { "" } else { "sub-checks red" });
     }
     set
@@ -93,25 +100,46 @@ pub fn run_secstar2_checks() -> CheckSet {
 // 检查项对账（机器钉数——报告引用的每个数字都由这里的断言保证）
 // ---------------------------------------------------------------------------
 
-/// 逐块清点（对账表的数据源：15 模块 × 3 表 = 45 块 CheckSet 逐块条数）。
-pub fn check_ledger() -> [(&'static str, usize, usize, usize); 15] {
-    [
-        ("F186", syspart::run_syspart_checks().len(), syspart::run_syspart_deep_checks().len(), syspart::run_syspart_deep2_checks().len()),
-        ("F187", clockguard::run_clockguard_checks().len(), clockguard::run_clockguard_deep_checks().len(), clockguard::run_clockguard_deep2_checks().len()),
-        ("F188", logring::run_logring_checks().len(), logring::run_logring_deep_checks().len(), logring::run_logring_deep2_checks().len()),
-        ("F189", selfheal2::run_selfheal2_checks().len(), selfheal2::run_selfheal2_deep_checks().len(), selfheal2::run_selfheal2_deep2_checks().len()),
-        ("F190", slotview::run_slotview_checks().len(), slotview::run_slotview_deep_checks().len(), slotview::run_slotview_deep2_checks().len()),
-        ("F191", bootaudit::run_bootaudit_checks().len(), bootaudit::run_bootaudit_deep_checks().len(), bootaudit::run_bootaudit_deep2_checks().len()),
-        ("F192", paramwl::run_paramwl_checks().len(), paramwl::run_paramwl_deep_checks().len(), paramwl::run_paramwl_deep2_checks().len()),
-        ("F193", safemode::run_safemode_checks().len(), safemode::run_safemode_deep_checks().len(), safemode::run_safemode_deep2_checks().len()),
-        ("F194", auditchain::run_auditchain_checks().len(), auditchain::run_auditchain_deep_checks().len(), auditchain::run_auditchain_deep2_checks().len()),
-        ("F195", resquota::run_resquota_checks().len(), resquota::run_resquota_deep_checks().len(), resquota::run_resquota_deep2_checks().len()),
-        ("F196", batguard::run_batguard_checks().len(), batguard::run_batguard_deep_checks().len(), batguard::run_batguard_deep2_checks().len()),
-        ("F197", thermgov::run_thermgov_checks().len(), thermgov::run_thermgov_deep_checks().len(), thermgov::run_thermgov_deep2_checks().len()),
-        ("F198", recenv::run_recenv_checks().len(), recenv::run_recenv_deep_checks().len(), recenv::run_recenv_deep2_checks().len()),
-        ("F199", lineage::run_lineage_checks().len(), lineage::run_lineage_deep_checks().len(), lineage::run_lineage_deep2_checks().len()),
-        ("F200", walkall::run_walkall_checks().len(), walkall::run_walkall_deep_checks().len(), walkall::run_walkall_deep2_checks().len()),
-    ]
+/// 逐模块六表函数指针（表序=基检/深检/深2检/深3检/深4检/深5检）。
+fn seven_tables(module: &str) -> [fn() -> CheckSet; 7] {
+    match module {
+        "syspart" => [syspart::run_syspart_checks, syspart::run_syspart_deep_checks, syspart::run_syspart_deep2_checks, syspart::run_syspart_deep3_checks, syspart::run_syspart_deep4_checks, syspart::run_syspart_deep5_checks, syspart::run_syspart_deep6_checks],
+        "clockguard" => [clockguard::run_clockguard_checks, clockguard::run_clockguard_deep_checks, clockguard::run_clockguard_deep2_checks, clockguard::run_clockguard_deep3_checks, clockguard::run_clockguard_deep4_checks, clockguard::run_clockguard_deep5_checks, clockguard::run_clockguard_deep6_checks],
+        "logring" => [logring::run_logring_checks, logring::run_logring_deep_checks, logring::run_logring_deep2_checks, logring::run_logring_deep3_checks, logring::run_logring_deep4_checks, logring::run_logring_deep5_checks, logring::run_logring_deep6_checks],
+        "selfheal2" => [selfheal2::run_selfheal2_checks, selfheal2::run_selfheal2_deep_checks, selfheal2::run_selfheal2_deep2_checks, selfheal2::run_selfheal2_deep3_checks, selfheal2::run_selfheal2_deep4_checks, selfheal2::run_selfheal2_deep5_checks, selfheal2::run_selfheal2_deep6_checks],
+        "slotview" => [slotview::run_slotview_checks, slotview::run_slotview_deep_checks, slotview::run_slotview_deep2_checks, slotview::run_slotview_deep3_checks, slotview::run_slotview_deep4_checks, slotview::run_slotview_deep5_checks, slotview::run_slotview_deep6_checks],
+        "bootaudit" => [bootaudit::run_bootaudit_checks, bootaudit::run_bootaudit_deep_checks, bootaudit::run_bootaudit_deep2_checks, bootaudit::run_bootaudit_deep3_checks, bootaudit::run_bootaudit_deep4_checks, bootaudit::run_bootaudit_deep5_checks, bootaudit::run_bootaudit_deep6_checks],
+        "paramwl" => [paramwl::run_paramwl_checks, paramwl::run_paramwl_deep_checks, paramwl::run_paramwl_deep2_checks, paramwl::run_paramwl_deep3_checks, paramwl::run_paramwl_deep4_checks, paramwl::run_paramwl_deep5_checks, paramwl::run_paramwl_deep6_checks],
+        "safemode" => [safemode::run_safemode_checks, safemode::run_safemode_deep_checks, safemode::run_safemode_deep2_checks, safemode::run_safemode_deep3_checks, safemode::run_safemode_deep4_checks, safemode::run_safemode_deep5_checks, safemode::run_safemode_deep6_checks],
+        "auditchain" => [auditchain::run_auditchain_checks, auditchain::run_auditchain_deep_checks, auditchain::run_auditchain_deep2_checks, auditchain::run_auditchain_deep3_checks, auditchain::run_auditchain_deep4_checks, auditchain::run_auditchain_deep5_checks, auditchain::run_auditchain_deep6_checks],
+        "resquota" => [resquota::run_resquota_checks, resquota::run_resquota_deep_checks, resquota::run_resquota_deep2_checks, resquota::run_resquota_deep3_checks, resquota::run_resquota_deep4_checks, resquota::run_resquota_deep5_checks, resquota::run_resquota_deep6_checks],
+        "batguard" => [batguard::run_batguard_checks, batguard::run_batguard_deep_checks, batguard::run_batguard_deep2_checks, batguard::run_batguard_deep3_checks, batguard::run_batguard_deep4_checks, batguard::run_batguard_deep5_checks, batguard::run_batguard_deep6_checks],
+        "thermgov" => [thermgov::run_thermgov_checks, thermgov::run_thermgov_deep_checks, thermgov::run_thermgov_deep2_checks, thermgov::run_thermgov_deep3_checks, thermgov::run_thermgov_deep4_checks, thermgov::run_thermgov_deep5_checks, thermgov::run_thermgov_deep6_checks],
+        "recenv" => [recenv::run_recenv_checks, recenv::run_recenv_deep_checks, recenv::run_recenv_deep2_checks, recenv::run_recenv_deep3_checks, recenv::run_recenv_deep4_checks, recenv::run_recenv_deep5_checks, recenv::run_recenv_deep6_checks],
+        "lineage" => [lineage::run_lineage_checks, lineage::run_lineage_deep_checks, lineage::run_lineage_deep2_checks, lineage::run_lineage_deep3_checks, lineage::run_lineage_deep4_checks, lineage::run_lineage_deep5_checks, lineage::run_lineage_deep6_checks],
+        "walkall" => [walkall::run_walkall_checks, walkall::run_walkall_deep_checks, walkall::run_walkall_deep2_checks, walkall::run_walkall_deep3_checks, walkall::run_walkall_deep4_checks, walkall::run_walkall_deep5_checks, walkall::run_walkall_deep6_checks],
+        _ => unreachable!("MODULES 常量之外的模块名——常量与 match 必须同步"),
+    }
+}
+
+/// 逐块清点（对账表的数据源：15 模块 × 7 表 = 105 块 CheckSet 逐块条数）。
+pub fn check_ledger() -> Vec<(&'static str, usize, usize, usize, usize, usize, usize, usize)> {
+    MODULES
+        .iter()
+        .map(|(tag, module)| {
+            let t = seven_tables(module);
+            (
+                *tag,
+                t[0]().len(),
+                t[1]().len(),
+                t[2]().len(),
+                t[3]().len(),
+                t[4]().len(),
+                t[5]().len(),
+                t[6]().len(),
+            )
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -133,27 +161,30 @@ mod tests {
     #[test]
     fn secstar2_check_ledger_reconciled() {
         // 检查项对账（机器钉数）：
-        // ① 45 块齐（15 模块 × 3 表）；
+        // ① 105 块齐（15 模块 × 7 表：…+深6检）；
         // ② 每块非空且 ≤ 容量（截断即红——被丢的检查不算数）；
         // ③ 总数对账（报告引用的总数由本断言钉死——数字改动必先改这里）。
         let ledger = check_ledger();
         assert_eq!(ledger.len(), 15);
         let mut total = 0usize;
-        for (tag, base, deep, deep2) in ledger {
+        for (tag, base, deep, deep2, deep3, deep4, deep5, deep6) in ledger {
             assert!(base > 0 && base <= 64, "{} base ledger {}", tag, base);
             assert!(deep > 0 && deep <= 64, "{} deep ledger {}", tag, deep);
             assert!(deep2 > 0 && deep2 <= 64, "{} deep2 ledger {}", tag, deep2);
-            total += base + deep + deep2;
+            assert!(deep3 > 0 && deep3 <= 64, "{} deep3 ledger {}", tag, deep3);
+            assert!(deep4 > 0 && deep4 <= 64, "{} deep4 ledger {}", tag, deep4);
+            assert!(deep5 > 0 && deep5 <= 64, "{} deep5 ledger {}", tag, deep5);
+            assert!(deep6 > 0 && deep6 <= 64, "{} deep6 ledger {}", tag, deep6);
+            total += base + deep + deep2 + deep3 + deep4 + deep5 + deep6;
         }
-        // 总检查项 = 846（机器钉数：v1 315 + v2 深检 285 + v3 深检 246；
-        // 数字变动必须同步本断言、check_ledger() 与完成报告对账表）。
-        assert_eq!(total, 846, "检查项总数变动必须同步本断言与完成报告对账表");
+        // 总检查项 = 1610（机器钉数：v1-v6 合计 1492 + v7 118；数字变动
+        // 必须同步本断言、check_ledger() 与完成报告对账表）。
+        assert_eq!(total, 1610, "检查项总数变动必须同步本断言与完成报告对账表（实测 {}）", total);
     }
 
     #[test]
     fn secstar2_aggregate_rows_15_within_capacity() {
-        // 聚合器行数=15（每模块一行，行内合基检+深检+深2检三表）；
-        // 每块 CheckSet 各自 ≤64 容量（check_ledger 已逐块机检）。
+        // 聚合器行数=15（每模块一行，行内合六表）；聚合器自身零截断。
         let set = run_secstar2_checks();
         assert_eq!(set.len(), 15);
         assert!(!set.truncated());

@@ -44,6 +44,32 @@ fn run_all() {
             }
         }
     }
+    // 深化批次五（机制总成·续九件）：独立 CheckSet 段，逐件对账。
+    let batch5: [(&str, fn() -> k1_deep_verify::checks::CheckSet); 9] = [
+        ("B5-F046-bloom", perfstar::mech_bloom::run_checks),
+        ("B5-F047-cfs", perfstar::mech_cfs::run_checks),
+        ("B5-F050-coalesce", perfstar::mech_coalesce::run_checks),
+        ("B5-F048-gov", perfstar::mech_gov::run_checks),
+        ("B5-F045-oom", perfstar::mech_oom::run_checks),
+        ("B5-F044-readahead", perfstar::mech_readahead::run_checks),
+        ("B5-F052-slab", perfstar::mech_slab::run_checks),
+        ("B5-F048-thermal", perfstar::mech_thermal::run_checks),
+        ("B5-F045-zram", perfstar::mech_zram::run_checks),
+    ];
+    for (tag, f) in batch5 {
+        let cs = f();
+        let (p, fl) = cs.tally();
+        total += p + fl;
+        failed += fl;
+        println!("{}: {} checks, failed={}", tag, p + fl, fl);
+        for i in 0..cs.len() {
+            if let Some(c) = cs.get(i) {
+                if !c.passed {
+                    println!("  FAIL: {} {}", c.name, c.detail);
+                }
+            }
+        }
+    }
     println!("TOTAL: {} checks, {} failed", total, failed);
     assert!(failed == 0, "CheckSet 红线");
 }

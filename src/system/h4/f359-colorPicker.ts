@@ -87,3 +87,56 @@ export function pickOnce(state: PickerSessionState): PickerSessionState {
 export function loupeGeometry(): { radiusPx: number; samplingPx: number; zoom: number } {
   return { radiusPx: (LOUPE_SAMPLING_PX * LOUPE_ZOOM) / 2, samplingPx: LOUPE_SAMPLING_PX, zoom: LOUPE_ZOOM };
 }
+
+/* ================= v5 深化批次五：色值解析互转 / 对比度 / 抗噪取样 ================= */
+
+/** HEX 解析：#RGB/#RRGGBB 大小写兼容；非法如实 null（不猜）。 */
+export function parseHex(text: string): Rgb | null {
+  const t = text.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{6}$/.test(t)) {
+    return { r: parseInt(t.slice(0, 2), 16), g: parseInt(t.slice(2, 4), 16), b: parseInt(t.slice(4, 6), 16) };
+  }
+  if (/^[0-9a-fA-F]{3}$/.test(t)) {
+    return { r: parseInt(t[0]! + t[0]!, 16), g: parseInt(t[1]! + t[1]!, 16), b: parseInt(t[2]! + t[2]!, 16) };
+  }
+  return null;
+}
+
+/** rgb()/rgba() 解析：越界钳制；格式错如实 null。 */
+export function parseRgbString(text: string): Rgb | null {
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+)?\s*\)/.exec(text.trim());
+  if (!m) return null;
+  return { r: clampChannel(Number(m[1])), g: clampChannel(Number(m[2])), b: clampChannel(Number(m[3])) };
+}
+
+/** 互转 round-trip：HEX → RGB 串 → 解析 → HEX 恒等（复制保真的机检面）。 */
+export function hexRoundTrip(c: Rgb): boolean {
+  const parsed = parseRgbString(toRgbString(c));
+  return parsed !== null && toHex(parsed) === toHex(c);
+}
+
+/** WCAG 相对亮度（sRGB 线性化——对比度计算的标准口径）。 */
+export function relativeLuminance(c: Rgb): number {
+  const lin = (v: number) => {
+    const s = clampChannel(v) / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+}
+
+/** WCAG 对比度（取色 → 检查文字可读性的延伸工具）。 */
+export function contrastRatio(a: Rgb, b: Rgb): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const ratio = (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  return Math.round(ratio * 100) / 100;
+}
+
+/** 抗噪取样：环内 3×3 中心加权平均（中心 5、边 1——单像素噪点不再带歪取色）。 */
+export function loupeAverage(samples: Rgb[]): Rgb {
+  if (samples.length === 0) return { r: 0, g: 0, b: 0 };
+  const w = samples.map((_, i) => (i === Math.floor(samples.length / 2) ? 5 : 1));
+  const total = w.reduce((a, b) => a + b, 0);
+  const mix = (get: (c: Rgb) => number) => Math.round(samples.reduce((s, c, i) => s + get(c) * w[i]!, 0) / total);
+  return { r: mix((c) => c.r), g: mix((c) => c.g), b: mix((c) => c.b) };
+}

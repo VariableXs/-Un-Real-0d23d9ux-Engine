@@ -6,7 +6,7 @@
  *   F371 徽标浮层按 BADGE_TIMING 真实时序（300/3000/500ms）淡入停留淡出；
  *   F399 彩蛋①命中时以 toast 呈现（彩蛋是情感不是门——只播动画不改状态）。
  * - 色彩滤镜（F387）：documentElement 单点应用（`--h4-filter` 唯一滤镜位，
- *   auditSingleFilterPoint 的落地面）；变更广播 H4_FILTER_EVENT 驱动即时刷新。
+ *   auditSingleFilterPoint 的落地面）；v9 起变更唯一通道 = h4Bus 契约事件。
  * - 阅读模式（F386）：变量落 `--h4-reading-*`，文本区域按 CSS 消费；
  *   每应用记忆由引擎持久化，本壳只负责把「当前应用」的态翻译成变量。
  * - 不复制引擎状态、不二次存储；逻辑全部在 h4ui.ts（可测层）。
@@ -19,8 +19,6 @@ import * as reading from "../../system/h4/f386-readingMode";
 import { BADGE_TIMING } from "../../system/h4/f371-bootBadge";
 import { defaultStore } from "../../system/h4/internal/store";
 import {
-  H4_FILTER_EVENT,
-  H4_READING_EVENT,
   applyFilterPlan,
   applyReadingVars,
   badgePhaseClass,
@@ -30,6 +28,8 @@ import {
   type BootOnceState,
 } from "./h4ui";
 import { H4Overlays } from "./H4Overlays";
+import { h4Bus } from "./bus";
+import { xlog } from "./xlog";
 
 const BADGE_TOTAL_MS = BADGE_TIMING.fadeInMs + BADGE_TIMING.holdMs + BADGE_TIMING.fadeOutMs;
 const BOOT_MS_DEFAULT = 3200; // 桌面壳挂载时刻≈启动链尾段——实测链接入前先按 B-2x 基线记账
@@ -48,6 +48,8 @@ export function H4Runtime(): React.ReactElement | null {
     if (plan.badgeVm) {
       const shownAt = Date.now();
       setBadge({ text: plan.badgeVm.text, shownAt });
+      xlog.log("info", "F371", "boot-badge-shown", plan.badgeVm.text);
+      h4Bus.emit("f371.badge-show", { text: plan.badgeVm.text, shownAt });
       phaseTimer.current = window.setInterval(() => {
         setBadge((b) => (b === null ? null : { ...b }));
       }, 100);
@@ -58,6 +60,8 @@ export function H4Runtime(): React.ReactElement | null {
     }
     if (plan.eggPlay && plan.eggVariant) {
       pushToast("info", "✦ 星徽粒子变奏", `第 100 次开机纪念——彩蛋「${plan.eggVariant}」为你而放（一生一次）。`);
+      xlog.log("info", "F399", "egg-played", plan.eggVariant);
+      h4Bus.emit("f399.egg-played", { variant: plan.eggVariant });
     }
 
     /* ---------- 滤镜单点应用（挂载即同步 + 广播跟随） ---------- */
@@ -79,17 +83,18 @@ export function H4Runtime(): React.ReactElement | null {
     };
     applyReading();
 
-    const onFilterEvent = (): void => applyFilter();
     const onReadingEvent = (): void => applyReading();
-    window.addEventListener(H4_FILTER_EVENT, onFilterEvent);
-    window.addEventListener(H4_READING_EVENT, onReadingEvent);
-    window.addEventListener("focusin", applyReading);
+    window.addEventListener("focusin", onReadingEvent);
+    // 滤镜/阅读变更唯一通道 = h4Bus 契约事件（v10：两条 window 双轨全部撤除）
+    const offFilterBus = h4Bus.on("f387.filter-changed", () => applyFilter());
+    const offReadingBus = h4Bus.on("f386.style-applied", () => applyReading());
     return () => {
       window.clearTimeout(badgeTimer.current);
       window.clearInterval(phaseTimer.current);
-      window.removeEventListener(H4_FILTER_EVENT, onFilterEvent);
-      window.removeEventListener(H4_READING_EVENT, onReadingEvent);
-      window.removeEventListener("focusin", applyReading);
+      window.removeEventListener("focusin", onReadingEvent);
+      offFilterBus();
+      offReadingBus();
+      xlog.flushNow(); // 卸载兜底冲刷——日志不丢
       // 卸载不清滤镜/阅读变量：滤镜位是全局单点，跟随引擎态而非本组件生命周期
     };
   }, []);

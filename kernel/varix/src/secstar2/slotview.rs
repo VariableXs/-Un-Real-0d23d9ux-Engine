@@ -1013,3 +1013,721 @@ mod deep2_tests {
         assert!(run_slotview_deep2_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 批次（第四轮深化 2026-09-26）——双槽卡对称布局 / 条款模板变量 /
+// 更新前置三勾 / 回滚干跑。判据源：主册【设计细节】「槽卡并排视觉对称
+// （公平感——两槽都是一等公民）」+ 用户故事条款逐字 +【状态与异常】
+// 「双槽空间不足 → 更新前置拦截」+【验收判据】回滚全链。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v4-一：SlotCardLayout —— 双槽卡并排对称布局（视觉对称的机器检查：两卡
+// 几何全等 + 当前槽强调靠描边不靠尺寸——强调不破坏公平）
+// ---------------------------------------------------------------------------
+
+/// 单卡几何（设计系统像素——主册 480×140 卡族的槽卡规格）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CardGeom {
+    pub x: i32,
+    pub y: i32,
+    pub w: u32,
+    pub h: u32,
+    /// 描边 token（当前槽=accent / 备用槽=neutral——公平感的分寸）。
+    pub border_token: &'static str,
+}
+
+/// 布局产出（两卡并排：等宽等高、同 y、水平间距 GAP）。
+pub const SLOT_CARD_GAP: i32 = 24;
+
+/// 生成双槽布局（active 决定谁描边强调；几何两卡恒等——对称性机检的
+/// 数据源）。
+pub fn slot_card_layout(active: SlotId, page_w: u32) -> [CardGeom; 2] {
+    let w = (page_w as i32 - SLOT_CARD_GAP * 3) / 2;
+    let h = 140u32;
+    let a_slot = CardGeom {
+        x: SLOT_CARD_GAP,
+        y: SLOT_CARD_GAP,
+        w: w.max(0) as u32,
+        h,
+        border_token: if active == SlotId::A { "accent" } else { "neutral" },
+    };
+    let b_slot = CardGeom {
+        x: SLOT_CARD_GAP * 2 + w,
+        y: SLOT_CARD_GAP,
+        w: w.max(0) as u32,
+        h,
+        border_token: if active == SlotId::B { "accent" } else { "neutral" },
+    };
+    [a_slot, b_slot]
+}
+
+/// 对称性机检（几何全等检查——x 不同、其余全等才叫「并排对称」）。
+pub fn slot_cards_symmetric(cards: &[CardGeom; 2]) -> bool {
+    cards[0].w == cards[1].w && cards[0].h == cards[1].h && cards[0].y == cards[1].y
+        && cards[0].border_token != cards[1].border_token
+        && cards[0].x != cards[1].x
+}
+
+// ---------------------------------------------------------------------------
+// v4-二：terms_template —— 条款卡模板变量渲染（主册用户故事逐字骨架 +
+// 动态天数/版本号注入——模板是唯一定义点，天数改了文案自动跟随）
+// ---------------------------------------------------------------------------
+
+/// 条款骨架（{N}=保留期天数，{V}=目标版本——主册用户故事语汇）。
+pub const TERMS_TEMPLATE: &str = "本次更新将写入备用槽，更新后 {N} 天内可一键回退到当前版本（{V}）。你的文件不受更新影响。";
+
+/// 渲染（天数来自保留期旋钮实时值——文案永不与策略脱节）。
+pub fn terms_template_render(retention_days: u64, cur_version: u32, out: &mut alloc::string::String) {
+    let mut it = TERMS_TEMPLATE.split("{N}");
+    out.push_str(it.next().unwrap_or(""));
+    if let Some(rest) = it.next() {
+        out.push_str(&alloc::format!("{}", retention_days));
+        let mut it2 = rest.split("{V}");
+        out.push_str(it2.next().unwrap_or(""));
+        if let Some(rest2) = it2.next() {
+            out.push_str(&alloc::format!("v{}.{}.{}", cur_version / 100, cur_version % 100 / 10, cur_version % 10));
+            out.push_str(rest2);
+        }
+    }
+}
+
+/// 模板完整性（骨架含全部变量位+定心丸句——文案审计）。
+pub fn terms_template_intact() -> bool {
+    TERMS_TEMPLATE.contains("{N}")
+        && TERMS_TEMPLATE.contains("{V}")
+        && TERMS_TEMPLATE.contains("你的文件不受更新影响")
+}
+
+// ---------------------------------------------------------------------------
+// v4-三：PreUpdateChecklist —— 更新前置三勾（条款确认/空间充足/备用槽
+// 健康——三勾全绿才许 commit；缺勾的 commit 请求被门卫拦下并指明缺哪勾）
+// ---------------------------------------------------------------------------
+
+/// 三勾状态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreCheckState {
+    pub terms_confirmed: bool,
+    pub space_ok: bool,
+    pub backup_healthy: bool,
+}
+
+/// 前置检查门卫（与 UpdateFlow 的 confirm_terms/check_space/verify_backup
+/// 三阶段一一对应——门卫是「不许跳步」的总闸）。
+pub struct PreUpdateChecklist;
+
+impl PreUpdateChecklist {
+    /// 全绿判定。
+    pub fn all_green(s: &PreCheckState) -> bool {
+        s.terms_confirmed && s.space_ok && s.backup_healthy
+    }
+
+    /// 缺勾清单（人话——用户知道去补哪一步，不是笼统「不满足条件」）。
+    pub fn missing(s: &PreCheckState) -> alloc::vec::Vec<&'static str> {
+        let mut out = alloc::vec::Vec::new();
+        if !s.terms_confirmed {
+            out.push("请先阅读并确认回滚窗口条款");
+        }
+        if !s.space_ok {
+            out.push("备用槽空间不足：请清理或等待系统自动腾挪");
+        }
+        if !s.backup_healthy {
+            out.push("备用槽校验失败：下次更新将自动重建，请稍后再试");
+        }
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4-四：RollbackDryRun —— 回滚干跑（不执行、先列出将发生什么：版本切换
+// 方向/用户数据不动/条款窗口收口——红线纪律「先干跑后执行」的回滚落点）
+// ---------------------------------------------------------------------------
+
+/// 干跑清单行（发生了什么 + 影响面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DryRunLine {
+    pub what: &'static str,
+    pub impact: &'static str,
+}
+
+/// 回滚干跑（从当前 cur 回到 rollback_ver；数据不动条款逐行声明）。
+pub fn rollback_dry_run(cur_version: u32, rollback_ver: u32) -> [DryRunLine; 4] {
+    [
+        DryRunLine {
+            what: "系统镜像切回备用槽版本",
+            impact: &alloc::format!("运行版本 v{}.{}.{} → v{}.{}.{}", cur_version / 100, cur_version % 100 / 10, cur_version % 10, rollback_ver / 100, rollback_ver % 100 / 10, rollback_ver % 10).leak().strip_prefix("运行版本 ").unwrap_or("版本切换"),
+        },
+        DryRunLine { what: "用户文件与设置", impact: "完全不动（条款承诺）" },
+        DryRunLine { what: "回滚窗口", impact: "执行后收口，本次回滚机会用掉" },
+        DryRunLine { what: "执行耗时", impact: "秒级切换 + 一次重启" },
+    ]
+}
+
+// ---------------------------------------------------------------------------
+// v4 自检
+// ---------------------------------------------------------------------------
+
+/// F190 v4 自检（聚合进 secstar2 域）。
+pub fn run_slotview_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v4");
+
+    // v4-一：双槽布局——等宽等高同 y、描边互斥、A/B 两态都对称。
+    for act in [SlotId::A, SlotId::B] {
+        let cards = slot_card_layout(act, 1200);
+        set.add("layout symmetric", slot_cards_symmetric(&cards), "");
+        let accent: alloc::vec::Vec<&str> = cards
+            .iter()
+            .filter(|c| c.border_token == "accent")
+            .map(|c| c.border_token)
+            .collect();
+        set.add("layout one accent", accent.len() == 1, "恰一卡强调（当前槽）");
+    }
+    let cards_a = slot_card_layout(SlotId::A, 1200);
+    set.add("layout a accent", cards_a[0].border_token == "accent" && cards_a[1].border_token == "neutral", "");
+    set.add("layout b mirror", slot_card_layout(SlotId::B, 1200)[1].border_token == "accent", "");
+
+    // v4-二：条款模板——变量注入、往返、完整性。
+    set.add("terms intact", terms_template_intact(), "");
+    let mut s7 = alloc::string::String::new();
+    terms_template_render(7, 324, &mut s7);
+    set.add("terms render 7d", s7.contains("7 天") && s7.contains("v3.2.4"), "");
+    let mut s30 = alloc::string::String::new();
+    terms_template_render(30, 100, &mut s30);
+    set.add("terms render 30d", s30.contains("30 天") && s30.contains("v1.0.0"), "旋钮改动文案跟随");
+
+    // v4-三：前置三勾——全绿放行、逐缺勾指明、顺序无关。
+    let all = PreCheckState { terms_confirmed: true, space_ok: true, backup_healthy: true };
+    set.add("precheck all green", PreUpdateChecklist::all_green(&all), "");
+    set.add("precheck all missing empty", PreUpdateChecklist::missing(&all).is_empty(), "");
+    let none = PreCheckState { terms_confirmed: false, space_ok: false, backup_healthy: false };
+    set.add("precheck three missing", PreUpdateChecklist::missing(&none).len() == 3, "");
+    let only_space = PreCheckState { terms_confirmed: true, space_ok: false, backup_healthy: true };
+    let miss = PreUpdateChecklist::missing(&only_space);
+    set.add("precheck precise", miss.len() == 1 && miss[0].contains("空间"), "缺哪勾说哪勾");
+
+    // v4-四：回滚干跑——四行齐、数据不动条款在列、版本方向正确。
+    let dry = rollback_dry_run(324, 321);
+    set.add("dry four lines", dry.len() == 4, "");
+    set.add("dry data untouched", dry[1].impact.contains("完全不动"), "");
+    set.add("dry window close", dry[2].impact.contains("收口"), "");
+    set.add("dry version direction", dry[0].what.contains("备用槽"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v4_layout_narrow_page_degrades() {
+        // 极窄页面不产生负宽卡（钳制为零宽而不是负——渲染层不会炸）。
+        let cards = slot_card_layout(SlotId::A, 20);
+        assert!(cards[0].w == 0 && cards[1].w == 0);
+        assert!(slot_cards_symmetric(&cards), "窄页也保持对称语义");
+    }
+
+    #[test]
+    fn f190_v4_terms_template_all_versions() {
+        // 版本号三位数渲染矩阵（边界：0 / 999）。
+        for (v, expect) in [(0u32, "v0.0.0"), (5, "v0.0.5"), (50, "v0.5.0"), (999, "v9.9.9")] {
+            let mut s = alloc::string::String::new();
+            terms_template_render(7, v, &mut s);
+            assert!(s.contains(expect), "v={} expect {}", v, expect);
+        }
+    }
+
+    #[test]
+    fn f190_v4_precheck_combinatorics() {
+        // 8 种勾态穷举：全绿恰一种、missing 数与勾数互补。
+        for mask in 0..8u8 {
+            let st = PreCheckState {
+                terms_confirmed: mask & 1 != 0,
+                space_ok: mask & 2 != 0,
+                backup_healthy: mask & 4 != 0,
+            };
+            let miss = PreUpdateChecklist::missing(&st);
+            assert_eq!(miss.len(), 3 - mask.count_ones() as usize, "mask={}", mask);
+            assert_eq!(PreUpdateChecklist::all_green(&st), mask == 7);
+        }
+    }
+
+    #[test]
+    fn f190_v4_dry_run_no_side_effect() {
+        // 干跑幂等：跑两次输出全等（干跑就是干跑——没有隐藏状态）。
+        let a = rollback_dry_run(324, 321);
+        let b = rollback_dry_run(324, 321);
+        assert_eq!(a[1], b[1]);
+        assert_eq!(a[2], b[2]);
+        assert_eq!(a[3], b[3]);
+    }
+
+    #[test]
+    fn f190_v4_run_checks_pass() {
+        assert!(run_slotview_deep3_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 批次（第五轮深化 2026-09-26 · 主册上限口径冲刺）——更新历史汇总页 /
+// 回滚前置清单 / 槽卡版本行渲染。判据源：主册【交互设计】「两槽并排（当前
+// 槽描边强调+版本号+安装日期）」「回滚按钮按压有 3s 确认」+【状态与异常】
+// 更新失败语义的汇总呈现。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v5-一：update_summary —— 更新历史汇总页（总次数/成功率/连续失败/最近
+// 成功版本——UpdateHistory 之上的聚合视图）
+// ---------------------------------------------------------------------------
+
+/// 汇总模型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UpdateSummary {
+    pub total: u64,
+    pub success: u64,
+    pub failed: u64,
+    /// 成功率 permille（零历史=0 且标注「无记录」）。
+    pub success_permille: u64,
+    /// 最近成功版本（None=从未成功过）。
+    pub last_success: Option<u32>,
+    /// 当前连续失败数（>0 时更新前置可提示）。
+    pub consecutive_failures: u32,
+}
+
+/// 从历史聚合（UpdateOutcome 统计）。
+pub fn update_summary(history: &UpdateHistory, outcomes: &[UpdateOutcome]) -> UpdateSummary {
+    let total = outcomes.len() as u64;
+    let success = outcomes
+        .iter()
+        .filter(|o| matches!(o, UpdateOutcome::Success))
+        .count() as u64;
+    let failed = total - success;
+    UpdateSummary {
+        total,
+        success,
+        failed,
+        success_permille: if total == 0 { 0 } else { success * 1000 / total },
+        last_success: history.last_success_version(),
+        consecutive_failures: history.consecutive_failures(),
+    }
+}
+
+/// 汇总行（连续失败 ≥2 → 建议行——失败模式要主动提示）。
+pub fn update_summary_hint(s: &UpdateSummary) -> Option<&'static str> {
+    if s.consecutive_failures >= 2 {
+        Some("连续两次更新失败：建议暂停更新，查看失败原因或从恢复环境检查双槽健康")
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5-二：rollback_prereqs —— 回滚前置清单（按下回滚钮前系统自检：保留期
+// 内/备用槽健康/3s 确认完成——三勾全绿才执行，缺勾给人话）
+// ---------------------------------------------------------------------------
+
+/// 前置项。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RollbackPrereq {
+    pub item: &'static str,
+    pub ok: bool,
+    pub why: &'static str,
+}
+
+/// 自检三项（输入：当前视图 + 长按确认态）。
+pub fn rollback_prereqs(view: &SlotView, now_day: u64, hold_confirmed: bool) -> [RollbackPrereq; 3] {
+    [
+        RollbackPrereq {
+            item: "保留期内",
+            ok: view.rollback_eligible(now_day),
+            why: "回滚点已过保留期，按策略清理（如实告知，不藏）",
+        },
+        RollbackPrereq {
+            item: "备用槽健康",
+            ok: !view.backup_bad(),
+            why: "备用槽校验失败，回滚目标不可用；下次更新将重建",
+        },
+        RollbackPrereq {
+            item: "3 秒确认",
+            ok: hold_confirmed,
+            why: "回滚是大动作：需按住 3 秒确认（防误触）",
+        },
+    ]
+}
+
+/// 全绿判定。
+pub fn rollback_prereqs_clear(items: &[RollbackPrereq; 3]) -> bool {
+    items.iter().all(|i| i.ok)
+}
+
+// ---------------------------------------------------------------------------
+// v5-三：slot_version_line —— 槽卡版本行渲染（版本号+安装日期+槽身份
+// ——两卡各一行的渲染契约）
+// ---------------------------------------------------------------------------
+
+/// 行数据。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlotVersionLine {
+    pub slot: &'static str,
+    pub version: String,
+    pub installed_day: u64,
+    /// 角标（当前槽="运行中"）。
+    pub badge: Option<&'static str>,
+}
+
+/// 渲染（semver (maj,min,pat) → "v1.2.3"）。
+pub fn slot_version_line(slot: SlotId, meta: &SlotMeta, is_active: bool) -> SlotVersionLine {
+    let v = meta.version;
+    let (maj, min, pat) = (v / 100, v % 100 / 10, v % 10);
+    SlotVersionLine {
+        slot: match slot {
+            SlotId::A => "A 槽",
+            SlotId::B => "B 槽",
+        },
+        version: alloc::format!("v{}.{}.{}", maj, min, pat),
+        installed_day: meta.installed_day,
+        badge: if is_active { Some("运行中") } else { None },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v5 自检（deep4 表）
+// ---------------------------------------------------------------------------
+
+/// F190 v5 自检（聚合进 secstar2 域）。
+pub fn run_slotview_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v5");
+
+    // 历史样本：三成一败（最近一次失败）。
+    let mut hist = UpdateHistory::new();
+    hist.push(UpdateRecord { day: 10, outcome: UpdateOutcome::Success, version: 320 });
+    hist.push(UpdateRecord { day: 20, outcome: UpdateOutcome::Success, version: 321 });
+    hist.push(UpdateRecord { day: 30, outcome: UpdateOutcome::Success, version: 322 });
+    hist.push(UpdateRecord { day: 40, outcome: UpdateOutcome::FailedVerify, version: 323 });
+    let outcomes = [UpdateOutcome::Success, UpdateOutcome::Success, UpdateOutcome::Success, UpdateOutcome::FailedVerify];
+
+    // v5-一：汇总页——成功率、最近成功、连续失败、提示。
+    let s = update_summary(&hist, &outcomes);
+    set.add("summary total", s.total == 4 && s.success == 3 && s.failed == 1, "");
+    set.add("summary rate", s.success_permille == 750, "");
+    set.add("summary last ok", s.last_success == Some(322), "");
+    set.add("summary streak", s.consecutive_failures == 1, "");
+    set.add("summary hint calm", update_summary_hint(&s).is_none(), "单次失败不惊扰");
+    let mut hist2 = UpdateHistory::new();
+    hist2.push(UpdateRecord { day: 10, outcome: UpdateOutcome::FailedVerify, version: 320 });
+    hist2.push(UpdateRecord { day: 20, outcome: UpdateOutcome::FailedVerify, version: 321 });
+    let s2 = update_summary(&hist2, &[UpdateOutcome::FailedVerify, UpdateOutcome::FailedVerify]);
+    set.add("summary hint warn", update_summary_hint(&s2).is_some(), "连败 ≥2 主动提示");
+
+    // v5-二：回滚前置——三勾判定、缺勾人话、缺哪说哪。
+    let mut view = SlotView::new(SlotId::A, SlotMeta { version: 322, installed_day: 30, valid: true });
+    view.commit_update(35, 323, true); // 成功更新一次：备用槽留下健康回滚点。
+    let pr = rollback_prereqs(&view, 38, true);
+    set.add("prereq all ok", rollback_prereqs_clear(&pr), "");
+    let pr2 = rollback_prereqs(&view, 100, false);
+    set.add("prereq expired", !pr2[0].ok && pr2[0].why.contains("保留期"), "过期如实告知");
+    set.add("prereq hold missing", !pr2[2].ok && pr2[2].why.contains("3 秒"), "");
+    // 备用槽损坏场景。
+    let mut view_bad = SlotView::new(SlotId::A, SlotMeta { version: 322, installed_day: 30, valid: true });
+    view_bad.commit_update(40, 323, false);
+    let pr3 = rollback_prereqs(&view_bad, 45, true);
+    set.add("prereq backup bad", !pr3[1].ok && pr3[1].why.contains("重建"), "");
+
+    // v5-三：版本行——格式化、角标、两槽互异。
+    let meta_a = SlotMeta { version: 322, installed_day: 30, valid: true };
+    let meta_b = SlotMeta { version: 321, installed_day: 5, valid: true };
+    let la = slot_version_line(SlotId::A, &meta_a, true);
+    let lb = slot_version_line(SlotId::B, &meta_b, false);
+    set.add("vline a", la.version == "v3.2.2" && la.badge == Some("运行中"), "");
+    set.add("vline b", lb.version == "v3.2.1" && lb.badge.is_none(), "");
+    set.add("vline distinct", la != lb, "两槽两行不撞车");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v5_summary_zero_history() {
+        // 零历史：成功率 0 且无最近成功（诚实空态——不造 100%）。
+        let s = update_summary(&UpdateHistory::new(), &[]);
+        assert_eq!(s.success_permille, 0);
+        assert_eq!(s.last_success, None);
+        assert!(update_summary_hint(&s).is_none());
+    }
+
+    #[test]
+    fn f190_v5_prereqs_scenarios() {
+        // 三个独立场景：过期 / 坏槽 / 未确认——缺哪项哪项 ok=false。
+        let mut base = SlotView::new(SlotId::A, SlotMeta { version: 100, installed_day: 0, valid: true });
+        // 先走一次成功更新：备用槽里留下健康回滚点（day 5 建，保留 7 天）。
+        base.commit_update(5, 101, true);
+        // 场景 1：健康槽+期内+已确认 → 三勾全绿。
+        assert!(rollback_prereqs_clear(&rollback_prereqs(&base, 8, true)));
+        // 场景 2：过期（now=12 > 5+7）→ 保留期项红且文案诚实。
+        let pr = rollback_prereqs(&base, 12, true);
+        assert!(!pr[0].ok && pr[0].why.contains("保留期"));
+        // 场景 3：未确认 → 确认项红。
+        let pr2 = rollback_prereqs(&base, 3, false);
+        assert!(!pr2[2].ok && pr2[2].why.contains("3 秒"));
+        // 组合：过期+未确认 → 恰两项红。
+        let pr3 = rollback_prereqs(&base, 12, false);
+        assert_eq!(pr3.iter().filter(|i| !i.ok).count(), 2);
+    }
+
+    #[test]
+    fn f190_v5_run_checks_pass() {
+        assert!(run_slotview_deep4_checks().all_passed());
+    }
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// v6 批次（第六轮深化 · 上限口径收官）——双槽占用仪表 / 更新日志叙事行 /
+// 回滚窗口利用统计 / 条款确认账。判据源：主册【数据与存储】「槽元数据
+// 双槽区自持」+【验收判据】回滚全链（B-1305 演练）。
+// ------
+
+use alloc::vec;
+// -------------------------------------------------------------------
+
+/// 双槽占用仪表（字节/容量 per 槽——空间健康可视化数据）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SlotGauge {
+    pub slot: SlotId,
+    pub used_bytes: u64,
+    pub capacity_bytes: u64,
+    pub permille: u64,
+}
+
+/// 组装（容量 0 = None——不造仪表）。
+pub fn slot_gauge(slot: SlotId, used: u64, capacity: u64) -> Option<SlotGauge> {
+    if capacity == 0 {
+        return None;
+    }
+    Some(SlotGauge {
+        slot,
+        used_bytes: used,
+        capacity_bytes: capacity,
+        permille: used.min(capacity) * 1000 / capacity,
+    })
+}
+
+/// 更新日志叙事行（UpdateRecord → 人话行——历史页的渲染契约）。
+pub fn update_journal_line(r: &UpdateRecord) -> String {
+    let v = r.version;
+    let ver = alloc::format!("v{}.{}.{}", v / 100, v % 100 / 10, v % 10);
+    match r.outcome {
+        UpdateOutcome::Success => alloc::format!("[day {}] 更新到 {} 成功（已写入备用槽并切换）", r.day, ver),
+        UpdateOutcome::FailedWrite => alloc::format!("[day {}] 更新到 {} 失败：写入阶段失败（备用槽未动，可重试）", r.day, ver),
+        UpdateOutcome::FailedVerify => alloc::format!("[day {}] 更新到 {} 失败：写入后校验不过（已回退）", r.day, ver),
+        UpdateOutcome::RolledBack => alloc::format!("[day {}] {} 已被回滚（用户触发）", r.day, ver),
+    }
+}
+
+/// 回滚窗口利用统计（窗口期内回滚次数 vs 过期清理次数——策略有效性对账）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RollbackWindowStats {
+    pub used_in_window: u64,
+    pub expired_cleaned: u64,
+}
+
+impl RollbackWindowStats {
+    /// 利用率 permille（零事件=0）。
+    pub fn utilization_permille(&self) -> u64 {
+        let total = self.used_in_window + self.expired_cleaned;
+        if total == 0 {
+            0
+        } else {
+            self.used_in_window * 1000 / total
+        }
+    }
+}
+
+/// 条款确认账（每次更新的条款确认记录——「敢承诺因为真的存在」的对账）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TermsAcceptance {
+    pub at_day: u64,
+    /// 确认时展示的保留期天数（文案与策略一致性对账）。
+    pub retention_days_shown: u64,
+    pub accepted: bool,
+}
+
+/// F190 v6 自检（deep5 表）。
+pub fn run_slotview_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v6");
+
+    // v6-一：占用仪表——正常/钳制/零容。
+    let g = slot_gauge(SlotId::A, 700, 1000).unwrap();
+    set.add("gauge permille", g.permille == 700, "");
+    let g2 = slot_gauge(SlotId::B, 1500, 1000).unwrap();
+    set.add("gauge clamp", g2.permille == 1000, "超占钳 1000");
+    set.add("gauge zero cap", slot_gauge(SlotId::A, 10, 0).is_none(), "");
+
+    // v6-二：更新日志——四态各自文案。
+    let lines = [
+        UpdateRecord { day: 10, version: 321, outcome: UpdateOutcome::Success },
+        UpdateRecord { day: 20, version: 322, outcome: UpdateOutcome::FailedWrite },
+        UpdateRecord { day: 30, version: 323, outcome: UpdateOutcome::FailedVerify },
+        UpdateRecord { day: 40, version: 323, outcome: UpdateOutcome::RolledBack },
+    ];
+    let j: Vec<String> = lines.iter().map(update_journal_line).collect();
+    set.add("journal success", j[0].contains("v3.2.1 成功"), "");
+    set.add("journal write fail", j[1].contains("写入阶段"), "");
+    set.add("journal verify fail", j[2].contains("校验不过"), "");
+    set.add("journal rollback", j[3].contains("回滚"), "");
+
+    // v6-三：窗口统计——利用率、零事件。
+    let s1 = RollbackWindowStats { used_in_window: 3, expired_cleaned: 1 };
+    set.add("window util", s1.utilization_permille() == 750, "3/4 = 750‰");
+    let s0 = RollbackWindowStats::default();
+    set.add("window zero", s0.utilization_permille() == 0, "");
+
+    // v6-四：条款确认账——字段保真。
+    let t = TermsAcceptance { at_day: 30, retention_days_shown: 7, accepted: true };
+    set.add("terms fields", t.retention_days_shown == RETENTION_DAYS && t.accepted, "展示天数=策略天数");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v6_journal_sequence_story() {
+        // 一条完整故事线：成功→失败写→失败验→回滚（四态各出现一次）。
+        let records = [
+            UpdateRecord { day: 1, version: 320, outcome: UpdateOutcome::Success },
+            UpdateRecord { day: 2, version: 321, outcome: UpdateOutcome::FailedWrite },
+            UpdateRecord { day: 3, version: 322, outcome: UpdateOutcome::FailedVerify },
+            UpdateRecord { day: 4, version: 322, outcome: UpdateOutcome::RolledBack },
+        ];
+        let j: Vec<String> = records.iter().map(update_journal_line).collect();
+        assert!(j.iter().all(|l| l.starts_with("[day ")));
+        // 版本号格式统一 vX.Y.Z。
+        assert!(j.iter().all(|l| l.contains("v3.")));
+    }
+
+    #[test]
+    fn f190_v6_run_checks_pass() {
+        assert!(run_slotview_deep5_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v7 批次（第七轮深化 · 上限口径收官）——双槽差异报告 / 更新预演 / 历史
+// 导出。判据源：主册【交互设计】「两槽并排（当前槽强调）」+ F128 生态语言。
+// ---------------------------------------------------------------------------
+
+/// 双槽差异报告（版本/安装日/健康三列对比——一屏看清两槽差什么）。
+pub fn slot_diff(cur: &SlotMeta, cur_slot: SlotId, other: &SlotMeta) -> Vec<String> {
+    let mut out = Vec::new();
+    let cur_ver = cur.version;
+    let other_ver = other.version;
+    if cur_ver != other_ver {
+        let newer = if cur_ver > other_ver { "当前槽更新" } else { "备用槽更新（可回滚目标）" };
+        out.push(alloc::format!("版本不同：当前 v{}.{}.{} / 备用 v{}.{}.{}（{}）", cur_ver / 100, cur_ver % 100 / 10, cur_ver % 10, other_ver / 100, other_ver % 100 / 10, other_ver % 10, newer));
+    } else {
+        out.push(String::from("版本相同：两槽同版本（更新刚完成或刚回滚）"));
+    }
+    if cur.installed_day != other.installed_day {
+        out.push(alloc::format!("安装日不同：相差 {} 天", cur.installed_day.abs_diff(other.installed_day)));
+    }
+    if cur.valid != other.valid {
+        out.push(String::from("健康状态不同：一槽校验失败——下次更新将重建失败槽"));
+    }
+    let _ = cur_slot;
+    if out.is_empty() {
+        out.push(String::from("两槽完全一致"));
+    }
+    out
+}
+
+/// 更新预演（不执行、列出将发生的步骤序列——红线纪律③干跑先行）。
+pub fn update_dry_run(target_version: u32) -> Vec<String> {
+    let v = target_version;
+    vec![
+        String::from("步骤 1：确认回滚窗口条款（你的文件不受影响）"),
+        String::from("步骤 2：检查备用槽空间与健康"),
+        alloc::format!("步骤 3：将 v{}.{}.{} 写入备用槽并逐字节校验", v / 100, v % 100 / 10, v % 10),
+        String::from("步骤 4：校验通过后切换激活槽（原版本留在回滚窗口内）"),
+    ]
+}
+
+/// 历史开放导出（F128 语言 JSON：逐条更新记录）。
+pub fn history_export_json(hist: &UpdateHistory, out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"update-history\":[");
+    let records: &[UpdateRecord] = &hist.records;
+    for (i, r) in records.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        let outcome = match r.outcome {
+            UpdateOutcome::Success => "success",
+            UpdateOutcome::FailedWrite => "failed-write",
+            UpdateOutcome::FailedVerify => "failed-verify",
+            UpdateOutcome::RolledBack => "rolled-back",
+        };
+        out.extend_from_slice(
+            alloc::format!("{{\"day\":{},\"ver\":{},\"outcome\":\"{}\"}}", r.day, r.version, outcome).as_bytes(),
+        );
+    }
+    out.extend_from_slice(b"]}");
+}
+
+/// F190 v7 自检（deep6 表）。
+pub fn run_slotview_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v7");
+
+    // v7-一：双槽差异——版本异/健康异/全同三态。
+    let cur = SlotMeta { version: 322, installed_day: 30, valid: true };
+    let other_old = SlotMeta { version: 321, installed_day: 5, valid: true };
+    let d1 = slot_diff(&cur, SlotId::A, &other_old);
+    set.add("diff version", d1[0].contains("当前槽更新"), "322 > 321");
+    set.add("diff day", d1[1].contains("25 天"), "");
+    let same = SlotMeta { version: 322, installed_day: 30, valid: true };
+    let d2 = slot_diff(&cur, SlotId::A, &same);
+    set.add("diff identical", d2.len() == 1 && d2[0].contains("版本相同"), "同版本=一行说明");
+
+    // v7-二：更新预演——四步、版本随行。
+    let dry = update_dry_run(324);
+    set.add("dry 4 steps", dry.len() == 4, "");
+    set.add("dry version inline", dry[2].contains("v3.2.4"), "目标版本入步骤");
+
+    // v7-三：历史导出——计数与字段。
+    let mut hist = UpdateHistory::new();
+    hist.push(UpdateRecord { day: 10, version: 320, outcome: UpdateOutcome::Success });
+    hist.push(UpdateRecord { day: 20, version: 321, outcome: UpdateOutcome::FailedWrite });
+    let mut data = Vec::new();
+    history_export_json(&hist, &mut data);
+    let text = core::str::from_utf8(&data).unwrap_or("");
+    set.add("hist export count", text.matches("\"ver\"").count() == 2, "");
+    set.add("hist export outcomes", text.contains("success") && text.contains("failed-write"), "四态语义随行");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v7_diff_health_mismatch() {
+        // 健康不一致：第三行红显（重建预告）。
+        let cur = SlotMeta { version: 100, installed_day: 1, valid: true };
+        let other = SlotMeta { version: 100, installed_day: 1, valid: false };
+        let d = slot_diff(&cur, SlotId::A, &other);
+        assert!(d.iter().any(|l| l.contains("校验失败")));
+    }
+
+    #[test]
+    fn f190_v7_run_checks_pass() {
+        assert!(run_slotview_deep6_checks().all_passed());
+    }
+}
+

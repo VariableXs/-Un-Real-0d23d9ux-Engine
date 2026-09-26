@@ -1,0 +1,38 @@
+
+===== UEFI 场景 u1-baseline =====
+复用 OVMF NVRAM: D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\edk2-vars-menu.fd
+[uefi:u1-baseline] QEMU pid=35444
+[uefi:u1-baseline] keys@t=16.2s down x0 enter=False
+[uefi:u1-baseline] shot t=20.2s menu
+[uefi:u1-baseline] picks=['[ INFO] boot-select: entry=varix']
+
+===== UEFI 场景 u2-down1-enter =====
+复用 OVMF NVRAM: D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\edk2-vars-menu.fd
+[uefi:u2-down1-enter] QEMU pid=42164
+[uefi:u2-down1-enter] shot t=16.2s menu
+[uefi:u2-down1-enter] keys@t=16.2s down x1 enter=True
+[uefi:u2-down1-enter] shot t=24.2s after-down
+[uefi:u2-down1-enter] picks=['[ INFO] boot-select: entry=windows']
+[uefi:u2-down1-enter] chan: [ INFO] boot-select: low-memory identity-mapped (2048 x 2MiB)
+[uefi:u2-down1-enter] chan: [ WARN] boot-select: no Windows boot option found in BootOrder — guessing 0x0001 (pass boot_next=<num> on the kernel cmdline to pin it)
+[uefi:u2-down1-enter] chan: [ INFO] boot-select: BootNext=0x0001 written & verified — resetting
+
+===== UEFI 场景 u3-down2-enter =====
+复用 OVMF NVRAM: D:\2\14\-Un-Real-0d23d9ux-Engine-main\_attic\edk2-vars-menu.fd
+[uefi:u3-down2-enter] QEMU pid=43208
+[uefi:u3-down2-enter] shot t=16.2s menu
+[uefi:u3-down2-enter] keys@t=16.2s down x2 enter=True
+[uefi:u3-down2-enter] shot t=26.0s after-down
+[uefi:u3-down2-enter] picks=['[ INFO] boot-select: entry=uefi']
+[uefi:u3-down2-enter] chan: [ INFO] boot-select: low-memory identity-mapped (2048 x 2MiB)
+[uefi:u3-down2-enter] chan: [ INFO] boot-select: requesting firmware setup via OsIndications
+
+===== 汇总 =====
+u1-baseline      ['[ INFO] boot-select: entry=varix']
+u2-down1-enter   ['[ INFO] boot-select: entry=windows']
+    [ INFO] boot-select: low-memory identity-mapped (2048 x 2MiB)
+    [ WARN] boot-select: no Windows boot option found in BootOrder — guessing 0x0001 (pass boot_next=<num> on the kernel cmdline to pin it)
+    [ INFO] boot-select: BootNext=0x0001 written & verified — resetting
+u3-down2-enter   ['[ INFO] boot-select: entry=uefi']
+    [ INFO] boot-select: low-memory identity-mapped (2048 x 2MiB)
+    [ INFO] boot-select: requesting firmware setup via OsIndications

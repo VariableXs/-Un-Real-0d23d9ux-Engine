@@ -17,6 +17,8 @@
 use crate::checks::CheckSet;
 use crate::uni1::ubase::{Chord, HotkeyTable, MOD_WIN};
 
+use alloc::string::String;
+
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源）
 // ---------------------------------------------------------------------------
@@ -49,6 +51,8 @@ pub struct SettingsHot {
     pub action_count: u64,
     /// 注册表登记位（F244）。
     pub hotkeys: HotkeyTable,
+    /// 搜索框查询串（v6：打字门——光标就绪才收键，语义锚「直接可打字」）。
+    pub query: String,
 }
 
 impl SettingsHot {
@@ -62,6 +66,7 @@ impl SettingsHot {
             over_budget: 0,
             action_count: 0,
             hotkeys,
+            query: String::new(),
         }
     }
 
@@ -104,6 +109,22 @@ impl SettingsHot {
     pub fn close(&mut self) {
         self.state = SettingsState::Closed;
         self.search_caret_ready = false;
+        self.query.clear();
+    }
+
+    /// 打字门（v6）：搜索框光标就绪才收键——「直接可打字」的可机检
+    /// 形态。焦点在页面/窗未开时按键不进查询串（不静默吞）。
+    pub fn type_in_search(&mut self, text: &str) -> bool {
+        if !self.is_open() || !self.search_caret_ready {
+            return false;
+        }
+        self.query.push_str(text);
+        true
+    }
+
+    /// 查询串读数（v6：搜索框渲染数据源）。
+    pub fn query(&self) -> &str {
+        &self.query
     }
 
     pub fn is_open(&self) -> bool {
@@ -186,6 +207,27 @@ pub fn run_sethot_checks() -> CheckSet {
         },
         "",
     );
+
+    // 打字门（v6）：光标就绪才收键；焦点在页面/窗未开时不收（不静默吞）。
+    s.close();
+    let mut g = SettingsHot::new();
+    set.add("f407-type-gate-closed", !g.type_in_search("音量"), "");
+    let _ = g.hotkey_press(100);
+    set.add(
+        "f407-type-gate-ready",
+        g.type_in_search("音量") && g.query() == "音量",
+        "",
+    );
+    g.focus_page();
+    set.add("f407-type-gate-page-blocked", !g.type_in_search("更多") && g.query() == "音量", "");
+    let _ = g.hotkey_press(100); // 聚焦回搜索框
+    set.add(
+        "f407-type-gate-resumes",
+        g.type_in_search("设置") && g.query() == "音量设置",
+        "",
+    );
+    g.close();
+    set.add("f407-query-cleared-on-close", g.query().is_empty(), "");
 
     set
 }

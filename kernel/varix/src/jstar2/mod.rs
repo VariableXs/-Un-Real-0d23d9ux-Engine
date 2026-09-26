@@ -78,28 +78,30 @@ pub const JSTAR2_DOMAIN: &str = "jstar2-j2";
 /// 「每模块一行」登记，永不超容；单模块自身超限时由该模块负责裁剪。
 pub fn run_jstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(JSTAR2_DOMAIN);
+    // v3 深化批：逐模块主检 + v3 深化检并账（CheckSet::merge 容量纪律：
+    // 每模块并账后 ≤63 条，truncated 即红——聚合器对超容零容忍）。
     let blocks: [(&'static str, CheckSet); 21] = [
         ("jbase", jbase::run_jbase_checks()),
-        ("F621", clickanim::run_clickanim_checks()),
-        ("F622", wheelsnd::run_wheelsnd_checks()),
-        ("F623", vtheme::run_vtheme_checks()),
-        ("F624", dashbrd::run_dashbrd_checks()),
-        ("F625", workshop::run_workshop_checks()),
-        ("F626", recolor::run_recolor_checks()),
-        ("F627", checker::run_checker_checks()),
-        ("F628", library::run_library_checks()),
-        ("F629", themeclr::run_themeclr_checks()),
-        ("F630", sharing::run_sharing_checks()),
-        ("F631", a11ytmpl::run_a11ytmpl_checks()),
-        ("F632", audit::run_audit_checks()),
-        ("F633", curimport::run_curimport_checks()),
+        ("F621", CheckSet::merge(clickanim::run_clickanim_checks(), clickanim::run_clickanim_v3_checks())),
+        ("F622", CheckSet::merge(wheelsnd::run_wheelsnd_checks(), CheckSet::merge(wheelsnd::run_wheelsnd_v3_checks(), wheelsnd::run_wheelsnd_v4_checks()))),
+        ("F623", CheckSet::merge(vtheme::run_vtheme_checks(), CheckSet::merge(vtheme::run_vtheme_v3_checks(), vtheme::run_vtheme_v4_checks()))),
+        ("F624", CheckSet::merge(dashbrd::run_dashbrd_checks(), dashbrd::run_dashbrd_v3_checks())),
+        ("F625", CheckSet::merge(workshop::run_workshop_checks(), workshop::run_workshop_v3_checks())),
+        ("F626", CheckSet::merge(recolor::run_recolor_checks(), recolor::run_recolor_v3_checks())),
+        ("F627", CheckSet::merge(checker::run_checker_checks(), checker::run_checker_v3_checks())),
+        ("F628", CheckSet::merge(library::run_library_checks(), library::run_library_v3_checks())),
+        ("F629", CheckSet::merge(themeclr::run_themeclr_checks(), CheckSet::merge(themeclr::run_themeclr_v3_checks(), themeclr::run_themeclr_v3b_checks()))),
+        ("F630", CheckSet::merge(sharing::run_sharing_checks(), CheckSet::merge(sharing::run_sharing_v3_checks(), sharing::run_sharing_v3b_checks()))),
+        ("F631", CheckSet::merge(a11ytmpl::run_a11ytmpl_checks(), CheckSet::merge(a11ytmpl::run_a11ytmpl_v3_checks(), a11ytmpl::run_a11ytmpl_v4_checks()))),
+        ("F632", CheckSet::merge(CheckSet::merge(audit::run_audit_checks(), audit::run_audit_v3_checks()), audit::run_audit_v4_checks())),
+        ("F633", CheckSet::merge(curimport::run_curimport_checks(), curimport::run_curimport_v4_checks())),
         ("F634", svgimport::run_svgimport_checks()),
-        ("F635", sideload::run_sideload_checks()),
-        ("F636", dpicontract::run_dpicontract_checks()),
-        ("F637", hotspotfix::run_hotspotfix_checks()),
-        ("F638", winbridge::run_winbridge_checks()),
-        ("F639", gate::run_gate_checks()),
-        ("F640", ledger::run_ledger_checks()),
+        ("F635", CheckSet::merge(sideload::run_sideload_checks(), sideload::run_sideload_v4_checks())),
+        ("F636", CheckSet::merge(dpicontract::run_dpicontract_checks(), dpicontract::run_dpicontract_v4_checks())),
+        ("F637", CheckSet::merge(hotspotfix::run_hotspotfix_checks(), hotspotfix::run_hotspotfix_v4_checks())),
+        ("F638", CheckSet::merge(winbridge::run_winbridge_checks(), winbridge::run_winbridge_v4_checks())),
+        ("F639", CheckSet::merge(gate::run_gate_checks(), gate::run_gate_v4_checks())),
+        ("F640", CheckSet::merge(ledger::run_ledger_checks(), ledger::run_ledger_v4_checks())),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();

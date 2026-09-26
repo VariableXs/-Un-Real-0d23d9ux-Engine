@@ -288,7 +288,10 @@ impl PageWatermark {
         let total = MEM_TOTAL_BYTES.max(1);
         let app_b = self.anon_pages.saturating_mul(4096).min(total);
         let cache_b = self.cache_bytes.min(total.saturating_sub(app_b));
-        let free_b = free_bytes.min(total.saturating_sub(app_b).saturating_sub(cache_b));
+        // 空闲区 = 总量 − 应用 − 缓存（累计差分口径下由前两区推出，不再单算一份
+        // ——单算会在 app+cache 触顶时与第三区对不上，造成两个真相）。
+        // `free_bytes` 仅用于档位判定（tier），不参与面积切分。
+        let _ = free_bytes;
         let app_p = (app_b * 1000 / total) as u32;
         let app_cache_p = ((app_b + cache_b) * 1000 / total) as u32;
         (app_p, app_cache_p - app_p, 1000 - app_cache_p.min(1000))
@@ -398,7 +401,13 @@ pub fn run_pagewater_checks() -> CheckSet {
     // 让路一次性：再 poll 不再额外回收。
     pw8.poll(3_000_000_000, 2_000);
     cs.add("quota_yield_one_shot", pw8.quota_yields() == 1, "");
-    cs
+    // 深化件（深化批次三）：文件页/匿名页分列 LRU / 分区脏页账（只读卷不计）/
+    // 500ms 判定节流门 / 三档条件表与旋钮清单 / 回收后悔账 / 200MB 警戒状态机 /
+    // 配额让路 / 只读展示面 / 决策日志入诊断快照。
+    CheckSet::merge(
+        CheckSet::merge(cs, crate::perfstar::pagewater_ext::run_checks()),
+        crate::perfstar::mech_scan::run_checks(),
+    )
 }
 
 #[cfg(test)]

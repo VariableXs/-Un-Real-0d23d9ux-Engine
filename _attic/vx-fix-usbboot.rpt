@@ -1,0 +1,24 @@
+=== usb-boot fix start 2026-09-23 04:46:24.836713 ===
+=== 1. 驱动文件核对 ===
+  usbstor.sys: OK 206240B
+  USBXHCI.sys: OK 726432B
+  USBHUB3.sys: OK 746952B
+  UASPStor.sys: OK 120224B
+  INF usbstor.inf: OK
+  INF usbport.inf: OK
+  INF usbhub3.inf: OK
+  INF uaspstor.inf: OK
+=== 2. Start 值修改 ===
+  reg load: 操作成功完成。
+  控制集: ControlSet001
+  usbstor: 0x3 -> 0x0  (add rc: 操作成功完成。)
+  USBXHCI: 0x3 -> 0x0  (add rc: 操作成功完成。)
+  USBHUB3: 0x3 -> 0x0  (add rc: 操作成功完成。)
+  UASPStor: 0x3 -> 0x0  (add rc: 操作成功完成。)
+  hive 已卸载
+=== 3. U盘 BCD 防自愈闸 ===
+  recoveryenabled No: 操作成功完成。
+  bootstatuspolicy: 操作成功完成。
+  验证: recoveryenabled         No
+  验证: bootstatuspolicy        IgnoreAllFailures
+=== fix done ===

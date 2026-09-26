@@ -47,11 +47,16 @@ impl Dropdown {
         }
     }
 
-    /// 第一招：Alt+下 / Enter = 展开收起（<100ms 记账）。
+    /// 第一招：Alt+下 / Enter = 展开收起（<100ms 记账）。空清单：
+    /// 诚实不开（无项可展——不造出空浮层）。
     pub fn toggle(&mut self, latency_ms: u64) -> bool {
         self.last_toggle_ms = Some(latency_ms);
         if latency_ms > TOGGLE_BUDGET_MS {
             self.over_budget += 1;
+        }
+        if !self.open && self.options.is_empty() {
+            self.open = false;
+            return false;
         }
         self.open = !self.open;
         if self.open {
@@ -104,12 +109,18 @@ impl Dropdown {
         }
     }
 
-    /// 确认（Enter）：预览值落定。
+    /// 确认（Enter）：预览值落定。越界预览（外部污染残留态）→ 诚实
+    /// 回收：关菜单、清预览、落定值不动（不确认一个不存在的项）。
     pub fn confirm(&mut self) -> Option<&'static str> {
         if !self.open {
             return None;
         }
         let v = self.preview?;
+        if v >= self.options.len() {
+            self.open = false;
+            self.preview = None;
+            return None;
+        }
         self.value = v;
         self.open = false;
         self.preview = None;
@@ -127,11 +138,12 @@ impl Dropdown {
         true
     }
 
-    /// 预览代值读数（界面层显示用——预览态显示预览值）。
+    /// 预览代值读数（界面层显示用——预览态显示预览值）。空清单诚实
+    /// 空串（不 panic）。
     pub fn displayed(&self) -> &str {
         match self.preview {
-            Some(p) if self.open => self.options[p],
-            _ => self.options[self.value],
+            Some(p) if self.open => self.options.get(p).copied().unwrap_or(""),
+            _ => self.options.get(self.value).copied().unwrap_or(""),
         }
     }
 
@@ -208,6 +220,23 @@ pub fn run_dropdown_checks() -> CheckSet {
     set.add("f435-collapse-fast", !e.open && e.within_budget(), "");
     let _ = e.toggle(200);
     set.add("f435-over-budget-logged", e.over_budget == 1 && e.open, "");
+    // 空清单诚实门（v6）：不开浮层、确认无动作、显示空串——不 panic。
+    let mut m = Dropdown::new(alloc::vec![], 4);
+    set.add(
+        "f435-empty-options-honest",
+        !m.toggle(50) && !m.open && m.confirm().is_none() && m.displayed().is_empty(),
+        "",
+    );
+    set.add("f435-empty-still-budgeted", m.over_budget == 0 && m.within_budget(), "");
+    // 预览越界守卫（v6）：确认只落在界内预览上。
+    let mut o = Dropdown::new(alloc::vec!["甲", "乙"], 2);
+    let _ = o.toggle(50);
+    o.preview = Some(9); // 模拟外部污染
+    set.add(
+        "f435-confirm-oob-guard",
+        o.confirm().is_none() && o.displayed() == "甲",
+        "",
+    );
     set
 }
 

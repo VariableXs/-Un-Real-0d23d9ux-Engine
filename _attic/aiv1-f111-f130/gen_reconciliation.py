@@ -58,7 +58,7 @@ for (fid, anchor), items in by_mod.items():
 md.append("\n## 对账结论\n")
 md.append(f"1. **覆盖**：21 块全部有自检（0 块空转）；{total} 条条目逐一归属唯一判据锚——无孤儿条目、无跨块混挂。")
 md.append("2. **可测性**：每条目名即判据句机器化（主册判据句 → CheckSet 断言），红项可定位到模块+条目+复现口令（WALK_COMMANDS v4 侧表）。")
-md.append("3. **容量**：单模块最大自检块（walkcheck 27 条）远低于 CheckSet 64 条上限——零截断（聚合器 truncated 位全 false）。")
+md.append(f"3. **容量**：单模块最大自检块（{max(by_mod.items(), key=lambda kv: len(kv[1]))[0][0]} {max(len(v) for v in by_mod.values())} 条）远低于 CheckSet 64 条上限——零截断（聚合器 truncated 位全 false）。")
 md.append("4. **十二查映射**：功能完整=各条目主体；性能线=帧预算/延迟条目（magnifier/updateux/focusmode 等）；台账证据=walkcheck 证据三件套条目；回归零破坏=聚合器 all_passed 门。")
 md.append("5. **证据链**：`cargo test`（隔离舱 varix-svcabin）逐块跑通即对账执行面；红项自动阻断域聚合（mod.rs all_passed 门）。")
 

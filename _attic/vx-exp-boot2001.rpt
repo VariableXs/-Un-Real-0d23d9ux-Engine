@@ -1,0 +1,7 @@
+[priv] adjust rc=1 gle=0 lookup=1
+Boot2001: total=212 attr=0x7 fplen=166 desc='VARIX Windows (USB)'
+  nodes=['t03/s10/l50', 't04/s01/l42', 't04/s04/l70', 't7f/sff/l4']
+  HD partition_guid_raw=0000200000000000cb86676367e9f649
+BootNext: ABSENT err=203
+Set BootNext=0x2001 rc=1 gle=203
+  回读 OK: 0x2001 attr=0x7

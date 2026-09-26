@@ -246,6 +246,39 @@ pub fn arbitrate(vote_ai01: bool, vote_community: bool, vote_third: bool) -> (Ar
     }
 }
 
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 质量分（刷量防护的另一半——主册「刷量防护 → 同 IP
+// 限频+质量分」：限频挡的是频次，质量分挡的是低质灌水，两道闸缺一不可）
+// ---------------------------------------------------------------------------
+
+/// 质量分门槛（≥ 走 AI 快审；< 强制人工全审——低质件不许进快车道）。
+pub const QUALITY_FAST_LANE_FLOOR: u32 = 60;
+
+/// 质量分（0-100，确定性三因子）：
+/// - 模板完整度：模板四字段齐 = 40 分基础（不全 = 0 分起评——连模板
+///   都不填的提交不值得快审）；
+/// - 证据量：每份 +20，封顶 60（无证据 = 形式审必驳回的先兆）；
+/// - 提交者历史：历史收录率 ≥50%（5000bp）加 10 分，无历史中性 5 分，
+///   低收录（<2000bp）扣 5 分——惯犯与新手区别对待。
+pub fn quality_score(evidence_count: usize, template_complete: bool, prior_accept_bp: Option<u32>) -> u32 {
+    let mut s: i32 = 0;
+    s += if template_complete { 40 } else { 0 };
+    s += (evidence_count.min(3) * 20) as i32;
+    s += match prior_accept_bp {
+        None => 5,
+        Some(bp) if bp >= 5_000 => 10,
+        Some(bp) if bp < 2_000 => -5,
+        Some(_) => 0,
+    };
+    s.clamp(0, 100) as u32
+}
+
+/// 快审路由（质量分的消费口）：≥ 门槛走 AI 快审，< 门槛强制人工全审
+/// ——路由结果只由分数决定（无暗门）。
+pub fn fast_lane(score: u32) -> bool {
+    score >= QUALITY_FAST_LANE_FLOOR
+}
+
 pub fn run_casesub_checks() -> CheckSet {
     let mut set = CheckSet::new("F129-casesub");
 
@@ -378,6 +411,25 @@ pub fn run_casesub_checks() -> CheckSet {
         "",
     );
 
+    // 深化 v6 · 质量分三因子：模板齐+3 证据+好历史 = 100 快审；模板
+    // 缺+无证据 = 5 分人工；模板齐无证据 = 45 人工；坏历史扣分跌穿门槛。
+    let good = quality_score(3, true, Some(8_000));
+    let bare = quality_score(0, false, None);
+    let no_evidence = quality_score(0, true, None);
+    let bad_history = quality_score(1, true, Some(1_000));
+    set.add(
+        "quality score three factors + fast lane routing",
+        good == 100
+            && fast_lane(good)
+            && bare == 5
+            && !fast_lane(bare)
+            && no_evidence == 45
+            && !fast_lane(no_evidence)
+            && !fast_lane(bad_history)
+            && bad_history == 55,
+        "",
+    );
+
     set
 }
 
@@ -415,5 +467,15 @@ mod tests {
             assert!(l.submit("p", "1.0", &[b"e"], "u1", i).is_ok());
         }
         assert!(l.submit("p", "1.0", &[b"e"], "u2", 5).is_ok(), "不同提交者独立限频");
+    }
+
+    #[test]
+    fn f129_quality_score_clamped_both_ends() {
+        // 上下双钳制：坏历史+零模板+零证据 = 0（不下潜）；超量证据封顶。
+        assert_eq!(quality_score(0, false, Some(0)), 0);
+        assert_eq!(quality_score(99, true, Some(10_000)), 100);
+        // 门槛两侧的边界值：60 恰好快审，59 人工。
+        assert!(fast_lane(QUALITY_FAST_LANE_FLOOR));
+        assert!(!fast_lane(QUALITY_FAST_LANE_FLOOR - 1));
     }
 }

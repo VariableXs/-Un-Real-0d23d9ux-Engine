@@ -692,3 +692,479 @@ mod tests {
         assert!(timeline_preserved(&native, 150, &mut c));
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4 深化批：契约审计报告（决策矩阵确定性文本渲染）· DPI 变更事件台账
+// （环形：档位变化/决策/耗时）· 缓存命中统计对账 · 契约外档位拒绝
+// 人话清单 · 缓存预热
+// ---------------------------------------------------------------------------
+
+/// 渲染决策成本（定点：Lanczos 全核 = 100 基准；AsIs 零核）。预算尺：
+/// 一次档位切换要付多少重采样核，是「缓存零逐帧开销」价值对账的刻度
+/// （原生 2x 直取 < 矢量复制 < 位图插值——铁序在成本表上同样成立）。
+pub fn render_cost_x100(src: RenderSource) -> i64 {
+    match src {
+        RenderSource::AsIs => 0,
+        RenderSource::Native2x => 10,
+        RenderSource::VectorDerived => 25,
+        RenderSource::EnhancedUpsample => 100,
+    }
+}
+
+/// 档位人话名（设置页显示面；契约外档位 None——不编名）。
+pub fn tier_label(dpi: u32) -> Option<&'static str> {
+    match dpi {
+        100 => Some("标准"),
+        125 => Some("125% 放大"),
+        150 => Some("150% 高清"),
+        200 => Some("200% 超清"),
+        _ => None,
+    }
+}
+
+impl DecisionMatrix {
+    /// 放大预算：全格成本合计（定点，100 = 一次 Lanczos 全核）。
+    /// 无态方案预算为 0——「零核」是可对账的数字而非口号。
+    pub fn upscale_budget_x100(&self) -> i64 {
+        self.cells.iter().flatten().map(|c| render_cost_x100(*c)).sum()
+    }
+
+    /// 需要真实重采样核的格数（预算明细：多少格要付钱）。
+    pub fn paid_cells(&self) -> usize {
+        self.cells.iter().flatten().filter(|c| render_cost_x100(**c) > 0).count()
+    }
+}
+
+/// 契约审计报告：决策矩阵的确定性文本渲染（行序 = ALL_STATES、列序 =
+/// DPI_TIERS；同方案同字节——详情页「渲染来源」表的数据源与对账面）。
+/// 列记号：A=原样 N=原生 2x V=矢量派生 E=增强渲染，表尾附图例。
+pub fn render_contract_matrix(m: &CursorSchemeModel) -> String {
+    let matrix = DecisionMatrix::build(m);
+    let tag = |s: RenderSource| -> &'static str {
+        match s {
+            RenderSource::AsIs => "A",
+            RenderSource::Native2x => "N",
+            RenderSource::VectorDerived => "V",
+            RenderSource::EnhancedUpsample => "E",
+        }
+    };
+    let mut out = String::new();
+    out.push_str(&alloc::format!(
+        "contract fp={:016x} native={} vector={}\n",
+        vxcur_fingerprint(m),
+        m.native_2x as u8,
+        m.vector_source as u8,
+    ));
+    for (si, st) in ALL_STATES.iter().enumerate() {
+        out.push_str(&alloc::format!("{:<6}|", st.zh_name()));
+        for ti in 0..4 {
+            out.push_str(tag(matrix.cells[si][ti]));
+            out.push(' ');
+        }
+        out.push('\n');
+    }
+    out.push_str("legend A=AsIs N=Native2x V=Vector E=Enhanced\n");
+    out
+}
+
+/// DPI 变更事件台账条目（档位变化/决策/耗时——留痕三要素）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DpiEventRecord {
+    pub at_ms: u64,
+    pub from: u32,
+    pub to: u32,
+    pub accepted: bool,
+    /// 距上一次成功切换的间隔毫秒（拒绝事件与首次成功均为 None——
+    /// 无基线不编数）。
+    pub since_prev_ms: Option<u64>,
+}
+
+/// DPI 变更事件台账（环形 16——F372 留痕纪律的 DPI 面：热切换/休眠
+/// 唤醒的档位变化、每条决策与相邻耗时全部留痕，封顶滚动不静默丢史）。
+#[derive(Clone, Debug, Default)]
+pub struct DpiEventLedger {
+    records: Vec<DpiEventRecord>,
+    dropped: usize,
+    last_accept_ms: Option<u64>,
+}
+
+impl DpiEventLedger {
+    pub const CAP: usize = 16;
+
+    pub fn new() -> DpiEventLedger {
+        DpiEventLedger { records: Vec::new(), dropped: 0, last_accept_ms: None }
+    }
+
+    /// 记一条档位变化（决策与相邻耗时就地核算——记录不靠调用方自觉）。
+    pub fn record(&mut self, at_ms: u64, from: u32, to: u32, accepted: bool) {
+        let since_prev_ms = if accepted {
+            let span = self.last_accept_ms.map(|t| at_ms.saturating_sub(t));
+            self.last_accept_ms = Some(at_ms);
+            span
+        } else {
+            None
+        };
+        if self.records.len() >= Self::CAP {
+            self.records.remove(0);
+            self.dropped += 1;
+        }
+        self.records.push(DpiEventRecord { at_ms, from, to, accepted, since_prev_ms });
+    }
+
+    pub fn records(&self) -> &[DpiEventRecord] {
+        &self.records
+    }
+
+    pub fn dropped(&self) -> usize {
+        self.dropped
+    }
+
+    pub fn acceptances(&self) -> usize {
+        self.records.iter().filter(|r| r.accepted).count()
+    }
+
+    pub fn rejections(&self) -> usize {
+        self.records.iter().filter(|r| !r.accepted).count()
+    }
+
+    /// 台账与运行时对账：接受数 = 运行时切换数、拒绝数 = 运行时被拒数
+    /// （两本账一张脸——留痕与状态机不允许分叉）。
+    pub fn reconciles_with(&self, rt: &ContractRuntime) -> bool {
+        self.acceptances() == rt.transitions.len() && self.rejections() == rt.rejected()
+    }
+}
+
+/// 缓存命中统计快照（命中/未命中/逐出计数对账的取数面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CacheStats {
+    pub hits: u64,
+    pub misses: u64,
+    pub evicted: u64,
+    pub entries: usize,
+}
+
+/// 取统计快照。
+pub fn cache_stats(c: &UpsampleCache) -> CacheStats {
+    CacheStats { hits: c.hits, misses: c.misses, evicted: c.evicted, entries: c.len() }
+}
+
+/// 计数对账：命中率与原始计数自洽（有请求才有比率、比率可由计数复算
+/// ——零逐帧开销的数面先自洽再谈快）。
+pub fn counters_consistent(c: &UpsampleCache) -> bool {
+    let total = c.hits + c.misses;
+    match c.hit_ratio_m() {
+        None => total == 0,
+        Some(r) => total > 0 && r == (c.hits as i64 * 1000 / total as i64),
+    }
+}
+
+/// 缓存健康单行数（命中/未命中/逐出/在架 + 命中率‰——无请求时报
+/// "--"，不虚报 0%）。
+pub fn cache_stats_line(c: &UpsampleCache) -> String {
+    let ratio = c.hit_ratio_m().map(|r| alloc::format!("{}‰", r)).unwrap_or_else(|| String::from("--"));
+    alloc::format!(
+        "命中 {} 未命中 {} 逐出 {} 在架 {} 命中率 {}",
+        c.hits, c.misses, c.evicted, c.len(), ratio
+    )
+}
+
+/// 运行时预热：某档位下把全态首帧预渲染入缓存（热切换后的第一帧不挨
+/// Lanczos 全核——预热 n 态返回 n）。只预热有重采样核的来源（原生 2x/
+/// 原样零核，预热无意义）；契约外档位返回 0——预热不越契约。
+pub fn warm_cache(m: &CursorSchemeModel, dpi: u32, cache: &mut UpsampleCache) -> usize {
+    if !tier_supported(dpi) || dpi == 100 {
+        return 0;
+    }
+    let mut warmed = 0usize;
+    for st in ALL_STATES {
+        if matches!(
+            render_source_for(m, st, 0, dpi),
+            RenderSource::VectorDerived | RenderSource::EnhancedUpsample
+        ) && render_frame(m, st, 0, dpi, cache).is_some()
+        {
+            warmed += 1;
+        }
+    }
+    warmed
+}
+
+/// 契约外档位拒绝的人话清单（拒绝不给行话给原因：0=未上报、>200=
+/// 超契约、其余=非四档；契约内档位 None——没有拒绝就没有说辞）。
+pub fn explain_rejection(dpi: u32) -> Option<String> {
+    if tier_supported(dpi) {
+        return None;
+    }
+    let s = if dpi == 0 {
+        String::from("DPI 0%：系统未上报档位——契约不猜，请先完成分辨率检测再请求渲染。")
+    } else if dpi > 200 {
+        alloc::format!("DPI {}%：超出契约覆盖（>200%）——超契约请求不静默按 200% 处理，请先为该档位补充契约评审。", dpi)
+    } else {
+        alloc::format!("DPI {}%：不在四档（100/125/150/200）之内——非标准档位不静默吸附，请走档位评审后接入。", dpi)
+    };
+    Some(s)
+}
+
+/// 运行时报告（确定性文本：当前档位、成功切换数、被拒数、末次切换
+/// ——休眠唤醒后状态页的数据源；同状态同字节）。
+pub fn render_runtime_report(rt: &ContractRuntime) -> String {
+    let last = rt.transitions.last();
+    alloc::format!(
+        "runtime dpi={}({}) switches={} rejected={} last={}",
+        rt.current_dpi,
+        tier_label(rt.current_dpi).unwrap_or("?"),
+        rt.transitions.len(),
+        rt.rejected(),
+        last.map(|t| alloc::format!("{}→{}@{}ms", t.from, t.to, t.at_ms))
+            .unwrap_or_else(|| String::from("无")),
+    )
+}
+
+/// F636 v4 自检。
+pub fn run_dpicontract_v4_checks() -> CheckSet {
+    use crate::jstar2::jbase::builtin_default_scheme;
+    let mut set = CheckSet::new("jstar2-F636-v4");
+    let plain = builtin_default_scheme();
+    let mut native = builtin_default_scheme();
+    native.native_2x = true;
+
+    // 1. 决策成本表刻度：AsIs 零核、Lanczos 全核 100、原生 < 矢量 < 位图。
+    set.add(
+        "render cost scale anchored",
+        render_cost_x100(RenderSource::AsIs) == 0
+            && render_cost_x100(RenderSource::EnhancedUpsample) == 100
+            && render_cost_x100(RenderSource::Native2x) < render_cost_x100(RenderSource::VectorDerived),
+        "",
+    );
+
+    // 2. 放大预算：无态方案 0 格 0 核；位图方案 15 态 × 3 档全 Lanczos。
+    let holey = CursorSchemeModel::empty("无态件", crate::jstar2::jbase::OriginKind::Created);
+    let matrix_plain = DecisionMatrix::build(&plain);
+    set.add(
+        "upscale budget accounted",
+        DecisionMatrix::build(&holey).upscale_budget_x100() == 0
+            && DecisionMatrix::build(&holey).paid_cells() == 0
+            && matrix_plain.upscale_budget_x100() == 4500
+            && matrix_plain.paid_cells() == 45,
+        "",
+    );
+
+    // 3. 原生方案预算显著更低（原生 2x 优先的成本证明：10 < 100）。
+    let matrix_native = DecisionMatrix::build(&native);
+    set.add(
+        "native budget below bitmap budget",
+        matrix_native.upscale_budget_x100() == 450
+            && matrix_native.upscale_budget_x100() < matrix_plain.upscale_budget_x100(),
+        "",
+    );
+
+    // 4. 契约审计报告确定性：同方案两份逐字节相等、行数 = 头 1 + 15 + 图例 1。
+    let r1 = render_contract_matrix(&plain);
+    set.add(
+        "contract matrix report deterministic",
+        r1 == render_contract_matrix(&plain) && r1.lines().count() == 17,
+        "",
+    );
+
+    // 5. 报告反映来源优先级：原生方案含 N 三连列、位图方案含 E 三连列、
+    //    图例在位（逐行看表不靠猜）。
+    let rn = render_contract_matrix(&native);
+    set.add(
+        "contract matrix report reflects priority",
+        rn.lines().any(|l| l.contains("N N N"))
+            && r1.lines().any(|l| l.contains("E E E"))
+            && rn.contains("legend A=AsIs"),
+        "",
+    );
+
+    // 6. DPI 事件台账：留痕三要素 + 相邻耗时核算（拒绝无耗时——无基线不编数）。
+    let mut led = DpiEventLedger::new();
+    led.record(1000, 100, 150, true);
+    led.record(1500, 150, 125, true);
+    led.record(1600, 125, 999, false);
+    let recs = led.records();
+    set.add(
+        "dpi event ledger records decision and span",
+        recs.len() == 3
+            && recs[0].since_prev_ms.is_none()
+            && recs[1].since_prev_ms == Some(500)
+            && recs[2].since_prev_ms.is_none()
+            && led.acceptances() == 2
+            && led.rejections() == 1,
+        "",
+    );
+
+    // 7. 台账封顶滚动（环形 16：丢最旧、计数如实）。
+    let mut led2 = DpiEventLedger::new();
+    for i in 0..20u64 {
+        led2.record(i * 100, 100, 125, i % 2 == 0);
+    }
+    set.add(
+        "dpi event ledger caps at 16",
+        led2.records().len() == DpiEventLedger::CAP
+            && led2.dropped() == 4
+            && led2.records()[0].at_ms == 400,
+        "",
+    );
+
+    // 8. 台账与运行时对账（两本账一张脸：多记一笔即对不上）。
+    let mut rt = ContractRuntime::new(100).unwrap();
+    let mut led3 = DpiEventLedger::new();
+    let _ = rt.switch(150, 100);
+    led3.record(100, 100, 150, true);
+    let _ = rt.switch(300, 200);
+    led3.record(200, 150, 300, false);
+    let recon_ok = led3.reconciles_with(&rt);
+    led3.record(300, 150, 200, false);
+    set.add(
+        "ledger reconciles with runtime",
+        recon_ok && !led3.reconciles_with(&rt),
+        "",
+    );
+
+    // 9. 拒绝人话：三类原因各有说辞、契约内无说辞。
+    set.add(
+        "rejection explanations human readable",
+        explain_rejection(0).unwrap().contains("未上报")
+            && explain_rejection(300).unwrap().contains("超出契约覆盖")
+            && explain_rejection(175).unwrap().contains("四档")
+            && explain_rejection(150).is_none(),
+        "",
+    );
+
+    // 10. 档位人话名：四档齐名、契约外无名。
+    set.add(
+        "tier labels cover contract",
+        tier_label(100).is_some()
+            && tier_label(125).is_some()
+            && tier_label(150).is_some()
+            && tier_label(200).is_some()
+            && tier_label(175).is_none()
+            && tier_label(0).is_none(),
+        "",
+    );
+
+    // 11. 缓存统计对账：预热两轮后计数自洽、单行数可读（15 miss + 15 hit）。
+    let mut c = UpsampleCache::default();
+    let _ = warm_cache(&plain, 150, &mut c);
+    let warmed = c.len();
+    let _ = warm_cache(&plain, 150, &mut c);
+    let st = cache_stats(&c);
+    set.add(
+        "cache stats consistent and readable",
+        counters_consistent(&c)
+            && warmed == 15
+            && st.hits == 15
+            && st.misses == 15
+            && st.entries == 15
+            && c.hits == 15
+            && cache_stats_line(&c).contains("命中率 500‰"),
+        "",
+    );
+
+    // 12. 预热后零逐帧开销：预热后逐态首帧渲染全走缓存命中。
+    let before = cache_stats(&c);
+    let mut all_hit = true;
+    for stt in ALL_STATES {
+        let h0 = c.hits;
+        if render_frame(&plain, stt, 0, 150, &mut c).is_none() || c.hits != h0 + 1 {
+            all_hit = false;
+        }
+    }
+    set.add(
+        "preheat makes first frame hit cache",
+        all_hit && c.hits == before.hits + 15,
+        "",
+    );
+
+    // 13. 原生方案无需预热（零核来源不预热——诚实的 0）。
+    let mut cn = UpsampleCache::default();
+    set.add(
+        "native scheme needs no preheat",
+        warm_cache(&native, 200, &mut cn) == 0 && cn.is_empty(),
+        "",
+    );
+
+    // 14. 契约外预热诚实拒绝（300 超契约、0 未上报——都不进缓存）。
+    set.add(
+        "preheat rejects out-of-contract tiers",
+        warm_cache(&plain, 300, &mut c) == 0 && warm_cache(&plain, 0, &mut c) == 0,
+        "",
+    );
+
+    // 15. 运行时报告确定性 + 人话档位 + 末次切换留痕。
+    let rep1 = render_runtime_report(&rt);
+    set.add(
+        "runtime report deterministic and readable",
+        rep1 == render_runtime_report(&rt)
+            && rep1.contains("dpi=150")
+            && rep1.contains("150% 高清")
+            && rep1.contains("rejected=1"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+    use crate::jstar2::jbase::builtin_default_scheme;
+
+    #[test]
+    fn ledger_span_arithmetic() {
+        let mut led = DpiEventLedger::new();
+        led.record(500, 100, 200, true);
+        led.record(900, 200, 100, true);
+        led.record(950, 100, 200, true);
+        assert_eq!(led.records()[1].since_prev_ms, Some(400));
+        assert_eq!(led.records()[2].since_prev_ms, Some(50));
+        assert_eq!(led.records()[0].since_prev_ms, None);
+    }
+
+    #[test]
+    fn budget_zero_for_stateless_matrix() {
+        let m = CursorSchemeModel::empty("空", crate::jstar2::jbase::OriginKind::Created);
+        let mx = DecisionMatrix::build(&m);
+        assert_eq!(mx.upscale_budget_x100(), 0);
+        assert_eq!(mx.paid_cells(), 0);
+    }
+
+    #[test]
+    fn rejection_copy_classes() {
+        assert!(explain_rejection(0).unwrap().contains("未上报"));
+        assert!(explain_rejection(250).unwrap().contains("200%"));
+        assert!(explain_rejection(80).unwrap().contains("非标准档位"));
+        assert!(explain_rejection(100).is_none());
+    }
+
+    #[test]
+    fn warm_then_render_hits() {
+        let m = builtin_default_scheme();
+        let mut c = UpsampleCache::default();
+        assert_eq!(warm_cache(&m, 125, &mut c), 15);
+        let h = c.hits;
+        let _ = render_frame(&m, PointerState::Normal, 0, 125, &mut c);
+        assert_eq!(c.hits, h + 1, "预热后首帧零重采样");
+    }
+
+    #[test]
+    fn cache_line_ratio_matches_counters() {
+        let mut c = UpsampleCache::new(8);
+        c.put((1, 0, 0, 100), PixBuf::new(1, 1));
+        let _ = c.get(&(1, 0, 0, 100));
+        let _ = c.get(&(2, 0, 0, 100));
+        assert!(counters_consistent(&c));
+        assert_eq!(c.hit_ratio_m(), Some(500));
+        assert!(cache_stats_line(&c).contains("命中 1"));
+    }
+
+    #[test]
+    fn v4_checks_all_green() {
+        let set = run_dpicontract_v4_checks();
+        assert!(!set.truncated());
+        for i in 0..set.len() {
+            let c = set.get(i).unwrap();
+            assert!(c.passed, "v4 check red: {}", c.name);
+        }
+    }
+}

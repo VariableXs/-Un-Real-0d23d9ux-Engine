@@ -675,3 +675,483 @@ mod tests {
         assert_eq!(p.sidekeys.bindings[0].2, "nav-back");
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 深化批：v2 完整性哈希段 · 三方合并 · 档案容器导出/导入 ·
+// F147 携带台账 · 篡改检测
+// ---------------------------------------------------------------------------
+
+
+/// v2 段头（带完整性哈希——v1 行式 TLV 之上加 fnv1a64 校验行）。
+pub const SECTION_V2_HEADER: &str = "v=2";
+
+/// 序列化行为段 v2：v1 布局 + 尾行 `hash=<hex16>`（对除 hash 行外全部
+/// 字节做 fnv1a64——防传输损坏与手改，篡改可检出）。
+pub fn serialize_section_v2(s: &MouseBehaviorSection) -> Vec<u8> {
+    let mut body = serialize_section(s);
+    // 把 v=1 换成 v=2 后再算哈希（版本头参与哈希——一处一事实）。
+    body.splice(0..3, SECTION_V2_HEADER.bytes());
+    let h = crate::jstar2::jbase::fnv1a64(&body);
+    let mut out = body;
+    out.extend_from_slice(&alloc::format!("hash={h:016x}\n").into_bytes());
+    out
+}
+
+/// 反序列化 v2 段：逐字节校验哈希；哈希不符 → Err（不猜不救）。
+/// 兼容入口：v1 数据（无 hash 行）走 [`parse_section`] 旧路。
+pub fn parse_section_v2(d: &[u8]) -> Result<MouseBehaviorSection, String> {
+    let text = core::str::from_utf8(d).map_err(|_| String::from("非 UTF-8 字节——包损坏"))?;
+    let mut lines = text.lines();
+    if lines.next() != Some(SECTION_V2_HEADER) {
+        return Err(String::from("缺少 v2 版本头"));
+    }
+    let (body_end, hash_line) = {
+        let v: Vec<&str> = text.lines().collect();
+        if v.len() < 3 {
+            return Err(String::from("v2 段过短——缺 hash 行"));
+        }
+        (v.len() - 2, v[v.len() - 1])
+    };
+    if !hash_line.starts_with("hash=") {
+        return Err(String::from("缺少 hash 行"));
+    }
+    let want = u64::from_str_radix(hash_line.trim_start_matches("hash="), 16)
+        .map_err(|_| String::from("hash 行非十六进制"))?;
+    // 哈希覆盖范围：从 v=2 头到 hash 行前（含换行）。
+    let mut covered = 0usize;
+    for (i, l) in text.lines().enumerate() {
+        if i > body_end {
+            break;
+        }
+        covered += l.len() + 1;
+    }
+    let covered = covered.min(d.len());
+    let got = crate::jstar2::jbase::fnv1a64(&d[..covered]);
+    if got != want {
+        return Err(alloc::format!("完整性哈希不符：want={want:016x} got={got:016x}——段被篡改或损坏"));
+    }
+    // v2 主体与 v1 布局兼容：剥掉 hash 行后走 v1 解析（含 v=1 版本头行）。
+    let body = &d[..covered];
+    let mut v1 = body.to_vec();
+    v1.splice(0..3, b"v=1".iter().copied());
+    parse_section(&v1)
+}
+
+/// 三方合并（vxtheme 同步的标准解法——F147 双设备同步语义）：
+/// - 字段本地改过、远端没改 → 本地赢；
+/// - 远端改过、本地没改 → 远端赢；
+/// - 两边都改且不同 → 冲突，本地赢 + 冲突登记（不静默覆盖用户改动）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeOutcome {
+    pub local_wins: Vec<&'static str>,
+    pub incoming_wins: Vec<&'static str>,
+    pub conflicts: Vec<&'static str>,
+}
+
+impl MergeOutcome {
+    fn new() -> MergeOutcome {
+        MergeOutcome { local_wins: Vec::new(), incoming_wins: Vec::new(), conflicts: Vec::new() }
+    }
+}
+
+/// 三方合并入口（字段面：scheme / speed / wheel / sidekeys / gestures 五段，
+/// 段内整体比较——段级冲突粒度与 diff_sections 同源）。
+pub fn three_way_merge(
+    base: &MouseBehaviorSection,
+    local: &MouseBehaviorSection,
+    incoming: &MouseBehaviorSection,
+) -> (MouseBehaviorSection, MergeOutcome) {
+    let mut out = local.clone();
+    let mut oc = MergeOutcome::new();
+    let field = |name: &'static str,
+                     changed_local: bool,
+                     changed_incoming: bool,
+                     incoming_val: &MouseBehaviorSection,
+                     out: &mut MouseBehaviorSection,
+                     oc: &mut MergeOutcome| {
+        match (changed_local, changed_incoming) {
+            (false, true) => {
+                oc.incoming_wins.push(name);
+            }
+            (true, false) => oc.local_wins.push(name),
+            (true, true) => oc.conflicts.push(name),
+            (false, false) => {}
+        }
+        if !changed_local && changed_incoming {
+            match name {
+                "scheme" => out.pointer_scheme = incoming_val.pointer_scheme.clone(),
+                "speed" => out.speed = incoming_val.speed.clone(),
+                "wheel" => out.wheel = incoming_val.wheel.clone(),
+                "sidekeys" => out.sidekeys = incoming_val.sidekeys.clone(),
+                _ => out.gestures = incoming_val.gestures.clone(),
+            }
+        }
+    };
+    let eq_scheme = |a: &MouseBehaviorSection, b: &MouseBehaviorSection| a.pointer_scheme == b.pointer_scheme;
+    let eq_speed = |a: &MouseBehaviorSection, b: &MouseBehaviorSection| a.speed == b.speed;
+    let eq_wheel = |a: &MouseBehaviorSection, b: &MouseBehaviorSection| a.wheel == b.wheel;
+    let eq_side = |a: &MouseBehaviorSection, b: &MouseBehaviorSection| a.sidekeys == b.sidekeys;
+    let eq_gest = |a: &MouseBehaviorSection, b: &MouseBehaviorSection| a.gestures == b.gestures;
+    field("scheme", !eq_scheme(base, local), !eq_scheme(base, incoming), incoming, &mut out, &mut oc);
+    field("speed", !eq_speed(base, local), !eq_speed(base, incoming), incoming, &mut out, &mut oc);
+    field("wheel", !eq_wheel(base, local), !eq_wheel(base, incoming), incoming, &mut out, &mut oc);
+    field("sidekeys", !eq_side(base, local), !eq_side(base, incoming), incoming, &mut out, &mut oc);
+    field("gestures", !eq_gest(base, local), !eq_gest(base, incoming), incoming, &mut out, &mut oc);
+    (out, oc)
+}
+
+/// 档案容器（携带面）：段字节 + 设备标签 + 携带时刻 + 容器哈希。
+pub struct CarryContainer {
+    pub device_tag: String,
+    pub carried_at_ms: u64,
+    payload: Vec<u8>,
+    hash: u64,
+}
+
+impl CarryContainer {
+    /// 打包（v2 段进容器——容器哈希对整段负责）。
+    pub fn pack(section: &MouseBehaviorSection, device_tag: &str, at_ms: u64) -> CarryContainer {
+        let payload = serialize_section_v2(section);
+        let mut feed = payload.clone();
+        feed.extend_from_slice(device_tag.as_bytes());
+        let hash = crate::jstar2::jbase::fnv1a64(&feed);
+        CarryContainer { device_tag: String::from(device_tag), carried_at_ms: at_ms, payload, hash }
+    }
+
+    /// 容器校验 + 开包（设备标签参与哈希——换标签即检出）。
+    pub fn unpack(&self, device_tag: &str) -> Result<MouseBehaviorSection, String> {
+        let mut feed = self.payload.clone();
+        feed.extend_from_slice(device_tag.as_bytes());
+        if crate::jstar2::jbase::fnv1a64(&feed) != self.hash {
+            return Err(String::from("容器哈希不符——携带面损坏或标签不符"));
+        }
+        parse_section_v2(&self.payload)
+    }
+
+    pub fn payload_len(&self) -> usize {
+        self.payload.len()
+    }
+}
+
+/// F147 携带台账（跨设备插拔的事件面——每条带设备与时刻，环形 32 槽）。
+pub struct CarryLedger {
+    entries: Vec<(String, u64, u64)>, // (device_tag, at_ms, payload_len)
+    pub total: u64,
+}
+
+impl CarryLedger {
+    pub fn new() -> CarryLedger {
+        CarryLedger { entries: Vec::new(), total: 0 }
+    }
+
+    pub fn record(&mut self, device_tag: &str, at_ms: u64, payload_len: usize) {
+        if self.entries.len() >= 32 {
+            self.entries.remove(0);
+        }
+        self.entries.push((String::from(device_tag), at_ms, payload_len as u64));
+        self.total += 1;
+    }
+
+    /// 查询某设备最近一次携带时刻。
+    pub fn last_for(&self, device_tag: &str) -> Option<u64> {
+        self.entries.iter().rev().find(|(d, _, _)| d == device_tag).map(|(_, t, _)| *t)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+impl Default for CarryLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// v3 自检。
+pub fn run_vtheme_v3_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F623-v3");
+    let base = MouseBehaviorSection::default();
+    let mut local = base.clone();
+    local.speed.gain_cap_m = 3200;
+    let mut incoming = base.clone();
+    incoming.pointer_scheme = String::from("极简白");
+
+    // 1. v2 序列化往返：serialize→parse→再 serialize 逐字节相等。
+    let v2 = serialize_section_v2(&base);
+    let back = parse_section_v2(&v2).unwrap();
+    set.add("v2 section roundtrip byte-exact", serialize_section_v2(&back) == v2, "");
+
+    // 2. 篡改检测：翻一个字节 → 哈希不符报错（人话、定位到完整性）。
+    let mut tampered = v2.clone();
+    let at = tampered.len() / 2;
+    tampered[at] ^= 0x01;
+    set.add(
+        "v2 tamper detected by hash",
+        parse_section_v2(&tampered).err().map(|e| e.contains("篡改") || e.contains("哈希")).unwrap_or(false),
+        "",
+    );
+
+    // 3. v1 数据不被 v2 入口误收（诚实拒绝 + 指路旧解析器）。
+    let v1 = serialize_section(&base);
+    set.add("v2 parser rejects v1 honestly", parse_section_v2(&v1).is_err(), "");
+
+    // 4. 三方合并：远端单改 → 远端赢；本地单改 → 本地保留；双改 → 冲突登记。
+    let (merged, oc) = three_way_merge(&base, &local, &incoming);
+    set.add(
+        "three-way merge field routing",
+        oc.incoming_wins.contains(&"scheme")
+            && oc.local_wins.contains(&"speed")
+            && merged.pointer_scheme == "极简白"
+            && merged.speed.gain_cap_m == 3200,
+        "",
+    );
+    let mut local2 = base.clone();
+    local2.wheel.global = String::from("always-notch");
+    let mut incoming2 = base.clone();
+    incoming2.wheel.global = String::from("always-smooth");
+    let (_, oc2) = three_way_merge(&base, &local2, &incoming2);
+    set.add(
+        "three-way merge conflict registered not silent",
+        oc2.conflicts.contains(&"wheel") && oc2.conflicts.len() == 1,
+        "",
+    );
+
+    // 5. 无改动三方 = 恒等（零假冲突）。
+    let (_, oc3) = three_way_merge(&base, &base, &base);
+    set.add("three-way merge identity", oc3.local_wins.is_empty() && oc3.incoming_wins.is_empty() && oc3.conflicts.is_empty(), "");
+
+    // 6. 档案容器：打包→开包往返一致；设备标签不符 → 诚实拒绝。
+    let cc = CarryContainer::pack(&base, "y7000", 12345);
+    let open_ok = cc.unpack("y7000").map(|s| s == base).unwrap_or(false);
+    let open_bad = cc.unpack("desktop-01").is_err();
+    set.add("carry container roundtrip and tag bound", open_ok && open_bad, "");
+
+    // 7. 携带台账：记录、查最近、32 槽环形不无界增长（被驱逐的旧记录
+    //    如实查不到——环的语义就是只保最近 32 条）。
+    let mut ledger = CarryLedger::new();
+    ledger.record("y7000", 100, cc.payload_len());
+    ledger.record("desktop-01", 200, 100);
+    for i in 0..40u64 {
+        ledger.record("pad", 400 + i, 10);
+    }
+    ledger.record("y7000", 1000, cc.payload_len());
+    set.add(
+        "carry ledger ring and lookup",
+        ledger.total == 43 && ledger.len() == 32 && ledger.last_for("y7000") == Some(1000) && ledger.last_for("desktop-01").is_none(),
+        "",
+    );
+
+    // 8. 容器负载非空且带 v2 头（结构面对账）。
+    set.add(
+        "container payload carries v2 header",
+        cc.payload_len() > 8 && core::str::from_utf8(&cc.payload[..3]) == Ok(SECTION_V2_HEADER),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v3 {
+    use super::*;
+
+    #[test]
+    fn v2_roundtrip_with_overrides() {
+        let mut s = MouseBehaviorSection::default();
+        s.wheel.overrides.push((String::from("app-x"), String::from("notch")));
+        s.gestures.gestures.push((String::from("g3"), String::from("UD"), String::from("act")));
+        let v2 = serialize_section_v2(&s);
+        let back = parse_section_v2(&v2).unwrap();
+        assert_eq!(back.wheel.overrides.len(), 1);
+        assert_eq!(back.gestures.gestures.len(), 3);
+    }
+
+    #[test]
+    fn merge_local_only_change() {
+        let mut local = MouseBehaviorSection::default();
+        local.sidekeys.bindings.clear();
+        let (m, oc) = three_way_merge(&MouseBehaviorSection::default(), &local, &MouseBehaviorSection::default());
+        assert!(m.sidekeys.bindings.is_empty());
+        assert!(oc.conflicts.is_empty() && oc.incoming_wins.is_empty());
+    }
+
+    #[test]
+    fn container_detects_payload_corruption() {
+        let mut cc = CarryContainer::pack(&MouseBehaviorSection::default(), "dev", 1);
+        let i = cc.payload.len() - 5;
+        cc.payload[i] ^= 0x02;
+        assert!(cc.unpack("dev").is_err(), "负载损坏必须被检出");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 深化批：打包清单人话摘要渲染 · KV 携带魔数封皮（带魔数与篡改拒绝）
+// ---------------------------------------------------------------------------
+
+/// 打包清单人话摘要（导入确认页的呈现面：方案名 + 四件逐行人话；
+/// 数字全部取自段事实本身——不另记第二份状态，一处一事实）。
+pub fn summarize_section(s: &MouseBehaviorSection) -> String {
+    let mut out = String::new();
+    out.push_str(&alloc::format!("指针方案：{}\n", s.pointer_scheme));
+    out.push_str(&alloc::format!(
+        "速度曲线：{}（增益上限 {}‰）\n",
+        s.speed.curve_id, s.speed.gain_cap_m
+    ));
+    out.push_str(&alloc::format!(
+        "滚轮档：{}（应用覆盖 {} 项）\n",
+        s.wheel.global,
+        s.wheel.overrides.len()
+    ));
+    out.push_str(&alloc::format!("侧键映射：{} 条\n", s.sidekeys.bindings.len()));
+    out.push_str(&alloc::format!("手势库：{} 条\n", s.gestures.gestures.len()));
+    out
+}
+
+/// KV 携带封皮魔数（载荷前 8 字节——封皮损坏在魔数关即拒绝，不进解析）。
+pub const KV_MAGIC: &str = "VXKV1000";
+
+/// 打包参数 KV 封皮（魔数 + v1 载荷 + fnv1a64 尾随哈希——传输面防损坏
+/// 防手改；布局一处一事实：`MAGIC || payload || "kvhash=<hex16>\n"`）。
+pub fn pack_kv(s: &MouseBehaviorSection) -> Vec<u8> {
+    let payload = serialize_section(s);
+    let h = crate::jstar2::jbase::fnv1a64(&payload);
+    let mut out = Vec::new();
+    out.extend_from_slice(KV_MAGIC.as_bytes());
+    out.extend_from_slice(&payload);
+    out.extend_from_slice(&alloc::format!("kvhash={h:016x}\n").into_bytes());
+    out
+}
+
+/// KV 封皮尾行长度（"kvhash=" 7 字节 + hex16 + '\n'）。
+const KV_TAIL_LEN: usize = 7 + 16 + 1;
+
+/// KV 封皮开包：长度关 → 魔数关 → 哈希关 → v1 解析，逐关人话拒绝
+/// （篡改/损坏不猜不救——F623 打包语义在携带面的延伸）。
+pub fn unpack_kv(d: &[u8]) -> Result<MouseBehaviorSection, String> {
+    let mlen = KV_MAGIC.len();
+    if d.len() < mlen + KV_TAIL_LEN {
+        return Err(String::from("KV 封皮过短——魔数或哈希尾行不完整"));
+    }
+    if &d[..mlen] != KV_MAGIC.as_bytes() {
+        return Err(String::from("KV 封皮魔数不符——不是 VARIX 打包参数携带面"));
+    }
+    let split = d.len() - KV_TAIL_LEN;
+    if &d[split..split + 7] != b"kvhash=" {
+        return Err(String::from("KV 载荷与哈希尾行分界损坏"));
+    }
+    let hexs = core::str::from_utf8(&d[split + 7..d.len() - 1])
+        .map_err(|_| String::from("哈希尾行非文本"))?;
+    let want = u64::from_str_radix(hexs, 16).map_err(|_| String::from("哈希尾行非十六进制"))?;
+    let got = crate::jstar2::jbase::fnv1a64(&d[mlen..split]);
+    if got != want {
+        return Err(alloc::format!(
+            "KV 载荷完整性哈希不符：want={want:016x} got={got:016x}——被篡改或损坏"
+        ));
+    }
+    parse_section(&d[mlen..split])
+}
+
+/// v4 自检（摘要呈现 + KV 封皮三道闸 + 确定性）。
+pub fn run_vtheme_v4_checks() -> CheckSet {
+    let mut set = CheckSet::new("jstar2-F623-v4");
+    let base = MouseBehaviorSection::default();
+
+    // 1. 摘要如实呈现段事实（默认段：双手势 / 双侧键 / 增益 1000‰）。
+    let sum = summarize_section(&base);
+    set.add(
+        "summary renders section facts",
+        sum.contains("指针方案：VARIX 默认指针")
+            && sum.contains("手势库：2 条")
+            && sum.contains("侧键映射：2 条")
+            && sum.contains("1000"),
+        "",
+    );
+
+    // 2. 摘要跟随改动（改手势数 → 数字跟着变——不是快照文案）。
+    let mut custom = base.clone();
+    custom.gestures.gestures.push((String::from("g3"), String::from("UL"), String::from("act")));
+    custom.speed.gain_cap_m = 2500;
+    let sum2 = summarize_section(&custom);
+    set.add(
+        "summary follows mutations",
+        sum2.contains("手势库：3 条") && sum2.contains("2500"),
+        "",
+    );
+
+    // 3. KV 封皮往返：pack → unpack → 段相等。
+    set.add(
+        "kv pack/unpack roundtrip",
+        unpack_kv(&pack_kv(&base)).map(|s| s == base).unwrap_or(false),
+        "",
+    );
+
+    // 4. pack 确定性：同一段两次 pack 逐字节相同。
+    set.add("kv pack deterministic", pack_kv(&base) == pack_kv(&base), "");
+
+    // 5. 魔数关：首字节翻转 → 魔数不符人话拒绝。
+    let mut bad_magic = pack_kv(&base);
+    bad_magic[0] ^= 0x01;
+    set.add(
+        "kv magic gate rejects",
+        unpack_kv(&bad_magic).err().map(|e| e.contains("魔数")).unwrap_or(false),
+        "",
+    );
+
+    // 6. 篡改关：载荷翻一字节 → 哈希不符如实点破。
+    let mut tampered = pack_kv(&base);
+    let mid = KV_MAGIC.len() + 5;
+    tampered[mid] ^= 0x02;
+    set.add(
+        "kv tamper detected by hash",
+        unpack_kv(&tampered).err().map(|e| e.contains("篡改") || e.contains("哈希")).unwrap_or(false),
+        "",
+    );
+
+    // 7. 截断关：砍掉哈希尾行 → 过短拒绝（不越界不误读）。
+    let packed = pack_kv(&base);
+    set.add(
+        "kv truncated rejected",
+        unpack_kv(&packed[..packed.len() - 5]).is_err(),
+        "",
+    );
+
+    // 8. 裸 v1 段（无封皮）不被误收。
+    set.add(
+        "kv rejects bare v1 payload",
+        unpack_kv(&serialize_section(&base)).is_err(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests_v4 {
+    use super::*;
+
+    #[test]
+    fn kv_roundtrip_with_custom_section() {
+        let mut s = MouseBehaviorSection::default();
+        s.wheel.overrides.push((String::from("term"), String::from("always-notch")));
+        s.pointer_scheme = String::from("夜行箭");
+        let back = unpack_kv(&pack_kv(&s)).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn summary_is_deterministic() {
+        let s = MouseBehaviorSection::default();
+        assert_eq!(summarize_section(&s), summarize_section(&s));
+    }
+
+    #[test]
+    fn kv_unpack_rejects_bit_flips_across_payload() {
+        let packed = pack_kv(&MouseBehaviorSection::default());
+        // 载荷中段逐位翻转——全部必须被哈希关拦下。
+        for off in KV_MAGIC.len()..packed.len() - KV_TAIL_LEN {
+            let mut d = packed.clone();
+            d[off] ^= 0x10;
+            assert!(unpack_kv(&d).is_err(), "offset {} 翻转未被拦下", off);
+        }
+    }
+}

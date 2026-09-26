@@ -155,3 +155,50 @@ function findNode(root: TreeNode, id: string): TreeNode | null {
 export function indeterminateVisual(state: CheckState): { bar: boolean; widthPct: number; centered: boolean } {
   return { bar: state === "indeterminate", widthPct: INDETERMINATE_BAR.widthPct, centered: INDETERMINATE_BAR.centered };
 }
+
+/* ================= v5 深化批次五：万节点迭代扁平化 / 懒加载 / 移动校验 ================= */
+
+/** 万节点迭代扁平化（显式栈——深树不爆调用栈；序与递归版逐位一致）。 */
+export function flattenIterative(root: TreeNode, expanded: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const stack: Array<{ node: TreeNode; expand: boolean }> = [{ node: root, expand: !isLeaf(root) && expanded.has(root.id) }];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    out.push(cur.node.id);
+    if (cur.expand) {
+      for (let i = cur.node.children.length - 1; i >= 0; i--) {
+        const c = cur.node.children[i]!;
+        stack.push({ node: c, expand: !isLeaf(c) && expanded.has(c.id) });
+      }
+    }
+  }
+  return out;
+}
+
+export interface LazyNode extends TreeNode {
+  /** childrenKnown=false = 子节点未加载（展开时请求——大目录树按需拉取）。 */
+  childrenKnown: boolean;
+}
+
+/** 懒加载展开判定：子节点未知 → 先请求加载（返回 needLoad 而不是假展开——未知即请求，顺序在 isLeaf 之前）。 */
+export function lazyExpandCheck(node: LazyNode, mem: TreeMemory): { action: "expand" | "needLoad" | "none" } {
+  if (!node.childrenKnown) return { action: "needLoad" };
+  if (isLeaf(node)) return { action: "none" };
+  if (mem.expanded.includes(node.id)) return { action: "none" };
+  return { action: "expand" };
+}
+
+/** 拖拽移动校验：不许移进自己或自己的子树（成环 = 树被毁——结构红线）。 */
+export function validateMove(moving: TreeNode, targetParent: TreeNode): { ok: boolean; reason: string } {
+  const subtree = leavesOf(moving);
+  void subtree;
+  const ids = new Set<string>();
+  const walk = (n: TreeNode): void => {
+    ids.add(n.id);
+    for (const c of n.children) walk(c);
+  };
+  walk(moving);
+  if (ids.has(targetParent.id)) return { ok: false, reason: "不能移进自己或自己的子树（会成环）" };
+  if (moving.id === targetParent.id) return { ok: false, reason: "不能移进自身" };
+  return { ok: true, reason: "移动合法" };
+}

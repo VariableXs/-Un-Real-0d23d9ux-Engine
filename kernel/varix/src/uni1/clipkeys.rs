@@ -30,6 +30,9 @@ pub struct ClipPayload {
     pub is_cut: bool,
 }
 
+/// 剪贴板历史容量（ring——最近 8 笔，粘贴回找）。
+pub const HISTORY_CAP: usize = 8;
+
 /// 剪贴板核。
 pub struct ClipKeys {
     pub payload: Option<ClipPayload>,
@@ -37,11 +40,31 @@ pub struct ClipKeys {
     pub cut_stash: Vec<u64>,
     pub paste_conflicts: u64,
     pub disabled_silent: u64,
+    /// 剪贴板历史 ring（v6：最近 HISTORY_CAP 笔，F060 历史面板同源）。
+    pub history: Vec<ClipPayload>,
+    /// 冲突裁决账（v6：F087 面板裁决后替换/跳过分记）。
+    pub conflicts_resolved: u64,
+    pub conflicts_skipped: u64,
 }
 
 impl ClipKeys {
     pub fn new() -> ClipKeys {
-        ClipKeys { payload: None, cut_stash: Vec::new(), paste_conflicts: 0, disabled_silent: 0 }
+        ClipKeys {
+            payload: None,
+            cut_stash: Vec::new(),
+            paste_conflicts: 0,
+            disabled_silent: 0,
+            history: Vec::new(),
+            conflicts_resolved: 0,
+            conflicts_skipped: 0,
+        }
+    }
+
+    fn push_history(&mut self, p: ClipPayload) {
+        self.history.push(p);
+        if self.history.len() > HISTORY_CAP {
+            self.history.remove(0);
+        }
     }
 
     /// Ctrl+C 复制（三域通用；清除剪切意图）。
@@ -49,6 +72,7 @@ impl ClipKeys {
         let mut p = p;
         p.is_cut = false;
         self.cut_stash.clear();
+        self.push_history(p.clone());
         self.payload = Some(p);
     }
 
@@ -61,6 +85,7 @@ impl ClipKeys {
             self.cut_stash = p.file_ids.clone();
             let mut p = p;
             p.is_cut = true;
+            self.push_history(p.clone());
             self.payload = Some(p);
             true
         } else {
@@ -91,6 +116,40 @@ impl ClipKeys {
             }
             _ => Ok(1),
         }
+    }
+
+    /// 冲突裁决粘贴（v6）：F087 面板逐项裁决（replace=true 替换 /
+    /// false 跳过）——裁决后执行移动，跳过项不静默消失（账分记）。
+    /// 移动/跳过总数 != 载荷数即暴露（调用方对账）。
+    pub fn paste_with_verdicts(&mut self, verdicts: &[(u64, bool)]) -> (usize, usize) {
+        let Some(p) = self.payload.take() else { return (0, 0) };
+        if p.domain != ClipDomain::File {
+            self.payload = Some(p);
+            return (0, 0);
+        }
+        let mut moved = 0usize;
+        let mut skipped = 0usize;
+        for id in &p.file_ids {
+            match verdicts.iter().find(|(i, _)| i == id) {
+                Some((_, true)) => {
+                    moved += 1;
+                    self.conflicts_resolved += 1;
+                }
+                Some((_, false)) => {
+                    skipped += 1;
+                    self.conflicts_skipped += 1;
+                }
+                None => {
+                    skipped += 1;
+                    self.conflicts_skipped += 1;
+                }
+            }
+        }
+        // 裁决完成即移动完成（跳过项保留原位——「不动」也是明确结局）。
+        if p.is_cut {
+            self.cut_stash.clear();
+        }
+        (moved, skipped)
     }
 
     /// 剪切反悔：粘贴前重新复制 → 意图清除、源文件从未动过（结构性：
@@ -167,6 +226,62 @@ pub fn run_clipkeys_checks() -> CheckSet {
     // 空剪切拒绝。
     let empty = ClipPayload { domain: ClipDomain::File, file_ids: alloc::vec![], size: 0, is_cut: false };
     set.add("f427-empty-cut-rejected", !k.cut(empty), "");
+    // 剪贴板历史 ring（v6）：每笔入账、容量淘汰最老、粘贴不消历史。
+    let mut h = ClipKeys::new();
+    for i in 0..10u64 {
+        let p = ClipPayload { domain: ClipDomain::Text, file_ids: alloc::vec![], size: i, is_cut: false };
+        h.copy(p);
+    }
+    set.add(
+        "f427-history-cap-evict",
+        h.history.len() == HISTORY_CAP
+            && h.history.first().map(|p| p.size).unwrap_or(0) == 2
+            && h.history.last().map(|p| p.size).unwrap_or(0) == 9,
+        "",
+    );
+    let _ = h.paste(&[]);
+    set.add(
+        "f427-history-survives-paste",
+        h.history.len() == HISTORY_CAP && h.payload.is_none(),
+        "",
+    );
+    // 复制清剪切意图（反悔的第二条路：不必专门 undo）。
+    let mut c2 = ClipKeys::new();
+    let f2 = ClipPayload { domain: ClipDomain::File, file_ids: alloc::vec![5], size: 0, is_cut: false };
+    let _ = c2.cut(f2.clone());
+    c2.copy(f2);
+    set.add("f427-copy-cancels-cut", !c2.source_intact() && c2.payload.as_ref().map(|p| !p.is_cut).unwrap_or(false), "");
+    // 冲突裁决粘贴（v6）：F087 逐项裁决——替换/跳过/缺席分记。
+    let mut v = ClipKeys::new();
+    let fv = ClipPayload { domain: ClipDomain::File, file_ids: alloc::vec![1, 2, 3], size: 0, is_cut: true };
+    let _ = v.cut(fv);
+    let (moved, skipped) = v.paste_with_verdicts(&[(1, true), (2, false)]);
+    set.add(
+        "f427-verdict-partial",
+        moved == 1 && skipped == 2 && v.conflicts_resolved == 1 && v.conflicts_skipped == 2,
+        "",
+    );
+    // 裁决完成即移动完成：cut_stash 清、载荷消（跳过项留原位是明确结局）。
+    set.add("f427-verdict-completes-cut", !v.source_intact() && v.payload.is_none(), "");
+    // 全跳过裁决：移动 0 但仍是完成（不挂起）。
+    let mut w = ClipKeys::new();
+    let fw = ClipPayload { domain: ClipDomain::File, file_ids: alloc::vec![7], size: 0, is_cut: true };
+    let _ = w.cut(fw);
+    let (m2, s2) = w.paste_with_verdicts(&[(7, false)]);
+    set.add(
+        "f427-verdict-skip-all",
+        m2 == 0 && s2 == 1 && !w.source_intact() && w.conflicts_skipped == 1,
+        "",
+    );
+    // 文本域裁决粘贴：不适用（返回 0/0、载荷保留）。
+    let mut t2 = ClipKeys::new();
+    let tv = ClipPayload { domain: ClipDomain::Text, file_ids: alloc::vec![], size: 5, is_cut: false };
+    t2.copy(tv);
+    set.add(
+        "f427-verdict-text-not-applicable",
+        t2.paste_with_verdicts(&[(1, true)]) == (0, 0) && t2.payload.is_some(),
+        "",
+    );
     set
 }
 

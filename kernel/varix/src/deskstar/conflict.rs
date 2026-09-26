@@ -161,6 +161,10 @@ pub struct ConflictPanel {
     checked: alloc::collections::BTreeSet<usize>,
     /// 缩略注入（F093 接缝：pair 下标 → 缩略来源类型）。
     thumbs: alloc::collections::BTreeMap<usize, &'static str>,
+    /// 键盘焦点（批量列表可达性——方向键移动/Enter 决策/Esc 全跳）。
+    focus: Option<usize>,
+    /// 「应用到全部」批次标记（applied 的切分点——整批撤销的对账线）。
+    batch_marks: Vec<usize>,
 }
 
 impl ConflictPanel {
@@ -176,6 +180,8 @@ impl ConflictPanel {
             readonly_pending: Vec::new(),
             checked: alloc::collections::BTreeSet::new(),
             thumbs: alloc::collections::BTreeMap::new(),
+            focus: None,
+            batch_marks: Vec::new(),
         }
     }
 
@@ -272,6 +278,7 @@ impl ConflictPanel {
             return 0;
         }
         self.apply_all_armed = false;
+        self.batch_marks.push(self.applied.len());
         let n = self.pairs.len();
         let mut done = 0;
         for i in 0..n {
@@ -292,19 +299,44 @@ impl ConflictPanel {
         self.apply_all_armed
     }
 
-    /// 操作级 undo（误伤撤销路径）：撤最近一条——KeepBoth 撤 =
-    /// 删除落位新件并让同名可复用；Overwrite 撤 = 恢复原件语义
-    /// （占位还原）；Skip 撤 = 重新待决。
-    pub fn undo_last(&mut self) -> Option<String> {
-        let a = self.applied.pop()?;
-        self.undos += 1;
+    /// 单条回退内核（undo_last 与整批撤销共用的唯一实现——一处一事实）。
+    fn revert_applied(&mut self, a: &Applied) {
         if let Some(placed) = &a.placed_as {
             self.occupied.retain(|o| o != placed);
         }
         if let Some(pos) = self.decided.iter().position(|(i, _)| *i == a.idx) {
             self.decided.remove(pos);
         }
+    }
+
+    /// 操作级 undo（误伤撤销路径）：撤最近一条——KeepBoth 撤 =
+    /// 删除落位新件并让同名可复用；Overwrite 撤 = 恢复原件语义
+    /// （占位还原）；Skip 撤 = 重新待决。
+    pub fn undo_last(&mut self) -> Option<String> {
+        let a = self.applied.pop()?;
+        self.undos += 1;
+        self.revert_applied(&a);
         Some(a.pair)
+    }
+
+    /// 整批撤销（「应用到全部」误伤的成组出路）：撤最近一个批次的
+    /// 全部决策——逐条回退共享同一 revert 内核，批次标记之后全撤。
+    /// 返回本批撤销条数（无批次 = 0）。
+    pub fn undo_batch(&mut self) -> usize {
+        let mark = match self.batch_marks.pop() {
+            Some(m) => m,
+            None => return 0,
+        };
+        let mut n = 0;
+        while self.applied.len() > mark {
+            match self.applied.pop() {
+                Some(a) => self.revert_applied(&a),
+                None => break, // 长度由 mark 保证，防御式出口（零 panic）
+            }
+            n += 1;
+        }
+        self.undos += 1; // 整批记一次 undo 操作（操作级而非条目级）
+        n
     }
 
     /// Esc = 全部跳过（保守默认——不覆盖不新增）。
@@ -396,6 +428,136 @@ impl ConflictPanel {
             src_abs,
             format!("{} / {}", src_rel, dst_abs),
         ])
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检三（D1-v4）——键盘导航 / 决策记忆持久化 / 整批撤销 / 同文件
+// 提示文案。判据唯一源：主册 G-C-17 设计要点（决策记忆、误伤撤销、
+// 十二查全键盘可达）。
+// ---------------------------------------------------------------------------
+
+/// F087 深化自检三：四族逐条记账。
+pub fn run_conflict_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F087-deep3");
+    let pair = |name: &str| ConflictPair {
+        name: String::from(name),
+        src_size: 1,
+        src_mtime: 1,
+        dst_size: 2,
+        dst_mtime: 2,
+        dst_readonly: false,
+        thumb_failed: false,
+    };
+    // 1. 键盘导航：焦点循环钳制 + Enter 决策 + 空面板无焦点。
+    let mut p = ConflictPanel::new(vec![]);
+    p.load(vec![pair("a"), pair("b"), pair("c")]);
+    let first = p.focus_move(1); // 未聚焦下移 → 首行
+    let wrap = p.focus_move(-1); // 首行上移 → 末行（循环）
+    let placed = p.keyboard_decide(Decision::KeepBoth);
+    let mut empty = ConflictPanel::new(vec![]);
+    let empty_focus = empty.focus_move(1);
+    set.add(
+        "keyboard-nav",
+        first == Some(0) && wrap == Some(2) && placed == Some(String::from("c (2)"))
+            && empty_focus.is_none(),
+        "focus loop + enter",
+    );
+    // 2. 决策记忆持久化：导出编码 / 恢复还原 / 非法编码拒收。
+    let mut p2 = ConflictPanel::new(vec![]);
+    p2.apply_all_arm();
+    p2.load(vec![pair("x")]);
+    p2.apply_all_commit(Decision::Overwrite);
+    let code = p2.memo_export();
+    let mut p3 = ConflictPanel::new(vec![]);
+    let restored = p3.memo_restore(code.unwrap_or(0));
+    let bad_rejected = !p3.memo_restore(9);
+    set.add(
+        "memo-persist",
+        code == Some(2) && restored && p3.memoized() == Some(Decision::Overwrite) && bad_rejected,
+        "cross-panel policy memory",
+    );
+    // 3. 整批撤销：批量 3 条 KeepBoth 后 undo_batch 全撤回待决、
+    //    后缀占位全释放；再撤销（无批次）= 0。
+    let mut p4 = ConflictPanel::new(vec![]);
+    p4.load(vec![pair("报告.txt"), pair("b"), pair("c")]);
+    p4.apply_all_arm();
+    let batch = p4.apply_all_commit(Decision::KeepBoth);
+    let undid = p4.undo_batch();
+    let no_more = p4.undo_batch() == 0;
+    let pending_restored = p4.pending_count() == 3;
+    let suffix_freed = p4.decide(0, Decision::KeepBoth) == Some(String::from("报告 (2).txt"));
+    set.add(
+        "undo-batch",
+        batch == 3 && undid == 3 && no_more && pending_restored && suffix_freed,
+        "apply-all group undo",
+    );
+    // 4. 整批撤销不吞单条批次：单条 decide 不入批次标记（undo_batch 不动它）。
+    let mut p5 = ConflictPanel::new(vec![]);
+    p5.load(vec![pair("a"), pair("b")]);
+    p5.decide(0, Decision::Skip);
+    p5.apply_all_arm();
+    p5.apply_all_commit(Decision::KeepBoth);
+    p5.undo_batch();
+    set.add(
+        "undo-batch-scope",
+        p5.pending_count() == 1 && p5.decision_table().len() == 1,
+        "single decisions survive",
+    );
+    // 5. 同文件提示文案：有同文件组 → 人话建议句；无 → 不占位。
+    let mut p6 = ConflictPanel::new(vec![]);
+    p6.load(vec![ConflictPair {
+        name: String::from("同"),
+        src_size: 512,
+        src_mtime: 100,
+        dst_size: 512,
+        dst_mtime: 100,
+        dst_readonly: false,
+        thumb_failed: false,
+    }, pair("异")]);
+    let hint = p6.identical_hint_text();
+    let none_case = ConflictPanel::new(vec![]).identical_hint_text().is_none();
+    set.add(
+        "identical-hint",
+        hint.map(|h| h.contains("看起来是同一文件") && h.contains("建议跳过")) == Some(true)
+            && none_case,
+        "top-bar suggestion text",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn focus_wraps_both_directions() {
+        let mut p = ConflictPanel::new(vec![]);
+        p.load(vec![
+            ConflictPair { name: String::from("a"), src_size: 1, src_mtime: 1, dst_size: 2, dst_mtime: 2, dst_readonly: false, thumb_failed: false },
+            ConflictPair { name: String::from("b"), src_size: 1, src_mtime: 1, dst_size: 2, dst_mtime: 2, dst_readonly: false, thumb_failed: false },
+        ]);
+        assert_eq!(p.focus_move(-1), Some(1), "未聚焦上移从末行起");
+        assert_eq!(p.focus_move(1), Some(0), "末行下移循环回首行");
+    }
+
+    #[test]
+    fn undo_batch_restores_suffix_reuse() {
+        let mut p = ConflictPanel::new(vec!["报告 (2).txt".to_string()]);
+        p.load(vec![ConflictPair { name: String::from("报告.txt"), src_size: 1, src_mtime: 1, dst_size: 2, dst_mtime: 2, dst_readonly: false, thumb_failed: false }]);
+        p.apply_all_arm();
+        assert_eq!(p.apply_all_commit(Decision::KeepBoth), 1);
+        assert_eq!(p.undo_batch(), 1);
+        assert_eq!(p.decide(0, Decision::KeepBoth), Some(String::from("报告 (3).txt")), "整批撤后 (3) 释放可复用");
+    }
+
+    #[test]
+    fn conflict_deep3_checks_all_green() {
+        let set = run_conflict_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F087-deep3 红项：{}/{} 绿", p, p + f);
     }
 }
 
@@ -535,6 +697,72 @@ impl ConflictPanel {
         let ov = self.applied.iter().filter(|a| a.decision == Decision::Overwrite).count();
         let sk = self.applied.iter().filter(|a| a.decision == Decision::Skip).count();
         format!("保留两者 {} · 覆盖 {} · 跳过 {}", kb, ov, sk)
+    }
+
+    // -- 深化层三（D1-v4-CF*）---------------------------------------------
+
+    /// 键盘焦点移动（批量列表全键盘可达：方向键在 0..len 内循环钳制；
+    /// 未聚焦时首次下移落首行、首次上移落末行——焦点永不丢在宇宙外）。
+    pub fn focus_move(&mut self, delta: i32) -> Option<usize> {
+        if self.pairs.is_empty() {
+            self.focus = None;
+            return None;
+        }
+        let n = self.pairs.len();
+        let next = match self.focus {
+            None => {
+                if delta < 0 {
+                    n - 1
+                } else {
+                    0
+                }
+            }
+            Some(cur) => ((cur as i64 + delta as i64).rem_euclid(n as i64)) as usize,
+        };
+        self.focus = Some(next);
+        self.focus
+    }
+
+    pub fn focus_idx(&self) -> Option<usize> {
+        self.focus
+    }
+
+    /// 键盘决策（焦点行 Enter——走 decide 同一裁决：只读项照旧进二选）。
+    pub fn keyboard_decide(&mut self, d: Decision) -> Option<String> {
+        let idx = self.focus?;
+        self.decide(idx, d)
+    }
+
+    /// 决策记忆导出（配置层落盘形态：1/2/3 编码——跨面板记住默认策略）。
+    pub fn memo_export(&self) -> Option<u8> {
+        self.memo.map(|d| match d {
+            Decision::KeepBoth => 1,
+            Decision::Overwrite => 2,
+            Decision::Skip => 3,
+        })
+    }
+
+    /// 决策记忆恢复（非法编码拒收返回 false——坏值不污染策略态）。
+    pub fn memo_restore(&mut self, v: u8) -> bool {
+        match v {
+            1 => self.memo = Some(Decision::KeepBoth),
+            2 => self.memo = Some(Decision::Overwrite),
+            3 => self.memo = Some(Decision::Skip),
+            _ => return false,
+        }
+        true
+    }
+
+    /// 同文件提示文案（面板顶部提示位——「看起来是同一文件」的人话句；
+    /// 无同文件对 = None 不占位）。
+    pub fn identical_hint_text(&self) -> Option<alloc::string::String> {
+        if self.identical_pairs().is_empty() {
+            return None;
+        }
+        Some(format!(
+            "{} 组大小与修改时间相同——看起来是同一文件，建议跳过",
+            self.identical_pairs().len()
+        ))
     }
 }
 

@@ -298,7 +298,11 @@ pub fn run_idlezero_checks() -> CheckSet {
             && bys.iter().sum::<u64>() == ig6.meaningful_wakes() + ig6.meaningless_wakes(),
         "",
     );
-    cs
+    // 深化件（深化批次三）：事件源统一 fence（常 armed 源不可关）/ 光标闪烁
+    // armed 三条件与原因文案 / 深睡 MONITOR/MWAIT 支持性记档与软路径标注 /
+    // 常驻动画登记（唤醒豁免，不误杀正常应用）/ 60 秒静置双指标验收窗
+    // （两数字同录在案）。
+    CheckSet::merge(cs, crate::perfstar::idlezero_ext::run_checks())
 }
 
 #[cfg(test)]
