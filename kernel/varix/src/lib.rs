@@ -615,8 +615,7 @@ pub mod h3star;
 // Varix STAR I · 泳道四 I 通用域·四分队（AI-U4 · F551-F600）：五十项功能 + ibase 共享底盘。
 pub mod istar;
 // Varix STAR I · 泳道三 J 鼠标域·二分队（AI-J2 · F621-F640）：二十项功能 + 共享底盘。
-// [AI-U4 临时屏蔽：jstar2 模块文件未随注册行提交（AI-J2 批次在途）——J2 落位后恢复本行]
-// pub mod jstar2;
+pub mod jstar2;
 // Varix STAR I · 泳道三 H 域二分队（AI-H2 · F251-F300）：五十项功能 + 共享底盘。
 pub mod h2star;
 // Varix STAR I · 泳道四 D 生态开放域后段（AI-V2 · F131-F150）：二十项功能 + 共享底盘。

@@ -1488,8 +1488,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // ——单聚合注册（同 U2 容量纪律：不占 domains 定长数组名额）；
     // 域内 20 项逐项红绿在 jstar2::run_jstar2_checks 的子行展开。
     // ------------------------------------------------------------------
-    // [AI-U4 临时屏蔽：jstar2 模块文件未随注册行提交（AI-J2 批次在途）——J2 落位后恢复本行]
-    // checkup.register(crate::jstar2::run_jstar2_checks());
+    checkup.register(crate::jstar2::run_jstar2_checks());
     // ------------------------------------------------------------------
     // I 通用域·四分队（AI-U4 · F551~F600 · 主册批次七/八）——单聚合注册
     // （同 U2/J2 容量纪律：不占 domains 定长数组名额）；域内 50 项逐项
