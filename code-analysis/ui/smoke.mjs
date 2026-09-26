@@ -54,7 +54,7 @@ globalThis.requestAnimationFrame = () => 0;
 globalThis.devicePixelRatio = 1;
 globalThis.getComputedStyle = () => ({ getPropertyValue: () => "#0A0A0F" });
 
-for (const f of ["ir.js", "canvas.js", "flow.js", "iface.js"]) {
+for (const f of ["ir.js", "canvas.js", "flow.js", "iface.js", "dict.js"]) {
   vm.runInThisContext(fs.readFileSync(path.join(here, "js", f), "utf8"), { filename: f });
 }
 const CA = globalThis.CA;
@@ -162,6 +162,32 @@ ok("F334 折叠占位符", ls.collapsePlaceholder(1, [20, 20])[0] === 100);
 ls.saveManual({ 1: [999, 999] });
 ok("F335 手动快照优先", ls.coord(1)[0] === 999);
 
+/* 8. v3 词典引擎：归一化 / 合并去重 / 语言识别 / 语法替换 / 重复内容 */
+(function dictSmoke() {
+  const D = CA.Dict;
+  ok("dict 引擎已导出", !!D);
+  const p1 = D.load({ token: "通行证" }, "t1");
+  ok("dict 归一化·平铺映射", p1.count === 1 && D.lookup("token") === "通行证");
+  const p2 = D.load({ terms: { cache: "缓存" }, syntax: { rust: { fn: "函数" } } }, "t2");
+  ok("dict 归一化·terms/syntax 段", p2.count === 1 && p2.syntaxCount === 1);
+  const p3 = D.load([{ term: "queue", plain: "队列" }, { name: "hash", explain: "指纹" }], "t3");
+  ok("dict 归一化·数组条目", p3.count === 2 && D.lookup("hash") === "指纹");
+  const p4 = D.load({ cache: "另一种解释" }, "t4");
+  ok("dict 合并去重（先到先得）", p4.skipped === 1 && D.lookup("cache") === "缓存");
+  ok("dict 查询·未命中返回 null", D.lookup("不存在词") === null);
+  ok("语言识别·扩展名", D.detectLang("a.rs", "") === "Rust" && D.detectLang("b.py", "") === "Python" && D.detectLang("c.tsx", "") === "TypeScript");
+  ok("语言识别·关键词兜底", D.detectLang("x.txt", "fn main() { let x = 1; }") === "Rust");
+  ok("语法替换·已知语言", D.applySyntax("fn run() -> u8", "rust").includes("函数"));
+  ok("语法替换·未知语言原样", D.applySyntax("fn run()", "cobol") === "fn run()");
+  const dups = D.dedupeNodes({ nodes: [
+    { id: 0, kind: 3, name: "dup.ts" }, { id: 1, kind: 3, name: "dup.ts" }, { id: 2, kind: 3, name: "one.ts" }
+  ] });
+  ok("重复内容检测（同层级同名）", dups.length === 1 && dups[0].count === 2 && dups[0].name === "dup.ts");
+  ok("拆词", JSON.stringify(D.words("getUserById")) === JSON.stringify(["get", "user", "by", "id"]));
+  const st2 = D.stats();
+  ok("dict 统计", st2.terms >= 4 && st2.packs.length === 4);
+})();
+
 /* 5. 装配层（app.js）完整初始化 —— 走一遍启动路径 */
 (function bootstrapSmoke() {
   const cache = new Map();
@@ -260,5 +286,14 @@ ok("F335 手动快照优先", ls.coord(1)[0] === 999);
   if (SH) SH.applyStyle(1);
 })();
 
+/* 8. v4 光环境 / 命令面板 / 主题联动契约 */
+(function v4Smoke() {
+  ok("v4 画布常量（强调色/网格/缓动）",
+    CA.CANVAS.ACCENT === "#5B9DFF" && CA.CANVAS.GRID_MINOR === 96 && CA.CANVAS.CAM_EASE > 0);
+  ok("v4 状态含 FPS", typeof CA_APP.canvas.status().fps === "number");
+  ok("v4 流程图主题联动", typeof CA_APP.flow.setTheme === "function");
+  ok("v4 命令面板 API", typeof CA_APP.openCmdk === "function" && typeof CA_APP.closeCmdk === "function");
+})();
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
-if (fail) process.exit(1);
+process.exit(fail ? 1 : 0);

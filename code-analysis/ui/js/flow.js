@@ -1,9 +1,12 @@
-/* =============================================================================
- * AI-04 · 统一 2D 流程图体系（F276~F300）
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v4 · 统一 2D 流程图体系（F276~F300）· OBSIDIAN 视觉
  *   Sugiyama 自动布局 / 七类节点样式表 / 四类连线样式表 / 代码↔流程图双向同步
  *   / 对比 diff / 导出 PNG·SVG·PDF / 瀑布·蛛网·架构三种派生视图。
  *   参数与 core::flowchart.rs 完全对齐（尺寸、色值、吸附网格、动画时长）。
- * ========================================================================== */
+ *   v4 视觉：双主题边色系统（深色底用浅边线，修复旧版黑线不可见）、
+ *   层带背景、节点渐变受光面 + 落地阴影、条件标注药丸底、玻璃注释气泡、
+ *   瀑布渐变条 / 蛛网辉光 / 架构卡片。
+ * ═══════════════════════════════════════════════════════════════════════════ */
 (function (root) {
   "use strict";
   var CA = (root.CA = root.CA || {});
@@ -25,6 +28,11 @@
     Exception: { color: "#FF3B30", w: 1.5, dash: "5,4", arrow: "hollow-tri" },
     Data: { color: "#007AFF", w: 3, dash: "", arrow: "particles" },
     Dep: { color: "#8E8E93", w: 1, dash: "1,3", arrow: "small-circle" }
+  };
+  /* v4 双主题边色：深色底 Normal 黑线不可见（实测），换浅色系 */
+  var EDGE_THEME = {
+    dark: { Normal: "#A9B2C3", Exception: "#FF5D5D", Data: "#5B9DFF", Dep: "#7A828E" },
+    light: { Normal: "#4A505A", Exception: "#E5484D", Data: "#0B6EF2", Dep: "#9AA1AC" }
   };
   var F = (CA.FLOW = {
     NODE_STYLE: NODE_STYLE, EDGE_STYLE: EDGE_STYLE,
@@ -83,7 +91,6 @@
       /* 子节点（F279 双击展开用）：给 Call 节点挂一个子图 */
       if (kind === "Call") {
         var sub = { nodes: [], edges: [] };
-        var s0 = sub.nodes.length;
         sub.nodes.push({ id: 0, kind: "StartEnd", label: "进入", x: 0, y: 0, collapsed: false, hot: 0, bug: false, note: null, varLabel: null, timeLabel: null, duration_ms: 0 });
         sub.nodes.push({ id: 1, kind: "Process", label: "准备工作", x: 0, y: 0, collapsed: false, hot: 0, bug: false, note: null, varLabel: null, timeLabel: null, duration_ms: 0 });
         sub.nodes.push({ id: 2, kind: "Decision", label: "检查参数", x: 0, y: 0, collapsed: false, hot: 0, bug: false, note: null, varLabel: null, timeLabel: null, duration_ms: 0 });
@@ -96,8 +103,16 @@
         ];
         chart.nodes[id].sub = sub;
       }
-      /* F283 热区着色 / F284 bug 标红 */
-      chart.nodes[id].hot = n.hot || 0;
+      /* F283 热区着色 / F284 bug 标红。
+       * v4：hot 按节点角色分层（调用/异常/判断保留原值，普通步骤压到 45%，
+       * 端点 75%）——旧版把函数级 hot 均摊给每个节点，heat 模式整条链同色。 */
+      var hotBase = n.hot || 0;
+      var hotOf = {
+        Call: hotBase, Exception: Math.max(hotBase, 0.75), Decision: Math.max(hotBase, 0.6),
+        Loop: Math.max(hotBase, 0.5), Process: hotBase * 0.45, Io: hotBase * 0.5,
+        StartEnd: hotBase * 0.75
+      };
+      chart.nodes[id].hot = U.clamp(hotOf[kind] != null ? hotOf[kind] : hotBase, 0, 1);
       chart.nodes[id].bug = n.status === "bug" && (s === "Try" || s === "Throw" || s === "Catch");
       prev = id;
     });
@@ -304,6 +319,15 @@
     if (form === "hollow-tri") { ctx.stroke(); } else { ctx.fill(); }
   }
 
+  /* 节点渐变受光面：亮色节点顶部提亮，深色节点顶部提亮少许 */
+  function nodeFill(ctx, fill, y, h) {
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, U.mix(fill, "#FFFFFF", 0.22));
+    g.addColorStop(0.55, fill);
+    g.addColorStop(1, U.mix(fill, "#000000", 0.10));
+    return g;
+  }
+
   /* ── 流程图视图 ─────────────────────────────────────────────────────── */
   function FlowView(canvas, opts) {
     opts = opts || {};
@@ -319,6 +343,7 @@
     var playing = false, playT0 = 0;
     var dataflow = true, heat = true, anim500 = null;
     var drag = null, t0 = performance.now();
+    var theme = "dark";
     var isActive = opts.isActive || function () { return true; };
 
     function resize() {
@@ -334,10 +359,11 @@
     function W(sx, sy) { return [(sx - view.w / 2) / cam.zoom + cam.x, (sy - view.h / 2) / cam.zoom + cam.y]; }
 
     this.setIR = function (next) { ir = next; };
+    this.setTheme = function (t) { theme = t === "light" ? "light" : "dark"; };
     this.setChart = function (c) {
       if (c && c.nodes && c.nodes.length) { chart = c; F.sugiyama(chart); fit(); }
     };
-    this.setMode = function (m) { mode = m; fit(); };
+    this.setMode = function (m) { mode = m; if (m === "arch") fitArch(); else fit(); };
     this.getMode = function () { return mode; };
     this.setCompare = function (on, old) {
       compare = on; oldChart = old || null;
@@ -384,19 +410,56 @@
     function render(now) {
       if (!isActive()) return;
       var t = (now - t0) / 1000;
+      var dark = theme === "dark";
+      var ec = EDGE_THEME[dark ? "dark" : "light"];
       ctx.clearRect(0, 0, view.w, view.h);
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#0A0A0F";
+      /* 背景：垂直渐变 + 细点阵网格（与全景画布同一空间语言） */
+      var bg = ctx.createLinearGradient(0, 0, 0, view.h);
+      if (dark) {
+        bg.addColorStop(0, "#0B0E14"); bg.addColorStop(1, "#090B10");
+      } else {
+        bg.addColorStop(0, "#F7F8FA"); bg.addColorStop(1, "#EFF1F5");
+      }
+      ctx.fillStyle = bg;
       ctx.fillRect(0, 0, view.w, view.h);
-      if (!chart.nodes.length) return;
+      var gs = 28;
+      ctx.fillStyle = dark ? "rgba(160,180,220,0.05)" : "rgba(30,45,80,0.07)";
+      for (var gx = (view.w / 2) % gs; gx < view.w; gx += gs) {
+        for (var gy = (view.h / 2) % gs; gy < view.h; gy += gs) {
+          ctx.fillRect(gx, gy, 1.2, 1.2);
+        }
+      }
       if (mode === "waterfall") return renderWaterfall();
       if (mode === "spider") return renderSpider(t);
       if (mode === "arch") return renderArch();
+      if (!chart.nodes.length) return;
 
       /* F291 动画播放：每 500ms 一个节点亮起 + 连线流动 */
       var playIdx = -1;
       if (playing) playIdx = Math.floor((now - playT0) / 500) % chart.nodes.length;
 
       var dim = hl && (hl.nodes.length > 0);
+
+      /* 层带背景：Sugiyama 层的纵向条带 + 层号（结构感） */
+      if (chart.layers && chart.layers.length) {
+        ctx.save();
+        for (var li = 0; li < chart.layers.length; li++) {
+          var bandY = S(0, li * 118)[1];
+          var bh = 118 * cam.zoom;
+          if (bandY + bh < -20 || bandY > view.h + 20) continue;
+          if (li % 2 === 1) {
+            ctx.fillStyle = dark ? "rgba(255,255,255,0.018)" : "rgba(20,30,60,0.025)";
+            ctx.fillRect(0, bandY - bh / 2, view.w, bh);
+          }
+          ctx.strokeStyle = dark ? "rgba(255,255,255,0.03)" : "rgba(20,30,60,0.05)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(0, bandY + bh / 2); ctx.lineTo(view.w, bandY + bh / 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       /* 连线 */
       chart.edges.forEach(function (e) {
         var a = chart.nodes[e.from], b = chart.nodes[e.to];
@@ -406,8 +469,10 @@
         var dimThis = dim && hl.edges.indexOf(e) < 0;
         ctx.save();
         ctx.globalAlpha = dimThis ? F.DIM : 1;
-        ctx.strokeStyle = st.color; ctx.lineWidth = st.w * cam.zoom;
-        if (st.dash) ctx.setLineDash(st.dash.split(",").map(function (v) { return +v * cam.zoom; }));
+        ctx.strokeStyle = ec[e.kind] || st.color;
+        ctx.lineCap = "round";
+        ctx.lineWidth = st.w * Math.max(0.7, cam.zoom);
+        if (st.dash) ctx.setLineDash(st.dash.split(",").map(function (v) { return +v * Math.max(0.7, cam.zoom); }));
         ctx.beginPath();
         var mx = (pa[0] + pb[0]) / 2;
         ctx.moveTo(pa[0], pa[1]);
@@ -419,18 +484,28 @@
         var tst = NODE_STYLE[b.kind] || NODE_STYLE.Process;
         var bx = pb[0] - Math.cos(dir) * (Math.min(tst.w, tst.h) / 2) * cam.zoom;
         var by = pb[1] - Math.sin(dir) * (Math.min(tst.w, tst.h) / 2) * cam.zoom;
-        ctx.fillStyle = st.color; ctx.strokeStyle = st.color; ctx.lineWidth = 1;
+        ctx.fillStyle = ec[e.kind] || st.color; ctx.strokeStyle = ec[e.kind] || st.color; ctx.lineWidth = 1;
         if (st.arrow === "particles" && dataflow) {
           var tt = (t * 0.5 + (e.from * 0.13)) % 1;
           var px = U.lerp(pa[0], pb[0], tt), py = U.lerp(pa[1], pb[1], tt);
-          ctx.fillStyle = "#007AFF";
+          ctx.save();
+          ctx.shadowColor = ec.Data; ctx.shadowBlur = 8;
+          ctx.fillStyle = ec.Data;
           ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
         } else drawArrow(ctx, st.arrow, bx, by, dir);
-        /* F292 条件标注 */
+        /* F292 条件标注：药丸底 + 文字 */
         if (e.label) {
-          ctx.fillStyle = "#86868B";
-          ctx.font = "300 10px Inter, system-ui, sans-serif";
-          ctx.fillText(e.label, mx + 4, (pa[1] + pb[1]) / 2 - 3);
+          ctx.font = "500 10px 'Segoe UI',system-ui,sans-serif";
+          var tw = ctx.measureText(e.label).width;
+          ctx.fillStyle = dark ? "rgba(10,13,20,0.8)" : "rgba(255,255,255,0.9)";
+          U.roundRect(ctx, mx - tw / 2 - 5, (pa[1] + pb[1]) / 2 - 9, tw + 10, 15, 7);
+          ctx.fill();
+          ctx.strokeStyle = dark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)";
+          ctx.stroke();
+          ctx.fillStyle = dark ? "#B7BFCB" : "#5A6068";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(e.label, mx, (pa[1] + pb[1]) / 2 - 1.5);
         }
         ctx.restore();
       });
@@ -456,61 +531,83 @@
         }
         if (n.collapsed) { w = 150 * cam.zoom; h = 34 * cam.zoom; }
         ctx.translate(p[0], p[1]);
+        /* 落地阴影 + 渐变受光面 */
+        ctx.shadowColor = dark ? "rgba(0,0,0,0.5)" : "rgba(18,24,36,0.2)";
+        ctx.shadowBlur = 9; ctx.shadowOffsetY = 4;
         pathShape(ctx, n.collapsed ? "rounded" : st.shape, -w / 2, -h / 2, w, h);
-        ctx.fillStyle = fill;
-        ctx.globalAlpha = (dimThis ? F.DIM : 1) * 0.92;
+        ctx.fillStyle = nodeFill(ctx, fill, -h / 2, h);
+        ctx.globalAlpha = (dimThis ? F.DIM : 1) * 0.95;
         ctx.fill();
+        ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         ctx.globalAlpha = dimThis ? F.DIM : 1;
         /* F284 bug 标红：边框红 + 右上角感叹号徽章 */
         ctx.strokeStyle = n.bug ? F.BUG_BORDER : st.stroke;
-        ctx.lineWidth = (n.bug ? 2 : 2) * Math.max(0.6, cam.zoom);
+        ctx.lineWidth = (n.bug ? 2 : 1.6) * Math.max(0.6, cam.zoom);
         if (st.shape === "dashed-rect") ctx.setLineDash([4, 3]);
+        pathShape(ctx, n.collapsed ? "rounded" : st.shape, -w / 2, -h / 2, w, h);
         ctx.stroke();
         ctx.setLineDash([]);
+        /* 顶部受光线（直边形状才有意义） */
+        if (st.shape === "rect" || st.shape === "dashed-rect") {
+          ctx.strokeStyle = "rgba(255,255,255,0.30)";
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(-w / 2 + 4, -h / 2 + 1); ctx.lineTo(w / 2 - 4, -h / 2 + 1); ctx.stroke();
+        }
         if (i === selected || i === playIdx) {
+          ctx.save();
+          ctx.shadowColor = dark ? "rgba(255,255,255,0.5)" : "rgba(20,40,90,0.4)";
+          ctx.shadowBlur = 10;
           ctx.strokeStyle = "#FFFFFF"; ctx.lineWidth = 1.5;
           pathShape(ctx, n.collapsed ? "rounded" : st.shape, -w / 2 - 3, -h / 2 - 3, w + 6, h + 6);
           ctx.stroke();
+          ctx.restore();
         }
-        /* 文字 */
+        /* 文字（带轻微投影保证可读） */
         var label = n.collapsed ? F.collapseSummary("输入", "处理", "输出") : n.label;
         ctx.fillStyle = (heat && (n.hot || 0) > 0.7) ? "#000000" : st.text;
-        ctx.font = "300 " + Math.max(8, st.fs * cam.zoom) + "px Inter, system-ui, sans-serif";
+        ctx.font = "600 " + Math.max(8, st.fs * cam.zoom) + "px 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(label, 0, 0);
         /* F293 变量标注（右下） / F294 时间标注（左下） */
-        ctx.font = "300 " + Math.max(7, 9 * cam.zoom) + "px Inter, system-ui, sans-serif";
-        ctx.fillStyle = "#86868B";
-        if (n.varLabel) { ctx.textAlign = "right"; ctx.fillText(n.varLabel, w / 2 - 2, h / 2 - 6); }
-        if (n.timeLabel) { ctx.textAlign = "left"; ctx.fillText(n.timeLabel, -w / 2 + 2, h / 2 - 6); }
+        ctx.font = "400 " + Math.max(7, 9 * cam.zoom) + "px 'Cascadia Code',ui-monospace,Consolas,monospace";
+        ctx.fillStyle = dark ? "rgba(233,235,241,0.55)" : "rgba(0,0,0,0.45)";
+        if (n.varLabel) { ctx.textAlign = "right"; ctx.fillText(n.varLabel, w / 2 - 4, h / 2 - 7); }
+        if (n.timeLabel) { ctx.textAlign = "left"; ctx.fillText(n.timeLabel, -w / 2 + 4, h / 2 - 7); }
         /* F284 徽章 */
         if (n.bug) {
+          ctx.save();
+          ctx.shadowColor = F.BUG_BORDER; ctx.shadowBlur = 8;
           ctx.fillStyle = F.BUG_BORDER;
           ctx.beginPath(); ctx.arc(w / 2 - 2, -h / 2 + 2, 7 * Math.max(0.7, cam.zoom), 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
           ctx.fillStyle = "#FFFFFF";
-          ctx.font = "400 " + Math.max(8, 10 * cam.zoom) + "px Inter, system-ui, sans-serif";
+          ctx.font = "700 " + Math.max(8, 10 * cam.zoom) + "px 'Segoe UI',system-ui,sans-serif";
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText("!", w / 2 - 2, -h / 2 + 2);
         }
-        /* F295 注释气泡 */
+        /* F295 注释气泡：深色玻璃药丸（适配双主题） */
         if (n.note) {
           var fs = Math.max(8, 10 * cam.zoom);
-          ctx.font = "300 " + fs + "px Inter, system-ui, sans-serif";
+          ctx.font = "400 " + fs + "px 'Segoe UI',system-ui,sans-serif";
           var tw = ctx.measureText(n.note).width;
-          ctx.fillStyle = "rgba(255,255,255,0.92)";
-          U.roundRect(ctx, -tw / 2 - 7, -h / 2 - fs - 18, tw + 14, fs + 10, 6);
+          ctx.fillStyle = dark ? "rgba(22,26,34,0.92)" : "rgba(255,255,255,0.94)";
+          U.roundRect(ctx, -tw / 2 - 8, -h / 2 - fs - 19, tw + 16, fs + 11, 7);
           ctx.fill();
+          ctx.strokeStyle = dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
+          ctx.stroke();
           ctx.beginPath();
-          ctx.moveTo(-4, -h / 2 - 8); ctx.lineTo(4, -h / 2 - 8); ctx.lineTo(0, -h / 2 - 2);
-          ctx.closePath(); ctx.fill();
-          ctx.fillStyle = "#1D1D1F"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(n.note, 0, -h / 2 - fs - 12);
+          ctx.moveTo(-4, -h / 2 - 8.5); ctx.lineTo(4, -h / 2 - 8.5); ctx.lineTo(0, -h / 2 - 2.5);
+          ctx.closePath();
+          ctx.fillStyle = dark ? "rgba(22,26,34,0.92)" : "rgba(255,255,255,0.94)";
+          ctx.fill();
+          ctx.fillStyle = dark ? "#D7DCE5" : "#1D1F24"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(n.note, 0, -h / 2 - fs - 13);
         }
         /* F297 数据变换：选中节点上方形状渐变动效 */
         if (i === selected && dataflow) {
           var ph = (t * 0.8) % 1;
           ctx.globalAlpha = (1 - ph) * 0.7;
-          ctx.fillStyle = "#007AFF";
+          ctx.fillStyle = ec.Data;
           ctx.beginPath(); ctx.arc(0, -h / 2 - 12 - ph * 26, 4 + ph * 6, 0, Math.PI * 2); ctx.fill();
           ctx.globalAlpha = 1;
         }
@@ -527,7 +624,7 @@
       if (!mc) return;
       var c = mc.getContext("2d");
       c.clearRect(0, 0, 150, 100);
-      c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(0, 0, 150, 100);
+      c.fillStyle = "rgba(6,8,12,0.55)"; c.fillRect(0, 0, 150, 100);
       var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
       chart.nodes.forEach(function (n) {
         x0 = Math.min(x0, n.x); x1 = Math.max(x1, n.x);
@@ -538,105 +635,176 @@
       c.translate(75, 50); c.scale(s, s); c.translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
       chart.edges.forEach(function (e) {
         var a = chart.nodes[e.from], b = chart.nodes[e.to];
-        c.strokeStyle = "rgba(200,200,210,0.5)"; c.lineWidth = 1 / s;
+        c.strokeStyle = "rgba(200,200,210,0.4)"; c.lineWidth = 1 / s;
         c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
       });
       chart.nodes.forEach(function (n) {
         var st = NODE_STYLE[n.kind] || NODE_STYLE.Process;
         c.fillStyle = st.fill;
-        c.fillRect(n.x - st.w / 2, n.y - st.h / 2, st.w, st.h);
+        U.roundRect(c, n.x - st.w / 2, n.y - st.h / 2, st.w, st.h, 4);
+        c.fill();
       });
       c.restore();
-      c.strokeStyle = "#FF3B30"; c.lineWidth = 1;
-      c.strokeRect(0, 0, 149, 99);
+      c.strokeStyle = "#5B9DFF"; c.lineWidth = 1;
+      U.roundRect(c, 0.5, 0.5, 149, 99, 5);
+      c.stroke();
     }
 
-    /* F298 调用瀑布 */
+    /* F298 调用瀑布：渐变条 + 深度导轨 + 等宽耗时标注 */
     function renderWaterfall() {
       if (!ir) return;
       var rows = F.waterfall(ir, opts.funcId ? opts.funcId() : 0, 4);
-      var x0 = 60, y0 = 50, rowH = 34;
-      ctx.font = "300 11px Inter, system-ui, sans-serif";
-      ctx.fillStyle = "#86868B";
-      ctx.fillText("调用瀑布（入口在顶，宽度=耗时）", x0, 28);
+      var dark = theme === "dark";
+      var x0 = 60, y0 = 84, rowH = 36;
+      ctx.font = "600 12px 'Segoe UI',system-ui,sans-serif";
+      ctx.fillStyle = dark ? "#E9EBF1" : "#1D1F24";
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+      ctx.fillText("调用瀑布（入口在顶，宽度=耗时）", x0, 58);
+      /* 深度导轨 */
+      ctx.strokeStyle = dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)";
+      ctx.lineWidth = 1;
+      for (var d = 0; d < 5; d++) {
+        var gx = x0 + d * 18;
+        ctx.beginPath(); ctx.moveTo(gx, y0 - 8); ctx.lineTo(gx, y0 + rows.length * rowH + 4); ctx.stroke();
+      }
+      ctx.font = "500 11px 'Segoe UI',system-ui,sans-serif";
       rows.forEach(function (r, i) {
         var y = y0 + i * rowH;
         var w = U.clamp(r.ms * 1.4, 20, view.w - x0 - 120) * cam.zoom;
-        ctx.fillStyle = U.rgba(CA.semanticColor(ir.nodes[r.id].domain), 0.55);
-        U.roundRect(ctx, x0 + r.depth * 18, y, w, rowH - 10, 4); ctx.fill();
-        ctx.fillStyle = "#C7C7CC"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.fillText(r.name, x0 + r.depth * 18 + 6, y + (rowH - 10) / 2);
-        ctx.fillStyle = "#86868B";
-        ctx.fillText(r.ms.toFixed(1) + "ms", x0 + r.depth * 18 + w + 8, y + (rowH - 10) / 2);
+        var col = CA.semanticColor(ir.nodes[r.id].domain);
+        var g = ctx.createLinearGradient(x0 + r.depth * 18, 0, x0 + r.depth * 18 + w, 0);
+        g.addColorStop(0, U.rgba(col, 0.75));
+        g.addColorStop(1, U.rgba(col, 0.28));
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.35)"; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+        ctx.fillStyle = g;
+        U.roundRect(ctx, x0 + r.depth * 18, y, w, rowH - 12, 5);
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = dark ? "#E9EBF1" : "#1D1F24";
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        var nameX = x0 + r.depth * 18 + 7;
+        ctx.fillText(r.name, nameX, y + (rowH - 12) / 2 + 0.5);
+        /* 耗时标注放在名字之后（短条时不会被名字压住） */
+        var msX = Math.max(x0 + r.depth * 18 + w + 9, nameX + ctx.measureText(r.name).width + 10);
+        ctx.fillStyle = dark ? "#8B93A3" : "#697180";
+        ctx.font = "400 10px 'Cascadia Code',ui-monospace,Consolas,monospace";
+        ctx.fillText(r.ms.toFixed(1) + "ms", msX, y + (rowH - 12) / 2 + 0.5);
+        ctx.font = "500 11px 'Segoe UI',system-ui,sans-serif";
       });
     }
 
-    /* F299 变量蛛网 */
+    /* F299 变量蛛网：辉光中心 + 脉冲变量点 */
     function renderSpider(t) {
+      var dark = theme === "dark";
       var cx = view.w / 2, cy = view.h / 2, R = Math.min(view.w, view.h) * 0.32;
       var pts = F.spiderWeb(9, R);
-      ctx.strokeStyle = "rgba(142,142,147,0.5)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = dark ? "rgba(150,160,180,0.35)" : "rgba(60,70,90,0.30)"; ctx.lineWidth = 1;
       pts.forEach(function (p) {
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + p[0], cy + p[1]); ctx.stroke();
       });
       for (var ring = 1; ring <= 3; ring++) {
         ctx.beginPath();
         ctx.arc(cx, cy, (R / 3) * ring, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(142,142,147,0.18)"; ctx.stroke();
+        ctx.strokeStyle = dark ? "rgba(150,160,180,0.14)" : "rgba(60,70,90,0.14)"; ctx.stroke();
       }
       var vars = ["token", "user", "cart", "total", "stock", "risk", "session", "reply", "err"];
       pts.forEach(function (p, i) {
         var wob = 1 + 0.04 * Math.sin(t * 1.6 + i);
         var x = cx + p[0] * wob, y = cy + p[1] * wob;
-        ctx.fillStyle = U.rgba("#007AFF", 0.75);
+        ctx.save();
+        ctx.shadowColor = "#5B9DFF"; ctx.shadowBlur = 9;
+        ctx.fillStyle = U.rgba("#5B9DFF", 0.85);
         ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#C7C7CC"; ctx.font = "300 10px Inter, system-ui, sans-serif";
+        ctx.restore();
+        ctx.fillStyle = dark ? "#C6CCD6" : "#3A3F47";
+        ctx.font = "400 10px 'Cascadia Code',ui-monospace,Consolas,monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(vars[i % vars.length], x, y - 12);
+        ctx.fillText(vars[i % vars.length], x, y - 13);
       });
-      ctx.fillStyle = "#34C759";
+      ctx.save();
+      ctx.shadowColor = "#3DD68C"; ctx.shadowBlur = 14;
+      ctx.fillStyle = "#3DD68C";
       ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#F5F5F7"; ctx.font = "300 11px Inter, system-ui, sans-serif";
-      ctx.textAlign = "center"; ctx.fillText("变量", cx, cy - 14);
+      ctx.restore();
+      ctx.fillStyle = dark ? "#F5F5F7" : "#1D1F24";
+      ctx.font = "500 11px 'Segoe UI',system-ui,sans-serif";
+      ctx.textAlign = "center"; ctx.fillText("变量", cx, cy - 15);
     }
 
-    /* F300 模块架构 */
-    function renderArch() {
+    /* F300 模块架构：域色头带卡片 + 文件行 + 函数 chips
+     * v4：世界坐标经镜头换算（旧版漏加视口中心偏移导致整卡画到屏外），
+     * 并为 arch 模式提供专属 fit。 */
+    function fitArch() {
       if (!ir) return;
       var boxes = F.architecture(ir);
-      var pad = 40, y = pad;
-      ctx.font = "300 12px Inter, system-ui, sans-serif";
+      var h = 0, wMax = 720;
+      boxes.forEach(function (b) { h += 46 + b.files.length * 30 + 12; });
+      cam.zoom = U.clamp(Math.min(view.w / (wMax + 120), view.h / Math.max(1, h + 100)), 0.1, 2);
+      cam.x = 40 + wMax / 2;
+      cam.y = 40 + Math.max(0, h - 12) / 2;
+    }
+    function renderArch() {
+      if (!ir) return;
+      var dark = theme === "dark";
+      var boxes = F.architecture(ir);
+      var pad = 40;
+      var yW = pad;
       boxes.forEach(function (b) {
-        var h = 46 + b.files.length * 30;
-        var w = Math.min(view.w - pad * 2, 720) * cam.zoom;
-        var x = pad;
+        var hW = 46 + b.files.length * 30;
+        var w = 720 * cam.zoom;
+        var h = hW * cam.zoom;
+        var sp = S(pad, yW);
+        var col = CA.semanticColor(b.domain);
         ctx.save();
-        ctx.translate((x - cam.x) * cam.zoom + 0, (y - cam.y) * cam.zoom + 0);
-        ctx.strokeStyle = U.rgba(CA.semanticColor(b.domain), 0.6);
+        ctx.translate(sp[0], sp[1]);
+        /* 卡片体 */
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.4)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 4;
+        ctx.fillStyle = dark ? "rgba(24,28,36,0.97)" : "rgba(255,255,255,0.98)";
+        U.roundRect(ctx, 0, 0, w, h, 9);
+        ctx.fill();
+        ctx.restore();
+        /* 头带：域色渐变（先按卡片圆角裁剪再铺色，保证上圆下方） */
+        var hg = ctx.createLinearGradient(0, 0, w, 0);
+        hg.addColorStop(0, U.rgba(col, 0.5));
+        hg.addColorStop(1, U.rgba(col, 0.12));
+        ctx.save();
+        U.roundRect(ctx, 0, 0, w, h, 9);
+        ctx.clip();
+        ctx.fillStyle = hg;
+        ctx.fillRect(0, 0, w, 26 * cam.zoom);
+        ctx.restore();
+        ctx.strokeStyle = U.rgba(col, 0.55);
         ctx.lineWidth = 1;
-        U.roundRect(ctx, 0, 0, w, h * cam.zoom, 8); ctx.stroke();
-        ctx.fillStyle = U.rgba(CA.semanticColor(b.domain), 0.06); ctx.fill();
-        ctx.fillStyle = "#F5F5F7";
-        ctx.fillText(b.module + "（" + b.domain + "）", 12, 16);
+        U.roundRect(ctx, 0, 0, w, h, 9);
+        ctx.stroke();
+        ctx.fillStyle = dark ? "#E9EBF1" : "#1D1F24";
+        ctx.font = "600 12px 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif";
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(b.module + "（" + b.domain + "）", 12, 13 * cam.zoom);
         b.files.forEach(function (f, fi) {
           var fy = 34 + fi * 30;
-          ctx.strokeStyle = "rgba(142,142,147,0.4)";
-          U.roundRect(ctx, 12, fy * cam.zoom, w - 24, 24 * cam.zoom, 6); ctx.stroke();
-          ctx.fillStyle = "#C7C7CC"; ctx.font = "300 10px Inter, system-ui, sans-serif";
+          ctx.strokeStyle = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.10)";
+          U.roundRect(ctx, 12, fy * cam.zoom, w - 24, 24 * cam.zoom, 6);
+          ctx.stroke();
+          ctx.fillStyle = dark ? "#C6CCD6" : "#3A3F47";
+          ctx.font = "500 10px 'Segoe UI',system-ui,sans-serif";
           ctx.fillText(f.name, 20, fy * cam.zoom + 12 * cam.zoom);
           var fx = 130;
           f.fns.slice(0, 8).forEach(function (fn) {
             var tw = ctx.measureText(fn).width + 14;
             if (fx + tw > w - 20) return;
-            ctx.fillStyle = U.rgba(CA.semanticColor(b.domain), 0.14);
-            U.roundRect(ctx, fx, fy * cam.zoom + 3 * cam.zoom, tw, 18 * cam.zoom, 6); ctx.fill();
-            ctx.fillStyle = "#F5F5F7";
-            ctx.fillText(fn, fx + 7, fy * cam.zoom + 13 * cam.zoom);
+            ctx.fillStyle = U.rgba(col, 0.16);
+            U.roundRect(ctx, fx, fy * cam.zoom + 3 * cam.zoom, tw, 18 * cam.zoom, 6);
+            ctx.fill();
+            ctx.fillStyle = dark ? "#E9EBF1" : "#1D1F24";
+            ctx.fillText(fn, fx + 7, fy * cam.zoom + 12.5 * cam.zoom);
             fx += tw + 6;
           });
         });
         ctx.restore();
-        y += h + 10;
+        yW += hW + 12;
       });
     }
 
@@ -738,8 +906,8 @@
             '" height="' + st.h + '" rx="' + (st.shape === "rounded" ? 20 : 6) + '" fill="' + st.fill +
             '" stroke="' + st.stroke + '" stroke-width="2"/>');
         }
-        svg.push('<text x="' + n.x + '" y="' + (n.y + 4) + '" font-family="Inter,sans-serif" font-size="' +
-          st.fs + '" fill="' + st.text + '" text-anchor="middle">' + esc + "</text>");
+        svg.push('<text x="' + n.x + '" y="' + (n.y + 4) + '" font-family="Segoe UI,sans-serif" font-size="' +
+          st.fs + '" fill="' + st.text + '" text-anchor="middle" font-weight="600">' + esc + "</text>");
       });
       svg.push("</svg>");
       return svg.join("\n");
@@ -769,7 +937,7 @@
         if (st.shape === "dashed-rect") c.setLineDash([4, 3]);
         c.stroke(); c.setLineDash([]);
         c.fillStyle = st.text;
-        c.font = "300 " + st.fs + "px Inter, sans-serif";
+        c.font = "600 " + st.fs + "px 'Segoe UI',sans-serif";
         c.textAlign = "center"; c.textBaseline = "middle";
         c.fillText(n.label, 0, 0);
         c.restore();

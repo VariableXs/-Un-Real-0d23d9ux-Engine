@@ -267,6 +267,7 @@ fn route(
             }
         }
         ("GET", "/api/shell") => ("200 OK", "application/json", shell_to_json(st.detected).into_bytes()),
+        ("GET", "/api/dicts") => ("200 OK", "application/json", list_dicts(st).into_bytes()),
         ("GET", "/api/parity") => ("200 OK", "application/json", parity_to_json().into_bytes()),
         ("GET", "/api/journal") => ("200 OK", "application/json", journal_to_json(st).into_bytes()),
         ("POST", "/api/write") => {
@@ -302,8 +303,32 @@ fn route(
     }
 }
 
-fn serve_static(st: &State, rel: &str) -> (&'static str, &'static str, Vec<u8>) {
-    // 防穿越：拒绝 .. / 盘符 / 绝对路径。
+/// v3 词典文件夹：ui/dicts/*.json —— 用户把任何 .json 词典包丢进这个目录
+/// 即可被 /api/dicts 列出、/dicts/<文件名> 取回（静态伺服自带防穿越）。
+fn list_dicts(st: &State) -> String {
+    let mut names: Vec<String> = Vec::new();
+    let dir = st.ui_dir.join("dicts");
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            let is_json = p
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x.eq_ignore_ascii_case("json"))
+                .unwrap_or(false);
+            if is_json {
+                if let Some(n) = p.file_name().and_then(|x| x.to_str()) {
+                    names.push(n.to_string());
+                }
+            }
+        }
+    }
+    names.sort();
+    let items: Vec<String> = names.iter().map(|n| jstr(n)).collect();
+    format!("[{}]", items.join(","))
+}
+
+fn serve_static(st: &State, rel: &str) -> (&'static str, &'static str, Vec<u8>) {    // 防穿越：拒绝 .. / 盘符 / 绝对路径。
     if rel.contains("..") || rel.contains(':') || rel.starts_with('/') || rel.starts_with('\\') {
         return ("403 Forbidden", "text/plain", b"forbidden".to_vec());
     }

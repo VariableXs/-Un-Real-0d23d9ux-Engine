@@ -32,12 +32,12 @@ sys.stdout.write(out.stdout)
 if "PS_ERRORS=0" not in out.stdout:
     sys.exit("语法先验未过，拒绝启动")
 
-# 3) 提权启动（UAC 弹窗——用户点是）
-params = '-NoProfile -ExecutionPolicy Bypass -File "{}" -IsoPath "{}"'.format(PS1, ISO)
-ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "powershell.exe", params, None, 1)  # SW_SHOWNORMAL
+# 3) 提权启动（UAC 弹窗——用户点是；窗口隐藏防误关，进度全走日志）
+params = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{}" -IsoPath "{}"'.format(PS1, ISO)
+ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "powershell.exe", params, None, 0)  # SW_HIDE
 if ret <= 32:
     sys.exit(f"提权启动失败（code={ret}，UAC 被取消或被策略拒绝）")
-print(f"[2] elevated launched (ShellExecute ret={ret})——请在 UAC 弹窗点“是”")
+print(f"[2] elevated launched hidden (ShellExecute ret={ret})——UAC 请点“是”")
 
 # 4) 监视日志（每 15s；90 分钟超时）
 time.sleep(8)

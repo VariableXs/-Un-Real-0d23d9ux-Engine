@@ -1,0 +1,11 @@
+[package]
+name = "svcabin"
+version = "0.1.0"
+edition = "2021"
+description = "AI-V1 隔离舱：#[path] 直挂 svstar 真实文件，独立于主树并行施工的编译/测试验证"
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+test = true

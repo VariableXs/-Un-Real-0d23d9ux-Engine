@@ -115,9 +115,12 @@ fn collect_files(root: &Path) -> std::io::Result<Vec<(String, std::path::PathBuf
         for e in fs::read_dir(&dir)? {
             let p = e?.path();
             if p.is_dir() {
-                // 跳过构建产物与依赖目录
+                // 跳过构建产物、依赖目录与一切隐藏目录（.git/.mimosa/.venv/
+                // IDE 缓存等工具噪声——QA 实测 9 万节点里大半来自这里）
                 let dn = p.file_name().unwrap().to_string_lossy().to_string();
-                if matches!(dn.as_str(), "target" | "node_modules" | ".git" | "dist" | "build") {
+                if dn.starts_with('.')
+                    || matches!(dn.as_str(), "target" | "node_modules" | "dist" | "build" | "vendor")
+                {
                     continue;
                 }
                 let sub = if rel.is_empty() {

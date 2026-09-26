@@ -1,12 +1,15 @@
-/* =============================================================================
- * AI-09 · C18 资产自带 — 8 风格 token + 壁纸层（三端一致，不依赖宿主主题）
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v4 资产层 — 8 风格 token + 壁纸层（三端一致，不依赖宿主主题，全程序化贴图）
  *   风格序号对齐 ca-core::shell::wallpaper_for_style 的 StyleId 顺序：
  *   0 像素(Scanline) 1 现代简约(Gradient) 2 清新(Waves) 3 星空(Starfield)
  *   4 赛博朋克(Mesh) 5 玻璃拟态(Aurora) 6 新拟态(Plain) 7 手绘(Blueprint)
- *   每风格只改 token 与壁纸层，功能与布局不因风格变化（功能不因端/风格隐藏）。
- * ========================================================================== */
+ *   契约保留：#wallpaper 的 --wp-* 变量、风格序号、.tl-styles 色板。
+ *   v4 变化：每张壁纸升级为「多层程序化贴图」——渐变基调 + 材质纹理
+ *   （扫描线 / 星点 / 锥形网格 / 蓝图坐标纸）+ 大尺度氛围光，
+ *   整体亮度依旧压在前景对比 4.5:1 之下（画布半透明透出时才可见）。
+ * ═══════════════════════════════════════════════════════════════════════ */
 
-/* ── 壁纸层：#stage 最底面（C17 应用内背景层，永不碰宿主桌面） ───────────── */
+/* ── 壁纸层：#stage 最底面（C17 应用内背景层，永不碰宿主桌面） ───────── */
 #wallpaper {
   position: absolute;
   inset: 0;
@@ -32,116 +35,127 @@
   background: #000;
   opacity: var(--wp-dim);
 }
-/* AI-10 质感层：暗角 + 顶部天光，给壁纸纵深（不参与 --wp-* 契约） */
-#wallpaper::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.26) 100%),
-    linear-gradient(180deg, rgba(41, 151, 255, 0.05) 0%, transparent 22%);
-}
-/* 浅色主题：压暗罩加深一档，白色玻璃面板与壁纸的对比保持可读 */
 html[data-theme="light"] #wallpaper::after {
-  opacity: calc(var(--wp-dim) + 0.18);
+  opacity: calc(var(--wp-dim) + 0.12);
 }
 
-/* ── 8 风格壁纸本体（纯 CSS，零外部资源） ──────────────────────────────── */
+/* ═══ 8 风格壁纸本体（v4：多层程序化贴图） ═══ */
 [data-style="0"] #wallpaper {
-  /* 像素 · CRT 扫描线 */
-  --wp-image: repeating-linear-gradient(
-    0deg,
-    rgba(255, 255, 255, 0.07) 0 1px,
-    transparent 1px 3px
-  ), radial-gradient(120% 90% at 50% 0%, #101024 0%, #07070E 70%);
+  /* 像素 · CRT 扫描线（细纹 + 荫罩点阵 + 冷辉） */
+  --wp-image:
+    repeating-linear-gradient(0deg,
+      rgba(214, 169, 255, 0.030) 0 1px,
+      transparent 1px 4px),
+    repeating-linear-gradient(90deg,
+      rgba(255, 255, 255, 0.012) 0 1px,
+      transparent 1px 5px),
+    radial-gradient(90% 60% at 78% -6%,
+      rgba(151, 71, 255, 0.10) 0%, transparent 55%),
+    linear-gradient(180deg, #101215 0%, #0B0D12 100%);
 }
 [data-style="1"] #wallpaper {
-  /* 现代简约 · 深空微光 */
-  --wp-image: radial-gradient(
-    90% 60% at 70% -10%,
-    rgba(41, 151, 255, 0.16) 0%,
-    transparent 60%
-  ), linear-gradient(180deg, #0B0B12 0%, #0A0A0F 100%);
+  /* 现代简约 · 曜石渐变（右上冷天光 + 底部深空回光 + 细颗粒网点） */
+  --wp-image:
+    radial-gradient(85% 55% at 72% -8%,
+      rgba(91, 157, 255, 0.10) 0%, transparent 58%),
+    radial-gradient(60% 40% at 12% 108%,
+      rgba(139, 108, 255, 0.075) 0%, transparent 60%),
+    radial-gradient(rgba(255, 255, 255, 0.020) 1px, transparent 1.4px),
+    linear-gradient(180deg, #0F1218 0%, #0B0D12 100%);
+  background-size: cover, cover, 26px 26px, cover;
 }
 [data-style="2"] #wallpaper {
-  /* 清新 · 层浪 */
-  --wp-image: repeating-radial-gradient(
-    140% 120% at 85% 115%,
-    rgba(52, 199, 89, 0.085) 0 40px,
-    transparent 40px 90px
-  ), linear-gradient(200deg, #0A1210 0%, #0A0A0F 75%);
+  /* 清新 · 波纹光带（同心水波 + 绿意辉光） */
+  --wp-image:
+    repeating-radial-gradient(115% 90% at 88% 112%,
+      rgba(61, 214, 140, 0.030) 0 1.5px,
+      transparent 1.5px 26px),
+    radial-gradient(80% 55% at 85% 108%,
+      rgba(61, 214, 140, 0.085) 0%, transparent 55%),
+    radial-gradient(70% 50% at 8% -10%,
+      rgba(90, 200, 250, 0.055) 0%, transparent 55%),
+    linear-gradient(180deg, #0D1211 0%, #0B0D12 90%);
 }
 [data-style="3"] #wallpaper {
-  /* 星空 · 三层星点 */
+  /* 星空 · 星点矩阵（双尺度星点 + 紫域星云） */
   --wp-image:
-    radial-gradient(1px 1px at 22% 18%, rgba(255, 255, 255, 0.9) 50%, transparent 51%),
-    radial-gradient(1px 1px at 68% 32%, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
-    radial-gradient(1.5px 1.5px at 45% 62%, rgba(255, 255, 255, 0.8) 50%, transparent 51%),
-    radial-gradient(1px 1px at 82% 74%, rgba(255, 255, 255, 0.55) 50%, transparent 51%),
-    radial-gradient(1px 1px at 12% 82%, rgba(255, 255, 255, 0.6) 50%, transparent 51%),
-    radial-gradient(1px 1px at 90% 8%, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
-    radial-gradient(120% 90% at 30% 110%, #0D1024 0%, #060609 60%);
-  background-size: 340px 340px, 280px 280px, 220px 220px, 260px 260px, 300px 300px, 200px 200px, cover;
+    radial-gradient(rgba(255, 255, 255, 0.085) 1px, transparent 1.6px),
+    radial-gradient(rgba(255, 255, 255, 0.048) 1px, transparent 1.6px),
+    radial-gradient(55% 45% at 22% 8%,
+      rgba(122, 92, 255, 0.11) 0%, transparent 60%),
+    radial-gradient(100% 75% at 78% 96%,
+      rgba(64, 46, 130, 0.14) 0%, transparent 62%),
+    linear-gradient(180deg, #0C0D16 0%, #0A0B12 100%);
+  background-size: 90px 90px, 42px 42px, cover, cover, cover;
 }
 [data-style="4"] #wallpaper {
-  /* 赛博朋克 · 霓虹网格 */
+  /* 赛博朋克 · 锥形霓虹网格（conic 网面 + 品红地平线辉光） */
   --wp-image:
-    linear-gradient(rgba(255, 45, 85, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 209, 0.10) 1px, transparent 1px),
-    radial-gradient(80% 50% at 80% 0%, rgba(255, 45, 85, 0.18) 0%, transparent 55%),
-    radial-gradient(70% 50% at 10% 100%, rgba(0, 255, 209, 0.15) 0%, transparent 55%);
-  background-size: 44px 44px, 44px 44px, cover, cover;
+    repeating-conic-gradient(from 0.06turn at 50% 132%,
+      rgba(255, 100, 130, 0.028) 0deg 0.6deg,
+      transparent 0.6deg 5deg),
+    linear-gradient(0deg,
+      rgba(255, 100, 130, 0.05) 0 1px, transparent 1px 44px),
+    radial-gradient(80% 34% at 50% 104%,
+      rgba(255, 55, 95, 0.11) 0%, transparent 60%),
+    radial-gradient(60% 42% at 82% -8%,
+      rgba(64, 120, 255, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #100E14 0%, #0C0D13 100%);
+  background-size: cover, 44px 44px, cover, cover, cover;
 }
 [data-style="5"] #wallpaper {
-  /* 玻璃拟态 · 极光 */
+  /* 玻璃拟态 · 双极光（绿/蓝两张大面积柔光，配 6px 壁纸模糊 = 真 aurora） */
   --wp-image:
-    radial-gradient(45% 60% at 18% 22%, rgba(52, 199, 89, 0.22) 0%, transparent 60%),
-    radial-gradient(50% 55% at 80% 18%, rgba(41, 151, 255, 0.26) 0%, transparent 62%),
-    radial-gradient(55% 60% at 62% 88%, rgba(175, 82, 222, 0.20) 0%, transparent 60%),
-    linear-gradient(180deg, #0B0D16 0%, #0A0A0F 100%);
+    radial-gradient(42% 52% at 16% 12%,
+      rgba(61, 214, 140, 0.11) 0%, transparent 62%),
+    radial-gradient(48% 50% at 80% 16%,
+      rgba(91, 157, 255, 0.12) 0%, transparent 62%),
+    radial-gradient(60% 42% at 55% 108%,
+      rgba(139, 108, 255, 0.075) 0%, transparent 62%),
+    linear-gradient(180deg, #0D1016 0%, #0B0D12 100%);
 }
 [data-style="6"] #wallpaper {
-  /* 新拟态 · 素底微浮雕 */
-  --wp-image: linear-gradient(145deg, #0D0D14 0%, #08080C 100%);
+  /* 新拟态 · 素底微穹顶（中央受光的哑光面板感） */
+  --wp-image:
+    radial-gradient(120% 90% at 50% -22%,
+      rgba(255, 255, 255, 0.045) 0%, transparent 55%),
+    linear-gradient(180deg, #0F1117 0%, #0B0D12 100%);
 }
 [data-style="7"] #wallpaper {
-  /* 手绘 · 蓝图 */
+  /* 手绘 · 蓝图坐标纸（细格 + 主格 + 页角光） */
   --wp-image:
-    linear-gradient(rgba(41, 151, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(41, 151, 255, 0.12) 1px, transparent 1px),
-    radial-gradient(100% 70% at 50% 0%, rgba(41, 151, 255, 0.10) 0%, transparent 60%),
-    linear-gradient(180deg, #091018 0%, #0A0A0F 80%);
-  background-size: 36px 36px, 36px 36px, cover, cover;
+    linear-gradient(rgba(91, 157, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 157, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(rgba(91, 157, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 157, 255, 0.028) 1px, transparent 1px),
+    radial-gradient(70% 50% at 12% -6%, rgba(91, 157, 255, 0.08) 0%, transparent 55%),
+    linear-gradient(180deg, #0C1018 0%, #0B0D12 100%);
+  background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px, cover, cover;
 }
 
-/* ── 8 风格 token（强调色 / 语义色微调 / 字体气质） ────────────────────── */
-[data-style="0"] {
-  --accent: #FFD60A;
-  --mono-ls: 0.06em;
-}
-[data-style="0"] .brand { font-family: var(--mono); letter-spacing: 0.22em; }
-[data-style="1"] { --accent: #2997FF; --mono-ls: 0.02em; }
-[data-style="2"] { --accent: #30D158; --mono-ls: 0.02em; }
-[data-style="3"] { --accent: #BF5AF2; --mono-ls: 0.02em; }
-[data-style="4"] {
-  --accent: #FF375F;
-  --line: rgba(255, 45, 85, 0.14);
-  --mono-ls: 0.03em;
-}
-[data-style="5"] { --accent: #64D2FF; --mono-ls: 0.02em; }
-[data-style="6"] { --accent: #8E8E93; --mono-ls: 0.02em; }
-[data-style="7"] {
-  --accent: #0A84FF;
-  --line: rgba(10, 132, 255, 0.16);
-  --mono-ls: 0.02em;
-}
+/* ═══ 8 风格 token（强调色相区分；语义色/字体气质统一） ═══ */
+[data-style="0"] { --accent: #D9A9FF; --mono-ls: 0.03em; }
+[data-style="1"] { --accent: #5B9DFF; --mono-ls: 0.02em; }
+[data-style="2"] { --accent: #34C759; --mono-ls: 0.02em; }
+[data-style="3"] { --accent: #A78BFA; --mono-ls: 0.02em; }
+[data-style="4"] { --accent: #FF6482; --mono-ls: 0.02em; }
+[data-style="5"] { --accent: #5AC8FA; --mono-ls: 0.02em; }
+[data-style="6"] { --accent: #9AA1AC; --mono-ls: 0.02em; }
+[data-style="7"] { --accent: #4C8DFF; --mono-ls: 0.02em; }
+
+/* 浅色主题下强调色保持可读（深色文字对比规则） */
+html[data-theme="light"] [data-style="0"],
+html[data-theme="light"] [data-style="3"],
+html[data-theme="light"] [data-style="4"] { --accent: #0068E5; }
+html[data-theme="light"] [data-style="2"] { --accent: #1F9D48; }
+html[data-theme="light"] [data-style="6"] { --accent: #6B7280; }
 
 /* 标题栏风格色板：每钮即该风格强调色的实物样本（资产自带，无图片） */
-#st-0 { background: linear-gradient(135deg, #FFD60A 50%, #101024 50%); }
-#st-1 { background: linear-gradient(135deg, #2997FF 50%, #0B0B12 50%); }
-#st-2 { background: linear-gradient(135deg, #30D158 50%, #0A1210 50%); }
-#st-3 { background: linear-gradient(135deg, #BF5AF2 50%, #0D1024 50%); }
-#st-4 { background: linear-gradient(135deg, #FF375F 50%, #08130F 50%); }
-#st-5 { background: linear-gradient(135deg, #64D2FF 50%, #34C759 120%); }
-#st-6 { background: linear-gradient(135deg, #C7C7CC 50%, #2C2C34 50%); }
-#st-7 { background: linear-gradient(135deg, #0A84FF 50%, #091018 50%); }
+#st-0 { background: linear-gradient(135deg, #D9A9FF 50%, #101215 50%); }
+#st-1 { background: linear-gradient(135deg, #5B9DFF 50%, #0F1218 50%); }
+#st-2 { background: linear-gradient(135deg, #34C759 50%, #0D1211 50%); }
+#st-3 { background: linear-gradient(135deg, #A78BFA 50%, #0C0D16 50%); }
+#st-4 { background: linear-gradient(135deg, #FF6482 50%, #100E14 50%); }
+#st-5 { background: linear-gradient(135deg, #5AC8FA 50%, #0D1016 50%); }
+#st-6 { background: linear-gradient(135deg, #9AA1AC 50%, #0F1117 50%); }
+#st-7 { background: linear-gradient(135deg, #4C8DFF 50%, #0C1018 50%); }

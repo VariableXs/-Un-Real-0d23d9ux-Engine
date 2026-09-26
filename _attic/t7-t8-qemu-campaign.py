@@ -155,7 +155,10 @@ class Mon:
 
     def shot(self, name):
         self.n += 1
-        self.cmd("screendump %s" % os.path.join(SHOT_DIR, name))
+        try:
+            self.cmd("screendump %s" % os.path.join(SHOT_DIR, name))
+        except OSError as e:
+            print("  [warn] screendump failed: %s" % e)
         time.sleep(0.4)
 
     def quit(self):
@@ -175,13 +178,15 @@ def wait_count(ser, marker, base, timeout):
 
 
 def wait_port_free(port):
+    """端口必须真正空闲（戒律：僵尸 QEMU 占口=证据污染——硬失败而非静默连旧实例）。"""
     for _ in range(10):
         try:
             probe = socket.create_connection(("127.0.0.1", port), timeout=0.3)
             probe.close()
             time.sleep(2.0)
         except OSError:
-            break
+            return
+    raise SystemExit("port %d still busy — 先清杀僵尸 QEMU（tasklist|grep qemu）" % port)
 
 
 def make_test_disk():
@@ -262,7 +267,7 @@ def phase_p2(rounds=5):
     print("== P2 last_boot ×%d 交替演练 ==" % rounds)
     all_ok = True
     for k in range(1, rounds + 1):
-        patch_last_boot_raw("windows")
+        rebuild_shared("windows")
         assert read_last_boot_raw() == "windows"
         proc, ser, mon, ok = boot_round("P2-%d" % k)
         base = ser.count(MARK_LASTBOOT_OK)
@@ -338,14 +343,16 @@ def main():
     make_test_disk()
     phase = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--phase" else "all"
     verdicts = {}
-    if phase in ("P1", "all"):
-        verdicts["P1"] = phase_p1()
-    if phase in ("P2", "all"):
-        verdicts["P2"] = phase_p2()
-    if phase in ("P3", "all"):
-        verdicts["P3"] = phase_p3()
-    if phase in ("P4", "all"):
-        verdicts["P4"] = phase_p4()
+    for name, fn in [("P1", phase_p1), ("P2", phase_p2), ("P3", phase_p3), ("P4", phase_p4)]:
+        if phase not in (name, "all"):
+            continue
+        try:
+            verdicts[name] = fn()
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            traceback.print_exc()
+            print("  %s: EXCEPTION %s" % (name, e))
+            verdicts[name] = False
     print("== CAMPAIGN VERDICT ==")
     for k, v in verdicts.items():
         print("  %s: %s" % (k, "PASS" if v else "FAIL"))

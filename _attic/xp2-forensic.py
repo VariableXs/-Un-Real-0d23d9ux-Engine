@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(r"D:\2\14\-Un-Real-0d23d9ux-Engine-main")
 ATTIC = ROOT / "_attic"
 ISO = ATTIC / "varix-xhci.iso"
-SERIAL = ATTIC / "xp2-serial.log"
+SERIAL = ATTIC / "f6-serial.log"
 MON_PORT = 14810
 
 
@@ -27,6 +27,11 @@ def main():
             "-device", "usb-mouse,bus=xhci.0",
             "-serial", f"file:{SERIAL}",
             "-monitor", f"tcp:127.0.0.1:{MON_PORT},server,nowait",
+            "-trace", "enable=usb_xhci_fetch_trb,file=_attic/f6-trace.log",
+            "-trace", "enable=usb_xhci_doorbell_write,file=_attic/f6-trace.log",
+            "-trace", "enable=usb_xhci_oper_write,file=_attic/f6-trace.log",
+            "-trace", "enable=usb_xhci_runtime_write,file=_attic/f6-trace.log",
+            "-trace", "enable=usb_xhci_queue_event,file=_attic/f6-trace.log",
             "-m", "1024",
         ],
         cwd=str(ROOT),

@@ -62,7 +62,14 @@
 
   /* ── F256 语义着色：色相环等分，规格固定四例色值优先 ─────────────────── */
   var DOMAIN_COLOR = { 用户: "#007AFF", 订单: "#34C759", 支付: "#FF9500", 数据: "#AF52DE" };
-  CA.semanticColor = function (domain) { return DOMAIN_COLOR[domain] || "#8E8E93"; };
+  var DOMAIN_PALETTE = ["#007AFF", "#34C759", "#FF9500", "#AF52DE"];
+  CA.semanticColor = function (domain) {
+    if (DOMAIN_COLOR[domain]) return DOMAIN_COLOR[domain];
+    /* v3：真实项目的域名（多为目录名）确定性调色——同域同色、跨域异色，
+     * 不再有"全灰地图"。哈希取色保证同一项目每次打开颜色一致。 */
+    if (domain) return DOMAIN_PALETTE[U.hash(String(domain)) % 4];
+    return "#8E8E93";
+  };
   CA.DOMAIN_COLOR = DOMAIN_COLOR;
 
   /* ── F307 颜色即含义（全界面统一） ────────────────────────────────────── */
@@ -345,6 +352,27 @@
       if (n.parent >= 0 && n.parent < nodes.length && n.parent !== n.id) nodes[n.parent].children.push(n.id);
       else n.parent = -1;
     });
+    /* v3 域推断：真实项目的 domain 常为空——按「根下第一段路径」推断，
+     * 同一目录的节点共享一个域（同色），不同目录不同色（确定性哈希）。
+     * 演示项目的显式 domain 不受影响。 */
+    (function inferDomains() {
+      var segDomain = {};
+      nodes.forEach(function (n) {
+        if (n.domain || n.kind === 0) return;
+        var seg = "", cur = n;
+        while (cur.parent >= 0) {
+          var p = nodes[cur.parent];
+          if (!p) break;
+          if (p.kind === 0) break;             /* 根节点名=项目名，不作域 */
+          seg = p.name.split("/")[0];
+          if (nodes[cur.parent].kind === 0) break;
+          cur = p;
+        }
+        if (!seg) seg = n.name.split(/[\\/]/)[0] || "?";
+        if (!segDomain[seg]) segDomain[seg] = "域" + (Object.keys(segDomain).length + 1) + "·" + seg;
+        n.domain = segDomain[seg];
+      });
+    })();
     var edges = (json.edges || []).map(function (e) {
       return { from: +e.from, to: +e.to, freq: +e.freq || 0.2, kind: e.kind || "call" };
     }).filter(function (e) {

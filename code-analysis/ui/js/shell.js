@@ -139,6 +139,19 @@
       this.applyStyle(loadStyle());
       this.applyViewport(root.innerWidth);
       root.addEventListener("resize", function () { self.applyViewport(root.innerWidth); });
+      /* v3 视口轮询兜底：部分宿主（壳B WebView / 自动化环境）不派发原生
+       * resize 事件——QA 实测曾致五档适配滞留。600ms 比对 innerWidth，零开销。
+       * v4：只在真实浏览器宿主（有 document.hidden）启动——无头桩环境
+       * （smoke.mjs）没有事件泵需求，挂着 interval 会把 Node 进程钉死不退。 */
+      if (typeof doc.hidden === "boolean") {
+        this._lastW = root.innerWidth;
+        this._vpTimer = setInterval(function () {
+          if (root.innerWidth !== self._lastW) {
+            self._lastW = root.innerWidth;
+            self.applyViewport(self._lastW);
+          }
+        }, 600);
+      }
 
       /* F 键跟随等键位注册表（C15 三端同表：壳C 事件循环把内核键位事件
        * 翻译成 KeyboardEvent 派发，这里只消费标准事件，三壳等价）。 */
