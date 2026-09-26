@@ -160,3 +160,22 @@ export function liftFilterSelfTest(jitters: { dx: number; dy: number; dtMs: numb
   const p95 = errs[Math.min(errs.length - 1, Math.floor(n * 0.95))] ?? 0;
   return { p95: Math.round(p95 * 100) / 100, pass: p95 < 0.5 };
 }
+
+/**
+ * F611 自动调谐（无障碍引导面）：采集一段真实指针样本，按抖动能量推荐档位。
+ * 抖动能量 = 高频小幅度位移占比（>60% 建议强档，>25% 建议轻档，否则关档）。
+ * 推荐不是强制——面板呈现建议值，用户一键采纳或自行选择（可发现性章十一）。
+ */
+export function autoTuneTremor(samples: { dx: number; dy: number }[]): { recommended: TremorLevel; jitterRatio: number } {
+  if (samples.length < 20) return { recommended: "off", jitterRatio: 0 };
+  let jitterEnergy = 0;
+  let totalEnergy = 0;
+  for (const s of samples) {
+    const mag = Math.hypot(s.dx, s.dy);
+    totalEnergy += mag;
+    if (mag < TREMOR_LEVELS.strong.ampPx * 2) jitterEnergy += mag; // 4px 内视为微抖能量
+  }
+  const ratio = totalEnergy === 0 ? 0 : jitterEnergy / totalEnergy;
+  const recommended: TremorLevel = ratio > 0.6 ? "strong" : ratio > 0.25 ? "light" : "off";
+  return { recommended, jitterRatio: Math.round(ratio * 1000) / 1000 };
+}

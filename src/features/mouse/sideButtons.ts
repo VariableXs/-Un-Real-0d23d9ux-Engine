@@ -139,3 +139,24 @@ export function sideGesturePriorityMatrix(sideConfigured: boolean, gestureEnable
   if (gestureEnabled) return "仅手势层生效（右键轨迹，侧键保持系统默认）。";
   return "两者均未启用。";
 }
+
+/**
+ * F244 冲突审计（互通判据的执法面）：把当前映射与外部注册行（系统快捷键
+ * 等已占用声明）比对，产出冲突清单。冲突规则：同一修饰键组合或同一系统
+ * 动作被声明两次 → 冲突行（审计表裁决，不静默双注册）。
+ */
+export function sideButtonConflicts(
+  cfg: SideButtonsConfig,
+  externalRows: { key: string; action: string }[],
+): { key: string; conflictWith: string }[] {
+  const conflicts: { key: string; conflictWith: string }[] = [];
+  for (const [b, t] of Object.entries(cfg.global)) {
+    const label = `XButton${b === String(XBUTTON1) ? "1" : "2"}`;
+    if (t.kind === "shortcut") {
+      for (const row of externalRows) {
+        if (row.action.includes(t.keys)) conflicts.push({ key: label, conflictWith: row.action });
+      }
+    }
+  }
+  return conflicts;
+}

@@ -118,3 +118,13 @@ export function edgeDepth(
  * runtime 只对带标记的容器生效——不越权滚动未声明的容器。
  */
 export const AUTOSCROLL_ATTR = "data-autoscroll";
+
+/**
+ * 自动滚油门爬升（F604 深化：锚定时间越长速度越顺——起步柔和、续航有力）。
+ * ramp：锚定后前 400ms 线性爬升到 100%（起步不窜），封顶后恒速。
+ */
+export function autoscrollRamp(heldMs: number, rampMs = 400): number {
+  if (heldMs <= 0) return 0;
+  if (heldMs >= rampMs) return 1;
+  return Math.round((heldMs / rampMs) * 100) / 100;
+}

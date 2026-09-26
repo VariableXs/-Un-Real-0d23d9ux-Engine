@@ -70,6 +70,72 @@ export function clickExpandsImmediately(): true {
   return true;
 }
 
+/**
+ * 悬停展开编排器（通用子级展开的时序机）：
+ * enter → 延迟触发；leave → 取消；点击 → 立即（红线短路）；重入重启。
+ * 菜单组件/树/工具条共用——全系统只有这一份时序逻辑（一致性章十）。
+ */
+export class MenuHoverController {
+  private timer: number | null = null;
+  private pendingKey: string | null = null;
+
+  constructor(
+    private readonly delayMs: () => number,
+    private readonly onOpen: (key: string) => void,
+    private readonly onClose: (key: string) => void,
+  ) {}
+
+  /** 指针进入某子级宿主。 */
+  enter(key: string): void {
+    if (this.pendingKey === key) return;
+    this.cancelPending();
+    this.pendingKey = key;
+    const d = this.delayMs();
+    if (d <= 0) {
+      this.fire();
+      return;
+    }
+    this.timer = window.setTimeout(() => this.fire(), d);
+  }
+
+  /** 指针离开（未落到别的子级时由调用方决定是否关闭）。 */
+  leave(): void {
+    this.cancelPending();
+  }
+
+  /** 点击路径：绕过延迟立即展开（clickExpandsImmediately 红线）。 */
+  click(key: string): void {
+    this.cancelPending();
+    this.pendingKey = key;
+    this.fire();
+  }
+
+  /** 切换到另一个宿主时关闭旧宿主。 */
+  private fire(): void {
+    this.timer = null;
+    if (this.pendingKey) this.onOpen(this.pendingKey);
+  }
+
+  close(key: string): void {
+    if (this.pendingKey === key) {
+      this.pendingKey = null;
+      this.onClose(key);
+    }
+  }
+
+  cancelPending(): void {
+    if (this.timer !== null) {
+      window.clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  dispose(): void {
+    this.cancelPending();
+    this.pendingKey = null;
+  }
+}
+
 /* ------------------------------- F619 长按旋钮 ------------------------------- */
 
 export type LongPressScale = 0.6 | 1.0 | 1.6;

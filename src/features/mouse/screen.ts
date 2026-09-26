@@ -155,6 +155,40 @@ export class ScreenMemory {
       y: Math.max(m.y, Math.min(m.y + m.height, p.y)),
     };
   }
+
+  /** 清空某块屏的记忆（面板管理入口——用户能看见能控制）。 */
+  forget(edid: string): void {
+    const points = { ...this.cfg().points };
+    delete points[edid];
+    j1Set("screenMemory", { points });
+  }
+
+  clearAll(): void {
+    j1Set("screenMemory", { points: {} });
+  }
+}
+
+/* ------------------------------- F607 分屏对护边配置 ------------------------------- */
+
+export interface SeamPairConfig {
+  /** 屏对键（按 EDID 有序拼接）→ 护边开关覆盖（「按屏对记忆」判据）。 */
+  overrides: Record<string, { enabled: boolean }>;
+}
+
+/** 屏对键：两块屏的 EDID 指纹字典序拼接（A|B 与 B|A 同键——方向无关）。 */
+export function seamPairKey(edidA: string, edidB: string): string {
+  return [edidA, edidB].sort().join("|");
+}
+
+/** 该屏对的护边是否启用：屏对覆盖 > 全局开关。 */
+export function seamGuardForPair(globalEnabled: boolean, overrides: SeamPairConfig["overrides"], edidA: string, edidB: string): boolean {
+  const o = overrides[seamPairKey(edidA, edidB)];
+  return o ? o.enabled : globalEnabled;
+}
+
+/** 设置屏对覆盖（面板入口）。 */
+export function setSeamPairOverride(overrides: SeamPairConfig["overrides"], edidA: string, edidB: string, enabled: boolean): SeamPairConfig["overrides"] {
+  return { ...overrides, [seamPairKey(edidA, edidB)]: { enabled } };
 }
 
 // 避免与 j1store 产生模块环：延迟动态取 set（store 侧不 import 本文件）。

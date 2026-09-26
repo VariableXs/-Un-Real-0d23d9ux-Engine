@@ -24,6 +24,22 @@ import { BUILTIN_GESTURES } from "../mouse/gestures";
 import { OVERLAY_WALKTHROUGH_BACKGROUNDS, composeOverlay, invertColor } from "../mouse/overlay";
 import { pushToast } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
+import {
+  SectionCard,
+  WheelOverridesEditor,
+  AppProfilePanel,
+  SideKeyAppPanel,
+  GesturePad,
+  ScreenMemoryPanel,
+  LongPressRegistryPanel,
+  CurvePlayground,
+  Dir16Grid,
+  TremorAutoTune,
+  TelemetryPanel,
+  PackPanel,
+  DevicePackPanel,
+  EvidencePanel,
+} from "./MouseJ1Panels";
 import "../../styles/mouse-j1.css";
 
 type Cfg = Record<string, unknown>;
@@ -266,6 +282,15 @@ export function MouseJ1Tab(): React.ReactElement {
         <Row label="曲线说明" hint={CURVE_LIBRARY.find((c) => c.id === curve.id)?.desc ?? ""}>
           <button type="button" onClick={() => undo("curve", "速度曲线")}>还原上一态</button>
         </Row>
+        <SectionCard title="示例区与人群预设" f="F601">
+          <CurvePlayground
+            cfg={curve}
+            onPreset={(p) => {
+              setCurve({ id: p.curve, sens: p.sens });
+              pushToast("success", `已切换预设（曲线 ${p.curve} · ${p.sens}×）`);
+            }}
+          />
+        </SectionCard>
       </Group>
 
       <Group title="慢速微调" f="F602" desc="按住修饰键指针立刻「听话变慢」——精确落点的确定性优先；修饰键占用已登记进快捷键冲突审计。">
@@ -313,6 +338,9 @@ export function MouseJ1Tab(): React.ReactElement {
             </table>
           </Row>
         )}
+        <SectionCard title="自动调谐（无障碍引导）" f="F611">
+          <TremorAutoTune />
+        </SectionCard>
       </Group>
 
       <Group title="滚轮手感" f="F605 / F606 / F612 / F618" desc="逐档与平滑两派手感各有主场；应用覆盖优先于全局；穿透让阅读一路到底。">
@@ -352,6 +380,9 @@ export function MouseJ1Tab(): React.ReactElement {
             </tbody>
           </table>
         </Row>
+        <SectionCard title="应用覆盖编辑器" f="F605">
+          <WheelOverridesEditor />
+        </SectionCard>
       </Group>
 
       <Group title="自动滚动" f="F604 / F609" desc="中键锚点滚长文档；拖文件到容器边缘它自己开始滚——油门在指针深入量。">
@@ -374,6 +405,10 @@ export function MouseJ1Tab(): React.ReactElement {
             })}
           </span>
         </Row>
+        <SectionCard title="16 方位可视化与速度语义" f="F604">
+          <Dir16Grid />
+          <p className="j1x-hint">16 格 = 锚点四周方位档；数字即 quantizeDirection 输出——锚点滚动方向由所在格决定，速度随离锚距离线性（{auto.deadZonePx}px 起步、{auto.maxPx}px 封顶）。</p>
+        </SectionCard>
       </Group>
 
       <Group title="跨屏与落点" f="F607 / F613" desc="接缝护边 4px/200ms 防勾绊、四角 8px 秒达；每块屏记住指针最后落点（EDID 指纹为键，换线不乱）。">
@@ -390,6 +425,9 @@ export function MouseJ1Tab(): React.ReactElement {
             {JSON.stringify(cornerExempt([{ id: "a", x: 0, y: 0, width: 1920, height: 1080, edidFingerprint: "t", scale: 1 }], 1916, 1076, 8))}
           </span>
         </Row>
+        <SectionCard title="跨屏记忆点管理" f="F613">
+          <ScreenMemoryPanel />
+        </SectionCard>
       </Group>
 
       <Group title="磁吸与悬停" f="F608 / F610" desc="磁吸是「帮助对准」不是「抢走控制权」（默认关、判定零偏移）；悬停节奏两把旋钮，点击展开永远即时。">
@@ -459,6 +497,12 @@ export function MouseJ1Tab(): React.ReactElement {
         <Row label="首插气泡提示" hint="新设备建档时提示「已为此设备建档」——不静默改手感。">
           <Toggle on={devices.notifyOnClone} onChange={(v) => setDevices({ notifyOnClone: v })} label="首插气泡提示" />
         </Row>
+        <SectionCard title="设备档案导入导出" f="F614">
+          <DevicePackPanel />
+        </SectionCard>
+        <SectionCard title="应用级档案（正交第二维）" f="F616">
+          <AppProfilePanel />
+        </SectionCard>
       </Group>
 
       <Group title="侧键与手势" f="F615 / F617" desc="侧键全局默认后退/前进、应用可覆盖；右键手势默认关——没画完就是右键菜单，菜单永远兜底。">
@@ -508,6 +552,12 @@ export function MouseJ1Tab(): React.ReactElement {
         <Row label="优先级矩阵" hint={sideGesturePriorityMatrix(Object.keys(side.global).length > 0, gest.enabled)}>
           <span />
         </Row>
+        <SectionCard title="自定义手势录制台" f="F617">
+          <GesturePad />
+        </SectionCard>
+        <SectionCard title="侧键应用覆盖与冲突审计" f="F615">
+          <SideKeyAppPanel />
+        </SectionCard>
       </Group>
 
       <Group title="长按与衬底" f="F619 / F620" desc="全系统长按统一旋钮（藏在进阶位——普通用户不该被问「长按多长」）；指针衬底让复杂壁纸上永远找得到箭头。">
@@ -554,6 +604,21 @@ export function MouseJ1Tab(): React.ReactElement {
             ))}
           </span>
         </Row>
+        <SectionCard title="长按功能登记表" f="F619">
+          <LongPressRegistryPanel />
+        </SectionCard>
+      </Group>
+
+      <Group title="遥测与证据" f="十三/十三·补 + MD3 附B" desc="体验日志还原每一次操作（狂点/死点自动标记，隐私红线：不记内容只记行为）；证据包把全部对拍表收敛成一份可归档 JSON。">
+        <SectionCard title="体验日志" f="十三">
+          <TelemetryPanel />
+        </SectionCard>
+        <SectionCard title="判据证据包" f="附B">
+          <EvidencePanel />
+        </SectionCard>
+        <SectionCard title="鼠标档案打包（vxtheme 对接）" f="F623">
+          <PackPanel />
+        </SectionCard>
       </Group>
     </div>
   );

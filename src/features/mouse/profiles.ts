@@ -201,3 +201,34 @@ export function getAppProfile(appId: string): AppProfile | null {
   const cfg = j1Store.get("appProfiles");
   return ((cfg.profiles as Record<string, AppProfile>) ?? {})[appId] ?? null;
 }
+
+/**
+ * F616 前台切换触发（应用前台获焦 → 档案挂载的单一入口）：
+ * 记录 currentApp 并返回该应用的档案（无档案返回 null——默认态零干预）。
+ * runtime 在 window focus / activeElement 变化时调用；<100ms 判据由纯同步
+ * diff 保证（本函数无 IO）。
+ */
+export function trackCurrentApp(appId: string): AppProfile | null {
+  const cur = (j1Store.get("appProfiles").currentApp as string) ?? "";
+  if (cur !== appId) j1Store.set("appProfiles", { currentApp: appId });
+  return getAppProfile(appId);
+}
+
+/**
+ * 设备档案批量导入（F614 导出导入判据的导入侧）：
+ * 逐条校验（validateDeviceProfile），非法条目显性列出——合法子集才收
+ * （「半套不收」在单条粒度放宽为「非法单条不收、合法单条照常」——导入
+ * 向导逐条呈现，用户对每一台的去留有知情权）。
+ */
+export function importDeviceProfiles(list: unknown): { accepted: DeviceProfile[]; rejected: { name: string; errors: string[] }[] } {
+  const accepted: DeviceProfile[] = [];
+  const rejected: { name: string; errors: string[] }[] = [];
+  if (!Array.isArray(list)) throw new J1StoreError("devices", "导入清单不是数组");
+  for (const raw of list) {
+    const p = raw as DeviceProfile;
+    const errs = validateDeviceProfile(p);
+    if (errs.length > 0) rejected.push({ name: p?.name ?? p?.deviceKey ?? "未知名", errors: errs });
+    else accepted.push(p);
+  }
+  return { accepted, rejected };
+}

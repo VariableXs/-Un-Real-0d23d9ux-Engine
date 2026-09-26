@@ -22,6 +22,10 @@ import { j1Store, type J1Section } from "./j1store";
 import { applyCurve, slowTuneGain, type CurveConfig, type SlowTuneKey } from "./curve";
 import { LiftFilter, TremorFilter } from "./filters";
 import { WheelGain, resolveWheelMode, resolveWheelTarget, tiltFromShiftWheel, type WheelNotchConfig, type TiltWheelConfig, type PassthroughConfig, type WheelGainConfig } from "./wheel";
+import { WheelInertia, inertiaSuspension, INERTIA_DEFAULT } from "./inertia";
+import { j1Telemetry } from "./telemetry";
+import { autoscrollRamp } from "./autoscroll";
+import { trackCurrentApp } from "./profiles";
 import { SeamGuard, ScreenMemory, type MonitorInfo, type SeamGuardConfig, type ScreenMemoryConfig } from "./screen";
 import { magnetOffset, type MagnetConfig } from "./magnet";
 import { autoscrollVelocity, autoscrollExitFor, edgeDepth, edgeScrollSpeed, AUTOSCROLL_ATTR, AUTOSCROLL_PRESET, type AutoscrollConfig, type DragScrollConfig } from "./autoscroll";
@@ -95,13 +99,16 @@ export function J1Runtime(): React.ReactElement | null {
     keys: { shiftKey: false, ctrlKey: false, altKey: false, caps: false },
     // 滚轮
     gain: new WheelGain(() => cfg<WheelGainConfig>("wheelGain", WHEEL_GAIN_DEFAULT)),
+    inertia: new WheelInertia(() => cfg<import("./inertia").InertiaConfig>("wheelGain", INERTIA_DEFAULT)),
+    momentumRaf: 0,
+    momentumEl: null as Element | null,
     // 跨屏
     guard: new SeamGuard(() => monitors(), () => cfg<SeamGuardConfig>("seamGuard", SEAM_DEFAULT)),
     memory: new ScreenMemory(() => cfg<ScreenMemoryConfig>("screenMemory", MEMORY_DEFAULT)),
     // 手势
     recognizer: new GestureRecognizer(),
     // 自动滚
-    anchor: null as { x: number; y: number; raf: number } | null,
+    anchor: null as { x: number; y: number; raf: number; openedAt: number } | null,
     dragActive: false,
     dragRaf: 0,
     memThrottleAt: 0,
@@ -138,7 +145,9 @@ export function J1Runtime(): React.ReactElement | null {
       }
 
       // F607 护边时序（虚拟桌面坐标=窗口坐标；单屏环境自然静默直通）。
-      st.guard.feed(e.clientX, e.clientY, performance.now());
+      if (st.guard.feed(e.clientX, e.clientY, performance.now()) === "hold") {
+        j1Telemetry.log("seam-hold", "smooth", "seam-guard", e.clientX, e.clientY);
+      }
 
       // F613 记忆节流（每 2s 一次）。
       const now = performance.now();
@@ -173,15 +182,23 @@ export function J1Runtime(): React.ReactElement | null {
     /* ---------- 按下：手势开始 / 侧键 / 中键自动滚 ---------- */
     const onDown = (e: PointerEvent): void => {
       st.lift.onButtonUp(performance.now() + 1e6); // 按下=离开抬起窗
+      j1Telemetry.log("click", "smooth", roleOf(e.target), e.clientX, e.clientY);
+      // F616 前台档案挂载（应用获焦/交互即触发——纯同步 diff，<100ms 判据）。
+      const scope = appScopeOf(e.target);
+      if (scope) {
+        const ap = trackCurrentApp(scope);
+        if (ap) j1Telemetry.log("profile-switch", "smooth", `app:${scope}`, e.clientX, e.clientY);
+      }
       const gcfg = cfg<GestureLibraryConfig>("gestures", GESTURE_DEFAULT);
       if (e.button === 2 && gcfg.enabled) st.recognizer.begin(e.clientX, e.clientY);
 
       if (e.button === 3 || e.button === 4) {
         const scfg = cfg<SideButtonsConfig>("sideButtons", SIDE_DEFAULT);
-        const target = resolveSideButton(scfg, appScopeOf(e.target), e.button);
+        const target = resolveSideButton(scfg, scope, e.button);
         if (target) {
           e.preventDefault();
           runSideTarget(target);
+          j1Telemetry.log("side-button", "smooth", `XButton${e.button === 3 ? "1" : "2"}`, e.clientX, e.clientY);
         }
       }
 
@@ -201,8 +218,10 @@ export function J1Runtime(): React.ReactElement | null {
       const gcfg = cfg<GestureLibraryConfig>("gestures", GESTURE_DEFAULT);
       if (e.button === 2 && gcfg.enabled && st.recognizer.trail.length > 0) {
         const hit = st.recognizer.recognize(gcfg);
+        const steps = st.recognizer.steps.length;
         const pts = st.recognizer.trail;
         st.recognizer.reset();
+        j1Telemetry.gestureOutcome(!!hit, steps, e.clientX, e.clientY);
         if (hit) {
           e.preventDefault();
           e.stopPropagation();
@@ -217,6 +236,16 @@ export function J1Runtime(): React.ReactElement | null {
     };
 
     /* ---------- 滚轮：F618 穿透 → F605 档位 → F612 增益 / F606 倾斜等效 ---------- */
+    const momentumStep = (): void => {
+      st.momentumRaf = 0;
+      // 自动滚接管期间惯性挂起（F204 互斥语义——单一裁决函数）。
+      if (inertiaSuspension(st.anchor !== null) === "suspended" || !st.momentumEl) return;
+      const step = st.inertia.tick(performance.now());
+      if (step !== 0) {
+        scrollElement(st.momentumEl, step, 0, "auto");
+        st.momentumRaf = requestAnimationFrame(momentumStep);
+      }
+    };
     const onWheel = (e: WheelEvent): void => {
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       if (!hit) return;
@@ -227,6 +256,7 @@ export function J1Runtime(): React.ReactElement | null {
           e.preventDefault();
           const { dir, cols } = tiltFromShiftWheel(e.deltaY, tcfg.colsPerNotch);
           scrollElement(targetFor(hit), dir * cols * LINE_HEIGHT, 0, "auto");
+          j1Telemetry.log("wheel", "smooth", "tilt-equivalent", e.clientX, e.clientY);
           return;
         }
       }
@@ -240,7 +270,16 @@ export function J1Runtime(): React.ReactElement | null {
       const lines = st.gain.feed(performance.now(), !smooth); // 逐档豁免增益（F605 互斥边界）
       const sign = e.deltaY >= 0 ? 1 : -1;
       e.preventDefault();
-      scrollElement(target, sign * lines * LINE_HEIGHT, 0, smooth ? "smooth" : "auto");
+      scrollElement(target, sign * lines * LINE_HEIGHT, 0, smooth ? "auto" : "auto");
+      j1Telemetry.log("wheel", "smooth", `${mode}${passthrough ? "+穿透" : ""}`, e.clientX, e.clientY);
+      // 平滑档：动量交给惯性引擎（输入停歇后衰减释放——F204 余韵）。
+      if (smooth) {
+        st.inertia.feed(lines, sign as 1 | -1, performance.now());
+        st.momentumEl = target;
+        if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
+      } else {
+        st.inertia.reset();
+      }
       if (passthrough) return; // 穿透已生效（目标即下层容器）
     };
 
@@ -263,15 +302,17 @@ export function J1Runtime(): React.ReactElement | null {
       if (st.dragActive && st.dragRaf === 0) st.dragRaf = requestAnimationFrame(dragStep);
     };
 
-    /* ---------- F604 中键自动滚动 ---------- */
+    /* ---------- F604 中键自动滚动（含油门爬升 + 生命线遥测） ---------- */
     const startAutoscroll = (container: HTMLElement, x: number, y: number): void => {
       stopAutoscroll();
-      st.anchor = { x, y, raf: 0 };
+      st.anchor = { x, y, raf: 0, openedAt: performance.now() };
       setAnchorUi({ x, y });
+      j1Telemetry.anchorLifecycle("open", x, y);
       const step = (): void => {
         if (!st.anchor) return;
         const v = autoscrollVelocity(st.lastX - st.anchor.x, st.lastY - st.anchor.y, cfg<AutoscrollConfig>("autoscroll", AUTO_DEFAULT));
-        if (v.vx !== 0 || v.vy !== 0) container.scrollBy({ left: v.vx * 0.25, top: v.vy * 0.25 });
+        const ramp = autoscrollRamp(performance.now() - st.anchor.openedAt); // 起步柔和、续航有力
+        if (v.vx !== 0 || v.vy !== 0) container.scrollBy({ left: v.vx * 0.25 * ramp, top: v.vy * 0.25 * ramp });
         st.anchor.raf = requestAnimationFrame(step);
       };
       st.anchor.raf = requestAnimationFrame(step);
@@ -279,6 +320,7 @@ export function J1Runtime(): React.ReactElement | null {
     const stopAutoscroll = (): void => {
       if (st.anchor) {
         cancelAnimationFrame(st.anchor.raf);
+        j1Telemetry.anchorLifecycle("close", st.anchor.x, st.anchor.y);
         st.anchor = null;
         setAnchorUi(null);
       }
@@ -330,6 +372,7 @@ export function J1Runtime(): React.ReactElement | null {
       unsub();
       stopAutoscroll();
       if (st.dragRaf) cancelAnimationFrame(st.dragRaf);
+      if (st.momentumRaf) cancelAnimationFrame(st.momentumRaf);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("pointermove", onMove);
@@ -386,6 +429,13 @@ function modifierActive(key: SlowTuneKey, keys: { shiftKey: boolean; ctrlKey: bo
 function appScopeOf(target: EventTarget | null): string | null {
   const el = target instanceof Element ? target.closest("[data-app-id]") : null;
   return (el as HTMLElement | null)?.dataset.appId ?? null;
+}
+
+/** 遥测粗粒度目标（隐私红线：只记控件角色，不记文本内容）。 */
+function roleOf(target: EventTarget | null): string {
+  if (!(target instanceof Element)) return "unknown";
+  const el = target as HTMLElement;
+  return el.getAttribute?.("role") ?? el.tagName?.toLowerCase() ?? "unknown";
 }
 
 function scrollElement(target: Element, top: number, left: number, behavior: ScrollBehavior): void {

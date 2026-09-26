@@ -187,3 +187,37 @@ export const SECTION_F: Record<J1Section, string> = {
   longPress: "F619",
   overlay: "F620",
 };
+
+/* ------------------------------- F601 深化：灵敏度预设 + 示例轨迹 ------------------------------- */
+
+/** 人群灵敏度预设（一键档——「办公/设计/电竞」三类的开箱手感）。 */
+export const SENS_PRESETS: { id: string; name: string; desc: string; curve: CurveId; sens: number }[] = [
+  { id: "office", name: "办公", desc: "经典加速 + 1.0x：从 Windows 迁移零差异。", curve: "classic", sens: 1.0 },
+  { id: "design", name: "设计", desc: "线性 1:1 + 0.8x：像素级落点，所见即所得。", curve: "linear", sens: 0.8 },
+  { id: "gaming", name: "电竞", desc: "线性 1:1 + 1.2x：原始输入，甩枪不衰减。", curve: "linear", sens: 1.2 },
+];
+
+/**
+ * 示例轨迹模拟（贝塞尔编辑器「示例区实时跟手预览」的数据层）：
+ * 给定一条匀速扫动样本（8→160px），产出输入-输出逐点轨迹，供画布
+ * 逐帧重画——纯函数零副作用，预览延迟只受渲染帧限制。
+ */
+export function simulateTrace(curve: CurveId, cfg: CurveConfig, points = 40): { inPx: number; outPx: number; gain: number }[] {
+  const out: { inPx: number; outPx: number; gain: number }[] = [];
+  for (let i = 0; i < points; i++) {
+    const inPx = 4 + (156 * i) / (points - 1); // 先乘后除：整数分子保精度（无舍入尾巴）
+    const g = gainAt(curve, inPx, cfg) * (cfg.sens || 1);
+    out.push({ inPx, outPx: Math.round(inPx * g * 100) / 100, gain: Math.round(g * 1000) / 1000 });
+  }
+  return out;
+}
+
+/** 曲线连续性自检：相邻采样点增益差有界（编辑器拖拽预览不跳变的机械保证）。 */
+export function curveSmoothness(curve: CurveId, cfg: CurveConfig, stepPx = 4): number {
+  let worst = 0;
+  for (let a = stepPx; a <= 512; a += stepPx) {
+    const d = Math.abs(gainAt(curve, a, cfg) - gainAt(curve, a - stepPx, cfg));
+    if (d > worst) worst = d;
+  }
+  return Math.round(worst * 1000) / 1000;
+}

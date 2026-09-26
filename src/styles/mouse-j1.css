@@ -354,3 +354,249 @@
     opacity: 1;
   }
 }
+
+/* ---------------- 深化子面板（j1x-*） ---------------- */
+
+.j1x-card {
+  border: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.07));
+  border-radius: var(--vx-radius, 6px);
+  margin: 6px 14px;
+  overflow: hidden;
+}
+
+.j1x-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.j1x-card-head:hover {
+  background: color-mix(in srgb, var(--vx-accent, #4f7cff) 6%, transparent);
+}
+
+.j1x-card-title {
+  flex: 1;
+}
+
+.j1x-chevron {
+  color: var(--vx-text-3, #8a8f9a);
+  font-size: 11px;
+}
+
+.j1x-card-body {
+  padding: 4px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.j1x-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.j1x-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.j1x-rowline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--vx-radius, 6px);
+  background: color-mix(in srgb, var(--vx-text, #1b1b1b) 3%, transparent);
+  font-size: 12.5px;
+}
+
+.j1x-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.j1x-btn:hover {
+  background: var(--vx-surface-3, #f2f4f8);
+}
+
+.j1x-btn--danger {
+  color: var(--vx-danger, #b3261e);
+  border-color: color-mix(in srgb, var(--vx-danger, #b3261e) 40%, transparent);
+}
+
+.j1x-btn--danger:hover {
+  background: color-mix(in srgb, var(--vx-danger, #b3261e) 8%, transparent);
+}
+
+.j1x-input {
+  padding: 4px 8px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12.5px;
+  min-width: 160px;
+}
+
+.j1x-textarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+  resize: vertical;
+}
+
+.j1x-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--vx-text-3, #8a8f9a);
+  line-height: 1.5;
+}
+
+.j1x-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--vx-text-3, #8a8f9a);
+  font-style: italic;
+}
+
+.j1x-mono {
+  font-family: Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.j1x-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vx-accent, #4f7cff) 12%, transparent);
+  color: var(--vx-accent, #4f7cff);
+}
+
+.j1x-badge--on {
+  background: var(--vx-accent, #4f7cff);
+  color: var(--vx-surface-2, #fff);
+}
+
+.j1x-badge--warn {
+  background: color-mix(in srgb, var(--vx-danger, #b3261e) 14%, transparent);
+  color: var(--vx-danger, #b3261e);
+}
+
+.j1x-canvas {
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  touch-action: none;
+}
+
+.j1x-details {
+  font-size: 12px;
+}
+
+.j1x-details summary {
+  cursor: pointer;
+  color: var(--vx-text-2, #5a5f6a);
+}
+
+.j1x-pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--vx-surface-3, #f2f4f8);
+  border-radius: var(--vx-radius, 6px);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.j1x-chips {
+  display: flex;
+  gap: 6px;
+}
+
+.j1x-chip {
+  padding: 3px 14px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: 999px;
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.j1x-chip:hover {
+  border-color: var(--vx-accent, #4f7cff);
+  color: var(--vx-accent, #4f7cff);
+}
+
+.j1x-axis {
+  stroke: var(--vx-border, #c9ccd4);
+}
+
+.j1x-axis--diag {
+  stroke-dasharray: 4 4;
+}
+
+.j1x-trace {
+  stroke: var(--vx-accent, #4f7cff);
+  stroke-width: 2;
+  fill: none;
+}
+
+.j1x-dirgrid {
+  display: grid;
+  grid-template-columns: repeat(8, 32px);
+  gap: 4px;
+}
+
+.j1x-dircell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vx-radius, 6px);
+  border: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.08));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vx-text-3, #8a8f9a);
+}
+
+.j1x-dircell--on {
+  background: var(--vx-accent, #4f7cff);
+  border-color: var(--vx-accent, #4f7cff);
+  color: var(--vx-surface-2, #fff);
+}
+
+.j1x-jsonio {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.j1x-jsonio-row {
+  display: flex;
+  gap: 8px;
+}
