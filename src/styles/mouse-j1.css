@@ -635,3 +635,97 @@
 .j1x-details-btn:hover .j1x-mono {
   text-decoration: underline;
 }
+
+/* ------------------------- v7 批次七面板（十引擎消费端） ------------------------- */
+
+/* 两列参数组（谱学实验室左右分栏）。 */
+.j1x-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+  align-items: start;
+}
+
+/* 键值行（高信息密度：标签左对齐、值右齐等宽）。 */
+.j1x-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid oklch(0.5 0 0 / 0.12);
+  font-size: 12px;
+}
+.j1x-kv-k {
+  color: oklch(0.55 0 0);
+  flex-shrink: 0;
+}
+.j1x-kv-v {
+  font-family: var(--font-mono, monospace);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* 体检/裁决结论条（三态色——语义色不只靠色相，附文字结论）。 */
+.j1x-verdict {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 12px;
+}
+.j1x-verdict strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.j1x-verdict-pass {
+  border-color: oklch(0.72 0.17 150 / 0.6);
+  background: oklch(0.72 0.17 150 / 0.12);
+}
+.j1x-verdict-warn {
+  border-color: oklch(0.78 0.16 85 / 0.7);
+  background: oklch(0.78 0.16 85 / 0.12);
+}
+.j1x-verdict-fail {
+  border-color: oklch(0.63 0.24 25 / 0.7);
+  background: oklch(0.63 0.24 25 / 0.12);
+}
+
+/* 混成预览表（紧凑数字表）。 */
+.j1x-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.j1x-table th,
+.j1x-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid oklch(0.5 0 0 / 0.1);
+  text-align: right;
+}
+.j1x-table th {
+  color: oklch(0.55 0 0);
+  font-weight: 500;
+}
+
+/* 按钮排与运行日志。 */
+.j1x-btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.j1x-log {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: oklch(0.5 0 0 / 0.08);
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.j1x-verdict label,
+.j1x + label {
+  margin-right: 12px;
+}

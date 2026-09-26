@@ -832,7 +832,7 @@
 
 ### AI-J1 J 鼠标域·一分队（F601-F620 · 20 项 · 目标 15,660 行）
 
-> **状态标记（AI-J1 收口 · v6）**：20/20 项功能落地 + **深化批次五、六并入**（v5：**九引擎群**——gainfield 贝塞尔精确反解/oneEuro 双引擎滤波/recognizer Protractor 形状手势/edid 字节级身份解析/topology 多屏拓扑/wheelcal 滚轮标定向导/physics 指针物理/session 会话聚合/reconcile 对账引擎 + 五面板 + 全部真实接线；v6：**五处最丑角落真修复**——F612 方向翻转防爬升/F613 真 LRU/F617 形状查重/F605 应用清单选择器/gainfield 闭合 F601 牛顿近似），**194 项单测全绿 + 隔离验证门常驻**；实际纯功能代码 **7,061 行**（上限口径达成率 **45.1%**，v1→v6 轨迹、十二查对账、隔离验证记录与剩余缺口工单见 `docs/AI-J1-完成报告.md` §3/§8/§9）。
+> **状态标记（AI-J1 收口 · v7）**：20/20 项功能落地 + **深化批次五、六、七并入**（v6：**九引擎群**——gainfield 贝塞尔精确反解/oneEuro 双引擎滤波/recognizer Protractor 形状手势/edid 字节级身份解析/topology 多屏拓扑/wheelcal 滚轮标定向导/physics 指针物理/session 会话聚合/reconcile 对账引擎 + 五面板 + 五处 ugly 真修复；v7：**十引擎纵深**——speedspectrum 曲线谱学（Windows 档双射换算+曲线混成+五项体检）/precisiontune 精密模式（减速坡道+键盘微调+粘滞状态机）/palmguard 手掌守门三态分类/tiltchannel 倾斜模拟量通道/seamcross 接缝状态机（角落滞回+粘滞+交叉预测）/edgeramp 边缘滚纵深（嵌套接力+松手余韵）/wheelrules 穿透规则引擎（specificity 仲裁+临时开关+环形审计）/shadowcast 投影物理光照/displayidentity EDID 能力档案与身份置信度/profilesync 档案包生命周期（迁移+merge）+ 十面板挂载），**243 项单测全绿 + 隔离验证门常驻 + 引擎健康探针 15 个**；实际纯功能代码 **8,394 行**（上限口径达成率 **53.6%**，v1→v7 轨迹、十二查对账、隔离验证记录与剩余缺口工单见 `docs/AI-J1-完成报告.md` §3/§8/§9）。
 
 | 编号 · 功能 | 目标行数 | 验收标准（主册判据摘文 + 通用十二查） |
 | --- | --- | --- |

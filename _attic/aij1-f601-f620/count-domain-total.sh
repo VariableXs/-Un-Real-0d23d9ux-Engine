@@ -20,8 +20,12 @@ for f in src/features/mouse/j1store.ts src/features/mouse/curve.ts src/features/
   src/features/mouse/gainfield.ts src/features/mouse/oneEuro.ts src/features/mouse/recognizer.ts \
   src/features/mouse/edid.ts src/features/mouse/topology.ts src/features/mouse/wheelcal.ts \
   src/features/mouse/physics.ts src/features/mouse/session.ts src/features/mouse/reconcile.ts src/features/mouse/appRegistry.ts \
+  src/features/mouse/speedspectrum.ts src/features/mouse/precisiontune.ts src/features/mouse/palmguard.ts \
+  src/features/mouse/tiltchannel.ts src/features/mouse/seamcross.ts src/features/mouse/edgeramp.ts \
+  src/features/mouse/wheelrules.ts src/features/mouse/shadowcast.ts src/features/mouse/displayidentity.ts \
+  src/features/mouse/profilesync.ts \
   src/features/mouse/windowRuntime.ts src/features/mouse/J1Runtime.tsx \
-  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/features/settings/MouseJ1V5Panels.tsx src/styles/mouse-j1.css; do
+  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/features/settings/MouseJ1V5Panels.tsx src/features/settings/MouseJ1V7Panels.tsx src/styles/mouse-j1.css; do
   n=$(filt < "$f"); printf "%6d  %s\n" "$n" "$f"; total=$((total+n))
 done
 echo "------"; echo "J1 域功能文件现值合计: $total"
