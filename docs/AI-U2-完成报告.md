@@ -215,3 +215,63 @@ git worktree add D:/_u2v2check HEAD
 cd kernel && cargo test -p varix --lib
 # 期望：genstar2 域 315 passed / 0 failed；全域 5347 passed / 1 failed（唯一失败为 ustar3 在途）
 ```
+
+---
+
+## 八、深化 v3 收口 + v4 批次（2026-09-26 · 本轮交付）
+
+> 依据分工书铁律 1 继续深化。本轮两件事：① 上一会话遗留的 **v3 在途批次（16 模块 +2,881 行）收口并入库**；② 新增 **v4 批次（7 模块深化 + 栈纪律重构）**。全部在独立验证舱完成隔离验证。
+
+### 8.1 交付概览
+
+| 项 | 数值 |
+| --- | --- |
+| 域内总行数 | 22,514（v2+v3 在途）→ **23,568 行**（v3 收口 + v4 净增，51 文件 +3,978/-61 vs 上一收口点） |
+| 行数对账 | 23,568 / 53,690 = **43.9%**（上限口径，如实入账） |
+| 检查项 | **1,285 项**（50 模块 + 域聚合器，逐项映射主册判据锚——见《AIU2-检查项对账表.md》） |
+| 隔离验证 | 独立验证舱 `D:/_u2pod`（genstar2 + checks.rs 同源副本，镜像主仓 kernel/.cargo/config.toml 16MiB 测试栈口径）`cargo test` **392 passed / 0 failed** |
+| 域自检 | `genstar2_domain_aggregate_all_green` **50/50 全绿**（每子域「全绿且未截断」） |
+
+### 8.2 v4 深化面摘要（7 模块 · 按主册判据展开）
+
+- **F459 webfallback**（+158）：搜索 URL round-trip 解码对拍器（编码→解码逐字节还原）、容量边界实测（恰好放下/超 1 字节）、三类 rank 不变式登记。**三缺陷修正**：D-31 历史分级 rank 语义反了（注释说越靠后实现却越靠前）；D-32 v2 的带凭据拒识（防钓鱼）没接进 decide() 建议链；D-33 循环守卫按最坏 3 字节预留导致入口界与循环界不一致（合法 query 被误拒）。
+- **F460 vxdict**（词库持久化）：persist/restore 全量序列化（count u16le + 逐条 [len|word|freq] + FNV-1a 校验尾）、篡改单字节拒收、半条拒收、容量诚实面（小缓冲 None）、词条含空格解析（rfind 分隔语义）。
+- **F461 fgmute**（+裁决管线）：统一裁决管线 `decide()`（硬规则 > DND 档 F341 > 前台礼仪，一处一事实）、DND 四档语义矩阵、容量诚实面（8 应用槽/16 规则槽满额拒绝）、窗口账下溢保护（未开窗关闭/双重关闭 = false）。
+- **F464 trashdrag**（+批量面）：批量拖出逐件裁决账（非冲突出账/冲突停账/缺失如实计数，三分账=输入数）、占用汇总 `total_bytes()`（饱和加法，与容量环一处一事实）、全容量 128 填充实测（第 129 件诚实拒绝且不破坏存量）、两路还原互斥（拖出后原位 = NoSuchItem）。
+- **F468 cmdhist**（+恢复通道）：全量恢复 `restore_from()`（v2 只有落盘无恢复——「跨会话保留」链路补全）、水位线单调（seq 不回退）、1000 条淘汰实测（零堆 itoa 定宽行名）、回溯边界矩阵（首↑落最新/最旧停住/↓ 回输入行）、搜索找遍诚实 None。
+- **F469 termcolor**（+剥离与归类）：SGR 剥离器（完整 CSI 剥净/残缺序列原样保留/容量钳制）、语义标记归类器（已修复→绿/无法→红/警告→黄，错误>警告>成功最坏先报）、六 token 对比度登记表（≥4.5:1）、开关状态持久化（1 字节 + 坏包拒收）。
+- **F471 scrollback**（+生命周期）：超长行诚实拒绝（>200B 拒收且缓冲零变化）、选择释放不抢屏（松开选择后停留原地——恢复必须用户动作）、徽标态迁移矩阵（unread 全程对账）、cls 后历史可回看、空缓冲滚动边界、万行满环继续接收。
+
+### 8.3 栈纪律重构（真缺陷，本轮根治）
+
+| 级 | 现象 | 根因 | 修法 |
+| --- | --- | --- | --- |
+| 🔴 | envedit/scrollback 检查与测试在 2MiB 测试线程栈上 STATUS_STACK_OVERFLOW | EnvEditor 单体 ≈0.7MB（undo 32×64 条全栏快照）、Scrollback 单体 ≈2.1MB（万行×208B）——Rust 的 alloca 在**整个函数帧常驻**，同帧多个实例直接爆栈 | **探测帧模式**：每个检查面各住一个探测函数（`probe_*`），0.7/2.1MB 帧顺序进出互不叠加；测试内改 Box（测试链路允许 alloc）；v1 检查里从未使用的 `e2` 编辑器（死代码）删除；主仓 16MiB 口径（kernel/.cargo/config.toml [env]）在验证舱镜像 |
+
+### 8.4 缺陷账本（本轮 D-31 起）
+
+| 级 | 编号 | 现象 | 修法 |
+| --- | --- | --- | --- |
+| 🟡 | D-31 | webfallback 历史分级 rank 注释与行为相反（越靠后写成越靠前） | rank 随历史单调递增（saturating_add），v2 检查期待同步对齐 |
+| 🟡 | D-32 | v2 带凭据 URL 拒识（防钓鱼）未接进 decide() 建议链——「严格识别」是摆设 | decide() 改用 looks_like_url_strict |
+| 🟡 | D-33 | build_search_url 循环守卫最坏预留致入口界/循环界不一致（226B 合法 query 误拒） | 守卫按分支实际需求（safe+1/percent+3） |
+| 🔴 | D-34 | envedit v3 深检在 2MiB 栈溢出（多编辑器同帧） | 探测帧拆分 + 测试 Box 化 + 死代码 e2 删除 |
+| 🔴 | D-35 | autolum v3 `jump_streak_faulty` 检查喂值序列构造错误（注释三连击实际一跳）——验收期待与语义偏差类 | 喂值序列重写（100↔900 每跳 800，第三跳判故障） |
+| 🟡 | D-36 | envedit v1/v2 检查路径 String::repeat（零堆违规两处） | 栈上定长数组替代 |
+| 🟡 | D-37 | fgmute v4 rule_cap_exact 计数口径错（set_rule 覆盖同名也返回 true） | 改断言 count()==RULE_SLOT_CAP |
+
+### 8.5 环境观察（非本分队任务，报备不越界）
+
+- 主仓共享树多分队在途深度缠结：`h1star/` 目录整目录未入库但 lib.rs 已声明 `pub mod h1star;`（E0583）；svstar 提交态在部分基线上 `vec!` 宏解析红——**任何干净 worktree 当前都无法编译**，全量回归 `robust::f475_every_domain_reports` 需他队收口后复跑。本分队验收改用独立验证舱（genstar2+checks 同源副本），域内口径完整可复现。
+- 本轮复验中上轮 v3 在途的 16 模块深化全部随舱转绿（唯一红点 F491 修复后 50/50）。
+
+### 8.6 复现口令
+
+```text
+mkdir D:/_u2pod/src
+cp kernel/varix/src/checks.rs D:/_u2pod/src/
+cp -r kernel/varix/src/genstar2 D:/_u2pod/src/
+# D:/_u2pod/.cargo/config.toml: [env] RUST_MIN_STACK = "16777216"（镜像主仓口径）
+cd D:/_u2pod && cargo test
+# 期望：392 passed / 0 failed（域聚合 50/50 全绿）
+```
