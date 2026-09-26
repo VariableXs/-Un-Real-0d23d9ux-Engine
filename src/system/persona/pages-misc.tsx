@@ -1,7 +1,7 @@
 /**
  * E 域页组⑤：系统面（F167 右键菜单 / F168 任务栏 / F169 快捷键 / F170 域总检）。
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   SYSTEM_ITEMS, LOCKED_ITEMS, loadCtxMenuConfig, saveCtxMenuConfig, hideItem,
   restoreItem, hiddenRatioWarning, recordUsage, usageCount, autoSort, POPUP_BUDGET_MS,
@@ -16,6 +16,9 @@ import {
   type ShortcutGroup,
 } from "./shortcuts";
 import { runDomainVerdict, verdictChecklistJson, type DomainVerdict } from "./verdict";
+import { assembleContextMenu } from "./ime-menu-engine";
+import { taskbarGeometry, autoHideNext, REARRANGE_BUDGET_MS, type AutoHideState } from "./layout-engine";
+import { parseComboFromEvent, classifyConflict, exportKeymap, importKeymap, buildEvidenceDoc, evidenceDocComplete, effectiveSnapshot, type ScopedShortcut } from "./shortcut-engine";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -61,7 +64,55 @@ export function CtxMenuPage(): React.ReactNode {
           <span />
         </Row>
       </Card>
+      <AssembledMenuPreviewCard />
     </div>
+  );
+}
+
+/**
+ * 菜单总装预览（ime-menu-engine 接线）：基线+应用注册+用户定制 → 最终渲染模型。
+ * 隐藏项收进「显示更多选项」二级（功能不丢只收纳）；系统组位置不动。
+ */
+function AssembledMenuPreviewCard(): React.ReactNode {
+  const cfg = loadCtxMenuConfig();
+  const [context, setContext] = useState<"file" | "desktop">("file");
+  const appItems = [
+    { id: "app.archiver", label: "压缩", shortcutHint: "" },
+    { id: "app.editor", label: "编辑", shortcutHint: "" },
+    { id: "app.scan", label: "扫描", shortcutHint: "" },
+  ];
+  const assembled = assembleContextMenu(cfg, appItems, { target: context });
+  const tier1 = assembled.items.filter((i) => i.tier === 1);
+  const tier2 = assembled.items.filter((i) => i.tier === 2);
+
+  return (
+    <Card title="菜单总装预览（真实渲染模型 · 乙-4 基线对齐）">
+      <Row label="右键目标" sub="文件目标含剪切/复制/重命名；桌面背景自动过滤文件类项">
+        <Segmented
+          value={context} ariaLabel="右键目标" onChange={setContext}
+          options={[{ value: "file", label: "文件" }, { value: "desktop", label: "桌面背景" }]}
+        />
+      </Row>
+      <div style={{ border: "1px solid var(--p-border-subtle, rgba(140,140,160,0.14))", borderRadius: 8, padding: 8, maxWidth: 280, background: "var(--p-bg-surface, rgba(28,28,38,0.6))" }}>
+        {tier1.map((i) => (
+          <div key={i.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "3px 6px", fontSize: 12, opacity: i.locked ? 0.75 : 1 }}>
+            <span>{i.label}{i.locked ? " 🔒" : ""}</span>
+            <span style={{ opacity: 0.55, fontSize: 10 }}>{i.group === "app" ? "应用" : i.shortcutHint}</span>
+          </div>
+        ))}
+        {tier2.length > 0 ? (
+          <div style={{ borderTop: "1px solid var(--p-border-subtle, rgba(140,140,160,0.14))", marginTop: 4, paddingTop: 4 }}>
+            <div style={{ padding: "3px 6px", fontSize: 12, fontWeight: 600 }}>显示更多选项（{assembled.moreCount}）</div>
+            {tier2.map((i) => (
+              <div key={i.id} style={{ padding: "2px 6px 2px 16px", fontSize: 11, opacity: 0.7 }}>{i.label}{i.locked ? " 🔒" : ""}</div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <Row label="弹出预算对账" sub={`总装耗时 ${assembled.assembledInMs ?? 0}ms ≤ ${POPUP_BUDGET_MS}ms 红线（定制不增负——性能回归项）`}>
+        <span />
+      </Row>
+    </Card>
   );
 }
 
@@ -107,7 +158,61 @@ export function TaskbarPage(): React.ReactNode {
           <span />
         </Row>
       </Card>
+      <TaskbarEngineCard />
     </div>
+  );
+}
+
+/**
+ * 任务栏引擎面板（layout-engine 接线）：布局几何实算（图标位/折叠线/托盘起点）
+ * + 自动隐藏五态状态机（光标位置 × 驻留 × 焦点 × 全屏——迟滞去抖）。
+ */
+function TaskbarEngineCard(): React.ReactNode {
+  const prefs = loadTaskbarPrefs();
+  const screenW = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const items = [
+    { id: "start", pinned: true },
+    { id: "explorer", pinned: true },
+    { id: "editor", pinned: false },
+    { id: "term", pinned: false },
+    { id: "media", pinned: false },
+  ];
+  const geo = taskbarGeometry(prefs, items, screenW, 12);
+  const [state, setState] = useState<AutoHideState>("shown");
+
+  function step(s: { y: number; dwell: number; focus: boolean; fullscreen: boolean }): void {
+    const next = autoHideNext({
+      state,
+      cursorYFromBottom: s.y,
+      dwellMs: s.dwell,
+      focusPinned: s.focus,
+      fullscreenActive: s.fullscreen,
+      autoHidePref: prefs.autoHide,
+      sinceTransitionMs: 500,
+    });
+    setState(next);
+  }
+
+  return (
+    <Card title="布局几何与状态机（layout-engine 实算 · 重排预算 200ms）">
+      <Row
+        label={`几何 · 高 ${geo.heightPx}px · 图标 ${geo.iconPx}px · 开始钮 ${geo.startButtonPx}px`}
+        sub={`图标区起点 x=${geo.iconsOriginX} · 托盘起点 x=${geo.trayOriginX}（从右缘向左排）· 折叠 ${geo.foldedIds.length} 项${geo.foldedIds.length > 0 ? `: ${geo.foldedIds.join(" ")}` : "（固定项永不折叠）"}`}
+      >
+        <span />
+      </Row>
+      <Row label="重排预算" sub={`三选项任一变更 → 布局重排 ${REARRANGE_BUDGET_MS}ms 内完成（F124 大面板档）`}>
+        <span />
+      </Row>
+      <Row label="自动隐藏状态机" sub={`当前态: ${state}（shown 显示 / hiding 隐藏中 / hidden 已隐藏 / revealing 唤出中 / pinned-by-focus 焦点钉住）`}>
+        <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+          <PButton onClick={() => step({ y: 200, dwell: 0, focus: false, fullscreen: false })}>光标离开</PButton>
+          <PButton onClick={() => step({ y: 3, dwell: 250, focus: false, fullscreen: false })}>贴底 250ms</PButton>
+          <PButton onClick={() => step({ y: 3, dwell: 250, focus: true, fullscreen: false })}>托盘弹层开着</PButton>
+          <PButton onClick={() => step({ y: 3, dwell: 250, focus: false, fullscreen: true })}>全屏应用</PButton>
+        </span>
+      </Row>
+    </Card>
   );
 }
 
@@ -123,28 +228,40 @@ export function ShortcutsPage(): React.ReactNode {
   const combos = effectiveCombos(overrides);
   const groups = Object.keys(GROUP_NAMES) as ShortcutGroup[];
   const filtered = q ? searchShortcuts(q, "zh") : DEFAULT_SHORTCUTS;
+  // 冲突审计（shortcut-engine 接线）：对全表逐条分级判定——系统系统冲突即时显出。
+  const conflicts = useMemo(() => {
+    const scoped: ScopedShortcut[] = DEFAULT_SHORTCUTS.map((s) => ({ id: s.id, scope: "system" as const }));
+    const found: { id: string; message: string }[] = [];
+    for (const e of DEFAULT_SHORTCUTS) {
+      const c = combos.get(e.id) ?? e.default;
+      const v = classifyConflict(scoped, overrides, e.id, c);
+      if (v.kind !== "none" && v.message) found.push({ id: e.id, message: `${e.zh}: ${v.message}` });
+    }
+    return found;
+  }, [overrides, combos]);
 
   // 重录捕获层独立于输入系统：录时不触发功能（keydown preventDefault + 只读键面）。
+  // 事件语法解析走 shortcut-engine（parseComboFromEvent）——Esc 取消、单键拒绝、
+  // 规范序归一全在解析器内，页面不自带第二套规则。
   useEffect(() => {
     if (!recording) return;
     function onKey(e: KeyboardEvent): void {
       e.preventDefault();
       e.stopPropagation();
-      if (e.key === "Escape") {
-        setRecording(null);
+      if (!recording) return;
+      const parsed = parseComboFromEvent(e);
+      if (!parsed.ok) {
+        if (parsed.reason === "Esc 取消" || e.key === "Escape") {
+          setRecording(null);
+          setMsg("已取消重录（原键位不变）");
+          return;
+        }
+        setMsg(`拒绝：${parsed.reason}`);
         return;
       }
-      if (!recording) return;
       const entry = DEFAULT_SHORTCUTS.find((x) => x.id === recording);
       if (!entry) return;
-      const combo = {
-        win: e.metaKey,
-        ctrl: e.ctrlKey,
-        alt: e.altKey,
-        shift: e.shiftKey,
-        key: e.key.length === 1 ? e.key.toUpperCase() : e.key,
-      };
-      const r = rebind(overrides, recording, combo);
+      const r = rebind(overrides, recording, parsed.combo!);
       setMsg(r.reason);
       if (r.ok) saveOverrides(r.overrides);
       setRecording(null);
@@ -167,6 +284,11 @@ export function ShortcutsPage(): React.ReactNode {
       />
       {msg ? <Notice tone="info">{msg}</Notice> : null}
       {recording ? <Notice tone="warn">{t("recording")}</Notice> : null}
+      {conflicts.length > 0 ? (
+        <Notice tone="warn">冲突审计：{conflicts.length} 条冲突——{conflicts.slice(0, 3).map((c) => c.message).join("；")}</Notice>
+      ) : (
+        <Notice tone="ok">冲突审计：全表零冲突（即录即查 O(1) 查表的静态对账）。</Notice>
+      )}
       {groups.map((g) => (
         <Card key={g} title={GROUP_NAMES[g].zh}>
           {filtered.filter((e) => e.group === g).map((e) => {
@@ -188,7 +310,50 @@ export function ShortcutsPage(): React.ReactNode {
       <Row label="撤销最近一次重录" sub={`撤销栈 ${overrides.undo.length} 条`}>
         <PButton onClick={() => { saveOverrides(undoRebind(overrides)); setMsg("已改回"); }}>撤销</PButton>
       </Row>
+      <KeymapExchangeRow overrides={overrides} onMsg={setMsg} />
     </div>
+  );
+}
+
+/** 键位导出/导入（shortcut-engine 接线）：vxkeymap v1 格式——迁移与备份的契约格式。 */
+function KeymapExchangeRow(props: { overrides: ReturnType<typeof loadOverrides>; onMsg: (s: string) => void }): React.ReactNode {
+  function doExport(): void {
+    const km = exportKeymap(props.overrides);
+    const blob = new Blob([JSON.stringify(km, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "varix-keymap.vxkeymap.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    props.onMsg(`已导出 ${Object.keys(km.overrides).length} 条自定义键位（vxkeymap v1）`);
+  }
+
+  function doImport(file: File): void {
+    file.text().then((text) => {
+      try {
+        const r = importKeymap(JSON.parse(text), props.overrides);
+        if (r.ok) saveOverrides(r.overrides);
+        props.onMsg(r.reason);
+      } catch {
+        props.onMsg("不是合法 JSON");
+      }
+    });
+  }
+
+  return (
+    <Row label="键位迁移" sub="导出 vxkeymap v1 / 导入同格式（换机迁移与备份的契约格式；非法格式拒绝并说明）">
+      <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+        <PButton onClick={doExport}>导出键位</PButton>
+        <label style={{ fontSize: 11, cursor: "pointer", padding: "4px 10px", borderRadius: 6, border: "1px solid var(--p-border-regular, rgba(140,140,160,0.24))" }}>
+          导入键位
+          <input
+            type="file" accept=".json,application/json" style={{ display: "none" }}
+            aria-label="导入键位文件"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = ""; }}
+          />
+        </label>
+      </span>
+    </Row>
   );
 }
 
@@ -213,6 +378,23 @@ export function VerdictPage(): React.ReactNode {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = "vx-walkcheck-e-checklist.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  /** 证据归档（shortcut-engine 接线）：三步验收记录落成 docs/acceptance 惯例 JSON。 */
+  function downloadEvidence(): void {
+    if (!result) return;
+    const notes = [
+      `域总检 UI 内执行 · ${new Date().toLocaleString()}`,
+      `通过 ${result.passed}/${result.total} · 耗时 ${result.elapsedMinutes.toFixed(3)} 分钟`,
+      "逐项配置哈希前后果见 verdict.items[].evidence（探针 mutate 前快照逐位等值）",
+    ];
+    const doc = buildEvidenceDoc(result, notes);
+    const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "vx-walkcheck-e-evidence.json";
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -248,6 +430,7 @@ export function VerdictPage(): React.ReactNode {
       )}
       <Row label="checklist 导出" sub="vx-walkcheck-e v1（走查材料族惯例）">
         <PButton onClick={downloadChecklist}>导出 JSON</PButton>
+        <PButton disabled={!result} onClick={downloadEvidence}>{result ? (evidenceDocComplete(buildEvidenceDoc(result, ["执行于域总检页"])) ? "导出证据包" : "证据链不足——先修再导") : "导出证据包"}</PButton>
       </Row>
     </div>
   );

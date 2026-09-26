@@ -16,6 +16,7 @@ import { X } from "lucide-react";
 import { pushOverlay, popOverlay } from "../../state/uiStore";
 import { Card, PageHeader, Row, PButton, Notice, useT } from "./ui";
 import { baseCharset, generalCharset, scanFont, verdictFor, MISSING_LIST_PREVIEW } from "./fontguard";
+import { buildFallbackChain, BatchFontScanner } from "./font-engine";
 import { TokensPage, PreviewPage, AutoDarkPage, ExceptionsPage } from "./pages-theme";
 import { DailyWallPage, IconPackPage, PointerPage } from "./pages-assets";
 import { SoundPage, StartMenuPage, MotionPage } from "./pages-feel";
@@ -103,11 +104,12 @@ const PAGE_MAP: Record<PageId, () => ReactNode> = {
   verdict: VerdictPage,
 };
 
-/** F159 字体安全档页（纯逻辑在 fontguard.ts——本页给预检三档可视与强行应用护栏）。 */
+/** F159 字体安全档页（纯逻辑在 fontguard.ts——本页给预检三档可视与强行应用护栏；回退链与批量扫描走 font-engine）。 */
 function FontPage(): ReactNode {
   const t = useT();
   const [input, setInput] = useState("");
   const [monospace, setMonospace] = useState(false);
+  const [userFontName, setUserFontName] = useState("我的艺术字体");
   const result = useMemo(() => {
     const covered = new Set<number>();
     for (const ch of input) covered.add(ch.codePointAt(0) ?? 0);
@@ -116,6 +118,27 @@ function FontPage(): ReactNode {
     return { ...r, monospace };
   }, [input, monospace]);
   const verdict = result ? verdictFor(result.interfaceMissingRate) : null;
+  // 回退链构建（font-engine）：用户字体 → 中文栈 → 西文栈 → 兜底（永不落空）。
+  const chain = useMemo(
+    () => buildFallbackChain(userFontName, { cjk: "思源黑体 CJK", latin: "Inter", fallback: "Varix Sans" }),
+    [userFontName],
+  );
+  // 批量扫描协议（font-engine）：分批后台扫 + 部分结论先行（超大字体不冻结界面）。
+  const [batchInfo, setBatchInfo] = useState<string | null>(null);
+  function runBatchScan(): void {
+    const covered = new Set<number>();
+    for (const ch of input) covered.add(ch.codePointAt(0) ?? 0);
+    if (covered.size === 0) {
+      setBatchInfo("先提供字符覆盖样本——批量扫描协议需要输入。");
+      return;
+    }
+    const scanner = new BatchFontScanner({ fontId: "batch-demo", covered, generalChars: generalCharset(), interfaceChars: [...baseCharset()] });
+    const snap0 = scanner.snapshot;
+    let guard = 0;
+    while (scanner.step() && guard++ < 64) { /* 全批跑完（每批 500 字——实机由空闲调度器分帧调用） */ }
+    const snap = scanner.snapshot;
+    setBatchInfo(`批 ${snap.completedBatches}/${snap.totalBatches} 完成 · 部分结论在第 1 批后即给出（缺字率 ${((snap.partialMissingRate ?? 0) * 100).toFixed(1)}%）· 单批 ${snap.lastBatchMs}ms（初始批 ${snap0.totalBatches} 批计划）`);
+  }
 
   return (
     <div>
@@ -154,6 +177,22 @@ function FontPage(): ReactNode {
           ) : null}
         </Card>
       ) : null}
+      <Card title="回退链（缺字不空窗——永不落空的字体栈）">
+        <Row label="用户字体名">
+          <input value={userFontName} onChange={(e) => setUserFontName(e.target.value)} style={{ ...inputStyle, width: 200 }} aria-label="用户字体名" />
+        </Row>
+        {chain.stack.map((f, i) => (
+          <Row key={`${f}-${i}`} label={`第 ${i + 1} 级 · ${f}`} sub={chain.notes[i] ?? ""}>
+            <span />
+          </Row>
+        ))}
+      </Card>
+      <Card title="批量扫描协议（超大字体分批后台扫 · 部分结论先行）">
+        <Row label="执行" sub="每批 500 字、批间让出 500ms（实机由空闲调度器分帧调用——界面零冻结）">
+          <PButton onClick={runBatchScan}>跑批量扫描</PButton>
+        </Row>
+        {batchInfo ? <Notice tone="info">{batchInfo}</Notice> : null}
+      </Card>
     </div>
   );
 }

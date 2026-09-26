@@ -2,7 +2,7 @@
  * E 域页组①：主题（F151 令牌表 / F152 实时预览编辑器 / F153 深浅自动切换 /
  * F162 每应用主题例外）。
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   COLOR_TOKENS, SPACING_TOKENS, RADIUS_DEFAULTS, FONT_DEFAULTS,
   MOTION_CURVES, MOTION_DURATIONS, tokenTableHash,
@@ -11,6 +11,12 @@ import {
   type ColorGroup, type TokenTable, type MotionCurve,
 } from "./tokens";
 import { PreviewSession, PREVIEW_WIDTH_PX, type PreviewScene } from "./preview";
+import {
+  auditTableContrast, diffSummary, diffTokenTables, scanHardcodedColors,
+  TransitionDriver,
+  type HardcodeHit,
+} from "./theme-engine";
+import { lockedTableForException } from "./archive-engine";
 import {
   loadAutoDarkConfig, saveAutoDarkConfig, parseHHMM, nextSwitchAt,
   sunTimesMinutes, AutoDarkController, type AutoDarkMode,
@@ -33,7 +39,13 @@ export function TokensPage(): React.ReactNode {
   usePersonaSection("theme");
   const [table, setTable] = useState<TokenTable>(() => loadTokenTable());
   const [saved, setSaved] = useState(false);
+  const [scanSrc, setScanSrc] = useState("");
   const coverage = useMemo(() => coverageReport(table), [table]);
+  const contrastFixes = useMemo(() => auditTableContrast(table), [table]);
+  const scanHits = useMemo<HardcodeHit[]>(
+    () => (scanSrc.trim() ? scanHardcodedColors("粘贴片段", scanSrc) : []),
+    [scanSrc],
+  );
 
   function commit(next: TokenTable): void {
     setTable(next);
@@ -64,6 +76,44 @@ export function TokensPage(): React.ReactNode {
         <Row label={`${coverage.covered}/${coverage.total}`} sub={coverage.missing.length > 0 ? coverage.missing.join(" ") : "24/24 · 全覆盖"}>
           <span />
         </Row>
+      </Card>
+      <Card title="对比度审计（AA 4.5:1 门禁 · F141 公式同源）">
+        {contrastFixes.length === 0 ? (
+          <Notice tone="ok">全表文本/状态色对画布底全部达标——主题自证清白（B-1104 联动）。</Notice>
+        ) : null}
+        {contrastFixes.map((f) => (
+          <Row
+            key={f.tokenKey}
+            label={f.tokenKey}
+            sub={`当前 ${f.ratioBefore.toFixed(2)}:1 → 建议 ${f.suggestion}（${f.ratioAfter.toFixed(2)}:1 · 保持色相只调明度轴）`}
+          >
+            <span style={{ ...swatchStyle, background: f.current }} title="当前" />
+            <span style={{ ...swatchStyle, background: f.suggestion }} title="建议" />
+            <PButton kind="primary" onClick={() => commit({ ...table, colors: { ...table.colors, [f.tokenKey]: f.suggestion } })}>
+              采纳建议
+            </PButton>
+          </Row>
+        ))}
+      </Card>
+      <Card title="硬编码扫描（B-1104 执法 · 语义色字面量审计）">
+        <textarea
+          value={scanSrc}
+          onChange={(e) => setScanSrc(e.target.value)}
+          placeholder="粘贴界面源码片段——与令牌默认物理值完全相等的 hex 字面量即违例（门禁要确定性，不做近似猜测）。"
+          aria-label="硬编码扫描源码"
+          style={{ ...inputStyle, width: "100%", minHeight: 64, fontFamily: "monospace" }}
+        />
+        {scanSrc.trim() ? (
+          scanHits.length === 0 ? (
+            <Notice tone="ok">零命中——该片段干净（filesClean 口径）。</Notice>
+          ) : (
+            scanHits.slice(0, 8).map((h, i) => (
+              <Row key={`${h.line}-${i}`} label={`第 ${h.line} 行 · ${h.literal}`} sub={h.snippet}>
+                <code style={monoStyle}>{h.suggestion}</code>
+              </Row>
+            ))
+          )
+        ) : null}
       </Card>
       {(Object.keys(GROUP_ZH) as ColorGroup[]).map((g) => (
         <Card key={g} title={t(GROUP_ZH[g])}>
@@ -143,6 +193,30 @@ export function PreviewPage(): React.ReactNode {
   const [started, setStarted] = useState(false);
   const [discardMsg, setDiscardMsg] = useState<string | null>(null);
   const working = loadTokenTable();
+  // 换装过渡引擎演示（TransitionDriver 驱动——doSwap 全生命周期恰好一次）。
+  const [transDemo, setTransDemo] = useState<{ progress?: number; oldOpacity?: number; newOpacity?: number; swapped?: boolean }>({});
+  const [transRunning, setTransRunning] = useState(false);
+  const transRafRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(transRafRef.current), []);
+
+  function runTransition(): void {
+    const driver = new TransitionDriver();
+    driver.start();
+    setTransRunning(true);
+    const t0 = performance.now();
+    let swapped = false;
+    function step(): void {
+      const f = driver.tick(performance.now() - t0);
+      if (f.doSwap) swapped = true; // doSwap 全生命周期恰好一次（引擎保证）
+      setTransDemo({ progress: f.progress, oldOpacity: f.oldOpacity, newOpacity: f.newOpacity, swapped });
+      if (!driver.isDone) {
+        transRafRef.current = window.setTimeout(step, 16);
+      } else {
+        setTransRunning(false);
+      }
+    }
+    step();
+  }
 
   function start(): void {
     session.start(loadTokenTable());
@@ -207,6 +281,24 @@ export function PreviewPage(): React.ReactNode {
         <MiniDesktop width={PREVIEW_WIDTH_PX} accent={working.colors["--p-accent"] ?? "#6e7fd4"} scene={scene} />
         <Row label="窗口圆角" sub={`${working.radius.window}px`}>
           <Slider value={working.radius.window} min={0} max={32} step={1} ariaLabel="预览窗口圆角" format={(v) => `${v}px`} onChange={patchRadius} />
+        </Row>
+        {started ? (
+          <Row label="应用前差异预览" sub={diffSummary(diffTokenTables(session.session!.baseline, working))}>
+            <span />
+          </Row>
+        ) : null}
+      </Card>
+      <Card title="换装过渡引擎（300ms 双层交叉 · 中段原子替换）">
+        <Row label="过渡帧演示" sub={`总时长 ${Math.round((transDemo.progress ?? 0) * 100)}% · 旧表 ${Math.round((transDemo.oldOpacity ?? 1) * 100)}% / 新表 ${Math.round((transDemo.newOpacity ?? 0) * 100)}%${transDemo.swapped ? " · 令牌已在中段原子替换" : ""}`}>
+          <PButton kind="primary" disabled={transRunning} onClick={runTransition}>预演 300ms 交叉</PButton>
+        </Row>
+        <div style={{ position: "relative", height: 40, borderRadius: 8, overflow: "hidden", border: "1px solid var(--p-border-subtle, rgba(140,140,160,0.14))" }}>
+          <div style={{ position: "absolute", inset: 0, background: "#5a5a8a", opacity: transDemo.oldOpacity ?? 1 }} />
+          <div style={{ position: "absolute", inset: 0, background: "var(--p-accent, #6e7fd4)", opacity: transDemo.newOpacity ?? 0 }} />
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "rgba(255,255,255,0.4)" }} title="中段原子替换点 50%" />
+        </div>
+        <Row label="亮度守恒" sub="旧+新不透明度恒为 100%——双层交叉全程无白屏帧（录屏帧检口径的数学基础）">
+          <span />
         </Row>
       </Card>
     </div>
@@ -281,6 +373,7 @@ export function ExceptionsPage(): React.ReactNode {
   const t = useT();
   usePersonaSection("theme");
   const cfg = loadAppExceptions();
+  const workingAccent = loadTokenTable().colors["--p-accent"] as string | undefined;
   const [appId, setAppId] = useState("");
   const [appName, setAppName] = useState("");
   const [mode, setMode] = useState<"dark" | "light">("dark");
@@ -312,11 +405,22 @@ export function ExceptionsPage(): React.ReactNode {
       </Card>
       <Card title="例外清单">
         {cfg.exceptions.length === 0 ? <Notice tone="info">尚无例外——全局主题统一生效（这是默认，也是常态）。</Notice> : null}
-        {cfg.exceptions.map((e) => (
-          <Row key={e.appId} label={`${e.appName} · ${e.mode === "dark" ? "深色" : "浅色"}`} sub={degradationLabel(e) ?? t("tokenAware")}>
-            <PButton kind="danger" onClick={() => saveAppExceptions(removeException(cfg, e.appId))}>{t("reset")}</PButton>
-          </Row>
-        ))}
+        {cfg.exceptions.map((e) => {
+          // 锁定令牌派生（archive-engine）：全局广播时该应用跳过，实际收到的表由
+          // 例外模式从派生引擎生成——此处展示派生结果让「锁定」看得见。
+          const globalAccent = workingAccent ?? "#6e7fd4";
+          const locked = lockedTableForException(e, e.accentOverride ?? globalAccent);
+          return (
+            <Row key={e.appId} label={`${e.appName} · ${e.mode === "dark" ? "深色" : "浅色"}`} sub={degradationLabel(e) ?? t("tokenAware")}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.85 }}>
+                <span style={{ ...swatchStyle, background: locked.colors["--p-bg-canvas"] ?? "#14141c" }} title="锁定画布底" />
+                <span style={{ ...swatchStyle, background: locked.colors["--p-accent"] ?? globalAccent }} title="锁定强调色" />
+                <span>锁定表已派生</span>
+              </span>
+              <PButton kind="danger" onClick={() => saveAppExceptions(removeException(cfg, e.appId))}>{t("reset")}</PButton>
+            </Row>
+          );
+        })}
       </Card>
     </div>
   );
@@ -332,6 +436,7 @@ const selStyle: React.CSSProperties = {
 };
 const inputStyle: React.CSSProperties = { ...selStyle, width: 180 };
 const monoStyle: React.CSSProperties = { fontVariantNumeric: "tabular-nums", fontSize: 12, opacity: 0.85 };
+const swatchStyle: React.CSSProperties = { width: 18, height: 18, borderRadius: 4, display: "inline-block", border: "1px solid rgba(255,255,255,0.25)", flexShrink: 0 };
 
 /** 供 PreviewPage 哈希展示（F152 放弃零残留对拍口径）。 */
 export function currentTableHash(): string {

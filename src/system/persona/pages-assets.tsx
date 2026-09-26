@@ -1,7 +1,7 @@
 /**
  * E 域页组②：资产（F154 壁纸每日一换 / F155 图标包热更换 / F156 指针编辑器）。
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   loadDailyWallConfig, saveDailyWallConfig, pickDailyWallpaper, commitDailyPick,
   pinToday, shouldRotateNow, nextRotateAt, RESOLUTION_MATRIX, parseHHMM,
@@ -15,6 +15,12 @@ import {
   PREVIEW_BACKDROPS, HOTSPOT_ZOOM, SIZE_LIMIT_PX,
   loadPointerScheme, savePointerScheme, type PointerRoleAsset,
 } from "./pointer";
+import {
+  scheduleDownloads, inIdleWindow, planPreload, pickForMonitors,
+  DEFAULT_QUEUE_CONFIG, type DownloadTask, type MonitorPool,
+} from "./wallpaper-engine";
+import { iconInvalidationBus, auditSvgAsset } from "./icon-engine";
+import { renderPlan, evaluateCurAniCompatibility } from "./pointer-engine";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F154 壁纸每日一换 ----------
@@ -76,7 +82,53 @@ export function DailyWallPage(): React.ReactNode {
           ))}
         </div>
       </Card>
+      <WallpaperPipelineCard nextRotateAt={nextRotateAt(cfg, Date.now())} />
     </div>
+  );
+}
+
+/**
+ * 官方池下载管线面板（wallpaper-engine 接线）：空闲窗口调度 + 次日预载计划 +
+ * 多屏独立池。下载只写白名单缓存目录、校验失败即弃（数据安全红线）。
+ */
+function WallpaperPipelineCard(props: { nextRotateAt: number | null }): React.ReactNode {
+  const now = Date.now();
+  const inWindow = inIdleWindow(now, DEFAULT_QUEUE_CONFIG.idleWindow);
+  const [queue, setQueue] = useState<DownloadTask[] | null>(null);
+  const preload = useMemo(
+    () => planPreload(props.nextRotateAt ?? now, DEFAULT_QUEUE_CONFIG.idleWindow, now, "w-preload-demo"),
+    [props.nextRotateAt, now],
+  );
+
+  function enqueueDemo(): void {
+    const tasks: DownloadTask[] = ["官方池·晨雾", "官方池·夜航", "官方池·山谷"].map((id) => ({
+      wallpaperId: id, url: "pipeline://demo", maxBytes: 24 * 1024 * 1024,
+      checksum: "pending", state: "queued", attempts: 0, bytes: 0,
+    }));
+    setQueue(scheduleDownloads(tasks, DEFAULT_QUEUE_CONFIG, now));
+  }
+
+  const pools: MonitorPool[] = [
+    { monitorId: "主屏", poolIds: ["本地池"], followGlobal: true },
+    { monitorId: "副屏", poolIds: ["官方池"], followGlobal: false },
+  ];
+  const perMonitor = pickForMonitors(pools, "全局抽取 w-main", { side: () => 0 });
+
+  return (
+    <Card title="下载管线（官方池 · 空闲窗口 02:00–05:00 · F049 零等待预载）">
+      <Row label="当前窗口状态" sub={inWindow ? "空闲窗口内——下载可启动（并发 2）" : "窗口外——任务保持排队（前台零争抢）"}>
+        <span />
+      </Row>
+      <Row label="预载计划" sub={preload ? `${preload.wallpaperId} → ${new Date(preload.preloadAt).toLocaleString()} 解码入缓存（换的时刻零等待）` : "无待预载项"}>
+        <span />
+      </Row>
+      <Row label="排队演示" sub={queue ? queue.map((q) => `${q.wallpaperId}:${q.state}`).join(" · ") : "未排队"}>
+        <PButton onClick={enqueueDemo}>{queue ? "重新调度" : "排队 3 任务"}</PButton>
+      </Row>
+      <Row label="多屏独立池（前瞻接口）" sub={Object.entries(perMonitor).map(([m, w]) => `${m}←${w}`).join(" · ")}>
+        <span />
+      </Row>
+    </Card>
   );
 }
 
@@ -88,6 +140,23 @@ export function IconPackPage(): React.ReactNode {
   const state = loadIconPackState();
   const stats = coverageStats(state.current);
   const [msg, setMsg] = useState<string | null>(null);
+  // 失效广播事件流（订阅制不轮询——各面监听重取的可见化）。
+  const [busLog, setBusLog] = useState<string[]>([]);
+  useEffect(() => {
+    const off = iconInvalidationBus.subscribe((e) => {
+      setBusLog((prev) => [`${new Date(e.at).toLocaleTimeString()} · ${e.reason}${e.packId ? ` · ${e.packId}@${e.packVersion}` : " · 官方默认"}`, ...prev].slice(0, 5));
+    });
+    return off;
+  }, []);
+  // SVG 资产安全审计演示（F133 规范子集——外部输入全清洗）。
+  const svgAudit = useMemo(() => ({
+    clean: auditSvgAsset('<svg viewBox="0 0 16 16"><path d="M2 2h12v12H2z"/></svg>'),
+    evil: auditSvgAsset('<svg><script>alert(1)</script></svg>'),
+  }), []);
+
+  function broadcast(reason: "switch" | "rollback" | "uninstall", packId: string | null, packVersion: string | null): void {
+    iconInvalidationBus.broadcast({ reason, packId, packVersion, at: Date.now() });
+  }
 
   function installSample(): void {
     const t0 = performance.now();
@@ -101,7 +170,8 @@ export function IconPackPage(): React.ReactNode {
     const v = validateIconPack(pack);
     const r = switchIconPack(state, v.ok ? pack : null, v, Math.round(performance.now() - t0));
     if (r.ok) {
-      setMsg(`换装成功 · ${Math.round(r.elapsedMs)}ms（预算 ${SWITCH_BUDGET_MS}ms）· 覆盖 ${coverageStats(pack).ratioLabel}`);
+      broadcast("switch", pack.id, pack.version);
+      setMsg(`换装成功 · ${Math.round(r.elapsedMs)}ms（预算 ${SWITCH_BUDGET_MS}ms）· 覆盖 ${coverageStats(pack).ratioLabel} · 已广播失效（订阅面自动重取）`);
     } else {
       setMsg(`换装失败已整体回退：${r.reason}`);
     }
@@ -111,7 +181,8 @@ export function IconPackPage(): React.ReactNode {
     const r = rollbackIconPack(state);
     if (r) {
       saveIconPackState(r.next);
-      setMsg(`已回退到「${r.restored?.name ?? "官方默认包"}」`);
+      broadcast("rollback", r.restored?.id ?? null, r.restored?.version ?? null);
+      setMsg(`已回退到「${r.restored?.name ?? "官方默认包"}」· 已广播失效`);
     } else {
       setMsg("回退栈已空（最多连退三次）");
     }
@@ -128,7 +199,19 @@ export function IconPackPage(): React.ReactNode {
         <Row label="操作" sub="运行中应用窗口图标下次刷新生效（诚实边界）">
           <PButton kind="primary" onClick={installSample}>{t("installPack")}</PButton>
           <PButton onClick={rollback}>{t("rollbackPack")}（{state.rollback.length}/3）</PButton>
-          <PButton kind="danger" onClick={() => { switchIconPack(state, null, { ok: true, reason: "" }, 0); setMsg(t("uninstallPack")); }}>{t("uninstallPack")}</PButton>
+          <PButton kind="danger" onClick={() => { switchIconPack(state, null, { ok: true, reason: "" }, 0); broadcast("uninstall", null, null); setMsg(`${t("uninstallPack")} · 已广播失效`); }}>{t("uninstallPack")}</PButton>
+        </Row>
+      </Card>
+      <Card title="失效广播事件流（订阅制不轮询）">
+        {busLog.length === 0 ? <Notice tone="info">尚无广播——换装/回退/卸载会在此留下事件。</Notice> : null}
+        {busLog.map((line, i) => <Row key={`${line}-${i}`} label={line} sub="订阅方收到后按需重取（缓存键含包版本——旧包缓存不误命中）"><span /></Row>)}
+      </Card>
+      <Card title="SVG 资产安全审计（F133 规范子集 · 外部输入全清洗）">
+        <Row label="正常资产" sub={svgAudit.clean.ok ? "通过（无脚本注入向量）" : `拒绝: ${svgAudit.clean.issues.join("；")}`}>
+          <span />
+        </Row>
+        <Row label="恶意样本（script 注入）" sub={svgAudit.evil.ok ? "漏放——必须修" : `已拒绝: ${svgAudit.evil.issues.join("；")}`}>
+          <span />
         </Row>
       </Card>
       <Card title="解析优先级（当前包 &gt; 官方 &gt; 默认）">
@@ -204,6 +287,33 @@ export function PointerPage(): React.ReactNode {
               <div style={{ position: "absolute", inset: 6, background: "var(--p-accent, #6e7fd4)", clipPath: "polygon(0 0, 100% 60%, 55% 62%, 35% 100%)" }} />
             </div>
           </div>
+        </Card>
+      ) : null}
+      {asset ? (
+        <Card title="渲染规划（DPR 感知 · 4K 管线——高分屏放大不糊）">
+          {[1, 2].map((dpr) => {
+            const rp = renderPlan(asset, scheme.scale, dpr);
+            return (
+              <Row
+                key={dpr}
+                label={`DPR ${dpr} · ${rp.cssSize}px CSS → ${rp.physicalSize}px 物理`}
+                sub={`选 ${rp.spriteScale}x sprite（≥物理尺寸的最小档）· 热点物理坐标 (${rp.hotspotPhysical.x}, ${rp.hotspotPhysical.y})`}
+              >
+                <span />
+              </Row>
+            );
+          })}
+          <Row label=".cur / .ani 导入评估（Windows 生态互通）" sub=".cur 静态单帧可映射 · .ani 动效帧率取自 RIFF（超 60 降采样）">
+            <span />
+          </Row>
+          {([".cur", ".ani"] as const).map((kind) => {
+            const rep = evaluateCurAniCompatibility(kind);
+            return (
+              <Row key={kind} label={kind} sub={rep.supported ? `可导入 · 限制: ${rep.limitations[0]}${rep.limitations.length > 1 ? ` 等 ${rep.limitations.length} 条` : ""}` : "不支持"}>
+                <span />
+              </Row>
+            );
+          })}
         </Card>
       ) : null}
       <Card title="方案校验">

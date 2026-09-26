@@ -12,6 +12,9 @@ import {
   defaultStartLayout, fullscreenFitWarning, elderTouchOk,
 } from "./startpresets";
 import { loadMotionTier, saveMotionTier, motionPlan, scaledDuration, DEMO_SCENES, LOOP_PAUSE_MS } from "./motiontier";
+import { resolveEventSound, volumeRamp, rampAt } from "./audio-engine";
+import { startMenuGeometry, presetThumbSpec } from "./layout-engine";
+import { FrameTimeSampler, animationFallback, progressNumberSpec, progressNumberText, previewHonestyNote } from "./motion-monitor";
 import { Card, PageHeader, Row, Toggle, Slider, PButton, Notice, useT, usePersonaSection } from "./ui";// ---------- F157 声音混合器 ----------
 
 export function SoundPage(): React.ReactNode {
@@ -40,7 +43,39 @@ export function SoundPage(): React.ReactNode {
           </Row>
         ))}
       </Card>
+      <SoundEngineCard muted={cfg.masterMute} />
     </div>
+  );
+}
+
+/**
+ * 音频引擎面板（audio-engine 接线）：事件→声音解析链（方案资产优先、合成兜底）
+ * + 六事件合成特征表 + 音量过渡曲线（防爆音的 80ms ramp）。
+ */
+function SoundEngineCard(props: { muted: boolean }): React.ReactNode {
+  const cfg = loadSoundMixerConfig();
+  const [rampFrom, setRampFrom] = useState(0.2);
+  const ramp = volumeRamp(rampFrom, 0.9);
+
+  return (
+    <Card title="解析链与合成特征（零素材兜底 · 试听延迟 <200ms）">
+      {SOUND_EVENTS.map((e) => {
+        const r = resolveEventSound(cfg, e.id);
+        return (
+          <Row
+            key={e.id}
+            label={e.zh}
+            sub={r ? `${r.path} · 合成 ${r.synth.wave} ${r.synth.freq}Hz ${r.synth.durationMs}ms${r.synth.dual ? " 双音" : ""} · 响度 ${Math.round(r.volume * 100)}%` : "未知事件（已拒绝）"}
+          >
+            <span />
+          </Row>
+        );
+      })}
+      <Row label="音量过渡（80ms 防爆音 ramp）" sub={ramp ? `20%→90%：中点实际 ${Math.round(rampAt(ramp, 0.5) * 100)}%（线性过渡——听觉平滑）` : "差值 <2% 不过渡（无意义微动被忽略）"}>
+        <Slider value={rampFrom} min={0} max={1} step={0.05} ariaLabel="过渡起点音量" format={(v) => `${Math.round(v * 100)}%`} onChange={setRampFrom} />
+      </Row>
+      {props.muted ? <Notice tone="warn">总闸开启——试听与播放同哑（总闸语义一致，诚实）。</Notice> : null}
+    </Card>
   );
 }
 
@@ -71,6 +106,13 @@ export function StartMenuPage(): React.ReactNode {
     ].filter(Boolean).join("　"));
   }
 
+  // 布局几何（layout-engine 接线）：当前激活预设的确定性几何 + 各预设缩略规格。
+  const activePreset = cfg.presets.find((p) => p.id === cfg.activeId);
+  const activeLayout = activePreset ? applyPreset(activePreset, installed).layout : defaultStartLayout();
+  const screenW = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const geometry = startMenuGeometry(activeLayout, screenW, screenH);
+  const thumbs = cfg.presets.map((p) => presetThumbSpec(p, screenW, screenH));
+
   return (
     <div>
       <PageHeader title={t("startTitle")} hint="预设=差异集存储（只记与默认的差异——官方更新不冲掉用户改动）；切换不丢最近使用数据。" />
@@ -92,6 +134,26 @@ export function StartMenuPage(): React.ReactNode {
         <Row label={t("elderMode")} sub={`大图标档格子 ≥56px 达标线：${elderTouchOk(56) ? "通过" : "未过"}`}>
           <span />
         </Row>
+      </Card>
+      <Card title="布局几何（layout-engine 实算 · 预设卡缩略=真缩小版）">
+        <Row
+          label={`当前几何 · ${geometry.width}×${geometry.height}px · 格子 ${geometry.tilePx}px × ${geometry.tileColumns} 列`}
+          sub={`固定区 ${geometry.pinnedRows} 行 · 最近区 ${geometry.showRecent ? "显" : "隐"} · 推荐区 ${geometry.showRecommended ? "显" : "隐"} · 长辈达标 ${geometry.elderOk ? "✓" : "✗"}`}
+        >
+          <span />
+        </Row>
+        {thumbs.map((th, idx) => {
+          const p = cfg.presets[idx];
+          return (
+            <Row
+              key={p?.id ?? idx}
+              label={`${p?.name ?? "?"} 缩略 ×${th.scale.toFixed(2)}`}
+              sub={`${th.geometry.width}×${th.geometry.height}px · 格子 ${th.geometry.tilePx}px · ${th.geometry.tileColumns} 列 · 长辈达标 ${th.geometry.elderOk ? "✓" : "✗"}`}
+            >
+              <span />
+            </Row>
+          );
+        })}
       </Card>
     </div>
   );
@@ -154,7 +216,44 @@ export function MotionPage(): React.ReactNode {
           <PButton onClick={() => setCycle((c) => c + 1)}>{t("replay")}</PButton>
         </Row>
       </Card>
+      <MotionPerfCard />
     </div>
+  );
+}
+
+/**
+ * 性能监控面板（motion-monitor 接线）：帧时采样 → 80fps 预算判定 → 降级执法
+ * （必达动画转 WP-207 进度数字 / 普通动画降直线）+ 预演诚实提示。
+ */
+function MotionPerfCard(): React.ReactNode {
+  const samplerRef = useRef(new FrameTimeSampler());
+  const [, bump] = useState(0);
+  const v = samplerRef.current.verdict();
+  const keepVerdict = animationFallback({ durationMs: 200, missionCritical: false }, samplerRef.current);
+  const missionVerdict = animationFallback({ durationMs: 1200, missionCritical: true }, samplerRef.current);
+  const honesty = previewHonestyNote(samplerRef.current);
+  const progressText = progressNumberText(progressNumberSpec(0.42, 30));
+
+  function inject(kind: "normal" | "jank"): void {
+    const s = samplerRef.current;
+    if (kind === "normal") { for (let i = 0; i < 60; i++) s.record(11 + (i % 3)); }
+    else { for (let i = 0; i < 30; i++) s.record(24 + (i % 5)); }
+    bump((n) => n + 1);
+  }
+
+  return (
+    <Card title="性能监控（F124 联动 · 保帧率不保花活）">
+      <Row label={`帧时 P95 ${v.p95.toFixed(1)}ms / P99 ${v.p99.toFixed(1)}ms · 样本 ${v.samples}`} sub={`80fps 预算（≤12.5ms）: ${v.within80fps ? "达标" : "超标"} · 60fps 底线（≤16.6ms）: ${v.within60fps ? "达标" : "超标"}`}>
+        <span style={{ display: "inline-flex", gap: 6 }}>
+          <PButton onClick={() => inject("normal")}>注入 60 正常帧</PButton>
+          <PButton onClick={() => inject("jank")}>注入 30 掉帧</PButton>
+        </span>
+      </Row>
+      <Row label="降级执法（注入后判定）" sub={`普通动画: ${keepVerdict === "keep" ? "保留全动画" : keepVerdict === "linear" ? "降直线（位移不丢）" : "转数字"} · 必达动画（进度环）: ${missionVerdict === "progress-number" ? `WP-207 转显性数字——${progressText}` : "保留"}`}>
+        <span />
+      </Row>
+      {honesty ? <Notice tone="warn">{honesty}</Notice> : <Notice tone="info">预演诚实检查：掉帧时才提示性能受限——不无病呻吟。</Notice>}
+    </Card>
   );
 }
 

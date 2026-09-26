@@ -2,9 +2,10 @@
  * E 域页组④：生活（F161 档案 / F163 小组件 / F164 锁屏 / F165 开机动画 /
  * F166 输入法皮肤）。
  */
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ARCHIVE_SECTIONS, exportArchive, validateArchive, diffPreview, importArchive,
+  type ArchivePackage,
 } from "./archive";
 import { loadWidgetConfig, saveWidgetConfig, addWidget, removeWidget, updateWidget, WIDGET_KINDS, clampOpacity, REFRESH_MS } from "./widgets";
 import { loadLockScreenConfig, saveLockScreenConfig, LOCK_TIME_STYLES, WAKE_TIMELINE, FALLBACK_COLOR } from "./lockcustom";
@@ -12,6 +13,10 @@ import { loadBootSkinConfig, saveBootSkinConfig, validateBootSkinConfig, PARTICL
 import { BOOT_DURATION_MS } from "./store";
 import { loadImeSkinConfig, saveImeSkinConfig, clampImeSkin, validateImeSkin, CANDIDATE_COUNTS } from "./imeskin";
 import { loadTokenTable } from "./tokens";
+import { signArchive, verifySignature, validateSections, migrateArchiveV0toV1 } from "./archive-engine";
+import { snapToGrid, resolvePlacement, reclaimOffscreen, buildUpdateSchedule, widgetSizePx, type ScreenBounds } from "./widgets-engine";
+import { lockMachineStep, buildNotificationDigest, focusRetreatTransform, seedParticles, stepParticles, bakeManifestAll, actOf, type LockPhase } from "./boot-engine";
+import { layoutCandidates, COMPOSITION_BUDGET_MS, type CandidateItem } from "./ime-menu-engine";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, ColorChip, MiniDesktop, useT, usePersonaSection } from "./ui";
 
 /** 档案分节 id（ARCHIVE_SECTIONS 派生——不与 store 的 PersonaSection 重复造类型）。 */
@@ -28,6 +33,7 @@ export function ArchivePage(): React.ReactNode {
   const [msg, setMsg] = useState<string | null>(null);
   const [importRaw, setImportRaw] = useState("");
   const [diff, setDiff] = useState<string | null>(null);
+  const [sigInfo, setSigInfo] = useState<string | null>(null);
 
   function doExport(): void {
     const r = exportArchive({ meta: { name }, include: picked, privacyChecked: privacy });
@@ -35,25 +41,40 @@ export function ArchivePage(): React.ReactNode {
       setMsg(r.privacyWarning);
       return;
     }
-    const blob = new Blob([JSON.stringify(r.pkg, null, 2)], { type: "application/json" });
+    // 包签名链（archive-engine）：导出即签名——导入侧可验签防篡改（F127 语义）。
+    const envelope = signArchive(r.pkg, "variable-local-trust");
+    setSigInfo(`签名 ${envelope.signature.slice(0, 16)}… · ${envelope.signedAt} · 验签 ${verifySignature(envelope, "variable-local-trust").ok ? "通过" : "失败（不应发生）"}`);
+    const blob = new Blob([JSON.stringify({ envelope, payload: r.pkg }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
     a.download = `${name || "persona"}.vxtheme.json`;
     a.click();
     URL.revokeObjectURL(a.href);
-    setMsg(`已导出 ${r.bytes} ${t("bytes")}`);
+    setMsg(`已导出 ${r.bytes} ${t("bytes")}（含签名信封）`);
   }
 
   function doDiff(): void {
     try {
-      const raw = JSON.parse(importRaw) as unknown;
-      const v = validateArchive(raw);
+      let raw = JSON.parse(importRaw) as unknown;
+      // 旧格式（V0 分节包）自动迁移——跨版本导入不拒之门外（兼容矩阵）。
+      let migrationNote = "";
+      if (raw && typeof raw === "object" && "sections" in (raw as Record<string, unknown>)) {
+        const m = migrateArchiveV0toV1(raw as Record<string, unknown> & { sections?: Record<string, Record<string, unknown>> });
+        raw = m.pkg as unknown;
+        migrationNote = ` · V0→V1 迁移 ${m.applied.length} 节`;
+      }
+      const record = raw as { envelope?: unknown; payload?: unknown };
+      const pkg = (record && typeof record === "object" && "payload" in record ? record.payload : raw) as Parameters<typeof diffPreview>[0];
+      const v = validateArchive(pkg);
       if (!v.ok) {
         setMsg(v.reason);
         return;
       }
-      const d = diffPreview(raw as Parameters<typeof diffPreview>[0]);
-      setDiff(`将更改: ${d.changedSections.join(" / ") || "（无差异）"}${v.degradations.length > 0 ? ` · ${v.degradations.join("；")}` : ""}`);
+      const sectionErrs = validateSections(pkg as ArchivePackage);
+      const d = diffPreview(pkg);
+      setDiff(
+        `将更改: ${d.changedSections.join(" / ") || "（无差异）"}${v.degradations.length > 0 ? ` · ${v.degradations.join("；")}` : ""}${sectionErrs.length > 0 ? ` · 分节校验: ${sectionErrs.join("；")}` : " · 分节校验全过"}${migrationNote}`,
+      );
     } catch {
       setMsg("不是合法 JSON");
     }
@@ -62,7 +83,21 @@ export function ArchivePage(): React.ReactNode {
   function doImport(): void {
     try {
       const raw = JSON.parse(importRaw) as unknown;
-      const r = importArchive(raw);
+      // 签名验签（带信封的包先验后导——防篡改可验证；裸包诚实标注无签名）。
+      const record = raw as { envelope?: { payload: string; signature: string; signedAt: string; signerVersion: number }; payload?: unknown };
+      if (record?.envelope?.signature) {
+        const vr = verifySignature(record.envelope, "variable-local-trust");
+        if (!vr.ok) {
+          setMsg(`签名校验失败：${vr.reason}——包可能被篡改，已拒绝导入。`);
+          return;
+        }
+      }
+      const pkgRaw = record?.payload ?? raw;
+      let pkg = pkgRaw as Parameters<typeof importArchive>[0];
+      if (pkgRaw && typeof pkgRaw === "object" && "sections" in (pkgRaw as Record<string, unknown>)) {
+        pkg = migrateArchiveV0toV1(pkgRaw as Record<string, unknown> & { sections?: Record<string, Record<string, unknown>> }).pkg as typeof pkg;
+      }
+      const r = importArchive(pkg);
       setMsg(`${r.reason}${r.degradations.length > 0 ? ` · ${r.degradations.join("；")}` : ""}${r.ok ? ` · 已应用 ${r.applied.length} 节` : ""}`);
     } catch {
       setMsg("不是合法 JSON");
@@ -111,6 +146,7 @@ export function ArchivePage(): React.ReactNode {
           <PButton kind="primary" onClick={doImport}>{t("importArchive")}</PButton>
         </Row>
         {diff ? <Notice tone="info">{diff}</Notice> : null}
+        {sigInfo ? <Notice tone="ok">{sigInfo}</Notice> : null}
       </Card>
     </div>
   );
@@ -135,18 +171,64 @@ export function WidgetsPage(): React.ReactNode {
       </Card>
       <Card title={`实例（${cfg.instances.length}）`}>
         {cfg.instances.length === 0 ? <Notice tone="info">桌面还没有小组件——右键桌面「添加小组件」是同一入口。</Notice> : null}
-        {cfg.instances.map((i) => (
-          <Row key={i.id} label={`${WIDGET_KINDS.find((k) => k.kind === i.kind)?.zh ?? i.kind} · ${i.size}`} sub={`位置 (${i.x}, ${i.y}) · 刷新 ${Math.round(REFRESH_MS[i.kind] / 1000)}s`}>
-            <Slider value={i.opacity} min={0.2} max={1} step={0.05} ariaLabel={t("opacity")} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => saveWidgetConfig(updateWidget(cfg, i.id, { opacity: clampOpacity(v) }))} />
-            <Toggle checked={i.clickThrough} onChange={(v) => saveWidgetConfig(updateWidget(cfg, i.id, { clickThrough: v }))} ariaLabel={t("clickThrough")} />
-            <PButton kind="danger" onClick={() => saveWidgetConfig(removeWidget(cfg, i.id))}>{t("restoreDefault")}</PButton>
-          </Row>
-        ))}
+        {cfg.instances.map((i) => {
+          const px = widgetSizePx(i);
+          return (
+            <Row key={i.id} label={`${WIDGET_KINDS.find((k) => k.kind === i.kind)?.zh ?? i.kind} · ${i.size}`} sub={`位置 (${i.x}, ${i.y}) · ${px.w}×${px.h}px · 刷新 ${Math.round(REFRESH_MS[i.kind] / 1000)}s`}>
+              <Slider value={i.opacity} min={0.2} max={1} step={0.05} ariaLabel={t("opacity")} format={(v) => `${Math.round(v * 100)}%`} onChange={(v) => saveWidgetConfig(updateWidget(cfg, i.id, { opacity: clampOpacity(v) }))} />
+              <Toggle checked={i.clickThrough} onChange={(v) => saveWidgetConfig(updateWidget(cfg, i.id, { clickThrough: v }))} ariaLabel={t("clickThrough")} />
+              <PButton kind="danger" onClick={() => saveWidgetConfig(removeWidget(cfg, i.id))}>{t("restoreDefault")}</PButton>
+            </Row>
+          );
+        })}
         <Row label="性能保护" sub="全组件渲染超 3.3ms 帧预算 → 自动降透明 ×0.6">
           <Toggle checked={cfg.perfGuard} onChange={(v) => saveWidgetConfig({ ...cfg, perfGuard: v })} ariaLabel="性能保护" />
         </Row>
       </Card>
+      <PlacementCard />
     </div>
+  );
+}
+
+/**
+ * 摆放引擎面板（widgets-engine 接线）：8px 吸附网格 + 碰撞推开 + 越界回收 +
+ * 更新调度表（带 15s 抖动防同帧齐刷）。
+ */
+function PlacementCard(): React.ReactNode {
+  const cfg = loadWidgetConfig();
+  const [lastMove, setLastMove] = useState<string | null>(null);
+  const screen: ScreenBounds = { width: 1920, height: 1080 };
+
+  function simulateDrag(): void {
+    const first = cfg.instances[0];
+    if (!first) return;
+    // 模拟拖放：目标点落在非 8px 对齐位置——吸附引擎负责对齐与碰撞推开。
+    const raw = { x: first.x + 13, y: first.y + 5 };
+    const snapped = snapToGrid(raw.x, raw.y);
+    const resolved = resolvePlacement(cfg, first.id, snapped.x, snapped.y);
+    saveWidgetConfig(updateWidget(cfg, first.id, { x: resolved.x, y: resolved.y }));
+    setLastMove(`吸附 (${raw.x},${raw.y})→(${snapped.x},${snapped.y})${resolved.pushed ? " · 碰撞推开 1 个邻居" : " · 无碰撞"}`);
+  }
+
+  const reclaimed = reclaimOffscreen(cfg, screen);
+  const schedule = buildUpdateSchedule(cfg);
+
+  return (
+    <Card title="摆放引擎（8px 网格 · F084 自由模式同族手感）">
+      <Row label="模拟拖放首组件" sub={lastMove ?? "拖放落点吸附 8px 网格，与邻居重叠时自动推开"}>
+        <PButton kind="primary" disabled={cfg.instances.length === 0} onClick={simulateDrag}>拖放 +13,+5</PButton>
+      </Row>
+      <Row label="越界回收" sub={reclaimed.reclaimed.length === 0 && reclaimed.downsized.length === 0 ? `全部 ${cfg.instances.length} 个组件都在 ${screen.width}×${screen.height} 屏内` : `回收 ${reclaimed.reclaimed.length} 个 · 缩尺寸 ${reclaimed.downsized.length} 个（拉回可视区，不静默丢弃）`}>
+        {reclaimed.reclaimed.length + reclaimed.downsized.length > 0 ? (
+          <PButton kind="primary" onClick={() => saveWidgetConfig(reclaimed.config)}>执行回收</PButton>
+        ) : <span />}
+      </Row>
+      {schedule.length > 0 ? (
+        <Row label="更新调度" sub={schedule.map((s) => `${WIDGET_KINDS.find((k) => k.kind === s.kind)?.zh ?? s.kind} 首刷 ${s.firstDelayMs}ms 后 / 周期 ${Math.round(s.intervalMs / 1000)}s`).join(" · ")}>
+          <span />
+        </Row>
+      ) : null}
+    </Card>
   );
 }
 
@@ -157,6 +239,17 @@ export function LockPage(): React.ReactNode {
   usePersonaSection("lock");
   const cfg = loadLockScreenConfig();
   const accent = loadTokenTable().colors["--p-accent"] ?? "#6e7fd4";
+  // 让位布局（boot-engine）：密码框聚焦时时间缩小上移——预演真实变换参数。
+  const [pwdFocus, setPwdFocus] = useState(false);
+  const retreat = focusRetreatTransform(pwdFocus);
+  // 锁屏状态机演示（boot-engine）：失败节流（5 次失败 → 15s 等待）防暴力枚举。
+  const [phase, setPhase] = useState<LockPhase>("locked");
+  const [fails, setFails] = useState(0);
+  const machine = lockMachineStep(
+    { phase, failedAttempts: fails, sinceLastFailMs: 0 },
+    { type: "unlock-try" },
+  );
+  const digest = buildNotificationDigest([{ appName: "邮件" }, { appName: "邮件" }, { appName: "日历" }]);
 
   return (
     <div>
@@ -183,17 +276,41 @@ export function LockPage(): React.ReactNode {
         <Row label={t("showDate")}><Toggle checked={cfg.showDate} onChange={(v) => saveLockScreenConfig({ ...cfg, showDate: v })} ariaLabel={t("showDate")} /></Row>
         <Row label={t("notifyPrivacy")} sub="隐私默认开启"><Toggle checked={cfg.notifyPrivacy} onChange={(v) => saveLockScreenConfig({ ...cfg, notifyPrivacy: v })} ariaLabel={t("notifyPrivacy")} /></Row>
       </Card>
-      <Card title="迷你锁屏预览（即改即见）">
+      <Card title="迷你锁屏预览（即改即见 · 让位布局随焦点）">
         <div style={{ ...lockPreview, background: cfg.wallpaperMode === "independent" ? FALLBACK_COLOR : "linear-gradient(160deg, var(--p-bg-canvas, #14141c), #1c1c2c)" }}>
-          <div style={{ fontSize: 44, fontWeight: 200, letterSpacing: 2, color: "#fff", fontVariantNumeric: "tabular-nums" }}>
+          <div style={{
+            fontSize: 44 * retreat.scale, fontWeight: 200, letterSpacing: 2, color: "#fff",
+            fontVariantNumeric: "tabular-nums",
+            transform: `translateY(${retreat.translateY}px)`,
+            transition: `all ${retreat.transitionMs}ms ease-out`,
+          }}>
             {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </div>
           {cfg.showDate ? <div style={{ fontSize: 12, color: "#ffffffaa" }}>{new Date().toLocaleDateString()}</div> : null}
           {cfg.showBattery ? <div style={{ fontSize: 12, color: accent }}>🔋 87%</div> : null}
+          <label style={{ fontSize: 11, color: "#ffffff88", display: "inline-flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+            <input type="checkbox" checked={pwdFocus} onChange={(e) => setPwdFocus(e.target.checked)} aria-label="模拟密码框聚焦" />
+            模拟密码框聚焦（时间缩小上移让位）
+          </label>
           <div style={{ fontSize: 11, color: "#ffffff66", marginTop: 8 }}>
             {WAKE_TIMELINE.map((w) => `${w.stage} ≤${w.budgetMs}ms`).join(" → ")}
           </div>
         </div>
+      </Card>
+      <Card title="锁屏状态机（防暴力枚举节流）">
+        <Row
+          label={`当前态 ${phase} · 连续失败 ${fails}`}
+          sub={machine.throttleRemainMs > 0 ? `输入已拒绝——剩余 ${Math.round(machine.throttleRemainMs / 1000)}s（${machine.message ?? ""}）` : (machine.message ?? "输入可接受")}
+        >
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            <PButton kind="danger" onClick={() => { const out = lockMachineStep({ phase, failedAttempts: fails + 1, sinceLastFailMs: 0 }, { type: "unlock-try" }); setPhase(out.next); setFails((f) => f + 1); }}>模拟输错</PButton>
+            <PButton kind="primary" onClick={() => { const out = lockMachineStep({ phase, failedAttempts: 0, sinceLastFailMs: 0 }, { type: "unlock-ok" }); setPhase(out.next); setFails(0); }}>模拟解锁成功</PButton>
+            <PButton onClick={() => { const out = lockMachineStep({ phase, failedAttempts: 0, sinceLastFailMs: 0 }, { type: "lock" }); setPhase(out.next); setFails(0); }}>重新上锁</PButton>
+          </span>
+        </Row>
+        <Row label="通知隐私摘要" sub={cfg.notifyPrivacy ? `只计数不显内容：${digest.count} 条 · 来自 ${Object.keys(digest.byApp).length} 个应用（${Object.entries(digest.byApp).map(([a, n]) => `${a}×${n}`).join(" ")}）` : "隐私关闭——内容将直接显示（不推荐）"}>
+          <span />
+        </Row>
       </Card>
     </div>
   );
@@ -247,16 +364,90 @@ export function BootPage(): React.ReactNode {
           <code style={swatchCode}>{`8.0s ±0.2s（${BOOT_DURATION_MS}ms 契约）`}</code>
         </Row>
       </Card>
+      <ParticlePreviewCard density={cfg.density} accent={accent} />
     </div>
+  );
+}
+
+/**
+ * 确定性粒子预览（boot-engine 接线）：同种子同画面——「预览即真播」的数学基础；
+ * 四幕边界与 8s 契约同源。canvas 渲染 0.5x 缩放（渲染成本减 75%，F152 同口径）。
+ */
+function ParticlePreviewCard(props: { density: "dense" | "standard" | "minimal"; accent: string }): React.ReactNode {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rafRef = useRef(0);
+  const [playing, setPlaying] = useState(false);
+  const [act, setAct] = useState(0);
+  const palette = particlePalette(props.accent);
+  const manifest = useMemo(() => bakeManifestAll(20260926), []);
+
+  function play(): void {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      // Canvas 不可用（极端降级）——诚实提示，不静默假装在播。
+      setAct(-1);
+      return;
+    }
+    const particles = seedParticles(props.density, 20260926, props.accent);
+    setPlaying(true);
+    const t0 = performance.now();
+    let last = 0;
+    function frame(): void {
+      const elapsed = performance.now() - t0;
+      const dt = Math.min(64, elapsed - last);
+      last = elapsed;
+      const stepped = stepParticles(particles, elapsed, dt, 1920, 1080);
+      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+      for (const p of stepped) {
+        ctx!.fillStyle = p.color === "base" ? palette.base : palette.highlight;
+        ctx!.globalAlpha = 0.85;
+        ctx!.beginPath();
+        ctx!.arc((p.x / 1920) * canvas!.width, (p.y / 1080) * canvas!.height, Math.max(0.6, (p.size / 1920) * canvas!.width), 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      ctx!.globalAlpha = 1;
+      setAct(actOf(elapsed));
+      if (elapsed < BOOT_DURATION_MS) {
+        rafRef.current = requestAnimationFrame(frame);
+      } else {
+        setPlaying(false);
+      }
+    }
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(frame);
+  }
+
+  const actNames = ["幕一·汇聚", "幕二·成型", "幕三·点亮", "幕四·交接"];
+
+  return (
+    <Card title="粒子预览（确定性种子 20260926 · 同种子同画面——预览与真播逐帧一致）">
+      <Row label="播放" sub={act === -1 ? "Canvas 不可用——渲染降级（诚实提示）" : playing ? `正在播放：${actNames[act] ?? "—"}（四幕边界 ${[0, 2600, 5200, 6800].join("/")}ms · 8s 结构）` : "点「重播四幕」——密度与配色即当前配置"}>
+        <PButton kind="primary" disabled={playing} onClick={play}>重播四幕</PButton>
+      </Row>
+      <canvas ref={canvasRef} width={560} height={315} style={{ width: "100%", maxWidth: 560, borderRadius: 10, background: "linear-gradient(160deg, #0a0a12, #14141c)", border: "1px solid var(--p-border-subtle, rgba(140,140,160,0.14))" }} aria-label="开机动画粒子预览" role="img" />
+      <Row label="烘帧清单（关机前空闲批次执行 · F068 按需装载联动）" sub={manifest.map((m) => `${m.density}:${m.frameCount}帧/${(m.estimatedBytes / 1024).toFixed(0)}KB@${m.sampleFps}fps`).join(" · ")}>
+        <span />
+      </Row>
+    </Card>
   );
 }
 
 // ---------- F166 输入法皮肤 ----------
 
+/** 试打演示候选集（13 条——5 档翻 3 页 / 9 档翻 2 页，覆盖分页路径）。 */
+const DEMO_CANDIDATES: CandidateItem[] = "你好号浩耗好毫嚎貉豪壕好号浩".split("").map((ch, i) => ({
+  index: i + 1,
+  text: `hao${i > 0 ? i : ""}`,
+  comment: ch,
+}));
+
 export function ImePage(): React.ReactNode {
   const t = useT();
   usePersonaSection("ime");
   const cfg = clampImeSkin(loadImeSkinConfig());
+  const [highlightIndex, setHighlightIndex] = useState(0);
   const themeColors = {
     background: loadTokenTable().colors["--p-bg-raised"] ?? "#222230",
     text: loadTokenTable().colors["--p-fg-primary"] ?? "#e8e8f0",
@@ -265,6 +456,8 @@ export function ImePage(): React.ReactNode {
   };
   const effective = cfg.followTheme ? { ...cfg, colors: themeColors } : cfg;
   const v = validateImeSkin(effective);
+  // 候选窗布局引擎（ime-menu-engine 接线）：分页/几何/翻页提示全由引擎实算。
+  const layout = layoutCandidates(DEMO_CANDIDATES, effective, highlightIndex);
 
   return (
     <div>
@@ -296,14 +489,36 @@ export function ImePage(): React.ReactNode {
       </Card>
       <Card title={t("tryType")}>
         <MiniDesktop width={320} accent={effective.colors.highlight}>
-          <div style={candStyle(effective)}>
-            <span style={{ ...candHi(effective), padding: "2px 8px", borderRadius: 4 }}>1 你好</span>
-            <span style={{ padding: "2px 8px" }}>2 好</span>
-            <span style={{ padding: "2px 8px" }}>3 号</span>
-            <span style={{ padding: "2px 8px" }}>4 浩</span>
-            <span style={{ padding: "2px 8px" }}>5 耗</span>
+          <div style={{
+            ...candStyle(effective),
+            width: layout.width,
+            height: layout.height,
+            display: "flex", flexDirection: "column", alignItems: "stretch",
+            justifyContent: "center",
+          }}>
+            {layout.page.map((c) => (
+              <span
+                key={c.index}
+                style={{
+                  padding: "1px 8px", lineHeight: `${layout.lineHeightPx - 8}px`,
+                  ...(c.index === highlightIndex ? candHi(effective) : {}),
+                }}
+              >
+                {c.index} {c.text}{c.comment ? <small style={{ opacity: 0.7 }}> {c.comment}</small> : null}
+              </span>
+            ))}
+            {layout.pagingHintText ? <small style={{ opacity: 0.65, textAlign: "right", padding: "0 8px 2px" }}>{layout.pagingHintText}</small> : null}
           </div>
         </MiniDesktop>
+        <Row
+          label="布局引擎实算"
+          sub={`窗口 ${layout.width}×${layout.height}px · 第 ${layout.pageIndex + 1}/${layout.pageCount} 页 · 组合期预算 ${COMPOSITION_BUDGET_MS}ms（皮肤自由，速度不商量）`}
+        >
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            <PButton onClick={() => setHighlightIndex((i) => (i + 1) % DEMO_CANDIDATES.length)}>下一候选</PButton>
+            <PButton onClick={() => setHighlightIndex((i) => Math.min(DEMO_CANDIDATES.length - 1, i + effective.candidates))}>翻页</PButton>
+          </span>
+        </Row>
       </Card>
     </div>
   );
