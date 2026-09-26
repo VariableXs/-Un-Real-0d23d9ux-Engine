@@ -316,3 +316,128 @@ mod tests {
         assert_eq!(reg.items().iter().find(|i| i.name == "y").unwrap().value, 9);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 改动标记点数据面（自定义值可视化）
+// ---------------------------------------------------------------------------
+
+/// 改动标记点数据面（判据「改动标记点（自定义值可视化）」的数据源）：
+/// 逐条目产出标记三元组（条目名, 是否自定义, 展示值）——渲染面消费
+/// 此账画标记点，不自算（一处一事实）；还原后标记点即时消退。
+pub struct ModifiedMarkerBook;
+
+/// 一条标记：(条目, 自定义?, 展示值)。
+pub struct Marker {
+    pub name: &'static str,
+    pub modified: bool,
+    pub display: String,
+}
+
+impl ModifiedMarkerBook {
+    /// 从登记表产出标记账（只读——不改任何状态）。
+    pub fn markers(reg: &crate::h3star::hbase::SettingRegistry, page: &str) -> Vec<Marker> {
+        reg.items()
+            .iter()
+            .filter(|i| i.page == page)
+            .map(|i| Marker {
+                name: i.name,
+                modified: i.value != i.default,
+                display: alloc::format!("{}", i.value),
+            })
+            .collect()
+    }
+
+    /// 标记一致性审计：modified 位与值-默认比对必须全对（渲染账与
+    /// 事实账一致——防两本账漂移）。
+    pub fn consistent(reg: &crate::h3star::hbase::SettingRegistry, markers: &[Marker]) -> bool {
+        reg.items().iter().all(|i| {
+            match markers.iter().find(|m| m.name == i.name) {
+                Some(m) => m.modified == (i.value != i.default) && m.display == alloc::format!("{}", i.value),
+                None => false, // 登记有条目而标记账缺 = 缺陷。
+            }
+        })
+    }
+}
+
+/// 深化层二自检（标记点数据面）。
+pub fn run_pagedflt_deep2_checks() -> CheckSet {
+    use crate::h3star::hbase::{ControlKind, EffectKind, SettingItem, SettingRegistry};
+
+    let mut set = CheckSet::new("F304-deep2");
+
+    // 布景：同页两目（一默认一自定义）。
+    let mut reg = SettingRegistry::new();
+    let _ = reg.add_item(SettingItem {
+        name: "音量",
+        page: "系统/声音",
+        synonyms: &["声音大小", "volume", "响度"],
+        effect: EffectKind::Instant,
+        default: 50,
+        value: 70,
+        control: ControlKind::Slider,
+    });
+    let _ = reg.add_item(SettingItem {
+        name: "静音",
+        page: "系统/声音",
+        synonyms: &["静音开关", "mute", "无声"],
+        effect: EffectKind::Instant,
+        default: 0,
+        value: 0,
+        control: ControlKind::Toggle,
+    });
+    let _ = reg.add_page(crate::h3star::hbase::SettingPage {
+        path: "系统/声音",
+        subtitle: "这里调系统声音",
+        cross_links: &[],
+    });
+
+    // 1. 标记账：自定义目 modified=true + 展示值正确；默认目 false。
+    let markers = ModifiedMarkerBook::markers(&reg, "系统/声音");
+    set.add(
+        "markers reflect state",
+        markers.len() == 2
+            && markers[0].modified
+            && markers[0].display == "70"
+            && !markers[1].modified,
+        "",
+    );
+
+    // 2. 一致性审计：账实相符绿。
+    set.add("markers consistent", ModifiedMarkerBook::consistent(&reg, &markers), "");
+
+    // 3. 还原后标记即时消退（渲染面跟着事实走）。
+    let _ = reg.restore_page_defaults("系统/声音");
+    let markers2 = ModifiedMarkerBook::markers(&reg, "系统/声音");
+    set.add(
+        "markers fade after restore",
+        markers2.iter().all(|m| !m.modified) && ModifiedMarkerBook::consistent(&reg, &markers2),
+        "",
+    );
+
+    // 4. 缺标记账 = 缺陷（一致性审计抓账面缺目）。
+    let partial = &markers[..1];
+    set.add("missing marker flagged", !ModifiedMarkerBook::consistent(&reg, partial), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn other_page_items_excluded() {
+        use crate::h3star::hbase::*;
+        let mut reg = SettingRegistry::new();
+        let _ = reg.add_item(SettingItem {
+            name: "别页条目",
+            page: "个性化/主题",
+            synonyms: &["s1", "s2", "s3"],
+            effect: EffectKind::Instant,
+            default: 1,
+            value: 2,
+            control: ControlKind::Toggle,
+        });
+        assert!(ModifiedMarkerBook::markers(&reg, "系统/声音").is_empty(), "只出本页标记");
+    }
+}

@@ -1434,3 +1434,209 @@ mod deep5_tests {
         assert_eq!(h.recent(1), alloc::vec!["x?pwd=█&secret=█"]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层六 · 通配符展开核 + %1 脚本参数化 + 粘贴回读保真闭环
+// ---------------------------------------------------------------------------
+
+/// 通配符匹配核（命令行互通的经典语义）：`*`（任意字符序列）与 `?`
+/// （单字符）——递归匹配，确定性排序输出。只认这两个元字符（不猜
+/// `[]` 扩展语义——超出冻结面的功能显式不做）。
+pub struct Glob;
+
+impl Glob {
+    /// 递归匹配：`*` 吃零或多字符、`?` 恰吃一字符、其余字面比对。
+    pub fn matches(pattern: &str, text: &str) -> bool {
+        let p: Vec<char> = pattern.chars().collect();
+        let t: Vec<char> = text.chars().collect();
+        Self::match_from(&p, 0, &t, 0)
+    }
+
+    fn match_from(p: &[char], pi: usize, t: &[char], ti: usize) -> bool {
+        if pi == p.len() {
+            return ti == t.len();
+        }
+        match p[pi] {
+            '*' => {
+                // 吃零个或多个字符（含吃到底的贪心路径——递归枚举）。
+                (ti..=t.len()).any(|k| Self::match_from(p, pi + 1, t, k))
+            }
+            '?' => ti < t.len() && Self::match_from(p, pi + 1, t, ti + 1),
+            c => ti < t.len() && t[ti] == c && Self::match_from(p, pi + 1, t, ti + 1),
+        }
+    }
+
+    /// 展开：目录清单（已登记面）按模式筛选 → 字典序确定性排序
+    /// （同输入同输出——可复现纪律）。模式非法（空模式）返回空。
+    pub fn expand<'a>(pattern: &str, listing: &[&'a str]) -> Vec<&'a str> {
+        if pattern.is_empty() {
+            return Vec::new();
+        }
+        let mut out: Vec<&str> =
+            listing.iter().filter(|t| Self::matches(pattern, t)).copied().collect();
+        out.sort_unstable();
+        out
+    }
+}
+
+/// %1 脚本参数化（拖入语义的脚本面）：模板串中 `%1..%9` 位置被对应
+/// 拖入路径（引号化后）替换；越位参数（模板用了 %3 只给了 2 个）→
+/// 显式缺参错误（不静默给空串——错误三要素面）。
+pub struct ScriptParametrize;
+
+pub struct ParamResult {
+    pub ok: bool,
+    pub rendered: String,
+    /// 缺参位清单（%N 出现但未提供）。
+    pub missing: Vec<u8>,
+}
+
+impl ScriptParametrize {
+    pub fn render(template: &str, args: &[String]) -> ParamResult {
+        let mut rendered = String::new();
+        let mut missing: Vec<u8> = Vec::new();
+        let chars: Vec<char> = template.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '%' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
+                let n = chars[i + 1] as u8 - b'0';
+                if n == 0 {
+                    rendered.push('%'); // %0 = 模板原文转义。
+                    rendered.push('0');
+                } else if (n as usize) <= args.len() {
+                    rendered.push_str(&args[(n - 1) as usize]);
+                } else {
+                    missing.push(n);
+                }
+                i += 2;
+                continue;
+            }
+            rendered.push(chars[i]);
+            i += 1;
+        }
+        ParamResult { ok: missing.is_empty(), rendered, missing }
+    }
+}
+
+/// 粘贴回读保真闭环（互通质量的端到端证明）：写入终端的串 → 模拟
+/// 终端回读 → 与归一化形逐字节比对（含引号/转义还原）。回读不一致
+/// 或引号歧义（去壳后仍含外壳引号字符——真终端会截断）= 互通缺陷
+/// 事件（转换器的问题当场暴露，不留给用户）。
+pub struct PasteEchoVerifier;
+
+impl PasteEchoVerifier {
+    /// 回读保真判定：粘贴串在目标味的还原路径上应回到原路径的
+    /// 归一化形（quote → paste → parse → normalize 等价——闭环）。
+    pub fn verify(path: &str, flavor: TerminalFlavor) -> bool {
+        let quoted = quote_for(path, flavor);
+        let outer = match flavor {
+            TerminalFlavor::Cmd => '"',
+            TerminalFlavor::Posix => '\'',
+        };
+        // 引号歧义守卫：去壳后仍含外壳引号字符 → 该路径在本味引号
+        // 方案下不可逆（转换器边界显性化——不硬猜）。
+        let inner = quoted.trim_matches(outer);
+        if inner.contains(outer) {
+            return false;
+        }
+        let unquoted: alloc::string::String = match flavor {
+            TerminalFlavor::Cmd => alloc::string::String::from(inner), // CMD 引号内即反斜杠形——直比对。
+            TerminalFlavor::Posix => inner.replace('/', "\\"),
+        };
+        unquoted == PathNormalizer::win(path)
+    }
+}
+
+/// 深化层六自检（通配符 / 参数化 / 回读闭环）。
+pub fn run_copypath_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep6");
+
+    // 1. 通配符语义逐条：* 贪吃、? 恰一、字面比对、组合。
+    set.add(
+        "glob semantics",
+        Glob::matches("*.vx", "画.vxd") == false
+            && Glob::matches("*.vx*", "画.vxd")
+            && Glob::matches("画?.vx", "画板.vx")
+            && !Glob::matches("画?.vx", "画.vx")
+            && Glob::matches("a*c", "abc")
+            && Glob::matches("a*c", "ac"),
+        "",
+    );
+
+    // 2. 展开确定性排序：同清单同模式同输出（字典序）。
+    let listing = ["b.vx", "a.vx", "c.vxd", "a10.vx"];
+    let out = Glob::expand("a*.vx", &listing);
+    set.add(
+        "glob expand sorted",
+        out == alloc::vec!["a.vx", "a10.vx"],
+        "",
+    );
+    set.add("empty pattern honest", Glob::expand("", &listing).is_empty(), "");
+
+    // 3. %1 参数化：双参模板渲染 + 引号化入位。
+    let args = alloc::vec![
+        quote_for("C:/a b/画.vx", TerminalFlavor::Posix),
+        String::from("output.vx"),
+    ];
+    let r = ScriptParametrize::render("vxpack %1 -o %2", &args);
+    set.add(
+        "parametrize renders args",
+        r.ok && r.rendered.contains("'C:/a b/画.vx'") && r.rendered.ends_with("output.vx"),
+        "",
+    );
+
+    // 4. 越位缺参显式错误（不静默空串——三要素面）。
+    let r2 = ScriptParametrize::render("a %1 b %3", &alloc::vec![String::from("x")]);
+    set.add(
+        "missing param explicit",
+        !r2.ok && r2.missing == alloc::vec![3],
+        "",
+    );
+
+    // 5. %0 转义（字面 %% 同理——模板转义面）。
+    let r3 = ScriptParametrize::render("100%% %0", &alloc::vec![]);
+    set.add("escape forms literal", r3.ok && r3.rendered == "100%% %0", "");
+
+    // 6. 回读保真 round-trip：两味 × 含空格路径全等价（闭环证明）。
+    set.add(
+        "paste echo round-trip",
+        PasteEchoVerifier::verify("C:/a b/画.vx", TerminalFlavor::Cmd)
+            && PasteEchoVerifier::verify("C:/a b/画.vx", TerminalFlavor::Posix)
+            && PasteEchoVerifier::verify("C:/plain.vx", TerminalFlavor::Cmd),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn glob_star_matches_empty_suffix() {
+        assert!(Glob::matches("a*", "a"), "* 可吃零字符");
+        assert!(Glob::matches("*", "任意串.vx"), "裸 * 吃一切");
+    }
+
+    #[test]
+    fn glob_unicode_chars() {
+        assert!(Glob::matches("画?.vx", "画板.vx"));
+        assert!(Glob::matches("*板*", "画板Pro.vx"));
+    }
+
+    #[test]
+    fn param_all_nine_positions() {
+        let args: alloc::vec::Vec<String> = (1..=9).map(|i| alloc::format!("v{i}")).collect();
+        let r = ScriptParametrize::render("%9", &args);
+        assert!(r.ok && r.rendered == "v9", "九位参数全支持");
+    }
+
+    #[test]
+    fn echo_verifier_rejects_drift() {
+        // 构造一个会漂移的案例：Posix 味下含单引号的路径 round-trip
+        // 不闭合——诚实判红（转换器边界显性化）。
+        assert!(!PasteEchoVerifier::verify("C:/it's.vx", TerminalFlavor::Posix),
+            "含单引号路径在 POSIX 引号方案下不可逆——边界显性化");
+    }
+}

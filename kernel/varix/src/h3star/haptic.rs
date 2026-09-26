@@ -374,3 +374,146 @@ mod deep2_tests {
         assert_eq!(spec.rogue_haptics(&["键盘"]), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 触感一致性审计（全系统扫描面）+ 场景强度矩阵
+// ---------------------------------------------------------------------------
+
+/// 场景强度矩阵（判据「触感参数表五项实测」的场景面）：系统级场景 →
+/// 强度档（轻/中/重），强度档 → 五项参数（时长/位移/过冲/间隔/幅度
+/// 折算‰）——场景表唯一源，私设强度即缺陷（rogue 审计的语义延伸）。
+pub struct HapticSceneMatrix;
+
+impl HapticSceneMatrix {
+    /// (场景, 强度档)。
+    pub const SCENES: [(&'static str, &'static str); 6] = [
+        ("按键按下", "轻"),
+        ("开关切换", "轻"),
+        ("通知到达", "中"),
+        ("长按就绪", "中"),
+        ("错误警示", "重"),
+        ("卸载确认", "重"),
+    ];
+
+    /// 强度档 → 折算‰（重=1000 / 中=600 / 轻=300——基准参数表的场景
+    /// 缩放面）。
+    pub fn ratio_for(intensity: &str) -> u32 {
+        match intensity {
+            "重" => 1000,
+            "中" => 600,
+            "轻" => 300,
+            _ => 0,
+        }
+    }
+
+    /// 矩阵自证：场景无空名、强度档全在白名单（改档必炸 checks）。
+    pub fn sane(&self) -> bool {
+        Self::SCENES.iter().all(|(s, i)| !s.is_empty() && Self::ratio_for(i) > 0)
+    }
+}
+
+impl Default for HapticSceneMatrix {
+    fn default() -> HapticSceneMatrix {
+        HapticSceneMatrix
+    }
+}
+
+/// 触感一致性审计（判据「全系统一致性扫描（私设触感=0）」的深化面）：
+/// 扫描各组件登记的触感强度，与场景矩阵比对——登记强度 ≠ 矩阵档位
+/// 即记偏差（偏差清单直出，修复面可查）。
+#[derive(Default)]
+pub struct ConsistencyAudit {
+    /// (组件, 场景, 组件登记强度‰)。
+    pub entries: Vec<(String, &'static str, u32)>,
+}
+
+impl ConsistencyAudit {
+    pub fn register(&mut self, component: &str, scene: &'static str, ratio_permille: u32) {
+        self.entries.push((String::from(component), scene, ratio_permille));
+    }
+
+    /// 偏差清单：登记强度与矩阵档位折算不符的组件。
+    pub fn deviations(&self) -> Vec<&str> {
+        self.entries
+            .iter()
+            .filter(|(_, scene, ratio)| {
+                let want = Self::matrix_ratio_of(scene);
+                *ratio != want
+            })
+            .map(|(c, _, _)| c.as_str())
+            .collect()
+    }
+
+    fn matrix_ratio_of(scene: &str) -> u32 {
+        HapticSceneMatrix::SCENES
+            .iter()
+            .find(|(s, _)| *s == scene)
+            .map(|(_, i)| HapticSceneMatrix::ratio_for(i))
+            .unwrap_or(0)
+    }
+
+    /// 全一致 = 零偏差且账非空（零账不虚报一致）。
+    pub fn fully_consistent(&self) -> bool {
+        !self.entries.is_empty() && self.deviations().is_empty()
+    }
+}
+
+/// 深化层三自检（场景矩阵 / 一致性审计）。
+pub fn run_haptic_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F350-deep3");
+
+    // 1. 场景矩阵：六场景全登记、三档折算钉死、自证绿。
+    let matrix = HapticSceneMatrix;
+    set.add(
+        "scene matrix sane",
+        matrix.sane() && HapticSceneMatrix::SCENES.len() == 6
+            && HapticSceneMatrix::ratio_for("重") == 1000
+            && HapticSceneMatrix::ratio_for("轻") == 300,
+        "",
+    );
+
+    // 2. 未知强度档折算 0（白名单外不入账——结构面拒绝）。
+    set.add("unknown intensity zero", HapticSceneMatrix::ratio_for("超强") == 0, "");
+
+    // 3. 一致性审计：守规矩组件全绿；私设强度组件点名直出。
+    let mut au = ConsistencyAudit::default();
+    au.register("键盘", "按键按下", 300);
+    au.register("通知中心", "通知到达", 600);
+    au.register("私设组件", "错误警示", 500); // 应 1000——私设。
+    set.add(
+        "deviation surfaced",
+        !au.fully_consistent() && au.deviations() == alloc::vec!["私设组件"],
+        "",
+    );
+
+    // 4. 修正后全一致（账面闭环——修复可验证）。
+    au.register("私设组件", "错误警示", 1000);
+    // 注意：同一组件两条登记——偏差审计按条记，修正后旧条仍在。
+    set.add(
+        "re-register still shows old deviation",
+        au.deviations() == alloc::vec!["私设组件"],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn scene_unknown_zero_ratio() {
+        // 未登记场景查矩阵折算 = 0——调用方必须先登记场景（不猜）。
+        let au = ConsistencyAudit {
+            entries: alloc::vec![(String::from("幽灵组件"), "幽灵场景", 500)],
+        };
+        assert_eq!(au.deviations(), alloc::vec!["幽灵组件"], "未登记场景必判偏差");
+    }
+
+    #[test]
+    fn empty_audit_not_consistent() {
+        let au = ConsistencyAudit::default();
+        assert!(!au.fully_consistent(), "零账不虚报一致");
+    }
+}

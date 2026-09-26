@@ -1510,3 +1510,208 @@ mod deep4_tests {
         assert!(sim.p95() > 0, "折算系数钳底防零除");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层五 · 合成负载发生器 + 升降级振荡审计 + 用户手选档位让位账
+// ---------------------------------------------------------------------------
+
+/// 合成负载发生器（实机判据「Y7000 注入负载」的宿主侧替身）：三型
+/// 负载曲线确定性生成——常载（恒定）、正弦（缓升缓降）、突发（阶梯
+/// 跳变），喂给调速器全链验证（注入钟同口径，宿主可复现）。
+pub struct LoadGenerator;
+
+/// 负载型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadShape {
+    /// 常载：恒定占用（%）。
+    Steady(u64),
+    /// 正弦：占用随时间缓变（周期/振幅参数化）。
+    Sine { period_ms: u64, amplitude: u64, base: u64 },
+    /// 突发：稳态 + 阶梯尖峰（峰高/峰宽/间隔）。
+    Burst { base: u64, spike: u64, spike_width_ms: u64, interval_ms: u64 },
+}
+
+impl LoadGenerator {
+    /// 时刻 t 的预算占用（‰钳 0-100）。
+    pub fn sample(shape: LoadShape, t_ms: u64) -> u64 {
+        match shape {
+            LoadShape::Steady(v) => v.clamp(0, 100),
+            LoadShape::Sine { period_ms, amplitude, base } => {
+                let phase = (t_ms % period_ms) * 360 / period_ms.max(1);
+                let v = base as i64 + (amplitude as f64 * (phase as f64).to_radians().sin()) as i64;
+                v.clamp(0, 100) as u64
+            }
+            LoadShape::Burst { base, spike, spike_width_ms, interval_ms } => {
+                let in_spike = t_ms % interval_ms.max(1) < spike_width_ms;
+                (if in_spike { spike } else { base }).clamp(0, 100)
+            }
+        }
+    }
+
+    /// 全链曲线生成（N 点采样——验证面数据源）。
+    pub fn curve(shape: LoadShape, points: usize, step_ms: u64) -> Vec<u64> {
+        (0..points.max(1))
+            .map(|i| Self::sample(shape, (i as u64) * step_ms.max(1)))
+            .collect()
+    }
+}
+
+/// 升降级振荡审计（策略质量面）：模式切换历史中，同模式驻留 < 最小
+/// 驻留时间即记一次振荡——振荡密度（次/分钟）超阈值 = 策略缺陷事件
+/// （回滞带/确认窗需要调参，不是静默容忍）。
+pub struct OscillationAudit {
+    /// 最小驻留（ms——档位内至少待这么久才算稳定切换）。
+    pub min_dwell_ms: u64,
+    pub oscillations: u64,
+}
+
+impl OscillationAudit {
+    pub fn new(min_dwell_ms: u64) -> OscillationAudit {
+        OscillationAudit { min_dwell_ms, oscillations: 0 }
+    }
+
+    /// 审计一段模式账（时间, 模式序号）：相邻切换间隔 < 驻留线即振荡。
+    pub fn audit(&mut self, log: &[(u64, u32)]) -> u64 {
+        self.oscillations = 0;
+        for w in log.windows(2) {
+            if w[1].0.saturating_sub(w[0].0) < self.min_dwell_ms {
+                self.oscillations += 1;
+            }
+        }
+        self.oscillations
+    }
+
+    /// 策略健康判定：账内振荡为零（或有账但密度为零）才绿；零账不虚报。
+    pub fn healthy(&self, log_len: usize) -> bool {
+        log_len >= 2 && self.oscillations == 0
+    }
+}
+
+/// 用户手选档位让位账（开放性纪律：用户手动选档 → 自适应机制全部
+/// 让位并留痕；用户放手（恢复自动）→ 三机制重新接管）。手动期间
+/// 采样照记但不驱动降级（用户意志优先——账面可查）。
+pub struct ManualOverride {
+    pub active: bool,
+    pub handovers: u64,
+    /// 手动期间被压制的机制动作数（让位证据面）。
+    pub suppressed: u64,
+}
+
+impl ManualOverride {
+    pub fn new() -> ManualOverride {
+        ManualOverride { active: false, handovers: 0, suppressed: 0 }
+    }
+
+    pub fn engage(&mut self) {
+        if !self.active {
+            self.active = true;
+            self.handovers += 1;
+        }
+    }
+
+    pub fn release(&mut self) {
+        self.active = false;
+    }
+
+    /// 采样闸门：手动期间机制动作被压制（计数+拒绝），自动期放行。
+    pub fn gate(&mut self, mechanism_wants_action: bool) -> bool {
+        if self.active {
+            if mechanism_wants_action {
+                self.suppressed += 1;
+            }
+            false
+        } else {
+            mechanism_wants_action
+        }
+    }
+}
+
+impl Default for ManualOverride {
+    fn default() -> ManualOverride {
+        ManualOverride::new()
+    }
+}
+
+/// 深化层五自检（负载发生器 / 振荡审计 / 手选让位）。
+pub fn run_animdegrade_deep5_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F331-333-deep5");
+
+    // 1. 常载：恒定输出。
+    let curve = LoadGenerator::curve(LoadShape::Steady(70), 5, 100);
+    set.add("steady load constant", curve == vec![70, 70, 70, 70, 70], "");
+
+    // 2. 突发：稳态+尖峰阶梯（尖峰宽 100ms 在 100ms 步进下恰命中
+    //    t=0、400 两点——采样点与尖峰窗的对齐语义）。
+    let burst = LoadGenerator::curve(LoadShape::Burst { base: 30, spike: 95, spike_width_ms: 100, interval_ms: 400 }, 8, 100);
+    set.add(
+        "burst staircase",
+        burst[0] == 95 && burst[1] == 30 && burst[4] == 95 && burst.iter().all(|&v| v == 30 || v == 95),
+        "",
+    );
+
+    // 3. 全链钳制：任何型任何点不越 0-100。
+    let weird = LoadGenerator::curve(LoadShape::Sine { period_ms: 1000, amplitude: 90, base: 50 }, 100, 10);
+    set.add(
+        "clamped to domain",
+        weird.iter().all(|&v| v <= 100),
+        "",
+    );
+
+    // 4. 振荡审计：快速抖动账出振荡、稳态账零振荡、零账不虚报健康。
+    let mut au = OscillationAudit::new(5000);
+    let jitter = vec![(0u64, 0u32), (1000, 1), (2000, 0), (3000, 1)];
+    let n1 = au.audit(&jitter);
+    let stable = vec![(0u64, 0u32), (60_000, 1)];
+    let n2 = au.audit(&stable);
+    set.add(
+        "oscillation audit",
+        n1 == 3 && n2 == 0 && au.healthy(stable.len()) && !au.healthy(0),
+        "",
+    );
+
+    // 5. 手选让位：手动期机制动作被压制计数、放手后放行、交接留痕。
+    let mut mo = ManualOverride::new();
+    let before = mo.gate(true);
+    mo.engage();
+    let during1 = mo.gate(true);
+    let during2 = mo.gate(false);
+    mo.release();
+    let after = mo.gate(true);
+    set.add(
+        "manual override handover",
+        before && !during1 && !during2 && after && mo.handovers == 1 && mo.suppressed == 1,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn sine_stays_within_base_plus_amplitude() {
+        let c = LoadGenerator::curve(LoadShape::Sine { period_ms: 4000, amplitude: 20, base: 50 }, 200, 20);
+        assert!(c.iter().all(|&v| (30..=70).contains(&v)), "正弦幅值域 30-70");
+    }
+
+    #[test]
+    fn audit_counts_only_fast_transitions() {
+        let mut au = OscillationAudit::new(1000);
+        let log = vec![(0u64, 0u32), (999, 1), (2000, 0)];
+        assert_eq!(au.audit(&log), 1, "999ms 间隔算振荡，1001ms 不算");
+    }
+
+    #[test]
+    fn override_reengage_not_double_counted() {
+        let mut mo = ManualOverride::new();
+        mo.engage();
+        mo.engage(); // 已在手动期——重复 engage 不重复计交接。
+        assert_eq!(mo.handovers, 1);
+        mo.release();
+        mo.engage();
+        assert_eq!(mo.handovers, 2, "放手后再接手是新一次交接");
+    }
+}

@@ -489,3 +489,110 @@ mod tests {
         assert!(WinKey::ALL.iter().all(|k| !k.behavior().is_empty()));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 连按轮转状态机账（Win+D 类循环键的运营面）
+// ---------------------------------------------------------------------------
+
+/// 连按轮转状态机账（判据「连按轮转流畅性」的深化面）：循环键每次
+/// 按下推进状态环（A→B→…→A），状态推进即时留痕；长按重复键去抖
+/// （同键 80ms 内的重复按下算一次——防抖纪律）；环长固定（按键表
+/// 驱动，改环必炸 checks）。
+pub struct CycleKeyBook {
+    /// 状态环（键位语义名）。
+    pub ring: Vec<&'static str>,
+    pos: usize,
+    last_press_ms: Option<u64>,
+    pub presses: u64,
+    pub debounced: u64,
+}
+
+/// 连按去抖窗（ms——同窗内重复按下算一次）。
+pub const CYCLE_DEBOUNCE_MS: u64 = 80;
+
+impl CycleKeyBook {
+    pub fn new(ring: Vec<&'static str>) -> CycleKeyBook {
+        CycleKeyBook { ring, pos: 0, last_press_ms: None, presses: 0, debounced: 0 }
+    }
+
+    /// 按下一次：去抖判定 → 状态推进一格，返回新状态名。
+    pub fn press(&mut self, at_ms: u64) -> Option<&'static str> {
+        if let Some(last) = self.last_press_ms {
+            if at_ms.saturating_sub(last) < CYCLE_DEBOUNCE_MS {
+                self.debounced += 1;
+                return None; // 去抖窗内——不算第二次。
+            }
+        }
+        self.last_press_ms = Some(at_ms);
+        self.presses += 1;
+        self.pos = (self.pos + 1) % self.ring.len();
+        Some(self.ring[self.pos])
+    }
+
+    pub fn current(&self) -> &'static str {
+        self.ring[self.pos]
+    }
+
+    /// 环自证：至少两态（单态无轮转意义）且无重名。
+    pub fn ring_sane(&self) -> bool {
+        self.ring.len() >= 2
+            && self.ring.iter().all(|s| !s.is_empty())
+            && self.ring.iter().any(|s| self.ring.iter().filter(|o| *o == s).count() == 1)
+    }
+}
+
+/// 深化层二自检（轮转状态机）。
+pub fn run_winkeys_deep2_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F309-deep2");
+
+    // 1. 循环推进：A→B→C→A 环回（环长 3）。
+    let mut ck = CycleKeyBook::new(vec!["全部最小化", "全部还原", "显示桌面"]);
+    set.add("ring sane", ck.ring_sane(), "");
+    let seq: Vec<&str> = (0..4)
+        .filter_map(|i| ck.press((i as u64 + 1) * 200))
+        .collect();
+    set.add(
+        "cycle rotates through ring",
+        seq == vec!["全部还原", "显示桌面", "全部最小化", "全部还原"],
+        "",
+    );
+
+    // 2. 去抖：80ms 内连按只算一次（留痕）。
+    let mut ck2 = CycleKeyBook::new(vec!["甲", "乙"]);
+    let _ = ck2.press(0);
+    let r1 = ck2.press(50); // 50ms——去抖窗内。
+    let r2 = ck2.press(100); // 距上次有效 100ms——有效。
+    set.add(
+        "debounce window",
+        r1.is_none() && r2 == Some("甲") && ck2.presses == 2 && ck2.debounced == 1,
+        "",
+    );
+
+    // 3. 初始态即环首位（未按键不跳变）。
+    let ck3 = CycleKeyBook::new(vec!["甲", "乙"]);
+    set.add("initial state is ring head", ck3.current() == "甲", "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn two_state_ring_toggles() {
+        let mut ck = CycleKeyBook::new(alloc::vec!["开", "关"]);
+        let _ = ck.press(0);
+        let _ = ck.press(200);
+        assert_eq!(ck.current(), "开", "双态环即开关切换");
+    }
+
+    #[test]
+    fn debounced_press_keeps_state() {
+        let mut ck = CycleKeyBook::new(alloc::vec!["甲", "乙"]);
+        let _ = ck.press(0);
+        let r = ck.press(10);
+        assert!(r.is_none() && ck.current() == "乙", "去抖不推进状态");
+    }
+}

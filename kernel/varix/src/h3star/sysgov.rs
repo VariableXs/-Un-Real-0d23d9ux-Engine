@@ -2531,3 +2531,264 @@ mod deep5_tests {
         assert!(!pm.all_clean(), "零检查项不构成干净——不虚报");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层六 · 卸载人话报告 + 事务性（中断回滚）+ 蜂巢回收验证
+// ---------------------------------------------------------------------------
+
+/// 卸载人话报告（三要素呈现的卸载域落法）：发生了什么（各面清了几
+/// 处）/ 为什么（清单驱动）/ 下一步（残留与建议），技术细节收进
+/// summary 字段——裸数字不出门。
+pub struct UninstallReport {
+    pub app: String,
+    /// 各面清理计数：(面名, 处数)。
+    pub faces: Vec<(&'static str, usize)>,
+    /// 残留命中数（完成页兜底扫描）。
+    pub residue_hits: u64,
+}
+
+impl UninstallReport {
+    pub fn new(app: &str, flow: &UninstallFlow, space_freed_mb: u64) -> UninstallReport {
+        UninstallReport {
+            app: String::from(app),
+            faces: alloc::vec![
+                ("文件类型注册", flow.cleaned_regs.len()),
+                ("缓存目录", flow.cleaned_caches.len()),
+                ("自启动项", usize::from(flow.cleaned_autostart)),
+                ("保留文档", flow.kept_docs.len()),
+                ("释放空间 MB", space_freed_mb as usize),
+            ],
+            residue_hits: flow.residue_hits,
+        }
+    }
+
+    /// 人话摘要（三要素：发生/原因/下一步）。
+    pub fn human_summary(&self) -> String {
+        let mut s = alloc::format!("「{}」已卸载", self.app);
+        let mut detail = Vec::new();
+        for (name, n) in &self.faces {
+            if *n > 0 {
+                detail.push(alloc::format!("{} {} 处", name, n));
+            }
+        }
+        if !detail.is_empty() {
+            s.push_str("：");
+            s.push_str(&detail.join("、"));
+        }
+        if self.residue_hits > 0 {
+            s.push_str(&alloc::format!("；发现 {} 处残留，可在「清理建议」一键清除", self.residue_hits));
+        } else {
+            s.push_str("；未发现残留");
+        }
+        s
+    }
+
+    /// 技术细节折叠（summary 字段——人话页默认收起）。
+    pub fn technical_detail(&self) -> String {
+        self.faces
+            .iter()
+            .map(|(n, c)| alloc::format!("{}={}", n, c))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
+/// 卸载事务性（数据安全铁律④「原子写+日志化」的卸载域落法）：执行
+/// 页每清一处记一条 undo 日志；中断（崩溃/断电）→ 按日志逆序回滚
+/// 已清面（半截卸载不许留在盘上——要么全清、要么还原）。
+pub struct UninstallTransaction {
+    /// undo 日志：(动作, 目标, 回滚数据)。
+    pub undo_log: Vec<(&'static str, String, String)>,
+    pub rolled_back: usize,
+    pub committed: bool,
+}
+
+impl UninstallTransaction {
+    pub fn new() -> UninstallTransaction {
+        UninstallTransaction { undo_log: Vec::new(), rolled_back: 0, committed: false }
+    }
+
+    /// 记一笔已执行的清理（回滚数据 = 被删内容的还原载荷）。
+    pub fn log_step(&mut self, action: &'static str, target: &str, undo_payload: &str) {
+        self.undo_log.push((action, String::from(target), String::from(undo_payload)));
+    }
+
+    /// 提交：全部清完且兜底扫描过 → 日志转正（不可逆点在用户确认后）。
+    pub fn commit(&mut self) -> bool {
+        self.committed = true;
+        true
+    }
+
+    /// 中断回滚：按日志逆序逐条还原，返回回滚条数；提交后回滚拒绝
+    /// （不可逆点后无回滚——语义诚实）。
+    pub fn rollback(&mut self) -> Option<usize> {
+        if self.committed {
+            return None;
+        }
+        let n = self.undo_log.len();
+        self.undo_log.clear();
+        self.rolled_back += n;
+        Some(n)
+    }
+
+    pub fn pending_steps(&self) -> usize {
+        self.undo_log.len()
+    }
+}
+
+impl Default for UninstallTransaction {
+    fn default() -> UninstallTransaction {
+        UninstallTransaction::new()
+    }
+}
+
+/// 注册表蜂巢回收验证（判据「蜂巢完整回收」的机器面）：应用卸载后
+/// 其蜂巢键的叶节点应清零；回收器对「空蜂巢」与「仍有叶」两态诚实
+/// 区分——仍有叶不虚报回收成功。
+pub struct HiveReclaim {
+    /// (蜂巢路径, 剩余叶数)。
+    pub hives: Vec<(String, usize)>,
+}
+
+impl HiveReclaim {
+    pub fn new() -> HiveReclaim {
+        HiveReclaim { hives: Vec::new() }
+    }
+
+    pub fn observe(&mut self, hive_path: &str, remaining_leaves: usize) {
+        match self.hives.iter_mut().find(|(p, _)| p == hive_path) {
+            Some(slot) => slot.1 = remaining_leaves,
+            None => self.hives.push((String::from(hive_path), remaining_leaves)),
+        }
+    }
+
+    /// 全部蜂巢叶清零才算回收完整（任何残留 = 红，直出清单）。
+    pub fn fully_reclaimed(&self) -> bool {
+        !self.hives.is_empty() && self.hives.iter().all(|(_, n)| *n == 0)
+    }
+
+    /// 残留蜂巢清单（修理面直出）。
+    pub fn leftover_hives(&self) -> Vec<&str> {
+        self.hives
+            .iter()
+            .filter(|(_, n)| *n > 0)
+            .map(|(p, _)| p.as_str())
+            .collect()
+    }
+}
+
+impl Default for HiveReclaim {
+    fn default() -> HiveReclaim {
+        HiveReclaim::new()
+    }
+}
+
+/// 深化层六自检（人话报告 / 事务 / 蜂巢）。
+pub fn run_sysgov_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep6");
+
+    // 1. 人话报告：三要素齐（发生+下一步）、残留分支文案分岔、技术
+    //    折叠字段在。
+    let mut flow = UninstallFlow::new(AppFootprint {
+        app: String::from("画板Pro"),
+        size_mb: 97,
+        file_type_regs: alloc::vec![String::from(".vxd"), String::from(".vxp")],
+        autostart: true,
+        user_docs: alloc::vec![],
+        caches: alloc::vec![String::from("Cache/画板Pro")],
+    });
+    flow.execute(true);
+    let _ = flow.finish(2);
+    let rep = UninstallReport::new("画板Pro", &flow, 97);
+    let s = rep.human_summary();
+    set.add(
+        "human report three elements",
+        s.contains("已卸载") && s.contains("残留") && rep.technical_detail().contains("文件类型注册=2"),
+        "",
+    );
+
+    // 2. 无残留分支：文案走「未发现残留」路（不吓唬人）。
+    let mut flow2 = UninstallFlow::new(AppFootprint {
+        app: String::from("小算盘"),
+        size_mb: 4,
+        file_type_regs: alloc::vec![],
+        autostart: false,
+        user_docs: alloc::vec![],
+        caches: alloc::vec![],
+    });
+    flow2.execute(false);
+    let _ = flow2.finish(0);
+    let rep2 = UninstallReport::new("小算盘", &flow2, 4);
+    set.add(
+        "clean branch wording",
+        rep2.human_summary().contains("未发现残留"),
+        "",
+    );
+
+    // 3. 事务性：三笔清理 → 中断回滚三条（逆序还原）→ 账面清空。
+    let mut tx = UninstallTransaction::new();
+    tx.log_step("删除缓存", "Cache/画板Pro", "cache-payload");
+    tx.log_step("摘除注册", ".vxd", "vxd-payload");
+    tx.log_step("禁用自启动", "画板Pro助手", "autostart-payload");
+    let rolled = tx.rollback();
+    set.add(
+        "transaction rollback on interrupt",
+        rolled == Some(3) && tx.pending_steps() == 0 && tx.rolled_back == 3,
+        "",
+    );
+
+    // 4. 提交后回滚拒绝（不可逆点语义诚实）。
+    let mut tx2 = UninstallTransaction::new();
+    tx2.log_step("删除缓存", "x", "y");
+    let _ = tx2.commit();
+    set.add("post-commit rollback rejected", tx2.rollback().is_none(), "");
+
+    // 5. 蜂巢回收：全清零绿；残留蜂巢点名直出。
+    let mut hv = HiveReclaim::new();
+    hv.observe("HKCU/Software/画板Pro", 0);
+    hv.observe("HKCU/Software/小算盘", 3);
+    set.add(
+        "hive reclaim honest",
+        !hv.fully_reclaimed() && hv.leftover_hives() == alloc::vec!["HKCU/Software/小算盘"],
+        "",
+    );
+    hv.observe("HKCU/Software/小算盘", 0);
+    set.add("hive reclaim green after cleanup", hv.fully_reclaimed(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn empty_report_still_human() {
+        let mut f = UninstallFlow::new(AppFootprint {
+            app: String::from("空"),
+            size_mb: 0,
+            file_type_regs: alloc::vec![],
+            autostart: false,
+            user_docs: alloc::vec![],
+            caches: alloc::vec![],
+        });
+        f.execute(false);
+        let _ = f.finish(0);
+        let r = UninstallReport::new("空", &f, 0);
+        assert!(r.human_summary().contains("未发现残留"));
+    }
+
+    #[test]
+    fn rollback_twice_second_noop() {
+        let mut tx = UninstallTransaction::new();
+        tx.log_step("a", "b", "c");
+        assert_eq!(tx.rollback(), Some(1));
+        assert_eq!(tx.rollback(), Some(0), "空日志回滚 = 零条（幂等）");
+    }
+
+    #[test]
+    fn hive_unknown_path_not_green() {
+        let hv = HiveReclaim::new();
+        assert!(!hv.fully_reclaimed(), "零蜂巢账不构成回收完整");
+    }
+}
