@@ -3,6 +3,7 @@ import { Flag, Pause, Play, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { ipc } from "../../lib/ipc";
 import { pushToast } from "../../state/uiStore";
+import { d2Store } from "../../features/desktopxp/d2store";
 import {
   ALARM_LABEL_MAX,
   CITY_MAX,
@@ -37,6 +38,7 @@ import {
   type TimerState,
 } from "./clockhub";
 import "../../styles/ai08-clock.css";
+import "../../styles/desktop-d2.css";
 
 /**
  * Z-22 时钟中心（VWM 工具窗口应用）：
@@ -312,6 +314,21 @@ export function ClockHubApp(_props: { winId: string }): React.ReactElement {
 
   return (
     <div className="ch-app">
+      {/* F100 倒计时到点全链的「全屏提示」件：音效+通知之外，开窗级横幅盖层
+          （d2Store.clocksuite.countdownFullChain 开关控制——设置页同源）。 */}
+      {(() => {
+        const chainOn = d2Store.getWith("clocksuite", "countdownFullChain", true);
+        const doneTm = chainOn ? timers.find((x) => x.done) : undefined;
+        if (!doneTm) return null;
+        return (
+          <div className="d2-timer-done-banner" role="alert">
+            <span>{doneTm.label || t("chTimerFinished")}</span>
+            <button type="button" className="btn ghost tiny" onClick={() => setTimers((ts) => ts.filter((x) => x.id !== doneTm.id))}>
+              {t("chTimerFinished")} · 知道了
+            </button>
+          </div>
+        );
+      })()}
       <div className="ch-tabs" role="tablist" aria-label={t("chTitle")} onKeyDown={onTabsKeyDown}>
         {TABS.map((x, i) => (
           <button

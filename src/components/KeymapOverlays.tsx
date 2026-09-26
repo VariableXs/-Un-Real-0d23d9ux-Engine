@@ -35,6 +35,24 @@ export function useEscOverlayStack(): void {
   }, []);
 }
 
+/** D2 按键镜像桥（F106 锁定键 HUD / F110 学习模式的观察面）：
+ *  只镜像不消费——把物理键按下镜像为 `vx-d2-key` 事件（key/code/capsLock/
+ *  numLock 状态摘要），供键盘提示 HUD 与屏幕键盘学习模式订阅。零拦截，
+ *  打字内容不进入事件 detail（隐私红线同 M-33）。 */
+export function useKeyMirrorBridge(): void {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      window.dispatchEvent(
+        new CustomEvent("vx-d2-key", {
+          detail: { key: e.key, code: e.code, repeat: e.repeat, capsLock: e.getModifierState?.("CapsLock") ?? false, numLock: e.getModifierState?.("NumLock") ?? false, scrollLock: e.getModifierState?.("ScrollLock") ?? false },
+        }),
+      );
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+}
+
 /** Z-12：速查浮层。Ctrl+/ 呼出；展示注册表当前激活键位（global/window）。 */
 export function KeymapOverlay(): JSX.Element | null {
   const { lang } = useI18n();

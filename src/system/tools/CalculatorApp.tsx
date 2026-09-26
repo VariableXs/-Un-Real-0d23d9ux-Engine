@@ -289,15 +289,27 @@ export function CalculatorApp(): React.ReactElement {
               <ul className="calc-hist-list">
                 {history.map((h, i) => (
                   <li key={i}>
-                    <button
-                      type="button"
-                      className="calc-hist-item"
-                      title={h.expr}
-                      onClick={() => setExpr(h.result)}
-                    >
-                      <span className="dim small ellipsis">{h.expr}</span>
-                      <span className="calc-hist-res">{h.result}</span>
-                    </button>
+                    {/* F099 历史回填：点表达式回填算式、点结果回填得值——双目标零错位（回填后可继续接算）。 */}
+                    <span className="calc-hist-item" role="group" title={h.expr}>
+                      <button
+                        type="button"
+                        className="dim small ellipsis"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "inherit", textAlign: "left" }}
+                        onClick={() => setExpr(h.expr)}
+                        aria-label={`回填表达式 ${h.expr}`}
+                      >
+                        {h.expr}
+                      </button>
+                      <button
+                        type="button"
+                        className="calc-hist-res"
+                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "inherit", font: "inherit" }}
+                        onClick={() => setExpr(h.result)}
+                        aria-label={`回填结果 ${h.result}`}
+                      >
+                        {h.result}
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>

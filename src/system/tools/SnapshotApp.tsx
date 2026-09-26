@@ -12,7 +12,7 @@ import { pushToast } from "../../state/uiStore";
  */
 
 type ShotMode = "full" | "window" | "region" | "delay";
-type Tool = "pen" | "arrow" | "mosaic" | "text" | "none";
+type Tool = "pen" | "arrow" | "mosaic" | "text" | "none" | "picker";
 
 interface Stroke {
   tool: Tool;
@@ -27,6 +27,8 @@ export function SnapshotApp(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [tool, setTool] = useState<Tool>("pen");
+  /** F098 取色结果（RGB+HEX 双格式——与实际像素对拍）。 */
+  const [picked, setPicked] = useState<{ rgb: string; hex: string } | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [textDraft, setTextDraft] = useState("");
   const [region, setRegion] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -205,6 +207,24 @@ export function SnapshotApp(): React.ReactElement {
     if (!img) return;
     const p = toCanvasPos(e);
     dragRef.current = { x0: p.x, y0: p.y };
+    // F098 取色：读原始像素（对拍口径——色值与实际像素一致），不产生标注笔迹。
+    if (tool === "picker") {
+      const tmp = document.createElement("canvas");
+      tmp.width = 1;
+      tmp.height = 1;
+      const tctx = tmp.getContext("2d");
+      if (tctx) {
+        tctx.drawImage(img, Math.floor(p.x), Math.floor(p.y), 1, 1, 0, 0, 1, 1);
+        const d = tctx.getImageData(0, 0, 1, 1).data;
+        const hex = `#${[d[0], d[1], d[2]].map((v) => (v ?? 0).toString(16).padStart(2, "0")).join("")}`;
+        setPicked({ rgb: `rgb(${d[0]}, ${d[1]}, ${d[2]})`, hex });
+        void navigator.clipboard?.writeText(hex).then(
+          () => pushToast("success", "已取色并复制", `${hex}（${d[0]}, ${d[1]}, ${d[2]}）——与实际像素一致`),
+          () => {},
+        );
+      }
+      return;
+    }
     if (tool === "text") return;
     if (tool === "none") return; // 区域选择：onMove 中生成 region
     setStrokes((ss) => [...ss, { tool, x0: p.x, y0: p.y, x1: p.x, y1: p.y }]);
@@ -302,11 +322,21 @@ export function SnapshotApp(): React.ReactElement {
       {busy && countdown > 0 && <p className="cal-bigtime">{countdown}</p>}
       {img && (
         <div className="shot-tools">
-          {(["pen", "arrow", "mosaic", "text", "none"] as Tool[]).map((tl) => (
+          {(["pen", "arrow", "mosaic", "text", "picker", "none"] as Tool[]).map((tl) => (
             <button key={tl} type="button" className={`btn ghost tiny${tool === tl ? " active" : ""}`} aria-pressed={tool === tl} onClick={() => { setTool(tl); if (tl === "none") setRegion(null); }}>
               {t(`shotTool_${tl}`)}
             </button>
           ))}
+          {/* F098 标注撤销：逐步回退笔迹（20 步撤销判据的交互面，栈语义同内核面）。 */}
+          <button type="button" className="btn ghost tiny" disabled={strokes.length === 0} onClick={() => setStrokes((ss) => ss.slice(0, -1))} aria-label="撤销上一笔标注">
+            撤销
+          </button>
+          {picked && (
+            <span className="row gap4" role="status">
+              <span className="notes-swatch" style={{ background: picked.hex, width: 14, height: 14, display: "inline-block", borderRadius: 3 }} aria-hidden />
+              <span className="dim small">{picked.hex} · {picked.rgb}</span>
+            </span>
+          )}
           {tool === "text" && (
             <span className="row gap4">
               <input className="text-input tiny" style={{ width: 140 }} value={textDraft} onChange={(e) => setTextDraft(e.target.value)} placeholder={t("shotTextHint")} />

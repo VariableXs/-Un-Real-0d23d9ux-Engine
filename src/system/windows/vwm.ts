@@ -38,11 +38,15 @@ export type VwmToolApp =
   | "convert"
   | "sysinfo"
   | "printqueue"
-  | "syshub";
+  | "syshub"
+  | "term2"
+  | "paint"
+  | "album";
 export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp | `engine:${string}`;
 
 /** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。
- *  AI-08 基础工具组并入：时钟中心/Emoji 面板/放大镜取色器/换算中心/系统信息/打印队列。 */
+ *  AI-08 基础工具组并入：时钟中心/Emoji 面板/放大镜取色器/换算中心/系统信息/打印队列。
+ *  AI-D2 桌面体验域后段并入：终端 2.0（F095/F096）/画图件（F103）/相册（F105）。 */
 export const VWM_TOOLS: readonly VwmToolApp[] = [
   "calc",
   "notes",
@@ -59,6 +63,9 @@ export const VWM_TOOLS: readonly VwmToolApp[] = [
   "convert",
   "sysinfo",
   "printqueue",
+  "term2",
+  "paint",
+  "album",
 ];
 
 export function isVwmTool(app: VwmApp): app is VwmToolApp {
@@ -83,6 +90,10 @@ const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
   sysinfo: { w: 720, h: 640 },
   printqueue: { w: 760, h: 560 },
   syshub: { w: 860, h: 640 },
+  // AI-D2 桌面体验域后段三件（F095/F096 · F103 · F105）
+  term2: { w: 900, h: 620 },
+  paint: { w: 960, h: 680 },
+  album: { w: 980, h: 660 },
 };
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
@@ -829,6 +840,9 @@ export function vwmWindowTitle(app: VwmApp): string {
       sysinfo: "系统信息",
       printqueue: "打印队列",
       syshub: "系统中枢",
+      term2: "终端 2.0",
+      paint: "画图件",
+      album: "相册",
     };
     return labels[app];
   }

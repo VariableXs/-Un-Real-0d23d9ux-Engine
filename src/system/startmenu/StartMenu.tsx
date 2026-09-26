@@ -7,6 +7,7 @@ import {
   Printer, RotateCcw,
   ShieldCheck, Settings as SettingsIcon, Search, Smile, StickyNote, Trash2, X, ZoomIn, ArrowLeftRight,
   MoreHorizontal, Trophy, TrendingUp, Check as CheckIcon,
+  Terminal, Brush, Images,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { errMessage, ipc } from "../../lib/ipc";
@@ -80,6 +81,10 @@ const TOOL_DEFS: Record<string, { key: string; icon: React.ReactElement }> = {
   printqueue: { key: "toolPrintqueue", icon: <Printer size={22} strokeWidth={1.6} /> },
   // AI-11 系统集成与硬件组：系统中枢
   syshub: { key: "toolSyshub", icon: <Gauge size={22} strokeWidth={1.6} /> },
+  // AI-D2 桌面体验域·后段三件（F095/F096 · F103 · F105）
+  term2: { key: "toolTerm2", icon: <Terminal size={22} strokeWidth={1.6} /> },
+  paint: { key: "toolPaint", icon: <Brush size={22} strokeWidth={1.6} /> },
+  album: { key: "toolAlbum", icon: <Images size={22} strokeWidth={1.6} /> },
 };
 
 function loadOrder(): string[] {
