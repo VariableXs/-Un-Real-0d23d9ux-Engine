@@ -1024,7 +1024,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 350 ≈ 1085KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 349] = [
+    let domains: [fn() -> CheckSet; 350] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1351,9 +1351,11 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // H 基础通用域·三分队（AI-H3 · F301~F350）。域聚合单行注册（同
     // S2 容量纪律；域内 hbase + 五十项逐模块红绿在
     // h3star::run_h3star_checks 的子行展开）。
+    // [AI-H3 落位收尾 2026-09-26：本行曾因 rebase 合并伤（974a8d2a 误删
+    // h3star 模块文件）被 AI-U4 临时屏蔽，现文件已重新入册并解除屏蔽；
+    // 域表计数随本行恢复 349→350。]
     // ------------------------------------------------------------------
-        // [AI-U4 临时屏蔽：h3star 模块文件未随注册行提交（AI-H3 批次在途）——H3 落位后恢复本行并回加计数]
-        // crate::h3star::run_h3star_checks,
+        crate::h3star::run_h3star_checks,
 
     // ------------------------------------------------------------------
     // A 应用兼容域·前段（AI-C1 · F001~F020 · 主册 A-5 报告 G-A-01~G-A-20）。
