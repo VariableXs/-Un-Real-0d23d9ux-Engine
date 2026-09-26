@@ -553,9 +553,23 @@ pub fn fuzz_design(seed: u64, rounds: usize) -> bool {
 // A419/A420/A423/A425 自检与收口
 // ---------------------------------------------------------------------------
 
+pub mod nova4k;
+pub mod novaassets;
+pub mod novaboot;
+pub mod novaui;
+
 pub fn run_designsys_checks() -> CheckSet {
     let mut set = CheckSet::new("aurora-designsys");
     let mut sys = DesignSystem::new();
+
+    // NOVA-4K · src/design/tokens.css 内核移植令牌全量自检
+    nova4k::checks(&mut set);
+    // NOVA-ASSETS · src 视觉资产体系（图标包/vicon/栅格/壁纸/4K 管线）自检
+    novaassets::checks(&mut set);
+    // NOVA-BOOT · src/system/boot 启动仪式与开机视觉自检
+    novaboot::checks(&mut set);
+    // NOVA-UI · uikit 控件原语（F216/F436）自检
+    novaui::checks(&mut set);
 
     // A401 六类令牌 + 表
     set.add(
