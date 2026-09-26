@@ -105,82 +105,126 @@ pub mod stareco {
         pub mod f131e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f131g.rs"]
         pub mod f131g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f131h.rs"]
+        pub mod f131h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f132e.rs"]
         pub mod f132e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f132g.rs"]
         pub mod f132g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f132h.rs"]
+        pub mod f132h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f134e.rs"]
         pub mod f134e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f134g.rs"]
         pub mod f134g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f134h.rs"]
+        pub mod f134h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f135e.rs"]
         pub mod f135e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f135g.rs"]
         pub mod f135g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f135h.rs"]
+        pub mod f135h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f136e.rs"]
         pub mod f136e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f136g.rs"]
         pub mod f136g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f136h.rs"]
+        pub mod f136h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f137e.rs"]
         pub mod f137e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f137g.rs"]
         pub mod f137g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f137h.rs"]
+        pub mod f137h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f138e.rs"]
         pub mod f138e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f138g.rs"]
         pub mod f138g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f138h.rs"]
+        pub mod f138h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f139e.rs"]
         pub mod f139e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f139g.rs"]
         pub mod f139g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f139h.rs"]
+        pub mod f139h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f140e.rs"]
         pub mod f140e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f140g.rs"]
         pub mod f140g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f140h.rs"]
+        pub mod f140h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f141e.rs"]
         pub mod f141e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f141g.rs"]
         pub mod f141g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f141h.rs"]
+        pub mod f141h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f142e.rs"]
         pub mod f142e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f142g.rs"]
         pub mod f142g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f142h.rs"]
+        pub mod f142h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f143e.rs"]
         pub mod f143e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f143g.rs"]
         pub mod f143g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f143h.rs"]
+        pub mod f143h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f133e.rs"]
         pub mod f133e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f133g.rs"]
         pub mod f133g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f133h.rs"]
+        pub mod f133h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f144e.rs"]
         pub mod f144e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f144g.rs"]
         pub mod f144g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f144h.rs"]
+        pub mod f144h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f145e.rs"]
         pub mod f145e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f145g.rs"]
         pub mod f145g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f145h.rs"]
+        pub mod f145h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f146e.rs"]
         pub mod f146e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f146g.rs"]
         pub mod f146g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f146h.rs"]
+        pub mod f146h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f147e.rs"]
         pub mod f147e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f147g.rs"]
         pub mod f147g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f147h.rs"]
+        pub mod f147h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f148e.rs"]
         pub mod f148e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f148g.rs"]
         pub mod f148g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f148h.rs"]
+        pub mod f148h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f149e.rs"]
         pub mod f149e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f149g.rs"]
         pub mod f149g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f149h.rs"]
+        pub mod f149h;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f150e.rs"]
         pub mod f150e;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f150g.rs"]
         pub mod f150g;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150h.rs"]
+        pub mod f150h;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150i.rs"]
+        pub mod f150i;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150j.rs"]
+        pub mod f150j;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f131f.rs"]
         pub mod f131f;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f132f.rs"]
@@ -405,6 +449,60 @@ mod diag {
         assert!(red.is_empty(), "STARECO-V2 深化批次四存在红项：{:?}", red);
     }
 
+    /// 批次五（h 系列）聚合全绿断言：20 blocks。
+    #[test]
+    fn deep5_aggregate_all_green() {
+        let deeps: [(&str, crate::checks::CheckSet); 20] = [
+            ("F131h", crate::stareco::deep::f131h::run_f131_deep5_checks()),
+            ("F132h", crate::stareco::deep::f132h::run_f132_deep5_checks()),
+            ("F133h", crate::stareco::deep::f133h::run_f133_deep5_checks()),
+            ("F134h", crate::stareco::deep::f134h::run_f134_deep5_checks()),
+            ("F135h", crate::stareco::deep::f135h::run_f135_deep5_checks()),
+            ("F136h", crate::stareco::deep::f136h::run_f136_deep5_checks()),
+            ("F137h", crate::stareco::deep::f137h::run_f137_deep5_checks()),
+            ("F138h", crate::stareco::deep::f138h::run_f138_deep5_checks()),
+            ("F139h", crate::stareco::deep::f139h::run_f139_deep5_checks()),
+            ("F140h", crate::stareco::deep::f140h::run_f140_deep5_checks()),
+            ("F141h", crate::stareco::deep::f141h::run_f141_deep5_checks()),
+            ("F142h", crate::stareco::deep::f142h::run_f142_deep5_checks()),
+            ("F143h", crate::stareco::deep::f143h::run_f143_deep5_checks()),
+            ("F144h", crate::stareco::deep::f144h::run_f144_deep5_checks()),
+            ("F145h", crate::stareco::deep::f145h::run_f145_deep5_checks()),
+            ("F146h", crate::stareco::deep::f146h::run_f146_deep5_checks()),
+            ("F147h", crate::stareco::deep::f147h::run_f147_deep5_checks()),
+            ("F148h", crate::stareco::deep::f148h::run_f148_deep5_checks()),
+            ("F149h", crate::stareco::deep::f149h::run_f149_deep5_checks()),
+            ("F150h", crate::stareco::deep::f150h::run_f150_deep5_checks()),
+        ];
+        let mut red = alloc::vec::Vec::new();
+        for (tag, sub) in deeps {
+            if !(sub.all_passed() && !sub.truncated()) {
+                red.push(tag);
+            }
+        }
+        assert!(red.is_empty(), "STARECO-V2 深化批次五存在红项：{:?}", red);
+    }
+
+    /// 收尾件 f150i（域快照与闸门）全绿断言。
+    #[test]
+    fn deep5b_aggregate_all_green() {
+        let set = crate::stareco::deep::f150i::run_f150_deep5b_checks();
+        assert!(
+            set.all_passed() && !set.truncated(),
+            "STARECO-V2 f150i 收尾件存在红项"
+        );
+    }
+
+    /// 收尾件 f150j（批次台账总装）全绿断言。
+    #[test]
+    fn deep5c_aggregate_all_green() {
+        let set = crate::stareco::deep::f150j::run_f150_deep5c_checks();
+        assert!(
+            set.all_passed() && !set.truncated(),
+            "STARECO-V2 f150j 台账总装存在红项"
+        );
+    }
+
     /// 批次三红项明细 dump（每块逐行渲染，定位具体断言）。
     #[test]
     fn dump_red_sets3() {
@@ -443,7 +541,7 @@ mod diag {
 mod probe4 {
     #[test]
     fn dump_g4() {
-        let sets: [(&str, crate::checks::CheckSet); 20] = [
+        let sets: [(&str, crate::checks::CheckSet); 40] = [
             ("f131g", crate::stareco::deep::f131g::run_f131_deep4_checks()),
             ("f132g", crate::stareco::deep::f132g::run_f132_deep4_checks()),
             ("f133g", crate::stareco::deep::f133g::run_f133_deep4_checks()),
@@ -464,6 +562,26 @@ mod probe4 {
             ("f148g", crate::stareco::deep::f148g::run_f148_deep4_checks()),
             ("f149g", crate::stareco::deep::f149g::run_f149_deep4_checks()),
             ("f150g", crate::stareco::deep::f150g::run_f150_deep4_checks()),
+               ("f131h", crate::stareco::deep::f131h::run_f131_deep5_checks()),
+            ("f132h", crate::stareco::deep::f132h::run_f132_deep5_checks()),
+            ("f133h", crate::stareco::deep::f133h::run_f133_deep5_checks()),
+            ("f134h", crate::stareco::deep::f134h::run_f134_deep5_checks()),
+            ("f135h", crate::stareco::deep::f135h::run_f135_deep5_checks()),
+            ("f136h", crate::stareco::deep::f136h::run_f136_deep5_checks()),
+            ("f137h", crate::stareco::deep::f137h::run_f137_deep5_checks()),
+            ("f138h", crate::stareco::deep::f138h::run_f138_deep5_checks()),
+            ("f139h", crate::stareco::deep::f139h::run_f139_deep5_checks()),
+            ("f140h", crate::stareco::deep::f140h::run_f140_deep5_checks()),
+            ("f141h", crate::stareco::deep::f141h::run_f141_deep5_checks()),
+            ("f142h", crate::stareco::deep::f142h::run_f142_deep5_checks()),
+            ("f143h", crate::stareco::deep::f143h::run_f143_deep5_checks()),
+            ("f144h", crate::stareco::deep::f144h::run_f144_deep5_checks()),
+            ("f145h", crate::stareco::deep::f145h::run_f145_deep5_checks()),
+            ("f146h", crate::stareco::deep::f146h::run_f146_deep5_checks()),
+            ("f147h", crate::stareco::deep::f147h::run_f147_deep5_checks()),
+            ("f148h", crate::stareco::deep::f148h::run_f148_deep5_checks()),
+            ("f149h", crate::stareco::deep::f149h::run_f149_deep5_checks()),
+            ("f150h", crate::stareco::deep::f150h::run_f150_deep5_checks()),
         ];
         for (name, set) in sets {
             let mut buf = [0u8; 4096];
@@ -472,3 +590,4 @@ mod probe4 {
         }
     }
 }
+

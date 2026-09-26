@@ -13,90 +13,112 @@ pub mod f131d;
 pub mod f131e;
 pub mod f131f;
 pub mod f131g;
+pub mod f131h;
 pub mod f132d;
 pub mod f132e;
 pub mod f132f;
 pub mod f132g;
+pub mod f132h;
 pub mod f133d;
 pub mod f133e;
 pub mod f133f;
 pub mod f133g;
+pub mod f133h;
 pub mod f134d;
 pub mod f134e;
 pub mod f134f;
 pub mod f134g;
+pub mod f134h;
 pub mod f135d;
 pub mod f135e;
 pub mod f135f;
 pub mod f135g;
+pub mod f135h;
 pub mod f136d;
 pub mod f136e;
 pub mod f136f;
 pub mod f136g;
+pub mod f136h;
 pub mod f137d;
 pub mod f137e;
 pub mod f137f;
 pub mod f137g;
+pub mod f137h;
 pub mod f138d;
 pub mod f138e;
 pub mod f138f;
 pub mod f138g;
+pub mod f138h;
 pub mod f139d;
 pub mod f139e;
 pub mod f139f;
 pub mod f139g;
+pub mod f139h;
 pub mod f140d;
 pub mod f140e;
 pub mod f140f;
 pub mod f140g;
+pub mod f140h;
 pub mod f141d;
 pub mod f141e;
 pub mod f141f;
 pub mod f141g;
+pub mod f141h;
 pub mod f142d;
 pub mod f142e;
 pub mod f142f;
 pub mod f142g;
+pub mod f142h;
 pub mod f143d;
 pub mod f143e;
 pub mod f143f;
 pub mod f143g;
+pub mod f143h;
 pub mod f144d;
 pub mod f144e;
 pub mod f144f;
 pub mod f144g;
+pub mod f144h;
 pub mod f145d;
 pub mod f145e;
 pub mod f145f;
 pub mod f145g;
+pub mod f145h;
 pub mod f146d;
 pub mod f146e;
 pub mod f146f;
 pub mod f146g;
+pub mod f146h;
 pub mod f147d;
 pub mod f147e;
 pub mod f147f;
 pub mod f147g;
+pub mod f147h;
 pub mod f148d;
 pub mod f148e;
 pub mod f148f;
 pub mod f148g;
+pub mod f148h;
 pub mod f149d;
 pub mod f149e;
 pub mod f149f;
 pub mod f149g;
+pub mod f149h;
 pub mod f150d;
 pub mod f150e;
 pub mod f150f;
 pub mod f150g;
+pub mod f150h;
+pub mod f150i;
+pub mod f150j;
 
 /// 深化域标识。
 pub const DEEP_DOMAIN: &str = "stareco-v2-deep";
 
-/// 深化层自检聚合：d/e/f/g 四批各 20 blocks = 80 blocks。
+/// 深化层自检聚合：d/e/f/g/h 五批各 20 + f150i 收尾件 = 101 blocks。
 pub fn run_stareco_deep_checks() -> CheckSet {
     let mut set = CheckSet::new(DEEP_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 80] = [
+    let blocks: [(&'static str, CheckSet); 102] = [
         ("F131d", f131d::run_f131_deep_checks()),
         ("F131e", f131e::run_f131_deep2_checks()),
         ("F131f", f131f::run_f131_deep3_checks()),
@@ -135,6 +157,28 @@ pub fn run_stareco_deep_checks() -> CheckSet {
         ("F148g", f148g::run_f148_deep4_checks()),
         ("F149g", f149g::run_f149_deep4_checks()),
         ("F150g", f150g::run_f150_deep4_checks()),
+        ("F131h", f131h::run_f131_deep5_checks()),
+        ("F132h", f132h::run_f132_deep5_checks()),
+        ("F133h", f133h::run_f133_deep5_checks()),
+        ("F134h", f134h::run_f134_deep5_checks()),
+        ("F135h", f135h::run_f135_deep5_checks()),
+        ("F136h", f136h::run_f136_deep5_checks()),
+        ("F137h", f137h::run_f137_deep5_checks()),
+        ("F138h", f138h::run_f138_deep5_checks()),
+        ("F139h", f139h::run_f139_deep5_checks()),
+        ("F140h", f140h::run_f140_deep5_checks()),
+        ("F141h", f141h::run_f141_deep5_checks()),
+        ("F142h", f142h::run_f142_deep5_checks()),
+        ("F143h", f143h::run_f143_deep5_checks()),
+        ("F144h", f144h::run_f144_deep5_checks()),
+        ("F145h", f145h::run_f145_deep5_checks()),
+        ("F146h", f146h::run_f146_deep5_checks()),
+        ("F147h", f147h::run_f147_deep5_checks()),
+        ("F148h", f148h::run_f148_deep5_checks()),
+        ("F149h", f149h::run_f149_deep5_checks()),
+        ("F150h", f150h::run_f150_deep5_checks()),
+        ("F150i", f150i::run_f150_deep5b_checks()),
+        ("F150j", f150j::run_f150_deep5c_checks()),
         ("F137d", f137d::run_f137_deep_checks()),
         ("F137e", f137e::run_f137_deep2_checks()),
         ("F137f", f137f::run_f137_deep3_checks()),
