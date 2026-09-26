@@ -30,6 +30,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::Rect;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -785,13 +786,14 @@ pub fn run_icongrid_deep2_checks() -> CheckSet {
 
 #[cfg(test)]
 mod tests_deep2 {
+    use alloc::format;
     use super::*;
 
     #[test]
     fn auto_arrange_never_changes_count() {
         let mut g = IconGrid::new(3, 3);
         for id in 0..5u64 {
-            g.add_icon(id, &alloc::format!("件{}", id));
+            g.add_icon(id, &format!("件{}", id));
         }
         let before = g.icon_count();
         g.auto_arrange_by(ArrangeKey::Name, &|_| None);
@@ -802,7 +804,7 @@ mod tests_deep2 {
     fn arrange_wraps_to_next_row() {
         let mut g = IconGrid::new(2, 3);
         for id in 0..4u64 {
-            g.add_icon(id, &alloc::format!("{}件", id));
+            g.add_icon(id, &format!("{}件", id));
         }
         g.auto_arrange_by(ArrangeKey::Name, &|_| None);
         let last = &g.icons[3];

@@ -29,6 +29,8 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::{FocusRing, Rect, Token};
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{vec, format};
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计）
@@ -133,7 +135,7 @@ impl TaskView {
         self.next_desk_id += 1;
         self.desks.push(VirtualDesk {
             id,
-            name: alloc::format!("桌面 {}", id),
+            name: format!("桌面 {}", id),
             windows: Vec::new(),
             mru: Vec::new(),
             snap_layouts: Vec::new(),
@@ -281,7 +283,7 @@ impl TaskView {
                     idx,
                     VirtualDesk {
                         id,
-                        name: alloc::format!("桌面 {}", id),
+                        name: format!("桌面 {}", id),
                         windows: moved_wins,
                         mru: p.moved.iter().map(|(w, _)| *w).collect(),
                         snap_layouts: Vec::new(),

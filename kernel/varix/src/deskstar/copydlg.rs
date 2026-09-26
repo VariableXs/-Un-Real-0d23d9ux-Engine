@@ -29,6 +29,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::{budget_ok, SlidingRate};
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/状态与异常/设计细节）
@@ -571,7 +572,7 @@ pub fn run_copydlg_checks() -> CheckSet {
     let mut m7 = CopyMgr::new();
     let mut ids7 = Vec::new();
     for i in 0..5u64 {
-        ids7.push(m7.submit(OpKind::Copy, vec![(alloc::format!("f{i}"), 10)]));
+        ids7.push(m7.submit(OpKind::Copy, vec![(format!("f{i}"), 10)]));
     }
     let running = ids7
         .iter()
@@ -641,7 +642,7 @@ mod tests {
         let mut m = CopyMgr::new();
         let mut ids = Vec::new();
         for i in 0..4u64 {
-            ids.push(m.submit(OpKind::Copy, vec![(alloc::format!("f{i}"), 10)]));
+            ids.push(m.submit(OpKind::Copy, vec![(format!("f{i}"), 10)]));
         }
         // 前 3 Running，第 4 Queued。
         let states: Vec<TaskState> = ids.iter().map(|id| m.task(*id).unwrap().state).collect();
@@ -664,7 +665,7 @@ mod tests {
     fn cancel_running_only() {
         let mut m = CopyMgr::new();
         for i in 0..4u64 {
-            m.submit(OpKind::Copy, vec![(alloc::format!("f{i}"), 10)]);
+            m.submit(OpKind::Copy, vec![(format!("f{i}"), 10)]);
         }
         assert!(m.cancel(4).is_none(), "排队中任务不可取消（尚未开始）");
     }

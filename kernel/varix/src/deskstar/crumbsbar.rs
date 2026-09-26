@@ -28,6 +28,7 @@ use crate::deskstar::dbase::{budget_ok, Token};
 use crate::deskstar::tabexplorer::HistoryStack;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -271,7 +272,7 @@ impl CrumbsBar {
     pub fn pick_sibling(&mut self, idx: usize, name: &str) -> bool {
         let base = self.crumbs().get(idx).map(|c| c.path.clone());
         let Some(base) = base else { return false };
-        let target = alloc::format!("{}/{}", base, name);
+        let target = format!("{}/{}", base, name);
         self.dropdown_open = None;
         self.history.go(&target)
     }
@@ -626,7 +627,7 @@ pub fn run_crumbsbar_checks() -> CheckSet {
         "C:/工作",
         (0..60)
             .map(|i| Sibling {
-                name: alloc::format!("目录{}", i),
+                name: format!("目录{}", i),
                 children: i,
             })
             .collect(),
@@ -750,7 +751,7 @@ pub fn run_crumbsbar_deep_checks() -> CheckSet {
     bar.feed_siblings(
         "C:/工作",
         (0..60u32)
-            .map(|i| Sibling { name: alloc::format!("目录{}", i), children: i })
+            .map(|i| Sibling { name: format!("目录{}", i), children: i })
             .collect(),
     );
     let win0 = bar.siblings_window(2, 0);

@@ -29,6 +29,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::Token;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/数据与存储/设计细节）
@@ -481,7 +482,7 @@ pub fn run_tabexplorer_checks() -> CheckSet {
     // 8. 历史栈 20 步上限 + 前进后退 + 同目录幂等。
     let mut h = HistoryStack::new("C:/");
     for i in 0..25u32 {
-        h.go(&alloc::format!("C:/层{}", i));
+        h.go(&format!("C:/层{}", i));
     }
     let capped = h.len() <= HISTORY_CAP;
     let back2 = h.back().is_some() && h.back().is_some();

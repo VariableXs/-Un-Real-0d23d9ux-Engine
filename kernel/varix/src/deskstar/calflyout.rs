@@ -27,6 +27,7 @@ use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -263,7 +264,7 @@ impl CalFlyout {
 
     /// 标题文案（「2026 年 9 月」）。
     pub fn title(&self) -> alloc::string::String {
-        alloc::format!("{} 年 {} 月", self.view_year, self.view_month)
+        format!("{} 年 {} 月", self.view_year, self.view_month)
     }
 
     /// 标题是否正对今日（回今日钮的可点性提示）。

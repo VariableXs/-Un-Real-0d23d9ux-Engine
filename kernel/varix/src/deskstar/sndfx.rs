@@ -26,6 +26,8 @@ use crate::checks::CheckSet;
 
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册功能定义/状态与异常/设计细节）
@@ -178,7 +180,7 @@ impl SfxHub {
             scheme: Scheme::StarSea,
             entries: core::array::from_fn(|i| SfxEntry {
                 event: SfxEvent::ALL[i],
-                asset: alloc::format!("sfx/{}-{}.flac", scheme_tag(Scheme::StarSea), tag_of(SfxEvent::ALL[i])),
+                asset: format!("sfx/{}-{}.flac", scheme_tag(Scheme::StarSea), tag_of(SfxEvent::ALL[i])),
                 volume: 80,
                 loaded: false,
             }),
@@ -209,12 +211,12 @@ impl SfxHub {
     pub fn set_scheme(&mut self, s: Scheme) {
         self.scheme = s;
         for e in self.entries.iter_mut() {
-            e.asset = alloc::format!("sfx/{}-{}.flac", scheme_tag(s), tag_of(e.event));
+            e.asset = format!("sfx/{}-{}.flac", scheme_tag(s), tag_of(e.event));
             e.loaded = false;
         }
         if s.silent_scheme() {
             // 无声方案：映射表全空（事件→无音效——诚实映射而非假播）。
-            self.diag.push(alloc::format!("方案切至无声：全部事件静映射"));
+            self.diag.push(format!("方案切至无声：全部事件静映射"));
         }
     }
 
@@ -440,7 +442,7 @@ impl SfxHub {
         if self.load_retries[i] > LOAD_RETRY_CAP {
             self.load_states[i] = LoadState::Failed;
             self.diag
-                .push(alloc::format!("{} 音效装载失败：该事件回退无声（诊断报备）", event.name()));
+                .push(format!("{} 音效装载失败：该事件回退无声（诊断报备）", event.name()));
             self.now_ms = now_ms;
             true
         } else {

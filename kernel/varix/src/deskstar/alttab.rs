@@ -26,6 +26,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::{budget_ok, Ease, EaseKind, Rect, Token};
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -541,7 +542,7 @@ impl AltTab {
             return String::from(title);
         }
         let kept: String = title.chars().take(TITLE_MAX_CHARS).collect();
-        alloc::format!("{}…", kept)
+        format!("{}…", kept)
     }
 
     /// 缩略节拍与页联动（页切换 → 缩略账换页重计——脏页从零刷，

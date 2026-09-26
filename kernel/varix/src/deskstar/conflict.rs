@@ -29,6 +29,7 @@ use crate::star::recenteng;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/状态与异常/设计细节）
@@ -70,7 +71,7 @@ pub fn suffixed_name(name: &str, exists: &OccupiedFn) -> String {
     let (base, ext) = split_name_ext(name);
     let mut n = SUFFIX_START;
     loop {
-        let candidate = alloc::format!("{} ({}){}", base, n, ext);
+        let candidate = format!("{} ({}){}", base, n, ext);
         if !exists(&candidate) {
             return candidate;
         }
@@ -376,7 +377,7 @@ impl ConflictPanel {
         let hh = rem / 3_600;
         let mm = (rem % 3_600) / 60;
         let ss = rem % 60;
-        let abs = alloc::format!(
+        let abs = format!(
             "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
             y, m, d, hh, mm, ss
         );
@@ -390,10 +391,10 @@ impl ConflictPanel {
         let (src_abs, src_rel) = Self::mtime_labels(p.src_mtime, now_s);
         let (dst_abs, _dst_rel) = Self::mtime_labels(p.dst_mtime, now_s);
         Some([
-            alloc::format!("{} B", p.src_size),
-            alloc::format!("{} B", p.dst_size),
+            format!("{} B", p.src_size),
+            format!("{} B", p.dst_size),
             src_abs,
-            alloc::format!("{} / {}", src_rel, dst_abs),
+            format!("{} / {}", src_rel, dst_abs),
         ])
     }
 }
@@ -533,7 +534,7 @@ impl ConflictPanel {
         let kb = self.applied.iter().filter(|a| a.decision == Decision::KeepBoth).count();
         let ov = self.applied.iter().filter(|a| a.decision == Decision::Overwrite).count();
         let sk = self.applied.iter().filter(|a| a.decision == Decision::Skip).count();
-        alloc::format!("保留两者 {} · 覆盖 {} · 跳过 {}", kb, ov, sk)
+        format!("保留两者 {} · 覆盖 {} · 跳过 {}", kb, ov, sk)
     }
 }
 
@@ -607,7 +608,7 @@ pub fn run_conflict_deep_checks() -> CheckSet {
     let mut p5 = ConflictPanel::new(vec![]);
     let mut many: Vec<ConflictPair> = Vec::new();
     for i in 0..45u64 {
-        many.push(pair(&alloc::format!("f{i}"), false));
+        many.push(pair(&format!("f{i}"), false));
     }
     p5.load(many);
     let nav = p5.page_nav(2);
@@ -710,12 +711,12 @@ pub fn run_conflict_checks() -> CheckSet {
     let mut occupied: Vec<String> = Vec::new();
     let mut ok100 = true;
     for i in 0..100u32 {
-        let base = alloc::format!("报告{}.txt", i % 10);
+        let base = format!("报告{}.txt", i % 10);
         if i < 3 {
             occupied.push(base.clone());
         }
         let got = suffixed_name(&base, &|c: &str| occupied.contains(&String::from(c)));
-        ok100 &= got.starts_with(&alloc::format!("{} (", base.trim_end_matches(".txt")))
+        ok100 &= got.starts_with(&format!("{} (", base.trim_end_matches(".txt")))
             && got.ends_with(".txt")
             && !occupied.contains(&got);
         occupied.push(got);
@@ -728,7 +729,7 @@ pub fn run_conflict_checks() -> CheckSet {
     let mut pairs: Vec<ConflictPair> = Vec::new();
     for i in 0..30u64 {
         pairs.push(ConflictPair {
-            name: alloc::format!("文件{}", i),
+            name: format!("文件{}", i),
             src_size: 100 + i,
             src_mtime: 1_000 + i,
             dst_size: 100 + i,
@@ -833,7 +834,7 @@ pub fn run_conflict_checks() -> CheckSet {
     let mut many: Vec<ConflictPair> = Vec::new();
     for i in 0..5u64 {
         many.push(ConflictPair {
-            name: alloc::format!("m{i}"),
+            name: format!("m{i}"),
             src_size: i,
             src_mtime: i,
             dst_size: i,

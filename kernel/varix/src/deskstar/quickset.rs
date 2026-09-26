@@ -30,6 +30,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::{FloatLayer, FocusRing, Rect, Token};
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -369,7 +370,7 @@ impl QuickPanel {
             // 性能档是三档循环不是布尔：切换 toast 确认。
             self.perf_prev = Some(self.perf_tier);
             self.perf_tier = self.perf_tier.next();
-            self.toasts.push(alloc::format!(
+            self.toasts.push(format!(
                 "性能档已切换：{}（F069 生效确认）",
                 self.perf_tier.name()
             ));

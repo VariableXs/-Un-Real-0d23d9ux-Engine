@@ -30,6 +30,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::Token;
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::{vec, format};
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/状态与异常/设计细节）
@@ -88,7 +89,7 @@ impl TrashItem {
         }
         let head: String = path.chars().take(240).collect();
         let tail: String = path.chars().skip(n - 19).collect();
-        alloc::format!("{}…{}", head, tail)
+        format!("{}…{}", head, tail)
     }
 }
 
@@ -302,8 +303,8 @@ impl TrashUi {
             // F087 后缀语义：「名称 (2).ext」。
             let dot = item.name.rfind('.');
             match dot {
-                Some(p) => alloc::format!("{} (2){}", &item.name[..p], &item.name[p..]),
-                None => alloc::format!("{} (2)", item.name),
+                Some(p) => format!("{} (2){}", &item.name[..p], &item.name[p..]),
+                None => format!("{} (2)", item.name),
             }
         } else {
             item.name.clone()
@@ -485,11 +486,11 @@ pub fn run_trashui_checks() -> CheckSet {
     let mut ok100 = true;
     for i in 0..100u64 {
         let hash = 0x9E37_79B9 ^ i;
-        let id = t.delete("C:", "文件", alloc::format!("C:/Users/文件{}", i).as_str(), 100, hash, i, i * 100);
+        let id = t.delete("C:", "文件", format!("C:/Users/文件{}", i).as_str(), 100, hash, i, i * 100);
         ok100 &= id.is_some();
         let restored = id.and_then(|id| t.restore(id, false));
         ok100 &= restored.map(|(_, h)| h == hash) == Some(true);
-        let id2 = t.delete("C:", "文件", alloc::format!("C:/Users/文件{}", i).as_str(), 100, hash, i, i * 100 + 1);
+        let id2 = t.delete("C:", "文件", format!("C:/Users/文件{}", i).as_str(), 100, hash, i, i * 100 + 1);
         ok100 &= id2.is_some();
     }
     set.add(
@@ -514,7 +515,7 @@ pub fn run_trashui_checks() -> CheckSet {
     let mut t2 = TrashUi::new();
     t2.register_volume("D:", 10_000);
     for i in 0..3u64 {
-        let _ = t2.delete("D:", "件", alloc::format!("D:/件{}", i).as_str(), 10, i, 0, 0);
+        let _ = t2.delete("D:", "件", format!("D:/件{}", i).as_str(), 10, i, 0, 0);
     }
     let stag = t2.fly_anims.iter().map(|(_, d)| *d).collect::<Vec<_>>();
     set.add(
@@ -578,7 +579,7 @@ pub fn run_trashui_checks() -> CheckSet {
         "F087 suffix",
     );
     // 10. 长路径截断（>260 字符策略）。
-    let long = alloc::format!("I:/{}", "段".repeat(300));
+    let long = format!("I:/{}", "段".repeat(300));
     let clipped = TrashItem::clamp_path(&long);
     set.add(
         "path-truncate",

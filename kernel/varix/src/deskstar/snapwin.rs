@@ -27,6 +27,7 @@ use crate::checks::CheckSet;
 use crate::deskstar::dbase::{frame_in_budget, Ease, Rect, SNAP_OVERSHOOT, Token};
 use alloc::string::String;
 use alloc::vec::Vec;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/状态与异常/设计细节）

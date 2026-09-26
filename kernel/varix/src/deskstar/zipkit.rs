@@ -31,6 +31,7 @@ use crate::checks::CheckSet;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/状态与异常/设计细节）
@@ -885,13 +886,13 @@ pub fn archive_name(selection: &[&str], parent_dir: &str) -> Option<String> {
         1 => {
             let base = selection[0];
             let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(base);
-            Some(alloc::format!("{}.zip", stem))
+            Some(format!("{}.zip", stem))
         }
         _ => {
             if parent_dir.is_empty() {
                 None
             } else {
-                Some(alloc::format!("{}.zip", parent_dir))
+                Some(format!("{}.zip", parent_dir))
             }
         }
     }
@@ -923,7 +924,7 @@ pub fn zip_context_menu(selection_is_zip: bool, zip_name: &str) -> [ZipMenuItem;
             why_disabled: why.clone(),
         },
         ZipMenuItem {
-            label: alloc::format!("解压到 {}\\", zip_name),
+            label: format!("解压到 {}\\", zip_name),
             enabled: enable,
             why_disabled: why,
         },
@@ -1129,7 +1130,7 @@ impl TempAccount {
 
     /// 建临时名（打包过程的暂存物登记）。
     pub fn create(&mut self, base: &str) -> String {
-        let name = alloc::format!("~tmp-{}", base);
+        let name = format!("~tmp-{}", base);
         self.created.push(name.clone());
         name
     }
@@ -1189,7 +1190,7 @@ pub fn run_zipkit_checks() -> CheckSet {
     for i in 0..50u32 {
         // 多样性负载：文本/重复/随机性二进制/空/超大重复。
         let data: Vec<u8> = match i % 5 {
-            0 => alloc::format!("报告内容 {}", i).into_bytes(),
+            0 => format!("报告内容 {}", i).into_bytes(),
             1 => vec![0xABu8; 1000 + i as usize],
             2 => (0..500usize).map(|k| (k as u8) ^ (i as u8)).collect(),
             3 => Vec::new(),
@@ -1197,7 +1198,7 @@ pub fn run_zipkit_checks() -> CheckSet {
         };
         let level = [LEVEL_STORE, LEVEL_FASTEST, LEVEL_BALANCED][i as usize % 3];
         let z = zip_write(&[ZipFile {
-            name: alloc::format!("件{}", i),
+            name: format!("件{}", i),
             data: data.clone(),
             level,
         }]);
@@ -1216,12 +1217,12 @@ pub fn run_zipkit_checks() -> CheckSet {
     for i in 0..20u32 {
         files.push(ZipFile {
             name: match i % 4 {
-                0 => alloc::format!("相册/照片{}.jpg", i),
-                1 => alloc::format!("报告{}.docx", i),
-                2 => alloc::format!("data/bin{}", i),
-                _ => alloc::format!("总结/年终/文件{}.md", i),
+                0 => format!("相册/照片{}.jpg", i),
+                1 => format!("报告{}.docx", i),
+                2 => format!("data/bin{}", i),
+                _ => format!("总结/年终/文件{}.md", i),
             },
-            data: alloc::format!("内容-{}", i).into_bytes(),
+            data: format!("内容-{}", i).into_bytes(),
             level: LEVEL_BALANCED,
         });
     }

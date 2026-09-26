@@ -30,6 +30,7 @@ use crate::deskstar::dbase::{budget_ok, Debouncer, Token};
 use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -347,7 +348,7 @@ impl LiveSearch {
 
     /// 虚拟路径（「XX > 搜索结果」可点回）。
     pub fn virtual_path(&self) -> String {
-        alloc::format!("{} > 搜索结果", "当前目录")
+        format!("{} > 搜索结果", "当前目录")
     }
 
     /// F3 重复上次搜索（回填查询词）。
@@ -779,7 +780,7 @@ impl LiveSearch {
 
     /// 虚拟路径（真实目录名——「项目资料 > 搜索结果」可点回）。
     pub fn virtual_path_of(&self, dir: &str) -> String {
-        alloc::format!("{} > 搜索结果", dir)
+        format!("{} > 搜索结果", dir)
     }
 
     /// 结果视图模式（会话锁定——结果列表保留原视图的数据面）。
@@ -808,7 +809,7 @@ pub fn run_livesearch_checks() -> CheckSet {
     );
     // 2. 5000 文件目录首结果 <300ms。
     let names: Vec<(String, u8, String)> = (0..5000u32)
-        .map(|i| (alloc::format!("文件{}.docx", i), 0, String::new()))
+        .map(|i| (format!("文件{}.docx", i), 0, String::new()))
         .collect();
     let scan5k = move |_p: &str, _d: u8, _r: bool| names.clone();
     ls.tick(1_201, scan5k); // 到期（防抖窗 1200 闭合后）扫描+匹配
@@ -918,7 +919,7 @@ mod tests {
         ls.input('a', 0);
         ls.tick(200, |_, _, _| {
             (0..2500)
-                .map(|i| (alloc::format!("a{}", i), 0, String::new()))
+                .map(|i| (format!("a{}", i), 0, String::new()))
                 .collect()
         });
         assert!(ls.over_cap_hint(), "2000 截断提示细化");
@@ -1014,7 +1015,7 @@ pub fn run_livesearch_deep_checks() -> CheckSet {
     ls.input('a', 0);
     ls.tick(200, |_, _, _| vec![]); // 消费防抖尾（空扫——渐进路径接管）
     let entries: Vec<(String, u8, String)> = (0..2000u32)
-        .map(|i| (alloc::format!("a报告{}.md", i), 0, String::new()))
+        .map(|i| (format!("a报告{}.md", i), 0, String::new()))
         .collect();
     ls.scan_cursor = 0;
     let first_added = ls.scan_step(210, &entries);
@@ -1044,7 +1045,7 @@ pub fn run_livesearch_deep_checks() -> CheckSet {
     ls3.input('b', 1_000);
     ls3.tick(1_200, |_, _, _| vec![]);
     let big: Vec<(String, u8, String)> = (0..12_000u32)
-        .map(|i| (alloc::format!("b{}.bin", i), 0, String::new()))
+        .map(|i| (format!("b{}.bin", i), 0, String::new()))
         .collect();
     ls3.scan_step(1_210, &big);
     let prog_flag = ls3.is_progressive();
@@ -1152,7 +1153,7 @@ mod tests_deep {
         ls.input('a', 0);
         ls.tick(200, |_, _, _| vec![]);
         let big: Vec<(String, u8, String)> = (0..3000u32)
-            .map(|i| (alloc::format!("a{}", i), 0u8, String::new()))
+            .map(|i| (format!("a{}", i), 0u8, String::new()))
             .collect();
         loop {
             let added = ls.scan_step(300, &big);

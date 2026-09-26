@@ -27,8 +27,10 @@
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::Token;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -95,9 +97,9 @@ impl Exif {
                 return String::from("0s");
             }
             if us >= 1_000_000 {
-                alloc::format!("{}s", us / 1_000_000)
+                format!("{}s", us / 1_000_000)
             } else {
-                alloc::format!("1/{}s", (1_000_000 + us / 2) / us)
+                format!("1/{}s", (1_000_000 + us / 2) / us)
             }
         })
     }
@@ -105,7 +107,7 @@ impl Exif {
     /// 光圈显示（f/1.8）。
     pub fn aperture_label(&self) -> Option<String> {
         self.aperture_x10
-            .map(|a| alloc::format!("f/{}", a as u32 as f64 / 10.0))
+            .map(|a| format!("f/{}", a as u32 as f64 / 10.0))
     }
 }
 
@@ -421,7 +423,7 @@ impl DetailPane {
                 rows.push(("快门", s));
             }
             if let Some(i) = e.iso {
-                rows.push(("ISO", alloc::format!("{}", i)));
+                rows.push(("ISO", format!("{}", i)));
             }
         }
         rows
@@ -513,13 +515,13 @@ pub fn format_size(bytes: u64) -> String {
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
     if bytes >= GB {
-        alloc::format!("{:.1} GB", bytes as f64 / GB as f64)
+        format!("{:.1} GB", bytes as f64 / GB as f64)
     } else if bytes >= MB {
-        alloc::format!("{:.1} MB", bytes as f64 / MB as f64)
+        format!("{:.1} MB", bytes as f64 / MB as f64)
     } else if bytes >= KB {
-        alloc::format!("{:.1} KB", bytes as f64 / KB as f64)
+        format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
-        alloc::format!("{} B", bytes)
+        format!("{} B", bytes)
     }
 }
 
@@ -571,8 +573,8 @@ impl DetailPane {
             Selection::None => {
                 // 无选中 → 目录摘要三行（子目录/文件/总大小）。
                 let s = &self.dir_summary;
-                rows.push(PaneRow::new("子目录", alloc::format!("{}", s.subdirs)));
-                rows.push(PaneRow::new("文件", alloc::format!("{}", s.files)));
+                rows.push(PaneRow::new("子目录", format!("{}", s.subdirs)));
+                rows.push(PaneRow::new("文件", format!("{}", s.files)));
                 let total = if s.partial {
                     String::from("计算中…")
                 } else {
@@ -581,7 +583,7 @@ impl DetailPane {
                 rows.push(PaneRow::new("总大小", total));
             }
             Selection::Multi { count, total_size } => {
-                rows.push(PaneRow::new("已选", alloc::format!("{} 项", count)));
+                rows.push(PaneRow::new("已选", format!("{} 项", count)));
                 rows.push(PaneRow::new("总大小", format_size(*total_size)));
             }
             Selection::One { name, size, mtime_s, ctime_s, is_image } => {
@@ -591,7 +593,7 @@ impl DetailPane {
                 rows.push(PaneRow::new("创建时间", date_fmt(*ctime_s, true)));
                 if *is_image {
                     if let Some((w, h)) = dim {
-                        rows.push(PaneRow::new("尺寸", alloc::format!("{} × {}", w, h)));
+                        rows.push(PaneRow::new("尺寸", format!("{} × {}", w, h)));
                     }
                     // EXIF 区默认收起——展开后由 exif_field_rows 续行。
                 }
@@ -880,7 +882,7 @@ pub fn run_detailpane_deep_checks() -> CheckSet {
     // 日期注入（ISO 风格——全局设置的唯一消费口）。
     let iso = |s: u64, with_time: bool| {
         if with_time {
-            alloc::format!("2026-09-26 {:02}:00", s % 24)
+            format!("2026-09-26 {:02}:00", s % 24)
         } else {
             String::from("2026-09-26")
         }

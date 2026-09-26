@@ -1026,7 +1026,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 仅一个 CheckSet 临时存活。
     // （350→349：AI-U4 复验轮清除 rebase 伤——U1 注释块下错挂的
     // secstar2 重复注册行删除，同域两行归一行。）
-    let domains: [fn() -> CheckSet; 350] = [
+    let domains: [fn() -> CheckSet; 351] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1516,6 +1516,13 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 域内 50 项逐项红绿在 h1star::run_h1_checks 的子行展开。
     // ------------------------------------------------------------------
     checkup.register(crate::h1star::run_h1_checks());
+    // ------------------------------------------------------------------
+    // C 桌面体验域·前段（AI-D1 · F076~F092 · 主册 G-C-06~G-C-22）
+    // ——单聚合注册（同 U2/J2/I4/H1 容量纪律：不占 domains 定长数组
+    // 名额）；域内 17 项基础 + 20 深化块逐项红绿在
+    // deskstar::run_deskstar_checks 的子行展开（v2 收口补挂）。
+    // ------------------------------------------------------------------
+    checkup.register(crate::deskstar::run_deskstar_checks());
     checkup
 }
 

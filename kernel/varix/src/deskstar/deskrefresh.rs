@@ -24,8 +24,10 @@
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::{budget_ok, Debouncer};
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use alloc::format;
 
 // ---------------------------------------------------------------------------
 // 规格常量（参数唯一源——主册交互设计/设计细节）
@@ -206,7 +208,7 @@ impl DeskRefresh {
 
     /// 诚实诊断文案（彩蛋式：「本月刷新 N 次，其中必要 M 次」）。
     pub fn honesty_line(&self) -> alloc::string::String {
-        alloc::format!(
+        format!(
             "本月刷新 {} 次，其中真正必要 {} 次",
             self.refresh_total,
             self.refresh_necessary

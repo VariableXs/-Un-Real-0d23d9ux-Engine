@@ -62,13 +62,14 @@ pub mod zipkit;
 pub const DESK_DOMAIN: &str = "deskstar-d1";
 
 /// 本域自检聚合：逐模块 `run_*_checks` 汇总（施工期随模块落地扩列，
-/// 全量 dbase + 十七项）。
+/// 全量 dbase + 十七项 + 深化批 v1/v2 全部 deep 块）。
 ///
 /// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`），单模块超限
-/// 由该模块自身裁剪——聚合器如实报告每份 Set 的截断态。
+/// 由该模块自身裁剪——聚合器如实报告每份 Set 的截断态。深化块与基础
+/// 块同列注册（v2 收口：deep 不再只在宿主单测侧跑——域聚合面即可见）。
 pub fn run_deskstar_checks() -> CheckSet {
     let mut set = CheckSet::new(DESK_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 18] = [
+    let blocks: [(&'static str, CheckSet); 38] = [
         ("dbase", dbase::run_dbase_checks()),
         ("F076", quickset::run_quickset_checks()),
         ("F077", notifctr::run_notifctr_checks()),
@@ -87,6 +88,27 @@ pub fn run_deskstar_checks() -> CheckSet {
         ("F090", crumbsbar::run_crumbsbar_checks()),
         ("F091", detailpane::run_detailpane_checks()),
         ("F092", zipkit::run_zipkit_checks()),
+        // 深化层（回炉批 v1/v2——与基础块同列，域聚合面全量可见）。
+        ("F076-deep2", quickset::run_quickset_deep2_checks()),
+        ("F078-deep", calflyout::run_calflyout_deep_checks()),
+        ("F078-deep2", calflyout::run_calflyout_deep2_checks()),
+        ("F079-deep", sndfx::run_sndfx_deep_checks()),
+        ("F080-deep", snapwin::run_snapwin_deep_checks()),
+        ("F080-deep2", snapwin::run_snapwin_deep2_checks()),
+        ("F081-deep", taskview::run_taskview_deep_checks()),
+        ("F081-deep2", taskview::run_taskview_deep2_checks()),
+        ("F082-deep", alttab::run_alttab_deep_checks()),
+        ("F082-deep2", alttab::run_alttab_deep2_checks()),
+        ("F083-deep", deskrefresh::run_deskrefresh_deep_checks()),
+        ("F083-deep2", deskrefresh::run_deskrefresh_deep2_checks()),
+        ("F084-deep2", icongrid::run_icongrid_deep2_checks()),
+        ("F087-deep", conflict::run_conflict_deep_checks()),
+        ("F087-deep2", conflict::run_conflict_deep2_checks()),
+        ("F088-deep", livesearch::run_livesearch_deep_checks()),
+        ("F089-deep2", tabexplorer::run_tabexplorer_deep2_checks()),
+        ("F090-deep", crumbsbar::run_crumbsbar_deep_checks()),
+        ("F091-deep", detailpane::run_detailpane_deep_checks()),
+        ("F092-deep", zipkit::run_zipkit_deep_checks()),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();
