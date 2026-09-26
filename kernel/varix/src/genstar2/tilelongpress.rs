@@ -279,3 +279,164 @@ mod deep_tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v5（F496）：按压迟滞（移出回入不重启进度）/ 触发后冷却 /
+// 六磁贴按压账全链
+// ===========================================================================
+
+/// 迟滞回入窗（移出磁贴后在此窗口内回到原磁贴 → 进度续走不重启——
+/// 手指轻微打滑不该惩罚用户；超窗才算真取消）。
+pub const HYSTERESIS_MS: u64 = 120;
+
+/// 带迟滞的按压会话 v2（v1 move_out 直接取消——对打滑手抖过于严苛）。
+pub struct TilePressV2 {
+    start_ms: u64,
+    on_edit_button: bool,
+    /// 移出时刻（None = 未移出）。
+    left_at: Option<u64>,
+}
+
+impl TilePressV2 {
+    pub fn begin(now_ms: u64, on_edit_button: bool) -> Self {
+        TilePressV2 { start_ms: now_ms, on_edit_button, left_at: None }
+    }
+
+    pub fn move_out(&mut self, now_ms: u64) {
+        if self.left_at.is_none() {
+            self.left_at = Some(now_ms);
+        }
+    }
+
+    /// 迟滞内回入：移出账清除，进度续走。
+    pub fn reenter(&mut self, now_ms: u64) -> bool {
+        match self.left_at {
+            Some(t) if now_ms.saturating_sub(t) <= HYSTERESIS_MS => {
+                self.left_at = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn release(&self, now_ms: u64) -> PressOutcome {
+        if self.left_at.is_some() {
+            return PressOutcome::Cancelled;
+        }
+        let held = now_ms.saturating_sub(self.start_ms);
+        if held < CLICK_CAP_MS {
+            return PressOutcome::Click;
+        }
+        if held >= LONGPRESS_MS {
+            if self.on_edit_button {
+                PressOutcome::EditMode
+            } else {
+                PressOutcome::LongPressToDetail
+            }
+        } else {
+            PressOutcome::Click
+        }
+    }
+}
+
+/// 触发后冷却（长按刚触发详情页，同一磁贴立即再次按压不再秒触发——
+/// 「关了又自动弹回」的反面模式防线；冷却窗 400ms）。
+pub const TRIGGER_COOLDOWN_MS: u64 = 400;
+
+pub struct TileCooldown {
+    last_trigger_ms: Option<u64>,
+}
+
+impl TileCooldown {
+    pub const fn new() -> Self {
+        TileCooldown { last_trigger_ms: None }
+    }
+
+    /// 长按触发许可：冷却窗内拒绝（进度环走满也不进——防连按双开）。
+    pub fn may_trigger(&self, now_ms: u64) -> bool {
+        match self.last_trigger_ms {
+            None => true,
+            Some(t) => now_ms.saturating_sub(t) > TRIGGER_COOLDOWN_MS,
+        }
+    }
+
+    pub fn mark_triggered(&mut self, now_ms: u64) {
+        self.last_trigger_ms = Some(now_ms);
+    }
+}
+
+/// 六磁贴按压裁决账（批量走查：六枚磁贴逐一「长按进对页」——
+/// 对照表语义全链验证，漏一枚都算数）。
+pub fn all_tiles_longpress_to_own_page() -> bool {
+    TILE_PAGES.iter().all(|(t, page)| match detail_page(t) {
+        Some(p) => p == *page,
+        None => false,
+    })
+}
+
+pub fn run_tilelongpress_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F496-v5");
+    // 1) 迟滞回入：移出 80ms 回入 → 进度续走、松手仍触发详情。
+    let mut p = TilePressV2::begin(1_000, false);
+    p.move_out(1_060);
+    cs.add("hysteresis_reenter", p.reenter(1_140), "");
+    cs.add("hysteresis_progress_kept", p.release(1_520) == PressOutcome::LongPressToDetail, "");
+    // 2) 迟滞超窗：移出 200ms 后回入无效（真取消）。
+    let mut p2 = TilePressV2::begin(1_000, false);
+    p2.move_out(1_050);
+    cs.add("hysteresis_expired", !p2.reenter(1_250), "");
+    cs.add("hysteresis_expired_cancelled", p2.release(1_600) == PressOutcome::Cancelled, "");
+    // 3) 移出未回入 → 释放取消（v1 语义保持）。
+    let mut p3 = TilePressV2::begin(0, false);
+    p3.move_out(100);
+    cs.add("left_still_cancels", p3.release(900) == PressOutcome::Cancelled, "");
+    // 4) 触发后冷却：刚触发不许立即再触发；冷却过后放行。
+    let mut cd = TileCooldown::new();
+    cs.add("cooldown_first_ok", cd.may_trigger(1_000), "");
+    cd.mark_triggered(1_000);
+    cs.add("cooldown_blocks", !cd.may_trigger(1_200), "");
+    cs.add("cooldown_expires", cd.may_trigger(1_000 + TRIGGER_COOLDOWN_MS + 1), "");
+    // 5) 边界：恰好冷却窗时长 = 仍拒（> 才放行——防边界双开）。
+    let mut cd2 = TileCooldown::new();
+    cd2.mark_triggered(500);
+    cs.add("cooldown_boundary", !cd2.may_trigger(500 + TRIGGER_COOLDOWN_MS), "");
+    // 6) 六磁贴逐一长按进对页（对照表全链）。
+    cs.add("six_tiles_chain", all_tiles_longpress_to_own_page(), "");
+    // 7) 迟滞窗常量锚（主册手感参数文档化）。
+    cs.add("hysteresis_const", HYSTERESIS_MS == 120, "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn double_reenter_ignored() {
+        // 二次回入（已不在移出态）不动账。
+        let mut p = TilePressV2::begin(0, false);
+        p.move_out(10);
+        assert!(p.reenter(50));
+        assert!(!p.reenter(60), "未移出时 reenter = false（无账可清）");
+        assert!(matches!(p.release(600), PressOutcome::LongPressToDetail));
+    }
+
+    #[test]
+    fn hysteresis_does_not_save_fast_click() {
+        // 迟滞回入救进度不救点击：短按 + 打滑回入仍是 Click。
+        let mut p = TilePressV2::begin(1_000, false);
+        p.move_out(1_020);
+        assert!(p.reenter(1_100));
+        assert_eq!(p.release(1_150), PressOutcome::Click);
+    }
+
+    #[test]
+    fn cooldown_per_tile_isolation() {
+        // 冷却是每磁贴一册：A 磁贴触发不影响 B 磁贴。
+        let mut a = TileCooldown::new();
+        let b = TileCooldown::new();
+        a.mark_triggered(0);
+        assert!(!a.may_trigger(100));
+        assert!(b.may_trigger(100), "B 无触发史 = 放行");
+    }
+}

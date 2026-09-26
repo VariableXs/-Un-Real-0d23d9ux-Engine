@@ -296,3 +296,150 @@ mod deep_tests {
         assert_eq!(s.set_speed(250), 5, "上越界钳回 5");
     }
 }
+
+// ===========================================================================
+// 深化 v5（F481）：设置持久化（魔标+校验尾）/ 掌压事件流仿真 /
+// 速度档→光标速度映射表 / 双设备会话隔离
+// ===========================================================================
+
+/// 触控板设置持久化（v1 只声明 persistable 字段齐备——v5 落地通道：
+/// 魔标 VTP + speed 1B + natural 1B + palm 1B + FNV 校验尾 4B）。
+pub const TOUCHPAD_V5_LEN: usize = 11;
+
+pub fn save_touchpad_v5(s: &TouchpadSettings, out: &mut [u8]) -> Option<usize> {
+    if out.len() < TOUCHPAD_V5_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(b"VTP5");
+    out[4] = s.speed_tier;
+    out[5] = s.natural_scroll as u8;
+    out[6] = s.palm_tier;
+    let h = crate::genstar2::vxdict::fnv1a(&out[..7]);
+    out[7] = (h & 0xff) as u8;
+    out[8] = ((h >> 8) & 0xff) as u8;
+    out[9] = ((h >> 16) & 0xff) as u8;
+    out[10] = ((h >> 24) & 0xff) as u8;
+    Some(TOUCHPAD_V5_LEN)
+}
+
+pub fn load_touchpad_v5(buf: &[u8]) -> Option<TouchpadSettings> {
+    if buf.len() < TOUCHPAD_V5_LEN || buf[..4] != *b"VTP5" {
+        return None;
+    }
+    let expect = crate::genstar2::vxdict::fnv1a(&buf[..7]);
+    let got = buf[7] as u32 | ((buf[8] as u32) << 8) | ((buf[9] as u32) << 16) | ((buf[10] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    // 档位越界拒收（落盘文件不该有越界档——有就是坏流，不猜）。
+    if !(1..=SPEED_TIERS).contains(&buf[4]) || buf[6] >= PALM_TIERS as u8 {
+        return None;
+    }
+    match buf[5] {
+        0 | 1 => Some(TouchpadSettings { speed_tier: buf[4], natural_scroll: buf[5] == 1, palm_tier: buf[6] }),
+        _ => None,
+    }
+}
+
+/// 速度档 → 光标速度映射表（1-5 档 × 基准 counts/ms——档位是用户
+/// 语言，映射表是机器语言，一张表不许两处写）。
+pub const CURSOR_SPEED_MAP: [u32; SPEED_TIERS as usize] = [400, 700, 1_000, 1_400, 1_900];
+
+pub fn cursor_speed(tier: u8) -> u32 {
+    CURSOR_SPEED_MAP[tier.clamp(1, SPEED_TIERS) as usize - 1]
+}
+
+/// 掌压事件流仿真（打字会话仿真：掌根落板 → 三档判定吞事件流——
+/// 单点判定 v1 已验，v5 验「整个打字过程零光标漂移」的流式口径）。
+pub fn typing_session_cursor_drift(palm_tier: u8, events: &[u16]) -> u32 {
+    let mut s = TouchpadSettings::new();
+    s.set_palm_tier(palm_tier);
+    let mut drift: u32 = 0;
+    for &e in events {
+        if !s.palm_detected(e) {
+            drift += 1; // 非掌压事件被当光标移动处理 → 计漂移
+        }
+    }
+    drift
+}
+
+/// 指尖工作区（掌压判定的补充语义：接触面积小但位置在板顶 1/5
+/// 功能区——非打字场景的轻扫不误吞；登记为位置阈值常量）。
+pub const EDGE_ZONE_PERMILLE: u16 = 200;
+
+pub fn run_touchpad_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F481-v5");
+    // 1) 持久化 round-trip：全部合法组合逐一保真。
+    let mut buf = [0u8; TOUCHPAD_V5_LEN];
+    cs.add("persist_matrix", (1..=SPEED_TIERS).all(|sp| {
+        for nat in [false, true] {
+            for pm in 0..PALM_TIERS as u8 {
+                let s = TouchpadSettings { speed_tier: sp, natural_scroll: nat, palm_tier: pm };
+                let n = save_touchpad_v5(&s, &mut buf).unwrap_or(0);
+                match load_touchpad_v5(&buf[..n]) {
+                    Some(r) => {
+                        if r.speed_tier != sp || r.natural_scroll != nat || r.palm_tier != pm {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+        }
+        true
+    }), "");
+    // 2) 篡改一字节拒收（校验尾有牙）。
+    cs.add("tamper_rejected", {
+        let s = TouchpadSettings::new();
+        let n = save_touchpad_v5(&s, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[3] ^= 0x01;
+        load_touchpad(&bad[..n]).is_none()
+    }, "");
+    // 3) 越界档拒收（坏流不猜）。
+    cs.add("oob_tier_rejected", load_touchpad_v5(&[b'V', b'T', b'P', b'5', 9, 1, 1, 0, 0, 0, 0]).is_none(), "");
+    // 4) 速度映射表：单调递增 + 边界档可达。
+    cs.add("speed_map_monotonic", (1..CURSOR_SPEED_MAP.len()).all(|i| CURSOR_SPEED_MAP[i] > CURSOR_SPEED_MAP[i - 1]), "");
+    cs.add("speed_map_bounds", cursor_speed(1) == 400 && cursor_speed(5) == 1_900, "");
+    cs.add("speed_map_clamped", cursor_speed(0) == 400 && cursor_speed(99) == 1_900, "");
+    // 5) 打字会话仿真：掌根落板（520‰ 面积）在严格/标准档零漂移。
+    let typing = [520u16, 530, 540, 525, 535];
+    cs.add("typing_strict_zero_drift", typing_session_cursor_drift(0, &typing) == 0, "");
+    cs.add("typing_standard_zero_drift", typing_session_cursor_drift(1, &typing) == 0, "");
+    // 宽松档放行掌根 → 有漂移（档位语义如实，不是「都吞」）。
+    cs.add("typing_loose_drifts", typing_session_cursor_drift(2, &typing) == 5, "");
+    // 6) 指尖事件永不被吞（三档全绿——正常使用零误伤）。
+    let fingertip = [180u16, 200, 150];
+    cs.add("fingertip_all_tiers", (0..PALM_TIERS as u8).all(|t| typing_session_cursor_drift(t, &fingertip) == fingertip.len() as u32), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn persist_roundtrip_factory() {
+        let s = TouchpadSettings::new();
+        let mut buf = [0u8; 16];
+        let n = save_touchpad_v5(&s, &mut buf).unwrap();
+        let r = load_touchpad_v5(&buf[..n]).unwrap();
+        assert_eq!(r.speed_tier, DEFAULT_SPEED_TIER);
+        assert_eq!(r.natural_scroll, NATURAL_DEFAULT);
+    }
+
+    #[test]
+    fn short_buffer_honest() {
+        let s = TouchpadSettings::new();
+        let mut tiny = [0u8; 6];
+        assert!(save_touchpad_v5(&s, &mut tiny).is_none());
+        assert!(load_touchpad_v5(&[b'V', b'T', b'P']).is_none());
+    }
+
+    #[test]
+    fn typing_simulation_boundary() {
+        // 恰好阈值面积：标准档判吞（>= 语义）。
+        let boundary = [500u16];
+        assert_eq!(typing_session_cursor_drift(1, &boundary), 0);
+    }
+}

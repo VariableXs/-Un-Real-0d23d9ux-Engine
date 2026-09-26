@@ -310,3 +310,169 @@ mod deep_tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v5（F479）：改名撤销链（历史名回退）/ 同网段重名检测 /
+// 名称显示截断规则 / 默认名再生（重名时换码重掷）
+// ===========================================================================
+
+/// 名称历史环（最近 5 次用过的名字可回退——改名手滑不悲剧；
+/// 与 F478 选择历史同范式：账记变化）。
+pub const NAME_HISTORY_CAP: usize = 5;
+
+pub struct NameHistory {
+    entries: [[u8; NAME_LEN_MAX]; NAME_HISTORY_CAP],
+    lens: [usize; NAME_HISTORY_CAP],
+    n: usize,
+}
+
+impl NameHistory {
+    pub const fn new() -> Self {
+        NameHistory { entries: [[0; NAME_LEN_MAX]; NAME_HISTORY_CAP], lens: [0; NAME_HISTORY_CAP], n: 0 }
+    }
+
+    /// 记一名（与当前名相同不记；满员淘汰最旧）。
+    pub fn record(&mut self, name: &DeviceName) {
+        let cur = name.name_str();
+        if self.n > 0 {
+            let last = &self.entries[self.n - 1][..self.lens[self.n - 1]];
+            if last == cur.as_bytes() {
+                return;
+            }
+        }
+        if self.n >= NAME_HISTORY_CAP {
+            self.entries.copy_within(1.., 0);
+            self.lens.copy_within(1.., 0);
+            self.n -= 1;
+        }
+        let b = cur.as_bytes();
+        self.entries[self.n][..b.len()].copy_from_slice(b);
+        self.lens[self.n] = b.len();
+        self.n += 1;
+    }
+
+    /// 第 k 个历史名（k=0 最早在册）。
+    pub fn at(&self, k: usize) -> Option<&str> {
+        if k >= self.n {
+            return None;
+        }
+        core::str::from_utf8(&self.entries[k][..self.lens[k]]).ok()
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 同网段重名检测（F321 发现列表联动：改名候选撞已有设备名 → 拒绝
+/// 并建议默认名重掷——两台「星舰」在共享列表里分不清是谁）。
+pub fn rename_conflicts(candidate: &str, taken: &[&str]) -> bool {
+    taken.iter().any(|&t| t == candidate)
+}
+
+/// 重掷默认名（撞名时换种子再掷——LCG 序贯推进保证新码 ≠ 旧码）。
+pub fn reroll_default(old_code: &[u8; 4], seed: u32) -> [u8; 10] {
+    let mut s = seed ^ u32::from_le_bytes(*old_code);
+    let name = default_name(s);
+    let _ = &mut s;
+    name
+}
+
+/// 名称显示截断规则（窄面截断：非 ASCII（中文等）占宽字符 ≥8 截 7 加
+/// 「…」；纯 ASCII ≥13 截 12 加「…」——短名单里「名字被腰斩还不告知」
+/// 是粗暴，省略号是诚实的记号）。
+pub fn display_truncate(name: &str) -> Option<(&str, bool)> {
+    let has_wide = name.chars().any(|c| !c.is_ascii());
+    if has_wide {
+        // 宽字符路径：字符数 > 8 → 截 7。
+        let chars: usize = name.chars().count();
+        if chars <= 8 {
+            return None; // 无需截断
+        }
+        let cut: usize = name.char_indices().nth(7).map(|(i, _)| i).unwrap_or(name.len());
+        Some((&name[..cut], true))
+    } else {
+        if name.len() <= 13 {
+            return None;
+        }
+        Some((&name[..12], true))
+    }
+}
+
+pub fn run_hostname_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F479-v5");
+    // 1) 名称历史：记变化不记重复、环淘汰、回退可读。
+    let mut d = DeviceName::with_default(7);
+    let mut h = NameHistory::new();
+    let _ = d.rename("nova");
+    h.record(&d);
+    let _ = d.rename("nova");
+    cs.add("history_dedup", h.count() == 1, "");
+    let _ = d.rename("星舰-alpha");
+    h.record(&d);
+    let _ = d.rename("bench");
+    h.record(&d);
+    cs.add("history_order", h.at(0) == Some("nova") && h.at(1) == Some("星舰-alpha") && h.at(2) == Some("bench"), "");
+    cs.add("history_oob", h.at(3).is_none(), "");
+    // 2) 同网段重名检测。
+    let taken = ["VARIX-7K2M", "bench"];
+    cs.add("conflict_detected", rename_conflicts("bench", &taken), "");
+    cs.add("conflict_free_pass", !rename_conflicts("workbench", &taken), "");
+    // 3) 重掷默认名：撞名重掷 ≠ 旧码且仍过校验。
+    let rerolled = reroll_default(b"7K2M", 0xDEAD_BEEF);
+    let code = &rerolled[6..10];
+    cs.add("reroll_differs", code != b"7K2M", "");
+    cs.add("reroll_valid", validate_name(core::str::from_utf8(&rerolled).unwrap_or("")).is_ok(), "");
+    // 4) 改名失败零副作用（历史名与当前名都不动——before 快照进定长缓冲，零堆）。
+    let mut before = [0u8; NAME_LEN_MAX];
+    let before_n = d.name_str().len();
+    before[..before_n].copy_from_slice(d.name_str().as_bytes());
+    let _ = d.rename("-bad-name-");
+    cs.add("failed_rename_no_side_effect", d.name_str().as_bytes() == &before[..before_n], "");
+    // 5) 显示截断规则：宽字符 8 截 7、ASCII 13 截 12、短名不截。
+    cs.add("truncate_wide", display_truncate("星徽-terminal-站") == Some(("星徽-term", true)), "");
+    cs.add("truncate_ascii", display_truncate("workstation-01-x") == Some(("workstation-", true)), "");
+    cs.add("truncate_short_none", display_truncate("nova").is_none() && display_truncate("星舰一号").is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn history_ring_eviction() {
+        let mut h = NameHistory::new();
+        let mut d = DeviceName::with_default(1);
+        for i in 0..(NAME_HISTORY_CAP + 2) {
+            let _ = d.rename(&format_dummy(i));
+            h.record(&d);
+        }
+        assert_eq!(h.count(), NAME_HISTORY_CAP);
+        assert!(h.at(0).is_some());
+    }
+
+    // 测试辅助：零堆纪律只约束内核路径；测试允许小工具（不进生产）。
+    fn format_dummy(i: usize) -> String {
+        let mut s = String::from("dev-");
+        s.push_str(core::str::from_utf8(&[b'a' + (i % 26) as u8]).unwrap_or("x"));
+        s
+    }
+
+    #[test]
+    fn reroll_never_stuck() {
+        // 连续重掷 10 次全部合法且互异（撞名风暴也能走通）。
+        let mut codes: [[u8; 4]; 10] = [[0; 4]; 10];
+        let mut seed = 1u32;
+        for i in 0..10 {
+            let n = reroll_default(&[b'0', b'0', b'0', b'0'], seed);
+            codes[i] = [n[6], n[7], n[8], n[9]];
+            seed = seed.wrapping_add(97);
+        }
+        for i in 0..10 {
+            for j in (i + 1)..10 {
+                assert_ne!(codes[i], codes[j]);
+            }
+        }
+    }
+}

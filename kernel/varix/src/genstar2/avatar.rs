@@ -280,3 +280,197 @@ mod deep_tests {
         assert!(AvatarState::from_custom(1_000_000, 100_000).is_some());
     }
 }
+
+// ===========================================================================
+// 深化 v5（F478）：头像状态持久化 / 选择历史环 / 内置名册检索
+// ===========================================================================
+
+/// 头像状态持久化（src 1B + crop 2B + 同步位图 1B + 魔标 3B——
+/// v2 只做了运行时账，落盘通道缺席：重启后头像态丢失 = 半成品）。
+pub const AVATAR_PERSIST_MAGIC: [u8; 3] = *b"VAV";
+pub const AVATAR_PERSIST_LEN: usize = 7;
+
+impl AvatarState {
+    fn src_byte(&self) -> u8 {
+        match self.src {
+            AvatarSrc::Builtin(id) => id.min(BUILTIN_N as u8 - 1) + 1, // 1..=12
+            AvatarSrc::Custom => 200,
+            AvatarSrc::DefaultSilhouette => 255,
+        }
+    }
+
+    fn from_src_byte(b: u8, cx: i8, cy: i8, synced: [bool; SURFACE_N]) -> Option<AvatarState> {
+        let src = match b {
+            200 => AvatarSrc::Custom,
+            255 => AvatarSrc::DefaultSilhouette,
+            1..=12 => AvatarSrc::Builtin(b - 1),
+            _ => return None, // 坏源码拒收（不猜不钳）
+        };
+        Some(AvatarState { src, crop_cx: cx, crop_cy: cy, synced })
+    }
+
+    /// 落盘（魔标 VAV + src 1B + crop_cx 1B + crop_cy 1B + 同步位图 1B）。
+    pub fn save_state(&self, out: &mut [u8]) -> Option<usize> {
+        if out.len() < AVATAR_PERSIST_LEN {
+            return None;
+        }
+        out[..3].copy_from_slice(&AVATAR_PERSIST_MAGIC);
+        out[3] = self.src_byte();
+        out[4] = self.crop_cx as u8; // i8 → u8 位保真，读回 as i8 还原
+        out[5] = self.crop_cy as u8;
+        out[6] = self.synced.iter().fold(0u8, |acc, &s| (acc << 1) | s as u8);
+        Some(AVATAR_PERSIST_LEN)
+    }
+
+    /// 读回（坏魔标/坏源码拒收；同步位图 3 位以外残留位拒收——账面干净）。
+    pub fn restore_state(buf: &[u8]) -> Option<AvatarState> {
+        if buf.len() < AVATAR_PERSIST_LEN || buf[..3] != AVATAR_PERSIST_MAGIC {
+            return None;
+        }
+        let raw = buf[6];
+        if raw & 0b1111_1000 != 0 {
+            return None; // 位图只许 3 位
+        }
+        let synced = [(raw & 0b100) != 0, (raw & 0b010) != 0, (raw & 0b001) != 0];
+        Self::from_src_byte(buf[3], buf[4] as i8, buf[5] as i8, synced)
+    }
+}
+
+/// 选择历史（用户换过头像的痕迹账：最近 8 次选择可回退——「换错了
+/// 想换回来」不该重找一遍；环淘汰最旧，最近优先）。
+pub const PICK_HISTORY_CAP: usize = 8;
+
+pub struct PickHistory {
+    entries: [u8; PICK_HISTORY_CAP],
+    n: usize,
+}
+
+impl PickHistory {
+    pub const fn new() -> Self {
+        PickHistory { entries: [0; PICK_HISTORY_CAP], n: 0 }
+    }
+
+    /// 记一次选择（与上一次相同不重复记账——账记的是变化不是点击）。
+    pub fn record(&mut self, id: u8) -> bool {
+        if self.n > 0 && self.entries[self.n - 1] == id {
+            return false;
+        }
+        if self.n >= PICK_HISTORY_CAP {
+            // 满员淘汰最旧（历史是环）。
+            self.entries.copy_within(1.., 0);
+            self.n -= 1;
+        }
+        self.entries[self.n] = id;
+        self.n += 1;
+        true
+    }
+
+    /// 最近第 k 次选择（k=0 最近；越界 None）。
+    pub fn recent(&self, k: usize) -> Option<u8> {
+        if k >= self.n {
+            return None;
+        }
+        Some(self.entries[self.n - 1 - k])
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 内置名册检索（id → 显示名——选择器与账面用同一个名册，不许两本账）。
+pub fn builtin_name(id: u8) -> Option<&'static str> {
+    if id as usize >= BUILTIN_N {
+        return None;
+    }
+    Some(BUILTIN_NAMES[id as usize])
+}
+
+pub fn run_avatar_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F478-v5");
+    // 1) 持久化 round-trip：内置/自定义/剪影三源各自保真。
+    let mut buf = [0u8; AVATAR_PERSIST_LEN];
+    cs.add("persist_builtin", {
+        let a = AvatarState::pick_builtin(5).unwrap_or(AvatarState::default_silhouette());
+        let n = a.save_state(&mut buf).unwrap_or(0);
+        match AvatarState::restore_state(&buf[..n]) {
+            Some(r) => matches!(r.src, AvatarSrc::Builtin(5)) && r.all_synced(),
+            None => false,
+        }
+    }, "");
+    cs.add("persist_custom_crop", {
+        let mut a = AvatarState::from_custom(1_000_000, 100_000)
+            .unwrap_or(AvatarState::default_silhouette());
+        a.drag_crop(-20, 40);
+        let n = a.save_state(&mut buf).unwrap_or(0);
+        match AvatarState::restore_state(&buf[..n]) {
+            Some(r) => r.crop_cx == -20 && r.crop_cy == 40 && matches!(r.src, AvatarSrc::Custom),
+            None => false,
+        }
+    }, "");
+    cs.add("persist_silhouette", {
+        let d = AvatarState::default_silhouette();
+        let n = d.save_state(&mut buf).unwrap_or(0);
+        matches!(
+            AvatarState::restore_state(&buf[..n]),
+            Some(r) if matches!(r.src, AvatarSrc::DefaultSilhouette)
+        )
+    }, "");
+    // 2) 坏魔标/坏源码/坏位图拒收。
+    cs.add("restore_bad_magic", AvatarState::restore_state(b"XXX0104").is_none(), "");
+    cs.add("restore_bad_src", AvatarState::restore_state(&[b'V', b'A', b'V', 99, 0, 0, 0b111]).is_none(), "");
+    cs.add("restore_bad_bitmap", AvatarState::restore_state(&[b'V', b'A', b'V', 255, 0, 0, 0b1_0000]).is_none(), "");
+    // 3) 选择历史：记账变化不记点击、环淘汰最旧、最近可回退。
+    let mut h = PickHistory::new();
+    let _ = h.record(3);
+    cs.add("history_dedup", !h.record(3) && h.count() == 1, "");
+    for id in 0..PICK_HISTORY_CAP as u8 {
+        let _ = h.record(id + 10);
+    }
+    cs.add("history_cap", h.count() == PICK_HISTORY_CAP, "");
+    cs.add("history_recent", h.recent(0) == Some(PICK_HISTORY_CAP as u8 + 9), "");
+    let _ = h.record(200); // 满员再记 → 淘汰最旧
+    cs.add("history_evicts_oldest", h.count() == PICK_HISTORY_CAP && h.recent(PICK_HISTORY_CAP - 1).is_some(), "");
+    cs.add("history_oob_honest", h.recent(PICK_HISTORY_CAP).is_none(), "");
+    // 4) 内置名册检索：id ↔ 名一一对应，越界诚实 None。
+    cs.add("name_lookup", builtin_name(0) == Some("星徽·晨") && builtin_name(11) == Some("星云·青"), "");
+    cs.add("name_oob_honest", builtin_name(12).is_none(), "");
+    // 5) 名册与枚举双向对账（十二枚逐一名可查）。
+    cs.add("names_bijection", (0..BUILTIN_N as u8).all(|id| builtin_name(id).is_some()), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn persist_roundtrip_all_sources() {
+        for id in 0..BUILTIN_N as u8 {
+            let a = AvatarState::pick_builtin(id).unwrap();
+            let mut buf = [0u8; 16];
+            let n = a.save_state(&mut buf).unwrap();
+            let r = AvatarState::restore_state(&buf[..n]).unwrap();
+            assert!(matches!(r.src, AvatarSrc::Builtin(x) if x == id));
+        }
+    }
+
+    #[test]
+    fn short_buffer_honest_none() {
+        let a = AvatarState::default_silhouette();
+        let mut tiny = [0u8; 4];
+        assert!(a.save_state(&mut tiny).is_none());
+        assert!(AvatarState::restore_state(&[b'V', b'A', b'V']).is_none());
+    }
+
+    #[test]
+    fn history_recent_order_is_lifo() {
+        let mut h = PickHistory::new();
+        for id in [1u8, 5, 9] {
+            let _ = h.record(id);
+        }
+        assert_eq!(h.recent(0), Some(9));
+        assert_eq!(h.recent(1), Some(5));
+        assert_eq!(h.recent(2), Some(1));
+    }
+}

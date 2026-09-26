@@ -327,3 +327,123 @@ mod deep_tests {
         assert!(!risk_note_present(&item));
     }
 }
+
+// ===========================================================================
+// 深化 v5（F474）：术语表扩展（登记处统一化）/ 风险项强制说明 /
+// 锚点去重审计 / 文案长度红线
+// ===========================================================================
+
+/// 术语表登记处（v1 只有黑名单反查——v5 登记正名：同一概念只许一个
+/// 名字，错名在登记处有对照，改动可全局同步）。
+pub const GLOSSARY: [(&str, [&str; 2]); 4] = [
+    ("任务栏", ["工具栏", "dock"]),
+    ("通知中心", ["消息中心", "通知栏"]),
+    ("回收站", ["回收筒", "垃圾桶"]),
+    ("此电脑", ["我的电脑", "computer"]),
+];
+
+/// 正名合规（标签用登记处正名——错名一票否决）。
+pub fn glossary_ok(label: &str) -> bool {
+    GLOSSARY.iter().all(|&(canonical, wrongs)| {
+        // 用了错名 → 必须同时含正名（改稿中途不判红——但纯错名判红）。
+        if wrongs.iter().any(|w| label.contains(w)) {
+            label.contains(canonical)
+        } else {
+            true
+        }
+    })
+}
+
+/// 风险项强制说明（主册风险后果说明：登记了 disabled_reason 为
+/// 「有禁用态」的项，若同时是高风险操作（清/删/重置字样）必须带
+/// risk_note——灰着还危险的东西不许没有警告）。
+pub fn risk_note_enforced(it: &SettingCopy) -> bool {
+    let dangerous = it.label.contains("清") || it.label.contains("删") || it.label.contains("重置");
+    if dangerous {
+        it.risk_note.map(|r| !r.is_empty()).unwrap_or(false)
+    } else {
+        true
+    }
+}
+
+/// 锚点去重审计（同一锚点被两个设置项引用 = 复制粘贴债——「了解更多」
+/// 点进去是另一个功能的说明，欺骗性导航）。
+pub fn anchors_distinct(items: &[SettingCopy]) -> bool {
+    for i in 0..items.len() {
+        for j in (i + 1)..items.len() {
+            match (items[i].learn_anchor, items[j].learn_anchor) {
+                (Some(a), Some(b)) if a == b => return false,
+                _ => {}
+            }
+        }
+    }
+    true
+}
+
+/// 文案长度红线（主册「一句话说明」：说明超 60 字节 = 没写完的段落
+/// 塞进了设置页——挪进「了解更多」；标签超 12 字节 = 按钮挤爆）。
+pub const LABEL_MAX: usize = 12;
+pub const DESC_MAX: usize = 60;
+
+pub fn length_redline(it: &SettingCopy) -> bool {
+    it.label.len() <= LABEL_MAX && it.desc.len() <= DESC_MAX
+}
+
+pub fn run_setdesc_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F474-v5");
+    // 1) 术语表：正名全过、错名被否决、混合（错名+正名）放行。
+    cs.add("glossary_canonical", glossary_ok("任务栏设置"), "");
+    cs.add("glossary_wrong_rejected", !glossary_ok("工具栏设置"), "");
+    cs.add("glossary_mixed_pass", glossary_ok("任务栏（原工具栏）"), "");
+    // 2) 风险项强制说明：危险项无说明 = 红；有说明 = 绿；普通项豁免。
+    let danger_no_note = SettingCopy { label: "清除全部历史", desc: "删除最近使用记录", learn_anchor: None, disabled_reason: None, risk_note: None };
+    let danger_noted = SettingCopy { label: "清除全部历史", desc: "删除最近使用记录", learn_anchor: None, disabled_reason: None, risk_note: Some("历史记录清除后不可恢复") };
+    let plain = SettingCopy { label: "窗口贴靠", desc: "拖窗口到屏幕边缘自动贴半屏", learn_anchor: None, disabled_reason: None, risk_note: None };
+    cs.add("risk_enforced_danger", !risk_note_enforced(&danger_no_note), "");
+    cs.add("risk_enforced_noted", risk_note_enforced(&danger_noted), "");
+    cs.add("risk_plain_exempt", risk_note_enforced(&plain), "");
+    // 3) 锚点去重：重复锚点判红、互异锚点放行。
+    let dup = [
+        SettingCopy { label: "窗口贴靠", desc: "贴半屏说明文本", learn_anchor: Some("help/snap"), disabled_reason: None, risk_note: None },
+        SettingCopy { label: "多桌面", desc: "虚拟桌面切换说明", learn_anchor: Some("help/snap"), disabled_reason: None, risk_note: None },
+    ];
+    let distinct = [
+        SettingCopy { label: "窗口贴靠", desc: "贴半屏说明文本", learn_anchor: Some("help/snap"), disabled_reason: None, risk_note: None },
+        SettingCopy { label: "勿扰模式", desc: "横幅静默入中心说明", learn_anchor: Some("help/dnd"), disabled_reason: None, risk_note: None },
+    ];
+    cs.add("anchor_dup_caught", !anchors_distinct(&dup), "");
+    cs.add("anchor_distinct_ok", anchors_distinct(&distinct), "");
+    // 4) 长度红线：超长说明判红、合规项放行。
+    let long_desc = SettingCopy { label: "壁纸", desc: "这是一个远超六十字节上限的说明文本，它啰嗦地解释了本该放进帮助页的全部细节，读起来像没写完的段落，违反一句话原则，应判红", learn_anchor: None, disabled_reason: None, risk_note: None };
+    cs.add("length_redline_caught", !length_redline(&long_desc), "");
+    cs.add("length_redline_ok", length_redline(&plain), "");
+    // 5) 登记处与 v1 黑名单同源互证（正名表不含黑名单词的反例校验）。
+    cs.add("glossary_v1_bridge", glossary_ok("回收站") && !glossary_ok("回收筒"), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn glossary_canonical_names_all_pass() {
+        for &(canonical, _) in GLOSSARY.iter() {
+            assert!(glossary_ok(canonical), "正名 {canonical} 必过");
+        }
+    }
+
+    #[test]
+    fn glossary_wrong_names_all_rejected() {
+        for &(_, wrongs) in GLOSSARY.iter() {
+            for w in wrongs {
+                assert!(!glossary_ok(w), "错名 {w} 必拒");
+            }
+        }
+    }
+
+    #[test]
+    fn anchors_distinct_empty_ok() {
+        assert!(anchors_distinct(&[]));
+    }
+}

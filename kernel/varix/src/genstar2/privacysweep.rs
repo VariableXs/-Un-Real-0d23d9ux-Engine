@@ -351,3 +351,181 @@ mod deep_tests {
         assert_eq!(promised, actual);
     }
 }
+
+// ===========================================================================
+// 深化 v5（F487）：清除历史账 / 预览-执行对账（竞态守卫）/ 勾选持久化 /
+// 关机自动清回执
+// ===========================================================================
+
+/// 清除历史账（最近 8 次清除留痕：清了哪几类、各多少条——「我刚清过
+/// 什么」永远有账可查；环形淘汰最近优先）。
+pub const SWEEP_LOG_CAP: usize = 8;
+
+#[derive(Clone, Copy, Debug)]
+pub struct SweepRecord {
+    /// 勾选位图（bit0..3 = 四类）。
+    pub kinds_mask: u8,
+    pub cleared: u32,
+    pub at_ms: u64,
+}
+
+pub struct SweepLog {
+    entries: [Option<SweepRecord>; SWEEP_LOG_CAP],
+    n: usize,
+}
+
+impl SweepLog {
+    pub const fn new() -> Self {
+        SweepLog { entries: [None; SWEEP_LOG_CAP], n: 0 }
+    }
+
+    pub fn record(&mut self, kinds_mask: u8, cleared: u32, at_ms: u64) {
+        if self.n >= SWEEP_LOG_CAP {
+            self.entries.copy_within(1.., 0);
+            self.n -= 1;
+        }
+        self.entries[self.n] = Some(SweepRecord { kinds_mask, cleared, at_ms });
+        self.n += 1;
+    }
+
+    pub fn last(&self) -> Option<SweepRecord> {
+        if self.n == 0 {
+            None
+        } else {
+            self.entries[self.n - 1]
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 预览-执行对账（竞态守卫：清除前新痕迹可能又进来——执行时按
+/// **勾选类当前实数** 清并返回，与询问时预览对差值如实上报：
+/// 「清除期间又产生了 N 条」不算说谎，算诚实）。
+pub fn execute_reconcile(preview_at_ask: u32, actual_at_execute: u32) -> (u32, u32) {
+    // 返回（实际清除数, 询问后新增数）——两个数字都摆上台面。
+    let fresh = actual_at_execute.saturating_sub(preview_at_ask);
+    (actual_at_execute, fresh)
+}
+
+/// 勾选持久化（勾选态 + 总开关落盘：魔标 VPS + 位图 1B + auto 1B + FNV 尾）。
+pub const SWEEP_PERSIST_LEN: usize = 10;
+
+pub fn save_sweep_sel(selected: [bool; 4], auto: bool, out: &mut [u8]) -> Option<usize> {
+    if out.len() < SWEEP_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(b"VPS");
+    out[3] = selected.iter().fold(0u8, |acc, &s| (acc << 1) | s as u8);
+    out[4] = auto as u8;
+    let h = crate::genstar2::vxdict::fnv1a(&out[..5]);
+    out[5] = (h & 0xff) as u8;
+    out[6] = ((h >> 8) & 0xff) as u8;
+    out[7] = ((h >> 16) & 0xff) as u8;
+    out[8] = ((h >> 24) & 0xff) as u8;
+    out[9] = 0; // 保留位（对齐定长）
+    Some(SWEEP_PERSIST_LEN)
+}
+
+pub fn load_sweep_sel(buf: &[u8]) -> Option<([bool; 4], bool)> {
+    if buf.len() < SWEEP_PERSIST_LEN || buf[..3] != *b"VPS" {
+        return None;
+    }
+    let expect = crate::genstar2::vxdict::fnv1a(&buf[..5]);
+    let got = buf[5] as u32 | ((buf[6] as u32) << 8) | ((buf[7] as u32) << 16) | ((buf[8] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    if buf[3] & 0b1111_0000 != 0 {
+        return None; // 位图只许 4 位
+    }
+    if buf[4] > 1 {
+        return None;
+    }
+    let selected = [
+        buf[3] & 0b1000 != 0,
+        buf[3] & 0b0100 != 0,
+        buf[3] & 0b0010 != 0,
+        buf[3] & 0b0001 != 0,
+    ];
+    Some((selected, buf[4] == 1))
+}
+
+pub fn run_privacysweep_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F487-v5");
+    // 1) 清除历史账：记录 + 最近可查 + 环淘汰。
+    let mut log = SweepLog::new();
+    log.record(0b1100, 64, 1_000);
+    log.record(0b1111, 86, 2_000);
+    cs.add("log_count", log.count() == 2, "");
+    cs.add("log_last", log.last().map(|r| r.cleared == 86).unwrap_or(false), "");
+    for i in 0..(SWEEP_LOG_CAP + 2) as u64 {
+        log.record(0b0001, i as u32, i * 100);
+    }
+    cs.add("log_ring_cap", log.count() == SWEEP_LOG_CAP, "");
+    // 2) 预览-执行对账：清除期间新增如实入账。
+    let (actual, fresh) = execute_reconcile(86, 90);
+    cs.add("reconcile_actual", actual == 90, "");
+    cs.add("reconcile_fresh_honest", fresh == 4, "");
+    let (a2, f2) = execute_reconcile(64, 64);
+    cs.add("reconcile_no_race", a2 == 64 && f2 == 0, "");
+    // 3) 勾选持久化：round-trip + 篡改拒收 + 位图残留拒收。
+    let mut buf = [0u8; SWEEP_PERSIST_LEN];
+    cs.add("persist_roundtrip", {
+        let n = save_sweep_sel([true, false, true, false], true, &mut buf).unwrap_or(0);
+        load_sweep_sel(&buf[..n]) == Some(([true, false, true, false], true))
+    }, "");
+    cs.add("persist_tamper", {
+        let mut bad = buf;
+        bad[3] ^= 0x01;
+        load_sweep_sel(&bad).is_none()
+    }, "");
+    cs.add("persist_dirty_bitmap", load_sweep_sel(&[b'V', b'P', b'S', 0b1111_0000, 1, 0, 0, 0, 0, 0]).is_none(), "");
+    // 4) 关机自动清回执（清了什么有账——不是无感消失）。
+    let mut p = PrivacySweep::new();
+    p.set_counts([5, 6, 7, 8]);
+    p.select_all();
+    p.auto_on_shutdown = true;
+    let cleared = p.shutdown_auto_sweep();
+    cs.add("auto_sweep_receipt", cleared == 26 && log.record(0b1111, cleared, 3_000) == () && log.last().map(|r| r.cleared == 26).unwrap_or(false), "");
+    // 5) 不可恢复文案恒在（确认卡文案锚）。
+    cs.add("irreversible_text", IRREVERSIBLE_TEXT.contains("不可恢复"), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn log_lifo_order() {
+        let mut log = SweepLog::new();
+        log.record(0b1000, 10, 100);
+        log.record(0b0100, 20, 200);
+        let r = log.last().unwrap();
+        assert_eq!(r.cleared, 20);
+        assert_eq!(r.kinds_mask, 0b0100);
+    }
+
+    #[test]
+    fn persist_all_selection_matrix() {
+        let mut buf = [0u8; 16];
+        for mask in 0..16u8 {
+            let sel = [(mask & 8 != 0), (mask & 4 != 0), (mask & 2 != 0), (mask & 1 != 0)];
+            let n = save_sweep_sel(sel, false, &mut buf).unwrap();
+            let (back, auto) = load_sweep_sel(&buf[..n]).unwrap();
+            assert_eq!(back, sel);
+            assert!(!auto);
+        }
+    }
+
+    #[test]
+    fn reconcile_never_negative() {
+        // 执行时比询问时少（理论上不该发生，但账面不炸）。
+        let (actual, fresh) = execute_reconcile(90, 64);
+        assert_eq!(actual, 64);
+        assert_eq!(fresh, 0, "差额饱和为 0（不出现负数谎言）");
+    }
+}

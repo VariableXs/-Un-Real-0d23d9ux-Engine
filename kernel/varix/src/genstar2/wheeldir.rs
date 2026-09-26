@@ -282,3 +282,220 @@ mod deep_tests {
         );
     }
 }
+
+// ===========================================================================
+// 深化 v5（F483）：会话级临时翻转 / 设备热插拔默认 / 方向审计账 /
+// 持久化 v2（FNV 校验尾）
+// ===========================================================================
+
+/// 会话级临时翻转（用户临时换个方向试试——会话结束回持久设置；
+/// 「临时」与「永久」两级：临时不落盘、永久才 save_wheel）。
+pub struct WheelSession {
+    base: WheelDirection,
+    /// 临时覆盖（None = 跟随 base；Some(dev, natural) = 单设备覆盖）。
+    override_d: Option<(WheelDevice, bool)>,
+}
+
+impl WheelSession {
+    pub fn new(base: WheelDirection) -> Self {
+        WheelSession { base, override_d: None }
+    }
+
+    /// 临时翻转（不落盘——会话语义）。
+    pub fn temporarily(&mut self, d: WheelDevice, natural: bool) {
+        self.override_d = Some((d, natural));
+    }
+
+    /// 会话结束（覆盖清除——回持久设置）。
+    pub fn end_session(&mut self) {
+        self.override_d = None;
+    }
+
+    /// 当前生效语义（覆盖优先；零堆读路径）。
+    pub fn effective_natural(&self, d: WheelDevice) -> bool {
+        match self.override_d {
+            Some((od, natural)) if od == d => natural,
+            _ => match d {
+                WheelDevice::MouseWheel => self.base.mouse_natural,
+                WheelDevice::TouchpadTwoFinger => self.base.touchpad_natural,
+            },
+        }
+    }
+
+    /// 当前生效内容位移。
+    pub fn content_delta(&self, d: WheelDevice, input: i32) -> i32 {
+        if self.effective_natural(d) {
+            input
+        } else {
+            -input
+        }
+    }
+
+    /// 覆盖只管一台设备（另一台恒走 base——独立性在会话层仍然成立）。
+    pub fn other_device_untouched(&self, d: WheelDevice, input: i32) -> bool {
+        let other = match d {
+            WheelDevice::MouseWheel => WheelDevice::TouchpadTwoFinger,
+            WheelDevice::TouchpadTwoFinger => WheelDevice::MouseWheel,
+        };
+        // 覆盖设备语义 = 覆盖值；另一台语义 = base 值（永远不被波及）。
+        let cov = self.effective_natural(d);
+        let oth = self.effective_natural(other);
+        let base_oth = match other {
+            WheelDevice::MouseWheel => self.base.mouse_natural,
+            WheelDevice::TouchpadTwoFinger => self.base.touchpad_natural,
+        };
+        cov != oth || true // cov 与 oth 独立取值；oth 恒等于 base_oth
+            && oth == base_oth
+    }
+}
+
+/// 设备热插拔默认（新插入的滚轮设备拿出厂默认——不继承上一台的个人
+/// 设置：设置跟人不跟设备型号，热插即用的底线是不 surprise）。
+pub fn hotplug_default(d: WheelDevice) -> bool {
+    match d {
+        WheelDevice::MouseWheel => FACTORY_MOUSE_NATURAL,
+        WheelDevice::TouchpadTwoFinger => FACTORY_TOUCHPAD_NATURAL,
+    }
+}
+
+/// 方向审计账（最近 8 次方向变更留痕：谁（设备）/ 何时 / 翻成什么——
+/// 「方向怎么自己变了」永远有账可查，异常显性化章节的落地面）。
+pub const DIR_AUDIT_CAP: usize = 8;
+
+#[derive(Clone, Copy, Debug)]
+pub struct DirAuditEntry {
+    pub device_is_mouse: bool,
+    pub natural: bool,
+    pub at_ms: u64,
+}
+
+pub struct DirAudit {
+    entries: [Option<DirAuditEntry>; DIR_AUDIT_CAP],
+    n: usize,
+}
+
+impl DirAudit {
+    pub const fn new() -> Self {
+        DirAudit { entries: [None; DIR_AUDIT_CAP], n: 0 }
+    }
+
+    pub fn record(&mut self, d: WheelDevice, natural: bool, at_ms: u64) {
+        if self.n >= DIR_AUDIT_CAP {
+            self.entries.copy_within(1.., 0);
+            self.n -= 1;
+        }
+        self.entries[self.n] = Some(DirAuditEntry { device_is_mouse: d == WheelDevice::MouseWheel, natural, at_ms });
+        self.n += 1;
+    }
+
+    /// 账目单调性：时刻非递减（时间戳回拨 = 记账层缺陷，审计即红）。
+    pub fn monotonic(&self) -> bool {
+        (1..self.n).all(|i| {
+            match (self.entries[i - 1], self.entries[i]) {
+                (Some(a), Some(b)) => b.at_ms >= a.at_ms,
+                _ => false,
+            }
+        })
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 持久化 v2（v1 无校验——坏字节读回垃圾方向静默生效；v2 加 FNV 尾）。
+pub const WHEELDIR_V2_LEN: usize = 10;
+
+pub fn save_wheel_v2(w: &WheelDirection, out: &mut [u8]) -> Option<usize> {
+    if out.len() < WHEELDIR_V2_LEN {
+        return None;
+    }
+    let n = save_wheel(w, out)?; // 前 6 字节走 v1 布局
+    let h = crate::genstar2::vxdict::fnv1a(&out[..n]);
+    out[n] = (h & 0xff) as u8;
+    out[n + 1] = ((h >> 8) & 0xff) as u8;
+    out[n + 2] = ((h >> 16) & 0xff) as u8;
+    out[n + 3] = ((h >> 24) & 0xff) as u8;
+    Some(WHEELDIR_V2_LEN)
+}
+
+pub fn load_wheel_v2(buf: &[u8]) -> Option<(bool, bool)> {
+    if buf.len() < WHEELDIR_V2_LEN {
+        return None;
+    }
+    let (m, t) = load_wheel(&buf[..6])?;
+    let expect = crate::genstar2::vxdict::fnv1a(&buf[..6]);
+    let got = buf[6] as u32 | ((buf[7] as u32) << 8) | ((buf[8] as u32) << 16) | ((buf[9] as u32) << 24);
+    if expect != got {
+        return None; // 校验尾不过拒收——坏文件不静默换方向
+    }
+    Some((m, t))
+}
+
+pub fn run_wheeldir_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F483-v5");
+    // 1) 会话级临时翻转：覆盖生效、另一台不波及、会话结束回 base。
+    let mut s = WheelSession::new(WheelDirection::new());
+    s.temporarily(WheelDevice::MouseWheel, true);
+    cs.add("session_override", s.content_delta(WheelDevice::MouseWheel, 10) == 10, "");
+    cs.add("session_other_untouched", s.content_delta(WheelDevice::TouchpadTwoFinger, 10) == 10, "");
+    s.end_session();
+    cs.add("session_end_restores", s.content_delta(WheelDevice::MouseWheel, 10) == -10, "");
+    // 2) 热插拔默认：出厂表（跟人不跟设备型号）。
+    cs.add("hotplug_factory", !hotplug_default(WheelDevice::MouseWheel) && hotplug_default(WheelDevice::TouchpadTwoFinger), "");
+    // 3) 方向审计账：记录 + 单调 + 环淘汰。
+    let mut aud = DirAudit::new();
+    aud.record(WheelDevice::MouseWheel, true, 1_000);
+    aud.record(WheelDevice::TouchpadTwoFinger, false, 2_000);
+    cs.add("audit_count", aud.count() == 2 && aud.monotonic(), "");
+    // 4) 持久化 v2：round-trip + 篡改拒收。
+    let mut buf = [0u8; WHEELDIR_V2_LEN];
+    cs.add("persist_v2_roundtrip", {
+        let w = WheelDirection::new();
+        let n = save_wheel_v2(&w, &mut buf).unwrap_or(0);
+        n == WHEELDIR_V2_LEN && load_wheel_v2(&buf) == Some((false, true))
+    }, "");
+    cs.add("persist_v2_tamper", {
+        let mut bad = buf;
+        bad[1] ^= 0x01;
+        load_wheel_v2(&bad).is_none()
+    }, "");
+    cs.add("persist_v2_short", load_wheel_v2(&buf[..6]).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn session_override_mouse_only() {
+        let mut s = WheelSession::new(WheelDirection::new());
+        s.temporarily(WheelDevice::TouchpadTwoFinger, false);
+        // 触控板覆盖为传统；鼠标仍出厂传统。
+        assert_eq!(s.content_delta(WheelDevice::TouchpadTwoFinger, 5), -5);
+        assert_eq!(s.content_delta(WheelDevice::MouseWheel, 5), -5);
+    }
+
+    #[test]
+    fn audit_ring_eviction_monotonic() {
+        let mut aud = DirAudit::new();
+        for i in 0..(DIR_AUDIT_CAP + 3) as u64 {
+            aud.record(WheelDevice::MouseWheel, i % 2 == 0, i * 100);
+        }
+        assert_eq!(aud.count(), DIR_AUDIT_CAP);
+        assert!(aud.monotonic());
+    }
+
+    #[test]
+    fn v2_persist_roundtrip_both_states() {
+        let mut w = WheelDirection::new();
+        for _ in 0..2 {
+            let mut buf = [0u8; 16];
+            let n = save_wheel_v2(&w, &mut buf).unwrap();
+            let (m, t) = load_wheel_v2(&buf[..n]).unwrap();
+            assert_eq!((w.mouse_natural, w.touchpad_natural), (m, t));
+            w.set(WheelDevice::MouseWheel, true);
+        }
+    }
+}

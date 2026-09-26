@@ -279,3 +279,178 @@ mod deep_tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v5（F482）：拖拽/框选键位角色解析 / 设置页全面文案镜像 /
+// 交换设置持久化 v2（校验魔标）/ 高频抖动防抖账
+// ===========================================================================
+
+/// 交互动作 → 应答键位角色解析（主册「框选/拖拽/菜单三链路全语义镜像」
+/// 的动作面：任何交互动作问「该用哪个物理键」——交换后全部跟着语义走）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Interaction {
+    /// 框选（F203）。
+    Marquee,
+    /// 按住拖拽（F262）。
+    Drag,
+    /// 呼出右键菜单（F215）。
+    ContextMenu,
+    /// 中键自动滚动。
+    MiddleScroll,
+}
+
+/// 动作应答物理键（swap 决定主键在哪侧；中键动作恒中键）。
+pub fn responding_button(act: Interaction, swap: bool) -> PhysButton {
+    match act {
+        Interaction::Marquee | Interaction::Drag => {
+            if swap { PhysButton::Right } else { PhysButton::Left }
+        }
+        Interaction::ContextMenu => {
+            if swap { PhysButton::Left } else { PhysButton::Right }
+        }
+        Interaction::MiddleScroll => PhysButton::Middle,
+    }
+}
+
+/// 动作-键位全链自洽审计（每个动作的应答键映射回语义必须还是原语义——
+/// 「镜像」不是换键位是把语义整体搬家）。
+pub fn interaction_chain_ok(swap: bool) -> bool {
+    let mp = responding_button(Interaction::Marquee, swap);
+    let dp = responding_button(Interaction::Drag, swap);
+    let cp = responding_button(Interaction::ContextMenu, swap);
+    let mid = responding_button(Interaction::MiddleScroll, swap);
+    mp == dp
+        && map_button(mp, swap) == SemanticRole::Primary
+        && map_button(cp, swap) == SemanticRole::Menu
+        && map_button(mid, swap) == SemanticRole::Middle
+}
+
+/// 设置页全表面文案镜像（v2 只查了菜单键一句——v5 全表面：按钮/提示/
+/// 帮助三处文案都按交换态出词，死写「右键/左键」 = 半成品镜像）。
+pub const SURFACE_COPY_HINT: [&str; 2] = [
+    "使用菜单键呼出菜单",
+    "按住主键拖拽以框选",
+];
+
+/// 表面文案审计（语义词表本身即镜像保证：文案只说「主键/菜单键」，
+/// 不随交换态换词——物理键位由 responding_button 动态解析，词表恒真）。
+pub fn surface_copy_table_ok() -> bool {
+    SURFACE_COPY_HINT.iter().all(|c| !c.contains("左键") && !c.contains("右键"))
+}
+
+/// 交换设置持久化 v2（魔标 + 位值 + 坏值拒收——v1 裸单字节无法识别
+/// 坏文件，读回垃圾字节会静默翻转主键）。
+pub const SWAP_PERSIST_MAGIC: [u8; 3] = *b"VSW";
+pub const SWAP_PERSIST_LEN: usize = 4;
+
+pub fn save_swap_v2(swap: bool, out: &mut [u8]) -> Option<usize> {
+    if out.len() < SWAP_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(&SWAP_PERSIST_MAGIC);
+    out[3] = swap as u8;
+    Some(SWAP_PERSIST_LEN)
+}
+
+pub fn load_swap_v2(buf: &[u8]) -> Option<bool> {
+    if buf.len() < SWAP_PERSIST_LEN || buf[..3] != SWAP_PERSIST_MAGIC {
+        return None;
+    }
+    match buf[3] {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None, // 坏位拒收：不许静默钳回默认
+    }
+}
+
+/// 高频抖动防抖账（主册「交换即时性」的守护面：用户连续翻转找方向时
+/// 每次翻转都生效——但 50ms 内的重复翻转按机械抖动折叠，不刷设置风暴）。
+pub struct SwapDebounce {
+    pub last_toggle_ms: u64,
+    pub folded: u32,
+}
+
+impl SwapDebounce {
+    pub const DEBOUNCE_MS: u64 = 50;
+
+    pub const fn new() -> Self {
+        SwapDebounce { last_toggle_ms: 0, folded: 0 }
+    }
+
+    /// 翻转请求裁决：true = 实际生效；false = 折叠为抖动。
+    pub fn request(&mut self, now_ms: u64) -> bool {
+        if now_ms.saturating_sub(self.last_toggle_ms) < Self::DEBOUNCE_MS && self.last_toggle_ms != 0 {
+            self.folded += 1;
+            return false;
+        }
+        self.last_toggle_ms = now_ms;
+        true
+    }
+}
+
+pub fn run_swapbtn_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F482-v5");
+    // 1) 动作-键位链：交换前后两态全链自洽。
+    cs.add("chain_default", interaction_chain_ok(false), "");
+    cs.add("chain_swapped", interaction_chain_ok(true), "");
+    // 2) 框选与拖拽同键（都是主键动作）；菜单独立键。
+    cs.add("marquee_drag_same_key", responding_button(Interaction::Marquee, true) == responding_button(Interaction::Drag, true), "");
+    cs.add("menu_opposite_key", responding_button(Interaction::Marquee, false) != responding_button(Interaction::ContextMenu, false), "");
+    // 3) 中键动作恒中键（两个交换态）。
+    cs.add("middlescroll_invariant", responding_button(Interaction::MiddleScroll, false) == PhysButton::Middle && responding_button(Interaction::MiddleScroll, true) == PhysButton::Middle, "");
+    // 4) 表面文案表：语义词、无死写物理键。
+    cs.add("surface_copy_semantic", surface_copy_table_ok(), "");
+    // 5) 持久化 v2：round-trip + 坏魔标拒收 + 坏位拒收。
+    let mut buf = [0u8; SWAP_PERSIST_LEN];
+    cs.add("persist_v2_true", {
+        let n = save_swap_v2(true, &mut buf).unwrap_or(0);
+        n == SWAP_PERSIST_LEN && load_swap_v2(&buf) == Some(true)
+    }, "");
+    cs.add("persist_v2_false", {
+        let n = save_swap_v2(false, &mut buf).unwrap_or(0);
+        load_swap_v2(&buf[..n]) == Some(false)
+    }, "");
+    cs.add("persist_bad_magic", load_swap_v2(b"XXX\x01").is_none(), "");
+    cs.add("persist_bad_bit", load_swap_v2(&[b'V', b'S', b'W', 7]).is_none(), "");
+    // 6) 防抖账：50ms 内连翻折叠、间隔后放行。
+    let mut d = SwapDebounce::new();
+    cs.add("debounce_first_pass", d.request(1_000), "");
+    cs.add("debounce_jitter_folded", !d.request(1_010) && d.folded == 1, "");
+    cs.add("debounce_spaced_pass", d.request(1_100), "");
+    // 7) 交换设置与即时映射联动（存什么读什么映射什么——三面一账）。
+    let stored = load_swap_v2(&buf).unwrap_or(false);
+    cs.add("stored_drives_mapping", responding_button(Interaction::Marquee, stored) == PhysButton::Left, "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn swap_persist_survives_roundtrip() {
+        for v in [false, true] {
+            let mut buf = [0u8; 8];
+            let n = save_swap_v2(v, &mut buf).unwrap();
+            assert_eq!(load_swap_v2(&buf[..n]), Some(v));
+        }
+    }
+
+    #[test]
+    fn debounce_never_blocks_spaced_toggles() {
+        let mut d = SwapDebounce::new();
+        assert!(d.request(0));
+        // 恰好 50ms 间隔：放行（边界不卡）。
+        assert!(d.request(50));
+        assert!(d.request(100));
+        assert_eq!(d.folded, 0);
+    }
+
+    #[test]
+    fn interaction_matrix_exhaustive() {
+        // 4 动作 × 2 交换态 = 8 格：每格应答键回映语义正确。
+        for swap in [false, true] {
+            assert!(interaction_chain_ok(swap));
+        }
+    }
+}

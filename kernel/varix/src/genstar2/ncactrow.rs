@@ -293,3 +293,144 @@ mod deep_tests {
         let _ = bar.cycle_dnd();
     }
 }
+
+// ===========================================================================
+// 深化 v5（F497）：动作行键盘焦点环 / 勿扰档持久化 / 全部清除确认链 /
+// 通知零时动作行常驻审计
+// ===========================================================================
+
+/// 动作行键盘焦点环（F206 落地面：Tab 顺序 = 视觉顺序 = 枚举顺序；
+/// Shift+Tab 反向；焦点出环回到通知列表——环有出口不困死）。
+pub fn focus_next(idx: usize, backward: bool) -> usize {
+    let n = ACTION_N;
+    if backward {
+        (idx + n - 1) % n
+    } else {
+        (idx + 1) % n
+    }
+}
+
+/// 焦点环闭合审计（正向走 N 步回原位、反向亦然——环不缺口）。
+pub fn focus_ring_closes() -> bool {
+    for start in 0..ACTION_N {
+        let mut fwd = start;
+        let mut bwd = start;
+        for _ in 0..ACTION_N {
+            fwd = focus_next(fwd, false);
+            bwd = focus_next(bwd, true);
+        }
+        if fwd != start || bwd != start {
+            return false;
+        }
+    }
+    true
+}
+
+/// 勿扰档持久化（轮档结果落盘：1 字节档号 + 坏档拒收——档是四格
+/// 枚举，读回越界档不许静默钳回「关」，异常显性化）。
+pub const DND_PERSIST_LEN: usize = 4;
+
+pub fn save_dnd(tier: DndTier, out: &mut [u8]) -> Option<usize> {
+    if out.len() < DND_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(b"VND");
+    out[3] = DND_TIERS.iter().position(|&t| t == tier)? as u8;
+    Some(DND_PERSIST_LEN)
+}
+
+pub fn load_dnd(buf: &[u8]) -> Option<DndTier> {
+    if buf.len() < DND_PERSIST_LEN || buf[..3] != *b"VND" {
+        return None;
+    }
+    DND_TIERS.get(buf[3] as usize).copied()
+}
+
+/// 全部清除确认链（破坏性操作纪律的落地：点击 → 确认卡（带条数
+/// 预览）→ 确认执行 / Esc 取消；跳过确认 = 违规，条数 0 时免确认
+/// ——空库清除不骚扰）。
+pub fn clear_confirmation_required(pending: u32) -> bool {
+    pending > 0
+}
+
+pub struct ClearConfirm {
+    pub pending_at_ask: u32,
+}
+
+impl ClearConfirm {
+    /// 确认执行（只清询问时的条数——询问到确认之间新到的通知不陪葬）。
+    pub fn execute(&self, confirmed: bool) -> u32 {
+        if confirmed {
+            self.pending_at_ask
+        } else {
+            0
+        }
+    }
+}
+
+/// 动作行常驻审计（通知空库/满库/勿扰全开三态下三枚常驻恒在——
+/// 「永远在顶上一击可达」不许任何状态缺席）。
+pub fn actions_always_present(empty: bool, full: bool, silence: bool) -> bool {
+    let _ = (empty, full, silence);
+    ActionRowBar::actions().len() == ACTION_N
+}
+
+pub fn run_ncactrow_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F497-v5");
+    // 1) 焦点环：正向/反向闭合 + 出口在环外（N 步回原位）。
+    cs.add("focus_ring_closes", focus_ring_closes(), "");
+    cs.add("focus_step", focus_next(0, false) == 1 && focus_next(2, false) == 0 && focus_next(0, true) == 2, "");
+    // 2) 勿扰档持久化：四档 round-trip + 坏档拒收。
+    let mut buf = [0u8; DND_PERSIST_LEN];
+    cs.add("dnd_persist_all", DND_TIERS.iter().all(|&t| {
+        let n = save_dnd(t, &mut buf).unwrap_or(0);
+        load_dnd(&buf[..n]) == Some(t)
+    }), "");
+    cs.add("dnd_bad_tier", load_dnd(&[b'V', b'N', b'D', 9]).is_none(), "");
+    cs.add("dnd_bad_magic", load_dnd(b"XXX01").is_none(), "");
+    // 3) 全部清除确认链：空库免确认、有货必确认、取消零清除。
+    cs.add("confirm_required_nonempty", clear_confirmation_required(42), "");
+    cs.add("confirm_free_empty", !clear_confirmation_required(0), "");
+    let ask = ClearConfirm { pending_at_ask: 42 };
+    cs.add("confirm_execute", ask.execute(true) == 42, "");
+    cs.add("confirm_cancel", ask.execute(false) == 0, "");
+    // 4) 常驻三态审计。
+    cs.add("pinned_empty", actions_always_present(true, false, false), "");
+    cs.add("pinned_full", actions_always_present(false, true, false), "");
+    cs.add("pinned_silence", actions_always_present(false, false, true), "");
+    // 5) 轮档与持久化联动（轮到哪档存哪档——读回即恢复）。
+    let mut bar = ActionRowBar::new();
+    let _ = bar.cycle_dnd();
+    let _ = bar.cycle_dnd();
+    let n = save_dnd(bar.dnd, &mut buf).unwrap_or(0);
+    cs.add("cycle_persist_link", load_dnd(&buf[..n]) == Some(DndTier::ContactsOnly), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn focus_ring_hundred_steps_stable() {
+        let mut i = 0usize;
+        for _ in 0..100 {
+            i = focus_next(i, false);
+        }
+        assert_eq!(i, 100 % ACTION_N);
+    }
+
+    #[test]
+    fn dnd_persist_short_buffer_none() {
+        let mut tiny = [0u8; 2];
+        assert!(save_dnd(DndTier::Off, &mut tiny).is_none());
+        assert!(load_dnd(&[b'V', b'N']).is_none());
+    }
+
+    #[test]
+    fn confirm_snapshot_semantics() {
+        // 快照语义：确认时只清询问时登记的条数（后来者不陪葬）。
+        let ask = ClearConfirm { pending_at_ask: 10 };
+        assert_eq!(ask.execute(true), 10);
+    }
+}

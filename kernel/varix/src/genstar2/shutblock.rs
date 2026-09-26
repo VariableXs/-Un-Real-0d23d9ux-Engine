@@ -353,3 +353,139 @@ mod deep_tests {
         assert!(!b.app_exited("不存在的应用"), "退出未注册应用 = 诚实失败");
     }
 }
+
+// ===========================================================================
+// 深化 v5（F490）：等待-退出闭环 / 决策持久化 / 阻止者容量诚实 /
+// 重复阻止原因降级（未响应→退出请求后复原）
+// ===========================================================================
+
+/// 等待-退出闭环（wait_this 标记退出请求后应用真的退出了：账面出列、
+/// 决策不清、其余阻止者原样——「等它」不是「全清」）。
+pub fn wait_then_exit_flow(b: &mut ShutdownBlockers, target: &'static str) -> bool {
+    let waited = b.wait_this(target);
+    let exited = b.app_exited(target);
+    // 决策保持（用户点的是「等这个」——该语义持续到关机流程收尾）。
+    let decision_kept = matches!(b.decision, Some(ShutdownDecision::WaitThis(_)));
+    waited && exited && decision_kept
+}
+
+/// 决策持久化（用户选择落盘：0 取消 / 1 仍然关机 / 2 等待——重启后
+/// 复盘「上次为什么没关成」有账可查；WaitThis 的目标名不落盘（隐私：
+/// 应用名是用户行为细节，账面只记「等待过某应用」））。
+pub const DECISION_PERSIST_LEN: usize = 4;
+
+pub fn save_decision(d: Option<ShutdownDecision>, out: &mut [u8]) -> Option<usize> {
+    if out.len() < DECISION_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(b"VSD");
+    out[3] = match d {
+        None => 0xFF,
+        Some(ShutdownDecision::Cancel) => 0,
+        Some(ShutdownDecision::ForceAnyway) => 1,
+        Some(ShutdownDecision::WaitThis(_)) => 2,
+    };
+    Some(DECISION_PERSIST_LEN)
+}
+
+pub fn load_decision(buf: &[u8]) -> Option<u8> {
+    if buf.len() < DECISION_PERSIST_LEN || buf[..3] != *b"VSD" {
+        return None;
+    }
+    match buf[3] {
+        0xFF | 0 | 1 | 2 => Some(buf[3]),
+        _ => None, // 坏码拒收
+    }
+}
+
+/// 重复阻止原因降级（应用先「未响应」、用户点了等待、应用又活过来了
+/// 但退出时又挂住 → 重新入账时原因如实更新、退出请求位复位——
+/// 账面永远反映「现在」而不是「上次」）。
+pub fn reblock_resets_exit_request(b: &mut ShutdownBlockers, app: &'static str, new_reason: BlockReason) -> bool {
+    if !b.block(app, new_reason) {
+        return false;
+    }
+    // 重新入账后退出请求位必须复位（新的一轮等待）。
+    (0..b.count()).all(|i| match b.blocker(i) {
+        Some(bl) => !(bl.app == app && bl.exit_requested),
+        None => true,
+    })
+}
+
+/// 阻止者容量诚实（BLOCKER_CAP 满额拒绝返回 false——第 N+1 个阻止者
+/// 不静默挤掉别人，走「还有 N 个以上应用未退出」聚合行）。
+pub fn cap_honest(b: &mut ShutdownBlockers, names: &[&'static str]) -> bool {
+    let mut all_in = true;
+    for &n in names {
+        if !b.block(n, BlockReason::NotResponding) {
+            all_in = false;
+        }
+    }
+    !all_in && b.count() == names.len() - 1
+}
+
+pub fn run_shutblock_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F490-v5");
+    // 1) 等待-退出闭环。
+    let mut b = ShutdownBlockers::new();
+    let _ = b.block("editor", BlockReason::UnsavedDocs);
+    let _ = b.block("sync", BlockReason::NotResponding);
+    cs.add("wait_exit_flow", wait_then_exit_flow(&mut b, "editor"), "");
+    cs.add("other_blocker_kept", b.count() == 1 && b.blocker(0).map(|x| x.app == "sync").unwrap_or(false), "");
+    // 2) 决策持久化：三决策 + 无决策 round-trip + 坏码拒收。
+    let mut buf = [0u8; DECISION_PERSIST_LEN];
+    cs.add("decision_persist_all", {
+        let mut ok = true;
+        for d in [None, Some(ShutdownDecision::Cancel), Some(ShutdownDecision::ForceAnyway), Some(ShutdownDecision::WaitThis("x"))] {
+            let n = save_decision(d, &mut buf).unwrap_or(0);
+            ok &= load_decision(&buf[..n]).is_some();
+        }
+        ok
+    }, "");
+    cs.add("decision_bad_code", load_decision(&[b'V', b'S', b'D', 9]).is_none(), "");
+    // 3) 重复阻止原因降级（退出请求位复位）。
+    let mut b2 = ShutdownBlockers::new();
+    let _ = b2.block("editor", BlockReason::NotResponding);
+    let _ = b2.wait_this("editor");
+    cs.add("reblock_resets", reblock_resets_exit_request(&mut b2, "editor", BlockReason::UnsavedDocs), "");
+    // 4) 容量诚实：满额拒绝 + 聚合行语义（count 恒容量）。
+    let mut b3 = ShutdownBlockers::new();
+    let names: [&'static str; 17] = [
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+        "k", "l", "m", "n", "o", "p", "q",
+    ];
+    cs.add("cap_honest", cap_honest(&mut b3, &names), "");
+    // 5) 仍然关机武装抢救链路（决策+抢救位联动）。
+    let mut b4 = ShutdownBlockers::new();
+    let _ = b4.block("stuck", BlockReason::NotResponding);
+    cs.add("force_armed_rescue", b4.force_anyway() && b4.rescue_armed, "");
+    // 6) 默认焦点（取消恒可用——F207 同源在账）。
+    let mut b5 = ShutdownBlockers::new();
+    b5.cancel();
+    cs.add("cancel_default", matches!(b5.decision, Some(ShutdownDecision::Cancel)), "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn wait_unknown_app_false() {
+        let mut b = ShutdownBlockers::new();
+        assert!(!b.wait_this("ghost"), "等一个不在账的应用 = false");
+    }
+
+    #[test]
+    fn exit_unknown_app_false() {
+        let mut b = ShutdownBlockers::new();
+        assert!(!b.app_exited("ghost"), "退出一个不在账的应用 = false");
+    }
+
+    #[test]
+    fn decision_persist_never_panics_on_short() {
+        let mut tiny = [0u8; 2];
+        assert!(save_decision(Some(ShutdownDecision::Cancel), &mut tiny).is_none());
+        assert!(load_decision(&[b'V', b'S']).is_none());
+    }
+}

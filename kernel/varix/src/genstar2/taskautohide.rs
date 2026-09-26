@@ -288,3 +288,141 @@ mod deep_tests {
         assert_eq!(SLIDE_OUT_STAGES.iter().map(|(_, ms)| ms).sum::<u64>(), 200);
     }
 }
+
+// ===========================================================================
+// 深化 v5（F494）：滑出打断恢复 / 全屏切换半途抑制 / 收回倒计时诚实 /
+// 隐藏态滑动叠按防抖
+// ===========================================================================
+
+/// 滑出中途可打断（主册手感章节：动画打断不跳变——滑出到一半鼠标
+/// 离开底缘 → 动画反向收回，不闪现不卡半空）。
+pub struct SlideInterrupt {
+    state: TaskbarHideState,
+    anim_start: u64,
+}
+
+impl SlideInterrupt {
+    pub fn begin(now_ms: u64) -> Self {
+        SlideInterrupt { state: TaskbarHideState::SlidingOut, anim_start: now_ms }
+    }
+
+    /// 中途离开底缘：按已进行比例反向收回（返回是否确实打断）。
+    pub fn interrupt(&mut self, now_ms: u64) -> bool {
+        if self.state != TaskbarHideState::SlidingOut {
+            return false;
+        }
+        self.state = TaskbarHideState::Hidden;
+        self.anim_start = now_ms; // 反向动画起点（对称时长——进场退场对称）
+        true
+    }
+
+    /// 已滑出比例（permille——打断点诚实可见，不假装从头）。
+    pub fn progress_permille(&self, now_ms: u64) -> u32 {
+        if self.state != TaskbarHideState::SlidingOut {
+            return 0;
+        }
+        ((now_ms.saturating_sub(self.anim_start).min(SLIDE_OUT_MS)) * 1_000 / SLIDE_OUT_MS) as u32
+    }
+
+    pub fn state(&self) -> TaskbarHideState {
+        self.state
+    }
+}
+
+/// 全屏切换半途抑制（滑出到一半全屏应用启动 → 立即压制——沉浸优先
+/// 于动画，绝不出现「全屏视频上叠任务栏」的半帧）。
+pub fn suppress_mid_slide(fullscreen_starts: bool, sliding: bool) -> TaskbarHideState {
+    match (fullscreen_starts, sliding) {
+        (true, true) => TaskbarHideState::Suppressed, // 半途也压
+        (true, false) => TaskbarHideState::Suppressed,
+        (false, s) => {
+            if s {
+                TaskbarHideState::SlidingOut
+            } else {
+                TaskbarHideState::Hidden
+            }
+        }
+    }
+}
+
+/// 隐藏态连蹭防抖（鼠标在底缘来回蹭：SlidingOut 态重复 edge_hover
+/// 不重启动画——动画只起一次，直到完成或打断）。
+pub struct EdgeDebounce {
+    sliding: bool,
+}
+
+impl EdgeDebounce {
+    pub const fn new() -> Self {
+        EdgeDebounce { sliding: false }
+    }
+
+    /// 底缘事件裁决：true = 首次（起动画）；false = 已在滑（忽略）。
+    pub fn edge(&mut self) -> bool {
+        if self.sliding {
+            return false;
+        }
+        self.sliding = true;
+        true
+    }
+
+    pub fn settle(&mut self) {
+        self.sliding = false;
+    }
+}
+
+pub fn run_taskautohide_v5_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F494-v5");
+    // 1) 滑出进度：100ms = 500‰、完成钳 1000‰。
+    let s = SlideInterrupt::begin(1_000);
+    cs.add("progress_half", s.progress_permille(1_100) == 500, "");
+    cs.add("progress_clamped", s.progress_permille(9_999) == 1_000, "");
+    // 2) 中途打断：离开底缘 → 反向收回（Hidden）。
+    let mut s2 = SlideInterrupt::begin(1_000);
+    cs.add("interrupt_ok", s2.interrupt(1_080) && s2.state() == TaskbarHideState::Hidden, "");
+    cs.add("interrupt_once_only", !s2.interrupt(1_090), "");
+    // 3) 全屏半途压制：滑到一半全屏启动 → Suppressed。
+    cs.add("mid_slide_suppressed", suppress_mid_slide(true, true) == TaskbarHideState::Suppressed, "");
+    cs.add("no_fullscreen_keeps_slide", suppress_mid_slide(false, true) == TaskbarHideState::SlidingOut, "");
+    // 4) 连蹭防抖：动画中重复底缘事件折叠、落定后重新放行。
+    let mut d = EdgeDebounce::new();
+    cs.add("edge_first", d.edge(), "");
+    cs.add("edge_repeat_folded", !d.edge() && !d.edge(), "");
+    d.settle();
+    cs.add("edge_after_settle", d.edge(), "");
+    // 5) 提示线恒 2px（收起态视觉锚不变式）。
+    cs.add("hint_line_stable", AutoHide::hint_line_px() == HINT_LINE_PX, "");
+    // 6) 时序常量自洽（滑出 < 200ms 判据线；收回 3s）。
+    cs.add("timing_consts", SLIDE_OUT_MS == 200 && RETRACT_AFTER_MS == 3_000, "");
+    cs
+}
+
+#[cfg(test)]
+mod v5_tests {
+    use super::*;
+
+    #[test]
+    fn interrupt_progress_resets() {
+        let mut s = SlideInterrupt::begin(1_000);
+        let _ = s.interrupt(1_150);
+        // 打断后进度归零（反向收回不是正向继续）。
+        assert_eq!(s.progress_permille(1_200), 0);
+    }
+
+    #[test]
+    fn suppression_matrix_exhaustive() {
+        assert_eq!(suppress_mid_slide(true, false), TaskbarHideState::Suppressed);
+        assert_eq!(suppress_mid_slide(true, true), TaskbarHideState::Suppressed);
+        assert_eq!(suppress_mid_slide(false, false), TaskbarHideState::Hidden);
+        assert_eq!(suppress_mid_slide(false, true), TaskbarHideState::SlidingOut);
+    }
+
+    #[test]
+    fn debounce_never_blocks_after_settle() {
+        let mut d = EdgeDebounce::new();
+        assert!(d.edge());
+        d.settle();
+        assert!(d.edge());
+        d.settle();
+        assert!(d.edge());
+    }
+}
