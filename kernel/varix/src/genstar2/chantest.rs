@@ -503,3 +503,354 @@ mod v3_tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v7（F480）：会话账（连败告警）/ 路由时延账 / 声道隔离矩阵 /
+// 偏好持久化 v7（W7H1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 会话账——每次声道测试记账（过/败）：时钟单调守卫 + 通过率 +
+//   连败告警（3 连败 = 声道硬件可疑，显性化不让用户盲目重试）。
+// 2. 路由时延账——「声道高亮 ↔ 声音到位」的时延量化：500ms 预算
+//   （ROUTE_VERIFY_TIMEOUT_MS 同源锚）+ 峰值现形。
+// 3. 声道隔离矩阵——左声道发声时右声道必须静默（串音检测的判据面：
+//   立体声的意义就在分离）。
+// 4. 偏好持久化——测试音量 + 上次设备：W7H1 通道（FNV 尾）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 会话账（连败告警）
+// ---------------------------------------------------------------------------
+
+/// 会话账容量。
+pub const SESSION_LEDGER_CAP: usize = 16;
+/// 连败告警阈值。
+pub const CONSECUTIVE_FAIL_ALERT: usize = 3;
+
+pub struct SessionLedger {
+    ring: [(u64, bool); SESSION_LEDGER_CAP], // (时刻, 是否通过)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl SessionLedger {
+    pub const fn new() -> Self {
+        SessionLedger { ring: [(0, false); SESSION_LEDGER_CAP], head: 0, n: 0, out_of_order_rejected: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64, passed: bool) -> bool {
+        if self.n > 0 {
+            let last = (self.head + SESSION_LEDGER_CAP - 1) % SESSION_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, passed);
+        self.head = (self.head + 1) % SESSION_LEDGER_CAP;
+        self.n = (self.n + 1).min(SESSION_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 通过率 permille（空账诚实 None）。
+    pub fn pass_rate_permille(&self) -> Option<u32> {
+        if self.n == 0 {
+            return None;
+        }
+        let passes = (0..self.n)
+            .filter(|&i| {
+                let idx = (self.head + SESSION_LEDGER_CAP - self.n + i) % SESSION_LEDGER_CAP;
+                self.ring[idx].1
+            })
+            .count();
+        Some((passes as u32 * 1_000 / self.n as u32) as u32)
+    }
+
+    /// 连败告警（最新连续失败 ≥ 阈值——中间夹一次通过就断链）。
+    pub fn consecutive_failing(&self) -> bool {
+        let mut streak = 0;
+        for i in 0..self.n {
+            let idx = (self.head + SESSION_LEDGER_CAP - 1 - i) % SESSION_LEDGER_CAP;
+            if self.ring[idx].1 {
+                break;
+            }
+            streak += 1;
+            if streak >= CONSECUTIVE_FAIL_ALERT {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 路由时延账（高亮 ↔ 声音到位）
+// ---------------------------------------------------------------------------
+
+/// 时延账容量。
+pub const ROUTE_LEDGER_CAP: usize = 12;
+
+pub struct RouteLatencyLedger {
+    ring: [(u64, u64); ROUTE_LEDGER_CAP], // (时钟, 时延 ms)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl RouteLatencyLedger {
+    pub const fn new() -> Self {
+        RouteLatencyLedger {
+            ring: [(0, 0); ROUTE_LEDGER_CAP],
+            head: 0,
+            n: 0,
+            out_of_order_rejected: 0,
+        }
+    }
+
+    pub fn push(&mut self, at_ms: u64, latency_ms: u64) -> bool {
+        if self.n > 0 {
+            let last = (self.head + ROUTE_LEDGER_CAP - 1) % ROUTE_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, latency_ms);
+        self.head = (self.head + 1) % ROUTE_LEDGER_CAP;
+        self.n = (self.n + 1).min(ROUTE_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    pub fn max_latency(&self) -> u64 {
+        (0..self.n)
+            .map(|i| {
+                let idx = (self.head + ROUTE_LEDGER_CAP - self.n + i) % ROUTE_LEDGER_CAP;
+                self.ring[idx].1
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// 预算达成率（permille，预算 = ROUTE_VERIFY_TIMEOUT_MS）。
+    pub fn budget_hit_permille(&self) -> u32 {
+        if self.n == 0 {
+            return 0;
+        }
+        let hit = (0..self.n)
+            .filter(|&i| {
+                let idx = (self.head + ROUTE_LEDGER_CAP - self.n + i) % ROUTE_LEDGER_CAP;
+                self.ring[idx].1 <= ROUTE_VERIFY_TIMEOUT_MS
+            })
+            .count();
+        (hit as u32 * 1_000 / self.n as u32) as u32
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 声道隔离矩阵（立体声分离判据）
+// ---------------------------------------------------------------------------
+
+/// 隔离裁决：发左声道时右声道应答 = 串音（隔离破缺）。
+/// ack_channels: bit0 = 左有应答、bit1 = 右有应答。
+pub fn isolation_ok(played: Channel, ack_bits: u8) -> bool {
+    match played {
+        Channel::Left => ack_bits & 0b10 == 0, // 左发 → 右必须静默
+        Channel::Right => ack_bits & 0b01 == 0, // 右发 → 左必须静默
+        Channel::Both => true,                  // 双声道全响 = 正常
+    }
+}
+
+/// 全矩阵审计：三发声情形全过（左右互不串、双声道全响合法）。
+pub fn isolation_matrix_audit() -> bool {
+    isolation_ok(Channel::Left, 0b01)      // 只有左应答 = ✓
+        && !isolation_ok(Channel::Left, 0b11) // 右也响 = 串音 ✗
+        && isolation_ok(Channel::Right, 0b10)
+        && !isolation_ok(Channel::Right, 0b11)
+        && isolation_ok(Channel::Both, 0b11)
+}
+
+// ---------------------------------------------------------------------------
+// 偏好持久化 v7（W7H1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7H 族）。
+pub const CHANTEST_V7_MAGIC: [u8; 4] = *b"W7H1";
+/// 长度：魔标(4) + 版本(1) + 保留(1) + 音量(2, LE) + 设备(4, LE) + FNV(4) = 16。
+pub const CHANTEST_V7_LEN: usize = 16;
+pub const CHANTEST_V7_VERSION: u8 = 1;
+
+/// 序列化（音量 permille ≤1000；设备 0 = 未登记）。
+pub fn save_prefs_v7(volume_permille: u16, last_device: u32, out: &mut [u8]) -> Option<usize> {
+    if out.len() < CHANTEST_V7_LEN || volume_permille > 1_000 {
+        return None;
+    }
+    out[..4].copy_from_slice(&CHANTEST_V7_MAGIC);
+    out[4] = CHANTEST_V7_VERSION;
+    out[5] = 0;
+    out[6..8].copy_from_slice(&volume_permille.to_le_bytes());
+    out[8..12].copy_from_slice(&last_device.to_le_bytes());
+    let h = fnv1a(&out[..12]);
+    out[12] = (h & 0xff) as u8;
+    out[13] = ((h >> 8) & 0xff) as u8;
+    out[14] = ((h >> 16) & 0xff) as u8;
+    out[15] = ((h >> 24) & 0xff) as u8;
+    Some(CHANTEST_V7_LEN)
+}
+
+/// 反序列化（版本/保留位/音量值域/FNV 四重守卫）。
+pub fn load_prefs_v7(buf: &[u8]) -> Option<(u16, u32)> {
+    if buf.len() < CHANTEST_V7_LEN || buf[..4] != CHANTEST_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != CHANTEST_V7_VERSION || buf[5] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..12]);
+    let got = buf[12] as u32
+        | ((buf[13] as u32) << 8)
+        | ((buf[14] as u32) << 16)
+        | ((buf[15] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let mut v = [0u8; 2];
+    v.copy_from_slice(&buf[6..8]);
+    let volume = u16::from_le_bytes(v);
+    if volume > 1_000 {
+        return None;
+    }
+    let mut d = [0u8; 4];
+    d.copy_from_slice(&buf[8..12]);
+    Some((volume, u32::from_le_bytes(d)))
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F480 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_chantest_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F480-v7");
+    // 1) 会话账：通过率 + 单调守卫 + 环上限。
+    cs.add("session_pass_rate", {
+        let mut led = SessionLedger::new();
+        for i in 0..8u64 {
+            let _ = led.push(i * 1_000, i % 4 != 3); // 6 过 2 败
+        }
+        led.pass_rate_permille() == Some(750)
+    }, "");
+    cs.add("session_monotonic", {
+        let mut led = SessionLedger::new();
+        let _ = led.push(1_000, true);
+        !led.push(500, false) && led.out_of_order_rejected == 1
+    }, "");
+    cs.add("session_ring_cap", {
+        let mut led = SessionLedger::new();
+        for i in 0..(SESSION_LEDGER_CAP * 2) {
+            let _ = led.push(i as u64 * 100, true);
+        }
+        led.count() == SESSION_LEDGER_CAP
+    }, "");
+    cs.add("session_empty_honest", SessionLedger::new().pass_rate_permille().is_none(), "");
+    // 2) 连败告警：3 连败触发、夹一次通过断链。
+    cs.add("consecutive_fail_alert", {
+        let mut led = SessionLedger::new();
+        for i in 0..3u64 {
+            let _ = led.push(i * 1_000, false);
+        }
+        led.consecutive_failing()
+    }, "");
+    cs.add("pass_breaks_streak", {
+        let mut led = SessionLedger::new();
+        let _ = led.push(1_000, false);
+        let _ = led.push(2_000, false);
+        let _ = led.push(3_000, true);
+        let _ = led.push(4_000, false);
+        let _ = led.push(5_000, false);
+        !led.consecutive_failing() // 连败被通过打断（仅 2 连）
+    }, "");
+    // 3) 路由时延账：预算达成 + 峰值现形 + 单调守卫。
+    cs.add("route_budget_hit", {
+        let mut led = RouteLatencyLedger::new();
+        for i in 0..10u64 {
+            let _ = led.push(i * 1_000, 400);
+        }
+        led.budget_hit_permille() == 1_000 && led.max_latency() == 400
+    }, "");
+    cs.add("route_tail_visible", {
+        let mut led = RouteLatencyLedger::new();
+        for i in 0..9u64 {
+            let _ = led.push(i * 1_000, 300);
+        }
+        let _ = led.push(9_000, 900); // 超预算一笔现形
+        led.max_latency() == 900 && led.budget_hit_permille() == 900
+    }, "");
+    cs.add("route_monotonic", {
+        let mut led = RouteLatencyLedger::new();
+        let _ = led.push(1_000, 100);
+        !led.push(500, 100) && led.out_of_order_rejected == 1
+    }, "");
+    // 4) 声道隔离矩阵：左右互不串、双声道全响。
+    cs.add("isolation_matrix", isolation_matrix_audit(), "");
+    // 5) 偏好持久化：round-trip + 篡改 + 音量值域。
+    let mut buf = [0u8; CHANTEST_V7_LEN];
+    cs.add("prefs_roundtrip", {
+        let n = save_prefs_v7(TEST_VOLUME_PERMILLE, 0xDEAD, &mut buf).unwrap_or(0);
+        load_prefs_v7(&buf[..n]) == Some((TEST_VOLUME_PERMILLE, 0xDEAD))
+    }, "");
+    cs.add("prefs_tamper", {
+        let n = save_prefs_v7(400, 7, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[8] ^= 0x01;
+        load_prefs_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("prefs_bad_volume", save_prefs_v7(1_001, 1, &mut buf).is_none(), "");
+    // 6) v1 回归锚：测试音量常量 + 三声道序（v7 面不许伤 v1 语义）。
+    cs.add("v1_volume_regression", TEST_VOLUME_PERMILLE == 400, "");
+    cs.add("v1_channel_order_regression", {
+        CHANNEL_ORDER == [Channel::Left, Channel::Right, Channel::Both]
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn pass_rate_full_and_zero() {
+        let mut all_pass = SessionLedger::new();
+        let mut all_fail = SessionLedger::new();
+        for i in 0..4u64 {
+            let _ = all_pass.push(i * 100, true);
+            let _ = all_fail.push(i * 100, false);
+        }
+        assert_eq!(all_pass.pass_rate_permille(), Some(1_000));
+        assert_eq!(all_fail.pass_rate_permille(), Some(0));
+        assert!(all_fail.consecutive_failing());
+    }
+
+    #[test]
+    fn route_empty_honest() {
+        let led = RouteLatencyLedger::new();
+        assert_eq!(led.max_latency(), 0);
+        assert_eq!(led.budget_hit_permille(), 0);
+    }
+
+    #[test]
+    fn isolation_both_channels_silent_is_ok_for_both() {
+        // 双声道测试时全静默是另一个问题（无声），但隔离判据不拦——
+        // 静默诊断走 silent_decision_tree（v3 面）。
+        assert!(isolation_ok(Channel::Both, 0b00));
+    }
+}

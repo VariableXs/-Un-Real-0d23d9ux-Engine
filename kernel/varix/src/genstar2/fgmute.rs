@@ -493,3 +493,306 @@ mod v4_tests {
     }
 }
 
+
+// ===========================================================================
+// 深化 v7（F461）：裁决审计账 / 静音规则清单持久化（W7G1）/
+// 聚焦抖动指纹 / 免打扰分档回归
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 裁决审计账——每条横幅的「放行/降级/静默」记账：单调守卫 +
+//   逐裁决 tally + 抑制率（前台礼貌的量化面）。
+// 2. 规则清单持久化——用户逐应用静音规则是用户数据：W7G1 完整性
+//   清单（count + 全表 FNV 摘要——与 F465 同范式）。
+// 3. 聚焦抖动指纹——200ms 防抖窗口外的高频焦点切换 = 环境异常
+//   （全屏应用轮询抢焦点），账面显性化。
+// 4. 免打扰分档回归——DND 各档裁决语义（v3 面）复核。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 裁决审计账
+// ---------------------------------------------------------------------------
+
+/// 账面容量。
+pub const VERDICT_LEDGER_CAP: usize = 16;
+
+pub struct VerdictLedger {
+    ring: [(u64, u8); VERDICT_LEDGER_CAP], // (时刻, 裁决码)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl VerdictLedger {
+    pub const fn new() -> Self {
+        VerdictLedger { ring: [(0, 0); VERDICT_LEDGER_CAP], head: 0, n: 0, out_of_order_rejected: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64, verdict_code: u8) -> bool {
+        if self.n > 0 {
+            let last = (self.head + VERDICT_LEDGER_CAP - 1) % VERDICT_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, verdict_code);
+        self.head = (self.head + 1) % VERDICT_LEDGER_CAP;
+        self.n = (self.n + 1).min(VERDICT_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 逐裁决码 tally（码 0-255 全域；返回高频码 top 无需——直接全表
+    /// tally 用 [u16; 3]：0=横幅 1=仅中心 2=静默，码 >2 不记账时拒绝）。
+    pub fn tally3(&self) -> Option<[u16; 3]> {
+        let mut t = [0u16; 3];
+        for i in 0..self.n {
+            let idx = (self.head + VERDICT_LEDGER_CAP - self.n + i) % VERDICT_LEDGER_CAP;
+            let c = self.ring[idx].1;
+            if c > 2 {
+                return None; // 账面出现非法码 = 账本被污染（显性化）
+            }
+            t[c as usize] += 1;
+        }
+        Some(t)
+    }
+
+    /// 抑制率 permille（静默 + 仅中心 ÷ 总数——前台礼貌的量化）。
+    pub fn suppression_permille(&self) -> Option<u32> {
+        let t = self.tally3()?;
+        if self.n == 0 {
+            return None;
+        }
+        let suppressed = t[1] + t[2];
+        Some((suppressed as u32 * 1_000 / self.n as u32) as u32)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 聚焦抖动指纹
+// ---------------------------------------------------------------------------
+
+/// 抖动窗（2s 内 ≥5 次焦点切换）。
+pub const FOCUS_JITTER_WINDOW_MS: u64 = 2_000;
+pub const FOCUS_JITTER_THRESHOLD: usize = 5;
+
+pub struct FocusJitter {
+    ring: [u64; FOCUS_JITTER_THRESHOLD + 8], // 切换时刻
+    head: usize,
+    n: usize,
+}
+
+impl FocusJitter {
+    pub const fn new() -> Self {
+        FocusJitter { ring: [0; FOCUS_JITTER_THRESHOLD + 8], head: 0, n: 0 }
+    }
+
+    pub fn record(&mut self, at_ms: u64) {
+        self.ring[self.head] = at_ms;
+        self.head = (self.head + 1) % self.ring.len();
+        self.n = (self.n + 1).min(self.ring.len());
+    }
+
+    /// 窗内切换次数 ≥ 阈值 = 抖动（环境异常显性化）。
+    pub fn jittering(&self, now_ms: u64) -> bool {
+        (0..self.n)
+            .take_while(|&i| {
+                let idx = (self.head + self.ring.len() - 1 - i) % self.ring.len();
+                now_ms.saturating_sub(self.ring[idx]) <= FOCUS_JITTER_WINDOW_MS
+            })
+            .count() >= FOCUS_JITTER_THRESHOLD
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 规则清单持久化（W7G1 完整性清单）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7G 族）。
+pub const FGMUTE_V7_MAGIC: [u8; 4] = *b"W7G1";
+/// 长度：魔标(4) + 版本(1) + count(1) + 保留(1) + 摘要(4) + FNV(4) = 16。
+pub const FGMUTE_V7_LEN: usize = 16;
+pub const FGMUTE_V7_VERSION: u8 = 1;
+
+/// 规则表摘要（app 名 + 静音位 串联 FNV——顺序敏感）。
+pub fn rules_digest(rules: &[(&str, bool)]) -> Option<u32> {
+    let mut buf = [0u8; 512];
+    let mut w = 0usize;
+    for (app, mute) in rules {
+        for part in [app.as_bytes(), b"\x01", &[*mute as u8], b"\x02"] {
+            if w + part.len() > buf.len() {
+                return None;
+            }
+            buf[w..w + part.len()].copy_from_slice(part);
+            w += part.len();
+        }
+    }
+    Some(fnv1a(&buf[..w]))
+}
+
+/// 序列化（规则清单完整性存档）。
+pub fn save_rules_manifest_v7(rules: &[(&str, bool)], out: &mut [u8]) -> Option<usize> {
+    if rules.len() > RULE_SLOT_CAP || out.len() < FGMUTE_V7_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&FGMUTE_V7_MAGIC);
+    out[4] = FGMUTE_V7_VERSION;
+    out[5] = rules.len() as u8;
+    out[6] = 0;
+    let digest = rules_digest(rules)?;
+    out[7..11].copy_from_slice(&digest.to_le_bytes());
+    let h = fnv1a(&out[..11]);
+    out[11] = (h & 0xff) as u8;
+    out[12] = ((h >> 8) & 0xff) as u8;
+    out[13] = ((h >> 16) & 0xff) as u8;
+    out[14] = ((h >> 24) & 0xff) as u8;
+    Some(FGMUTE_V7_LEN)
+}
+
+/// 反序列化 + 核对（与当前规则表比对——不一致 = 已被改动）。
+pub fn verify_rules_manifest_v7(buf: &[u8], rules: &[(&str, bool)]) -> Option<bool> {
+    if buf.len() < FGMUTE_V7_LEN || buf[..4] != FGMUTE_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != FGMUTE_V7_VERSION || buf[6] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..11]);
+    let got = buf[11] as u32
+        | ((buf[12] as u32) << 8)
+        | ((buf[13] as u32) << 16)
+        | ((buf[14] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    if buf[5] as usize != rules.len() {
+        return Some(false);
+    }
+    let digest = rules_digest(rules)?;
+    let mut stored = [0u8; 4];
+    stored.copy_from_slice(&buf[7..11]);
+    Some(digest == u32::from_le_bytes(stored))
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F461 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_fgmute_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F461-v7");
+    // 1) 裁决审计账：tally + 抑制率 + 非法码显性 + 单调守卫。
+    cs.add("verdict_tally", {
+        let mut led = VerdictLedger::new();
+        let _ = led.push(100, 0);
+        let _ = led.push(200, 1);
+        let _ = led.push(300, 2);
+        let _ = led.push(400, 2);
+        led.tally3() == Some([1, 1, 2])
+    }, "");
+    cs.add("verdict_suppression_rate", {
+        let mut led = VerdictLedger::new();
+        let _ = led.push(100, 0);
+        for i in 1..4u64 {
+            let _ = led.push(i * 100, 2);
+        }
+        led.suppression_permille() == Some(750) // 3/4 静默
+    }, "");
+    cs.add("verdict_bad_code_visible", {
+        let mut led = VerdictLedger::new();
+        let _ = led.push(100, 9); // 非法码入账 → tally 显性 None
+        led.tally3().is_none()
+    }, "");
+    cs.add("verdict_monotonic", {
+        let mut led = VerdictLedger::new();
+        let _ = led.push(1_000, 0);
+        !led.push(500, 1) && led.out_of_order_rejected == 1
+    }, "");
+    cs.add("verdict_empty_honest", VerdictLedger::new().suppression_permille().is_none(), "");
+    // 2) 聚焦抖动：窗内 5 次 = 抖动、分散 = 干净。
+    cs.add("focus_jitter_detected", {
+        let mut j = FocusJitter::new();
+        for i in 0..FOCUS_JITTER_THRESHOLD {
+            j.record(i as u64 * 300); // 2s 内 5 次
+        }
+        j.jittering(1_500)
+    }, "");
+    cs.add("focus_calm_clean", {
+        let mut j = FocusJitter::new();
+        for i in 0..3u64 {
+            j.record(i * 10_000);
+        }
+        !j.jittering(30_000)
+    }, "");
+    // 3) 规则清单持久化：存档一致 / 内容变 / 数量变 / 篡改。
+    let mut buf = [0u8; FGMUTE_V7_LEN];
+    cs.add("rules_manifest_match", {
+        let n = save_rules_manifest_v7(&[("game", true), ("mail", false)], &mut buf).unwrap_or(0);
+        verify_rules_manifest_v7(&buf[..n], &[("game", true), ("mail", false)]) == Some(true)
+    }, "");
+    cs.add("rules_manifest_content_changed", {
+        let n = save_rules_manifest_v7(&[("game", true)], &mut buf).unwrap_or(0);
+        verify_rules_manifest_v7(&buf[..n], &[("game", false)]) == Some(false)
+    }, "");
+    cs.add("rules_manifest_count_changed", {
+        let n = save_rules_manifest_v7(&[("game", true)], &mut buf).unwrap_or(0);
+        verify_rules_manifest_v7(&buf[..n], &[("game", true), ("mail", false)]) == Some(false)
+    }, "");
+    cs.add("rules_manifest_tamper", {
+        let n = save_rules_manifest_v7(&[("game", true)], &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[5] ^= 0x01;
+        verify_rules_manifest_v7(&bad[..n], &[("game", true)]).is_none()
+    }, "");
+    // 4) 免打扰分档回归（v3 面）+ 前台礼貌回归（v1 面）。
+    cs.add("dnd_tier_regression", {
+        dnd_tier_verdict(0) == BannerVerdict::Show
+            && dnd_tier_verdict(3) == BannerVerdict::SilentAll
+    }, "");
+    cs.add("focus_switch_const_regression", FOCUS_SWITCH_MS == 200, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn suppression_full_and_zero() {
+        let mut all_quiet = VerdictLedger::new();
+        let mut all_banner = VerdictLedger::new();
+        for i in 0..4u64 {
+            let _ = all_quiet.push(i * 100, 2);
+            let _ = all_banner.push(i * 100, 0);
+        }
+        assert_eq!(all_quiet.suppression_permille(), Some(1_000));
+        assert_eq!(all_banner.suppression_permille(), Some(0));
+    }
+
+    #[test]
+    fn jitter_rings_and_stays_honest() {
+        let mut j = FocusJitter::new();
+        assert!(!j.jittering(0), "空账不抖");
+        for i in 0..(FOCUS_JITTER_THRESHOLD + 8) {
+            j.record(i as u64 * 100);
+        }
+        assert_eq!(j.count(), FOCUS_JITTER_THRESHOLD + 8);
+        assert!(j.jittering(1_400));
+    }
+
+    #[test]
+    fn digest_order_sensitive() {
+        assert_ne!(
+            rules_digest(&[("a", true), ("b", false)]),
+            rules_digest(&[("b", false), ("a", true)])
+        );
+    }
+}

@@ -498,3 +498,319 @@ mod deep_tests {
         assert!(reg.lookup("C:\\keep").is_none());
     }
 }
+
+// ===========================================================================
+// 深化 v7（F452）：失效同步审计 / PNG 缩放账（只降不升）/
+// 设置持久化 v7（W7I1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 失效同步审计——图标变更 → 三表面失效 → 消费（重绘）：逐表面
+//    tally + 未消费积压审计（分配了没失效 = 同步链漏气）。
+// 2. PNG 缩放账——过大图转缩：只降不升策略（放大会糊——质感红线），
+//    目标尺寸取合法档中 ≤ 原尺寸的最大档。
+// 3. 设置持久化——自动转缩开关 + 失效即时性档位：W7I1 通道
+//    （FNV 尾 + 旗标保留位守卫）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 失效同步审计（变更 → 三表面）
+// ---------------------------------------------------------------------------
+
+/// 同步账容量。
+pub const INVALIDATE_LEDGER_CAP: usize = 12;
+
+pub struct InvalidateAudit {
+    /// 逐表面待消费计数（Desktop/List/AddressBar 序）。
+    pending: [u16; 3],
+    /// 已消费 tally。
+    consumed: [u16; 3],
+    /// 非法表面拒绝计数。
+    pub rejected_bad_surface: usize,
+}
+
+impl InvalidateAudit {
+    pub const fn new() -> Self {
+        InvalidateAudit { pending: [0; 3], consumed: [0; 3], rejected_bad_surface: 0 }
+    }
+
+    /// 图标变更 → 三表面全标记待重绘（饱和不回绕）。
+    pub fn invalidate_all(&mut self) {
+        for p in self.pending.iter_mut() {
+            *p = p.saturating_add(1);
+        }
+    }
+
+    /// 单表面消费（重绘完成；无积压消费 = 重复重绘，拒绝并计数）。
+    pub fn consume(&mut self, surface_idx: usize) -> bool {
+        if surface_idx >= 3 {
+            self.rejected_bad_surface += 1;
+            return false;
+        }
+        if self.pending[surface_idx] == 0 {
+            self.rejected_bad_surface += 1;
+            return false;
+        }
+        self.pending[surface_idx] -= 1;
+        self.consumed[surface_idx] = self.consumed[surface_idx].saturating_add(1);
+        true
+    }
+
+    /// 积压审计（任一表面有待消费 = 同步链未闭合）。
+    pub fn all_synced(&self) -> bool {
+        self.pending.iter().all(|&p| p == 0)
+    }
+
+    pub fn pending_of(&self, surface_idx: usize) -> u16 {
+        self.pending.get(surface_idx).copied().unwrap_or(0)
+    }
+
+    pub fn consumed_of(&self, surface_idx: usize) -> u16 {
+        self.consumed.get(surface_idx).copied().unwrap_or(0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PNG 缩放账（只降不升）
+// ---------------------------------------------------------------------------
+
+/// 缩放目标（合法档【降序表】中第一个 ≤ 原长边的档 = 不超原尺寸的
+/// 最大合法档；原图比最小档还小 = 原样——放大会糊，质感红线）。
+pub fn png_downscale_target(w: u32, h: u32) -> (u32, u32) {
+    let longer = w.max(h);
+    if longer == 0 {
+        return (0, 0);
+    }
+    let mut target: Option<u32> = None;
+    for &s in PNG_VALID_SIZES.iter() {
+        if s <= longer {
+            target = Some(s);
+            break;
+        }
+    }
+    match target {
+        None => (w, h), // 极小图原样（只降不升的诚实边界）
+        Some(t) => {
+            let scale_w = ((w as u64 * t as u64) / longer as u64).max(1) as u32;
+            let scale_h = ((h as u64 * t as u64) / longer as u64).max(1) as u32;
+            (scale_w, scale_h)
+        }
+    }
+}
+
+/// 只降不升审计：任意输入的输出长边 ≤ 输入长边（放大数据面禁令）。
+pub fn png_downscale_never_upscales() -> bool {
+    [(300u32, 300u32), (512, 512), (100, 200), (64, 64), (1024, 768)]
+        .iter()
+        .all(|&(w, h)| {
+            let (ow, oh) = png_downscale_target(w, h);
+            ow.max(oh) <= w.max(h)
+        })
+}
+
+/// 缩放账（每次转换记账——时钟单调守卫）。
+pub const PNG_LEDGER_CAP: usize = 12;
+
+pub struct PngConvertLedger {
+    ring: [(u64, u32, u32); PNG_LEDGER_CAP], // (时刻, 原, 目标)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl PngConvertLedger {
+    pub const fn new() -> Self {
+        PngConvertLedger {
+            ring: [(0, 0, 0); PNG_LEDGER_CAP],
+            head: 0,
+            n: 0,
+            out_of_order_rejected: 0,
+        }
+    }
+
+    pub fn push(&mut self, at_ms: u64, from_longer: u32, to_longer: u32) -> bool {
+        if self.n > 0 {
+            let last = (self.head + PNG_LEDGER_CAP - 1) % PNG_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, from_longer, to_longer);
+        self.head = (self.head + 1) % PNG_LEDGER_CAP;
+        self.n = (self.n + 1).min(PNG_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 账面复核：全部只降不升（升格 = 账面红旗）。
+    pub fn all_downscale(&self) -> bool {
+        (0..self.n).all(|i| {
+            let idx = (self.head + PNG_LEDGER_CAP - self.n + i) % PNG_LEDGER_CAP;
+            self.ring[idx].2 <= self.ring[idx].1
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 设置持久化 v7（W7I1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7I 族）。
+pub const FOLDICON_V7_MAGIC: [u8; 4] = *b"W7I1";
+/// 长度：魔标(4) + 版本(1) + 旗标(1) + 保留(1) + FNV(4) = 12。
+pub const FOLDICON_V7_LEN: usize = 12;
+pub const FOLDICON_V7_VERSION: u8 = 1;
+/// 旗标位：bit0 = 大图自动转缩、bit1 = 失效即时重绘（关 = 批量延迟）。
+const FLAG_AUTO_CONVERT: u8 = 1 << 0;
+const FLAG_INSTANT_SYNC: u8 = 1 << 1;
+const FLAG_RESERVED: u8 = !0x03;
+
+/// 序列化。
+pub fn save_prefs_v7(auto_convert: bool, instant_sync: bool, out: &mut [u8]) -> Option<usize> {
+    if out.len() < FOLDICON_V7_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&FOLDICON_V7_MAGIC);
+    out[4] = FOLDICON_V7_VERSION;
+    out[5] = (if auto_convert { FLAG_AUTO_CONVERT } else { 0 })
+        | (if instant_sync { FLAG_INSTANT_SYNC } else { 0 });
+    out[6] = 0;
+    let h = fnv1a(&out[..7]);
+    out[7] = (h & 0xff) as u8;
+    out[8] = ((h >> 8) & 0xff) as u8;
+    out[9] = ((h >> 16) & 0xff) as u8;
+    out[10] = ((h >> 24) & 0xff) as u8;
+    Some(FOLDICON_V7_LEN)
+}
+
+/// 反序列化（版本/保留位/FNV 三重守卫）。
+pub fn load_prefs_v7(buf: &[u8]) -> Option<(bool, bool)> {
+    if buf.len() < FOLDICON_V7_LEN || buf[..4] != FOLDICON_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != FOLDICON_V7_VERSION || buf[5] & FLAG_RESERVED != 0 || buf[6] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..7]);
+    let got = buf[7] as u32
+        | ((buf[8] as u32) << 8)
+        | ((buf[9] as u32) << 16)
+        | ((buf[10] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    Some((buf[5] & FLAG_AUTO_CONVERT != 0, buf[5] & FLAG_INSTANT_SYNC != 0))
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F452 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_foldicon_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F452-v7");
+    // 1) 失效同步：三表面全标记 → 逐个消费 → 闭合。
+    cs.add("invalidate_full_cycle", {
+        let mut a = InvalidateAudit::new();
+        a.invalidate_all();
+        a.consume(0) && a.consume(1) && a.consume(2) && a.all_synced()
+    }, "");
+    cs.add("invalidate_pending_visible", {
+        let mut a = InvalidateAudit::new();
+        a.invalidate_all();
+        let _ = a.consume(0);
+        !a.all_synced() && a.pending_of(1) == 1 && a.consumed_of(0) == 1
+    }, "");
+    cs.add("invalidate_double_consume_reject", {
+        let mut a = InvalidateAudit::new();
+        a.invalidate_all();
+        let _ = a.consume(1);
+        !a.consume(1) // 无积压重复消费 = 拒绝（重复重绘防线）
+    }, "");
+    cs.add("invalidate_bad_surface_reject", {
+        let mut a = InvalidateAudit::new();
+        !a.consume(3) && a.rejected_bad_surface == 1
+    }, "");
+    // 2) PNG 缩放：合法档命中 + 只降不升全域。
+    cs.add("png_target_hits_valid_tier", {
+        png_downscale_target(300, 300) == (256, 256) // 300 → 档 256
+            && png_downscale_target(100, 200) == (64, 128) // 长 200 → 档 128
+    }, "");
+    cs.add("png_small_kept", {
+        png_downscale_target(48, 48) == (48, 48) // 已是合法档 = 原样
+    }, "");
+    cs.add("png_never_upscales", png_downscale_never_upscales(), "");
+    // 3) 缩放账：只降复核 + 单调守卫。
+    cs.add("png_ledger_downscale_audit", {
+        let mut led = PngConvertLedger::new();
+        let _ = led.push(100, 300, 256);
+        let _ = led.push(200, 512, 256);
+        led.all_downscale() && led.count() == 2
+    }, "");
+    cs.add("png_ledger_monotonic", {
+        let mut led = PngConvertLedger::new();
+        let _ = led.push(1_000, 300, 256);
+        !led.push(500, 512, 256) && led.out_of_order_rejected == 1
+    }, "");
+    // 4) 设置持久化：旗标全组合 round-trip + 篡改。
+    let mut buf = [0u8; FOLDICON_V7_LEN];
+    cs.add("prefs_roundtrip_all", {
+        [(true, true), (true, false), (false, true), (false, false)]
+            .iter()
+            .all(|&(a, i)| {
+                let n = save_prefs_v7(a, i, &mut buf).unwrap_or(0);
+                load_prefs_v7(&buf[..n]) == Some((a, i))
+            })
+    }, "");
+    cs.add("prefs_tamper", {
+        let n = save_prefs_v7(true, true, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[5] ^= 0x04;
+        load_prefs_v7(&bad[..n]).is_none()
+    }, "");
+    // 5) v1 回归锚：PNG 合法尺寸表 + 三表面名（v7 面不许伤 v1 语义）。
+    cs.add("v1_png_sizes_regression", PNG_VALID_SIZES == [256, 128, 64, 48, 32, 16], "");
+    cs.add("v1_surfaces_regression", SURFACES.len() == 3, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn png_tiny_image_clamped_to_min_tier() {
+        // 比最小档还小的图 → 钳到最小档（16）但只降不升不破坏。
+        let (w, h) = png_downscale_target(8, 8);
+        assert!(w <= 8 && h <= 8, "极小图原样保留不放大");
+    }
+
+    #[test]
+    fn invalidate_many_changes_accumulate() {
+        let mut a = InvalidateAudit::new();
+        a.invalidate_all();
+        a.invalidate_all();
+        a.invalidate_all();
+        assert_eq!(a.pending_of(0), 3, "三次变更积压三笔");
+        for _ in 0..3 {
+            assert!(a.consume(0));
+            assert!(a.consume(1));
+            assert!(a.consume(2));
+        }
+        assert!(a.all_synced());
+    }
+
+    #[test]
+    fn png_ledger_ring_wrap() {
+        let mut led = PngConvertLedger::new();
+        for i in 0..PNG_LEDGER_CAP * 2 {
+            assert!(led.push(i as u64 * 100, 512, 256));
+        }
+        assert_eq!(led.count(), PNG_LEDGER_CAP);
+        assert!(led.all_downscale());
+    }
+}

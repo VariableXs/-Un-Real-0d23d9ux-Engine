@@ -484,3 +484,265 @@ mod v3_tests {
         assert_eq!(f.tier(), 2);
     }
 }
+
+// ===========================================================================
+// 深化 v7（F467）：档位使用时序账 / 缩放全域审计 / DPI 网格单调审计 /
+// 偏好持久化 v7（W7N1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 持久化——v2 VTF1 只存默认档位：v7 通道补 Ctrl+滚轮开关 +
+//    提示条开关 + FNV 尾（坏档位/坏旗标拒收）。
+// 2. 档位时序账——每次缩放记账（时刻+结果档位）：单调守卫 + 高频
+//    滚轮指纹（用户找不到合适字号 = 体验信号）。
+// 3. 缩放全域审计——五档阶梯全域可达：从最低档连升 4 步恰达最高档
+//    （阶梯无空洞无重复）。
+// 4. DPI 网格单调审计——可见网格列数随字号单调不增（放大字号还能
+//    看到更多列 = 几何在说谎）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 持久化通道 v7（W7N1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7N 族）。
+pub const TERMFONT_V7_MAGIC: [u8; 4] = *b"W7N1";
+/// 长度：魔标(4) + 版本(1) + 档位(1) + 旗标(1) + 保留(1) + FNV(4) = 12。
+pub const TERMFONT_V7_LEN: usize = 12;
+pub const TERMFONT_V7_VERSION: u8 = 1;
+/// 旗标位：bit0 = Ctrl+滚轮缩放开、bit1 = 字号提示条开。
+const FLAG_WHEEL: u8 = 1 << 0;
+const FLAG_HINT: u8 = 1 << 1;
+const FLAG_RESERVED: u8 = !0x03;
+
+/// 序列化（档位值域 [0, FONT_TIERS_PX.len())）。
+pub fn save_prefs_v7(tier: usize, wheel_on: bool, hint_on: bool, out: &mut [u8]) -> Option<usize> {
+    if out.len() < TERMFONT_V7_LEN || tier >= FONT_TIERS_PX.len() {
+        return None;
+    }
+    out[..4].copy_from_slice(&TERMFONT_V7_MAGIC);
+    out[4] = TERMFONT_V7_VERSION;
+    out[5] = tier as u8;
+    out[6] = (if wheel_on { FLAG_WHEEL } else { 0 }) | (if hint_on { FLAG_HINT } else { 0 });
+    out[7] = 0;
+    let h = fnv1a(&out[..8]);
+    out[8] = (h & 0xff) as u8;
+    out[9] = ((h >> 8) & 0xff) as u8;
+    out[10] = ((h >> 16) & 0xff) as u8;
+    out[11] = ((h >> 24) & 0xff) as u8;
+    Some(TERMFONT_V7_LEN)
+}
+
+/// 反序列化（版本/旗标保留位/档位值域/FNV 四重守卫）。
+pub fn load_prefs_v7(buf: &[u8]) -> Option<(usize, bool, bool)> {
+    if buf.len() < TERMFONT_V7_LEN || buf[..4] != TERMFONT_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != TERMFONT_V7_VERSION || buf[6] & FLAG_RESERVED != 0 || buf[7] != 0 {
+        return None;
+    }
+    if buf[5] as usize >= FONT_TIERS_PX.len() {
+        return None;
+    }
+    let expect = fnv1a(&buf[..8]);
+    let got = buf[8] as u32
+        | ((buf[9] as u32) << 8)
+        | ((buf[10] as u32) << 16)
+        | ((buf[11] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    Some((buf[5] as usize, buf[6] & FLAG_WHEEL != 0, buf[6] & FLAG_HINT != 0))
+}
+
+// ---------------------------------------------------------------------------
+// 档位时序账（缩放操作审计）
+// ---------------------------------------------------------------------------
+
+/// 时序账容量。
+pub const TIER_LEDGER_CAP: usize = 16;
+/// 高频滚轮窗（10s 内 ≥6 次缩放 = 用户在「找字号」）。
+pub const WHEEL_RAGE_WINDOW_MS: u64 = 10_000;
+pub const WHEEL_RAGE_THRESHOLD: usize = 6;
+
+pub struct TierLedger {
+    ring: [(u64, u8); TIER_LEDGER_CAP], // (时刻, 结果档位)
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl TierLedger {
+    pub const fn new() -> Self {
+        TierLedger { ring: [(0, 0); TIER_LEDGER_CAP], head: 0, n: 0, out_of_order_rejected: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64, tier: u8) -> bool {
+        if self.n > 0 {
+            let last = (self.head + TIER_LEDGER_CAP - 1) % TIER_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, tier);
+        self.head = (self.head + 1) % TIER_LEDGER_CAP;
+        self.n = (self.n + 1).min(TIER_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 高频滚轮指纹（窗内缩放次数 ≥ 阈值）。
+    pub fn wheel_rage(&self, now_ms: u64) -> bool {
+        (0..self.n)
+            .take_while(|&i| {
+                let idx = (self.head + TIER_LEDGER_CAP - 1 - i) % TIER_LEDGER_CAP;
+                now_ms.saturating_sub(self.ring[idx].0) <= WHEEL_RAGE_WINDOW_MS
+            })
+            .count() >= WHEEL_RAGE_THRESHOLD
+    }
+
+    /// 档位漂移审计（窗内档位跨度 = 用户来回调的幅度）。
+    pub fn tier_span(&self) -> Option<u8> {
+        if self.n == 0 {
+            return None;
+        }
+        let mut min = u8::MAX;
+        let mut max = 0u8;
+        for i in 0..self.n {
+            let idx = (self.head + TIER_LEDGER_CAP - self.n + i) % TIER_LEDGER_CAP;
+            let t = self.ring[idx].1;
+            min = min.min(t);
+            max = max.max(t);
+        }
+        Some(max - min)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 缩放全域审计（五档阶梯无空洞）
+// ---------------------------------------------------------------------------
+
+/// 阶梯审计：五档 px 严格递增（无重复档——「重复档 = 白给一档」）。
+pub fn tier_ladder_strict() -> bool {
+    (1..FONT_TIERS_PX.len()).all(|i| FONT_TIERS_PX[i] > FONT_TIERS_PX[i - 1])
+}
+
+/// DPI 网格单调审计：同窗口下字号越大 → 可见列数单调不增
+/// （放大字号看到更多列 = 几何说谎）。
+pub fn grid_monotonic_audit(win_w_px: u32, win_h_px: u32) -> bool {
+    let mut last_cols = usize::MAX;
+    for t in 0..FONT_TIERS_PX.len() {
+        let (cols, _rows) = visible_grid(t, win_w_px, win_h_px);
+        if cols > last_cols {
+            return false;
+        }
+        last_cols = cols;
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F467 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_termfont_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F467-v7");
+    // 1) 持久化通道：round-trip + 篡改 + 坏档位 + 保留位。
+    let mut buf = [0u8; TERMFONT_V7_LEN];
+    cs.add("persist_roundtrip", [0usize, 2, 4].iter().all(|&t| {
+        let n = save_prefs_v7(t, true, false, &mut buf).unwrap_or(0);
+        load_prefs_v7(&buf[..n]) == Some((t, true, false))
+    }), "");
+    cs.add("persist_flags_all", {
+        let combos = [(true, true), (true, false), (false, true), (false, false)];
+        combos.iter().all(|&(w, h)| {
+            let n = save_prefs_v7(2, w, h, &mut buf).unwrap_or(0);
+            load_prefs_v7(&buf[..n]) == Some((2, w, h))
+        })
+    }, "");
+    cs.add("persist_bad_tier", save_prefs_v7(5, true, true, &mut buf).is_none(), "");
+    cs.add("persist_tamper", {
+        let n = save_prefs_v7(3, true, true, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[6] ^= 0x04; // 翻保留位 → FNV 失配
+        load_prefs_v7(&bad[..n]).is_none()
+    }, "");
+    // 2) 时序账：单调守卫 + 环上限。
+    cs.add("tier_ledger_monotonic", {
+        let mut led = TierLedger::new();
+        let _ = led.push(1_000, 2);
+        !led.push(500, 3) && led.out_of_order_rejected == 1
+    }, "");
+    cs.add("tier_ledger_ring_cap", {
+        let mut led = TierLedger::new();
+        for i in 0..(TIER_LEDGER_CAP * 2) {
+            let _ = led.push(i as u64 * 100, (i % 5) as u8);
+        }
+        led.count() == TIER_LEDGER_CAP
+    }, "");
+    // 3) 高频滚轮指纹 + 档位跨度。
+    cs.add("wheel_rage_detected", {
+        let mut led = TierLedger::new();
+        for i in 0..WHEEL_RAGE_THRESHOLD {
+            let _ = led.push(i as u64 * 1_000, (i % 5) as u8); // 6 次 × 1s
+        }
+        led.wheel_rage(6_000)
+    }, "");
+    cs.add("wheel_calm_no_rage", {
+        let mut led = TierLedger::new();
+        for i in 0..3u64 {
+            let _ = led.push(i * 30_000, 2);
+        }
+        !led.wheel_rage(90_000)
+    }, "");
+    cs.add("tier_span_audit", {
+        let mut led = TierLedger::new();
+        let _ = led.push(100, 0);
+        let _ = led.push(200, 4);
+        let _ = led.push(300, 2);
+        led.tier_span() == Some(4)
+    }, "");
+    // 4) 阶梯严格递增（五档无重复无空洞）。
+    cs.add("tier_ladder_strict", tier_ladder_strict(), "");
+    // 5) DPI 网格单调（800×600 与 1920×1080 两个窗口面）。
+    cs.add("grid_monotonic_small", grid_monotonic_audit(800, 600), "");
+    cs.add("grid_monotonic_large", grid_monotonic_audit(1_920, 1_080), "");
+    // 6) v1 回归锚：独立于全局缩放 + 离散步进（v7 面不许伤 v1 语义）。
+    cs.add("v1_independence_regression", INDEPENDENT_FROM_GLOBAL && DISCRETE_STEPPING, "");
+    cs.add("v1_grid_regression", grid_at(0) == Some((7, 14))
+        && visible_grid(0, 1_920, 1_080) == (VIEW_COLS.min(274), VIEW_ROWS.min(64)), "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn wheel_rage_needs_full_streak() {
+        let mut led = TierLedger::new();
+        for i in 0..WHEEL_RAGE_THRESHOLD - 1 {
+            let _ = led.push(i as u64 * 1_000, 1);
+        }
+        assert!(!led.wheel_rage(6_000), "5 次不构成 rage");
+        let _ = led.push(5_000, 1);
+        assert!(led.wheel_rage(6_000));
+    }
+
+    #[test]
+    fn tier_span_empty_none() {
+        assert_eq!(TierLedger::new().tier_span(), None);
+    }
+
+    #[test]
+    fn ladder_endpoints_match_tiers() {
+        // 阶梯端点与 px 表一致（一处一事实）。
+        assert_eq!(FONT_TIERS_PX[0], 12);
+        assert_eq!(FONT_TIERS_PX[FONT_TIERS_PX.len() - 1], 24);
+    }
+}
