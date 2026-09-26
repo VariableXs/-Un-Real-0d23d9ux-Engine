@@ -816,3 +816,205 @@ mod deep2_tests {
         assert!(candidates_deterministic(&e, "jisuanqi", 4));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 句子级组句 + 用户词频自学习可复现账
+// ---------------------------------------------------------------------------
+
+/// 句子级组句器（判据「切分用例/排序可复现」的句子面延伸）：连续音节
+/// 串 → 贪心最长匹配组句。组句确定性铁律：每个位置取「有候选的最长
+/// 前缀」中分数最高的词（同输入同句、全确定）；任一位置零候选 → 整句
+/// 不组并返回 None（部分组句不许半截上屏——诚实失败）。
+pub struct SentenceComposer;
+
+impl SentenceComposer {
+    /// 组句：贪心最长匹配——位置 pos 从「剩余串全长」往下试到 1 字符，
+    /// 第一个有候选的前缀即取其最优分词并推进。
+    pub fn compose(engine: &ImeEngine, input: &str) -> Option<String> {
+        if input.is_empty() {
+            return None; // 空输入不组句（诚实失败——不产出空句）。
+        }
+        let chars: Vec<char> = input.chars().collect();
+        let mut pos = 0usize;
+        let mut sentence = String::new();
+        while pos < chars.len() {
+            let rest: String = chars[pos..].iter().collect();
+            let mut found: Option<(String, usize)> = None;
+            for end in (1..=rest.chars().count()).rev() {
+                let prefix: String = rest.chars().take(end).collect();
+                if let Some((w, _)) = engine.candidates(&prefix).first().cloned() {
+                    found = Some((w, end));
+                    break;
+                }
+            }
+            match found {
+                Some((w, end)) => {
+                    sentence.push_str(&w);
+                    pos += end;
+                }
+                None => return None, // 死胡同 → 整句不组（不猜）。
+            }
+        }
+        Some(sentence)
+    }
+
+    /// 组句可复现自证：同引擎同输入 N 轮同输出。
+    pub fn deterministic(engine: &ImeEngine, input: &str, rounds: usize) -> bool {
+        let first = Self::compose(engine, input);
+        (1..rounds).all(|_| Self::compose(engine, input) == first)
+    }
+}
+
+/// 用户词频自学习账（「自学习用例（造词三次入库）」的数据面深化）：
+/// 逐词记录 (词, 升权次数, 最近上屏钟点)；升权历史可回放——同一次会
+/// 话序列重放必须收敛到同一权重（自学习可复现的机器证明）。
+pub struct LearnLedger {
+    /// (词, 升权次数, 最近上屏 ms)。
+    pub entries: Vec<(String, u32, u64)>,
+    /// 升权历史（时间序回放面）。
+    pub history: Vec<(u64, String)>,
+}
+
+impl LearnLedger {
+    pub fn new() -> LearnLedger {
+        LearnLedger { entries: Vec::new(), history: Vec::new() }
+    }
+
+    /// 记一次用户上屏选择（钟点单调入账）。
+    pub fn record(&mut self, at_ms: u64, word: &str) {
+        self.history.push((at_ms, String::from(word)));
+        match self.entries.iter_mut().find(|(w, _, _)| w == word) {
+            Some((_, n, last)) => {
+                *n += 1;
+                *last = at_ms;
+            }
+            None => self.entries.push((String::from(word), 1, at_ms)),
+        }
+    }
+
+    /// 升权次数查询。
+    pub fn count_of(&self, word: &str) -> u32 {
+        self.entries.iter().find(|(w, _, _)| w == word).map(|(_, n, _)| *n).unwrap_or(0)
+    }
+
+    /// 历史重放收敛性：按历史重放到全新账本，终态与原账本一致（自学习
+    /// 不是黑盒——重放可复现）。
+    pub fn replay_converges(&self) -> bool {
+        let mut fresh = LearnLedger::new();
+        for (at, w) in &self.history {
+            fresh.record(*at, w);
+        }
+        fresh.entries == self.entries
+    }
+
+    /// 最近用词排行（次数降序 → 最近时间降序——全确定）。
+    pub fn top_words(&self, n: usize) -> Vec<&str> {
+        let mut v: Vec<&(String, u32, u64)> = self.entries.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
+        v.into_iter().take(n).map(|(w, _, _)| w.as_str()).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for LearnLedger {
+    fn default() -> LearnLedger {
+        LearnLedger::new()
+    }
+}
+
+/// 深化层三自检（组句 / 学习账）。
+pub fn run_imecore_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F326-deep3");
+
+    // 1. 句子级组句：双段输入 → 两词拼句（段内最优）。
+    let mut e = ImeEngine::new();
+    e.add_word("今天", "jintian", 900);
+    e.add_word("天气", "tianqi", 800);
+    e.add_word("天", "tian", 500);
+    let s = SentenceComposer::compose(&e, "jintiantianqi");
+    set.add(
+        "sentence compose two segments",
+        s.as_deref() == Some("今天天气"),
+        "",
+    );
+
+    // 2. 组句可复现：同引擎同输入多轮同句。
+    set.add(
+        "compose deterministic",
+        SentenceComposer::deterministic(&e, "jintiantianqi", 5),
+        "",
+    );
+
+    // 3. 诚实失败：任一段零候选 → 整句 None（不半截上屏）。
+    let s2 = SentenceComposer::compose(&e, "jintiazxyz");
+    set.add("compose honest failure", s2.is_none(), "");
+
+    // 4. 学习账：三次上屏计数 + 排行（次数→最近）全确定。
+    let mut ll = LearnLedger::new();
+    ll.record(0, "计算器");
+    ll.record(10, "记事本");
+    ll.record(20, "计算器");
+    ll.record(30, "计算器");
+    set.add(
+        "learn ledger counts",
+        ll.count_of("计算器") == 3 && ll.count_of("记事本") == 1 && ll.len() == 2,
+        "",
+    );
+    let top = ll.top_words(2);
+    set.add("learn ranking deterministic", top.first() == Some(&"计算器"), "");
+
+    // 5. 重放收敛：历史重放到新账本终态一致（自学习可复现证明）。
+    set.add("learn replay converges", ll.replay_converges(), "");
+
+    // 6. 造词联动：连选 COIN_THRESHOLD 次 → 引擎自动入库（学习账与
+    //    引擎造词闭环——「三次入库」端到端）。
+    let mut e2 = ImeEngine::new();
+    for _ in 0..COIN_THRESHOLD {
+        e2.commit("变体", "bianti");
+    }
+    let coined_hit = e2.candidates("bianti").first().map(|(t, _)| t.clone());
+    set.add(
+        "coin threshold end to end",
+        coined_hit.as_deref() == Some("变体"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn compose_greedy_takes_best_score_at_prefix() {
+        let mut e = ImeEngine::new();
+        e.add_word("西安", "xi'an", 900);
+        e.add_word("先", "xian", 800);
+        e.add_word("安", "an", 700);
+        // "xian" 整串有候选：同前缀取最优分（西安 900 > 先 800——词频
+        // 优先，最长匹配语义下的确定性取舍）。
+        assert_eq!(SentenceComposer::compose(&e, "xian").as_deref(), Some("西安"));
+    }
+
+    #[test]
+    fn ledger_empty_replay_trivial() {
+        let ll = LearnLedger::new();
+        assert!(ll.replay_converges() && ll.top_words(3).is_empty());
+    }
+
+    #[test]
+    fn ledger_unknown_word_zero() {
+        let ll = LearnLedger::new();
+        assert_eq!(ll.count_of("没记过"), 0);
+    }
+
+    #[test]
+    fn compose_empty_input_none() {
+        let e = ImeEngine::new();
+        assert_eq!(SentenceComposer::compose(&e, ""), None, "空输入不组句");
+    }
+}

@@ -539,3 +539,237 @@ mod deep2_tests {
         assert_eq!(led.configured_releases + led.hardcuts, 0);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 三触发源统一动作解析器 + 后果预演面 + 长按进度账
+// ---------------------------------------------------------------------------
+
+/// 三触发源（电源按钮 / 合盖 / 电源菜单项）统一动作解析：用户配置的
+/// 是「源 × 场景 → 动作」的完整矩阵——任何触发源在任何场景都必须能
+/// 解析出动作或显式报「未配置」（不许静默默认兜底——配置面零猜测）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TriggerSource {
+    /// 物理电源按钮。
+    Button,
+    /// 合盖（笔记本盖）。
+    Lid,
+    /// 电源菜单项（开始菜单电源键）。
+    Menu,
+}
+
+/// 全触发源动作矩阵：源 × (电池/插电) → 动作名。
+pub struct TriggerMatrix {
+    /// (源, 插电?, 动作名)。
+    rows: Vec<(TriggerSource, bool, &'static str)>,
+}
+
+impl TriggerMatrix {
+    pub fn new() -> TriggerMatrix {
+        TriggerMatrix { rows: Vec::new() }
+    }
+
+    /// 登记一格（同格重复登记覆盖——用户改配置即覆盖）。
+    pub fn set(&mut self, src: TriggerSource, on_ac: bool, action: &'static str) {
+        match self.rows.iter_mut().find(|(s, a, _)| *s == src && *a == on_ac) {
+            Some(slot) => slot.2 = action,
+            None => self.rows.push((src, on_ac, action)),
+        }
+    }
+
+    /// 解析：命中返回动作名；未配置返回 None（调用方显式处理——配置
+    /// 缺口显性化，不许猜）。
+    pub fn resolve(&self, src: TriggerSource, on_ac: bool) -> Option<&'static str> {
+        self.rows
+            .iter()
+            .find(|(s, a, _)| *s == src && *a == on_ac)
+            .map(|(_, _, act)| *act)
+    }
+
+    /// 矩阵完备审计：3 源 × 2 供电面 = 6 格全登记（缺口清单直出）。
+    pub fn completeness(&self) -> Vec<(TriggerSource, bool)> {
+        let mut missing = Vec::new();
+        for src in [TriggerSource::Button, TriggerSource::Lid, TriggerSource::Menu] {
+            for on_ac in [true, false] {
+                if self.resolve(src, on_ac).is_none() {
+                    missing.push((src, on_ac));
+                }
+            }
+        }
+        missing
+    }
+}
+
+impl Default for TriggerMatrix {
+    fn default() -> TriggerMatrix {
+        TriggerMatrix::new()
+    }
+}
+
+/// 后果预演面（红线纪律「先干跑列清单」在电源域的落法）：动作 → 将
+/// 发生的后果链清单（如「休眠」→ [内存保电、会话冻结、唤醒恢复会话]）
+/// 纯读不动任何状态；预演与动作必须一表同源（改动作必炸对账）。
+pub struct ConsequencePreview;
+
+impl ConsequencePreview {
+    /// 动作后果链表（唯一源——与 PowerAction 语义对齐）。
+    pub const CHAINS: [(&'static str, [&'static str; 3]); 4] = [
+        ("睡眠", ["屏幕熄灭", "内存保电", "唤醒即回（F319）"]),
+        ("休眠", ["内存落盘", "整机断电", "唤醒恢复会话"]),
+        ("关机", ["会话保存点", "按序停机", "下次开机走自检"]),
+        ("无操作", ["（无）", "（无）", "（无）"]),
+    ];
+
+    pub fn chain(action: &str) -> Option<&'static [&'static str; 3]> {
+        Self::CHAINS.iter().find(|(a, _)| *a == action).map(|(_, c)| c)
+    }
+
+    /// 预演面自证：每条链三步非空（「无操作」除外——显式占位）。
+    pub fn table_sane() -> bool {
+        Self::CHAINS
+            .iter()
+            .all(|(a, c)| *a == "无操作" || c.iter().all(|s| !s.is_empty()))
+    }
+}
+
+/// 长按进度账（4s 判定的用户面）：按住期间逐拍记账进度‰，松手即清；
+/// 进度到 1000‰ 才触发——进度条的数据源（有进度感而不是莫名卡住）。
+pub struct LongPressProgress {
+    held_ms: u64,
+    /// 触发留痕（完成次数——重复触发防抖）。
+    pub firings: u64,
+}
+
+impl LongPressProgress {
+    pub fn new() -> LongPressProgress {
+        LongPressProgress { held_ms: 0, firings: 0 }
+    }
+
+    /// 按住推进一拍（拍长任意——按真实毫秒累计）。
+    pub fn hold_tick(&mut self, delta_ms: u64) -> u32 {
+        if self.held_ms >= LONG_PRESS_MS {
+            return 1000;
+        }
+        self.held_ms += delta_ms;
+        let pct = (self.held_ms * 1000 / LONG_PRESS_MS) as u32;
+        if self.held_ms >= LONG_PRESS_MS {
+            self.firings += 1;
+        }
+        pct.min(1000)
+    }
+
+    /// 松手清零（半按不残留——状态机完整出口）。
+    pub fn release(&mut self) {
+        self.held_ms = 0;
+    }
+
+    pub fn progress(&self) -> u32 {
+        (self.held_ms * 1000 / LONG_PRESS_MS) as u32
+    }
+}
+
+impl Default for LongPressProgress {
+    fn default() -> LongPressProgress {
+        LongPressProgress::new()
+    }
+}
+
+/// 深化层三自检（矩阵 / 预演 / 长按进度）。
+pub fn run_pwbtn_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F318-deep3");
+
+    // 1. 三触发源矩阵：全格登记 + 完备审计零缺口。
+    let mut m = TriggerMatrix::new();
+    for (src, act) in [
+        (TriggerSource::Button, "睡眠"),
+        (TriggerSource::Lid, "睡眠"),
+        (TriggerSource::Menu, "关机"),
+    ] {
+        m.set(src, true, act);
+        m.set(src, false, act);
+    }
+    set.add(
+        "trigger matrix complete",
+        m.completeness().is_empty()
+            && m.resolve(TriggerSource::Button, true) == Some("睡眠")
+            && m.resolve(TriggerSource::Menu, false) == Some("关机"),
+        "",
+    );
+
+    // 2. 改配置即覆盖（同格重登记）。
+    m.set(TriggerSource::Lid, false, "休眠");
+    set.add(
+        "matrix overwrite semantics",
+        m.resolve(TriggerSource::Lid, false) == Some("休眠"),
+        "",
+    );
+
+    // 3. 配置缺口显性化：未登记格 resolve None + 缺口清单可直出。
+    let mut m2 = TriggerMatrix::new();
+    m2.set(TriggerSource::Button, true, "睡眠");
+    let gaps = m2.completeness();
+    set.add(
+        "missing cells explicit",
+        m2.resolve(TriggerSource::Lid, true).is_none() && gaps.len() == 5,
+        "",
+    );
+
+    // 4. 后果预演：四动作链全可查 + 表自证 + 纯读语义（查两次同结果）。
+    set.add(
+        "consequence preview sane",
+        ConsequencePreview::table_sane()
+            && ConsequencePreview::chain("睡眠").is_some()
+            && ConsequencePreview::chain("关机").map(|c| c[2].contains("自检")).unwrap_or(false)
+            && ConsequencePreview::chain("幽灵动作").is_none(),
+        "",
+    );
+
+    // 5. 长按进度：4s 分四拍逐拍到 1000‰、只触发一次、松手清零。
+    let mut lp = LongPressProgress::new();
+    let p = [lp.hold_tick(1000), lp.hold_tick(1000), lp.hold_tick(1000), lp.hold_tick(1000)];
+    set.add(
+        "long press progress to fire",
+        p == [250, 500, 750, 1000] && lp.firings == 1 && lp.hold_tick(500) == 1000
+            && lp.firings == 1,
+        "",
+    );
+    lp.release();
+    set.add("long press release clears", lp.progress() == 0, "");
+
+    // 6. 半按不触发：3.9s 松手 → 零触发。
+    let mut lp2 = LongPressProgress::new();
+    let _ = lp2.hold_tick(3900);
+    lp2.release();
+    set.add("long press sub-threshold no fire", lp2.firings == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn matrix_overwrite_not_duplicate() {
+        let mut m = TriggerMatrix::new();
+        m.set(TriggerSource::Button, true, "睡眠");
+        m.set(TriggerSource::Button, true, "休眠");
+        assert_eq!(m.resolve(TriggerSource::Button, true), Some("休眠"));
+        assert_eq!(m.completeness().len(), 5, "覆盖语义不产生重复格");
+    }
+
+    #[test]
+    fn progress_never_exceeds_1000() {
+        let mut lp = LongPressProgress::new();
+        for _ in 0..10 {
+            let _ = lp.hold_tick(2000);
+        }
+        assert_eq!(lp.firings, 1, "长按只触发一次（防抖）");
+        assert_eq!(lp.progress(), 1000);
+    }
+
+    #[test]
+    fn zero_tick_no_progress() {
+        let mut lp = LongPressProgress::new();
+        assert_eq!(lp.hold_tick(0), 0, "零拍不推进度");
+    }
+}

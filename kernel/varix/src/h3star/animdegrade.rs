@@ -1274,3 +1274,239 @@ mod deep3_tests {
         assert_eq!(g.cost.anim_frames, FRAME_COST_FULL.anim_frames / 2, "二级时长项砍半");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 帧步进模拟器 + 逐表面预算分配账 + 层级策略参数总表
+// ---------------------------------------------------------------------------
+
+/// 帧步进模拟器（F332「降级期间 fps 提升实测记录」的机制本体）：给定
+/// 工作负载（每帧名义成本）与预算（每帧可花 μs），按当班降级档折算
+/// 实际帧耗时，产出帧时序账——p95 超预算即掉帧，降级档生效后 p95
+/// 必须回到预算内。确定性纯计算（无随机源——同负载同输出）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Workload {
+    /// 每帧名义工作（μs）。
+    pub nominal_us: u64,
+    /// 帧预算（μs——60Hz = 16_666）。
+    pub budget_us: u64,
+}
+
+/// 一次模拟的帧时序账。
+pub struct FrameSim {
+    pub frame_us: Vec<u64>,
+}
+
+impl FrameSim {
+    /// 跑 N 帧：实际耗时 = 名义成本 × 折算系数（当班档的 FrameCost 总量
+    /// / 全效总量——成本模型直接驱动模拟，一处一事实）。帧耗时钳底 1μs
+    /// （折算‰ 与整除双重防零——帧耗时为零物理不成立）。
+    pub fn run(work: Workload, cost_ratio_permille: u32, frames: usize) -> FrameSim {
+        let scaled =
+            (work.nominal_us.max(1) * cost_ratio_permille.max(1) as u64 / 1000).max(1);
+        FrameSim { frame_us: alloc::vec![scaled; frames.max(1)] }
+    }
+
+    /// 帧时序 p95（hbase 最近邻口径）。
+    pub fn p95(&self) -> u64 {
+        let mut s = self.frame_us.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    /// 掉帧率‰（单帧超预算即掉）。
+    pub fn dropped_permille(&self, work: &Workload) -> u32 {
+        if self.frame_us.is_empty() {
+            return 0;
+        }
+        let dropped = self.frame_us.iter().filter(|&&t| t > work.budget_us).count();
+        (dropped * 1000 / self.frame_us.len()) as u32
+    }
+}
+
+/// 逐表面预算分配账（F331 分面跳过账的成本面深化）：降级档生效时，
+/// 合成预算按表面优先级切配额——指针面保额（F335 联动）、窗口/浮层
+/// 按权重分配，超配额的表面先降级。配额表唯一源。
+pub struct SurfaceBudgetBook {
+    /// (表面, 权重‰)——权重和必须 = 1000（checks 钉死）。
+    weights: Vec<(&'static str, u32)>,
+    /// 逐表面实发配额账（分配时留痕）。
+    pub grants: Vec<(&'static str, u64)>,
+}
+
+impl SurfaceBudgetBook {
+    /// 缺省权重表：指针 100‰（保额 10%——F335 指针优先平面语义）+
+    /// 窗口 550‰ + 浮层 250‰ + 装饰 100‰。
+    pub fn standard() -> SurfaceBudgetBook {
+        SurfaceBudgetBook {
+            weights: alloc::vec![("指针", 100), ("窗口", 550), ("浮层", 250), ("装饰", 100)],
+            grants: Vec::new(),
+        }
+    }
+
+    /// 权重表自证：和恰为 1000‰、无零权重表面。
+    pub fn weights_sane(&self) -> bool {
+        let total: u32 = self.weights.iter().map(|(_, w)| w).sum();
+        total == 1000 && self.weights.iter().all(|(_, w)| *w > 0)
+    }
+
+    /// 按总预算分配逐表面配额（整除余数给窗口——优先级面显式化）。
+    pub fn allocate(&mut self, budget_us: u64) -> &[(&'static str, u64)] {
+        self.grants.clear();
+        let mut used: u64 = 0;
+        for (i, (s, w)) in self.weights.iter().enumerate() {
+            let share = if i + 1 == self.weights.len() {
+                budget_us - used // 最后一个表面吃余数——总账不漏 μs。
+            } else {
+                budget_us * (*w as u64) / 1000
+            };
+            used += share;
+            self.grants.push((s, share));
+        }
+        &self.grants
+    }
+
+    /// 指针保额判据：指针配额 ≥ 总预算 × 10%（降级也不许饿死指针面）。
+    pub fn pointer_floor_held(&self, budget_us: u64) -> bool {
+        self.grants
+            .iter()
+            .find(|(s, _)| *s == "指针")
+            .map(|(_, g)| *g >= budget_us * 10 / 100)
+            .unwrap_or(false)
+    }
+
+    pub fn len(&self) -> usize {
+        self.weights.len()
+    }
+}
+
+/// 层级策略参数总表（F332 三级动作的机器可读唯一源——FrameGovernor
+/// 的 FrameCost 折算、TierActionLedger 的动作清单都从这张表读，改表
+/// 即改全域行为，无第二处魔数）。
+pub struct TierPolicyTable;
+
+impl TierPolicyTable {
+    /// (层级, 帧成本折算‰, 动作名)。
+    pub const POLICY: [(Tier, u32, &'static str); 4] = [
+        (Tier::None, 1000, "全效渲染"),
+        (Tier::Complexity, 660, "阴影节流+透明合并"),
+        (Tier::Duration, 460, "F124 时长砍半"),
+        (Tier::Suggest, 460, "性能模式建议条（并提）"),
+    ];
+
+    /// 层级 → 成本折算‰（表内查——表外层级不存在，编译期枚举保证）。
+    pub fn ratio_for(t: Tier) -> u32 {
+        Self::POLICY
+            .iter()
+            .find(|(tier, _, _)| *tier == t)
+            .map(|(_, r, _)| *r)
+            .unwrap_or(1000)
+    }
+
+    pub fn action_for(t: Tier) -> &'static str {
+        Self::POLICY
+            .iter()
+            .find(|(tier, _, _)| *tier == t)
+            .map(|(_, _, a)| *a)
+            .unwrap_or("全效渲染")
+    }
+
+    /// 折算单调性自证：层级越高折算越低（降级必须省事，不许倒挂）。
+    pub fn monotonic() -> bool {
+        Self::POLICY.windows(2).all(|w| w[0].1 >= w[1].1)
+    }
+}
+
+/// 深化层四自检（帧模拟 / 预算分配 / 策略总表）。
+pub fn run_animdegrade_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep4");
+
+    // 1. 帧模拟：过载负载（25ms 名义 > 16.6ms 预算）全效档掉帧率 1000‰；
+    //    一级折算（660‰）后 16.5ms 回预算内——降级改善 fps 的模拟直证。
+    let work = Workload { nominal_us: 25_000, budget_us: 16_666 };
+    let full = FrameSim::run(work, TierPolicyTable::ratio_for(Tier::None), 100);
+    let tier1 = FrameSim::run(work, TierPolicyTable::ratio_for(Tier::Complexity), 100);
+    set.add(
+        "frame sim degradation improves fps",
+        full.dropped_permille(&work) == 1000
+            && tier1.dropped_permille(&work) == 0
+            && tier1.p95() <= work.budget_us,
+        "",
+    );
+
+    // 2. 模拟确定性：同负载两跑同输出（无隐藏随机源）。
+    let a = FrameSim::run(work, 660, 50);
+    let b = FrameSim::run(work, 660, 50);
+    set.add("frame sim deterministic", a.frame_us == b.frame_us && a.p95() == b.p95(), "");
+
+    // 3. 逐表面预算分配：总账不漏（Σ配额 == 总预算）+ 权重表自证。
+    let mut book = SurfaceBudgetBook::standard();
+    set.add("weights sane", book.weights_sane() && book.len() == 4, "");
+    let grants = book.allocate(16_666);
+    let sum: u64 = grants.iter().map(|(_, g)| g).sum();
+    set.add("allocation sums to budget", sum == 16_666, "");
+
+    // 4. 指针保额（F335 联动）：降级分配下指针面仍 ≥10%。
+    set.add("pointer floor held", book.pointer_floor_held(16_666), "");
+
+    // 5. 策略总表：单调自证 + 表值抽查（None=1000‰ / Duration=460‰）。
+    set.add(
+        "tier policy monotonic and spot",
+        TierPolicyTable::monotonic()
+            && TierPolicyTable::ratio_for(Tier::None) == 1000
+            && TierPolicyTable::ratio_for(Tier::Duration) == 460
+            && TierPolicyTable::action_for(Tier::Suggest).contains("建议条"),
+        "",
+    );
+
+    // 6. 策略表驱动帧模拟：三级链逐级掉帧率不升（降级链有效性的机器证明）。
+    let ratios = [
+        TierPolicyTable::ratio_for(Tier::None),
+        TierPolicyTable::ratio_for(Tier::Complexity),
+        TierPolicyTable::ratio_for(Tier::Duration),
+    ];
+    let drops: Vec<u32> = ratios
+        .iter()
+        .map(|&r| FrameSim::run(work, r, 60).dropped_permille(&work))
+        .collect();
+    set.add(
+        "tier chain strictly improves",
+        drops[0] >= drops[1] && drops[1] >= drops[2] && drops[2] == 0,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn underload_never_drops() {
+        let work = Workload { nominal_us: 8_000, budget_us: 16_666 };
+        let sim = FrameSim::run(work, 1000, 30);
+        assert_eq!(sim.dropped_permille(&work), 0, "负载低于预算不掉帧");
+    }
+
+    #[test]
+    fn allocation_single_surface_gets_all() {
+        let mut book = SurfaceBudgetBook::standard();
+        let g = book.allocate(1000);
+        let pointer = g.iter().find(|(s, _)| *s == "指针").unwrap().1;
+        assert_eq!(pointer, 100, "指针 100‰ 保额精确");
+    }
+
+    #[test]
+    fn policy_table_covers_all_tiers() {
+        for t in [Tier::None, Tier::Complexity, Tier::Duration, Tier::Suggest] {
+            assert!(TierPolicyTable::ratio_for(t) > 0, "每层级都有折算——{:?}", t);
+        }
+    }
+
+    #[test]
+    fn frame_sim_never_zero_scale() {
+        let work = Workload { nominal_us: 100, budget_us: 16_666 };
+        let sim = FrameSim::run(work, 0, 5); // 非法折算被钳为 1‰。
+        assert!(sim.p95() > 0, "折算系数钳底防零除");
+    }
+}

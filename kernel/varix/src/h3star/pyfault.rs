@@ -880,3 +880,233 @@ mod deep3_tests {
         assert_eq!(vs, alloc::vec![String::from("")]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 声母×韵母合法性矩阵生成核 + 容错层命中统计账
+// ---------------------------------------------------------------------------
+
+/// 声母×韵母合法性矩阵（判据「三层容错用例各 5」的音节系本体）：从
+/// 声母表/韵母表程序化判定全部组合——不抄静态合法表（抄表会与音节系
+/// 漂移），规则即真相：零声母独韵、ü 转写（v）、j/q/x 不拼真 u、
+/// b/p/m/f 不接 ong 等正字法规则在判定核内显式成文。
+pub struct SyllableMatrix;
+
+impl SyllableMatrix {
+    /// 组合合法性判定（正字法核心规则，注释即规格）。
+    pub fn legal(initial: &str, final_: &str) -> bool {
+        // 规则 ①：零声母独韵（a/o/e/ai/ei/ao/ou/an/en/ang/eng/er）。
+        if initial.is_empty() {
+            return matches!(
+                final_,
+                "a" | "o" | "e" | "ai" | "ei" | "ao" | "ou" | "an" | "en" | "ang" | "eng" | "er"
+            );
+        }
+        // 规则 ②：v（ü 转写）韵母只接 l/n/j/q/x。
+        if final_.starts_with('v') {
+            return matches!(initial, "l" | "n" | "j" | "q" | "x");
+        }
+        // 规则 ③：j/q/x 不拼真 u 开头韵母（ju 类由 ü 转写走规则 ② 面）。
+        if matches!(initial, "j" | "q" | "x") && final_.starts_with('u') {
+            return false;
+        }
+        // 规则 ④：b/p/m/f 不接 ong（bong 非正字；dong/teng 合法）。
+        if matches!(initial, "b" | "p" | "m" | "f") && final_ == "ong" {
+            return false;
+        }
+        // 基线：声母表 × 韵母表内组合合法（特例已在上方显式拦截）。
+        ALL_FINALS.contains(&final_) && ALL_INITIALS.contains(&initial)
+    }
+
+    /// 全矩阵统计（零声母 + 23 声母 × 38 韵母）→ (总数, 合法数)——
+    /// 矩阵规模程序化自证（音节系不漂移的证据面）。
+    pub fn stats() -> (usize, usize) {
+        let mut total = 0usize;
+        let mut legal = 0usize;
+        for ini in core::iter::once("").chain(ALL_INITIALS.iter().copied()) {
+            for fin in ALL_FINALS.iter().copied() {
+                total += 1;
+                if Self::legal(ini, fin) {
+                    legal += 1;
+                }
+            }
+        }
+        (total, legal)
+    }
+
+    /// 音节串合法性（单音节或 ' 分隔的多音节——连写串的音节级切分
+    /// 属 imecore 组句面，本核只判显式边界）。
+    pub fn input_legal(input: &str) -> bool {
+        !input.is_empty()
+            && input.split('\'').all(|seg| {
+                let (ini, fin) = split_initial_final(seg);
+                Self::legal(ini, fin)
+            })
+    }
+}
+
+/// 音节切分：最长声母优先（zh/ch/sh 双字母优先于单字母）。
+fn split_initial_final(seg: &str) -> (&str, &str) {
+    for ini in ["zh", "ch", "sh"] {
+        if let Some(rest) = seg.strip_prefix(ini) {
+            return (ini, rest);
+        }
+    }
+    if seg.len() >= 2 && ALL_INITIALS.contains(&&seg[..1]) {
+        (&seg[..1], &seg[1..])
+    } else {
+        ("", seg)
+    }
+}
+
+/// 容错层命中统计账（判据「您是不是要找」的运营面）：逐查询记录命中
+/// 层分布——容错层命中率过高 = 词库覆盖不足的信号（改进清单直出）。
+#[derive(Default)]
+pub struct ToleranceStats {
+    /// (查询, 层名, 命中数)。
+    pub hits: Vec<(String, &'static str, u32)>,
+}
+
+impl ToleranceStats {
+    pub fn observe(&mut self, query: &str, layer: &'static str) {
+        match self.hits.iter_mut().find(|(q, l, _)| q == query && *l == layer) {
+            Some((_, _, n)) => *n += 1,
+            None => self.hits.push((String::from(query), layer, 1)),
+        }
+    }
+
+    /// 某查询的容错层占比‰（0 = 全精确层命中——健康面）。
+    pub fn tolerant_ratio(&self, query: &str) -> u32 {
+        let total: u32 =
+            self.hits.iter().filter(|(q, _, _)| q == query).map(|(_, _, n)| n).sum();
+        if total == 0 {
+            return 0;
+        }
+        let tol: u32 = self
+            .hits
+            .iter()
+            .filter(|(q, l, _)| q == query && *l == "容错")
+            .map(|(_, _, n)| n)
+            .sum();
+        tol * 1000 / total
+    }
+
+    /// 词库缺口事件：容错占比 ≥ 500‰（一半以上靠兜底）的查询清单。
+    pub fn dict_gap_queries(&self) -> Vec<&str> {
+        let mut qs: Vec<&str> = Vec::new();
+        for (q, _, _) in &self.hits {
+            if !qs.contains(&q.as_str()) && self.tolerant_ratio(q) >= 500 {
+                qs.push(q.as_str());
+            }
+        }
+        qs
+    }
+}
+
+/// 深化层四自检（音节矩阵 / 容错统计）。
+pub fn run_pyfault_deep4_checks() -> CheckSet {
+    use crate::h3star::pyfault::MatchLayer;
+    let mut set = CheckSet::new("F312-deep4");
+
+    // 1. 正字法规则逐条。
+    set.add(
+        "orthography rules",
+        !SyllableMatrix::legal("j", "ua")
+            && SyllableMatrix::legal("l", "v")
+            && SyllableMatrix::legal("n", "v")
+            && !SyllableMatrix::legal("b", "ong")
+            && SyllableMatrix::legal("d", "ong")
+            && SyllableMatrix::legal("", "ai")
+            && !SyllableMatrix::legal("", "uang"),
+        "",
+    );
+
+    // 2. 全矩阵统计：规模 24×38 = 912；合法子集有界（规则面真拦截——
+    //    矩阵不是橡皮图章）。
+    let (total, legal) = SyllableMatrix::stats();
+    set.add(
+        "matrix stats bounded",
+        total == 24 * 38 && legal > 200 && legal < total,
+        "",
+    );
+
+    // 3. 音节串合法性（' 分隔——连写切分属组句面）。
+    set.add(
+        "input legality",
+        SyllableMatrix::input_legal("ji'suan'qi")
+            && SyllableMatrix::input_legal("ji")
+            && SyllableMatrix::input_legal("xi'an")
+            && !SyllableMatrix::input_legal("bong")
+            && !SyllableMatrix::input_legal("xua"),
+        "",
+    );
+
+    // 4. 容错统计：占比 333‰；全容错 → 缺口事件直出。
+    let mut st = ToleranceStats::default();
+    st.observe("jisuanqi", "全拼");
+    st.observe("jisuanqi", "全拼");
+    st.observe("jisuanqi", "容错");
+    set.add("tolerance ratio", st.tolerant_ratio("jisuanqi") == 333, "");
+    let mut st2 = ToleranceStats::default();
+    st2.observe("zizhuxiazaic", "容错");
+    st2.observe("zizhuxiazaic", "容错");
+    st2.observe("zizhuxiazaic", "首字母");
+    set.add(
+        "dict gap surfaced",
+        st2.dict_gap_queries() == alloc::vec!["zizhuxiazaic"],
+        "",
+    );
+
+    // 5. 与匹配层联动：search 命中层名喂统计账（端到端——演示库全拼
+    //    层命中 → 容错占比 0‰，不误报缺口）。
+    let items = demo_items();
+    let mut st3 = ToleranceStats::default();
+    for h in search(&items, "jisuanq", true) {
+        let layer_name = match h.layer {
+            MatchLayer::NameExact => "名精确",
+            MatchLayer::NamePrefix => "名前缀",
+            MatchLayer::PinyinFull => "全拼",
+            MatchLayer::PinyinInitial => "首字母",
+            MatchLayer::Tolerant => "容错",
+        };
+        st3.observe("jisuanq", layer_name);
+    }
+    set.add(
+        "stats fed from search end to end",
+        st3.tolerant_ratio("jisuanq") == 0 && st3.dict_gap_queries().is_empty(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn double_initials_take_priority() {
+        // zhang: zh 声母 + ang 韵母（不是 z + hang）。
+        let (ini, fin) = split_initial_final("zhang");
+        assert_eq!((ini, fin), ("zh", "ang"));
+    }
+
+    #[test]
+    fn v_final_requires_yu_group() {
+        // v 韵母：b/p/m/f/d/t 不接（正字法——没有 bv/tv 音节）。
+        assert!(!SyllableMatrix::legal("b", "v"));
+        assert!(!SyllableMatrix::legal("t", "v"));
+        assert!(SyllableMatrix::legal("x", "v"));
+    }
+
+    #[test]
+    fn empty_input_illegal() {
+        assert!(!SyllableMatrix::input_legal(""), "空输入不构成合法音节串");
+    }
+
+    #[test]
+    fn stats_query_unknown_is_zero() {
+        let st = ToleranceStats::default();
+        assert_eq!(st.tolerant_ratio("没查过"), 0);
+        assert!(st.dict_gap_queries().is_empty());
+    }
+}

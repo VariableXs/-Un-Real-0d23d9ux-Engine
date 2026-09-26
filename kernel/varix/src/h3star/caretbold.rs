@@ -240,3 +240,140 @@ mod tests {
         assert_eq!(CARET_WIDTHS_PX, [1, 2, 3, 4]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 参数协调器（单一定义点 + 职责分离审计）+ 预览联动深化
+// ---------------------------------------------------------------------------
+
+/// 参数协调器（判据「与 F223/F156 参数不冲突（单一定义点审计）」的
+/// 机器面）：加粗域只拥有插入符宽度与指针缩放两轴——形状归 F156、
+/// 闪烁节奏归 F223，本协调器对越权登记显式拒绝（职责分离的结构面）。
+pub struct ParamCoordination {
+    params: CursorParams,
+    /// 越权登记留痕（F156/F223 域的参数试图在此改 → 拒绝并记账）。
+    pub rejected_foreign: Vec<&'static str>,
+}
+
+impl ParamCoordination {
+    pub fn new() -> ParamCoordination {
+        ParamCoordination { params: CursorParams::default_params(), rejected_foreign: Vec::new() }
+    }
+
+    /// 本域两轴的合法写入口（走 CursorParams 档位校验）。
+    pub fn set(&mut self, axis: &str, value: u32) -> bool {
+        match axis {
+            "caret_px" => self.params.set_caret(value),
+            "pointer_permille" => self.params.set_pointer(value),
+            _ => {
+                self.rejected_foreign.push(match axis {
+                    "blink_rate" => "F223 闪烁节奏",
+                    "pointer_shape" => "F156 指针形状",
+                    _ => "未知轴",
+                });
+                false
+            }
+        }
+    }
+
+    pub fn params(&self) -> &CursorParams {
+        &self.params
+    }
+
+    /// 单一定义点自证：本域可写轴恰为两轴（写面枚举——多一轴即越权）。
+    pub const OWNED_AXES: [&'static str; 2] = ["caret_px", "pointer_permille"];
+}
+
+impl Default for ParamCoordination {
+    fn default() -> ParamCoordination {
+        ParamCoordination::new()
+    }
+}
+
+/// 预览联动账（判据「即时预览联动」的深化面）：参数变更 → 预览事件
+/// （变更前值/后值/时点）可回放；预览不落盘（未确认的改动不写持久
+/// 面——预览只是看）。
+#[derive(Default)]
+pub struct PreviewTrail {
+    pub events: Vec<(u64, &'static str, u32, u32)>, // (ms, 轴, 前, 后)
+    pub committed: usize,
+}
+
+impl PreviewTrail {
+    pub fn observe(&mut self, at_ms: u64, axis: &'static str, before: u32, after: u32) {
+        if before != after {
+            self.events.push((at_ms, axis, before, after));
+        }
+    }
+
+    /// 确认提交：本轮预览事件数入提交账 + 事件清空（提交后无悬置预览）。
+    pub fn commit(&mut self) -> usize {
+        let n = self.events.len();
+        self.committed += n;
+        self.events.clear();
+        n
+    }
+
+    /// 回放（时间序）。
+    pub fn replay(&self) -> &[(u64, &'static str, u32, u32)] {
+        &self.events
+    }
+}
+
+/// 深化层二自检（协调器 / 预览联动）。
+pub fn run_caretbold_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F348-deep2");
+
+    // 1. 本域两轴可写：插入符四档、指针缩放。
+    let mut c = ParamCoordination::new();
+    let ok_caret = c.set("caret_px", 3);
+    let ok_ptr = c.set("pointer_permille", 2000);
+    set.add(
+        "owned axes writable",
+        ok_caret && ok_ptr && c.params().caret_px == 3 && c.params().pointer_permille == 2000,
+        "",
+    );
+
+    // 2. 越权拒绝：F223/F156 域参数在此改被拒 + 留痕点名。
+    let r1 = c.set("blink_rate", 1060);
+    let r2 = c.set("pointer_shape", 2);
+    set.add(
+        "foreign axes rejected and named",
+        !r1 && !r2 && c.rejected_foreign == alloc::vec!["F223 闪烁节奏", "F156 指针形状"],
+        "",
+    );
+
+    // 3. 未知轴拒绝（白名单外不猜）。
+    set.add("unknown axis rejected", !c.set("颜色", 1), "");
+
+    // 4. 预览联动：变更留痕（前→后）、无变化不记（零噪音）、提交清空。
+    let mut t = PreviewTrail::default();
+    t.observe(0, "caret_px", 1, 3);
+    t.observe(10, "caret_px", 3, 3); // 无变化——不记。
+    t.observe(20, "pointer_permille", 1000, 2000);
+    set.add(
+        "preview trail change-only",
+        t.replay().len() == 2 && t.replay()[0].3 == 3,
+        "",
+    );
+    let n = t.commit();
+    set.add("preview commit clears", n == 2 && t.replay().is_empty() && t.committed == 2, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn illegal_caret_still_rejected() {
+        let mut c = ParamCoordination::new();
+        assert!(!c.set("caret_px", 5), "越出四档照旧拒绝——协调器不放宽基线校验");
+    }
+
+    #[test]
+    fn preview_initial_state_no_events() {
+        let t = PreviewTrail::default();
+        assert!(t.replay().is_empty() && t.committed == 0);
+    }
+}

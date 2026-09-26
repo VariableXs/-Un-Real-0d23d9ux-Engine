@@ -292,3 +292,185 @@ mod tests {
         assert_eq!(audit(&reg, &BadgeLedger::new()).instant_ratio_permille, 900);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 延迟项徽标覆盖审计 + pending 应用队列（重启前可反悔）
+// ---------------------------------------------------------------------------
+
+/// 延迟项徽标覆盖审计（「重启后生效」徽标五处齐判据的机器面）：每个
+/// 延迟生效条目的例外类别必须在徽标账有登记——缺口清单直出（哪一项
+/// 没挂徽标），不许静默漏挂。
+pub struct BadgeCoverage;
+
+impl BadgeCoverage {
+    /// 条目例外类别（延迟条目 → DeferredKind）。
+    fn kind_of(item: &SettingItem) -> Option<DeferredKind> {
+        match item.effect {
+            EffectKind::Deferred(k) => Some(k),
+            EffectKind::Instant => None,
+        }
+    }
+
+    /// 审计：返回缺徽标的延迟条目名清单（空 = 五处齐）。
+    pub fn missing_badges(reg: &SettingRegistry, badges: &BadgeLedger) -> Vec<&'static str> {
+        reg.items()
+            .iter()
+            .filter_map(|i| Self::kind_of(i).map(|k| (i.name, k)))
+            .filter(|(_, k)| badges.badge_of(*k).is_none())
+            .map(|(name, _)| name)
+            .collect()
+    }
+
+    /// 覆盖率‰（延迟条目口径——分母只数延迟项）。
+    pub fn coverage_permille(reg: &SettingRegistry, badges: &BadgeLedger) -> u32 {
+        let deferred: Vec<Option<DeferredKind>> =
+            reg.items().iter().map(|i| Self::kind_of(i)).collect();
+        let kinds: Vec<DeferredKind> = deferred.into_iter().flatten().collect();
+        if kinds.is_empty() {
+            return 1000;
+        }
+        let covered = kinds.iter().filter(|k| badges.badge_of(**k).is_some()).count();
+        (covered * 1000 / kinds.len()) as u32
+    }
+}
+
+/// pending 应用队列（延迟生效项的改动先进 pending——重启时统一落
+/// 地；用户可「立即应用」（触发重启流程）或「放弃」（零残留回滚——
+/// 改了又后悔不留半截状态））。
+#[derive(Default)]
+pub struct ApplyPendingQueue {
+    /// (条目名, 期望值)。
+    pub pending: Vec<(&'static str, i64)>,
+    /// 反悔留痕（放弃的条目——异常显性化）。
+    pub discarded: Vec<&'static str>,
+    /// 落地留痕（随重启应用的条目）。
+    pub applied: Vec<&'static str>,
+}
+
+impl ApplyPendingQueue {
+    /// 延迟条目改值 → 入 pending（唯一入口——即时条目不进这里）。
+    pub fn enqueue(&mut self, name: &'static str, value: i64) -> bool {
+        if self.pending.iter().any(|(n, _)| *n == name) {
+            match self.pending.iter_mut().find(|(n, _)| *n == name) {
+                Some(slot) => slot.1 = value,
+                None => return false,
+            }
+        } else {
+            self.pending.push((name, value));
+        }
+        true
+    }
+
+    /// 放弃：清 pending + 留痕（条目值回滚由登记表 restore 承担）。
+    pub fn discard_all(&mut self) -> usize {
+        let n = self.pending.len();
+        self.discarded.extend(self.pending.drain(..).map(|(name, _)| name));
+        n
+    }
+
+    /// 随重启落地：pending → applied（重启流程的模拟面）。
+    pub fn apply_on_reboot(&mut self) -> usize {
+        let n = self.pending.len();
+        self.applied.extend(self.pending.drain(..).map(|(name, _)| name));
+        n
+    }
+
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+}
+
+/// 深化层二自检（徽标覆盖 / pending 队列）。
+pub fn run_instantfx_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F303-deep2");
+
+    // 布景：一即时 + 两延迟（一挂徽标一漏挂）。
+    let mut reg = SettingRegistry::new();
+    let _ = reg.add_item(SettingItem {
+        name: "音量",
+        page: "系统/声音",
+        synonyms: &["声音大小", "volume", "响度"],
+        effect: EffectKind::Instant,
+        default: 50,
+        value: 50,
+        control: ControlKind::Slider,
+    });
+    let _ = reg.add_item(SettingItem {
+        name: "缩放",
+        page: "系统/显示",
+        synonyms: &["显示缩放", "dpi", "缩放比"],
+        effect: EffectKind::Deferred(DeferredKind::Scaling),
+        default: 100,
+        value: 100,
+        control: ControlKind::Dropdown,
+    });
+    let _ = reg.add_item(SettingItem {
+        name: "分辨率",
+        page: "系统/显示",
+        synonyms: &["屏幕分辨率", "resolution", "清晰度"],
+        effect: EffectKind::Deferred(DeferredKind::Resolution),
+        default: 0,
+        value: 0,
+        control: ControlKind::Dropdown,
+    });
+    let mut badges = BadgeLedger::new();
+    let _ = badges.register(DeferredKind::Scaling);
+
+    // 1. 缺口直出：分辨率漏挂徽标被点名。
+    let missing = BadgeCoverage::missing_badges(&reg, &badges);
+    set.add("badge gap surfaced", missing == alloc::vec!["分辨率"], "");
+
+    // 2. 覆盖率 500‰（两延迟项挂一）→ 补挂后 1000‰。
+    set.add("coverage permille", BadgeCoverage::coverage_permille(&reg, &badges) == 500, "");
+    let _ = badges.register(DeferredKind::Resolution);
+    set.add(
+        "coverage full after fix",
+        BadgeCoverage::coverage_permille(&reg, &badges) == 1000
+            && BadgeCoverage::missing_badges(&reg, &badges).is_empty(),
+        "",
+    );
+
+    // 3. pending 队列：改延迟项入队（同条目覆盖不重复）→ 随重启落地。
+    let mut q = ApplyPendingQueue::default();
+    let _ = q.enqueue("缩放", 150);
+    let _ = q.enqueue("缩放", 200);
+    set.add(
+        "pending enqueue overwrite",
+        q.pending_len() == 1 && q.pending[0].1 == 200,
+        "",
+    );
+    set.add("apply on reboot", q.apply_on_reboot() == 1 && q.pending_len() == 0, "");
+
+    // 4. 反悔路径：放弃零残留 + 留痕。
+    let mut q2 = ApplyPendingQueue::default();
+    let _ = q2.enqueue("分辨率", 1);
+    let n = q2.discard_all();
+    set.add(
+        "discard leaves no residue",
+        n == 1 && q2.pending_len() == 0 && q2.discarded == alloc::vec!["分辨率"],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn coverage_no_deferred_is_trivially_full() {
+        let reg = SettingRegistry::new();
+        let badges = BadgeLedger::new();
+        assert_eq!(BadgeCoverage::coverage_permille(&reg, &badges), 1000);
+    }
+
+    #[test]
+    fn discard_then_reenqueue_works() {
+        let mut q = ApplyPendingQueue::default();
+        let _ = q.enqueue("语言", 2);
+        let _ = q.discard_all();
+        assert!(q.enqueue("语言", 3), "放弃后可重新入队");
+        assert_eq!(q.pending[0].1, 3);
+    }
+}

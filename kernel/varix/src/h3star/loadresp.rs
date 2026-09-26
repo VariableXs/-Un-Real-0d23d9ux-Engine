@@ -513,3 +513,126 @@ mod deep2_tests {
         assert_eq!(g, Some(Prio::ForegroundInput));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 负载分级策略矩阵 + 指针延迟账（满载直通的数据面）
+// ---------------------------------------------------------------------------
+
+/// 负载分级策略矩阵（判据「五级优先级注入测试」的策略面）：后台负载
+/// 五级 → 前台保响应策略（指针直通阈值 μs + 后台让路 ‰）。逐级策略
+/// 表唯一源；矩阵单调自证钉死不倒挂。
+pub struct DegradeMatrix;
+
+impl DegradeMatrix {
+    /// (负载级 1-5, 指针直通阈值 μs, 后台让路 ‰)。
+    pub const POLICY: [(u32, u64, u32); 5] = [
+        (1, 16000, 0),
+        (2, 14000, 100),
+        (3, 12000, 300),
+        (4, 10000, 500),
+        (5, 8000, 700),
+    ];
+
+    pub fn for_level(level: u32) -> (u64, u32) {
+        let lv = level.clamp(1, 5);
+        let row = Self::POLICY.iter().find(|(l, _, _)| *l == lv).unwrap();
+        (row.1, row.2)
+    }
+
+    /// 矩阵自证：负载越高让路越多、直通阈值越紧（策略不倒挂）。
+    pub fn monotonic() -> bool {
+        Self::POLICY.windows(2).all(|w| w[1].0 > w[0].0 && w[0].2 <= w[1].2 && w[0].1 >= w[1].1)
+    }
+}
+
+/// 指针延迟账（F335「满载下指针延迟 <16ms」的数据面）：逐事件记录
+/// (时刻, 延迟 μs)，p95 判定——注入 1000Hz 事件流口径。
+#[derive(Default)]
+pub struct PointerLatencyBook {
+    pub events: Vec<(u64, u64)>,
+}
+
+impl PointerLatencyBook {
+    pub fn observe(&mut self, at_ms: u64, latency_us: u64) {
+        self.events.push((at_ms, latency_us));
+    }
+
+    /// p95（μs，最近邻口径）。
+    pub fn p95_us(&self) -> u64 {
+        let mut s: Vec<u64> = self.events.iter().map(|(_, l)| *l).collect();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    /// 判定：p95 < 16ms 判线；空账不虚报达标。
+    pub fn within_plane_budget(&self) -> bool {
+        !self.events.is_empty() && self.p95_us() < 16_000
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+}
+
+/// 深化层三自检（策略矩阵 / 指针延迟账）。
+pub fn run_loadresp_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F334-335-deep3");
+
+    // 1. 策略矩阵单调自证 + 端点抽查（1 级不让路 / 5 级让路 700‰）。
+    set.add(
+        "degrade matrix monotonic",
+        DegradeMatrix::monotonic()
+            && DegradeMatrix::for_level(1) == (16000, 0)
+            && DegradeMatrix::for_level(5) == (8000, 700),
+        "",
+    );
+
+    // 2. 越界级钳制（0 与 9 都落在合法档——不崩溃不猜）。
+    set.add(
+        "level clamped",
+        DegradeMatrix::for_level(0) == DegradeMatrix::for_level(1)
+            && DegradeMatrix::for_level(9) == DegradeMatrix::for_level(5),
+        "",
+    );
+
+    // 3. 指针延迟账：满载注入事件流 p95 判定绿；超标注入判红。
+    let mut book = PointerLatencyBook::default();
+    for i in 0..100u64 {
+        book.observe(i, 9_000 + (i % 5) * 100); // 9.0-9.4ms。
+    }
+    set.add(
+        "pointer latency within plane budget",
+        book.len() == 100 && book.within_plane_budget(),
+        "",
+    );
+    let mut bad = PointerLatencyBook::default();
+    for i in 0..100u64 {
+        bad.observe(i, 17_000 + (i % 3) * 100);
+    }
+    set.add("pointer latency flags overrun", !bad.within_plane_budget(), "");
+
+    // 4. 空账不虚报达标（诚实失败面）。
+    let empty = PointerLatencyBook::default();
+    set.add("empty book not claimed green", !empty.within_plane_budget(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn mid_level_policy_sane() {
+        assert_eq!(DegradeMatrix::for_level(3), (12000, 300));
+    }
+
+    #[test]
+    fn latency_book_p95_nearest() {
+        let mut b = PointerLatencyBook::default();
+        for i in 1..=100u64 {
+            b.observe(i, i * 100);
+        }
+        assert_eq!(b.p95_us(), 9500);
+    }
+}

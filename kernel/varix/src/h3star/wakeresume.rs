@@ -565,3 +565,162 @@ mod deep_tests {
         assert_eq!(b.mean(), Some(1500));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 唤醒分级启动时序账 + 全链 <2s 采样判定
+// ---------------------------------------------------------------------------
+
+/// 唤醒分级启动时序账（判据「分级启动时序」+「全链 <2s 实测（10 次
+/// 采样）」的机制面）：唤醒后按级启动——输入面先活（键鼠立即可用）、
+/// 渲染次之、后台服务最后；逐级记账 (级序, 起始 ms, 完成 ms, 跳过?)；
+/// 级内超时 → 降级跳过并留痕（单级故障不拖死全链）。
+pub struct ResumeStageBook {
+    /// 级名（启动顺序即数组序）。
+    pub stages: [&'static str; 3],
+    /// 账：(级序, 起始 ms, 完成 ms, 跳过?)。
+    pub ledger: Vec<(usize, u64, u64, bool)>,
+    /// 单级超时判线（ms）。
+    pub stage_timeout_ms: u64,
+}
+
+impl ResumeStageBook {
+    pub fn new() -> ResumeStageBook {
+        ResumeStageBook {
+            stages: ["输入面", "渲染面", "后台服务"],
+            ledger: Vec::new(),
+            // 单级超时判线 1500ms：全链 <2s 的约束下，单级正字预算为
+            // 「输入 200 / 渲染 600 / 后台 900」，判线取 1.5×最宽正字级
+            // ——紧到能拦卡死、松到不误杀正常唤醒（900ms 后台级合法）。
+            stage_timeout_ms: 1500,
+        }
+    }
+
+    /// 记一帧唤醒时序：逐级推进，超时级降级跳过（留痕），返回全链耗时。
+    pub fn wake_trace(&mut self, durations_ms: [u64; 3]) -> u64 {
+        self.ledger.clear();
+        let mut t = 0u64;
+        for (i, &d) in durations_ms.iter().enumerate() {
+            let skipped = d > self.stage_timeout_ms;
+            let effective = if skipped { 0 } else { d };
+            self.ledger.push((i, t, t + effective, skipped));
+            t += effective;
+        }
+        t
+    }
+
+    /// 跳过级清单（留痕面——哪些级被降级）。
+    pub fn skipped_stages(&self) -> Vec<&'static str> {
+        self.ledger
+            .iter()
+            .filter(|(_, _, _, sk)| *sk)
+            .map(|(i, _, _, _)| self.stages[*i])
+            .collect()
+    }
+
+    /// 输入面先活判据：首级未跳过且完成点不晚于次级。
+    pub fn input_first(&self) -> bool {
+        match (self.ledger.first(), self.ledger.get(1)) {
+            (Some((_, _, f0, false)), Some((_, _, f1, _))) => f0 <= f1,
+            _ => false,
+        }
+    }
+}
+
+impl Default for ResumeStageBook {
+    fn default() -> ResumeStageBook {
+        ResumeStageBook::new()
+    }
+}
+
+/// 唤醒全链采样判定（<2s × 10 次采样的统计面）：逐次全链耗时入账 →
+/// p95 判定（最近邻口径——与域内其他判线同源）。
+#[derive(Default)]
+pub struct WakeChainSampler {
+    pub samples: Vec<u64>,
+}
+
+impl WakeChainSampler {
+    pub const LIMIT_MS: u64 = 2000;
+    pub const SAMPLES: usize = 10;
+
+    pub fn observe(&mut self, chain_ms: u64) {
+        self.samples.push(chain_ms);
+    }
+
+    /// p95 判定（样本满 10 次才判——不足不虚报）。
+    pub fn within_limit(&self) -> bool {
+        if self.samples.len() < Self::SAMPLES {
+            return false;
+        }
+        let mut s = self.samples.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950) <= Self::LIMIT_MS
+    }
+}
+
+/// 深化层二自检（分级时序 / 全链采样）。
+pub fn run_wakeresume_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F319-deep2");
+
+    // 1. 分级时序：三级顺序记账（输入面先活）。
+    let mut bk = ResumeStageBook::new();
+    let total = bk.wake_trace([200, 600, 900]);
+    set.add(
+        "stages ordered input first",
+        bk.input_first() && total == 1700 && bk.ledger.len() == 3,
+        "",
+    );
+
+    // 2. 超时降级：渲染面超时被跳过、留痕、全链不被拖死。
+    let mut bk2 = ResumeStageBook::new();
+    let total2 = bk2.wake_trace([200, 2000, 900]);
+    set.add(
+        "stage timeout skipped with trail",
+        total2 == 1100
+            && bk2.skipped_stages() == alloc::vec!["渲染面"]
+            && bk2.ledger[1].3,
+        "",
+    );
+
+    // 3. 全链 <2s：10 次全绿采样 p95 判定绿；添两次劣化判红（10 样本
+    //    下 1 个劣化点即落在 p95 位——诚实口径：不存在「一次劣化仍绿」）。
+    let mut s = WakeChainSampler::default();
+    for _ in 0..10 {
+        s.observe(1700);
+    }
+    let green = s.within_limit();
+    s.observe(2100);
+    s.observe(2100);
+    set.add("wake chain p95 gate", green && !s.within_limit(), "");
+
+    // 4. 样本不足不虚报（诚实失败面）。
+    let mut s2 = WakeChainSampler::default();
+    for _ in 0..5 {
+        s2.observe(100);
+    }
+    set.add("undersampled not claimed green", !s2.within_limit(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn all_stages_fast_total_equals_sum() {
+        let mut bk = ResumeStageBook::new();
+        let t = bk.wake_trace([100, 200, 300]);
+        assert_eq!(t, 600);
+        assert!(bk.skipped_stages().is_empty());
+    }
+
+    #[test]
+    fn sampler_exact_limit_passes() {
+        let mut s = WakeChainSampler::default();
+        for _ in 0..10 {
+            s.observe(2000);
+        }
+        assert!(s.within_limit(), "恰在 2s 判线上算达标（≤）");
+    }
+}

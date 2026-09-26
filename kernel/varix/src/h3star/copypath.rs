@@ -949,3 +949,282 @@ mod deep3_tests {
         assert_eq!(EscapeMatrix::escape_of('"', TerminalFlavor::Posix), Some("\\\""));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 环境变量展开双味规则 + 终端形制能力档案 + 粘贴清洗器 + 多文件拖入
+// ---------------------------------------------------------------------------
+
+/// 环境变量展开（命令行互通的语境面）：同一字符串两味各自展开规则——
+/// CMD `%VAR%`、POSIX `$VAR`（花括号可选）。展开只作用于登记白名单内
+/// 的变量（外部语境不可信——未登记变量原样保留并留痕，绝不猜）。
+pub struct EnvExpander {
+    /// 登记变量表（互通语境冻结接口——只有这里的变量可展开）。
+    pub vars: Vec<(String, String)>,
+    /// 未展开留痕（原样保留的变量名——异常显性化）。
+    pub unexpanded: Vec<String>,
+}
+
+impl EnvExpander {
+    pub fn new() -> EnvExpander {
+        EnvExpander { vars: Vec::new(), unexpanded: Vec::new() }
+    }
+
+    pub fn register(&mut self, name: &str, value: &str) {
+        match self.vars.iter_mut().find(|(n, _)| n == name) {
+            Some(slot) => slot.1 = String::from(value),
+            None => self.vars.push((String::from(name), String::from(value))),
+        }
+    }
+
+    /// CMD 味展开：`%NAME%` → 值；未登记原样保留 + 留痕。
+    pub fn expand_cmd(&mut self, input: &str) -> String {
+        self.expand_generic(input, '%', '%')
+    }
+
+    /// POSIX 味展开：`$NAME` 或 `${NAME}` → 值；未登记原样保留 + 留痕。
+    pub fn expand_posix(&mut self, input: &str) -> String {
+        let mut out = String::new();
+        let bytes: Vec<char> = input.chars().collect();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == '$' && i + 1 < bytes.len() {
+                let (name, next) = if bytes[i + 1] == '{' {
+                    // ${NAME} 花括号形。
+                    match bytes[i + 2..].iter().position(|&c| c == '}') {
+                        Some(end) => (
+                            bytes[i + 2..i + 2 + end].iter().collect::<String>(),
+                            i + 2 + end + 1,
+                        ),
+                        None => (String::new(), i + 2),
+                    }
+                } else {
+                    // $NAME 裸形：连续字母数字下划线。
+                    let end = bytes[i + 1..]
+                        .iter()
+                        .position(|c| !(c.is_alphanumeric() || *c == '_'))
+                        .map(|p| i + 1 + p)
+                        .unwrap_or(bytes.len());
+                    (bytes[i + 1..end].iter().collect::<String>(), end)
+                };
+                if !name.is_empty() {
+                    if let Some((_, v)) = self.vars.iter().find(|(n, _)| *n == name) {
+                        out.push_str(v);
+                        i = next;
+                        continue;
+                    }
+                    self.unexpanded.push(name);
+                }
+            }
+            out.push(bytes[i]);
+            i += 1;
+        }
+        out
+    }
+
+    fn expand_generic(&mut self, input: &str, open: char, close: char) -> String {
+        let chars: Vec<char> = input.chars().collect();
+        let mut out = String::new();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == open {
+                if let Some(end) = chars[i + 1..].iter().position(|&c| c == close) {
+                    let name: String = chars[i + 1..i + 1 + end].iter().collect();
+                    if let Some((_, v)) = self.vars.iter().find(|(n, _)| *n == name) {
+                        out.push_str(v);
+                        i += end + 2;
+                        continue;
+                    }
+                    self.unexpanded.push(name);
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    pub fn unexpanded_len(&self) -> usize {
+        self.unexpanded.len()
+    }
+}
+
+impl Default for EnvExpander {
+    fn default() -> EnvExpander {
+        EnvExpander::new()
+    }
+}
+
+/// 终端形制能力档案（互通目标端的冻结接口描述——派发前先查档案，
+/// 不许对着能力未知的终端猜语义）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalProfile {
+    /// 档案名。
+    pub name: &'static str,
+    /// 路径风格。
+    pub flavor: TerminalFlavor,
+    /// 支持 VT 序列（彩色提示等）。
+    pub vt: bool,
+    /// 支持文件拖入（不支持 → 降级为粘贴路径文本）。
+    pub drag_in: bool,
+}
+
+/// 已知终端档案表（唯一源——新终端入表走登记）。
+pub const TERMINAL_PROFILES: [TerminalProfile; 3] = [
+    TerminalProfile { name: "Varix 终端", flavor: TerminalFlavor::Posix, vt: true, drag_in: true },
+    TerminalProfile { name: "CMD 兼容面", flavor: TerminalFlavor::Cmd, vt: false, drag_in: true },
+    TerminalProfile { name: "瘦客户端", flavor: TerminalFlavor::Cmd, vt: false, drag_in: false },
+];
+
+/// 按档案名查能力（未知档案 None——调用方显式降级，不猜）。
+pub fn profile_of(name: &str) -> Option<TerminalProfile> {
+    TERMINAL_PROFILES.iter().find(|p| p.name == name).copied()
+}
+
+/// 粘贴清洗器（安全纪律：粘贴进终端的内容不可信——控制字符剔除 +
+/// 换行拆分防护（多行粘入 = 逐行确认或整体拒绝，防止夹带第二命令）+
+/// 长度上限）。
+pub struct PasteSanitizer;
+
+/// 清洗结论。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sanitized {
+    pub ok: bool,
+    pub text: String,
+    /// 剔除的控制字符数（留痕——发生了什么对人话）。
+    pub stripped: usize,
+    /// 是否因多行被拒（下一步怎么办：拆行逐条粘）。
+    pub multiline_rejected: bool,
+}
+
+impl PasteSanitizer {
+    /// 长度上限（单次粘入 4KB——防误粘大文本卡终端）。
+    pub const MAX_LEN: usize = 4096;
+
+    pub fn clean(input: &str) -> Sanitized {
+        if input.len() > Self::MAX_LEN {
+            return Sanitized { ok: false, text: String::new(), stripped: 0, multiline_rejected: false };
+        }
+        let multiline = input.contains('\n');
+        if multiline {
+            return Sanitized { ok: false, text: String::new(), stripped: 0, multiline_rejected: true };
+        }
+        let mut text = String::with_capacity(input.len());
+        let mut stripped = 0usize;
+        for c in input.chars() {
+            if c.is_control() {
+                stripped += 1;
+            } else {
+                text.push(c);
+            }
+        }
+        Sanitized { ok: true, text, stripped, multiline_rejected: false }
+    }
+}
+
+/// 多文件拖入（拖拽协议互通的命令行面）：N 个路径 → 一条引号包裹的
+/// 参数序列（逐个按味引号 + 空格分隔——终端收到的 argv 语义）。
+pub fn drag_multi(flavor: TerminalFlavor, paths: &[&str]) -> String {
+    paths
+        .iter()
+        .map(|p| quote_for(p, flavor))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// 深化层四自检（环境展开 / 终端档案 / 粘贴清洗 / 多文件拖入）。
+pub fn run_copypath_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep4");
+
+    // 1. 环境展开 CMD 味：登记变量展开、未登记原样保留 + 留痕。
+    let mut env = EnvExpander::new();
+    env.register("USERPROFILE", "C:/Users/varia");
+    let out = env.expand_cmd("%USERPROFILE%/文档");
+    set.add(
+        "cmd env expansion",
+        out == "C:/Users/varia/文档" && env.unexpanded_len() == 0,
+        "",
+    );
+    let out2 = env.expand_cmd("%GHOSTVAR%/x");
+    set.add(
+        "cmd unexpanded kept and logged",
+        out2 == "%GHOSTVAR%/x" && env.unexpanded_len() == 1,
+        "",
+    );
+
+    // 2. POSIX 味：$NAME 与 ${NAME} 双形 + 未登记留痕。
+    let mut env2 = EnvExpander::new();
+    env2.register("HOME", "/home/varia");
+    let a = env2.expand_posix("$HOME/Downloads");
+    let b = env2.expand_posix("${HOME}/dl");
+    let c = env2.expand_posix("$NADA");
+    set.add(
+        "posix env both forms",
+        a == "/home/varia/Downloads" && b == "/home/varia/dl" && c == "$NADA"
+            && env2.unexpanded_len() == 1,
+        "",
+    );
+
+    // 3. 终端档案：查表 + 未知档案诚实 None + 派发按档案选味。
+    let known = profile_of("Varix 终端");
+    let unknown = profile_of("不存在的终端");
+    set.add(
+        "terminal profiles",
+        known == Some(TERMINAL_PROFILES[0]) && unknown.is_none(),
+        "",
+    );
+
+    // 4. 粘贴清洗：控制字符剔除留痕 + 多行拒绝（防夹带命令）+ 超长拒绝。
+    let s1 = PasteSanitizer::clean("cd C:/a b\u{0}\u{1b}");
+    let s2 = PasteSanitizer::clean("合法\r\n第二条命令");
+    let long = "x".repeat(5000);
+    let s3 = PasteSanitizer::clean(&long);
+    set.add(
+        "paste sanitizer",
+        s1.ok && s1.stripped == 2 && s1.text == "cd C:/a b"
+            && !s2.ok && s2.multiline_rejected
+            && !s3.ok && !s3.multiline_rejected,
+        "",
+    );
+
+    // 5. 多文件拖入：逐个按味引号（POSIX 单引号、无特殊字符裸排）+
+    //    空格分隔（含空格路径不散架——argv 语义）。
+    let multi = drag_multi(TerminalFlavor::Posix, &["C:/a b/x.vx", "C:/c.vx"]);
+    set.add(
+        "drag multi quoting",
+        multi == "'C:/a b/x.vx' C:/c.vx",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn env_empty_name_not_expanded() {
+        let mut env = EnvExpander::new();
+        assert_eq!(env.expand_posix("$"), "$", "裸 $ 非变量——原样保留");
+        assert_eq!(env.expand_posix("${unclosed"), "${unclosed", "未闭合花括号原样保留");
+    }
+
+    #[test]
+    fn sanitizer_empty_ok() {
+        let s = PasteSanitizer::clean("");
+        assert!(s.ok && s.text.is_empty() && s.stripped == 0);
+    }
+
+    #[test]
+    fn drag_multi_empty_paths() {
+        assert_eq!(drag_multi(TerminalFlavor::Cmd, &[]), "");
+    }
+
+    #[test]
+    fn profiles_all_sane() {
+        for p in TERMINAL_PROFILES.iter() {
+            assert!(!p.name.is_empty());
+            assert!(p.flavor == TerminalFlavor::Cmd || p.flavor == TerminalFlavor::Posix);
+        }
+    }
+}

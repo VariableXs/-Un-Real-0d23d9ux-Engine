@@ -1979,3 +1979,321 @@ mod deep3_tests {
         assert!(DiskBusyQueue::verbose("E_XXX").is_none(), "裸码必须无解释——逼着登记映射表");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 文件类型注册表 DB + 释放空间逐项账 + 卸载前还原点钩子 + 干跑面
+// ---------------------------------------------------------------------------
+
+/// 文件类型注册表 DB（F344「文件类型注册」关联清理的机制本体）：类型 →
+/// 打开方式优先序列（用户改过默认的应用排最前）。卸载某应用 = 从所有
+/// 类型的序列中摘除它；摘除后序列空 → 该类型回退出厂默认（不悬空）。
+pub struct FileTypeRegistry {
+    /// (类型, 优先序列[应用])——序列头即当前默认。
+    entries: Vec<(&'static str, Vec<String>)>,
+    /// 出厂默认表（回退依据——同 DefaultApps 矩阵对齐）。
+    factory: Vec<(&'static str, &'static str)>,
+}
+
+impl FileTypeRegistry {
+    pub fn new() -> FileTypeRegistry {
+        FileTypeRegistry {
+            entries: alloc::vec![
+                ("网页", alloc::vec![String::from("浏览器")]),
+                ("文本", alloc::vec![String::from("记事本")]),
+                ("图片", alloc::vec![String::from("看图")]),
+                ("音视频", alloc::vec![String::from("播放器")]),
+                ("压缩", alloc::vec![String::from("压缩包")]),
+                ("终端", alloc::vec![String::from("终端")]),
+            ],
+            factory: alloc::vec![
+                ("网页", "浏览器"),
+                ("文本", "记事本"),
+                ("图片", "看图"),
+                ("音视频", "播放器"),
+                ("压缩", "压缩包"),
+                ("终端", "终端"),
+            ],
+        }
+    }
+
+    /// 用户把某应用设为某类型打开方式：提到序列头（用户意愿置顶）。
+    /// 未知类型拒绝（六类型白名单）。
+    pub fn prefer(&mut self, kind: &str, app: &str) -> bool {
+        match self.entries.iter_mut().find(|(k, _)| *k == kind) {
+            Some((_, list)) => {
+                list.retain(|a| a != app);
+                list.insert(0, String::from(app));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 当前默认（序列头）。
+    pub fn current(&self, kind: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .and_then(|(_, l)| l.first())
+            .map(|s| s.as_str())
+    }
+
+    /// 卸载摘除：从全部类型的序列中移除该应用；序列空则回退出厂默认。
+    /// 返回受影响的类型清单（对账面——关联清理可见）。
+    pub fn uninstall_purge(&mut self, app: &str) -> Vec<&'static str> {
+        let mut touched = Vec::new();
+        for (kind, list) in self.entries.iter_mut() {
+            let before = list.len();
+            list.retain(|a| a != app);
+            if list.len() != before {
+                touched.push(*kind);
+            }
+            if list.is_empty() {
+                if let Some((_, fb)) = self.factory.iter().find(|(k, _)| k == kind) {
+                    list.push(String::from(*fb));
+                }
+            }
+        }
+        touched
+    }
+
+    /// 摘除后无悬空：所有类型序列非空（悬空类型 = 缺陷）。
+    pub fn no_dangling(&self) -> bool {
+        self.entries.iter().all(|(_, l)| !l.is_empty())
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for FileTypeRegistry {
+    fn default() -> FileTypeRegistry {
+        FileTypeRegistry::new()
+    }
+}
+
+/// 释放空间逐项账（「卸载会同时清理这些」的数字面）：逐项 (路径, MB)
+/// 记账，合计与清单声明体积对账（误差 >5% 红——诚实进度纪律）。
+#[derive(Default)]
+pub struct SpaceLedger {
+    pub items: Vec<(String, u64)>,
+    pub declared_mb: u64,
+}
+
+impl SpaceLedger {
+    pub fn new(declared_mb: u64) -> SpaceLedger {
+        SpaceLedger { items: Vec::new(), declared_mb }
+    }
+
+    pub fn freed(&mut self, path: &str, mb: u64) {
+        self.items.push((String::from(path), mb));
+    }
+
+    /// 合计释放量。
+    pub fn total(&self) -> u64 {
+        self.items.iter().map(|(_, mb)| mb).sum()
+    }
+
+    /// 对账：与声明体积误差 ≤5%（声明为 0 时要求实收也为 0）。
+    pub fn within_declared(&self) -> bool {
+        if self.declared_mb == 0 {
+            return self.total() == 0;
+        }
+        self.declared_mb.abs_diff(self.total()) * 100 <= self.declared_mb * 5
+    }
+
+    /// 进度千分比（卸载进度条的数据面）。
+    pub fn progress_permille(&self) -> u32 {
+        if self.declared_mb == 0 {
+            return 1000;
+        }
+        (self.total().min(self.declared_mb) * 1000 / self.declared_mb) as u32
+    }
+}
+
+/// 卸载前还原点钩子（F121 联动）：执行页动第一个文件之前必须先建还原
+/// 点——钩子未就绪则整个卸载拒绝开跑（不可逆操作的护栏）。留痕入账。
+#[derive(Default)]
+pub struct RestorePointHook {
+    /// 已为本卸载建的还原点（Some = 可开跑）。
+    pub snapshot_id: Option<u64>,
+    pub refusals: u64,
+}
+
+impl RestorePointHook {
+    /// 执行闸门：还原点就绪 → 放行；未就绪 → 拒绝并计数（拒绝可见，
+    /// 不静默放行）。
+    pub fn gate(&mut self) -> bool {
+        match self.snapshot_id {
+            Some(_) => true,
+            None => {
+                self.refusals += 1;
+                false
+            }
+        }
+    }
+
+    /// 还原点服务回调就绪（真实面由 F121 注入快照 id）。
+    pub fn provide_snapshot(&mut self, id: u64) {
+        self.snapshot_id = Some(id);
+    }
+}
+
+/// 干跑面（硬件与数据安全红线：有破坏潜能的操作先干跑列清单）：对
+/// 卸载计划产出「将要发生什么」的逐项清单而不动任何字节；用户确认
+/// 后同一份清单作为执行账的核对底稿（干跑-执行一致 = 护栏闭环）。
+pub struct DryRun {
+    /// 干跑清单：(动作, 目标)。
+    pub plan: Vec<(&'static str, String)>,
+}
+
+impl DryRun {
+    /// 从卸载计划产出干跑清单（不动任何状态——纯读）。
+    pub fn from_footprint(f: &AppFootprint, keep_docs: bool) -> DryRun {
+        let mut plan = Vec::new();
+        for r in &f.file_type_regs {
+            plan.push(("摘除文件类型注册", r.clone()));
+        }
+        if f.autostart {
+            plan.push(("禁用自启动项", f.app.clone()));
+        }
+        for c in &f.caches {
+            plan.push(("删除缓存", c.clone()));
+        }
+        if keep_docs {
+            for d in &f.user_docs {
+                plan.push(("保留文档（不动）", d.clone()));
+            }
+        }
+        plan.push(("回收权限", f.app.clone()));
+        DryRun { plan }
+    }
+
+    /// 执行账对干跑清单的一致性核对：执行账里每条动作-目标对都必须在
+    /// 干跑清单中出现过（执行不许越出干跑承诺——红线纪律的机器面）。
+    pub fn verify_execution(&self, executed: &[(&'static str, String)]) -> bool {
+        executed.iter().all(|(act, tgt)| {
+            self.plan.iter().any(|(pa, pt)| pa == act && pt == tgt)
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.plan.len()
+    }
+}
+
+/// 深化层四自检（注册表 / 空间账 / 还原点闸门 / 干跑一致）。
+pub fn run_sysgov_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep4");
+
+    // 1. 注册表：用户置顶 + 卸载摘除 + 空序列回退出厂默认 + 无悬空。
+    let mut reg = FileTypeRegistry::new();
+    let _ = reg.prefer("图片", "画板Pro");
+    set.add("prefer promotes to head", reg.current("图片") == Some("画板Pro"), "");
+    let touched = reg.uninstall_purge("画板Pro");
+    set.add(
+        "uninstall purge and fallback",
+        touched == alloc::vec!["图片"] && reg.current("图片") == Some("看图") && reg.no_dangling(),
+        "",
+    );
+
+    // 2. 未知类型拒绝（六类型白名单）。
+    set.add("unknown kind rejected", !reg.prefer("三维", "画板Pro"), "");
+
+    // 3. 空间账：逐项记账合计与声明对账 5% 线；越线红。
+    let mut sp = SpaceLedger::new(100);
+    sp.freed("Apps/画板Pro/main.vx", 61);
+    sp.freed("Apps/画板Pro/lib.vxd", 36);
+    set.add("space within 5 percent", sp.within_declared() && sp.total() == 97, "");
+    set.add("space progress", sp.progress_permille() == 970, "");
+    let mut sp2 = SpaceLedger::new(100);
+    sp2.freed("x", 20);
+    set.add("space drift flagged", !sp2.within_declared(), "");
+
+    // 4. 还原点闸门：未就绪拒绝且计数可见；就绪放行。
+    let mut hook = RestorePointHook::default();
+    let blocked = hook.gate();
+    hook.provide_snapshot(20260926);
+    set.add(
+        "restore point gate",
+        !blocked && hook.refusals == 1 && hook.gate(),
+        "",
+    );
+
+    // 5. 干跑：清单产出不动状态 + 执行越出干跑承诺必须被核对拦住。
+    let fp = AppFootprint {
+        app: String::from("画板Pro"),
+        size_mb: 97,
+        file_type_regs: alloc::vec![String::from(".vxd"), String::from(".vxp")],
+        autostart: true,
+        user_docs: alloc::vec![String::from("Docs/画板/我的画稿.vxp")],
+        caches: alloc::vec![String::from("Cache/画板Pro")],
+    };
+    let dry = DryRun::from_footprint(&fp, true);
+    let docs_kept_entry = dry
+        .plan
+        .iter()
+        .any(|(a, t)| *a == "保留文档（不动）" && t == "Docs/画板/我的画稿.vxp");
+    set.add("dry run lists intent", dry.len() >= 5 && docs_kept_entry, "");
+
+    let ok_exec = alloc::vec![
+        ("摘除文件类型注册", String::from(".vxd")),
+        ("禁用自启动项", String::from("画板Pro")),
+        ("删除缓存", String::from("Cache/画板Pro")),
+        ("回收权限", String::from("画板Pro")),
+    ];
+    let bad_exec = alloc::vec![
+        ("删除文档", String::from("Docs/画板/我的画稿.vxp")), // 越出干跑承诺！
+    ];
+    set.add(
+        "dry run guards execution",
+        dry.verify_execution(&ok_exec) && !dry.verify_execution(&bad_exec),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn purge_unknown_app_is_noop() {
+        let mut reg = FileTypeRegistry::new();
+        assert!(reg.uninstall_purge("幽灵应用").is_empty(), "未注册应用摘除零影响");
+        assert!(reg.no_dangling());
+    }
+
+    #[test]
+    fn space_ledger_zero_declared_progress() {
+        let sp = SpaceLedger::new(0);
+        assert_eq!(sp.progress_permille(), 1000, "零体积任务进度即满");
+    }
+
+    #[test]
+    fn dry_run_keep_docs_is_not_deletion() {
+        let fp = AppFootprint {
+            app: String::from("A"),
+            size_mb: 1,
+            file_type_regs: alloc::vec![],
+            autostart: false,
+            user_docs: alloc::vec![String::from("d")],
+            caches: alloc::vec![],
+        };
+        let dry = DryRun::from_footprint(&fp, true);
+        assert!(
+            !dry.plan.iter().any(|(a, _)| *a == "删除文档"),
+            "文档保留面绝不允许出现在删除动作里"
+        );
+    }
+
+    #[test]
+    fn gate_refusal_visible_count() {
+        let mut hook = RestorePointHook::default();
+        let _ = hook.gate();
+        let _ = hook.gate();
+        assert_eq!(hook.refusals, 2, "拒绝计数累计——异常显性化");
+    }
+}
