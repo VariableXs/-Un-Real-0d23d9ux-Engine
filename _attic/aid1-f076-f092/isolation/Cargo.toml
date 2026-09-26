@@ -1,0 +1,9 @@
+[package]
+name = "deskstar-harness"
+version = "0.1.0"
+edition = "2021"
+description = "AI-D1 隔离舱：共享 crate 被其他分队在途状态挡编译时的独立验证舱（#[path] 直挂真实文件，零拷贝零分叉）。收口后本舱留 _attic 归档。"
+
+[lib]
+name = "deskstar_harness"
+test = true
