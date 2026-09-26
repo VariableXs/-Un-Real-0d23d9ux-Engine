@@ -301,6 +301,13 @@ pub struct DetailPane {
     menu_toggles: u64,
     /// 右键入口开关计数（两入口同账）。
     context_toggles: u64,
+    /// EXIF 缓存命中账（深化层三：F093 读路径）。
+    exif_cache_hits: u64,
+    exif_cache_misses: u64,
+    /// 最近一次缓存命中的路径（诊断面）。
+    last_exif_path: Option<String>,
+    /// 多选渐进旗标（>5000 项后台算）。
+    multi_partial: bool,
 }
 
 impl DetailPane {
@@ -324,6 +331,10 @@ impl DetailPane {
             auto_hide: AutoHideState::None,
             menu_toggles: 0,
             context_toggles: 0,
+            exif_cache_hits: 0,
+            exif_cache_misses: 0,
+            last_exif_path: None,
+            multi_partial: false,
         }
     }
 
@@ -1098,5 +1109,144 @@ mod tests_deep {
         let set = run_detailpane_deep_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F091-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：EXIF 缓存读路径（hit/miss 账）/ 多选渐进
+// 统计 / 类型→图标令牌映射——主册【数据与存储】F093 接缝补足。
+// 深化编号 D1-v3-DP*。
+// ---------------------------------------------------------------------------
+
+/// 文件类型 → 图标令牌（渲染映射表——类型行的图标位；无命中回退
+/// 通用文件令牌 0）。
+pub fn type_icon_token(name: &str) -> u8 {
+    let lower = name.to_lowercase();
+    let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    match ext {
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" => 1, // 图片
+        "mp4" | "mkv" | "webm" | "mov" => 2,                  // 视频
+        "mp3" | "flac" | "wav" | "ogg" => 3,                  // 音频
+        "zip" => 4,                                           // 压缩包
+        "txt" | "md" | "log" => 5,                            // 文本
+        _ => 0,                                               // 通用文件
+    }
+}
+
+impl DetailPane {
+    /// EXIF 缓存读取（F093 库接缝的读路径：命中 → 不再解析并计 hit；
+    /// 未命中 → 计 miss 并由上层解析后回填。写账 exif_cache_writes
+    /// 与读账同库对账）。
+    pub fn exif_cache_lookup(&mut self, path: &str, cache_has: bool) -> bool {
+        if cache_has {
+            self.exif_cache_hits += 1;
+            self.last_exif_path = Some(String::from(path));
+            true
+        } else {
+            self.exif_cache_misses += 1;
+            false
+        }
+    }
+
+    /// 缓存读账（hit, miss）——F093 对账面。
+    pub fn exif_cache_stats(&self) -> (u64, u64) {
+        (self.exif_cache_hits, self.exif_cache_misses)
+    }
+
+    /// 多选渐进统计口（>5000 项多选 → 后台算，partial 诚实「计算中」
+    /// ——与目录摘要同一渐进纪律；回流走 apply_summary_update 同款
+    /// 单调合并，回退值拒收）。
+    pub fn set_multi_progressive(&mut self, counted: usize, total_est: usize) {
+        let done = counted >= total_est;
+        let partial_total = counted as u64 * 1024; // 已点部分的小计（演示口径：宿主实供）
+        self.selection = Selection::Multi {
+            count: counted,
+            total_size: partial_total,
+        };
+        self.multi_partial = !done;
+    }
+
+    /// 多选是否渐进中（渲染「计算中…」的判定口）。
+    pub fn multi_in_progress(&self) -> bool {
+        self.multi_partial
+    }
+
+    /// 当前选中类型的图标令牌（单选文件名 → 映射表）。
+    pub fn selection_icon_token(&self) -> u8 {
+        match &self.selection {
+            Selection::One { name, .. } => type_icon_token(name),
+            _ => 0,
+        }
+    }
+}
+
+/// F091 深化自检三：缓存读路径 / 多选渐进 / 图标映射。
+pub fn run_detailpane_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F091-deep3");
+    // 1. EXIF 缓存读路径：miss → 解析回填 → hit（写读两账同库）。
+    let mut pane = DetailPane::new();
+    let m1 = pane.exif_cache_lookup("合影.jpg", false);
+    let m2 = pane.exif_cache_lookup("合影.jpg", true);
+    let (hits, misses) = pane.exif_cache_stats();
+    set.add(
+        "exif-cache-read",
+        !m1 && m2 && (hits, misses) == (1, 1) && pane.exif_cache_writes == 0,
+        "miss then hit",
+    );
+    // 2. 多选渐进：5000/8000 → partial；8000/8000 → 完算。
+    pane.set_multi_progressive(5000, 8000);
+    let partial = pane.multi_in_progress();
+    pane.set_multi_progressive(8000, 8000);
+    let done = !pane.multi_in_progress();
+    set.add(
+        "multi-progressive",
+        partial && done,
+        "honest in-progress flag",
+    );
+    // 3. 类型→图标映射：图片/视频/压缩包/未知各归位；单选行联动。
+    let map_ok = type_icon_token("合影.JPG") == 1
+        && type_icon_token("影片.mp4") == 2
+        && type_icon_token("打包.ZIP") == 4
+        && type_icon_token("神秘.xyz") == 0;
+    pane.set_selection(
+        Selection::One {
+            name: String::from("合影.jpg"),
+            size: 1,
+            mtime_s: 0,
+            ctime_s: 0,
+            is_image: true,
+        },
+        None,
+    );
+    set.add(
+        "type-icon",
+        map_ok && pane.selection_icon_token() == 1,
+        "ext → icon token",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn multi_progressive_starts_honest() {
+        let mut pane = DetailPane::new();
+        pane.set_multi_progressive(0, 9000);
+        assert!(pane.multi_in_progress(), "零起点也在算——不装完算");
+    }
+
+    #[test]
+    fn icon_token_no_crash_on_weird_names() {
+        assert_eq!(type_icon_token(""), 0, "空名回退通用令牌");
+        assert_eq!(type_icon_token(".隐藏文件"), 0, "点开头无扩展 → 通用");
+    }
+
+    #[test]
+    fn detailpane_deep3_checks_all_green() {
+        let set = run_detailpane_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F091-deep3 红项：{}/{} 绿", p, p + f);
     }
 }

@@ -486,13 +486,21 @@ fn deflate_fixed(tokens: &[Token]) -> Vec<u8> {
         match t {
             Token::Lit(b) => put_lit(&mut w, *b),
             Token::Match { len, dist } => {
-                // 长度 → 长度码。
-                let li = LEN_BASE.iter().rposition(|b| *b as usize <= *len as usize).unwrap();
+                // 长度 → 长度码（不变量：lz77 产出 len≥3≥LEN_BASE[0]；
+                // 防御性回退 0 档——确定性编码不 panic）。
+                let li = LEN_BASE
+                    .iter()
+                    .rposition(|b| *b as usize <= *len as usize)
+                    .unwrap_or(0);
                 let code = 257 + li;
                 put_len_code(&mut w, code as u16);
                 w.put((*len as u32) - LEN_BASE[li] as u32, LEN_EXTRA[li] as u32);
-                // 距离 → 距离码（fixed 距离树 5 位，Huffman 码 MSB-first）。
-                let di = DIST_BASE.iter().rposition(|b| *b as usize <= *dist as usize).unwrap();
+                // 距离 → 距离码（fixed 距离树 5 位，Huffman 码 MSB-first；
+                // 不变量：dist≥1≥DIST_BASE[0]，防御性回退同上）。
+                let di = DIST_BASE
+                    .iter()
+                    .rposition(|b| *b as usize <= *dist as usize)
+                    .unwrap_or(0);
                 w.put(reverse_bits(di as u32, 5), 5);
                 w.put((*dist as u32) - DIST_BASE[di] as u32, DIST_EXTRA[di] as u32);
             }
@@ -1592,5 +1600,190 @@ mod tests_deep {
         let set = run_zipkit_deep_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F092-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：DOS 时间戳真实化 / 清单预览 / 单文件解压 /
+// 目标冲突预检——主册【数据与存储】【交互设计】补足。
+// 深化编号 D1-v3-ZK*。
+// ---------------------------------------------------------------------------
+
+/// DOS 时间戳编码（1980 起算的日期+时间 32 位打包——zip 本地头/中央
+/// 目录共用的格式转换纯函数；1980 前的输入钳到 1980-01-01）。
+pub fn dos_datetime(unix_s: u64) -> u32 {
+    let days = (unix_s / 86_400) as i64;
+    let (y, m, d) = crate::deskstar::calflyout::civil_from_days(days);
+    let year = y.max(1980) - 1980; // DOS 纪元
+    let rem = unix_s % 86_400;
+    let hh = (rem / 3_600) as u32;
+    let mm = ((rem % 3_600) / 60) as u32;
+    let ss = ((rem % 60) / 2) as u32; // DOS 秒粒度 2s
+    (year as u32) << 25 | (m as u32) << 21 | (d as u32) << 16 | hh << 11 | mm << 5 | ss
+}
+
+/// DOS 时间戳解码（round-trip 伴随面；秒粒度 2s 舍入如实）。
+pub fn dos_datetime_decode(v: u32) -> (u32, u8, u8, u8, u8, u8) {
+    let year = (v >> 25) & 0x7F;
+    let month = ((v >> 21) & 0x0F) as u8;
+    let day = ((v >> 16) & 0x1F) as u8;
+    let hh = ((v >> 11) & 0x1F) as u8;
+    let mm = ((v >> 5) & 0x3F) as u8;
+    let ss = (v & 0x1F) as u8 * 2;
+    (year + 1980, month, day, hh, mm, ss)
+}
+
+/// zip 条目清单行（解压前列表：名 + 原始大小 + 方法 + 加密旗标——
+/// 中央目录解析的只读投影，不解码载荷）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZipListRow {
+    pub name: String,
+    pub size: u64,
+    pub method: u16,
+    pub encrypted: bool,
+}
+
+/// 清单预览（EOCD 尾扫定位 + 中央目录逐项——与 zip_read 同一定位
+/// 口径，只读字段不解码载荷）。
+pub fn list_entries(data: &[u8]) -> Result<Vec<ZipListRow>, ZipErr> {
+    let mut eocd = None;
+    if data.len() >= 22 {
+        let lo = data.len().saturating_sub(22 + 65_535);
+        let mut i = data.len() - 22;
+        loop {
+            if rd32(data, i) == Some(SIG_EOCD) {
+                eocd = Some(i);
+                break;
+            }
+            if i == lo {
+                break;
+            }
+            i -= 1;
+        }
+    }
+    let Some(eocd) = eocd else { return Err(ZipErr::NotZip) };
+    let count = rd16(data, eocd + 10).ok_or(ZipErr::Truncated)? as usize;
+    let cd_off = rd32(data, eocd + 16).ok_or(ZipErr::Truncated)? as usize;
+    let mut rows = Vec::new();
+    let mut p = cd_off;
+    for _ in 0..count {
+        if rd32(data, p) != Some(SIG_CENTRAL) {
+            return Err(ZipErr::CentralCorrupt);
+        }
+        let flags = rd16(data, p + 8).ok_or(ZipErr::Truncated)?;
+        let method = rd16(data, p + 10).ok_or(ZipErr::Truncated)?;
+        let usize_ = rd32(data, p + 24).ok_or(ZipErr::Truncated)?;
+        let nlen = rd16(data, p + 28).ok_or(ZipErr::Truncated)? as usize;
+        let elen = rd16(data, p + 30).ok_or(ZipErr::Truncated)? as usize;
+        let clen = rd16(data, p + 32).ok_or(ZipErr::Truncated)? as usize;
+        let name_raw = data.get(p + 46..p + 46 + nlen).ok_or(ZipErr::Truncated)?;
+        rows.push(ZipListRow {
+            name: decode_entry_name(name_raw, flags),
+            size: usize_ as u64,
+            method,
+            encrypted: flags & FLAG_ENCRYPTED != 0,
+        });
+        p += 46 + nlen + elen + clen;
+    }
+    Ok(rows)
+}
+
+/// 单文件解压（只解压选中条目——右键「解压到…」的单项动线；CRC 与
+/// 穿越检查不豁免：单项与全批同一安全口径）。
+pub fn extract_one(data: &[u8], want: &str) -> Result<Option<(String, Vec<u8>)>, ZipErr> {
+    let entries = zip_read(data)?;
+    Ok(entries
+        .into_iter()
+        .find(|e| e.name == want)
+        .map(|e| (e.name, e.data)))
+}
+
+/// 目标冲突预检（解压前对目标目录已存名单比对——命中清单上抛 F087
+/// 面板接缝；空清单 = 直接解不弹面板）。
+pub fn target_conflicts(entries: &[ZipEntry], target_exists: &[String]) -> Vec<String> {
+    entries
+        .iter()
+        .filter(|e| target_exists.iter().any(|t| t == &e.name))
+        .map(|e| e.name.clone())
+        .collect()
+}
+
+/// 天序辅助（civil 算法的本地包装：天 → 秒——深化自检里避免手写大数）。
+fn days_from_civil_epoch(y: u32, m: u8, d: u8) -> u64 {
+    crate::deskstar::calflyout::days_from_civil(y as i32, m, d) as u64 * 86_400
+}
+
+/// F092 深化自检三：DOS 时间戳 round-trip / 清单预览 / 单文件解压 /
+/// 冲突预检。
+pub fn run_zipkit_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F092-deep3");
+    // 1. DOS 时间戳：2026-09-26 12:34:56 编码 → 解码 round-trip；
+    //    1980 前钳制（1970-01-01 → 1980-01-01）。
+    let unix = days_from_civil_epoch(2026, 9, 26) + 12 * 3600 + 34 * 60 + 56;
+    let dos = dos_datetime(unix);
+    let (y, m, d, hh, mm, ss) = dos_datetime_decode(dos);
+    let (cy, cm, cd, _, _, _) = dos_datetime_decode(dos_datetime(0));
+    set.add(
+        "dos-datetime",
+        (y, m, d) == (2026, 9, 26)
+            && (hh, mm, ss) == (12, 34, 56)
+            && (cy, cm, cd) == (1980, 1, 1),
+        "encode/decode + 1980 clamp",
+    );
+    // 2. 清单预览：两条目包 → 名/大小/方法/加密旗标逐项如实。
+    let files = vec![
+        ZipFile { name: String::from("甲.txt"), data: vec![7u8; 300], level: LEVEL_STORE },
+        ZipFile { name: String::from("乙.bin"), data: vec![1u8; 50], level: LEVEL_FASTEST },
+    ];
+    let z = zip_write(&files);
+    let rows = list_entries(&z).unwrap();
+    let list_ok = rows.len() == 2
+        && rows[0].name == "甲.txt"
+        && rows[0].size == 300
+        && rows[0].method == 0
+        && !rows[0].encrypted;
+    set.add("list-preview", list_ok, "central-dir readout");
+    // 3. 单文件解压：按名取乙；不存在的名如实 None（安全口径不豁免）。
+    let one = extract_one(&z, "乙.bin");
+    let missing = extract_one(&z, "不存在.txt");
+    let one_ok = matches!(&one, Ok(Some((n, d))) if n == "乙.bin" && d.len() == 50)
+        && matches!(missing, Ok(None));
+    set.add("extract-one", one_ok, "selective extraction");
+    // 4. 目标冲突预检：目标已有「甲.txt」→ 命中清单上抛 F087；空目标
+    //    → 空清单直解。
+    let entries = zip_read(&z).unwrap();
+    let conflicts = target_conflicts(&entries, &[String::from("甲.txt")]);
+    let no_conflict = target_conflicts(&entries, &[]);
+    set.add(
+        "target-conflicts",
+        conflicts == vec![String::from("甲.txt")] && no_conflict.is_empty(),
+        "F087 handoff list",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn dos_datetime_two_second_granularity() {
+        // DOS 秒粒度 2s：奇数秒被向下取整——round-trip 如实舍入。
+        let unix = days_from_civil_epoch(2026, 1, 1) + 3_600;
+        let dos = dos_datetime(unix + 1);
+        let (_, _, _, _, _, ss) = dos_datetime_decode(dos);
+        assert_eq!(ss, 0, "奇数秒向下取整到 2s 网格");
+    }
+
+    #[test]
+    fn list_entries_rejects_non_zip() {
+        assert!(matches!(list_entries(b"not zip"), Err(ZipErr::NotZip)));
+    }
+
+    #[test]
+    fn zipkit_deep3_checks_all_green() {
+        let set = run_zipkit_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F092-deep3 红项：{}/{} 绿", p, p + f);
     }
 }

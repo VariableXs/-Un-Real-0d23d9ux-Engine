@@ -1081,3 +1081,167 @@ mod tests_deep2 {
         assert!(set.all_passed(), "F078-deep2 红项：{}/{} 绿", p, p + f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：悬停日期聚合面 / 日程侧栏行几何 / 周起始
+// 持久化投影 / 今日格几何——主册【交互设计】【设计细节】补足。
+// 深化编号 D1-v3-CF*。
+// ---------------------------------------------------------------------------
+
+/// 日程侧栏行高（px）。
+pub const SCHEDULE_ROW_H_PX: i32 = 24;
+
+/// 周起始持久化投影（配置层：`week=mon|sun` 单行——区域设置页的
+/// 落盘面；坏值如实回退周一缺省）。
+pub fn serialize_week_start(ws: WeekStart) -> String {
+    match ws {
+        WeekStart::Monday => String::from("week=mon"),
+        WeekStart::Sunday => String::from("week=sun"),
+    }
+}
+
+/// 周起始恢复（坏值/缺值 → Monday 缺省——不为脏数据编配置）。
+pub fn deserialize_week_start(blob: &str) -> WeekStart {
+    match blob.trim() {
+        "week=sun" => WeekStart::Sunday,
+        "week=mon" => WeekStart::Monday,
+        _ => WeekStart::Monday,
+    }
+}
+
+impl CalFlyout {
+    /// 悬停日期聚合面（一格的全部信息一次取齐：完整日期文本 + ISO
+    /// 周数 + 节假日名——渲染 tooltip 的单一数据口；补位格 None）。
+    pub fn hover_cell_brief(&self, index: usize) -> Option<HoverBrief> {
+        let dates = self.grid_with_dates_by_week_start();
+        let (y, m, d) = *dates.get(index)?;
+        let in_month = y == self.view_year && m == self.view_month;
+        if !in_month {
+            return None;
+        }
+        let (week, iso_year) = iso_week(y, m, d);
+        Some(HoverBrief {
+            date_text: alloc::format!("{} 年 {} 月 {} 日", y, m, d),
+            week,
+            iso_year,
+            holiday: self.holiday_mark(y, m, d).map(String::from),
+        })
+    }
+
+    /// 今日格矩形（强调色圆底的落点——焦点圈渲染与命中共用）。
+    pub fn today_rect(&self) -> Option<crate::deskstar::dbase::Rect> {
+        self.today_index().map(|i| self.cell_rect(i))
+    }
+
+    /// 日程侧栏行几何（选中日的日程条目列表：24px 每行、侧栏宽
+    /// 96px 起——面板右缘的日程区布局账）。
+    pub fn schedule_row_rects(&self, count: usize) -> Vec<crate::deskstar::dbase::Rect> {
+        use crate::deskstar::dbase::Rect;
+        let x = PANEL_W_PX - 96;
+        let y = GRID_ORIGIN_Y;
+        (0..count)
+            .map(|i| Rect::new(x, y + i as i32 * SCHEDULE_ROW_H_PX, 88, SCHEDULE_ROW_H_PX))
+            .collect()
+    }
+
+    /// 周起始持久化（当前设置的序列化——配置页落盘点）。
+    pub fn week_start_blob(&self) -> String {
+        serialize_week_start(self.week_start)
+    }
+
+    /// 周起始恢复应用（读回配置——坏值回退缺省并如实报告是否生效）。
+    pub fn apply_week_start_blob(&mut self, blob: &str) -> bool {
+        let ws = deserialize_week_start(blob);
+        let changed = ws != self.week_start;
+        self.week_start = ws;
+        changed
+    }
+}
+
+/// 悬停信息面（一格的聚合 brief）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoverBrief {
+    pub date_text: String,
+    pub week: u8,
+    pub iso_year: i32,
+    pub holiday: Option<String>,
+}
+
+/// F078 深化自检三：悬停聚合 / 今日格几何 / 日程侧栏 / 周起始持久化。
+pub fn run_calflyout_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F078-deep3");
+    let mut cal = CalFlyout::new((2026, 9, 26), 0);
+    cal.set_week_start(WeekStart::Monday);
+    // 1. 悬停聚合：今日格（9/26 周六）→ 完整日期 + ISO 周 + 无节假日。
+    let today_idx = cal.today_index().unwrap();
+    let brief = cal.hover_cell_brief(today_idx);
+    let brief_ok = brief.as_ref().map(|b| {
+        b.date_text == "2026 年 9 月 26 日"
+            && b.week >= 1
+            && b.holiday.is_none()
+    }) == Some(true);
+    // 补位格（index 0 属 8 月）→ None 不编信息。
+    let edge = cal.hover_cell_brief(0).is_none();
+    set.add("hover-brief", brief_ok && edge, "date + ISO week + holiday");
+    // 2. 今日格几何：与 cell_rect(今日下标) 同源（一处一事实）。
+    let tr = cal.today_rect().unwrap();
+    set.add(
+        "today-rect",
+        tr == cal.cell_rect(today_idx) && tr.w == CELL_PX,
+        "accent circle anchor",
+    );
+    // 3. 日程侧栏行几何：24px 行、右缘 96px 列、逐行下移不重叠。
+    let rows = cal.schedule_row_rects(3);
+    let rows_ok = rows.len() == 3
+        && rows[0].h == SCHEDULE_ROW_H_PX
+        && rows[1].y == rows[0].y + SCHEDULE_ROW_H_PX
+        && !rows[0].intersects(&rows[1])
+        && rows[0].x == PANEL_W_PX - 96;
+    set.add("schedule-rows", rows_ok, "sidebar layout");
+    // 4. 周起始持久化 round-trip：mon → 落盘 → 恢复；坏值回退缺省。
+    cal.set_week_start(WeekStart::Sunday);
+    let blob = cal.week_start_blob();
+    let mut cal2 = CalFlyout::new((2026, 9, 26), 0);
+    let applied = cal2.apply_week_start_blob(&blob) && cal2.week_start() == WeekStart::Sunday;
+    let dirty = cal2.apply_week_start_blob("week=垃圾");
+    set.add(
+        "weekstart-persist",
+        applied && dirty && cal2.week_start() == WeekStart::Monday
+            && serialize_week_start(WeekStart::Monday) == "week=mon",
+        "persist + honest fallback",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn hover_brief_shows_holiday_when_fed() {
+        let mut cal = CalFlyout::new((2026, 10, 1), 0);
+        cal.feed_holidays(
+            2026,
+            10,
+            vec![HolidayMark { day: 1, name: String::from("国庆节") }],
+        );
+        // 10/1 是周四——10 月 1 日所在行首格下标 = lead(3)+0。
+        let idx = 3; // 周四起始（周四=3，周一制）→ 10/1
+        let b = cal.hover_cell_brief(idx);
+        assert!(b.is_some());
+        assert_eq!(b.unwrap().holiday.as_deref(), Some("国庆节"));
+    }
+
+    #[test]
+    fn weekstart_roundtrip_both_values() {
+        assert_eq!(deserialize_week_start("week=sun"), WeekStart::Sunday);
+        assert_eq!(deserialize_week_start(""), WeekStart::Monday);
+    }
+
+    #[test]
+    fn calflyout_deep3_checks_all_green() {
+        let set = run_calflyout_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F078-deep3 红项：{}/{} 绿", p, p + f);
+    }
+}

@@ -647,3 +647,116 @@ mod tests {
         assert!(set.all_passed(), "F085 自检红项：{}/{} 绿", p, p + f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：删除时间排序（元数据消费面）/ 还原重命名
+// 复用 F087 suffixed_name 引擎（消内联重复——一处一事实）。
+// 深化编号 D1-v3-TU*。
+// ---------------------------------------------------------------------------
+
+impl TrashUi {
+    /// 按删除时间排序（主册「元数据含删除时间（排序用）」的消费口：
+    /// newest_first=true 最新在前——回收站列表默认排序）。
+    pub fn sorted_by_deleted_at(&self, volume: &str, newest_first: bool) -> Vec<(u64, String, u64)> {
+        let mut rows: Vec<(u64, String, u64)> = self
+            .volumes
+            .iter()
+            .find(|v| v.volume == volume)
+            .map(|v| v.items.iter().map(|i| (i.id, i.name.clone(), i.deleted_s)).collect())
+            .unwrap_or_default();
+        if newest_first {
+            rows.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+        } else {
+            rows.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
+        }
+        rows
+    }
+
+    /// 还原（占用名单感知版：目标已被占的名字列表进 F087 引擎取
+    /// 第一个空闲后缀——「(2)/(3)/…」逐级探测，重名多件也不撞）。
+    pub fn restore_with_occupied(&mut self, id: u64, occupied: &[String]) -> Option<(String, u64)> {
+        let item = self
+            .volumes
+            .iter()
+            .find(|v| v.items.iter().any(|i| i.id == id))?
+            .items
+            .iter()
+            .find(|i| i.id == id)?
+            .clone();
+        let base_occupied = occupied.iter().any(|n| *n == item.name);
+        let final_name = if base_occupied {
+            self.renamed_restores += 1;
+            crate::deskstar::conflict::suffixed_name(&item.name, &|cand: &str| {
+                occupied.iter().any(|n| n == cand)
+            })
+        } else {
+            item.name.clone()
+        };
+        self.restore(id, false).map(|(_, hash)| (final_name, hash))
+    }
+}
+
+/// F085 深化自检三：时间排序 / 占用感知还原（F087 引擎复用）。
+pub fn run_trashui_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F085-deep3");
+    let mut t = TrashUi::new();
+    t.register_volume("C:", 1 << 30);
+    let h = |n: u64| n * 7919;
+    // 乱序删除：丙(3000) 甲(1000) 乙(2000)——id 自动分配，断言按名字。
+    let _ = t.delete("C:", "丙.txt", "C:/丙.txt", 300, h(3), 3_000, 3_000);
+    let _ = t.delete("C:", "甲.txt", "C:/甲.txt", 100, h(1), 1_000, 1_000);
+    let _ = t.delete("C:", "乙.txt", "C:/乙.txt", 200, h(2), 2_000, 2_000);
+    // 1. 时间排序：最新在前 丙,乙,甲；最旧在前 甲,乙,丙（同秒按 id 稳定）。
+    let newest = t.sorted_by_deleted_at("C:", true);
+    let oldest = t.sorted_by_deleted_at("C:", false);
+    let names = |rows: &Vec<(u64, String, u64)>| -> Vec<String> {
+        rows.iter().map(|r| r.1.clone()).collect()
+    };
+    set.add(
+        "deleted-at-sort",
+        names(&newest) == ["丙.txt", "乙.txt", "甲.txt"]
+            && names(&oldest) == ["甲.txt", "乙.txt", "丙.txt"],
+        "metadata order both ways",
+    );
+    // 2. 占用感知还原：目标已占「甲.txt」与「甲 (2).txt」→ 引擎取
+    //    「甲 (3).txt」；未占 → 原名直还（按名字找 id）。
+    let jia = t
+        .sorted_by_deleted_at("C:", false)
+        .into_iter()
+        .find(|(_, n, _)| n == "甲.txt")
+        .map(|(id, _, _)| id)
+        .unwrap();
+    let yi = t
+        .sorted_by_deleted_at("C:", false)
+        .into_iter()
+        .find(|(_, n, _)| n == "乙.txt")
+        .map(|(id, _, _)| id)
+        .unwrap();
+    let renamed = t.restore_with_occupied(jia, &[String::from("甲.txt"), String::from("甲 (2).txt")]);
+    let plain = t.restore_with_occupied(yi, &[]);
+    set.add(
+        "occupied-restore",
+        matches!(&renamed, Some((n, _)) if n == "甲 (3).txt")
+            && matches!(&plain, Some((n, _)) if n == "乙.txt"),
+        "F087 engine reused",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn sort_missing_volume_is_empty() {
+        let t = TrashUi::new();
+        assert!(t.sorted_by_deleted_at("不存在的盘", true).is_empty());
+    }
+
+    #[test]
+    fn trashui_deep3_checks_all_green() {
+        let set = run_trashui_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F085-deep3 红项：{}/{} 绿", p, p + f);
+    }
+}

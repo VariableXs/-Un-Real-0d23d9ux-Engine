@@ -109,6 +109,8 @@ pub struct CrumbsBar {
     comp_items: Vec<String>,
     /// 补全下拉焦点。
     comp_focus: Option<usize>,
+    /// 报错横幅状态（深化层三：如实报错的渲染面）。
+    error_banner_state: Option<ErrorBanner>,
 }
 
 impl CrumbsBar {
@@ -132,6 +134,7 @@ impl CrumbsBar {
             full_shown: false,
             comp_items: Vec::new(),
             comp_focus: None,
+            error_banner_state: None,
         }
     }
 
@@ -877,5 +880,196 @@ mod tests_deep {
         let set = run_crumbsbar_deep_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F090-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：兄弟行几何（图标+名+子目录数）/ 投放高亮
+// F084 视觉族常量 / 拖放悬停省略段自动展开 / 报错横幅三要素——主册
+// 【设计细节】兄弟目录「图标+子目录数」与视觉族条款补足。
+// 深化编号 D1-v3-CB*。
+// ---------------------------------------------------------------------------
+
+/// 兄弟行图标位宽（px）。
+pub const SIBLING_ICON_PX: i32 = 16;
+
+/// 兄弟行内边距（px）。
+pub const SIBLING_PAD_PX: i32 = 8;
+
+/// 投放高亮描边（px，F084 视觉族同参——TARGET_STROKE_PX 一处一事实）。
+pub const DROP_STROKE_PX: i32 = crate::deskstar::icongrid::TARGET_STROKE_PX;
+
+/// 投放高亮填充（%，F084 视觉族同参——RUBBER_FILL_PCT 同源）。
+pub const DROP_FILL_PCT: u8 = crate::deskstar::icongrid::RUBBER_FILL_PCT;
+
+/// 兄弟行布局（渲染就绪：图标位 + 名称区 + 子目录数右对齐区）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SiblingRowGeom {
+    pub icon: crate::deskstar::dbase::Rect,
+    pub name: crate::deskstar::dbase::Rect,
+    pub children: crate::deskstar::dbase::Rect,
+}
+
+/// 报错横幅（如实报错的渲染面：文案 + 起始时刻 + 展示时长）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ErrorBanner {
+    pub text: String,
+    pub since_ms: u64,
+}
+
+impl CrumbsBar {
+    /// 兄弟行三区拆分（一行内的图标/名称/子目录数矩形——零重叠断言
+    /// 由自检钉死；子目录数右对齐 40px 定宽）。
+    pub fn sibling_row_sections(&self) -> SiblingRowGeom {
+        use crate::deskstar::dbase::Rect;
+        let row = Rect::new(SIBLING_PAD_PX, SIBLING_PAD_PX, DROPDOWN_W_PX - SIBLING_PAD_PX * 2, CRUMB_H_PX);
+        let icon = Rect::new(row.x, row.y, SIBLING_ICON_PX, row.h);
+        let children = Rect::new(row.right() - 40, row.y, 40, row.h);
+        let name = Rect::new(icon.right() + SIBLING_PAD_PX, row.y, children.x - icon.right() - SIBLING_PAD_PX * 2, row.h);
+        SiblingRowGeom { icon, name, children }
+    }
+
+    /// 拖放悬停省略段（拖文件悬停「…」层 → 自动展开中间层——点击
+    /// 展开语义在拖放动线上的同源延伸；非省略段不触发）。
+    pub fn drop_hover_expand(&mut self, idx: usize) -> bool {
+        let segs = self.crumbs();
+        match segs.get(idx) {
+            Some(c) if c.name == "…" && c.path.is_empty() => {
+                self.expand_ellipsis();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 如实报错横幅（提交不存在路径时的三要素文案——文本面取自
+    /// honest_errors 同源事件；banner 持起止时刻供 3s 自动消退）。
+    /// 返回横幅文本（渲染层直接取用；状态账在横幅结构里）。
+    pub fn error_banner(&mut self, path: &str, now_ms: u64) -> String {
+        self.honest_errors += 1;
+        let text = alloc::format!("找不到「{}」。请检查路径拼写。", path);
+        self.error_banner_state = Some(ErrorBanner {
+            text: text.clone(),
+            since_ms: now_ms,
+        });
+        text
+    }
+
+    /// 横幅全文（可见态查询——渲染面取用；不可见返回 None）。
+    pub fn banner_text(&self, now_ms: u64) -> Option<&str> {
+        if self.banner_visible(now_ms) {
+            self.error_banner_state.as_ref().map(|b| b.text.as_str())
+        } else {
+            None
+        }
+    }
+
+    /// 横幅可见性（3s 自动消退——时间注入式判定）。
+    pub fn banner_visible(&self, now_ms: u64) -> bool {
+        match &self.error_banner_state {
+            Some(b) => now_ms.saturating_sub(b.since_ms) < 3_000,
+            None => false,
+        }
+    }
+
+    /// Alt+D 退出编辑的焦点归还（编辑态关闭后焦点回面包屑——焦点环
+    /// 不悬空：退出后 crumb_focus 落在当前层段上）。
+    pub fn alt_d_focus_return(&mut self) -> usize {
+        if self.editing {
+            self.cancel_edit();
+        }
+        // 归还落点：当前路径的末段（活跃层）。
+        let n = self.crumbs().len();
+        self.crumb_focus = n.saturating_sub(1);
+        self.crumb_focus
+    }
+}
+
+/// F090 深化自检三：兄弟行几何 / 视觉族常量 / 悬停展开 / 报错横幅 /
+/// 焦点归还。
+pub fn run_crumbsbar_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F090-deep3");
+    let mut bar = CrumbsBar::bind(HistoryStack::new("C:/工作"));
+    bar.feed_siblings(
+        "C:/工作",
+        vec![Sibling { name: String::from("2026"), children: 12 }],
+    );
+    // 1. 兄弟行三区：图标 16px、子目录数右对齐 40px、名称弹展区；
+    //    三区互不重叠且都在行内。
+    let g = bar.sibling_row_sections();
+    let row_ok = g.icon.w == SIBLING_ICON_PX
+        && g.children.w == 40
+        && g.children.right() == DROPDOWN_W_PX - SIBLING_PAD_PX
+        && !g.icon.intersects(&g.name)
+        && !g.name.intersects(&g.children)
+        && g.name.right() <= g.children.x + SIBLING_PAD_PX;
+    set.add("sibling-row-geom", row_ok, "icon | name | children-right");
+    // 2. 视觉族常量同源（F084 的 2px 描边 / 8% 填充——一处一事实直引）。
+    set.add(
+        "drop-visual-family",
+        DROP_STROKE_PX == 2 && DROP_FILL_PCT == 8,
+        "F084 same params",
+    );
+    // 3. 拖放悬停省略段自动展开：>7 层路径悬停「…」→ 展开态；
+    //    普通段悬停不误触发。
+    bar.history_mut().go("C:/A1/A2/A3/A4/A5/A6/最深");
+    let ell = bar.crumbs().iter().position(|c| c.name == "…").unwrap();
+    let normal = bar.drop_hover_expand(0);
+    let expanded = bar.drop_hover_expand(ell) && bar.is_full_shown();
+    set.add(
+        "hover-expand",
+        !normal && expanded,
+        "drag-hover expands ellipsis",
+    );
+    // 4. 报错横幅：文案含路径、3s 消退、计数同源。
+    bar.history_mut().go("C:/工作");
+    {
+        let text = bar.error_banner("C:/不存在", 1_000);
+        let text_ok = text.contains("C:/不存在");
+        let vis_now = bar.banner_visible(1_500);
+        let vis_late = bar.banner_visible(4_500);
+        let banner_text = bar.banner_text(1_500);
+        set.add(
+            "error-banner",
+            text_ok && vis_now && !vis_late && bar.honest_errors == 1
+                && banner_text == Some(text.as_str()),
+            "3 elements + 3s fade",
+        );
+    }
+    // 5. Alt+D 焦点归还：退出编辑后焦点落当前层末段（不悬空）。
+    bar.begin_edit();
+    let ret = bar.alt_d_focus_return();
+    let last_idx = bar.crumbs().len() - 1;
+    set.add(
+        "focus-return",
+        !bar.editing() && ret == last_idx && bar.crumb_focus() == last_idx,
+        "edit exit returns focus",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn banner_requires_error_event() {
+        let bar = CrumbsBar::bind(HistoryStack::new("C:/x"));
+        assert!(!bar.banner_visible(0), "无报错事件无横幅——诚实空态");
+    }
+
+    #[test]
+    fn sibling_geom_stable_across_rows() {
+        let bar = CrumbsBar::bind(HistoryStack::new("C:/x"));
+        let a = bar.sibling_row_sections();
+        let b = bar.sibling_row_sections();
+        assert_eq!(a.name.w, b.name.w, "行布局统一（滚动窗共用一套几何）");
+    }
+
+    #[test]
+    fn crumbsbar_deep3_checks_all_green() {
+        let set = run_crumbsbar_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F090-deep3 红项：{}/{} 绿", p, p + f);
     }
 }

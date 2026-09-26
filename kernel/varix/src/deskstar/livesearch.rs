@@ -249,7 +249,10 @@ impl LiveSearch {
         if need_build {
             self.index = Some(DirIndex::build("当前目录", |_| scan("", self.depth_cap, self.scope_recursive), now_ms / 1000));
         }
-        let entries = self.index.as_ref().unwrap().entries.clone();
+        let entries = match self.index.as_ref() {
+            Some(i) => i.entries.clone(),
+            None => Vec::new(), // 不可达（上方已保证建索引）——防御性空扫不 panic
+        };
         let total = entries.len();
         self.state = SearchState::Scanning(ScanProgress {
             scanned: 0,

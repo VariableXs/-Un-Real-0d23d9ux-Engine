@@ -27,7 +27,7 @@
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::FloatLayer;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -207,6 +207,8 @@ pub struct NotifCenter {
     pub deep_link_fallbacks: u64,
     /// toast 沉没账（逐原因计数——全链录屏的数据底账）。
     toast_exits: [u32; 3],
+    /// 历史持久化脏旗标（深化层三：变更即置位，配置层落盘后回执清脏）。
+    history_dirty: bool,
 }
 
 impl NotifCenter {
@@ -227,6 +229,7 @@ impl NotifCenter {
             deep_link_hits: 0,
             deep_link_fallbacks: 0,
             toast_exits: [0; 3],
+            history_dirty: false,
         }
     }
 
@@ -472,6 +475,7 @@ impl NotifCenter {
             idx += 1;
             keep
         });
+        self.history_dirty = true;
     }
 
     // -- 点击直达与操作回执 ------------------------------------------------
@@ -528,6 +532,7 @@ impl NotifCenter {
             .collect();
         self.history.retain(|n| n.app_id != app_id);
         self.pending_clear = Some((taken, now_ms));
+        self.history_dirty = true;
     }
 
     /// 全部清空（同撤销语义）。
@@ -842,5 +847,162 @@ mod tests {
         let set = run_notifctr_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F077 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三（大量深化批）：历史持久化序列化边界（落盘由配置层接手，
+// 本模块供给序列化面与脏旗标）——主册【数据与存储】「落盘配置层
+// （重启不丢）」条款补足。深化编号 D1-v3-NC*。
+// ---------------------------------------------------------------------------
+
+impl NotifCenter {
+    /// 历史持久化脏旗标（历史变更即置位——配置层据此决定是否落盘）。
+    pub fn history_dirty(&self) -> bool {
+        self.history_dirty
+    }
+
+    /// 历史清脏（配置层落盘完成后回执）。
+    pub fn clear_history_dirty(&mut self) {
+        self.history_dirty = false;
+    }
+
+    /// 历史序列化（每应用一组：`app|title\tbody\tts` 行——配置层文件的
+    /// 文本投影；重启恢复的数据源。应用名单独成节供图标重建）。
+    pub fn serialize_history(&self) -> String {
+        let mut out = String::new();
+        for a in &self.apps {
+            out.push_str("@app|");
+            out.push_str(&a.id.to_string());
+            out.push('|');
+            out.push_str(&a.name);
+            out.push('\n');
+        }
+        for n in &self.history {
+            out.push_str(&n.app_id.to_string());
+            out.push('|');
+            out.push_str(&n.title.replace('\n', " "));
+            out.push('\t');
+            out.push_str(&n.body.replace('\n', " "));
+            out.push('\t');
+            out.push_str(&n.ts_s.to_string());
+            out.push('\n');
+        }
+        out
+    }
+
+    /// 历史恢复（应用节先注册、通知行后回填——顺序无关解析；坏行
+    /// 跳过不炸；恢复后置清脏）。
+    pub fn restore_history(&mut self, blob: &str) -> usize {
+        let mut restored = 0usize;
+        for line in blob.lines() {
+            if let Some(rest) = line.strip_prefix("@app|") {
+                let mut it = rest.splitn(2, '|');
+                if let (Some(id), Some(name)) = (it.next(), it.next()) {
+                    if let Ok(id) = id.parse::<u64>() {
+                        self.register_app(id, name, 0);
+                    }
+                }
+                continue;
+            }
+            let mut it = line.splitn(3, '|');
+            let (Some(app_s), Some(rest)) = (it.next(), it.next()) else {
+                continue;
+            };
+            let Ok(app_id) = app_s.parse::<u64>() else {
+                continue;
+            };
+            let mut tit = rest.splitn(2, '\t');
+            let (Some(title), Some(rest2)) = (tit.next(), tit.next()) else {
+                continue;
+            };
+            let mut bit = rest2.splitn(2, '\t');
+            let (Some(body), Some(ts_s)) = (bit.next(), bit.next()) else {
+                continue;
+            };
+            let Ok(ts_s) = ts_s.parse::<u64>() else {
+                continue;
+            };
+            let id = self.next_id;
+            self.next_id += 1;
+            self.history.push(Notif {
+                id,
+                app_id,
+                title: String::from(title),
+                body: String::from(body),
+                ts_s,
+                priority: Priority::Normal,
+                actions: Vec::new(),
+                deep_link: None,
+            });
+            restored += 1;
+        }
+        self.history_dirty = false;
+        restored
+    }
+}
+
+/// F077 深化自检三：历史持久化边界 round-trip + 脏旗标。
+pub fn run_notifctr_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F077-deep3");
+    let mut c = NotifCenter::new();
+    c.register_app(1, "星记", 7);
+    c.register_app(2, "星海音乐", 9);
+    let _ = c.post(1, "构建完成", "产物 12 件", 100, Priority::Normal, 100);
+    let _ = c.post(1, "构建完成", "产物 13 件", 200, Priority::Normal, 200);
+    let _ = c.post(2, "新歌上架", "你关注的歌手", 300, Priority::Normal, 300);
+    // toast 停留 5s 沉入历史——驱动滴答越过停留窗后三条全沉。
+    c.tick(5_500);
+    // 1. 变更即脏；落盘回执清脏。
+    let dirty_before = c.history_dirty();
+    let blob = c.serialize_history();
+    let _ = c.clear_history_dirty();
+    // 2. 新实例恢复：三条全回（含应用名单），恢复后不脏。
+    let mut c2 = NotifCenter::new();
+    let restored = c2.restore_history(&blob);
+    let count_ok = c2.history_view().iter().filter(|n| n.app_id == 1).count() == 2
+        && c2.history_view().iter().filter(|n| n.app_id == 2).count() == 1;
+    // 3. 坏行跳过不炸：垃圾行混入 → 只收好行。
+    let dirty_blob = alloc::format!("{}垃圾行\n@残缺", blob);
+    let mut c3 = NotifCenter::new();
+    let r3 = c3.restore_history(&dirty_blob);
+    set.add(
+        "history-persist",
+        dirty_before && restored == 3 && count_ok && r3 == 3 && !c2.history_dirty(),
+        "serialize/restore boundary",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep3 {
+    use super::*;
+
+    #[test]
+    fn restore_creates_app_registry() {
+        let mut c = NotifCenter::new();
+        c.register_app(9, "乐谱", 3);
+        let _ = c.post(9, "导出完成", "MIDI 8 轨", 10, Priority::Normal, 10);
+        let blob = c.serialize_history();
+        let mut c2 = NotifCenter::new();
+        c2.restore_history(&blob);
+        // 恢复后应用可查（图标占位 0——图标由上层资产面回填）。
+        assert!(c2.app_allowed(9), "应用节恢复后权限注册在位");
+    }
+
+    #[test]
+    fn body_newlines_flattened_for_disk() {
+        let mut c = NotifCenter::new();
+        c.register_app(1, "星记", 1);
+        let _ = c.post(1, "标题", "正文一\n正文二", 5, Priority::Normal, 5);
+        let blob = c.serialize_history();
+        assert!(!blob.contains("正文一\n"), "落盘文本不携带裸换行——行协议保真");
+    }
+
+    #[test]
+    fn notifctr_deep3_checks_all_green() {
+        let set = run_notifctr_deep3_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F077-deep3 红项：{}/{} 绿", p, p + f);
     }
 }

@@ -317,10 +317,10 @@ impl SlidingRate {
 
     /// 记录一个速度样本（bytes_per_s，秒戳）。
     pub fn sample(&mut self, sec: u64, bytes_per_s: u64) {
-        if let Some(last) = self.samples.last() {
+        if let Some(last) = self.samples.last_mut() {
             if last.0 == sec {
                 // 同秒重采：替换（不累加——速度是瞬时值不是计数）。
-                self.samples.last_mut().unwrap().1 = bytes_per_s;
+                last.1 = bytes_per_s;
                 return;
             }
         }

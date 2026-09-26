@@ -69,7 +69,7 @@ pub const DESK_DOMAIN: &str = "deskstar-d1";
 /// 块同列注册（v2 收口：deep 不再只在宿主单测侧跑——域聚合面即可见）。
 pub fn run_deskstar_checks() -> CheckSet {
     let mut set = CheckSet::new(DESK_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 38] = [
+    let blocks: [(&'static str, CheckSet); 44] = [
         ("dbase", dbase::run_dbase_checks()),
         ("F076", quickset::run_quickset_checks()),
         ("F077", notifctr::run_notifctr_checks()),
@@ -109,6 +109,13 @@ pub fn run_deskstar_checks() -> CheckSet {
         ("F090-deep", crumbsbar::run_crumbsbar_deep_checks()),
         ("F091-deep", detailpane::run_detailpane_deep_checks()),
         ("F092-deep", zipkit::run_zipkit_deep_checks()),
+        // 深化层三（大量深化批 v3）。
+        ("F077-deep3", notifctr::run_notifctr_deep3_checks()),
+        ("F078-deep3", calflyout::run_calflyout_deep3_checks()),
+        ("F085-deep3", trashui::run_trashui_deep3_checks()),
+        ("F090-deep3", crumbsbar::run_crumbsbar_deep3_checks()),
+        ("F091-deep3", detailpane::run_detailpane_deep3_checks()),
+        ("F092-deep3", zipkit::run_zipkit_deep3_checks()),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();

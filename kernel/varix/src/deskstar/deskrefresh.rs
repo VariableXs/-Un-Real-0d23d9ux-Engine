@@ -103,10 +103,12 @@ impl DeskRefresh {
     /// （300ms 内合并为单次——防抖语义；执行中拒新请求）。
     pub fn request(&mut self, now_ms: u64) -> bool {
         self.now_ms = now_ms;
-        if self.flash_start.is_some() && now_ms.saturating_sub(self.flash_start.unwrap()) < FLASH_MS as u64 {
-            // 刷新进行中：不接受新枚举请求（防抖）。
-            self.rejected_during += 1;
-            return false;
+        if let Some(t0) = self.flash_start {
+            if now_ms.saturating_sub(t0) < FLASH_MS as u64 {
+                // 刷新进行中：不接受新枚举请求（防抖）。
+                self.rejected_during += 1;
+                return false;
+            }
         }
         if self.debounce.event(now_ms) {
             self.refresh_total += 1;
@@ -252,18 +254,17 @@ pub struct QueuedRefresh {
 impl DeskRefresh {
     /// 刷新期间的新请求入队（完成后按序补执行——替代单纯计数）。
     pub fn enqueue_deferred(&mut self, from_keyboard: bool, now_ms: u64) -> bool {
-        if self.flash_start.is_some()
-            && now_ms.saturating_sub(self.flash_start.unwrap()) < FLASH_MS as u64
-        {
-            self.deferred_queue.push(QueuedRefresh {
-                from_keyboard,
-                at_ms: now_ms,
-            });
-            self.deferred_enums += 1;
-            true
-        } else {
-            false
+        if let Some(t0) = self.flash_start {
+            if now_ms.saturating_sub(t0) < FLASH_MS as u64 {
+                self.deferred_queue.push(QueuedRefresh {
+                    from_keyboard,
+                    at_ms: now_ms,
+                });
+                self.deferred_enums += 1;
+                return true;
+            }
         }
+        false
     }
 
     /// 补执行队列驱动（flash_done 后由宿主滴答调用；一次吐一条）。

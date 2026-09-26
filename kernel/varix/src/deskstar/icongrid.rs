@@ -369,8 +369,8 @@ impl IconGrid {
         let y = from.1.min(to.1);
         let w = (from.0 - to.0).abs();
         let h = (from.1 - to.1).abs();
-        self.rubber = Some(Rect::new(x, y, w, h));
-        let rect = self.rubber.unwrap();
+        let rect = Rect::new(x, y, w, h);
+        self.rubber = Some(rect);
         self.selected = self
             .icons
             .iter()
