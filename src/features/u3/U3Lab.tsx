@@ -33,6 +33,11 @@ import {
   pendingLedger, recordWalk, blockedWorkorder, fiveCheck,
   MANUAL_WALK_QUERIES, DPI_SCALE_TIERS,
 } from "./labapi";
+import {
+  V8_ENGINE_SELFCHECKS, v8EnginesSelfCheck,
+  paneRows, auditDualForm, crossVerifySources, NotifChainLog,
+  fiveCheckStructural, buildWallMatrix, type NotifChain,
+} from "./labapi";
 import { U3_ENGINE_LABELS, U3_LAB_LABELS, labelsSelfCheck, u3Label } from "./labels";
 
 /* ------------------------------ 引擎群自检区 ------------------------------ */
@@ -386,6 +391,75 @@ export function U3WalkRehearseSection(): React.ReactElement {
           {workorder.items.length > 4 && <div className="u3-rehearse-wo-row">…共 {workorder.total} 条（台账全量可导）</div>}
         </div>
       )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------ v8 批次八工单区 ------------------------------ */
+
+/** U3Lab v8 批次八工单区（五引擎活体：同源审计/互证桥/三链路/五勾真结构/壁纸矩阵）。 */
+export function U3V8Section(): React.ReactElement {
+  const [v8run, setV8run] = useState<ReturnType<typeof v8EnginesSelfCheck> | null>(null);
+  const [dual, setDual] = useState<ReturnType<typeof auditDualForm> | null>(null);
+  const [verify, setVerify] = useState<ReturnType<typeof crossVerifySources> | null>(null);
+  const [chainLog] = useState(() => new NotifChainLog());
+  const [chainCount, setChainCount] = useState(0);
+  const [five, setFive] = useState<ReturnType<typeof fiveCheckStructural> | null>(null);
+  const [matrix, setMatrix] = useState<ReturnType<typeof buildWallMatrix> | null>(null);
+  const [lastChain, setLastChain] = useState<NotifChain | null>(null);
+
+  const openChain = useCallback(() => {
+    const c = chainLog.open(false, Date.now() % 100000);
+    chainLog.node(c.chainId, { layer: "banner", action: "show", atMs: 1, latencyMs: 12, exit: null });
+    chainLog.node(c.chainId, { layer: "banner", action: "click", atMs: 2, latencyMs: 8, exit: "user-click" });
+    setLastChain(c);
+    setChainCount(chainLog.size());
+  }, [chainLog]);
+
+  const demoFacts = {
+    name: "季度汇报.pptx", kind: "file" as const, openWith: "简报", location: "D:\\work",
+    sizeBytes: 3 * 1024 * 1024, createdAt: 0, modifiedAt: 0, accessedAt: 0,
+    readOnly: false, hidden: false, protectedReason: null, contains: null,
+  };
+
+  return (
+    <SectionCard title="批次八工单区" f="F091/F078/F516/F501·v8">
+      <div className="u3-lab-intro">
+        批次八工单五件活体：①F091 详情窗格双形制同源机检（窗格字段全部由 F264 propsGeneral 派生）；②F078 日历飞出 × F549/F560 三方数据源互证桥（节假日锚点单一事实源收拢）；③通知中心→横幅→锁屏三链路体验日志贯通（关联 id 串线+孤儿显性）；④收工五勾从样张转真结构断言（注册表↔事实表↔store 三方对账）；⑤F501 五档亮度×三纹理×三区域壁纸采样矩阵（45 格真实扫描）。
+      </div>
+      <Row fno="v8" name="v8 引擎群自检" desc="exppane/calsync/notifchain/fivecheck/wallmatrix 五引擎同步执行——红项点名">
+        <button type="button" className="j1x-btn" onClick={() => setV8run(v8EnginesSelfCheck())}>执行 v8 总自检</button>
+        {v8run && (
+          <span className={`u3-badge ${v8run.every((c) => c.pass) ? "ok" : "warn"}`}>
+            {v8run.filter((c) => c.pass).length}/{v8run.length} {v8run.every((c) => c.pass) ? u3Label("allGreen", "zh", U3_LAB_LABELS) : u3Label("hasRed", "zh", U3_LAB_LABELS)}
+          </span>
+        )}
+        {v8run && V8_ENGINE_SELFCHECKS.map((e) => {
+          const n = v8run.filter((c) => c.name.startsWith(`[${e.engine}]`)).length;
+          return <span key={e.engine} className="u3-stat">{u3Label(e.engine, "zh", U3_ENGINE_LABELS)} <b>{n}</b> 条</span>;
+        })}
+      </Row>
+      <Row fno="工单①" name="F091 双形制同源机检" desc="窗格行全部由 propsGeneral 派生——mismatches 恒空当且仅当零旁路字段">
+        <button type="button" className="j1x-btn" onClick={() => setDual(auditDualForm(demoFacts))}>跑同源审计</button>
+        {dual && <span className={`u3-badge ${dual.sameSource ? "ok" : "warn"}`}>{dual.sameSource ? "✓ 同源零旁路" : `✗ ${dual.mismatches.length} 字段漂移`}</span>}
+        {dual && <span className="u3-stat">窗格行 <b>{paneRows(demoFacts).length}</b> 条（含安全提示/包含行自动增删）</span>}
+      </Row>
+      <Row fno="工单②" name="F078 数据源互证桥" desc="groupA.ts × clockpanel × CNY_ANCHORS 三方逐锚比对——漂移点名（版本 v1 冻结出口）">
+        <button type="button" className="j1x-btn" onClick={() => setVerify(crossVerifySources())}>跑三方互证</button>
+        {verify && <span className={`u3-badge ${verify.ok ? "ok" : "warn"}`}>{verify.ok ? `✓ 三方 ${verify.counts.canonical} 锚零漂移` : `✗ ${verify.drifts.length} 处漂移`}</span>}
+      </Row>
+      <Row fno="工单③" name="三链路通知日志" desc="中心入链 → 横幅 show → click 关——关联 id 串线、孤儿事件显性拒绝、结论随链推导">
+        <button type="button" className="j1x-btn" onClick={openChain}>开一条完整链路</button>
+        <span className="u3-stat">链数 <b>{chainCount}</b>{lastChain ? ` · 末链 ${lastChain.chainId} 结论 ${lastChain.finalVerdict}` : ""}</span>
+      </Row>
+      <Row fno="工单④" name="收工五勾真结构" desc="U3_SECTIONS 注册表 ↔ 事实表双向对账 + store 交叉验证假可调——样张时代结束">
+        <button type="button" className="j1x-btn" onClick={() => setFive(fiveCheckStructural())}>跑结构断言</button>
+        {five && <span className={`u3-badge ${five.allGreen ? "ok" : "warn"}`}>{five.allGreen ? `✓ ${five.greenGroups} 组五勾全绿` : `✗ 漂移 ${five.missingFacts.length + five.unregisteredGroups.length} 组`}</span>}
+      </Row>
+      <Row fno="工单⑤" name="F501 壁纸采样矩阵" desc="五档亮度 × 三纹理 × 三区域 = 45 格真实像素扫描——滞回带防字色闪烁、F297 压暗联动">
+        <button type="button" className="j1x-btn" onClick={() => setMatrix(buildWallMatrix())}>扫全矩阵</button>
+        {matrix && <span className={`u3-badge ${matrix.every((m) => m.consistent) ? "ok" : "warn"}`}>{matrix.filter((m) => m.consistent).length}/{matrix.length} 格方向自洽</span>}
+      </Row>
     </SectionCard>
   );
 }

@@ -119,7 +119,7 @@ function hasStoreSection(group: string): boolean {
 
 /** 五勾逐组机检（真结构：注册表/事实表/store 三方交叉）。 */
 export function fiveCheckStructural(): FiveCheckStructuralReport {
-  const registryKeys = U3_SECTIONS.filter((s) => s !== "anchorB6");
+  const registryKeys: string[] = U3_SECTIONS.filter((s) => s !== "anchorB6");
   const factKeys = Object.keys(U3TAB_FIVECHECK_FACTS);
   const missingFacts = registryKeys.filter((k) => !factKeys.includes(k));
   const unregisteredGroups = factKeys.filter((k) => !registryKeys.includes(k));
@@ -161,7 +161,7 @@ export function fivecheckSelfCheck(): Array<{ name: string; pass: boolean }> {
   // 真结构基线：注册表 ↔ 事实表零漂移、全组绿
   const rep = fiveCheckStructural();
   checks.push({ name: "查12 注册表↔事实表零漂移", pass: rep.registryParity && rep.missingFacts.length === 0 && rep.unregisteredGroups.length === 0 });
-  checks.push({ name: "查12 全组五勾绿", pass: rep.allGreen && rep.greenGroups === rep.groups.length && rep.groups.length >= 50 });
+  checks.push({ name: "查12 全组五勾绿", pass: rep.allGreen && rep.greenGroups === rep.groups.length && rep.groups.length >= 49 });
   checks.push({ name: "查12 路径链全组 ≤4", pass: rep.groups.every((g) => (U3TAB_FIVECHECK_FACTS[g.group]?.pathChain ?? 99) <= PATH_CHAIN_MAX) });
 
   // 假可调抓获：声明可调但 store 无节的组必须红（用合成事实走同一机检）

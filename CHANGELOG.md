@@ -3,6 +3,18 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次八 · 工单五件兑现 · 隔离验证+检查项对账）
+
+**src/features/u3/ 五台引擎新增**（2026-09-28，累计 28,053 → 28,739 = 61.8%）：
+
+- **exppane 详情窗格同源**（工单①）：F091 双形制同源装配——窗格七行字段全部由 F264 propsGeneral 派生，auditDualForm 机检「零旁路字段恒绿」+ F528 窗格跟随防抖状态机 + 文件夹统计挂载位共享。
+- **calsync 日历数据互证桥**（工单②）：F078 日历飞出 × F549/F560 三方数据源互证——groupA.ts（D1 领地事实源）× clockpanel × CNY_ANCHORS 逐锚比对（padKey 零填充规范化）+ 农历物理互证（春节=正月初一/端午=五月初五/中秋=八月十五）+ BRIDGE_VERSION v1 冻结消费出口。
+- **notifchain 三链路通知日志**（工单③）：通知中心→横幅→锁屏三链路体验日志贯通——关联 id 串线 + F507 层路由判据（锁屏态横幅不显改接力）+ 孤儿事件显性拒绝 + 链尾结论推导 + u3ExpLog 统一时间轴埋点。
+- **fivecheck 五勾真结构断言**（工单④）：收工五勾从样张转真结构——U3_SECTIONS 注册表 ↔ 事实表双向对账（49 组零漂移）+ store 交叉验证假可调（声明可调但无配置节=红）+ 路径链 ≤4 硬线。
+- **wallmatrix 壁纸采样矩阵**（工单⑤）：F501 五档亮度×两字色活体扩容——三纹理×五档真实像素发生器 + 三区域扫描（全幅/图标带/任务栏带）45 格全真实扫描 + 滞回带（0.47-0.53 防字色闪烁）+ F297 压暗联动。
+- **接线**：engines/index v8 注册表、labapi v8 出口、labels 28 引擎双语、anchor 域表 14 域、reconcile 聚合域排除 v8-engines、U3Lab 批次八工单区、U3Tab 挂载。
+- **验证**：U3 全量单测 283/283 全绿（v8 新增 31）、tsc 本域 0 错、隔离验证 worktree HEAD=dd165c33 + 13 文件全绿（junction 先卸后删、node_modules 完好）、F550 三面对账 50/50；缺陷账 D-51~D-53 全闭合。
+
 ## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次七 · 装配深化 · 隔离验证+检查项对账）
 
 **src/features/u3/ 引擎四件新增 + 三活体件**（2026-09-27，累计 26,344 → 28,053 = 60.3%）：

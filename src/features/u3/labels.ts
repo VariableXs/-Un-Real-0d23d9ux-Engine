@@ -42,6 +42,11 @@ export const U3_ENGINE_LABELS: Readonly<Record<string, U3LabelPair>> = {
   copyqueue:  { zh: "复制队列装配引擎", en: "Copy Queue Engine" },
   clockpanel: { zh: "时钟面板装配引擎", en: "Clock Panel Engine" },
   walkrehearse: { zh: "走查预演引擎", en: "Walk Rehearsal Engine" },
+  exppane:    { zh: "详情窗格同源引擎", en: "Detail Pane Same-Source" },
+  calsync:    { zh: "日历数据互证桥", en: "Calendar Cross-Verify Bridge" },
+  notifchain: { zh: "三链路通知日志引擎", en: "Three-Layer Notif Chain" },
+  fivecheck:  { zh: "五勾真结构断言引擎", en: "Five-Check Structural" },
+  wallmatrix: { zh: "壁纸采样矩阵引擎", en: "Wallpaper Matrix Engine" },
 };
 
 /** 面板区组标签。 */
@@ -69,6 +74,9 @@ export const U3_LAB_LABELS: Readonly<Record<string, U3LabelPair>> = {
   queueGroup:  { zh: "复制队列装配区", en: "Copy queue assembly" },
   panelGroup:  { zh: "时钟面板装配区", en: "Clock panel assembly" },
   rehearseGroup: { zh: "走查预演工位", en: "Walk rehearsal bench" },
+  v8Group:     { zh: "批次八工单区", en: "Batch-eight workorder" },
+  paneGroup:   { zh: "详情窗格同源实况", en: "Detail pane same-source live" },
+  chainGroup:  { zh: "三链路通知日志实况", en: "Three-layer notif chain live" },
 };
 
 /** 取词 selector（缺键显性回退键名——零静默漏翻）。 */
@@ -87,8 +95,8 @@ export function labelsSelfCheck(): Array<{ name: string; pass: boolean }> {
     pass: allDicts.every((d) => Object.values(d).every((p) => p.zh.length > 0 && p.en.length > 0)),
   });
   checks.push({
-    name: "labels 廿三引擎在册",
-    pass: Object.keys(U3_ENGINE_LABELS).length === 23,
+    name: "labels 廿八引擎在册",
+    pass: Object.keys(U3_ENGINE_LABELS).length === 28,
   });
   // 缺键显性回退：不存在的键返回键名（不静默给空串）
   checks.push({ name: "labels 缺键显性回退", pass: u3Label("no-such-key", "zh", U3_LAB_LABELS) === "no-such-key" });

@@ -14,7 +14,7 @@
  *   取数，向后兼容承诺随版本号登记（废弃走流程）。
  */
 
-import { CN_HOLIDAYS_2026 } from "../../../tools/groupA";
+import { CN_HOLIDAYS_2026 } from "../../tools/groupA";
 import { solarToLunar, CNY_ANCHORS } from "../clockcal";
 import { HOLIDAYS_2026, holidayOf } from "./clockpanel";
 
@@ -30,6 +30,11 @@ export interface AnchorEntry {
   kind: "holiday" | "workday";
 }
 
+/** 零填充日期键（groupA 键是 padStart 形制、clockpanel 是裸数——统一规范化再比）。 */
+function padKey([y, m, d]: readonly [number, number, number]): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 /** 2026 规范锚点表（从 groupA.ts 收拢——AI-D1 领地的已提交数据是事实源）。 */
 export const CANONICAL_2026: ReadonlyArray<AnchorEntry> =
   Object.entries(CN_HOLIDAYS_2026)
@@ -37,7 +42,7 @@ export const CANONICAL_2026: ReadonlyArray<AnchorEntry> =
       const [y, m, d] = k.split("-").map((v) => parseInt(v, 10));
       return { ymd: [y, m, d] as readonly [number, number, number], name, kind: "holiday" as const };
     })
-    .sort((a, b) => a.ymd.join("") < b.ymd.join("") ? -1 : 1);
+    .sort((a, b) => (a.ymd[0] * 10000 + a.ymd[1] * 100 + a.ymd[2]) - (b.ymd[0] * 10000 + b.ymd[1] * 100 + b.ymd[2]));
 
 /** 消费出口（F078 飞出 / F549 面板 / F560 标注三方统一取数口）。 */
 export function bridgeAnchor(y: number, m: number, d: number): AnchorEntry | null {
@@ -59,8 +64,11 @@ export interface CrossVerifyReport {
 /** 逐锚三方比对：groupA（事实源）× clockpanel（U3 内置表）× 农历互证。 */
 export function crossVerifySources(): CrossVerifyReport {
   const drifts: Array<{ ymd: string; detail: string }> = [];
-  const groupAKeys = Object.keys(CN_HOLIDAYS_2026).sort();
-  const cpKeys = HOLIDAYS_2026.map((h) => h.date.join("-")).sort();
+  const groupAKeys = Object.keys(CN_HOLIDAYS_2026).map((k) => {
+    const parts = k.split("-").map((v) => parseInt(v, 10));
+    return padKey([parts[0]!, parts[1]!, parts[2]!]);
+  }).sort();
+  const cpKeys = HOLIDAYS_2026.map((h) => padKey(h.date)).sort();
 
   if (groupAKeys.length !== cpKeys.length) {
     drifts.push({ ymd: "-", detail: `条数不一致：groupA ${groupAKeys.length} vs clockpanel ${cpKeys.length}` });
@@ -71,7 +79,7 @@ export function crossVerifySources(): CrossVerifyReport {
       continue;
     }
     const gaName = CN_HOLIDAYS_2026[k] ?? "";
-    const cp = HOLIDAYS_2026.find((h) => h.date.join("-") === k);
+    const cp = HOLIDAYS_2026.find((h) => padKey(h.date) === k);
     if (!cp || cp.name !== gaName) {
       drifts.push({ ymd: k, detail: `名称漂移：groupA「${gaName}」vs clockpanel「${cp?.name ?? "?"}」` });
     }
@@ -129,8 +137,9 @@ export const F078_CALENDAR_BRIDGE: FlyoutCalendarData = {
 export function calsyncSelfCheck(): Array<{ name: string; pass: boolean }> {
   const checks: Array<{ name: string; pass: boolean }> = [];
 
-  // 规范源形状：7 锚升序、全部 holiday
-  checks.push({ name: "F560 规范源七锚升序", pass: CANONICAL_2026.length === 7 && CANONICAL_2026.every((a, i) => i === 0 || CANONICAL_2026[i - 1]!.ymd.join("") < a.ymd.join("")) && CANONICAL_2026.every((a) => a.kind === "holiday") });
+  // 规范源形状：7 锚升序（数值序）、全部 holiday
+  const ord = (a: AnchorEntry) => a.ymd[0] * 10000 + a.ymd[1] * 100 + a.ymd[2];
+  checks.push({ name: "F560 规范源七锚升序", pass: CANONICAL_2026.length === 7 && CANONICAL_2026.every((a, i) => i === 0 || ord(CANONICAL_2026[i - 1]!) < ord(a)) && CANONICAL_2026.every((a) => a.kind === "holiday") });
 
   // 三方互证：绿基线
   const rep = crossVerifySources();

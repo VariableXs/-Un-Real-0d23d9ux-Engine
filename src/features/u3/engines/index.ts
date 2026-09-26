@@ -42,6 +42,11 @@ import { walkrehearseSelfCheck } from "./walkrehearse";
 import { despaintSelfCheck } from "./despaint";
 import { expuiSelfCheck } from "./expui";
 import { lockmountSelfCheck } from "./lockmount";
+import { exppaneSelfCheck } from "./exppane";
+import { calsyncSelfCheck } from "./calsync";
+import { notifchainSelfCheck } from "./notifchain";
+import { fivecheckSelfCheck } from "./fivecheck";
+import { wallmatrixSelfCheck } from "./wallmatrix";
 
 /** v4 引擎自检注册表（F550 锚点域并入的事实源——域表动态读这里）。 */
 export const V4_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
@@ -82,6 +87,15 @@ export const V7_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: strin
   { engine: "walkrehearse", fScope: "十二查 manual-walk 预演", run: walkrehearseSelfCheck },
 ];
 
+/** v8 批次八工单注册表（F091 双形制同源/F078 互证桥/三链路日志/五勾真结构/F501 壁纸矩阵）。 */
+export const V8_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
+  { engine: "exppane", fScope: "F091/F264 双形制同源", run: exppaneSelfCheck },
+  { engine: "calsync", fScope: "F078/F549/F560 互证桥", run: calsyncSelfCheck },
+  { engine: "notifchain", fScope: "F516/F507 三链路日志", run: notifchainSelfCheck },
+  { engine: "fivecheck", fScope: "十二查查12 真结构", run: fivecheckSelfCheck },
+  { engine: "wallmatrix", fScope: "F501 壁纸采样矩阵", run: wallmatrixSelfCheck },
+];
+
 /** v4 引擎群总自检（供锚点域与实验室面板调用）。 */
 export function v4EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V4_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
@@ -102,9 +116,14 @@ export function v7EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V7_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
 }
 
-/** 全引擎群总自检（v4+v5+v6+v7 一口出——锚点域与实验室消费）。 */
+/** v8 引擎群总自检（供锚点域与实验室面板调用）。 */
+export function v8EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return V8_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
+}
+
+/** 全引擎群总自检（v4+v5+v6+v7+v8 一口出——锚点域与实验室消费）。 */
 export function u3EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
-  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck(), ...v6EnginesSelfCheck(), ...v7EnginesSelfCheck()];
+  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck(), ...v6EnginesSelfCheck(), ...v7EnginesSelfCheck(), ...v8EnginesSelfCheck()];
 }
 export * from "./shellbar";
 export * from "./dictwalk";
@@ -113,3 +132,8 @@ export * from "./deskmenu";
 export * from "./copyqueue";
 export * from "./clockpanel";
 export * from "./walkrehearse";
+export * from "./exppane";
+export * from "./calsync";
+export * from "./notifchain";
+export * from "./fivecheck";
+export * from "./wallmatrix";

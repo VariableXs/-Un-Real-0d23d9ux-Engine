@@ -7,9 +7,11 @@ export {
   V4_ENGINE_SELFCHECKS,
   V5_ENGINE_SELFCHECKS,
   V7_ENGINE_SELFCHECKS,
+  V8_ENGINE_SELFCHECKS,
   v4EnginesSelfCheck,
   v5EnginesSelfCheck,
   v7EnginesSelfCheck,
+  v8EnginesSelfCheck,
   u3EnginesSelfCheck,
   buildDomainChecklist,
   reconcileTwelveQueries,
@@ -17,6 +19,11 @@ export {
   ExpLog,
   toImprovementItems,
 } from "./engines";
+export { paneRows, auditDualForm, paneFollowSelect, paneFollowInit, type ItemFacts as PaneItemFacts, type PaneRow, type DualFormAudit, type PaneFollowState } from "./engines";
+export { F078_CALENDAR_BRIDGE, crossVerifySources, CANONICAL_2026, BRIDGE_VERSION, type CrossVerifyReport, type AnchorEntry, type FlyoutCalendarData } from "./engines";
+export { NotifChainLog, routeFor, chainNodeToExpLog, type NotifChain, type ChainNode, type NotifLayer } from "./engines";
+export { fiveCheckStructural, U3TAB_FIVECHECK_FACTS, PATH_CHAIN_MAX, type GroupFiveCheckFacts, type FiveCheckStructuralReport } from "./engines";
+export { buildWallMatrix, scanLuma, makeWallpaper, pickWithHysteresis, WALL_TARGET_LUMA_255, HYSTERESIS_HALF, type MatrixCell, type WallTexture, type SampleZone, type TextColorRt } from "./engines";
 export { wrapIconLabel as wrapIconLabelForLab } from "./deskicons";
 export { pendingLedger, recordWalk, blockedWorkorder, fiveCheck, MANUAL_WALK_QUERIES, DPI_SCALE_TIERS, type WalkRecord, type FiveCheckFacts } from "./engines";
 export { iconContextMenu, propsGeneral, renameEnter, renameSubmit, renameEscape, renameIdle, initialSelection, splitNameExt, applyAttribute, fullTextReachable, type ItemFacts, type RenameRt, type RenameVerdict, type MenuItem } from "./engines";
