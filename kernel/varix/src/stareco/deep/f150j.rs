@@ -124,7 +124,7 @@ pub fn worst_batch() -> &'static str {
 
 /// 域全体行数（六批合计 + ebase 535 + mod 聚合器 + 收尾件 f150i/f150j
 /// ——口径：stareco 目录 wc 全量，随批重生成）。
-pub const DOMAIN_WC_TOTAL: usize = 30965;
+pub const DOMAIN_WC_TOTAL: usize = 31419; // 批次六收口后 wc 实数（跨线）
 
 pub const GATE_90_LINES: usize = 31239; // 主册口径：34,710 × 90%
 
@@ -201,8 +201,8 @@ pub fn run_f150_deep5c_checks() -> CheckSet {
     // 90% 线
     set.add(
         "f150j gap honest",
-        gap_to_gate(DOMAIN_WC_TOTAL) == 274,
-        "缺口实数（wc 口径 30,965 / 线 31,239）",
+        gap_to_gate(DOMAIN_WC_TOTAL) == 0,
+        "批次六收口后缺口归零（wc 口径 31,419 ≥ 线 31,239）",
     );
     set.add(
         "f150j gap zero",
@@ -210,9 +210,9 @@ pub fn run_f150_deep5c_checks() -> CheckSet {
         "跨线后缺口归零",
     );
     set.add(
-        "f150j ticket gap",
-        next_batch_ticket(DOMAIN_WC_TOTAL).contains("274"),
-        "工单含缺口实数",
+        "f150j ticket gate",
+        next_batch_ticket(DOMAIN_WC_TOTAL).contains("闸门补测"),
+        "跨线后工单转闸门补测与收尾冲刺",
     );
     set.add(
         "f150j ticket done",

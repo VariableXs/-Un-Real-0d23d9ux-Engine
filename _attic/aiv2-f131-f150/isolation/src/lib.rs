@@ -225,6 +225,10 @@ pub mod stareco {
         pub mod f150i;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f150j.rs"]
         pub mod f150j;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150k.rs"]
+        pub mod f150k;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150l.rs"]
+        pub mod f150l;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f131f.rs"]
         pub mod f131f;
         #[path = "../../../../../../kernel/varix/src/stareco/deep/f132f.rs"]
@@ -501,6 +505,21 @@ mod diag {
             set.all_passed() && !set.truncated(),
             "STARECO-V2 f150j 台账总装存在红项"
         );
+    }
+
+    /// 批次六收口件（f150k 总闸 + f150l 交接面）全绿断言。
+    #[test]
+    fn deep6_aggregate_all_green() {
+        let sets = [
+            crate::stareco::deep::f150k::run_f150_deep6_checks(),
+            crate::stareco::deep::f150l::run_f150_deep6b_checks(),
+        ];
+        for set in sets {
+            assert!(
+                set.all_passed() && !set.truncated(),
+                "STARECO-V2 批次六收口件存在红项"
+            );
+        }
     }
 
     /// 批次三红项明细 dump（每块逐行渲染，定位具体断言）。

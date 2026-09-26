@@ -111,6 +111,8 @@ pub mod f150g;
 pub mod f150h;
 pub mod f150i;
 pub mod f150j;
+pub mod f150k;
+pub mod f150l;
 
 /// 深化域标识。
 pub const DEEP_DOMAIN: &str = "stareco-v2-deep";
@@ -118,7 +120,7 @@ pub const DEEP_DOMAIN: &str = "stareco-v2-deep";
 /// 深化层自检聚合：d/e/f/g/h 五批各 20 + f150i 收尾件 = 101 blocks。
 pub fn run_stareco_deep_checks() -> CheckSet {
     let mut set = CheckSet::new(DEEP_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 102] = [
+    let blocks: [(&'static str, CheckSet); 104] = [
         ("F131d", f131d::run_f131_deep_checks()),
         ("F131e", f131e::run_f131_deep2_checks()),
         ("F131f", f131f::run_f131_deep3_checks()),
@@ -179,6 +181,8 @@ pub fn run_stareco_deep_checks() -> CheckSet {
         ("F150h", f150h::run_f150_deep5_checks()),
         ("F150i", f150i::run_f150_deep5b_checks()),
         ("F150j", f150j::run_f150_deep5c_checks()),
+        ("F150k", f150k::run_f150_deep6_checks()),
+        ("F150l", f150l::run_f150_deep6b_checks()),
         ("F137d", f137d::run_f137_deep_checks()),
         ("F137e", f137e::run_f137_deep2_checks()),
         ("F137f", f137f::run_f137_deep3_checks()),
