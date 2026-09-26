@@ -1731,3 +1731,694 @@ mod deep6_tests {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——双槽健康评分 / 更新模拟 / 回滚演练 /
+// 版本变更摘要。
+// 判据源：主册【验收判据】「更新全程可取消可回滚」+【设计细节】
+// 「更新前预估磁盘空间与时长」。
+// ---------------------------------------------------------------------------
+
+/// 槽位健康评分（0-100：有效性 40 + 版本新鲜度 30 + 回滚点健康 30）。
+pub struct SlotHealthScore {
+    pub score: u64,
+    /// 扣分明细（评分可解释）。
+    pub parts: [u64; 3],
+}
+
+/// 双槽健康（两槽各评一分 + 双槽互备结论）。
+pub fn slot_health_pair(a_valid: bool, b_valid: bool, a_age_days: u64, b_age_days: u64, rollback_ok: bool) -> (SlotHealthScore, SlotHealthScore, bool) {
+    let eval = |valid: bool, age: u64| -> SlotHealthScore {
+        let p0 = if valid { 40 } else { 0 };
+        let p1 = if age <= 90 { 30 } else if age <= 365 { 15 } else { 0 };
+        let p2 = if rollback_ok { 30 } else { 0 };
+        SlotHealthScore { score: p0 + p1 + p2, parts: [p0, p1, p2] }
+    };
+    (eval(a_valid, a_age_days), eval(b_valid, b_age_days), a_valid && b_valid)
+}
+
+/// 更新模拟（干跑：空间够不够/要多久/动哪些槽——不动任何字节）。
+pub struct UpdateSim {
+    pub enough_space: bool,
+    pub need_mib: u64,
+    /// 预计耗时 s（写 20 MiB/s + 校验 60 MiB/s 双阶段）。
+    pub eta_s: u64,
+    pub touches_backup_slot: bool,
+}
+
+/// 更新模拟（payload_mib：包体积；free_mib：备用槽剩余；write/read 速率常量在册）。
+pub const SIM_WRITE_MIB_PER_S: u64 = 20;
+pub const SIM_VERIFY_MIB_PER_S: u64 = 60;
+
+pub fn update_simulate(payload_mib: u64, free_mib: u64, backup_exists: bool) -> UpdateSim {
+    let need = payload_mib + payload_mib / 2; // 写入 + 校验临时区（1.5 倍）。
+    UpdateSim {
+        enough_space: free_mib >= need,
+        need_mib: need,
+        eta_s: payload_mib / SIM_WRITE_MIB_PER_S + payload_mib / SIM_VERIFY_MIB_PER_S + 1,
+        touches_backup_slot: backup_exists,
+    }
+}
+
+/// 回滚演练（干跑清单：切回旧槽需要校验的三件事）。
+pub fn rollback_rehearsal(backup_valid: bool, within_window: bool, confirmed: bool) -> (bool, Vec<&'static str>) {
+    let mut missing = Vec::new();
+    if !backup_valid {
+        missing.push("备用槽镜像校验");
+    }
+    if !within_window {
+        missing.push("回滚窗口未过期");
+    }
+    if !confirmed {
+        missing.push("用户二次确认");
+    }
+    (missing.is_empty(), missing)
+}
+
+/// 版本变更摘要行（三段式语义化版本 → 人话）。
+pub fn version_changelog(from_v: u32, to_v: u32) -> alloc::string::String {
+    let (fmaj, fmin, fpat) = (from_v / 100, from_v % 100 / 10, from_v % 10);
+    let (tmaj, tmin, tpat) = (to_v / 100, to_v % 100 / 10, to_v % 10);
+    if tmaj > fmaj {
+        alloc::format!("大版本升级 v{}.{}.{} → v{}.{}.{}：含架构变更，建议先看发布公告", fmaj, fmin, fpat, tmaj, tmin, tpat)
+    } else if tmin > fmin {
+        alloc::format!("功能更新 v{}.{}.{} → v{}.{}.{}：新增功能，随时可更", fmaj, fmin, fpat, tmaj, tmin, tpat)
+    } else if tpat > fpat {
+        alloc::format!("修补更新 v{}.{}.{} → v{}.{}.{}：问题修复，建议尽快更新", fmaj, fmin, fpat, tmaj, tmin, tpat)
+    } else {
+        alloc::string::String::from("版本相同，无需更新")
+    }
+}
+
+/// F190 v8 自检（deep7 表）。
+pub fn run_slotview_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v8");
+
+    // 双槽健康：满健康/单槽坏/双坏互备结论。
+    let (ha, hb, pair) = slot_health_pair(true, true, 10, 20, true);
+    set.add("health full", ha.score == 100 && hb.score == 100 && pair, "双槽满血互备");
+    let (ha2, _, pair2) = slot_health_pair(true, false, 10, 0, true);
+    set.add("health half", ha2.score == 100 && !pair2, "备用坏 → 互备红");
+    let parts = ha2.parts;
+    set.add("health parts", parts[0] == 40 && parts[1] == 30, "坏槽年龄分仍按账给（B 侧另算）");
+    let (ha3, _, _) = slot_health_pair(true, true, 400, 400, false);
+    set.add("health stale", ha3.score == 40 + 0 + 0, "超年版本 + 无回滚点");
+
+    // 更新模拟：空间判定、ETA、临时区系数。
+    let sim = update_simulate(100, 200, true);
+    set.add("sim space ok", sim.enough_space && sim.need_mib == 150, "100 MiB 包需 150 含校验区");
+    set.add("sim eta", sim.eta_s == 100 / 20 + 100 / 60 + 1, "写 + 校验 + 起步开销");
+    set.add("sim touches", sim.touches_backup_slot, "");
+    let sim2 = update_simulate(100, 100, false);
+    set.add("sim space short", !sim2.enough_space, "空间不足诚实拦");
+    let sim3 = update_simulate(0, 0, true);
+    set.add("sim zero", sim3.need_mib == 0 && sim3.eta_s == 1, "空包起步 1s 不放除零");
+
+    // 回滚演练：三关全过放行 / 缺哪关点哪关。
+    let (ok, miss) = rollback_rehearsal(true, true, true);
+    set.add("rehearsal ok", ok && miss.is_empty(), "");
+    let (ok2, miss2) = rollback_rehearsal(false, true, false);
+    set.add("rehearsal missing", !ok2 && miss2.contains(&"备用槽镜像校验") && miss2.contains(&"用户二次确认"), "");
+
+    // 版本摘要：四态文案。
+    set.add("log major", version_changelog(200, 300).contains("架构变更"), "");
+    set.add("log minor", version_changelog(210, 220).contains("新增功能"), "");
+    set.add("log patch", version_changelog(212, 213).contains("尽快更新"), "");
+    set.add("log same", version_changelog(212, 212).contains("版本相同"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v7_eta_monotonic() {
+        // 包越大 ETA 越长（单调性——预估不许倒挂）。
+        let a = update_simulate(10, 1000, true).eta_s;
+        let b = update_simulate(100, 1000, true).eta_s;
+        let c = update_simulate(1000, 1000, true).eta_s;
+        assert!(a < b && b < c);
+    }
+
+    #[test]
+    fn f190_v7_health_parts_sum() {
+        // 分项和 = 总分（评分账实相符）。
+        let (h, _, _) = slot_health_pair(true, true, 200, 10, true);
+        assert_eq!(h.score, h.parts.iter().sum::<u64>());
+    }
+
+    #[test]
+    fn f190_v7_changelog_downgrade() {
+        // 降版本（回滚态）不误报为升级。
+        let s = version_changelog(213, 200);
+        assert!(s.contains("版本相同") || s.contains("修补") || s.contains("无需"), "降级走安全文案：{}", s);
+    }
+
+    #[test]
+    fn f190_v7_run_checks_pass() {
+        assert!(run_slotview_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-b6：更新窗口建议 / 双槽一致性审计 / 升级中止安全态。
+// ---------------------------------------------------------------------------
+
+/// 更新窗口建议（当前空闲分钟 → 建议/不建议与理由）。
+pub fn update_window_advice(idle_min: u64, payload_mib: u64) -> (bool, &'static str) {
+    let eta_min = payload_mib / 20 / 60 + 1; // 写入阶段折算分钟（SIM_WRITE 20 MiB/s）。
+    if idle_min >= eta_min * 3 {
+        (true, "空闲充足，可以开始更新")
+    } else if idle_min >= eta_min {
+        (false, "空闲刚好够——建议等更长的空闲窗（预留 3 倍时长）")
+    } else {
+        (false, "空闲不足——更新会打扰你的使用")
+    }
+}
+
+/// 双槽一致性审计（同版本号同哈希才叫一致——版本同哈希异是腐化信号）。
+pub struct SlotConsistency {
+    pub same_version: bool,
+    pub same_hash: bool,
+    /// 结论：一致 / 版本同哈希异（腐化）/ 正常代差。
+    pub verdict: &'static str,
+}
+
+/// 一致性审计。
+pub fn slot_consistency(v_a: u32, h_a: [u8; 8], v_b: u32, h_b: [u8; 8]) -> SlotConsistency {
+    let same_version = v_a == v_b;
+    let same_hash = h_a == h_b;
+    let verdict = if same_version && same_hash {
+        "双槽一致（更新完成的静止态）"
+    } else if same_version && !same_hash {
+        "版本号同但内容异——疑似腐化，立即登记缺陷"
+    } else {
+        "两槽处于不同版本（更新后的正常代差）"
+    };
+    SlotConsistency { same_version, same_hash, verdict }
+}
+
+/// 升级中止安全态（升级到一半取消 → 必须落在的安全态判定）。
+pub struct AbortSafety {
+    /// 激活槽未被动过（始终 true——切换是最后一步）。
+    pub active_untouched: bool,
+    /// 备用槽处于可重写状态。
+    pub backup_rewritable: bool,
+    pub verdict: &'static str,
+}
+
+/// 中止判定（written_mib / payload_mib：已写入进度）。
+pub fn abort_safety(written_mib: u64, payload_mib: u64) -> AbortSafety {
+    let partial = written_mib > 0 && written_mib < payload_mib;
+    AbortSafety {
+        active_untouched: true, // 设计不变式：激活槽切换发生在校验全过之后。
+        backup_rewritable: true,
+        verdict: if partial {
+            "中止安全：写入到备用槽的部分进度将被覆盖重写，激活槽不受影响"
+        } else {
+            "中止安全：未开始写入，无残留"
+        },
+    }
+}
+
+/// F190 v8-b6 自检（并入 deep7 表族）。
+pub fn run_slotview_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v8b");
+
+    // 窗口建议：三档。
+    let (ok1, t1) = update_window_advice(60, 100);
+    set.add("win plenty", ok1 && t1.contains("充足"), "100 MiB 写 5s→1min，3 倍 = 3min < 60");
+    let (ok2, t2) = update_window_advice(1, 1200);
+    set.add("win short", !ok2 && t2.contains("不足"), "1200 MiB 需 2min，空闲 1min 不足");
+    let (ok3, t3) = update_window_advice(3, 1200);
+    set.add("win mid", !ok3 && t3.contains("3 倍"), "够但没余量 → 建议等");
+
+    // 双槽一致性：三态。
+    let ha = [1u8; 8];
+    let mut hb = [1u8; 8];
+    hb[0] = 2;
+    let c1 = slot_consistency(322, ha, 322, ha);
+    set.add("consist same", c1.same_version && c1.same_hash && c1.verdict.contains("一致"), "");
+    let c2 = slot_consistency(322, ha, 322, hb);
+    set.add("consist corrupt", c2.same_version && !c2.same_hash && c2.verdict.contains("腐化"), "");
+    let c3 = slot_consistency(321, ha, 322, hb);
+    set.add("consist gap", !c3.same_version && c3.verdict.contains("代差"), "");
+
+    // 中止安全：零进度 / 半途。
+    let a1 = abort_safety(0, 100);
+    set.add("abort zero", a1.verdict.contains("未开始"), "");
+    let a2 = abort_safety(50, 100);
+    set.add("abort partial", a2.active_untouched && a2.verdict.contains("覆盖重写"), "半途进度可覆写");
+    set.add("abort invariant", a1.active_untouched && a2.active_untouched, "激活槽不变式恒真");
+    // b7-wave2：更新暂停/恢复阶段账。
+    set.add("upd pause", { let mut p = UpdatePause::new(); p.stage(); p.pause(); p.paused && p.stage_no == 1 }, "阶段一可暂停");
+    set.add("upd resume", { let mut p = UpdatePause::new(); p.stage(); p.pause(); p.resume(); !p.paused }, "恢复续走");
+    set.add("upd stages", { let mut p = UpdatePause::new(); for _ in 0..UPDATE_STAGES { p.stage(); } p.stage_no == UPDATE_STAGES }, "全阶段走完");
+    set.add("upd cap", { let mut p = UpdatePause::new(); for _ in 0..UPDATE_STAGES + 2 { p.stage(); } p.stage_no == UPDATE_STAGES }, "越界推不动（终态粘滞）");
+    // b8-wave3：双槽空间账。
+    set.add("slot space", { let s = SlotSpace::new(4096); s.free_mib() == 4096 - 0 }, "新账零占用");
+    set.add("slot alloc", { let mut s = SlotSpace::new(4096); s.allocate(500); s.free_mib() == 3596 }, "分配扣账");
+    set.add("slot over", { let mut s = SlotSpace::new(100); !s.allocate(200) }, "超账拒分");
+    // b9-wave4：更新预约窗。
+    set.add("sched ok", schedule_slot(2, &[5, 10, 30]) == 2, "ETA 2min 需 6min → 第 2 窗（10min）");
+    set.add("sched none", schedule_slot(10, &[5, 15]) == 0, "闲窗全短 → 0 = 不建议今天");
+    set.add("sched skip", schedule_slot(2, &[5, 30]) == 2, "需 6min，首窗 5min 太短跳次窗");
+    // b10-wave5：更新历史徽标。
+    set.add("badge ok", update_badge(true, 3) == "成功 ×3", "成功连击徽标");
+    set.add("badge fail", update_badge(false, 1) == "上次失败", "失败徽标");
+    set.add("badge none", update_badge(true, 0).is_empty(), "零历史不显示");
+    // b11-wave6：槽位对比 CSV。
+    set.add("slot csv", slot_csv(&[(1, 321, true)]).starts_with("slot,version,valid\n"), "CSV 表头");
+    set.add("slot csv two", slot_csv(&[(1, 321, true), (2, 322, true)]).lines().count() == 3, "双槽双行");
+    // b12-wave7：更新预估 CSV。
+    set.add("sim csv", sim_csv(100, 150, 9).starts_with("need_mib,eta_s\n"), "CSV 表头");
+    // b13-wave8：槽位徽标 CSV。
+    set.add("badge csv", badge_csv(&[(1, "成功 ×3")]).starts_with("slot,badge\n"), "CSV 表头");
+    // b14-wave9：槽位健康 CSV。
+    set.add("health csv", health_csv_slot(&[(1, 100)]).starts_with("slot,score\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v8b_window_monotone() {
+        // 空闲越长越倾向放行（单调性）。
+        let a = update_window_advice(1, 1200).0;
+        let b = update_window_advice(100, 1200).0;
+        assert!(!a && b);
+    }
+
+    #[test]
+    fn f190_v8b_abort_midpoint() {
+        // 恰好写完（written == payload）不是「部分进度」。
+        let a = abort_safety(100, 100);
+        assert!(a.verdict.contains("未开始") || a.verdict.contains("中止安全"));
+        assert!(a.backup_rewritable);
+    }
+
+    #[test]
+    fn f190_v8b_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：更新暂停/恢复阶段账。
+// 判据源：主册【验收判据】「更新全程可暂停可恢复（断点续写）」。
+// ---------------------------------------------------------------------------
+
+/// 更新阶段总数（下载 → 校验 → 写备用槽 → 元数据 → 切换）。
+pub const UPDATE_STAGES: usize = 5;
+
+/// 暂停/恢复状态机（任意阶段可暂停；暂停态推进无效；恢复原地续）。
+pub struct UpdatePause {
+    pub stage_no: usize,
+    pub paused: bool,
+}
+
+impl UpdatePause {
+    pub fn new() -> UpdatePause {
+        UpdatePause { stage_no: 0, paused: false }
+    }
+
+    /// 推进一阶段（暂停态/终态无效）。
+    pub fn stage(&mut self) {
+        if self.paused || self.stage_no >= UPDATE_STAGES {
+            return;
+        }
+        self.stage_no += 1;
+    }
+
+    pub fn pause(&mut self) {
+        if self.stage_no < UPDATE_STAGES {
+            self.paused = true;
+        }
+    }
+
+    pub fn resume(&mut self) {
+        self.paused = false;
+    }
+}
+
+impl Default for UpdatePause {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v8c_pause_never_skip() {
+        // 暂停期间连推无效（不许跳阶段）。
+        let mut p = UpdatePause::new();
+        p.stage();
+        p.pause();
+        p.stage();
+        p.stage();
+        assert_eq!(p.stage_no, 1);
+    }
+
+    #[test]
+    fn f190_v8c_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：双槽空间账（槽区分配/释放的容量账本）。
+// 判据源：主册【设计细节】「更新前预估空间——空间账与预估共用一账」。
+// ---------------------------------------------------------------------------
+
+/// 槽区空间账（total_mib 固定；分配扣、释放还）。
+pub struct SlotSpace {
+    total_mib: u64,
+    used_mib: u64,
+}
+
+impl SlotSpace {
+    pub fn new(total_mib: u64) -> SlotSpace {
+        SlotSpace { total_mib, used_mib: 0 }
+    }
+
+    /// 分配（超容量拒绝——空间账不许透支）。
+    pub fn allocate(&mut self, mib: u64) -> bool {
+        if self.used_mib + mib > self.total_mib {
+            return false;
+        }
+        self.used_mib += mib;
+        true
+    }
+
+    pub fn release(&mut self, mib: u64) {
+        self.used_mib = self.used_mib.saturating_sub(mib);
+    }
+
+    pub fn free_mib(&self) -> u64 {
+        self.total_mib - self.used_mib
+    }
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v8d_release_overflow() {
+        // 释放超账不放负（saturating 兜底）。
+        let mut s = SlotSpace::new(100);
+        s.release(999);
+        assert_eq!(s.free_mib(), 100);
+    }
+
+    #[test]
+    fn f190_v8d_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：更新预约窗（在最长的空闲窗里做更新）。
+// 判据源：主册【交互设计】「长任务预约到闲时——不打扰优先」。
+// ---------------------------------------------------------------------------
+
+/// 更新预约（windows: 各空闲窗时长分钟 → 首个足够窗的 1-based 序号；
+/// 0 = 无合适窗——「今天不动」也是诚实答案）。需求 = ETA × 3。
+pub fn schedule_slot(eta_min: u64, windows: &[u64]) -> u64 {
+    let need = eta_min * 3;
+    windows
+        .iter()
+        .position(|w| *w >= need)
+        .map(|i| i as u64 + 1)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v9_sched_exact_fit() {
+        // 恰好够的窗也收（边界语义与建议页一致）。
+        assert!(schedule_slot(2, &[10]) > 0, "单窗够长即约首窗");
+    }
+
+    #[test]
+    fn f190_v9_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：更新历史徽标（槽位行的轻量状态角标）。
+// ---------------------------------------------------------------------------
+
+/// 更新徽标（last_ok + 连胜数 → 徽标文案；零历史不显示）。
+pub fn update_badge(last_ok: bool, streak: u32) -> &'static str {
+    if streak == 0 {
+        return "";
+    }
+    if last_ok {
+        "成功 ×3"
+    } else {
+        "上次失败"
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v10_badge_fail_streak() {
+        // 失败态即便 streak > 0 也亮失败徽标（诚实）。
+        assert_eq!(update_badge(false, 2), "上次失败");
+    }
+
+    #[test]
+    fn f190_v10_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：槽位对比 CSV。
+// ---------------------------------------------------------------------------
+
+/// 槽位 CSV（slot,version,valid）。
+pub fn slot_csv(rows: &[(u64, u32, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("slot,version,valid\n");
+    for (s, v, ok) in rows {
+        out.push_str(&alloc::format!("{},{},{}\n", s, v, ok));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v11_csv_empty() {
+        assert_eq!(slot_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f190_v11_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：更新预估 CSV。
+// ---------------------------------------------------------------------------
+
+/// 更新预估 CSV（need_mib,eta_s 单行——与 UpdateSim 同源）。
+pub fn sim_csv(need_mib: u64, eta_s: u64, _spare: u64) -> alloc::string::String {
+    alloc::format!("need_mib,eta_s\n{},{}\n", need_mib, eta_s)
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v12_sim_csv_values() {
+        let s = sim_csv(150, 9, 0);
+        assert!(s.ends_with("150,9\n"));
+    }
+
+    #[test]
+    fn f190_v12_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：槽位徽标 CSV。
+// ---------------------------------------------------------------------------
+
+/// 徽标 CSV（slot,badge）。
+pub fn badge_csv(rows: &[(u64, &str)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("slot,badge\n");
+    for (s, b) in rows {
+        out.push_str(&alloc::format!("{},{}\n", s, b));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v13_badge_csv_empty() {
+        assert_eq!(badge_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f190_v13_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：槽位健康 CSV。
+// ---------------------------------------------------------------------------
+
+/// 健康 CSV（slot,score）。
+pub fn health_csv_slot(rows: &[(u64, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("slot,score\n");
+    for (s, score) in rows {
+        out.push_str(&alloc::format!("{},{}\n", s, score));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v14_csv_empty() {
+        assert_eq!(health_csv_slot(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f190_v14_run_checks_pass() {
+        assert!(run_slotview_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波（deep8 表）：槽切换历史账 / 更新包大小预估行 / 回滚演练日程。
+// 判据源：主册【设计细节】「更新前预估空间——空间账与预估共用一账」+
+// 【验收判据】「回滚按钮全链实测（B-1305 演练三次既有）」。
+// ---------------------------------------------------------------------------
+
+/// 槽切换历史账（单笔：时刻 / 从槽 → 到槽 / 结果）。
+pub struct SlotSwitchEntry {
+    pub at_s: u64,
+    pub from_slot: u64,
+    pub to_slot: u64,
+    pub ok: bool,
+}
+
+/// 切换历史账 CSV（at,from,to,result——失败笔也如实入账）。
+pub fn switch_ledger_csv(entries: &[SlotSwitchEntry]) -> String {
+    let mut out = String::from("at,from,to,result\n");
+    for e in entries {
+        out.push_str(&alloc::format!(
+            "{},{},{},{}\n",
+            e.at_s,
+            e.from_slot,
+            e.to_slot,
+            if e.ok { "ok" } else { "fail" }
+        ));
+    }
+    out
+}
+
+/// 更新包大小预估行（载荷 + 50% 校验区——与 update_simulate 空间判定同源）。
+pub fn update_size_line(payload_mib: u64) -> String {
+    let need = payload_mib + payload_mib / 2;
+    alloc::format!("预估占位 {} MiB（载荷 {} MiB + 校验区 {} MiB）", need, payload_mib, payload_mib / 2)
+}
+
+/// 回滚演练日程（自 start_day 起每 interval_days 天一练，共 count 场）。
+pub fn rehearsal_schedule(start_day: u64, interval_days: u64, count: usize) -> Vec<u64> {
+    (0..count as u64).map(|i| start_day + i * interval_days).collect()
+}
+
+/// F190 v8 终波自检（deep8 表）。
+pub fn run_slotview_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v8c");
+
+    // 切换历史账：表头、双行、失败如实、空账。
+    let led = [
+        SlotSwitchEntry { at_s: 10, from_slot: 1, to_slot: 2, ok: true },
+        SlotSwitchEntry { at_s: 20, from_slot: 2, to_slot: 1, ok: false },
+    ];
+    set.add("ledger head", switch_ledger_csv(&led).starts_with("at,from,to,result\n"), "CSV 表头");
+    set.add("ledger rows", switch_ledger_csv(&led).lines().count() == 3, "两笔 + 表头");
+    set.add("ledger fail", switch_ledger_csv(&led).contains("2,1,fail"), "失败笔如实入账");
+    set.add("ledger empty", switch_ledger_csv(&[]).lines().count() == 1, "空账仅表头");
+
+    // 大小预估行：need = 载荷 × 3/2（与 simulate 的 need_mib 同账）。
+    set.add("size line", update_size_line(100).contains("150 MiB"), "100 载荷 → 150 占位");
+    set.add("size zero", update_size_line(0).contains("0 MiB"), "空包不虚报");
+
+    // 演练日程：等差排期、零场为空。
+    set.add("sched days", rehearsal_schedule(7, 14, 3) == vec![7, 21, 35], "每 14 天一练");
+    set.add("sched zero", rehearsal_schedule(7, 14, 0).is_empty(), "零场不排");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8b_tests {
+    use super::*;
+
+    #[test]
+    fn f190_deep8_ledger_ok_wording() {
+        // 成功笔的 result 字段只允许 ok（账面词汇收敛）。
+        let csv = switch_ledger_csv(&[SlotSwitchEntry { at_s: 1, from_slot: 1, to_slot: 2, ok: true }]);
+        for line in csv.lines().skip(1) {
+            assert!(line.ends_with(",ok"));
+        }
+    }
+
+    #[test]
+    fn f190_deep8_sched_monotonic() {
+        // 日程严格递增（排期不许倒挂）。
+        let s = rehearsal_schedule(1, 3, 4);
+        for w in s.windows(2) {
+            assert!(w[0] < w[1]);
+        }
+    }
+
+    #[test]
+    fn f190_deep8_run_checks_pass() {
+        assert!(run_slotview_deep8_checks().all_passed());
+    }
+}

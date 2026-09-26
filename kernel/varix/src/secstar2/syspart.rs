@@ -2252,3 +2252,368 @@ mod deep6_tests {
         assert!(run_syspart_deep6_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8-b9：分区变迁账 / 隐藏卷可见性开关 / 挂载点冲突检测。
+// 判据源：主册【设计细节】「分区操作全程留痕（扩容/缩容/隐藏皆记账）」+
+// 【硬件与数据安全红线】「分区写只走白名单路径」。
+// ---------------------------------------------------------------------------
+
+/// 分区变迁条目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PartitionEvent {
+    pub day: u64,
+    /// 变迁类型：0=扩容 1=缩容 2=隐藏 3=恢复可见。
+    pub kind: u8,
+    pub part_label: &'static str,
+}
+
+/// 变迁账（追加式——只记不删，审计可回放）。
+#[derive(Default)]
+pub struct PartitionLedger {
+    events: Vec<PartitionEvent>,
+}
+
+impl PartitionLedger {
+    pub fn new() -> PartitionLedger {
+        PartitionLedger { events: Vec::new() }
+    }
+
+    /// 记录变迁（kind 超 3 拒收——账不收未知类型）。
+    pub fn record(&mut self, day: u64, kind: u8, label: &'static str) -> bool {
+        if kind > 3 || label.is_empty() {
+            return false;
+        }
+        self.events.push(PartitionEvent { day, kind, part_label: label });
+        true
+    }
+
+    /// 某分区当前可见性（最后一个隐藏/恢复事件定态；无记录=可见）。
+    pub fn visible(&self, label: &str) -> bool {
+        self.events
+            .iter()
+            .rev()
+            .find(|e| e.part_label == label)
+            .map(|e| e.kind != 2)
+            .unwrap_or(true)
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+}
+
+/// 挂载点冲突检测（两分区同挂载点 = 冲突）。
+pub fn mount_conflict(mounts: &[(&str, &str)]) -> bool {
+    for (i, (p0, m0)) in mounts.iter().enumerate() {
+        for (p1, m1) in mounts.iter().skip(i + 1) {
+            if m0 == m1 && p0 != p1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// F186 v8 自检（deep7 表）。
+pub fn run_syspart_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F186-v8");
+
+    let mut led = PartitionLedger::new();
+    set.add("ev record", led.record(10, 0, "data"), "");
+    set.add("ev hide", led.record(20, 2, "recovery-bak"), "");
+    set.add("ev bad kind", !led.record(30, 9, "x"), "未知类型拒收");
+    set.add("ev bad label", !led.record(30, 0, ""), "空标签拒收");
+    set.add("ev len", led.len() == 2, "");
+    set.add("vis hidden", !led.visible("recovery-bak"), "隐藏后不可见");
+    set.add("vis default", led.visible("data"), "无隐藏记录默认可见");
+    led.record(40, 3, "recovery-bak");
+    set.add("vis restored", led.visible("recovery-bak"), "恢复可见");
+
+    set.add("mount ok", !mount_conflict(&[("C", "/"), ("D", "/data")]), "");
+    set.add("mount clash", mount_conflict(&[("C", "/"), ("D", "/")]), "同点异盘冲突");
+    // b9-wave4：分区健康行。
+    set.add("part health", partition_health(95) == "健康", "用量 95‰ 健康");
+    set.add("part warn", partition_health(880) == "偏满", "用量 88% 预警");
+    set.add("part full", partition_health(990) == "将满", "用量 99% 将满");
+    // b10-wave5：分区扫描进度账。
+    set.add("scan progress", { let mut sc = PartScan::new(4); sc.tick(); sc.tick(); sc.progress_permille() == 500 }, "4 区扫 2 = 500‰");
+    set.add("scan done", { let mut sc = PartScan::new(4); for _ in 0..4 { sc.tick(); } sc.done() }, "扫满即完成");
+    set.add("scan zero", PartScan::new(0).progress_permille() == 1000, "零分区无活可干");
+    // b11-wave6：变迁账 CSV 行。
+    set.add("event csv", part_event_csv(&[(1, 0, "data")]).starts_with("day,kind,label\n"), "CSV 表头");
+    set.add("event csv kind", part_event_csv(&[(1, 2, "bak")]).contains(",2,bak"), "类型码入表");
+    // b12-wave7：健康行 CSV。
+    set.add("health csv", health_csv(&[("data", 950)]).starts_with("label,used_permille\n"), "CSV 表头");
+    // b13-wave8：变迁类型名。
+    set.add("event kind", event_kind_name(2) == "隐藏", "kind 2 = 隐藏");
+    set.add("event kind rest", event_kind_name(3) == "恢复可见", "");
+    // b14-wave9：可见性 CSV。
+    set.add("vis csv", visibility_csv(&[("data", true)]).starts_with("label,visible\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v8_ledger_append_only() {
+        // 账只增不减（追加式——无删除路径）。
+        let mut led = PartitionLedger::new();
+        led.record(1, 0, "a");
+        let n = led.len();
+        led.visible("a");
+        led.record(2, 1, "a");
+        assert_eq!(led.len(), n + 1);
+    }
+
+    #[test]
+    fn f186_v8_mount_same_part() {
+        // 同盘同点不算冲突（同一分区的多别名）。
+        assert!(!mount_conflict(&[("C", "/"), ("C", "/")]));
+    }
+
+    #[test]
+    fn f186_v8_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：分区健康行（用量 permille → 三态文案）。
+// ---------------------------------------------------------------------------
+
+/// 分区健康（用量 permille：≤800 健康 / ≤950 偏满 / 其余将满）。
+pub fn partition_health(used_permille: u64) -> &'static str {
+    if used_permille <= 800 {
+        "健康"
+    } else if used_permille <= 950 {
+        "偏满"
+    } else {
+        "将满"
+    }
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v9_health_boundary() {
+        // 分档边界：恰在界上归低档。
+        assert_eq!(partition_health(800), "健康");
+        assert_eq!(partition_health(950), "偏满");
+    }
+
+    #[test]
+    fn f186_v9_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：分区扫描进度账（只读扫描——不写不碰，进度如实）。
+// ---------------------------------------------------------------------------
+
+/// 分区扫描（总区数 → 已扫数 → 进度 permille）。
+pub struct PartScan {
+    total: usize,
+    done: usize,
+}
+
+impl PartScan {
+    pub fn new(total: usize) -> PartScan {
+        PartScan { total, done: 0 }
+    }
+
+    pub fn tick(&mut self) {
+        if self.done < self.total {
+            self.done += 1;
+        }
+    }
+
+    pub fn progress_permille(&self) -> u64 {
+        if self.total == 0 {
+            return 1000;
+        }
+        self.done as u64 * 1000 / self.total as u64
+    }
+
+    pub fn done(&self) -> bool {
+        self.done == self.total
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v10_scan_sticky_done() {
+        // 越界 tick 不虚增（完成态粘滞）。
+        let mut sc = PartScan::new(2);
+        for _ in 0..5 {
+            sc.tick();
+        }
+        assert_eq!(sc.progress_permille(), 1000);
+    }
+
+    #[test]
+    fn f186_v10_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：变迁账 CSV 行（分区操作的开放格式出口）。
+// ---------------------------------------------------------------------------
+
+/// 变迁账 CSV（day,kind,label）。
+pub fn part_event_csv(events: &[(u64, u8, &str)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("day,kind,label\n");
+    for (day, kind, label) in events {
+        out.push_str(&alloc::format!("{},{},{}\n", day, kind, label));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v11_csv_empty() {
+        assert_eq!(part_event_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f186_v11_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：分区健康 CSV。
+// ---------------------------------------------------------------------------
+
+/// 健康 CSV（label,used_permille）。
+pub fn health_csv(rows: &[(&str, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("label,used_permille\n");
+    for (label, used) in rows {
+        out.push_str(&alloc::format!("{},{}\n", label, used));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v12_csv_empty() {
+        assert_eq!(health_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f186_v12_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：变迁类型名（kind 码 → 人话）。
+// ---------------------------------------------------------------------------
+
+/// 类型名（0=扩容 1=缩容 2=隐藏 3=恢复可见）。
+pub fn event_kind_name(kind: u8) -> &'static str {
+    match kind {
+        0 => "扩容",
+        1 => "缩容",
+        2 => "隐藏",
+        _ => "恢复可见",
+    }
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v13_kind_grow() {
+        assert_eq!(event_kind_name(0), "扩容");
+        assert_eq!(event_kind_name(1), "缩容");
+    }
+
+    #[test]
+    fn f186_v13_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：可见性 CSV。
+// ---------------------------------------------------------------------------
+
+/// 可见性 CSV（label,visible）。
+pub fn visibility_csv(rows: &[(&str, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("label,visible\n");
+    for (label, vis) in rows {
+        out.push_str(&alloc::format!("{},{}\n", label, vis));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v14_csv_empty() {
+        assert_eq!(visibility_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f186_v14_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：分区摘要行——管理页头部一句话。
+// 判据源：主册【设计细节】「管理页先给全貌，卷表在下」。
+// ---------------------------------------------------------------------------
+
+/// 分区摘要行（共 N 个用户可见卷 · M 个隐藏卷——隐藏数如实点出）。
+pub fn syspart_summary_line(visible: usize, hidden: usize) -> alloc::string::String {
+    if hidden == 0 {
+        alloc::format!("共 {} 个用户卷 · 无隐藏分区", visible)
+    } else {
+        alloc::format!("共 {} 个用户卷 · {} 个系统分区已隐藏（按策略常驻）", visible, hidden)
+    }
+}
+
+#[cfg(test)]
+mod deep14c_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v8c_summary_shapes() {
+        // 无隐藏不提隐藏（零打扰）；有隐藏如实报数（不吞）。
+        assert_eq!(syspart_summary_line(3, 0), "共 3 个用户卷 · 无隐藏分区");
+        assert!(syspart_summary_line(3, 2).contains("2 个系统分区已隐藏"));
+    }
+
+    #[test]
+    fn f186_v8c_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}

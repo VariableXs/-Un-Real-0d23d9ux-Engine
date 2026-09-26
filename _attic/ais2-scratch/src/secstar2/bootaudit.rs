@@ -2468,26 +2468,6 @@ pub fn percentile(sorted_samples: &[u64], pct: u64) -> u64 {
     sorted_samples[idx.min(sorted_samples.len() - 1)]
 }
 
-#[cfg(test)]
-mod deep8_tests {
-    use super::*;
-
-    #[test]
-    fn f191_v8e_percentile_bounds() {
-        // P0 = 最小，P100 = 最大。
-        let s = [10u64, 20, 30];
-        assert_eq!(percentile(&s, 0), 10);
-        assert_eq!(percentile(&s, 100), 30);
-    }
-
-    #[test]
-    fn f191_v8e_run_checks_pass() {
-        assert!(run_bootaudit_deep7b_checks().all_passed());
-    }
-}
-
-
-
 // ---------------------------------------------------------------------------
 // v8-b9（第四波）：启动模式三态判定（正常 / 降级 / 恢复）。
 // 判据源：主册【状态与异常】「本次启动属于哪种模式，托盘角标如实告知」。
@@ -2688,5 +2668,131 @@ mod deep14_tests {
     #[test]
     fn f191_v14_run_checks_pass() {
         assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-deep8（终波）：预算执行评分 / 公钥指纹展示行 / 拦截事件回放账 / 自查历史趋势导出。
+// 判据源：主册【数据与存储】「自查结果入 F174 快照链（历史可溯）」。
+// ---------------------------------------------------------------------------
+
+/// 预算执行评分（实际耗时 vs 100ms 总预算，permille——超时按比例衰减不归零）。
+pub fn budget_compliance(used_ms: u64) -> u64 {
+    if used_ms == 0 {
+        return 1000;
+    }
+    (BUDGET_TOTAL_MS * 1000 / used_ms).min(1000)
+}
+
+/// 公钥指纹展示行（SHA-256 前 8 字节大写十六进制冒号分组——差异详情页用）。
+pub fn pubkey_fingerprint_line(pubkey: &[u8]) -> alloc::string::String {
+    if pubkey.is_empty() {
+        return alloc::string::String::from("指纹不可用（公钥缺失）");
+    }
+    let h = crate::ksha256::sha256(pubkey);
+    let mut out = alloc::string::String::from("指纹 ");
+    for (i, b) in h.iter().take(8).enumerate() {
+        if i > 0 {
+            out.push(':');
+        }
+        out.push_str(&alloc::format!("{:02X}", b));
+    }
+    out
+}
+
+/// 拦截事件回放账（(时间序, 拦截门) 按时间升序重放——审计回看的第一视角）。
+pub fn intercept_replay(events: &[(u64, &'static str)]) -> Vec<(u64, &'static str)> {
+    let mut sorted: Vec<(u64, &'static str)> = events.to_vec();
+    sorted.sort_by_key(|(t, _)| *t);
+    sorted
+}
+
+/// 拦截事件摘要行（回放账末次事件——一眼看清最近一次拦截）。
+pub fn intercept_summary_line(events: &[(u64, &'static str)]) -> alloc::string::String {
+    match intercept_replay(events).last() {
+        Some((t, gate)) => alloc::format!("最近拦截：{} 号门 {}（时间序 {}）", gate, INTERCEPT_TITLE, t),
+        None => alloc::string::String::from("无拦截记录——启动链全绿"),
+    }
+}
+
+/// 自查历史趋势导出（历史评分 → CSV，趋势列与前期比——季报趋势锚）。
+pub fn selfcheck_trend_csv(scores: &[u64]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("check,score,trend\n");
+    for (i, s) in scores.iter().enumerate() {
+        let trend = if i == 0 {
+            "-"
+        } else if *s > scores[i - 1] {
+            "up"
+        } else if *s < scores[i - 1] {
+            "down"
+        } else {
+            "flat"
+        };
+        out.push_str(&alloc::format!("{},{},{}\n", i + 1, s, trend));
+    }
+    out
+}
+
+/// F191 v8-deep8 自检（终波 deep8 表）。
+pub fn run_bootaudit_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-deep8");
+
+    // 预算执行：界内满分 / 超时衰减 / 零耗时满分。
+    set.add("budget in", budget_compliance(80) == 1000, "80ms 在 100ms 预算内");
+    set.add("budget over", budget_compliance(200) == 500, "超时按比例衰减");
+    set.add("budget zero", budget_compliance(0) == 1000, "零耗时不放除零");
+
+    // 公钥指纹：在位出指纹、缺失给人话兜底。
+    let fp = pubkey_fingerprint_line(b"secstar2-root-pubkey");
+    set.add("fingerprint shape", fp.len() == 30, "2 汉字 + 空格 + 16 位十六进制 + 7 冒号");
+    set.add("fingerprint missing", pubkey_fingerprint_line(&[]).contains("不可用"), "缺钥不硬造指纹");
+    set.add("fingerprint stable", fp == pubkey_fingerprint_line(b"secstar2-root-pubkey"), "同钥同指纹");
+
+    // 拦截回放：乱序入、时间序出、摘要取最近。
+    let replay = intercept_replay(&[(30, "kernel"), (10, "post"), (20, "bootmgr")]);
+    set.add("replay order", replay[0].1 == "post" && replay[2].1 == "kernel", "按时间升序重放");
+    set.add("replay empty", intercept_replay(&[]).is_empty(), "");
+    set.add("replay summary", intercept_summary_line(&replay).contains("kernel"), "摘要取最近一次");
+    set.add("replay calm", intercept_summary_line(&[]).contains("全绿"), "无拦截不造事件");
+
+    // 趋势导出：表头 + 趋势三态。
+    let csv = selfcheck_trend_csv(&[90, 95, 95, 80]);
+    set.add("trend header", csv.starts_with("check,score,trend\n"), "");
+    set.add("trend up", csv.contains("2,95,up"), "");
+    set.add("trend flat", csv.contains("3,95,flat"), "");
+    set.add("trend down", csv.contains("4,80,down"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v8e_percentile_bounds() {
+        // P0 = 最小，P100 = 最大。
+        let s = [10u64, 20, 30];
+        assert_eq!(percentile(&s, 0), 10);
+        assert_eq!(percentile(&s, 100), 30);
+    }
+
+    #[test]
+    fn f191_d8_budget_floor() {
+        // 巨额超时不放 u64 回绕（评分下探有底）。
+        assert_eq!(budget_compliance(1_000_000), 0);
+    }
+
+    #[test]
+    fn f191_d8_replay_stable_tie() {
+        // 同时间序保持输入序（稳定排序——回放不重排同刻事件）。
+        let rp = intercept_replay(&[(5, "a"), (5, "b")]);
+        assert_eq!(rp, vec![(5, "a"), (5, "b")]);
+    }
+
+    #[test]
+    fn f191_d8_run_checks_pass() {
+        assert!(run_bootaudit_deep8_checks().all_passed());
     }
 }

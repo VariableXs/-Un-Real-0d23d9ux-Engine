@@ -127,30 +127,38 @@ fn tables_for(module: &str) -> Vec<fn() -> CheckSet> {
         // 9 表（至 deep7b）——v8 主战场。
         "slotview" => chain([
             slotview::run_slotview_checks, slotview::run_slotview_deep_checks, slotview::run_slotview_deep2_checks, slotview::run_slotview_deep3_checks, slotview::run_slotview_deep4_checks, slotview::run_slotview_deep5_checks, slotview::run_slotview_deep6_checks, slotview::run_slotview_deep7_checks, slotview::run_slotview_deep7b_checks,
+            slotview::run_slotview_deep8_checks,
         ]),
         "bootaudit" => chain([
             bootaudit::run_bootaudit_checks, bootaudit::run_bootaudit_deep_checks, bootaudit::run_bootaudit_deep2_checks, bootaudit::run_bootaudit_deep3_checks, bootaudit::run_bootaudit_deep4_checks, bootaudit::run_bootaudit_deep5_checks, bootaudit::run_bootaudit_deep6_checks, bootaudit::run_bootaudit_deep7_checks, bootaudit::run_bootaudit_deep7b_checks,
+            bootaudit::run_bootaudit_deep8_checks,
         ]),
         "paramwl" => chain([
             paramwl::run_paramwl_checks, paramwl::run_paramwl_deep_checks, paramwl::run_paramwl_deep2_checks, paramwl::run_paramwl_deep3_checks, paramwl::run_paramwl_deep4_checks, paramwl::run_paramwl_deep5_checks, paramwl::run_paramwl_deep6_checks, paramwl::run_paramwl_deep7_checks, paramwl::run_paramwl_deep7b_checks,
+            paramwl::run_paramwl_deep8_checks,
         ]),
         "safemode" => chain([
             safemode::run_safemode_checks, safemode::run_safemode_deep_checks, safemode::run_safemode_deep2_checks, safemode::run_safemode_deep3_checks, safemode::run_safemode_deep4_checks, safemode::run_safemode_deep5_checks, safemode::run_safemode_deep6_checks, safemode::run_safemode_deep7_checks, safemode::run_safemode_deep7b_checks,
+            safemode::run_safemode_deep8_checks,
         ]),
         "auditchain" => chain([
             auditchain::run_auditchain_checks, auditchain::run_auditchain_deep_checks, auditchain::run_auditchain_deep2_checks, auditchain::run_auditchain_deep3_checks, auditchain::run_auditchain_deep4_checks, auditchain::run_auditchain_deep5_checks, auditchain::run_auditchain_deep6_checks, auditchain::run_auditchain_deep7_checks, auditchain::run_auditchain_deep7b_checks,
+            auditchain::run_auditchain_deep8_checks,
         ]),
         "thermgov" => chain([
             thermgov::run_thermgov_checks, thermgov::run_thermgov_deep_checks, thermgov::run_thermgov_deep2_checks, thermgov::run_thermgov_deep3_checks, thermgov::run_thermgov_deep4_checks, thermgov::run_thermgov_deep5_checks, thermgov::run_thermgov_deep6_checks, thermgov::run_thermgov_deep7_checks, thermgov::run_thermgov_deep7b_checks,
+            thermgov::run_thermgov_deep8_checks,
         ]),
         "recenv" => chain([
             recenv::run_recenv_checks, recenv::run_recenv_deep_checks, recenv::run_recenv_deep2_checks, recenv::run_recenv_deep3_checks, recenv::run_recenv_deep4_checks, recenv::run_recenv_deep5_checks, recenv::run_recenv_deep6_checks, recenv::run_recenv_deep7_checks, recenv::run_recenv_deep7b_checks,
+            recenv::run_recenv_deep8_checks,
         ]),
         "lineage" => chain([
             lineage::run_lineage_checks, lineage::run_lineage_deep_checks, lineage::run_lineage_deep2_checks, lineage::run_lineage_deep3_checks, lineage::run_lineage_deep4_checks, lineage::run_lineage_deep5_checks, lineage::run_lineage_deep6_checks, lineage::run_lineage_deep7_checks, lineage::run_lineage_deep7b_checks,
         ]),
         "walkall" => chain([
             walkall::run_walkall_checks, walkall::run_walkall_deep_checks, walkall::run_walkall_deep2_checks, walkall::run_walkall_deep3_checks, walkall::run_walkall_deep4_checks, walkall::run_walkall_deep5_checks, walkall::run_walkall_deep6_checks, walkall::run_walkall_deep7_checks, walkall::run_walkall_deep7b_checks,
+            walkall::run_walkall_deep8_checks,
         ]),
         // 7 表（已超单项上限——v8 不再投入）。
         "clockguard" => chain([
@@ -207,14 +215,15 @@ mod tests {
             let expect_tables = match tag {
                 "F187" | "F188" => 7,
                 "F186" | "F195" | "F196" | "F189" => 8,
-                _ => 9,
+                "F199" => 9,
+                _ => 10, // 九大模块 v8 起带 deep8 表（F199 无 deep8——收口小波走摘要行）
             };
             assert_eq!(counts.len(), expect_tables, "{} table count", tag);
             total += counts.iter().sum::<usize>();
         }
-        // 总检查项（机器钉数：v8 批次含 deep7/deep7b 全部并入；数字变动
+        // 总检查项（机器钉数：v8 批次含 deep7/deep7b/deep8 全部并入；数字变动
         // 必须同步本断言、check_ledger() 与完成报告对账表）。
-        assert_eq!(total, 2118, "检查项总数变动必须同步本断言与完成报告对账表（实测 {}）", total);
+        assert_eq!(total, 2251, "检查项总数变动必须同步本断言与完成报告对账表（实测 {}）", total);
     }
 
     #[test]

@@ -173,7 +173,7 @@ impl VolumeFlyout {
     /// 设备热插拔：设备清单变更后，若当前设备从清单消失 → 自动回落
     /// 默认扬声器（首项），事件显性入账。返回是否发生了回落。
     pub fn device_plug_event(&mut self, new_devices: Vec<&'static str>) -> bool {
-        let gone = !new_devices.iter().any(|d| **d == self.device_name);
+        let gone = !new_devices.iter().any(|d| *d == self.device_name);
         self.devices = new_devices;
         if gone {
             if let Some(first) = self.devices.first() {

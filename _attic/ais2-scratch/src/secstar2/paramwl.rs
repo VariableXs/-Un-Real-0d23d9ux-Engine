@@ -2733,6 +2733,34 @@ mod deep8_tests {
     fn f192_v8d_run_checks_pass() {
         assert!(run_paramwl_deep7b_checks().all_passed());
     }
+
+    #[test]
+    fn f192_deep8_snapshot_diff_conserves() {
+        // 对比账守恒：增 + 删 + 改 = 全部差异，未动项不上账。
+        let base = [("verbose", 1i64), ("log-level", 2i64), ("ktrace", 0i64)];
+        let cur = [("verbose", 1i64), ("log-level", 4i64)];
+        let d = snapshot_diff(&base, &cur);
+        assert!(d.added.is_empty());
+        assert_eq!(d.removed, vec!["ktrace"]);
+        assert_eq!(d.changed, vec![("log-level", 2, 4)]);
+        assert_eq!(rollback_pending(&d), 2);
+        // 计划行如实：删 1 改 1 → 两步。
+        assert!(rollback_plan_text(&d).contains("共 2 步"));
+    }
+
+    #[test]
+    fn f192_deep8_boot_ledger_empty() {
+        // 空账不伪造结论：零耗时且无最慢阶段。
+        assert_eq!(boot_time_ledger(&[]).0, 0);
+        assert_eq!(boot_time_ledger(&[]).1, None);
+        // 凭据可复现。
+        assert_eq!(snapshot_tag(1, 60), snapshot_tag(1, 60));
+    }
+
+    #[test]
+    fn f192_deep8_run_checks_pass() {
+        assert!(run_paramwl_deep8_checks().all_passed());
+    }
 }
 
 
@@ -3020,4 +3048,203 @@ mod deep14_tests {
     fn f192_v14_run_checks_pass() {
         assert!(run_paramwl_deep7b_checks().all_passed());
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：参数变更影响评估行 / 回滚快照对比 / 参数依赖
+// 提示 / 启动耗时账。
+// 判据源：主册【开发者篇】「参数改动前给出影响面，改动后可逐级回退」+
+// 【性能章】「启动全程打点——各阶段耗时入账，超预算即点名」。
+// ---------------------------------------------------------------------------
+
+/// 变更影响评估行（参数 → 新值：钳制结果 + 影响面一行——改前先看账）。
+pub fn change_impact_row(name: &str, new_val: i64) -> alloc::string::String {
+    let spec = match find(name) {
+        Some(s) => s,
+        None => return alloc::string::String::from("未知参数——拒绝变更"),
+    };
+    // 值域钳制（越界收界——与启动面同一钳制语义，见主册 G-G-22）。
+    let clamped = match spec.kind {
+        ValueKind::Flag => new_val.clamp(0, 1),
+        ValueKind::Int(lo, hi) => new_val.clamp(lo, hi),
+    };
+    let n = impact_set(spec.name).len();
+    if n == 0 {
+        alloc::format!("{} → {}：无连带影响", spec.name, clamped)
+    } else {
+        alloc::format!("{} → {}：牵动 {} 项，改前先看影响面", spec.name, clamped, n)
+    }
+}
+
+/// 回滚快照对比账（回滚前先出账——差异不明不回滚）。
+pub struct RollbackDiff {
+    /// 快照后新增的参数。
+    pub added: Vec<&'static str>,
+    /// 快照后移除的参数。
+    pub removed: Vec<&'static str>,
+    /// 值变化的参数（名，旧值，新值）。
+    pub changed: Vec<(&'static str, i64, i64)>,
+}
+
+/// 快照对比（before = 出厂/上次快照，after = 当前活跃值）。
+pub fn snapshot_diff(
+    before: &[(&'static str, i64)],
+    after: &[(&'static str, i64)],
+) -> RollbackDiff {
+    let mut diff = RollbackDiff { added: Vec::new(), removed: Vec::new(), changed: Vec::new() };
+    for &(n, v) in after {
+        match before.iter().find(|(bn, _)| *bn == n) {
+            None => diff.added.push(n),
+            Some(&(_, bv)) if bv != v => diff.changed.push((n, bv, v)),
+            _ => {}
+        }
+    }
+    for &(n, _) in before {
+        if !after.iter().any(|(an, _)| *an == n) {
+            diff.removed.push(n);
+        }
+    }
+    diff
+}
+
+/// 待回滚差异总数（0 = 与快照一致，无需回滚）。
+pub fn rollback_pending(diff: &RollbackDiff) -> usize {
+    diff.added.len() + diff.removed.len() + diff.changed.len()
+}
+
+/// 回滚计划行（人话分步：移除新增 / 还原改动 / 恢复删除——回滚确认页正文）。
+pub fn rollback_plan_text(diff: &RollbackDiff) -> alloc::string::String {
+    let n = rollback_pending(diff);
+    if n == 0 {
+        return alloc::string::String::from("与快照一致，无需回滚");
+    }
+    let mut parts: Vec<alloc::string::String> = Vec::new();
+    if !diff.added.is_empty() {
+        parts.push(alloc::format!("移除新增的 {} 项", diff.added.len()));
+    }
+    if !diff.changed.is_empty() {
+        parts.push(alloc::format!("还原改动的 {} 项", diff.changed.len()));
+    }
+    if !diff.removed.is_empty() {
+        parts.push(alloc::format!("恢复删除的 {} 项", diff.removed.len()));
+    }
+    alloc::format!("回滚共 {} 步：{}", n, parts.join("；"))
+}
+
+/// 快照凭据行（序号 + 时刻——回滚栈里的版本凭据，可追溯）。
+pub fn snapshot_tag(seq: u64, taken_s: u64) -> alloc::string::String {
+    alloc::format!("snap-{}@{}s", seq, taken_s)
+}
+
+/// 参数依赖提示（活跃集缺的连带项——「开了 A，B 建议同步开」）。
+pub fn dependency_hints(active: &[&str]) -> Vec<&'static str> {
+    let mut hints: Vec<&'static str> = Vec::new();
+    for &(from, to, _why) in IMPACT_EDGES.iter() {
+        if active.contains(&from) && !active.contains(&to) && find(to).is_some()
+            && !hints.contains(&to)
+        {
+            hints.push(to);
+        }
+    }
+    hints
+}
+
+/// 依赖提示行（无缺口即沉默——提示不许空转）。
+pub fn dependency_hint_line(active: &[&str]) -> alloc::string::String {
+    let hints = dependency_hints(active);
+    if hints.is_empty() {
+        return alloc::string::String::new();
+    }
+    alloc::format!("建议同步开启：{}", hints.join("、"))
+}
+
+/// 启动阶段耗时条目。
+pub struct BootStage {
+    /// 阶段名（selftest / whitelist / desktop …）。
+    pub name: &'static str,
+    /// 该阶段耗时（毫秒）。
+    pub ms: u64,
+}
+
+/// 启动耗时预算（主册性能章：从上电到进桌面 ≤500ms）。
+pub const BOOT_BUDGET_MS: u64 = 500;
+
+/// 启动耗时账（各阶段求和 + 最慢阶段——慢在哪儿一眼可见）。
+pub fn boot_time_ledger(stages: &[BootStage]) -> (u64, Option<&'static str>) {
+    let mut total = 0u64;
+    let mut slowest: Option<&BootStage> = None;
+    for s in stages {
+        total += s.ms;
+        match slowest {
+            Some(prev) if prev.ms >= s.ms => {}
+            _ => slowest = Some(s),
+        }
+    }
+    (total, slowest.map(|s| s.name))
+}
+
+/// 启动耗时报告行（超预算点名最慢阶段——性能章的兑现出口）。
+pub fn boot_time_report(stages: &[BootStage]) -> alloc::string::String {
+    let (total, slow) = boot_time_ledger(stages);
+    let slow_txt = match slow {
+        Some(n) => alloc::format!("，最慢 {}", n),
+        None => alloc::string::String::new(),
+    };
+    if total > BOOT_BUDGET_MS {
+        alloc::format!("启动 {}ms 超预算{}（见性能章）", total, slow_txt)
+    } else {
+        alloc::format!("启动 {}ms 达标{}", total, slow_txt)
+    }
+}
+
+/// F192 v8 终波自检（deep8 表）。
+pub fn run_paramwl_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-deep8");
+
+    // 变更影响评估行：未知拒 / 越界钳 / 有牵动 / 无牵动。
+    set.add("row unknown", change_impact_row("ghost-param", 1).contains("拒绝"), "");
+    set.add("row clamp hi", change_impact_row("log-level", 99).contains("→ 5"), "越界值钳到上界");
+    set.add("row clamp lo", change_impact_row("log-level", -3).contains("→ 0"), "");
+    set.add("row flag clamp", change_impact_row("ktrace", 7).contains("→ 1"), "旗标值钳到 1");
+    set.add("row impact", change_impact_row("safe-mode", 1).contains("牵动 2 项"), "");
+    set.add("row calm", change_impact_row("ktrace", 1).contains("无连带"), "");
+
+    // 回滚快照对比：增/删/改三分账 + 计划行 + 凭据。
+    let base = [("verbose", 1i64), ("log-level", 3i64)];
+    let cur = [("verbose", 1i64), ("ktrace", 1i64), ("log-level", 5i64)];
+    let d = snapshot_diff(&base, &cur);
+    set.add("snap added", d.added == vec!["ktrace"], "");
+    set.add("snap changed", d.changed == vec![("log-level", 3, 5)], "");
+    set.add("snap pending", rollback_pending(&snapshot_diff(&cur, &base)) == 2, "回滚差异 = 1 改 + 1 删");
+    set.add("snap clean", rollback_pending(&snapshot_diff(&base, &base)) == 0, "快照一致零回滚");
+    set.add("snap plan", rollback_plan_text(&d).contains("共 2 步"), "计划行步数 = 差异总数");
+    set.add("snap plan calm", rollback_plan_text(&snapshot_diff(&base, &base)).contains("无需回滚"), "");
+    set.add("snap tag", snapshot_tag(7, 120).contains("snap-7@120s"), "凭据带序号与时刻");
+
+    // 参数依赖提示：缺连带项才提示；齐了/无下游即沉默。
+    set.add("hint two", dependency_hints(&["safe-mode"]) == vec!["no-gui", "no-third-drv"], "按边序点名缺口");
+    set.add("hint one", dependency_hints(&["verbose"]) == vec!["log-level"], "");
+    set.add("hint silent", dependency_hints(&["safe-mode", "no-gui", "no-third-drv"]).is_empty(), "缺口补齐即沉默");
+    set.add("hint none", dependency_hints(&["no-gui"]).is_empty(), "无下游不硬造提示");
+    set.add("hint line", dependency_hint_line(&["verbose"]).contains("log-level"), "");
+    set.add("hint line empty", dependency_hint_line(&["no-gui"]).is_empty(), "");
+
+    // 启动耗时账：求和 / 最慢 / 预算两态 / 空账。
+    let stages = [
+        BootStage { name: "selftest", ms: 40 },
+        BootStage { name: "whitelist", ms: 5 },
+        BootStage { name: "desktop", ms: 380 },
+    ];
+    let (total, slow) = boot_time_ledger(&stages);
+    set.add("boot total", total == 425, "40+5+380 = 425ms");
+    set.add("boot slowest", slow == Some("desktop"), "");
+    set.add("boot ok", boot_time_report(&stages).contains("达标"), "");
+    set.add("boot over", {
+        let over = [BootStage { name: "selftest", ms: 600 }];
+        boot_time_report(&over).contains("超预算") && boot_time_report(&over).contains("selftest")
+    }, "超预算点名最慢阶段");
+    set.add("boot empty", boot_time_ledger(&[]).0 == 0 && boot_time_ledger(&[]).1.is_none(), "空账零耗时零结论");
+
+    set
 }

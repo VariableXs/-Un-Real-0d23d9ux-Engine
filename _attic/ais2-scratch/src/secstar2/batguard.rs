@@ -1751,3 +1751,25 @@ mod deep11_tests {
         assert!(run_batguard_deep7_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：相态建议边界 + 估计新鲜度恰界——边界上不撒谎。
+// 判据源：主册【状态与异常】「边界行为与常态同样明确」。
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod deep12c_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v8c_boundaries() {
+        // 相态 0 无建议（零打扰）；恰在新鲜窗界上仍算新鲜。
+        assert_eq!(phase_advice(0), "");
+        assert!(eta_fresh(300, 300), "恰在窗界 = 界内（≤ 语义）");
+    }
+
+    #[test]
+    fn f196_v8c_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}

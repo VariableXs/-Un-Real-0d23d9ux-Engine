@@ -12,6 +12,8 @@
 //! 重设即清旧账）；世界钟多城切换（清单外拒绝）。
 
 use crate::checks::CheckSet;
+
+use alloc::vec::Vec;
 use crate::uni1::ubase::RingLog;
 
 /// 右键两直达项（顺序钉死；项数=2 判据）。
@@ -24,7 +26,7 @@ pub const COUNTDOWN_PRESETS_MIN: [u64; 3] = [15, 30, 60];
 pub const WORLD_CITIES: [&str; 5] = ["北京", "东京", "伦敦", "纽约", "悉尼"];
 
 /// 秒表状态。
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum StopwatchState {
     Idle,
     Running { started_at_ms: u64 },
@@ -32,7 +34,7 @@ pub enum StopwatchState {
 }
 
 /// 倒计时状态。
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum CountdownState {
     None,
     Armed { end_at_ms: u64, total_min: u64 },

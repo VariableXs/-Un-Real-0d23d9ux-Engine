@@ -2586,3 +2586,34 @@ mod deep14_tests {
         assert!(run_syspart_deep7_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：分区摘要行——管理页头部一句话。
+// 判据源：主册【设计细节】「管理页先给全貌，卷表在下」。
+// ---------------------------------------------------------------------------
+
+/// 分区摘要行（共 N 个用户可见卷 · M 个隐藏卷——隐藏数如实点出）。
+pub fn syspart_summary_line(visible: usize, hidden: usize) -> alloc::string::String {
+    if hidden == 0 {
+        alloc::format!("共 {} 个用户卷 · 无隐藏分区", visible)
+    } else {
+        alloc::format!("共 {} 个用户卷 · {} 个系统分区已隐藏（按策略常驻）", visible, hidden)
+    }
+}
+
+#[cfg(test)]
+mod deep14c_tests {
+    use super::*;
+
+    #[test]
+    fn f186_v8c_summary_shapes() {
+        // 无隐藏不提隐藏（零打扰）；有隐藏如实报数（不吞）。
+        assert_eq!(syspart_summary_line(3, 0), "共 3 个用户卷 · 无隐藏分区");
+        assert!(syspart_summary_line(3, 2).contains("2 个系统分区已隐藏"));
+    }
+
+    #[test]
+    fn f186_v8c_run_checks_pass() {
+        assert!(run_syspart_deep7_checks().all_passed());
+    }
+}

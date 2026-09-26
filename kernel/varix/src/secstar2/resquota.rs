@@ -1674,3 +1674,184 @@ mod deep6_tests {
         assert!(run_resquota_deep6_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8-b9：临时提额申请账 / 配额审计行。
+// 判据源：主册【设计细节】「提额需申请、限时、可审计——不许静默放水」。
+// ---------------------------------------------------------------------------
+
+/// 提额申请。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QuotaRaiseRequest {
+    pub app: &'static str,
+    /// 申请提升量 MiB。
+    pub raise_mib: u64,
+    pub day: u64,
+    /// 有效期（天）。
+    pub ttl_days: u64,
+}
+
+/// 提额账（同 app 重复申请覆盖旧申请——一 app 一生效提额）。
+#[derive(Default)]
+pub struct QuotaRaiseLedger {
+    requests: Vec<QuotaRaiseRequest>,
+}
+
+impl QuotaRaiseLedger {
+    pub fn new() -> QuotaRaiseLedger {
+        QuotaRaiseLedger { requests: Vec::new() }
+    }
+
+    /// 申请（同 app 已有 → 覆盖；上限 2 GiB 拒收——红线内仲裁）。
+    pub fn request(&mut self, req: QuotaRaiseRequest) -> bool {
+        if req.raise_mib > 2048 || req.ttl_days == 0 {
+            return false;
+        }
+        self.requests.retain(|r| r.app != req.app);
+        self.requests.push(req);
+        true
+    }
+
+    /// 生效提额（app → 提升量；过期不生效）。
+    pub fn effective(&self, app: &str, now_day: u64) -> u64 {
+        self.requests
+            .iter()
+            .find(|r| r.app == app && now_day <= r.day + r.ttl_days)
+            .map(|r| r.raise_mib)
+            .unwrap_or(0)
+    }
+
+    pub fn len(&self) -> usize {
+        self.requests.len()
+    }
+}
+
+/// F195 v8 自检（deep7 表）。
+pub fn run_resquota_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v8");
+
+    let mut led = QuotaRaiseLedger::new();
+    set.add("raise ok", led.request(QuotaRaiseRequest { app: "render", raise_mib: 512, day: 10, ttl_days: 7 }), "");
+    set.add("raise over cap", !led.request(QuotaRaiseRequest { app: "render", raise_mib: 4096, day: 10, ttl_days: 7 }), "超 2 GiB 红线拒");
+    set.add("raise zero ttl", !led.request(QuotaRaiseRequest { app: "render", raise_mib: 100, day: 10, ttl_days: 0 }), "零期限拒");
+    set.add("raise overwrite", { led.request(QuotaRaiseRequest { app: "render", raise_mib: 256, day: 11, ttl_days: 7 }); led.len() == 1 && led.effective("render", 12) == 256 }, "重复申请覆盖");
+    set.add("raise expired", led.effective("render", 11 + 8) == 0, "过期不生效");
+    set.add("raise none", led.effective("other", 12) == 0, "无申请零提额");
+    // b9-wave4：豁免查询行。
+    set.add("exempt query", exempt_query("compositor"), "豁免成员命中");
+    set.add("exempt query miss", !exempt_query("app-x"), "普通应用不豁免");
+    // b10-wave5：提额审计行。
+    set.add("raise audit", raise_audit_line("render", 256, 11, 7).contains("render"), "审计行带 app 名");
+    // b11-wave6：配额阶梯名。
+    set.add("ladder name", quota_ladder_name(0) == "正常", "0 档正常");
+    set.add("ladder name top", quota_ladder_name(3) == "冻结", "3 档冻结");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v8_independent_apps() {
+        // 两 app 提额互不覆盖。
+        let mut led = QuotaRaiseLedger::new();
+        led.request(QuotaRaiseRequest { app: "a", raise_mib: 100, day: 1, ttl_days: 5 });
+        led.request(QuotaRaiseRequest { app: "b", raise_mib: 200, day: 1, ttl_days: 5 });
+        assert_eq!(led.len(), 2);
+        assert_eq!(led.effective("a", 2), 100);
+        assert_eq!(led.effective("b", 2), 200);
+    }
+
+    #[test]
+    fn f195_v8_run_checks_pass() {
+        assert!(run_resquota_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：豁免查询（布尔面——进程调度点的快速判定）。
+// ---------------------------------------------------------------------------
+
+/// 豁免查询。
+pub fn exempt_query(app: &str) -> bool {
+    EXEMPT.contains(&app)
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v9_exempt_all_listed() {
+        // 清单成员逐个命中（查询与清单同源）。
+        for e in EXEMPT {
+            assert!(exempt_query(e));
+        }
+    }
+
+    #[test]
+    fn f195_v9_run_checks_pass() {
+        assert!(run_resquota_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：提额审计行（谁在何时提了多少——一条一行可查）。
+// ---------------------------------------------------------------------------
+
+/// 审计行（app / 提额 MiB / 提额日 / 有效期 → 人话一行）。
+pub fn raise_audit_line(app: &str, raise_mib: u64, day: u64, ttl_days: u64) -> alloc::string::String {
+    alloc::format!("提额审计：{} 于 day-{} 提额 {} MiB，有效期 {} 天", app, day, raise_mib, ttl_days)
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v10_audit_numbers() {
+        let l = raise_audit_line("a", 100, 5, 3);
+        assert!(l.contains("100") && l.contains("day-5") && l.contains("3 天"));
+    }
+
+    #[test]
+    fn f195_v10_run_checks_pass() {
+        assert!(run_resquota_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：配额阶梯名（四级阶梯的人话名）。
+// ---------------------------------------------------------------------------
+
+/// 阶梯名（0=正常 1=提醒 2=限流 3=冻结）。
+pub fn quota_ladder_name(level: u8) -> &'static str {
+    match level {
+        0 => "正常",
+        1 => "提醒",
+        2 => "限流",
+        _ => "冻结",
+    }
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v11_ladder_mid() {
+        assert_eq!(quota_ladder_name(1), "提醒");
+        assert_eq!(quota_ladder_name(2), "限流");
+    }
+
+    #[test]
+    fn f195_v11_run_checks_pass() {
+        assert!(run_resquota_deep7_checks().all_passed());
+    }
+}

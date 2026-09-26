@@ -11,6 +11,8 @@
 
 use crate::checks::CheckSet;
 
+use alloc::vec::Vec;
+
 /// 列表导航核。
 pub struct ListNav {
     pub count: usize,
@@ -21,7 +23,21 @@ pub struct ListNav {
     pub scroll_top: usize,
     /// 扩选锚点（Shift 系扩选起点）。
     pub anchor: Option<usize>,
+    /// v8：type-ahead 字母跳缓冲（累计键入）。
+    pub typeahead: Vec<u8>,
+    /// v8：type-ahead 上次键入时刻（超窗清空缓冲）。
+    pub typeahead_at_ms: Option<u64>,
 }
+
+/// type-ahead 超窗（ms）——键入间隔超此值缓冲清空重来。
+pub const TYPEAHEAD_WINDOW_MS: u64 = 1_000;
+
+/// type-ahead 缓冲上限（字节）。
+pub const TYPEAHEAD_CAP: usize = 32;
+
+/// 键入的项目名表注入（type-ahead 命中查找用——名从外部来，本核
+/// 不造真值）。此处用闭包签名避免持有字符串所有权。
+pub type NameLookup<'a> = dyn Fn(usize) -> Option<&'a str> + 'a;
 
 impl ListNav {
     pub fn new(count: usize, page_rows: usize) -> ListNav {
@@ -31,6 +47,8 @@ impl ListNav {
             selected: 0,
             scroll_top: 0,
             anchor: None,
+            typeahead: Vec::new(),
+            typeahead_at_ms: None,
         }
     }
 
@@ -134,6 +152,42 @@ impl ListNav {
         self.sync_scroll_to_selection();
         Some((a.min(to), a.max(to)))
     }
+
+    /// v8：type-ahead 字母跳——键入累计入缓冲（超窗清空重来；超容量
+    /// 截尾）；在 name_of 查找下标 > 起点的首个前缀命中项，命中则选中
+    /// 并滚动同步。返回命中下标。
+    pub fn typeahead_char(&mut self, ch: u8, now_ms: u64, name_of: &NameLookup) -> Option<usize> {
+        match self.typeahead_at_ms {
+            Some(t) if now_ms.saturating_sub(t) >= TYPEAHEAD_WINDOW_MS => self.typeahead.clear(),
+            _ => {}
+        }
+        if self.typeahead.len() >= TYPEAHEAD_CAP {
+            self.typeahead.remove(0); // 截尾保新（环形语义）
+        }
+        self.typeahead.push(ch);
+        self.typeahead_at_ms = Some(now_ms);
+        let pat = self.typeahead.clone();
+        // 从选中项下一个开始环扫一圈（全列表可达）。
+        for off in 1..=self.count {
+            let idx = (self.selected + off) % self.count;
+            if let Some(name) = name_of(idx) {
+                if name.as_bytes().windows(pat.len().max(1)).any(|w| w == &pat[..]) {
+                    self.selected = idx;
+                    self.sync_scroll_to_selection();
+                    return Some(idx);
+                }
+            }
+        }
+        None
+    }
+
+    /// v8：type-ahead 超窗惰性清空（下次键入前查询也可显性走）。
+    pub fn typeahead_expired(&self, now_ms: u64) -> bool {
+        match self.typeahead_at_ms {
+            Some(t) => now_ms.saturating_sub(t) >= TYPEAHEAD_WINDOW_MS && !self.typeahead.is_empty(),
+            None => false,
+        }
+    }
 }
 
 pub fn run_listnav_checks() -> CheckSet {
@@ -226,6 +280,26 @@ pub fn run_listnav_checks() -> CheckSet {
     );
     x.anchor = Some(10);
     set.add("f432-shift-extend-bounds", x.shift_extend(999).is_none(), "");
+    // v8：type-ahead 字母跳——前缀命中、环扫全列表、缓冲累计、超窗清空。
+    let names = ["alpha", "beta", "banana", "gamma"];
+    let lookup = |i: usize| names.get(i).copied();
+    let mut t = ListNav::new(names.len(), 40);
+    set.add("f432-typeahead-hit", t.typeahead_char(b'b', 0, &lookup) == Some(1) && t.selected == 1, "");
+    set.add("f432-typeahead-accumulate", t.typeahead_char(b'e', 100, &lookup) == Some(1) && t.typeahead == *b"be", "be 环扫一圈命中 beta（含匹配）；缓冲累计");
+    // 超窗后缓冲清空重来：单字符 b 从头匹配 banana（下标 2）。
+    set.add("f432-typeahead-window-reset", t.typeahead_char(b'b', 2_000, &lookup) == Some(2) && t.selected == 2 && t.typeahead == *b"b", "超窗清空重来：单字符 b 命中 banana");
+    // 环扫：从尾部起输入 a 能绕回 alpha（下标 0）。
+    let mut r = ListNav::new(names.len(), 40);
+    r.selected = 3; // gamma——从 0 起环扫
+    set.add("f432-typeahead-wrap", r.typeahead_char(b'a', 0, &lookup) == Some(0) && r.selected == 0, "");
+    // 全不命中：无 panic、选中不动。
+    let mut n = ListNav::new(names.len(), 40);
+    set.add("f432-typeahead-miss", n.typeahead_char(b'z', 0, &lookup).is_none() && n.selected == 0, "");
+    set.add(
+        "f432-typeahead-expiry",
+        { n.typeahead_at_ms = Some(5_000); n.typeahead = b"zz".to_vec(); n.typeahead_expired(6_500) && !n.typeahead_expired(5_500) },
+        "",
+    );
     set
 }
 
@@ -252,5 +326,26 @@ mod tests {
         l.selected = 44;  // 选中也在末行——两端到界才无动作
         assert!(!l.page_down(), "已贴底且选中在末行：无动作");
         assert!(l.scrollbar_consistent());
+    }
+
+    #[test]
+    fn typeahead_scroll_syncs() {
+        // 命中项在页外 → 选中后滚动条同步跟随。
+        let mut l = ListNav::new(1_000, 40);
+        let names: Vec<String> = (0..1_000).map(|i| format!("item{i}")).collect();
+        let lookup = |i: usize| names.get(i).map(|s| s.as_str());
+        let hit = l.typeahead_char(b'i', 0, &lookup).unwrap();
+        assert_eq!(hit, 1);
+        assert!(hit >= l.scroll_top && hit < l.scroll_top + 40, "命中项在可视区内");
+    }
+
+    #[test]
+    fn typeahead_cap_trims_oldest() {
+        let mut l = ListNav::new(10, 40);
+        let lookup = |_: usize| Some("x");
+        for i in 0..(TYPEAHEAD_CAP + 4) {
+            let _ = l.typeahead_char(b'a', i as u64 * 100, &lookup); // 窗内连击（100ms 间隔 < 1s 超窗）
+        }
+        assert_eq!(l.typeahead.len(), TYPEAHEAD_CAP, "缓冲封顶不失控");
     }
 }

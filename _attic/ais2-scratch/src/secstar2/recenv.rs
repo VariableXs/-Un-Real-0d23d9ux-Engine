@@ -2549,3 +2549,190 @@ mod deep14_tests {
         assert!(run_recenv_deep7b_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：修复动作 undo 面 / 卡健康自描述行 / 导出包
+// 校验 / 脱网诊断决策树。
+// 判据源：主册【设计细节】「每卡执行前自动快照现场（除导出——只读原则）」
+// +「全流程脱网可用」+【状态与异常】「两级降级」。
+// ---------------------------------------------------------------------------
+
+/// 修复动作清单（动作名, 可撤销）——undo 面的事实源（一处一事实）。
+pub const REPAIR_ACTIONS: [(&str, bool); 4] = [
+    ("重检引导闸门", true),
+    ("重建基准哈希", false), // 原基准已坏——重建无可回退。
+    ("回滚配置", true),      // 回滚前自动快照——可撤销。
+    ("导出日志", false),     // 只读动作——本就不需要撤销。
+];
+
+/// 动作是否可撤销（清单外的动作一律视为不可撤销——保守默认）。
+pub fn action_undoable(action: &str) -> bool {
+    REPAIR_ACTIONS.iter().find(|(a, _)| *a == action).map(|(_, u)| *u).unwrap_or(false)
+}
+
+/// undo 面一行话（修复卡二级页脚注——「本次操作可撤销 N / 共 M 项」）。
+pub fn undo_surface_line() -> alloc::string::String {
+    let total = REPAIR_ACTIONS.len();
+    let undoable = REPAIR_ACTIONS.iter().filter(|(_, u)| *u).count();
+    alloc::format!("本次操作可撤销 {}/{} 项", undoable, total)
+}
+
+/// 修复动作 undo 账（执行留痕 + 撤销标记——不可撤销动作拒收不入账）。
+#[derive(Default)]
+pub struct ActionUndoBook {
+    done: Vec<&'static str>,
+    /// 与 done 对齐：true = 已撤销。
+    undone: Vec<bool>,
+}
+
+impl ActionUndoBook {
+    pub fn new() -> ActionUndoBook {
+        ActionUndoBook { done: Vec::new(), undone: Vec::new() }
+    }
+
+    /// 记录一次执行：可撤销动作入账返回 true；不可撤销动作拒收（返回
+    /// false——账面不收撤销不了的债）。
+    pub fn record(&mut self, action: &'static str) -> bool {
+        if !action_undoable(action) {
+            return false;
+        }
+        self.done.push(action);
+        self.undone.push(false);
+        true
+    }
+
+    /// 撤销最近一条未撤销的执行（无可撤 → false）。
+    pub fn undo_last(&mut self) -> bool {
+        match self.undone.iter_mut().rev().find(|u| !**u) {
+            Some(u) => {
+                *u = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 待撤销面（执行了且尚未撤销的动作数——修复页「可撤销 N 项」数据源）。
+    pub fn pending_undo(&self) -> usize {
+        self.undone.iter().filter(|u| !**u).count()
+    }
+
+    pub fn len(&self) -> usize {
+        self.done.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.done.is_empty()
+    }
+}
+
+/// 卡健康自描述行（每张卡自报状态——两级降级页的数据源）。
+pub fn card_health_line(card: RecoveryCard, healthy: bool) -> alloc::string::String {
+    let state = if healthy { "可用" } else { "受损——已按两级降级隐藏" };
+    alloc::format!("{}：{}", card.name(), state)
+}
+
+/// 导出包校验（manifest 名册与实际产物逐项对拍：条目同集且字节数一致）。
+pub fn export_manifest_check(manifest: &[(&str, u64)], actual: &[(&str, u64)]) -> bool {
+    if manifest.len() != actual.len() {
+        return false;
+    }
+    manifest.iter().all(|(name, size)| actual.iter().any(|(n, s)| n == name && s == size))
+}
+
+/// 脱网诊断决策树（症状布尔 → 建议动作；全程零网络依赖——设计纪律写死）。
+pub fn offline_diag_tree(host_boots: bool, config_corrupt: bool, media_ok: bool, has_second_usb: bool) -> &'static str {
+    if !media_ok {
+        "备份介质只读探测失败——先更换介质，不冒险写入"
+    } else if !host_boots {
+        "走「修复引导」卡：闸门三条件重检+基准哈希重建"
+    } else if config_corrupt {
+        "走「回滚配置」卡：选择还原点恢复系统配置"
+    } else if has_second_usb {
+        "走「导出日志」卡：诊断日志导出到另一块 U 盘"
+    } else {
+        "导出降级为屏显二维码摘要——至少把错误码带出去"
+    }
+}
+
+/// F198 v8 终波自检（deep8 表）。
+pub fn run_recenv_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F198-v8c");
+
+    // undo 面：清单事实源 / 一行话 / 保守默认。
+    set.add("undo table", REPAIR_ACTIONS.len() == 4 && undo_surface_line().contains("2/4"), "4 动作 2 可撤销");
+    set.add("undo default", !action_undoable("未登记动作"), "清单外保守视为不可撤销");
+    set.add("undo readonly", !action_undoable("导出日志"), "只读动作不需撤销");
+
+    // undo 账：入账 / 拒收 / 待撤销面 / 撤销 / 空账。
+    let mut b = ActionUndoBook::new();
+    set.add("undo rec ok", b.record("回滚配置"), "");
+    set.add("undo rec reject", !b.record("重建基准哈希") && b.len() == 1, "不可撤销拒收不入账");
+    set.add("undo pending", b.pending_undo() == 1, "");
+    set.add("undo do", b.undo_last() && b.pending_undo() == 0, "撤销后待撤销面清零");
+    set.add("undo empty", !ActionUndoBook::new().undo_last() && ActionUndoBook::new().is_empty(), "空账无可撤");
+
+    // 卡健康自描述：可用 / 受损降级。
+    set.add("card ok", {
+        let l = card_health_line(RecoveryCard::BootRepair, true);
+        l.contains("修复引导") && l.contains("可用")
+    }, "");
+    set.add("card bad", card_health_line(RecoveryCard::LogExport, false).contains("降级"), "受损卡自述降级");
+
+    // 导出包校验：同集同尺 / 缺项 / 尺不符。
+    let mf = [("ring.log", 1200), ("manifest.txt", 40)];
+    set.add("pkg ok", export_manifest_check(&mf, &[("manifest.txt", 40), ("ring.log", 1200)]), "乱序同集仍通过");
+    set.add("pkg missing", !export_manifest_check(&mf, &[("ring.log", 1200)]), "缺项不通过");
+    set.add("pkg size", !export_manifest_check(&mf, &[("ring.log", 1200), ("manifest.txt", 41)]), "字节数不符不通过");
+
+    // 脱网决策树：四支全覆盖。
+    set.add("tree media", offline_diag_tree(true, false, false, true).contains("更换介质"), "");
+    set.add("tree boot", offline_diag_tree(false, false, true, true).contains("修复引导"), "");
+    set.add("tree rollback", offline_diag_tree(true, true, true, true).contains("回滚配置"), "");
+    set.add("tree usb", offline_diag_tree(true, false, true, true).contains("导出日志"), "");
+    set.add("tree qrcode", offline_diag_tree(true, false, true, false).contains("二维码"), "无第二 U 盘降级");
+
+    set
+}
+
+#[cfg(test)]
+mod deep15_tests {
+    use super::*;
+
+    #[test]
+    fn f198_deep8_undo_re_record_after_undo() {
+        // 撤销后重新执行：待撤销面回弹（账面与现场一致）。
+        let mut b = ActionUndoBook::new();
+        b.record("回滚配置");
+        b.undo_last();
+        b.record("回滚配置");
+        assert_eq!(b.pending_undo(), 1);
+    }
+
+    #[test]
+    fn f198_deep8_manifest_empty() {
+        // 空 manifest 对空产物：零导出也是自洽（诚实账）。
+        assert!(export_manifest_check(&[], &[]));
+        assert!(!export_manifest_check(&[("a", 1)], &[]));
+    }
+
+    #[test]
+    fn f198_deep8_tree_never_needs_network() {
+        // 全 16 组合扫描：决策树输出恒非空（脱网纪律——永远给得出下一步）。
+        for boots in [true, false] {
+            for corrupt in [true, false] {
+                for media in [true, false] {
+                    for usb in [true, false] {
+                        assert!(!offline_diag_tree(boots, corrupt, media, usb).is_empty());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn f198_deep8_run_checks_pass() {
+        assert!(run_recenv_deep8_checks().all_passed());
+    }
+}

@@ -2761,6 +2761,25 @@ mod deep8_tests {
     fn f194_v8e_run_checks_pass() {
         assert!(run_auditchain_deep7b_checks().all_passed());
     }
+
+    #[test]
+    fn f194_deep8_density_quintile() {
+        // 分档边界如实：恰在界上落高档（10 → 第三档，30 → 第四档，31 → 顶档）。
+        assert_eq!(event_density_row(&[10]), "▄");
+        assert_eq!(event_density_row(&[30]), "▆");
+        assert_eq!(event_density_row(&[31]), "█");
+    }
+
+    #[test]
+    fn f194_deep8_attest_anchor_stable() {
+        // 自证样例锚可复现（同输入同锚——契约稳定）。
+        assert_eq!(attest_anchor(), attest_anchor());
+    }
+
+    #[test]
+    fn f194_deep8_run_checks_pass() {
+        assert!(run_auditchain_deep8_checks().all_passed());
+    }
 }
 
 
@@ -2988,4 +3007,183 @@ mod deep14_tests {
     fn f194_v14_run_checks_pass() {
         assert!(run_auditchain_deep7b_checks().all_passed());
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：链健康趋势导出 / 事件密度热力行 / 校验器自证 /
+// 锚漂移预警。
+// 判据源：主册【验收判据】「审计链健康度可按日导出复盘；校验器先自证再校人」
+// + 【数据与存储】「锚（链头哈希）漂移即预警——分叉与篡改零容忍」。
+// ---------------------------------------------------------------------------
+
+/// 链健康趋势 CSV（day,health 两列——趋势可导出才可复盘）。
+pub fn health_trend_csv(days: &[(u64, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("day,health\n");
+    for &(day, score) in days {
+        out.push_str(&alloc::format!("{},{}\n", day, score));
+    }
+    out
+}
+
+/// 健康趋势箭头（较昨日 ↑ 升 / ↓ 降 / → 平——面板一眼读懂）。
+pub fn health_trend_arrow(prev: u64, cur: u64) -> &'static str {
+    if cur > prev {
+        "↑"
+    } else if cur < prev {
+        "↓"
+    } else {
+        "→"
+    }
+}
+
+/// 健康分档（≥950 优 / ≥800 良 / 其余 差——面板徽标三态）。
+pub fn health_grade(score: u64) -> &'static str {
+    if score >= 950 {
+        "优"
+    } else if score >= 800 {
+        "良"
+    } else {
+        "差"
+    }
+}
+
+/// 健康趋势标题行（箭头 + 当前分 + 档位——面板顶栏的完整一行）。
+pub fn trend_headline(prev: u64, cur: u64) -> alloc::string::String {
+    alloc::format!("健康度 {} {}（{}）", health_trend_arrow(prev, cur), cur, health_grade(cur))
+}
+
+/// 事件密度热力行（每桶事件数 → 五档热力条：0 / ≤3 / ≤10 / ≤30 / 更多）。
+pub fn event_density_row(buckets: &[u64]) -> alloc::string::String {
+    const LEVELS: [char; 5] = ['▁', '▂', '▄', '▆', '█'];
+    let mut out = alloc::string::String::new();
+    for &n in buckets {
+        let level = if n == 0 {
+            0
+        } else if n <= 3 {
+            1
+        } else if n <= 10 {
+            2
+        } else if n <= 30 {
+            3
+        } else {
+            4
+        };
+        out.push(LEVELS[level]);
+    }
+    out
+}
+
+/// 密度汇总（总事件数 + 峰值桶——热力条下面的两个数字）。
+pub fn density_summary(buckets: &[u64]) -> (u64, u64) {
+    let mut total = 0u64;
+    let mut peak = 0u64;
+    for &n in buckets {
+        total += n;
+        if n > peak {
+            peak = n;
+        }
+    }
+    (total, peak)
+}
+
+/// 校验器自证（对已知样例重算哈希并比对——校验器先证明自己没坏）。
+/// 哈希输入 = seq 的 8 字节小端 + 载荷（与链节点摘要同构）。
+pub fn verifier_self_attest(seq: u64, payload: &[u8], claimed: [u8; 32]) -> bool {
+    let mut buf: Vec<u8> = Vec::with_capacity(8 + payload.len());
+    buf.extend_from_slice(&seq.to_le_bytes());
+    buf.extend_from_slice(payload);
+    crate::ksha256::sha256(&buf) == claimed
+}
+
+/// 自证样例锚（seq=1 载荷 "varix" 的标准哈希——样例即契约，可复现）。
+pub fn attest_anchor() -> [u8; 32] {
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&1u64.to_le_bytes());
+    buf.extend_from_slice(b"varix");
+    crate::ksha256::sha256(&buf)
+}
+
+/// 自证报告行（ok / FAIL 带 seq——自证结果可入日志环 F188）。
+pub fn attest_line(seq: u64, payload: &[u8], claimed: [u8; 32]) -> alloc::string::String {
+    if verifier_self_attest(seq, payload, claimed) {
+        alloc::format!("self-attest: ok (seq={})", seq)
+    } else {
+        alloc::format!("self-attest: FAIL (seq={})", seq)
+    }
+}
+
+/// 锚漂移预警（基线锚 vs 当前锚：None = 无漂移；Some = 预警文案）。
+/// 同锚零预警；锚前移 = 正常增长；同长异锚 = 疑似分叉；锚回退 = 疑似回滚。
+pub fn anchor_drift_warning(
+    baseline: &[u8; 32],
+    current: &[u8; 32],
+    baseline_len: u64,
+    current_len: u64,
+) -> Option<&'static str> {
+    if baseline == current {
+        return None;
+    }
+    if current_len > baseline_len {
+        Some("锚前移——链正常增长，同步基线即可")
+    } else if current_len == baseline_len {
+        Some("同长异锚——疑似分叉或篡改，需人工对账")
+    } else {
+        Some("锚回退——链长缩短，疑似回滚攻击")
+    }
+}
+
+/// 锚漂移报告行（预警文案 + 两账链长——值班页的完整一行）。
+pub fn drift_report(
+    baseline: &[u8; 32],
+    current: &[u8; 32],
+    baseline_len: u64,
+    current_len: u64,
+) -> alloc::string::String {
+    match anchor_drift_warning(baseline, current, baseline_len, current_len) {
+        None => alloc::format!("锚稳定，链长 {}", current_len),
+        Some(w) => alloc::format!("{}（基线 {} / 当前 {}）", w, baseline_len, current_len),
+    }
+}
+
+/// F194 v8 终波自检（deep8 表）。
+pub fn run_auditchain_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F194-deep8");
+
+    // 健康趋势导出：表头 + 行数守恒 + 箭头三态 + 分档。
+    let trend = health_trend_csv(&[(1, 980), (2, 995)]);
+    set.add("trend header", trend.starts_with("day,health\n"), "");
+    set.add("trend rows", trend.lines().count() == 3, "表头 + 两天两行");
+    set.add("trend empty", health_trend_csv(&[]).lines().count() == 1, "空账只剩表头");
+    set.add("trend up", health_trend_arrow(980, 995) == "↑", "");
+    set.add("trend down", health_trend_arrow(995, 980) == "↓", "");
+    set.add("trend flat", health_trend_arrow(990, 990) == "→", "");
+    set.add("trend grade", health_grade(980) == "优" && health_grade(900) == "良" && health_grade(799) == "差", "三档边界如实");
+    set.add("trend headline", trend_headline(980, 995).contains("↑") && trend_headline(980, 995).contains("优"), "标题行 = 箭头 + 分数 + 档位");
+
+    // 事件密度热力行：五档分档 + 汇总账。
+    set.add("heat row", event_density_row(&[0, 2, 8, 20, 99]) == "▁▂▄▆█", "五桶五档");
+    set.add("heat empty", event_density_row(&[]).is_empty(), "空桶空行");
+    set.add("heat summary", density_summary(&[4, 6, 20]) == (30, 20), "总账 30 峰值 20");
+    set.add("heat summary empty", density_summary(&[]) == (0, 0), "空账零峰值");
+
+    // 校验器自证：样例锚自证通过，篡改一个字节 / seq 不符必 FAIL。
+    let anchor = attest_anchor();
+    set.add("attest ok", verifier_self_attest(1, b"varix", anchor), "校验器对自家样例自证");
+    set.add("attest tamper", !verifier_self_attest(1, b"varix!", anchor), "载荷变一字节即不匹配");
+    set.add("attest seq", !verifier_self_attest(2, b"varix", anchor), "seq 不符同样不匹配");
+    set.add("attest line ok", attest_line(1, b"varix", anchor).contains("ok"), "");
+    set.add("attest line fail", attest_line(2, b"varix", anchor).contains("FAIL"), "");
+
+    // 锚漂移预警：同锚零预警 / 前移 / 同长异锚 / 回退 + 报告行。
+    let h1 = crate::ksha256::sha256(b"node-1");
+    let h2 = crate::ksha256::sha256(b"node-2");
+    set.add("drift none", anchor_drift_warning(&h1, &h1, 5, 5).is_none(), "");
+    set.add("drift grow", anchor_drift_warning(&h1, &h2, 5, 6).unwrap().contains("前移"), "");
+    set.add("drift fork", anchor_drift_warning(&h1, &h2, 5, 5).unwrap().contains("分叉"), "");
+    set.add("drift rollback", anchor_drift_warning(&h1, &h2, 6, 5).unwrap().contains("回滚"), "");
+    set.add("drift report", drift_report(&h1, &h1, 5, 5).contains("锚稳定"), "");
+    set.add("drift report warn", drift_report(&h1, &h2, 5, 5).contains("基线 5 / 当前 5"), "报告行带两账链长");
+
+    set
 }

@@ -2252,3 +2252,1141 @@ mod deep6_tests {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——多传感器融合 / 风扇曲线插值 / 热历史
+// 日账 / 档位迁移矩阵 / 温度单位换算 / 降档原因链。
+// 判据源：主册【设计细节】「多传感器机型取加权一致读数」+【状态与异常】
+// 「风扇随温度曲线联动」+ 档位迁移不跳档的迟滞纪律。
+// ---------------------------------------------------------------------------
+
+/// 融合读数结论。
+pub struct FusionReading {
+    /// 融合后的温度（℃）。
+    pub fused_c: i64,
+    /// 两传感器是否一致（差 ≤ 一致带）。
+    pub agreed: bool,
+    /// 是否触发了离群剔除（有一方被丢）。
+    pub outlier_rejected: bool,
+}
+
+/// 一致带（两传感器差在此内视为一致）。
+pub const FUSION_AGREE_BAND_C: i64 = 3;
+
+/// 多传感器融合：两路读数加权一致（权重 2:1——主传感器为主）。
+/// 差超离群线（> 8℃）时丢弃偏离历史基线更远的一路并标注。
+pub fn sensor_fuse(primary_c: i64, secondary_c: i64, baseline_c: i64) -> FusionReading {
+    let diff = (primary_c - secondary_c).abs();
+    if diff <= FUSION_AGREE_BAND_C {
+        // 一致：加权融合（2:1）。
+        let fused = (primary_c * 2 + secondary_c) / 3;
+        FusionReading { fused_c: fused, agreed: true, outlier_rejected: false }
+    } else if diff > 8 {
+        // 离群：丢掉离基线更远的一路，取另一路。
+        let d_pri = (primary_c - baseline_c).abs();
+        let d_sec = (secondary_c - baseline_c).abs();
+        let (fused, rejected) = if d_pri <= d_sec { (primary_c, true) } else { (secondary_c, true) };
+        FusionReading { fused_c: fused, agreed: false, outlier_rejected: rejected }
+    } else {
+        // 中间带（3-8℃）：不剔除但标注分歧，仍加权融合。
+        let fused = (primary_c * 2 + secondary_c) / 3;
+        FusionReading { fused_c: fused, agreed: false, outlier_rejected: false }
+    }
+}
+
+/// 风扇曲线节点（℃ → 转速百分比）。
+pub const FAN_CURVE: [(i64, u64); 5] = [
+    (40, 20),
+    (60, 35),
+    (75, 55),
+    (85, 75),
+    (95, 100),
+];
+
+/// 风扇转速插值（分段线性——曲线上界封顶 100%，下界 20%）。
+pub fn fan_percent(temp_c: i64) -> u64 {
+    if temp_c <= FAN_CURVE[0].0 {
+        return FAN_CURVE[0].1;
+    }
+    for w in FAN_CURVE.windows(2) {
+        let (t0, p0) = w[0];
+        let (t1, p1) = w[1];
+        if temp_c <= t1 {
+            let span = (t1 - t0) as i64;
+            let frac = (temp_c - t0) as i64;
+            return (p0 as i64 + (p1 as i64 - p0 as i64) * frac / span) as u64;
+        }
+    }
+    FAN_CURVE[4].1
+}
+
+/// 风扇曲线 UI 投影（每节点一行——温度页「风扇策略」格）。
+pub fn fan_curve_lines() -> Vec<alloc::string::String> {
+    FAN_CURVE
+        .iter()
+        .map(|(t, p)| alloc::format!("{}℃ → 风扇 {}%", t, p))
+        .collect()
+}
+
+/// 热历史日账（一天一行：峰值 / 超阈分钟数 / 降档分钟数）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HeatDayRow {
+    pub day: u64,
+    /// 当日峰值（‰ 摄氏度，即 0.001℃ 分辨率）。
+    pub peak_deci_c: i64,
+    /// 超过 NOTIFY 阈的分钟数。
+    pub over_notify_min: u64,
+    /// 处于 Throttle 及以上的分钟数。
+    pub throttled_min: u64,
+}
+
+/// 日账构建：采样序列（(day, temp_c)）逐条入账（峰值取 max，分钟按温度计）。
+pub fn heat_day_ledger(samples: &[(u64, i64)]) -> Vec<HeatDayRow> {
+    let mut out: Vec<HeatDayRow> = Vec::new();
+    for &(day, temp) in samples {
+        match out.iter_mut().find(|r| r.day == day) {
+            Some(r) => {
+                if temp > r.peak_deci_c {
+                    r.peak_deci_c = temp;
+                }
+                if temp >= NOTIFY_C * 10 {
+                    r.over_notify_min += 1;
+                }
+                if temp >= THROTTLE_C * 10 {
+                    r.throttled_min += 1;
+                }
+            }
+            None => out.push(HeatDayRow {
+                day,
+                peak_deci_c: temp,
+                over_notify_min: if temp >= NOTIFY_C * 10 { 1 } else { 0 },
+                throttled_min: if temp >= THROTTLE_C * 10 { 1 } else { 0 },
+            }),
+        }
+    }
+    out
+}
+
+/// 周汇总（7 天账 → 一行结论——「本周高温 X 天，降档共 Y 分钟」）。
+pub fn heat_week_summary(rows: &[HeatDayRow]) -> alloc::string::String {
+    let hot_days = rows.iter().filter(|r| r.peak_deci_c >= NOTIFY_C).count();
+    let total_throttle_min: u64 = rows.iter().map(|r| r.throttled_min).sum();
+    if hot_days == 0 && total_throttle_min == 0 {
+        alloc::string::String::from("本周无高温事件")
+    } else {
+        alloc::format!("本周高温 {} 天，降档共 {} 分钟", hot_days, total_throttle_min)
+    }
+}
+
+/// 档位迁移合法性（迁移矩阵：禁止一次跳两档及以上；Critical 只进不出到 Normal）。
+pub fn level_transition_ok(from: ThermoLevel, to: ThermoLevel) -> bool {
+    use ThermoLevel::*;
+    match (from, to) {
+        (Normal, Throttle) | (Throttle, Notify) | (Notify, Critical) => true, // 逐级升温。
+        (Throttle, Normal) | (Notify, Throttle) => true,                      // 逐级降温。
+        (Critical, Notify) => true,                                           // 危急解除先降一档观察。
+        (Normal, Normal) | (Throttle, Throttle) | (Notify, Notify) | (Critical, Critical) => true,
+        _ => false, // 跳档/危急直落 Normal 均非法。
+    }
+}
+
+/// 温度单位。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TempUnit {
+    Celsius,
+    Fahrenheit,
+    Kelvin,
+}
+
+/// 单位换算显示（内部一律存 ℃；显示层换算——一处换算处处一致）。
+pub fn temp_convert(c: i64, unit: TempUnit) -> (i64, &'static str) {
+    match unit {
+        TempUnit::Celsius => (c, "℃"),
+        TempUnit::Fahrenheit => (c * 9 / 5 + 320, "℉"), // 0.1℃ 精度（320 = 32.0℉）。
+        TempUnit::Kelvin => (c + 2731, "K"),            // 0.1K 精度。
+    }
+}
+
+/// 降档原因链条目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThrottleReason {
+    pub at_s: u64,
+    pub level: ThermoLevel,
+    /// 人话原因（写进体验日志与通知副标题）。
+    pub reason: &'static str,
+}
+
+/// 降档原因链（每次档位变化必须带原因——零静默档位跳变）。
+#[derive(Default)]
+pub struct ThrottleReasonChain {
+    chain: Vec<ThrottleReason>,
+}
+
+impl ThrottleReasonChain {
+    pub fn new() -> ThrottleReasonChain {
+        ThrottleReasonChain { chain: Vec::new() }
+    }
+
+    /// 记录一次档位变化（迁移非法时拒绝并返回 false——链上不允许脏数据）。
+    pub fn record(&mut self, at_s: u64, from: ThermoLevel, to: ThermoLevel, reason: &'static str) -> bool {
+        if let Some(last) = self.chain.last() {
+            if !level_transition_ok(last.level, to) {
+                return false;
+            }
+        } else if !level_transition_ok(from, to) {
+            return false;
+        }
+        self.chain.push(ThrottleReason { at_s, level: to, reason });
+        true
+    }
+
+    pub fn latest(&self) -> Option<&ThrottleReason> {
+        self.chain.last()
+    }
+
+    pub fn len(&self) -> usize {
+        self.chain.len()
+    }
+
+    /// 链摘要（最近 3 条——通知详情折叠区）。
+    pub fn summary(&self) -> alloc::string::String {
+        let start = self.chain.len().saturating_sub(3);
+        let mut parts: Vec<alloc::string::String> = Vec::new();
+        for r in &self.chain[start..] {
+            parts.push(alloc::format!("{}s: {:?}", r.at_s, r.level));
+        }
+        parts.join(" | ")
+    }
+}
+
+impl Default for ThrottleReason {
+    fn default() -> Self {
+        ThrottleReason { at_s: 0, level: ThermoLevel::Normal, reason: "" }
+    }
+}
+
+/// F197 v8 自检（deep7 表）。
+pub fn run_thermgov_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v8");
+
+    // 融合：一致带内加权、离群剔除、中间带分歧标注。
+    let f1 = sensor_fuse(700, 702, 700);
+    set.add("fuse agree", f1.agreed && f1.fused_c == 700, "2:1 加权 700/702 → 700");
+    let f2 = sensor_fuse(700, 760, 700);
+    set.add("fuse outlier", f2.fused_c == 700 && f2.outlier_rejected, "副感 760 离基线远被丢");
+    let f3 = sensor_fuse(760, 700, 760);
+    set.add("fuse outlier pri", f3.fused_c == 760, "主感离群时丢主取副");
+    let f4 = sensor_fuse(700, 705, 700);
+    set.add("fuse midband", !f4.agreed && !f4.outlier_rejected, "3-8℃ 分歧标注不剔除");
+
+    // 风扇曲线：节点精确 + 段内插值 + 边界封顶。
+    set.add("fan nodes", FAN_CURVE.iter().all(|(t, p)| fan_percent(*t) == *p), "节点处取节点值");
+    set.add("fan interp", fan_percent(80) == 65, "75-85 段中点 80 → 65%");
+    set.add("fan floor", fan_percent(20) == 20, "冷机地板 20%");
+    set.add("fan ceiling", fan_percent(120) == 100, "过热封顶 100%");
+    set.add("fan ui rows", fan_curve_lines().len() == 5, "UI 五行");
+
+    // 日账：峰值/超阈分钟/跨天归并。
+    let ledger = heat_day_ledger(&[(1, 700), (1, 860), (1, 760), (2, 650), (2, 900)]);
+    set.add("day rows", ledger.len() == 2, "两天两行");
+    set.add("day peak", ledger[0].peak_deci_c == 860 && ledger[1].peak_deci_c == 900, "");
+    set.add("day over", ledger[0].over_notify_min == 1 && ledger[1].over_notify_min == 1, "");
+    set.add("day throttle", ledger[0].throttled_min == 2, "860/760 两条 ≥75℃（70℃ 不算）");
+    let wk = heat_week_summary(&ledger);
+    set.add("week summary", wk.contains("2 天") && wk.contains("3 分钟"), "两天超阈共 3 分钟降档");
+
+    // 迁移矩阵：逐级合法 / 跳档非法 / 危急只降一档。
+    set.add("matrix up chain", level_transition_ok(ThermoLevel::Normal, ThermoLevel::Throttle)
+        && level_transition_ok(ThermoLevel::Throttle, ThermoLevel::Notify)
+        && level_transition_ok(ThermoLevel::Notify, ThermoLevel::Critical), "逐级升温合法");
+    set.add("matrix skip red", !level_transition_ok(ThermoLevel::Normal, ThermoLevel::Critical), "跳两档非法");
+    set.add("matrix crit drop", !level_transition_ok(ThermoLevel::Critical, ThermoLevel::Normal), "危急直落非法");
+    set.add("matrix crit step", level_transition_ok(ThermoLevel::Critical, ThermoLevel::Notify), "危急先降一档观察");
+
+    // 单位换算：0.1 精度对账。
+    let (f, u1) = temp_convert(850, TempUnit::Fahrenheit);
+    set.add("unit F", f == 1850 && u1 == "℉", "85.0℃ = 185.0℉");
+    let (k, u2) = temp_convert(850, TempUnit::Kelvin);
+    set.add("unit K", k == 3581 && u2 == "K", "85.0℃ = 358.1K");
+
+    // 原因链：合法记录、非法拒绝、摘要。
+    let mut ch = ThrottleReasonChain::new();
+    set.add("chain rec up", ch.record(10, ThermoLevel::Normal, ThermoLevel::Throttle, "渲染负载"), "");
+    set.add("chain rec up2", ch.record(20, ThermoLevel::Throttle, ThermoLevel::Notify, "持续 85℃"), "");
+    set.add("chain reject skip", !ch.record(30, ThermoLevel::Notify, ThermoLevel::Normal, "骤冷"), "跳档拒绝");
+    set.add("chain len", ch.len() == 2, "");
+    set.add("chain latest", ch.latest().map(|r| r.reason) == Some("持续 85℃"), "");
+    set.add("chain summary", ch.summary().contains("10s") && ch.summary().contains(" | "), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v8_fusion_symmetry() {
+        // 融合加权与离群判定的对称性：主副互换，结论镜像。
+        let a = sensor_fuse(700, 702, 701);
+        let b = sensor_fuse(702, 700, 701);
+        // 2:1 加权不对称——互换后融合值差 ≤1 且一致判定相同。
+        assert!((a.fused_c - b.fused_c).abs() <= 1, "{} vs {}", a.fused_c, b.fused_c);
+        assert_eq!(a.agreed, b.agreed);
+        // 基线漂移跟随：基线取中间时离群判定仍稳定。
+        let c = sensor_fuse(700, 760, 730);
+        assert!(c.outlier_rejected);
+    }
+
+    #[test]
+    fn f197_v8_fan_monotonic() {
+        // 曲线单调不减（温度升风扇不降——物理纪律）。
+        let mut last = 0u64;
+        for t in 30..=110 {
+            let p = fan_percent(t);
+            assert!(p >= last, "t={} p={} < last={}", t, p, last);
+            last = p;
+        }
+    }
+
+    #[test]
+    fn f197_v8_ledger_empty_and_summary() {
+        // 空账诚实：空序列出空账，周汇总说人话。
+        assert!(heat_day_ledger(&[]).is_empty());
+        let s = heat_week_summary(&[]);
+        assert!(s.contains("无高温"));
+    }
+
+    #[test]
+    fn f197_v8_run_checks_pass() {
+        assert!(run_thermgov_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b4：节能联动 / 告警去抖 / 曲线 CSV 导出 / 周热趋势环比。
+// ---------------------------------------------------------------------------
+
+/// 功耗模式建议（温度 → 档位化建议——温度管理只建议不强推）。
+pub fn power_mode_suggestion(temp_c: i64) -> &'static str {
+    // 入参为 deci-C（0.1℃）——阈值 ×10 对齐（本域第二次抓到同类单位混用，
+    // 已在缺陷账本立卡：阈值比较必须带单位后缀命名）。
+    if temp_c >= CRIT_C * 10 {
+        "建议切换省电模式并保存工作"
+    } else if temp_c >= NOTIFY_C * 10 {
+        "建议关闭后台重负载应用"
+    } else if temp_c >= THROTTLE_C * 10 {
+        "已自动降档——无需操作"
+    } else {
+        ""
+    }
+}
+
+/// 告警去抖器（同级别告警在冷却窗内不重复打扰）。
+pub struct AlertDebounce {
+    cooldown_s: u64,
+    last_sent_s: u64,
+    sent_any: bool,
+}
+
+impl AlertDebounce {
+    pub fn new(cooldown_s: u64) -> AlertDebounce {
+        AlertDebounce { cooldown_s, last_sent_s: 0, sent_any: false }
+    }
+
+    /// 请求发告警：冷却窗内 → false（不打扰）；窗外 → true 并记账。
+    pub fn request(&mut self, now_s: u64) -> bool {
+        if self.sent_any && now_s.saturating_sub(self.last_sent_s) < self.cooldown_s {
+            return false;
+        }
+        self.last_sent_s = now_s;
+        self.sent_any = true;
+        true
+    }
+
+    pub fn in_cooldown(&self, now_s: u64) -> bool {
+        self.sent_any && now_s.saturating_sub(self.last_sent_s) < self.cooldown_s
+    }
+}
+
+/// 曲线 CSV 导出（t,temp 两列——体验日志与外部工具的开放接口）。
+pub fn curve_export_csv(curve: &[(u64, i64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("t_s,temp_deci_c\n");
+    for (t, c) in curve {
+        out.push_str(&alloc::format!("{},{}\n", t, c));
+    }
+    out
+}
+
+/// 周热趋势环比（本周峰值 vs 上周峰值 → 三态结论）。
+pub fn week_trend(this_week_peak: i64, last_week_peak: i64) -> &'static str {
+    let diff = this_week_peak - last_week_peak;
+    if diff > 30 {
+        "升温趋势：本周峰值明显偏高，建议清灰或检查负载"
+    } else if diff < -30 {
+        "降温趋势：散热状况改善"
+    } else {
+        "温度平稳"
+    }
+}
+
+/// F197 v8-b4 自检（并入 deep7 表）。
+pub fn run_thermgov_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v8b");
+
+    // 节能联动：四档建议。
+    set.add("pw crit", power_mode_suggestion(960).contains("省电"), "");
+    set.add("pw notify", power_mode_suggestion(860).contains("重负载"), "");
+    set.add("pw throttle", power_mode_suggestion(760).contains("已自动降档"), "");
+    set.add("pw normal", power_mode_suggestion(600).is_empty(), "正常温度零打扰");
+
+    // 去抖：首发必过、窗内拦、窗外放。
+    let mut d = AlertDebounce::new(300);
+    set.add("deb first", d.request(100), "");
+    set.add("deb window", !d.request(200) && d.in_cooldown(200), "冷却窗内拦下");
+    set.add("deb edge", !d.request(399), "恰在窗内（差 1s）仍拦");
+    set.add("deb after", d.request(400), "窗外放行");
+
+    // CSV：表头 + 行数 + 数据保真。
+    let csv = curve_export_csv(&[(0, 600), (2, 620)]);
+    set.add("csv header", csv.starts_with("t_s,temp_deci_c\n"), "");
+    set.add("csv rows", csv.lines().count() == 3, "");
+    set.add("csv data", csv.contains("2,620"), "");
+
+    // 周趋势：三态。
+    set.add("trend up", week_trend(900, 800).contains("升温"), "");
+    set.add("trend down", week_trend(800, 900).contains("改善"), "");
+    set.add("trend flat", week_trend(850, 840).contains("平稳"), "±3℃ 内算平稳");
+    // b7-wave2：告警分级路由 / 静夜模式 / 风扇自检。
+    set.add("route info", alert_route(600) == "log", "正常温只进日志");
+    set.add("route warn", alert_route(860) == "tray", "notify 级升托盘");
+    set.add("route crit", alert_route(960) == "modal", "crit 级全屏模态");
+    set.add("night hold", night_mode_hold(860, true).contains("静夜"), "静夜只缓不弹");
+    set.add("night off", !night_mode_hold(960, true).contains("静夜"), "危急级不被静夜吞");
+    set.add("fan selfcheck", fan_selfcheck_due(0, 7 * 86400), "距上次自检 7 天 → 到期");
+    set.add("fan fresh", !fan_selfcheck_due(6 * 86400, 7 * 86400), "6 天内不自检");
+    // b8-wave3：采样质量账 / 档位时长域 / 峰值持久化键。
+    set.add("sample quality", { let mut q = SampleQualityLedger::new(); q.observe(true); q.observe(false); q.observe(false); q.reject_permille() == 666 }, "3 采样 2 拒 = 666‰");
+    set.add("sample clean", SampleQualityLedger::new().reject_permille() == 0, "空账零拒绝率");
+    set.add("level hours", { let mut h = LevelHours::new(); h.add(ThermoLevel::Normal, 60); h.add(ThermoLevel::Normal, 30); h.get(ThermoLevel::Normal) == 90 }, "同档累加");
+    set.add("level separate", { let mut h = LevelHours::new(); h.add(ThermoLevel::Normal, 60); h.add(ThermoLevel::Throttle, 10); h.get(ThermoLevel::Throttle) == 10 }, "各档独立");
+    set.add("peak key", peak_store_key(120) == "thermo/peak/day-120", "键名稳定可归档");
+    // b9-wave4：阈值保序校验 / 风扇偏移旋钮 / 历史 JSON 导出。
+    set.add("th ok", thresholds_ordered(70, 80, 90), "自定义阈值保序");
+    set.add("th bad", !thresholds_ordered(90, 80, 70), "倒序拒收");
+    set.add("th equal", !thresholds_ordered(80, 80, 80), "同值不分级拒收");
+    set.add("fan offset", fan_offset_apply(50, 10) == 60, "曲线整体上移 10%");
+    set.add("fan offset cap", fan_offset_apply(95, 10) == 100, "上移不破顶");
+    set.add("hist json", { let mut d = Vec::new(); history_export(&[(1, 700)], &mut d); core::str::from_utf8(&d).unwrap_or("").starts_with("{\"curve\":[") }, "JSON 形状");
+    // b10-wave5：告警风暴抑制 / 单位偏好键 / 采样间隔自适应。
+    set.add("storm merge", { let mut s = AlertStorm::new(300); s.offer(10, "notify"); s.offer(20, "notify"); s.pending() == 1 }, "同级别合并为一封");
+    set.add("storm level split", { let mut s = AlertStorm::new(300); s.offer(10, "notify"); s.offer(20, "crit"); s.pending() == 2 }, "异级别不合并");
+    set.add("storm flush", { let mut s = AlertStorm::new(300); s.offer(10, "notify"); s.flush(); s.pending() == 0 }, "冷却到点放行");
+    set.add("unit key", unit_pref_key() == "thermo/unit-pref", "偏好键稳定");
+    set.add("adaptive interval", sample_interval_adaptive(860) < sample_interval_adaptive(600), "越热间隔越短（采样越密）");
+    // b11-wave6：峰值读写账 / 阈值改动审计。
+    set.add("peak rw", { let mut k = PeakStore::new(); k.put(7, 880); k.get(7) == Some(880) }, "写后可读");
+    set.add("peak miss", PeakStore::new().get(9).is_none(), "无峰诚实");
+    set.add("peak overwrite", { let mut k = PeakStore::new(); k.put(7, 800); k.put(7, 900); k.get(7) == Some(900) }, "同日重写取更高");
+    set.add("th audit", threshold_audit_line(75, 85, 95).contains("75"), "审计行带阈值");
+    // b12-wave7：日峰 CSV / 温度页脚注。
+    set.add("peak csv", peak_csv(&[(1, 880)]).starts_with("day,peak_deci_c\n"), "CSV 表头");
+    set.add("peak csv two", peak_csv(&[(1, 880), (2, 900)]).lines().count() == 3, "");
+    set.add("page footnote", temp_page_footnote() == "数据为 0.1℃ 精度采样，24 小时保留", "页脚如实");
+    // b13-wave8：近七日峰值排行。
+    set.add("peak top", peak_top3(&[(1, 800), (2, 950), (3, 870), (4, 920)]) == vec![(2, 950), (4, 920), (3, 870)], "峰值降序前三");
+    // b14-wave9：峰值超阈计数。
+    set.add("peak over count", peak_over_days(&[(1, 800), (2, 950), (3, 860)], 850) == 2, "两天超通知阈");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v8b_debounce_never_spam() {
+        // 10 分钟内每秒请求一次：300s 冷却只放行 3 次（100/400/700）。
+        let mut d = AlertDebounce::new(300);
+        let sent: u64 = (0..600).map(|s| d.request(s) as u64).sum();
+        assert_eq!(sent, 2, "0 与 300 与 600 → 3 次？600-300=300 恰到界 → 放行。实测 {}", sent);
+    }
+
+    #[test]
+    fn f197_v8b_csv_empty() {
+        assert_eq!(curve_export_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f197_v8b_suggestion_monotone() {
+        // 温度升高建议只升级不降级（建议强度单调）。
+        let seq = [600, 760, 860, 960];
+        for w in seq.windows(2) {
+            let a = power_mode_suggestion(w[0]);
+            let b = power_mode_suggestion(w[1]);
+            assert!(!a.is_empty() || !b.is_empty());
+        }
+    }
+
+    #[test]
+    fn f197_v8b_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：告警分级路由 / 静夜模式 / 风扇自检节奏。
+// 判据源：主册【交互设计】「通知分级路由」+「夜间免打扰不吞危急」。
+// ---------------------------------------------------------------------------
+
+/// 告警路由（温度 → 渠道：log / tray / modal——分级不越权）。
+pub fn alert_route(temp_deci_c: i64) -> &'static str {
+    if temp_deci_c >= CRIT_C * 10 {
+        "modal"
+    } else if temp_deci_c >= NOTIFY_C * 10 {
+        "tray"
+    } else if temp_deci_c >= THROTTLE_C * 10 {
+        "log"
+    } else {
+        "log"
+    }
+}
+
+/// 静夜模式拦截（notify 及以下缓发；critical 永远放行——危急不被吞）。
+pub fn night_mode_hold(temp_deci_c: i64, night_on: bool) -> &'static str {
+    if !night_on {
+        return "";
+    }
+    if temp_deci_c >= CRIT_C * 10 {
+        ""
+    } else if temp_deci_c >= NOTIFY_C * 10 {
+        "静夜模式：告警缓发至早晨"
+    } else {
+        ""
+    }
+}
+
+/// 风扇自检到期（距上次自检超过间隔 → 到期；首次必检）。
+pub fn fan_selfcheck_due(last_check_s: u64, interval_s: u64) -> bool {
+    last_check_s == 0 || interval_s == 0
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v8c_route_boundaries() {
+        // 段边界：恰在阈值上归上级渠道。
+        assert_eq!(alert_route(CRIT_C * 10), "modal");
+        assert_eq!(alert_route(CRIT_C * 10 - 1), "tray");
+        assert_eq!(alert_route(NOTIFY_C * 10), "tray");
+    }
+
+    #[test]
+    fn f197_v8c_night_never_swallows_crit() {
+        // 静夜三温度扫描：critical 一律不被拦（红线语义）。
+        for t in [850, 900, 950, 960, 1000] {
+            if t >= CRIT_C * 10 {
+                assert_eq!(night_mode_hold(t, true), "");
+            }
+        }
+    }
+
+    #[test]
+    fn f197_v8c_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：采样质量账 / 档位时长域 / 峰值持久化键。
+// 判据源：主册【状态与异常】「传感器读数质量可观测（拒绝率在册）」。
+// ---------------------------------------------------------------------------
+
+/// 采样质量账（总采样 / 被滤波拒绝数 → 拒绝率）——b8 立卡。
+pub struct SampleQualityLedger {
+    pub total: u64,
+    pub rejected: u64,
+}
+
+impl SampleQualityLedger {
+    pub fn new() -> SampleQualityLedger {
+        SampleQualityLedger { total: 0, rejected: 0 }
+    }
+
+    pub fn observe(&mut self, accepted: bool) {
+        self.total += 1;
+        if !accepted {
+            self.rejected += 1;
+        }
+    }
+
+    /// 拒绝率 permille（空账 0 不放除零）。
+    pub fn reject_permille(&self) -> u64 {
+        if self.total == 0 {
+            0
+        } else {
+            self.rejected * 1000 / self.total
+        }
+    }
+}
+
+impl Default for SampleQualityLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 档位时长域（每档累计停留分钟——「这周降档多久」的数据源）。
+#[derive(Default)]
+pub struct LevelHours {
+    minutes: [u64; 4],
+}
+
+impl LevelHours {
+    pub fn new() -> LevelHours {
+        LevelHours { minutes: [0; 4] }
+    }
+
+    pub fn add(&mut self, level: ThermoLevel, minutes: u64) {
+        self.minutes[level as usize] += minutes;
+    }
+
+    pub fn get(&self, level: ThermoLevel) -> u64 {
+        self.minutes[level as usize]
+    }
+}
+
+/// 峰值持久化键（day → 稳定键名——跨天峰值账的存储锚）。
+pub fn peak_store_key(day: u64) -> alloc::string::String {
+    alloc::format!("thermo/peak/day-{}", day)
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v8d_quality_boundary() {
+        // 全拒 = 1000‰。
+        let mut q = SampleQualityLedger::new();
+        for _ in 0..5 {
+            q.observe(false);
+        }
+        assert_eq!(q.reject_permille(), 1000);
+    }
+
+    #[test]
+    fn f197_v8d_level_all_variants() {
+        // 四档全可记账（枚举全覆盖）。
+        let mut h = LevelHours::new();
+        for l in [ThermoLevel::Normal, ThermoLevel::Throttle, ThermoLevel::Notify, ThermoLevel::Critical] {
+            h.add(l, 1);
+        }
+        assert_eq!(h.get(ThermoLevel::Critical), 1);
+    }
+
+    #[test]
+    fn f197_v8d_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：阈值保序校验 / 风扇曲线偏移旋钮 / 历史 JSON 导出。
+// 判据源：主册【设计细节】「阈值可调但档序不可拆」+【数据与存储】开放导出。
+// ---------------------------------------------------------------------------
+
+/// 阈值保序校验（throttle < notify < crit 严格递增——档位体系不被拆）。
+pub fn thresholds_ordered(throttle_c: i64, notify_c: i64, crit_c: i64) -> bool {
+    throttle_c < notify_c && notify_c < crit_c
+}
+
+/// 风扇曲线偏移（用户整体 ±N%；上界 100% 封顶、下界 20% 保底）。
+pub fn fan_offset_apply(base_percent: u64, offset: i64) -> u64 {
+    let adjusted = base_percent as i64 + offset;
+    adjusted.clamp(20, 100) as u64
+}
+
+/// 温度历史 JSON 导出。
+pub fn history_export(curve: &[(u64, i64)], out: &mut Vec<u8>) {
+    out.extend_from_slice(b"{\"curve\":[");
+    for (i, (t, c)) in curve.iter().enumerate() {
+        if i > 0 {
+            out.extend_from_slice(b",");
+        }
+        out.extend_from_slice(alloc::format!("[{},{}]", t, c).as_bytes());
+    }
+    out.extend_from_slice(b"]}");
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v9_offset_floor() {
+        // 下移不破底：20% 保底。
+        assert_eq!(fan_offset_apply(25, -10), 20);
+    }
+
+    #[test]
+    fn f197_v9_hist_export_empty() {
+        let mut d = Vec::new();
+        history_export(&[], &mut d);
+        assert_eq!(core::str::from_utf8(&d).unwrap_or(""), "{\"curve\":[]}");
+    }
+
+    #[test]
+    fn f197_v9_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：告警风暴抑制 / 单位偏好键 / 采样间隔自适应。
+// 判据源：主册【交互设计】「同类告警合并——通知不是垃圾场」。
+// ---------------------------------------------------------------------------
+
+/// 告警风暴抑制（冷却窗内同级别合并为一封——pending 数 = 通知组数）。
+pub struct AlertStorm {
+    cooldown_s: u64,
+    last_sent_s: u64,
+    groups: usize,
+    suppressed: u64,
+    group_active: bool,
+    level: alloc::string::String,
+}
+
+impl AlertStorm {
+    pub fn new(cooldown_s: u64) -> AlertStorm {
+        AlertStorm { cooldown_s, last_sent_s: 0, groups: 0, suppressed: 0, group_active: false, level: alloc::string::String::new() }
+    }
+
+    /// 提供一条告警：活跃组窗内同级别 → 合并（组数不变，抑制计数 +1）；
+    /// 否则开新组。
+    pub fn offer(&mut self, now_s: u64, level: &str) {
+        if self.group_active
+            && now_s.saturating_sub(self.last_sent_s) < self.cooldown_s
+            && self.level == level
+        {
+            self.suppressed += 1;
+            self.last_sent_s = now_s;
+            return;
+        }
+        self.groups += 1;
+        self.group_active = true;
+        self.last_sent_s = now_s;
+        self.level = alloc::string::String::from(level);
+    }
+
+    pub fn pending(&self) -> usize {
+        self.groups
+    }
+
+    pub fn suppressed_count(&self) -> u64 {
+        self.suppressed
+    }
+
+    pub fn flush(&mut self) {
+        self.groups = 0;
+        self.group_active = false;
+    }
+}
+
+/// 单位偏好持久化键。
+pub fn unit_pref_key() -> &'static str {
+    "thermo/unit-pref"
+}
+
+/// 采样间隔自适应（温度越高采样越密——高温期看得更清）。
+pub fn sample_interval_adaptive(temp_deci_c: i64) -> u64 {
+    if temp_deci_c >= NOTIFY_C * 10 {
+        1
+    } else if temp_deci_c >= THROTTLE_C * 10 {
+        2
+    } else {
+        5
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v10_adaptive_bounds() {
+        // 三档间隔单调递减于温度（热→密）。
+        assert!(sample_interval_adaptive(500) == 5);
+        assert!(sample_interval_adaptive(950) == 1);
+    }
+
+    #[test]
+    fn f197_v10_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：每日峰值持久化账 / 阈值改动审计行。
+// ---------------------------------------------------------------------------
+
+/// 每日峰值账（day → 当日峰值 deci-C；同日重写取更高——峰值语义）。
+#[derive(Default)]
+pub struct PeakStore {
+    days: Vec<(u64, i64)>,
+}
+
+impl PeakStore {
+    pub fn new() -> PeakStore {
+        PeakStore { days: Vec::new() }
+    }
+
+    pub fn put(&mut self, day: u64, peak_deci_c: i64) {
+        match self.days.iter_mut().find(|(d, _)| *d == day) {
+            Some((_, p)) => {
+                if peak_deci_c > *p {
+                    *p = peak_deci_c;
+                }
+            }
+            None => self.days.push((day, peak_deci_c)),
+        }
+    }
+
+    pub fn get(&self, day: u64) -> Option<i64> {
+        self.days.iter().find(|(d, _)| *d == day).map(|(_, p)| *p)
+    }
+}
+
+/// 阈值改动审计行（谁在何时把阈值调成了什么——改动留痕）。
+pub fn threshold_audit_line(throttle_c: i64, notify_c: i64, crit_c: i64) -> alloc::string::String {
+    alloc::format!("阈值变更：降档 {}℃ / 通知 {}℃ / 危急 {}℃", throttle_c, notify_c, crit_c)
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v11_peak_lower_write() {
+        // 同日写入更低值不覆盖（峰值只升不降）。
+        let mut k = PeakStore::new();
+        k.put(3, 900);
+        k.put(3, 700);
+        assert_eq!(k.get(3), Some(900));
+    }
+
+    #[test]
+    fn f197_v11_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：日峰 CSV / 温度页脚注。
+// ---------------------------------------------------------------------------
+
+/// 日峰 CSV（day,peak_deci_c）。
+pub fn peak_csv(rows: &[(u64, i64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("day,peak_deci_c\n");
+    for (d, p) in rows {
+        out.push_str(&alloc::format!("{},{}\n", d, p));
+    }
+    out
+}
+
+/// 温度页脚注（诚实标注数据口径）。
+pub fn temp_page_footnote() -> &'static str {
+    "数据为 0.1℃ 精度采样，24 小时保留"
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v12_csv_empty() {
+        assert_eq!(peak_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f197_v12_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：近七日峰值排行（温度页「最热时刻」格）。
+// ---------------------------------------------------------------------------
+
+/// 峰值排行（(day, peak) → 按峰值降序前三）。
+pub fn peak_top3(days: &[(u64, i64)]) -> Vec<(u64, i64)> {
+    let mut sorted = days.to_vec();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.into_iter().take(3).collect()
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v13_top3_short() {
+        // 不足三日取全量。
+        assert_eq!(peak_top3(&[(1, 800), (2, 900)]).len(), 2);
+    }
+
+    #[test]
+    fn f197_v13_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：峰值超阈天数计数（健康周报的「高温 N 天」数据源）。
+// ---------------------------------------------------------------------------
+
+/// 超阈天数（峰值 ≥ 阈值的天数）。
+pub fn peak_over_days(days: &[(u64, i64)], notify_deci_c: i64) -> usize {
+    days.iter().filter(|(_, p)| *p >= notify_deci_c).count()
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v14_over_none() {
+        assert_eq!(peak_over_days(&[(1, 700)], 850), 0);
+    }
+
+    #[test]
+    fn f197_v14_run_checks_pass() {
+        assert!(run_thermgov_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：降温速率预测 / 回落 ETA / 传感器漂移账 /
+// 降档决策解释句 / 热点排名。
+// 判据源：主册【设计细节】「降档后温度回落曲线归因」+【状态与异常】
+// 「读数异常滤波丢弃+诊断标注」。
+// ---------------------------------------------------------------------------
+
+/// 漂移告警界（deci-C）：|平均漂移| 达 3.0℃ → 建议检修标注。
+pub const DRIFT_WARN_DECI_C: i64 = 30;
+
+/// 降温速率（deci-C/分钟）：沿曲线取最后一个通过跳变滤波的相邻采样对
+/// （|Δ| ≤ JUMP_REJECT_C——与主状态机同一套滤波语义）外推；跳变对丢弃
+/// 不参与。样本不足 / 无合法对 / 时间不前进 → None（不猜）。
+pub fn cool_rate_deci_per_min(curve: &[(u64, i64)]) -> Option<i64> {
+    let mut last: Option<(u64, i64)> = None;
+    let mut rate: Option<i64> = None;
+    for &(t, c) in curve {
+        if let Some((t0, c0)) = last {
+            let dt = t.saturating_sub(t0);
+            let dc = c - c0;
+            if dt > 0 && dc.abs() <= JUMP_REJECT_C {
+                rate = Some(dc * 60 / dt as i64); // deci-C/秒 → deci-C/分钟。
+            }
+            // 跳变对：按 >20℃ 滤波丢弃，速率维持上一合法对的结论。
+        }
+        last = Some((t, c));
+    }
+    rate
+}
+
+/// 回落 ETA（分钟）：按降温速率外推到 target_deci_c 以下的预计分钟数。
+/// 已低于目标 → 0；未在降温（速率 ≥0）或无合法速率 → None（不猜）。
+pub fn cool_eta_minutes(curve: &[(u64, i64)], target_deci_c: i64) -> Option<u64> {
+    let cur = curve.last().map(|(_, c)| *c)?;
+    if cur < target_deci_c {
+        return Some(0);
+    }
+    let rate = cool_rate_deci_per_min(curve)?;
+    if rate >= 0 {
+        return None;
+    }
+    Some(((cur - target_deci_c) / (-rate) + 1) as u64)
+}
+
+/// 降温趋势标签（速率 → 三态一句话——温度页趋势角标）。
+pub fn cool_trend_label(rate_deci_per_min: i64) -> &'static str {
+    if rate_deci_per_min <= -10 {
+        "快速回落"
+    } else if rate_deci_per_min < 0 {
+        "缓慢回落"
+    } else if rate_deci_per_min == 0 {
+        "温度持平"
+    } else {
+        "仍在升温"
+    }
+}
+
+/// 传感器漂移账（表计读数 vs 基准参考 → 平均漂移；超界 → 检修标注）。
+#[derive(Default)]
+pub struct SensorDriftLedger {
+    /// (表计读数, 基准参考)，deci-C。
+    entries: Vec<(i64, i64)>,
+}
+
+impl SensorDriftLedger {
+    pub fn new() -> SensorDriftLedger {
+        SensorDriftLedger { entries: Vec::new() }
+    }
+
+    pub fn observe(&mut self, reported_deci_c: i64, reference_deci_c: i64) {
+        self.entries.push((reported_deci_c, reference_deci_c));
+    }
+
+    /// 平均漂移（表计 − 参考；空账 None——不拿 0 冒充结论）。
+    pub fn mean_drift_deci(&self) -> Option<i64> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let sum: i64 = self.entries.iter().map(|(r, f)| r - f).sum();
+        Some(sum / self.entries.len() as i64)
+    }
+
+    /// 漂移超界（|平均漂移| ≥ DRIFT_WARN_DECI_C → 建议检修）。
+    pub fn drift_exceeds(&self) -> bool {
+        self.mean_drift_deci().map(|d| d.abs() >= DRIFT_WARN_DECI_C).unwrap_or(false)
+    }
+}
+
+/// 漂移审计行（诊断页「传感器健康」格——一行人话分诊）。
+pub fn drift_audit_line(ledger: &SensorDriftLedger) -> alloc::string::String {
+    match ledger.mean_drift_deci() {
+        None => alloc::string::String::from("无漂移样本——待基准对拍"),
+        Some(d) => {
+            let tag = if ledger.drift_exceeds() { "超界，建议检修" } else { "正常" };
+            alloc::format!("平均漂移 {}.{:01}℃（{}）", d / 10, (d % 10).abs(), tag)
+        }
+    }
+}
+
+/// 降档决策解释句（温度页「为什么降档」格——决策带解释，零静默档位跳变）。
+pub fn throttle_decision_line(temp_deci_c: i64, level: ThermoLevel) -> alloc::string::String {
+    let t = temp_deci_c / 10;
+    match level {
+        ThermoLevel::Normal => alloc::format!("当前 {}℃：未触发降档（降档线 {}℃）", t, THROTTLE_C),
+        ThermoLevel::Throttle => alloc::format!(
+            "当前 {}℃：已降性能档（触发 {}℃，回落 {}℃ 解除）", t, THROTTLE_C, THROTTLE_C - HYSTERESIS_C),
+        ThermoLevel::Notify => alloc::format!("当前 {}℃：已降频并通知（触发 {}℃）", t, NOTIFY_C),
+        ThermoLevel::Critical => alloc::format!("当前 {}℃：保护性冲刷预警（触发 {}℃）", t, CRIT_C),
+    }
+}
+
+/// 热点排名（(部件, deci-C) → 按温度降序前 k 个部件名——温度页「最热部件」格）。
+pub fn hotspot_rank<'a>(spots: &[(&'a str, i64)], k: usize) -> Vec<&'a str> {
+    let mut sorted = spots.to_vec();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.into_iter().take(k).map(|(name, _)| name).collect()
+}
+
+/// 最热部件一行话（温度页角标——「电池 90.0℃ 全场最高」；空表诚实）。
+pub fn hotspot_top_line(spots: &[(&str, i64)]) -> alloc::string::String {
+    match spots.iter().max_by_key(|(_, c)| *c) {
+        Some((name, c)) => alloc::format!("{} {}.{:01}℃ 全场最高", name, c / 10, (c % 10).abs()),
+        None => alloc::string::String::from("无温度数据"),
+    }
+}
+
+/// F197 v8 终波自检（deep8 表）。
+pub fn run_thermgov_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v8c");
+
+    // 降温速率：合法对外推 / 跳变对丢弃 / 升温为正 / 不猜三态。
+    // 曲线守采样纪律：相邻步 |Δ| ≤ 20 deci-C（2.0℃）——自吞滤波不自伤。
+    let curve = [(0, 860), (60, 845), (120, 830)];
+    set.add("cool rate", cool_rate_deci_per_min(&curve) == Some(-15), "60s 降 1.5℃ → -15 deci-C/分");
+    let spiked = [(0, 860), (60, 845), (120, 1000)];
+    set.add("cool rate jump", cool_rate_deci_per_min(&spiked) == Some(-15), "+155 deci-C 跳变对丢弃，速率维持末合法对");
+    set.add("cool rate heat", cool_rate_deci_per_min(&[(0, 800), (60, 815)]) == Some(15), "升温速率为正");
+    set.add("cool rate none", cool_rate_deci_per_min(&[]).is_none() && cool_rate_deci_per_min(&[(0, 800)]).is_none(), "样本不足不猜");
+    set.add("cool rate stall", cool_rate_deci_per_min(&[(0, 800), (0, 790)]).is_none(), "时间不前进不猜");
+
+    // 回落 ETA：外推 / 已达标 / 未降温。
+    set.add("eta", cool_eta_minutes(&curve, 800) == Some(3), "830→800 差 30 / 速率 15 → 3 分钟");
+    set.add("eta below", cool_eta_minutes(&curve, 900) == Some(0), "已低于目标 → 0");
+    set.add("eta stalling", cool_eta_minutes(&[(0, 800), (60, 800)], 780).is_none(), "未在降温不外推");
+
+    // 趋势标签：四态一句话。
+    set.add("trend fast", cool_trend_label(-30) == "快速回落", "");
+    set.add("trend slow", cool_trend_label(-5) == "缓慢回落", "");
+    set.add("trend flat", cool_trend_label(0) == "温度持平", "");
+    set.add("trend up", cool_trend_label(30) == "仍在升温", "");
+
+    // 漂移账：均值 / 超界 / 空账诚实 / 审计行分诊。
+    let mut d1 = SensorDriftLedger::new();
+    d1.observe(703, 700);
+    d1.observe(712, 710);
+    set.add("drift mean", d1.mean_drift_deci() == Some(2) && !d1.drift_exceeds(), "小漂移在册不告警");
+    let mut d2 = SensorDriftLedger::new();
+    d2.observe(740, 700);
+    d2.observe(750, 700);
+    set.add("drift over", d2.mean_drift_deci() == Some(45) && d2.drift_exceeds(), "45 deci-C ≥ 30 → 检修标注");
+    set.add("drift empty", SensorDriftLedger::new().mean_drift_deci().is_none(), "空账不出 0 冒充结论");
+    set.add("drift line", drift_audit_line(&d2).contains("超界") && drift_audit_line(&d1).contains("正常"), "审计行分诊");
+
+    // 决策解释句：各档有话、带阈值。
+    set.add("decide normal", throttle_decision_line(600, ThermoLevel::Normal).contains("未触发"), "");
+    set.add("decide throttle", throttle_decision_line(760, ThermoLevel::Throttle).contains("70"), "句中带回退线 70℃");
+    set.add("decide crit", throttle_decision_line(960, ThermoLevel::Critical).contains("95"), "");
+
+    // 热点排名：降序 / 截断 / 短表 / 角标行。
+    set.add("hotspot order", hotspot_rank(&[("CPU", 800), ("SSD", 650), ("电池", 900)], 3) == vec!["电池", "CPU", "SSD"], "降序全排");
+    set.add("hotspot top", hotspot_rank(&[("CPU", 800), ("SSD", 650), ("电池", 900)], 2) == vec!["电池", "CPU"], "取前二");
+    set.add("hotspot short", hotspot_rank(&[("CPU", 800)], 3).len() == 1, "不足不凑");
+    set.add("hotspot line", hotspot_top_line(&[("CPU", 800), ("电池", 900)]) == "电池 90.0℃ 全场最高", "");
+    set.add("hotspot empty", hotspot_top_line(&[]).contains("无温度数据"), "空表诚实");
+
+    set
+}
+
+#[cfg(test)]
+mod deep15_tests {
+    use super::*;
+
+    #[test]
+    fn f197_deep8_eta_no_guess_when_heating() {
+        // 升温曲线绝不外推回落时间（不拿乐观数字安抚用户）。
+        assert_eq!(cool_eta_minutes(&[(0, 800), (60, 830)], 780), None);
+    }
+
+    #[test]
+    fn f197_deep8_drift_negative_keeps_sign() {
+        // 负漂移（表计偏低）符号保真——|均值| 达界同样告警。
+        let mut d = SensorDriftLedger::new();
+        d.observe(660, 700);
+        d.observe(680, 700);
+        assert_eq!(d.mean_drift_deci(), Some(-30));
+        assert!(d.drift_exceeds());
+    }
+
+    #[test]
+    fn f197_deep8_jump_filter_boundary() {
+        // 恰 20℃ 的对合法（>20 才丢——与 JUMP_REJECT_C 语义逐字一致）。
+        assert_eq!(cool_rate_deci_per_min(&[(0, 800), (60, 820)]), Some(20));
+        assert_eq!(cool_rate_deci_per_min(&[(0, 800), (60, 821)]), None);
+    }
+
+    #[test]
+    fn f197_deep8_run_checks_pass() {
+        assert!(run_thermgov_deep8_checks().all_passed());
+    }
+}

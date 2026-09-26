@@ -1950,3 +1950,849 @@ mod deep6_tests {
         assert!(run_bootaudit_deep6_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——启动时序分解 / 启动健康评分 / 镜像
+// 体积审计 / 失败升级阶梯 / 报告摘要卡。
+// 判据源：主册【验收判据】「启动各阶段耗时可分解呈现」+【状态与异常】
+// 「失败按 重试→降级→恢复环境 阶梯升级」。
+// ---------------------------------------------------------------------------
+
+/// 时序段（门名 → 通过时刻 ms）。
+pub struct GateTiming {
+    pub gate: &'static str,
+    pub at_ms: u64,
+}
+
+/// 启动时序分解（相邻门差值 = 各段耗时——总时长与分段守恒）。
+pub fn boot_phase_breakdown(gates: &[GateTiming]) -> Vec<(&'static str, u64)> {
+    let mut out = Vec::new();
+    let mut prev = 0u64;
+    for g in gates {
+        out.push((g.gate, g.at_ms.saturating_sub(prev)));
+        prev = g.at_ms;
+    }
+    out
+}
+
+/// 总启动时长（末门时刻）。
+pub fn boot_total_ms(gates: &[GateTiming]) -> u64 {
+    gates.last().map(|g| g.at_ms).unwrap_or(0)
+}
+
+/// 启动健康评分（100 分起扣：慢启动 -10/超 8s、门缺失 -15/门、
+/// 时序回退 -20/次——扣分全部带理由）。
+pub struct BootScore {
+    pub score: u64,
+    pub reasons: Vec<&'static str>,
+}
+
+/// 评分（gates：实际时序；expect_gates：应有门名集合）。
+pub fn boot_score(gates: &[GateTiming], expect_gates: &[&str]) -> BootScore {
+    let mut score = 100u64;
+    let mut reasons = Vec::new();
+    if boot_total_ms(gates) > 8_000 {
+        score = score.saturating_sub(10);
+        reasons.push("启动超 8 秒");
+    }
+    for e in expect_gates {
+        if !gates.iter().any(|g| g.gate == *e) {
+            score = score.saturating_sub(15);
+            reasons.push("缺少门");
+        }
+    }
+    // 时序回退：时刻必须单调不减。
+    for w in gates.windows(2) {
+        if w[1].at_ms < w[0].at_ms {
+            score = score.saturating_sub(20);
+            reasons.push("时序回退");
+            break;
+        }
+    }
+    BootScore { score: score.max(0), reasons }
+}
+
+/// 体积审计结论。
+pub struct SizeAudit {
+    pub image_bytes: u64,
+    pub limit_bytes: u64,
+    pub over: bool,
+    /// 占比 permille。
+    pub permille: u64,
+}
+
+/// 镜像体积审计（限 4 MiB——超限即红，临界 90% 预警）。
+pub const IMAGE_LIMIT_BYTES: u64 = 4 * 1024 * 1024;
+
+pub fn image_size_audit(image_bytes: u64) -> SizeAudit {
+    SizeAudit {
+        image_bytes,
+        limit_bytes: IMAGE_LIMIT_BYTES,
+        over: image_bytes > IMAGE_LIMIT_BYTES,
+        permille: image_bytes * 1000 / IMAGE_LIMIT_BYTES,
+    }
+}
+
+/// 失败阶梯（一级 → 三级：重试 → 降级 → 恢复环境）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailRung {
+    /// 第一次失败：原路重试（至多 2 次）。
+    Retry,
+    /// 重试耗尽：降级启动（关非必要门）。
+    Degrade,
+    /// 降级仍失败：转恢复环境（F198 联动）。
+    Recovery,
+}
+
+/// 阶梯推进（retry_count：已重试次数）。
+pub fn fail_next(rung: FailRung, retry_count: u32) -> FailRung {
+    match rung {
+        FailRung::Retry => {
+            if retry_count >= 2 {
+                FailRung::Degrade
+            } else {
+                FailRung::Retry
+            }
+        }
+        FailRung::Degrade => FailRung::Recovery,
+        FailRung::Recovery => FailRung::Recovery, // 终态：用户接管。
+    }
+}
+
+/// 阶梯人话（通知正文——三要素的『下一步』）。
+pub fn fail_rung_text(rung: FailRung) -> &'static str {
+    match rung {
+        FailRung::Retry => "正在重试（第 2 次尝试）",
+        FailRung::Degrade => "自动降级启动：非必要组件已关闭",
+        FailRung::Recovery => "转入恢复环境：你的文件不受影响",
+    }
+}
+
+/// 报告摘要卡（三要素投影：发生了什么/为什么/下一步）。
+pub struct ReportDigest {
+    pub what: alloc::string::String,
+    pub why: &'static str,
+    pub next: &'static str,
+}
+
+/// 摘要构建（按评分分档出卡——绿卡不骚扰，红卡必带行动项）。
+pub fn report_digest(sc: &BootScore) -> ReportDigest {
+    if sc.score >= 90 {
+        ReportDigest {
+            what: alloc::format!("启动健康 {} 分", sc.score),
+            why: "各门按时通过",
+            next: "无需处理",
+        }
+    } else if sc.score >= 60 {
+        ReportDigest {
+            what: alloc::format!("启动健康 {} 分", sc.score),
+            why: sc.reasons.first().copied().unwrap_or("存在扣分项"),
+            next: "在启动审计页查看分段耗时",
+        }
+    } else {
+        ReportDigest {
+            what: alloc::format!("启动健康 {} 分", sc.score),
+            why: sc.reasons.first().copied().unwrap_or("多项异常"),
+            next: "按失败阶梯处理并登记缺陷",
+        }
+    }
+}
+
+/// F191 v8 自检（deep7 表）。
+pub fn run_bootaudit_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v8");
+
+    // 时序分解：分段和 = 总时长（守恒恒等式）。
+    let gates = [
+        GateTiming { gate: "post", at_ms: 120 },
+        GateTiming { gate: "bootmgr", at_ms: 400 },
+        GateTiming { gate: "kernel", at_ms: 1900 },
+        GateTiming { gate: "desktop", at_ms: 4200 },
+    ];
+    let bd = boot_phase_breakdown(&gates);
+    let seg_sum: u64 = bd.iter().map(|(_, ms)| *ms).sum();
+    set.add("phase conserve", seg_sum == boot_total_ms(&gates), "分段和守恒");
+    set.add("phase first", bd[0].1 == 120, "首段从 0 起算");
+    set.add("phase total", boot_total_ms(&gates) == 4200, "");
+
+    // 评分：满分/缺门/慢启动/时序回退。
+    let expect = ["post", "bootmgr", "kernel", "desktop"];
+    let s1 = boot_score(&gates, &expect);
+    set.add("score full", s1.score == 100 && s1.reasons.is_empty(), "");
+    let gates_slow = [GateTiming { gate: "post", at_ms: 500 }, GateTiming { gate: "desktop", at_ms: 9000 }];
+    let s2 = boot_score(&gates_slow, &expect);
+    set.add("score deductions", s2.score == 100 - 10 - 15 - 15, "慢启动 + 缺两门");
+    let gates_regress = [
+        GateTiming { gate: "post", at_ms: 500 },
+        GateTiming { gate: "bootmgr", at_ms: 300 },
+        GateTiming { gate: "desktop", at_ms: 1000 },
+    ];
+    let s3 = boot_score(&gates_regress, &expect);
+    set.add("score regress", s3.reasons.contains(&"时序回退"), "回退必被抓");
+    let s4 = boot_score(&[], &expect);
+    set.add("score floor", s4.score == 40, "四缺门扣 60");
+
+    // 体积审计：限内/临界/超限。
+    let a1 = image_size_audit(3 * 1024 * 1024);
+    set.add("size ok", !a1.over && a1.permille == 750, "3/4 = 750‰");
+    let a2 = image_size_audit(IMAGE_LIMIT_BYTES + 1);
+    set.add("size over", a2.over, "超限即红");
+    let a3 = image_size_audit(0);
+    set.add("size zero", !a3.over && a3.permille == 0, "零镜像不放除零");
+
+    // 失败阶梯：重试两次 → 降级 → 恢复；文案三态。
+    let r1 = fail_next(FailRung::Retry, 0);
+    set.add("ladder retry", r1 == FailRung::Retry, "首次失败继续重试");
+    let r2 = fail_next(FailRung::Retry, 2);
+    set.add("ladder degrade", r2 == FailRung::Degrade, "重试耗尽降级");
+    let r3 = fail_next(FailRung::Degrade, 0);
+    set.add("ladder recovery", r3 == FailRung::Recovery, "降级失败转恢复");
+    let r4 = fail_next(FailRung::Recovery, 9);
+    set.add("ladder terminal", r4 == FailRung::Recovery, "恢复环境为终态");
+    set.add("ladder text", fail_rung_text(FailRung::Recovery).contains("文件不受影响"), "用户最关心的一句在");
+
+    // 摘要卡：三档。
+    let d1 = report_digest(&s1);
+    set.add("digest green", d1.next == "无需处理", "绿卡不骚扰");
+    let d2 = report_digest(&s2);
+    set.add("digest amber", d2.next.contains("分段耗时"), "黄卡给入口");
+    let d3 = report_digest(&s4);
+    set.add("digest red", d3.next.contains("阶梯"), "红卡给行动项");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v7_empty_gates() {
+        // 空时序：分解为空、总时长 0、评分扣满缺门。
+        assert!(boot_phase_breakdown(&[]).is_empty());
+        assert_eq!(boot_total_ms(&[]), 0);
+    }
+
+    #[test]
+    fn f191_v7_ladder_full_walk() {
+        // 全阶梯走查：0→重试→重试→降级→恢复，5 步内必达终态。
+        let mut rung = FailRung::Retry;
+        let mut retries = 0u32;
+        let mut steps = 0;
+        while rung != FailRung::Recovery && steps < 5 {
+            if rung == FailRung::Retry {
+                retries += 1;
+            }
+            rung = fail_next(rung, retries);
+            steps += 1;
+        }
+        assert_eq!(rung, FailRung::Recovery);
+        assert!(steps <= 4);
+    }
+
+    #[test]
+    fn f191_v7_score_never_negative() {
+        // 扣分下探有底：评分永不为负（u64 回绕防线）。
+        let gates = [GateTiming { gate: "x", at_ms: 99_999 }];
+        let s = boot_score(&gates, &["a", "b", "c", "d", "e", "f", "g"]);
+        assert!(s.score <= 100);
+    }
+
+    #[test]
+    fn f191_v7_run_checks_pass() {
+        assert!(run_bootaudit_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-b5：门超时预算 / 启动阶段占比 / 失败模式分类 / 报告开放导出。
+// ---------------------------------------------------------------------------
+
+/// 门超时预算（每门的期待上限 ms——超时即登记）。
+pub const GATE_BUDGET_MS: [(&str, u64); 4] = [
+    ("post", 500),
+    ("bootmgr", 800),
+    ("kernel", 2500),
+    ("desktop", 5000),
+];
+
+/// 超时门清单（实际时序 vs 预算表——超时逐门点名）。
+pub fn gate_overruns(gates: &[crate::secstar2::bootaudit::GateTiming]) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    let mut prev = 0u64;
+    for g in gates {
+        let span = g.at_ms.saturating_sub(prev);
+        prev = g.at_ms;
+        if let Some((_, budget)) = GATE_BUDGET_MS.iter().find(|(n, _)| *n == g.gate) {
+            if span > *budget {
+                out.push(g.gate);
+            }
+        }
+    }
+    out
+}
+
+/// 阶段占比（各段 / 总时长 permille——占比之和恒 1000）。
+pub fn phase_share(gates: &[crate::secstar2::bootaudit::GateTiming]) -> Vec<(&'static str, u64)> {
+    let total = crate::secstar2::bootaudit::boot_total_ms(gates);
+    if total == 0 {
+        return Vec::new();
+    }
+    let breakdown = crate::secstar2::bootaudit::boot_phase_breakdown(gates);
+    let mut out = Vec::new();
+    for (i, (name, ms)) in breakdown.iter().enumerate() {
+        if i == breakdown.len() - 1 {
+            // 末段吃满余数——占比和恒 1000。
+            let rest: u64 = out.iter().map(|(_, p)| *p).sum();
+            out.push((*name, 1000 - rest));
+        } else {
+            out.push((*name, ms * 1000 / total));
+        }
+    }
+    out
+}
+
+/// 失败模式分类（错误码区间 → 人话类别）。
+pub fn failure_class(code: u32) -> &'static str {
+    match code {
+        0..=99 => "硬件初始化失败",
+        100..=199 => "引导镜像校验失败",
+        200..=299 => "文件系统挂载失败",
+        300..=399 => "服务启动失败",
+        _ => "未分类失败（需人工归档）",
+    }
+}
+
+/// 报告导出（启动审计 → CSV 开放格式）。
+pub fn boot_report_export_csv(gates: &[crate::secstar2::bootaudit::GateTiming]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("gate,at_ms\n");
+    for g in gates {
+        out.push_str(&alloc::format!("{},{}\n", g.gate, g.at_ms));
+    }
+    out
+}
+
+/// F191 v8-b5 自检（并入 deep7 表族）。
+pub fn run_bootaudit_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v8b");
+
+    let gates = [
+        crate::secstar2::bootaudit::GateTiming { gate: "post", at_ms: 400 },
+        crate::secstar2::bootaudit::GateTiming { gate: "bootmgr", at_ms: 1200 },
+        crate::secstar2::bootaudit::GateTiming { gate: "kernel", at_ms: 3000 },
+        crate::secstar2::bootaudit::GateTiming { gate: "desktop", at_ms: 6000 },
+    ];
+
+    // 超时：post 400ms 界内、bootmgr 800ms 恰界内、kernel 1800 界内、desktop 3000 界内 → 无超时。
+    set.add("overrun none", gate_overruns(&gates).is_empty(), "全门达预算内");
+    let slow = [
+        crate::secstar2::bootaudit::GateTiming { gate: "post", at_ms: 600 },
+        crate::secstar2::bootaudit::GateTiming { gate: "desktop", at_ms: 9000 },
+    ];
+    let ov = gate_overruns(&slow);
+    set.add("overrun caught", ov.contains(&"post") && ov.contains(&"desktop"), "超时逐门点名");
+    set.add("overrun unknown gate", gate_overruns(&[crate::secstar2::bootaudit::GateTiming { gate: "mystery", at_ms: 10_000 }]).is_empty(), "预算外门不误报");
+
+    // 阶段占比：和恒 1000。
+    let sh = phase_share(&gates);
+    let sum: u64 = sh.iter().map(|(_, p)| *p).sum();
+    set.add("share conserve", sum == 1000, "四段占比和 = 1000‰");
+    set.add("share first", sh[0].0 == "post", "");
+    set.add("share empty", phase_share(&[]).is_empty(), "");
+
+    // 失败分类：五段边界。
+    set.add("cls hw", failure_class(42).contains("硬件"), "");
+    set.add("cls img", failure_class(150).contains("引导镜像"), "");
+    set.add("cls fs", failure_class(250).contains("文件系统"), "");
+    set.add("cls svc", failure_class(350).contains("服务"), "");
+    set.add("cls unk", failure_class(999).contains("未分类"), "");
+
+    // CSV 导出：表头 + 行数。
+    let csv = boot_report_export_csv(&gates);
+    set.add("csv header", csv.starts_with("gate,at_ms\n"), "");
+    set.add("csv rows", csv.lines().count() == 5, "");
+    // b7-wave2：门依赖拓扑 / 连续成功 streak。
+    set.add("topo ok", gate_topo_ok(&["post", "bootmgr", "kernel", "desktop"], &[("bootmgr", "post"), ("kernel", "bootmgr"), ("desktop", "kernel")]), "线性依赖满足序");
+    set.add("topo bad", !gate_topo_ok(&["kernel", "bootmgr"], &[("kernel", "bootmgr")]), "被依赖者先于依赖者——违反即红");
+    set.add("topo empty", gate_topo_ok(&[], &[]), "空图平凡真");
+    set.add("streak count", BootStreak::new().bump(8).streak == 1, "首胜即 1");
+    set.add("streak reset", { let mut s = BootStreak::new(); s.bump(1); s.bump(2); s.fail(); s.streak == 0 && s.best == 2 }, "失败清零但保最佳");
+    // b8-wave3：门耗时历史分位。
+    set.add("p50", percentile(&[100, 200, 300, 400], 50) == 200, "四样本 P50 = 200");
+    set.add("p95", percentile(&[100, 200, 300, 400], 95) == 400, "P95 取上界样本");
+    set.add("p50 empty", percentile(&[], 50) == 0, "空历史零分位");
+    // b9-wave4：启动模式三态判定。
+    set.add("mode normal", boot_mode(true, false, false) == "normal", "门全过 = 正常");
+    set.add("mode degrade", boot_mode(false, true, false) == "degrade", "有门缺 = 降级");
+    set.add("mode recovery", boot_mode(false, false, true) == "recovery", "转恢复环境");
+    set.add("mode precedence", boot_mode(true, true, true) == "recovery", "恢复标志优先级最高");
+    // b10-wave5：门重试账 / 启动失败 TopN。
+    set.add("retry ledger", { let mut r = GateRetryLedger::new(); r.fail("kernel"); r.fail("kernel"); r.count("kernel") == 2 }, "同门累计");
+    set.add("retry top", { let mut r = GateRetryLedger::new(); r.fail("a"); r.fail("a"); r.fail("a"); r.fail("b"); r.top(1) == vec!["a"] }, "TopN 按次数");
+    set.add("retry empty", GateRetryLedger::new().top(3).is_empty(), "");
+    // b11-wave6：门名标准化 / 启动耗时周报行。
+    set.add("gate normalize", gate_normalize("BootMgr") == "bootmgr", "大小写归一");
+    set.add("gate trim", gate_normalize(" kernel ") == "kernel", "空白剥离");
+    set.add("boot weekly", boot_weekly_line(4200, 5100).contains("中位"), "周报带中位");
+    // b12-wave7：门时序 CSV。
+    set.add("gate csv", gate_csv(&[("post", 100)]).starts_with("gate,at_ms\n"), "CSV 表头");
+    // b13-wave8：降级门清单行。
+    set.add("degrade list", degrade_gates() == vec!["theme-default", "ime-advanced"], "降级关闭项名单");
+    // b14-wave9：门超时 CSV。
+    set.add("overrun csv", overrun_csv(&[("post", 100)]).starts_with("gate,overrun_ms\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v8b_share_single_gate() {
+        // 单门占比 = 1000‰（余数规则的自洽）。
+        let g = [crate::secstar2::bootaudit::GateTiming { gate: "post", at_ms: 300 }];
+        let sh = phase_share(&g);
+        assert_eq!(sh[0].1, 1000);
+    }
+
+    #[test]
+    fn f191_v8b_class_boundaries() {
+        // 段边界：99/100 与 399/400 各归其类。
+        assert_ne!(failure_class(99), failure_class(100));
+        assert_ne!(failure_class(399), failure_class(400));
+    }
+
+    #[test]
+    fn f191_v8b_csv_empty() {
+        assert_eq!(boot_report_export_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f191_v8b_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：门依赖拓扑机检 / 启动连续成功账。
+// 判据源：主册【状态与异常】「启动门有先后依赖，跳门即失败」。
+// ---------------------------------------------------------------------------
+
+/// 门依赖拓扑机检（gates：实际通过序；edges：(依赖者, 被依赖者)——
+/// 每条边要求被依赖者在依赖者之前出现）。
+pub fn gate_topo_ok(gates: &[&str], edges: &[(&str, &str)]) -> bool {
+    edges.iter().all(|(a, b)| {
+        let ia = gates.iter().position(|g| g == a);
+        let ib = gates.iter().position(|g| g == b);
+        match (ia, ib) {
+            (Some(x), Some(y)) => y < x, // b 先通过，a 才能通过。
+            _ => true,                   // 未出现的门不判（缺门由评分管）。
+        }
+    })
+}
+
+/// 启动连续成功账（streak：当前连胜；best：历史最佳）。
+pub struct BootStreak {
+    pub streak: u32,
+    pub best: u32,
+}
+
+impl BootStreak {
+    pub fn new() -> BootStreak {
+        BootStreak { streak: 0, best: 0 }
+    }
+
+    /// 记一次成功启动。
+    pub fn bump(&mut self, _at_ms: u64) -> &mut Self {
+        self.streak += 1;
+        self.best = self.best.max(self.streak);
+        self
+    }
+
+    /// 记一次失败（清零当前，保留最佳）。
+    pub fn fail(&mut self) {
+        self.streak = 0;
+    }
+}
+
+impl Default for BootStreak {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v8c_topo_diamond() {
+        // 菱形依赖：两条边都满足。
+        let ok = gate_topo_ok(&["post", "bootmgr", "kernel", "desktop"], &[("bootmgr", "post"), ("desktop", "post")]);
+        assert!(ok);
+    }
+
+    #[test]
+    fn f191_v8c_streak_long() {
+        let mut s = BootStreak::new();
+        for i in 0..10 {
+            s.bump(i);
+        }
+        assert_eq!(s.best, 10);
+        s.fail();
+        assert_eq!(s.streak, 0);
+        assert_eq!(s.best, 10);
+    }
+
+    #[test]
+    fn f191_v8c_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：门耗时历史分位（P50/P95——启动性能的趋势锚）。
+// 判据源：主册【验收判据】「启动性能按分位报告，不拿均值骗人」。
+// ---------------------------------------------------------------------------
+
+/// 分位数（样本升序取最近分位样本；空历史 0）。
+pub fn percentile(sorted_samples: &[u64], pct: u64) -> u64 {
+    if sorted_samples.is_empty() {
+        return 0;
+    }
+    // 最近秩法（nearest-rank）：ceil(N×p/100) 位样本——P95 不被均值稀释。
+    let idx = (((sorted_samples.len() as u64) * pct + 99) / 100).max(1) as usize - 1;
+    sorted_samples[idx.min(sorted_samples.len() - 1)]
+}
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：启动模式三态判定（正常 / 降级 / 恢复）。
+// 判据源：主册【状态与异常】「本次启动属于哪种模式，托盘角标如实告知」。
+// ---------------------------------------------------------------------------
+
+/// 启动模式判定（恢复标志 > 门缺失 > 全过——优先级不可颠倒）。
+pub fn boot_mode(all_gates_passed: bool, gates_missing: bool, recovery_flag: bool) -> &'static str {
+    if recovery_flag {
+        "recovery"
+    } else if gates_missing || !all_gates_passed {
+        "degrade"
+    } else {
+        "normal"
+    }
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v9_mode_normal_only() {
+        // 仅当全过且无降级且无恢复标志才是 normal。
+        assert_eq!(boot_mode(true, false, false), "normal");
+        assert_ne!(boot_mode(true, false, true), "normal");
+    }
+
+    #[test]
+    fn f191_v9_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：门重试账 / 启动失败 TopN（「最常卡在哪个门」）。
+// ---------------------------------------------------------------------------
+
+/// 门重试账（门 → 失败次数；TopN 按次数降序）。
+#[derive(Default)]
+pub struct GateRetryLedger {
+    counts: Vec<(&'static str, u32)>,
+}
+
+impl GateRetryLedger {
+    pub fn new() -> GateRetryLedger {
+        GateRetryLedger { counts: Vec::new() }
+    }
+
+    pub fn fail(&mut self, gate: &'static str) {
+        match self.counts.iter_mut().find(|(g, _)| *g == gate) {
+            Some((_, c)) => *c += 1,
+            None => self.counts.push((gate, 1)),
+        }
+    }
+
+    pub fn count(&self, gate: &str) -> u32 {
+        self.counts.iter().find(|(g, _)| *g == gate).map(|(_, c)| *c).unwrap_or(0)
+    }
+
+    pub fn top(&self, n: usize) -> Vec<&'static str> {
+        let mut sorted = self.counts.clone();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.into_iter().take(n).map(|(g, _)| g).collect()
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v10_top_stable_tie() {
+        // 同次数保持登记序（稳定排序——面板不抖）。
+        let mut r = GateRetryLedger::new();
+        r.fail("a");
+        r.fail("b");
+        assert_eq!(r.top(2), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn f191_v10_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：门名标准化 / 启动耗时周报行。
+// ---------------------------------------------------------------------------
+
+/// 门名标准化（小写 + 剥空白——比对前先归一）。
+pub fn gate_normalize(name: &str) -> alloc::string::String {
+    alloc::string::String::from(name.trim().to_ascii_lowercase().as_str())
+}
+
+/// 启动耗时周报行（本周中位 / 上周中位 ms）。
+pub fn boot_weekly_line(median_now_ms: u64, median_prev_ms: u64) -> alloc::string::String {
+    let delta = median_now_ms as i64 - median_prev_ms as i64;
+    let arrow = if delta > 0 { "变慢" } else if delta < 0 { "变快" } else { "持平" };
+    alloc::format!("启动中位 {}ms（较上周{} {}ms）", median_now_ms, arrow, delta.abs())
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v11_weekly_faster() {
+        assert!(boot_weekly_line(4000, 5000).contains("变快"));
+    }
+
+    #[test]
+    fn f191_v11_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：门时序 CSV（与报告导出同格式——一处一事实）。
+// ---------------------------------------------------------------------------
+
+/// 门时序 CSV。
+pub fn gate_csv(rows: &[(&str, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("gate,at_ms\n");
+    for (g, ms) in rows {
+        out.push_str(&alloc::format!("{},{}\n", g, ms));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v12_csv_empty() {
+        assert_eq!(gate_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f191_v12_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：降级启动关闭项名单（可预期——不是黑盒降级）。
+// ---------------------------------------------------------------------------
+
+/// 降级关闭项（降级启动时明确关闭的组件名）。
+pub fn degrade_gates() -> Vec<&'static str> {
+    vec!["theme-default", "ime-advanced"]
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v13_degrade_known() {
+        // 降级名单非空且有限（可预期降级）。
+        let g = degrade_gates();
+        assert!(!g.is_empty() && g.len() <= 8);
+    }
+
+    #[test]
+    fn f191_v13_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：门超时 CSV。
+// ---------------------------------------------------------------------------
+
+/// 门超时 CSV（gate,overrun_ms——超出预算的毫秒数）。
+pub fn overrun_csv(rows: &[(&str, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("gate,overrun_ms\n");
+    for (g, ms) in rows {
+        out.push_str(&alloc::format!("{},{}\n", g, ms));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v14_csv_empty() {
+        assert_eq!(overrun_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f191_v14_run_checks_pass() {
+        assert!(run_bootaudit_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-deep8（终波）：预算执行评分 / 公钥指纹展示行 / 拦截事件回放账 / 自查历史趋势导出。
+// 判据源：主册【数据与存储】「自查结果入 F174 快照链（历史可溯）」。
+// ---------------------------------------------------------------------------
+
+/// 预算执行评分（实际耗时 vs 100ms 总预算，permille——超时按比例衰减不归零）。
+pub fn budget_compliance(used_ms: u64) -> u64 {
+    if used_ms == 0 {
+        return 1000;
+    }
+    (BUDGET_TOTAL_MS * 1000 / used_ms).min(1000)
+}
+
+/// 公钥指纹展示行（SHA-256 前 8 字节大写十六进制冒号分组——差异详情页用）。
+pub fn pubkey_fingerprint_line(pubkey: &[u8]) -> alloc::string::String {
+    if pubkey.is_empty() {
+        return alloc::string::String::from("指纹不可用（公钥缺失）");
+    }
+    let h = crate::ksha256::sha256(pubkey);
+    let mut out = alloc::string::String::from("指纹 ");
+    for (i, b) in h.iter().take(8).enumerate() {
+        if i > 0 {
+            out.push(':');
+        }
+        out.push_str(&alloc::format!("{:02X}", b));
+    }
+    out
+}
+
+/// 拦截事件回放账（(时间序, 拦截门) 按时间升序重放——审计回看的第一视角）。
+pub fn intercept_replay(events: &[(u64, &'static str)]) -> Vec<(u64, &'static str)> {
+    let mut sorted: Vec<(u64, &'static str)> = events.to_vec();
+    sorted.sort_by_key(|(t, _)| *t);
+    sorted
+}
+
+/// 拦截事件摘要行（回放账末次事件——一眼看清最近一次拦截）。
+pub fn intercept_summary_line(events: &[(u64, &'static str)]) -> alloc::string::String {
+    match intercept_replay(events).last() {
+        Some((t, gate)) => alloc::format!("最近拦截：{} 号门 {}（时间序 {}）", gate, INTERCEPT_TITLE, t),
+        None => alloc::string::String::from("无拦截记录——启动链全绿"),
+    }
+}
+
+/// 自查历史趋势导出（历史评分 → CSV，趋势列与前期比——季报趋势锚）。
+pub fn selfcheck_trend_csv(scores: &[u64]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("check,score,trend\n");
+    for (i, s) in scores.iter().enumerate() {
+        let trend = if i == 0 {
+            "-"
+        } else if *s > scores[i - 1] {
+            "up"
+        } else if *s < scores[i - 1] {
+            "down"
+        } else {
+            "flat"
+        };
+        out.push_str(&alloc::format!("{},{},{}\n", i + 1, s, trend));
+    }
+    out
+}
+
+/// F191 v8-deep8 自检（终波 deep8 表）。
+pub fn run_bootaudit_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-deep8");
+
+    // 预算执行：界内满分 / 超时衰减 / 零耗时满分。
+    set.add("budget in", budget_compliance(80) == 1000, "80ms 在 100ms 预算内");
+    set.add("budget over", budget_compliance(200) == 500, "超时按比例衰减");
+    set.add("budget zero", budget_compliance(0) == 1000, "零耗时不放除零");
+
+    // 公钥指纹：在位出指纹、缺失给人话兜底。
+    let fp = pubkey_fingerprint_line(b"secstar2-root-pubkey");
+    set.add("fingerprint shape", fp.len() == 30, "2 汉字 + 空格 + 16 位十六进制 + 7 冒号");
+    set.add("fingerprint missing", pubkey_fingerprint_line(&[]).contains("不可用"), "缺钥不硬造指纹");
+    set.add("fingerprint stable", fp == pubkey_fingerprint_line(b"secstar2-root-pubkey"), "同钥同指纹");
+
+    // 拦截回放：乱序入、时间序出、摘要取最近。
+    let replay = intercept_replay(&[(30, "kernel"), (10, "post"), (20, "bootmgr")]);
+    set.add("replay order", replay[0].1 == "post" && replay[2].1 == "kernel", "按时间升序重放");
+    set.add("replay empty", intercept_replay(&[]).is_empty(), "");
+    set.add("replay summary", intercept_summary_line(&replay).contains("kernel"), "摘要取最近一次");
+    set.add("replay calm", intercept_summary_line(&[]).contains("全绿"), "无拦截不造事件");
+
+    // 趋势导出：表头 + 趋势三态。
+    let csv = selfcheck_trend_csv(&[90, 95, 95, 80]);
+    set.add("trend header", csv.starts_with("check,score,trend\n"), "");
+    set.add("trend up", csv.contains("2,95,up"), "");
+    set.add("trend flat", csv.contains("3,95,flat"), "");
+    set.add("trend down", csv.contains("4,80,down"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v8e_percentile_bounds() {
+        // P0 = 最小，P100 = 最大。
+        let s = [10u64, 20, 30];
+        assert_eq!(percentile(&s, 0), 10);
+        assert_eq!(percentile(&s, 100), 30);
+    }
+
+    #[test]
+    fn f191_d8_budget_floor() {
+        // 巨额超时不放 u64 回绕（评分下探有底）。
+        assert_eq!(budget_compliance(1_000_000), 0);
+    }
+
+    #[test]
+    fn f191_d8_replay_stable_tie() {
+        // 同时间序保持输入序（稳定排序——回放不重排同刻事件）。
+        let rp = intercept_replay(&[(5, "a"), (5, "b")]);
+        assert_eq!(rp, vec![(5, "a"), (5, "b")]);
+    }
+
+    #[test]
+    fn f191_d8_run_checks_pass() {
+        assert!(run_bootaudit_deep8_checks().all_passed());
+    }
+}

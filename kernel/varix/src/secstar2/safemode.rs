@@ -389,6 +389,7 @@ mod tests {
 // 与异常】【设计细节】全展开）——六个真功能面，零注水。
 // ---------------------------------------------------------------------------
 
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -1908,5 +1909,772 @@ mod deep6_tests {
     #[test]
     fn f193_v7_run_checks_pass() {
         assert!(run_safemode_deep6_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——停留时长账 / 最小集功能矩阵 / 失败
+// strikes 账 / 进入原因卡。
+// 判据源：主册【状态与异常】「安全模式停留超 72h 主动提醒退出路径」+
+// 「同项连续失败 3 次 → 建议进入安全模式」。
+// ---------------------------------------------------------------------------
+
+/// 停留时长账（进入时刻 + 当前时刻 → 停留分级）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StayGrade {
+    /// < 24h：正常排查期。
+    Fresh,
+    /// 24-72h：提醒可退出。
+    Lingering,
+    /// ≥ 72h：主动给退出路径 + 数据导出入口。
+    Overdue,
+}
+
+/// 停留分级（秒制）。
+pub fn stay_grade(entered_s: u64, now_s: u64) -> StayGrade {
+    let dur_h = now_s.saturating_sub(entered_s) / 3600;
+    if dur_h < 24 {
+        StayGrade::Fresh
+    } else if dur_h < 72 {
+        StayGrade::Lingering
+    } else {
+        StayGrade::Overdue
+    }
+}
+
+/// 停留提醒文案（三态——Overdue 必须带出口）。
+pub fn stay_notice(entered_s: u64, now_s: u64) -> &'static str {
+    match stay_grade(entered_s, now_s) {
+        StayGrade::Fresh => "",
+        StayGrade::Lingering => "已在安全模式超过 24 小时——排查完成后可从设置退出",
+        StayGrade::Overdue => "已在安全模式超过 72 小时——建议导出日志后走「退出安全模式」",
+    }
+}
+
+/// 最小集功能表现。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SfMode {
+    /// 完整可用。
+    Full,
+    /// 精简版（基础路径）。
+    Basic,
+    /// 停用（入口隐藏并说明）。
+    Off,
+}
+
+/// 最小集功能矩阵（12 项逐项定级——矩阵覆盖全部 MIN_SET）。
+pub fn minimal_feature_matrix() -> Vec<(&'static str, SfMode)> {
+    MIN_SET
+        .iter()
+        .map(|name| {
+            let mode = match *name {
+                "settings" | "explorer" | "uninstaller" | "diagnostics" | "terminal" | "recovery" => SfMode::Full,
+                "taskbar" | "window-mgr" | "theme-default" | "ime-base" | "clipboard" => SfMode::Basic,
+                _ => SfMode::Off, // log-export：安全模式停日志导出（日志正在忙）。
+            };
+            (*name, mode)
+        })
+        .collect()
+}
+
+/// 失败 strikes 账（同项连续失败 → 建议安全模式）。
+pub struct StrikeLedger {
+    strikes: Vec<(&'static str, u32)>,
+}
+
+impl StrikeLedger {
+    pub fn new() -> StrikeLedger {
+        StrikeLedger { strikes: Vec::new() }
+    }
+
+    /// 记一次失败（同项累加；成功清零该项）。
+    pub fn fail(&mut self, item: &'static str) -> u32 {
+        match self.strikes.iter_mut().find(|(k, _)| *k == item) {
+            Some((_, n)) => {
+                *n += 1;
+                *n
+            }
+            None => {
+                self.strikes.push((item, 1));
+                1
+            }
+        }
+    }
+
+    pub fn succeed(&mut self, item: &str) {
+        self.strikes.retain(|(k, _)| *k != item);
+    }
+
+    /// 建议进入安全模式？（任一项 ≥ 3 连败）。
+    pub fn suggests_safe_mode(&self) -> Option<&'static str> {
+        self.strikes.iter().find(|(_, n)| *n >= 3).map(|(k, _)| *k)
+    }
+
+    pub fn count_of(&self, item: &str) -> u32 {
+        self.strikes.iter().find(|(k, _)| *k == item).map(|(_, n)| *n).unwrap_or(0)
+    }
+}
+
+impl Default for StrikeLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 进入原因卡（三要素：发生了什么/为什么/下一步）。
+pub struct SafeModeReasonCard {
+    pub what: &'static str,
+    pub why: &'static str,
+    pub next: &'static str,
+}
+
+/// 原因卡构建（按触发源分四类——卡不许是空白）。
+pub fn reason_card(trigger: u8) -> SafeModeReasonCard {
+    match trigger {
+        0 => SafeModeReasonCard {
+            what: "系统连续 3 次启动失败",
+            why: "启动链在同一个门反复被拦",
+            next: "进入安全模式排查，你的文件不受影响",
+        },
+        1 => SafeModeReasonCard {
+            what: "用户主动选择安全模式",
+            why: "你在设置中手动进入",
+            next: "排查完成后从设置退出",
+        },
+        2 => SafeModeReasonCard {
+            what: "关键组件连续失败被拦下",
+            why: "失败 strikes 达到 3 次阈值",
+            next: "进入安全模式并登记缺陷",
+        },
+        _ => SafeModeReasonCard {
+            what: "回滚后进入安全模式",
+            why: "槽位切换后需要最小集验证",
+            next: "验证通过后自动回到正常模式",
+        },
+    }
+}
+
+/// F193 v8 自检（deep7 表）。
+pub fn run_safemode_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v8");
+
+    // 停留分级：三态边界（24h/72h）。
+    set.add("stay fresh", stay_grade(0, 23 * 3600) == StayGrade::Fresh, "");
+    set.add("stay lingering", stay_grade(0, 24 * 3600) == StayGrade::Lingering, "恰 24h 进 lingering");
+    set.add("stay overdue", stay_grade(0, 72 * 3600) == StayGrade::Overdue, "恰 72h 进 overdue");
+    set.add("stay notice empty", stay_notice(0, 3600).is_empty(), "新鲜期不骚扰");
+    set.add("stay notice exit", stay_notice(0, 80 * 3600).contains("退出"), "超期必带出口");
+
+    // 功能矩阵：覆盖全量、三态齐、停用有说明。
+    let mx = minimal_feature_matrix();
+    set.add("mx cover", mx.len() == MIN_SET.len(), "矩阵 = 最小集全量");
+    set.add("mx full count", mx.iter().filter(|(_, m)| *m == SfMode::Full).count() == 6, "六项完整");
+    set.add("mx off count", mx.iter().filter(|(_, m)| *m == SfMode::Off).count() == 1, "仅日志导出停用");
+
+    // strikes：累加、成功清零、3 次建议。
+    let mut led = StrikeLedger::new();
+    led.fail("window-mgr");
+    led.fail("window-mgr");
+    set.add("strike none", led.suggests_safe_mode().is_none(), "2 连败不建议");
+    led.fail("window-mgr");
+    set.add("strike suggest", led.suggests_safe_mode() == Some("window-mgr"), "3 连败点名");
+    led.succeed("window-mgr");
+    set.add("strike reset", led.count_of("window-mgr") == 0 && led.suggests_safe_mode().is_none(), "成功清零");
+    led.fail("ime-base");
+    led.fail("ime-base");
+    led.fail("ime-base");
+    set.add("strike per item", led.suggests_safe_mode() == Some("ime-base"), "各 item 独立记账");
+
+    // 原因卡：四类全覆盖、字段非空。
+    for t in 0..4u8 {
+        let c = reason_card(t);
+        set.add("card nonempty", !c.what.is_empty() && !c.why.is_empty() && !c.next.is_empty(), "触发源全建卡");
+    }
+    set.add("card file safe", reason_card(0).next.contains("文件不受影响"), "红线承诺在");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v7_stay_underflow_safe() {
+        // 时刻倒挂不放负数：saturating 语义兜底。
+        assert_eq!(stay_grade(100, 50), StayGrade::Fresh);
+    }
+
+    #[test]
+    fn f193_v7_matrix_all_named() {
+        // 矩阵每一行都挂真实 MIN_SET 成员（不许有幽灵行）。
+        for (name, _) in minimal_feature_matrix() {
+            assert!(MIN_SET.contains(&name));
+        }
+    }
+
+    #[test]
+    fn f193_v7_strikes_independent() {
+        // 两项交替失败互不串账。
+        let mut led = StrikeLedger::new();
+        led.fail("a");
+        led.fail("b");
+        led.fail("a");
+        assert_eq!(led.count_of("a"), 2);
+        assert_eq!(led.count_of("b"), 1);
+    }
+
+    #[test]
+    fn f193_v7_run_checks_pass() {
+        assert!(run_safemode_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-b6：退出条件账 / 最小集自检循环 / 安全模式事件流。
+// ---------------------------------------------------------------------------
+
+/// 退出条件账（退出安全模式需要满足的条件清单与达成态）。
+pub struct ExitChecklist {
+    /// 排查完成确认。
+    pub diagnosed: bool,
+    /// 触发源已修复（strikes 清零 / 门通过）。
+    pub trigger_fixed: bool,
+    /// 用户确认退出。
+    pub user_confirmed: bool,
+}
+
+impl ExitChecklist {
+    /// 全部达成才可退出（缺哪条点哪条）。
+    pub fn ready(&self) -> (bool, Vec<&'static str>) {
+        let mut missing = Vec::new();
+        if !self.diagnosed {
+            missing.push("排查未确认完成");
+        }
+        if !self.trigger_fixed {
+            missing.push("触发源未修复");
+        }
+        if !self.user_confirmed {
+            missing.push("用户未确认退出");
+        }
+        (missing.is_empty(), missing)
+    }
+}
+
+/// 最小集自检循环（进入安全模式后逐项探活 → 结果账）。
+pub struct MinimalProbe {
+    pub passed: usize,
+    pub failed: Vec<&'static str>,
+}
+
+/// 探活执行（probe 结果与 MIN_SET 等长对齐——不许漏项）。
+pub fn minimal_probe(results: &[bool]) -> MinimalProbe {
+    let n = results.len().min(MIN_SET.len());
+    let failed = MIN_SET[..n]
+        .iter()
+        .zip(results.iter())
+        .filter(|(_, ok)| !**ok)
+        .map(|(name, _)| *name)
+        .collect();
+    MinimalProbe { passed: results.iter().filter(|r| **r).count(), failed }
+}
+
+/// 安全模式时间线事件行（进入/探活/退出全生命周期）。
+pub struct SmTimelineEvent {
+    pub at_s: u64,
+    pub kind: &'static str,
+    pub text: alloc::string::String,
+}
+
+/// 事件流构建（enter → probe → exit 三段，时刻必须单调）。
+pub fn sm_event_stream(entered_s: u64, probe_s: u64, exit_s: u64, probe_ok: bool) -> Vec<SmTimelineEvent> {
+    let mut out = Vec::new();
+    out.push(SmTimelineEvent {
+        at_s: entered_s,
+        kind: "enter",
+        text: alloc::string::String::from("进入安全模式（最小集启动）"),
+    });
+    out.push(SmTimelineEvent {
+        at_s: probe_s,
+        kind: "probe",
+        text: if probe_ok {
+            alloc::string::String::from("最小集探活全绿")
+        } else {
+            alloc::string::String::from("最小集探活有失败项——已在诊断页列出")
+        },
+    });
+    if probe_ok {
+        out.push(SmTimelineEvent { at_s: exit_s, kind: "exit", text: alloc::string::String::from("退出安全模式，回到正常模式") });
+    }
+    out
+}
+
+/// F193 v8-b6 自检（并入 deep7 表族）。
+pub fn run_safemode_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v8b");
+
+    // 退出条件：全达成 / 缺项点名。
+    let full = ExitChecklist { diagnosed: true, trigger_fixed: true, user_confirmed: true };
+    let (ok, miss) = full.ready();
+    set.add("exit ready", ok && miss.is_empty(), "");
+    let part = ExitChecklist { diagnosed: true, trigger_fixed: false, user_confirmed: false };
+    let (ok2, miss2) = part.ready();
+    set.add("exit missing", !ok2 && miss2.len() == 2 && miss2.contains(&"触发源未修复"), "");
+
+    // 探活：全绿 / 失败点名 / 数量守恒。
+    let p1 = minimal_probe(&[true; 12]);
+    set.add("probe all", p1.passed == 12 && p1.failed.is_empty(), "");
+    let mut r2 = vec![true; 12];
+    r2[3] = false;
+    let p2 = minimal_probe(&r2);
+    set.add("probe fail named", p2.failed == vec!["diagnostics"], "第 4 项失败点名");
+    set.add("probe count", p2.passed == 11, "");
+    let p3 = minimal_probe(&[true; 5]);
+    set.add("probe short", p3.passed == 5 && p3.failed.is_empty(), "短表不越界");
+
+    // 事件流：三段单调、失败不出 exit。
+    let ev = sm_event_stream(10, 20, 30, true);
+    set.add("ev 3 stages", ev.len() == 3 && ev[0].at_s < ev[1].at_s && ev[1].at_s < ev[2].at_s, "");
+    let ev2 = sm_event_stream(10, 20, 30, false);
+    set.add("ev no exit", ev2.len() == 2 && ev2[1].text.contains("失败项"), "探活失败不进 exit");
+    // b7-wave2：最小集降级预案。
+    set.add("fallback set", FALLBACK_PATHS.len() == 3, "三项降级预案");
+    set.add("fallback named", FALLBACK_PATHS.iter().all(|(f, p)| MIN_SET.contains(f) && !p.is_empty()), "每项挂真实成员与路径");
+    set.add("fallback for", fallback_for("explorer") == Some("任务栏直达文件入口"), "失败项有替代路");
+    set.add("fallback none", fallback_for("log-export").is_none(), "停用项无替代（诚实）");
+    // b8-wave3：排查清单页。
+    set.add("checklist", TROUBLESHOOT_STEPS.len() == 4 && TROUBLESHOOT_STEPS.iter().all(|(t, _)| !t.is_empty()), "四步清单齐");
+    set.add("checklist done", { let mut c = TroubleshootChecklist::new(); for _ in 0..4 { c.tick(); } c.all_done() }, "逐项打勾到完成");
+    set.add("checklist partial", { let mut c = TroubleshootChecklist::new(); c.tick(); !c.all_done() }, "未完不给过");
+    // b9-wave4：退出导出包清单。
+    set.add("exit pkg", EXIT_PACKAGE_ITEMS.len() == 3, "三项导出齐");
+    set.add("exit pkg named", EXIT_PACKAGE_ITEMS.iter().all(|t| !t.is_empty()), "项项有名");
+    set.add("exit pkg size", exit_package_estimate() == 3 * EXIT_ITEM_KIB, "体积 = 3 × 单项");
+    // b10-wave5：排查时长账。
+    set.add("trouble dur", troubleshoot_duration(0, 3600 * 2).contains("2 小时"), "2 小时排查");
+    set.add("trouble long", troubleshoot_duration(0, 3600 * 80).contains("3 天"), "跨天换算");
+    // b11-wave6：探活报告 CSV / 退出倒计时。
+    set.add("probe csv", probe_csv(&[("settings", true), ("terminal", false)]).lines().count() == 3, "表头 + 2 行");
+    set.add("probe csv fail", probe_csv(&[("terminal", false)]).contains(",fail"), "失败态入表");
+    set.add("exit countdown", exit_countdown(3, 4) == 1, "四条件成三 = 差 1");
+    // b12-wave7：探活结果 CSV 空态。
+    set.add("probe csv empty", probe_csv(&[]).lines().count() == 1, "空探活仅表头");
+    set.add("stay hours", stay_hours(0, 7200) == 2, "停留小时换算");
+    // b13-wave8：探活通过率行。
+    set.add("probe rate", probe_rate_line(10, 1) == "探活 10 项，失败 1 项", "通过率行");
+    // b14-wave9：退出包 CSV。
+    set.add("exit pkg csv", exit_pkg_csv().starts_with("item\n"), "CSV 表头");
+    set.add("exit pkg rows", exit_pkg_csv().lines().count() == 4, "三项 + 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v8b_probe_all_fail() {
+        let p = minimal_probe(&[false; 12]);
+        assert_eq!(p.passed, 0);
+        assert_eq!(p.failed.len(), 12);
+    }
+
+    #[test]
+    fn f193_v8b_exit_independent() {
+        // 三条件独立：只缺用户确认也拦下。
+        let c = ExitChecklist { diagnosed: true, trigger_fixed: true, user_confirmed: false };
+        let (ok, miss) = c.ready();
+        assert!(!ok && miss == vec!["用户未确认退出"]);
+    }
+
+    #[test]
+    fn f193_v8b_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：最小集降级预案（功能失败的替代路径登记）。
+// 判据源：主册【状态与异常】「最小集每项都要有『坏了怎么办』的答案」。
+// ---------------------------------------------------------------------------
+
+/// 降级预案（最小集成员 → 人话替代路径）。
+pub const FALLBACK_PATHS: [(&str, &str); 3] = [
+    ("explorer", "任务栏直达文件入口"),
+    ("taskbar", "键盘快捷键启动器"),
+    ("clipboard", "应用内置剪贴（临时同步缓冲）"),
+];
+
+/// 查替代路径（无预案的成员返回 None——诚实无预案）。
+pub fn fallback_for(feature: &str) -> Option<&'static str> {
+    FALLBACK_PATHS
+        .iter()
+        .find(|(f, _)| *f == feature)
+        .map(|(_, p)| *p)
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v8c_fallback_unique() {
+        // 预案目标不重复（一个入口只挂一条替代路）。
+        for (i, (f, _)) in FALLBACK_PATHS.iter().enumerate() {
+            for (g, _) in FALLBACK_PATHS.iter().skip(i + 1) {
+                assert_ne!(f, g);
+            }
+        }
+    }
+
+    #[test]
+    fn f193_v8c_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：安全模式排查清单（四步——给用户一条明确的出路）。
+// 判据源：主册【交互设计】「安全模式必带排查引导（四步出坑）」。
+// ---------------------------------------------------------------------------
+
+/// 排查四步。
+pub const TROUBLESHOOT_STEPS: [(&str, bool); 4] = [
+    ("看诊断页：哪个组件被拦", true),
+    ("按降级预案走替代路（若有）", true),
+    ("登记缺陷或导出日志", true),
+    ("回退出条件账确认三达成", true),
+];
+
+/// 清单状态机（逐项打勾——全部勾完才亮「退出」按钮）。
+pub struct TroubleshootChecklist {
+    pub done: usize,
+}
+
+impl TroubleshootChecklist {
+    pub fn new() -> TroubleshootChecklist {
+        TroubleshootChecklist { done: 0 }
+    }
+
+    pub fn tick(&mut self) {
+        if self.done < TROUBLESHOOT_STEPS.len() {
+            self.done += 1;
+        }
+    }
+
+    pub fn all_done(&self) -> bool {
+        self.done == TROUBLESHOOT_STEPS.len()
+    }
+}
+
+impl Default for TroubleshootChecklist {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v8d_tick_cap() {
+        // 越界打勾无效（账不虚增）。
+        let mut c = TroubleshootChecklist::new();
+        for _ in 0..9 {
+            c.tick();
+        }
+        assert_eq!(c.done, 4);
+    }
+
+    #[test]
+    fn f193_v8d_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：退出安全模式导出包（带走证据再退出）。
+// 判据源：主册【交互设计】「退出前给打包导出——排查成果不丢」。
+// ---------------------------------------------------------------------------
+
+/// 导出包内容（三项——安全模式的完整排查成果）。
+pub const EXIT_PACKAGE_ITEMS: [&str; 3] = [
+    "安全模式期间日志（完整）",
+    "最小集探活结果",
+    "失败 strikes 账快照",
+];
+
+/// 单项典型体积 KiB。
+pub const EXIT_ITEM_KIB: u64 = 64;
+
+/// 导出包体积预估。
+pub fn exit_package_estimate() -> u64 {
+    EXIT_PACKAGE_ITEMS.len() as u64 * EXIT_ITEM_KIB
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v9_pkg_items_unique() {
+        // 包内容不重复。
+        for (i, a) in EXIT_PACKAGE_ITEMS.iter().enumerate() {
+            for b in EXIT_PACKAGE_ITEMS.iter().skip(i + 1) {
+                assert_ne!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn f193_v9_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：排查时长账（进入 → 退出的停留时长人话化）。
+// ---------------------------------------------------------------------------
+
+/// 排查时长（entered_s → now_s → 人话；<1h 报分钟，≥24h 报天）。
+pub fn troubleshoot_duration(entered_s: u64, now_s: u64) -> alloc::string::String {
+    let dur = now_s.saturating_sub(entered_s);
+    if dur >= 24 * 3600 {
+        alloc::format!("排查历时 {} 天", dur / 86400)
+    } else if dur >= 3600 {
+        alloc::format!("排查历时 {} 小时", dur / 3600)
+    } else {
+        alloc::format!("排查历时 {} 分钟", dur / 60)
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v10_duration_minutes() {
+        assert!(troubleshoot_duration(0, 600).contains("10 分钟"));
+    }
+
+    #[test]
+    fn f193_v10_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：探活报告 CSV / 退出条件倒计时。
+// ---------------------------------------------------------------------------
+
+/// 探活报告 CSV（feature,result）。
+pub fn probe_csv(results: &[(&str, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("feature,result\n");
+    for (f, ok) in results {
+        out.push_str(&alloc::format!("{},{}\n", f, if *ok { "pass" } else { "fail" }));
+    }
+    out
+}
+
+/// 退出条件倒计时（达成数 / 总条件 → 还差几条）。
+pub fn exit_countdown(met: u64, total: u64) -> u64 {
+    total.saturating_sub(met)
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v11_countdown_zero() {
+        assert_eq!(exit_countdown(4, 4), 0);
+    }
+
+    #[test]
+    fn f193_v11_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：停留小时换算。
+// ---------------------------------------------------------------------------
+
+/// 停留小时（entered → now）。
+pub fn stay_hours(entered_s: u64, now_s: u64) -> u64 {
+    now_s.saturating_sub(entered_s) / 3600
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v12_hours_zero() {
+        assert_eq!(stay_hours(100, 50), 0);
+    }
+
+    #[test]
+    fn f193_v12_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：探活通过率行。
+// ---------------------------------------------------------------------------
+
+/// 通过率行（总数 / 失败数）。
+pub fn probe_rate_line(total: u64, failed: u64) -> alloc::string::String {
+    alloc::format!("探活 {} 项，失败 {} 项", total, failed)
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v13_rate_all_pass() {
+        assert!(probe_rate_line(12, 0).contains("失败 0 项"));
+    }
+
+    #[test]
+    fn f193_v13_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：退出包 CSV。
+// ---------------------------------------------------------------------------
+
+/// 退出包 CSV（item）。
+pub fn exit_pkg_csv() -> alloc::string::String {
+    let mut out = alloc::string::String::from("item\n");
+    for it in EXIT_PACKAGE_ITEMS {
+        out.push_str(it);
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v14_pkg_csv_content() {
+        assert!(exit_pkg_csv().contains("最小集探活结果"));
+    }
+
+    #[test]
+    fn f193_v14_run_checks_pass() {
+        assert!(run_safemode_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波（deep8 表）：灰置项统计导出 / 进入原因时间线 / 修复建议匹配行。
+// 判据源：主册【状态与异常】「白名单外功能全部灰置且可解释」+【交互设计】
+// 「进入提示条附『为什么我在安全模式』帮助链」。
+// ---------------------------------------------------------------------------
+
+/// 灰置项统计（功能矩阵中 Off 项点名——每一项灰置都可解释）。
+pub fn grayed_items() -> Vec<&'static str> {
+    minimal_feature_matrix()
+        .into_iter()
+        .filter(|(_, m)| *m == SfMode::Off)
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// 灰置项统计导出 CSV（feature,reason——求助材料的一部分）。
+pub fn grayed_csv() -> String {
+    let mut out = String::from("feature,reason\n");
+    for name in grayed_items() {
+        out.push_str(&alloc::format!("{},安全模式下停用（退出后自动恢复）\n", name));
+    }
+    out
+}
+
+/// 进入原因时间线行（触发源 → 时刻 → 人话，行行挂帮助链）。
+pub fn entry_reason_timeline(reason: u8, at_s: u64) -> String {
+    let why = match reason {
+        0 => "选单隐藏条目进入",
+        1 => "用户主动选择",
+        2 => "关键组件连续失败",
+        _ => "回滚后最小集验证",
+    };
+    alloc::format!("t+{}s：{}（详见 {}）", at_s, why, HELP_LINK)
+}
+
+/// 修复建议匹配行（失败组件 → 人话建议；无匹配诚实兜底）。
+pub fn remedy_line(component: &str) -> &'static str {
+    match component {
+        "window-mgr" => "合成器降级路径已接管——重启一次窗口管理即可",
+        "ime-base" => "切回默认主题与基础键盘布局后再试",
+        "taskbar" => "走键盘快捷键启动器（降级预案）",
+        "clipboard" => "用应用内置剪贴（临时同步缓冲）",
+        _ => "无专项建议——先看诊断中心的失败详情",
+    }
+}
+
+/// F193 v8 终波自检（deep8 表）。
+pub fn run_safemode_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v8c");
+
+    // 灰置项统计：数量守恒、导出可读、理由在行内。
+    set.add("gray count", grayed_items() == vec!["log-export"], "仅日志导出灰置");
+    set.add("gray csv head", grayed_csv().starts_with("feature,reason\n"), "CSV 表头");
+    set.add("gray csv row", grayed_csv().lines().count() == 2, "表头 + 单行");
+    set.add("gray csv reason", grayed_csv().contains("自动恢复"), "灰置可解释");
+
+    // 原因时间线：四类触发源都有行、行行带帮助链。
+    set.add("timeline at", entry_reason_timeline(0, 5).starts_with("t+5s"), "时刻入行");
+    set.add("timeline link", (0..4u8).all(|r| entry_reason_timeline(r, 0).contains(HELP_LINK)), "行行挂帮助链");
+
+    // 修复建议：已知组件有专项、未知组件诚实兜底。
+    set.add("remedy known", remedy_line("window-mgr").contains("合成器"), "已知组件专项建议");
+    set.add("remedy unknown", remedy_line("no-such").contains("无专项"), "未知组件诚实兜底");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8b_tests {
+    use super::*;
+
+    #[test]
+    fn f193_deep8_gray_matches_matrix() {
+        // 灰置项必须来自矩阵 Off 行（不许点名矩阵外的幽灵项）。
+        let mx: Vec<&str> = minimal_feature_matrix()
+            .into_iter()
+            .filter(|(_, m)| *m == SfMode::Off)
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(grayed_items(), mx);
+    }
+
+    #[test]
+    fn f193_deep8_timeline_zero() {
+        // 零时刻也不空行（t+0s 合法入账）。
+        assert!(entry_reason_timeline(1, 0).starts_with("t+0s"));
+    }
+
+    #[test]
+    fn f193_deep8_run_checks_pass() {
+        assert!(run_safemode_deep8_checks().all_passed());
     }
 }

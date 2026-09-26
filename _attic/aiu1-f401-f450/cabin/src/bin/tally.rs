@@ -83,7 +83,13 @@ fn main() {
         if !set.all_passed() {
             red += 1;
             println!("  !! {tag} HAS RED CHECKS");
+            let (items, rn) = set.red_items();
+            for it in items.iter().take(rn) {
+                if let Some(c) = it { if !c.passed { println!("     RED: {} | {}", c.name, c.detail); } }
+            }
         }
     }
     println!("TOTAL blocks={} checks={total} red_blocks={red} capacity=64 truncation=none(if blocks<=64)", blocks.len());
 }
+
+// 临时调试：打印红项名（对账后移除）。

@@ -1687,3 +1687,41 @@ mod deep7_tests {
         assert!(run_selfheal2_deep7_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：自愈摘要行——一屏一句话说清本周自愈全貌。
+// 判据源：主册【设计细节】「摘要可读，账目在下」。
+// ---------------------------------------------------------------------------
+
+/// 自愈摘要行（本周 N 次自愈 · M 类 · 升级 K 票——零自愈诚实出「本周零自愈」）。
+pub fn selfheal_summary_line(records: &[HealRecord], open_tickets: usize) -> alloc::string::String {
+    if records.is_empty() {
+        return alloc::format!("本周零自愈，待升级工单 {} 张", open_tickets);
+    }
+    let mut kinds: Vec<HealKind> = Vec::new();
+    for r in records {
+        if !kinds.contains(&r.kind) {
+            kinds.push(r.kind);
+        }
+    }
+    alloc::format!("本周自愈 {} 次 · 覆盖 {} 类 · 待升级工单 {} 张", records.len(), kinds.len(), open_tickets)
+}
+
+#[cfg(test)]
+mod deep8c_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v8c_summary_shapes() {
+        // 空账诚实、非空账带计数。
+        assert!(selfheal_summary_line(&[], 1).contains("零自愈"));
+        let recs = [HealRecord { kind: HealKind::IconCache, at_min: 10, outcome: HealOutcome::Rebuilt, cost_ms: 12, notified: true, snapshotted: false }];
+        let line = selfheal_summary_line(&recs, 0);
+        assert!(line.contains('1') && line.contains('1'));
+    }
+
+    #[test]
+    fn f189_v8c_run_checks_pass() {
+        assert!(run_selfheal2_deep7_checks().all_passed());
+    }
+}

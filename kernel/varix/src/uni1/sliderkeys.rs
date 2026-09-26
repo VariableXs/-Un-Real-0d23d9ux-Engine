@@ -11,6 +11,10 @@
 //! v5 纵深：禁用态（输入全拒且有账——不给假反馈）；Shift 粗调（10 步
 //! 同钳制）；气泡 1.5s 自动收（不常驻挡内容）；连发到极值停发（计数
 //! 冻结，不空转）。
+//!
+//! v8 纵深：出厂默认值（每滑杆登记 default——双击滑轨回默认，值没有
+//! 默认的诚实 None）；调整历史账（最后 N 步可观测——误调可追溯）；
+//! 值等人话读数（千分比/百分比归一）。
 
 use crate::checks::CheckSet;
 
@@ -29,6 +33,8 @@ pub struct SliderSpec {
     pub max: u64,
     /// 最小刻度（方向键 1 步）。
     pub step: u64,
+    /// 出厂默认值（None = 此滑杆无默认——双击诚实不动作）。
+    pub default: Option<u64>,
 }
 
 /// 滑杆实例。
@@ -50,7 +56,12 @@ pub struct Slider {
     pub repeats: u64,
     /// 连发饱和（已在极值——停发）。
     pub repeat_saturated: bool,
+    /// v8：调整历史账（环形，容量 16——误调可追溯）。
+    pub history: alloc::vec::Vec<u64>,
 }
+
+/// v8：历史账容量。
+pub const HISTORY_CAP: usize = 16;
 
 impl Slider {
     pub fn new(spec: SliderSpec) -> Slider {
@@ -65,7 +76,51 @@ impl Slider {
             repeat_holding: false,
             repeats: 0,
             repeat_saturated: false,
+            history: alloc::vec![],
         }
+    }
+
+    /// v8：值变更入历史账（环形封顶——只保最近 HISTORY_CAP 步）。
+    fn note_history(&mut self, before: u64) {
+        if before != self.value {
+            if self.history.len() >= HISTORY_CAP {
+                self.history.remove(0);
+            }
+            self.history.push(before);
+        }
+    }
+
+    /// v8：双击滑轨回出厂默认（有默认才动；无默认诚实拒绝——不猜）。
+    pub fn double_click_reset(&mut self) -> Option<u64> {
+        if !self.enabled {
+            self.blocked_inputs += 1;
+            return None;
+        }
+        let d = self.spec.default?;
+        let before = self.value;
+        self.value = d.clamp(self.spec.min, self.spec.max);
+        self.note_history(before);
+        self.show_bubble();
+        Some(self.value)
+    }
+
+    /// v8：回滚上一步（撤销误调；无历史诚实拒绝）。
+    pub fn undo_last(&mut self) -> Option<u64> {
+        if !self.enabled {
+            return None;
+        }
+        let prev = self.history.pop()?;
+        let before = self.value;
+        self.value = prev.clamp(self.spec.min, self.spec.max);
+        self.show_bubble();
+        let _ = before;
+        Some(self.value)
+    }
+
+    /// v8：人话读数——值域归一到百分比（带一位小数的千分比精度）。
+    pub fn human_readout(&self) -> u64 {
+        let span = (self.spec.max - self.spec.min).max(1);
+        (self.value.saturating_sub(self.spec.min)) * 100 / span
     }
 
     fn show_bubble(&mut self) {
@@ -92,7 +147,9 @@ impl Slider {
         }
         let s = self.spec.step as i64;
         let v = self.value as i64 + steps * s;
+        let before = self.value;
         self.value = v.clamp(self.spec.min as i64, self.spec.max as i64) as u64;
+        self.note_history(before);
         self.show_bubble();
         self.value
     }
@@ -130,6 +187,7 @@ impl Slider {
             return self.value;
         }
         self.value = v.clamp(self.spec.min, self.spec.max);
+        self.note_history(v);
         self.show_bubble();
         self.value
     }
@@ -158,12 +216,12 @@ impl Slider {
         self.value
     }
 
-    /// 步进定义表（三滑杆登记——一处一事实）。
+    /// 步进定义表（三滑杆登记——一处一事实；v8 增出厂默认值登记）。
     pub fn registry() -> [SliderSpec; 3] {
         [
-            SliderSpec { name: "音量", min: 0, max: 100, step: 2 },
-            SliderSpec { name: "亮度", min: 10, max: 100, step: 5 },
-            SliderSpec { name: "缩放", min: 100, max: 200, step: 25 },
+            SliderSpec { name: "音量", min: 0, max: 100, step: 2, default: Some(40) },
+            SliderSpec { name: "亮度", min: 10, max: 100, step: 5, default: Some(80) },
+            SliderSpec { name: "缩放", min: 100, max: 200, step: 25, default: None },
         ]
     }
 }
@@ -178,7 +236,9 @@ pub fn run_sliderkeys_checks() -> CheckSet {
             && reg[0].step == 2
             && reg[1].step == 5
             && reg[1].min == 10
-            && reg[2].step == 25,
+            && reg[2].step == 25
+            && reg[0].default == Some(40)
+            && reg[2].default.is_none(),
         "",
     );
     // 五招：方向键。
@@ -239,6 +299,34 @@ pub fn run_sliderkeys_checks() -> CheckSet {
         x.value == 200 && x.repeat_saturated && x.repeats == 1,
         "",
     );
+    // v8：双击回默认——有默认生效、无默认诚实拒绝、禁用拒且有账。
+    let mut g = Slider::new(reg[0]);
+    let _ = g.drag_to(90);
+    set.add("f436-dblclick-default", g.double_click_reset() == Some(40) && g.value == 40, "");
+    let mut nd = Slider::new(reg[2]); // 缩放无默认
+    set.add("f436-dblclick-no-default", nd.double_click_reset().is_none() && nd.value == nd.spec.min, "");
+    let mut dis = Slider::new(reg[0]);
+    dis.enabled = false;
+    set.add("f436-dblclick-disabled", dis.double_click_reset().is_none() && dis.blocked_inputs == 1, "");
+    // v8：调整历史账——环形封顶 + undo 回滚 + 无历史诚实拒绝。
+    let mut h = Slider::new(reg[0]);
+    for _ in 0..(HISTORY_CAP + 6) {
+        let _ = h.step_by(1);
+    }
+    set.add("f436-history-capped", h.history.len() == HISTORY_CAP && h.history[0] == 12, "最老 12 步被挤出");
+    let before_undo = h.value;
+    let undo1 = h.undo_last();
+    set.add(
+        "f436-undo-pops",
+        undo1.is_some() && h.history.len() == HISTORY_CAP - 1 && undo1 != Some(before_undo),
+        "",
+    );
+    let mut e2 = Slider::new(reg[0]);
+    set.add("f436-undo-empty-honest", e2.undo_last().is_none(), "");
+    // v8：人话读数——值域归一百分比（亮度 10-100：值 55 → 50%）。
+    let mut b = Slider::new(reg[1]);
+    let _ = b.drag_to(55);
+    set.add("f436-human-readout", b.human_readout() == 50, "");
     set
 }
 

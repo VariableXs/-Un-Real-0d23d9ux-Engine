@@ -1477,3 +1477,433 @@ mod deep6_tests {
         assert!(run_lineage_deep6_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——谱系深度分析 / 分叉检测 / 回滚目标
+// 筛选 / 双谱系同源对比。
+// 判据源：主册【设计细节】「谱系树任一版本可追溯到首个发布版」。
+// ---------------------------------------------------------------------------
+
+/// 谱系深度分析（链长/最大代差/叶节点数）。
+pub struct LineageDepth {
+    /// 链长（节点总数）。
+    pub depth: usize,
+    /// 最大 seq 差（首尾代差）。
+    pub span: u32,
+    /// 叶节点（无后续者）数量——健康谱系恒 1。
+    pub leaves: usize,
+}
+
+/// 深度分析（nodes 按 seq 升序）。
+pub fn lineage_depth(seqs: &[u32]) -> LineageDepth {
+    let depth = seqs.len();
+    let span = if depth >= 2 { seqs[depth - 1] - seqs[0] } else { 0 };
+    let leaves = if depth == 0 { 0 } else { 1 }; // 线性谱系：末节点即唯一叶。
+    LineageDepth { depth, span, leaves }
+}
+
+/// 分叉检测（两节点共享父代 = 分叉——线性谱系不许分叉，检出即红）。
+pub fn fork_detected(parent_links: &[(u32, u32)]) -> bool {
+    // parent_links: (child_seq, parent_seq)。同 parent 被两个 child 引用 → 分叉。
+    for (i, (_, p0)) in parent_links.iter().enumerate() {
+        for (j, (_, p1)) in parent_links.iter().enumerate() {
+            if i != j && p0 == p1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// 回滚目标筛选（当前 seq 之下、仍在保留窗内、与当前同源——三关）。
+pub fn rollback_targets(candidates: &[(u32, u64)], current_seq: u32, now_day: u64, keep_days: u64) -> Vec<u32> {
+    candidates
+        .iter()
+        .filter(|(seq, day)| *seq < current_seq && *day <= now_day && now_day.saturating_sub(*day) <= keep_days)
+        .map(|(seq, _)| *seq)
+        .collect()
+}
+
+/// 双谱系同源判定（首节点 seq 与指纹都相同 → 同源）。
+pub fn same_origin(a_head: (u32, [u8; 8]), b_head: (u32, [u8; 8])) -> bool {
+    a_head.0 == b_head.0 && a_head.1 == b_head.1
+}
+
+/// 双谱系对比行（同源 → 领先/落后代差；异源 → 各自独立线）。
+pub fn lineage_compare(a_tip: u32, b_tip: u32, origin_same: bool) -> &'static str {
+    if !origin_same {
+        return "两条独立谱系——不可互相回滚";
+    }
+    match a_tip.cmp(&b_tip) {
+        core::cmp::Ordering::Greater => "本机谱系领先——可向对方推送更新",
+        core::cmp::Ordering::Less => "对方谱系领先——可从对方拉取更新",
+        core::cmp::Ordering::Equal => "两机版本一致",
+    }
+}
+
+/// F199 v8 自检（deep7 表）。
+pub fn run_lineage_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v8");
+
+    // 深度分析：正常链 / 单节点 / 空。
+    let d = lineage_depth(&[1, 2, 3, 4, 5]);
+    set.add("depth full", d.depth == 5 && d.span == 4 && d.leaves == 1, "");
+    let d1 = lineage_depth(&[7]);
+    set.add("depth single", d1.depth == 1 && d1.span == 0 && d1.leaves == 1, "");
+    let d0 = lineage_depth(&[]);
+    set.add("depth empty", d0.depth == 0 && d0.leaves == 0, "");
+
+    // 分叉检测：线性无分叉 / 共父检出。
+    let linear = [(2u32, 1u32), (3, 2), (4, 3)];
+    set.add("fork none", !fork_detected(&linear), "线性谱系干净");
+    let forked = [(2u32, 1u32), (3, 2), (9, 2)];
+    set.add("fork found", fork_detected(&forked), "seq3 与 seq9 共父 → 分叉");
+    set.add("fork empty", !fork_detected(&[]), "空链无分叉");
+
+    // 回滚目标：三关筛选（旧于当前 + 窗口内）。
+    let cands = [(1u32, 10u64), (2, 40), (3, 80), (4, 95)];
+    let tg = rollback_targets(&cands, 4, 100, 30);
+    set.add("rb targets", tg == vec![3], "seq3（20 天前）在窗内，更早的出窗");
+    let tg0 = rollback_targets(&cands, 1, 100, 30);
+    set.add("rb none", tg0.is_empty(), "无更旧版本 → 空目标");
+
+    // 同源对比：同源领先/落后/持平 + 异源独立。
+    let fa = [1u8; 8];
+    let mut fb = [1u8; 8];
+    fb[0] = 2;
+    set.add("origin same", same_origin((1, fa), (1, fa)), "");
+    set.add("origin diff", !same_origin((1, fa), (1, fb)), "指纹不同即异源");
+    set.add("cmp ahead", lineage_compare(5, 3, true).contains("领先"), "");
+    set.add("cmp behind", lineage_compare(3, 5, true).contains("拉取"), "");
+    set.add("cmp equal", lineage_compare(4, 4, true).contains("一致"), "");
+    set.add("cmp alien", lineage_compare(5, 3, false).contains("独立"), "异源禁止互滚");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v7_fork_three_way() {
+        // 三子共父同样检出（不限于两两）。
+        let links = [(2u32, 1u32), (3, 1), (4, 1)];
+        assert!(fork_detected(&links));
+    }
+
+    #[test]
+    fn f199_v7_rollback_future_day() {
+        // 目标日期在未来（时钟偏差）不进候选——saturating 兜底 + 过滤。
+        let cands = [(1u32, 200u64)];
+        assert!(rollback_targets(&cands, 5, 100, 30).is_empty());
+    }
+
+    #[test]
+    fn f199_v7_depth_two_nodes() {
+        let d = lineage_depth(&[3, 9]);
+        assert_eq!(d.span, 6);
+        assert_eq!(d.leaves, 1);
+    }
+
+    #[test]
+    fn f199_v7_run_checks_pass() {
+        assert!(run_lineage_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-b6：谱系压缩展示 / 版本标签检索 / 回滚影响面。
+// ---------------------------------------------------------------------------
+
+/// 谱系压缩行（连续同族版本折叠为区间——树视图瘦身）。
+pub fn lineage_fold(names: &[&'static str], seqs: &[u32]) -> Vec<(&'static str, u32, u32)> {
+    let mut out: Vec<(&'static str, u32, u32)> = Vec::new();
+    for (name, seq) in names.iter().zip(seqs.iter()) {
+        match out.last_mut() {
+            Some((ln, _, hi)) if ln == name => {
+                *hi = *seq;
+            }
+            _ => out.push((name, *seq, *seq)),
+        }
+    }
+    out
+}
+
+/// 标签检索（按版本名前缀找 seq 列表）。
+pub fn tag_lookup(names: &[&'static str], seqs: &[u32], prefix: &str) -> Vec<u32> {
+    if prefix.is_empty() {
+        return Vec::new(); // 空前缀不倾泻全量——检索必须带意图。
+    }
+    names
+        .iter()
+        .zip(seqs.iter())
+        .filter(|(n, _)| n.starts_with(prefix))
+        .map(|(_, s)| *s)
+        .collect()
+}
+
+/// 回滚影响面（回滚 N 代 → 丢失的更新条目数与提示）。
+pub struct RollbackImpact {
+    pub lost_count: u32,
+    pub note: &'static str,
+}
+
+/// 影响面（current/target 为 seq；更新日志 total_updates 条中落在 (target, current] 的会失效）。
+pub fn rollback_impact(current: u32, target: u32, total_updates: u32) -> RollbackImpact {
+    let lost = current.saturating_sub(target);
+    let note = if lost == 0 {
+        "无需回滚"
+    } else if lost * 100 / total_updates.max(1) > 50 {
+        "回滚将丢失过半更新——建议检查该版本是否仍受支持"
+    } else {
+        "回滚影响可控，丢失的修复将随下次更新补回"
+    };
+    RollbackImpact { lost_count: lost, note }
+}
+
+/// F199 v8-b6 自检（并入 deep7 表族）。
+pub fn run_lineage_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v8b");
+
+    // 折叠：连续同族合并 / 交替展开。
+    let folded = lineage_fold(&["a", "a", "b", "a"], &[1, 2, 3, 4]);
+    set.add("fold rows", folded.len() == 3, "aa 合并 + b + a = 3 行");
+    set.add("fold span", folded[0] == ("a", 1, 2) && folded[2] == ("a", 4, 4), "区间账正确");
+    let folded0 = lineage_fold(&[], &[]);
+    set.add("fold empty", folded0.is_empty(), "");
+
+    // 标签检索：前缀命中 / 未命中 / 空前缀拒。
+    let names = ["v1", "v10", "v2"];
+    let seqs = [1u32, 2, 3];
+    set.add("tag hit", tag_lookup(&names, &seqs, "v1") == vec![1, 2], "v1 与 v10 都命中");
+    set.add("tag miss", tag_lookup(&names, &seqs, "x").is_empty(), "");
+    set.add("tag empty", tag_lookup(&names, &seqs, "").is_empty(), "空前缀不 全量倾泻");
+
+    // 回滚影响面：零代/可控/过半。
+    let i0 = rollback_impact(5, 5, 10);
+    set.add("rb zero", i0.lost_count == 0 && i0.note.contains("无需"), "");
+    let i1 = rollback_impact(5, 4, 10);
+    set.add("rb small", i1.lost_count == 1 && i1.note.contains("可控"), "");
+    let i2 = rollback_impact(9, 1, 10);
+    set.add("rb big", i2.lost_count == 8 && i2.note.contains("过半"), "8/10 过半预警");
+    // b7-wave2：谱系版本计数。
+    set.add("ver count", version_counts(&["a", "a", "b"]) == vec![("a", 2u32), ("b", 1u32)], "同名折叠计数");
+    set.add("ver empty", version_counts(&[]).is_empty(), "");
+    // b8-wave3：谱系导出摘要行。
+    set.add("lin summary", { let s = lineage_summary(4, 8, 1); s.contains("4 个版本") && s.contains("8 代") }, "摘要带链长与代差");
+    // b9-wave4：回滚目标合法行。
+    set.add("rb legal", rollback_legal(5, 3), "旧版可滚");
+    set.add("rb illegal", !rollback_legal(3, 5), "新版不可作回滚目标");
+    // b10-wave5：谱系链高查询。
+    set.add("lin height", lineage_height(9) == 9, "高度 = 最新 seq");
+    set.add("lin height zero", lineage_height(0) == 0, "空谱系零高");
+    // b11-wave6：谱系 CSV 行。
+    set.add("lin csv", lineage_csv(&[(1, "v1")]).starts_with("seq,name\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8b_fold_all_same() {
+        // 全同名 → 单行区间。
+        let f = lineage_fold(&["a", "a", "a"], &[1, 5, 9]);
+        assert_eq!(f, vec![("a", 1, 9)]);
+    }
+
+    #[test]
+    fn f199_v8b_rb_overflow_safe() {
+        // target > current（乱序调用）不炸：lost 为 0。
+        let i = rollback_impact(3, 9, 10);
+        assert_eq!(i.lost_count, 0);
+    }
+
+    #[test]
+    fn f199_v8b_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：谱系版本计数（同族版本折叠——树视图的汇总行）。
+// ---------------------------------------------------------------------------
+
+/// 版本计数（连续同名折叠为 (名, 出现次数)——保持首现顺序）。
+pub fn version_counts(names: &[&'static str]) -> Vec<(&'static str, u32)> {
+    let mut out: Vec<(&'static str, u32)> = Vec::new();
+    for n in names {
+        match out.last_mut() {
+            Some((ln, c)) if ln == n => {
+                *c += 1;
+            }
+            _ => out.push((n, 1)),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8c_counts_total() {
+        // 计数总和 = 输入长度（守恒）。
+        let vc = version_counts(&["a", "a", "b", "c", "c", "c"]);
+        let total: u32 = vc.iter().map(|(_, c)| *c).sum();
+        assert_eq!(total, 6);
+    }
+
+    #[test]
+    fn f199_v8c_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：谱系导出摘要行（树视图页脚的一句话账）。
+// ---------------------------------------------------------------------------
+
+/// 摘要行（链长 / 首尾代差 / 叶数）。
+pub fn lineage_summary(depth: usize, last_seq: u32, leaves: usize) -> alloc::string::String {
+    alloc::format!("谱系共 {} 个版本，跨 {} 代，{} 个活动分支", depth, last_seq, leaves)
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8d_summary_single() {
+        // 单版本摘要（代差 0）。
+        assert!(lineage_summary(1, 0, 1).contains("1 个版本"));
+    }
+
+    #[test]
+    fn f199_v8d_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：回滚目标合法性（一句话 + 一次判定——树视图右键项）。
+// ---------------------------------------------------------------------------
+
+/// 回滚目标合法性（目标 seq 必须严格小于当前——向前滚是升级不是回滚）。
+pub fn rollback_legal(current_seq: u32, target_seq: u32) -> bool {
+    target_seq < current_seq
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v9_legal_same_seq() {
+        // 同 seq 不是回滚（无操作）。
+        assert!(!rollback_legal(4, 4));
+    }
+
+    #[test]
+    fn f199_v9_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：谱系链高查询。
+// ---------------------------------------------------------------------------
+
+/// 链高（最新 seq——谱系页右上角的高度徽标）。
+pub fn lineage_height(latest_seq: u32) -> u32 {
+    latest_seq
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v10_height_type() {
+        assert_eq!(lineage_height(42), 42);
+    }
+
+    #[test]
+    fn f199_v10_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：谱系 CSV 行。
+// ---------------------------------------------------------------------------
+
+/// 谱系 CSV（seq,name）。
+pub fn lineage_csv(rows: &[(u32, &str)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("seq,name\n");
+    for (seq, name) in rows {
+        out.push_str(&alloc::format!("{},{}\n", seq, name));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v11_csv_rows() {
+        assert_eq!(lineage_csv(&[(1, "a"), (2, "b")]).lines().count(), 3);
+    }
+
+    #[test]
+    fn f199_v11_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：谱系摘要行——版本树一屏一句话。
+// 判据源：主册【设计细节】「谱系页先给结论，细节在下」。
+// ---------------------------------------------------------------------------
+
+/// 谱系摘要行（N 个版本 · 跨度 D · 分叉 K 处——分叉是事故，必点出）。
+pub fn lineage_summary_line(seqs: &[u32], edges: &[(u32, u32)]) -> alloc::string::String {
+    if seqs.is_empty() {
+        return alloc::format!("谱系为空：尚无任何已登记版本");
+    }
+    let d = lineage_depth(seqs);
+    if fork_detected(edges) {
+        alloc::format!("谱系共 {} 个版本 · 跨度 {} · 检出分叉（需人工裁断）", d.depth, d.span)
+    } else {
+        alloc::format!("谱系共 {} 个版本 · 跨度 {} · 线性无分叉", d.depth, d.span)
+    }
+}
+
+#[cfg(test)]
+mod deep12c_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8c_summary_shapes() {
+        assert!(lineage_summary_line(&[], &[]).contains("空"));
+        let line = lineage_summary_line(&[1, 2, 3], &[(2, 1), (3, 2)]);
+        assert!(line.contains("3 个版本"));
+    }
+
+    #[test]
+    fn f199_v8c_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}

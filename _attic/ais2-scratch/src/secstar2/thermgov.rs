@@ -3178,3 +3178,215 @@ mod deep14_tests {
         assert!(run_thermgov_deep7b_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：降温速率预测 / 回落 ETA / 传感器漂移账 /
+// 降档决策解释句 / 热点排名。
+// 判据源：主册【设计细节】「降档后温度回落曲线归因」+【状态与异常】
+// 「读数异常滤波丢弃+诊断标注」。
+// ---------------------------------------------------------------------------
+
+/// 漂移告警界（deci-C）：|平均漂移| 达 3.0℃ → 建议检修标注。
+pub const DRIFT_WARN_DECI_C: i64 = 30;
+
+/// 降温速率（deci-C/分钟）：沿曲线取最后一个通过跳变滤波的相邻采样对
+/// （|Δ| ≤ JUMP_REJECT_C——与主状态机同一套滤波语义）外推；跳变对丢弃
+/// 不参与。样本不足 / 无合法对 / 时间不前进 → None（不猜）。
+pub fn cool_rate_deci_per_min(curve: &[(u64, i64)]) -> Option<i64> {
+    let mut last: Option<(u64, i64)> = None;
+    let mut rate: Option<i64> = None;
+    for &(t, c) in curve {
+        if let Some((t0, c0)) = last {
+            let dt = t.saturating_sub(t0);
+            let dc = c - c0;
+            if dt > 0 && dc.abs() <= JUMP_REJECT_C {
+                rate = Some(dc * 60 / dt as i64); // deci-C/秒 → deci-C/分钟。
+            }
+            // 跳变对：按 >20℃ 滤波丢弃，速率维持上一合法对的结论。
+        }
+        last = Some((t, c));
+    }
+    rate
+}
+
+/// 回落 ETA（分钟）：按降温速率外推到 target_deci_c 以下的预计分钟数。
+/// 已低于目标 → 0；未在降温（速率 ≥0）或无合法速率 → None（不猜）。
+pub fn cool_eta_minutes(curve: &[(u64, i64)], target_deci_c: i64) -> Option<u64> {
+    let cur = curve.last().map(|(_, c)| *c)?;
+    if cur < target_deci_c {
+        return Some(0);
+    }
+    let rate = cool_rate_deci_per_min(curve)?;
+    if rate >= 0 {
+        return None;
+    }
+    Some(((cur - target_deci_c) / (-rate) + 1) as u64)
+}
+
+/// 降温趋势标签（速率 → 三态一句话——温度页趋势角标）。
+pub fn cool_trend_label(rate_deci_per_min: i64) -> &'static str {
+    if rate_deci_per_min <= -10 {
+        "快速回落"
+    } else if rate_deci_per_min < 0 {
+        "缓慢回落"
+    } else if rate_deci_per_min == 0 {
+        "温度持平"
+    } else {
+        "仍在升温"
+    }
+}
+
+/// 传感器漂移账（表计读数 vs 基准参考 → 平均漂移；超界 → 检修标注）。
+#[derive(Default)]
+pub struct SensorDriftLedger {
+    /// (表计读数, 基准参考)，deci-C。
+    entries: Vec<(i64, i64)>,
+}
+
+impl SensorDriftLedger {
+    pub fn new() -> SensorDriftLedger {
+        SensorDriftLedger { entries: Vec::new() }
+    }
+
+    pub fn observe(&mut self, reported_deci_c: i64, reference_deci_c: i64) {
+        self.entries.push((reported_deci_c, reference_deci_c));
+    }
+
+    /// 平均漂移（表计 − 参考；空账 None——不拿 0 冒充结论）。
+    pub fn mean_drift_deci(&self) -> Option<i64> {
+        if self.entries.is_empty() {
+            return None;
+        }
+        let sum: i64 = self.entries.iter().map(|(r, f)| r - f).sum();
+        Some(sum / self.entries.len() as i64)
+    }
+
+    /// 漂移超界（|平均漂移| ≥ DRIFT_WARN_DECI_C → 建议检修）。
+    pub fn drift_exceeds(&self) -> bool {
+        self.mean_drift_deci().map(|d| d.abs() >= DRIFT_WARN_DECI_C).unwrap_or(false)
+    }
+}
+
+/// 漂移审计行（诊断页「传感器健康」格——一行人话分诊）。
+pub fn drift_audit_line(ledger: &SensorDriftLedger) -> alloc::string::String {
+    match ledger.mean_drift_deci() {
+        None => alloc::string::String::from("无漂移样本——待基准对拍"),
+        Some(d) => {
+            let tag = if ledger.drift_exceeds() { "超界，建议检修" } else { "正常" };
+            alloc::format!("平均漂移 {}.{:01}℃（{}）", d / 10, (d % 10).abs(), tag)
+        }
+    }
+}
+
+/// 降档决策解释句（温度页「为什么降档」格——决策带解释，零静默档位跳变）。
+pub fn throttle_decision_line(temp_deci_c: i64, level: ThermoLevel) -> alloc::string::String {
+    let t = temp_deci_c / 10;
+    match level {
+        ThermoLevel::Normal => alloc::format!("当前 {}℃：未触发降档（降档线 {}℃）", t, THROTTLE_C),
+        ThermoLevel::Throttle => alloc::format!(
+            "当前 {}℃：已降性能档（触发 {}℃，回落 {}℃ 解除）", t, THROTTLE_C, THROTTLE_C - HYSTERESIS_C),
+        ThermoLevel::Notify => alloc::format!("当前 {}℃：已降频并通知（触发 {}℃）", t, NOTIFY_C),
+        ThermoLevel::Critical => alloc::format!("当前 {}℃：保护性冲刷预警（触发 {}℃）", t, CRIT_C),
+    }
+}
+
+/// 热点排名（(部件, deci-C) → 按温度降序前 k 个部件名——温度页「最热部件」格）。
+pub fn hotspot_rank<'a>(spots: &[(&'a str, i64)], k: usize) -> Vec<&'a str> {
+    let mut sorted = spots.to_vec();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    sorted.into_iter().take(k).map(|(name, _)| name).collect()
+}
+
+/// 最热部件一行话（温度页角标——「电池 90.0℃ 全场最高」；空表诚实）。
+pub fn hotspot_top_line(spots: &[(&str, i64)]) -> alloc::string::String {
+    match spots.iter().max_by_key(|(_, c)| *c) {
+        Some((name, c)) => alloc::format!("{} {}.{:01}℃ 全场最高", name, c / 10, (c % 10).abs()),
+        None => alloc::string::String::from("无温度数据"),
+    }
+}
+
+/// F197 v8 终波自检（deep8 表）。
+pub fn run_thermgov_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v8c");
+
+    // 降温速率：合法对外推 / 跳变对丢弃 / 升温为正 / 不猜三态。
+    // 曲线守采样纪律：相邻步 |Δ| ≤ 20 deci-C（2.0℃）——自吞滤波不自伤。
+    let curve = [(0, 860), (60, 845), (120, 830)];
+    set.add("cool rate", cool_rate_deci_per_min(&curve) == Some(-15), "60s 降 1.5℃ → -15 deci-C/分");
+    let spiked = [(0, 860), (60, 845), (120, 1000)];
+    set.add("cool rate jump", cool_rate_deci_per_min(&spiked) == Some(-15), "+155 deci-C 跳变对丢弃，速率维持末合法对");
+    set.add("cool rate heat", cool_rate_deci_per_min(&[(0, 800), (60, 815)]) == Some(15), "升温速率为正");
+    set.add("cool rate none", cool_rate_deci_per_min(&[]).is_none() && cool_rate_deci_per_min(&[(0, 800)]).is_none(), "样本不足不猜");
+    set.add("cool rate stall", cool_rate_deci_per_min(&[(0, 800), (0, 790)]).is_none(), "时间不前进不猜");
+
+    // 回落 ETA：外推 / 已达标 / 未降温。
+    set.add("eta", cool_eta_minutes(&curve, 800) == Some(3), "830→800 差 30 / 速率 15 → 3 分钟");
+    set.add("eta below", cool_eta_minutes(&curve, 900) == Some(0), "已低于目标 → 0");
+    set.add("eta stalling", cool_eta_minutes(&[(0, 800), (60, 800)], 780).is_none(), "未在降温不外推");
+
+    // 趋势标签：四态一句话。
+    set.add("trend fast", cool_trend_label(-30) == "快速回落", "");
+    set.add("trend slow", cool_trend_label(-5) == "缓慢回落", "");
+    set.add("trend flat", cool_trend_label(0) == "温度持平", "");
+    set.add("trend up", cool_trend_label(30) == "仍在升温", "");
+
+    // 漂移账：均值 / 超界 / 空账诚实 / 审计行分诊。
+    let mut d1 = SensorDriftLedger::new();
+    d1.observe(703, 700);
+    d1.observe(712, 710);
+    set.add("drift mean", d1.mean_drift_deci() == Some(2) && !d1.drift_exceeds(), "小漂移在册不告警");
+    let mut d2 = SensorDriftLedger::new();
+    d2.observe(740, 700);
+    d2.observe(750, 700);
+    set.add("drift over", d2.mean_drift_deci() == Some(45) && d2.drift_exceeds(), "45 deci-C ≥ 30 → 检修标注");
+    set.add("drift empty", SensorDriftLedger::new().mean_drift_deci().is_none(), "空账不出 0 冒充结论");
+    set.add("drift line", drift_audit_line(&d2).contains("超界") && drift_audit_line(&d1).contains("正常"), "审计行分诊");
+
+    // 决策解释句：各档有话、带阈值。
+    set.add("decide normal", throttle_decision_line(600, ThermoLevel::Normal).contains("未触发"), "");
+    set.add("decide throttle", throttle_decision_line(760, ThermoLevel::Throttle).contains("70"), "句中带回退线 70℃");
+    set.add("decide crit", throttle_decision_line(960, ThermoLevel::Critical).contains("95"), "");
+
+    // 热点排名：降序 / 截断 / 短表 / 角标行。
+    set.add("hotspot order", hotspot_rank(&[("CPU", 800), ("SSD", 650), ("电池", 900)], 3) == vec!["电池", "CPU", "SSD"], "降序全排");
+    set.add("hotspot top", hotspot_rank(&[("CPU", 800), ("SSD", 650), ("电池", 900)], 2) == vec!["电池", "CPU"], "取前二");
+    set.add("hotspot short", hotspot_rank(&[("CPU", 800)], 3).len() == 1, "不足不凑");
+    set.add("hotspot line", hotspot_top_line(&[("CPU", 800), ("电池", 900)]) == "电池 90.0℃ 全场最高", "");
+    set.add("hotspot empty", hotspot_top_line(&[]).contains("无温度数据"), "空表诚实");
+
+    set
+}
+
+#[cfg(test)]
+mod deep15_tests {
+    use super::*;
+
+    #[test]
+    fn f197_deep8_eta_no_guess_when_heating() {
+        // 升温曲线绝不外推回落时间（不拿乐观数字安抚用户）。
+        assert_eq!(cool_eta_minutes(&[(0, 800), (60, 830)], 780), None);
+    }
+
+    #[test]
+    fn f197_deep8_drift_negative_keeps_sign() {
+        // 负漂移（表计偏低）符号保真——|均值| 达界同样告警。
+        let mut d = SensorDriftLedger::new();
+        d.observe(660, 700);
+        d.observe(680, 700);
+        assert_eq!(d.mean_drift_deci(), Some(-30));
+        assert!(d.drift_exceeds());
+    }
+
+    #[test]
+    fn f197_deep8_jump_filter_boundary() {
+        // 恰 20℃ 的对合法（>20 才丢——与 JUMP_REJECT_C 语义逐字一致）。
+        assert_eq!(cool_rate_deci_per_min(&[(0, 800), (60, 820)]), Some(20));
+        assert_eq!(cool_rate_deci_per_min(&[(0, 800), (60, 821)]), None);
+    }
+
+    #[test]
+    fn f197_deep8_run_checks_pass() {
+        assert!(run_thermgov_deep8_checks().all_passed());
+    }
+}

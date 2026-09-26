@@ -1752,3 +1752,987 @@ mod deep6_tests {
         assert!(run_recenv_deep6_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——恢复演练干跑 / 快照垃圾回收 / 备份
+// 体积估算 / 演练报告卡 / 介质健康检查。
+// 判据源：主册【硬件与数据安全红线】「有破坏潜能的操作必须先提供干跑」+
+// 【设计细节】「快照保留最近 N 份 + 月锚点」。
+// ---------------------------------------------------------------------------
+
+/// 干跑结论（不动一个字节——只说「如果执行，会动什么」）。
+pub struct DryRunReport<'a> {
+    /// 允许执行（所有前置检查过）。
+    pub allowed: bool,
+    /// 将被覆盖的条目清单（相对路径）。
+    pub would_overwrite: Vec<&'a str>,
+    /// 将被新建的条目清单。
+    pub would_create: Vec<&'a str>,
+    /// 阻断原因（不允许时必非空——干跑不许只说不行）。
+    pub blocker: &'static str,
+}
+
+/// 恢复干跑：拿快照条目与现存状态对比，产出将动清单。
+/// `existing`：目标机上已存在的条目名；`snapshot`：快照内条目名。
+pub fn restore_dry_run<'a>(existing: &[&'a str], snapshot: &[&'a str]) -> DryRunReport<'a> {
+    let mut rep = DryRunReport {
+        allowed: true,
+        would_overwrite: Vec::new(),
+        would_create: Vec::new(),
+        blocker: "",
+    };
+    for s in snapshot {
+        if existing.contains(s) {
+            rep.would_overwrite.push(s);
+        } else {
+            rep.would_create.push(s);
+        }
+    }
+    // 红线：现存条目里若有「用户文档区」标记，覆盖前必须显式放行（这里一律阻断）。
+    if existing.iter().any(|e| e.starts_with("docs/")) && rep.would_overwrite.iter().any(|o| o.starts_with("docs/")) {
+        rep.allowed = false;
+        rep.blocker = "快照将覆盖用户文档区——需显式确认后放行";
+    }
+    rep
+}
+
+/// 快照 GC 结论。
+pub struct SnapshotGc {
+    /// 保留的快照 id（最近 N 份 + 全部锚点）。
+    pub keep: Vec<u64>,
+    /// 回收的快照 id。
+    pub reclaim: Vec<u64>,
+}
+
+/// 快照垃圾回收（保留最近 keep_recent 份 + 标记 anchor 的全部——
+/// 回收≠删除：先列清单，落盘清理由下一闸门执行）。
+pub fn snapshot_gc(ids_newest_first: &[u64], anchors: &[u64], keep_recent: usize) -> SnapshotGc {
+    let mut keep = Vec::new();
+    let mut reclaim = Vec::new();
+    for (i, id) in ids_newest_first.iter().enumerate() {
+        if i < keep_recent || anchors.contains(id) {
+            keep.push(*id);
+        } else {
+            reclaim.push(*id);
+        }
+    }
+    SnapshotGc { keep, reclaim }
+}
+
+/// 体积估算行（类别 → 每条目典型体积 MiB）。
+pub const SIZE_WEIGHTS: [(&str, u64); 5] = [
+    ("system", 800),
+    ("apps", 300),
+    ("settings", 5),
+    ("drivers", 120),
+    ("index", 40),
+];
+
+/// 备份体积估算（按类别条数加权——估算值必须标注「估算」二字）。
+pub fn backup_size_estimate(counts: &[(&str, u64)]) -> (u64, bool) {
+    let mut total = 0u64;
+    for (cat, n) in counts {
+        if let Some((_, w)) = SIZE_WEIGHTS.iter().find(|(c, _)| c == cat) {
+            total += w * n;
+        }
+    }
+    (total, true) // bool = is_estimate（恒真——估算不许冒充实测）。
+}
+
+/// 演练报告卡（恢复演练 → 四格：结果/耗时/覆盖/下一步）。
+pub struct DrillCard {
+    pub verdict: &'static str,
+    pub cost_s: u64,
+    /// 覆盖率 permille（演练覆盖的恢复路径比例）。
+    pub coverage_permille: u64,
+    pub next_step: &'static str,
+}
+
+/// 演练判分（全绿→通过；有失败→给出下一步）。
+pub fn drill_card(results: &[bool], cost_s: u64) -> DrillCard {
+    let total = results.len();
+    let passed = results.iter().filter(|r| **r).count();
+    let coverage = if total == 0 { 0 } else { passed as u64 * 1000 / total as u64 };
+    if coverage == 1000 {
+        DrillCard { verdict: "通过", cost_s, coverage_permille: coverage, next_step: "登记进演练台账（季度一次）" }
+    } else if coverage > 0 {
+        DrillCard { verdict: "部分通过", cost_s, coverage_permille: coverage, next_step: "对失败路径开缺陷工单并重演" }
+    } else {
+        DrillCard { verdict: "不通过", cost_s, coverage_permille: coverage, next_step: "冻结发布闸门直至恢复路径修复" }
+    }
+}
+
+/// 介质健康检查（坏块表 → 可用性判定）。
+pub struct MediaHealth {
+    pub bad_blocks: u64,
+    /// 可用（坏块率 ≤ 2‰ 且预留池未耗尽）。
+    pub usable: bool,
+    /// 结论文案（三要素）。
+    pub note: alloc::string::String,
+}
+
+/// 介质检查（总块数/坏块数/预留池余量 → 健康结论）。
+pub fn media_health(total_blocks: u64, bad_blocks: u64, spare_left: u64) -> MediaHealth {
+    let permille = if total_blocks == 0 { 0 } else { bad_blocks * 1000 / total_blocks };
+    let usable = permille <= 2 && (bad_blocks == 0 || spare_left > 0);
+    let note = if usable {
+        alloc::string::String::from("介质健康，坏块已由预留池接管")
+    } else if permille > 2 {
+        alloc::string::String::from("坏块率超 2‰——建议尽快更换介质并重做恢复盘")
+    } else {
+        alloc::string::String::from("预留池耗尽——坏块无法再接管，建议更换介质")
+    };
+    MediaHealth { bad_blocks, usable, note }
+}
+
+/// F198 v8 自检（deep7 表）。
+pub fn run_recenv_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F198-v8");
+
+    // 干跑：新建/覆盖分账、文档区红线阻断。
+    let dr = restore_dry_run(&["settings/theme", "apps/list"], &["settings/theme", "apps/list", "drivers/base"]);
+    set.add("dry split", dr.allowed && dr.would_overwrite.len() == 2 && dr.would_create.len() == 1, "");
+    let dr2 = restore_dry_run(&["docs/notes.txt"], &["docs/notes.txt"]);
+    set.add("dry docs red", !dr2.allowed && dr2.blocker.contains("文档区"), "覆盖文档区必须阻断");
+    let dr3 = restore_dry_run(&[], &["settings/theme"]);
+    set.add("dry pure create", dr3.allowed && dr3.would_overwrite.is_empty(), "全新恢复不触碰现存");
+
+    // GC：最近 N + 锚点保、其余列清单。
+    let gc = snapshot_gc(&[9, 8, 7, 6, 5], &[5, 6], 2);
+    set.add("gc keep", gc.keep.contains(&9) && gc.keep.contains(&8) && gc.keep.contains(&5) && gc.keep.contains(&6), "最近 2 份 + 2 锚点");
+    set.add("gc reclaim", gc.reclaim == vec![7], "7 既不新也不锚 → 回收清单");
+
+    // 体积估算：加权求和、未知类别不计、恒标估算。
+    let (mib, est) = backup_size_estimate(&[("system", 1), ("settings", 4)]);
+    set.add("size est", mib == 820 && est, "800 + 5×4 = 820 MiB");
+    let (mib2, _) = backup_size_estimate(&[("unknown", 100)]);
+    set.add("size unknown", mib2 == 0, "未知类别不凭空计价");
+
+    // 演练卡：三档判分。
+    let c1 = drill_card(&[true, true, true, true], 30);
+    set.add("drill pass", c1.verdict == "通过" && c1.coverage_permille == 1000, "");
+    let c2 = drill_card(&[true, true, false, false], 45);
+    set.add("drill partial", c2.verdict == "部分通过" && c2.coverage_permille == 500, "");
+    set.add("drill partial next", c2.next_step.contains("工单"), "部分通过 → 开工单");
+    let c3 = drill_card(&[false, false, false, false], 60);
+    set.add("drill fail", c3.verdict == "不通过" && c3.coverage_permille == 0 && c3.next_step.contains("冻结"), "全挂 → 冻结闸门");
+
+    // 介质健康：三态结论。
+    let m1 = media_health(100_000, 100, 50);
+    set.add("media ok", m1.usable && m1.note.contains("健康"), "1‰ 坏块在界内");
+    let m2 = media_health(100_000, 500, 50);
+    set.add("media over", !m2.usable && m2.note.contains("2‰"), "5‰ 超界");
+    let m3 = media_health(100_000, 100, 0);
+    set.add("media spare", !m3.usable && m3.note.contains("预留池"), "低坏块但池尽也不可用");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v7_gc_anchor_priority() {
+        // 锚点即使最老也保留；keep_recent=0 时只剩锚点。
+        let gc = snapshot_gc(&[5, 4, 3, 2, 1], &[1], 0);
+        assert_eq!(gc.keep, vec![1]);
+        assert_eq!(gc.reclaim, vec![5, 4, 3, 2]);
+    }
+
+    #[test]
+    fn f198_v7_dry_run_never_mutates() {
+        // 干跑纯函数性：同输入两跑结果一致（干跑绝无副作用）。
+        let a = restore_dry_run(&["settings/x"], &["settings/x", "apps/y"]);
+        let b = restore_dry_run(&["settings/x"], &["settings/x", "apps/y"]);
+        assert_eq!(a.would_overwrite, b.would_overwrite);
+        assert_eq!(a.would_create, b.would_create);
+    }
+
+    #[test]
+    fn f198_v7_drill_empty() {
+        // 空演练不给满分（没测过就是没测过）。
+        let c = drill_card(&[], 0);
+        assert_eq!(c.coverage_permille, 0);
+        assert_eq!(c.verdict, "不通过");
+    }
+
+    #[test]
+    fn f198_v7_run_checks_pass() {
+        assert!(run_recenv_deep7_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b5：恢复点排序 / 空间预检 / 中断续跑 / 引导预检（只读）。
+// ---------------------------------------------------------------------------
+
+/// 恢复点优先级排序（新优先、有效优先——同分按时间近先）。
+pub fn restore_priority(points: &[(u64, bool, u64)]) -> Vec<u64> {
+    // (id, valid, day) → 排序键：valid 降序、day 降序。
+    let mut scored: Vec<(u64, u64, u64)> = points
+        .iter()
+        .map(|(id, valid, day)| (*id, if *valid { 1 } else { 0 }, *day))
+        .collect();
+    scored.sort_by(|a, b| (b.1, b.2).cmp(&(a.1, a.2)));
+    scored.into_iter().map(|(id, _, _)| id).collect()
+}
+
+/// 空间预检（恢复所需 vs 可用 → 判定与缺口）。
+pub struct SpaceCheck {
+    pub enough: bool,
+    pub deficit_mib: u64,
+}
+
+/// 预检（need_mib：恢复所需；free_mib：目标盘可用）。
+pub fn space_precheck(need_mib: u64, free_mib: u64) -> SpaceCheck {
+    SpaceCheck {
+        enough: free_mib >= need_mib,
+        deficit_mib: need_mib.saturating_sub(free_mib),
+    }
+}
+
+/// 恢复续跑状态（阶段机：扫描 → 校验 → 落盘 → 完成；中断从当前阶段续）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RestoreStage {
+    Scan,
+    Verify,
+    Apply,
+    Done,
+}
+
+/// 阶段推进（含中断恢复：任意阶段可暂停并原地续）。
+pub struct RestoreResume {
+    pub stage: RestoreStage,
+    pub interrupted: bool,
+}
+
+impl RestoreResume {
+    pub fn new() -> RestoreResume {
+        RestoreResume { stage: RestoreStage::Scan, interrupted: false }
+    }
+
+    /// 推进一阶段。
+    pub fn advance(&mut self) {
+        if self.interrupted {
+            return; // 中断态必须先 resume。
+        }
+        self.stage = match self.stage {
+            RestoreStage::Scan => RestoreStage::Verify,
+            RestoreStage::Verify => RestoreStage::Apply,
+            RestoreStage::Apply => RestoreStage::Done,
+            RestoreStage::Done => RestoreStage::Done,
+        };
+    }
+
+    pub fn interrupt(&mut self) {
+        if self.stage != RestoreStage::Done {
+            self.interrupted = true;
+        }
+    }
+
+    pub fn resume_after_interrupt(&mut self) {
+        self.interrupted = false; // 阶段不回退——原地续。
+    }
+}
+
+impl Default for RestoreResume {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 引导预检（只读清单——本函数绝不写盘、绝不碰引导数据，
+/// 只产出「若走引导修复将检查什么」的只读项清单）。
+pub const BOOT_PRECHECK_ITEMS: [(&str, bool); 5] = [
+    ("引导分区可读（只读探测）", true),
+    ("引导文件签名校验（只读比对）", true),
+    ("备用引导记录存在性（只读检查）", true),
+    ("启动项顺序与登记一致（只读核对）", true),
+    ("恢复环境自身可启动（自检）", true),
+];
+
+/// 引导预检执行（只读——返回全部通过与否与失败项）。
+pub fn boot_precheck_run(results: &[bool]) -> (bool, usize) {
+    let failed = results.iter().filter(|r| !**r).count();
+    (failed == 0, failed)
+}
+
+/// F198 v8-b5 自检（并入 deep7 表族）。
+pub fn run_recenv_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F198-v8b");
+
+    // 恢复点排序：有效优先 → 新优先。
+    let pr = restore_priority(&[(1, true, 10), (2, false, 90), (3, true, 50)]);
+    set.add("prio order", pr == vec![3, 1, 2], "有效新点 > 有效旧点 > 无效点");
+    let pr2 = restore_priority(&[]);
+    set.add("prio empty", pr2.is_empty(), "");
+
+    // 空间预检：够/不够带缺口。
+    let s1 = space_precheck(500, 800);
+    set.add("space ok", s1.enough && s1.deficit_mib == 0, "");
+    let s2 = space_precheck(500, 300);
+    set.add("space short", !s2.enough && s2.deficit_mib == 200, "缺口 200 MiB 如实报");
+
+    // 续跑：全流程 / 中断原地续 / 完成后中断无效。
+    let mut r = RestoreResume::new();
+    r.advance();
+    r.advance();
+    set.add("resume verify->apply", r.stage == RestoreStage::Apply, "");
+    r.interrupt();
+    r.advance();
+    set.add("resume blocked", r.stage == RestoreStage::Apply, "中断态推进无效");
+    r.resume_after_interrupt();
+    r.advance();
+    set.add("resume after", r.stage == RestoreStage::Done, "续跑到完成");
+    r.interrupt();
+    set.add("resume done sticky", !r.interrupted && r.stage == RestoreStage::Done, "完成态不再可中断");
+
+    // 引导预检：只读清单全通过 / 失败计数。
+    set.add("boot precheck items", BOOT_PRECHECK_ITEMS.len() == 5 && BOOT_PRECHECK_ITEMS.iter().all(|(t, _)| t.contains("只读") || t.contains("自检")), "清单全只读");
+    let (ok, f0) = boot_precheck_run(&[true, true, true, true, true]);
+    set.add("boot precheck ok", ok && f0 == 0, "");
+    let (ok2, f2) = boot_precheck_run(&[true, false, true, false, true]);
+    set.add("boot precheck fail", !ok2 && f2 == 2, "失败项逐条计数");
+    // b7-wave2：恢复点差分 / 演练排程 / 空间回收预估。
+    let (du, rp) = restore_diff(&["a", "b", "c"], &["b", "c", "d"]);
+    set.add("diff files", du == vec!["a"] && rp == vec!["d"], "回滚到旧点将撤销 a、重放 d");
+    let (du2, rp2) = restore_diff(&["x"], &["x"]);
+    set.add("diff none", du2.is_empty() && rp2.is_empty(), "同状态零差分");
+    set.add("drill due", drill_due(0, 90), "从未演练 → 立即到期");
+    set.add("drill fresh", !drill_due(30, 90), "30 天前刚演 → 未到期");
+    set.add("reclaim est", reclaim_estimate(10, 800) == 8000, "10 份 × 800 MiB");
+    // b8-wave3：恢复环境自检页 / 介质写速账。
+    set.add("re env check", RECOVERY_SELFTEST.len() == 6 && RECOVERY_SELFTEST.iter().all(|(t, _)| !t.is_empty()), "六项自检齐");
+    set.add("re env run", { let (ok, bad) = recovery_selftest_run(&[true; 6]); ok && bad == 0 }, "全绿通过");
+    set.add("re env bad", recovery_selftest_run(&[true, false, true, false, true, true]).1 == 2, "失败逐条计");
+    set.add("write speed", write_speed_grade(80) == "A", "80 MiB/s = A 档");
+    set.add("write slow", write_speed_grade(5) == "C", "5 MiB/s = C 档提醒更换");
+    // b9-wave4：恢复点标签 / 演练历史表。
+    set.add("tag set", { let mut t = TagBook::new(); t.set(1, "升级前"); t.get(1) == Some("升级前") }, "打标可查");
+    set.add("tag overwrite", { let mut t = TagBook::new(); t.set(1, "a"); t.set(1, "b"); t.get(1) == Some("b") }, "同点重打覆盖");
+    set.add("tag none", TagBook::new().get(9).is_none(), "无标诚实");
+    set.add("drill hist", { let mut h = DrillHistory::new(); h.record(true); h.record(false); h.record(true); h.pass_rate_permille() == 666 }, "3 演 2 过 = 666‰");
+    set.add("drill hist empty", DrillHistory::new().pass_rate_permille() == 0, "空史零率");
+    // b10-wave5：介质寿命预估 / 快照压缩比账。
+    set.add("media life", media_life_years(1_000, 50) == 20, "1000 次写限 / 50 次/年 = 20 年");
+    set.add("media life zero", media_life_years(1_000, 0) == 0, "零写入频度不外推");
+    set.add("compress ratio", compress_ratio(800, 200) == 250, "4:1 = 250‰");
+    set.add("compress none", compress_ratio(200, 200) == 1000, "压不动如实 1000‰");
+    // b11-wave6：保留策略行 / 演练排期建议。
+    set.add("keep policy", keep_policy_line(3, 90).contains("3 份") && keep_policy_line(3, 90).contains("90 天"), "策略行双参数");
+    set.add("drill sched ok", drill_schedule(50, 10) == "本季已演练，无需排期", "季内已演（50 天前）");
+    set.add("drill sched due", drill_schedule(100, 0).contains("排期"), "未演须排");
+    // b12-wave7：恢复点 CSV / 标签数账。
+    set.add("point csv", point_csv(&[(1, true)]).starts_with("id,valid\n"), "CSV 表头");
+    set.add("tag count", { let mut t = TagBook::new(); t.set(1, "a"); t.set(2, "b"); t.len() == 2 }, "标签计数");
+    // b13-wave8：有效点 CSV / 标签检索。
+    set.add("valid csv", valid_point_csv(&[(1, true), (2, false)]).lines().count() == 2, "仅有效点入表");
+    set.add("tag find", { let mut t = TagBook::new(); t.set(1, "升级前"); t.find_by_label("升级前") == Some(1) }, "按标签找点");
+    // b14-wave9：演练排期 CSV。
+    set.add("drill csv", drill_csv(&[("Q1", true)]).starts_with("quarter,passed\n"), "CSV 表头");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v8b_prio_all_invalid() {
+        // 全无效点也排序（不崩、按新到旧）。
+        let pr = restore_priority(&[(1, false, 5), (2, false, 9)]);
+        assert_eq!(pr, vec![2, 1]);
+    }
+
+    #[test]
+    fn f198_v8b_resume_full_walk() {
+        // 三推到完成，第四推无效（终态粘滞）。
+        let mut r = RestoreResume::new();
+        for _ in 0..3 {
+            r.advance();
+        }
+        assert_eq!(r.stage, RestoreStage::Done);
+        r.advance();
+        assert_eq!(r.stage, RestoreStage::Done);
+    }
+
+    #[test]
+    fn f198_v8b_space_exact() {
+        // 恰好够 = 够（边界语义）。
+        let s = space_precheck(500, 500);
+        assert!(s.enough);
+    }
+
+    #[test]
+    fn f198_v8b_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：恢复点差分 / 演练到期 / 空间回收预估。
+// 判据源：主册【验收判据】「回滚前告知影响面（哪些文件会变）」。
+// ---------------------------------------------------------------------------
+
+/// 恢复点差分（现状态 vs 目标点 → (将撤销的, 将重放的) 文件集）。
+pub fn restore_diff(current: &[&str], target: &[&str]) -> (Vec<String>, Vec<String>) {
+    let undo: Vec<String> = current
+        .iter()
+        .filter(|c| !target.contains(c))
+        .map(|c| alloc::string::String::from(*c))
+        .collect();
+    let replay: Vec<String> = target
+        .iter()
+        .filter(|t| !current.contains(t))
+        .map(|t| alloc::string::String::from(*t))
+        .collect();
+    (undo, replay)
+}
+
+/// 演练到期（距上次演练天数达周期 → 到期；从未演练立即到期）。
+pub fn drill_due(days_since: u64, cycle_days: u64) -> bool {
+    days_since == 0 || days_since >= cycle_days
+}
+
+/// 空间回收预估（可回收快照份数 × 单份均值）。
+pub fn reclaim_estimate(reclaimable: u64, avg_mib: u64) -> u64 {
+    reclaimable * avg_mib
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v8c_diff_symmetric_union() {
+        // 撤销 ∪ 重放 = 对称差（差分数学完备）。
+        let (u, r) = restore_diff(&["a", "b"], &["b", "c"]);
+        assert_eq!(u.len() + r.len(), 2);
+    }
+
+    #[test]
+    fn f198_v8c_drill_boundary() {
+        // 恰满周期 = 到期。
+        assert!(drill_due(90, 90));
+    }
+
+    #[test]
+    fn f198_v8c_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：恢复环境自检页 / 介质写速分档。
+// 判据源：主册【状态与异常】「恢复环境自身要能证明自己可用」。
+// ---------------------------------------------------------------------------
+
+/// 恢复环境自检清单（六项——进恢复环境先自证）。
+pub const RECOVERY_SELFTEST: [(&str, bool); 6] = [
+    ("内存自检（基础区）", true),
+    ("恢复内核完整性（自带哈希）", true),
+    ("显示最小可用（基础帧缓冲）", true),
+    ("输入最简可用（键盘）", true),
+    ("备份介质可读（只读探测）", true),
+    ("日志通道可写（恢复区）", true),
+];
+
+/// 自检执行（结果集与清单对齐 → 通过与否 + 失败计数）。
+pub fn recovery_selftest_run(results: &[bool]) -> (bool, usize) {
+    let n = results.len().min(RECOVERY_SELFTEST.len());
+    let failed = results[..n].iter().filter(|r| !**r).count();
+    (failed == 0 && n == RECOVERY_SELFTEST.len(), failed)
+}
+
+/// 介质写速分档（MiB/s → A/B/C——C 档建议更换介质）。
+pub fn write_speed_grade(mib_per_s: u64) -> &'static str {
+    if mib_per_s >= 50 {
+        "A"
+    } else if mib_per_s >= 20 {
+        "B"
+    } else {
+        "C"
+    }
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v8e_speed_boundary() {
+        // 分档边界：恰在界上归高档。
+        assert_eq!(write_speed_grade(50), "A");
+        assert_eq!(write_speed_grade(20), "B");
+    }
+
+    #[test]
+    fn f198_v8e_selftest_short() {
+        // 结果集短于清单 = 不通过（漏检即红）。
+        let (ok, _) = recovery_selftest_run(&[true; 3]);
+        assert!(!ok);
+    }
+
+    #[test]
+    fn f198_v8e_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：恢复点标签 / 演练历史表。
+// 判据源：主册【交互设计】「恢复点可命名（『升级前』比『day 47』好记）」。
+// ---------------------------------------------------------------------------
+
+/// 标签账（点 id → 人话标签）。
+#[derive(Default)]
+pub struct TagBook {
+    tags: Vec<(u64, alloc::string::String)>,
+}
+
+impl TagBook {
+    pub fn new() -> TagBook {
+        TagBook { tags: Vec::new() }
+    }
+
+    /// 打标（同点重打覆盖——一标一定）。
+    pub fn set(&mut self, point_id: u64, label: &str) {
+        match self.tags.iter_mut().find(|(id, _)| *id == point_id) {
+            Some((_, l)) => *l = alloc::string::String::from(label),
+            None => self.tags.push((point_id, alloc::string::String::from(label))),
+        }
+    }
+
+    pub fn get(&self, point_id: u64) -> Option<&str> {
+        self.tags.iter().find(|(id, _)| *id == point_id).map(|(_, l)| l.as_str())
+    }
+}
+
+/// 演练历史（通过率分位账）。
+#[derive(Default)]
+pub struct DrillHistory {
+    results: Vec<bool>,
+}
+
+impl DrillHistory {
+    pub fn new() -> DrillHistory {
+        DrillHistory { results: Vec::new() }
+    }
+
+    pub fn record(&mut self, passed: bool) {
+        self.results.push(passed);
+    }
+
+    /// 通过率 permille（空史 0）。
+    pub fn pass_rate_permille(&self) -> u64 {
+        if self.results.is_empty() {
+            return 0;
+        }
+        let passed = self.results.iter().filter(|r| **r).count();
+        passed as u64 * 1000 / self.results.len() as u64
+    }
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v9_drill_all_pass() {
+        let mut h = DrillHistory::new();
+        for _ in 0..4 {
+            h.record(true);
+        }
+        assert_eq!(h.pass_rate_permille(), 1000);
+    }
+
+    #[test]
+    fn f198_v9_tag_unicode() {
+        // 中文标签保真（用户内容神圣）。
+        let mut t = TagBook::new();
+        t.set(5, "升级到 v3.2.2 之前");
+        assert_eq!(t.get(5), Some("升级到 v3.2.2 之前"));
+    }
+
+    #[test]
+    fn f198_v9_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：介质寿命预估 / 快照压缩比账。
+// 判据源：主册【设计细节】「恢复介质寿命可预期（写入限频公开）」。
+// ---------------------------------------------------------------------------
+
+/// 介质寿命预估（写入限次数 / 年写入频度 → 年数；零频度不外推）。
+pub fn media_life_years(write_cycles_limit: u64, writes_per_year: u64) -> u64 {
+    if writes_per_year == 0 {
+        return 0;
+    }
+    write_cycles_limit / writes_per_year
+}
+
+/// 快照压缩比（原始 MiB → 压缩后 MiB → 压缩率 permille，1000 = 无压缩收益）。
+pub fn compress_ratio(raw_mib: u64, packed_mib: u64) -> u64 {
+    if raw_mib == 0 {
+        return 1000;
+    }
+    (packed_mib * 1000 / raw_mib).max(1)
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v10_compress_better_than_raw() {
+        // 压缩收益恒 ≤1000‰（压缩不放大）。
+        assert!(compress_ratio(1000, 100) < 1000);
+    }
+
+    #[test]
+    fn f198_v10_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：保留策略行 / 演练排期建议。
+// ---------------------------------------------------------------------------
+
+/// 保留策略行（keep_recent 份 + ttl 天 → 一行说明——设置页「快照保留」格）。
+pub fn keep_policy_line(keep_recent: u64, ttl_days: u64) -> alloc::string::String {
+    alloc::format!("快照保留策略：最近 {} 份 + 全部锚点，保存 {} 天", keep_recent, ttl_days)
+}
+
+/// 演练排期建议（days_since_last + 距季末天数 → 文案）。
+pub fn drill_schedule(days_since_last: u64, days_to_quarter_end: u64) -> &'static str {
+    if days_since_last < 90 {
+        "本季已演练，无需排期"
+    } else if days_to_quarter_end > 14 {
+        "季末前两周安排演练窗口"
+    } else {
+        "已临季末——本周排期演练"
+    }
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v11_sched_urgent() {
+        assert!(drill_schedule(120, 5).contains("本周"));
+    }
+
+    #[test]
+    fn f198_v11_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：恢复点 CSV / 标签计数。
+// ---------------------------------------------------------------------------
+
+/// 恢复点 CSV（id,valid）。
+pub fn point_csv(rows: &[(u64, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("id,valid\n");
+    for (id, ok) in rows {
+        out.push_str(&alloc::format!("{},{}\n", id, ok));
+    }
+    out
+}
+
+impl TagBook {
+    pub fn len(&self) -> usize {
+        self.tags.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tags.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v12_tag_empty() {
+        assert!(TagBook::new().is_empty());
+    }
+
+    #[test]
+    fn f198_v12_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：有效点 CSV / 标签反查。
+// ---------------------------------------------------------------------------
+
+/// 有效点 CSV（只导 valid 点——无效点不进恢复列表）。
+pub fn valid_point_csv(rows: &[(u64, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("id\n");
+    for (id, ok) in rows {
+        if *ok {
+            out.push_str(&alloc::format!("{}\n", id));
+        }
+    }
+    out
+}
+
+impl TagBook {
+    /// 按标签反查点 id（首个命中）。
+    pub fn find_by_label(&self, label: &str) -> Option<u64> {
+        self.tags.iter().find(|(_, l)| l == label).map(|(id, _)| *id)
+    }
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v13_valid_only() {
+        // 无有效点 = 只剩表头。
+        assert_eq!(valid_point_csv(&[(1, false)]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f198_v13_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：演练排期 CSV。
+// ---------------------------------------------------------------------------
+
+/// 演练 CSV（quarter,passed）。
+pub fn drill_csv(rows: &[(&str, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("quarter,passed\n");
+    for (q, ok) in rows {
+        out.push_str(&alloc::format!("{},{}\n", q, ok));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v14_drill_csv_empty() {
+        assert_eq!(drill_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f198_v14_run_checks_pass() {
+        assert!(run_recenv_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：修复动作 undo 面 / 卡健康自描述行 / 导出包
+// 校验 / 脱网诊断决策树。
+// 判据源：主册【设计细节】「每卡执行前自动快照现场（除导出——只读原则）」
+// +「全流程脱网可用」+【状态与异常】「两级降级」。
+// ---------------------------------------------------------------------------
+
+/// 修复动作清单（动作名, 可撤销）——undo 面的事实源（一处一事实）。
+pub const REPAIR_ACTIONS: [(&str, bool); 4] = [
+    ("重检引导闸门", true),
+    ("重建基准哈希", false), // 原基准已坏——重建无可回退。
+    ("回滚配置", true),      // 回滚前自动快照——可撤销。
+    ("导出日志", false),     // 只读动作——本就不需要撤销。
+];
+
+/// 动作是否可撤销（清单外的动作一律视为不可撤销——保守默认）。
+pub fn action_undoable(action: &str) -> bool {
+    REPAIR_ACTIONS.iter().find(|(a, _)| *a == action).map(|(_, u)| *u).unwrap_or(false)
+}
+
+/// undo 面一行话（修复卡二级页脚注——「本次操作可撤销 N / 共 M 项」）。
+pub fn undo_surface_line() -> alloc::string::String {
+    let total = REPAIR_ACTIONS.len();
+    let undoable = REPAIR_ACTIONS.iter().filter(|(_, u)| *u).count();
+    alloc::format!("本次操作可撤销 {}/{} 项", undoable, total)
+}
+
+/// 修复动作 undo 账（执行留痕 + 撤销标记——不可撤销动作拒收不入账）。
+#[derive(Default)]
+pub struct ActionUndoBook {
+    done: Vec<&'static str>,
+    /// 与 done 对齐：true = 已撤销。
+    undone: Vec<bool>,
+}
+
+impl ActionUndoBook {
+    pub fn new() -> ActionUndoBook {
+        ActionUndoBook { done: Vec::new(), undone: Vec::new() }
+    }
+
+    /// 记录一次执行：可撤销动作入账返回 true；不可撤销动作拒收（返回
+    /// false——账面不收撤销不了的债）。
+    pub fn record(&mut self, action: &'static str) -> bool {
+        if !action_undoable(action) {
+            return false;
+        }
+        self.done.push(action);
+        self.undone.push(false);
+        true
+    }
+
+    /// 撤销最近一条未撤销的执行（无可撤 → false）。
+    pub fn undo_last(&mut self) -> bool {
+        match self.undone.iter_mut().rev().find(|u| !**u) {
+            Some(u) => {
+                *u = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 待撤销面（执行了且尚未撤销的动作数——修复页「可撤销 N 项」数据源）。
+    pub fn pending_undo(&self) -> usize {
+        self.undone.iter().filter(|u| !**u).count()
+    }
+
+    pub fn len(&self) -> usize {
+        self.done.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.done.is_empty()
+    }
+}
+
+/// 卡健康自描述行（每张卡自报状态——两级降级页的数据源）。
+pub fn card_health_line(card: RecoveryCard, healthy: bool) -> alloc::string::String {
+    let state = if healthy { "可用" } else { "受损——已按两级降级隐藏" };
+    alloc::format!("{}：{}", card.name(), state)
+}
+
+/// 导出包校验（manifest 名册与实际产物逐项对拍：条目同集且字节数一致）。
+pub fn export_manifest_check(manifest: &[(&str, u64)], actual: &[(&str, u64)]) -> bool {
+    if manifest.len() != actual.len() {
+        return false;
+    }
+    manifest.iter().all(|(name, size)| actual.iter().any(|(n, s)| n == name && s == size))
+}
+
+/// 脱网诊断决策树（症状布尔 → 建议动作；全程零网络依赖——设计纪律写死）。
+pub fn offline_diag_tree(host_boots: bool, config_corrupt: bool, media_ok: bool, has_second_usb: bool) -> &'static str {
+    if !media_ok {
+        "备份介质只读探测失败——先更换介质，不冒险写入"
+    } else if !host_boots {
+        "走「修复引导」卡：闸门三条件重检+基准哈希重建"
+    } else if config_corrupt {
+        "走「回滚配置」卡：选择还原点恢复系统配置"
+    } else if has_second_usb {
+        "走「导出日志」卡：诊断日志导出到另一块 U 盘"
+    } else {
+        "导出降级为屏显二维码摘要——至少把错误码带出去"
+    }
+}
+
+/// F198 v8 终波自检（deep8 表）。
+pub fn run_recenv_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F198-v8c");
+
+    // undo 面：清单事实源 / 一行话 / 保守默认。
+    set.add("undo table", REPAIR_ACTIONS.len() == 4 && undo_surface_line().contains("2/4"), "4 动作 2 可撤销");
+    set.add("undo default", !action_undoable("未登记动作"), "清单外保守视为不可撤销");
+    set.add("undo readonly", !action_undoable("导出日志"), "只读动作不需撤销");
+
+    // undo 账：入账 / 拒收 / 待撤销面 / 撤销 / 空账。
+    let mut b = ActionUndoBook::new();
+    set.add("undo rec ok", b.record("回滚配置"), "");
+    set.add("undo rec reject", !b.record("重建基准哈希") && b.len() == 1, "不可撤销拒收不入账");
+    set.add("undo pending", b.pending_undo() == 1, "");
+    set.add("undo do", b.undo_last() && b.pending_undo() == 0, "撤销后待撤销面清零");
+    set.add("undo empty", !ActionUndoBook::new().undo_last() && ActionUndoBook::new().is_empty(), "空账无可撤");
+
+    // 卡健康自描述：可用 / 受损降级。
+    set.add("card ok", {
+        let l = card_health_line(RecoveryCard::BootRepair, true);
+        l.contains("修复引导") && l.contains("可用")
+    }, "");
+    set.add("card bad", card_health_line(RecoveryCard::LogExport, false).contains("降级"), "受损卡自述降级");
+
+    // 导出包校验：同集同尺 / 缺项 / 尺不符。
+    let mf = [("ring.log", 1200), ("manifest.txt", 40)];
+    set.add("pkg ok", export_manifest_check(&mf, &[("manifest.txt", 40), ("ring.log", 1200)]), "乱序同集仍通过");
+    set.add("pkg missing", !export_manifest_check(&mf, &[("ring.log", 1200)]), "缺项不通过");
+    set.add("pkg size", !export_manifest_check(&mf, &[("ring.log", 1200), ("manifest.txt", 41)]), "字节数不符不通过");
+
+    // 脱网决策树：四支全覆盖。
+    set.add("tree media", offline_diag_tree(true, false, false, true).contains("更换介质"), "");
+    set.add("tree boot", offline_diag_tree(false, false, true, true).contains("修复引导"), "");
+    set.add("tree rollback", offline_diag_tree(true, true, true, true).contains("回滚配置"), "");
+    set.add("tree usb", offline_diag_tree(true, false, true, true).contains("导出日志"), "");
+    set.add("tree qrcode", offline_diag_tree(true, false, true, false).contains("二维码"), "无第二 U 盘降级");
+
+    set
+}
+
+#[cfg(test)]
+mod deep15_tests {
+    use super::*;
+
+    #[test]
+    fn f198_deep8_undo_re_record_after_undo() {
+        // 撤销后重新执行：待撤销面回弹（账面与现场一致）。
+        let mut b = ActionUndoBook::new();
+        b.record("回滚配置");
+        b.undo_last();
+        b.record("回滚配置");
+        assert_eq!(b.pending_undo(), 1);
+    }
+
+    #[test]
+    fn f198_deep8_manifest_empty() {
+        // 空 manifest 对空产物：零导出也是自洽（诚实账）。
+        assert!(export_manifest_check(&[], &[]));
+        assert!(!export_manifest_check(&[("a", 1)], &[]));
+    }
+
+    #[test]
+    fn f198_deep8_tree_never_needs_network() {
+        // 全 16 组合扫描：决策树输出恒非空（脱网纪律——永远给得出下一步）。
+        for boots in [true, false] {
+            for corrupt in [true, false] {
+                for media in [true, false] {
+                    for usb in [true, false] {
+                        assert!(!offline_diag_tree(boots, corrupt, media, usb).is_empty());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn f198_deep8_run_checks_pass() {
+        assert!(run_recenv_deep8_checks().all_passed());
+    }
+}

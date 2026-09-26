@@ -1736,3 +1736,740 @@ mod deep6_tests {
         assert!(run_walkall_deep6_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——覆盖雷达 / 证据链校验 / 陈旧预警 /
+// CSV 导出。
+// 判据源：主册【验收判据】「红绿账本六域全覆盖」+【数据与存储】
+// 「台账可导出为开放格式」。
+// ---------------------------------------------------------------------------
+
+/// 覆盖雷达维度值（0-1000‰：域内绿项占比）。
+pub struct RadarDim {
+    pub domain: &'static str,
+    pub green_ratio: u64,
+    /// 总项数（0 项的域诚实报 0——不许拿空域凑满绿）。
+    pub total: usize,
+}
+
+/// 覆盖雷达（域 → (绿项, 总项) 列表 → 维度值）。
+pub fn coverage_radar(per_domain: &[(&'static str, usize, usize)]) -> Vec<RadarDim> {
+    per_domain
+        .iter()
+        .map(|(d, green, total)| RadarDim {
+            domain: d,
+            green_ratio: if *total == 0 { 0 } else { *green as u64 * 1000 / *total as u64 },
+            total: *total,
+        })
+        .collect()
+}
+
+/// 雷达综合分（各域均值——空域不计入分母）。
+pub fn radar_overall(radar: &[RadarDim]) -> u64 {
+    let scored: Vec<u64> = radar.iter().filter(|r| r.total > 0).map(|r| r.green_ratio).collect();
+    if scored.is_empty() {
+        return 0;
+    }
+    scored.iter().sum::<u64>() / scored.len() as u64
+}
+
+/// 证据链校验（id 必须严格递增、日期必须单调不减——断链/倒流都点名）。
+pub struct EvidenceChainReport {
+    pub id_break: Option<(usize, usize)>,
+    pub date_regress: Option<(usize, usize)>,
+}
+
+/// 链校验（entries: (id, day) 按 id 顺序给出）。
+pub fn evidence_chain_check(entries: &[(u64, u64)]) -> EvidenceChainReport {
+    let mut rep = EvidenceChainReport { id_break: None, date_regress: None };
+    for w in entries.windows(2) {
+        let (id0, day0) = w[0];
+        let (id1, day1) = w[1];
+        if id1 != id0 + 1 && rep.id_break.is_none() {
+            rep.id_break = Some((id0 as usize, id1 as usize));
+        }
+        if day1 < day0 && rep.date_regress.is_none() {
+            rep.date_regress = Some((day0 as usize, day1 as usize));
+        }
+    }
+    rep
+}
+
+/// 陈旧预警分级（距过期天数 → 级别与文案）。
+pub enum Staleness {
+    Ok,
+    /// 30 天内到期。
+    Soon,
+    /// 7 天内到期。
+    Urgent,
+    /// 已过期（绿转红）。
+    Expired,
+}
+
+/// 分级（纯函数——日期运算在 parse_day 域完成）。
+pub fn staleness_of(days_left: i64) -> Staleness {
+    if days_left < 0 {
+        Staleness::Expired
+    } else if days_left < 7 {
+        Staleness::Urgent
+    } else if days_left < 30 {
+        Staleness::Soon
+    } else {
+        Staleness::Ok
+    }
+}
+
+/// 预警文案（Urgent/Expired 必须带行动项）。
+pub fn staleness_text(s: &Staleness) -> &'static str {
+    match s {
+        Staleness::Ok => "",
+        Staleness::Soon => "证据将在 30 天内过期——安排复检",
+        Staleness::Urgent => "证据 7 天内过期——本周补证",
+        Staleness::Expired => "证据已过期，该项转红——立即补证或降级处理",
+    }
+}
+
+/// 台账 CSV 导出（id,域,绿/红,证据天数——Excel 直接可开）。
+pub fn walk_export_csv(rows: &[(u64, &'static str, bool, i64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("id,domain,state,days_left\n");
+    for (id, domain, green, days) in rows {
+        out.push_str(&alloc::format!(
+            "{},{},{},{}\n",
+            id,
+            domain,
+            if *green { "green" } else { "red" },
+            days
+        ));
+    }
+    out
+}
+
+/// F200 v8 自检（deep7 表）。
+pub fn run_walkall_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v8");
+
+    // 雷达：占比、空域诚实、综合分。
+    let radar = coverage_radar(&[("A", 3, 4), ("B", 0, 2), ("C", 0, 0)]);
+    set.add("radar ratio", radar[0].green_ratio == 750, "3/4 = 750‰");
+    set.add("radar empty", radar[2].green_ratio == 0 && radar[2].total == 0, "空域报 0");
+    set.add("radar overall", radar_overall(&radar) == 375, "(750+0)/2 空域不计");
+    set.add("radal all empty", radar_overall(&coverage_radar(&[])) == 0, "无域零分");
+
+    // 证据链：完好/断 id/日期倒流。
+    let ok = evidence_chain_check(&[(1, 10), (2, 12), (3, 12)]);
+    set.add("chain ok", ok.id_break.is_none() && ok.date_regress.is_none(), "同日不算倒流");
+    let brk = evidence_chain_check(&[(1, 10), (5, 11)]);
+    set.add("chain id brk", brk.id_break == Some((1, 5)), "");
+    let reg = evidence_chain_check(&[(1, 20), (2, 10)]);
+    set.add("chain date reg", reg.date_regress == Some((20, 10)), "");
+
+    // 陈旧预警：四态与文案。
+    set.add("stale ok", staleness_text(&staleness_of(60)).is_empty(), "");
+    set.add("stale soon", staleness_text(&staleness_of(15)).contains("复检"), "");
+    set.add("stale urgent", staleness_text(&staleness_of(3)).contains("本周"), "");
+    set.add("stale expired", staleness_text(&staleness_of(-1)).contains("转红"), "过期必带行动");
+
+    // CSV：表头 + 行数 + 状态词。
+    let csv = walk_export_csv(&[(1, "A", true, 90), (2, "B", false, -3)]);
+    set.add("csv header", csv.starts_with("id,domain,state,days_left\n"), "");
+    set.add("csv rows", csv.lines().count() == 3, "表头 + 2 行");
+    set.add("csv state", csv.contains(",green,90") && csv.contains(",red,-3"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v7_radar_full_green() {
+        // 全绿域 = 1000‰，综合分 = 1000。
+        let r = coverage_radar(&[("A", 5, 5), ("B", 7, 7)]);
+        assert_eq!(radar_overall(&r), 1000);
+    }
+
+    #[test]
+    fn f200_v7_chain_empty() {
+        // 空链/单条链都完好。
+        assert!(evidence_chain_check(&[]).id_break.is_none());
+        assert!(evidence_chain_check(&[(1, 5)]).id_break.is_none());
+    }
+
+    #[test]
+    fn f200_v7_csv_roundtrip_lines() {
+        // 空台账只有表头（导出不造数据）。
+        let csv = walk_export_csv(&[]);
+        assert_eq!(csv.lines().count(), 1);
+    }
+
+    #[test]
+    fn f200_v7_run_checks_pass() {
+        assert!(run_walkall_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b6：季度进度账 / 域排名 / 证据密度统计。
+// ---------------------------------------------------------------------------
+
+/// 季度进度账（期初绿数 → 当前绿数 → 进度 permille）。
+pub struct QuarterProgress {
+    pub start_green: usize,
+    pub now_green: usize,
+    pub goal_green: usize,
+    /// 进度（本期新增 / 目标缺口）。
+    pub progress_permille: u64,
+}
+
+/// 进度计算（零缺口放 1000——目标已达成）。
+pub fn quarter_progress(start_green: usize, now_green: usize, goal_green: usize) -> QuarterProgress {
+    let gap = goal_green.saturating_sub(start_green);
+    let done = now_green.saturating_sub(start_green);
+    let progress = if gap == 0 { 1000 } else { (done as u64 * 1000 / gap as u64).min(1000) };
+    QuarterProgress { start_green, now_green, goal_green, progress_permille: progress }
+}
+
+/// 域排名（按绿数占比降序——雷达图的排序数据源；空域垫底）。
+pub fn domain_rank(per_domain: &[(&'static str, usize, usize)]) -> Vec<&'static str> {
+    let mut scored: Vec<(u64, u64, &'static str)> = per_domain
+        .iter()
+        .map(|(d, g, t)| {
+            let ratio = if *t == 0 { 0 } else { *g as u64 * 1000 / *t as u64 };
+            (ratio, *t as u64, *d)
+        })
+        .collect();
+    scored.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    scored.into_iter().map(|(_, _, d)| d).collect()
+}
+
+/// 证据密度统计（每域证据条数 → 最厚/最薄域——补证优先级的依据）。
+pub fn evidence_density(per_domain: &[(&'static str, usize)]) -> (Option<&'static str>, Option<&'static str>) {
+    if per_domain.is_empty() {
+        return (None, None);
+    }
+    let mut thickest = per_domain[0];
+    let mut thinnest = per_domain[0];
+    for d in per_domain.iter().skip(1) {
+        if d.1 > thickest.1 {
+            thickest = *d;
+        }
+        if d.1 < thinnest.1 {
+            thinnest = *d;
+        }
+    }
+    (Some(thickest.0), Some(thinnest.0))
+}
+
+/// F200 v8-b6 自检（并入 deep7 表族）。
+pub fn run_walkall_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v8b");
+
+    // 季度进度：半程/满程/超额/零目标。
+    let q1 = quarter_progress(2, 7, 12);
+    set.add("q half", q1.progress_permille == 500, "(7-2)/(12-2) = 500‰");
+    let q2 = quarter_progress(2, 12, 12);
+    set.add("q full", q2.progress_permille == 1000, "");
+    let q3 = quarter_progress(2, 15, 12);
+    set.add("q over", q3.progress_permille == 1000, "超额封顶不倒挂");
+    let q4 = quarter_progress(12, 12, 12);
+    set.add("q zero gap", q4.progress_permille == 1000, "已达标零缺口");
+
+    // 域排名：占比降序、空域垫底。
+    let rk = domain_rank(&[("A", 3, 4), ("B", 1, 4), ("C", 0, 0), ("D", 4, 4)]);
+    set.add("rank order", rk == vec!["D", "A", "B", "C"], "满绿 > 750‰ > 250‰ > 空域");
+
+    // 证据密度：最厚/最薄。
+    let (th, tn) = evidence_density(&[("A", 5), ("B", 2), ("C", 9)]);
+    set.add("density thickest", th == Some("C"), "");
+    set.add("density thinnest", tn == Some("B"), "");
+    let (th2, tn2) = evidence_density(&[]);
+    set.add("density empty", th2.is_none() && tn2.is_none(), "");
+    // b7-wave2：证据批量补录 / 红线看板。
+    set.add("batch plan", backfill_plan(&[(1, -5), (2, 10), (3, -40)]) == vec![1, 3], "负余量两项入补录清单");
+    set.add("batch empty", backfill_plan(&[]).is_empty(), "");
+    set.add("redline board", redline_board(&[("F001", 0), ("F002", 3), ("F003", 1)]) == vec!["F003", "F002"], "红项按缺口升序");
+    set.add("redline clear", redline_board(&[("F001", 0)]).is_empty(), "全绿看板为空");
+    // b8-wave3：台账周报行。
+    set.add("weekly row", weekly_report_line(10, 12, 2, 40).contains("+2"), "周报带增量");
+    set.add("weekly regress", weekly_report_line(12, 10, 0, 40).contains("-2"), "回潮如实报负");
+    // b9-wave4：两期快照对比。
+    set.add("snap diff", { let d = snapshot_diff(&[1, 2, 3], &[2, 3, 4]); d == (vec![1], vec![4]) }, "掉了 1 新进 4");
+    set.add("snap same", { let d = snapshot_diff(&[1], &[1]); d.0.is_empty() && d.1.is_empty() }, "同快照零差");
+    set.add("snap from empty", { let d = snapshot_diff(&[], &[1, 2]); d.0.is_empty() && d.1 == vec![1, 2] }, "从零起步全算新增");
+    // b10-wave5：补录完成率 / 域覆盖趋势。
+    set.add("backfill rate", backfill_rate(2, 8) == 250, "2/8 = 250‰");
+    set.add("backfill full", backfill_rate(8, 8) == 1000, "");
+    set.add("backfill zero", backfill_rate(0, 0) == 1000, "零待补 = 完成");
+    set.add("domain trend", domain_trend(700, 750) == "up", "占比升 = up");
+    set.add("domain flat", domain_trend(750, 750) == "flat", "");
+    // b11-wave6：台账 JSON 导出行 / 域覆盖 CSV。
+    set.add("ledger json", ledger_export_json(&[(1, true)]).starts_with("{\"items\":["), "JSON 形状");
+    set.add("domain csv", domain_csv(&[("A", 750)]).starts_with("domain,green_permille\n"), "CSV 表头");
+    // b12-wave7：补录 CSV / 台账项计数。
+    set.add("backfill csv", backfill_csv(&[(1, 5)]).starts_with("id,days_over\n"), "CSV 表头");
+    // b13-wave8：季检 ETA 行。
+    set.add("quarter eta", quarter_eta(20, 4) == "预计还需 1 小时（4 域 × 20 分钟/域）", "20min×4 域 = 80min → 1 小时");
+    // b14-wave9：季检 CSV。
+    set.add("quarter csv", quarter_csv(&[("Q1", 10, 2)]).starts_with("quarter,green,red\n"), "CSV 表头");
+    set.add("ledger items", { let mut w = WalkAll::new(); w.register("F001", "A 兼容", vec!["c1"]); w.anchors.len() == 1 }, "台账计数");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v8b_rank_tie_by_total() {
+        // 同占比按总量大者靠前（更可信的占比）。
+        let rk = domain_rank(&[("A", 1, 2), ("B", 2, 4)]);
+        assert_eq!(rk, vec!["B", "A"]);
+    }
+
+    #[test]
+    fn f200_v8b_progress_never_regress() {
+        // 期初 > 现在（红项回潮）→ 进度 0 不为负。
+        let q = quarter_progress(10, 5, 20);
+        assert_eq!(q.progress_permille, 0);
+    }
+
+    #[test]
+    fn f200_v8b_density_single() {
+        let (th, tn) = evidence_density(&[("X", 3)]);
+        assert_eq!(th, Some("X"));
+        assert_eq!(tn, Some("X"));
+    }
+
+    #[test]
+    fn f200_v8b_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：证据批量补录计划 / 红线项看板。
+// 判据源：主册【验收判据】「红项必须在看板上可见且有补录路径」。
+// ---------------------------------------------------------------------------
+
+/// 补录计划（days_left < 0 的项按缺口绝对值降序出清单——最过期先补）。
+pub fn backfill_plan(items: &[(u64, i64)]) -> Vec<u64> {
+    let mut over: Vec<(u64, i64)> = items.iter().filter(|(_, d)| *d < 0).copied().collect();
+    over.sort_by_key(|(id, d)| (-*d, *id));
+    over.into_iter().map(|(id, _)| id).collect()
+}
+
+/// 红线看板（red_counts: (项, 红项数) → 有红的项按红数升序——先清小的）。
+pub fn redline_board(red_counts: &[(&'static str, usize)]) -> Vec<&'static str> {
+    let mut rows: Vec<(usize, &'static str)> = red_counts
+        .iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(name, n)| (*n, *name))
+        .collect();
+    rows.sort_by_key(|(n, _)| *n); // 只按红数稳定排序——同数保持输入序。
+    rows.into_iter().map(|(_, name)| name).collect()
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v8c_backfill_tie_break() {
+        // 同缺口按 id 升序（稳定策略）。
+        let p = backfill_plan(&[(9, -3), (2, -3)]);
+        assert_eq!(p, vec![2, 9]);
+    }
+
+    #[test]
+    fn f200_v8c_board_stable() {
+        // 同红数保持输入序（sort_by key 稳定）。
+        let b = redline_board(&[("B", 2), ("A", 2)]);
+        assert_eq!(b, vec!["B", "A"]);
+    }
+
+    #[test]
+    fn f200_v8c_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：台账周报行（周界 greens 快照 → 一行人话）。
+// 判据源：主册【交互设计】「进度类信息以周报粒度主动呈现」。
+// ---------------------------------------------------------------------------
+
+/// 周报行（上周绿数 / 本周绿数 / 本周新红 / 距季度目标天数）。
+pub fn weekly_report_line(last_green: usize, now_green: usize, new_red: usize, days_to_goal: u64) -> alloc::string::String {
+    let diff = now_green as i64 - last_green as i64;
+    let trend = if diff >= 0 {
+        alloc::format!("+{}", diff)
+    } else {
+        alloc::format!("{}", diff)
+    };
+    let red_note = if new_red > 0 {
+        alloc::format!("，新增红项 {} 条", new_red)
+    } else {
+        alloc::string::String::new()
+    };
+    alloc::format!("本周绿 {}（{}）{}，距季度复盘 {} 天", now_green, trend, red_note, days_to_goal)
+}
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：台账两期快照对比（掉了哪些绿 / 新进了哪些绿）。
+// 判据源：主册【交互设计】「环比用集合差呈现，不拿总数含糊」。
+// ---------------------------------------------------------------------------
+
+/// 快照对比（上期绿项集 → 本期绿项集 → (掉绿, 新绿)）。
+pub fn snapshot_diff(prev: &[u64], now: &[u64]) -> (Vec<u64>, Vec<u64>) {
+    let dropped: Vec<u64> = prev.iter().filter(|p| !now.contains(p)).copied().collect();
+    let gained: Vec<u64> = now.iter().filter(|n| !prev.contains(n)).copied().collect();
+    (dropped, gained)
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v9_diff_conservation() {
+        // 掉 + 新 + 交集 = 本期并集守恒（差分数学）。
+        let prev = [1u64, 2, 3, 4];
+        let now = [3u64, 4, 5, 6];
+        let (d, g) = snapshot_diff(&prev, &now);
+        assert_eq!(d, vec![1, 2]);
+        assert_eq!(g, vec![5, 6]);
+        assert_eq!(prev.len() - d.len() + g.len(), now.len());
+    }
+
+    #[test]
+    fn f200_v9_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：补录完成率 / 域覆盖趋势。
+// ---------------------------------------------------------------------------
+
+/// 补录完成率（已补 / 应补 permille；零待补 = 完成）。
+pub fn backfill_rate(done: u64, total: u64) -> u64 {
+    if total == 0 {
+        return 1000;
+    }
+    done * 1000 / total
+}
+
+/// 域覆盖趋势（上期占比 → 本期占比 → up/down/flat；±10‰ 内算平）。
+pub fn domain_trend(prev_permille: u64, now_permille: u64) -> &'static str {
+    if now_permille > prev_permille + 10 {
+        "up"
+    } else if now_permille + 10 < prev_permille {
+        "down"
+    } else {
+        "flat"
+    }
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v10_trend_boundary() {
+        // 恰 ±10‰ 算平（死区防抖）。
+        assert_eq!(domain_trend(700, 710), "flat");
+        assert_eq!(domain_trend(710, 700), "flat");
+    }
+
+    #[test]
+    fn f200_v10_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：台账 JSON 导出 / 域覆盖 CSV。
+// ---------------------------------------------------------------------------
+
+/// 台账 JSON 导出。
+pub fn ledger_export_json(items: &[(u64, bool)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("{\"items\":[");
+    for (i, (id, green)) in items.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&alloc::format!("{{\"id\":{},\"green\":{}}}", id, green));
+    }
+    out.push_str("]}");
+    out
+}
+
+/// 域覆盖 CSV。
+pub fn domain_csv(rows: &[(&'static str, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("domain,green_permille\n");
+    for (d, p) in rows {
+        out.push_str(&alloc::format!("{},{}\n", d, p));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v11_json_empty() {
+        assert_eq!(ledger_export_json(&[]), "{\"items\":[]}");
+    }
+
+    #[test]
+    fn f200_v11_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：补录 CSV / 台账项计数。
+// ---------------------------------------------------------------------------
+
+/// 补录 CSV（id,days_over）。
+pub fn backfill_csv(rows: &[(u64, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("id,days_over\n");
+    for (id, days) in rows {
+        out.push_str(&alloc::format!("{},{}\n", id, days));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v12_csv_empty() {
+        assert_eq!(backfill_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f200_v12_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：季检 ETA 行。
+// ---------------------------------------------------------------------------
+
+/// 季检 ETA（每域耗时分钟 × 域数 → 人话）。
+pub fn quarter_eta(min_per_domain: u64, domains: u64) -> alloc::string::String {
+    alloc::format!("预计还需 {} 小时（{} 域 × {} 分钟/域）", min_per_domain * domains / 60, domains, min_per_domain)
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v13_eta_exact() {
+        assert!(quarter_eta(60, 6).contains("6 小时"));
+    }
+
+    #[test]
+    fn f200_v13_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：季检 CSV。
+// ---------------------------------------------------------------------------
+
+/// 季检 CSV（quarter,green,red）。
+pub fn quarter_csv(rows: &[(&str, usize, usize)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("quarter,green,red\n");
+    for (q, g, r) in rows {
+        out.push_str(&alloc::format!("{},{},{}\n", q, g, r));
+    }
+    out
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v14_csv_empty() {
+        assert_eq!(quarter_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f200_v14_run_checks_pass() {
+        assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-deep8（终波）：季检日程提醒 / 证据到期预警 / 红项责任人分组 / 里程碑时间线。
+// 判据源：主册【交互设计】「季检结果归档进季报；红项必须在看板上可见且有补录路径」。
+// ---------------------------------------------------------------------------
+
+/// 季检日程提醒档位（当日 / 30 天内临近 / 更远宽裕）。
+pub fn quarter_reminder_level(days_left: u64) -> &'static str {
+    if days_left == 0 {
+        "today"
+    } else if days_left <= 30 {
+        "soon"
+    } else {
+        "calm"
+    }
+}
+
+/// 季检日程提醒行（总检页顶部的日程条——人话，不吓人也不装没事）。
+pub fn quarter_reminder_line(days_left: u64) -> alloc::string::String {
+    match quarter_reminder_level(days_left) {
+        "today" => alloc::string::String::from("季检今日执行——先跑脚本再写季报"),
+        "soon" => alloc::format!("距季检窗口关闭还有 {} 天——本周排期", days_left),
+        _ => alloc::format!("距季检还有 {} 天——日程宽裕", days_left),
+    }
+}
+
+/// 证据到期预警档位（<0 已过期 / ≤7 天临界 / 其余在期）。
+pub fn evidence_expiry_band(days_left: i64) -> &'static str {
+    if days_left < 0 {
+        "expired"
+    } else if days_left <= 7 {
+        "critical"
+    } else {
+        "ok"
+    }
+}
+
+/// 证据到期预警清单（过期与临界项按余量升序——最紧急的排最前）。
+pub fn expiry_watchlist(items: &[(u64, i64)]) -> Vec<u64> {
+    let mut due: Vec<(u64, i64)> = items
+        .iter()
+        .filter(|(_, d)| evidence_expiry_band(*d) != "ok")
+        .copied()
+        .collect();
+    due.sort_by_key(|(id, d)| (*d, *id));
+    due.into_iter().map(|(id, _)| id).collect()
+}
+
+/// 红项责任人分组（(负责人, 红项) → 每人红项数降序——派单先派欠账多的）。
+pub fn owner_grouping(rows: &[(&'static str, &'static str)]) -> Vec<(&'static str, usize)> {
+    let mut counts: Vec<(&'static str, usize)> = Vec::new();
+    for &(owner, _) in rows {
+        match counts.iter_mut().find(|(o, _)| *o == owner) {
+            Some((_, c)) => *c += 1,
+            None => counts.push((owner, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    counts
+}
+
+/// 里程碑时间线（(天序, 事件) 按天升序 → CSV——季报第五节「总检状态」的原始行）。
+pub fn milestone_timeline_csv(rows: &[(u64, &str)]) -> alloc::string::String {
+    let mut sorted: Vec<(u64, &str)> = rows.to_vec();
+    sorted.sort_by_key(|(day, _)| *day);
+    let mut out = alloc::string::String::from("day,event\n");
+    for (day, event) in sorted {
+        out.push_str(&alloc::format!("{},{}\n", day, event));
+    }
+    out
+}
+
+/// 文本进度条（绿数/总数 → 定宽 ASCII 条——季报一页纸的行内可视化）。
+pub fn quarter_progress_bar(green: usize, total: usize, width: usize) -> alloc::string::String {
+    let filled = if total == 0 { 0 } else { green * width / total };
+    let mut bar = alloc::string::String::from("[");
+    for _ in 0..filled.min(width) {
+        bar.push('#');
+    }
+    for _ in filled.min(width)..width {
+        bar.push('-');
+    }
+    bar.push(']');
+    alloc::format!("{} {}/{}", bar, green, total)
+}
+
+/// F200 v8-deep8 自检（终波 deep8 表）。
+pub fn run_walkall_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-deep8");
+
+    // 季检日程：三档提醒不越界。
+    set.add("reminder calm", quarter_reminder_level(31) == "calm", "31 天外算宽裕");
+    set.add("reminder soon", quarter_reminder_level(30) == "soon", "30 天整即临近期");
+    set.add("reminder today", quarter_reminder_line(0).contains("今日"), "当日必须执行");
+
+    // 证据到期：档位边界 + 预警清单排序。
+    set.add("expiry expired", evidence_expiry_band(-1) == "expired", "负余量即过期");
+    set.add("expiry critical", evidence_expiry_band(7) == "critical", "七天整算临界");
+    set.add("watchlist order", expiry_watchlist(&[(1, 3), (2, -5), (3, 9), (4, 2)]) == vec![2, 4, 1], "过期最前、余量升序");
+    set.add("watchlist all ok", expiry_watchlist(&[(1, 30)]).is_empty(), "在期项不上榜");
+
+    // 责任人分组：计数降序、同数按名稳定。
+    let grp = owner_grouping(&[("甲", "F001"), ("乙", "F002"), ("甲", "F003")]);
+    set.add("owner top", grp.first() == Some(&("甲", 2)), "欠账多者排前");
+    set.add("owner empty", owner_grouping(&[]).is_empty(), "");
+
+    // 里程碑时间线：乱序入、有序出。
+    let tl = milestone_timeline_csv(&[(9, "季报归档"), (2, "清单冻结"), (5, "增补评审")]);
+    set.add("timeline header", tl.starts_with("day,event\n"), "");
+    set.add("timeline order", tl.contains("2,清单冻结") && tl.find("2,").unwrap() < tl.find("9,").unwrap(), "按天升序");
+    set.add("timeline empty", milestone_timeline_csv(&[]) == "day,event\n", "空里程碑只有表头");
+
+    // 进度条：占比成格、零除防线。
+    set.add("bar ratio", quarter_progress_bar(3, 4, 8) == "[######--] 3/4", "四分之三 = 6/8 格");
+    set.add("bar empty", quarter_progress_bar(0, 0, 4) == "[----] 0/0", "零总数不放除零");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v8d_weekly_flat() {
+        // 持平报 +0（不装作进步）。
+        assert!(weekly_report_line(5, 5, 0, 30).contains("（+0）"), "全角括号");
+    }
+
+    #[test]
+    fn f200_d8_expiry_boundary() {
+        // 恰七天临界、八天在期（预警死区边界）。
+        assert_eq!(evidence_expiry_band(7), "critical");
+        assert_eq!(evidence_expiry_band(8), "ok");
+    }
+
+    #[test]
+    fn f200_d8_owner_tie_stable() {
+        // 同红项数按负责人码点序（乙 < 甲——面板不抖）。
+        let grp = owner_grouping(&[("乙", "F001"), ("甲", "F002")]);
+        assert_eq!(grp, vec![("乙", 1), ("甲", 1)]);
+    }
+
+    #[test]
+    fn f200_d8_bar_overflow_clamped() {
+        // 超额绿也只填满一格宽（进度条不上溢）。
+        assert_eq!(quarter_progress_bar(9, 4, 4), "[####] 9/4");
+    }
+
+    #[test]
+    fn f200_d8_run_checks_pass() {
+        assert!(run_walkall_deep8_checks().all_passed());
+    }
+}

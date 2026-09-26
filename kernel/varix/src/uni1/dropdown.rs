@@ -30,10 +30,14 @@ pub struct Dropdown {
     pub scroll_top: usize,
     /// 视窗可见行数。
     pub visible_rows: usize,
+    /// v8：禁用项掩码（与 options 同长；分组标题 = 禁用项的特例——
+    /// 导航跳过、确认拒收、跳选不命中）。
+    disabled: Vec<bool>,
 }
 
 impl Dropdown {
     pub fn new(options: Vec<&'static str>, visible_rows: usize) -> Dropdown {
+        let n = options.len();
         Dropdown {
             options,
             value: 0,
@@ -44,7 +48,21 @@ impl Dropdown {
             over_budget: 0,
             scroll_top: 0,
             visible_rows: visible_rows.max(1),
+            disabled: alloc::vec![false; n],
         }
+    }
+
+    /// v8：注入禁用掩码（长度不匹配整表拒绝——不给半截掩码）。
+    pub fn set_disabled_mask(&mut self, mask: Vec<bool>) -> bool {
+        if mask.len() != self.options.len() {
+            return false;
+        }
+        self.disabled = mask;
+        true
+    }
+
+    pub fn is_disabled(&self, idx: usize) -> bool {
+        self.disabled.get(idx).copied().unwrap_or(false)
     }
 
     /// 第一招：Alt+下 / Enter = 展开收起（<100ms 记账）。空清单：
@@ -69,7 +87,8 @@ impl Dropdown {
         self.open
     }
 
-    /// 第二招：输入首字跳选（同字母循环命中；预览代值）。
+    /// 第二招：输入首字跳选（同字母循环命中；预览代值；v8 禁用项
+    /// 不命中——跳到禁用项上是假可达）。
     pub fn jump_letter(&mut self, ch: u8) -> bool {
         if !self.open || self.options.is_empty() {
             return false;
@@ -78,7 +97,7 @@ impl Dropdown {
         let n = self.options.len();
         for step in 1..=n {
             let i = (start + step) % n;
-            if self.options[i].as_bytes().first() == Some(&ch) {
+            if !self.is_disabled(i) && self.options[i].as_bytes().first() == Some(&ch) {
                 self.preview = Some(i);
                 self.follow();
                 return true;
@@ -87,14 +106,27 @@ impl Dropdown {
         false
     }
 
-    /// 第三招：方向键预览（上/下循环；滚动跟随）。
+    /// 第三招：方向键预览（上/下循环；滚动跟随；v8 禁用项跳过——
+    /// 焦点永不落在不可选的项上，含分组标题；全禁原地不动不空转）。
     pub fn preview_move(&mut self, delta: i32) {
         if !self.open || self.options.is_empty() {
             return;
         }
-        let base = self.preview.unwrap_or(self.value) as i32;
-        let n = self.options.len() as i32;
-        self.preview = Some(((base + delta).rem_euclid(n)) as usize);
+        let n = self.options.len();
+        let mut cur = self.preview.unwrap_or(self.value);
+        let mut hops = 0u64;
+        loop {
+            if hops >= n as u64 {
+                return; // 全禁：原地不动（不空转）
+            }
+            let base = cur as i32;
+            cur = ((base + delta).rem_euclid(n as i32)) as usize;
+            hops += 1;
+            if !self.is_disabled(cur) {
+                break;
+            }
+        }
+        self.preview = Some(cur);
         self.follow();
     }
 
@@ -111,12 +143,13 @@ impl Dropdown {
 
     /// 确认（Enter）：预览值落定。越界预览（外部污染残留态）→ 诚实
     /// 回收：关菜单、清预览、落定值不动（不确认一个不存在的项）。
+    /// v8：禁用项确认拒收（同诚实回收——分组标题/禁用项不可被确认）。
     pub fn confirm(&mut self) -> Option<&'static str> {
         if !self.open {
             return None;
         }
         let v = self.preview?;
-        if v >= self.options.len() {
+        if v >= self.options.len() || self.is_disabled(v) {
             self.open = false;
             self.preview = None;
             return None;
@@ -237,6 +270,49 @@ pub fn run_dropdown_checks() -> CheckSet {
         o.confirm().is_none() && o.displayed() == "甲",
         "",
     );
+    // v8：禁用项（分组标题特例）——导航跳过、跳选不命中、确认拒收、
+    // 全禁原地不动、掩码长度不匹配整表拒绝。
+    let mut g = Dropdown::new(alloc::vec!["标题 A", "甲", "乙", "标题 B", "丙"], 5);
+    set.add("f435-mask-bad-length", !g.set_disabled_mask(alloc::vec![true, false]), "");
+    set.add("f435-mask-ok", g.set_disabled_mask(alloc::vec![true, false, false, true, false]), "");
+    let _ = g.toggle(50);
+    g.preview = Some(1);
+    g.preview_move(1); // 1→2，2 可选 → 落 2
+    set.add("f435-disabled-skip-down", g.preview == Some(2), "");
+    // 从禁用项出发：0（标题 A）向下 → 1；向上环回 4、3 均禁用 → 落 2。
+    let mut h = Dropdown::new(alloc::vec!["标题 A", "甲", "乙", "标题 B", "丙"], 5);
+    let _ = h.set_disabled_mask(alloc::vec![true, false, false, true, false]);
+    let _ = h.toggle(50);
+    h.preview = Some(0);
+    h.preview_move(1);
+    set.add("f435-open-at-disabled-hops", h.preview == Some(1), "");
+    h.preview = Some(0);
+    h.preview_move(-1); // 0 上行环回 → 4（丙，可选——3 才是禁用的标题 B）
+    set.add("f435-disabled-skip-up-wrap", h.preview == Some(4), "");
+    // 跳选不命中禁用项：甲(1) 禁用后，'甲' 首字节跳不落 1。
+    let mut j = Dropdown::new(alloc::vec!["标题 A", "甲", "乙", "标题 B", "丙"], 5);
+    let _ = j.set_disabled_mask(alloc::vec![true, true, false, true, false]);
+    let _ = j.toggle(50);
+    j.preview = Some(2);
+    let hit = j.jump_letter({
+        // 「甲」的首字节——与被禁项同首字，验证跳选绕开它。
+        let first = "甲".as_bytes()[0];
+        first
+    });
+    set.add("f435-jump-skips-disabled", !hit, "唯一同首字候选被禁 → 不命中");
+    // 确认禁用预览 → 诚实回收（关菜单、落定值不动）。
+    let mut k = Dropdown::new(alloc::vec!["标题 A", "甲", "乙"], 3);
+    let _ = k.set_disabled_mask(alloc::vec![true, true, false]);
+    let _ = k.toggle(50);
+    k.preview = Some(0); // 分组标题
+    set.add("f435-confirm-disabled-honest", k.confirm().is_none() && !k.open && k.value == 0 && k.displayed() == "标题 A", "");
+    // 全禁：导航原地不动（不空转）。
+    let mut all = Dropdown::new(alloc::vec!["甲", "乙"], 2);
+    let _ = all.set_disabled_mask(alloc::vec![true, true]);
+    let _ = all.toggle(50);
+    all.preview_move(1);
+    all.preview_move(-1);
+    set.add("f435-all-disabled-no-spin", all.preview == Some(0), "");
     set
 }
 
@@ -259,5 +335,26 @@ mod tests {
         assert_eq!(d.scroll_top, 1);
         d.preview_move(1); // → 6（出视窗 [1..6) → 顶 = 2）
         assert_eq!(d.scroll_top, 2);
+    }
+
+    #[test]
+    fn disabled_mask_length_guard() {
+        let mut d = Dropdown::new(alloc::vec!["a", "b"], 2);
+        assert!(!d.set_disabled_mask(alloc::vec![true]));
+        assert!(d.set_disabled_mask(alloc::vec![true, false]));
+        assert!(d.is_disabled(0) && !d.is_disabled(1));
+        assert!(!d.is_disabled(9), "越界查询按可选处理（不 panic）");
+    }
+
+    #[test]
+    fn disabled_preview_never_settled() {
+        let mut d = Dropdown::new(alloc::vec!["甲", "乙"], 2);
+        let _ = d.set_disabled_mask(alloc::vec![true, false]);
+        let _ = d.toggle(50);
+        d.preview = Some(0); // 外部把预览塞到禁用位
+        assert!(d.confirm().is_none(), "禁用位确认拒收");
+        let _ = d.toggle(50);
+        d.preview = Some(1);
+        assert_eq!(d.confirm(), Some("乙"), "可选位正常落定");
     }
 }

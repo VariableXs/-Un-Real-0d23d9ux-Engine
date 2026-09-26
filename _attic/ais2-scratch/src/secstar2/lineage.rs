@@ -1872,3 +1872,38 @@ mod deep11_tests {
         assert!(run_lineage_deep7b_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：谱系摘要行——版本树一屏一句话。
+// 判据源：主册【设计细节】「谱系页先给结论，细节在下」。
+// ---------------------------------------------------------------------------
+
+/// 谱系摘要行（N 个版本 · 跨度 D · 分叉 K 处——分叉是事故，必点出）。
+pub fn lineage_summary_line(seqs: &[u32], edges: &[(u32, u32)]) -> alloc::string::String {
+    if seqs.is_empty() {
+        return alloc::format!("谱系为空：尚无任何已登记版本");
+    }
+    let d = lineage_depth(seqs);
+    if fork_detected(edges) {
+        alloc::format!("谱系共 {} 个版本 · 跨度 {} · 检出分叉（需人工裁断）", d.depth, d.span)
+    } else {
+        alloc::format!("谱系共 {} 个版本 · 跨度 {} · 线性无分叉", d.depth, d.span)
+    }
+}
+
+#[cfg(test)]
+mod deep12c_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v8c_summary_shapes() {
+        assert!(lineage_summary_line(&[], &[]).contains("空"));
+        let line = lineage_summary_line(&[1, 2, 3], &[(2, 1), (3, 2)]);
+        assert!(line.contains("3 个版本"));
+    }
+
+    #[test]
+    fn f199_v8c_run_checks_pass() {
+        assert!(run_lineage_deep7b_checks().all_passed());
+    }
+}

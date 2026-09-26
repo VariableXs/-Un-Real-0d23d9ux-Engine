@@ -2126,3 +2126,1125 @@ mod deep6_tests {
         assert!(run_paramwl_deep6_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v8 批次（第八轮深化 · 缺口冲刺）——变更影响图 / 白名单 diff 报告 / 分组
+// 导航树 / 值域探针生成 / ini 往返 / 多键搜索。
+// 判据源：主册【开发者篇】「参数改动前给出影响面（依赖谁/影响谁）」+
+// 【验收判据】「设置可导出为 ini 并可回读」。
+// ---------------------------------------------------------------------------
+
+/// 影响边（A 变 → B 受影响——静态登记，导入期机检覆盖）。
+pub const IMPACT_EDGES: [(&str, &str, &str); 4] = [
+    ("log-level", "verbose", "log-level 提级时 verbose 建议同步开"),
+    ("verbose", "log-level", "verbose 关闭后 log-level 调试档失效"),
+    ("safe-mode", "no-gui", "安全模式强制无界面"),
+    ("safe-mode", "no-third-drv", "安全模式附带禁第三方驱动"),
+];
+
+/// 影响集（改动 param → 直接受影响的参数名单 + 一句话理由）。
+pub fn impact_set(param: &str) -> Vec<(&'static str, &'static str)> {
+    IMPACT_EDGES
+        .iter()
+        .filter(|(from, _, _)| *from == param)
+        .map(|(_, to, why)| (*to, *why))
+        .collect()
+}
+
+/// 变更前评估行（「你改了 X，还会牵动：…」——三要素里的『为什么』前置）。
+pub fn impact_notice(param: &str, out: &mut alloc::string::String) -> bool {
+    let impacts = impact_set(param);
+    if impacts.is_empty() {
+        out.push_str("此项改动无连带影响。");
+        return false;
+    }
+    out.push_str("此项改动还会牵动：");
+    for (i, (to, why)) in impacts.iter().enumerate() {
+        if i > 0 {
+            out.push_str("；");
+        }
+        out.push_str(why);
+        let _ = to;
+    }
+    true
+}
+
+/// 白名单 diff 报告（旧旗标集 → 新旗标集：增/删两列，未动的不上报告）。
+pub fn wl_diff_report(old_flags: &[&str], new_flags: &[&str]) -> (Vec<&'static str>, Vec<&'static str>) {
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    for f in new_flags {
+        if !old_flags.contains(f) {
+            if let Some(spec) = find(f) {
+                added.push(spec.name);
+            }
+        }
+    }
+    for f in old_flags {
+        if !new_flags.contains(f) {
+            if let Some(spec) = find(f) {
+                removed.push(spec.name);
+            }
+        }
+    }
+    (added, removed)
+}
+
+/// diff 报告文本（人话三态：纯增/纯删/混合）。
+pub fn wl_diff_text(old_flags: &[&str], new_flags: &[&str]) -> alloc::string::String {
+    let (added, removed) = wl_diff_report(old_flags, new_flags);
+    match (added.len(), removed.len()) {
+        (0, 0) => alloc::string::String::from("参数无变化"),
+        (a, 0) => alloc::format!("新增 {} 项：{}", a, added.join("、")),
+        (0, r) => alloc::format!("移除 {} 项：{}", r, removed.join("、")),
+        (a, r) => alloc::format!("新增 {} 项、移除 {} 项", a, r),
+    }
+}
+
+/// 导航树节点（族 → 参数 → 徽标：在册/未在册）。
+pub struct NavEntry {
+    pub family: ParamFamily,
+    pub name: &'static str,
+    pub known: bool,
+}
+
+/// 分组导航树（全白名单按族分组——设置页左侧树的静态投影）。
+pub fn group_nav() -> Vec<(ParamFamily, Vec<NavEntry>)> {
+    let families = [ParamFamily::Debug, ParamFamily::Degrade, ParamFamily::Compat];
+    families
+        .iter()
+        .map(|f| {
+            let entries = WHITELIST
+                .iter()
+                .filter(|s| s.family == *f)
+                .map(|s| NavEntry { family: s.family, name: s.name, known: true })
+                .collect();
+            (*f, entries)
+        })
+        .collect()
+}
+
+/// 值域探针（ValueKind → (最小合法, 最大合法, 边界外样例)——校验器的测试数据源）。
+pub fn range_probe(kind: &ValueKind) -> (i64, i64, i64) {
+    match kind {
+        ValueKind::Flag => (0, 1, 2),
+        ValueKind::Int(lo, hi) => (*lo, *hi, hi + 1),
+    }
+}
+
+/// ini 导出（活跃旗标 → `[varix]\nname=true` 行——开放格式 F128）。
+pub fn ini_export(flags: &[&str]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("[varix]\n");
+    for f in flags {
+        if find(f).is_some() {
+            out.push_str(f);
+            out.push_str("=true\n");
+        }
+    }
+    out
+}
+
+/// ini 回读（只收白名单内的键——外部文件不引入未知参数）。
+pub fn ini_parse(text: &str) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('[') {
+            continue;
+        }
+        if let Some(eq) = line.find('=') {
+            let key = line[..eq].trim();
+            let val = line[eq + 1..].trim();
+            if val == "true" {
+                if let Some(spec) = find(key) {
+                    out.push(spec.name);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// 多键搜索（名前缀 / 名子串 / 族标签——一个框三种命中）。
+pub fn search_multi(query: &str) -> Vec<&'static str> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for spec in WHITELIST.iter() {
+        let name_hit = spec.name.starts_with(q) || spec.name.contains(q);
+        let family_hit = family_label(spec.family).contains(q);
+        if name_hit || family_hit {
+            out.push(spec.name);
+        }
+    }
+    out
+}
+
+/// F192 v8 自检（deep7 表）。
+pub fn run_paramwl_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v8");
+
+    // 影响图：正向/反向边、无影响项、通知文案。
+    set.add("impact fwd", impact_set("log-level").len() == 1, "log-level → verbose");
+    set.add("impact safe", impact_set("safe-mode").len() == 2, "safe-mode 牵动两项");
+    set.add("impact none", impact_set("verbose-x").is_empty(), "未知参数零影响");
+    let mut buf = alloc::string::String::new();
+    set.add("impact notice", impact_notice("safe-mode", &mut buf) && buf.contains("无界面"), "");
+    let mut buf2 = alloc::string::String::new();
+    set.add("impact notice none", !impact_notice("log-ring", &mut buf2) && buf2.contains("无连带"), "");
+
+    // diff 报告：增/删/混合/无变化四态。
+    let (a, r) = wl_diff_report(&["verbose"], &["verbose", "log-level"]);
+    set.add("diff add", a.len() == 1 && r.is_empty(), "");
+    let (a2, r2) = wl_diff_report(&["verbose", "log-level"], &["verbose"]);
+    set.add("diff del", a2.is_empty() && r2.len() == 1, "");
+    set.add("diff text none", wl_diff_text(&["verbose"], &["verbose"]).contains("无变化"), "");
+    set.add("diff text add", wl_diff_text(&[], &["verbose"]).contains("新增 1 项"), "");
+
+    // 导航树：三族齐、条目守恒、全 known。
+    let nav = group_nav();
+    set.add("nav families", nav.len() == 3, "");
+    let total: usize = nav.iter().map(|(_, e)| e.len()).sum();
+    set.add("nav conserve", total == WHITELIST.len(), "树条目 = 白名单全量");
+    set.add("nav known", nav.iter().all(|(_, e)| e.iter().all(|n| n.known)), "");
+
+    // 值域探针：Flag 与 Int 两态。
+    let (lo, hi, out) = range_probe(&ValueKind::Int(1, 9));
+    set.add("probe int", lo == 1 && hi == 9 && out == 10, "界外样例 = hi+1");
+    let (lo2, hi2, _) = range_probe(&ValueKind::Flag);
+    set.add("probe flag", lo2 == 0 && hi2 == 1, "");
+
+    // ini 往返：导出 → 回读恒等（开放格式的保真底线）。
+    let flags = ["verbose", "log-level", "legacy-timer"];
+    let ini = ini_export(&flags);
+    set.add("ini has header", ini.starts_with("[varix]\n"), "");
+    set.add("ini roundtrip", ini_parse(&ini).len() == 3, "三键全回读");
+    let unknown = ini_export(&["verbose"]) .replace("verbose", "nonexist-key");
+    set.add("ini reject unknown", ini_parse(&unknown).is_empty(), "未在册键不回收");
+
+    // 多键搜索：前缀/子串/族/空。
+    set.add("search prefix", search_multi("log").contains(&"log-level"), "");
+    set.add("search family", search_multi("调试").iter().any(|n| find(n).map(|s| s.family) == Some(ParamFamily::Debug)), "族标签命中");
+    set.add("search empty", search_multi("  ").is_empty(), "空查询零命中");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v8_impact_edges_symmetric_guard() {
+        // 边守恒：每条边两端都是白名单成员（登记表不许指向幽灵参数）。
+        for (from, to, why) in IMPACT_EDGES {
+            assert!(find(from).is_some(), "edge from {} not in wl", from);
+            assert!(find(to).is_some(), "edge to {} not in wl", to);
+            assert!(!why.is_empty());
+        }
+    }
+
+    #[test]
+    fn f192_v8_ini_roundtrip_large() {
+        // 全量往返：13 参全开 → 导出 → 回读 = 全量（顺序无关，集合守恒）。
+        let all: Vec<&'static str> = WHITELIST.iter().map(|s| s.name).collect();
+        let ini = ini_export(&all);
+        let back = ini_parse(&ini);
+        assert_eq!(back.len(), WHITELIST.len());
+        for name in &all {
+            assert!(back.contains(name));
+        }
+    }
+
+    #[test]
+    fn f192_v8_search_family_buckets() {
+        // 按族搜：三族的搜索结果恰好等于各族成员（检索完备性）。
+        for f in [ParamFamily::Debug, ParamFamily::Degrade, ParamFamily::Compat] {
+            let label = family_label(f);
+            let hits = search_multi(label);
+            let expect: Vec<&'static str> = WHITELIST
+                .iter()
+                .filter(|s| s.family == f)
+                .map(|s| s.name)
+                .collect();
+            assert_eq!(hits.len(), expect.len(), "family {} hits", label);
+        }
+    }
+
+    #[test]
+    fn f192_v8_run_checks_pass() {
+        assert!(run_paramwl_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b4：互斥参数检测 / 外部参数导入校验 / 帮助索引 / verdict 回放确定性。
+// ---------------------------------------------------------------------------
+
+/// 互斥对（同开必冲突——导入期机检覆盖白名单真实性）。
+pub const MUTEX_PAIRS: [(&str, &str, &str); 2] = [
+    ("verbose", "selftest-only", "自检模式不开详细日志（两者抢串口）"),
+    ("legacy-timer", "no-acpi", "传统定时器与停用 ACPI 不可同开（时钟源冲突）"),
+];
+
+/// 互斥冲突检测（活跃旗标集 → 冲突清单）。
+pub fn mutex_conflicts(active: &[&str]) -> Vec<(&'static str, &'static str)> {
+    MUTEX_PAIRS
+        .iter()
+        .filter(|(a, b, _)| active.contains(a) && active.contains(b))
+        .map(|(a, b, _)| (*a, *b))
+        .collect()
+}
+
+/// 导入校验汇总（逐行 verdict 的批结果）。
+pub struct ImportSummary {
+    pub accepted: usize,
+    pub rejected: usize,
+    pub unknown: usize,
+    /// 冲突对（导入后集内互斥）。
+    pub conflicts: Vec<(&'static str, &'static str)>,
+}
+
+/// 导入汇总（flags：外部参数文件解析出的旗标名）。
+pub fn import_summary(flags: &[&str]) -> ImportSummary {
+    let mut accepted = 0usize;
+    let mut unknown = 0usize;
+    let mut known_flags: Vec<&str> = Vec::new();
+    for f in flags {
+        if find(f).is_some() {
+            accepted += 1;
+            known_flags.push(f);
+        } else {
+            unknown += 1;
+        }
+    }
+    // 引用静态名做冲突检测（known 里的名字都来自白名单）。
+    let static_flags: Vec<&'static str> = known_flags
+        .iter()
+        .filter_map(|f| find(f).map(|s| s.name))
+        .collect();
+    ImportSummary { accepted, rejected: 0, unknown, conflicts: mutex_conflicts(&static_flags) }
+}
+
+/// 帮助索引条目。
+pub struct HelpIndexRow {
+    pub name: &'static str,
+    pub note: &'static str,
+}
+
+/// 帮助索引（名 + 说明——搜索框的静态数据源）。
+pub fn help_index() -> Vec<HelpIndexRow> {
+    WHITELIST
+        .iter()
+        .map(|s| HelpIndexRow { name: s.name, note: s.note })
+        .collect()
+}
+
+/// 帮助搜索（名或说明命中都算——帮助可发现性）。
+pub fn help_search(query: &str) -> Vec<&'static str> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Vec::new();
+    }
+    WHITELIST
+        .iter()
+        .filter(|s| s.name.contains(q) || s.note.contains(q))
+        .map(|s| s.name)
+        .collect()
+}
+
+/// verdict 回放确定性（同输入序列重放 → 结果逐位一致——审计可复现）。
+pub fn replay_deterministic(inputs: &[&str]) -> bool {
+    let run = || -> Vec<&'static str> {
+        let mut wl = ParamWhitelist::new();
+        inputs
+            .iter()
+            .flat_map(|i| wl.check_line(i).into_iter())
+            .map(|v| verdict_kind(&v))
+            .collect()
+    };
+    run() == run()
+}
+
+/// F192 v8-b4 自检（并入 deep7 表）。
+pub fn run_paramwl_deep7b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v8b");
+
+    // 互斥：冲突检出 / 干净集 / 对账双方都在册。
+    let cf = mutex_conflicts(&["verbose", "selftest-only"]);
+    set.add("mutex found", cf.len() == 1, "");
+    set.add("mutex clean", mutex_conflicts(&["verbose"]).is_empty(), "");
+    for (a, b, why) in MUTEX_PAIRS {
+        set.add("mutex in wl", find(a).is_some() && find(b).is_some() && !why.is_empty(), "互斥对全在册");
+    }
+
+    // 导入汇总：收/拒/未知三分账 + 冲突升级。
+    let sum = import_summary(&["verbose", "log-level", "ghost-param"]);
+    set.add("import split", sum.accepted == 2 && sum.unknown == 1, "");
+    set.add("import no conflict", sum.conflicts.is_empty(), "");
+    let sum2 = import_summary(&["verbose", "selftest-only"]);
+    set.add("import conflict", sum2.conflicts.len() == 1, "导入集内互斥必点名");
+
+    // 帮助索引：全量 + 搜索（名/说明双键）。
+    set.add("help full", help_index().len() == WHITELIST.len(), "");
+    set.add("help name", help_search("log").contains(&"log-level"), "");
+    set.add("help note", help_search("串口").contains(&"verbose"), "说明文命中");
+    set.add("help empty", help_search("").is_empty(), "");
+
+    // 回放确定性。
+    let inputs = ["verbose", "log-level=3", "ghost", "log-level=9"];
+    set.add("replay deterministic", replay_deterministic(&inputs), "同输入重放逐位一致");
+    // b7-wave2：版本迁移 / 参数指纹 / 导入干跑。
+    set.add("mig renamed", migrate_key("log-level").contains("log"), "改名映射保语义");
+    set.add("mig same", migrate_key("verbose") == "verbose", "未改名直通");
+    set.add("mig ghost", migrate_key("ghost-x").is_empty(), "幽灵参数迁移为空并留痕");
+    set.add("fp stable", param_fingerprint(&["verbose", "log-level"]) == param_fingerprint(&["log-level", "verbose"]), "指纹与顺序无关");
+    set.add("fp differs", param_fingerprint(&["verbose"]) != param_fingerprint(&["verbose", "log-level"]), "集异指纹异");
+    set.add("fp empty", param_fingerprint(&[]).is_empty(), "空集空指纹");
+    set.add("dryrun ok", import_dry_run(&["verbose", "log-level"]).is_none(), "干净导入零问题");
+    set.add("dryrun issues", import_dry_run(&["ghost", "verbose", "selftest-only"]) == Some(2), "1 未知 + 1 互斥 = 2 条问题");
+    // b8-wave3：参数组预设 / tooltip / JSON 导出。
+    set.add("preset perf", preset_flags("perf") == vec!["verbose", "log-level"], "性能预设两项");
+    set.add("preset quiet", preset_flags("quiet").is_empty(), "安静预设零旗标");
+    set.add("preset diag", preset_flags("diag").contains(&"selftest-only"), "诊断预设含自检");
+    set.add("preset unknown", preset_flags("zzz").is_empty(), "未知预设不倾泻");
+    set.add("tooltip", tooltip_line("log-level").contains("0-5"), "tooltip 带值域说明");
+    set.add("tooltip missing", tooltip_line("ghost").is_empty(), "未在册零 tooltip");
+    set.add("json export", preset_export_json(&["verbose"]).starts_with("{\"flags\":["), "JSON 形状");
+    // b9-wave4：使用频率账 / 批量重置 / 帮助按频次排序。
+    set.add("usage count", { let mut u = UsageCounter::new(); u.hit("verbose"); u.hit("verbose"); u.hit("ktrace"); u.top(2) == vec!["verbose", "ktrace"] }, "按频次降序");
+    set.add("usage empty", UsageCounter::new().top(3).is_empty(), "空账空榜");
+    set.add("usage cap", { let mut u = UsageCounter::new(); u.hit("verbose"); u.top(0).is_empty() }, "零容量空榜");
+    set.add("reset batch", { let mut u = UsageCounter::new(); u.hit("verbose"); u.reset_all(); u.top(3).is_empty() }, "批量重置清账");
+    set.add("help sorted", { let rows = help_index_sorted_by_usage(&UsageCounter::new()); rows.len() == WHITELIST.len() }, "帮助索引全量返回");
+    // b10-wave5：白名单哈希锚 / 预设分享串。
+    set.add("wl anchor", !wl_hash_anchor().is_empty(), "锚非空");
+    set.add("wl anchor stable", wl_hash_anchor() == wl_hash_anchor(), "同表同锚（防篡改自检基准）");
+    set.add("share encode", share_encode("perf").contains("perf"), "分享串含预设名");
+    set.add("share decode", share_decode(&share_encode("diag")) == Some("diag"), "分享串可回读");
+    set.add("share bad", share_decode("!!").is_none(), "非法串拒收");
+    // b11-wave6：白名单 CSV 导出 / 搜索防抖建议。
+    set.add("wl csv", wl_export_csv().starts_with("name,family,kind\n"), "CSV 表头");
+    set.add("wl csv rows", wl_export_csv().lines().count() == WHITELIST.len() + 1, "13 参 13 行");
+    set.add("debounce hint", search_debounce_hint(3) == "输入停顿 300ms 后搜索", "快打不急搜");
+    set.add("debounce instant", search_debounce_hint(600) == "", "停顿够长直接搜");
+    // b12-wave7：参数分布饼账 / 族内搜索计数。
+    set.add("family share", family_share(ParamFamily::Debug) == 6, "调试族 6 参");
+    set.add("family share d", family_share(ParamFamily::Degrade) == 3, "降级族 3 参");
+    set.add("family share c", family_share(ParamFamily::Compat) == 4, "兼容族 4 参");
+    set.add("share sum", family_share(ParamFamily::Debug) + family_share(ParamFamily::Degrade) + family_share(ParamFamily::Compat) == WHITELIST.len(), "分族守恒");
+    // b13-wave8：参数别名表（常用简称 → 正名）。
+    set.add("alias hit", alias_lookup("ll") == Some("log-level"), "简称 ll → log-level");
+    set.add("alias miss", alias_lookup("zz").is_none(), "未知简称落空");
+    set.add("alias in wl", ALIAS_TABLE.iter().all(|(_, full)| find(full).is_some()), "别名全指向在册参数");
+    // b14-wave9：默认值账 / 改动撤销栈。
+    set.add("defaults exist", DEFAULT_OFF_FLAGS.len() >= 1, "默认关闭名单在册");
+    set.add("defaults all flag", DEFAULT_OFF_FLAGS.iter().all(|n| find(n).map(|s| matches!(s.kind, ValueKind::Flag)).unwrap_or(false)), "默认名单全为旗标");
+    set.add("undo stack", { let mut u = ChangeUndo::new(); u.push("log-level", "调到 3"); u.pop() == Some("log-level") }, "改动可撤销");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7b_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v8b_mutex_symmetric() {
+        // 互斥对称：顺序无关（a,b 同开与 b,a 同开等价）。
+        assert_eq!(mutex_conflicts(&["verbose", "selftest-only"]).len(), 1);
+        assert_eq!(mutex_conflicts(&["selftest-only", "verbose"]).len(), 1);
+    }
+
+    #[test]
+    fn f192_v8b_import_all_unknown() {
+        let s = import_summary(&["x", "y"]);
+        assert_eq!(s.unknown, 2);
+        assert_eq!(s.accepted, 0);
+        assert!(s.conflicts.is_empty());
+    }
+
+    #[test]
+    fn f192_v8b_help_index_unique() {
+        // 索引名唯一（帮助页不许重复条目）。
+        let idx = help_index();
+        for (i, a) in idx.iter().enumerate() {
+            for b in idx.iter().skip(i + 1) {
+                assert_ne!(a.name, b.name);
+            }
+        }
+    }
+
+    #[test]
+    fn f192_v8b_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b7（第二波）：白名单版本迁移 / 参数集指纹 / 导入干跑。
+// 判据源：主册【开发者篇】「参数改名必须保留旧名一版（迁移映射）」。
+// ---------------------------------------------------------------------------
+
+/// 改名迁移映射（旧名 → 新名；未改名的直通）。
+pub const RENAME_MAP: [(&str, &str); 1] = [("log-lvl", "log-level")];
+
+/// 键迁移（旧名映射新名 / 在册名直通 / 幽灵名返回空——调用方留痕）。
+pub fn migrate_key(name: &str) -> &'static str {
+    if let Some((_, new)) = RENAME_MAP.iter().find(|(old, _)| *old == name) {
+        return new;
+    }
+    match find(name) {
+        Some(spec) => spec.name,
+        None => "",
+    }
+}
+
+/// 参数集指纹（名字排序后 FNV-1a 64——配置漂移对比的轻量凭据）。
+pub fn param_fingerprint(flags: &[&str]) -> alloc::string::String {
+    if flags.is_empty() {
+        return alloc::string::String::new();
+    }
+    let mut sorted: Vec<&str> = flags.to_vec();
+    sorted.sort();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for name in &sorted {
+        for b in name.bytes() {
+            hash ^= b as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash ^= 0xff; // 名间分隔。
+    }
+    alloc::format!("{:016x}", hash)
+}
+
+/// 导入干跑（返回问题计数：未知参数 + 互斥冲突 + 超长键；None = 零问题）。
+pub fn import_dry_run(flags: &[&str]) -> Option<usize> {
+    let mut problems = 0usize;
+    for f in flags {
+        if find(f).is_none() && RENAME_MAP.iter().all(|(old, _)| *old != *f) {
+            problems += 1;
+        }
+        if f.len() > PARAM_MAX_LEN {
+            problems += 1;
+        }
+    }
+    problems += mutex_conflicts(flags).len();
+    if problems == 0 {
+        None
+    } else {
+        Some(problems)
+    }
+}
+
+#[cfg(test)]
+mod deep7c_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v8c_migrate_map_in_wl() {
+        // 映射目标必须在册（迁移不许指向幽灵）。
+        for (_, new) in RENAME_MAP {
+            assert!(find(new).is_some(), "migrate target {} missing", new);
+        }
+    }
+
+    #[test]
+    fn f192_v8c_fingerprint_deterministic() {
+        // 同集重算恒等（指纹可复现）。
+        let a = param_fingerprint(&["verbose", "ktrace"]);
+        let b = param_fingerprint(&["ktrace", "verbose"]);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn f192_v8c_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+
+// ---------------------------------------------------------------------------
+// v8-b8（第三波）：参数组预设 / tooltip 生成 / 预设 JSON 导出。
+// 判据源：主册【交互设计】「高级参数按场景打包为一键预设」。
+// ---------------------------------------------------------------------------
+
+/// 场景预设（预设名 → 旗标集——三档打包，未知名零倾泻）。
+pub fn preset_flags(preset: &str) -> Vec<&'static str> {
+    match preset {
+        "perf" => vec!["verbose", "log-level"],
+        "quiet" => vec![],
+        "diag" => vec!["selftest-only", "ktrace"],
+        _ => vec![],
+    }
+}
+
+/// tooltip 行（参数 → 一句话说明，带值域——悬浮即懂）。
+pub fn tooltip_line(name: &str) -> alloc::string::String {
+    match find(name) {
+        Some(spec) => match spec.kind {
+            ValueKind::Flag => alloc::format!("{}：出现即生效（旗标）", spec.note),
+            ValueKind::Int(lo, hi) => alloc::format!("{}（取值 {}-{}）", spec.note, lo, hi),
+        },
+        None => alloc::string::String::new(),
+    }
+}
+
+/// 预设导出 JSON（开放格式——预设可分享）。
+pub fn preset_export_json(flags: &[&str]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("{\"flags\":[");
+    for (i, f) in flags.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&alloc::format!("\"{}\"", f));
+    }
+    out.push_str("]}");
+    out
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v8d_preset_all_in_wl() {
+        // 三预设的全部旗标都在册（预设不许开幽灵参数）。
+        for p in ["perf", "quiet", "diag"] {
+            for f in preset_flags(p) {
+                assert!(find(f).is_some(), "preset {} flag {}", p, f);
+            }
+        }
+    }
+
+    #[test]
+    fn f192_v8d_json_roundtrip_shape() {
+        // 导出含全部键（保真）。
+        let j = preset_export_json(&["verbose", "ktrace"]);
+        assert!(j.contains("\"verbose\"") && j.contains("\"ktrace\""));
+    }
+
+    #[test]
+    fn f192_v8d_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+
+    #[test]
+    fn f192_deep8_snapshot_diff_conserves() {
+        // 对比账守恒：增 + 删 + 改 = 全部差异，未动项不上账。
+        let base = [("verbose", 1i64), ("log-level", 2i64), ("ktrace", 0i64)];
+        let cur = [("verbose", 1i64), ("log-level", 4i64)];
+        let d = snapshot_diff(&base, &cur);
+        assert!(d.added.is_empty());
+        assert_eq!(d.removed, vec!["ktrace"]);
+        assert_eq!(d.changed, vec![("log-level", 2, 4)]);
+        assert_eq!(rollback_pending(&d), 2);
+        // 计划行如实：删 1 改 1 → 两步。
+        assert!(rollback_plan_text(&d).contains("共 2 步"));
+    }
+
+    #[test]
+    fn f192_deep8_boot_ledger_empty() {
+        // 空账不伪造结论：零耗时且无最慢阶段。
+        assert_eq!(boot_time_ledger(&[]).0, 0);
+        assert_eq!(boot_time_ledger(&[]).1, None);
+        // 凭据可复现。
+        assert_eq!(snapshot_tag(1, 60), snapshot_tag(1, 60));
+    }
+
+    #[test]
+    fn f192_deep8_run_checks_pass() {
+        assert!(run_paramwl_deep8_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：使用频率账 / 批量重置 / 帮助索引按频次排序。
+// 判据源：主册【交互设计】「高频参数前置——帮助与提示按真实使用排序」。
+// ---------------------------------------------------------------------------
+
+/// 使用频率账（名 → 次数；top 取频次降序）。
+#[derive(Default)]
+pub struct UsageCounter {
+    counts: Vec<(&'static str, u64)>,
+}
+
+impl UsageCounter {
+    pub fn new() -> UsageCounter {
+        UsageCounter { counts: Vec::new() }
+    }
+
+    pub fn hit(&mut self, name: &'static str) {
+        match self.counts.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, c)) => *c += 1,
+            None => self.counts.push((name, 1)),
+        }
+    }
+
+    /// top N（频次降序；同名不重复）。
+    pub fn top(&self, n: usize) -> Vec<&'static str> {
+        let mut sorted = self.counts.clone();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.into_iter().take(n).map(|(name, _)| name).collect()
+    }
+
+    pub fn reset_all(&mut self) {
+        self.counts.clear();
+    }
+}
+
+/// 帮助索引（未命中频次的排后面——零频保持登记序，稳定不抖动）。
+pub fn help_index_sorted_by_usage(usage: &UsageCounter) -> Vec<&'static str> {
+    let rank = |n: &str| usage.counts.iter().find(|(name, _)| *name == n).map(|(_, c)| *c).unwrap_or(0);
+    let mut rows: Vec<(u64, usize, &'static str)> = WHITELIST
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (rank(s.name), i, s.name))
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    rows.into_iter().map(|(_, _, n)| n).collect()
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v9_sorted_stable_for_zero() {
+        // 零频项保持登记序（排序稳定——界面不抖动）。
+        let rows = help_index_sorted_by_usage(&UsageCounter::new());
+        let expect: Vec<&'static str> = WHITELIST.iter().map(|s| s.name).collect();
+        assert_eq!(rows, expect);
+    }
+
+    #[test]
+    fn f192_v9_usage_hit_unknown_ok() {
+        // 未知名也入账（上游已过滤，这里不做二次白名单假设）。
+        let mut u = UsageCounter::new();
+        u.hit("verbose");
+        u.hit("verbose");
+        assert_eq!(u.top(1), vec!["verbose"]);
+    }
+
+    #[test]
+    fn f192_v9_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：白名单哈希锚 / 预设分享串。
+// 判据源：主册【开发者篇】「白名单表变更可被外部核验（哈希锚公开）」。
+// ---------------------------------------------------------------------------
+
+/// 白名单哈希锚（全表名拼接 FNV——表变锚变，外部可核）。
+pub fn wl_hash_anchor() -> alloc::string::String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for spec in WHITELIST.iter() {
+        for b in spec.name.bytes() {
+            hash ^= b as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    alloc::format!("{:016x}", hash)
+}
+
+/// 预设分享串编码（`varix-preset:<name>` 前缀协议）。
+pub fn share_encode(preset: &str) -> alloc::string::String {
+    alloc::format!("varix-preset:{}", preset)
+}
+
+/// 分享串解码（前缀不符拒收——外部串不冒充协议）。
+pub fn share_decode(text: &str) -> Option<&str> {
+    text.strip_prefix("varix-preset:").filter(|s| !s.is_empty())
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v10_share_roundtrip_all() {
+        // 三预设全可分享往返。
+        for p in ["perf", "quiet", "diag"] {
+            assert_eq!(share_decode(&share_encode(p)), Some(p));
+        }
+    }
+
+    #[test]
+    fn f192_v10_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：白名单 CSV 导出 / 搜索防抖建议。
+// ---------------------------------------------------------------------------
+
+/// 白名单 CSV 导出（name,family,kind 三列——开放格式）。
+pub fn wl_export_csv() -> alloc::string::String {
+    let mut out = alloc::string::String::from("name,family,kind\n");
+    for spec in WHITELIST.iter() {
+        let kind = match spec.kind {
+            ValueKind::Flag => alloc::string::String::from("flag"),
+            ValueKind::Int(lo, hi) => alloc::format!("int:{}-{}", lo, hi),
+        };
+        out.push_str(&alloc::format!("{},{},{}\n", spec.name, family_label(spec.family), kind));
+    }
+    out
+}
+
+/// 搜索防抖建议（距上次击键 ms → 提示文案；停顿够长不提示）。
+pub fn search_debounce_hint(ms_since_last_key: u64) -> &'static str {
+    if ms_since_last_key < 300 {
+        "输入停顿 300ms 后搜索"
+    } else {
+        ""
+    }
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v11_csv_int_kind() {
+        // int 型参数带值域（导出保真）。
+        assert!(wl_export_csv().contains("log-level,调试族,int:0-5"));
+    }
+
+    #[test]
+    fn f192_v11_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b12（第七波）：参数分布分族计数（设置页「参数构成」格）。
+// ---------------------------------------------------------------------------
+
+/// 分族计数（族 → 成员数——静态表派生，一处一事实）。
+pub fn family_share(family: ParamFamily) -> usize {
+    WHITELIST.iter().filter(|s| s.family == family).count()
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v12_share_never_zero() {
+        // 三族各至少一员（白名单结构性自检）。
+        for f in [ParamFamily::Debug, ParamFamily::Degrade, ParamFamily::Compat] {
+            assert!(family_share(f) > 0);
+        }
+    }
+
+    #[test]
+    fn f192_v12_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b13（第八波）：参数别名表（专家快捷输入 → 正名解析）。
+// ---------------------------------------------------------------------------
+
+/// 别名表（简称 → 正名）。
+pub const ALIAS_TABLE: [(&str, &str); 2] = [
+    ("ll", "log-level"),
+    ("sm", "safe-mode"),
+];
+
+/// 别名解析（命中返回正名；未命中 None——不猜）。
+pub fn alias_lookup(alias: &str) -> Option<&'static str> {
+    ALIAS_TABLE
+        .iter()
+        .find(|(a, _)| *a == alias)
+        .map(|(_, full)| full)
+        .and_then(|full| find(full).map(|s| s.name))
+}
+
+#[cfg(test)]
+mod deep13_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v13_alias_unique() {
+        // 简称不冲突。
+        for (i, (a, _)) in ALIAS_TABLE.iter().enumerate() {
+            for (b, _) in ALIAS_TABLE.iter().skip(i + 1) {
+                assert_ne!(a, b);
+            }
+        }
+    }
+
+    #[test]
+    fn f192_v13_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b14（第九波）：默认关闭名单 / 改动撤销栈。
+// 判据源：主册【交互设计】「参数改动可逐级撤销（不一键回解放前）」。
+// ---------------------------------------------------------------------------
+
+/// 默认关闭名单（出厂即关的旗标——安全底线）。
+pub const DEFAULT_OFF_FLAGS: [&str; 3] = ["panic_halt", "selftest-only", "no-acpi"];
+
+/// 改动撤销栈（逐条 push/pop——粒度到单参数）。
+pub struct ChangeUndo {
+    stack: Vec<(&'static str, &'static str)>,
+}
+
+impl ChangeUndo {
+    pub fn new() -> ChangeUndo {
+        ChangeUndo { stack: Vec::new() }
+    }
+
+    /// 记一次改动（参数名 + 摘要）。
+    pub fn push(&mut self, name: &'static str, summary: &str) {
+        self.stack.push((name, alloc::string::String::from(summary).leak()));
+    }
+
+    /// 撤销最近一次（返回参数名）。
+    pub fn pop(&mut self) -> Option<&'static str> {
+        self.stack.pop().map(|(name, _)| name)
+    }
+
+    pub fn depth(&self) -> usize {
+        self.stack.len()
+    }
+}
+
+#[cfg(test)]
+mod deep14_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v14_undo_lifo() {
+        // 栈语义：后改先撤。
+        let mut u = ChangeUndo::new();
+        u.push("verbose", "开");
+        u.push("ktrace", "关");
+        assert_eq!(u.pop(), Some("ktrace"));
+        assert_eq!(u.pop(), Some("verbose"));
+        assert_eq!(u.depth(), 0);
+    }
+
+    #[test]
+    fn f192_v14_run_checks_pass() {
+        assert!(run_paramwl_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8 终波深化段（deep8 表）：参数变更影响评估行 / 回滚快照对比 / 参数依赖
+// 提示 / 启动耗时账。
+// 判据源：主册【开发者篇】「参数改动前给出影响面，改动后可逐级回退」+
+// 【性能章】「启动全程打点——各阶段耗时入账，超预算即点名」。
+// ---------------------------------------------------------------------------
+
+/// 变更影响评估行（参数 → 新值：钳制结果 + 影响面一行——改前先看账）。
+pub fn change_impact_row(name: &str, new_val: i64) -> alloc::string::String {
+    let spec = match find(name) {
+        Some(s) => s,
+        None => return alloc::string::String::from("未知参数——拒绝变更"),
+    };
+    // 值域钳制（越界收界——与启动面同一钳制语义，见主册 G-G-22）。
+    let clamped = match spec.kind {
+        ValueKind::Flag => new_val.clamp(0, 1),
+        ValueKind::Int(lo, hi) => new_val.clamp(lo, hi),
+    };
+    let n = impact_set(spec.name).len();
+    if n == 0 {
+        alloc::format!("{} → {}：无连带影响", spec.name, clamped)
+    } else {
+        alloc::format!("{} → {}：牵动 {} 项，改前先看影响面", spec.name, clamped, n)
+    }
+}
+
+/// 回滚快照对比账（回滚前先出账——差异不明不回滚）。
+pub struct RollbackDiff {
+    /// 快照后新增的参数。
+    pub added: Vec<&'static str>,
+    /// 快照后移除的参数。
+    pub removed: Vec<&'static str>,
+    /// 值变化的参数（名，旧值，新值）。
+    pub changed: Vec<(&'static str, i64, i64)>,
+}
+
+/// 快照对比（before = 出厂/上次快照，after = 当前活跃值）。
+pub fn snapshot_diff(
+    before: &[(&'static str, i64)],
+    after: &[(&'static str, i64)],
+) -> RollbackDiff {
+    let mut diff = RollbackDiff { added: Vec::new(), removed: Vec::new(), changed: Vec::new() };
+    for &(n, v) in after {
+        match before.iter().find(|(bn, _)| *bn == n) {
+            None => diff.added.push(n),
+            Some(&(_, bv)) if bv != v => diff.changed.push((n, bv, v)),
+            _ => {}
+        }
+    }
+    for &(n, _) in before {
+        if !after.iter().any(|(an, _)| *an == n) {
+            diff.removed.push(n);
+        }
+    }
+    diff
+}
+
+/// 待回滚差异总数（0 = 与快照一致，无需回滚）。
+pub fn rollback_pending(diff: &RollbackDiff) -> usize {
+    diff.added.len() + diff.removed.len() + diff.changed.len()
+}
+
+/// 回滚计划行（人话分步：移除新增 / 还原改动 / 恢复删除——回滚确认页正文）。
+pub fn rollback_plan_text(diff: &RollbackDiff) -> alloc::string::String {
+    let n = rollback_pending(diff);
+    if n == 0 {
+        return alloc::string::String::from("与快照一致，无需回滚");
+    }
+    let mut parts: Vec<alloc::string::String> = Vec::new();
+    if !diff.added.is_empty() {
+        parts.push(alloc::format!("移除新增的 {} 项", diff.added.len()));
+    }
+    if !diff.changed.is_empty() {
+        parts.push(alloc::format!("还原改动的 {} 项", diff.changed.len()));
+    }
+    if !diff.removed.is_empty() {
+        parts.push(alloc::format!("恢复删除的 {} 项", diff.removed.len()));
+    }
+    alloc::format!("回滚共 {} 步：{}", n, parts.join("；"))
+}
+
+/// 快照凭据行（序号 + 时刻——回滚栈里的版本凭据，可追溯）。
+pub fn snapshot_tag(seq: u64, taken_s: u64) -> alloc::string::String {
+    alloc::format!("snap-{}@{}s", seq, taken_s)
+}
+
+/// 参数依赖提示（活跃集缺的连带项——「开了 A，B 建议同步开」）。
+pub fn dependency_hints(active: &[&str]) -> Vec<&'static str> {
+    let mut hints: Vec<&'static str> = Vec::new();
+    for &(from, to, _why) in IMPACT_EDGES.iter() {
+        if active.contains(&from) && !active.contains(&to) && find(to).is_some()
+            && !hints.contains(&to)
+        {
+            hints.push(to);
+        }
+    }
+    hints
+}
+
+/// 依赖提示行（无缺口即沉默——提示不许空转）。
+pub fn dependency_hint_line(active: &[&str]) -> alloc::string::String {
+    let hints = dependency_hints(active);
+    if hints.is_empty() {
+        return alloc::string::String::new();
+    }
+    alloc::format!("建议同步开启：{}", hints.join("、"))
+}
+
+/// 启动阶段耗时条目。
+pub struct BootStage {
+    /// 阶段名（selftest / whitelist / desktop …）。
+    pub name: &'static str,
+    /// 该阶段耗时（毫秒）。
+    pub ms: u64,
+}
+
+/// 启动耗时预算（主册性能章：从上电到进桌面 ≤500ms）。
+pub const BOOT_BUDGET_MS: u64 = 500;
+
+/// 启动耗时账（各阶段求和 + 最慢阶段——慢在哪儿一眼可见）。
+pub fn boot_time_ledger(stages: &[BootStage]) -> (u64, Option<&'static str>) {
+    let mut total = 0u64;
+    let mut slowest: Option<&BootStage> = None;
+    for s in stages {
+        total += s.ms;
+        match slowest {
+            Some(prev) if prev.ms >= s.ms => {}
+            _ => slowest = Some(s),
+        }
+    }
+    (total, slowest.map(|s| s.name))
+}
+
+/// 启动耗时报告行（超预算点名最慢阶段——性能章的兑现出口）。
+pub fn boot_time_report(stages: &[BootStage]) -> alloc::string::String {
+    let (total, slow) = boot_time_ledger(stages);
+    let slow_txt = match slow {
+        Some(n) => alloc::format!("，最慢 {}", n),
+        None => alloc::string::String::new(),
+    };
+    if total > BOOT_BUDGET_MS {
+        alloc::format!("启动 {}ms 超预算{}（见性能章）", total, slow_txt)
+    } else {
+        alloc::format!("启动 {}ms 达标{}", total, slow_txt)
+    }
+}
+
+/// F192 v8 终波自检（deep8 表）。
+pub fn run_paramwl_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-deep8");
+
+    // 变更影响评估行：未知拒 / 越界钳 / 有牵动 / 无牵动。
+    set.add("row unknown", change_impact_row("ghost-param", 1).contains("拒绝"), "");
+    set.add("row clamp hi", change_impact_row("log-level", 99).contains("→ 5"), "越界值钳到上界");
+    set.add("row clamp lo", change_impact_row("log-level", -3).contains("→ 0"), "");
+    set.add("row flag clamp", change_impact_row("ktrace", 7).contains("→ 1"), "旗标值钳到 1");
+    set.add("row impact", change_impact_row("safe-mode", 1).contains("牵动 2 项"), "");
+    set.add("row calm", change_impact_row("ktrace", 1).contains("无连带"), "");
+
+    // 回滚快照对比：增/删/改三分账 + 计划行 + 凭据。
+    let base = [("verbose", 1i64), ("log-level", 3i64)];
+    let cur = [("verbose", 1i64), ("ktrace", 1i64), ("log-level", 5i64)];
+    let d = snapshot_diff(&base, &cur);
+    set.add("snap added", d.added == vec!["ktrace"], "");
+    set.add("snap changed", d.changed == vec![("log-level", 3, 5)], "");
+    set.add("snap pending", rollback_pending(&snapshot_diff(&cur, &base)) == 2, "回滚差异 = 1 改 + 1 删");
+    set.add("snap clean", rollback_pending(&snapshot_diff(&base, &base)) == 0, "快照一致零回滚");
+    set.add("snap plan", rollback_plan_text(&d).contains("共 2 步"), "计划行步数 = 差异总数");
+    set.add("snap plan calm", rollback_plan_text(&snapshot_diff(&base, &base)).contains("无需回滚"), "");
+    set.add("snap tag", snapshot_tag(7, 120).contains("snap-7@120s"), "凭据带序号与时刻");
+
+    // 参数依赖提示：缺连带项才提示；齐了/无下游即沉默。
+    set.add("hint two", dependency_hints(&["safe-mode"]) == vec!["no-gui", "no-third-drv"], "按边序点名缺口");
+    set.add("hint one", dependency_hints(&["verbose"]) == vec!["log-level"], "");
+    set.add("hint silent", dependency_hints(&["safe-mode", "no-gui", "no-third-drv"]).is_empty(), "缺口补齐即沉默");
+    set.add("hint none", dependency_hints(&["no-gui"]).is_empty(), "无下游不硬造提示");
+    set.add("hint line", dependency_hint_line(&["verbose"]).contains("log-level"), "");
+    set.add("hint line empty", dependency_hint_line(&["no-gui"]).is_empty(), "");
+
+    // 启动耗时账：求和 / 最慢 / 预算两态 / 空账。
+    let stages = [
+        BootStage { name: "selftest", ms: 40 },
+        BootStage { name: "whitelist", ms: 5 },
+        BootStage { name: "desktop", ms: 380 },
+    ];
+    let (total, slow) = boot_time_ledger(&stages);
+    set.add("boot total", total == 425, "40+5+380 = 425ms");
+    set.add("boot slowest", slow == Some("desktop"), "");
+    set.add("boot ok", boot_time_report(&stages).contains("达标"), "");
+    set.add("boot over", {
+        let over = [BootStage { name: "selftest", ms: 600 }];
+        boot_time_report(&over).contains("超预算") && boot_time_report(&over).contains("selftest")
+    }, "超预算点名最慢阶段");
+    set.add("boot empty", boot_time_ledger(&[]).0 == 0 && boot_time_ledger(&[]).1.is_none(), "空账零耗时零结论");
+
+    set
+}

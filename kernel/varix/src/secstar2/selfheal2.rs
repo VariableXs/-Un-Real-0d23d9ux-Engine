@@ -1645,3 +1645,83 @@ mod deep6_tests {
         assert!(run_selfheal2_deep6_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8-b9：探活节奏旋钮（自愈探测间隔的可调账）。
+// 判据源：主册【设计细节】「自愈探活节奏分级（忙时稀疏/闲时密集）」。
+// ---------------------------------------------------------------------------
+
+/// 探活间隔决策（系统负载档 → 探活间隔秒；忙时稀疏不打扰）。
+pub fn probe_interval_s(busy_level: u8) -> u64 {
+    match busy_level {
+        0 => 30,  // 空闲：密集探活。
+        1 => 120, // 中载。
+        _ => 600, // 忙时：稀疏（10 分钟一探）。
+    }
+}
+
+/// F189 v8 自检（deep7 表）。
+pub fn run_selfheal2_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v8");
+
+    set.add("probe idle", probe_interval_s(0) == 30, "空闲 30s 一探");
+    set.add("probe busy", probe_interval_s(2) == 600, "忙时 10min 一探");
+    set.add("probe monotone", probe_interval_s(0) < probe_interval_s(1) && probe_interval_s(1) < probe_interval_s(2), "越忙越稀疏");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v8_probe_high_level() {
+        // 任意高负载档都取最稀疏档（兜底分支覆盖）。
+        assert_eq!(probe_interval_s(9), 600);
+    }
+
+    #[test]
+    fn f189_v8_run_checks_pass() {
+        assert!(run_selfheal2_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：自愈摘要行——一屏一句话说清本周自愈全貌。
+// 判据源：主册【设计细节】「摘要可读，账目在下」。
+// ---------------------------------------------------------------------------
+
+/// 自愈摘要行（本周 N 次自愈 · M 类 · 升级 K 票——零自愈诚实出「本周零自愈」）。
+pub fn selfheal_summary_line(records: &[HealRecord], open_tickets: usize) -> alloc::string::String {
+    if records.is_empty() {
+        return alloc::format!("本周零自愈，待升级工单 {} 张", open_tickets);
+    }
+    let mut kinds: Vec<HealKind> = Vec::new();
+    for r in records {
+        if !kinds.contains(&r.kind) {
+            kinds.push(r.kind);
+        }
+    }
+    alloc::format!("本周自愈 {} 次 · 覆盖 {} 类 · 待升级工单 {} 张", records.len(), kinds.len(), open_tickets)
+}
+
+#[cfg(test)]
+mod deep8c_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v8c_summary_shapes() {
+        // 空账诚实、非空账带计数。
+        assert!(selfheal_summary_line(&[], 1).contains("零自愈"));
+        let recs = [HealRecord { kind: HealKind::IconCache, at_min: 10, outcome: HealOutcome::Rebuilt, cost_ms: 12, notified: true, snapshotted: false }];
+        let line = selfheal_summary_line(&recs, 0);
+        assert!(line.contains('1') && line.contains('1'));
+    }
+
+    #[test]
+    fn f189_v8c_run_checks_pass() {
+        assert!(run_selfheal2_deep7_checks().all_passed());
+    }
+}

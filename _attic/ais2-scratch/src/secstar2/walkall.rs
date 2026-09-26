@@ -2119,23 +2119,6 @@ pub fn weekly_report_line(last_green: usize, now_green: usize, new_red: usize, d
     alloc::format!("本周绿 {}（{}）{}，距季度复盘 {} 天", now_green, trend, red_note, days_to_goal)
 }
 
-#[cfg(test)]
-mod deep8_tests {
-    use super::*;
-
-    #[test]
-    fn f200_v8d_weekly_flat() {
-        // 持平报 +0（不装作进步）。
-        assert!(weekly_report_line(5, 5, 0, 30).contains("（+0）"), "全角括号");
-    }
-
-    #[test]
-    fn f200_v8d_run_checks_pass() {
-        assert!(run_walkall_deep7b_checks().all_passed());
-    }
-}
-
-
 // ---------------------------------------------------------------------------
 // v8-b9（第四波）：台账两期快照对比（掉了哪些绿 / 新进了哪些绿）。
 // 判据源：主册【交互设计】「环比用集合差呈现，不拿总数含糊」。
@@ -2333,5 +2316,160 @@ mod deep14_tests {
     #[test]
     fn f200_v14_run_checks_pass() {
         assert!(run_walkall_deep7b_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-deep8（终波）：季检日程提醒 / 证据到期预警 / 红项责任人分组 / 里程碑时间线。
+// 判据源：主册【交互设计】「季检结果归档进季报；红项必须在看板上可见且有补录路径」。
+// ---------------------------------------------------------------------------
+
+/// 季检日程提醒档位（当日 / 30 天内临近 / 更远宽裕）。
+pub fn quarter_reminder_level(days_left: u64) -> &'static str {
+    if days_left == 0 {
+        "today"
+    } else if days_left <= 30 {
+        "soon"
+    } else {
+        "calm"
+    }
+}
+
+/// 季检日程提醒行（总检页顶部的日程条——人话，不吓人也不装没事）。
+pub fn quarter_reminder_line(days_left: u64) -> alloc::string::String {
+    match quarter_reminder_level(days_left) {
+        "today" => alloc::string::String::from("季检今日执行——先跑脚本再写季报"),
+        "soon" => alloc::format!("距季检窗口关闭还有 {} 天——本周排期", days_left),
+        _ => alloc::format!("距季检还有 {} 天——日程宽裕", days_left),
+    }
+}
+
+/// 证据到期预警档位（<0 已过期 / ≤7 天临界 / 其余在期）。
+pub fn evidence_expiry_band(days_left: i64) -> &'static str {
+    if days_left < 0 {
+        "expired"
+    } else if days_left <= 7 {
+        "critical"
+    } else {
+        "ok"
+    }
+}
+
+/// 证据到期预警清单（过期与临界项按余量升序——最紧急的排最前）。
+pub fn expiry_watchlist(items: &[(u64, i64)]) -> Vec<u64> {
+    let mut due: Vec<(u64, i64)> = items
+        .iter()
+        .filter(|(_, d)| evidence_expiry_band(*d) != "ok")
+        .copied()
+        .collect();
+    due.sort_by_key(|(id, d)| (*d, *id));
+    due.into_iter().map(|(id, _)| id).collect()
+}
+
+/// 红项责任人分组（(负责人, 红项) → 每人红项数降序——派单先派欠账多的）。
+pub fn owner_grouping(rows: &[(&'static str, &'static str)]) -> Vec<(&'static str, usize)> {
+    let mut counts: Vec<(&'static str, usize)> = Vec::new();
+    for &(owner, _) in rows {
+        match counts.iter_mut().find(|(o, _)| *o == owner) {
+            Some((_, c)) => *c += 1,
+            None => counts.push((owner, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    counts
+}
+
+/// 里程碑时间线（(天序, 事件) 按天升序 → CSV——季报第五节「总检状态」的原始行）。
+pub fn milestone_timeline_csv(rows: &[(u64, &str)]) -> alloc::string::String {
+    let mut sorted: Vec<(u64, &str)> = rows.to_vec();
+    sorted.sort_by_key(|(day, _)| *day);
+    let mut out = alloc::string::String::from("day,event\n");
+    for (day, event) in sorted {
+        out.push_str(&alloc::format!("{},{}\n", day, event));
+    }
+    out
+}
+
+/// 文本进度条（绿数/总数 → 定宽 ASCII 条——季报一页纸的行内可视化）。
+pub fn quarter_progress_bar(green: usize, total: usize, width: usize) -> alloc::string::String {
+    let filled = if total == 0 { 0 } else { green * width / total };
+    let mut bar = alloc::string::String::from("[");
+    for _ in 0..filled.min(width) {
+        bar.push('#');
+    }
+    for _ in filled.min(width)..width {
+        bar.push('-');
+    }
+    bar.push(']');
+    alloc::format!("{} {}/{}", bar, green, total)
+}
+
+/// F200 v8-deep8 自检（终波 deep8 表）。
+pub fn run_walkall_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-deep8");
+
+    // 季检日程：三档提醒不越界。
+    set.add("reminder calm", quarter_reminder_level(31) == "calm", "31 天外算宽裕");
+    set.add("reminder soon", quarter_reminder_level(30) == "soon", "30 天整即临近期");
+    set.add("reminder today", quarter_reminder_line(0).contains("今日"), "当日必须执行");
+
+    // 证据到期：档位边界 + 预警清单排序。
+    set.add("expiry expired", evidence_expiry_band(-1) == "expired", "负余量即过期");
+    set.add("expiry critical", evidence_expiry_band(7) == "critical", "七天整算临界");
+    set.add("watchlist order", expiry_watchlist(&[(1, 3), (2, -5), (3, 9), (4, 2)]) == vec![2, 4, 1], "过期最前、余量升序");
+    set.add("watchlist all ok", expiry_watchlist(&[(1, 30)]).is_empty(), "在期项不上榜");
+
+    // 责任人分组：计数降序、同数按名稳定。
+    let grp = owner_grouping(&[("甲", "F001"), ("乙", "F002"), ("甲", "F003")]);
+    set.add("owner top", grp.first() == Some(&("甲", 2)), "欠账多者排前");
+    set.add("owner empty", owner_grouping(&[]).is_empty(), "");
+
+    // 里程碑时间线：乱序入、有序出。
+    let tl = milestone_timeline_csv(&[(9, "季报归档"), (2, "清单冻结"), (5, "增补评审")]);
+    set.add("timeline header", tl.starts_with("day,event\n"), "");
+    set.add("timeline order", tl.contains("2,清单冻结") && tl.find("2,").unwrap() < tl.find("9,").unwrap(), "按天升序");
+    set.add("timeline empty", milestone_timeline_csv(&[]) == "day,event\n", "空里程碑只有表头");
+
+    // 进度条：占比成格、零除防线。
+    set.add("bar ratio", quarter_progress_bar(3, 4, 8) == "[######--] 3/4", "四分之三 = 6/8 格");
+    set.add("bar empty", quarter_progress_bar(0, 0, 4) == "[----] 0/0", "零总数不放除零");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v8d_weekly_flat() {
+        // 持平报 +0（不装作进步）。
+        assert!(weekly_report_line(5, 5, 0, 30).contains("（+0）"), "全角括号");
+    }
+
+    #[test]
+    fn f200_d8_expiry_boundary() {
+        // 恰七天临界、八天在期（预警死区边界）。
+        assert_eq!(evidence_expiry_band(7), "critical");
+        assert_eq!(evidence_expiry_band(8), "ok");
+    }
+
+    #[test]
+    fn f200_d8_owner_tie_stable() {
+        // 同红项数按负责人码点序（乙 < 甲——面板不抖）。
+        let grp = owner_grouping(&[("乙", "F001"), ("甲", "F002")]);
+        assert_eq!(grp, vec![("乙", 1), ("甲", 1)]);
+    }
+
+    #[test]
+    fn f200_d8_bar_overflow_clamped() {
+        // 超额绿也只填满一格宽（进度条不上溢）。
+        assert_eq!(quarter_progress_bar(9, 4, 4), "[####] 9/4");
+    }
+
+    #[test]
+    fn f200_d8_run_checks_pass() {
+        assert!(run_walkall_deep8_checks().all_passed());
     }
 }

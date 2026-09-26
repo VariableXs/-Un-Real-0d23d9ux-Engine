@@ -1591,3 +1591,185 @@ mod deep6_tests {
         assert!(run_batguard_deep6_checks().all_passed());
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// v8-b9：电量账 CSV 导出 / 放电速率账。
+// 判据源：主册【数据与存储】「健康账可导出为开放格式」。
+// ---------------------------------------------------------------------------
+
+/// 放电速率账（两采样点 → 每 10 分钟掉电 permille）。
+pub fn drain_rate_permille(start_permille: u64, end_permille: u64, minutes: u64) -> Option<u64> {
+    if minutes == 0 || end_permille >= start_permille {
+        return None; // 充电中/零时长不评放电率。
+    }
+    Some((start_permille - end_permille) * 10 / minutes)
+}
+
+/// 电量账 CSV 导出。
+pub fn battery_export_csv(samples: &[(u64, u64)]) -> alloc::string::String {
+    let mut out = alloc::string::String::from("t_s,level_permille\n");
+    for (t, lv) in samples {
+        out.push_str(&alloc::format!("{},{}\n", t, lv));
+    }
+    out
+}
+
+/// F196 v8 自检（deep7 表）。
+pub fn run_batguard_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v8");
+
+    // 放电率：正常放电 / 充电返 None / 零时长返 None。
+    set.add("drain ok", drain_rate_permille(800, 700, 50) == Some(20), "100‰/50min = 20‰/10min");
+    set.add("drain charging", drain_rate_permille(700, 800, 50).is_none(), "充电中不算放电");
+    set.add("drain zero", drain_rate_permille(800, 700, 0).is_none(), "零时长防除零");
+
+    // CSV：表头 + 行数。
+    let csv = battery_export_csv(&[(0, 900), (60, 850)]);
+    set.add("csv header", csv.starts_with("t_s,level_permille\n"), "");
+    set.add("csv rows", csv.lines().count() == 3, "");
+    // b9-wave4：相态迁移建议文案。
+    set.add("phase advice", phase_advice(2).contains("接电"), "notify 相建议接电");
+    set.add("phase advice crit", phase_advice(4).contains("保存"), "临界相建议保存工作");
+    // b10-wave5：电量估计新鲜度。
+    set.add("eta fresh", eta_fresh(30, 300), "30s 前的估计仍新鲜");
+    set.add("eta stale", !eta_fresh(400, 300), "400s 前的估计过期");
+    // b11-wave6：相态时长累计行。
+    set.add("phase dur", phase_duration_line(2, 340) == "低电相已持续 5 分钟", "相态时长人话");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v8_csv_empty() {
+        assert_eq!(battery_export_csv(&[]).lines().count(), 1);
+    }
+
+    #[test]
+    fn f196_v8_drain_flat() {
+        // 持平（无放电）也返 None（不是放电）。
+        assert!(drain_rate_permille(500, 500, 10).is_none());
+    }
+
+    #[test]
+    fn f196_v8_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b9（第四波）：相态迁移建议文案（每相一句「现在该做什么」）。
+// ---------------------------------------------------------------------------
+
+/// 相态建议（phase 级 0-4 → 人话建议；越深越紧迫）。
+pub fn phase_advice(phase_level: u8) -> &'static str {
+    match phase_level {
+        0 => "",
+        1 => "电量偏低：可继续使用，留意提醒",
+        2 => "电量低：建议接电",
+        3 => "电量临界：请尽快接电",
+        _ => "即将关机：请立即保存工作",
+    }
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v9_advice_escalates() {
+        // 建议紧迫度单调（文案逐级加压）。
+        assert!(phase_advice(1).contains("留意"));
+        assert!(phase_advice(3).contains("尽快"));
+    }
+
+    #[test]
+    fn f196_v9_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b10（第五波）：电量估计新鲜度（过期估计不展示——宁可不给不给错的）。
+// ---------------------------------------------------------------------------
+
+/// 估计新鲜度（估计时刻距现在 ≤ 窗口内 → 新鲜）。
+pub fn eta_fresh(estimate_age_s: u64, window_s: u64) -> bool {
+    estimate_age_s <= window_s
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v10_fresh_boundary() {
+        // 恰在窗上 = 新鲜（闭窗语义）。
+        assert!(eta_fresh(300, 300));
+    }
+
+    #[test]
+    fn f196_v10_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// v8-b11（第六波）：相态时长累计行（在当前相待了多久）。
+// ---------------------------------------------------------------------------
+
+/// 相态时长行（phase 级 + 停留秒 → 人话；分钟进位）。
+pub fn phase_duration_line(phase_level: u8, in_phase_s: u64) -> alloc::string::String {
+    let name = match phase_level {
+        0 => "正常相",
+        1 => "偏低相",
+        2 => "低电相",
+        3 => "临界相",
+        _ => "临关机相",
+    };
+    alloc::format!("{}已持续 {} 分钟", name, in_phase_s / 60)
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v11_dur_hours() {
+        assert!(phase_duration_line(0, 7200).contains("120 分钟"));
+    }
+
+    #[test]
+    fn f196_v11_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v8-c（收口小波）：相态建议边界 + 估计新鲜度恰界——边界上不撒谎。
+// 判据源：主册【状态与异常】「边界行为与常态同样明确」。
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod deep12c_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v8c_boundaries() {
+        // 相态 0 无建议（零打扰）；恰在新鲜窗界上仍算新鲜。
+        assert_eq!(phase_advice(0), "");
+        assert!(eta_fresh(300, 300), "恰在窗界 = 界内（≤ 语义）");
+    }
+
+    #[test]
+    fn f196_v8c_run_checks_pass() {
+        assert!(run_batguard_deep7_checks().all_passed());
+    }
+}
