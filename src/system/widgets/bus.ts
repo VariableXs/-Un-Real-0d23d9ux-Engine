@@ -17,6 +17,8 @@ export function registerLaneE(): void {
   mountFeatureOnEvent("theme-studio", () => import("../theme-studio/Studio"));
   mountFeatureOnEvent("widget-board", () => import("./Board"));
   mountFeatureOnEvent("iconpacks", () => import("../iconpacks/Studio"));
+  // E 个性化域（Varix STAR I · AI-E1）：PersonaStudio overlay 懒加载挂载。
+  mountFeatureOnEvent("persona-studio", () => import("../persona/PersonaStudio"));
 }
 
 registerLaneE();
