@@ -2,8 +2,8 @@
 
 > 分工包：主册《Varix STAR I start.md》E-5 深化设计报告（G-E-01 ~ G-E-20）判据实装层。
 > 分工边界：AI-E1 严格限定 F151-F170；未触碰 AI-H1~H4、AI-J1/J2 及其他任何分队任务面。
-> **v6 状态（本报告）**：深化批次六（体验完整性工程面）已收口——
-> E 域单测 **369/369 PASS**、typecheck（`--incremental false` 全新口径）本域零错误、
+> **v7 状态（本报告）**：深化批次七（一致性词典+开放性注册表+状态块渲染层）已收口——
+> E 域单测 **381/381 PASS**、typecheck（`--incremental false` 全新口径）本域零错误、
 > walkcheck 自检 PASS、tally 检查项对账 26 桶全非零。隔离验证与检查项对账见
 > `_attic/aie1-f151-f170/隔离验证与检查项对账.md`。
 > 实现层级：主册【工程量】标注本域为「界面组件与交互层」——落点为
@@ -343,3 +343,33 @@ walkcheck PASS；tally 26 桶全非零（含借力桶——附录 F 登记纪律
 跨页交互词典（十章一致性机检）→ 真机四档 DPI 走查随闸门补测。
 
 —— AI-E1 · 2026-09-26 · v6 收口 · Not a corporate drone. Just... good.
+
+## 12. 深化批次七（v7 · 一致性词典 + 开放性注册表 + 状态块渲染层 · 本节为 v7 增补）
+
+**新增引擎（3 件 · 全部高内聚）**：
+
+| 引擎 | 支撑 | 能力 |
+| --- | --- | --- |
+| `state-blocks.tsx` | 十二查 8/9/11 | message-catalog → 渲染层的**最后一块拼图**：EmptyStateBlock（标题+引导+入口动作）/ ErrorTriadBlock（三要素+技术折叠位）/ confirmDialogModel（取消固定安全侧——D-CONFIRM-01 词典的数据面）· 二十页覆盖审计（漏页即红） |
+| `export-formats.ts` | 十四章 | 全域导出格式**一处一事实注册表**（9 个 active + 1 个 deprecated 带去向）· 格式机检（active 必有 schema 约束、废弃必走流程）· 导入门房 recognizeFormat（未知格式拒绝不猜）· 迁移说明生成 |
+| `ux-dictionary.ts` | 十/十一/八/九/六章 | 交互词典六域规则表 + 违例机检（规则即数据）· first-run 状态机（只一次/可跳过/可找回）· 诚实进度模型（样本不足不猜/滑窗速率/停滞 30s 显性卡住）· 可取消状态机（cancel-failed 显性化）· undo 归并策略（同类 2s 并步、50 步封顶） |
+
+**接线增量**：`pages-lab4.tsx` 三面板（状态块演示含 EmptyStateBlock/
+ErrorTriadBlock 实渲染与页切换、导出格式注册表含导入门房探测、UX 词典
+含 first-run/诚实进度/取消状态机/undo 归并四态演示）挂载域总检页。
+
+**验证**：批次七 12 新用例全绿；域累计 **381/381**；tsc 本域零错误；
+walkcheck PASS；tally 26 桶全非零。行数：**18,112 / 20,800 = 87.1%**
+（批次七净增 512 功能行——紧凑批次）。
+
+**缺陷账（批次七 · 6 条全即时修，全 🟢 级）**：onAction 可选类型、
+f.purity 幽灵属性、lab4 胡写表达式、tsc unused 8 处、honestProgress now
+未用、adaptForDpi 冗余局部。全录 `_attic` §4。
+
+**批次八候选**（87.1% → 目标，缺口 ≈2,688 行）：双语文案在二十页的
+EmptyStateBlock/ErrorTriadBlock **逐页真挂载**（目录与渲染件已就绪，剩
+布线工作）→ 导出格式与各引擎导出函数的 format 字段对拍机检 → 交互词典
+违例的静态扫描器（扫二十页 JSX 字面量）→ labels 国际化收尾 →
+真机四档 DPI 走查随闸门补测（登记项不变）。
+
+—— AI-E1 · 2026-09-26 · v7 收口 · Not a corporate drone. Just... good.

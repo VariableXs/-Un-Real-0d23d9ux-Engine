@@ -23,7 +23,6 @@ export function toPhysical(logicalPx: number, tier: DpiTier): number {
 
 /** UI 尺寸档适配：图标/间距在 150%+ 档位补足物理清晰度（等比不等于等清）。 */
 export function adaptForDpi(sizePx: number, tier: DpiTier): { logical: number; physical: number; spriteTier: 1 | 2 } {
-  const s = DPI_SCALES[tier];
   const physical = toPhysical(sizePx, tier);
   return { logical: sizePx, physical, spriteTier: physical > sizePx ? 2 : 1 };
 }
