@@ -320,3 +320,139 @@ mod tests {
         assert!(!cab2.enforce_sampling_budget(5));
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-36 补强：星卡 JSON 字节序列化 / 隐私扫描模式 / 合并策略
+// （星卡格式沿用星图 JSON 规范 F126——零分配字节级写出器）
+// ---------------------------------------------------------------------------
+
+/// JSON 字符串写出（转义 \\ 与 \" 两字符；零分配逐字节）。
+pub fn json_escape_into(s: &str, out: &mut [u8], n: &mut usize) {
+    for &b in s.as_bytes() {
+        if *n + 2 >= out.len() {
+            break;
+        }
+        match b {
+            b'\\' | b'"' => {
+                out[*n] = b'\\';
+                *n += 1;
+                out[*n] = b;
+                *n += 1;
+            }
+            _ => {
+                out[*n] = b;
+                *n += 1;
+            }
+        }
+    }
+}
+
+/// 星卡 JSON 模板键（F126 规范的字段名登记）。
+pub const STARCARD_KEYS: [&str; 7] =
+    ["program", "api_calls", "startup_ms", "mem_peak", "crashes", "sessions", "downsampled"];
+
+/// 数值键值对写出："\"key\":value," 形状。
+pub fn json_kv_num(key: &str, value: u64, out: &mut [u8], n: &mut usize) {
+    out[*n] = b'"';
+    *n += 1;
+    json_escape_into(key, out, n);
+    out[*n] = b'"';
+    *n += 1;
+    out[*n] = b':';
+    *n += 1;
+    // 数值逐位写出。
+    let mut buf = [0u8; 20];
+    let mut i = 0;
+    let mut v = value;
+    if v == 0 {
+        buf[0] = b'0';
+        i = 1;
+    }
+    while v > 0 {
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+        i += 1;
+    }
+    while i > 0 {
+        i -= 1;
+        out[*n] = buf[i];
+        n_step(n);
+    }
+}
+
+fn n_step(n: &mut usize) {
+    *n += 1;
+}
+
+/// 隐私扫描模式（脱敏三规则的检出模式面）。
+pub const PRIVACY_PATTERNS: [&str; 3] = [
+    "C:\\Users\\",   // 路径用户段
+    "S/N:",          // 序列号前缀
+    "serial-no=",    // 序列号键值
+];
+
+/// 内容扫描：命中任一隐私模式 → 需脱敏（红标）。
+pub fn privacy_scan_dirty(content: &[u8]) -> bool {
+    for pat in PRIVACY_PATTERNS.iter() {
+        let pb = pat.as_bytes();
+        if content.len() >= pb.len() {
+            for w in 0..=(content.len() - pb.len()) {
+                if &content[w..w + pb.len()] == pb {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// 合并策略：多会话草稿合成一张的取舍规则（指标取峰、计数累加）。
+pub fn merge_policy(new_peak: u64, old_peak: u64, counter_add: u32, old_counter: u32) -> (u64, u32) {
+    (new_peak.max(old_peak), old_counter + counter_add)
+}
+
+/// 域自检（深化层）。
+pub fn run_stardraft_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F036-stardraft-deep");
+    // 1) JSON 转义：反斜杠与引号成对转义。
+    let mut out = [0u8; 64];
+    let mut n = 0;
+    json_escape_into("a\"b\\c", &mut out, &mut n);
+    cs.add("json_escape", &out[..n] == b"a\\\"b\\\\c", "");
+    // 2) 星卡键名七件套。
+    cs.add("starcard_keys", STARCARD_KEYS == ["program", "api_calls", "startup_ms", "mem_peak", "crashes", "sessions", "downsampled"], "");
+    // 3) 数值键值写出形状。
+    let mut out2 = [0u8; 32];
+    let mut n2 = 0;
+    json_kv_num("crashes", 42, &mut out2, &mut n2);
+    cs.add("json_kv_shape", &out2[..n2] == b"\"crashes\":42", "");
+    // 4) 隐私扫描：路径段/序列号命中；干净内容放行。
+    cs.add(
+        "privacy_scan",
+        privacy_scan_dirty(b"open C:\\Users\\varia\\doc") && privacy_scan_dirty(b"S/N:12345") && !privacy_scan_dirty(b"clean content"),
+        "",
+    );
+    // 5) 合并策略：峰值取 max、计数累加。
+    cs.add("merge_policy_math", merge_policy(48, 64, 3, 5) == (64, 8) && merge_policy(99, 10, 1, 0) == (99, 1), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn json_escape_no_overflow() {
+        // 缓冲不足时截断不越界（零分配写出器安全性）。
+        let mut small = [0u8; 4];
+        let mut n = 0;
+        json_escape_into("abcdef", &mut small, &mut n);
+        assert!(n <= 4);
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_stardraft_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

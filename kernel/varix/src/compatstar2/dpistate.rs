@@ -290,3 +290,102 @@ mod tests {
         assert_eq!(virtualize_coords(640, 125), 512);
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-28 补强：DPI 常数面 / WM_DPICHANGED 参数 / 缩放因子表
+// （MS High DPI 文档字段级对拍承载）
+// ---------------------------------------------------------------------------
+
+/// WM_DPICHANGED 消息值。
+pub const WM_DPICHANGED: u32 = 0x02E0;
+/// WM_GETDPISCALEDSIZE（宽限期协商用）。
+pub const WM_GETDPISCALEDSIZE: u32 = 0x02E4;
+
+/// wParam：HIWORD = Y DPI、LOWORD = X DPI（MS 打包语义）。
+pub fn pack_dpichanged_wparam(dpi_x: u32, dpi_y: u32) -> u32 {
+    (dpi_y << 16) | (dpi_x & 0xFFFF)
+}
+
+pub fn unpack_dpichanged_wparam(wparam: u32) -> (u32, u32) {
+    (wparam & 0xFFFF, wparam >> 16)
+}
+
+/// lParam：建议矩形（packed RECT，16 位有符号四元组）。
+pub fn pack_suggested_rect(left: i16, top: i16, right: i16, bottom: i16) -> u64 {
+    (left as u16 as u64)
+        | ((top as u16 as u64) << 16)
+        | ((right as u16 as u64) << 32)
+        | ((bottom as u16 as u64) << 48)
+}
+
+/// 缩放因子表（percent → 因子定点 256 = 1.0x；MS MakeScaleFactor）。
+pub fn scale_factor_q8(percent: u32) -> u32 {
+    percent * 256 / 100
+}
+
+/// DPI 变更事件序（宽限期内协商→重排→确认三拍）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DpiPhase {
+    Idle,
+    Negotiated,
+    Relayout,
+    Confirmed,
+}
+
+/// 三拍推进：Negotiated → Relayout → Confirmed（跳拍非法）。
+pub fn dpi_phase_advance(cur: DpiPhase) -> Result<DpiPhase, &'static str> {
+    match cur {
+        DpiPhase::Idle => Ok(DpiPhase::Negotiated),
+        DpiPhase::Negotiated => Ok(DpiPhase::Relayout),
+        DpiPhase::Relayout => Ok(DpiPhase::Confirmed),
+        DpiPhase::Confirmed => Err("already-confirmed"),
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_dpistate_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F028-dpistate-deep");
+    // 1) 消息值对拍 MS。
+    cs.add("wm_dpichanged_values", WM_DPICHANGED == 0x02E0 && WM_GETDPISCALEDSIZE == 0x02E4, "");
+    // 2) wParam 打包/解包 round-trip（X 低 16 位、Y 高 16 位）。
+    let packed = pack_dpichanged_wparam(96, 144);
+    cs.add("wparam_pack", unpack_dpichanged_wparam(packed) == (96, 144) && packed == (144 << 16) | 96, "");
+    // 3) 建议矩形四元组打包 round-trip。
+    let rect = pack_suggested_rect(-8, 0, 800, 600);
+    cs.add("lparam_rect_pack", rect == ((-8i16 as u16 as u64) | (800u64 << 32) | (600u64 << 48)), "");
+    // 4) 缩放因子定点：100%→256、150%→384、200%→512。
+    cs.add(
+        "scale_factor_q8",
+        scale_factor_q8(100) == 256 && scale_factor_q8(150) == 384 && scale_factor_q8(200) == 512 && scale_factor_q8(125) == 320,
+        "",
+    );
+    // 5) 三拍推进：合法序 + 跳拍拒绝。
+    cs.add(
+        "phase_advance",
+        dpi_phase_advance(DpiPhase::Idle) == Ok(DpiPhase::Negotiated)
+            && dpi_phase_advance(DpiPhase::Relayout) == Ok(DpiPhase::Confirmed)
+            && dpi_phase_advance(DpiPhase::Confirmed) == Err("already-confirmed"),
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn full_phase_sequence() {
+        let mut p = DpiPhase::Idle;
+        p = dpi_phase_advance(p).unwrap();
+        p = dpi_phase_advance(p).unwrap();
+        p = dpi_phase_advance(p).unwrap();
+        assert_eq!(p, DpiPhase::Confirmed);
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_dpistate_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

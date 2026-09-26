@@ -307,3 +307,190 @@ mod tests {
         assert_eq!(LEDGER_ITEMS[40], "VSCode-OSS");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-40 补强：账本 JSON 序列化 / 季报生成器 / 类别统计
+// （账本数据全量 JSON 开放 F128 + 格式开放 F126 的字节级承载）
+// ---------------------------------------------------------------------------
+
+/// 账本 JSON 记录写出（一行一件的 JSONL 形状；零分配字节级）。
+pub fn ledger_item_json(item: &LedgerItem, out: &mut [u8], n: &mut usize) {
+    const HEAD: &[u8] = b"{\"name\":\"";
+    for &b in HEAD {
+        out[*n] = b;
+        n_step(n);
+    }
+    // name 逐字节（名单全是 ASCII 安全名）。
+    for &b in item.name.as_bytes() {
+        out[*n] = b;
+        n_step(n);
+    }
+    const MID: &[u8] = b"\",\"category\":";
+    for &b in MID {
+        out[*n] = b;
+        n_step(n);
+    }
+    push_num(item.category as u64, out, n);
+    const MID2: &[u8] = b",\"gates\":";
+    for &b in MID2 {
+        out[*n] = b;
+        n_step(n);
+    }
+    push_num(item.gates_bits as u64, out, n);
+    const TAIL: &[u8] = b"}";
+    for &b in TAIL {
+        out[*n] = b;
+        n_step(n);
+    }
+}
+
+fn n_step(n: &mut usize) {
+    *n += 1;
+}
+
+fn push_num(mut v: u64, out: &mut [u8], n: &mut usize) {
+    let mut buf = [0u8; 20];
+    let mut i = 0;
+    if v == 0 {
+        buf[0] = b'0';
+        i = 1;
+    }
+    while v > 0 {
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+        i += 1;
+    }
+    while i > 0 {
+        i -= 1;
+        out[*n] = buf[i];
+        n_step(n);
+    }
+}
+
+/// 状态字符串（JSON 状态字段）。
+pub fn status_str(s: ItemStatus) -> &'static str {
+    match s {
+        ItemStatus::Green => "green",
+        ItemStatus::Yellow => "yellow",
+        ItemStatus::Red => "red",
+        ItemStatus::Archived => "archived",
+    }
+}
+
+/// 季报生成器账面：一期季报的四指标（主册 F149 对齐）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct QuarterlyReport {
+    pub quarter: u32,
+    /// 通过率 permille。
+    pub pass_rate_permille: u32,
+    /// 绿/黄/红/归档 四态计数。
+    pub green: u32,
+    pub yellow: u32,
+    pub red: u32,
+    pub archived: u32,
+}
+
+/// 从账本汇总季报（构建机器自动汇总的模型面）。
+pub fn build_quarterly_report(ledger: &CompatLedger, quarter: u32) -> QuarterlyReport {
+    let mut r = QuarterlyReport { quarter, pass_rate_permille: ledger.pass_rate_permille(), green: 0, yellow: 0, red: 0, archived: 0 };
+    for it in ledger.items.iter().flatten() {
+        match it.status {
+            ItemStatus::Green => r.green += 1,
+            ItemStatus::Yellow => r.yellow += 1,
+            ItemStatus::Red => r.red += 1,
+            ItemStatus::Archived => r.archived += 1,
+        }
+    }
+    r
+}
+
+/// 类别统计：某类绿率 permille（星图分栏的筛选视图）。
+pub fn category_green_permille(ledger: &CompatLedger, category: usize) -> u32 {
+    let mut total = 0u64;
+    let mut green = 0u64;
+    for it in ledger.items.iter().flatten() {
+        if it.category == category {
+            total += 1;
+            if it.status == ItemStatus::Green {
+                green += 1;
+            }
+        }
+    }
+    if total == 0 {
+        0
+    } else {
+        (green * 1000 / total) as u32
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_compatledger_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F040-compatledger-deep");
+    // 1) 记录 JSON 写出形状（name/category/gates 三字段）。
+    let item = LedgerItem { name: "7-Zip", category: 1, gates_bits: 0b111, status: ItemStatus::Green, quarter: 1, red_streak: 0, cause: None, evidence_hash8: [7; 8] };
+    let mut out = [0u8; 96];
+    let mut n = 0;
+    ledger_item_json(&item, &mut out, &mut n);
+    cs.add(
+        "item_json_shape",
+        &out[..n] == b"{\"name\":\"7-Zip\",\"category\":1,\"gates\":7}",
+        "",
+    );
+    // 2) 状态四串。
+    cs.add(
+        "status_strings",
+        status_str(ItemStatus::Green) == "green" && status_str(ItemStatus::Red) == "red" && status_str(ItemStatus::Archived) == "archived" && status_str(ItemStatus::Yellow) == "yellow",
+        "",
+    );
+    // 3) 季报汇总：50 绿账本 → 1000‰ 全绿、四态计数对齐。
+    let mut l = CompatLedger::new();
+    for (i, name) in LEDGER_ITEMS.iter().enumerate() {
+        l.enroll(name, i / PER_CATEGORY, 0b111, 1, [i as u8; 8]).unwrap();
+    }
+    l.regress(0, RegressionCause::Upstream);
+    let report = build_quarterly_report(&l, 1);
+    cs.add(
+        "quarterly_report",
+        report.quarter == 1 && report.pass_rate_permille == 980 && report.green == 49 && report.yellow == 1 && report.red == 0,
+        "",
+    );
+    // 4) 类别绿率：第 1 类 10/10 全绿（除跨类第 0 件降黄）→ 1000‰。
+    cs.add(
+        "category_stats",
+        category_green_permille(&l, 1) == 1000 && category_green_permille(&l, 0) == 900,
+        "",
+    );
+    // 5) 序列化缓冲安全：满账本逐件写出不越界（容量 96B × 50 件轮用）。
+    let mut fits = true;
+    for it in l.items.iter().flatten() {
+        let mut buf = [0u8; 96];
+        let mut m = 0;
+        ledger_item_json(it, &mut buf, &mut m);
+        fits &= m <= 96;
+    }
+    cs.add("json_buffer_safe", fits, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn report_counts_all_statuses() {
+        let mut l = CompatLedger::new();
+        l.enroll("g", 0, 0b111, 1, [1; 8]).unwrap();
+        l.enroll("y", 0, 0b011, 1, [2; 8]).unwrap();
+        l.enroll("r", 0, 0b000, 1, [3; 8]).unwrap();
+        l.enroll("a", 0, 0b111, 1, [4; 8]).unwrap();
+        l.archive(3);
+        let rep = build_quarterly_report(&l, 1);
+        assert_eq!((rep.green, rep.yellow, rep.red, rep.archived), (1, 1, 1, 1));
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_compatledger_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

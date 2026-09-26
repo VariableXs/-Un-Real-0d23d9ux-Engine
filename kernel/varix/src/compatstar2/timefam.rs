@@ -353,3 +353,192 @@ mod tests {
         assert_eq!(pg.effective(), None, "全部释放 → 无高精度请求（空转清零 F049 联动口径）");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-22 补强：夏令时规则 / WaitableTimer / FILETIME 换算
+// （tzdata 裁剪版规则面；语义对照 Wine kernel32 时间面）
+// ---------------------------------------------------------------------------
+
+/// Windows FILETIME 纪元偏移：1601-01-01 → 1970-01-01 = 11,644,473,600 秒。
+pub const FILETIME_EPOCH_DELTA_S: i64 = 11_644_473_600;
+/// FILETIME 单位：100 纳秒。
+pub const FILETIME_TICKS_PER_S: i64 = 10_000_000;
+
+/// Unix epoch 秒 → Windows FILETIME（64 位 100ns 计数）。
+pub fn epoch_to_filetime(unix_epoch_s: i64) -> i64 {
+    (unix_epoch_s + FILETIME_EPOCH_DELTA_S) * FILETIME_TICKS_PER_S
+}
+
+/// FILETIME → Unix epoch 秒（round-trip 对拍面）。
+pub fn filetime_to_epoch(ft: i64) -> i64 {
+    ft / FILETIME_TICKS_PER_S - FILETIME_EPOCH_DELTA_S
+}
+
+/// 夏令时规则条目（tzdata 裁剪版；北半球 3 月第 2 个周日 → 11 月第 1 个周日，
+/// 南半球相反——判据面的固定规则口径）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DstRule {
+    pub tz_index: usize,
+    /// 夏令时偏移增量（秒，通常 3600）。
+    pub dst_offset_s: i32,
+    /// 北半球规则（3→11 月）= true；南半球（10→4 月）= false。
+    pub northern: bool,
+}
+
+/// 10 时区中 4 个执行夏令时（纽约/洛杉矶/伦敦/悉尼——tzdata 裁剪版登记）。
+pub const DST_RULES: [DstRule; 4] = [
+    DstRule { tz_index: 7, dst_offset_s: 3600, northern: true },  // America/New_York
+    DstRule { tz_index: 8, dst_offset_s: 3600, northern: true },  // America/Los_Angeles
+    DstRule { tz_index: 5, dst_offset_s: 3600, northern: true },  // Europe/London
+    DstRule { tz_index: 9, dst_offset_s: 3600, northern: false }, // Australia/Sydney
+];
+
+/// 某时刻是否处于夏令时（按月-日粗粒度规则：北半球 3/2 周日起 11/1 周日前；
+/// 精确到日序的换算由 tzdata 数据文件承载，此为判据换算面）。
+pub fn in_dst(tz_index: usize, month: u32, day: u32, northern: bool) -> bool {
+    let _ = (tz_index, day);
+    if northern {
+        (3..11).contains(&month) // 3 月初起 ~ 10 月末止
+    } else {
+        month >= 10 || month <= 4 // 10 月起 ~ 次年 4 月末
+    }
+}
+
+/// 带夏令时的本地偏移秒（标准偏移 + DST 增量）。
+pub fn effective_offset_s(tz_index: usize, month: u32, day: u32) -> i32 {
+    let _ = tz_index;
+    let std = TZ_TABLE[tz_index].offset_seconds;
+    for r in DST_RULES.iter() {
+        if r.tz_index == tz_index && in_dst(tz_index, month, day, r.northern) {
+            return std + r.dst_offset_s;
+        }
+    }
+    std
+}
+
+/// WaitableTimer 语义。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TimerType {
+    /// 手动重置：一次触发保持有信号直至 Set 再次武装。
+    ManualReset,
+    /// 自动重置：触发一次即回无信号（周期定时面）。
+    Synchronization,
+}
+
+/// 一个 WaitableTimer 账面。
+pub struct WaitableTimer {
+    pub timer_type: TimerType,
+    /// 周期毫秒（0 = 单次触发）。
+    pub period_ms: u32,
+    /// 已武装待触发。
+    pub armed: bool,
+    /// 已触发待消费（手动重置型保持；自动型消费即清）。
+    pub signaled: bool,
+    pub trigger_count: u64,
+}
+
+impl WaitableTimer {
+    pub fn new(timer_type: TimerType, period_ms: u32) -> Self {
+        WaitableTimer { timer_type, period_ms, armed: false, signaled: false, trigger_count: 0 }
+    }
+
+    /// SetWaitableTimer：武装。
+    pub fn set(&mut self) {
+        self.armed = true;
+        self.signaled = false;
+    }
+
+    /// 到点触发（内核打点驱动）：手动型保持有信号；自动型周期重武装。
+    pub fn fire(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.trigger_count += 1;
+        match self.timer_type {
+            TimerType::ManualReset => {
+                self.signaled = true;
+                self.armed = false;
+            }
+            TimerType::Synchronization => {
+                self.signaled = true; // 每次到点都置信号（消费即清）
+                if self.period_ms == 0 {
+                    self.armed = false; // 单次型触发后解除武装
+                }
+                // 周期型保持武装（period > 0）
+            }
+        }
+    }
+
+    /// WaitForSingleObject 消费：自动型取走信号；手动型消费不清（需重 Set）。
+    pub fn wait_consume(&mut self) -> bool {
+        if self.signaled {
+            if self.timer_type == TimerType::Synchronization {
+                self.signaled = false;
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_timefam_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F022-timefam-deep");
+    // 1) FILETIME 换算 round-trip（1601 纪元口径）。
+    let unix = 1_700_000_000i64;
+    cs.add("filetime_roundtrip", filetime_to_epoch(epoch_to_filetime(unix)) == unix, "");
+    // 2) FILETIME 常量对拍（11,644,473,600s / 10,000,000 ticks）。
+    cs.add("filetime_constants", FILETIME_EPOCH_DELTA_S == 11_644_473_600 && FILETIME_TICKS_PER_S == 10_000_000, "");
+    // 3) 夏令时规则表：4 条规则、北 3 南 1。
+    cs.add("dst_rules_roster", DST_RULES.len() == 4 && DST_RULES.iter().filter(|r| !r.northern).count() == 1, "");
+    // 4) 7 月纽约 +1h；1 月纽约标准 -5h；7 月悉尼（南半球冬）标准 +10h。
+    cs.add(
+        "dst_offset_semantics",
+        effective_offset_s(7, 7, 15) == -5 * 3600 + 3600
+            && effective_offset_s(7, 1, 15) == -5 * 3600
+            && effective_offset_s(9, 7, 15) == 10 * 3600
+            && effective_offset_s(9, 1, 15) == 10 * 3600 + 3600,
+        "",
+    );
+    // 5) 手动重置 WaitableTimer：触发保持有信号、消费不清。
+    let mut mt = WaitableTimer::new(TimerType::ManualReset, 0);
+    mt.set();
+    mt.fire();
+    let c1 = mt.wait_consume();
+    let c2 = mt.wait_consume();
+    cs.add("waitable_manual", c1 && c2 && mt.trigger_count == 1, "");
+    // 6) 自动重置周期型：消费即清、周期重武装。
+    let mut st = WaitableTimer::new(TimerType::Synchronization, 16);
+    st.set();
+    st.fire();
+    let once = st.wait_consume();
+    let twice = st.wait_consume();
+    cs.add("waitable_sync_periodic", once && !twice && st.armed, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn filetime_negative_epoch() {
+        // 1970 前的时刻换算（负偏移安全）。
+        let ft = epoch_to_filetime(-1000);
+        assert_eq!(filetime_to_epoch(ft), -1000);
+    }
+
+    #[test]
+    fn dst_boundary_months() {
+        // 北半球 2 月与 12 月均不在夏令时；南半球 6 月不在。
+        assert!(!in_dst(7, 2, 1, true) && !in_dst(7, 12, 1, true));
+        assert!(!in_dst(9, 6, 1, false));
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_timefam_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

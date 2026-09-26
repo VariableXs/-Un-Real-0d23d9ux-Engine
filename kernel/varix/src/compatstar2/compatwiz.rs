@@ -336,3 +336,129 @@ mod tests {
         assert_eq!(mem.suggest_remove_events, 1, "阈值 3 触发一次（不重复骚扰）");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-35 补强：运行时签名表 / 崩溃签名解析 / 主按钮落地
+// （运行时识别签名表参照官方识别方式；向导自研——主册【开源复用】）
+// ---------------------------------------------------------------------------
+
+/// 运行时签名条目（签名表 → F032 下载指引的映射）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RuntimeSignature {
+    pub runtime: &'static str,
+    /// import 表/API 签名样本。
+    pub signature: &'static str,
+    /// 官方下载页路标（无商店原则：只指路不代办——主册用户故事）。
+    pub download_hint: &'static str,
+    /// 体积预估（MB）。
+    pub size_hint_mb: u32,
+}
+
+/// 主流运行时签名表（.NET/VC++ Redist/JRE/Python——官方识别方式登记）。
+pub const RUNTIME_SIGNATURES: [RuntimeSignature; 4] = [
+    RuntimeSignature { runtime: ".NET", signature: "mscoree.dll", download_hint: "dotnet.microsoft.com", size_hint_mb: 55 },
+    RuntimeSignature { runtime: "VC++", signature: "msvcp140.dll", download_hint: "visualstudio.microsoft.com", size_hint_mb: 25 },
+    RuntimeSignature { runtime: "JRE", signature: "jvm.dll", download_hint: "adoptium.net", size_hint_mb: 180 },
+    RuntimeSignature { runtime: "Python", signature: "python312.dll", download_hint: "python.org", size_hint_mb: 60 },
+];
+
+/// 签名查表：import 缺失归因 → 运行时名。
+pub fn match_runtime_signature(missing_import: &str) -> Option<&'static RuntimeSignature> {
+    RUNTIME_SIGNATURES.iter().find(|s| s.signature == missing_import)
+}
+
+/// 崩溃签名分类（异常码 → 归因面；F020 联动）。
+pub const EXC_ACCESS_VIOLATION: u32 = 0xC000_0005;
+pub const EXC_STACK_OVERFLOW: u32 = 0xC000_00FD;
+pub const EXC_ILLEGAL_INSTRUCTION: u32 = 0xC000_001D;
+
+/// 异常码 → 归因分类（未知码如实归 unknown——不硬编）。
+pub fn classify_exception(code: u32) -> &'static str {
+    match code {
+        EXC_ACCESS_VIOLATION => "missing-api",   // 非法地址常为未实现接口面
+        EXC_STACK_OVERFLOW => "unknown",         // 栈溢出不硬编原因
+        EXC_ILLEGAL_INSTRUCTION => "arch-mismatch",
+        _ => "unknown",
+    }
+}
+
+/// 主按钮落地动作：下载 → 开浏览器到官方页（无商店原则）。
+pub fn download_target(attr: &Attribution) -> Option<&'static str> {
+    match attr {
+        Attribution::MissingRuntime(rt) => {
+            match_runtime_signature_runtime(rt).map(|s| s.download_hint)
+        }
+        _ => None,
+    }
+}
+
+fn match_runtime_signature_runtime(rt: &str) -> Option<&'static RuntimeSignature> {
+    RUNTIME_SIGNATURES.iter().find(|s| s.runtime == rt)
+}
+
+/// 反复失败统计的入口重定向：向导出现频率（同程序第 N 次）。
+pub fn wizard_frequency_tier(fail_count: u32) -> &'static str {
+    match fail_count {
+        0 => "first",
+        1..=2 => "repeat",
+        3..=5 => "frequent",
+        _ => "suggest-remove",
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_compatwiz_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F035-compatwiz-deep");
+    // 1) 签名表四条全在册；查表命中。
+    cs.add(
+        "runtime_signature_table",
+        RUNTIME_SIGNATURES.len() == 4 && match_runtime_signature("mscoree.dll").unwrap().runtime == ".NET" && match_runtime_signature("nope.dll").is_none(),
+        "",
+    );
+    // 2) 下载指引：无商店原则（只指路）+ 体积预估在册。
+    cs.add(
+        "download_hints",
+        download_target(&Attribution::MissingRuntime(".NET")) == Some("dotnet.microsoft.com")
+            && download_target(&Attribution::Permission).is_none()
+            && RUNTIME_SIGNATURES[2].size_hint_mb == 180,
+        "",
+    );
+    // 3) 异常码分类：AV→缺接口、非法指令→架构不符、栈溢出→如实未知。
+    cs.add(
+        "exception_classification",
+        classify_exception(EXC_ACCESS_VIOLATION) == "missing-api"
+            && classify_exception(EXC_ILLEGAL_INSTRUCTION) == "arch-mismatch"
+            && classify_exception(EXC_STACK_OVERFLOW) == "unknown"
+            && classify_exception(0x1234) == "unknown",
+        "",
+    );
+    // 4) 异常码常量对拍。
+    cs.add("exception_constants", EXC_ACCESS_VIOLATION == 0xC000_0005 && EXC_STACK_OVERFLOW == 0xC000_00FD, "");
+    // 5) 出现频率分层：1-2 重复、3-5 频繁、6+ 建议移除（与主记忆阈值衔接）。
+    cs.add(
+        "frequency_tiers",
+        wizard_frequency_tier(0) == "first" && wizard_frequency_tier(2) == "repeat" && wizard_frequency_tier(4) == "frequent" && wizard_frequency_tier(6) == "suggest-remove",
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn signature_table_unique_names() {
+        for i in 0..RUNTIME_SIGNATURES.len() {
+            for j in i + 1..RUNTIME_SIGNATURES.len() {
+                assert_ne!(RUNTIME_SIGNATURES[i].runtime, RUNTIME_SIGNATURES[j].runtime);
+            }
+        }
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_compatwiz_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

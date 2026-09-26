@@ -345,3 +345,131 @@ mod tests {
         assert!(!pt.recheck_on_rule_update(false));
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-37 补强：规则引擎三型 / 风险清单 / 角标状态机
+// （peblock 门规则格式开放 F126；规则来源三分类的承载深化）
+// ---------------------------------------------------------------------------
+
+/// 规则三型（哈希/发布者/路径前缀——规则格式开放 F126）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RuleKind {
+    HashExact([u8; 8]),
+    Publisher(&'static str),
+    PathPrefix(&'static str),
+}
+
+/// 一条拦截规则。
+#[derive(Clone, Copy)]
+pub struct BlockRule {
+    pub name: &'static str,
+    pub source: RuleSource,
+    pub kind: RuleKind,
+}
+
+/// 规则裁决。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RuleVerdict {
+    Allow,
+    Intercept,
+}
+
+/// 规则匹配：哈希精确 / 发布者名 / 路径前缀三路。
+pub fn rule_matches(rule: &BlockRule, file_hash8: &[u8; 8], publisher: &str, path: &str) -> bool {
+    match rule.kind {
+        RuleKind::HashExact(h) => h == *file_hash8,
+        RuleKind::Publisher(p) => p == publisher,
+        RuleKind::PathPrefix(prefix) => path.starts_with(prefix),
+    }
+}
+
+/// 规则表裁决：任一命中规则 → 拦截（保守正确）；全不中 → 放行。
+pub fn evaluate_rules(rules: &[BlockRule], file_hash8: &[u8; 8], publisher: &str, path: &str) -> RuleVerdict {
+    for r in rules {
+        if rule_matches(r, file_hash8, publisher, path) {
+            return RuleVerdict::Intercept;
+        }
+    }
+    RuleVerdict::Allow
+}
+
+/// 越权风险清单（二次确认页的固定清单——主册【交互设计】）。
+pub const RISK_LIST: [&str; 3] =
+    ["unsigned-publisher", "unknown-origin", "no-reputation"];
+
+/// 角标状态机（文件角标：无 → 未签 → 越权永久标注）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BadgeState {
+    None,
+    Unsigned,
+    /// 越权运行过 → 永久标注（角标悬停出说明）。
+    OverrideMarked,
+}
+
+/// 角标推进：拦截后越权 → 永久标注（不可回退）。
+pub fn badge_advance(cur: BadgeState, overrode: bool) -> BadgeState {
+    if overrode {
+        BadgeState::OverrideMarked
+    } else {
+        match cur {
+            BadgeState::None => BadgeState::Unsigned,
+            other => other,
+        }
+    }
+}
+
+/// 信任发布者验证入口（证书链在 F024 库；此处仅做来源合法性闸）。
+pub fn publisher_trust_admissible(issuer_known: bool, chain_verified: bool) -> bool {
+    issuer_known && chain_verified
+}
+
+/// 域自检（深化层）。
+pub fn run_peblockui_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F037-peblockui-deep");
+    // 1) 三型规则各自命中。
+    let rules = [
+        BlockRule { name: "hash-list", source: RuleSource::Builtin, kind: RuleKind::HashExact([1; 8]) },
+        BlockRule { name: "pub-block", source: RuleSource::Community, kind: RuleKind::Publisher("ShadyCA") },
+        BlockRule { name: "temp-dir", source: RuleSource::SelfMade, kind: RuleKind::PathPrefix("sandbox:temp/") },
+    ];
+    cs.add(
+        "rule_three_kinds",
+        rule_matches(&rules[0], &[1; 8], "x", "p") && rule_matches(&rules[1], &[2; 8], "ShadyCA", "p") && rule_matches(&rules[2], &[2; 8], "x", "sandbox:temp/a.exe"),
+        "",
+    );
+    // 2) 表裁决：命中拦截、全不中放行。
+    cs.add(
+        "rule_evaluate",
+        evaluate_rules(&rules, &[1; 8], "x", "p") == RuleVerdict::Intercept
+            && evaluate_rules(&rules, &[9; 8], "clean-ca", "project:bin/app") == RuleVerdict::Allow,
+        "",
+    );
+    // 3) 风险清单三项在册。
+    cs.add("risk_list_roster", RISK_LIST == ["unsigned-publisher", "unknown-origin", "no-reputation"], "");
+    // 4) 角标状态机：越权永久标注不可回退。
+    let b0 = badge_advance(BadgeState::None, false);
+    let b1 = badge_advance(b0, true);
+    let b2 = badge_advance(b1, false);
+    cs.add("badge_lifecycle", b0 == BadgeState::Unsigned && b1 == BadgeState::OverrideMarked && b2 == BadgeState::OverrideMarked, "");
+    // 5) 信任发布者闸：未知发行者不可信。
+    cs.add("publisher_admissible", publisher_trust_admissible(true, true) && !publisher_trust_admissible(false, true), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn prefix_rule_boundary() {
+        let r = BlockRule { name: "t", source: RuleSource::SelfMade, kind: RuleKind::PathPrefix("sandbox:") };
+        assert!(rule_matches(&r, &[0; 8], "", "sandbox:x"));
+        assert!(!rule_matches(&r, &[0; 8], "", "sandboxed:x"), "前缀须含分隔边界语义");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_peblockui_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

@@ -61,7 +61,13 @@ pub fn default_pdf_name(program: &str, yyyymmdd: u32, hhmmss: u32) -> [u8; 64] {
     }
     out[n] = b'-';
     n += 1;
-    for v in [yyyymmdd, hhmmss] {
+    // 日期与时间两段以一个连字符分隔（主册「程序名-日期时间.pdf」——
+    // 名称共两个连字符：程序名后一个、日期与时间间一个）。
+    for (i, &v) in [yyyymmdd, hhmmss].iter().enumerate() {
+        if i > 0 {
+            out[n] = b'-';
+            n += 1;
+        }
         let mut buf = [0u8; 8];
         let mut i = 0;
         let mut x = v;
@@ -79,8 +85,6 @@ pub fn default_pdf_name(program: &str, yyyymmdd: u32, hhmmss: u32) -> [u8; 64] {
             out[n] = buf[i];
             n += 1;
         }
-        out[n] = b'-';
-        n += 1;
     }
     for b in b".pdf" {
         out[n] = *b;
@@ -247,10 +251,10 @@ pub fn run_printpdf_checks() -> CheckSet {
     let b300 = raster_bytes_a4(DPI_DEFAULT);
     let b150 = raster_bytes_a4(DPI_DRAFT);
     cs.add("a4_raster_budget", b300 > RASTER_WARN_BYTES && (b300 >> 20) <= 9 && b150 * 4 <= b300 && b300 - b150 * 4 < 20_000, "");
-    // 2) 自动命名三段式（程序名-日期-时间.pdf）。
+    // 2) 自动命名两连字符（程序名-日期时间.pdf——主册【设计细节】原格式）。
     let name = default_pdf_name("Notepad2", 20260927, 123456);
     let s = core::str::from_utf8(&name[..name.iter().position(|&c| c == 0).unwrap_or(0)]).unwrap_or("");
-    cs.add("auto_naming", s == "Notepad2-20260927-123456-.pdf", "");
+    cs.add("auto_naming", s == "Notepad2-20260927-123456.pdf", "");
     // 3) 页范围语义：虚拟打印机仅页范围生效。
     let t = PrintTask { source_program: "editor", pages_total: 100, page_from: 10, page_to: 19, copies: 1, dpi: DPI_DEFAULT, state: TaskState::Queued, elapsed_ms: 0, reclaimed: false, fallback_font_pages: 0 };
     cs.add("page_range_only", t.effective_pages() == 10, "");
@@ -325,7 +329,7 @@ mod tests {
     fn auto_naming_edge_zero() {
         let name = default_pdf_name("app", 0, 0);
         let end = name.iter().position(|&c| c == 0).unwrap();
-        assert_eq!(&name[..end], b"app-0-0-.pdf");
+        assert_eq!(&name[..end], b"app-0-0.pdf");
     }
 
     #[test]
@@ -342,5 +346,166 @@ mod tests {
         let single150 = PrintTask { dpi: 150, page_from: 1, page_to: 1, pages_total: 1, ..task(1) };
         assert!(single300.raster_over_warn());
         assert!(!single150.raster_over_warn());
+    }
+}
+
+// ===========================================================================
+// 深化层 · G-A-25 补强：PDF 对象模型 / 内容流操作 / 页范围解析
+// （PDF 生成语义承载；评估 libharu/pdf-writer 级面，版本锁定 F130）
+// ---------------------------------------------------------------------------
+
+/// PDF 对象类型（写出器承载的最小对象集）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PdfObjKind {
+    Catalog,
+    Pages,
+    Page,
+    Font,
+    Contents,
+}
+
+/// 页对象账面：宽高（pt）+ 内容流偏移。
+#[derive(Clone, Copy)]
+pub struct PdfPage {
+    pub width_pt: u32,
+    pub height_pt: u32,
+    pub content_offset: u32,
+}
+
+/// A4 pt 尺寸（595.28x841.89 → 整型 595x842）。
+pub const A4_W_PT: u32 = 595;
+pub const A4_H_PT: u32 = 842;
+
+/// 内容流文本操作（BT/ET 块内 Tj/Td 语义）。
+pub const PDF_OP_BT: &[u8] = b"BT";
+pub const PDF_OP_ET: &[u8] = b"ET";
+pub const PDF_OP_TJ: &[u8] = b"Tj";
+pub const PDF_OP_TD: &[u8] = b"Td";
+
+/// 内容流构造校验：BT 在前 ET 在后，操作序列合法。
+pub fn content_stream_valid(ops: &[&[u8]]) -> bool {
+    let mut bt_open = false;
+    for op in ops {
+        if *op == PDF_OP_BT {
+            if bt_open {
+                return false; // 嵌套 BT 非法
+            }
+            bt_open = true;
+        } else if *op == PDF_OP_ET {
+            if !bt_open {
+                return false; // 未开先闭
+            }
+            bt_open = false;
+        }
+        // Tj/Td 等文本操作不改变块状态
+    }
+    !bt_open // 所有 BT 均闭合
+}
+
+/// 页范围解析："3-7" → (3, 7)；"5" → (5, 5)；非法 → None。
+pub fn parse_page_range(spec: &[u8]) -> Option<(u32, u32)> {
+    let mut dash = None;
+    for (i, &b) in spec.iter().enumerate() {
+        if b == b'-' {
+            if dash.is_some() {
+                return None; // 双横杠非法
+            }
+            dash = Some(i);
+        } else if !b.is_ascii_digit() {
+            return None;
+        }
+    }
+    match dash {
+        Some(d) => {
+            let a = parse_u32(&spec[..d])?;
+            let b = parse_u32(&spec[d + 1..])?;
+            if a == 0 || b < a {
+                return None;
+            }
+            Some((a, b))
+        }
+        None => {
+            let a = parse_u32(spec)?;
+            if a == 0 {
+                return None;
+            }
+            Some((a, a))
+        }
+    }
+}
+
+fn parse_u32(bytes: &[u8]) -> Option<u32> {
+    if bytes.is_empty() || bytes.len() > 10 {
+        return None;
+    }
+    let mut v: u64 = 0;
+    for &b in bytes {
+        v = v * 10 + (b - b'0') as u64;
+        if v > u32::MAX as u64 {
+            return None;
+        }
+    }
+    Some(v as u32)
+}
+
+/// xref 表条目模型：偏移 + 使用标记（gen 0 口径）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct XrefEntry {
+    pub obj_num: u16,
+    pub offset: u32,
+    pub in_use: bool,
+}
+
+/// 域自检（深化层）。
+pub fn run_printpdf_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F025-printpdf-deep");
+    // 1) A4 pt 尺寸常量（整型口径）。
+    cs.add("a4_pt_size", A4_W_PT == 595 && A4_H_PT == 842, "");
+    // 2) 内容流：BT..ET 合法；嵌套 BT / 未开先闭 / 悬空 BT 全非法。
+    cs.add(
+        "content_stream_rules",
+        content_stream_valid(&[PDF_OP_BT, PDF_OP_TJ, PDF_OP_ET])
+            && !content_stream_valid(&[PDF_OP_BT, PDF_OP_BT, PDF_OP_ET, PDF_OP_ET])
+            && !content_stream_valid(&[PDF_OP_ET, PDF_OP_BT])
+            && !content_stream_valid(&[PDF_OP_BT, PDF_OP_TJ]),
+        "",
+    );
+    // 3) 页范围解析三态：区间 / 单页 / 非法。
+    cs.add(
+        "page_range_parse",
+        parse_page_range(b"3-7") == Some((3, 7))
+            && parse_page_range(b"5") == Some((5, 5))
+            && parse_page_range(b"7-3").is_none()
+            && parse_page_range(b"0").is_none()
+            && parse_page_range(b"1--2").is_none()
+            && parse_page_range(b"a-2").is_none(),
+        "",
+    );
+    // 4) xref 条目模型（结构等值）。
+    cs.add(
+        "xref_entry",
+        XrefEntry { obj_num: 3, offset: 1024, in_use: true } == XrefEntry { obj_num: 3, offset: 1024, in_use: true },
+        "",
+    );
+    // 5) 打印 DPI 与 PDF pt 双口径共存（光栅 300dpi + 矢量 pt 页面）。
+    cs.add("dual_unit_coexist", raster_bytes_a4(DPI_DEFAULT) > 0 && A4_W_PT > 0, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn range_boundaries() {
+        assert_eq!(parse_page_range(b"1-1"), Some((1, 1)));
+        assert_eq!(parse_page_range(b"999999999"), Some((999999999, 999999999)));
+        assert!(parse_page_range(b"99999999999").is_none(), "超 u32 拒绝");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_printpdf_deep();
+        assert!(cs.all_passed() && !cs.truncated());
     }
 }

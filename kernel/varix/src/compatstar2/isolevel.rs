@@ -317,3 +317,139 @@ mod tests {
         assert_eq!(a1, a2, "重复注册回同槽");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-38 补强：能力位全集 / 临时放行台账 / 配额分档表
+// （能力执法 B-15xx 既有面的兼容承载；权限心智对齐移动端）
+// ---------------------------------------------------------------------------
+
+/// 能力位全集（主册四能力：网络/文档写/剪贴板写/后台运行）。
+pub const CAP_NETWORK: u8 = 0b0001;
+pub const CAP_DOC_WRITE: u8 = 0b0010;
+pub const CAP_CLIPBOARD_WRITE: u8 = 0b0100;
+pub const CAP_BACKGROUND: u8 = 0b1000;
+
+/// 档位 → 能力位图（严格档：全禁；标准：全给（沙盒面）；宽松：全给+审计）。
+pub fn level_caps(level: IsoLevel) -> u8 {
+    match level {
+        IsoLevel::Loose => CAP_NETWORK | CAP_DOC_WRITE | CAP_CLIPBOARD_WRITE | CAP_BACKGROUND,
+        IsoLevel::Standard => CAP_NETWORK | CAP_DOC_WRITE | CAP_CLIPBOARD_WRITE | CAP_BACKGROUND,
+        IsoLevel::Strict => 0, // 沙盒内仅文件系统（矩阵格 filesystem=true 已承载）
+    }
+}
+
+/// 能力裁决：位图查位。
+pub fn cap_allowed(level: IsoLevel, cap: u8) -> bool {
+    level_caps(level) & cap != 0
+}
+
+/// 临时放行台账（多应用并发放行、各自倒计时）。
+pub struct TempGrantLedger {
+    grants: [Option<(&'static str, u64)>; 8], // (app, remaining_ms)
+    pub revocations: u32,
+}
+
+impl TempGrantLedger {
+    pub const fn new() -> Self {
+        TempGrantLedger { grants: [None; 8], revocations: 0 }
+    }
+
+    /// 授予临时放行（槽满拒绝）。
+    pub fn grant(&mut self, app: &'static str) -> bool {
+        for slot in self.grants.iter_mut() {
+            match slot {
+                None => {
+                    *slot = Some((app, TEMP_ALLOW_MS));
+                    return true;
+                }
+                Some((a, _)) if *a == app => {
+                    *slot = Some((app, TEMP_ALLOW_MS)); // 重授即重置
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// tick：全员倒计时，归零自动收回。
+    pub fn tick(&mut self, dt_ms: u64) {
+        for slot in self.grants.iter_mut() {
+            let expired = matches!(slot, Some((_, r)) if *r <= dt_ms);
+            if expired {
+                *slot = None;
+                self.revocations += 1;
+            } else if let Some((_, remaining)) = slot {
+                *remaining -= dt_ms;
+            }
+        }
+    }
+
+    pub fn active_for(&self, app: &str) -> bool {
+        self.grants.iter().flatten().any(|(a, _)| *a == app)
+    }
+}
+
+/// 配额分档表（F195 联动的完整档表：内存/句柄/socket/磁盘四维）。
+pub const QUOTA_TIERS: [(&str, u32, u32, u32, u32); 3] = [
+    // (档, 内存 MB, 句柄, socket, 磁盘 MB)
+    ("loose", 2048, 4096, 256, 8192),
+    ("standard", 1024, 2048, 128, 4096),
+    ("strict", 512, 1024, 0, 1024),
+];
+
+/// 严格档 socket 配额 = 0（禁网络的配额表达）。
+pub fn quota_socket_for_strict() -> u32 {
+    QUOTA_TIERS[2].3
+}
+
+/// 域自检（深化层）。
+pub fn run_isolevel_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F038-isolevel-deep");
+    // 1) 能力位全集四件套。
+    cs.add("capability_bits", CAP_NETWORK == 1 && CAP_DOC_WRITE == 2 && CAP_CLIPBOARD_WRITE == 4 && CAP_BACKGROUND == 8, "");
+    // 2) 档位能力位图：宽松=标准=全位、严格=0。
+    cs.add(
+        "level_caps_bitmap",
+        level_caps(IsoLevel::Loose) == 0b1111 && level_caps(IsoLevel::Standard) == 0b1111 && level_caps(IsoLevel::Strict) == 0,
+        "",
+    );
+    // 3) 裁决：严格档网络/剪贴板全拒；标准档全通。
+    cs.add(
+        "cap_decisions",
+        !cap_allowed(IsoLevel::Strict, CAP_NETWORK) && !cap_allowed(IsoLevel::Strict, CAP_CLIPBOARD_WRITE) && cap_allowed(IsoLevel::Standard, CAP_BACKGROUND),
+        "",
+    );
+    // 4) 临时放行台账：双应用各自倒计时、归零分别收回。
+    let mut ledger = TempGrantLedger::new();
+    ledger.grant("a");
+    ledger.grant("b");
+    ledger.tick(TEMP_ALLOW_MS / 2);
+    let both = ledger.active_for("a") && ledger.active_for("b");
+    ledger.tick(TEMP_ALLOW_MS);
+    cs.add("temp_grant_ledger", both && !ledger.active_for("a") && !ledger.active_for("b") && ledger.revocations == 2, "");
+    // 5) 配额分档表：严格档 socket = 0（禁网络配额表达）。
+    cs.add("quota_tiers_strict_socket", quota_socket_for_strict() == 0 && QUOTA_TIERS.len() == 3, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn grant_reset_on_regrant() {
+        let mut l = TempGrantLedger::new();
+        l.grant("a");
+        l.tick(TEMP_ALLOW_MS - 1000);
+        l.grant("a"); // 重授重置
+        l.tick(TEMP_ALLOW_MS - 2000);
+        assert!(l.active_for("a"), "重授后倒计时重置");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_isolevel_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

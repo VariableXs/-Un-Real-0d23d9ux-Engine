@@ -305,3 +305,112 @@ mod tests {
         assert!(!p.always_switch, "默认不自动切（用户每次确认）");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-39 补强：D3D 动态库全集 / 显存预估 / 全屏独占检查
+// （D3D 版本探测参照 DXVK/dxgi 枚举面——评估阶段，F130 预登记）
+// ---------------------------------------------------------------------------
+
+/// D3D 相关动态库全集（import 表探测词表）。
+pub const D3D_DLLS: [&str; 6] =
+    ["d3d9.dll", "d3d10.dll", "d3d11.dll", "d3d12.dll", "dxgi.dll", "d3dcompiler_47.dll"];
+
+/// 探测词 → 需求版本映射（dxgi/d3dcompiler 单独出现不足以判定——保守正确）。
+pub fn dll_to_need(dll: &str) -> Option<D3dNeed> {
+    match dll {
+        "d3d9.dll" => Some(D3dNeed::D3D9),
+        "d3d10.dll" => Some(D3dNeed::D3D9), // D3D10 需求按 9 面分流（差异表登记）
+        "d3d11.dll" => Some(D3dNeed::D3D11),
+        "d3d12.dll" => Some(D3dNeed::D3D12),
+        _ => None, // dxgi/d3dcompiler 为辅助库
+    }
+}
+
+/// 显存预估（4K 全屏 4xMSAA 口径，MB）。
+pub fn vram_estimate_mb(width: u32, height: u32, msaa_x: u32) -> u32 {
+    // (宽×高×4 字节×4 缓冲 + MSAA 倍率) / 1MB
+    let base = width as u64 * height as u64 * 4 * 4;
+    let with_msaa = base * msaa_x.max(1) as u64;
+    (with_msaa / (1 << 20)) as u32
+}
+
+/// 全屏独占检查（切域前状态裁决）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FullscreenState {
+    Windowed,
+    Borderless,
+    Exclusive,
+}
+
+/// 切域建议：独占全屏 → 必须先回窗口化（交接失败预防——主册【状态与异常】）。
+pub fn pre_handoff_screen_check(state: FullscreenState) -> Result<(), &'static str> {
+    match state {
+        FullscreenState::Exclusive => Err("exit-exclusive-first"),
+        _ => Ok(()),
+    }
+}
+
+/// 交接参数打包/解包（进快照扩展字段——主册【数据与存储】）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct HandoffParams {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_hz: u32,
+}
+
+/// 三字段打包成 96 位快照字段（域内以三 u32 数组承载）。
+pub fn pack_handoff_params(p: &HandoffParams) -> [u32; 3] {
+    [p.width, p.height, p.refresh_hz]
+}
+
+pub fn unpack_handoff_params(packed: &[u32; 3]) -> HandoffParams {
+    HandoffParams { width: packed[0], height: packed[1], refresh_hz: packed[2] }
+}
+
+/// 域自检（深化层）。
+pub fn run_gamefront_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F039-gamefront-deep");
+    // 1) 动态库词表六件套。
+    cs.add("d3d_dll_roster", D3D_DLLS.len() == 6 && D3D_DLLS[3] == "d3d12.dll" && D3D_DLLS[5] == "d3dcompiler_47.dll", "");
+    // 2) 词 → 版本：d3d10 按 9 分流（差异表登记）；dxgi/d3dcompiler 不判定。
+    cs.add(
+        "dll_version_mapping",
+        dll_to_need("d3d9.dll") == Some(D3dNeed::D3D9)
+            && dll_to_need("d3d10.dll") == Some(D3dNeed::D3D9)
+            && dll_to_need("d3d12.dll") == Some(D3dNeed::D3D12)
+            && dll_to_need("dxgi.dll").is_none()
+            && dll_to_need("d3dcompiler_47.dll").is_none(),
+        "",
+    );
+    // 3) 显存预估：4K 4xMSAA = 8×8.4×16/16 → 528MB 量级（口径自洽）。
+    cs.add("vram_estimate_4k", vram_estimate_mb(3840, 2160, 4) == 506 && vram_estimate_mb(1920, 1080, 1) == 31, "");
+    // 4) 独占全屏 → 先回窗口化；无边框/窗口化直通。
+    cs.add(
+        "exclusive_screen_gate",
+        pre_handoff_screen_check(FullscreenState::Exclusive) == Err("exit-exclusive-first")
+            && pre_handoff_screen_check(FullscreenState::Borderless).is_ok()
+            && pre_handoff_screen_check(FullscreenState::Windowed).is_ok(),
+        "",
+    );
+    // 5) 交接参数打包 round-trip。
+    let p = HandoffParams { width: 2560, height: 1440, refresh_hz: 165 };
+    cs.add("handoff_params_roundtrip", unpack_handoff_params(&pack_handoff_params(&p)) == p, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn vram_zero_msaa_floor() {
+        // MSAA 倍率下限 1（0 输入钳制）。
+        assert_eq!(vram_estimate_mb(1920, 1080, 0), vram_estimate_mb(1920, 1080, 1));
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_gamefront_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

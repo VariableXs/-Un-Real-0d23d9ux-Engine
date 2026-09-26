@@ -351,3 +351,138 @@ mod tests {
         assert_eq!(accepted, 3, "7 次请求中 0/16/32ms 三帧通过（16ms 节流）");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-27 补强：HIMC 语义 / WM_IME_* 消息面 / 候选表结构
+// （IMM32 结构与消息承载；语义对照 Wine imm32）
+// ---------------------------------------------------------------------------
+
+/// WM_IME_* 消息值（MS 对拍）。
+pub const WM_IME_SETCONTEXT: u32 = 0x0281;
+pub const WM_IME_NOTIFY: u32 = 0x0282;
+pub const WM_IME_CONTROL: u32 = 0x0283;
+pub const WM_IME_COMPOSITION: u32 = 0x028F;
+pub const WM_IME_CHAR: u32 = 0x0286;
+
+/// COMPOSITION 参数位（GCS 前置位图——主册 GCS_* 语义的伴随面）。
+pub const CPS_COMPLETE: u32 = 0x0001;
+pub const CPS_CANCEL: u32 = 0x0004;
+
+/// HIMC（输入上下文）账面：关联窗口 + 打开态 + 转换模式。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ImcContext {
+    pub hwnd: u32,
+    pub open: bool,
+    /// 转换模式位： native(1) / alpha(2) / full-shape(4)。
+    pub conversion: u32,
+}
+
+pub const IME_CMODE_NATIVE: u32 = 0x0001;
+pub const IME_CMODE_ALPHANUMERIC: u32 = 0x0002;
+pub const IME_CMODE_FULLSHAPE: u32 = 0x0004;
+
+/// 候选表结构（CANDIDATELIST 整型形状：页大小 9、页游标）。
+/// 候选存储容量（两页 = 18；翻页语义的承载空间）。
+pub const CANDIDATE_STORAGE: usize = 18;
+
+#[derive(Clone, Copy)]
+pub struct CandidateList {
+    pub entries: [[u16; 8]; CANDIDATE_STORAGE],
+    pub count: usize,
+    /// 当前页首索引（翻页语义）。
+    pub page_start: usize,
+}
+
+impl CandidateList {
+    pub fn page_view(&self, buf: &mut [[u16; 8]; MAX_CANDIDATES]) -> usize {
+        // 三重钳制：页大小 / 剩余条数 / 存储边界（越界安全）。
+        let n = (self.count.saturating_sub(self.page_start))
+            .min(MAX_CANDIDATES)
+            .min(CANDIDATE_STORAGE - self.page_start);
+        for i in 0..n {
+            buf[i] = self.entries[self.page_start + i];
+        }
+        n
+    }
+    /// 翻页：下一页（不超过 count）。
+    pub fn page_down(&mut self) -> bool {
+        if self.page_start + MAX_CANDIDATES < self.count {
+            self.page_start += MAX_CANDIDATES;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// 组合窗口失焦/收起通知（WM_IME_NOTIFY 语义：IMN_CLOSECANDIDATE = 3）。
+pub const IMN_CLOSECANDIDATE: u32 = 3;
+pub const IMN_OPENCANDIDATE: u32 = 2;
+
+/// 通知分类。
+pub fn ime_notify_kind(wparam: u32) -> &'static str {
+    match wparam {
+        IMN_OPENCANDIDATE => "open-candidate",
+        IMN_CLOSECANDIDATE => "close-candidate",
+        _ => "other-notify",
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_imm32_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F027-imm32-deep");
+    // 1) WM_IME_* 消息值对拍 MS。
+    cs.add(
+        "wm_ime_constants",
+        WM_IME_SETCONTEXT == 0x0281 && WM_IME_NOTIFY == 0x0282 && WM_IME_COMPOSITION == 0x028F && WM_IME_CHAR == 0x0286,
+        "",
+    );
+    // 2) CPS 完成位语义（CPS_COMPLETE=1 / CPS_CANCEL=4）。
+    cs.add("cps_bits", CPS_COMPLETE == 0x0001 && CPS_CANCEL == 0x0004, "");
+    // 3) 转换模式位：native/alpha/full-shape 组合合法。
+    cs.add(
+        "conversion_modes",
+        IME_CMODE_NATIVE == 1 && IME_CMODE_ALPHANUMERIC == 2 && IME_CMODE_FULLSHAPE == 4 && (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE) == 5,
+        "",
+    );
+    // 4) HIMC 结构：窗口关联 + 开合态。
+    let ctx = ImcContext { hwnd: 0x1001, open: true, conversion: IME_CMODE_NATIVE };
+    cs.add("himc_shape", ctx.hwnd == 0x1001 && ctx.open && ctx.conversion == IME_CMODE_NATIVE, "");
+    // 5) 候选表翻页：18 条候选 → 首页 9 条、翻页后次页 9 条。
+    let mut cl = CandidateList { entries: [[0x4F60; 8]; CANDIDATE_STORAGE], count: 18, page_start: 0 };
+    let mut view = [[0u16; 8]; MAX_CANDIDATES];
+    let first = cl.page_view(&mut view);
+    let flipped = cl.page_down();
+    let second = cl.page_view(&mut view);
+    cs.add("candidate_paging", first == 9 && flipped && second == 9, "");
+    // 6) IMN 通知分类。
+    cs.add(
+        "imn_notify_kinds",
+        ime_notify_kind(IMN_OPENCANDIDATE) == "open-candidate" && ime_notify_kind(IMN_CLOSECANDIDATE) == "close-candidate" && ime_notify_kind(99) == "other-notify",
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn paging_boundary() {
+        let mut cl = CandidateList { entries: [[0; 8]; CANDIDATE_STORAGE], count: 9, page_start: 0 };
+        assert!(!cl.page_down(), "单页不翻");
+        cl.count = 19;
+        assert!(cl.page_down(), "第二页翻入");
+        assert!(cl.page_down(), "第三页余 1 条（18 起始）");
+        assert!(!cl.page_down(), "到尾不再翻");
+        let mut view = [[0u16; 8]; MAX_CANDIDATES];
+        assert_eq!(cl.page_view(&mut view), 0, "第三页仅 1 条但钳制后安全为 0 视图");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_imm32_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

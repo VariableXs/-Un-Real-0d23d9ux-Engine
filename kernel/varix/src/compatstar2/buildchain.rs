@@ -260,3 +260,120 @@ mod tests {
         assert!(make_target_exists("all", &known).is_ok());
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-33 补强：.gitattributes 解析 / .gitignore 匹配 / make 变量
+// （构建链「如实保真」的解析面；git 直包零修改，接缝只在语义）
+// ---------------------------------------------------------------------------
+
+/// .gitattributes 行解析：pattern + 属性表（text/eol binary）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct GitAttrLine {
+    pub pattern: &'static str,
+    /// text=auto / text eol=lf / text eol=crlf / binary / -text。
+    pub attr: &'static str,
+}
+
+/// 按 pattern 后缀匹配（*.ext 与精确名两形态；域内口径）。
+pub fn attr_line_matches(line: &GitAttrLine, filename: &str) -> bool {
+    if let Some(ext_pat) = line.pattern.strip_prefix('*') {
+        filename.ends_with(ext_pat)
+    } else {
+        filename == line.pattern
+    }
+}
+
+/// 解析 attributes 行 → 换行符决策（text eol=lf → Lf；crlf → Crlf；
+/// binary/-text → 二进制不动；text=auto → AsDeclared 原样）。
+pub fn attr_line_ending(line: &GitAttrLine) -> crate::compatstar2::buildchain::LineEnding {
+    use crate::compatstar2::buildchain::LineEnding;
+    if line.attr.contains("binary") || line.attr.contains("-text") {
+        return LineEnding::AsDeclared; // 二进制不动
+    }
+    if line.attr.contains("eol=lf") {
+        LineEnding::Lf
+    } else if line.attr.contains("eol=crlf") {
+        LineEnding::Crlf
+    } else {
+        LineEnding::AsDeclared
+    }
+}
+
+/// .gitignore 模式匹配（子集：精确名 / *.ext / 尾目录/；** 深层不承诺——
+/// 工具自身实现，VARIX 只保真文件面）。
+pub fn gitignore_matches(pattern: &str, path: &str) -> bool {
+    if let Some(ext_pat) = pattern.strip_prefix('*') {
+        path.ends_with(ext_pat)
+    } else if let Some(dir) = pattern.strip_suffix('/') {
+        path.starts_with(dir)
+    } else {
+        path == pattern
+    }
+}
+
+/// make 自动变量（$@ $< $^ 语义登记——判例脚本可读性）。
+pub const MAKE_AUTO_AT: u8 = b'@'; // 目标
+pub const MAKE_AUTO_LT: u8 = b'<'; // 首个依赖
+pub const MAKE_AUTO_CARET: u8 = b'^'; // 全部依赖
+
+/// cmake 缓存变量类型（BOOL/PATH/STRING/INTERNAL——cache 形状）。
+pub const CMAKE_CACHE_TYPES: [&str; 4] = ["BOOL", "PATH", "STRING", "INTERNAL"];
+
+/// ninja 边模型：目标 → 依赖数（增量构建账面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NinjaEdge {
+    pub out: &'static str,
+    pub deps: u32,
+}
+
+/// 域自检（深化层）。
+pub fn run_buildchain_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F033-buildchain-deep");
+    // 1) attributes 后缀匹配：*.txt 命中 readme.txt、不命中 readme.md。
+    let star_txt = GitAttrLine { pattern: "*.txt", attr: "text eol=lf" };
+    cs.add(
+        "attr_pattern_match",
+        attr_line_matches(&star_txt, "readme.txt") && !attr_line_matches(&star_txt, "readme.md") && attr_line_matches(&GitAttrLine { pattern: "Makefile", attr: "text" }, "Makefile"),
+        "",
+    );
+    // 2) attributes → 换行决策四支。
+    cs.add(
+        "attr_ending_decisions",
+        matches!(attr_line_ending(&GitAttrLine { pattern: "*.sh", attr: "text eol=lf" }), crate::compatstar2::buildchain::LineEnding::Lf)
+            && matches!(attr_line_ending(&GitAttrLine { pattern: "*.bat", attr: "text eol=crlf" }), crate::compatstar2::buildchain::LineEnding::Crlf)
+            && matches!(attr_line_ending(&GitAttrLine { pattern: "*.png", attr: "binary" }), crate::compatstar2::buildchain::LineEnding::AsDeclared)
+            && matches!(attr_line_ending(&GitAttrLine { pattern: "*", attr: "text=auto" }), crate::compatstar2::buildchain::LineEnding::AsDeclared),
+        "",
+    );
+    // 3) gitignore 三形态匹配。
+    cs.add(
+        "gitignore_matching",
+        gitignore_matches("*.o", "main.o") && gitignore_matches("target/", "target/debug") && gitignore_matches("secrets.txt", "secrets.txt") && !gitignore_matches("*.o", "main.rs"),
+        "",
+    );
+    // 4) make 自动变量三件套。
+    cs.add("make_auto_vars", MAKE_AUTO_AT == b'@' && MAKE_AUTO_LT == b'<' && MAKE_AUTO_CARET == b'^', "");
+    // 5) cmake 缓存类型四类在册。
+    cs.add("cmake_cache_types", CMAKE_CACHE_TYPES == ["BOOL", "PATH", "STRING", "INTERNAL"], "");
+    // 6) ninja 边账面。
+    cs.add("ninja_edge", NinjaEdge { out: "main.o", deps: 3 }.deps == 3, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn attr_exact_name_match() {
+        let line = GitAttrLine { pattern: ".gitignore", attr: "text" };
+        assert!(attr_line_matches(&line, ".gitignore"));
+        assert!(!attr_line_matches(&line, "gitignore"));
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_buildchain_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

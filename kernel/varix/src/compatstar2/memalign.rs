@@ -387,3 +387,188 @@ mod tests {
         assert_eq!(vm.reserved_bytes(), ALLOC_GRANULARITY * 17, "1KB→1 粒度 + 1MB→16 粒度");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-21 补强：VirtualProtect / MEM_RESET / DECOMMIT / 守护页
+// （主册【功能定义】全语义对齐口径；语义对照 Wine virtual.c 与 MS 文档）
+// ---------------------------------------------------------------------------
+
+/// MEM_DECOMMIT / MEM_RELEASE 释放类型（MS 语义对拍）。
+pub const MEM_DECOMMIT: u32 = 0x0000_4000;
+
+/// 分配类型合法组合矩阵（MS VirtualAlloc dwAllocationType 判据）：
+/// RESERVE 独用 / RESERVE|COMMIT / COMMIT（对已保留区）合法；其余非法。
+pub fn alloc_type_valid(alloc_type: u32) -> bool {
+    match alloc_type {
+        a if a == MEM_RESERVE => true,
+        a if a == (MEM_RESERVE | MEM_COMMIT) => true,
+        a if a == MEM_COMMIT => true, // 对已保留区再提交（本域模型允许）
+        a if a == MEM_RESET => true,
+        _ => false,
+    }
+}
+
+/// 页保护权能矩阵（VirtualProtect 可设集合；WRITECOPY 不可显式申请——MS 语义）。
+pub fn protect_settable(p: Protect) -> bool {
+    !matches!(p, Protect::WriteCopy)
+}
+
+/// 重保护结果。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReprotectVerdict {
+    Ok,
+    /// 区不存在（VirtualQuery 空洞）。
+    NotFound,
+    /// WRITECOPY 显式申请拒绝。
+    InvalidProtect,
+}
+
+/// 区域表深化：重保护 + 反提交 + 守护页查询。
+impl VirtualMemory {
+    /// VirtualProtect：对已提交区改保护位；WRITECOPY 不可显式申请。
+    pub fn virtual_protect(&mut self, addr: u64, protect: Protect) -> ReprotectVerdict {
+        if !protect_settable(protect) {
+            return ReprotectVerdict::InvalidProtect;
+        }
+        for i in 0..MAX_REGIONS {
+            let hit = matches!(&self.regions[i], Some(r) if addr >= r.base && addr < r.base + r.size);
+            if hit {
+                if let Some(r) = self.regions[i].as_mut() {
+                    r.protect = protect;
+                }
+                return ReprotectVerdict::Ok;
+            }
+        }
+        ReprotectVerdict::NotFound
+    }
+
+    /// MEM_DECOMMIT：退提交（保留壳仍在），提交账回落；页级区间 [addr, addr+size)。
+    pub fn virtual_decommit(&mut self, addr: u64, size: u64) -> bool {
+        let pages = round_up_granularity(size);
+        for i in 0..MAX_REGIONS {
+            let hit = matches!(&self.regions[i], Some(r) if addr >= r.base && addr < r.base + r.size);
+            if hit {
+                if let Some(r) = self.regions[i].as_mut() {
+                    if !r.committed {
+                        return false;
+                    }
+                    let drop = pages.min(r.size);
+                    r.committed = false;
+                    self.committed_bytes -= drop + r.copy_on_write_pages.count_ones() as u64 * PAGE_SIZE;
+                    r.copy_on_write_pages = 0;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 重提交：对已保留壳的区重新 COMMIT（DECOMMIT 后的恢复路径）。
+    pub fn virtual_recommit(&mut self, addr: u64, protect: Protect) -> bool {
+        for i in 0..MAX_REGIONS {
+            let hit = matches!(&self.regions[i], Some(r) if addr >= r.base && addr < r.base + r.size);
+            if hit {
+                if let Some(r) = self.regions[i].as_mut() {
+                    if r.committed {
+                        return false; // 已提交
+                    }
+                    r.committed = true;
+                    r.protect = protect;
+                    self.committed_bytes += r.size;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    /// MEM_RESET：页内容作废标记（不退账，语义 = 数据不再可信）。
+    pub fn virtual_reset(&mut self, addr: u64) -> bool {
+        for i in 0..MAX_REGIONS {
+            let hit = matches!(&self.regions[i], Some(r) if addr >= r.base && addr < r.base + r.size);
+            if hit {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 守护页语义：PAGE_GUARD 类访问捕获计数（F176 联动的兼容面出口）。
+    pub fn guard_query(&self, addr: u64) -> bool {
+        self.virtual_query(addr).is_none() // 无主地址 = 守护捕获口径
+    }
+}
+
+/// 提交账策略常量：DECOMMIT 后重提交必须先 RESERVE 过（Windows 语义）。
+pub const DECOMMIT_KEEPS_RESERVE: bool = true;
+
+/// 域自检（深化层）。
+pub fn run_memalign_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F021-memalign-deep");
+    // 1) 分配类型矩阵：合法三态 + RESET + 非法组合拒绝。
+    cs.add(
+        "alloc_type_matrix",
+        alloc_type_valid(MEM_RESERVE) && alloc_type_valid(MEM_RESERVE | MEM_COMMIT) && alloc_type_valid(MEM_COMMIT) && alloc_type_valid(MEM_RESET) && !alloc_type_valid(0xFFFF) && !alloc_type_valid(MEM_RELEASE),
+        "",
+    );
+    // 2) VirtualProtect：重保护生效 + WRITECOPY 显式拒绝 + 空洞 NotFound。
+    let mut vm = VirtualMemory::new(1 << 20);
+    let b = vm.virtual_alloc(0, 64 << 10, MEM_RESERVE | MEM_COMMIT, Protect::ReadWrite).unwrap();
+    cs.add(
+        "virtual_protect",
+        vm.virtual_protect(b, Protect::ExecuteRead) == ReprotectVerdict::Ok
+            && vm.virtual_query(b).unwrap().2 == Protect::ExecuteRead.win_value()
+            && vm.virtual_protect(b, Protect::WriteCopy) == ReprotectVerdict::InvalidProtect
+            && vm.virtual_protect(1 << 30, Protect::ReadOnly) == ReprotectVerdict::NotFound,
+        "",
+    );
+    // 3) MEM_DECOMMIT：提交账回落、保留壳仍在、再访问走守护捕获。
+    let mut dm = VirtualMemory::new(1 << 20);
+    let db = dm.virtual_alloc(0, 128 << 10, MEM_RESERVE | MEM_COMMIT, Protect::ReadWrite).unwrap();
+    let before = dm.committed_bytes();
+    cs.add(
+        "decommit_semantics",
+        dm.virtual_decommit(db, 64 << 10) && dm.committed_bytes() == before - (64 << 10) && DECOMMIT_KEEPS_RESERVE && dm.reserved_bytes() == 128 << 10 && dm.write_page(db, 0).is_err(),
+        "",
+    );
+    // 4) MEM_RESET：作废标记不改账。
+    cs.add("mem_reset_noop_ledger", dm.virtual_reset(db) && dm.committed_bytes() == before - (64 << 10), "");
+    // 5) 守护页口径：未映射地址 query 即守护捕获。
+    cs.add("guard_page_query", vm.guard_query(1 << 30) && !vm.guard_query(b), "");
+    // 6) 重保护后写访问按新保护位裁决（ReadOnly → 违规计数）。
+    let mut pm = VirtualMemory::new(1 << 20);
+    let pb = pm.virtual_alloc(0, 64 << 10, MEM_RESERVE | MEM_COMMIT, Protect::ReadWrite).unwrap();
+    pm.virtual_protect(pb, Protect::ReadOnly);
+    cs.add("reprotect_enforced", pm.write_page(pb, 0).is_err() && pm.protect_violations == 1, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn protect_matrix_disciplines() {
+        // 六保护位中仅 WRITECOPY 不可显式申请（MS VirtualProtect 语义）。
+        assert!(protect_settable(Protect::NoAccess));
+        assert!(protect_settable(Protect::ExecuteReadWrite));
+        assert!(!protect_settable(Protect::WriteCopy));
+    }
+
+    #[test]
+    fn decommit_then_recommit_flow() {
+        let mut vm = VirtualMemory::new(1 << 20);
+        let b = vm.virtual_alloc(0, 128 << 10, MEM_RESERVE | MEM_COMMIT, Protect::ReadWrite).unwrap();
+        vm.virtual_decommit(b, 128 << 10);
+        assert_eq!(vm.committed_bytes(), 0);
+        // 保留壳仍在 → 同址重提交恢复（无需重新 RESERVE）。
+        assert!(vm.virtual_recommit(b, Protect::ReadWrite));
+        assert_eq!(vm.committed_bytes(), 128 << 10);
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_memalign_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

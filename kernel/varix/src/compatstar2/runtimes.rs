@@ -309,3 +309,144 @@ mod tests {
         assert_eq!(PACKAGE_MANAGERS[4], "cargo");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-32 补强：版本比较 / 镜像代理配置 / 虚拟环境隔离
+// （pip/npm 走 F023/F024 的配置承载；显式激活语义的解析面）
+// ---------------------------------------------------------------------------
+
+/// 语义化版本比较（major.minor.patch；缺段按 0）。
+pub fn version_cmp(a: &str, b: &str) -> core::cmp::Ordering {
+    let parse = |s: &str| -> [u32; 3] {
+        let mut out = [0u32; 3];
+        for (i, part) in s.split('.').take(3).enumerate() {
+            out[i] = part.parse().unwrap_or(0);
+        }
+        out
+    };
+    let (pa, pb) = (parse(a), parse(b));
+    for i in 0..3 {
+        match pa[i].cmp(&pb[i]) {
+            core::cmp::Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    core::cmp::Ordering::Equal
+}
+
+/// 镜像/代理配置（网络失败三要素错误 + 重试的配置面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PkgMirror {
+    pub manager: &'static str,
+    pub mirror_url: &'static str,
+    pub timeout_s: u32,
+    pub retries: u32,
+}
+
+/// 五包管理器默认镜像配置（走 F023 网络面 + F024 TLS）。
+pub const DEFAULT_MIRRORS: [PkgMirror; 5] = [
+    PkgMirror { manager: "pip", mirror_url: "https://pypi.org/simple", timeout_s: 30, retries: 3 },
+    PkgMirror { manager: "npm", mirror_url: "https://registry.npmjs.org", timeout_s: 30, retries: 3 },
+    PkgMirror { manager: "maven", mirror_url: "https://repo.maven.apache.org", timeout_s: 60, retries: 2 },
+    PkgMirror { manager: "go mod", mirror_url: "https://proxy.golang.org", timeout_s: 60, retries: 2 },
+    PkgMirror { manager: "cargo", mirror_url: "https://crates.io", timeout_s: 60, retries: 2 },
+];
+
+pub fn mirror_for(manager: &str) -> Option<&'static PkgMirror> {
+    DEFAULT_MIRRORS.iter().find(|m| m.manager == manager)
+}
+
+/// 虚拟环境隔离语义（venv/node_modules 级：会话内 PATH 前缀优先于全局）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct VenvIsolation {
+    pub session_prefix_len: usize,
+    /// 隔离中：全局解释器不参与解析。
+    pub isolated: bool,
+}
+
+/// 解释器解析序：隔离会话前缀优先，否则按激活版本（显式无魔法）。
+pub fn resolve_interpreter(venv: &VenvIsolation, active: Option<&'static str>) -> &'static str {
+    if venv.isolated && venv.session_prefix_len > 0 {
+        "session-prefix-interpreter"
+    } else {
+        active.unwrap_or("none-explicit-required")
+    }
+}
+
+/// 包安装结果三要素错误（主册【状态与异常】）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PkgInstallError {
+    pub what: &'static str,
+    pub why: &'static str,
+    pub next_step: &'static str,
+}
+
+/// 网络失败三要素构造。
+pub fn network_error(mirror: &PkgMirror) -> PkgInstallError {
+    PkgInstallError {
+        what: "package-install-failed",
+        why: "network-unreachable",
+        next_step: mirror.mirror_url, // 重试入口（镜像是下一步的路标）
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_runtimes_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F032-runtimes-deep");
+    // 1) 版本比较：3.12 > 3.9（位级非字典序）、1.0 == 1.0.0、0.9 < 1.0。
+    cs.add(
+        "version_cmp_semver",
+        version_cmp("3.12.4", "3.9.7") == core::cmp::Ordering::Greater
+            && version_cmp("1.0", "1.0.0") == core::cmp::Ordering::Equal
+            && version_cmp("0.9", "1.0") == core::cmp::Ordering::Less
+            && version_cmp("2.0", "10.0") == core::cmp::Ordering::Less,
+        "",
+    );
+    // 2) 五镜像表全在册 + 查表命中。
+    cs.add(
+        "mirror_table",
+        DEFAULT_MIRRORS.len() == 5 && mirror_for("pip").unwrap().timeout_s == 30 && mirror_for("cargo").is_some() && mirror_for("bogus").is_none(),
+        "",
+    );
+    // 3) 镜像全走 HTTPS（F024 TLS 承载前提）。
+    let mut all_https = true;
+    for m in DEFAULT_MIRRORS.iter() {
+        all_https &= m.mirror_url.starts_with("https://");
+    }
+    cs.add("mirrors_all_https", all_https, "");
+    // 4) 隔离会话：前缀优先；非隔离：显式激活版；两者皆无：如实报 none。
+    let iso = VenvIsolation { session_prefix_len: 24, isolated: true };
+    let no_iso = VenvIsolation { session_prefix_len: 0, isolated: false };
+    cs.add(
+        "interpreter_resolution",
+        resolve_interpreter(&iso, Some("3.12.4")) == "session-prefix-interpreter"
+            && resolve_interpreter(&no_iso, Some("3.12.4")) == "3.12.4"
+            && resolve_interpreter(&no_iso, None) == "none-explicit-required",
+        "",
+    );
+    // 5) 三要素错误构造。
+    let err = network_error(mirror_for("pip").unwrap());
+    cs.add(
+        "three_element_error",
+        err.what == "package-install-failed" && err.why == "network-unreachable" && err.next_step.starts_with("https://"),
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn version_patch_tiebreak() {
+        assert_eq!(version_cmp("3.12.4", "3.12.3"), core::cmp::Ordering::Greater);
+        assert_eq!(version_cmp("3.12", "3.12.0"), core::cmp::Ordering::Equal);
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_runtimes_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

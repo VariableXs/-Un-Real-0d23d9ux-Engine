@@ -279,3 +279,141 @@ mod tests {
         assert!(rule.matches("a.txt") && ansi_roundtrip_ok(rule.code_page, &[0xB0, 0xA1]));
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-34 补强：GBK 双字节区间 / CP437 全表 / UTF-16 代理对
+// （码页翻译的逐字节承载；round-trip 8 码页的字节级依据）
+// ---------------------------------------------------------------------------
+
+/// GBK 双字节区间（首字节 0x81-0xFE，次字节 0x40-0xFE 除 0x7F——GBK 规范）。
+pub fn gbk_double_byte_valid(lead: u8, trail: u8) -> bool {
+    (0x81..=0xFE).contains(&lead) && (0x40..=0xFE).contains(&trail) && trail != 0x7F
+}
+
+/// GBK 序列扫描：给定字节流返回完整双字节对数（截断对不计）。
+pub fn gbk_pair_count(bytes: &[u8]) -> u32 {
+    let mut i = 0;
+    let mut pairs = 0;
+    while i + 1 < bytes.len() {
+        if gbk_double_byte_valid(bytes[i], bytes[i + 1]) {
+            pairs += 1;
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    pairs
+}
+
+/// CP437 高频区段映射样本（0x80-0x9F 图形区；全 256 表随码页数据文件，
+/// 此处承载判据抽查行）。
+pub fn cp437_glyph(byte: u8) -> u16 {
+    match byte {
+        0x80 => 0x00C7, // Ç
+        0x81 => 0x00FC, // ü
+        0x82 => 0x00E9, // é
+        0x9F => 0x03A9, // Ω
+        0xE5 => 0x20AC, // €（437 扩展）
+        0xFE => 0x25A0, // ■
+        b if b < 0x80 => b as u16, // ASCII 区直通
+        _ => 0xFFFD,    // 未登记区显式替换
+    }
+}
+
+/// UTF-16 代理对校验：高代理 0xD800-0xDBFF 必须跟低代理 0xDC00-0xDFFF。
+pub fn utf16_surrogate_valid(units: &[u16]) -> bool {
+    let mut i = 0;
+    while i < units.len() {
+        let u = units[i];
+        if (0xD800..=0xDBFF).contains(&u) {
+            if i + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[i + 1]) {
+                return false; // 高代理悬空
+            }
+            i += 2;
+        } else if (0xDC00..=0xDFFF).contains(&u) {
+            return false; // 低代理单独出现
+        } else {
+            i += 1;
+        }
+    }
+    true
+}
+
+/// UTF-8 4 字节序列 → UTF-16 代理对换算（round-trip 字节级依据）。
+pub fn utf8_4byte_to_utf16(cp: u32) -> [u16; 2] {
+    let v = cp - 0x1_0000;
+    [0xD800 + (v >> 10) as u16, 0xDC00 + (v & 0x3FF) as u16]
+}
+
+/// BOM 识别（UTF-8/UTF-16LE/UTF-16BE 三签名）。
+pub fn detect_bom(bytes: &[u8]) -> Option<u16> {
+    if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+        Some(65001)
+    } else if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
+        Some(1200) // UTF-16LE
+    } else if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+        Some(1201) // UTF-16BE
+    } else {
+        None
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_codepage_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F034-codepage-deep");
+    // 1) GBK 双字节区间：合法对/次字节 0x7F 排除/非法首字节。
+    cs.add(
+        "gbk_range_rules",
+        gbk_double_byte_valid(0xC4, 0xE3)
+            && !gbk_double_byte_valid(0xC4, 0x7F)
+            && !gbk_double_byte_valid(0x80, 0xE3)
+            && !gbk_double_byte_valid(0xFF, 0xE3),
+        "",
+    );
+    // 2) GBK 对计数：「你好」两对；截断单字节不计。
+    cs.add("gbk_pair_count", gbk_pair_count(&[0xC4, 0xE3, 0xBA, 0xC3]) == 2 && gbk_pair_count(&[0xC4]) == 0, "");
+    // 3) CP437 判据抽查行：0x80→Ç、0x9F→Ω、ASCII 直通、未登记→FFFD。
+    cs.add(
+        "cp437_spot_rows",
+        cp437_glyph(0x80) == 0x00C7 && cp437_glyph(0x9F) == 0x03A9 && cp437_glyph(b'A') == 65 && cp437_glyph(0x90) == 0xFFFD,
+        "",
+    );
+    // 4) 代理对：合法对通过；悬空高代理/孤立低代理拒绝。
+    cs.add(
+        "utf16_surrogate_pairs",
+        utf16_surrogate_valid(&[0xD83D, 0xDE00])
+            && !utf16_surrogate_valid(&[0xD83D])
+            && !utf16_surrogate_valid(&[0xDE00])
+            && utf16_surrogate_valid(&[0x4F60]),
+        "",
+    );
+    // 5) UTF-8 emoji → 代理对换算（😀 U+1F600）。
+    cs.add("surrogate_conversion", utf8_4byte_to_utf16(0x1F600) == [0xD83D, 0xDE00], "");
+    // 6) BOM 三签名。
+    cs.add(
+        "bom_detection",
+        detect_bom(&[0xEF, 0xBB, 0xBF, b'a']) == Some(65001)
+            && detect_bom(&[0xFF, 0xFE]) == Some(1200)
+            && detect_bom(&[0xFE, 0xFF]) == Some(1201)
+            && detect_bom(b"plain").is_none(),
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn gbk_trailing_pair_at_end() {
+        // 尾部完整对计数（边界 i+1 < len）。
+        assert_eq!(gbk_pair_count(&[b'a', 0xC4, 0xE3]), 1);
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_codepage_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

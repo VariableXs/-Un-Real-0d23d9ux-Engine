@@ -290,3 +290,113 @@ mod tests {
         assert!(u.window_open(), "恰在窗口边界仍可撤销（≤10 分钟）");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-31 补强：ARP 登记面 / 卸载开关表 / 体积统计
+// （添加或删除程序语义承载；开放进 F126 规范面的清单格式）
+// ---------------------------------------------------------------------------
+
+/// ARP（添加或删除程序）登记条目。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ArpEntry {
+    pub display_name: &'static str,
+    pub display_version: &'static str,
+    /// 安装体积（KB，ARPSIZE 语义）。
+    pub estimated_size_kb: u32,
+    /// 安装日期（YYYYMMDD 整型）。
+    pub install_date: u32,
+    pub manifest_present: bool,
+}
+
+/// 三族静默卸载开关（如实透传给自带卸载器）。
+pub const SILENT_SWITCHES: [(&str, &str); 3] = [
+    ("nsis", "/S"),
+    ("inno", "/VERYSILENT /NORESTART"),
+    ("msi", "/x {GUID} /qn"),
+];
+
+/// 族 → 静默开关查表。
+pub fn silent_switch(family: &str) -> Option<&'static str> {
+    for &(f, s) in SILENT_SWITCHES.iter() {
+        if f == family {
+            return Some(s);
+        }
+    }
+    None
+}
+
+/// 体积统计：KB 汇总（列表页「大小」列）。
+pub fn total_size_kb(entries: &[ArpEntry]) -> u32 {
+    entries.iter().map(|e| e.estimated_size_kb).sum()
+}
+
+/// 列表排序键（名称/大小/日期三选——主册【交互设计】）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortKey {
+    Name,
+    Size,
+    Date,
+}
+
+/// 体积序比较（大→小；平局按名）。
+pub fn size_order(a: &ArpEntry, b: &ArpEntry) -> core::cmp::Ordering {
+    b.estimated_size_kb.cmp(&a.estimated_size_kb)
+        .then_with(|| a.display_name.cmp(b.display_name))
+}
+
+/// 卸载后 ARP 条目移除判定：清单 + 记录齐 → 条目消失。
+pub fn arp_removed_after_uninstall(entry: &ArpEntry) -> bool {
+    entry.manifest_present // 有清单的安装才产生 ARP 条目
+}
+
+/// 域自检（深化层）。
+pub fn run_uninstall_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F031-uninstall-deep");
+    // 1) ARP 条目字段在册。
+    let e = ArpEntry { display_name: "7-Zip", display_version: "24.08", estimated_size_kb: 92_160, install_date: 20260926, manifest_present: true };
+    cs.add(
+        "arp_entry_shape",
+        e.display_name == "7-Zip" && e.estimated_size_kb == 92_160 && e.install_date == 20260926,
+        "",
+    );
+    // 2) 三族静默开关如实查表。
+    cs.add(
+        "silent_switches",
+        silent_switch("nsis") == Some("/S") && silent_switch("inno") == Some("/VERYSILENT /NORESTART") && silent_switch("msi") == Some("/x {GUID} /qn") && silent_switch("ghost").is_none(),
+        "",
+    );
+    // 3) 体积汇总（90MB + 2MB ≈ 94,208KB）。
+    let e2 = ArpEntry { display_name: "tool", display_version: "1.0", estimated_size_kb: 2_048, install_date: 20260901, manifest_present: true };
+    cs.add("total_size", total_size_kb(&[e, e2]) == 94_208, "");
+    // 4) 体积序：大者在前，平局按名。
+    let big = ArpEntry { display_name: "b-app", estimated_size_kb: 92_160, ..e2 };
+    let small = ArpEntry { display_name: "a-app", estimated_size_kb: 2_048, ..e2 };
+    cs.add(
+        "size_ordering",
+        matches!(size_order(&big, &small), core::cmp::Ordering::Less) && matches!(size_order(&small, &big), core::cmp::Ordering::Greater),
+        "",
+    );
+    // 5) 有清单 → 卸载后 ARP 条目移除。
+    cs.add("arp_removed_with_manifest", arp_removed_after_uninstall(&e), "");
+    // 6) 排序键三选在册。
+    cs.add("sort_keys", [SortKey::Name, SortKey::Size, SortKey::Date].len() == 3, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn tie_breaks_by_name() {
+        let a = ArpEntry { display_name: "a", estimated_size_kb: 100, ..ArpEntry { display_name: "x", display_version: "1", estimated_size_kb: 0, install_date: 0, manifest_present: false } };
+        let b = ArpEntry { display_name: "b", estimated_size_kb: 100, ..a };
+        assert!(matches!(size_order(&a, &b), core::cmp::Ordering::Less), "同体积按名升序");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_uninstall_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

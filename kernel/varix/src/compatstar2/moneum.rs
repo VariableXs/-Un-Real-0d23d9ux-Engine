@@ -229,3 +229,120 @@ mod tests {
         assert_ne!(DispChange::BadFlags, DispChange::NotSupported);
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-29 补强：DEVMODE 字段 / DISPLAY_DEVICE 结构 / 模式计时
+// （MS 字段级对拍深化；接口冻结 ADR-PR-001 承诺面）
+// ---------------------------------------------------------------------------
+
+/// DISPLAY_DEVICE 结构字段（StateFlags 语义位）。
+pub const DISPLAY_DEVICE_ACTIVE: u32 = 0x0000_0001;
+pub const DISPLAY_DEVICE_PRIMARY_DEVICE: u32 = 0x0000_0004;
+pub const DISPLAY_DEVICE_MIRRORING_DRIVER: u32 = 0x0000_0008;
+
+/// 设备信息结构（域内单屏实现的全字段承载）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DisplayDevice {
+    pub device_name: &'static str,
+    pub device_string: &'static str,
+    pub state_flags: u32,
+}
+
+/// 主屏设备信息（单屏实现：Active + Primary，非镜像驱动）。
+pub fn primary_display_device() -> DisplayDevice {
+    DisplayDevice {
+        device_name: "\\\\.\\DISPLAY1",
+        device_string: "Generic PnP Monitor",
+        state_flags: DISPLAY_DEVICE_ACTIVE | DISPLAY_DEVICE_PRIMARY_DEVICE,
+    }
+}
+
+/// DEVMODE 字段集（ChangeDisplaySettings 承载面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DevMode {
+    pub width: u32,
+    pub height: u32,
+    /// 像素格式位深。
+    pub bits_per_pel: u32,
+    /// 刷新率（Hz）。
+    pub display_frequency: u32,
+}
+
+pub const DM_PELSWIDTH: u32 = 0x0008_0000;
+pub const DM_PELSHEIGHT: u32 = 0x0010_0000;
+pub const DM_DISPLAYFREQUENCY: u32 = 0x0040_0000;
+
+/// 枚举当前设置（ENUM_CURRENT_SETTINGS = -1 的域内承载）。
+pub const ENUM_CURRENT_SETTINGS: i32 = -1;
+
+/// 模式合法性：位深 32、刷新 50-240Hz、分辨率在档位表。
+pub fn devmode_valid(dm: &DevMode) -> bool {
+    let rate_ok = (50..=240).contains(&dm.display_frequency);
+    let mode_ok = change_display_settings(dm.width, dm.height) == DispChange::Successful;
+    dm.bits_per_pel == 32 && rate_ok && mode_ok
+}
+
+/// 模式切换字段掩码校验：PESWIDTH|PELSHEIGHT 必须同时声明。
+pub fn change_mask_valid(mask: u32) -> bool {
+    mask & DM_PELSWIDTH != 0 && mask & DM_PELSHEIGHT != 0
+}
+
+/// 检测周期（「检测其他显示器」按钮灰置期的诚实轮询语义，秒）。
+pub const DETECT_POLL_INTERVAL_S: u32 = 30;
+
+/// 域自检（深化层）。
+pub fn run_moneum_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F029-moneum-deep");
+    // 1) StateFlags 位：主屏 = Active | Primary，且非镜像。
+    let dd = primary_display_device();
+    cs.add(
+        "display_device_flags",
+        dd.state_flags & DISPLAY_DEVICE_ACTIVE != 0
+            && dd.state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE != 0
+            && dd.state_flags & DISPLAY_DEVICE_MIRRORING_DRIVER == 0
+            && DISPLAY_DEVICE_ACTIVE == 1
+            && DISPLAY_DEVICE_PRIMARY_DEVICE == 4,
+        "",
+    );
+    // 2) DEVMODE 合法性：1080p@60/32bit 通过；30Hz 拒绝；16bit 拒绝。
+    let good = DevMode { width: 1920, height: 1080, bits_per_pel: 32, display_frequency: 60 };
+    let low_rate = DevMode { display_frequency: 30, ..good };
+    let low_bpp = DevMode { bits_per_pel: 16, ..good };
+    cs.add(
+        "devmode_validity",
+        devmode_valid(&good) && !devmode_valid(&low_rate) && !devmode_valid(&low_bpp),
+        "",
+    );
+    // 3) 字段掩码：宽高必须成对声明；频率可单声明。
+    cs.add(
+        "change_mask",
+        change_mask_valid(DM_PELSWIDTH | DM_PELSHEIGHT)
+            && change_mask_valid(DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY)
+            && !change_mask_valid(DM_PELSWIDTH),
+        "",
+    );
+    // 4) 掩码常量对拍 MS。
+    cs.add("mask_constants", DM_PELSWIDTH == 0x0008_0000 && DM_PELSHEIGHT == 0x0010_0000 && DM_DISPLAYFREQUENCY == 0x0040_0000, "");
+    // 5) 枚举当前设置常量（-1）。
+    cs.add("enum_current", ENUM_CURRENT_SETTINGS == -1, "");
+    // 6) 检测轮询周期在册。
+    cs.add("detect_poll_30s", DETECT_POLL_INTERVAL_S == 30, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn devmode_high_rate_ok() {
+        let dm = DevMode { width: 3840, height: 2160, bits_per_pel: 32, display_frequency: 144 };
+        assert!(devmode_valid(&dm), "4K@144 合法档");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_moneum_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

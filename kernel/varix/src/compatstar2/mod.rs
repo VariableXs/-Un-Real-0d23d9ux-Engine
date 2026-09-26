@@ -86,33 +86,34 @@ pub const DOMAIN_NAMES: [&str; 20] = [
 
 /// 域聚合自检（robust.rs 单行注册；与 secstar2 同款——容量纪律：
 /// 单聚合永不超容，域内逐模块红绿在此子行展开）。
+/// 深化层（run_*_deep）与主层并行入块：主层判据 + 深化语义层双双全绿才亮。
 pub fn run_compatstar2_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("COMPAT-S2");
-    let blocks: [(&'static str, crate::checks::CheckSet); 20] = [
-        ("F021", memalign::run_memalign_checks()),
-        ("F022", timefam::run_timefam_checks()),
-        ("F023", winsock::run_winsock_checks()),
-        ("F024", tlsstore::run_tlsstore_checks()),
-        ("F025", printpdf::run_printpdf_checks()),
-        ("F026", winmm::run_winmm_checks()),
-        ("F027", imm32::run_imm32_checks()),
-        ("F028", dpistate::run_dpistate_checks()),
-        ("F029", moneum::run_moneum_checks()),
-        ("F030", installr::run_installr_checks()),
-        ("F031", uninstall::run_uninstall_checks()),
-        ("F032", runtimes::run_runtimes_checks()),
-        ("F033", buildchain::run_buildchain_checks()),
-        ("F034", codepage::run_codepage_checks()),
-        ("F035", compatwiz::run_compatwiz_checks()),
-        ("F036", stardraft::run_stardraft_checks()),
-        ("F037", peblockui::run_peblockui_checks()),
-        ("F038", isolevel::run_isolevel_checks()),
-        ("F039", gamefront::run_gamefront_checks()),
-        ("F040", compatledger::run_compatledger_checks()),
+    let blocks: [(&'static str, crate::checks::CheckSet, crate::checks::CheckSet); 20] = [
+        ("F021", memalign::run_memalign_checks(), memalign::run_memalign_deep()),
+        ("F022", timefam::run_timefam_checks(), timefam::run_timefam_deep()),
+        ("F023", winsock::run_winsock_checks(), winsock::run_winsock_deep()),
+        ("F024", tlsstore::run_tlsstore_checks(), tlsstore::run_tlsstore_deep()),
+        ("F025", printpdf::run_printpdf_checks(), printpdf::run_printpdf_deep()),
+        ("F026", winmm::run_winmm_checks(), winmm::run_winmm_deep()),
+        ("F027", imm32::run_imm32_checks(), imm32::run_imm32_deep()),
+        ("F028", dpistate::run_dpistate_checks(), dpistate::run_dpistate_deep()),
+        ("F029", moneum::run_moneum_checks(), moneum::run_moneum_deep()),
+        ("F030", installr::run_installr_checks(), installr::run_installr_deep()),
+        ("F031", uninstall::run_uninstall_checks(), uninstall::run_uninstall_deep()),
+        ("F032", runtimes::run_runtimes_checks(), runtimes::run_runtimes_deep()),
+        ("F033", buildchain::run_buildchain_checks(), buildchain::run_buildchain_deep()),
+        ("F034", codepage::run_codepage_checks(), codepage::run_codepage_deep()),
+        ("F035", compatwiz::run_compatwiz_checks(), compatwiz::run_compatwiz_deep()),
+        ("F036", stardraft::run_stardraft_checks(), stardraft::run_stardraft_deep()),
+        ("F037", peblockui::run_peblockui_checks(), peblockui::run_peblockui_deep()),
+        ("F038", isolevel::run_isolevel_checks(), isolevel::run_isolevel_deep()),
+        ("F039", gamefront::run_gamefront_checks(), gamefront::run_gamefront_deep()),
+        ("F040", compatledger::run_compatledger_checks(), compatledger::run_compatledger_deep()),
     ];
-    for (tag, sub) in blocks {
-        let passed = sub.all_passed() && !sub.truncated();
-        set.add(tag, passed, if passed { "" } else { "sub-checks red" });
+    for (tag, main, deep) in blocks {
+        let passed = main.all_passed() && !main.truncated() && deep.all_passed() && !deep.truncated();
+        set.add(tag, passed, if passed { "" } else { "main-or-deep red" });
     }
     set
 }

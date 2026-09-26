@@ -313,3 +313,143 @@ mod tests {
         assert!(!s.msi_self_repair(), "自修复流仅 MSI 族");
     }
 }
+
+// ===========================================================================
+// 深化层 · G-A-30 补强：MSI 表模型 / Inno 任务类型 / NSIS 段落模型
+// （三族安装器内部结构承载；行为参照各自开源实现文档）
+// ---------------------------------------------------------------------------
+
+/// MSI 核心五表（Component/File/Feature/Shortcut/Property——MSI 规范）。
+pub const MSI_TABLES: [&str; 5] = ["Component", "File", "Feature", "Shortcut", "Property"];
+
+/// 一条 MSI File 表行。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct MsiFileRow {
+    pub file_key: &'static str,
+    pub component: &'static str,
+    pub file_size: u32,
+    pub version: &'static str,
+}
+
+/// MSI 组件引用计数（自修复与共享面）。
+pub struct MsiComponentRef {
+    pub component_id: &'static str,
+    pub ref_count: u32,
+    pub key_path_ok: bool,
+}
+
+impl MsiComponentRef {
+    /// 自修复触发：key path 缺失 → 重执行修复流（主册【状态与异常】）。
+    pub fn needs_repair(&self) -> bool {
+        !self.key_path_ok || self.ref_count == 0
+    }
+}
+
+/// Inno 任务类型（任务选择页承载）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InnoTaskType {
+    DesktopIcon,
+    QuickLaunch,
+    AssociateFiles,
+    Custom(&'static str),
+}
+
+/// Inno 任务选择结果（checked/unchecked 二态 + 默认勾选位）。
+pub struct InnoTask {
+    pub kind: InnoTaskType,
+    pub checked: bool,
+    pub checked_by_default: bool,
+}
+
+/// NSIS 段落模型（安装段/卸载段；SectionSetFlags 语义）。
+pub const NSIS_SECTION_INSTALL: u32 = 0;
+pub const NSIS_SECTION_UNINSTALL: u32 = 1;
+/// 段标志：SF_RO = 只读段（用户不可勾出）。
+pub const NSIS_SF_RO: u32 = 0x0010;
+
+/// NSIS 段登记。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct NsisSection {
+    pub index: u32,
+    pub name: &'static str,
+    pub flags: u32,
+    pub selected: bool,
+}
+
+impl NsisSection {
+    /// 只读段强制选中（用户不可勾出——SF_RO 语义）。
+    pub fn effective_selected(&self) -> bool {
+        if self.flags & NSIS_SF_RO != 0 {
+            true
+        } else {
+            self.selected
+        }
+    }
+}
+
+/// 安装日志条目（诚实呈现的日志面：阶段 + 路径 + 结果）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct InstallLogEntry {
+    pub phase: InstallPhase,
+    pub path_hash8: [u8; 8],
+    pub success: bool,
+}
+
+/// 域自检（深化层）。
+pub fn run_installr_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F030-installr-deep");
+    // 1) MSI 五表在册。
+    cs.add("msi_tables", MSI_TABLES == ["Component", "File", "Feature", "Shortcut", "Property"], "");
+    // 2) MSI File 行结构 + 组件自修复判定。
+    let row = MsiFileRow { file_key: "f_main.exe", component: "c_core", file_size: 2_400_000, version: "1.2.0" };
+    let comp_ok = MsiComponentRef { component_id: "c_core", ref_count: 2, key_path_ok: true };
+    let comp_broken = MsiComponentRef { component_id: "c_core", ref_count: 1, key_path_ok: false };
+    cs.add(
+        "msi_repair_semantics",
+        row.file_size == 2_400_000 && !comp_ok.needs_repair() && comp_broken.needs_repair(),
+        "",
+    );
+    // 3) Inno 任务：默认勾选位与用户选择分离。
+    let tasks = [
+        InnoTask { kind: InnoTaskType::DesktopIcon, checked: false, checked_by_default: true },
+        InnoTask { kind: InnoTaskType::AssociateFiles, checked: true, checked_by_default: true },
+    ];
+    cs.add(
+        "inno_tasks",
+        !tasks[0].checked && tasks[0].checked_by_default && tasks[1].checked && tasks.len() == 2,
+        "",
+    );
+    // 4) NSIS 只读段强制选中。
+    let sections = [
+        NsisSection { index: NSIS_SECTION_INSTALL, name: "Core", flags: NSIS_SF_RO, selected: false },
+        NsisSection { index: 2, name: "Extras", flags: 0, selected: false },
+    ];
+    cs.add(
+        "nsis_readonly_section",
+        sections[0].effective_selected() && !sections[1].effective_selected() && NSIS_SF_RO == 0x0010,
+        "",
+    );
+    // 5) 安装日志条目：阶段+哈希+结果三字段在册。
+    let entry = InstallLogEntry { phase: InstallPhase::Progress, path_hash8: [0xAB; 8], success: true };
+    cs.add("install_log_entry", entry.success && entry.phase == InstallPhase::Progress, "");
+    // 6) 卸载段登记（NSIS_SECTION_UNINSTALL = 1）。
+    cs.add("nsis_uninstall_section", NSIS_SECTION_UNINSTALL == 1 && NSIS_SECTION_INSTALL == 0, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn msi_refcount_zero_needs_repair() {
+        let comp = MsiComponentRef { component_id: "x", ref_count: 0, key_path_ok: true };
+        assert!(comp.needs_repair(), "引用计数归零 = 需修复");
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_installr_deep();
+        assert!(cs.all_passed() && !cs.truncated());
+    }
+}

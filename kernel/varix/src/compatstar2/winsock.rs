@@ -388,8 +388,180 @@ mod tests {
 
     #[test]
     fn dotted_decimal_rejects_garbage() {
-        assert!(getaddrinfo("999.1.1.1", None).is_err() || getaddrinfo("999.1.1.1", None).is_ok());
+        // 超界八位组（999）不是合法点分四段 → 走域名路 → HOST_NOT_FOUND 如实拒绝。
+        assert_eq!(getaddrinfo("999.1.1.1", None), Err(wsa::WSAHOST_NOT_FOUND));
         // 非法串不是点分四段 → 走域名路 → HOST_NOT_FOUND。
         assert_eq!(getaddrinfo("not an ip", None), Err(wsa::WSAHOST_NOT_FOUND));
+    }
+}
+
+// ===========================================================================
+// 深化层 · G-A-23 补强：WSA 错误码全集 / socket 选项 / ioctlsocket
+// （错误码如实翻译的完整对照表；语义对照 Wine ws2_32 与 MS 文档）
+// ---------------------------------------------------------------------------
+
+/// WSA 错误码登记表：(码值, 助记名)。如实翻译的公共出口——
+/// 程序按码值自行提示（主册：程序自己的错误提示自然正确）。
+pub const WSA_ERRORS: [(u32, &str); 32] = [
+    (10004, "WSAEINTR"),
+    (10009, "WSAEBADF"),
+    (10013, "WSAEACCES"),
+    (10014, "WSAEFAULT"),
+    (10022, "WSAEINVAL"),
+    (10024, "WSAEMFILE"),
+    (10035, "WSAEWOULDBLOCK"),
+    (10036, "WSAEINPROGRESS"),
+    (10037, "WSAEALREADY"),
+    (10038, "WSAENOTSOCK"),
+    (10039, "WSAEDESTADDRREQ"),
+    (10040, "WSAEMSGSIZE"),
+    (10041, "WSAEPROTOTYPE"),
+    (10043, "WSAEPROTONOSUPPORT"),
+    (10044, "WSAESOCKTNOSUPPORT"),
+    (10045, "WSAEOPNOTSUPP"),
+    (10047, "WSAEAFNOSUPPORT"),
+    (10048, "WSAEADDRINUSE"),
+    (10049, "WSAEADDRNOTAVAIL"),
+    (10050, "WSAENETDOWN"),
+    (10051, "WSAENETUNREACH"),
+    (10052, "WSAENETRESET"),
+    (10053, "WSAECONNABORTED"),
+    (10054, "WSAECONNRESET"),
+    (10055, "WSAENOBUFS"),
+    (10056, "WSAEISCONN"),
+    (10057, "WSAENOTCONN"),
+    (10058, "WSAESHUTDOWN"),
+    (10060, "WSAETIMEDOUT"),
+    (10061, "WSAECONNREFUSED"),
+    (10065, "WSAEHOSTUNREACH"),
+    (11001, "WSAHOST_NOT_FOUND"),
+];
+
+/// 码值 → 助记名（线性查表，定长表零分配）。
+pub fn wsa_error_name(code: u32) -> &'static str {
+    for &(c, n) in WSA_ERRORS.iter() {
+        if c == code {
+            return n;
+        }
+    }
+    "WSA_UNKNOWN"
+}
+
+/// socket 选项（SOL_SOCKET/OPT 面子集；getsockopt/setsockopt 语义承载）。
+pub const SO_REUSEADDR: u32 = 0x0004;
+pub const SO_KEEPALIVE: u32 = 0x0008;
+pub const SO_RCVBUF: u32 = 0x1002;
+pub const SO_SNDBUF: u32 = 0x1001;
+pub const IPPROTO_TCP: u32 = 6;
+pub const TCP_NODELAY: u32 = 0x0001;
+
+/// 选项合法性：value 字节长与选项匹配（SO_* = 4 字节布尔/整型）。
+pub fn socket_option_valid(opt: u32, value_len: usize) -> bool {
+    matches!(opt, SO_REUSEADDR | SO_KEEPALIVE | SO_RCVBUF | SO_SNDBUF | TCP_NODELAY) && value_len == 4
+}
+
+/// ioctlsocket 命令面。
+pub const FIONBIO: u32 = 0x8004_667E;
+pub const FIONREAD: u32 = 0x4004_667F;
+
+/// ioctlsocket 执行模型：FIONBIO 切换非阻塞；FIONREAD 查询可读字节数。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IoctlOutcome {
+    NonBlockingSet(bool),
+    BytesReadable(usize),
+    InvalidCommand,
+}
+
+pub fn ioctl_socket(cmd: u32, arg: u64, data_available: bool) -> IoctlOutcome {
+    match cmd {
+        FIONBIO => IoctlOutcome::NonBlockingSet(arg != 0),
+        FIONREAD => IoctlOutcome::BytesReadable(if data_available { DEFAULT_BUFFER_BYTES.min(1460) } else { 0 }),
+        _ => IoctlOutcome::InvalidCommand,
+    }
+}
+
+/// gethostbyname 语义承载：hostent 结构（name/aliases/addr_list——MS 结构形状）。
+#[derive(Clone, Copy, PartialEq)]
+pub struct HostEnt<'a> {
+    pub name: &'a str,
+    pub addr: &'a str,
+    pub addrtype: u32, // AF_INET = 2
+}
+
+pub const AF_INET: u32 = 2;
+
+pub fn get_host_by_name<'a>(node: &'a str) -> Result<HostEnt<'a>, u32> {
+    match getaddrinfo(node, None) {
+        Ok((ip, _)) => Ok(HostEnt { name: node, addr: ip, addrtype: AF_INET }),
+        Err(e) => Err(e),
+    }
+}
+
+/// 域自检（深化层）。
+pub fn run_winsock_deep() -> CheckSet {
+    let mut cs = CheckSet::new("F023-winsock-deep");
+    // 1) 错误码表 32 条全登记；查表命中与未知名如实回退。
+    cs.add(
+        "wsa_error_table",
+        WSA_ERRORS.len() == 32 && wsa_error_name(10060) == "WSAETIMEDOUT" && wsa_error_name(11001) == "WSAHOST_NOT_FOUND" && wsa_error_name(99999) == "WSA_UNKNOWN",
+        "",
+    );
+    // 2) 三常用错误码与本域主面一致（主判据码 10054/10060/10035 在册）。
+    cs.add(
+        "primary_codes_registered",
+        wsa_error_name(wsa::WSAECONNRESET) == "WSAECONNRESET" && wsa_error_name(wsa::WSAETIMEDOUT) == "WSAETIMEDOUT" && wsa_error_name(wsa::WSAEWOULDBLOCK) == "WSAEWOULDBLOCK",
+        "",
+    );
+    // 3) socket 选项：合法 4 字节整型；1 字节值拒绝。
+    cs.add(
+        "socket_options",
+        socket_option_valid(SO_KEEPALIVE, 4) && socket_option_valid(TCP_NODELAY, 4) && !socket_option_valid(SO_RCVBUF, 1) && !socket_option_valid(0x9999, 4),
+        "",
+    );
+    // 4) ioctlsocket：FIONBIO 切非阻塞 / FIONREAD 有数据回 MSS / 无数据回 0。
+    cs.add(
+        "ioctl_commands",
+        ioctl_socket(FIONBIO, 1, false) == IoctlOutcome::NonBlockingSet(true)
+            && ioctl_socket(FIONREAD, 0, true) == IoctlOutcome::BytesReadable(1460)
+            && ioctl_socket(FIONREAD, 0, false) == IoctlOutcome::BytesReadable(0)
+            && ioctl_socket(0xDEAD, 0, false) == IoctlOutcome::InvalidCommand,
+        "",
+    );
+    // 5) gethostbyname：域名解析成 hostent（AF_INET = 2）。
+    let he = get_host_by_name("ftp.example.org");
+    cs.add(
+        "hostent_shape",
+        he.is_ok() && he.unwrap().addrtype == AF_INET && get_host_by_name("no-such.invalid") == Err(wsa::WSAHOST_NOT_FOUND),
+        "",
+    );
+    // 6) 选项常量对拍 MS 值。
+    cs.add("option_constants", SO_REUSEADDR == 4 && SO_KEEPALIVE == 8 && SO_SNDBUF == 0x1001 && SO_RCVBUF == 0x1002 && IPPROTO_TCP == 6, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn error_table_no_duplicate_codes() {
+        // 32 条码值两两不同（登记表完整性）。
+        for i in 0..WSA_ERRORS.len() {
+            for j in i + 1..WSA_ERRORS.len() {
+                assert_ne!(WSA_ERRORS[i].0, WSA_ERRORS[j].0);
+            }
+        }
+    }
+
+    #[test]
+    fn ioctl_nonblock_toggle() {
+        assert_eq!(ioctl_socket(FIONBIO, 0, false), IoctlOutcome::NonBlockingSet(false));
+        assert_eq!(ioctl_socket(FIONBIO, 1, false), IoctlOutcome::NonBlockingSet(true));
+    }
+
+    #[test]
+    fn deep_checks_all_green() {
+        let cs = run_winsock_deep();
+        assert!(cs.all_passed() && !cs.truncated());
     }
 }
