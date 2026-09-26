@@ -10,7 +10,7 @@
 /// Maximum checks recorded by one domain self-test.
 /// 检查项容量（64 → 96：H3 域 copypath/sysgov 深化至 12 层后单项
 /// 检查数超 64，容量提升并留 headroom——域聚合不再截断丢红）。
-pub const MAX_CHECKS: usize = 96;
+pub const MAX_CHECKS: usize = 112;
 
 /// One check result — name, verdict and a short failure detail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

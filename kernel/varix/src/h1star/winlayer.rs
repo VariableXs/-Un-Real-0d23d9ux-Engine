@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(audits[0], 2, "Promoted：一次晋升 + 一次降层");
         assert_eq!(audits[3], 3, "Registered：三次注册");
         let snap = m.census_snapshot();
-        assert_eq!(snap.counts, [0, 3, 0, 0]);
+        assert_eq!(snap.counts, [0, 2, 1, 0]); // F226: 双普通窗 + 一浮层窗（v1 断言 [0,3,0,0] 误将 Overlay 计入 Normal，修正）。
         assert_eq!(snap.active, None);
         assert_ne!(
             shadow_spec(WinLayer::Overlay, false),
