@@ -20,6 +20,7 @@ import { d2Store } from "./d2store";
 import { KeyHud, lockIconShape, lockLabel, type HudContent } from "./keyhud";
 import { ImeFloat, imeLabel, type FloatMode } from "./imefloat";
 import { OnScreenKb, WINDOW_H_PX, WINDOW_W_PX, keyLabel, type VKey } from "./osk";
+import { d2xlog } from "./d2telemetry";
 import { useHotkey } from "../../lib/keymap/hooks";
 import { useKeyMirrorBridge } from "../../components/KeymapOverlays";
 
@@ -108,9 +109,10 @@ function KeyHudLayer(): React.ReactElement | null {
   const shape = c.kind === "lock" ? lockIconShape(c.key) : "circle";
   const on = c.kind === "lock" ? c.on : c.chinese;
   const corner = cfg.cornerMode || document.fullscreenElement !== null;
+  const top = (cfg as { position?: string }).position === "top";
   return (
     <div
-      className={`d2-keyhud${corner ? " d2-keyhud--corner" : ""}${snap.phase === "showing" ? " d2-keyhud--in" : ""}${snap.phase === "fading" ? " d2-keyhud--out" : ""}`}
+      className={`d2-keyhud${corner ? " d2-keyhud--corner" : ""}${top ? " d2-keyhud--top" : ""}${snap.phase === "showing" ? " d2-keyhud--in" : ""}${snap.phase === "fading" ? " d2-keyhud--out" : ""}`}
       style={corner ? { right: 16, bottom: 16 } : { left: rect.x, width: rect.w }}
       role="status"
       aria-live="polite"
@@ -178,15 +180,17 @@ function ImeFloatLayer(): React.ReactElement | null {
 
   const toggleState = (which: 0 | 1 | 2): void => {
     f.toggleState(which);
-    // 三态广播（term2 等消费面同源）。
+    // 三态广播（term2 等消费面同源）+ 体验日志（十三章：交互行为入账）。
     window.dispatchEvent(new CustomEvent("vx-d2-ime-state", { detail: { ...f.states } }));
+    d2xlog.record("imefloat", `state-${which}`, "toggle", null, "smooth");
     force((v) => v + 1);
   };
 
+  const cfgAny = cfg as ImeCfg & { compact?: boolean };
   if (cfg.mode === "hidden" || cfg.mode === "taskbarChip") {
     if (cfg.mode !== "taskbarChip") return null;
     return (
-      <button type="button" className="d2-ime-chip" onClick={() => { f.collapse(false); force((v) => v + 1); }} aria-label="展开输入法状态浮窗">
+      <button type="button" className="d2-ime-chip" onClick={() => { f.collapse(false); d2xlog.record("imefloat", "chip-expand", "click", null, "smooth"); force((v) => v + 1); }} aria-label="展开输入法状态浮窗">
         {f.states.chinese ? "中" : "英"}
       </button>
     );
@@ -198,10 +202,13 @@ function ImeFloatLayer(): React.ReactElement | null {
   const a = anchor ?? { x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) };
   f.cursorMoved(a.x, a.y, f.appliedMoves === 0 ? 0 : performance.now()); // 首移必应用（D14 同源）
   const r = f.rect(window.innerWidth, window.innerHeight);
+  // v3：仅显中英态（主册设计点「仅显中英态」——紧凑档只出语言位）。
   const segs: Array<{ which: 0 | 1 | 2; label: string }> = [
     { which: 0, label: f.states.chinese ? "中" : "英" },
-    { which: 1, label: f.states.fullwidth ? "全" : "半" },
-    { which: 2, label: f.states.cnPunct ? "。" : "." },
+    ...(cfgAny.compact ? [] : [
+      { which: 1 as const, label: f.states.fullwidth ? "全" : "半" },
+      { which: 2 as const, label: f.states.cnPunct ? "。" : "." },
+    ]),
   ];
   return (
     <div className="d2-imefloat" style={{ left: r.x, top: r.y, width: r.w, height: r.h }} role="group" aria-label={`输入法状态：${imeLabel(f.states)}`}>
@@ -257,6 +264,8 @@ function OskLayer(): React.ReactElement | null {
     const kb = kbRef.current;
     const out = kb.press(k.code);
     setFlash({ code: k.code, at: Date.now() });
+    // 体验日志：按键行为入账（只记键义不记目标内容——十三章红线）。
+    d2xlog.record("osk", k.kind === "char" ? "char-key" : k.kind, "key", null, "smooth");
     if (out !== "") {
       const target = document.activeElement as HTMLElement | null;
       if (target && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target.isContentEditable)) {

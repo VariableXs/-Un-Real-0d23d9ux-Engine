@@ -41,7 +41,8 @@ export type VwmToolApp =
   | "syshub"
   | "term2"
   | "paint"
-  | "album";
+  | "album"
+  | "notepad";
 export type VwmApp = AppMode | "explorer" | "recycle" | "taskman" | `tp:${string}` | VwmToolApp | `engine:${string}`;
 
 /** F-2：工具应用集合（窗口语义与四软件一致：贴靠/保活/多开）。AI-09 文件操作四工具并入。
@@ -66,6 +67,7 @@ export const VWM_TOOLS: readonly VwmToolApp[] = [
   "term2",
   "paint",
   "album",
+  "notepad",
 ];
 
 export function isVwmTool(app: VwmApp): app is VwmToolApp {
@@ -94,6 +96,7 @@ const TOOL_DEFAULT_SIZE: Record<VwmToolApp, { w: number; h: number }> = {
   term2: { w: 900, h: 620 },
   paint: { w: 960, h: 680 },
   album: { w: 980, h: 660 },
+  notepad: { w: 860, h: 620 },
 };
 
 /** 是否第三方应用虚拟窗口（宿主为 SetParent 嵌入的原生窗口）。 */
@@ -843,6 +846,7 @@ export function vwmWindowTitle(app: VwmApp): string {
       term2: "终端 2.0",
       paint: "画图件",
       album: "相册",
+      notepad: "记事本",
     };
     return labels[app];
   }

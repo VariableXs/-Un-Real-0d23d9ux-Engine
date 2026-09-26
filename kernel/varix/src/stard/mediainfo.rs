@@ -76,6 +76,8 @@ pub struct MediaInfo {
     pub channels: Option<u8>,
     /// 源旋转角（0/90/180/270，显示修正前）。
     pub rotation: Option<u16>,
+    /// 视频帧率（fps，stts 帧时长表联算——v2 深化销掉 v1 诚实留白）。
+    pub fps: Option<u32>,
 }
 
 impl MediaInfo {
@@ -226,6 +228,9 @@ struct TrakScan {
     md_timescale: u64,
     md_duration: u64,
     stsz_bytes: u64,
+    /// stts 累计（v2 深化）：帧数与帧时长单位数——fps = 帧数×timescale/单位数。
+    stts_samples: u64,
+    stts_units: u64,
 }
 
 fn parse_trak(data: &[u8], lo: usize, hi: usize, info: &mut MediaInfo) {
@@ -247,6 +252,11 @@ fn parse_trak(data: &[u8], lo: usize, hi: usize, info: &mut MediaInfo) {
                             walk_boxes(data, l3, h3, &mut |ty4, l4, h4| {
                                 if ty4 == b"stsz" {
                                     scan.stsz_bytes += stsz_total_bytes(data, l4, h4);
+                                } else if ty4 == b"stts" {
+                                    // v2 深化：stts 帧时长表累计（帧数 + 帧时长单位数）。
+                                    let (n, units) = stts_totals(data, l4, h4);
+                                    scan.stts_samples += n;
+                                    scan.stts_units += units;
                                 }
                                 true
                             });
@@ -270,7 +280,39 @@ fn parse_trak(data: &[u8], lo: usize, hi: usize, info: &mut MediaInfo) {
                 info.video_bps = Some(scan.stsz_bytes.saturating_mul(8000) / dur_ms);
             }
         }
+        // v2 深化：fps 联算（stts 帧数 × mdhd timescale ÷ stts 帧时长单位总数）。
+        if scan.stts_samples > 0 && scan.stts_units > 0 && scan.md_timescale > 0 {
+            let fps_x1000 = scan.stts_samples.saturating_mul(scan.md_timescale).saturating_mul(1000) / scan.stts_units;
+            if fps_x1000 > 0 {
+                // 千分位四舍五入到整数 fps（23.976 → 24——信息面口径，非精确分数）。
+                info.fps = Some(((fps_x1000 + 500) / 1000) as u32);
+            }
+        }
     }
+}
+
+/// stts：box 头(8) + version/flags(4) + entry_count(4) + [sample_count(4)
+/// + sample_delta(4)]×n →（总帧数，总时长单位数）。畸形体按可得边界诚实截断。
+fn stts_totals(data: &[u8], l: usize, h: usize) -> (u64, u64) {
+    let mut samples = 0u64;
+    let mut units = 0u64;
+    // 体起点 = box 头(8) + version/flags(4) + entry_count(4) → 条目起点。
+    let mut off = l + 16;
+    let end = h.min(data.len());
+    while off + 8 <= end {
+        let count = match be32(data, off) {
+            Some(v) => v as u64,
+            None => break,
+        };
+        let delta = match be32(data, off + 4) {
+            Some(v) => v as u64,
+            None => break,
+        };
+        samples += count;
+        units += count.saturating_mul(delta);
+        off += 8;
+    }
+    (samples, units)
 }
 
 /// tkhd：尺寸（16.16 定点）+ 旋转矩阵（0/90/180/270 识别）。
@@ -899,6 +941,8 @@ pub fn run_mediainfo_checks() -> CheckSet {
     set.add("mp4 resolution 1920x1080", info.width == Some(1920) && info.height == Some(1080), "");
     set.add("mp4 video bitrate from stsz", info.video_bps == Some(640_000), "");
     set.add("mp4 total bitrate", info.total_bps == Some(1_000_000 * 8000 / 10_000), "");
+    // v2 深化：fps 联算（stts 10 帧 × mdhd 1000 ÷ stts 10_000 单位 = 1fps）。
+    set.add("mp4 fps from stts x mdhd", info.fps == Some(1), "");
 
     // —— 旋转修正（90° 竖拍：显示 1080×1920）——
     let infor = sniff_and_parse(&build_sample_mp4(90), 1_000_000).expect("rotated mp4 must parse");
@@ -1039,6 +1083,15 @@ fn build_sample_mp4(rot: u16) -> Vec<u8> {
     }
     let mut stsz_box = Vec::new();
     push_box(&mut stsz_box, b"stsz", &stsz);
+    // v2 深化：stts 帧时长表（双条目累计——10 帧 × 1000 单位 = 10s → fps 1）。
+    let mut stts = Vec::new();
+    stts.extend_from_slice(&0u32.to_be_bytes()); // version/flags
+    stts.extend_from_slice(&2u32.to_be_bytes()); // entry_count
+    stts.extend_from_slice(&4u32.to_be_bytes()); // 条目一：4 帧
+    stts.extend_from_slice(&1000u32.to_be_bytes());
+    stts.extend_from_slice(&6u32.to_be_bytes()); // 条目二：6 帧
+    stts.extend_from_slice(&1000u32.to_be_bytes());
+    push_box(&mut stsz_box, b"stts", &stts);
     let mut stbl_box = Vec::new();
     push_box(&mut stbl_box, b"stbl", &stsz_box);
     push_box(&mut mdia, b"minf", &stbl_box);
@@ -1270,5 +1323,34 @@ mod tests {
         assert_eq!(m.duration_label(), "1:01");
         m.duration_ms = Some(800);
         assert_eq!(m.duration_label(), "0s");
+    }
+
+    #[test]
+    fn stts_totals_multi_entry_and_fps_math() {
+        // 双条目累计：4×1000 + 6×1000 = 10 帧 / 10_000 单位。
+        let mut body = Vec::new();
+        body.extend_from_slice(&0u32.to_be_bytes());
+        body.extend_from_slice(&2u32.to_be_bytes());
+        body.extend_from_slice(&4u32.to_be_bytes());
+        body.extend_from_slice(&1000u32.to_be_bytes());
+        body.extend_from_slice(&6u32.to_be_bytes());
+        body.extend_from_slice(&1000u32.to_be_bytes());
+        let mut box_buf = Vec::new();
+        push_box(&mut box_buf, b"stts", &body);
+        let (n, units) = stts_totals(&box_buf, 0, box_buf.len());
+        assert_eq!((n, units), (10, 10_000));
+        // fps 联算口径：25fps 帧序（ts 12800 / delta 512）。
+        let fps_x1000 = 250u64.saturating_mul(12_800).saturating_mul(1000) / (250 * 512);
+        assert_eq!((fps_x1000 + 500) / 1000, 25);
+        // 畸形体（截断）按可得边界诚实累计不 panic。
+        let (n2, u2) = stts_totals(&box_buf, 0, box_buf.len() - 5);
+        assert!(n2 >= 4 && u2 >= 4_000);
+    }
+
+    #[test]
+    fn fps_field_absent_is_honest_none() {
+        // 无 stts（如纯音频 m4a 族）→ fps 诚实 None（不留占位数）。
+        let info = parse_flac(&build_sample_flac(44100, 2, 44100 * 30)).expect("flac");
+        assert_eq!(info.fps, None);
     }
 }

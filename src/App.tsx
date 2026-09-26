@@ -34,6 +34,7 @@ import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } fro
 import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { J1Runtime, J1AppWindowLayer } from "./features/mouse/J1Runtime";
 import { U3Runtime } from "./features/u3/U3Runtime";
+import { U1Runtime } from "./features/u1/U1Runtime";
 import { D2Runtime } from "./features/desktopxp/D2Runtime";
 import { H4Runtime } from "./features/h4/H4Runtime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
@@ -707,6 +708,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <J1Runtime />
             {/* I 通用域 AI-U3：F501-F550 涟漪/光带/瞥桌面/剪贴板热键/蓝牙锁运行时 */}
             <U3Runtime />
+            {/* I 通用域 AI-U1：F401-F450 Esc 层级栈/粘滞键/输入法徽标/音量电池浮层/Win 键账/Shake 判定运行时 */}
+            <U1Runtime />
             {/* C 桌面体验域·后段 AI-D2：F106 键盘 HUD / F107 输入法浮窗 / F110 屏幕键盘 浮层运行时 */}
             <D2Runtime />
             {/* H 基础通用域 AI-H4：F351-F400 运行时（开机徽标 F371 / 彩蛋 F399 / 滤镜单点 F387 / 阅读模式 F386） */}

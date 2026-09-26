@@ -38,6 +38,8 @@ export interface MediaInfo {
   sampleRate: number | null;
   channels: number | null;
   codec: string | null;
+  /** 视频帧率（fps，stts 联算——v3 与内核 fps 字段同源；未知 null）。 */
+  fps: number | null;
 }
 
 export function durationLabel(ms: number | null): string {
@@ -77,7 +79,7 @@ function ascii(b: Uint8Array, off: number, len: number): string {
 /** MP4：ftyp 嗅探 + moov/mvhd 时长 + tkhd 宽高（头部窗内 box 线性走查）。 */
 export function parseMp4(head: Uint8Array, fileBytes: number): MediaInfo | null {
   if (head.length < 12 || ascii(head, 4, 4) !== "ftyp") return null;
-  const info: MediaInfo = { container: "mp4", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 0, videoBps: null, sampleRate: null, channels: null, codec: null };
+  const info: MediaInfo = { container: "mp4", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 0, videoBps: null, sampleRate: null, channels: null, codec: null, fps: null };
   // box 线性走查（moov 通常在前 64KB——大 moov 走模型面深查，此处诚实留白）。
   let off = 0;
   let end = head.length;
@@ -92,8 +94,8 @@ export function parseMp4(head: Uint8Array, fileBytes: number): MediaInfo | null 
       size = end - off; // 到文件尾
     }
     if (size < 8) break;
-    if (type === "moov" || type === "trak") {
-      // 进入子箱走查（嵌套一层——宽度/时长在 trak 的子箱）。
+    if (type === "moov") {
+      // moov 子箱走查：mvhd 影片时长 + trak 逐轨扫描。
       const subEnd = Math.min(off + size, end);
       let sub = off + 8;
       while (sub + 8 <= subEnd) {
@@ -113,21 +115,8 @@ export function parseMp4(head: Uint8Array, fileBytes: number): MediaInfo | null 
             const dur = u32beSafe(head, sub + 8 + 16);
             if (ts > 0 && dur > 0) info.durationMs = Math.round((dur / ts) * 1000);
           }
-        } else if (sty === "tkhd") {
-          // tkhd：宽高在尾部 8 字节（16.16 定点）。
-          // body 布局 v0：ver/flags(4)+ctime(4)+mtime(4)+trackID(4)+reserved(4)+
-          //   duration(4)+reserved(8)+layer(2)+alt(2)+volume(2)+reserved(2)+
-          //   matrix(36) → 宽在 body+76、高 body+80；v1 时间字段 64 位 → +12。
-          const body = sub + 8;
-          const ver = head[body]!;
-          const wOff = body + (ver === 1 ? 88 : 76);
-          if (wOff + 8 <= subEnd) {
-            const w = u32beSafe(head, wOff) / 65536;
-            const h = u32beSafe(head, wOff + 4) / 65536;
-            if (w > 0 && h > 0) { info.width = Math.round(w); info.height = Math.round(h); info.videoTracks += 1; }
-          }
-        } else if (sty === "mdhd") {
-          // 音轨时长兜底（mvhd 缺时）——此处不覆盖视频时长。
+        } else if (sty === "trak") {
+          walkTrak(head, sub, Math.min(sub + ssz, subEnd), info);
         }
         sub += ssz;
       }
@@ -137,6 +126,87 @@ export function parseMp4(head: Uint8Array, fileBytes: number): MediaInfo | null 
   if (info.videoTracks === 0) info.audioTracks = 1; // 纯音频 mp4（m4a 族）
   info.videoBps = fileBytes > 0 && info.durationMs ? Math.round((fileBytes * 8) / (info.durationMs / 1000)) : null;
   return info;
+}
+
+/** trak 走查（v3）：tkhd 几何 + mdhd 轨 timescale + minf/stbl/stts 帧序
+ *  累计 → 视频轨 fps 联算（与内核 stard/mediainfo.rs 同源口径）。 */
+function walkTrak(head: Uint8Array, trakOff: number, trakEnd: number, info: MediaInfo): void {
+  let isVideoTrak = false;
+  let trakTimescale = 0;
+  let sttsSamples = 0;
+  let sttsUnits = 0;
+  let sub = trakOff + 8;
+  while (sub + 8 <= trakEnd) {
+    const ssz = u32beSafe(head, sub);
+    const sty = ascii(head, sub + 4, 4);
+    if (ssz < 8) break;
+    if (sty === "tkhd") {
+      // tkhd：宽高在尾部 8 字节（16.16 定点）。
+      // body 布局 v0：…matrix(36) → 宽在 body+76、高 body+80；v1 → +12。
+      const body = sub + 8;
+      const ver = head[body]!;
+      const wOff = body + (ver === 1 ? 88 : 76);
+      if (wOff + 8 <= trakEnd) {
+        const w = u32beSafe(head, wOff) / 65536;
+        const h = u32beSafe(head, wOff + 4) / 65536;
+        if (w > 0 && h > 0) { info.width = Math.round(w); info.height = Math.round(h); info.videoTracks += 1; isVideoTrak = true; }
+      }
+    } else if (sty === "mdia") {
+      // mdia 下钻（v3 修正 D23：mdhd/minf 是 mdia 的孩子，不在 trak 直接层）。
+      const mdiaEnd = Math.min(sub + ssz, trakEnd);
+      let m = sub + 8;
+      while (m + 8 <= mdiaEnd) {
+        const msz = u32beSafe(head, m);
+        const mty = ascii(head, m + 4, 4);
+        if (msz < 8) break;
+        if (mty === "mdhd") {
+          const body = m + 8;
+          const ver = head[body]!;
+          const ts = ver === 1 ? u32beSafe(head, body + 4 + 16) : u32beSafe(head, body + 4 + 8);
+          if (ts > 0) trakTimescale = ts;
+        } else if (mty === "minf") {
+          // minf→stbl→stts（帧时长表累计）。
+          const minfEnd = Math.min(m + msz, mdiaEnd);
+          let f = m + 8;
+          while (f + 8 <= minfEnd) {
+            const fsz = u32beSafe(head, f);
+            const fty = ascii(head, f + 4, 4);
+            if (fsz < 8) break;
+            if (fty === "stbl") {
+              const stblEnd = Math.min(f + fsz, minfEnd);
+              let s = f + 8;
+              while (s + 8 <= stblEnd) {
+                const ssz2 = u32beSafe(head, s);
+                const sty2 = ascii(head, s + 4, 4);
+                if (ssz2 < 8) break;
+                if (sty2 === "stts") {
+                  // stts 体：ver/flags(4)+entry_count(4)+[count(4)+delta(4)]×n。
+                  let e = s + 8 + 8;
+                  const eEnd = Math.min(s + ssz2, stblEnd);
+                  while (e + 8 <= eEnd) {
+                    const count = u32beSafe(head, e);
+                    const delta = u32beSafe(head, e + 4);
+                    sttsSamples += count;
+                    sttsUnits += count * delta;
+                    e += 8;
+                  }
+                }
+                s += ssz2;
+              }
+            }
+            f += fsz;
+          }
+        }
+        m += msz;
+      }
+    }
+    sub += ssz;
+  }
+  // 视频轨 fps 联算（千分位四舍五入到整数——信息面口径）。
+  if (isVideoTrak && sttsSamples > 0 && sttsUnits > 0 && trakTimescale > 0) {
+    const fpsX1000 = (sttsSamples * trakTimescale * 1000) / sttsUnits;
+    if (Number.isFinite(fpsX1000) && fpsX1000 > 0) info.fps = Math.round(fpsX1000 / 1000);
+  }
 }
 
 /** EBML varint 读取（MKV/WebM——返回 [值, 字节数]）。 */
@@ -158,7 +228,7 @@ export function parseMkv(head: Uint8Array, isWebm: boolean): MediaInfo | null {
   if (head.length < 4) return null;
   const magic = ascii(head, 0, 4);
   if (magic !== "\x1aE\xdf\xa3") return null;
-  const info: MediaInfo = { container: isWebm ? "webm" : "mkv", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 0, videoBps: null, sampleRate: null, channels: null, codec: null };
+  const info: MediaInfo = { container: isWebm ? "webm" : "mkv", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 0, videoBps: null, sampleRate: null, channels: null, codec: null, fps: null };
   // 扫 Master 元素：Info(0x1549a966) / Tracks(0x1654ae6b)——嵌套走查两层。
   let off = 0;
   while (off + 4 < head.length) {
@@ -234,7 +304,7 @@ export function parseFlac(head: Uint8Array): MediaInfo | null {
   const channels = ((head[p + 12]! >> 4) & 0x7) + 1;
   const totalSamplesHi = head[p + 13]! & 0x7f;
   const totalSamples = totalSamplesHi * 2 ** 32 + u32beSafe(head, p + 14);
-  const info: MediaInfo = { container: "flac", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 1, videoBps: null, sampleRate, channels, codec: "FLAC" };
+  const info: MediaInfo = { container: "flac", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 1, videoBps: null, sampleRate, channels, codec: "FLAC", fps: null };
   if (sampleRate > 0 && totalSamples > 0) info.durationMs = Math.round((totalSamples / sampleRate) * 1000);
   return info;
 }
@@ -267,7 +337,7 @@ export function parseMp3(head: Uint8Array, fileBytes: number): MediaInfo | null 
   const kbps = version === 3 ? MPEG1_L3[bitrateIdx]! : MPEG2_L3[bitrateIdx]!;
   const sampleRate = version === 3 ? SR_MPEG1[srIdx]! : SR_MPEG2[srIdx]!;
   if (kbps === 0 || sampleRate === 0) return null;
-  const info: MediaInfo = { container: "mp3", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 1, videoBps: null, sampleRate, channels: channelMode === 3 ? 1 : 2, codec: "MP3" };
+  const info: MediaInfo = { container: "mp3", durationMs: null, width: null, height: null, videoTracks: 0, audioTracks: 1, videoBps: null, sampleRate, channels: channelMode === 3 ? 1 : 2, codec: "MP3", fps: null };
   // Xing/Info 头（VBR 时长——帧数 × 每帧样本 / 采样率）。
   const sideInfo = version === 3 ? (channelMode === 3 ? 17 : 32) : (channelMode === 3 ? 9 : 17);
   const xingOff = frame + 4 + sideInfo;

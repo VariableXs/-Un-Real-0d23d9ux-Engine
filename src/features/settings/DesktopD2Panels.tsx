@@ -10,6 +10,7 @@ import { MediaInfoStore, HoverScheduler, durationLabel, resolutionLabel, sniffAn
 import { PhraseBook, mergeCandidates, parseVars, VAR_WHITELIST, PHRASE_CAP, ABBR_MAX_CHARS, CONTENT_MAX_CHARS } from "../desktopxp/phrasebk";
 import { Palette, BUILTINS, OPEN_BUDGET_MS } from "../desktopxp/termpalette";
 import { ThumbCache, ThumbQueue, CACHE_CAP_BYTES } from "../desktopxp/thumbeng";
+import { d2xlog, FRUSTRATION_RULES } from "../desktopxp/d2telemetry";
 import { pushToast } from "../../state/uiStore";
 
 /* ------------------------------ 面板卡外壳 ------------------------------ */
@@ -297,6 +298,47 @@ export function ThumbCachePanel(): React.ReactElement {
         </tbody>
       </table>
       <p className="d2-muted">像素解码/EXIF 直抽判据在内核模型面 stard/thumbeng.rs；本面板是缓存策略与队列纪律的实时对账（{tick} 次对账）。</p>
+    </>
+  );
+}
+
+/* --------------------------- 十三章 体验日志面板 --------------------------- */
+
+/** 体验日志：会话事件环 + 挫败信号清单 + 导出（十三章/十三·补）。 */
+export function XLogPanel(): React.ReactElement {
+  const [, bump] = useState(0);
+  const log = d2xlog;
+  const fr = log.frustrations();
+
+  return (
+    <>
+      <div className="d2-rowflex">
+        <button type="button" onClick={() => bump((v) => v + 1)}>刷新</button>
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard?.writeText(log.export()).then(
+              () => pushToast("success", "体验日志已复制", "JSON 开放格式——时间轴 + 挫败清单（行为 only，无内容）"),
+              (e) => pushToast("error", "复制失败", String(e)),
+            );
+          }}
+        >
+          导出（复制 JSON）
+        </button>
+        <button type="button" onClick={() => { log.clear(); bump((v) => v + 1); }}>清空</button>
+        <span className="d2-muted">会话事件 {log.size}（内存环 {FRUSTRATION_RULES.cap} 上限 · 每 8s 节流落盘）</span>
+      </div>
+      <div className="d2-list" aria-label="挫败信号清单">
+        {fr.length === 0 && <div className="d2-list-item"><span className="d2-muted">暂无挫败信号——狂点/死点/浮层反复开关/重试风暴会自动标记到这里。</span></div>}
+        {fr.slice(-20).reverse().map((e) => (
+          <div key={e.seq} className="d2-list-item">
+            <span className="d2-bad">{e.frustration}</span>
+            <span>{e.surface} · {e.element}</span>
+            <span className="d2-muted">{new Date(e.t).toLocaleTimeString()} · {e.verdict}{e.ms !== null ? ` · ${e.ms}ms` : ""}</span>
+          </div>
+        ))}
+      </div>
+      <p className="d2-muted">隐私红线：只记交互行为与结论，不记输入内容（正文/密码全不入账——十三章）。写入走内存环 + 节流落盘，绝不阻塞交互。</p>
     </>
   );
 }

@@ -122,6 +122,48 @@ describe("F093 缩略图缓存面", () => {
 
 /* ------------------------------ F094 媒体信息 ------------------------------ */
 
+/** 构造含视频轨的 MP4（tkhd 几何 + mdhd timescale + stbl/stts 帧序）→ fps 联算样本。 */
+function buildSampleMp4VideoFps(): Uint8Array {
+  const boxOf = (type: string, body: Uint8Array): Uint8Array => {
+    const out = new Uint8Array(8 + body.length);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, out.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+    out.set(body, 8);
+    return out;
+  };
+  const ftyp = boxOf("ftyp", new Uint8Array([0x69, 0x73, 0x6f, 0x6d, 0, 0, 2, 0, 0x69, 0x73, 0x6f, 0x6d]));
+  const mvhd = boxOf("mvhd", (() => { const b = new Uint8Array(20); new DataView(b.buffer).setUint32(12, 12800); new DataView(b.buffer).setUint32(16, 20_000); return b; })());
+  const tkhdBody = new Uint8Array(84);
+  new DataView(tkhdBody.buffer).setUint32(76, 1920 << 16);
+  new DataView(tkhdBody.buffer).setUint32(80, 1080 << 16);
+  const tkhd = boxOf("tkhd", tkhdBody);
+  // mdhd v0：timescale 在 body+12。
+  const mdhdBody = new Uint8Array(24);
+  new DataView(mdhdBody.buffer).setUint32(12, 12800);
+  const mdhd = boxOf("mdhd", mdhdBody);
+  // stts：1 条目 250 帧 × 512 单位 → 128_000 单位 = 10s @ 12800。
+  const sttsBody = new Uint8Array(8 + 8);
+  new DataView(sttsBody.buffer).setUint32(4, 1); // entry_count
+  new DataView(sttsBody.buffer).setUint32(8, 250); // sample_count
+  new DataView(sttsBody.buffer).setUint32(12, 512); // sample_delta
+  const stts = boxOf("stts", sttsBody);
+  const stbl = boxOf("stbl", stts);
+  const minf = boxOf("minf", stbl);
+  const mdia = boxOf("mdia", concatBytes([mdhd, minf]));
+  const trak = boxOf("trak", concatBytes([tkhd, mdia]));
+  const moov = boxOf("moov", concatBytes([mvhd, trak]));
+  return concatBytes([ftyp, moov]);
+}
+
+function concatBytes(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((a, p) => a + p.length, 0);
+  const out = new Uint8Array(total);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
 /** 构造最小合法 MP4 头（ftyp + moov/mvhd v0——与内核面 D8/D9 修法同源）。 */
 function buildSampleMp4(durationSec = 12, timescale = 1000): Uint8Array {
   const box = (type: string, body: Uint8Array): Uint8Array => {
@@ -174,6 +216,14 @@ describe("F094 媒体信息解析", () => {
     const info = parseAnd(sniffAndParse(data, 1024 * 1024));
     expect(info.container).toBe("mp4");
     expect(info.durationMs).toBe(12_000);
+    expect(info.fps).toBeNull(); // 无视频轨 → fps 诚实留白
+  });
+
+  it("MP4 fps 联算（stts × mdhd timescale —— 25fps 帧序）", () => {
+    const info = parseAnd(sniffAndParse(buildSampleMp4VideoFps(), 8_000_000));
+    expect(info.width).toBe(1920);
+    expect(info.height).toBe(1080);
+    expect(info.fps).toBe(25); // 250 帧 × 12800 ÷ (250×512) = 25
   });
 
   it("FLAC：STREAMINFO 位拆（采样率/声道/时长）", () => {
@@ -248,7 +298,7 @@ describe("F094 媒体信息解析", () => {
     expect(durationLabel(65_500)).toBe("1:05");
     expect(durationLabel(3_723_000)).toBe("1:02:03");
     expect(durationLabel(null)).toBe("时长未知");
-    expect(resolutionLabel({ container: "mp4", durationMs: null, width: 1920, height: 1080, videoTracks: 1, audioTracks: 1, videoBps: null, sampleRate: null, channels: null, codec: null })).toBe("1920×1080");
+    expect(resolutionLabel({ container: "mp4", durationMs: null, width: 1920, height: 1080, videoTracks: 1, audioTracks: 1, videoBps: null, sampleRate: null, channels: null, codec: null, fps: null })).toBe("1920×1080");
     expect(fnv1a64("a.mp4", 100)).toBe(fnv1a64("a.mp4", 100));
     expect(fnv1a64("a.mp4", 100)).not.toBe(fnv1a64("a.mp4", 200));
   });

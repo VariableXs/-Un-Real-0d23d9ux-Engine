@@ -43,6 +43,7 @@ import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
 import { MouseJ1Tab } from "./MouseJ1Tab";
 import { U3Tab } from "./U3Tab";
+import { U1Tab } from "./U1Tab";
 import { H4Tab } from "./H4Tab";
 import { DesktopD2Tab } from "./DesktopD2Tab";
 import { AmbienceTab } from "./AmbienceTab";
@@ -242,6 +243,7 @@ export function SettingsModal(props: {
     { id: "inputFeel", label: t("ifTitle") },
     { id: "mouseJ1", label: t("mouseJ1Title") },
     { id: "u3", label: t("u3TabTitle") },
+    { id: "u1", label: t("u1TabTitle") },
     { id: "h4tools", label: "效率与工具" },
     // C 桌面体验域·后段 AI-D2：F093-F110 全量面板
     { id: "desktopD2", label: "桌面体验" },
@@ -982,6 +984,7 @@ export function SettingsModal(props: {
           {tab === "mouseJ1" && <MouseJ1Tab />}
           {/* I 通用域 AI-U3：F501-F550 全量面板 */}
           {tab === "u3" && <U3Tab />}
+          {tab === "u1" && <U1Tab />}
           {/* H 基础通用域 AI-H4：F351-F400 全量面板（创作者工具/效率件/系统状态/控件秩序） */}
           {tab === "h4tools" && <H4Tab />}
           {/* C 桌面体验域·后段 AI-D2：F093-F110 全量面板 */}

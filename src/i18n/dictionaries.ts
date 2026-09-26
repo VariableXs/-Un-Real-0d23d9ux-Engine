@@ -1604,6 +1604,7 @@ const zh: Dict = {
   mouseJ1Title: "鼠标",
   // ---- I 通用域 AI-U3（F501-F550） ----
   u3TabTitle: "通用体验",
+  u1TabTitle: "快捷键与交互",
   ifMouseTitle: "鼠标手感面板",
   ifMouseHint: "滚轮行数与双击速度在环境内即时生效；指针速度与左右键交换需「同步到系统」（带确认与回滚，不影响其他应用的设置边界见系统参数）。",
   ifMouseSpeed: "指针速度",
@@ -2144,6 +2145,7 @@ const zh: Dict = {
   toolTerm2: "终端 2.0",
   toolPaint: "画图件",
   toolAlbum: "相册",
+  toolNotepad: "记事本",
   toolPrintqueue: "打印队列",
   // AI-11 系统集成与硬件组（系统中枢 / 性能 HUD）
   toolSyshub: "系统中枢",

@@ -15,7 +15,7 @@ import { FONT_SIZE_STEPS } from "../desktopxp/termcore";
 import { openVwmApp } from "../../system/windows/vwm";
 import { pushToast } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
-import { SectionCard, MediaTryPanel, PhraseLibPanel, PalettePanel, ThumbCachePanel } from "./DesktopD2Panels";
+import { SectionCard, MediaTryPanel, PhraseLibPanel, PalettePanel, ThumbCachePanel, XLogPanel } from "./DesktopD2Panels";
 import "../../styles/desktop-d2.css";
 
 type Cfg = Record<string, unknown>;
@@ -88,8 +88,8 @@ export function DesktopD2Tab(): React.ReactElement {
   const [note, setNote] = useSection<{ cap: number; fontSize: number; colorIndex: number }>("sticknote");
   const [sketch, setSketch] = useSection<{ brush: string; autoDraftSec: number }>("sketchpad");
   const [photo, setPhoto] = useSection<{ slideIntervalSec: number; crossfadeMs: number; zoomStep: number }>("photolib");
-  const [hud, setHud] = useSection<{ enabled: boolean; cornerMode: boolean }>("keyhud");
-  const [ime, setIme] = useSection<{ mode: string; hideOnPassword: boolean }>("imefloat");
+  const [hud, setHud] = useSection<{ enabled: boolean; cornerMode: boolean; position: string }>("keyhud");
+  const [ime, setIme] = useSection<{ mode: string; hideOnPassword: boolean; compact: boolean }>("imefloat");
   const [phrase, setPhrase] = useSection<{ phrasePriority: boolean }>("phrasebk");
   const [clip, setClip] = useSection<{ confirmPasteBack: boolean }>("cliphist");
   const [osk, setOsk] = useSection<{ full: boolean; opacity: number; learning: boolean; clickThrough: boolean; alwaysOnTop: boolean; visible: boolean }>("osk");
@@ -185,6 +185,7 @@ export function DesktopD2Tab(): React.ReactElement {
         </Row>
         <Row label="大文件只读门" hint="超阈值文件先只读打开、显式启用编辑——防误改大日志。">
           <Toggle on={notepad.bigFileReadOnlyGate} onChange={(v) => setNotepad({ bigFileReadOnlyGate: v })} label="大文件只读门" />
+          <button type="button" onClick={() => { openVwmApp("notepad"); }}>打开记事本</button>
           <button type="button" onClick={() => undo("notepad", "记事本")}>还原</button>
         </Row>
         <Row label="截图默认模式" hint="PrintScreen 与截图窗口共用此默认。">
@@ -284,12 +285,22 @@ export function DesktopD2Tab(): React.ReactElement {
           <Toggle on={hud.cornerMode} onChange={(v) => setHud({ cornerMode: v })} label="HUD 角标模式" />
           <button type="button" onClick={() => undo("keyhud", "键盘 HUD")}>还原</button>
         </Row>
+        <Row label="HUD 位置" hint="底部中（任务栏上方）/ 顶部中——避开你常用的区域。">
+          <select value={hud.position} onChange={(e) => setHud({ position: e.target.value })} aria-label="HUD 位置">
+            <option value="bottom">底部中</option>
+            <option value="top">顶部中</option>
+          </select>
+        </Row>
         <Row label="输入法浮窗" hint="跟随光标 / 收起为小标 / 隐藏；点击态位即切换（浮窗即开关）。">
           <select value={ime.mode} onChange={(e) => setIme({ mode: e.target.value })} aria-label="输入法浮窗模式">
             <option value="follow">跟随光标</option>
             <option value="taskbarChip">任务栏小标</option>
             <option value="hidden">隐藏</option>
           </select>
+        </Row>
+        <Row label="仅显中英态" hint="紧凑档只出语言位（全半角/标点收进完整浮窗）。">
+          <Toggle on={ime.compact} onChange={(v) => setIme({ compact: v })} label="仅显中英态" />
+          <button type="button" onClick={() => undo("imefloat", "输入法浮窗")}>还原</button>
         </Row>
         <Row label="密码框自动隐藏" hint="焦点进密码框浮窗即隐（隐私纪律，默认开）。">
           <Toggle on={ime.hideOnPassword} onChange={(v) => setIme({ hideOnPassword: v })} label="密码框自动隐藏" />
@@ -330,7 +341,10 @@ export function DesktopD2Tab(): React.ReactElement {
         </Row>
       </Group>
 
-      <Group title="判据证据包" f="MD3 附B" desc="域配置整包导出（备份/诊断同格式）+ 冻结候删结构守护自检。">
+      <Group title="体验日志与证据" f="十三 / MD3 附B" desc="体验日志还原每一次操作（挫败信号自动标记，隐私红线：不记内容只记行为）；域配置整包导出 + 冻结候删结构守护自检。">
+        <SectionCard title="体验日志（挫败信号）" f="十三">
+          <XLogPanel />
+        </SectionCard>
         <div className="d2-rowflex">
           <button
             type="button"

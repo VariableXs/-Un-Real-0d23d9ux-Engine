@@ -311,6 +311,97 @@ impl Slideshow {
 }
 
 // ---------------------------------------------------------------------------
+// EXIF orientation 字节写回（v2 深化）——「旋转保存 EXIF 正确写回（对拍）」
+// 判据的机制面：定位 APP1/Exif → TIFF → IFD0 → 0x0112 条目 → 改写值域。
+// ---------------------------------------------------------------------------
+
+/// JPEG EXIF orientation 写回。只改 orientation 条目的值域字节（非破坏
+/// 最小写——其余字节原样保留）；找不到 APP1/Exif/条目 → None（诚实，
+/// 不伪造新段——插入新 IFD 条目属结构级变更，交给转码管线）。
+pub fn exif_orientation_write(jpeg: &[u8], orientation: u16) -> Option<alloc::vec::Vec<u8>> {
+    if !(1..=8).contains(&orientation) {
+        return None; // 合法域外诚实拒绝
+    }
+    if jpeg.len() < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 {
+        return None; // 非 JPEG
+    }
+    // 扫段：SOI 后逐段（FF marker + 2 字节段长）。
+    let mut off = 2usize;
+    let mut app1_range: Option<(usize, usize)> = None;
+    while off + 4 <= jpeg.len() {
+        if jpeg[off] != 0xFF {
+            break;
+        }
+        let marker = jpeg[off + 1];
+        if marker == 0xDA {
+            break; // SOS——头部扫描结束
+        }
+        if off + 4 > jpeg.len() {
+            break;
+        }
+        let seg_len = ((jpeg[off + 2] as usize) << 8) | jpeg[off + 3] as usize;
+        if seg_len < 2 || off + 2 + seg_len > jpeg.len() {
+            break;
+        }
+        if marker == 0xE1 && off + 10 <= jpeg.len() && &jpeg[off + 4..off + 10] == b"Exif\0\0" {
+            app1_range = Some((off + 4, off + 2 + seg_len));
+            break;
+        }
+        off += 2 + seg_len;
+    }
+    let (exif_start, exif_end) = app1_range?;
+    // TIFF 头：字节序 + 42 + IFD0 偏移。
+    let tiff = exif_start + 6;
+    if tiff + 8 > exif_end {
+        return None;
+    }
+    let le = jpeg[tiff] == b'I' && jpeg[tiff + 1] == b'I';
+    let rd16 = |b: &[u8], o: usize| -> Option<u16> {
+        if o + 2 > b.len() {
+            return None;
+        }
+        Some(if le { u16::from_le_bytes([b[o], b[o + 1]]) } else { u16::from_be_bytes([b[o], b[o + 1]]) })
+    };
+    let rd32 = |b: &[u8], o: usize| -> Option<u32> {
+        if o + 4 > b.len() {
+            return None;
+        }
+        Some(if le {
+            u32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
+        } else {
+            u32::from_be_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
+        })
+    };
+    let ifd0 = tiff + rd32(jpeg, tiff + 4)? as usize;
+    if ifd0 + 2 > exif_end {
+        return None;
+    }
+    let entries = rd16(jpeg, ifd0)? as usize;
+    for i in 0..entries {
+        let e = ifd0 + 2 + i * 12;
+        if e + 12 > exif_end {
+            return None;
+        }
+        let tag = rd16(jpeg, e)?;
+        if tag == 0x0112 {
+            // 值域在条目内偏移 8（SHORT 内联——orientation 恒 2 字节值）。
+            let mut out = alloc::vec::Vec::with_capacity(jpeg.len());
+            out.extend_from_slice(jpeg);
+            let voff = e + 8;
+            if le {
+                out[voff] = orientation as u8;
+                out[voff + 1] = 0;
+            } else {
+                out[voff] = 0;
+                out[voff + 1] = orientation as u8;
+            }
+            return Some(out);
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // 自检
 // ---------------------------------------------------------------------------
 
@@ -386,7 +477,81 @@ pub fn run_photolib_checks() -> CheckSet {
     set.add("huge image gate", HUGE_IMAGE_MP == 64, "");
     set.add("grid columns adapt", { let l2 = PhotoLib::default(); l2.grid_columns(100, 1000) == 4 && l2.grid_columns(50, 1000) == 8 && l2.grid_columns(800, 1000) == 1 }, "");
 
+    // —— v2 深化：EXIF orientation 字节写回（最小写 + round-trip 对拍）——
+    let jpeg = build_sample_jpeg_with_orientation(1);
+    set.add("exif write 1→6", {
+        let out = exif_orientation_write(&jpeg, 6).expect("write 6");
+        exif_orientation_of(&out) == Some(6)
+    }, "");
+    set.add("exif write round-trip 1/3/6/8", {
+        let mut ok = true;
+        for o in [1u16, 3, 6, 8] {
+            match exif_orientation_write(&jpeg, o) {
+                Some(out) => ok &= exif_orientation_of(&out) == Some(o),
+                None => ok = false,
+            }
+        }
+        ok
+    }, "");
+    set.add("exif write minimal diff", {
+        let out = exif_orientation_write(&jpeg, 3).expect("write 3");
+        out.len() == jpeg.len() && out.iter().zip(jpeg.iter()).filter(|(a, b)| a != b).count() == 1
+    }, "只改值域低位 1 字节（非破坏最小写——1..=8 域内高位恒 0）");
+    set.add("exif write rejects invalid domain", exif_orientation_write(&jpeg, 0).is_none() && exif_orientation_write(&jpeg, 9).is_none(), "");
+    set.add("exif write rejects non-jpeg", exif_orientation_write(&[0x89, 0x50, 0x4E, 0x47], 6).is_none(), "");
+    set.add("exif write honest none without entry", exif_orientation_write(&[0xFF, 0xD8, 0xFF, 0xD9], 6).is_none(), "");
+
     set
+}
+
+/// 合成最小 JPEG（SOI + APP1/Exif(TIFF IFD0 含 0x0112) + SOS 简写 + EOI）。
+fn build_sample_jpeg_with_orientation(orientation: u16) -> alloc::vec::Vec<u8> {
+    let mut b = alloc::vec::Vec::new();
+    b.extend_from_slice(&[0xFF, 0xD8]);
+    let mut body = alloc::vec::Vec::new();
+    body.extend_from_slice(b"Exif\0\0");
+    body.extend_from_slice(b"II");
+    body.extend_from_slice(&42u16.to_le_bytes());
+    body.extend_from_slice(&8u32.to_le_bytes()); // IFD0 @ 8
+    body.extend_from_slice(&1u16.to_le_bytes()); // 1 entry
+    body.extend_from_slice(&0x0112u16.to_le_bytes()); // Orientation
+    body.extend_from_slice(&3u16.to_le_bytes()); // SHORT
+    body.extend_from_slice(&1u32.to_le_bytes()); // count
+    body.extend_from_slice(&(orientation as u16).to_le_bytes()); // 值域（LE 内联）
+    body.extend_from_slice(&0u16.to_le_bytes()); // 值域尾 + next IFD 前垫
+    body.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+    let seg_len = (body.len() + 2) as u16;
+    b.extend_from_slice(&[0xFF, 0xE1]);
+    b.extend_from_slice(&seg_len.to_be_bytes());
+    b.extend_from_slice(&body);
+    b.extend_from_slice(&[0xFF, 0xDA, 0x00, 0x02, 0xFF, 0xD9]); // SOS 简写 + EOI
+    b
+}
+
+/// 独立解析 orientation（对拍读面——与写面分路实现，互验）。
+fn exif_orientation_of(jpeg: &[u8]) -> Option<u16> {
+    let mut off = 2usize;
+    while off + 4 <= jpeg.len() && jpeg[off] == 0xFF {
+        let marker = jpeg[off + 1];
+        if marker == 0xDA {
+            return None;
+        }
+        let seg_len = ((jpeg[off + 2] as usize) << 8) | jpeg[off + 3] as usize;
+        if marker == 0xE1 && off + 10 <= jpeg.len() && &jpeg[off + 4..off + 10] == b"Exif\0\0" {
+            let tiff = off + 4 + 6;
+            let ifd0 = tiff + u32::from_le_bytes([jpeg[tiff + 4], jpeg[tiff + 5], jpeg[tiff + 6], jpeg[tiff + 7]]) as usize;
+            let entries = u16::from_le_bytes([jpeg[ifd0], jpeg[ifd0 + 1]]) as usize;
+            for i in 0..entries {
+                let e = ifd0 + 2 + i * 12;
+                if e + 10 <= jpeg.len() && u16::from_le_bytes([jpeg[e], jpeg[e + 1]]) == 0x0112 {
+                    return Some(u16::from_le_bytes([jpeg[e + 8], jpeg[e + 9]]));
+                }
+            }
+            return None;
+        }
+        off += 2 + seg_len;
+    }
+    None
 }
 
 impl PhotoLib {

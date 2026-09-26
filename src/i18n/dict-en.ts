@@ -1603,6 +1603,7 @@ export const en: Dict = {
   mouseJ1Title: "Mouse",
   // ---- I general domain AI-U3 (F501-F550) ----
   u3TabTitle: "General UX",
+  u1TabTitle: "Shortcuts & Interaction",
   ifMouseTitle: "Mouse Panel",
   ifMouseHint: "Wheel lines and double-click speed apply inside the environment instantly; pointer speed and button swap need 'Sync to system' (with confirm & rollback).",
   ifMouseSpeed: "Pointer speed",
@@ -2127,6 +2128,7 @@ export const en: Dict = {
   toolTerm2: "Terminal 2.0",
   toolPaint: "Paint",
   toolAlbum: "Album",
+  toolNotepad: "Notepad",
   toolConvert: "Converter",
   toolSysinfo: "System Info",
   toolPrintqueue: "Print Queue",

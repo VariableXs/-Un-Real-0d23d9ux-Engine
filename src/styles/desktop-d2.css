@@ -380,6 +380,11 @@
   gap: 0;
 }
 
+.d2-keyhud--top {
+  bottom: auto;
+  top: 48px;
+}
+
 .d2-keyhud-shape {
   width: 14px;
   height: 14px;

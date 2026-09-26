@@ -10,6 +10,7 @@ import { KeyHud, lockLabel, lockIconShape, HOLD_MS, HOLD_TOLERANCE_MS, HUD_W_PX,
 import { ImeFloat, imeLabel, toggleImeState, avoidanceSelfTest, defaultImeStates, FOLLOW_THROTTLE_MS, FLOAT_W_PX } from "../imefloat";
 import { OnScreenKb, fullLayout, compactLayout, keyLabel, touchOk, FULL_LAYOUT_KEYS, NUMPAD_BASE_CODE } from "../osk";
 import { PhraseBook, parseVars, renderVars, mergeCandidates, VAR_WHITELIST, PHRASE_CAP, ABBR_MAX_CHARS } from "../phrasebk";
+import { ExperienceLog, FRUSTRATION_RULES } from "../d2telemetry";
 
 /* ------------------------------ d2store 底座 ------------------------------ */
 
@@ -348,5 +349,63 @@ describe("F108 自定义短语库", () => {
     expect(mergeCandidates(ph, ["甲", "乙"], true)[0]).toMatchObject({ phrase: true });
     expect(mergeCandidates(ph, ["甲", "乙"], false)[0]).toMatchObject({ phrase: false });
     expect(mergeCandidates([], ["甲"], true).length).toBe(1);
+  });
+});
+
+/* --------------------------- 十三章 体验日志 --------------------------- */
+
+describe("D2 体验日志（十三/十三·补）", () => {
+  function makeLog(): ExperienceLog {
+    let t = 0;
+    return new ExperienceLog(() => (t += 100));
+  }
+
+  it("狂点标记：同元素 1.2s 内 ≥5 次点击", () => {
+    const log = makeLog();
+    for (let i = 0; i < 5; i++) log.record("osk", "char-key", "click", null, "smooth");
+    const fr = log.frustrations();
+    expect(fr.length).toBe(1);
+    expect(fr[0]!.frustration).toBe("rage-click");
+  });
+
+  it("浮层反复开关：10s 内 ≥4 次开关", () => {
+    const log = makeLog();
+    for (let i = 0; i < 4; i++) {
+      log.record("term2", "palette", "open", 80, "smooth");
+      log.record("term2", "palette", "close", null, "smooth");
+    }
+    const fr = log.frustrations();
+    expect(fr.filter((e) => e.frustration === "overlay-flap").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("重试风暴标记 + 结论字段透传", () => {
+    const log = makeLog();
+    log.record("notepad", "save", "retry", null, "error");
+    expect(log.frustrations()[0]!.frustration).toBe("repeat-spam");
+    expect(log.frustrations()[0]!.verdict).toBe("error");
+  });
+
+  it("窗口外点击不误标 + 内存环上限逐出", () => {
+    const log = makeLog();
+    // 间隔超窗（每 tick +100ms → 5 次点击跨 400ms < 1.2s 窗——改用慢钟）。
+    let slow = 0;
+    const log2 = new ExperienceLog(() => (slow += FRUSTRATION_RULES.rageClickWindowMs));
+    for (let i = 0; i < 6; i++) log2.record("osk", "char-key", "click", null, "smooth");
+    expect(log2.frustrations().filter((e) => e.frustration === "rage-click").length).toBe(0);
+    // 环上限：cap+100 条 → 只留最近 cap 条。
+    for (let i = 0; i < FRUSTRATION_RULES.cap + 100; i++) log.record("album", "thumb", "click", null, "smooth");
+    expect(log.size).toBe(FRUSTRATION_RULES.cap);
+  });
+
+  it("导出：开放格式 + 隐私结构（无内容字段）", () => {
+    const log = makeLog();
+    log.clear(); // 清掉其他用例经 localStorage 尾段恢复带入的事件（测试隔离）
+    log.record("osk", "char-key", "key", null, "smooth");
+    const pack = JSON.parse(log.export()) as { format: string; events: Array<Record<string, unknown>> };
+    expect(pack.format).toBe("varix-d2-xlog");
+    expect(pack.events.length).toBe(1);
+    // 隐私红线：事件字段白名单——没有 text/content/value 类内容字段。
+    const keys = Object.keys(pack.events[0]!);
+    expect(keys.every((k) => ["seq", "t", "surface", "element", "kind", "ms", "verdict", "frustration"].includes(k))).toBe(true);
   });
 });

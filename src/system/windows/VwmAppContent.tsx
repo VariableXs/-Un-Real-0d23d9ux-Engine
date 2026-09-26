@@ -42,10 +42,11 @@ import { ConverterApp } from "../tools/ConverterApp";
 import { SysInfoApp } from "../tools/SysInfoApp";
 import { PrintQueueApp } from "../tools/PrintQueueApp";
 import { SysHubApp } from "../tools/SysHubApp";
-// C 桌面体验域·后段 AI-D2 三件：终端 2.0（F095/F096）/ 画图件（F103）/ 相册（F105）
+// C 桌面体验域·后段 AI-D2 四件：终端 2.0（F095/F096）/ 画图件（F103）/ 相册（F105）/ 记事本（F097）
 import { TermApp } from "../tools/TermApp";
 import { PaintApp } from "../tools/PaintApp";
 import { AlbumApp } from "../tools/AlbumApp";
+import { NotepadApp } from "../tools/NotepadApp";
 import { TaskManApp } from "../taskman/TaskManApp";
 
 // 代码分割（性能）：VWM 内嵌四个重软件视图原本静态打包进环境主 chunk，
@@ -175,6 +176,7 @@ export const VwmAppContent = memo(function VwmAppContent(props: {
         {app === "term2" && <TermApp winId={props.winId} />}
         {app === "paint" && <PaintApp winId={props.winId} />}
         {app === "album" && <AlbumApp winId={props.winId} />}
+        {app === "notepad" && <NotepadApp winId={props.winId} />}
       </div>
     );
   }

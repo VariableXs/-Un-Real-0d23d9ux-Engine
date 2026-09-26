@@ -236,8 +236,8 @@ export const D2_DEFAULTS: D2Config = {
   sticknote: { cap: 20, fontSize: 14, colorIndex: 0 },                        // F102：20 张上限（诚实拒绝）
   sketchpad: { brush: "pen", autoDraftSec: 30 },                              // F103：30s 自动草稿
   photolib: { slideIntervalSec: 5, crossfadeMs: 250, zoomStep: 3 },           // F105：自动 5s/交叉 250ms
-  keyhud: { enabled: true, cornerMode: false },                               // F106
-  imefloat: { mode: "follow", hideOnPassword: true },                         // F107：跟随/密码隐藏
+  keyhud: { enabled: true, cornerMode: false, position: "bottom" },              // F106：v3 增移位档
+  imefloat: { mode: "follow", hideOnPassword: true, compact: false },            // F107：v3 增仅显中英态
   phrasebk: { phrasePriority: true },                                         // F108：短语优先
   cliphist: { confirmPasteBack: false },                                      // F109：面板侧偏好
   osk: { full: true, opacity: 90, learning: true, clickThrough: false, alwaysOnTop: true }, // F110

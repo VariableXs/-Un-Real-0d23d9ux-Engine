@@ -555,6 +555,58 @@ impl Default for ThumbEngine {
 }
 
 // ---------------------------------------------------------------------------
+// 像素管线（v2 深化）：盒式滤波缩放器——缩略图生成面的纯函数核。
+// ---------------------------------------------------------------------------
+
+/// 盒式滤波缩放（RGBA8 → RGBA8）：每个目标像素对其源盒做面积加权平均，
+/// alpha 同路保持；透明像素参与均值（预乘语义由上层管线裁决——本层
+/// 忠实平均）。任意尺寸 0 → 空输出（诚实，不留占位图）。
+pub fn downscale_box(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> alloc::vec::Vec<u8> {
+    let mut out = alloc::vec::Vec::new();
+    if dw == 0 || dh == 0 || sw == 0 || sh == 0 {
+        return out;
+    }
+    out.reserve((dw as usize) * (dh as usize) * 4);
+    for dy in 0..dh as u64 {
+        let sy0 = dy * sh as u64 / dh as u64;
+        let sy1 = (((dy + 1) * sh as u64) + dh as u64 - 1) / dh as u64;
+        for dx in 0..dw as u64 {
+            let sx0 = dx * sw as u64 / dw as u64;
+            let sx1 = (((dx + 1) * sw as u64) + dw as u64 - 1) / dw as u64;
+            let (mut r, mut g, mut b, mut a, mut area) = (0u64, 0u64, 0u64, 0u64, 0u64);
+            let ymax = sy1.min(sh as u64);
+            let xmax = sx1.min(sw as u64);
+            let mut sy = sy0;
+            while sy < ymax {
+                let mut sx = sx0;
+                let row = sy * sw as u64 * 4;
+                while sx < xmax {
+                    let o = (row + sx * 4) as usize;
+                    if o + 3 < src.len() {
+                        r += src[o] as u64;
+                        g += src[o + 1] as u64;
+                        b += src[o + 2] as u64;
+                        a += src[o + 3] as u64;
+                        area += 1;
+                    }
+                    sx += 1;
+                }
+                sy += 1;
+            }
+            if area == 0 {
+                out.extend_from_slice(&[0, 0, 0, 0]);
+            } else {
+                out.push((r / area) as u8);
+                out.push((g / area) as u8);
+                out.push((b / area) as u8);
+                out.push((a / area) as u8);
+            }
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
 // 自检
 // ---------------------------------------------------------------------------
 
@@ -684,6 +736,19 @@ pub fn run_thumbeng_checks() -> CheckSet {
     set.add("multi tier coexist", eng.lib.lookup(100, 32, 20).0 == LibOp::Hit && eng.lib.lookup(100, 256, 20).0 == LibOp::Hit, "");
     // 库重建进度通知量。
     set.add("lib rebuild reports count", { let n = eng.lib.rebuild(); n == 2 }, "");
+
+    // v2 深化：盒式缩放器（2×2 → 1×1 均值 = 127.5 → 128 四舍五入口径为整除 127）。
+    let quad = [10u8, 20, 30, 255, 20, 40, 60, 255, 30, 60, 90, 255, 40, 80, 120, 255];
+    let out = downscale_box(&quad, 2, 2, 1, 1);
+    set.add("box downscale 2x2 average", out == alloc::vec![25u8, 50, 75, 255], "");
+    // 非整比（3×2 → 2×1）：面积加权后 alpha 保持不透明。
+    let out2 = downscale_box(&quad, 2, 2, 2, 1);
+    set.add("box downscale alpha kept", out2.len() == 8 && out2.iter().skip(3).step_by(4).all(|&a| a == 255), "");
+    // 诚实空：零尺寸 → 空（不留占位图）。
+    set.add("box downscale zero honest empty", downscale_box(&quad, 2, 2, 0, 1).is_empty(), "");
+    // 放大请求（dw>sw）按盒映射仍产出合法尺寸（上采样由渲染层做——本层不越权）。
+    let out3 = downscale_box(&quad, 2, 2, 4, 4);
+    set.add("box upscale request still sized", out3.len() == 64, "");
 
     set
 }
@@ -817,5 +882,21 @@ mod tests {
         let dm = (eng.lib.misses + eng.lib.corrupt_discards) - m0;
         let rate = dh * 1_000_000 / (dh + dm).max(1);
         assert!(rate >= 950_000, "二次浏览命中率 >95%：{rate} ppm");
+    }
+
+    #[test]
+    fn box_downscale_math_end_to_end() {
+        // 渐变条 4×1 → 2×1：盒均值 [10,20,30,40] → [15, 35]（RGBA 各路）。
+        let mut src = alloc::vec::Vec::new();
+        for v in [10u8, 20, 30, 40] {
+            src.extend_from_slice(&[v, v, v, 255]);
+        }
+        let out = downscale_box(&src, 4, 1, 2, 1);
+        assert_eq!(out, alloc::vec![15, 15, 15, 255, 35, 35, 35, 255]);
+        // 竖向同构。
+        let out2 = downscale_box(&src, 1, 4, 1, 2);
+        assert_eq!(out2, alloc::vec![15, 15, 15, 255, 35, 35, 35, 255]);
+        // 同尺寸直通（盒 = 自身，均值 = 原值）。
+        assert_eq!(downscale_box(&src, 4, 1, 4, 1), src);
     }
 }

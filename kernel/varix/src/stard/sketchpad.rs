@@ -360,6 +360,86 @@ impl Sketchpad {
 }
 
 // ---------------------------------------------------------------------------
+// 栅格化（v2 深化）：笔迹 → 像素缓冲的纯函数核——导出逐像素一致判据的
+// 机制面（渲染层按本语义重放）。
+// ---------------------------------------------------------------------------
+
+/// RGBA 画布缓冲句柄（宽 × 高 × 4 字节，行主序）。
+pub struct Raster<'a> {
+    pub buf: &'a mut [u8],
+    pub w: u32,
+    pub h: u32,
+}
+
+impl<'a> Raster<'a> {
+    pub fn new(buf: &'a mut [u8], w: u32, h: u32) -> Option<Raster<'a>> {
+        if w == 0 || h == 0 || buf.len() < (w as usize) * (h as usize) * 4 {
+            return None;
+        }
+        Some(Raster { buf, w, h })
+    }
+
+    fn blend_px(&mut self, x: i64, y: i64, color: [u8; 4], alpha: u32) {
+        if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 {
+            return;
+        }
+        let o = ((y as u64 * self.w as u64 + x as u64) * 4) as usize;
+        // alpha 0..256：src over dst（8 位整数混合——no_std 无浮点混合需求）。
+        let inv = 256 - alpha.min(256);
+        for c in 0..3 {
+            let d = self.buf[o + c] as u32;
+            self.buf[o + c] = ((color[c] as u32 * alpha + d * inv) / 256) as u8;
+        }
+        self.buf[o + 3] = 255; // 画布面为不透明合成（透明底由管线按需预清）
+    }
+
+    /// 圆帽实心盘（squared-distance 判定——免 sqrt，no_std 纪律）。
+    fn disk(&mut self, cx: i64, cy: i64, radius: i64, color: [u8; 4]) {
+        if radius <= 0 {
+            return;
+        }
+        let r2 = radius * radius;
+        for y in (cy - radius)..=(cy + radius) {
+            for x in (cx - radius)..=(cx + radius) {
+                let dx = x - cx;
+                let dy = y - cy;
+                if dx * dx + dy * dy <= r2 {
+                    self.blend_px(x, y, color, 256);
+                }
+            }
+        }
+    }
+}
+
+/// 笔迹栅格化：沿线段按步长扫掠圆帽盘（步长 = 半径/2 保连续），宽度
+/// 随 speed_width 语义由调用方给最终半径。点数 0 → 不写（诚实空转）。
+/// 距离开方复用 galaxy::math::sqrt32（共享底盘——一处一事实）。
+pub fn rasterize_stroke(pts: &[(f32, f32)], radius: i64, color: [u8; 4], ras: &mut Raster) {
+    if pts.is_empty() || radius <= 0 {
+        return;
+    }
+    if pts.len() == 1 {
+        let (x, y) = pts[0];
+        ras.disk(x as i64, y as i64, radius, color);
+        return;
+    }
+    for w in pts.windows(2) {
+        let (x0, y0) = w[0];
+        let (x1, y1) = w[1];
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let dist = m::sqrt32(dx * dx + dy * dy);
+        let steps = ((dist as i64) / (radius.max(1) / 2).max(1)).clamp(1, 4096);
+        for s in 0..=steps {
+            let t = s as f32 / steps as f32;
+            let x = x0 + dx * t;
+            let y = y0 + dy * t;
+            ras.disk(x as i64, y as i64, radius, color);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 自检
 // ---------------------------------------------------------------------------
 
@@ -451,6 +531,23 @@ pub fn run_sketchpad_checks() -> CheckSet {
     // —— 三粗细 + 工具 ——
     set.add("pen widths 3", PEN_WIDTHS == [2, 6, 14], "");
     set.add("eraser is stroke flag", { pad5.tool = Tool::Eraser; pad5.pen_to(1.0, 1.0, 0); pad5.pen_to(5.0, 5.0, 10); pad5.commit_stroke() && matches!(pad5.ops[0], Op::Stroke { erase: true, .. }) }, "");
+
+    // —— v2 深化：栅格化（导出逐像素一致的机制面）——
+    let mut buf = alloc::vec![0u8; 8 * 4 * 4]; // 8×4 RGBA，初始全 0（透明黑）
+    let mut ras_ok = false;
+    if let Some(mut ras) = Raster::new(&mut buf, 8, 4) {
+        ras_ok = true;
+        rasterize_stroke(&[(1.0, 2.0), (6.0, 2.0)], 1, [255, 0, 0, 255], &mut ras);
+    }
+    set.add("raster handle ok", ras_ok, "");
+    // 中心行 y=2 被红线覆盖（x 1..=6 各盘相邻覆盖）；圆帽外延一格；角落不波及。
+    let px = |x: usize, y: usize, c: usize| buf[(y * 8 + x) * 4 + c];
+    set.add("raster covers segment row", (1..=6).all(|x| px(x, 2, 0) == 255), "");
+    set.add("raster round cap extends", px(0, 2, 0) == 255 && px(7, 2, 0) == 255, "");
+    set.add("raster outside untouched", px(0, 0, 0) == 0 && px(7, 3, 0) == 0, "");
+    // 尺寸不合法 → None 诚实拒绝。
+    let mut tiny = alloc::vec![0u8; 4];
+    set.add("raster rejects short buffer", Raster::new(&mut tiny, 8, 4).is_none(), "");
 
     set
 }
@@ -555,5 +652,26 @@ mod tests {
         let (w, h, bytes) = pad.export(2);
         assert_eq!((w, h), (200, 200));
         assert_eq!(bytes, 200 * 200 * 4);
+    }
+
+    #[test]
+    fn rasterize_single_point_and_edge_clamp() {
+        let mut buf = alloc::vec![0u8; 6 * 6 * 4];
+        {
+            let mut ras = Raster::new(&mut buf, 6, 6).unwrap();
+            rasterize_stroke(&[(3.0, 3.0)], 2, [0, 255, 0, 255], &mut ras);
+        }
+        // 单点 = 圆盘：中心绿、盘内绿、角落不受波及。
+        let px = |x: usize, y: usize| buf[(y * 6 + x) * 4 + 1];
+        assert_eq!(px(3, 3), 255);
+        assert_eq!(px(2, 3), 255);
+        assert_eq!(px(0, 0), 0);
+        // 出界点：越界写入被钳制（不 panic 不写越界）。
+        {
+            let mut ras = Raster::new(&mut buf, 6, 6).unwrap();
+            rasterize_stroke(&[(-5.0, -5.0), (20.0, 20.0)], 2, [0, 0, 255, 255], &mut ras);
+        }
+        // 画布内近角被远端线扫到与否不关键——关键是缓冲完整无 panic（上段已过）。
+        assert_eq!(buf.len(), 6 * 6 * 4);
     }
 }
