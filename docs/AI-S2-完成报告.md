@@ -201,3 +201,85 @@ python tools/vx-walkcheck-all.py --selftest
 > 附注：主仓当前存在并行分队在建代码（ustar3 重复声明 / genstar2 /
 > deskstar 三处编译红，均非本域文件），按 v1 先例以隔离舱双口径为验证
 > 基准；主仓侧全量认证待并行分队收口后统一进行。
+
+---
+
+# v3 批次（2026-09-26 第三轮收口 · 大量深化 + 检查项对账）
+
+> 分工包：同 v1/v2。本轮 = **15 模块全部第三轮深化**（45 个新功能面，全部
+> 取自主册 G-G-16~G-G-30 尚未展开的细节条款）+ **检查项全量对账机器钉数**。
+> 收口状态：**域内全绿**（隔离舱 242/242 单测；宿主 std + kernel-image
+> no_std 双口径零错误零警告）。
+
+## v3-1. 新增功能面（15 模块 × 3 面）
+
+| 项 | 模块 | v3 新增面（主册条款源） |
+| --- | --- | --- |
+| F186 | syspart | LetterAssigner 盘符分配隔离（隐藏卷从源头不进池——24 位耗尽诚实报错）/ VolumeAuditTrail 全事件审计（注册/剥符/拒配/越权/对拍五类可回放）/ CapacityReport 容量水位（<70/90 两段位） |
+| F187 | clockguard | HistoryRows 校时历史行（时刻/来源/偏移/性质四字段——估算优先标注）/ PoolHealth 源池健康度（全灭诚实、空池≠全灭）/ TzSwitchChecklist 时区切换四项联动对账（重复回报拒——假勾进不来）/ RtcInferBanner 推断黄条 |
+| F188 | logring | LevelCensus 级别五档统计（与 LogQuery 过滤互证）/ ExportNaming 导出命名契约（zip 四件固定名）/ HoleTooltip 洞标记查询（真灌满 256KB 环触发覆盖取证） |
+| F189 | selfheal2 | FallbackMap 降级默认态映射（三类兜底+人话——穷尽匹配）/ SnapshotAudit 快照协同对账（令牌留/缓存豁免带因）/ NoticeEscalation 通知升级显目（成功低档/失败抢眼） |
+| F190 | slotview | TermsCard 条款卡（主册逐字+动态天数行）/ ExpiryCountdown 到期预告（0 天临界——灰置有预告）/ ExternalDiffReport B-1304 差异定位（版本差/校验差逐槽） |
+| F191 | bootaudit | BudgetReport 预算对账（三查逐行+总账+超支定位）/ SkipSemantics 免查标记（显式标记不冒充绿）/ InterceptVerdict 拦截语义机检（panic 词表出现即红） |
+| F192 | paramwl | SuggestCoverage 建议覆盖矩阵（距离 1 全命中+距离 2 统计——确定性样本）/ FamilyDocPage 三族文档页（6/3/4 定 census）/ audit_stream_line 审计流整行（四段格式+F188 解析契约） |
+| F193 | safemode | BannerRender 黄条渲染（右下角锚+不可关机检字段）/ HELP_ARTICLE 帮助篇三段（在什么模式/能做什么/怎么出去）/ GateMatrix 功能门矩阵（100 功能压测守恒） |
+| F194 | auditchain | SegmentExport 隔离段导出（前后段各自成包各自校验）/ P0Ticket 工单契约（三要素+定位+隔离算术守恒）/ RedactStats 脱敏统计账（三规则累计） |
+| F195 | resquota | QuotaConfigStore 配置持久化（encode/decode 往返等值+倒置钳正）/ LadderDocPage 阶梯文档（四级定序动作互异）/ RelaxAuditLog 放宽审计（未确认拒收双防线） |
+| F196 | batguard | DrainEstimator 放电预估（斜率外推+零斜率诚实拒绝）/ CardRender 提示卡三区（倒计时环/取消钮/清单勾态零自持）/ DiagnosticExport 账目导出（行数守恒式） |
+| F197 | thermgov | DailyStats 24h 统计（峰值/均值/超阈时长）/ EventMarker 事件-曲线对齐（abs_diff 容差=采样纪律，容差外不造点）/ SensorDiag 诊断页（四账+200‰ 红线） |
+| F198 | recenv | RepairReport 三条件报告（逐行红绿定位）/ ReturnStack 返回栈（根恒在+8 层上限+乱点压测）/ EntryAudit 入口审计（三路径可溯） |
+| F199 | lineage | JsonShapeCheck 形状校验器（自家 JSON 过自家校验——四查闭环）/ TIMELINE_LEGEND 图例（三态语义）/ copy_sim 复制保真模拟（三源一致） |
+| F200 | walkall | quarterly_section 季报第五节（环比三态文案不撒谎）/ batch_import 脚本批注册（幂等握手 199 项端到端）/ VERDICT_LEGEND 四态图例（与 verdict 语义一致） |
+
+## v3-2. 检查项对账（机器钉数）
+
+对账由 `secstar2::check_ledger()` + 测试 `secstar2_check_ledger_reconciled`
+机检（数字改动必须同步断言——报告数字与代码永不脱节）：
+
+| 模块 | 基检 | 深检(v2) | 深检(v3) | 小计 | | 模块 | 基检 | 深检(v2) | 深检(v3) | 小计 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F186 | 20 | 27 | 16 | 63 | | F194 | 24 | 23 | 12 | 59 |
+| F187 | 31 | 27 | 18 | 76 | | F195 | 25 | 23 | 9 | 57 |
+| F188 | 19 | 20 | 11 | 50 | | F196 | 23 | 24 | 12 | 59 |
+| F189 | 30 | 25 | 12 | 67 | | F197 | 19 | 17 | 11 | 47 |
+| F190 | 20 | 22 | 9 | 51 | | F198 | 23 | 15 | 11 | 49 |
+| F191 | 22 | 21 | 14 | 57 | | F199 | 16 | 16 | 9 | 41 |
+| F192 | 18 | 25 | 9 | 52 | | F200 | 20 | 19 | 11 | 50 |
+| F193 | 27 | 29 | 12 | 68 | | **合计** | | | | **846** |
+
+- **总检查项 846**（机器实测：基检 337 + 深检(v2) 333 + 深检(v3) 176；
+  v1 报告曾记 315 为基检数——本轮机器对账发现并如实更正，以 `check_ledger()`
+  实测为准），全部实算非声明。
+- 聚合器恒 15 行（每模块一行，行内三表合并判定），`secstar2_aggregate_rows_15_within_capacity` 机检。
+- 每块 CheckSet ≤64 容量逐块机检（`check_ledger` 断言），截断即红。
+- 单元测试 **242 项**全绿（v1 96 → v2 195 → v3 242）。
+
+## v3-3. 行数对账（诚实口径）
+
+实测 **16,084 行**（16 文件）vs v2 的 12,979——本轮净增 **3,105 行**。
+对主册上限 35,880 行为 **44.8%**（v1 19% → v2 36.2% → v3 44.8%）。
+策略/数据层判据已三轮全覆盖；与上限的剩余差距主要是【工程量】区间中的
+UI 呈现层工程量（按分工书属 H 域控件件接入时摊销的面），如实登记。
+
+## v3-4. 缺陷账本 v3（施工中自抓自修）
+
+| # | 现象 | 位置 | 严重度 | 处置 |
+| --- | --- | --- | --- | --- |
+| 1 | 校时历史标签边界：恰好 300s 被我标成显式（主册是 2-300s 静默闭区间） | clockguard.rs | 🟡 | 边界对齐主册+补闭区间机检 |
+| 2 | 洞标记检查伪造状态（推 2 条就想要洞——洞只在环满覆盖时产生） | logring.rs | 🟡 | 真灌满 256KB 环取证 |
+| 3 | 聚合器注释与机检口径不符（说 45 行实为 15 行——每模块一行合三表） | mod.rs | 🟡 | 注释对齐+行数机检钉死 |
+| 4 | 对齐容差用 saturating_sub 导致恒真匹配（995s 远点被错配） | thermgov.rs | 🔴 | 改 abs_diff 单条件 |
+| 5 | 统计阈值计数手滑（5 点序列数成 3 点越线） | thermgov.rs | 🟡 | 重新对账+注释点位 |
+| 6 | no_std 双口径破功（v3 七文件缺 alloc 导入/vec! 宏） | 多处 | 🟡 | 全部补齐——双口径零警告恢复 |
+| 7 | 复制模拟返回值未用（is_some 裸语句） | lineage.rs | 🟢 | let _ 显式丢弃 |
+| 8 | 批注册测试类型链错（Vec<&str> 收集元组） | walkall.rs | 🟡 | 类型对齐 |
+| 9 | 主仓并行在建代码仍挡编译（h1star 非 ASCII 字节串——他人任务面） | （他人） | ⚪ | 沿用隔离舱口径，收口以主仓全绿为准 |
+
+## v3-5. 复现口令
+
+```bash
+cd _attic/ais2-scratch && cargo test --lib           # 242/242 全绿
+cd _attic/ais2-scratch && cargo build --features kernel-image   # no_std 零警告
+cd _attic/ais2-scratch && cargo test dump_ledger -- --nocapture # 45 块逐块计数
+python tools/vx-walkcheck-all.py --selftest          # F200 脚本自检 PASS
+```

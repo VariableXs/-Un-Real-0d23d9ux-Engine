@@ -668,3 +668,236 @@ mod deep_tests {
         assert!(run_recenv_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——修复报告渲染 / 二级页返回栈 /
+// 进入路径审计流。判据源：主册【交互设计】「每卡二级页极简（修复=进度+
+// 结果……）；**全程可返回**」+【设计细节】「修复引导=闸门三条件重检」的
+// 报告面 + 十三章体验日志（进入路径也是体验事件）。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：RepairReport —— 闸门三条件重检报告（修复引导卡的二级页结果面：
+// 三条件逐行 + 成败人话——用户看得见修的是什么）
+// ---------------------------------------------------------------------------
+
+/// 报告行。
+pub struct RepairReportRow {
+    pub name: &'static str,
+    pub ok: bool,
+}
+
+/// 修复报告。
+pub struct RepairReport {
+    pub rows: [RepairReportRow; 3],
+    /// 总结果（三条件与 = 修复成败）。
+    pub ok: bool,
+    /// 人话结论（成功/失败两态——零静默）。
+    pub verdict: &'static str,
+}
+
+/// 组装（boot_repair 的三条件 → 报告；与 RecoveryEnv::boot_repair 同语义）。
+pub fn repair_report(gate_ok: bool, pubkey_ok: bool, wx_ok: bool) -> RepairReport {
+    let rows = [
+        RepairReportRow { name: "门表完整", ok: gate_ok },
+        RepairReportRow { name: "公钥在位", ok: pubkey_ok },
+        RepairReportRow { name: "W^X 生效", ok: wx_ok },
+    ];
+    let ok = gate_ok && pubkey_ok && wx_ok;
+    RepairReport {
+        rows,
+        ok,
+        verdict: if ok {
+            "闸门三条件已重检通过，校验基准已重建"
+        } else {
+            "仍有失败项：请检查引导文件或从备份镜像恢复"
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：ReturnStack —— 二级页返回栈（「全程可返回」的状态机：进一层
+// 压栈、返回弹栈、栈底=三卡主页——任何深处都有一条回家的路）
+// ---------------------------------------------------------------------------
+
+/// 页面。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecPage {
+    /// 主页（三卡）。
+    Home,
+    /// 修复引导二级页。
+    BootRepair,
+    /// 回滚二级页（还原点列表）。
+    RestoreList,
+    /// 导出二级页（目标选择）。
+    ExportPick,
+}
+
+/// 返回栈。
+pub struct ReturnStack {
+    stack: Vec<RecPage>,
+    /// 返回次数（体验对账——「全程可返回」的使用证据）。
+    pub returns: u64,
+}
+
+impl ReturnStack {
+    pub fn new() -> ReturnStack {
+        ReturnStack { stack: vec![RecPage::Home], returns: 0 }
+    }
+
+    /// 进一层（Home 永在栈底——压不住根）。
+    pub fn push(&mut self, page: RecPage) {
+        if self.stack.len() < 8 {
+            self.stack.push(page);
+        }
+    }
+
+    /// 返回（弹栈；主页不可弹——栈底恒在）。
+    pub fn back(&mut self) -> RecPage {
+        if self.stack.len() > 1 {
+            self.stack.pop();
+            self.returns += 1;
+        }
+        self.current()
+    }
+
+    pub fn current(&self) -> RecPage {
+        *self.stack.last().unwrap_or(&RecPage::Home)
+    }
+
+    pub fn depth(&self) -> usize {
+        self.stack.len()
+    }
+}
+
+impl Default for ReturnStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：EntryAudit —— 进入路径审计流（三处入口各记一条——体验日志的
+// 入口面：哪条路把用户带进来的，可溯）
+// ---------------------------------------------------------------------------
+
+/// 入口审计条目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EntryAuditEvent {
+    pub at_s: u64,
+    pub path: EntryPath,
+}
+
+/// 入口账（定容环语义）。
+pub struct EntryAuditLog {
+    events: RingLog<EntryAuditEvent, 16>,
+}
+
+impl EntryAuditLog {
+    pub fn new() -> EntryAuditLog {
+        EntryAuditLog { events: RingLog::new() }
+    }
+
+    pub fn record(&mut self, at_s: u64, path: EntryPath) {
+        self.events.push(EntryAuditEvent { at_s, path });
+    }
+
+    pub fn recent(&self) -> Vec<EntryAuditEvent> {
+        self.events.newest_first()
+    }
+
+    /// 按路径计数（诊断聚合——哪条入口最常用）。
+    pub fn count_path(&self, path: EntryPath) -> usize {
+        self.events.newest_first().iter().filter(|e| e.path == path).count()
+    }
+}
+
+impl Default for EntryAuditLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F198 v3 自检（聚合进 secstar2 域）。
+pub fn run_recenv_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F198-v3");
+
+    // v3-一：修复报告——三条件逐行、两态人话。
+    let ok_rep = repair_report(true, true, true);
+    set.add("rep ok", ok_rep.ok && ok_rep.rows.iter().all(|r| r.ok) && ok_rep.verdict.contains("通过"), "");
+    let bad_rep = repair_report(true, false, true);
+    set.add("rep bad located", !bad_rep.ok && !bad_rep.rows[1].ok && bad_rep.rows[0].ok, "公钥行红、其余不冤枉");
+    set.add("rep bad verdict", bad_rep.verdict.contains("失败项"), "");
+
+    // v3-二：返回栈——压/弹/根守恒、深处回家、深度上限。
+    let mut rs = ReturnStack::new();
+    set.add("stack home", rs.current() == RecPage::Home && rs.depth() == 1, "");
+    rs.push(RecPage::BootRepair);
+    rs.push(RecPage::ExportPick);
+    set.add("stack depth", rs.depth() == 3 && rs.current() == RecPage::ExportPick, "");
+    set.add("stack back", rs.back() == RecPage::BootRepair && rs.returns == 1, "");
+    rs.back();
+    rs.back();
+    set.add("stack root held", rs.back() == RecPage::Home && rs.depth() == 1, "主页不可弹");
+    for _ in 0..20 {
+        rs.push(RecPage::RestoreList);
+    }
+    set.add("stack capped", rs.depth() <= 8, "栈深上限防失控");
+
+    // v3-三：入口审计——按路径计数、新→旧。
+    let mut log = EntryAuditLog::new();
+    log.record(1, EntryPath::MenuHidden);
+    log.record(2, EntryPath::BootIntercept);
+    log.record(3, EntryPath::BootIntercept);
+    set.add("entry count", log.count_path(EntryPath::BootIntercept) == 2, "");
+    set.add("entry newest", log.recent()[0].at_s == 3, "");
+    set.add("entry total", log.recent().len() == 3, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f198_v3_return_stack_survives_chaos() {
+        // 乱点压测：50 次混合压栈/返回——栈不崩、根恒在、返回计数如实。
+        let mut rs = ReturnStack::new();
+        for i in 0..50 {
+            if i % 3 == 0 {
+                rs.back();
+            } else {
+                rs.push(match i % 3 {
+                    1 => RecPage::RestoreList,
+                    _ => RecPage::ExportPick,
+                });
+            }
+        }
+        while rs.depth() > 1 {
+            rs.back();
+        }
+        assert_eq!(rs.current(), RecPage::Home);
+        assert!(rs.returns > 0);
+    }
+
+    #[test]
+    fn f198_v3_repair_report_matches_env_semantics() {
+        // 报告与 RecoveryEnv::boot_repair 语义对拍：三真=成功、任一假=失败。
+        let mut env = RecoveryEnv::new();
+        let combos = [(true, true, true), (false, true, true), (true, false, false)];
+        for (g, p, w) in combos {
+            let rep = repair_report(g, p, w);
+            assert_eq!(rep.ok, env.boot_repair(g, p, w).is_ok(), "combo {:?}", (g, p, w));
+        }
+    }
+
+    #[test]
+    fn f198_v3_run_checks_pass() {
+        assert!(run_recenv_deep2_checks().all_passed());
+    }
+}

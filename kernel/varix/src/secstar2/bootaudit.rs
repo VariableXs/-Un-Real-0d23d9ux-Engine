@@ -24,6 +24,7 @@
 
 use crate::checks::CheckSet;
 use crate::ksha256;
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -878,5 +879,191 @@ mod deep_tests {
     #[test]
     fn f191_deep_run_checks_pass() {
         assert!(run_bootaudit_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——预算对账报表 / 免查语义标记 /
+// 拦截语义机检。判据源：主册【设计细节】「三查顺序=依赖序（门表→签名→W^X
+// ——上游坏下游免查）」+「<100ms 预算分配（哈希表校验 60ms/公钥存在 5ms/
+// W^X 策略读 5ms——实测口径）」+【交互设计】「拦截画面与 panic 画面视觉
+// 区分（拦截=完整星徽+「已保护」文案——语义是成功防御不是故障）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：BudgetReport —— 三查预算对账报表（预算/实际/超支——「实测口径」
+// 不是声明是逐项对账表）
+// ---------------------------------------------------------------------------
+
+/// 单查预算行。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BudgetRow {
+    pub item: CheckItem,
+    /// 预算（毫秒——BUDGET_* 常量）。
+    pub budget_ms: u64,
+    /// 实际（毫秒——调用方注入计时）。
+    pub actual_ms: u64,
+}
+
+impl BudgetRow {
+    pub fn over(&self) -> bool {
+        self.actual_ms > self.budget_ms
+    }
+}
+
+/// 预算报表。
+pub struct BudgetReport {
+    pub rows: Vec<BudgetRow>,
+    /// 总预算 100ms 对账。
+    pub total_ok: bool,
+    /// 超支行清单（诊断页直跳——超支的每一项都要被看见）。
+    pub overs: Vec<CheckItem>,
+}
+
+/// 组装（三查逐行 + 总账）。
+pub fn budget_report(actuals: [(CheckItem, u64); 3]) -> BudgetReport {
+    let budgets = [
+        (CheckItem::GateTable, BUDGET_HASH_MS),
+        (CheckItem::Pubkey, BUDGET_PUBKEY_MS),
+        (CheckItem::WxPolicy, BUDGET_WX_MS),
+    ];
+    let mut rows = Vec::new();
+    let mut overs = Vec::new();
+    for (item, actual) in actuals {
+        let budget = budgets.iter().find(|(i, _)| *i == item).map(|(_, b)| *b).unwrap_or(0);
+        let row = BudgetRow { item, budget_ms: budget, actual_ms: actual };
+        if row.over() {
+            overs.push(item);
+        }
+        rows.push(row);
+    }
+    let total_ok = rows.iter().map(|r| r.actual_ms).sum::<u64>() <= BUDGET_TOTAL_MS;
+    BudgetReport { total_ok, overs, rows }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：SkipSemantics —— 免查语义标记面（上游坏 → 下游免查——免查必须
+// 显式标记且**不冒充绿**：机检三层——有标记/不算通过/带原因）
+// ---------------------------------------------------------------------------
+
+/// 免查标记。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SkipMark {
+    pub item: CheckItem,
+    /// 免查原因（上游哪一查坏了）。
+    pub because: CheckItem,
+}
+
+/// 免查表（门表坏 → 公钥环与 W^X 免查；公钥环坏 → W^X 免查；W^X 无下游）。
+pub fn skip_marks(failed: &[CheckItem]) -> Vec<SkipMark> {
+    let mut out = Vec::new();
+    if failed.contains(&CheckItem::GateTable) {
+        out.push(SkipMark { item: CheckItem::Pubkey, because: CheckItem::GateTable });
+        out.push(SkipMark { item: CheckItem::WxPolicy, because: CheckItem::GateTable });
+    } else if failed.contains(&CheckItem::Pubkey) {
+        out.push(SkipMark { item: CheckItem::WxPolicy, because: CheckItem::Pubkey });
+    }
+    out
+}
+
+/// 免查不冒充绿（机检）：免查项绝不计入通过数——判定面板的诚实前置。
+pub fn skip_not_green(ok_count: usize, skips: &[SkipMark]) -> bool {
+    // 全域三项：通过数 + 免查数 ≤ 3 且免查数被单独呈现。
+    ok_count + skips.len() <= 3 && !skips.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：InterceptVerdict —— 拦截语义机检（拦截=成功防御不是故障——
+// 与 panic 族的区分是可机检的契约：标题/副标/主钮三处必须走「已保护」语汇）
+// ---------------------------------------------------------------------------
+
+/// 语义机检（对画面文案逐位核对——panic 族词表出现即红）。
+pub fn intercept_verdict_ok(title: &str, sub: &str, cta: &str) -> bool {
+    let panic_words = ["崩溃", "星陨", "已停止工作", "发生了问题"];
+    let protected = title == INTERCEPT_TITLE
+        && cta == INTERCEPT_CTA
+        && sub.contains("拦下了坏日子")
+        && panic_words.iter().all(|w| !sub.contains(w) && !title.contains(w) && !cta.contains(w));
+    protected
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F191 v3 自检（聚合进 secstar2 域）。
+pub fn run_bootaudit_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F191-v3");
+
+    // v3-一：预算对账——逐行绿红、超支定位、总账。
+    let rep = budget_report([
+        (CheckItem::GateTable, 55),
+        (CheckItem::Pubkey, 3),
+        (CheckItem::WxPolicy, 4),
+    ]);
+    set.add("budget rows", rep.rows.len() == 3, "");
+    set.add("budget all within", rep.overs.is_empty() && rep.total_ok, "");
+    set.add("budget hash line", rep.rows[0].budget_ms == 60 && rep.rows[0].actual_ms == 55, "");
+    let rep_bad = budget_report([
+        (CheckItem::GateTable, 61),
+        (CheckItem::Pubkey, 5),
+        (CheckItem::WxPolicy, 5),
+    ]);
+    set.add("budget over located", rep_bad.overs == vec![CheckItem::GateTable], "超支的每一项都被看见");
+    set.add("budget total edge", budget_report([
+        (CheckItem::GateTable, 60),
+        (CheckItem::Pubkey, 5),
+        (CheckItem::WxPolicy, 5),
+    ]).total_ok, "恰 70ms（三查实际总和）低于 100ms 总线");
+
+    // v3-二：免查语义——门表坏的下游双免查；公钥坏单免查；免查不冒充绿。
+    let s1 = skip_marks(&[CheckItem::GateTable]);
+    set.add("skip gate downstream", s1.len() == 2
+        && s1.iter().all(|m| m.because == CheckItem::GateTable), "");
+    let s2 = skip_marks(&[CheckItem::Pubkey]);
+    set.add("skip pubkey downstream", s2.len() == 1 && s2[0].item == CheckItem::WxPolicy, "");
+    let s3 = skip_marks(&[CheckItem::WxPolicy]);
+    set.add("skip wx no downstream", s3.is_empty(), "W^X 是最下游");
+    set.add("skip not green", skip_not_green(1, &s1), "1 通过+2 免查 ≠ 3 通过");
+    set.add("skip none clean", !skip_not_green(3, &[]), "全绿没有免查标记");
+
+    // v3-三：拦截语义机检——正样本过、panic 词表样本拒。
+    set.add("verdict ok", intercept_verdict_ok(INTERCEPT_TITLE, INTERCEPT_SUB, INTERCEPT_CTA), "");
+    set.add("verdict rejects panic wording", !intercept_verdict_ok("已崩溃", INTERCEPT_SUB, INTERCEPT_CTA), "");
+    set.add("verdict rejects panic cta", !intercept_verdict_ok(INTERCEPT_TITLE, INTERCEPT_SUB, "程序已停止工作"), "");
+    set.add("verdict rejects wrong title", !intercept_verdict_ok("错误", INTERCEPT_SUB, INTERCEPT_CTA), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f191_v3_budget_never_hides_overspend() {
+        // 全超支场景：三行全红+总账红——没有静默吞掉的超支。
+        let rep = budget_report([
+            (CheckItem::GateTable, 90),
+            (CheckItem::Pubkey, 20),
+            (CheckItem::WxPolicy, 20),
+        ]);
+        assert_eq!(rep.overs.len(), 3);
+        assert!(!rep.total_ok);
+        assert_eq!(rep.rows.iter().filter(|r| r.over()).count(), 3);
+    }
+
+    #[test]
+    fn f191_v3_verdict_contract_is_tight() {
+        // 语义契约的三处锚点各自独立机检（改任何一处都逃不过）。
+        assert!(intercept_verdict_ok(INTERCEPT_TITLE, INTERCEPT_SUB, INTERCEPT_CTA));
+        assert!(!intercept_verdict_ok(INTERCEPT_TITLE, "系统崩溃了", INTERCEPT_CTA));
+        assert!(!intercept_verdict_ok(INTERCEPT_TITLE, "星陨画面", INTERCEPT_CTA));
+        assert!(!intercept_verdict_ok(INTERCEPT_TITLE, INTERCEPT_SUB, INTERCEPT_DIFF), "CTA 必须是主钮文案");
+    }
+
+    #[test]
+    fn f191_v3_run_checks_pass() {
+        assert!(run_bootaudit_deep2_checks().all_passed());
     }
 }

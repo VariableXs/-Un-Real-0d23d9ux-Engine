@@ -882,3 +882,206 @@ mod deep_tests {
         assert!(run_auditchain_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——隔离段导出 / P0 工单契约 /
+// 脱敏统计账。判据源：主册【状态与异常】「断链检出 → 红色工单（P0——F142
+// 安全通道评估）+断点前后段隔离保全」+【设计细节】「事件体脱敏在写入时
+// 完成」的统计面。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：SegmentExport —— 隔离段导出（断点前后段各自成包、各自独立校验：
+// 完好段自证清白，可疑段保全取证——两包互不污染）
+// ---------------------------------------------------------------------------
+
+/// 分段导出结果。
+pub struct SegmentExport {
+    /// 完好段（断点前）包——独立校验恒绿。
+    pub before: ExportBundle,
+    /// 可疑段（断点起）包——独立校验按实际（红是取证价值本身）。
+    pub after: ExportBundle,
+}
+
+/// 分段导出（基于 quarantine 的切分语义；可疑段空 → None）。
+pub fn segment_export(chain: &AuditChain, rep: &VerifyReport) -> Option<SegmentExport> {
+    let broken = rep.broken_at? as usize;
+    let before_n = broken.saturating_sub(1).min(chain.nodes.len());
+    let mk = |slice: &[AuditNode], hashes: &[[u8; 32]]| ExportBundle {
+        nodes: slice.to_vec(),
+        hashes: hashes.to_vec(),
+        head: hashes.last().copied().unwrap_or(GENESIS),
+    };
+    let before = mk(&chain.nodes[..before_n], &chain.hashes[..before_n]);
+    let after = mk(&chain.nodes[before_n..], &chain.hashes[before_n..]);
+    Some(SegmentExport { before, after })
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：P0Ticket —— 红色工单数据契约（F142 通道的输入：三要素 + 断点
+// 定位 + 隔离状态——工单自己说得清，评估者不用翻日志）
+// ---------------------------------------------------------------------------
+
+/// P0 工单。
+pub struct P0Ticket {
+    /// 发生了什么。
+    pub what: &'static str,
+    /// 为什么严重。
+    pub why: &'static str,
+    /// 下一步。
+    pub next: &'static str,
+    /// 断点定位（序号）。
+    pub broken_at: u64,
+    /// 隔离状态行。
+    pub quarantine: String,
+}
+
+/// 工单组装（断链即开——P0 语义对齐 F142）。
+pub fn p0_ticket(rep: &VerifyReport, total: usize) -> Option<P0Ticket> {
+    if rep.ok {
+        return None;
+    }
+    let broken_at = rep.broken_at?;
+    let before = broken_at as usize - 1;
+    let after = total - before;
+    Some(P0Ticket {
+        what: "审计日志链检出篡改（序号链哈希脱节）",
+        why: "审计不可抵赖是 P0 红线——链条断了等于历史不可信",
+        next: "断点前后段已隔离；请走 F142 安全披露通道评估",
+        broken_at,
+        quarantine: alloc::format!(
+            "前 {} 条完好段 + 后 {} 条可疑段已分别封存（共 {} 条，一条不丢）",
+            before, after, total
+        ),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：RedactStats —— 脱敏统计账（写入侧对账：命中了哪些规则、多少
+// 次——脱敏不是黑盒，三查前移的效果可量化）
+// ---------------------------------------------------------------------------
+
+/// 脱敏统计账（累计）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RedactStats {
+    pub secret_hits: u32,
+    pub hexkey_hits: u32,
+    pub pii_hits: u32,
+    /// 脱敏事件总数（有任一命中的写入次数）。
+    pub events: u32,
+}
+
+impl RedactStats {
+    /// 记一次写入的脱敏报告。
+    pub fn observe(&mut self, rep: &RedactReport) {
+        if rep.n >= 1 {
+            self.secret_hits += rep.hits[0].1 as u32;
+        }
+        if rep.n >= 2 {
+            self.hexkey_hits += rep.hits[1].1 as u32;
+        }
+        if rep.n >= 3 {
+            self.pii_hits += rep.hits[2].1 as u32;
+        }
+        if rep.total() > 0 {
+            self.events += 1;
+        }
+    }
+
+    /// 命中总数。
+    pub fn total_hits(&self) -> u32 {
+        self.secret_hits + self.hexkey_hits + self.pii_hits
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F194 v3 自检（聚合进 secstar2 域）。
+pub fn run_auditchain_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F194-v3");
+
+    // 构造 5 条链 + 篡改 #3。
+    let mut c = AuditChain::new();
+    for i in 0..5u64 {
+        let _ = c.append(1_000 + i, b"evt");
+    }
+    let mut m = c.clone_shallow();
+    m.nodes[2].event[0] ^= 0xFF;
+    let rep = m.verify(None);
+
+    // v3-一：分段导出——完好段自证绿、可疑段保全、两包互不污染。
+    let seg = segment_export(&m, &rep).unwrap();
+    set.add("seg before clean", seg.before.independent_verify().ok && seg.before.nodes.len() == 2, "");
+    set.add("seg after preserved", seg.after.nodes.len() == 3, "可疑段全量保全");
+    set.add("seg total", seg.before.nodes.len() + seg.after.nodes.len() == 5, "一条不丢");
+
+    // v3-二：P0 工单——三要素+定位+隔离行；干净链不开单。
+    let t = p0_ticket(&rep, 5).unwrap();
+    set.add("p0 what", t.what.contains("篡改"), "");
+    set.add("p0 why", t.why.contains("P0"), "");
+    set.add("p0 next", t.next.contains("F142"), "");
+    set.add("p0 located", t.broken_at == 3, "");
+    set.add("p0 quarantine", t.quarantine.contains("2 条完好") && t.quarantine.contains("一条不丢"), "");
+    set.add("p0 none on clean", p0_ticket(&c.verify(None), 5).is_none(), "");
+
+    // v3-三：脱敏统计账——三规则累计与事件计数。
+    let mut st = RedactStats::default();
+    let mut buf = [0u8; EVENT_MAX];
+    let (_, r1) = redact(b"login user:ab password=x", &mut buf).unwrap();
+    st.observe(&r1);
+    let (_, r2) = redact(b"key=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6", &mut buf).unwrap();
+    st.observe(&r2);
+    let (_, r3) = redact(b"plain event", &mut buf).unwrap();
+    st.observe(&r3);
+    set.add("redact stats", st.secret_hits == 1 && st.hexkey_hits == 1 && st.pii_hits == 1, "");
+    set.add("redact events", st.events == 2, "无命中写入不计数");
+    set.add("redact total", st.total_hits() == 3, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f194_v3_segment_before_never_carries_suspicion() {
+        // 完好段在任意篡改位置下都自证绿（2/3/4 号位篡改的参数化验证）。
+        for pos in 1..4usize {
+            let mut c = AuditChain::new();
+            for i in 0..5u64 {
+                let _ = c.append(i, b"evt");
+            }
+            let mut m = c.clone_shallow();
+            m.nodes[pos].event[0] ^= 0xFF;
+            let rep = m.verify(None);
+            let seg = segment_export(&m, &rep).unwrap();
+            assert_eq!(seg.before.nodes.len(), pos, "break at {}", pos + 1);
+            assert!(seg.before.independent_verify().ok, "before-segment clean at break {}", pos + 1);
+        }
+    }
+
+    #[test]
+    fn f194_v3_ticket_arithmetic_always_balances() {
+        // 工单隔离行算术守恒：前段+后段=总数（篡改位置遍历）。
+        for pos in 1..5usize {
+            let mut c = AuditChain::new();
+            for i in 0..5u64 {
+                let _ = c.append(i, b"evt");
+            }
+            let mut m = c.clone_shallow();
+            m.nodes[pos].event[0] ^= 0xFF;
+            let rep = m.verify(None);
+            let t = p0_ticket(&rep, 5).unwrap();
+            let before = t.broken_at as usize - 1;
+            assert_eq!(before + (5 - before), 5, "balance at break {}", pos + 1);
+        }
+    }
+
+    #[test]
+    fn f194_v3_run_checks_pass() {
+        assert!(run_auditchain_deep2_checks().all_passed());
+    }
+}

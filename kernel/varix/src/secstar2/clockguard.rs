@@ -25,6 +25,7 @@
 
 use crate::checks::CheckSet;
 use crate::star::sbase::RingLog;
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -984,5 +985,277 @@ mod deep_tests {
     #[test]
     fn f187_deep_run_checks_pass() {
         assert!(run_clockguard_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——历史渲染行 / 源池健康度 /
+// 时区切换联动对账 / RTC 推断黄条。判据源：主册【交互设计】「校时历史行
+// （最近 5 次：时刻/来源/偏移量）」+【状态与异常】「RTC 硬件失效→推断
+// 流程+黄条说明」+【用户故事】「日历对了，连天气都跟着对了」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：HistoryRows —— 校时历史渲染行（最近 5 次：时刻/来源/偏移量）
+// ---------------------------------------------------------------------------
+
+/// 一行校时历史（人话字段 + 性质标签）。
+pub struct HistoryRow {
+    /// 时刻（Unix 秒）。
+    pub at_s: u64,
+    /// 来源。
+    pub source: &'static str,
+    /// 偏移量（秒）。
+    pub offset_s: i64,
+    /// 行语义（显式校正/静默校正/估算——这次校时是什么性质，用户看得见）。
+    pub tag: &'static str,
+}
+
+/// 历史行组装（新→旧；估计路径优先标「估算」——诚实纪律）。
+pub fn history_rows(g: &ClockGuard) -> Vec<HistoryRow> {
+    g.history
+        .newest_first()
+        .iter()
+        .map(|r| HistoryRow {
+            at_s: r.at,
+            source: r.source,
+            offset_s: r.offset_s,
+            tag: if r.estimated {
+                "估算"
+            } else if r.offset_s.abs() > DRIFT_EXPLICIT_S {
+                "显式校正"
+            } else {
+                "静默校正"
+            },
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：PoolHealth —— NTP 源池健康度视图（「时间不准」先看得见原因）
+// ---------------------------------------------------------------------------
+
+/// 单源健康行。
+pub struct SourceHealthRow {
+    pub name: &'static str,
+    /// Alive / Untested=待试 / Dead。
+    pub state: SourceHealth,
+}
+
+/// 池健康报告。
+pub struct PoolHealth {
+    pub rows: Vec<SourceHealthRow>,
+    /// 存活数。
+    pub alive_n: usize,
+    /// 全灭（如实呈现——pool_exhausted 的面板前置状态）。
+    pub all_dead: bool,
+}
+
+/// 组装（ClockGuard 源池账 → 面板行）。
+pub fn pool_health(g: &ClockGuard) -> PoolHealth {
+    let rows: Vec<SourceHealthRow> = g
+        .pool
+        .iter()
+        .take(g.pool_len)
+        .filter(|(n, _)| !n.is_empty())
+        .map(|(n, s)| SourceHealthRow { name: n, state: *s })
+        .collect();
+    let alive_n = rows.iter().filter(|r| r.state == SourceHealth::Alive).count();
+    PoolHealth { all_dead: g.pool_len > 0 && alive_n == 0, alive_n, rows }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：TzSwitchChecklist —— 时区切换全链联动对账（主册【验收判据】：
+// 「时区切换全链（文件时间/日历/天气联动）实测」——联动是四项逐项打勾的
+// 对账清单；缺一项=切换没走完）
+// ---------------------------------------------------------------------------
+
+/// 联动项。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TzLink {
+    /// 文件时间显示层（mtime 历史真相不动——只换显示）。
+    FileTime,
+    /// 日历视图。
+    Calendar,
+    /// 天气面板（F101 数据源同值）。
+    Weather,
+    /// 终端公告（新时区生效提示）。
+    TerminalNotice,
+}
+
+impl TzLink {
+    pub fn name(self) -> &'static str {
+        match self {
+            TzLink::FileTime => "文件时间",
+            TzLink::Calendar => "日历",
+            TzLink::Weather => "天气",
+            TzLink::TerminalNotice => "终端公告",
+        }
+    }
+}
+
+/// 联动对账清单（向导确认后逐项回报——全勾才算切换完成）。
+pub struct TzSwitchChecklist {
+    done: [bool; 4],
+    checked: usize,
+}
+
+impl TzSwitchChecklist {
+    pub fn new() -> TzSwitchChecklist {
+        TzSwitchChecklist { done: [false; 4], checked: 0 }
+    }
+
+    /// 回报一项完成（重复回报拒绝——假勾进不来）。
+    pub fn mark(&mut self, item: TzLink) -> Result<usize, &'static str> {
+        let idx = match item {
+            TzLink::FileTime => 0,
+            TzLink::Calendar => 1,
+            TzLink::Weather => 2,
+            TzLink::TerminalNotice => 3,
+        };
+        if self.done[idx] {
+            return Err("该项已回报（重复回报拒绝）");
+        }
+        self.done[idx] = true;
+        self.checked += 1;
+        Ok(self.checked)
+    }
+
+    pub fn all_done(&self) -> bool {
+        self.checked == 4
+    }
+
+    /// 未完成项（切换失败的「还差什么」诚实输出）。
+    pub fn missing(&self) -> Vec<TzLink> {
+        let all = [TzLink::FileTime, TzLink::Calendar, TzLink::Weather, TzLink::TerminalNotice];
+        all.iter()
+            .enumerate()
+            .filter(|(i, _)| !self.done[*i])
+            .map(|(_, l)| *l)
+            .collect()
+    }
+}
+
+impl Default for TzSwitchChecklist {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-四：RtcInferBanner —— RTC 失效推断黄条（主册【状态与异常】：RTC
+// 硬件失效→每次启动走推断流程+黄条说明）
+// ---------------------------------------------------------------------------
+
+/// 黄条渲染数据（主行/推断来源/帮助链/建议动作四件）。
+pub struct RtcInferBanner {
+    pub text: &'static str,
+    pub basis: &'static str,
+    pub help: &'static str,
+    pub action: &'static str,
+}
+
+/// 组装（`rtc_dead`/`inferring` 置位时由设置页消费）。
+pub fn rtc_infer_banner() -> RtcInferBanner {
+    RtcInferBanner {
+        text: "主板时钟疑似失效（多次读到零值）——当前时间为推断值",
+        basis: "由上次已知好值与估计漂移推算，标注「估算」",
+        help: "help:rtc-inferred",
+        action: "更换主板电池后时间将自动恢复精确校准",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F187 v3 自检（聚合进 secstar2 域）。
+pub fn run_clockguard_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F187-v3");
+
+    // v3-一：历史行——环上限、标签三态、新→旧（>300s 才是显式——主册边界）。
+    let mut g = ClockGuard::new();
+    g.add_source("ntp-a");
+    let _ = g.correct_drift(1_000_000, 1_000_010, "ntp-a");
+    let _ = g.correct_drift(1_000_200, 1_000_260, "ntp-a");
+    let _ = g.correct_drift(1_000_400, 1_000_702, "ntp-a");
+    let rows = history_rows(&g);
+    set.add("hist rows", rows.len() == 3, "");
+    set.add("hist tag silent", rows[2].tag == "静默校正" && rows[2].offset_s == 10, "");
+    set.add("hist tag explicit", rows[0].tag == "显式校正" && rows[0].offset_s == 302, "");
+    set.add("hist boundary 300 silent", {
+        let mut gb = ClockGuard::new();
+        gb.add_source("n");
+        let _ = gb.correct_drift(10, 310, "n");
+        history_rows(&gb)[0].tag == "静默校正"
+    }, "恰好 300s 属静默段（2-300s 闭区间）");
+
+    // v3-二：源池健康——存活计数与全灭诚实。
+    let mut g2 = ClockGuard::new();
+    g2.add_source("ntp-a");
+    g2.add_source("ntp-b");
+    g2.mark_source("ntp-a", true);
+    g2.mark_source("ntp-b", false);
+    let ph = pool_health(&g2);
+    set.add("pool rows", ph.rows.len() == 2, "");
+    set.add("pool alive", ph.alive_n == 1 && !ph.all_dead, "");
+    let mut g3 = ClockGuard::new();
+    g3.add_source("x");
+    g3.mark_source("x", false);
+    set.add("pool all dead honest", pool_health(&g3).all_dead, "");
+    set.add("pool empty not dead", !pool_health(&ClockGuard::new()).all_dead, "空池是未配置不是全灭");
+
+    // v3-三：联动对账——逐项回报/重复拒/缺失清单/全勾完成。
+    let mut cl = TzSwitchChecklist::new();
+    set.add("tz mark 1", cl.mark(TzLink::FileTime) == Ok(1), "");
+    set.add("tz dup refused", cl.mark(TzLink::FileTime).is_err(), "");
+    set.add("tz missing", cl.missing() == vec![TzLink::Calendar, TzLink::Weather, TzLink::TerminalNotice], "");
+    let _ = cl.mark(TzLink::Calendar);
+    let _ = cl.mark(TzLink::Weather);
+    set.add("tz not done", !cl.all_done(), "");
+    let _ = cl.mark(TzLink::TerminalNotice);
+    set.add("tz all done", cl.all_done() && cl.missing().is_empty(), "");
+    set.add("tz link names", TzLink::Weather.name() == "天气", "");
+
+    // v3-四：推断黄条——估算标注与建议动作齐。
+    let b = rtc_infer_banner();
+    set.add("rtc banner text", b.text.contains("推断"), "");
+    set.add("rtc banner basis", b.basis.contains("估算"), "");
+    set.add("rtc banner action", b.action.contains("电池"), "");
+    set.add("rtc banner help", b.help == "help:rtc-inferred", "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f187_v3_history_ring_caps_at_five() {
+        // HISTORY_CAP=5：6 次校正只留最近 5 行（环账语义）。
+        let mut g = ClockGuard::new();
+        g.add_source("ntp-a");
+        for i in 0..6u64 {
+            let _ = g.correct_drift(1_000_000 + i * 1000, 1_000_100 + i * 1000, "ntp-a");
+        }
+        assert_eq!(history_rows(&g).len(), HISTORY_CAP);
+    }
+
+    #[test]
+    fn f187_v3_checklist_never_fakes_completion() {
+        // 破坏性尝试：三项完成+一次重复回报 → 仍不算完成。
+        let mut cl = TzSwitchChecklist::new();
+        let _ = cl.mark(TzLink::FileTime);
+        let _ = cl.mark(TzLink::Calendar);
+        let _ = cl.mark(TzLink::Weather);
+        assert!(cl.mark(TzLink::FileTime).is_err(), "duplicate must not fake the 4th");
+        assert!(!cl.all_done());
+        assert_eq!(cl.missing(), vec![TzLink::TerminalNotice]);
+    }
+
+    #[test]
+    fn f187_v3_run_checks_pass() {
+        assert!(run_clockguard_deep2_checks().all_passed());
     }
 }

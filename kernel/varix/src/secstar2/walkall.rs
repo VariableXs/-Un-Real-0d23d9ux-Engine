@@ -32,6 +32,7 @@
 
 use crate::checks::CheckSet;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -692,5 +693,171 @@ mod deep_tests {
     #[test]
     fn f200_deep_run_checks_pass() {
         assert!(run_walkall_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——季报第五节生成 / 脚本批注册
+// 契约 / 红绿一页图例。判据源：主册【交互设计】「季检结果归档进季报
+// （F149 增第五节『总检状态』）」+【数据与存储】「清单数据=各报告【验收
+// 判据】段自动提取（脚本管线）」+【设计细节】红绿四态语义。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：quarterly_section —— 季报第五节生成器（F149 联动的文本块：
+// 一段人话+环比——季报里「总检状态」长什么样由这里定）
+// ---------------------------------------------------------------------------
+
+/// 第五节文本块（行式——季报模板直接引用）。
+pub struct QuarterlySection {
+    pub lines: Vec<String>,
+}
+
+/// 生成（本轮绿红 + 上轮绿红 → 环比结论）。
+pub fn quarterly_section(quarter: &str, green: usize, red: usize, prev_green: Option<usize>) -> QuarterlySection {
+    let mut lines = Vec::new();
+    lines.push(alloc::format!("总检状态（{}）：绿 {} / 红 {}", quarter, green, red));
+    lines.push(match prev_green {
+        None => alloc::format!("首季基线：{} 项绿（无环比对象）", green),
+        Some(prev) if green >= prev => alloc::format!("环比上一季：+{}（逐季不回退成立）", green - prev),
+        Some(prev) => alloc::format!("环比上一季：-{}（回退=腐化信号，需复盘）", prev - green),
+    });
+    if red > 0 {
+        lines.push(alloc::format!("红项处置：{} 项待补证据或修复（见红绿一页纸）", red));
+    } else {
+        lines.push(String::from("红项处置：零红——全量锚点证据在档且未过期"));
+    }
+    QuarterlySection { lines }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：batch_import —— 脚本批注册契约（vx-walkcheck-all.py 解析主册
+// 表格后的批量登记入口：一次一批、重复跳过、返回 (新增, 跳过)——脚本与
+// 内核的数据握手）
+// ---------------------------------------------------------------------------
+
+/// 批量登记（fid 去重语义与 register 一致；返回 (accepted, skipped)）。
+pub fn batch_import(w: &mut WalkAll, batch: &[(&'static str, &'static str)]) -> (usize, usize) {
+    let mut accepted = 0;
+    let mut skipped = 0;
+    for (fid, domain) in batch {
+        if w.register(fid, domain, vec!["脚本提取判据（vx-walkcheck-all.py）"]) {
+            accepted += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+    (accepted, skipped)
+}
+
+/// 批次对账：批后覆盖缺口（脚本据此决定是否需要补解析——握手闭环）。
+pub fn batch_gap_report(w: &WalkAll, all_fids: &[&'static str]) -> Vec<&'static str> {
+    coverage_gaps(w, all_fids)
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：VerdictLegend —— 红绿一页图例（四态语义表：绿/红/冻结/过期
+// ——一页纸上每种颜色是什么意思，答案固定在这里）
+// ---------------------------------------------------------------------------
+
+/// 图例条目。
+pub struct VerdictEntry {
+    pub state: &'static str,
+    pub meaning: &'static str,
+}
+
+/// 四态图例。
+pub const VERDICT_LEGEND: [VerdictEntry; 4] = [
+    VerdictEntry { state: "green", meaning: "判据覆盖 + 证据在档且未过期（TTL 内）" },
+    VerdictEntry { state: "red", meaning: "缺证据 / 证据过期 / 实现脱节——三因之一" },
+    VerdictEntry { state: "frozen", meaning: "冻结候删项——不参与考核（冻结≠失败）" },
+    VerdictEntry { state: "expired", meaning: "证据过了 TTL——按红处理（过期绿按红纪律）" },
+];
+
+/// 图例完整性（四态齐、TTL 语义与 Anchor::verdict 一致——图例不说谎）。
+pub fn verdict_legend_intact(ttl_days: u64) -> bool {
+    VERDICT_LEGEND.len() == 4
+        && VERDICT_LEGEND.iter().all(|v| !v.meaning.is_empty())
+        && VERDICT_LEGEND[0].state == "green"
+        && VERDICT_LEGEND[3].meaning.contains(alloc::format!("TTL").as_str())
+        && ttl_days > 0
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F200 v3 自检（聚合进 secstar2 域）。
+pub fn run_walkall_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F200-v3");
+
+    // v3-一：季报第五节——三态环比文案。
+    let s1 = quarterly_section("2026Q4", 150, 44, None);
+    set.add("sec first", s1.lines[1].contains("首季基线"), "");
+    let s2 = quarterly_section("2027Q1", 160, 34, Some(150));
+    set.add("sec up", s2.lines[1].contains("+10") && s2.lines[1].contains("不回退"), "");
+    let s3 = quarterly_section("2027Q1", 140, 54, Some(150));
+    set.add("sec down", s3.lines[1].contains("-10") && s3.lines[1].contains("回退"), "");
+    set.add("sec zero red", quarterly_section("Q", 199, 0, Some(198)).lines[2].contains("零红"), "");
+    set.add("sec red hint", quarterly_section("Q", 150, 44, Some(150)).lines[2].contains("44 项"), "");
+
+    // v3-二：批注册契约——首批接收、重复跳过、缺口可查。
+    let mut w = WalkAll::new();
+    let batch = [("F001", "A 兼容"), ("F002", "A 兼容"), ("F186", "G 安全")];
+    let (acc, skip) = batch_import(&mut w, &batch);
+    set.add("batch first", acc == 3 && skip == 0, "");
+    let (acc2, skip2) = batch_import(&mut w, &batch);
+    set.add("batch dup skipped", acc2 == 0 && skip2 == 3, "");
+    let all: Vec<&'static str> = vec!["F001", "F002", "F003", "F186"];
+    set.add("batch gaps", batch_gap_report(&w, &all) == vec!["F003"], "缺口点名到条");
+
+    // v3-三：图例——四态齐、TTL 语义一致。
+    set.add("legend intact", verdict_legend_intact(WalkAll::new().evidence_ttl_days), "");
+    set.add("legend frozen", VERDICT_LEGEND[2].meaning.contains("冻结≠失败"), "");
+    set.add("legend ttl zero invalid", !verdict_legend_intact(0), "TTL=0 的账没有图例意义");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f200_v3_section_never_lies_about_trend() {
+        // 环比文案与数字严格一致（+/-/首季三态参数化）。
+        for (green, prev, expect) in [(160usize, Some(150usize), "+10"), (150, Some(160), "-10"), (150, None, "首季")] {
+            let s = quarterly_section("Q", green, 0, prev);
+            assert!(s.lines[1].contains(expect), "green {} prev {:?}", green, prev);
+        }
+    }
+
+    #[test]
+    fn f200_v3_batch_import_full_coverage_flow() {
+        // 完整握手：批注册 199 项 → 缺口清零（脚本管线的端到端样本）。
+        let mut w = WalkAll::new();
+        let all: Vec<(&'static str, &'static str)> = (1..=199u32)
+            .map(|i| {
+                let fid = match i {
+                    1..=9 => alloc::format!("F00{}", i).leak() as &'static str,
+                    10..=99 => alloc::format!("F0{}", i).leak() as &'static str,
+                    _ => alloc::format!("F{}", i).leak() as &'static str,
+                };
+                (fid, "G 安全")
+            })
+            .collect();
+        let (acc, skip) = batch_import(&mut w, &all);
+        assert_eq!(acc, 199);
+        assert_eq!(skip, 0);
+        let fids: Vec<&'static str> = all.iter().map(|(f, _)| *f).collect();
+        assert!(batch_gap_report(&w, &fids).is_empty());
+        // 重复批：199 全跳过（幂等握手）。
+        let (acc2, skip2) = batch_import(&mut w, &all);
+        assert_eq!((acc2, skip2), (0, 199));
+    }
+
+    #[test]
+    fn f200_v3_run_checks_pass() {
+        assert!(run_walkall_deep2_checks().all_passed());
     }
 }

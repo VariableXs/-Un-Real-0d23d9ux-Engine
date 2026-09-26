@@ -878,3 +878,201 @@ mod deep_tests {
         assert!(run_selfheal2_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——降级默认态映射 / 快照协同
+// 对账 / 通知升级显目。判据源：主册【状态与异常】「重建失败 → 降级默认态
+// （图标默认集/主题默认令牌/缩略图占位）+通知升级显目」+【设计细节】
+// 「自愈与 F121 还原点协同（重建前不留快照——缓存类无价值；令牌类留）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：FallbackMap —— 降级默认态映射（每类损坏失败后的落点+人话——
+// 降级是设计出来的出口，不是碰运气的残局）
+// ---------------------------------------------------------------------------
+
+/// 降级默认态（三类各自的兜底）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FallbackState {
+    /// 图标默认集（缓存类——重建失败回到出厂图标）。
+    IconDefaults,
+    /// 主题默认令牌（令牌类——回到 F151 默认 24 色）。
+    TokenDefaults,
+    /// 缩略图占位图（库类——占位图直到下次重建成功）。
+    ThumbPlaceholder,
+}
+
+impl FallbackState {
+    /// 兜底人话（通知正文——三要素的「下一步」）。
+    pub fn text(self) -> &'static str {
+        match self {
+            FallbackState::IconDefaults => "图标已回到默认集，显示不受影响",
+            FallbackState::TokenDefaults => "主题已回到默认令牌，可重新应用你的主题",
+            FallbackState::ThumbPlaceholder => "缩略图暂以占位图显示，后台会再次尝试重建",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            FallbackState::IconDefaults => "icon-defaults",
+            FallbackState::TokenDefaults => "token-defaults",
+            FallbackState::ThumbPlaceholder => "thumb-placeholder",
+        }
+    }
+}
+
+/// 损坏种类 → 兜底态（映射是查表不是分支逻辑——一处一事实）。
+pub fn fallback_of(kind: HealKind) -> Option<FallbackState> {
+    // 三类各有兜底（穷尽匹配——新增种类时编译器会强制补映射）。
+    match kind {
+        HealKind::IconCache => Some(FallbackState::IconDefaults),
+        HealKind::ThemeToken => Some(FallbackState::TokenDefaults),
+        HealKind::ThumbLib => Some(FallbackState::ThumbPlaceholder),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：SnapshotAudit —— 快照协同对账（主册【设计细节】逐字：重建前
+// 不留快照——缓存类无价值；令牌类留——配置级变更。对账=执行账与策略
+// 表逐位等值，豁免也要留痕）
+// ---------------------------------------------------------------------------
+
+/// 快照协同账条目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SnapAuditEntry {
+    pub kind: HealKind,
+    /// 是否实际留了快照。
+    pub taken: bool,
+    /// 策略豁免原因（taken=false 时非空）。
+    pub why_not: &'static str,
+}
+
+/// 对账账本。
+pub struct SnapshotAudit {
+    pub entries: Vec<SnapAuditEntry>,
+}
+
+impl SnapshotAudit {
+    pub fn new() -> SnapshotAudit {
+        SnapshotAudit { entries: Vec::new() }
+    }
+
+    /// 重建前登记（策略唯一源=HealKind::snapshot_before）。
+    pub fn record(&mut self, kind: HealKind) {
+        let taken = kind.snapshot_before();
+        let why_not = if taken { "" } else { "缓存类无快照价值——重建即全新" };
+        self.entries.push(SnapAuditEntry { kind, taken, why_not });
+    }
+
+    /// 守恒式：执行账与策略表逐位等值、豁免必带因。
+    pub fn consistent(&self) -> bool {
+        self.entries.iter().all(|e| e.taken == e.kind.snapshot_before() && (e.taken || !e.why_not.is_empty()))
+    }
+}
+
+impl Default for SnapshotAudit {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：NoticeEscalation —— 通知升级显目（主册【状态与异常】：重建失败
+// → 降级默认态+通知**升级显目**——成功是低优先历史档，失败必须抢眼）
+// ---------------------------------------------------------------------------
+
+/// 通知优先级（F077 档位语义——自愈域只用两档）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NoticePriority {
+    /// 低优先历史档（成功自愈——「做过什么如实说」）。
+    Low,
+    /// 显目档（降级失败——必须被看见）。
+    Prominent,
+}
+
+/// 通知升级判定：成功 → Low；降级/升级工单 → Prominent。
+pub fn notice_priority(outcome: HealOutcome) -> NoticePriority {
+    match outcome {
+        HealOutcome::Rebuilt => NoticePriority::Low,
+        HealOutcome::DegradedDefault | HealOutcome::Escalated => NoticePriority::Prominent,
+    }
+}
+
+/// 显目通知的完整文案（三要素：发生了什么/为什么/下一步——降级态的兜底
+/// 人话由 FallbackMap 提供）。
+pub fn prominent_notice(kind: HealKind) -> (&'static str, NoticePriority) {
+    let body = match fallback_of(kind) {
+        Some(fb) => fb.text(),
+        None => "已自动修复",
+    };
+    (body, NoticePriority::Prominent)
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F189 v3 自检（聚合进 secstar2 域）。
+pub fn run_selfheal2_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F189-v3");
+
+    // v3-一：降级映射——三类各有兜底+人话；未知类诚实 None。
+    set.add("fb icon", fallback_of(HealKind::IconCache) == Some(FallbackState::IconDefaults), "");
+    set.add("fb token", fallback_of(HealKind::ThemeToken) == Some(FallbackState::TokenDefaults), "");
+    set.add("fb thumb", fallback_of(HealKind::ThumbLib) == Some(FallbackState::ThumbPlaceholder), "");
+    set.add("fb text human", [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib]
+        .iter().all(|k| fallback_of(*k).map(|f| f.text().len() >= 10).unwrap_or(false)), "");
+    set.add("fb names", FallbackState::TokenDefaults.name() == "token-defaults", "");
+
+    // v3-二：快照协同——策略执行逐位等值、豁免带因。
+    let mut sa = SnapshotAudit::new();
+    sa.record(HealKind::IconCache);
+    sa.record(HealKind::ThemeToken);
+    sa.record(HealKind::ThumbLib);
+    set.add("snap consistent", sa.consistent(), "");
+    // 策略面：令牌类留、缓存类不留（主册逐字的对账）。
+    let token = sa.entries.iter().find(|e| e.kind == HealKind::ThemeToken).unwrap();
+    let cache = sa.entries.iter().find(|e| e.kind == HealKind::IconCache).unwrap();
+    set.add("snap token kept", token.taken, "");
+    set.add("snap cache exempt", !cache.taken && cache.why_not.contains("无快照价值"), "");
+
+    // v3-三：通知升级——成功低档、失败显目；显目文案带兜底人话。
+    set.add("prio low on ok", notice_priority(HealOutcome::Rebuilt) == NoticePriority::Low, "");
+    set.add("prio prominent on degraded", notice_priority(HealOutcome::DegradedDefault) == NoticePriority::Prominent, "");
+    set.add("prio prominent on escalate", notice_priority(HealOutcome::Escalated) == NoticePriority::Prominent, "");
+    let (text, prio) = prominent_notice(HealKind::ThemeToken);
+    set.add("prominent text", prio == NoticePriority::Prominent && text.contains("默认令牌"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f189_v3_fallback_covers_every_heal_kind() {
+        // 枚举全覆盖：HealKind 的每个成员要么有兜底要么有明确理由（不落空）。
+        let kinds = [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib];
+        for k in kinds {
+            assert!(fallback_of(k).is_some(), "{:?} must have a fallback", k);
+        }
+    }
+
+    #[test]
+    fn f189_v3_snapshot_audit_survives_mixed_sequence() {
+        // 十轮混合序列：账随执行增长且守恒式始终绿。
+        let mut sa = SnapshotAudit::new();
+        let kinds = [HealKind::IconCache, HealKind::ThemeToken, HealKind::ThumbLib];
+        for i in 0..10 {
+            sa.record(kinds[i % 3]);
+            assert!(sa.consistent());
+        }
+        assert_eq!(sa.entries.len(), 10);
+    }
+
+    #[test]
+    fn f189_v3_run_checks_pass() {
+        assert!(run_selfheal2_deep2_checks().all_passed());
+    }
+}

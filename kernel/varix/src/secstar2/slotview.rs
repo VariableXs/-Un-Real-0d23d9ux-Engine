@@ -23,6 +23,7 @@
 //! 槽区实际写入由更新器执行；回滚动作结果由调用方回报（`finish_rollback`）。
 
 use crate::checks::CheckSet;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -840,5 +841,175 @@ mod deep_tests {
     #[test]
     fn f190_deep_run_checks_pass() {
         assert!(run_slotview_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——条款卡渲染 / 到期预告 /
+// B-1304 对拍差异报告。判据源：主册【交互设计】「更新流（F122）首屏即回滚
+// 窗口条款卡」+【状态与异常】「保留期过 → 回滚钮灰置+（诚实不藏）——灰置
+// 有预告」+【验收判据】「槽状态与实际一致（对拍 B-1304 数据）」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：TermsCard —— 回滚窗口条款卡（更新流首屏第一卡——敢承诺回滚，
+// 是因为回滚真的存在；主册文案逐字 + 剩余天数动态行）
+// ---------------------------------------------------------------------------
+
+/// 条款卡渲染数据。
+pub struct TermsCard {
+    /// 主文案（主册逐字——TERMS_TEXT）。
+    pub body: &'static str,
+    /// 动态行（本槽可回滚天数——随时间变化的部分）。
+    pub days_line: String,
+    /// 卡语义标记（预告不是事故——与 F173 panic 族区分）。
+    pub severity: &'static str,
+}
+
+/// 组装（days_left 来自当前槽安装日——灰置前天数递减可见）。
+pub fn terms_card(days_left: u64) -> TermsCard {
+    TermsCard {
+        body: TERMS_TEXT,
+        days_line: alloc::format!("回滚窗口剩余 {} 天（到期自动按策略清理）", days_left),
+        severity: "reassure",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：ExpiryCountdown —— 到期预告行（灰置有预告——主册【设计细节】：
+// 保留期倒计时显示在回滚钮旁（灰置有预告））
+// ---------------------------------------------------------------------------
+
+/// 预告行（0 天=今日到期——预告不是恐吓，清理也不突袭）。
+pub struct ExpiryCountdown {
+    pub days_left: u64,
+    /// 预告文案（>0 天=剩 N 天；0 天=今日到期预告）。
+    pub text: String,
+    /// 是否已到灰置临界（0 天——回滚钮下一次刷新将灰置）。
+    pub expiring_today: bool,
+}
+
+/// 组装。
+pub fn expiry_countdown(days_left: u64) -> ExpiryCountdown {
+    ExpiryCountdown {
+        days_left,
+        expiring_today: days_left == 0,
+        text: if days_left == 0 {
+            alloc::format!("回滚点今日到期——{}（预告：明天将按策略清理）", EXPIRED_TEXT)
+        } else {
+            alloc::format!("回滚窗口剩余 {} 天", days_left)
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：ExternalDiffReport —— B-1304 对拍差异报告（matches_external 的
+// 明细版：哪些槽对不上、差在哪个字段——对拍不是布尔是定位）
+// ---------------------------------------------------------------------------
+
+/// 单槽差异。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SlotDiff {
+    pub slot: SlotId,
+    /// 版本号不一致（外部记录 vs 本地面板）。
+    pub version_diff: Option<(u32, u32)>,
+    /// 校验态不一致。
+    pub valid_diff: Option<(bool, bool)>,
+}
+
+impl SlotDiff {
+    pub fn has_diff(&self) -> bool {
+        self.version_diff.is_some() || self.valid_diff.is_some()
+    }
+}
+
+/// 逐槽对拍（external = B-1304 权威数据；local = 面板自持数据）。
+pub fn diff_report(external: &[(SlotId, SlotMeta)], local: &[(SlotId, SlotMeta)]) -> Vec<SlotDiff> {
+    let mut out = Vec::new();
+    for (sid, ext) in external {
+        let Some((_, loc)) = local.iter().find(|(l, _)| l == sid) else {
+            continue; // 外部有本地无——槽级缺失由 matches_external 的布尔面报。
+        };
+        out.push(SlotDiff {
+            slot: *sid,
+            version_diff: if ext.version != loc.version { Some((ext.version, loc.version)) } else { None },
+            valid_diff: if ext.valid != loc.valid { Some((ext.valid, loc.valid)) } else { None },
+        });
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F190 v3 自检（聚合进 secstar2 域）。
+pub fn run_slotview_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F190-v3");
+
+    // v3-一：条款卡——主册逐字、动态天数行、安心语义。
+    let tc = terms_card(5);
+    set.add("terms body verbatim", tc.body == TERMS_TEXT && tc.body.contains("一键回到"), "");
+    set.add("terms days line", tc.days_line.contains("5 天"), "");
+    set.add("terms severity", tc.severity == "reassure", "预告不是事故");
+
+    // v3-二：到期预告——0 天临界与寻常天数两态。
+    let e0 = expiry_countdown(0);
+    set.add("expiry today", e0.expiring_today && e0.text.contains("明天将按策略清理"), "");
+    let e5 = expiry_countdown(5);
+    set.add("expiry normal", !e5.expiring_today && e5.text.contains("5 天"), "");
+
+    // v3-三：差异报告——版本差/校验差/全对三态。
+    let local = [
+        (SlotId::A, SlotMeta { version: 42, installed_day: 100, valid: true }),
+        (SlotId::B, SlotMeta { version: 41, installed_day: 90, valid: true }),
+    ];
+    let ext_same = local;
+    set.add("diff none", diff_report(&ext_same, &local).iter().all(|d| !d.has_diff()), "");
+    let ext_bad = [
+        (SlotId::A, SlotMeta { version: 43, installed_day: 100, valid: true }),
+        (SlotId::B, SlotMeta { version: 41, installed_day: 90, valid: false }),
+    ];
+    let diffs = diff_report(&ext_bad, &local);
+    set.add("diff version located", diffs[0].version_diff == Some((43, 42)), "");
+    set.add("diff valid located", diffs[1].valid_diff == Some((false, true)), "");
+    set.add("diff has_diff", diffs[0].has_diff() && diffs[1].has_diff(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f190_v3_countdown_monotonic_to_expiry() {
+        // 7→0 天递减序列：预告行全程有意义、临界日触发今日语义。
+        let mut prev_expiring = false;
+        for d in (0..=7u64).rev() {
+            let e = expiry_countdown(d);
+            assert!(!e.text.is_empty());
+            assert_eq!(e.expiring_today, d == 0, "only day 0 is expiring");
+            assert!(!prev_expiring || d == 0, "expiring only at the boundary");
+            prev_expiring = e.expiring_today;
+        }
+    }
+
+    #[test]
+    fn f190_v3_diff_report_ignores_unknown_slots() {
+        // 外部多出的槽（本地还没有）：不造差异行（缺失由布尔面对拍面报）。
+        let local = [(SlotId::A, SlotMeta { version: 1, installed_day: 1, valid: true })];
+        let ext = [
+            (SlotId::A, SlotMeta { version: 1, installed_day: 1, valid: true }),
+            (SlotId::B, SlotMeta { version: 2, installed_day: 2, valid: true }),
+        ];
+        let diffs = diff_report(&ext, &local);
+        assert_eq!(diffs.len(), 1, "only the shared slot is diffed");
+        assert!(!diffs[0].has_diff());
+    }
+
+    #[test]
+    fn f190_v3_run_checks_pass() {
+        assert!(run_slotview_deep2_checks().all_passed());
     }
 }

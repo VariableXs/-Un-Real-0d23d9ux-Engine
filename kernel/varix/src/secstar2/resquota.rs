@@ -23,6 +23,7 @@
 //! 依赖锚点：F020（崩溃流程）、F038（确认语义）、F041（帧率对账）、F057（IO 映射）、F060（用量同源）。
 
 use crate::checks::CheckSet;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -878,5 +879,248 @@ mod deep_tests {
     #[test]
     fn f195_deep_run_checks_pass() {
         assert!(run_resquota_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——配额配置持久化 / 阶梯文档页 /
+// 放宽审计流。判据源：主册【数据与存储】「配额表配置层」+【状态与异常】
+// 「降级阶梯逐级文档化」+【交互设计】「放宽需 F038 式确认」的留痕面。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：QuotaConfigStore —— 收紧配置持久化模型（配置层序列化：每应用
+// 一行四元组，往返逐字段等值——重启后收紧不丢）
+// ---------------------------------------------------------------------------
+
+/// 配置行编码（`app|hard|soft|io|proc`——字节口径定长解析）。
+pub fn quota_encode(app: &str, q: &Quota, out: &mut String) {
+    out.push_str(app);
+    out.push('|');
+    push_num(out, q.mem_hard / (1024 * 1024)); // MiB 口径
+    out.push('|');
+    push_num(out, q.mem_soft / (1024 * 1024));
+    out.push('|');
+    push_num(out, q.io_weight as u64);
+    out.push('|');
+    push_num(out, q.proc_cap as u64);
+}
+
+fn push_num(out: &mut String, mut v: u64) {
+    if v == 0 {
+        out.push('0');
+        return;
+    }
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    while v > 0 {
+        i -= 1;
+        buf[i] = b'0' + (v % 10) as u8;
+        v /= 10;
+    }
+    out.push_str(core::str::from_utf8(&buf[i..]).unwrap_or("?"));
+}
+
+/// 配置行解码（字段数不对/解析失败 → None——零静默）。
+pub fn quota_decode(line: &str) -> Option<(&str, Quota)> {
+    let parts: Vec<&str> = line.split('|').collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let mib = 1024u64 * 1024;
+    let hard: u64 = parts[1].parse().ok()?;
+    let soft: u64 = parts[2].parse().ok()?;
+    let io: u32 = parts[3].parse().ok()?;
+    let proc: u32 = parts[4].parse().ok()?;
+    Some((
+        parts[0],
+        Quota { mem_hard: hard * mib, mem_soft: soft * mib, io_weight: io, proc_cap: proc }.sanitized(),
+    ))
+}
+
+/// 往返等值（编码→解码→逐字段对拍——持久化的保真判据）。
+pub fn quota_roundtrip_ok(app: &str, q: &Quota) -> bool {
+    let mut s = String::new();
+    quota_encode(app, q, &mut s);
+    match quota_decode(&s) {
+        Some((got_app, got_q)) => {
+            got_app == app
+                && got_q.mem_hard == q.mem_hard
+                && got_q.mem_soft == q.mem_soft
+                && got_q.io_weight == q.io_weight
+                && got_q.proc_cap == q.proc_cap
+        }
+        None => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：LadderDocPage —— 阶梯逐级文档页（主册【状态与异常】：降级阶梯
+// 逐级文档化——四级各一行：触发线/动作/人话/下一步）
+// ---------------------------------------------------------------------------
+
+/// 一级文档行。
+pub struct LadderDocRow {
+    pub level: Ladder,
+    /// 触发线（人话——相对配额线的位置）。
+    pub trigger: &'static str,
+    /// 系统动作。
+    pub action: &'static str,
+    /// 用户下一步。
+    pub next: &'static str,
+}
+
+/// 全阶梯文档（四级定序——顺序就是文档的一部分）。
+pub fn ladder_doc() -> [LadderDocRow; 4] {
+    [
+        LadderDocRow {
+            level: Ladder::CacheReclaim,
+            trigger: "软顶 85%",
+            action: "回收该应用缓存",
+            next: next_step(Ladder::CacheReclaim),
+        },
+        LadderDocRow {
+            level: Ladder::IoDeprioritize,
+            trigger: "软顶 100%",
+            action: "IO 降权（后台优先降）",
+            next: next_step(Ladder::IoDeprioritize),
+        },
+        LadderDocRow {
+            level: Ladder::GrowthFreeze,
+            trigger: "硬顶 90%",
+            action: "冻结内存增长",
+            next: next_step(Ladder::GrowthFreeze),
+        },
+        LadderDocRow {
+            level: Ladder::HardRefuse,
+            trigger: "硬顶 100%",
+            action: "拒绝新分配（OOM 语义入口）",
+            next: next_step(Ladder::HardRefuse),
+        },
+    ]
+}
+
+/// 文档守恒式：四级定序且动作文案互不重复（阶梯语义的可读性保障）。
+pub fn ladder_doc_consistent() -> bool {
+    let doc = ladder_doc();
+    doc.iter().enumerate().all(|(i, r)| r.level as usize == i + 1 && !r.action.is_empty())
+        && doc.iter().map(|r| r.action).collect::<Vec<_>>().windows(2).all(|w| w[0] != w[1])
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：RelaxAuditLog —— 放宽审计流（F038 确认不是走过场：谁在何时把
+// 哪个应用从多少放宽到多少——全记）
+// ---------------------------------------------------------------------------
+
+/// 一条放宽审计。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RelaxAudit {
+    pub app: &'static str,
+    pub at_s: u64,
+    /// 放宽前硬顶（MiB）。
+    pub from_mib: u64,
+    /// 放宽后硬顶（MiB）。
+    pub to_mib: u64,
+    /// 确认已给（恒 true——未确认的放宽进不了执行器，这里双保险）。
+    pub confirmed: bool,
+}
+
+/// 审计账。
+pub struct RelaxAuditLog {
+    pub entries: Vec<RelaxAudit>,
+}
+
+impl RelaxAuditLog {
+    pub fn new() -> RelaxAuditLog {
+        RelaxAuditLog { entries: Vec::new() }
+    }
+
+    /// 记录（confirmed=false 拒收——账本不收没确认的动作）。
+    pub fn record(&mut self, app: &'static str, at_s: u64, from: &Quota, to: &Quota, confirmed: bool) -> Result<(), &'static str> {
+        if !confirmed {
+            return Err("未确认的放宽不入账（F038 门卫已拒，账本二次防线）");
+        }
+        let mib = 1024 * 1024;
+        self.entries.push(RelaxAudit {
+            app,
+            at_s,
+            from_mib: from.mem_hard / mib,
+            to_mib: to.mem_hard / mib,
+            confirmed: true,
+        });
+        Ok(())
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for RelaxAuditLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F195 v3 自检（聚合进 secstar2 域）。
+pub fn run_resquota_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F195-v3");
+
+    // v3-一：配置持久化——往返等值；坏行拒绝。
+    let q = Quota { mem_hard: 1500 * 1024 * 1024, mem_soft: 1200 * 1024 * 1024, io_weight: 5, proc_cap: 128 };
+    set.add("cfg roundtrip", quota_roundtrip_ok("leaky-app", &q), "");
+    set.add("cfg decode bad", quota_decode("only|three").is_none(), "");
+    set.add("cfg decode sanitize", {
+        let r = quota_decode("x|100|900|5|10");
+        r.map(|(_, q2)| q2.mem_soft <= q2.mem_hard).unwrap_or(false)
+    }, "软硬倒置被解码层钳正");
+
+    // v3-二：阶梯文档——四级定序、动作互异、下一步齐。
+    set.add("ladder doc consistent", ladder_doc_consistent(), "");
+    set.add("ladder doc l4", ladder_doc()[3].action.contains("拒绝"), "");
+    set.add("ladder doc next all", ladder_doc().iter().all(|r| !r.next.is_empty()), "");
+
+    // v3-三：放宽审计——未确认拒收；确认全记（前后值可见）。
+    let mut log = RelaxAuditLog::new();
+    let from = Quota { mem_hard: 1000 * 1024 * 1024, mem_soft: 800 * 1024 * 1024, io_weight: 5, proc_cap: 10 };
+    let to = Quota { mem_hard: 2000 * 1024 * 1024, mem_soft: 1600 * 1024 * 1024, io_weight: 5, proc_cap: 10 };
+    set.add("relax unconfirmed refused", log.record("t", 1, &from, &to, false).is_err(), "");
+    set.add("relax record", log.record("t", 2, &from, &to, true).is_ok() && log.len() == 1, "");
+    set.add("relax fields", log.entries[0].from_mib == 1000 && log.entries[0].to_mib == 2000, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f195_v3_config_store_roundtrips_all_profiles() {
+        // 全档位往返：机型档四档逐一编码解码等值（持久化保真的全量口径）。
+        for (g, _, _) in profile_rows() {
+            let q = quota_for_machine(g);
+            assert!(quota_roundtrip_ok("machine", &q), "profile {}GiB", g);
+        }
+    }
+
+    #[test]
+    fn f195_v3_relax_log_rejects_all_unconfirmed() {
+        // 十次未确认尝试零入账（账本二次防线——门卫之外还有账本纪律）。
+        let mut log = RelaxAuditLog::new();
+        let q = Quota::default_4g();
+        for i in 0..10 {
+            assert!(log.record("app", i, &q, &q, false).is_err());
+        }
+        assert_eq!(log.len(), 0);
+    }
+
+    #[test]
+    fn f195_v3_run_checks_pass() {
+        assert!(run_resquota_deep2_checks().all_passed());
     }
 }

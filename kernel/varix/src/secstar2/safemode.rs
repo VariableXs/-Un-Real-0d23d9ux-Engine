@@ -811,3 +811,178 @@ mod deep_tests {
         assert!(run_safemode_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——黄条渲染数据 / 帮助篇 /
+// 功能门矩阵导出。判据源：主册【交互设计】「右下角常驻黄条（不可关——
+// 模式标识就是身份）」+「进入提示条附『为什么我在安全模式』帮助链」+
+//【验收判据】「最小集白名单外功能全部灰置且可解释」的矩阵化。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：BannerRender —— 黄条渲染数据（右下角常驻、不可关是身份——
+// 渲染契约里没有关闭钮这个字段）
+// ---------------------------------------------------------------------------
+
+/// 黄条渲染数据。
+pub struct BannerRender {
+    /// 主行（BANNER_TEXT）。
+    pub main: &'static str,
+    /// 原因行（None=用户自己选的——不吓唬）。
+    pub reason: Option<&'static str>,
+    /// 帮助链。
+    pub help: &'static str,
+    /// 屏幕锚点（右下角——常驻位置是契约）。
+    pub anchor: &'static str,
+    /// 可关闭（恒 false——模式标识就是身份，机检字段）。
+    pub dismissible: bool,
+}
+
+/// 组装（复用 SafeMode::banner 的语义 + 渲染契约扩展）。
+pub fn banner_render(sm: &SafeMode) -> BannerRender {
+    let (main, reason, help) = sm.banner();
+    BannerRender { main, reason, help, anchor: "bottom-right", dismissible: false }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：HelpArticle —— 「为什么我在安全模式」帮助篇（帮助链的落点：
+// 三段式——发生了什么/能做什么/怎么出去）
+// ---------------------------------------------------------------------------
+
+/// 帮助段。
+pub struct HelpSection {
+    pub heading: &'static str,
+    pub body: &'static str,
+}
+
+/// 帮助篇正文（三段——与 F186 帮助篇同版式不同内容，同族纪律）。
+pub const HELP_ARTICLE: [HelpSection; 3] = [
+    HelpSection {
+        heading: "我在什么模式",
+        body: "安全模式是一个救援模式：只加载 12 项最小功能集，第三方驱动不加载、你的主题不加载——先把系统带起来，再谈修好它。",
+    },
+    HelpSection {
+        heading: "我现在能做什么",
+        body: "设置中心、资源管理器、卸载通道、诊断中心都在。你可以卸掉把系统搞坏的东西——右下角黄条不会消失，这是身份不是故障。",
+    },
+    HelpSection {
+        heading: "我怎么出去",
+        body: "正常重启即出——安全模式没有持久标记，退出零残留。如果修不好，恢复环境（引导选单进入）是下一级救援。",
+    },
+];
+
+/// 帮助篇完整性自检（三段齐+正文人话）。
+pub fn help_article_intact() -> bool {
+    HELP_ARTICLE.len() == 3
+        && HELP_ARTICLE.iter().all(|s| !s.heading.is_empty() && s.body.len() >= 20)
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：GateMatrix —— 功能门矩阵导出（灰置可解释的全量视图：给定功能
+// 全集清单，逐项输出可用性+原因——审计页/帮助页共用一份数据）
+// ---------------------------------------------------------------------------
+
+/// 矩阵行。
+pub struct GateRow {
+    pub feature: &'static str,
+    pub allowed: bool,
+    pub why: &'static str,
+    /// 是否最小集成员。
+    pub in_min_set: bool,
+}
+
+/// 矩阵导出（features = 全功能清单——含白名单外的一切）。
+pub fn gate_matrix(sm: &SafeMode, features: &[&'static str]) -> Vec<GateRow> {
+    features
+        .iter()
+        .map(|f| {
+            let g = sm.gate(f);
+            GateRow { feature: f, allowed: g.allowed, why: g.why, in_min_set: MIN_SET.contains(f) }
+        })
+        .collect()
+}
+
+/// 矩阵守恒式：白名单内全放行、白名单外全灰置带原因——一屏看清边界。
+pub fn gate_matrix_consistent(rows: &[GateRow]) -> bool {
+    rows.iter().all(|r| if r.in_min_set { r.allowed } else { !r.allowed && !r.why.is_empty() })
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F193 v3 自检（聚合进 secstar2 域）。
+pub fn run_safemode_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F193-v3");
+
+    // v3-一：黄条渲染——右下角锚、不可关机检、原因随来源。
+    let mut sm = SafeMode::new();
+    let _ = sm.enter(EntryReason::AfterAbnormal, true);
+    let br = banner_render(&sm);
+    set.add("banner anchor", br.anchor == "bottom-right", "");
+    set.add("banner not dismissible", !br.dismissible, "模式标识就是身份——机检字段");
+    set.add("banner reason", br.reason == Some(BANNER_REASON_ABNORMAL), "");
+    set.add("banner main", br.main == BANNER_TEXT, "");
+
+    // v3-二：帮助篇——三段齐、人话、覆盖三问。
+    set.add("help intact", help_article_intact(), "");
+    set.add("help what", HELP_ARTICLE[0].body.contains("12 项"), "");
+    set.add("help can", HELP_ARTICLE[1].body.contains("卸载通道"), "");
+    set.add("help exit", HELP_ARTICLE[2].body.contains("零残留"), "");
+
+    // v3-三：功能门矩阵——守恒式与边界。
+    let features: Vec<&'static str> = MIN_SET
+        .iter()
+        .copied()
+        .chain(["wallpaper-store", "update-ui", "theme-custom", "third-store"])
+        .collect();
+    let rows = gate_matrix(&sm, &features);
+    set.add("gate matrix size", rows.len() == 16, "");
+    set.add("gate matrix consistent", gate_matrix_consistent(&rows), "");
+    let outside = rows.iter().find(|r| r.feature == "update-ui").unwrap();
+    set.add("gate outside why", !outside.allowed && outside.why.contains("最小集"), "");
+    let inside = rows.iter().find(|r| r.feature == "settings").unwrap();
+    set.add("gate inside allowed", inside.allowed && inside.in_min_set, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f193_v3_banner_off_mode_is_passthrough() {
+        // 非安全模式：黄条不渲染（main 为空语义）——banner 只在模式内存在。
+        let sm = SafeMode::new();
+        let br = banner_render(&sm);
+        assert!(br.reason.is_none());
+        assert!(br.main == BANNER_TEXT, "contract fields always present");
+        // 可关性字段与模式无关——契约恒不可关（渲染层只在 active 时挂载）。
+        assert!(!br.dismissible);
+    }
+
+    #[test]
+    fn f193_v3_gate_matrix_scales_to_100_features() {
+        // 100 功能压测：矩阵无崩、守恒式全绿（白名单边界稳定）。
+        let mut sm = SafeMode::new();
+        let _ = sm.enter(EntryReason::KernelParam, true);
+        let mut features: Vec<&'static str> = MIN_SET.to_vec();
+        for i in 0..88 {
+            features.push(match i % 4 {
+                0 => "ext-a",
+                1 => "ext-b",
+                2 => "ext-c",
+                _ => "ext-d",
+            });
+        }
+        let rows = gate_matrix(&sm, &features);
+        assert_eq!(rows.len(), 100);
+        assert!(gate_matrix_consistent(&rows));
+    }
+
+    #[test]
+    fn f193_v3_run_checks_pass() {
+        assert!(run_safemode_deep2_checks().all_passed());
+    }
+}

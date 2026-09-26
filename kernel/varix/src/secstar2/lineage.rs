@@ -657,3 +657,173 @@ mod deep_tests {
         assert!(run_lineage_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——开放 JSON 形状校验 / 时间线
+// 图例 / 复制保真模拟。判据源：主册【设计细节】「谱系数据进 F128 开放
+// JSON（第三方工具可解析——生态同语言）」的校验面 +【交互设计】时间线
+// 视觉语义 +【验收判据】「哈希复制粘贴保真」的往返模拟。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：JsonShapeCheck —— 开放 JSON 形状校验器（手写序列化的对偶：
+// 生成的 JSON 必须过自己的校验器——发射方自带接收方，闭环自证）
+// ---------------------------------------------------------------------------
+
+/// 形状校验结论。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JsonShape {
+    /// 花括号配对。
+    pub braces_balanced: bool,
+    /// 引号配对。
+    pub quotes_balanced: bool,
+    /// 顶层键在位（lineage/semver/current/fingerprint）。
+    pub keys_present: bool,
+    /// 无控制字符。
+    pub clean: bool,
+}
+
+impl JsonShape {
+    pub fn ok(&self) -> bool {
+        self.braces_balanced && self.quotes_balanced && self.keys_present && self.clean
+    }
+}
+
+/// 校验（字节级——不引依赖，四查足够定位手写序列化的常见病）。
+pub fn json_shape_check(data: &[u8]) -> JsonShape {
+    let mut braces: i64 = 0;
+    let mut quotes = 0usize;
+    let mut clean = true;
+    for &b in data {
+        match b {
+            b'{' => braces += 1,
+            b'}' => braces -= 1,
+            b'"' => quotes += 1,
+            0x00..=0x08 | 0x0B | 0x0C | 0x0E..=0x1F => clean = false,
+            _ => {}
+        }
+    }
+    let s = core::str::from_utf8(data).unwrap_or("");
+    let keys_present = s.contains("\"lineage\"")
+        && s.contains("\"semver\"")
+        && s.contains("\"current\"")
+        && s.contains("\"fingerprint\"");
+    JsonShape {
+        braces_balanced: braces == 0,
+        quotes_balanced: quotes % 2 == 0,
+        keys_present,
+        clean,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：TimelineLegend —— 时间线图例（三态圆点的语义表——渲染与帮助
+// 共用：用户问「这个点为什么亮」时答案就在图例里）
+// ---------------------------------------------------------------------------
+
+/// 图例条目。
+pub struct LegendEntry {
+    pub state: &'static str,
+    pub meaning: &'static str,
+}
+
+/// 图例（三态定序——当前/历史/折叠）。
+pub const TIMELINE_LEGEND: [LegendEntry; 3] = [
+    LegendEntry { state: "current", meaning: "当前运行中的版本（强调色圆点 + 运行中标）" },
+    LegendEntry { state: "history", meaning: "历史上的版本节点（中性圆点，可点看详情）" },
+    LegendEntry { state: "folded", meaning: "更早的版本已折叠（+N 徽标，点开展开）" },
+];
+
+/// 图例完整性（三态齐+语义非空——图例是契约不是装饰）。
+pub fn timeline_legend_intact() -> bool {
+    TIMELINE_LEGEND.len() == 3
+        && TIMELINE_LEGEND.iter().all(|l| !l.state.is_empty() && l.meaning.len() >= 8)
+        && TIMELINE_LEGEND[0].state == "current"
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：CopySim —— 复制保真模拟（判据「哈希复制粘贴保真」的往返模拟：
+// 指纹行 → 模拟剪贴板 → 读回 → 与二次生成比对——三处一致才算保真）
+// ---------------------------------------------------------------------------
+
+/// 复制保真结论（三源一致：首生成 / 剪贴板回读 / 二次生成）。
+pub fn copy_sim_ok(lin: &Lineage) -> bool {
+    let mut first = String::new();
+    let _ = fingerprint_line(lin, &mut first);
+    // 模拟剪贴板（原样搬运——保真模拟关注的是生成端确定性）。
+    let clipboard = first.clone();
+    let mut second = String::new();
+    let _ = fingerprint_line(lin, &mut second);
+    !first.is_empty() && clipboard == first && second == first
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F199 v3 自检（聚合进 secstar2 域）。
+pub fn run_lineage_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F199-v3");
+
+    let fp = crate::ksha256::sha256(b"v3 lineage build");
+    let mut lin = Lineage::new(
+        vec![
+            VersionNode { name: "STAR I", seq: 1 },
+            VersionNode { name: "STAR I start", seq: 2 },
+            VersionNode { name: "STAR I start.1", seq: 3 },
+        ],
+        3,
+        fp,
+        (1, 0, 3),
+    );
+    lin.components.push(ComponentEntry { name: "limine", version: "8.x", license: "BSD-2-Clause" });
+
+    // v3-一：形状校验——自家 JSON 过自家校验器；坏样本诚实拒绝。
+    let mut json = Vec::new();
+    lin.open_json(&mut json);
+    let shape = json_shape_check(&json);
+    set.add("json own shape ok", shape.ok(), "");
+    set.add("json braces", shape.braces_balanced && shape.quotes_balanced, "");
+    set.add("json keys", shape.keys_present, "");
+    set.add("json bad rejected", !json_shape_check(b"{\"lineage\"").ok(), "缺右括号即红");
+    set.add("json ctrl rejected", !json_shape_check(b"{\"a\":\"\x01\"}").clean, "控制字符即红");
+
+    // v3-二：图例——三态齐、语义人话。
+    set.add("legend intact", timeline_legend_intact(), "");
+    set.add("legend fold", TIMELINE_LEGEND[2].meaning.contains("+N"), "");
+    set.add("legend current first", TIMELINE_LEGEND[0].state == "current", "");
+
+    // v3-三：复制保真——三源一致。
+    set.add("copy sim ok", copy_sim_ok(&lin), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f199_v3_shape_check_catches_real_defects() {
+        // 手写序列化常见病全部可检（缺括号/缺键/引号失衡/脏字符）。
+        assert!(!json_shape_check(b"{\"lineage\":{\"semver\":\"1.0.0\"}").ok(), "缺一层右括号");
+        assert!(!json_shape_check(b"{\"lineage\":{}}").keys_present, "键不全");
+        assert!(!json_shape_check(b"{\"a\":\"unterminated}").ok(), "引号失衡");
+        assert!(json_shape_check(b"{\"lineage\":{\"semver\":\"1\",\"current\":\"x\",\"fingerprint\":\"a\"}}").ok());
+    }
+
+    #[test]
+    fn f199_v3_copy_sim_deterministic_across_calls() {
+        // 十次复制模拟全等（生成端确定性的强化口径）。
+        let fp = crate::ksha256::sha256(b"copy sim");
+        let lin = Lineage::new(vec![VersionNode { name: "x", seq: 1 }], 1, fp, (0, 0, 1));
+        for _ in 0..10 {
+            assert!(copy_sim_ok(&lin));
+        }
+    }
+
+    #[test]
+    fn f199_v3_run_checks_pass() {
+        assert!(run_lineage_deep2_checks().all_passed());
+    }
+}

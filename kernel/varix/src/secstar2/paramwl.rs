@@ -24,6 +24,7 @@
 
 use crate::checks::CheckSet;
 use alloc::vec;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -921,5 +922,207 @@ mod deep_tests {
     #[test]
     fn f192_deep_run_checks_pass() {
         assert!(run_paramwl_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——建议覆盖矩阵 / 三族文档页 /
+// 审计流整行契约。判据源：主册【验收判据】「非法样本 20 个全拒且**建议准确**」
+// 的全样本化 +【交互设计】「合法参数清单在帮助 F119（开发者篇）」的分族
+// 版式 +【数据与存储】「拒绝记录入日志环（F188）」的整行格式。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：SuggestCoverage —— 建议覆盖矩阵（拼错建议的全样本化：对白名单
+// 13 参各生成距离 1/2 的扰动样本，逐一断言建议命中正确目标——「建议准确」
+// 从抽查升级为全量矩阵）
+// ---------------------------------------------------------------------------
+
+/// 距离 1 扰动：删除第 i 个字符。
+fn typo_delete_1(name: &str, i: usize) -> Option<String> {
+    let b = name.as_bytes();
+    if i >= b.len() {
+        return None;
+    }
+    let mut s = String::new();
+    s.push_str(&name[..i]);
+    s.push_str(&name[i + 1..]);
+    Some(s)
+}
+
+/// 距离 2 扰动：删两处（i<j）。
+fn typo_delete_2(name: &str, i: usize, j: usize) -> Option<String> {
+    let b = name.as_bytes();
+    if i >= j || j >= b.len() {
+        return None;
+    }
+    let mut s = String::new();
+    s.push_str(&name[..i]);
+    s.push_str(&name[i + 1..j]);
+    s.push_str(&name[j + 1..]);
+    Some(s)
+}
+
+/// 全覆盖矩阵结果。
+pub struct SuggestCoverage {
+    /// 距离 1 样本数。
+    pub d1_total: usize,
+    /// 距离 1 建议命中目标参数名的数。
+    pub d1_hit: usize,
+    /// 距离 2 样本数与命中。
+    pub d2_total: usize,
+    pub d2_hit: usize,
+}
+
+/// 跑全矩阵（确定性——样本由白名单名生成，可复现可审计）。
+pub fn suggest_coverage_run() -> SuggestCoverage {
+    let mut cov = SuggestCoverage { d1_total: 0, d1_hit: 0, d2_total: 0, d2_hit: 0 };
+    for spec in WHITELIST.iter() {
+        for i in 0..spec.name.len() {
+            if let Some(s) = typo_delete_1(spec.name, i) {
+                cov.d1_total += 1;
+                if suggest(&s) == Some(spec.name) {
+                    cov.d1_hit += 1;
+                }
+            }
+            for j in (i + 1)..spec.name.len() {
+                if let Some(s) = typo_delete_2(spec.name, i, j) {
+                    cov.d2_total += 1;
+                    if suggest(&s) == Some(spec.name) {
+                        cov.d2_hit += 1;
+                    }
+                }
+            }
+        }
+    }
+    cov
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：FamilyDocPage —— 三族文档页数据（F119 开发者篇的页面数据：
+// 三族分组 + 每族参数行 + 每族一句定位说明——文档由白名单表生成不手写）
+// ---------------------------------------------------------------------------
+
+/// 族定位说明（主册【功能定义】的三族语义逐字落位）。
+pub fn family_blurb(f: ParamFamily) -> &'static str {
+    match f {
+        ParamFamily::Debug => "调试族：启动全程观测面（verbose/日志级别/打点）——排障用，平时不开",
+        ParamFamily::Degrade => "降级族：救援路径（no-gui/safe-mode/禁三方驱动）——安全模式的本体入口",
+        ParamFamily::Compat => "兼容族：个案兼容开关（老定时器/停 ACPI 等）——不到万不得已不碰",
+    }
+}
+
+/// 族文档页（名序行 + 说明 + 该族参数数）。
+pub fn family_doc_page(f: ParamFamily) -> (Vec<&'static str>, &'static str, usize) {
+    let mut names: Vec<&'static str> = WHITELIST
+        .iter()
+        .filter(|s| s.family == f)
+        .map(|s| s.name)
+        .collect();
+    names.sort_unstable();
+    let n = names.len();
+    (names, family_blurb(f), n)
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：audit_stream_line —— 拒绝记录入 F188 日志环的整行格式（主册
+// 【数据与存储】「拒绝记录入日志环」——格式契约固定，F188 侧按此解析）
+// ---------------------------------------------------------------------------
+
+/// 审计整行（`paramwl|<token>|<判定种类>|<正文>`——级别由 audit_level 定，
+/// 行由调用方按 LogLevel 入环）。
+pub fn audit_stream_line(token: &str, v: &ParamVerdict, out: &mut String) {
+    out.push_str("paramwl|");
+    out.push_str(token);
+    out.push('|');
+    out.push_str(verdict_kind(v));
+    out.push('|');
+    out.push_str(audit_text(v));
+}
+
+/// 判定种类短名（流解析用——与 audit_level 同域不同轴）。
+pub fn verdict_kind(v: &ParamVerdict) -> &'static str {
+    match v {
+        ParamVerdict::FlagOn(_) => "flag-on",
+        ParamVerdict::FlagOff(_) => "flag-off",
+        ParamVerdict::Int(_, _) => "int",
+        ParamVerdict::IntClamped(_, _) => "int-clamped",
+        ParamVerdict::NoSuchParam(_) => "no-such",
+        ParamVerdict::BadValue(_) => "bad-value",
+        ParamVerdict::Illegal(_) => "illegal",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F192 v3 自检（聚合进 secstar2 域）。
+pub fn run_paramwl_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F192-v3");
+
+    // v3-一：建议覆盖矩阵——距离 1 全命中；距离 2 命中率如实统计。
+    let cov = suggest_coverage_run();
+    set.add("cov d1 full", cov.d1_total > 0 && cov.d1_hit == cov.d1_total, "距离 1 全命中");
+    set.add("cov d2 sampled", cov.d2_total > 0 && cov.d2_hit > 0, "距离 2 有命中");
+    set.add("cov d1 scale", cov.d1_total >= WHITELIST.len(), "每参至少一个距离 1 样本");
+
+    // v3-二：三族文档页——族数 6/3/4、说明非空、名序稳定。
+    let (dbg_names, dbg_blurb, dbg_n) = family_doc_page(ParamFamily::Debug);
+    let (_, deg_blurb, deg_n) = family_doc_page(ParamFamily::Degrade);
+    let (_, com_blurb, com_n) = family_doc_page(ParamFamily::Compat);
+    set.add("doc census", dbg_n == 6 && deg_n == 3 && com_n == 4, "");
+    set.add("doc blurbs", !dbg_blurb.is_empty() && deg_blurb.contains("安全模式") && com_blurb.contains("兼容"), "");
+    set.add("doc sorted", dbg_names.windows(2).all(|w| w[0] <= w[1]), "");
+
+    // v3-三：审计流整行——四段格式、判定短名齐全。
+    let mut w = ParamWhitelist::new();
+    let v_ok = w.check_token("verbose");
+    let v_bad = w.check_token("x;rm");
+    let mut s1 = String::new();
+    audit_stream_line("verbose", &v_ok, &mut s1);
+    set.add("stream ok line", s1.starts_with("paramwl|verbose|flag-on|") && s1.ends_with("旗标生效"), "");
+    let mut s2 = String::new();
+    audit_stream_line("x;rm", &v_bad, &mut s2);
+    set.add("stream bad line", s2.contains("|illegal|") && s2.contains("字符集"), "正文来自 audit_text 契约");
+    set.add("stream kinds", verdict_kind(&ParamVerdict::IntClamped("log-level", 5)) == "int-clamped", "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f192_v3_suggest_matrix_never_suggests_wrong_target() {
+        // 距离 1 全样本：建议若非 None，必须命中「被扰动的那一个」。
+        for spec in WHITELIST.iter() {
+            for i in 0..spec.name.len() {
+                if let Some(s) = typo_delete_1(spec.name, i) {
+                    if let Some(got) = suggest(&s) {
+                        assert_eq!(got, spec.name, "typo {s} of {} suggested wrong target", spec.name);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn f192_v3_stream_line_roundtrip_fields() {
+        // 行格式四段可拆（流解析器的对拍：split('|') 恰 4 段）。
+        let mut w = ParamWhitelist::new();
+        let v = w.check_token("log-level=99");
+        let mut s = String::new();
+        audit_stream_line("log-level=99", &v, &mut s);
+        let parts: Vec<&str> = s.split('|').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "paramwl");
+        assert_eq!(parts[2], "int-clamped");
+    }
+
+    #[test]
+    fn f192_v3_run_checks_pass() {
+        assert!(run_paramwl_deep2_checks().all_passed());
     }
 }

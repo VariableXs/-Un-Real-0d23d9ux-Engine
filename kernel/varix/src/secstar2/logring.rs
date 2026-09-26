@@ -1004,3 +1004,182 @@ mod deep_tests {
         assert!(run_logring_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——级别统计 / 导出命名契约 /
+// 洞标记查询面。判据源：主册【交互设计】「级别过滤」+【设计细节】「导出
+// zip 内三文件+manifest.json；洞标记=灰带+「此段未记录」tooltip」。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：LevelCensus —— 级别五档统计（诊断页顶部的计数条数据——
+// 一眼看这批日志里有多少错误多少警告）
+// ---------------------------------------------------------------------------
+
+/// 五档计数。
+pub struct LevelCensus {
+    pub debug: usize,
+    pub info: usize,
+    pub warn: usize,
+    pub error: usize,
+    pub fatal: usize,
+}
+
+impl LevelCensus {
+    pub fn total(&self) -> usize {
+        self.debug + self.info + self.warn + self.error + self.fatal
+    }
+
+    /// 是否有需要人看的条目（error+fatal>0——红点语义）。
+    pub fn needs_attention(&self) -> bool {
+        self.error + self.fatal > 0
+    }
+}
+
+/// 统计（任意条目序列——合并视图/单环两用）。
+pub fn level_census(items: &[LogEntry]) -> LevelCensus {
+    let mut c = LevelCensus { debug: 0, info: 0, warn: 0, error: 0, fatal: 0 };
+    for e in items {
+        match e.level {
+            LogLevel::Debug => c.debug += 1,
+            LogLevel::Info => c.info += 1,
+            LogLevel::Warn => c.warn += 1,
+            LogLevel::Error => c.error += 1,
+            LogLevel::Fatal => c.fatal += 1,
+        }
+    }
+    c
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：ExportNaming —— 导出包命名契约（主册【设计细节】逐字：zip 内
+// 三文件+manifest.json——名字是契约的一部分，第三方解包按名取件）
+// ---------------------------------------------------------------------------
+
+/// 导出包内固定文件名（F126 开放格式——第三方工具按名解析）。
+pub const EXPORT_FILE_KERNEL: &str = "kernel-ring.log";
+pub const EXPORT_FILE_SYSTEM: &str = "system-rotated.log";
+pub const EXPORT_FILE_APP: &str = "app-sandbox.log";
+pub const EXPORT_FILE_MANIFEST: &str = "manifest.json";
+
+/// 命名契约完整性（四件齐、无重复——打包器与解析器的共同前置）。
+pub fn export_naming_intact() -> bool {
+    let all = [EXPORT_FILE_KERNEL, EXPORT_FILE_SYSTEM, EXPORT_FILE_APP, EXPORT_FILE_MANIFEST];
+    all.iter().all(|n| n.ends_with(".log") || n.ends_with(".json"))
+        && (all[0] != all[1] && all[1] != all[2] && all[2] != all[3] && all[0] != all[2])
+        && all.iter().filter(|n| n.ends_with(".json")).count() == 1
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：HoleTooltip —— 洞标记查询面（主册【设计细节】：洞标记=灰带+
+// 「此段未记录」tooltip——查询面给出灰带的数据与人话）
+// ---------------------------------------------------------------------------
+
+/// 洞标记展示数据。
+pub struct HoleTooltip {
+    /// 灰带起（毫秒）。
+    pub from_ms: u64,
+    /// 灰带止（毫秒）。
+    pub to_ms: u64,
+    /// 人话（tooltip 正文）。
+    pub text: &'static str,
+    /// 时长（毫秒——诚实标注丢了多久）。
+    pub span_ms: u64,
+}
+
+/// 组装（无洞 → None——不造灰带）。
+pub fn hole_tooltip(r: &KernelRing) -> Option<HoleTooltip> {
+    let (from, to) = r.hole_declaration()?;
+    Some(HoleTooltip {
+        from_ms: from,
+        to_ms: to,
+        text: "此段未记录（环满覆盖——时间轴上的洞如实画洞）",
+        span_ms: to.saturating_sub(from),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F188 v3 自检（聚合进 secstar2 域）。
+pub fn run_logring_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F188-v3");
+
+    // v3-一：级别统计——五档各入各账、红点语义。
+    let mk = |at: u64, lvl: LogLevel, t: &[u8]| LogEntry::new(at, lvl, t);
+    let items = vec![
+        mk(1, LogLevel::Info, b"a"),
+        mk(2, LogLevel::Debug, b"b"),
+        mk(3, LogLevel::Warn, b"c"),
+        mk(4, LogLevel::Error, b"d"),
+        mk(5, LogLevel::Info, b"e"),
+        mk(6, LogLevel::Fatal, b"f"),
+    ];
+    let c = level_census(&items);
+    set.add("census counts", c.debug == 1 && c.info == 2 && c.warn == 1 && c.error == 1 && c.fatal == 1, "");
+    set.add("census total", c.total() == 6, "");
+    set.add("census attention", c.needs_attention(), "");
+    let calm = level_census(&[mk(1, LogLevel::Info, b"ok")]);
+    set.add("census calm", !calm.needs_attention(), "");
+
+    // v3-二：命名契约——四件齐、唯一 manifest。
+    set.add("naming intact", export_naming_intact(), "");
+    set.add("naming manifest", EXPORT_FILE_MANIFEST == "manifest.json", "");
+    set.add("naming kernel", EXPORT_FILE_KERNEL.ends_with(".log"), "");
+
+    // v3-三：洞标记——真灌满环触发覆盖留洞（机制对齐，不造假状态）。
+    let mut r = KernelRing::new();
+    set.add("hole none fresh", hole_tooltip(&r).is_none(), "");
+    let mut at = 0u64;
+    loop {
+        at += 10;
+        r.push(LogEntry::new(at, LogLevel::Info, b"overflow-filler-entry-0123456789abcdef"));
+        // 覆盖多条后 from/to 追踪拉开（单条被逐时 span=0 是合法起点）。
+        let spanned = r.hole_declaration().map(|(a, b)| b > a).unwrap_or(false);
+        if spanned || at > 200_000 {
+            break;
+        }
+    }
+    let h = hole_tooltip(&r);
+    set.add("hole tooltip", h.is_some(), "环满覆盖后洞声明可见");
+    if let Some(h) = h {
+        set.add("hole span honest", h.span_ms == h.to_ms - h.from_ms && h.span_ms > 0, "");
+        set.add("hole text", h.text.contains("未记录"), "");
+    }
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f188_v3_census_matches_query_filter() {
+        // 统计与 LogQuery 过滤互证：allow_debug=false 时 debug 被滤掉——
+        // 计数差恰为 debug 数（两套口径一致）。
+        let mk = |at: u64, lvl: LogLevel, t: &[u8]| LogEntry::new(at, lvl, t);
+        let items: Vec<LogEntry> = (0..20u64)
+            .map(|i| {
+                let lvl = match i % 4 {
+                    0 => LogLevel::Debug,
+                    1 => LogLevel::Info,
+                    2 => LogLevel::Warn,
+                    _ => LogLevel::Error,
+                };
+                mk(i, lvl, b"x")
+            })
+            .collect();
+        let c = level_census(&items);
+        let q = LogQuery { min_level: Some(LogLevel::Info), text: None, from_ms: None, to_ms: None };
+        let filtered = q.run(&items);
+        assert_eq!(filtered.len(), c.total() - c.debug, "filter and census agree");
+        assert_eq!(c.debug, 5);
+    }
+
+    #[test]
+    fn f188_v3_run_checks_pass() {
+        assert!(run_logring_deep2_checks().all_passed());
+    }
+}

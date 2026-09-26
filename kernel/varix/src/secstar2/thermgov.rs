@@ -21,6 +21,7 @@
 
 use crate::checks::CheckSet;
 use crate::star::sbase::MinuteBook;
+use alloc::vec;
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -852,5 +853,196 @@ mod deep_tests {
     #[test]
     fn f197_deep_run_checks_pass() {
         assert!(run_thermgov_deep_checks().all_passed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——24h 统计面 / 事件-曲线对齐 /
+// 传感器诊断页。判据源：主册【数据与存储】「温度曲线入账本（F060 分项）+
+// 降档事件审计」的统计与对齐面 +【状态与异常】滤波与重定基线的诊断页。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：DailyStats —— 24h 统计面（峰值/均值/超阈时长——温度页聚合
+// 视图的完整数据，不只是 24 根柱子）
+// ---------------------------------------------------------------------------
+
+/// 日统计。
+pub struct DailyStats {
+    /// 峰值（℃）。
+    pub peak_c: i64,
+    /// 均值（℃，整数近似）。
+    pub avg_c: i64,
+    /// 超过 75℃ 的采样数（降档暴露时长）。
+    pub over_throttle_n: usize,
+    /// 超过 85℃ 的采样数（通知档暴露时长）。
+    pub over_notify_n: usize,
+    /// 样本总数。
+    pub samples: usize,
+}
+
+/// 统计（60s 实时窗数据序列——聚合视图与实时视图同源）。
+pub fn daily_stats(series: &[(u64, i64)]) -> DailyStats {
+    let n = series.len();
+    if n == 0 {
+        return DailyStats { peak_c: 0, avg_c: 0, over_throttle_n: 0, over_notify_n: 0, samples: 0 };
+    }
+    let peak = series.iter().map(|(_, c)| *c).max().unwrap_or(0);
+    let sum: i64 = series.iter().map(|(_, c)| c).sum();
+    DailyStats {
+        peak_c: peak,
+        avg_c: sum / n as i64,
+        over_throttle_n: series.iter().filter(|(_, c)| *c >= THROTTLE_C).count(),
+        over_notify_n: series.iter().filter(|(_, c)| *c >= NOTIFY_C).count(),
+        samples: n,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：EventMarker —— 事件-曲线对齐标注（降档事件在温度曲线上的落点：
+// 事件时刻就近匹配曲线采样——「降档后温度回落曲线归因」的视图数据）
+// ---------------------------------------------------------------------------
+
+/// 一个标注点。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EventMarker {
+    pub at_s: u64,
+    pub to: ThermoLevel,
+    /// 曲线上最近采样点的温度（对齐失败 → None——不造点）。
+    pub matched_temp_c: Option<i64>,
+}
+
+/// 对齐（事件时刻与曲线采样点距离 ≤ 单采样周期取最近——容差=采样纪律）。
+pub fn align_events(events: &[ThermoEvent], curve: &[(u64, i64)]) -> Vec<EventMarker> {
+    events
+        .iter()
+        .map(|ev| {
+            let matched = curve
+                .iter()
+                .filter(|(t, _)| t.abs_diff(ev.at_s) <= SAMPLE_PERIOD_S)
+                .min_by_key(|(t, _)| t.abs_diff(ev.at_s))
+                .map(|(_, c)| *c);
+            EventMarker { at_s: ev.at_s, to: ev.to, matched_temp_c: matched }
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：SensorDiag —— 传感器诊断页数据（读数健康一屏看清：采样/拒绝/
+// 重定基线/失效四账——「滤波丢弃+诊断标注」的汇总面）
+// ---------------------------------------------------------------------------
+
+/// 诊断数据。
+pub struct SensorDiag {
+    pub samples: u64,
+    pub rejected: u64,
+    pub re_baselines: u64,
+    /// 传感器健康态。
+    pub health: SensorHealth,
+    /// 拒绝率（‰——0 样本诚实为 None）。
+    pub reject_permille: Option<u64>,
+}
+
+/// 组装（ThermoGovernor 全账投影）。
+pub fn sensor_diag(t: &ThermoGovernor) -> SensorDiag {
+    let reject_permille = if t.samples > 0 {
+        Some(t.rejected_samples * 1000 / t.samples)
+    } else {
+        None
+    };
+    SensorDiag {
+        samples: t.samples,
+        rejected: t.rejected_samples,
+        re_baselines: t.re_baselines,
+        health: t.health(),
+        reject_permille,
+    }
+}
+
+/// 诊断红线：重定基线 >0 或拒绝率 >200‰ → 需要人看（传感器在说谎）。
+pub fn sensor_diag_needs_attention(d: &SensorDiag) -> bool {
+    d.re_baselines > 0 || d.reject_permille.map(|p| p > 200).unwrap_or(false)
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F197 v3 自检（聚合进 secstar2 域）。
+pub fn run_thermgov_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F197-v3");
+
+    // v3-一：日统计——峰值/均值/超阈计数。
+    let series: Vec<(u64, i64)> = vec![(1, 50), (2, 70), (3, 88), (4, 96), (5, 60)];
+    let ds = daily_stats(&series);
+    set.add("stats peak", ds.peak_c == 96 && ds.samples == 5, "");
+    set.add("stats avg", ds.avg_c == 72, "(50+70+88+96+60)/5=72");
+    set.add("stats over thresh", ds.over_throttle_n == 2 && ds.over_notify_n == 2, "88/96 两点越线");
+    set.add("stats empty honest", daily_stats(&[]).samples == 0, "");
+
+    // v3-二：事件-曲线对齐——就近匹配、容差外不造点。
+    let mut t = ThermoGovernor::new();
+    let mut at = 0u64;
+    let mut evs: Vec<ThermoEvent> = Vec::new();
+    for temp in [60i64, 79, 86, 78] {
+        at += SAMPLE_PERIOD_S;
+        if let Some(ev) = t.sample(temp, at) {
+            evs.push(ev);
+        }
+    }
+    let curve = vec![(2, 60), (4, 79), (6, 86), (8, 78)];
+    let marks = align_events(&evs, &curve);
+    set.add("align count", marks.len() == evs.len() && !marks.is_empty(), "");
+    set.add("align matched", marks.iter().all(|m| m.matched_temp_c.is_some()), "");
+    let orphan_curve = vec![(999, 40)];
+    let marks2 = align_events(&evs, &orphan_curve);
+    set.add("align orphan honest", marks2.iter().all(|m| m.matched_temp_c.is_none()), "容差外不造点");
+
+    // v3-三：传感器诊断——四账投影+红线判定。
+    let d = sensor_diag(&t);
+    set.add("diag counts", d.samples == 4 && d.rejected == 0 && d.re_baselines == 0, "");
+    set.add("diag health readable", d.health == SensorHealth::Readable, "");
+    set.add("diag calm", !sensor_diag_needs_attention(&d), "");
+    let mut t2 = ThermoGovernor::new();
+    let _ = t2.sample(50, 2);
+    for k in 0..3u64 {
+        let _ = t2.sample(-5, 4 + k * 2);
+    }
+    let d2 = sensor_diag(&t2);
+    set.add("diag rebaseline seen", d2.re_baselines >= 1 && sensor_diag_needs_attention(&d2), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f197_v3_stats_track_exposure_duration() {
+        // 持续高温序列：超阈时长线性可数（85℃ 档暴露 = 降频通知的时长依据）。
+        let series: Vec<(u64, i64)> = (0..30u64).map(|i| (i, if i < 20 { 90 } else { 60 })).collect();
+        let ds = daily_stats(&series);
+        assert_eq!(ds.over_notify_n, 20);
+        assert_eq!(ds.over_throttle_n, 20);
+        assert_eq!(ds.avg_c, (90 * 20 + 60 * 10) / 30);
+    }
+
+    #[test]
+    fn f197_v3_diag_reject_rate_computed() {
+        // 拒绝率 ‰ 计算：4 采 3 拒 → 750‰（超 200‰ 红线）。
+        let mut t = ThermoGovernor::new();
+        let _ = t.sample(50, 2);
+        for k in 0..3u64 {
+            let _ = t.sample(-9, 4 + k * 2);
+        }
+        let d = sensor_diag(&t);
+        assert_eq!(d.reject_permille, Some(750));
+        assert!(sensor_diag_needs_attention(&d));
+    }
+
+    #[test]
+    fn f197_v3_run_checks_pass() {
+        assert!(run_thermgov_deep2_checks().all_passed());
     }
 }

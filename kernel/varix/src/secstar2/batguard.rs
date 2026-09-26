@@ -830,3 +830,172 @@ mod deep_tests {
         assert!(run_batguard_deep_checks().all_passed());
     }
 }
+
+// ---------------------------------------------------------------------------
+// v3 批次（回炉补深化第三轮 2026-09-26）——放电斜率预估 / 提示卡渲染 /
+// 账目导出。判据源：主册【交互设计】「15% toast 黄（含预估剩余时长 F060
+// 数据）」的模型面 +【设计细节】「已保护清单逐项打勾」「关机画面复用 C-3
+// 电源链动画」的渲染契约。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// v3-一：DrainEstimator —— 预估剩余时长模型（F060 注入的放电斜率 →
+// 线性外推到关机线——估算的「估算」也带口径说明）
+// ---------------------------------------------------------------------------
+
+/// 预估结果。
+pub struct DrainEstimate {
+    /// 预估剩余分钟。
+    pub est_min: u64,
+    /// 口径标注（恒「估算」——诚实纪律的机检字段）。
+    pub tag: &'static str,
+    /// 依据（放电斜率描述——这个数字怎么来的）。
+    pub basis: &'static str,
+}
+
+/// 外推（最近 10 分钟掉电 permille → 剩余电量 / 速率；零斜率 → 诚实拒绝）。
+pub fn drain_estimate(level_permille: u64, shutdown_at_permille: u64, drop_permille_per_10min: u64) -> Option<DrainEstimate> {
+    if drop_permille_per_10min == 0 {
+        return None; // 没有斜率谈不上预估（刚插电/读数冻结）——零静默。
+    }
+    let remain = level_permille.saturating_sub(shutdown_at_permille);
+    Some(DrainEstimate {
+        est_min: remain * 10 / drop_permille_per_10min,
+        tag: ESTIMATED_TAG,
+        basis: "最近 10 分钟放电斜率线性外推",
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v3-二：CardRender —— 二级提示卡渲染数据（三区一次给齐：倒计时环/取消
+// 钮/保护清单——主册【交互设计】的 5% 全屏柔和提示卡）
+// ---------------------------------------------------------------------------
+
+/// 提示卡渲染数据。
+pub struct CardRender {
+    /// 标题（CRIT_CARD_TITLE）。
+    pub title: &'static str,
+    /// 倒计时环剩余（秒——UI 据此画环）。
+    pub countdown_left_s: u64,
+    /// 取消钮文案（CANCEL_TEXT）。
+    pub cancel_text: &'static str,
+    /// 保护清单（四项+打勾态）。
+    pub protect: Vec<(&'static str, bool)>,
+    /// 卡片语义（琥珀警示——与 F173 panic 族区分）。
+    pub severity: &'static str,
+}
+
+/// 组装（从 BatteryGuard 状态投影——冲刷段打勾态来自 ProtectChecklist）。
+pub fn card_render(g: &BatteryGuard, checklist: &ProtectChecklist) -> Option<CardRender> {
+    let left = match g.phase {
+        Phase::Countdown { left_s } => left_s,
+        _ => return None, // 非倒计时态无此卡——诚实 None。
+    };
+    Some(CardRender {
+        title: CRIT_CARD_TITLE,
+        countdown_left_s: left,
+        cancel_text: CANCEL_TEXT,
+        protect: checklist.items().iter().map(|i| (i.name, i.done)).collect(),
+        severity: "amber",
+    })
+}
+
+// ---------------------------------------------------------------------------
+// v3-三：DiagnosticExport —— 关机账目导出行（B-2902 对拍的批量面：
+// 全部账目行一次性导出，取消/非取消两态全带）
+// ---------------------------------------------------------------------------
+
+/// 导出全部账目行（新→旧——诊断中心「关机记录」区块数据）。
+pub fn diagnostic_export(g: &BatteryGuard) -> Vec<String> {
+    g.recent_ledger()
+        .iter()
+        .map(|e| {
+            let mut s = String::new();
+            ledger_line(e, &mut s);
+            s
+        })
+        .collect()
+}
+
+/// 导出守恒式：行数=账目条数、取消标记与账目逐条一致（渲染零失真）。
+pub fn diagnostic_export_consistent(g: &BatteryGuard) -> bool {
+    let led = g.recent_ledger();
+    let lines = diagnostic_export(g);
+    led.len() == lines.len()
+        && led.iter().zip(lines.iter()).all(|(e, l)| e.cancelled == l.contains("已取消"))
+}
+
+// ---------------------------------------------------------------------------
+// v3 自检
+// ---------------------------------------------------------------------------
+
+/// F196 v3 自检（聚合进 secstar2 域）。
+pub fn run_batguard_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F196-v3");
+
+    // v3-一：放电预估——正常外推/零斜率诚实拒绝/口径标注。
+    let d = drain_estimate(300, 50, 25).unwrap();
+    set.add("drain est", d.est_min == 100 && d.tag == ESTIMATED_TAG, "25‰/10min → 250‰ 余量=100 分钟");
+    set.add("drain basis", d.basis.contains("斜率"), "");
+    set.add("drain zero slope honest", drain_estimate(300, 50, 0).is_none(), "");
+    set.add("drain below line", drain_estimate(40, 50, 25).map(|x| x.est_min == 0).unwrap_or(false), "低于关机线=0 分钟");
+
+    // v3-二：提示卡渲染——倒计时/取消钮/清单三区；非倒计时态诚实 None。
+    let mut g = BatteryGuard::new();
+    set.add("card none normal", card_render(&g, &ProtectChecklist::new()).is_none(), "");
+    let _ = g.report_level(30);
+    let cl = ProtectChecklist::new();
+    let card = card_render(&g, &cl).unwrap();
+    set.add("card title", card.title == CRIT_CARD_TITLE, "");
+    set.add("card countdown", card.countdown_left_s == COUNTDOWN_S, "");
+    set.add("card cancel", card.cancel_text == CANCEL_TEXT, "");
+    set.add("card protect", card.protect.len() == 4 && card.protect.iter().all(|(_, d)| !d), "");
+    set.add("card severity", card.severity == "amber", "");
+
+    // v3-三：账目导出——行数守恒、取消标记一致。
+    let mut g2 = BatteryGuard::new();
+    let _ = g2.report_level(40);
+    for i in 0..COUNTDOWN_S {
+        let _ = g2.tick(i);
+    }
+    let _ = g2.cancel_by_ac(61);
+    let _ = g2.report_level(35);
+    for i in 0..COUNTDOWN_S {
+        let _ = g2.tick(100 + i);
+    }
+    let _ = g2.finish_flush(200);
+    set.add("diag export consistent", diagnostic_export_consistent(&g2), "");
+    set.add("diag export rows", diagnostic_export(&g2).len() == g2.recent_ledger().len() && g2.recent_ledger().len() >= 2, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn f196_v3_drain_estimate_scales_with_slope() {
+        // 斜率减半 → 预估翻倍（线性外推的性质机检）。
+        let fast = drain_estimate(300, 50, 50).unwrap();
+        let slow = drain_estimate(300, 50, 25).unwrap();
+        assert_eq!(slow.est_min, fast.est_min * 2);
+    }
+
+    #[test]
+    fn f196_v3_card_tracks_checklist_progress() {
+        // 打勾推进 → 卡片清单勾态同步（渲染层零自持状态）。
+        let mut g = BatteryGuard::new();
+        let _ = g.report_level(30);
+        let mut cl = ProtectChecklist::new();
+        let _ = cl.tick_item();
+        let _ = cl.tick_item();
+        let card = card_render(&g, &cl).unwrap();
+        assert_eq!(card.protect.iter().filter(|(_, d)| *d).count(), 2);
+    }
+
+    #[test]
+    fn f196_v3_run_checks_pass() {
+        assert!(run_batguard_deep2_checks().all_passed());
+    }
+}
