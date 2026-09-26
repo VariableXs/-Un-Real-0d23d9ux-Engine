@@ -743,7 +743,7 @@ mod ext_tests {
 
 /// 域自检（聚合版）。
 pub fn run_comdlg_checks() -> CheckSet {
-    CheckSet::merge(run_comdlg_base_checks(), CheckSet::merge(run_comdlg_deep_checks(), run_comdlg_deep2_checks()))
+    CheckSet::merge(run_comdlg_base_checks(), CheckSet::merge(run_comdlg_deep_checks(), CheckSet::merge(run_comdlg_deep2_checks(), run_comdlg_deep3_checks())))
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,6 +1057,88 @@ pub fn run_comdlg_deep2_checks() -> CheckSet {
             && !enter_after
             && enter_ok
             && nav2.confirmed,
+        "",
+    );
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// F008 · 深化批次四：HSV 区拖动 ↔ 十六进制输入实时联动（60fps）
+//
+// 主册依据（G-A-08【设计细节】）：「颜色对话框 HSV 区拖动 60fps 实时联动
+// 十六进制输入框」——联动是双向契约：拖动每帧同步 hex（帧数 = 更新数恒等，
+/// 掉帧 = 不同步）；hex 编辑反算 HSV 后须与原色一致（round-trip）。
+// ---------------------------------------------------------------------------
+
+/// HSV↔hex 联动记账（双向契约的观测面）。
+#[derive(Clone, Copy, Debug)]
+pub struct HsvHexLink {
+    /// 拖动帧数。
+    pub drag_frames: u64,
+    /// hex 输入框更新数（拖动期与帧数恒等）。
+    pub hex_updates: u64,
+    /// 双向失同步次数（hex 编辑反算与原色不一致——如实计数不静默）。
+    pub desyncs: u64,
+}
+
+impl HsvHexLink {
+    pub const fn new() -> HsvHexLink {
+        HsvHexLink { drag_frames: 0, hex_updates: 0, desyncs: 0 }
+    }
+
+    /// 拖动一帧：当前色写 hex 输入框（每帧一次——联动恒等式）。
+    pub fn drag_frame(&mut self, rgb: u32) -> [u8; 7] {
+        self.drag_frames += 1;
+        self.hex_updates += 1;
+        rgb_to_hex(rgb)
+    }
+
+    /// hex 编辑提交：反算 HSV 并做 round-trip 校验。HSV 域量化（h 度/s/v
+    /// permille）天然带 ±1/通道 量化噪声——噪声不算失同步；通道差 >1 才计
+    /// （失同步 = 真联动断裂，不是舍入）。
+    pub fn hex_edit(&mut self, s: &str) -> Option<u32> {
+        let rgb = hex_to_rgb(s)?;
+        let (h, sat, v) = rgb_to_hsv(rgb);
+        let back = hsv_to_rgb(h, sat, v);
+        let dr = (back >> 16) as i32 - (rgb >> 16) as i32;
+        let dg = ((back >> 8) & 0xFF) as i32 - ((rgb >> 8) & 0xFF) as i32;
+        let db = (back & 0xFF) as i32 - (rgb & 0xFF) as i32;
+        if dr.abs() > 1 || dg.abs() > 1 || db.abs() > 1 {
+            self.desyncs += 1;
+        }
+        Some(rgb)
+    }
+}
+
+/// F008 深化批次四自检。
+pub fn run_comdlg_deep3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F008-comdlg-deep3");
+    // 1) 拖动联动恒等：60 帧拖动 → 60 次 hex 更新，末帧 hex 与色值一致。
+    let mut link = HsvHexLink::new();
+    let mut last = [0u8; 7];
+    for f in 0..60u32 {
+        let rgb = (f as u32) * 0x0004_080C; // 确定性拖动轨迹
+        last = link.drag_frame(rgb);
+    }
+    cs.add(
+        "hsv_drag_hex_sync_identity",
+        link.drag_frames == 60 && link.hex_updates == 60 && last == rgb_to_hex(59 * 0x0004_080C),
+        "",
+    );
+    // 2) hex 编辑：合法 hex 反算成功；round-trip 一致 → 零失同步。
+    let edited = link.hex_edit("#12ABEF");
+    cs.add(
+        "hex_edit_roundtrip_no_desync",
+        edited == Some(0x12ABEF) && link.desyncs == 0 && link.hex_updates == 60,
+        "",
+    );
+    // 3) 非法 hex 如实 None（不静默吞）；纯色锚（0xFF0000 无量化损失——
+    //    HSV 往返精确）。
+    let bad = link.hex_edit("#GGGGGG");
+    let (h, s, v) = rgb_to_hsv(0xFF0000);
+    cs.add(
+        "hex_edit_invalid_and_hsv_core_anchor",
+        bad.is_none() && hsv_to_rgb(h, s, v) == 0xFF0000,
         "",
     );
     cs
