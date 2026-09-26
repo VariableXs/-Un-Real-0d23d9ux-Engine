@@ -1350,6 +1350,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::perfstar::iotier::run_iotier_checks,
 
     // ------------------------------------------------------------------
+    // B 性能域深化·后段 + 壳层五件（AI-K2 · F058~F075 · 主册 B-3 报告
+    // G-B-18~G-B-30 与 C-1 报告 G-C-01~G-C-05）。域聚合单行注册（同 S2/C2
+    // 容量纪律——单行永不超容；域内十八项逐模块红绿在
+    // perfstar2::run_perfstar2_checks 的子行展开）。
+    // ------------------------------------------------------------------
+        crate::perfstar2::run_perfstar2_checks,
+
+    // ------------------------------------------------------------------
     // H 基础通用域·三分队（AI-H3 · F301~F350）。域聚合单行注册（同
     // S2 容量纪律；域内 hbase + 五十项逐模块红绿在
     // h3star::run_h3star_checks 的子行展开）。
@@ -1384,6 +1392,13 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::compatstar::dragdrop::run_dragdrop_checks,
         crate::compatstar::comloc::run_comloc_checks,
         crate::compatstar::excface::run_excface_checks,
+
+    // ------------------------------------------------------------------
+    // G 安全加固域·前段（AI-S1 · F171~F185 · 主册 G-G-01~G-G-15）。
+    // 域聚合单行注册（同 S2 容量纪律——单行永不超容；域内十五项逐模块
+    // 红绿在 secstar::run_secstar_checks 的子行展开）。
+    // ------------------------------------------------------------------
+        crate::secstar::run_secstar_checks,
 
     // ------------------------------------------------------------------
     // G 安全加固域·后段（AI-S2 · F186~F200 · 主册 G-G-16~G-G-30）。
@@ -1495,6 +1510,12 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 红绿在 istar::run_istar_checks 的子行展开。
     // ------------------------------------------------------------------
     checkup.register(crate::istar::run_istar_checks());
+    // ------------------------------------------------------------------
+    // H 基础通用域·一分队（AI-H1 · F201~F250 · 主册第 6 部分 H-1）
+    // ——单聚合注册（同 U2/J2/I4 容量纪律：不占 domains 定长数组名额）；
+    // 域内 50 项逐项红绿在 h1star::run_h1_checks 的子行展开。
+    // ------------------------------------------------------------------
+    checkup.register(crate::h1star::run_h1_checks());
     checkup
 }
 

@@ -35,6 +35,13 @@ pub mod audio;
 /// CPU 频率/空转清零/中断合并/大页/堆碎片/启动并行/图像 SIMD/字形缓存/
 /// 脏区深化/IO 分级，十七项判据实装层。
 pub mod perfstar;
+/// 性能域深化·后段 + 壳层五件（Varix STAR I start · B 域 F058~F070 与
+/// 壳层 F071~F075 · AI-K2 分工包）：内存压缩前瞻/网络小包优化/电量账本/
+/// 基准回归门/性能自检报告/触控板手势前瞻/音频低延迟链/唤醒源治理/
+/// 文件系统日志策略/启动 IO 冷热分离/渲染资产按需装载/性能模式三档/
+/// 性能域总判据/开始菜单搜索直达/最近使用引擎/任务栏预览缩略图/跳转清单/
+/// 托盘系统，十八项判据实装层。
+pub mod perfstar2;
 /// I 通用域·三分队（Varix STAR I start · I 域 F501~F550 · AI-U3 分工包）：
 /// 桌面图标可读性/两行封顶/网格密度/PIN 快速解锁/蓝牙动态锁/访客模式/
 /// 锁屏与应用防截/文件粉碎/单文件加密/剪贴板清空/截图历史/Ctrl 定位指针/
@@ -59,9 +66,7 @@ pub mod compatstar;
 /// 日期选择器/文件对话框/颜色选择器/虚拟桌面/窗口排列/位置记忆/锁屏/亮度/
 /// 音量 OSD/音频路由/网络状态/隐藏文件/快捷键注册表/减少动效/字号无障碍/
 /// 文本截断/窗口置顶/热角/指针精度，五十项判据实装层。
-// [AI-U2 临时屏蔽已解除：h1base.rs 已落位，AI-H1 批次在途逐模块补齐]
-// [AI-U4 临时屏蔽：h1star 模块文件未随注册行提交（AI-H1 批次在途）——H1 落位后恢复本行]
-// pub mod h1star;
+pub mod h1star;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -610,7 +615,6 @@ pub mod star;
 /// 文件历史版本/通知分组/降级链/高负载保响应/指针直通/复制地址/命令行互通/
 /// 多选操作条/空格即看/预览统一/静音四档/磁盘检查/内存出路/卸载三步/默认
 /// 应用/自启动/焦点模式/触感谱，五十项判据实装层。
-// [AI-H3 落位收尾 2026-09-26：AI-U4 临时屏蔽解除——h3star 模块文件经合并伤修复重新入册]
 pub mod h3star;
 // Varix STAR I · 泳道四 I 通用域·四分队（AI-U4 · F551-F600）：五十项功能 + ibase 共享底盘。
 pub mod istar;
@@ -624,6 +628,8 @@ pub mod stareco;
 pub mod stard;
 // Varix STAR I · 泳道一 G 安全加固域·后段（AI-S2 · F186-F200）：十五项功能。
 pub mod secstar2;
+// Varix STAR I · 泳道一 G 安全加固域·前段（AI-S1 · F171-F185）：十五项功能。
+pub mod secstar;
 // Varix STAR I · 泳道四 D 服务守护域·前段（AI-V1 · F111-F130）：二十项功能 + 共享底盘。
 pub mod svstar;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
@@ -631,8 +637,7 @@ pub mod svstar;
 // secstar → secstar2 先例顺延，两包互不重叠。
 pub mod compatstar2;
 // Varix STAR I · 泳道三 C 域前段（AI-D1 · F076-F092）：桌面体验十七项 + 共享底盘。
-// [AI-U2 临时屏蔽·自验用·完工即恢复] deskstar 两处测试实参编译错（AI-D1 在途）
-// pub mod deskstar;
+pub mod deskstar;
 // Varix STAR I · 泳道四 I 通用域·一分队（AI-U1 · F401-F450）：批次一八项
 // （F401/F403/F404/F405/F407/F408/F416/F424）+ 共享底盘，批次二/三续建。
 pub mod uni1;
