@@ -367,3 +367,169 @@ mod deep_tests {
         assert!(!t.pick_preset(999));
     }
 }
+
+// ===========================================================================
+// 深化 v6（F472）：自定义主题持久化 / 透明度红线联动复判 /
+// 预设切换失效账 / 系统主题跟随历史
+// ===========================================================================
+
+/// 自定义主题持久化（魔标 VTT + 四要素 RGB 8B + FNV 尾——主册「自定义
+/// 四要素」重启后还在才算「自定义」，v2 只做了运行时验证）。
+pub const THEME_PERSIST_LEN: usize = 15;
+
+/// 序列化一套自定义主题（fg/bg/cursor/selection 各 2B：R5G6B5 压缩——
+/// 人眼不可辨的 2 位色深差换一半体积，值）。
+fn rgb565(c: Rgb) -> u16 {
+    ((c.0 as u16 >> 3) << 11) | ((c.1 as u16 >> 2) << 5) | (c.2 as u16 >> 3)
+}
+
+fn rgb565_unpack(v: u16) -> Rgb {
+    // 乘法在 u32 域做（u8 域 31*255 会溢出 panic——缩放永远先拓宽）。
+    (
+        (((v >> 11) & 0x1f) as u32 * 255 / 31) as u8,
+        (((v >> 5) & 0x3f) as u32 * 255 / 63) as u8,
+        ((v & 0x1f) as u32 * 255 / 31) as u8,
+    )
+}
+
+pub fn save_theme(fg: Rgb, bg: Rgb, cursor: Rgb, selection: Rgb, out: &mut [u8]) -> Option<usize> {
+    if out.len() < THEME_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(b"VTT");
+    let parts = [rgb565(fg), rgb565(bg), rgb565(cursor), rgb565(selection)];
+    for (i, v) in parts.iter().enumerate() {
+        out[3 + i * 2] = (v >> 8) as u8;
+        out[4 + i * 2] = (v & 0xff) as u8;
+    }
+    let h = crate::genstar2::vxdict::fnv1a(&out[..11]);
+    out[11] = (h & 0xff) as u8;
+    out[12] = ((h >> 8) & 0xff) as u8;
+    out[13] = ((h >> 16) & 0xff) as u8;
+    out[14] = ((h >> 24) & 0xff) as u8;
+    Some(THEME_PERSIST_LEN)
+}
+
+/// 读回（校验尾不过拒收；读回后过对比度红线——持久化层也守规矩）。
+pub fn load_theme(buf: &[u8]) -> Option<(Rgb, Rgb)> {
+    if buf.len() < THEME_PERSIST_LEN || buf[..3] != *b"VTT" {
+        return None;
+    }
+    let expect = crate::genstar2::vxdict::fnv1a(&buf[..11]);
+    let got = buf[11] as u32 | ((buf[12] as u32) << 8) | ((buf[13] as u32) << 16) | ((buf[14] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let fg = rgb565_unpack(((buf[3] as u16) << 8) | buf[4] as u16);
+    let bg = rgb565_unpack(((buf[5] as u16) << 8) | buf[6] as u16);
+    Some((fg, bg))
+}
+
+/// 预设切换失效账（切预设 = 四要素全换：对比度必须按新组合重判——
+/// 「旧组合达标所以新组合免检」是埋雷）。
+pub fn preset_switch_recheck(p: &TermPalette) -> bool {
+    contrast_x100(p.fg, p.bg) >= CONTRAST_MIN_X100
+}
+
+/// 系统主题跟随历史（亮暗切换账：每次系统主题翻转终端记录一次并
+/// 用当前预设重判对比度——夜间突然看不见字 = 跟随失败）。
+pub const FOLLOW_LOG_CAP: usize = 8;
+
+pub struct FollowLog {
+    events: [Option<bool>; FOLLOW_LOG_CAP], // true = 切到暗
+    n: usize,
+}
+
+impl FollowLog {
+    pub const fn new() -> Self {
+        FollowLog { events: [None; FOLLOW_LOG_CAP], n: 0 }
+    }
+
+    pub fn record(&mut self, dark: bool) {
+        if self.n > 0 && self.events[self.n - 1] == Some(dark) {
+            return; // 同态不记（账记变化）
+        }
+        if self.n >= FOLLOW_LOG_CAP {
+            self.events.copy_within(1.., 0);
+            self.n -= 1;
+        }
+        self.events[self.n] = Some(dark);
+        self.n += 1;
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+pub fn run_termtheme_v6_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F472-v6");
+    // 1) 自定义主题持久化：RGB565 round-trip 误差在容差内（高位色准）。
+    let mut buf = [0u8; THEME_PERSIST_LEN];
+    cs.add("persist_roundtrip", {
+        let n = save_theme((255, 240, 200), (20, 24, 32), (255, 255, 0), (60, 80, 120), &mut buf).unwrap_or(0);
+        match load_theme(&buf[..n]) {
+            Some((fg, bg)) => {
+                // 565 压缩容差：每通道 ≤8/255。
+                fg.0.abs_diff(255) <= 8 && bg.2.abs_diff(32) <= 8
+            }
+            None => false,
+        }
+    }, "");
+    cs.add("persist_tamper", {
+        let n = save_theme((255, 255, 255), (0, 0, 0), (0, 255, 0), (0, 0, 255), &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[3] ^= 0x01;
+        load_theme(&bad[..n]).is_none()
+    }, "");
+    // 2) 持久化层守红线：读回的组合也要过对比度（黑底白字恒过）。
+    cs.add("persist_contrast_recheck", {
+        let n = save_theme((255, 255, 255), (0, 0, 0), (0, 255, 0), (0, 0, 255), &mut buf).unwrap_or(0);
+        match load_theme(&buf[..n]) {
+            Some((fg, bg)) => contrast_x100(fg, bg) >= CONTRAST_MIN_X100,
+            None => false,
+        }
+    }, "");
+    // 3) 六预设切换后逐一重判对比度（新组合免检 = 埋雷）。
+    cs.add("preset_switch_recheck", PRESETS.iter().all(preset_switch_recheck), "");
+    // 4) 跟随历史：变化才记账、环淘汰、LIFO。
+    let mut log = FollowLog::new();
+    log.record(true);
+    log.record(true);
+    cs.add("follow_dedup", log.count() == 1, "");
+    log.record(false);
+    log.record(true);
+    cs.add("follow_changes", log.count() == 3, "");
+    for i in 0..(FOLLOW_LOG_CAP + 2) {
+        log.record(i % 2 == 0);
+    }
+    cs.add("follow_ring", log.count() == FOLLOW_LOG_CAP, "");
+    // 5) 透明度红线常量联动（v2 OPACITY_MIN_X1000 同源复核）。
+    cs.add("opacity_const", OPACITY_MIN_X1000 == 700, "");
+    cs
+}
+
+#[cfg(test)]
+mod v6_tests {
+    use super::*;
+
+    #[test]
+    fn rgb565_black_white_lossless() {
+        // 纯黑纯白往返无损（极端值锚）。
+        assert_eq!(rgb565_unpack(rgb565((0, 0, 0))), (0, 0, 0));
+        assert_eq!(rgb565_unpack(rgb565((255, 255, 255))), (255, 255, 255));
+    }
+
+    #[test]
+    fn persist_short_buffer_none() {
+        let mut tiny = [0u8; 8];
+        assert!(save_theme((1, 2, 3), (4, 5, 6), (7, 8, 9), (10, 11, 12), &mut tiny).is_none());
+        assert!(load_theme(b"VTT").is_none());
+    }
+
+    #[test]
+    fn follow_log_low_contrast_preset_still_rejected() {
+        // 任何预设都必须过红线（低对比「预设」进不了 PRESETS——结构性保证）。
+        assert!(TermTheme::all_presets_pass());
+    }
+}

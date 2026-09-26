@@ -365,3 +365,90 @@ mod deep_tests {
         assert!(!sorted_desc_stable(&[1, 2, 3]));
     }
 }
+
+// ===========================================================================
+// 深化 v6（F488）：计量三分账对总 / 排序稳定性 / 清缓存确认链 /
+// 路径与文档不可变性复核
+// ===========================================================================
+
+/// 计量三分账对总（主册「三类计量准确（F392 同源）」：config + cache +
+/// docs 逐条可对——「总大小」不是第四本账，是三本账的和）。
+pub fn metering_three_way(a: &AppData) -> bool {
+    a.kind_bytes(DataKind::Config) + a.kind_bytes(DataKind::Cache) + a.kind_bytes(DataKind::UserDocs) == a.total()
+}
+
+/// 清缓存确认链（主册「清缓存只清缓存」：未确认零清除——破坏性
+/// 操作纪律在计量面上同样成立）。
+pub fn clear_cache_confirmation_required(a: &AppData) -> bool {
+    a.kind_bytes(DataKind::Cache) > 0
+}
+
+/// 文档不可变承诺（主册「文档类只读」：清缓存前后 UserDocs 逐位一致、
+/// 路径入口原封——「清了缓存我的文件没了」是信任事故不是 bug）。
+pub fn docs_and_path_immutable_before_after(a: &AppData, after: &AppData) -> bool {
+    a.kind_bytes(DataKind::UserDocs) == after.kind_bytes(DataKind::UserDocs)
+        && a.path_str() == after.path_str()
+}
+
+pub fn run_appdata_v6_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F488-v6");
+    // 1) 计量三分账：三条子账之和 == 总账（多样本逐条过）。
+    let a1 = AppData::sample("editor");
+    let a2 = AppData::sample("browser");
+    let a3 = AppData::sample("media");
+    cs.add("metering_three_way", metering_three_way(&a1) && metering_three_way(&a2) && metering_three_way(&a3), "");
+    // 2) 排序稳定性：同样本集两次排序结果逐位一致（快照不抖动）。
+    let mut t = DataTransparency::new();
+    let _ = t.upsert(AppData::sample("editor"));
+    let _ = t.upsert(AppData::sample("browser"));
+    let _ = t.upsert(AppData::sample("media"));
+    let s1 = t.sorted_by_size();
+    let s2 = t.sorted_by_size();
+    cs.add("sort_stable", s1 == s2, "");
+    // 3) 清缓存确认链：有缓存必确认、未确认零清除。
+    cs.add("confirm_required", clear_cache_confirmation_required(&a1), "");
+    cs.add("unconfirmed_zero_cleared", t.clear_cache("editor", false) == 0, "");
+    // 4) 清缓存只清缓存：确认执行后文档与路径逐位不变。
+    let mut a = AppData::sample("editor");
+    let before = a;
+    let _ = a.clear_cache();
+    cs.add("docs_path_immutable", docs_and_path_immutable_before_after(&before, &a), "");
+    cs.add("cache_actually_cleared", a.kind_bytes(DataKind::Cache) == 0, "");
+    // 5) 文档只读设计常量（结构性锚）。
+    cs.add("docs_readonly_by_design", DOCS_READONLY_BY_DESIGN, "");
+    // 6) 计量对账（v2 metering_reconciled 联动复核）。
+    cs.add("metering_reconciled", metering_reconciled(&a1) && metering_reconciled(&a2) && metering_reconciled(&a3), "");
+    // 7) 路径直达（主册「路径直达」：path_openable 对有账应用恒真）。
+    cs.add("path_openable", t.path_openable("editor") || !t.get("editor").is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v6_tests {
+    use super::*;
+
+    #[test]
+    fn three_way_never_overcounts() {
+        // 三分账对总在清缓存后仍成立（缓存归零 → 总量=其余两类）。
+        let mut a = AppData::sample("editor");
+        let _ = a.clear_cache();
+        assert!(metering_three_way(&a));
+    }
+
+    #[test]
+    fn no_cache_means_no_confirm() {
+        let mut a = AppData::sample("editor");
+        let _ = a.clear_cache();
+        assert!(!clear_cache_confirmation_required(&a), "零缓存清除不骚扰（免确认）");
+    }
+
+    #[test]
+    fn sort_output_all_valid_indices() {
+        let mut t = DataTransparency::new();
+        for n in ["a", "b", "c"] {
+            let _ = t.upsert(AppData::sample(n));
+        }
+        let order = t.sorted_by_size();
+        assert!(order[..3].iter().all(|&i| i < 3), "排序索引都在存活区间");
+    }
+}

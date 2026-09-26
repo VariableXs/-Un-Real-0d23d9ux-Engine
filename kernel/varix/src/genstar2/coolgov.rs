@@ -350,3 +350,144 @@ mod deep_tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v6（F493）：策略持久化（FNV 校验尾）/ 手动覆盖窗口 /
+// 风扇曲线审计 / 生效偏离账
+// ===========================================================================
+
+/// 策略持久化（魔标 VCG + policy 1B + FNV 尾——v1 只验证枚举 as u8
+/// 往返，没有魔标与校验：坏文件读回垃圾策略静默改散热）。
+pub const COOLGOV_PERSIST_LEN: usize = 8;
+
+pub fn save_policy_v6(p: CoolingPolicy, out: &mut [u8]) -> Option<usize> {
+    if out.len() < COOLGOV_PERSIST_LEN {
+        return None;
+    }
+    out[..3].copy_from_slice(b"VCG");
+    out[3] = match p {
+        CoolingPolicy::Passive => 0,
+        CoolingPolicy::Active => 1,
+        CoolingPolicy::Auto => 2,
+    };
+    let h = crate::genstar2::vxdict::fnv1a(&out[..4]);
+    out[4] = (h & 0xff) as u8;
+    out[5] = ((h >> 8) & 0xff) as u8;
+    out[6] = ((h >> 16) & 0xff) as u8;
+    out[7] = ((h >> 24) & 0xff) as u8;
+    Some(COOLGOV_PERSIST_LEN)
+}
+
+pub fn load_policy_v6(buf: &[u8]) -> Option<CoolingPolicy> {
+    if buf.len() < COOLGOV_PERSIST_LEN || buf[..3] != *b"VCG" {
+        return None;
+    }
+    let expect = crate::genstar2::vxdict::fnv1a(&buf[..4]);
+    let got = buf[4] as u32 | ((buf[5] as u32) << 8) | ((buf[6] as u32) << 16) | ((buf[7] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    match buf[3] {
+        0 => Some(CoolingPolicy::Passive),
+        1 => Some(CoolingPolicy::Active),
+        2 => Some(CoolingPolicy::Auto),
+        _ => None, // 坏枚举拒收（不猜不钳）
+    }
+}
+
+/// 手动覆盖窗口（用户手动选 Active/Passive 后 N 分钟内 Auto 不接管——
+/// 「我就是要它此刻安静/凉快」被尊重；窗口过后 Auto 按温度重裁决）。
+pub const MANUAL_WINDOW_MS: u64 = 30 * 60 * 1_000;
+
+pub struct ManualOverride {
+    pub until_ms: u64,
+}
+
+impl ManualOverride {
+    /// 手动选择生效中（窗口未过 → Auto 不接管）。
+    pub fn active(&self, now_ms: u64) -> bool {
+        now_ms < self.until_ms
+    }
+
+    /// 窗口过后是否交还 Auto。
+    pub fn expired(&self, now_ms: u64) -> bool {
+        !self.active(now_ms)
+    }
+}
+
+/// 风扇曲线审计（占空比单调不减 + 上限 1000‰ + 全温度域覆盖——
+/// 曲线是散热承诺，出一片盲区就是「90°C 没风」事故）。
+pub fn fan_curve_audit() -> bool {
+    let mut prev = 0u16;
+    let mut covered_to = 0u8;
+    for &(t, d) in FAN_CURVE.iter() {
+        if d < prev || d > 1_000 {
+            return false;
+        }
+        prev = d;
+        covered_to = t;
+    }
+    covered_to >= 90 // 最高锚 ≥ 90°C（AUTO_TRIGGER_C 之上仍有档）
+}
+
+/// 生效偏离账（手动策略与 Auto 当前裁决不同 → 记偏离——「用户钉在
+/// 被动但机身 85°C」是值得回访的决策，不是错误；账面可导出）。
+pub fn effective_divergence(manual: CoolingPolicy, temp_c: u8) -> bool {
+    let auto_now = CoolingGov::auto_decide(temp_c);
+    manual != auto_now // 偏离 = true（记账条件，非错误判定）
+}
+
+pub fn run_coolgov_v6_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F493-v6");
+    // 1) 策略持久化：三枚举 round-trip + 篡改拒收 + 坏枚举拒收。
+    let mut buf = [0u8; COOLGOV_PERSIST_LEN];
+    cs.add("persist_all", [CoolingPolicy::Passive, CoolingPolicy::Active, CoolingPolicy::Auto].iter().all(|&p| {
+        let n = save_policy_v6(p, &mut buf).unwrap_or(0);
+        load_policy_v6(&buf[..n]) == Some(p)
+    }), "");
+    cs.add("persist_tamper", {
+        let n = save_policy_v6(CoolingPolicy::Auto, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[3] ^= 0x01;
+        load_policy_v6(&bad[..n]).is_none()
+    }, "");
+    cs.add("persist_bad_enum", load_policy_v6(&[b'V', b'C', b'G', 9, 0, 0, 0, 0]).is_none(), "");
+    // 2) 手动覆盖窗口：窗口内 Auto 不接管、窗口过交还。
+    let ov = ManualOverride { until_ms: 1_000_000 };
+    cs.add("override_active", ov.active(999_999) && !ov.expired(999_999), "");
+    cs.add("override_expired", ov.expired(1_000_000) && !ov.active(1_000_000), "");
+    // 3) 风扇曲线审计：单调 + 上限 + 覆盖盲区为零。
+    cs.add("fan_curve_audit", fan_curve_audit(), "");
+    // 4) 生效偏离账：钉被动 + 85°C = 偏离在账；钉主动 + 85°C = 不偏。
+    cs.add("divergence_detected", effective_divergence(CoolingPolicy::Passive, 85), "");
+    cs.add("divergence_aligned", !effective_divergence(CoolingPolicy::Active, 85), "");
+    // 5) 回滞带语义复核（72 < t < 80 保持主动——保守侧）。
+    cs.add("hysteresis_band_conservative", CoolingGov::auto_decide(76) == CoolingPolicy::Active, "");
+    cs
+}
+
+#[cfg(test)]
+mod v6_tests {
+    use super::*;
+
+    #[test]
+    fn persist_short_buffer_none() {
+        let mut tiny = [0u8; 4];
+        assert!(save_policy_v6(CoolingPolicy::Auto, &mut tiny).is_none());
+        assert!(load_policy_v6(&[b'V', b'C', b'G']).is_none());
+    }
+
+    #[test]
+    fn fan_duty_at_trigger_is_high() {
+        // 触发线 80°C 的占空比 ≥ 800‰（触发即有力，不是象征性转）。
+        assert!(fan_duty(80, CoolingPolicy::Active) >= 800);
+        // 被动曲线整体下移（安静优先如实）。
+        assert!(fan_duty(80, CoolingPolicy::Passive) < fan_duty(80, CoolingPolicy::Active));
+    }
+
+    #[test]
+    fn manual_window_never_negative() {
+        let ov = ManualOverride { until_ms: 100 };
+        assert!(ov.expired(100), "恰好窗口边界 = 已过期（不赖账）");
+    }
+}
