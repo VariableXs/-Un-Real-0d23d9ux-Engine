@@ -1771,6 +1771,7 @@ function ExplorerShell(props?: { embedded?: boolean; initialPath?: string }): Re
               <div
                 ref={listRef}
                 className={`ex-list view-${view}`}
+                data-autoscroll=""
                 tabIndex={0}
                 onContextMenu={(e) => {
                   if ((e.target as HTMLElement).closest(".ex-row, .ex-tile") === null) openBlankMenu(e);

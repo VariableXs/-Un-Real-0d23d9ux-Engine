@@ -17,7 +17,7 @@ import { WHEEL_MODES, notchLines, PASSTHROUGH_TYPE_SEMANTICS, type WheelNotchCon
 import { SEAM_GUARD_PRESET, cornerExempt } from "../mouse/screen";
 import { MAGNET_RADII } from "../mouse/magnet";
 import { autoscrollVelocity, AUTOSCROLL_PRESET, DRAG_BAND_PX, edgeScrollSpeed } from "../mouse/autoscroll";
-import { HOVER_DELAY_STEPS, LONG_PRESS_SCALES, LONG_PRESS_LABELS, longPressMs, longPressDefaultAudit } from "../mouse/hoverTiming";
+import { HOVER_DELAY_STEPS, TOOLTIP_DELAY_STEPS, LONG_PRESS_SCALES, LONG_PRESS_LABELS, longPressMs, longPressDefaultAudit } from "../mouse/hoverTiming";
 import { DEVICE_PROFILE_CAP, validateDeviceProfile, type DeviceProfile } from "../mouse/profiles";
 import { FIVE_BUTTON_MAP, SIDE_ACTIONS, sideGesturePriorityMatrix } from "../mouse/sideButtons";
 import { BUILTIN_GESTURES } from "../mouse/gestures";
@@ -39,6 +39,7 @@ import {
   PackPanel,
   DevicePackPanel,
   EvidencePanel,
+  WiringPanel,
 } from "./MouseJ1Panels";
 import "../../styles/mouse-j1.css";
 
@@ -448,9 +449,9 @@ export function MouseJ1Tab(): React.ReactElement {
             ))}
           </select>
         </Row>
-        <Row label="Tooltip 出现延迟" hint="独立旋钮（基线 500ms）；跟随/翻转行为不受档位影响。">
+        <Row label="Tooltip 出现延迟" hint="独立旋钮（基线 500ms 在档：200/300/500/700）；偏离基线时接管全局 --hover-delay 令牌，回基线即还政。">
           <select value={String(hover.tooltipDelayMs)} onChange={(e) => setHover({ tooltipDelayMs: Number(e.target.value) })} aria-label="Tooltip 延迟">
-            {HOVER_DELAY_STEPS.map((v) => (
+            {TOOLTIP_DELAY_STEPS.map((v) => (
               <option key={v} value={String(v)}>{v}ms</option>
             ))}
           </select>
@@ -615,6 +616,9 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
         <SectionCard title="判据证据包" f="附B">
           <EvidencePanel />
+        </SectionCard>
+        <SectionCard title="运行时接线审计" f="v3 接线">
+          <WiringPanel />
         </SectionCard>
         <SectionCard title="鼠标档案打包（vxtheme 对接）" f="F623">
           <PackPanel />

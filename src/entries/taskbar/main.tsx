@@ -24,6 +24,7 @@ import { ToastHost } from "../../components/ToastHost";
 import { ContextMenuHost } from "../../components/ContextMenu";
 import { ConfirmBubbleHost, ChoiceHost, ConfirmHost, NetConsentHost, PromptHost } from "../../components/Modal";
 import { setupEntryRuntime } from "../runtime";
+import { createWindowRuntime } from "../../features/mouse/windowRuntime";
 import "../../styles/global.css";
 import "../../styles/desktop.css";
 // Win11 新版开始菜单面板（三栏棋盘）—— 必须在 desktop.css 之后加载
@@ -39,6 +40,14 @@ import "../../styles/taskbar-window.css";
  */
 
 setupEntryRuntime("taskbar");
+
+// J 鼠标域 AI-J1（v3 接线）：任务栏窗的滚轮/侧键内核（headless——开始菜单
+// 与托盘抽屉的长列表获得 F605/F612/F618 语义；点击穿透 hitmap 不受影响，
+// 本内核只消费真实输入事件、零渲染层）。
+document.documentElement.dataset.appId = "taskbar";
+document.documentElement.dataset.appClass = "list";
+const j1Runtime = createWindowRuntime({ entry: "taskbar", appScope: "taskbar", appClass: "list", replica: false });
+window.addEventListener("pagehide", () => j1Runtime.dispose(), { once: true });
 
 type BarMode = "shown" | "summoned" | "collapsed";
 

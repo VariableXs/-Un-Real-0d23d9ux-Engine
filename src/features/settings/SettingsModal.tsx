@@ -574,7 +574,7 @@ export function SettingsModal(props: {
             )}
           </nav>
           {/* W11 分页容器：外观页走 .w11-card 版式，其余页由 .w11-legacy 桥接既有 .field 版式 */}
-          <div className="settings-body w11-page">
+          <div className="settings-body w11-page" data-autoscroll="">
             <div className="w11-content">
               {/* Win11 面包屑页头：上一级可点回首页，当前页为白色 */}
               <nav className="w11-crumb" aria-label={t("settings")}>

@@ -32,7 +32,7 @@ import { Sidebar } from "./apps/write/folders/Sidebar";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
-import { J1Runtime } from "./features/mouse/J1Runtime";
+import { J1Runtime, J1AppWindowLayer } from "./features/mouse/J1Runtime";
 import { H4Runtime } from "./features/h4/H4Runtime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
@@ -827,6 +827,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
           </Modal>
         )}
         <RecoveryPromptHost />
+        {/* J 鼠标域 AI-J1：软件窗口锚标/墨迹层 + headless 指针/滚轮/侧键/手势内核（v3 接线） */}
+        <J1AppWindowLayer appType={appType} />
         {/* AI-20 M-80：IPC 调用追踪面板（仅 dev 构建挂载，Ctrl+Alt+F12 开关；release 死代码剔除零残留） */}
         {import.meta.env.DEV && <IpcTracePanel />}
         <ContextMenuHost />

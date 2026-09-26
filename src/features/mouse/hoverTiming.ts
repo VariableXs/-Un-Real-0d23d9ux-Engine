@@ -20,8 +20,15 @@
 
 /* ------------------------------- F610 悬停时序 ------------------------------- */
 
-/** 四档（两旋钮共用档位表）。 */
+/** 四档（菜单展开旋钮档位表；默认 400ms 对拍 Windows）。 */
 export const HOVER_DELAY_STEPS = [200, 300, 400, 600] as const;
+
+/**
+ * tooltip 旋钮独立四档（v3 修正：v2 沿用菜单档位表导致基线 500ms 不在档——
+ * 旋钮产出永远收敛不到默认值。四档以 F549 系 500ms 为基线档：快两档给急性子、
+ * 700ms 给手抖党；默认档=基线=现行值，零迁移）。
+ */
+export const TOOLTIP_DELAY_STEPS = [200, 300, 500, 700] as const;
 
 /** Windows 默认 400ms（迁移零差异）。 */
 export const HOVER_MENU_DEFAULT = 400;
@@ -36,6 +43,11 @@ export interface HoverTimingConfig {
 /** 档位钳制：非档值收敛到最近档（旋钮只会产出四档之一）。 */
 export function clampHoverDelay(ms: number): number {
   return HOVER_DELAY_STEPS.reduce((best, v) => (Math.abs(v - ms) < Math.abs(best - ms) ? v : best), HOVER_DELAY_STEPS[0]);
+}
+
+/** tooltip 档位钳制（独立档位表同构——基线 500ms 恒在档）。 */
+export function clampTooltipDelay(ms: number): number {
+  return TOOLTIP_DELAY_STEPS.reduce((best, v) => (Math.abs(v - ms) < Math.abs(best - ms) ? v : best), HOVER_TOOLTIP_DEFAULT);
 }
 
 /** 悬停展开计时器：到点回调，重启/取消显式（无幽灵回调）。 */

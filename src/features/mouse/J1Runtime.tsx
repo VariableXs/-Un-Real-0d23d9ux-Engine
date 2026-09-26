@@ -1,57 +1,35 @@
 /**
- * J 鼠标域 · AI-J1 运行时（桌面窗口事件管线总装）。
+ * J 鼠标域 · AI-J1 运行时（React 薄壳 · v3 重构）。
  *
- * 管线序（固定，一处一事实）：原始位移 → F611 手抖过滤 → F603 抬笔滤波 →
- * F602 慢速微调（修饰键恒定增益）→ F601 速度曲线 → 位置积分。
+ * v3 职责收缩：逻辑内核全部迁往 windowRuntime.ts（窗口无关、框架无关）——
+ * 本文件只剩三件事：
+ * 1. 桌面窗全量层（J1Runtime）：副本渲染（F620 衬底/F608 磁吸视觉）、锚标、
+ *    墨迹、画中实时墨迹、F614 建档气泡、未接线动作的一次性显性提示；
+ * 2. 软件窗口层（J1AppWindowLayer）：write/mind/code/fate 四窗的锚标/墨迹层
+ *    ——headless 内核 + 轻渲染（F604/F617 在软件窗口真实生效）；
+ * 3. 作用域声明：documentElement 的 data-app-id/data-app-class——F605 应用
+ *    覆盖、F616 应用档案、F615 侧键作用域的真实挂点（此前全系统无人声明，
+ *    解析链永远落到默认档——v3 接通）。
  *
- * 生效面声明（诚实边界）：
- * - 本运行时在 Varix 桌面窗口内接管指针/滚轮/侧键/右键事件，驱动 F335 优先
- *   平面上的指针副本层（F620 衬底、F608 磁吸视觉、F604 锚标、F617 墨迹）。
- *   管线输出积分驱动副本位置——手抖过滤/抬笔滤波/慢速微调/速度曲线在副本层
- *   全部真实生效；点击判定永远走真实光标（F608 判定零偏移铁律同源）。
- * - 操作系统级指针增益经 F250 通道（ipc.mouseParamsWrite）同步——F601 曲线谱
- *   是其设计层与对拍表，两处共用同一套曲线参数（单一事实源）。
- * - 容器自动滚（F609）只对 data-autoscroll 声明容器生效（不越权）。
- *
- * 交互动作出口：手势/侧键触发统一派发 `vx-j1-action` CustomEvent
- * （{ action, source }）——系统组件按 action 订阅（开放性扩展点，十四章）。
+ * 内建动作装配（actions.ts installBuiltinHandlers）：桌面窗与软件窗各自装配
+ * Tauri 窗口管理（minimize/toggle-max）+ 编辑三兄弟 + 声明式 nav.up + 事件化
+ * file.new/close-tab/sys-action。nav.back/forward、view.refresh 需要各窗口的
+ * 历史栈/视图消费者（explorer 标签页历史等）——v3 不越权代接，未接线动作走
+ * 显性登记（遥测 no-feedback + 每动作一次性提示），诚实呈现接线边界。
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { j1Store, type J1Section } from "./j1store";
-import { applyCurve, slowTuneGain, type CurveConfig, type SlowTuneKey } from "./curve";
-import { LiftFilter, TremorFilter } from "./filters";
-import { WheelGain, resolveWheelMode, resolveWheelTarget, tiltFromShiftWheel, type WheelNotchConfig, type TiltWheelConfig, type PassthroughConfig, type WheelGainConfig } from "./wheel";
-import { WheelInertia, inertiaSuspension, INERTIA_DEFAULT } from "./inertia";
-import { j1Telemetry } from "./telemetry";
-import { autoscrollRamp } from "./autoscroll";
-import { trackCurrentApp } from "./profiles";
-import { SeamGuard, ScreenMemory, type MonitorInfo, type SeamGuardConfig, type ScreenMemoryConfig } from "./screen";
-import { magnetOffset, type MagnetConfig } from "./magnet";
-import { autoscrollVelocity, autoscrollExitFor, edgeDepth, edgeScrollSpeed, AUTOSCROLL_ATTR, AUTOSCROLL_PRESET, type AutoscrollConfig, type DragScrollConfig } from "./autoscroll";
-import { GestureRecognizer, TRAIL_FADE_MS, type GestureLibraryConfig } from "./gestures";
-import { composeOverlay, type PointerOverlayConfig } from "./overlay";
-import { resolveSideButton, type SideButtonsConfig, type SideTarget } from "./sideButtons";
-import { clampHoverDelay } from "./hoverTiming";
-
-/* ------------------------------- 配置读取 ------------------------------- */
-
-function cfg<T>(section: J1Section, fallback: T): T {
-  const s = j1Store.get(section);
-  return { ...(fallback as unknown as Record<string, unknown>), ...s } as unknown as T;
-}
-
-/* ------------------------------- 动作出口 ------------------------------- */
-
-function dispatchAction(action: string, source: "gesture" | "side"): void {
-  window.dispatchEvent(new CustomEvent("vx-j1-action", { detail: { action, source } }));
-}
-
-function runSideTarget(t: SideTarget): void {
-  if (t.kind === "action") dispatchAction(t.action, "side");
-  else if (t.kind === "shortcut") dispatchAction(`shortcut:${t.keys}`, "side");
-  else dispatchAction(`launch:${t.appId}`, "side");
-}
+import { useEffect, useMemo, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { createWindowRuntime } from "./windowRuntime";
+import { TRAIL_FADE_MS } from "./gestures";
+import { composeOverlay } from "./overlay";
+import type { PointerOverlayConfig } from "./overlay";
+import { j1Store } from "./j1store";
+import { installBuiltinHandlers } from "./actions";
+import { pushToast } from "../../state/uiStore";
+import { isTauriRuntime } from "../../entries/runtime";
+// 锚标/墨迹/副本层样式（全窗口挂载层需要——不能只随设置面板加载）。
+import "../../styles/mouse-j1.css";
 
 /* ------------------------------- 指针副本层 ------------------------------- */
 
@@ -81,411 +59,163 @@ function PointerReplica(props: { x: number; y: number; filter: string; shadow: s
   );
 }
 
-/* ------------------------------- 运行时 ------------------------------- */
+function AnchorMark(props: { x: number; y: number }): React.ReactElement {
+  return <div aria-hidden className="j1-autoscroll-anchor" style={{ left: props.x, top: props.y }} />;
+}
+
+function InkLayer(props: { pts: { x: number; y: number }[]; live?: boolean }): React.ReactElement | null {
+  if (props.pts.length < 2) return null;
+  return (
+    <svg aria-hidden className="j1-gesture-ink" style={{ position: "fixed", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 2147483001 }}>
+      <polyline
+        points={props.pts.map((p) => `${p.x},${p.y}`).join(" ")}
+        fill="none"
+        stroke="var(--vx-ink, var(--vx-accent, #4f7cff))"
+        strokeWidth={props.live ? 2 : 2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={props.live ? 0.45 : 0.9}
+      />
+    </svg>
+  );
+}
+
+/* ------------------------------- 装配辅助 ------------------------------- */
+
+/** Tauri 窗口句柄（window.minimize/toggle-max 的真实落点；浏览器 dev 返回 undefined→事件降级）。 */
+function tauriWindowHandle(): { minimize: () => Promise<void>; toggleMaximize: () => Promise<void> } | undefined {
+  if (!isTauriRuntime()) return undefined;
+  try {
+    const w = getCurrentWindow();
+    return { minimize: () => w.minimize(), toggleMaximize: () => w.toggleMaximize() };
+  } catch {
+    return undefined;
+  }
+}
+
+/** F620 衬底三件套（副本渲染参数——与 j1store overlay 节同源）。 */
+function useOverlayStyle(): { cssFilter: string; boxShadow: string; active: boolean } {
+  return useMemo(() => {
+    const s = j1Store.get("overlay");
+    const c: PointerOverlayConfig = { outline: s.outline as boolean | undefined ?? true, shadow: s.shadow as boolean | undefined ?? false, ring: s.ring as boolean | undefined ?? false };
+    return composeOverlay(c);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
+/* ------------------------------- 桌面窗全量层 ------------------------------- */
 
 export function J1Runtime(): React.ReactElement | null {
   const [replica, setReplica] = useState<{ x: number; y: number } | null>(null);
   const [anchorUi, setAnchorUi] = useState<{ x: number; y: number } | null>(null);
-  const [ink, setInk] = useState<{ pts: { x: number; y: number }[] } | null>(null);
-
-  const st = useRef({
-    // 管线状态
-    lastX: -1,
-    lastY: -1,
-    vx: 0, // 副本位置积分（管线输出累计）
-    vy: 0,
-    lift: new LiftFilter(),
-    tremor: new TremorFilter("off"),
-    keys: { shiftKey: false, ctrlKey: false, altKey: false, caps: false },
-    // 滚轮
-    gain: new WheelGain(() => cfg<WheelGainConfig>("wheelGain", WHEEL_GAIN_DEFAULT)),
-    inertia: new WheelInertia(() => cfg<import("./inertia").InertiaConfig>("wheelGain", INERTIA_DEFAULT)),
-    momentumRaf: 0,
-    momentumEl: null as Element | null,
-    // 跨屏
-    guard: new SeamGuard(() => monitors(), () => cfg<SeamGuardConfig>("seamGuard", SEAM_DEFAULT)),
-    memory: new ScreenMemory(() => cfg<ScreenMemoryConfig>("screenMemory", MEMORY_DEFAULT)),
-    // 手势
-    recognizer: new GestureRecognizer(),
-    // 自动滚
-    anchor: null as { x: number; y: number; raf: number; openedAt: number } | null,
-    dragActive: false,
-    dragRaf: 0,
-    memThrottleAt: 0,
-  }).current;
+  const [ink, setInk] = useState<{ x: number; y: number }[] | null>(null);
+  const [liveInk, setLiveInk] = useState<{ x: number; y: number }[] | null>(null);
 
   useEffect(() => {
-    // 桌面窗口专属运行时（App.tsx 仅在 appType==="desktop" 挂载——单一守卫）。
-
-    /* ---------- 键盘修饰键状态（F602 唯一事实来源：真实键盘事件） ---------- */
-    const trackKeys = (e: KeyboardEvent, down: boolean): void => {
-      st.keys.shiftKey = e.getModifierState?.("Shift") ?? (down && e.key === "Shift");
-      st.keys.ctrlKey = e.getModifierState?.("Control") ?? (down && e.key === "Control");
-      st.keys.altKey = e.getModifierState?.("Alt") ?? (down && e.key === "Alt");
-      st.keys.caps = e.getModifierState?.("CapsLock") ?? st.keys.caps;
-    };
-    const onKeyDown = (e: KeyboardEvent): void => {
-      trackKeys(e, true);
-      if (e.key === "Escape" && st.anchor) stopAutoscroll(); // F604 退出三路之 Esc
-    };
-    const onKeyUp = (e: KeyboardEvent): void => trackKeys(e, false);
-
-    /* ---------- 指针管线 ---------- */
-    const onMove = (e: PointerEvent): void => {
-      // F609：左键拖拽中启动边缘滚动循环。
-      if ((e.buttons & 1) !== 0) st.dragActive = true;
-
-      const first = st.lastX === -1;
-      const raw = { dx: e.clientX - (st.lastX === -1 ? e.clientX : st.lastX), dy: e.clientY - (st.lastY === -1 ? e.clientY : st.lastY) };
-      st.lastX = e.clientX;
-      st.lastY = e.clientY;
-      if (first) {
-        st.vx = e.clientX;
-        st.vy = e.clientY;
-      }
-
-      // F607 护边时序（虚拟桌面坐标=窗口坐标；单屏环境自然静默直通）。
-      if (st.guard.feed(e.clientX, e.clientY, performance.now()) === "hold") {
-        j1Telemetry.log("seam-hold", "smooth", "seam-guard", e.clientX, e.clientY);
-      }
-
-      // F613 记忆节流（每 2s 一次）。
-      const now = performance.now();
-      if (now - st.memThrottleAt > 2000) {
-        st.memThrottleAt = now;
-        st.memory.remember(primaryMonitor().edidFingerprint, e.clientX, e.clientY, monitors());
-      }
-
-      // 副本需要时才跑管线（无层零开销）。
-      const overlayCfg = cfg<PointerOverlayConfig>("overlay", OVERLAY_DEFAULT);
-      const magnetCfg = cfg<MagnetConfig>("magnet", MAGNET_DEFAULT);
-      const needReplica = composeOverlay(overlayCfg).active || magnetCfg.enabled;
-      if (!needReplica) {
-        if (replica !== null) setReplica(null);
-        return;
-      }
-      const tremorCfg = cfg<{ level: "off" | "light" | "strong" }>("tremor", { level: "off" });
-      if (st.tremor.level !== tremorCfg.level) st.tremor = new TremorFilter(tremorCfg.level);
-      const a = st.tremor.feed(raw.dx, raw.dy);
-      const b = st.lift.feed(a.x, a.y, now);
-      const slowCfg = cfg<{ enabled: boolean; ratio: number; key: SlowTuneKey }>("slowTune", SLOW_DEFAULT);
-      const slow = slowTuneGain(modifierActive(slowCfg.key, st.keys), slowCfg);
-      const applied = slow !== null ? { x: b.x * slow, y: b.y * slow } : applyCurve(b.x, b.y, cfg<CurveConfig>("curve", CURVE_DEFAULT));
-      st.vx += applied.x;
-      st.vy += applied.y;
-      // F608 磁吸：视觉微移（真实判定零偏移——hit 检测仍用真实坐标）。
-      const hit = document.elementFromPoint(e.clientX, e.clientY);
-      const mag = magnetOffset(e.clientX, e.clientY, hit, magnetCfg);
-      setReplica({ x: st.vx + mag.dx, y: st.vy + mag.dy });
-    };
-
-    /* ---------- 按下：手势开始 / 侧键 / 中键自动滚 ---------- */
-    const onDown = (e: PointerEvent): void => {
-      st.lift.onButtonUp(performance.now() + 1e6); // 按下=离开抬起窗
-      j1Telemetry.log("click", "smooth", roleOf(e.target), e.clientX, e.clientY);
-      // F616 前台档案挂载（应用获焦/交互即触发——纯同步 diff，<100ms 判据）。
-      const scope = appScopeOf(e.target);
-      if (scope) {
-        const ap = trackCurrentApp(scope);
-        if (ap) j1Telemetry.log("profile-switch", "smooth", `app:${scope}`, e.clientX, e.clientY);
-      }
-      const gcfg = cfg<GestureLibraryConfig>("gestures", GESTURE_DEFAULT);
-      if (e.button === 2 && gcfg.enabled) st.recognizer.begin(e.clientX, e.clientY);
-
-      if (e.button === 3 || e.button === 4) {
-        const scfg = cfg<SideButtonsConfig>("sideButtons", SIDE_DEFAULT);
-        const target = resolveSideButton(scfg, scope, e.button);
-        if (target) {
-          e.preventDefault();
-          runSideTarget(target);
-          j1Telemetry.log("side-button", "smooth", `XButton${e.button === 3 ? "1" : "2"}`, e.clientX, e.clientY);
-        }
-      }
-
-      const acfg = cfg<AutoscrollConfig>("autoscroll", AUTO_DEFAULT);
-      if (e.button === 1 && acfg.enabled) {
-        const container = scrollContainerAt(e.clientX, e.clientY);
-        if (container) {
-          e.preventDefault();
-          startAutoscroll(container, e.clientX, e.clientY);
-        }
-      }
-    };
-
-    /* ---------- 抬起：抬笔登记 / 手势识别 / 退出自动滚 ---------- */
-    const onUp = (e: PointerEvent): void => {
-      st.lift.onButtonUp(performance.now());
-      const gcfg = cfg<GestureLibraryConfig>("gestures", GESTURE_DEFAULT);
-      if (e.button === 2 && gcfg.enabled && st.recognizer.trail.length > 0) {
-        const hit = st.recognizer.recognize(gcfg);
-        const steps = st.recognizer.steps.length;
-        const pts = st.recognizer.trail;
-        st.recognizer.reset();
-        j1Telemetry.gestureOutcome(!!hit, steps, e.clientX, e.clientY);
-        if (hit) {
-          e.preventDefault();
-          e.stopPropagation();
-          setInk({ pts }); // 墨迹 120ms 淡出
-          window.setTimeout(() => setInk(null), TRAIL_FADE_MS);
-          dispatchAction(hit.action, "gesture");
-        }
-        // 无轨迹/无匹配 → 放行右键菜单（零误伤兜底）
-      }
-      if (e.button === 0) st.dragActive = false;
-      if (st.anchor && autoscrollExitFor(e.button) === "exit") stopAutoscroll();
-    };
-
-    /* ---------- 滚轮：F618 穿透 → F605 档位 → F612 增益 / F606 倾斜等效 ---------- */
-    const momentumStep = (): void => {
-      st.momentumRaf = 0;
-      // 自动滚接管期间惯性挂起（F204 互斥语义——单一裁决函数）。
-      if (inertiaSuspension(st.anchor !== null) === "suspended" || !st.momentumEl) return;
-      const step = st.inertia.tick(performance.now());
-      if (step !== 0) {
-        scrollElement(st.momentumEl, step, 0, "auto");
-        st.momentumRaf = requestAnimationFrame(momentumStep);
-      }
-    };
-    const onWheel = (e: WheelEvent): void => {
-      const hit = document.elementFromPoint(e.clientX, e.clientY);
-      if (!hit) return;
-      // Shift+滚轮 → 倾斜等效横向滚动（无倾斜轮设备的等效入口）。
-      if (e.shiftKey) {
-        const tcfg = cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT);
-        if (tcfg.enabled) {
-          e.preventDefault();
-          const { dir, cols } = tiltFromShiftWheel(e.deltaY, tcfg.colsPerNotch);
-          scrollElement(targetFor(hit), dir * cols * LINE_HEIGHT, 0, "auto");
-          j1Telemetry.log("wheel", "smooth", "tilt-equivalent", e.clientX, e.clientY);
-          return;
-        }
-      }
-      const pcfg = cfg<PassthroughConfig>("passthrough", PASS_DEFAULT);
-      const { target, passthrough } = resolveWheelTarget(hit, pcfg);
-      const wcfg = cfg<WheelNotchConfig>("wheelNotch", WHEEL_NOTCH_DEFAULT);
-      const appId = appScopeOf(hit) ?? "desktop";
-      const appClass = (target.closest("[data-app-class]") as HTMLElement | null)?.dataset.appClass;
-      const mode = resolveWheelMode(wcfg, appId, appClass);
-      const smooth = mode === "smooth";
-      const lines = st.gain.feed(performance.now(), !smooth); // 逐档豁免增益（F605 互斥边界）
-      const sign = e.deltaY >= 0 ? 1 : -1;
-      e.preventDefault();
-      scrollElement(target, sign * lines * LINE_HEIGHT, 0, smooth ? "auto" : "auto");
-      j1Telemetry.log("wheel", "smooth", `${mode}${passthrough ? "+穿透" : ""}`, e.clientX, e.clientY);
-      // 平滑档：动量交给惯性引擎（输入停歇后衰减释放——F204 余韵）。
-      if (smooth) {
-        st.inertia.feed(lines, sign as 1 | -1, performance.now());
-        st.momentumEl = target;
-        if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
-      } else {
-        st.inertia.reset();
-      }
-      if (passthrough) return; // 穿透已生效（目标即下层容器）
-    };
-
-    /* ---------- F609 拖拽边缘自动滚（rAF 循环，仅声明容器） ---------- */
-    const dragStep = (): void => {
-      st.dragRaf = 0;
-      const dcfg = cfg<DragScrollConfig>("dragScroll", DRAG_DEFAULT);
-      if (!dcfg.enabled || !st.dragActive) return;
-      for (const c of document.querySelectorAll<HTMLElement>(`[${AUTOSCROLL_ATTR}]`)) {
-        const r = c.getBoundingClientRect();
-        if (st.lastX < r.left || st.lastX > r.right || st.lastY < r.top || st.lastY > r.bottom) continue;
-        const d = edgeDepth(st.lastX, st.lastY, { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, dcfg.bandPx);
-        const dy = edgeScrollSpeed(d.bottom, dcfg.bandPx) - edgeScrollSpeed(d.top, dcfg.bandPx);
-        const dx = edgeScrollSpeed(d.right, dcfg.bandPx) - edgeScrollSpeed(d.left, dcfg.bandPx);
-        if (dx !== 0 || dy !== 0) c.scrollBy({ left: dx, top: dy });
-      }
-      st.dragRaf = requestAnimationFrame(dragStep);
-    };
-    const ensureDragLoop = (): void => {
-      if (st.dragActive && st.dragRaf === 0) st.dragRaf = requestAnimationFrame(dragStep);
-    };
-
-    /* ---------- F604 中键自动滚动（含油门爬升 + 生命线遥测） ---------- */
-    const startAutoscroll = (container: HTMLElement, x: number, y: number): void => {
-      stopAutoscroll();
-      st.anchor = { x, y, raf: 0, openedAt: performance.now() };
-      setAnchorUi({ x, y });
-      j1Telemetry.anchorLifecycle("open", x, y);
-      const step = (): void => {
-        if (!st.anchor) return;
-        const v = autoscrollVelocity(st.lastX - st.anchor.x, st.lastY - st.anchor.y, cfg<AutoscrollConfig>("autoscroll", AUTO_DEFAULT));
-        const ramp = autoscrollRamp(performance.now() - st.anchor.openedAt); // 起步柔和、续航有力
-        if (v.vx !== 0 || v.vy !== 0) container.scrollBy({ left: v.vx * 0.25 * ramp, top: v.vy * 0.25 * ramp });
-        st.anchor.raf = requestAnimationFrame(step);
-      };
-      st.anchor.raf = requestAnimationFrame(step);
-    };
-    const stopAutoscroll = (): void => {
-      if (st.anchor) {
-        cancelAnimationFrame(st.anchor.raf);
-        j1Telemetry.anchorLifecycle("close", st.anchor.x, st.anchor.y);
-        st.anchor = null;
-        setAnchorUi(null);
-      }
-    };
-
-    /* ---------- F613 唤醒/切回恢复（单屏环境自然休眠） ---------- */
-    const onVisibility = (): void => {
-      if (document.visibilityState === "visible") {
-        const mcfg = cfg<ScreenMemoryConfig>("screenMemory", MEMORY_DEFAULT);
-        if (mcfg.enabled) {
-          const p = st.memory.restore(primaryMonitor().edidFingerprint, monitors());
-          if (p) {
-            st.vx = p.x;
-            st.vy = p.y;
+    // 作用域声明（F605/F616/F615 的真实挂点——全系统唯一直属桌面声明处）。
+    document.documentElement.dataset.appId = "desktop";
+    document.documentElement.dataset.appClass = "list";
+    // 未接线动作提示去重（每个动作一次性——显性但不骚扰，章九）。
+    const warned = new Set<string>();
+    const rt = createWindowRuntime(
+      { entry: "desktop", appScope: "desktop", appClass: "list", replica: true },
+      {
+        onReplica: setReplica,
+        onAnchor: setAnchorUi,
+        onInk: (pts) => {
+          if (!pts) {
+            setInk(null);
+            return;
           }
-        }
-      } else if (st.lastX >= 0) {
-        st.memory.remember(primaryMonitor().edidFingerprint, st.lastX, st.lastY, monitors());
-      }
-    };
-
-    const onBlur = (): void => stopAutoscroll();
-
-    /* ---------- F610/F619 即时生效通道：CSS 变量（菜单/tooltip/长按同源消费） ---------- */
-    const applyTimingVars = (): void => {
-      const h = cfg<{ menuDelayMs: number; tooltipDelayMs: number }>("hoverTiming", HOVER_DEFAULT);
-      document.documentElement.style.setProperty("--vx-menu-delay", `${clampHoverDelay(h.menuDelayMs)}ms`);
-      document.documentElement.style.setProperty("--vx-tooltip-delay", `${clampHoverDelay(h.tooltipDelayMs)}ms`);
-      document.documentElement.style.setProperty("--vx-longpress-scale", String(cfg<{ scale: number }>("longPress", LP_DEFAULT).scale));
-    };
-    applyTimingVars();
-
-    const unsub = j1Store.subscribe((section) => {
-      if (section === "hoverTiming" || section === "longPress") applyTimingVars();
-      if (section === "tremor") st.tremor = new TremorFilter(cfg<{ level: "off" }>("tremor", { level: "off" }).level);
-    });
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerdown", onDown);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("blur", onBlur);
-    document.addEventListener("visibilitychange", onVisibility);
-    // 拖拽循环随 move 启动。
-    window.addEventListener("pointermove", ensureDragLoop, { passive: true });
+          setInk(pts);
+          window.setTimeout(() => setInk(null), TRAIL_FADE_MS);
+        },
+        onLiveInk: setLiveInk,
+        onDeviceClone: (info) => {
+          pushToast("info", "已为本机指针设备建档", info.evicted ? `档案达上限，淘汰最久未用：${info.evicted}` : "手感参数将跟随该设备记忆（F614）");
+        },
+        onActionUnhandled: (action, source) => {
+          if (warned.has(action)) return;
+          warned.add(action);
+          pushToast("info", `动作「${action}」在本窗口未接线`, `${source === "gesture" ? "手势" : "侧键"}已识别但无处理器——已登记体验日志（每个动作只提示一次）`);
+        },
+      },
+    );
+    const wiring = installBuiltinHandlers({ tauriWindow: tauriWindowHandle() });
     return () => {
-      unsub();
-      stopAutoscroll();
-      if (st.dragRaf) cancelAnimationFrame(st.dragRaf);
-      if (st.momentumRaf) cancelAnimationFrame(st.momentumRaf);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointermove", ensureDragLoop);
-      window.removeEventListener("pointerdown", onDown);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("blur", onBlur);
-      document.removeEventListener("visibilitychange", onVisibility);
+      rt.dispose();
+      wiring.dispose();
+      delete document.documentElement.dataset.appId;
+      delete document.documentElement.dataset.appClass;
     };
-  }, [st, replica]);
+  }, []);
 
-  const overlay = useMemo(() => composeOverlay(cfg<PointerOverlayConfig>("overlay", OVERLAY_DEFAULT)), [replica, anchorUi]);
-  if (!overlay.active && !anchorUi && !ink) return null;
+  const overlay = useOverlayStyle();
+  if (!replica && !anchorUi && !ink && !liveInk) return null;
 
   return (
     <>
-      {overlay.active && replica && <PointerReplica x={replica.x} y={replica.y} filter={overlay.cssFilter} shadow={overlay.boxShadow} />}
-      {anchorUi && <div aria-hidden className="j1-autoscroll-anchor" style={{ left: anchorUi.x, top: anchorUi.y }} />}
-      {ink && (
-        <svg aria-hidden className="j1-gesture-ink" style={{ position: "fixed", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 2147483001 }}>
-          {ink.pts.length > 1 && (
-            <polyline
-              points={ink.pts.map((p) => `${p.x},${p.y}`).join(" ")}
-              fill="none"
-              stroke="var(--vx-ink, var(--vx-accent, #4f7cff))"
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              opacity={0.9}
-            />
-          )}
-        </svg>
-      )}
+      {replica && overlay.active && <PointerReplica x={replica.x} y={replica.y} filter={overlay.cssFilter} shadow={overlay.boxShadow} />}
+      {anchorUi && <AnchorMark x={anchorUi.x} y={anchorUi.y} />}
+      {liveInk && <InkLayer pts={liveInk} live />}
+      {!liveInk && ink && <InkLayer pts={ink} />}
     </>
   );
 }
 
-/* ------------------------------- 辅助 ------------------------------- */
+/* ------------------------------- 软件窗口层（write/mind/code/fate） ------------------------------- */
 
-const LINE_HEIGHT = 24; // 标准行高（3 行/格对拍 Windows 基准）
-
-function modifierActive(key: SlowTuneKey, keys: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; caps: boolean }): boolean {
-  switch (key) {
-    case "shift": return keys.shiftKey;
-    case "ctrl": return keys.ctrlKey;
-    case "alt": return keys.altKey;
-    case "capslock": return keys.caps;
-    default: return false;
-  }
-}
-
-/** 应用作用域识别：最近的 [data-app-id]（F605 覆盖 / F616 应用档案的键）。 */
-function appScopeOf(target: EventTarget | null): string | null {
-  const el = target instanceof Element ? target.closest("[data-app-id]") : null;
-  return (el as HTMLElement | null)?.dataset.appId ?? null;
-}
-
-/** 遥测粗粒度目标（隐私红线：只记控件角色，不记文本内容）。 */
-function roleOf(target: EventTarget | null): string {
-  if (!(target instanceof Element)) return "unknown";
-  const el = target as HTMLElement;
-  return el.getAttribute?.("role") ?? el.tagName?.toLowerCase() ?? "unknown";
-}
-
-function scrollElement(target: Element, top: number, left: number, behavior: ScrollBehavior): void {
-  const el = target as HTMLElement;
-  if (typeof el.scrollBy === "function") el.scrollBy({ top, left, behavior });
-  else el.scrollTop += top; // 非元素节点兜底（零死胡同）
-}
-
-function targetFor(hit: Element): Element {
-  return hit;
-}
-
-function scrollContainerAt(x: number, y: number): HTMLElement | null {
-  let cur: HTMLElement | null = document.elementFromPoint(x, y) as HTMLElement | null;
-  while (cur) {
-    const style = cur.ownerDocument.defaultView?.getComputedStyle(cur);
-    if (style && (style.overflowY === "auto" || style.overflowY === "scroll")) return cur;
-    if (cur.hasAttribute(AUTOSCROLL_ATTR)) return cur;
-    cur = cur.parentElement;
-  }
-  return null;
-}
-
-/** 显示器源：当前环境单屏（多屏矩阵在 screen.ts 逻辑层全量测试覆盖）。 */
-function monitors(): MonitorInfo[] {
-  const s = window.screen;
-  return [{ id: "primary", x: 0, y: 0, width: s.width, height: s.height, edidFingerprint: `screen-${s.width}x${s.height}`, scale: (s as Screen & { devicePixelRatio?: number }).devicePixelRatio ?? 1 }];
-}
-function primaryMonitor(): MonitorInfo {
-  return monitors()[0]!;
-}
-
-/* ------------------------------- 默认值镜像（与 j1store J1_DEFAULTS 同源） ------------------------------- */
-
-const WHEEL_GAIN_DEFAULT: WheelGainConfig = { enabled: true, minLines: 3, maxLines: 12, accelMs: 220 };
-const SEAM_DEFAULT: SeamGuardConfig = { enabled: true, edgePx: 4, dwellMs: 200, cornerPx: 8 };
-const MEMORY_DEFAULT: ScreenMemoryConfig = { enabled: true, points: {} };
-const SLOW_DEFAULT = { enabled: true, ratio: 0.1, key: "shift" as SlowTuneKey };
-const CURVE_DEFAULT: CurveConfig = { id: "classic", cp1x: 0.35, cp1y: 0.55, cp2x: 0.7, cp2y: 1.0, sens: 1 };
-const OVERLAY_DEFAULT: PointerOverlayConfig = { outline: true, shadow: false, ring: false };
-const MAGNET_DEFAULT: MagnetConfig = { enabled: false, radiusPx: 12 };
-const GESTURE_DEFAULT: GestureLibraryConfig = { enabled: false, trailFadeMs: TRAIL_FADE_MS, custom: {} };
-const SIDE_DEFAULT: SideButtonsConfig = {
-  global: { "3": { kind: "action", action: "nav-back" }, "4": { kind: "action", action: "nav-forward" } },
-  apps: {},
+/** 软件窗口 → 作用域/滚轮类目映射（per-app 档案的类目判据：文档逐档、列表平滑）。 */
+const APP_WINDOW_SCOPE: Record<string, { scope: string; klass: string; label: string }> = {
+  write: { scope: "app-write", klass: "document", label: "Variable Write" },
+  code: { scope: "app-code", klass: "code", label: "Variable Code" },
+  mind: { scope: "app-mind", klass: "list", label: "Variable Mind" },
+  fate: { scope: "app-fate", klass: "list", label: "Variable Fate" },
 };
-const AUTO_DEFAULT: AutoscrollConfig = { enabled: true, ...AUTOSCROLL_PRESET };
-const DRAG_DEFAULT: DragScrollConfig = { enabled: true, bandPx: 24 };
-const WHEEL_NOTCH_DEFAULT: WheelNotchConfig = { mode: "per-app", overrides: {}, linesPerNotch: 3 };
-const TILT_DEFAULT: TiltWheelConfig = { enabled: true, colsPerNotch: 3, repeatDelayMs: 350, repeatRateMs: 40, hasTilt: true };
-const PASS_DEFAULT: PassthroughConfig = { enabled: true, exemptTypes: ["scrollable-layer", "select", "menu"] };
-const HOVER_DEFAULT = { menuDelayMs: 400, tooltipDelayMs: 500 };
-const LP_DEFAULT = { scale: 1.0, registry: {} };
+
+export function J1AppWindowLayer(props: { appType: string }): React.ReactElement | null {
+  const [anchorUi, setAnchorUi] = useState<{ x: number; y: number } | null>(null);
+  const [ink, setInk] = useState<{ x: number; y: number }[] | null>(null);
+  const [liveInk, setLiveInk] = useState<{ x: number; y: number }[] | null>(null);
+
+  useEffect(() => {
+    const id = APP_WINDOW_SCOPE[props.appType] ?? { scope: `app-${props.appType}`, klass: "document", label: props.appType };
+    document.documentElement.dataset.appId = id.scope;
+    document.documentElement.dataset.appClass = id.klass;
+    const rt = createWindowRuntime(
+      { entry: id.scope, appScope: id.scope, appClass: id.klass, replica: false },
+      {
+        onAnchor: setAnchorUi,
+        onInk: (pts) => {
+          if (!pts) {
+            setInk(null);
+            return;
+          }
+          setInk(pts);
+          window.setTimeout(() => setInk(null), TRAIL_FADE_MS);
+        },
+        onLiveInk: setLiveInk,
+        onDeviceClone: (info) => {
+          pushToast("info", "已为本机指针设备建档", info.evicted ? `档案达上限，淘汰最久未用：${info.evicted}` : undefined);
+        },
+        // 软件窗口不弹「未接线」提示（创作场景少打扰）——遥测已显性记录。
+      },
+    );
+    const wiring = installBuiltinHandlers({ tauriWindow: tauriWindowHandle() });
+    return () => {
+      rt.dispose();
+      wiring.dispose();
+      delete document.documentElement.dataset.appId;
+      delete document.documentElement.dataset.appClass;
+    };
+  }, [props.appType]);
+
+  if (!anchorUi && !ink && !liveInk) return null;
+  return (
+    <>
+      {anchorUi && <AnchorMark x={anchorUi.x} y={anchorUi.y} />}
+      {liveInk && <InkLayer pts={liveInk} live />}
+      {!liveInk && ink && <InkLayer pts={ink} />}
+    </>
+  );
+}

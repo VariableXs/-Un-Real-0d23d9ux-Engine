@@ -23,6 +23,8 @@ import { exportPack, importPack, validatePack, packSummary, type MousePack } fro
 import { pushToast } from "../../state/uiStore";
 import { askConfirm } from "../../components/Modal";
 import { autoscrollVelocity, AUTOSCROLL_PRESET } from "../mouse/autoscroll";
+import { activeRuntimeSnapshot } from "../mouse/windowRuntime";
+import { actionHandlerSnapshot, J1_ACTION_REGISTRY, findActionMeta } from "../mouse/actions";
 
 /* ------------------------------- 通用小件 ------------------------------- */
 
@@ -594,6 +596,58 @@ export function TelemetryPanel(): React.ReactElement {
           <span className="j1x-hint">{new Date(f.at).toLocaleTimeString()}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ------------------------------- v3 运行时接线审计 ------------------------------- */
+
+/**
+ * 运行时接线审计（v3）：诚实呈现「哪些窗口挂着内核、动作路由表里有什么、
+ * F609 声明容器有几处、F610 变量通道现在是什么值」——接线状态一目了然，
+ * 不让「已实现」停留在代码注释里。
+ */
+export function WiringPanel(): React.ReactElement {
+  const [, tick] = useState(0);
+  useEffect(() => j1Store.subscribe(() => tick((v) => v + 1)), []);
+  const runtimes = activeRuntimeSnapshot();
+  const handlers = actionHandlerSnapshot();
+  const containers = typeof document !== "undefined" ? document.querySelectorAll(`[data-autoscroll]`).length : 0;
+  let menuVar = "（不可用）";
+  let hoverOverride = "（未覆盖——基线档）";
+  if (typeof document !== "undefined") {
+    const rootStyle = getComputedStyle(document.documentElement);
+    menuVar = rootStyle.getPropertyValue("--vx-menu-delay").trim() || "（未设）";
+    const hd = rootStyle.getPropertyValue("--hover-delay").trim();
+    // tokens.css 基线 400ms；被 F610 改写时显示覆盖值。
+    hoverOverride = hd && hd !== "400ms" ? hd : "（未覆盖——基线档）";
+  }
+  const registered = new Set(J1_ACTION_REGISTRY.map((a) => a.action));
+
+  return (
+    <div className="j1x-stack">
+      <p className="j1x-hint">
+        接线快照（只读诊断）：运行时按窗口挂载——桌面窗全量层（副本/锚标/墨迹），其余窗口 headless（滚轮/侧键/手势/自动滚真实生效、零渲染层）。
+      </p>
+      <div className="j1x-rowline"><span className="j1x-badge">本窗挂载</span><span className="j1x-hint">{runtimes.map((r) => `${r.entry}${r.replica ? "（全量层）" : "（headless）"}`).join("、") || "（未挂载——本窗不在 J1 覆盖清单）"}</span></div>
+      <div className="j1x-rowline"><span className="j1x-badge">F609 声明容器</span><span className="j1x-hint">{containers} 处（data-autoscroll：设置弹窗滚动体 / explorer 文件列表——拖拽到边缘自动滚的接入面）</span></div>
+      <div className="j1x-rowline"><span className="j1x-badge">F610 变量通道</span><span className="j1x-hint">--vx-menu-delay {menuVar} · --hover-delay {hoverOverride}（tooltip 旋钮偏离 500ms 基线时接管全局令牌）</span></div>
+      <div className="j1x-rowline"><span className="j1x-badge">动作路由表</span><span className="j1x-hint">登记 {handlers.length} 条处理器（内置 {handlers.filter((h) => registered.has(h.action)).length} + 扩展 {handlers.filter((h) => !registered.has(h.action)).length}）</span></div>
+      <details className="j1x-details">
+        <summary>内置动作登记表（12 手势 + 侧键系统动作）</summary>
+        <div className="j1x-stack">
+          {J1_ACTION_REGISTRY.map((a) => {
+            const wired = handlers.some((h) => h.action === a.action);
+            return (
+              <div key={`${a.via}-${a.action}`} className="j1x-rowline">
+                <span className={wired ? "j1x-badge j1x-badge--on" : "j1x-badge"}>{wired ? "已接线" : "待消费者"}</span>
+                <span className="j1x-mono">{a.action}</span>
+                <span className="j1x-hint">{findActionMeta(a.action)?.name ?? a.name}</span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
     </div>
   );
 }

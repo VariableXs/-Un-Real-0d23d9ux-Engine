@@ -215,6 +215,59 @@ export function trackCurrentApp(appId: string): AppProfile | null {
 }
 
 /**
+ * F616 生效参数通道（管线实际消费点——v3 接线）：
+ * 全局曲线配置（F601 store 节）打底 → 当前应用档案增量覆盖。
+ * 运行时指针管线每次移动事件经此取「此刻该用哪套 sens/curve」——
+ * 应用档案存在时 F616 的「切到画图软件指针变沉稳」才真实发生；
+ * 无应用档案 = 全局配置原样（默认单档案走天下，零干预）。
+ * 纯同步无 IO：<100ms 判据由调用频度上的 O(1) 保证。
+ */
+export function effectiveParamsFor(
+  appScope: string | null,
+  globalCurve: { sens: number; curve: CurveId },
+): { sens: number; curve: CurveId } {
+  const global: DeviceProfileParams = { sens: globalCurve.sens || 1, curve: globalCurve.curve, wheelMode: "per-app" };
+  const profile = appScope ? getAppProfile(appScope) : null;
+  const out = resolveParams(global, profile);
+  return { sens: out.sens, curve: out.curve };
+}
+
+/**
+ * F614 首次交互建档（v3 接线）：当前环境唯一可识别的「设备」是本 webview
+ * 宿主（浏览器/WebView 不暴露 VID-PID——诚实边界，不伪造硬件标识）。
+ * 首次指针交互时 ensureFor(primary) 首插克隆当前默认 + 触发气泡回调
+ * （notifyOnClone 开启时）；已有档案则刷新 lastUsedAt。
+ */
+export const PRIMARY_DEVICE_KEY = "primary-webview";
+
+export function ensurePrimaryDevice(
+  manager: DeviceProfileManager,
+  atMs: number,
+): { cloned: boolean; evicted?: string } | null {
+  const cfg = j1Store.get("devices");
+  const notify = (cfg.notifyOnClone as boolean | undefined) ?? true;
+  if (!notify) {
+    // 用户关掉气泡提示：静默建档（档案照样建，只是不吵）。
+    const existing = ((cfg.profiles as DeviceProfile[]) ?? []).some((p) => p.deviceKey === PRIMARY_DEVICE_KEY);
+    if (existing) return null;
+  }
+  const r = manager.ensureFor(PRIMARY_DEVICE_KEY, "本机指针设备", atMs);
+  return { cloned: r.cloned, evicted: r.evicted };
+}
+
+/**
+ * 设备档案参数注入通道（F614 判据「插入即自动挂载对应档案」的本域落点）：
+ * 有当前设备档案时，其 sens/curve 覆盖全局曲线节（四件套的前两件真实生效；
+ * wheelMode/侧键由各自模块按同一档案读取——v3 先通前两件，边界如实登记）。
+ */
+export function deviceParamsOverride(): { sens?: number; curve?: CurveId } {
+  const profiles = ((j1Store.get("devices").profiles as DeviceProfile[]) ?? []);
+  const cur = profiles.find((p) => p.deviceKey === PRIMARY_DEVICE_KEY);
+  if (!cur) return {};
+  return { sens: cur.params.sens, curve: cur.params.curve };
+}
+
+/**
  * 设备档案批量导入（F614 导出导入判据的导入侧）：
  * 逐条校验（validateDeviceProfile），非法条目显性列出——合法子集才收
  * （「半套不收」在单条粒度放宽为「非法单条不收、合法单条照常」——导入
