@@ -73,6 +73,7 @@
 
 use crate::checks::CheckSet;
 
+pub mod deep;
 pub mod adminrun;
 pub mod batch7gate;
 pub mod btndebounce;
@@ -128,14 +129,14 @@ pub mod userredir;
 /// 域标识（CheckSet 聚合用）。
 pub const ISTAR_U4: &str = "istar-u4";
 
-/// 本域自检聚合：逐模块 `run_*_checks` 汇总（施工期随模块落地扩列，
-/// 全量 50 项 + ibase）。
+/// 本域自检聚合：逐模块 `run_*_checks` 汇总（基础 50 项 + ibase + 深化层
+/// 1 块 = 52 块；深化子行在 deep::run_istar_deep_checks 内逐项展开）。
 ///
 /// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`），单模块超限时
 /// 该模块自身负责裁剪——聚合器如实报告每份 Set 的截断态。
 pub fn run_istar_checks() -> CheckSet {
     let mut set = CheckSet::new(ISTAR_U4);
-    let blocks: [(&'static str, CheckSet); 51] = [
+    let blocks: [(&'static str, CheckSet); 52] = [
         ("ibase", ibase::run_ibase_checks()),
         ("F551", privconfirm::run_privconfirm_checks()),
         ("F552", adminrun::run_adminrun_checks()),
@@ -187,6 +188,7 @@ pub fn run_istar_checks() -> CheckSet {
         ("F598", staggerboot::run_staggerboot_checks()),
         ("F599", setverify::run_setverify_checks()),
         ("F600", iregistry::run_iregistry_checks()),
+        ("deep", deep::run_istar_deep_checks()),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();

@@ -140,6 +140,11 @@ impl SizeSort {
         (self.dir,)
     }
 
+    /// 只读条目快照（深化层标注对账取数口——标注层与排序账逐条对拍用）。
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
     pub fn restore_memory(&mut self, dir: SortDir) {
         self.dir = dir;
     }

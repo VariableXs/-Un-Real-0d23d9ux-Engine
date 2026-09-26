@@ -239,6 +239,24 @@ impl MigMate {
         }
         Some(self.verified.iter().all(|&b| b))
     }
+
+    /// 单类四态统计（深化层报告卡取数口，只读）：
+    /// (该类扫描过, 该类勾选数, 该类已迁数, 该类首开校验通过位)。
+    pub fn kind_stats(&self, kind: AssetKind) -> (bool, u32, u32, bool) {
+        let mut picked = 0u32;
+        let mut moved = 0u32;
+        for a in self.items[..self.item_len].iter().flatten() {
+            if a.kind == kind {
+                if a.picked {
+                    picked += 1;
+                    if a.moved {
+                        moved += 1;
+                    }
+                }
+            }
+        }
+        (self.kinds_scanned[kind as usize], picked, moved, self.verified[kind as usize])
+    }
 }
 
 impl Default for MigMate {
