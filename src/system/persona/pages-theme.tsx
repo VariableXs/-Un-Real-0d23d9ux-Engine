@@ -30,6 +30,7 @@ import {
 } from "./appexcept";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, ColorChip, MiniDesktop, useT, usePersonaSection } from "./ui";
 import type { LaneT } from "./labels";
+import { PaletteLabCard, SchemaLabCard, SolarLabCard } from "./pages-lab";
 
 const GROUP_ZH: Record<ColorGroup, Parameters<LaneT>[0]> = {
   bg: "groupBg", fg: "groupFg", brand: "groupBrand", state: "groupState", line: "groupLine", misc: "groupMisc",
@@ -182,6 +183,8 @@ export function TokensPage(): React.ReactNode {
           </Row>
         ))}
       </Card>
+      <SchemaLabCard />
+      <PaletteLabCard />
     </div>
   );
 }
@@ -367,6 +370,7 @@ export function AutoDarkPage(): React.ReactNode {
           <PButton onClick={() => { const c = new AutoDarkController({ applySide: () => {}, showAdvanceToast: () => {}, report: () => {} }); c.skipTonight(Date.now()); }}>{t("skipTonight")}</PButton>
         </Row>
       </Card>
+      <SolarLabCard />
       <SunProviderCard />
     </div>
   );

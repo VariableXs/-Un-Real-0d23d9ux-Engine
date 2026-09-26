@@ -21,6 +21,7 @@ import { taskbarGeometry, autoHideNext, REARRANGE_BUDGET_MS, type AutoHideState 
 import { parseComboFromEvent, classifyConflict, exportKeymap, importKeymap, buildEvidenceDoc, evidenceDocComplete, type ScopedShortcut } from "./shortcut-engine";
 import { feedUsageFromRecentEngine, restorePointPathReverify } from "./integrations";
 import { loadTokenTable } from "./tokens";
+import { CtxNavCard, ChordLabCard, ReportLabCard } from "./pages-lab";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -115,6 +116,7 @@ function AssembledMenuPreviewCard(): React.ReactNode {
   const tier2 = assembled.items.filter((i) => i.tier === 2);
 
   return (
+    <>
     <Card title="菜单总装预览（真实渲染模型 · 乙-4 基线对齐）">
       <Row label="右键目标" sub="文件目标含剪切/复制/重命名；桌面背景自动过滤文件类项">
         <Segmented
@@ -142,6 +144,8 @@ function AssembledMenuPreviewCard(): React.ReactNode {
         <span />
       </Row>
     </Card>
+    <CtxNavCard />
+    </>
   );
 }
 
@@ -339,6 +343,7 @@ export function ShortcutsPage(): React.ReactNode {
         <PButton onClick={() => { saveOverrides(undoRebind(overrides)); setMsg("已改回"); }}>撤销</PButton>
       </Row>
       <KeymapExchangeRow overrides={overrides} onMsg={setMsg} />
+      <ChordLabCard />
     </div>
   );
 }
@@ -461,6 +466,7 @@ export function VerdictPage(): React.ReactNode {
         <PButton disabled={!result} onClick={downloadEvidence}>{result ? (evidenceDocComplete(buildEvidenceDoc(result, ["执行于域总检页"])) ? "导出证据包" : "证据链不足——先修再导") : "导出证据包"}</PButton>
       </Row>
       <DualPathRow />
+      <ReportLabCard />
     </div>
   );
 }

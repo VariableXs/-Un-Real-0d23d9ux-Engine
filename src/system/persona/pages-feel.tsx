@@ -15,6 +15,7 @@ import { loadMotionTier, saveMotionTier, motionPlan, scaledDuration, DEMO_SCENES
 import { resolveEventSound, volumeRamp, rampAt } from "./audio-engine";
 import { startMenuGeometry, presetThumbSpec } from "./layout-engine";
 import { FrameTimeSampler, animationFallback, progressNumberSpec, progressNumberText, previewHonestyNote } from "./motion-monitor";
+import { SynthLabCard } from "./pages-lab";
 import { Card, PageHeader, Row, Toggle, Slider, PButton, Notice, useT, usePersonaSection } from "./ui";// ---------- F157 声音混合器 ----------
 
 export function SoundPage(): React.ReactNode {
@@ -43,6 +44,7 @@ export function SoundPage(): React.ReactNode {
           </Row>
         ))}
       </Card>
+      <SynthLabCard />
       <SoundEngineCard muted={cfg.masterMute} />
     </div>
   );

@@ -7,6 +7,7 @@ import {
   ARCHIVE_SECTIONS, exportArchive, validateArchive, diffPreview, importArchive,
   type ArchivePackage,
 } from "./archive";
+import { WidgetDataCard, LockComposerCard, ImeLabCard } from "./pages-lab";
 import { loadWidgetConfig, saveWidgetConfig, addWidget, removeWidget, updateWidget, WIDGET_KINDS, clampOpacity, REFRESH_MS } from "./widgets";
 import { loadLockScreenConfig, saveLockScreenConfig, LOCK_TIME_STYLES, WAKE_TIMELINE, FALLBACK_COLOR } from "./lockcustom";
 import { loadBootSkinConfig, saveBootSkinConfig, validateBootSkinConfig, PARTICLE_COUNTS, particlePalette, BACKDROP_DIM, suggestDensity } from "./bootskin";
@@ -216,6 +217,7 @@ function PlacementCard(): React.ReactNode {
   const schedule = buildUpdateSchedule(cfg);
 
   return (
+    <>
     <Card title="摆放引擎（8px 网格 · F084 自由模式同族手感）">
       <Row label="模拟拖放首组件" sub={lastMove ?? "拖放落点吸附 8px 网格，与邻居重叠时自动推开"}>
         <PButton kind="primary" disabled={cfg.instances.length === 0} onClick={simulateDrag}>拖放 +13,+5</PButton>
@@ -240,6 +242,8 @@ function PlacementCard(): React.ReactNode {
         <span />
       </Row>
     </Card>
+    <WidgetDataCard />
+    </>
   );
 }
 
@@ -323,6 +327,7 @@ export function LockPage(): React.ReactNode {
           <span />
         </Row>
       </Card>
+      <LockComposerCard />
     </div>
   );
 }
@@ -541,6 +546,7 @@ export function ImePage(): React.ReactNode {
           }}>导出 schema</PButton>
         </Row>
       </Card>
+      <ImeLabCard />
     </div>
   );
 }

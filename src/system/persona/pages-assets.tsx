@@ -21,6 +21,7 @@ import {
 } from "./wallpaper-engine";
 import { iconInvalidationBus, auditSvgAsset } from "./icon-engine";
 import { renderPlan, evaluateCurAniCompatibility } from "./pointer-engine";
+import { AtlasLabCard, CursorPhysicsCard } from "./pages-lab";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F154 壁纸每日一换 ----------
@@ -220,6 +221,7 @@ export function IconPackPage(): React.ReactNode {
           return <Row key={c} label={c} sub={`来源: ${r.source}`}><span /></Row>;
         })}
       </Card>
+      <AtlasLabCard />
     </div>
   );
 }
@@ -334,6 +336,7 @@ export function PointerPage(): React.ReactNode {
           }}>{t("exportScheme")}</PButton>
         </Row>
       </Card>
+      <CursorPhysicsCard />
     </div>
   );
 }

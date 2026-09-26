@@ -38,6 +38,9 @@ const FILE_TO_F = {
   "engines-batch1.test.ts": ["F151", "F153", "F154", "F155"],
   "engines-batch2.test.ts": ["F156", "F157", "F158", "F159", "F160"],
   "engines-batch3.test.ts": ["F151", "F152", "F153", "F154", "F159", "F161", "F163", "F166", "F167", "F170"],
+  "engines-batch4.test.ts": ["F151", "F154", "F155", "F156", "F157"],
+  "engines-batch5.test.ts": ["F163", "F164", "F166"],
+  "engines-batch6.test.ts": ["F151", "F153", "F154", "F167", "F168", "F169", "F170"],
 };
 
 const perFile = {};

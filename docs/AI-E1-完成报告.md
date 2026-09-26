@@ -2,9 +2,9 @@
 
 > 分工包：主册《Varix STAR I start.md》E-5 深化设计报告（G-E-01 ~ G-E-20）判据实装层。
 > 分工边界：AI-E1 严格限定 F151-F170；未触碰 AI-H1~H4、AI-J1/J2 及其他任何分队任务面。
-> **v3 状态（本报告）**：深化批次二（引擎+接线）+ 深化批次三（集成点层）均已收口——
-> E 域单测 **192/192 PASS**、typecheck（`--incremental false` 全新口径）本域零错误、
-> walkcheck 脚本自检 PASS。隔离验证与检查项对账见
+> **v4 状态（本报告）**：深化批次四（引擎群+实验室接线）已收口——
+> E 域单测 **278/278 PASS**、typecheck（`--incremental false` 全新口径）本域零错误、
+> walkcheck 自检 PASS、tally 检查项对账二十桶全非零。隔离验证与检查项对账见
 > `_attic/aie1-f151-f170/隔离验证与检查项对账.md`。
 > 实现层级：主册【工程量】标注本域为「界面组件与交互层」——落点为
 > `src/system/persona/`（TS/React），与 AI-K1/K2 的 Rust 内核泳道互不相交。
@@ -226,3 +226,48 @@ named-export 缺失）阻塞——非 E1 任务面不代修；E1 最近一次全
 v2 收口时点通过；隔离口径（vitest 单目录 + tsc 域内过滤）不依赖全树健康。
 
 —— AI-E1 · 2026-09-26 · v3 收口 · Not a corporate drone. Just... good.
+
+## 9. 深化批次四（v4 · 引擎群+实验室接线 · 本节为 v4 增补）
+
+**新增引擎（12 件 · 全部纯逻辑零 DOM 依赖 · 零注水）**：
+
+| 引擎 | F 项 | 能力 |
+| --- | --- | --- |
+| `palette-engine.ts` | F151/F154 | 中位切分量化（体积最大箱优先变体）· 壁纸亮度判类与和谐判定 · img→tokens 九键派生底稿（全灰壁纸诚实拒绝造强调色）· 色彩命名 |
+| `icon-atlas.ts` | F155 | shelf-next-fit 图集装箱（缩档尊重 4K 底线、overflow 显性化）· O(1) 命中测试 · 尺寸阶梯/mip 链 · 缓存键前缀失效契约 · <2s 换包预算拆账 |
+| `cursor-physics.ts` | F156 | Unity 规范 SmoothDamp（临界阻尼无过冲、帧率无关、大 dt 稳定）· 拖尾环形缓冲 · 点击状态机（抖动容忍/拖拽/移出取消/长按一次/连点去抖）· 热点半上取整精确变换 · 动画指针跳帧不追帧播放头 |
+| `sound-synthesis.ts` | F157 | 五种振荡器（含确定性噪声）· ADSR 包络 · 恒功率摆位多层合成 · soft clip 防削波 · RMS 归一 · 等功率淡化 · 线性重采样 · 16-bit WAV 编码 · 六事件合成谱 |
+| `widget-data.ts` | F163 | 月历时钟面（闰年正确）· 天气归一（华氏转制/脏值逐项拒绝/体感回退）· 系统采样清洗 · 调度抖动+指数退避（封顶 8×）· 新鲜度四级 · 开销滑窗 P95 |
+| `lockscreen-composer.ts` | F164 | 两拍渐进层栈（第一拍 <100ms）· 唤醒 ≤2s 预算拆账 · 壁纸亮度→虚化参数 · 让位 easeOutCubic 插值 · 通知摘要前 4 组折叠 · 解锁状态机（冷却按轮次翻倍封顶 5min） |
+| `ime-composition.ts` | F166 | 拼音音节切分（最长匹配+回溯、歧义串多解）· 真词库候选生成（全匹配+前缀）· 组合串纯编辑器（B-904 只收字母）· 9/页分页与数字键直选 · 组合期旗标 |
+| `ctxnav.ts` | F167/F168 | 菜单扁平化与键盘导航（回绕/跳过禁用/锁定项 Enter 不激活/type-ahead 循环）· F215 层级审计 · 托盘溢出布局（钉选挤出=缺陷级信号）· 热区数学 |
+| `chord-engine.ts` | F169 | 运行期唯一匹配面：两段序列缓冲（1s 超时/Esc 清空/失败不串段）· 冲突序列谁也不触发 · IME 组合期让位 · 全表一致性机械对拍 |
+| `verdict-report.ts` | F170 | DomainVerdict→Markdown 报告 · 跨轮回归四分法 · 抖动检测（红绿交替≠稳定通过）· 证据完整性深度门禁（含 7 天新鲜度）· FNV-1a 证据包验签 |
+| `tokens-schema.ts` | F151 | Draft-07 JSON Schema 生成（第三方作者预检）· CSS 变量双向桥（45 变量契约、键名对齐 tokens.css 惯例、派生变量回收跳过）· 无障碍字号 1.25× 等比钳制 |
+| `wallpaper-solar.ts` | F153/F154 | NOAA 高精度日出日落（中心差方程+均时差+经度修正，较 Cooper 兜底精度翻倍）· 极昼极夜显性策略 · 预载窗规划（跨天双摆位求交）· 多屏并行度 2 封顶 |
+
+**接线增量**：`pages-lab.tsx` 十一个实验室面板（调色板/天文历/图集装箱/指针物理/
+合成实验室/小组件数据/锁屏合成/拼音组合/菜单导航/序列匹配/报告与证据包/
+Schema 桥——预览即真话，跑的是引擎本体）；五页组全量挂载（令牌表页+
+SchemaLab/PaletteLab、深浅切换页+SolarLab、图标页+AtlasLab、指针页+
+CursorPhysicsCard、声音页+SynthLabCard、小组件页+WidgetDataCard、锁屏页+
+LockComposerCard、输入法页+ImeLabCard、右键菜单页+CtxNavCard、快捷键页+
+ChordLabCard、域总检页+ReportLabCard）；labels 双语扩容约 70 键。
+
+**验证**：批次四 86 新用例（engines-batch4/5/6）全绿；域累计 **278/278**；
+tsc `--incremental false` 本域零错误（严格模式 18 处首过全部清零）；
+walkcheck SELFTEST PASS；tally 二十桶全非零、未登记桶归零（FILE_TO_F 已登记
+三个新文件）。行数对账：**14,072 / 20,800 = 67.7%**（批次四净增 3,724 功能行）。
+
+**缺陷账（批次四 · 全即时修，10 条全录）**：extractPalette 行寻址被采样步进
+污染（🟡）、planPreload 跨午夜窗整窗丢失（🟡）、UnlockMachine 冷却按累计失败
+而非轮次（🟡）、smoothDamp 私改公式 NaN（🟡）——四处逻辑缺陷全部被单测兜住
+后修正；verdict-report 引用臆造类型（写前未回读，重写对齐）；toCssVariables
+键名双前缀、fromCssVariables 只读变量误拒、pages-lab 死代码残留、JSX 单父、
+tsc 严格模式 18 处。全记录见 `_attic/aie1-f151-f170/隔离验证与检查项对账.md` §4。
+
+**批次五候选**（对齐 67.7% → 目标线的缺口 ≈6,700 行）：素材资产管线
+（F156 双倍率 sprite 位图、F165 烘帧产物）→ 双语空态/错误态全量铺开 →
+真机走查证据随闸门补测。
+
+—— AI-E1 · 2026-09-26 · v4 收口 · Not a corporate drone. Just... good.
