@@ -142,7 +142,7 @@ pub fn apply_e7_override(m: &FontMapping, user_family: VarixFamily) -> FontMappi
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_fontchain_checks() -> CheckSet {
+pub fn run_fontchain_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F016-fontchain");
     // 1) 判据常量（4/3 换算 / 200pt / 20 名映射面）。
     cs.add(
@@ -390,4 +390,98 @@ mod ext_tests {
         assert!(r6.bold, "600 映射最近 Bold 档");
         assert_eq!(r6.weight_note, "");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_fontchain_checks() -> CheckSet {
+    CheckSet::merge(run_fontchain_base_checks(), run_fontchain_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F016 · 深化批次二：字体角色查询 + 高频别名规范化
+//
+// 主册依据（G-A-16【功能定义】）：「宋体→衬线族、微软雅黑→无衬线族、
+// Consolas/Courier→等宽族、Segoe UI→无衬线族」——角色（role）查询面；
+// 【设计细节】映射覆盖 20 个高频名（含 Windows 高频别名）——别名规范化
+// （别名 → 规范名再查表，别名不属于表键是 Windows 匹配语义）。
+// ---------------------------------------------------------------------------
+
+/// 字体角色（E7 字体设置页/程序请求的分类面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FontRole {
+    Serif,
+    Sans,
+    Mono,
+    Unknown,
+}
+
+/// 高频名 → 角色（主册【功能定义】映射序）。
+pub fn role_of(win_name: &str) -> FontRole {
+    match win_name {
+        "宋体" | "Times New Roman" | "Georgia" => FontRole::Serif,
+        "微软雅黑" | "黑体" | "Segoe UI" | "Arial" | "Verdana" | "Tahoma" | "楷体" => FontRole::Sans,
+        "Consolas" | "Courier New" | "Courier" => FontRole::Mono,
+        _ => FontRole::Unknown,
+    }
+}
+
+/// 高频别名规范化（别名 → 规范名；非别名原样返回——表内键是规范名，
+/// 全名直查必落回退，别名规范化是 Windows 匹配语义的前置步骤）。
+pub fn canonical_family(win_name: &str) -> &str {
+    match win_name {
+        "MS Shell Dlg" => "微软雅黑",
+        "MS Sans Serif" => "Segoe UI",
+        "System" => "Segoe UI",
+        "Fixedsys" => "Consolas",
+        _ => win_name,
+    }
+}
+
+/// 别名感知的角色查询（canonical 先行 → role）。
+pub fn role_resolved(win_name: &str) -> FontRole {
+    role_of(canonical_family(win_name))
+}
+
+/// F016 深化自检。
+pub fn run_fontchain_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F016-fontchain-deep");
+    // 1) 角色映射对齐主册【功能定义】四锚点。
+    cs.add(
+        "role_mapping_anchors",
+        role_of("宋体") == FontRole::Serif
+            && role_of("微软雅黑") == FontRole::Sans
+            && role_of("Consolas") == FontRole::Mono
+            && role_of("Segoe UI") == FontRole::Sans
+            && role_of("不存在的字体") == FontRole::Unknown,
+        "",
+    );
+    // 2) 别名规范化：四个 Windows 高频别名落规范名；非别名原样。
+    cs.add(
+        "alias_canonicalization",
+        canonical_family("MS Shell Dlg") == "微软雅黑"
+            && canonical_family("MS Sans Serif") == "Segoe UI"
+            && canonical_family("System") == "Segoe UI"
+            && canonical_family("Fixedsys") == "Consolas"
+            && canonical_family("Arial") == "Arial",
+        "",
+    );
+    // 3) 别名感知角色：别名也拿得到正确角色（直查会 Unknown——规范化必要
+    //    性的证明锚）。
+    cs.add(
+        "role_resolved_via_alias",
+        role_of("MS Shell Dlg") == FontRole::Unknown && role_resolved("MS Shell Dlg") == FontRole::Sans,
+        "",
+    );
+    // 4) LOGFONT 语义（深化一批既有面）对账锚：负值直取/正值扣内距/600 加粗线。
+    cs.add(
+        "logfont_anchored",
+        lf_height_to_px(-16) == 16 && lf_height_to_px(20) == 18 && resolve_logfont("Arial", -12, FW_SEMIBOLD).bold,
+        "",
+    );
+    cs
 }

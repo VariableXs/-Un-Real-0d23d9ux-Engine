@@ -429,7 +429,7 @@ fn build_rsrc(entries: &[(u32, u32, u32, u32, u32)]) -> Vec<u8> {
 }
 
 /// 域自检。
-pub fn run_persrc_checks() -> CheckSet {
+pub fn run_persrc_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F014-persrc");
     // 1) 判据常量（RT 号 / 8B 条目 / 优先级链 / DPI 三态）。
     cs.add(
@@ -912,4 +912,107 @@ mod ext_tests {
         vi.set(3, b"MIT");
         assert_eq!(vi.populated_fields(), 5);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_persrc_checks() -> CheckSet {
+    CheckSet::merge(run_persrc_base_checks(), run_persrc_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F014 · 深化批次二：组图标成员选择（组 → 最优档成员）
+//
+// 主册依据（G-A-14【设计细节】）：「图标选择策略：目标尺寸有精确档用精确
+// 档，无则就近放大禁止缩小（小图标放大等于糊）」——把该策略落到组图标
+// （GRPICONDIR，深化一批解析件）的成员选择上：`pick_group_member`。
+// ---------------------------------------------------------------------------
+
+/// 解码 GRPICONDIR 尺寸编码（256px 编码为 0——ICON_DIR 规范）。
+fn grp_dim(v: u8) -> u16 {
+    if v == 0 {
+        256
+    } else {
+        v as u16
+    }
+}
+
+/// 从组图标成员中选最优档：精确命中 → 该成员；无精确档 → 最接近的**大于
+/// 目标**的成员（就近放大），全小于目标 → 最大的成员（禁止缩小 = 用最大档）。
+pub fn pick_group_member<'a>(entries: &'a [GroupIconEntry], target_px: u16) -> Option<&'a GroupIconEntry> {
+    if entries.is_empty() {
+        return None;
+    }
+    let dims: [u16; 16] = {
+        let mut d = [0u16; 16];
+        for (i, e) in entries.iter().take(16).enumerate() {
+            d[i] = grp_dim(e.width);
+        }
+        d
+    };
+    // 精确档。
+    if let Some(i) = (0..entries.len().min(16)).find(|&i| dims[i] == target_px) {
+        return Some(&entries[i]);
+    }
+    // 就近放大：大于目标的最小档。
+    let mut best_up: Option<usize> = None;
+    for i in 0..entries.len().min(16) {
+        if dims[i] > target_px {
+            best_up = match best_up {
+                None => Some(i),
+                Some(b) if dims[i] < dims[b] => Some(i),
+                _ => best_up,
+            };
+        }
+    }
+    if let Some(i) = best_up {
+        return Some(&entries[i]);
+    }
+    // 全小于目标 → 最大档（禁止缩小：宁可放大最大档）。
+    (0..entries.len().min(16))
+        .reduce(|a, b| if dims[b] > dims[a] { b } else { a })
+        .and_then(|i| entries.get(i))
+}
+
+/// F014 深化自检。
+pub fn run_persrc_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F014-persrc-deep");
+    // 1) 尺寸编码：0 → 256（GRPICONDIR 规范）。
+    cs.add("grp_dim_decode_256", grp_dim(0) == 256 && grp_dim(32) == 32, "");
+    // 2) 精确档命中。
+    let g = [
+        GroupIconEntry { width: 16, height: 16, color_count: 0, planes: 1, bit_count: 32, bytes_in_res: 1, icon_id: 1 },
+        GroupIconEntry { width: 48, height: 48, color_count: 0, planes: 1, bit_count: 32, bytes_in_res: 1, icon_id: 2 },
+        GroupIconEntry { width: 0, height: 0, color_count: 0, planes: 1, bit_count: 32, bytes_in_res: 1, icon_id: 3 },
+    ];
+    let p48 = pick_group_member(&g, 48).unwrap();
+    let p256 = pick_group_member(&g, 256).unwrap();
+    cs.add("pick_exact", p48.icon_id == 2 && p256.icon_id == 3, "");
+    // 3) 无精确档 → 就近放大禁止缩小：目标 24 → 取 48（不是 16）。
+    let p24 = pick_group_member(&g, 24).unwrap();
+    cs.add("pick_nearest_up_never_down", p24.icon_id == 2, "");
+    // 4) 全小于目标 → 最大档：目标 128、组内只有 16/48 → 取 48；
+    //    g 含 256 档 → 同目标就近放大取 256（两语义一并钉死）。
+    let small = [
+        GroupIconEntry { width: 16, height: 16, color_count: 0, planes: 1, bit_count: 32, bytes_in_res: 1, icon_id: 1 },
+        GroupIconEntry { width: 48, height: 48, color_count: 0, planes: 1, bit_count: 32, bytes_in_res: 1, icon_id: 2 },
+    ];
+    let p128 = pick_group_member(&small, 128).unwrap();
+    let p_up = pick_group_member(&g, 128).unwrap();
+    cs.add("pick_largest_when_all_smaller", p128.icon_id == 2 && p_up.icon_id == 3, "");
+    // 5) 空组诚实 None + dpiAwareness 既有面（深化一批）对账锚。
+    let empty: [GroupIconEntry; 0] = [];
+    let modern = b"<assembly><dpiAwareness>PerMonitorV2, system</dpiAwareness></assembly>";
+    cs.add(
+        "deep_batch1_anchored",
+        pick_group_member(&empty, 32).is_none()
+            && parse_manifest_awareness(modern) == DpiAware::PerMonitor
+            && VersionInfo::default().populated_fields() == 0,
+        "",
+    );
+    cs
 }

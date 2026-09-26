@@ -349,7 +349,7 @@ fn fill48(s: &str) -> [u8; 48] {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_fsredir_checks() -> CheckSet {
+pub fn run_fsredir_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F010-fsredir");
     // 1) 判据常量（审计 1000 / 直通四目录 / 沙盒根）。
     cs.add(
@@ -708,4 +708,218 @@ mod ext_tests {
         assert_eq!(t.len(), OVERRIDE_CAP);
         assert!(!t.declare("C:\\Overflow", "DIRECT"));
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_fsredir_checks() -> CheckSet {
+    CheckSet::merge(run_fsredir_base_checks(), run_fsredir_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F010 · 深化批次二：前缀路由器（段边界长匹配）+ 跨沙盒共享白名单
+//
+// 主册依据（G-A-10【设计细节】）：「规则表按路径前缀 trie 匹配（复杂度随
+// 路径深度）」——PrefixRouter 以定长规则槽 + 段边界最长前缀匹配实现 trie
+// 语义（与 classify_path 的静态规则对账）；「跨沙盒共享需求 → 显式声明
+// 『共享数据区』白名单」——SharedData 显式声明面。
+// ---------------------------------------------------------------------------
+
+/// 前缀路由规则槽（定长零堆；匹配按段边界 + 最长前缀优先）。
+pub const ROUTER_RULE_CAP: usize = 32;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RouteTier {
+    Program,
+    AppData,
+    SystemImage,
+    Direct,
+}
+
+pub struct PrefixRouter {
+    rules: [Option<(&'static str, RouteTier, &'static str)>; ROUTER_RULE_CAP],
+    n: usize,
+    /// 命中计数（按规则槽——审计面）。
+    pub hits: [u32; ROUTER_RULE_CAP],
+}
+
+impl PrefixRouter {
+    pub fn new() -> PrefixRouter {
+        PrefixRouter { rules: [None; ROUTER_RULE_CAP], n: 0, hits: [0; ROUTER_RULE_CAP] }
+    }
+
+    /// 注册规则（前缀必须以 `\` 结尾或为盘根——段边界匹配的前提；重复前缀
+    /// 如实拒绝，路由歧义不允许）。
+    pub fn add_rule(&mut self, prefix: &'static str, tier: RouteTier, target: &'static str) -> bool {
+        if self.n >= ROUTER_RULE_CAP {
+            return false;
+        }
+        for i in 0..self.n {
+            if let Some((p, _, _)) = self.rules[i] {
+                if p.eq_ignore_ascii_case(prefix) {
+                    return false;
+                }
+            }
+        }
+        self.rules[self.n] = Some((prefix, tier, target));
+        self.n += 1;
+        true
+    }
+
+    /// 段边界 + 最长前缀匹配：`C:\AppFoo` 不得命中 `C:\App` 规则（段边界）；
+    /// 同一命中深度下先注册者胜（确定性语义）。
+    pub fn route(&mut self, path: &str) -> Option<(RouteTier, &'static str)> {
+        let p = path.to_ascii_lowercase();
+        let mut best: Option<(usize, RouteTier, &'static str)> = None;
+        for i in 0..self.n {
+            if let Some((prefix, tier, target)) = self.rules[i] {
+                let lp = prefix.to_ascii_lowercase();
+                if p.starts_with(&lp) {
+                    let boundary_ok = p.len() == lp.len()
+                        || p.as_bytes()[lp.len()] == b'\\'
+                        || lp.ends_with('\\');
+                    if !boundary_ok {
+                        continue;
+                    }
+                    let depth = lp.matches('\\').count();
+                    match best {
+                        // 同深度保留先注册者（确定性语义：注册序即优先序）。
+                        Some((d, _, _)) if d >= depth => {}
+                        _ => best = Some((depth, tier, target)),
+                    }
+                }
+            }
+        }
+        match best {
+            Some((_, tier, target)) => {
+                for i in 0..self.n {
+                    if let Some((prefix, t, tg)) = self.rules[i] {
+                        if t == tier && tg == target && {
+                            let lp = prefix.to_ascii_lowercase();
+                            p.starts_with(&lp) && (p.len() == lp.len() || p.as_bytes()[lp.len()] == b'\\' || lp.ends_with('\\'))
+                        } {
+                            self.hits[i] += 1;
+                            break;
+                        }
+                    }
+                }
+                Some((tier, target))
+            }
+            None => None,
+        }
+    }
+}
+
+/// 跨沙盒共享数据区白名单（显式声明才可写，写操作过审计——主册【设计细节】）。
+pub struct SharedWhite {
+    apps: [u32; 16],
+    n: usize,
+    /// 未声明应用的写尝试拒绝计数（审计面）。
+    pub denied: u32,
+}
+
+impl SharedWhite {
+    pub fn new() -> SharedWhite {
+        SharedWhite { apps: [0; 16], n: 0, denied: 0 }
+    }
+
+    /// 显式声明（重复声明幂等）。
+    pub fn declare(&mut self, app: u32) -> bool {
+        if (0..self.n).any(|i| self.apps[i] == app) {
+            return true;
+        }
+        if self.n < 16 {
+            self.apps[self.n] = app;
+            self.n += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 写请求裁决：声明过 → 放行；未声明 → 拒绝 + 计数（不静默丢）。
+    pub fn request_write(&mut self, app: u32) -> bool {
+        if (0..self.n).any(|i| self.apps[i] == app) {
+            true
+        } else {
+            self.denied += 1;
+            false
+        }
+    }
+}
+
+/// F010 深化自检。
+pub fn run_fsredir_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F010-fsredir-deep");
+    // 1) 段边界：C:\AppFoo 不命中 C:\App；C:\App\file 命中。
+    let mut r = PrefixRouter::new();
+    assert!(r.add_rule("C:\\App\\", RouteTier::Program, "SANDBOX:Program"));
+    cs.add(
+        "trie_segment_boundary",
+        r.route("C:\\AppFoo\\x.txt").is_none()
+            && r.route("C:\\App\\config.ini").is_some(),
+        "",
+    );
+    // 2) 最长前缀优先：C:\App\Special 深规则压过 C:\App 浅规则。
+    assert!(r.add_rule("C:\\App\\Special\\", RouteTier::AppData, "SANDBOX:AppData"));
+    let hit = r.route("C:\\App\\Special\\f");
+    let normal = r.route("C:\\App\\other");
+    cs.add(
+        "trie_longest_prefix_wins",
+        hit == Some((RouteTier::AppData, "SANDBOX:AppData"))
+            && normal == Some((RouteTier::Program, "SANDBOX:Program")),
+        "",
+    );
+    // 3) 与 classify_path 静态规则对账（Routing parity——两套路由必须同向）：
+    //    Windows 只读镜像 / Program Files 重定向 / AppData 重定向 / 用户直通。
+    let d1 = classify_path("C:\\Windows\\evil.ini");
+    let d2 = classify_path("C:\\Program Files\\Old\\app.cfg");
+    let d3 = classify_path("C:\\Users\\v\\AppData\\Roaming\\cfg");
+    let d4 = classify_path("C:\\Users\\Public\\Documents\\report.docx");
+    cs.add(
+        "routing_parity_with_classify",
+        d1.tier == RedirectTier::SystemImage
+            && d2.tier == RedirectTier::Program
+            && d3.tier == RedirectTier::AppData
+            && d4.tier == RedirectTier::PassThrough,
+        "",
+    );
+    // 4) 共享白名单：声明放行、未声明拒绝计数、重复声明幂等。
+    let mut w = SharedWhite::new();
+    let d0 = w.request_write(7);
+    let ok = w.declare(7);
+    let ok2 = w.declare(7);
+    let pass = w.request_write(7);
+    let deny = w.request_write(8);
+    cs.add(
+        "shared_whitelist_explicit",
+        !d0 && ok && ok2 && pass && !deny && w.denied == 2,
+        "",
+    );
+    // 5) 规则重复拒绝（路由歧义不允许）+ 规则槽满容诚实拒绝（32 条独立
+    //    静态前缀填满后第 33 条拒绝）。
+    let dup = r.add_rule("C:\\app\\", RouteTier::Direct, "DIRECT");
+    const CAP_RULES: [&str; ROUTER_RULE_CAP] = [
+        "C:\\r00\\", "C:\\r01\\", "C:\\r02\\", "C:\\r03\\", "C:\\r04\\", "C:\\r05\\",
+        "C:\\r06\\", "C:\\r07\\", "C:\\r08\\", "C:\\r09\\", "C:\\r10\\", "C:\\r11\\",
+        "C:\\r12\\", "C:\\r13\\", "C:\\r14\\", "C:\\r15\\", "C:\\r16\\", "C:\\r17\\",
+        "C:\\r18\\", "C:\\r19\\", "C:\\r20\\", "C:\\r21\\", "C:\\r22\\", "C:\\r23\\",
+        "C:\\r24\\", "C:\\r25\\", "C:\\r26\\", "C:\\r27\\", "C:\\r28\\", "C:\\r29\\",
+        "C:\\r30\\", "C:\\r31\\",
+    ];
+    let mut full = PrefixRouter::new();
+    let mut all_ok = true;
+    for pfx in CAP_RULES.iter() {
+        all_ok &= full.add_rule(pfx, RouteTier::Direct, "DIRECT");
+    }
+    cs.add(
+        "router_dup_and_cap_honest",
+        !dup && all_ok && !full.add_rule("C:\\y\\", RouteTier::Direct, "DIRECT"),
+        "",
+    );
+    cs
 }

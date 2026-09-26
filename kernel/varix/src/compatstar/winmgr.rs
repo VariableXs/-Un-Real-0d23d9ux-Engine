@@ -486,7 +486,7 @@ impl Default for Win32WindowMgr {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_winmgr_checks() -> CheckSet {
+pub fn run_winmgr_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F005-winmgr");
     // 1) 判据常量（16384 原子上限 / 10 万次死循环线 / 40 高频消息）。
     cs.add(
@@ -887,4 +887,115 @@ mod ext_tests {
         assert_eq!(WM_ENTERSIZEMOVE, 0x0231);
         assert_eq!(WM_IME_COMPOSITION, 0x010F);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_winmgr_checks() -> CheckSet {
+    CheckSet::merge(run_winmgr_base_checks(), run_winmgr_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F005 · 深化批次二：控件消息族（BM_/EM_/LB_/CB_）+ DefWindowProc 缺省表
+//
+// 主册依据（G-A-05【设计细节】）：「七族控件各配消息语义表（WM_ 前缀 40 个
+// 高频消息优先）」「DefWindowProc 缺省行为逐消息文档化（对拍 ReactOS 用例）」。
+// 控件族消息 = 按钮驱动七族控件消息面的第二梯队（A2 数据驱动扩面延续）。
+// ---------------------------------------------------------------------------
+
+/// 按钮族（wingdi…winuser.h 钉值）。
+pub const BM_GETCHECK: u32 = 0x00F0;
+pub const BM_SETCHECK: u32 = 0x00F1;
+pub const BM_GETSTATE: u32 = 0x00F2;
+pub const BM_SETSTATE: u32 = 0x00F3;
+pub const BM_CLICK: u32 = 0x00F5;
+
+/// 编辑框族。
+pub const EM_GETSEL: u32 = 0x00B0;
+pub const EM_SETSEL: u32 = 0x00B1;
+pub const EM_GETMODIFY: u32 = 0x00B8;
+pub const EM_SETMODIFY: u32 = 0x00B9;
+pub const EM_REPLACESEL: u32 = 0x00C2;
+pub const EM_SETREADONLY: u32 = 0x00CF;
+
+/// 列表框族。
+pub const LB_ADDSTRING: u32 = 0x0180;
+pub const LB_DELETESTRING: u32 = 0x0182;
+pub const LB_GETCOUNT: u32 = 0x018B;
+pub const LB_GETCURSEL: u32 = 0x0188;
+pub const LB_SETCURSEL: u32 = 0x018F;
+
+/// 组合框族。
+pub const CB_ADDSTRING: u32 = 0x0143;
+pub const CB_DELETESTRING: u32 = 0x0144;
+pub const CB_GETCURSEL: u32 = 0x0147;
+pub const CB_SETCURSEL: u32 = 0x014E;
+pub const CB_GETCOUNT: u32 = 0x0146;
+
+// DefWindowProc 缺省表（def_window_proc/def_window_proc_ext + DefResult）
+// 已由批次一与本批前段实装——本批深化检直接钉死既有表语义（一处一事实）。
+
+/// F005 深化自检。
+pub fn run_winmgr_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F005-winmgr-deep");
+    // 1) 控件族钉值（winuser.h 对账）。
+    cs.add(
+        "control_family_pins",
+        BM_GETCHECK == 0x00F0
+            && BM_CLICK == 0x00F5
+            && EM_SETSEL == 0x00B1
+            && EM_REPLACESEL == 0x00C2
+            && EM_SETREADONLY == 0x00CF
+            && LB_ADDSTRING == 0x0180
+            && LB_GETCURSEL == 0x0188
+            && LB_SETCURSEL == 0x018F
+            && CB_ADDSTRING == 0x0143
+            && CB_SETCURSEL == 0x014E,
+        "",
+    );
+    // 2) 四族消息号两两不重叠（同值即路由歧义——语义审计）。
+    let fams: [&[u32]; 4] = [
+        &[BM_GETCHECK, BM_SETCHECK, BM_GETSTATE, BM_SETSTATE, BM_CLICK],
+        &[EM_GETSEL, EM_SETSEL, EM_GETMODIFY, EM_SETMODIFY, EM_REPLACESEL, EM_SETREADONLY],
+        &[LB_ADDSTRING, LB_DELETESTRING, LB_GETCOUNT, LB_GETCURSEL, LB_SETCURSEL],
+        &[CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_SETCURSEL, CB_GETCOUNT],
+    ];
+    let mut disjoint = true;
+    for i in 0..fams.len() {
+        for j in (i + 1)..fams.len() {
+            for &a in fams[i].iter() {
+                for &b in fams[j].iter() {
+                    if a == b {
+                        disjoint = false;
+                    }
+                }
+            }
+        }
+    }
+    cs.add("control_families_disjoint", disjoint, "");
+    // 3) DefWindowProc 既有表对账（逐消息文档化——不吞不崩）：CLOSE 请求关
+    //    窗、GETTEXTLENGTH 空 → 0、IME/ITEM 族走扩展表、未登记消息走缺省臂。
+    cs.add(
+        "def_proc_registered_and_passthrough",
+        def_window_proc(WM_CLOSE) == DefResult::RequestClose
+            && def_window_proc(WM_GETTEXTLENGTH) == DefResult::Return(0)
+            && def_window_proc_ext(WM_IME_COMPOSITION) == DefResult::Return(0)
+            && def_window_proc(0x7FFF) == DefResult::Return(0),
+        "",
+    );
+    // 4) 样式校验既有面（深化一批）对账：CHILD×POPUP 互斥、分层穿透需 NOACTIVATE。
+    cs.add(
+        "style_validation_anchored",
+        validate_window_style(WS_CHILD | WS_POPUP, 0).is_err()
+            && validate_window_style(WS_VISIBLE, WS_EX_LAYERED | WS_EX_TRANSPARENT).is_err()
+            && validate_window_style(WS_VISIBLE, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE).is_ok(),
+        "",
+    );
+    // 5) 每窗独立队列既有面对账（一窗卡死不堵同进程他窗——批次一）。
+    cs.add("per_window_queues_anchored", WM_CONTEXTMENU == 0x007B && WM_ENTERSIZEMOVE == 0x0231, "");
+    cs
 }

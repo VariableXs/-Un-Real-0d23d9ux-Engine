@@ -552,7 +552,7 @@ pub fn build_static_pe(subsystem: u16, sec_align: u32, section_count: usize, wit
 }
 
 /// 域自检。
-pub fn run_peblend_checks() -> CheckSet {
+pub fn run_peblend_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F002-peblend");
     // 1) 判据常量（96 节 / 64MB / 4KB / 30% 驻留线）。
     cs.add(
@@ -1114,4 +1114,170 @@ mod ext_tests {
         // 目录 RVA 越出节区 → 如实拒绝。
         assert!(parse_imports(&bytes, &img, 0xFFFF_F000, size).is_err());
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_peblend_checks() -> CheckSet {
+    CheckSet::merge(run_peblend_base_checks(), run_peblend_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F002 · 深化批次二：TLS 回调目录解析 + 节惰性提交记账
+//
+// 主册依据（G-A-02【状态与异常】）：「TLS 回调执行按 Windows 语义先于入口
+// 点（顺序差异表登记）」；【设计细节】「装载内存按节惰性提交（触碰才分配
+// 物理页），20MB 程序实际驻留首启小于 6MB」。TLS 目录 = 数据目录[9]。
+// ---------------------------------------------------------------------------
+
+/// TLS 目录解析结果（PE32+：回调数组每项 8B VA）。
+#[derive(Clone, Copy, Debug)]
+pub struct TlsInfo {
+    /// 回调数组 VA（TLS 目录的 AddressOfCallBacks 字段）。
+    pub callbacks_va: u64,
+    /// 回调数组（上限 8，第 9 项非零 → 如实拒绝——不静默截）。
+    pub callback_vas: [u64; 8],
+    pub callback_n: usize,
+}
+
+impl TlsInfo {
+    /// Windows 语义登记面：TLS 回调先于入口点执行（差异表条款的机器可读形态）。
+    pub fn order_note() -> &'static str {
+        "tls-callbacks-run-before-entrypoint"
+    }
+}
+
+/// 解析 TLS 目录。`dir_rva` 为数据目录[9] 的 RVA；PE32+ TLS 目录布局：
+/// RawDataStart(8) RawDataEnd(8) AddressOfIndex(8) AddressOfCallBacks(8)
+/// SizeOfZeroFill(4) Characteristics(4) = 40B 有效域。回调数组在
+/// AddressOfCallBacks 指向的 VA（模型层 VA 与 RVA 同基，按节表换算文件偏移
+/// 读取，8B 一项，全 0 终止）。
+pub fn parse_tls_directory(
+    image: &[u8],
+    img: &BlendImage,
+    dir_rva: u32,
+) -> Result<TlsInfo, PeBlendError> {
+    if dir_rva == 0 {
+        return Ok(TlsInfo { callbacks_va: 0, callback_vas: [0; 8], callback_n: 0 });
+    }
+    let base = rva_to_off(img, dir_rva as u64).ok_or(PeBlendError::BadSectionTable)?;
+    if base + 40 > image.len() {
+        return Err(PeBlendError::BadSectionTable);
+    }
+    let read64 = |o: usize| -> u64 { u64::from_le_bytes(image[o..o + 8].try_into().unwrap()) };
+    let callbacks_va = read64(base + 24);
+    if callbacks_va == 0 {
+        return Ok(TlsInfo { callbacks_va: 0, callback_vas: [0; 8], callback_n: 0 });
+    }
+    let arr_off = rva_to_off(img, callbacks_va).ok_or(PeBlendError::BadSectionTable)?;
+    let mut out = TlsInfo { callbacks_va, callback_vas: [0; 8], callback_n: 0 };
+    for k in 0..8usize {
+        let o = arr_off + k * 8;
+        if o + 8 > image.len() {
+            break;
+        }
+        let cb = read64(o);
+        if cb == 0 {
+            break; // 数组以全 0 终止（Windows 语义）
+        }
+        out.callback_vas[k] = cb;
+        out.callback_n = k + 1;
+    }
+    // 恰 8 个非零回调后仍有非零项 → 容量拒绝（模型上限，如实不静默）。
+    let o9 = arr_off + 64;
+    if out.callback_n == 8 && o9 + 8 <= image.len() && read64(o9) != 0 {
+        return Err(PeBlendError::BadSectionTable);
+    }
+    Ok(out)
+}
+
+/// 节惰性提交记账（触碰才分配物理页——G-A-02【设计细节】；零堆：纯计数模型）。
+#[derive(Clone, Copy, Debug)]
+pub struct LazyCommit {
+    /// 已提交字节（触碰累计，单调增长——装载期页不回收语义）。
+    pub committed_bytes: u64,
+    /// 触碰次数。
+    pub touches: u32,
+    /// 映像总字节（驻留比对账分母）。
+    pub image_bytes: u64,
+}
+
+impl LazyCommit {
+    pub fn new(image_bytes: u64) -> LazyCommit {
+        LazyCommit { committed_bytes: 0, touches: 0, image_bytes }
+    }
+
+    /// 一次触碰：返回本触碰新增的物理页记账（4KB 页粒度，跨页按页数计）。
+    pub fn touch(&mut self, off: u64, len: u64) -> u64 {
+        if len == 0 {
+            return 0;
+        }
+        let page_start = off / 4096;
+        let page_end = (off + len - 1) / 4096;
+        let new_bytes = (page_end - page_start + 1) * 4096;
+        self.committed_bytes += new_bytes;
+        self.touches += 1;
+        new_bytes
+    }
+
+    /// 驻留比（permille）：20MB 程序首启 <6MB 的达标域 <300‰。
+    pub fn resident_permille(&self) -> u32 {
+        if self.image_bytes == 0 {
+            return 0;
+        }
+        (self.committed_bytes * 1000 / self.image_bytes).min(1000) as u32
+    }
+}
+
+/// F002 深化自检。
+pub fn run_peblend_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F002-peblend-deep");
+    // 1) TLS 顺序语义登记面钉值。
+    cs.add("tls_order_note", TlsInfo::order_note() == "tls-callbacks-run-before-entrypoint", "");
+    // 2) TLS 解析：2 回调目录逐项一致；零目录 → 空结果不报错。
+    let bytes = build_static_pe(SUBSYSTEM_GUI, 4096, 1, false);
+    let img = parse(&bytes).unwrap();
+    let mut image = bytes.clone();
+    let dir_off = 0x400usize;
+    let arr_off = 0x440usize;
+    image[dir_off + 24..dir_off + 32].copy_from_slice(&0x1040u64.to_le_bytes());
+    image[arr_off..arr_off + 8].copy_from_slice(&0x7777_0001u64.to_le_bytes());
+    image[arr_off + 8..arr_off + 16].copy_from_slice(&0x7777_0002u64.to_le_bytes());
+    let tls = parse_tls_directory(&image, &img, 0x1000).unwrap();
+    let no_tls = parse_tls_directory(&bytes, &img, 0).unwrap();
+    cs.add(
+        "tls_parse_two_callbacks",
+        tls.callback_n == 2
+            && tls.callback_vas[0] == 0x7777_0001
+            && tls.callback_vas[1] == 0x7777_0002
+            && tls.callbacks_va == 0x1040
+            && no_tls.callback_n == 0,
+        "",
+    );
+    // 3) TLS 容量：8 个非零回调后仍有非零项 → 如实拒绝。
+    let mut image9 = image;
+    for k in 0..8usize {
+        let o = arr_off + k * 8;
+        image9[o..o + 8].copy_from_slice(&(0x7777_0010u64 + k as u64).to_le_bytes());
+    }
+    image9[arr_off + 64..arr_off + 72].copy_from_slice(&0x7777_0099u64.to_le_bytes());
+    cs.add("tls_ninth_callback_rejected", parse_tls_directory(&image9, &img, 0x1000).is_err(), "");
+    // 4) 惰性提交：页粒度（1B 触碰 = 1 页；跨页触碰 = 2 页），驻留比对账。
+    let mut lc = LazyCommit::new(20 * 1024 * 1024);
+    let a = lc.touch(0, 1);
+    let b = lc.touch(4095, 2);
+    cs.add(
+        "lazy_commit_page_granularity",
+        a == 4096 && b == 8192 && lc.touches == 2 && lc.committed_bytes == 12288,
+        "",
+    );
+    // 5) 驻留比达标域：20MB 镜像 5MB 触碰 → <300‰（G-A-02 设计细节换算）。
+    let mut lc2 = LazyCommit::new(20 * 1024 * 1024);
+    let _ = lc2.touch(0, 5 * 1024 * 1024);
+    cs.add("lazy_resident_target_domain", lc2.resident_permille() < 300, "");
+    cs
 }

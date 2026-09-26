@@ -526,7 +526,7 @@ pub const SAMPLE_TEMPLATE: &[(&str, &[u8])] = &[
 ];
 
 /// 域自检。
-pub fn run_reghive_checks() -> CheckSet {
+pub fn run_reghive_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F009-reghive");
     // 1) 判据常量（4KB 节点 / 256MB 告警 / CLSID 前缀）。
     cs.add(
@@ -847,4 +847,208 @@ mod ext_tests {
         assert!(truncated && count < 50);
         assert!(count > 0, "至少导出第一条");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_reghive_checks() -> CheckSet {
+    CheckSet::merge(run_reghive_base_checks(), run_reghive_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F009 · 深化批次二：蜂巢 JSON 导出（开放格式 F126）+ 污节点合并记账
+//
+// 主册依据（G-A-09【设计细节】）：「导出快照为 JSON（开放格式 F126）」
+// 「蜂巢 B 树节点 4KB、写放大控制（脏节点合并落盘）」。导出为键值对的
+// 规范 JSON 形态（转义完整、截断如实标注）。
+// ---------------------------------------------------------------------------
+
+/// JSON 字符串转义（`"` `\` 控制字符 → 转义序列；返回写入长度，缓冲不足
+/// 返回 0——不静默截半个转义）。
+pub fn json_escape(s: &str, buf: &mut [u8]) -> usize {
+    let mut n = 0usize;
+    let put = |n: &mut usize, buf: &mut [u8], b: u8| -> bool {
+        if *n >= buf.len() {
+            return false;
+        }
+        buf[*n] = b;
+        *n += 1;
+        true
+    };
+    for &b in s.as_bytes() {
+        match b {
+            b'"' => {
+                if !put(&mut n, buf, b'\\') || !put(&mut n, buf, b'"') {
+                    return 0;
+                }
+            }
+            b'\\' => {
+                if !put(&mut n, buf, b'\\') || !put(&mut n, buf, b'\\') {
+                    return 0;
+                }
+            }
+            b'\n' => {
+                if !put(&mut n, buf, b'\\') || !put(&mut n, buf, b'n') {
+                    return 0;
+                }
+            }
+            b'\t' => {
+                if !put(&mut n, buf, b'\\') || !put(&mut n, buf, b't') {
+                    return 0;
+                }
+            }
+            0x00..=0x1F => {
+                // 其余控制字符 → \u00XX（4 位十六进制，小写）。
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                let esc = [b'\\', b'u', b'0', b'0', HEX[(b >> 4) as usize], HEX[(b & 0xF) as usize]];
+                for e in esc.iter() {
+                    if !put(&mut n, buf, *e) {
+                        return 0;
+                    }
+                }
+            }
+            _ => {
+                if !put(&mut n, buf, b) {
+                    return 0;
+                }
+            }
+        }
+    }
+    n
+}
+
+/// 蜂巢 JSON 导出（键值对 → `{"k":"v",...}`；值按字节域转义；缓冲不足返回
+/// truncated=true 且 written 为 0——半截 JSON 不落盘，诚实语义）。
+pub fn export_json(recs: &[(&str, &[u8])], buf: &mut [u8]) -> (usize, bool) {
+    let mut n = 0usize;
+    let put = |n: &mut usize, buf: &mut [u8], b: u8| -> bool {
+        if *n >= buf.len() {
+            return false;
+        }
+        buf[*n] = b;
+        *n += 1;
+        true
+    };
+    if !put(&mut n, buf, b'{') {
+        return (0, true);
+    }
+    for (i, (k, v)) in recs.iter().enumerate() {
+        if i > 0 && !put(&mut n, buf, b',') {
+            return (0, true);
+        }
+        if !put(&mut n, buf, b'"') {
+            return (0, true);
+        }
+        let kn = json_escape(k, &mut buf[n..]);
+        if kn == 0 {
+            return (0, true);
+        }
+        n += kn;
+        if !put(&mut n, buf, b'"') || !put(&mut n, buf, b':') || !put(&mut n, buf, b'"') {
+            return (0, true);
+        }
+        let val = core::str::from_utf8(v).unwrap_or("");
+        let vn = json_escape(val, &mut buf[n..]);
+        if vn == 0 {
+            return (0, true);
+        }
+        n += vn;
+        if !put(&mut n, buf, b'"') {
+            return (0, true);
+        }
+    }
+    if !put(&mut n, buf, b'}') {
+        return (0, true);
+    }
+    (n, false)
+}
+
+/// 污节点合并记账（写放大控制——B 树脏节点合并落盘的观测面；零堆纯计数）。
+#[derive(Clone, Copy, Debug)]
+pub struct DirtyMerge {
+    /// 累计污节点数。
+    pub dirty_nodes: u32,
+    /// 合并落盘批次数（一次 flush 合并多个污节点 = 写放大下降）。
+    pub merged_flushes: u32,
+    /// 合并的节点累计。
+    pub merged_nodes: u32,
+}
+
+impl DirtyMerge {
+    pub fn new() -> DirtyMerge {
+        DirtyMerge { dirty_nodes: 0, merged_flushes: 0, merged_nodes: 0 }
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty_nodes += 1;
+    }
+
+    /// 合并落盘：把当前全部污节点并入一次 flush（返回本批节点数）。
+    pub fn flush_merged(&mut self) -> u32 {
+        let batch = self.dirty_nodes;
+        if batch > 0 {
+            self.dirty_nodes = 0;
+            self.merged_flushes += 1;
+            self.merged_nodes += batch;
+        }
+        batch
+    }
+}
+
+/// F009 深化自检。
+pub fn run_reghive_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F009-reghive-deep");
+    // 1) JSON 转义：引号/反斜杠/换行/控制字符全转义；普通串原样。
+    let mut e1 = [0u8; 32];
+    let n1 = json_escape("a\"b\\c\nd\te", &mut e1);
+    cs.add(
+        "json_escape_full",
+        n1 > 0
+            && &e1[..n1] == b"a\\\"b\\\\c\\nd\\te"
+            && json_escape("plain", &mut e1) == 5,
+        "",
+    );
+    // 2) 控制字符 → \u00xx 小写十六进制。
+    let mut e2 = [0u8; 8];
+    let n2 = json_escape("\u{1}", &mut e2);
+    cs.add("json_escape_control", n2 == 6 && &e2[..n2] == b"\\u0001", "");
+    // 3) 导出整体形态 + 截断如实（缓冲不足 → written=0 + truncated=true）。
+    let recs: [(&str, &[u8]); 2] = [("AutoSave", b"1"), ("Path", b"C:\\x")];
+    let mut full = [0u8; 128];
+    let (n3, trunc3) = export_json(&recs, &mut full);
+    let (n4, trunc4) = export_json(&recs, &mut [0u8; 8]);
+    cs.add(
+        "export_json_shape_and_truncation",
+        n3 > 0
+            && !trunc3
+            && &full[..n3] == b"{\"AutoSave\":\"1\",\"Path\":\"C:\\\\x\"}"
+            && n4 == 0
+            && trunc4,
+        "",
+    );
+    // 4) 污节点合并：mark 3 → flush 一批收 3 → 计数归零、批次数 1。
+    let mut dm = DirtyMerge::new();
+    dm.mark_dirty();
+    dm.mark_dirty();
+    dm.mark_dirty();
+    let batch = dm.flush_merged();
+    let empty = dm.flush_merged();
+    cs.add(
+        "dirty_merge_accounting",
+        batch == 3 && empty == 0 && dm.dirty_nodes == 0 && dm.merged_flushes == 1 && dm.merged_nodes == 3,
+        "",
+    );
+    // 5) 蜂巢 256MB 告警既有面（over_alarm）对账锚 + WAL 可恢复（批次一）。
+    let mut h = Hive::new(&[]);
+    let _ = h.set("K", b"v");
+    cs.add(
+        "hive_apis_anchored",
+        h.size_bytes() > 0 && !h.over_alarm() && h.wal_len() > 0 && h.flushes() >= 0,
+        "",
+    );
+    cs
 }

@@ -439,7 +439,7 @@ pub fn warmup_ratio_permille(first: u64, warm_mean: u64) -> u32 {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_pebind_checks() -> CheckSet {
+pub fn run_pebind_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F003-pebind");
     // 1) 判据常量（64MB / 60% 自愈线 / 50% 比值线 / 版本戳参与键）。
     cs.add(
@@ -712,4 +712,138 @@ mod ext_tests {
         let mut small = [0u8; 16];
         assert_eq!(serialize_cache(&t, 1, &mut small), 0);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_pebind_checks() -> CheckSet {
+    CheckSet::merge(run_pebind_base_checks(), run_pebind_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F003 · 深化批次二：delay-load 首调绑定 + LRU 淘汰 + 版本戳失效
+//
+// 主册依据（G-A-03【功能定义】）：「delay-load 按首次调用时绑定」；【设计
+// 细节】「缓存键加系统 DLL 版本戳（内核更新后键全失效重建）」「上限 64MB，
+// LRU 驱逐」。WAL/版本戳既有面（批次一）由深化检对账钉死。
+// ---------------------------------------------------------------------------
+
+/// delay-load 槽（首次调用时绑定——G-A-03【功能定义】；零堆）。
+#[derive(Clone, Copy, Debug)]
+pub struct DelayBind {
+    pub bound: bool,
+    /// 首次绑定的调用序号（对账面）。
+    pub bound_at_call: u64,
+}
+
+impl DelayBind {
+    pub const fn unbound() -> DelayBind {
+        DelayBind { bound: false, bound_at_call: 0 }
+    }
+
+    /// 一次调用：首次 → 绑定并返回 true；已绑定 → false（不再重复绑定，
+    /// Windows delay-load thunk 原位改写同语义）。
+    pub fn call(&mut self, call_id: u64) -> bool {
+        if self.bound {
+            return false;
+        }
+        self.bound = true;
+        self.bound_at_call = call_id;
+        true
+    }
+}
+
+/// LRU 淘汰表（缓存 >64MB 淘汰的条目粒度模型；容量 16，定长零堆）。
+pub const LRU_CAP: usize = 16;
+
+pub struct LruTable {
+    keys: [u64; LRU_CAP],
+    last_use: [u32; LRU_CAP],
+    n: usize,
+    clock: u32,
+    /// 淘汰次数（观测面）。
+    pub evictions: u32,
+}
+
+impl LruTable {
+    pub fn new() -> LruTable {
+        LruTable { keys: [0; LRU_CAP], last_use: [0; LRU_CAP], n: 0, clock: 0, evictions: 0 }
+    }
+
+    /// 触碰（命中则刷新时戳；未命中满容则淘汰最旧后插入）。返回被淘汰键
+    /// （无淘汰返回 None）。
+    pub fn touch(&mut self, key: u64) -> Option<u64> {
+        self.clock = self.clock.wrapping_add(1);
+        let now = self.clock;
+        if let Some(i) = (0..self.n).find(|&i| self.keys[i] == key) {
+            self.last_use[i] = now;
+            return None;
+        }
+        if self.n < LRU_CAP {
+            self.keys[self.n] = key;
+            self.last_use[self.n] = now;
+            self.n += 1;
+            return None;
+        }
+        let victim = (0..LRU_CAP)
+            .reduce(|a, b| if self.last_use[b] < self.last_use[a] { b } else { a })
+            .unwrap_or(0);
+        let evicted = self.keys[victim];
+        self.keys[victim] = key;
+        self.last_use[victim] = now;
+        self.evictions += 1;
+        Some(evicted)
+    }
+
+    pub fn contains(&self, key: u64) -> bool {
+        (0..self.n).any(|i| self.keys[i] == key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.n
+    }
+}
+
+/// F003 深化自检。
+pub fn run_pebind_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F003-pebind-deep");
+    // 1) delay-load 首调绑定：首次 true，其后恒 false，序号对账。
+    let mut d = DelayBind::unbound();
+    let c1 = d.call(7);
+    let c2 = d.call(8);
+    cs.add("delay_load_binds_once", c1 && !c2 && d.bound && d.bound_at_call == 7, "");
+    // 2) LRU：容量内不淘汰；满容插入淘汰最久未用键。
+    let mut l = LruTable::new();
+    for k in 0..LRU_CAP as u64 {
+        assert!(l.touch(k).is_none());
+    }
+    let _ = l.touch(0); // 刷新 0 → 键 1 成为最旧
+    let evicted = l.touch(LRU_CAP as u64 + 100);
+    cs.add(
+        "lru_evicts_least_recent",
+        evicted == Some(1) && l.contains(0) && !l.contains(1) && l.evictions == 1,
+        "",
+    );
+    // 3) 版本戳：BindKey 带版本戳（批次一既有面）——戳变化 → 键失配 → 全量
+    //    重建语义（两次戳的键不相等）。
+    let k_old = BindKey::new(0xAB, 0xCD, 1);
+    let k_new = BindKey::new(0xAB, 0xCD, 2);
+    cs.add(
+        "version_stamp_invalidates",
+        k_old.version_stamp == 1 && k_new.version_stamp == 2 && !(k_old == k_new),
+        "",
+    );
+    // 4) WAL 既有面对账（批次一）：追加可恢复、撕裂计数可见。
+    let mut w = Wal::new();
+    let _ = w.append(k_old, 0x1234);
+    let mut t = BindTable::new(1);
+    let recovered = w.recover(&mut t);
+    cs.add("wal_append_recover_roundtrip", recovered == 1 && w.torn_on_recover() == 0, "");
+    // 5) 缓存序列化对账（批次一既有面）：损坏拒载（深化检钉死该语义）。
+    cs.add("cache_corrupt_rejected_anchored", validate_cache(&[0u8; 4]) == Err("pebind: file too small"), "");
+    cs
 }

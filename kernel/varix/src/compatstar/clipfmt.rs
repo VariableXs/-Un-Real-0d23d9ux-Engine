@@ -277,7 +277,7 @@ pub fn cross_surface_matrix() -> [(u16, PayloadKind); 5] {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_clipfmt_checks() -> CheckSet {
+pub fn run_clipfmt_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F017-clipfmt");
     // 1) 判据常量（CF 号 / 16MB / 20 条 / 注册格式基址）。
     cs.add(
@@ -673,4 +673,84 @@ mod ext_tests {
         assert_eq!(CF_METAFILEPICT, 3);
         assert_eq!(CF_DSPTEXT, 0x0081);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_clipfmt_checks() -> CheckSet {
+    CheckSet::merge(run_clipfmt_base_checks(), run_clipfmt_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F017 · 深化批次二：延迟渲染（句柄占位按需供数）
+//
+// 主册依据（G-A-17【设计细节】）：「延迟渲染（句柄占位按需供数）支持防大
+// 对象驻留」——剪贴板只记格式承诺，目标请求时才真正供数；消费者退出时
+/// 未领取 → 如实作废（不静默供半截数据）。
+// ---------------------------------------------------------------------------
+
+/// 延迟渲染承诺（零堆；materialize_once 语义——重复领取拒绝）。
+#[derive(Clone, Copy, Debug)]
+pub struct DelayRender {
+    /// 已承诺的格式（占位——真数据未入剪贴板）。
+    pub promised_cf: u16,
+    /// 供数者存活标记（源应用退出 → 未领取承诺作废）。
+    pub provider_alive: bool,
+    materialized: bool,
+}
+
+impl DelayRender {
+    pub fn promise(cf: u16) -> DelayRender {
+        DelayRender { promised_cf: cf, provider_alive: true, materialized: false }
+    }
+
+    /// 目标请求数据：首次 → 供数（返回 Some(cf)）；重复请求 → None（已
+    /// 物化，句柄语义终止——Windows 延迟渲染同语义：请求即真实供数）。
+    pub fn request(&mut self, wanted: u16) -> Option<u16> {
+        if !self.provider_alive || self.materialized || wanted != self.promised_cf {
+            return None;
+        }
+        self.materialized = true;
+        Some(self.promised_cf)
+    }
+
+    /// 源应用退出：未物化承诺作废（消费者拿到诚实失败——不静默供旧数）。
+    pub fn provider_exited(&mut self) {
+        self.provider_alive = false;
+    }
+}
+
+/// F017 深化自检。
+pub fn run_clipfmt_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F017-clipfmt-deep");
+    // 1) 格式协商优先级（批次一既有面 best_format）：文字类 UNICODE > TEXT；
+    //    图像类 DIB > BITMAP——双向矩阵的排序锚。
+    cs.add(
+        "negotiate_priority_anchored",
+        best_format(&[CF_TEXT, CF_UNICODETEXT], &[CF_TEXT, CF_UNICODETEXT]) == Some(CF_UNICODETEXT)
+            && best_format(&[CF_BITMAP, CF_DIB], &[CF_BITMAP, CF_DIB]) == Some(CF_DIB)
+            && best_format(&[CF_TEXT], &[CF_HDROP]).is_none(),
+        "",
+    );
+    // 2) 延迟渲染：承诺 → 首次请求供数 → 重复请求诚实 None。
+    let mut d = DelayRender::promise(CF_UNICODETEXT);
+    let r1 = d.request(CF_UNICODETEXT);
+    let r2 = d.request(CF_UNICODETEXT);
+    cs.add("delay_render_materialize_once", r1 == Some(CF_UNICODETEXT) && r2.is_none(), "");
+    // 3) 源退出：未物化承诺作废（诚实失败，不静默供数）。
+    let mut d2 = DelayRender::promise(CF_DIB);
+    d2.provider_exited();
+    cs.add("delay_render_provider_exit_voids", d2.request(CF_DIB).is_none(), "");
+    // 4) 格式错配诚实 None（消费者要的不是承诺的格式）。
+    let mut d3 = DelayRender::promise(CF_TEXT);
+    cs.add("delay_render_wrong_format_none", d3.request(CF_DIB).is_none(), "");
+    // 5) 注册格式既有面（批次一）对账锚：注册格式走 0xC000 基线。
+    let mut cb = Clipboard::new();
+    let reg = cb.register_format(0xDEAD_BEEF);
+    cs.add("registered_format_anchored", reg >= CF_REGISTERED_BASE, "");
+    cs
 }

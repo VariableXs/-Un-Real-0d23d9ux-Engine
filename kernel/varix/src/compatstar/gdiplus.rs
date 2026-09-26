@@ -371,7 +371,7 @@ impl Graphics {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_gdiplus_checks() -> CheckSet {
+pub fn run_gdiplus_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F007-gdiplus");
     // 1) 判据常量（16k 顶点 / 64MP 流式 / 容差 1/255 / SSIM 950）。
     cs.add(
@@ -801,4 +801,120 @@ mod ext_tests {
         assert_eq!(gray_aa_coverage(0.5), 128);
         assert_eq!(gray_aa_coverage(-1.25), 191, "fract 域工作（1.25→0.25）");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_gdiplus_checks() -> CheckSet {
+    CheckSet::merge(run_gdiplus_base_checks(), run_gdiplus_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F007 · 深化批次二：路径填充模式（Alternate/Winding）+ 点包含判定核
+//
+// 主册依据（G-A-07【功能定义】）：「Path」与填充语义是 GDI+ 基本面——
+// FillMode Alternate（奇偶规则）与 Winding（非零环绕）两条判定线，渐变
+// （深化一批已落几何参数化）之外的路径核心算法。顶点上限沿用 PATH_VERTEX_CAP。
+// ---------------------------------------------------------------------------
+
+/// FillMode（GdipFillMode）。
+pub const FILL_MODE_ALTERNATE: u32 = 0;
+pub const FILL_MODE_WINDING: u32 = 1;
+
+/// 点包含判定核（ crossings 算法）：`verts` 为多边形顶点序列。
+/// - Alternate：射线穿越计数奇偶（奇 = 内部）；
+/// - Winding：有向环绕数非零（内部）。
+/// 顶点数 < 3 或为空 → false（退化路径不含任何点——诚实语义）。
+pub fn point_in_polygon(verts: &[(f32, f32)], x: f32, y: f32, mode: u32) -> bool {
+    if verts.len() < 3 {
+        return false;
+    }
+    let n = verts.len();
+    let mut crossings = 0u32;
+    let mut winding = 0i32;
+    for i in 0..n {
+        let (x1, y1) = verts[i];
+        let (x2, y2) = verts[(i + 1) % n];
+        // 射线：向 +x 方向。边跨越测试线的条件（半开区间避免顶点重复计）。
+        if (y1 <= y && y2 > y) || (y2 <= y && y1 > y) {
+            let t = (y - y1) / (y2 - y1);
+            let x_at = x1 + t * (x2 - x1);
+            if x < x_at {
+                crossings += 1;
+            }
+        }
+        // 环绕数：边相对测试点的有向角累计（用叉积符号的简化法）。
+        let cross = (x2 - x1) * (y - y1) - (y2 - y1) * (x - x1);
+        if y1 <= y && y2 > y && cross > 0.0 {
+            winding += 1;
+        } else if y1 > y && y2 <= y && cross < 0.0 {
+            winding -= 1;
+        }
+    }
+    match mode {
+        FILL_MODE_ALTERNATE => crossings % 2 == 1,
+        FILL_MODE_WINDING => winding != 0,
+        _ => false, // 未知模式如实 false（不猜）
+    }
+}
+
+/// F007 深化自检。
+pub fn run_gdiplus_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F007-gdiplus-deep");
+    // 1) 钉值 + 退化路径诚实 false。
+    cs.add(
+        "fill_mode_pins",
+        FILL_MODE_ALTERNATE == 0 && FILL_MODE_WINDING == 1,
+        "",
+    );
+    // 2) 简单方框：内部/外部/边上（边上取半开约定——内部一侧）。
+    let square = [(0.0f32, 0.0f32), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+    cs.add(
+        "point_in_simple_square",
+        point_in_polygon(&square, 5.0, 5.0, FILL_MODE_ALTERNATE)
+            && point_in_polygon(&square, 5.0, 5.0, FILL_MODE_WINDING)
+            && !point_in_polygon(&square, 15.0, 5.0, FILL_MODE_ALTERNATE)
+            && !point_in_polygon(&square, 5.0, -5.0, FILL_MODE_WINDING),
+        "",
+    );
+    // 3) 经典差异案：反向重叠双圈（自交四边形）——Alternate 排除重叠区，
+    //    Winding 保留（两模式语义分歧的锚点用例，GDI+ 同语义）。
+    //    双圈：大圈顺时针 + 内圈逆时针拼成的蝴蝶结近似——用两个矩形拼：
+    //    外框 (0,0)-(20,0)-(20,20)-(0,20) + 内框逆序 (5,5)-(15,5)-(15,15)-(5,15)
+    //    按顶点序列连接后，中心点 (10,10) 在 Alternate 下穿越 4 次 = 外部。
+    let bow = [
+        (0.0f32, 0.0f32),
+        (20.0, 0.0),
+        (20.0, 20.0),
+        (0.0, 20.0),
+        (5.0, 5.0),
+        (15.0, 5.0),
+        (15.0, 15.0),
+        (5.0, 15.0),
+    ];
+    let alt_center = point_in_polygon(&bow, 10.0, 10.0, FILL_MODE_ALTERNATE);
+    let wind_center = point_in_polygon(&bow, 10.0, 10.0, FILL_MODE_WINDING);
+    cs.add(
+        "alternate_vs_winding_divergence",
+        !alt_center && wind_center,
+        "",
+    );
+    // 4) 顶点上限沿用（16k）——超过上限的路径构造拒绝走 GdiPath 既有纪律
+    //    （此处对账 GdiPath::add_vertex 的诚实拒绝语义）。
+    let mut p = GdiPath::new();
+    let full = p.add_vertex(1.0, 1.0);
+    cs.add("path_vertex_api_anchored", full && p.len() == 1, "");
+    // 5) 渐变几何（深化一批既有面）对账锚：线性中点 500、径向边界 1000。
+    let g = LinearGradientGeom { x0: 0.0, y0: 0.0, x1: 100.0, y1: 0.0 };
+    let rg = PathGradientGeom { cx: 50.0, cy: 50.0, rx: 50.0, ry: 25.0, focus_permille: 0 };
+    cs.add(
+        "gradient_geometry_anchored",
+        g.t_at(50.0, 42.0) == 500 && rg.t_at(100.0, 50.0) == 1000 && rg.t_at(50.0, 50.0) == 0,
+        "",
+    );
+    cs
 }

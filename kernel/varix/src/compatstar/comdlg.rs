@@ -276,7 +276,7 @@ pub fn hsv_to_rgb(h_deg: u16, s_permille: u32, v_permille: u32) -> u32 {
 }
 
 /// 域自检。
-pub fn run_comdlg_checks() -> CheckSet {
+pub fn run_comdlg_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F008-comdlg");
     // 1) 判据常量（200/500ms / 200px / 32px / 1280×800 / 48 格）。
     cs.add(
@@ -734,4 +734,95 @@ mod ext_tests {
             assert!(w[0] < w[1]);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_comdlg_checks() -> CheckSet {
+    CheckSet::merge(run_comdlg_base_checks(), run_comdlg_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F008 · 深化批次二：OFN 标志位 + 缺省扩展名推断 + 冲突面板绑定
+//
+// 主册依据（G-A-08【设计细节】）：「保存对话框『已存在』冲突处理复用 F087
+// 面板」——OFN_OVERWRITEPROMPT 到冲突面板的绑定语义；过滤器 → 缺省扩展名
+// 推断（GetSaveFileName 语义：按所选过滤器取首模式的扩展名）。
+// ---------------------------------------------------------------------------
+
+/// OPENFILENAME 标志位（commdlg.h 高频集）。
+pub const OFN_OVERWRITEPROMPT: u32 = 0x0000_0002;
+pub const OFN_HIDEREADONLY: u32 = 0x0000_0004;
+pub const OFN_ALLOWMULTISELECT: u32 = 0x0000_0200;
+pub const OFN_PATHMUSTEXIST: u32 = 0x0000_0800;
+pub const OFN_FILEMUSTEXIST: u32 = 0x0000_1000;
+
+/// 从所选过滤器段推断缺省扩展名（保存对话框语义：patterns 的第一个模式的
+/// `*.` 后缀；无模式/通配 `*`/`*.*` → 空串 = 不推断，诚实交还用户输入）。
+pub fn default_extension_from_filter(patterns: &str) -> &str {
+    let first = patterns.split(';').next().unwrap_or("").trim();
+    if let Some(ext) = first.strip_prefix("*.") {
+        if !ext.is_empty() && !ext.contains('*') && !ext.contains('?') {
+            return ext;
+        }
+    }
+    ""
+}
+
+/// OFN 标志校验（打开/保存对话框入参——非法组合如实拒绝不猜）：
+/// FILEMUSTEXIST 与 ALLOWMULTISELECT 在打开对话框可并存，但保存对话框
+/// （OverwritePrompt 语义域）与 FILEMUSTEXIST 组合为参数错。
+pub fn validate_ofn_flags(is_save: bool, flags: u32) -> Result<(), &'static str> {
+    if is_save && flags & OFN_FILEMUSTEXIST != 0 {
+        return Err("OFN_FILEMUSTEXIST is invalid for save dialogs");
+    }
+    Ok(())
+}
+
+/// F008 深化自检。
+pub fn run_comdlg_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F008-comdlg-deep");
+    // 1) OFN 钉值。
+    cs.add(
+        "ofn_pins",
+        OFN_OVERWRITEPROMPT == 0x2
+            && OFN_HIDEREADONLY == 0x4
+            && OFN_ALLOWMULTISELECT == 0x200
+            && OFN_PATHMUSTEXIST == 0x800
+            && OFN_FILEMUSTEXIST == 0x1000,
+        "",
+    );
+    // 2) 缺省扩展名推断：首模式取扩展名；通配/多模式取首个；无模式空串。
+    cs.add(
+        "default_extension_inference",
+        default_extension_from_filter("*.txt;*.md") == "txt"
+            && default_extension_from_filter("*.png") == "png"
+            && default_extension_from_filter("*.*") == ""
+            && default_extension_from_filter("*") == ""
+            && default_extension_from_filter("") == "",
+        "",
+    );
+    // 3) 保存对话框 FILEMUSTEXIST 组合拒绝；打开对话框允许；OverwritePrompt
+    //    绑定 F087 冲突面板（三选复用语义在 base 已钉）。
+    cs.add(
+        "ofn_validation_and_conflict_binding",
+        validate_ofn_flags(true, OFN_FILEMUSTEXIST).is_err()
+            && validate_ofn_flags(true, OFN_OVERWRITEPROMPT).is_ok()
+            && validate_ofn_flags(false, OFN_FILEMUSTEXIST).is_ok(),
+        "",
+    );
+    // 4) HSV/字体选择模型（深化一批既有面）对账锚。
+    cs.add(
+        "deep_batch1_anchored",
+        rgb_to_hsv(0xFF0000) == (0, 1000, 1000)
+            && hex_to_rgb("#12ABEF") == Some(0x12ABEF)
+            && validate_font_choice(0, 0, 9).is_some()
+            && FONT_STYLES[3] == "Bold Italic",
+        "",
+    );
+    cs
 }

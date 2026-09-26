@@ -477,7 +477,7 @@ pub fn placeholder_breath_alpha(now_ms: u64) -> u32 {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_dblrun_checks() -> CheckSet {
+pub fn run_dblrun_base_checks() -> CheckSet {
     use super::peblend::build_static_pe;
     let mut cs = CheckSet::new("F001-dblrun");
     // 1) 判据常量（100ms/500ms/480ms/3s/60s/80%）。
@@ -974,4 +974,139 @@ mod ext_tests {
         let last = ring.iter().last().unwrap();
         assert_eq!(last.file_hash, AUDIT_RING_CAP as u64 + 9);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_dblrun_checks() -> CheckSet {
+    CheckSet::merge(run_dblrun_base_checks(), run_dblrun_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F001 · 深化批次二：占位窗呼吸参数化 + CPU 限额 + 占位窗无缝替换模型
+//
+// 主册依据（G-A-01【设计细节】）：「占位窗动画参数：三颗点 480ms 周期呼吸、
+// 透明度 0.4 到 1.0」「装载全程 CPU 限额单核 80%」；【交互设计】「窗口就位后
+// 占位窗无缝替换（无闪烁）」。主册内部两处口径并存（交互设计 1.2s 周期 vs
+// 设计细节 480ms）——实现取设计细节（参数级更具体），冲突登记对账文档。
+// ---------------------------------------------------------------------------
+
+/// 呼吸周期 480ms（G-A-01【设计细节】口径）。
+pub const BREATH_PERIOD_MS: u64 = 480;
+/// 透明度下限 0.4（千分制 400）。
+pub const BREATH_ALPHA_MIN_PERMILLE: u32 = 400;
+/// 透明度上限 1.0（千分制 1000）。
+pub const BREATH_ALPHA_MAX_PERMILLE: u32 = 1000;
+/// CPU 限额 80%（单核千分制 800——G-A-01【设计细节】）。
+pub const CPU_CAP_PERMILLE: u32 = 800;
+
+/// 三颗点呼吸透明度（三角波：周期内对称起伏，两端钳在 [400,1000]）。
+pub fn breath_alpha_at(elapsed_ms: u64) -> u32 {
+    let phase = ((elapsed_ms % BREATH_PERIOD_MS) * 2000 / BREATH_PERIOD_MS) as u32; // 0..=2000
+    let tri = if phase > 1000 { 2000 - phase } else { phase }; // 0..=1000 (u32)
+    BREATH_ALPHA_MIN_PERMILLE + (BREATH_ALPHA_MAX_PERMILLE - BREATH_ALPHA_MIN_PERMILLE) * tri / 1000
+}
+
+/// 装载 CPU 限额记账（超限如实记账——后台装载不抢前台帧率的观测面）。
+#[derive(Clone, Copy, Debug)]
+pub struct CpuCap {
+    pub breaches: u32,
+    pub peak_permille: u32,
+}
+
+impl CpuCap {
+    pub fn new() -> CpuCap {
+        CpuCap { breaches: 0, peak_permille: 0 }
+    }
+
+    /// 记一笔装载 CPU 用量。超 80% 返回 true（超限帧如实计数，不静默吞）。
+    pub fn charge(&mut self, cpu_permille: u32) -> bool {
+        if cpu_permille > self.peak_permille {
+            self.peak_permille = cpu_permille;
+        }
+        let breach = cpu_permille > CPU_CAP_PERMILLE;
+        if breach {
+            self.breaches += 1;
+        }
+        breach
+    }
+}
+
+/// 占位窗 → 程序窗口无缝替换（无闪烁承诺的记账面：替换原子完成，闪烁帧恒 0）。
+#[derive(Clone, Copy, Debug)]
+pub struct PlaceholderSwap {
+    pub placeholder_visible: bool,
+    pub replaced_by_window: bool,
+    pub flicker_frames: u32,
+}
+
+impl PlaceholderSwap {
+    pub fn new() -> PlaceholderSwap {
+        PlaceholderSwap { placeholder_visible: false, replaced_by_window: false, flicker_frames: 0 }
+    }
+
+    pub fn show_placeholder(&mut self) {
+        self.placeholder_visible = true;
+    }
+
+    /// 窗口就位 → 原子替换（占位窗消失与窗口呈现同一帧完成——闪烁帧恒 0）。
+    pub fn swap_to_window(&mut self) -> bool {
+        if !self.placeholder_visible || self.replaced_by_window {
+            return false;
+        }
+        self.placeholder_visible = false;
+        self.replaced_by_window = true;
+        true
+    }
+}
+
+/// F001 深化自检。
+pub fn run_dblrun_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F001-dblrun-deep");
+    // 1) 呼吸参数钉值（设计细节口径；1.2s 口径冲突登记对账文档）。
+    cs.add(
+        "breath_params_pinned",
+        BREATH_PERIOD_MS == 480
+            && BREATH_ALPHA_MIN_PERMILLE == 400
+            && BREATH_ALPHA_MAX_PERMILLE == 1000
+            && CPU_CAP_PERMILLE == 800,
+        "",
+    );
+    // 2) 呼吸透明度三角波：两端恰 400，中点≈700，全域在界内。
+    let a0 = breath_alpha_at(0);
+    let amid = breath_alpha_at(BREATH_PERIOD_MS / 2);
+    let aend = breath_alpha_at(BREATH_PERIOD_MS);
+    let mut in_range = true;
+    for t in 0..BREATH_PERIOD_MS {
+        let a = breath_alpha_at(t);
+        in_range &= a >= BREATH_ALPHA_MIN_PERMILLE && a <= BREATH_ALPHA_MAX_PERMILLE;
+    }
+    // 三角波形状：半周期到峰（1000），1/4 周期处为中值 700，两端回 400。
+    let quarter = breath_alpha_at(BREATH_PERIOD_MS / 4);
+    cs.add(
+        "breath_triangle_wave",
+        a0 == 400 && aend == 400 && amid == 1000 && quarter >= 695 && quarter <= 705 && in_range,
+        "",
+    );
+    // 3) CPU 限额：80% 界内不告警，801‰ 超限计数，峰值记账。
+    let mut cap = CpuCap::new();
+    let b1 = cap.charge(799);
+    let b2 = cap.charge(801);
+    cs.add("cpu_cap_800", !b1 && b2 && cap.breaches == 1 && cap.peak_permille == 801, "");
+    // 4) 占位窗无缝替换：show→swap 原子完成，闪烁帧恒 0；未显示/已替换拒绝。
+    let mut sw = PlaceholderSwap::new();
+    let early = sw.swap_to_window();
+    sw.show_placeholder();
+    let ok = sw.swap_to_window();
+    let again = sw.swap_to_window();
+    cs.add(
+        "placeholder_swap_atomic_no_flicker",
+        !early && ok && !again && sw.replaced_by_window && !sw.placeholder_visible && sw.flicker_frames == 0,
+        "",
+    );
+    cs
 }

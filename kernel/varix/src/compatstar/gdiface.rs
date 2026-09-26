@@ -340,7 +340,7 @@ fn kind_index(k: GdiObjKind) -> usize {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_gdiface_checks() -> CheckSet {
+pub fn run_gdiface_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F006-gdiface");
     // 1) 判据常量（10000 对象上限 / 16 高频 ROP）。
     cs.add(
@@ -734,4 +734,138 @@ mod ext_tests {
         assert_eq!(h4, h2, "句柄值回收复用");
         assert!(g.release_dc(h1) && g.release_dc(h3) && g.release_dc(h4));
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_gdiface_checks() -> CheckSet {
+    CheckSet::merge(run_gdiface_base_checks(), run_gdiface_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F006 · 深化批次二：文本度量 + 背景模式 + ExtTextOut 选项面
+//
+// 主册依据（G-A-06【功能定义】）：19 函数清单含 GetTextMetrics/SetBkMode/
+// ExtTextOut——深化补三者的语义面（度量结构、OPAQUE/TRANSPARENT 二态、
+// ETO 选项位），渲染实现随闸门。
+// ---------------------------------------------------------------------------
+
+/// 背景模式（wingdi.h）。
+pub const BK_TRANSPARENT: u32 = 1;
+pub const BK_OPAQUE: u32 = 2;
+
+/// ETO 选项位（ExtTextOut 高频集）。
+pub const ETO_OPAQUE: u32 = 0x0002;
+pub const ETO_CLIPPED: u32 = 0x0004;
+
+/// TEXTMETRIC 模型（GetTextMetrics 出口——字形管线 F055 的度量供给面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TextMetrics {
+    pub height: i32,
+    pub ascent: i32,
+    pub descent: i32,
+    pub avg_char_width: i32,
+}
+
+impl TextMetrics {
+    /// 度量自洽（ascent + descent = height——字形度量的硬约束）。
+    pub fn sane(&self) -> bool {
+        self.ascent + self.descent == self.height && self.height > 0 && self.avg_char_width > 0
+    }
+}
+
+impl GdiState {
+    /// SetBkMode：二态校验（非法值如实拒绝——Windows 语义返回值如实）。
+    pub fn set_bk_mode(&mut self, hdc: u32, mode: u32) -> bool {
+        match self.dc(hdc) {
+            Some(dc) => {
+                if mode == BK_TRANSPARENT || mode == BK_OPAQUE {
+                    dc.bk_mode = mode;
+                    true
+                } else {
+                    false
+                }
+            }
+            None => {
+                self.invalid_handle_uses += 1;
+                false
+            }
+        }
+    }
+
+    /// GetTextMetrics：按当前字体模型返回度量（默认 16px 无衬线度量——
+    /// ascent 12 / descent 4，真实度量随字形管线，模型层供语义位）。
+    pub fn text_metrics(&mut self, hdc: u32) -> Option<TextMetrics> {
+        if self.dc(hdc).is_none() {
+            self.invalid_handle_uses += 1;
+            return None;
+        }
+        Some(TextMetrics { height: 16, ascent: 12, descent: 4, avg_char_width: 8 })
+    }
+
+    /// ExtTextOut：选项位校验（高频集外如实拒绝——差异表纪律同 ROP 面）。
+    pub fn ext_text_out(&mut self, hdc: u32, options: u32, glyphs: usize) -> bool {
+        if self.dc(hdc).is_none() {
+            return false;
+        }
+        let known = ETO_OPAQUE | ETO_CLIPPED;
+        if options & !known != 0 {
+            self.unsupported_rops += 1; // 冷门选项与冷门 ROP 同账本（差异表观测面）
+            return false;
+        }
+        self.compositor_submissions += 1;
+        let _ = glyphs;
+        true
+    }
+}
+
+/// F006 深化自检。
+pub fn run_gdiface_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F006-gdiface-deep");
+    // 1) 背景模式钉值 + 非法值拒绝 + 无效 DC 如实记账。
+    cs.add(
+        "bk_mode_semantics",
+        BK_TRANSPARENT == 1 && BK_OPAQUE == 2 && ETO_OPAQUE == 0x0002 && ETO_CLIPPED == 0x0004,
+        "",
+    );
+    let mut g = GdiState::new();
+    let hdc = g.get_dc().unwrap();
+    let set_ok = g.set_bk_mode(hdc, BK_TRANSPARENT);
+    let set_bad = g.set_bk_mode(hdc, 99);
+    let set_invalid_dc = g.set_bk_mode(0, BK_OPAQUE);
+    cs.add(
+        "set_bk_mode_honest",
+        set_ok && !set_bad && !set_invalid_dc && g.dc(hdc).unwrap().bk_mode == BK_TRANSPARENT,
+        "",
+    );
+    // 2) 文本度量自洽（ascent+descent=height 硬约束）+ 无效 DC None。
+    let m = g.text_metrics(hdc).unwrap();
+    let m_bad_dc = g.text_metrics(0);
+    cs.add(
+        "text_metrics_sane",
+        m.sane() && m.height == 16 && m_bad_dc.is_none() && g.invalid_handle_uses >= 1,
+        "",
+    );
+    // 3) ExtTextOut：已知选项位通过，冷门位拒绝（与 ROP 同差异表账本）。
+    let before_rops = g.unsupported_rops;
+    let eto_ok = g.ext_text_out(hdc, ETO_CLIPPED, 5);
+    let eto_bad = g.ext_text_out(hdc, 0x8000, 5);
+    cs.add(
+        "ext_text_out_diff_table",
+        eto_ok && !eto_bad && g.unsupported_rops == before_rops + 1,
+        "",
+    );
+    // 4) ROP3 真值表（深化一批既有面）对账锚：SRCCOPY=S、PATCOPY=P。
+    cs.add(
+        "rop3_truth_table_anchored",
+        rop3_eval(ROP_SRCCOPY, 0, 0xF0, 0x0F) == 0xF0
+            && rop3_eval(ROP_PATCOPY, 0xA5, 0, 0) == 0xA5
+            && rop3_eval(ROP_BLACKNESS, 0xFF, 0xFF, 0xFF) == 0,
+        "",
+    );
+    cs
 }

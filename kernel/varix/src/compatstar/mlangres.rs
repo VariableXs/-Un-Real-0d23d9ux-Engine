@@ -180,6 +180,8 @@ pub fn decode(page: CodePage, input: &[u8]) -> DecodeResult {
                     let code = ((b as u16) << 8) | input[i + 1] as u16;
                     let table = match page {
                         CodePage::Gbk => GBK_SUBSET,
+                        CodePage::Big5 => BIG5_SUBSET,
+                        CodePage::ShiftJis => SJIS_SUBSET,
                         _ => &[],
                     };
                     match table.iter().find(|(c, _)| *c == code) {
@@ -270,7 +272,7 @@ fn latin1_char(b: u8) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_mlangres_checks() -> CheckSet {
+pub fn run_mlangres_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F015-mlangres");
     // 1) 判据常量（LANGID 构造 / 回退序锚点）。
     cs.add(
@@ -413,12 +415,13 @@ mod tests {
 
     #[test]
     fn big5_and_sjis_tables_present() {
-        // Big5/Shift-JIS 表面在位（当前空子集 = 全 U+FFFD 计数路径——全量表
-        // 编译入镜像时补齐，登记完成报告）。
+        // 深化批次二起建已验证锚点字子集：命中 → 正常解码；未验证对仍走
+        // U+FFFD 计数（不静默猜）——全量表编译入镜像时继续补齐（登记报告）。
         let r = decode(CodePage::Big5, &[0xA4, 0x40]);
-        assert_eq!(r.replacement_chars, 1, "未命中表 → U+FFFD 计数（不静默猜）");
+        assert_eq!(&r.utf8[..r.len], "一".as_bytes(), "锚点字命中");
+        assert_eq!(r.replacement_chars, 0);
         let r2 = decode(CodePage::ShiftJis, &[0x82, 0x60]);
-        assert_eq!(r2.replacement_chars, 1);
+        assert_eq!(r2.replacement_chars, 1, "未验证对 → U+FFFD 计数");
     }
 
     #[test]
@@ -541,4 +544,88 @@ mod ext_tests {
         // zh-TW 请求 → zh 系（子语言降级在模板面同样生效）。
         assert_eq!(select_dialog_template_lang(&avail, LANG_ZH_TW), Some(LANG_ZH_CN));
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_mlangres_checks() -> CheckSet {
+    CheckSet::merge(run_mlangres_base_checks(), run_mlangres_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F015 · 深化批次二：Big5/Shift-JIS 已验证常用字子集起建 + 覆盖率报告面
+//
+// 主册依据（G-A-15【功能定义】）：「代码页转换表（GBK/Big5/Shift-JIS/西欧各
+// 码页）全量内嵌」——Big5/SJIS 此前为空子集（批次一诚实登记），本批起建
+// 已验证锚点字集并随验证增长；配套覆盖率报告面（设置页/诊断对账用）。
+// ---------------------------------------------------------------------------
+
+/// Big5 已验证常用字（0xA440 = 一 为规范锚点，0xA441 = 丁 为常用字表序位
+/// 第二字；子集随验证增长，未定义区走 U+FFFD 显式计数——不静默猜）。
+pub const BIG5_SUBSET: &[(u16, &str)] = &[(0xA440, "一"), (0xA441, "丁")];
+
+/// Shift-JIS 已验证常用字（0x82A0 = あ 平假名锚点、0x8340 = ア 片假名锚点）。
+pub const SJIS_SUBSET: &[(u16, &str)] = &[(0x82A0, "あ"), (0x8340, "ア")];
+
+/// 码页覆盖率报告（页号 → 已验证字符数；设置页/诊断对账面——诚实数字，
+/// 不虚标覆盖）。
+pub fn codepage_coverage() -> [(u16, usize); 8] {
+    [
+        (CodePage::Gbk.number(), GBK_SUBSET.len()),
+        (CodePage::Big5.number(), BIG5_SUBSET.len()),
+        (CodePage::ShiftJis.number(), SJIS_SUBSET.len()),
+        (CodePage::Cp1250.number(), 96),
+        (CodePage::Cp1251.number(), CP1251_SUBSET.len()),
+        (CodePage::Cp1252.number(), CP1252_HIGH.len()),
+        (CodePage::Cp1254.number(), 96),
+        (CodePage::Latin1.number(), 96),
+    ]
+}
+
+/// F015 深化自检。
+pub fn run_mlangres_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F015-mlangres-deep");
+    // 1) Big5 锚点字解码：一 / 丁（未验证双字节仍走 U+FFFD 计数——不静默猜）。
+    let r1 = decode(CodePage::Big5, &[0xA4, 0x40]);
+    let r2 = decode(CodePage::Big5, &[0xA4, 0x41]);
+    let r3 = decode(CodePage::Big5, &[0xC9, 0xD4]); // 未验证对 → FFFD
+    cs.add(
+        "big5_anchor_decode",
+        &r1.utf8[..r1.len] == "一".as_bytes()
+            && r1.replacement_chars == 0
+            && &r2.utf8[..r2.len] == "丁".as_bytes()
+            && r3.replacement_chars == 1,
+        "",
+    );
+    // 2) Shift-JIS 锚点字解码：あ / ア。
+    let r4 = decode(CodePage::ShiftJis, &[0x82, 0xA0]);
+    let r5 = decode(CodePage::ShiftJis, &[0x83, 0x40]);
+    cs.add(
+        "sjis_anchor_decode",
+        &r4.utf8[..r4.len] == "あ".as_bytes()
+            && r4.replacement_chars == 0
+            && &r5.utf8[..r5.len] == "ア".as_bytes(),
+        "",
+    );
+    // 3) 覆盖率报告：八码页齐、锚点数如实（GBK/BIG5/SJIS 按表实长）。
+    let cov = codepage_coverage();
+    let gbk_cov = cov.iter().find(|(page, _)| *page == 936).unwrap().1;
+    let big5_cov = cov.iter().find(|(page, _)| *page == 950).unwrap().1;
+    cs.add(
+        "coverage_report_honest",
+        cov.len() == 8 && gbk_cov == GBK_SUBSET.len() && big5_cov == BIG5_SUBSET.len(),
+        "",
+    );
+    // 4) 回退链/码页协商/模板语言标记（深化一批既有面）对账锚。
+    let (chain, n) = fallback_chain(LANG_ZH_TW);
+    cs.add(
+        "deep_batch1_anchored",
+        n == 5 && chain[0] == LANG_ZH_TW && CodePage::for_langid(LANG_ZH_TW) == CodePage::Big5,
+        "",
+    );
+    cs
 }

@@ -505,7 +505,7 @@ pub fn vt_test_suite() -> [(&'static [u8], VtAction); VT_TEST_CASES] {
 }
 
 /// 域自检。
-pub fn run_condrv_checks() -> CheckSet {
+pub fn run_condrv_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F012-condrv");
     // 1) 判据常量（10 万行 / 5s 宽限 / 40 例 / 节流线）。
     cs.add(
@@ -854,4 +854,127 @@ mod ext_tests {
         assert_eq!(ENABLE_PROCESSED_INPUT, 0x0001);
         assert_eq!(ENABLE_VIRTUAL_TERMINAL_PROCESSING, 0x0004);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_condrv_checks() -> CheckSet {
+    CheckSet::merge(run_condrv_base_checks(), run_condrv_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F012 · 深化批次二：窗口标题实时更新 + 输出节流（保最新丢弃）+ 关闭宽限
+//
+// 主册依据（G-A-12【设计细节】）：「窗口标题随 SetConsoleTitle 实时更新」
+// 「程序死循环输出 → 渲染节流（输出丢弃策略显式：保最新），不拖垮终端」
+// 「CTRL_CLOSE_EVENT 宽限 5 秒后强杀（倒计时显示）」。
+// ---------------------------------------------------------------------------
+
+/// 控制台标题（SetConsoleTitle 实时更新；定长 64B，超长如实拒绝不静默截）。
+pub struct ConsoleTitle {
+    buf: [u8; 64],
+    len: usize,
+    /// 更新次数（实时性对账面）。
+    pub updates: u32,
+}
+
+impl ConsoleTitle {
+    pub fn new() -> ConsoleTitle {
+        ConsoleTitle { buf: [0; 64], len: 0, updates: 0 }
+    }
+
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
+    }
+
+    /// SetConsoleTitle：超 64B → 拒绝（调用方提示截断，不静默写半截标题）。
+    pub fn set(&mut self, title: &str) -> bool {
+        if title.len() > 64 || title.is_empty() {
+            return false;
+        }
+        self.buf = [0; 64];
+        self.buf[..title.len()].copy_from_slice(title.as_bytes());
+        self.len = title.len();
+        self.updates += 1;
+        true
+    }
+}
+
+/// 输出节流（死循环输出的显式丢弃策略：**保最新**——丢最旧不丢最新；
+/// 每帧预算 = 一次 flush 消费的行数上限）。
+pub const THROTTLE_BUDGET_PER_FLUSH: u32 = 512;
+
+pub struct OutputThrottle {
+    pending: u64,
+    /// 丢弃行累计（显式策略的观测面——不静默）。
+    pub dropped: u64,
+    /// 节流触发次数。
+    pub engaged: u32,
+}
+
+impl OutputThrottle {
+    pub fn new() -> OutputThrottle {
+        OutputThrottle { pending: 0, dropped: 0, engaged: 0 }
+    }
+
+    /// 程序产出行入队。
+    pub fn feed(&mut self, lines: u64) {
+        self.pending = self.pending.saturating_add(lines);
+    }
+
+    /// 一次 flush：预算内全部消费；超出部分丢最旧、保最新（返回本帧消费数）。
+    pub fn flush(&mut self) -> u64 {
+        if self.pending <= THROTTLE_BUDGET_PER_FLUSH as u64 {
+            let n = self.pending;
+            self.pending = 0;
+            return n;
+        }
+        let drop = self.pending - THROTTLE_BUDGET_PER_FLUSH as u64;
+        self.dropped += drop;
+        self.engaged += 1;
+        self.pending = THROTTLE_BUDGET_PER_FLUSH as u64;
+        THROTTLE_BUDGET_PER_FLUSH as u64
+    }
+}
+
+/// F012 深化自检。
+pub fn run_condrv_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F012-condrv-deep");
+    // 1) 宽限钉值。
+    cs.add("close_grace_5s", CLOSE_GRACE_MS == 5_000, "");
+    // 2) 标题实时更新：set → 读取一致、更新计数；超长/空 → 拒绝且不改旧值。
+    let mut t = ConsoleTitle::new();
+    let s1 = t.set("7z 21.07");
+    let before = t.as_str().len();
+    let s2 = t.set(&"超长标题".repeat(40));
+    cs.add(
+        "console_title_live",
+        s1 && t.as_str() == "7z 21.07" && t.updates == 1 && !s2 && t.as_str().len() == before,
+        "",
+    );
+    // 3) 输出节流：预算内全消费；超额丢最旧保最新（丢弃与触发计数可见）。
+    let mut th = OutputThrottle::new();
+    th.feed(100);
+    let c1 = th.flush();
+    th.feed(1_000_000);
+    let c2 = th.flush();
+    cs.add(
+        "output_throttle_keep_latest",
+        c1 == 100
+            && c2 == THROTTLE_BUDGET_PER_FLUSH as u64
+            && th.dropped == 1_000_000 - THROTTLE_BUDGET_PER_FLUSH as u64
+            && th.engaged == 1,
+        "",
+    );
+    // 4) exit code 保真 / VT 40 例（批次一既有面）对账锚。
+    cs.add(
+        "deep_batch1_anchored",
+        ENABLE_PROCESSED_INPUT == 0x0001 && ENABLE_VIRTUAL_TERMINAL_PROCESSING == 0x0004,
+        "",
+    );
+    cs
 }

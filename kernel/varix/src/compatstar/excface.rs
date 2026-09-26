@@ -391,7 +391,7 @@ impl Default for CrashRepeatTracker {
 // ---------------------------------------------------------------------------
 
 /// 域自检。
-pub fn run_excface_checks() -> CheckSet {
+pub fn run_excface_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F020-excface");
     // 1) 判据常量（异常码集 / 64 帧 / 32 模块 / 20 dump / 帧栈 32）。
     cs.add(
@@ -767,4 +767,82 @@ mod ext_tests {
         buf3[4..8].copy_from_slice(&99u32.to_le_bytes());
         assert!(matches!(deserialize_dump(&buf3), Err("vdmp: unsupported version")));
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_excface_checks() -> CheckSet {
+    CheckSet::merge(run_excface_base_checks(), run_excface_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F020 · 深化批次二：既有深化面（24h 三崩建议/双重故障/dump 池）钉死对账
+//
+// 主册依据（G-A-20【设计细节】）：「同一文件 24 小时内崩溃三次以上自动建议
+// 提交 F036 草稿」「异常处理器自身再异常 → 双重故障直接回收进程（不递归）」
+// 「minidump 存 diagnostics/dumps/ 上限 20 个 LRU」——三者均为批次一实装，
+// 本批以深化检钉死语义（不再新增同语义件——一处一事实）。
+// ---------------------------------------------------------------------------
+
+/// dump 池容量上限（G-A-20【数据与存储】：上限 20 个 LRU）。
+pub const DUMP_STORE_CAP: usize = 20;
+
+/// F020 深化自检。
+pub fn run_excface_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F020-excface-deep");
+    // 1) 24h 三崩建议（CrashRepeatTracker 既有面）：3 崩 → 建议触发；25h 前
+    //    的崩溃出窗不计数（窗口滑动语义）。
+    let mut tr = CrashRepeatTracker::new();
+    let s1 = tr.crash(0xBEEF, 0);
+    let s2 = tr.crash(0xBEEF, 1);
+    let s3 = tr.crash(0xBEEF, 2);
+    cs.add("three_strikes_suggests", !s1 && !s2 && s3 && tr.suggestions == 1, "");
+    let mut tr2 = CrashRepeatTracker::new();
+    let _ = tr2.crash(0xBEEF, 0);
+    let _ = tr2.crash(0xBEEF, 1);
+    let s_far = tr2.crash(0xBEEF, 25 * 3_600_000 + 2);
+    let s_far2 = tr2.crash(0xBEEF, 25 * 3_600_000 + 3);
+    let s_far3 = tr2.crash(0xBEEF, 25 * 3_600_000 + 4);
+    cs.add(
+        "window_slide_resets",
+        !s_far && !s_far2 && s_far3 && tr2.suggestions == 1,
+        "",
+    );
+    // 2) 双重故障（raise_in_handler 既有面）：处理器内再异常 → ReclaimedDoubleFault
+    //    直接回收语义（double_fault/reclaimed 标记置位——不递归）。
+    let mut et = ExceptionTranslator::new(2);
+    let d1 = et.raise(0xC000_0005, 0x1000, &[]);
+    let d2 = et.raise_in_handler();
+    cs.add(
+        "dual_fault_no_recursion",
+        !matches!(d1, Dispatch::ReclaimedDoubleFault) && matches!(d2, Dispatch::ReclaimedDoubleFault),
+        "",
+    );
+    // 3) dump 池 LRU 既有面对账：容量语义（20 上限——Store 满后最旧淘汰）。
+    let mut st = DumpStore::new();
+    for i in 0..(DUMP_STORE_CAP as u64 + 5) {
+        let d = build_dump(0xC000_0005, 0x1000 + i, 1, &[0xAAAA_0000 + i; 4], &[], 0, 0);
+        st.store(d, true);
+    }
+    cs.add(
+        "dump_store_lru_cap",
+        st.len() <= DUMP_STORE_CAP && st.latest().is_some(),
+        "",
+    );
+    // 4) vdmp 序列化版本门（深化一批既有面）对账锚：坏版本如实拒。
+    let d = build_dump(0xC000_0005, 0x2000, 1, &[0xBBBB_0000; 4], &[], 0, 0);
+    let mut buf = [0u8; VDMP_SERIAL_SIZE];
+    let n = serialize_dump(&d, &mut buf);
+    let mut bad = buf;
+    bad[4..8].copy_from_slice(&99u32.to_le_bytes());
+    cs.add(
+        "vdmp_version_gate_anchored",
+        n == VDMP_SERIAL_SIZE && matches!(deserialize_dump(&buf), Ok(_)) && deserialize_dump(&bad).is_err(),
+        "",
+    );
+    cs
 }

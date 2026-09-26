@@ -240,7 +240,7 @@ impl Default for ComRegistry {
 }
 
 /// 域自检。
-pub fn run_comloc_checks() -> CheckSet {
+pub fn run_comloc_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F019-comloc");
     // 1) HRESULT 锚点值（winerror.h 一致性）。
     cs.add(
@@ -583,4 +583,84 @@ mod ext_tests {
         pf.load(0xF17F);
         assert_eq!(pf.dirty_ops, 0);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_comloc_checks() -> CheckSet {
+    CheckSet::merge(run_comloc_base_checks(), run_comloc_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F019 · 深化批次二：类对象会话生命周期（session_end 回收）+ CLSID 蜂巢
+// 路径既有面钉死
+//
+// 主册依据（G-A-19【设计细节】）：「类对象注册会话级」「CLSID 蜂巢子树路径
+// Classes 下 CLSID 节点」——会话级 = 会话结束全量回收（返回回收数，观测面）。
+// ---------------------------------------------------------------------------
+
+impl ComRegistry {
+    /// 会话结束：全量回收类对象（会话级语义——不落盘不残留）。返回回收数。
+    pub fn session_end(&mut self) -> usize {
+        let mut revoked = 0usize;
+        for i in 0..self.obj_n {
+            if self.objects[i].take().is_some() {
+                revoked += 1;
+            }
+        }
+        self.obj_n = 0;
+        self.reg_n = 0;
+        for i in 0..16 {
+            self.registered[i] = None;
+        }
+        revoked
+    }
+}
+
+/// F019 深化自检。
+pub fn run_comloc_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F019-comloc-deep");
+    // 1) CLSID 蜂巢子树路径既有面（深化一批）对账：路径落在 Classes 节点下。
+    cs.add("clsid_hive_path_anchored", Clsid::ShellLink.hive_path().contains("Classes"), "");
+    // 2) 会话级回收：注册+创建 → session_end 全清 → 重新注册创建正常（未注册
+    //    状态下 create 拒绝计数 +1，回收后不再拒绝——会话边界语义）。
+    let mut reg = ComRegistry::new();
+    assert!(reg.register_class(Clsid::ShellLink));
+    let _ = reg.create_instance(Clsid::ShellLink, false);
+    let revoked = reg.session_end();
+    let refused_after = reg.create_instance(Clsid::ShellLink, false);
+    let _ = reg.register_class(Clsid::ShellLink);
+    let ok_after = reg.create_instance(Clsid::ShellLink, false);
+    cs.add(
+        "session_end_reclaims_all",
+        revoked == 1 && refused_after.is_err() && reg.not_registered_refusals == 1 && ok_after.is_ok(),
+        "",
+    );
+    // 3) 聚合不支持既有面（批次一）对账：聚合请求 → CLASS_E_NOAGGREGATION
+    //    结构化拒绝（不假装成功）。
+    let mut reg2 = ComRegistry::new();
+    assert!(reg2.register_class(Clsid::ShellLink));
+    let agg = reg2.create_instance(Clsid::ShellLink, true);
+    cs.add(
+        "aggregate_honest_refusal",
+        agg.is_err() && reg2.aggregation_refusals == 1,
+        "",
+    );
+    // 4) QI 矩阵既有面对账：IUnknown 恒支持（每族清单首项）；族外 IID →
+    //    E_NOINTERFACE（0x80004002）如实返回（不假装支持）。
+    let mut reg3 = ComRegistry::new();
+    assert!(reg3.register_class(Clsid::ShellLink));
+    let h = reg3.create_instance(Clsid::ShellLink, false).unwrap();
+    let qi_unknown_iface = reg3.object(h).map(|o| o.query_interface(Iid::IActivation));
+    let qi_known_iface = reg3.object(h).map(|o| o.query_interface(Iid::IShellLink));
+    cs.add(
+        "qi_matrix_anchored",
+        qi_known_iface == Some(0) && qi_unknown_iface == Some(0x8000_4002),
+        "",
+    );
+    cs
 }

@@ -313,7 +313,7 @@ where
 }
 
 /// 域自检。
-pub fn run_lnkfile_checks() -> CheckSet {
+pub fn run_lnkfile_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F013-lnkfile");
     // 1) 判据常量（0x4C 头 / 18 已知位 / 深度 5）。
     cs.add(
@@ -852,4 +852,116 @@ mod ext_tests {
         assert_ne!(k1, k3);
         assert_eq!(icon_cache_key(0xBEEF, 1000), k1, "同输入同键（确定性）");
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_lnkfile_checks() -> CheckSet {
+    CheckSet::merge(run_lnkfile_base_checks(), run_lnkfile_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F013 · 深化批次二：环境变量目标展开 + DarwinID 诚实标注
+//
+// 主册依据（G-A-13 验收判据）：构造样本集「含……环境变量目标」——目标路径
+// 内 %VAR% 展开面（单遍展开——F011 同源语义）；【状态与异常】 DarwinID 类
+// 快捷方式当前无对应运行面 → 诚实标注（不冒充正常解析）。
+// ---------------------------------------------------------------------------
+
+/// 目标路径 %VAR% 展开（查表回调注入——零堆；单遍，不嵌套；未知变量保留
+/// 原样——Windows lnk 解析诚实语义）。返回写入长度；缓冲不足返回 0。
+pub fn expand_target(target: &str, lookup: fn(&str) -> Option<&'static str>, buf: &mut [u8]) -> usize {
+    let mut n = 0usize;
+    let put = |n: &mut usize, buf: &mut [u8], b: u8| -> bool {
+        if *n >= buf.len() {
+            return false;
+        }
+        buf[*n] = b;
+        *n += 1;
+        true
+    };
+    let bytes = target.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if let Some(rel) = target[i + 1..].find('%') {
+                let name = &target[i + 1..i + 1 + rel];
+                if let Some(v) = lookup(name) {
+                    for &b in v.as_bytes() {
+                        if !put(&mut n, buf, b) {
+                            return 0;
+                        }
+                    }
+                    i = i + 1 + rel + 1;
+                    continue;
+                }
+            }
+        }
+        if !put(&mut n, buf, bytes[i]) {
+            return 0;
+        }
+        i += 1;
+    }
+    n
+}
+
+/// DarwinID（位 12）诚实标注：设置 Darwin 安装标识的快捷方式当前无对应
+/// 运行面 → 归因短语（不冒充正常目标）。
+pub fn darwin_note(flags: u32) -> Option<&'static str> {
+    if flags & LF_HAS_DARWIN_ID != 0 {
+        Some("darwin-id-unsupported-honest")
+    } else {
+        None
+    }
+}
+
+/// F013 深化自检。
+pub fn run_lnkfile_deep_checks() -> CheckSet {
+    fn lk_env(name: &str) -> Option<&'static str> {
+        match name {
+            "PROGRAMFILES" => Some("C:\\Program Files"),
+            "APP" => Some("OldTool"),
+            _ => None,
+        }
+    }
+
+    let mut cs = CheckSet::new("F013-lnkfile-deep");
+    // 1) 环境变量目标展开：命中替换、未知保留原样、字面 %（无配对）保留。
+    let mut buf = [0u8; 260];
+    let n1 = expand_target("%PROGRAMFILES%\\Old\\tool.exe", lk_env, &mut buf);
+    let hit = n1 > 0 && &buf[..n1] == b"C:\\Program Files\\Old\\tool.exe";
+    let n2 = expand_target("%GHOST%\\x", lk_env, &mut buf);
+    let ghost = n2 > 0 && &buf[..n2] == b"%GHOST%\\x";
+    let n3 = expand_target("100%", lk_env, &mut buf);
+    let literal = n3 == 4 && &buf[..n3] == b"100%";
+    cs.add(
+        "expand_target_single_pass",
+        hit && ghost && literal,
+        "",
+    );
+    // 2) DarwinID 标注：位 12 命中 → 短语；未命中 → None。
+    cs.add(
+        "darwin_id_honest",
+        darwin_note(LF_HAS_DARWIN_ID).is_some()
+            && darwin_note(LF_HAS_DARWIN_ID).unwrap() == "darwin-id-unsupported-honest"
+            && darwin_note(LF_HAS_REL_PATH).is_none(),
+        "",
+    );
+    // 3) 热键/缓存键/LinkFlags 全集（深化一批既有面）对账锚。
+    let f5 = decode_hotkey(0x74 | ((HOTKEYF_CONTROL | HOTKEYF_ALT) as u16) << 8);
+    cs.add(
+        "deep_batch1_anchored",
+        core::str::from_utf8(&f5.phrase.text[..f5.phrase.len]) == Ok("Ctrl+Alt+F5")
+            && unknown_flags(KNOWN_LINK_FLAGS) == 0
+            && icon_cache_key(1, 1) == icon_cache_key(1, 1)
+            && icon_cache_key(1, 1) != icon_cache_key(1, 2),
+        "",
+    );
+    // 4) 解析主链（批次一既有面）对账锚：断链深度上限 5。
+    cs.add("resolve_depth_anchored", RESOLVE_DEPTH_MAX == 5, "");
+    cs
 }

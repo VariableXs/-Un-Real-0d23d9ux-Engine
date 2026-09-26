@@ -365,7 +365,7 @@ pub fn split_path(value: &str) -> Vec<&str> {
 }
 
 /// 域自检。
-pub fn run_envsess_checks() -> CheckSet {
+pub fn run_envsess_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F011-envsess");
     // 1) 判据常量（32KB / 链限 10 / PATH 警告 8KB / 标准名 20 项）。
     cs.add(
@@ -803,4 +803,131 @@ mod ext_tests {
             assert_eq!(name_error_at(case).is_none(), EnvTable::valid_name(case), "{}", case);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_envsess_checks() -> CheckSet {
+    CheckSet::merge(run_envsess_base_checks(), run_envsess_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F011 · 深化批次二：值类型面（REG_EXPAND_SZ 查询时展开）+ TEMP 沙盒化
+//
+// 主册依据（G-A-11【设计细节】）：「TEMP 指向沙盒内 tmp（每应用独立，防
+// 交叉污染）」；Windows 环境变量值类型语义（REG_SZ 原样 / REG_EXPAND_SZ
+// 查询时展开）——类型标记为叠层面（不破坏既有 EnvVar 结构）。
+// ---------------------------------------------------------------------------
+
+/// 沙盒 TEMP 渲染（每应用独立 tmp——防交叉污染；缓冲不足返回 0 不静默截）。
+pub const TEMP_PATH_MAX: usize = 96;
+
+pub fn temp_for_app(app_name: &str, buf: &mut [u8]) -> usize {
+    const TEMPLATE: &str = "~\\AppSandbox\\";
+    const SUFFIX: &str = "\\tmp";
+    let total = TEMPLATE.len() + app_name.len() + SUFFIX.len();
+    if buf.len() < total || app_name.is_empty() || app_name.len() > 32 {
+        return 0;
+    }
+    buf[..TEMPLATE.len()].copy_from_slice(TEMPLATE.as_bytes());
+    buf[TEMPLATE.len()..TEMPLATE.len() + app_name.len()].copy_from_slice(app_name.as_bytes());
+    buf[TEMPLATE.len() + app_name.len()..total].copy_from_slice(SUFFIX.as_bytes());
+    total
+}
+
+/// REG_EXPAND_SZ 叠层面（查询时展开语义——标记表定长 32 槽）。
+pub struct TypedOverlay {
+    expand_names: [([u8; 64], usize); 32],
+    n: usize,
+}
+
+impl TypedOverlay {
+    pub fn new() -> TypedOverlay {
+        TypedOverlay { expand_names: [([0; 64], 0); 32], n: 0 }
+    }
+
+    fn find(&self, name: &str) -> Option<usize> {
+        let lower = name.to_ascii_lowercase();
+        (0..self.n).find(|&i| {
+            core::str::from_utf8(&self.expand_names[i].0[..self.expand_names[i].1])
+                .map(|n| n.to_ascii_lowercase() == lower)
+                .unwrap_or(false)
+        })
+    }
+
+    /// 标记变量为 REG_EXPAND_SZ。
+    pub fn mark_expand(&mut self, name: &str) -> bool {
+        if EnvTable::valid_name(name) {
+            if let Some(i) = self.find(name) {
+                let _ = i; // 已标记 → 幂等
+                return true;
+            }
+            if self.n < 32 {
+                self.expand_names[self.n].0[..name.len()].copy_from_slice(name.as_bytes());
+                self.expand_names[self.n].1 = name.len();
+                self.n += 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// 是否 REG_EXPAND_SZ。
+    pub fn is_expand(&self, name: &str) -> bool {
+        self.find(name).is_some()
+    }
+}
+
+/// F011 深化自检。
+pub fn run_envsess_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F011-envsess-deep");
+    // 1) TEMP 沙盒化：每应用独立路径渲染 + 长度上限诚实拒绝。
+    let mut b = [0u8; TEMP_PATH_MAX];
+    let n1 = temp_for_app("AppA", &mut b);
+    let has_a = core::str::from_utf8(&b[..n1]).unwrap().contains("AppSandbox\\AppA\\tmp");
+    let n2 = temp_for_app("AppB", &mut b);
+    let has_b = core::str::from_utf8(&b[..n2]).unwrap().contains("AppSandbox\\AppB\\tmp");
+    cs.add(
+        "temp_per_app_sandboxed",
+        n1 > 0 && n2 > 0 && n1 == n2 && has_a && has_b,
+        "",
+    );
+    cs.add("temp_oversize_honest", temp_for_app(&"x".repeat(33), &mut b) == 0, "");
+    // 2) REG_EXPAND_SZ 叠层面：标记/查询/幂等；非法名拒绝。
+    let mut t = TypedOverlay::new();
+    let m1 = t.mark_expand("PROMPT");
+    let m2 = t.mark_expand("prompt"); // 大小写不敏感幂等
+    let m3 = t.mark_expand("BAD=NAME");
+    cs.add(
+        "typed_overlay_semantics",
+        m1 && m2 && !m3 && t.is_expand("PROMPT") && t.is_expand("prompt") && !t.is_expand("PATH"),
+        "",
+    );
+    // 3) 查询时展开语义（Windows：REG_EXPAND_SZ 的值在 GetEnvironmentVariable
+    //    时才展开——模型层以 expand() 消费面钉死，注入面一次语义 base 已锁）。
+    let mut tab = EnvTable::new();
+    let _ = tab.set("BASE", b"C:\\root", Scope::System);
+    let _ = tab.set("CHAIN", b"%BASE%\\sub", Scope::User);
+    let mut ov = TypedOverlay::new();
+    let _ = ov.mark_expand("CHAIN");
+    let expanded = tab.expand("%CHAIN%");
+    cs.add(
+        "expand_sz_query_time",
+        ov.is_expand("CHAIN") && expanded == "C:\\root\\sub",
+        "",
+    );
+    // 4) 配置落盘/PATH 重组/非法名定位（深化一批既有面）对账锚。
+    let joined = join_path(&["C:\\a", "", "C:\\b", "C:\\a"]);
+    cs.add(
+        "deep_batch1_anchored",
+        joined == "C:\\a;C:\\b"
+            && name_error_at("A=B") == Some((1, NameError::IllegalChar(b'=')))
+            && tab.snapshot().get("BASE") == Some(&b"C:\\root"[..]),
+        "",
+    );
+    cs
 }

@@ -3,6 +3,32 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-C1 应用兼容域·前段（F001-F020 深化批次二 + 检查项对账）
+
+**kernel/varix/src/compatstar/**（AI-C1 泳道二应用兼容前段第二批深化：主册
+G-A-01~G-A-20【设计细节】条款继续落地 + CheckSet 检查项对账 + 隔离验证完备）：
+
+- **二十域全部深化**：占位窗呼吸参数化+CPU 限额+无缝替换（F001）、TLS 回调
+  目录解析+节惰性提交记账（F002）、delay-load 首调绑定+LRU 淘汰（F003）、
+  星卡日去重（F004）、控件消息四族 21 钉值（F005）、TextMetrics/背景模式/
+  ETO 选项位（F006）、FillMode 点包含判定核（F007）、OFN 标志+缺省扩展名
+  推断（F008）、蜂巢 JSON 导出+污节点合并（F009）、前缀路由器+共享白名单
+  （F010）、TEMP 沙盒化+值类型叠层面（F011）、标题/输出节流/关闭宽限
+  （F012）、环境变量目标展开+DarwinID（F013）、组图标成员选择（F014）、
+  **Big5/Shift-JIS 锚点字子集起建**+覆盖率报告（F015）、字体角色+别名规范
+  化（F016）、延迟渲染（F017）、拖拽视觉/超时钉死（F018）、类对象会话级回
+  收（F019）、24h 三崩/双重故障/dump 池钉死（F020）。
+- **检查项对账**：CheckSet 检查项 **227 主检 + 92 深化检 = 319 项**（聚合
+  `run_X_checks = merge(base, deep)`，AI-U2 先例，robust.rs 接线零改动）；
+  92 项深化检逐名清单程序化提取入账（对账文档 §三）。
+- **隔离验证完备**：隔离壳与主仓 compatstar 逐字节同步 + 壳 crate 根补
+  `extern crate alloc;` 档位对齐；全量 213 宿主测试全绿；主仓 no_std 档
+  `cargo check` compatstar 错误 = **0**（批次二新代码全过 no_std 纪律）。
+- 施工缺陷账本批次二 **6 项全数闭合**（呼吸三角波断言形状/charge 丢计数
+  由深化检捕获/断言读覆写缓冲/重复定义一处一事实清理/夹具语义/旧测试随状
+  态演进）——对账与复现见 `_attic/aic1-f001-f020/行数对账与缺陷账本.md`；
+  规模：总 17,649 行 / 纯功能 13,181 行（较批次一净增 2,365 / +1,686）。
+
 ## [Unreleased] — Varix STAR I · AI-U2 I 通用域·二分队（F451-F500 深化批次 v2）
 
 **kernel/varix/src/genstar2/**（AI-U2 泳道四 I 通用二分队深化批：v1 判据

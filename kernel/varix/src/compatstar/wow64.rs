@@ -247,7 +247,7 @@ pub fn gate_machine(peblock_passed: bool, image: &[u8]) -> MachineVerdict {
 }
 
 /// 域自检。
-pub fn run_wow64_checks() -> CheckSet {
+pub fn run_wow64_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F004-wow64");
     // 1) 判据常量（0x014C/0x8664/0xAA64/1000 条）。
     cs.add(
@@ -669,4 +669,114 @@ mod ext_tests {
         let mut small = [0u8; 12];
         assert_eq!(serialize_refusals(&src, &mut small), 0);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_wow64_checks() -> CheckSet {
+    CheckSet::merge(run_wow64_base_checks(), run_wow64_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F004 · 深化批次二：星卡上报日去重（F036 联动）
+//
+// 主册依据（G-A-04【设计细节】）：「拒绝记录同时上报星卡草稿（F036 联动，
+// 匿名）」——同一文件反复双击不应刷屏星卡：按（文件哈希 × 自然日）去重。
+// 零堆：定长日去重表。
+// ---------------------------------------------------------------------------
+
+/// 星卡日去重表（同哈希同日只报一次；容量 32 定长环形）。
+pub struct StarcardDayDedup {
+    entries: [(u64, u32); 32], // (file_hash, day_index)
+    n: usize,
+    /// 因去重被抑制的上报数（观测面——不静默）。
+    pub suppressed: u32,
+}
+
+/// 自然日序号（epoch 天——调用方给 ms 时间戳，此处按天折算）。
+pub fn day_index(now_ms: u64) -> u32 {
+    (now_ms / 86_400_000) as u32
+}
+
+impl StarcardDayDedup {
+    pub fn new() -> StarcardDayDedup {
+        StarcardDayDedup { entries: [(0, 0); 32], n: 0, suppressed: 0 }
+    }
+
+    /// 是否应上报（同哈希同日 → 抑制）。返回 true = 当日报一次。
+    pub fn should_report(&mut self, file_hash: u64, now_ms: u64) -> bool {
+        let day = day_index(now_ms);
+        if let Some(i) = (0..self.n).find(|&i| self.entries[i].0 == file_hash) {
+            if self.entries[i].1 == day {
+                self.suppressed += 1;
+                return false;
+            }
+            self.entries[i].1 = day; // 跨日重报
+            return true;
+        }
+        let slot = if self.n < 32 {
+            let s = self.n;
+            self.n += 1;
+            s
+        } else {
+            self.suppressed += 1;
+            return false; // 表满如实抑制（观测面可见，不静默丢）——容量登记对账
+        };
+        self.entries[slot] = (file_hash, day);
+        true
+    }
+}
+
+/// F004 深化自检。
+pub fn run_wow64_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F004-wow64-deep");
+    // 1) 替代品预填（深化一批既有面）：程序名 + 固定后缀，char 边界截断。
+    let q = alt_query_for("S:\\Downloads\\Notepad3.exe");
+    let mut buf = [0u8; 64];
+    let n = q.render(&mut buf);
+    let rendered = core::str::from_utf8(&buf[..n]).unwrap_or("");
+    cs.add(
+        "alt_query_prefill",
+        rendered.starts_with("Notepad3") && rendered.ends_with(ALT_QUERY_SUFFIX) && !q.truncated,
+        "",
+    );
+    let long_q = alt_query_for(&"很长的程序名字段".repeat(20));
+    cs.add(
+        "alt_query_char_boundary",
+        long_q.truncated
+            && long_q.name_len <= ALT_QUERY_NAME_CAP
+            && core::str::from_utf8(&long_q.name[..long_q.name_len]).is_ok(),
+        "",
+    );
+    // 2) 拒绝缓存落盘（深化一批既有面）：往返等价 + 损坏四关全拒。
+    let mut src = RefusalLedger::new();
+    let _ = src.refuse(0x11);
+    let mut cbuf = [0u8; REFUSAL_HDR_SIZE + REFUSAL_REC_SIZE + REFUSAL_SUM_SIZE];
+    let cn = serialize_refusals(&src, &mut cbuf);
+    let back = deserialize_refusals(&cbuf[..cn]);
+    let mut corrupt = cbuf[..cn].to_vec();
+    corrupt[REFUSAL_HDR_SIZE] ^= 0xFF;
+    cs.add(
+        "refusal_cache_roundtrip_and_reject",
+        back.map(|l| l.len() == 1).unwrap_or(false) && deserialize_refusals(&corrupt).is_err(),
+        "",
+    );
+    // 3) 星卡日去重：同日抑制、跨日重报、抑制计数可见。
+    let mut dd = StarcardDayDedup::new();
+    let d1 = dd.should_report(0xAA, 0);
+    let d2 = dd.should_report(0xAA, 100);
+    let d3 = dd.should_report(0xAA, 86_400_000);
+    cs.add(
+        "starcard_day_dedup",
+        d1 && !d2 && d3 && dd.suppressed == 1 && day_index(86_399_999) == 0 && day_index(86_400_000) == 1,
+        "",
+    );
+    // 4) 混合包归因（批次一既有面对账）：主程序不被冤枉。
+    let mixed = MixedPackage { installer: MachineVerdict::ThirtyTwo, payload: MachineVerdict::Native64 };
+    cs.add("mixed_package_attribution", mixed.is_mixed() && mixed.card().why.contains("主程序是 64 位"), "");
+    cs
 }

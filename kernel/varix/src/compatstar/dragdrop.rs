@@ -273,7 +273,7 @@ impl Default for DragHub {
 }
 
 /// 域自检。
-pub fn run_dragdrop_checks() -> CheckSet {
+pub fn run_dragdrop_base_checks() -> CheckSet {
     let mut cs = CheckSet::new("F018-dragdrop");
     // 1) 判据常量（30s / 2px / 8% / 80% 不透明）。
     cs.add(
@@ -588,4 +588,70 @@ mod ext_tests {
         // Esc 路径：第一拍就取消（与 DragSession::esc_cancel 对账）。
         assert_eq!(query_continue_drag(DragKeyState { esc_pressed: true, primary_released: false, other_key_noise: false }), QueryContinue::Cancel);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次二：自检聚合（主检 + 深化检并为一行——AI-U2 merge 先例；
+// robust.rs / 隔离壳 checkup 接线不变，深化检查项全部经由此行可见）。
+// ---------------------------------------------------------------------------
+
+/// 域自检（聚合版）。
+pub fn run_dragdrop_checks() -> CheckSet {
+    CheckSet::merge(run_dragdrop_base_checks(), run_dragdrop_deep_checks())
+}
+
+// ---------------------------------------------------------------------------
+// F018 · 深化批次二：拖拽视觉语义常量 + 拖拽会话既有面钉死
+//
+// 主册依据（G-A-18【设计细节】）：「落点提示矩形 2px 强调色描边加 8% 填充」
+// 「拖拽中源窗口加 20% 降透明」「同源同目标死拖 → 超时 30s 自动取消」——
+// 视觉/超时常量钉值；五态状态机与三取消由既有 DragSession 面承载（对账）。
+// ---------------------------------------------------------------------------
+
+// 视觉/超时常量（DROP_HINT_BORDER_PX/DROP_HINT_FILL_PERMILLE/
+// SOURCE_DIM_OPACITY_PERMILLE/DEAD_DRAG_TIMEOUT_MS）已由批次一实装——
+// 本批深化检直接钉死既有定义（一处一事实，不重复定义）。
+
+/// F018 深化自检。
+pub fn run_dragdrop_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F018-dragdrop-deep");
+    // 1) 视觉/超时常量钉值。
+    cs.add(
+        "visual_and_timeout_pins",
+        DROP_HINT_BORDER_PX == 2
+            && DROP_HINT_FILL_PERMILLE == 80
+            && SOURCE_DIM_OPACITY_PERMILLE == 800
+            && DEAD_DRAG_TIMEOUT_MS == 30_000,
+        "",
+    );
+    // 2) 五态状态机既有面对账：就绪→悬停→落入→提交 完成（逐态推进合法）。
+    let mut s = DragSession::new(DragData::Files(1), true, 0);
+    s.hover(100);
+    s.enter(200);
+    let effect = s.drop_commit(DropEffect::Copy, 300);
+    cs.add("five_state_machine_legal_path", effect == DropEffect::Copy, "");
+    // 3) 三取消（B-3902）既有面对账：Esc → Cancelled(KeyCancel)，取消后
+    //    松手走拒绝路径返回 None 效果；非法落点松手 → Cancelled(InvalidDrop)。
+    let mut s2 = DragSession::new(DragData::Text, true, 0);
+    s2.hover(10);
+    s2.esc_cancel(50);
+    let cancelled_state = matches!(s2.state, DragState::Cancelled(CancelReason::KeyCancel));
+    let late_commit = s2.drop_commit(DropEffect::Copy, 60);
+    let mut s3 = DragSession::new(DragData::Files(1), true, 0);
+    s3.hover(10);
+    s3.enter(20);
+    let rejected = s3.drop_rejected(30);
+    cs.add(
+        "three_cancels_anchored",
+        cancelled_state && matches!(late_commit, DropEffect::None) && matches!(rejected, DropEffect::None),
+        "",
+    );
+    // 4) 死拖超时既有面：超 30s tick → 自动取消真值。
+    let mut s4 = DragSession::new(DragData::Files(1), true, 0);
+    let mut timed_out = false;
+    for t in [0u64, 10_000, 20_000, 29_999, 30_001] {
+        timed_out |= s4.tick_dead_drag(t);
+    }
+    cs.add("dead_drag_timeout_engages", timed_out, "");
+    cs
 }
