@@ -23,6 +23,7 @@ import { feedUsageFromRecentEngine, restorePointPathReverify } from "./integrati
 import { loadTokenTable } from "./tokens";
 import { CtxNavCard, ChordLabCard, ReportLabCard } from "./pages-lab";
 import { UsageRankCard, CheatSheetCard, CopyAuditCard, ShardRunnerCard } from "./pages-lab2";
+import { ErrorSurfaceCard, AssetPackageCard, WindowMetricsCard, PerfBudgetCard } from "./pages-lab3";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -194,6 +195,7 @@ export function TaskbarPage(): React.ReactNode {
         </Row>
       </Card>
       <TaskbarEngineCard />
+      <WindowMetricsCard />
     </div>
   );
 }
@@ -471,6 +473,9 @@ export function VerdictPage(): React.ReactNode {
       <DualPathRow />
       <ReportLabCard />
       <ShardRunnerCard />
+      <ErrorSurfaceCard />
+      <PerfBudgetCard />
+      <AssetPackageCard />
       <CopyAuditCard />
     </div>
   );

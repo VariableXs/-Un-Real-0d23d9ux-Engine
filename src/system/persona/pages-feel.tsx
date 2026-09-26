@@ -16,6 +16,7 @@ import { resolveEventSound, volumeRamp, rampAt } from "./audio-engine";
 import { startMenuGeometry, presetThumbSpec } from "./layout-engine";
 import { FrameTimeSampler, animationFallback, progressNumberSpec, progressNumberText, previewHonestyNote } from "./motion-monitor";
 import { SynthLabCard } from "./pages-lab";
+import { MotionCurveCard } from "./pages-lab3";
 import { Card, PageHeader, Row, Toggle, Slider, PButton, Notice, useT, usePersonaSection } from "./ui";// ---------- F157 声音混合器 ----------
 
 export function SoundPage(): React.ReactNode {
@@ -219,6 +220,7 @@ export function MotionPage(): React.ReactNode {
         </Row>
       </Card>
       <MotionPerfCard />
+      <MotionCurveCard />
     </div>
   );
 }

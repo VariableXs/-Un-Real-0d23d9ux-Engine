@@ -9,6 +9,7 @@ import {
 } from "./archive";
 import { WidgetDataCard, LockComposerCard, ImeLabCard } from "./pages-lab";
 import { PersistenceCard, ArchiveMergeCard, SchedulerCard } from "./pages-lab2";
+import { InteractionLedgerCard } from "./pages-lab3";
 import { loadWidgetConfig, saveWidgetConfig, addWidget, removeWidget, updateWidget, WIDGET_KINDS, clampOpacity, REFRESH_MS } from "./widgets";
 import { loadLockScreenConfig, saveLockScreenConfig, LOCK_TIME_STYLES, WAKE_TIMELINE, FALLBACK_COLOR } from "./lockcustom";
 import { loadBootSkinConfig, saveBootSkinConfig, validateBootSkinConfig, PARTICLE_COUNTS, particlePalette, BACKDROP_DIM, suggestDensity } from "./bootskin";
@@ -551,6 +552,7 @@ export function ImePage(): React.ReactNode {
         </Row>
       </Card>
       <ImeLabCard />
+      <InteractionLedgerCard />
     </div>
   );
 }

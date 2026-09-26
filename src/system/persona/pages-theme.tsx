@@ -32,6 +32,7 @@ import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, Colo
 import type { LaneT } from "./labels";
 import { PaletteLabCard, SchemaLabCard, SolarLabCard } from "./pages-lab";
 import { AccentRampCard, DirtyRectCard } from "./pages-lab2";
+import { HoverFocusCard } from "./pages-lab3";
 
 const GROUP_ZH: Record<ColorGroup, Parameters<LaneT>[0]> = {
   bg: "groupBg", fg: "groupFg", brand: "groupBrand", state: "groupState", line: "groupLine", misc: "groupMisc",
@@ -311,6 +312,7 @@ export function PreviewPage(): React.ReactNode {
         </Row>
       </Card>
       <DirtyRectCard />
+      <HoverFocusCard />
     </div>
   );
 }
