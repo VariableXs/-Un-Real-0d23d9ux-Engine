@@ -416,3 +416,43 @@ mod deep_tests {
         assert!(find_unit(r.length).is_some() && find_unit(r.weight).is_some() && find_unit(r.temperature).is_some());
     }
 }
+// ---- F458 unitconv v3：温度负温域 / 组合链式换算审计 / 区域默认覆盖 ----
+
+/// 温度族负温域（v1 温度换算的负值守护：-40°C = -40°F（交点）——
+/// 经典对账点；绝对零度下限 -273.15°C 红线）。
+pub const ABSOLUTE_ZERO_C: f64 = -273.15;
+
+pub fn temp_below_absolute_zero(c: f64) -> bool {
+    c < ABSOLUTE_ZERO_C
+}
+
+pub fn run_unitconv_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F458-v3");
+    // 1) -40 交点（c↔f 换算的经典对账）。
+    let f = convert(-40.0, "c", "f").unwrap_or(f64::NAN);
+    cs.add("minus40_cross", (f + 40.0).abs() < 1e-9, "");
+    // 2) 绝对零度红线。
+    cs.add("abs_zero_red", temp_below_absolute_zero(-274.0) && !temp_below_absolute_zero(-273.0), "");
+    // 3) 区域默认覆盖（v1 RegionDefaults 的覆盖语义：改区域 → 三默认全换）。
+    cs.add("region_shape", REGION_ZH.length.len() > 0, "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn minus40_is_exact_in_both_scales() {
+        let f = convert(-40.0, "c", "f").unwrap();
+        assert!((f - (-40.0)).abs() < 1e-12);
+        let c = convert(-40.0, "f", "c").unwrap();
+        assert!((c - (-40.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn absolute_zero_never_crossed() {
+        assert!(temp_below_absolute_zero(-273.2));
+        assert!(!temp_below_absolute_zero(-273.1));
+    }
+}

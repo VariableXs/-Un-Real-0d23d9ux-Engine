@@ -382,3 +382,196 @@ mod deep_tests {
         assert!(line.contains("测试") && line.contains("42"));
     }
 }
+
+// ===========================================================================
+// 深化 v4（F460）：词库持久化序列化（FNV 校验尾）/ 满额导入对账 /
+// 容量诚实面 / 词条含空格解析语义
+// ===========================================================================
+
+/// 持久化载荷单条上限（len u8 + word 32B + freq u16le = 35B）。
+pub const PERSIST_ENTRY_BYTES: usize = 35;
+/// 持久化格式最小尺寸（count u16le + fnv32le）。
+pub const PERSIST_MIN_BYTES: usize = 6;
+
+/// FNV-1a 32 位（仓库惯例键/校验算法，定长零堆）。
+pub fn fnv1a(data: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c_9dc5;
+    for &b in data {
+        h ^= b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
+}
+
+/// 序列化词库到定长缓冲（count u16le + 逐条 [len u8|word|freq u16le] +
+/// fnv32le 校验尾）。缓冲不足返回 None（诚实，不截断）。
+pub fn persist_store(store: &DictStore, out: &mut [u8]) -> Option<usize> {
+    let need = PERSIST_MIN_BYTES + store.count() * PERSIST_ENTRY_BYTES;
+    if out.len() < need {
+        return None;
+    }
+    let mut i = 0usize;
+    let n = store.count() as u16;
+    out[i] = (n & 0xff) as u8;
+    out[i + 1] = (n >> 8) as u8;
+    i += 2;
+    for idx in 0..store.count() {
+        // entries 私有——经 get 语义逐条取（按插入序游标）。
+        if let Some(e) = store.entry_at(idx) {
+            out[i] = e.word_n as u8;
+            out[i + 1..i + 1 + e.word_n].copy_from_slice(&e.word[..e.word_n]);
+            i += 1 + e.word_n;
+            let f = e.freq;
+            out[i] = (f & 0xff) as u8;
+            out[i + 1] = (f >> 8) as u8;
+            i += 2;
+        }
+    }
+    let h = fnv1a(&out[..i]);
+    out[i] = (h & 0xff) as u8;
+    out[i + 1] = ((h >> 8) & 0xff) as u8;
+    out[i + 2] = ((h >> 16) & 0xff) as u8;
+    out[i + 3] = ((h >> 24) & 0xff) as u8;
+    Some(i + 4)
+}
+
+/// 反序列化（校验尾不过/计数越界/词条长非法 → None 拒收；半行不收）。
+pub fn restore_store(raw: &[u8]) -> Option<DictStore> {
+    if raw.len() < PERSIST_MIN_BYTES {
+        return None;
+    }
+    let n = raw[0] as usize | ((raw[1] as usize) << 8);
+    if n > WORD_CAP {
+        return None;
+    }
+    let body_end = raw.len() - 4;
+    let expect = fnv1a(&raw[..body_end]);
+    let got = raw[body_end] as u32
+        | ((raw[body_end + 1] as u32) << 8)
+        | ((raw[body_end + 2] as u32) << 16)
+        | ((raw[body_end + 3] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let mut s = DictStore::new();
+    let mut i = 2usize;
+    for _ in 0..n {
+        if i >= body_end {
+            return None; // 半条拒收
+        }
+        let wl = raw[i] as usize;
+        i += 1;
+        if wl == 0 || i + wl + 2 > body_end {
+            return None;
+        }
+        let word = core::str::from_utf8(&raw[i..i + wl]).ok()?;
+        i += wl;
+        let freq = raw[i] as u16 | ((raw[i + 1] as u16) << 8);
+        i += 2;
+        s.insert(DictEntry::new(word, freq)?);
+    }
+    Some(s)
+}
+
+impl DictStore {
+    /// 按插入序取第 idx 条（持久化游标用；越界 None）。
+    pub fn entry_at(&self, idx: usize) -> Option<DictEntry> {
+        if idx >= self.n {
+            return None;
+        }
+        self.entries[idx]
+    }
+}
+
+/// 词条含空格的解析语义（rfind 分隔：最后一段空格后是词频——
+/// 「New Year 3」词条为「New Year」；纯空格/词频段缺失仍拒收）。
+pub fn parse_word_with_space(line: &str) -> bool {
+    matches!(parse_line(line), Some(e) if e.as_str() == "New Year" && e.freq == 3)
+}
+
+pub fn run_vxdict_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F460-v4");
+    // 1) 持久化 round-trip：序列化 → 反序列化逐条等值。
+    let mut s = DictStore::new();
+    let _ = s.import(&["星徽 42", "自造词 1234", "词乙 7"], ImportMode::Merge);
+    let mut buf = [0u8; 256];
+    let stored = persist_store(&s, &mut buf);
+    cs.add("persist_some", stored.is_some(), "");
+    let back = stored.and_then(|n| restore_store(&buf[..n]));
+    cs.add("persist_roundtrip", match back {
+        Some(r) => {
+            r.count() == 3
+                && r.get("星徽").map(|e| e.freq) == Some(42)
+                && r.get("自造词").map(|e| e.freq) == Some(1234)
+                && r.get("词乙").map(|e| e.freq) == Some(7)
+        }
+        None => false,
+    }, "");
+    // 2) 校验尾防篡改：翻一个字节 → 拒收（半行不收）。
+    cs.add("persist_tamper_rejected", {
+        let n = stored.unwrap_or(0);
+        if n > 0 {
+            let mut bad = buf;
+            bad[n - 2] ^= 0x01;
+            restore_store(&bad[..n]).is_none()
+        } else {
+            false
+        }
+    }, "");
+    // 3) 计数越界/短包诚实拒收。
+    cs.add("persist_short_rejected", restore_store(&[3, 0]).is_none(), "");
+    cs.add("persist_bad_count_rejected", restore_store(&[0xff, 0xff, 0, 0, 0, 0]).is_none(), "");
+    // 4) 容量诚实面：小缓冲 persist 返回 None（不截断不假装）。
+    let mut tiny = [0u8; 8];
+    cs.add("persist_capacity_honest", persist_store(&s, &mut tiny).is_none(), "");
+    // 5) 导入三分账对总（added+merged+rejected=输入行数——本批 5 词全为新增）。
+    let mut full = DictStore::new();
+    let words = ["甲", "乙", "丙", "丁", "戊"];
+    let rep = full.import(&words, ImportMode::Merge);
+    cs.add("import_counts_reconcile", import_report_reconciles(&rep, words.len()), "");
+    // 6) 词条含空格解析（rfind 分隔语义）。
+    cs.add("word_with_space", parse_word_with_space("New Year 3"), "");
+    // 7) 词频 0 合法（0..=MAX 全域有效）。
+    cs.add("freq_zero_valid", parse_line("零频 0").map(|e| e.freq) == Some(0), "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn persist_empty_store_roundtrip() {
+        let s = DictStore::new();
+        let mut buf = [0u8; 64];
+        let n = persist_store(&s, &mut buf).unwrap();
+        let back = restore_store(&buf[..n]).unwrap();
+        assert_eq!(back.count(), 0);
+    }
+
+    #[test]
+    fn persist_oversize_capacity_honest() {
+        let mut s = DictStore::new();
+        let _ = s.import(&["某词 5"], ImportMode::Merge);
+        let mut buf = [0u8; 16]; // 容量不足
+        assert!(persist_store(&s, &mut buf).is_none());
+    }
+
+    #[test]
+    fn restore_rejects_half_entry() {
+        // count=1 但载荷无词条 → 半条拒收。
+        let mut raw = vec![1u8, 0];
+        raw.extend_from_slice(&[0x11, 0x22, 0x33, 0x44]); // 假校验尾
+        assert!(restore_store(&raw).is_none());
+    }
+
+    #[test]
+    fn round_trip_preserves_word_with_space() {
+        let mut s = DictStore::new();
+        let _ = s.import(&["New Year 3"], ImportMode::Merge);
+        let mut buf = [0u8; 64];
+        let n = persist_store(&s, &mut buf).unwrap();
+        let back = restore_store(&buf[..n]).unwrap();
+        assert_eq!(back.get("New Year").map(|e| e.freq), Some(3));
+    }
+}

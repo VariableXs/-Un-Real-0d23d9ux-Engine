@@ -385,3 +385,271 @@ mod tests {
         assert_eq!(p.active_plan, 2);
     }
 }
+
+// ===========================================================================
+// 深化 v3（F492）：电池老化模型 / 充放电曲线段 / 电源计划模板四套 /
+// 续航预估账 / 峰值功耗预算 / 计划切换审计链
+// ===========================================================================
+
+/// 电池健康度（主册「电池」的寿命面：满充电容量 / 设计容量 ×1000——
+/// 老化是实测账不是猜测；低于 800‰ 建议换电池的人话锚）。
+pub const BATTERY_WORN_PERMILLE: u16 = 800;
+
+pub fn battery_health_permille(full_charge_mah: u32, design_mah: u32) -> Option<u16> {
+    if design_mah == 0 || full_charge_mah == 0 || full_charge_mah > design_mah {
+        return None; // 无设计容量/未标定/超设计（异常数据）诚实拒。
+    }
+    Some((full_charge_mah as u64 * 1_000 / design_mah as u64) as u16)
+}
+
+pub fn battery_worn(health_permille: u16) -> bool {
+    health_permille < BATTERY_WORN_PERMILLE
+}
+
+/// 充电曲线段（主册「充电显示」的三段模型：快充恒流段到 800‰、
+/// 涓流段 800-980‰、满充保平段——三段的预计剩余分钟表一处定义）。
+pub const CHARGE_SEGMENT_FULL_PERMILLE: u16 = 800;
+pub const CHARGE_SEGMENT_TRICKLE_PERMILLE: u16 = 980;
+
+pub enum ChargePhase {
+    Fast,
+    Trickle,
+    Full,
+}
+
+pub fn charge_phase(level_permille: u16) -> ChargePhase {
+    if level_permille >= 980 {
+        ChargePhase::Full
+    } else if level_permille >= CHARGE_SEGMENT_FULL_PERMILLE {
+        ChargePhase::Trickle
+    } else {
+        ChargePhase::Fast
+    }
+}
+
+pub fn charge_phase_name(p: &ChargePhase) -> &'static str {
+    match p {
+        ChargePhase::Fast => "快充",
+        ChargePhase::Trickle => "涓流",
+        ChargePhase::Full => "已满",
+    }
+}
+
+/// 续航预估账（主册「预估续航时间」：当前电量 ÷ 场景功耗 ×60——
+/// 分钟整取；功耗 0 诚实 None（不硬估无限续航））。
+pub fn battery_minutes_left(level_permille: u16, drain_mw_per_min: u32) -> Option<u32> {
+    if drain_mw_per_min == 0 {
+        return None;
+    }
+    // 电量按 ‰ 换算成满格 100 的份额，除以每分钟耗电份额（‰/min）。
+    let level = level_permille.min(1_000) as u64;
+    Some(((level * 60) / drain_mw_per_min.max(1) as u64) as u32)
+}
+
+/// 峰值功耗预算（主册「功耗预算」的分配面：整机 TDP 内四件套
+/// （CPU/GPU/屏/其余）分配和不得超总——超了就是预算在说谎）。
+pub const TDP_BUDGET_MW: u32 = 28_000;
+
+pub fn tdp_budget_ok(cpu_mw: u32, gpu_mw: u32, panel_mw: u32, rest_mw: u32) -> bool {
+    cpu_mw.saturating_add(gpu_mw)
+        .saturating_add(panel_mw)
+        .saturating_add(rest_mw) <= TDP_BUDGET_MW
+}
+
+/// 电源计划模板四套（主册「计划模板」：均衡/性能/省电/演示——
+/// 模板 = 三参数预置；一键套用，恢复默认永远一键可退）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PlanPreset {
+    Balanced,
+    Performance,
+    Saver,
+    Presentation,
+}
+
+/// 模板参数（cpu_perf_permille / 屏亮度 permille / 后台限流档）。
+pub const PRESET_TABLE: [(PlanPreset, u16, u16, u8); 4] = [
+    (PlanPreset::Balanced, 600, 700, 2),
+    (PlanPreset::Performance, 1_000, 1_000, 0),
+    (PlanPreset::Saver, 300, 400, 4),
+    (PlanPreset::Presentation, 500, 1_000, 3), // 演示：屏最亮 + 中性能
+];
+
+pub fn preset_params(p: PlanPreset) -> (u16, u16, u8) {
+    PRESET_TABLE.iter().find(|(k, _, _, _)| *k == p).map(|(_, c, b, l)| (*c, *b, *l)).unwrap_or((600, 700, 2))
+}
+
+/// 模板表健康审计：四套互异（一键套用不许有两个一样的「模板」）。
+pub fn presets_distinct() -> bool {
+    for i in 0..PRESET_TABLE.len() {
+        for j in (i + 1)..PRESET_TABLE.len() {
+            if PRESET_TABLE[i].0 == PRESET_TABLE[j].0 {
+                return false;
+            }
+            let (c1, b1, l1) = preset_params(PRESET_TABLE[i].0);
+            let (c2, b2, l2) = preset_params(PRESET_TABLE[j].0);
+            if (c1, b1, l1) == (c2, b2, l2) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// 计划切换审计链（v1 trail 的深化：切换事件带来源（手动/电池自动）
+/// ——「为什么换了计划」要能回答；来源枚举与切换同账入环）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SwitchSource {
+    Manual,
+    BatteryAuto,
+    ThermalAuto,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SwitchEvent {
+    pub at_ms: u64,
+    pub from_plan: u8,
+    pub to_plan: u8,
+    pub source: SwitchSource,
+}
+
+pub const SWITCH_AUDIT_CAP: usize = 12;
+
+pub struct SwitchAudit {
+    ring: [Option<SwitchEvent>; SWITCH_AUDIT_CAP],
+    head: usize,
+    n: usize,
+}
+
+impl SwitchAudit {
+    pub const fn new() -> Self {
+        SwitchAudit { ring: [None; SWITCH_AUDIT_CAP], head: 0, n: 0 }
+    }
+
+    pub fn push(&mut self, ev: SwitchEvent) {
+        self.ring[self.head] = Some(ev);
+        self.head = (self.head + 1) % SWITCH_AUDIT_CAP;
+        self.n = (self.n + 1).min(SWITCH_AUDIT_CAP);
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 最近一次电池自动切换的时刻（「为什么现在这么省电」的答案）。
+    pub fn latest_battery_auto(&self) -> Option<u64> {
+        for i in 0..self.n {
+            let idx = (self.head + SWITCH_AUDIT_CAP - 1 - i) % SWITCH_AUDIT_CAP;
+            if let Some(e) = self.ring[idx].as_ref() {
+                if e.source == SwitchSource::BatteryAuto {
+                    return Some(e.at_ms);
+                }
+            }
+        }
+        None
+    }
+
+    /// 切换合理性审计（同计划来回抖动 = 电源策略在震荡——
+    /// 1 分钟内同源切换 ≥3 次记一次震荡，供滞回参数调优）。
+    pub fn oscillation_detected(&self, window_ms: u64, now_ms: u64) -> bool {
+        let mut recent = 0;
+        for i in 0..self.n {
+            let idx = (self.head + SWITCH_AUDIT_CAP - 1 - i) % SWITCH_AUDIT_CAP;
+            if let Some(e) = self.ring[idx].as_ref() {
+                if now_ms.saturating_sub(e.at_ms) <= window_ms {
+                    recent += 1;
+                }
+            }
+        }
+        recent >= 3
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F492-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_powplan_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F492-v3");
+    // 1) 电池健康：正常/老化/异常数据。
+    cs.add("health_ok", battery_health_permille(4_200, 5_000) == Some(840), "");
+    cs.add("health_worn", battery_worn(battery_health_permille(3_900, 5_000).unwrap()), "");
+    cs.add("health_bad_data", battery_health_permille(0, 5_000).is_none()
+        && battery_health_permille(6_000, 5_000).is_none(), "");
+    // 2) 充电三段：800 前快充、800-980 涓流、980+ 已满。
+    cs.add("charge_fast", matches!(charge_phase(300), ChargePhase::Fast), "");
+    cs.add("charge_trickle", matches!(charge_phase(850), ChargePhase::Trickle), "");
+    cs.add("charge_full", matches!(charge_phase(1_000), ChargePhase::Full), "");
+    cs.add("charge_names", charge_phase_name(&charge_phase(500)) == "快充"
+        && charge_phase_name(&charge_phase(900)) == "涓流", "");
+    // 3) 续航预估：线性折算、零功耗诚实。
+    cs.add("runtime_linear", battery_minutes_left(500, 100) == Some(300), "");
+    cs.add("runtime_zero_honest", battery_minutes_left(500, 0).is_none(), "");
+    // 4) TDP 预算：和不超总才过。
+    cs.add("tdp_ok", tdp_budget_ok(12_000, 8_000, 4_000, 3_000), "");
+    cs.add("tdp_over", !tdp_budget_ok(15_000, 10_000, 4_000, 3_000), "");
+    // 5) 模板四套互异。
+    cs.add("presets_distinct", presets_distinct(), "");
+    cs.add("preset_values", preset_params(PlanPreset::Performance) == (1_000, 1_000, 0), "");
+    // 6) 切换审计：来源入账、最新电池自动可查、震荡检测。
+    let mut au = SwitchAudit::new();
+    let _ = au.push(SwitchEvent { at_ms: 1_000, from_plan: 0, to_plan: 2, source: SwitchSource::BatteryAuto });
+    let _ = au.push(SwitchEvent { at_ms: 2_000, from_plan: 2, to_plan: 0, source: SwitchSource::Manual });
+    cs.add("audit_latest_battery", au.latest_battery_auto() == Some(1_000), "");
+    cs.add("audit_oscillation", {
+        let mut a2 = SwitchAudit::new();
+        for i in 0..3u64 {
+            let _ = a2.push(SwitchEvent { at_ms: 1_000 + i * 100, from_plan: 0, to_plan: 1, source: SwitchSource::Manual });
+        }
+        a2.oscillation_detected(5_000, 2_000)
+    }, "");
+    cs.add("audit_calm_ok", !au.oscillation_detected(5_000, 2_000), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn health_clamps_to_valid_domain() {
+        // 满充=设计 → 1000‰；接近设计不越界。
+        assert_eq!(battery_health_permille(5_000, 5_000), Some(1_000));
+        assert_eq!(battery_health_permille(4_999, 5_000), Some(999));
+    }
+
+    #[test]
+    fn charge_phase_boundaries_exact() {
+        // 段界含边：恰 800 进涓流、恰 980 进已满。
+        assert!(matches!(charge_phase(799), ChargePhase::Fast));
+        assert!(matches!(charge_phase(800), ChargePhase::Trickle));
+        assert!(matches!(charge_phase(979), ChargePhase::Trickle));
+        assert!(matches!(charge_phase(980), ChargePhase::Full));
+    }
+
+    #[test]
+    fn switch_audit_wraps_and_latest_wins() {
+        let mut au = SwitchAudit::new();
+        for i in 0..(SWITCH_AUDIT_CAP + 2) as u64 {
+            let _ = au.push(SwitchEvent {
+                at_ms: i * 1_000,
+                from_plan: 0,
+                to_plan: 1,
+                source: if i % 2 == 0 { SwitchSource::Manual } else { SwitchSource::BatteryAuto },
+            });
+        }
+        assert_eq!(au.count(), SWITCH_AUDIT_CAP);
+        // 环满后：最新一条（i=CAP+1，奇数）是 BatteryAuto。
+        let last = SWITCH_AUDIT_CAP as u64 + 1;
+        assert_eq!(au.latest_battery_auto(), Some(last * 1_000));
+    }
+
+    #[test]
+    fn preset_presentation_brightest() {
+        // 演示模板的屏亮度 = 全表最高（演示场景有人盯着看）。
+        let (_, b_p, _) = preset_params(PlanPreset::Presentation);
+        for k in [PlanPreset::Balanced, PlanPreset::Performance, PlanPreset::Saver] {
+            let (_, b, _) = preset_params(k);
+            assert!(b_p >= b);
+        }
+    }
+}

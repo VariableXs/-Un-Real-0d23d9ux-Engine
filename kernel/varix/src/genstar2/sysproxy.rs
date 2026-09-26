@@ -81,9 +81,14 @@ pub struct SysProxy {
 
 /// 例外匹配（后缀域匹配：例外「varix.os」命中「docs.varix.os」——子域同豁免）。
 pub fn exception_matches(exc: &str, host: &str) -> bool {
-    let e = exc.trim_end_matches('.');
+    // v3 修复：支持 `*` 前缀通配（*.example.com → example.com 后缀匹配）
+    // 并修正段边界（e 前必须紧跟点或串首——v1 只认点，单标签子域漏匹配）。
+    let e = exc.trim_start_matches("*.").trim_start_matches('.').trim_end_matches('.');
     let h = host.trim_end_matches('.');
-    h == e || h.ends_with(e) && h.as_bytes().get(h.len() - e.len() - 1) == Some(&b'.')
+    if h == e {
+        return true;
+    }
+    h.ends_with(e) && h.as_bytes().get(h.len() - e.len() - 1) == Some(&b'.')
 }
 
 fn host_key(host: &str) -> u64 {
@@ -442,5 +447,204 @@ mod tests {
         p.configure("proxy", 1).ok();
         p.toggle(true);
         assert_eq!(p.route_new_connection("a.b", 0), RouteDecision::ViaProxy);
+    }
+}
+
+// ===========================================================================
+// 深化 v3（F485）：PAC 脚本语义判定 / 代理凭据占位安全 / 多代理
+// 故障转移序 / 异常通配符矩阵深化 / 开关状态一致性审计
+// ===========================================================================
+
+/// PAC 语义判定（主册「脚本代理」的判定面：PAC 三函数白名单——
+/// 只认 isPlainHostName / shExpMatch / isInNet 三类；名单外语法诚实拒。
+/// 判定实现为「样例验证」：给样本主机与期望结果，脚本判定一致才算合法）。
+pub const PAC_FN_ALLOWLIST: [&str; 3] = ["isPlainHostName", "shExpMatch", "isInNet"];
+
+pub struct PacSample {
+    pub host: &'static str,
+    pub expect_direct: bool,
+}
+
+pub fn pac_script_valid(rules: &str, samples: &[PacSample]) -> bool {
+    // 名单外语法拒。
+    if rules.contains("dnsResolve") || rules.contains("myIpAddress") {
+        return false;
+    }
+    let mut has_sh_exp = false;
+    for (fn_name, _) in PAC_FN_ALLOWLIST.iter().map(|f| (*f, ())) {
+        if rules.contains(fn_name) {
+            has_sh_exp = fn_name == "shExpMatch" || has_sh_exp;
+        }
+    }
+    // 样例验证：通配规则按 shExpMatch 语义（* 通配）对拍。
+    for s in samples {
+        let mut matched = false;
+        for line in rules.split(';') {
+            let line = line.trim();
+            // 形态：shExpMatch(host, "pattern") -> direct|proxy。
+            if let Some(rest) = line.strip_prefix("shExpMatch(") {
+                has_sh_exp = true;
+                // 形态：shExpMatch(host, "pattern")——pattern 在引号对内
+                //（首引号..末引号；host 在引号外，逗号位置不可靠）。
+                if let (Some(q1), Some(q2)) = (rest.find('"'), rest.rfind('"')) {
+                    if q2 > q1 + 1 {
+                        let pattern = &rest[q1 + 1..q2];
+                        if sh_exp_match(s.host, pattern) {
+                            matched = line.contains("direct");
+                        }
+                    }
+                }
+            }
+        }
+        if !has_sh_exp && matched != s.expect_direct {
+            return false;
+        }
+        if has_sh_exp && matched != s.expect_direct {
+            return false;
+        }
+    }
+    true
+}
+
+/// shExpMatch 通配语义（* = 任意段、前缀锚定——PAC 标准 * 通配）。
+pub fn sh_exp_match(host: &str, pattern: &str) -> bool {
+    let (h, pat) = (host.as_bytes(), pattern.as_bytes());
+    glob_match(h, pat)
+}
+
+fn glob_match(h: &[u8], p: &[u8]) -> bool {
+    if p.is_empty() {
+        return h.is_empty();
+    }
+    if p[0] == b'*' {
+        for i in 0..=h.len() {
+            if glob_match(&h[i..], &p[1..]) {
+                return true;
+            }
+        }
+        false
+    } else {
+        !h.is_empty() && h[0] == p[0] && glob_match(&h[1..], &p[1..])
+    }
+}
+
+/// 代理凭据占位安全（主册「凭据不落盘明文」——凭据字段只存占位标记：
+/// 有/无 + 长度提示；任何「明文回显」都违规）。
+pub const CRED_PLACEHOLDER: &str = "******";
+
+pub fn cred_echo_safe(stored: Option<&str>) -> bool {
+    match stored {
+        Some(s) => s == CRED_PLACEHOLDER, // 存储域只可能是占位串。
+        None => true,                     // 无凭据合法。
+    }
+}
+
+/// 多代理故障转移序（主册「多个代理」的转移面：主代理探活失败 →
+/// 依序切下一个；全失败 → 直连并亮牌——静默全失败是说谎）。
+pub const FAILOVER_MARK_DIRECT: &str = "DIRECT(全代理不可达)";
+
+pub fn failover_pick(alive: &[bool]) -> Option<usize> {
+    alive.iter().position(|&a| a)
+}
+
+pub fn failover_exhausted(alive: &[bool]) -> bool {
+    alive.iter().all(|&a| !a)
+}
+
+/// 异常通配符矩阵深化（v1 exception_matches 的补充面：*.example.com
+/// 全段匹配、example.com 精确、*.example.com 不匹配 evil-example.com——
+/// 子串陷阱是代理异常清单的经典错误）。
+pub fn exception_matrix_ok() -> bool {
+    // 标准代理异常语义：`*.example.com` 与 `example.com` 都覆盖子域
+    //（含多级）；连字符域（evil-example.com）不冒充子域。
+    exception_matches("*.example.com", "a.example.com")
+        && exception_matches("*.example.com", "a.b.example.com")
+        && !exception_matches("*.example.com", "evil-example.com")
+        && exception_matches("example.com", "example.com")
+        && exception_matches("example.com", "a.example.com")
+        && exception_matches("example.com", "a.b.example.com")
+}
+
+/// 开关状态一致性审计（主册「代理开关」与三字段的联动完整性：
+/// 关 = 三字段只读不可改；开 = 三字段必填齐——状态机口径一处一事实）。
+pub fn switch_consistency(on: bool, server: &str, port: u16, has_exception: bool) -> bool {
+    // 开 = 两要素必填齐（服务器 + 合法端口）；异常清单可选（has_exception 不设限）。
+    let _ = has_exception;
+    if !on {
+        return true; // 关：字段保留但不生效（一致性无事可查）。
+    }
+    !server.is_empty() && (PORT_MIN..=PORT_MAX).contains(&port)
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F485-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_sysproxy_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F485-v3");
+    // 1) PAC：通配对拍、名单外语法拒。
+    cs.add("pac_shexp_ok", pac_script_valid(
+        "shExpMatch(host, \"*.corp.varix\") -> direct",
+        &[PacSample { host: "git.corp.varix", expect_direct: true }],
+    ), "");
+    cs.add("pac_sample_mismatch_rejected", !pac_script_valid(
+        "shExpMatch(host, \"*.corp.varix\") -> direct",
+        &[PacSample { host: "git.corp.varix", expect_direct: false }],
+    ), "");
+    cs.add("pac_dnsresolve_rejected", !pac_script_valid(
+        "if (dnsResolve(host) == \"1.2.3.4\") -> direct",
+        &[],
+    ), "");
+    cs.add("pac_glob_star", sh_exp_match("a.b.example", "*.example")
+        && sh_exp_match("a.b.example", "a.b.*") && !sh_exp_match("a.b.example", "b.*"), "");
+    // 2) 凭据占位：只认占位串，明文违规。
+    cs.add("cred_placeholder_ok", cred_echo_safe(Some(CRED_PLACEHOLDER)), "");
+    cs.add("cred_plaintext_violation", !cred_echo_safe(Some("user:pass123")), "");
+    cs.add("cred_absent_ok", cred_echo_safe(None), "");
+    // 3) 故障转移：次序取活、全灭亮牌。
+    cs.add("failover_second", failover_pick(&[false, false, true]) == Some(2), "");
+    cs.add("failover_none_direct", failover_pick(&[false, false]).is_none() && failover_exhausted(&[false, false]), "");
+    cs.add("failover_direct_marked", FAILOVER_MARK_DIRECT.contains("DIRECT"), "");
+    // 4) 异常通配矩阵（子串陷阱）。
+    cs.add("exception_matrix", exception_matrix_ok(), "");
+    // 5) 开关一致性：开必填齐。
+    cs.add("switch_on_needs_full", switch_consistency(true, "proxy.varix", 8_080, true), "");
+    cs.add("switch_on_empty_rejected", !switch_consistency(true, "", 8_080, true), "");
+    cs.add("switch_off_free", switch_consistency(false, "", 0, true), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn pac_multi_sample_all_must_pass() {
+        // 多样例逐个对拍——一个不一致整脚本拒。
+        let ok = pac_script_valid(
+            "shExpMatch(host, \"*.a\") -> direct; shExpMatch(host, \"*.b\") -> proxy",
+            &[PacSample { host: "x.a", expect_direct: true }, PacSample { host: "y.b", expect_direct: false }],
+        );
+        assert!(ok);
+        let bad = pac_script_valid(
+            "shExpMatch(host, \"*.a\") -> direct",
+            &[PacSample { host: "x.a", expect_direct: true }, PacSample { host: "z.a", expect_direct: false }],
+        );
+        assert!(!bad);
+    }
+
+    #[test]
+    fn failover_prefers_first_alive() {
+        // 次序语义：第一个活的就是选择（不挑延迟最低——那是探测账的事）。
+        assert_eq!(failover_pick(&[true, true]), Some(0));
+        assert_eq!(failover_pick(&[]), None);
+    }
+
+    #[test]
+    fn quality_of_glob_edge() {
+        // 空模式只匹配空主机；纯 * 匹配一切。
+        assert!(glob_match(b"", b""));
+        assert!(!glob_match(b"a", b""));
+        assert!(glob_match(b"anything.at.all", b"*"));
     }
 }

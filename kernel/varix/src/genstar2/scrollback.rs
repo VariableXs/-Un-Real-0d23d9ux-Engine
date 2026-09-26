@@ -501,3 +501,132 @@ mod deep_tests {
         assert_eq!(s.count(), 0);
     }
 }
+
+
+// ===========================================================================
+// 深化 v4（F471）：超长行诚实拒绝 / 选择释放不抢屏 / 徽标态迁移矩阵 /
+// cls 后历史可回看 / 空缓冲滚动边界
+//
+// 栈纪律：Scrollback 单体 10,000 行 × 208B ≈ 2.1MB——Rust 的 alloca 在
+// 整个函数帧常驻，故每个检查面各住一个探测函数帧（同一时刻栈上最多
+// 一个缓冲实例），顺序进出互不叠加。
+// ===========================================================================
+
+/// 探测帧一：超长行（>200B）诚实拒绝、恰好 200B 放行。
+fn probe_oversize_rows() -> bool {
+    let mut s = Scrollback::new();
+    let _ = s.push("keep");
+    let oversize = [b'x'; ROW_CAP + 1];
+    let oversize_str = core::str::from_utf8(&oversize).unwrap_or("");
+    let rejected = !oversize_str.is_empty() && !s.push(oversize_str) && s.count() == 1;
+    let fit = [b'y'; ROW_CAP];
+    let fit_str = core::str::from_utf8(&fit).unwrap_or("");
+    let exact_ok = !fit_str.is_empty() && s.push(fit_str) && s.count() == 2;
+    rejected && exact_ok
+}
+
+/// 探测帧二：选择释放不抢屏（选择期冻结、松开后不自动恢复跟随）。
+fn probe_select_semantics() -> bool {
+    let mut s = Scrollback::new();
+    for _ in 0..5 {
+        let _ = s.push("line");
+    }
+    s.set_selecting(true);
+    let _ = s.push("arrived-during-select");
+    let frozen = s.unread() == 1 && s.state == FollowState::BadgeNewOutput;
+    s.set_selecting(false);
+    frozen && s.state != FollowState::Following && s.unread() == 1
+}
+
+/// 探测帧三：徽标态迁移矩阵（Following→Reviewing→Badge→恢复，unread 对账）。
+fn probe_badge_matrix() -> bool {
+    let mut s = Scrollback::new();
+    let _ = s.push("a");
+    s.scroll(1); // 滚离底部（顶部钳 0——单行缓冲）
+    let reviewing = s.state == FollowState::Reviewing;
+    let _ = s.push("b");
+    let badge = s.state == FollowState::BadgeNewOutput && s.unread() == 1;
+    let _ = s.push("c");
+    let acc = s.unread() == 2;
+    s.resume_follow();
+    reviewing && badge && acc && s.state == FollowState::Following && s.unread() == 0
+}
+
+/// 探测帧四：cls 后历史可回看（清视窗语义：直播视角归零、缓冲仍在）。
+fn probe_cls_keeps_history() -> bool {
+    let mut s = Scrollback::new();
+    let _ = s.push("history-row");
+    let _ = s.cls();
+    s.count() == 1 && s.view_row(0) == Some("history-row")
+}
+
+/// 探测帧五：空缓冲滚动边界（不 panic、view_top 钳 0、无幽灵行）。
+fn probe_empty_scroll_safe() -> bool {
+    let mut s = Scrollback::new();
+    s.scroll(10);
+    s.scroll_down(10);
+    s.count() == 0 && s.view_row(0).is_none()
+}
+
+/// 探测帧六：万行满环继续接收（第 10001 行成功、容量恒定）。
+fn probe_full_ring_still_accepts() -> bool {
+    let mut s = Scrollback::new();
+    let mut i = 0usize;
+    while i < SCROLLBACK_CAP + 1 {
+        let _ = s.push("row");
+        i += 1;
+    }
+    s.count() == SCROLLBACK_CAP
+}
+
+pub fn run_scrollback_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F471-v4");
+    cs.add("oversize_rejected", probe_oversize_rows(), "");
+    cs.add("select_freezes_view", probe_select_semantics(), "");
+    cs.add("badge_matrix", probe_badge_matrix(), "");
+    cs.add("cls_keeps_history", probe_cls_keeps_history(), "");
+    cs.add("empty_scroll_safe", probe_empty_scroll_safe(), "");
+    cs.add("full_ring_still_accepts", probe_full_ring_still_accepts(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn deselect_then_badge_click_resumes() {
+        let mut s = Box::new(Scrollback::new());
+        let _ = s.push("x1");
+        s.set_selecting(true);
+        let _ = s.push("x2");
+        s.set_selecting(false);
+        assert!(badge_click_resume(&mut s));
+        assert_eq!(s.state, FollowState::Following);
+        assert_eq!(s.unread(), 0);
+    }
+
+    #[test]
+    fn oversize_push_leaves_state_untouched() {
+        let mut s = Box::new(Scrollback::new());
+        let _ = s.push("before");
+        let bad = [b'z'; ROW_CAP + 1];
+        let bad_str = core::str::from_utf8(&bad).unwrap_or("");
+        assert!(!s.push(bad_str));
+        assert_eq!(s.count(), 1);
+        assert_eq!(s.state, FollowState::Following);
+        assert_eq!(s.unread(), 0);
+    }
+
+    #[test]
+    fn cls_resets_unread_not_history() {
+        let mut s = Box::new(Scrollback::new());
+        let _ = s.push("h1");
+        s.scroll(1);
+        let _ = s.push("h2");
+        assert_eq!(s.unread(), 1);
+        let _ = s.cls();
+        assert_eq!(s.unread(), 0);
+        assert_eq!(s.count(), 2, "cls 不清历史缓冲");
+    }
+}

@@ -144,8 +144,11 @@ pub struct SearchContext {
 }
 
 /// 建议决策：网址识别首项；无本地结果且开关开 → 尾部兜底；否则无建议。
+/// v4 认账修正（缺陷 D-32）：v2 新增的严格识别（带凭据拒——防钓鱼面）
+/// 此前没有接进建议链，decide 仍用宽松判定——现改用 strict 版，
+/// 带凭据的「网址」不再被建议直开（诚实安全边界落到链路上）。
 pub fn decide(ctx: &SearchContext, query: &str) -> Suggestion {
-    if looks_like_url(query) {
+    if looks_like_url_strict(query) {
         return Suggestion::OpenUrl;
     }
     if ctx.local_hits == 0 && ctx.fallback_enabled {
@@ -253,7 +256,14 @@ pub fn build_search_url(query: &str) -> Option<([u8; SEARCH_URL_BUF], usize)> {
     let mut w = PREFIX.len();
     for &c in query.as_bytes() {
         let safe = c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.' | b'~');
-        if w + 3 >= SEARCH_URL_BUF {
+        // v4 认账修正（缺陷 D-33）：v2 循环守卫按最坏 3 字节预留在每个
+        // 字符上——与入口界（SEARCH_URL_BUF - PREFIX.len()）不一致，
+        // 恰好放得下的合法 query 被误拒。改为按分支实际需求守卫。
+        if safe || c == b' ' {
+            if w + 1 > SEARCH_URL_BUF {
+                return None;
+            }
+        } else if w + 3 > SEARCH_URL_BUF {
             return None;
         }
         if safe {
@@ -289,12 +299,11 @@ pub fn looks_like_url_strict(s: &str) -> bool {
 
 /// 历史分级共存（主册「与 F307 历史共存」：历史命中越多，兜底入口
 /// 排序越靠后但仍常驻——分级表一处定义）。
+/// v4 认账修正（缺陷 D-31）：v2 实现把 rank 随历史递减（更靠前），
+/// 与注释语义相反——本实现改为 rank 随历史单调递增（越靠后），
+/// 饱和不回绕，恒 ≥ FALLBACK_RANK（尾部常驻不变式保持）。
 pub fn fallback_rank_with_history(history_hits: usize) -> usize {
-    match history_hits {
-        0 => FALLBACK_RANK - 1,
-        1..=5 => FALLBACK_RANK - 2,
-        _ => FALLBACK_RANK - 3,
-    }
+    FALLBACK_RANK.saturating_add(history_hits)
 }
 
 /// 开关持久化（纯本地搜索党开关：单字节落盘，0/1 校验——坏值回落默认开）。
@@ -353,9 +362,9 @@ pub fn run_webfallback_deep_checks() -> CheckSet {
     // 2) 网址识别扩充：带端口过、带凭据拒。
     cs.add("url_with_port", !looks_like_url_strict("varix.os:8080/start"), ""); // 端口形式 v1 判定外——诚实降级为搜索（行为差异候选登记）
     cs.add("url_creds_rejected", !looks_like_url_strict("user:pass@varix.os"), "");
-    // 3) 历史分级共存 + 兜底恒在网址之后。
-    cs.add("history_tiers", fallback_rank_with_history(0) > fallback_rank_with_history(3)
-        && fallback_rank_with_history(3) > fallback_rank_with_history(50), "");
+    // 3) 历史分级共存（v4 修正后语义：历史越多兜底越靠后）+ 兜底恒在网址之后。
+    cs.add("history_tiers", fallback_rank_with_history(0) < fallback_rank_with_history(3)
+        && fallback_rank_with_history(3) < fallback_rank_with_history(50), "");
     cs.add("fallback_after_url", fallback_always_after_url(0) && fallback_always_after_url(99), "");
     // 4) 开关持久化 round-trip + 坏值拒收。
     let mut buf = [0u8; WEBFB_PERSIST_LEN];
@@ -394,7 +403,132 @@ mod deep_tests {
 
     #[test]
     fn fallback_rank_never_negative_semantics() {
-        // 三档分级都在 u16 上限附近（常驻尾部），且严格递减。
-        assert!(fallback_rank_with_history(0) >= u16::MAX as usize - 3);
+        // v4 修正后：分级恒在 u16 上限之上（常驻尾部），且随历史严格递增。
+        assert!(fallback_rank_with_history(0) >= u16::MAX as usize);
+        assert!(fallback_rank_with_history(50) > fallback_rank_with_history(0));
+    }
+}
+
+// ===========================================================================
+// 深化 v4（F459）：搜索 URL round-trip 解码对拍 / 容量边界 / 严格识别
+// 进建议链验证 / 三类 rank 不变式
+// ===========================================================================
+
+/// 百分号解码对拍器（v4 新增：把 build_search_url 产物解码回原文——
+/// 「+ 还原空格、%XY 还原字节」；round-trip 逐字节一致才算编码正确）。
+/// 定长零堆；目标缓冲不足返回 None。
+pub fn decode_search_url(encoded: &[u8], out: &mut [u8]) -> Option<usize> {
+    const PREFIX: &[u8] = b"https://www.bing.com/search?q=";
+    let body = encoded.strip_prefix(PREFIX)?;
+    let mut w = 0usize;
+    let mut i = 0usize;
+    while i < body.len() {
+        let b = body[i];
+        let val = if b == b'+' {
+            i += 1;
+            b' '
+        } else if b == b'%' {
+            if i + 2 >= body.len() {
+                return None; // 残缺 % 序列拒收（不越界不猜）
+            }
+            let hi = (body[i + 1] as char).to_digit(16)?;
+            let lo = (body[i + 2] as char).to_digit(16)?;
+            i += 3;
+            (hi * 16 + lo) as u8
+        } else {
+            i += 1;
+            b
+        };
+        if w >= out.len() {
+            return None;
+        }
+        out[w] = val;
+        w += 1;
+    }
+    Some(w)
+}
+
+/// 三类候选 rank 不变式（主册排序语义一处登记）：网址建议恒首（0）<
+/// 历史条目（1..=N）< 兜底恒尾——三类互不挤压。
+pub fn rank_invariant_holds(history_hits: usize) -> bool {
+    URL_SUGGEST_RANK < 1
+        && (history_hits == 0 || FALLBACK_RANK > history_hits)
+        && Suggestion::OpenUrl.rank() < Suggestion::EdgeSearch.rank()
+}
+
+pub fn run_webfallback_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F459-v4");
+    // 1) URL round-trip：编码 → 解码逐字节还原（中英混排）。
+    cs.add("roundtrip_ascii", {
+        let (buf, n) = build_search_url("varix engine 42").unwrap();
+        let mut out = [0u8; 64];
+        decode_search_url(&buf[..n], &mut out) == Some("varix engine 42".len())
+            && &out[..15] == b"varix engine 42"
+    }, "");
+    cs.add("roundtrip_cjk", {
+        let (buf, n) = build_search_url("星徽引擎").unwrap();
+        let mut out = [0u8; 64];
+        let m = decode_search_url(&buf[..n], &mut out);
+        m == Some(12) && &out[..12] == "星徽引擎".as_bytes()
+    }, "");
+    // 2) 残缺 % 序列诚实拒收（对拍器不猜）。
+    let mut out2 = [0u8; 64];
+    cs.add("decode_truncated_rejected", decode_search_url(b"https://www.bing.com/search?q=a%2", &mut out2).is_none(), "");
+    // 3) 容量边界：恰好放下 = Some；再多一字节 = None（不截断）。
+    // 零堆纪律：栈上定长数组构造边界样本（无 String/collect）。
+    let exact_arr = [b'a'; 256];
+    let mut over_arr = [b'a'; 256];
+    let max_safe_len = SEARCH_URL_BUF - EDGE_SEARCH_URL.len();
+    over_arr[max_safe_len] = b'b'; // 第 max_safe_len+1 字节不同即可区分长度语义
+    let exact = match core::str::from_utf8(&exact_arr[..max_safe_len]) {
+        Ok(s) => s,
+        Err(_) => "",
+    };
+    let over = match core::str::from_utf8(&over_arr[..max_safe_len + 1]) {
+        Ok(s) => s,
+        Err(_) => "",
+    };
+    cs.add("capacity_exact_ok", build_search_url(exact).is_some(), "");
+    cs.add("capacity_over_none", build_search_url(over).is_none(), "");
+    // 4) 严格识别进建议链（D-32 修正验证）：带凭据不再建议直开。
+    let ctx = SearchContext { local_hits: 0, fallback_enabled: true };
+    cs.add("creds_not_openurl", decide(&ctx, "user:pass@varix.os") == Suggestion::EdgeSearch, "");
+    cs.add("plain_url_still_first", decide(&ctx, "varix.os") == Suggestion::OpenUrl, "");
+    // 5) 三类 rank 不变式（0 < 1..N < 尾部常驻）。
+    cs.add("rank_invariant", rank_invariant_holds(5), "");
+    cs.add("rank_invariant_zero_hits", rank_invariant_holds(0), "");
+    // 6) 开关持久化：短缓冲诚实 None。
+    let mut tiny = [0u8; 3];
+    cs.add("persist_short_none", save_fallback_enabled(true, &mut tiny).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip_all_ascii_printable() {
+        let q = "path/to file-2_1.v3?q=ab&x=%22";
+        let (buf, n) = build_search_url(q).unwrap();
+        let mut out = [0u8; 128];
+        let m = decode_search_url(&buf[..n], &mut out).unwrap();
+        assert_eq!(&out[..m], q.as_bytes());
+    }
+
+    #[test]
+    fn strict_decide_matrix() {
+        let on = SearchContext { local_hits: 0, fallback_enabled: true };
+        // 凭据 URL：不直开、走兜底；关兜底时诚实无建议。
+        assert_eq!(decide(&on, "admin@10.0.0.1"), Suggestion::EdgeSearch);
+        let off = SearchContext { local_hits: 0, fallback_enabled: false };
+        assert_eq!(decide(&off, "admin@10.0.0.1"), Suggestion::None);
+    }
+
+    #[test]
+    fn decode_capacity_honest() {
+        let (buf, n) = build_search_url("abcdefghij").unwrap();
+        let mut small = [0u8; 4];
+        assert!(decode_search_url(&buf[..n], &mut small).is_none());
     }
 }

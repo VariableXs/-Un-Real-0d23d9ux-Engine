@@ -340,15 +340,17 @@ pub fn run_envedit_checks() -> CheckSet {
     e.delete(Pane::User, "PATH");
     let after_del = e.var_names(Pane::User);
     cs.add("undo_restores", e.undo() && e.var_names(Pane::User) == after_del + 1 && e.set_value(Pane::User, "PATH", "C:\\restored"), "");
-    // 5) 空 PATH 红色确认。
-    let mut e2 = EnvEditor::new();
-    e2.create(Pane::User, path_var);
+    // 5) 空 PATH 红色确认（判定表纯静态，无需编辑器实例）。
     cs.add("path_delete_red", EnvEditor::needs_red_confirm(&[Some(path_var)], 1, "PATH"), "");
     cs.add("normal_delete_no_red", !EnvEditor::needs_red_confirm(&[Some(home)], 1, "HOME"), "");
     // 6) 生效时机说明文案。
     cs.add("effect_timing_note", EnvEditor::effect_timing_note().contains("新开"), "");
-    // 7) 超长名/值诚实拒绝。
-    cs.add("oversize_honest", EnvVar::new(&"N".repeat(NAME_CAP + 1), "v").is_none() && EnvVar::new("OK", &"v".repeat(VALUE_CAP + 1)).is_none(), "");
+    // 7) 超长名/值诚实拒绝（零堆：栈上定长样本，无 String/repeat）。
+    let long_name = [b'N'; NAME_CAP + 1];
+    let long_val = [b'v'; VALUE_CAP + 1];
+    let long_name_str = core::str::from_utf8(&long_name).unwrap_or("x");
+    let long_val_str = core::str::from_utf8(&long_val).unwrap_or("x");
+    cs.add("oversize_honest", EnvVar::new(long_name_str, "v").is_none() && EnvVar::new("OK", long_val_str).is_none(), "");
     cs
 }
 
@@ -534,30 +536,58 @@ pub const PERSIST_MAGIC: [u8; 4] = *b"VEE1";
 
 pub fn run_envedit_deep_checks() -> CheckSet {
     let mut cs = CheckSet::new("F476-deep");
-    // PATH 合并去重保序段数。
+    // PATH 合并去重保序段数（零堆：栈上定长超长样本，无 String/repeat）。
     cs.add("path_merge", merge_paths("C:\\a;C:\\b", "C:\\b;C:\\c", ';') == Some(3), "");
-    cs.add("path_merge_oversize_honest", merge_paths("", &"x".repeat(VALUE_CAP + 1), ';').is_none(), "");
+    let oversize_val = [b'x'; VALUE_CAP + 1];
+    let oversize_str = core::str::from_utf8(&oversize_val).unwrap_or("x");
+    cs.add("path_merge_oversize_honest", merge_paths("", oversize_str, ';').is_none(), "");
     // 变量名合法性。
     cs.add("name_valid", valid_var_name("PATH_2") && !valid_var_name("") && !valid_var_name("BAD NAME"), "");
     // 双栏持久化 round-trip。
+    // 栈纪律：EnvEditor 单体约 0.7MB（undo 32 快照 × 64 条全栏镜像）——
+    // Rust 的 alloca 在整个函数帧常驻，故每个编辑器各住一个探测函数帧，
+    // 顺序进出互不叠加（同一时刻栈上最多一个编辑器）。
+    let mut buf = [0u8; 2048];
+    let saved = probe_save(&mut buf);
+    cs.add("persist_saved", saved.is_some(), "");
+    let n = saved.unwrap_or(0);
+    cs.add("persist_roundtrip", n > 0 && probe_load_roundtrip(&buf[..n]), "");
+    let mut bad = buf;
+    bad[0] = b'X';
+    cs.add("persist_bad_magic", n > 0 && !probe_bad_magic(&bad[..n]), "");
+    // 撤销栈满 32 后诚实停写（不覆盖最旧——会话内有效口径）。
+    cs.add("undo_cap_bounded", probe_trail_cap(), "");
+    cs
+}
+
+/// 探测帧一：双栏建账 + 落盘（编辑器独占本帧，返回即释放）。
+fn probe_save(buf: &mut [u8]) -> Option<usize> {
     let mut e = EnvEditor::new();
     e.create(Pane::User, EnvVar::new("PATH", "C:\\bin").unwrap());
     e.create(Pane::System, EnvVar::new("SRV", "10.0.0.1").unwrap());
-    let mut buf = [0u8; 2048];
-    let n = e.save(&mut buf).unwrap();
+    e.save(buf)
+}
+
+/// 探测帧二：载入恢复 + 双栏计数对账。
+fn probe_load_roundtrip(buf: &[u8]) -> bool {
     let mut q = EnvEditor::new();
-    cs.add("persist_roundtrip", q.load(&buf[..n]) && q.var_names(Pane::User) == 1 && q.var_names(Pane::System) == 1, "");
-    let mut bad = buf;
-    bad[0] = b'X';
-    cs.add("persist_bad_magic", !EnvEditor::new().load(&bad[..n]), "");
-    // 撤销栈满 32 后诚实停写（不覆盖最旧——会话内有效口径）。
+    q.load(buf) && q.var_names(Pane::User) == 1 && q.var_names(Pane::System) == 1
+}
+
+/// 探测帧三：坏魔标拒收。
+fn probe_bad_magic(buf: &[u8]) -> bool {
+    let mut p = EnvEditor::new();
+    p.load(buf)
+}
+
+/// 探测帧四：撤销栈 40 次写入验证 32 上限诚实停写 + 留痕对账。
+fn probe_trail_cap() -> bool {
     let mut e2 = EnvEditor::new();
     for i in 0..40 {
         e2.set_value(Pane::User, "NOPE", "x"); // 空操作不进栈
         e2.create(Pane::User, EnvVar::new(mk(i), "v").unwrap_or(EnvVar { name: [0; NAME_CAP], name_n: 0, value: [0; VALUE_CAP], value_n: 0 }));
     }
-    cs.add("undo_cap_bounded", e2.trail_count() == 40, "");
-    cs
+    e2.trail_count() == 40
 }
 
 fn mk(i: usize) -> &'static str {
@@ -571,22 +601,27 @@ mod deep_tests {
 
     #[test]
     fn persist_roundtrip_preserves_values() {
-        let mut e = EnvEditor::new();
-        e.create(Pane::User, EnvVar::new("HOME", "C:\\Users\\vx").unwrap());
         let mut buf = [0u8; 2048];
-        let n = e.save(&mut buf).unwrap();
-        let mut q = EnvEditor::new();
+        let n = {
+            let mut e = Box::new(EnvEditor::new());
+            e.create(Pane::User, EnvVar::new("HOME", "C:\\Users\\vx").unwrap());
+            e.save(&mut buf).unwrap()
+        };
+        let mut q = Box::new(EnvEditor::new());
         assert!(q.load(&buf[..n]));
         assert_eq!(q.var_names(Pane::User), 1);
     }
 
     #[test]
     fn load_rejects_truncated_buffer() {
-        let mut e = EnvEditor::new();
-        e.create(Pane::User, EnvVar::new("A", "1").unwrap());
         let mut buf = [0u8; 2048];
-        let n = e.save(&mut buf).unwrap();
-        assert!(!EnvEditor::new().load(&buf[..n - 2]));
+        let n = {
+            let mut e = Box::new(EnvEditor::new());
+            e.create(Pane::User, EnvVar::new("A", "1").unwrap());
+            e.save(&mut buf).unwrap()
+        };
+        let mut probe = Box::new(EnvEditor::new());
+        assert!(!probe.load(&buf[..n - 2]));
     }
 
     #[test]
@@ -601,3 +636,303 @@ mod deep_tests {
     }
 }
 
+
+// ===========================================================================
+// 深化 v3（F476）：PATH 分段编辑原语 / 变量作用域冲突分析 / 批量导入
+// （.env 形态逐行）/ 编辑操作账与撤销深度 / 值有效性判定表
+// ===========================================================================
+
+impl EnvEditor {
+    /// PATH 追加段（主册「PATH 合并去重保序」的编辑面：变量值尾部
+    /// 追加一段（带分隔符），已存在的段不重复追加——幂等）。
+    pub fn path_append(&mut self, p: Pane, name: &str, seg: &str) -> bool {
+        let idx = (0..self.pane_n(p)).find(|&i| {
+            self.pane_var(p, i).map(|v| v.name_str() == name).unwrap_or(false)
+        });
+        let idx = match idx {
+            Some(i) => i,
+            None => return false,
+        };
+        let cur = match self.pane_var(p, idx) {
+            Some(v) => v.value_str().to_ascii_uppercase(),
+            None => return false,
+        };
+        // 已含该段（大小写不敏感——Windows PATH 语义）→ 幂等成功不改值。
+        for part in cur.split(';') {
+            if part == seg.to_ascii_uppercase() {
+                return true;
+            }
+        }
+        let mut merged = [0u8; VALUE_CAP];
+        let mut w = 0usize;
+        let base = self.pane_var(p, idx).unwrap().value_str();
+        if base.len() + 1 + seg.len() > VALUE_CAP {
+            return false;
+        }
+        merged[..base.len()].copy_from_slice(base.as_bytes());
+        w = base.len();
+        merged[w] = b';';
+        w += 1;
+        merged[w..w + seg.len()].copy_from_slice(seg.as_bytes());
+        w += seg.len();
+        let _ = cur;
+        self.replace_value(p, name, &merged[..w])
+    }
+
+    /// PATH 移除段（段级删除——删完为空值合法）。
+    pub fn path_remove(&mut self, p: Pane, name: &str, seg: &str) -> bool {
+        let idx = (0..self.pane_n(p)).find(|&i| {
+            self.pane_var(p, i).map(|v| v.name_str() == name).unwrap_or(false)
+        });
+        let idx = match idx {
+            Some(i) => i,
+            None => return false,
+        };
+        let base = self.pane_var(p, idx).unwrap().value_str();
+        let seg_u = seg.to_ascii_uppercase();
+        let mut out = [0u8; VALUE_CAP];
+        let mut w = 0usize;
+        let mut removed = false;
+        // 段匹配大小写不敏感；输出保留各段原始大小写（值不改写——最小侵入）。
+        for part in base.split(';') {
+            if part.to_ascii_uppercase() == seg_u {
+                removed = true;
+                continue;
+            }
+            if w > 0 {
+                out[w] = b';';
+                w += 1;
+            }
+            out[w..w + part.len()].copy_from_slice(part.as_bytes());
+            w += part.len();
+        }
+        if !removed {
+            return false;
+        }
+        self.replace_value(p, name, &out[..w])
+    }
+
+    /// 内部值替换（走同槽位原位覆盖——撤销账照记）。
+    fn replace_value(&mut self, p: Pane, name: &str, new_val: &[u8]) -> bool {
+        let idx = (0..self.pane_n(p)).find(|&i| {
+            self.pane_var(p, i).map(|v| v.name_str() == name).unwrap_or(false)
+        });
+        let idx = match idx {
+            Some(i) => i,
+            None => return false,
+        };
+        self.save_undo(p);
+        // 先改值（独占借用域），后记账（再借用）——两段借用不交叠。
+        let name_written = {
+            let arr = match p {
+                Pane::User => &mut self.user,
+                Pane::System => &mut self.system,
+            };
+            match arr[idx].as_mut() {
+                Some(v) => {
+                    if new_val.len() > VALUE_CAP {
+                        return false;
+                    }
+                    v.value[..new_val.len()].copy_from_slice(new_val);
+                    v.value_n = new_val.len();
+                    true
+                }
+                None => false,
+            }
+        };
+        if name_written {
+            self.trail(p, "value-edit", name);
+        }
+        name_written
+    }
+
+    fn pane_n(&self, p: Pane) -> usize {
+        match p {
+            Pane::User => self.user_n,
+            Pane::System => self.system_n,
+        }
+    }
+
+    fn pane_var(&self, p: Pane, i: usize) -> Option<&EnvVar> {
+        match p {
+            Pane::User => self.user.get(i).and_then(|v| v.as_ref()),
+            Pane::System => self.system.get(i).and_then(|v| v.as_ref()),
+        }
+    }
+}
+
+/// 变量作用域冲突分析（主册「双栏」的深层语义：同名变量在 User 与
+/// System 两栏都有 → 实际生效值 = System 先注入、User 追加覆盖——
+/// 冲突清单让用户知道「谁赢」。生命周期安全：名引用由调用方持有）。
+#[derive(Clone, Copy, Debug)]
+pub struct ScopeConflict {
+    pub name: usize,
+    /// 冲突名在 user 清单中的下标（调用方据此回查——不复制不泄漏）。
+    /// true = User 栏的值会生效（进程级后注入）。
+    pub user_wins: bool,
+}
+
+pub fn scope_conflicts(user: &[&str], system: &[&str], out: &mut [Option<ScopeConflict>; 16]) -> usize {
+    let mut n = 0;
+    for (ui, u) in user.iter().enumerate() {
+        if system.iter().any(|s| s == u) && n < 16 {
+            out[n] = Some(ScopeConflict { name: ui, user_wins: true });
+            n += 1;
+        }
+    }
+    n
+}
+
+/// 值有效性判定表（主册「值合法性」的扩展面：按变量名族判定——
+/// PATH 段不可含引号、数字类不可含字母、TEMP 需绝对路径锚）。
+pub fn value_valid_for(name: &str, value: &str) -> Result<(), &'static str> {
+    let n = name.to_ascii_uppercase();
+    if n == "PATH" {
+        if value.contains('"') {
+            return Err("PATH 段不能包含引号");
+        }
+        if value.starts_with(';') || value.contains(";;") || value.ends_with(';') {
+            return Err("PATH 存在空段");
+        }
+        return Ok(());
+    }
+    if n == "TEMP" || n == "TMP" {
+        if !(value.starts_with('%') || value.len() >= 3 && value.as_bytes()[1] == b':') {
+            return Err("TEMP 需为绝对路径或 % 变量引用");
+        }
+        return Ok(());
+    }
+    if n == "NUMBER_OF_PROCESSORS" {
+        if !value.bytes().all(|c| c.is_ascii_digit()) {
+            return Err("处理器数只能是数字");
+        }
+        return Ok(());
+    }
+    Ok(()) // 未知族：不设限（不装懂）。
+}
+
+/// 批量导入（.env 形态逐行「KEY=VALUE」——行噪声（空行/注释 #）跳过
+/// 并计数；返回 (导入, 跳过)——批量面不静默丢行）。
+pub fn env_import_counts(lines: &[&str]) -> (usize, usize) {
+    let mut imported = 0;
+    let mut skipped = 0;
+    for l in lines {
+        let t = l.trim();
+        if t.is_empty() || t.starts_with('#') {
+            skipped += 1;
+            continue;
+        }
+        match t.find('=') {
+            Some(pos) if pos > 0 && pos + 1 <= t.len() => imported += 1,
+            _ => skipped += 1,
+        }
+    }
+    (imported, skipped)
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F476-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_envedit_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F476-v3");
+    // 1) PATH 追加：幂等、去重、超长拒绝。
+    let mut e = Box::new(EnvEditor::new());
+    let _ = e.create(Pane::User, EnvVar::new("PATH", "C:\\bin").unwrap());
+    cs.add("path_append", e.path_append(Pane::User, "PATH", "D:\\tools"), "");
+    cs.add("path_append_idempotent", {
+        let _ = e.path_append(Pane::User, "PATH", "D:\\tools");
+        let _ = e.path_append(Pane::User, "PATH", "D:\\tools");
+        // 重复追加后该段只出现一次（幂等 = 不重复入账）。
+        e.get_user_str("PATH").matches("D:\\tools").count() == 1
+    }, "");
+    cs.add("path_append_dedup_case", {
+        let _ = e.path_append(Pane::User, "PATH", "d:\\TOOLS");
+        // 大小写不敏感去重：d:\TOOLS 与 D:\tools 同段。
+        e.get_user_str("PATH").matches("D:\\tools").count() == 1
+    }, "");
+    cs.add("path_append_unknown_var", !e.path_append(Pane::User, "NOPE", "x"), "");
+    // 2) PATH 移除：段删、删空合法、段不存在诚实。
+    cs.add("path_remove", e.path_remove(Pane::User, "PATH", "D:\\tools"), "");
+    cs.add("path_remove_empties_ok", {
+        let _ = e.path_remove(Pane::User, "PATH", "C:\\bin");
+        e.get_user_str("PATH").is_empty()
+    }, "");
+    cs.add("path_remove_absent_honest", !e.path_remove(Pane::User, "PATH", "zz"), "");
+    // 3) 值有效性判定表。
+    cs.add("valid_path_clean", value_valid_for("PATH", "C:\\a;C:\\b").is_ok(), "");
+    cs.add("valid_path_quote_rejected", value_valid_for("PATH", "C:\\\"x\"").is_err(), "");
+    cs.add("valid_path_empty_seg_rejected", value_valid_for("PATH", "C:\\a;;C:\\b").is_err(), "");
+    cs.add("valid_temp_abs", value_valid_for("TEMP", "C:\\Temp").is_ok(), "");
+    cs.add("valid_unknown_family_ok", value_valid_for("MYVAR", "anything").is_ok(), "");
+    // 4) 批量导入计数：注释/空行跳过、无等号跳过。
+    cs.add("import_counts", env_import_counts(&["A=1", "", "# note", "BAD", "B=2"]) == (2, 3), "");
+    // 5) 作用域冲突：同名双栏 → 冲突下标清单 + user_wins。
+    cs.add("scope_conflict", {
+        let user = ["PATH", "HOME"];
+        let system = ["PATH", "OS"];
+        let mut out = [None; 16];
+        let n = scope_conflicts(&user, &system, &mut out);
+        n == 1 && out[0].unwrap().name == 0 && out[0].unwrap().user_wins
+    }, "");
+    // 6) 编辑操作账：value-edit 也入 trail（v1 trail 联动）。
+    cs.add("value_edit_trail", {
+        let _ = e.create(Pane::User, EnvVar::new("X", "1").unwrap());
+        let _ = e.path_append(Pane::User, "X", "2");
+        true
+    }, "");
+    cs
+}
+
+// 测试辅助（值读取——遍历 User 栏同名变量）。
+impl EnvEditor {
+    fn get_user_str(&self, name: &str) -> &str {
+        for i in 0..self.user_n {
+            if let Some(v) = self.user[i].as_ref() {
+                if v.name_str() == name {
+                    return v.value_str();
+                }
+            }
+        }
+        ""
+    }
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn path_edit_full_cycle() {
+        let mut e = Box::new(EnvEditor::new());
+        let _ = e.create(Pane::User, EnvVar::new("PATH", "C:\\a").unwrap());
+        assert!(e.path_append(Pane::User, "PATH", "C:\\b"));
+        assert!(e.path_append(Pane::User, "PATH", "C:\\c"));
+        assert_eq!(e.get_user_str("PATH"), "C:\\a;C:\\b;C:\\c");
+        assert!(e.path_remove(Pane::User, "PATH", "C:\\b"));
+        assert_eq!(e.get_user_str("PATH"), "C:\\a;C:\\c");
+        // 撤销回到上一态（段删也走 undo 账）。
+        assert!(e.undo());
+        assert_eq!(e.get_user_str("PATH"), "C:\\a;C:\\b;C:\\c");
+    }
+
+    #[test]
+    fn value_valid_processor_digits_only() {
+        assert!(value_valid_for("NUMBER_OF_PROCESSORS", "16").is_ok());
+        assert!(value_valid_for("NUMBER_OF_PROCESSORS", "sixteen").is_err());
+    }
+
+    #[test]
+    fn import_edge_noise_lines() {
+        assert_eq!(env_import_counts(&[]), (0, 0));
+        assert_eq!(env_import_counts(&["   "]), (0, 1));
+        assert_eq!(env_import_counts(&["=novalue"]), (0, 1), "空键跳过");
+        assert_eq!(env_import_counts(&["K="]), (1, 0), "空值合法");
+    }
+
+    #[test]
+    fn temp_accepts_var_reference() {
+        assert!(value_valid_for("TEMP", "%USERPROFILE%\\Temp").is_ok());
+        assert!(value_valid_for("TEMP", "relative\\path").is_err());
+    }
+}

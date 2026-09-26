@@ -389,3 +389,136 @@ mod deep_tests {
         assert!(tabs[1].is_none());
     }
 }
+// ---- F470 termdir v3：起始目录解析优先级 / 历史去重置顶 / 目录合法性矩阵 ----
+
+/// 起始目录解析优先级（v1 StartDirSource 三源的裁决序：
+/// F338 显式指定 > 上次会话 > 用户主目录——优先级表一处定义）。
+pub fn resolve_start_priority<'a>(explicit: Option<&'a str>, last_session: Option<&'a str>, user_home: &'a str) -> &'a str {
+    explicit.or(last_session).unwrap_or(user_home)
+}
+
+/// 历史目录去重置顶（最近打开的目录列表：重开同名 → 置顶不重复）。
+pub struct RecentDirs {
+    items: [Option<[u8; PATH_CAP]>; 8],
+    lens: [usize; 8],
+    n: usize,
+}
+
+impl RecentDirs {
+    pub fn push(&mut self, path: &str) -> bool {
+        let b = path.as_bytes();
+        if b.is_empty() || b.len() > PATH_CAP {
+            return false;
+        }
+        // 已在列表 → 原位摘出，其余后移一格，腾出顶位。
+        let mut found = None;
+        for i in 0..self.n {
+            if let Some(e) = &self.items[i] {
+                if &e[..self.lens[i]] == b {
+                    found = Some(i);
+                    break;
+                }
+            }
+        }
+        let start = match found {
+            Some(i) => {
+                let mut j = i;
+                while j > 0 {
+                    self.items[j] = self.items[j - 1];
+                    self.lens[j] = self.lens[j - 1];
+                    j -= 1;
+                }
+                1
+            }
+            None => {
+                // 新条目：全员后移一格（满则挤掉尾条）。
+                let last = if self.n < 8 { self.n } else { 7 };
+                let mut j = last;
+                while j > 0 {
+                    self.items[j] = self.items[j - 1];
+                    self.lens[j] = self.lens[j - 1];
+                    j -= 1;
+                }
+                if self.n < 8 {
+                    self.n += 1;
+                }
+                1
+            }
+        };
+        let _ = start;
+        self.items[0] = Some([0; PATH_CAP]);
+        self.items[0].as_mut().unwrap()[..b.len()].copy_from_slice(b);
+        self.lens[0] = b.len();
+        true
+    }
+
+    pub fn get(&self, i: usize) -> Option<&str> {
+        if i >= self.n {
+            return None;
+        }
+        self.items[i].as_ref().map(|e| core::str::from_utf8(&e[..self.lens[i]]).unwrap_or(""))
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+pub fn run_termdir_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F470-v3");
+    // 1) 解析优先级：显式 > 会话 > 主目录。
+    cs.add("priority_explicit", resolve_start_priority(Some("E:\\here"), Some("C:\\last"), "C:\\home") == "E:\\here", "");
+    cs.add("priority_session", resolve_start_priority(None, Some("C:\\last"), "C:\\home") == "C:\\last", "");
+    cs.add("priority_home", resolve_start_priority(None, None, "C:\\home") == "C:\\home", "");
+    // 2) 历史去重置顶：重开同名置顶、容量挤尾。
+    let mut r = RecentDirs::push_new();
+    let _ = r.push("C:\\work");
+    let _ = r.push("C:\\docs");
+    let _ = r.push("C:\\work"); // 置顶。
+    cs.add("recent_dedup_top", r.get(0) == Some("C:\\work") && r.get(1) == Some("C:\\docs") && r.count() == 2, "");
+    cs.add("recent_cap", {
+        let mut r2 = RecentDirs::push_new();
+        for s in ["C:\\1", "C:\\2", "C:\\3", "C:\\4", "C:\\5", "C:\\6", "C:\\7", "C:\\8", "C:\\9"] {
+            let _ = r2.push(s);
+        }
+        r2.count() == 8 && r2.get(0) == Some("C:\\9") && r2.get(7) == Some("C:\\2")
+    }, "");
+    // 3) 目录合法性矩阵（v1 DirPath 红线联动）。
+    cs.add("legal_matrix", DirPath::new("C:\\work").is_some() && DirPath::new("").is_none(), "");
+    cs
+}
+
+impl RecentDirs {
+    /// 构造（空历史——容量 8 定长环）。
+    pub fn push_new() -> Self {
+        RecentDirs { items: [None; 8], lens: [0; 8], n: 0 }
+    }
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn recent_dirs_eviction_order() {
+        let mut r = RecentDirs::push_new();
+        for s in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"] {
+            let _ = r.push(s);
+        }
+        // 容量 8：最新 J、I 在顶两条，最旧 A、B 淘汰。
+        assert_eq!(r.get(0), Some("J"));
+        assert_eq!(r.get(1), Some("I"));
+        assert_eq!(r.get(7), Some("C"));
+        assert_eq!(r.count(), 8);
+    }
+
+    #[test]
+    fn recent_dirs_dedup_moves_to_top() {
+        let mut r = RecentDirs::push_new();
+        let _ = r.push("C:\\a");
+        let _ = r.push("C:\\b");
+        let _ = r.push("C:\\a");
+        assert_eq!(r.count(), 2, "重开同名不重复");
+        assert_eq!(r.get(0), Some("C:\\a"), "重开后置顶");
+    }
+}

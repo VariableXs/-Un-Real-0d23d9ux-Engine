@@ -560,3 +560,290 @@ mod tests {
         assert!(BootStage::from_id(9).is_none());
     }
 }
+
+// ===========================================================================
+// 深化 v3（F477）：分阶段故障统计 / 修复预案时长预估 / 恢复点管理面 /
+// 修复会话审计账 / 引导阶段健康度评分
+// ===========================================================================
+
+/// 分阶段故障统计（主册「引导阶段分布」——五阶段各自累计失败次数与
+/// 最近失败时刻；统计与故障账同源 derive，不立第二真相源）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StageStats {
+    pub selfcheck: u32,
+    pub kernel_load: u32,
+    pub driver_load: u32,
+    pub desktop_start: u32,
+    pub session_login: u32,
+}
+
+impl StageStats {
+    pub fn total(&self) -> u32 {
+        self.selfcheck + self.kernel_load + self.driver_load + self.desktop_start + self.session_login
+    }
+
+    pub fn record(&mut self, stage: BootStage) {
+        match stage {
+            BootStage::Selfcheck => self.selfcheck += 1,
+            BootStage::KernelLoad => self.kernel_load += 1,
+            BootStage::DriverLoad => self.driver_load += 1,
+            BootStage::DesktopStart => self.desktop_start += 1,
+            BootStage::SessionLogin => self.session_login += 1,
+        }
+    }
+
+    /// 最高发阶段（引导链哪一环最脆——修复预案排序依据；并列取链路靠前者）。
+    pub fn hotspot(&self) -> Option<BootStage> {
+        let pairs = [
+            (BootStage::Selfcheck, self.selfcheck),
+            (BootStage::KernelLoad, self.kernel_load),
+            (BootStage::DriverLoad, self.driver_load),
+            (BootStage::DesktopStart, self.desktop_start),
+            (BootStage::SessionLogin, self.session_login),
+        ];
+        let mut best: Option<(BootStage, u32)> = None;
+        for (s, n) in pairs {
+            if n == 0 {
+                continue;
+            }
+            best = match best {
+                None => Some((s, n)),
+                Some((bs, bn)) if n > bn => Some((s, n)),
+                Some(keep) => Some(keep),
+            };
+        }
+        best.map(|(s, _)| s)
+    }
+}
+
+impl BootRepair {
+    /// 从故障账导出统计（一处一事实：derive 不另记）。
+    pub fn stage_stats(&self) -> StageStats {
+        let mut s = StageStats::default();
+        for i in 0..self.ledger_n {
+            if let Some((_, stage)) = self.ledger_entry(i) {
+                s.record(stage);
+            }
+        }
+        s
+    }
+}
+
+/// 修复预案时长预估表（主册「修复过程预计时长」——三卡四步的
+/// 每步预估秒数；预估与实际推进的对账走会话账）。
+pub const STEP_ESTIMATE_S: [u32; 4] = [8, 45, 20, 15];
+
+/// 预案总时长预估（秒）。
+pub fn plan_estimate_s() -> u32 {
+    STEP_ESTIMATE_S.iter().sum()
+}
+
+/// 修复会话审计账（一次自动恢复 = 一条会话：起止时刻/卡片/结局——
+/// 「修复了什么、多久、成没成」的可回溯面）。
+pub const SESSION_CAP: usize = 8;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SessionOutcome {
+    Success,
+    FailedAt(u8),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RepairSession {
+    pub started_ms: u64,
+    pub ended_ms: u64,
+    pub card: RepairCard,
+    pub outcome: SessionOutcome,
+}
+
+pub struct SessionLedger {
+    ring: [Option<RepairSession>; SESSION_CAP],
+    head: usize,
+    n: usize,
+}
+
+impl SessionLedger {
+    pub const fn new() -> Self {
+        SessionLedger { ring: [None; SESSION_CAP], head: 0, n: 0 }
+    }
+
+    pub fn push(&mut self, s: RepairSession) {
+        self.ring[self.head] = Some(s);
+        self.head = (self.head + 1) % SESSION_CAP;
+        self.n = (self.n + 1).min(SESSION_CAP);
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 会话耗时账（一次修复实际花了多久——与 STEP_ESTIMATE_S 对账）。
+    pub fn last_duration_s(&self) -> Option<u64> {
+        let idx = (self.head + SESSION_CAP - 1) % SESSION_CAP;
+        self.ring[idx].map(|s| (s.ended_ms - s.started_ms) / 1_000)
+    }
+
+    /// 成功率（最近 SESSION_CAP 次内的成功占比 ×100——修复引导自己的
+    /// 自检也要诚实：成功率是账面推出来的，不是宣称的）。
+    pub fn success_rate_x100(&self) -> u32 {
+        if self.n == 0 {
+            return 0;
+        }
+        let mut succ = 0;
+        for i in 0..SESSION_CAP {
+            if let Some(s) = self.ring[i] {
+                if s.outcome == SessionOutcome::Success {
+                    succ += 1;
+                }
+            }
+        }
+        succ * 100 / self.n as u32
+    }
+}
+
+/// 恢复点管理面（主册「系统还原、修复引导或重置」的还原点登记：
+/// 恢复点 = (序号， 时刻标签)；修复预案 RollbackPoint 步的落点是它）。
+pub const RESTORE_POINT_CAP: usize = 16;
+
+pub struct RestorePoints {
+    slots: [Option<(u32, BootStage)>; RESTORE_POINT_CAP],
+    n: usize,
+    next_id: u32,
+}
+
+impl RestorePoints {
+    pub const fn new() -> Self {
+        RestorePoints { slots: [None; RESTORE_POINT_CAP], n: 0, next_id: 1 }
+    }
+
+    /// 创建恢复点（修复 Precheck 步的义务动作——先建点再动手）。
+    pub fn create(&mut self, stage: BootStage) -> u32 {
+        if self.n >= RESTORE_POINT_CAP {
+            // 满额淘汰最旧（FIFO——恢复点保新弃旧）。
+            for i in 1..RESTORE_POINT_CAP {
+                self.slots[i - 1] = self.slots[i];
+            }
+            self.n -= 1;
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        self.slots[self.n] = Some((id, stage));
+        self.n += 1;
+        id
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    pub fn latest_id(&self) -> Option<u32> {
+        self.n.checked_sub(1).and_then(|i| self.slots[i]).map(|(id, _)| id)
+    }
+
+    /// 回滚（撤销恢复点——回滚语义：最新点被消费出账）。
+    pub fn rollback_latest(&mut self) -> Option<u32> {
+        self.n.checked_sub(1).and_then(|i| self.slots[i].take()).map(|(id, _)| {
+            self.n -= 1;
+            id
+        })
+    }
+}
+
+/// 引导阶段健康度评分（主册「心里有数」的量化面：0-100 分——
+/// 无故障=100，每 10 次失败扣 10，修复成功一笔 +5 封顶）。
+pub fn health_score(total_failures: u32, repair_successes: u32) -> u32 {
+    let base = 100i32 - (total_failures / 10).min(10) as i32 * 10;
+    let bonus = (repair_successes.min(4) * 5) as i32; // 封顶 20 分只需 4 次（先 min 后乘防溢出）
+    (base + bonus).clamp(0, 100) as u32
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F477-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_bootrepair_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F477-v3");
+    // 1) 分阶段统计：账本 derive 一致。
+    let mut b = BootRepair::new();
+    let _ = b.on_boot_failure(BootStage::KernelLoad);
+    let _ = b.on_boot_failure(BootStage::KernelLoad);
+    let _ = b.on_boot_failure(BootStage::DriverLoad);
+    let st = b.stage_stats();
+    cs.add("stats_derive", st.kernel_load == 2 && st.driver_load == 1 && st.total() == 3, "");
+    cs.add("stats_hotspot", st.hotspot() == Some(BootStage::KernelLoad), "");
+    // 2) 预案时长预估：四步和固定。
+    cs.add("estimate_sum", plan_estimate_s() == 88, "");
+    // 3) 会话账：入账、耗时、成功率。
+    let mut led = SessionLedger::new();
+    led.push(RepairSession { started_ms: 1_000, ended_ms: 90_000, card: RepairCard::SafeMode, outcome: SessionOutcome::Success });
+    led.push(RepairSession { started_ms: 100_000, ended_ms: 160_000, card: RepairCard::Restart, outcome: SessionOutcome::FailedAt(1) });
+    cs.add("session_count", led.count() == 2, "");
+    cs.add("session_duration", led.last_duration_s() == Some(60), "");
+    cs.add("session_rate", led.success_rate_x100() == 50, "");
+    cs.add("session_empty_honest", SessionLedger::new().success_rate_x100() == 0, "");
+    // 4) 恢复点：建点/满额淘汰/回滚消费。
+    let mut rp = RestorePoints::new();
+    let _ = rp.create(BootStage::KernelLoad);
+    let second = rp.create(BootStage::DriverLoad);
+    cs.add("rp_latest", rp.latest_id() == Some(second), "");
+    cs.add("rp_rollback_consumes", rp.rollback_latest() == Some(second) && rp.count() == 1, "");
+    cs.add("rp_cap_evict", {
+        let mut r2 = RestorePoints::new();
+        for _ in 0..RESTORE_POINT_CAP + 3 {
+            let _ = r2.create(BootStage::Selfcheck);
+        }
+        r2.count() == RESTORE_POINT_CAP
+    }, "");
+    // 5) 健康度评分：无故障满分、线性扣减、修复加分封顶。
+    cs.add("score_healthy", health_score(0, 0) == 100, "");
+    cs.add("score_deduct", health_score(25, 0) == 80, ""); // 25 失败 → 扣 2×10
+    cs.add("score_bonus_capped", health_score(25, 99) == 100, ""); // 80 + 20 封顶
+    cs.add("score_floor", health_score(1_000, 0) == 0, "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn stats_match_ledger_exactly() {
+        let mut b = BootRepair::new();
+        for stage in [BootStage::Selfcheck, BootStage::SessionLogin, BootStage::SessionLogin] {
+            let _ = b.on_boot_failure(stage);
+        }
+        let s = b.stage_stats();
+        assert_eq!(s.session_login, 2);
+        assert_eq!(s.selfcheck, 1);
+        assert_eq!(s.total(), b.ledger_count() as u32);
+    }
+
+    #[test]
+    fn hotspot_tie_goes_to_earlier_stage() {
+        let mut s = StageStats::default();
+        s.record(BootStage::DriverLoad);
+        s.record(BootStage::DesktopStart);
+        // 并列 1:1 → 取链路靠前的 DriverLoad（确定性）。
+        assert_eq!(s.hotspot(), Some(BootStage::DriverLoad));
+    }
+
+    #[test]
+    fn restore_point_fifo_order() {
+        let mut rp = RestorePoints::new();
+        let a = rp.create(BootStage::Selfcheck);
+        let b = rp.create(BootStage::KernelLoad);
+        let _ = rp.create(BootStage::DriverLoad);
+        // 回滚只消费最新（c 出账）；次新 b 成为 latest，最早的 a 仍在。
+        assert_eq!(rp.rollback_latest().is_some(), true);
+        assert_eq!(rp.latest_id(), Some(b));
+        assert_ne!(rp.latest_id(), Some(a));
+        assert_eq!(rp.count(), 2);
+    }
+
+    #[test]
+    fn score_never_negative() {
+        // 极端失败量不穿透 0 下限。
+        assert_eq!(health_score(u32::MAX, 0), 0);
+        assert_eq!(health_score(u32::MAX, u32::MAX), 20);
+    }
+}

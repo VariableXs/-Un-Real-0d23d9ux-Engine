@@ -113,53 +113,66 @@ pub fn run_genstar2_checks() -> CheckSet {
         ("F454", { let a = foldtmpl::run_foldtmpl_checks(); let b = foldtmpl::run_foldtmpl_deep_checks(); CheckSet::merge(a, b) }),
         ("F455", { let a = deskicons::run_deskicons_checks(); let b = deskicons::run_deskicons_deep_checks(); CheckSet::merge(a, b) }),
         ("F456", { let a = pcpage::run_pcpage_checks(); let b = pcpage::run_pcpage_deep_checks(); CheckSet::merge(a, b) }),
-        ("F457", searchmath::run_searchmath_checks()),
-        ("F458", { let a = unitconv::run_unitconv_checks(); let b = unitconv::run_unitconv_deep_checks(); CheckSet::merge(a, b) }),
-        ("F459", { let a = webfallback::run_webfallback_checks(); let b = webfallback::run_webfallback_deep_checks(); CheckSet::merge(a, b) }),
-        ("F460", { let a = vxdict::run_vxdict_checks(); let b = vxdict::run_vxdict_deep_checks(); CheckSet::merge(a, b) }),
-        ("F461", { let a = fgmute::run_fgmute_checks(); let b = fgmute::run_fgmute_deep_checks(); CheckSet::merge(a, b) }),
-        ("F462", { let a = setwall::run_setwall_checks(); let b = setwall::run_setwall_deep_checks(); CheckSet::merge(a, b) }),
-        ("F463", { let a = imgops::run_imgops_checks(); let b = imgops::run_imgops_deep_checks(); CheckSet::merge(a, b) }),
-        ("F464", { let a = trashdrag::run_trashdrag_checks(); let b = trashdrag::run_trashdrag_deep_checks(); CheckSet::merge(a, b) }),
+        ("F457", { let a = searchmath::run_searchmath_checks(); let c = searchmath::run_searchmath_v3_checks(); CheckSet::merge(a, c) }),
+        ("F458", { let a = unitconv::run_unitconv_checks(); let b = unitconv::run_unitconv_deep_checks(); let c = unitconv::run_unitconv_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F459", { let a = webfallback::run_webfallback_checks(); let b = webfallback::run_webfallback_deep_checks(); let c = webfallback::run_webfallback_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F460", { let a = vxdict::run_vxdict_checks(); let b = vxdict::run_vxdict_deep_checks(); let c = vxdict::run_vxdict_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F461", { let a = fgmute::run_fgmute_checks(); let b = fgmute::run_fgmute_deep_checks(); let c = fgmute::run_fgmute_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F462", { let a = setwall::run_setwall_checks(); let b = setwall::run_setwall_deep_checks(); let c = setwall::run_setwall_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F463", { let a = imgops::run_imgops_checks(); let b = imgops::run_imgops_deep_checks(); let c = imgops::run_imgops_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F464", { let a = trashdrag::run_trashdrag_checks(); let b = trashdrag::run_trashdrag_deep_checks(); let c = trashdrag::run_trashdrag_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
         ("F465", { let a = termalias::run_termalias_checks(); let b = termalias::run_termalias_deep_checks(); CheckSet::merge(a, b) }),
-        ("F466", { let a = termclip::run_termclip_checks(); let b = termclip::run_termclip_deep_checks(); CheckSet::merge(a, b) }),
-        ("F467", { let a = termfont::run_termfont_checks(); let b = termfont::run_termfont_deep_checks(); CheckSet::merge(a, b) }),
-        ("F468", { let a = cmdhist::run_cmdhist_checks(); let b = cmdhist::run_cmdhist_deep_checks(); CheckSet::merge(a, b) }),
-        ("F469", termcolor::run_termcolor_checks()),
-        ("F470", { let a = termdir::run_termdir_checks(); let b = termdir::run_termdir_deep_checks(); CheckSet::merge(a, b) }),
-        ("F471", { let a = scrollback::run_scrollback_checks(); let b = scrollback::run_scrollback_deep_checks(); CheckSet::merge(a, b) }),
+        ("F466", { let a = termclip::run_termclip_checks(); let b = termclip::run_termclip_deep_checks(); let c = termclip::run_termclip_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F467", { let a = termfont::run_termfont_checks(); let b = termfont::run_termfont_deep_checks(); let c = termfont::run_termfont_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F468", { let a = cmdhist::run_cmdhist_checks(); let b = cmdhist::run_cmdhist_deep_checks(); let c = cmdhist::run_cmdhist_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F469", { let a = termcolor::run_termcolor_checks(); let d = termcolor::run_termcolor_v4_checks(); CheckSet::merge(a, d) }),
+        ("F470", { let a = termdir::run_termdir_checks(); let b = termdir::run_termdir_deep_checks(); let c = termdir::run_termdir_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F471", { let a = scrollback::run_scrollback_checks(); let b = scrollback::run_scrollback_deep_checks(); let c = scrollback::run_scrollback_v4_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
         ("F472", { let a = termtheme::run_termtheme_checks(); let b = termtheme::run_termtheme_deep_checks(); CheckSet::merge(a, b) }),
         ("F473", { let a = setkbd::run_setkbd_checks(); let b = setkbd::run_setkbd_deep_checks(); CheckSet::merge(a, b) }),
         ("F474", { let a = setdesc::run_setdesc_checks(); let b = setdesc::run_setdesc_deep_checks(); CheckSet::merge(a, b) }),
         ("F475", { let a = idiffreg::run_idiffreg_checks(); let b = idiffreg::run_idiffreg_deep_checks(); CheckSet::merge(a, b) }),
-        ("F476", { let a = envedit::run_envedit_checks(); let b = envedit::run_envedit_deep_checks(); CheckSet::merge(a, b) }),
-        ("F477", bootrepair::run_bootrepair_checks()),
+        ("F476", { let a = envedit::run_envedit_checks(); let b = envedit::run_envedit_deep_checks(); let c = envedit::run_envedit_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F477", { let a = bootrepair::run_bootrepair_checks(); let c = bootrepair::run_bootrepair_v3_checks(); CheckSet::merge(a, c) }),
         ("F478", { let a = avatar::run_avatar_checks(); let b = avatar::run_avatar_deep_checks(); CheckSet::merge(a, b) }),
         ("F479", { let a = hostname::run_hostname_checks(); let b = hostname::run_hostname_deep_checks(); CheckSet::merge(a, b) }),
-        ("F480", { let a = chantest::run_chantest_checks(); let b = chantest::run_chantest_deep_checks(); CheckSet::merge(a, b) }),
+        ("F480", { let a = chantest::run_chantest_checks(); let b = chantest::run_chantest_deep_checks(); let c = chantest::run_chantest_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
         ("F481", { let a = touchpad::run_touchpad_checks(); let b = touchpad::run_touchpad_deep_checks(); CheckSet::merge(a, b) }),
         ("F482", { let a = swapbtn::run_swapbtn_checks(); let b = swapbtn::run_swapbtn_deep_checks(); CheckSet::merge(a, b) }),
         ("F483", { let a = wheeldir::run_wheeldir_checks(); let b = wheeldir::run_wheeldir_deep_checks(); CheckSet::merge(a, b) }),
-        ("F484", vpnlite::run_vpnlite_checks()),
-        ("F485", sysproxy::run_sysproxy_checks()),
+        ("F484", { let a = vpnlite::run_vpnlite_checks(); let c = vpnlite::run_vpnlite_v3_checks(); CheckSet::merge(a, c) }),
+        ("F485", { let a = sysproxy::run_sysproxy_checks(); let c = sysproxy::run_sysproxy_v3_checks(); CheckSet::merge(a, c) }),
         ("F486", { let a = recentmgr::run_recentmgr_checks(); let b = recentmgr::run_recentmgr_deep_checks(); CheckSet::merge(a, b) }),
         ("F487", { let a = privacysweep::run_privacysweep_checks(); let b = privacysweep::run_privacysweep_deep_checks(); CheckSet::merge(a, b) }),
         ("F488", { let a = appdata::run_appdata_checks(); let b = appdata::run_appdata_deep_checks(); CheckSet::merge(a, b) }),
         ("F489", { let a = shutbadge::run_shutbadge_checks(); let b = shutbadge::run_shutbadge_deep_checks(); CheckSet::merge(a, b) }),
         ("F490", { let a = shutblock::run_shutblock_checks(); let b = shutblock::run_shutblock_deep_checks(); CheckSet::merge(a, b) }),
-        ("F491", { let a = autolum::run_autolum_checks(); let b = autolum::run_autolum_deep_checks(); CheckSet::merge(a, b) }),
-        ("F492", powplan::run_powplan_checks()),
+        ("F491", { let a = autolum::run_autolum_checks(); let b = autolum::run_autolum_deep_checks(); let c = autolum::run_autolum_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F492", { let a = powplan::run_powplan_checks(); let c = powplan::run_powplan_v3_checks(); CheckSet::merge(a, c) }),
         ("F493", { let a = coolgov::run_coolgov_checks(); let b = coolgov::run_coolgov_deep_checks(); CheckSet::merge(a, b) }),
         ("F494", { let a = taskautohide::run_taskautohide_checks(); let b = taskautohide::run_taskautohide_deep_checks(); CheckSet::merge(a, b) }),
         ("F495", { let a = taskoverflow::run_taskoverflow_checks(); let b = taskoverflow::run_taskoverflow_deep_checks(); CheckSet::merge(a, b) }),
         ("F496", { let a = tilelongpress::run_tilelongpress_checks(); let b = tilelongpress::run_tilelongpress_deep_checks(); CheckSet::merge(a, b) }),
         ("F497", { let a = ncactrow::run_ncactrow_checks(); let b = ncactrow::run_ncactrow_deep_checks(); CheckSet::merge(a, b) }),
-        ("F498", { let a = dpifix::run_dpifix_checks(); let b = dpifix::run_dpifix_deep_checks(); CheckSet::merge(a, b) }),
-        ("F499", { let a = lockwall::run_lockwall_checks(); let b = lockwall::run_lockwall_deep_checks(); CheckSet::merge(a, b) }),
+        ("F498", { let a = dpifix::run_dpifix_checks(); let b = dpifix::run_dpifix_deep_checks(); let c = dpifix::run_dpifix_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
+        ("F499", { let a = lockwall::run_lockwall_checks(); let b = lockwall::run_lockwall_deep_checks(); let c = lockwall::run_lockwall_v3_checks(); CheckSet::merge(CheckSet::merge(a, b), c) }),
         ("F500", { let a = xmovkey::run_xmovkey_checks(); let b = xmovkey::run_xmovkey_deep_checks(); CheckSet::merge(a, b) }),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();
+        if !passed {
+            #[cfg(test)]
+            {
+                let (items, n) = sub.red_items();
+                for i in 0..n {
+                    if let Some(c) = items[i] {
+                        if !c.passed {
+                            eprintln!("AGG RED {}::{}", tag, c.name);
+                        }
+                    }
+                }
+            }
+        }
         set.add(tag, passed, if passed { "" } else { "sub-checks red" });
     }
     set

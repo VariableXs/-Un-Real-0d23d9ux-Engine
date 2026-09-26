@@ -418,3 +418,123 @@ mod deep_tests {
         assert!(!chain.register(99));
     }
 }
+// ---- F463 imgops v3：批量操作队列 / 操作取消语义 / 输出体积预估 ----
+
+/// 批量操作队列（多选 N 张逐个应用同一操作——队列上限、逐条完成账、
+/// 中途取消：已完成条目保留、未处理条目出账——部分完成如实呈现）。
+pub const BATCH_QUEUE_CAP: usize = 32;
+
+pub struct BatchQueue {
+    pending: [Option<u64>; BATCH_QUEUE_CAP],
+    n: usize,
+    done: u32,
+}
+
+impl BatchQueue {
+    pub const fn new() -> Self {
+        BatchQueue { pending: [None; BATCH_QUEUE_CAP], n: 0, done: 0 }
+    }
+
+    pub fn enqueue(&mut self, key: u64) -> bool {
+        if self.n >= BATCH_QUEUE_CAP || self.pending[..self.n].contains(&Some(key)) {
+            return false;
+        }
+        self.pending[self.n] = Some(key);
+        self.n += 1;
+        true
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.n - self.done as usize
+    }
+
+    pub fn mark_done(&mut self, idx: usize) -> bool {
+        if idx >= self.n || self.pending[idx].is_none() {
+            return false;
+        }
+        self.pending[idx] = None;
+        self.done += 1;
+        true
+    }
+
+    /// 取消（未处理条目清空、已完成账保留——报告里写「完成 X 条、取消 Y 条」）。
+    pub fn cancel(&mut self) -> u32 {
+        let cancelled = self.remaining() as u32;
+        for i in 0..self.n {
+            self.pending[i] = None;
+        }
+        self.n = self.done as usize;
+        cancelled
+    }
+
+    pub fn done_count(&self) -> u32 {
+        self.done
+    }
+}
+
+/// 输出体积预估（JPEG 质量档 → 体积系数：70 档 ≈ 原图 15%、85 ≈ 25%、
+/// 95 ≈ 40%——预估帮用户选档；系数为经验锚一处定义）。
+pub fn jpeg_size_estimate(orig_bytes: u64, quality: u8) -> Option<u64> {
+    let ratio = match quality {
+        70 => 15,
+        85 => 25,
+        95 => 40,
+        _ => return None,
+    };
+    Some(orig_bytes * ratio as u64 / 100)
+}
+
+pub fn run_imgops_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F463-v3");
+    // 1) 批量队列：去重、逐条完成、剩余对账。
+    let mut q = BatchQueue::new();
+    let _ = q.enqueue(1);
+    let _ = q.enqueue(2);
+    let _ = q.enqueue(1); // 去重。
+    cs.add("queue_dedup", q.remaining() == 2, "");
+    let _ = q.mark_done(0);
+    cs.add("queue_progress", q.done_count() == 1 && q.remaining() == 1, "");
+    // 2) 取消：已完成保留、未处理出账。
+    let cancelled = q.cancel();
+    cs.add("queue_cancel", cancelled == 1 && q.done_count() == 1 && q.remaining() == 0, "");
+    // 3) 队列上限诚实。
+    cs.add("queue_cap", {
+        let mut q2 = BatchQueue::new();
+        for i in 0..(BATCH_QUEUE_CAP as u64 + 5) {
+            let _ = q2.enqueue(i);
+        }
+        q2.remaining() == BATCH_QUEUE_CAP
+    }, "");
+    // 4) 体积预估：三档系数、未知档 None。
+    cs.add("estimate_tiers", jpeg_size_estimate(1_000_000, 70) == Some(150_000)
+        && jpeg_size_estimate(1_000_000, 95) == Some(400_000), "");
+    cs.add("estimate_unknown", jpeg_size_estimate(1_000, 50).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn queue_cancel_keeps_done_stable() {
+        let mut q = BatchQueue::new();
+        for i in 0..5u64 {
+            let _ = q.enqueue(i);
+        }
+        let _ = q.mark_done(0);
+        let _ = q.mark_done(1);
+        let cancelled = q.cancel();
+        assert_eq!(cancelled, 3);
+        assert_eq!(q.done_count(), 2);
+        // 二次取消零出账（幂等）。
+        assert_eq!(q.cancel(), 0);
+    }
+
+    #[test]
+    fn queue_enqueue_dedup() {
+        let mut q = BatchQueue::new();
+        assert!(q.enqueue(9));
+        assert!(!q.enqueue(9), "同键重复入队拒绝");
+    }
+}

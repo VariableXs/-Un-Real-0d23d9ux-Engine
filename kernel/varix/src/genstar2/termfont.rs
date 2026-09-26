@@ -298,3 +298,189 @@ mod deep_tests {
         assert!(f.wheel_ticks(3, true, 1) == 0);
     }
 }
+
+// ===========================================================================
+// 深化 v3（F467）：等宽校验矩阵 / 五档渲染几何账（每档行高列宽）/
+// 默认档设置与恢复 / 档位停留统计 / 缩放预算核算
+// ===========================================================================
+
+/// 等宽校验矩阵（主册「等宽字体」：五档 × 等宽判据——任一档下
+/// 「W 与 i 等宽」的字体不合格；判定走字符格宽系数表）。
+pub fn monospace_ok(width_w: u16, width_i: u16) -> bool {
+    width_w == width_i && width_w > 0
+}
+
+/// 五档渲染几何账（主册「字号五档」的布局面：每档的行高/列宽推导
+/// ——80×24 视口在不同档下的可见行列数，一处一事实供布局对账）。
+pub const VIEW_COLS: usize = 80;
+pub const VIEW_ROWS: usize = 24;
+
+pub fn grid_at(tier: usize) -> Option<(u16, u16)> {
+    let px = FONT_TIERS_PX.get(tier).copied()?;
+    // 等宽字体：字符宽 ≈ 0.6em、行高 ≈ 1.2em（终端惯例）。
+    let col_w = (px as u32 * 6 / 10).max(1) as u16;
+    let row_h = (px as u32 * 12 / 10).max(1) as u16;
+    Some((col_w, row_h))
+}
+
+pub fn visible_grid(tier: usize, win_w_px: u32, win_h_px: u32) -> (usize, usize) {
+    let (cw, rh) = match grid_at(tier) {
+        Some(g) => g,
+        None => return (0, 0),
+    };
+    let cols = (win_w_px / cw as u32) as usize;
+    let rows = (win_h_px / rh as u32) as usize;
+    (cols.min(VIEW_COLS), rows.min(VIEW_ROWS))
+}
+
+impl TermFont {
+    /// 设置默认档（主册「默认档可设」：当前档固化为用户默认；
+    /// 越界档诚实拒）。
+    pub fn set_default_here(&mut self) -> bool {
+        if self.tier >= FONT_TIERS_PX.len() {
+            return false;
+        }
+        self.default_tier = Some(self.tier);
+        true
+    }
+
+    /// 恢复出厂默认档（16px——主册「恢复默认永远一键可退」）。
+    pub fn reset_default(&mut self) {
+        self.default_tier = None;
+        self.tier = 2;
+    }
+
+    /// 重开初始档对账（会话结束回用户默认档；未设过 → 出厂档）。
+    pub fn reopen_tier(&self) -> usize {
+        self.default_tier.unwrap_or(2)
+    }
+}
+
+/// 档位停留统计（主册「个人工作台参数」的使用面：五档各自被
+/// 停留的切换次数——「你常用哪一档」的账）。
+pub struct TierUsage {
+    counts: [u32; 5],
+}
+
+impl TierUsage {
+    pub const fn new() -> Self {
+        TierUsage { counts: [0; 5] }
+    }
+
+    pub fn visit(&mut self, tier: usize) -> bool {
+        if tier >= 5 {
+            return false;
+        }
+        self.counts[tier] += 1;
+        true
+    }
+
+    pub fn count(&self, tier: usize) -> u32 {
+        self.counts.get(tier).copied().unwrap_or(0)
+    }
+
+    /// 最常用档（并列取档位小者——确定性）。
+    pub fn favorite(&self) -> Option<usize> {
+        let mut best: Option<(usize, u32)> = None;
+        for t in 0..5 {
+            if self.counts[t] == 0 {
+                continue;
+            }
+            best = match best {
+                None => Some((t, self.counts[t])),
+                Some((bt, bn)) if self.counts[t] > bn => Some((t, self.counts[t])),
+                Some(keep) => Some(keep),
+            };
+        }
+        best.map(|(t, _)| t)
+    }
+}
+
+/// 缩放预算核算（主册「字号缩放即时生效」的性能面：重排 80×24
+/// 视口的重绘行数预算——档位变 → 全视口重绘 ≤ 视口行数）。
+pub fn rescale_rows_budget(tier: usize) -> Option<usize> {
+    let _ = grid_at(tier)?;
+    Some(VIEW_ROWS)
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F467-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_termfont_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F467-v3");
+    // 1) 等宽矩阵：等宽过、不等宽拒。
+    cs.add("mono_ok", monospace_ok(600, 600), "");
+    cs.add("mono_bad", !monospace_ok(600, 300), "");
+    // 2) 渲染几何：五档全有格账、字号越大列数越少。
+    cs.add("grid_all_tiers", (0..5).all(|t| grid_at(t).is_some()), "");
+    cs.add("grid_monotonic", {
+        let (c0, _) = visible_grid(0, 1_000, 1_000);
+        let (c4, _) = visible_grid(4, 1_000, 1_000);
+        c4 < c0
+    }, "");
+    cs.add("grid_clamped", visible_grid(0, 1_000, 1_000).0 <= VIEW_COLS, "");
+    // 3) 默认档：设当前、恢复出厂、重开对账。
+    let mut f = TermFont::new();
+    let _ = f.step(true, 100); // 14px
+    let _ = f.set_default_here();
+    cs.add("default_set", f.default_tier == Some(1), "");
+    f.reopened();
+    cs.add("reopen_uses_default", f.tier() == 1, "");
+    f.reset_default();
+    cs.add("reset_factory", f.tier() == 2 && f.default_tier.is_none(), "");
+    // 4) 档位停留：计数、越界拒、最常用（并列取小）。
+    let mut u = TierUsage::new();
+    let _ = u.visit(2);
+    let _ = u.visit(2);
+    let _ = u.visit(4);
+    cs.add("usage_count", u.count(2) == 2 && u.count(4) == 1, "");
+    cs.add("usage_oob", !u.visit(9), "");
+    cs.add("usage_favorite", u.favorite() == Some(2), "");
+    // 5) 缩放预算：档变即全视口重绘（24 行）。
+    cs.add("rescale_budget", rescale_rows_budget(3) == Some(VIEW_ROWS), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn grid_rows_shrink_with_tier() {
+        // 字号越大，同窗可见行数单调不增。
+        let mut last = VIEW_ROWS;
+        for t in 0..5 {
+            let (_, r) = visible_grid(t, 1_920, 1_080);
+            assert!(r <= last);
+            last = r;
+        }
+    }
+
+    #[test]
+    fn default_persists_across_reopen_cycle() {
+        let mut f = TermFont::new();
+        for _ in 0..3 {
+            let _ = f.step(true, 10);
+        }
+        let _ = f.set_default_here(); // 12px 顶档。
+        f.reopened();
+        assert_eq!(f.tier(), 0);
+        assert_eq!(f.px(), 12);
+    }
+
+    #[test]
+    fn favorite_tie_smaller_tier_wins() {
+        let mut u = TierUsage::new();
+        let _ = u.visit(3);
+        let _ = u.visit(1);
+        assert_eq!(u.favorite(), Some(1), "并列取档位小者");
+    }
+
+    #[test]
+    fn factory_default_is_16px() {
+        let f = TermFont::new();
+        assert_eq!(f.px(), 16);
+        assert_eq!(f.tier(), 2);
+    }
+}

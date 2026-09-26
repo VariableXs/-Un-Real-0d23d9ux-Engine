@@ -404,3 +404,221 @@ mod deep_tests {
         assert!(!a.bomb_pattern(13_000, 60_000));
     }
 }
+
+// ===========================================================================
+// 深化 v3（F466）：剪贴板历史环（最近 8 条）/ 富文本降级策略 /
+// 敏感内容不入历史（密码管理器标记）/ 粘贴确认语义深化 / 去重账
+// ===========================================================================
+
+/// 剪贴板历史环（主册「剪贴板历史」：最近 8 条、重复内容置顶不重复入账、
+/// 敏感标记条目不入历史）。
+pub const CLIP_HISTORY_CAP: usize = 8;
+pub const CLIP_ENTRY_CAP: usize = 256;
+
+#[derive(Clone, Copy, Debug)]
+pub struct ClipEntry {
+    pub buf: [u8; CLIP_ENTRY_CAP],
+    pub n: usize,
+    pub sensitive: bool,
+}
+
+impl ClipEntry {
+    pub fn new(text: &str, sensitive: bool) -> Option<ClipEntry> {
+        let b = text.as_bytes();
+        if b.len() > CLIP_ENTRY_CAP {
+            return None;
+        }
+        let mut e = ClipEntry { buf: [0; CLIP_ENTRY_CAP], n: b.len(), sensitive };
+        e.buf[..b.len()].copy_from_slice(b);
+        Some(e)
+    }
+
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.buf[..self.n]).unwrap_or("")
+    }
+}
+
+pub struct ClipHistory {
+    /// items[0] = 最新（顶插数组——去重挪顶与淘汰语义比环直观）。
+    items: [Option<ClipEntry>; CLIP_HISTORY_CAP],
+    n: usize,
+}
+
+impl ClipHistory {
+    pub const fn new() -> Self {
+        ClipHistory { items: [None; CLIP_HISTORY_CAP], n: 0 }
+    }
+
+    /// 入历史：敏感内容不入账（密码管理器写入的条目带 sensitive 标记）；
+    /// 与任一历史条目相同 → 挪顶不重复（全表去重——不只查顶）。
+    pub fn push(&mut self, text: &str, sensitive: bool) -> bool {
+        if sensitive {
+            return false;
+        }
+        let e = match ClipEntry::new(text, sensitive) {
+            Some(e) => e,
+            None => return false,
+        };
+        // 全表去重：找到同文 → 摘出（后续前移），再插顶。
+        let mut found = None;
+        for i in 0..self.n {
+            if let Some(x) = &self.items[i] {
+                if x.as_str() == text {
+                    found = Some(i);
+                    break;
+                }
+            }
+        }
+        if let Some(i) = found {
+            let mut j = i;
+            while j > 0 {
+                self.items[j] = self.items[j - 1].take();
+                j -= 1;
+            }
+            self.items[0] = Some(e);
+            return true;
+        }
+        // 新条目：全员后移（满则丢最旧），插顶。
+        let last = if self.n < CLIP_HISTORY_CAP { self.n } else { CLIP_HISTORY_CAP - 1 };
+        let mut j = last;
+        while j > 0 {
+            self.items[j] = self.items[j - 1].take();
+            j -= 1;
+        }
+        if self.n < CLIP_HISTORY_CAP {
+            self.n += 1;
+        }
+        self.items[0] = Some(e);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 第 k 新条目（k=0 最新）。
+    pub fn entry(&self, k: usize) -> Option<&str> {
+        if k >= self.n {
+            return None;
+        }
+        self.items[k].as_ref().map(|e| e.as_str())
+    }
+}
+
+/// 富文本降级策略（主册「终端只收纯文本」：富文本剪贴板（HTML/RTF
+/// 标记）→ 剥标记降级为纯文本或拒收；保留语义标记的粘进终端会乱码）。
+pub fn rich_text_downgrade(text: &str) -> Option<&str> {
+    // 常见富文本标记开头 → 降级拒收（返回 None——终端粘贴要纯文本）。
+    if text.starts_with("{\\rtf") || text.starts_with("<html") || text.starts_with("<!DOCTYPE") {
+        return None;
+    }
+    Some(text)
+}
+
+/// 粘贴语义深化（v1 PasteVerdict 之上的审计面：大粘贴（>8 行）须确认、
+/// 空白粘贴拒绝、粘贴后缓冲行数对账——「粘了多少行」要说得清）。
+pub const PASTE_CONFIRM_LINES: usize = 8;
+
+pub fn paste_needs_confirm(text: &str) -> bool {
+    text.lines().count() > PASTE_CONFIRM_LINES
+}
+
+pub fn paste_lines_account(before: usize, text: &str) -> usize {
+    before + text.lines().count()
+}
+
+/// 环形缓冲满额语义（主册「缓冲行数上限」：>64 行粘贴 → 拒收带人话
+/// ——分批粘贴提示，不是静默截断）。
+pub fn paste_oversize_reason(lines: usize) -> Option<&'static str> {
+    if lines > 64 {
+        Some("超出单次粘贴上限（64 行）——请分批粘贴")
+    } else {
+        None
+    }
+}
+
+/// 测试/检查专用静态名（堆外字面量表——历史环容量对账用）。
+pub fn static_name_for(i: usize) -> &'static str {
+    const NAMES: [&str; 12] = ["u0", "u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8", "u9", "u10", "u11"];
+    NAMES[i % NAMES.len()]
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F466-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_termclip_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F466-v3");
+    // 1) 历史环：入账、去重置顶、环上限、敏感不入。
+    let mut h = ClipHistory::new();
+    let _ = h.push("alpha", false);
+    let _ = h.push("beta", false);
+    let _ = h.push("alpha", false); // 去重置顶。
+    cs.add("history_dedup_top", h.entry(0) == Some("alpha") && h.count() == 2, "");
+    cs.add("history_sensitive_skipped", !h.push("hunter2", true) && h.count() == 2, "");
+    cs.add("history_cap", {
+        let mut h2 = ClipHistory::new();
+        for i in 0..12 {
+            let _ = h2.push(static_name_for(i), false);
+        }
+        h2.count() == CLIP_HISTORY_CAP && h2.entry(CLIP_HISTORY_CAP - 1) == Some("u4")
+    }, "");
+    // 2) 富文本降级：RTF/HTML 拒、纯文本过。
+    cs.add("rich_rtf_rejected", rich_text_downgrade("{\\rtf1\\ansi}").is_none(), "");
+    cs.add("rich_html_rejected", rich_text_downgrade("<html><body>").is_none(), "");
+    cs.add("plain_passes", rich_text_downgrade("plain text").is_some(), "");
+    // 3) 粘贴确认：>8 行须确认、≤8 行直贴。
+    cs.add("confirm_needed", paste_needs_confirm("a\nb\nc\nd\ne\nf\ng\nh\ni"), "");
+    cs.add("confirm_not_needed", !paste_needs_confirm("a\nb\nc"), "");
+    // 4) 行数对账：粘多少记多少。
+    cs.add("lines_account", paste_lines_account(2, "x\ny\nz") == 5, "");
+    // 5) 超限人话：64 行上限、不静默截断。
+    cs.add("oversize_reason", paste_oversize_reason(65).is_some(), "");
+    cs.add("oversize_ok", paste_oversize_reason(64).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn history_fifo_order_preserved() {
+        let mut h = ClipHistory::new();
+        for s in ["one", "two", "three"] {
+            let _ = h.push(s, false);
+        }
+        assert_eq!(h.entry(0), Some("three"));
+        assert_eq!(h.entry(1), Some("two"));
+        assert_eq!(h.entry(2), Some("one"));
+        assert_eq!(h.entry(3), None);
+    }
+
+    #[test]
+    fn history_evicts_oldest_at_cap() {
+        let mut h = ClipHistory::new();
+        for i in 0..CLIP_HISTORY_CAP + 2 {
+            let _ = h.push(static_name_for(i), false);
+        }
+        assert_eq!(h.count(), CLIP_HISTORY_CAP);
+        // 最旧两条已淘汰（u2 环语义）。
+        assert_ne!(h.entry(CLIP_HISTORY_CAP - 1), Some("u0"));
+    }
+
+    #[test]
+    fn sensitive_never_lands_even_indirectly() {
+        let mut h = ClipHistory::new();
+        let _ = h.push("token", false);
+        // 敏感尝试后任何位置都不含它。
+        let _ = h.push("hunter2", true);
+        for k in 0..h.count() {
+            assert_ne!(h.entry(k), Some("hunter2"));
+        }
+    }
+
+    #[test]
+    fn downgrade_multiline_plain_ok() {
+        // 多行纯文本不是富文本——可粘贴（确认语义接管）。
+        assert!(rich_text_downgrade("a\nb\nc").is_some());
+    }
+}

@@ -505,3 +505,273 @@ mod tests {
         assert_eq!((up, down), (2000, 3000));
     }
 }
+
+// ===========================================================================
+// 深化 v3（F484）：自动重连退避状态机 / 连接质量评分 / 分流规则表 /
+// 服务器延迟探测账 / 持久化 round-trip 补全 / 故障归因链深化
+// ===========================================================================
+
+/// 自动重连指数退避（主册「自动重连」的节奏面：连续失败次数 → 等待
+/// 毫秒 = 2^n × 500ms，封顶 30s；连败 6 次放弃（等用户手动）——
+/// 无限重试是耗电暴行）。
+pub const RECONNECT_BASE_MS: u64 = 500;
+pub const RECONNECT_CAP_MS: u64 = 30_000;
+pub const RECONNECT_MAX_STREAK: u32 = 7; // 7 档退避（第 7 档 2^6×500=32s→封顶 30s），第 8 次放弃
+
+pub fn reconnect_backoff_ms(streak: u32) -> Option<u64> {
+    if streak == 0 || streak > RECONNECT_MAX_STREAK {
+        return None; // 无失败不等待；超过上限放弃（等手动）。
+    }
+    let ms = RECONNECT_BASE_MS.checked_shl(streak - 1).unwrap_or(RECONNECT_CAP_MS);
+    Some(ms.min(RECONNECT_CAP_MS))
+}
+
+impl VpnManager {
+    /// 重连裁决（断链后按退避节奏放行——streak 由调用方在失败时累加）。
+    pub fn reconnect_due(&self, streak: u32, last_fail_ms: u64, now_ms: u64) -> bool {
+        match reconnect_backoff_ms(streak) {
+            Some(wait) => now_ms.saturating_sub(last_fail_ms) >= wait,
+            None => false,
+        }
+    }
+}
+
+/// 连接质量评分（主册「配合 F197 心里有数」：丢包率 + 抖动 + 延迟
+/// 三因子 → 0-100 分；三因子权重 40/30/30——账面推出来的评分）。
+pub const QUALITY_W_LOSS: u32 = 40;
+pub const QUALITY_W_JITTER: u32 = 30;
+pub const QUALITY_W_LATENCY: u32 = 30;
+
+pub fn quality_score(loss_permille: u32, jitter_ms: u32, latency_ms: u32) -> u32 {
+    // 丢包项：0‰ = 满分，100‰+ = 0。
+    let loss_part = QUALITY_W_LOSS.saturating_sub(loss_permille.min(100) * QUALITY_W_LOSS / 100);
+    // 抖动项：≤10ms 满分，线性到 60ms 归零。
+    let jitter_part = if jitter_ms <= 10 {
+        QUALITY_W_JITTER
+    } else {
+        QUALITY_W_JITTER.saturating_sub((jitter_ms - 10) * QUALITY_W_JITTER / 50)
+    };
+    // 延迟项：≤50ms 满分，线性到 300ms 归零。
+    let latency_part = if latency_ms <= 50 {
+        QUALITY_W_LATENCY
+    } else {
+        QUALITY_W_LATENCY.saturating_sub((latency_ms - 50) * QUALITY_W_LATENCY / 250)
+    };
+    (loss_part + jitter_part + latency_part).min(100)
+}
+
+/// 分流规则表（主册「VPN 是可选设置」的进阶面：按目标网段决定
+/// 走隧道还是直连——定长规则表，先匹配先生效）。
+pub const SPLIT_RULE_CAP: usize = 8;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RouteVia {
+    Tunnel,
+    Direct,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SplitRule {
+    /// 目标前缀（IPv4 前两段，如 10.0 → 内网）。
+    pub prefix: [u8; 2],
+    pub via: RouteVia,
+}
+
+pub struct SplitTable {
+    rules: [Option<SplitRule>; SPLIT_RULE_CAP],
+    n: usize,
+}
+
+impl SplitTable {
+    pub const fn new() -> Self {
+        SplitTable { rules: [None; SPLIT_RULE_CAP], n: 0 }
+    }
+
+    pub fn add(&mut self, prefix: [u8; 2], via: RouteVia) -> bool {
+        if self.n >= SPLIT_RULE_CAP {
+            return false;
+        }
+        self.rules[self.n] = Some(SplitRule { prefix, via });
+        self.n += 1;
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 路由裁决（先匹配先生效；无匹配 = 默认走隧道——VPN 全局语义）。
+    pub fn route(&self, ip: [u8; 4]) -> RouteVia {
+        for i in 0..self.n {
+            if let Some(r) = self.rules[i] {
+                if r.prefix == [ip[0], ip[1]] {
+                    return r.via;
+                }
+            }
+        }
+        RouteVia::Tunnel
+    }
+}
+
+/// 服务器延迟探测账（主册「多配置管理」的选优面：每配置最近探测
+/// 延迟——「选个快的」有人话依据；无探测 = None 诚实）。
+pub const PROBE_CAP: usize = 8;
+
+pub struct ProbeTable {
+    best_ms: [Option<u32>; PROBE_CAP],
+}
+
+impl ProbeTable {
+    pub const fn new() -> Self {
+        ProbeTable { best_ms: [None; PROBE_CAP] }
+    }
+
+    pub fn record(&mut self, idx: usize, latency_ms: u32) -> bool {
+        if idx >= PROBE_CAP {
+            return false;
+        }
+        // 保留历史最优（探测波动取最好一次——「这台服务器最快到过多少」）。
+        self.best_ms[idx] = Some(match self.best_ms[idx] {
+            Some(prev) => prev.min(latency_ms),
+            None => latency_ms,
+        });
+        true
+    }
+
+    pub fn best(&self, idx: usize) -> Option<u32> {
+        self.best_ms.get(idx).copied().flatten()
+    }
+
+    /// 最优配置推荐（探测账里延迟最低者；全未探测 = None 诚实不猜）。
+    pub fn recommend(&self, alive_n: usize) -> Option<usize> {
+        let mut best: Option<(usize, u32)> = None;
+        for i in 0..alive_n.min(PROBE_CAP) {
+            if let Some(ms) = self.best_ms[i] {
+                best = match best {
+                    None => Some((i, ms)),
+                    Some((bi, bm)) if ms < bm => Some((i, ms)),
+                    Some(keep) => Some(keep),
+                };
+            }
+        }
+        best.map(|(i, _)| i)
+    }
+}
+
+/// 故障归因链深化（主册「失败原因卡片：应用名+原因+下一步」——
+/// 归因不只是说 why，还要说 next：四归因各配一步动作建议）。
+pub const FAILURE_NEXT_STEP: [(&str, &str); 4] = [
+    ("auth", "下一步：打开凭据编辑，重新输入用户名密码"),
+    ("unreachable", "下一步：检查网络连接后点重试"),
+    ("timeout", "下一步：服务器可能过载——换一个配置试试"),
+    ("config", "下一步：打开协议参数，补全缺失字段"),
+];
+
+pub fn cause_next_step(code: &str) -> Option<&'static str> {
+    FAILURE_NEXT_STEP.iter().find(|(c, _)| *c == code).map(|(_, n)| *n)
+}
+
+/// 归因完备性审计（v1 FAILURE_CAUSES 的每一条都有 next step——
+/// 「说了为什么就要说怎么办」）。
+pub fn cause_table_complete() -> bool {
+    FAILURE_CAUSES.iter().all(|(c, _)| cause_next_step(c).is_some())
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F484-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_vpnlite_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F484-v3");
+    // 1) 退避节奏：2^n 增长、30s 封顶、6 次放弃。
+    cs.add("backoff_growth", reconnect_backoff_ms(1) == Some(500) && reconnect_backoff_ms(3) == Some(2_000), "");
+    cs.add("backoff_cap", reconnect_backoff_ms(7) == Some(30_000), ""); // 第 7 档 32s→封顶 30s
+    cs.add("backoff_giveup", reconnect_backoff_ms(8).is_none() && reconnect_backoff_ms(0).is_none(), "");
+    cs.add("backoff_due", {
+        // 退避 2 次 = 1_000ms：999 未到、1_000 恰到（含边界）。
+        let m = VpnManager::new();
+        m.reconnect_due(2, 1_000, 1_999) == false && m.reconnect_due(2, 1_000, 2_000)
+    }, "");
+    // 2) 质量评分：三好满分 / 单差扣减 / 全差归零。
+    cs.add("quality_full", quality_score(0, 5, 30) == 100, "");
+    cs.add("quality_loss_hurts", quality_score(50, 5, 30) == 80, "");
+    cs.add("quality_bad_all", quality_score(100, 200, 500) == 0, "");
+    cs.add("quality_monotonic", quality_score(10, 20, 100) >= quality_score(20, 40, 200), "");
+    // 3) 分流规则：先匹配先生效、默认走隧道、容量上限。
+    let mut sp = SplitTable::new();
+    let _ = sp.add([10, 0], RouteVia::Direct);
+    let _ = sp.add([172, 16], RouteVia::Direct);
+    cs.add("split_match", sp.route([10, 0, 2, 3]) == RouteVia::Direct, ""); // 前两段 10.0 精确匹配
+    cs.add("split_default_tunnel", sp.route([8, 8, 8, 8]) == RouteVia::Tunnel, "");
+    cs.add("split_first_wins", {
+        let mut s2 = SplitTable::new();
+        let _ = s2.add([10, 0], RouteVia::Direct);
+        let _ = s2.add([10, 0], RouteVia::Tunnel);
+        s2.route([10, 0, 9, 9]) == RouteVia::Direct
+    }, "");
+    cs.add("split_cap", {
+        let mut s3 = SplitTable::new();
+        for i in 0..(SPLIT_RULE_CAP + 2) {
+            let _ = s3.add([i as u8, 0], RouteVia::Direct);
+        }
+        s3.count() == SPLIT_RULE_CAP
+    }, "");
+    // 4) 探测账：保留最优、推荐最快、全未探测诚实。
+    let mut pt = ProbeTable::new();
+    let _ = pt.record(0, 120);
+    let _ = pt.record(0, 80);
+    let _ = pt.record(0, 150);
+    let _ = pt.record(1, 60);
+    cs.add("probe_best_kept", pt.best(0) == Some(80), "");
+    cs.add("probe_recommend", pt.recommend(2) == Some(1), "");
+    cs.add("probe_unprobed_honest", pt.best(5).is_none() && ProbeTable::new().recommend(3).is_none(), "");
+    // 5) 归因链完备：四因各配 next step。
+    cs.add("cause_next_complete", cause_table_complete(), "");
+    cs.add("cause_next_text", cause_next_step("auth").unwrap().contains("下一步"), "");
+    cs.add("cause_next_unknown", cause_next_step("warp").is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn backoff_exact_powers() {
+        assert_eq!(reconnect_backoff_ms(2), Some(1_000));
+        assert_eq!(reconnect_backoff_ms(4), Some(4_000));
+        assert_eq!(reconnect_backoff_ms(6), Some(16_000));
+        assert_eq!(reconnect_backoff_ms(5), Some(8_000));
+    }
+
+    #[test]
+    fn quality_boundaries() {
+        // 三因子边界值逐格：丢包 100‰ 归零该因子、抖动 60ms 归零、延迟 300ms 归零。
+        assert_eq!(quality_score(100, 0, 0), 60);
+        assert_eq!(quality_score(0, 60, 0), 70);
+        assert_eq!(quality_score(0, 0, 300), 70);
+        // 边界内保持满分因子。
+        assert_eq!(quality_score(0, 10, 50), 100);
+    }
+
+    #[test]
+    fn split_route_exact_prefix_only() {
+        let mut sp = SplitTable::new();
+        let _ = sp.add([192, 168], RouteVia::Direct);
+        // 前两段精确匹配才算命中（192.168.x.x 命中；10.x 不命中）。
+        assert_eq!(sp.route([192, 168, 1, 1]), RouteVia::Direct);
+        assert_eq!(sp.route([192, 167, 1, 1]), RouteVia::Tunnel);
+    }
+
+    #[test]
+    fn probe_recommend_prefers_lower() {
+        let mut pt = ProbeTable::new();
+        let _ = pt.record(0, 200);
+        let _ = pt.record(1, 50);
+        let _ = pt.record(2, 90);
+        assert_eq!(pt.recommend(3), Some(1));
+        // 最优者被更优记录刷新。
+        let _ = pt.record(2, 30);
+        assert_eq!(pt.recommend(3), Some(2));
+    }
+}

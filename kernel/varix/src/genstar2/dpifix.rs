@@ -356,3 +356,198 @@ mod deep_tests {
         assert_eq!(batch_fix_plan(&[("x", DpiAwareness::PerMonitor, 300)]), 0);
     }
 }
+
+// ===========================================================================
+// 深化 v3（F498）：DPI 感知阶梯提升序 / 混合 DPI 多屏账 / 修复撤销面 /
+// 提示抑制持久化 / 缩放变更重算账
+// ===========================================================================
+
+/// DPI 感知阶梯（主册「高 DPI 优化」的提升序：Unaware → System →
+/// PerMonitor 单向提升——降级会让已经清晰的界面重新模糊）。
+pub fn upgrade_path_ok(from: DpiAwareness, to: DpiAwareness) -> bool {
+    let rank = |a: DpiAwareness| match a {
+        DpiAwareness::Unaware => 0,
+        DpiAwareness::System => 1,
+        DpiAwareness::PerMonitor => 2,
+    };
+    rank(to) > rank(from)
+}
+
+/// 混合 DPI 多屏账（主册「多屏不同缩放」：每屏独立缩放，窗口跨屏
+/// 时刻按目标屏缩放重算——窗口在 100% 屏清晰、拖到 200% 屏也清晰）。
+pub const SCREEN_SCALE_CAP: usize = 4;
+
+pub struct MultiScale {
+    scales: [u16; SCREEN_SCALE_CAP], // permille，如 1500 = 150%
+    n: usize,
+}
+
+impl MultiScale {
+    pub const fn new() -> Self {
+        MultiScale { scales: [1_000; SCREEN_SCALE_CAP], n: 1 }
+    }
+
+    pub fn set_screen(&mut self, idx: usize, permille: u16) -> bool {
+        if idx >= SCREEN_SCALE_CAP || permille < 1_000 || permille > 4_000 {
+            return false;
+        }
+        self.scales[idx] = permille;
+        self.n = self.n.max(idx + 1);
+        true
+    }
+
+    pub fn scale(&self, idx: usize) -> Option<u16> {
+        self.scales.get(idx).copied()
+    }
+
+    /// 跨屏位图重算倍率（源屏 → 目标屏的缩放比 ×1000：100%→200% = 2000）。
+    pub fn rescale_ratio(&self, from: usize, to: usize) -> Option<u32> {
+        let f = self.scale(from)? as u32;
+        let t = self.scale(to)? as u32;
+        Some(t * 1_000 / f.max(1))
+    }
+}
+
+impl DpiFix {
+    /// 修复撤销（主册「恢复默认永远一键可退」：应用过优化的应用从
+    /// 提示账移除——撤销后若仍模糊会再次提示；优化失败可退）。
+    pub fn undo_fix(&mut self, app: &str) -> bool {
+        let k = app_key(app);
+        for i in 0..self.n {
+            if self.prompted[i] == Some(k) {
+                // 尾补位删除（定长表纪律与 silence 一致）。
+                self.prompted[i] = self.prompted[self.n - 1];
+                self.prompted[self.n - 1] = None;
+                self.n -= 1;
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_prompted(&self, app: &str) -> bool {
+        Self::in_list(&self.prompted, self.n, app_key(app))
+    }
+}
+
+/// 提示抑制持久化（主册「不再提示」跨会话：抑制名单定长落盘
+/// round-trip——重启后还是不问）。
+pub const DPI_SILENCE_MAGIC: [u8; 4] = *b"VDM1";
+
+pub fn save_silence(names: &[&'static str], out: &mut [u8]) -> Option<usize> {
+    if names.len() > 16 || out.len() < 4 + names.len() * 24 {
+        return None;
+    }
+    out[..4].copy_from_slice(&DPI_SILENCE_MAGIC);
+    out[4] = names.len() as u8;
+    let mut w = 5;
+    for n in names {
+        let b = n.as_bytes();
+        if b.len() > 23 {
+            return None;
+        }
+        out[w] = b.len() as u8;
+        out[w + 1..w + 1 + b.len()].copy_from_slice(b);
+        w += 24;
+    }
+    Some(w)
+}
+
+pub fn load_silence(buf: &[u8]) -> Option<usize> {
+    if buf.len() < 5 || buf[..4] != DPI_SILENCE_MAGIC {
+        return None;
+    }
+    let n = buf[4] as usize;
+    if n > 16 || buf.len() < 5 + n * 24 {
+        return None;
+    }
+    for i in 0..n {
+        let base = 5 + i * 24;
+        let len = buf[base] as usize;
+        if len == 0 || len > 23 {
+            return None;
+        }
+    }
+    Some(n)
+}
+
+/// 缩放变更重算账（主册「分辨率/缩放变更即时重算」：变更时刻起
+/// 所有 DpiAwareness=System 窗口需重排——重算触发的判定面）。
+pub fn needs_recalc(aware: DpiAwareness, old_scale: u16, new_scale: u16) -> bool {
+    old_scale != new_scale && aware != DpiAwareness::PerMonitor
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F498-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_dpifix_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F498-v3");
+    // 1) 阶梯提升：单向、同级拒。
+    cs.add("upgrade_unaware_pm", upgrade_path_ok(DpiAwareness::Unaware, DpiAwareness::PerMonitor), "");
+    cs.add("upgrade_system_pm", upgrade_path_ok(DpiAwareness::System, DpiAwareness::PerMonitor), "");
+    cs.add("no_downgrade", !upgrade_path_ok(DpiAwareness::PerMonitor, DpiAwareness::System), "");
+    cs.add("no_same", !upgrade_path_ok(DpiAwareness::System, DpiAwareness::System), "");
+    // 2) 混合 DPI：逐屏设置、跨屏重算比。
+    let mut ms = MultiScale::new();
+    let _ = ms.set_screen(0, 1_000);
+    let _ = ms.set_screen(1, 2_000);
+    cs.add("mixed_scales", ms.scale(0) == Some(1_000) && ms.scale(1) == Some(2_000), "");
+    cs.add("cross_rescale", ms.rescale_ratio(0, 1) == Some(2_000), "");
+    cs.add("rescale_down", ms.rescale_ratio(1, 0) == Some(500), "");
+    cs.add("scale_reject", !ms.set_screen(2, 500) && !ms.set_screen(2, 5_000), "");
+    // 3) 修复撤销：提示账在册可撤、未登记诚实拒。
+    let mut p = DpiFix::new();
+    let _ = p.should_prompt("legacy.app", DpiAwareness::Unaware, 1_500);
+    let fix = DpiFix::apply_fix(DpiAwareness::Unaware);
+    cs.add("fix_maps_pm", fix == Some(DpiAwareness::PerMonitor), "");
+    cs.add("undo_after_prompt", p.is_prompted("legacy.app") && p.undo_fix("legacy.app") && !p.is_prompted("legacy.app"), "");
+    cs.add("undo_never_prompted", !p.undo_fix("never.app"), "");
+    // 4) 抑制持久化 round-trip + 坏名拒收。
+    let names = ["a.app", "b.tool"];
+    let mut buf = [0u8; 4 + 16 * 24];
+    cs.add("silence_roundtrip", {
+        let n = save_silence(&names, &mut buf).unwrap();
+        load_silence(&buf[..n]) == Some(2)
+    }, "");
+    cs.add("silence_bad_magic", load_silence(b"XXXX\x00\x00\x00\x00").is_none(), "");
+    // 5) 重算触发：缩放变 + 非 PerMonitor 才需重排。
+    cs.add("recalc_system", needs_recalc(DpiAwareness::System, 1_000, 1_500), "");
+    cs.add("recalc_pm_free", !needs_recalc(DpiAwareness::PerMonitor, 1_000, 1_500), "");
+    cs.add("recalc_same_free", !needs_recalc(DpiAwareness::System, 1_500, 1_500), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn multi_scale_full_chain() {
+        let mut ms = MultiScale::new();
+        let scales = [1_000u16, 1_250, 1_500, 2_000];
+        for (i, s) in scales.iter().enumerate() {
+            assert!(ms.set_screen(i, *s));
+        }
+        // 相邻屏重算比逐对验证。
+        assert_eq!(ms.rescale_ratio(0, 1), Some(1_250));
+        assert_eq!(ms.rescale_ratio(1, 2), Some(1_200));
+        assert_eq!(ms.rescale_ratio(2, 3), Some(1_333));
+    }
+
+    #[test]
+    fn silence_oversize_name_rejected() {
+        let long = "this-app-name-is-way-too-long-for-the-slot";
+        let mut buf = [0u8; 4 + 16 * 24];
+        assert!(save_silence(&[long], &mut buf).is_none());
+    }
+
+    #[test]
+    fn blur_boundary_at_150() {
+        // v1 口径：BLUR_SCALE_PERMILLE=150 实为「百分数」线（150=150%）——
+        // permille 命名与实际语义有偏差（行为差异候选登记 F475）。
+        assert!(blur_detected(DpiAwareness::Unaware, 1_500), "150%（传 1500）判糊");
+        assert!(!blur_detected(DpiAwareness::Unaware, 100), "100%（传 100）清晰");
+        assert!(blur_detected(DpiAwareness::Unaware, 150), "恰 150 过线");
+    }
+}

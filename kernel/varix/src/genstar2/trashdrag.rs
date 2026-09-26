@@ -356,3 +356,130 @@ mod deep_tests {
         assert_ne!(&r1[..3], &r2[..n2]);
     }
 }
+
+// ===========================================================================
+// 深化 v4（F464）：批量拖出逐件裁决账 / 占用汇总（容量环联动）/
+// 全容量填充实测 / 两路还原互斥（账本单一事实）
+// ===========================================================================
+
+/// 批量拖出结果账（F087 批量面板语义：非冲突件直接出账、冲突件停住
+/// 等三选——逐件独立裁决，一件冲突不拖累整批）。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BatchRestoreReport {
+    pub restored: usize,
+    pub conflicts: usize,
+    pub missing: usize,
+}
+
+impl TrashLedger {
+    /// 批量拖出：逐件调 drag_restore 语义（同名冲突件留在账上）。
+    /// 入参逐件给「落点是否同名」——与 F087 单面板逐件问的运行面同构。
+    pub fn drag_restore_many(&mut self, paths: &[&str], same_name: &[bool]) -> BatchRestoreReport {
+        let mut rep = BatchRestoreReport::default();
+        for (i, p) in paths.iter().enumerate() {
+            let exists_same = same_name.get(i).copied().unwrap_or(false);
+            match self.drag_restore(p, exists_same) {
+                RestoreOutcome::Restored => rep.restored += 1,
+                RestoreOutcome::Conflict => rep.conflicts += 1,
+                RestoreOutcome::NoSuchItem => rep.missing += 1,
+            }
+        }
+        rep
+    }
+
+    /// 回收站占用汇总（字节）——「此机」容量环 / 回收站体验件（F085）
+    /// 容量显示与本账一处一事实（删/还原即时反映）。
+    pub fn total_bytes(&self) -> u64 {
+        let mut sum = 0u64;
+        for i in 0..self.n {
+            if let Some(e) = self.entries[i] {
+                sum = sum.saturating_add(e.size_bytes);
+            }
+        }
+        sum
+    }
+
+    /// 条目存在性查询（角标 F415「回收站非空」徽标的账本源）。
+    pub fn contains(&self, path: &str) -> bool {
+        self.find(key(path)).is_some()
+    }
+}
+
+pub fn run_trashdrag_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F464-v4");
+    // 1) 批量拖出逐件裁决：非冲突出账、冲突停账、缺失如实计数。
+    let mut t = TrashLedger::new();
+    let _ = t.delete_in("C:\\a.txt", "C:\\", 10);
+    let _ = t.delete_in("C:\\b.txt", "C:\\", 20);
+    let _ = t.delete_in("C:\\c.txt", "C:\\", 30);
+    let rep = t.drag_restore_many(&["C:\\a.txt", "C:\\b.txt", "C:\\c.txt", "C:\\ghost"], &[false, true, false, false]);
+    cs.add("batch_report", rep == BatchRestoreReport { restored: 2, conflicts: 1, missing: 1 }, "");
+    cs.add("batch_conflict_stays", t.count() == 1 && t.contains("C:\\b.txt"), "");
+    // 2) 占用汇总：还原出账后占用即时减少（与容量环一处一事实）。
+    let mut t2 = TrashLedger::new();
+    let _ = t2.delete_in("C:\\big.iso", "C:\\", 4_000_000_000u64);
+    let _ = t2.delete_in("C:\\small.txt", "C:\\", 100);
+    cs.add("total_bytes_sum", t2.total_bytes() == 4_000_000_100u64, "");
+    let _ = t2.drag_restore("C:\\big.iso", false);
+    cs.add("total_bytes_after_restore", t2.total_bytes() == 100, "");
+    // 3) 全容量填充：第 128 件入账成功、第 129 件诚实拒绝（不静默丢）。
+    let mut full = TrashLedger::new();
+    let mut accepted = 0usize;
+    for i in 0..=TRASH_CAP {
+        if full.delete_in("item", "origin", i as u64) {
+            accepted += 1;
+        }
+    }
+    cs.add("cap_fill_exact", accepted == TRASH_CAP && full.full(), "");
+    // 4) 两路还原互斥：拖出成功后同件原位还原 = NoSuchItem（账本单一事实）。
+    let mut t3 = TrashLedger::new();
+    let _ = t3.delete_in("C:\\once.txt", "C:\\once.txt", 1);
+    cs.add("mutex_drag_first", t3.drag_restore("C:\\once.txt", false) == RestoreOutcome::Restored, "");
+    cs.add("mutex_origin_second", t3.origin_restore("C:\\once.txt", false) == RestoreOutcome::NoSuchItem, "");
+    // 5) 角标源：非空徽标随账本即时翻转（还原到 0 件 → 徽标灭）。
+    let mut t4 = TrashLedger::new();
+    cs.add("badge_empty_start", !t4.contains("C:\\x"), "");
+    let _ = t4.delete_in("C:\\x", "C:\\x", 1);
+    cs.add("badge_nonempty", t4.contains("C:\\x"), "");
+    let _ = t4.origin_restore("C:\\x", false);
+    cs.add("badge_cleared", !t4.contains("C:\\x"), "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn batch_restore_report_sums_to_input() {
+        let mut t = TrashLedger::new();
+        for p in ["C:\\1", "C:\\2", "C:\\3"] {
+            let _ = t.delete_in(p, p, 1);
+        }
+        let rep = t.drag_restore_many(&["C:\\1", "C:\\2", "C:\\3"], &[false, false, true]);
+        assert_eq!(rep.restored + rep.conflicts + rep.missing, 3);
+        assert_eq!(rep.conflicts, 1);
+        assert!(t.contains("C:\\3"));
+    }
+
+    #[test]
+    fn total_bytes_never_underflows() {
+        let mut t = TrashLedger::new();
+        let _ = t.delete_in("C:\\max", "C:\\", u64::MAX);
+        let _ = t.delete_in("C:\\one", "C:\\", 1);
+        assert_eq!(t.total_bytes(), u64::MAX); // 饱和加法不溢出
+    }
+
+    #[test]
+    fn cap_reject_keeps_existing_intact() {
+        let mut t = TrashLedger::new();
+        let _ = t.delete_in("C:\\first", "C:\\", 5);
+        for i in 0..TRASH_CAP - 1 {
+            let _ = t.delete_in("fill", "fill", i as u64);
+        }
+        assert!(t.full());
+        assert!(!t.delete_in("C:\\overflow", "C:\\", 1)); // 拒绝不破坏
+        assert_eq!(t.count(), TRASH_CAP);
+        assert!(t.contains("C:\\first"));
+    }
+}

@@ -333,3 +333,109 @@ mod deep_tests {
         }
     }
 }
+// ---- F491 autolum v3：传感器信任窗 / 手动覆盖倒计时 / 曲线外插钳制 ----
+
+/// 传感器信任窗（主册「传感器漂移」：连续 N 次读数跳变 > 600‰ 视为
+/// 传感器异常——回退手动值并停用自动（防光斑误触发频闪调光））。
+pub const SENSOR_JUMP_PERMILLE: u16 = 600;
+pub const SENSOR_JUMP_STREAK: u32 = 3;
+
+pub struct SensorWatch {
+    last: Option<u16>,
+    streak: u32,
+    pub faulty: bool,
+}
+
+impl SensorWatch {
+    pub const fn new() -> Self {
+        SensorWatch { last: None, streak: 0, faulty: false }
+    }
+
+    /// 逐次喂读数：跳变连击达标 → 判传感器故障（自动调光停用）。
+    pub fn feed(&mut self, lux: u16) -> bool {
+        match self.last {
+            None => {
+                self.last = Some(lux);
+                true
+            }
+            Some(prev) => {
+                let jump = (lux as i32 - prev as i32).unsigned_abs() as u16;
+                if jump > SENSOR_JUMP_PERMILLE {
+                    self.streak += 1;
+                    if self.streak >= SENSOR_JUMP_STREAK {
+                        self.faulty = true;
+                    }
+                } else {
+                    self.streak = 0;
+                }
+                self.last = Some(lux);
+                !self.faulty
+            }
+        }
+    }
+}
+
+/// 手动覆盖倒计时（v1 OVERRIDE_MS=2h 的查询面：剩余毫秒数；
+/// 未覆盖 = None——「还剩多久回自动」有人话答案）。
+pub fn override_remaining(override_until: u64, now_ms: u64) -> Option<u64> {
+    if override_until <= now_ms {
+        return None;
+    }
+    Some(override_until - now_ms)
+}
+
+/// 曲线外插钳制审计（v1 curve_target 的边界复核：0 以下/超亮都钳在
+/// 曲线端点——外插不存在，只有钳制）。
+pub fn curve_clamped_everywhere(lux_samples: &[u16]) -> bool {
+    // 全域抽样：曲线输出恒在 [FLOOR_PERMILLE, 1_000] 窗内（无外插）。
+    lux_samples.iter().all(|&l| (FLOOR_PERMILLE..=1_000).contains(&curve_target(l)))
+}
+
+pub fn run_autolum_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F491-v3");
+    // 1) 传感器信任窗：单次跳变不判故障、三连击判。
+    let mut w = SensorWatch::new();
+    let _ = w.feed(200);
+    let _ = w.feed(900);
+    cs.add("jump_one_ok", !w.faulty, ""); // 单次跳变 streak=1 < 3
+    let _ = w.feed(500); // 稳定读数（跳 400）→ streak 归零
+    let _ = w.feed(520); // 稳定读数
+    cs.add("stable_resets", !w.faulty, "");
+    // 三连击判故障：100↔900 每跳 800 > 600，第三跳达成。
+    let mut w3 = SensorWatch::new();
+    let _ = w3.feed(900);
+    let _ = w3.feed(100); // streak=1
+    let _ = w3.feed(900); // streak=2
+    let _ = w3.feed(100); // streak=3 → faulty
+    cs.add("jump_streak_faulty", w3.faulty, "");
+    // 2) 覆盖倒计时：期内有剩余、期满 None。
+    cs.add("override_left", override_remaining(5_000, 2_000) == Some(3_000), "");
+    cs.add("override_expired", override_remaining(5_000, 5_000).is_none(), "");
+    // 3) 曲线全域钳制（0..u16::MAX 抽样全在窗内）。
+    cs.add("curve_clamped", curve_clamped_everywhere(&[0, 50, 500, 5_000, 60_000, u16::MAX]), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn sensor_recovery_never_after_faulty() {
+        // 判故障后不自动复活（换传感器 = 重建会话，结构性）。
+        let mut w = SensorWatch::new();
+        for _ in 0..5 {
+            let _ = w.feed(100);
+            let _ = w.feed(900);
+        }
+        assert!(w.faulty);
+        let _ = w.feed(500);
+        assert!(w.faulty, "故障状态不复位");
+    }
+
+    #[test]
+    fn override_remaining_never_negative() {
+        assert_eq!(override_remaining(0, 1), None);
+        assert_eq!(override_remaining(1, 0), Some(1));
+    }
+}

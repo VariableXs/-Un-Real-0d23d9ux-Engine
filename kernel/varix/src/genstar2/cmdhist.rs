@@ -557,3 +557,158 @@ mod deep_tests {
         assert_eq!(h.recall(true), Some("run build"));
     }
 }
+
+
+// ===========================================================================
+// 深化 v4（F468）：全量恢复通道 / 1000 条淘汰实测 / 回溯边界矩阵 /
+// 水位线单调（跨会话 seq 不回退）
+// ===========================================================================
+
+impl CmdHistory {
+    /// 全量恢复（v4 补全：v2 只有 save + meta 读取，恢复通道缺席——
+    /// 「跨会话保留」的完整链 = 落盘 + 重启后逐条回填）。
+    /// 半行/坏魔标/非 UTF-8/记录失败拒收（None）；恢复后水位线取 max
+    /// 不回退（seq 永续单调，新记录接在旧水位之后）。
+    pub fn restore_from(&mut self, buf: &[u8]) -> Option<usize> {
+        if buf.len() < 12 || buf[..4] != CMDHIST_PERSIST_MAGIC {
+            return None;
+        }
+        let watermark = u64::from_be_bytes(buf[4..12].try_into().ok()?);
+        let mut w = 12usize;
+        let mut restored = 0usize;
+        while w + 2 <= buf.len() {
+            let len = u16::from_be_bytes(buf[w..w + 2].try_into().ok()?) as usize;
+            w += 2;
+            if w + len > buf.len() {
+                return None; // 半行 = 坏流，整体拒收
+            }
+            let text = core::str::from_utf8(&buf[w..w + len]).ok()?;
+            w += len;
+            if !self.record(text) {
+                return None; // 落盘文件本不该含敏感/超长行——出现即坏流
+            }
+            restored += 1;
+        }
+        self.next_seq = self.next_seq.max(watermark);
+        Some(restored)
+    }
+
+    pub fn watermark(&self) -> u64 {
+        self.next_seq
+    }
+}
+
+pub fn run_cmdhist_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F468-v4");
+    // 1) 全量恢复 round-trip：save → restore 逐条等值、序保持旧→新。
+    let mut h = CmdHistory::new();
+    let _ = h.record("build all");
+    let _ = h.record("deploy --dry-run");
+    let _ = h.record("vol list C:\\");
+    let mut buf = [0u8; 512];
+    let saved = save_history(&h, &mut buf).unwrap_or(0);
+    let mut h2 = CmdHistory::new();
+    let restored = if saved > 0 { h2.restore_from(&buf[..saved]) } else { None };
+    cs.add("restore_roundtrip", restored == Some(3)
+        && h2.iter_oldest_first().nth(0) == Some("build all")
+        && h2.iter_oldest_first().nth(1) == Some("deploy --dry-run")
+        && h2.iter_oldest_first().nth(2) == Some("vol list C:\\"), "");
+    // 2) 水位线单调：恢复后 seq 不回退（新记录接在旧水位之后）。
+    cs.add("watermark_monotonic", h2.watermark() == 3 && {
+        let _ = h2.record("post-restore");
+        h2.watermark() == 4
+    }, "");
+    // 3) 半行/坏魔标拒收（恢复通道诚实面）。
+    cs.add("restore_half_rejected", saved > 12 && h2.restore_from(&buf[..saved - 1]).is_none(), "");
+    cs.add("restore_bad_magic", h2.restore_from(b"XXXX").is_none(), "");
+    // 4) 1000 条淘汰实测：第 1001 条入账后 count 恒 1000（环淘汰最旧）。
+    //    零堆 itoa：7 位定宽十进制（"cmd-0000000" 形，行行唯一防相邻去重）。
+    let mut full = CmdHistory::new();
+    let mut i: u32 = 0;
+    while i < (HIST_CAP as u32) + 1 {
+        let mut line = [0u8; 12];
+        line[..4].copy_from_slice(b"cmd-");
+        let mut v = i;
+        for k in (0..7).rev() {
+            line[4 + k] = b'0' + (v % 10) as u8;
+            v /= 10;
+        }
+        let text = core::str::from_utf8(&line).unwrap_or("");
+        let _ = full.record(text);
+        i += 1;
+    }
+    cs.add("eviction_cap_1000", full.count() == HIST_CAP, "");
+    // 5) 回溯边界矩阵：首↑落最新；↑ 到最旧停住；↓ 逐条回；最新按 ↓
+    //    回输入行（Some("")——不环绕不卡死）。
+    let mut h3 = CmdHistory::new();
+    let _ = h3.record("a");
+    let _ = h3.record("b");
+    let _ = h3.record("c");
+    cs.add("recall_matrix", {
+        // 逐步调用即比对（recall 返回的 &str 借用不跨调用存活）。
+        let up1 = matches!(h3.recall(true), Some("c")); // 首↑落最新
+        let up2 = matches!(h3.recall(true), Some("b"));
+        let up3 = matches!(h3.recall(true), Some("a")); // 最旧
+        let up4 = matches!(h3.recall(true), Some("a")); // 停在 a
+        let down1 = matches!(h3.recall(false), Some("b"));
+        let down2 = matches!(h3.recall(false), Some("c"));
+        let down3 = matches!(h3.recall(false), Some("")); // 回输入行
+        up1 && up2 && up3 && up4 && down1 && down2 && down3
+    }, "");
+    // 6) 搜索找遍无更多命中诚实 None（不回绕复活旧命中）。
+    let mut h4 = CmdHistory::new();
+    let _ = h4.record("build all");
+    let _ = h4.record("build docs");
+    cs.add("search_exhaustion", {
+        let first = h4.search_next("build").is_some();
+        let second = h4.search_next("build").is_some();
+        let third = h4.search_next("build").is_none();
+        first && second && third
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn restore_empty_file_ok() {
+        // 只落了魔标+水位、零条目 → 恢复 0 条（合法空历史）。
+        let mut buf = [0u8; 12];
+        buf[..4].copy_from_slice(&CMDHIST_PERSIST_MAGIC);
+        buf[4..12].copy_from_slice(&7u64.to_be_bytes());
+        let mut h = CmdHistory::new();
+        assert_eq!(h.restore_from(&buf), Some(0));
+        assert_eq!(h.watermark(), 7); // 水位吸收（seq 不回退）
+    }
+
+    #[test]
+    fn sensitive_lines_never_persisted() {
+        // 敏感行不落盘（record 拒收在先）→ 恢复通道遇敏感行判坏流。
+        let mut h = CmdHistory::new();
+        let _ = h.record("export PASSWORD=123");
+        let mut buf = [0u8; 128];
+        assert_eq!(save_history(&h, &mut buf), Some(12)); // 零条目：只有头
+        let mut h2 = CmdHistory::new();
+        assert_eq!(h2.restore_from(&buf[..12]), Some(0));
+        assert_eq!(h2.count(), 0);
+    }
+
+    #[test]
+    fn recall_matrix_after_eviction() {
+        // 淘汰发生后回溯游标仍语义正确（游标落点在存活区间内）。
+        let mut h = CmdHistory::new();
+        let _ = h.record("old-1");
+        let _ = h.record("old-2");
+        let _ = h.record("new-1");
+        assert!(matches!(h.recall(true), Some("new-1")));
+        // 大批量灌入淘汰全部旧行后，回溯仍可用且不为空。
+        let mut i: u32 = 0;
+        while i < (HIST_CAP as u32) + 3 {
+            let _ = h.record("fill");
+            i += 1;
+        }
+        assert!(h.recall(true).is_some());
+    }
+}

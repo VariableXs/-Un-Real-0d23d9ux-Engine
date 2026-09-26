@@ -288,3 +288,36 @@ mod deep_tests {
         }
     }
 }
+// ---- F499 lockwall v3：锁屏通知面白名单 / 唤醒即验 / 模式文案表 ----
+
+/// 锁屏通知面（主册「锁屏显示通知」：模式三选（全隐/仅图标/详情）——
+/// 详情模式在锁屏暴露消息内容，属用户显式选择）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LockNotifMode {
+    Hidden,
+    IconsOnly,
+    FullDetail,
+}
+
+pub fn notif_mode_safe_for_lockscreen(m: LockNotifMode, has_private_apps: bool) -> bool {
+    !has_private_apps || m != LockNotifMode::FullDetail
+}
+
+/// 模式文案表（四款锁屏模式人话名——与 v1 name() 对齐守护）。
+pub fn lockwall_names_complete() -> bool {
+    LockWallMode::ALL.iter().all(|m| !m.name().is_empty())
+        && LockWallMode::ALL[0].name() == "static"
+        && LockWallMode::ALL[3].name() == "spotlight-dim"
+}
+
+pub fn run_lockwall_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F499-v3");
+    // 1) 通知面：隐私应用存在时详情模式降级。
+    cs.add("notif_hidden_ok", notif_mode_safe_for_lockscreen(LockNotifMode::Hidden, true), "");
+    cs.add("notif_icons_ok", notif_mode_safe_for_lockscreen(LockNotifMode::IconsOnly, true), "");
+    cs.add("notif_detail_private_blocked", !notif_mode_safe_for_lockscreen(LockNotifMode::FullDetail, true), "");
+    cs.add("notif_detail_allowed", notif_mode_safe_for_lockscreen(LockNotifMode::FullDetail, false), "");
+    // 2) 模式文案表。
+    cs.add("names_complete", lockwall_names_complete(), "");
+    cs
+}

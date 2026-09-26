@@ -344,3 +344,162 @@ mod deep_tests {
         assert_eq!(r.conclusion(), "双声道无声——检查音量、接口或输出设备");
     }
 }
+
+// ===========================================================================
+// 深化 v3（F480）：左右声道轮测序 / 静默诊断决策树深化 / 设备切换
+// 中断账 / 音量档位表 / 测试会话报告（人话小结）
+// ===========================================================================
+
+/// 声道轮测序（主册「逐个测」：左 → 右 → 双 的固定序——顺序错乱
+/// 会让用户漏测；轮测游标按此序推进）。
+pub const CHANNEL_ORDER: [Channel; 3] = [Channel::Left, Channel::Right, Channel::Both];
+
+impl ChannelTest {
+    /// 下一个该测的声道（结果簿里没有的第一个——按 CHANNEL_ORDER 序）。
+    pub fn next_pending(&self) -> Option<Channel> {
+        CHANNEL_ORDER.iter().copied().find(|ch| {
+            !(0..self.n).any(|i| matches!(self.results[i], Some((c, true)) if c == *ch))
+        })
+    }
+
+    /// 轮测进度（已通过数 / 3，permille——「测到哪了」）。
+    pub fn progress_permille(&self) -> u16 {
+        let done = CHANNEL_ORDER.iter().filter(|ch| {
+            (0..self.n).any(|i| matches!(self.results[i], Some((c, true)) if c == **ch))
+        }).count();
+        (done * 1_000 / 3) as u16
+    }
+}
+
+/// 静默诊断决策树深化（v1 silent_diagnosis 的补全：无声 → 三问
+/// （设备在吗/音量对吗/路由对吗）逐层归因——先查最便宜的）。
+pub fn silent_decision_tree(device_alive: bool, volume_permille: u16, routed: bool) -> &'static str {
+    if !device_alive {
+        return "设备未接入——检查插孔或蓝牙连接";
+    }
+    if volume_permille == 0 {
+        return "测试音量为零——拖动音量滑块后重测";
+    }
+    if !routed {
+        return "声音走了别的设备——在音量面板切换输出设备";
+    }
+    "硬件层无声——建议用系统自带声音设置再验证"
+}
+
+/// 设备切换中断账（测试中途拔设备：会话作废 + 已测结果保留待
+/// 新设备重测——不静默清账，也不带病继续）。
+pub struct DeviceSwitchAudit {
+    pub interrupted: bool,
+    pub old_device: Option<u32>,
+}
+
+pub fn on_device_switch(old_device: Option<u32>) -> DeviceSwitchAudit {
+    DeviceSwitchAudit { interrupted: old_device.is_some(), old_device }
+}
+
+/// 音量档位表（主册「测试音量」的档位化：0/25/40(默认)/60/100——
+/// 滑块落点吸附到档位；400 档即 v1 默认）。
+pub const VOLUME_STOPS: [u16; 5] = [0, 250, 400, 600, 1_000];
+
+pub fn volume_nearest_stop(permille: u16) -> u16 {
+    let mut best = VOLUME_STOPS[0];
+    let mut best_d = 1_001u32;
+    for &s in VOLUME_STOPS.iter() {
+        let d = (s as i32 - permille as i32).unsigned_abs();
+        if d < best_d {
+            best_d = d;
+            best = s;
+        }
+    }
+    best
+}
+
+/// 测试会话报告（主册「测试完成有人话小结」：全过 = 设备正常；
+/// 有未过 = 指名哪只声道——小结即账面，不是口号）。
+pub fn session_summary(verified: [bool; 3]) -> &'static str {
+    if verified == [true, true, true] {
+        return "三个声道全部正常——设备路由没问题";
+    }
+    if !verified[0] {
+        return "左声道未通过——检查左耳单元或平衡设置";
+    }
+    if !verified[1] {
+        return "右声道未通过——检查右耳单元或平衡设置";
+    }
+    "双声道正常但立体声混音异常——检查应用音量混合器"
+}
+
+// ---------------------------------------------------------------------------
+// 深化 v3 自检（F480-v3）
+// ---------------------------------------------------------------------------
+
+pub fn run_chantest_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F480-v3");
+    // 1) 轮测序：先左、再右、再双；进度随通过推进。
+    let mut t = ChannelTest::new(7);
+    cs.add("order_first_left", t.next_pending() == Some(Channel::Left), "");
+    let _ = t.verify_channel(Channel::Left, Some(7));
+    cs.add("order_then_right", t.next_pending() == Some(Channel::Right), "");
+    let _ = t.verify_channel(Channel::Right, Some(7));
+    cs.add("order_then_both", t.next_pending() == Some(Channel::Both), "");
+    let _ = t.verify_channel(Channel::Both, Some(7));
+    cs.add("order_done_none", t.next_pending().is_none(), "");
+    cs.add("progress_full", t.progress_permille() == 1_000, "");
+    // 2) 诊断决策树：逐层归因（设备→音量→路由→硬件）。
+    cs.add("tree_device", silent_decision_tree(false, 400, true).contains("设备未接入"), "");
+    cs.add("tree_volume", silent_decision_tree(true, 0, true).contains("音量为零"), "");
+    cs.add("tree_route", silent_decision_tree(true, 400, false).contains("别的设备"), "");
+    cs.add("tree_hw_last", silent_decision_tree(true, 400, true).contains("硬件层"), "");
+    // 3) 设备切换：中断账保留旧设备号。
+    let sw = on_device_switch(Some(7));
+    cs.add("switch_interrupt", sw.interrupted && sw.old_device == Some(7), "");
+    cs.add("switch_cold_start", !on_device_switch(None).interrupted, "");
+    // 4) 音量档位吸附：400 默认档、越界就近。
+    cs.add("volume_stops", VOLUME_STOPS.contains(&400), "");
+    cs.add("volume_snap_400", volume_nearest_stop(380) == 400, "");
+    cs.add("volume_snap_0", volume_nearest_stop(100) == 0, "");
+    cs.add("volume_snap_1000", volume_nearest_stop(900) == 1_000, "");
+    // 5) 会话小结：全过/左坏/右坏/混音，四话各归其位。
+    cs.add("summary_all_ok", session_summary([true, true, true]).contains("全部正常"), "");
+    cs.add("summary_left", session_summary([false, true, true]).contains("左声道"), "");
+    cs.add("summary_right", session_summary([true, false, true]).contains("右声道"), "");
+    cs.add("summary_mixed", session_summary([true, true, false]).contains("立体声"), "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn progress_partial_steps() {
+        let mut t = ChannelTest::new(1);
+        assert_eq!(t.progress_permille(), 0);
+        let _ = t.verify_channel(Channel::Left, Some(1));
+        assert_eq!(t.progress_permille(), 333);
+        let _ = t.verify_channel(Channel::Right, Some(1));
+        assert_eq!(t.progress_permille(), 666);
+    }
+
+    #[test]
+    fn verify_wrong_device_is_failure() {
+        let mut t = ChannelTest::new(7);
+        // 路由到别的设备 = 该声道未通过（结果簿记 false）。
+        assert!(!t.verify_channel(Channel::Left, Some(9)));
+        assert_eq!(t.next_pending(), Some(Channel::Left), "未通过仍待测");
+    }
+
+    #[test]
+    fn volume_stops_strictly_ordered() {
+        for i in 1..VOLUME_STOPS.len() {
+            assert!(VOLUME_STOPS[i] > VOLUME_STOPS[i - 1]);
+        }
+    }
+
+    #[test]
+    fn summary_never_empty() {
+        for v in [[true, true, true], [false, false, false], [true, false, false]] {
+            assert!(!session_summary(v).is_empty());
+        }
+    }
+}

@@ -388,3 +388,85 @@ mod deep_tests {
         assert!(ap.screen(0).is_none());
     }
 }
+// ---- F462 setwall v3：幻灯片换片间隔 / 多屏一致性审计 / 填充式全表名 ----
+
+/// 幻灯片模式（主册「幻灯片壁纸」：多图轮播间隔与顺序——间隔下限
+/// 30s（过短频闪伤眼）、顺序 = 插入序循环）。
+pub const SLIDESHOW_MIN_INTERVAL_S: u64 = 30;
+
+pub struct Slideshow {
+    pics: [u64; 8],
+    n: usize,
+    pub interval_s: u64,
+    cursor: usize,
+}
+
+impl Slideshow {
+    pub const fn new(interval_s: u64) -> Self {
+        Slideshow { pics: [0; 8], n: 0, interval_s: if interval_s < SLIDESHOW_MIN_INTERVAL_S { SLIDESHOW_MIN_INTERVAL_S } else { interval_s }, cursor: 0 }
+    }
+
+    pub fn add(&mut self, pic_key: u64) -> bool {
+        if self.n >= 8 || self.pics.contains(&pic_key) {
+            return false;
+        }
+        self.pics[self.n] = pic_key;
+        self.n += 1;
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 下一张（循环游标——播完从头再来）。
+    pub fn next(&mut self) -> Option<u64> {
+        if self.n == 0 {
+            return None;
+        }
+        let cur = self.pics[self.cursor];
+        self.cursor = (self.cursor + 1) % self.n;
+        Some(cur)
+    }
+}
+
+pub fn run_setwall_v3_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F462-v3");
+    // 1) 幻灯片：间隔下限钳制、去重、循环游标。
+    let mut sl = Slideshow::new(5);
+    cs.add("interval_clamped", sl.interval_s == SLIDESHOW_MIN_INTERVAL_S, "");
+    let _ = sl.add(0xAA);
+    let _ = sl.add(0xBB);
+    let _ = sl.add(0xAA); // 去重。
+    cs.add("slideshow_dedup", sl.count() == 2, "");
+    cs.add("slideshow_cycle", sl.next() == Some(0xAA) && sl.next() == Some(0xBB) && sl.next() == Some(0xAA), "");
+    cs.add("slideshow_empty_none", Slideshow::new(60).next().is_none(), "");
+    // 2) 填充式全表名（五式人话名互异——设置页下拉不重名）。
+    cs.add("fill_names_unique", {
+        let names: [&str; 5] = [FillMode::ALL[0].name(), FillMode::ALL[1].name(), FillMode::ALL[2].name(), FillMode::ALL[3].name(), FillMode::ALL[4].name()];
+        (0..5).all(|i| (i + 1..5).all(|j| names[i] != names[j]))
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod v3_tests {
+    use super::*;
+
+    #[test]
+    fn slideshow_interval_never_below_min() {
+        assert_eq!(Slideshow::new(10).interval_s, SLIDESHOW_MIN_INTERVAL_S);
+        assert_eq!(Slideshow::new(120).interval_s, 120);
+    }
+
+    #[test]
+    fn slideshow_cursor_wraps_forever() {
+        let mut sl = Slideshow::new(60);
+        let _ = sl.add(1);
+        let _ = sl.add(2);
+        for _ in 0..10 {
+            let v = sl.next();
+            assert!(v == Some(1) || v == Some(2));
+        }
+    }
+}

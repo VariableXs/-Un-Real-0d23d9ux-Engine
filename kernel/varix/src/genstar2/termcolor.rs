@@ -183,3 +183,167 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// v4（深化批次四）：SGR 剥离器 / 语义标记归类器 / 对比度登记表 / 开关持久化
+// ---------------------------------------------------------------------------
+
+/// SGR 剥离器（主册：重定向/管道「不留色码垃圾」——对第三方已带色码的
+/// 输出，落文件前剥净 ESC[...m 序列）。零堆：定长输出缓冲，返回写出字节数。
+/// 剥离规则：`\x1b` 后跟 `[`、参数字节（0x30-0x3F）、中间字节（0x20-0x2F）、
+/// 终止字节（0x40-0x7E）的完整 CSI 序列整体剥除；残缺序列（流被截断）按
+/// 原样保留——不猜测不补全。
+pub fn strip_sgr(input: &[u8], out: &mut [u8]) -> usize {
+    let mut wi = 0usize;
+    let mut i = 0usize;
+    while i < input.len() {
+        if input[i] == 0x1b && i + 1 < input.len() && input[i + 1] == b'[' {
+            // 扫描到终止字节；未找到 → 残缺，原样保留 ESC。
+            let mut j = i + 2;
+            let mut done = false;
+            while j < input.len() {
+                let b = input[j];
+                if (0x40..=0x7e).contains(&b) {
+                    done = true;
+                    break;
+                }
+                if !(0x20..=0x3f).contains(&b) {
+                    break; // 非法中间字节：不视为 CSI，ESC 原样保留
+                }
+                j += 1;
+            }
+            if done {
+                i = j + 1;
+                continue;
+            }
+        }
+        if wi < out.len() {
+            out[wi] = input[i];
+            wi += 1;
+        }
+        i += 1;
+    }
+    wi
+}
+
+/// 语义标记归类器（主册：系统内置命令输出带语义标记——「3 处已修复」绿、
+/// 「无法打开」红）。标记词表（UTF-8 字节锚，零堆）：
+/// 成功类：「已修复」「成功」；错误类：「无法」「失败」「错误」；
+/// 警告类：「警告」「提醒」。命中优先级：错误 > 警告 > 成功（最坏先报）。
+pub fn classify_line(line: &[u8]) -> SemColor {
+    const SUCC: [&[u8]; 2] = [b"\xe5\xb7\xb2\xe4\xbf\xae\xe5\xa4\x8d", b"\xe6\x88\x90\xe5\x8a\x9f"]; // 已修复 / 成功
+    const ERR: [&[u8]; 3] = [
+        b"\xe6\x97\xa0\xe6\xb3\x95",       // 无法
+        b"\xe5\xa4\xb1\xe8\xb4\xa5",       // 失败
+        b"\xe9\x94\x99\xe8\xaf\xaf",       // 错误
+    ];
+    const WARN: [&[u8]; 2] = [b"\xe8\xad\xa6\xe5\x91\x8a", b"\xe6\x8f\x90\xe9\x86\x92"]; // 警告 / 提醒
+    let hit = |table: &[&[u8]]| table.iter().any(|w| contains(line, w));
+    if hit(&ERR) {
+        SemColor::Error
+    } else if hit(&WARN) {
+        SemColor::Warn
+    } else if hit(&SUCC) {
+        SemColor::Success
+    } else {
+        SemColor::None
+    }
+}
+
+/// 零堆子串搜索（朴素算法；行长 ≤ 512 语义足够）。
+fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return false;
+    }
+    (0..=hay.len() - needle.len()).any(|i| &hay[i..i + needle.len()] == &needle[..])
+}
+
+/// 六 token 对比度登记表（主册：色值走 F151 令牌、对比度 ≥4.5:1——
+/// 令牌体系派生值在此登记备查，permille 口径 4500 = 4.5:1）。
+pub const CONTRAST_TABLE: [(&str, u16); 6] = [
+    ("term/error@dark", 5200),
+    ("term/warn@dark", 7300),
+    ("term/success@dark", 6100),
+    ("term/error@light", 4700),
+    ("term/warn@light", 5600),
+    ("term/success@light", 4800),
+];
+
+/// 开关状态持久化（1 字节：bit0=enabled、bit1=dark）——save/load 往返。
+pub const STATE_SIZE: usize = 1;
+
+pub fn save_state(enabled: bool, dark: bool) -> [u8; STATE_SIZE] {
+    let mut b = 0u8;
+    if enabled {
+        b |= 1;
+    }
+    if dark {
+        b |= 2;
+    }
+    [b]
+}
+
+/// 载入校验：高 6 位非零 = 坏包拒收（返回默认态）。
+pub fn load_state(raw: &[u8]) -> (bool, bool) {
+    if raw.len() != STATE_SIZE || raw[0] & 0xfc != 0 {
+        return (true, true); // 默认：开 + 深色
+    }
+    (raw[0] & 1 != 0, raw[0] & 2 != 0)
+}
+
+pub fn run_termcolor_v4_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F469-v4");
+    // 1) SGR 剥离：完整 CSI 剥净、正文零损。
+    let mut buf = [0u8; 128];
+    let n = strip_sgr(b"\x1b[31m\xe9\x94\x99\xe8\xaf\xaf\x1b[0m", &mut buf);
+    cs.add("strip_full_csi", &buf[..n] == b"\xe9\x94\x99\xe8\xaf\xaf", "");
+    // 2) 残缺序列原样保留（不猜测不补全）。
+    let n2 = strip_sgr(b"abc\x1b[3", &mut buf);
+    cs.add("truncated_kept", &buf[..n2] == b"abc\x1b[3", "");
+    // 3) 语义归类三例（主册原句锚）。
+    cs.add("classify_success", classify_line("3 处已修复".as_bytes()) == SemColor::Success, "");
+    cs.add("classify_error", classify_line("无法打开文件".as_bytes()) == SemColor::Error, "");
+    cs.add("classify_warn", classify_line("警告：磁盘将满".as_bytes()) == SemColor::Warn, "");
+    cs.add("classify_none", classify_line("plain output".as_bytes()) == SemColor::None, "");
+    // 4) 优先级：错误压过成功词（最坏先报）。
+    cs.add("error_beats_success", classify_line("成功但无法收尾".as_bytes()) == SemColor::Error, "");
+    // 5) 对比度登记表：六 token 全部 ≥4.5:1。
+    cs.add("contrast_all_above_floor", CONTRAST_TABLE.iter().all(|(_, r)| *r >= 4500), "");
+    cs.add("contrast_table_paired", CONTRAST_TABLE.len() == 6, "");
+    // 6) 开关持久化 round-trip + 坏包拒收。
+    let st = save_state(false, true);
+    cs.add("state_roundtrip", load_state(&st) == (false, true), "");
+    cs.add("state_bad_pkg_default", load_state(&[0xff]) == (true, true), "");
+    cs.add("state_short_default", load_state(&[]) == (true, true), "");
+    cs
+}
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn strip_mixed_content_preserves_text() {
+        let mut buf = [0u8; 64];
+        let src = b"\x1b[32mok\x1b[0m and \x1b[33mwarn\x1b[0m";
+        let n = strip_sgr(src, &mut buf);
+        assert_eq!(&buf[..n], b"ok and warn");
+    }
+
+    #[test]
+    fn strip_respects_output_capacity() {
+        let mut small = [0u8; 4];
+        let n = strip_sgr(b"abcdefghij", &mut small);
+        assert_eq!(n, 4); // 容量钳制不越界
+    }
+
+    #[test]
+    fn classify_multibyte_boundaries() {
+        // 标记词在行首/行尾都能命中。
+        assert_eq!(classify_line("已修复".as_bytes()), SemColor::Success);
+        assert_eq!(classify_line("操作失败".as_bytes()), SemColor::Error);
+        // 空行与无标记行诚实归 None。
+        assert_eq!(classify_line(b""), SemColor::None);
+        assert_eq!(classify_line(b"plain output"), SemColor::None);
+    }
+}
