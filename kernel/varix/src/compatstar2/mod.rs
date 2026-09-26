@@ -38,11 +38,16 @@
 //!   如实翻译（F023）、NULL 语义如实返回（F021）、软失败策略公开（F024）。
 //! - **诚实边界**：实机/QEMU 类判据（录屏/秒表/对拍）登记「随闸门补测」，
 //!   域内以判据账本 + 模型对拍面承载，不虚构实测数字。
+//!
+//! **深化分层**：主层（run_*_checks）= 主册判据验收面；批次一深化
+//! （run_*_deep）= 【设计细节】协议语义面；批次二深化（deep/f0NNd.rs）=
+//! 【功能定义】「全语义对齐」的执行与治理面。三层并行入块，全绿才亮。
 
 pub mod buildchain;
 pub mod codepage;
 pub mod compatledger;
 pub mod compatwiz;
+pub mod deep;
 pub mod dpistate;
 pub mod gamefront;
 pub mod imm32;
@@ -86,34 +91,37 @@ pub const DOMAIN_NAMES: [&str; 20] = [
 
 /// 域聚合自检（robust.rs 单行注册；与 secstar2 同款——容量纪律：
 /// 单聚合永不超容，域内逐模块红绿在此子行展开）。
-/// 深化层（run_*_deep）与主层并行入块：主层判据 + 深化语义层双双全绿才亮。
+/// 三层并行入块：主层判据 + 批次一深化（run_*_deep）+ 批次二深化
+/// （deep/f0NNd）三层全绿才亮。
 pub fn run_compatstar2_checks() -> crate::checks::CheckSet {
     let mut set = crate::checks::CheckSet::new("COMPAT-S2");
-    let blocks: [(&'static str, crate::checks::CheckSet, crate::checks::CheckSet); 20] = [
-        ("F021", memalign::run_memalign_checks(), memalign::run_memalign_deep()),
-        ("F022", timefam::run_timefam_checks(), timefam::run_timefam_deep()),
-        ("F023", winsock::run_winsock_checks(), winsock::run_winsock_deep()),
-        ("F024", tlsstore::run_tlsstore_checks(), tlsstore::run_tlsstore_deep()),
-        ("F025", printpdf::run_printpdf_checks(), printpdf::run_printpdf_deep()),
-        ("F026", winmm::run_winmm_checks(), winmm::run_winmm_deep()),
-        ("F027", imm32::run_imm32_checks(), imm32::run_imm32_deep()),
-        ("F028", dpistate::run_dpistate_checks(), dpistate::run_dpistate_deep()),
-        ("F029", moneum::run_moneum_checks(), moneum::run_moneum_deep()),
-        ("F030", installr::run_installr_checks(), installr::run_installr_deep()),
-        ("F031", uninstall::run_uninstall_checks(), uninstall::run_uninstall_deep()),
-        ("F032", runtimes::run_runtimes_checks(), runtimes::run_runtimes_deep()),
-        ("F033", buildchain::run_buildchain_checks(), buildchain::run_buildchain_deep()),
-        ("F034", codepage::run_codepage_checks(), codepage::run_codepage_deep()),
-        ("F035", compatwiz::run_compatwiz_checks(), compatwiz::run_compatwiz_deep()),
-        ("F036", stardraft::run_stardraft_checks(), stardraft::run_stardraft_deep()),
-        ("F037", peblockui::run_peblockui_checks(), peblockui::run_peblockui_deep()),
-        ("F038", isolevel::run_isolevel_checks(), isolevel::run_isolevel_deep()),
-        ("F039", gamefront::run_gamefront_checks(), gamefront::run_gamefront_deep()),
-        ("F040", compatledger::run_compatledger_checks(), compatledger::run_compatledger_deep()),
+    let blocks: [(&'static str, crate::checks::CheckSet, crate::checks::CheckSet, crate::checks::CheckSet); 20] = [
+        ("F021", memalign::run_memalign_checks(), memalign::run_memalign_deep(), deep::f021d::run_f021d_checks()),
+        ("F022", timefam::run_timefam_checks(), timefam::run_timefam_deep(), deep::f022d::run_f022d_checks()),
+        ("F023", winsock::run_winsock_checks(), winsock::run_winsock_deep(), deep::f023d::run_f023d_checks()),
+        ("F024", tlsstore::run_tlsstore_checks(), tlsstore::run_tlsstore_deep(), deep::f024d::run_f024d_checks()),
+        ("F025", printpdf::run_printpdf_checks(), printpdf::run_printpdf_deep(), deep::f025d::run_f025d_checks()),
+        ("F026", winmm::run_winmm_checks(), winmm::run_winmm_deep(), deep::f026d::run_f026d_checks()),
+        ("F027", imm32::run_imm32_checks(), imm32::run_imm32_deep(), deep::f027d::run_f027d_checks()),
+        ("F028", dpistate::run_dpistate_checks(), dpistate::run_dpistate_deep(), deep::f028d::run_f028d_checks()),
+        ("F029", moneum::run_moneum_checks(), moneum::run_moneum_deep(), deep::f029d::run_f029d_checks()),
+        ("F030", installr::run_installr_checks(), installr::run_installr_deep(), deep::f030d::run_f030d_checks()),
+        ("F031", uninstall::run_uninstall_checks(), uninstall::run_uninstall_deep(), deep::f031d::run_f031d_checks()),
+        ("F032", runtimes::run_runtimes_checks(), runtimes::run_runtimes_deep(), deep::f032d::run_f032d_checks()),
+        ("F033", buildchain::run_buildchain_checks(), buildchain::run_buildchain_deep(), deep::f033d::run_f033d_checks()),
+        ("F034", codepage::run_codepage_checks(), codepage::run_codepage_deep(), deep::f034d::run_f034d_checks()),
+        ("F035", compatwiz::run_compatwiz_checks(), compatwiz::run_compatwiz_deep(), deep::f035d::run_f035d_checks()),
+        ("F036", stardraft::run_stardraft_checks(), stardraft::run_stardraft_deep(), deep::f036d::run_f036d_checks()),
+        ("F037", peblockui::run_peblockui_checks(), peblockui::run_peblockui_deep(), deep::f037d::run_f037d_checks()),
+        ("F038", isolevel::run_isolevel_checks(), isolevel::run_isolevel_deep(), deep::f038d::run_f038d_checks()),
+        ("F039", gamefront::run_gamefront_checks(), gamefront::run_gamefront_deep(), deep::f039d::run_f039d_checks()),
+        ("F040", compatledger::run_compatledger_checks(), compatledger::run_compatledger_deep(), deep::f040d::run_f040d_checks()),
     ];
-    for (tag, main, deep) in blocks {
-        let passed = main.all_passed() && !main.truncated() && deep.all_passed() && !deep.truncated();
-        set.add(tag, passed, if passed { "" } else { "main-or-deep red" });
+    for (tag, main, deep1, deep2) in blocks {
+        let passed = main.all_passed() && !main.truncated()
+            && deep1.all_passed() && !deep1.truncated()
+            && deep2.all_passed() && !deep2.truncated();
+        set.add(tag, passed, if passed { "" } else { "main-or-deep1-or-deep2 red" });
     }
     set
 }
