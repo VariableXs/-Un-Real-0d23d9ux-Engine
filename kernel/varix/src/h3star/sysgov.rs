@@ -3819,3 +3819,158 @@ mod deep11_tests {
         assert_eq!(vt.expand("云山").items.len(), 1, "重登记覆盖（模板唯一源）");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层十二 · 协议版本化 + 预置应用清单导出 + 体积配额预警
+// ---------------------------------------------------------------------------
+
+/// 卸载协议版本化（十四章「接口十年不变」的卸载域落法）：卸载流输
+/// 出（报告/清单/历史行）带格式版本号——读取端按版本分派解析，未知
+/// 版本显性拒绝（不静默猜——向后兼容要走流程）。当前 V1。
+pub struct ProtocolVersion;
+
+pub const PROTOCOL_VERSION: u32 = 1;
+
+impl ProtocolVersion {
+    /// 输出头部（版本钉死在首行——读取端先看版本再解析）。
+    pub fn header() -> String {
+        alloc::format!("vxapp-uninstall-protocol/{}\n", PROTOCOL_VERSION)
+    }
+
+    /// 读取端版本分派：认识 → 放行；不认识 → 显性拒绝（提示升级）。
+    pub fn accept(header_line: &str) -> bool {
+        header_line
+            == alloc::format!("vxapp-uninstall-protocol/{}", PROTOCOL_VERSION)
+    }
+
+    /// 拒绝人话（三要素：发生了什么/为什么/下一步）。
+    pub fn reject_text(header_line: &str) -> String {
+        alloc::format!(
+            "无法读取：卸载数据格式为「{}」，本机支持「vxapp-uninstall-protocol/{}」——请升级系统后再导入",
+            header_line.trim(),
+            PROTOCOL_VERSION
+        )
+    }
+}
+
+/// 预置应用清单导出（重装/迁移场景的开放性面）：用户已装应用清单
+/// 人话行导出——重装后按清单一键找回（数据开放纪律：用户的应用
+/// 账是用户的，不给锁死）。含体积分（装回时心里有数）。
+pub struct PreinstallManifest {
+    /// (应用, 体积 MB)。
+    pub apps: Vec<(String, u64)>,
+}
+
+impl PreinstallManifest {
+    pub fn export(&self) -> String {
+        let mut s = ProtocolVersion::header();
+        for (a, m) in &self.apps {
+            s.push_str(&alloc::format!("{}\t{}MB\n", a, m));
+        }
+        s
+    }
+
+    /// 总体积（重装预算面）。
+    pub fn total_mb(&self) -> u64 {
+        self.apps.iter().map(|(_, m)| m).sum()
+    }
+}
+
+/// 卸载体积配额预警（诚实资源占用的预警面）：磁盘空闲低于阈值时
+/// 卸载面板出预警条（腾出空间的最佳时机——帮用户在爆盘前行动）；
+/// 三档：充裕/留意/告急，判线唯一源。
+pub struct QuotaWarn;
+
+/// 配额判线（空闲 MB）：留意线 / 告急线。
+pub const QUOTA_NOTICE_MB: u64 = 10_000;
+pub const QUOTA_CRITICAL_MB: u64 = 2_000;
+
+impl QuotaWarn {
+    pub fn level(free_mb: u64) -> &'static str {
+        if free_mb < QUOTA_CRITICAL_MB {
+            "告急"
+        } else if free_mb < QUOTA_NOTICE_MB {
+            "留意"
+        } else {
+            "充裕"
+        }
+    }
+
+    /// 预警条文案（告急才出——充裕不骚扰）。
+    pub fn banner(free_mb: u64) -> Option<String> {
+        match Self::level(free_mb) {
+            "告急" => Some(alloc::format!(
+                "磁盘仅剩 {}MB——建议卸载不常用的大体积应用",
+                free_mb
+            )),
+            "留意" => Some(alloc::format!("磁盘剩 {}MB，可留意大体积应用", free_mb)),
+            _ => None,
+        }
+    }
+}
+
+/// 深化层十二自检（版本化 / 预置清单 / 配额）。
+pub fn run_sysgov_deep12_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F342-346-deep12");
+
+    // 1. 协议版本化：头部带版本、同版本放行、异版本显性拒绝。
+    let head = ProtocolVersion::header();
+    set.add(
+        "protocol header versioned",
+        head.contains("vxapp-uninstall-protocol/1") && ProtocolVersion::accept("vxapp-uninstall-protocol/1"),
+        "",
+    );
+    let reject = ProtocolVersion::reject_text("vxapp-uninstall-protocol/9");
+    set.add(
+        "unknown version rejected with upgrade hint",
+        !ProtocolVersion::accept("vxapp-uninstall-protocol/9") && reject.contains("升级"),
+        "",
+    );
+
+    // 2. 预置清单导出：版本头 + 体积分行 + 总体积。
+    let pm = PreinstallManifest { apps: vec![(String::from("画板Pro"), 97), (String::from("小算盘"), 4)] };
+    let exported = pm.export();
+    set.add(
+        "preinstall manifest export",
+        exported.contains("protocol/1") && exported.contains("画板Pro\t97MB") && pm.total_mb() == 101,
+        "",
+    );
+
+    // 3. 配额三档：判线钉死、告急才出横幅（充裕不骚扰）。
+    set.add(
+        "quota three levels",
+        QuotaWarn::level(50_000) == "充裕"
+            && QuotaWarn::level(5_000) == "留意"
+            && QuotaWarn::level(1_000) == "告急"
+            && QuotaWarn::banner(50_000).is_none()
+            && QuotaWarn::banner(1_000).map(|b| b.contains("建议卸载")).unwrap_or(false),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn protocol_version_pinned() {
+        assert_eq!(PROTOCOL_VERSION, 1, "当前协议 V1 钉死");
+    }
+
+    #[test]
+    fn quota_boundaries() {
+        // 恰在判线上的档位归属（< 严格小于语义）。
+        assert_eq!(QuotaWarn::level(QUOTA_NOTICE_MB), "充裕", "恰达留意线仍算充裕");
+        assert_eq!(QuotaWarn::level(QUOTA_CRITICAL_MB), "留意", "恰达告急线仍算留意");
+    }
+
+    #[test]
+    fn empty_manifest_export_header_only() {
+        let pm = PreinstallManifest { apps: Vec::new() };
+        let out = pm.export();
+        assert_eq!(out, ProtocolVersion::header(), "空清单导出仅版本头");
+    }
+}

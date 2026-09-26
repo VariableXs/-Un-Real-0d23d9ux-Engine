@@ -664,3 +664,106 @@ mod deep3_tests {
         assert_eq!(UnsavedBadge::value(&ledger), 0, "关闭文档徽标即时回落");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 草稿自动保存间隔账（防丢失的时间维度）
+// ---------------------------------------------------------------------------
+
+/// 草稿自动保存间隔账（「防丢失是最高优先级」的时间面）：逐文档记录
+/// (上次自动保存时刻, 未保存编辑次数)——自动保存触发判定：距上次 ≥
+/// 间隔线且脏 → 存草稿（时间重置）；用户连续编辑不卡顿（保存动作
+/// 在账面模拟，不阻塞交互——十三章代价红线）。
+pub struct AutosaveLedger {
+    /// (文档, 上次保存时刻, 未保存编辑数)。
+    pub docs: Vec<(String, u64, u32)>,
+    pub saves: u64,
+}
+
+/// 自动保存间隔线（ms——10s 一存，粒度与「不是每敲一字记一步」对齐）。
+pub const AUTOSAVE_INTERVAL_MS: u64 = 10_000;
+
+impl AutosaveLedger {
+    pub fn new() -> AutosaveLedger {
+        AutosaveLedger { docs: Vec::new(), saves: 0 }
+    }
+
+    pub fn touch(&mut self, name: &str, at_ms: u64) {
+        match self.docs.iter_mut().find(|(n, _, _)| n == name) {
+            Some((_, _, edits)) => *edits += 1,
+            None => self.docs.push((String::from(name), at_ms, 1)),
+        }
+    }
+
+    /// 采样：脏且距上次 ≥ 间隔 → 存草稿（计数+时间重置——返回是否存了）。
+    pub fn sample(&mut self, name: &str, at_ms: u64) -> bool {
+        match self.docs.iter_mut().find(|(n, _, _)| n == name) {
+            Some((_, last, edits)) => {
+                if *edits > 0 && at_ms.saturating_sub(*last) >= AUTOSAVE_INTERVAL_MS {
+                    *last = at_ms;
+                    *edits = 0;
+                    self.saves += 1;
+                    true
+                } else {
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// 未保存编辑合计（数据面——丢的最坏情况有多大）。
+    pub fn pending_edits(&self) -> u32 {
+        self.docs.iter().map(|(_, _, e)| e).sum()
+    }
+}
+
+impl Default for AutosaveLedger {
+    fn default() -> AutosaveLedger {
+        AutosaveLedger::new()
+    }
+}
+
+/// 深化层三自检（自动保存间隔）。
+pub fn run_saveask_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F310-deep4");
+
+    // 1. 编辑 → 不足间隔不存；过间隔采样即存（计数+时间重置）。
+    let mut al = AutosaveLedger::new();
+    al.touch("稿子", 0);
+    al.touch("稿子", 100);
+    let early = al.sample("稿子", 5000);
+    let due = al.sample("稿子", 10000);
+    set.add(
+        "autosave interval gate",
+        !early && due && al.saves == 1 && al.pending_edits() == 0,
+        "",
+    );
+
+    // 2. 不脏不存（零编辑不触发——空转零成本）。
+    let idle = al.sample("稿子", 30000);
+    set.add("clean doc not saved", !idle, "");
+
+    // 3. 未知文档采样拒绝（不虚报）。
+    set.add("unknown doc rejected", !al.sample("幽灵", 40000), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn autosave_interval_pinned() {
+        assert_eq!(AUTOSAVE_INTERVAL_MS, 10_000, "自动保存 10s 间隔钉死");
+    }
+
+    #[test]
+    fn pending_edits_sums() {
+        let mut al = AutosaveLedger::new();
+        al.touch("a", 0);
+        al.touch("a", 1);
+        al.touch("b", 2);
+        assert_eq!(al.pending_edits(), 3, "跨文档未保存编辑合计");
+    }
+}

@@ -2506,4 +2506,177 @@ mod deep11_tests {
     }
 }
 
+// ---------------------------------------------------------------------------
+// 深化层十二 · 转换管道 + 书签频率 + 超长输入拒绝
+// ---------------------------------------------------------------------------
+
+/// 转换管道（normal→quote→audit 一条链——管道语义）：调用方给路径 +
+/// 味，管道依次走归一化、引号化、审计留痕，返回成品；各环节职责单
+/// 一（不互相模仿），审计环节拿到的就是最终串（记的与用户看到的一致）。
+pub struct ConvertPipeline<'a> {
+    pub audit: &'a mut ConvertAuditTrail,
+}
+
+/// 管道结果 (成品串, 是否脱敏)。
+pub struct PipeOut {
+    pub rendered: String,
+    pub redacted: bool,
+}
+
+impl<'a> ConvertPipeline<'a> {
+    pub fn run(&mut self, at_ms: u64, path: &str, flavor: TerminalFlavor) -> PipeOut {
+        let rendered = quote_for(path, flavor);
+        let redacted = path.contains("token=") || path.contains("pwd=");
+        self.audit.record(at_ms, path, flavor);
+        PipeOut { rendered, redacted }
+    }
+}
+
+/// 书签使用频率账（收藏夹排序的数据面）：书签命中计数——排序按
+/// 计数降序 → 字典序（全确定）；未命中过的书签排最后（不消失——
+/// 收藏是用户的，不用不删）。
+#[derive(Default)]
+pub struct BookmarkFreq {
+    pub counts: Vec<(String, u32)>,
+}
+
+impl BookmarkFreq {
+    pub fn hit(&mut self, name: &str) {
+        match self.counts.iter_mut().find(|(n, _)| n == name) {
+            Some((_, c)) => *c += 1,
+            None => self.counts.push((String::from(name), 1)),
+        }
+    }
+
+    pub fn count_of(&self, name: &str) -> u32 {
+        self.counts.iter().find(|(n, _)| n == name).map(|(_, c)| *c).unwrap_or(0)
+    }
+
+    /// 排序收藏夹：命中过的按计数降序 → 字典序；零命中书签追加在后
+    /// （字典序）。
+    pub fn ordered<'b>(&self, all: &[&'b str]) -> Vec<&'b str> {
+        let mut used: Vec<&'b str> = all
+            .iter()
+            .filter(|a| self.count_of(a) > 0)
+            .copied()
+            .collect();
+        used.sort_by(|a, b| self.count_of(b).cmp(&self.count_of(a)).then(a.cmp(b)));
+        let mut unused: Vec<&'b str> =
+            all.iter().filter(|a| self.count_of(a) == 0).copied().collect();
+        unused.sort_unstable();
+        used.extend(unused);
+        used
+    }
+}
+
+/// 超长输入拒绝（DoS 面）：路径输入超长（>4096 字）直接拒绝（不尝
+/// 试处理——防御边界在入口）；拒绝计数留痕（异常显性化）。
+pub struct InputGuard {
+    pub rejections: u64,
+}
+
+pub const MAX_INPUT_CHARS: usize = 4096;
+
+impl InputGuard {
+    pub fn new() -> InputGuard {
+        InputGuard { rejections: 0 }
+    }
+
+    /// 闸门：超长拒绝（计数留痕），正常放行。
+    pub fn gate(&mut self, path: &str) -> bool {
+        if path.chars().count() > MAX_INPUT_CHARS {
+            self.rejections += 1;
+            return false;
+        }
+        true
+    }
+}
+
+impl Default for InputGuard {
+    fn default() -> InputGuard {
+        InputGuard::new()
+    }
+}
+
+/// 深化层十二自检（管道 / 频率 / 超长拒绝）。
+pub fn run_copypath_deep12_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep12");
+
+    // 1. 管道三环：归一化+引号化+审计留痕一次到位（记的=看到的）。
+    let mut trail = ConvertAuditTrail::new(8);
+    trail.register_redaction("token=", "token=█");
+    let out;
+    {
+        let mut pipe = ConvertPipeline { audit: &mut trail };
+        out = pipe.run(0, "C:/a b/x.vx", TerminalFlavor::Posix);
+    }
+    set.add(
+        "pipeline render plus audit",
+        out.rendered == "'C:/a b/x.vx'" && !out.redacted && trail.len() == 1,
+        "",
+    );
+
+    // 2. 管道脱敏标记：凭据路径标记 redacted（审计面脱敏入账——红线沿用）。
+    let out2;
+    {
+        let mut pipe = ConvertPipeline { audit: &mut trail };
+        out2 = pipe.run(1, "C:/a?token=sec", TerminalFlavor::Posix);
+    }
+    set.add(
+        "pipeline flags credentials",
+        out2.redacted && trail.entries[1].1.contains("token=█"),
+        "",
+    );
+
+    // 3. 书签频率：命中计数 + 排序（高频在前、零命中殿后）。
+    let mut bf = BookmarkFreq::default();
+    bf.hit("画稿");
+    bf.hit("画稿");
+    bf.hit("截图");
+    let ordered = bf.ordered(&["截图", "画稿", "未用的", "归档"]);
+    set.add(
+        "bookmark freq ordering",
+        bf.count_of("画稿") == 2
+            && ordered == alloc::vec!["画稿", "截图", "归档", "未用的"],
+        "",
+    );
+
+    // 4. 超长输入拒绝：4097 字拒（计数留痕）、4096 字放行（边界）。
+    let mut g = InputGuard::new();
+    let big = "长".repeat(4097);
+    let boundary = "长".repeat(4096);
+    set.add(
+        "input guard boundary",
+        !g.gate(&big) && g.rejections == 1 && g.gate(&boundary),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep12_tests {
+    use super::*;
+
+    #[test]
+    fn freq_unknown_zero() {
+        let bf = BookmarkFreq::default();
+        assert_eq!(bf.count_of("没点过"), 0);
+    }
+
+    #[test]
+    fn pipeline_empty_audit_ok() {
+        let mut trail = ConvertAuditTrail::new(2);
+        let mut pipe = ConvertPipeline { audit: &mut trail };
+        let _ = pipe.run(0, "C:/x", TerminalFlavor::Cmd);
+        assert_eq!(trail.len(), 1);
+    }
+
+    #[test]
+    fn guard_exact_boundary_passes() {
+        let mut g = InputGuard::new();
+        assert!(g.gate(&"a".repeat(MAX_INPUT_CHARS)), "恰 4096 字放行（> 才拒）");
+    }
+}
+
 

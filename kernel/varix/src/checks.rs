@@ -8,7 +8,9 @@
 //! the same text.
 
 /// Maximum checks recorded by one domain self-test.
-pub const MAX_CHECKS: usize = 64;
+/// 检查项容量（64 → 96：H3 域 copypath/sysgov 深化至 12 层后单项
+/// 检查数超 64，容量提升并留 headroom——域聚合不再截断丢红）。
+pub const MAX_CHECKS: usize = 96;
 
 /// One check result — name, verdict and a short failure detail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +75,11 @@ impl CheckSet {
         }
         out.dropped += a.dropped + b.dropped;
         out
+    }
+
+    /// 深化调试面（AI-U2）：逐行枚举检查项（红项定位用——聚合器不调）。
+    pub fn red_items(&self) -> ([Option<Check>; MAX_CHECKS], usize) {
+        (self.checks, self.count)
     }
 
     /// Record a failing check.

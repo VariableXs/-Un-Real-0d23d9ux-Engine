@@ -2282,6 +2282,123 @@ mod deep10_tests {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层十一 · 决策解释器（当前模式为什么——可解释性面）
+// ---------------------------------------------------------------------------
+
+/// 决策解释器（十三章三要素的正面语义——不只是错误要解释，机制决策
+/// 也要解释）：当前模式 → 人话解释链（哪个机制在当班 / 什么证据触发
+/// / 为何压过其他机制）。用户点开降级面板的「为什么」按钮看到的就是
+/// 这个——机制不黑盒。
+pub struct DecisionExplainer;
+
+impl DecisionExplainer {
+    /// 解释链（三段：机制名 / 证据 / 让位说明）。
+    pub fn explain(mode: GovernorMode, battery_pct: u64, budget_used_pct: u64, fps: u64) -> alloc::string::String {
+        let (mech, evidence): (&'static str, alloc::string::String) = match mode {
+            GovernorMode::Full => (
+                "全效渲染",
+                alloc::format!(
+                    "电量 {}%（高于 {}% 低电量线）、预算占用 {}%（低于 {}% 闸门）、帧率 {}fps（高于一级判线）",
+                    battery_pct,
+                    BATTERY_LOW_PCT,
+                    budget_used_pct,
+                    COMPOSITOR_BUDGET_PCT,
+                    fps
+                ),
+            ),
+            GovernorMode::LowBatt => (
+                "低电量视觉模式",
+                alloc::format!("电量 {}% 已跌破 {}% 低电量线", battery_pct, BATTERY_LOW_PCT),
+            ),
+            GovernorMode::Budget => (
+                "预算降级",
+                alloc::format!("合成器预算占用 {}% 已超 {}% 闸门", budget_used_pct, COMPOSITOR_BUDGET_PCT),
+            ),
+            GovernorMode::FpsTier => (
+                "帧率分级降级",
+                alloc::format!("持续帧率 {}fps 低于一级判线且已过 {}ms 确认窗", fps, TIER_CONFIRM_MS),
+            ),
+        };
+        let yield_note = match mode {
+            GovernorMode::Full => "无机制介入——系统全速运行",
+            _ => "其他机制已让位（优先级：低电量 > 预算 > 帧率分级）",
+        };
+        alloc::format!("当前模式：{}。证据：{}。{}。", mech, evidence, yield_note)
+    }
+}
+
+/// 深化层十一自检（决策解释器）。
+pub fn run_animdegrade_deep11_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep11");
+
+    // 1. 全效解释：三条件证据齐、让位说明「无机制介入」。
+    let full = DecisionExplainer::explain(GovernorMode::Full, 80, 50, 60);
+    set.add(
+        "full mode explains three conditions",
+        full.contains("全效渲染") && full.contains("80%") && full.contains("无机制介入"),
+        "",
+    );
+
+    // 2. 低电量解释：证据含电量线、让位说明优先级序。
+    let low = DecisionExplainer::explain(GovernorMode::LowBatt, 15, 50, 60);
+    set.add(
+        "lowbatt explains threshold",
+        low.contains("低电量视觉模式") && low.contains("15%") && low.contains("让位"),
+        "",
+    );
+
+    // 3. 预算解释：证据含闸门值。
+    let budget = DecisionExplainer::explain(GovernorMode::Budget, 80, 95, 60);
+    set.add(
+        "budget explains gate",
+        budget.contains("预算降级") && budget.contains("95%") && budget.contains("90%"),
+        "",
+    );
+
+    // 4. 帧率分级解释：证据含确认窗。
+    let tier = DecisionExplainer::explain(GovernorMode::FpsTier, 80, 50, 30);
+    set.add(
+        "tier explains confirm window",
+        tier.contains("帧率分级降级") && tier.contains("确认窗"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep11_tests {
+    use super::*;
+
+    #[test]
+    fn explain_deterministic() {
+        let a = DecisionExplainer::explain(GovernorMode::Budget, 80, 95, 60);
+        let b = DecisionExplainer::explain(GovernorMode::Budget, 80, 95, 60);
+        assert_eq!(a, b, "解释链无随机源——同状态同解释");
+    }
+
+    #[test]
+    fn four_modes_four_explanations() {
+        let modes = [
+            GovernorMode::Full,
+            GovernorMode::LowBatt,
+            GovernorMode::Budget,
+            GovernorMode::FpsTier,
+        ];
+        let mut texts: alloc::vec::Vec<alloc::string::String> = alloc::vec::Vec::new();
+        for m in modes {
+            texts.push(DecisionExplainer::explain(m, 50, 50, 50));
+        }
+        // 四模式解释互不相同（机制名分岔——无重复文案）。
+        for i in 0..texts.len() {
+            for j in i + 1..texts.len() {
+                assert_ne!(texts[i], texts[j]);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 深化层九 · 降级面板聚合视图 + 调速器事件流
 // ---------------------------------------------------------------------------
 

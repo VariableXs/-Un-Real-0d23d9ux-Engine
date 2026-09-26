@@ -545,3 +545,89 @@ mod deep2_tests {
         assert!(led.using_apps().is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 指示器并发裁决深化（多设备多应用交叉占用）
+// ---------------------------------------------------------------------------
+
+/// 指示器并发裁决深化（多设备交叉占用的语义面）：麦克风与摄像头是
+/// 两本独立账（各自指示器独立亮灭）；同一应用可同时占两设备（各自
+/// 计数）；设备互不联动（关麦不灭摄像头灯——设备语义不越界）。
+pub struct CrossDeviceLedger {
+    pub mic: DeviceLedger,
+    pub cam: DeviceLedger,
+}
+
+impl CrossDeviceLedger {
+    pub fn new(hw_mic: bool, hw_cam: bool) -> CrossDeviceLedger {
+        CrossDeviceLedger {
+            mic: DeviceLedger::new("microphone", hw_mic),
+            cam: DeviceLedger::new("camera", hw_cam),
+        }
+    }
+
+    /// 同应用同时占两设备（返回两指示器状态——应用侧一次调用全知道）。
+    pub fn open_both(&mut self, app: &str, is_system: bool, now_ms: u64) -> (bool, bool) {
+        self.mic.open(app, is_system, now_ms);
+        self.cam.open(app, is_system, now_ms);
+        (self.mic.indicator_on(), self.cam.indicator_on())
+    }
+
+    /// 关一设备不影响另一设备（语义不越界的机器面）。
+    pub fn close_one(&mut self, device: &'static str, app: &str) -> (bool, bool) {
+        match device {
+            "microphone" => self.mic.close(app),
+            "camera" => self.cam.close(app),
+            _ => {}
+        }
+        (self.mic.indicator_on(), self.cam.indicator_on())
+    }
+}
+
+/// 深化层二自检（交叉占用）。
+pub fn run_micind_deep2b_checks() -> CheckSet {
+    let mut set = CheckSet::new("F322-deep2");
+
+    // 1. 同应用占双设备：两灯独立亮。
+    let mut cross = CrossDeviceLedger::new(true, true);
+    let (mic_on, cam_on) = cross.open_both("视频会议", false, 0);
+    set.add(
+        "both indicators independent on",
+        mic_on && cam_on && cross.mic.using_apps() == alloc::vec![String::from("视频会议")]
+            && cross.cam.using_apps() == alloc::vec![String::from("视频会议")],
+        "",
+    );
+
+    // 2. 关麦不灭摄像头灯（设备语义不越界）。
+    let (mic2, cam2) = cross.close_one("microphone", "视频会议");
+    set.add(
+        "close mic keeps cam",
+        !mic2 && cam2 && cross.cam.using_apps().len() == 1,
+        "",
+    );
+
+    // 3. 账随占用走（指示器语义与单设备一致——占用即账，无硬件差异分岔）。
+    let mut nohw = CrossDeviceLedger::new(true, false);
+    nohw.open_both("会议", false, 0);
+    set.add(
+        "account follows usage",
+        nohw.cam.using_apps() == alloc::vec![alloc::string::String::from("会议")],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2b_tests {
+    use super::*;
+
+    #[test]
+    fn devices_never_cross_talk() {
+        let mut cross = CrossDeviceLedger::new(true, true);
+        cross.open_both("A", false, 0);
+        cross.close_one("camera", "A");
+        assert!(cross.mic.indicator_on(), "关摄像头不动麦克风账");
+        assert!(cross.mic.using_apps().contains(&String::from("A")));
+    }
+}

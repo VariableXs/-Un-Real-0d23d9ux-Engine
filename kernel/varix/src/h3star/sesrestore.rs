@@ -565,3 +565,92 @@ mod deep3_tests {
         assert!(!cc.fully_cleaned(), "零项不构成清理完成");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 恢复点去重（同内容不重复占用暂存区）
+// ---------------------------------------------------------------------------
+
+/// 恢复点去重（暂存区卫生的深化面）：逐恢复点指纹（内容哈希）登记
+/// ——同指纹的恢复点不重复入暂存（内容相同留一份即可）；去重计数
+/// 直出（省了多少暂存——卫生可测）。
+#[derive(Default)]
+pub struct RecoveryPointDedup {
+    pub fingerprints: Vec<u64>,
+    pub deduped: u64,
+}
+
+impl RecoveryPointDedup {
+    /// 指纹（FNV-1a——域内校验同源口径）。
+    pub fn fingerprint(content: &str) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in content.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    /// 登记恢复点：同指纹去重（计数），新指纹入账。
+    pub fn admit(&mut self, content: &str) -> bool {
+        let fp = Self::fingerprint(content);
+        if self.fingerprints.contains(&fp) {
+            self.deduped += 1;
+            return false;
+        }
+        self.fingerprints.push(fp);
+        true
+    }
+
+    /// 空间节省估算（去重次数 × 单点平均大小——卫生账）。
+    pub fn bytes_saved(&self, avg_point_bytes: u64) -> u64 {
+        self.deduped * avg_point_bytes
+    }
+}
+
+/// 深化层四自检（恢复点去重）。
+pub fn run_sesrestore_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F311-deep4");
+
+    // 1. 同内容恢复点去重（计数），异内容入账。
+    let mut d = RecoveryPointDedup::default();
+    let a1 = d.admit("文档内容v1");
+    let a2 = d.admit("文档内容v1"); // 同内容——去重。
+    let a3 = d.admit("文档内容v2");
+    set.add(
+        "dedup same content",
+        a1 && !a2 && a3 && d.deduped == 1 && d.fingerprints.len() == 2,
+        "",
+    );
+
+    // 2. 空间节省估算（2KB/点 × 1 次去重 = 2048B）。
+    set.add("bytes saved estimate", d.bytes_saved(2048) == 2048, "");
+
+    // 3. 空账零去重（不虚报）。
+    let empty = RecoveryPointDedup::default();
+    set.add("empty zero dedup", empty.deduped == 0 && empty.bytes_saved(2048) == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn different_content_different_fp() {
+        assert_ne!(
+            RecoveryPointDedup::fingerprint("a"),
+            RecoveryPointDedup::fingerprint("b")
+        );
+    }
+
+    #[test]
+    fn dedup_idempotent_many() {
+        let mut d = RecoveryPointDedup::default();
+        for _ in 0..5 {
+            let _ = d.admit("同一份");
+        }
+        assert_eq!(d.deduped, 4, "五次同内容 = 一次入账四次去重");
+        assert_eq!(d.fingerprints.len(), 1);
+    }
+}
