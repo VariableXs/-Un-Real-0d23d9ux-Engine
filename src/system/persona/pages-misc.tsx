@@ -27,6 +27,7 @@ import { ErrorSurfaceCard, AssetPackageCard, WindowMetricsCard, PerfBudgetCard }
 import { StateBlocksCard, ExportFormatsCard, UxDictionaryCard } from "./pages-lab4";
 import { StateWiringCard, CrosscheckCard, SearchNavCard, AutosaveCard } from "./pages-lab5";
 import { LabelsAuditCard, DeliveryDocsCard, LayoutRobustCard } from "./pages-lab6";
+import { TourCard, PresetLibraryCard, ParityCard } from "./pages-lab7";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -489,6 +490,9 @@ export function VerdictPage(): React.ReactNode {
       <LabelsAuditCard />
       <DeliveryDocsCard />
       <LayoutRobustCard />
+      <TourCard />
+      <PresetLibraryCard />
+      <ParityCard />
       <CopyAuditCard />
     </div>
   );
