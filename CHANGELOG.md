@@ -3,6 +3,29 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-K1 性能域深化（F041-F057 十七域落地）
+
+**kernel/varix/src/perfstar/**（AI-K1 泳道 B 前段，主册 B-3 深化设计报告
+G-B-01~G-B-17 判据实装层；robust.rs 274 域函数指针表注册接线）：
+
+- **F041-F044 观测面四件**：帧率账本（每帧四项打点 + 分钟桶聚合 + 24h
+  降采样）、帧率归因器（四类嫌疑贡献模型回线判定）、冷启动画像（五段
+  刻度 + 中位数）、预取指纹 v2（位图指纹 + 顺序区序列化）。
+- **F045-F048 资源调度四件**：页缓存水位三档（`lru_bytes` 字节账/页账
+  对齐）、写合并窗口三档自适应（dwell 抑制）、调度延迟预算四类分解
+  （几何直方图 + aging）、CPU 频率联动（P-state + Silent 封顶唯一判据）。
+- **F049-F053 底层治理五件**：空转清零、中断合并（2000ns 窗口 + 动态
+  收缩 + 熔断）、4MB 大页池、堆碎片尺寸分级池（零堆 grep 自证）、启动
+  四链并行。
+- **F054-F057 体验四件**：图像 SIMD 解码（标量逐像素对拍）、字形光栅
+  缓存（LRU + shelf packing）、合成器脏区深化（打字 P95 <5% 屏）、IO
+  调度分级（三队列 EDF + fsync 硬承诺 + 反向保护时长有界 + 24h 混载
+  零饥饿）。
+- 自检判据逐条钉死：17 域 **156 CheckSet 检查项 + 98 宿主单测全绿**；
+  全量 3897/3897 PASS（debug 通道）。施工期缺陷账本 **7 处实现侧真缺陷**
+  修复（含 iotier 反向保护 resume 死锁、pagewater 字节账脱钩、cpufreq
+  封顶失效三处高危）与偏差登记见 `docs/AI-K1-完成报告.md`。
+
 ## [Unreleased] — Varix STAR I · AI-K2 内核底盘域·后段（F058-F075 十八项落地）
 
 **kernel/varix/src/star/**（AI-K2 泳道一 B 后段，域聚合器 `run_star_checks` blocks=19，
