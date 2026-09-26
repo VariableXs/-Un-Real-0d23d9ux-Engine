@@ -165,6 +165,50 @@ pub struct AttrEvent {
     /// 排名后的嫌疑表（虚拟重放：扣减后回线者按贡献降序；混合归因按占比降序）。
     pub ranked: [Option<Suspicion>; 4],
     pub ranked_n: usize,
+    /// 四类嫌疑的贡献量（μs，与 [`ALL_SUSPICIONS`] 序逐位对应；未达阈 = 0）。
+    /// 监视器「掉帧历史」页四类嫌疑占比条形图的数据源（主册 G-B-02
+    /// 【交互设计】：点开单条看四类嫌疑占比条形图）。
+    pub contributions: [u32; 4],
+}
+
+impl AttrEvent {
+    /// 四类贡献占比（permille，**最大余数法配平**——和恒等于 1000‰，
+    /// 条形图消费侧零心智）。和为 0 → 全 0（未归类事件无占比可画，
+    /// 诚实呈现空图）。
+    pub fn shares_permille(&self) -> [u32; 4] {
+        let sum: u64 = self.contributions.iter().map(|&c| c as u64).sum();
+        if sum == 0 {
+            return [0; 4];
+        }
+        // 截断商 + 小数部分；余差按小数部分降序逐类 +1（整数配平）。
+        let mut floors = [0u64; 4];
+        let mut fracs = [(0u64, 0usize); 4];
+        let mut floored_sum: u64 = 0;
+        for (i, &c) in self.contributions.iter().enumerate() {
+            let scaled = c as u64 * 1000;
+            floors[i] = scaled / sum;
+            fracs[i] = (scaled % sum, i);
+            floored_sum += floors[i];
+        }
+        let mut remainder = 1000 - floored_sum;
+        fracs.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let mut out = [0u32; 4];
+        for (i, &f) in floors.iter().enumerate() {
+            out[i] = f as u32;
+        }
+        let mut k = 0usize;
+        while remainder > 0 && k < 4 {
+            out[fracs[k].1] += 1;
+            remainder -= 1;
+            k += 1;
+        }
+        out
+    }
+
+    /// 单类贡献（μs）。
+    pub fn contribution_of(&self, s: Suspicion) -> u32 {
+        self.contributions[s as usize]
+    }
 }
 
 /// 归因器。
@@ -238,6 +282,13 @@ impl Attributor {
             }
         }
         let over_by = ctx.busy_us - OVER_BUDGET_US;
+        // 四类贡献明细（占比条形图数据源——主册 G-B-02【交互设计】；未达阈 = 0）。
+        let mut contributions = [0u32; 4];
+        for (i, s) in ALL_SUSPICIONS.iter().enumerate() {
+            if hit[i] {
+                contributions[i] = s.contribution_us(ctx);
+            }
+        }
         if hit_n == 0 {
             self.unclassified += 1;
             return Some(AttrEvent {
@@ -247,6 +298,7 @@ impl Attributor {
                 verdict: Verdict::Unclassified,
                 ranked: [None; 4],
                 ranked_n: 0,
+                contributions,
             });
         }
         // 虚拟重放：扣除该因素贡献后帧耗时是否回线（≤ 预算）。
@@ -310,6 +362,7 @@ impl Attributor {
                 verdict,
                 ranked: out,
                 ranked_n: rn + 1,
+                contributions,
             });
         }
         // 混合归因：按占比（贡献/超预算量）降序，不硬编主因。
@@ -331,6 +384,7 @@ impl Attributor {
             verdict,
             ranked: out,
             ranked_n: n,
+            contributions,
         })
     }
 
@@ -496,6 +550,20 @@ pub fn run_frameattr_checks() -> CheckSet {
     a7.disable("internal-error-drill");
     a7.note_wake_storm(90, 3_000);
     cs.add("storm_evidence_survives_disable", a7.wake_storm_count() == 3, "");
+    // 14) 归因占比明细（主册【交互设计】四类嫌疑占比条形图数据面）：
+    //     混合归因事件贡献数组逐类精确 + 占比和 = 1000‰ + 主因占比最大。
+    let mut a8 = Attributor::new();
+    let ev8 = a8.analyze(&ctx(20, 30_000, 100, 210, 8_000, 8, 0)).unwrap(); // Mixed（v2 既有样本）
+    let sh = ev8.shares_permille();
+    cs.add(
+        "attr_breakdown",
+        ev8.contribution_of(Suspicion::InputStorm) == 15_000
+            && ev8.contribution_of(Suspicion::IoBlock) == 8_000
+            && ev8.contribution_of(Suspicion::SchedPreempt) == 7_200
+            && sh.iter().sum::<u32>() == 1000
+            && sh[0] > sh[2] && sh[2] > sh[3], // 风暴 > IO > 抢占（贡献降序呈现）
+        "",
+    );
     cs
 }
 
@@ -599,5 +667,25 @@ mod tests {
         assert_eq!(evs.len(), STORM_EVIDENCE_CAP);
         assert_eq!(evs[0], (61, 1_000)); // 第 1 条（60, 0）已被覆盖
         assert_eq!(evs.last().unwrap(), &(60 + STORM_EVIDENCE_CAP as u32, STORM_EVIDENCE_CAP as u64 * 1_000));
+    }
+
+    #[test]
+    fn attr_breakdown_shares_bar_chart_ready() {
+        // Mixed 事件：风暴 15000 / IO 8000 / 抢占 7200 → 最大余数法配平，
+        // 占比和恒 = 1000‰，条形图零心智消费。
+        let mut a = Attributor::new();
+        let ev = a.analyze(&ctx(1, 30_000, 100, 210, 8_000, 8, 0)).unwrap();
+        assert_eq!(ev.verdict, Verdict::Mixed);
+        assert_eq!(ev.contributions, [15_000, 0, 8_000, 7_200]);
+        let sh = ev.shares_permille();
+        assert_eq!(sh.iter().sum::<u32>(), 1000);
+        // 截断基值 496/0/264/238（和 998）→ 余差 2 按小数部分降序补给
+        // IO（.900 最大）与风暴（.688 次之）→ 497/0/265/238。
+        assert_eq!(sh, [497, 0, 265, 238]);
+        assert!(sh[0] > sh[2] && sh[2] > sh[3]); // 风暴 > IO > 抢占（贡献降序）
+        // Unclassified 事件：贡献全零 → 占比全零（空图诚实）。
+        let ev2 = a.analyze(&ctx(2, 13_000, 10, 10, 0, 0, 1)).unwrap();
+        assert_eq!(ev2.verdict, Verdict::Unclassified);
+        assert_eq!(ev2.shares_permille(), [0; 4]);
     }
 }

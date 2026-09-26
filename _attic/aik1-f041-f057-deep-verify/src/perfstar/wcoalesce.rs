@@ -109,6 +109,12 @@ pub struct WriteCoalescer {
     fsync_n: usize,
     /// fsync 是否曾在重载档立即执行过（硬承诺验证面）。
     fsync_in_heavy: u64,
+    /// 最近 60 秒逐秒写入量曲线（主册 G-B-06【交互诊断】：监视器存储页
+    /// 显示当前档位与**最近 60 秒实际写入量曲线**）。秒粒度环形，
+    /// 零样本秒为 0（诚实不补齐）。
+    wcurve: [u32; 60],
+    wcurve_sec: u64,
+    wcurve_anchored: bool,
 }
 
 impl WriteCoalescer {
@@ -127,6 +133,9 @@ impl WriteCoalescer {
             fsync_head: 0,
             fsync_n: 0,
             fsync_in_heavy: 0,
+            wcurve: [0; 60],
+            wcurve_sec: 0,
+            wcurve_anchored: false,
         }
     }
 
@@ -167,9 +176,29 @@ impl WriteCoalescer {
         self.audit_n = (self.audit_n + 1).min(32);
     }
 
-    /// 惰性写记账：一个写请求进入当前窗口（合并统计面）。
-    pub fn note_write(&mut self) {
+    /// 惰性写记账：一个写请求进入当前窗口（合并统计面 + 60 秒曲线采样）。
+    pub fn note_write(&mut self, now_ms: u64) {
         self.total_requests += 1;
+        let sec = now_ms / 1000;
+        if !self.wcurve_anchored {
+            self.wcurve_anchored = true;
+            self.wcurve_sec = sec;
+        } else if sec > self.wcurve_sec {
+            // 秒推进：翻页清零（跨 60 秒以上等价全新曲线窗）。
+            let steps = ((sec - self.wcurve_sec) as usize).min(60);
+            for _ in 0..steps {
+                self.wcurve_sec += 1;
+                self.wcurve[(self.wcurve_sec % 60) as usize] = 0;
+            }
+            self.wcurve_sec = sec;
+        }
+        self.wcurve[(sec % 60) as usize] = self.wcurve[(sec % 60) as usize].saturating_add(1);
+    }
+
+    /// 最近 60 秒逐秒写入量曲线（监视器存储页曲线数据；桶序 = 秒序
+    /// 对 60 取模的环形，`current_sec` = 最新写入秒的 epoch 秒号）。
+    pub fn write_curve(&self) -> ([u32; 60], u64) {
+        (self.wcurve, self.wcurve_sec)
     }
 
     /// 冲刷结算：本次窗口实际落盘的段数（合并结果）。
@@ -254,7 +283,7 @@ pub fn run_wcoalesce_checks() -> CheckSet {
     wc2.evaluate(300, 900, 0);
     // 100 个相邻 LBA 请求 → 排序归并 = 1 段。
     for _ in 0..100 {
-        wc2.note_write();
+        wc2.note_write(0);
     }
     wc2.settle_window(1);
     cs.add("merge_rate_heavy_over_40", wc2.merge_rate_permille().unwrap() >= 400, "");
@@ -267,6 +296,20 @@ pub fn run_wcoalesce_checks() -> CheckSet {
     cs.add("fsync_p99_under_10ms", wc3.fsync_p99_us().unwrap() < FSYNC_P99_CAP_US && wc3.fsync_executed_in_heavy() == 200, "");
     // 7) 断电窗口承诺 = 重载档 8s（同一数字纪律）。
     cs.add("power_loss_promise", POWER_LOSS_WINDOW_MS == WINDOW_HEAVY_MS, "");
+    // 8) 60 秒写入量曲线（主册【交互诊断】存储页曲线数据面）：跨秒翻页 +
+    //     同秒累加 + 零样本秒诚实为 0。
+    let mut wc4 = WriteCoalescer::new();
+    wc4.note_write(500);       // 秒 0
+    wc4.note_write(800);       // 秒 0（同秒累加）
+    wc4.note_write(61_200);    // 秒 61：翻 60 页 → 秒 0 桶位复用清零
+    let (curve, cur_sec) = wc4.write_curve();
+    // 秒 0 的两条记录在桶 0（翻 60 页后桶 0 被清零——60 秒窗滑出），
+    // 秒 61 写入桶 1（61%60）；翻页步数封顶 60（≥60 秒跳跃等价全新窗）。
+    cs.add(
+        "write_curve_60s",
+        cur_sec == 61 && curve[0] == 0 && curve[1] == 1 && curve[2] == 0,
+        "",
+    );
     cs
 }
 
@@ -304,13 +347,13 @@ mod tests {
         let mut heavy = WriteCoalescer::new();
         for (t, r, d) in &stream {
             heavy.evaluate(*r, *d, t * 20);
-            heavy.note_write();
+            heavy.note_write(t * 20);
         }
         heavy.settle_window(10);
         let mut idle = WriteCoalescer::new();
         for (t, r, d) in &stream {
             idle.evaluate(if *r > 100 { 5 } else { *r }, if *d > 100 { 30 } else { *d }, t * 20);
-            idle.note_write();
+            idle.note_write(t * 20);
         }
         idle.settle_window(30);
         assert!(heavy.merge_rate_permille().unwrap() >= idle.merge_rate_permille().unwrap());
@@ -337,5 +380,22 @@ mod tests {
             t += DWELL_MS + 1; // 每次都过驻留期 → 每次都真切换
         }
         assert_eq!(wc.audit().count(), 32); // 环容量封顶
+    }
+
+    #[test]
+    fn write_curve_rolls_and_buckets_by_second() {
+        let mut wc = WriteCoalescer::new();
+        for _ in 0..3 {
+            wc.note_write(1_500); // 秒 1 ×3
+        }
+        wc.note_write(90_000); // 秒 90：翻 89 页（min(89,60)=60 步封顶）
+        let (curve, sec) = wc.write_curve();
+        assert_eq!(sec, 90);
+        assert_eq!(curve[(90 % 60) as usize], 1); // 秒 90 桶 = 1
+        // 秒 1 桶位 (1%60=1) 已被翻页清零（跨 60 秒等价全新窗）。
+        assert_eq!(curve[1], 0);
+        // 同秒累加语义：连续同秒写不再翻页。
+        wc.note_write(90_200);
+        assert_eq!(wc.write_curve().0[(90 % 60) as usize], 2);
     }
 }

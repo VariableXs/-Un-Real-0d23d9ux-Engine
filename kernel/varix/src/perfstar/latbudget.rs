@@ -122,6 +122,10 @@ struct ClassLedger {
     recent_pos: usize,
     recent_n: usize,
     samples_total: u64,
+    /// 当前秒窗直方图（秒末冻结 p99 进泳道曲线后清空——G-B-07
+    /// 【交互设计】「最近 60 秒各类 p99 曲线」的数据源）。
+    sec_hist: [u32; HIST_BUCKETS],
+    sec_samples: u32,
 }
 
 impl ClassLedger {
@@ -135,6 +139,8 @@ impl ClassLedger {
             recent_pos: 0,
             recent_n: 0,
             samples_total: 0,
+            sec_hist: [0; HIST_BUCKETS],
+            sec_samples: 0,
         }
     }
 
@@ -143,11 +149,34 @@ impl ClassLedger {
         self.head = (self.head + 1) % RING_SAMPLES;
         self.filled = (self.filled + 1).min(RING_SAMPLES);
         self.hist[bucket_of(us)] += 1;
+        self.sec_hist[bucket_of(us)] += 1;
+        self.sec_samples += 1;
         let over = us > budget;
         self.recent_over[self.recent_pos] = over;
         self.recent_pos = (self.recent_pos + 1) % AGING_WINDOW;
         self.recent_n = (self.recent_n + 1).min(AGING_WINDOW);
         self.samples_total += 1;
+    }
+
+    /// 秒末冻结：当前秒窗的 p99（微秒）出曲线，秒窗清空。零样本秒 → None
+    /// （泳道图断点，诚实不补齐）。
+    fn freeze_second(&mut self) -> Option<u32> {
+        if self.sec_samples == 0 {
+            return None;
+        }
+        let target = (self.sec_samples as u64 * 99 / 100).max(1) as u32;
+        let mut acc: u32 = 0;
+        let mut p99 = None;
+        for (b, &c) in self.sec_hist.iter().enumerate() {
+            acc += c;
+            if acc >= target {
+                p99 = Some(bucket_upper_us(b) as u32);
+                break;
+            }
+        }
+        self.sec_hist = [0; HIST_BUCKETS];
+        self.sec_samples = 0;
+        p99
     }
 
     /// p99（微秒）：直方图累计到 99% 处的桶上界。
@@ -185,6 +214,14 @@ pub struct LatencyBudget {
     corr_head: usize,
     corr_n: usize,
     now_ms: u64,
+    /// 四类泳道曲线（主册 G-B-07【交互设计】：监视器调度页「最近 60 秒
+    /// 各类 p99 曲线 + 超标点红标」的数据源）。每类 60 个秒桶，秒末由
+    /// [`LatBudget::tick`] 冻结当前秒窗 p99；零样本秒 = None（断点，
+    /// 诚实不补齐）；超标点由消费侧比对 `budget_us()` 标红。
+    lanes: [[Option<u32>; 60]; 4],
+    lane_pos: usize, // 下一冻结写入位 = 最旧桶（升序读起点）
+    lane_sec: u64,
+    sec_anchored: bool,
 }
 
 impl LatencyBudget {
@@ -196,6 +233,10 @@ impl LatencyBudget {
             corr_head: 0,
             corr_n: 0,
             now_ms: 0,
+            lanes: [[None; 60]; 4],
+            lane_pos: 0,
+            lane_sec: 0,
+            sec_anchored: false,
         }
     }
 
@@ -216,9 +257,37 @@ impl LatencyBudget {
         }
     }
 
-    /// 时钟推进（自修正事件时间轴）。
+    /// 时钟推进（自修正事件时间轴 + 泳道秒末冻结：跨秒时把各类当前秒窗
+    /// p99 冻结进 60 桶泳道曲线——调度器每拍调用，秒轴与拍点同源）。
     pub fn tick(&mut self, ms: u64) {
         self.now_ms = ms;
+        let sec = ms / 1000;
+        if !self.sec_anchored {
+            self.sec_anchored = true;
+            self.lane_sec = sec;
+            return;
+        }
+        if sec > self.lane_sec {
+            let steps = ((sec - self.lane_sec) as usize).min(60);
+            for _ in 0..steps {
+                for i in 0..4 {
+                    self.lanes[i][self.lane_pos] = self.ledgers[i].freeze_second();
+                }
+                self.lane_pos = (self.lane_pos + 1) % 60;
+            }
+            self.lane_sec = sec;
+        }
+    }
+
+    /// 泳道曲线（升序 60 秒桶；None = 零样本秒断点）。超标点红标 =
+    /// 消费侧比对 `c.budget_us()`（主册【交互设计】语义，不在数据面重复）。
+    pub fn lane_curve(&self, c: LatClass) -> [Option<u32>; 60] {
+        let i = Self::idx(c);
+        let mut out = [None; 60];
+        for k in 0..60 {
+            out[k] = self.lanes[i][(self.lane_pos + k) % 60];
+        }
+        out
     }
 
     /// 某类 p99（微秒）。零样本 → None（观察窗说明：不代表无风险）。
@@ -322,6 +391,29 @@ pub fn run_latbudget_checks() -> CheckSet {
         RING_SAMPLES == 10_000 && core::mem::size_of::<LatencyBudget>() >= 4 * RING_SAMPLES * 4,
         "",
     );
+    // 8) 泳道曲线（主册【交互设计】调度页 60 秒 p99 曲线 + 超标红标数据面）：
+    //     样本秒冻结 p99 → 曲线在册；零样本秒 None；超标点可由 budget 判红。
+    let mut lb5 = LatencyBudget::new();
+    lb5.tick(500); // 锚定秒 0
+    for _ in 0..100 {
+        lb5.record_wakeup(LatClass::Input, 400); // 秒 0：p99 ≈ 桶上界 ≤ 500
+    }
+    lb5.tick(2_000); // 推进到秒 2：秒 0 冻结、秒 1 空断点
+    for _ in 0..100 {
+        lb5.record_wakeup(LatClass::Input, 900); // 秒 2：全超 500 预算
+    }
+    lb5.tick(3_000); // 冻结秒 2
+    let lane = lb5.lane_curve(LatClass::Input);
+    // tick(500)→锚秒0；tick(2000)→冻结秒0(400入桶上界≤预算)+秒1(空)；
+    // record@秒2(900 全超)；tick(3000)→冻结秒2。升序读：lane[57]=秒0、
+    // lane[58]=秒1 断点、lane[59]=秒2 超标点。
+    let p0 = lane[57];
+    let over = lane[59].map_or(false, |v| v as u64 > LatClass::Input.budget_us() as u64);
+    cs.add(
+        "lane_curve_60s",
+        p0.is_some() && p0.unwrap() <= BUDGET_INPUT_US && lane[58].is_none() && over,
+        "",
+    );
     cs
 }
 
@@ -389,5 +481,36 @@ mod tests {
         }
         assert_eq!(lb.effective_priority(LatClass::Normal), 2); // 只 +1 封顶
         assert!(lb.correction_events().count() <= 16);
+    }
+
+    #[test]
+    fn lane_freezes_p99_and_marks_breaks() {
+        let mut lb = LatencyBudget::new();
+        lb.tick(100); // 锚定秒 0
+        for _ in 0..50 {
+            lb.record_wakeup(LatClass::Audio, 250); // 秒 0：全部 ≤300 预算内
+        }
+        lb.tick(1_400); // 秒 1：冻结秒 0（Audio p99 = 250 所在桶上界）
+        let lane0 = lb.lane_curve(LatClass::Audio);
+        // 升序 60 桶：最旧有效位 = 秒 0 冻结值；预算内（≤300）。
+        let frozen: Vec<u32> = lane0.iter().flatten().copied().collect();
+        assert_eq!(frozen.len(), 1, "秒 1 前只有秒 0 一个冻结值");
+        assert!(frozen[0] <= BUDGET_AUDIO_US);
+        // 秒 2-3 有样本但全超标；秒 3 tick 后曲线含超标点（红标数据面）。
+        lb.tick(2_100);
+        for _ in 0..50 {
+            lb.record_wakeup(LatClass::Audio, 5_000);
+        }
+        lb.tick(3_100);
+        let lane1 = lb.lane_curve(LatClass::Audio);
+        let overs: Vec<u32> = lane1
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|v| *v as u64 > BUDGET_AUDIO_US as u64)
+            .collect();
+        assert_eq!(overs.len(), 1, "秒 2 的超标冻结点在册（红标 = budget 比对）");
+        // p99 冻结值 = 样本所在对数桶的上界（50×1.25^b），≥ 样本值本身。
+        assert!(overs[0] >= 5_000, "桶上界 ≥ 样本值");
     }
 }

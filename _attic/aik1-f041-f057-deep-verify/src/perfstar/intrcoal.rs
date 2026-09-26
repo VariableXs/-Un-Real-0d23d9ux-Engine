@@ -89,6 +89,37 @@ pub struct InterruptCoalescer {
     storm_alarms: u64,
     last_storm_check_ms: u64,
     events_this_sec: u32,
+    /// 分钟聚合桶（主册 G-B-10【数据与存储】：「合并统计（每秒合并率/
+    /// 最大批）入账本」——分钟粒度账本行，60 分钟环形，帧账本
+    /// frameledger.minute_snapshot 同款消费面）。
+    minutes: [MinSlot; 60],
+    minute_cursor: usize,
+    minute_epoch: u64,
+    minute_anchored: bool,
+}
+
+/// 一分钟的合并统计账本行。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MinuteCoalesceAgg {
+    pub minute_index: u64,
+    pub inputs: u32,
+    pub merged_away: u32,
+    pub delivered: u32,
+    pub max_batch: u32,
+}
+
+#[derive(Clone, Copy)]
+struct MinSlot {
+    epoch_min: u64,
+    inputs: u32,
+    merged: u32,
+    delivered: u32,
+    max_batch: u32,
+}
+impl MinSlot {
+    const fn empty() -> Self {
+        MinSlot { epoch_min: u64::MAX, inputs: 0, merged: 0, delivered: 0, max_batch: 0 }
+    }
 }
 
 impl InterruptCoalescer {
@@ -113,6 +144,10 @@ impl InterruptCoalescer {
             window_shrinks: 0,
             tripped: false,
             storm_alarms: 0,
+            minutes: [MinSlot::empty(); 60],
+            minute_cursor: 0,
+            minute_epoch: 0,
+            minute_anchored: false,
             last_storm_check_ms: 0,
             events_this_sec: 0,
         }
@@ -122,6 +157,11 @@ impl InterruptCoalescer {
     /// 背压语义 = 推迟，不是丢弃）。
     pub fn submit(&mut self, ev: InputEvent, now_ms: u64) {
         self.total_in += 1;
+        // 分钟账本时间轴推进（submit 是写路径节拍——分钟桶锚定于此）。
+        self.roll_minute(now_ms);
+        if self.minute_anchored && self.minutes[self.minute_cursor].epoch_min == self.minute_epoch {
+            self.minutes[self.minute_cursor].inputs += 1;
+        }
         // 风暴熔断判定（1s 滚动窗）。
         if now_ms.saturating_sub(self.last_storm_check_ms) >= 1_000 {
             self.last_storm_check_ms = now_ms;
@@ -136,7 +176,7 @@ impl InterruptCoalescer {
             // 熔断降频：位置类只保留最新（同键覆盖），离散类照常入队。
             if ev.kind == EvKind::Position {
                 if self.cover_position(ev) {
-                    self.merged_away += 1;
+                    self.bump_merged();
                 }
                 return;
             }
@@ -146,7 +186,7 @@ impl InterruptCoalescer {
             // 因此离散类顶掉最旧的位置类槽位腾地方（位置可覆盖 = 可牺牲）。
             if ev.kind == EvKind::Position {
                 if self.cover_position(ev) {
-                    self.merged_away += 1;
+                    self.bump_merged();
                 }
                 return;
             }
@@ -184,7 +224,7 @@ impl InterruptCoalescer {
                     // 位置类可覆盖：直接出队入覆盖表（不丢语义——最新值胜出）。
                     self.queue[idx] = None;
                     if self.cover_position(e) {
-                        self.merged_away += 1;
+                        self.bump_merged();
                     }
                     self.q_head = (self.q_head + 1) % QUEUE_CAP;
                     self.q_n -= 1;
@@ -203,6 +243,7 @@ impl InterruptCoalescer {
         }
         let mut budget = BATCH_BUDGET_NS as i64;
         let mut batch = 0u32;
+        let mut delivered_n = 0u32;
         while self.q_n > 0 && budget >= PER_EVENT_COST_NS as i64 {
             let ev = self.queue[self.q_head].take().unwrap();
             self.q_head = (self.q_head + 1) % QUEUE_CAP;
@@ -210,16 +251,26 @@ impl InterruptCoalescer {
             match ev.kind {
                 EvKind::Position => {
                     if self.cover_position(ev) {
-                        self.merged_away += 1;
+                        self.bump_merged();
                     }
                 }
-                EvKind::Discrete => self.deliver(ev),
+                EvKind::Discrete => {
+                    self.deliver(ev);
+                    delivered_n += 1;
+                }
             }
             budget -= PER_EVENT_COST_NS as i64;
             batch += 1;
         }
         if batch > self.max_batch {
             self.max_batch = batch;
+        }
+        // 分钟账本累加（当前桶 = 最近一次 submit 锚定的分钟；消费面口径
+        // 分钟级，拍点级错位可忽略）。
+        if self.minute_anchored && self.minutes[self.minute_cursor].epoch_min == self.minute_epoch {
+            let slot = &mut self.minutes[self.minute_cursor];
+            slot.delivered += delivered_n; // 交付数 ≠ 批处理数（位置合并不算交付）
+            slot.max_batch = slot.max_batch.max(batch);
         }
         // 预算内还有积压 → 窗口收缩（流畅优先，主册【状态与异常】）。
         if self.q_n > 0 {
@@ -245,6 +296,38 @@ impl InterruptCoalescer {
         self.out_head = (self.out_head + 1) % QUEUE_CAP;
         self.out_n = (self.out_n + 1).min(QUEUE_CAP);
         self.total_out += 1;
+        if self.minute_anchored && self.minutes[self.minute_cursor].epoch_min == self.minute_epoch {
+            self.minutes[self.minute_cursor].delivered += 1;
+        }
+    }
+
+    /// 分钟账本时间轴推进（submit 写路径节拍锚定；跨分钟翻页清槽）。
+    fn roll_minute(&mut self, now_ms: u64) {
+        let epoch = now_ms / 60_000;
+        if !self.minute_anchored {
+            self.minute_anchored = true;
+            self.minute_epoch = epoch;
+            self.minutes[self.minute_cursor] =
+                MinSlot { epoch_min: epoch, inputs: 0, merged: 0, delivered: 0, max_batch: 0 };
+            return;
+        }
+        if epoch > self.minute_epoch {
+            let steps = ((epoch - self.minute_epoch) as usize).min(60);
+            for _ in 0..steps {
+                self.minute_cursor = (self.minute_cursor + 1) % 60;
+                self.minute_epoch += 1;
+                self.minutes[self.minute_cursor] =
+                    MinSlot { epoch_min: self.minute_epoch, inputs: 0, merged: 0, delivered: 0, max_batch: 0 };
+            }
+        }
+    }
+
+    /// 合并计数（全局 + 当前分钟桶双记——一处一事实，账本行是聚合视图）。
+    fn bump_merged(&mut self) {
+        self.merged_away += 1;
+        if self.minute_anchored && self.minutes[self.minute_cursor].epoch_min == self.minute_epoch {
+            self.minutes[self.minute_cursor].merged += 1;
+        }
     }
 
     /// 交付环消费（离散事件全保）。
@@ -264,6 +347,30 @@ impl InterruptCoalescer {
 
     pub fn merged_away(&self) -> u64 {
         self.merged_away
+    }
+
+    /// 分钟聚合快照（升序；跳过未锚定空槽——账本行只含真实分钟）。
+    /// 监视器 IO 页合并率曲线与 F061 回归门的消费面（主册【数据与存储】）。
+    pub fn minute_snapshot(&self, out: &mut [MinuteCoalesceAgg]) -> usize {
+        let mut n = 0;
+        for i in 0..60 {
+            let idx = (self.minute_cursor + 1 + i) % 60;
+            let slot = &self.minutes[idx];
+            if slot.epoch_min == u64::MAX || (slot.inputs == 0 && slot.delivered == 0 && slot.merged == 0) {
+                continue;
+            }
+            if n < out.len() {
+                out[n] = MinuteCoalesceAgg {
+                    minute_index: slot.epoch_min,
+                    inputs: slot.inputs,
+                    merged_away: slot.merged,
+                    delivered: slot.delivered,
+                    max_batch: slot.max_batch,
+                };
+                n += 1;
+            }
+        }
+        n
     }
 
     pub fn max_batch(&self) -> u32 {
@@ -394,6 +501,26 @@ pub fn run_intrcoal_checks() -> CheckSet {
     let w0 = ic7.window_us();
     ic7.flush_batch();
     cs.add("shrink_on_backlog", ic7.window_us() < w0 && ic7.window_shrinks() >= 1, "");
+    // 8) 分钟聚合账本（主册【数据与存储】合并统计入账本）：行精确 +
+    //     inputs/delivered/max_batch 对账。
+    let mut ic8 = InterruptCoalescer::new();
+    for i in 0..10u64 {
+        ic8.submit(InputEvent { device: 1, kind: EvKind::Position, code: 0, value: i as i32 }, i * 100);
+    }
+    ic8.flush_batch();
+    let mut aggs = [MinuteCoalesceAgg::default(); 8];
+    let n8 = ic8.minute_snapshot(&mut aggs);
+    // 位置类同键覆盖：10 入队 → 首个进覆盖表、9 个被合并；flush 批处理
+    // 10 个（预算内）但零交付（无离散事件）、最大批 = 10。
+    cs.add(
+        "minute_agg_row",
+        n8 == 1
+            && aggs[0].inputs == 10
+            && aggs[0].merged_away == 9
+            && aggs[0].delivered == 0
+            && aggs[0].max_batch == 10,
+        "",
+    );
     cs
 }
 
@@ -463,5 +590,33 @@ mod tests {
         let b2 = ic.flush_batch();
         assert_eq!(b2, 50);
         assert_eq!(ic.queue_depth(), 20);
+    }
+
+    #[test]
+    fn minute_buckets_roll_and_account() {
+        let mut ic = InterruptCoalescer::new();
+        // 分钟 0：5 个位置事件（同键 → 4 merged）+ flush 交付。
+        for i in 0..5u64 {
+            ic.submit(InputEvent { device: 2, kind: EvKind::Position, code: 7, value: i as i32 }, i * 10);
+        }
+        ic.flush_batch();
+        // 分钟 1：翻页后新桶。
+        for i in 0..3u64 {
+            ic.submit(InputEvent { device: 2, kind: EvKind::Position, code: 7, value: 100 + i as i32 }, 61_000 + i * 10);
+        }
+        ic.flush_batch();
+        let mut out = [MinuteCoalesceAgg::default(); 8];
+        let n = ic.minute_snapshot(&mut out);
+        assert_eq!(n, 2);
+        assert_eq!(out[0].minute_index, 0);
+        assert_eq!(out[0].inputs, 5);
+        assert_eq!(out[0].merged_away, 4);
+        assert_eq!(out[1].minute_index, 1);
+        assert_eq!(out[1].inputs, 3);
+        // 全局对账：inputs 和 = total_in；merged 和 = merged_away。
+        let ti: u32 = out[..n].iter().map(|a| a.inputs).sum();
+        let tm: u32 = out[..n].iter().map(|a| a.merged_away).sum();
+        assert_eq!(ti as u64, ic.total_in);
+        assert_eq!(tm as u64, ic.merged_away());
     }
 }

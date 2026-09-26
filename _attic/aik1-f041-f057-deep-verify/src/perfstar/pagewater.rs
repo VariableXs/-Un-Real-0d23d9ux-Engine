@@ -106,8 +106,13 @@ pub struct PageWatermark {
     warn_latched: bool,
     last_poll_ms: u64,
     /// 策略决策日志（诊断快照 F174 消费）。
-    decisions: [Option<(u64, u8)>; 32], // (ms, 事件码) 事件码 0=tier 1=evict 2=flush 3=warn
+    decisions: [Option<(u64, u8)>; 32], // (ms, 事件码) 0=tier 1=evict 2=flush 3=warn 4=quota-yield
     dec_head: usize,
+    /// 应用内存配额挤压旗标（F195 联动语义：配额压力下缓存先让——交互优先）。
+    /// 下一次 poll 额外回收缓存 25%（让出配额空间），然后自动解除（一次性让路）。
+    quota_pressure: bool,
+    /// 配额挤压让路次数（诊断面）。
+    quota_yields: u64,
 }
 
 impl PageWatermark {
@@ -132,6 +137,8 @@ impl PageWatermark {
             last_poll_ms: 0,
             decisions: [None; 32],
             dec_head: 0,
+            quota_pressure: false,
+            quota_yields: 0,
         }
     }
 
@@ -202,7 +209,15 @@ impl PageWatermark {
         let mut evicted = 0u32;
         // 到线按 LRU 回收文件页（主册），直到缓存回到档位水位的 90%
         //（回缩到 90% 防抖，避免贴线反复回收）。
-        let target = tier.watermark() * 9 / 10;
+        let mut target = tier.watermark() * 9 / 10;
+        // 应用内存配额挤压 → 缓存先让（主册【状态与异常】：交互优先）。
+        // 一次性让路：额外压到水位 65%（比常规回收多让 25% 空间），让完即解除。
+        if self.quota_pressure {
+            target = target * 65 / 90;
+            self.quota_pressure = false;
+            self.quota_yields += 1;
+            self.log(now_ms % 1_000_000, 4);
+        }
         while self.cache_bytes > target && self.lru_len > 0 {
             let page = self.file_lru[self.lru_head];
             self.file_lru[self.lru_head] = 0;
@@ -249,6 +264,34 @@ impl PageWatermark {
 
     pub fn cache_bytes(&self) -> u64 {
         self.cache_bytes
+    }
+
+    /// 应用内存配额挤压信号（主册 G-B-05【状态与异常】：「应用内存配额挤压
+    /// 缓存 → 缓存先让（交互优先）」）。置旗后下一次 poll 一次性多让 25%
+    /// 缓存空间（水位 90% → 65% 目标），然后自动解除——让路是单次动作，
+    /// 不是常态降档（常态降档由三档水位策略负责，两套语义不混）。
+    pub fn note_quota_pressure(&mut self) {
+        self.quota_pressure = true;
+    }
+
+    /// 配额让路次数（诊断面）。
+    pub fn quota_yields(&self) -> u64 {
+        self.quota_yields
+    }
+
+    /// 内存三区图数据（主册 G-B-05【交互设计】：监视器内存页三区图
+    /// **应用/缓存/空闲** 实时面积图——应用区按匿名页 4KB 折算，三区
+    /// permille 和 = 1000）。`free_bytes` 由调用侧传入（伙伴分配器面同源）。
+    pub fn tri_area_permille(&self, free_bytes: u64) -> (u32, u32, u32) {
+        // 累计差分口径：三区边界单调切分 4GB 总量，permille 和恒 = 1000
+        // （面积图三区无缝拼满——逐项独立取 permille 会因截断/重叠失和）。
+        let total = MEM_TOTAL_BYTES.max(1);
+        let app_b = self.anon_pages.saturating_mul(4096).min(total);
+        let cache_b = self.cache_bytes.min(total.saturating_sub(app_b));
+        let free_b = free_bytes.min(total.saturating_sub(app_b).saturating_sub(cache_b));
+        let app_p = (app_b * 1000 / total) as u32;
+        let app_cache_p = ((app_b + cache_b) * 1000 / total) as u32;
+        (app_p, app_cache_p - app_p, 1000 - app_cache_p.min(1000))
     }
 
     pub fn tier(&self, free_bytes: u64) -> Tier {
@@ -334,6 +377,27 @@ pub fn run_pagewater_checks() -> CheckSet {
     pw6.cache_file_page(3, 2_000_000_000);
     pw6.poll(0, 1_000);
     cs.add("anon_not_reclaimed", pw6.cache_bytes() == 0, "");
+    // 10) 三区图数据（主册【交互设计】应用/缓存/空闲面积图）：和 = 1000‰。
+    let mut pw7 = PageWatermark::new();
+    pw7.anon_page_add(100_000); // 100k 页 × 4KB = ~390MB 应用区
+    pw7.cache_file_page(1, 800_000_000);
+    let (ap, cp, fp) = pw7.tri_area_permille(2_000_000_000);
+    cs.add("tri_area_sums_1000", ap + cp + fp == 1000 && cp > 0 && ap > 0, "");
+    // 11) 配额挤压让路（主册【状态与异常】缓存先让）：置旗 → poll 多回收 + 计数。
+    let mut pw8 = PageWatermark::new();
+    pw8.cache_file_page(1, 3_100_000_000); // 高水位线上
+    pw8.poll(3_000_000_000, 0); // 常规回收：到 90% 目标
+    let after_normal = pw8.cache_bytes();
+    pw8.note_quota_pressure();
+    let ev2 = pw8.poll(3_000_000_000, 1_000); // 配额让路：65% 目标
+    cs.add(
+        "quota_yield",
+        pw8.quota_yields() == 1 && pw8.cache_bytes() < after_normal && ev2 > 0,
+        "",
+    );
+    // 让路一次性：再 poll 不再额外回收。
+    pw8.poll(3_000_000_000, 2_000);
+    cs.add("quota_yield_one_shot", pw8.quota_yields() == 1, "");
     cs
 }
 

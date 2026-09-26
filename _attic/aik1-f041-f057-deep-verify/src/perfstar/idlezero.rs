@@ -84,6 +84,9 @@ pub struct IdleGovernor {
     /// 最近一秒唤醒计数（风暴判定窗）。
     last_storm_check_ms: u64,
     wakes_in_current_sec: u32,
+    /// 唤醒来源分类计数（主册 G-B-09【数据与存储】：唤醒计数入账本，
+    /// **唤醒原因分类：输入/定时/脏区**——三源逐类累计，诊断快照消费）。
+    wake_by_source: [u64; 3],
 }
 
 impl IdleGovernor {
@@ -101,6 +104,7 @@ impl IdleGovernor {
             storms_reported: 0,
             last_storm_check_ms: 0,
             wakes_in_current_sec: 0,
+            wake_by_source: [0; 3],
         }
     }
 
@@ -161,6 +165,8 @@ impl IdleGovernor {
         } else {
             self.meaningless_wakes += 1;
         }
+        // 来源分类计数（账本聚合面——主册【数据与存储】）。
+        self.wake_by_source[source as usize] += 1;
         // 风暴判定：滚动 1 秒窗（>60 次无意义唤醒 → 归因报告 F042）。
         if now_ms.saturating_sub(self.last_storm_check_ms) >= 1_000 {
             self.last_storm_check_ms = now_ms;
@@ -209,6 +215,13 @@ impl IdleGovernor {
     /// 风暴报告计数（F042 归因报告证据）。
     pub fn storm_reports(&self) -> u64 {
         self.storms_reported
+    }
+
+    /// 唤醒来源分类计数 [输入, VSync 定时, IPC]（主册【数据与存储】：
+    /// 「唤醒原因分类：输入/定时/脏区」的账本聚合面——诊断快照消费，
+    /// 三源总和 = meaningful + meaningless）。
+    pub fn wake_counts_by_source(&self) -> [u64; 3] {
+        self.wake_by_source
     }
 
     /// 唤醒账只读视图。
@@ -271,6 +284,20 @@ pub fn run_idlezero_checks() -> CheckSet {
         seen += 1;
     }
     cs.add("wake_cause_ledger", all_match && seen == expect.len(), "");
+    // 6) 来源分类计数（主册【数据与存储】唤醒原因分类账本聚合面）：
+    //     三源逐类累计，总和 = meaningful + meaningless。
+    let mut ig6 = IdleGovernor::new();
+    ig6.wake(WakeSource::Input, true, 1);
+    ig6.wake(WakeSource::Input, true, 2);
+    ig6.wake(WakeSource::VSyncTimer, true, 3);
+    ig6.wake(WakeSource::Ipc, false, 4);
+    let bys = ig6.wake_counts_by_source();
+    cs.add(
+        "wake_by_source",
+        bys == [2, 1, 1]
+            && bys.iter().sum::<u64>() == ig6.meaningful_wakes() + ig6.meaningless_wakes(),
+        "",
+    );
     cs
 }
 

@@ -316,6 +316,20 @@ impl GlyphCache {
         Some((self.hits * 1000 / self.lookups) as u32)
     }
 
+    /// 图集占用 permille（已启用页中实占字节 / 启用页总容量；主册 G-B-15
+    /// 【交互设计】：诊断面板显示图集命中率与**占用**——本查询是占用面）。
+    pub fn occupancy_permille(&self) -> Option<u32> {
+        if self.page_count == 0 {
+            return None;
+        }
+        let mut used: u64 = 0;
+        for p in self.pages.iter().take(self.page_count) {
+            used += p.used_bytes as u64;
+        }
+        let cap = self.page_count as u64 * PAGE_BYTES;
+        Some((used * 1000 / cap) as u32)
+    }
+
     /// 命中率 <80% → 自动扩一页（上限 32MB；返回是否扩了）。
     pub fn maybe_grow(&mut self) -> bool {
         match self.hit_rate_permille() {
@@ -524,6 +538,12 @@ fn gc_check_memory_accounting(cs: &mut CheckSet) {
     }
     let grew = g.maybe_grow();
     cs.add("memory_accounting", empty_ok && grew && g.memory_bytes() == PAGE_BYTES, "");
+    // 10) 图集占用（主册【交互设计】诊断面板「命中率与占用」的占用面）：
+    //     实占/启用页容量 permille；空图集 = None；插入字形后占用 > 0。
+    cs.add("occupancy_none_when_empty", GlyphCache::new().occupancy_permille().is_none(), "");
+    g.insert(key(0xCD), 24, 24); // 实际写入字形 → 实占字节数 > 0
+    let occ = g.occupancy_permille();
+    cs.add("atlas_occupancy_in_range", occ.is_some() && occ.unwrap() > 0 && occ.unwrap() <= 1000, "");
 }
 
 /// 域自检。

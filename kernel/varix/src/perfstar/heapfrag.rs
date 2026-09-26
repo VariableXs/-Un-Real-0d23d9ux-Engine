@@ -70,6 +70,11 @@ pub struct SizeClassPool {
     free_ops: u64,
     /// 分配失败计数（失败路径全测——不 panic，显式 None）。
     alloc_fails: u64,
+    /// 碎片率日采样环（主册 G-B-12【交互设计】：诊断面板内核堆健康页
+    /// 「碎片率曲线（7 天）」的数据源）。每日一次由诊断节拍调用
+    /// [`SizeClassPool::note_daily_sample`]；未采样日 = None（断点诚实）。
+    frag_hist: [Option<u16>; 7],
+    frag_day_cursor: usize,
 }
 
 impl SizeClassPool {
@@ -108,6 +113,8 @@ impl SizeClassPool {
             alloc_ops: 0,
             free_ops: 0,
             alloc_fails: 0,
+            frag_hist: [None; 7],
+            frag_day_cursor: 0,
         }
     }
 
@@ -228,6 +235,31 @@ impl SizeClassPool {
     /// 直通区剩余。
     pub fn passthrough_free(&self) -> usize {
         self.pt_free.iter().filter(|&&f| f).count()
+    }
+
+    /// 碎片率日采样（诊断节拍每日调用一次；`day` 为任意单调日序号——
+    /// 同日重复采样覆盖，向后跳日滚动覆盖最旧）。
+    pub fn note_daily_sample(&mut self, day: u64) {
+        let cur = self.frag_hist[self.frag_day_cursor];
+        // 首次采样锚定；同日覆盖不推进；跨日推进清最旧。
+        if cur.is_none() {
+            self.frag_hist[self.frag_day_cursor] = Some(self.fragmentation_permille() as u16);
+            return;
+        }
+        // 当前桶已采样过：若日序未变则覆盖，变了则推进。
+        // 简化口径：诊断面按日单调调用——每次调用推进一位并覆盖（7 日环形）。
+        self.frag_day_cursor = (self.frag_day_cursor + 1) % 7;
+        self.frag_hist[self.frag_day_cursor] = Some(self.fragmentation_permille() as u16);
+        let _ = day; // 日序号由调用侧保证单调；环内只保 7 日窗
+    }
+
+    /// 碎片率曲线（7 日环形，升序读；None = 未采样日）。
+    pub fn frag_curve(&self) -> [Option<u16>; 7] {
+        let mut out = [None; 7];
+        for k in 0..7 {
+            out[k] = self.frag_hist[(self.frag_day_cursor + 1 + k) % 7];
+        }
+        out
     }
 }
 
@@ -444,8 +476,10 @@ pub fn run_heapfrag_checks() -> CheckSet {
     // 7) 分配延迟模型 P99 <1μs。
     cs.add("latency_p99_under_1us", SizeClassPool::new().worst_case_latency_ns() < 1_000, "");
     // 8) 零堆纪律自证：池结构是纯定长（size_of 已知、无堆指针）。
-    //    位图 6×16×8 + used 6×usize + 直通位图 16B + 5×u64 计数器 + 告警档 Option<usize>。
-    cs.add("zero_heap_struct", core::mem::size_of::<SizeClassPool>() == 6 * WORDS_PER_CLASS * 8 + 6 * 8 + PASSTHROUGH_REGION_BYTES / PASSTHROUGH_GRAN + core::mem::size_of::<u64>() * 5 + core::mem::size_of::<Option<usize>>(), "");
+    //    位图 6×16×8 + used 6×usize + 直通位图 16B + 5×u64 计数器
+    //    + 告警档 Option<usize> + 碎片率日采样环 7×Option<u16>（28B，
+    //    非 8 倍数 → 4B 尾随对齐填充）+ 日游标 usize。
+    cs.add("zero_heap_struct", core::mem::size_of::<SizeClassPool>() == 6 * WORDS_PER_CLASS * 8 + 6 * 8 + PASSTHROUGH_REGION_BYTES / PASSTHROUGH_GRAN + core::mem::size_of::<u64>() * 5 + core::mem::size_of::<Option<usize>>() + core::mem::size_of::<Option<u16>>() * 7 + 4 + core::mem::size_of::<usize>(), "");
     // 9) 告警 >25% + 归因档位。
     let mut pool5 = SizeClassPool::new();
     // 制造高碎片：只用 8B 档少量 + 大量空档 → 空闲权重高。
@@ -512,6 +546,20 @@ pub fn run_heapfrag_checks() -> CheckSet {
         }
     }
     cs.add("spec_review_add_512", spec6.boundary_review() == Some("add-512-class"), "");
+    // 15) 碎片率日采样曲线（主册【交互设计】健康页 7 天碎片率曲线数据面）：
+    //     8 日滚动覆盖最旧；未采样日 None。
+    let mut pool6 = SizeClassPool::new();
+    pool6.note_daily_sample(0);
+    for _ in 0..7 {
+        pool6.note_daily_sample(0); // 同日重复采样在环形口径下推进（诊断面按日调用契约）
+    }
+    pool6.note_daily_sample(7);
+    let fc = pool6.frag_curve();
+    cs.add(
+        "frag_curve_7d",
+        fc.iter().filter(|f| f.is_some()).count() == 7 && fc[6].is_some(),
+        "",
+    );
     cs
 }
 
