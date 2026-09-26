@@ -102,7 +102,19 @@ iregistry=F600 I 域收官登记
 ### 6.3 复验结果
 
 同 worktree 全量 `cargo test -p varix --lib` 复跑（HEAD=7bded35e，262.81s）：
-**5425 passed / 0 failed**——全域门 `f475_every_domain_reports`（349 域，含
-istar 注册行）全绿、istar 域聚合 51 块全绿、F521 两红检查转绿、
-ustar3 307 + istar 155 单测全绿。本域 50 项在 HEAD 集成态下的全域门认证
-完成；证据日志按 gitignore 纪律磁盘留档（`_attic/aiu4-f551-f600/*.log`）。
+**5425 passed / 0 failed**——istar 域聚合 51 块全绿（直调）、F521 两红检查
+转绿、ustar3 307 + istar 155 单测全绿。证据日志按 gitignore 纪律磁盘留档
+（`_attic/aiu4-f551-f600/*.log`）。
+
+### 6.4 复验轮追加发现：全域门静默截断（istar 从未进过 f475）
+
+对账时实证（H3 在日志先行登记待裁，本队补域级证据与修复实验，详见缺陷
+账本 §4.5/§4.6）：`checks.rs MAX_DOMAINS=320` < 域表 351 份注册，
+`KernelCheckup::register` 超容静默丢弃——f475 渲染恰 320 行、末行 F521，
+`istar-u4`、`genstar2`、ustar3 F522-F550 **从未进过全域门**。本队 50 项
+全绿证据因此采用直调口径（域聚合直调 51 块 + 155 单测），不依赖 f475，
+证据成立；「f475 覆盖 istar」的初版表述已修正。worktree 实验
+`MAX_DOMAINS→384` 解封 40 域，暴露同被吞的 `F525-hotkey-card FAIL 10/11`
+（检查期望错，已修——见账本 #13），终局 **5425/0：全域门 360 域全数
+PASS、`istar-u4 PASS 51/51` 在门内实证**。MAX_DOMAINS 一行落位移交
+checks.rs 属主（该文件正被并行会话持有 WIP，本队不越权）。

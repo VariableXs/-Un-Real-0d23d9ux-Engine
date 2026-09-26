@@ -480,10 +480,16 @@ MAX_DOMAINS 288→320（「不够即扩」纪律，注释留痕）。
 认证——干净 worktree 全量跑出 5182/1，唯一红项为全域门 f475 定位到的
 `F521-shot-savedir FAIL 9/11`（U3 领地两条确定性契约违约，dangling commit
 溯源证实自 U3 首个提交即红）：`format_shot_name` 前缀未按 PREFIX_MAX 截断 +
-seq 1-9 误产零填充 `_02`，均按函数 doc 自钉契约最小手术修复（检查期望零改动）；
+seq 1-9 误产零填充 `_02`，按函数 doc 自钉契约最小手术修复（检查期望零改动）；
 同轮清除 robust.rs 域表 rebase 伤（U1 注释块下错挂的 secstar2 重复注册行，
-域表 350→349）。修复后全量 **5425 passed / 0 failed**：f475 全域门（含 istar
-注册行）绿、istar 域聚合 51 块绿、ustar3 307 + istar 155 单测绿。
+域表 350→349）。**并实证全域门静默截断**：`MAX_DOMAINS=320` < 域表 351 份
+注册——f475 渲染恰 320 行、末行 F521，`istar-u4`/`genstar2`/ustar3
+F522-F550 从未进过全域门；worktree 实验 `MAX_DOMAINS→384` 解封 40 域，
+暴露同被吞的 `F525-hotkey-card FAIL 10/11`（检查期望错：`set_key` 改键即转
+UserCustom 而检查仍按默认计数，已修正），终局 **5425 passed / 0 failed：
+全域门 360 域全数 PASS、`istar-u4 PASS 51/51` 在门内实证**（istar 同时保有
+直调口径 51 块聚合 + 155 单测双证据）。MAX_DOMAINS 一行落位移交 checks.rs
+属主（该文件正被并行会话持有 WIP，本队不越权）。
 
 ## [Unreleased] — Varix STAR I · AI-S2 安全加固域·后段（F186-F200 十五项落地）
 

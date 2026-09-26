@@ -1649,15 +1649,17 @@ pub fn run_f525_checks() -> CheckSet {
     // 7) 再导出与注册表当前态一致（同源一致性判据）。
     let ex2 = export_card(&reg, CardEntryDoor::RegistryF244, CardFormat::PdfTwoPage);
     cs.add("reexport_matches_registry", ex2.fingerprint == reg.fingerprint(), "再导出与注册表不一致");
-    // 8) 分色标注：色标两值 + 分色统计（3 默认 1 自定义）。
+    // 8) 分色标注：色标两值 + 分色统计。注意检查 6 已 set_key("copy")——
+    //    改键语义即转 UserCustom（见 set_key 实现与检查 10 的 custom_as_is），
+    //    故此刻 3 条 = 1 默认（paste）+ 2 自定义（copy 已改键、undo）。
     let _ = reg.register("undo", 0x1, b'Z', KeySource::UserCustom);
     let ex3 = export_card(&reg, CardEntryDoor::OverlayF374, CardFormat::PngOnePage);
     cs.add(
         "color_annotation",
         color_index(KeySource::SystemDefault) == 0
             && color_index(KeySource::UserCustom) == 1
-            && ex3.defaults == 2
-            && ex3.customs == 1,
+            && ex3.defaults == 1
+            && ex3.customs == 2,
         "分色标注/统计不符",
     );
     // 9) 双入口同一导出函数：两门产出同指纹同分页。
