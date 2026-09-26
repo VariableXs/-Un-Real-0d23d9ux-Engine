@@ -3,6 +3,42 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次 · 前端功能面）
+
+**src/features/u3/ + U3Tab + src/styles/u3.css**（AI-U3 泳道四三分队，2026-09-26 v2
+批次；对齐 AI-J1 深化批次先例形态，v1 判据实装层（kernel ustar3 19,480 行）之上补齐
+「界面组件与交互层」工程量类别的前端功能面）：
+
+- **十大逻辑模块**（deskicons/locksec/filesec/pointerfx/explorerx/copyops/winkeys/
+  sysdev/clockcal/anchor）：50 项判据的逻辑面纯函数实装——F501 感知亮度选字色
+  （Rec.709 sRGB 线性化 + F297 压暗联动）、F502 两行封顶换行（英文整词不拆）、
+  F503 网格三档 96/80/64 + 最近格螺旋吸附、F504 PIN 冷却翻倍表状态机（30s 起逐次
+  翻倍+冷却期回退密码）、F505 蓝牙动态锁（30s±5s/10s 波动豁免）、F508 防截黑块
+  几何裁剪、**F510 .vxcrypt 单文件加密（WebCrypto 真实现：PBKDF2-SHA256 600k 迭代
+  + AES-256-GCM 认证加密，错误密码人话提示不泄露信息）**、F511 剪贴板全清（历史+
+  当前+空串诚实失败）、F512 截图历史两态（淘汰优先临时项/关机清理）、F513 Ctrl
+  定位（1s 门槛+组合键豁免 20 例）、F515 查找替换（影响数预览+整批一次撤销）、
+  F524 后悔窗（5s 暂存/延寿 10s×2/真释放诚实不可恢复）、F529 空间预检（10% 缓冲
+  三出路）、F531 队列化（同盘串行/异盘并行/插队）、F532 四类人话归因三问结构、
+  F535-F538 快捷键族（Win+数字三态/Win+T 回绕/瞥桌面 15%/Alt+Esc Z 序节流）、
+  F542 ClickLock 1.1s 状态机、F543 分设备音量（40% 首发/LRU 10 台）、F545 电量
+  平滑（≤2%/步+低电 1h 节流）、**F549 农历引擎（位表与春节锚点自内核 ustar3
+  同源移植，位表-锚点一致性不变量 + 五年抽检 + 中秋事实锚）**。
+- **u3store 单一配置根**：50 节分节存储、订阅总线、undo 栈深 3、原子写、默认值
+  预填（get 永远有值）——与 j1store 同源纪律。
+- **U3Runtime 运行时总装**：Ctrl 涟漪层（F335 优先平面）、声音视觉边缘光带
+  （三事件三色令牌化 2 次脉冲）、Caps 双音（WebAudio 880/988 vs 440/494）、打字
+  隐藏指针（100ms 淡出/2s 恢复/移动即时）、Win+逗号瞥桌面（CSS 变量通道）、
+  Ctrl+Shift+Delete 剪贴板热键、蓝牙锁心跳（真实 RSSI 源随闸门登记）。
+- **U3Tab 全量面板**：50 项九组三件套齐全（F474 同源）、每项带判据样张实时数据
+  （五档亮度选字/冷却翻倍表/命名示例/Tooltip 农历样张）、F550 组内嵌九域自检
+  引擎实时执行（锚点可执行性证据在面板可见）。
+- **验证**：u3.spec 80/80 全绿（含 F510 WebCrypto round-trip/错误密码、F549 农历
+  五年抽检、F550 九域自检全绿基线三重锚）；tsc 本域 0 错误；宿主全量回归中
+  desktopxp 13 失败为 AI-D2 untracked 在制品（本包零卷入）；行数对账：v2 前端
+  纯功能 2,566 行（非空非注释）+ v1 实装层 19,480 行 = 累计 22,046 / 46,540
+  （47.4%，如实呈报；证据 _attic/u3-v2-frontend-test.log、_attic/u3-v2-tsc.log）。
+
 ## [Unreleased] — Varix STAR I · AI-J1 J 鼠标域·一分队（F601-F620 深化批次三 · 跨窗口运行时接线）
 
 **src/features/mouse/ + MouseJ1Tab|MouseJ1Panels + 八窗口接线**（AI-J1 泳道三一分队，

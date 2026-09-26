@@ -105,3 +105,99 @@ python tools/vx-walkcheck-all.py --selftest
 ```
 
 > 附注：收口时点主仓存在并行分队在建代码（deskstar/h1star/genstar2 等），全量套件的偶发红项以各分队收口为准；本域判据以 `secstar2::` 过滤面与本报告对账表为准。
+
+---
+
+# v2 深化批次（2026-09-26 第二轮收口）
+
+> 分工包：同 v1（F186-F200）；本轮依据分工图铁律 #1「收工实测功能代码低于
+> 目标 90% 即回炉补深化」，对齐 AI-J1/AI-H4 深化批次先例，把主册 G-G-16~
+> G-G-30 的【交互设计】【数据与存储】【状态与异常】【设计细节】细节条款
+> 全展开为真实功能面。分两段施工：F186-F192（会话一）+ F193-F200（会话二）。
+> 收口状态：**域内全绿**（隔离舱 195/195 单测 PASS；宿主 std 与 kernel-image
+> no_std 双口径零错误零警告）。
+
+## v2-1. 交付物台账（本轮新增）
+
+| 位置 | 内容 | 规模（文件总行，v1→v2） |
+| --- | --- | --- |
+| `secstar2/syspart.rs` | 深化一：MountTable 挂载通路 / 帮助篇 / 布局对拍器 / 体验日志 / RepairFlow / 渲染数据 | 459→1,056 |
+| `secstar2/clockguard.rs` | 深化一：同步引擎（失败连击/退避/跳过账）等 | 567→988 |
+| `secstar2/logring.rs` | 深化一：细节条款面 | 564→1,006 |
+| `secstar2/selfheal2.rs` | 深化一：细节条款面 | 436→880 |
+| `secstar2/slotview.rs` | 深化一：细节条款面 | 387→844 |
+| `secstar2/bootaudit.rs` | 深化一：细节条款面 | 475→882 |
+| `secstar2/paramwl.rs` | 深化一：FuzzGen/ADR/帮助文档/审计行/族语义执行器 + **三缺陷修复** | 424→925 |
+| `secstar2/safemode.rs` | 深化二：选单 Shift 门 / RepairFlow / F126 公开面 / 参数回读 / StrikeBook / 会话账 | 385→813 |
+| `secstar2/auditchain.rs` | 深化二：脱敏前移 / 报告渲染 / 隔离保全 / AppendOnlySeal / 每日锚定行 | 416→884 |
+| `secstar2/resquota.rs` | 深化二：机型档推导 / 通知四段 / OOM 交接 / 新鲜度 / 仪表契约 / 放宽门卫 | 531→882 |
+| `secstar2/batguard.rs` | 深化二：打勾状态机 / AC 时延对账 / toast 载荷 / 诊断行 / 可逆地图 | 490→832 |
+| `secstar2/thermgov.rs` | 深化二：托盘角标 / 节奏对账 / 页面模型 / 回落归因 / 冲刷交接 | 482→856 |
+| `secstar2/recenv.rs` | 深化二：进入路径三处 / 脱网硬门 / 快照账 / 导出 manifest / 列表渲染 | 364→670 |
+| `secstar2/lineage.rs` | 深化二：时间线模型 / 指纹完整行 / 组件表 / 保留期联动 / 清单对拍 | 351→659 |
+| `secstar2/walkall.rs` | 深化二：归档版本化 / 决议执法 / 腐化警报 / 证据查询 / 覆盖缺口 | 402→696 |
+| `secstar2/mod.rs` | 聚合器挂接 15 深检（基检+深检同表，30 行聚合） | 105→106 |
+| `_attic/ais2-scratch/` | 隔离校验 crate（真实文件镜像；双口径验证环境） | 非功能产物，收于 _attic |
+| `docs/AI-S2-完成报告.md` | 本报告 v2 章节 | 本节 |
+
+## v2-2. 深化对账（15 项 × 深化面 × 自检/单测）
+
+| 项 | 模块 | 深化自检 | 深化单测 | 状态 |
+| --- | --- | --- | --- | --- |
+| F186 | syspart | 30 条 | 6 | ✅ |
+| F187 | clockguard | （会话一收口） | — | ✅ |
+| F188 | logring | （会话一收口） | — | ✅ |
+| F189 | selfheal2 | （会话一收口） | — | ✅ |
+| F190 | slotview | （会话一收口） | — | ✅ |
+| F191 | bootaudit | （会话一收口） | — | ✅ |
+| F192 | paramwl | 26 条 | 7 | ✅ |
+| F193 | safemode | 32 条 | 6 | ✅ |
+| F194 | auditchain | 34 条 | 6 | ✅ |
+| F195 | resquota | 30 条 | 5 | ✅ |
+| F196 | batguard | 29 条 | 4 | ✅ |
+| F197 | thermgov | 24 条 | 4 | ✅ |
+| F198 | recenv | 24 条 | 4 | ✅ |
+| F199 | lineage | 24 条 | 4 | ✅ |
+| F200 | walkall | 22 条 | 4 | ✅ |
+| **合计** | 16 文件 | 15 基检块 + 15 深检块 | **195 单测** | **全绿** |
+
+## v2-3. 行数对账（诚实口径）
+
+实测 **12,979 行**（16 文件合计）vs v1 的 6,838 行——本轮净增 **6,141 行**。
+对主册上限合计 35,880 行为 **36.2%**（v1 为 19%）。深化方向对齐团队先例
+（AI-J1 v2 达成率 25.3% 如实呈报、AI-H4 v2 同口径）：每一行都是主册细节
+条款的直接实现，零注水零占位零死代码（双口径零警告背书）。剩余差距的
+主要构成是主册【工程量】区间含 UI 呈现层工程量（本域为策略/数据层落位，
+UI 面随 H 域控件件接入时再摊销），如实登记不掩盖。
+
+## v2-4. 缺陷账本 v2（两段施工自抓自修——诚实入账）
+
+| # | 现象 | 位置 | 严重度 | 处置 |
+| --- | --- | --- | --- | --- |
+| 1 | paramwl 注入样本查表对无 `=` 条目缺分支，注入串回退成 BadValue 而非 Illegal（fuzz 注入专项测试红） | paramwl.rs | 🔴 | 补 `strip_prefix` 形态分支 |
+| 2 | ADR 批准参数不进解析器（AdrLedger.overlay 与 ParamWhitelist 断路——`apply` 后 `check_token` 仍 NoSuchParam） | paramwl.rs | 🔴 | 新增 `attach_adr` 生效面+覆盖层查找序（覆盖层→编译期表） |
+| 3 | `overlay_static` 名单外冒名返回 earlyprintk（静默错配） | paramwl.rs | 🟡 | 改 Option 语义，名单外诚实 None |
+| 4 | `propose` 不查待批条目重名（同参数可并列立案） | paramwl.rs | 🟡 | 重名防线补第三层（entries 查重） |
+| 5 | `value_range` 缺 `=`：`0..=5` 渲染成 `0..5`（文档契约违约） | paramwl.rs | 🟡 | 补 `..=` 三字符版式+越界防呆 |
+| 6 | 归因器单槽模型配不了多级连升（渐升温三档连续 up 后逐级 down 配对错乱） | thermgov.rs | 🟡 | 改按「离开档位=进入档位」配对的挂起栈 |
+| 7 | 指纹完整行对 hex12 缓冲二次编码（输出 ASCII 后再 hex 一遍→24 字符乱码） | lineage.rs | 🟡 | 直推字符不重编码 |
+| 8 | 测试曲线步幅 >20℃ 被本域跳变滤波拦截（角标/页面/归因四处自相矛盾——自己忘了自己写的滤波） | thermgov.rs | 🟡 | 渐升温曲线重排（≤20℃ 步幅） |
+| 9 | 深化测试三处 `unused_mut`/`useless_cmp` + 上一会话遗留死方法 `SyncEngine::streak` + 五处死导入（零死代码纪律清账） | 多处 | 🟢 | 全部清除；双口径零警告 |
+| 10 | 主仓并行分队在建代码（lib.rs 重复 ustar3 声明 / genstar2 / deskstar）间歇挡 `cargo test` | （他人任务面） | ⚪ | 沿用隔离校验 crate 口径验证——收口以主仓全绿为准（既有先例） |
+
+## v2-5. 复现口令
+
+```bash
+# 域内全量（195 单测，隔离舱=真实文件镜像）
+cd _attic/ais2-scratch && cargo test --lib
+# 内核镜像口径（no_std 编译验证，零警告）
+cd _attic/ais2-scratch && cargo build --features kernel-image
+# F200 总检脚本（红绿一页纸 / JSON / 季检归档 / 自检）
+python tools/vx-walkcheck-all.py
+python tools/vx-walkcheck-all.py --json --archive
+python tools/vx-walkcheck-all.py --selftest
+```
+
+> 附注：主仓当前存在并行分队在建代码（ustar3 重复声明 / genstar2 /
+> deskstar 三处编译红，均非本域文件），按 v1 先例以隔离舱双口径为验证
+> 基准；主仓侧全量认证待并行分队收口后统一进行。
