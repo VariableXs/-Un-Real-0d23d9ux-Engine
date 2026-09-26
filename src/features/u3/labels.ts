@@ -38,6 +38,10 @@ export const U3_ENGINE_LABELS: Readonly<Record<string, U3LabelPair>> = {
   shellbar:   { zh: "shell 层装配引擎", en: "Shell Bar Engine" },
   dictwalk:   { zh: "交互词典走查引擎", en: "Dict Walk Engine" },
   kernelbridge: { zh: "内核域桥接引擎", en: "Kernel Bridge Engine" },
+  deskmenu:   { zh: "右键菜单装配引擎", en: "Desk Menu Engine" },
+  copyqueue:  { zh: "复制队列装配引擎", en: "Copy Queue Engine" },
+  clockpanel: { zh: "时钟面板装配引擎", en: "Clock Panel Engine" },
+  walkrehearse: { zh: "走查预演引擎", en: "Walk Rehearsal Engine" },
 };
 
 /** 面板区组标签。 */
@@ -61,6 +65,10 @@ export const U3_LAB_LABELS: Readonly<Record<string, U3LabelPair>> = {
   shellTitle:  { zh: "shell 层活体", en: "Shell bar live" },
   dictGroup:   { zh: "交互词典走查区", en: "Interaction dictionary walk" },
   bridgeGroup: { zh: "内核域桥接对账区", en: "Kernel bridge reconciliation" },
+  menuGroup:   { zh: "右键菜单装配区", en: "Context menu assembly" },
+  queueGroup:  { zh: "复制队列装配区", en: "Copy queue assembly" },
+  panelGroup:  { zh: "时钟面板装配区", en: "Clock panel assembly" },
+  rehearseGroup: { zh: "走查预演工位", en: "Walk rehearsal bench" },
 };
 
 /** 取词 selector（缺键显性回退键名——零静默漏翻）。 */
@@ -79,8 +87,8 @@ export function labelsSelfCheck(): Array<{ name: string; pass: boolean }> {
     pass: allDicts.every((d) => Object.values(d).every((p) => p.zh.length > 0 && p.en.length > 0)),
   });
   checks.push({
-    name: "labels 十九引擎在册",
-    pass: Object.keys(U3_ENGINE_LABELS).length === 19,
+    name: "labels 廿三引擎在册",
+    pass: Object.keys(U3_ENGINE_LABELS).length === 23,
   });
   // 缺键显性回退：不存在的键返回键名（不静默给空串）
   checks.push({ name: "labels 缺键显性回退", pass: u3Label("no-such-key", "zh", U3_LAB_LABELS) === "no-such-key" });

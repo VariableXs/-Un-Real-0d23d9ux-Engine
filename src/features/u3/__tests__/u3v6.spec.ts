@@ -107,10 +107,10 @@ describe("U3-v6 shellbar", () => {
 /* ------------------------------ dictwalk ------------------------------ */
 
 describe("U3-v6 dictwalk", () => {
-  it("账本 9 条、非系统层四出路全齐、系统层豁免", () => {
+  it("账本 13 条、非系统层四出路全齐、系统层豁免", () => {
     const rows = walkDictEntries();
     expect(rows.length).toBe(U3_DICT_ENTRIES.length);
-    expect(U3_DICT_ENTRIES.length).toBe(9);
+    expect(U3_DICT_ENTRIES.length).toBe(13);
     const verdicts = dictWalkVerdict(rows, U3_DICT_ENTRIES);
     expect(verdicts.every((v) => v.pass)).toBe(true);
     // 系统层确实只有一条条目（锁屏 PIN）

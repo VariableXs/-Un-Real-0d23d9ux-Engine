@@ -28,6 +28,11 @@ import {
   walkDictEntries, dictWalkVerdict, U3_DICT_ENTRIES,
   bridgeVerdict, KERNEL_CHECK_COUNTS,
 } from "./engines";
+import {
+  V7_ENGINE_SELFCHECKS, v7EnginesSelfCheck,
+  pendingLedger, recordWalk, blockedWorkorder, fiveCheck,
+  MANUAL_WALK_QUERIES, DPI_SCALE_TIERS,
+} from "./labapi";
 import { U3_ENGINE_LABELS, U3_LAB_LABELS, labelsSelfCheck, u3Label } from "./labels";
 
 /* ------------------------------ 引擎群自检区 ------------------------------ */
@@ -314,6 +319,72 @@ export function U3KernelBridgeSection(): React.ReactElement {
             <span key={file} className="u3-stat">{file.replace(".rs", "")} <b>{n}</b></span>
           ))}
         </Row>
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------ v7 走查预演工位区 ------------------------------ */
+
+/** U3Lab v7 走查预演工位（walkrehearse 引擎活体驱动——pending 显性可入账可出单）。 */
+export function U3WalkRehearseSection(): React.ReactElement {
+  const [ledger, setLedger] = useState(() => pendingLedger(["deskicons", "copyops", "clockcal"]));
+  const [workorder, setWorkorder] = useState<ReturnType<typeof blockedWorkorder> | null>(null);
+  const [v7run, setV7run] = useState<ReturnType<typeof v7EnginesSelfCheck> | null>(null);
+  const [benchMsg, setBenchMsg] = useState("工位待命——脚本在下、台账在中、工单出口在下");
+  const done = ledger.filter((r) => r.result !== "pending").length;
+  const q4 = ledger.filter((r) => r.queryNo === 4);
+  // 收工五勾（结构事实样张——真机走查时以实际面板结构断言）
+  const five = fiveCheck({ categoryPage: true, searchReachable: true, inlineAdjustable: true, descSentences: true, pathChainRegistered: true });
+
+  const bookOne = useCallback(() => {
+    const { ledger: next, changed } = recordWalk(ledger, 4, "deskicons", 100, "pass", "预演样张：100% 档走查绿");
+    if (changed) {
+      setLedger(next);
+      setBenchMsg("查4·deskicons·100% 档已入账 pass（已入账不可改判）");
+    } else {
+      setBenchMsg("该槽已入账——重复入账被拒（防洗账）");
+    }
+  }, [ledger]);
+
+  return (
+    <SectionCard title="走查预演工位" f="十二查·manual-walk·v7">
+      <div className="u3-lab-intro">
+        十二查 manual-walk 类查项（{MANUAL_WALK_QUERIES.join("/")}）的预演工位：脚本生成（做什么/看什么/什么算过）→ 显性 pending 台账（{DPI_SCALE_TIERS.join("%/")}% 四档拆槽）→ 执行入账 → 工单导出（卡在哪/需要什么/谁能解）。不冒领全绿。
+      </div>
+      <Row fno="v7" name="v7 引擎群自检" desc="deskmenu/copyqueue/clockpanel/walkrehearse 四引擎同步执行——红项点名">
+        <button type="button" className="j1x-btn" onClick={() => setV7run(v7EnginesSelfCheck())}>执行 v7 总自检</button>
+        {v7run && (
+          <span className={`u3-badge ${v7run.every((c) => c.pass) ? "ok" : "warn"}`}>
+            {v7run.filter((c) => c.pass).length}/{v7run.length} {v7run.every((c) => c.pass) ? u3Label("allGreen", "zh", U3_LAB_LABELS) : u3Label("hasRed", "zh", U3_LAB_LABELS)}
+          </span>
+        )}
+        {v7run && V7_ENGINE_SELFCHECKS.map((e) => {
+          const n = v7run.filter((c) => c.name.startsWith(`[${e.engine}]`)).length;
+          return <span key={e.engine} className="u3-stat">{u3Label(e.engine, "zh", U3_ENGINE_LABELS)} <b>{n}</b> 条</span>;
+        })}
+      </Row>
+      <Row fno="查4" name="4K 四档走查台账（样张：3 域）" desc={`${DPI_SCALE_TIERS.join("%/")}% 每档一槽——执行入账后 pending → pass/fail，已入账不可改判（防洗账）`}>
+        <button type="button" className="j1x-btn" onClick={bookOne}>入账 1 条（deskicons·100%）</button>
+        <span className="u3-stat">已入账 <b>{done}</b> / {ledger.length} · 查4 剩 {q4.filter((r) => r.result === "pending").length}/{q4.length} 槽 pending</span>
+        <span className="u3-stat" role="status">{benchMsg}</span>
+      </Row>
+      <Row fno="查12" name="收工五勾机检" desc="分类页/搜索/就地可调/说明句/路径链——从结构事实断言，缺勾点名">
+        <span className={`u3-badge ${five.pass ? "ok" : "warn"}`}>{five.pass ? "✓ 五勾全绿" : `✗ 缺 ${five.missing.join("/")}`}</span>
+      </Row>
+      <Row fno="纪律④" name="阻塞工单导出" desc="多 AI 并行纪律④：卡在哪/需要什么/谁能解——卡住的永远是任务，不是人">
+        <button type="button" className="j1x-btn" onClick={() => setWorkorder(blockedWorkorder(ledger))}>导出工单</button>
+        {workorder && <span className="u3-stat">待走查 <b>{workorder.total}</b> 项</span>}
+      </Row>
+      {workorder && workorder.items.length > 0 && (
+        <div className="u3-rehearse-wo" role="log" aria-label="阻塞工单">
+          {workorder.items.slice(0, 4).map((b) => (
+            <div key={`${b.domain}-${b.queryNo}-${b.need}`} className="u3-rehearse-wo-row">
+              [{b.domain}·查{b.queryNo}] {b.what} → 需要：{b.need}
+            </div>
+          ))}
+          {workorder.items.length > 4 && <div className="u3-rehearse-wo-row">…共 {workorder.total} 条（台账全量可导）</div>}
+        </div>
       )}
     </SectionCard>
   );

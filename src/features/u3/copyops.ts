@@ -131,7 +131,7 @@ export interface CopyTask {
  * 队列调度（判据：同盘串行/异盘并行判定；插队优先级；暂停取消独立）。
  * parallel 每盘 1、异盘上限由配置决定（默认 2 盘并行）。
  */
-export function scheduleQueue(tasks: CopyTask[], runningVolumeSet: Set<string>, crossDiskParallel: number): CopyTask[] {
+export function scheduleQueue(tasks: ReadonlyArray<CopyTask>, runningVolumeSet: Set<string>, crossDiskParallel: number): CopyTask[] {
   const activeByVolume = new Set(runningVolumeSet);
   const picks: CopyTask[] = [];
   const slots = Math.max(0, crossDiskParallel - activeByVolume.size);
@@ -147,8 +147,8 @@ export function scheduleQueue(tasks: CopyTask[], runningVolumeSet: Set<string>, 
   return picks;
 }
 
-/** 插队（判据：「先传这批」右键插队——优先级调到队首）。 */
-export function jumpQueue(tasks: CopyTask[], id: string): CopyTask[] {
+/** 插队（判据：「先传这批」右键插队——优先级调到队首；泛型保留装配层扩展字段）。 */
+export function jumpQueue<T extends CopyTask>(tasks: ReadonlyArray<T>, id: string): T[] {
   const minPriority = tasks.reduce((m, t) => Math.min(m, t.priority), Infinity);
   return tasks.map((t) => (t.id === id ? { ...t, priority: minPriority - 1 } : t));
 }

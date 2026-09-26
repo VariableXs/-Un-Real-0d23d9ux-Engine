@@ -10,10 +10,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { u3Store, U3_DEFAULTS, type U3Section } from "../u3/u3store";
-import { U3LabSection, U3WalkCheckSection, U3ExpLogSection, U3LockMountSection, U3DictWalkSection, U3KernelBridgeSection } from "../u3/U3Lab";
+import { U3LabSection, U3WalkCheckSection, U3ExpLogSection, U3LockMountSection, U3DictWalkSection, U3KernelBridgeSection, U3WalkRehearseSection } from "../u3/U3Lab";
 import { U3ShellBarSection } from "../u3/ShellBar";
 import { DeskPaintSection } from "../u3/DeskPaint";
 import { ExplorerPaneSection } from "../u3/ExplorerPane";
+import { U3DeskMenuSection } from "../u3/DeskMenuPane";
+import { U3CopyQueueSection } from "../u3/CopyQueuePane";
+import { U3ClockPanelSection } from "../u3/ClockPanelPane";
 import {
   GRID_DENSITY_PX, BRIGHTNESS_SAMPLES, pickIconTextColor, wrapIconLabel, iconTextLayers,
   effectiveGrid, resnapToGrid, type GridDensity,
@@ -123,8 +126,12 @@ export function U3Tab(): React.ReactElement {
       <ExplorerPaneSection />
       <U3LockMountSection />
       <U3ShellBarSection />
+      <U3DeskMenuSection />
+      <U3CopyQueueSection />
+      <U3ClockPanelSection />
       <U3DictWalkSection />
       <U3KernelBridgeSection />
+      <U3WalkRehearseSection />
       <U3WalkCheckSection />
       <U3ExpLogSection />
     </div>

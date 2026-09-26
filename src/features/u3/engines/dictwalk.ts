@@ -56,7 +56,10 @@ export function layerConflict(
 
 /* ------------------------------- U3 领地条目账本 ------------------------------- */
 
-/** U3 领地浮层/面板条目（走查对象登记表——新增浮层必须先入账再写码）。 */
+/** U3 领地浮层/面板条目（走查对象登记表——新增浮层必须先入账再写码）。
+ *  v7 扩容：行内重命名 / 属性对话框 / 时钟面板 / 复制队列四条新浮层入账
+ *  （批次七纪律：先入账再写码——DeskMenuPane/ClockPanelPane/CopyQueuePane
+ *  的浮层出路按本账本实现）。 */
 export const U3_DICT_ENTRIES: ReadonlyArray<DictEntry> = [
   { id: "u3-lab-run",          layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "lab-run-all",  logDomain: "lab" },
   { id: "u3-walkcheck-detail", layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "walkcheck-row", logDomain: "walkcheck" },
@@ -67,6 +70,10 @@ export const U3_DICT_ENTRIES: ReadonlyArray<DictEntry> = [
   { id: "u3-tray-overflow",    layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "tray-arrow",    logDomain: "f516" },
   { id: "u3-action-center",    layer: "modal",   dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "clock-slot",    logDomain: "f516" },
   { id: "u3-pin-entry",        layer: "system",  dismissals: ["escape", "re-trigger", "blur"],                   focusReturnTo: "lockmount-row", logDomain: "f504" },
+  { id: "u3-desk-rename",      layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "desk-icon",     logDomain: "f260" },
+  { id: "u3-props-dialog",     layer: "modal",   dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "menu-properties", logDomain: "f264" },
+  { id: "u3-clock-panel",      layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "clock-slot",    logDomain: "f549" },
+  { id: "u3-copy-queue",       layer: "popover", dismissals: ["outside-click", "escape", "re-trigger", "blur"], focusReturnTo: "queue-toggle",  logDomain: "f531" },
 ];
 
 /* ------------------------------- 走查引擎 ------------------------------- */
@@ -115,7 +122,7 @@ export function dictwalkSelfCheck(): Array<{ name: string; pass: boolean }> {
   // 全账本走查：除系统层 PIN 外四出路全齐
   const rows = walkDictEntries();
   const verdicts = dictWalkVerdict(rows, U3_DICT_ENTRIES);
-  checks.push({ name: "词典账本 9 条在册", pass: rows.length === 9 });
+  checks.push({ name: "词典账本 13 条在册", pass: rows.length === 13 });
   checks.push({ name: "非系统层四出路全齐", pass: rows.filter((_r, i) => U3_DICT_ENTRIES[i]!.layer !== "system").every((r) => r.dismissalsOk) });
   checks.push({ name: "系统层豁免后全绿", pass: verdicts.every((v) => v.pass) });
   checks.push({ name: "焦点归还链全非空", pass: rows.every((r) => r.focusOk) });

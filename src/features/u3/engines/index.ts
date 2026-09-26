@@ -35,6 +35,10 @@ import { walkcheckSelfCheck } from "./walkcheck";
 import { shellbarSelfCheck } from "./shellbar";
 import { dictwalkSelfCheck } from "./dictwalk";
 import { kernelbridgeSelfCheck } from "./kernelbridge";
+import { deskmenuSelfCheck } from "./deskmenu";
+import { copyqueueSelfCheck } from "./copyqueue";
+import { clockpanelSelfCheck } from "./clockpanel";
+import { walkrehearseSelfCheck } from "./walkrehearse";
 import { despaintSelfCheck } from "./despaint";
 import { expuiSelfCheck } from "./expui";
 import { lockmountSelfCheck } from "./lockmount";
@@ -70,6 +74,14 @@ export const V6_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: strin
   { engine: "kernelbridge", fScope: "内核域镜像对账", run: kernelbridgeSelfCheck },
 ];
 
+/** v7 装配深化注册表（批次七：右键菜单/复制队列/时钟面板/走查预演）。 */
+export const V7_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
+  { engine: "deskmenu", fScope: "F502/F260/F264 三路装配", run: deskmenuSelfCheck },
+  { engine: "copyqueue", fScope: "F531/F524/F529 队列装配", run: copyqueueSelfCheck },
+  { engine: "clockpanel", fScope: "F549 重层/F560 节假日", run: clockpanelSelfCheck },
+  { engine: "walkrehearse", fScope: "十二查 manual-walk 预演", run: walkrehearseSelfCheck },
+];
+
 /** v4 引擎群总自检（供锚点域与实验室面板调用）。 */
 export function v4EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V4_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
@@ -85,10 +97,19 @@ export function v6EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V6_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
 }
 
-/** 全引擎群总自检（v4+v5+v6 一口出——锚点域与实验室消费）。 */
+/** v7 装配深化引擎群总自检（供锚点域与实验室面板调用）。 */
+export function v7EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return V7_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
+}
+
+/** 全引擎群总自检（v4+v5+v6+v7 一口出——锚点域与实验室消费）。 */
 export function u3EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
-  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck(), ...v6EnginesSelfCheck()];
+  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck(), ...v6EnginesSelfCheck(), ...v7EnginesSelfCheck()];
 }
 export * from "./shellbar";
 export * from "./dictwalk";
 export * from "./kernelbridge";
+export * from "./deskmenu";
+export * from "./copyqueue";
+export * from "./clockpanel";
+export * from "./walkrehearse";

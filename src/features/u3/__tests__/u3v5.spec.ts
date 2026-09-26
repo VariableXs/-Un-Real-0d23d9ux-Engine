@@ -347,8 +347,8 @@ describe("v5 桶出口与锚点对账", () => {
     expect(all.filter((c) => !c.pass)).toEqual([]);
   });
 
-  it("F550 锚点域表十二域且 anchorRuntime 全绿", () => {
-    expect(U3_ANCHOR_DOMAINS.length).toBe(12);
+  it("F550 锚点域表十三域且 anchorRuntime 全绿", () => {
+    expect(U3_ANCHOR_DOMAINS.length).toBe(13);
     expect(U3_ANCHOR_DOMAINS.map((d) => d.domain)).toContain("v5-engines");
     const rt = anchorRuntime();
     expect(rt.allGreen).toBe(true);
@@ -360,8 +360,8 @@ describe("v5 桶出口与锚点对账", () => {
     expect(rec.rows.filter((r) => !r.ok)).toEqual([]);
   });
 
-  it("labels 十九引擎双语零缺键", () => {
-    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(19);
+  it("labels 廿三引擎双语零缺键", () => {
+    expect(Object.keys(U3_ENGINE_LABELS).length).toBe(23);
     expect(labelsSelfCheck().filter((c) => !c.pass)).toEqual([]);
   });
 
