@@ -22,6 +22,8 @@
 //! 零堆纪律：解析全为切片读取 + 定长输出结构，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -649,5 +651,205 @@ mod tests {
         // 三分支两两不同（枚举互斥）。
         assert_ne!(actions[0], actions[1]);
         assert_ne!(actions[1], actions[2]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F013 · 深化扩展：LinkFlags 全 18 位命名 + 未知位审计 + 热键解码 + 图标缓存键
+//
+// 主册依据（G-A-13【设计细节】）：「解析器覆盖 LinkFlags 全部 18 个已知标志
+// 位（未知位跳过不报错，向前兼容）」——上一版只命名了 11 位，本扩展把 MS-
+// SHLLINK 规范位表补齐命名，并给出「未知位」的显式审计函数（向前兼容的
+// 观测面：遇到未知位 ≠ 静默，是记账后跳过）；六字段之一「热键」的解码面；
+// 图标缓存键（F093 同构——含目标 mtime，程序更新图标自动刷新）。
+// ---------------------------------------------------------------------------
+
+// LinkFlags 位 10-17（MS-SHLLINK 规范；位 0-9 见上方常量区）。
+/// RunInSeparateProcess（位 10）。
+pub const LF_RUN_IN_SEPARATE_PROCESS: u32 = 1 << 10;
+/// 位 11 规范标注 Unused1（保留，解析按未知位跳过）。
+pub const LF_UNUSED1: u32 = 1 << 11;
+/// HasDarwinID（位 12——Darwin/AOD 安装器标识）。
+pub const LF_HAS_DARWIN_ID: u32 = 1 << 12;
+/// RunAsUser（位 13）。
+pub const LF_RUN_AS_USER: u32 = 1 << 13;
+/// HasExpIconIdx（位 14——图标索引含环境变量需展开）。
+pub const LF_HAS_EXP_ICON_IDX: u32 = 1 << 14;
+/// NoPidlAlias（位 15）。
+pub const LF_NO_PIDL_ALIAS: u32 = 1 << 15;
+/// 位 16 规范标注 Unused2（保留）。
+pub const LF_UNUSED2: u32 = 1 << 16;
+/// HasShimLayer（位 17——兼容性垫片声明）。
+pub const LF_HAS_SHIM_LAYER: u32 = 1 << 17;
+
+/// 提取未知位（flags & !KNOWN_LINK_FLAGS——向前兼容审计面：调用方记账后
+/// 跳过，不报错不静默）。
+pub fn unknown_flags(flags: u32) -> u32 {
+    flags & !KNOWN_LINK_FLAGS
+}
+
+/// 热键解码（六字段之一的可读面：低 8 位 vk，高 8 位修饰符）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct HotkeyInfo {
+    /// 虚键码（低 8 位）。
+    pub vk: u8,
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    /// 人类可读短语（属性页展示；无热键 → 空串）。
+    pub phrase: HotkeyPhrase,
+}
+
+/// 热键短语（定长——零堆；HOTKEYF_* 修饰符按位组合）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct HotkeyPhrase {
+    /// 形如 "Ctrl+Alt+F5" 的大写拼接；len 0 = 无热键。
+    pub text: [u8; 24],
+    pub len: usize,
+}
+
+impl HotkeyPhrase {
+    fn push(&mut self, s: &str) {
+        for &b in s.as_bytes() {
+            if self.len < self.text.len() {
+                self.text[self.len] = b;
+                self.len += 1;
+            }
+        }
+    }
+}
+
+/// HOTKEYF 修饰符位（shellapi.h）。
+pub const HOTKEYF_SHIFT: u8 = 0x01;
+pub const HOTKEYF_CONTROL: u8 = 0x02;
+pub const HOTKEYF_ALT: u8 = 0x04;
+
+/// 解码热键字段（0 = 无热键 → 空短语，vk 0）。
+pub fn decode_hotkey(hotkey: u16) -> HotkeyInfo {
+    if hotkey == 0 {
+        return HotkeyInfo { vk: 0, shift: false, ctrl: false, alt: false, phrase: HotkeyPhrase { text: [0; 24], len: 0 } };
+    }
+    let vk = (hotkey & 0xFF) as u8;
+    let mods = (hotkey >> 8) as u8;
+    let shift = mods & HOTKEYF_SHIFT != 0;
+    let ctrl = mods & HOTKEYF_CONTROL != 0;
+    let alt = mods & HOTKEYF_ALT != 0;
+    let mut phrase = HotkeyPhrase { text: [0; 24], len: 0 };
+    if ctrl {
+        phrase.push("Ctrl+");
+    }
+    if alt {
+        phrase.push("Alt+");
+    }
+    if shift {
+        phrase.push("Shift+");
+    }
+    // vk 段：字母/数字直出，F 键按 F1-F24，其余给十六进制（诚实降级）——
+    // 全栈拼接（零堆纪律：不进 format!/to_string）。
+    if vk.is_ascii_uppercase() || vk.is_ascii_digit() {
+        phrase.text[phrase.len] = vk;
+        phrase.len += 1;
+    } else if (0x70..=0x87).contains(&vk) {
+        phrase.push("F");
+        let n = vk - 0x70 + 1;
+        if n >= 10 {
+            phrase.text[phrase.len] = b'1';
+            phrase.len += 1;
+            phrase.text[phrase.len] = b'0' + (n - 10);
+            phrase.len += 1;
+        } else {
+            phrase.text[phrase.len] = b'0' + n;
+            phrase.len += 1;
+        }
+    } else {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+        phrase.push("VK0x");
+        phrase.text[phrase.len] = HEX[(vk >> 4) as usize];
+        phrase.len += 1;
+        phrase.text[phrase.len] = HEX[(vk & 0xF) as usize];
+        phrase.len += 1;
+    }
+    HotkeyInfo { vk, shift, ctrl, alt, phrase }
+}
+
+/// 图标缓存键（F093 同构：目标哈希 + 目标 mtime——程序更新图标自动刷新；
+/// FNV-1a 64 位单混——零堆）。
+pub fn icon_cache_key(target_hash: u64, target_mtime: u64) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for b in target_hash.to_le_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    for b in target_mtime.to_le_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    h
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn link_flags_full_enumeration() {
+        // 全 18 规范位 + 2 保留位 = KNOWN_LINK_FLAGS 的组成（一处一事实对账）。
+        let all = LF_LINK_TARGET_IDLIST
+            | LF_LINK_INFO
+            | LF_HAS_NAME
+            | LF_HAS_REL_PATH
+            | LF_HAS_WORKING_DIR
+            | LF_HAS_ARGUMENTS
+            | LF_HAS_ICON_LOCATION
+            | LF_IS_UNICODE
+            | LF_FORCE_NO_LINK_INFO
+            | LF_HAS_EXP_STRING
+            | LF_RUN_IN_SEPARATE_PROCESS
+            | LF_UNUSED1
+            | LF_HAS_DARWIN_ID
+            | LF_RUN_AS_USER
+            | LF_HAS_EXP_ICON_IDX
+            | LF_NO_PIDL_ALIAS
+            | LF_UNUSED2
+            | LF_HAS_SHIM_LAYER
+            | LF_KEEP_LOCAL_IDLIST_UNC;
+        assert_eq!(all, KNOWN_LINK_FLAGS, "命名位表必须恰好覆盖规范位");
+        // 位 18-28 与 30-31 规范未定义 → 全部是"未知位"（审计面输出非零）。
+        assert_eq!(unknown_flags(0), 0);
+        assert_eq!(unknown_flags(0x4000_0000), 0x4000_0000, "位 30 属未知域");
+        assert_eq!(unknown_flags(KNOWN_LINK_FLAGS), 0);
+    }
+
+    #[test]
+    fn hotkey_decode_matrix() {
+        // 无热键。
+        let none = decode_hotkey(0);
+        assert_eq!(none.vk, 0);
+        assert_eq!(none.phrase.len, 0);
+        // Ctrl+Alt+F5：vk=0x74 (F5)，mods = CTRL|ALT。
+        let f5 = decode_hotkey(0x74 | ((HOTKEYF_CONTROL | HOTKEYF_ALT) as u16) << 8);
+        assert_eq!(f5.vk, 0x74);
+        assert!(f5.ctrl && f5.alt && !f5.shift);
+        assert_eq!(core::str::from_utf8(&f5.phrase.text[..f5.phrase.len]), Ok("Ctrl+Alt+F5"));
+        // Shift+A。
+        let sa = decode_hotkey(b'A' as u16 | ((HOTKEYF_SHIFT as u16) << 8));
+        assert_eq!(core::str::from_utf8(&sa.phrase.text[..sa.phrase.len]), Ok("Shift+A"));
+        // 未知 vk 诚实降级十六进制（不猜不崩）。
+        let odd = decode_hotkey(0xD7 | ((HOTKEYF_CONTROL as u16) << 8));
+        assert_eq!(core::str::from_utf8(&odd.phrase.text[..odd.phrase.len]), Ok("Ctrl+VK0xD7"));
+        // 短语缓冲不越界（最长 Ctrl+Alt+Shift+VK0xXX = 19 字节 < 24）。
+        let full = decode_hotkey(0x88 | ((HOTKEYF_SHIFT | HOTKEYF_CONTROL | HOTKEYF_ALT) as u16) << 8);
+        assert!(full.phrase.len <= full.phrase.text.len());
+    }
+
+    #[test]
+    fn icon_cache_key_sensitive_to_mtime() {
+        // 同目标不同 mtime → 键不同（程序更新图标自动刷新的机制根基）。
+        let k1 = icon_cache_key(0xBEEF, 1000);
+        let k2 = icon_cache_key(0xBEEF, 2000);
+        let k3 = icon_cache_key(0xFEED, 1000);
+        assert_ne!(k1, k2);
+        assert_ne!(k1, k3);
+        assert_eq!(icon_cache_key(0xBEEF, 1000), k1, "同输入同键（确定性）");
     }
 }

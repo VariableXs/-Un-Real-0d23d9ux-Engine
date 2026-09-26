@@ -28,6 +28,7 @@
 //! 零堆纪律：定长拒绝记录表，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -260,7 +261,7 @@ pub fn run_wow64_checks() -> CheckSet {
     // 2) 32 位样本集 10 枚 100% 触发诚实卡片（构造 10 个不同长度的 I386 头）。
     let mut cards = 0u32;
     for len in [0x80usize, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000] {
-        let mut img = vec![0u8; len];
+        let mut img = alloc::vec![0u8; len];
         img[0] = b'M';
         img[1] = b'Z';
         img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
@@ -288,7 +289,7 @@ pub fn run_wow64_checks() -> CheckSet {
         "",
     );
     // 5) ARM64 声明如实告知（识别 + 卡片，不冒充 32 位归因）。
-    let mut img = vec![0u8; 0x80];
+    let mut img = alloc::vec![0u8; 0x80];
     img[0] = b'M';
     img[1] = b'Z';
     img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
@@ -359,7 +360,7 @@ mod tests {
     use super::*;
 
     fn pe_with_machine(machine: u16) -> Vec<u8> {
-        let mut img = vec![0u8; 0x80];
+        let mut img = alloc::vec![0u8; 0x80];
         img[0] = b'M';
         img[1] = b'Z';
         img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
@@ -451,5 +452,221 @@ mod tests {
         let mut bad = pe_with_machine(MACHINE_I386);
         bad[0x44..0x46].copy_from_slice(&0x9999u16.to_le_bytes());
         assert_eq!(detect_machine(&bad), MachineVerdict::NotPe);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F004 · 深化扩展：星图替代品查询预填 + 拒绝缓存落盘模型
+//
+// 主册依据（G-A-04【设计细节】）：「查替代品」按钮跳星图搜索并**预填程序名
+// 关键词**；【数据与存储】拒绝记录存 `cache/wow64-refusals.json`——本扩展给
+// 出该缓存文件的落盘模型：定长记录 + 校验和，损坏即弃建（F189 同族自愈，
+// 读不出 = 空表重建，不报错不挂起）。
+// ---------------------------------------------------------------------------
+
+/// 预填关键词里程序名部分的上限（40 字节——超过截断，星图搜索框仍有完整
+/// 文件名可查；截断在 char 边界，不切半个字）。
+pub const ALT_QUERY_NAME_CAP: usize = 40;
+/// 固定后缀（主册示例文案：搜索同类 64 位工具）。
+pub const ALT_QUERY_SUFFIX: &str = " 64位替代";
+
+/// 星图搜索预填查询（程序名关键词——主册【设计细节】：预填程序名，不是
+/// 静态泛词）。零堆：调用方给渲染缓冲，本结构只记账名字与截断态。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AltQuery {
+    /// 程序基础名（剥目录与扩展名；char 边界截断到 ALT_QUERY_NAME_CAP）。
+    pub name: [u8; ALT_QUERY_NAME_CAP],
+    pub name_len: usize,
+    /// 名字被截断时如实标注（诊断面：预填词与原名的差异可解释）。
+    pub truncated: bool,
+}
+
+/// 从完整路径/文件名提取预填词。剥最后一节路径分隔（`\\` 与 `/` 都认），
+/// 剥 `.exe` 扩展名（大小写各一档；其余扩展名保留——「程序名关键词」语义）。
+pub fn alt_query_for(path: &str) -> AltQuery {
+    let base = match path.rfind(['\\', '/']) {
+        Some(p) => &path[p + 1..],
+        None => path,
+    };
+    let base = base
+        .strip_suffix(".exe")
+        .or_else(|| base.strip_suffix(".EXE"))
+        .unwrap_or(base);
+    let mut q = AltQuery { name: [0; ALT_QUERY_NAME_CAP], name_len: 0, truncated: false };
+    for ch in base.chars() {
+        let mut buf = [0u8; 4];
+        let enc = ch.encode_utf8(&mut buf).as_bytes();
+        if q.name_len + enc.len() > ALT_QUERY_NAME_CAP {
+            q.truncated = true;
+            break;
+        }
+        q.name[q.name_len..q.name_len + enc.len()].copy_from_slice(enc);
+        q.name_len += enc.len();
+    }
+    q
+}
+
+impl AltQuery {
+    /// 渲染进星图搜索框（名字 + 固定后缀）。缓冲不足如实返回 0（不静默截）。
+    pub fn render(&self, buf: &mut [u8]) -> usize {
+        let total = self.name_len + ALT_QUERY_SUFFIX.len();
+        if buf.len() < total {
+            return 0;
+        }
+        buf[..self.name_len].copy_from_slice(&self.name[..self.name_len]);
+        buf[self.name_len..total].copy_from_slice(ALT_QUERY_SUFFIX.as_bytes());
+        total
+    }
+}
+
+// -- 拒绝缓存落盘模型（cache/wow64-refusals） -------------------------------
+
+/// 缓存文件头 16B：magic(4) + version(2) + count(2) + reserved(8)。
+pub const REFUSAL_HDR_SIZE: usize = 16;
+/// 单条记录 16B：hash(8) + reported(1) + reserved(7)。
+pub const REFUSAL_REC_SIZE: usize = 16;
+/// 尾部校验和 8B（FNV-1a over header+records）。
+pub const REFUSAL_SUM_SIZE: usize = 8;
+/// 文件 magic（"VXR4"——Varix wow64 Refusals v4）。
+pub const REFUSAL_MAGIC: [u8; 4] = *b"VXR4";
+
+/// 序列化拒绝账本（落盘形态）。返回写入字节数；缓冲不足返回 0（不静默截）。
+pub fn serialize_refusals(ledger: &RefusalLedger, buf: &mut [u8]) -> usize {
+    let n = ledger.len();
+    let total = REFUSAL_HDR_SIZE + n * REFUSAL_REC_SIZE + REFUSAL_SUM_SIZE;
+    if buf.len() < total || n > REFUSAL_CAP {
+        return 0;
+    }
+    buf[0..4].copy_from_slice(&REFUSAL_MAGIC);
+    buf[4..6].copy_from_slice(&4u16.to_le_bytes());
+    buf[6..8].copy_from_slice(&(n as u16).to_le_bytes());
+    buf[8..16].fill(0);
+    for i in 0..n {
+        let o = REFUSAL_HDR_SIZE + i * REFUSAL_REC_SIZE;
+        buf[o..o + 8].copy_from_slice(&ledger.hashes[i].to_le_bytes());
+        buf[o + 8] = ledger.reported[i] as u8;
+        buf[o + 9..o + 16].fill(0);
+    }
+    let body = REFUSAL_HDR_SIZE + n * REFUSAL_REC_SIZE;
+    let sum = fnv64(&buf[..body]);
+    buf[body..body + 8].copy_from_slice(&sum.to_le_bytes());
+    total
+}
+
+/// 反序列化（自愈语义：任何损坏 → Err，调用方弃文件重建空表——F189 同族，
+/// 不静默吞坏数据）。校验 magic/版本/长度/校验和四关。
+pub fn deserialize_refusals(data: &[u8]) -> Result<RefusalLedger, &'static str> {
+    if data.len() < REFUSAL_HDR_SIZE + REFUSAL_SUM_SIZE {
+        return Err("wow64: refusal cache too small");
+    }
+    if data[0..4] != REFUSAL_MAGIC {
+        return Err("wow64: refusal cache bad magic");
+    }
+    if u16::from_le_bytes([data[4], data[5]]) != 4 {
+        return Err("wow64: refusal cache unsupported version");
+    }
+    let n = u16::from_le_bytes([data[6], data[7]]) as usize;
+    if n > REFUSAL_CAP {
+        return Err("wow64: refusal cache count out of range");
+    }
+    let body = REFUSAL_HDR_SIZE + n * REFUSAL_REC_SIZE;
+    if data.len() < body + REFUSAL_SUM_SIZE {
+        return Err("wow64: refusal cache truncated");
+    }
+    let expect = u64::from_le_bytes(data[body..body + 8].try_into().unwrap());
+    if fnv64(&data[..body]) != expect {
+        return Err("wow64: refusal cache checksum mismatch");
+    }
+    let mut l = RefusalLedger::new();
+    for i in 0..n {
+        let o = REFUSAL_HDR_SIZE + i * REFUSAL_REC_SIZE;
+        l.hashes[i] = u64::from_le_bytes(data[o..o + 8].try_into().unwrap());
+        l.reported[i] = data[o + 8] != 0;
+    }
+    l.count = n;
+    l.next_slot = if n >= REFUSAL_CAP { 0 } else { n };
+    Ok(l)
+}
+
+fn fnv64(data: &[u8]) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for &b in data {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    h
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn alt_query_prefills_program_name() {
+        // 主册【设计细节】：预填**程序名**关键词（非静态泛词）。
+        let q = alt_query_for("S:\\Downloads\\Notepad3.exe");
+        assert!(!q.truncated);
+        let mut buf = [0u8; 64];
+        let n = q.render(&mut buf);
+        let rendered = core::str::from_utf8(&buf[..n]).unwrap();
+        assert!(rendered.starts_with("Notepad3"));
+        assert!(rendered.ends_with(ALT_QUERY_SUFFIX));
+        // 相对名同样命中；无扩展名保留；大写 EXE 也剥。
+        assert_eq!(alt_query_for("tool.exe").name_len, 4);
+        assert_eq!(alt_query_for("PACKER.EXE").name_len, 6);
+        assert_eq!(alt_query_for("archive.zip").render(&mut buf), "archive.zip".len() + ALT_QUERY_SUFFIX.len());
+        // 长名 char 边界截断 + 截断如实标注（不切半个字）。
+        let long = "很长的程序名字段".repeat(20);
+        let q2 = alt_query_for(&long);
+        assert!(q2.truncated);
+        assert!(q2.name_len <= ALT_QUERY_NAME_CAP);
+        assert!(core::str::from_utf8(&q2.name[..q2.name_len]).is_ok(), "截断必须在 char 边界");
+        // 缓冲不足如实返回 0。
+        assert_eq!(q.render(&mut [0u8; 4]), 0);
+    }
+
+    #[test]
+    fn refusal_cache_round_trip() {
+        // 落盘往返：序列化 → 反序列化 → 行为等价（同一哈希第二次不出卡）。
+        let mut src = RefusalLedger::new();
+        for h in [0x11u64, 0x22, 0x33] {
+            assert!(src.refuse(h));
+        }
+        let mut buf = [0u8; REFUSAL_HDR_SIZE + 8 * REFUSAL_REC_SIZE + REFUSAL_SUM_SIZE];
+        let n = serialize_refusals(&src, &mut buf);
+        assert_eq!(n, REFUSAL_HDR_SIZE + 3 * REFUSAL_REC_SIZE + REFUSAL_SUM_SIZE);
+        let mut back = deserialize_refusals(&buf[..n]).expect("round trip must load");
+        assert_eq!(back.len(), 3);
+        assert!(!back.refuse(0x22), "重启后同文件仍不再重复解释");
+        assert!(back.refuse(0x44), "新文件照常出卡");
+        assert_eq!(back.starcard_reports(), 1, "只对新文件上报");
+    }
+
+    #[test]
+    fn refusal_cache_corrupt_self_heals() {
+        // 自愈语义（F189 同族）：损坏一律 Err → 调用方弃文件重建，不静默吞。
+        let mut src = RefusalLedger::new();
+        let _ = src.refuse(0xAB);
+        let mut buf = [0u8; 64];
+        let n = serialize_refusals(&src, &mut buf);
+        // 坏 magic / 坏版本 / 截断 / 校验和翻转，四路全拒。
+        let mut m = buf[..n].to_vec();
+        m[0] = b'X';
+        assert!(deserialize_refusals(&m).is_err());
+        let mut v = buf[..n].to_vec();
+        v[5] = 9;
+        assert!(deserialize_refusals(&v).is_err());
+        assert!(deserialize_refusals(&buf[..8]).is_err());
+        let mut c = buf[..n].to_vec();
+        c[REFUSAL_HDR_SIZE] ^= 0xFF;
+        assert!(deserialize_refusals(&c).is_err());
+        // 超容量 count 拒绝。
+        let mut big = buf[..n].to_vec();
+        big[6..8].copy_from_slice(&(REFUSAL_CAP as u16 + 1).to_le_bytes());
+        // 改了 count 必须连带校验和失效（或超容直接拒）——两路都必须 Err。
+        assert!(deserialize_refusals(&big).is_err());
+        // 缓冲不足序列化如实返回 0。
+        let mut small = [0u8; 12];
+        assert_eq!(serialize_refusals(&src, &mut small), 0);
     }
 }

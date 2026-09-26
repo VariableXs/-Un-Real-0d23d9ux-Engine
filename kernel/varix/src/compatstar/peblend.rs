@@ -28,6 +28,7 @@
 //! 零堆纪律：全定长结构，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -506,7 +507,7 @@ impl LazyCommitPlan {
 pub fn build_static_pe(subsystem: u16, sec_align: u32, section_count: usize, with_relocs: bool) -> Vec<u8> {
     // 文件布局：头 0x80 / PE 头区 0x188 起 / 节表 / 节原始数据（每节 0x200）。
     let file_size = 0x400 + section_count * 0x200;
-    let mut v = vec![0u8; file_size];
+    let mut v = alloc::vec![0u8; file_size];
     v[0] = b'M';
     v[1] = b'Z';
     let pe_off = 0x80u32;
@@ -606,7 +607,7 @@ pub fn run_peblend_checks() -> CheckSet {
     let dd = opt + 112;
     // a-c) 尺寸不足
     for n in [0usize, 8, 0x3F] {
-        if parse(&vec![0u8; n]).is_err() { rejected += 1; }
+        if parse(&alloc::vec![0u8; n]).is_err() { rejected += 1; }
     }
     // d) MZ 魔数破坏
     let mut bad = build_static_pe(SUBSYSTEM_GUI, 4096, 1, false);
@@ -688,7 +689,7 @@ pub fn run_peblend_checks() -> CheckSet {
     );
     // 6) BASE 重定位：HIGHLOW/DIR64 全类型应用 + 未知类型拒绝 + 越界拒绝。
     let img = parse(&build_static_pe(SUBSYSTEM_GUI, 4096, 1, false)).unwrap();
-    let mut mapped = vec![0u8; 0x11_0000];
+    let mut mapped = alloc::vec![0u8; 0x11_0000];
     // 构造一个重定位块：PageRva=0x1000，两条目 HIGHLOW@0x10 与 DIR64@0x20。
     let blk: [u8; 16] = {
         let mut b = [0u8; 16];
@@ -716,7 +717,7 @@ pub fn run_peblend_checks() -> CheckSet {
         "",
     );
     // 未知类型拒绝（Windows 同语义）。
-    let mut mapped_bad = vec![0u8; 0x11_0000];
+    let mut mapped_bad = alloc::vec![0u8; 0x11_0000];
     let mut blk_bad = blk;
     blk_bad[8..10].copy_from_slice(&((9u16) << 12 | 0x010).to_le_bytes());
     mapped_bad[0x2000..0x2010].copy_from_slice(&blk_bad);
@@ -786,7 +787,7 @@ mod tests {
     #[test]
     fn adversarial_rejections() {
         // 判据二：对抗样本集全拒。逐类断言归因正确（不只拒绝，还要拒得对）。
-        assert_eq!(parse(&vec![0u8; 16]), Err(PeBlendError::TooSmall));
+        assert_eq!(parse(&alloc::vec![0u8; 16]), Err(PeBlendError::TooSmall));
         let mut bad = build_static_pe(SUBSYSTEM_GUI, 4096, 1, false);
         bad[1] = b'Q';
         assert_eq!(parse(&bad), Err(PeBlendError::BadDosMagic));
@@ -844,7 +845,7 @@ mod tests {
         // HIGHLOW/DIR64 应用正确；ABSOLUTE 填充跳过；空目录 clean。
         let mut image = parse(&build_static_pe(SUBSYSTEM_GUI, 4096, 1, false)).unwrap();
         image.reloc_dir = None;
-        let mut mapped = vec![0u8; 0x11_0000];
+        let mut mapped = alloc::vec![0u8; 0x11_0000];
         let rep = apply_relocations(&mut mapped, &image, 0x1000).unwrap();
         assert!(rep.consumed_clean && rep.entries == 0 && rep.blocks == 0);
         // 越界目录拒绝。
@@ -883,5 +884,234 @@ mod tests {
         // 归因短语面（F001 错误卡「为什么」要素的源头）。
         assert_eq!(PeBlendError::RelocBudgetExceeded.as_str().contains("64MB"), true);
         assert_eq!(PeBlendError::UnknownRelocType.as_str().contains("relocation"), true);
+    }
+}
+// ---------------------------------------------------------------------------
+// F002 · 深化扩展：导入目录遍历（INT/IAT 描述符链 → per-DLL 符号清单）
+//
+// 主册依据（G-A-02/G-A-03）：静态 PE「或仅导入 kernel32 基础面」完整装载；
+// 导入解析是 F003 两级缓存的供给源。本扩展把 peblock/parse 之后的导入目录
+// 消费面补齐：描述符链遍历、rva→文件偏移换算、hint/name 表读取、序号导入
+// 识别、bound imports（TimeDateStamp 非 0）标记。
+//
+// 零堆纪律：符号名以哈希记账（FNV-1a），不驻留字符串；DLL 名定长 64B。
+// ---------------------------------------------------------------------------
+
+/// 单 DLL 导入清单（定长——零堆）。
+#[derive(Clone, Copy, Debug)]
+pub struct ImportEntry {
+    /// DLL 名（ASCII，定长 64B）。
+    pub dll: [u8; 64],
+    pub dll_len: usize,
+    /// 符号名哈希表（FNV-1a 63 位：bit63 恒 0——与序号导入编码空间互斥，
+    /// 消费方可凭 bit63 无歧义判别两类导入）。序号导入记为
+    /// 0x8000_0000_0000_0000 | ordinal。
+    pub symbol_hashes: [u64; 32],
+    pub symbol_n: usize,
+    /// bound imports（TimeDateStamp 非 0 → 已绑定，绑定加速快路径可用）。
+    pub bound: bool,
+    /// 描述符 TimeDateStamp 原值（bound 对账面）。
+    pub timestamp: u32,
+}
+
+/// rva → 文件偏移（按节表换算；FILE_ALIGN 模式下 raw 界内按 rawoff 平移）。
+pub fn rva_to_off(img: &BlendImage, rva: u64) -> Option<usize> {
+    for s in img.sections() {
+        if rva >= s.rva && rva < s.rva + s.memsz.max(s.filesz) {
+            let delta = rva - s.rva;
+            if delta < s.filesz {
+                return Some((s.raw_offset + delta) as usize);
+            }
+            return None; // 落在 vsize 扩展区（BSS 语义）——文件内无数据
+        }
+    }
+    None
+}
+
+/// 导入目录遍历（数据目录[1]：Import Descriptor）。`dir_rva/size` 由调用方
+/// 从可选头数据目录[1] 读出（本函数保持纯函数——不重复解析头）。
+pub fn parse_imports(
+    image: &[u8],
+    img: &BlendImage,
+    dir_rva: u32,
+    dir_size: u32,
+) -> Result<Vec<ImportEntry>, PeBlendError> {
+    let mut out = Vec::new();
+    if dir_rva == 0 || dir_size == 0 {
+        return Ok(out);
+    }
+    let desc_start = rva_to_off(img, dir_rva as u64)
+        .ok_or(PeBlendError::BadSectionTable)?;
+    // 描述符链的文件域边界 = 目录起点 + 目录尺寸（同域换算——RVA 与文件
+    // 偏移不得混加）；目录尺寸覆盖含终止符在内的全部描述符。
+    let desc_end = desc_start + dir_size as usize;
+    let mut desc = desc_start;
+    // 描述符 20B：OriginalFirstThunk(4) TimeDateStamp(4) ForwarderChain(4)
+    // Name(4) FirstThunk(4)；全零 = 链终止。
+    loop {
+        if desc + 20 > desc_end || desc + 20 > image.len() {
+            return Err(PeBlendError::BadSectionTable);
+        }
+        let read32 = |o: usize| -> u32 {
+            u32::from_le_bytes(image[o..o + 4].try_into().unwrap())
+        };
+        let oft = read32(desc);
+        let timestamp = read32(desc + 4);
+        let name_rva = read32(desc + 12);
+        let ft = read32(desc + 16);
+        if oft == 0 && name_rva == 0 && ft == 0 {
+            break; // 链终止
+        }
+        // DLL 名。
+        let name_off = rva_to_off(img, name_rva as u64).ok_or(PeBlendError::BadSectionTable)?;
+        let name_end = image[name_off..]
+            .iter()
+            .position(|&b| b == 0)
+            .map(|p| name_off + p)
+            .ok_or(PeBlendError::BadSectionTable)?;
+        if name_end - name_off > 64 {
+            return Err(PeBlendError::BadSectionTable);
+        }
+        let mut entry = ImportEntry {
+            dll: [0; 64],
+            dll_len: name_end - name_off,
+            symbol_hashes: [0; 32],
+            symbol_n: 0,
+            bound: timestamp != 0,
+            timestamp,
+        };
+        entry.dll[..entry.dll_len].copy_from_slice(&image[name_off..name_end]);
+        // thunk 数组：优先 OriginalFirstThunk（INT），缺省 FirstThunk（IAT）。
+        let thunk_rva = if oft != 0 { oft } else { ft };
+        let mut toff = rva_to_off(img, thunk_rva as u64).ok_or(PeBlendError::BadSectionTable)?;
+        const ORDINAL_FLAG: u64 = 0x8000_0000_0000_0000;
+        loop {
+            if toff + 8 > image.len() || entry.symbol_n >= 32 {
+                break;
+            }
+            let thunk = u64::from_le_bytes(image[toff..toff + 8].try_into().unwrap());
+            if thunk == 0 {
+                break; // thunk 数组终止
+            }
+            let h = if thunk & ORDINAL_FLAG != 0 {
+                // 序号导入：高位标记 | 序号（低 16 位）。
+                ORDINAL_FLAG | (thunk & 0xFFFF) as u64
+            } else {
+                // hint/name：2B hint + ASCII 名（哈希记账）。
+                let noff = rva_to_off(img, thunk & 0xFFFF_FFFF).ok_or(PeBlendError::BadSectionTable)?;
+                if noff + 3 > image.len() {
+                    return Err(PeBlendError::BadSectionTable);
+                }
+                let start = noff + 2;
+                let end = image[start..]
+                    .iter()
+                    .position(|&b| b == 0)
+                    .map(|p| start + p)
+                    .ok_or(PeBlendError::BadSectionTable)?;
+                let mut h = 0xCBF2_9CE4_8422_2325u64; // FNV-1a offset basis
+                for &b in &image[start..end] {
+                    h ^= b as u64;
+                    h = h.wrapping_mul(0x100_0000_01B3);
+                }
+                // 编码空间互斥（协议不变量）：名字哈希恒清 bit63。FNV-1a 的
+                // 高位是均匀分布的——"CreateFileW" 等常用名约半数会撞上 bit63，
+                // 不清位则与序号导入编码（FLAG|ordinal）不可判别。哈希域收缩
+                // 到 63 位对记账用途无碰撞率损失（仍 2^63 空间）。
+                h &= !ORDINAL_FLAG;
+                h
+            };
+            entry.symbol_hashes[entry.symbol_n] = h;
+            entry.symbol_n += 1;
+            toff += 8;
+        }
+        out.push(entry);
+        desc += 20;
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    /// 在节 0 的文件区（0x400..0x600 ↔ RVA 0x1000..0x1200）内布置导入目录：
+    /// 描述符 20B @0x400 + 终止符 20B @0x414 + DLL 名 @0x428 + thunk 数组
+    /// @0x438 + hint/name @0x450。返回 (文件, 目录RVA, 目录Size)。
+    fn build_with_imports() -> (Vec<u8>, u32, u32) {
+        let mut v = build_static_pe(SUBSYSTEM_GUI, 4096, 1, false);
+        // 布局（文件偏移 / RVA = 0x1000 + off - 0x400）。
+        let desc_off = 0x400usize; // RVA 0x1000
+        let name_off = 0x428usize; // RVA 0x1028
+        let thunk_off = 0x438usize; // RVA 0x1038
+        let hint_off = 0x450usize; // RVA 0x1050
+        let desc_rva = 0x1000u32; // 目录 RVA（= 节 RVA + 0）
+        // DLL 名 "KERNEL32.dll\0"。
+        let dll = b"KERNEL32.dll";
+        v[name_off..name_off + dll.len()].copy_from_slice(dll);
+        v[name_off + dll.len()] = 0;
+        // thunk[0] = hint/name RVA；thunk[1] = 序号 42；thunk[2] = 0 终止。
+        let hint_rva = (hint_off as u32) + 0xC00;
+        v[thunk_off..thunk_off + 8].copy_from_slice(&(hint_rva as u64).to_le_bytes());
+        v[thunk_off + 8..thunk_off + 16]
+            .copy_from_slice(&(0x8000_0000_0000_0000u64 | 42).to_le_bytes());
+        // hint/name：hint=0 + "CreateFileW"\0。
+        let sym = b"CreateFileW";
+        v[hint_off..hint_off + 2].copy_from_slice(&0u16.to_le_bytes());
+        v[hint_off + 2..hint_off + 2 + sym.len()].copy_from_slice(sym);
+        v[hint_off + 2 + sym.len()] = 0;
+        // 描述符：OFT=thunk_rva, timestamp=0, fwd=0, name=name_rva, ft=thunk_rva。
+        // 文件偏移 → RVA（节 0：RVA 0x1000 ↔ raw 0x400，delta 0xC00）。
+        let name_rva = (name_off as u32) + 0xC00;
+        let thunk_rva = (thunk_off as u32) + 0xC00;
+        v[desc_off..desc_off + 4].copy_from_slice(&thunk_rva.to_le_bytes());
+        v[desc_off + 4..desc_off + 8].copy_from_slice(&0u32.to_le_bytes());
+        v[desc_off + 8..desc_off + 12].copy_from_slice(&0u32.to_le_bytes());
+        v[desc_off + 12..desc_off + 16].copy_from_slice(&name_rva.to_le_bytes());
+        v[desc_off + 16..desc_off + 20].copy_from_slice(&thunk_rva.to_le_bytes());
+        // 终止符全零（0x414..0x428 初始为零 ✓）。
+        // 返回目录的 **RVA**（0x1000），非文件偏移——parse_imports 按 RVA 寻址。
+        (v, desc_rva, 40)
+    }
+
+    #[test]
+    fn import_walk_full_chain() {
+        let (bytes, rva, size) = build_with_imports();
+        let img = parse(&bytes).unwrap();
+        let imports = parse_imports(&bytes, &img, rva, size).unwrap();
+        assert_eq!(imports.len(), 1);
+        let e = &imports[0];
+        assert_eq!(&e.dll[..e.dll_len], b"KERNEL32.dll");
+        assert_eq!(e.symbol_n, 2);
+        assert!(!e.bound);
+        // 符号 1：名字导入（编码不变量：bit63 恒 0——"CreateFileW" 的 FNV
+        // 哈希本会撞上 bit63，此断言同时验证互斥不变量在实现中生效）；
+        // 符号 2：序号 42。
+        assert_eq!(e.symbol_hashes[0] & 0x8000_0000_0000_0000, 0);
+        assert_eq!(e.symbol_hashes[1], 0x8000_0000_0000_0000 | 42);
+        let _ = size;
+    }
+
+    #[test]
+    fn import_bound_flag_and_empty() {
+        // bound：timestamp 非 0 → 标记（描述符 +4 处写时间戳）。
+        let (mut bytes, _rva, _size) = build_with_imports();
+        bytes[0x404..0x408].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+        let img = parse(&bytes).unwrap();
+        let imports = parse_imports(&bytes, &img, 0x1000, 40).unwrap();
+        assert!(imports[0].bound);
+        assert_eq!(imports[0].timestamp, 0x1234_5678);
+        // 空目录：零条目不报错。
+        let img = parse(&build_static_pe(SUBSYSTEM_GUI, 4096, 1, false)).unwrap();
+        assert!(parse_imports(&build_static_pe(SUBSYSTEM_GUI, 4096, 1, false), &img, 0, 0)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn import_bad_rva_rejected() {
+        let (bytes, _rva, size) = build_with_imports();
+        let img = parse(&bytes).unwrap();
+        // 目录 RVA 越出节区 → 如实拒绝。
+        assert!(parse_imports(&bytes, &img, 0xFFFF_F000, size).is_err());
     }
 }

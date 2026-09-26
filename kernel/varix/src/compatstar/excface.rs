@@ -23,6 +23,8 @@
 //! 无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 异常码（winnt.h）
@@ -591,5 +593,178 @@ mod tests {
         assert_eq!(f.code, EXC_ACCESS_VIOLATION);
         assert_eq!(f.fault_addr, 0xBADF00D);
         assert_eq!(f.depth, 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F020 · 深化扩展：minidump 二进制序列化（自定轻量格式 VDMP）
+//
+// 主册依据（G-A-20【数据与存储】）：「dump 格式用自定轻量格式（可导出转换
+// CDB 可读文本）」——本扩展给出 VDMP 二进制布局的写入/读回/校验闭环：
+// 落诊断中心的 dump 可序列化、可校验、可读回展示（崩溃卡片「查看详情」的
+// 数据面）。
+// ---------------------------------------------------------------------------
+
+/// VDMP 魔数与版本。
+pub const VDMP_MAGIC: [u8; 4] = [b'V', b'D', b'M', b'P'];
+pub const VDMP_VERSION: u32 = 1;
+/// 序列化缓冲需求（头 56B + 栈 64×8 + 模块 32×20 + 尾注 8）。
+pub const VDMP_SERIAL_SIZE: usize = 56 + DUMP_STACK_FRAMES * 8 + DUMP_MODULES * 20 + 8;
+
+/// 序列化：dump → 定长缓冲。返回写入字节数；缓冲不足返回 0（如实拒绝）。
+pub fn serialize_dump(d: &MiniDump, out: &mut [u8]) -> usize {
+    if out.len() < VDMP_SERIAL_SIZE {
+        return 0;
+    }
+    let mut w = 0usize;
+    let put32 = |out: &mut [u8], w: &mut usize, v: u32| {
+        out[*w..*w + 4].copy_from_slice(&v.to_le_bytes());
+        *w += 4;
+    };
+    let put64 = |out: &mut [u8], w: &mut usize, v: u64| {
+        out[*w..*w + 8].copy_from_slice(&v.to_le_bytes());
+        *w += 8;
+    };
+    out[..4].copy_from_slice(&VDMP_MAGIC);
+    w = 4;
+    let _ = w;
+    put32(out, &mut w, VDMP_VERSION);
+    put32(out, &mut w, d.exception_code);
+    put32(out, &mut w, d.thread_id);
+    put32(out, &mut w, d.stack_n as u32);
+    put32(out, &mut w, d.module_n as u32);
+    put32(out, &mut w, d.system_fingerprint);
+    put32(out, &mut w, d.degraded as u32);
+    put64(out, &mut w, d.crash_addr);
+    put64(out, &mut w, d.restart_cmd_hash);
+    put64(out, &mut w, d.restart_cwd_hash);
+    for i in 0..DUMP_STACK_FRAMES {
+        put64(out, &mut w, d.stack[i]);
+    }
+    for i in 0..DUMP_MODULES {
+        match d.modules[i] {
+            Some(m) => {
+                put64(out, &mut w, m.base);
+                put32(out, &mut w, m.size);
+                put32(out, &mut w, m.checksum);
+                put32(out, &mut w, 0); // 保留（记录对齐 20B）
+            }
+            None => {
+                put64(out, &mut w, 0);
+                put32(out, &mut w, 0);
+                put32(out, &mut w, 0);
+                put32(out, &mut w, 0); // 保留（记录对齐 20B）
+            }
+        }
+    }
+    // 尾部校验和（FNV-1a over 头+体，不含校验槽自身）。
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for &b in &out[..w] {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    put64(out, &mut w, h);
+    w
+}
+
+/// 读回：缓冲 → dump。魔数/版本/校验和任一不符 → 如实拒绝（不静默吞）。
+pub fn deserialize_dump(buf: &[u8]) -> Result<MiniDump, &'static str> {
+    if buf.len() < VDMP_SERIAL_SIZE {
+        return Err("vdmp: buffer too small");
+    }
+    if buf[0..4] != VDMP_MAGIC {
+        return Err("vdmp: bad magic");
+    }
+    let rd32 = |o: usize| u32::from_le_bytes(buf[o..o + 4].try_into().unwrap());
+    let rd64 = |o: usize| u64::from_le_bytes(buf[o..o + 8].try_into().unwrap());
+    if rd32(4) != VDMP_VERSION {
+        return Err("vdmp: unsupported version");
+    }
+    // 校验和（尾部 8B，覆盖其前全部字节）。
+    let body_end = VDMP_SERIAL_SIZE - 8;
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for &b in &buf[..body_end] {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    if h != rd64(body_end) {
+        return Err("vdmp: checksum mismatch");
+    }
+    let mut d = MiniDump {
+        exception_code: rd32(8),
+        crash_addr: rd64(32),
+        thread_id: rd32(12),
+        stack: [0; DUMP_STACK_FRAMES],
+        stack_n: (rd32(16) as usize).min(DUMP_STACK_FRAMES),
+        modules: [None; DUMP_MODULES],
+        module_n: (rd32(20) as usize).min(DUMP_MODULES),
+        system_fingerprint: rd32(24),
+        degraded: rd32(28) != 0,
+        restart_cmd_hash: rd64(40),
+        restart_cwd_hash: rd64(48),
+    };
+    let stack_base = 56;
+    for i in 0..DUMP_STACK_FRAMES {
+        d.stack[i] = rd64(stack_base + i * 8);
+    }
+    let mod_base = stack_base + DUMP_STACK_FRAMES * 8;
+    for i in 0..DUMP_MODULES {
+        let o = mod_base + i * 20;
+        let base = rd64(o);
+        let size = rd32(o + 8);
+        let checksum = rd32(o + 12);
+        if base != 0 || size != 0 {
+            d.modules[i] = Some(DumpModule { base, size, checksum });
+        }
+    }
+    Ok(d)
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn dump_serialization_round_trip() {
+        let stack: Vec<u64> = (0..20u64).map(|i| 0x7FF0_0000 + i * 8).collect();
+        let modules = alloc::vec![
+            DumpModule { base: 0x400000, size: 0x8000, checksum: 7 },
+            DumpModule { base: 0x500000, size: 0x4000, checksum: 9 },
+        ];
+        let d = build_dump(EXC_ACCESS_VIOLATION, 0xDEAD_BEEF, 42, &stack, &modules, 0xA, 0xB);
+        let mut buf = [0u8; VDMP_SERIAL_SIZE];
+        let n = serialize_dump(&d, &mut buf);
+        assert_eq!(n, VDMP_SERIAL_SIZE);
+        let back = deserialize_dump(&buf).unwrap();
+        assert_eq!(back.exception_code, EXC_ACCESS_VIOLATION);
+        assert_eq!(back.crash_addr, 0xDEAD_BEEF);
+        assert_eq!(back.thread_id, 42);
+        assert_eq!(back.stack_n, 20);
+        assert_eq!(back.module_n, 2);
+        assert_eq!(back.modules[0].unwrap().checksum, 7);
+        assert_eq!(back.restart_cmd_hash, 0xA);
+    }
+
+    #[test]
+    fn dump_serialization_honest_rejections() {
+        let d = build_dump(EXC_CPP_UNHANDLED, 1, 1, &[], &[], 1, 1);
+        // 缓冲不足 → 0（如实拒绝）。
+        let mut small = [0u8; 64];
+        assert_eq!(serialize_dump(&d, &mut small), 0);
+        // 序列化后篡改一字节 → 校验和拒绝。
+        let mut buf = [0u8; VDMP_SERIAL_SIZE];
+        let _ = serialize_dump(&d, &mut buf);
+        buf[10] ^= 0xFF;
+        assert!(matches!(deserialize_dump(&buf), Err("vdmp: checksum mismatch")));
+        // 坏魔数。
+        let mut buf2 = [0u8; VDMP_SERIAL_SIZE];
+        let _ = serialize_dump(&d, &mut buf2);
+        buf2[0] = b'X';
+        assert!(matches!(deserialize_dump(&buf2), Err("vdmp: bad magic")));
+        // 未知版本。
+        let mut buf3 = [0u8; VDMP_SERIAL_SIZE];
+        let _ = serialize_dump(&d, &mut buf3);
+        buf3[4..8].copy_from_slice(&99u32.to_le_bytes());
+        assert!(matches!(deserialize_dump(&buf3), Err("vdmp: unsupported version")));
     }
 }

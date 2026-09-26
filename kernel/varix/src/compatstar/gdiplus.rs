@@ -21,6 +21,7 @@
 //! 零堆纪律：路径顶点/位图池/对拍样本全定长，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -411,7 +412,7 @@ pub fn run_gdiplus_checks() -> CheckSet {
         "",
     );
     // 5) PNG 校验：合法头过；坏签名/CRC 错误 → CorruptImage。
-    let mut png = vec![0u8; 33];
+    let mut png = alloc::vec![0u8; 33];
     png[0..8].copy_from_slice(&PNG_SIGNATURE);
     png[8..12].copy_from_slice(&13u32.to_be_bytes());
     png[12..16].copy_from_slice(b"IHDR");
@@ -461,7 +462,7 @@ pub fn run_gdiplus_checks() -> CheckSet {
     let _ = g2.flush();
     cs.add("direct_path_per_command", g2.submissions == 2, "");
     // 9) 对拍容差规则：非文本区 ±1 全过、±2 拒绝；文本区 SSIM>950 判据。
-    let ref_px = vec![128u8; 64];
+    let ref_px = alloc::vec![128u8; 64];
     let mut ok_px = ref_px.clone();
     ok_px[0] = 127; // 差 1 → 容差内
     ok_px[1] = 129;
@@ -473,7 +474,7 @@ pub fn run_gdiplus_checks() -> CheckSet {
         "",
     );
     // SSIM：同图=1000；轻度噪声图仍 >950；结构破坏 <950。
-    let clean = vec![128u8; 100];
+    let clean = alloc::vec![128u8; 100];
     let mut near = clean.clone();
     for i in (0..100).step_by(10) {
         near[i] = 127;
@@ -536,7 +537,7 @@ mod tests {
     fn png_crc_genuine() {
         // CRC32 参考值对拍（"123456789" = 0xCBF43926——算法正确性锚点）。
         assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
-        let mut png = vec![0u8; 33];
+        let mut png = alloc::vec![0u8; 33];
         png[0..8].copy_from_slice(&PNG_SIGNATURE);
         png[8..12].copy_from_slice(&13u32.to_be_bytes());
         png[12..16].copy_from_slice(b"IHDR");
@@ -571,7 +572,7 @@ mod tests {
     #[test]
     fn ssim_extremes() {
         // SSIM 边界：全同=1000（判据锚点）。
-        let a = vec![100u8; 400];
+        let a = alloc::vec![100u8; 400];
         assert_eq!(ssim_permille(&a, &a, 20, 20), Some(1000));
     }
 
@@ -580,5 +581,224 @@ mod tests {
         let mut g = Graphics::new(None, true);
         assert_eq!(g.flush(), 0);
         assert_eq!(g.submissions, 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F007 · 深化扩展：Pen 面 + 渐变几何参数化 + 采样核 + 灰度 AA 覆盖模型
+//
+// 主册依据（G-A-07【功能定义】）：「Graphics/ **Pen**/Brush(实心/渐变)/Path/
+// 抗锯齿文本/图像绘制」——Pen 面上一版缺席；【设计细节】「渐变画刷支持线性/
+// 路径两种」——上一版画刷只有颜色端点没有**几何**（t 从哪来）；抗锯齿统一
+// 走灰度 AA（ClearType 不承诺，差异表）——覆盖率的量化模型补上。
+// ---------------------------------------------------------------------------
+
+/// 画笔（GDI+ Pen）：宽度 + 虚线式样 + 颜色。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Pen {
+    /// 线宽 px（0 → 钳制 1——Windows Pen 宽 0 按 1 处理的语义）。
+    pub width_px: u32,
+    pub dash: DashStyle,
+    pub color: u32,
+}
+
+/// 虚线式样（dash/gap 交替，permille of width 周期）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DashStyle {
+    Solid,
+    Dash,
+    Dot,
+}
+
+impl DashStyle {
+    /// 段式样（dash 段长, gap 段长）permille × 线宽——Solid 返回 None（无段）。
+    pub fn pattern_permille(self) -> Option<(u32, u32)> {
+        match self {
+            DashStyle::Solid => None,
+            DashStyle::Dash => Some((700, 300)),
+            DashStyle::Dot => Some((200, 800)),
+        }
+    }
+}
+
+impl Pen {
+    pub fn new(width_px: u32, dash: DashStyle, color: u32) -> Pen {
+        Pen { width_px: width_px.max(1), dash, color }
+    }
+
+    /// 沿线弧长 s（px）处的可见性（虚线渲染核：周期取模判断 dash/gap）。
+    pub fn visible_at(&self, s_px: u64) -> bool {
+        match self.dash.pattern_permille() {
+            None => true,
+            Some((dash, gap)) => {
+                let period = self.width_px as u64 * (dash + gap) as u64 / 1000;
+                let on = self.width_px as u64 * dash as u64 / 1000;
+                if period == 0 {
+                    return true;
+                }
+                s_px % period < on.max(1)
+            }
+        }
+    }
+}
+
+/// 线性渐变几何（起点→终点的投影参数化：t = dot(P−P0, axis)/|axis|²，
+/// 出界钳制——Brush::LinearGradient 的 t 供给源）。
+#[derive(Clone, Copy, Debug)]
+pub struct LinearGradientGeom {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
+impl LinearGradientGeom {
+    /// 点 (x,y) 处的渐变位置 t（permille 0..=1000）。
+    pub fn t_at(&self, x: f32, y: f32) -> u32 {
+        let dx = self.x1 - self.x0;
+        let dy = self.y1 - self.y0;
+        let len2 = dx * dx + dy * dy;
+        if len2 <= 0.0 {
+            return 0; // 退化轴：全程起点色（诚实约定，不 NaN）
+        }
+        let t = ((x - self.x0) * dx + (y - self.y0) * dy) / len2;
+        (t.clamp(0.0, 1.0) * 1000.0) as u32
+    }
+}
+
+/// 路径（径向）渐变几何：中心 + 半径 + 焦点缩放（Brush::PathGradient 的 t
+/// 供给源；t = 椭圆归一化距离，焦点缩放压缩内环）。
+#[derive(Clone, Copy, Debug)]
+pub struct PathGradientGeom {
+    pub cx: f32,
+    pub cy: f32,
+    pub rx: f32,
+    pub ry: f32,
+    /// 焦点缩放 0..=1000 permille（1.0 = 中心点；<1.0 时中心色区域扩大）。
+    pub focus_permille: u32,
+}
+
+impl PathGradientGeom {
+    pub fn t_at(&self, x: f32, y: f32) -> u32 {
+        if self.rx <= 0.0 || self.ry <= 0.0 {
+            return 0;
+        }
+        let nx = (x - self.cx) / self.rx;
+        let ny = (y - self.cy) / self.ry;
+        let d = (nx * nx + ny * ny).sqrt(); // 归一化椭圆距离 0..∞
+        let focus = self.focus_permille.min(1000) as f32 / 1000.0;
+        if focus >= 1.0 {
+            return 0; // 焦点放大到全径 → 全域中心色
+        }
+        // 焦点缩放：d ≤ focus 的区域全为中心色（t=0），focus..1 线性展开；
+        // focus = 0 → 焦点缩到点，标准径向渐变。
+        let t = ((d - focus) / (1.0 - focus)).clamp(0.0, 1.0);
+        (t * 1000.0) as u32
+    }
+}
+
+/// ImageAttributes 裁剪的取样映射核（nearest-neighbor）：目标像素 → 源像素
+/// （crop 矩形内线性映射；越界如实 None——不静默钳到边缘，差异表登记）。
+pub fn map_dst_to_src(
+    src_w: u32,
+    src_h: u32,
+    crop: (u32, u32, u32, u32),
+    dst: (u32, u32, u32, u32),
+    dx: u32,
+    dy: u32,
+) -> Option<(u32, u32)> {
+    let (cx, cy, cw, ch) = crop;
+    let (dw, dh) = (dst.2, dst.3);
+    if cw == 0 || ch == 0 || dw == 0 || dh == 0 {
+        return None;
+    }
+    if dx >= dw || dy >= dh {
+        return None; // 目标越界：如实拒绝（诚实取样）
+    }
+    let sx = cx + (dx as u64 * cw as u64 / dw as u64) as u32;
+    let sy = cy + (dy as u64 * ch as u64 / dh as u64) as u32;
+    if sx >= src_w || sy >= src_h {
+        return None;
+    }
+    Some((sx, sy))
+}
+
+/// 灰度 AA 覆盖率（VARIX 文本管线灰度 AA 的量化模型：1px 宽笔画的箱式滤波
+/// 覆盖 = 1 − 小数偏移；ClearType 亚像素不承诺——本函数即差异表的实现面）。
+pub fn gray_aa_coverage(stem_left_frac: f32) -> u8 {
+    let f = stem_left_frac.fract().abs();
+    ((1.0 - f) * 255.0).round().clamp(0.0, 255.0) as u8
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn pen_dash_semantics() {
+        // 宽 0 钳制 1（Windows Pen 语义）。
+        assert_eq!(Pen::new(0, DashStyle::Solid, 0xFF0000).width_px, 1);
+        // Solid 恒可见。
+        let solid = Pen::new(2, DashStyle::Solid, 0);
+        for s in 0..1000u64 {
+            assert!(solid.visible_at(s));
+        }
+        // Dash：宽 5 → 周期 5px，可见段 5*700/1000 = 3px。
+        let dash = Pen::new(5, DashStyle::Dash, 0);
+        assert!(dash.visible_at(0) && dash.visible_at(2) && !dash.visible_at(3) && !dash.visible_at(4) && dash.visible_at(5));
+        // Dot：宽 5 → 周期 5px，可见段 1px（200‰ 取整钳下限）。
+        let dot = Pen::new(5, DashStyle::Dot, 0);
+        assert!(dot.visible_at(0) && !dot.visible_at(1) && !dot.visible_at(4) && dot.visible_at(5));
+    }
+
+    #[test]
+    fn linear_gradient_projection() {
+        // 水平轴：t 随 x 线性，y 无关。
+        let g = LinearGradientGeom { x0: 0.0, y0: 0.0, x1: 100.0, y1: 0.0 };
+        assert_eq!(g.t_at(0.0, 42.0), 0);
+        assert_eq!(g.t_at(50.0, 999.0), 500);
+        assert_eq!(g.t_at(100.0, 0.0), 1000);
+        // 出界钳制（线性渐变延伸语义）。
+        assert_eq!(g.t_at(-25.0, 0.0), 0);
+        assert_eq!(g.t_at(150.0, 0.0), 1000);
+        // 退化轴不 NaN（诚实约定 0）。
+        let deg = LinearGradientGeom { x0: 5.0, y0: 5.0, x1: 5.0, y1: 5.0 };
+        assert_eq!(deg.t_at(5.0, 5.0), 0);
+        // 对角轴：中点 500。
+        let diag = LinearGradientGeom { x0: 0.0, y0: 0.0, x1: 10.0, y1: 10.0 };
+        assert_eq!(diag.t_at(5.0, 5.0), 500);
+    }
+
+    #[test]
+    fn path_gradient_focus() {
+        let g = PathGradientGeom { cx: 50.0, cy: 50.0, rx: 50.0, ry: 25.0, focus_permille: 0 };
+        assert_eq!(g.t_at(50.0, 50.0), 0, "中心 = 中心色");
+        assert_eq!(g.t_at(100.0, 50.0), 1000, "右边界 = 边界色");
+        assert_eq!(g.t_at(50.0, 75.0), 1000, "下边界（ry 归一）");
+        assert_eq!(g.t_at(150.0, 50.0), 1000, "出界钳制");
+        // 焦点缩放：focus=500 → 半径内环全为中心色。
+        let f = PathGradientGeom { cx: 0.0, cy: 0.0, rx: 100.0, ry: 100.0, focus_permille: 500 };
+        assert_eq!(f.t_at(50.0, 0.0), 0, "焦点环内全中心色");
+        assert_eq!(f.t_at(100.0, 0.0), 1000, "边界仍边界色");
+        // 退化半径诚实 0。
+        let deg = PathGradientGeom { cx: 0.0, cy: 0.0, rx: 0.0, ry: 1.0, focus_permille: 0 };
+        assert_eq!(deg.t_at(0.0, 0.0), 0);
+    }
+
+    #[test]
+    fn sampling_core_and_aa() {
+        // 裁剪取样：crop 左上 8x8 → 目标 4x4，目标 (1,1) → 源 (2+cx, 2+cy)。
+        assert_eq!(map_dst_to_src(64, 64, (8, 8, 8, 8), (0, 0, 4, 4), 1, 1), Some((10, 10)));
+        // 全图取样（无裁剪）恒等映射。
+        assert_eq!(map_dst_to_src(4, 4, (0, 0, 4, 4), (0, 0, 4, 4), 3, 2), Some((3, 2)));
+        // 越界如实拒绝（目标 / 源两侧）。
+        assert_eq!(map_dst_to_src(4, 4, (0, 0, 4, 4), (0, 0, 4, 4), 4, 0), None);
+        assert_eq!(map_dst_to_src(4, 4, (2, 2, 4, 4), (0, 0, 4, 4), 3, 0), None, "crop 超源 → None");
+        // 零尺寸拒绝。
+        assert_eq!(map_dst_to_src(4, 4, (0, 0, 0, 4), (0, 0, 4, 4), 0, 0), None);
+        // 灰度 AA 覆盖：整数对齐全盖、半偏半盖、出界钳制。
+        assert_eq!(gray_aa_coverage(0.0), 255);
+        assert_eq!(gray_aa_coverage(0.5), 128);
+        assert_eq!(gray_aa_coverage(-1.25), 191, "fract 域工作（1.25→0.25）");
     }
 }

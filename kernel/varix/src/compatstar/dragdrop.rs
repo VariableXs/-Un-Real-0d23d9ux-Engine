@@ -23,6 +23,8 @@
 //! 零堆纪律：会话表定长、报文环定长，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -484,5 +486,106 @@ mod tests {
         hub.reap();
         assert_eq!(hub.completed, 1);
         assert!(!hub.target_reset);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F018 · 深化扩展：QueryContinueDrag / GiveFeedback（OLE 源侧语义）
+//
+// 主册依据（G-A-18【开源复用】）：「OLE 拖放语义对照 Wine ole32 拖放面」——
+// 源侧两个回调的裁决语义补齐：QueryContinueDrag（键盘状态 → 继续/投放/取消）
+// 与 GiveFeedback（效果 → 光标形态）。
+// ---------------------------------------------------------------------------
+
+/// QueryContinueDrag 裁决（OLE 三态，HRESULT 对应面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum QueryContinue {
+    /// S_OK：继续拖拽。
+    Continue,
+    /// DRAGDROP_S_DROP：松开目标键 → 投放。
+    Drop,
+    /// DRAGDROP_S_CANCEL：Esc 或其他取消键 → 取消。
+    Cancel,
+}
+
+/// 键盘/鼠标状态快照（DoDragDrop 循环每拍传入）。
+#[derive(Clone, Copy, Debug)]
+pub struct DragKeyState {
+    pub esc_pressed: bool,
+    /// 主释放键是否已松开（左键拖拽语义：松开 = 投放时刻）。
+    pub primary_released: bool,
+    /// 是否发生过「按住期间键位变化但非取消键」（OLE 默认容忍）。
+    pub other_key_noise: bool,
+}
+
+/// QueryContinueDrag 裁决（OLE 默认方案：Esc → 取消；主键松开 → 投放；
+/// 其余按键噪声容忍继续——与 B-3902 取消三态互为表里）。
+pub fn query_continue_drag(ks: DragKeyState) -> QueryContinue {
+    if ks.esc_pressed {
+        return QueryContinue::Cancel;
+    }
+    if ks.primary_released {
+        return QueryContinue::Drop;
+    }
+    QueryContinue::Continue
+}
+
+/// GiveFeedback 结果（效果 → 光标形态；OLE 无窗口源的标准实现）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FeedbackCursor {
+    Arrow,
+    CopyArrow,
+    MoveArrow,
+    LinkArrow,
+    Forbidden,
+}
+
+/// 效果 → 光标形态（落点提示体系 C-6 语义：可落显示对应效果，禁落显示禁止）。
+pub fn give_feedback(effect: DropEffect) -> FeedbackCursor {
+    match effect {
+        DropEffect::Copy => FeedbackCursor::CopyArrow,
+        DropEffect::Move => FeedbackCursor::MoveArrow,
+        DropEffect::Link => FeedbackCursor::LinkArrow,
+        DropEffect::None => FeedbackCursor::Forbidden,
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn query_continue_semantics() {
+        // OLE 三态逐一对拍：Esc 取消 / 松开投放 / 其余继续（键位噪声容忍）。
+        assert_eq!(query_continue_drag(DragKeyState { esc_pressed: false, primary_released: false, other_key_noise: false }), QueryContinue::Continue);
+        assert_eq!(query_continue_drag(DragKeyState { esc_pressed: false, primary_released: false, other_key_noise: true }), QueryContinue::Continue);
+        assert_eq!(query_continue_drag(DragKeyState { esc_pressed: false, primary_released: true, other_key_noise: false }), QueryContinue::Drop);
+        assert_eq!(query_continue_drag(DragKeyState { esc_pressed: true, primary_released: true, other_key_noise: false }), QueryContinue::Cancel, "Esc 优先于松开（取消优先语义）");
+    }
+
+    #[test]
+    fn feedback_cursor_mapping() {
+        // 效果→光标映射与拖放状态机的 cursor_effect 对账（同一效果同一光标）。
+        assert_eq!(give_feedback(DropEffect::Copy), FeedbackCursor::CopyArrow);
+        assert_eq!(give_feedback(DropEffect::Move), FeedbackCursor::MoveArrow);
+        assert_eq!(give_feedback(DropEffect::Link), FeedbackCursor::LinkArrow);
+        assert_eq!(give_feedback(DropEffect::None), FeedbackCursor::Forbidden);
+    }
+
+    #[test]
+    fn source_loop_integration() {
+        // DoDragDrop 循环端到端：继续若干拍 → 松开 → 投放；对照 Esc 路径。
+        let frames = [
+            DragKeyState { esc_pressed: false, primary_released: false, other_key_noise: false },
+            DragKeyState { esc_pressed: false, primary_released: false, other_key_noise: true },
+            DragKeyState { esc_pressed: false, primary_released: true, other_key_noise: false },
+        ];
+        let mut verdicts = Vec::new();
+        for ks in frames {
+            verdicts.push(query_continue_drag(ks));
+        }
+        assert_eq!(verdicts, alloc::vec![QueryContinue::Continue, QueryContinue::Continue, QueryContinue::Drop]);
+        // Esc 路径：第一拍就取消（与 DragSession::esc_cancel 对账）。
+        assert_eq!(query_continue_drag(DragKeyState { esc_pressed: true, primary_released: false, other_key_noise: false }), QueryContinue::Cancel);
     }
 }

@@ -476,3 +476,201 @@ mod tests {
         assert_eq!(cb.owner, None);
     }
 }
+
+// ---------------------------------------------------------------------------
+// F017 · 深化扩展：格式自动合成（synthesis）+ 第二梯队格式
+//
+// 主册依据（G-A-17【设计细节】）：「多格式共存（同份数据多格式挂载，按消费
+// 者能力选优）」——Windows 剪贴板的成熟语义是**自动合成**：持有 CF_UNICODETEXT
+// 时，消费方要 CF_TEXT 系统自动转码提供（不必源应用显式提供）；反之 CF_OEMTEXT
+// 亦然。本扩展补齐第二梯队格式号与三条合成链。
+// ---------------------------------------------------------------------------
+
+/// 第二梯队标准格式号（winuser.h）。
+pub const CF_OEMTEXT: u16 = 7;
+pub const CF_METAFILEPICT: u16 = 3;
+pub const CF_PALETTE: u16 = 9;
+pub const CF_TIFF: u16 = 6;
+pub const CF_WAVE: u16 = 12;
+pub const CF_SYLK: u16 = 4;
+pub const CF_DIF: u16 = 5;
+pub const CF_OWNERDISPLAY: u16 = 0x0080;
+pub const CF_DSPTEXT: u16 = 0x0081;
+pub const CF_DSPBITMAP: u16 = 0x0082;
+pub const CF_DSPENHMETAFILE: u16 = 0x008E;
+
+/// 合成方向（消费方要的格式 ← 现存格式的自动转码）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SynthDirection {
+    /// CF_UNICODETEXT → CF_TEXT（宽字符 → ANSI/Latin 兜底）。
+    UnicodeToAnsi,
+    /// CF_TEXT → CF_UNICODETEXT（ANSI → 宽字符）。
+    AnsiToUnicode,
+    /// CF_UNICODETEXT → CF_OEMTEXT（OEM 兜底——控制台粘贴面）。
+    UnicodeToOem,
+}
+
+/// 判定能否合成（Windows 同语义：文字类三格式互为合成源；非文字类不合成）。
+pub fn can_synthesize(have: u16, want: u16) -> Option<SynthDirection> {
+    let textish = |f: u16| matches!(f, CF_UNICODETEXT | CF_TEXT | CF_OEMTEXT);
+    if !textish(have) || !textish(want) || have == want {
+        return None;
+    }
+    match (have, want) {
+        (CF_UNICODETEXT, CF_TEXT) => Some(SynthDirection::UnicodeToAnsi),
+        (CF_TEXT, CF_UNICODETEXT) => Some(SynthDirection::AnsiToUnicode),
+        (CF_UNICODETEXT, CF_OEMTEXT) => Some(SynthDirection::UnicodeToOem),
+        _ => None,
+    }
+}
+
+/// 宽字符 → ANSI（UTF-16LE 单元流 → Latin 兜底字节；非 Latin 段 '?' 显式——
+/// 与 condrv/主册 F015「乱码可见而非隐藏」纪律同源）。
+pub fn utf16_to_ansi(units: &[u16]) -> [u8; INLINE_CAP] {
+    let mut out = [0u8; INLINE_CAP];
+    let mut n = 0usize;
+    for &u in units {
+        if n >= INLINE_CAP {
+            break;
+        }
+        // 字节序对：低字节在前（UTF-16LE）；高字节非零 → 非 Latin 段。
+        let lo = (u & 0xFF) as u8;
+        let _hi = (u >> 8) as u8;
+        out[n] = if _hi == 0 && lo < 0x80 { lo } else { b'?' };
+        n += 1;
+    }
+    out
+}
+
+/// ANSI → 宽字符（每字节零扩展；字节流来自 CF_TEXT）。
+pub fn ansi_to_utf16(bytes: &[u8]) -> [u16; INLINE_CAP / 2] {
+    let mut out = [0u16; INLINE_CAP / 2];
+    let mut n = 0usize;
+    for &b in bytes {
+        if n >= INLINE_CAP / 2 {
+            break;
+        }
+        out[n] = b as u16;
+        n += 1;
+    }
+    out
+}
+
+/// 读取时的格式自动合成入口：条目无 want 格式但可合成 → 生成合成负载
+/// （不改动条目本身——合成负载按需生成，Windows 同语义）。
+pub fn synthesize_payload(entry: &ClipEntry, want: u16) -> Option<Storage> {
+    let have = entry.formats[..entry.format_n].iter().copied().find(|&f| can_synthesize(f, want).is_some())?;
+    let dir = can_synthesize(have, want)?;
+    // 只合成文字类（图像/文件列表合成不在承诺面——差异表登记）。
+    if entry.kind != PayloadKind::Text {
+        return None;
+    }
+    let Storage::Inline { bytes, len } = entry.storage else {
+        return None; // 大对象引用面不支持合成（诚实降级）
+    };
+    match dir {
+        SynthDirection::UnicodeToAnsi | SynthDirection::UnicodeToOem => {
+            // 条目内 UTF-16LE 字节流 → 单元流 → ANSI 字节。
+            let units = bytes_to_units(&bytes[..len]);
+            let out = utf16_to_ansi(&units);
+            // 单元数 = 条目字节数 / 2（UTF-16LE 成对）——数组全长不是计数。
+            Some(Storage::Inline { bytes: out, len: (len / 2).min(INLINE_CAP) })
+        }
+        SynthDirection::AnsiToUnicode => {
+            let units = ansi_to_utf16(&bytes[..len]);
+            let mut out = [0u8; INLINE_CAP];
+            let mut n = 0usize;
+            for u in units.iter() {
+                if *u == 0 {
+                    break;
+                }
+                out[n] = (*u & 0xFF) as u8;
+                n += 1;
+            }
+            Some(Storage::Inline { bytes: out, len: n })
+        }
+    }
+}
+
+/// 条目内 UTF-16LE 字节流 → 单元流（合成辅助）。
+fn bytes_to_units(bytes: &[u8]) -> [u16; INLINE_CAP / 2] {
+    let mut out = [0u16; INLINE_CAP / 2];
+    let mut n = 0usize;
+    let mut i = 0usize;
+    while i + 1 < bytes.len() && n < INLINE_CAP / 2 {
+        out[n] = u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+        n += 1;
+        i += 2;
+    }
+    out
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    /// 构造 UTF-16LE 文本条目（"Hi" 两侧格式均为文字类）。
+    fn utf16_entry() -> ClipEntry {
+        let mut e = text_entry("", 1);
+        e.kind = PayloadKind::Text;
+        e
+    }
+
+    #[test]
+    fn synthesis_matrix() {
+        // 文字类三格式互为合成源；同格式/非文字类不合成。
+        assert_eq!(can_synthesize(CF_UNICODETEXT, CF_TEXT), Some(SynthDirection::UnicodeToAnsi));
+        assert_eq!(can_synthesize(CF_TEXT, CF_UNICODETEXT), Some(SynthDirection::AnsiToUnicode));
+        assert_eq!(can_synthesize(CF_UNICODETEXT, CF_OEMTEXT), Some(SynthDirection::UnicodeToOem));
+        assert_eq!(can_synthesize(CF_DIB, CF_BITMAP), None, "图像类不合成（差异表）");
+        assert_eq!(can_synthesize(CF_TEXT, CF_TEXT), None);
+    }
+
+    #[test]
+    fn unicode_to_ansi_synthesis() {
+        // 持有 UTF-16 "Hi中"，消费方要 CF_TEXT → "Hi?"（非 Latin 显式 '?'）。
+        let mut e = utf16_entry();
+        let units: [u16; 3] = [0x48, 0x69, 0x4E2D];
+        let mut bytes = [0u8; INLINE_CAP];
+        for (i, &u) in units.iter().enumerate() {
+            bytes[i * 2] = (u & 0xFF) as u8;
+            bytes[i * 2 + 1] = (u >> 8) as u8;
+        }
+        e.storage = Storage::Inline { bytes, len: 6 };
+        let synth = synthesize_payload(&e, CF_TEXT).expect("text synthesis must work");
+        let Storage::Inline { bytes: out, len } = synth else {
+            panic!("inline expected");
+        };
+        assert_eq!(&out[..len], b"Hi?");
+    }
+
+    #[test]
+    fn ansi_to_unicode_synthesis() {
+        // 持有 CF_TEXT "ok"，消费方要 CF_UNICODETEXT → "ok\0" UTF-16LE。
+        let mut e = utf16_entry();
+        let mut arr = [0u8; INLINE_CAP];
+        arr[..2].copy_from_slice(b"ok");
+        e.storage = Storage::Inline { bytes: arr, len: 2 };
+        let synth = synthesize_payload(&e, CF_UNICODETEXT).expect("synthesis must work");
+        let Storage::Inline { bytes, len } = synth else {
+            panic!("inline expected");
+        };
+        assert_eq!(&bytes[..len], b"ok");
+    }
+
+    #[test]
+    fn synthesis_honest_failures() {
+        // 非文字类条目合成 → None（诚实降级，不假装成功）。
+        let mut e = utf16_entry();
+        e.kind = PayloadKind::Image;
+        assert!(synthesize_payload(&e, CF_TEXT).is_none());
+        // 大对象引用面不合成。
+        let mut big = utf16_entry();
+        big.storage = Storage::TempFileRef { handle: 1, size: LARGE_OBJECT_BYTES + 1 };
+        assert!(synthesize_payload(&big, CF_TEXT).is_none());
+        // 第二梯队格式号钉值。
+        assert_eq!(CF_OEMTEXT, 7);
+        assert_eq!(CF_METAFILEPICT, 3);
+        assert_eq!(CF_DSPTEXT, 0x0081);
+    }
+}

@@ -276,3 +276,118 @@ mod tests {
         assert!(resolve_font("黑体", false, true).italic_synthetic);
     }
 }
+
+// ---------------------------------------------------------------------------
+// F016 · 深化扩展：LOGFONT 语义 + 字重别名解析
+//
+// 主册依据（G-A-16【功能定义】）：「请求字号 pt→px 换算按 96DPI 基准」——
+// Win32 程序实际以 LOGFONT 请求字体：lfHeight 负值 = 字符高度（em 高，即
+// VARIX 的 px 字号），正值 = 单元格高度（含内部行距，需反推）；lfWeight
+// 带 FW_SEMIBOLD 等字重族。本扩展补齐 LOGFONT 请求面与字重别名。
+// ---------------------------------------------------------------------------
+
+/// FW 字重族（winuser.h）。
+pub const FW_NORMAL: u32 = 400;
+/// FW_SEMIBOLD：600 及以上映射族内最近 Bold 档（VARIX 无半档字重——
+/// 映射到 Bold 并标注，Windows 字体匹配同语义）。
+pub const FW_SEMIBOLD: u32 = 600;
+pub const FW_BOLD: u32 = 700;
+
+/// LOGFONT 请求解析结果。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct LfRequest {
+    /// px 字号（96DPI 基准——VARIX 字形管线的输入）。
+    pub px: u32,
+    pub bold: bool,
+    /// 合成加粗（族内无 Bold 时的降级标注——主册【设计细节】）。
+    pub bold_synthetic: bool,
+    /// 字重族（semibold 等映射为最近可用档的标注面）。
+    pub weight_note: &'static str,
+}
+
+/// lfHeight → px（96DPI 基准）：
+/// - 负值 = 字符高度（em）→ px = -lfHeight（VARIX 字号语义直取）；
+/// - 正值 = 单元格高度（含内距）→ px = 值的 90%（内距扣除，工程近似——
+///   登记完成报告；真实字体内距随字体度量，此处按 10% 经验值建模）。
+pub fn lf_height_to_px(lf_height: i32) -> u32 {
+    if lf_height <= 0 {
+        // 负值 = 字符高度（em）→ 直取；0 = 缺省语义（返回 0 由调用方钳制）。
+        (-lf_height) as u32
+    } else {
+        // 单元格高度 → 字符高度：扣 10% 内距（下限 1px）。
+        ((lf_height as u32) * 9 / 10).max(1)
+    }
+}
+
+/// LOGFONT 全请求解析（lfHeight + lfWeight + 字体名）。
+pub fn resolve_logfont(win_name: &str, lf_height: i32, weight: u32) -> LfRequest {
+    let px = lf_height_to_px(lf_height);
+    // 加粗意图：FW_BOLD 及以上直判；FW_SEMIBOLD（600）映射最近 Bold 档。
+    let bold_intent = weight >= FW_SEMIBOLD;
+    // 字重别名：名字后缀 Light/Semibold 覆盖 weight 位（Windows 匹配语义：
+    // 名字优先，字重位兜底）。
+    // 字重别名：先剥后缀得基名，再用基名查表（表内是基名——全名查表必
+    // 落回退，非 Windows 匹配语义）。
+    let (base_name, weight_note): (&str, &str) = if win_name.ends_with(" Light") {
+        (&win_name[..win_name.len() - 6], "light-alias")
+    } else if win_name.ends_with(" Semibold") {
+        (&win_name[..win_name.len() - 9], "semibold-alias")
+    } else if weight > FW_NORMAL && weight < FW_SEMIBOLD {
+        (win_name, "medium-weight-nearest-bold")
+    } else {
+        (win_name, "")
+    };
+    let plan = resolve_font(base_name, bold_intent, false);
+    LfRequest {
+        px,
+        bold: bold_intent,
+        bold_synthetic: plan.bold_synthetic,
+        weight_note: if plan.fell_back { "fell-back" } else { weight_note },
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn lf_height_semantics() {
+        // 负值 = 字符高度（em）→ 直取；正值 = 单元格高度 → 扣 10% 内距。
+        assert_eq!(lf_height_to_px(-16), 16);
+        assert_eq!(lf_height_to_px(-12), 12);
+        assert_eq!(lf_height_to_px(20), 18); // 单元格 20px → 字符 18px
+        assert_eq!(lf_height_to_px(10), 9);
+        // 极小正值下限 1px。
+        assert_eq!(lf_height_to_px(1), 1);
+        // 0 = 缺省字号语义（Windows 让系统挑——模型取 12px 缺省由调用方
+        // 决定，此处不特判 0，负零即 0 → 返回 0 由调用方钳制）。
+        assert_eq!(lf_height_to_px(0), 0);
+    }
+
+    #[test]
+    fn logfont_full_request() {
+        // 微软雅黑 -16 Bold：px=16，族内有 Bold → 不合成。
+        let r = resolve_logfont("微软雅黑", -16, FW_BOLD);
+        assert_eq!(r.px, 16);
+        assert!(r.bold && !r.bold_synthetic);
+        // 宋体 -12 Bold：族内无 Bold → 合成标注。
+        let r2 = resolve_logfont("宋体", -12, FW_BOLD);
+        assert_eq!(r2.px, 12);
+        assert!(r2.bold_synthetic);
+        // 字重别名：Light 后缀。
+        let r3 = resolve_logfont("微软雅黑 Light", -14, FW_NORMAL);
+        assert_eq!(r3.px, 14);
+        assert_eq!(r3.weight_note, "light-alias");
+        // 不存在字体 → fell-back 标注（回退族 + 日志纪律）。
+        let r4 = resolve_logfont("Comic Sans MS", -12, FW_NORMAL);
+        assert_eq!(r4.weight_note, "fell-back");
+        // 中间字重（<600）→ nearest-bold 标注；600（FW_SEMIBOLD）直接映射
+        // 最近 Bold 档（VARIX 无半档字重）。
+        let r5 = resolve_logfont("Arial", -12, 500);
+        assert_eq!(r5.weight_note, "medium-weight-nearest-bold");
+        assert!(!r5.bold, "500 < 600 不足加粗线");
+        let r6 = resolve_logfont("Arial", -12, FW_SEMIBOLD);
+        assert!(r6.bold, "600 映射最近 Bold 档");
+        assert_eq!(r6.weight_note, "");
+    }
+}

@@ -24,6 +24,8 @@
 //! 零堆纪律：trie 节点定长池、审计环定长 1000，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -560,5 +562,150 @@ mod tests {
         assert_eq!(normalize("C:\\a\\\\b").as_deref(), Some("C:\\a\\b"));
         assert_eq!(normalize("C:\\a\\.\\b").as_deref(), Some("C:\\a\\b"));
         assert_eq!(normalize("C:\\..\\escape").is_none(), true);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F010 · 深化扩展：已知文件夹规则表 + 应用级重定向覆盖
+//
+// 主册依据（G-A-10【数据与存储】）：「重定向表 = 静态规则表（路径前缀匹配）
+// + 应用清单声明可覆盖」——本扩展补齐「应用清单声明可覆盖」半边：每应用
+// 最多 8 条覆盖规则（原前缀 → 目标落位），命中覆盖的写路径过审计（why =
+// manifest-override）。
+// ---------------------------------------------------------------------------
+
+/// 已知文件夹规则表（Windows 主体 Known Folder 的重定向归属——静态面）。
+pub const KNOWN_FOLDERS: [(&str, RedirectTier); 8] = [
+    ("C:\\Users\\Public\\Documents", RedirectTier::PassThrough),
+    ("C:\\Users\\Public\\Downloads", RedirectTier::PassThrough),
+    ("C:\\Users\\Public\\Desktop", RedirectTier::PassThrough),
+    ("C:\\Users\\Public\\Pictures", RedirectTier::PassThrough),
+    ("C:\\ProgramData", RedirectTier::AppData),
+    ("C:\\Program Files", RedirectTier::Program),
+    ("C:\\Program Files (x86)", RedirectTier::Program),
+    ("C:\\Windows", RedirectTier::SystemImage),
+];
+
+/// 应用级覆盖规则（清单声明——最多 8 条，工程值登记完成报告）。
+pub const OVERRIDE_CAP: usize = 8;
+
+/// 覆盖规则条目。
+#[derive(Clone, Copy, Debug)]
+pub struct RedirectOverride {
+    /// 原路径前缀（规范化后前缀匹配）。
+    pub from: [u8; 64],
+    pub from_len: usize,
+    /// 覆盖落位（SANDBOX:Program / SANDBOX:AppData / DIRECT 三选）。
+    pub to: &'static str,
+}
+
+/// FsRedirect 的覆盖扩展（挂接在 write_path 判定之前）。
+pub struct OverrideTable {
+    rules: [Option<RedirectOverride>; OVERRIDE_CAP],
+    n: usize,
+    /// 覆盖命中计数（审计可解释性观测面）。
+    pub hits: u64,
+}
+
+impl OverrideTable {
+    pub fn new() -> OverrideTable {
+        OverrideTable { rules: [None; OVERRIDE_CAP], n: 0, hits: 0 }
+    }
+
+    /// 声明一条覆盖（清单面调用；重复前缀幂等）。
+    pub fn declare(&mut self, from: &str, to: &'static str) -> bool {
+        if from.len() > 64 {
+            return false;
+        }
+        for i in 0..self.n {
+            if let Some(r) = self.rules[i] {
+                if &r.from[..r.from_len] == from.as_bytes() {
+                    self.rules[i] = Some(RedirectOverride {
+                        from: r.from,
+                        from_len: r.from_len,
+                        to,
+                    });
+                    return true;
+                }
+            }
+        }
+        if self.n >= OVERRIDE_CAP {
+            return false;
+        }
+        let mut fb = [0u8; 64];
+        fb[..from.len()].copy_from_slice(from.as_bytes());
+        self.rules[self.n] = Some(RedirectOverride { from: fb, from_len: from.len(), to });
+        self.n += 1;
+        true
+    }
+
+    /// 查覆盖（前缀匹配；命中 → 目标落位）。
+    pub fn lookup(&mut self, path: &str) -> Option<&'static str> {
+        for i in 0..self.n {
+            if let Some(r) = self.rules[i] {
+                let from = core::str::from_utf8(&r.from[..r.from_len]).ok()?;
+                if path.to_ascii_lowercase().starts_with(&from.to_ascii_lowercase()) {
+                    self.hits += 1;
+                    return Some(r.to);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn len(&self) -> usize {
+        self.n
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+}
+
+impl Default for OverrideTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 已知文件夹归属查询（分类面的补充入口——诊断页展示「这个文件夹会去哪」）。
+pub fn known_folder_tier(path: &str) -> Option<RedirectTier> {
+    let p = path.to_ascii_lowercase();
+    KNOWN_FOLDERS
+        .iter()
+        .find(|(prefix, _)| p.starts_with(&prefix.to_ascii_lowercase()))
+        .map(|(_, tier)| *tier)
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn known_folder_table() {
+        // 静态规则表 8 条与 classify_path 主判定一致（一处一事实交叉对账）。
+        for (prefix, tier) in KNOWN_FOLDERS.iter() {
+            assert_eq!(known_folder_tier(prefix), Some(*tier), "prefix={}", prefix);
+        }
+        assert_eq!(known_folder_tier("C:\\nowhere"), None);
+    }
+
+    #[test]
+    fn override_declaration_and_hits() {
+        let mut t = OverrideTable::new();
+        assert!(t.declare("C:\\Games", "SANDBOX:Program"));
+        assert!(t.declare("C:\\Games", "DIRECT")); // 幂等覆盖
+        assert_eq!(t.len(), 1);
+        assert_eq!(t.lookup("C:\\Games\\save.dat"), Some("DIRECT"));
+        assert_eq!(t.hits, 1);
+        assert_eq!(t.lookup("C:\\Other\\x"), None);
+        // 大小写不敏感。
+        assert_eq!(t.lookup("c:\\games\\y"), Some("DIRECT"));
+        // 容量上限：8 条满后拒绝（背压如实）。
+        for i in 1..8 {
+            assert!(t.declare(&format!("C:\\App{}", i), "SANDBOX:AppData"));
+        }
+        assert_eq!(t.len(), OVERRIDE_CAP);
+        assert!(!t.declare("C:\\Overflow", "DIRECT"));
     }
 }

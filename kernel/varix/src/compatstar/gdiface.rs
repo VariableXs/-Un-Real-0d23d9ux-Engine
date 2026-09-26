@@ -94,6 +94,10 @@ pub struct GdiState {
     obj_count: usize,
     dcs: [Option<DeviceContext>; 256],
     dc_count: usize,
+    /// 已释放 DC 槽位栈（槽位复用——深化批次 #15 修复：原实现 DC 表只涨
+    /// 不回收，创建-删除 10 万循环必爆 256 上限，句柄稳定判据的 DC 面破洞）。
+    dc_free: [u8; 256],
+    dc_free_n: usize,
     /// 合成器提交的脏区矩形数（B-801 唯一出口记账）。
     pub compositor_submissions: u64,
     /// 泄漏告警触发标记（进程退出 dump 数据源）。
@@ -111,6 +115,8 @@ impl GdiState {
             obj_count: 0,
             dcs: [None; 256],
             dc_count: 0,
+            dc_free: [0; 256],
+            dc_free_n: 0,
             compositor_submissions: 0,
             leak_dump_pending: false,
             invalid_handle_uses: 0,
@@ -197,52 +203,64 @@ impl GdiState {
 
     // -- DC 表 --------------------------------------------------------------
 
-    /// GetDC：屏上 DC。
-    pub fn get_dc(&mut self) -> Option<u32> {
-        if self.dc_count >= 256 {
+    /// DC 槽位获取：优先复用已释放槽（Windows HDC 语义——句柄值回收复用），
+    /// 无可复用且未满 256 才新开槽。
+    fn alloc_dc_slot(&mut self, memory_bitmap: Option<Hgdiobj>) -> Option<u32> {
+        let slot = if self.dc_free_n > 0 {
+            self.dc_free_n -= 1;
+            self.dc_free[self.dc_free_n] as usize
+        } else if self.dc_count < 256 {
+            let s = self.dc_count;
+            self.dc_count += 1;
+            s
+        } else {
             return None;
-        }
-        self.dcs[self.dc_count] = Some(DeviceContext {
-            memory_bitmap: None,
+        };
+        self.dcs[slot] = Some(DeviceContext {
+            memory_bitmap,
             text_color: 0,
-            bk_mode: 2, // TRANSPARENT 缺省? Windows 新 DC 缺省 OPAQUE=2 的语义以 winuser 为准（此处 OPAQUE）
+            bk_mode: 2, // OPAQUE（Windows 新 DC 缺省）
             selected: None,
             valid: true,
         });
-        self.dc_count += 1;
-        Some(self.dc_count as u32) // 句柄 = 槽位号（非 0）
+        Some((slot + 1) as u32)
+    }
+
+    /// GetDC：屏上 DC。
+    pub fn get_dc(&mut self) -> Option<u32> {
+        self.alloc_dc_slot(None)
     }
 
     /// CreateCompatibleDC：内存 DC（绑定内存位图 → 双缓冲）。
     pub fn create_compatible_dc(&mut self, bitmap: Hgdiobj) -> Option<u32> {
-        if self.dc_count >= 256 || bitmap == 0 {
+        if bitmap == 0 {
+            self.invalid_handle_uses += 1;
             return None;
         }
-        self.dcs[self.dc_count] = Some(DeviceContext {
-            memory_bitmap: Some(bitmap),
-            text_color: 0,
-            bk_mode: 2,
-            selected: None,
-            valid: true,
-        });
-        self.dc_count += 1;
-        Some(self.dc_count as u32)
+        self.alloc_dc_slot(Some(bitmap))
     }
 
-    /// ReleaseDC/DeleteDC。
+    /// ReleaseDC/DeleteDC：槽位归还复用池（句柄表稳定判据的 DC 面）。
     pub fn release_dc(&mut self, hdc: u32) -> bool {
         if hdc == HDC_NULL || hdc as usize > self.dc_count {
             self.invalid_handle_uses += 1;
             return false;
         }
-        if let Some(dc) = self.dcs[hdc as usize - 1].as_mut() {
-            if dc.valid {
-                dc.valid = false;
-                return true;
+        let slot = hdc as usize - 1;
+        match self.dcs[slot] {
+            Some(dc) if dc.valid => {
+                self.dcs[slot] = None;
+                if self.dc_free_n < 256 {
+                    self.dc_free[self.dc_free_n] = slot as u8;
+                    self.dc_free_n += 1;
+                }
+                true
+            }
+            _ => {
+                self.invalid_handle_uses += 1;
+                false
             }
         }
-        self.invalid_handle_uses += 1;
-        false
     }
 
     /// DC 访问（无效句柄 → None + 记账，不崩进程）。
@@ -514,5 +532,206 @@ mod tests {
         let mem = g.create_compatible_dc(bmp).unwrap();
         assert!(g.dc(screen).unwrap().memory_bitmap.is_none());
         assert_eq!(g.dc(mem).unwrap().memory_bitmap, Some(bmp));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F006 · 深化扩展：ROP3 真值表核 + 缺失绘制原语提交面
+//
+// 主册依据（G-A-06【设计细节】）：「ROP 光栅操作码实现 16 个高频码」——上一
+// 版只做"码在表内"的准入校验，没有语义执行；本扩展补上真值表核：ROP3 高
+// 字节即 8 位布尔函数索引（位 n = 对 (D,S,P) 第 n 组合的结果，n = D + 2S +
+// 4P），逐位求值即真实光栅语义。另补齐 19 函数清单中未落提交面的绘制原语
+// （PatBlt/Rectangle/Ellipse/LineTo/StretchBlt——主册【功能定义】点名）。
+// ---------------------------------------------------------------------------
+
+/// ROP3 逐位求值（光栅语义核）。`rop` 取高字节为布尔函数索引，按
+/// n = D + 2S + 4P 的组合表逐位展开：对字节的 8 个位平面，各取 (pat,src,dst)
+/// 的当前位组合，查索引对应位即结果位。
+///
+/// 验证锚（wingdi.h 定义）：SRCCOPY(0xCC)=S、PATCOPY(0xF0)=P、DSTINVERT(0x55)=!D、
+/// SRCAND(0x88)=S&D、PATINVERT(0x5A)=P^D、BLACKNESS(0x00)=0——ext_tests 全对账。
+pub fn rop3_eval(rop: u32, pat: u8, src: u8, dst: u8) -> u8 {
+    let idx = ((rop >> 16) & 0xFF) as u8;
+    let mut out = 0u8;
+    for k in 0..8u8 {
+        let d = (dst >> k) & 1;
+        let s = (src >> k) & 1;
+        let p = (pat >> k) & 1;
+        let n = d | (s << 1) | (p << 2);
+        out |= ((idx >> n) & 1) << k;
+    }
+    out
+}
+
+/// 矩形规范化（GDI 语义：left>right / top>bottom 的输入按交换规范化提交，
+/// 零宽高如实拒绝——Windows Rectangle 空矩形不画）。
+pub fn normalize_rect(x: i32, y: i32, w: i32, h: i32) -> Option<(i32, i32, u32, u32)> {
+    if w == 0 || h == 0 {
+        return None;
+    }
+    let (x, w) = if w < 0 { (x + w, (-w) as u32) } else { (x, w as u32) };
+    let (y, h) = if h < 0 { (y + h, (-h) as u32) } else { (y, h as u32) };
+    Some((x, y, w, h))
+}
+
+impl GdiState {
+    /// PatBlt：图案光栅（ROP 校验 + 提交记账——B-801 唯一出口）。
+    pub fn pat_blt(&mut self, hdc: u32, rop: u32, x: i32, y: i32, w: i32, h: i32) -> bool {
+        if self.dc(hdc).is_none() {
+            return false;
+        }
+        if !ROP_TABLE.contains(&rop) {
+            self.unsupported_rops += 1;
+            return false; // 冷门码如实不支持（差异表），不静默降级
+        }
+        if normalize_rect(x, y, w, h).is_none() {
+            return false; // 空矩形如实拒绝（Windows 同语义不画）
+        }
+        self.compositor_submissions += 1;
+        true
+    }
+
+    /// Rectangle：矩形描边+填充（规范化后提交）。
+    pub fn rectangle(&mut self, hdc: u32, x: i32, y: i32, w: i32, h: i32) -> bool {
+        if self.dc(hdc).is_none() {
+            return false;
+        }
+        match normalize_rect(x, y, w, h) {
+            None => false,
+            Some(_) => {
+                self.compositor_submissions += 1;
+                true
+            }
+        }
+    }
+
+    /// Ellipse：内切椭圆（同一规范化核）。
+    pub fn ellipse(&mut self, hdc: u32, x: i32, y: i32, w: i32, h: i32) -> bool {
+        self.rectangle(hdc, x, y, w, h) // 同几何同记账——一处一事实
+    }
+
+    /// LineTo：从当前位置到 (x,y) 的线段（提交为合成器线段脏区）。
+    pub fn line_to(&mut self, hdc: u32, x: i32, y: i32) -> bool {
+        if self.dc(hdc).is_none() {
+            return false;
+        }
+        self.compositor_submissions += 1;
+        let _ = (x, y); // 几何由合成器消费；本层记账唯一出口
+        true
+    }
+
+    /// StretchBlt：跨 DC 缩放拷贝（双 DC 有效性 + ROP 校验；零尺寸如实拒绝）。
+    pub fn stretch_blt(&mut self, dst: u32, src: u32, rop: u32, dw: i32, dh: i32) -> bool {
+        if self.dc(dst).is_none() || self.dc(src).is_none() {
+            return false;
+        }
+        if !ROP_TABLE.contains(&rop) {
+            self.unsupported_rops += 1;
+            return false;
+        }
+        if dw == 0 || dh == 0 {
+            return false;
+        }
+        self.compositor_submissions += 1;
+        true
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    /// ROP3 索引构装（位 n = D + 2S + 4P 的布尔函数 → dword）。
+    fn rop3_from_fn(f: fn(u8, u8, u8) -> u8) -> u32 {
+        let mut idx = 0u8;
+        for n in 0..8u8 {
+            let d = n & 1;
+            let s = (n >> 1) & 1;
+            let p = (n >> 2) & 1;
+            if f(p, s, d) != 0 {
+                idx |= 1 << n;
+            }
+        }
+        (idx as u32) << 16
+    }
+
+    #[test]
+    fn rop3_truth_table_matches_wingdi() {
+        // 16 高频码逐码对账 wingdi.h 布尔定义（P,S,D 三入）。
+        let cases: [(u32, fn(u8, u8, u8) -> u8); 16] = [
+            (ROP_SRCCOPY, |_p, s, _d| s),
+            (ROP_SRCPAINT, |_p, s, d| s | d),
+            (ROP_SRCAND, |_p, s, d| s & d),
+            (ROP_SRCINVERT, |_p, s, d| s ^ d),
+            (ROP_SRCERASE, |_p, s, d| s & (1 - d)),
+            (ROP_NOTSRCCOPY, |_p, s, _d| 1 - s),
+            (ROP_NOTSRCERASE, |_p, s, d| 1 - (s | d)),
+            (ROP_MERGECOPY, |p, s, _d| p & s),
+            (ROP_MERGEPAINT, |_p, s, d| (1 - s) | d), // DSno：(NOT S) OR D
+            (ROP_PATCOPY, |p, _s, _d| p),
+            (ROP_PATPAINT, |p, s, d| (1 - s) | p | d), // 0xFB 真值表：(NOT S) OR P OR D
+            (ROP_PATINVERT, |p, _s, d| p ^ d),
+            (ROP_DSTINVERT, |_p, _s, d| 1 - d),
+            (ROP_BLACKNESS, |_p, _s, _d| 0),
+            (ROP_WHITENESS, |_p, _s, _d| 0xFF),
+            (ROP_NOOP, |_p, _s, d| d),
+        ];
+        for (rop, f) in cases {
+            // 构装索引必须与 wingdi 常量相等（表即定义）。
+            assert_eq!(rop3_from_fn(f), rop & 0x00FF_0000, "rop {:#010X} 索引失配", rop);
+            // 逐位求值必须与布尔函数逐像素一致（随机字节组扫 64 组——参照 =
+            // 布尔函数按位并行展开）。
+            for k in 0..64u8 {
+                let (p, s, d) =
+                    (k.wrapping_mul(37), k.wrapping_mul(91), k.wrapping_mul(151));
+                let expect = (0..8u8).fold(0u8, |acc, b| {
+                    acc | (f((p >> b) & 1, (s >> b) & 1, (d >> b) & 1) << b)
+                });
+                assert_eq!(rop3_eval(rop, p, s, d), expect, "rop {:#010X} 位求值失配", rop);
+            }
+        }
+    }
+
+    #[test]
+    fn primitives_submit_and_honest_reject() {
+        let mut g = GdiState::new();
+        let hdc = g.get_dc().unwrap();
+        // 五原语全提交记账。
+        assert!(g.pat_blt(hdc, ROP_PATCOPY, 0, 0, 10, 10));
+        assert!(g.rectangle(hdc, 5, 5, 20, -10)); // 负高规范化
+        assert!(g.ellipse(hdc, 0, 0, 8, 8));
+        assert!(g.line_to(hdc, 100, 40));
+        let bmp = g.create_object(GdiObjKind::Bitmap).unwrap();
+        let src = g.create_compatible_dc(bmp).unwrap();
+        assert!(g.stretch_blt(hdc, src, ROP_SRCCOPY, 64, 32));
+        assert_eq!(g.compositor_submissions, 5);
+        // 如实拒绝：冷门 ROP / 空矩形 / 零尺寸 / 无效 DC。
+        assert!(!g.pat_blt(hdc, 0x1234_5678, 0, 0, 4, 4) && g.unsupported_rops == 1);
+        assert!(!g.rectangle(hdc, 0, 0, 0, 10), "零宽如实拒绝");
+        assert!(!g.stretch_blt(hdc, src, ROP_SRCCOPY, 0, 0));
+        assert!(!g.line_to(0, 1, 1) && g.invalid_handle_uses >= 1);
+        assert_eq!(g.compositor_submissions, 5, "拒绝路径不记账");
+    }
+
+    #[test]
+    fn dc_slots_reuse_stable_under_100k() {
+        // 深化修复 #15：DC 创建-删除 10 万循环后槽位稳定（原实现必爆 256）。
+        let mut g = GdiState::new();
+        for _ in 0..100_000u32 {
+            let h = g.get_dc().expect("槽位复用下永不枯竭");
+            assert!(g.release_dc(h));
+        }
+        assert_eq!(g.dc_count, 1, "复用单槽，不随循环增长");
+        assert_eq!(g.dc_free_n, 1, "释放归还复用池");
+        // 句柄值回收复用（Windows HDC 同语义）。
+        let h1 = g.get_dc().unwrap();
+        assert_eq!(h1, 1);
+        let h2 = g.get_dc().unwrap();
+        let h3 = g.get_dc().unwrap();
+        assert!(g.release_dc(h2));
+        let h4 = g.get_dc().unwrap();
+        assert_eq!(h4, h2, "句柄值回收复用");
+        assert!(g.release_dc(h1) && g.release_dc(h3) && g.release_dc(h4));
     }
 }

@@ -31,6 +31,8 @@
 //! 零堆纪律：定长会话表，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::vec;
 use super::peblend::{self, Subsystem};
 use super::wow64::{self, MachineVerdict};
 
@@ -497,7 +499,7 @@ pub fn run_dblrun_checks() -> CheckSet {
         sniff_signature(&good) == SniffVerdict::Pe,
         "",
     );
-    let mut mz_only = vec![0u8; 0x40];
+    let mut mz_only = alloc::vec![0u8; 0x40];
     mz_only[0] = b'M';
     mz_only[1] = b'Z';
     cs.add(
@@ -635,7 +637,7 @@ pub fn run_dblrun_checks() -> CheckSet {
 }
 
 fn mz_only_rebuilt() -> Vec<u8> {
-    let mut v = vec![0u8; 0x40];
+    let mut v = alloc::vec![0u8; 0x40];
     v[0] = b'M';
     v[1] = b'Z';
     v
@@ -777,7 +779,7 @@ mod tests {
     }
 
     fn pe_with_machine_bytes(machine: u16) -> Vec<u8> {
-        let mut img = vec![0u8; 0x80];
+        let mut img = alloc::vec![0u8; 0x80];
         img[0] = b'M';
         img[1] = b'Z';
         img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
@@ -804,5 +806,172 @@ mod tests {
         let mut p = LaunchPipeline::new();
         report_residue(&mut p, 1);
         assert_eq!(p.residue_after_cancel(), 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F001 · 深化扩展：装载审计环 + 启动画像记账（F043 联动供给源）
+//
+// 主册依据（G-A-01【数据与存储】）：「peblock 校验结果（哈希+规则命中）写入
+// 会话日志」+【设计细节】「同文件 60 秒内重复双击合并为一次装载」——本扩展
+// 给出会话日志的落地形态：64 条审计环（每次装载的结局/耗时/哈希），并为
+// F043 冷启动画像供给「同文件重复启动」样本对。
+// ---------------------------------------------------------------------------
+
+/// 审计条目（一次装载的完整结局记账）。
+#[derive(Clone, Copy, Debug)]
+pub struct LaunchAudit {
+    pub at_ms: u64,
+    pub file_hash: u64,
+    /// 结局：ready / failed:xxx / cancelled（归因短语同 LaunchStage）。
+    pub outcome: &'static str,
+    /// 双击到终态耗时（ms；取消/失败也记账——体验审计面）。
+    pub duration_ms: u64,
+    /// 是否为 60s 合并命中（合并不产生新条目，但标记进被合并会话的结局）。
+    pub was_merged: bool,
+}
+
+/// 审计环容量 64（会话日志定长——零堆）。
+pub const AUDIT_RING_CAP: usize = 64;
+
+/// 装载审计环。
+pub struct LaunchAuditRing {
+    buf: [Option<LaunchAudit>; AUDIT_RING_CAP],
+    head: usize,
+    n: usize,
+    /// 就绪/失败/取消三类结局计数（画像面）。
+    pub ready: u32,
+    pub failed: u32,
+    pub cancelled: u32,
+    /// 合并命中计数（防手滑双开观测）。
+    pub merged_total: u32,
+}
+
+impl LaunchAuditRing {
+    pub fn new() -> LaunchAuditRing {
+        LaunchAuditRing {
+            buf: [None; AUDIT_RING_CAP],
+            head: 0,
+            n: 0,
+            ready: 0,
+            failed: 0,
+            cancelled: 0,
+            merged_total: 0,
+        }
+    }
+
+    /// 记一条结局（环形覆盖最旧）。
+    pub fn record(&mut self, a: LaunchAudit) {
+        match a.outcome {
+            o if o.starts_with("ready") => self.ready += 1,
+            o if o.starts_with("failed") => self.failed += 1,
+            o if o.starts_with("cancelled") => self.cancelled += 1,
+            _ => {}
+        }
+        if a.was_merged {
+            self.merged_total += 1;
+        }
+        self.buf[self.head] = Some(a);
+        self.head = (self.head + 1) % AUDIT_RING_CAP;
+        if self.n < AUDIT_RING_CAP {
+            self.n += 1;
+        }
+    }
+
+    /// 按时间序枚举（诊断页回放面）。
+    pub fn iter(&self) -> impl Iterator<Item = LaunchAudit> + '_ {
+        let (head, n) = (self.head, self.n);
+        (0..n).map(move |k| {
+            let idx = if head >= n { k } else { (head + AUDIT_RING_CAP - n + k) % AUDIT_CAP_MARKER };
+            self.buf[idx].unwrap()
+        })
+    }
+
+    /// 同文件连续失败计数（F020 的 24h 三崩建议联动采样面——24h 窗口由
+    /// excface::CrashRepeatTracker 主责，此处只提供会话窗内计数）。
+    pub fn consecutive_failures(&self, file_hash: u64) -> u32 {
+        let mut streak = 0u32;
+        for k in (0..self.n).rev() {
+            let idx = if self.head >= self.n { k } else { (self.head + AUDIT_RING_CAP - self.n + k) % AUDIT_RING_CAP };
+            match self.buf[idx] {
+                Some(a) if a.file_hash == file_hash => {
+                    if a.outcome.starts_with("failed") {
+                        streak += 1;
+                    } else {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+        streak
+    }
+
+    pub fn len(&self) -> usize {
+        self.n
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.n == 0
+    }
+}
+
+impl Default for LaunchAuditRing {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 环容量哨兵（iter 复用 AUDIT_RING_CAP——避免魔法数）。
+const AUDIT_CAP_MARKER: usize = AUDIT_RING_CAP;
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn audit_ring_records_and_counts() {
+        let mut ring = LaunchAuditRing::new();
+        ring.record(LaunchAudit { at_ms: 0, file_hash: 1, outcome: "ready", duration_ms: 1_800, was_merged: false });
+        ring.record(LaunchAudit { at_ms: 5_000, file_hash: 2, outcome: "failed:peblock-refused", duration_ms: 90, was_merged: false });
+        ring.record(LaunchAudit { at_ms: 6_000, file_hash: 2, outcome: "failed:wow64-refused", duration_ms: 80, was_merged: false });
+        ring.record(LaunchAudit { at_ms: 7_000, file_hash: 3, outcome: "cancelled", duration_ms: 200, was_merged: true });
+        assert_eq!(ring.len(), 4);
+        assert_eq!((ring.ready, ring.failed, ring.cancelled), (1, 2, 1));
+        assert_eq!(ring.merged_total, 1);
+        // 时间序回放：第 4 条是最新（cancelled）。
+        let last = ring.iter().last().unwrap();
+        assert_eq!(last.file_hash, 3);
+        assert_eq!(last.outcome, "cancelled");
+    }
+
+    #[test]
+    fn consecutive_failure_streak() {
+        let mut ring = LaunchAuditRing::new();
+        for i in 0..3u64 {
+            ring.record(LaunchAudit { at_ms: i * 1_000, file_hash: 9, outcome: "failed:pe-parse", duration_ms: 50, was_merged: false });
+        }
+        ring.record(LaunchAudit { at_ms: 4_000, file_hash: 9, outcome: "ready", duration_ms: 2_000, was_merged: false });
+        // ready 打断连败。
+        assert_eq!(ring.consecutive_failures(9), 0);
+        ring.record(LaunchAudit { at_ms: 5_000, file_hash: 9, outcome: "failed:wow64-refused", duration_ms: 60, was_merged: false });
+        ring.record(LaunchAudit { at_ms: 6_000, file_hash: 9, outcome: "failed:loader-fault", duration_ms: 70, was_merged: false });
+        assert_eq!(ring.consecutive_failures(9), 2);
+        // 其他文件的失败不打断同文件连败的判定……不，遇不同文件即止（会话
+        // 窗内严格相邻语义）。
+        ring.record(LaunchAudit { at_ms: 7_000, file_hash: 8, outcome: "failed:pe-parse", duration_ms: 40, was_merged: false });
+        assert_eq!(ring.consecutive_failures(9), 0);
+    }
+
+    #[test]
+    fn ring_capacity_and_eviction() {
+        let mut ring = LaunchAuditRing::new();
+        for i in 0..(AUDIT_RING_CAP as u64 + 10) {
+            ring.record(LaunchAudit { at_ms: i * 100, file_hash: i, outcome: "ready", duration_ms: 100, was_merged: false });
+        }
+        assert_eq!(ring.len(), AUDIT_RING_CAP);
+        // 最旧 10 条被覆盖：最新仍可回放。
+        let last = ring.iter().last().unwrap();
+        assert_eq!(last.file_hash, AUDIT_RING_CAP as u64 + 9);
     }
 }

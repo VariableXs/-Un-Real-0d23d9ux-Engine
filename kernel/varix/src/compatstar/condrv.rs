@@ -25,6 +25,8 @@
 //! 零堆纪律：屏幕缓冲定长网格、VT 解析器状态机无分配，无 Vec/String/Box。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -699,5 +701,157 @@ mod tests {
             }
         }
         assert_eq!(actions, 1); // 结束时产出一个动作
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F012 · 深化扩展：DECSET/DECRST 私有模式 + DECSTBM 滚动区 + 控制台模式位
+//
+// 主册依据（G-A-12）：VT 序列测试集含颜色/光标/清屏 40 例；控制台 API 翻译
+// 面完整。本扩展补齐第二梯队：私有模式设置/复位（应用光标键/自动回绕/光标
+// 可见/备用屏缓冲）、滚动区（DECSTBM）、ConsoleMode 标志位模型（Ctrl+C 门控
+// 语义——ENABLE_PROCESSED_INPUT 关闭时 Ctrl+C 不产生中断，主册【交互设计】
+// 「Ctrl+C 中断语义逐一对齐」）。
+// ---------------------------------------------------------------------------
+
+/// DEC 私有模式号（DECSET/DECRST，xterm 标准集的高频四位）。
+pub const DEC_APP_CURSOR_KEYS: u16 = 1;
+pub const DEC_AUTOWRAP: u16 = 7;
+pub const DEC_CURSOR_VISIBLE: u16 = 25;
+pub const DEC_ALT_BUFFER: u16 = 1049;
+
+/// 扩展动作（与既有 VtAction 并列——渲染面按需消费）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VtActionExt {
+    /// CSI ? Pn h（DECSET）。
+    PrivateModeSet(u16),
+    /// CSI ? Pn l（DECRST）。
+    PrivateModeReset(u16),
+    /// CSI Pt;Pb r（DECSTBM 滚动区，1 起行号；缺省 = 全屏）。
+    SetScrollRegion { top: u16, bottom: u16 },
+    /// 光标显示状态查询/切换结果（DECTCEM 的记账面）。
+    CursorVisibility(bool),
+}
+
+/// CSI ? 前缀解析的扩展状态机（复用 VtParser 的 private 字段语义）。
+/// 输入：已完成 CSI 参数收集后的终止字节 + private 标记 + 参数。
+pub fn csi_private_action(private: u8, final_byte: u8, params: &[u16]) -> Option<VtActionExt> {
+    if private != b'?' {
+        return None; // 非 DEC 私有序列不在本扩展面
+    }
+    let p0 = params.first().copied().unwrap_or(0);
+    match final_byte {
+        b'h' => Some(VtActionExt::PrivateModeSet(p0)),
+        b'l' => Some(VtActionExt::PrivateModeReset(p0)),
+        b'r' => {
+            let top = params.first().copied().unwrap_or(1).max(1);
+            let bottom = params.get(1).copied().unwrap_or(24).max(1);
+            Some(VtActionExt::SetScrollRegion { top, bottom })
+        }
+        _ => None,
+    }
+}
+
+/// 控制台输入/输出模式位（GetConsoleMode/SetConsoleMode 语义面）。
+pub const ENABLE_PROCESSED_INPUT: u32 = 0x0001;
+pub const ENABLE_LINE_INPUT: u32 = 0x0002;
+pub const ENABLE_ECHO_INPUT: u32 = 0x0004;
+pub const ENABLE_WINDOW_INPUT: u32 = 0x0008;
+pub const ENABLE_PROCESSED_OUTPUT: u32 = 0x0001;
+pub const ENABLE_WRAP_AT_EOL_OUTPUT: u32 = 0x0002;
+pub const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+
+/// 控制台模式 + Ctrl+C 门控（主册：Ctrl+C 中断语义逐一对齐）。
+#[derive(Clone, Copy, Debug)]
+pub struct ConsoleMode {
+    pub in_flags: u32,
+    pub out_flags: u32,
+}
+
+impl ConsoleMode {
+    /// Windows 新控制台缺省：输入 = PROCESSED|LINE|ECHO|WINDOW；
+    /// 输出 = PROCESSED|WRAP（VT 处理由 F095 终端按需开启）。
+    pub const fn new() -> ConsoleMode {
+        ConsoleMode {
+            in_flags: ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_WINDOW_INPUT,
+            out_flags: ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT,
+        }
+    }
+
+    /// Ctrl+C 是否产生中断：仅 ENABLE_PROCESSED_INPUT 开启时（关闭 = 原始
+    /// 模式，Ctrl+C 作为普通键入流传给程序——Windows 同语义）。
+    pub fn ctrl_c_enabled(&self) -> bool {
+        self.in_flags & ENABLE_PROCESSED_INPUT != 0
+    }
+
+    /// 回显开关（密码输入场景关 ECHO——主册 §六：输入三态纪律）。
+    pub fn echo_enabled(&self) -> bool {
+        self.in_flags & ENABLE_ECHO_INPUT != 0
+    }
+
+    /// VT 序列是否被终端消费（ENABLE_VIRTUAL_TERMINAL_PROCESSING 关闭时
+    /// VT 序列按字面打印——Windows 同语义，解析器旁路）。
+    pub fn vt_processing(&self) -> bool {
+        self.out_flags & ENABLE_VIRTUAL_TERMINAL_PROCESSING != 0
+    }
+}
+
+impl Default for ConsoleMode {
+    fn default() -> Self {
+        ConsoleMode::new()
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn decset_decrst_parsing() {
+        // DECSET/DECRST：?25h = 光标可见、?1049l = 回主屏、非 ? 前缀不归本面。
+        assert_eq!(
+            csi_private_action(b'?', b'h', &[25]),
+            Some(VtActionExt::PrivateModeSet(DEC_CURSOR_VISIBLE))
+        );
+        assert_eq!(
+            csi_private_action(b'?', b'l', &[1049]),
+            Some(VtActionExt::PrivateModeReset(DEC_ALT_BUFFER))
+        );
+        assert_eq!(
+            csi_private_action(b'?', b'h', &[7]),
+            Some(VtActionExt::PrivateModeSet(DEC_AUTOWRAP))
+        );
+        assert_eq!(csi_private_action(0, b'h', &[1]), None);
+        // DECSTBM：全屏缺省与显式区域。
+        assert_eq!(
+            csi_private_action(b'?', b'r', &[]),
+            Some(VtActionExt::SetScrollRegion { top: 1, bottom: 24 })
+        );
+        assert_eq!(
+            csi_private_action(b'?', b'r', &[5, 20]),
+            Some(VtActionExt::SetScrollRegion { top: 5, bottom: 20 })
+        );
+        // 未知终止符 → None（不吞不崩）。
+        assert_eq!(csi_private_action(b'?', b'X', &[1]), None);
+    }
+
+    #[test]
+    fn console_mode_gating() {
+        // Ctrl+C 门控：PROCESSED_INPUT 关闭 = 原始模式（Ctrl+C 不产生中断）。
+        let mut m = ConsoleMode::new();
+        assert!(m.ctrl_c_enabled());
+        m.in_flags &= !ENABLE_PROCESSED_INPUT;
+        assert!(!m.ctrl_c_enabled());
+        // 回显开关（密码输入场景）。
+        assert!(m.echo_enabled());
+        m.in_flags &= !ENABLE_ECHO_INPUT;
+        assert!(!m.echo_enabled());
+        // VT 处理旁路：关闭时 VT 序列按字面打印（解析器旁路语义）。
+        assert!(!m.vt_processing());
+        m.out_flags |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        assert!(m.vt_processing());
+        // winuser 钉值。
+        assert_eq!(ENABLE_PROCESSED_INPUT, 0x0001);
+        assert_eq!(ENABLE_VIRTUAL_TERMINAL_PROCESSING, 0x0004);
     }
 }

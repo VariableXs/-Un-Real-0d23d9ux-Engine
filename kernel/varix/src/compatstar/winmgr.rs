@@ -720,3 +720,171 @@ mod tests {
         assert_eq!(WM_SETTINGCHANGE, 0x001A);
     }
 }
+
+// ---------------------------------------------------------------------------
+// F005 · 深化扩展：窗口样式/类样式表 + 高频消息面扩面（40 → 61）
+//
+// 主册依据（G-A-05【设计细节】）：「消息面补全按常用 50 件应用的 API 采样
+// 频率排序（A2 数据驱动）」——本扩展补齐样式验证面与第二梯队 21 个消息
+// （图标/尺寸移动循环/所有者绘制/IME/系统广播）。
+// ---------------------------------------------------------------------------
+
+/// 窗口样式位（winuser.h 高频集）。
+pub const WS_OVERLAPPEDWINDOW: u32 = 0x00CF_0000;
+pub const WS_POPUP: u32 = 0x8000_0000;
+pub const WS_CHILD: u32 = 0x4000_0000;
+pub const WS_VISIBLE: u32 = 0x1000_0000;
+pub const WS_CAPTION: u32 = 0x00C0_0000;
+pub const WS_SYSMENU: u32 = 0x0008_0000;
+pub const WS_THICKFRAME: u32 = 0x0004_0000;
+pub const WS_MINIMIZEBOX: u32 = 0x0002_0000;
+pub const WS_MAXIMIZEBOX: u32 = 0x0001_0000;
+pub const WS_MINIMIZE: u32 = 0x2000_0000;
+pub const WS_MAXIMIZE: u32 = 0x0100_0000;
+pub const WS_DISABLED: u32 = 0x0800_0000;
+pub const WS_CLIPCHILDREN: u32 = 0x0200_0000;
+pub const WS_CLIPSIBLINGS: u32 = 0x0400_0000;
+
+/// 扩展样式位（高频集）。
+pub const WS_EX_TOPMOST: u32 = 0x0000_0008;
+pub const WS_EX_TRANSPARENT: u32 = 0x0000_0020;
+pub const WS_EX_LAYERED: u32 = 0x0008_0000;
+pub const WS_EX_NOACTIVATE: u32 = 0x0800_0000;
+pub const WS_EX_TOOLWINDOW: u32 = 0x0000_0080;
+pub const WS_EX_APPWINDOW: u32 = 0x0004_0000;
+pub const WS_EX_CLIENTEDGE: u32 = 0x0000_0200;
+pub const WS_EX_DLGMODALFRAME: u32 = 0x0000_0001;
+
+/// 样式验证（Windows 语义：互斥/依赖位如实判定——验证失败 = CreateWindowEx
+/// 参数错，返回人话短语而非静默修正）。
+pub fn validate_window_style(style: u32, ex_style: u32) -> Result<(), &'static str> {
+    if style & WS_CHILD != 0 && style & WS_POPUP != 0 {
+        return Err("WS_CHILD and WS_POPUP are mutually exclusive");
+    }
+    // 子窗带完整标题栏属参数错（WS_CAPTION = WS_BORDER | WS_DLGFRAME）。
+    if style & WS_CHILD != 0 && style & WS_CAPTION == WS_CAPTION {
+        return Err("child windows should not have a caption");
+    }
+    if ex_style & WS_EX_LAYERED != 0
+        && ex_style & WS_EX_TRANSPARENT != 0
+        && ex_style & WS_EX_NOACTIVATE == 0
+    {
+        // 分层+穿透且不吸收点击的浮层需要 NOACTIVATE 配合（VARIX 合成器
+        // 约束——纯穿透层不持有焦点，主册 C-6 红线：浮层不抢焦点）。
+        return Err("layered+transparent windows must set WS_EX_NOACTIVATE");
+    }
+    if style & WS_CHILD != 0 && ex_style & WS_EX_TOPMOST != 0 {
+        return Err("topmost does not apply to child windows");
+    }
+    Ok(())
+}
+
+/// 类样式位（RegisterClass 的 style 字段，高频集）。
+pub const CS_VREDRAW: u32 = 0x0001;
+pub const CS_HREDRAW: u32 = 0x0002;
+pub const CS_DBLCLKS: u32 = 0x0008;
+pub const CS_OWNDC: u32 = 0x0020;
+pub const CS_CLASSDC: u32 = 0x0040;
+pub const CS_PARENTDC: u32 = 0x0080;
+pub const CS_SAVEBITS: u32 = 0x0800;
+pub const CS_NOCLOSE: u32 = 0x0200;
+
+/// 类样式验证：OWNDC 与 CLASSDC 互斥（Windows 规则）。
+pub fn validate_class_style(style: u32) -> Result<(), &'static str> {
+    if style & CS_OWNDC != 0 && style & CS_CLASSDC != 0 {
+        return Err("CS_OWNDC and CS_CLASSDC are mutually exclusive");
+    }
+    Ok(())
+}
+
+// 第二梯队消息（A2 采样频率排序的第 41-61 位）。
+pub const WM_MOVE: u32 = 0x0003;
+pub const WM_SETICON: u32 = 0x0080;
+pub const WM_GETICON: u32 = 0x007F;
+pub const WM_ENABLE: u32 = 0x000A;
+pub const WM_CANCELMODE: u32 = 0x001F;
+pub const WM_CONTEXTMENU: u32 = 0x007B;
+pub const WM_HOTKEY: u32 = 0x0312;
+pub const WM_DISPLAYCHANGE: u32 = 0x007E;
+pub const WM_INPUT: u32 = 0x00FF;
+pub const WM_MOVING: u32 = 0x0216;
+pub const WM_SIZING: u32 = 0x0214;
+pub const WM_ENTERSIZEMOVE: u32 = 0x0231;
+pub const WM_EXITSIZEMOVE: u32 = 0x0232;
+pub const WM_STYLECHANGED: u32 = 0x007D;
+pub const WM_WINDOWPOSCHANGING: u32 = 0x0046;
+pub const WM_WINDOWPOSCHANGED: u32 = 0x0047;
+pub const WM_MEASUREITEM: u32 = 0x002C;
+pub const WM_DRAWITEM: u32 = 0x002B;
+pub const WM_NOTIFY: u32 = 0x004E;
+pub const WM_IME_SETCONTEXT: u32 = 0x0281;
+pub const WM_IME_COMPOSITION: u32 = 0x010F;
+
+/// 消息面扩面后总数（40 + 21 = 61）。
+pub const EXTENDED_MESSAGE_COUNT: usize = 61;
+
+/// 第二梯队消息的 DefWindowProc 缺省行为（逐消息文档化——不吞不崩）。
+pub fn def_window_proc_ext(m: u32) -> DefResult {
+    match m {
+        WM_CANCELMODE => DefResult::Return(0), // 取消内部模式（滚动/捕获）
+        WM_DISPLAYCHANGE => DefResult::Return(0),
+        WM_MOVING | WM_SIZING => DefResult::Return(1), // TRUE = 应用改动生效
+        WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => DefResult::Return(0),
+        WM_STYLECHANGED => DefResult::Return(0),
+        WM_WINDOWPOSCHANGING => DefResult::Return(0),
+        WM_WINDOWPOSCHANGED => DefResult::Return(0),
+        WM_MEASUREITEM => DefResult::Return(0), // 0 = 用系统缺省尺寸
+        WM_DRAWITEM => DefResult::Return(1),
+        WM_NOTIFY => DefResult::Return(0),
+        WM_IME_SETCONTEXT => DefResult::Return(0),
+        WM_IME_COMPOSITION => DefResult::Return(0),
+        _ => def_window_proc(m),
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn style_validation_semantics() {
+        // Windows 语义逐条：互斥/依赖位如实判定。
+        assert!(validate_window_style(WS_CHILD | WS_POPUP, 0).is_err());
+        assert!(validate_window_style(WS_CHILD | WS_CAPTION, 0).is_err());
+        assert!(validate_window_style(WS_OVERLAPPEDWINDOW | WS_VISIBLE, 0).is_ok());
+        assert!(validate_window_style(0, WS_EX_LAYERED | WS_EX_TRANSPARENT).is_err());
+        assert!(validate_window_style(0, WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE).is_ok());
+        assert!(validate_window_style(WS_CHILD, WS_EX_TOPMOST).is_err());
+        // 类样式：OWNDC 与 CLASSDC 互斥。
+        assert!(validate_class_style(CS_OWNDC | CS_CLASSDC).is_err());
+        assert!(validate_class_style(CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS).is_ok());
+    }
+
+    #[test]
+    fn extended_message_surface() {
+        // 扩面后 61 个消息号无重复（40 + 21）。
+        let mut all = HIGH_FREQ_MESSAGES.to_vec();
+        all.extend_from_slice(&[
+            WM_MOVE, WM_SETICON, WM_GETICON, WM_ENABLE, WM_CANCELMODE, WM_CONTEXTMENU,
+            WM_HOTKEY, WM_DISPLAYCHANGE, WM_INPUT, WM_MOVING, WM_SIZING, WM_ENTERSIZEMOVE,
+            WM_EXITSIZEMOVE, WM_STYLECHANGED, WM_WINDOWPOSCHANGING, WM_WINDOWPOSCHANGED,
+            WM_MEASUREITEM, WM_DRAWITEM, WM_NOTIFY, WM_IME_SETCONTEXT, WM_IME_COMPOSITION,
+        ]);
+        assert_eq!(all.len(), EXTENDED_MESSAGE_COUNT);
+        for i in 0..all.len() {
+            for j in (i + 1)..all.len() {
+                assert_ne!(all[i], all[j], "dup message {:#x}", all[i]);
+            }
+        }
+        // 新消息缺省行为逐条有据（不吞不崩）。
+        assert_eq!(def_window_proc_ext(WM_MOVING), DefResult::Return(1));
+        assert_eq!(def_window_proc_ext(WM_MEASUREITEM), DefResult::Return(0));
+        assert_eq!(def_window_proc_ext(WM_DRAWITEM), DefResult::Return(1));
+        // 未扩面的旧消息仍走原表。
+        assert_eq!(def_window_proc_ext(WM_CLOSE), DefResult::RequestClose);
+        // winuser.h 钉值。
+        assert_eq!(WM_CONTEXTMENU, 0x007B);
+        assert_eq!(WM_ENTERSIZEMOVE, 0x0231);
+        assert_eq!(WM_IME_COMPOSITION, 0x010F);
+    }
+}

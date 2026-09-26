@@ -23,6 +23,7 @@
 //! 无 Vec/String/Box/format!（节点池容量 64 节点 = 256KB 工程值，登记报告）。
 
 use crate::checks::CheckSet;
+use alloc::string::ToString;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -726,5 +727,124 @@ mod tests {
         assert_eq!(r.val_bytes(), b"12345");
         assert!(Rec::new("", &[]).is_some()); // 空键允许（根值语义）
         assert!(Rec::new(&"x".repeat(KEY_MAX + 1), b"").is_none());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F009 · 深化扩展：键枚举 + 快照导出（开放格式 F126）
+//
+// 主册依据（G-A-09【设计细节】）：「导出快照为 JSON（开放格式 F126）」+
+// 「蜂巢查看器树视图支持键值复制」——本扩展给出自有蜂巢的全量枚举与有界
+// 文本导出（JSON 形态；诊断中心/蜂巢查看器消费面）。
+// ---------------------------------------------------------------------------
+
+impl Hive {
+    /// 自有蜂巢记录总数（蜂巢大小显示面的条目数口径）。
+    pub fn record_count(&self) -> usize {
+        let mut n = 0usize;
+        for node in self.nodes.iter() {
+            n += node.n;
+        }
+        n
+    }
+
+    /// 第 idx 条自有记录（蜂巢查看器枚举面——按节点序，非字典序；查看器
+    /// 侧排序展示）。
+    pub fn record_at(&self, idx: usize) -> Option<Rec> {
+        let mut k = idx;
+        for node in self.nodes.iter() {
+            if k < node.n {
+                return node.recs[k];
+            }
+            k -= node.n;
+        }
+        None
+    }
+
+    /// 快照导出（JSON Lines 形态：每行一个键值对象）。`out` 有界——截断
+    /// 如实返回（返回值 = (写入字节数, 导出条数, 截断标记)）。蜂巢进回收站
+    /// 后导出为空（与 get 的回收站止步语义对齐）。
+    pub fn export_snapshot(&self, out: &mut [u8]) -> (usize, usize, bool) {
+        if self.recycled {
+            return (0, 0, false);
+        }
+        let mut w = 0usize;
+        let mut count = 0usize;
+        let mut truncated = false;
+        let push = |out: &mut [u8], w: &mut usize, s: &[u8]| -> bool {
+            for &b in s {
+                if *w >= out.len() {
+                    return false;
+                }
+                out[*w] = b;
+                *w += 1;
+            }
+            true
+        };
+        for node in self.nodes.iter() {
+            for slot in node.recs.iter().take(node.n) {
+                if let Some(r) = slot {
+                    let key = r.key_str();
+                    if !push(out, &mut w, b"{\"key\":\"")
+                        || !push(out, &mut w, key.as_bytes())
+                        || !push(out, &mut w, b"\",\"len\":")
+                        || !push(out, &mut w, r.val_len.to_string().as_bytes())
+                        || !push(out, &mut w, b"}\n")
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    count += 1;
+                }
+            }
+            if truncated {
+                break;
+            }
+        }
+        (w, count, truncated)
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn enumeration_and_export() {
+        let mut h = Hive::new(&[]);
+        for i in 0..10u32 {
+            let key = core::format_args!("Soft\\K{:02}", i).to_string();
+            assert!(h.set(&key, b"v"));
+        }
+        assert_eq!(h.record_count(), 10);
+        // 枚举：前 10 条全部可读，第 11 条 None。
+        assert!(h.record_at(0).is_some() && h.record_at(9).is_some());
+        assert!(h.record_at(10).is_none());
+        // 导出：10 行 JSONL 全量。
+        let mut buf = [0u8; 4096];
+        let (w, count, truncated) = h.export_snapshot(&mut buf);
+        assert_eq!(count, 10);
+        assert!(!truncated);
+        assert!(w > 10 * 10);
+        let text = core::str::from_utf8(&buf[..w]).unwrap();
+        assert!(text.contains("{\"key\":\"Soft\\K00\",\"len\":1}"));
+        // 卸载后导出为空（蜂巢已进回收站——读面止步）。
+        h.uninstall_recycle();
+        let (_, count2, _) = h.export_snapshot(&mut buf);
+        assert_eq!(count2, 0);
+    }
+
+    #[test]
+    fn export_bounded_truncation_honest() {
+        // 输出缓冲有界：截断如实标记（不静默截）。
+        let mut h = Hive::new(&[]);
+        for i in 0..50u32 {
+            let key = core::format_args!("Very\\Long\\Key\\Path\\{:03}", i).to_string();
+            assert!(h.set(&key, b"value"));
+        }
+        let mut small = [0u8; 128];
+        let (_, count, truncated) = h.export_snapshot(&mut small);
+        assert!(truncated && count < 50);
+        assert!(count > 0, "至少导出第一条");
     }
 }

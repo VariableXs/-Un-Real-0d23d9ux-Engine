@@ -3,6 +3,35 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-C1 应用兼容域·前段（F001-F020 深化批次一）
+
+**kernel/varix/src/compatstar/**（AI-C1 泳道二应用兼容前段深化，主册 A-5 节
+G-A-01~G-A-20【设计细节】条款级扩展；承接已提交批次 a136dde5 判据实装层，
+批次横跨两会话接续收口）：
+
+- **兼容面深化十九域**：装载审计环 + 60s 合并记账（F001）、导入目录遍历 +
+  **名字哈希 bit63 编码互斥不变量**（F002/F003）、星图替代品预填 + 拒绝缓存
+  落盘自愈模型（F004）、窗口样式位表 + 高频消息面 40→61（F005）、**ROP3 真
+  值表核**（16 码 wingdi 全对账）+ DC 槽位复用 + 五原语提交面（F006）、Pen/
+  DashStyle + 线性/径向渐变几何参数化 + 裁剪取样核 + 灰度 AA 模型（F007）、
+  **HSV↔RGB 双向绑定**（修复三角波公式 30° 色相偏移）+ HSL/hex 输入面 +
+  CHOOSEFONT 选择模型（F008）、快照导出保护（F009）、审计环纪律（F010）、
+  env 配置落盘模型 + PATH 双向重组 + 非法名定位（F011）、VT 扩展解析
+  （F012）、LinkFlags 全 18 位 + 热键解码 + 图标缓存键（F013）、
+  **dpiAwareness 元素面**（修复 `<dpiAware` 前缀碰撞误判）+ 组图标解析 +
+  版本全字段（F014）、回退链展示面 + 码页-语言协商（F015）、LOGFONT 语义
+  （F016）、格式号钉值 + 私有格式注册（F017）、QueryContinue 键位语义
+  （F018）、进程族脏账语义（F019）、vdmp 版本校验（F020）。
+- **no_std 档位收口（基线修复）**：compatstar 全域裸 `vec!`/`Vec`/`String`/
+  `to_string` 在主仓非测试档报 79 个编译错误（批次一继承缺陷，`cargo test`
+  档 std 遮蔽从未暴露）——按 istar 先例补 `alloc::` 导入 + 28 处 `alloc::vec!`
+  全限定，收口后 `cargo check -p varix --lib` compatstar 错误 = **0**。
+- 自检判据逐条钉死：**213 宿主测试全绿**（隔离壳 `_attic/aic1-verify`，
+  `RUST_MIN_STACK=33554432`；批次起点 157 → +56）；施工缺陷账本 **11 项全数
+  闭合**（含 xml 解析器 continue 不推进 search 死循环、HSL 除零、DC 表只涨
+  不回收 10 万循环必爆——详见 `_attic/aic1-f001-f020/行数对账与缺陷账本.md`）；
+  纯功能 11,495 / 上限 88,335 ≈ 13.0%（K1/K2/C1 先例口径，诚实登记）。
+
 ## [Unreleased] — Varix STAR I · AI-S1 安全加固域·前段判据实装落地（F171-F185）
 
 **kernel/varix/src/secstar/ 十五项判据实装 + 域聚合注册**（AI-S1 泳道一前段，2026-09-26）：

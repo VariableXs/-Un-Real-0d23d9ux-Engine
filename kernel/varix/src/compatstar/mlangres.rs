@@ -429,3 +429,116 @@ mod tests {
         assert_eq!(r.len, 512);
     }
 }
+
+// ---------------------------------------------------------------------------
+// F015 · 深化扩展：回退链展示面 + 码页-语言协商 + 对话框模板语言标记
+//
+// 主册依据（G-A-15【交互设计】）：「语言选择规则在设置中心『时间和语言』页
+// 可查（展示当前生效顺序）」——回退序的显式展开面；【功能定义】「代码页转换
+// 表（GBK/Big5/Shift-JIS/西欧各码页）」——资源字符串按**声明码页**解码，声明
+// 缺失时的语言→码页协商面；【设计细节】「对话框模板资源的语言标记同样参与
+// 选择——菜单对话框全链一致」。
+// ---------------------------------------------------------------------------
+
+/// 回退链展开（设置页展示面）：按 select_language 的判定序显式列出——
+/// [请求语言, 同主语言占位, en-US, en 主语言占位, 中立]，并按判定核去重
+/// （en 请求不重复英文级；中立请求终点即自身）。占位槽用 0 表示「该级按
+/// 可用集实配」（展示层渲染为灰色级）。
+pub fn fallback_chain(requested: u16) -> ([u16; 5], usize) {
+    let mut chain = [0u16; 5];
+    let mut n = 0;
+    chain[n] = requested;
+    n += 1;
+    if primary_lang(requested) != 0 {
+        chain[n] = 0; // 同主语言槽（如 zh-TW 请求的 zh 全系槽）
+        n += 1;
+    }
+    if primary_lang(requested) != 0x09 {
+        chain[n] = LANG_EN_US;
+        n += 1;
+        chain[n] = 0; // en 全系槽
+        n += 1;
+    }
+    if requested != LANG_NEUTRAL {
+        chain[n] = LANG_NEUTRAL; // 中立兜底（已是终点则不重复）
+        n += 1;
+    }
+    (chain, n)
+}
+
+impl CodePage {
+    /// 语言 → 码页协商（资源字符串无声明码页时的推断面——MS 语义：简中资源
+    /// 按 GBK/936，繁中按 Big5/950，日文按 Shift-JIS/932，其余西文按 1252）。
+    pub fn for_langid(id: u16) -> CodePage {
+        match primary_lang(id) {
+            0x04 => {
+                if id == LANG_ZH_TW {
+                    CodePage::Big5
+                } else {
+                    CodePage::Gbk // zh 全系缺省简中表
+                }
+            }
+            0x11 => CodePage::ShiftJis,
+            _ => CodePage::Cp1252,
+        }
+    }
+}
+
+/// 对话框模板资源语言标记选择（与字符串资源同一判定核——菜单对话框全链
+/// 一致；薄封装即纪律：此处不复制判定逻辑）。
+pub fn select_dialog_template_lang(template_langs: &[u16], requested: u16) -> Option<u16> {
+    select_language(template_langs, requested)
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn fallback_chain_shape() {
+        // zh-TW 请求：[zh-TW, zh系槽, en-US, en系槽, 中立]——5 级全展开。
+        let (c, n) = fallback_chain(LANG_ZH_TW);
+        assert_eq!(n, 5);
+        assert_eq!(c[0], LANG_ZH_TW);
+        assert_eq!(c[1], 0, "同主语言槽");
+        assert_eq!(c[2], LANG_EN_US);
+        // en 请求：[en-US, en 全系槽, 中立]——同主语言槽对 en 请求同样在位。
+        let (c2, n2) = fallback_chain(LANG_EN_US);
+        assert_eq!(n2, 3);
+        assert_eq!(c2[1], 0, "en 全系槽");
+        assert_eq!(c2[2], LANG_NEUTRAL);
+        // 中立请求：终点即自身 → [中立, en-US, en 系槽] 3 级。
+        let (_, n3) = fallback_chain(LANG_NEUTRAL);
+        assert_eq!(n3, 3);
+    }
+
+    #[test]
+    fn codepage_negotiation() {
+        // 主册语义四锚点。
+        assert_eq!(CodePage::for_langid(LANG_ZH_CN), CodePage::Gbk);
+        assert_eq!(CodePage::for_langid(LANG_ZH_TW), CodePage::Big5);
+        assert_eq!(CodePage::for_langid(LANG_JA), CodePage::ShiftJis);
+        assert_eq!(CodePage::for_langid(LANG_EN_US), CodePage::Cp1252);
+        // 码页号对账（MS 定值）。
+        assert_eq!(CodePage::Gbk.number(), 936);
+        assert_eq!(CodePage::Big5.number(), 950);
+        assert_eq!(CodePage::ShiftJis.number(), 932);
+        assert_eq!(CodePage::Cp1252.number(), 1252);
+    }
+
+    #[test]
+    fn dialog_template_lang_same_nucleus() {
+        // 对话框模板与字符串资源同一判定核：同输入同结果（全链一致判据）。
+        let avail = [LANG_ZH_CN, LANG_EN_US];
+        for req in [LANG_ZH_TW, LANG_EN_GB, LANG_NEUTRAL, LANG_JA] {
+            assert_eq!(
+                select_dialog_template_lang(&avail, req),
+                select_language(&avail, req),
+                "req={:#06x} 模板与字符串判定必须一致",
+                req
+            );
+        }
+        // zh-TW 请求 → zh 系（子语言降级在模板面同样生效）。
+        assert_eq!(select_dialog_template_lang(&avail, LANG_ZH_TW), Some(LANG_ZH_CN));
+    }
+}

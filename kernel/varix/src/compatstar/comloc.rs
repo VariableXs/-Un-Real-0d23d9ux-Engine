@@ -419,3 +419,168 @@ mod tests {
         assert_eq!(reg.create_instance(Clsid::ShellLink, false), Err(E_OUTOFMEMORY));
     }
 }
+
+// ---------------------------------------------------------------------------
+// F019 · 深化扩展：IClassFactory 标准激活链 + IPersistFile（ShellLink）
+//
+// 主册依据（G-A-19【设计细节】）：「类对象注册会话级」「四族对象接口方法
+// 覆盖以 50 件清单实际调用面为准」——COM 的标准激活链是 CoGetClassObject
+// （拿 IClassFactory）→ IClassFactory::CreateInstance（产对象）；本扩展补齐
+// 该链与 ShellLink 的 IPersistFile（快捷方式读写的事实标准接口）。
+// ---------------------------------------------------------------------------
+
+/// 扩展接口 IID。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum IidExt {
+    /// IClassFactory（标准激活链）。
+    IClassFactory,
+    /// IPersistFile（ShellLink 的文件持久化接口）。
+    IPersistFile,
+}
+
+/// 类工厂（每个注册 CLSID 一个；会话级——主册【设计细节】）。
+pub struct ClassFactory {
+    pub clsid: Clsid,
+    refcount: u32,
+}
+
+impl ClassFactory {
+    pub fn new(clsid: Clsid) -> ClassFactory {
+        ClassFactory { clsid, refcount: 1 }
+    }
+
+    pub fn add_ref(&mut self) -> u32 {
+        self.refcount += 1;
+        self.refcount
+    }
+
+    pub fn release(&mut self) -> u32 {
+        if self.refcount > 0 {
+            self.refcount -= 1;
+        }
+        self.refcount
+    }
+
+    pub fn refcount(&self) -> u32 {
+        self.refcount
+    }
+
+    pub fn query_interface(&self, iid: IidExt) -> u32 {
+        match iid {
+            IidExt::IClassFactory => S_OK,
+            _ => E_NOINTERFACE, // 工厂只承诺 IClassFactory（Windows 同语义）
+        }
+    }
+
+    /// IClassFactory::CreateInstance（工厂产对象；聚合仍按不支持——差异表）。
+    pub fn create_instance(&self, aggregate: bool) -> Result<Clsid, u32> {
+        if aggregate {
+            return Err(CLASS_E_NOAGGREGATION);
+        }
+        Ok(self.clsid)
+    }
+}
+
+/// CoGetClassObject 语义：注册表 → 类工厂（未注册 → REGDB_E_CLASSNOTREG）。
+pub fn get_class_object(registry: &ComRegistry, clsid: Clsid) -> Result<ClassFactory, u32> {
+    if !registry.is_registered(clsid) {
+        return Err(REGDB_E_CLASSNOTREG);
+    }
+    Ok(ClassFactory::new(clsid))
+}
+
+/// ShellLink 持久化语义（IPersistFile）：Load 存盘快照 / Save 写盘记账。
+#[derive(Clone, Copy, Debug)]
+pub struct PersistFileState {
+    /// 当前绑定的文件（哈希记账——路径定长不驻留）。
+    pub file_hash: u64,
+    /// 脏标记（Load 后未 Save 的改动数）。
+    pub dirty_ops: u32,
+    pub loaded: bool,
+}
+
+impl PersistFileState {
+    pub const fn new() -> PersistFileState {
+        PersistFileState { file_hash: 0, dirty_ops: 0, loaded: false }
+    }
+
+    /// IPersistFile::Load。
+    pub fn load(&mut self, file_hash: u64) {
+        self.file_hash = file_hash;
+        self.loaded = true;
+        self.dirty_ops = 0;
+    }
+
+    /// 修改记账（Load 与 Save 之间的每次变更）。
+    pub fn note_edit(&mut self) {
+        if self.loaded {
+            self.dirty_ops += 1;
+        }
+    }
+
+    /// IPersistFile::Save：落盘即清脏；未 Load 就 Save → 如实失败。
+    pub fn save(&mut self) -> Result<u32, &'static str> {
+        if !self.loaded {
+            return Err("persist: no file loaded");
+        }
+        let n = self.dirty_ops;
+        self.dirty_ops = 0;
+        Ok(n)
+    }
+}
+
+impl Default for PersistFileState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ComRegistry 的注册判定访问器（同模块扩展——四族 CLSID 注册面）。
+impl ComRegistry {
+    pub fn is_registered(&self, clsid: Clsid) -> bool {
+        (0..self.reg_n).any(|i| self.registered[i] == Some(clsid))
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn class_factory_standard_activation() {
+        // 标准激活链：register_class → get_class_object → CreateInstance。
+        let mut reg = ComRegistry::new();
+        assert!(reg.register_class(Clsid::ShellLink));
+        let mut factory = get_class_object(&reg, Clsid::ShellLink).unwrap();
+        assert_eq!(factory.query_interface(IidExt::IClassFactory), S_OK);
+        assert_eq!(factory.query_interface(IidExt::IPersistFile), E_NOINTERFACE);
+        // 工厂产对象（非聚合）。
+        assert_eq!(factory.create_instance(false), Ok(Clsid::ShellLink));
+        assert_eq!(factory.create_instance(true), Err(CLASS_E_NOAGGREGATION));
+        // 引用计数生命周期。
+        factory.add_ref();
+        assert_eq!(factory.release(), 1);
+        assert_eq!(factory.release(), 0);
+        // 未注册 → REGDB_E_CLASSNOTREG（与直创建同归因）。
+        assert!(matches!(
+            get_class_object(&reg, Clsid::AppActivation),
+            Err(REGDB_E_CLASSNOTREG)
+        ));
+    }
+
+    #[test]
+    fn persist_file_lifecycle() {
+        // IPersistFile 生命周期：Load → 两次编辑 → Save（清脏）→ 重复 Save 零。
+        let mut pf = PersistFileState::new();
+        assert_eq!(pf.save(), Err("persist: no file loaded"));
+        pf.load(0xF17E);
+        pf.note_edit();
+        pf.note_edit();
+        assert_eq!(pf.save(), Ok(2));
+        assert_eq!(pf.save(), Ok(0), "已落盘的脏账清零");
+        // Load 重置脏账。
+        pf.note_edit();
+        pf.load(0xF17F);
+        assert_eq!(pf.dirty_ops, 0);
+    }
+}

@@ -23,6 +23,7 @@
 //! 零堆纪律：目录树遍历迭代式 + 定长输出，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -400,7 +401,7 @@ fn build_rsrc(entries: &[(u32, u32, u32, u32, u32)]) -> Vec<u8> {
     let a = 16 + 8 * n; // id 目录区起点
     let b = a + n * dir1; // lang 目录区起点
     let c = b + n * dir1; // Data Entry 区起点
-    let mut v = vec![0u8; c + n * 16];
+    let mut v = alloc::vec![0u8; c + n * 16];
     // 根目录：n 条 type 指向 id 目录 i。
     v[14..16].copy_from_slice(&(n as u16).to_le_bytes());
     for (i, e) in entries.iter().enumerate() {
@@ -484,7 +485,7 @@ pub fn run_persrc_checks() -> CheckSet {
         "",
     );
     // 7) 256px PNG 压缩图标检测。
-    let mut png = vec![0x89u8];
+    let mut png = alloc::vec![0x89u8];
     png.extend_from_slice(b"PNG");
     png.extend_from_slice(&[0u8; 16]);
     cs.add(
@@ -522,7 +523,7 @@ pub fn run_persrc_checks() -> CheckSet {
     //    BOM 与命名空间前缀容忍；非法 XML → Unaware（+日志语义）。
     let m1 = b"<assembly><dpiAware>true</dpiAware></assembly>";
     let m2 = b"<assembly><windowsSettings><dpiAware>pm</dpiAware></windowsSettings></assembly>";
-    let mut m3 = vec![0xEF, 0xBB, 0xBF];
+    let mut m3 = alloc::vec![0xEF, 0xBB, 0xBF];
     m3.extend_from_slice(b"<asm:dpiAwareValue><dpiAware>false</dpiAware></asm:dpiAwareValue>");
     let m4 = b"not xml at all";
     cs.add(
@@ -584,7 +585,7 @@ mod tests {
     #[test]
     fn version_binary_fixed_info() {
         // VS_FIXEDFILEINFO 签名定位 + FileVersion MS/LS 抽取。
-        let mut data = vec![0u8; 40];
+        let mut data = alloc::vec![0u8; 40];
         data[8..12].copy_from_slice(&0xFEEF_04BDu32.to_le_bytes());
         data[16..20].copy_from_slice(&2u32.to_le_bytes()); // FileVersionMS
         data[20..24].copy_from_slice(&3_100u32.to_le_bytes()); // FileVersionLS
@@ -617,5 +618,298 @@ mod tests {
         let dir = ResDir::new(&rsrc, 0);
         let ids = dir.ids_of_type(RT_GROUP_ICON);
         assert!(ids.contains(&1) && ids.contains(&2));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F014 · 深化扩展：dpiAwareness 元素面 + 组图标目录解析 + 版本全字段访问
+//
+// 主册依据（G-A-14【功能定义】）：「清单（manifest → DPI 感知三态 F028 + …）」
+// ——现代 manifest 用 `<dpiAwareness>PerMonitorV2, system</dpiAwareness>` 逗
+// 号值列表（首个可识别值生效；全不识别回退 dpiAware 语义）。深化批次修复：
+// 上一版 `find("<dpiAware")` 会把 `<dpiAwareness>` 误当 `<dpiAware>` 匹配
+// （标签名前缀碰撞），且值列表整个判 Unaware——真缺陷（缺陷账本 #16）。
+// 组图标（RT_GROUP_ICON → GRPICONDIR）成员解析补齐「图标组三件套」的最后一
+// 件；版本信息「全字段展示（Comments 等冷门字段不藏）」补统一访问面。
+// ---------------------------------------------------------------------------
+
+/// 标签名精确匹配：`s` 在 `at` 处开始于 "<name" 且下一字符是标签终结
+/// （'>'、空白、'/'、':'）——防 `dpiAware` 前缀误吞 `dpiAwareness`。
+fn tag_at(s: &str, at: usize, name: &str) -> bool {
+    if !s[at..].starts_with(name) {
+        return false;
+    }
+    let after = &s[at + name.len()..];
+    match after.as_bytes().first() {
+        None => true,
+        Some(&c) => c == b'>' || c == b'/' || c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' || c == b':',
+    }
+}
+
+/// 从 XML 文本中提取指定标签的首个元素体（`<name ...>body</name>`；自闭合
+/// 与缺失 → None）。容忍命名空间前缀（"<ns:name"）——按 ':' 前缀跳过。
+fn xml_element_body<'a>(s: &'a str, name: &str) -> Option<&'a str> {
+    let mut search = 0;
+    while let Some(rel) = s[search..].find('<') {
+        let at = search + rel + 1;
+        // 推进先行（深化批次缺陷 #17 修复：原 continue 路径不推进 search，
+        // 同名闭合标签不匹配时同一 '<' 反复命中——死循环）。
+        search = at;
+        // 命名空间前缀："<prefix:name" → 校验 prefix:name 与 name 的 name 段。
+        let seg_end = s[at..]
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ':' || c == '.'))
+            .map(|p| at + p)
+            .unwrap_or(s.len());
+        let seg = &s[at..seg_end];
+        let bare = seg.rsplit(':').next().unwrap_or(seg);
+        if bare == name && tag_at(s, at + (seg.len() - bare.len()), name) {
+            let after_open = &s[seg_end..];
+            if after_open.starts_with("/>") {
+                return Some(""); // 自闭合 → 空体
+            }
+            let gt = after_open.find('>')?;
+            let body = &after_open[gt + 1..];
+            let close = body.find("</")?;
+            let close_seg = &body[close + 2..];
+            // 闭合名截到标签终结（'>' 或空白）——否则后续嵌套元素的冒号会
+            // 卷进 rsplit(':') 尾段（深化批次缺陷 #17 伴生，scratch 隔离证实）。
+            let close_end = close_seg
+                .find(|c: char| c == '>' || c == ' ' || c == '\t' || c == '\n' || c == '\r')
+                .unwrap_or(close_seg.len());
+            let close_name = &close_seg[..close_end];
+            let close_name = close_name.rsplit(':').next().unwrap_or(close_name);
+            let close_ok = close_name == name;
+            if !close_ok {
+                continue; // 嵌套/异名闭合容错：跳过继续（search 已推进——必收敛）
+            }
+            return Some(&body[..close]);
+        }
+    }
+    None
+}
+
+/// dpiAwareness 逗号值列表 → 三态（首个可识别值生效——MS 语义）。
+fn awareness_list_to_state(v: &str) -> Option<DpiAware> {
+    v.split(',')
+        .map(|t| t.trim().to_ascii_lowercase())
+        .find_map(|t| match t.as_str() {
+            "unaware" | "false" => Some(DpiAware::Unaware),
+            "system" | "true" => Some(DpiAware::System),
+            "pm" | "permonitor" | "per monitor" | "permonitorv2" | "per monitor v2" => {
+                Some(DpiAware::PerMonitor)
+            }
+            _ => None, // 不可识别值跳过试下一个——MS 同语义
+        })
+}
+
+/// 清单解析全量面（dpiAwareness 优先，回退 dpiAware——Windows 读取序）。
+/// 现代清单（PerMonitorV2）在上一版实现下被判 Unaware，本函数补齐。
+pub fn parse_manifest_awareness(data: &[u8]) -> DpiAware {
+    // BOM 容忍同 parse_manifest（一处一事实：BOM 剥离逻辑同源复制三行——
+    // 字节切片层面无法复用私有局部，两函数测试对账锁定一致）。
+    let d = if data.len() >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+        &data[3..]
+    } else {
+        data
+    };
+    let s = match core::str::from_utf8(d) {
+        Ok(s) => s,
+        Err(_) => return DpiAware::Unaware,
+    };
+    let start = match s.find('<') {
+        Some(p) => p,
+        None => return DpiAware::Unaware,
+    };
+    let s = &s[start..];
+    // dpiAwareness 优先（现代元素——值列表语义）。
+    if let Some(body) = xml_element_body(s, "dpiAwareness") {
+        if let Some(state) = awareness_list_to_state(body.trim()) {
+            return state;
+        }
+        // 全不识别 → 回退 dpiAware（Windows 读取序）。
+    }
+    // dpiAware（传统元素——精确标签匹配，修复前缀碰撞）。
+    match xml_element_body(s, "dpiAware") {
+        Some(body) => {
+            let v = body.trim().to_ascii_lowercase();
+            match v.as_str() {
+                "true" | "system" => DpiAware::System,
+                "pm" | "permonitor" | "per monitor" => DpiAware::PerMonitor,
+                _ => DpiAware::Unaware,
+            }
+        }
+        None => DpiAware::Unaware,
+    }
+}
+
+// -- 组图标（RT_GROUP_ICON → GRPICONDIR） ------------------------------------
+
+/// 组图标成员条目（GRPICONDIRENTRY——尺寸档 + 成员 RT_ICON id）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct GroupIconEntry {
+    /// 宽/高 px（RT_ICON 层 256 编码为 0）。
+    pub width: u8,
+    pub height: u8,
+    pub color_count: u8,
+    pub planes: u16,
+    pub bit_count: u16,
+    pub bytes_in_res: u32,
+    /// 成员 RT_ICON 的资源 id（三级目录的 id 层）。
+    pub icon_id: u16,
+}
+
+/// 解析组图标目录（reserved/type/count 头 6B + n×14B 条目；type 非 1 或
+/// 截断 → None 如实拒——不猜）。
+pub fn parse_group_icon(data: &[u8]) -> Option<Vec<GroupIconEntry>> {
+    if data.len() < 6 {
+        return None;
+    }
+    let res_type = u16::from_le_bytes([data[2], data[3]]);
+    if res_type != 1 {
+        return None; // GRPICONDIR type 恒 1（icon）——其他如实拒
+    }
+    let count = u16::from_le_bytes([data[4], data[5]]) as usize;
+    if data.len() < 6 + count * 14 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let o = 6 + i * 14;
+        out.push(GroupIconEntry {
+            width: data[o],
+            height: data[o + 1],
+            color_count: data[o + 2],
+            planes: u16::from_le_bytes([data[o + 4], data[o + 5]]),
+            bit_count: u16::from_le_bytes([data[o + 6], data[o + 7]]),
+            bytes_in_res: u32::from_le_bytes([
+                data[o + 8],
+                data[o + 9],
+                data[o + 10],
+                data[o + 11],
+            ]),
+            icon_id: u16::from_le_bytes([data[o + 12], data[o + 13]]),
+        });
+    }
+    Some(out)
+}
+
+// -- 版本信息全字段访问 -------------------------------------------------------
+
+/// 版本信息字段统一选择器（属性页「详细信息」全字段展示的遍历序——
+/// Comments 等冷门字段不藏）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VersionField {
+    ProductName,
+    FileVersion,
+    CompanyName,
+    LegalCopyright,
+    Comments,
+}
+
+impl VersionInfo {
+    /// 字段读取（None = 未声明——属性页显示空行而非隐藏行）。
+    pub fn field(&self, which: VersionField) -> Option<&str> {
+        let (buf, len) = match which {
+            VersionField::ProductName => (&self.product_name[..], self.product_name_len),
+            VersionField::FileVersion => (&self.file_version[..], self.file_version_len),
+            VersionField::CompanyName => (&self.company_name[..], self.company_name_len),
+            VersionField::LegalCopyright => (&self.legal_copyright[..], self.legal_copyright_len),
+            VersionField::Comments => (&self.comments[..], self.comments_len),
+        };
+        if len == 0 {
+            return None;
+        }
+        core::str::from_utf8(&buf[..len]).ok()
+    }
+
+    /// 已声明字段数（属性页统计面；五字段全量遍历用 field()）。
+    pub fn populated_fields(&self) -> u8 {
+        [
+            VersionField::ProductName,
+            VersionField::FileVersion,
+            VersionField::CompanyName,
+            VersionField::LegalCopyright,
+            VersionField::Comments,
+        ]
+        .iter()
+        .filter(|f| self.field(**f).is_some())
+        .count() as u8
+    }
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn manifest_prefix_collision_fixed() {
+        // 缺陷 #16 回归锚：`<dpiAwareness>` 不再被 `<dpiAware>` 前缀误吞。
+        let modern = b"<?xml?><assembly><dpiAwareness>PerMonitorV2, system</dpiAwareness></assembly>";
+        assert_eq!(parse_manifest_awareness(modern), DpiAware::PerMonitor);
+        // 旧实现在此清单上判 Unaware（值列表 + 标签碰撞双重误判）——本断言即回归门。
+        assert_eq!(parse_manifest(&modern[..]), DpiAware::Unaware, "旧接口行为锁定（仅 dpiAware 元素面）");
+        // 首个可识别值生效（MS 语义）。
+        let list = b"<dpiAwareness>unrecognized, system, permonitorv2</dpiAwareness>";
+        assert_eq!(parse_manifest_awareness(list), DpiAware::System);
+        // 全不识别 → 回退 dpiAware。
+        let both = b"<assembly><dpiAware>true</dpiAware><dpiAwareness>whatever</dpiAwareness></assembly>";
+        assert_eq!(parse_manifest_awareness(both), DpiAware::System);
+        // 命名空间前缀容忍。
+        let ns = b"<asmv3:application><asmv3:windowsSettings><dpiAware xmlns=\"h\">true</dpiAware></asmv3:windowsSettings></asmv3:application>";
+        assert_eq!(parse_manifest_awareness(ns), DpiAware::System);
+        // 传统元素路径不回归。
+        assert_eq!(parse_manifest_awareness(b"<dpiAware>system</dpiAware>"), DpiAware::System);
+        assert_eq!(parse_manifest_awareness(b"<dpiAware>pm</dpiAware>"), DpiAware::PerMonitor);
+        assert_eq!(parse_manifest_awareness(b"<dpiAware>false</dpiAware>"), DpiAware::Unaware);
+    }
+
+    #[test]
+    fn group_icon_directory() {
+        // 合法 GRPICONDIR：2 成员（256 档 + 32 档）。
+        let mut g = alloc::vec![0u8; 6 + 2 * 14];
+        g[2..4].copy_from_slice(&1u16.to_le_bytes()); // type = icon
+        g[4..6].copy_from_slice(&2u16.to_le_bytes());
+        // 成员 1：256px（0 编码）32bpp → id 7。
+        g[6] = 0; // width 256 → 0
+        g[7] = 0;
+        g[10..12].copy_from_slice(&1u16.to_le_bytes()); // planes
+        g[12..14].copy_from_slice(&32u16.to_le_bytes()); // bitcount
+        g[18..20].copy_from_slice(&7u16.to_le_bytes()); // icon_id
+        // 成员 2：32px 8bpp → id 3。
+        let o = 6 + 14;
+        g[o] = 32;
+        g[o + 1] = 32;
+        g[o + 2] = 8;
+        g[o + 12] = 3; // icon_id 在条目内偏移 12（GRPICONDIRENTRY 14B 布局）
+        let entries = parse_group_icon(&g).expect("must parse");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].icon_id, 7);
+        assert_eq!(entries[0].bit_count, 32);
+        assert_eq!(entries[1].width, 32);
+        assert_eq!(entries[1].icon_id, 3);
+        // 损坏如实拒：type 错 / 截断。
+        let mut bad = g.clone();
+        bad[2..4].copy_from_slice(&2u16.to_le_bytes());
+        assert!(parse_group_icon(&bad).is_none(), "type 非 icon 如实拒");
+        assert!(parse_group_icon(&g[..10]).is_none());
+        assert!(parse_group_icon(&[]).is_none());
+    }
+
+    #[test]
+    fn version_fields_full_disclosure() {
+        // 全字段不藏：已声明 → Some；未声明 → None（显示空行不隐藏行）。
+        let mut vi = VersionInfo::default();
+        assert_eq!(vi.populated_fields(), 0);
+        vi.set(0, b"MyApp");
+        vi.set(4, b"Built with love");
+        assert_eq!(vi.field(VersionField::ProductName), Some("MyApp"));
+        assert_eq!(vi.field(VersionField::Comments), Some("Built with love"));
+        assert_eq!(vi.field(VersionField::FileVersion), None);
+        assert_eq!(vi.populated_fields(), 2);
+        // 五字段全填 → 5。
+        vi.set(1, b"2.3.1");
+        vi.set(2, b"ACME");
+        vi.set(3, b"MIT");
+        assert_eq!(vi.populated_fields(), 5);
     }
 }

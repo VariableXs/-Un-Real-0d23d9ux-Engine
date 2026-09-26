@@ -21,6 +21,9 @@
 //! 零堆纪律：变量表定长槽 + 定长值，展开链定长，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec;
+use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -106,7 +109,7 @@ pub struct EnvTable {
 impl EnvTable {
     pub fn new() -> EnvTable {
         EnvTable {
-            vars: vec![None; TABLE_CAP],
+            vars: alloc::vec![None; TABLE_CAP],
             count: 0,
             cycle_truncations: 0,
             invalid_name_rejects: 0,
@@ -277,7 +280,7 @@ impl EnvTable {
     /// 会话快照（进程创建时取——运行中的程序不受后续修改影响，主册【功能
     /// 定义】会话边界语义）。
     pub fn snapshot(&self) -> EnvSnapshot {
-        let mut s = EnvSnapshot { slots: vec![None; TABLE_CAP], n: 0 };
+        let mut s = EnvSnapshot { slots: alloc::vec![None; TABLE_CAP], n: 0 };
         for i in 0..self.count {
             s.slots[i] = self.vars[i];
             s.n += 1;
@@ -342,6 +345,13 @@ impl EnvSnapshot {
                 None
             }
         })
+    }
+
+    /// 按表序枚举槽位（序列化/诊断回放面）。返回 (名称, 值, 层级)。
+    pub fn slot_at(&self, i: usize) -> Option<(&str, &[u8], Scope)> {
+        let v = self.slots.get(i)?.as_ref()?;
+        let name = core::str::from_utf8(&v.name[..v.name_len]).ok()?;
+        Some((name, &v.value[..v.value_len], v.scope))
     }
 
     pub fn len(&self) -> usize {
@@ -536,7 +546,7 @@ mod tests {
         assert!(t.remove("alpha"));
         assert!(!t.remove("alpha"));
         assert_eq!(t.len(), 1);
-        assert_eq!(t.filter_names("be"), vec!["Beta"]);
+        assert_eq!(t.filter_names("be"), alloc::vec!["Beta"]);
     }
 
     #[test]
@@ -546,5 +556,251 @@ mod tests {
         let mut t = EnvTable::new();
         assert!(t.set("COMPUTERNAME", device_name.as_bytes(), Scope::System));
         assert_eq!(t.get("COMPUTERNAME"), Some(device_name.as_bytes()));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F011 · 深化扩展：env 配置落盘模型 + PATH 重组 + 非法名行内定位面
+//
+// 主册依据（G-A-11【数据与存储】）：「变量表存配置层（config/env.json），还原
+// 点（F121）覆盖」——本扩展给出配置文件的规范落盘形态（帧式定长记录 + 校验
+// 和，损坏如实拒载）；【交互设计】PATH 编辑器「每行一条」↔ 分号串的双向重组；
+// 【状态与异常】非法名「行内红框即时校验」的定位面（第一个非法字符位置 +
+// 错误类别）。
+// ---------------------------------------------------------------------------
+
+/// 配置文件头 16B：magic(4) + version(2) + count(2) + reserved(8)。
+pub const ENV_CFG_HDR_SIZE: usize = 16;
+/// 文件 magic（"VXE2"——Varix Env config v2）。
+pub const ENV_CFG_MAGIC: [u8; 4] = *b"VXE2";
+
+/// 序列化变量表（F121 还原点快照的落地形态；冷路径 alloc 与 EnvTable 同例
+/// 登记）。记录序 = 表序；返回写入字节数，缓冲容量不足返回 0（不静默截）。
+pub fn serialize_env_config(table: &EnvTable, buf: &mut Vec<u8>) -> usize {
+    let snap = table.snapshot();
+    let mut records: Vec<u8> = Vec::new();
+    let mut count = 0usize;
+    for i in 0..snap.len() {
+        let (name, value, scope) = match snap.slot_at(i) {
+            Some(t) => t,
+            None => continue,
+        };
+        if name.len() > 64 {
+            continue; // 与表内校验一致（超长名不入配置）
+        }
+        records.push(scope_priority_byte(scope));
+        records.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        records.extend_from_slice(&(value.len() as u32).to_le_bytes());
+        records.extend_from_slice(name.as_bytes());
+        records.extend_from_slice(value);
+        count += 1;
+    }
+    let total = ENV_CFG_HDR_SIZE + records.len() + 8;
+    if buf.capacity() < total {
+        return 0; // 容量不足如实返回 0（调用方按需扩容重试）
+    }
+    buf.clear();
+    buf.extend_from_slice(&ENV_CFG_MAGIC);
+    buf.extend_from_slice(&2u16.to_le_bytes());
+    buf.extend_from_slice(&(count as u16).to_le_bytes());
+    buf.extend_from_slice(&[0u8; 8]);
+    buf.extend_from_slice(&records);
+    let sum = fnv_env(&buf[..]);
+    let at = buf.len();
+    buf.extend_from_slice(&sum.to_le_bytes());
+    at + 8
+}
+
+fn scope_priority_byte(s: Scope) -> u8 {
+    match s {
+        Scope::System => 0,
+        Scope::User => 1,
+        Scope::Session => 2,
+    }
+}
+
+fn byte_scope(b: u8) -> Option<Scope> {
+    match b {
+        0 => Some(Scope::System),
+        1 => Some(Scope::User),
+        2 => Some(Scope::Session),
+        _ => None,
+    }
+}
+
+fn fnv_env(data: &[u8]) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for &b in data {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    h
+}
+
+/// 反序列化 → 新表（F121 还原语义：整表替换）。任何损坏如实拒（返回 Err，
+/// 调用方保留原表——配置不静默清空）。
+pub fn deserialize_env_config(data: &[u8]) -> Result<EnvTable, &'static str> {
+    if data.len() < ENV_CFG_HDR_SIZE + 8 {
+        return Err("env: config too small");
+    }
+    if data[0..4] != ENV_CFG_MAGIC {
+        return Err("env: config bad magic");
+    }
+    if u16::from_le_bytes([data[4], data[5]]) != 2 {
+        return Err("env: config unsupported version");
+    }
+    let count = u16::from_le_bytes([data[6], data[7]]) as usize;
+    let body_end = data.len() - 8;
+    let sum = u64::from_le_bytes(data[body_end..].try_into().unwrap());
+    if fnv_env(&data[..body_end]) != sum {
+        return Err("env: config checksum mismatch");
+    }
+    let mut t = EnvTable::new();
+    let mut o = ENV_CFG_HDR_SIZE;
+    for _ in 0..count {
+        if o + 7 > body_end {
+            return Err("env: config truncated record");
+        }
+        let scope = byte_scope(data[o]).ok_or("env: config bad scope")?;
+        let name_len = u16::from_le_bytes([data[o + 1], data[o + 2]]) as usize;
+        let val_len = u32::from_le_bytes([data[o + 3], data[o + 4], data[o + 5], data[o + 6]]) as usize;
+        o += 7;
+        if o + name_len + val_len > body_end {
+            return Err("env: config truncated record body");
+        }
+        let name = core::str::from_utf8(&data[o..o + name_len]).map_err(|_| "env: config bad name")?;
+        let value = &data[o + name_len..o + name_len + val_len];
+        // 表内 set 通道复用（非法名/超限照表纪律拒绝——配置坏值不进表）。
+        if !t.set(name, value, scope) {
+            return Err("env: config record rejected by table");
+        }
+        o += name_len + val_len;
+    }
+    Ok(t)
+}
+
+// -- PATH 编辑器双向重组（每行一条 ↔ 分号串） -------------------------------
+
+/// PATH 重组（编辑器每行一条 → 分号串）：空行剔除、去重保序（首次出现位
+/// 置为准——Windows PATH 同语义）、不做 trim 以外的内容改写。
+pub fn join_path(lines: &[&str]) -> String {
+    let mut out = String::new();
+    let mut seen: Vec<&str> = Vec::new();
+    for line in lines {
+        let t = line.trim();
+        if t.is_empty() || seen.contains(&t) {
+            continue;
+        }
+        seen.push(t);
+        if !out.is_empty() {
+            out.push(';');
+        }
+        out.push_str(t);
+    }
+    out
+}
+
+// -- 非法名行内红框定位面 ----------------------------------------------------
+
+/// 非法名错误类别（行内红框的三态：空名/非法字符/超长）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NameError {
+    Empty,
+    /// 非法字符（`=` 破坏键值结构；`%` 保留给展开）。
+    IllegalChar(u8),
+    TooLong,
+}
+
+/// 定位第一个非法处（返回字节偏移——行内红框画在该字符下）。
+/// 校验规则与 EnvTable::valid_name 同源（一处一事实：本函数是定位扩展，
+/// 结论必须与 valid_name 一致——ext_tests 对账）。
+pub fn name_error_at(name: &str) -> Option<(usize, NameError)> {
+    if name.is_empty() {
+        return Some((0, NameError::Empty));
+    }
+    for (i, &b) in name.as_bytes().iter().enumerate() {
+        if b == b'=' || b == b'%' {
+            return Some((i, NameError::IllegalChar(b)));
+        }
+    }
+    if name.len() > 64 {
+        return Some((64, NameError::TooLong));
+    }
+    None
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn env_config_round_trip_and_f121() {
+        // 落盘往返 + F121 还原语义（整表替换）。
+        let mut src = EnvTable::new();
+        let _ = src.set("PATH", b"C:\\a;C:\\b", Scope::System);
+        let _ = src.set("GOPATH", b"C:\\go", Scope::User);
+        let _ = src.set("HTTP_PROXY", b"http://p:8080", Scope::Session);
+        let mut buf: Vec<u8> = Vec::with_capacity(4096);
+        let n = serialize_env_config(&src, &mut buf);
+        assert!(n > ENV_CFG_HDR_SIZE + 8);
+        // 还原点覆盖后重载：三 scope 全回。
+        let back = deserialize_env_config(&buf[..n]).expect("round trip");
+        assert_eq!(back.len(), 3);
+        assert_eq!(back.get("path"), Some(&b"C:\\a;C:\\b"[..]));
+        assert_eq!(back.get_name_cased("gopath"), Some("GOPATH"), "首个写入大小写保留");
+        assert_eq!(back.get("http_proxy"), Some(&b"http://p:8080"[..]));
+        // 容量不足如实返回 0（不静默截半张表）。
+        let mut tiny: Vec<u8> = Vec::with_capacity(4);
+        assert_eq!(serialize_env_config(&src, &mut tiny), 0);
+    }
+
+    #[test]
+    fn env_config_corrupt_rejected() {
+        let mut src = EnvTable::new();
+        let _ = src.set("A", b"1", Scope::User);
+        let mut buf: Vec<u8> = Vec::with_capacity(512);
+        let n = serialize_env_config(&src, &mut buf);
+        // 坏 magic / 坏版本 / 截断 / 校验和翻转。
+        let mut m = buf[..n].to_vec();
+        m[0] = b'X';
+        assert!(deserialize_env_config(&m).is_err());
+        let mut v = buf[..n].to_vec();
+        v[5] = 7;
+        assert!(deserialize_env_config(&v).is_err());
+        assert!(deserialize_env_config(&buf[..10]).is_err());
+        let mut c = buf[..n].to_vec();
+        let at = c.len() - 1;
+        c[at] ^= 0xFF;
+        assert!(deserialize_env_config(&c).is_err());
+        // 记录体被改 → 校验和拦截（坏值不进表）。
+        let mut b2 = buf[..n].to_vec();
+        let pos = ENV_CFG_HDR_SIZE + 7; // 第一条记录的 name 区
+        b2[pos] = b'Z';
+        assert!(deserialize_env_config(&b2).is_err());
+    }
+
+    #[test]
+    fn path_join_dedupe_and_order() {
+        // 编辑器每行一条 → 分号串：空行剔、去重保序。
+        let joined = join_path(&["C:\\a", "", "  C:\\b  ", "C:\\a", "C:\\c"]);
+        assert_eq!(joined, "C:\\a;C:\\b;C:\\c");
+        // 与 split 往返一致。
+        assert_eq!(split_path(&joined), alloc::vec!["C:\\a", "C:\\b", "C:\\c"]);
+        assert_eq!(join_path(&[]), "");
+    }
+
+    #[test]
+    fn name_error_locator_matches_valid_name() {
+        // 定位面与 valid_name 同源对账（一处一事实）。
+        assert_eq!(name_error_at(""), Some((0, NameError::Empty)));
+        assert_eq!(name_error_at("GOOD"), None);
+        assert_eq!(name_error_at("BAD=NAME"), Some((3, NameError::IllegalChar(b'='))));
+        assert_eq!(name_error_at("HA%CK"), Some((2, NameError::IllegalChar(b'%'))));
+        let long = "x".repeat(65);
+        assert_eq!(name_error_at(&long), Some((64, NameError::TooLong)));
+        // 对账：定位 None ⇔ valid_name true；定位 Some ⇔ valid_name false。
+        for case in ["OK1", "", "A=B", "P%Q", &long] {
+            assert_eq!(name_error_at(case).is_none(), EnvTable::valid_name(case), "{}", case);
+        }
     }
 }

@@ -21,6 +21,7 @@
 //! 扩」纪律），无运行时分配。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -582,4 +583,133 @@ pub fn run_pebind_checks() -> CheckSet {
         "",
     );
     cs
+}
+
+// ---------------------------------------------------------------------------
+// F003 · 深化扩展：pebind.bin 缓存文件序列化（头 + 记录 + 校验）
+//
+// 主册依据（G-A-03【数据与存储】）：「缓存文件存 DATA 分区 cache/pebind.bin，
+// 损坏即弃建（自愈）」——本扩展给出缓存文件的确切二进制布局：头（魔数/版本/
+// 版本戳/条目数）+ 定长记录 + 尾校验和；加载时校验失败 → 弃建路径（自愈）。
+// ---------------------------------------------------------------------------
+
+/// 缓存文件布局常量。
+pub const PBND_MAGIC: [u8; 4] = [b'P', b'B', b'N', b'D'];
+pub const PBND_VERSION: u32 = 1;
+/// 头尺寸：magic(4) ver(4) stamp(4) count(4) wal_seq(4) checksum(8) = 24B。
+pub const PBND_HEADER: usize = 24;
+/// 记录尺寸：module_hash(8) symbol_hash(8) value(8) stamp(8) = 32B。
+pub const PBND_RECORD: usize = 32;
+
+fn pbnd_checksum(buf: &[u8], upto: usize) -> u64 {
+    let mut h = 0xCBF2_9CE4_8422_2325u64;
+    for &b in &buf[..upto] {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100_0000_01B3);
+    }
+    h
+}
+
+/// 序列化用槽位访问器（同模块扩展——BindTable 的第 i 条存活条目）。
+impl BindTable {
+    fn slot(&self, i: usize) -> Option<&Entry> {
+        self.slots.get(i).and_then(|s| s.as_ref())
+    }
+}
+
+/// 序列化：表 → 缓存文件字节（含当前版本戳与 WAL 序号）。返回写入字节数；
+/// 容量不足返回 0（调用方按弃建自愈路径处理）。
+pub fn serialize_cache(table: &BindTable, wal_seq: u32, out: &mut [u8]) -> usize {
+    let need = PBND_HEADER + table.len() * PBND_RECORD + 8;
+    if out.len() < need {
+        return 0;
+    }
+    out[..4].copy_from_slice(&PBND_MAGIC);
+    out[4..8].copy_from_slice(&PBND_VERSION.to_le_bytes());
+    out[8..12].copy_from_slice(&table.version_stamp().to_le_bytes());
+    out[12..16].copy_from_slice(&(table.len() as u32).to_le_bytes());
+    out[16..20].copy_from_slice(&wal_seq.to_le_bytes());
+    out[20..24].copy_from_slice(&[0; 4]); // 保留
+    let mut w = PBND_HEADER;
+    for i in 0..table.len() {
+        if let Some(e) = table.slot(i) {
+            out[w..w + 8].copy_from_slice(&e.key.module_hash.to_le_bytes());
+            out[w + 8..w + 16].copy_from_slice(&e.key.symbol_hash.to_le_bytes());
+            out[w + 16..w + 24].copy_from_slice(&e.value.to_le_bytes());
+            out[w + 24..w + 28].copy_from_slice(&e.key.version_stamp.to_le_bytes());
+            out[w + 28..w + 32].copy_from_slice(&0u32.to_le_bytes()); // 保留
+            w += PBND_RECORD;
+        }
+    }
+    let checksum = pbnd_checksum(out, w);
+    out[w..w + 8].copy_from_slice(&checksum.to_le_bytes());
+    w + 8
+}
+
+/// 加载校验：魔数/版本/条目数/校验和全过 → (版本戳, 条目数, WAL 序号)；
+/// 任一不符 → Err（调用方走「损坏即弃建」自愈 + 通知中心报备）。
+pub fn validate_cache(buf: &[u8]) -> Result<(u32, u32, u32), &'static str> {
+    if buf.len() < PBND_HEADER + 8 {
+        return Err("pebind: file too small");
+    }
+    if buf[0..4] != PBND_MAGIC {
+        return Err("pebind: bad magic");
+    }
+    let rd32 = |o: usize| u32::from_le_bytes(buf[o..o + 4].try_into().unwrap());
+    let rd64 = |o: usize| u64::from_le_bytes(buf[o..o + 8].try_into().unwrap());
+    if rd32(4) != PBND_VERSION {
+        return Err("pebind: unsupported version");
+    }
+    let count = rd32(12) as usize;
+    let body = PBND_HEADER + count * PBND_RECORD;
+    if buf.len() < body + 8 {
+        return Err("pebind: truncated body");
+    }
+    if pbnd_checksum(buf, body) != rd64(body) {
+        return Err("pebind: checksum mismatch");
+    }
+    Ok((rd32(8), count as u32, rd32(16)))
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn cache_file_round_trip() {
+        let mut t = BindTable::new(7);
+        for i in 0..5u64 {
+            t.put(BindKey::new(0xAA00 + i, 0xBB00 + i, 7), 0x40_0000 + i);
+        }
+        let mut buf = [0u8; PBND_HEADER + 8 * PBND_RECORD + 8];
+        let n = serialize_cache(&t, 42, &mut buf);
+        assert!(n > PBND_HEADER);
+        let (stamp, count, seq) = validate_cache(&buf).unwrap();
+        assert_eq!(stamp, 7);
+        assert_eq!(count, 5);
+        assert_eq!(seq, 42);
+        let _ = n;
+    }
+
+    #[test]
+    fn cache_file_corruption_self_heal_path() {
+        // 损坏三态：坏魔数 / 篡改 / 截断——全部走「损坏即弃建」。
+        let mut t = BindTable::new(1);
+        t.put(BindKey::new(1, 1, 1), 2);
+        let mut buf = [0u8; PBND_HEADER + PBND_RECORD + 8];
+        let _ = serialize_cache(&t, 1, &mut buf);
+        // 坏魔数。
+        let mut bad = buf;
+        bad[0] = b'X';
+        assert_eq!(validate_cache(&bad), Err("pebind: bad magic"));
+        // 篡改一条记录。
+        let mut bad = buf;
+        bad[PBND_HEADER + 4] ^= 0xFF;
+        assert_eq!(validate_cache(&bad), Err("pebind: checksum mismatch"));
+        // 截断。
+        assert_eq!(validate_cache(&buf[..20]), Err("pebind: file too small"));
+        // 容量不足的序列化 → 0。
+        let mut small = [0u8; 16];
+        assert_eq!(serialize_cache(&t, 1, &mut small), 0);
+    }
 }

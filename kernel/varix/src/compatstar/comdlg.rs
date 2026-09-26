@@ -23,6 +23,7 @@
 //! 零堆纪律：会话表/记忆表/色板全定长，无 Vec/String/Box/format!。
 
 use crate::checks::CheckSet;
+use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // 常量（一处一事实）
@@ -249,7 +250,10 @@ pub fn open_budget_ok(warm_ms: u64, cold_ms: u64) -> bool {
 // ---------------------------------------------------------------------------
 
 /// HSV → RGB（色板联动核：拖动实时换算）。h ∈ [0,360)，s/v permille 0..=1000，
-/// 返回 0xRRGGBB 字节域。
+/// 返回 0xRRGGBB 字节域。X 通道按标准公式：偶数扇区从 0 升到 C、奇数扇区从
+/// C 降到 0（X = C·frac/1000 偶扇区；C·(1000−frac)/1000 奇扇区）——上一版
+/// 三角形波公式使扇区内色相整体偏移约 30°（h=60 黄渲染成绿），深化批次
+/// round-trip 判据捕获后修正（缺陷账本 #14）。
 pub fn hsv_to_rgb(h_deg: u16, s_permille: u32, v_permille: u32) -> u32 {
     let h = (h_deg % 360) as u32;
     let s = s_permille.min(1000);
@@ -257,9 +261,7 @@ pub fn hsv_to_rgb(h_deg: u16, s_permille: u32, v_permille: u32) -> u32 {
     let c = (v * s) / 1000;
     let sector = h / 60; // 0..=5
     let frac = ((h % 60) * 1000) / 60; // 0..=1000（扇区内的位置）
-    // x = c * (1 - |frac/1000 - 0.5| * 2)：扇区内第二通道的三角形波。
-    let dev = if frac > 500 { frac - 500 } else { 500 - frac };
-    let x = (c * (1000 - dev * 2)) / 1000;
+    let x = (c * if sector % 2 == 0 { frac } else { 1000 - frac }) / 1000;
     let (r1, g1, b1) = match sector {
         0 => (c, x, 0),
         1 => (x, c, 0),
@@ -466,5 +468,270 @@ mod tests {
         assert!(!s.owner_crashed());
         let _ = s.open(DialogKind::Open, false, 10, 9);
         assert!(s.owner_crashed());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F008 · 深化扩展：颜色双向联动 + RGB/HSL 输入面 + 字体对话框选择模型
+//
+// 主册依据（G-A-08【交互设计】）：颜色对话框「HSV 区域 + **RGB/HSL 输入**」；
+// 【设计细节】「HSV 区拖动 60fps 实时联动**十六进制输入框**」——联动是双向
+// 的：HSV 拖动出 RGB 出 hex，hex/RGB 输入也要反推回 HSV 区光标位。字体对话
+// 框（CHOOSEFONT）补齐选择模型：族/字型/字号三列表联动 + 预览请求。
+// ---------------------------------------------------------------------------
+
+/// RGB → HSV 反推（h ∈ [0,360)，s/v permille）。与 hsv_to_rgb 构成双向绑定
+/// （联动判据：hsv→rgb→hsv 往返恒等）。
+pub fn rgb_to_hsv(rgb: u32) -> (u16, u32, u32) {
+    let r = ((rgb >> 16) & 0xFF) as u32;
+    let g = ((rgb >> 8) & 0xFF) as u32;
+    let b = (rgb & 0xFF) as u32;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let v = max * 1000 / 255;
+    let delta = max - min;
+    let s = if max == 0 { 0 } else { delta * 1000 / max };
+    if delta == 0 {
+        return (0, s, v); // 灰：色相无定义，约定 0
+    }
+    let h60 = if max == r {
+        // 60*(g-b)/delta ∈ (-60, 60) → 负值回绕 360。
+        let raw = 60i32 * (g as i32 - b as i32) / delta as i32;
+        if raw < 0 { raw + 360 } else { raw }
+    } else if max == g {
+        60 * (2 * 255 + (b as i32 - r as i32) * 255 / delta as i32) / 255
+    } else {
+        60 * (4 * 255 + (r as i32 - g as i32) * 255 / delta as i32) / 255
+    };
+    (h60 as u16 % 360, s, v)
+}
+
+/// RGB → HSL（permille；RGB/HSL 输入面——主册【交互设计】）。
+pub fn rgb_to_hsl(rgb: u32) -> (u16, u32, u32) {
+    let r = ((rgb >> 16) & 0xFF) as u32;
+    let g = ((rgb >> 8) & 0xFF) as u32;
+    let b = (rgb & 0xFF) as u32;
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) * 500 / 255; // 0..=1000
+    if max == min {
+        return (0, 0, l);
+    }
+    let d = max - min;
+    // S = d'/(max'+min') 当 L≤0.5；d'/(2−max'−min') 当 L>0.5（byte 域整数化；
+    // 非灰点两分母都 ≥ 1——max+min=0 或 510 均为灰点，上方已拦）。
+    let s = if l <= 500 { d * 1000 / (max + min) } else { d * 1000 / (510 - max - min) };
+    let h = if max == r {
+        let raw = 60 * (g as i32 - b as i32) / d as i32;
+        if raw < 0 { raw + 360 } else { raw }
+    } else if max == g {
+        60 * (2 * 255 + (b as i32 - r as i32) * 255 / d as i32) / 255
+    } else {
+        60 * (4 * 255 + (r as i32 - g as i32) * 255 / d as i32) / 255
+    };
+    (h as u16 % 360, s.min(1000), l)
+}
+
+/// hex 渲染（#RRGGBB 大写——十六进制输入框联动面）。
+pub fn rgb_to_hex(rgb: u32) -> [u8; 7] {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = [b'#'; 7];
+    for k in 0..3 {
+        let byte = ((rgb >> (8 * (2 - k))) & 0xFF) as u8;
+        out[1 + k * 2] = HEX[(byte >> 4) as usize];
+        out[2 + k * 2] = HEX[(byte & 0xF) as usize];
+    }
+    out
+}
+
+/// hex 解析（接受带/不带 `#`、大小写混合；非法字符/长度不足 → None 不猜）。
+pub fn hex_to_rgb(s: &str) -> Option<u32> {
+    let b = s.as_bytes();
+    let b = if !b.is_empty() && b[0] == b'#' { &b[1..] } else { b };
+    if b.len() != 6 {
+        return None;
+    }
+    let nib = |c: u8| -> Option<u32> {
+        match c {
+            b'0'..=b'9' => Some((c - b'0') as u32),
+            b'a'..=b'f' => Some((c - b'a' + 10) as u32),
+            b'A'..=b'F' => Some((c - b'A' + 10) as u32),
+            _ => None,
+        }
+    };
+    let mut v = 0u32;
+    for &c in b {
+        v = (v << 4) | nib(c)?;
+    }
+    Some(v)
+}
+
+// -- 字体对话框（CHOOSEFONT）选择模型 ---------------------------------------
+
+/// 字体族清单（对话框列表——映射面在 F016 fontchain，本层只列可选名）。
+pub const FONT_FAMILIES: [&str; 8] = [
+    "微软雅黑", "宋体", "黑体", "楷体", "Segoe UI", "Arial", "Consolas", "Times New Roman",
+];
+/// 标准字号档（CHOOSEFONT 常用尺寸表，pt）。
+pub const FONT_SIZES_PT: [u32; 16] =
+    [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
+/// 字型四档（族内 Bold/Italic 可用性决定置灰——Windows 同语义）。
+pub const FONT_STYLES: [&str; 4] = ["Regular", "Italic", "Bold", "Bold Italic"];
+
+/// 字体对话框选择结果（CF_choosefont LOGFONT 出口面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct FontChoice {
+    pub family_idx: usize,
+    pub style_idx: usize,
+    pub size_pt: u32,
+    /// 合成加粗/斜体标注（族内无该档时——F016 联动）。
+    pub synthetic_bold: bool,
+    pub synthetic_italic: bool,
+}
+
+/// 字体对话框选择校验（三列表任一越界 → None 不猜；字号允许自由输入但须
+/// 落在 1..=2000 pt——Windows CHOOSEFONT 同界）。合成加粗/斜体标注由 F016
+/// fontchain 解析链定案（族内无该档 → synthetic 标注，属性页如实展示）。
+pub fn validate_font_choice(family_idx: usize, style_idx: usize, size_pt: u32) -> Option<FontChoice> {
+    if family_idx >= FONT_FAMILIES.len() || style_idx >= FONT_STYLES.len() {
+        return None;
+    }
+    if size_pt == 0 || size_pt > 2000 {
+        return None;
+    }
+    let bold_intent = style_idx == 2 || style_idx == 3;
+    let italic_intent = style_idx == 1 || style_idx == 3;
+    let plan = crate::compatstar::fontchain::resolve_font(FONT_FAMILIES[family_idx], bold_intent, italic_intent);
+    Some(FontChoice {
+        family_idx,
+        style_idx,
+        size_pt,
+        synthetic_bold: bold_intent && plan.bold_synthetic,
+        synthetic_italic: italic_intent && plan.italic_synthetic,
+    })
+}
+
+/// 域自检扩展。
+pub fn run_comdlg_ext_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F008-comdlg-ext");
+    // 1) HSV↔RGB 双向往返恒等（联动判据）。
+    let mut roundtrip = true;
+    for (h, s, v) in [(0u16, 1000u32, 1000u32), (120, 500, 800), (240, 1000, 500), (359, 250, 250), (60, 0, 640)] {
+        let rgb = hsv_to_rgb(h, s, v);
+        let (h2, s2, v2) = rgb_to_hsv(rgb);
+        // 色相在灰点/原色附近有约定差（灰点 h=0）；非灰点必须精确回绕一致。
+        if s > 0 && v > 0 {
+            let dh = (h as i32 - h2 as i32).abs();
+            roundtrip &= (dh % 360) <= 1;
+        }
+        roundtrip &= s2 == s.min(1000) && v2 == v.min(1000) || (s == 0 && s2 == 0);
+    }
+    cs.add("hsv_rgb_two_way", roundtrip && rgb_to_hsv(0xFF0000).0 == 0 && rgb_to_hsv(0x00FF00).0 == 120, "");
+    // 2) hex 联动双向。
+    cs.add(
+        "hex_two_way",
+        &rgb_to_hex(0x12ABEF) == b"#12ABEF"
+            && hex_to_rgb("#12abef") == Some(0x12ABEF)
+            && hex_to_rgb("12ABEF") == Some(0x12ABEF)
+            && hex_to_rgb("#12ABE").is_none()
+            && hex_to_rgb("#12ABGZ").is_none(),
+        "",
+    );
+    // 3) HSL 输入面（主册【交互设计】：RGB/HSL 输入）。
+    let (h, s, l) = rgb_to_hsl(0x808080);
+    cs.add("hsl_input_face", h == 0 && s == 0 && (900..=1100).contains(&l), "");
+    // 4) 字体对话框选择模型：三列表界内有效、越界拒绝、字号界外拒绝。
+    cs.add(
+        "font_choice_model",
+        validate_font_choice(0, 0, 9).is_some()
+            && validate_font_choice(FONT_FAMILIES.len(), 0, 9).is_none()
+            && validate_font_choice(0, FONT_STYLES.len(), 9).is_none()
+            && validate_font_choice(0, 0, 0).is_none()
+            && validate_font_choice(0, 0, 2001).is_none()
+            && FONT_SIZES_PT.contains(&9),
+        "",
+    );
+    cs
+}
+
+#[cfg(test)]
+mod ext_tests {
+    use super::*;
+
+    #[test]
+    fn hsv_inverse_round_trip() {
+        // 双向联动判据（8-bit 表面口径）：hsv→rgb→hsv 往返。
+        // 容差即字节量化物理界：1 字节 ≈ 3.92‰ → s/v 容差 4‰；
+        // 色相仅在色度差 ≥ 2 字节时可表示（低于此限 h 无定义——灰点约定 0），
+        // 整数色相运算另带 ±1° 截断 → 可表示域容差 2°。
+        for h in [0u16, 30, 90, 120, 180, 240, 300, 359] {
+            for s in [1u32, 250, 500, 750, 999] {
+                for v in [1u32, 125, 500, 875, 1000] {
+                    let rgb = hsv_to_rgb(h, s, v);
+                    let (h2, s2, v2) = rgb_to_hsv(rgb);
+                    // 容差 = 8-bit 表面的量化物理界（不是放水——真公式错在高
+                    // 色度锚点仍会被抓，如旧三角波公式的 30° 色相偏移）：
+                    // v 界 4‰（1 字节恒 ≈3.9‰）；s 界 = 4‰ + 最大通道 1 字节步长
+                    // （低明度时字节步长主导）；h 界 = 1° + 60°/色度字节数
+                    // （delta 每少 1 字节，色相分辨率减半）。
+                    let max_byte = v * 255 / 1000;
+                    let c_byte = (v * s / 1000) * 255 / 1000;
+                    if max_byte == 0 {
+                        assert_eq!((h2, s2, v2), (0, 0, 0), "黑点约定 ({:06X})", rgb);
+                        continue;
+                    }
+                    assert!((v as i32 - v2 as i32).abs() <= 4, "v {} -> {} ({:06X})", v, v2, rgb);
+                    let s_tol = 4 + 1000 / max_byte.max(1) as i32;
+                    assert!(
+                        (s as i32 - s2 as i32).abs() <= s_tol,
+                        "s {} -> {} (tol {}, {:06X})",
+                        s, s2, s_tol, rgb
+                    );
+                    if c_byte >= 2 {
+                        let raw = (h as i32 - h2 as i32).abs() % 360;
+                        let dh = raw.min(360 - raw); // 圆周距离（359° 邻 0°）
+                        let h_tol = 1 + 60 / c_byte as i32;
+                        assert!(dh <= h_tol, "h {} -> {} (tol {}, rgb {:06X})", h, h2, h_tol, rgb);
+                    }
+                }
+            }
+        }
+        // 扇区中点锚点（旧三角波公式的偏移错误正是这些点上暴露；整数色相
+        // 运算自带 ±1° 截断 → 允许 1°）。
+        for h in [30u16, 60, 90] {
+            let dh = {
+                let r = (h as i32 - rgb_to_hsv(hsv_to_rgb(h, 1000, 1000)).0 as i32).abs();
+                r.min(360 - r)
+            };
+            assert!(dh <= 1, "h={} 回推偏差 {}°", h, dh);
+        }
+        // 主色锚点全精（可表示域中心）。
+        assert_eq!(rgb_to_hsv(0xFF0000), (0, 1000, 1000));
+        assert_eq!(rgb_to_hsv(0x00FF00), (120, 1000, 1000));
+        assert_eq!(rgb_to_hsv(0x0000FF), (240, 1000, 1000));
+        assert_eq!(rgb_to_hsv(0), (0, 0, 0));
+    }
+
+    #[test]
+    fn hex_ladder() {
+        // 十六进制输入框联动：三通道独立正确。
+        assert_eq!(hex_to_rgb(&core::str::from_utf8(&rgb_to_hex(0xFF8001)).unwrap()), Some(0xFF8001));
+        assert_eq!(&rgb_to_hex(0), b"#000000");
+        assert_eq!(&rgb_to_hex(0xFFFFFF), b"#FFFFFF");
+    }
+
+    #[test]
+    fn font_dialog_lists_sane() {
+        // 列表无重复；四字型对齐 Windows 命名。
+        for i in 0..FONT_FAMILIES.len() {
+            for j in (i + 1)..FONT_FAMILIES.len() {
+                assert_ne!(FONT_FAMILIES[i], FONT_FAMILIES[j]);
+            }
+        }
+        assert_eq!(FONT_STYLES[3], "Bold Italic");
+        // 字号表单调递增（对话框展示序）。
+        for w in FONT_SIZES_PT.windows(2) {
+            assert!(w[0] < w[1]);
+        }
     }
 }
