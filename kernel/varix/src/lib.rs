@@ -579,6 +579,8 @@ pub mod apower;
 pub mod perf;
 // Varix STAR I · 泳道一 B 域后段（AI-K2 · F058-F075）：十八项功能 + 共享底盘。
 pub mod star;
+// Varix STAR I · 泳道四 I 通用域·四分队（AI-U4 · F551-F600）：五十项功能 + ibase 共享底盘。
+pub mod istar;
 // Varix STAR I · 泳道三 C 域前段（AI-D1 · F076-F092）：桌面体验十七项 + 共享底盘。
 pub mod deskstar;
 // Varix STAR I · 泳道三 H 域二分队（AI-H2 · F251-F300）：五十项功能 + 共享底盘。
