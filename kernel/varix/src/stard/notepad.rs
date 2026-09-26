@@ -541,6 +541,139 @@ impl Notepad {
 // 自检
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// v4 深化：行索引（字节偏移表·goto 双向映射）与 UTF-16 编码面
+// ——大文件跳转 O(1) 定位与 UTF-16 文件读写的判据载体。
+// ---------------------------------------------------------------------------
+
+/// 行首字节偏移索引：一次 O(n) 构建，之后行定位 O(1)。
+/// 行界纪律与 [`Document`] 同源（\n 单一界符，\r 归上行尾——一处一事实）。
+pub struct LineIndex {
+    starts: Vec<usize>,
+}
+
+impl LineIndex {
+    /// 从文本构建（starts[0] 恒 0；第 i 行起始于 starts[i]）。
+    pub fn build(text: &str) -> LineIndex {
+        let mut starts = alloc::vec![0usize];
+        for (i, b) in text.bytes().enumerate() {
+            if b == b'\n' {
+                starts.push(i + 1);
+            }
+        }
+        // 尾随 \n 不产生空尾行（内容行计数口径——与 Document 同源）。
+        if text.as_bytes().last() == Some(&b'\n') && starts.len() > 1 {
+            starts.pop();
+        }
+        LineIndex { starts }
+    }
+
+    pub fn line_count(&self) -> usize {
+        self.starts.len()
+    }
+
+    /// 第 idx 行（0 基）的字节区间 [start, end)——end 不含行界符。
+    pub fn line_byte_range(&self, idx: usize, text: &str) -> Option<(usize, usize)> {
+        if idx >= self.starts.len() {
+            return None;
+        }
+        let start = self.starts[idx];
+        let mut end = self
+            .starts
+            .get(idx + 1)
+            .map(|&e| e - 1) // 掐掉行界符
+            .unwrap_or(text.len());
+        // 末行以行界符收尾时同样掐掉（内容行口径）。
+        if end == text.len() && end > start && text.as_bytes().last() == Some(&b'\n') {
+            end -= 1;
+        }
+        let end = end.min(text.len());
+        if start > end {
+            return None;
+        }
+        Some((start, end))
+    }
+
+    /// goto (行, 列)：返回目标字节偏移与实际落点列（列超行宽时钳到行尾）。
+    /// 行/列按字符计（UTF-8 安全——不做字节级劈砍）。
+    pub fn goto(&self, text: &str, line: usize, col: usize) -> Option<(usize, usize)> {
+        let (start, end) = self.line_byte_range(line, text)?;
+        let mut cur_col = 0usize;
+        for (off, _) in text[start..end].char_indices() {
+            if cur_col == col {
+                return Some((start + off, cur_col));
+            }
+            cur_col += 1;
+        }
+        Some((end, cur_col)) // 列越界钳到行尾（诚实落点）。
+    }
+
+    /// 逆向：字节偏移 → (行, 列)。偏移落在 \n 上算下一行行首。
+    pub fn locate(&self, text: &str, byte_off: usize) -> Option<(usize, usize)> {
+        if byte_off > text.len() {
+            return None;
+        }
+        // 二分行首表。
+        let mut lo = 0usize;
+        let mut hi = self.starts.len();
+        while lo + 1 < hi {
+            let mid = (lo + hi) / 2;
+            if self.starts[mid] <= byte_off {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let line = lo;
+        let (start, end) = self.line_byte_range(line, text)?;
+        let col = text[start..end.min(byte_off.max(start))].chars().count();
+        Some((line, col))
+    }
+}
+
+/// UTF-8 → UTF-16LE 字节序列（BOM 不在本层——由 to_bytes 面统一拼）。
+pub fn encode_utf16le(text: &str) -> Vec<u8> {
+    let mut out = Vec::with_capacity(text.len() * 2);
+    for u in text.encode_utf16() {
+        out.extend_from_slice(&u.to_le_bytes());
+    }
+    out
+}
+
+/// UTF-16LE 字节序列 → UTF-8。代理对不配对/悬半 → None（诚实拒绝，
+/// 不产 U+FFFD 假字符——用户内容零粗暴纪律）。
+pub fn decode_utf16le(bytes: &[u8]) -> Option<String> {
+    if bytes.len() % 2 != 0 {
+        return None; // 半个码元 = 截断。
+    }
+    let mut units: Vec<u16> = Vec::with_capacity(bytes.len() / 2);
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        units.push(u16::from_le_bytes([bytes[i], bytes[i + 1]]));
+        i += 2;
+    }
+    let mut out = String::new();
+    let mut k = 0usize;
+    while k < units.len() {
+        let u = units[k];
+        if (0xD800..=0xDBFF).contains(&u) {
+            // 高代理：必须紧跟低代理。
+            if k + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[k + 1]) {
+                return None;
+            }
+            let cp = 0x10000 + ((u as u32 - 0xD800) << 10) + (units[k + 1] as u32 - 0xDC00);
+            out.push(char::from_u32(cp)?);
+            k += 2;
+        } else if (0xDC00..=0xDFFF).contains(&u) {
+            return None; // 悬空低代理。
+        } else {
+            out.push(char::from_u32(u as u32)?);
+            k += 1;
+        }
+    }
+    Some(out)
+}
+
 /// F097 自检（聚合进 stard 域）。
 pub fn run_notepad_checks() -> CheckSet {
     let mut set = CheckSet::new("stard-F097");
@@ -627,6 +760,27 @@ pub fn run_notepad_checks() -> CheckSet {
     let h_ext = fnv(b"v2");
     set.add("external change rejected", np3.doc.set_line(0, "x", h_ext).is_err(), "");
     set.add("same hash edit ok", np3.doc.set_line(0, "x", np3.doc.extern_hash).is_ok(), "");
+
+   // —— v4 深化：行索引与 UTF-16 面 ——
+    let sample = "first
+second-line
+
+last 中文";
+    let li = LineIndex::build(sample);
+    set.add("lineindex counts", li.line_count() == 4, "");
+    set.add("lineindex ranges", li.line_byte_range(1, sample) == Some((6, 17)) && li.line_byte_range(2, sample) == Some((18, 18)), "");
+    set.add("lineindex goto clamps", { let (o, c) = li.goto(sample, 1, 99).unwrap(); c == 11 && o == 17 }, "");
+    set.add("lineindex locate roundtrip", {
+        let (l, c) = li.locate(sample, 8).unwrap();
+        let (o2, _) = li.goto(sample, l, c).unwrap();
+        o2 == 8 && l == 1
+    }, "");
+    set.add("lineindex locate bom line", li.locate(sample, 0) == Some((0, 0)), "");
+    let u16bytes = encode_utf16le("中文A");
+    set.add("utf16le encode size", u16bytes.len() == 6, ""); // 3 码元 × 2 字节
+    set.add("utf16le roundtrip", decode_utf16le(&u16bytes).as_deref() == Some("中文A"), "");
+    set.add("utf16le dangling high surrogate rejected", decode_utf16le(&[0x00, 0xD8]).is_none(), "");
+    set.add("utf16le odd length rejected", decode_utf16le(&[0x41, 0x00, 0x42]).is_none(), "");
 
     set
 }
@@ -742,5 +896,64 @@ mod tests {
         assert!(doc.set_line(0, "x", doc.extern_hash).is_ok());
         // 外部修改对拍。
         assert!(doc.set_line(0, "y", fnv(b"tampered")).is_err(), "哈希失配必须先重载");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 单元测试（行索引与 UTF-16）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod v4_tests {
+    use super::*;
+
+    #[test]
+    fn lineindex_large_file_goto_and_locate() {
+        // 1 万行文本：goto 任意行 O(1)，locate 双向一致。
+        let mut text = String::new();
+        for i in 0..10_000 {
+            text.push_str("line-");
+            text.push_str(&i.to_string());
+            text.push('\n');
+        }
+        let li = LineIndex::build(&text);
+        assert_eq!(li.line_count(), 10_000);
+        let (off, _) = li.goto(&text, 7_777, 0).unwrap();
+        let (l, _) = li.locate(&text, off).unwrap();
+        assert_eq!(l, 7_777);
+        // 行内容抽查（行界符不含在 range 内）。
+        let (s, e) = li.line_byte_range(9_999, &text).unwrap();
+        assert_eq!(&text[s..e], "line-9999");
+    }
+
+    #[test]
+    fn lineindex_last_line_without_trailing_newline() {
+        let li = LineIndex::build("a\nbb\nccc");
+        assert_eq!(li.line_count(), 3);
+        assert_eq!(li.line_byte_range(2, "a\nbb\nccc"), Some((5, 8)));
+        // 越界行诚实 None。
+        assert_eq!(li.line_byte_range(3, "a\nbb\nccc"), None);
+    }
+
+    #[test]
+    fn utf16le_surrogate_pair_roundtrip() {
+        // U+1F600（emoji，代理对面）round-trip。
+        let text = "A\u{1F600}B";
+        let enc = encode_utf16le(text);
+        assert_eq!(enc.len(), 8); // 1+2+1 码元 × 2
+        assert_eq!(decode_utf16le(&enc).as_deref(), Some(text));
+        // 高代理后面跟普通字符 → 拒绝。
+        let bad = encode_utf16le("A\u{1F600}B");
+        let mut broken = bad.clone();
+        // 把低代理（第 2-3 码元）换成普通字符。
+        broken[4] = 0x41;
+        broken[5] = 0x00;
+        assert!(decode_utf16le(&broken).is_none());
+    }
+
+    #[test]
+    fn utf16le_empty_and_multibyte() {
+        assert_eq!(decode_utf16le(&[]).as_deref(), Some(""));
+        assert_eq!(encode_utf16le(""), alloc::vec::Vec::<u8>::new());
     }
 }

@@ -19,7 +19,7 @@
 use crate::checks::CheckSet;
 use crate::star::sbase::sat_sub;
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 // ---------------------------------------------------------------------------
@@ -448,6 +448,474 @@ fn drag_root(pane: &mut Pane, _horizontal: bool, delta_px: i32, axis_len_px: u32
 // 自检
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// v4 深化：VT/ANSI 序列解析与虚拟屏幕（F095 渲染面判据载体——终端仿真核）
+// ---------------------------------------------------------------------------
+
+/// 单元格属性位（SGR 同名语义）。
+pub const ATTR_BOLD: u8 = 1;
+pub const ATTR_ITALIC: u8 = 2;
+pub const ATTR_UNDER: u8 = 4;
+pub const ATTR_REVERSE: u8 = 8;
+/// 宽字符（CJK）后续格标记——宽度判定与 [`char_width`] 同源，一处一事实。
+pub const ATTR_WIDE_TAIL: u8 = 16;
+
+/// 默认色哨兵（bit31 置位）——与「黑色」区分，SGR 39/49 归位。
+pub const COLOR_DEFAULT: u32 = 0x8000_0000;
+
+/// 16 色基表（xterm 口径）。
+const PALETTE16: [u32; 16] = [
+    0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5,
+    0x7f7f7f, 0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff, 0x00ffff, 0xffffff,
+];
+
+/// 解析 256 色板索引为 RGB（16 基色 + 6×6×6 立方 + 24 级灰阶）。
+pub fn palette256(n: u32) -> u32 {
+    match n {
+        0..=15 => PALETTE16[n as usize],
+        16..=231 => {
+            let k = n - 16;
+            let lv = [0u32, 95, 135, 175, 215, 255];
+            let (r, g, b) = (k / 36, (k / 6) % 6, k % 6);
+            (lv[r as usize] << 16) | (lv[g as usize] << 8) | lv[b as usize]
+        }
+        _ => 8 + (n.min(255) - 232) * 10,
+    }
+}
+
+/// 一个显示单元格：字符 + 前景/背景（RGB 直存，默认色用哨兵）+ 属性。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct VtCell {
+    pub ch: char,
+    pub fg: u32,
+    pub bg: u32,
+    pub attrs: u8,
+}
+
+impl VtCell {
+    fn blank() -> VtCell {
+        VtCell { ch: ' ', fg: COLOR_DEFAULT, bg: COLOR_DEFAULT, attrs: 0 }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum VtState {
+    Ground,
+    Esc,
+    /// Esc 后吃掉一个字符（字符集选择 G0/G1——本层不建字形，只消费）。
+    EscIgnore,
+    Csi,
+    Osc,
+    /// OSC 以 ESC ST（ESC \）收尾的中间态。
+    OscEsc,
+}
+
+/// 虚拟屏幕：W×H 单元格网格 + 完整 CSI/SGR/OSC 解析。
+///
+/// 滚动语义：底行换行 → 整屏上移一行（腾出的行全空），累计
+/// [`VtScreen::scroll_lines`]——回看账与 [`Scrollback`] 分工（本层管
+/// 实时屏，历史行归 Scrollback——一处一事实）。畸形序列任何状态零
+/// panic：非法参数全部钳制在屏内（F176 注入纪律同源）。
+pub struct VtScreen {
+    cols: usize,
+    rows: usize,
+    grid: Vec<VtCell>,
+    pub cur_x: usize,
+    pub cur_y: usize,
+    pub scroll_lines: u64,
+    title: String,
+    /// 私有模式（?h/?l 设置——如 ?25 光标可见、?1049 备用屏）。
+    modes: Vec<(u16, bool)>,
+    saved: (usize, usize),
+    fg: u32,
+    bg: u32,
+    attrs: u8,
+    state: VtState,
+    params: Vec<u32>,
+    /// CSI 参数装配缓冲（多字节累积，防分段喂入撕裂）。
+    cur_param: u32,
+    cur_param_any: bool,
+    private: bool,
+    osc: String,
+}
+
+impl VtScreen {
+    pub fn new(cols: usize, rows: usize) -> VtScreen {
+        VtScreen {
+            cols: cols.max(1),
+            rows: rows.max(1),
+            grid: alloc::vec![VtCell::blank(); cols.max(1) * rows.max(1)],
+            cur_x: 0,
+            cur_y: 0,
+            scroll_lines: 0,
+            title: String::new(),
+            modes: Vec::new(),
+            saved: (0, 0),
+            fg: COLOR_DEFAULT,
+            bg: COLOR_DEFAULT,
+            attrs: 0,
+            state: VtState::Ground,
+            params: Vec::new(),
+            cur_param: 0,
+            cur_param_any: false,
+            private: false,
+            osc: String::new(),
+        }
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn mode(&self, flag: u16) -> bool {
+        self.modes.iter().any(|&(f, on)| f == flag && on)
+    }
+
+    pub fn cell(&self, x: usize, y: usize) -> VtCell {
+        if x >= self.cols || y >= self.rows {
+            return VtCell::blank();
+        }
+        self.grid[y * self.cols + x]
+    }
+
+    /// 第 y 行可见文本（宽字符续格跳过）。
+    pub fn line_text(&self, y: usize) -> String {
+        let mut s = String::new();
+        if y >= self.rows {
+            return s;
+        }
+        for x in 0..self.cols {
+            let c = self.cell(x, y);
+            if c.attrs & ATTR_WIDE_TAIL == 0 {
+                s.push(c.ch);
+            }
+        }
+        // 尾随空格不进文本（宽度账由渲染层裁）。
+        s.trim_end().to_string()
+    }
+
+    fn blank_row(&mut self, y: usize) {
+        for x in 0..self.cols {
+            self.grid[y * self.cols + x] = VtCell::blank();
+        }
+    }
+
+    fn scroll_up(&mut self) {
+        self.grid.drain(0..self.cols);
+        self.grid.resize(self.cols * self.rows, VtCell::blank());
+        self.blank_row(self.rows - 1);
+    }
+
+    fn linefeed(&mut self) {
+        self.cur_y += 1;
+        if self.cur_y >= self.rows {
+            self.cur_y = self.rows - 1;
+            self.scroll_up();
+            self.scroll_lines += 1;
+        }
+    }
+
+    fn put(&mut self, ch: char) {
+        let w = char_width(ch) as usize;
+        if w == 0 {
+            return; // 组合零宽标记：附着于前格（网格层不另占格）。
+        }
+        if self.cur_x >= self.cols {
+            // 延迟换行（标准 VT 语义）：上一字符恰满行，换行推迟到此刻。
+            self.cur_x = 0;
+            self.linefeed();
+        }
+        if self.cur_x + w > self.cols {
+            // 宽字符卡边：整字换行（不劈成两半）。
+            self.cur_x = 0;
+            self.linefeed();
+        }
+        let cell = VtCell { ch, fg: self.fg, bg: self.bg, attrs: self.attrs & !ATTR_WIDE_TAIL };
+        self.grid[self.cur_y * self.cols + self.cur_x] = cell;
+        if w == 2 {
+            // 续格：宽字符第二格（钳制在屏内——恰好卡边的宽字符截尾不越界）。
+            if self.cur_x + 1 < self.cols {
+                let mut tail = VtCell::blank();
+                tail.attrs = ATTR_WIDE_TAIL;
+                self.grid[self.cur_y * self.cols + self.cur_x + 1] = tail;
+            }
+            self.cur_x += 2;
+        } else {
+            self.cur_x += 1;
+        }
+    }
+
+    fn erase_display(&mut self, mode: u32) {
+        match mode {
+            0 => {
+                self.erase_line(0);
+                for y in (self.cur_y + 1)..self.rows {
+                    self.blank_row(y);
+                }
+            }
+            1 => {
+                for y in 0..self.cur_y {
+                    self.blank_row(y);
+                }
+                self.erase_line(1);
+            }
+            _ => {
+                for y in 0..self.rows {
+                    self.blank_row(y);
+                }
+            }
+        }
+    }
+
+    fn erase_line(&mut self, mode: u32) {
+        let y = self.cur_y;
+        let (x0, x1) = match mode {
+            0 => (self.cur_x, self.cols),
+            1 => (0, self.cur_x + 1),
+            _ => (0, self.cols),
+        };
+        for x in x0..x1.min(self.cols) {
+            self.grid[y * self.cols + x] = VtCell::blank();
+        }
+    }
+
+    fn param(&self, idx: usize, def: u32) -> u32 {
+        match self.params.get(idx) {
+            Some(&v) if v != 0 => v,
+            Some(&0) if def == 0 => 0,
+            _ => def,
+        }
+    }
+
+    fn sgr(&mut self) {
+        if self.params.is_empty() {
+            self.fg = COLOR_DEFAULT;
+            self.bg = COLOR_DEFAULT;
+            self.attrs = 0;
+            return;
+        }
+        let mut i = 0usize;
+        while i < self.params.len() {
+            let p = self.params[i];
+            match p {
+                0 => {
+                    self.fg = COLOR_DEFAULT;
+                    self.bg = COLOR_DEFAULT;
+                    self.attrs = 0;
+                }
+                1 => self.attrs |= ATTR_BOLD,
+                3 => self.attrs |= ATTR_ITALIC,
+                4 => self.attrs |= ATTR_UNDER,
+                7 => self.attrs |= ATTR_REVERSE,
+                22 => self.attrs &= !ATTR_BOLD,
+                23 => self.attrs &= !ATTR_ITALIC,
+                24 => self.attrs &= !ATTR_UNDER,
+                27 => self.attrs &= !ATTR_REVERSE,
+                30..=37 => self.fg = palette256(p - 30),
+                39 => self.fg = COLOR_DEFAULT,
+                40..=47 => self.bg = palette256(p - 40),
+                49 => self.bg = COLOR_DEFAULT,
+                90..=97 => self.fg = palette256(p - 90 + 8),
+                100..=107 => self.bg = palette256(p - 100 + 8),
+                38 | 48 => {
+                    // 扩展色：38;5;n（256 板）或 38;2;r;g;b（直存 RGB）。
+                    let (color, consumed) = match self.params.get(i + 1) {
+                        Some(&5) => match self.params.get(i + 2) {
+                            Some(&n) => (palette256(n.min(255)), 3usize),
+                            None => (COLOR_DEFAULT, 2),
+                        },
+                        Some(&2) => {
+                            let r = *self.params.get(i + 2).unwrap_or(&0);
+                            let g = *self.params.get(i + 3).unwrap_or(&0);
+                            let b = *self.params.get(i + 4).unwrap_or(&0);
+                            ((r.min(255) << 16) | (g.min(255) << 8) | b.min(255), 5usize)
+                        }
+                        _ => (COLOR_DEFAULT, 1),
+                    };
+                    if p == 38 {
+                        self.fg = color;
+                    } else {
+                        self.bg = color;
+                    }
+                    i += consumed;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+    }
+
+    fn dispatch_csi(&mut self, final_byte: char) {
+        match final_byte {
+            'A' => self.cur_y = self.cur_y.saturating_sub(self.param(0, 1) as usize),
+            'B' => self.cur_y = (self.cur_y + self.param(0, 1) as usize).min(self.rows - 1),
+            'C' => self.cur_x = (self.cur_x + self.param(0, 1) as usize).min(self.cols - 1),
+            'D' => self.cur_x = self.cur_x.saturating_sub(self.param(0, 1) as usize),
+            'E' => {
+                self.cur_y = (self.cur_y + self.param(0, 1) as usize).min(self.rows - 1);
+                self.cur_x = 0;
+            }
+            'F' => {
+                self.cur_y = self.cur_y.saturating_sub(self.param(0, 1) as usize);
+                self.cur_x = 0;
+            }
+            'G' => self.cur_x = (self.param(0, 1) as usize).saturating_sub(1).min(self.cols - 1),
+            'H' | 'f' => {
+                self.cur_y = (self.param(0, 1) as usize).saturating_sub(1).min(self.rows - 1);
+                self.cur_x = (self.param(1, 1) as usize).saturating_sub(1).min(self.cols - 1);
+            }
+            'd' => self.cur_y = (self.param(0, 1) as usize).saturating_sub(1).min(self.rows - 1),
+            'J' => self.erase_display(self.param(0, 0)),
+            'K' => self.erase_line(self.param(0, 0)),
+            'm' => self.sgr(),
+            'h' | 'l' => {
+                let on = final_byte == 'h';
+                for &p in &self.params {
+                    if self.private && p <= u16::MAX as u32 {
+                        if let Some(slot) = self.modes.iter_mut().find(|(f, _)| *f == p as u16) {
+                            slot.1 = on;
+                        } else {
+                            self.modes.push((p as u16, on));
+                        }
+                    }
+                }
+            }
+            's' => self.saved = (self.cur_x, self.cur_y),
+            'u' => {
+                self.cur_x = self.saved.0;
+                self.cur_y = self.saved.1;
+            }
+            _ => {}
+        }
+    }
+
+    fn feed_char(&mut self, ch: char) {
+        let cp = ch as u32;
+        match self.state {
+            VtState::Ground => match cp {
+                0x1B => self.state = VtState::Esc,
+                0x0A | 0x0B | 0x0C => self.linefeed(),
+                0x0D => self.cur_x = 0,
+                0x09 => {
+                    let next = (self.cur_x / 8 + 1) * 8;
+                    self.cur_x = next.min(self.cols - 1);
+                }
+                0x08 => self.cur_x = self.cur_x.saturating_sub(1),
+                0x07 => {}
+                cp if cp >= 0x20 => self.put(ch),
+                _ => {}
+            },
+            VtState::Esc => match ch {
+                '[' => {
+                    self.state = VtState::Csi;
+                    self.params.clear();
+                    self.cur_param = 0;
+                    self.cur_param_any = false;
+                    self.private = false;
+                }
+                ']' => {
+                    self.state = VtState::Osc;
+                    self.osc.clear();
+                }
+                'c' => {
+                    // 全量重置（RIS）。
+                    let (c, r) = (self.cols, self.rows);
+                    *self = VtScreen::new(c, r);
+                }
+                '7' => self.saved = (self.cur_x, self.cur_y),
+                '8' => {
+                    self.cur_x = self.saved.0;
+                    self.cur_y = self.saved.1;
+                }
+                '(' | ')' => self.state = VtState::EscIgnore,
+                _ => self.state = VtState::Ground,
+            },
+            VtState::EscIgnore => self.state = VtState::Ground,
+            VtState::Csi => {
+                if cp == 0x1B {
+                    // ESC 取消当前 CSI 并重启新序列（标准语义——否则 '['
+                    // 落在终止字节区间会被误当指令吞掉）。
+                    self.state = VtState::Esc;
+                } else if ch.is_ascii_digit() {
+                    self.cur_param = self.cur_param.saturating_mul(10).saturating_add((cp - 0x30) as u32);
+                    self.cur_param_any = true;
+                } else if ch == ';' {
+                    self.params.push(self.cur_param);
+                    self.cur_param = 0;
+                    self.cur_param_any = false;
+                } else if ch == '?' {
+                    self.private = true;
+                } else if ch == ':' {
+                    // 子参数（冒号分隔）按 ';' 同语义收敛（SGR 冒号变体）。
+                    self.params.push(self.cur_param);
+                    self.cur_param = 0;
+                    self.cur_param_any = false;
+                } else if (0x40..=0x7E).contains(&cp) {
+                    if self.cur_param_any {
+                        self.params.push(self.cur_param);
+                    }
+                    self.dispatch_csi(ch);
+                    self.state = VtState::Ground;
+                } else {
+                    // 干扰字节：丢弃继续等终止符（不 panic 不错位）。
+                }
+            }
+            VtState::Osc => match cp {
+                0x07 => {
+                    self.apply_osc();
+                    self.state = VtState::Ground;
+                }
+                0x1B => self.state = VtState::OscEsc,
+                // 控制字符打断悬挂 OSC（防整段输出被未终止标题吞掉）。
+                cp if cp < 0x20 => {
+                    self.state = VtState::Ground;
+                    self.feed_char(ch);
+                }
+                _ => {
+                    if self.osc.len() < 512 {
+                        self.osc.push(ch);
+                    }
+                }
+            },
+            VtState::OscEsc => {
+                if ch == '\\' {
+                    self.apply_osc();
+                    self.state = VtState::Ground;
+                } else {
+                    // 非 ST 终止：标题不设（诚实不猜），回地面。
+                    self.state = VtState::Ground;
+                }
+            }
+        }
+    }
+
+    fn apply_osc(&mut self) {
+        // OSC 0/2 = 窗口标题（"0;标题" / "2;标题"）。
+        let mut parts = self.osc.splitn(2, ';');
+        let code = parts.next().unwrap_or("");
+        if code == "0" || code == "2" {
+            if let Some(t) = parts.next() {
+                self.title = t.to_string();
+            }
+        }
+    }
+
+    /// 喂入一段输出流（分段喂入安全——参数跨段累积）。
+    pub fn feed(&mut self, s: &str) {
+        for ch in s.chars() {
+            self.feed_char(ch);
+        }
+    }
+}
+
 /// F095 自检（聚合进 stard 域）。
 pub fn run_term2_checks() -> CheckSet {
     let mut set = CheckSet::new("stard-F095");
@@ -516,6 +984,58 @@ pub fn run_term2_checks() -> CheckSet {
 
     // —— 主题全令牌（无硬编码色）——
     set.add("theme all tokens", DEFAULT_THEME.fg_token.contains("term.") && DEFAULT_THEME.bg_token.contains("term.") && DEFAULT_THEME.cursor_token.contains("term."), "");
+
+    // —— v4 深化：VT/ANSI 解析与虚拟屏幕 ——
+    let mut vt = VtScreen::new(20, 6);
+    vt.feed("hello");
+    set.add("vt plain text prints", vt.line_text(0) == "hello" && vt.cur_x == 5, "");
+    // CJK 宽字符占两格（宽度表同源）——列账不错位。
+    vt.feed("中文");
+    set.add("vt cjk wide two cells", vt.line_text(0) == "hello中文" && vt.cur_x == 9, "");
+    set.add("vt cjk tail flagged", vt.cell(5, 0).ch == '中' && vt.cell(6, 0).attrs & ATTR_WIDE_TAIL != 0, "");
+    // SGR 颜色：红前景落到单元格，39 归默认。
+    vt.feed("\x1b[31mA\x1b[39m");
+    set.add("vt sgr fg red then default", vt.cell(9, 0).fg == 0xcd0000 && vt.cell(10, 0).fg == COLOR_DEFAULT, "");
+    // 256 色与 RGB 直存。
+    vt.feed("\x1b[38;5;196mX\x1b[0m");
+    set.add("vt sgr 256 color", vt.cell(10, 0).fg == 0xff0000, "");
+    vt.feed("\x1b[38;2;12;34;56mY");
+    set.add("vt sgr rgb direct", vt.cell(11, 0).fg == (12 << 16 | 34 << 8 | 56), "");
+    // 光标定位与钳制（屏内合法落点，越界参数不 panic）。
+    vt.feed("\x1b[3;5H*");
+    set.add("vt cup positions", vt.cur_y == 2 && vt.cur_x == 5 && vt.cell(4, 2).ch == '*', "");
+    vt.feed("\x1b[999;999H");
+    set.add("vt cup clamped", vt.cur_y == 5 && vt.cur_x == 19, "");
+    vt.feed("\x1b[2J");
+    set.add("vt erase display all", vt.line_text(0).is_empty(), "");
+    // 私有模式 ?25（光标可见）开与关。
+    let mut vt2 = VtScreen::new(4, 4);
+    vt2.feed("\x1b[?25l");
+    set.add("vt mode off set", !vt2.mode(25), "");
+    vt2.feed("\x1b[?25h");
+    set.add("vt mode on set", vt2.mode(25), "");
+    // OSC 标题。
+    vt2.feed("\x1b]0;部署终端\x07");
+    set.add("vt osc title", vt2.title() == "部署终端", "");
+    // 底行换行滚动计数。
+    let mut vt3 = VtScreen::new(4, 3);
+    vt3.feed("1111\r\n2222\r\n3333\r\n4444");
+    set.add("vt scroll on overflow", vt3.scroll_lines == 1 && vt3.line_text(2) == "4444", "");
+    // 畸形序列零 panic（截断 CSI / 超限参数 / 悬挂 OSC 被控制符打断）。
+    let mut vt4 = VtScreen::new(8, 2);
+    vt4.feed("\x1b[31");
+    vt4.feed("\x1b[999999999999m");
+    vt4.feed("\x1b]0;悬挂");
+    vt4.feed("\nok");
+    set.add("vt malformed no panic", vt4.line_text(0).is_empty() && vt4.line_text(1) == "ok" && vt4.title().is_empty(), "");
+    // Esc c 全量重置。
+    let mut vt5 = VtScreen::new(8, 2);
+    vt5.feed("\x1b]2;t\x07abc");
+    vt5.feed("\x1bc");
+    set.add("vt ris resets", vt5.title().is_empty() && vt5.cur_x == 0 && vt5.cur_y == 0, "");
+    // 256 色板灰阶与立方边界值。
+    set.add("vt palette cube", palette256(16) == 0x000000 && palette256(231) == 0xffffff, "");
+    set.add("vt palette gray", palette256(232) == 8 && palette256(255) == 238, "");
 
     set
 }
@@ -631,5 +1151,94 @@ mod tests {
         assert_eq!(term.zoom(99), 28, "钳到最大档");
         let exp = term.active_tab().scrollback.export(127);
         assert!(exp.contains("# exit=127"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 单元测试（VT 解析与虚拟屏幕）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod vt_tests {
+    use super::*;
+
+    #[test]
+    fn vt_full_session_colors_and_scroll() {
+        let mut vt = VtScreen::new(10, 3);
+        vt.feed("\x1b]2;构建\x07\x1b[1;4;32mBUILD\x1b[0m ok");
+        assert_eq!(vt.title(), "构建");
+        let c = vt.cell(0, 0);
+        assert_eq!(c.ch, 'B');
+        assert_eq!(c.fg, palette256(32 - 30));
+        assert_eq!(c.attrs & ATTR_BOLD, ATTR_BOLD);
+        assert_eq!(c.attrs & ATTR_UNDER, ATTR_UNDER);
+        // 'ok' 前已 SGR 0 复位：默认色。
+        assert_eq!(vt.cell(6, 0).fg, COLOR_DEFAULT);
+        // 溢出滚动三行以上：scroll_lines 账实相符。
+        vt.feed("\r\nA\r\nB\r\nC\r\nD");
+        assert!(vt.scroll_lines >= 2);
+        assert_eq!(vt.line_text(2), "D");
+    }
+
+    #[test]
+    fn vt_tab_and_backspace() {
+        let mut vt = VtScreen::new(20, 2);
+        vt.feed("a\tb");
+        assert_eq!(vt.cur_x, 9);
+        vt.feed("\x08\x08c");
+        assert_eq!(vt.line_text(0), "a      cb");
+        assert_eq!(vt.cur_x, 8);
+    }
+
+    #[test]
+    fn vt_wide_wrap_does_not_split_char() {
+        let mut vt = VtScreen::new(5, 2);
+        vt.feed("ab中文"); // ab=2 列，中=2 列，文 需 2 列但只剩 1 列 → 先换行
+        assert_eq!(vt.line_text(0), "ab中");
+        assert_eq!(vt.line_text(1), "文");
+    }
+
+    #[test]
+    fn vt_erase_variants() {
+        let mut vt = VtScreen::new(10, 4);
+        vt.feed("0123456789\r\nabcdefghij\r\nABCDEFGHIJ");
+        // 光标在第 2 行中间；\x1b[1J 清上方 + 当前行左半。
+        vt.feed("\x1b[2;6H\x1b[1J");
+        assert_eq!(vt.line_text(0), "");
+        assert_eq!(vt.line_text(1), "      ghij"); // 1J 含光标位（列 5 一并清）
+        // \x1b[1K 清左半（含光标位）。
+        vt.feed("\x1b[2;8H\x1b[1K");
+        assert_eq!(vt.line_text(1), "        ij"); // line_text 保留前导空格（只裁尾随）
+    }
+
+    #[test]
+    fn vt_save_restore_and_line_erase() {
+        let mut vt = VtScreen::new(10, 2);
+        vt.feed("\x1b[s\x1b[1;8H\x1b[uX");
+        assert_eq!(vt.cell(0, 0).ch, 'X');
+    }
+
+    #[test]
+    fn vt_segmented_feed_matches_whole() {
+        let script = "\x1b]2;长标题参数\x07\x1b[38;5;129m测\x1b[0m\x1b[2Ae";
+        let mut a = VtScreen::new(12, 4);
+        a.feed(script);
+        let mut b = VtScreen::new(12, 4);
+        for seg in ["\x1b]2;长", "标题参数\x07\x1b[38", ";5;129m测\x1b[0m", "\x1b[2Ae"] {
+            b.feed(seg);
+        }
+        assert_eq!(a.title(), b.title());
+        for y in 0..4 {
+            assert_eq!(a.line_text(y), b.line_text(y), "row {y} 分段喂入结果必须一致");
+        }
+    }
+
+    #[test]
+    fn vt_zero_width_combining_attaches() {
+        // 组合标记（零宽）不占格：基字符后跟 U+0301 不推进列。
+        let mut vt = VtScreen::new(8, 2);
+        vt.feed("e\u{0301}x");
+        assert_eq!(vt.cur_x, 2);
+        assert_eq!(vt.line_text(0), "ex");
     }
 }

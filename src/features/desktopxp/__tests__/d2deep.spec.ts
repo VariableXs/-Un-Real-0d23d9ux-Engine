@@ -465,3 +465,24 @@ describe("F096 命令面板", () => {
     expect(fav2.list()[0]!.freq).toBe(2);
   });
 });
+
+describe("v4 渲染 rAF 合帧门（TermApp 狂刷节流）", () => {
+  it("同帧多次请求合并为一次渲染，多余诚实记账", async () => {
+    const { FrameGate } = await import("../termcore");
+    const queue: Array<() => void> = [];
+    let renders = 0;
+    const gate = new FrameGate(() => { renders += 1; }, (cb) => queue.push(cb));
+    for (let i = 0; i < 10; i++) gate.request();
+    expect(gate.isPending).toBe(true);
+    expect(gate.dropped).toBe(9);
+    queue[0]!();
+    expect(renders).toBe(1);
+    expect(gate.isPending).toBe(false);
+    // 下一帧重新可请求。
+    gate.request();
+    expect(queue.length).toBe(2);
+    queue[1]!();
+    expect(renders).toBe(2);
+    expect(gate.renderCount).toBe(2);
+  });
+});

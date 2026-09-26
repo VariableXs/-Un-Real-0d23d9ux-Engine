@@ -409,3 +409,44 @@ describe("D2 体验日志（十三/十三·补）", () => {
     expect(keys.every((k) => ["seq", "t", "surface", "element", "kind", "ms", "verdict", "frustration"].includes(k))).toBe(true);
   });
 });
+
+describe("v4 EXIF 缩略直抽（thumbeng FE 移植面）", () => {
+  function buildExifJpeg(): Uint8Array {
+    const out: number[] = [0xff, 0xd8];
+    const body: number[] = [];
+    const push = (...b: number[]) => body.push(...b);
+    // "Exif\0\0" + TIFF(LE)
+    push(0x45, 0x78, 0x69, 0x66, 0x00, 0x00, 0x49, 0x49);
+    push(0x2a, 0x00); // 42
+    push(0x08, 0x00, 0x00, 0x00); // IFD0 @ 8
+    push(0x02, 0x00); // 2 entries
+    // 0x501B ThumbnailOffset LONG 1 = 16
+    push(0x1b, 0x50, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00);
+    // 0x501A ThumbnailLength LONG 1 = 8
+    push(0x1a, 0x50, 0x04, 0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00);
+    push(0x00, 0x00, 0x00, 0x00); // next IFD = 0
+    push(0, 0, 0, 0, 0, 0, 0, 0); // 缩略数据 8 字节
+    out.push(0xff, 0xe1, (body.length + 2) >> 8, (body.length + 2) & 0xff, ...body);
+    out.push(0xff, 0xd9);
+    return new Uint8Array(out);
+  }
+
+  it("EXIF 内嵌缩略定位与切片（零全解码）", async () => {
+    const { exifThumbLocate, extractExifThumb } = await import("../thumbeng");
+    const jpeg = buildExifJpeg();
+    const loc = exifThumbLocate(jpeg);
+    expect(loc).not.toBeNull();
+    expect(loc!.length).toBe(8);
+    const slice = extractExifThumb(jpeg);
+    expect(slice).not.toBeNull();
+    expect(slice!.length).toBe(8);
+  });
+
+  it("对抗样本零异常全拒绝", async () => {
+    const { exifThumbLocate } = await import("../thumbeng");
+    expect(exifThumbLocate(new Uint8Array([]))).toBeNull();
+    expect(exifThumbLocate(new Uint8Array([0xff, 0xd8]))).toBeNull();
+    expect(exifThumbLocate(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
+    expect(exifThumbLocate(new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x02, 0x00]))).toBeNull();
+  });
+});

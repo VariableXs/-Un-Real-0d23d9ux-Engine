@@ -929,6 +929,231 @@ impl Default for HoverScheduler {
 // 自检
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// v4 深化：MP4 解复用面（stsc/stco/co64/stsz 联算 → 样本字节偏移）
+// —— seek/边播边解析的判据载体；畸形表全部诚实拒绝。
+// ---------------------------------------------------------------------------
+
+/// stbl 三表：样本尺寸、块偏移、样本-块映射。
+struct StblTables {
+    sizes: Vec<u32>,
+    chunk_offsets: Vec<u64>,
+    stsc: Vec<(u32, u32)>,
+}
+
+/// 从 stbl 抽三张表；两种尺寸模式并存/表为空/stsc 不递增 → None（畸形）。
+fn read_stbl_tables(data: &[u8], lo: usize, hi: usize) -> Option<StblTables> {
+    let mut t = StblTables { sizes: Vec::new(), chunk_offsets: Vec::new(), stsc: Vec::new() };
+    let mut uniform: Option<(u32, usize)> = None;
+    walk_boxes(data, lo, hi, &mut |ty, l, _h| {
+        match ty {
+            b"stsz" => {
+                // body: verflags(4) + sample_size(4) + count(4) [+ 逐条 4]
+                let size = match be32(data, l + 4) { Some(v) => v, None => return false };
+                let count = match be32(data, l + 8) { Some(v) => v as usize, None => return false };
+                if count > (1 << 20) { return false; }
+                if size != 0 {
+                    uniform = Some((size, count));
+                } else {
+                    for k in 0..count {
+                        match be32(data, l + 12 + k * 4) { Some(v) => t.sizes.push(v), None => return false };
+                    }
+                }
+                true
+            }
+            b"stco" => {
+                let count = match be32(data, l + 4) { Some(v) => v as usize, None => return false };
+                if count > (1 << 20) { return false; }
+                for k in 0..count {
+                    match be32(data, l + 8 + k * 4) { Some(v) => t.chunk_offsets.push(v as u64), None => return false };
+                }
+                true
+            }
+            b"co64" => {
+                let count = match be32(data, l + 4) { Some(v) => v as usize, None => return false };
+                if count > (1 << 20) { return false; }
+                for k in 0..count {
+                    match be64(data, l + 8 + k * 8) { Some(v) => t.chunk_offsets.push(v), None => return false };
+                }
+                true
+            }
+            b"stsc" => {
+                let count = match be32(data, l + 4) { Some(v) => v as usize, None => return false };
+                if count > (1 << 20) { return false; }
+                for k in 0..count {
+                    let first = match be32(data, l + 8 + k * 12) { Some(v) => v, None => return false };
+                    let spc = match be32(data, l + 12 + k * 12) { Some(v) => v, None => return false };
+                    t.stsc.push((first, spc));
+                }
+                true
+            }
+            _ => true,
+        }
+    });
+    if uniform.is_some() && !t.sizes.is_empty() {
+        return None; // 两种尺寸模式并存 = 畸形。
+    }
+    if let Some((sz, cnt)) = uniform {
+        t.sizes = alloc::vec![sz; cnt];
+    }
+    if t.sizes.is_empty() || t.chunk_offsets.is_empty() || t.stsc.is_empty() {
+        return None;
+    }
+    if t.stsc[0].0 != 1 {
+        return None; // 首块必须从 1 起。
+    }
+    for w in t.stsc.windows(2) {
+        if w[1].0 <= w[0].0 {
+            return None; // first_chunk 严格递增。
+        }
+    }
+    Some(t)
+}
+
+/// MP4 样本字节偏移联算：moov→trak→mdia→minf→stbl 下钻后，块序 × stsc
+/// 展开 × 样本尺寸累加。返回逐样本文件内偏移；样本数不齐/偏移越界/
+/// 偏移乱序一律 None（不猜不迁就——截断文件不产出假偏移）。
+pub fn mp4_sample_offsets(data: &[u8], file_bytes: u64) -> Option<Vec<u64>> {
+    // 诚实口径：声明的文件长度若大于实际在手的字节（截断流），按短的算——
+    // 没到手的字节不许当有效样本验证。
+    let file_bytes = file_bytes.min(data.len() as u64);
+    let mut moov: Option<(usize, usize)> = None;
+    walk_boxes(data, 0, data.len(), &mut |ty, l, h| {
+        if ty == b"moov" { moov = Some((l, h)); false } else { true }
+    });
+    let (mlo, mhi) = moov?;
+    let mut stbl_range: Option<(usize, usize)> = None;
+    walk_boxes(data, mlo, mhi, &mut |ty, l, h| {
+        if ty == b"trak" {
+            walk_boxes(data, l, h, &mut |ty2, l2, h2| {
+                if ty2 == b"mdia" {
+                    walk_boxes(data, l2, h2, &mut |ty3, l3, h3| {
+                        if ty3 == b"minf" {
+                            walk_boxes(data, l3, h3, &mut |ty4, l4, h4| {
+                                if ty4 == b"stbl" { stbl_range = Some((l4, h4)); false } else { true }
+                            });
+                            return false;
+                        }
+                        true
+                    });
+                    return false;
+                }
+                true
+            });
+            return stbl_range.is_none(); // 本 trak 无 stbl 则找下一 trak。
+        }
+        true
+    });
+    let (slo, shi) = stbl_range?;
+    let t = read_stbl_tables(data, slo, shi)?;
+    // stsc 展开：逐块样本数。
+    let mut per_chunk: Vec<u32> = Vec::new();
+    let nchunks = t.chunk_offsets.len() as u32;
+    for (i, &(first, spc)) in t.stsc.iter().enumerate() {
+        if spc == 0 { return None; }
+        if first as usize > nchunks as usize { return None; }
+        let next_first = t.stsc.get(i + 1).map(|&(f, _)| f).unwrap_or(nchunks + 1);
+        let end = (next_first as usize).min(nchunks as usize + 1);
+        let mut c = first;
+        while c < end as u32 {
+            per_chunk.push(spc);
+            c += 1;
+        }
+    }
+    if per_chunk.len() != t.chunk_offsets.len() {
+        return None; // 展开块数 ≠ 实际块数——映射不闭合。
+    }
+    // 联算：块序遍历，块内样本按尺寸推进。
+    let mut out: Vec<u64> = Vec::new();
+    let mut size_idx = 0usize;
+    for (ci, &coff) in t.chunk_offsets.iter().enumerate() {
+        if coff >= file_bytes { return None; }
+        let mut off = coff;
+        for _ in 0..per_chunk[ci] {
+            let sz = match t.sizes.get(size_idx) { Some(&v) => v as u64, None => return None };
+            size_idx += 1;
+            if off + sz > file_bytes { return None; }
+            out.push(off);
+            off += sz;
+        }
+    }
+    if size_idx != t.sizes.len() {
+        return None; // stsc 展开样本总数 ≠ stsz 计数。
+    }
+    for w in out.windows(2) {
+        if w[1] < w[0] { return None; } // 块序纪律：偏移单调不减。
+    }
+    Some(out)
+}
+
+// ---------------------------------------------------------------------------
+// v4 深化：解复用样本构造器（stsc/stco/stsz 三表齐全的最小 MP4）
+// ---------------------------------------------------------------------------
+
+/// 构造带解复用三表的最小 MP4：1 视频轨（stsc/stco/stsz），mdat 承载样本。
+/// `sizes` 逐样本尺寸；`spc` 每块样本数（单块模型）；`stsz_zero_count`
+/// 注入口径：true 时把 stsz 计数写错（制造映射不闭合样本）。
+fn build_sample_mp4_demux(sizes: &[u32], spc: u32, bad_count: bool) -> Vec<u8> {
+    let mut out = Vec::new();
+    // ftyp
+    push_box(&mut out, b"ftyp", &[0, 0, 0, 0, b'i', b's', b'o', b'm']);
+    // stbl：stts(空) + stsc + stsz + stco
+    let mut stbl_body = Vec::new();
+    push_box(&mut stbl_body, b"stts", &[0, 0, 0, 0]);
+    let mut stsc_body = Vec::new();
+    stsc_body.extend_from_slice(&[0, 0, 0, 0]); // version/flags
+    stsc_body.extend_from_slice(&1u32.to_be_bytes()); // 1 条目
+    stsc_body.extend_from_slice(&1u32.to_be_bytes()); // first_chunk=1
+    stsc_body.extend_from_slice(&spc.to_be_bytes()); // samples_per_chunk
+    stsc_body.extend_from_slice(&1u32.to_be_bytes()); // sample_desc=1
+    push_box(&mut stbl_body, b"stsc", &stsc_body);
+    let mut stsz_body = Vec::new();
+    stsz_body.extend_from_slice(&[0, 0, 0, 0]);
+    stsz_body.extend_from_slice(&0u32.to_be_bytes()); // 等长开关=0 → 逐条
+    let cnt = if bad_count { sizes.len() as u32 + 1 } else { sizes.len() as u32 };
+    stsz_body.extend_from_slice(&cnt.to_be_bytes());
+    for &sz in sizes {
+        stsz_body.extend_from_slice(&sz.to_be_bytes());
+    }
+    push_box(&mut stbl_body, b"stsz", &stsz_body);
+    // stco 的块偏移占位（构造完后回填——mdat 起点在 moov 之后）。
+    let mut stco_body = Vec::new();
+    stco_body.extend_from_slice(&[0, 0, 0, 0]);
+    stco_body.extend_from_slice(&1u32.to_be_bytes()); // 1 块
+    stco_body.extend_from_slice(&0u32.to_be_bytes()); // 占位回填
+    push_box(&mut stbl_body, b"stco", &stco_body);
+    let mut minf_body = Vec::new();
+    push_box(&mut minf_body, b"stbl", &stbl_body);
+    let mut mdia_body = Vec::new();
+    push_box(&mut mdia_body, b"minf", &minf_body);
+    let mut trak_body = Vec::new();
+    push_box(&mut trak_body, b"mdia", &mdia_body);
+    let mut moov_body = Vec::new();
+    push_box(&mut moov_body, b"trak", &trak_body);
+    push_box(&mut out, b"moov", &moov_body);
+    // mdat：块偏移 = 当前 out 长度 + 8（mdat 头）。
+    let chunk_off = (out.len() + 8) as u32;
+    let mut mdat_body = Vec::new();
+    for &sz in sizes {
+        mdat_body.extend(alloc::vec![0xABu8; sz as usize]);
+    }
+    push_box(&mut out, b"mdat", &mdat_body);
+    // 回填 stco（stco body 起点固定：ftyp16 + moov8 + trak8 + mdia8 + minf8
+    // + stbl8 + stts16 + stsc20 + stsz头12 + 记录 + stco头8 + verflags4 + count4）
+    // ——直接线性扫描定位最稳。
+    let mut idx = 0usize;
+    let hay = &mut out;
+    while idx + 8 <= hay.len() {
+        if &hay[idx + 4..idx + 8] == b"stco" {
+            let base = idx + 8 + 4 + 4;
+            hay[base..base + 4].copy_from_slice(&chunk_off.to_be_bytes());
+            break;
+        }
+        idx += 1;
+    }
+    out
+}
+
 /// F094 自检（聚合进 stard 域）。
 pub fn run_mediainfo_checks() -> CheckSet {
     let mut set = CheckSet::new("stard-F094");
@@ -997,6 +1222,24 @@ pub fn run_mediainfo_checks() -> CheckSet {
     long.duration_ms = None;
     set.add("missing duration empty label", long.duration_label().is_empty(), "");
     set.add("missing fields omitted", MediaInfo::default().resolution_label().is_empty(), "");
+
+    // —— v4 深化：MP4 解复用偏移联算 ——
+    let demux = build_sample_mp4_demux(&[10, 20], 2, false);
+    let total = demux.len() as u64;
+    let offs = mp4_sample_offsets(&demux, total);
+    set.add("demux offsets computed", {
+        match offs {
+            Some(v) => v.len() == 2 && v[1] == v[0] + 10 && v[0] >= 16,
+            None => false,
+        }
+    }, "");
+    // 映射不闭合（stsz 计数多 1）→ 诚实拒绝。
+    let mismatched = build_sample_mp4_demux(&[10, 20], 2, true);
+    set.add("demux count mismatch rejected", mp4_sample_offsets(&mismatched, mismatched.len() as u64).is_none(), "");
+    // 截断文件：块偏移 + 样本越出文件 → 拒绝。
+    set.add("demux truncated rejected", mp4_sample_offsets(&demux[..demux.len() - 4], demux.len() as u64).is_none(), "");
+    // 无 moov 垃圾 → 拒绝。
+    set.add("demux no moov rejected", mp4_sample_offsets(&[0u8; 64], 64).is_none(), "");
 
     set
 }
@@ -1352,5 +1595,53 @@ mod tests {
         // 无 stts（如纯音频 m4a 族）→ fps 诚实 None（不留占位数）。
         let info = parse_flac(&build_sample_flac(44100, 2, 44100 * 30)).expect("flac");
         assert_eq!(info.fps, None);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 单元测试（MP4 解复用偏移）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod demux_tests {
+    use super::*;
+
+    #[test]
+    fn demux_two_samples_single_chunk() {
+        let data = build_sample_mp4_demux(&[10, 20], 2, false);
+        let offs = mp4_sample_offsets(&data, data.len() as u64).expect("合法三表必须联算成功");
+        assert_eq!(offs.len(), 2);
+        // 首样本起点 = mdat 数据区（moov 之后 mdat 头 8 字节）。
+        let mdat_hdr = data.windows(4).position(|w| w == b"mdat").expect("mdat 在位");
+        let body = mdat_hdr + 4;
+        assert_eq!(offs[0], body as u64);
+        assert_eq!(offs[1], offs[0] + 10);
+    }
+
+    #[test]
+    fn demux_offset_exceeding_file_rejected() {
+        let data = build_sample_mp4_demux(&[10, 20], 2, false);
+        // 谎报文件长度（小于真实）→ 块越界拒绝。
+        assert!(mp4_sample_offsets(&data, (data.len() - 1) as u64).is_none());
+        // 恰好等于真实长度 → 通过。
+        assert!(mp4_sample_offsets(&data, data.len() as u64).is_some());
+    }
+
+    #[test]
+    fn demux_bogus_stream_rejected() {
+        assert!(mp4_sample_offsets(&[], 0).is_none());
+        let junk = alloc::vec![0x12u8; 128];
+        assert!(mp4_sample_offsets(&junk, 128).is_none());
+    }
+
+    #[test]
+    fn demux_offset_table_drift_rejected() {
+        // 破坏 stsc 的 samples_per_chunk（改 2 → 3）造成映射不闭合 → 拒。
+        let mut data = build_sample_mp4_demux(&[10, 20], 2, false);
+        let pos = data.windows(4).position(|w| w == b"stsc").expect("stsc 在位");
+        // stsc body 自 type 尾起：verflags4(+4) + count4(+8) + first4(+12) + spc4(+16)
+        let spc = pos + 16;
+        data[spc] = 3;
+        assert!(mp4_sample_offsets(&data, data.len() as u64).is_none());
     }
 }

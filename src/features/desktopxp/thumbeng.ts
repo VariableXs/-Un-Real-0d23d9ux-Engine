@@ -170,3 +170,76 @@ export function progressivePlan(priority: ThumbPriority, progressiveEnabled: boo
   if (!progressiveEnabled || priority === 0) return { placeholder: false, target: "full" };
   return { placeholder: true, target: "low" };
 }
+
+/* ---------------------------------------------------------------------------
+ * v4 深化：EXIF 内嵌缩略直抽（JPEG APP1 → TIFF IFD0 → 0x501A/0x501B）
+ * 与内核 exif_thumb_locate 同构移植（一处一事实——算法对面）：
+ * 零全解码取内嵌缩略定位；任何畸形一步 → null（对抗样本不抛异常）。
+ * ------------------------------------------------------------------------- */
+
+export interface ExifThumbLoc { offset: number; length: number }
+
+/** 从 JPEG 字节流抽取内嵌缩略图定位（不拷贝像素——零全解码）。 */
+export function exifThumbLocate(jpeg: Uint8Array): ExifThumbLoc | null {
+  if (jpeg.length < 4 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null;
+  let i = 2;
+  for (let seg = 0; seg < 64; seg++) {
+    if (i + 4 > jpeg.length || jpeg[i] !== 0xff) return null;
+    const marker = jpeg[i + 1]!;
+    if (marker === 0xda) return null; // SOS：EXIF 不在其后
+    const segLen = (jpeg[i + 2]! << 8) | jpeg[i + 3]!;
+    if (segLen < 2 || i + 2 + segLen > jpeg.length) return null;
+    if (marker === 0xe1) {
+      const body = jpeg.subarray(i + 4, i + 2 + segLen);
+      if (body.length >= 6
+        && body[0] === 0x45 && body[1] === 0x78 && body[2] === 0x69 && body[3] === 0x66
+        && body[4] === 0x00 && body[5] === 0x00) {
+        return parseTiffThumb(body.subarray(6));
+      }
+    }
+    i += 2 + segLen;
+  }
+  return null;
+}
+
+function rd16(b: Uint8Array, o: number, le: boolean): number | null {
+  if (o + 2 > b.length) return null;
+  return le ? b[o]! | (b[o + 1]! << 8) : (b[o]! << 8) | b[o + 1]!;
+}
+
+function rd32(b: Uint8Array, o: number, le: boolean): number | null {
+  if (o + 4 > b.length) return null;
+  return le
+    ? (b[o]! | (b[o + 1]! << 8) | (b[o + 2]! << 16) | (b[o + 3]! << 24)) >>> 0
+    : (((b[o]! << 24) | (b[o + 1]! << 16) | (b[o + 2]! << 8) | b[o + 3]!) >>> 0);
+}
+
+function parseTiffThumb(tiff: Uint8Array): ExifThumbLoc | null {
+  if (tiff.length < 8) return null;
+  const le = tiff[0] === 0x49 && tiff[1] === 0x49
+    ? true
+    : (tiff[0] === 0x4d && tiff[1] === 0x4d ? false : null);
+  if (le === null) return null;
+  const ifd0 = rd32(tiff, 4, le);
+  if (ifd0 === null || ifd0 + 2 > tiff.length) return null;
+  const n = rd16(tiff, ifd0, le);
+  if (n === null || ifd0 + 2 + n * 12 > tiff.length) return null;
+  let off: number | null = null;
+  let len: number | null = null;
+  for (let k = 0; k < n; k++) {
+    const e = ifd0 + 2 + k * 12;
+    const tag = rd16(tiff, e, le);
+    if (tag === 0x501b) off = rd32(tiff, e + 8, le);
+    else if (tag === 0x501a) len = rd32(tiff, e + 8, le);
+  }
+  if (off === null || len === null || len === 0) return null;
+  if (off + len > tiff.length) return null;
+  return { offset: off, length: len };
+}
+
+/** 直抽内嵌缩略字节（EXIF 定位成功时返回 JPEG 缩略切片）。 */
+export function extractExifThumb(jpeg: Uint8Array): Uint8Array | null {
+  const loc = exifThumbLocate(jpeg);
+  if (!loc) return null;
+  return jpeg.slice(loc.offset, loc.offset + loc.length);
+}

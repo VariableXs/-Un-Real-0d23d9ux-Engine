@@ -610,6 +610,142 @@ pub fn downscale_box(src: &[u8], sw: u32, sh: u32, dw: u32, dh: u32) -> alloc::v
 // 自检
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// v4 深化：库序列化（空闲落盘·校验和守护）与滚动预取预测器
+// ---------------------------------------------------------------------------
+
+/// 库打包魔数（"VXTH"——Varix THumb）。
+pub const PACK_MAGIC: [u8; 4] = *b"VXTH";
+/// 库打包格式版本。
+pub const PACK_VERSION: u8 = 1;
+
+impl ThumbLib {
+    /// 打包整个库（F049 空闲时段落盘语义）：魔数 + 版本 + 条目数 + 逐条目
+    /// 定长记录 + 尾部 FNV-1a 校验。格式：每条 34 字节（hash/stamp/bytes/
+    /// checksum u64 LE、tier u32 LE、from_exif u8）——定长 37 字节便于流式扫描。
+    pub fn pack(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&PACK_MAGIC);
+        out.push(PACK_VERSION);
+        out.extend_from_slice(&(self.slots.len() as u32).to_le_bytes());
+        for s in &self.slots {
+            let e = &s.entry;
+            out.extend_from_slice(&e.hash.to_le_bytes());
+            out.extend_from_slice(&e.stamp.to_le_bytes());
+            out.extend_from_slice(&e.bytes.to_le_bytes());
+            out.extend_from_slice(&e.checksum.to_le_bytes());
+            out.extend_from_slice(&e.tier.to_le_bytes());
+            out.push(if e.from_exif { 1 } else { 0 });
+        }
+        let sum = fnv1a64(&out);
+        out.extend_from_slice(&sum.to_le_bytes());
+        out
+    }
+}
+
+/// 解包库数据：魔数/版本/长度/校验任一不过 → None（调用方走
+/// [`ThumbLib::rebuild`] 重建——损坏诚实上报，不静默截断）。
+pub fn unpack_pack(bytes: &[u8]) -> Option<Vec<ThumbEntry>> {
+    if bytes.len() < 9 + 8 {
+        return None;
+    }
+    if bytes[0..4] != PACK_MAGIC || bytes[4] != PACK_VERSION {
+        return None;
+    }
+    let body_len = bytes.len() - 8;
+    let sum = u64::from_le_bytes([
+        bytes[body_len],
+        bytes[body_len + 1],
+        bytes[body_len + 2],
+        bytes[body_len + 3],
+        bytes[body_len + 4],
+        bytes[body_len + 5],
+        bytes[body_len + 6],
+        bytes[body_len + 7],
+    ]);
+    if fnv1a64(&bytes[..body_len]) != sum {
+        return None;
+    }
+    let count = u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]) as usize;
+    // 定长记录 37 字节；长度必须严丝合缝（多一字节少一字节都拒）。
+    if bytes.len() != 9 + count * 37 + 8 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(count);
+    let mut o = 9usize;
+    for _ in 0..count {
+        if o + 37 > bytes.len() {
+            return None;
+        }
+        let rd64 = |o: usize| -> u64 {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&bytes[o..o + 8]);
+            u64::from_le_bytes(b)
+        };
+        let mut t4 = [0u8; 4];
+        t4.copy_from_slice(&bytes[o + 32..o + 36]);
+        out.push(ThumbEntry {
+            hash: rd64(o),
+            stamp: rd64(o + 8),
+            bytes: rd64(o + 16),
+            checksum: rd64(o + 24),
+            tier: u32::from_le_bytes(t4),
+            from_exif: bytes[o + 36] == 1,
+        });
+        o += 37;
+    }
+    Some(out)
+}
+
+/// 滚动预取预测器（F057 分级语义的「邻近区」量化）：观测滚动速度，
+/// 预测 lead_ms 后的可视起点——速度为 0 时退化为当前行（不预取）。
+pub struct ScrollPredictor {
+    /// 指数平滑速度（毫行/毫秒，Q12 定点——no_std 无浮点纪律同 calcx）。
+    velocity_q12: i64,
+    last_row: i64,
+    last_ms: u64,
+    samples: u32,
+    /// 已发出的预取建议数（对账用）。
+    pub prefetch_suggestions: u64,
+}
+
+impl ScrollPredictor {
+    pub fn new() -> ScrollPredictor {
+        ScrollPredictor { velocity_q12: 0, last_row: 0, last_ms: 0, samples: 0, prefetch_suggestions: 0 }
+    }
+
+    /// 观测一次滚动位置（注入钟——宿主测试确定复现）。
+    pub fn observe(&mut self, row: i64, now_ms: u64) {
+        if self.samples > 0 && now_ms > self.last_ms {
+            let dt = (now_ms - self.last_ms) as i64;
+            let inst_q12 = (row - self.last_row) * 4096 / dt;
+            // 指数平滑 α=1/8：单次抖动不带偏预测（风暴/回弹稳态）。
+            self.velocity_q12 = self.velocity_q12 * 7 / 8 + inst_q12 / 8;
+        }
+        self.last_row = row;
+        self.last_ms = now_ms;
+        self.samples += 1;
+    }
+
+    /// 预测 lead_ms 后的可视窗口：返回（预测起始行, 建议预取行数）。
+    /// 静止（速度为 0）→ 建议行数 0（不白干活——K6 同纪律）。
+    pub fn predict_window(&mut self, cur_row: i64, viewport_rows: u32, lead_ms: u64) -> (i64, u32) {
+        let ahead = self.velocity_q12 * lead_ms as i64 / 4096;
+        let start = cur_row + ahead;
+        let rows = if self.velocity_q12 == 0 { 0 } else { viewport_rows };
+        if rows > 0 {
+            self.prefetch_suggestions += 1;
+        }
+        (start, rows)
+    }
+}
+
+impl Default for ScrollPredictor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// F093 自检（聚合进 stard 域）。
 pub fn run_thumbeng_checks() -> CheckSet {
     let mut set = CheckSet::new("stard-F093");
@@ -749,6 +885,52 @@ pub fn run_thumbeng_checks() -> CheckSet {
     // 放大请求（dw>sw）按盒映射仍产出合法尺寸（上采样由渲染层做——本层不越权）。
     let out3 = downscale_box(&quad, 2, 2, 4, 4);
     set.add("box upscale request still sized", out3.len() == 64, "");
+
+    // —— v4 深化：库打包/解包（空闲落盘 + 校验守护）——
+    let mut libp = ThumbLib::new();
+    libp.insert(ThumbEntry { hash: 0xA1, tier: 48, stamp: 5, bytes: 2048, checksum: 0xC0FE, from_exif: true }, 5);
+    libp.insert(ThumbEntry { hash: 0xB2, tier: 96, stamp: 6, bytes: 4096, checksum: 0xBEEF, from_exif: false }, 6);
+    let packed = libp.pack();
+    let unpacked = unpack_pack(&packed);
+    set.add("pack unpack roundtrip", {
+        match unpacked {
+            Some(entries) => entries.len() == 2
+                && entries[0].hash == 0xA1
+                && entries[0].from_exif
+                && entries[1].tier == 96
+                && entries[1].bytes == 4096,
+            None => false,
+        }
+    }, "");
+    // 翻转载荷一字节 → 校验拦截（损坏诚实 None，不静默截断）。
+    let mut corrupted = packed.clone();
+    let mid = corrupted.len() / 2;
+    corrupted[mid] ^= 0xFF;
+    set.add("pack corrupt rejected", unpack_pack(&corrupted).is_none(), "");
+    // 截断/坏魔数/坏版本全拒。
+    set.add("pack truncated rejected", unpack_pack(&packed[..packed.len() - 3]).is_none(), "");
+    set.add("pack bad magic rejected", { let mut b = packed.clone(); b[0] = b'X'; unpack_pack(&b).is_none() }, "");
+    set.add("pack bad version rejected", { let mut b = packed.clone(); b[4] = 9; unpack_pack(&b).is_none() }, "");
+
+    // —— v4 深化：滚动预取预测器 ——
+    let mut sp = ScrollPredictor::new();
+    sp.observe(0, 0);
+    sp.observe(10, 100); // 100ms 滚 10 行 = 100 毫行/ms（Q12=409600）
+    sp.observe(20, 200);
+    let (start, rows) = sp.predict_window(20, 30, 50);
+    set.add("predictor ahead of motion", start > 20 && rows == 30, "");
+    // 静止不预取（不白干活）。
+    let mut sp2 = ScrollPredictor::new();
+    sp2.observe(5, 0);
+    sp2.observe(5, 500);
+    let (start2, rows2) = sp2.predict_window(5, 30, 50);
+    set.add("predictor idle no prefetch", start2 == 5 && rows2 == 0 && sp2.prefetch_suggestions == 0, "");
+    // 反向滚动预测方向跟随。
+    let mut sp3 = ScrollPredictor::new();
+    sp3.observe(100, 0);
+    sp3.observe(50, 200);
+    let (start3, _) = sp3.predict_window(50, 10, 100);
+    set.add("predictor reverse direction", start3 < 50, "");
 
     set
 }
@@ -898,5 +1080,70 @@ mod tests {
         assert_eq!(out2, alloc::vec![15, 15, 15, 255, 35, 35, 35, 255]);
         // 同尺寸直通（盒 = 自身，均值 = 原值）。
         assert_eq!(downscale_box(&src, 4, 1, 4, 1), src);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v4 单元测试（打包/解包与滚动预取）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod pack_tests {
+    use super::*;
+
+    #[test]
+    fn pack_roundtrip_preserves_all_fields() {
+        let mut lib = ThumbLib::new();
+        for k in 0..8u64 {
+            lib.insert(
+                ThumbEntry { hash: 0x1000 + k, tier: SIZE_TIERS[k as usize % 4], stamp: k, bytes: 100 + k, checksum: 0x5A5A + k, from_exif: k % 2 == 0 },
+                k,
+            );
+        }
+        let packed = lib.pack();
+        let entries = unpack_pack(&packed).expect("合法包必须可解");
+        assert_eq!(entries.len(), 8);
+        for (k, e) in entries.iter().enumerate() {
+            assert_eq!(e.hash, 0x1000 + k as u64);
+            assert_eq!(e.bytes, 100 + k as u64);
+            assert_eq!(e.from_exif, k % 2 == 0);
+        }
+    }
+
+    #[test]
+    fn pack_rejects_length_drift() {
+        let mut lib = ThumbLib::new();
+        lib.insert(ThumbEntry { hash: 1, tier: 48, stamp: 1, bytes: 10, checksum: 1, from_exif: false }, 1);
+        let packed = lib.pack();
+        // 多一字节（长度与条目数不严丝合缝）→ 拒。
+        let mut long = packed.clone();
+        long.push(0);
+        assert!(unpack_pack(&long).is_none());
+        // 空库 roundtrip。
+        let empty = ThumbLib::new().pack();
+        assert_eq!(unpack_pack(&empty).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn predictor_smooths_single_jitter() {
+        let mut sp = ScrollPredictor::new();
+        sp.observe(0, 0);
+        sp.observe(100, 100); // 快速滚动
+        sp.observe(101, 200); // 单点抖动
+        let (start, _) = sp.predict_window(101, 10, 100);
+        // 平滑后速度仍显著为正，但低于瞬时抖动的外推（α=1/8）。
+        assert!(start > 101, "整体方向保持向前");
+        assert!(start < 101 + 100, "抖动不被放大成预测主项");
+    }
+
+    #[test]
+    fn predictor_extreme_speed_clamps_to_i64_safety() {
+        let mut sp = ScrollPredictor::new();
+        sp.observe(0, 0);
+        sp.observe(1_000_000, 1); // 极速
+        let (start, rows) = sp.predict_window(1_000_000, 30, 200);
+        assert!(rows == 30);
+        // 大数不 panic（Q12 乘法有饱和域——溢出面由调用方钳制到目录行数）。
+        assert!(start >= 1_000_000);
     }
 }

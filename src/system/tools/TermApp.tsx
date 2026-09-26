@@ -12,6 +12,7 @@ import {
   FONT_SIZE_STEPS,
   TRUNCATION_NOTICE,
   type PaneTree,
+  FrameGate,
 } from "../../features/desktopxp/termcore";
 import { Palette, BUILTINS, fillTemplate, templateVars } from "../../features/desktopxp/termpalette";
 import "../../styles/desktop-d2.css";
@@ -109,6 +110,9 @@ export function TermApp(_props: { winId: string }): React.ReactElement {
   /** 虚拟滚动视口顶行（null = 跟随贴底）。 */
   const [viewTop, setViewTop] = useState<number | null>(null);
   const [, force] = useState(0);
+  /** rAF 合帧渲染门（狂刷节流——v4 深化）。 */
+  const frameGate = useRef<FrameGate | null>(null);
+  if (!frameGate.current) frameGate.current = new FrameGate(() => force((v) => v + 1));
 
   const tab = tabs[activeTab]!;
   const fsIdx = d2Store.getWith("term2", "fontSizeStep", 3);
@@ -149,7 +153,7 @@ export function TermApp(_props: { winId: string }): React.ReactElement {
         (e) => pushToast("error", "导出失败", String(e)),
       );
     }
-    force((v) => v + 1);
+    frameGate.current!.request();
   }, [sessionOf]);
 
   const isBuiltin = useCallback((cmdline: string): boolean => BUILTINS.some((b) => b.id === cmdline), []);

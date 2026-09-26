@@ -277,3 +277,48 @@ export function dragDivider(t: PaneTree, dir: "h" | "v", deltaPx: number, span: 
   };
   return set(t);
 }
+
+/* ---------------------------------------------------------------------------
+ * v4 深化：渲染 rAF 合帧门（F095 狂刷节流——渲染请求每帧至多一次）
+ * 狂刷场景（连发命令/风暴输出）下 force 累积只触发一次重渲染，
+ * 同帧多余请求计入 dropped（诚实记账，不静默）。
+ * ------------------------------------------------------------------------- */
+
+export type FrameScheduler = (cb: () => void) => void;
+
+export class FrameGate {
+  private pending = false;
+  private dropCount = 0;
+  private rendered = 0;
+
+  constructor(
+    private render: () => void,
+    private schedule: FrameScheduler = (cb) => requestAnimationFrame(cb),
+  ) {}
+
+  /** 请求一次渲染：同帧内重复请求合并（多余计入 drops）。 */
+  request(): void {
+    if (this.pending) {
+      this.dropCount += 1;
+      return;
+    }
+    this.pending = true;
+    this.schedule(() => {
+      this.pending = false;
+      this.rendered += 1;
+      this.render();
+    });
+  }
+
+  get dropped(): number {
+    return this.dropCount;
+  }
+
+  get renderCount(): number {
+    return this.rendered;
+  }
+
+  get isPending(): boolean {
+    return this.pending;
+  }
+}
