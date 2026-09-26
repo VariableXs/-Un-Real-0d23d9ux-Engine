@@ -195,8 +195,10 @@ pub fn push_hex_u64(out: &mut [u8], n: &mut usize, mut v: u64) {
 /// 按"不够即扩"纪律扩容，WP-403 撞 128 余量 2 后 WP-404 八域前扩到 144，
 /// STAR I 分工阶段（AI-K1 收口实测）注册面已达 258 域 > 144——既有 114 个
 /// 注册被静默丢弃，AI-K1 追加 B 性能域 17 域（F041~F057，robust.rs）后
-/// 共 275，按同一纪律扩到 288（余量 13 供后续收尾域）。
-pub const MAX_DOMAINS: usize = 288;
+/// 共 275，按同一纪律扩到 288（余量 13 供后续收尾域）；AI-K2 追加 18 域后
+/// 逼近 288 上沿，AI-C1 追加 A 兼容域 20 域（F001~F020）→ 294+，按同一
+/// 「不够即扩」纪律扩到 320（余量供后续分队收口）。
+pub const MAX_DOMAINS: usize = 320;
 
 /// 每域聚合摘要（register 时从 CheckSet 提取）。CheckSet 全量值拷贝入
 /// `[Option<CheckSet>; MAX_DOMAINS]` 会让 KernelCheckup 达 ~870KB——栈上

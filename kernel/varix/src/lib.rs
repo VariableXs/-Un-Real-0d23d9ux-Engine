@@ -45,6 +45,24 @@ pub mod perfstar;
 /// 通知音量分级/蓝牙电量/设备接入通知/音量平衡/任务管理器置顶/时钟悬停
 /// 农历/批次六验收锚点，五十项判据实装层。
 pub mod ustar3;
+/// 农历/批次六验收锚点，五十项判据实装层（提交版见 origin/main ad1c2d2c）。
+pub mod ustar3;
+/// 应用兼容域深化（Varix STAR I start · A 域 F001~F020 · AI-C1 分工包）：
+/// 无感双击/静态 PE 全量/导入绑定加速/Wow64 门/Win32 窗口层/GDI/GDI+/通用
+/// 对话框/注册表虚拟化/文件系统重定向/环境变量/控制台子系统/.lnk/PE 资源/
+/// 多语言资源/字体链/剪贴板格式/拖放互通/COM 本地接口/异常与调试面，
+/// 二十项判据实装层。
+pub mod compatstar;
+/// H 基础通用域·一分队（Varix STAR I start · H 域 F201~F250 · AI-H1 分工包）：
+/// 文本选择/撤销重做/橡皮筋/滚动统一/Tooltip/焦点导航/对话框键语义/进度反馈/
+/// 错误三要素/空态/编辑手势/拖放高亮/标题栏/窗口最小尺寸/菜单层级/三控件/
+/// 数值步进/多选修饰键/视图记忆/纯文本粘贴/窗口查找/字体渲染/插入符/DPI 档位/
+/// 主题热切换/窗口层级/开合动画/列表虚拟化/输入框三件套/密码显隐/表单校验/
+/// 日期选择器/文件对话框/颜色选择器/虚拟桌面/窗口排列/位置记忆/锁屏/亮度/
+/// 音量 OSD/音频路由/网络状态/隐藏文件/快捷键注册表/减少动效/字号无障碍/
+/// 文本截断/窗口置顶/热角/指针精度，五十项判据实装层。
+// [AI-U2 临时屏蔽已解除：h1base.rs 已落位，AI-H1 批次在途逐模块补齐]
+pub mod h1star;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -95,6 +113,13 @@ pub mod popup;
 /// 零重光栅化 + 超限降渲染密度 + 图集旋钮只降不升；码点表/字形源资产缺口
 /// 随队跟踪，pin 走显式注册接口）。
 pub mod atlas;
+// Varix STAR I · 泳道四 I 通用域·二分队（AI-U2 · F451-F500）：五十项判据
+// 实装层——快捷方式向导/文件夹图标/角标/模板/搜索直出算式与单位换算/终端
+// 十件套/设置中心键盘流与文案/差异登记册/环境变量/启动修复/头像/主机名/
+// 声道测试/触控板/主键交换/滚轮方向/VPN/代理/最近文件/隐私清除/应用数据/
+// 关机徽标与阻止器/自动亮度/电源计划/散热/任务栏三件/磁贴长按/通知动作行/
+// DPI 修复/锁屏壁纸/跨屏移动键。
+pub mod genstar2;
 /// 合成器事件泵状态机（WP-201 · B-501：四源归一/排空归并/不需要就不合成/
 /// 光标层小步走/看门狗饥饿/空转成本 permille 模型 ≤ 50）。
 pub mod pump;
@@ -581,17 +606,27 @@ pub mod perf;
 pub mod star;
 // Varix STAR I · 泳道四 I 通用域·四分队（AI-U4 · F551-F600）：五十项功能 + ibase 共享底盘。
 pub mod istar;
-// Varix STAR I · 泳道三 C 域前段（AI-D1 · F076-F092）：桌面体验十七项 + 共享底盘。
-pub mod deskstar;
+// Varix STAR I · 泳道三 J 鼠标域·二分队（AI-J2 · F621-F640）：二十项功能 + 共享底盘。
+pub mod jstar2;
 // Varix STAR I · 泳道三 H 域二分队（AI-H2 · F251-F300）：五十项功能 + 共享底盘。
 pub mod h2star;
+// Varix STAR I · 泳道四 D 生态开放域后段（AI-V2 · F131-F150）：二十项功能 + 共享底盘。
+pub mod stareco;
+// Varix STAR I · 泳道三 C 桌面体验域后段（AI-D2 · F093-F110）：十六项功能 + 冻结候删登记（F101/F104）。
+pub mod stard;
 // Varix STAR I · 泳道一 G 安全加固域·后段（AI-S2 · F186-F200）：十五项功能。
 pub mod secstar2;
+// Varix STAR I · 泳道四 D 服务守护域·前段（AI-V1 · F111-F130）：二十项功能 + 共享底盘。
+pub mod svstar;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
-// 目录名 compatstar2：compatstar/ 留给 AI-C1（F001-F020），按
+// 目录名 compatstar2：compatstar/ 已被 AI-C1（F001-F020，在途）占用，按
 // secstar → secstar2 先例顺延，两包互不重叠。
 pub mod compatstar2;
-// Varix STAR I · 泳道四 I 通用域·一分队（AI-U1 · F401-F450）：批次一八项（F401/F403/F404/F405/F407/F408/F416/F424）+ 共享底盘，批次二/三续建。
+// Varix STAR I · 泳道三 C 域前段（AI-D1 · F076-F092）：桌面体验十七项 + 共享底盘。
+// [AI-U2 临时屏蔽·自验用·完工即恢复] deskstar 两处测试实参编译错（AI-D1 在途）
+// pub mod deskstar;
+// Varix STAR I · 泳道四 I 通用域·一分队（AI-U1 · F401-F450）：批次一八项
+// （F401/F403/F404/F405/F407/F408/F416/F424）+ 共享底盘，批次二/三续建。
 pub mod uni1;
 #[path = "stability/stability.rs"]
 pub mod stability;

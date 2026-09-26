@@ -1,0 +1,278 @@
+//! F016 字体链兼容（compatstar · G-A-16）——程序请求微软雅黑，得到的是
+//! VARIX 的无衬线族，眼睛不累。
+//!
+//! 主册判据（验收标准第一句）：
+//! **「F005 标志件字体对话框选『微软雅黑』渲染正常；映射覆盖 20 个最高频
+//! Windows 字体名（按采样频率排序）。」**
+//!
+//! 功能定义（G-A-16）：Windows 字体名到 VARIX 字体族映射：宋体→衬线族、微
+//! 软雅黑→无衬线族、Consolas/Courier→等宽族、Segoe UI→无衬线族；请求字号
+//! pt→px 换算按 96DPI 基准；缺字回退链对齐 MD2 篇 34。
+//!
+//! 【交互设计】无独立 UI（E7 字体设置页展示映射表只读）；渲染质量验收与原
+//! 生窗口并排截图对比。【数据与存储】映射表编译进镜像（配置可覆盖，E7 令
+//! 牌）；字体度量缓存入字形图集管线。
+//! 【状态与异常】请求不存在字体 → 回退族 + 日志；pt 超界（>200pt）钳制；
+//! 字体缺失字符 → 回退链逐级（最终 tofu 显式可见不静默空白）。
+//! 【设计细节】pt 到 px 换算 1pt = 1.333px（96DPI 基准），偏差不超 1px；映
+//! 射表 20 个高频字体名；加粗映射到族内 Bold 字重（无 Bold 时合成加粗并标
+//! 注）；斜体同策略；E7 页可整体换族（映射跟随用户选择）。
+//!
+//! 零堆纪律：映射表静态、pt 换算纯算术，无 Vec/String/Box/format!。
+
+use crate::checks::CheckSet;
+
+// ---------------------------------------------------------------------------
+// 常量（一处一事实）
+// ---------------------------------------------------------------------------
+
+/// pt→px 换算基准：96DPI 下 1pt = 4/3 px（主册【设计细节】）。
+pub const PT_TO_PX_NUM: u32 = 4;
+pub const PT_TO_PX_DEN: u32 = 3;
+/// pt 上限 200pt 钳制（主册【状态与异常】）。
+pub const PT_MAX: u32 = 200;
+/// 高频字体名映射面 20 个（主册判据：覆盖 20 个最高频 Windows 字体名）。
+pub const MAPPED_FONT_COUNT: usize = 20;
+
+// ---------------------------------------------------------------------------
+// 映射表（20 个最高频 Windows 字体名 → VARIX 三族）
+// ---------------------------------------------------------------------------
+
+/// VARIX 三族（MD2 篇 34 同源）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum VarixFamily {
+    Sans,
+    Serif,
+    Mono,
+}
+
+/// Windows 字体名映射条目。
+#[derive(Clone, Copy, Debug)]
+pub struct FontMapping {
+    pub win_name: &'static str,
+    pub family: VarixFamily,
+    /// 族内有无 Bold/Italic 字重（无 → 合成 + 标注）。
+    pub has_bold: bool,
+    pub has_italic: bool,
+}
+
+/// 20 个最高频 Windows 字体名（按采样频率排序——主册判据；序位即表序）。
+pub const FONT_MAPPINGS: [FontMapping; MAPPED_FONT_COUNT] = [
+    FontMapping { win_name: "微软雅黑", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Microsoft YaHei", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "宋体", family: VarixFamily::Serif, has_bold: false, has_italic: false },
+    FontMapping { win_name: "SimSun", family: VarixFamily::Serif, has_bold: false, has_italic: false },
+    FontMapping { win_name: "Segoe UI", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Arial", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Consolas", family: VarixFamily::Mono, has_bold: true, has_italic: false },
+    FontMapping { win_name: "Courier New", family: VarixFamily::Mono, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Times New Roman", family: VarixFamily::Serif, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Calibri", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Tahoma", family: VarixFamily::Sans, has_bold: true, has_italic: false },
+    FontMapping { win_name: "Verdana", family: VarixFamily::Sans, has_bold: true, has_italic: true },
+    FontMapping { win_name: "黑体", family: VarixFamily::Sans, has_bold: false, has_italic: false },
+    FontMapping { win_name: "SimHei", family: VarixFamily::Sans, has_bold: false, has_italic: false },
+    FontMapping { win_name: "楷体", family: VarixFamily::Serif, has_bold: false, has_italic: false },
+    FontMapping { win_name: "KaiTi", family: VarixFamily::Serif, has_bold: false, has_italic: false },
+    FontMapping { win_name: "Cambria", family: VarixFamily::Serif, has_bold: true, has_italic: true },
+    FontMapping { win_name: "Segoe UI Emoji", family: VarixFamily::Sans, has_bold: false, has_italic: false },
+    FontMapping { win_name: "Lucida Console", family: VarixFamily::Mono, has_bold: false, has_italic: false },
+    FontMapping { win_name: "MS Gothic", family: VarixFamily::Mono, has_bold: true, has_italic: false },
+];
+
+/// 查映射（大小写不敏感；中文名精确匹配）。
+pub fn lookup(win_name: &str) -> Option<&'static FontMapping> {
+    FONT_MAPPINGS
+        .iter()
+        .find(|m| m.win_name.eq_ignore_ascii_case(win_name) || m.win_name == win_name)
+}
+
+// ---------------------------------------------------------------------------
+// pt→px 换算与字重策略
+// ---------------------------------------------------------------------------
+
+/// pt → px（96DPI 基准，四舍五入偏差 ≤1px；>200pt 钳制）。
+pub fn pt_to_px(pt: u32) -> u32 {
+    let pt = pt.min(PT_MAX);
+    (pt * PT_TO_PX_NUM + PT_TO_PX_DEN / 2) / PT_TO_PX_DEN
+}
+
+/// 字重解析结果（合成加粗/斜体显式标注——主册【设计细节】）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct WeightPlan {
+    pub family: VarixFamily,
+    pub bold_synthetic: bool,
+    pub italic_synthetic: bool,
+    /// 回退路径记录（请求字体不在表内 → 回退族 + 日志判据）。
+    pub fell_back: bool,
+}
+
+/// 解析请求：字体名 + bold/italic 意图 → 渲染计划。
+pub fn resolve_font(win_name: &str, bold: bool, italic: bool) -> WeightPlan {
+    match lookup(win_name) {
+        Some(m) => WeightPlan {
+            family: m.family,
+            bold_synthetic: bold && !m.has_bold,
+            italic_synthetic: italic && !m.has_italic,
+            fell_back: false,
+        },
+        None => {
+            // 回退族（主册【状态与异常】：回退 + 日志——fell_back 即日志标记）。
+            WeightPlan { family: VarixFamily::Sans, bold_synthetic: bold, italic_synthetic: italic, fell_back: true }
+        }
+    }
+}
+
+/// 缺字回退链（主册【功能定义】：对齐 MD2 篇 34；最终 tofu 显式可见）。
+pub fn glyph_fallback_chain(requested: VarixFamily) -> [VarixFamily; 4] {
+    match requested {
+        VarixFamily::Sans => [VarixFamily::Sans, VarixFamily::Serif, VarixFamily::Mono, VarixFamily::Sans],
+        VarixFamily::Serif => [VarixFamily::Serif, VarixFamily::Sans, VarixFamily::Mono, VarixFamily::Serif],
+        VarixFamily::Mono => [VarixFamily::Mono, VarixFamily::Sans, VarixFamily::Serif, VarixFamily::Mono],
+    }
+}
+
+/// E7 用户换族覆盖（映射跟随用户选择——主册【设计细节】）。
+pub fn apply_e7_override(m: &FontMapping, user_family: VarixFamily) -> FontMapping {
+    FontMapping { family: user_family, ..*m }
+}
+
+// ---------------------------------------------------------------------------
+// 域自检
+// ---------------------------------------------------------------------------
+
+/// 域自检。
+pub fn run_fontchain_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F016-fontchain");
+    // 1) 判据常量（4/3 换算 / 200pt / 20 名映射面）。
+    cs.add(
+        "consts",
+        PT_TO_PX_NUM == 4 && PT_TO_PX_DEN == 3 && PT_MAX == 200 && MAPPED_FONT_COUNT == 20,
+        "",
+    );
+    // 2) 映射面 20 个且无重复名（判据：覆盖 20 个最高频名）。
+    let mut dup = false;
+    for i in 0..MAPPED_FONT_COUNT {
+        for j in (i + 1)..MAPPED_FONT_COUNT {
+            if FONT_MAPPINGS[i].win_name.eq_ignore_ascii_case(FONT_MAPPINGS[j].win_name) {
+                dup = true;
+            }
+        }
+    }
+    cs.add("twenty_mappings_no_dups", !dup, "");
+    // 3) 主册点名三例：微软雅黑→无衬线、宋体→衬线、Consolas/Courier→等宽。
+    cs.add(
+        "named_cases",
+        lookup("微软雅黑").unwrap().family == VarixFamily::Sans
+            && lookup("宋体").unwrap().family == VarixFamily::Serif
+            && lookup("Consolas").unwrap().family == VarixFamily::Mono
+            && lookup("COURIER NEW").unwrap().family == VarixFamily::Mono
+            && lookup("Segoe UI").unwrap().family == VarixFamily::Sans,
+        "",
+    );
+    // 4) pt→px：9pt→12px（判据样例）；偏差 ≤1px；>200pt 钳制。
+    cs.add(
+        "pt_to_px",
+        pt_to_px(9) == 12
+            && pt_to_px(12) == 16
+            && ((pt_to_px(1) as i32) - 1).abs() <= 1
+            && pt_to_px(300) == pt_to_px(200),
+        "",
+    );
+    // 5) 加粗/斜体：族内有无字重两路（合成时显式标注）。
+    cs.add(
+        "weight_synthesis_flagged",
+        resolve_font("微软雅黑", true, false).bold_synthetic == false
+            && resolve_font("宋体", true, false).bold_synthetic == true
+            && resolve_font("Consolas", false, true).italic_synthetic == true,
+        "",
+    );
+    // 6) 请求不存在字体 → 回退族 + 日志标记（不静默）。
+    cs.add(
+        "unknown_font_falls_back_logged",
+        resolve_font("Comic Sans MS", false, false).fell_back,
+        "",
+    );
+    // 7) 缺字回退链：请求族起步、逐级回退、末环回请求族（tofu 显式语义）。
+    let chain = glyph_fallback_chain(VarixFamily::Mono);
+    cs.add(
+        "glyph_fallback_chain",
+        chain[0] == VarixFamily::Mono && chain[1] == VarixFamily::Sans && chain.len() == 4,
+        "",
+    );
+    // 8) E7 换族覆盖：映射跟随用户选择（只换族，名与字重能力保留）。
+    let m = lookup("宋体").unwrap();
+    let overridden = apply_e7_override(m, VarixFamily::Sans);
+    cs.add(
+        "e7_override_family",
+        overridden.family == VarixFamily::Sans && overridden.win_name == "宋体",
+        "",
+    );
+    // 9) F005 标志件场景：字体对话框选「微软雅黑」全链通过（名→族→px）。
+    let m = lookup("微软雅黑").unwrap();
+    let plan = resolve_font(m.win_name, false, false);
+    cs.add(
+        "flagship_dialog_flow",
+        plan.family == VarixFamily::Sans && !plan.fell_back && pt_to_px(9) == 12,
+        "",
+    );
+    // 10) 中文名精确匹配不受伤于大小写规则（中文名无大小写，英文别名生效）。
+    cs.add(
+        "cjk_and_alias_lookup",
+        lookup("simsun").unwrap().family == VarixFamily::Serif && lookup("宋体").is_some(),
+        "",
+    );
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 测试（宿主）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pt_to_px_rounding_within_1px() {
+        // 主册【设计细节】：偏差不超 1px——1..=200pt 全域校验。
+        for pt in 1..=200u32 {
+            let px = pt_to_px(pt);
+            let exact = pt as f64 * 4.0 / 3.0;
+            assert!(
+                (px as f64 - exact).abs() <= 1.0,
+                "pt={} px={} exact={}",
+                pt,
+                px,
+                exact
+            );
+        }
+    }
+
+    #[test]
+    fn pt_clamp_honored() {
+        // >200pt 钳制（主册【状态与异常】）。
+        assert_eq!(pt_to_px(201), pt_to_px(200));
+        assert_eq!(pt_to_px(99999), pt_to_px(200));
+        assert_eq!(pt_to_px(200), 267); // 200*4/3 = 266.67 → 267
+    }
+
+    #[test]
+    fn all_twenty_resolve() {
+        // 20 个名全部可解析且族分配合理（雅黑/Arial/Segoe/Verdana → Sans）。
+        for m in FONT_MAPPINGS.iter() {
+            let plan = resolve_font(m.win_name, false, false);
+            assert_eq!(plan.family, m.family, "{} must map to its family", m.win_name);
+            assert!(!plan.fell_back);
+        }
+    }
+
+    #[test]
+    fn synthesis_only_when_lacking() {
+        // 合成加粗只在族内无 Bold 时发生（有 Bold 的用真字重）。
+        assert!(!resolve_font("Arial", true, true).bold_synthetic);
+        assert!(!resolve_font("Arial", true, true).italic_synthetic);
+        assert!(resolve_font("黑体", true, false).bold_synthetic);
+        assert!(resolve_font("黑体", false, true).italic_synthetic);
+    }
+}

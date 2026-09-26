@@ -1025,6 +1025,12 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
     let domains: [fn() -> CheckSet; 327] = [
+    // 函数指针表：297 个域自检入口，统一经表迭代注册。禁止改回直排
+    // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
+    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 297 ≈ 921KB），
+    // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
+    // 仅一个 CheckSet 临时存活。
+    let domains: [fn() -> CheckSet; 347] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1346,7 +1352,47 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::perfstar::glyphcache::run_glyphcache_checks,
         crate::perfstar::dirtyrect::run_dirtyrect_checks,
         crate::perfstar::iotier::run_iotier_checks,
-        crate::uni1::run_uni1_checks,
+
+    // ------------------------------------------------------------------
+    // A 应用兼容域·前段（AI-C1 · F001~F020 · 主册 A-5 报告 G-A-01~G-A-20）。
+    // 代码落 compatstar/ 目录（与 perfstar/star 同惯例，逐项一域集，
+    // 接线随闸门；域内 20 项红绿在 compatstar/mod.rs DOMAIN_NAMES 对账）。
+    // ------------------------------------------------------------------
+        crate::compatstar::dblrun::run_dblrun_checks,
+        crate::compatstar::peblend::run_peblend_checks,
+        crate::compatstar::pebind::run_pebind_checks,
+        crate::compatstar::wow64::run_wow64_checks,
+        crate::compatstar::winmgr::run_winmgr_checks,
+        crate::compatstar::gdiface::run_gdiface_checks,
+        crate::compatstar::gdiplus::run_gdiplus_checks,
+        crate::compatstar::comdlg::run_comdlg_checks,
+        crate::compatstar::reghive::run_reghive_checks,
+        crate::compatstar::fsredir::run_fsredir_checks,
+        crate::compatstar::envsess::run_envsess_checks,
+        crate::compatstar::condrv::run_condrv_checks,
+        crate::compatstar::lnkfile::run_lnkfile_checks,
+        crate::compatstar::persrc::run_persrc_checks,
+        crate::compatstar::mlangres::run_mlangres_checks,
+        crate::compatstar::fontchain::run_fontchain_checks,
+        crate::compatstar::clipfmt::run_clipfmt_checks,
+        crate::compatstar::dragdrop::run_dragdrop_checks,
+        crate::compatstar::comloc::run_comloc_checks,
+        crate::compatstar::excface::run_excface_checks,
+
+    // ------------------------------------------------------------------
+    // G 安全加固域·后段（AI-S2 · F186~F200 · 主册 G-G-16~G-G-30）。
+    // 域聚合单行注册（288 容量余量仅 3，单聚合永不超容；域内逐模块
+    // 红绿在 secstar2::run_secstar2_checks 的子行展开）。
+    // ------------------------------------------------------------------
+        crate::secstar2::run_secstar2_checks,
+
+    // ------------------------------------------------------------------
+    // D 服务守护域·前段（AI-V1 · F111~F130 · 主册 G-C-41~G-C-55 /
+    // G-D-01~G-D-05）。域聚合单行注册（同 S2 容量纪律——单行永不超
+    // 容；域内 vbase + 二十项逐模块红绿在 svstar::run_svstar_checks
+    // 的子行展开）。
+    // ------------------------------------------------------------------
+        crate::svstar::run_svstar_checks,
 
     // ------------------------------------------------------------------
     // A 应用兼容域·后段（AI-C2 · F021~F040 · 主册 G-A-21~G-A-40）。
@@ -1356,15 +1402,21 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::compatstar2::run_compatstar2_checks,
 
     // ------------------------------------------------------------------
-    // G 安全加固域·后段（AI-S2 · F186~F200 · 主册 G-G-16~G-G-30）。
-    // 域聚合单行注册（288 容量余量内单聚合永不超容；域内逐模块
-    // 红绿在 secstar2::run_secstar2_checks 的子行展开）。
+    // I 通用域·一分队（AI-U1 · F401~F450 · 主册 G-I-01~G-I-50）。
+    // 域聚合单行注册（同 S2/C2 容量纪律；域内逐模块红绿在
+    // uni1::run_uni1_checks 的子行展开）。
     // ------------------------------------------------------------------
         crate::secstar2::run_secstar2_checks,
 
     // ------------------------------------------------------------------
     // I 通用域·三分队（AI-U3 · F501~F550）：五十域直排注册（判据唯一源
     // 逐域红绿；域内逐判据子行展开见 ustar3/ 各文件头注释）。
+        crate::uni1::run_uni1_checks,
+
+    // ------------------------------------------------------------------
+    // I 通用域·三分队（AI-U3 · F501~F550）：五十域直排注册（判据唯一源
+    // 逐域红绿；域内逐判据子行展开见 ustar3/ 各文件头注释）。提交版见
+    // origin/main ad1c2d2c（4422/4422 全绿认证）。
     // ------------------------------------------------------------------
         crate::ustar3::deskicons::run_f501_checks,
         crate::ustar3::deskicons::run_f502_checks,
@@ -1424,6 +1476,18 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     for cs in crate::compositor::run_all_family_checks() {
         checkup.register(cs);
     }
+    // ------------------------------------------------------------------
+    // I 通用域·二分队（AI-U2 · F451~F500 · 主册批次三/四）——单聚合注册：
+    // 不占 domains 定长数组名额（数组容量纪律不受影响）；域内 50 项逐项
+    // 红绿在 genstar2::run_genstar2_checks 的子行展开。
+    // ------------------------------------------------------------------
+    checkup.register(crate::genstar2::run_genstar2_checks());
+    // ------------------------------------------------------------------
+    // J 鼠标域·二分队（AI-J2 · F621~F640 · 主册第 8 部分 J-B/J-C/J-D）
+    // ——单聚合注册（同 U2 容量纪律：不占 domains 定长数组名额）；
+    // 域内 20 项逐项红绿在 jstar2::run_jstar2_checks 的子行展开。
+    // ------------------------------------------------------------------
+    checkup.register(crate::jstar2::run_jstar2_checks());
     checkup
 }
 

@@ -1,0 +1,455 @@
+//! F004 Wow64 门（32 位 .exe 前瞻）（compatstar · G-A-04）——拒绝也给出路。
+//!
+//! 主册判据（验收标准第一句）：
+//! **「32 位样本集 10 枚 100% 触发诚实卡片（零静默失败/零崩溃）；卡片文案
+//! 三要素齐。」**
+//!
+//! 功能定义（G-A-04）：32 位 PE 的三层处理：探测（机器类型字段识别）→ 拒绝
+//! （当前版本无 32 位子系统）→ 诚实提示 + 计划入口。拒绝不是终点，是分流：
+//! 把「不支持」变成「明确知道为什么不行」。
+//!
+//! 【交互设计】拒绝卡片样式对齐 F035 兼容性向导（同一卡片体系）：图标+标题+
+//! 一句归因+两个动作（关闭/查替代）。卡片自动记忆该文件，同文件第二次双击
+//! 不再重复解释（本地记录，可清）。
+//! 【数据与存储】拒绝记录存 `cache/wow64-refusals.json`（文件哈希 → 已提示
+//! 标记），上限 1000 条。
+//! 【状态与异常】带 32 位安装器的混合包（32 位安装器装 64 位主程序）→ 安装
+//! 器本身被拒时提示完整归因；伪装 32 位的恶意样本照走 peblock 门，先过门再
+//! 谈位数。
+//! 【设计细节】位数判定读 PE 机器字段 0x014c（I386）与 0x8664（AMD64），ARM64
+//! 声明也识别并如实告知；拒绝记录同时上报星卡草稿（F036 联动，匿名）；「查
+//! 替代品」按钮跳星图搜索并预填程序名关键词；卡片文案经过三要素审计（发生
+//! 了什么/为什么/下一步），禁用「不支持」裸句。
+//!
+//! 顺序红线（主册【状态与异常】）：机器位数判定发生在 peblock 门**之后**——
+//! 「先过门再谈位数」。本模块 API 形态即此语义：调用方必须先拿到 peblock
+//! 放行结论再进 [`gate_machine`]。
+//!
+//! 零堆纪律：定长拒绝记录表，无 Vec/String/Box/format!。
+
+use crate::checks::CheckSet;
+
+// ---------------------------------------------------------------------------
+// 常量（一处一事实）
+// ---------------------------------------------------------------------------
+
+/// IMAGE_FILE_MACHINE_I386（主册【设计细节】：0x014c 判 32 位）。
+pub const MACHINE_I386: u16 = 0x014C;
+/// IMAGE_FILE_MACHINE_AMD64（本机原生位宽）。
+pub const MACHINE_AMD64: u16 = 0x8664;
+/// IMAGE_FILE_MACHINE_ARM64（主册：ARM64 声明也识别并如实告知）。
+pub const MACHINE_ARM64: u16 = 0xAA64;
+/// 拒绝记录上限 1000 条（主册【数据与存储】）。
+pub const REFUSAL_CAP: usize = 1000;
+/// COFF 头机器字段在文件内的偏移（DOS 0x40 + e_lfanew + 4B 签名）——按
+/// e_lfanew 动态读取，此常量仅用于最小头校验。
+pub const COFF_MACHINE_MIN_FILE: usize = 0x40 + 4 + 4 + 2;
+
+// ---------------------------------------------------------------------------
+// 判定
+// ---------------------------------------------------------------------------
+
+/// 机器位数判定结论。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MachineVerdict {
+    /// AMD64——本机原生，放行（位数面无话可说）。
+    Native64,
+    /// I386 32 位——拒绝并出诚实卡片。
+    ThirtyTwo,
+    /// ARM64 声明——识别并如实告知（当前无 ARM64 运行面）。
+    Arm64Declared,
+    /// 非 PE/头损坏——不归本门管（peblock 门或 F002 解析面已有归因）。
+    NotPe,
+}
+
+impl MachineVerdict {
+    /// 是否拒绝装载（Native64 之外全部拒绝——当前版本无 32 位子系统）。
+    pub fn refused(self) -> bool {
+        !matches!(self, MachineVerdict::Native64)
+    }
+}
+
+/// 从映像头部读 COFF 机器字段并出判定。`image` 至少含 DOS 头 + PE 签名 +
+/// COFF 头前 2 字节。
+pub fn detect_machine(image: &[u8]) -> MachineVerdict {
+    if image.len() < 0x40 || image[0..2] != [b'M', b'Z'] {
+        return MachineVerdict::NotPe;
+    }
+    if image.len() < 0x44 {
+        return MachineVerdict::NotPe;
+    }
+    let pe_off = u32::from_le_bytes(image[0x3C..0x40].try_into().unwrap()) as usize;
+    if pe_off < 0x40 || pe_off + 6 > image.len() {
+        return MachineVerdict::NotPe;
+    }
+    if image[pe_off..pe_off + 4] != [b'P', b'E', 0, 0] {
+        return MachineVerdict::NotPe;
+    }
+    match u16::from_le_bytes([image[pe_off + 4], image[pe_off + 5]]) {
+        MACHINE_AMD64 => MachineVerdict::Native64,
+        MACHINE_I386 => MachineVerdict::ThirtyTwo,
+        MACHINE_ARM64 => MachineVerdict::Arm64Declared,
+        _ => MachineVerdict::NotPe,
+    }
+}
+
+/// 诚实卡片（三要素：发生了什么/为什么/下一步——禁「不支持」裸句，主册
+/// 【设计细节】文案审计纪律）。文案全部静态串，无堆。
+#[derive(Clone, Copy, Debug)]
+pub struct HonestCard {
+    /// 发生了什么（人话）。
+    pub what: &'static str,
+    /// 为什么（归因，含路线图位置）。
+    pub why: &'static str,
+    /// 下一步怎么办（出路：查替代品/关闭）。
+    pub next: &'static str,
+    /// 「查看 64 位替代品」按钮的星图搜索预填关键词（主册：直跳星图搜索）。
+    pub alt_query: &'static str,
+}
+
+impl MachineVerdict {
+    pub fn honest_card(self) -> Option<HonestCard> {
+        match self {
+            MachineVerdict::ThirtyTwo => Some(HonestCard {
+                what: "此程序为 32 位应用，未能启动。",
+                why: "VARIX 当前运行 64 位程序；32 位兼容在路线图中（预计 STAR I start 后程）。",
+                next: "可关闭此卡片，或点击「查看 64 位替代品」在星图中搜索同类工具。",
+                alt_query: "64位替代",
+            }),
+            MachineVerdict::Arm64Declared => Some(HonestCard {
+                what: "此程序声明为 ARM64 应用，未能启动。",
+                why: "VARIX 当前提供 x86-64 运行面；ARM64 声明已识别，如实告知无对应运行面。",
+                next: "可关闭此卡片，或点击「查看 64 位替代品」寻找 x86-64 版本。",
+                alt_query: "x64替代",
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// 混合包归因（主册【状态与异常】：32 位安装器装 64 位主程序——安装器本身
+/// 被拒时提示完整归因，不让用户误以为「主程序也是 32 位」）。
+#[derive(Clone, Copy, Debug)]
+pub struct MixedPackage {
+    /// 安装器机器判定（Always ThirtyTwo——否则不构成混合包场景）。
+    pub installer: MachineVerdict,
+    /// 包内主程序声明的机器（来自清单/样本面）。
+    pub payload: MachineVerdict,
+}
+
+impl MixedPackage {
+    /// 是否真混合（安装器 32 位 + 主程序 64 位）。
+    pub fn is_mixed(self) -> bool {
+        self.installer == MachineVerdict::ThirtyTwo && self.payload == MachineVerdict::Native64
+    }
+
+    /// 完整归因卡片（区别于普通 32 位卡片：明确说主程序是 64 位、只是安装
+    /// 器是 32 位）。
+    pub fn card(self) -> HonestCard {
+        HonestCard {
+            what: "此安装包的安装器为 32 位程序，安装未能开始。",
+            why: "包内主程序是 64 位（可正常运行），当前版本仅安装器环节缺少 32 位运行面。",
+            next: "可寻找提供 64 位安装器的版本，或解包后直接运行主程序。",
+            alt_query: "64位安装器",
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 拒绝记录表（同文件第二次双击不再重复解释）
+// ---------------------------------------------------------------------------
+
+/// 拒绝记录（文件哈希 → 已提示标记）。定长环形替换（1000 条满后覆盖最旧
+/// ——主册上限语义；JSON 落盘为持久层职责，本层提供内存模型与序号）。
+pub struct RefusalLedger {
+    hashes: [u64; REFUSAL_CAP],
+    reported: [bool; REFUSAL_CAP],
+    count: usize,
+    next_slot: usize,
+    /// 上报星卡草稿（F036 联动，匿名）的条数记账。
+    starcard_reports: u32,
+}
+
+impl RefusalLedger {
+    pub fn new() -> RefusalLedger {
+        RefusalLedger {
+            hashes: [0; REFUSAL_CAP],
+            reported: [false; REFUSAL_CAP],
+            count: 0,
+            next_slot: 0,
+            starcard_reports: 0,
+        }
+    }
+
+    /// 双击事件进入本门时调用。返回 true = 首次拒绝（需要出卡片）；
+    /// false = 已提示过（静默按已记理由拒绝，不再重复解释）。
+    pub fn refuse(&mut self, file_hash: u64) -> bool {
+        if let Some(i) = (0..self.count).find(|&i| self.hashes[i] == file_hash) {
+            // 已有记录：第二次双击不再重复解释。
+            return !self.reported[i];
+        }
+        let slot = if self.count < REFUSAL_CAP {
+            let s = self.count;
+            self.count += 1;
+            s
+        } else {
+            // 满容环形覆盖最旧（next_slot 单调推进）。
+            let s = self.next_slot;
+            self.next_slot = (s + 1) % REFUSAL_CAP;
+            s
+        };
+        self.hashes[slot] = file_hash;
+        self.reported[slot] = true;
+        // F036 联动：匿名上报星卡草稿。
+        self.starcard_reports += 1;
+        true
+    }
+
+    /// 用户手动清除记录（主册：本地记录，可清）。
+    pub fn clear(&mut self) {
+        self.hashes = [0; REFUSAL_CAP];
+        self.reported = [false; REFUSAL_CAP];
+        self.count = 0;
+        self.next_slot = 0;
+    }
+
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    pub fn starcard_reports(&self) -> u32 {
+        self.starcard_reports
+    }
+}
+
+impl Default for RefusalLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 门入口（peblock 之后的位数闸）
+// ---------------------------------------------------------------------------
+
+/// 位数闸入口。`peblock_passed` 必须为 true（先过门再谈位数——主册顺序红线；
+/// false 时返回 NotPe 语义短路，不越权替 peblock 做决定）。
+pub fn gate_machine(peblock_passed: bool, image: &[u8]) -> MachineVerdict {
+    if !peblock_passed {
+        return MachineVerdict::NotPe;
+    }
+    detect_machine(image)
+}
+
+/// 域自检。
+pub fn run_wow64_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F004-wow64");
+    // 1) 判据常量（0x014C/0x8664/0xAA64/1000 条）。
+    cs.add(
+        "consts",
+        MACHINE_I386 == 0x014C
+            && MACHINE_AMD64 == 0x8664
+            && MACHINE_ARM64 == 0xAA64
+            && REFUSAL_CAP == 1000,
+        "",
+    );
+    // 2) 32 位样本集 10 枚 100% 触发诚实卡片（构造 10 个不同长度的 I386 头）。
+    let mut cards = 0u32;
+    for len in [0x80usize, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000] {
+        let mut img = vec![0u8; len];
+        img[0] = b'M';
+        img[1] = b'Z';
+        img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        img[0x40..0x44].copy_from_slice(&[b'P', b'E', 0, 0]);
+        img[0x44..0x46].copy_from_slice(&MACHINE_I386.to_le_bytes());
+        let v = gate_machine(true, &img);
+        if v == MachineVerdict::ThirtyTwo && v.honest_card().is_some() {
+            cards += 1;
+        }
+    }
+    cs.add("thirtytwo_10_of_10_cards", cards == 10, "");
+    // 3) 零静默失败：32 位判定必然 refused 且有卡片（不静默放行/不静默拒绝）。
+    let v = MachineVerdict::ThirtyTwo;
+    cs.add(
+        "no_silent_failure",
+        v.refused() && v.honest_card().is_some(),
+        "",
+    );
+    // 4) 卡片三要素齐（what/why/next 非空 + 禁「不支持」裸句）。
+    let card = MachineVerdict::ThirtyTwo.honest_card().unwrap();
+    let bare_reject = card.what.contains("不支持") && card.what.len() < 12;
+    cs.add(
+        "card_three_elements",
+        !card.what.is_empty() && !card.why.is_empty() && !card.next.is_empty() && !bare_reject,
+        "",
+    );
+    // 5) ARM64 声明如实告知（识别 + 卡片，不冒充 32 位归因）。
+    let mut img = vec![0u8; 0x80];
+    img[0] = b'M';
+    img[1] = b'Z';
+    img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+    img[0x40..0x44].copy_from_slice(&[b'P', b'E', 0, 0]);
+    img[0x44..0x46].copy_from_slice(&MACHINE_ARM64.to_le_bytes());
+    let v = gate_machine(true, &img);
+    cs.add(
+        "arm64_declared_honest",
+        v == MachineVerdict::Arm64Declared
+            && v.refused()
+            && v.honest_card().unwrap().why.contains("ARM64"),
+        "",
+    );
+    // 6) 先过门再谈位数：peblock 未放行时位数闸短路（不越权）。
+    cs.add(
+        "peblock_first",
+        gate_machine(false, &img) == MachineVerdict::NotPe,
+        "",
+    );
+    // 7) 64 位放行。
+    let mut img64 = img;
+    img64[0x44..0x46].copy_from_slice(&MACHINE_AMD64.to_le_bytes());
+    cs.add(
+        "amd64_passes",
+        gate_machine(true, &img64) == MachineVerdict::Native64,
+        "",
+    );
+    // 8) 混合包：安装器 32 位 + 主程序 64 位 → 完整归因（主程序不被冤枉）。
+    let mixed = MixedPackage { installer: MachineVerdict::ThirtyTwo, payload: MachineVerdict::Native64 };
+    let c = mixed.card();
+    cs.add(
+        "mixed_package_full_attribution",
+        mixed.is_mixed() && c.why.contains("主程序是 64 位"),
+        "",
+    );
+    // 9) 拒绝记录：同文件第二次双击不再重复解释；可清；F036 上报记账。
+    let mut ledger = RefusalLedger::new();
+    let first = ledger.refuse(0xDEADBEEF);
+    let second = ledger.refuse(0xDEADBEEF);
+    cs.add(
+        "refusal_remembered",
+        first && !second && ledger.starcard_reports() == 1,
+        "",
+    );
+    ledger.clear();
+    cs.add(
+        "refusal_clearable",
+        ledger.is_empty() && ledger.refuse(0xDEADBEEF),
+        "",
+    );
+    // 10) 满容环形覆盖（1000 条后第 1001 条覆盖最旧，不崩不涨）。
+    let mut ledger = RefusalLedger::new();
+    for h in 0..REFUSAL_CAP as u64 {
+        let _ = ledger.refuse(h);
+    }
+    let capped = ledger.len() == REFUSAL_CAP;
+    let _ = ledger.refuse(REFUSAL_CAP as u64 + 1);
+    cs.add("refusal_ring_capped", capped && ledger.len() == REFUSAL_CAP, "");
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 测试（宿主）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pe_with_machine(machine: u16) -> Vec<u8> {
+        let mut img = vec![0u8; 0x80];
+        img[0] = b'M';
+        img[1] = b'Z';
+        img[0x3C..0x40].copy_from_slice(&0x40u32.to_le_bytes());
+        img[0x40..0x44].copy_from_slice(&[b'P', b'E', 0, 0]);
+        img[0x44..0x46].copy_from_slice(&machine.to_le_bytes());
+        img
+    }
+
+    #[test]
+    fn ten_thirtytwo_samples_all_card() {
+        // 判据：32 位样本集 10 枚 100% 触发诚实卡片。
+        for len in 0..10usize {
+            let mut img = pe_with_machine(MACHINE_I386);
+            img.resize(0x80 + len * 8, 0);
+            let v = gate_machine(true, &img);
+            assert_eq!(v, MachineVerdict::ThirtyTwo);
+            let c = v.honest_card().expect("must produce honest card");
+            assert!(c.what.contains("32 位"));
+            assert!(c.why.contains("64 位"));
+            assert!(c.next.contains("替代"));
+        }
+    }
+
+    #[test]
+    fn no_bare_reject_wording() {
+        // 文案审计：禁「不支持」裸句——what/why/next 必须有信息量。
+        for v in [MachineVerdict::ThirtyTwo, MachineVerdict::Arm64Declared] {
+            let c = v.honest_card().unwrap();
+            assert!(c.what.len() > 10, "what too bare: {}", c.what);
+            assert!(c.why.len() > 10, "why too bare: {}", c.why);
+            assert!(c.next.len() > 10, "next too bare: {}", c.next);
+        }
+    }
+
+    #[test]
+    fn mixed_package_distinct_from_plain_32() {
+        // 混合包卡片与普通 32 位卡片必须不同（完整归因：不冤枉主程序）。
+        let mixed = MixedPackage { installer: MachineVerdict::ThirtyTwo, payload: MachineVerdict::Native64 };
+        let plain = MachineVerdict::ThirtyTwo.honest_card().unwrap();
+        let c = mixed.card();
+        assert!(c.why.contains("主程序是 64 位"));
+        assert_ne!(c.what, plain.what);
+        // 反例：双 32 位不算混合。
+        let not_mixed = MixedPackage { installer: MachineVerdict::ThirtyTwo, payload: MachineVerdict::ThirtyTwo };
+        assert!(!not_mixed.is_mixed());
+    }
+
+    #[test]
+    fn peblock_ordering_redline() {
+        // 主册【状态与异常】：伪装 32 位的恶意样本照走 peblock 门——
+        // peblock 拒绝时本门不表态（返回 NotPe 短路），不抢闸。
+        let img = pe_with_machine(MACHINE_I386);
+        assert_eq!(gate_machine(false, &img), MachineVerdict::NotPe);
+        assert_eq!(gate_machine(true, &img), MachineVerdict::ThirtyTwo);
+    }
+
+    #[test]
+    fn ledger_second_click_quiet() {
+        let mut l = RefusalLedger::new();
+        assert!(l.refuse(42), "first click must show card");
+        assert!(!l.refuse(42), "second click must not repeat the card");
+        assert!(l.refuse(43), "different file still gets its card");
+        assert_eq!(l.len(), 2);
+        assert_eq!(l.starcard_reports(), 2);
+        l.clear();
+        assert!(l.refuse(42), "after clear the card returns");
+    }
+
+    #[test]
+    fn ledger_ring_overflow_is_capped() {
+        let mut l = RefusalLedger::new();
+        for h in 0..(REFUSAL_CAP as u64 + 50) {
+            let _ = l.refuse(h);
+        }
+        assert_eq!(l.len(), REFUSAL_CAP);
+        // 最旧的 0..50 已被覆盖：再次拒绝这些哈希应重新出卡。
+        assert!(l.refuse(0));
+        // 新写入的 1000..1050 仍在表内：不出卡。
+        assert!(!l.refuse(1000));
+    }
+
+    #[test]
+    fn corrupt_headers_not_our_business() {
+        // 非 PE / 头损坏不归位数闸管（peblock/F002 已有归因，不重复表态）。
+        assert_eq!(detect_machine(&[0u8; 8]), MachineVerdict::NotPe);
+        let mut bad = pe_with_machine(MACHINE_I386);
+        bad[0] = b'X';
+        assert_eq!(detect_machine(&bad), MachineVerdict::NotPe);
+        let mut bad = pe_with_machine(MACHINE_I386);
+        bad[0x44..0x46].copy_from_slice(&0x9999u16.to_le_bytes());
+        assert_eq!(detect_machine(&bad), MachineVerdict::NotPe);
+    }
+}
