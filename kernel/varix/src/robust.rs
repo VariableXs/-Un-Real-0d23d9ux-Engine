@@ -1019,12 +1019,12 @@ pub fn isolate_driver_failures(outcomes: &[DriverLoadOutcome]) -> LoadSummary {
 /// result is consumed by the boot path and the QEMU headless assertions.
 pub fn run_kernel_checkup() -> KernelCheckup {
     let mut checkup = KernelCheckup::new();
-    // 函数指针表：277 个域自检入口，统一经表迭代注册。禁止改回直排
+    // 函数指针表：327 个域自检入口，统一经表迭代注册。禁止改回直排
     // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
-    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 275 ≈ 852KB），
+    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 324 ≈ 1004KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 277] = [
+    let domains: [fn() -> CheckSet; 327] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1361,6 +1361,61 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 红绿在 secstar2::run_secstar2_checks 的子行展开）。
     // ------------------------------------------------------------------
         crate::secstar2::run_secstar2_checks,
+
+    // ------------------------------------------------------------------
+    // I 通用域·三分队（AI-U3 · F501~F550）：五十域直排注册（判据唯一源
+    // 逐域红绿；域内逐判据子行展开见 ustar3/ 各文件头注释）。
+    // ------------------------------------------------------------------
+        crate::ustar3::deskicons::run_f501_checks,
+        crate::ustar3::deskicons::run_f502_checks,
+        crate::ustar3::deskicons::run_f503_checks,
+        crate::ustar3::locksec::run_f504_checks,
+        crate::ustar3::locksec::run_f505_checks,
+        crate::ustar3::locksec::run_f506_checks,
+        crate::ustar3::locksec::run_f507_checks,
+        crate::ustar3::locksec::run_f508_checks,
+        crate::ustar3::filesec::run_f509_checks,
+        crate::ustar3::filesec::run_f510_checks,
+        crate::ustar3::filesec::run_f511_checks,
+        crate::ustar3::filesec::run_f512_checks,
+        crate::ustar3::pointerfx::run_f513_checks,
+        crate::ustar3::pointerfx::run_f514_checks,
+        crate::ustar3::explorerx::run_f515_checks,
+        crate::ustar3::winkeys::run_f516_checks,
+        crate::ustar3::explorerx::run_f517_checks,
+        crate::ustar3::winkeys::run_f518_checks,
+        crate::ustar3::pointerfx::run_f519_checks,
+        crate::ustar3::pointerfx::run_f520_checks,
+        crate::ustar3::explorerx::run_f521_checks,
+        crate::ustar3::pointerfx::run_f522_checks,
+        crate::ustar3::pointerfx::run_f523_checks,
+        crate::ustar3::copyops::run_f524_checks,
+        crate::ustar3::explorerx::run_f525_checks,
+        crate::ustar3::explorerx::run_f526_checks,
+        crate::ustar3::explorerx::run_f527_checks,
+        crate::ustar3::explorerx::run_f528_checks,
+        crate::ustar3::copyops::run_f529_checks,
+        crate::ustar3::copyops::run_f530_checks,
+        crate::ustar3::copyops::run_f531_checks,
+        crate::ustar3::copyops::run_f532_checks,
+        crate::ustar3::copyops::run_f533_checks,
+        crate::ustar3::copyops::run_f534_checks,
+        crate::ustar3::winkeys::run_f535_checks,
+        crate::ustar3::winkeys::run_f536_checks,
+        crate::ustar3::winkeys::run_f537_checks,
+        crate::ustar3::winkeys::run_f538_checks,
+        crate::ustar3::winkeys::run_f539_checks,
+        crate::ustar3::sysdev::run_f540_checks,
+        crate::ustar3::sysdev::run_f541_checks,
+        crate::ustar3::sysdev::run_f542_checks,
+        crate::ustar3::sysdev::run_f543_checks,
+        crate::ustar3::sysdev::run_f544_checks,
+        crate::ustar3::sysdev::run_f545_checks,
+        crate::ustar3::sysdev::run_f546_checks,
+        crate::ustar3::sysdev::run_f547_checks,
+        crate::ustar3::winkeys::run_f548_checks,
+        crate::ustar3::clockcal::run_f549_checks,
+        crate::ustar3::anchor::run_f550_checks,
     ];
     for f in domains {
         checkup.register(f());
