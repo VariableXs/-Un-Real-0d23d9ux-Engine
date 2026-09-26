@@ -408,6 +408,7 @@ export const en: Dict = {
   shotTool_mosaic: "Mosaic",
   shotTool_text: "Text",
   shotTool_none: "Crop",
+  shotTool_picker: "Pick Color",
   shotTextHint: "Annotation text",
   shotTextAdd: "Add",
   clipTitle: "Clipboard history",
@@ -1600,6 +1601,8 @@ export const en: Dict = {
   ifTitle: "Input Feel",
   // ---- J mouse domain AI-J1 (F601-F620) ----
   mouseJ1Title: "Mouse",
+  // ---- I general domain AI-U3 (F501-F550) ----
+  u3TabTitle: "General UX",
   ifMouseTitle: "Mouse Panel",
   ifMouseHint: "Wheel lines and double-click speed apply inside the environment instantly; pointer speed and button swap need 'Sync to system' (with confirm & rollback).",
   ifMouseSpeed: "Pointer speed",
@@ -2121,6 +2124,9 @@ export const en: Dict = {
   toolClockhub: "Clock Hub",
   toolEmoji: "Characters & Emoji",
   toolMagnifier: "Magnifier & Color Picker",
+  toolTerm2: "Terminal 2.0",
+  toolPaint: "Paint",
+  toolAlbum: "Album",
   toolConvert: "Converter",
   toolSysinfo: "System Info",
   toolPrintqueue: "Print Queue",

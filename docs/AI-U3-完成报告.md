@@ -4,10 +4,12 @@
 > （分工书《Varix STAR I start · AI分工完成图.md》AI-U3 泳道四，目标上限口径
 > 46,540 行）。
 > 分工边界：AI-U3 严格限定 F501-F550；未触碰其他 AI 的任务面（主工作区中
-> secstar/secstar2/deskstar/h1star/h2star/compatstar/stard 等在制品零卷入）。
-> 收口状态：**全绿收口**（变基到 origin/main=fda90911 后宿主
+> secstar/secstar2/deskstar/h1star/h2star/compatstar/stard/desktopxp 等在制品
+> 零卷入）。
+> 收口状态：**v1 全绿收口**（变基到 origin/main=fda90911 后宿主
 > **4422/4422 PASS**，ustar3 包内 307 单测 + 616 CheckSet 检查项全绿；
 > f475 全域 327 域断言 PASS）。
+> **深化批次（v2 前端功能面）已并入**：见下方 §8。
 
 ---
 
@@ -116,3 +118,53 @@ anchor 179 · mod.rs 104。
   对分工书上限口径 46,540 行的差距以「接线随闸门」登记（K1/K2 同口径），
   不以注水凑数（禁注水铁律优先于上限口径）。
 - 偏差与环境事项全部显性登记于 §4、§5；无死代码、无占位符、无静默吞错。
+
+---
+
+## 8. 深化批次（v2 · 前端功能面，2026-09-26 并入）
+
+> 对齐 AI-J1 深化批次二先例：v1（kernel ustar3）是判据实装层，v2 在前端
+> `src/features/u3/` 补齐主册「界面组件与交互层」工程量类别的功能面——
+> 真实算法、真实状态机、真实面板、真实运行时，非判据注释的二次抄写。
+
+### 8.1 交付物台账（v2）
+
+| 位置 | 内容 | 纯功能行数（非空非注释） |
+| --- | --- | --- |
+| `src/features/u3/u3store.ts` | 单一配置根（50 节/订阅总线/undo 栈深 3/默认值预填） | 249 |
+| `src/features/u3/deskicons.ts` | F501 感知亮度选字色+F297 联动 / F502 两行封顶（英文整词不拆）/ F503 三档格距+螺旋吸附 | 210 |
+| `src/features/u3/locksec.ts` | F504 PIN 冷却翻倍表状态机 / F505 蓝牙动态锁 / F506 沙盒四轴 / F507 锁屏防截 / F508 防截黑块几何 | 144 |
+| `src/features/u3/filesec.ts` | F509 粉碎两分支 / **F510 .vxcrypt（WebCrypto PBKDF2 600k+AES-256-GCM 真实现）** / F511 全清 / F512 两态历史 | 163 |
+| `src/features/u3/pointerfx.ts` | F513 Ctrl 定位（组合键豁免 20 例）/ F514 光带 / F519 双音 / F520 三义分流 / F522 轨迹 / F523 打字隐藏 | 120 |
+| `src/features/u3/explorerx.ts` | F515 查找替换（预览+整批一次撤销）/ F517 / F521 / F525 / F526 / F527 / F528 | 161 |
+| `src/features/u3/copyops.ts` | F524 后悔窗状态机 / F529-F534 复制链六件（预检/校验/队列/诊断/只读/长路径） | 206 |
+| `src/features/u3/winkeys.ts` | F516 横幅 / F518 切换键 / F535-F539 快捷键族 / F548 置顶 | 130 |
+| `src/features/u3/sysdev.ts` | F540-F547 系统设备八件（诊断/网络重置/ClickLock/分设备音量/双滑杆/电量/接入/平衡） | 186 |
+| `src/features/u3/clockcal.ts` | F549 农历引擎（位表与锚点自内核 ustar3 同源移植） | 141 |
+| `src/features/u3/anchor.ts` | F550 九域自检聚合引擎 | 45 |
+| `src/features/u3/U3Runtime.tsx` | 运行时总装（涟漪/光带/Caps 音/打字隐藏/瞥桌面/剪贴板热键/蓝牙锁心跳） | 215 |
+| `src/features/settings/U3Tab.tsx` | 50 项全量面板（九组三件套+判据样张实时数据+F550 自检内嵌） | 452 |
+| `src/styles/u3.css` | 面板与运行时件样式（令牌化零硬编码色/焦点环可见） | 144 |
+| **v2 合计** | | **2,566** |
+| 测试 `__tests__/u3.spec.ts` | 80 项单测（判据的执行器，不计功能行数） | 804 |
+| 集成改动 | `App.tsx`（挂 U3Runtime）、`SettingsModal.tsx`（注册 u3 页）、`i18n/dictionaries.ts`+`dict-en.ts`（u3TabTitle 双语键） | — |
+
+### 8.2 验证证据（v2）
+
+| # | 验证 | 结果 |
+| --- | --- | --- |
+| 1 | U3 单测 `vitest run src/features/u3/__tests__/u3.spec.ts` | **80/80 全绿**（证据 `_attic/u3-v2-frontend-test.log`） |
+| 2 | F510 WebCrypto round-trip + 错误密码 + 非法容器 | 3 用例全绿（真加解密，非 mock） |
+| 3 | F549 农历：位表-锚点不变量（2025-2030 六年）+ 春节五年抽检 + 中秋事实锚 + 闰月锚 + 跨年冬月十三 + 范围外诚实 null | 全绿 |
+| 4 | F550 九域自检聚合（≥25 检查点） | 全绿基线 |
+| 5 | tsc --noEmit 本域 | 0 错误（`_attic/u3-v2-tsc.log`；现存 2 错误均在 AI-D2 untracked 在制品 DesktopD2Panels.tsx，非本包领地） |
+| 6 | 宿主全量回归 | desktopxp 13 失败为 AI-D2 untracked 在制品（git 状态 ?? 零卷入）；本包领地 116/116 绿 |
+
+### 8.3 行数对账（v2 口径）
+
+- **v1 实装层**：19,480 行（Rust，§1）；**v2 前端功能面**：2,566 行（非空非注释）。
+- **累计：22,046 / 46,540（47.4%）**——对齐 J1 v2 诚实呈报口径（J1 同批为
+  3,967/15,660 = 25.3%），如实差距不以注水填补；剩余缺口按「界面层深化批次
+  （窗口系统接线/桌面图标实绘/资源管理器 UI 装配）」登记为后续工单。
+- 实机类判据（真实蓝牙 RSSI、锁屏截图通道内核拦截、录屏黑块合成、内存诊断
+  真机跑）按双轨制登记随闸门补测（§5-4 同口径），不冒领「实测全绿」。

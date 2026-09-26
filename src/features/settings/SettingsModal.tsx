@@ -42,7 +42,9 @@ import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManage
 import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
 import { MouseJ1Tab } from "./MouseJ1Tab";
+import { U3Tab } from "./U3Tab";
 import { H4Tab } from "./H4Tab";
+import { DesktopD2Tab } from "./DesktopD2Tab";
 import { AmbienceTab } from "./AmbienceTab";
 import { WinFeelTab } from "./WinFeelTab";
 import { PerfTab } from "./PerfTab";
@@ -239,7 +241,10 @@ export function SettingsModal(props: {
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
     { id: "mouseJ1", label: t("mouseJ1Title") },
+    { id: "u3", label: t("u3TabTitle") },
     { id: "h4tools", label: "效率与工具" },
+    // C 桌面体验域·后段 AI-D2：F093-F110 全量面板
+    { id: "desktopD2", label: "桌面体验" },
     { id: "ambience", label: t("amb18TabTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
@@ -975,8 +980,12 @@ export function SettingsModal(props: {
           {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
           {/* J 鼠标域 AI-J1：F601-F620 全量面板 */}
           {tab === "mouseJ1" && <MouseJ1Tab />}
+          {/* I 通用域 AI-U3：F501-F550 全量面板 */}
+          {tab === "u3" && <U3Tab />}
           {/* H 基础通用域 AI-H4：F351-F400 全量面板（创作者工具/效率件/系统状态/控件秩序） */}
           {tab === "h4tools" && <H4Tab />}
+          {/* C 桌面体验域·后段 AI-D2：F093-F110 全量面板 */}
+          {tab === "desktopD2" && <DesktopD2Tab />}
           {tab === "ambience" && <AmbienceTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
           {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}

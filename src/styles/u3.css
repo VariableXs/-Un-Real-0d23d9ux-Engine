@@ -1,0 +1,183 @@
+/* I 通用域 · AI-U3（F501-F550）面板与运行时件样式。
+ * 纪律：F151 主题令牌化——零硬编码语义色（光带三色经 --vx-sv-* 令牌可换肤）；
+ * 4px 栅格；高密度纵深（F302 乙基线）；焦点环可见（F206）。 */
+
+/* ------------------------------- F513 Ctrl 定位涟漪 ------------------------------- */
+
+.u3-ctrl-ripple {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  border: 2px solid var(--vx-accent, #4f8cff);
+  opacity: 0;
+  animation-name: u3-ripple-grow;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  animation-fill-mode: forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes u3-ripple-grow {
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(14); opacity: 0; }
+}
+
+/* ------------------------------- F514 声音视觉光带 ------------------------------- */
+
+.u3-sound-edge {
+  position: fixed;
+  z-index: 2147482900;
+  background: var(--u3-edge-color, var(--vx-accent, #4f8cff));
+  opacity: 0;
+  animation-name: u3-edge-pulse;
+  animation-timing-function: ease-in-out;
+  pointer-events: none;
+}
+
+.u3-sound-edge[data-side="top"] { top: 0; left: 0; right: 0; height: var(--u3-edge-px, 8px); }
+.u3-sound-edge[data-side="bottom"] { bottom: 0; left: 0; right: 0; height: var(--u3-edge-px, 8px); }
+.u3-sound-edge[data-side="left"] { left: 0; top: 0; bottom: 0; width: var(--u3-edge-px, 8px); }
+.u3-sound-edge[data-side="right"] { right: 0; top: 0; bottom: 0; width: var(--u3-edge-px, 8px); }
+
+@keyframes u3-edge-pulse {
+  0% { opacity: 0.9; }
+  50% { opacity: 0.15; }
+  100% { opacity: 0.9; }
+}
+
+/* ------------------------------- F501 桌面图标文字（双层渲染样张） ------------------------------- */
+
+.u3-icon-label-demo {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
+  max-width: 128px;
+  overflow: hidden;
+  text-shadow: var(--u3-demo-shadow, rgba(0, 0, 0, 0.4)) 0 1px 2px;
+}
+
+.u3-icon-label-demo.is-selected {
+  background: var(--vx-accent-soft, rgba(120, 160, 255, 0.28));
+}
+
+/* ------------------------------- F508 防截黑块样张 ------------------------------- */
+
+.u3-redact-demo {
+  position: relative;
+  height: 72px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(45deg, var(--vx-surface-2, #20242c), var(--vx-surface-2, #20242c) 8px, var(--vx-surface-3, #2a2f3a) 8px, var(--vx-surface-3, #2a2f3a) 16px);
+  overflow: hidden;
+}
+
+.u3-redact-demo > .redact {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 45%;
+  height: 48px;
+  background: #000;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: #666;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+/* ------------------------------- 面板通用（高密度 · F302 乙基线） ------------------------------- */
+
+.u3-panel { display: flex; flex-direction: column; gap: 12px; }
+
+.u3-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(220px, 1.2fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--vx-border, rgba(255, 255, 255, 0.08));
+  background: var(--vx-surface-2, rgba(255, 255, 255, 0.03));
+  min-height: 44px;
+}
+
+.u3-row:hover { border-color: var(--vx-border-strong, rgba(255, 255, 255, 0.16)); }
+
+.u3-row .u3-name { font-weight: 600; font-size: 13px; }
+.u3-row .u3-name .fno { color: var(--vx-accent, #4f8cff); font-size: 11px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.u3-row .u3-desc { font-size: 12px; color: var(--vx-text-dim, #9aa3b2); line-height: 1.45; }
+.u3-row .u3-ctl { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+.u3-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .u3-grid2 { grid-template-columns: 1fr; } }
+
+.u3-stat {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--vx-surface-3, rgba(255, 255, 255, 0.05));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.u3-stat b { color: var(--vx-accent, #4f8cff); }
+
+.u3-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--vx-border, rgba(255, 255, 255, 0.1));
+  color: var(--vx-text-dim, #9aa3b2);
+}
+
+.u3-badge.ok { color: var(--vx-ok, #34d399); border-color: color-mix(in srgb, var(--vx-ok, #34d399) 40%, transparent); }
+.u3-badge.warn { color: var(--vx-warn, #fbbf24); border-color: color-mix(in srgb, var(--vx-warn, #fbbf24) 40%, transparent); }
+
+.u3-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.u3-kv .k { color: var(--vx-text-dim, #9aa3b2); }
+
+/* F542 抓起光环样张 */
+.u3-clicklock-demo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--vx-surface-3, rgba(255, 255, 255, 0.05));
+  position: relative;
+}
+.u3-clicklock-demo.grabbed::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--vx-accent, #4f8cff);
+  box-shadow: 0 0 12px var(--vx-accent, #4f8cff);
+  animation: u3-ring 1.4s ease-in-out infinite;
+}
+@keyframes u3-ring { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.4; } }
+
+/* F539 布局锁定抖动反馈 */
+@keyframes u3-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+.u3-shake { animation: u3-shake 120ms ease-in-out 2; }
+
+/* 键盘可达性（F206）：面板内全部控件焦点环可见 */
+.u3-panel :focus-visible { outline: 2px solid var(--vx-accent, #4f8cff); outline-offset: 2px; border-radius: 4px; }

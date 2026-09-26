@@ -1212,6 +1212,7 @@ const zh: Dict = {
   shotTool_mosaic: "马赛克",
   shotTool_text: "文字",
   shotTool_none: "裁剪",
+  shotTool_picker: "取色",
   shotTextHint: "标注文字",
   shotTextAdd: "添加",
   clipTitle: "剪贴板历史",
@@ -1601,6 +1602,8 @@ const zh: Dict = {
   ifTitle: "输入手感",
   // ---- J 鼠标域 AI-J1（F601-F620） ----
   mouseJ1Title: "鼠标",
+  // ---- I 通用域 AI-U3（F501-F550） ----
+  u3TabTitle: "通用体验",
   ifMouseTitle: "鼠标手感面板",
   ifMouseHint: "滚轮行数与双击速度在环境内即时生效；指针速度与左右键交换需「同步到系统」（带确认与回滚，不影响其他应用的设置边界见系统参数）。",
   ifMouseSpeed: "指针速度",
@@ -2137,6 +2140,10 @@ const zh: Dict = {
   toolMagnifier: "放大镜与取色器",
   toolConvert: "换算中心",
   toolSysinfo: "系统信息",
+  // ==== AI-D2 桌面体验域·后段三件（F095/F096 终端 2.0 / F103 画图件 / F105 相册）====
+  toolTerm2: "终端 2.0",
+  toolPaint: "画图件",
+  toolAlbum: "相册",
   toolPrintqueue: "打印队列",
   // AI-11 系统集成与硬件组（系统中枢 / 性能 HUD）
   toolSyshub: "系统中枢",

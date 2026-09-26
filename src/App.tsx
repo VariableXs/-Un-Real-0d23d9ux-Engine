@@ -33,6 +33,8 @@ import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { J1Runtime, J1AppWindowLayer } from "./features/mouse/J1Runtime";
+import { U3Runtime } from "./features/u3/U3Runtime";
+import { D2Runtime } from "./features/desktopxp/D2Runtime";
 import { H4Runtime } from "./features/h4/H4Runtime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
@@ -703,6 +705,10 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <VisionRuntime />
             {/* J 鼠标域 AI-J1：F601-F620 指针/滚轮/手势运行时（F335 优先平面件挂此） */}
             <J1Runtime />
+            {/* I 通用域 AI-U3：F501-F550 涟漪/光带/瞥桌面/剪贴板热键/蓝牙锁运行时 */}
+            <U3Runtime />
+            {/* C 桌面体验域·后段 AI-D2：F106 键盘 HUD / F107 输入法浮窗 / F110 屏幕键盘 浮层运行时 */}
+            <D2Runtime />
             {/* H 基础通用域 AI-H4：F351-F400 运行时（开机徽标 F371 / 彩蛋 F399 / 滤镜单点 F387 / 阅读模式 F386） */}
             <H4Runtime />
             {settings && boot && (
