@@ -17,7 +17,7 @@ export interface U3LabelPair {
   en: string;
 }
 
-/** 引擎群标签（十三引擎）。 */
+/** 引擎群标签（v4 十三引擎 + v5 三装配引擎）。 */
 export const U3_ENGINE_LABELS: Readonly<Record<string, U3LabelPair>> = {
   lumapick:   { zh: "壁纸亮度采样引擎", en: "Wallpaper Luma Sampler" },
   gridlab:    { zh: "图标网格规划器", en: "Icon Grid Planner" },
@@ -32,6 +32,9 @@ export const U3_ENGINE_LABELS: Readonly<Record<string, U3LabelPair>> = {
   sysdiag:    { zh: "系统诊断引擎", en: "System Diagnostics" },
   explog:     { zh: "体验日志引擎", en: "Experience Log" },
   walkcheck:  { zh: "十二查对账引擎", en: "Twelve-Query Reconciler" },
+  despaint:   { zh: "桌面实绘引擎", en: "Desktop Paint Engine" },
+  expui:      { zh: "资源管理器装配引擎", en: "Explorer Assembly Engine" },
+  lockmount:  { zh: "锁屏横幅挂接引擎", en: "Lock & Banner Mount Engine" },
 };
 
 /** 面板区组标签。 */
@@ -49,6 +52,9 @@ export const U3_LAB_LABELS: Readonly<Record<string, U3LabelPair>> = {
   rageHint:    { zh: "点击下方按钮记录交互事件（狂点会被指纹器捕获）", en: "Click below to log events (rage clicks get fingerprinted)" },
   signals:     { zh: "挫败信号", en: "Frustration signals" },
   none:        { zh: "暂无", en: "None" },
+  deskGroup:   { zh: "桌面实绘装配区", en: "Desktop paint assembly" },
+  expGroup:    { zh: "资源管理器装配区", en: "Explorer assembly" },
+  lockGroup:   { zh: "锁屏横幅挂接区", en: "Lock & banner mount" },
 };
 
 /** 取词 selector（缺键显性回退键名——零静默漏翻）。 */
@@ -67,8 +73,8 @@ export function labelsSelfCheck(): Array<{ name: string; pass: boolean }> {
     pass: allDicts.every((d) => Object.values(d).every((p) => p.zh.length > 0 && p.en.length > 0)),
   });
   checks.push({
-    name: "labels 十三引擎在册",
-    pass: Object.keys(U3_ENGINE_LABELS).length === 13,
+    name: "labels 十六引擎在册",
+    pass: Object.keys(U3_ENGINE_LABELS).length === 16,
   });
   // 缺键显性回退：不存在的键返回键名（不静默给空串）
   checks.push({ name: "labels 缺键显性回退", pass: u3Label("no-such-key", "zh", U3_LAB_LABELS) === "no-such-key" });

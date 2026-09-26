@@ -29,6 +29,14 @@ for (const f of files) {
   pure += cnt;
 }
 for (const [f, t, p] of perFile.sort((a, b) => b[2] - a[2])) console.log(`${String(p).padStart(6)}  ${String(t).padStart(6)}  ${f}`);
+// v4 口径扩展：U3Tab（settings 领地的 U3 域面板）与 u3.css 同属 U3 前端承载
+for (const extra of ["src/features/settings/U3Tab.tsx", "src/styles/u3.css"]) {
+  const lines = readFileSync(join(root, extra), "utf8").split(/\r?\n/);
+  const cnt = lines.filter((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l)).length;
+  perFile.push([extra, lines.length, cnt]);
+  total += lines.length;
+  pure += cnt;
+}
 const v1 = 19480; // v1 内核实装层（kernel/varix/src/ustar3/，wc -l 口径）
 const cap = 46540;
 const cumulative = v1 + pure;

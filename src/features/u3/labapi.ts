@@ -5,7 +5,10 @@
  */
 export {
   V4_ENGINE_SELFCHECKS,
+  V5_ENGINE_SELFCHECKS,
   v4EnginesSelfCheck,
+  v5EnginesSelfCheck,
+  u3EnginesSelfCheck,
   buildDomainChecklist,
   reconcileTwelveQueries,
   u3ItemCoverage,

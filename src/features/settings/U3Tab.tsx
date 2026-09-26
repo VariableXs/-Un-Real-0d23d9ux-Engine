@@ -10,7 +10,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { u3Store, U3_DEFAULTS, type U3Section } from "../u3/u3store";
-import { U3LabSection, U3WalkCheckSection, U3ExpLogSection } from "../u3/U3Lab";
+import { U3LabSection, U3WalkCheckSection, U3ExpLogSection, U3LockMountSection } from "../u3/U3Lab";
+import { DeskPaintSection } from "../u3/DeskPaint";
+import { ExplorerPaneSection } from "../u3/ExplorerPane";
 import {
   GRID_DENSITY_PX, BRIGHTNESS_SAMPLES, pickIconTextColor, wrapIconLabel, iconTextLayers,
   effectiveGrid, resnapToGrid, type GridDensity,
@@ -116,6 +118,9 @@ export function U3Tab(): React.ReactElement {
       <SysDevGroup />
       <ClockAnchorGroup />
       <U3LabSection />
+      <DeskPaintSection />
+      <ExplorerPaneSection />
+      <U3LockMountSection />
       <U3WalkCheckSection />
       <U3ExpLogSection />
     </div>

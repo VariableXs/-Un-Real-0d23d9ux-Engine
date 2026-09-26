@@ -103,7 +103,7 @@ export const FRONTEND_DOMAIN_CARRIER: Record<string, { module: string; carrier: 
 /** F 编号 → 前端域映射（与内核 mod.rs 域表同源的分派——一处一事实）。
  *  聚合域（anchor 自身 / v4-engines 引擎群）不参与编号分派——它们是对账面
  *  不是功能承载面，混入会把 50 项全部错判到聚合域名下。 */
-const AGGREGATE_ANCHOR_DOMAINS = new Set(["anchor", "v4-engines"]);
+const AGGREGATE_ANCHOR_DOMAINS = new Set(["anchor", "v4-engines", "v5-engines"]);
 export const FNO_TO_FRONTEND_DOMAIN: Record<string, string> = {};
 for (const d of U3_ANCHOR_DOMAINS) {
   if (AGGREGATE_ANCHOR_DOMAINS.has(d.domain)) continue;

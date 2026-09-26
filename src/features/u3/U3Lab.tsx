@@ -22,6 +22,10 @@ import {
   ExpLog,
   toImprovementItems,
 } from "./labapi";
+import {
+  lockMountInit, lockMountPinFail, lockMountCooldownTick, lockMountUnlock,
+  U3_ZORDER, bannerWindowSpec,
+} from "./engines";
 import { U3_ENGINE_LABELS, U3_LAB_LABELS, labelsSelfCheck, u3Label } from "./labels";
 
 /* ------------------------------ 引擎群自检区 ------------------------------ */
@@ -174,6 +178,75 @@ export function U3ExpLogSection(): React.ReactElement {
         ))}
         {signals.length === 0 && <span className="u3-badge ok">✓ 暂无挫败信号</span>}
       </Row>
+    </SectionCard>
+  );
+}
+
+/* ------------------------------ v5 锁屏挂接实况区 ------------------------------ */
+
+/** U3Lab v5 锁屏/横幅挂接实况（lockmount 状态机活体驱动——非截图样张）。 */
+export function U3LockMountSection(): React.ReactElement {
+  const [rt, setRt] = useState(() => lockMountInit());
+  const [msg, setMsg] = useState("已锁定——PIN 键盘自动切入");
+
+  const wrongPin = useCallback(() => {
+    const r = lockMountPinFail(rt, Date.now());
+    setRt(r.rt);
+    setMsg(r.message);
+  }, [rt]);
+  const cooldown = useCallback(() => {
+    const r = lockMountCooldownTick(rt, Date.now());
+    setRt(r.rt);
+    setMsg(r.canFallback ? "冷却到期——密码登录可用" : `冷却中，剩 ${(r.remainingMs / 1000).toFixed(0)} 秒`);
+  }, [rt]);
+  const unlock = useCallback(() => {
+    const r = lockMountUnlock(rt);
+    setRt(r.rt);
+    setMsg(`解锁成功（预算 ${r.budgetMs}ms）——焦点归还原窗口`);
+  }, [rt]);
+
+  const phaseText: Record<string, string> = {
+    "locked": "锁定·PIN 键盘", "pin-entry": "PIN 输入中", "cooldown": "冷却中",
+    "password-fallback": "密码回退", "unlocking": "解锁中",
+  };
+
+  return (
+    <SectionCard title="锁屏横幅挂接实况" f="F504/F507/F508/F516·v5">
+      <div className="u3-lab-intro">
+        锁屏窗口状态机（锁定→PIN→冷却→密码回退→解锁归零）+ Z 序总表 + 横幅窗口规格——全部来自 lockmount 引擎活体驱动。
+      </div>
+      <div className="u3-row">
+        <div>
+          <div className="u3-name"><span className="fno">F504</span>锁屏状态机</div>
+          <div className="u3-desc">当前态 <b>{phaseText[rt.state.phase] ?? rt.state.phase}</b> · 连错 {rt.failCount} 次（满 5 进冷却，逐次翻倍）</div>
+        </div>
+        <div className="u3-ctl" style={{ gridColumn: "2 / span 2" }}>
+          <button type="button" className="j1x-btn" onClick={wrongPin}>输错一次 PIN</button>
+          <button type="button" className="j1x-btn" onClick={cooldown} disabled={rt.state.phase !== "cooldown"}>冷却推进</button>
+          <button type="button" className="j1x-btn" onClick={unlock}>解锁成功</button>
+          <span className="u3-stat" role="status">{msg}</span>
+        </div>
+      </div>
+      <div className="u3-row">
+        <div>
+          <div className="u3-name"><span className="fno">F508</span>Z 序总表</div>
+          <div className="u3-desc">章十一致性：全系统一套 zIndex——消费方按层取值，不自定</div>
+        </div>
+        <div className="u3-ctl" style={{ gridColumn: "2 / span 2" }}>
+          {Object.entries(U3_ZORDER).map(([layer, z]) => (
+            <span key={layer} className="u3-stat">{layer} <b>{z}</b></span>
+          ))}
+        </div>
+      </div>
+      <div className="u3-row">
+        <div>
+          <div className="u3-name"><span className="fno">F516</span>横幅窗口规格</div>
+          <div className="u3-desc">置顶不进任务栏 · 可点不穿透 · 出路三路（点击/超时/失焦）</div>
+        </div>
+        <div className="u3-ctl" style={{ gridColumn: "2 / span 2" }}>
+          {bannerWindowSpec().exits.map((x) => <span key={x} className="u3-badge ok">✓ {x}</span>)}
+        </div>
+      </div>
     </SectionCard>
   );
 }

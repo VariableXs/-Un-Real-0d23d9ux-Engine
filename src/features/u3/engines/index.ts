@@ -1,6 +1,6 @@
 /**
  * U3-v4 引擎群桶文件（AI-U3 · engines）。
- * 十三引擎统一出口——实验室面板、锚点域表、测试同源引用。
+ * v4 十三引擎 + v5 三装配引擎统一出口——实验室面板、锚点域表、测试同源引用。
  */
 export * from "./lumapick";
 export * from "./gridlab";
@@ -15,6 +15,9 @@ export * from "./hotkeymap";
 export * from "./sysdiag";
 export * from "./explog";
 export * from "./walkcheck";
+export * from "./despaint";
+export * from "./expui";
+export * from "./lockmount";
 
 import { lumapickSelfCheck } from "./lumapick";
 import { gridlabSelfCheck } from "./gridlab";
@@ -29,6 +32,9 @@ import { hotkeymapSelfCheck } from "./hotkeymap";
 import { sysdiagSelfCheck } from "./sysdiag";
 import { explogSelfCheck } from "./explog";
 import { walkcheckSelfCheck } from "./walkcheck";
+import { despaintSelfCheck } from "./despaint";
+import { expuiSelfCheck } from "./expui";
+import { lockmountSelfCheck } from "./lockmount";
 
 /** v4 引擎自检注册表（F550 锚点域并入的事实源——域表动态读这里）。 */
 export const V4_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
@@ -47,7 +53,24 @@ export const V4_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: strin
   { engine: "walkcheck", fScope: "十二查对账", run: walkcheckSelfCheck },
 ];
 
+/** v5 装配引擎注册表（批次五：桌面实绘/资源管理器装配/锁屏横幅挂接）。 */
+export const V5_ENGINE_SELFCHECKS: ReadonlyArray<{ engine: string; fScope: string; run: () => Array<{ name: string; pass: boolean }> }> = [
+  { engine: "despaint", fScope: "F502/F503/F537/F539", run: despaintSelfCheck },
+  { engine: "expui", fScope: "F526/F527/F528", run: expuiSelfCheck },
+  { engine: "lockmount", fScope: "F504/F507/F508/F516", run: lockmountSelfCheck },
+];
+
 /** v4 引擎群总自检（供锚点域与实验室面板调用）。 */
 export function v4EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
   return V4_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
+}
+
+/** v5 装配引擎群总自检（供锚点域与实验室面板调用）。 */
+export function v5EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return V5_ENGINE_SELFCHECKS.flatMap((e) => e.run().map((c) => ({ name: `[${e.engine}] ${c.name}`, pass: c.pass })));
+}
+
+/** 全引擎群总自检（v4+v5 一口出——锚点域与实验室消费）。 */
+export function u3EnginesSelfCheck(): Array<{ name: string; pass: boolean }> {
+  return [...v4EnginesSelfCheck(), ...v5EnginesSelfCheck()];
 }

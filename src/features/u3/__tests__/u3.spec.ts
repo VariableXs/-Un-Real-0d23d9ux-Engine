@@ -784,8 +784,8 @@ describe("F549 时钟悬停完整日期（农历离线引擎）", () => {
 /* ------------------------------- F550 ------------------------------- */
 
 describe("F550 批次六验收锚点（前端面九域自检）", () => {
-  it("十一域注册齐全（九功能域+F550 锚点域+v4 引擎群）且检查点 ≥ 25", () => {
-    expect(U3_ANCHOR_DOMAINS.length).toBe(11);
+  it("十二域注册齐全（九功能域+F550 锚点域+v4/v5 引擎群）且检查点 ≥ 25", () => {
+    expect(U3_ANCHOR_DOMAINS.length).toBe(12);
     const total = U3_ANCHOR_DOMAINS.reduce((a, d) => a + d.run().length, 0);
     expect(total).toBeGreaterThanOrEqual(U3_ANCHOR_MIN_CHECKS);
   });
