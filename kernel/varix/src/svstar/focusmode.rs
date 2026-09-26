@@ -118,6 +118,12 @@ pub struct FocusMode {
     ledger: Vec<SessionStat>,
     /// 长按进度（快捷键按下时刻；None = 未按）。
     hold_started_ms: Option<u64>,
+    /// 自定义压暗（None = 默认 20%）。
+    custom_dim_pct: Option<u32>,
+    /// 自定义 Pomodoro 时长（分钟，默认 25）。
+    pomodoro_min: u64,
+    /// 连续完整轮次（到点自动恢复计数）。
+    rounds_done: u32,
 }
 
 impl FocusMode {
@@ -132,6 +138,9 @@ impl FocusMode {
             deadline_ms: 0,
             ledger: Vec::new(),
             hold_started_ms: None,
+            custom_dim_pct: None,
+            pomodoro_min: POMODORO_MIN,
+            rounds_done: 0,
         }
     }
 
@@ -158,9 +167,12 @@ impl FocusMode {
         }
     }
 
-    /// 快捷键按下（记时刻——不足 500ms 不触发，防手滑）。
+    /// 快捷键按下（记时刻——不足 500ms 不触发，防手滑；按住期间重复
+    /// 按下忽略——不覆盖起按时刻，防「按住抖动缩矩」绕过判线）。
     pub fn hotkey_press(&mut self, now_ms: u64) {
-        self.hold_started_ms = Some(now_ms);
+        if self.hold_started_ms.is_none() {
+            self.hold_started_ms = Some(now_ms);
+        }
     }
 
     /// 快捷键松开：满 500ms 才翻转开关（一次开关不误触判据）。
@@ -179,7 +191,7 @@ impl FocusMode {
         self.state = if timed { FocusState::Timed } else { FocusState::Free };
         self.session_start_ms = now_ms;
         self.intercepted_now = 0;
-        self.deadline_ms = if timed { now_ms + POMODORO_MIN * 60_000 } else { 0 };
+        self.deadline_ms = if timed { now_ms + self.pomodoro_min * 60_000 } else { 0 };
         self.state
     }
 
@@ -193,6 +205,9 @@ impl FocusMode {
             timed: self.state == FocusState::Timed,
             ended_by_timer: by_timer,
         };
+        if by_timer {
+            self.rounds_done += 1;
+        }
         self.ledger.push(stat);
         self.state = FocusState::Off;
         self.intercepted_now = 0;
@@ -276,7 +291,117 @@ impl FocusMode {
         self.state = FocusState::Off;
         self.intercepted_now = 0;
         self.hold_started_ms = None;
+        self.rounds_done = 0;
         self.session_start_ms = now_ms;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2（随闸门补深化）：逐窗压暗 / 倒计时环 / F076 卡 / 轮次 /
+// 账本聚合 / 自定义档
+// ---------------------------------------------------------------------------
+
+/// 自定义压暗范围（设置页自定义档——主册【交互设计】「自定义压暗强度」；
+/// 钳制线：低于 10% 无感知、高于 50% 妨害可用性）。
+pub const CUSTOM_DIM_RANGE: (u32, u32) = (10, 50);
+/// Pomodoro 时长档（设置页自定义档：15/25/45/60 分钟）。
+pub const POMODORO_TIERS_MIN: [u64; 4] = [15, 25, 45, 60];
+/// 连续轮次起身建议线（专注 25 分钟一轮回——主册用户故事「25 分钟一轮
+/// 回提醒起身」；连续 2 轮后建议长休）。
+pub const BREAK_SUGGEST_ROUNDS: u32 = 2;
+
+impl FocusMode {
+    /// 自定义压暗强度（钳制进合法域；None = 回默认 20%）。
+    pub fn set_custom_dim(&mut self, pct: Option<u32>) {
+        self.custom_dim_pct = pct.map(|p| p.clamp(CUSTOM_DIM_RANGE.0, CUSTOM_DIM_RANGE.1));
+    }
+
+    /// 自定义 Pomodoro 时长档（钳制到四档之一；非法值吸附最近档）。
+    pub fn set_pomodoro_tier(&mut self, min: u64) -> u64 {
+        let nearest = *POMODORO_TIERS_MIN
+            .iter()
+            .min_by_key(|&&t| t.abs_diff(min))
+            .unwrap_or(&POMODORO_MIN);
+        self.pomodoro_min = nearest;
+        nearest
+    }
+
+    /// 有效压暗（自定义档优先，缺省 20%）。
+    fn effective_dim(&self) -> u32 {
+        self.custom_dim_pct.unwrap_or(DIM_PCT)
+    }
+
+    /// 逐窗压暗裁决（主册：非活动窗压暗、活动窗不压——应用无感知语义
+    /// 的窗口面）：Off → 0；活动窗 → 0；非活动窗 → 有效压暗。
+    pub fn window_dim(&self, win_id: u64) -> u32 {
+        if self.state == FocusState::Off {
+            return 0;
+        }
+        if win_id == self.active_window {
+            0
+        } else {
+            self.effective_dim()
+        }
+    }
+
+    /// 倒计时环进度（万分比；Timed 态才有环——60fps 数据源按帧注入
+    /// now_ms 查询）。
+    pub fn ring_progress_bp(&self, now_ms: u64) -> Option<u32> {
+        if self.state != FocusState::Timed {
+            return None;
+        }
+        let total = self.deadline_ms.saturating_sub(self.session_start_ms).max(1);
+        let elapsed = now_ms.saturating_sub(self.session_start_ms).min(total);
+        Some((elapsed * 10_000 / total) as u32)
+    }
+
+    /// 剩余文案（诚实倒计时：分钟向下取整，不足 1 分钟报「不足 1 分钟」）。
+    pub fn remaining_text(&self, now_ms: u64) -> String {
+        match self.state {
+            FocusState::Timed => {
+                let rem_ms = self.deadline_ms.saturating_sub(now_ms);
+                let rem_min = rem_ms / 60_000;
+                if rem_min >= 1 {
+                    alloc::format!("剩余 {} 分钟", rem_min)
+                } else {
+                    String::from("不足 1 分钟")
+                }
+            }
+            FocusState::Free => String::from("自由专注中"),
+            FocusState::Off => String::from("专注已关"),
+        }
+    }
+
+    /// F076 面板专注卡文案（状态 + 剩余——主册「面板专注卡显示状态与
+    /// 剩余」）。
+    pub fn quick_card_text(&self, now_ms: u64) -> String {
+        match self.state {
+            FocusState::Off => String::from("专注已关"),
+            FocusState::Free => String::from("专注中 · 自由档"),
+            FocusState::Timed => alloc::format!("专注中 · {}", self.remaining_text(now_ms)),
+        }
+    }
+
+    /// 连续完成轮次（到点自动恢复才计轮——手动中断不算完整轮）。
+    pub fn rounds_done(&self) -> u32 {
+        self.rounds_done
+    }
+
+    /// 起身建议（连续 ≥2 完整轮 → 建议长休——「25 分钟一轮回提醒起身」
+    /// 的执行面；建议只出一次由调用方消费）。
+    pub fn break_suggested(&self) -> bool {
+        self.rounds_done >= BREAK_SUGGEST_ROUNDS
+    }
+
+    /// 账本聚合（30 天窗内的诚实总账：总专注时长 ms / 总拦截数）。
+    pub fn aggregate_stats(&self) -> (u64, u64) {
+        let mut total_ms = 0u64;
+        let mut total_int = 0u64;
+        for s in &self.ledger {
+            total_ms += s.end_ms.saturating_sub(s.start_ms);
+            total_int += s.intercepted;
+        }
+        (total_ms, total_int)
     }
 }
 
@@ -408,6 +533,127 @@ pub fn run_focusmode_checks() -> CheckSet {
     let mut f = FocusMode::new(0);
     let v = f.judge(&Incoming { app: "社交", priority: NotifyPriority::Normal, bubble: true });
     set.add("off state delivers all", v == Verdict::Deliver && f.intercepted_now() == 0, "");
+
+    // 13. 逐窗压暗裁决（深化 v2）：活动窗 0、非活动窗按档、Off 全 0；
+    //     自定义档钳制生效。
+    let mut f = FocusMode::new(0);
+    let off_all0 = f.window_dim(99) == 0; // Off 态全窗零压暗
+    let _ = f.begin(0, false);
+    f.focus_switched(7, 0, 1);
+    let active0 = f.window_dim(7) == 0;
+    let active0 = f.window_dim(7) == 0;
+    let inactive_dim = f.window_dim(9) == DIM_PCT;
+    f.set_custom_dim(Some(35));
+    let custom = f.window_dim(9) == 35;
+    f.set_custom_dim(Some(80));
+    let clamped = f.window_dim(9) == CUSTOM_DIM_RANGE.1;
+    f.set_custom_dim(None);
+    let back_default = f.window_dim(9) == DIM_PCT;
+    set.add(
+        "per-window dim + custom clamp",
+        off_all0 && active0 && inactive_dim && custom && clamped && back_default,
+        "",
+    );
+
+    // 14. 倒计时环与剩余文案（深化 v2）：环进度 = 真实时间比；剩余分钟
+    //     诚实取整；Free/Off 无环。
+    let mut f = FocusMode::new(0);
+    f.set_pomodoro_tier(25);
+    f.begin(0, true);
+    let ring_60pct = f.ring_progress_bp(15 * 60_000) == Some(6_000); // 15/25 = 60%
+    let rem_text = f.remaining_text(15 * 60_000);
+    let rem_late = f.remaining_text(24 * 60_000 + 30_000);
+    let free_no_ring = {
+        let _ = f.end(0, false);
+        let mut g = FocusMode::new(0);
+        g.begin(0, false);
+        (g.ring_progress_bp(0).is_none(), g.remaining_text(0) == "自由专注中")
+    };
+    let off_text = f.remaining_text(0) == "专注已关";
+    set.add(
+        "ring progress + honest remaining text",
+        ring_60pct
+            && rem_text == "剩余 10 分钟"
+            && rem_late == "不足 1 分钟"
+            && free_no_ring.0
+            && free_no_ring.1
+            && off_text,
+        "",
+    );
+
+    // 15. F076 专注卡文案（深化 v2）：三态文案各就位。
+    let mut f = FocusMode::new(0);
+    let off_card = f.quick_card_text(0);
+    let _ = f.begin(0, false);
+    let free_card = f.quick_card_text(0);
+    let _ = f.end(0, false);
+    let _ = f.begin(0, true);
+    let timed_card = f.quick_card_text(10 * 60_000);
+    set.add(
+        "quick card three states",
+        off_card == "专注已关"
+            && free_card == "专注中 · 自由档"
+            && timed_card == "专注中 · 剩余 15 分钟",
+        "",
+    );
+
+    // 16. 轮次与起身建议（深化 v2）：两完整轮 → 建议；手动关不计轮；
+    //     重启清零。
+    let mut f = FocusMode::new(0);
+    f.begin(0, true);
+    let _ = f.end(25 * 60_000, true);
+    f.begin(26 * 60_000, true);
+    let _ = f.end(51 * 60_000, true);
+    let suggested = f.break_suggested();
+    f.begin(52 * 60_000, true);
+    let _ = f.end(60 * 60_000, false); // 手动关不计
+    let manual_no_round = f.rounds_done() == 2;
+    f.power_cycle_reset(61 * 60_000);
+    let cleared = f.rounds_done() == 0 && !f.break_suggested();
+    set.add(
+        "rounds + break suggestion + reset",
+        suggested && manual_no_round && cleared,
+        "",
+    );
+
+    // 17. 自定义 Pomodoro 档（深化 v2）：45 分钟档 deadline 正确；非法
+    //     值吸附最近档。
+    let mut f = FocusMode::new(0);
+    let tier = f.set_pomodoro_tier(45);
+    let _ = f.begin(0, true);
+    let mid_alive = f.tick(44 * 60_000).is_none();
+    let done_at_45 = f.tick(45 * 60_000) == Some(FocusState::Off);
+    let snapped = f.set_pomodoro_tier(28) == 25;
+    set.add(
+        "custom pomodoro tier + snap",
+        tier == 45 && mid_alive && done_at_45 && snapped,
+        "",
+    );
+
+    // 18. 账本聚合（深化 v2）：总时长与总拦截 = 各会话诚实求和。
+    let mut f = FocusMode::new(0);
+    f.begin(0, false);
+    f.judge(&Incoming { app: "a", priority: NotifyPriority::Normal, bubble: true });
+    f.judge(&Incoming { app: "b", priority: NotifyPriority::Normal, bubble: false });
+    let _ = f.end(10 * 60_000, false); // 10 分钟 2 拦截
+    f.begin(20 * 60_000, true);
+    f.judge(&Incoming { app: "c", priority: NotifyPriority::Normal, bubble: true });
+    let _ = f.end(50 * 60_000, true); // 30 分钟 1 拦截
+    let (total_ms, total_int) = f.aggregate_stats();
+    set.add(
+        "ledger aggregate honest totals",
+        total_ms == 40 * 60_000 && total_int == 3,
+        "",
+    );
+
+    // 19. 长按防抖（深化 v2）：按住期间重复按下不覆盖起按时刻。
+    let mut f = FocusMode::new(0);
+    f.hotkey_press(0);
+    f.hotkey_press(499); // 抖动重按——被忽略
+    let still_none = f.hotkey_release(499) == None; // 距首按 499ms 不足
+    f.hotkey_press(1_000);
+    let fired = f.hotkey_release(1_500) == Some(FocusState::Free);
+    set.add("hold debounce ignores re-press", still_none && fired, "");
 
     set
 }

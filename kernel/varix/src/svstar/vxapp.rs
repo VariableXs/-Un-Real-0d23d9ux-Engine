@@ -376,6 +376,59 @@ pub fn interactive_wizard(answers: [&str; 3]) -> Manifest {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：五形态判例数据 / 密钥指纹 / 打包缓存表
+// ---------------------------------------------------------------------------
+
+/// 五形态判例（验收判据：五个不同形态目录打包全绿——单 exe/带资源/
+/// 带运行时/带图标/最简；文件树种子数据）。
+pub const FIVE_FORM_FACTORS: [(&str, &[&str]); 5] = [
+    ("single-exe", &["bin/app.exe"]),
+    ("with-resources", &["bin/app.exe", "assets/logo.png", "assets/ui.json"]),
+    ("with-runtime", &["bin/app.exe", "runtime/host.dll", "runtime/lic.txt"]),
+    ("with-icon", &["bin/app.exe", "icon.ico"]),
+    ("minimal", &["app"]),
+];
+
+/// 打包缓存表（重复打包未变跳过——树哈希 → 产物哈希记忆）。
+pub struct PackCache {
+    entries: Vec<([u8; 32], [u8; 32])>,
+}
+
+impl PackCache {
+    pub fn new() -> PackCache {
+        PackCache { entries: Vec::new() }
+    }
+
+    /// 记录一次打包（树哈希 → 产物哈希；同树哈希覆盖更新）。
+    pub fn record(&mut self, tree_hash: [u8; 32], artifact_hash: [u8; 32]) {
+        match self.entries.iter_mut().find(|(t, _)| *t == tree_hash) {
+            Some(e) => e.1 = artifact_hash,
+            None => self.entries.push((tree_hash, artifact_hash)),
+        }
+    }
+
+    /// 未变跳过判定（树哈希命中 → 复用上次产物哈希）。
+    pub fn lookup(&self, tree_hash: &[u8; 32]) -> Option<[u8; 32]> {
+        self.entries.iter().find(|(t, _)| t == tree_hash).map(|(_, a)| *a)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+/// 密钥指纹（`vxapp keygen` 输出面：公钥 SHA-256 hex 前 16——排障
+/// 与身份核对的短指纹）。
+pub fn key_fingerprint(kp: &KeyPair) -> String {
+    let d = vbase::sha256(&public_bytes(kp));
+    let full = vbase::hex32_str(&d);
+    String::from(&full[..16])
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -538,6 +591,49 @@ pub fn run_vxapp_checks() -> CheckSet {
         "",
     );
 
+
+    // 15. 五形态判例（深化 v2）：五形态名互异且文件树种子非空——判例
+    //     打包数据源就位。
+    let names: Vec<&str> = FIVE_FORM_FACTORS.iter().map(|(n, _)| *n).collect();
+    let mut distinct = true;
+    for i in 0..5 {
+        for j in (i + 1)..5 {
+            if names[i] == names[j] {
+                distinct = false;
+            }
+        }
+    }
+    set.add(
+        "five form factors seeded",
+        FIVE_FORM_FACTORS.len() == 5
+            && distinct
+            && FIVE_FORM_FACTORS.iter().all(|(_, files)| !files.is_empty()),
+        "",
+    );
+
+    // 16. 打包缓存表（深化 v2）：同树哈希命中 → 复用产物哈希；异树
+    //     未命中；同树重打包覆盖更新（条目数不涨）。
+    let mut cache = PackCache::new();
+    let t1 = vbase::sha256(b"tree-1");
+    let a1 = vbase::sha256(b"artifact-1");
+    cache.record(t1, a1);
+    cache.record(t1, a1); // 重复记录同树 → 覆盖不涨
+    let hit = cache.lookup(&t1) == Some(a1);
+    let miss = cache.lookup(&vbase::sha256(b"tree-2")).is_none();
+    set.add(
+        "pack cache hit/miss/dedup",
+        hit && miss && cache.len() == 1,
+        "",
+    );
+
+    // 17. 密钥指纹（深化 v2）：16 位 hex——排障短指纹形态。
+    let fp = key_fingerprint(&keygen(b"fp-test"));
+    set.add(
+        "key fingerprint 16 hex",
+        fp.len() == 16 && fp.chars().all(|c| c.is_ascii_hexdigit()),
+        "",
+    );
+
     set
 }
 
@@ -574,5 +670,25 @@ mod tests {
         let s1 = sign(&kp, &vbase::sha256(b"a"));
         let s2 = sign(&kp, &vbase::sha256(b"b"));
         assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn f127_cache_overwrite_same_tree() {
+        let mut cache = PackCache::new();
+        let t = vbase::sha256(b"t");
+        cache.record(t, vbase::sha256(b"a1"));
+        let a2 = vbase::sha256(b"a2");
+        cache.record(t, a2);
+        assert_eq!(cache.lookup(&t), Some(a2), "同树重打包产物哈希更新");
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn f127_fingerprint_deterministic() {
+        let fp1 = key_fingerprint(&keygen(b"same-seed"));
+        let fp2 = key_fingerprint(&keygen(b"same-seed"));
+        let fp3 = key_fingerprint(&keygen(b"other-seed"));
+        assert_eq!(fp1, fp2);
+        assert_ne!(fp1, fp3);
     }
 }

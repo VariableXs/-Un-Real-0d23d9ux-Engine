@@ -270,6 +270,53 @@ impl OobeWizard {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：输入法试打框 / 主题四卡预览 / 步骤进度点
+// ---------------------------------------------------------------------------
+
+/// 输入法试打框（主册【设计细节】「输入法步含试打框（当场体验候选）」）：
+/// 注入按键串 → 返回候选串（模拟候选引擎出口——真实候选由 F107 管线
+/// 注入；此处为向导体验面的接缝契约）。
+pub fn ime_trytype(keys: &str) -> Vec<&'static str> {
+    match keys {
+        "nihao" => vec!["你好", "你号", "拟好"],
+        "varix" => vec!["Varix", "varix", "瓦瑞克斯"],
+        "" => Vec::new(),
+        _ => vec!["（无候选——逐字上屏）"],
+    }
+}
+
+/// 步骤进度点渲染数据（五枚顶部居中——完成/当前/未达三态）。
+pub fn progress_dots(current: usize, completed: usize) -> [(&'static str, bool); STEP_COUNT] {
+    let mut dots = [("", false); STEP_COUNT];
+    for (i, d) in dots.iter_mut().enumerate() {
+        // current 优先（正在走的一步即使已完成部分也显示 current——
+        // 视觉焦点唯一，不与 done 打架）。
+        *d = (
+            if i == current {
+                "current"
+            } else if i < completed {
+                "done"
+            } else {
+                "todo"
+            },
+            i <= current,
+        );
+    }
+    dots
+}
+
+impl OobeWizard {
+    /// 主题卡实时预览（点击即全局换——所见即所得）：注入回调面，返回
+    /// 是否触发（主题步才可预览；其他步拒绝）。
+    pub fn preview_theme(&self, card: usize, mut apply: impl FnMut(usize)) -> bool {
+        if self.current() != Step::Theme || card >= THEME_CARD_COUNT {
+            return false;
+        }
+        apply(card);
+        true
+    }
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -394,6 +441,40 @@ pub fn run_oobe_checks() -> CheckSet {
         "",
     );
 
+
+    // 8. 输入法试打框（深化 v2）：nihao → 你好候选三连；空输入零候选。
+    let c1 = ime_trytype("nihao");
+    let c2 = ime_trytype("");
+    set.add(
+        "ime trytype candidates",
+        c1.first() == Some(&"你好") && c1.len() == 3 && c2.is_empty(),
+        "",
+    );
+
+    // 9. 步骤进度点（深化 v2）：五枚三态——done/current/todo 排布正确。
+    let dots = progress_dots(2, 2);
+    set.add(
+        "progress dots three states",
+        dots.len() == STEP_COUNT
+            && dots[0].0 == "done"
+            && dots[1].0 == "done"
+            && dots[2].0 == "current"
+            && dots[4].0 == "todo"
+            && dots.iter().take(3).all(|(_, lit)| *lit)
+            && !dots[4].1,
+        "",
+    );
+
+    // 10. 主题卡实时预览（深化 v2）：主题步才触发、他步拒绝、越界卡拒绝。
+    let w = OobeWizard::new(); // 初始在 RegionLang 步
+    let mut applied = 0usize;
+    let rejected = !w.preview_theme(0, |c| applied += 1);
+    set.add(
+        "theme preview only on theme step",
+        rejected && applied == 0,
+        "",
+    );
+
     set
 }
 
@@ -433,5 +514,20 @@ mod tests {
         let s = w.finish_summary();
         assert_eq!(s.len(), 3);
         assert!(s[1].starts_with("你跳过了网络连接"));
+    }
+
+    #[test]
+    fn f117_trytype_varix() {
+        let c = ime_trytype("varix");
+        assert_eq!(c.first(), Some(&"Varix"));
+        let fallback = ime_trytype("zzzz");
+        assert!(fallback[0].contains("逐字上屏"), "无候选词诚实降级");
+    }
+
+    #[test]
+    fn f117_dots_all_done_shape() {
+        let dots = progress_dots(STEP_COUNT - 1, STEP_COUNT);
+        assert!(dots.iter().take(STEP_COUNT - 1).all(|(s, _)| *s == "done"));
+        assert_eq!(dots[STEP_COUNT - 1].0, "current");
     }
 }

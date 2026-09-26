@@ -237,6 +237,32 @@ impl WelcomeCenter {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：横滑判线 / 中途进度记录
+// ---------------------------------------------------------------------------
+
+/// 横滑判线结果（250ms 横滑——主册【设计细节】）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SwipeVerdict {
+    /// 位移过阈值 → 翻下一卡。
+    Advance,
+    /// 位移过阈值（反向）→ 回上一卡。
+    Back,
+    /// 位移不足 → 回弹原位（橡皮筋）。
+    RubberBand,
+}
+
+/// 横滑判线：拖拽位移 px 过 ±120px 判翻页，否则回弹。
+pub fn swipe_verdict(dx_px: i32) -> SwipeVerdict {
+    const THRESHOLD_PX: i32 = 120;
+    if dx_px <= -THRESHOLD_PX {
+        SwipeVerdict::Advance
+    } else if dx_px >= THRESHOLD_PX {
+        SwipeVerdict::Back
+    } else {
+        SwipeVerdict::RubberBand
+    }
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -339,6 +365,18 @@ pub fn run_welcome_checks() -> CheckSet {
         "",
     );
 
+
+    // 8. 横滑判线（深化 v2）：-121 翻下卡 / +121 回上卡 / ±119 回弹。
+    set.add(
+        "swipe verdict three branches",
+        swipe_verdict(-121) == SwipeVerdict::Advance
+            && swipe_verdict(121) == SwipeVerdict::Back
+            && swipe_verdict(0) == SwipeVerdict::RubberBand
+            && swipe_verdict(119) == SwipeVerdict::RubberBand
+            && swipe_verdict(-120) == SwipeVerdict::Advance,
+        "",
+    );
+
     set
 }
 
@@ -382,5 +420,18 @@ mod tests {
         let w = WelcomeCenter::new(true);
         assert_eq!(w.render_mode(), "illustrated");
         assert!(w.skip_all_visible());
+    }
+
+    #[test]
+    fn f118_swipe_symmetric() {
+        // 对称性：等大反向位移判线互为镜像（手感一致性）。
+        for dx in [-125i32, -121, 121, 125] {
+            let a = swipe_verdict(dx);
+            let b = swipe_verdict(-dx);
+            assert_eq!(
+                matches!(a, SwipeVerdict::Advance),
+                matches!(b, SwipeVerdict::Back)
+            );
+        }
     }
 }

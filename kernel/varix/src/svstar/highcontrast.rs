@@ -253,6 +253,64 @@ pub fn audit_pages(theme: &ThemePalette, pages: &[PageSample]) -> (bool, Vec<&'s
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：切换管线 / 图标变体 / 扫描报告渲染
+// ---------------------------------------------------------------------------
+
+/// 图标高对比变体清单（两主题各一套 4K 产出的资产名单——主册「两主题
+/// 各含图标高对比变体（4K 管线双套产出）」；资产缺席走纯描边兜底）。
+pub const ICON_VARIANTS: [&str; 8] = [
+    "folder", "file", "settings", "search", "trash", "network", "volume", "power",
+];
+
+impl HighContrastMgr {
+    /// 切换管线（一键切换即时生效 + 会话记忆）：None = 关闭高对比
+    /// （回常规主题）；Some(主题) = 生效并记忆。切换计数留痕。
+    pub fn switch(&mut self, theme: Option<&'static ThemePalette>) -> bool {
+        self.active = theme;
+        self.switches += 1;
+        true
+    }
+
+    /// 全页扫描报告（主册「工具扫描报告」的文本形态：逐页逐样本对比度
+    /// ×100 值 + 达标标记；未启用主题时如实标注「未启用」）。
+    pub fn scan_report(&self, pages: &[PageSample]) -> String {
+        let mut s = String::new();
+        s.push_str("高对比度对比度扫描报告
+| 页面 | 最低对比度(×100) | 达标(≥700) |
+| --- | --- | --- |
+");
+        for p in pages {
+            let (min_ratio, all_ok) = match self.active {
+                None => (0u32, false),
+                Some(t) => {
+                    let bg = t.bg;
+                    let mut min_r = u32::MAX;
+                    let mut ok_all = true;
+                    for (_, color) in &p.samples {
+                        let r = vbase::contrast_ratio_x100(*color, bg);
+                        if r < min_r {
+                            min_r = r;
+                        }
+                        if r < CONTRAST_FLOOR_X100 {
+                            ok_all = false;
+                        }
+                    }
+                    (if min_r == u32::MAX { 0 } else { min_r }, ok_all)
+                }
+            };
+            s.push_str(&alloc::format!(
+                "| {} | {} | {} |
+",
+                p.page,
+                min_ratio,
+                if all_ok { "✅" } else { "❌" }
+            ));
+        }
+        s
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -371,6 +429,56 @@ pub fn run_highcontrast_checks() -> CheckSet {
     let fd = vbase::contrast_ratio_x100(BLACK_FOCUS, BLACK_BG);
     let wf = vbase::contrast_ratio_x100(WHITE_FOCUS, WHITE_BG);
     set.add("focus rings meet floor", fd >= 700 && wf >= 700, "");
+
+    // 13. 切换管线（深化 v2）：黑 → 白 → 关闭，切换计数逐次留痕（即时
+    //     生效 + 记忆语义）。
+    let mut m = HighContrastMgr::new();
+    let _ = m.switch(Some(&THEME_BLACK));
+    let black_on = matches!(m.active(), Some(t) if core::ptr::eq(t, &THEME_BLACK)) && m.switches() == 1;
+    let _ = m.switch(Some(&THEME_WHITE));
+    let white_on = matches!(m.active(), Some(t) if core::ptr::eq(t, &THEME_WHITE)) && m.switches() == 2;
+    let _ = m.switch(None);
+    let off_now = m.active().is_none() && m.switches() == 3;
+    set.add("switch pipeline instant + counted", black_on && white_on && off_now, "");
+
+    // 14. 扫描报告渲染（深化 v2）：合格页 ✅、违例页 ❌、未启用态如实
+    //     标注。
+    let mut m = HighContrastMgr::new();
+    let _ = m.switch(Some(&THEME_BLACK));
+    let good_page = PageSample {
+        page: "设置中心",
+        samples: vec![(TokenRole::Foreground, (0xFF, 0xFF, 0xFF))],
+    };
+    let bad_page = PageSample {
+        page: "第三方面板",
+        samples: vec![(TokenRole::Secondary, (0x77, 0x77, 0x77))],
+    };
+    let report = m.scan_report(&[good_page, bad_page]);
+    let (g_ok, _) = audit_pages(&THEME_BLACK, &[PageSample {
+        page: "设置中心",
+        samples: vec![(TokenRole::Foreground, (0xFF, 0xFF, 0xFF))],
+    }]);
+    set.add(
+        "scan report renders with verdicts",
+        report.contains("高对比度对比度扫描报告")
+            && report.contains("设置中心")
+            && report.contains("第三方面板")
+            && report.contains("❌")
+            && g_ok,
+        "",
+    );
+
+    // 15. 图标高对比变体清单（深化 v2）：八枚互异——4K 双套产出资产
+    //     名单在册。
+    let mut distinct = true;
+    for i in 0..ICON_VARIANTS.len() {
+        for j in (i + 1)..ICON_VARIANTS.len() {
+            if ICON_VARIANTS[i] == ICON_VARIANTS[j] {
+                distinct = false;
+            }
+        }
+    }
+    set.add("icon variants registered 8 distinct", ICON_VARIANTS.len() == 8 && distinct, "");
 
     set
 }

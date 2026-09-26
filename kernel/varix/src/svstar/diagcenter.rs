@@ -507,6 +507,43 @@ impl DiagCenter {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：日志三条件查询 / 分卷导出计算
+// ---------------------------------------------------------------------------
+
+/// 日志查询条件（等级/时间窗/文本子串——三轴 AND；主册「日志查看器
+/// 内嵌（过滤/搜索/时间窗）」）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct LogQuery {
+    pub level_min: Option<LogLevel>,
+    pub since_ms: Option<u64>,
+    pub until_ms: Option<u64>,
+    pub text_contains: Option<&'static str>,
+}
+
+impl LogStore {
+    /// 结构化三条件过滤查询（等级/时间窗/文本子串三轴 AND；与既有
+    /// 四参 query 的差异：可选轴——不关心的轴不设限）。
+    pub fn query_filtered(&self, q: LogQuery) -> Vec<&LogLine> {
+        self.lines
+            .iter()
+            .filter(|l| q.level_min.map(|m| l.level as u32 >= m as u32).unwrap_or(true))
+            .filter(|l| q.since_ms.map(|s| l.at_ms >= s).unwrap_or(true))
+            .filter(|l| q.until_ms.map(|u| l.at_ms < u).unwrap_or(true))
+            .filter(|l| q.text_contains.map(|t| l.text.contains(t)).unwrap_or(true))
+            .collect()
+    }
+}
+
+/// 分卷导出计算（>100MB → 分卷；返回卷数与每卷字节——总字节对账）。
+pub fn export_volume_plan(total_bytes: u64, cap_bytes: u64) -> (usize, u64) {
+    if total_bytes == 0 {
+        return (1, 0);
+    }
+    let cap = cap_bytes.max(1);
+    let volumes = ((total_bytes + cap - 1) / cap) as usize;
+    (volumes, cap.min(total_bytes))
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -662,6 +699,38 @@ pub fn run_diagcenter_checks() -> CheckSet {
         "",
     );
 
+
+    // 12. 结构化日志查询（深化 v2）：三轴 AND——只设时间窗、只设等级、
+    //     组合过滤各命中预期行。
+    let mut logs = LogStore::new();
+    logs.push(0, LogLevel::Debug, "启动探针");
+    logs.push(5_000, LogLevel::Warn, "帧率下滑");
+    logs.push(9_000, LogLevel::Error, "写入失败");
+    let by_window = logs.query_filtered(LogQuery { since_ms: Some(4_000), ..LogQuery::default() });
+    let by_level = logs.query_filtered(LogQuery { level_min: Some(LogLevel::Warn), ..LogQuery::default() });
+    let by_text = logs.query_filtered(LogQuery { text_contains: Some("写入"), ..LogQuery::default() });
+    let combo = logs.query_filtered(LogQuery {
+        since_ms: Some(4_000),
+        level_min: Some(LogLevel::Error),
+        ..LogQuery::default()
+    });
+    set.add(
+        "structured log query three axes",
+        by_window.len() == 2 && by_level.len() == 2 && by_text.len() == 1 && combo.len() == 1,
+        "",
+    );
+
+    // 13. 分卷导出计算（深化 v2）：250MB/100MB → 3 卷；200MB/100MB →
+    //     2 卷；0 字节 → 1 空卷（诚实不除零）。
+    let (v1, b1) = export_volume_plan(250_000_000, EXPORT_SPLIT_BYTES);
+    let (v2, _b2) = export_volume_plan(200_000_000, EXPORT_SPLIT_BYTES);
+    let (v3, b3) = export_volume_plan(0, EXPORT_SPLIT_BYTES);
+    set.add(
+        "volume plan math",
+        v1 == 3 && b1 == EXPORT_SPLIT_BYTES && v2 == 2 && v3 == 1 && b3 == 0,
+        "",
+    );
+
     set
 }
 
@@ -718,5 +787,20 @@ mod tests {
         let (vols, split) = logs.export(false);
         assert_eq!(vols, vec![1, 1]);
         assert!(split);
+    }
+
+    #[test]
+    fn f120_query_no_filters_returns_all() {
+        let mut logs = LogStore::new();
+        logs.push(0, LogLevel::Debug, "a");
+        logs.push(1, LogLevel::Error, "b");
+        assert_eq!(logs.query_filtered(LogQuery::default()).len(), 2, "全空条件 = 全量");
+    }
+
+    #[test]
+    fn f120_volume_cap_exact_boundary() {
+        // 恰好 100MB → 1 卷（边界不空转）。
+        let (v, _) = export_volume_plan(EXPORT_SPLIT_BYTES, EXPORT_SPLIT_BYTES);
+        assert_eq!(v, 1);
     }
 }

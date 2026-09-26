@@ -23,6 +23,7 @@
 
 use crate::checks::CheckSet;
 
+use crate::svstar::vbase;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -363,6 +364,758 @@ impl WalkEngine {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2 · 一：判据锚号与三列映射表（自动生成 + 人工复核双轨）
+// ---------------------------------------------------------------------------
+
+/// 判据锚号生成（F 编号 → 主册 G-C-xx 规范锚）。
+///
+/// 一处一事实：锚号规则唯一源。主册 C-9 段「深化设计报告（F071-F125）
+/// 中 G-C-41 = F111、G-C-55 = F125，即锚号 = G-C-(fid-70)（两位补零）。
+/// 三列映射表的「判据编号」列由此自动生成——改主册锚号先改本函数。
+pub fn criterion_anchor(fid: u32) -> String {
+    debug_assert!((71..=125).contains(&fid), "锚号规则只覆盖 C 域 F071-F125");
+    alloc::format!("G-C-{:02}", fid - 70)
+}
+
+/// 判据锚号往返校验（F111 → G-C-41、F125 → G-C-55——主册两处已知锚点）。
+pub fn criterion_anchor_known_pairs() -> [(u32, &'static str); 2] {
+    [(111, "G-C-41"), (125, "G-C-55")]
+}
+
+/// 三列映射表行（F 编号 / 宪章条款 / 判据编号——主册 G-C-55 设计细节
+/// 「映射表三列」）。
+///
+/// - `charter`：宪章条款名（20 维度名，引用 DIMENSIONS 不复述内容——
+///   特别加权「引用本卷编号」纪律的列表达）；
+/// - `anchor`：判据编号（criterion_anchor 自动生成）；
+/// - `reviewed`：人工复核标记（双轨制的「人工」半边——自动生成后必须
+///   逐行复核才算走查母本就绪）。
+#[derive(Clone, Debug)]
+pub struct ColumnRow {
+    pub fid: u32,
+    pub charter: &'static str,
+    pub anchor: String,
+    pub reviewed: bool,
+}
+
+/// 三列映射表自动生成：逐 MAP 条目按 F→维度归属表展开宪章条款列，
+/// 判据编号列由 criterion_anchor 生成。每 F 至少一行（覆盖率 100% 的
+/// 结构对账面），reviewed 初始为 false 待人工复核。
+pub fn auto_columns() -> Vec<ColumnRow> {
+    let mut rows = Vec::new();
+    for m in MAP.iter() {
+        let dims = dimensions_of(m.fid);
+        if dims.is_empty() {
+            // 无维度归属 = 三册腐化信号——结构上不可能（归属表自检兜底），
+            // 兜底行挂「验收协议执行」并拒绝复核位。
+            rows.push(ColumnRow {
+                fid: m.fid,
+                charter: DIMENSIONS[18].0,
+                anchor: criterion_anchor(m.fid),
+                reviewed: false,
+            });
+            continue;
+        }
+        for &d in dims {
+            rows.push(ColumnRow {
+                fid: m.fid,
+                charter: DIMENSIONS[d].0,
+                anchor: criterion_anchor(m.fid),
+                reviewed: false,
+            });
+        }
+    }
+    rows
+}
+
+/// 三列映射表人工复核（双轨制第二轨：逐行盖章；返回盖章后待复数）。
+pub fn review_columns(rows: &mut [ColumnRow], reviewed_fids: &[u32]) -> usize {
+    for r in rows.iter_mut() {
+        if reviewed_fids.contains(&r.fid) {
+            r.reviewed = true;
+        }
+    }
+    rows.iter().filter(|r| !r.reviewed).count()
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 二：F→维度全量归属表（20 维度走查的全量锚点面）
+// ---------------------------------------------------------------------------
+
+/// F→20 维度归属表（每 F 至少一维度；20 维度每维度至少一锚）。
+///
+/// 归属依据 = 主册各功能【验收判据】与【交互设计】段落落点（一处一
+/// 事实：本表是「宪章条款 → F 编号」三列映射的展开源；改归属先改
+/// 主册判据再同步此处）。索引 = DIMENSIONS 下标。
+fn dims_of_entry(fid: u32) -> &'static [usize] {
+    match fid {
+        // F071-F075 任务栏族：交互正确性/性能/手感
+        71 => &[0, 4, 6],
+        72 => &[4, 11],
+        73 => &[2, 4],
+        74 => &[6, 11],
+        75 => &[4, 5],
+        // F076-F082 快速面板与窗口族
+        76 => &[6, 12],
+        77 => &[0, 16, 9],
+        78 => &[3, 14],
+        79 => &[3, 5],
+        80 => &[3, 4],
+        81 => &[0, 4],
+        82 => &[0, 4, 15],
+        // F083-F088 桌面操作族
+        83 => &[1, 5],
+        84 => &[1, 5],
+        85 => &[8, 4],
+        86 => &[0, 8],
+        87 => &[7, 0],
+        88 => &[4, 12],
+        // F089-F092 资源管理器族
+        89 => &[0, 14],
+        90 => &[0, 13],
+        91 => &[1, 2],
+        92 => &[8],
+        // F093-F096 媒体与终端族
+        93 => &[4, 2],
+        94 => &[1, 5],
+        95 => &[13, 4],
+        96 => &[6, 12],
+        // F097-F102 应用族
+        97 => &[8, 4],
+        98 => &[5, 2],
+        99 => &[1, 13],
+        100 => &[8, 14],
+        101 => &[7, 4],
+        102 => &[8, 12],
+        // F103-F106 创作族
+        103 => &[5, 4],
+        104 => &[4, 3],
+        105 => &[4, 2],
+        106 => &[14, 0],
+        // F107-F110 输入族
+        107 => &[13, 0],
+        108 => &[13, 1],
+        109 => &[8, 10],
+        110 => &[6, 17],
+        // F111-F115 辅助族（V1 域前半）
+        111 => &[14, 4, 6],
+        112 => &[6, 7],
+        113 => &[2, 18],
+        114 => &[2, 10],
+        115 => &[0, 10],
+        // F116-F120 服务族（V1 域中段）
+        116 => &[14, 2],
+        117 => &[12, 7],
+        118 => &[12, 11],
+        119 => &[7, 17],
+        120 => &[10, 9, 7],
+        // F121-F125 兜底族（V1 域后段）
+        121 => &[8, 10],
+        122 => &[10, 7],
+        123 => &[14, 1],
+        124 => &[3, 11],
+        _ => &[18, 19], // F125 总判据自身：验收协议 + 整体感受
+    }
+}
+
+/// 公开归属查询（切片常量化——调用方零拷贝）。
+pub fn dimensions_of(fid: u32) -> &'static [usize] {
+    dims_of_entry(fid)
+}
+
+/// 维度全量锚点展开（某维度下全部归属 F——三列映射与维度评分共用）。
+pub fn dimension_anchors_full(dim: usize) -> Vec<u32> {
+    let mut v = Vec::new();
+    for m in MAP.iter() {
+        if dimensions_of(m.fid).contains(&dim) {
+            v.push(m.fid);
+        }
+    }
+    v
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 三：回流单完整状态机（MD3 附录 J 纪律的闭环）
+// ---------------------------------------------------------------------------
+
+/// 回流单阶段（开单 → 审批 → 回炉 → 复测 → 关闭；驳回/撤回双出线）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReflowStage {
+    /// 已提交待批。
+    Submitted,
+    /// 批准进入回炉队列。
+    Approved,
+    /// 驳回（豁免登记或证据补齐）。
+    Denied,
+    /// 回炉施工中。
+    InBacklog,
+    /// 复测通过关闭。
+    Closed,
+    /// 提交者撤回。
+    Withdrawn,
+}
+
+impl ReflowStage {
+    pub fn tag(self) -> &'static str {
+        match self {
+            ReflowStage::Submitted => "submitted",
+            ReflowStage::Approved => "approved",
+            ReflowStage::Denied => "denied",
+            ReflowStage::InBacklog => "in-backlog",
+            ReflowStage::Closed => "closed",
+            ReflowStage::Withdrawn => "withdrawn",
+        }
+    }
+
+    /// 终态判定（终态单不再流转——台账冻结）。
+    pub fn terminal(self) -> bool {
+        matches!(self, ReflowStage::Closed | ReflowStage::Denied | ReflowStage::Withdrawn)
+    }
+}
+
+/// 回流完整单据（审计字段齐：开单人/审批人/双时间戳）。
+#[derive(Clone, Debug)]
+pub struct ReflowFull {
+    pub fid: u32,
+    pub note: &'static str,
+    pub stage: ReflowStage,
+    pub opened_ms: u64,
+    pub decided_ms: Option<u64>,
+    pub reviewer: &'static str,
+}
+
+/// 回流审批台（MD3 附录 J：不达标项自动回流加塞审批——完整闭环）。
+pub struct ReflowDesk {
+    queue: Vec<ReflowFull>,
+}
+
+impl ReflowDesk {
+    pub fn new() -> ReflowDesk {
+        ReflowDesk { queue: Vec::new() }
+    }
+
+    /// 开单（自动入口：walkcheck Red 即开单——stage=Submitted）。
+    pub fn open(&mut self, fid: u32, note: &'static str, now_ms: u64) -> Option<usize> {
+        if self.queue.len() >= REFLOW_QUEUE_CAP {
+            return None; // 容量守卫同 v1
+        }
+        self.queue.push(ReflowFull {
+            fid,
+            note,
+            stage: ReflowStage::Submitted,
+            opened_ms: now_ms,
+            decided_ms: None,
+            reviewer: "",
+        });
+        Some(self.queue.len() - 1)
+    }
+
+    /// 审批：Submitted → Approved / Denied（审批人 + 时间戳强制——谁批的
+    /// 何时批的永久留痕）。
+    pub fn decide(&mut self, idx: usize, approve: bool, reviewer: &'static str, now_ms: u64) -> bool {
+        match self.queue.get_mut(idx) {
+            Some(t) if t.stage == ReflowStage::Submitted => {
+                t.stage = if approve { ReflowStage::Approved } else { ReflowStage::Denied };
+                t.decided_ms = Some(now_ms);
+                t.reviewer = reviewer;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 撤回：Submitted → Withdrawn（提交者反悔出线）。
+    pub fn withdraw(&mut self, idx: usize) -> bool {
+        match self.queue.get_mut(idx) {
+            Some(t) if t.stage == ReflowStage::Submitted => {
+                t.stage = ReflowStage::Withdrawn;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 派工：Approved → InBacklog（回炉队列就位）。
+    pub fn dispatch(&mut self, idx: usize) -> bool {
+        match self.queue.get_mut(idx) {
+            Some(t) if t.stage == ReflowStage::Approved => {
+                t.stage = ReflowStage::InBacklog;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 复测关闭：InBacklog → Closed（复测必须过原判据——本函数不判
+    /// 判据，由调用方以 WalkEngine.record 复绿后调用）。
+    pub fn close(&mut self, idx: usize, now_ms: u64) -> bool {
+        match self.queue.get_mut(idx) {
+            Some(t) if t.stage == ReflowStage::InBacklog => {
+                t.stage = ReflowStage::Closed;
+                t.decided_ms = Some(now_ms);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 未批超时清单（开单超 7 天仍 Submitted——审批台积压告警）。
+    pub fn overdue(&self, now_ms: u64) -> Vec<usize> {
+        let deadline = WEEKLY_AUDIT_DAYS * 86_400_000;
+        self.queue
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.stage == ReflowStage::Submitted && now_ms.saturating_sub(t.opened_ms) >= deadline)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// 台账快照（阶段统计——六态计数）。
+    pub fn stage_tally(&self) -> [usize; 6] {
+        let mut t = [0usize; 6];
+        for q in &self.queue {
+            t[match q.stage {
+                ReflowStage::Submitted => 0,
+                ReflowStage::Approved => 1,
+                ReflowStage::Denied => 2,
+                ReflowStage::InBacklog => 3,
+                ReflowStage::Closed => 4,
+                ReflowStage::Withdrawn => 5,
+            }] += 1;
+        }
+        t
+    }
+
+    pub fn queue(&self) -> &[ReflowFull] {
+        &self.queue
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+impl Default for ReflowDesk {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 四：走查会话（审计三字段 + 并行隔离）
+// ---------------------------------------------------------------------------
+
+/// 一次走查会话（走查人/版本/起止时间戳三审计字段；引擎独立——并行
+/// 会话各持引擎互不串写，会话收口时显式合并结果）。
+pub struct WalkSession {
+    pub id: u32,
+    pub walker: &'static str,
+    pub started_ms: u64,
+    pub closed_ms: Option<u64>,
+    pub engine: WalkEngine,
+}
+
+impl WalkSession {
+    /// 开会话（版本随设计案版本绑定——主册数据与存储条款）。
+    pub fn open(id: u32, walker: &'static str, version: &'static str, started_ms: u64) -> WalkSession {
+        let mut engine = WalkEngine::new(version);
+        let _ = engine.generate_checklist();
+        WalkSession { id, walker, started_ms, closed_ms: None, engine }
+    }
+
+    /// 收会话（结束时间戳落定；收口后拒绝再记——审计完整性）。
+    pub fn close(&mut self, now_ms: u64) -> bool {
+        if self.closed_ms.is_some() {
+            return false;
+        }
+        self.closed_ms = Some(now_ms);
+        true
+    }
+
+    /// 收口后记录拒绝（会话终态保护——防止收口后偷改结果）。
+    pub fn record_guarded(&mut self, fid: u32, green: bool, evidence: Option<Evidence>, note: &'static str) -> bool {
+        if self.closed_ms.is_some() {
+            return false;
+        }
+        self.engine.record(fid, green, evidence, note)
+    }
+
+    /// 会话小结（审计行：id/走查人/起止/绿红计数）。
+    pub fn summary(&self) -> String {
+        let (g, r, p) = self.tally();
+        alloc::format!(
+            "session#{} by {} v{}: green={} red={} pending={}",
+            self.id,
+            self.walker,
+            self.engine.version,
+            g,
+            r,
+            p
+        )
+    }
+
+    fn tally(&self) -> (usize, usize, usize) {
+        let mut g = 0;
+        let mut r = 0;
+        let mut p = 0;
+        for rec in &self.engine.records {
+            match rec.status {
+                WalkStatus::Green => g += 1,
+                WalkStatus::Red => r += 1,
+                WalkStatus::Pending => p += 1,
+            }
+        }
+        (g, r, p)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 五：维度评分与热力（20 维度特别加权的量化面）
+// ---------------------------------------------------------------------------
+
+/// 维度得分规则（钉死唯一源）：
+/// - 3 = 该维度全量锚点全部 Green（有证据）；
+/// - 1 = 部分 Green 零 Red（未走完但无失败）；
+/// - 0 = 存在任一 Red，或全 Pending。
+pub fn dimension_score(engine: &WalkEngine, dim: usize) -> u32 {
+    let anchors = dimension_anchors_full(dim);
+    let total = anchors.len();
+    let mut green = 0usize;
+    let mut red = 0usize;
+    for fid in &anchors {
+        if let Some(r) = engine.records.iter().find(|r| r.fid == *fid) {
+            match r.status {
+                WalkStatus::Green => green += 1,
+                WalkStatus::Red => red += 1,
+                WalkStatus::Pending => {}
+            }
+        }
+    }
+    if red > 0 {
+        0
+    } else if green == total && total > 0 {
+        3
+    } else if green > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+/// 全维度评分（20 项）。
+pub fn dimension_scores(engine: &WalkEngine) -> Vec<(usize, u32)> {
+    (0..WALK_DIMENSIONS).map(|d| (d, dimension_score(engine, d))).collect()
+}
+
+/// 加权总分（∑ score/3 × weight × 100 / ∑ weight——万分比整数语义）。
+pub fn weighted_total_bp(scores: &[(usize, u32)]) -> u32 {
+    let total_weight: u32 = DIMENSIONS.iter().map(|(_, w)| w).sum();
+    let earned: u32 = scores
+        .iter()
+        .map(|(d, s)| s * DIMENSIONS[*d].1)
+        .sum::<u32>();
+    earned * 10_000 / (total_weight * 3)
+}
+
+/// 维度热力渲染（文本形态：█=3 ▓=1 ░=0；一行一维度带权值）。
+pub fn heat_render(scores: &[(usize, u32)]) -> String {
+    let mut s = String::new();
+    for (d, score) in scores {
+        let bar = match score {
+            3 => "███",
+            1 => "▓░░",
+            _ => "░░░",
+        };
+        s.push_str(&alloc::format!("D{:02} {} w{} {}\n", d, bar, DIMENSIONS[*d].1, DIMENSIONS[*d].0));
+    }
+    s
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 六：checklist 导出（MD / JSON 双形态——F126 格式同源）
+// ---------------------------------------------------------------------------
+
+/// checklist MD 导出（归档 docs/acceptance/ 的文本形态：表格 + 版本头）。
+pub fn export_checklist_md(engine: &WalkEngine) -> String {
+    let mut s = String::new();
+    s.push_str(&alloc::format!("# 走查 checklist v{}（tool={}）\n\n", engine.version, WALKCHECK_TOOL));
+    s.push_str("| F 编号 | 功能 | 判据摘文 | 状态 |\n| --- | --- | --- | --- |\n");
+    for r in &engine.records {
+        let m = MAP.iter().find(|m| m.fid == r.fid);
+        let (name, crit) = match m {
+            Some(m) => (m.name, m.criterion),
+            None => ("?", "?"),
+        };
+        let st = match r.status {
+            WalkStatus::Green => "✅",
+            WalkStatus::Red => "❌",
+            WalkStatus::Pending => "⬜",
+        };
+        s.push_str(&alloc::format!("| F{} | {} | {} | {} |\n", r.fid, name, crit, st));
+    }
+    s
+}
+
+/// checklist JSON 导出（vbase::JsonObj 唯一 JSON 面——F126 checklist
+/// schema 同源；每条目 fid/name/criterion/status 四字段）。
+pub fn export_checklist_json(engine: &WalkEngine) -> String {
+    let mut items: Vec<String> = Vec::new();
+    for r in &engine.records {
+        let mut o = vbase::JsonObj::new();
+        o.num_field("fid", r.fid as u64);
+        let name = MAP.iter().find(|m| m.fid == r.fid).map(|m| m.name).unwrap_or("?");
+        o.str_field("name", name);
+        let crit = MAP.iter().find(|m| m.fid == r.fid).map(|m| m.criterion).unwrap_or("");
+        o.str_field("criterion", crit);
+        o.str_field("status", match r.status {
+            WalkStatus::Green => "green",
+            WalkStatus::Red => "red",
+            WalkStatus::Pending => "pending",
+        });
+        items.push(o.finish());
+    }
+    let mut root = vbase::JsonObj::new();
+    root.str_field("tool", WALKCHECK_TOOL);
+    root.str_field("version", engine.version);
+    root.str_field("dir", ACCEPTANCE_DIR);
+    root.raw_array_field("items", &items);
+    root.finish()
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 七：锚点提取器（脚本工具化的内核面）
+// ---------------------------------------------------------------------------
+
+/// 提取锚点类别（量化数字 / F 引用 / 取证动词——工具化三型）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnchorKind {
+    /// 量化锚（数字 + 单位后缀，如「≤50ms」「10/10」）。
+    Quantity,
+    /// F 编号引用（F\d{3}——跨项依赖对账面）。
+    FRef,
+    /// 取证动词（实测/录屏/对拍/全对——证据形态标注）。
+    Evidence,
+}
+
+impl AnchorKind {
+    pub fn tag(self) -> &'static str {
+        match self {
+            AnchorKind::Quantity => "quantity",
+            AnchorKind::FRef => "f-ref",
+            AnchorKind::Evidence => "evidence",
+        }
+    }
+}
+
+/// 一条提取结果。
+#[derive(Clone, Debug)]
+pub struct ExtractedAnchor {
+    pub kind: AnchorKind,
+    pub text: String,
+}
+
+/// 从判据文本提取可执行锚点（`vx-walkcheck-c.py` 形态的内核面）：
+/// 逐字符扫描提取数字段（含紧随的 ASCII 单位字母与 %、/）、F 引用与
+/// 取证动词。提取为空 = 锚点不可测（设计缺口回炉的结构信号）。
+pub fn extract_anchors(criterion: &str) -> Vec<ExtractedAnchor> {
+    let bytes = criterion.as_bytes();
+    let mut out: Vec<ExtractedAnchor> = Vec::new();
+    let mut i = 0usize;
+    // 数字段提取：数字连续段 + 紧随单位（ASCII 字母/%/. 与中文单位字）。
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len()
+                && (bytes[i].is_ascii_digit()
+                    || bytes[i] == b'.'
+                    || bytes[i] == b'/'
+                    || bytes[i] == b'%'
+                    || bytes[i] == b'x'
+                    || bytes[i] == b':')
+            {
+                i += 1;
+            }
+            while i < bytes.len() && bytes[i] & 0xC0 == 0x80 {
+                i += 1;
+            }
+            while i < bytes.len() && (bytes[i].is_ascii_alphabetic() || bytes[i] & 0xC0 == 0x80) {
+                while i < bytes.len() && bytes[i] & 0xC0 == 0x80 {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'%' {
+                    i += 1;
+                    break;
+                }
+                if i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            out.push(ExtractedAnchor {
+                kind: AnchorKind::Quantity,
+                text: String::from(&criterion[start..i]),
+            });
+        } else if bytes[i] == b'F' && i + 2 < bytes.len() && bytes[i + 1].is_ascii_digit() {
+            let start = i;
+            let mut j = i + 1;
+            let mut digits = 0;
+            while j < bytes.len() && bytes[j].is_ascii_digit() && digits < 3 {
+                j += 1;
+                digits += 1;
+            }
+            if digits == 3 {
+                out.push(ExtractedAnchor {
+                    kind: AnchorKind::FRef,
+                    text: String::from(&criterion[start..j]),
+                });
+                i = j;
+            } else {
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    for verb in ["实测", "录屏", "对拍", "全对"] {
+        if criterion.contains(verb) {
+            out.push(ExtractedAnchor { kind: AnchorKind::Evidence, text: String::from(verb) });
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 八：R8 周对账台账（三册腐化防线）
+// ---------------------------------------------------------------------------
+
+/// 一条周对账记录（R8 流程：日期/抽查数/脱节数/处置动作）。
+#[derive(Clone, Copy, Debug)]
+pub struct AuditEntry {
+    pub date_ms: u64,
+    pub sampled: usize,
+    pub drifted: usize,
+    pub action: &'static str,
+}
+
+/// 判据摘要（判据文本 SHA-256 hex 前 16 字符——脱节检测的指纹面）。
+pub fn criterion_digest(fid: u32) -> String {
+    let m = MAP.iter().find(|m| m.fid == fid);
+    match m {
+        Some(m) => {
+            let d = vbase::sha256(m.criterion.as_bytes());
+            let full = vbase::hex32_str(&d);
+            String::from(&full[..16])
+        }
+        None => String::from("unknown"),
+    }
+}
+
+/// 周对账台账（抽查判据指纹与登记值不一致 = 三册腐化——R8 检出）。
+pub struct AuditLedger {
+    entries: Vec<AuditEntry>,
+}
+
+impl AuditLedger {
+    pub fn new() -> AuditLedger {
+        AuditLedger { entries: Vec::new() }
+    }
+
+    /// 记录一条对账（容量 52 = 一年周记录；满后滚动丢最旧）。
+    pub fn record(&mut self, date_ms: u64, sampled: usize, drifted: usize, action: &'static str) {
+        if self.entries.len() >= 52 {
+            self.entries.remove(0);
+        }
+        self.entries.push(AuditEntry { date_ms, sampled, drifted, action });
+    }
+
+    /// 脱节抽查：逐 (fid, 登记指纹) 对拍当前指纹，返回脱节清单。
+    pub fn drift_scan(fids: &[(u32, &str)]) -> Vec<u32> {
+        let mut drifted = Vec::new();
+        for &(fid, expected) in fids {
+            let now = criterion_digest(fid);
+            if now != expected {
+                drifted.push(fid);
+            }
+        }
+        drifted
+    }
+
+    /// 脱节率（万分比——R8 报告指标）。
+    pub fn drift_rate_bp(&self) -> u32 {
+        let total: usize = self.entries.iter().map(|e| e.sampled).sum();
+        let bad: usize = self.entries.iter().map(|e| e.drifted).sum();
+        if total == 0 {
+            0
+        } else {
+            (bad * 10_000 / total) as u32
+        }
+    }
+
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+}
+
+impl Default for AuditLedger {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 九：季度走查节奏（F149 生态季报联动）与冻结面
+// ---------------------------------------------------------------------------
+
+/// 季度窗（主册：季度走查随生态季报 F149 节奏——90 天窗）。
+pub const QUARTER_DAYS: u64 = 90;
+
+/// 季度走查到期判定（距上次全量走查超 90 天 → 到期）。
+pub fn quarter_due(last_full_walk_ms: u64, now_ms: u64) -> bool {
+    now_ms.saturating_sub(last_full_walk_ms) >= QUARTER_DAYS * 86_400
+}
+
+/// C 域报告卷冻结面（v1.0 里程碑件：判据面冻结——冻结后判据文本与
+/// 版本不可变；走查记录仍可继续——冻结的是「账本」不是「走查动作」）。
+pub struct Freeze {
+    pub frozen: bool,
+    pub version: &'static str,
+    pub frozen_ms: Option<u64>,
+}
+
+impl Freeze {
+    pub fn new() -> Freeze {
+        Freeze { frozen: false, version: "", frozen_ms: None }
+    }
+
+    /// 冻结（版本强制非空——无版本的冻结是假冻结）。
+    pub fn freeze(&mut self, version: &'static str, now_ms: u64) -> bool {
+        if version.is_empty() {
+            return false;
+        }
+        self.frozen = true;
+        self.version = version;
+        self.frozen_ms = Some(now_ms);
+        true
+    }
+
+    /// 冻结态下版本变更拒绝（里程碑件不可暗中改版）。
+    pub fn version_change_allowed(&self, new_version: &'static str) -> bool {
+        !self.frozen || new_version == self.version
+    }
+}
+
+impl Default for Freeze {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -501,6 +1254,145 @@ pub fn run_walkcheck_checks() -> CheckSet {
         "",
     );
 
+    // 13. 判据锚号生成器（深化 v2）：F111→G-C-41、F125→G-C-55 双已知锚
+    //     对拍 + 全域往返（71..=125 生成不为空）。
+    let pairs = criterion_anchor_known_pairs();
+    let anchor_ok = pairs
+        .iter()
+        .all(|(fid, want)| &criterion_anchor(*fid) == want)
+        && (71..=125).all(|f| !criterion_anchor(f).is_empty());
+    set.add("criterion anchor G-C-xx round-trip", anchor_ok, "");
+
+    // 14. 三列映射自动生成 + 人工复核双轨：全 F 覆盖（每 F ≥1 行）+
+    //     复核盖章后待复数归零。
+    let mut cols = auto_columns();
+    let all_covered = (71u32..=125).all(|f| cols.iter().any(|r| r.fid == f));
+    let pending_before = review_columns(&mut cols, &[]);
+    let covered_fids: Vec<u32> = cols.iter().map(|r| r.fid).collect();
+    let pending_after = review_columns(&mut cols, &covered_fids);
+    set.add(
+        "three-column map auto-gen + review dual-track",
+        all_covered && pending_before == cols.len() && pending_after == 0,
+        "",
+    );
+
+    // 15. F→维度归属全量：20 维度每维度 ≥1 锚（无空维度）且每 F ≥1 维度。
+    let no_empty_dim = (0..WALK_DIMENSIONS).all(|d| !dimension_anchors_full(d).is_empty());
+    let every_f_mapped = MAP.iter().all(|m| !dimensions_of(m.fid).is_empty());
+    set.add("dimension ownership full coverage", no_empty_dim && every_f_mapped, "");
+
+    // 16. 回流单完整状态机全链：open→decide(approve)→dispatch→close 绿；
+    //     deny 与 withdraw 分支各落终态；终态再流转拒绝。
+    let mut desk = ReflowDesk::new();
+    let i0 = desk.open(122, "断电样本缺", 0).unwrap();
+    let i1 = desk.open(118, "直跳路径偏差", 0).unwrap();
+    let i2 = desk.open(117, "汇总文案错", 0).unwrap();
+    let c1 = desk.decide(i0, true, "reviewer-A", 1000);
+    let d1 = desk.dispatch(i0);
+    let cl1 = desk.close(i0, 2000);
+    let d2 = desk.decide(i1, false, "reviewer-B", 1000);
+    let w1 = desk.withdraw(i2);
+    let terminal_locked = !desk.decide(i1, true, "x", 3000) && !desk.close(i1, 3000);
+    set.add(
+        "reflow full state machine chain",
+        c1 && d1 && cl1 && d2 && w1 && terminal_locked,
+        "",
+    );
+
+    // 17. 回流超时提醒：开单 7 天未批 → overdue 命中；批准后不再提醒。
+    let mut desk = ReflowDesk::new();
+    let _ = desk.open(121, "n", 0);
+    let overdue_at_7d = desk.overdue(WEEKLY_AUDIT_DAYS * 86_400_000).len() == 1;
+    let _ = desk.decide(0, true, "r", 1);
+    let cleared_after_decision = desk.overdue(WEEKLY_AUDIT_DAYS * 86_400_000).is_empty();
+    set.add("reflow overdue 7d alert", overdue_at_7d && cleared_after_decision, "");
+
+    // 18. 走查会话审计：收口后记录拒绝 + 小结含走查人与计数。
+    let mut s1 = WalkSession::open(1, "walker-A", "1.0.0", 0);
+    let _ = s1.record_guarded(111, true, Some(Evidence { data: "d", command: "c", date: "2026-09-26" }), "");
+    let closed = s1.close(5000);
+    let refused = !s1.record_guarded(112, true, None, "");
+    let sum = s1.summary();
+    set.add(
+        "walk session audit + close guard",
+        closed && refused && sum.contains("walker-A") && sum.contains("green=1"),
+        "",
+    );
+
+    // 19. 维度评分规则：全绿 3 / 部分绿 1 / 有红 0 / 全 pending 0。
+    let mut e = WalkEngine::new("1.0.0");
+    e.generate_checklist();
+    let score_pending = dimension_score(&e, 4);
+    let _ = e.record(75, true, Some(Evidence { data: "x", command: "y", date: "z" }), "");
+    let score_partial = dimension_score(&e, 4);
+    let _ = e.record(93, false, None, "bad");
+    let score_red = dimension_score(&e, 4);
+    set.add(
+        "dimension score rule 3/1/0",
+        score_pending == 0 && score_partial == 1 && score_red == 0,
+        "",
+    );
+
+    // 20. 加权总分：全 Green 会话 → 满分 10000bp；空会话 → 0。
+    let mut full = WalkEngine::new("1.0.0");
+    full.generate_checklist();
+    for m in MAP.iter() {
+        let _ = full.record(m.fid, true, Some(Evidence { data: "x", command: "y", date: "z" }), "");
+    }
+    let scores_full = dimension_scores(&full);
+    let bp_full = weighted_total_bp(&scores_full);
+    let empty = WalkEngine::new("1.0.0");
+    let bp_empty = weighted_total_bp(&dimension_scores(&empty));
+    set.add("weighted total bp full=10000 empty=0", bp_full == 10_000 && bp_empty == 0, "");
+
+    // 21. checklist 双形态导出：MD 表格含状态列与 55 行；JSON 含 tool/
+    //     version/items 且状态字段合法。
+    let md = export_checklist_md(&e);
+    let js = export_checklist_json(&e);
+    set.add(
+        "checklist export md + json",
+        md.contains("| F71 |") && md.matches("| F").count() >= C_DOMAIN_ITEMS
+            && js.contains("\"tool\":\"tools/vx-walkcheck-c.py\"")
+            && js.contains("\"version\":\"1.0.0\"")
+            && js.contains("\"status\":\"red\"")
+            && js.contains("\"status\":\"green\""),
+        "",
+    );
+
+    // 22. 锚点提取器三型：量化（50ms/10/10）、F 引用（F072）、取证动词。
+    let a1 = extract_anchors("按键到首结果 ≤50ms；与 F072 数据一致；实测录屏 10/10");
+    let has_qty = a1.iter().any(|a| a.kind == AnchorKind::Quantity && a.text.contains("50"));
+    let has_fref = a1.iter().any(|a| a.kind == AnchorKind::FRef && a.text == "F072");
+    let has_evi = a1.iter().any(|a| a.kind == AnchorKind::Evidence);
+    set.add("anchor extractor three kinds", has_qty && has_fref && has_evi, "");
+
+    // 23. R8 周对账：指纹登记一致 → 零脱节；指纹错 → 检出并计入脱节率。
+    let digest_f111 = criterion_digest(111);
+    let clean = AuditLedger::drift_scan(&[(111, digest_f111.as_str())]).is_empty();
+    let drifted_bad = AuditLedger::drift_scan(&[(111, "ffffffffffffffffffffffffffffffff")]);
+    let mut ledger = AuditLedger::new();
+    ledger.record(0, 10, 1, "回炉 1 项");
+    ledger.record(1, 10, 0, "零脱节");
+    set.add(
+        "r8 drift scan + ledger rate",
+        clean && drifted_bad == vec![111] && ledger.drift_rate_bp() == 500,
+        "",
+    );
+
+    // 24. 季度窗与冻结面：90 天到期；冻结后版本变更拒绝、同版放行；
+    //     空版本冻结拒绝。
+    let due = quarter_due(0, QUARTER_DAYS * 86_400);
+    let not_due = !quarter_due(0, QUARTER_DAYS * 86_400 - 1);
+    let mut fz = Freeze::new();
+    let bad_freeze = !fz.freeze("", 0);
+    let ok_freeze = fz.freeze("1.0.0", 1000);
+    let ver_locked = !fz.version_change_allowed("1.1.0") && fz.version_change_allowed("1.0.0");
+    set.add(
+        "quarter cadence + freeze discipline",
+        due && not_due && bad_freeze && ok_freeze && ver_locked,
+        "",
+    );
+
     set
 }
 
@@ -536,5 +1428,99 @@ mod tests {
         let mut e = WalkEngine::new("1.0.0");
         e.generate_checklist();
         assert!(!e.record(999, true, Some(Evidence { data: "x", command: "y", date: "z" }), ""));
+    }
+
+    #[test]
+    fn f125_anchor_rule_matches_master_book() {
+        // 主册两处已知锚点往返 + 锚号格式（G-C- 两位）。
+        assert_eq!(criterion_anchor(111), "G-C-41");
+        assert_eq!(criterion_anchor(125), "G-C-55");
+        assert_eq!(criterion_anchor(71), "G-C-01");
+        for f in 71..=125 {
+            let a = criterion_anchor(f);
+            assert!(a.starts_with("G-C-") && a.len() == 6, "锚号格式 G-C-xx");
+        }
+    }
+
+    #[test]
+    fn f125_column_rows_anchor_column_consistent() {
+        // 三列映射的判据编号列与锚号生成器一致（一处一事实对拍）。
+        for r in auto_columns() {
+            assert_eq!(r.anchor, criterion_anchor(r.fid));
+        }
+    }
+
+    #[test]
+    fn f125_dimension_coverage_symmetric() {
+        // 每维度锚点都在 MAP 域内且归属函数对每个 MAP 元素都有产出。
+        for d in 0..WALK_DIMENSIONS {
+            for fid in dimension_anchors_full(d) {
+                assert!((71..=125).contains(&fid));
+            }
+        }
+        assert!(dimension_anchors_full(19).contains(&125), "整体感受维度必含 F125 自身");
+    }
+
+    #[test]
+    fn f125_reflow_unknown_stage_transitions_rejected() {
+        let mut desk = ReflowDesk::new();
+        // 空desk 上未开单的流转全部拒绝。
+        assert!(desk.dispatch(0) == false);
+        assert!(desk.close(0, 1) == false);
+        assert!(desk.withdraw(0) == false);
+        // 未决单不能直接 close（必须先批准派工）。
+        let i = desk.open(111, "n", 0).unwrap();
+        assert!(!desk.close(i, 1));
+        assert!(desk.decide(i, true, "r", 2));
+        // Withdrawn 单是终态。
+        let j = desk.open(112, "n2", 0).unwrap();
+        assert!(desk.withdraw(j));
+        assert!(!desk.decide(j, true, "r", 3));
+        assert!(desk.queue()[i].stage == ReflowStage::Approved);
+        assert!(desk.queue()[j].stage.terminal());
+    }
+
+    #[test]
+    fn f125_session_parallel_isolation() {
+        // 双会话并行：各自引擎记录互不影响。
+        let mut a = WalkSession::open(7, "A", "1.0.0", 0);
+        let mut b = WalkSession::open(8, "B", "1.0.0", 0);
+        let ev = Some(Evidence { data: "d", command: "c", date: "2026-09-26" });
+        assert!(a.record_guarded(111, true, ev.clone(), ""));
+        assert!(b.record_guarded(112, true, ev, ""));
+        assert!(b.engine.records.iter().find(|r| r.fid == 111).unwrap().status == WalkStatus::Pending);
+        assert!(a.engine.records.iter().find(|r| r.fid == 112).unwrap().status == WalkStatus::Pending);
+    }
+
+    #[test]
+    fn f125_extractor_no_false_frefs() {
+        // 「F1」「F12」不误报；无锚文本返回空（不可测结构信号）。
+        assert!(extract_anchors("只有 F1 和 F12 字样").iter().all(|a| a.kind != AnchorKind::FRef));
+        assert!(extract_anchors("无锚点文本").is_empty());
+        let q = extract_anchors("80fps 跟手");
+        assert!(q.iter().any(|a| a.kind == AnchorKind::Quantity && a.text.starts_with("80")));
+    }
+
+    #[test]
+    fn f125_ledger_rolling_cap_52() {
+        let mut ledger = AuditLedger::new();
+        for i in 0..55u64 {
+            ledger.record(i * 1000, 1, 0, "weekly");
+        }
+        assert_eq!(ledger.entries().len(), 52, "周台账一年滚动窗");
+        assert_eq!(ledger.entries()[0].date_ms, 3 * 1000, "最旧三条被滚动逐出");
+    }
+
+    #[test]
+    fn f125_heat_render_bar_shapes() {
+        let mut e = WalkEngine::new("1.0.0");
+        e.generate_checklist();
+        for m in MAP.iter() {
+            let _ = e.record(m.fid, true, Some(Evidence { data: "x", command: "y", date: "z" }), "");
+        }
+        let scores = dimension_scores(&e);
+        let heat = heat_render(&scores);
+        assert!(heat.contains("███"), "全绿维度热力条");
+        assert_eq!(heat.lines().count(), WALK_DIMENSIONS);
     }
 }

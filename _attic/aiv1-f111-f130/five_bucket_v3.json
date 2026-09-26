@@ -1,0 +1,186 @@
+{
+ "aboutpage.rs": {
+  "func": 116,
+  "checks": 102,
+  "tests": 45,
+  "comments": 66,
+  "blank": 40,
+  "raw": 370
+ },
+ "casesub.rs": {
+  "func": 141,
+  "checks": 100,
+  "tests": 36,
+  "comments": 65,
+  "blank": 30,
+  "raw": 373
+ },
+ "colorfilter.rs": {
+  "func": 208,
+  "checks": 120,
+  "tests": 41,
+  "comments": 117,
+  "blank": 53,
+  "raw": 540
+ },
+ "diagcenter.rs": {
+  "func": 393,
+  "checks": 148,
+  "tests": 70,
+  "comments": 122,
+  "blank": 73,
+  "raw": 807
+ },
+ "focusmode.rs": {
+  "func": 253,
+  "checks": 203,
+  "tests": 35,
+  "comments": 139,
+  "blank": 65,
+  "raw": 696
+ },
+ "helpcenter.rs": {
+  "func": 291,
+  "checks": 105,
+  "tests": 61,
+  "comments": 100,
+  "blank": 50,
+  "raw": 608
+ },
+ "highcontrast.rs": {
+  "func": 204,
+  "checks": 132,
+  "tests": 33,
+  "comments": 98,
+  "blank": 51,
+  "raw": 519
+ },
+ "magnifier.rs": {
+  "func": 312,
+  "checks": 194,
+  "tests": 53,
+  "comments": 129,
+  "blank": 77,
+  "raw": 766
+ },
+ "mod.rs": {
+  "func": 23,
+  "checks": 31,
+  "tests": 16,
+  "comments": 49,
+  "blank": 5,
+  "raw": 125
+ },
+ "motioncore.rs": {
+  "func": 285,
+  "checks": 188,
+  "tests": 39,
+  "comments": 112,
+  "blank": 65,
+  "raw": 690
+ },
+ "narrator.rs": {
+  "func": 318,
+  "checks": 117,
+  "tests": 52,
+  "comments": 119,
+  "blank": 73,
+  "raw": 680
+ },
+ "nightlight.rs": {
+  "func": 383,
+  "checks": 170,
+  "tests": 99,
+  "comments": 160,
+  "blank": 80,
+  "raw": 893
+ },
+ "oobe.rs": {
+  "func": 212,
+  "checks": 124,
+  "tests": 53,
+  "comments": 93,
+  "blank": 51,
+  "raw": 534
+ },
+ "openformat.rs": {
+  "func": 397,
+  "checks": 165,
+  "tests": 78,
+  "comments": 143,
+  "blank": 57,
+  "raw": 841
+ },
+ "ossreg.rs": {
+  "func": 112,
+  "checks": 84,
+  "tests": 31,
+  "comments": 62,
+  "blank": 33,
+  "raw": 323
+ },
+ "restorept.rs": {
+  "func": 208,
+  "checks": 136,
+  "tests": 37,
+  "comments": 84,
+  "blank": 36,
+  "raw": 502
+ },
+ "stardata.rs": {
+  "func": 393,
+  "checks": 251,
+  "tests": 99,
+  "comments": 149,
+  "blank": 99,
+  "raw": 992
+ },
+ "updateux.rs": {
+  "func": 360,
+  "checks": 214,
+  "tests": 74,
+  "comments": 140,
+  "blank": 89,
+  "raw": 878
+ },
+ "vbase.rs": {
+  "func": 362,
+  "checks": 99,
+  "tests": 52,
+  "comments": 102,
+  "blank": 55,
+  "raw": 671
+ },
+ "vxapp.rs": {
+  "func": 308,
+  "checks": 167,
+  "tests": 55,
+  "comments": 109,
+  "blank": 55,
+  "raw": 695
+ },
+ "walkcheck.rs": {
+  "func": 830,
+  "checks": 219,
+  "tests": 128,
+  "comments": 228,
+  "blank": 121,
+  "raw": 1527
+ },
+ "welcome.rs": {
+  "func": 162,
+  "checks": 86,
+  "tests": 55,
+  "comments": 90,
+  "blank": 44,
+  "raw": 438
+ },
+ "_TOTAL": {
+  "func": 6271,
+  "checks": 3155,
+  "tests": 1242,
+  "comments": 2476,
+  "blank": 1302
+ },
+ "_RAW_TOTAL": 438
+}

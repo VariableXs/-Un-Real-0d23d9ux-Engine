@@ -195,6 +195,19 @@ pub enum MotionUse {
     Progress,
 }
 
+impl MotionUse {
+    /// 用途名（总谱文档渲染源——五用途互异）。
+    pub fn name(self) -> &'static str {
+        match self {
+            MotionUse::Enter => "进入",
+            MotionUse::MicroFeedback => "微反馈",
+            MotionUse::Panel => "大面板",
+            MotionUse::ExitExit => "退出",
+            MotionUse::Progress => "进度",
+        }
+    }
+}
+
 /// 查总谱表：用途 → 标准曲线 + 标准时长（一处一事实：全 UI 只能从这里取）。
 pub fn lookup(use_: MotionUse) -> (Curve, u64) {
     match use_ {
@@ -242,6 +255,162 @@ pub fn progress_fallback(intensity: Intensity) -> Option<&'static str> {
         Intensity::Reduced => Some("数字读数"),
         Intensity::Full => None,
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2：动画登记台账 / 打断续接 / 总谱文档 / 降级台账
+// ---------------------------------------------------------------------------
+
+/// 一处动画登记（抽查的台账单元：调用点名 + 用途——曲线与时长从
+/// lookup 派生，不重复声明）。
+#[derive(Clone, Copy, Debug)]
+pub struct AnimationSite {
+    pub name: &'static str,
+    pub use_: MotionUse,
+}
+
+/// 动画登记台账（全 UI 动画注册的唯一入口；30 处抽查在此跑）。
+pub struct MotionRegistry {
+    sites: Vec<AnimationSite>,
+    /// 降级台账（帧预算超线计数 + 最近降级曲线）。
+    downgrade_count: u32,
+    last_downgrade: Option<Curve>,
+}
+
+impl MotionRegistry {
+    pub fn new() -> MotionRegistry {
+        MotionRegistry { sites: Vec::new(), downgrade_count: 0, last_downgrade: None }
+    }
+
+    /// 登记（同名去重——重复登记静默改变计数是自检假绿之源）。
+    pub fn register(&mut self, name: &'static str, use_: MotionUse) -> bool {
+        if self.sites.iter().any(|s| s.name == name) {
+            return false;
+        }
+        self.sites.push(AnimationSite { name, use_ });
+        true
+    }
+
+    pub fn site_count(&self) -> usize {
+        self.sites.len()
+    }
+
+    /// 全量在谱审计（30 处抽查判据的通用化）：每处曲线在总谱表内
+    /// 且时长落在三档——返回 (查得数, 违规点名)。
+    pub fn audit_all(&self) -> (usize, Vec<&'static str>) {
+        let mut ok = 0usize;
+        let mut bad = Vec::new();
+        for s in &self.sites {
+            let (c, d) = lookup(s.use_);
+            let in_table = match c {
+                Curve::Spring => d == DURATION_PANEL_MS,
+                _ => c.bezier().map(|b| curve_registered(&b)).unwrap_or(false)
+                    && (d == DURATION_SHORT_MS || d == DURATION_BASE_MS || d == DURATION_PANEL_MS),
+            };
+            if in_table {
+                ok += 1;
+            } else {
+                bad.push(s.name);
+            }
+        }
+        (ok, bad)
+    }
+
+    /// 降级登记（超预算 → 直线；台账留痕——审计面）。
+    pub fn record_downgrade(&mut self, from: Curve) {
+        self.downgrade_count += 1;
+        self.last_downgrade = Some(from);
+    }
+
+    pub fn downgrade_count(&self) -> u32 {
+        self.downgrade_count
+    }
+
+    pub fn last_downgrade(&self) -> Option<Curve> {
+        self.last_downgrade
+    }
+}
+
+impl Default for MotionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 打断续接（打断不跳变——主册「打断动画会不会跳变」的量化面）：
+/// 旧动画在 `prev_t` 被新动画打断 → 返回旧动画当前进度值（新动画以
+/// 此值为视觉起点，从当前值继续而非从 0 重放）。
+pub fn interrupt_progress(prev_use: MotionUse, prev_t: f32) -> f32 {
+    let (curve, _) = lookup(prev_use);
+    match curve {
+        Curve::Spring => spring_ease(prev_t, DURATION_PANEL_MS),
+        _ => {
+            let b: [f32; 4] = curve.bezier().unwrap_or(CURVE_LINEAR);
+            bezier_ease(&b, prev_t)
+        }
+    }
+}
+
+/// 进度数字读数（减弱/关闭档的显性进度——bp 万分比转百分比文案）。
+pub fn progress_numeric(bp: u32, intensity: Intensity) -> Option<String> {
+    match intensity {
+        Intensity::Full => None,
+        Intensity::Off => Some(String::from("0%")),
+        Intensity::Reduced => Some(alloc::format!("{}%", bp / 100)),
+    }
+}
+
+/// 总谱 MD 文档渲染（design/assets/motion-curves.md 的机器面——
+/// 曲线定义/用途表/强度档/门禁规则四节一处一事实）。
+pub fn render_motion_doc() -> String {
+    let mut s = String::new();
+    s.push_str("# VARIX 动画曲线总谱
+
+");
+    s.push_str("## 五曲线定义
+
+| 曲线 | cubic-bezier | 语义 |
+| --- | --- | --- |
+");
+    s.push_str("| enter | (0.16, 1, 0.3, 1) | 进入 ease-out——先快后慢 |
+");
+    s.push_str("| exit | (0.7, 0, 0.84, 0) | 退出 ease-in——先慢后快 |
+");
+    s.push_str("| emphasis | (0.65, 0, 0.35, 1) | 强调对称——呼吸感 |
+");
+    s.push_str("| spring | 105% 过冲 80ms 回弹 | 弹性——大面板落位 |
+");
+    s.push_str("| linear | (0, 0, 1, 1) | 线性——仅进度条 |
+");
+    s.push_str("
+## 三档用途表
+
+| 用途 | 曲线 | 时长 |
+| --- | --- | --- |
+");
+    for u in [MotionUse::Enter, MotionUse::MicroFeedback, MotionUse::Panel, MotionUse::ExitExit, MotionUse::Progress] {
+        let (c, d) = lookup(u);
+        let cn = match c {
+            Curve::Spring => String::from("spring"),
+            _ => String::from(c.name()),
+        };
+        s.push_str(&alloc::format!("| {} | {} | {}ms |
+", u.name(), cn, d));
+    }
+    s.push_str("
+## 强度档
+
+完整 100% / 减弱 60% / 关闭 0（必达动画转数字读数）。
+
+");
+    s.push_str("## 门禁规则
+
+");
+    s.push_str("1. 未登记曲线（表外控制点）禁止合入；
+2. 帧耗时 >12.5ms（80fps 线）自动降级直线——保帧率不保花活；
+3. 减弱档下进度环转显性数字。
+");
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +562,88 @@ pub fn run_motioncore_checks() -> CheckSet {
         }
     }
     set.add("five curve names distinct", distinct, "");
+
+    // 13. 动画登记台账（深化 v2）：登记去重、30 处注册全在谱、未知
+    //     用途不存在（类型系统保证）。
+    let mut reg = MotionRegistry::new();
+    let dup_rejected = reg.register("win-open", MotionUse::Enter)
+        && !reg.register("win-open", MotionUse::Panel);
+    let site_names: [&'static str; 30] = core::array::from_fn(|i| match i {
+        0 => "s00", 1 => "s01", 2 => "s02", 3 => "s03", 4 => "s04",
+        5 => "s05", 6 => "s06", 7 => "s07", 8 => "s08", 9 => "s09",
+        10 => "s10", 11 => "s11", 12 => "s12", 13 => "s13", 14 => "s14",
+        15 => "s15", 16 => "s16", 17 => "s17", 18 => "s18", 19 => "s19",
+        20 => "s20", 21 => "s21", 22 => "s22", 23 => "s23", 24 => "s24",
+        25 => "s25", 26 => "s26", 27 => "s27", 28 => "s28", _ => "s29",
+    });
+    for (i, n) in site_names.iter().enumerate() {
+        let u = match i % 5 {
+            0 => MotionUse::Enter,
+            1 => MotionUse::MicroFeedback,
+            2 => MotionUse::Panel,
+            3 => MotionUse::ExitExit,
+            _ => MotionUse::Progress,
+        };
+        let _ = reg.register(n, u);
+    }
+    let (ok_n, bad) = reg.audit_all();
+    set.add(
+        "motion registry dedup + 30 sites in score",
+        dup_rejected && reg.site_count() == 31 && ok_n == 31 && bad.is_empty(),
+        "",
+    );
+
+    // 14. 打断续接（深化 v2）：旧动画半程值作为新起点——enter 半程
+    //     ≈0.85（快出段），打断点值与 bezier 直算一致。
+    let at_half = interrupt_progress(MotionUse::Enter, 0.5);
+    set.add(
+        "interrupt resumes from current progress",
+        (at_half - bezier_ease(&CURVE_ENTER, 0.5)).abs() < 1e-4 && at_half > 0.7,
+        "",
+    );
+
+    // 15. 数字读数（深化 v2）：减弱档 bp→百分比；关闭档恒 0%；完整档
+    //     无数字（动画在场）。
+    let reduced = progress_numeric(6_250, Intensity::Reduced);
+    let off = progress_numeric(6_250, Intensity::Off);
+    set.add(
+        "numeric progress readout",
+        reduced == Some(String::from("62%")) && off == Some(String::from("0%"))
+            && progress_numeric(6_250, Intensity::Full).is_none(),
+        "",
+    );
+
+    // 16. 总谱 MD 文档（深化 v2）：五曲线定义表 + 用途表 + 强度档 +
+    //     门禁规则四节齐；用途表行数 = 5。
+    let doc = render_motion_doc();
+    let rows = doc.matches("| ").count();
+    set.add(
+        "motion doc renders four sections",
+        doc.contains("## 五曲线定义")
+            && doc.contains("## 三档用途表")
+            && doc.contains("## 强度档")
+            && doc.contains("## 门禁规则")
+            && doc.contains("105% 过冲 80ms 回弹")
+            && doc.contains("12.5ms")
+            && rows >= 20,
+        "",
+    );
+
+    // 17. 降级台账（深化 v2）：超线降级计数 + 最近降级曲线留痕。
+    let mut reg = MotionRegistry::new();
+    let (down, _c) = budget_downgrade(Curve::Emphasis, 20_000);
+    if down {
+        reg.record_downgrade(Curve::Emphasis);
+    }
+    let (down2, _c2) = budget_downgrade(Curve::Spring, 30_000);
+    if down2 {
+        reg.record_downgrade(Curve::Spring);
+    }
+    set.add(
+        "downgrade ledger records",
+        down && down2 && reg.downgrade_count() == 2 && reg.last_downgrade() == Some(Curve::Spring),
+        "",
+    );
 
     set
 }

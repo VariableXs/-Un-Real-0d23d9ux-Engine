@@ -155,6 +155,32 @@ impl AboutPage {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：社区互助标准格式报告模板
+// ---------------------------------------------------------------------------
+
+impl AboutPage {
+    /// 「复制全部报告」文本模板（社区互助标准格式——F139 联动；四组
+    /// 分组行 + 版本头；不可读行诚实标注）。
+    pub fn report_text(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&alloc::format!("VARIX 系统报告 v{}\n", self.version));
+        for g in [Group::Cpu, Group::Memory, Group::Storage, Group::Display] {
+            s.push_str(&alloc::format!("\n[{}]\n", g.name()));
+            for r in &self.rows {
+                if r.group != g {
+                    continue;
+                }
+                let v = match &r.value {
+                    Some(v) => v.as_str(),
+                    None => "本机不可读",
+                };
+                s.push_str(&alloc::format!("{}: {}\n", r.label, v));
+            }
+        }
+        s
+    }
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -272,6 +298,27 @@ pub fn run_aboutpage_checks() -> CheckSet {
         "",
     );
 
+
+    // 8. 报告文本模板（深化 v2）：四组齐 + 版本头 + 不可读行诚实标注。
+    let rows = vec![
+        SpecRow { group: Group::Cpu, label: "处理器", value: Some(String::from("Intel Core i5")), },
+        SpecRow { group: Group::Memory, label: "内存", value: None },
+        SpecRow { group: Group::Storage, label: "盘 0", value: Some(String::from("512GB SSD")) },
+        SpecRow { group: Group::Display, label: "屏幕", value: Some(String::from("2560x1600")) },
+    ];
+    let page = AboutPage::new("VARIX-Y7000", "1.0.0", rows);
+    let report = page.report_text();
+    set.add(
+        "report text four groups + honest blank",
+        report.contains("VARIX 系统报告 v1.0.0")
+            && report.contains("[处理器]")
+            && report.contains("[内存]")
+            && report.contains("[存储]")
+            && report.contains("[显示]")
+            && report.contains("本机不可读"),
+        "",
+    );
+
     set
 }
 
@@ -306,5 +353,17 @@ mod tests {
         let report = page.copy_all_report();
         assert!(report.contains("[内存]"));
         assert!(!report.contains("内存容量："), "未采集的行不得出现编造值");
+    }
+
+    #[test]
+    fn f123_report_group_order_stable() {
+        // 组顺序恒定：处理器 → 内存 → 存储 → 显示（社区互助格式契约）。
+        let page = AboutPage::new("X", "1.0", vec![]);
+        let r = page.report_text();
+        let p = r.find("[处理器]").unwrap();
+        let m = r.find("[内存]").unwrap();
+        let s = r.find("[存储]").unwrap();
+        let d = r.find("[显示]").unwrap();
+        assert!(p < m && m < s && s < d);
     }
 }

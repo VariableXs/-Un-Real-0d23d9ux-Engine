@@ -311,6 +311,28 @@ impl ColorFilter {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：设置页色轮预览数据（玻璃色板——变换前后采样对）
+// ---------------------------------------------------------------------------
+
+/// 色轮预览采样点（设置页「色轮展示变换前后」的数据源：六向色相环
+/// 坐标 RGB 采样——变换前原色与按当前模式/强度变换后成对输出）。
+pub fn preview_wheel(kind: CvdKind, strength_pct: u32) -> [((u8, u8, u8), (u8, u8, u8)); 6] {
+    const WHEEL: [(u8, u8, u8); 6] = [
+        (255, 0, 0),   // 红
+        (255, 255, 0), // 黄
+        (0, 255, 0),   // 绿
+        (0, 255, 255), // 青
+        (0, 0, 255),   // 蓝
+        (255, 0, 255), // 品红
+    ];
+    let m = preview_matrix(kind, strength_pct);
+    WHEEL.map(|rgb| {
+        let after = apply_matrix(&m, rgb);
+        (rgb, after)
+    })
+}
+
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -455,6 +477,19 @@ pub fn run_colorfilter_checks() -> CheckSet {
     set.add(
         "off passthrough + preview/sim pipeline distinct",
         passthrough && preview_eq_sim,
+        "",
+    );
+
+
+    // 11. 色轮预览采样对（深化 v2）：六向采样齐、变换前后成对、强度 0
+    //     时前后恒等（零干预语义闭环）。
+    let wheel = preview_wheel(CvdKind::Deuteranopia, 100);
+    let wheel_zero = preview_wheel(CvdKind::Deuteranopia, 0);
+    set.add(
+        "preview wheel paired samples",
+        wheel.len() == 6
+            && wheel.iter().all(|(a, b)| a != b)
+            && wheel_zero.iter().all(|(a, b)| a == b),
         "",
     );
 

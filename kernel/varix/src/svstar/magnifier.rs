@@ -154,6 +154,12 @@ pub struct Magnifier {
     grid_overlay: bool,
     /// 镜头最近一次渲染耗时（us，注入；80fps 预算对账用）。
     last_lens_render_us: u64,
+    /// 平滑跟随的当前镜头锚点（像素——平滑插值状态）。
+    smooth_pos: (u32, u32),
+    /// 坐标尺开关（镜头内像素定位——主册「镜头内坐标尺可选」）。
+    ruler_visible: bool,
+    /// 倍率记忆（会话）：关闭再开恢复上次倍率。
+    remembered_zoom: u32,
 }
 
 impl Magnifier {
@@ -168,6 +174,9 @@ impl Magnifier {
             pan_speed_tier: 1,
             grid_overlay: false,
             last_lens_render_us: 0,
+            smooth_pos: (0, 0),
+            ruler_visible: false,
+            remembered_zoom: ZOOM_MIN,
         }
     }
 
@@ -335,6 +344,73 @@ impl Magnifier {
     /// 源面 + 当前倍率 + 采样方式一并交出——截图管线按此取样即得用户所见。
     pub fn screenshot_view<'a>(&self, src: &'a SourceFrame<'a>) -> ScreenshotView<'a> {
         ScreenshotView { src, zoom: self.zoom, resample: resample_for(self.zoom) }
+    }
+
+    // -------------------------------------------------------------------
+    // 深化批次 v2
+    // -------------------------------------------------------------------
+
+    /// 平滑跟随插值（镜头模式跟手的手感面）：镜头锚点向目标按 alpha
+    /// （万分比）逼近——`pos + (target-pos)×α`；α=10000 即逐帧贴合。
+    /// 返回新锚点（渲染层据此画镜头——跟手不是瞬移，是收尾利落）。
+    pub fn smooth_follow(&mut self, target: (u32, u32), alpha_bp: u32) -> (u32, u32) {
+        let a = alpha_bp.min(10_000) as u64;
+        let nx = (self.smooth_pos.0 as u64 * (10_000 - a) + target.0 as u64 * a) / 10_000;
+        let ny = (self.smooth_pos.1 as u64 * (10_000 - a) + target.1 as u64 * a) / 10_000;
+        self.smooth_pos = (nx as u32, ny as u32);
+        self.smooth_pos
+    }
+
+    /// 平滑锚点查询（渲染读侧）。
+    pub fn smooth_pos(&self) -> (u32, u32) {
+        self.smooth_pos
+    }
+
+    /// 坐标尺开关切换（主册「镜头内坐标尺可选——像素定位用」）。
+    pub fn toggle_ruler(&mut self) -> bool {
+        self.ruler_visible = !self.ruler_visible;
+        self.ruler_visible
+    }
+
+    /// 坐标尺渲染数据（镜头锚点处的像素坐标行——两行：X 列 / Y 行）。
+    pub fn ruler_lines(&self) -> Option<(String, String)> {
+        if !self.ruler_visible || self.mode == MagMode::Off {
+            return None;
+        }
+        Some((
+            alloc::format!("X {}", self.smooth_pos.0),
+            alloc::format!("Y {}", self.smooth_pos.1),
+        ))
+    }
+
+    /// 工具条四钮可用态（迷你悬浮条：放大/缩小/模式/退出——模式钮在
+    /// Off 态显示「开启」语义）。
+    pub fn toolbar_actions(&self) -> [(&'static str, bool); 4] {
+        [
+            ("zoom-in", self.mode != MagMode::Off && self.zoom < ZOOM_MAX),
+            ("zoom-out", self.mode != MagMode::Off && self.zoom > ZOOM_MIN),
+            ("toggle-mode", true),
+            ("exit", self.mode != MagMode::Off),
+        ]
+    }
+
+    /// Ctrl+滚轮缩放（倍率步进同 zoom_step——工具条与滚轮双入口一处
+    /// 一事实）。
+    pub fn wheel_zoom(&mut self, up: bool) -> u32 {
+        self.zoom_step(up);
+        self.zoom
+    }
+
+    /// 关闭时保留倍率记忆；再开恢复（主册：倍率与模式记忆（会话））。
+    pub fn remember_and_off(&mut self) {
+        self.remembered_zoom = self.zoom;
+        self.turn_off();
+    }
+
+    /// 恢复记忆倍率开启。
+    pub fn turn_on_remembered(&mut self) {
+        self.turn_on();
+        self.zoom_set(self.remembered_zoom);
     }
 }
 
@@ -565,6 +641,71 @@ pub fn run_magnifier_checks() -> CheckSet {
             && feather_alpha(8) == 255,
         "",
     );
+
+    // 14. 平滑跟随插值（深化 v2）：α=10000 逐帧贴合目标；α=5000 半程
+    //     逼近；锚点单调收敛不越过目标。
+    let mut m = Magnifier::new(1920, 1080);
+    m.turn_on();
+    let snap = m.smooth_follow((1000, 500), 10_000);
+    let snap_ok = snap == (1000, 500);
+    let half = m.smooth_follow((2000, 500), 5_000);
+    let half_ok = half == (1500, 500);
+    let quarter = m.smooth_follow((2000, 500), 5_000); // 1500→1750（半程逼近）
+    let snapped = m.smooth_follow((2000, 500), 10_000); // 高 α 收尾贴齐
+    set.add(
+        "smooth follow lerp converges",
+        snap_ok && half_ok && quarter == (1750, 500) && snapped == (2000, 500),
+        "",
+    );
+
+    // 15. 坐标尺（深化 v2）：开 → 双行坐标；关/Off 态 → None。
+    let mut m = Magnifier::new(1920, 1080);
+    let off_none = m.ruler_lines().is_none();
+    m.turn_on();
+    m.smooth_follow((640, 360), 10_000);
+    let _ = m.toggle_ruler();
+    let ruler = m.ruler_lines();
+    set.add(
+        "lens ruler optional lines",
+        off_none
+            && ruler == Some((String::from("X 640"), String::from("Y 360"))),
+        "",
+    );
+
+    // 16. 工具条四钮可用态（深化 v2）：下限不可再缩、上限不可再放、
+    //     Off 态退出钮不可用。
+    let mut m = Magnifier::new(1920, 1080);
+    m.turn_on();
+    m.zoom_set(ZOOM_MAX);
+    let at_max = m.toolbar_actions();
+    m.zoom_set(ZOOM_MIN);
+    let at_min = m.toolbar_actions();
+    set.add(
+        "toolbar four buttons availability",
+        !at_max[0].1 && at_max[1].1 && !at_min[1].1 && at_min[0].1,
+        "",
+    );
+
+    // 17. 倍率记忆（深化 v2）：8x 关闭 → 再开恢复 8x（会话记忆判据）。
+    let mut m = Magnifier::new(1920, 1080);
+    m.turn_on();
+    m.zoom_set(8);
+    m.remember_and_off();
+    let off_now = m.mode() == MagMode::Off;
+    m.turn_on_remembered();
+    set.add(
+        "zoom remembered across off/on",
+        off_now && m.mode() != MagMode::Off && m.zoom() == 8,
+        "",
+    );
+
+    // 18. Ctrl+滚轮双入口（深化 v2）：滚轮与工具条同走 zoom_step 一处
+    //     一事实（步进语义一致）。
+    let mut m = Magnifier::new(1920, 1080);
+    m.turn_on();
+    let z0 = m.zoom();
+    let z1 = m.wheel_zoom(true);
+    set.add("wheel zoom same step semantics", z1 == z0 + 1, "");
 
     set
 }

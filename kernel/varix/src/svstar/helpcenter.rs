@@ -340,6 +340,72 @@ pub fn build_manual() -> Vec<HelpPage> {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v2：目录树 / 倒排搜索索引 / 字号档
+// ---------------------------------------------------------------------------
+
+/// 字号调节档（E7 联动——主册【交互设计】「字号调节（E7 联动）」）。
+pub const FONT_SIZE_TIERS_PCT: [u32; 3] = [100, 125, 150];
+
+/// 目录树节点（章节 → 页 id 列表——左树导航数据源）。
+pub struct TocNode {
+    pub section: &'static str,
+    pub page_ids: Vec<&'static str>,
+}
+
+/// 从手册构建目录树（按 section 分组，保持页序）。
+pub fn build_toc(pages: &[HelpPage]) -> Vec<TocNode> {
+    let mut toc: Vec<TocNode> = Vec::new();
+    for p in pages {
+        if let Some(node) = toc.iter_mut().find(|n| n.section == p.section) {
+            node.page_ids.push(p.id);
+        } else {
+            let mut ids = Vec::new();
+            ids.push(p.id);
+            toc.push(TocNode { section: p.section, page_ids: ids });
+        }
+    }
+    toc
+}
+
+/// 倒排搜索索引（词 → 页 id 集——启动后台建（F071 引擎复用语义））。
+pub struct SearchIndex {
+    postings: Vec<(&'static str, &'static str)>,
+}
+
+impl SearchIndex {
+    pub fn build(pages: &[HelpPage]) -> SearchIndex {
+        let mut postings = Vec::new();
+        for p in pages {
+            for word in p.title.split_whitespace() {
+                postings.push((word, p.id));
+            }
+        }
+        SearchIndex { postings }
+    }
+
+    /// 查询（词命中页 id 集——空词返回空）。
+    pub fn query(&self, word: &str) -> Vec<&'static str> {
+        if word.is_empty() {
+            return Vec::new();
+        }
+        let mut hits: Vec<&'static str> = Vec::new();
+        for (w, pid) in &self.postings {
+            if *w == word && !hits.contains(pid) {
+                hits.push(pid);
+            }
+        }
+        hits
+    }
+
+    pub fn len(&self) -> usize {
+        self.postings.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.postings.is_empty()
+    }
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -447,6 +513,34 @@ pub fn run_helpcenter_checks() -> CheckSet {
         "",
     );
 
+
+    // 11. 目录树（深化 v2）：按章节分组、页序保持、章节覆盖手册全部分区。
+    let manual = build_manual();
+    let toc = build_toc(&manual);
+    let toc_pages: usize = toc.iter().map(|n| n.page_ids.len()).sum();
+    set.add(
+        "toc grouped by section preserves order",
+        !toc.is_empty() && toc_pages == manual.len(),
+        "",
+    );
+
+    // 12. 倒排索引（深化 v2）：标题词命中页；空词零命中；索引非空。
+    let manual2 = build_manual();
+    let idx = SearchIndex::build(&manual2);
+    let hit = idx.query(manual2[0].title.split_whitespace().next().unwrap_or("x"));
+    set.add(
+        "inverted index hits + empty-safe",
+        idx.len() > 0 && !hit.is_empty() && idx.query("").is_empty(),
+        "",
+    );
+
+    // 13. 字号档（深化 v2）：三档 100/125/150 在册（E7 联动）。
+    set.add(
+        "font size tiers registered",
+        FONT_SIZE_TIERS_PCT == [100, 125, 150],
+        "",
+    );
+
     set
 }
 
@@ -487,5 +581,27 @@ mod tests {
         let hc = HelpCenter::new();
         let (hits, fast) = hc.search("");
         assert!(hits.is_empty() && fast);
+    }
+
+    #[test]
+    fn f119_toc_sections_nonempty() {
+        for n in build_toc(&build_manual()) {
+            assert!(!n.page_ids.is_empty(), "空章节不允许出现在目录树");
+            assert!(!n.section.is_empty());
+        }
+    }
+
+    #[test]
+    fn f119_index_no_cross_page_dup() {
+        let manual = build_manual();
+        let idx = SearchIndex::build(&manual);
+        // 同词多页命中去重（hits 无重复元素）。
+        let mut all_hits: Vec<&str> = Vec::new();
+        for w in manual[0].title.split_whitespace() {
+            for h in idx.query(w) {
+                assert!(!all_hits.contains(&h), "重复命中必须去重");
+                all_hits.push(h);
+            }
+        }
     }
 }
