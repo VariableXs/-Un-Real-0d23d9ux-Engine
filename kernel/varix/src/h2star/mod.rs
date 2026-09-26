@@ -18,6 +18,16 @@
 //!
 //! | 模块 | 功能 | 判据锚 |
 //! | --- | --- | --- |
+//! | [`h2base`]     | 共享底盘（文件名/天窗/网格） | 五十项通用件 |
+//! | [`xlog`]       | 域体验日志框架（十三章） | 挫败指纹；隐私红线 |
+//! | [`h2knob`]     | 域旋钮登记表 | 零魔法数；主册依据 |
+//! | [`h2persist`]  | 原子写底盘（红线④） | 三段式；断电注入 |
+//! | [`h2diag`]     | 域诊断汇总 | 三色分级；最丑角落 |
+//! | [`h2geo`]      | 几何布局引擎（深化） | F276 四款；F286 拼接；F298 流式 |
+//! | [`h2rank`]     | 排序评级引擎（深化） | F257/F274/F291/F299 |
+//! | [`h2cache`]    | 三层缓存引擎（深化） | O(1) LRU；失效扇出；预算收口 |
+//! | [`h2ledger`]   | 账目引擎（深化） | 哈希链；B-2902；断点账 |
+//! | [`h2snap`]     | 快照序列化层（深化） | 版本封包；损坏容错 |
 //! | [`mediarbit`]   | F251 媒体会话仲裁 | 六态仲裁；OSD 归属；<50ms |
 //! | [`tbgroup`]     | F252 任务栏按钮合并与分组 | 三档策略；3/7/10 角标 |
 //! | [`quickpin`]    | F253 快速访问固定 | 固定/推荐共存；5+5 配额 |
@@ -85,6 +95,14 @@ pub mod extabs;
 pub mod extraclk;
 pub mod fontmgr;
 pub mod h2base;
+pub mod h2cache;
+pub mod h2diag;
+pub mod h2geo;
+pub mod h2knob;
+pub mod h2ledger;
+pub mod h2persist;
+pub mod h2rank;
+pub mod h2snap;
 pub mod hscroll;
 pub mod iconcache;
 pub mod iconlang;
@@ -122,16 +140,26 @@ pub mod timesync;
 pub mod translucent;
 pub mod wallmulti;
 pub mod walldim;
+pub mod xlog;
 
 /// 域标识（CheckSet 聚合用）。
 pub const H2_DOMAIN: &str = "h2star-h2";
 
-/// 本域自检聚合：逐模块 `run_*_checks` 汇总（h2base + F251-F300，
-/// 共 51 块——CheckSet 上限 64，单块占一席）。
+/// 本域自检聚合：逐模块 `run_*_checks` 汇总（h2base + 基础设施四件 +
+/// 深化引擎五件 + F251-F300，共 60 块——CheckSet 上限 64，单块占一席）。
 pub fn run_h2_checks() -> CheckSet {
     let mut set = CheckSet::new(H2_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 51] = [
+    let blocks: [(&'static str, CheckSet); 60] = [
         ("h2base", h2base::run_h2base_checks()),
+        ("h2xlog", xlog::run_xlog_checks()),
+        ("h2knob", h2knob::run_h2knob_checks()),
+        ("h2persist", h2persist::run_h2persist_checks()),
+        ("h2diag", h2diag::run_h2diag_checks()),
+        ("h2geo", h2geo::run_h2geo_checks()),
+        ("h2rank", h2rank::run_h2rank_checks()),
+        ("h2cache", h2cache::run_h2cache_checks()),
+        ("h2ledger", h2ledger::run_h2ledger_checks()),
+        ("h2snap", h2snap::run_h2snap_checks()),
         ("F251", mediarbit::run_mediarbit_checks()),
         ("F252", tbgroup::run_tbgroup_checks()),
         ("F253", quickpin::run_quickpin_checks()),

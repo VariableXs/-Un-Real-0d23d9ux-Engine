@@ -50,6 +50,48 @@ pub struct PrintJob {
     pub state_since_s: u64,
     /// 底层错误码（永不裸抛——经 [`human_reason`] 转译）。
     pub error_code: Option<u32>,
+    /// 已完成页数（打印态进度——「3/12 页」人话直读）。
+    pub pages_done: u32,
+}
+
+/// 终态任务的收尾可见窗（s）：图标不闪没——完成后留 30s 供用户点开看结果。
+pub const ICON_TAIL_S: u64 = 30;
+
+/// 打印机图标可见性（任务栏/通知区）：有非终态任务，或收尾窗内刚
+/// 落终态的任务（「有打印任务时出现」判据 + 不闪没的收尾体验）。
+pub fn icon_visible(jobs: &[PrintJob], now_s: u64) -> bool {
+    jobs.iter()
+        .any(|j| !j.state.terminal() || now_s.saturating_sub(j.state_since_s) < ICON_TAIL_S)
+}
+
+/// 提醒节流账：同一任务的卡住提醒 60s 一条（「卡住 60 秒提醒」的
+/// 完整语义是**每 60s 至多一条**——不是每秒轰炸；完成通知一条即止
+/// 的同纪律在卡住面的落位）。
+#[derive(Default)]
+pub struct ReminderLedger {
+    last: Vec<(JobId, u64)>,
+}
+
+impl ReminderLedger {
+    pub fn new() -> ReminderLedger {
+        ReminderLedger { last: Vec::new() }
+    }
+
+    /// 该任务此刻是否到提醒点（从未提醒过 → 到点；上次提醒已过阈值 → 到点）。
+    pub fn due(&self, id: JobId, now_s: u64) -> bool {
+        match self.last.iter().find(|(i, _)| *i == id) {
+            None => true,
+            Some((_, at)) => now_s.saturating_sub(*at) >= STUCK_WARN_S,
+        }
+    }
+
+    /// 记一次提醒（时刻入账）。
+    pub fn mark(&mut self, id: JobId, now_s: u64) {
+        match self.last.iter_mut().find(|(i, _)| *i == id) {
+            Some((_, at)) => *at = now_s,
+            None => self.last.push((id, now_s)),
+        }
+    }
 }
 
 /// 人话原因映射表（唯一源——错误码 → 三要素之「为什么」）。
@@ -88,8 +130,43 @@ impl PrintQueue {
             virtual_pdf,
             state_since_s: now_s,
             error_code: None,
+            pages_done: 0,
         });
         id - 1
+    }
+
+    /// 页进度上报（打印态；进度不超过总页数——越界钳制）。
+    pub fn report_progress(&mut self, id: JobId, done: u32) -> bool {
+        match self.jobs.get_mut(id) {
+            Some(j) => {
+                j.pages_done = done.min(j.pages);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 人话进度（「3/12 页」；非打印态给状态语义）。
+    pub fn progress_text(&self, id: JobId) -> String {
+        match self.jobs.get(id) {
+            Some(j) => match j.state {
+                JobState::Queued => String::from("排队中"),
+                JobState::Printing => alloc::format!("{}/{} 页", j.pages_done, j.pages),
+                JobState::Done => String::from("完成"),
+                JobState::Failed => String::from("失败"),
+                JobState::Cancelled => String::from("已取消"),
+            },
+            None => String::from("任务不存在"),
+        }
+    }
+
+    /// 队列位置：`id` 前面还有几个排队任务（0=下一个就轮到；非排队
+    /// 任务返回 None——打印中/终态没有「位置」概念）。
+    pub fn queue_position(&self, id: JobId) -> Option<usize> {
+        if self.jobs.get(id)?.state != JobState::Queued {
+            return None;
+        }
+        Some(self.jobs[..id].iter().filter(|j| j.state == JobState::Queued).count())
     }
 
     /// 状态迁移（状态机用例的执行点：非法迁移拒绝）。
@@ -197,6 +274,49 @@ pub fn run_printq_checks() -> CheckSet {
         q.notify_worthy() == 1,
         "no repeat",
     );
+    // --- 深化：提醒节流——同一任务 60s 至多一条卡住提醒。 ---
+    let mut rl = ReminderLedger::new();
+    let mut warned: Vec<&'static str> = Vec::new();
+    for now_s in 160..=200u64 {
+        // 40 秒内逐秒轮询：只在 160s 该提醒一次，随后 59s 静默。
+        if rl.due(b, now_s) {
+            if let Some((_, why)) = q.stuck_jobs(now_s).iter().find(|(i, _)| *i == b) {
+                warned.push(why);
+            }
+            rl.mark(b, now_s);
+        }
+    }
+    set.add("F289 reminder throttled", warned.len() == 1, "once per window");
+    // 再过 60s 又到点（持续卡住持续提醒，但节奏是 60s 一条）。
+    set.add("F289 reminder due again", rl.due(b, 220), "next window");
+    // --- 深化：页进度与人话进度。 ---
+    let mut q2 = PrintQueue::new();
+    let d = q2.submit("论文.pdf", 12, false, 0);
+    let _ = q2.transition(d, JobState::Printing, 1, None);
+    let _ = q2.report_progress(d, 3);
+    set.add(
+        "F289 page progress",
+        q2.progress_text(d) == "3/12 页" && q2.report_progress(d, 99) && q2.jobs[d].pages_done == 12,
+        "clamped",
+    );
+    // --- 深化：队列位置。 ---
+    let e = q2.submit("第二名.docx", 1, false, 2);
+    let f = q2.submit("第三名.docx", 1, false, 2);
+    // d 在打印态 → 无位置；e 之前无排队者 → 0；f 之前排着 e → 1。
+    set.add(
+        "F289 queue position",
+        q2.queue_position(e) == Some(0) && q2.queue_position(f) == Some(1) && q2.queue_position(d).is_none(),
+        "ahead count",
+    );
+    // --- 深化：图标可见性（非终态可见；完成后收尾窗 30s；窗过熄灭）。 ---
+    let mut q3 = PrintQueue::new();
+    set.add("F289 icon empty", !icon_visible(&q3.jobs, 100), "no job no icon");
+    let g = q3.submit("x", 1, false, 100);
+    set.add("F289 icon queued", icon_visible(&q3.jobs, 100), "job → icon");
+    let _ = q3.transition(g, JobState::Printing, 110, None);
+    let _ = q3.transition(g, JobState::Done, 200, None);
+    set.add("F289 icon tail window", icon_visible(&q3.jobs, 210), "30s tail");
+    set.add("F289 icon tail over", !icon_visible(&q3.jobs, 231), "then gone");
     set
 }
 

@@ -54,6 +54,48 @@ pub struct BarButton {
 /// 按钮位预算（WhenFull 档：可见按钮数上限，超出的组合并）。
 pub const BAR_SLOT_BUDGET: usize = 12;
 
+// ---------------------------------------------------------------------------
+// 深化：按钮几何分配（渲染层纵深）
+// ---------------------------------------------------------------------------
+
+/// 按钮呈现档位（判据「任务栏空间不足时收缩」的渲染侧两态）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonMode {
+    /// 完整态：图标+标题+角标。
+    Full,
+    /// 图标态：只剩图标+角标（悬停 Tooltip 出全名——F271 同语义）。
+    Icon,
+}
+
+/// 一个按钮的横向几何（y/高由任务栏高度定——本引擎只管横向分配）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ButtonGeom {
+    pub x: u32,
+    pub w: u32,
+    pub mode: ButtonMode,
+}
+
+/// Full 档理想宽（px）。
+pub const IDEAL_W: u32 = 160;
+/// Icon 档宽（px）。
+pub const ICON_W: u32 = 40;
+
+/// 角标文本（判据「角标计数准确性」的渲染口径：>9 折叠为 9+——
+/// 两位数角标不挤破图标布局；1 不显角标）。
+pub fn badge_text(badge: usize) -> &'static str {
+    match badge {
+        0 | 1 => "",
+        2..=9 => "N", // 占位单字符——真实数字由渲染层格式化。
+        _ => "9+",
+    }
+}
+
+fn allocate(n: usize, w: u32, mode: ButtonMode) -> Vec<ButtonGeom> {
+    (0..n)
+        .map(|i| ButtonGeom { x: i as u32 * w, w, mode })
+        .collect()
+}
+
 /// 任务栏分组模型。
 pub struct TaskbarModel {
     pub policy: MergePolicy,
@@ -141,6 +183,28 @@ impl TaskbarModel {
                 }
             }
         }
+    }
+
+    /// 按钮宽度分配（渲染层深化）：按 `layout()` 的按钮数在 `bar_w`
+    /// 内分配横向几何——
+    /// 1. 全部 Full 放得下（n×IDEAL ≤ bar_w）→ 等宽 Full；
+    /// 2. 否则全部收 Icon（n×ICON ≤ bar_w）→ 等宽 Icon；
+    /// 3. Icon 也放不下 → 能放几个放几个，其余计数溢出（溢出折叠
+    ///    F495 的域侧供数——溢出数交由上层收进折叠列表）。
+    /// 返回 (几何表——与 layout() 同序, 溢出按钮数)。
+    pub fn layout_geoms(&self, bar_w: u32) -> (Vec<ButtonGeom>, usize) {
+        let n = self.layout().len();
+        if n == 0 {
+            return (Vec::new(), 0);
+        }
+        if n as u32 * IDEAL_W <= bar_w {
+            return (allocate(n, IDEAL_W, ButtonMode::Full), 0);
+        }
+        if n as u32 * ICON_W <= bar_w {
+            return (allocate(n, ICON_W, ButtonMode::Icon), 0);
+        }
+        let fit = (bar_w / ICON_W) as usize;
+        (allocate(fit, ICON_W, ButtonMode::Icon), n - fit)
     }
 
     fn group_all(&self, order: &[&TrackedWindow]) -> Vec<BarButton> {
@@ -232,6 +296,36 @@ pub fn run_tbgroup_checks() -> CheckSet {
         expect == actual,
         "close keeps order",
     );
+    // --- 深化：按钮几何分配三态（Full → Icon → 溢出）。 ---
+    let mut g = TaskbarModel::new(MergePolicy::Always);
+    for i in 0..4 {
+        let _ = g.open(&format!("应用{i}"), 1_000 + i);
+    }
+    let (geoms, ov0) = g.layout_geoms(4 * IDEAL_W);
+    set.add(
+        "F252 geom full",
+        ov0 == 0 && geoms.len() == 4 && geoms.iter().all(|b| b.mode == ButtonMode::Full) && geoms[1].x == IDEAL_W,
+        "bar fits full",
+    );
+    // 收缩阈值：同 4 钮、宽度只够 Icon → 全收图标。
+    let (geoms_i, ov1) = g.layout_geoms(4 * ICON_W);
+    set.add(
+        "F252 geom shrink",
+        ov1 == 0 && geoms_i.iter().all(|b| b.mode == ButtonMode::Icon),
+        "icon threshold",
+    );
+    // 中间地带：Full 放不下、Icon 放得下——200px / 4 钮：640>200，160>200? Icon=40×4=160≤200 ✓。
+    let (mid, _) = g.layout_geoms(200);
+    set.add("F252 geom middle band", mid.iter().all(|b| b.mode == ButtonMode::Icon), "full no / icon yes");
+    // 溢出：Icon 40px、给 100px → 放 2 个、溢出 2。
+    let (_part, ov2) = g.layout_geoms(100);
+    set.add("F252 geom overflow", ov2 == 2, "rest to flyout");
+    // 角标文本口径：1 不显、2-9 单字符、>9 折叠 9+。
+    set.add(
+        "F252 badge text cap",
+        badge_text(1).is_empty() && badge_text(7) == "N" && badge_text(10) == "9+",
+        "9+ fold",
+    );
     set
 }
 
@@ -255,5 +349,28 @@ mod tests {
         }
         // 偶数次翻转回到原态——切换语义不黏滞。
         assert!(!m.window(w).unwrap().minimized);
+    }
+
+    #[test]
+    fn geoms_never_exceed_bar() {
+        // 任意按钮数下，分配出的几何不越出任务栏宽（回归锚）。
+        let mut m = TaskbarModel::new(MergePolicy::Never);
+        for i in 0..9 {
+            let _ = m.open(&format!("a{i}"), i as u64);
+        }
+        for bar_w in [0u32, 39, 40, 200, 640, 1920] {
+            let (geoms, ov) = m.layout_geoms(bar_w);
+            let used: u32 = geoms.iter().map(|g| g.w).sum();
+            assert!(used <= bar_w.max(1) || bar_w == 0, "bar_w={bar_w} 越宽 {used}");
+            assert_eq!(geoms.len() + ov, 9, "按钮账守恒 bar_w={bar_w}");
+        }
+    }
+
+    #[test]
+    fn zero_bar_degrades_not_panics() {
+        let mut m = TaskbarModel::new(MergePolicy::Always);
+        let _ = m.open("A", 0);
+        let (geoms, ov) = m.layout_geoms(0);
+        assert_eq!(geoms.len() + ov, 1, "零宽任务栏：按钮进溢出，不 panic");
     }
 }
