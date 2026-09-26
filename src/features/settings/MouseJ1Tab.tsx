@@ -46,6 +46,7 @@ import {
   ReplayPanel,
   TwelveChecksPanel,
 } from "./MouseJ1Panels";
+import { V5Panels } from "./MouseJ1V5Panels";
 import "../../styles/mouse-j1.css";
 
 type Cfg = Record<string, unknown>;
@@ -652,6 +653,7 @@ export function MouseJ1Tab(): React.ReactElement {
         <SectionCard title="十二查对账（F601-F620 × 通用十二查）" f="v4 对账">
           <TwelveChecksPanel />
         </SectionCard>
+        <V5Panels />
         <SectionCard title="运行时接线审计" f="v3 接线">
           <WiringPanel />
         </SectionCard>

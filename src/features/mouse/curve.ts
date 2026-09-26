@@ -20,6 +20,7 @@
  */
 
 import type { J1Section } from "./j1store";
+import { bezierGainPrecise } from "./gainfield";
 
 export type CurveId = "linear" | "classic" | "soft" | "custom";
 
@@ -74,9 +75,9 @@ export function gainAt(curve: CurveId, a: number, cfg?: CurveConfig): number {
     }
     case "custom": {
       const c = cfg ?? { id: "custom", cp1x: 0.35, cp1y: 0.55, cp2x: 0.7, cp2y: 1.0, sens: 1 };
-      // 贝塞尔以输入位移归一为参数 t，输出归一为增益 0.5..2.0 区间。
-      const t = Math.min(1, d / 128);
-      return 0.5 + 1.5 * evalBezier(t, c.cp1x, c.cp1y, c.cp2x, c.cp2y);
+      // v5：贝塞尔增益走精确反解引擎（gainfield）——x(t) 牛顿+二分混合求根，
+      // 极端控制点下预览与实际零偏差（闭合 v4 最丑角落「牛顿两步近似」）。
+      return bezierGainPrecise(d, c.cp1x, c.cp1y, c.cp2x, c.cp2y);
     }
     default:
       return 1;

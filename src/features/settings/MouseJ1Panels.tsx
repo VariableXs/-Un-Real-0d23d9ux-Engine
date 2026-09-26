@@ -48,7 +48,7 @@ export function SectionCard(props: { title: string; f: string; children: React.R
   );
 }
 
-function MiniButton(props: { onClick: () => void; children: React.ReactNode; tone?: "default" | "danger" }): React.ReactElement {
+export function MiniButton(props: { onClick: () => void; children: React.ReactNode; tone?: "default" | "danger" }): React.ReactElement {
   return (
     <button type="button" className={props.tone === "danger" ? "j1x-btn j1x-btn--danger" : "j1x-btn"} onClick={props.onClick}>
       {props.children}

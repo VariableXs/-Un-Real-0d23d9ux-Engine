@@ -165,6 +165,11 @@ export class J1Telemetry {
     return this.frustrations.length;
   }
 
+  /** 只读快照（v5 会话聚合/日报面板消费——不暴露可变内部）。 */
+  snapshot(): { events: J1Event[]; frustrations: FrustrationSignal[] } {
+    return { events: [...this.ring], frustrations: [...this.frustrations] };
+  }
+
   /** 时间轴回放（章十三「可回放的操作故事线」）：按间隔分幕。 */
   replayTimeline(gapMs = 2500): ReplayTimeline {
     return buildReplay(this.ring, this.frustrations, gapMs);

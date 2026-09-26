@@ -31,7 +31,9 @@ import {
   DeviceProfileManager,
   type DeviceProfileParams,
 } from "./profiles";
-import { LiftFilter, TremorFilter } from "./filters";
+import { LiftFilter, TremorFilter, type TremorEngine } from "./filters";
+import { TremorFilterEuro } from "./oneEuro";
+import { springToward } from "./physics";
 import {
   WheelGain,
   resolveWheelMode,
@@ -58,7 +60,6 @@ import { GestureRecognizer, resolveGestureAction, type GestureLibraryConfig } fr
 import { SeamGuard, ScreenMemory, type MonitorInfo, type SeamGuardConfig, type ScreenMemoryConfig } from "./screen";
 import { resolveSideButton, type SideButtonsConfig } from "./sideButtons";
 import { clampHoverDelay, clampTooltipDelay, HOVER_TOOLTIP_DEFAULT } from "./hoverTiming";
-import { lerpToward } from "./magnet";
 import { dispatchJ1Action } from "./actions";
 import { logInfo } from "../../lib/logger";
 
@@ -229,7 +230,8 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     vx: 0,
     vy: 0,
     lift: new LiftFilter(),
-    tremor: new TremorFilter("off"),
+    tremor: new TremorFilter("off") as TremorEngine,
+    tremorKey: "off:iir",
     keys: { shiftKey: false, ctrlKey: false, altKey: false, caps: false },
     // 滚轮
     gain: new WheelGain(() => cfg<WheelGainConfig>("wheelGain", WHEEL_GAIN_DEFAULT)),
@@ -252,6 +254,7 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     memThrottleAt: 0,
     // F608 磁吸视觉平滑状态 + F602 HUD 态（v4）。
     magVis: { x: 0, y: 0 },
+    magLastAt: 0,
     slowActive: false,
     // 手势
     recognizer: new GestureRecognizer(),
@@ -498,9 +501,15 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
       if (opts.replica) cb.onReplica?.(null);
       return;
     }
-    const tremorCfg = cfg<{ level: "off" | "light" | "strong" }>("tremor", { level: "off" });
-    if (st.tremor.level !== tremorCfg.level) st.tremor = new TremorFilter(tremorCfg.level);
-    const a = st.tremor.feed(raw.dx, raw.dy);
+    // F611 双引擎（v5）：按配置选 IIR/One Euro——换引擎是手感变更，
+    // 键值对比重建（档位或引擎任一变化都复位滤波状态，不留旧态）。
+    const tremorCfg = cfg<{ level: "off" | "light" | "strong"; engine?: "iir" | "euro" }>("tremor", { level: "off" });
+    const tKey = `${tremorCfg.level}:${tremorCfg.engine ?? "iir"}`;
+    if (st.tremorKey !== tKey) {
+      st.tremor = tremorCfg.engine === "euro" ? new TremorFilterEuro(tremorCfg.level) : new TremorFilter(tremorCfg.level);
+      st.tremorKey = tKey;
+    }
+    const a = st.tremor.feed(raw.dx, raw.dy, now);
     const b = st.lift.feed(a.x, a.y, now);
     const slowCfg = cfg<{ enabled: boolean; ratio: number; key: SlowTuneKey }>("slowTune", SLOW_DEFAULT);
     const slow = slowTuneGain(modifierActive(slowCfg.key), slowCfg);
@@ -531,7 +540,11 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
         }
       }
     }
-    st.magVis = lerpToward(st.magVis, { x: tx, y: ty }, 0.35);
+    // F608 磁吸视觉（v5）：临界阻尼弹簧（解析解、帧率无关）——「到位即停」
+    // 替代 v4 渐近；判定零偏移铁律不变（只喂渲染层）。
+    const magDt = st.magLastAt > 0 ? now - st.magLastAt : 16;
+    st.magLastAt = now;
+    st.magVis = springToward(st.magVis, { x: tx, y: ty }, magDt);
     cb.onReplica?.({ x: st.vx + st.magVis.x, y: st.vy + st.magVis.y });
   };
 
@@ -723,7 +736,15 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
 
   const unsub = j1Store.subscribe((section) => {
     if (section === "hoverTiming" || section === "longPress") applyTimingVars();
-    if (section === "tremor") st.tremor = new TremorFilter(cfg<{ level: "off" }>("tremor", { level: "off" }).level);
+    if (section === "tremor") {
+      // v5 双引擎：订阅回调统一走键值比对重建（与 onMove 同一逻辑面）。
+      const tc = cfg<{ level: "off" | "light" | "strong"; engine?: "iir" | "euro" }>("tremor", { level: "off" });
+      const key = `${tc.level}:${tc.engine ?? "iir"}`;
+      if (st.tremorKey !== key) {
+        st.tremor = tc.engine === "euro" ? new TremorFilterEuro(tc.level) : new TremorFilter(tc.level);
+        st.tremorKey = key;
+      }
+    }
     if (section === "devices") st.deviceManager.currentDefault = currentDefaultParams();
   });
 

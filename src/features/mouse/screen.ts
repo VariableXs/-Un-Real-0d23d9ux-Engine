@@ -123,15 +123,16 @@ export class SeamGuard {
 
 export interface ScreenMemoryConfig {
   enabled: boolean;
-  /** EDID 指纹 → {x,y}（只记位置不记其它状态）。 */
-  points: Record<string, { x: number; y: number }>;
+  /** EDID 指纹 → {x,y,at?}（只记位置+访问序，不记其它状态；at 为 v6 LRU 时间戳）。 */
+  points: Record<string, { x: number; y: number; at?: number }>;
 }
 
 const SCREEN_MEMORY_LIMIT = 8;
 
 /**
  * 跨屏落点记忆（按 EDID 指纹为键）：
- * - remember()：指针每秒与跨屏瞬间记录（runtime 节流调用）；
+ * - remember()：指针每秒与跨屏瞬间记录（runtime 节流调用）——v6 起带访问
+ *   时间戳，淘汰按「最久未写」真 LRU（v4 首版删 keys[0] 的键序近似已闭合）；
  * - restore()：屏幕重新出现（KVM/锁屏唤醒/输入源切回）时取回记忆点，
  *   并钳制在该屏范围内（<1px 精度：存取不经过任何换算）。
  * 上限 8 块屏（超出淘汰最久——LRU 纪律）。
@@ -142,9 +143,22 @@ export class ScreenMemory {
   remember(edid: string, gx: number, gy: number, monitors: MonitorInfo[]): void {
     if (!this.cfg().enabled || monitors.length <= 1) return; // 单屏静默
     const points = { ...this.cfg().points };
-    points[edid] = { x: Math.round(gx), y: Math.round(gy) };
+    // 旧档位兼容：v4 存 {x,y}，v6 存 {x,y,at}——读侧兼容两态，写侧带时间戳。
+    points[edid] = { x: Math.round(gx), y: Math.round(gy), at: Date.now() };
     const keys = Object.keys(points);
-    if (keys.length > SCREEN_MEMORY_LIMIT) delete points[keys[0]!];
+    if (keys.length > SCREEN_MEMORY_LIMIT) {
+      let oldestKey = keys[0]!;
+      let oldestAt = Infinity;
+      for (const k of keys) {
+        const v = points[k]! as { x: number; y: number; at?: number };
+        const at = v.at ?? 0; // 旧态视为最旧——优先淘汰
+        if (at < oldestAt) {
+          oldestAt = at;
+          oldestKey = k;
+        }
+      }
+      delete points[oldestKey];
+    }
     j1Set("screenMemory", { points });
   }
 

@@ -50,7 +50,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
       const s = gainAt("soft", 8) < 1 && gainAt("soft", 200) > 1;
       return t === 1 && c && s;
     },
-    ugly: "自定义曲线的 x(t) 反解是两步牛顿近似——极端控制点下预览与实际增益有可见偏差，完整反解该用二分。",
+    ugly: "精确反解已闭合牛顿近似（v5 gainfield），但贝塞尔 y 控制点出界时增益会折返——面板有单调性标红（firstNonMonotonic），折返曲线本身仍允许保存（创作自由与手感可预期性的取舍未定案）。",
   },
   {
     f: "F602", name: "慢速微调模式", section: "slowTune",
@@ -89,7 +89,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
     placement: "A",
     navChain: ["设置中心", "鼠标", "滚轮手感"],
     probe: () => notchLines(3) === 3 && APP_CLASS_DEFAULT.document === "notch" && APP_CLASS_DEFAULT.browser === "smooth",
-    ugly: "应用覆盖编辑器要求手填 data-app-id——对普通用户是黑话（可发现性欠账，真实入口应该从应用列表选）。",
+    ugly: "应用 id 手填黑话已闭合（v6 enumerateAppIds 从 DOM [data-app-id] 实时枚举+合法性校验），但「手填高级模式」入口尚未提供——清单外应用（窗口还没开过）暂时无法覆盖，要等该窗口打开一次。",
   },
   {
     f: "F606", name: "倾斜滚轮支持", section: "tiltWheel",
@@ -137,7 +137,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
     placement: "A",
     navChain: ["设置中心", "鼠标", "滤波与手抖"],
     probe: () => (J1_DEFAULTS.tremor as { level: string }).level === "off" && TREMOR_LEVELS.light.ampPx === 0.5 && TREMOR_LEVELS.strong.ampPx === 2,
-    ugly: "IIR 一阶低通对 6Hz 以上强档的相位滞后约 80ms——意图移动的前沿会被轻微拖尾（直通阈值挡住了大部分，但 2-4px 的中等意图移动处于灰区）。",
+    ugly: "One Euro 已就位（v5），但对拍实测其绝对残余高于 IIR（0.16-0.34 vs 恒 0.075）——它的真增量在频率选择性与帧率无关，不在「吃得更多」；默认档仍是 iir，换引擎的价值主张要靠面板数据让用户自己判断（入口可发现性还差一次引导）。",
   },
   {
     f: "F612", name: "滚轮自适应增益", section: "wheelGain",
@@ -148,7 +148,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
       const g = J1_DEFAULTS.wheelGain as { minLines: number; maxLines: number };
       return g.minLines === 3 && g.maxLines === 12;
     },
-    ugly: "增益 EMA 的节奏窗口只看事件间隔、不看滚动方向翻转——上下抖着滚时增益同样爬升（体感略怪，真实用户可能永远踩不到）。",
+    ugly: "方向翻转防爬升已闭合（v6：翻转腰斩节奏 EMA），但「上下翻页找图」这类交替节奏被误伤的边界没有实机数据支撑——0.5 的腰斩系数是手感判断不是标定值（随闸门可调）。",
   },
   {
     f: "F613", name: "指针跨屏落点记忆", section: "screenMemory",
@@ -156,7 +156,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
     placement: "A",
     navChain: ["设置中心", "鼠标", "跨屏与落点"],
     probe: () => (J1_DEFAULTS.screenMemory as { enabled: boolean }).enabled === true,
-    ugly: "记忆上限 8 屏用「删 keys[0]」近似 LRU——对象键序在极端插入模式下不严格等于最久未用序（上限 8 的场景里几乎不可能触发）。",
+    ugly: "键序 LRU 近似已闭合（v6：写入带 at 时间戳、淘汰取最旧、旧档位兼容读取），但「读」不计入访问序——被反复 restore 的屏若从不重写，仍可能被淘汰（上限 8 的场景里几乎不可能触发）。",
   },
   {
     f: "F614", name: "鼠标分设备档案", section: "devices",

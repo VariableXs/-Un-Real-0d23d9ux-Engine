@@ -21,6 +21,8 @@
  * - 穿透/豁免/关闭三态 / 白名单类型表 → resolveWheelTarget()
  */
 
+import { evalGainCurve } from "./wheelcal";
+
 /* ------------------------------- F605 刻度语义 ------------------------------- */
 
 export type WheelMode = "notch" | "smooth" | "per-app";
@@ -139,6 +141,11 @@ export interface WheelGainConfig {
   maxLines: number;
   /** 增益平滑介入时间常数（ms）——速度连续性（无跳变感）。 */
   accelMs: number;
+  /**
+   * 标定曲线（v5 滚轮标定向导采纳后写回——lines = k·pace^b 覆盖出厂线性；
+   * 不写 = 出厂线性。判据纪律：标定是专家捷径，默认参数不进配置）。
+   */
+  calib?: { k: number; b: number };
 }
 
 /**
@@ -152,6 +159,7 @@ export class WheelGain {
   private ema = 0; // 平滑后的档/秒
   private level = 0; // 平滑后的输出行数（速度连续性的第二重保障）
   private lastAt = -Infinity;
+  private lastSign = 0; // 滚动方向（v6：翻转防爬升）
 
   constructor(private cfg: () => WheelGainConfig) {}
 
@@ -159,14 +167,17 @@ export class WheelGain {
     this.ema = 0;
     this.level = 0;
     this.lastAt = -Infinity;
+    this.lastSign = 0;
   }
 
   /**
    * 一次滚轮事件 → 本次应滚行数。
    * @param atMs 事件时刻
    * @param notchMode 当前应用的解析档（notch 档豁免增益——F605 互斥边界）
+   * @param dirSign 滚动方向符号（v6：上下抖着滚时节奏 EMA 不该爬升——
+   *        方向翻转即把节奏 EMA 腰斩，「抖着滚增益反而变大」的体感缺陷闭合）
    */
-  feed(atMs: number, notchMode: boolean): number {
+  feed(atMs: number, notchMode: boolean, dirSign = 0): number {
     const cfg = this.cfg();
     const min = Math.max(1, cfg.minLines);
     const max = Math.max(min, cfg.maxLines);
@@ -177,13 +188,19 @@ export class WheelGain {
     if (this.lastAt !== -Infinity) {
       const dt = Math.max(1, atMs - this.lastAt);
       const rate = 1000 / dt; // 档/秒
+      if (dirSign !== 0 && this.lastSign !== 0 && dirSign !== this.lastSign) {
+        this.ema *= 0.5; // 方向翻转：节奏清半（抖滚不爬升）
+      }
       this.ema = this.ema === 0 ? rate : this.ema + (rate - this.ema) * 0.35;
     }
+    if (dirSign !== 0) this.lastSign = dirSign;
     this.lastAt = atMs;
-    // 3..8 档/秒 线性映射 min..max；输出行数再经 EMA 平滑——
-    // 即使节奏突变，行数也连续逼近（增益介入无跳变感判据）。
-    const t = Math.max(0, Math.min(1, (this.ema - 3) / 5));
-    const target = min + (max - min) * t;
+    // 目标行数：标定曲线（幂律）优先，无标定走出厂线性 3..8 档/秒。
+    // 输出行数再经 EMA 平滑——即使节奏突变，行数也连续逼近（增益介入无跳变感判据）。
+    const calib = cfg.calib;
+    const target = calib
+      ? Math.max(min, Math.min(max, evalGainCurve(calib.k, calib.b, this.ema)))
+      : min + (max - min) * Math.max(0, Math.min(1, (this.ema - 3) / 5));
     this.level = this.level === 0 ? min : this.level + (target - this.level) * 0.35;
     return Math.round(this.level * 100) / 100;
   }

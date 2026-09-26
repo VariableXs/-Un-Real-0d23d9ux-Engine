@@ -49,6 +49,17 @@ export class LiftFilter {
 
 export type TremorLevel = "off" | "light" | "strong";
 
+/**
+ * 手抖滤波引擎公共面（v5：IIR 与 One Euro 双引擎同构——运行时按配置选
+ * 引擎，管线零分支差异）。atMs 可选：One Euro 需要真实 dt 做帧率无关滤波，
+ * IIR 忽略之（接口统一、语义各取）。
+ */
+export interface TremorEngine {
+  level: TremorLevel;
+  feed(dx: number, dy: number, atMs?: number): { x: number; y: number; filtered: boolean };
+  reset(): void;
+}
+
 /** 三档参数：幅度阈值（px 内吃掉）与保留系数（keep 越小吃得越干净）。 */
 export const TREMOR_LEVELS: Record<Exclude<TremorLevel, "off">, { ampPx: number; alpha: number; name: string; desc: string }> = {
   light: { ampPx: 0.5, alpha: 0.65, name: "轻", desc: "吃 0.5px 内微抖，速度感几乎不变。" },
@@ -62,7 +73,7 @@ export const TREMOR_LEVELS: Record<Exclude<TremorLevel, "off">, { ampPx: number;
  *   直接直通；阈值内的微小位移向稳定位置收敛。
  * - 关档零干预（feed 原样返回，零分配）。
  */
-export class TremorFilter {
+export class TremorFilter implements TremorEngine {
   level: TremorLevel;
   /** 收敛锚点（低通状态）。 */
   private sx = 0;
@@ -79,7 +90,7 @@ export class TremorFilter {
     this.hasAnchor = false;
   }
 
-  feed(dx: number, dy: number): { x: number; y: number; filtered: boolean } {
+  feed(dx: number, dy: number, _atMs?: number): { x: number; y: number; filtered: boolean } {
     if (this.level === "off") return { x: dx, y: dy, filtered: false };
     const p = TREMOR_LEVELS[this.level];
     const mag = Math.hypot(dx, dy);

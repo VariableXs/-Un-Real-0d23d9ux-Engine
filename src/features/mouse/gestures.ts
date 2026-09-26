@@ -13,6 +13,8 @@
  * - 优先级矩阵（与 F215 右键菜单 / F615 侧键）→ gesturePriorityNote()
  */
 
+import { shapeFallback, type ShapeGesture } from "./recognizer";
+
 export const TRAIL_FADE_MS = 120;
 /** 最小方向步数：不足视为「无轨迹」→ 右键菜单兜底（零误伤）。 */
 export const GESTURE_MIN_STEPS = 2;
@@ -57,6 +59,12 @@ export interface GestureLibraryConfig {
    * （一处一事实：动作字符串合法性由派发侧未处理显性化兜底）。
    */
   bindings?: Record<string, string>;
+  /**
+   * 形状手势库（v5 · Protractor 第二引擎，recognizer.ts 承载）：
+   * id → 归一化模板。方向串引擎未命中时精判——圆/勾/对勾等「形状语义」
+   * 手势的入口；与 custom（方向串自定义）互不干扰、bindings 共表。
+   */
+  shapes?: Record<string, ShapeGesture>;
 }
 
 export function gestureLibrary(cfg: GestureLibraryConfig): { id: string; name: string; dirs: Dir8[]; action: string; builtin: boolean }[] {
@@ -112,7 +120,8 @@ export class GestureRecognizer {
     for (const g of gestureLibrary(cfg)) {
       if (matchDirs(collapsed, g.dirs)) return { id: g.id, action: g.action };
     }
-    return null;
+    // 形状兜底（v5）：方向串未命中 → Protractor 精判原始点列（recognizer.ts）。
+    return shapeFallback(this.points, cfg);
   }
 
   reset(): void {

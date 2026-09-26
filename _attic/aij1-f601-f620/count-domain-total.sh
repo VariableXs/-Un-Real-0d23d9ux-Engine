@@ -17,8 +17,11 @@ for f in src/features/mouse/j1store.ts src/features/mouse/curve.ts src/features/
   src/features/mouse/inertia.ts src/features/mouse/gestureRecorder.ts src/features/mouse/pack.ts \
   src/features/mouse/telemetry.ts src/features/mouse/evidence.ts src/features/mouse/actions.ts \
   src/features/mouse/shortcutRecorder.ts src/features/mouse/checklist.ts \
+  src/features/mouse/gainfield.ts src/features/mouse/oneEuro.ts src/features/mouse/recognizer.ts \
+  src/features/mouse/edid.ts src/features/mouse/topology.ts src/features/mouse/wheelcal.ts \
+  src/features/mouse/physics.ts src/features/mouse/session.ts src/features/mouse/reconcile.ts src/features/mouse/appRegistry.ts \
   src/features/mouse/windowRuntime.ts src/features/mouse/J1Runtime.tsx \
-  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/styles/mouse-j1.css; do
+  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/features/settings/MouseJ1V5Panels.tsx src/styles/mouse-j1.css; do
   n=$(filt < "$f"); printf "%6d  %s\n" "$n" "$f"; total=$((total+n))
 done
 echo "------"; echo "J1 域功能文件现值合计: $total"

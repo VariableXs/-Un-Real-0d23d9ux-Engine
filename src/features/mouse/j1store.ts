@@ -230,7 +230,7 @@ export const J1_DEFAULTS: J1Config = {
   devices: { profiles: [], notifyOnClone: true },
   sideButtons: { global: { back: "nav-back", forward: "nav-forward" }, apps: {} },
   appProfiles: { profiles: {}, currentApp: "" },
-  gestures: { enabled: false, trailFadeMs: 120, custom: {}, bindings: {} },
+  gestures: { enabled: false, trailFadeMs: 120, custom: {}, bindings: {}, shapes: {} },
   passthrough: { enabled: true, exemptTypes: ["scrollable-layer", "select", "menu"] },
   longPress: { scale: 1.0, registry: {} },
   overlay: { outline: true, shadow: false, ring: false },
