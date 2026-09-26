@@ -167,6 +167,29 @@ pub fn run_bootskel_checks() -> CheckSet {
         !q1 && !q2 && released == alloc::vec![String::from("设置"), String::from("关于")],
         "queue then release",
     );
+    // --- 深化二：与 h2launch 节拍常量同源对账（一处一事实——两处
+    // 阈值必须一字不差，谁漂移谁红）。 ---
+    set.add(
+        "F283 beats same source",
+        FEEDBACK_LIMIT_MS == crate::h2star::h2launch::BEAT_FEEDBACK_MS
+            && FRAME_LIMIT_MS == crate::h2star::h2launch::BEAT_FRAME_MS
+            && STALL_THRESHOLD_MS == crate::h2star::h2launch::BEAT_STALL_MS,
+        "constants cross-checked",
+    );
+    // 交叉验证：本模块拍子判定与 h2launch::beat_at 对同一时间线同判。
+    let mut x = LaunchBeat::new("对账", true);
+    x.feedback_ms = 90;
+    x.frame_ms = 190;
+    x.skeleton_ms = 195;
+    x.content_ms = 1_500;
+    set.add(
+        "F283 cross-engine agree",
+        x.three_beats_ok()
+            && crate::h2star::h2launch::beat_at(90) == crate::h2star::h2launch::LaunchPhase::Feedback
+            && crate::h2star::h2launch::beat_at(150) == crate::h2star::h2launch::LaunchPhase::Frame
+            && crate::h2star::h2launch::beat_at(1_500) == crate::h2star::h2launch::LaunchPhase::Content,
+        "same timeline same verdict",
+    );
     set
 }
 

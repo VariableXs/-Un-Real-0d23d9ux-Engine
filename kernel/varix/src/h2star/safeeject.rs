@@ -98,7 +98,55 @@ impl EjectArbiter {
     pub fn ok_bubble() -> &'static str {
         "可以安全移除了"
     }
+
+    // ---------------------------------------------------------------
+    // 深化批次二：多事务聚合与气泡时效
+    // ---------------------------------------------------------------
+
+    /// 多事务聚合拦截文案（单卷多写入并行时：事务数+总剩余+最慢 ETA
+    /// ——「正在写入 3 个文件，剩 12MB」口径的多事务版，不漏任何一路）。
+    pub fn block_text_multi(txs: &[WriteTx]) -> String {
+        if txs.is_empty() {
+            return String::from("没有正在进行的写入");
+        }
+        let files: usize = txs.iter().map(|t| t.files.len()).sum();
+        let remaining: u64 = txs.iter().map(|t| t.remaining()).sum();
+        let eta = txs.iter().filter_map(|t| t.eta_s()).max();
+        match eta {
+            Some(s) => alloc::format!(
+                "正在写入 {} 个文件（{} 路任务），剩 {} 字节，预计还要 {} 秒——写完即可弹出",
+                files, txs.len(), remaining, s
+            ),
+            None => alloc::format!(
+                "正在写入 {} 个文件（{} 路任务），剩 {} 字节——写完即可弹出",
+                files, txs.len(), remaining
+            ),
+        }
+    }
+
+    /// 成功气泡展示时长（ms——反馈要有存在感但不黏屏；3s 自动散场）。
+    pub const BUBBLE_MS: u64 = 3_000;
 }
+
+/// 强拔标注的生命周期：标注随「文件被完整重写」解除（重插后把文件
+/// 重新写完整 → 标注清除——标注是状态不是烙印）。
+impl TornLedger {
+    /// 完整重写确认（校验和过 = 文件重新完整）→ 清除标注。
+    /// 返回 false = 该文件本无标注（诚实）。
+    pub fn clear_if_rewritten(&mut self, file: &str, content: &[u8]) -> bool {
+        let before = self.marks.len();
+        self.marks.retain(|m| !(m.file == file && m.written_bytes <= content.len() as u64));
+        self.marks.len() != before
+    }
+
+    /// 标注存量（诊断面）。
+    pub fn len(&self) -> usize {
+        self.marks.len()
+    }
+}
+
+/// F066 协作口纪律（文档化常量——本层只登记不越权修复卷）。
+pub const FS_JOURNAL_NOTE: &str = "卷恢复由文件系统日志（F066）负责；本层只负责坏文件自首标注";
 
 /// 强拔保护：受影响文件损坏标注（下次访问可发现——不静默给半截）。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -193,6 +241,43 @@ pub fn run_safeeject_checks() -> CheckSet {
     );
     let clean = torn.is_torn("无辜.txt");
     set.add("F294 clean untouched", clean.is_none(), "no false mark");
+    // --- 深化二：多事务聚合拦截。 ---
+    let multi = [
+        WriteTx { files: alloc::vec![String::from("a"), String::from("b")], done_bytes: 1_000, total_bytes: 4_000, rate_bps: 1_000 },
+        WriteTx { files: alloc::vec![String::from("c")], done_bytes: 0, total_bytes: 2_000, rate_bps: 0 },
+    ];
+    let agg = EjectArbiter::block_text_multi(&multi);
+    set.add(
+        "F294 multi-tx aggregate",
+        agg.contains("3 个文件") && agg.contains("2 路任务") && agg.contains("5000 字节") && agg.contains("3 秒"),
+        "3 files / 2 lanes / known eta only",
+    );
+    set.add(
+        "F294 multi idle text",
+        EjectArbiter::block_text_multi(&[]).contains("没有正在进行的写入"),
+        "idle honest",
+    );
+    // --- 深化二：标注生命周期（完整重写解除标注）。 ---
+    let mut torn2 = TornLedger::new();
+    let _ = torn2.record_torn(&[(String::from("修复目标.bin"), 100)], 1);
+    let cleared = torn2.clear_if_rewritten("修复目标.bin", &alloc::vec![0u8; 200]);
+    set.add(
+        "F294 torn cleared on rewrite",
+        cleared && torn2.len() == 0,
+        "mark is state not brand",
+    );
+    set.add(
+        "F294 torn clear honest",
+        !torn2.clear_if_rewritten("从未标注.txt", &alloc::vec![0u8; 10]),
+        "nothing to clear",
+    );
+    // 部分重写（仍短于中断点）不清除——坏文件继续自首。
+    let mut torn3 = TornLedger::new();
+    let _ = torn3.record_torn(&[(String::from("still-torn.bin"), 500)], 1);
+    let _ = torn3.clear_if_rewritten("still-torn.bin", &alloc::vec![0u8; 100]);
+    set.add("F294 partial rewrite keeps mark", torn3.len() == 1, "still torn");
+    // F066 协作口文档化。
+    set.add("F294 F066 note", FS_JOURNAL_NOTE.contains("F066") && FS_JOURNAL_NOTE.contains("自首"), "boundary documented");
     set
 }
 

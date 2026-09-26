@@ -40,17 +40,25 @@ pub struct HangMonitor {
     pub state: HangState,
     /// 最近一次心跳时戳（ms 注入）。
     pub last_heartbeat_ms: u64,
+    /// 恢复滞回计数（连续心跳才判活）。
+    pub recover_streak: u32,
 }
 
 impl HangMonitor {
     pub fn new() -> HangMonitor {
-        HangMonitor { state: HangState::Responsive, last_heartbeat_ms: 0 }
+        HangMonitor { state: HangState::Responsive, last_heartbeat_ms: 0, recover_streak: 0 }
     }
 
     pub fn heartbeat(&mut self, now_ms: u64) {
         self.last_heartbeat_ms = now_ms;
         if self.state == HangState::Suspended {
-            self.state = HangState::Recovered;
+            // 滞回：恢复需要连续 RECOVER_STREAK 次心跳——「可能只是慢」
+            // 的防抖（一次心跳不能证明主线程活了，连续 3 次才算）。
+            self.recover_streak += 1;
+            if self.recover_streak >= RECOVER_STREAK {
+                self.state = HangState::Recovered;
+                self.recover_streak = 0;
+            }
         }
     }
 
@@ -73,6 +81,35 @@ impl HangMonitor {
     /// 两选一浮条：默认不动（默认选择=等待；5s 无操作自动收起）。
     pub fn floater_default() -> &'static str {
         "等待"
+    }
+}
+
+/// 恢复滞回（次心跳——连续 3 次心跳才判恢复）。
+pub const RECOVER_STREAK: u32 = 3;
+
+/// 结束成功率账（判据「结束成功率」——尝试 vs 成功的机判账本）。
+#[derive(Default)]
+pub struct KillLedger {
+    pub attempts: u32,
+    pub success: u32,
+}
+
+impl KillLedger {
+    /// 记一次结束尝试；`ok` 由执行层回报（进程句柄消失=成功）。
+    pub fn record(&mut self, ok: bool) {
+        self.attempts += 1;
+        if ok {
+            self.success += 1;
+        }
+    }
+
+    /// 成功率（千分比；零尝试返回 None——不编造 100%）。
+    pub fn success_permille(&self) -> Option<u64> {
+        if self.attempts == 0 {
+            None
+        } else {
+            Some(self.success as u64 * 1000 / self.attempts as u64)
+        }
     }
 }
 
@@ -160,9 +197,16 @@ pub fn run_notresp_checks() -> CheckSet {
         HangMonitor::floater_default() == "等待" && FLOATER_DISMISS_MS == 5_000,
         "no action default",
     );
-    // 心跳恢复：挂起后心跳 → Recovered。
+    // 心跳恢复滞回：单次心跳不算活（可能只是慢），连续 3 次才判恢复。
     m.heartbeat(7_000);
-    set.add("F284 heartbeat recovers", m.state == HangState::Recovered, "may be just slow");
+    m.heartbeat(7_500);
+    set.add(
+        "F284 hysteresis holding",
+        m.state == HangState::Suspended,
+        "one blip isn't alive",
+    );
+    m.heartbeat(8_000);
+    set.add("F284 streak recovers", m.state == HangState::Recovered, "3 in a row");
     // 抢救快照：记事本长文场景——先抢救后终止，重开寻回。
     let mut m2 = HangMonitor::new();
     m2.heartbeat(0);
@@ -184,6 +228,17 @@ pub fn run_notresp_checks() -> CheckSet {
     // 结束成功率：已终止状态不再重复判定。
     let s3 = m2.check(99_999);
     set.add("F284 no re-judge", s3 == HangState::Terminated, "terminal state stable");
+    // --- 深化二：结束成功率账（零尝试不编造、全成 1000‰）。 ---
+    let mut kills = KillLedger::default();
+    set.add("F284 kill no-fabrication", kills.success_permille().is_none(), "no attempts no rate");
+    kills.record(true);
+    kills.record(true);
+    kills.record(false);
+    set.add(
+        "F284 kill rate honest",
+        kills.success_permille() == Some(666) && kills.attempts == 3,
+        "2/3 = 666‰",
+    );
     set
 }
 

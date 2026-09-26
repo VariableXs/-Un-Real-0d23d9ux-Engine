@@ -15,6 +15,7 @@
 
 use crate::checks::CheckSet;
 use crate::h2star::h2base::pick_slot;
+use crate::h2star::h2edit;
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -22,12 +23,14 @@ use alloc::vec::Vec;
 /// 重命名初态（三判据的结构化表达）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RenameInit {
-    /// 被全选的段（默认名整段全选；F260 扩展名隔离由行内重命名接手）。
+    /// 被全选的段（默认名主名段全选；F260 扩展名隔离由行内重命名接手）。
     pub select_all: bool,
     /// 焦点在编辑框内。
     pub focused: bool,
     /// 光标位置（全选语义下=段尾，打字即替换）。
     pub caret: usize,
+    /// 全选的字节区间（深化二：主名段精确区间——与 h2edit 同源）。
+    pub select_range: (usize, usize),
 }
 
 /// 新建对象类型。
@@ -44,8 +47,8 @@ pub enum NewKind {
 pub struct NewMenu {
     /// 第三方扩展（「更多新建」折叠区——vxapp 清单声明制）。
     extras: Vec<(String, NewKind)>,
-    /// 当前视图已占用的网格位数量（落点计算输入）。
-    occupied: usize,
+    /// 当前视图已占用的网格位（位图——删除后补位复用的前提）。
+    grid: Vec<bool>,
     cols: usize,
 }
 
@@ -58,7 +61,7 @@ pub const DEFAULT_THREE: [(&str, NewKind); 3] = [
 
 impl NewMenu {
     pub fn new(cols: usize) -> NewMenu {
-        NewMenu { extras: Vec::new(), occupied: 0, cols }
+        NewMenu { extras: Vec::new(), grid: Vec::new(), cols: cols.max(1) }
     }
 
     /// 主菜单项：默认三项（第三方永不混入——折叠纪律）。
@@ -76,19 +79,57 @@ impl NewMenu {
         self.extras.push((String::from(name), NewKind::ThirdParty));
     }
 
-    /// 新建落点：当前视图第一个可用网格位（复用 h2base::pick_slot）。
+    /// 新建落点：当前视图**第一个可用**网格位（位图扫描——删除后的
+    /// 空位立即复用，不跳到末尾追加；全满则追加新位）。
     pub fn landing_slot(&mut self) -> (usize, usize) {
-        let slot = pick_slot(self.occupied, self.cols);
-        self.occupied += 1;
-        slot
+        let free = self.grid.iter().position(|used| !*used).unwrap_or(self.grid.len());
+        if free >= self.grid.len() {
+            self.grid.push(true);
+        } else {
+            self.grid[free] = true;
+        }
+        let (col, row) = pick_slot(free, self.cols);
+        (col, row)
     }
 
-    /// 重命名初态：默认名全选、焦点入框、光标在段尾（三判据一次钉齐）。
+    /// 释放落点（新建被 Esc 取消/对象被删除——空位补位复用）。
+    pub fn release_slot(&mut self, index: usize) -> bool {
+        match self.grid.get_mut(index) {
+            Some(used) if *used => {
+                *used = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 落地重名递增：视图里已有「新建文件夹」→ 落地名变
+    /// 「新建文件夹 (2)」（新建用 (n) 递增——与「副本」规则
+    /// [`h2base::bump_copy_name`] 分属两套语义，不混用）。
+    pub fn bump_new_name(existing: &[String], wanted: &str) -> String {
+        if !existing.iter().any(|e| e == wanted) {
+            return String::from(wanted);
+        }
+        let (stem, ext) = crate::h2star::h2base::ext_split(wanted);
+        for n in 2..=999u32 {
+            let candidate = alloc::format!("{} ({}){}", stem, n, ext);
+            if !existing.iter().any(|e| e == &candidate) {
+                return candidate;
+            }
+        }
+        alloc::format!("{} (999+){}", stem, ext)
+    }
+
+    /// 重命名初态：默认名**主名段**全选、焦点入框、光标在段尾
+    /// （深化二接线 [`h2edit::initial_selection`]——「新建文本文档.txt」
+    /// 类带扩展名的默认名只全选主名，扩展名隔离与 F260 同一条规则）。
     pub fn rename_init(default_name: &str) -> RenameInit {
+        let (start, end) = h2edit::initial_selection(default_name);
         RenameInit {
             select_all: true,
             focused: true,
-            caret: default_name.chars().count(),
+            caret: end,
+            select_range: (start, end),
         }
     }
 }
@@ -116,12 +157,46 @@ pub fn run_newmenu_checks() -> CheckSet {
         last = m.landing_slot();
     }
     set.add("F259 landing slot", last == (1, 1), "first free cell");
-    // 重命名初态三判据。
+    // --- 深化二：删除后空位复用（Esc 取消/删除不留永远空格）。 ---
+    set.add("F259 release honest", m.release_slot(3) && !m.release_slot(3), "release once");
+    let reused = m.landing_slot();
+    set.add("F259 slot reuse", reused == (3, 0), "freed cell first");
+    // --- 深化二：落地重名递增（新建语义 (2)，与「副本」规则分家）。 ---
+    let view: Vec<String> = alloc::vec![String::from("新建文件夹")];
+    set.add(
+        "F259 bump (2)",
+        NewMenu::bump_new_name(&view, "新建文件夹") == "新建文件夹 (2)",
+        "new-item ladder",
+    );
+    let view2: Vec<String> = alloc::vec![String::from("新建文件夹"), String::from("新建文件夹 (2)")];
+    set.add(
+        "F259 bump (3)",
+        NewMenu::bump_new_name(&view2, "新建文件夹") == "新建文件夹 (3)",
+        "ladder continues",
+    );
+    set.add(
+        "F259 no bump when free",
+        NewMenu::bump_new_name(&[], "新主题.vxtheme") == "新主题.vxtheme",
+        "no collision no bump",
+    );
+    let view3: Vec<String> = alloc::vec![String::from("报告.txt"), String::from("报告 (2).txt")];
+    set.add(
+        "F259 bump keeps ext",
+        NewMenu::bump_new_name(&view3, "报告.txt") == "报告 (3).txt",
+        "ext rides along",
+    );
+    // 重命名初态三判据（主名段精确区间——带扩展名的默认名只选主名）。
     let ri = NewMenu::rename_init("新建文件夹");
     set.add(
         "F259 rename init",
-        ri.select_all && ri.focused && ri.caret == 5,
-        "all-select/focus/caret",
+        ri.select_all && ri.focused && ri.caret == 15 && ri.select_range == (0, 15),
+        "all-select/focus/caret (bytes: 5字×3)",
+    );
+    let ri2 = NewMenu::rename_init("新建文本文档.txt");
+    set.add(
+        "F259 rename init ext-safe",
+        ri2.select_range.1 == 18 && ri2.caret == 18,
+        "stem only (6字×3=18 字节)",
     );
     // 「更多新建」折叠：第三方进折叠区，主清单不变；空区无入口。
     set.add("F259 more empty", m.more().is_empty(), "no extras no entry");

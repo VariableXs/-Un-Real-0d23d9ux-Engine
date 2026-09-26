@@ -155,6 +155,28 @@ impl TabBar {
 
     /// 收缩布局：每标签预算宽 `per_tab`，总预算 `bar_width`——放不下时
     /// 非活动标签收缩为图标态（Tooltip 数据=全路径标题）。
+    // -----------------------------------------------------------------
+    // 深化批次二：拖出成窗阈值 + 拖回成标签命中（纯几何——坐标注入）
+    // -----------------------------------------------------------------
+
+    /// 拖出成窗阈值（px）：标签拖到标签栏下边缘之下超过此值 → 脱离
+    /// 成独立窗（Windows 手感同源；不足此值松手=弹回原位）。
+    pub const DRAG_OUT_PX: u32 = 30;
+    /// 标签栏拖回命中带高（px）：拖回点落在此带内 → 重新停靠。
+    pub const DOCK_BAND_PX: u32 = 24;
+
+    /// 拖出判定：`below_bar_px` = 拖拽点在标签栏下边缘之下的距离。
+    /// 超阈值 → 脱离；不足 → 松手弹回（拖拽可放弃并复原——十四章程）。
+    pub fn drag_out(&self, below_bar_px: u32) -> bool {
+        below_bar_px >= Self::DRAG_OUT_PX
+    }
+
+    /// 拖回判定：`x` 在 `bar_w` 横向范围内且 `y_from_bar_top` 落在
+    /// 命中带内 → 重新停靠为标签（拖回成标签判据的几何面）。
+    pub fn drag_back(&self, bar_w: u32, x: u32, y_from_bar_top: u32) -> bool {
+        x <= bar_w && y_from_bar_top < Self::DOCK_BAND_PX
+    }
+
     pub fn shrink_layout(&self, bar_width: u32, per_tab: u32) -> Vec<(u32, bool, String)> {
         let fits = self.tabs.len() as u64 * per_tab as u64 <= bar_width as u64;
         self.tabs
@@ -221,6 +243,19 @@ pub fn run_extabs_checks() -> CheckSet {
         "F271 shrink+tooltip",
         shrunk == lay.len().saturating_sub(1) && lay.iter().all(|(_, _, t)| !t.is_empty()),
         "icon mode + title",
+    );
+    // --- 深化批次二：拖出成窗阈值 + 拖回成标签命中。 ---
+    // 拖出判定：标签拖到标签栏下方 ≥30px → 脱离成独立窗。
+    set.add(
+        "F271 drag out threshold",
+        bar.drag_out(30) && !bar.drag_out(29),
+        "30px below bar detaches",
+    );
+    // 拖回判定：拖回点落在标签栏（宽 800）命中带内 → 重新停靠。
+    set.add(
+        "F271 drag back dock",
+        bar.drag_back(800, 400, 12) && !bar.drag_back(800, 400, 40) && !bar.drag_back(800, 900, 12),
+        "in-band re-dock",
     );
     set
 }

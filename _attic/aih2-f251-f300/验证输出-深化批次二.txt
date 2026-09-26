@@ -1,0 +1,9 @@
+=== 隔离副本（HEAD 基线 src + h2star 批次一+二）宿主 cargo test h2star ===
+日期：2026-09-26（深化批次二收口）
+test result: ok. 150 passed; 0 failed; 0 ignored; 0 measured; 5078 filtered out; finished in 0.26s
+
+=== 全量回归（--lib，--skip genstar2 --skip robust；两处为别队在途包既有损坏——批次一已用 HEAD 基线复现证明）===
+test result: ok. 5058 passed; 0 failed; 0 ignored; 0 measured; 170 filtered out; finished in 227.14s
+
+=== 检查项对账：run_h2_checks 61 块聚合（域内全绿前提）===
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5227 filtered out; finished in 0.25s

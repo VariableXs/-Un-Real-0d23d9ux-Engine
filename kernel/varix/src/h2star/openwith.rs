@@ -72,6 +72,43 @@ impl OpenWith {
         v
     }
 
+    /// 完整排序（深化二接线 [`h2rank::rank_open_with`] 三键全序：
+    /// 默认关联 > 兼容评级 > 最近使用——选择器有「始终使用」历史与
+    /// 使用记录时走这条；`usage` = 各应用最近使用时刻注入）。
+    pub fn ranked_full(
+        candidates: &[Candidate],
+        default_app: Option<&str>,
+        usage: &[(&str, u64)],
+        now_min: u64,
+    ) -> alloc::vec::Vec<usize> {
+        let cands: alloc::vec::Vec<crate::h2star::h2rank::OpenWithCandidate> = candidates
+            .iter()
+            .map(|c| crate::h2star::h2rank::OpenWithCandidate {
+                app: c.app.clone(),
+                grade: match c.grade {
+                    CompatGrade::A => crate::h2star::h2rank::CompatGrade::Gold,
+                    CompatGrade::B => crate::h2star::h2rank::CompatGrade::Silver,
+                    CompatGrade::C => crate::h2star::h2rank::CompatGrade::Bronze,
+                },
+                last_used_min: usage.iter().find(|(a, _)| *a == c.app).map(|(_, t)| *t),
+                is_default: default_app == Some(c.app.as_str()),
+            })
+            .collect();
+        crate::h2star::h2rank::rank_open_with(&cands, now_min)
+    }
+
+    /// 「更多应用」展开阈值：选择器默认只列评级前 5（其余收进
+    /// 「更多应用」展开全表——防一屏塞爆；判据「更多应用展开全表」）。
+    pub const TOP_VISIBLE: usize = 5;
+
+    pub fn visible_count(total: usize) -> (usize, usize) {
+        if total <= Self::TOP_VISIBLE {
+            (total, 0)
+        } else {
+            (Self::TOP_VISIBLE, total - Self::TOP_VISIBLE)
+        }
+    }
+
     /// 选择器出口：打开一次——**不写**默认关联表（判据「不勾不写」）。
     pub fn open_once(&self, _ext: &str, _app: &str) {
         // 刻意无副作用：函数体为空是判据本身，不是偷懒。
@@ -147,6 +184,25 @@ pub fn run_openwith_checks() -> CheckSet {
         "F257 edge fallback",
         OpenWith::edge_fallback(".xyz").contains("Edge") && OpenWith::edge_fallback(".xyz").contains(".xyz"),
         "search entry",
+    );
+    // --- 深化二：完整三键排序接线（默认 > 评级 > 最近使用）。 ---
+    let full = alloc::vec![
+        Candidate { app: String::from("甲"), grade: CompatGrade::A },
+        Candidate { app: String::from("乙"), grade: CompatGrade::B },
+        Candidate { app: String::from("丙"), grade: CompatGrade::A },
+    ];
+    let usage = [("丙", 900u64), ("甲", 100u64)];
+    let order = OpenWith::ranked_full(&full, Some("乙"), &usage, 1_000);
+    set.add(
+        "F257 full order wiring",
+        full[order[0]].app == "乙" && full[order[1]].app == "丙" && full[order[2]].app == "甲",
+        "default beats grade beats recency",
+    );
+    // --- 深化二：更多应用展开阈值。 ---
+    set.add(
+        "F257 more-apps expand",
+        OpenWith::visible_count(3) == (3, 0) && OpenWith::visible_count(9) == (5, 4),
+        "top-5 then expand",
     );
     set
 }

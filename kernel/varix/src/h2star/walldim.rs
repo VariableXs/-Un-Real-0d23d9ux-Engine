@@ -52,11 +52,47 @@ pub enum ThemeKind {
 }
 
 /// 滤镜路由：深色 → 滤镜参数；浅色 → None（不处理）。
-pub fn filter_route(theme: ThemeKind, dim_pct: u32) -> Option<(u32, u32)> {
-    match theme {
-        ThemeKind::Light => None,
-        ThemeKind::Dark => Some((clamp_dim(dim_pct), DEFAULT_DESAT_PCT)),
+/// 可关总闸（判据「（可关）」——关闭后深色主题也直通）。
+pub fn filter_route(theme: ThemeKind, dim_pct: u32, enabled: bool) -> Option<(u32, u32)> {
+    match (theme, enabled) {
+        (_, false) => None,
+        (ThemeKind::Light, true) => None,
+        (ThemeKind::Dark, true) => Some((clamp_dim(dim_pct), DEFAULT_DESAT_PCT)),
     }
+}
+
+/// 滑杆全域单调性：0-50 全档采样，压暗系数递减（亮度不随滑杆回弹）。
+pub fn slider_monotonic() -> bool {
+    let mut prev = 256.0;
+    for pct in 0..=DIM_MAX_PCT {
+        let (r, _, _) = filter_pixel(255, 255, 255, pct, 0);
+        if (r as f64) > prev {
+            return false;
+        }
+        prev = r as f64;
+    }
+    true
+}
+
+/// 色相保持：压暗/降饱和不动色相（HSL 色相计算——「调色不是蒙黑布」
+/// 的机判：红还是红、蓝还是蓝，只是更暗更灰）。
+pub fn hue_of(r: u8, g: u8, b: u8) -> f64 {
+    let (rf, gf, bf) = (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+    let max = rf.max(gf).max(bf);
+    let min = rf.min(gf).min(bf);
+    let d = max - min;
+    if d < 1e-9 {
+        return 0.0;
+    }
+    let h = if (max - rf).abs() < 1e-9 {
+        ((gf - bf) / d) % 6.0
+    } else if (max - gf).abs() < 1e-9 {
+        (bf - rf) / d + 2.0
+    } else {
+        (rf - gf) / d + 4.0
+    };
+    let h = if h < 0.0 { h + 6.0 } else { h };
+    h * 60.0
 }
 
 // ---------------------------------------------------------------------------
@@ -103,12 +139,26 @@ pub fn run_walldim_checks() -> CheckSet {
         dark.0 < 200 && dark.1 < 100 && dark.2 < 50,
         "every channel down",
     );
-    // 浅色不处理。
+    // 浅色不处理 + 可关总闸。
     set.add(
         "F297 light passthrough",
-        filter_route(ThemeKind::Light, 30).is_none()
-            && filter_route(ThemeKind::Dark, 30) == Some((30, 15)),
-        "zero cost path",
+        filter_route(ThemeKind::Light, 30, true).is_none()
+            && filter_route(ThemeKind::Dark, 30, true) == Some((30, 15))
+            && filter_route(ThemeKind::Dark, 30, false).is_none(),
+        "zero cost path + off switch",
+    );
+    // --- 深化二：滑杆全域单调（0-50 每档采样，亮度不回弹）。 ---
+    set.add("F297 slider monotonic", slider_monotonic(), "51-point sweep");
+    // --- 深化二：色相保持（压暗是调色不是蒙黑布——红仍红蓝仍蓝）。 ---
+    let red_before = hue_of(220, 40, 40);
+    let red_after = filter_pixel(220, 40, 40, 30, 15);
+    let blue_before = hue_of(40, 40, 220);
+    let blue_after = filter_pixel(40, 40, 220, 30, 15);
+    set.add(
+        "F297 hue preserved",
+        (hue_of(red_after.0, red_after.1, red_after.2) - red_before).abs() < 2.0
+            && (hue_of(blue_after.0, blue_after.1, blue_after.2) - blue_before).abs() < 2.0,
+        "hue stays",
     );
     // GPU 帧预算。
     set.add(

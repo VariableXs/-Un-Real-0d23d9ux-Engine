@@ -23,11 +23,16 @@
 //! | [`h2knob`]     | 域旋钮登记表 | 零魔法数；主册依据 |
 //! | [`h2persist`]  | 原子写底盘（红线④） | 三段式；断电注入 |
 //! | [`h2diag`]     | 域诊断汇总 | 三色分级；最丑角落 |
-//! | [`h2geo`]      | 几何布局引擎（深化） | F276 四款；F286 拼接；F298 流式 |
-//! | [`h2rank`]     | 排序评级引擎（深化） | F257/F274/F291/F299 |
-//! | [`h2cache`]    | 三层缓存引擎（深化） | O(1) LRU；失效扇出；预算收口 |
-//! | [`h2ledger`]   | 账目引擎（深化） | 哈希链；B-2902；断点账 |
-//! | [`h2snap`]     | 快照序列化层（深化） | 版本封包；损坏容错 |
+//! | [`h2geo`]      | 几何布局引擎（深化一） | F276 四款；F286 拼接；F298 流式 |
+//! | [`h2rank`]     | 排序评级引擎（深化一） | F257/F274/F291/F299 |
+//! | [`h2cache`]    | 三层缓存引擎（深化一） | O(1) LRU；失效扇出；预算收口 |
+//! | [`h2ledger`]   | 账目引擎（深化一） | 哈希链；B-2902；断点账 |
+//! | [`h2snap`]     | 快照序列化层（深化一） | 版本封包；损坏容错 |
+//! | [`h2curve`]    | 动效参数引擎（深化二） | F124 四档曲线；惯性采样；打断对称 |
+//! | [`h2edit`]     | 编辑态几何引擎（深化二） | F260 区间；F265 三段；F272 菜单 |
+//! | [`h2taskbook`] | 传输任务簿（深化二） | F269 状态机；F270 三选一 |
+//! | [`h2launch`]   | 启动编排引擎（深化二） | F282 路由；F283 三拍子 |
+//! | [`h2screen`]   | 显示编排引擎（深化二） | F277 随迁；F278 指纹记忆 |
 //! | [`mediarbit`]   | F251 媒体会话仲裁 | 六态仲裁；OSD 归属；<50ms |
 //! | [`tbgroup`]     | F252 任务栏按钮合并与分组 | 三档策略；3/7/10 角标 |
 //! | [`quickpin`]    | F253 快速访问固定 | 固定/推荐共存；5+5 配额 |
@@ -96,13 +101,18 @@ pub mod extraclk;
 pub mod fontmgr;
 pub mod h2base;
 pub mod h2cache;
+pub mod h2curve;
 pub mod h2diag;
+pub mod h2edit;
 pub mod h2geo;
 pub mod h2knob;
+pub mod h2launch;
 pub mod h2ledger;
 pub mod h2persist;
 pub mod h2rank;
+pub mod h2screen;
 pub mod h2snap;
+pub mod h2taskbook;
 pub mod hscroll;
 pub mod iconcache;
 pub mod iconlang;
@@ -145,21 +155,45 @@ pub mod xlog;
 /// 域标识（CheckSet 聚合用）。
 pub const H2_DOMAIN: &str = "h2star-h2";
 
-/// 本域自检聚合：逐模块 `run_*_checks` 汇总（h2base + 基础设施四件 +
-/// 深化引擎五件 + F251-F300，共 60 块——CheckSet 上限 64，单块占一席）。
+/// 域内自足的 CheckSet 合并（走公开 add/tally/truncated 口，不依赖
+/// checks.rs 的未落位扩展——多 AI 并行纪律：只用已冻结的底盘 API）。
+/// 超容时 add 内部计数 dropped，合并结果不静默丢。
+fn merge_sets(parts: &[CheckSet]) -> CheckSet {
+    let mut out = CheckSet::new("h2-h2core");
+    for p in parts {
+        for i in 0..p.len() {
+            if let Some(c) = p.get(i) {
+                out.add(c.name, c.passed, c.detail);
+            }
+        }
+    }
+    out
+}
+
+/// 本域自检聚合：逐模块 `run_*_checks` 汇总（深化二起基础设施五件
+/// 合并为 `h2core` 一块——CheckSet 上限 64 内腾出席位给批次引擎：
+/// h2core + 深化一五件 + 深化二五件 + F251-F300，共 61 块）。
 pub fn run_h2_checks() -> CheckSet {
     let mut set = CheckSet::new(H2_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 60] = [
-        ("h2base", h2base::run_h2base_checks()),
-        ("h2xlog", xlog::run_xlog_checks()),
-        ("h2knob", h2knob::run_h2knob_checks()),
-        ("h2persist", h2persist::run_h2persist_checks()),
-        ("h2diag", h2diag::run_h2diag_checks()),
+    let core = merge_sets(&[
+        h2base::run_h2base_checks(),
+        h2knob::run_h2knob_checks(),
+        xlog::run_xlog_checks(),
+        h2persist::run_h2persist_checks(),
+        h2diag::run_h2diag_checks(),
+    ]);
+    let blocks: [(&'static str, CheckSet); 61] = [
+        ("h2core", core),
         ("h2geo", h2geo::run_h2geo_checks()),
         ("h2rank", h2rank::run_h2rank_checks()),
         ("h2cache", h2cache::run_h2cache_checks()),
         ("h2ledger", h2ledger::run_h2ledger_checks()),
         ("h2snap", h2snap::run_h2snap_checks()),
+        ("h2curve", h2curve::run_h2curve_checks()),
+        ("h2edit", h2edit::run_h2edit_checks()),
+        ("h2taskbook", h2taskbook::run_h2taskbook_checks()),
+        ("h2launch", h2launch::run_h2launch_checks()),
+        ("h2screen", h2screen::run_h2screen_checks()),
         ("F251", mediarbit::run_mediarbit_checks()),
         ("F252", tbgroup::run_tbgroup_checks()),
         ("F253", quickpin::run_quickpin_checks()),

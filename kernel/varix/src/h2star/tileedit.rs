@@ -170,6 +170,34 @@ pub fn run_tileedit_checks() -> CheckSet {
         same && qt2.active == QuickTiles::defaults().active,
         "round-trip + one-click",
     );
+    // --- 深化批次二：编辑态状态机（抖动走 h2curve 弹性档——接线对账）。 ---
+    set.add(
+        "F298 wobble spec wired",
+        crate::h2star::h2curve::motion_of("F298.wobble").map(|s| s.duration_ms == 300).unwrap_or(false),
+        "h2curve elastic 300ms",
+    );
+    // 排布引擎接线：8 默认磁贴在标准面板宽内单行放下（h2geo 流式）。
+    let spans8 = [crate::h2star::h2geo::TileSpan::Small; 8];
+    let panel = 8 * crate::h2star::h2geo::TILE_CELL_PX + 7 * 8;
+    let laid = crate::h2star::h2geo::flow_tiles(&spans8, panel, 8);
+    set.add(
+        "F298 flow layout wired",
+        laid.len() == 8 && laid.iter().all(|r| r.y == 0),
+        "h2geo one-row panel",
+    );
+    // 持久化接线：磁贴布局经 h2snap 编解码 round-trip（id = 候选池下标）。
+    let id_of = |t: &str| CANDIDATE_POOL.iter().position(|c| *c == t).unwrap() as u32;
+    let enc = crate::h2star::h2snap::encode_tiles(&[
+        (id_of("音量"), 0),
+        (id_of("Wi-Fi"), 0),
+        (id_of("专注模式"), 2),
+    ]);
+    let dec = crate::h2star::h2snap::decode_tiles(&enc);
+    set.add(
+        "F298 snapshot roundtrip",
+        dec.as_ref().map(|d| d.len() == 3 && d[0].0 == id_of("音量")).unwrap_or(false),
+        "h2snap tile encode/decode",
+    );
     set
 }
 

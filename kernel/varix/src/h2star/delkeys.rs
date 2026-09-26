@@ -48,38 +48,56 @@ pub enum ConfirmFocus {
 pub struct DeleteRouter {
     /// 回收站容量（字节）。
     pub trash_cap_bytes: u64,
-    /// 占用表：(文件, 占用应用)。
-    locks: Vec<(String, String)>,
+    /// 占用表：(文件, 占用应用, 最近心跳分钟戳)——应用退出（心跳过期）
+    /// 锁自动失效，不留幽灵锁。
+    locks: Vec<(String, String, u64)>,
+    /// 锁心跳过期时长（分钟）。
+    pub lock_ttl_min: u64,
 }
 
 impl DeleteRouter {
     pub fn new(trash_cap_bytes: u64) -> DeleteRouter {
-        DeleteRouter { trash_cap_bytes, locks: Vec::new() }
+        DeleteRouter { trash_cap_bytes, locks: Vec::new(), lock_ttl_min: 2 }
     }
 
     /// 注入占用登记（如记事本正在编辑某文件）。
-    pub fn lock(&mut self, file: &str, app: &str) {
-        self.locks.push((String::from(file), String::from(app)));
+    pub fn lock(&mut self, file: &str, app: &str, now_min: u64) {
+        // 同文件重复登记刷新心跳（应用还活着）。
+        match self.locks.iter_mut().find(|(f, _, _)| f == file) {
+            Some((_, a, t)) => {
+                *a = String::from(app);
+                *t = now_min;
+            }
+            None => self.locks.push((String::from(file), String::from(app), now_min)),
+        }
     }
 
     pub fn unlock(&mut self, file: &str) {
-        self.locks.retain(|(f, _)| f != file);
+        self.locks.retain(|(f, _, _)| f != file);
     }
 
-    fn holder_of(&self, file: &str) -> Option<&str> {
-        self.locks.iter().find(|(f, _)| f == file).map(|(_, a)| a.as_str())
+    /// 占用判定（心跳过期 = 应用已退出 = 锁失效——幽灵锁清道夫）。
+    fn holder_of(&self, file: &str, now_min: u64) -> Option<&str> {
+        self.locks
+            .iter()
+            .find(|(f, _, _)| f == file)
+            .filter(|(_, _, t)| now_min.saturating_sub(*t) <= self.lock_ttl_min)
+            .map(|(_, a, _)| a.as_str())
+    }
+
+    /// 清扫过期锁（诊断面直读数量）。
+    pub fn sweep_stale_locks(&mut self, now_min: u64) -> usize {
+        let before = self.locks.len();
+        self.locks.retain(|(_, _, t)| now_min.saturating_sub(*t) <= self.lock_ttl_min);
+        before - self.locks.len()
     }
 
     /// 删除路由：`permanent`=Shift 按住。先查占用（定位到应用），
     /// 再按容量与修饰键分流。
-    pub fn route(
-        &self,
-        items: &[(String, u64)],
-        permanent: bool,
-    ) -> DeleteRoute {
+    pub fn route_at(&self, items: &[(String, u64)], permanent: bool, now_min: u64) -> DeleteRoute {
         // 占用检查优先——任何一个被占用即受阻并定位应用。
         for (f, _) in items {
-            if let Some(app) = self.holder_of(f) {
+            if let Some(app) = self.holder_of(f, now_min) {
                 return DeleteRoute::BlockedByApp {
                     file: f.clone(),
                     holder: String::from(app),
@@ -100,6 +118,11 @@ impl DeleteRouter {
         DeleteRoute::ToTrash { items: names }
     }
 
+    /// 删除路由（无时钟版——锁按活锁处理，供无心跳场景调用）。
+    pub fn route(&self, items: &[(String, u64)], permanent: bool) -> DeleteRoute {
+        self.route_at(items, permanent, 0)
+    }
+
     /// 永久确认框计划：件数 + 总大小 + 默认焦点取消。
     pub fn confirm_plan(items: usize, total_bytes: u64) -> ConfirmPlan {
         ConfirmPlan {
@@ -107,6 +130,22 @@ impl DeleteRouter {
             detail: alloc::format!("共 {} 项，{} 字节。此操作不可撤销。", items, total_bytes),
             default_focus: ConfirmFocus::Cancel,
         }
+    }
+
+    /// 单文件确认文案（件数=1 的单数形制——「要永久删除「x」吗？」
+    /// 不说「这些文件」；一處一事实：批量走 confirm_plan）。
+    pub fn confirm_plan_single(file: &str, bytes: u64) -> ConfirmPlan {
+        ConfirmPlan {
+            headline: alloc::format!("要永久删除「{}」吗？", file),
+            detail: alloc::format!("{} 字节。此操作不可撤销。", bytes),
+            default_focus: ConfirmFocus::Cancel,
+        }
+    }
+
+    /// 确认框键位语义（F207 一致性：Esc=取消、Enter=确认——
+    /// 但确认框焦点在取消，Enter 首先落焦点按钮=取消，双保险）。
+    pub fn confirm_keys() -> (&'static str, &'static str) {
+        ("Esc=取消", "Enter=取消（焦点位）——Ctrl+Enter=确认")
     }
 
     /// 占用人话提示（判据原文口径：附哪个应用）。
@@ -150,7 +189,7 @@ pub fn run_delkeys_checks() -> CheckSet {
         "skip trash",
     );
     // 占用定位到应用。
-    r.lock("笔记.md", "记事本");
+    r.lock("笔记.md", "记事本", 100);
     set.add(
         "F261 blocked names app",
         matches!(
@@ -170,6 +209,40 @@ pub fn run_delkeys_checks() -> CheckSet {
         "F261 unlock restores",
         matches!(r.route(&alloc::vec![(String::from("笔记.md"), 1u64)], false), DeleteRoute::ToTrash { .. }),
         "after close",
+    );
+    // --- 深化二：锁心跳过期（应用退出 → 幽灵锁自动失效）。 ---
+    let mut r2 = DeleteRouter::new(1_000_000);
+    r2.lock("a.md", "记事本", 100);
+    set.add(
+        "F261 stale lock expires",
+        matches!(
+            r2.route_at(&alloc::vec![(String::from("a.md"), 1u64)], false, 103),
+            DeleteRoute::ToTrash { .. }
+        ),
+        "app exited 3min ago",
+    );
+    r2.lock("b.md", "编辑器", 103);
+    set.add(
+        "F261 fresh lock holds",
+        matches!(
+            r2.route_at(&alloc::vec![(String::from("b.md"), 1u64)], false, 104),
+            DeleteRoute::BlockedByApp { .. }
+        ),
+        "alive lock",
+    );
+    set.add("F261 sweep counts", r2.sweep_stale_locks(104) == 1, "only the expired swept");
+    // --- 深化二：单文件确认形制 + 键位语义。 ---
+    let sp = DeleteRouter::confirm_plan_single("合同.pdf", 2048);
+    set.add(
+        "F261 single confirm form",
+        sp.headline == "要永久删除「合同.pdf」吗？" && sp.default_focus == ConfirmFocus::Cancel,
+        "singular wording",
+    );
+    let (esc, enter) = DeleteRouter::confirm_keys();
+    set.add(
+        "F261 key semantics",
+        esc.contains("Esc=取消") && enter.contains("Enter=取消") && enter.contains("Ctrl+Enter=确认"),
+        "F207 lane",
     );
     set
 }

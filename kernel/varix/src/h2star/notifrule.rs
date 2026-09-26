@@ -30,6 +30,10 @@ pub const MAX_BUTTONS: usize = 2;
 /// 一条通知。
 #[derive(Clone, Debug)]
 pub struct Notice {
+    /// 通知实例 id（交互去重的锚——「交互过的**通知**不再重复提醒」
+    /// 按实例记，不是按应用封杀：深化二修正首批的按应用永久静音，
+    /// 记缺陷账 #23）。
+    pub id: u64,
     pub app: String,
     pub title: String,
     pub body: String,
@@ -39,8 +43,9 @@ pub struct Notice {
 }
 
 impl Notice {
-    pub fn new(app: &str, title: &str, body: &str, buttons: &[&str], at_min: u64) -> Notice {
+    pub fn new(id: u64, app: &str, title: &str, body: &str, buttons: &[&str], at_min: u64) -> Notice {
         Notice {
+            id,
             app: String::from(app),
             title: String::from(title),
             body: String::from(body),
@@ -64,34 +69,73 @@ impl Notice {
     pub fn stamp(&self) -> u64 {
         self.at_min
     }
+
+    /// 两行正文截断（视觉规范：正文区最多两行——超出截断+省略号，
+    /// 全文进通知中心查看；按字符数近似口径 40 字/两行）。
+    pub fn body_clipped(&self) -> String {
+        const TWO_LINE_CHARS: usize = 40;
+        if self.body.chars().count() <= TWO_LINE_CHARS {
+            self.body.clone()
+        } else {
+            let cut: String = self.body.chars().take(TWO_LINE_CHARS).collect();
+            alloc::format!("{}…", cut)
+        }
+    }
+}
+
+/// 横幅生命周期（完整状态机——出现了就必须有完整消失路径）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BannerState {
+    /// 横幅展示中（剩余 ms——5s 到期自动归档）。
+    Showing,
+    /// 已入通知中心（到期/× 关闭/点击——三条消失路都汇到这）。
+    Archived,
 }
 
 /// 通知中心（横幅归档 + 合并）。
 pub struct NotificationCenter {
     /// 已入中心（时间序——关闭横幅后中心可查）。
     pub archive: Vec<Notice>,
-    /// 每应用最近横幅时刻（分钟戳）——合并窗口与交互去重。
+    /// 横幅生命周期表（id → 状态）。
+    pub banners: Vec<(u64, BannerState)>,
+    /// 每应用最近横幅时刻（分钟戳）——合并窗口。
     last_banner: Vec<(String, u64)>,
-    /// 已交互应用（30s 内不再弹横幅）。
-    pub interacted: Vec<String>,
+    /// 已交互通知实例（id——交互去重按实例不按应用）。
+    pub interacted: Vec<u64>,
 }
 
 impl NotificationCenter {
     pub fn new() -> NotificationCenter {
-        NotificationCenter { archive: Vec::new(), last_banner: Vec::new(), interacted: Vec::new() }
+        NotificationCenter { archive: Vec::new(), banners: Vec::new(), last_banner: Vec::new(), interacted: Vec::new() }
     }
 
-    /// 横幅到期（5000ms）自动入中心；× 关闭同样入中心——不丢失。
-    pub fn archive_notice(&mut self, n: Notice) {
-        self.archive.push(n);
+    /// 横幅展示中登记。
+    pub fn show_banner(&mut self, n: &Notice) {
+        self.banners.push((n.id, BannerState::Showing));
     }
 
-    /// 是否允许弹横幅：同应用 30s 内已有横幅 → 合并计数不弹新条；
-    /// 交互过的应用 30s 内不再提醒（交互去重）。
-    pub fn may_banner(&mut self, app: &str, now_min: u64) -> bool {
-        if self.interacted.iter().any(|a| a == app) {
-            // 交互去重：记录后 30s（半分钟→按分钟戳口径 30s = 0.5min，
-            // 此处按主册 30 秒窗口用秒级换算——分钟戳差 1 分钟内算窗口内）。
+    /// 横幅到期（5000ms）/ × 关闭 / 点击——三条路都归档，不丢失。
+    /// 返回 false = id 未知（诚实失败）。
+    pub fn archive_banner(&mut self, id: u64, notice: Notice) -> bool {
+        match self.banners.iter_mut().find(|(i, _)| *i == id) {
+            Some((_, st)) if *st == BannerState::Showing => {
+                *st = BannerState::Archived;
+                self.archive.push(notice);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 横幅状态查询。
+    pub fn banner_state(&self, id: u64) -> Option<BannerState> {
+        self.banners.iter().find(|(i, _)| *i == id).map(|(_, s)| *s)
+    }
+
+    /// 是否允许弹横幅：该实例交互过 → 不再提醒；同应用 30s 内已有
+    /// 横幅 → 合并计数不弹新条。
+    pub fn may_banner(&mut self, app: &str, notice_id: u64, now_min: u64) -> bool {
+        if self.interacted.contains(&notice_id) {
             return false;
         }
         match self.last_banner.iter_mut().find(|(a, _)| a == app) {
@@ -112,10 +156,10 @@ impl NotificationCenter {
         alloc::format!("{} · {} 条新消息", app, count)
     }
 
-    /// 用户交互（点按钮/点正文）→ 记入已交互（去重窗启动）。
-    pub fn mark_interacted(&mut self, app: &str) {
-        if !self.interacted.iter().any(|a| a == app) {
-            self.interacted.push(String::from(app));
+    /// 用户交互（点按钮/点正文）→ 该通知实例记入已交互（去重按实例）。
+    pub fn mark_interacted(&mut self, notice_id: u64) {
+        if !self.interacted.contains(&notice_id) {
+            self.interacted.push(notice_id);
         }
     }
 }
@@ -127,14 +171,14 @@ impl NotificationCenter {
 pub fn run_notifrule_checks() -> CheckSet {
     let mut set = CheckSet::new("h2-F281");
     // 两按钮上限审计。
-    let n3 = Notice::new("邮件", "新邮件", "来自张三", &["查看", "标记已读", "删除"], 10);
+    let n3 = Notice::new(1, "邮件", "新邮件", "来自张三", &["查看", "标记已读", "删除"], 10);
     let rendered = n3.render_buttons();
     set.add(
         "F281 two-button cap",
         rendered.len() == 3 && rendered[2] == "更多",
         "overflow to More",
     );
-    let n1 = Notice::new("邮件", "新邮件", "来自李四", &["查看"], 11);
+    let n1 = Notice::new(2, "邮件", "新邮件", "来自李四", &["查看"], 11);
     set.add(
         "F281 under cap intact",
         n1.render_buttons() == alloc::vec![String::from("查看")],
@@ -148,9 +192,9 @@ pub fn run_notifrule_checks() -> CheckSet {
     );
     // 合并窗口 30s 逻辑：同应用 1 分钟内第二条不允许弹（合并计数）。
     let mut center = NotificationCenter::new();
-    let first = center.may_banner("微信", 100);
-    let second = center.may_banner("微信", 100); // 30s 内（<0.5min）。
-    let third = center.may_banner("微信", 101); // 60s 后——允许。
+    let first = center.may_banner("微信", 10, 100);
+    let second = center.may_banner("微信", 11, 100); // 30s 内（<0.5min）。
+    let third = center.may_banner("微信", 12, 101); // 60s 后——允许。
     set.add(
         "F281 merge window",
         first && !second && third,
@@ -163,18 +207,37 @@ pub fn run_notifrule_checks() -> CheckSet {
     );
     // 不抢焦点：横幅层恒非焦点（结构常量——无抢焦点分支可走）。
     set.add("F281 never steals focus", true, "no focus path exists");
-    // 入中心完整性：× 关闭的横幅在中心可查。
-    let n2 = Notice::new("微信", "张三", "收到一条消息", &["查看"], 102);
-    center.archive_notice(n2);
+    // 入中心完整性：横幅生命周期三路消失全归档（Showing → Archived）。
+    let n2 = Notice::new(13, "微信", "张三", "收到一条消息", &["查看"], 102);
+    center.show_banner(&n2);
     set.add(
-        "F281 archive complete",
-        center.archive.len() == 1 && center.archive[0].app == "微信",
+        "F281 lifecycle showing",
+        center.banner_state(13) == Some(BannerState::Showing),
+        "born Showing",
+    );
+    let archived = center.archive_banner(13, n2.clone());
+    set.add(
+        "F281 lifecycle archived",
+        archived && center.banner_state(13) == Some(BannerState::Archived) && center.archive.len() == 1,
         "closed still archived",
     );
-    // 交互去重。
-    center.mark_interacted("微信");
-    let after = center.may_banner("微信", 200);
-    set.add("F281 interacted mute", !after, "no re-prompt");
+    set.add("F281 archive unknown honest", !center.archive_banner(999, n2), "no ghost id");
+    // 交互去重：按通知实例（同应用其他通知照常提醒）。
+    center.mark_interacted(13);
+    set.add(
+        "F281 per-notice dedup",
+        !center.may_banner("微信", 13, 200) && center.may_banner("微信", 14, 200),
+        "instance not app-wide",
+    );
+    // 正文两行截断。
+    let long_body = "这一段正文非常长超出了两行的展示范围所以被截断了保留省略号然后进通知中心查看全文内容继续往下写足够长才能触发截断";
+    let nb = Notice::new(15, "x", "t", long_body, &[], 0);
+    set.add(
+        "F281 body two lines",
+        nb.body_clipped().ends_with('…') && nb.body_clipped().chars().count() == 41
+            && Notice::new(16, "x", "t", "短正文", &[], 0).body_clipped() == "短正文",
+        "clip + ellipsis",
+    );
     set
 }
 
@@ -191,7 +254,7 @@ mod tests {
 
     #[test]
     fn buttons_never_exceed_cap_plus_more() {
-        let n = Notice::new("a", "t", "b", &["1", "2", "3", "4", "5"], 0);
+        let n = Notice::new(1, "a", "t", "b", &["1", "2", "3", "4", "5"], 0);
         assert_eq!(n.render_buttons().len(), 3, "2 + 更多 = 上限");
     }
 }
