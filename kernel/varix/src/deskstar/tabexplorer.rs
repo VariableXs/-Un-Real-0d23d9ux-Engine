@@ -177,6 +177,8 @@ pub struct TabExplorer {
     pub overflow_drops: u32,
     /// 文件投到标签头 = 移动（F018 接缝账）。
     pub tab_drop_moves: u64,
+    /// 跨标签共享枚举缓存（深化层二：同一文件系统会话）。
+    enum_cache: SharedEnumCache,
 }
 
 impl TabExplorer {
@@ -189,6 +191,7 @@ impl TabExplorer {
             tearoffs: Vec::new(),
             overflow_drops: 0,
             tab_drop_moves: 0,
+            enum_cache: SharedEnumCache::new(),
         };
         te.tabs.push(Tab {
             id: 1,
@@ -569,5 +572,123 @@ mod tests {
         let set = run_tabexplorer_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F089 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——跨标签共享枚举缓存（主册设计细节：
+// 「标签内存共享同一文件系统会话（枚举缓存跨标签复用）」）。
+// ---------------------------------------------------------------------------
+
+/// 跨标签共享枚举缓存（同一目录的两个标签共用一份枚举——命中即
+/// 零扫描；目录变更整键失效，与 F093 缓存同监管纪律）。
+#[derive(Default)]
+pub struct SharedEnumCache {
+    entries: Vec<(String, Vec<String>)>,
+    /// 命中账（跨标签复用的直接证据）。
+    pub hits: u64,
+    /// 失效账（目录变更逐键失效）。
+    pub invalidations: u64,
+}
+
+impl SharedEnumCache {
+    pub fn new() -> SharedEnumCache {
+        SharedEnumCache::default()
+    }
+
+    /// 供给一份目录枚举（宿主扫描回执；同键覆盖旧值）。
+    pub fn feed(&mut self, dir: &str, items: Vec<String>) {
+        if let Some(slot) = self.entries.iter_mut().find(|(d, _)| d == dir) {
+            slot.1 = items;
+        } else {
+            self.entries.push((String::from(dir), items));
+        }
+    }
+
+    /// 查询（命中计数——两个标签查同一目录，第二次起即共享命中）。
+    pub fn listing_of(&mut self, dir: &str) -> Option<&Vec<String>> {
+        match self.entries.iter().find(|(d, _)| d == dir) {
+            Some((_, list)) => {
+                self.hits += 1;
+                Some(list)
+            }
+            None => None,
+        }
+    }
+
+    /// 目录变更失效（重命名/删除/增删文件 → 该键清除）。
+    pub fn invalidate(&mut self, dir: &str) -> bool {
+        let before = self.entries.len();
+        self.entries.retain(|(d, _)| d != dir);
+        let dropped = before != self.entries.len();
+        if dropped {
+            self.invalidations += 1;
+        }
+        dropped
+    }
+}
+
+impl TabExplorer {
+    /// 共享缓存访问（标签间的会话级共享实体——所有标签同一份）。
+    pub fn shared_cache(&mut self) -> &mut SharedEnumCache {
+        &mut self.enum_cache
+    }
+}
+
+/// F089 深化自检二：共享枚举缓存。
+pub fn run_tabexplorer_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F089-deep2");
+    let mut te = TabExplorer::new("C:/项目");
+    te.duplicate_tab(); // 两个标签同一目录
+    // 1. 供给后两标签先后查询：第二次起命中（共享——不重复扫描）。
+    te.shared_cache().feed(
+        "C:/项目",
+        vec![String::from("报告.docx"), String::from("资料/")],
+    );
+    let first = te.shared_cache().listing_of("C:/项目").map(|l| l.len());
+    let hits_after_first = te.shared_cache().hits;
+    let second = te.shared_cache().listing_of("C:/项目").map(|l| l.len());
+    let hits_after_second = te.shared_cache().hits;
+    set.add(
+        "cache-shared",
+        first == Some(2) && second == Some(2) && hits_after_second == hits_after_first + 1,
+        "second tab reuses enumeration",
+    );
+    // 2. 目录变更失效：键清除 → 查询落空；下次供给重建。
+    let invalidated = te.shared_cache().invalidate("C:/项目");
+    let gone = te.shared_cache().listing_of("C:/项目").is_none();
+    te.shared_cache().feed("C:/项目", vec![String::from("新文件.txt")]);
+    let rebuilt = te.shared_cache().listing_of("C:/项目").map(|l| l.len()) == Some(1);
+    set.add(
+        "cache-invalidate",
+        invalidated && gone && rebuilt && te.shared_cache().invalidations == 1,
+        "change drops the key",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn invalidate_missing_key_is_honest_false() {
+        let mut c = SharedEnumCache::new();
+        assert!(!c.invalidate("不存在的目录"), "无键可失效——如实拒绝");
+    }
+
+    #[test]
+    fn feed_same_dir_overwrites() {
+        let mut c = SharedEnumCache::new();
+        c.feed("D:/x", vec![String::from("旧")]);
+        c.feed("D:/x", vec![String::from("新1"), String::from("新2")]);
+        assert_eq!(c.listing_of("D:/x").map(|l| l.len()), Some(2), "同键覆盖");
+    }
+
+    #[test]
+    fn tabexplorer_deep2_checks_all_green() {
+        let set = run_tabexplorer_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F089-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

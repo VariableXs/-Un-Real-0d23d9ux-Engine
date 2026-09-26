@@ -226,6 +226,8 @@ pub struct QuickPanel {
     applied: [u32; 6],
     /// toast 队列（性能档确认等）。
     toasts: Vec<String>,
+    /// Wi-Fi 转圈起始锚（深化层二：连接中态的卡内转圈相位源）。
+    spinner_start: Option<u64>,
 }
 
 /// 卡位在状态数组中的下标。
@@ -269,6 +271,7 @@ impl QuickPanel {
             popup_ok: None,
             applied: [0; 6],
             toasts: Vec::new(),
+            spinner_start: None,
         }
     }
 
@@ -452,6 +455,7 @@ impl QuickPanel {
         if idx < self.wifi_nets.len() && self.wifi_state != WifiState::Connecting {
             self.wifi_sel = idx;
             self.wifi_state = WifiState::Connecting;
+            self.spinner_start = Some(now_ms);
             self.now_ms = now_ms;
         }
     }
@@ -759,4 +763,104 @@ mod tests {
         let (p_, f_) = set.tally();
         assert!(set.all_passed(), "F076 自检红项：{}/{} 绿", p_, p_ + f_);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——Wi-Fi 连接中卡内转圈 / 卡布局持久化
+// 投影。判据唯一源：主册 G-C-06 设计细节/数据与存储。
+// ---------------------------------------------------------------------------
+
+/// Wi-Fi 转圈帧数（8 帧 × 45° = 一圈——卡内转圈，不弹窗）。
+pub const WIFI_SPINNER_FRAMES: u32 = 8;
+
+/// 卡布局持久化投影间隔标记。
+pub const CARD_LAYOUT_SEP: char = ',';
+
+impl QuickPanel {
+    /// Wi-Fi 连接中转圈相位（连接态下卡内转圈的当前帧号 0..8；
+    /// 300ms 一帧——慢速有耐心感，非连接态恒 0 不转）。
+    pub fn wifi_spinner_phase(&self) -> u32 {
+        if self.wifi_state != WifiState::Connecting {
+            return 0;
+        }
+        match self.spinner_start {
+            None => 0,
+            Some(t0) => ((self.now_ms.saturating_sub(t0) / 300)
+            % WIFI_SPINNER_FRAMES as u64) as u32,
+        }
+    }
+
+    /// 卡布局序列化（顺序 + 显隐——「哪些卡显示/顺序」用户可编辑的
+    /// 配置层投影：`名,显隐;` 段串）。
+    pub fn serialize_card_layout(&self) -> String {
+        let mut out = String::new();
+        for s in &self.slots {
+            out.push_str(s.kind.name());
+            out.push(CARD_LAYOUT_SEP);
+            out.push_str(if s.shown { "1" } else { "0" });
+            out.push(';');
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn spinner_needs_connecting_state() {
+        let p = QuickPanel::new();
+        assert_eq!(p.wifi_spinner_phase(), 0, "非连接态不转");
+    }
+
+    #[test]
+    fn spinner_stops_after_done() {
+        let mut p = QuickPanel::new();
+        p.wifi_scan_done(&[("会议室", 3, true)], 900);
+        p.wifi_connect(0, 1_000);
+        p.now_ms = 1_300;
+        assert_ne!(p.wifi_spinner_phase(), 0, "连接中转圈");
+        p.wifi_connect_done(true, 1_400);
+        assert_eq!(p.wifi_spinner_phase(), 0, "连上即停");
+    }
+
+    #[test]
+    fn quickset_deep2_checks_all_green() {
+        let set = run_quickset_deep2_checks();
+        let (p_, f_) = set.tally();
+        assert!(set.all_passed(), "F076-deep2 红项：{}/{} 绿", p_, p_ + f_);
+    }
+}
+
+/// F076 深化自检二：转圈相位 + 布局投影。
+pub fn run_quickset_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F076-deep2");
+    let mut p = QuickPanel::new();
+    // 1. 转圈：非连接态恒 0；连接态 300ms/帧推进；回执后停转。
+    // （扫描回执供给网络清单 → 选择并发起连接。）
+    let idle_phase = p.wifi_spinner_phase();
+    p.wifi_scan_done(&[("会议室", 3, true)], 900);
+    p.wifi_connect(0, 1_000);
+    p.now_ms = 1_300;
+    let frame1 = p.wifi_spinner_phase();
+    p.now_ms = 1_600;
+    let frame2 = p.wifi_spinner_phase();
+    p.wifi_connect_done(true, 1_700);
+    let stopped = p.wifi_spinner_phase();
+    set.add(
+        "spinner",
+        idle_phase == 0 && frame1 == 1 && frame2 == 2 && stopped == 0,
+        "card-internal spinner",
+    );
+    // 2. 布局序列化：默认六卡全显（顺序 + 显隐两要素都在串里）。
+    let blob = p.serialize_card_layout();
+    let segments = blob.split(';').filter(|s| !s.is_empty()).count();
+    let wifi_first = blob.starts_with("Wi-Fi,1;");
+    set.add(
+        "layout-serialize",
+        segments == 6 && wifi_first,
+        "order+visibility projection",
+    );
+    set
 }

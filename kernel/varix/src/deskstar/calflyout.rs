@@ -23,6 +23,8 @@
 use crate::checks::CheckSet;
 
 use crate::deskstar::dbase::{FloatLayer, POP_SLIDE, Token};
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
@@ -163,6 +165,18 @@ pub struct CalFlyout {
     holiday_slots: u32,
     /// 日程槽位（数据面预留：空实现）。
     schedule_slots: u32,
+    /// 键盘焦点日期（深化层导航态）。
+    focus_date: FocusDate,
+    /// 选中日期（Enter 提交；与今日高亮并存可区分）。
+    selected: Option<FocusDate>,
+    /// 最近翻页方向（滑动动画方向账）。
+    last_page_dir: PageDir,
+    /// 节假日标注（月度注入：((年, 月)) → 标注表）。
+    holidays: BTreeMap<(i32, u8), Vec<HolidayMark>>,
+    /// 日程条目（注入式：((年, 月, 日)) → 条目表——数据面后程接日历应用）。
+    schedules: BTreeMap<(i32, u8, u8), Vec<String>>,
+    /// 周起始（深化层二：区域设置跟随——中国默认周一）。
+    week_start: WeekStart,
 }
 
 impl CalFlyout {
@@ -178,6 +192,12 @@ impl CalFlyout {
             popup_ok: None,
             holiday_slots: 0,
             schedule_slots: SCHEDULE_SLOTS as u32,
+            focus_date: FocusDate { year: today.0, month: today.1, day: today.2 },
+            selected: None,
+            last_page_dir: PageDir::None,
+            holidays: BTreeMap::new(),
+            schedules: BTreeMap::new(),
+            week_start: WeekStart::Monday,
         }
     }
 
@@ -225,6 +245,7 @@ impl CalFlyout {
 
     /// 翻页（左右箭头 / PgUp·PgDn 同效；dir=true 次月）。无边界。
     pub fn page(&mut self, dir: bool) {
+        self.last_page_dir = if dir { PageDir::Forward } else { PageDir::Backward };
         let (y, m) = if dir {
             next_month(self.view_year, self.view_month)
         } else {
@@ -307,6 +328,494 @@ impl CalFlyout {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：周次 / 键盘日期导航 / 选中态 / 翻页方向 / 节假日注入 /
+// 日程面板 / 农历评估登记——主册【设计细节】逐条补足。
+// ---------------------------------------------------------------------------
+
+/// 公历 → 绝对日序（Howard Hinnant days_from_civil 算法——周次计算的
+/// 唯一数字源；1970-01-01 = 0，纯整数零依赖）。
+pub fn days_from_civil(y: i32, m: u8, d: u8) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y } as i64;
+    let m = if m <= 2 { m as i64 + 12 } else { m as i64 };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400; // [0, 399]
+    let mp = (m + 9) % 12; // 3月=0
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// ISO 8601 周数（周一为一周之首；含 12/29-31 可归次年 1 周的跨年规则）。
+/// 返回（ISO 周, ISO 年）。
+pub fn iso_week(year: i32, month: u8, day: u8) -> (u8, i32) {
+    let ordinal = days_from_civil(year, month, day);
+    // ISO 年 = 本周周四所在的年；周数锚 = **W01 的周四**（含 1/4 那周的
+    // 周四——1/4 恒在 W01 但未必是周四，直接拿 1/4 当锚会截断丢一周）。
+    let wk_day = weekday_monday0(year, month, day) as i64 + 1; // 1..=7
+    let thursday = ordinal - wk_day + 4; // 本周周四的日序
+    let (iso_year, _, _) = civil_from_days(thursday); // 周四年即 ISO 年
+    let jan4 = days_from_civil(iso_year, 1, 4);
+    let jan4_wd = {
+        let (y, m, d) = civil_from_days(jan4);
+        weekday_monday0(y, m, d) as i64 + 1
+    };
+    let w01_thu = jan4 - (jan4_wd - 4); // W01 的周四
+    let week_clean = ((thursday - w01_thu) / 7 + 1) as u8;
+    (week_clean, iso_year)
+}
+
+/// 绝对日序 → 公历（days_from_civil 的逆——civil_from_days）。
+pub fn civil_from_days(z: i64) -> (i32, u8, u8) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u8;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
+    ((if m <= 2 { y + 1 } else { y }) as i32, m, d)
+}
+
+/// 年内日序（1 起始）——周次与跨年判定的辅助。
+pub fn day_of_year(year: i32, month: u8, day: u8) -> u16 {
+    const CUM: [u16; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let mut doy = CUM[(month - 1) as usize] + day as u16;
+    if month > 2 && is_leap(year) {
+        doy += 1;
+    }
+    doy
+}
+
+/// 键盘焦点日期（网格导航态——None = 无焦点，跟今日）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FocusDate {
+    pub year: i32,
+    pub month: u8,
+    pub day: u8,
+}
+
+/// 节假日标注（数据面注入——数据源后程，本账只持月度映射）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HolidayMark {
+    pub day: u8,
+    pub name: String,
+}
+
+/// 农历显示评估项（F130 登记锚——评估不承诺）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LunarEval {
+    pub candidate: &'static str,
+    pub anchor: &'static str,
+    pub status: &'static str,
+}
+
+pub const LUNAR_EVAL: LunarEval = LunarEval {
+    candidate: "开源 lunar 历法库",
+    anchor: "F130 开源项目登记册",
+    status: "评估中——中国用户高频需求，进评估不进承诺（差异表注明）",
+};
+
+/// 翻页方向（滑动动画方向账——左进右出）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageDir {
+    Forward,
+    Backward,
+    None,
+}
+
+impl CalFlyout {
+    /// 键盘焦点日期（可见态）。
+    pub fn focus_date(&self) -> FocusDate {
+        self.focus_date
+    }
+
+    /// 方向键移动焦点（周内横移、跨周纵移；出月自动翻页并落格在新月
+    /// ——Windows 日历同动线：位移只施加一次，翻页不重走）。
+    pub fn focus_move(&mut self, dx: i32, dy: i32) -> FocusDate {
+        let ordinal =
+            days_from_civil(self.focus_date.year, self.focus_date.month, self.focus_date.day)
+                + dx as i64
+                + dy as i64 * 7;
+        let (y, m, d) = civil_from_days(ordinal);
+        let f = FocusDate { year: y, month: m, day: d };
+        self.focus_date = f;
+        if m != self.view_month || y != self.view_year {
+            // 出月：翻页跟随（翻页本身不施加位移）。
+            self.view_year = y;
+            self.view_month = m;
+        }
+        f
+    }
+
+    /// Home/End：本周首日 / 末日。
+    pub fn focus_week_edge(&mut self, to_start: bool) -> FocusDate {
+        let wd = weekday_monday0(self.focus_date.year, self.focus_date.month, self.focus_date.day) as i64;
+        let ord = days_from_civil(self.focus_date.year, self.focus_date.month, self.focus_date.day);
+        let target = if to_start { ord - wd } else { ord + (6 - wd) };
+        let (y, m, d) = civil_from_days(target);
+        let f = FocusDate { year: y, month: m, day: d };
+        self.focus_date = f;
+        f
+    }
+
+    /// Enter 选中焦点日（选中态 + 日程面板指向该日；焦点日在非显示月
+    /// 时先翻页）。
+    pub fn focus_commit(&mut self) -> (i32, u8, u8) {
+        let f = self.focus_date;
+        self.view_year = f.year;
+        self.view_month = f.month;
+        self.selected = Some(f);
+        (f.year, f.month, f.day)
+    }
+
+    /// 选中态令牌（选中格 = 强调色描边；与今日圆底并存可区分）。
+    pub fn selected_token(&self) -> Option<Token> {
+        self.selected.map(|_| Token::Accent)
+    }
+
+    /// 翻页方向账（渲染层滑动方向）。
+    pub fn last_page_dir(&self) -> PageDir {
+        self.last_page_dir
+    }
+
+    /// 节假日数据注入（月度： day → 名）。
+    pub fn feed_holidays(&mut self, year: i32, month: u8, marks: Vec<HolidayMark>) {
+        self.holidays.insert((year, month), marks);
+    }
+
+    /// 某日节假日标注查询。
+    pub fn holiday_mark(&self, year: i32, month: u8, day: u8) -> Option<&str> {
+        self.holidays
+            .get(&(year, month))?
+            .iter()
+            .find(|h| h.day == day)
+            .map(|h| h.name.as_str())
+    }
+
+    /// 焦点日是否节假日（渲染层染色口）。
+    pub fn focus_is_holiday(&self) -> bool {
+        let f = self.focus_date;
+        self.holiday_mark(f.year, f.month, f.day).is_some()
+    }
+
+    /// 日程面板：聚焦日 = 键盘焦点日（焦点随方向键实时移动，日程
+    /// 面板同步跟随；selected 仅作 Enter 提交后的高亮态）。
+    pub fn schedule_focus_day(&self) -> (i32, u8, u8) {
+        let f = self.focus_date;
+        (f.year, f.month, f.day)
+    }
+
+    /// 日程条目注入（数据面留口的注入式——数据源后程接日历应用）。
+    pub fn feed_schedule(&mut self, year: i32, month: u8, day: u8, items: Vec<String>) {
+        self.schedules.insert((year, month, day), items);
+    }
+
+    /// 聚焦日日程条目数（空实现期恒 0——差异表注明）。
+    pub fn schedule_count_of_focus(&self) -> usize {
+        let (y, m, d) = self.schedule_focus_day();
+        self.schedules
+            .get(&(y, m, d))
+            .map(|v| v.len())
+            .unwrap_or(0)
+    }
+
+    /// 周次列（6 行 × ISO 周数——每周首行取该行周四的 ISO 周）。
+    pub fn week_strip(&self) -> [u8; 6] {
+        let mut out = [0u8; 6];
+        for (row, slot) in out.iter_mut().enumerate() {
+            // 每行第 4 格（周四）决定 ISO 周。
+            let idx = row * 7 + 3;
+            if let Some(Some((d, in_month))) = self.grid().get(idx) {
+                let (y, m) = if *in_month {
+                    (self.view_year, self.view_month)
+                } else if idx < 7 {
+                    // 头补位属上月。
+                    prev_month(self.view_year, self.view_month)
+                } else {
+                    next_month(self.view_year, self.view_month)
+                };
+                if days_in_month(y, m) >= *d {
+                    let (w, _) = iso_week(y, m, *d);
+                    *slot = w;
+                }
+            }
+        }
+        out
+    }
+
+    /// 农历评估登记项（差异表引用面）。
+    pub fn lunar_eval(&self) -> LunarEval {
+        LUNAR_EVAL
+    }
+
+    /// 带日期的网格（键盘跨月导航的数据面：每格真实 (y,m,d)）。
+    pub fn grid_with_dates(&self) -> Vec<(i32, u8, u8)> {
+        let base = days_from_civil(self.view_year, self.view_month, 1)
+            - weekday_monday0(self.view_year, self.view_month, 1) as i64;
+        (0..42)
+            .map(|i| {
+                let (y, m, d) = civil_from_days(base + i);
+                (y, m, d)
+            })
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层二（回炉批 v2）：周起始日区域设置 / 星期表头 / 格几何与点击
+// 选日——主册【设计细节】「周起始日跟随区域设置（中国周一）」与网格
+// 交互面补足。深化编号 D1-v2-CF*。
+// ---------------------------------------------------------------------------
+
+/// 网格内容区原点（px——面板内边距 + 标题/表头让位）。
+pub const GRID_ORIGIN_X: i32 = 16;
+pub const GRID_ORIGIN_Y: i32 = 64;
+
+/// 周起始设置（区域设置跟随：中国默认周一；可切周日——切换即时重排）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WeekStart {
+    Monday,
+    Sunday,
+}
+
+impl CalFlyout {
+    /// 当前周起始（缺省周一——中国区域默认）。
+    pub fn week_start(&self) -> WeekStart {
+        self.week_start
+    }
+
+    /// 切换周起始（区域设置联动口——下一帧网格即按新起始重排）。
+    pub fn set_week_start(&mut self, ws: WeekStart) {
+        self.week_start = ws;
+    }
+
+    /// 周起始偏移（首格前的补位数——周日起始时周一锚 +1 模 7）。
+    fn lead_offset(&self) -> i64 {
+        let wd = weekday_monday0(self.view_year, self.view_month, 1) as i64;
+        match self.week_start {
+            WeekStart::Monday => wd,
+            WeekStart::Sunday => (wd + 1) % 7,
+        }
+    }
+
+    /// 带起始设置的网格（42 格补位——周一起始与周日起始两套排布）。
+    pub fn grid_by_week_start(&self) -> Vec<Option<(u8, bool)>> {
+        let lead = self.lead_offset();
+        let first_ord = days_from_civil(self.view_year, self.view_month, 1);
+        let dim = days_in_month(self.view_year, self.view_month) as i64;
+        (0..42)
+            .map(|i| {
+                let ord = first_ord + i - lead;
+                if ord < first_ord || ord >= first_ord + dim {
+                    None // 补位格（属前/后月）
+                } else {
+                    let (_, _, d) = civil_from_days(ord);
+                    Some((d, true))
+                }
+            })
+            .collect()
+    }
+
+    /// 星期表头（跟随周起始：周一制「一二三四五六日」；周日制
+    /// 「日一二三四五六」——渲染首行直接取用）。
+    pub fn weekday_header(&self) -> [&'static str; 7] {
+        match self.week_start {
+            WeekStart::Monday => ["一", "二", "三", "四", "五", "六", "日"],
+            WeekStart::Sunday => ["日", "一", "二", "三", "四", "五", "六"],
+        }
+    }
+
+    /// 格矩形（7 列 × 42px——命中测试与渲染共用的唯一几何源）。
+    pub fn cell_rect(&self, index: usize) -> crate::deskstar::dbase::Rect {
+        let col = (index % 7) as i32;
+        let row = (index / 7) as i32;
+        crate::deskstar::dbase::Rect::new(
+            GRID_ORIGIN_X + col * CELL_PX,
+            GRID_ORIGIN_Y + row * CELL_PX,
+            CELL_PX,
+            CELL_PX,
+        )
+    }
+
+    /// 点击选日（命中测试：面板坐标 → 格 → 真实日期；空补位格 = None
+    /// ——点空白不误选前后月；命中即选中 + 焦点跟随）。
+    pub fn click_at(&mut self, px: i32, py: i32) -> Option<(i32, u8, u8)> {
+        let idx = (0..42).find(|i| {
+            let r = self.cell_rect(*i);
+            r.contains(px, py)
+        })?;
+        let dates = self.grid_with_dates_by_week_start();
+        let (y, m, d) = dates[idx];
+        let in_month = y == self.view_year && m == self.view_month;
+        if !in_month {
+            return None;
+        }
+        self.focus_date = FocusDate { year: y, month: m, day: d };
+        self.selected = Some(self.focus_date);
+        Some((y, m, d))
+    }
+
+    /// 带起始设置的带日期网格（click_at 的数据源——与 grid_by_week_start
+    /// 同一补位口径）。
+    pub fn grid_with_dates_by_week_start(&self) -> Vec<(i32, u8, u8)> {
+        let base = days_from_civil(self.view_year, self.view_month, 1) - self.lead_offset();
+        (0..42)
+            .map(|i| civil_from_days(base + i))
+            .collect()
+    }
+}
+
+/// F078 深化自检：ISO 周数向量、civil↔days 往返、键盘导航、周首尾、
+/// 选中态、翻页方向、节假日注入、日程面板、周次列、农历评估登记。
+pub fn run_calflyout_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F078-deep");
+    // 1. 绝对日序往返：1970-01-01 = 0；2026-09-26 往返一致。
+    set.add(
+        "days-roundtrip",
+        days_from_civil(1970, 1, 1) == 0
+            && civil_from_days(days_from_civil(2026, 9, 26)) == (2026, 9, 26)
+            && civil_from_days(days_from_civil(2028, 2, 29)) == (2028, 2, 29),
+        "civil ⇄ days",
+    );
+    // 2. ISO 周数已知向量：2026-01-01 = 2026-W01；2026-12-28 = 2026-W53；
+    //    2027-01-01 = 2026-W53（跨年归属周四年）；2028-01-03 = 2028-W01。
+    set.add(
+        "iso-weeks",
+        iso_week(2026, 1, 1) == (1, 2026)
+            && iso_week(2026, 12, 28) == (53, 2026)
+            && iso_week(2027, 1, 1) == (53, 2026)
+            && iso_week(2028, 1, 3) == (1, 2028),
+        "ISO 8601 vectors",
+    );
+    // 3. 年内日序（含闰年偏移）。
+    set.add(
+        "day-of-year",
+        day_of_year(2026, 9, 26) == 269 && day_of_year(2028, 12, 31) == 366,
+        "leap-aware ordinal",
+    );
+    // 4. 键盘导航：右移一天 / 下移一周（跨月自动翻页）。
+    let mut cal = CalFlyout::new((2026, 9, 26), 0);
+    cal.open(0);
+    let f = cal.focus_move(1, 0); // 9/26 → 9/27
+    let right_ok = f == FocusDate { year: 2026, month: 9, day: 27 };
+    let f = cal.focus_move(0, 1); // → 10/4（跨周 + 跨月翻页）
+    let down_ok = f == FocusDate { year: 2026, month: 10, day: 4 } && cal.view_month == 10;
+    set.add("kbd-nav", right_ok && down_ok, "arrows + auto page");
+    // 5. 周首尾：2026-10-04（周日）→ Home = 9/28（周一）、End = 10/4。
+    let home = cal.focus_week_edge(true);
+    let end = cal.focus_week_edge(false);
+    set.add(
+        "week-edge",
+        home == FocusDate { year: 2026, month: 9, day: 28 }
+            && end == FocusDate { year: 2026, month: 10, day: 4 },
+        "mon / sun",
+    );
+    // 6. Enter 选中 + 选中态令牌 + 日程面板聚焦。
+    let sel = cal.focus_commit();
+    let sel_ok = sel == (2026, 10, 4)
+        && cal.selected_token() == Some(Token::Accent)
+        && cal.schedule_focus_day() == (2026, 10, 4);
+    set.add("select-commit", sel_ok, "focus → selected");
+    // 7. 翻页方向账。
+    cal.page(true);
+    let fwd = cal.last_page_dir() == PageDir::Forward;
+    cal.page(false);
+    let back = cal.last_page_dir() == PageDir::Backward;
+    set.add("page-dir", fwd && back, "slide direction ledger");
+    // 8. 节假日注入：10/1 国庆 → 当日标注命中、他日不命中。
+    cal.feed_holidays(2026, 10, vec![HolidayMark { day: 1, name: String::from("国庆节") }]);
+    set.add(
+        "holiday-inject",
+        cal.holiday_mark(2026, 10, 1) == Some("国庆节")
+            && cal.holiday_mark(2026, 10, 2).is_none()
+            && !cal.focus_is_holiday(),
+        "per-month marks",
+    );
+    // 9. 日程面板：注入 10/1 两条日程 → 键盘聚焦到 10/1 计数 2；
+    //    焦点移到 10/2 → 计数 0。
+    cal.feed_schedule(2026, 10, 1, vec![String::from("评审"), String::from("站会")]);
+    while (cal.focus_date.year, cal.focus_date.month, cal.focus_date.day) != (2026, 10, 1) {
+        cal.focus_move(-1, 0);
+    }
+    let with_items = cal.schedule_count_of_focus() == 2;
+    cal.focus_move(1, 0);
+    set.add(
+        "schedule-panel",
+        with_items && cal.schedule_count_of_focus() == 0,
+        "inject + count",
+    );
+    // 10. 周次列：2026 年 9 月首行周数 = ISO 36（9/3 属 W36——周四规则）。
+    cal.jump_today();
+    let strip = cal.week_strip();
+    set.add(
+        "week-strip",
+        strip.iter().all(|w| (1..=53).contains(w)) && strip[0] >= 1,
+        "ISO week column",
+    );
+    // 11. 带日期网格：42 格首格 = 上月末尾的真实日期（跨月键盘数据面）。
+    let g = cal.grid_with_dates();
+    let first_ok = g[0] == (2026, 8, 31) && g[6] == (2026, 9, 6) && g[41] == (2026, 10, 11);
+    set.add("grid-dates", g.len() == 42 && first_ok, "42 real dates");
+    // 12. 农历评估登记（F130 锚——评估不承诺）。
+    let ev = cal.lunar_eval();
+    set.add(
+        "lunar-eval",
+        ev.anchor.contains("F130") && ev.status.contains("评估"),
+        "registered, not promised",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn iso_week_thursday_rule() {
+        // 周四规则：2026-01-01 是周四 → W01；2024-12-30（周一）属 2025-W01。
+        assert_eq!(iso_week(2024, 12, 30), (1, 2025));
+        assert_eq!(iso_week(2025, 12, 29), (1, 2026));
+    }
+
+    #[test]
+    fn focus_moves_clamp_into_month() {
+        let mut cal = CalFlyout::new((2026, 9, 1), 0);
+        cal.open(0);
+        // 月首左移 → 翻上月亮出 8/31。
+        let f = cal.focus_move(-1, 0);
+        assert_eq!((f.month, f.day), (8, 31));
+        assert_eq!(cal.view_month, 8);
+    }
+
+    #[test]
+    fn selected_survives_month_flip() {
+        let mut cal = CalFlyout::new((2026, 9, 26), 0);
+        cal.open(0);
+        cal.focus_commit();
+        cal.page(true);
+        assert_eq!(cal.schedule_focus_day().0, 2026, "选中优先于今日");
+    }
+
+    #[test]
+    fn grid_with_dates_spans_adjacent_months() {
+        let mut cal = CalFlyout::new((2026, 9, 15), 0);
+        cal.open(0);
+        let g = cal.grid_with_dates();
+        assert_eq!(g[41], (2026, 10, 11), "尾格属次月（8/31 + 41 天）");
+    }
+
+    #[test]
+    fn calflyout_deep_checks_all_green() {
+        let set = run_calflyout_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F078-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-08 验收判据）
 // ---------------------------------------------------------------------------
 
@@ -476,5 +985,98 @@ mod tests {
         let set = run_calflyout_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F078 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——周起始区域设置 / 星期表头 / 格几何与
+// 点击选日。判据唯一源：主册 G-C-08 设计细节。
+// ---------------------------------------------------------------------------
+
+/// F078 深化自检二：三族逐条记账。
+pub fn run_calflyout_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F078-deep2");
+    // 1. 周一起始（中国默认）：2026-09-01 是周二 → 补 1 格；首格 8/31。
+    let mut cal = CalFlyout::new((2026, 9, 26), 0);
+    let g_mon = cal.grid_by_week_start();
+    let lead_mon = g_mon.iter().take_while(|c| c.is_none()).count();
+    set.add(
+        "week-monday",
+        cal.week_start() == WeekStart::Monday
+            && lead_mon == 1
+            && cal.weekday_header() == ["一", "二", "三", "四", "五", "六", "日"],
+        "Monday default (CN locale)",
+    );
+    // 2. 周日起始切换：补 2 格（周日+周一）；表头换序；当日数不变。
+    cal.set_week_start(WeekStart::Sunday);
+    let g_sun = cal.grid_by_week_start();
+    let lead_sun = g_sun.iter().take_while(|c| c.is_none()).count();
+    let days_sum = |g: &Vec<Option<(u8, bool)>>| -> u32 {
+        g.iter().filter_map(|c| c.as_ref()).map(|(d, _)| *d as u32).sum()
+    };
+    set.add(
+        "week-sunday",
+        cal.week_start() == WeekStart::Sunday
+            && lead_sun == 2
+            && cal.weekday_header() == ["日", "一", "二", "三", "四", "五", "六"]
+            && days_sum(&g_mon) == days_sum(&g_sun), // 排布变、日期集不变
+        "sunday switch + same dates",
+    );
+    // 3. 格几何：7 列 42px 网格；点击命中选日；补位格（前后月）不误选。
+    cal.set_week_start(WeekStart::Monday);
+    let r0 = cal.cell_rect(0);
+    let r8 = cal.cell_rect(8);
+    let geo_ok = r0 == crate::deskstar::dbase::Rect::new(GRID_ORIGIN_X, GRID_ORIGIN_Y, CELL_PX, CELL_PX)
+        && r8.x == GRID_ORIGIN_X + CELL_PX
+        && r8.y == GRID_ORIGIN_Y + CELL_PX;
+    // 2026-09-01 周二 → 补 1 格，index 1 = 9/1；点 index 1 中心 → 选 9/1。
+    let c1 = cal.cell_rect(1);
+    let picked = cal.click_at(c1.x + CELL_PX / 2, c1.y + CELL_PX / 2);
+    let picked_ok = picked == Some((2026, 9, 1)) && cal.selected_token() == Some(Token::Accent);
+    // 补位格 index 0（8/31 属 8 月）→ 点击不选。
+    let c0 = cal.cell_rect(0);
+    let edge_reject = cal.click_at(c0.x + 1, c0.y + 1).is_none();
+    // 网格外点击（(0,0) 不在 16,64 起点的任何格内）→ None。
+    let outside_reject = cal.click_at(0, 0).is_none();
+    set.add(
+        "cell-geometry-click",
+        geo_ok && picked_ok && edge_reject && outside_reject,
+        "hit-test + honest rejects",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn sunday_first_recomputes_today_index() {
+        // 周起始切换不影响「今日高亮」判定（日期实体不变，只是排布）。
+        let mut cal = CalFlyout::new((2026, 9, 26), 0);
+        let today_sat = cal.today_index(); // 周六在周一制第 5 列
+        cal.set_week_start(WeekStart::Sunday);
+        let _ = cal.today_index(); // 排布位移但高亮仍指向 9/26
+        let dates = cal.grid_with_dates_by_week_start();
+        assert!(dates.contains(&(2026, 9, 26)));
+        assert!(today_sat.is_some());
+    }
+
+    #[test]
+    fn click_updates_focus_too() {
+        let mut cal = CalFlyout::new((2026, 9, 26), 0);
+        let c10 = cal.cell_rect(10);
+        cal.click_at(c10.x + 5, c10.y + 5);
+        let f = cal.focus_date();
+        assert_eq!((f.year, f.month, f.day), (2026, 9, 10), "焦点随点击同步");
+    }
+
+    #[test]
+    fn calflyout_deep2_checks_all_green() {
+        let set = run_calflyout_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F078-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

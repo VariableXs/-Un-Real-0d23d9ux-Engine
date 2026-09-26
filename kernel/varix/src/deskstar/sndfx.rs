@@ -163,6 +163,12 @@ pub struct SfxHub {
     /// 解码延迟账（F064 链路回执：<20ms 判据的对账面）。
     pub decode_overruns: u64,
     pub decode_samples: u64,
+    /// 资产装载状态（深化层：F068 接缝——逐事件独立）。
+    load_states: [LoadState; 6],
+    load_retries: [u32; 6],
+    /// 试听独立队列（不与事件队列混排）。
+    preview_queue: Vec<(SfxEvent, u64)>,
+    last_preview_ms: Option<u64>,
 }
 
 impl SfxHub {
@@ -188,6 +194,10 @@ impl SfxHub {
             stat_muted: 0,
             decode_overruns: 0,
             decode_samples: 0,
+            load_states: [LoadState::Pending; 6],
+            load_retries: [0; 6],
+            preview_queue: Vec::new(),
+            last_preview_ms: None,
         }
     }
 
@@ -269,6 +279,11 @@ impl SfxHub {
             self.stat_skipped += 1;
             return false;
         }
+        // 装载失败的事件回退无声（重试耗尽后不再进队——诚实降级）。
+        if self.event_load_failed(event) {
+            self.stat_skipped += 1;
+            return false;
+        }
         // 事件音量 0 = 真静音档（不进队——0 音量播出来仍是静音样本，纯浪费）。
         if self.entries[event.index()].volume == 0 {
             self.stat_skipped += 1;
@@ -344,6 +359,294 @@ fn tag_of(e: SfxEvent) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：资产装载状态机（F068 接缝）/ 资产规格校验 / 试听独立
+// 通道 / 方案清单导出校验 / 响度归一细化——主册【数据与存储】【设计细节】。
+// ---------------------------------------------------------------------------
+
+/// 资产装载状态（F068 渲染资产按需装载的接缝账——音效文件同管线）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadState {
+    /// 未装载（首次播出/试听前）。
+    Pending,
+    /// 装载中（48kHz/24bit FLAC 解码入内存）。
+    Loading,
+    /// 就绪（可播）。
+    Ready,
+    /// 失败（重试耗尽——该事件回退无声 + 诊断报备）。
+    Failed,
+}
+
+/// 装载重试上限（两次重试后判失败——防坏资产死循环）。
+pub const LOAD_RETRY_CAP: u32 = 2;
+
+/// 资产规格（4K 资产管线同级：48kHz/24bit）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AssetSpec {
+    pub sample_rate_hz: u32,
+    pub bits: u8,
+    pub channels: u8,
+}
+
+/// 规格校验（48kHz/24bit/单双声道之外一律拒——管线纪律）。
+pub fn validate_spec(spec: AssetSpec) -> Result<(), &'static str> {
+    if spec.sample_rate_hz != SAMPLE_RATE_HZ {
+        return Err("采样率须 48kHz（4K 资产管线标准）");
+    }
+    if spec.bits != SAMPLE_BITS {
+        return Err("位深须 24bit（防炸耳的动态范围下限）");
+    }
+    if spec.channels == 0 || spec.channels > 2 {
+        return Err("声道须单声道或立体声");
+    }
+    Ok(())
+}
+
+/// 方案导出清单（vxtheme 承载的用户方案容器条目——导出完整性校验面）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SchemeManifest {
+    pub scheme_name: String,
+    /// 六事件 → 资产名（缺事件 = 不完整清单）。
+    pub bindings: Vec<(&'static str, String)>,
+    pub master_mute: bool,
+}
+
+impl SfxHub {
+    /// 装载状态查询。
+    pub fn load_state(&self, event: SfxEvent) -> LoadState {
+        self.load_states[event.index()]
+    }
+
+    /// 装载请求（Pending → Loading；播放前由音频执行面驱动）。
+    pub fn request_load(&mut self, event: SfxEvent) -> bool {
+        let i = event.index();
+        if self.load_states[i] == LoadState::Pending {
+            self.load_states[i] = LoadState::Loading;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 装载完成回执（→ Ready）。
+    pub fn load_ready(&mut self, event: SfxEvent) {
+        self.load_states[event.index()] = LoadState::Ready;
+    }
+
+    /// 装载失败回执（重试计数；耗尽 → Failed + 该事件静默 + 报备）。
+    pub fn load_failed(&mut self, event: SfxEvent, now_ms: u64) -> bool {
+        let i = event.index();
+        self.load_retries[i] += 1;
+        if self.load_retries[i] > LOAD_RETRY_CAP {
+            self.load_states[i] = LoadState::Failed;
+            self.diag
+                .push(alloc::format!("{} 音效装载失败：该事件回退无声（诊断报备）", event.name()));
+            self.now_ms = now_ms;
+            true
+        } else {
+            // 回到 Pending 允许重试（下次 request_load 重新走 Loading）。
+            self.load_states[i] = LoadState::Pending;
+            false
+        }
+    }
+
+    /// 失败事件播出闸：Failed 状态的事件 trigger 不入队（回退无声）。
+    pub fn event_load_failed(&self, event: SfxEvent) -> bool {
+        self.load_states[event.index()] == LoadState::Failed
+    }
+
+    /// 试听请求（E5 声音方案页——独立试听通道，不与事件队列混排；
+    /// 返回是否受理：静音总闸不拦试听（试听是用户主动确认动作），
+    /// 但无声方案与设备缺失照旧拒）。
+    pub fn preview(&mut self, event: SfxEvent, now_ms: u64) -> bool {
+        self.now_ms = now_ms;
+        if !self.device_present || self.scheme.silent_scheme() {
+            self.stat_skipped += 1;
+            return false;
+        }
+        self.preview_queue.push((event, now_ms));
+        true
+    }
+
+    /// 试听队列驱动（独立 80ms 节拍——与事件队列同一间隔语义）。
+    pub fn preview_tick(&mut self, now_ms: u64) -> Option<SfxEvent> {
+        self.now_ms = now_ms;
+        if self.preview_queue.is_empty() {
+            return None;
+        }
+        let gap_ok = match self.last_preview_ms {
+            None => true,
+            Some(t) => now_ms.saturating_sub(t) >= QUEUE_GAP_MS,
+        };
+        if !gap_ok {
+            return None;
+        }
+        let (e, _) = self.preview_queue.remove(0);
+        self.last_preview_ms = Some(now_ms);
+        Some(e)
+    }
+
+    /// 方案清单导出（vxtheme 容器条目——绑定完整性校验随行）。
+    pub fn export_manifest(&self, scheme_name: &str) -> SchemeManifest {
+        SchemeManifest {
+            scheme_name: String::from(scheme_name),
+            bindings: self
+                .entries
+                .iter()
+                .map(|e| (e.event.name(), e.asset.clone()))
+                .collect(),
+            master_mute: self.master_mute,
+        }
+    }
+
+    /// 清单完整性校验（六事件齐 + 音量范围合法才算完整方案包）。
+    pub fn manifest_complete(m: &SchemeManifest) -> Result<(), &'static str> {
+        if m.bindings.len() != 6 {
+            return Err("清单缺事件绑定（六事件必须齐）");
+        }
+        if m.bindings.iter().any(|(_, asset)| asset.is_empty()) {
+            return Err("存在空资产名的绑定");
+        }
+        Ok(())
+    }
+
+    /// 响度归一细化：音量→增益毫分贝查表（±40% 线性近似域外的
+    /// 顶格点单列——音量 100 与 0 的边界行为明确）。
+    pub fn gain_table() -> [(u8, i32); 6] {
+        [
+            (0, i32::MIN / 2),
+            (20, 2000 * (20i32 - 80) / 400),
+            (40, 2000 * (40i32 - 80) / 400),
+            (60, 2000 * (60i32 - 80) / 400),
+            (80, 0),
+            (100, 2000 * (100i32 - 80) / 400),
+        ]
+    }
+}
+
+/// F079 深化自检：装载状态机、规格校验、试听独立通道、清单导出校验、
+/// 增益表边界。
+pub fn run_sndfx_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F079-deep");
+    let mut h = SfxHub::new();
+    // 1. 装载状态机：Pending → Loading → Ready；失败重试 2 次 → Failed。
+    h.request_load(SfxEvent::Boot);
+    let loading = h.load_state(SfxEvent::Boot) == LoadState::Loading;
+    let re_req = !h.request_load(SfxEvent::Boot); // Loading 中重复请求被拒
+    h.load_ready(SfxEvent::Boot);
+    let ready = h.load_state(SfxEvent::Boot) == LoadState::Ready;
+    set.add(
+        "load-state",
+        loading && re_req && ready,
+        "pending→loading→ready",
+    );
+    // 2. 失败重试：2 次内回 Pending，第 3 次判 Failed + 报备。
+    h.request_load(SfxEvent::Notify);
+    let f1 = !h.load_failed(SfxEvent::Notify, 1_000);
+    h.request_load(SfxEvent::Notify);
+    let f2 = !h.load_failed(SfxEvent::Notify, 2_000);
+    h.request_load(SfxEvent::Notify);
+    let f3 = h.load_failed(SfxEvent::Notify, 3_000)
+        && h.load_state(SfxEvent::Notify) == LoadState::Failed
+        && h.event_load_failed(SfxEvent::Notify);
+    set.add(
+        "load-retry",
+        f1 && f2 && f3 && LOAD_RETRY_CAP == 2,
+        "retry cap → silent fallback",
+    );
+    // 3. Failed 事件播出闸：trigger 不入队。
+    let enq = h.trigger(SfxEvent::Notify, 4_000);
+    set.add("failed-gate", !enq && h.queue_len() == 0, "no play on failed");
+    // 4. 资产规格校验：48kHz/24bit 通过，其余逐项拒。
+    let ok = validate_spec(AssetSpec { sample_rate_hz: 48_000, bits: 24, channels: 2 }).is_ok();
+    let bad_rate = validate_spec(AssetSpec { sample_rate_hz: 44_100, bits: 24, channels: 2 }).is_err();
+    let bad_bits = validate_spec(AssetSpec { sample_rate_hz: 48_000, bits: 16, channels: 1 }).is_err();
+    let bad_ch = validate_spec(AssetSpec { sample_rate_hz: 48_000, bits: 24, channels: 6 }).is_err();
+    set.add(
+        "spec-validate",
+        ok && bad_rate && bad_bits && bad_ch,
+        "48k/24b/stereo-only",
+    );
+    // 5. 试听独立通道：与事件队列互不干扰（同一 80ms 节拍语义）。
+    let mut h2 = SfxHub::new();
+    let pv = h2.preview(SfxEvent::Recycle, 10_000);
+    let p1 = h2.preview_tick(10_000);
+    let p2 = h2.preview_tick(10_050); // 50ms < 80ms
+    let p3 = h2.preview_tick(10_081); // 81ms ≥ 80ms
+    set.add(
+        "preview-channel",
+        pv && p1 == Some(SfxEvent::Recycle) && p2.is_none() && p3.is_none(),
+        "separate preview queue",
+    );
+    // 6. 无声方案拒试听（与事件触发同裁决）。
+    h2.set_scheme(Scheme::Silent);
+    let pv2 = h2.preview(SfxEvent::Boot, 20_000);
+    set.add("preview-silent", !pv2, "silent scheme refuses");
+    // 7. 方案清单导出 + 完整性校验。
+    let m = h.export_manifest("星海·用户定制");
+    let complete = SfxHub::manifest_complete(&m).is_ok();
+    let mut broken = m.clone();
+    broken.bindings.pop();
+    let incomplete = SfxHub::manifest_complete(&broken).is_err();
+    set.add(
+        "manifest-export",
+        complete && incomplete && m.bindings.len() == 6 && !m.master_mute,
+        "vxtheme manifest",
+    );
+    // 8. 增益表：0 静音、80 基准 0dB、100 正增益（单调）。
+    let g = SfxHub::gain_table();
+    let monotonic = g.windows(2).skip(1).all(|w| w[0].1 < w[1].1);
+    set.add(
+        "gain-table",
+        g[0].1 < -1_000_000_000 && g[4].1 == 0 && monotonic,
+        "-18LUFS boundaries",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn load_failure_diag_is_recorded() {
+        let mut h = SfxHub::new();
+        for _ in 0..3 {
+            h.request_load(SfxEvent::Error);
+            h.load_failed(SfxEvent::Error, 0);
+        }
+        assert!(h.load_state(SfxEvent::Error) == LoadState::Failed);
+        assert!(h
+            .diag_log()
+            .iter()
+            .any(|d| d.contains("错误 音效装载失败")), "逐事件报备");
+    }
+
+    #[test]
+    fn preview_and_event_queues_independent() {
+        let mut h = SfxHub::new();
+        assert!(h.trigger(SfxEvent::Boot, 0));
+        assert!(h.preview(SfxEvent::Notify, 1));
+        assert_eq!(h.tick(0), Some(SfxEvent::Boot), "事件队列不受试听影响");
+        assert_eq!(h.preview_tick(1), Some(SfxEvent::Notify));
+    }
+
+    #[test]
+    fn manifest_carries_mute_state() {
+        let mut h = SfxHub::new();
+        h.set_master_mute(true);
+        let m = h.export_manifest("静音方案");
+        assert!(m.master_mute);
+    }
+
+    #[test]
+    fn sndfx_deep_checks_all_green() {
+        let set = run_sndfx_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F079-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-09 验收判据）
 // ---------------------------------------------------------------------------
 

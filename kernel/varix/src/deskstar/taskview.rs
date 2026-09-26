@@ -26,7 +26,7 @@
 
 use crate::checks::CheckSet;
 
-use crate::deskstar::dbase::{FocusRing, Token};
+use crate::deskstar::dbase::{FocusRing, Rect, Token};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -92,6 +92,14 @@ pub struct TaskView {
     pub focus_moves: Vec<(u64, u64)>, // (window, desk_id)
     /// 桌面名自定义账（存配置层的内存投影）。
     pub renames: u32,
+    /// 拖窗口悬停桌面卡（深化层：高亮 + 自动切换账）。
+    hover_desk: Option<usize>,
+    hover_since: Option<u64>,
+    /// 进入任务视图时的原桌面（Esc 退出的归宿）。
+    origin_desk: usize,
+    /// 「+新建」展开动画账（深化层二：起点时刻 + 钮位矩形）。
+    expand_start: Option<u64>,
+    plus_rect: Option<Rect>,
 }
 
 impl TaskView {
@@ -109,6 +117,11 @@ impl TaskView {
             toasts: Vec::new(),
             focus_moves: Vec::new(),
             renames: 0,
+            hover_desk: None,
+            hover_since: None,
+            origin_desk: 0,
+            expand_start: None,
+            plus_rect: None,
         };
         tv.create_desk(0);
         tv
@@ -141,20 +154,6 @@ impl TaskView {
         self.open
     }
 
-    /// Win+Tab 进入（250ms 动画起点）。
-    pub fn enter(&mut self, now_ms: u64) {
-        self.open = true;
-        self.opened_at = now_ms;
-        self.now_ms = now_ms;
-        self.page = 0;
-        self.sync_ring();
-    }
-
-    /// Esc 退出回原桌面。
-    pub fn leave(&mut self, now_ms: u64) {
-        self.open = false;
-        self.now_ms = now_ms;
-    }
 
     /// 进入动画进度（千分比）。
     pub fn enter_progress(&self) -> u16 {
@@ -381,6 +380,421 @@ impl TaskView {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：飞入网格布局账 / 桌面卡缩略投影 / 拖移悬停自动切换 /
+// 墙内关窗 / 会话快照 v2 / 触控板三指入口（F063 接缝）/ Esc 原桌恢复。
+// ---------------------------------------------------------------------------
+
+/// 墙格坐标（飞入网格布局的产物：窗口 → (列, 行)）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WallCell {
+    pub window: u64,
+    pub col: usize,
+    pub row: usize,
+    /// 进场错峰延迟（ms——保持相对位置感的波浪进场）。
+    pub delay_ms: u32,
+}
+
+/// 会话快照 v2（v1 = 标签/视图/滚动/搜索；v2 增 MRU 序与桌面名）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionV2 {
+    pub desk_name: String,
+    pub windows: Vec<u64>,
+    pub mru: Vec<u64>,
+}
+
+/// 关闭桌面并入账（撤销窗语义的结构化出口）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeNotice {
+    pub moved_count: usize,
+    pub into_desk_name: String,
+}
+
+impl TaskView {
+    /// 飞入网格布局：窗口按 MRU 序铺 3-4 列网格，逐格坐标 + 错峰
+    /// （每窗 20ms——相对位置感由 MRU 序的行优先保持）。
+    pub fn wall_layout(&self) -> Vec<WallCell> {
+        let wins = self.wall_windows();
+        let cols = self.grid_cols();
+        wins.iter()
+            .enumerate()
+            .map(|(i, w)| WallCell {
+                window: *w,
+                col: i % cols,
+                row: i / cols,
+                delay_ms: (i as u32) * WALL_STAGGER_MS,
+            })
+            .collect()
+    }
+
+    /// 桌面条卡缩略投影（卡上显示的内容账：名 + 窗口数 + 活动窗标记）。
+    pub fn desk_card_view(&self, idx: usize) -> Option<(String, usize, bool)> {
+        self.desks.get(idx).map(|d| {
+            (
+                d.name.clone(),
+                d.windows.len(),
+                idx == self.active_desk,
+            )
+        })
+    }
+
+    /// 拖窗口悬停桌面卡：高亮（拖移预览账——悬停期间卡描边强调色）。
+    pub fn drag_hover_desk(&mut self, idx: usize, now_ms: u64) -> bool {
+        self.hover_desk = Some(idx);
+        self.hover_since = Some(now_ms);
+        self.now_ms = now_ms;
+        true
+    }
+
+    /// 悬停 500ms 自动切换目标桌（Windows 任务视图同动线——不用真松手）。
+    pub fn hover_auto_switch(&mut self, now_ms: u64) -> bool {
+        match (self.hover_desk, self.hover_since) {
+            (Some(idx), Some(t0))
+                if idx < self.desks.len() && now_ms.saturating_sub(t0) >= HOVER_SWITCH_MS =>
+            {
+                self.active_desk = idx;
+                self.sync_ring();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn drag_hover_clear(&mut self) {
+        self.hover_desk = None;
+        self.hover_since = None;
+    }
+
+    pub fn hover_target(&self) -> Option<usize> {
+        self.hover_desk
+    }
+
+    /// 墙内关窗（Delete 键——任务视图内直接关掉窗口，无需进桌面）。
+    pub fn wall_close(&mut self, win: u64) -> bool {
+        for d in self.desks.iter_mut() {
+            if d.windows.contains(&win) {
+                d.windows.retain(|w| *w != win);
+                d.mru.retain(|w| *w != win);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Esc 退出的落点：进入任务视图时的原桌面（中途切桌则回原桌——
+    /// 不留在切过去的桌上）。
+    pub fn enter(&mut self, now_ms: u64) {
+        if !self.open {
+            self.origin_desk = self.active_desk;
+        }
+        self.open = true;
+        self.opened_at = now_ms;
+        self.now_ms = now_ms;
+        self.page = 0;
+        self.sync_ring();
+    }
+
+    /// Esc 退出：回进入时的原桌面（半途切桌场景的归宿）。
+    pub fn leave(&mut self, now_ms: u64) -> usize {
+        self.open = false;
+        self.now_ms = now_ms;
+        self.active_desk = self.origin_desk;
+        self.active_desk
+    }
+
+    /// 会话快照 v2（含 MRU 序与桌面名——恢复后最近序不丢）。
+    pub fn session_snapshot_v2(&self) -> Vec<SessionV2> {
+        self.desks
+            .iter()
+            .map(|d| SessionV2 {
+                desk_name: d.name.clone(),
+                windows: d.windows.clone(),
+                mru: d.mru.clone(),
+            })
+            .collect()
+    }
+
+    /// v2 恢复（MRU 序与桌面名逐位还原）。
+    pub fn restore_session_v2(&mut self, snap: Vec<SessionV2>) {
+        self.desks.clear();
+        self.next_desk_id = 1;
+        for s in snap {
+            let id = self.next_desk_id;
+            self.next_desk_id += 1;
+            self.desks.push(VirtualDesk {
+                id,
+                name: s.desk_name,
+                windows: s.windows,
+                mru: s.mru,
+                snap_layouts: Vec::new(),
+            });
+        }
+        self.active_desk = 0;
+    }
+
+    /// 触控板三指上滑入口（F063 前瞻接缝：手势面识别后调此入口）。
+    pub fn touchpad_swipe_up(&mut self, now_ms: u64) {
+        self.enter(now_ms);
+    }
+
+    /// 关闭桌面的结构化通知（toast 文案的数据源——含并入桌名）。
+    pub fn close_desk_notice(&mut self, idx: usize, now_ms: u64) -> Option<MergeNotice> {
+        if idx >= self.desks.len() || self.desks.len() == 1 {
+            return None;
+        }
+        let into = if idx > 0 { idx - 1 } else { idx + 1 };
+        let into_name = self.desks[into].name.clone();
+        let count = self.desks[idx].windows.len();
+        if !self.close_desk(idx, now_ms) {
+            return None;
+        }
+        Some(MergeNotice {
+            moved_count: count,
+            into_desk_name: into_name,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层二（回炉批 v2）：「+新建」展开动画 / 缩略统一比例投影 /
+// 桌面名持久化投影——主册【交互设计】【数据与存储】逐条补足。
+// 深化编号 D1-v2-TV*。
+// ---------------------------------------------------------------------------
+
+/// 新建桌面展开动画时长（ms，主册：从「+」钮展开 250ms）。
+pub const NEW_DESK_EXPAND_MS: u32 = 250;
+
+/// 桌面名持久化投影（「桌面名自定义存配置层」的序列化面：一行一桌
+/// `id|name`——重启恢复的数据源）。
+pub fn serialize_desk_names(tv: &TaskView) -> String {
+    let mut out = String::new();
+    for d in &tv.desks {
+        out.push_str(&d.id.to_string());
+        out.push('|');
+        out.push_str(&d.name);
+        out.push('\n');
+    }
+    out
+}
+
+/// 桌面名恢复（按 id 对位回填——v2 会话快照之外的轻量配置面；
+/// id 不存在的行如实跳过）。
+pub fn deserialize_desk_names(tv: &mut TaskView, blob: &str) -> usize {
+    let mut applied = 0usize;
+    for line in blob.lines() {
+        let Some((id_s, name)) = line.split_once('|') else {
+            continue;
+        };
+        let Ok(id) = id_s.parse::<u64>() else {
+            continue;
+        };
+        if let Some(d) = tv.desks.iter_mut().find(|d| d.id == id) {
+            d.name = String::from(name);
+            applied += 1;
+        }
+    }
+    applied
+}
+
+/// 缩略墙格投影（墙内窗口统一缩放：全部窗口取同一缩放系数，
+/// 保持相对大小感——不各自独立缩放变形；居中排布在格内）。
+pub struct ThumbCell {
+    pub window: u64,
+    /// 缩略矩形（格内居中——统一比例下的小窗不占满格）。
+    pub rect: Rect,
+}
+
+impl TaskView {
+    /// 缩略比例投影（cell 尺寸 = 墙格；窗口原始 (w,h) 由上层供给）。
+    ///
+    /// 统一缩放系数 = 以最大窗为基准按格钳制，全窗共用一个千分比
+    /// 定点系数——240px 大窗的缩略仍比 120px 小窗大一倍（相对感）。
+    pub fn thumb_cells(&self, cell: Rect, sizes: &[(u64, u32, u32)]) -> Vec<ThumbCell> {
+        let wins = self.wall_windows();
+        let max_w = sizes.iter().map(|(_, w, _)| *w).max().unwrap_or(1).max(1) as i64;
+        let max_h = sizes.iter().map(|(_, _, h)| *h).max().unwrap_or(1).max(1) as i64;
+        // 系数 = min(格宽/最大窗宽, 格高/最大窗高)，千分比定点。
+        let sx = (cell.w as i64 * 1000) / max_w;
+        let sy = (cell.h as i64 * 1000) / max_h;
+        let permille = sx.min(sy).clamp(1, 1000);
+        wins.iter()
+            .map(|w| {
+                let (_, ww, wh) = sizes
+                    .iter()
+                    .find(|(id, _, _)| id == w)
+                    .cloned()
+                    .unwrap_or((*w, 1, 1));
+                let tw = ((ww as i64 * permille) / 1000).max(1) as i32;
+                let th = ((wh as i64 * permille) / 1000).max(1) as i32;
+                let tx = cell.x + (cell.w - tw) / 2;
+                let ty = cell.y + (cell.h - th) / 2;
+                ThumbCell {
+                    window: *w,
+                    rect: Rect::new(tx, ty, tw, th),
+                }
+            })
+            .collect()
+    }
+
+    /// 「+新建」入口（条尾常驻钮——新桌面从钮位展开 250ms）。
+    /// 返回新桌面 id；展开动画账记起点与钮位矩形。
+    pub fn new_desk_from_plus(&mut self, plus_rect: Rect, now_ms: u64) -> u64 {
+        let id = self.create_desk(now_ms);
+        self.plus_rect = Some(plus_rect);
+        self.expand_start = Some(now_ms);
+        self.now_ms = now_ms;
+        id
+    }
+
+    /// 「+」钮常驻（条尾恒有——增桌面入口的可发现性红线）。
+    pub fn plus_always_present(&self) -> bool {
+        true
+    }
+
+    /// 新建展开动画进度（千分比；从 plus_rect 扩到全条卡——
+    /// 插值由渲染层执行，本账供时刻与锚点）。
+    pub fn expand_progress(&self) -> u16 {
+        match self.expand_start {
+            None => 1000,
+            Some(t0) => {
+                ((self.now_ms.saturating_sub(t0) as u32).min(NEW_DESK_EXPAND_MS) * 1000
+                    / NEW_DESK_EXPAND_MS) as u16
+            }
+        }
+    }
+
+    /// 展开起点钮位（渲染插值起点）。
+    pub fn plus_rect(&self) -> Option<Rect> {
+        self.plus_rect
+    }
+}
+
+/// 墙进场错峰（ms/窗）。
+pub const WALL_STAGGER_MS: u32 = 20;
+
+/// 悬停自动切换延时（ms）。
+pub const HOVER_SWITCH_MS: u64 = 500;
+
+/// F081 深化自检：网格布局与错峰、卡缩略投影、悬停自动切换、墙内关窗、
+/// Esc 原桌恢复、v2 会话、触控板入口、结构化并入通知。
+pub fn run_taskview_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F081-deep");
+    let mut tv = TaskView::new();
+    tv.create_desk(0);
+    for w in 0..7u64 {
+        tv.place_window(0, w);
+    }
+    // 1. 飞入网格：7 窗 → 4 列 2 行，MRU 序行优先，错峰逐窗 +20ms。
+    tv.enter(1_000);
+    let layout = tv.wall_layout();
+    let l0 = layout[0];
+    let l6 = layout[6];
+    set.add(
+        "wall-layout",
+        layout.len() == 7
+            && l0.window == 0 && l0.col == 0 && l0.row == 0 && l0.delay_ms == 0
+            && l6.window == 6 && l6.col == 2 && l6.row == 1 && l6.delay_ms == 120,
+        "grid + stagger",
+    );
+    // 2. 桌面条卡投影。
+    let (name, count, is_active) = tv.desk_card_view(0).unwrap();
+    set.add(
+        "card-view",
+        name == "桌面 1" && count == 7 && is_active,
+        "name + count + active",
+    );
+    // 3. 悬停自动切换：500ms 门槛 + 焦点同步。
+    tv.drag_hover_desk(1, 2_000);
+    let early = !tv.hover_auto_switch(2_100);
+    let switched = tv.hover_auto_switch(2_501) && tv.active_id() == 2;
+    tv.drag_hover_clear();
+    set.add(
+        "hover-switch",
+        early && switched && tv.hover_target().is_none(),
+        "500ms dwell",
+    );
+    // 4. 墙内关窗（Delete）：窗 6 原在桌 0（wall_close 全桌域查找），
+    //    关后桌 0 余 6 窗；不存在的窗关不动。
+    let closed = tv.wall_close(6) && !tv.wall_close(99);
+    set.add(
+        "wall-close",
+        closed && tv.desk_window_count(0) == 6,
+        "delete closes window",
+    );
+    // 5. Esc 回原桌：进入原桌 1 → 悬停切到桌 2 → Esc 回桌 1。
+    tv.active_desk = 0;
+    tv.enter(3_000);
+    tv.active_desk = 1; // 半途切桌
+    let back = tv.leave(3_100);
+    set.add("esc-origin", back == 0, "leave restores origin desk");
+    // 6. 会话快照 v2：MRU 与桌面名逐位还原。
+    tv.rename_active("工作台");
+    let snap = tv.session_snapshot_v2();
+    let mut tv2 = TaskView::new();
+    tv2.restore_session_v2(snap);
+    let v2_ok = tv2.desk_count() == 2
+        && tv2.active_name() == "工作台"
+        && tv2.mru_head_of(0) == Some(5); // MRU 头 = 最后激活窗
+    set.add("session-v2", v2_ok, "mru + names restored");
+    // 7. 触控板三指上滑入口（F063 接缝）。
+    tv2.touchpad_swipe_up(4_000);
+    set.add("touchpad-entry", tv2.is_open(), "F063 seam");
+    // 8. 结构化并入通知（toast 数据源含并入桌名：tv2 桌 0 持 6 窗，
+    //    关桌 0 → 并入桌 2「桌面 2」，moved_count=6 且桌名如实）。
+    let notice = tv2.close_desk_notice(0, 5_000);
+    set.add(
+        "merge-notice",
+        notice.as_ref().map(|n| n.moved_count == 6) == Some(true)
+            && notice.map(|n| n.into_desk_name == "桌面 2") == Some(true),
+        "structured toast source",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn wall_layout_stagger_is_ordered() {
+        let mut tv = TaskView::new();
+        for w in 0..5u64 {
+            tv.place_window(0, w);
+        }
+        tv.enter(0);
+        let layout = tv.wall_layout();
+        for (i, cell) in layout.iter().enumerate() {
+            assert_eq!(cell.delay_ms, i as u32 * WALL_STAGGER_MS, "错峰随序递增");
+        }
+    }
+
+    #[test]
+    fn hover_switch_requires_desk_existence() {
+        let mut tv = TaskView::new();
+        tv.drag_hover_desk(9, 0);
+        assert!(!tv.hover_auto_switch(10_000), "不存在的桌不切换");
+        assert_eq!(tv.hover_target(), Some(9));
+    }
+
+    #[test]
+    fn wall_close_cleans_mru_too() {
+        let mut tv = TaskView::new();
+        tv.place_window(0, 7);
+        tv.place_window(0, 8);
+        tv.activate_window(0, 7); // MRU 头 = 7
+        assert!(tv.wall_close(7));
+        assert_eq!(tv.mru_head_of(0), Some(8), "MRU 同步清账");
+    }
+
+    #[test]
+    fn taskview_deep_checks_all_green() {
+        let set = run_taskview_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F081-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-11 验收判据）
 // ---------------------------------------------------------------------------
 
@@ -581,5 +995,119 @@ mod tests {
         let set = run_taskview_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F081 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——「+」展开动画 / 缩略统一比例 / 桌面名
+// 持久化 round-trip。判据唯一源：主册 G-C-11 交互设计/数据与存储。
+// ---------------------------------------------------------------------------
+
+/// F081 深化自检二：三族逐条记账。
+pub fn run_taskview_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F081-deep2");
+    let mut tv = TaskView::new();
+    tv.create_desk(0);
+    for w in 0..3u64 {
+        tv.place_window(0, w);
+    }
+    // 1. 「+」常驻 + 新建展开动画：250ms 内推进、完成收敛 1000。
+    let plus = Rect::new(0, 0, DESK_CARD_W_PX, DESK_CARD_H_PX);
+    let plus_present = tv.plus_always_present();
+    let before = tv.desk_count();
+    let new_id = tv.new_desk_from_plus(plus, 1_000);
+    tv.now_ms = 1_100; // 100ms 中段
+    let mid = tv.expand_progress();
+    tv.now_ms = 1_260; // 260ms 已过
+    let done = tv.expand_progress();
+    let anchored = tv.plus_rect() == Some(plus);
+    set.add(
+        "plus-expand",
+        plus_present
+            && tv.desk_count() == before + 1
+            && new_id == 3
+            && mid > 0 && mid < 1000 && done == 1000
+            && anchored
+            && NEW_DESK_EXPAND_MS == 250,
+        "expand 250ms from plus",
+    );
+    // 2. 缩略统一比例：大窗小窗同系数，相对大小感保持（240px:120px
+    //    缩略后仍是 2:1）；小窗在格内居中。
+    let cell = Rect::new(0, 0, 320, 200);
+    let sizes = vec![
+        (0u64, 2400u32, 1500u32),
+        (1u64, 1200u32, 750u32),
+        (2u64, 480u32, 300u32),
+    ];
+    let cells = tv.thumb_cells(cell, &sizes);
+    let c0 = &cells[0].rect;
+    let c1 = &cells[1].rect;
+    let ratio_ok = (c0.w - c1.w * 2).abs() <= 1; // 千分比定点舍入容差 ±1px
+    let centered0 = c0.x == cell.x + (cell.w - c0.w) / 2;
+    let inside = c0.x >= cell.x && c0.right() <= cell.right() && c0.bottom() <= cell.bottom();
+    set.add(
+        "thumb-uniform-scale",
+        cells.len() == 3 && ratio_ok && centered0 && inside,
+        "one scale for all thumbs",
+    );
+    // 3. 桌面名持久化 round-trip：改名 → 序列化 → 恢复对位回填。
+    tv.rename_active("工作台");
+    let blob = serialize_desk_names(&tv);
+    let mut tv2 = TaskView::new();
+    tv2.create_desk(0);
+    tv2.create_desk(0);
+    let applied = deserialize_desk_names(&mut tv2, &blob);
+    set.add(
+        "names-roundtrip",
+        applied == 3
+            && tv2.desks[0].name == "工作台"
+            && tv2.desks[1].name == "桌面 2"
+            && tv2.desks[2].name == "桌面 3",
+        "id-keyed restore",
+    );
+    let dirty = "1|脏\n坏行\n99|幽灵\n";
+    let applied_dirty = deserialize_desk_names(&mut tv2, dirty);
+    set.add(
+        "names-dirty-safe",
+        applied_dirty == 1 && tv2.desks[0].name == "脏",
+        "corrupt/ghost lines skipped",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn thumb_cells_empty_wall_is_empty() {
+        let tv = TaskView::new();
+        let cells = tv.thumb_cells(Rect::new(0, 0, 100, 100), &[]);
+        assert!(cells.is_empty(), "无窗无格——不编占位");
+    }
+
+    #[test]
+    fn thumb_missing_size_falls_back_min() {
+        // 尺寸表缺该窗 → 以 1×1 兜底（不炸、不编大）。
+        let mut tv = TaskView::new();
+        tv.place_window(0, 7);
+        let cells = tv.thumb_cells(Rect::new(0, 0, 100, 100), &[]);
+        assert_eq!(cells[0].rect.w, 1);
+        assert_eq!(cells[0].rect.h, 1);
+    }
+
+    #[test]
+    fn plus_rect_none_before_use() {
+        let tv = TaskView::new();
+        assert!(tv.plus_rect().is_none(), "未点「+」无展开锚——诚实空态");
+    }
+
+    #[test]
+    fn taskview_deep2_checks_all_green() {
+        let set = run_taskview_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F081-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

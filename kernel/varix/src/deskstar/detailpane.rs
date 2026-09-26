@@ -293,6 +293,12 @@ pub struct DetailPane {
     pub watch_refreshes: u64,
     /// EXIF 缓存写账（F093 库接缝）。
     pub exif_cache_writes: u64,
+    /// 窄窗自动隐藏记忆（D1-v2-DP：还原判定的内部状态）。
+    auto_hide: AutoHideState,
+    /// 菜单入口开关计数（两入口同账）。
+    menu_toggles: u64,
+    /// 右键入口开关计数（两入口同账）。
+    context_toggles: u64,
 }
 
 impl DetailPane {
@@ -313,6 +319,9 @@ impl DetailPane {
             exif_expanded: false,
             watch_refreshes: 0,
             exif_cache_writes: 0,
+            auto_hide: AutoHideState::None,
+            menu_toggles: 0,
+            context_toggles: 0,
         }
     }
 
@@ -347,14 +356,20 @@ impl DetailPane {
         self.width
     }
 
-    /// 窄窗自动隐藏（<800px 隐藏并记忆——恢复时用）。
+    /// 窄窗自动隐藏（<800px 隐藏并记忆——恢复时用；隐藏前开着记
+    /// HiddenWasOpen，本来就关着记 HiddenWasClosed）。
     pub fn notify_window_width(&mut self, w: i32) -> bool {
-        if w < NARROW_W_PX && self.visible {
-            self.visible = false;
-            true
-        } else {
-            false
+        if w < NARROW_W_PX {
+            if self.visible {
+                self.visible = false;
+                self.auto_hide = AutoHideState::HiddenWasOpen;
+                return true;
+            }
+            if self.auto_hide == AutoHideState::None {
+                self.auto_hide = AutoHideState::HiddenWasClosed;
+            }
         }
+        false
     }
 
     /// 选中集更新（EXIF 即时解析——图片注入解析结果；缓存写 F093）。
@@ -430,6 +445,217 @@ impl DetailPane {
     /// 窗格背景材质令牌（浅一层）。
     pub fn surface_token(&self) -> Token {
         Token::SurfaceRaised
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：行渲染模型（标签/值/令牌/几何）/ 类型与大小的人话
+// 格式 / 日期格式注入联动 / 窄窗隐藏的记忆恢复 / EXIF 收起对称 /
+// 「更多属性」展开行锚 / 入口登记（查看菜单+右键）——主册【交互设计】
+// 【设计细节】逐条补足。深化编号 D1-v2-DP*。
+// ---------------------------------------------------------------------------
+
+/// 值文本字号（px）。
+pub const VALUE_FONT_PX: i32 = 14;
+
+/// 标签字号（px，灰）。
+pub const LABEL_FONT_PX: i32 = 12;
+
+/// 一行字段（渲染就绪：标签 + 值 + 双令牌 + 行几何）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaneRow {
+    pub label: &'static str,
+    pub value: String,
+    pub label_token: Token,
+    pub value_token: Token,
+}
+
+impl PaneRow {
+    fn new(label: &'static str, value: String) -> PaneRow {
+        PaneRow {
+            label,
+            value,
+            label_token: Token::TextSecondary,
+            value_token: Token::TextPrimary,
+        }
+    }
+
+    /// 行几何（窗格内边距 12px、行高 28px——放大三倍不尴尬的对齐基线）。
+    pub fn rect(&self, index: usize, pane_width: i32) -> crate::deskstar::dbase::Rect {
+        crate::deskstar::dbase::Rect::new(12, 8 + index as i32 * ROW_H_PX, pane_width - 24, ROW_H_PX)
+    }
+}
+
+/// 文件类型的人话描述（扩展名映射——诚实兜底「文件」不编类型）。
+pub fn type_label(name: &str) -> &'static str {
+    let lower = name.to_lowercase();
+    let ext = lower.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+    match ext {
+        "txt" | "md" | "log" => "文本文档",
+        "docx" | "doc" => "Word 文档",
+        "xlsx" | "xls" | "csv" => "表格工作簿",
+        "pptx" | "ppt" => "演示文稿",
+        "pdf" => "PDF 文档",
+        "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" => "图片",
+        "mp4" | "mkv" | "webm" | "mov" => "视频",
+        "mp3" | "flac" | "wav" | "ogg" => "音频",
+        "zip" => "zip 压缩包",
+        "exe" | "vxe" => "应用程序",
+        "lnk" => "快捷方式",
+        _ => "文件",
+    }
+}
+
+/// 大小人话格式（B/KB/MB/GB——1 位小数、零值诚实为「0 B」）。
+pub fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        alloc::format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        alloc::format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        alloc::format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        alloc::format!("{} B", bytes)
+    }
+}
+
+/// 日期格式注入口（全局设置联动——F187 时区页同源；缺省 ISO 风格）。
+///
+/// 调用方注入格式化闭包：`(unix_s, 是否含时间) -> String`。窗格不持有
+/// 格式知识——一处一事实（格式规则只在设置面定义一份）。
+pub type DateFmt<'a> = dyn Fn(u64, bool) -> String + 'a;
+
+/// 窄窗隐藏的记忆状态（隐藏前用户是否开着窗格——恢复宽度时据此还原）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AutoHideState {
+    /// 未触发。
+    None,
+    /// 已自动隐藏（隐藏前用户开着 → 宽度恢复时自动还原）。
+    HiddenWasOpen,
+    /// 已自动隐藏（隐藏前就是关的 → 宽度恢复不擅动）。
+    HiddenWasClosed,
+}
+
+/// 查看菜单/右键入口登记（两入口同账——一致性走查的对账面）。
+pub const MENU_ENTRY_LABEL: &str = "详情窗格";
+pub const CONTEXT_ENTRY_LABEL: &str = "详情窗格";
+
+impl DetailPane {
+    /// 窄窗恢复（宽度回到 ≥800 时按内部记忆还原——只有用户开过的
+    /// 窗格才还原；用户自己关的不擅动）。
+    pub fn notify_window_width_restored(&mut self, w: i32) -> bool {
+        if w >= NARROW_W_PX && self.auto_hide == AutoHideState::HiddenWasOpen {
+            self.visible = true;
+            self.auto_hide = AutoHideState::None;
+            return true;
+        }
+        false
+    }
+
+    /// EXIF 收起（与展开对称——开合都是用户可逆动作）。
+    pub fn collapse_exif(&mut self) {
+        self.exif_expanded = false;
+    }
+
+    /// 单选文件的完整行模型（类型/大小/修改/创建 + 图片专属 EXIF 区）。
+    ///
+    /// `date_fmt`：全局日期格式注入；`dim`：原图（宽,高）——图片显示
+    /// 「原始 + 有效分辨率」双行（旋转修正由 Exif::effective_size 承担）。
+    pub fn rows_for(&self, date_fmt: &DateFmt, dim: Option<(u32, u32)>) -> Vec<PaneRow> {
+        let mut rows: Vec<PaneRow> = Vec::new();
+        match &self.selection {
+            Selection::None => {
+                // 无选中 → 目录摘要三行（子目录/文件/总大小）。
+                let s = &self.dir_summary;
+                rows.push(PaneRow::new("子目录", alloc::format!("{}", s.subdirs)));
+                rows.push(PaneRow::new("文件", alloc::format!("{}", s.files)));
+                let total = if s.partial {
+                    String::from("计算中…")
+                } else {
+                    format_size(s.total_size)
+                };
+                rows.push(PaneRow::new("总大小", total));
+            }
+            Selection::Multi { count, total_size } => {
+                rows.push(PaneRow::new("已选", alloc::format!("{} 项", count)));
+                rows.push(PaneRow::new("总大小", format_size(*total_size)));
+            }
+            Selection::One { name, size, mtime_s, ctime_s, is_image } => {
+                rows.push(PaneRow::new("类型", String::from(type_label(name))));
+                rows.push(PaneRow::new("大小", format_size(*size)));
+                rows.push(PaneRow::new("修改时间", date_fmt(*mtime_s, true)));
+                rows.push(PaneRow::new("创建时间", date_fmt(*ctime_s, true)));
+                if *is_image {
+                    if let Some((w, h)) = dim {
+                        rows.push(PaneRow::new("尺寸", alloc::format!("{} × {}", w, h)));
+                    }
+                    // EXIF 区默认收起——展开后由 exif_field_rows 续行。
+                }
+            }
+        }
+        rows
+    }
+
+    /// EXIF 展开区的续行（更多属性——只在展开时接在基础行后）。
+    pub fn rows_exif_expanded(&self) -> Vec<PaneRow> {
+        if !self.exif_expanded {
+            return Vec::new();
+        }
+        self.exif_field_rows()
+            .into_iter()
+            .map(|(label, value)| PaneRow::new(label, value))
+            .collect()
+    }
+
+    /// 「更多属性」锚行（展开/收起的可点行——EXIF 在位才出现）。
+    pub fn exif_toggle_row(&self) -> Option<PaneRow> {
+        if self.exif.is_none() {
+            return None;
+        }
+        Some(PaneRow {
+            label: "更多属性",
+            value: String::from(if self.exif_expanded { "收起" } else { "展开" }),
+            label_token: Token::TextSecondary,
+            value_token: Token::Accent,
+        })
+    }
+
+    /// 查看菜单入口开关（与右键入口同走 toggle 核心——两入口同账，
+    /// 走查时入口计数可对：两处各一次 = 同一开关态）。
+    pub fn toggle_from_menu(&mut self, now_ms: u64) {
+        self.menu_toggles += 1;
+        self.toggle(now_ms);
+    }
+
+    /// 右键入口开关（同上——同一核心，不各写一份逻辑）。
+    pub fn toggle_from_context(&mut self, now_ms: u64) {
+        self.context_toggles += 1;
+        self.toggle(now_ms);
+    }
+
+    /// 入口计数（一致性对账面：菜单/右键各开了多少次）。
+    pub fn entry_counts(&self) -> (u64, u64) {
+        (self.menu_toggles, self.context_toggles)
+    }
+
+    /// 渐进统计合并（>5000 项后台算的回流口）：部分更新只许增不许减
+    /// （后台枚举单调推进——回退值是注入错误，如实拒收）；终批
+    /// （partial=false）整体替换。
+    pub fn apply_summary_update(&mut self, s: DirSummary) -> bool {
+        if !s.partial {
+            self.dir_summary = s;
+            return true;
+        }
+        let d = &mut self.dir_summary;
+        let monotonic = s.subdirs >= d.subdirs && s.files >= d.files && s.total_size >= d.total_size;
+        if monotonic {
+            *d = s;
+        }
+        monotonic
     }
 }
 
@@ -640,5 +866,235 @@ mod tests {
         let set = run_detailpane_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F091 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（回炉批 D1-v2）——行渲染模型 / 人话格式 / 日期注入 / 窄窗
+// 记忆还原 / EXIF 收起对称 / 入口登记。判据唯一源：主册 G-C-21。
+// ---------------------------------------------------------------------------
+
+/// F091 深化自检：六族逐条记账。
+pub fn run_detailpane_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F091-deep");
+    // 日期注入（ISO 风格——全局设置的唯一消费口）。
+    let iso = |s: u64, with_time: bool| {
+        if with_time {
+            alloc::format!("2026-09-26 {:02}:00", s % 24)
+        } else {
+            String::from("2026-09-26")
+        }
+    };
+    // 1. 单选行模型：类型/大小/修改/创建四行 + 图片尺寸行；行令牌与
+    //    几何（28px 行高、14px 值、12px 灰标签）。
+    let mut pane = DetailPane::new();
+    pane.set_selection(
+        Selection::One {
+            name: String::from("合影.jpg"),
+            size: 4032 * 3024 * 3,
+            mtime_s: 5,
+            ctime_s: 2,
+            is_image: true,
+        },
+        None,
+    );
+    let rows = pane.rows_for(&iso, Some((4032, 3024)));
+    let labels: Vec<&str> = rows.iter().map(|r| r.label).collect();
+    let r0 = rows[0].rect(0, PANE_W_PX);
+    set.add(
+        "rows-one",
+        labels == ["类型", "大小", "修改时间", "创建时间", "尺寸"]
+            && rows[1].value.ends_with(" MB")
+            && rows[0].label_token == Token::TextSecondary
+            && rows[0].value_token == Token::TextPrimary
+            && r0.w == PANE_W_PX - 24 && r0.h == ROW_H_PX,
+        "file rows + tokens + rect",
+    );
+    // 2. 类型人话与兜底：映射表命中 / 未知扩展诚实「文件」。
+    set.add(
+        "type-label",
+        type_label("报告.DOCX") == "Word 文档"
+            && type_label("相册.JPG") == "图片"
+            && type_label("驱动.vxe") == "应用程序"
+            && type_label("神秘.xyz") == "文件",
+        "honest type map",
+    );
+    // 3. 大小人话格式：B/KB/MB/GB 边界（1 位小数；零值「0 B」）。
+    set.add(
+        "format-size",
+        format_size(0) == "0 B"
+            && format_size(1023) == "1023 B"
+            && format_size(1024) == "1.0 KB"
+            && format_size(5 * 1024 * 1024) == "5.0 MB"
+            && format_size(3 * 1024 * 1024 * 1024) == "3.0 GB",
+        "human sizes",
+    );
+    // 4. 多选统计行 + 状态栏对账（一处一事实）。
+    let mut pane2 = DetailPane::new();
+    pane2.set_selection(
+        Selection::Multi { count: 12, total_size: 15 * 1024 * 1024 },
+        None,
+    );
+    let rows2 = pane2.rows_for(&iso, None);
+    set.add(
+        "rows-multi",
+        rows2.len() == 2
+            && rows2[0].value == "12 项"
+            && rows2[1].value == "15.0 MB"
+            && pane2.stats_match_statusbar(12, 15 * 1024 * 1024),
+        "multi stats agree",
+    );
+    // 5. 目录摘要（无选中）+ 渐进诚实「计算中…」。
+    let mut pane3 = DetailPane::new();
+    pane3.set_dir_summary(DirSummary {
+        subdirs: 4,
+        files: 9000,
+        total_size: 999,
+        partial: true,
+    });
+    let rows3 = pane3.rows_for(&iso, None);
+    set.add(
+        "rows-dir-partial",
+        rows3.len() == 3
+            && rows3[0].value == "4"
+            && rows3[1].value == "9000"
+            && rows3[2].value == "计算中…",
+        "dir summary + honest partial",
+    );
+    // 6. 窄窗记忆还原：开→隐藏→还原回开；用户自关→不擅动。
+    let mut pane4 = DetailPane::new();
+    let hid = pane4.notify_window_width(700);
+    let restored = pane4.notify_window_width_restored(1_200);
+    let mut pane5 = DetailPane::new();
+    pane5.toggle(0); // 用户自己关
+    pane5.notify_window_width(700);
+    let not_restored = !pane5.notify_window_width_restored(1_200) && !pane5.visible();
+    set.add(
+        "autohide-memory",
+        hid && restored && pane4.visible() && not_restored,
+        "memory-restore only user-open",
+    );
+    // 7. EXIF 收起对称 + 锚行（有 EXIF 才有「更多属性」；展开值/收起值）。
+    let mut pane6 = DetailPane::new();
+    pane6.set_selection(
+        Selection::One {
+            name: String::from("a.jpg"),
+            size: 1,
+            mtime_s: 0,
+            ctime_s: 0,
+            is_image: true,
+        },
+        Some(Exif {
+            make: Some(String::from("Canon")),
+            model: None,
+            aperture_x10: Some(18),
+            shutter_us: Some(8333),
+            iso: Some(200),
+            orientation_deg: 0,
+            width: 100,
+            height: 100,
+        }),
+    );
+    let anchor_closed = pane6.exif_toggle_row().unwrap().value == "展开";
+    pane6.expand_exif();
+    let expanded_rows = pane6.rows_exif_expanded();
+    let anchor_open = pane6.exif_toggle_row().unwrap().value == "收起";
+    pane6.collapse_exif();
+    let collapsed_rows = pane6.rows_exif_expanded();
+    let mut pane7 = DetailPane::new(); // 无 EXIF → 无锚行
+    pane7.set_selection(
+        Selection::One {
+            name: String::from("a.txt"),
+            size: 1,
+            mtime_s: 0,
+            ctime_s: 0,
+            is_image: false,
+        },
+        None,
+    );
+    set.add(
+        "exif-toggle",
+        anchor_closed
+            && expanded_rows.len() == 4 // 厂商/光圈/快门/ISO（Model 缺省诚实省略）
+            && anchor_open
+            && collapsed_rows.is_empty()
+            && pane7.exif_toggle_row().is_none(),
+        "expand/collapse symmetric",
+    );
+    // 8. 日期注入联动（修改时间行走注入格式——窗格不持格式知识）。
+    let rows8 = pane.rows_for(&iso, Some((4032, 3024)));
+    // 9. 双入口同账 + 渐进合并单调性（回退值拒收）。
+    let mut pane9 = DetailPane::new();
+    pane9.toggle_from_menu(100); // 开→关
+    pane9.toggle_from_context(120); // 关→开（同核心翻转，回到初始态）
+    let entries_same = pane9.entry_counts() == (1, 1) && pane9.visible();
+    pane9.toggle_from_context(140);
+    let mono_ok = {
+        let mut p = DetailPane::new();
+        p.apply_summary_update(DirSummary { subdirs: 1, files: 100, total_size: 10, partial: true });
+        let regressed = !p.apply_summary_update(DirSummary {
+            subdirs: 0,
+            files: 50,
+            total_size: 5,
+            partial: true,
+        });
+        let advanced = p.apply_summary_update(DirSummary {
+            subdirs: 2,
+            files: 200,
+            total_size: 20,
+            partial: true,
+        });
+        regressed && advanced && p.dir_summary().files == 200
+    };
+    set.add(
+        "date-injected",
+        rows8[2].value == "2026-09-26 05:00",
+        "global format consumed",
+    );
+    set.add(
+        "entries-and-merge",
+        entries_same && mono_ok,
+        "two entries one core + monotonic merge",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn format_size_terabyte_still_honest() {
+        // 超出 GB 档继续 GB 口径（1024 GB 显示为 1024.0 GB——不编 TB 档）。
+        assert_eq!(format_size(1024u64 * 1024 * 1024 * 1024), "1024.0 GB");
+    }
+
+    #[test]
+    fn rect_rows_stack_without_overlap() {
+        let pane = DetailPane::new();
+        let r0 = pane.exif_field_rows(); // 空选无 EXIF → 空
+        assert!(r0.is_empty());
+        let a = PaneRow::new("甲", String::from("1")).rect(0, 240);
+        let b = PaneRow::new("乙", String::from("2")).rect(1, 240);
+        assert!(!a.intersects(&b), "行间零重叠");
+    }
+
+    #[test]
+    fn collapse_then_expand_roundtrip() {
+        let mut pane = DetailPane::new();
+        pane.expand_exif();
+        pane.collapse_exif();
+        assert!(!pane.exif_expanded());
+        pane.expand_exif();
+        assert!(pane.exif_expanded());
+    }
+
+    #[test]
+    fn detailpane_deep_checks_all_green() {
+        let set = run_detailpane_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F091-deep 红项：{}/{} 绿", p, p + f);
     }
 }

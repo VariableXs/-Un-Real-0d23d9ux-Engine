@@ -563,6 +563,10 @@ pub enum ZipErr {
     PasswordError,
     /// 路径穿越（F176 纪律——归因日志的类别锚）。
     PathTraversal(&'static str),
+    /// 分卷 zip（差异表明确不承诺——诚实报错不装能解）。
+    SplitArchive,
+    /// 解压中断：目标盘满（F086 暂停流接缝）。
+    DiskFull,
 }
 
 fn rd16(d: &[u8], o: usize) -> Option<u16> {
@@ -826,8 +830,348 @@ pub fn zip_decrypt(payload: &[u8], crc: u32, password: &[u8]) -> Result<Vec<u8>,
 }
 
 // ---------------------------------------------------------------------------
-// 自检（判据唯一源：主册 G-C-22 验收判据）
 // ---------------------------------------------------------------------------
+// 深化层（回炉批）：压缩档位选择面 / 产物命名 / 右键菜单项模型 /
+// 密码卡三次口径 / 流式解压会话（F086 进度馈送 + 可取消 + 盘满暂停 +
+// 穿越归因日志）/ 临时物用后即删账 / 分卷检测诚实拒——主册【交互设计】
+// 【数据与存储】【状态与异常】逐条补足。深化编号 D1-v2-ZK*。
+// ---------------------------------------------------------------------------
+
+/// 压缩档位（主册：存储=0/均衡=6/最快=1——UI 三选一的数据面）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LevelChoice {
+    Store,
+    Fastest,
+    Balanced,
+}
+
+impl LevelChoice {
+    /// 档位 → deflate level（压缩档映射唯一源）。
+    pub fn level(self) -> u8 {
+        match self {
+            LevelChoice::Store => LEVEL_STORE,
+            LevelChoice::Fastest => LEVEL_FASTEST,
+            LevelChoice::Balanced => LEVEL_BALANCED,
+        }
+    }
+
+    /// 档位名（选择器渲染账）。
+    pub fn label(self) -> &'static str {
+        match self {
+            LevelChoice::Store => "存储",
+            LevelChoice::Fastest => "最快",
+            LevelChoice::Balanced => "均衡",
+        }
+    }
+
+    /// 三档选择器（下标 0/1/2 → 档；越界钳到均衡——默认档）。
+    pub fn from_index(i: usize) -> LevelChoice {
+        match i {
+            0 => LevelChoice::Store,
+            1 => LevelChoice::Fastest,
+            _ => LevelChoice::Balanced,
+        }
+    }
+}
+
+/// 压缩产物命名（主册：压缩产物命名=选中项名.zip）。
+///
+/// 单选 → 「选中项名.zip」；多选 → 容器（父）目录名.zip——多选时
+/// 「选中项名」无单一实体，取共同父目录为名（假设注明，差异表可查）；
+/// 空选不产名（诚实拒绝）。
+pub fn archive_name(selection: &[&str], parent_dir: &str) -> Option<String> {
+    match selection.len() {
+        0 => None,
+        1 => {
+            let base = selection[0];
+            let stem = base.rsplit_once('.').map(|(s, _)| s).unwrap_or(base);
+            Some(alloc::format!("{}.zip", stem))
+        }
+        _ => {
+            if parent_dir.is_empty() {
+                None
+            } else {
+                Some(alloc::format!("{}.zip", parent_dir))
+            }
+        }
+    }
+}
+
+/// 右键菜单项（zip 面：enabled/灰置 + 原因——非 zip 选中灰置说明）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ZipMenuItem {
+    pub label: String,
+    pub enabled: bool,
+    /// 灰置原因（三要素之「为什么」——空串即无）。
+    pub why_disabled: String,
+}
+
+/// 构造 zip 右键菜单（主册：解压到当前文件夹/解压到 XX\/压缩为 zip）。
+///
+/// `selection_is_zip`：选中项是否 zip 实体——非 zip 时解压两件灰置
+/// （原因如实）；压缩件永远可用（任何选中皆可打包）。
+pub fn zip_context_menu(selection_is_zip: bool, zip_name: &str) -> [ZipMenuItem; 3] {
+    let (enable, why) = if selection_is_zip {
+        (true, String::new())
+    } else {
+        (false, String::from("选中项不是 zip 压缩包"))
+    };
+    [
+        ZipMenuItem {
+            label: String::from("解压到当前文件夹"),
+            enabled: enable,
+            why_disabled: why.clone(),
+        },
+        ZipMenuItem {
+            label: alloc::format!("解压到 {}\\", zip_name),
+            enabled: enable,
+            why_disabled: why,
+        },
+        ZipMenuItem {
+            label: String::from("压缩为 zip"),
+            enabled: true,
+            why_disabled: String::new(),
+        },
+    ]
+}
+
+/// 加密 zip 密码卡（双击弹卡：三次错误后建议「确认密码或换工具」）。
+pub struct PasswordCard {
+    tries: u32,
+    unlocked: bool,
+}
+
+impl PasswordCard {
+    pub fn new() -> PasswordCard {
+        PasswordCard {
+            tries: 0,
+            unlocked: false,
+        }
+    }
+
+    pub fn tries(&self) -> u32 {
+        self.tries
+    }
+
+    pub fn unlocked(&self) -> bool {
+        self.unlocked
+    }
+
+    /// 试一次密码（成败如实——不静默重试不吞错）。
+    pub fn try_password(&mut self, payload: &[u8], crc: u32, password: &[u8]) -> Result<Vec<u8>, ZipErr> {
+        self.tries += 1;
+        match zip_decrypt(payload, crc, password) {
+            Ok(p) => {
+                self.unlocked = true;
+                Ok(p)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 三误后建议（三要素之「下一步怎么办」）。
+    pub fn advice(&self) -> Option<&'static str> {
+        if !self.unlocked && self.tries >= PASSWORD_MAX_TRIES {
+            Some("确认密码或换工具")
+        } else {
+            None
+        }
+    }
+}
+
+/// 解压进度馈送（F086 对话框的数据源——逐条目推进）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExtractProgress {
+    pub entries_done: usize,
+    pub entries_total: usize,
+    pub bytes_done: u64,
+    pub bytes_total: u64,
+}
+
+/// 解压会话终态（三要素归因的结构化出口）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExtractOutcome {
+    /// 全量完成（N 条）。
+    Done(usize),
+    /// 用户取消（已解 N 条 + 剩 M 条——部分产物保留）。
+    Cancelled { done: usize, remaining: usize },
+    /// 盘满暂停（已解 N 条；恢复由调用方续跑）。
+    DiskFull { done: usize },
+    /// 有拦截：N 条解出、K 条穿越被拦（F176 归因日志在 session 账面）。
+    PartialBlocked { done: usize, blocked: usize },
+}
+
+/// 流式解压会话：逐条目解出 + 进度馈送 + 可取消 + 盘满暂停 +
+/// 穿越归因日志（大 zip 不全量驻内存——一次只持一个条目的明文）。
+pub struct ExtractSession {
+    progress: ExtractProgress,
+    cancel_requested: bool,
+    paused_disk_full: bool,
+    /// 穿越拦截日志（条目名 + 原因——F176 纪律的归因面）。
+    pub blocked_log: Vec<(String, &'static str)>,
+}
+
+impl ExtractSession {
+    pub fn new(entries_total: usize, bytes_total: u64) -> ExtractSession {
+        ExtractSession {
+            progress: ExtractProgress {
+                entries_done: 0,
+                entries_total,
+                bytes_done: 0,
+                bytes_total,
+            },
+            cancel_requested: false,
+            paused_disk_full: false,
+            blocked_log: Vec::new(),
+        }
+    }
+
+    pub fn progress(&self) -> ExtractProgress {
+        self.progress
+    }
+
+    /// 千分比进度（F086 双进度条的总进度馈送）。
+    pub fn permille(&self) -> u16 {
+        if self.progress.bytes_total == 0 {
+            return if self.progress.entries_done >= self.progress.entries_total {
+                1000
+            } else {
+                0
+            };
+        }
+        ((self.progress.bytes_done * 1000 / self.progress.bytes_total).min(1000)) as u16
+    }
+
+    pub fn cancel(&mut self) {
+        self.cancel_requested = true;
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.paused_disk_full
+    }
+
+    /// 解除盘满暂停（调用方清理/换盘后续跑）。
+    pub fn resume(&mut self) {
+        self.paused_disk_full = false;
+    }
+
+    /// 推进一个条目（流式口：明文即产即弃——调用方落盘后丢弃）。
+    ///
+    /// - `free_bytes`：目标盘剩余空间注入口（盘满 → 暂停 + DiskFull）；
+    /// - 返回 None = 会话已终（取消/盘满/扫完）。
+    pub fn step_entry(
+        &mut self,
+        name: &str,
+        plain: Vec<u8>,
+        free_bytes: u64,
+    ) -> Option<(String, Vec<u8>)> {
+        if self.cancel_requested {
+            return None;
+        }
+        if self.paused_disk_full {
+            return None;
+        }
+        // 路径穿越拦截（归因入账 + 跳过该条目——不中断整批；
+        // 工作量同步剔除：拦截条目的字节不再计入分母，进度可到满）。
+        if let Err(ZipErr::PathTraversal(why)) = check_name(name) {
+            self.blocked_log.push((String::from(name), why));
+            self.progress.entries_done += 1;
+            self.progress.bytes_total = self.progress.bytes_total.saturating_sub(plain.len() as u64);
+            return Some((String::new(), Vec::new())); // 空载荷 = 已拦截
+        }
+        // 盘满预检（写入所需 > 剩余 → 暂停流，F086 接缝）。
+        if (plain.len() as u64) > free_bytes {
+            self.paused_disk_full = true;
+            return None;
+        }
+        self.progress.entries_done += 1;
+        self.progress.bytes_done += plain.len() as u64;
+        Some((String::from(name), plain))
+    }
+
+    /// 终态归因（调用方在循环退出后取用）。
+    pub fn outcome(&self) -> ExtractOutcome {
+        let done = self.progress.entries_done;
+        let total = self.progress.entries_total;
+        if self.paused_disk_full {
+            ExtractOutcome::DiskFull { done }
+        } else if self.cancel_requested && done < total {
+            ExtractOutcome::Cancelled {
+                done,
+                remaining: total - done,
+            }
+        } else if !self.blocked_log.is_empty() {
+            ExtractOutcome::PartialBlocked {
+                done,
+                blocked: self.blocked_log.len(),
+            }
+        } else {
+            ExtractOutcome::Done(done)
+        }
+    }
+}
+
+/// 临时物账（压缩临时文件用后即删——回收站语义不适用临时物）。
+///
+/// 泄漏即红线：`leaked() > 0` = 缺陷（清理路径必须闭环）。
+pub struct TempAccount {
+    created: Vec<String>,
+    deleted: Vec<String>,
+}
+
+impl TempAccount {
+    pub fn new() -> TempAccount {
+        TempAccount {
+            created: Vec::new(),
+            deleted: Vec::new(),
+        }
+    }
+
+    /// 建临时名（打包过程的暂存物登记）。
+    pub fn create(&mut self, base: &str) -> String {
+        let name = alloc::format!("~tmp-{}", base);
+        self.created.push(name.clone());
+        name
+    }
+
+    /// 用后即删（真删——不入回收站，语义与用户文件不同）。
+    pub fn dispose(&mut self, name: &str) -> bool {
+        if let Some(pos) = self.created.iter().position(|n| n == name) {
+            self.created.remove(pos);
+            self.deleted.push(String::from(name));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 泄漏数（未删的临时物——红线指标）。
+    pub fn leaked(&self) -> usize {
+        self.created.len()
+    }
+}
+
+/// 分卷 zip 检测（.z01/.z02/…/ 分卷模式——差异表不承诺，诚实拒）。
+pub fn is_split_archive(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    if lower.ends_with(".zip") {
+        // xxx.z01 + xxx.zip 的尾卷名形如 `xxx.zip`——无法从单名判定；
+        // 以「.zNN」分段名出现为准（主卷随分卷同名的场景由上层清单供）。
+        return false;
+    }
+    // .z01/.z02/…/.z99
+    if lower.len() >= 4 {
+        let bytes = lower.as_bytes();
+        if bytes[lower.len() - 4] == b'.'
+            && bytes[lower.len() - 3] == b'z'
+            && bytes[lower.len() - 2].is_ascii_digit()
+            && bytes[lower.len() - 1].is_ascii_digit()
+        {
+            return true;
+        }
+    }
+    false
+}
 
 /// F092 自检：round-trip 50 例哈希一致、20 枚样本解压全对（中文名/
 /// 加密/存储档/动态块互操作）、路径穿越拦截、损坏抢救 N/M、
@@ -1036,5 +1380,216 @@ mod tests {
         let set = run_zipkit_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F092 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（回炉批 D1-v2）——档位选择面 / 产物命名 / 右键菜单 / 密码卡 /
+// 流式解压会话 / 临时物账 / 分卷诚实拒。判据唯一源：主册 G-C-22。
+// ---------------------------------------------------------------------------
+
+/// F092 深化自检：七族逐条记账。
+pub fn run_zipkit_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F092-deep");
+    // 1. 三档选择器：档位映射与标签一一对应（存储=0/最快=1/均衡=6）。
+    let ok_lv = LevelChoice::Store.level() == LEVEL_STORE
+        && LevelChoice::Fastest.level() == LEVEL_FASTEST
+        && LevelChoice::Balanced.level() == LEVEL_BALANCED
+        && LevelChoice::from_index(0).label() == "存储"
+        && LevelChoice::from_index(1).label() == "最快"
+        && LevelChoice::from_index(2).label() == "均衡"
+        && LevelChoice::from_index(9) == LevelChoice::Balanced; // 越界钳默认
+    set.add("level-choice", ok_lv, "3-level selector");
+    // 2. 产物命名：单选=选中项名.zip（去尾扩展）；多选=父目录名；空选拒。
+    let n1 = archive_name(&["报告.docx"], "资料");
+    let n2 = archive_name(&["照片"], "相册");
+    let n3 = archive_name(&["a.txt", "b.txt"], "资料");
+    let n4 = archive_name(&[], "资料");
+    set.add(
+        "archive-name",
+        n1.as_deref() == Some("报告.zip")
+            && n2.as_deref() == Some("照片.zip")
+            && n3.as_deref() == Some("资料.zip")
+            && n4.is_none(),
+        "selection name .zip",
+    );
+    // 3. 右键菜单：zip 选中 → 解压两件可用；非 zip → 灰置带原因；
+    //    压缩件恒可用。
+    let m_zip = zip_context_menu(true, "相册");
+    let m_raw = zip_context_menu(false, "报告");
+    let ok_menu = m_zip.iter().all(|m| m.enabled)
+        && m_zip[1].label == "解压到 相册\\"
+        && !m_raw[0].enabled
+        && m_raw[0].why_disabled == "选中项不是 zip 压缩包"
+        && m_raw[2].enabled;
+    set.add("context-menu", ok_menu, "gray + reasons");
+    // 4. 密码卡：一误二误无建议、三误出建议、正确密码解锁。
+    let secret: Vec<u8> = "机密".as_bytes().to_vec();
+    let enc = zip_encrypt_entry("密.txt", &secret, "对的".as_bytes());
+    let mut card = PasswordCard::new();
+    let e1 = card.try_password(&enc, crc32(&secret), "错1".as_bytes());
+    let a1 = card.advice();
+    let e2 = card.try_password(&enc, crc32(&secret), "错2".as_bytes());
+    let a2 = card.advice();
+    let e3 = card.try_password(&enc, crc32(&secret), "错3".as_bytes());
+    let a3 = card.advice();
+    let ok3 = card.try_password(&enc, crc32(&secret), "对的".as_bytes()).is_ok();
+    set.add(
+        "password-card",
+        e1.is_err() && e2.is_err() && matches!(e3, Err(ZipErr::PasswordError))
+            && a1.is_none() && a2.is_none() && a3 == Some("确认密码或换工具")
+            && ok3 && card.unlocked(),
+        "3 strikes then advise",
+    );
+    // 5. 流式解压会话：进度馈送、穿越拦截归因、终态 PartialBlocked。
+    //    恶意名条目在 zip_read 层被整体拒（读入口径）——能到达会话层的
+    //    穿越名来自损坏抢救（salvage 不验名），夹具按此真实路径构造。
+    let files: Vec<ZipFile> = vec![
+        ZipFile { name: String::from("a.txt"), data: vec![1u8; 100], level: LEVEL_STORE },
+        ZipFile { name: String::from("ok/子/b.txt"), data: vec![2u8; 200], level: LEVEL_STORE },
+        ZipFile { name: String::from("c.txt"), data: vec![4u8; 150], level: LEVEL_STORE },
+    ];
+    let z = zip_write(&files);
+    let mut entries = zip_read(&z).unwrap();
+    // 抢救恢复注入（salvage 面产的裸条目——名未验，F176 由会话层拦截）。
+    entries.push(ZipEntry {
+        name: String::from("../evil.txt"),
+        data: vec![3u8; 50],
+        method: 0,
+        crc: crc32(&[3u8; 50]),
+    });
+    let bytes_total: u64 = entries.iter().map(|e| e.data.len() as u64).sum();
+    let mut sess = ExtractSession::new(entries.len(), bytes_total);
+    let mut landed = 0usize;
+    for e in &entries {
+        if let Some((name, plain)) = sess.step_entry(&e.name, e.data.clone(), 1 << 20) {
+            if !name.is_empty() {
+                landed += 1; // 拦截条目回空名空载荷——不入盘
+                drop(plain); // 落盘后即弃（流式口——明文不驻留）
+            }
+        }
+    }
+    let outcome = sess.outcome();
+    let pm = sess.permille();
+    set.add(
+        "extract-stream",
+        matches!(outcome, ExtractOutcome::PartialBlocked { done: 4, blocked: 1 })
+            && landed == 3
+            && sess.blocked_log.len() == 1
+            && sess.blocked_log[0].0 == "../evil.txt"
+            && pm == 1000,
+        "stream + F176 log + F086 feed",
+    );
+    // 6. 取消语义：取消后剩余条目不再推进，终态 Cancelled { done, remaining }。
+    let mut sess2 = ExtractSession::new(entries.len(), bytes_total);
+    sess2.step_entry(&entries[0].name, entries[0].data.clone(), 1 << 20);
+    sess2.cancel();
+    let mid = sess2.step_entry(&entries[1].name, entries[1].data.clone(), 1 << 20);
+    let out2 = sess2.outcome();
+    set.add(
+        "extract-cancel",
+        mid.is_none()
+            && matches!(out2, ExtractOutcome::Cancelled { done: 1, remaining: 3 }),
+        "cancel keeps partial",
+    );
+    // 7. 盘满暂停：所需 > 剩余 → 暂停（已完成数冻结）；resume 后续跑。
+    let mut sess3 = ExtractSession::new(entries.len(), bytes_total);
+    let s1 = sess3.step_entry(&entries[0].name, entries[0].data.clone(), 10); // 需 100 > 10
+    let frozen_done = sess3.progress().entries_done;
+    let paused = sess3.is_paused() && s1.is_none() && frozen_done == 0;
+    sess3.resume();
+    let s2 = sess3.step_entry(&entries[0].name, entries[0].data.clone(), 1 << 20);
+    set.add(
+        "extract-diskfull",
+        paused && s2.is_some(),
+        "disk-full pause + resume",
+    );
+    // 8. 临时物账：用后即删零泄漏；删两次如实拒绝。
+    let mut tmp = TempAccount::new();
+    let t1 = tmp.create("打包.zip");
+    let gone = tmp.dispose(&t1);
+    let twice = tmp.dispose(&t1);
+    set.add(
+        "temp-account",
+        t1.starts_with("~tmp-") && gone && !twice && tmp.leaked() == 0,
+        "temp disposed, zero leak",
+    );
+    // 9. 分卷诚实拒：.zNN 检出；普通 .zip 不误伤。
+    set.add(
+        "split-honest",
+        is_split_archive("相册.z01")
+            && is_split_archive("DATA.Z99")
+            && !is_split_archive("普通.zip"),
+        "split detected, honest reject",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn extract_session_happy_path() {
+        let files = vec![
+            ZipFile { name: String::from("甲.txt"), data: "甲".as_bytes().to_vec(), level: LEVEL_STORE },
+            ZipFile { name: String::from("乙/丙.txt"), data: "丙".as_bytes().to_vec(), level: LEVEL_STORE },
+        ];
+        let z = zip_write(&files);
+        let entries = zip_read(&z).unwrap();
+        let mut sess = ExtractSession::new(entries.len(), 4);
+        let mut n = 0;
+        for e in &entries {
+            if sess.step_entry(&e.name, e.data.clone(), 1 << 20).is_some() {
+                n += 1;
+            }
+        }
+        assert_eq!(sess.outcome(), ExtractOutcome::Done(2));
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn extract_session_blocked_entry_never_lands() {
+        // 拦截条目返回空载荷——调用方凭空载荷识别「已拦不入盘」。
+        let mut sess = ExtractSession::new(1, 0);
+        let r = sess.step_entry("../偷跑.txt", "内容".as_bytes().to_vec(), 1 << 20);
+        assert_eq!(r, Some((String::new(), Vec::new())));
+        assert_eq!(sess.blocked_log.len(), 1);
+        assert_eq!(sess.outcome(), ExtractOutcome::PartialBlocked { done: 1, blocked: 1 });
+    }
+
+    #[test]
+    fn password_card_advice_requires_three() {
+        let mut card = PasswordCard::new();
+        assert!(card.advice().is_none(), "零误不出建议");
+        card.tries = 2;
+        assert!(card.advice().is_none(), "两误不出建议");
+        card.tries = 3;
+        assert_eq!(card.advice(), Some("确认密码或换工具"));
+    }
+
+    #[test]
+    fn archive_name_stem_rules() {
+        // 多扩展去尾段、无扩展名直加 .zip——词干规则一致。
+        assert_eq!(archive_name(&["备份.tar.gz"], "d").as_deref(), Some("备份.tar.zip"));
+        assert_eq!(archive_name(&["README"], "d").as_deref(), Some("README.zip"));
+    }
+
+    #[test]
+    fn permille_zero_total_is_honest() {
+        // 空包（0 字节 0 条）：零工作即完满——F086 对话框立即关闭，
+        // 进度 1000 与终态 Done(0) 一致（不编「进行中」的假进度）。
+        let sess = ExtractSession::new(0, 0);
+        assert_eq!(sess.permille(), 1000);
+        assert_eq!(sess.outcome(), ExtractOutcome::Done(0));
+    }
+
+    #[test]
+    fn zipkit_deep_checks_all_green() {
+        let set = run_zipkit_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F092-deep 红项：{}/{} 绿", p, p + f);
     }
 }

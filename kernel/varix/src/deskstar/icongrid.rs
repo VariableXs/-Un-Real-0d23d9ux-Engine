@@ -114,6 +114,8 @@ pub struct IconGrid {
     pub conflicts_raised: u64,
     /// 时间锚（拖拽/动画事件的注入时刻）。
     now_ms: u64,
+    /// 主题布局套（深化层二：theme 名 → 图标布局副本）。
+    layout_sets: alloc::collections::BTreeMap<alloc::string::String, Vec<DeskIcon>>,
 }
 
 impl IconGrid {
@@ -132,6 +134,7 @@ impl IconGrid {
             copies: 0,
             conflicts_raised: 0,
             now_ms: 0,
+            layout_sets: alloc::collections::BTreeMap::new(),
         }
     }
 
@@ -618,5 +621,198 @@ mod tests {
         let set = run_icongrid_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F084 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——自动排列三键 / 主题分套布局。
+// 判据唯一源：主册 G-C-14 状态与异常/数据与存储。
+// ---------------------------------------------------------------------------
+
+/// 自动排列键（主册「自动排列一键重排（按名称/类型/日期）」）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrangeKey {
+    Name,
+    Type,
+    Date,
+}
+
+/// 主题分套布局（E1 联动：布局随主题可分套保存——主题切换恢复不丢
+/// 用户手工位的实体；字段挂 IconGrid，见深化层二方法）。
+
+impl IconGrid {
+    /// 自动排列按键排序（主册「按名称/类型/日期」）——排序完成后委托
+    /// 基座 auto_arrange(order) 执行落格（一个核心两个入口：排序键在
+    /// 此、格位不变量在彼；Date 键用注入的修改时间表，缺表如实回退
+    /// 名称序——不编日期）。
+    pub fn auto_arrange_by(
+        &mut self,
+        key: ArrangeKey,
+        date_of: &dyn Fn(u64) -> Option<u64>,
+    ) -> usize {
+        let name_of = |id: u64| -> String {
+            self.icons
+                .iter()
+                .find(|i| i.id == id)
+                .map(|i| i.name.clone())
+                .unwrap_or_default()
+        };
+        let mut ids: Vec<u64> = self.icons.iter().map(|i| i.id).collect();
+        match key {
+            ArrangeKey::Name => {
+                ids.sort_by(|a, b| name_of(*a).cmp(&name_of(*b)));
+            }
+            ArrangeKey::Type => {
+                // 类型 = 扩展名（无扩展排最前——「文件夹/无类型」聚合习惯）。
+                ids.sort_by(|a, b| {
+                    let na = name_of(*a);
+                    let nb = name_of(*b);
+                    let ea = na.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+                    let eb = nb.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+                    ea.cmp(eb).then_with(|| na.cmp(&nb))
+                });
+            }
+            ArrangeKey::Date => {
+                // 全员有日期才按日期；缺任何一个 → 如实回退名称序。
+                let all_dated = ids.iter().all(|id| date_of(*id).is_some());
+                if all_dated {
+                    ids.sort_by_key(|id| date_of(*id).unwrap_or(0));
+                } else {
+                    ids.sort_by(|a, b| name_of(*a).cmp(&name_of(*b)));
+                }
+            }
+        }
+        self.auto_arrange(ids);
+        self.icons.len()
+    }
+
+    /// 保存当前布局为指定主题套（覆盖同名——保存是显式动作）。
+    pub fn save_layout_set(&mut self, theme: &str) {
+        self.layout_sets
+            .insert(String::from(theme), self.icons.clone());
+    }
+
+    /// 载入主题套（不存在如实 None——当前布局不动）。
+    pub fn load_layout_set(&mut self, theme: &str) -> bool {
+        match self.layout_sets.get(theme) {
+            Some(saved) => {
+                self.icons = saved.clone();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 套清单（设置面显示「哪些主题有独立布局」）。
+    pub fn layout_set_names(&self) -> Vec<alloc::string::String> {
+        self.layout_sets.keys().cloned().collect()
+    }
+}
+
+/// F084 深化自检二：自动排列 + 主题分套。
+pub fn run_icongrid_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F084-deep2");
+    let mut g = IconGrid::new(4, 3);
+    // 注入三枚乱序（id 与日期表：a300 / b100 / c200；ASCII 名使名称序
+    // 码点序一致——排序键语义清晰，不混入本地化排序议题）。
+    g.add_icon(3, "c.txt");
+    g.icons[0].cell = (2, 0);
+    g.add_icon(1, "a.txt");
+    g.icons[1].cell = (0, 1);
+    g.add_icon(2, "b.txt");
+    g.icons[2].cell = (1, 1);
+    let dates = |id: u64| match id {
+        1 => Some(300u64),
+        2 => Some(100),
+        3 => Some(200),
+        _ => None,
+    };
+    // 排列后的格位按 id 查（基座只动坐标不动向量序——断言对准实体）。
+    let cell_of = |g: &IconGrid, id: u64| -> (u16, u16) {
+        g.icons
+            .iter()
+            .find(|i| i.id == id)
+            .map(|i| i.cell)
+            .unwrap_or((9, 9))
+    };
+    // 1. 按名称：a(0,0) b(1,0) c(2,0) 行优先重排。
+    g.auto_arrange_by(ArrangeKey::Name, &dates);
+    set.add(
+        "arrange-name",
+        cell_of(&g, 1) == (0, 0) && cell_of(&g, 2) == (1, 0) && cell_of(&g, 3) == (2, 0),
+        "row-major sorted",
+    );
+    // 2. 按类型：改名为全 .md（同类型）→ 类型相同退名称序，格位不变
+    //    （按 id 定位改名——向量序与 id 序无关）。
+    for (id, name) in [(1u64, "a.md"), (2, "b.md"), (3, "c.md")] {
+        if let Some(ic) = g.icons.iter_mut().find(|i| i.id == id) {
+            ic.name = String::from(name);
+        }
+    }
+    g.auto_arrange_by(ArrangeKey::Type, &dates);
+    set.add(
+        "arrange-type",
+        cell_of(&g, 1) == (0, 0) && cell_of(&g, 2) == (1, 0) && cell_of(&g, 3) == (2, 0),
+        "same extension falls back to name",
+    );
+    // 3. 按日期：b(100) c(200) a(300)——注入表驱动。
+    g.auto_arrange_by(ArrangeKey::Date, &dates);
+    set.add(
+        "arrange-date",
+        cell_of(&g, 2) == (0, 0) && cell_of(&g, 3) == (1, 0) && cell_of(&g, 1) == (2, 0),
+        "oldest first by injected date",
+    );
+    // 4. 缺日期回退名称序（不编日期——诚实降级）。
+    g.auto_arrange_by(ArrangeKey::Date, &|_| None);
+    set.add(
+        "arrange-date-fallback",
+        cell_of(&g, 1) == (0, 0) && cell_of(&g, 2) == (1, 0) && cell_of(&g, 3) == (2, 0),
+        "undated falls back to name",
+    );
+    // 5. 主题分套：保存 → 打乱 → 载入还原；缺套如实拒。
+    g.save_layout_set("星海");
+    let saved = g.icons.clone();
+    g.auto_arrange_by(ArrangeKey::Date, &dates); // 打乱
+    let restored = g.load_layout_set("星海") && g.icons == saved;
+    let missing = !g.load_layout_set("不存在的主题");
+    set.add(
+        "theme-layout-sets",
+        restored && missing && g.layout_set_names() == vec![String::from("星海")],
+        "per-theme sets + honest miss",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn auto_arrange_never_changes_count() {
+        let mut g = IconGrid::new(3, 3);
+        for id in 0..5u64 {
+            g.add_icon(id, &alloc::format!("件{}", id));
+        }
+        let before = g.icon_count();
+        g.auto_arrange_by(ArrangeKey::Name, &|_| None);
+        assert_eq!(g.icon_count(), before, "重排不增删图标");
+    }
+
+    #[test]
+    fn arrange_wraps_to_next_row() {
+        let mut g = IconGrid::new(2, 3);
+        for id in 0..4u64 {
+            g.add_icon(id, &alloc::format!("{}件", id));
+        }
+        g.auto_arrange_by(ArrangeKey::Name, &|_| None);
+        let last = &g.icons[3];
+        assert_eq!(last.cell, (1, 1), "4 枚 2 列 → 第 4 枚在 (1,1)");
+    }
+
+    #[test]
+    fn icongrid_deep2_checks_all_green() {
+        let set = run_icongrid_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F084-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

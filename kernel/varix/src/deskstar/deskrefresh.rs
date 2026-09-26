@@ -69,6 +69,12 @@ pub struct DeskRefresh {
     pub last_diff_ms: Option<u64>,
     /// 刷新中拒新请求计数（防抖语义的证据面）。
     pub rejected_during: u64,
+    /// 补执行队列（深化层：真排队——完成后按序补枚举）。
+    deferred_queue: Vec<QueuedRefresh>,
+    /// 成本样本滑动窗（P95 分位数据源）。
+    cost_samples: Vec<u64>,
+    /// 原因分类计数（深化层二：[F5, 右键, 自愈]——诊断下钻面）。
+    reason_counts: [u32; 3],
 }
 
 impl DeskRefresh {
@@ -85,6 +91,9 @@ impl DeskRefresh {
             deferred_enums: 0,
             last_diff_ms: None,
             rejected_during: 0,
+            deferred_queue: Vec::new(),
+            cost_samples: Vec::new(),
+            reason_counts: [0; 3],
         }
     }
 
@@ -216,6 +225,205 @@ impl DeskRefresh {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：枚举请求真排队 / 右键菜单语义位 / 成本分布 P95 /
+// 诊断导出格式——主册【交互设计】【数据与存储】补足。
+// ---------------------------------------------------------------------------
+
+/// 诊断导出记录（诚实计数账的结构化出口——好奇用户可查的形态）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RefreshDiag {
+    pub total: u64,
+    pub necessary: u64,
+    pub rebuilds: u64,
+    /// 成本 P95（毫秒；样本不足 20 时返回 None——小样本不硬算分位）。
+    pub cost_p95_ms: Option<u64>,
+}
+
+/// 最近请求（排队单元：来源 + 时刻）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QueuedRefresh {
+    pub from_keyboard: bool,
+    pub at_ms: u64,
+}
+
+impl DeskRefresh {
+    /// 刷新期间的新请求入队（完成后按序补执行——替代单纯计数）。
+    pub fn enqueue_deferred(&mut self, from_keyboard: bool, now_ms: u64) -> bool {
+        if self.flash_start.is_some()
+            && now_ms.saturating_sub(self.flash_start.unwrap()) < FLASH_MS as u64
+        {
+            self.deferred_queue.push(QueuedRefresh {
+                from_keyboard,
+                at_ms: now_ms,
+            });
+            self.deferred_enums += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 补执行队列驱动（flash_done 后由宿主滴答调用；一次吐一条）。
+    pub fn pop_deferred(&mut self) -> Option<QueuedRefresh> {
+        if self.deferred_queue.is_empty() {
+            None
+        } else {
+            Some(self.deferred_queue.remove(0))
+        }
+    }
+
+    pub fn deferred_len(&self) -> usize {
+        self.deferred_queue.len()
+    }
+
+    /// 右键菜单「刷新」项语义位（乙-4 表右键结构：刷新位于菜单尾部
+    /// 分隔线之后首项——位置常量 + 文案，渲染层取用）。
+    pub fn context_menu_entry(&self) -> (&'static str, usize) {
+        ("刷新", CONTEXT_MENU_REFRESH_POS)
+    }
+
+    /// 刷新成本样本（增量化耗时入分布账——P95 的数据源）。
+    pub fn record_cost(&mut self, cost_ms: u64) {
+        self.cost_samples.push(cost_ms);
+        if self.cost_samples.len() > COST_SAMPLE_CAP {
+            self.cost_samples.remove(0);
+        }
+    }
+
+    /// 成本 P95（最近邻秩；样本 <20 返回 None——小样本不硬算分位，
+    /// 诚实留白）。
+    pub fn cost_p95(&self) -> Option<u64> {
+        if self.cost_samples.len() < 20 {
+            return None;
+        }
+        let mut sorted = self.cost_samples.clone();
+        sorted.sort_unstable();
+        let idx = (sorted.len() as u64 * 95 / 100) as usize;
+        sorted.get(idx.min(sorted.len() - 1)).copied()
+    }
+
+    /// 诊断导出（结构化记录——诊断中心 F120 可直接消费）。
+    pub fn export_diag(&self) -> RefreshDiag {
+        RefreshDiag {
+            total: self.refresh_total,
+            necessary: self.refresh_necessary,
+            rebuilds: self.rebuilds,
+            cost_p95_ms: self.cost_p95(),
+        }
+    }
+}
+
+/// 右键菜单「刷新」位（乙-4 表右键结构：分隔线后首项 = 第 0 位）。
+pub const CONTEXT_MENU_REFRESH_POS: usize = 0;
+
+/// 成本样本容量（滑动窗口——防止账本无界增长）。
+pub const COST_SAMPLE_CAP: usize = 200;
+
+/// 分位数小样本下限（不足则 P95 返回 None）。
+pub const P95_MIN_SAMPLES: usize = 20;
+
+/// F083 深化自检：真排队补执行、右键菜单语义位、P95 分位、诊断导出。
+pub fn run_deskrefresh_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F083-deep");
+    let mut d = DeskRefresh::new();
+    // 1. 真排队：刷新期 3 个请求入队 → 完成后按序吐出。
+    d.request(0);
+    let q1 = d.enqueue_deferred(true, 10);
+    let q2 = d.enqueue_deferred(false, 20);
+    let q3 = d.enqueue_deferred(true, 30);
+    d.flash_done(FLASH_MS as u64, false);
+    let r1 = d.pop_deferred();
+    let r2 = d.pop_deferred();
+    let r3 = d.pop_deferred();
+    let r4 = d.pop_deferred();
+    set.add(
+        "deferred-queue",
+        q1 && q2 && q3
+            && r1.map(|r| r.from_keyboard) == Some(true)
+            && r2.map(|r| r.from_keyboard) == Some(false)
+            && r3.map(|r| r.at_ms) == Some(30)
+            && r4.is_none(),
+        "FIFO after flash",
+    );
+    // 2. 非刷新期入队被拒（队列只收刷新期间的请求）。
+    let outside = !d.enqueue_deferred(true, FLASH_MS as u64 + 10);
+    set.add("queue-gate", outside && d.deferred_len() == 0, "only during refresh");
+    // 3. 右键菜单语义位。
+    let (label, pos) = d.context_menu_entry();
+    set.add(
+        "context-entry",
+        label == "刷新" && pos == CONTEXT_MENU_REFRESH_POS,
+        "乙-4 tail after separator",
+    );
+    // 4. P95 分位：样本 <20 → None；≥20 → 最近邻秩命中。
+    for i in 0..19u64 {
+        d.record_cost(10 + i);
+    }
+    let none_small = d.cost_p95().is_none();
+    for i in 20..30u64 {
+        d.record_cost(10 + i); // 29 个样本：10..38
+    }
+    // 29 样本 → idx = 29*95/100 = 27 → 排序后第 28 位（0 起）。
+    let p95 = d.cost_p95();
+    set.add(
+        "p95",
+        none_small && p95 == Some(38) && P95_MIN_SAMPLES == 20, // 29 样本 idx=27 → 38
+        "nearest-rank p95",
+    );
+    // 5. 诊断导出（结构化三账一致）。
+    let diag = d.export_diag();
+    set.add(
+        "diag-export",
+        diag.total == d.refresh_total
+            && diag.necessary == d.refresh_necessary
+            && diag.rebuilds == d.rebuilds
+            && diag.cost_p95_ms == Some(38),
+        "F120 consumable",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn queue_drains_fully_then_refills() {
+        let mut d = DeskRefresh::new();
+        d.request(0);
+        for i in 0..5u64 {
+            d.enqueue_deferred(false, i);
+        }
+        d.flash_done(FLASH_MS as u64, false);
+        for i in 0..5u64 {
+            let r = d.pop_deferred().unwrap();
+            assert_eq!(r.at_ms, i, "FIFO 序");
+        }
+        assert!(d.pop_deferred().is_none());
+        // 下一轮刷新照常排队。
+        d.request(1_000);
+        assert!(d.enqueue_deferred(true, 1_010));
+        assert_eq!(d.deferred_len(), 1);
+    }
+
+    #[test]
+    fn cost_samples_capped() {
+        let mut d = DeskRefresh::new();
+        for i in 0..500u64 {
+            d.record_cost(i);
+        }
+        assert_eq!(d.cost_samples.len(), COST_SAMPLE_CAP, "滑动窗口封顶");
+    }
+
+    #[test]
+    fn deskrefresh_deep_checks_all_green() {
+        let set = run_deskrefresh_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F083-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-13 验收判据）
 // ---------------------------------------------------------------------------
 
@@ -339,4 +547,98 @@ mod tests {
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F083 自检红项：{}/{} 绿", p, p + f);
     }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——刷新原因分类记账（诊断面：本月 N 次
+// 其中必要 M 次的下钻维度）。判据唯一源：主册 G-C-13 数据与存储。
+// ---------------------------------------------------------------------------
+
+/// 刷新原因（F5 键 / 右键菜单 / 缓存自愈重建——三类各自入账）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefreshReason {
+    F5Key,
+    ContextMenu,
+    SelfHeal,
+}
+
+impl RefreshReason {
+    fn slot(self) -> usize {
+        match self {
+            RefreshReason::F5Key => 0,
+            RefreshReason::ContextMenu => 1,
+            RefreshReason::SelfHeal => 2,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            RefreshReason::F5Key => "F5 键",
+            RefreshReason::ContextMenu => "右键菜单",
+            RefreshReason::SelfHeal => "缓存自愈",
+        }
+    }
+}
+
+impl DeskRefresh {
+    /// 带原因的刷新请求（与 request 同一核心——原因只是记账维度；
+    /// 返回语义同 request：是否真正执行）。
+    pub fn request_as(&mut self, reason: RefreshReason, now_ms: u64) -> bool {
+        let executed = self.request(now_ms);
+        if executed {
+            self.reason_counts[reason.slot()] += 1;
+        }
+        executed
+    }
+
+    /// 原因计数（诊断下钻面：「本月 214 次其中 0 次必要」的分类视角）。
+    pub fn reason_counts(&self) -> [u32; 3] {
+        self.reason_counts
+    }
+}
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn rejected_request_not_counted() {
+        let mut dr = DeskRefresh::new();
+        assert!(dr.request_as(RefreshReason::F5Key, 1_000));
+        assert!(!dr.request_as(RefreshReason::ContextMenu, 1_050)); // 80ms 内拒
+        let c = dr.reason_counts();
+        assert_eq!(c, [1, 0, 0], "被合并的请求不入账——只记真执行");
+    }
+
+    #[test]
+    fn deskrefresh_deep2_checks_all_green() {
+        let set = run_deskrefresh_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F083-deep2 红项：{}/{} 绿", p, p + f);
+    }
+}
+
+/// F083 深化自检二：原因分类记账。
+pub fn run_deskrefresh_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F083-deep2");
+    let mut dr = DeskRefresh::new();
+    // 三路入口各来一次（时间错开 >300ms——每次真执行）。
+    let r1 = dr.request_as(RefreshReason::F5Key, 1_000);
+    let r2 = dr.request_as(RefreshReason::ContextMenu, 2_000);
+    let r3 = dr.request_as(RefreshReason::SelfHeal, 3_000);
+    let c = dr.reason_counts();
+    set.add(
+        "reason-classified",
+        r1 && r2 && r3 && c == [1, 1, 1],
+        "three reasons one core",
+    );
+    // 名表面（诊断报告用）。
+    set.add(
+        "reason-names",
+        RefreshReason::F5Key.name() == "F5 键"
+            && RefreshReason::ContextMenu.name() == "右键菜单"
+            && RefreshReason::SelfHeal.name() == "缓存自愈",
+        "diagnostic labels",
+    );
+    set
 }

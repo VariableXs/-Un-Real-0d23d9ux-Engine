@@ -35,6 +35,9 @@ pub mod deskstar {
     pub mod alttab;
     #[path = "../../../../../kernel/varix/src/deskstar/calflyout.rs"]
     pub mod calflyout;
+    // v1 批漏挂（v2 回炉补挂——crumbsbar 的 15 项测试当时未进隔离舱）。
+    #[path = "../../../../../kernel/varix/src/deskstar/crumbsbar.rs"]
+    pub mod crumbsbar;
     #[path = "../../../../../kernel/varix/src/deskstar/copydlg.rs"]
     pub mod copydlg;
     #[path = "../../../../../kernel/varix/src/deskstar/conflict.rs"]
@@ -60,3 +63,4 @@ pub mod deskstar {
     #[path = "../../../../../kernel/varix/src/deskstar/zipkit.rs"]
     pub mod zipkit;
 }
+

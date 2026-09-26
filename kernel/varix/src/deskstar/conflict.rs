@@ -25,6 +25,8 @@
 
 use crate::checks::CheckSet;
 
+use crate::star::recenteng;
+
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
@@ -154,6 +156,10 @@ pub struct ConflictPanel {
     occupied: Vec<String>,
     /// 只读覆盖二次账（强制/跳过二选的待决）。
     readonly_pending: Vec<usize>,
+    /// 批量勾选集（checkbox——只对勾选项应用决策）。
+    checked: alloc::collections::BTreeSet<usize>,
+    /// 缩略注入（F093 接缝：pair 下标 → 缩略来源类型）。
+    thumbs: alloc::collections::BTreeMap<usize, &'static str>,
 }
 
 impl ConflictPanel {
@@ -167,6 +173,8 @@ impl ConflictPanel {
             undos: 0,
             occupied,
             readonly_pending: Vec::new(),
+            checked: alloc::collections::BTreeSet::new(),
+            thumbs: alloc::collections::BTreeMap::new(),
         }
     }
 
@@ -328,9 +336,369 @@ impl ConflictPanel {
     pub fn geometry(&self) -> (i32, i32, i32, i32, i32) {
         (PANEL_W_PX, PANEL_H_PX, THUMB_W_PX, ROW_H_PX, 24)
     }
+
+    // -- 深化层二（D1-v2-CF*）---------------------------------------------
+
+    /// 对比卡几何（主册「左右对比卡（各 200px 缩略图+元数据行），中间
+    /// 三动作钮竖排」：返回 (左卡, 右卡, 动作列) 三矩形——渲染与命中
+    /// 测试共用的唯一几何源）。
+    pub fn compare_geometry(&self) -> (crate::deskstar::dbase::Rect, crate::deskstar::dbase::Rect, crate::deskstar::dbase::Rect) {
+        use crate::deskstar::dbase::Rect;
+        let pad = 16i32;
+        // 动作列宽 = 面板余量（卡严格 200px——主册「各 200px 缩略图」）。
+        let action_w = PANEL_W_PX - pad * 2 - THUMB_W_PX * 2 - pad * 2;
+        let card_w = THUMB_W_PX;
+        let card_h = PANEL_H_PX / 2;
+        let left = Rect::new(pad, pad, card_w, card_h);
+        let actions = Rect::new(pad + card_w + pad, pad, action_w, card_h);
+        let right = Rect::new(pad + card_w + action_w + pad * 2, pad, card_w, card_h);
+        (left, right, actions)
+    }
+
+    /// 批量列表行矩形（左侧 24px 每行——勾选决策列表的行几何）。
+    pub fn batch_row_rect(&self, idx: usize) -> crate::deskstar::dbase::Rect {
+        use crate::deskstar::dbase::Rect;
+        // 列表在对比卡下方起排，逐行下移 ROW_H_PX。
+        Rect::new(16, PANEL_H_PX / 2 + 24, PANEL_W_PX - 32, ROW_H_PX)
+            .offset_rows(idx)
+    }
+
+    /// 对比时间标签（主册「时间显示精确到秒+相对时长」）：
+    /// 绝对 = 到秒的人话格式（本面板所有格式化唯一实现）；相对 =
+    /// 直调 F072 recenteng::relative_time（一处一事实——相对时长的
+    /// 规则只在 F072 定义一份）。返回 (绝对, 相对)。
+    pub fn mtime_labels(epoch_s: u64, now_s: u64) -> (String, String) {
+        // 绝对格式：天序换算（civil 算法源自 calflyout——civet 往返在
+        // deskstar 内唯一实现点，本处仅按秒拼接不重写历法）。
+        let days = (epoch_s / 86_400) as i64;
+        let (y, m, d) = crate::deskstar::calflyout::civil_from_days(days);
+        let rem = epoch_s % 86_400;
+        let hh = rem / 3_600;
+        let mm = (rem % 3_600) / 60;
+        let ss = rem % 60;
+        let abs = alloc::format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            y, m, d, hh, mm, ss
+        );
+        let rel = recenteng::relative_time(now_s, epoch_s);
+        (abs, rel)
+    }
+
+    /// 对比对账（同一侧元数据行渲染账：大小 + 绝对秒 + 相对时长）。
+    pub fn compare_rows(&self, idx: usize, now_s: u64) -> Option<[String; 4]> {
+        let p = self.pairs().get(idx)?;
+        let (src_abs, src_rel) = Self::mtime_labels(p.src_mtime, now_s);
+        let (dst_abs, _dst_rel) = Self::mtime_labels(p.dst_mtime, now_s);
+        Some([
+            alloc::format!("{} B", p.src_size),
+            alloc::format!("{} B", p.dst_size),
+            src_abs,
+            alloc::format!("{} / {}", src_rel, dst_abs),
+        ])
+    }
+}
+
+/// 批量列表行的垂直偏移（行几何 = 基准行 + idx × 行高——
+/// 单独的小扩展避免在表达式里堆叠算术）。
+trait RowOffset {
+    fn offset_rows(self, idx: usize) -> crate::deskstar::dbase::Rect;
+}
+
+impl RowOffset for crate::deskstar::dbase::Rect {
+    fn offset_rows(self, idx: usize) -> crate::deskstar::dbase::Rect {
+        crate::deskstar::dbase::Rect::new(self.x, self.y + idx as i32 * ROW_H_PX, self.w, self.h)
+    }
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：勾选集决策 / 覆盖进回收站（可撤销覆盖）/ 级联后缀 /
+// 缩略注入账 / 分页导航 / 同文件启发集 / 摘要文案——主册【交互设计】补足。
+// ---------------------------------------------------------------------------
+
+/// 覆盖备份回执（覆盖 = 旧件进回收站——覆盖可撤销的实体；F085 语义）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OverwriteBackup {
+    pub name: String,
+    pub size: u64,
+    pub mtime: u64,
+}
+
+/// 分页导航态（批量面板 >20 条分页）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PageNav {
+    pub page: usize,
+    pub pages: usize,
+}
+
+impl ConflictPanel {
+    /// 批量勾选集（checkbox 状态——只对勾选项应用决策）。
+    pub fn check(&mut self, idx: usize, checked: bool) -> bool {
+        if idx >= self.pairs.len() {
+            return false;
+        }
+        if checked {
+            self.checked.insert(idx);
+        } else {
+            self.checked.remove(&idx);
+        }
+        true
+    }
+
+    pub fn is_checked(&self, idx: usize) -> bool {
+        self.checked.contains(&idx)
+    }
+
+    /// 对勾选集应用决策（逐条走 decide——只读项照旧进二选待决）。
+    pub fn apply_checked(&mut self, d: Decision) -> usize {
+        let targets: Vec<usize> = self
+            .checked
+            .iter()
+            .copied()
+            .filter(|i| !self.decided.iter().any(|(di, _)| di == i))
+            .collect();
+        let mut done = 0;
+        for i in targets {
+            if self.decide(i, d).is_some() || d == Decision::Skip {
+                done += 1;
+            }
+        }
+        done
+    }
+
+    /// 覆盖 = 旧件进回收站（可撤销覆盖——返回备份回执；与 F085 语义闭环）。
+    pub fn decide_overwrite_with_backup(&mut self, idx: usize) -> Option<(String, OverwriteBackup)> {
+        let pair = self.pairs.get(idx)?.clone();
+        let placed = self.decide(idx, Decision::Overwrite)?;
+        Some((
+            placed,
+            OverwriteBackup {
+                name: pair.name,
+                size: pair.dst_size,
+                mtime: pair.dst_mtime,
+            },
+        ))
+    }
+
+    /// 级联后缀（保留两者后，同名再冲突 → 后缀续接 (3)/(4)……）。
+    pub fn cascade_suffix(&mut self, name: &str) -> String {
+        let s = suffixed_name(name, &|c: &str| self.occupied.contains(&String::from(c)));
+        self.occupied.push(s.clone());
+        s
+    }
+
+    /// 缩略内容注入（F093 引擎接缝——注入 per-pair 缩略字节数据；
+    /// 缺席 = thumb_failed 兜底类型图标）。
+    pub fn feed_thumb(&mut self, idx: usize, kind: &'static str) -> bool {
+        if idx >= self.pairs.len() {
+            return false;
+        }
+        self.thumbs.insert(idx, kind);
+        true
+    }
+
+    /// 卡片缩略来源（有注入 → 真缩略；无 → 兜底类型图标——诚实降级）。
+    pub fn thumb_source(&self, idx: usize) -> Option<&'static str> {
+        if self.pairs.get(idx)?.thumb_failed {
+            return Some("类型图标兜底");
+        }
+        self.thumbs.get(&idx).copied()
+    }
+
+    /// 分页导航（>20 条分页；next/prev 钳制）。
+    pub fn page_nav(&self, page: usize) -> PageNav {
+        let pages = PageNav {
+            page: page.min(self.pages_total().saturating_sub(1)),
+            pages: self.pages_total(),
+        };
+        pages
+    }
+
+    fn pages_total(&self) -> usize {
+        (self.pairs.len() + 19) / 20
+    }
+
+    /// 同文件启发集（「看起来是同一文件」的对集合——面板顶部提示位）。
+    pub fn identical_pairs(&self) -> Vec<usize> {
+        self.pairs
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.looks_identical())
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// 摘要文案（F086 完成摘要 toast 的数据源——三选统计人话化）。
+    pub fn summary_text(&self) -> alloc::string::String {
+        let kb = self.applied.iter().filter(|a| a.decision == Decision::KeepBoth).count();
+        let ov = self.applied.iter().filter(|a| a.decision == Decision::Overwrite).count();
+        let sk = self.applied.iter().filter(|a| a.decision == Decision::Skip).count();
+        alloc::format!("保留两者 {} · 覆盖 {} · 跳过 {}", kb, ov, sk)
+    }
+}
+
+/// F087 深化自检：勾选集、覆盖备份、级联后缀、缩略注入兜底、分页、
+/// 启发集、摘要文案。
+pub fn run_conflict_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F087-deep");
+    let pair = |name: &str, ro: bool| ConflictPair {
+        name: String::from(name),
+        src_size: 1,
+        src_mtime: 1,
+        dst_size: 2,
+        dst_mtime: 2,
+        dst_readonly: ro,
+        thumb_failed: false,
+    };
+    // 1. 勾选集：勾 2 条 → apply_checked 只动勾选项。
+    let mut p = ConflictPanel::new(vec![]);
+    p.load(vec![pair("a", false), pair("b", false), pair("c", false), pair("d", false)]);
+    p.check(0, true);
+    p.check(2, true);
+    p.check(1, false); // 未勾的先勾再取消
+    let done = p.apply_checked(Decision::KeepBoth);
+    set.add(
+        "checked-apply",
+        done == 2 && p.pending_count() == 2 && !p.is_checked(1),
+        "checkbox scope",
+    );
+    // 2. 覆盖 = 旧件进回收站（备份回执——可撤销覆盖实体）。
+    let mut p2 = ConflictPanel::new(vec![]);
+    p2.load(vec![ConflictPair {
+        name: String::from("旧件.txt"),
+        src_size: 1,
+        src_mtime: 1,
+        dst_size: 777,
+        dst_mtime: 888,
+        dst_readonly: false,
+        thumb_failed: false,
+    }]);
+    let (placed, backup) = p2.decide_overwrite_with_backup(0).unwrap();
+    set.add(
+        "overwrite-backup",
+        placed == "旧件.txt" && backup.size == 777 && backup.mtime == 888,
+        "F085 semantics",
+    );
+    // 3. 级联后缀：保留两者后同名再冲突 → (3) 续接。
+    let mut p3 = ConflictPanel::new(vec![]);
+    p3.load(vec![pair("报告.txt", false), pair("报告.txt", false)]);
+    let first = p3.decide(0, Decision::KeepBoth).unwrap(); // (2)
+    let second = p3.cascade_suffix("报告.txt"); // (3)
+    set.add(
+        "cascade-suffix",
+        first == "报告 (2).txt" && second == "报告 (3).txt",
+        "(3) continues",
+    );
+    // 4. 缩略注入：注入命中 / 未注入兜底 / thumb_failed 兜底优先。
+    let mut p4 = ConflictPanel::new(vec![]);
+    p4.load(vec![pair("有图", false), pair("无注入", false)]);
+    let mut no_thumb = pair("坏图", false);
+    no_thumb.thumb_failed = true;
+    p4.load(vec![pair("有图", false), pair("无注入", false), no_thumb]);
+    p4.feed_thumb(0, "photo-thumb");
+    set.add(
+        "thumb-source",
+        p4.thumb_source(0) == Some("photo-thumb")
+            && p4.thumb_source(1) == None
+            && p4.thumb_source(2) == Some("类型图标兜底"),
+        "F093 inject + fallback",
+    );
+    // 5. 分页导航：45 条 → 3 页，钳制越界。
+    let mut p5 = ConflictPanel::new(vec![]);
+    let mut many: Vec<ConflictPair> = Vec::new();
+    for i in 0..45u64 {
+        many.push(pair(&alloc::format!("f{i}"), false));
+    }
+    p5.load(many);
+    let nav = p5.page_nav(2);
+    let clamped = p5.page_nav(9);
+    set.add(
+        "page-nav",
+        nav.pages == 3 && nav.page == 2 && clamped.page == 2,
+        "20/page clamp",
+    );
+    // 6. 同文件启发集。
+    let mut p6 = ConflictPanel::new(vec![]);
+    p6.load(vec![
+        ConflictPair {
+            name: String::from("同"),
+            src_size: 512,
+            src_mtime: 100,
+            dst_size: 512,
+            dst_mtime: 100,
+            dst_readonly: false,
+            thumb_failed: false,
+        },
+        pair("异", false),
+    ]);
+    set.add(
+        "identical-set",
+        p6.identical_pairs() == vec![0],
+        "suggest-skip set",
+    );
+    // 7. 摘要文案（F086 toast 数据源）。
+    let mut p7 = ConflictPanel::new(vec![]);
+    p7.load(vec![pair("a", false), pair("b", false), pair("c", false)]);
+    p7.decide(0, Decision::KeepBoth);
+    p7.decide(1, Decision::Overwrite);
+    p7.decide(2, Decision::Skip);
+    set.add(
+        "summary",
+        p7.summary_text() == "保留两者 1 · 覆盖 1 · 跳过 1",
+        "human summary",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    fn pair(name: &str, ro: bool) -> ConflictPair {
+        ConflictPair {
+            name: String::from(name),
+            src_size: 1,
+            src_mtime: 1,
+            dst_size: 2,
+            dst_mtime: 2,
+            dst_readonly: ro,
+            thumb_failed: false,
+        }
+    }
+
+    #[test]
+    fn checked_skips_readonly_into_pending() {
+        let mut p = ConflictPanel::new(vec![]);
+        p.load(vec![pair("a", false), pair("锁", true)]);
+        p.check(0, true);
+        p.check(1, true);
+        let done = p.apply_checked(Decision::Overwrite);
+        assert_eq!(done, 1, "只读项不进 apply 计数");
+        assert_eq!(p.readonly_pending(), &[1], "只读项进二选待决");
+    }
+
+    #[test]
+    fn cascade_accumulates() {
+        let mut p = ConflictPanel::new(vec![]);
+        let s1 = p.cascade_suffix("x");
+        let s2 = p.cascade_suffix("x");
+        assert_eq!((s1.as_str(), s2.as_str()), ("x (2)", "x (3)"));
+    }
+
+    #[test]
+    fn feed_thumb_rejects_out_of_range() {
+        let mut p = ConflictPanel::new(vec![]);
+        assert!(!p.feed_thumb(9, "x"));
+    }
+
+    #[test]
+    fn conflict_deep_checks_all_green() {
+        let set = run_conflict_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F087-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-17 验收判据）
 // ---------------------------------------------------------------------------
 
@@ -569,5 +937,105 @@ mod tests {
         let set = run_conflict_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F087 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——对比卡几何 / 秒级+相对时长标签（F072
+// 一处一事实）/ 批量行几何。判据唯一源：主册 G-C-17 交互设计/设计细节。
+// ---------------------------------------------------------------------------
+
+/// F087 深化自检二：三族逐条记账。
+pub fn run_conflict_deep2_checks() -> CheckSet {
+    use crate::deskstar::dbase::Rect;
+    let mut set = CheckSet::new("deskstar-F087-deep2");
+    let mut panel = ConflictPanel::new(vec![String::from("报告.docx")]);
+    panel.load(vec![ConflictPair {
+        name: String::from("报告.docx"),
+        src_size: 4096,
+        src_mtime: 86_400 * 19_000 + 3_600 * 10 + 1_800, // 1970+19000 天 10:30:00
+        dst_size: 512,
+        dst_mtime: 86_400 * 19_000,
+        dst_readonly: false,
+        thumb_failed: true,
+    }]);
+    // 1. 对比卡几何：左右卡等宽、动作列在中间、三块互不重叠、都在面板内。
+    let (left, right, actions) = panel.compare_geometry();
+    let panel_rect = Rect::new(0, 0, PANEL_W_PX, PANEL_H_PX);
+    let in_panel = |r: &Rect| {
+        r.x >= panel_rect.x && r.y >= panel_rect.y
+            && r.right() <= panel_rect.right() && r.bottom() <= panel_rect.bottom()
+    };
+    set.add(
+        "compare-geometry",
+        left.w == right.w
+            && left.right() <= actions.x
+            && actions.right() <= right.x
+            && !left.intersects(&right)
+            && in_panel(&left) && in_panel(&right) && in_panel(&actions)
+            && left.w == THUMB_W_PX,
+        "cards + action column",
+    );
+    // 2. 时间标签：绝对到秒（人话格式）；相对直调 F072 同源。
+    // 1970+19000 天 = 2022-01-08；now 比 ts 晚 13.5h → 「13 小时前」。
+    let (abs, rel) = ConflictPanel::mtime_labels(86_400 * 19_000 + 3_600 * 10 + 1_800, 86_400 * 19_000 + 86_400);
+    let abs_shape = abs.len() == 19 && abs.as_bytes()[4] == b'-' && abs.as_bytes()[10] == b' ';
+    set.add(
+        "mtime-labels",
+        abs_shape && abs.ends_with("10:30:00") && rel.ends_with("小时前"),
+        "to-the-second + F072 relative",
+    );
+    // 3. 对比行账：源/目标大小 + 绝对秒 + 相对组合——四行渲染就绪。
+    let rows = panel.compare_rows(0, 86_400 * 19_000 + 3_600);
+    set.add(
+        "compare-rows",
+        rows.as_ref().map(|r| {
+            r[0] == "4096 B" && r[1] == "512 B" && r[2].len() == 19
+        }) == Some(true),
+        "render-ready metadata rows",
+    );
+    // 4. 批量行几何：行高 24px、随 idx 下移、不重叠。
+    let r0 = panel.batch_row_rect(0);
+    let r1 = panel.batch_row_rect(1);
+    set.add(
+        "batch-rows",
+        r0.h == ROW_H_PX && r1.y == r0.y + ROW_H_PX && !r0.intersects(&r1),
+        "24px stacked rows",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn mtime_labels_epoch_zero_is_honest() {
+        let (abs, rel) = ConflictPanel::mtime_labels(0, 30);
+        assert!(abs.starts_with("1970-01-01"), "纪元起点如实呈现");
+        assert_eq!(rel, "刚刚");
+    }
+
+    #[test]
+    fn compare_rows_out_of_range_none() {
+        let panel = ConflictPanel::new(vec![]);
+        assert!(panel.compare_rows(9, 0).is_none(), "越界如实空——不编数据");
+    }
+
+    #[test]
+    fn batch_rows_stack_beyond_viewport_without_overlap() {
+        let panel = ConflictPanel::new(vec![]);
+        let a = panel.batch_row_rect(10);
+        let b = panel.batch_row_rect(11);
+        assert_eq!(a.y + ROW_H_PX, b.y);
+    }
+
+    #[test]
+    fn conflict_deep2_checks_all_green() {
+        let set = run_conflict_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F087-deep2 红项：{}/{} 绿", p, p + f);
     }
 }

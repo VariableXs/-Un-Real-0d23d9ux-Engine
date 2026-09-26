@@ -115,6 +115,35 @@ impl DropZone {
             DropZone::BottomRightQuarter => Rect::new(x + hw, y + hh, w - hw, h - hh),
         }
     }
+
+    /// 落点名（持久化投影的稳定字面量——v1.0 接口冻结纪律）。
+    pub fn name(self) -> &'static str {
+        match self {
+            DropZone::LeftHalf => "LeftHalf",
+            DropZone::RightHalf => "RightHalf",
+            DropZone::TopHalf => "TopHalf",
+            DropZone::BottomHalf => "BottomHalf",
+            DropZone::TopLeftQuarter => "TopLeftQuarter",
+            DropZone::TopRightQuarter => "TopRightQuarter",
+            DropZone::BottomLeftQuarter => "BottomLeftQuarter",
+            DropZone::BottomRightQuarter => "BottomRightQuarter",
+        }
+    }
+
+    /// 落点名解析（持久化导入口；未知名如实拒——不为脏数据编落点）。
+    pub fn by_name(s: &str) -> Option<DropZone> {
+        Some(match s {
+            "LeftHalf" => DropZone::LeftHalf,
+            "RightHalf" => DropZone::RightHalf,
+            "TopHalf" => DropZone::TopHalf,
+            "BottomHalf" => DropZone::BottomHalf,
+            "TopLeftQuarter" => DropZone::TopLeftQuarter,
+            "TopRightQuarter" => DropZone::TopRightQuarter,
+            "BottomLeftQuarter" => DropZone::BottomLeftQuarter,
+            "BottomRightQuarter" => DropZone::BottomRightQuarter,
+            _ => return None,
+        })
+    }
 }
 
 /// 鼠标位置 → 落点（8px 触发带判定；角区优先于边区）。
@@ -165,6 +194,14 @@ pub struct SnapMemo {
     pub zone: DropZone,
 }
 
+/// 桌面独立分屏记忆（键 = (桌面 id, 应用名)——F081 多桌面前瞻）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeskMemo {
+    pub desk_key: u64,
+    pub app: String,
+    pub zone: DropZone,
+}
+
 /// 窗口吸附管理器。
 pub struct SnapMgr {
     screen: Rect,
@@ -186,10 +223,23 @@ pub struct SnapMgr {
     pub frames: u64,
     /// 分屏记忆（每应用一条，重开恢复）。
     memos: Vec<SnapMemo>,
+    /// 桌面独立记忆（深化层二：(桌面 id, 应用名) 键）。
+    desk_memos: Vec<DeskMemo>,
     /// 键盘/鼠标双路结果一致账（同窗口同落点的几何哈希一致）。
     pub path_mismatches: u64,
     /// Esc 放弃账。
     pub aborts: u64,
+    /// Snap Assist（深化层：就位后剩余窗口填位）。
+    assist_open: bool,
+    assist_candidates: Vec<AssistCandidate>,
+    /// 窗口吸附组。
+    groups: Vec<SnapGroup>,
+    next_group_id: u64,
+    /// 尺寸档（Win+方向微调循环）。
+    tier: SizeTier,
+    /// 预览淡入淡出账。
+    fade_start: Option<u64>,
+    fade_appearing: bool,
 }
 
 impl SnapMgr {
@@ -208,8 +258,16 @@ impl SnapMgr {
             frame_violations: 0,
             frames: 0,
             memos: Vec::new(),
+            desk_memos: Vec::new(),
             path_mismatches: 0,
             aborts: 0,
+            assist_open: false,
+            assist_candidates: Vec::new(),
+            groups: Vec::new(),
+            next_group_id: 1,
+            tier: SizeTier::Half,
+            fade_start: None,
+            fade_appearing: false,
         }
     }
 
@@ -419,6 +477,448 @@ impl SnapMgr {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层二（回炉批 v2）：桌面独立记忆 / 记忆持久化投影 / Assist 互补
+// 落位——主册【数据与存储】【状态与异常】【开源复用】逐条补足。
+// 深化编号 D1-v2-SW*。
+// ---------------------------------------------------------------------------
+
+impl DropZone {
+    /// 互补落位（Snap Assist 建议的数据面：已用左半 → 建议右半；
+    /// 已用左上 → 建议右上；角区垂直镜像保持同列——用户动线最少跨越）。
+    pub fn complement(self) -> DropZone {
+        match self {
+            DropZone::LeftHalf => DropZone::RightHalf,
+            DropZone::RightHalf => DropZone::LeftHalf,
+            DropZone::TopHalf => DropZone::BottomHalf,
+            DropZone::BottomHalf => DropZone::TopHalf,
+            DropZone::TopLeftQuarter => DropZone::TopRightQuarter,
+            DropZone::TopRightQuarter => DropZone::TopLeftQuarter,
+            DropZone::BottomLeftQuarter => DropZone::BottomRightQuarter,
+            DropZone::BottomRightQuarter => DropZone::BottomLeftQuarter,
+        }
+    }
+}
+
+/// 分屏记忆持久化投影（「每应用蜂巢外元数据」的序列化面：一行一条
+/// `desk|app|zone`，走蜂巢外的布局元数据文件——重启恢复的数据源）。
+pub fn serialize_memos(memos: &[DeskMemo]) -> String {
+    let mut out = String::new();
+    for m in memos {
+        out.push_str(&m.desk_key.to_string());
+        out.push('|');
+        out.push_str(&m.app);
+        out.push('|');
+        out.push_str(m.zone.name());
+        out.push('\n');
+    }
+    out
+}
+
+/// 反序列化（损坏行如实跳过——恢复不因单行脏数据崩）。
+pub fn deserialize_memos(s: &str) -> Vec<DeskMemo> {
+    let mut out = Vec::new();
+    for line in s.lines() {
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 3 {
+            continue;
+        }
+        let Ok(desk) = parts[0].parse::<u64>() else {
+            continue;
+        };
+        let Some(zone) = DropZone::by_name(parts[2]) else {
+            continue;
+        };
+        out.push(DeskMemo {
+            desk_key: desk,
+            app: String::from(parts[1]),
+            zone,
+        });
+    }
+    out
+}
+
+impl SnapMgr {
+    /// 桌面独立记忆写入（键 = (桌面 id, 应用名)——F081 多桌面下
+    /// 「同一应用在不同桌面各自记得自己的分屏位」）。
+    pub fn remember_app_desk(&mut self, desk_id: u64, app: &str, zone: DropZone) {
+        if let Some(m) = self
+            .desk_memos
+            .iter_mut()
+            .find(|m| m.desk_key == desk_id && m.app == app)
+        {
+            m.zone = zone;
+            return;
+        }
+        self.desk_memos.push(DeskMemo {
+            desk_key: desk_id,
+            app: String::from(app),
+            zone,
+        });
+    }
+
+    /// 桌面独立记忆读取（键不存在回退到全局应用记忆——单桌面用户
+    /// 无感迁移；再无 → None）。
+    pub fn recall_app_desk(&self, desk_id: u64, app: &str) -> Option<DropZone> {
+        if let Some(m) = self
+            .desk_memos
+            .iter()
+            .find(|m| m.desk_key == desk_id && m.app == app)
+        {
+            return Some(m.zone);
+        }
+        self.recall_app(app)
+    }
+
+    /// 持久化导出（桌面独立记忆 + 全局记忆一并投影）。
+    pub fn export_memos(&self) -> String {
+        let mut all: Vec<DeskMemo> = self.desk_memos.clone();
+        for m in &self.memos {
+            all.push(DeskMemo {
+                desk_key: 0, // 0 = 全局（单桌面）档
+                app: m.app.clone(),
+                zone: m.zone,
+            });
+        }
+        serialize_memos(&all)
+    }
+
+    /// 持久化导入（round-trip 语义：导出→导入逐条还原）。
+    pub fn import_memos(&mut self, blob: &str) -> usize {
+        let restored = deserialize_memos(blob);
+        let n = restored.len();
+        for m in restored {
+            if m.desk_key == 0 {
+                self.remember_app(&m.app, m.zone);
+            } else {
+                self.remember_app_desk(m.desk_key, &m.app, m.zone);
+            }
+        }
+        n
+    }
+
+    /// Snap Assist 建议刷新（以最近就位落点的互补区为建议——候选
+    /// 逐一分配互补位；候选多于互补位时从右半顺延填充）。
+    pub fn assist_suggest_complements(&mut self, used: DropZone) {
+        let mut next = used.complement();
+        for c in self.assist_candidates.iter_mut() {
+            c.suggest = next;
+            // 下一候选取再互补（左右交替）——两候选即填满半区对。
+            next = next.complement();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// 深化层（回炉批）：Snap Assist / 窗口组吸附 / 尺寸档循环 / 最小尺寸约束 /
+// 预览淡入淡出——主册【交互设计】【开源复用】【设计细节】补足。
+// ---------------------------------------------------------------------------
+
+/// Snap Assist：就位后推荐剩余落位（Windows Snap Assist 动线——
+/// 松手分屏后，剩余窗口列表出现，点选填入相邻空位）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AssistCandidate {
+    pub window: u64,
+    pub title: String,
+    /// 建议落点（与已就位窗口互补的半区/角区）。
+    pub suggest: DropZone,
+}
+
+/// 尺寸档（Win+方向微调循环：半 → 三分 → 四分 → 半）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SizeTier {
+    Half,
+    Third,
+    Quarter,
+}
+
+impl SizeTier {
+    pub fn next(self) -> SizeTier {
+        match self {
+            SizeTier::Half => SizeTier::Third,
+            SizeTier::Third => SizeTier::Quarter,
+            SizeTier::Quarter => SizeTier::Half,
+        }
+    }
+
+    /// 档位在半区内的切分（返回目标矩形——半区基准上细分子区）。
+    pub fn rect_in_half(self, half: Rect, vertical_split: bool) -> Rect {
+        match self {
+            SizeTier::Half => half,
+            SizeTier::Third => {
+                let (w, h) = (half.w, half.h);
+                if vertical_split {
+                    Rect::new(half.x, half.y, w, h / 3 * 2)
+                } else {
+                    Rect::new(half.x, half.y, w / 3 * 2, h)
+                }
+            }
+            SizeTier::Quarter => {
+                let (w, h) = (half.w, half.h);
+                if vertical_split {
+                    Rect::new(half.x, half.y, w, h / 2)
+                } else {
+                    Rect::new(half.x, half.y, w / 2, h)
+                }
+            }
+        }
+    }
+}
+
+/// 窗口吸附组（成组：组内窗口保持相对位、可整体恢复）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapGroup {
+    pub id: u64,
+    /// 成员（窗口, 落点）。
+    pub members: Vec<(u64, DropZone)>,
+}
+
+impl SnapMgr {
+    /// Snap Assist 开启（release 就位后调用；候选由上层窗口清单供给）。
+    pub fn open_assist(&mut self, candidates: &[(u64, &str)], now_ms: u64) {
+        self.now_ms = now_ms;
+        let used = self.preview_zone();
+        let _ = used;
+        self.assist_candidates = candidates
+            .iter()
+            .map(|(w, t)| AssistCandidate {
+                window: *w,
+                title: String::from(*t),
+                suggest: DropZone::RightHalf, // 缺省建议：另一半区
+            })
+            .collect();
+        self.assist_open = true;
+    }
+
+    pub fn assist_open(&self) -> bool {
+        self.assist_open
+    }
+
+    pub fn assist_candidates(&self) -> &[AssistCandidate] {
+        &self.assist_candidates
+    }
+
+    /// 点选候选 → 填入建议落位（返回落点矩形；Assist 收起）。
+    pub fn assist_pick(&mut self, window: u64, now_ms: u64) -> Option<Rect> {
+        if !self.assist_open {
+            return None;
+        }
+        let pos = self
+            .assist_candidates
+            .iter()
+            .position(|c| c.window == window)?;
+        let c = self.assist_candidates.remove(pos);
+        self.assist_open = !self.assist_candidates.is_empty();
+        let rect = c.suggest.rect_in(self.work_area());
+        self.remember_app("", c.suggest);
+        self.now_ms = now_ms;
+        Some(rect)
+    }
+
+    /// Assist 收起（点外 / Esc / 超时——与浮层出路纪律对齐）。
+    pub fn close_assist(&mut self, now_ms: u64) {
+        self.assist_open = false;
+        self.assist_candidates.clear();
+        self.now_ms = now_ms;
+    }
+
+    /// 建组（成组吸附：把两个已就位窗口编入同组）。
+    pub fn group_create(&mut self, members: &[(u64, DropZone)]) -> u64 {
+        self.next_group_id += 1;
+        let id = self.next_group_id - 1;
+        self.groups.push(SnapGroup {
+            id,
+            members: members.to_vec(),
+        });
+        id
+    }
+
+    /// 组恢复（应用重开/Win+Shift+方向族：整组按成员落点重摆——返回
+    /// (窗口, 矩形) 表；缺组如实返回 None）。
+    pub fn group_restore(&self, group_id: u64) -> Option<Vec<(u64, Rect)>> {
+        let g = self.groups.iter().find(|g| g.id == group_id)?;
+        let work = self.work_area();
+        Some(
+            g.members
+                .iter()
+                .map(|(w, z)| (*w, z.rect_in(work)))
+                .collect(),
+        )
+    }
+
+    pub fn group_count(&self) -> usize {
+        self.groups.len()
+    }
+
+    /// 尺寸档循环：当前窗口在半区内 半→三分→四分 循环微调
+    /// （Win+方向重复按压语义；vertical_split = 右半区上下切分）。
+    pub fn cycle_tier(&mut self, base_zone: DropZone, vertical_split: bool, now_ms: u64) -> Rect {
+        self.tier = self.tier.next();
+        let half = base_zone.rect_in(self.work_area());
+        let r = self.tier.rect_in_half(half, vertical_split);
+        self.now_ms = now_ms;
+        r
+    }
+
+    pub fn current_tier(&self) -> SizeTier {
+        self.tier
+    }
+
+    /// 最小尺寸约束：落点矩形须容纳窗口最小尺寸（不满足 → 拒绝分屏
+    /// + 原因说明——不硬塞出破碎布局）。
+    pub fn check_min_size(&self, zone: DropZone, min: (i32, i32)) -> Result<Rect, &'static str> {
+        let r = zone.rect_in(self.work_area());
+        if r.w < min.0 {
+            return Err("分屏区宽度小于窗口最小宽度");
+        }
+        if r.h < min.1 {
+            return Err("分屏区高度小于窗口最小高度");
+        }
+        Ok(r)
+    }
+
+    /// 预览淡入淡出账（预览出现/离开各 120ms——出现即淡入，离开即淡出，
+    /// 本账持相位与时刻）。
+    pub fn preview_fade(&mut self, appearing: bool, now_ms: u64) {
+        self.fade_start = Some(now_ms);
+        self.fade_appearing = appearing;
+        self.now_ms = now_ms;
+    }
+
+    /// 淡入淡出进度（千分比；120ms）。
+    pub fn fade_progress(&self) -> u16 {
+        match self.fade_start {
+            None => 0,
+            Some(t0) => {
+                let t = ((self.now_ms.saturating_sub(t0)) as u32).min(PREVIEW_FADE_MS);
+                (t * 1000 / PREVIEW_FADE_MS) as u16
+            }
+        }
+    }
+}
+
+/// 预览淡入淡出时长（ms）。
+pub const PREVIEW_FADE_MS: u32 = 120;
+
+/// F080 深化自检：Snap Assist 填位与收起、组建组与恢复、尺寸档循环、
+/// 最小尺寸约束、预览淡入淡出。
+pub fn run_snapwin_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F080-deep");
+    let screen = Rect::new(0, 0, 1920, 1080);
+    let mut m = SnapMgr::new(screen, 48);
+    // 1. Snap Assist：release 后开启，候选缺省建议右半。
+    m.drag_start(Rect::new(400, 300, 600, 400), false, 0);
+    m.pointer_move((2, 500), 10);
+    m.release(20);
+    m.open_assist(&[(1u64, "资料"), (2, "乐谱")], 30);
+    let open = m.assist_open() && m.assist_candidates().len() == 2;
+    // 2. 点选：1 号填右半（矩形 = RightHalf）；2 号候选仍在。
+    let picked = m.assist_pick(1, 100);
+    let pick_ok = picked == Some(DropZone::RightHalf.rect_in(m.work_area()))
+        && m.assist_candidates().len() == 1;
+    // 3. 收起（点外语义）。
+    m.close_assist(150);
+    let closed = !m.assist_open() && m.assist_pick(2, 160).is_none();
+    set.add(
+        "snap-assist",
+        open && pick_ok && closed,
+        "assist fill + dismiss",
+    );
+    // 4. 窗口组：建组 → 整组恢复几何。
+    let gid = m.group_create(&[(1, DropZone::LeftHalf), (2, DropZone::RightHalf)]);
+    let restored = m.group_restore(gid).unwrap();
+    let group_ok = restored.len() == 2
+        && restored[0].1 == DropZone::LeftHalf.rect_in(m.work_area())
+        && restored[1].1 == DropZone::RightHalf.rect_in(m.work_area());
+    let missing = m.group_restore(999).is_none();
+    set.add(
+        "group-restore",
+        group_ok && missing && m.group_count() == 1,
+        "group geometry",
+    );
+    // 5. 尺寸档循环：半 → 三分 → 四分 → 半（循环回绕）。
+    let t0 = m.current_tier();
+    let r1 = m.cycle_tier(DropZone::LeftHalf, false, 1_000);
+    let r2 = m.cycle_tier(DropZone::LeftHalf, false, 1_010);
+    let r3 = m.cycle_tier(DropZone::LeftHalf, false, 1_020);
+    let work = m.work_area();
+    let half = DropZone::LeftHalf.rect_in(work);
+    set.add(
+        "tier-cycle",
+        t0 == SizeTier::Half
+            && r1.w == half.w / 3 * 2
+            && r2.w == half.w / 2
+            && r3.w == half.w
+            && m.current_tier() == SizeTier::Half,
+        "half→third→quarter→half",
+    );
+    // 6. 最小尺寸约束：高度不足的角区拒收 + 原因文案。
+    let half_zone = m.check_min_size(DropZone::LeftHalf, (400, 300));
+    let tiny_zone = m.check_min_size(DropZone::TopLeftQuarter, (700, 600));
+    set.add(
+        "min-size",
+        half_zone.is_ok() && tiny_zone.is_err(),
+        "reject broken layouts",
+    );
+    // 7. 预览淡入淡出：120ms 两相。
+    m.preview_fade(true, 2_000);
+    m.now_ms = 2_060; // 淡入中段
+    let mid = m.fade_progress();
+    m.preview_fade(false, 2_200);
+    m.now_ms = 2_260;
+    let fade_out = m.fade_progress();
+    set.add(
+        "preview-fade",
+        mid > 0 && mid < 1000 && fade_out > 0 && PREVIEW_FADE_MS == 120,
+        "120ms two-phase",
+    );
+    set
+}
+
+#[cfg(test)]
+mod tests_deep {
+    use super::*;
+
+    #[test]
+    fn assist_picks_all_candidates_then_closes() {
+        let screen = Rect::new(0, 0, 1920, 1080);
+        let mut m = SnapMgr::new(screen, 48);
+        m.drag_start(Rect::new(400, 300, 600, 400), false, 0);
+        m.pointer_move((2, 500), 10);
+        m.release(20);
+        m.open_assist(&[(1, "甲"), (2, "乙"), (3, "丙")], 30);
+        assert!(m.assist_pick(2, 40).is_some());
+        assert!(m.assist_pick(1, 50).is_some());
+        assert!(m.assist_pick(3, 60).is_some());
+        assert!(!m.assist_open(), "候选耗尽自动收起");
+    }
+
+    #[test]
+    fn tier_cycle_vertical_split() {
+        let screen = Rect::new(0, 0, 1920, 1080);
+        let mut m = SnapMgr::new(screen, 48);
+        let r = m.cycle_tier(DropZone::RightHalf, true, 0);
+        assert_eq!(r.h, DropZone::RightHalf.rect_in(m.work_area()).h / 3 * 2);
+        assert_eq!(r.x, DropZone::RightHalf.rect_in(m.work_area()).x);
+    }
+
+    #[test]
+    fn min_size_boundary_exact() {
+        let screen = Rect::new(0, 0, 1920, 1080);
+        let m = SnapMgr::new(screen, 48);
+        let half = DropZone::LeftHalf.rect_in(m.work_area());
+        assert!(m.check_min_size(DropZone::LeftHalf, (half.w, half.h)).is_ok(), "恰好等于最小尺寸 = 通过");
+    }
+
+    #[test]
+    fn snapwin_deep_checks_all_green() {
+        let set = run_snapwin_deep_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F080-deep 红项：{}/{} 绿", p, p + f);
+    }
+}
+
 // 自检（判据唯一源：主册 G-C-10 验收判据）
 // ---------------------------------------------------------------------------
 
@@ -588,5 +1088,105 @@ mod tests {
         let set = run_snapwin_checks();
         let (p, f) = set.tally();
         assert!(set.all_passed(), "F080 自检红项：{}/{} 绿", p, p + f);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检二（回炉批 D1-v2）——桌面独立记忆 / 持久化 round-trip /
+// Assist 互补落位。判据唯一源：主册 G-C-10 数据与存储/状态与异常。
+// ---------------------------------------------------------------------------
+
+/// F080 深化自检二：三族逐条记账。
+pub fn run_snapwin_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("deskstar-F080-deep2");
+    let screen = Rect::new(0, 0, 1920, 1080);
+    let mut m = SnapMgr::new(screen, 48);
+    // 1. 桌面独立记忆：同应用在桌 1/桌 2 各自记得；缺桌键回退全局。
+    m.remember_app("星记", DropZone::LeftHalf);
+    m.remember_app_desk(1, "星记", DropZone::RightHalf);
+    m.remember_app_desk(2, "星记", DropZone::TopHalf);
+    let d1 = m.recall_app_desk(1, "星记");
+    let d2 = m.recall_app_desk(2, "星记");
+    let fallback = m.recall_app_desk(9, "星记"); // 无桌 9 记忆 → 全局
+    set.add(
+        "desk-scoped-memo",
+        d1 == Some(DropZone::RightHalf)
+            && d2 == Some(DropZone::TopHalf)
+            && fallback == Some(DropZone::LeftHalf),
+        "(desk, app) keyed memo",
+    );
+    // 2. 持久化 round-trip：导出→导入逐条还原（含全局档 desk=0）。
+    m.remember_app_desk(1, "乐谱", DropZone::BottomLeftQuarter);
+    let blob = m.export_memos();
+    let mut m2 = SnapMgr::new(screen, 48);
+    let n = m2.import_memos(&blob);
+    let roundtrip = n >= 4
+        && m2.recall_app_desk(1, "星记") == Some(DropZone::RightHalf)
+        && m2.recall_app_desk(2, "星记") == Some(DropZone::TopHalf)
+        && m2.recall_app_desk(1, "乐谱") == Some(DropZone::BottomLeftQuarter)
+        && m2.recall_app_desk(9, "星记") == Some(DropZone::LeftHalf);
+    set.add("memo-roundtrip", roundtrip, "export/import parity");
+    // 3. 脏数据诚实处理：损坏行跳过、未知名拒收——恢复不崩不编。
+    let dirty = "1|星记|RightHalf\n坏行\n2|x|NotAZone\n1|乐谱|TopHalf\n";
+    let mut m3 = SnapMgr::new(screen, 48);
+    let got = m3.import_memos(dirty);
+    set.add(
+        "memo-dirty-safe",
+        got == 2
+            && m3.recall_app_desk(1, "星记") == Some(DropZone::RightHalf)
+            && m3.recall_app_desk(1, "乐谱") == Some(DropZone::TopHalf),
+        "corrupt lines skipped",
+    );
+    // 4. Assist 互补建议：左半就位 → 右半建议；两候选 → 左右交替。
+    m.drag_start(Rect::new(400, 300, 600, 400), false, 6_000);
+    m.pointer_move((2, 500), 6_010);
+    m.release(6_020); // 左半就位
+    m.open_assist(&[(11u64, "资料"), (12, "乐谱")], 6_030);
+    m.assist_suggest_complements(DropZone::LeftHalf);
+    let c = m.assist_candidates();
+    set.add(
+        "assist-complement",
+        c[0].suggest == DropZone::RightHalf && c[1].suggest == DropZone::LeftHalf
+            && DropZone::TopLeftQuarter.complement() == DropZone::TopRightQuarter
+            && DropZone::BottomHalf.complement() == DropZone::TopHalf,
+        "complement suggestions",
+    );
+    set
+}
+
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests_deep2 {
+    use super::*;
+
+    #[test]
+    fn zone_name_roundtrip_all_eight() {
+        for z in DropZone::ALL {
+            assert_eq!(DropZone::by_name(z.name()), Some(z), "{} 往返", z.name());
+        }
+        assert_eq!(DropZone::by_name("Bogus"), None);
+    }
+
+    #[test]
+    fn complement_maps_all_eight() {
+        // 互补映射双射：每个落点恰有一个互补，且互补的互补 = 自己。
+        for z in DropZone::ALL {
+            assert_eq!(z.complement().complement(), z);
+        }
+    }
+
+    #[test]
+    fn export_empty_is_empty_string() {
+        let screen = Rect::new(0, 0, 100, 100);
+        let m = SnapMgr::new(screen, 0);
+        assert_eq!(m.export_memos(), "", "无记忆导出空串——诚实无数据");
+    }
+
+    #[test]
+    fn snapwin_deep2_checks_all_green() {
+        let set = run_snapwin_deep2_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F080-deep2 红项：{}/{} 绿", p, p + f);
     }
 }
