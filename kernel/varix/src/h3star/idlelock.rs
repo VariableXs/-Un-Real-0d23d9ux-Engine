@@ -607,3 +607,168 @@ mod deep2_tests {
         assert!(amb.current.is_none(), "默认不选内容——用户点头才启用");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 豁免采样账（媒体活跃）+ 演示模式倒计时账
+// ---------------------------------------------------------------------------
+
+/// 媒体活跃豁免采样账（判据「媒体活跃豁免」的机制面）：媒体会话
+/// 心跳采样——连续心跳在窗内 = 活跃（锁屏豁免）；心跳停超窗 = 不再
+/// 豁免（看视频锁屏不了、播完歌正常锁）。窗口语义唯一源。
+pub struct MediaExemptionBook {
+    /// 豁免窗（最后一次心跳后仍豁免的时长）。
+    pub window_ms: u64,
+    last_heartbeat_ms: Option<u64>,
+    pub grants: u64,
+    pub expiries: u64,
+}
+
+impl MediaExemptionBook {
+    pub fn new(window_ms: u64) -> MediaExemptionBook {
+        MediaExemptionBook { window_ms, last_heartbeat_ms: None, grants: 0, expiries: 0 }
+    }
+
+    /// 心跳（播放推进即打点）。
+    pub fn heartbeat(&mut self, at_ms: u64) {
+        self.last_heartbeat_ms = Some(at_ms);
+    }
+
+    /// 锁屏时点查询：窗内 → 豁免成立（计数）；窗外/无心跳 → 不豁免。
+    pub fn exempt_at(&mut self, at_ms: u64) -> bool {
+        match self.last_heartbeat_ms {
+            Some(h) if at_ms.saturating_sub(h) <= self.window_ms => {
+                self.grants += 1;
+                true
+            }
+            Some(_) => {
+                self.expiries += 1;
+                false
+            }
+            None => false,
+        }
+    }
+}
+
+/// 演示模式倒计时账（判据「演示模式 2h 计时」的机制面）：开启即计
+/// 2h 倒计时；可提前关闭（剩余清零留痕）；到点自动退出并留痕——
+/// 「演示中锁屏不了」的承诺由账面保证。
+pub struct DemoModeTimer {
+    pub duration_ms: u64,
+    started_at: Option<u64>,
+    pub ends: u64,
+    pub early_offs: u64,
+    pub auto_expiries: u64,
+}
+
+pub const DEMO_DURATION_MS: u64 = 2 * 60 * 60 * 1000;
+
+impl DemoModeTimer {
+    pub fn new() -> DemoModeTimer {
+        DemoModeTimer { duration_ms: DEMO_DURATION_MS, started_at: None, ends: 0, early_offs: 0, auto_expiries: 0 }
+    }
+
+    pub fn start(&mut self, at_ms: u64) {
+        self.started_at = Some(at_ms);
+        self.ends = at_ms + self.duration_ms;
+    }
+
+    /// 采样：到点自动退出（留痕）；返回是否仍在演示。
+    pub fn sample(&mut self, at_ms: u64) -> bool {
+        if self.started_at.is_none() {
+            return false;
+        }
+        if at_ms >= self.ends {
+            self.started_at = None;
+            self.auto_expiries += 1;
+            return false;
+        }
+        true
+    }
+
+    /// 提前关闭（剩余清零留痕——不静默）。
+    pub fn stop_early(&mut self) -> bool {
+        if self.started_at.take().is_some() {
+            self.early_offs += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.started_at.is_some()
+    }
+}
+
+impl Default for DemoModeTimer {
+    fn default() -> DemoModeTimer {
+        DemoModeTimer::new()
+    }
+}
+
+/// 深化层三自检（媒体豁免 / 演示倒计时）。
+pub fn run_idlelock_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F316-317-deep3");
+
+    // 1. 媒体豁免：窗内豁免、窗外失效、无心跳不豁免。
+    let mut m = MediaExemptionBook::new(30_000);
+    let none = m.exempt_at(0);
+    m.heartbeat(1000);
+    let in_window = m.exempt_at(31_000); // 距心跳 30s——恰在窗内（≤）。
+    let out_window = m.exempt_at(31_001);
+    set.add(
+        "media exemption window",
+        !none && in_window && !out_window && m.grants == 1 && m.expiries == 1,
+        "",
+    );
+
+    // 2. 演示模式：2h 内活跃、到点自动退（留痕）、未开启不虚报。
+    let mut d = DemoModeTimer::new();
+    let before = d.sample(0);
+    d.start(0);
+    let mid = d.sample(DEMO_DURATION_MS - 1);
+    let after = d.sample(DEMO_DURATION_MS);
+    set.add(
+        "demo auto expiry",
+        !before && mid && !after && d.auto_expiries == 1 && !d.active(),
+        "",
+    );
+
+    // 3. 提前关闭留痕 + 关闭后再采样不活跃。
+    let mut d2 = DemoModeTimer::new();
+    d2.start(100);
+    let stopped = d2.stop_early();
+    let resampled = d2.sample(200);
+    set.add(
+        "demo early stop trail",
+        stopped && !resampled && d2.early_offs == 1 && !d2.stop_early(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn media_repeated_heartbeats_extend() {
+        let mut m = MediaExemptionBook::new(10_000);
+        m.heartbeat(0);
+        m.heartbeat(9_000); // 快到窗尾又续上。
+        assert!(m.exempt_at(18_000), "心跳续窗——长视频不中途锁屏");
+    }
+
+    #[test]
+    fn demo_duration_is_two_hours() {
+        assert_eq!(DEMO_DURATION_MS, 7_200_000, "演示 2h 判据常量钉死");
+    }
+
+    #[test]
+    fn media_zero_window_never_exempt() {
+        let mut m = MediaExemptionBook::new(0);
+        m.heartbeat(100);
+        assert!(!m.exempt_at(101), "零窗语义：任何滞后都出窗");
+    }
+}

@@ -256,3 +256,97 @@ mod tests {
         assert_eq!(h.raises, 2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 触发质量账（前置触发的运营面）
+// ---------------------------------------------------------------------------
+
+/// 触发质量账（判据「划过不触发（<300ms 20 次测试）」的运营面）：
+/// 逐次悬停记录 (悬停时长, 是否触发)——触发率/误拒率统计直出。误拒 =
+/// 悬停超判线（500ms）却未触发（用户等着前置却没来——挫败指纹）。
+#[derive(Default)]
+pub struct TriggerQualityBook {
+    /// (悬停时长 ms, 触发?)。
+    pub samples: Vec<(u64, bool)>,
+}
+
+impl TriggerQualityBook {
+    pub const TRIGGER_MS: u64 = 500;
+    pub const SWIPE_MS: u64 = 300;
+
+    pub fn observe(&mut self, dwell_ms: u64, triggered: bool) {
+        self.samples.push((dwell_ms, triggered));
+    }
+
+    /// 划过零误触（<300ms 全部不触发——20 次测试的机器面）。
+    pub fn swipes_never_trigger(&self) -> bool {
+        self.samples.iter().all(|(d, t)| *d >= Self::SWIPE_MS || !*t)
+    }
+
+    /// 误拒清单：悬停 ≥ 判线却没触发（应触发未触发——挫败信号直出）。
+    pub fn false_rejections(&self) -> Vec<u64> {
+        self.samples
+            .iter()
+            .filter(|(d, t)| *d >= Self::TRIGGER_MS && !t)
+            .map(|(d, _)| *d)
+            .collect()
+    }
+
+    /// 触发率‰（悬停 ≥ 判线的样本口径——分母只数够格触发者）。
+    pub fn trigger_rate_permille(&self) -> u32 {
+        let qualified: Vec<&(u64, bool)> =
+            self.samples.iter().filter(|(d, _)| *d >= Self::TRIGGER_MS).collect();
+        if qualified.is_empty() {
+            return 0;
+        }
+        let hit = qualified.iter().filter(|(_, t)| *t).count();
+        (hit * 1000 / qualified.len()) as u32
+    }
+}
+
+/// 深化层二自检（触发质量账）。
+pub fn run_draghover_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F315-deep2");
+
+    // 1. 划过零误触：20 次短悬停全不触发。
+    let mut b = TriggerQualityBook::default();
+    for i in 0..20u64 {
+        b.observe(100 + i * 10, false); // 100-290ms 全在划过带。
+    }
+    set.add("swipes never trigger", b.swipes_never_trigger(), "");
+
+    // 2. 够格悬停触发率与误拒直出。
+    b.observe(600, true);
+    b.observe(700, true);
+    b.observe(800, false); // 误拒——应触发未触发。
+    set.add(
+        "false rejection surfaced",
+        b.false_rejections() == alloc::vec![800] && b.trigger_rate_permille() == 666,
+        "",
+    );
+
+    // 3. 零合格样本不虚报触发率（诚实面）。
+    let empty = TriggerQualityBook::default();
+    set.add("empty rate zero", empty.trigger_rate_permille() == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn boundary_dwell_counts_as_qualified() {
+        let mut b = TriggerQualityBook::default();
+        b.observe(500, true); // 恰在判线——够格口径（≥）。
+        assert_eq!(b.trigger_rate_permille(), 1000);
+    }
+
+    #[test]
+    fn swipe_at_boundary_must_not_trigger() {
+        let mut b = TriggerQualityBook::default();
+        b.observe(299, true); // <300ms 却触发了——误触。
+        assert!(!b.swipes_never_trigger(), "划过带触发即误触——账面直出");
+    }
+}

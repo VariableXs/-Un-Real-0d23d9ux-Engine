@@ -2297,3 +2297,237 @@ mod deep4_tests {
         assert_eq!(hook.refusals, 2, "拒绝计数累计——异常显性化");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层五 · 卸载排队中心 + 系统组件保护白名单 + 关联清理复盘审计
+// ---------------------------------------------------------------------------
+
+/// 系统组件保护白名单（硬件与数据安全红线的卸载域落法）：系统组件
+/// 一律不可卸载——白名单登记制，越权请求拒绝并留痕（谁在什么时候
+/// 试图卸载什么，全程可查）。白名单外组件卸载照常（保护面最小化——
+/// 只拦真系统件，不借保护之名锁用户选择）。
+pub struct ProtectedComponents {
+    protected: Vec<String>,
+    /// 越权请求留痕：(请求者, 组件名, 时刻 ms)。
+    pub violations: Vec<(String, String, u64)>,
+}
+
+impl ProtectedComponents {
+    /// 出厂保护清单（系统件——卸载任何一项都等于拆掉系统本体）。
+    pub const FACTORY: [&'static str; 6] =
+        ["内核", "合成器", "输入服务", "设置中心", "权限中心", "恢复环境"];
+
+    pub fn new() -> ProtectedComponents {
+        ProtectedComponents {
+            protected: Self::FACTORY.iter().map(|s| String::from(*s)).collect(),
+            violations: Vec::new(),
+        }
+    }
+
+    pub fn is_protected(&self, app: &str) -> bool {
+        self.protected.iter().any(|p| p == app)
+    }
+
+    /// 卸载请求闸门：保护件拒绝 + 留痕；普通件放行。
+    pub fn gate_uninstall(&mut self, requester: &str, app: &str, now_ms: u64) -> bool {
+        if self.is_protected(app) {
+            self.violations.push((String::from(requester), String::from(app), now_ms));
+            return false;
+        }
+        true
+    }
+
+    /// 保护清单冻结审计：出厂六件一个不少（白名单被削即红——保护面
+    /// 不许悄悄缩水）。
+    pub fn factory_intact(&self) -> bool {
+        Self::FACTORY.iter().all(|f| self.is_protected(f))
+    }
+}
+
+impl Default for ProtectedComponents {
+    fn default() -> ProtectedComponents {
+        ProtectedComponents::new()
+    }
+}
+
+/// 卸载排队中心（多应用卸载的秩序面）：FIFO 队列 + 并发互斥（同一
+/// 时刻只跑一个卸载——共享面冲突防护）；队列位可取消；执行完成的
+/// 应用出队留账。
+pub struct UninstallQueue {
+    queue: Vec<String>,
+    pub running: Option<String>,
+    /// 完成账（执行序）。
+    pub done: Vec<String>,
+}
+
+impl UninstallQueue {
+    pub fn new() -> UninstallQueue {
+        UninstallQueue { queue: Vec::new(), running: None, done: Vec::new() }
+    }
+
+    /// 入队（同应用去重——重复点击不重复排队）。
+    pub fn enqueue(&mut self, app: &str) -> bool {
+        if self.running.as_deref() == Some(app) || self.queue.iter().any(|a| a == app) {
+            return false;
+        }
+        self.queue.push(String::from(app));
+        true
+    }
+
+    /// 取下一个执行位（并发互斥：已有执行位则拒绝——一次一个）。
+    pub fn start_next(&mut self) -> Option<String> {
+        if self.running.is_some() {
+            return None;
+        }
+        if self.queue.is_empty() {
+            return None;
+        }
+        let app = self.queue.remove(0);
+        self.running = Some(app.clone());
+        Some(app)
+    }
+
+    /// 当前执行完成出账。
+    pub fn finish_current(&mut self) -> bool {
+        match self.running.take() {
+            Some(app) => {
+                self.done.push(app);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 取消排队位（还没开跑的可以反悔；正在跑的不许取消——执行面
+    /// 有自己的确认流）。
+    pub fn cancel_queued(&mut self, app: &str) -> bool {
+        let before = self.queue.len();
+        self.queue.retain(|a| a != app);
+        self.queue.len() != before
+    }
+
+    pub fn queued(&self) -> &[String] {
+        &self.queue
+    }
+}
+
+impl Default for UninstallQueue {
+    fn default() -> UninstallQueue {
+        UninstallQueue::new()
+    }
+}
+
+/// 关联清理复盘审计（「关联清理」判据的闭环面）：卸载完成后对四条
+/// 关联面逐项复盘——① 文件类型注册摘除；② 自启动项回收；③ 权限
+/// 回收（F324）；④ 默认应用让位（被卸应用曾是默认 → 出让位记录）。
+/// 四面全绿才算「卸载干净」，缺一显性登记为复盘红项。
+#[derive(Default)]
+pub struct CleanupPostmortem {
+    pub app: String,
+    pub checks: Vec<(&'static str, bool)>,
+}
+
+impl CleanupPostmortem {
+    pub fn new(app: &str, regs_purged: bool, autostart_off: bool, perms_revoked: bool, default_yields: bool) -> CleanupPostmortem {
+        CleanupPostmortem {
+            app: String::from(app),
+            checks: alloc::vec![
+                ("文件类型注册摘除", regs_purged),
+                ("自启动项回收", autostart_off),
+                ("权限回收", perms_revoked),
+                ("默认应用让位", default_yields),
+            ],
+        }
+    }
+
+    pub fn all_clean(&self) -> bool {
+        !self.checks.is_empty() && self.checks.iter().all(|(_, ok)| *ok)
+    }
+
+    /// 红项清单（哪些关联面没清干净——改进/修理直出）。
+    pub fn red_items(&self) -> Vec<&'static str> {
+        self.checks.iter().filter(|(_, ok)| !ok).map(|(n, _)| *n).collect()
+    }
+}
+
+/// 深化层五自检（保护白名单 / 排队中心 / 复盘审计）。
+pub fn run_sysgov_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep5");
+
+    // 1. 保护白名单：系统件拒绝 + 留痕点名；普通件放行。
+    let mut pc = ProtectedComponents::new();
+    let sys = pc.gate_uninstall("设置中心", "内核", 0);
+    let user_app = pc.gate_uninstall("设置中心", "画板Pro", 10);
+    set.add(
+        "protected gate and trail",
+        !sys && user_app && pc.violations == alloc::vec![(String::from("设置中心"), String::from("内核"), 0)],
+        "",
+    );
+
+    // 2. 白名单冻结审计：出厂六件全在（削保护 = 缺陷）。
+    set.add("factory protected intact", pc.factory_intact(), "");
+
+    // 3. 排队中心：入队去重、并发互斥、完成出账、排队位可取消。
+    let mut q = UninstallQueue::new();
+    let _ = q.enqueue("画板Pro");
+    let dup = q.enqueue("画板Pro");
+    let _ = q.enqueue("小算盘");
+    let first = q.start_next();
+    let concurrent = q.start_next();
+    set.add(
+        "queue dedup and mutex",
+        !dup && first.as_deref() == Some("画板Pro") && concurrent.is_none(),
+        "",
+    );
+    let _ = q.finish_current();
+    let second = q.start_next();
+    set.add(
+        "queue sequential flow",
+        second.as_deref() == Some("小算盘") && q.done == alloc::vec![String::from("画板Pro")],
+        "",
+    );
+    let _ = q.enqueue("计算器");
+    let cancelled = q.cancel_queued("计算器");
+    set.add(
+        "queued cancel works",
+        cancelled && q.queued().is_empty() && !q.cancel_queued("幽灵应用"),
+        "",
+    );
+
+    // 4. 复盘审计：四面全绿 = 干净；缺面点名（红项直出）。
+    let ok = CleanupPostmortem::new("画板Pro", true, true, true, true);
+    let bad = CleanupPostmortem::new("小算盘", true, false, true, false);
+    set.add(
+        "postmortem all clean",
+        ok.all_clean() && !bad.all_clean() && bad.red_items() == alloc::vec!["自启动项回收", "默认应用让位"],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn protected_list_rejects_all_factory() {
+        let mut pc = ProtectedComponents::new();
+        for f in ProtectedComponents::FACTORY {
+            assert!(!pc.gate_uninstall("测试者", f, 0), "出厂件 {f} 必须被拦");
+        }
+        assert_eq!(pc.violations.len(), 6, "每次越权都留痕");
+    }
+
+    #[test]
+    fn finish_without_running_rejected() {
+        let mut q = UninstallQueue::new();
+        assert!(!q.finish_current(), "无执行位时完成是空转——拒绝");
+    }
+
+    #[test]
+    fn postmortem_empty_checks_not_clean() {
+        let pm = CleanupPostmortem { app: String::from("x"), checks: Vec::new() };
+        assert!(!pm.all_clean(), "零检查项不构成干净——不虚报");
+    }
+}

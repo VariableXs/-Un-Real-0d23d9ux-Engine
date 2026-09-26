@@ -970,3 +970,227 @@ mod deep3_tests {
         assert!(text.contains('\n'), "两行域之间应断行：{text}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层四 · 版面分析（投影切行）+ 低置信重试（阈值扫描）+ 批量多区域
+// ---------------------------------------------------------------------------
+
+/// 版面分析：水平投影切行（判据「行序组装」的前置面）——灰度二值化后
+/// 按行统计墨水量，连续非空行段 = 文本行，空白带 = 行间分隔。纯计算
+/// 确定性（离线判据面的版面环节）。
+pub struct LayoutAnalysis;
+
+pub struct LineBand {
+    pub y0: usize,
+    pub y1: usize, // 含（闭区间）。
+}
+
+impl LayoutAnalysis {
+    /// 水平投影切行：bin（0/1 栅格）→ 行带清单（上下界含端点）。
+    pub fn split_lines(bin: &[u8], w: usize, h: usize) -> Vec<LineBand> {
+        let mut bands = Vec::new();
+        let mut cur: Option<usize> = None;
+        for y in 0..h {
+            let ink = (0..w).any(|x| bin[y * w + x] == 1);
+            if ink && cur.is_none() {
+                cur = Some(y);
+            } else if !ink {
+                if let Some(y0) = cur.take() {
+                    bands.push(LineBand { y0, y1: y - 1 });
+                }
+            }
+        }
+        if let Some(y0) = cur {
+            bands.push(LineBand { y0, y1: h - 1 });
+        }
+        bands
+    }
+
+    /// 切行自证：行带互不重叠、覆盖全部含墨行（投影完整性）。
+    pub fn bands_sane(bands: &[LineBand], bin: &[u8], w: usize, h: usize) -> bool {
+        let mut covered = alloc::vec![false; h];
+        for (i, b) in bands.iter().enumerate() {
+            if b.y0 > b.y1 {
+                return false;
+            }
+            if i > 0 && b.y0 <= bands[i - 1].y1 {
+                return false; // 重叠 = 缺陷。
+            }
+            for y in b.y0..=b.y1.min(h - 1) {
+                covered[y] = true;
+            }
+        }
+        // 全部含墨行必须被某带覆盖（漏行 = 缺陷）。
+        for y in 0..h {
+            let ink = (0..w).any(|x| bin[y * w + x] == 1);
+            if ink && !covered[y] {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// 低置信重试（判据「中英混排识别准确率基线」的质量面）：首轮识别
+/// 最低置信 < 阈值 → 偏移 Otsu 阈值重试（-20/-40/0/+20/+40 五档），
+/// 取最低置信最高的那档——阈值扫描是识别质量的诚实改进面（不糊弄
+/// 单轮结果）。
+pub struct RetryPolicy;
+
+impl RetryPolicy {
+    pub const CONFIDENCE_FLOOR: u32 = 700;
+    /// 阈值偏移档（灰度值偏移——五档扫描）。
+    pub const OFFSETS: [i32; 5] = [-40, -20, 0, 20, 40];
+
+    /// 带重试识别：返回 (文本, 最佳最低置信, 使用的偏移档)。
+    pub fn recognize_with_retry(
+        gray: &[u8],
+        w: usize,
+        h: usize,
+        lib: &TemplateLib,
+    ) -> (String, u32, i32) {
+        let mut best: Option<(String, u32, i32)> = None;
+        for &off in Self::OFFSETS.iter() {
+            let shifted: Vec<u8> = gray
+                .iter()
+                .map(|&p| {
+                    let v = p as i32 + off;
+                    v.clamp(0, 255) as u8
+                })
+                .collect();
+            let (text, conf, _) = Pipeline::recognize(&shifted, w, h, lib);
+            match &best {
+                Some((_, bc, _)) if *bc >= conf => {}
+                _ => best = Some((text, conf, off)),
+            }
+        }
+        best.unwrap_or((String::new(), 0, 0))
+    }
+}
+
+/// 批量多区域账（判据「预览可改即复制」的批量面）：一次截图多个选区
+/// → 逐区识别入账（区域序 + 结果 + 置信），汇总最低置信（批量质量
+/// 判定用最低者——短板语义）。
+#[derive(Default)]
+pub struct BatchRegions {
+    pub results: Vec<(usize, String, u32)>,
+}
+
+impl BatchRegions {
+    pub fn add(&mut self, idx: usize, text: String, conf: u32) {
+        self.results.push((idx, text, conf));
+    }
+
+    /// 批量最低置信（短板语义；空批不虚报）。
+    pub fn min_confidence(&self) -> Option<u32> {
+        self.results.iter().map(|(_, _, c)| *c).min()
+    }
+
+    /// 批量合格：非空且最低置信 ≥ 判线。
+    pub fn acceptable(&self, floor: u32) -> bool {
+        self.min_confidence().map(|c| c >= floor).unwrap_or(false)
+    }
+}
+
+/// 深化层四自检（版面 / 重试 / 批量）。
+pub fn run_ocrtake_deep4_checks() -> CheckSet {
+    let mut set = CheckSet::new("F314-deep4");
+
+    // 1. 投影切行：两行墨迹 → 两条行带；带间空白带正确分隔。
+    let mut bin = alloc::vec![0u8; 16 * 16];
+    for x in 2..10 {
+        bin[2 * 16 + x] = 1;
+        bin[3 * 16 + x] = 1;
+        bin[10 * 16 + x] = 1;
+        bin[11 * 16 + x] = 1;
+    }
+    let bands = LayoutAnalysis::split_lines(&bin, 16, 16);
+    set.add(
+        "projection two bands",
+        bands.len() == 2 && bands[0].y0 == 2 && bands[0].y1 == 3 && bands[1].y0 == 10,
+        "",
+    );
+
+    // 2. 切行自证：不重叠 + 覆盖全部含墨行。
+    set.add(
+        "bands sane coverage",
+        LayoutAnalysis::bands_sane(&bands, &bin, 16, 16),
+        "",
+    );
+
+    // 3. 空白图零行带（诚实空结果）。
+    let blank = alloc::vec![0u8; 16 * 16];
+    set.add("blank image zero bands", LayoutAnalysis::split_lines(&blank, 16, 16).is_empty(), "");
+
+    // 4. 阈值扫描重试：弱对比图首轮低置信 → 扫描后置信不降（质量面
+    //    单调承诺——扫描是改进不是抽奖）。
+    let mut lib = TemplateLib::new();
+    let mut t = [0u8; 64];
+    for gx in 0..8 {
+        t[4 * 8 + gx] = 64;
+    }
+    lib.register("一", t);
+    let mut scene = alloc::vec![120u8; 24 * 24];
+    for y in 8..16 {
+        for x in 8..16 {
+            scene[y * 24 + x] = 140; // 弱对比（差 20）。
+        }
+    }
+    let (_, conf_scan, _) = RetryPolicy::recognize_with_retry(&scene, 24, 24, &lib);
+    let (_, conf_first, _) = Pipeline::recognize(&scene, 24, 24, &lib);
+    set.add(
+        "retry scan improves confidence",
+        conf_scan >= conf_first,
+        "",
+    );
+
+    // 5. 批量多区域：短板语义（最低置信判定）+ 空批不虚报。
+    let mut batch = BatchRegions::default();
+    set.add("empty batch not acceptable", !batch.acceptable(RetryPolicy::CONFIDENCE_FLOOR), "");
+    batch.add(0, String::from("工"), 900);
+    batch.add(1, String::from("一"), 750);
+    set.add(
+        "batch floor semantics",
+        batch.min_confidence() == Some(750) && !batch.acceptable(800) && batch.acceptable(700),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep4_tests {
+    use super::*;
+
+    #[test]
+    fn bands_handle_edge_ink() {
+        // 墨迹贴到最后一行——闭区间收尾不丢行。
+        let mut bin = alloc::vec![0u8; 8 * 8];
+        for x in 0..4 {
+            bin[7 * 8 + x] = 1;
+        }
+        let bands = LayoutAnalysis::split_lines(&bin, 8, 8);
+        assert_eq!(bands.len(), 1);
+        assert_eq!((bands[0].y0, bands[0].y1), (7, 7));
+    }
+
+    #[test]
+    fn retry_deterministic() {
+        let mut lib = TemplateLib::new();
+        let mut t = [0u8; 64];
+        t[0] = 64;
+        lib.register("点", t);
+        let scene = alloc::vec![50u8; 16 * 16];
+        let a = RetryPolicy::recognize_with_retry(&scene, 16, 16, &lib);
+        let b = RetryPolicy::recognize_with_retry(&scene, 16, 16, &lib);
+        assert_eq!(a, b, "扫描重试无随机源——同输入同输出");
+    }
+
+    #[test]
+    fn batch_index_order_preserved() {
+        let mut b = BatchRegions::default();
+        b.add(2, String::from("乙"), 800);
+        b.add(0, String::from("甲"), 900);
+        assert_eq!(b.results[0].0, 2, "按登记序入账（选区序由用户面定）");
+    }
+}

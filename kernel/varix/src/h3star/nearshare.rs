@@ -680,3 +680,244 @@ mod deep2_tests {
         assert_eq!(rc.partials_remaining(), 1, "清场后可开新会话");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 配对确认码握手 + 自适应分块 + 多接收方账
+// ---------------------------------------------------------------------------
+
+/// 配对确认码握手（判据「确认步用例」的防误发机制面）：双端各出六位
+/// 确认码，用户肉眼比对一致才放行传输——防同网段陌生设备静默收发。
+/// 码生成确定性（同会话种子同码——可复现可审计）；三次不匹配 → 会话
+/// 封禁留痕（防暴力猜测——失败显性化）。
+pub struct PairingHandshake {
+    /// 本端码（会话种子派生）。
+    pub local_code: u32,
+    attempts: u32,
+    pub banned: bool,
+    /// 匹配留痕（确认成功时刻）。
+    pub confirmed_at: Option<u64>,
+}
+
+impl PairingHandshake {
+    /// 种子派生码（六位十进制：100000-999999——纯计算确定性）。
+    pub fn new(seed: u64) -> PairingHandshake {
+        let code = (seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407)
+            >> 33) % 900_000
+            + 100_000;
+        PairingHandshake { local_code: code as u32, attempts: 0, banned: false, confirmed_at: None }
+    }
+
+    /// 对端码校验：一致 → 确认留痕放行；不一致 → 计数，三次封禁。
+    pub fn verify(&mut self, remote_code: u32, at_ms: u64) -> bool {
+        if self.banned {
+            return false;
+        }
+        if remote_code == self.local_code {
+            self.confirmed_at = Some(at_ms);
+            true
+        } else {
+            self.attempts += 1;
+            if self.attempts >= 3 {
+                self.banned = true;
+            }
+            false
+        }
+    }
+
+    pub fn attempts(&self) -> u32 {
+        self.attempts
+    }
+}
+
+/// 自适应分块（判据「10MB/s 起步速度记录」的延续面）：按滑动速度样本
+/// 调块长——速度掉 → 块加大（降每块固定开销占比）；速度回升 → 块回
+/// 落（降重传代价）。档位表唯一源，调档留痕。
+pub struct AdaptiveChunking {
+    /// (速度下限 MB/s, 块长 MB)——速度越低块越大。
+    pub table: [(u64, u64); 4],
+    pub current_chunk_mb: u64,
+    pub switches: u64,
+}
+
+impl AdaptiveChunking {
+    pub fn new() -> AdaptiveChunking {
+        AdaptiveChunking {
+            table: [(20, 1), (10, 2), (5, 4), (0, 8)],
+            current_chunk_mb: 1,
+            switches: 0,
+        }
+    }
+
+    /// 速度采样 → 档位（表内首个「速度 ≥ 下限」的档）。
+    pub fn feed_speed(&mut self, speed_mbps: u64) -> u64 {
+        let want = self
+            .table
+            .iter()
+            .find(|(floor, _)| speed_mbps >= *floor)
+            .map(|(_, chunk)| *chunk)
+            .unwrap_or(8);
+        if want != self.current_chunk_mb {
+            self.current_chunk_mb = want;
+            self.switches += 1;
+        }
+        self.current_chunk_mb
+    }
+
+    /// 表自证：块长随速度降单调不降（慢速大块——策略不倒挂）。
+    pub fn monotonic(&self) -> bool {
+        self.table.windows(2).all(|w| w[0].0 > w[1].0 && w[0].1 <= w[1].1)
+    }
+}
+
+impl Default for AdaptiveChunking {
+    fn default() -> AdaptiveChunking {
+        AdaptiveChunking::new()
+    }
+}
+
+/// 多接收方账（一台对多台的分发面）：逐接收方独立记账（确认码/进度/
+/// 完成）——一台慢不拖死全场（独立进度语义）。
+#[derive(Default)]
+pub struct MultiCastBook {
+    /// (接收方, 确认?, 进度‰)。
+    pub receivers: Vec<(String, bool, u32)>,
+}
+
+impl MultiCastBook {
+    pub fn join(&mut self, name: &str) -> bool {
+        if self.receivers.iter().any(|(n, _, _)| n == name) {
+            return false;
+        }
+        self.receivers.push((String::from(name), false, 0));
+        true
+    }
+
+    /// 逐方确认（未入册的确认拒绝——不猜）。
+    pub fn confirm(&mut self, name: &str) -> bool {
+        match self.receivers.iter_mut().find(|(n, _, _)| n == name) {
+            Some((_, ok, _)) => {
+                *ok = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 逐方进度推进。
+    pub fn progress(&mut self, name: &str, permille: u32) -> bool {
+        match self.receivers.iter_mut().find(|(n, _, _)| n == name) {
+            Some((_, ok, p)) => {
+                if !*ok {
+                    return false; // 未确认不收数据（握手闸门）。
+                }
+                *p = permille.min(1000);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 全场完成判定：全确认 + 全 1000‰。
+    pub fn all_done(&self) -> bool {
+        !self.receivers.is_empty()
+            && self.receivers.iter().all(|(_, ok, p)| *ok && *p == 1000)
+    }
+
+    /// 慢方清单（拖后接收方——进度 < 全场最小的面上直出）。
+    pub fn laggards(&self) -> Vec<&str> {
+        let min = self
+            .receivers
+            .iter()
+            .map(|(_, _, p)| *p)
+            .min()
+            .unwrap_or(0);
+        self.receivers
+            .iter()
+            .filter(|(_, _, p)| *p == min && min < 1000)
+            .map(|(n, _, _)| n.as_str())
+            .collect()
+    }
+}
+
+/// 深化层二自检（握手 / 自适应分块 / 多接收方）。
+pub fn run_nearshare_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F321-deep3");
+
+    // 1. 握手：同种子码确定可复现；对码确认留痕。
+    let mut hs = PairingHandshake::new(42);
+    let code = hs.local_code;
+    let same = PairingHandshake::new(42).local_code == code;
+    let ok = hs.verify(code, 100);
+    set.add("handshake deterministic confirm", same && ok && hs.confirmed_at == Some(100), "");
+
+    // 2. 防暴力：三次错码封禁，封禁后对码也拒（显性化——不静默重试）。
+    let mut hs2 = PairingHandshake::new(7);
+    let _ = hs2.verify(111_111, 0);
+    let _ = hs2.verify(222_222, 10);
+    let _ = hs2.verify(333_333, 20);
+    set.add(
+        "handshake bans after three",
+        hs2.banned && !hs2.verify(hs2.local_code, 30) && hs2.attempts() == 3,
+        "",
+    );
+
+    // 3. 自适应分块：速度掉档块加大、回升块回落、表单调自证。
+    let mut ac = AdaptiveChunking::new();
+    let c1 = ac.feed_speed(25);
+    let c2 = ac.feed_speed(7);
+    let c3 = ac.feed_speed(25);
+    set.add(
+        "adaptive chunking bidirectional",
+        c1 == 1 && c2 == 4 && c3 == 1 && ac.switches == 2 && ac.monotonic(),
+        "",
+    );
+
+    // 4. 多接收方：逐方独立确认/进度；慢方直出；全场完成判定。
+    let mut mc = MultiCastBook::default();
+    let _ = mc.join("客厅机");
+    let _ = mc.join("书房机");
+    let dup = mc.join("客厅机");
+    set.add("multicast dedup join", !dup && mc.receivers.len() == 2, "");
+    let before_confirm = mc.progress("客厅机", 100);
+    let _ = mc.confirm("客厅机");
+    let _ = mc.confirm("书房机");
+    let _ = mc.progress("客厅机", 1000);
+    let _ = mc.progress("书房机", 400);
+    set.add(
+        "multicast independent progress",
+        !before_confirm && mc.laggards() == alloc::vec!["书房机"] && !mc.all_done(),
+        "",
+    );
+    let _ = mc.progress("书房机", 1000);
+    set.add("multicast all done", mc.all_done(), "");
+    set.add("multicast unknown confirm rejected", !mc.confirm("幽灵机"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn handshake_code_in_range() {
+        for seed in 0..20u64 {
+            let hs = PairingHandshake::new(seed);
+            assert!((100_000..1_000_000).contains(&hs.local_code), "六位码域 {seed}");
+        }
+    }
+
+    #[test]
+    fn chunking_boundary_speeds() {
+        let mut ac = AdaptiveChunking::new();
+        assert_eq!(ac.feed_speed(10), 2, "恰在档位下限时取更大块（≥ 含边界）");
+        assert_eq!(ac.feed_speed(20), 1);
+    }
+
+    #[test]
+    fn multicast_empty_not_done() {
+        let mc = MultiCastBook::default();
+        assert!(!mc.all_done(), "零接收方不构成完成");
+        assert!(mc.laggards().is_empty());
+    }
+}

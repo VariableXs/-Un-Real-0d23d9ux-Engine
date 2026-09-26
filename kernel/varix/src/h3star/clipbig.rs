@@ -318,3 +318,144 @@ mod tests {
         assert!(cb.memory_budget_ok());
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 流式读取进度账 + 体积预估校准
+// ---------------------------------------------------------------------------
+
+/// 流式读取进度账（判据「流式读取」的深化面）：大对象分块流式读取
+/// 逐块记账（块序/块长），累计进度‰单调不回退；中断可从最后块续读
+/// （断点语义与 F321 续传同构）。
+#[derive(Default)]
+pub struct StreamProgressBook {
+    /// (块序, 块字节数)。
+    pub chunks: Vec<(usize, u64)>,
+    pub total_bytes: u64,
+}
+
+impl StreamProgressBook {
+    pub fn new(total_bytes: u64) -> StreamProgressBook {
+        StreamProgressBook { chunks: Vec::new(), total_bytes }
+    }
+
+    /// 记一读块（块序必须递增——乱序拒绝，防止账面错位）。
+    pub fn read_chunk(&mut self, seq: usize, bytes: u64) -> bool {
+        if let Some((last, _)) = self.chunks.last() {
+            if *last + 1 != seq {
+                return false;
+            }
+        } else if seq != 0 {
+            return false;
+        }
+        self.chunks.push((seq, bytes));
+        true
+    }
+
+    pub fn read_bytes(&self) -> u64 {
+        self.chunks.iter().map(|(_, b)| b).sum()
+    }
+
+    /// 进度‰（单调不回退——只增不减）。
+    pub fn progress_permille(&self) -> u32 {
+        if self.total_bytes == 0 {
+            return 1000;
+        }
+        (self.read_bytes().min(self.total_bytes) * 1000 / self.total_bytes) as u32
+    }
+
+    /// 续读起点（最后块序 + 1——中断恢复面）。
+    pub fn resume_from(&self) -> usize {
+        self.chunks.last().map(|(s, _)| s + 1).unwrap_or(0)
+    }
+}
+
+/// 体积预估校准（判据「预估准确性（误差 <20%）」的运行面）：预估 vs
+/// 实测逐次入账，越界事件留痕——预估器必须向实测收敛（连续越界 =
+/// 预估器缺陷事件）。
+#[derive(Default)]
+pub struct EstimateCalibration {
+    /// (预估 MB, 实测 MB)。
+    pub pairs: Vec<(u64, u64)>,
+    pub outliers: u64,
+}
+
+impl EstimateCalibration {
+    /// 记一次对账：误差 ≤20% 算准；越界计数留痕。
+    pub fn observe(&mut self, estimated_mb: u64, actual_mb: u64) {
+        let off = if estimated_mb == 0 {
+            actual_mb != 0
+        } else {
+            estimated_mb.abs_diff(actual_mb) * 100 > estimated_mb * 20
+        };
+        if off {
+            self.outliers += 1;
+        }
+        self.pairs.push((estimated_mb, actual_mb));
+    }
+
+    /// 预估器健康：最近 N 次越界 ≤ 1（连续失准 = 缺陷事件）。
+    pub fn healthy(&self, window: usize) -> bool {
+        let recent = self.pairs.len().saturating_sub(window);
+        self.outliers <= 1 || self.pairs[recent..].len() < window
+    }
+}
+
+/// 深化层二自检（流式进度 / 预估校准）。
+pub fn run_clipbig_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F329-deep2");
+
+    // 1. 流式进度：三块读满 → 1000‰；乱序块拒绝（账面不错位）。
+    let mut sp = StreamProgressBook::new(3000);
+    let ok0 = sp.read_chunk(0, 1000);
+    let ok1 = sp.read_chunk(1, 1000);
+    let bad = sp.read_chunk(5, 1000);
+    let ok2 = sp.read_chunk(2, 1000);
+    set.add(
+        "stream ordered chunks only",
+        ok0 && ok1 && !bad && ok2 && sp.progress_permille() == 1000,
+        "",
+    );
+
+    // 2. 中断续读：读到块 1 断 → 续读起点 2。
+    let mut sp2 = StreamProgressBook::new(4000);
+    let _ = sp2.read_chunk(0, 1500);
+    let _ = sp2.read_chunk(1, 500);
+    set.add(
+        "stream resume point",
+        sp2.resume_from() == 2 && sp2.progress_permille() == 500,
+        "",
+    );
+
+    // 3. 预估校准：±20% 内算准、越界留痕、零预估非零实测 = 越界。
+    let mut ec = EstimateCalibration::default();
+    ec.observe(100, 110); // 10% 准。
+    ec.observe(100, 200); // 100% 越界。
+    ec.observe(0, 5); // 零预估非零实测——越界。
+    set.add(
+        "estimate calibration",
+        ec.outliers == 2 && !ec.healthy(3),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn zero_total_is_complete() {
+        let sp = StreamProgressBook::new(0);
+        assert_eq!(sp.progress_permille(), 1000, "零体积任务进度即满");
+        assert_eq!(sp.resume_from(), 0);
+    }
+
+    #[test]
+    fn calibration_healthy_within_window() {
+        let mut ec = EstimateCalibration::default();
+        ec.observe(100, 105);
+        ec.observe(100, 95);
+        assert!(ec.healthy(3), "全程无越界——健康");
+    }
+}

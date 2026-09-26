@@ -245,3 +245,159 @@ mod tests {
         assert!(h.record("a"));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 去重策略双档 + 无痕双粒度
+// ---------------------------------------------------------------------------
+
+/// 去重策略双档（判据「10 条上限与去重」的策略面）：全局去重（同词
+/// 只留一条——移动到最新位）与相邻去重（只压连续重复——保留用户检索
+/// 轨迹的节奏）。默认全局档（面板更干净），可切相邻档（进阶用户要
+/// 轨迹）。策略切换即时生效且留痕。
+pub struct DedupPolicy {
+    pub adjacent_only: bool,
+    pub switch_count: u64,
+}
+
+impl DedupPolicy {
+    pub fn new() -> DedupPolicy {
+        DedupPolicy { adjacent_only: false, switch_count: 0 }
+    }
+
+    pub fn set_adjacent(&mut self, on: bool) {
+        if self.adjacent_only != on {
+            self.adjacent_only = on;
+            self.switch_count += 1;
+        }
+    }
+
+    /// 按策略去重（返回去重后的词表；全局档同词移动到最新位）。
+    pub fn apply<'a>(&self, words: &[&'a str]) -> Vec<&'a str> {
+        if self.adjacent_only {
+            let mut out: Vec<&str> = Vec::new();
+            for w in words {
+                if out.last() != Some(w) {
+                    out.push(w);
+                }
+            }
+            out
+        } else {
+            // 全局：倒序遍历（最新优先），同词首次（即最新）保留。
+            let mut out: Vec<&str> = Vec::new();
+            for w in words.iter().rev() {
+                if !out.contains(w) {
+                    out.push(w);
+                }
+            }
+            out.reverse();
+            out
+        }
+    }
+}
+
+impl Default for DedupPolicy {
+    fn default() -> DedupPolicy {
+        DedupPolicy::new()
+    }
+}
+
+/// 无痕双粒度（判据「无痕图标状态与不落盘」的深化面）：粒度一 =
+/// 面板隐藏（仍记账，重启清空——历史还在会话里用）；粒度二 = 完全
+/// 不落盘（记账都停——连会话内存都没有）。两档语义严格分离。
+pub struct IncognitoGranularity {
+    /// None=正常 / Some(false)=面板隐藏 / Some(true)=完全不落盘。
+    pub level: Option<bool>,
+}
+
+impl IncognitoGranularity {
+    pub fn new() -> IncognitoGranularity {
+        IncognitoGranularity { level: None }
+    }
+
+    /// 记录决策：正常 → 入账；面板隐藏 → 入隐藏账（重启清——这里以
+    /// 独立计数模拟）；完全档 → 零动作。
+    pub fn record(&mut self, hidden_writes: &mut u64) -> bool {
+        match self.level {
+            None => true,
+            Some(false) => {
+                *hidden_writes += 1;
+                true
+            }
+            Some(true) => false,
+        }
+    }
+
+    pub fn set_level(&mut self, level: Option<bool>) {
+        self.level = level;
+    }
+}
+
+impl Default for IncognitoGranularity {
+    fn default() -> IncognitoGranularity {
+        IncognitoGranularity::new()
+    }
+}
+
+/// 深化层二自检（去重双档 / 无痕双粒度）。
+pub fn run_srchhist_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F307-deep2");
+
+    // 1. 全局去重：同词留最新位（顺序语义面）。
+    let g = DedupPolicy::new();
+    let out = g.apply(&["音量", "亮度", "音量", "主题"]);
+    set.add(
+        "global dedup keeps latest position",
+        out == alloc::vec!["亮度", "音量", "主题"],
+        "",
+    );
+
+    // 2. 相邻去重：只压连续重复（轨迹节奏保留）。
+    let mut a = DedupPolicy::new();
+    a.set_adjacent(true);
+    let out2 = a.apply(&["音量", "音量", "亮度", "音量"]);
+    set.add(
+        "adjacent dedup keeps rhythm",
+        out2 == alloc::vec!["音量", "亮度", "音量"],
+        "",
+    );
+
+    // 3. 切换留痕 + 幂等切换不计（默认全局档 → 切相邻 +1 → 切回 +1，
+    //    重复切回不再计）。
+    a.set_adjacent(false);
+    a.set_adjacent(false);
+    set.add("switch trail idempotent", !a.adjacent_only && a.switch_count == 2, "");
+
+    // 4. 无痕双粒度：面板隐藏仍记账（隐藏账）、完全档零动作。
+    let mut ig = IncognitoGranularity::new();
+    let mut hidden = 0u64;
+    let normal = ig.record(&mut hidden);
+    ig.set_level(Some(false));
+    let panel_hidden = ig.record(&mut hidden);
+    ig.set_level(Some(true));
+    let full = ig.record(&mut hidden);
+    set.add(
+        "incognito two granularities",
+        normal && panel_hidden && !full && hidden == 1,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn global_dedup_empty_input() {
+        let g = DedupPolicy::new();
+        assert!(g.apply(&[]).is_empty());
+    }
+
+    #[test]
+    fn adjacent_dedup_all_same() {
+        let mut d = DedupPolicy::new();
+        d.set_adjacent(true);
+        assert_eq!(d.apply(&["a", "a", "a"]), alloc::vec!["a"]);
+    }
+}

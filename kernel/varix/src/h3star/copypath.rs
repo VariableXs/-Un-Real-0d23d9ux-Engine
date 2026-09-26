@@ -1228,3 +1228,209 @@ mod deep4_tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层五 · 互通历史面板（脱敏红线）+ shell 别名登记
+// ---------------------------------------------------------------------------
+
+/// 互通历史面板（十三章体验日志的互通域深化）：逐条记录路径转换/
+/// 粘贴/拖入事件，供「最近用过什么路径」快速回填。隐私红线：凭据
+/// 模式（密码/token 形态的路径段）脱敏后才入账——历史面板永远不能
+/// 变成密码泄漏面。脱敏规则登记制，规则外不猜（宁漏脱不误脱——
+/// 误脱敏会让路径不可用，泄漏风险由登记规则兜住）。
+pub struct InteropHistory {
+    /// (时刻, 脱敏后 payload)。
+    pub entries: Vec<(u64, String)>,
+    /// 脱敏规则表：(模式子串, 替换形)。
+    redactions: Vec<(String, String)>,
+    cap: usize,
+}
+
+impl InteropHistory {
+    pub fn new(cap: usize) -> InteropHistory {
+        InteropHistory { entries: Vec::new(), redactions: Vec::new(), cap: cap.max(1) }
+    }
+
+    /// 登记脱敏规则（如 "token=" → "token=█"）。
+    pub fn register_redaction(&mut self, pattern: &str, replacement: &str) {
+        self.redactions.push((String::from(pattern), String::from(replacement)));
+    }
+
+    /// 脱敏执行：命中规则 → 整个「模式+值段」（值段 = 模式起点到下一
+    /// 个 `&` 或串尾）替换为替换形——只换前缀不换值等于没脱（秘密仍在
+    /// 账里），这是红线实现，不是风格选择。
+    fn redact(&self, payload: &str) -> String {
+        let mut s = String::from(payload);
+        for (p, r) in &self.redactions {
+            if let Some(start) = s.find(p.as_str()) {
+                let value_end = s[start..]
+                    .find('&')
+                    .map(|e| start + e)
+                    .unwrap_or(s.len());
+                s = alloc::format!("{}{}{}", &s[..start], r, &s[value_end..]);
+            }
+        }
+        s
+    }
+
+    /// 记录（脱敏后入账；环形封顶）。
+    pub fn record(&mut self, at_ms: u64, payload: &str) {
+        self.entries.push((at_ms, self.redact(payload)));
+        if self.entries.len() > self.cap {
+            self.entries.remove(0);
+        }
+    }
+
+    /// 按时间倒序的最近 N 条（回填面）。
+    pub fn recent(&self, n: usize) -> Vec<&str> {
+        self.entries
+            .iter()
+            .rev()
+            .take(n)
+            .map(|(_, p)| p.as_str())
+            .collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for InteropHistory {
+    fn default() -> InteropHistory {
+        InteropHistory::new(16)
+    }
+}
+
+/// shell 别名登记（「三类输入用例/别名表登记」判据的执行面）：别名 →
+/// 目标（应用/命令），登记制约束——① 别名唯一；② 目标非空；③ 保留名
+/// 不可占用（系统命令词——防遮蔽）；④ 删除可逆（登记-删除-再登记）。
+pub struct AliasRegistry {
+    entries: Vec<(String, String)>,
+}
+
+/// 系统保留名（别名不许遮蔽的命令词——登记即拒绝）。
+pub const RESERVED_ALIASES: [&str; 6] = ["cd", "open", "run", "help", "exit", "clear"];
+
+impl AliasRegistry {
+    pub fn new() -> AliasRegistry {
+        AliasRegistry { entries: Vec::new() }
+    }
+
+    /// 登记：唯一 + 目标非空 + 非保留名（三闸全过才入账）。
+    pub fn register(&mut self, alias: &str, target: &str) -> bool {
+        if alias.is_empty()
+            || target.is_empty()
+            || RESERVED_ALIASES.contains(&alias)
+            || self.entries.iter().any(|(a, _)| a == alias)
+        {
+            return false;
+        }
+        self.entries.push((String::from(alias), String::from(target)));
+        true
+    }
+
+    /// 解析（别名 → 目标；未登记 None——调用方显式处理）。
+    pub fn resolve(&self, alias: &str) -> Option<&str> {
+        self.entries.iter().find(|(a, _)| a == alias).map(|(_, t)| t.as_str())
+    }
+
+    /// 删除（可逆：删了能重新登记）。
+    pub fn unregister(&mut self, alias: &str) -> bool {
+        let before = self.entries.len();
+        self.entries.retain(|(a, _)| a != alias);
+        self.entries.len() != before
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+impl Default for AliasRegistry {
+    fn default() -> AliasRegistry {
+        AliasRegistry::new()
+    }
+}
+
+/// 深化层五自检（历史脱敏 / 别名登记）。
+pub fn run_copypath_deep5_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep5");
+
+    // 1. 历史脱敏：凭据模式替换后才入账（原文永不落账）。
+    let mut h = InteropHistory::new(8);
+    h.register_redaction("token=", "token=█");
+    h.record(0, "C:/a?token=abc123");
+    set.add(
+        "history redacted before stored",
+        h.recent(1) == alloc::vec!["C:/a?token=█"]
+            && !h.recent(1)[0].contains("abc123"),
+        "",
+    );
+
+    // 2. 无规则不误脱（宁漏脱不误脱——规则外原样）。
+    let mut h2 = InteropHistory::new(4);
+    h2.record(0, "C:/普通/路径.vx");
+    set.add("no rule no redact", h2.recent(1) == alloc::vec!["C:/普通/路径.vx"], "");
+
+    // 3. 环形封顶 + 最近序（独立实例——与脱敏用例互不掺账）。
+    let mut h3 = InteropHistory::new(4);
+    for i in 0..6u64 {
+        h3.record(i, &alloc::format!("p{i}"));
+    }
+    set.add(
+        "history ring capped recent first",
+        h3.len() == 4 && h3.recent(2) == alloc::vec!["p5", "p4"],
+        "",
+    );
+
+    // 4. 别名三闸：唯一 / 非空目标 / 保留名拒绝。
+    let mut ar = AliasRegistry::new();
+    let ok = ar.register("jsq", "计算器");
+    let dup = ar.register("jsq", "别的");
+    let blank = ar.register("k", "");
+    let reserved = ar.register("cd", "某目录");
+    set.add(
+        "alias three gates",
+        ok && !dup && !blank && !reserved && ar.resolve("jsq") == Some("计算器"),
+        "",
+    );
+
+    // 5. 可逆：删除后可重登记（换目标生效）。
+    let _ = ar.unregister("jsq");
+    let re = ar.register("jsq", "计算器Pro");
+    set.add("alias reversible", re && ar.resolve("jsq") == Some("计算器Pro"), "");
+
+    // 6. 未登记解析 None（不猜）。
+    set.add("alias unknown none", ar.resolve("不存在").is_none(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep5_tests {
+    use super::*;
+
+    #[test]
+    fn history_empty_recent_empty() {
+        let h = InteropHistory::new(4);
+        assert!(h.recent(3).is_empty(), "空历史不虚报最近条目");
+    }
+
+    #[test]
+    fn alias_case_sensitive_distinct() {
+        let mut ar = AliasRegistry::new();
+        assert!(ar.register("Jsq", "甲"));
+        assert!(ar.register("jsq", "乙"), "大小写有别——两别名并存");
+        assert_eq!(ar.resolve("Jsq"), Some("甲"));
+    }
+
+    #[test]
+    fn redaction_multiple_rules_apply() {
+        let mut h = InteropHistory::new(4);
+        h.register_redaction("pwd=", "pwd=█");
+        h.register_redaction("secret=", "secret=█");
+        h.record(0, "x?pwd=1&secret=2");
+        assert_eq!(h.recent(1), alloc::vec!["x?pwd=█&secret=█"]);
+    }
+}
