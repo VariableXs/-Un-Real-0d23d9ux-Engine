@@ -1024,7 +1024,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 275 ≈ 852KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 274] = [
+    let domains: [fn() -> CheckSet; 275] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1346,6 +1346,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::perfstar::glyphcache::run_glyphcache_checks,
         crate::perfstar::dirtyrect::run_dirtyrect_checks,
         crate::perfstar::iotier::run_iotier_checks,
+        crate::uni1::run_uni1_checks,
     ];
     for f in domains {
         checkup.register(f());

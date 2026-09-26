@@ -1,0 +1,10 @@
+[package]
+name = "aiu1-cabin"
+version = "0.1.0"
+edition = "2021"
+description = "AI-U1 隔离舱：#[path] 直挂 uni1 真实文件，宿主侧独立验证（不依赖主 crate 编译态）"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
