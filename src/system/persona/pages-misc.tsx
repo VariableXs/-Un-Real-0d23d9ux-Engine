@@ -26,6 +26,7 @@ import { UsageRankCard, CheatSheetCard, CopyAuditCard, ShardRunnerCard } from ".
 import { ErrorSurfaceCard, AssetPackageCard, WindowMetricsCard, PerfBudgetCard } from "./pages-lab3";
 import { StateBlocksCard, ExportFormatsCard, UxDictionaryCard } from "./pages-lab4";
 import { StateWiringCard, CrosscheckCard, SearchNavCard, AutosaveCard } from "./pages-lab5";
+import { LabelsAuditCard, DeliveryDocsCard, LayoutRobustCard } from "./pages-lab6";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -485,6 +486,9 @@ export function VerdictPage(): React.ReactNode {
       <CrosscheckCard />
       <SearchNavCard />
       <AutosaveCard />
+      <LabelsAuditCard />
+      <DeliveryDocsCard />
+      <LayoutRobustCard />
       <CopyAuditCard />
     </div>
   );

@@ -48,6 +48,7 @@ const FILE_TO_F = {
   "engines-batch11.test.ts": ["F127", "F156", "F168", "F214", "F237"],
   "engines-batch12.test.ts": ["F161", "F164", "F170", "通用十二查"],
   "engines-batch13.test.ts": ["通用十二查", "F161", "F170"],
+  "engines-batch14.test.ts": ["通用十二查", "十九章交付物", "七章兼容"],
 };
 
 const perFile = {};
