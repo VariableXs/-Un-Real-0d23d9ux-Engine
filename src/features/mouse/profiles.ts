@@ -246,12 +246,10 @@ export function ensurePrimaryDevice(
 ): { cloned: boolean; evicted?: string } | null {
   const cfg = j1Store.get("devices");
   const notify = (cfg.notifyOnClone as boolean | undefined) ?? true;
-  if (!notify) {
-    // 用户关掉气泡提示：静默建档（档案照样建，只是不吵）。
-    const existing = ((cfg.profiles as DeviceProfile[]) ?? []).some((p) => p.deviceKey === PRIMARY_DEVICE_KEY);
-    if (existing) return null;
-  }
+  const existing = ((cfg.profiles as DeviceProfile[]) ?? []).some((p) => p.deviceKey === PRIMARY_DEVICE_KEY);
+  if (!notify && existing) return null; // 气泡关闭且档案已在：零行为（完全静默）
   const r = manager.ensureFor(PRIMARY_DEVICE_KEY, "本机指针设备", atMs);
+  if (!notify) return null; // 气泡关闭：建档照常执行，但不通知（静默建档）
   return { cloned: r.cloned, evicted: r.evicted };
 }
 

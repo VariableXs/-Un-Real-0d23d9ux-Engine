@@ -300,11 +300,12 @@ describe("F614 首交互建档（ensurePrimaryDevice）", () => {
     expect(profiles[0]!.params.curve).toBe("soft");
   });
 
-  it("notifyOnClone 关闭：已有档案时静默（null）；无档案照常建档", () => {
+  it("notifyOnClone 关闭：完全静默（null——建档照常但不通知，气泡开关被尊重）", () => {
     j1Store.set("devices", { notifyOnClone: false });
     const dm = new DeviceProfileManager();
-    expect(ensurePrimaryDevice(dm, 1000)?.cloned).toBe(true); // 无档案：仍建档
-    expect(ensurePrimaryDevice(dm, 2000)).toBeNull(); // 有档案+静音：零行为
+    expect(ensurePrimaryDevice(dm, 1000)).toBeNull(); // 无档案：静默建档，不返回气泡数据
+    expect(((j1Store.get("devices").profiles as DeviceProfile[]) ?? [])).toHaveLength(1); // 档案真实创建
+    expect(ensurePrimaryDevice(dm, 2000)).toBeNull(); // 有档案：依旧零行为
   });
 
   it("deviceParamsOverride：建档后 sens/curve 覆盖全局；未建档空表", () => {
