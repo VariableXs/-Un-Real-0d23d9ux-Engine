@@ -2019,3 +2019,138 @@ mod deep7_tests {
         assert_eq!(get("recovery_hold_ms"), RECOVERY_HOLD_MS);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层八 · 健康自检探针 + 模式驻留占比聚合
+// ---------------------------------------------------------------------------
+
+/// 调速器健康自检探针（十三章·补「自检/心跳」的调速域落法）：三项
+/// 自检——① 参数表引用一致（快照值与主册常量逐一相等——常量被改
+/// 而快照没跟 = 配置漂移）；② 模式账容量（环形账条目数不超上限——
+/// 溢出即缺陷）；③ 折算表单调（TierPolicyTable 不倒挂）。全部绿 =
+/// 心跳健康；任一红 = 显性报告（不给静默漂移留门）。
+pub struct HealthProbe;
+
+impl HealthProbe {
+    /// ① 参数表引用一致性（与快照采集对拍）。
+    pub fn params_consistent() -> bool {
+        let snap = GovernorConfigSnapshot::capture();
+        let get = |k: &str| snap.entries.iter().find(|(kk, _)| *kk == k).map(|(_, v)| *v);
+        get("compositor_budget_pct") == Some(COMPOSITOR_BUDGET_PCT)
+            && get("fps_tier1") == Some(FPS_TIERS[0])
+            && get("fps_tier_confirm_ms") == Some(TIER_CONFIRM_MS)
+            && get("battery_low_pct") == Some(BATTERY_LOW_PCT)
+            && get("recovery_hold_ms") == Some(RECOVERY_HOLD_MS)
+    }
+
+    /// ② 模式账容量守卫（条目数 ≤ 上限——环形账不撑爆）。
+    pub fn ledger_capacity_ok(len: usize, cap: usize) -> bool {
+        len <= cap
+    }
+
+    /// 三项聚合心跳。
+    pub fn heartbeat(ledger_len: usize, ledger_cap: usize) -> bool {
+        Self::params_consistent() && TierPolicyTable::monotonic()
+            && Self::ledger_capacity_ok(ledger_len, ledger_cap)
+    }
+}
+
+/// 模式驻留占比聚合（可观测性面）：模式账 (时刻, 模式) → 各模式驻留
+/// 时长与占比‰——「降级占了多少时间」直接出数（性能感知的运营面）。
+/// 占比 = 该模式驻留 ms / 总跨度。
+pub struct ModeDwellStats;
+
+impl ModeDwellStats {
+    /// 聚合：返回 (模式, 驻留 ms, 占比‰)——模式升序稳定输出。
+    pub fn aggregate(log: &[(u64, GovernorMode)], total_ms: u64) -> Vec<(GovernorMode, u64, u32)> {
+        let mut out: Vec<(GovernorMode, u64)> = Vec::new();
+        for w in log.windows(2) {
+            let dwell = w[1].0.saturating_sub(w[0].0);
+            match out.iter_mut().find(|(m, _)| *m == w[0].1) {
+                Some((_, d)) => *d += dwell,
+                None => out.push((w[0].1, dwell)),
+            }
+        }
+        if let (Some(last), false) = (log.last(), log.is_empty()) {
+            let tail = total_ms.saturating_sub(last.0);
+            match out.iter_mut().find(|(m, _)| *m == last.1) {
+                Some((_, d)) => *d += tail,
+                None => out.push((last.1, tail)),
+            }
+        }
+        out.sort_by_key(|(m, _)| *m);
+        out.into_iter()
+            .map(|(m, d)| (m, d, if total_ms == 0 { 0 } else { (d * 1000 / total_ms) as u32 }))
+            .collect()
+    }
+}
+
+/// 深化层八自检（健康探针 / 驻留占比）。
+pub fn run_animdegrade_deep8_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F331-333-deep8");
+
+    // 1. 参数引用一致（快照与主册常量对拍绿——无配置漂移）。
+    set.add("params consistent", HealthProbe::params_consistent(), "");
+
+    // 2. 容量守卫：界内绿、超界红（显性——不静默溢出）。
+    set.add(
+        "ledger capacity guard",
+        HealthProbe::ledger_capacity_ok(99, 100) && !HealthProbe::ledger_capacity_ok(101, 100),
+        "",
+    );
+
+    // 3. 心跳聚合：三项全绿才心跳（探针语义）。
+    set.add("heartbeat green", HealthProbe::heartbeat(50, 100), "");
+
+    // 4. 驻留占比：全效 800ms + 二级 200ms → 占比 80/20（总跨度锚定）。
+    let log = vec![
+        (0u64, GovernorMode::Full),
+        (800, GovernorMode::Budget),
+        (1000, GovernorMode::Full),
+    ];
+    let stats = ModeDwellStats::aggregate(&log, 1000);
+    set.add(
+        "dwell stats 80 20",
+        stats.len() == 2
+            && stats.iter().any(|(m, d, p)| *m == GovernorMode::Full && *d == 800 && *p == 800)
+            && stats.iter().any(|(m, d, p)| *m == GovernorMode::Budget && *d == 200 && *p == 200),
+        "",
+    );
+
+    // 5. 零账诚实空；总跨度 0 不虚报占比。
+    let empty = ModeDwellStats::aggregate(&[], 1000);
+    let zero = ModeDwellStats::aggregate(&[(0u64, GovernorMode::Full)], 0);
+    set.add(
+        "dwell honest empty and zero",
+        empty.is_empty() && zero.iter().all(|(_, _, p)| *p == 0),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn dwell_single_mode_full_span() {
+        let log = vec![(0u64, GovernorMode::Full)];
+        let stats = ModeDwellStats::aggregate(&log, 5000);
+        assert_eq!(stats, vec![(GovernorMode::Full, 5000, 1000)]);
+    }
+
+    #[test]
+    fn dwell_two_entries_same_mode_merge() {
+        let log = vec![(0u64, GovernorMode::Full), (100, GovernorMode::Full)];
+        let stats = ModeDwellStats::aggregate(&log, 200);
+        assert_eq!(stats.len(), 1, "同模式相邻段合并");
+        assert_eq!(stats[0].1, 200);
+    }
+
+    #[test]
+    fn heartbeat_red_on_overflow() {
+        assert!(!HealthProbe::heartbeat(1000, 100), "账本溢出 = 心跳红");
+    }
+}

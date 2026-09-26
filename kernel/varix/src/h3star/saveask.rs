@@ -570,3 +570,97 @@ mod deep2_tests {
         assert!(closed && !ledger.is_dirty("x"), "保存后放行且脏标记清除");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 未保存计数徽标（任务栏角标的数据源）
+// ---------------------------------------------------------------------------
+
+/// 未保存计数徽标（判据「未保存提示」的可观测面）：从脏账派生徽标
+/// 数——脏文档数直显；上限 9 个封顶显示「9+」（数字大于 9 折叠——
+/// 角标空间语义）；保存/关闭即时回落（徽标与账实时同步——滞后即
+/// 缺陷）。
+pub struct UnsavedBadge;
+
+/// 角标数字封顶（超过显示 9+）。
+pub const BADGE_CAP: u32 = 9;
+
+impl UnsavedBadge {
+    /// 徽标数值（脏文档数，封顶 9）。
+    pub fn value(ledger: &UnsavedLedger) -> u32 {
+        (ledger.unsaved_all().len() as u32).min(BADGE_CAP)
+    }
+
+    /// 是否折叠显示（真实数 > 9 → 9+ 语义）。
+    pub fn folded(ledger: &UnsavedLedger) -> bool {
+        ledger.unsaved_all().len() as u32 > BADGE_CAP
+    }
+
+    /// 徽标-账同步审计：徽标值与脏账重算一致（两本账不漂移）。
+    pub fn in_sync(ledger: &UnsavedLedger, shown: u32) -> bool {
+        Self::value(ledger) == shown
+    }
+}
+
+/// 深化层二自检（未保存徽标）。
+pub fn run_saveask_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F310-deep3");
+
+    // 1. 三脏文档 → 徽标 3；保存一个 → 即时回落 2（同步纪律）。
+    let mut ledger = UnsavedLedger::new();
+    for name in ["文档A", "文档B", "文档C"] {
+        ledger.open(name);
+        ledger.edit(name);
+    }
+    let v1 = UnsavedBadge::value(&ledger);
+    ledger.mark_saved("文档A");
+    let v2 = UnsavedBadge::value(&ledger);
+    set.add(
+        "badge tracks dirty in sync",
+        v1 == 3 && v2 == 2 && UnsavedBadge::in_sync(&ledger, v2),
+        "",
+    );
+
+    // 2. 十一脏文档 → 封顶 9 + 折叠位。
+    let mut big = UnsavedLedger::new();
+    for i in 0..11 {
+        let name = alloc::format!("d{i}");
+        big.open(&name);
+        big.edit(&name);
+    }
+    set.add(
+        "badge folds at cap",
+        UnsavedBadge::value(&big) == 9 && UnsavedBadge::folded(&big),
+        "",
+    );
+
+    // 3. 零脏 → 徽标 0 不折叠（空态语义）。
+    let clean = UnsavedLedger::new();
+    set.add(
+        "badge zero when clean",
+        UnsavedBadge::value(&clean) == 0 && !UnsavedBadge::folded(&clean),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn badge_cap_constant() {
+        assert_eq!(BADGE_CAP, 9, "角标封顶 9 钉死");
+    }
+
+    #[test]
+    fn close_reduces_badge() {
+        let mut ledger = UnsavedLedger::new();
+        ledger.open("x");
+        ledger.edit("x");
+        let before = UnsavedBadge::value(&ledger);
+        ledger.close("x");
+        assert_eq!(before, 1);
+        assert_eq!(UnsavedBadge::value(&ledger), 0, "关闭文档徽标即时回落");
+    }
+}

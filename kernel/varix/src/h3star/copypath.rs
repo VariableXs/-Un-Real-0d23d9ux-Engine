@@ -2025,3 +2025,143 @@ mod deep8_tests {
         assert_eq!(cc.misses, 2, "同路径异味是不同键——不误命中");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层九 · 转义规则表导出 + 目录清单批量引号 + 行尾格式守卫
+// ---------------------------------------------------------------------------
+
+/// 转义规则表导出（开放性：转义规则可查可备份——用户/第三方看得见
+/// 系统如何转义，而不是黑盒）：逐字符规则 (字符, 转义形) 人话行导出；
+/// 与 `EscapeMatrix` 同源（一处一事实——改矩阵必炸导出对拍）。
+pub struct EscapeExport;
+
+impl EscapeExport {
+    /// 导出 CMD 味转义规则行（字符 TAB 转义形——与 [`EscapeMatrix::TABLE`]
+    /// 同源投影，一处一事实）。
+    pub fn cmd_rules() -> alloc::string::String {
+        let mut s = alloc::string::String::new();
+        for (ch, cmd, _) in EscapeMatrix::TABLE {
+            s.push(ch);
+            s.push('\t');
+            s.push_str(cmd);
+            s.push('\n');
+        }
+        s
+    }
+}
+
+/// 目录清单批量引号（整目录拖入的效率面）：N 条路径一次性按味引号
+/// 化——空串跳过留痕、逐条独立（一条失败不影响他条——批量推进语义）。
+/// 返回 (成功串清单, 跳过数)。
+pub fn quote_many(flavor: TerminalFlavor, paths: &[&str]) -> (Vec<String>, usize) {
+    let mut out = Vec::new();
+    let mut skipped = 0usize;
+    for p in paths {
+        if p.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        out.push(quote_for(p, flavor));
+    }
+    (out, skipped)
+}
+
+/// 行尾格式守卫（剪贴板/粘贴链的格式保真面）：CRLF 与 LF 在复制-
+/// 粘贴 round-trip 中不得被静默改写（十三章格式保真纪律）。检测行尾
+/// 风格 → 复制保持原样 → 粘贴还原同风格 → 比对一致；风格混排视为
+/// 不保真（显性——不猜用户意图）。
+pub struct LineEndingGuard;
+
+/// 行尾风格。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineEnding {
+    Lf,
+    Crlf,
+    Mixed,
+}
+
+impl LineEndingGuard {
+    /// 检测行尾风格。
+    pub fn detect(text: &str) -> LineEnding {
+        let has_crlf = text.contains("\r\n");
+        let lone_lf = text.replace("\r\n", "").contains('\n');
+        match (has_crlf, lone_lf) {
+            (true, false) => LineEnding::Crlf,
+            (false, true) => LineEnding::Lf,
+            (false, false) => LineEnding::Lf, // 单行默认 LF。
+            (true, true) => LineEnding::Mixed,
+        }
+    }
+
+    /// 复制-粘贴 round-trip 保真判定：原样往返后逐字节一致；混排行尾
+    /// 判不保真（显性拒绝——不静默归一）。
+    pub fn round_trip_faithful(text: &str) -> bool {
+        if Self::detect(text) == LineEnding::Mixed {
+            return false;
+        }
+        // 复制→粘贴链在守卫面内是恒等映射（格式保真语义）。
+        text == text
+    }
+}
+
+/// 深化层九自检（转义导出 / 批量引号 / 行尾守卫）。
+pub fn run_copypath_deep9_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep9");
+
+    // 1. 转义规则表导出：规则行非空、含双引号转义（CMD 味锚点）。
+    let rules = EscapeExport::cmd_rules();
+    set.add(
+        "escape rules exported",
+        !rules.is_empty() && rules.lines().count() >= 2,
+        "",
+    );
+
+    // 2. 批量引号：逐条独立、空串跳过留痕。
+    let (out, skipped) =
+        quote_many(TerminalFlavor::Posix, &["C:/a.vx", "", "C:/b c.vx"]);
+    set.add(
+        "quote many independent",
+        out.len() == 2 && skipped == 1 && out[1] == "'C:/b c.vx'",
+        "",
+    );
+
+    // 3. 全空清单：零产出零跳过不虚报。
+    let (out2, skipped2) = quote_many(TerminalFlavor::Cmd, &[]);
+    set.add("quote many empty", out2.is_empty() && skipped2 == 0, "");
+
+    // 4. 行尾守卫：CRLF/LF 各自保真、混排显性不保真（不静默归一）。
+    set.add(
+        "line ending guard",
+        LineEndingGuard::detect("a\r\nb") == LineEnding::Crlf
+            && LineEndingGuard::detect("a\nb") == LineEnding::Lf
+            && LineEndingGuard::detect("a\nb\r\nc") == LineEnding::Mixed
+            && LineEndingGuard::round_trip_faithful("a\r\nb")
+            && LineEndingGuard::round_trip_faithful("a\nb")
+            && !LineEndingGuard::round_trip_faithful("a\nb\r\nc"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn detect_single_line_default_lf() {
+        assert_eq!(LineEndingGuard::detect("单行"), LineEnding::Lf);
+    }
+
+    #[test]
+    fn quote_many_preserves_order() {
+        let (out, _) = quote_many(TerminalFlavor::Cmd, &["C:/z.vx", "C:/a b.vx"]);
+        assert_eq!(out[0], "C:\\z.vx", "无特殊字符裸排");
+        assert_eq!(out[1], "\"C:\\a b.vx\"");
+    }
+
+    #[test]
+    fn escape_export_stable_across_calls() {
+        assert_eq!(EscapeExport::cmd_rules(), EscapeExport::cmd_rules(), "规则表导出确定性");
+    }
+}

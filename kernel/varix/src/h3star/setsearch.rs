@@ -596,3 +596,115 @@ mod deep_tests {
         assert_eq!(sc.len(), 2);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 「您是不是要找」联动审计（零命中→建议→可达闭环）
+// ---------------------------------------------------------------------------
+
+/// 「您是不是要找」联动审计（判据「零命中给建议」的闭环面）：零命中
+/// 查询触发建议、建议条数封顶三、**建议必须可达**（建议词再查一遍
+/// 必有命中——建议链不允许死路，点了没结果是缺陷）。
+pub struct DidYouMeanAudit;
+
+pub const SUGGEST_CAP: usize = 3;
+
+impl DidYouMeanAudit {
+    /// 建议可达性：每个建议词在登记表上再查必有命中（死路建议 = 缺陷）。
+    pub fn suggestions_reachable(search: &SettingsSearch, suggestions: &[String]) -> bool {
+        !suggestions.is_empty()
+            && suggestions
+                .iter()
+                .all(|s| search.registry().items().iter().any(|i| score_item(i, s).0 > 0))
+    }
+
+    /// 建议封顶审计（三上限钉死——超出即缺陷）。
+    pub fn capped(suggestions: &[String]) -> bool {
+        suggestions.len() <= SUGGEST_CAP
+    }
+}
+
+/// 深化层三自检（建议闭环）。
+pub fn run_setsearch_deep3_checks() -> CheckSet {
+    use crate::h3star::hbase::{ControlKind, EffectKind, SettingItem, SettingRegistry};
+
+    let mut set = CheckSet::new("F301-deep3");
+
+    // 布景：登记「显示亮度」等三目。
+    let mut reg = SettingRegistry::new();
+    let _ = reg.add_item(SettingItem {
+        name: "显示亮度",
+        page: "系统/显示",
+        synonyms: &["亮度", "brightness", "调亮"],
+        effect: EffectKind::Instant,
+        default: 0,
+        value: 0,
+        control: ControlKind::Toggle,
+    });
+    let _ = reg.add_item(SettingItem {
+        name: "显示缩放",
+        page: "系统/显示",
+        synonyms: &["缩放比", "dpi", "放大"],
+        effect: EffectKind::Instant,
+        default: 0,
+        value: 0,
+        control: ControlKind::Toggle,
+    });
+    let _ = reg.add_item(SettingItem {
+        name: "声音输出",
+        page: "系统/声音",
+        synonyms: &["扬声器", "audio out", "出声"],
+        effect: EffectKind::Instant,
+        default: 0,
+        value: 0,
+        control: ControlKind::Toggle,
+    });
+    let mut sc = SettingsSearch::new(reg);
+
+    // 1. 零命中查询触发建议（近似词——亮度 vs 梁度差一字）。
+    let out = sc.query_at("显示梁度", 0);
+    set.add("zero hit triggers suggestions", out.suggestions.len() >= 1, "");
+
+    // 2. 建议可达：每条建议再查必有命中（死路建议 = 缺陷）。
+    let sug = out.suggestions.clone();
+    set.add("suggestions reachable", DidYouMeanAudit::suggestions_reachable(&sc, &sug), "");
+
+    // 3. 建议封顶三。
+    set.add("suggestions capped at three", DidYouMeanAudit::capped(&sug), "");
+
+    // 4. 有命中查询不出建议（建议只在零命中出现——语义不越界）。
+    let out2 = sc.query_at("显示亮度", 100);
+    set.add("hit query no suggestions", out2.suggestions.is_empty(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn suggest_cap_constant() {
+        assert_eq!(SUGGEST_CAP, 3, "建议三上限钉死");
+    }
+
+    #[test]
+    fn unreachable_suggestion_flagged() {
+        use crate::h3star::hbase::{ControlKind, EffectKind, SettingItem, SettingRegistry};
+        let mut reg = SettingRegistry::new();
+        let _ = reg.add_item(SettingItem {
+            name: "音量",
+            page: "系统/声音",
+            synonyms: &["s1", "s2", "s3"],
+            effect: EffectKind::Instant,
+            default: 0,
+            value: 0,
+            control: ControlKind::Toggle,
+        });
+        let sc = SettingsSearch::new(reg);
+        // 「幽灵词」无任何命中——作为建议即死路，审计判红。
+        assert!(!DidYouMeanAudit::suggestions_reachable(
+            &sc,
+            &alloc::vec![alloc::string::String::from("幽灵词")]
+        ));
+    }
+}

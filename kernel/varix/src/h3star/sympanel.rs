@@ -352,3 +352,106 @@ impl SymbolPanel {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 分类翻页语义（长分类面板的分页核）
+// ---------------------------------------------------------------------------
+
+/// 分类翻页核（长分类（箭头/数学符号多行）的分页语义）：每页容量
+/// 固定（9 宫格——3×3 面板），next/prev 在页界内移动、到边界不动
+/// （不回卷——回卷会让人迷失位置，翻页器语义与 WinKey 轮转相反）；
+/// 页码直出（第 x/y 页显示数据源）；切分类重置回第 1 页。
+pub struct TabPager {
+    pub per_page: usize,
+    pub total: usize,
+    pub page: usize, // 0 起。
+}
+
+impl TabPager {
+    pub fn new(total: usize) -> TabPager {
+        TabPager { per_page: 9, total, page: 0 }
+    }
+
+    /// 总页数（向上取整——余数页也要能翻到）。
+    pub fn pages(&self) -> usize {
+        if self.total == 0 {
+            return 1;
+        }
+        (self.total + self.per_page - 1) / self.per_page
+    }
+
+    /// 下一页：到末页不动。
+    pub fn next(&mut self) {
+        if self.page + 1 < self.pages() {
+            self.page += 1;
+        }
+    }
+
+    /// 上一页：到首页不动。
+    pub fn prev(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+        }
+    }
+
+    /// 当前页可见条数（余数页短页——如实出账）。
+    pub fn visible_count(&self) -> usize {
+        let start = self.page * self.per_page;
+        (self.total - start).min(self.per_page)
+    }
+
+    /// 页码显示（1 起人话）。
+    pub fn page_label(&self) -> (usize, usize) {
+        (self.page + 1, self.pages())
+    }
+}
+
+/// 深化层二自检（分类翻页）。
+pub fn run_sympanel_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F313-deep2");
+
+    // 1. 23 条分类 → 3 页（9/9/5 短尾页）。
+    let mut p = TabPager::new(23);
+    set.add(
+        "pages ceil division",
+        p.pages() == 3 && p.visible_count() == 9 && p.page_label() == (1, 3),
+        "",
+    );
+
+    // 2. 翻到末页不动（短尾页 5 条如实）、再 next 不回卷。
+    p.next();
+    p.next();
+    set.add("short tail page", p.visible_count() == 5 && p.page_label() == (3, 3), "");
+    p.next();
+    set.add("no wrap at end", p.page == 2, "");
+
+    // 3. prev 到首页不动。
+    p.prev();
+    p.prev();
+    p.prev();
+    set.add("no wrap at start", p.page == 0 && p.visible_count() == 9, "");
+
+    // 4. 空分类单页零条（诚实空态）。
+    let e = TabPager::new(0);
+    set.add("empty category one page", e.pages() == 1 && e.visible_count() == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn exact_multiple_pages() {
+        let p = TabPager::new(18);
+        assert_eq!(p.pages(), 2, "整除不留空页");
+    }
+
+    #[test]
+    fn single_page_category() {
+        let mut p = TabPager::new(5);
+        p.next();
+        assert_eq!(p.page, 0, "单页分类翻页不动");
+    }
+}

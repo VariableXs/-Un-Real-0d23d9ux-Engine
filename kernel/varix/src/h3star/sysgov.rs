@@ -3012,6 +3012,216 @@ mod deep7_tests {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层九 · 卸载后悔期 + 自定义保护件导入导出 + 卸载历史账
+// ---------------------------------------------------------------------------
+
+/// 卸载后悔期（数据安全「可撤销」的卸载域落法）：完成页后 5s 内可
+/// 一键恢复（恢复走 AppFootprint 重登记）；超期后悔拒绝（恢复窗口
+/// 显性倒计时——不装永远可逆的样子）；恢复动作留痕。
+pub struct UndoWindow {
+    pub app: String,
+    pub ended_at: Option<u64>,
+    /// 窗口时长 ms。
+    pub window_ms: u64,
+    pub restores: u64,
+    pub late_refusals: u64,
+}
+
+pub const UNDO_WINDOW_MS: u64 = 5_000;
+
+impl UndoWindow {
+    pub fn new(app: &str) -> UndoWindow {
+        UndoWindow {
+            app: String::from(app),
+            ended_at: None,
+            window_ms: UNDO_WINDOW_MS,
+            restores: 0,
+            late_refusals: 0,
+        }
+    }
+
+    pub fn record_end(&mut self, at_ms: u64) {
+        self.ended_at = Some(at_ms);
+    }
+
+    /// 后悔恢复：窗内放行（留痕）；窗外拒绝计数（人话提示由调用面
+    /// 生成——这里只给闸门语义）。
+    pub fn attempt_restore(&mut self, at_ms: u64) -> bool {
+        match self.ended_at {
+            Some(t0) if at_ms.saturating_sub(t0) <= self.window_ms => {
+                self.restores += 1;
+                true
+            }
+            Some(_) => {
+                self.late_refusals += 1;
+                false
+            }
+            None => false,
+        }
+    }
+
+    /// 剩余窗口 ms（倒计时显示数据源；无卸载/已过期 → 0）。
+    pub fn remaining_ms(&self, at_ms: u64) -> u64 {
+        match self.ended_at {
+            Some(t0) => self.window_ms.saturating_sub(at_ms.saturating_sub(t0)),
+            None => 0,
+        }
+    }
+}
+
+/// 用户自定义保护件导入导出（十四章开放性 × 保护白名单）：用户可
+/// 追加自己的保护件（如自研工具），导出可迁移；导入合并空名拒绝；
+/// 追加/导出均不触碰出厂六件（冻结面只增不减）。
+#[derive(Default)]
+pub struct CustomProtected {
+    pub added: Vec<String>,
+}
+
+impl CustomProtected {
+    /// 追加：非空 + 不与出厂件/已追加件重名。
+    pub fn add(&mut self, name: &str, base: &ProtectedComponents) -> bool {
+        if name.is_empty() || base.is_protected(name) || self.added.iter().any(|n| n == name) {
+            return false;
+        }
+        self.added.push(String::from(name));
+        true
+    }
+
+    /// 合并保护判定：出厂件或用户件都算受保护。
+    pub fn is_protected(&self, base: &ProtectedComponents, app: &str) -> bool {
+        base.is_protected(app) || self.added.iter().any(|n| n == app)
+    }
+
+    /// 导出（人话行——可备份可迁移）。
+    pub fn export(&self) -> alloc::string::String {
+        self.added
+            .iter()
+            .map(|n| alloc::format!("protected={}\n", n))
+            .collect()
+    }
+
+    /// 导入合并：只增不重、空行跳过。
+    pub fn import_merge(&mut self, text: &str, base: &ProtectedComponents) -> usize {
+        let mut n = 0;
+        for line in text.lines() {
+            if let Some(name) = line.strip_prefix("protected=") {
+                if self.add(name, base) {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+}
+
+/// 卸载历史账（「用户能看见系统做过什么」的卸载域面）：逐次卸载
+/// (时刻, 应用, 释放 MB) 入账——可查过去卸过什么（误删找回的依据，
+/// 与 F325 版本时间线同构的账面纪律），按时间倒序。
+#[derive(Default)]
+pub struct UninstallHistory {
+    pub entries: Vec<(u64, String, u64)>,
+}
+
+impl UninstallHistory {
+    pub fn record(&mut self, at_ms: u64, app: &str, freed_mb: u64) {
+        self.entries.push((at_ms, String::from(app), freed_mb));
+    }
+
+    /// 倒序视图（最近在前）。
+    pub fn recent(&self, n: usize) -> Vec<(u64, &str, u64)> {
+        self.entries
+            .iter()
+            .rev()
+            .take(n)
+            .map(|(t, a, m)| (*t, a.as_str(), *m))
+            .collect()
+    }
+
+    /// 累计释放（数据面——「本机已卸载应用共腾出多少空间」）。
+    pub fn total_freed(&self) -> u64 {
+        self.entries.iter().map(|(_, _, m)| m).sum()
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// 深化层九自检（后悔期 / 自定义保护 / 历史账）。
+pub fn run_sysgov_deep9_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep9");
+
+    // 1. 后悔期：窗内恢复放行、窗外拒绝计数、剩余倒计时归零语义。
+    let mut uw = UndoWindow::new("画板Pro");
+    let before = uw.attempt_restore(0);
+    uw.record_end(1000);
+    let in_window = uw.attempt_restore(5000);
+    let late = uw.attempt_restore(8000);
+    set.add(
+        "undo window gate",
+        !before && in_window && !late && uw.restores == 1 && uw.late_refusals == 1
+            && uw.remaining_ms(9000) == 0,
+        "",
+    );
+
+    // 2. 自定义保护：追加非空不重、与出厂面合并判定、出厂件仍冻结。
+    let base = ProtectedComponents::new();
+    let mut cp = CustomProtected::default();
+    let ok = cp.add("我的工具箱", &base);
+    let dup = cp.add("我的工具箱", &base);
+    let clash = cp.add("内核", &base);
+    set.add(
+        "custom protected gates",
+        ok && !dup && !clash && cp.is_protected(&base, "我的工具箱") && cp.is_protected(&base, "内核"),
+        "",
+    );
+
+    // 3. 导出导入 round-trip（迁移证明）。
+    let text = cp.export();
+    let mut cp2 = CustomProtected::default();
+    let merged = cp2.import_merge(&text, &base);
+    set.add("custom protected round trip", merged == 1 && cp2.added == cp.added, "");
+
+    // 4. 历史账：倒序视图 + 累计释放（数据面）。
+    let mut h = UninstallHistory::default();
+    h.record(0, "小算盘", 4);
+    h.record(100, "画板Pro", 97);
+    set.add(
+        "history recent and total",
+        h.recent(1) == alloc::vec![(100, "画板Pro", 97)] && h.total_freed() == 101,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn undo_window_constant_pinned() {
+        assert_eq!(UNDO_WINDOW_MS, 5_000, "后悔期 5s 判线钉死");
+    }
+
+    #[test]
+    fn remaining_counts_down() {
+        let mut uw = UndoWindow::new("A");
+        uw.record_end(0);
+        assert_eq!(uw.remaining_ms(2000), 3000);
+        assert_eq!(uw.remaining_ms(6000), 0, "超窗钳底不回绕");
+    }
+
+    #[test]
+    fn custom_protected_export_import_empty() {
+        let base = ProtectedComponents::new();
+        let cp = CustomProtected::default();
+        let mut cp2 = CustomProtected::default();
+        assert_eq!(cp2.import_merge(&cp.export(), &base), 0, "空导出导入零合并");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 深化层八 · 卸载冲突检测 + 依赖断裂警告 + 批量卸载账
 // ---------------------------------------------------------------------------
 
