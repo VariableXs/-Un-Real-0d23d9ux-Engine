@@ -17,6 +17,9 @@ import {
   type HardcodeHit,
 } from "./theme-engine";
 import { lockedTableForException } from "./archive-engine";
+import { compatibilityVerdict, migrateTokenTableV0 } from "./compat-matrix";
+import { TOKEN_TABLE_VERSION } from "./tokens";
+import { hasSunProvider, injectSunTimes, setSunProvider, sunAccuracyVerdict } from "./integrations";
 import {
   loadAutoDarkConfig, saveAutoDarkConfig, parseHHMM, nextSwitchAt,
   sunTimesMinutes, AutoDarkController, type AutoDarkMode,
@@ -115,6 +118,7 @@ export function TokensPage(): React.ReactNode {
           )
         ) : null}
       </Card>
+      <CompatMatrixCard />
       {(Object.keys(GROUP_ZH) as ColorGroup[]).map((g) => (
         <Card key={g} title={t(GROUP_ZH[g])}>
           {COLOR_TOKENS.filter((def) => def.group === g).map((def) => (
@@ -363,7 +367,42 @@ export function AutoDarkPage(): React.ReactNode {
           <PButton onClick={() => { const c = new AutoDarkController({ applySide: () => {}, showAdvanceToast: () => {}, report: () => {} }); c.skipTonight(Date.now()); }}>{t("skipTonight")}</PButton>
         </Row>
       </Card>
+      <SunProviderCard />
     </div>
+  );
+}
+
+/** F116 数据注入点状态卡（integrations 接线）：来源/注入/±5min 判定全可见。 */
+function SunProviderCard(): React.ReactNode {
+  const today = new Date().toISOString().slice(0, 10);
+  const injection = injectSunTimes(today);
+  const dayOfYear = Math.floor((Date.now() - new Date(Date.now()).setMonth(0, 0)) / 86400000);
+  const fallback = sunTimesMinutes(39.9, dayOfYear); // 北京纬度兜底（演示口径）
+  const verdict = injection.times && fallback
+    ? sunAccuracyVerdict(injection.times, { sunset: fallback.sunset ?? 0, sunrise: fallback.sunrise ?? 0, source: "天文兜底" })
+    : null;
+
+  function demoInject(): void {
+    setSunProvider((date) => ({ sunset: 18 * 60 + 12, sunrise: 5 * 60 + 58, source: `F116演示库·${date}` }));
+  }
+
+  return (
+    <Card title="F116 日落数据注入点（Schema 先行——F116 就绪即插即用）">
+      <Row label="provider 状态" sub={hasSunProvider() ? "已注册（F116 城市数据源在位）" : "未注册——sunset 模式走天文公式兜底（autodark.sunTimesMinutes）"}>
+        <PButton onClick={demoInject}>注册演示 provider</PButton>
+      </Row>
+      <Row label="今日注入" sub={injection.detail}>
+        <span />
+      </Row>
+      {injection.times ? (
+        <Row
+          label={`注入值 日落 ${Math.floor(injection.times.sunset / 60)}:${String(injection.times.sunset % 60).padStart(2, "0")} / 日出 ${Math.floor(injection.times.sunrise / 60)}:${String(injection.times.sunrise % 60).padStart(2, "0")}`}
+          sub={verdict ? `±${5}min 判定: ${verdict.ok ? "通过" : `偏差 日落 ${verdict.sunsetDeltaMin}min / 日出 ${verdict.sunriseDeltaMin}min`}（F116 判据口径）` : ""}
+        >
+          <span />
+        </Row>
+      ) : null}
+    </Card>
   );
 }
 
@@ -448,4 +487,54 @@ export function resetAllTokens(): void {
   const d = defaultTokenTable();
   saveTokenTable(d);
   applyTokenTableToDOM(d);
+}
+
+/** 兼容矩阵卡（compat-matrix 接线）：版本戳 + v0 旧主题迁移演示（降级清单可见、可逆）。 */
+function CompatMatrixCard(): React.ReactNode {
+  const [demoVer, setDemoVer] = useState<number | null>(0);
+  const verdict = compatibilityVerdict(demoVer);
+  const [migration, setMigration] = useState<ReturnType<typeof migrateTokenTableV0> | null>(null);
+
+  function runMigration(): void {
+    setMigration(migrateTokenTableV0({
+      version: 0,
+      colors: { "--bg-canvas": "#101018", "--accent": "#ff8800", "--bogus": "#123456" },
+    }));
+  }
+
+  return (
+    <Card title={`兼容矩阵（当前版本 v${TOKEN_TABLE_VERSION} · 旧主题不拒之门外——迁移必须可逆）`}>
+      <Row label="待检包版本" sub={`判定: ${verdict.level} · ${verdict.reason}`}>
+        <Segmented
+          value={String(demoVer)} ariaLabel="待检包版本"
+          onChange={(v) => { setDemoVer(v === "none" ? null : Number(v)); setMigration(null); }}
+          options={[
+            { value: "0", label: "v0 旧主题" },
+            { value: "1", label: "v1 当前" },
+            { value: "none", label: "无版本戳" },
+          ]}
+        />
+      </Row>
+      {verdict.degradations.length > 0 ? (
+        <Row label="降级清单（迁移前可见）" sub={verdict.degradations.join("；")}>
+          <span />
+        </Row>
+      ) : null}
+      <Row label="v0 迁移演示" sub={migration ? `${migration.reason}${migration.ok ? ` · 桥接 ${migration.mapped.length} 项` : ""}` : "11 变量旧主题 → 24 色语义表；非法值逐项指出"}>
+        <PButton kind="primary" onClick={runMigration}>跑迁移</PButton>
+      </Row>
+      {migration?.ok ? (
+        <Row label="迁移结果" sub={migration.mapped.map((m) => `${m.from}→${m.to}`).join(" · ")}>
+          <PButton kind="danger" onClick={() => {
+            // 迁移不是单行道：应用迁移表 = 一次普通令牌热替换（随时可退——undo 走 store 快照）。
+            if (migration.table) {
+              saveTokenTable(migration.table);
+              applyTokenTableToDOM(migration.table);
+              setMigration({ ...migration, reason: `${migration.reason} · 已应用（回退走令牌页单项 ↺ 或域总检三步）` });
+            }
+          }}>应用迁移表</PButton>
+        </Row>
+      ) : null}
+    </Card>
+  );
 }

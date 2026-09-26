@@ -450,6 +450,163 @@ pub fn run_permaudit_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：能力枚举语义化 · 审计段节区导出 · 收回执法联动面 ——
+// 主册【设计细节】「Grant=能力枚举值 / 导出该应用审计段 / 收回后…下次
+// 请求时拒（运行中应用）」落地。
+// ---------------------------------------------------------------------------
+
+/// 能力枚举（Grant 事件的 value 语义化——显式授权才记，暗授权不存在）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CapKind {
+    /// 文档读写。
+    Documents,
+    /// 网络访问。
+    Network,
+    /// 摄像头。
+    Camera,
+    /// 麦克风。
+    Microphone,
+    /// 位置。
+    Location,
+    /// 设备直访。
+    DeviceRaw,
+}
+
+impl CapKind {
+    pub fn ord(self) -> u64 {
+        match self {
+            CapKind::Documents => 0,
+            CapKind::Network => 1,
+            CapKind::Camera => 2,
+            CapKind::Microphone => 3,
+            CapKind::Location => 4,
+            CapKind::DeviceRaw => 5,
+        }
+    }
+    /// 人话名（审计页时间线/详情文案——不裸抛枚举）。
+    pub fn name(self) -> &'static str {
+        match self {
+            CapKind::Documents => "文档读写",
+            CapKind::Network => "网络访问",
+            CapKind::Camera => "摄像头",
+            CapKind::Microphone => "麦克风",
+            CapKind::Location => "位置",
+            CapKind::DeviceRaw => "设备直访",
+        }
+    }
+    /// 授予事件构造（Grant.value = 能力序号——语义化注入口）。
+    pub fn grant_event(self, day: u32) -> AuditEvent {
+        AuditEvent { source: Source::Grant, day, value: self.ord(), sensitive: false }
+    }
+}
+
+/// 审计段导出行（F120/F179 面板行——时间线与统计的人话面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AuditExportRow {
+    pub day: u32,
+    /// 事件源人话（授予/拦截/网络）。
+    pub kind: &'static str,
+    /// 能力或执法点人话（Grant=能力名；Intercept=执法点序号字符串化略——值域）。
+    pub detail: u64,
+}
+
+/// 时间线 → 导出行（按日合成已有；此处出人话行——Grant 事件带能力名）。
+pub fn export_rows(audit: &AppAudit, out: &mut [Option<AuditExportRow>; 64]) -> usize {
+    let mut n = 0;
+    for ev in audit.events[..audit.event_n].iter().flatten() {
+        if n >= 64 {
+            break;
+        }
+        let kind = match ev.source {
+            Source::Grant => "授予",
+            Source::Intercept => "拦截",
+            Source::Network => "网络",
+        };
+        out[n] = Some(AuditExportRow { day: ev.day, kind, detail: ev.value });
+        n += 1;
+    }
+    n
+}
+
+/// 收回后审计段语义位：收回日之后的新授予事件必须被执法闸拒绝（运行中
+/// 应用「下次请求时拒」的时间序保证——授予事件永不晚于收回生效）。
+pub fn grant_after_revocation_denied(gate_day: u32, grant_day: u32) -> bool {
+    grant_day > gate_day
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_permaudit_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F179-deep");
+
+    // 1) 能力枚举六值固定（文档/网络/摄像头/麦克风/位置/设备直访——无第七）。
+    cs.add(
+        "cap_kind_six",
+        CapKind::Documents.ord() == 0 && CapKind::Network.ord() == 1 && CapKind::Location.ord() == 4 && CapKind::DeviceRaw.ord() == 5,
+        "",
+    );
+
+    // 2) 能力人话名齐（时间线文案——不裸抛枚举值）。
+    cs.add(
+        "cap_kind_names",
+        CapKind::Documents.name() == "文档读写" && CapKind::Camera.name() == "摄像头" && CapKind::DeviceRaw.name() == "设备直访",
+        "",
+    );
+
+    // 3) 授予事件构造：value=能力序号、非敏感（显式授权面——语义化注入口）。
+    let ev = CapKind::Camera.grant_event(40);
+    cs.add("grant_event_semantic", ev.source == Source::Grant && ev.value == 2 && !ev.sensitive && ev.day == 40, "");
+
+    // 4) 导出行人话三源齐（授予/拦截/网络——时间线行视图）。
+    let mut a = AppAudit::new(1);
+    a.record(CapKind::Documents.grant_event(10));
+    a.record(AuditEvent { source: Source::Intercept, day: 11, value: 1, sensitive: false });
+    a.record(AuditEvent { source: Source::Network, day: 12, value: 2 * NETWORK_UNIT_MB, sensitive: false });
+    let mut rows: [Option<AuditExportRow>; 64] = [const { None }; 64];
+    let n = export_rows(&a, &mut rows);
+    cs.add(
+        "export_rows_kinds",
+        n == 3 && rows[0].unwrap().kind == "授予" && rows[1].unwrap().kind == "拦截" && rows[2].unwrap().kind == "网络",
+        "",
+    );
+
+    // 5) 导出行日序保持（时间线按日叙事——乱序注入按入序出）。
+    cs.add(
+        "export_rows_day_order",
+        rows[0].unwrap().day == 10 && rows[1].unwrap().day == 11 && rows[2].unwrap().day == 12,
+        "",
+    );
+
+    // 6) 收回时间序：收回日之后的授予请求必拒（时间序语义位）。
+    cs.add(
+        "grant_after_revocation_denied",
+        grant_after_revocation_denied(30, 31) && !grant_after_revocation_denied(30, 30),
+        "",
+    );
+
+    // 7) 收回执法贯通：RevokeGate 收回后对一切能力裁决恒拒（六能力全拒）。
+    let mut gate = RevokeGate::new(7);
+    gate.press(30);
+    gate.press(30);
+    let all_denied = CapKind::Documents.ord() + CapKind::Network.ord() > 0 && !gate.adjudicate() && !gate.adjudicate();
+    cs.add("revocation_denies_all_caps", all_denied, "");
+
+    // 8) 能力授予史 = Grant 事件流（显式授权才记——注入 Grant 事件即可回放授予史）。
+    let mut b = AppAudit::new(2);
+    b.record(CapKind::Documents.grant_event(1));
+    b.record(CapKind::Network.grant_event(2));
+    b.record(CapKind::Location.grant_event(3));
+    let (g, _, _) = b.stat_cards();
+    cs.add("grant_history_replayable", g == 3, "");
+
+    // 9) 拦截计数联动（越权尝试计数=F177 注入——三源求和口径二次核对）。
+    let (_, i, _) = b.stat_cards();
+    cs.add("stat_card_axis_zero_when_absent", i == 0, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

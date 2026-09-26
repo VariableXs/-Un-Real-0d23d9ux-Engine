@@ -87,6 +87,34 @@ pub fn run_secstar_checks() -> CheckSet {
     set
 }
 
+/// 域深化自检聚合（检查项对账层——各模块 run_*_deep_checks 汇总；
+/// 深化自检对账主册【设计细节】子句，与主判据层互补不重叠）。
+pub fn run_secstar_deep_checks() -> CheckSet {
+    let mut set = CheckSet::new("secstar-s1-deep");
+    let blocks: [(&'static str, CheckSet); 15] = [
+        ("F171d", bootmenu::run_bootmenu_deep_checks()),
+        ("F172d", selftestviz::run_selftestviz_deep_checks()),
+        ("F173d", panicscreen::run_panicscreen_deep_checks()),
+        ("F174d", diagsnap::run_diagsnap_deep_checks()),
+        ("F175d", crashiso::run_crashiso_deep_checks()),
+        ("F176d", memguard::run_memguard_deep_checks()),
+        ("F177d", capenforce::run_capenforce_deep_checks()),
+        ("F178d", signbadge::run_signbadge_deep_checks()),
+        ("F179d", permaudit::run_permaudit_deep_checks()),
+        ("F180d", pwrdrill::run_pwrdrill_deep_checks()),
+        ("F181d", handoffchk::run_handoffchk_deep_checks()),
+        ("F182d", duoclock::run_duoclock_deep_checks()),
+        ("F183d", diskhealth::run_diskhealth_deep_checks()),
+        ("F184d", hotplug::run_hotplug_deep_checks()),
+        ("F185d", romount::run_romount_deep_checks()),
+    ];
+    for (tag, sub) in blocks {
+        let passed = sub.all_passed() && !sub.truncated();
+        set.add(tag, passed, if passed { "" } else { "sub-checks red" });
+    }
+    set
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,6 +126,18 @@ mod tests {
         assert!(
             set.all_passed(),
             "SECSTAR-S1 域自检存在红项：{}/{} 绿",
+            passed,
+            passed + failed
+        );
+    }
+
+    #[test]
+    fn secstar_domain_deep_aggregate_all_green() {
+        let set = run_secstar_deep_checks();
+        let (passed, failed) = set.tally();
+        assert!(
+            set.all_passed(),
+            "SECSTAR-S1 深化自检存在红项：{}/{} 绿",
             passed,
             passed + failed
         );

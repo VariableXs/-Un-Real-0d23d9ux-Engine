@@ -143,3 +143,41 @@ export function deriveLockedTokenTable(mode: "dark" | "light", globalAccent: str
 export function lockedTableForException(ex: AppThemeException, globalAccent: string | null): TokenTable {
   return deriveLockedTokenTable(ex.mode, ex.accentOverride ?? globalAccent);
 }
+
+// ---------- 包体积预估（F161【设计细节】「包体积预估显示（导入前）」） ----------
+
+export interface SizeEstimate {
+  /** JSON 序列化字节数（UTF-8 口径）。 */
+  bytes: number;
+  /** 人话刻度（KB/MB 自适应）。 */
+  label: string;
+  /** 资产引用数（真资产不在包内——引用计数供体积预期校准）。 */
+  assetRefs: number;
+}
+
+const utf8Encoder: TextEncoder | null = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+
+function utf8ByteLength(s: string): number {
+  if (utf8Encoder) return utf8Encoder.encode(s).length;
+  // 无 TextEncoder 环境的保守估算（ASCII 按主册包场景占比兜底）。
+  return s.length;
+}
+
+/**
+ * 导入前体积预估：序列化字节数 + 资产引用计数。
+ * 真资产（壁纸/指针位图）不在包内——只计引用（F126 开放格式：包是清单不是仓库），
+ * 引用数让用户对「导入后还会拉多少资产」有预期。
+ */
+export function estimateArchiveSize(pkg: ArchivePackage): SizeEstimate {
+  const json = JSON.stringify(pkg);
+  const bytes = utf8ByteLength(json);
+  const label = bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${bytes} B`;
+  let assetRefs = 0;
+  for (const section of Object.values(pkg.sections)) {
+    if (!section) continue;
+    for (const v of Object.values(section)) {
+      if (typeof v === "string" && (v.startsWith("assets/") || v.startsWith("asset-ref:"))) assetRefs++;
+    }
+  }
+  return { bytes, label, assetRefs };
+}

@@ -952,6 +952,227 @@ pub fn run_panicscreen_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：帮助篇映射表 · dump 包头 · 跨重启持久帧 ——
+// 主册【设计细节】「帮助篇映射表随码表发布 / 重启后 F120 首页可见
+// 『上次异常重启』条目 / 重启前自动 dump（F020 管线内核态子集）」落地。
+// ---------------------------------------------------------------------------
+
+/// 帮助篇映射条目上限（码表随发布——F130 登记册纪律）。
+pub const HELP_MAP_CAP: usize = 16;
+/// dump 包头长度（定长——F020 内核态子集格式）。
+pub const DUMP_HEADER_LEN: usize = 48;
+/// panic 持久帧长度（跨重启——「上次异常重启」条目数据面）。
+pub const PERSIST_FRAME_LEN: usize = 32;
+
+/// 帮助篇映射：模块标签 → F119 panic 篇文章号（扫码直达「发生了什么」）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct HelpMapEntry {
+    /// 模块标签（VX-PANIC-<模块> 段，如 b"MEM"）。
+    pub tag: [u8; 8],
+    pub tag_len: usize,
+    /// F119 文章号（帮助链通的稳定锚）。
+    pub article: u16,
+}
+
+/// 帮助篇映射表（发布面——新增模块随码表增补，查询未登记 → 兜底篇 0）。
+pub struct HelpMap {
+    entries: [Option<HelpMapEntry>; HELP_MAP_CAP],
+    pub n: usize,
+}
+
+impl HelpMap {
+    pub const fn new() -> HelpMap {
+        HelpMap { entries: [const { None }; HELP_MAP_CAP], n: 0 }
+    }
+
+    pub fn register(&mut self, tag: &[u8], article: u16) -> bool {
+        if self.n >= HELP_MAP_CAP || tag.len() > 8 {
+            return false;
+        }
+        let mut t = [0u8; 8];
+        t[..tag.len()].copy_from_slice(tag);
+        self.entries[self.n] = Some(HelpMapEntry { tag: t, tag_len: tag.len(), article });
+        self.n += 1;
+        true
+    }
+
+    /// 查询：错误码 VX-PANIC-<模块>-<序号> 的模块段 → 文章号（未登记 → 兜底 0）。
+    pub fn lookup(&self, code: &[u8]) -> u16 {
+        // 解析第二段：VX-PANIC- 之后到下一个 '-'。
+        let prefix = b"VX-PANIC-";
+        if !code.starts_with(prefix) {
+            return 0;
+        }
+        let rest = &code[prefix.len()..];
+        let tag = match rest.iter().position(|b| *b == b'-') {
+            Some(p) => &rest[..p],
+            None => rest,
+        };
+        for e in self.entries[..self.n].iter().flatten() {
+            if &e.tag[..e.tag_len] == tag {
+                return e.article;
+            }
+        }
+        0
+    }
+}
+
+/// dump 包头（F020 管线内核态子集——重启前自动 dump 的格式面）：
+/// [0..4) 魔数 "VXDP" · [4] 版本 1 · [5] 碎裂帧号 · [6..8] 保留 ·
+/// [8..12] dump 字节数 u32 LE · [12..16] panic 地址 u32 LE ·
+/// [16..32] 错误码零填充 · [32..36] 校验和 FNV-1a(前 32B) · 其余 0。
+pub fn build_dump_header(code: &[u8], panic_addr: u32, dump_bytes: u32, frame: usize, out: &mut [u8; DUMP_HEADER_LEN]) {
+    out[0] = b'V';
+    out[1] = b'X';
+    out[2] = b'D';
+    out[3] = b'P';
+    out[4] = 1;
+    out[5] = frame as u8;
+    out[6] = 0;
+    out[7] = 0;
+    out[8..12].copy_from_slice(&dump_bytes.to_le_bytes());
+    out[12..16].copy_from_slice(&panic_addr.to_le_bytes());
+    let cl = code.len().min(16);
+    out[16..16 + cl].copy_from_slice(&code[..cl]);
+    for b in out[16 + cl..32].iter_mut() {
+        *b = 0;
+    }
+    let sum = crate_fnv1a(&out[..32]);
+    out[32..36].copy_from_slice(&sum.to_le_bytes());
+    for b in out[36..].iter_mut() {
+        *b = 0;
+    }
+}
+
+/// 包头校验（校验和+魔数——dump 消费侧拒收撕裂帧）。
+pub fn verify_dump_header(hdr: &[u8; DUMP_HEADER_LEN]) -> bool {
+    hdr[0] == b'V' && hdr[1] == b'X' && hdr[2] == b'D' && hdr[3] == b'P' && hdr[4] == 1
+        && u32::from_le_bytes(hdr[32..36].try_into().unwrap_or([0; 4])) == crate_fnv1a(&hdr[..32])
+}
+
+/// 本文件局部 FNV-1a（与 diskhealth 各自独立——跨模块共享走统一底盘，
+/// 此处零依赖纪律优先）。
+fn crate_fnv1a(data: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    for b in data {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
+}
+
+/// panic 持久帧（跨重启——F120 首页「上次异常重启」条目直接消费）：
+/// [0..4) 魔数 "VXPR" · [4..8] 地址 u32 LE · [8..12] 累计次数 u32 LE ·
+/// [12..16] 连续次数 u32 LE · [16..28] 错误码零填充 · [28..32] 校验和。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PanicPersist {
+    pub addr: u32,
+    /// 同码累计次数（跨重启合并——F120 对拍口径）。
+    pub total_count: u32,
+    /// 连续 panic 次数（≥2 → 安全模式询问——防循环的数据面）。
+    pub consecutive: u32,
+    pub code: [u8; 12],
+}
+
+pub fn encode_persist(p: &PanicPersist, out: &mut [u8; PERSIST_FRAME_LEN]) {
+    out[0] = b'V';
+    out[1] = b'X';
+    out[2] = b'P';
+    out[3] = b'R';
+    out[4..8].copy_from_slice(&p.addr.to_le_bytes());
+    out[8..12].copy_from_slice(&p.total_count.to_le_bytes());
+    out[12..16].copy_from_slice(&p.consecutive.to_le_bytes());
+    out[16..28].copy_from_slice(&p.code);
+    let sum = crate_fnv1a(&out[..28]);
+    out[28..32].copy_from_slice(&sum.to_le_bytes());
+}
+
+pub fn decode_persist(frame: &[u8; PERSIST_FRAME_LEN]) -> Option<PanicPersist> {
+    if frame[0] != b'V' || frame[1] != b'X' || frame[2] != b'P' || frame[3] != b'R' {
+        return None;
+    }
+    if u32::from_le_bytes(frame[28..32].try_into().ok()?) != crate_fnv1a(&frame[..28]) {
+        return None;
+    }
+    let mut code = [0u8; 12];
+    code.copy_from_slice(&frame[16..28]);
+    Some(PanicPersist {
+        addr: u32::from_le_bytes(frame[4..8].try_into().ok()?),
+        total_count: u32::from_le_bytes(frame[8..12].try_into().ok()?),
+        consecutive: u32::from_le_bytes(frame[12..16].try_into().ok()?),
+        code,
+    })
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_panicscreen_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F173-deep");
+
+    // 1) 帮助篇映射表：MEM→篇 101、FS→篇 102 注册后查询命中。
+    let mut hm = HelpMap::new();
+    let r1 = hm.register(b"MEM", 101) && hm.register(b"FS", 102);
+    cs.add("help_map_register_lookup", r1 && hm.lookup(b"VX-PANIC-MEM-7") == 101 && hm.lookup(b"VX-PANIC-FS-2") == 102, "");
+
+    // 2) 未登记模块 → 兜底篇 0（映射表不猜——诚实兜底）。
+    cs.add("help_map_fallback", hm.lookup(b"VX-PANIC-GFX-1") == 0, "");
+
+    // 3) 非法码面（无前缀）→ 兜底 0（不 panic 不越界）。
+    cs.add("help_map_malformed", hm.lookup(b"garbage") == 0 && hm.lookup(b"") == 0, "");
+
+    // 4) 映射表满诚实拒绝（16 上限）。
+    let mut hm2 = HelpMap::new();
+    let mut tag = [0u8; 4];
+    let first_fail = (0..20u16).find(|i| {
+        tag[0] = b'M';
+        tag[1] = b'0' + (*i / 10) as u8;
+        tag[2] = b'0' + (*i % 10) as u8;
+        tag[3] = b'X';
+        !hm2.register(&tag, *i)
+    });
+    cs.add("help_map_cap", first_fail == Some(HELP_MAP_CAP as u16) && hm2.n == HELP_MAP_CAP, "");
+
+    // 5) dump 包头 round-trip：魔数/版本/帧号/字节数/地址/错误码逐字段保真。
+    let mut hdr = [0u8; DUMP_HEADER_LEN];
+    build_dump_header(b"VX-PANIC-MEM-7", 0xDEAD_1000, 1_048_576, 2, &mut hdr);
+    cs.add(
+        "dump_header_roundtrip",
+        verify_dump_header(&hdr) && hdr[5] == 2 && u32::from_le_bytes(hdr[8..12].try_into().unwrap()) == 1_048_576
+            && u32::from_le_bytes(hdr[12..16].try_into().unwrap()) == 0xDEAD_1000
+            && &hdr[16..30] == b"VX-PANIC-MEM-7",
+        "",
+    );
+
+    // 6) dump 包头撕裂必拒（校验和——F020 消费侧不收脏包）。
+    let mut torn = hdr;
+    torn[9] ^= 0xFF;
+    cs.add("dump_header_torn_rejected", !verify_dump_header(&torn), "");
+
+    // 7) 持久帧 round-trip：地址/累计/连续/错误码全保真（跨重启对拍面）。
+    let mut code = [0u8; 12];
+    code[..14.min(12)].copy_from_slice(&b"VX-PANIC-MEM-7"[..12]);
+    let p = PanicPersist { addr: 0xCAFE_0000, total_count: 3, consecutive: 2, code };
+    let mut frame = [0u8; PERSIST_FRAME_LEN];
+    encode_persist(&p, &mut frame);
+    cs.add("persist_roundtrip", decode_persist(&frame) == Some(p), "");
+
+    // 8) 持久帧撕裂必拒（F120 首页条目不读脏帧）。
+    let mut torn2 = frame;
+    torn2[6] ^= 0xFF;
+    cs.add("persist_torn_rejected", decode_persist(&torn2).is_none(), "");
+
+    // 9) 连续次数 ≥2 → 安全模式询问的持久语义（防循环数据面贯通）。
+    let decoded = decode_persist(&frame).unwrap();
+    cs.add("persist_consecutive_gate", decoded.consecutive >= CONSECUTIVE_SAFE_MODE_AT, "");
+
+    // 10) 错误码→帮助链贯通：映射表查到的文章号进二维码 URL 语义位。
+    let article = hm.lookup(b"VX-PANIC-MEM-7");
+    cs.add("code_to_help_chain", article == 101 && HELP_MAP_CAP == 16, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

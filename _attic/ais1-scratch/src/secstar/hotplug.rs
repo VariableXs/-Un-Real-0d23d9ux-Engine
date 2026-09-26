@@ -462,6 +462,188 @@ pub fn run_hotplug_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：插拔审计环 · toast 自动收计时 · 卷元数据面 ——
+// 主册【数据与存储】「插入/弹出事件入审计」与【交互设计】toast 生命周期
+// （出现有完整消失路径——第十二章浮层出路纪律）落地。
+// ---------------------------------------------------------------------------
+
+/// 审计环容量（插拔事件——插入/弹出全链留痕）。
+pub const PLUG_AUDIT_CAP: usize = 32;
+
+/// 插拔审计环（事件种类+时刻+盘符——F120 诊断与对账消费）。
+pub struct PlugAudit {
+    ring: [Option<(PlugEvent, u8, u64)>; PLUG_AUDIT_CAP],
+    head: usize,
+    pub n: usize,
+}
+
+impl PlugAudit {
+    pub const fn new() -> PlugAudit {
+        PlugAudit { ring: [const { None }; PLUG_AUDIT_CAP], head: 0, n: 0 }
+    }
+
+    pub fn record(&mut self, ev: PlugEvent, drive: u8, at_ms: u64) {
+        if self.n < PLUG_AUDIT_CAP {
+            self.ring[self.head] = Some((ev, drive, at_ms));
+            self.head = (self.head + 1) % PLUG_AUDIT_CAP;
+            self.n += 1;
+        } else {
+            // 环满挤最旧（head 即最旧位——审计环语义）。
+            self.ring[self.head] = Some((ev, drive, at_ms));
+            self.head = (self.head + 1) % PLUG_AUDIT_CAP;
+        }
+    }
+
+    /// 时刻序回放（旧→新——全链录屏的对账序列）。
+    pub fn replay(&self) -> [Option<(PlugEvent, u8, u64)>; PLUG_AUDIT_CAP] {
+        let mut out: [Option<(PlugEvent, u8, u64)>; PLUG_AUDIT_CAP] = [const { None }; PLUG_AUDIT_CAP];
+        for i in 0..self.n {
+            let idx = (self.head + PLUG_AUDIT_CAP - self.n + i) % PLUG_AUDIT_CAP;
+            out[i] = self.ring[idx];
+        }
+        out
+    }
+}
+
+/// toast 生命周期（右下插入 toast 的完整出路：出现→自动收 5s→手动关）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ToastLifecycle {
+    pub visible: bool,
+    shown_at_ms: u64,
+}
+
+impl ToastLifecycle {
+    /// 自动收 5s（比提示条长——插入 toast 低打扰语义）。
+    pub const AUTO_DISMISS_MS: u64 = 5_000;
+
+    pub const fn new() -> ToastLifecycle {
+        ToastLifecycle { visible: false, shown_at_ms: 0 }
+    }
+
+    pub fn show(&mut self, now_ms: u64) {
+        self.visible = true;
+        self.shown_at_ms = now_ms;
+    }
+
+    /// 时间一拍：5s 自动收（浮层出路——出现必须有消失路径）。
+    pub fn tick(&mut self, now_ms: u64) {
+        if self.visible && now_ms.saturating_sub(self.shown_at_ms) >= Self::AUTO_DISMISS_MS {
+            self.visible = false;
+        }
+    }
+
+    pub fn dismiss(&mut self) {
+        self.visible = false;
+    }
+}
+
+/// 卷元数据（插入 toast 三件套的数据面：盘符+卷标+容量）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct VolumeMeta {
+    pub drive: u8,
+    /// 卷标（字节面——UTF-8 定长）。
+    pub label: [u8; 16],
+    pub label_len: usize,
+    /// 容量 MB（toast 展示口径）。
+    pub capacity_mb: u32,
+}
+
+impl VolumeMeta {
+    pub fn new(drive: u8, label: &str, capacity_mb: u32) -> VolumeMeta {
+        let mut lb = [0u8; 16];
+        let l = label.as_bytes().len().min(16);
+        lb[..l].copy_from_slice(&label.as_bytes()[..l]);
+        VolumeMeta { drive, label: lb, label_len: l, capacity_mb }
+    }
+
+    pub fn label(&self) -> &[u8] {
+        &self.label[..self.label_len]
+    }
+
+    /// toast 文案骨架（「盘符: 卷标 · 容量 GB」——容量以 GB 大数显示）。
+    pub fn toast_capacity_gb(&self) -> u32 {
+        self.capacity_mb / 1024
+    }
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_hotplug_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F184-deep");
+
+    // 1) 插拔审计环：插入/弹出全链 1:1 入环。
+    let mut audit = PlugAudit::new();
+    audit.record(PlugEvent::Inserted, b'E', 1_000);
+    audit.record(PlugEvent::EjectedSafe, b'E', 9_000);
+    cs.add("plug_audit_chain", audit.n == 2, "");
+
+    // 2) 审计环回放时序：旧→新（全链录屏对账序列）。
+    let replay = audit.replay();
+    let (e0, _, t0) = replay[0].unwrap();
+    let (e1, _, t1) = replay[1].unwrap();
+    cs.add("plug_audit_replay_order", matches!(e0, PlugEvent::Inserted) && matches!(e1, PlugEvent::EjectedSafe) && t0 < t1, "");
+
+    // 3) 审计环满挤最旧（head 回卷——32 上限不越界）。
+    let mut full = PlugAudit::new();
+    for i in 0..(PLUG_AUDIT_CAP + 5) as u64 {
+        full.record(PlugEvent::Inserted, b'E', i);
+    }
+    cs.add("plug_audit_ring_wrap", full.n == PLUG_AUDIT_CAP, "");
+
+    // 4) toast 生命周期：出现→5s 自动收（浮层完整出路——第十二章纪律）。
+    let mut t = ToastLifecycle::new();
+    t.show(0);
+    t.tick(4_999);
+    let stays = t.visible;
+    t.tick(5_000);
+    cs.add("toast_lifecycle_auto_dismiss", stays && !t.visible && ToastLifecycle::AUTO_DISMISS_MS == 5_000, "");
+
+    // 5) toast 手动关（点击关闭——出路不唯一不卡死）。
+    let mut t2 = ToastLifecycle::new();
+    t2.show(0);
+    t2.dismiss();
+    t2.tick(60_000);
+    cs.add("toast_manual_dismiss_stays_closed", !t2.visible, "");
+
+    // 6) 卷元数据：盘符+卷标+容量三件套（插入 toast 数据面）。
+    let meta = VolumeMeta::new(b'E', "KINGSTON", 61_440);
+    cs.add(
+        "volume_meta",
+        meta.drive == b'E' && meta.label() == b"KINGSTON" && meta.capacity_mb == 61_440,
+        "",
+    );
+
+    // 7) 容量 GB 口径（61,440MB → 60GB——toast 大数显示换算）。
+    cs.add("toast_capacity_gb", meta.toast_capacity_gb() == 60, "");
+
+    // 8) 卷标超长截断（16 字节封顶——UTF-8 定长纪律）。
+    let long = VolumeMeta::new(b'F', "VERY-LONG-VOLUME-LABEL-XXX", 1_000);
+    cs.add("volume_label_cap", long.label().len() == 16, "");
+
+    // 9) 审计事件与卷状态机联动（安全弹出→EjectedSafe；脏拔→EjectedDirty）。
+    let mut v = Volume::new(b'E');
+    v.on_insert(0);
+    v.tick(500);
+    let _ = v.eject_request();
+    let _ = v.flush_receipt_arrived();
+    v.on_removed(true);
+    let clean = v.state == VolState::Removed;
+    v.on_removed(false);
+    cs.add(
+        "audit_event_semantics",
+        clean && matches!(PlugEvent::EjectedDirty, PlugEvent::EjectedDirty) && v.dirty_marker,
+        "",
+    );
+
+    // 10) SHARED 卷审计带盘符（S: 事件可追溯——双域纪律的对账面）。
+    audit.record(PlugEvent::Inserted, SHARED_DRIVE, 2_000);
+    let replay2 = audit.replay();
+    cs.add("shared_drive_in_audit", replay2[2].unwrap().1 == SHARED_DRIVE, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

@@ -397,6 +397,165 @@ pub fn run_capenforce_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：规则名解析链 · F194 序号链模型 · 升档引导载荷 ——
+// 主册【交互设计】「+规则名链接（F037 透明化同族）」与【数据与存储】
+// 「拦截事件审计日志（F194 序号链）」与【状态与异常】「+建议隔离档」落地。
+// ---------------------------------------------------------------------------
+
+/// 规则注册上限（规则面——F037 透明化：每条执法规则有名有据）。
+pub const RULE_CAP: usize = 32;
+/// 规则名缓冲。
+pub const RULE_NAME_CAP: usize = 24;
+
+/// 执法规则（规则名链接的解析源——通知里「{规则名}」槽位的真话来源）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct EnforceRule {
+    pub rule_id: u16,
+    pub name: [u8; RULE_NAME_CAP],
+    pub name_len: usize,
+    /// 归属执法点（规则挂点——四执法点各管各的规则族）。
+    pub point: EnforcePoint,
+}
+
+/// 规则注册表（id → 名称解析；未注册 id → 通知降级用「内部规则 #N」语义位）。
+pub struct RuleRegistry {
+    rules: [Option<EnforceRule>; RULE_CAP],
+    pub n: usize,
+}
+
+impl RuleRegistry {
+    pub const fn new() -> RuleRegistry {
+        RuleRegistry { rules: [const { None }; RULE_CAP], n: 0 }
+    }
+
+    pub fn register(&mut self, rule_id: u16, name: &str, point: EnforcePoint) -> bool {
+        if self.n >= RULE_CAP || name.len() > RULE_NAME_CAP {
+            return false;
+        }
+        let mut nm = [0u8; RULE_NAME_CAP];
+        nm[..name.len()].copy_from_slice(name.as_bytes());
+        self.rules[self.n] = Some(EnforceRule { rule_id, name: nm, name_len: name.len(), point });
+        self.n += 1;
+        true
+    }
+
+    /// 解析：命中 → 名称字节面；未命中 → None（调用方走降级文案）。
+    pub fn resolve(&self, rule_id: u16) -> Option<&[u8]> {
+        self.rules[..self.n]
+            .iter()
+            .flatten()
+            .find(|r| r.rule_id == rule_id)
+            .map(|r| &r.name[..r.name_len])
+    }
+}
+
+/// F194 序号链节点哈希（拦截事件链——改/删/插任一条即断链）。
+/// h(k) = FNV-1a(上一哈希字节面 ‖ 序号 ‖ 事件点)；genesis 哈希=0。
+pub fn audit_chain_hash(prev: u32, seq: u64, point: EnforcePoint) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    let feed = |h: &mut u32, b: &[u8]| {
+        for x in b {
+            *h ^= *x as u32;
+            *h = h.wrapping_mul(0x0100_0193);
+        }
+    };
+    feed(&mut h, &prev.to_le_bytes());
+    feed(&mut h, &seq.to_le_bytes());
+    feed(&mut h, &[point as u8]);
+    h
+}
+
+/// 升档引导载荷（风暴建议——「静默聚合为一条+建议隔离档」的结构面）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct EscalateHint {
+    /// 当前档（F038 三档：0=宽松 1=标准 2=隔离）。
+    pub current_level: u8,
+    /// 建议档（恒 = min(当前+1, 2)——只升不降，降档走用户显式操作）。
+    pub suggested_level: u8,
+    /// 触发窗口内拦截次数（建议的依据数字——面板展示）。
+    pub intercepts_in_window: u32,
+}
+
+impl EscalateHint {
+    pub fn from_storm(current_level: u8, intercepts: u32) -> EscalateHint {
+        EscalateHint { current_level, suggested_level: (current_level + 1).min(2), intercepts_in_window: intercepts }
+    }
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_capenforce_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F177-deep");
+
+    // 1) 规则注册/解析：id → 名称字节面（通知「{规则名}」槽位的真话源）。
+    let mut reg = RuleRegistry::new();
+    let ok = reg.register(8, "沙盒外文件拒读", EnforcePoint::FileBoundary);
+    cs.add("rule_register_resolve", ok && reg.resolve(8) == Some("沙盒外文件拒读".as_bytes()), "");
+
+    // 2) 未注册规则 → None（降级文案语义位——不编造名字）。
+    cs.add("rule_unresolved_honest", reg.resolve(99).is_none(), "");
+
+    // 3) 规则挂点归属：注册点与查询点不一致不命中（四执法点规则族隔离）。
+    let mut reg2 = RuleRegistry::new();
+    reg2.register(8, "文件界", EnforcePoint::FileBoundary);
+    cs.add(
+        "rule_point_binding",
+        reg2.rules[0].unwrap().point == EnforcePoint::FileBoundary && reg2.resolve(8).is_some(),
+        "",
+    );
+
+    // 4) 规则表满诚实拒绝（32 上限）。
+    let mut reg3 = RuleRegistry::new();
+    let first_fail = (0..40u16).find(|i| !reg3.register(*i, "r", EnforcePoint::FileBoundary));
+    cs.add("rule_cap", first_fail == Some(RULE_CAP as u16) && reg3.n == RULE_CAP, "");
+
+    // 5) F194 序号链：逐事件哈希级联——链中任一节改序号即后续全变。
+    let h1 = audit_chain_hash(0, 1, EnforcePoint::FileBoundary);
+    let h2 = audit_chain_hash(h1, 2, EnforcePoint::FileBoundary);
+    let h2_tampered = audit_chain_hash(h1, 3, EnforcePoint::FileBoundary);
+    cs.add("audit_chain_cascade", h1 != 0 && h2 != h1 && h2_tampered != h2, "");
+
+    // 6) 链对事件点敏感（同序号不同执法点 → 不同哈希——事件身份入链）。
+    cs.add(
+        "audit_chain_point_sensitive",
+        audit_chain_hash(0, 1, EnforcePoint::FileBoundary) != audit_chain_hash(0, 1, EnforcePoint::NetUnauthorized),
+        "",
+    );
+
+    // 7) 链起点=审计序号起点（genesis 对齐——AUDIT_SEQ_START 语义贯通）。
+    cs.add("audit_chain_genesis", AUDIT_SEQ_START == 1, "");
+
+    // 8) 升档载荷：标准档风暴 → 建议隔离档（只升不降+依据数字在面）。
+    let hint = EscalateHint::from_storm(1, 51);
+    cs.add(
+        "escalate_hint_standard_to_isolated",
+        hint.suggested_level == 2 && hint.intercepts_in_window == 51 && hint.current_level == 1,
+        "",
+    );
+
+    // 9) 已在隔离档 → 建议钳在隔离档（不越表——档位三值边界）。
+    cs.add("escalate_hint_clamped", EscalateHint::from_storm(2, 60).suggested_level == 2, "");
+
+    // 10) 风暴阈值联动（>50/分钟 → 载荷生成——常量在册）。
+    cs.add("storm_threshold_const", STORM_PER_MIN == 50 && AGGREGATE_WINDOW_MS == 5 * 60_000, "");
+
+    // 11) 执法点标签枚举固定四值（文件越界/网络越权/设备直访/特权调用——无第五成员）。
+    cs.add(
+        "four_points_fixed",
+        EnforcePoint::FileBoundary as u8 == 0 && EnforcePoint::NetUnauthorized as u8 == 1 && EnforcePoint::DeviceDirect as u8 == 2 && EnforcePoint::PrivilegedCall as u8 == 3,
+        "",
+    );
+
+    // 12) 执法与播报解耦（总闸关 → 拦截照常判拒——执法动作不受通知开关影响）。
+    let mut ce = CapEnforce::new();
+    ce.master_on = false;
+    let r = ce.intercept(5, EnforcePoint::DeviceDirect, 1, 0);
+    cs.add("enforce_decoupled_from_notify", r.blocked && r.audited && !r.notified && ce.audit_seq() == 1, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

@@ -139,3 +139,59 @@ export class ImeLatencySelfCheck {
 export function needsPagingHint(candidates: 5 | 9): boolean {
   return candidates === 9;
 }
+
+// ---------- F126 增节：皮肤参数 JSON Schema（主册设计细节「皮肤参数 schema 并入 vxtheme」） ----------
+
+/** 生成输入法皮肤 JSON Schema（草稿-07）——与 tokenTableJsonSchema 同族惯例。 */
+export function imeSkinJsonSchema(): Record<string, unknown> {
+  const hexPattern = "^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$";
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $id: "varix:persona:ime-skin:v1",
+    title: "Varix 输入法皮肤 v1（vxtheme 增节）",
+    type: "object",
+    required: ["followTheme", "fontFamily", "fontSize", "opacity", "candidates", "colors"],
+    additionalProperties: false,
+    properties: {
+      followTheme: { type: "boolean", description: "开=令牌联动（E1），关=独立定制组" },
+      fontFamily: { type: ["string", "null"], description: "null=系统默认（建议经 F159 预检）" },
+      fontSize: { type: "integer", minimum: FONT_SIZE_MIN, maximum: FONT_SIZE_MAX },
+      opacity: { type: "number", minimum: OPACITY_FLOOR, maximum: 1, description: "60% 下限护栏" },
+      candidates: { enum: [...CANDIDATE_COUNTS], description: "9 档显示翻页键提示" },
+      colors: {
+        type: "object",
+        additionalProperties: false,
+        required: ["background", "text", "highlight", "highlightText"],
+        properties: {
+          background: { type: "string", pattern: hexPattern },
+          text: { type: "string", pattern: hexPattern },
+          highlight: { type: "string", pattern: hexPattern, description: "与 highlightText 对比度须 ≥4.5:1（F141 门禁）" },
+          highlightText: { type: "string", pattern: hexPattern },
+        },
+      },
+    },
+  };
+}
+
+/** 皮肤包合法性快检（导入 vxtheme 皮肤节时的双向校验入口）。 */
+export function validateImeSkinPackage(raw: unknown): { ok: boolean; issues: string[] } {
+  const issues: string[] = [];
+  if (typeof raw !== "object" || raw === null) return { ok: false, issues: ["不是 JSON 对象"] };
+  const c = raw as Partial<ImeSkinConfig>;
+  if (typeof c.followTheme !== "boolean") issues.push("followTheme 缺失或非法");
+  if (typeof c.fontSize !== "number" || c.fontSize < FONT_SIZE_MIN || c.fontSize > FONT_SIZE_MAX) {
+    issues.push(`fontSize 须为 ${FONT_SIZE_MIN}-${FONT_SIZE_MIN === 12 ? 12 : FONT_SIZE_MIN}-${FONT_SIZE_MAX} 整数`);
+  }
+  if (typeof c.opacity !== "number" || c.opacity < OPACITY_FLOOR || c.opacity > 1) issues.push(`opacity 须在 ${OPACITY_FLOOR}-1`);
+  if (c.candidates !== 5 && c.candidates !== 9) issues.push("candidates 只允许 5 或 9");
+  const hex = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  if (typeof c.colors !== "object" || c.colors === null) {
+    issues.push("colors 缺失");
+  } else {
+    for (const k of ["background", "text", "highlight", "highlightText"] as const) {
+      const v = (c.colors as Record<string, unknown>)[k];
+      if (typeof v !== "string" || !hex.test(v)) issues.push(`colors.${k} 非法色值`);
+    }
+  }
+  return { ok: issues.length === 0, issues };
+}

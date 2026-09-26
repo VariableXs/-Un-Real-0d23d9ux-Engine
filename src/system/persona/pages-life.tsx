@@ -13,10 +13,11 @@ import { loadBootSkinConfig, saveBootSkinConfig, validateBootSkinConfig, PARTICL
 import { BOOT_DURATION_MS } from "./store";
 import { loadImeSkinConfig, saveImeSkinConfig, clampImeSkin, validateImeSkin, CANDIDATE_COUNTS } from "./imeskin";
 import { loadTokenTable } from "./tokens";
-import { signArchive, verifySignature, validateSections, migrateArchiveV0toV1 } from "./archive-engine";
-import { snapToGrid, resolvePlacement, reclaimOffscreen, buildUpdateSchedule, widgetSizePx, type ScreenBounds } from "./widgets-engine";
+import { signArchive, verifySignature, validateSections, migrateArchiveV0toV1, estimateArchiveSize } from "./archive-engine";
+import { snapToGrid, resolvePlacement, reclaimOffscreen, buildUpdateSchedule, widgetSizePx, weatherFreshness, perfGuardAction, WEATHER_STALE_MS, type ScreenBounds } from "./widgets-engine";
 import { lockMachineStep, buildNotificationDigest, focusRetreatTransform, seedParticles, stepParticles, bakeManifestAll, actOf, type LockPhase } from "./boot-engine";
 import { layoutCandidates, COMPOSITION_BUDGET_MS, type CandidateItem } from "./ime-menu-engine";
+import { imeSkinJsonSchema } from "./imeskin";
 import { Card, PageHeader, Row, Toggle, Slider, Segmented, PButton, Notice, ColorChip, MiniDesktop, useT, usePersonaSection } from "./ui";
 
 /** 档案分节 id（ARCHIVE_SECTIONS 派生——不与 store 的 PersonaSection 重复造类型）。 */
@@ -72,8 +73,9 @@ export function ArchivePage(): React.ReactNode {
       }
       const sectionErrs = validateSections(pkg as ArchivePackage);
       const d = diffPreview(pkg);
+      const size = estimateArchiveSize(pkg as ArchivePackage);
       setDiff(
-        `将更改: ${d.changedSections.join(" / ") || "（无差异）"}${v.degradations.length > 0 ? ` · ${v.degradations.join("；")}` : ""}${sectionErrs.length > 0 ? ` · 分节校验: ${sectionErrs.join("；")}` : " · 分节校验全过"}${migrationNote}`,
+        `将更改: ${d.changedSections.join(" / ") || "（无差异）"}${v.degradations.length > 0 ? ` · ${v.degradations.join("；")}` : ""}${sectionErrs.length > 0 ? ` · 分节校验: ${sectionErrs.join("；")}` : " · 分节校验全过"}${migrationNote} · 体积预估 ${size.label}（资产引用 ${size.assetRefs} 处——真资产按需拉取）`,
       );
     } catch {
       setMsg("不是合法 JSON");
@@ -228,6 +230,15 @@ function PlacementCard(): React.ReactNode {
           <span />
         </Row>
       ) : null}
+      <Row
+        label="断网降级（天气组件）"
+        sub={`${weatherFreshness(Date.now() - WEATHER_STALE_MS - 60_000, Date.now()).label} · 保鲜窗 ${Math.round(WEATHER_STALE_MS / 60000)}min——超龄即「数据截至」角标，不显示过期值冒充实时`}
+      >
+        <span />
+      </Row>
+      <Row label="性能执法演示" sub={perfGuardAction(4.1, 3.3, true).detail}>
+        <span />
+      </Row>
     </Card>
   );
 }
@@ -518,6 +529,16 @@ export function ImePage(): React.ReactNode {
             <PButton onClick={() => setHighlightIndex((i) => (i + 1) % DEMO_CANDIDATES.length)}>下一候选</PButton>
             <PButton onClick={() => setHighlightIndex((i) => Math.min(DEMO_CANDIDATES.length - 1, i + effective.candidates))}>翻页</PButton>
           </span>
+        </Row>
+        <Row label="皮肤 schema（F126 增节）" sub="并入 vxtheme 打包格式——第三方主题包可携带候选窗皮肤">
+          <PButton onClick={() => {
+            const blob = new Blob([JSON.stringify(imeSkinJsonSchema(), null, 2)], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "varix-ime-skin.schema.json";
+            a.click();
+            URL.revokeObjectURL(a.href);
+          }}>导出 schema</PButton>
         </Row>
       </Card>
     </div>

@@ -435,6 +435,153 @@ pub fn run_diskhealth_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：SMART 等价读取面 · 三层口径折叠说明 · 备份提醒
+// 调度 —— 主册【设计细节】「TBW 口径参照 NAND 磨损公开文献（P/E cycle
+// 估算模型标注来源）/数据口径折叠注明三层（实测/推算/不可知——不许混装）/
+// 黄段起备份提醒 toast（月频不烦）」落地。
+// ---------------------------------------------------------------------------
+
+/// SMART 等价读取面（主控指标注入口——可读则读，不可读=灰行）。
+pub trait SmartReader {
+    /// 磨损均衡指标（0-1000‰ 主控自报；None=主控未开放）。
+    fn wear_leveling_permille(&self) -> Option<u32>;
+    /// 主控型号是否提供健康页（诚实分级：型号声明 ≠ 实测）。
+    fn controller_supports_health(&self) -> bool;
+}
+
+/// 无 SMART 主控的空实现（灰行语义——「主控未开放数据」路径的引擎侧）。
+pub struct NoSmart;
+impl SmartReader for NoSmart {
+    fn wear_leveling_permille(&self) -> Option<u32> {
+        None
+    }
+    fn controller_supports_health(&self) -> bool {
+        false
+    }
+}
+
+/// 有 SMART 主控的样本实现（台架注入——测试与真实驱动同一 trait）。
+pub struct FakeSmart {
+    pub wear: Option<u32>,
+}
+impl SmartReader for FakeSmart {
+    fn wear_leveling_permille(&self) -> Option<u32> {
+        self.wear
+    }
+    fn controller_supports_health(&self) -> bool {
+        true
+    }
+}
+
+/// TBW 估算模型标注（P/E cycle 模型——来源标注随页输出，F130 开放纪律）。
+pub const TBW_MODEL_CITATION: &str = "P/E-cycle estimate, model nominal TBW";
+
+/// 健康页折叠说明文案（三层口径——「数据来源与口径」节的内容面）。
+pub fn explainer_lines() -> [(&'static str, Tier); 4] {
+    [
+        ("写入量累计：块层提交实测（含写合并后真实盘量）", Tier::Measured),
+        ("寿命区间：基于型号标称 TBW 推算", Tier::Estimated),
+        ("磨损均衡：主控可读则读，不可读不显示", Tier::Unknown),
+        ("ext4 错误计数：文件系统层实测", Tier::Measured),
+    ]
+}
+
+/// 三层不许混装校验（口径纪律的机器面：每行口径与其内容自洽——
+/// 推算行必须带「推算」字样、不可知行必须带「不显示/未开放」语义）。
+pub fn explainer_tiers_consistent(lines: &[(&'static str, Tier); 4]) -> bool {
+    lines.iter().all(|(text, tier)| match tier {
+        Tier::Measured => text.contains("实测") && !text.contains("推算"),
+        Tier::Estimated => text.contains("推算") || text.contains("标称"),
+        Tier::Unknown => text.contains("不显示") || text.contains("未开放"),
+    })
+}
+
+/// 备份提醒月键（月频不烦——年×12 月键，同月只提一次的键空间）。
+pub fn backup_toast_month_key(year: u32, month: u32) -> u32 {
+    year.wrapping_mul(12).wrapping_add(month.saturating_sub(1).min(11))
+}
+
+/// 黄段备份提醒裁决（月频节流的裁决面：黄/红段+当月未提过 → 提）。
+pub fn backup_reminder_due(band: Band, month_done: u32, month: u32) -> bool {
+    matches!(band, Band::Yellow | Band::Red) && month_done != month
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_diskhealth_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F183-deep");
+
+    // 1) SMART 面：有主控 → 指标可读；无主控 → None（灰行引擎侧）。
+    let smart = FakeSmart { wear: Some(420) };
+    let none = NoSmart;
+    cs.add(
+        "smart_reader_triage",
+        smart.wear_leveling_permille() == Some(420) && none.wear_leveling_permille().is_none() && !none.controller_supports_health(),
+        "",
+    );
+
+    // 2) SMART 面接健康页组装（None → Unknown 灰行—— trait 到页面贯通）。
+    let page_smart = build_health_page(100_000_000_000, 1_000_000_000_000, smart.wear_leveling_permille().map(|v| v as u64), 0);
+    let page_none = build_health_page(100_000_000_000, 1_000_000_000_000, none.wear_leveling_permille().map(|v| v as u64), 0);
+    cs.add(
+        "smart_to_page_linkage",
+        page_smart.wear_leveling.tier == Tier::Measured && page_none.wear_leveling.tier == Tier::Unknown,
+        "",
+    );
+
+    // 3) TBW 模型来源标注在册（P/E cycle——F130 开放引用纪律）。
+    cs.add("tbw_model_citation", TBW_MODEL_CITATION.contains("P/E") && TBW_MODEL_CITATION.contains("TBW"), "");
+
+    // 4) 三层口径折叠说明：四行齐、口径逐行自洽（不许混装机器面）。
+    let lines = explainer_lines();
+    cs.add(
+        "explainer_tiers_consistent",
+        lines.len() == 4 && explainer_tiers_consistent(&lines),
+        "",
+    );
+
+    // 5) 折叠说明覆盖实测/推算/不可知三态（三态各至少一行——分级展示完整性）。
+    let has_measured = lines.iter().any(|(_, t)| *t == Tier::Measured);
+    let has_est = lines.iter().any(|(_, t)| *t == Tier::Estimated);
+    let has_unknown = lines.iter().any(|(_, t)| *t == Tier::Unknown);
+    cs.add("explainer_covers_all_tiers", has_measured && has_est && has_unknown, "");
+
+    // 6) 月键构造：年月 → 稳定键（2026-09 与 2027-09 不同键——跨年不碰撞）。
+    cs.add(
+        "backup_month_key",
+        backup_toast_month_key(2026, 9) != backup_toast_month_key(2027, 9) && backup_toast_month_key(2026, 9) == backup_toast_month_key(2026, 9),
+        "",
+    );
+
+    // 7) 黄段提醒裁决：黄/红段+当月未提 → 提；绿段不提；同月已提不提。
+    cs.add(
+        "backup_reminder_due",
+        backup_reminder_due(Band::Yellow, 0, 9) && !backup_reminder_due(Band::Green, 0, 9) && !backup_reminder_due(Band::Red, 9, 9),
+        "",
+    );
+
+    // 8) 错误计数行口径（实测——ext4 层来源在折叠说明中声明）。
+    let page = build_health_page(1, 1_000_000_000_000, None, 7);
+    cs.add("error_row_measured", page.errors.tier == Tier::Measured && page.errors.value == 7, "");
+
+    // 9) 写入计数点语义（块层提交——含写合并后真实盘量，非应用量的声明行）。
+    cs.add(
+        "block_layer_semantics",
+        explainer_lines()[0].0.contains("块层提交") && explainer_lines()[0].0.contains("写合并"),
+        "",
+    );
+
+    // 10) 寿命条三段与提醒联动（绿段零打扰——月频纪律的前提）。
+    cs.add(
+        "band_reminder_linkage",
+        !backup_reminder_due(Band::Green, 0, 9) && backup_reminder_due(Band::Yellow, 0, 9) && backup_reminder_due(Band::Red, 0, 9),
+        "",
+    );
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

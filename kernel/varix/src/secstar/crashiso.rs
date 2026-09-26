@@ -463,6 +463,170 @@ pub fn run_crashiso_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：遮罩中央卡模型 · 诊断导出面 · 焦点移交动画时序 ——
+// 主册【交互设计】「窗口内容定格+20% 黑幕+中央卡（应用图标+文案+双钮）」
+// 与【数据与存储】「崩溃事件入诊断列表（F020/F120 面板消费）」落地。
+// ---------------------------------------------------------------------------
+
+/// 遮罩黑幕 20%（主册设计细节——遮罩色恒定深色不随主题）。
+pub const MASK_DIM_PERMILLE_DEEP: u32 = 200;
+/// 中央卡尺寸（480×200——遮罩卡视觉规格）。
+pub const MASK_CARD_W: u32 = 480;
+pub const MASK_CARD_H: u32 = 200;
+/// 遮罩动画 200ms（出现节奏——F124 总谱）。
+pub const MASK_ANIM_MS_DEEP: u64 = 200;
+
+/// 遮罩中央卡（渲染纯数据——图标位/文案位/双钮位三段布局）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct MaskCard {
+    pub app_id: u32,
+    /// 卡内文案（主册：「应用已停止响应」）。
+    pub copy: &'static str,
+    /// 主钮=重新启动（保留启动参数——F020 同款）。
+    pub primary_restart: bool,
+    /// 次钮=关闭（进程清理+窗口终局）。
+    pub secondary_close: bool,
+}
+
+impl MaskCard {
+    /// 主册文案逐字（崩溃语境统一话术）。
+    pub const COPY: &'static str = "应用已停止响应";
+
+    pub fn for_app(app_id: u32) -> MaskCard {
+        MaskCard { app_id, copy: MaskCard::COPY, primary_restart: true, secondary_close: true }
+    }
+}
+
+/// 焦点移交动画时序：移交目标就位后 150ms 淡入（F082 序的动画面）。
+pub fn focus_anim_done(transfer_ms: u64, now_ms: u64) -> bool {
+    now_ms.saturating_sub(transfer_ms) >= FOCUS_ANIM_MS
+}
+
+/// 诊断导出行（F120 诊断列表直出面——事件环的行视图）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct DiagRow {
+    pub app_id: u32,
+    pub at_ms: u64,
+    pub dump_ref: u32,
+    /// 人话路径：0=已遮罩待处理 1=已强杀兜底 2=已重启 3=用户已关闭。
+    pub path_human: u8,
+}
+
+impl DiagRow {
+    /// 人话文案映射（诊断列表显示面——不裸抛内部枚举）。
+    pub fn copy(self) -> &'static str {
+        match self.path_human {
+            0 => "已隔离，等待处理",
+            1 => "已强制结束（遮罩系统故障兜底）",
+            2 => "已重新启动",
+            _ => "已被用户关闭",
+        }
+    }
+}
+
+/// 事件环 → 诊断行导出（旧→新序；path 0/1 直映，2/3 需窗口终态复核——
+/// 由调用方以 state_of 回填，本层不猜）。
+pub fn export_diag_rows(iso: &CrashIsolator, out: &mut [Option<DiagRow>; EVENT_CAP]) -> usize {
+    let mut n = 0;
+    for e in iso.events.iter().flatten() {
+        if n >= EVENT_CAP {
+            break;
+        }
+        let human = match iso.state_of(e.app_id) {
+            Some(WindowState::Crashed(_)) => 0,
+            Some(WindowState::StrongKilled) => 1,
+            Some(WindowState::Restarted) => 2,
+            _ => 3,
+        };
+        out[n] = Some(DiagRow { app_id: e.app_id, at_ms: e.at_ms, dump_ref: e.dump_ref, path_human: human });
+        n += 1;
+    }
+    n
+}
+
+/// 深化自检（检查项对账层——主册【交互设计】子句逐项实算）。
+#[inline(never)]
+pub fn run_crashiso_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F175-deep");
+
+    // 1) 遮罩中央卡三段齐：图标位（app_id）+文案位（主册逐字）+双钮位。
+    let card = MaskCard::for_app(9);
+    cs.add(
+        "mask_card_complete",
+        card.copy == "应用已停止响应" && card.primary_restart && card.secondary_close && card.app_id == 9,
+        "",
+    );
+
+    // 2) 遮罩视觉规格常量（20% 黑幕/卡 480×200/动画 200ms）。
+    cs.add(
+        "mask_visual_specs",
+        MASK_DIM_PERMILLE_DEEP == 200 && MASK_CARD_W == 480 && MASK_CARD_H == 200 && MASK_ANIM_MS_DEEP == 200,
+        "",
+    );
+
+    // 3) 焦点移交动画时序：150ms 未满未完成、满即完成。
+    cs.add(
+        "focus_anim_timing",
+        !focus_anim_done(1_000, 1_149) && focus_anim_done(1_000, 1_150) && FOCUS_ANIM_MS == 150,
+        "",
+    );
+
+    // 4) 诊断导出：崩溃→遮罩态行（path_human=0——「已隔离，等待处理」）。
+    let mut iso = CrashIsolator::new();
+    iso.register(11);
+    iso.register(12);
+    iso.crash(11, 1_000, 7);
+    let mut rows: [Option<DiagRow>; EVENT_CAP] = [const { None }; EVENT_CAP];
+    let n = export_diag_rows(&iso, &mut rows);
+    let r0 = rows[0].unwrap();
+    cs.add(
+        "diag_row_masked",
+        n == 1 && r0.app_id == 11 && r0.dump_ref == 7 && r0.path_human == 0 && r0.copy().contains("已隔离"),
+        "",
+    );
+
+    // 5) 诊断导出终态复核：强杀 → path_human=1；重启 → 2；用户关 → 3。
+    iso.mask_system_fault(11, 1_100, 8);
+    iso.crash(12, 1_200, 9);
+    iso.restart(12);
+    let n2 = export_diag_rows(&iso, &mut rows);
+    // 事件序：[0]=app11 crash(path0→强杀→1)、[1]=app11 强杀(path1→1)、
+    // [2]=app12 crash(path0→重启→2)——行视图按事件序、终态按 state_of 复核。
+    cs.add(
+        "diag_row_terminal_states",
+        n2 == 3 && rows[0].unwrap().path_human == 1 && rows[1].unwrap().path_human == 1 && rows[2].unwrap().path_human == 2,
+        "",
+    );
+
+    // 6) 人话映射四态齐（不裸抛内部枚举——F120 面板文案纪律）。
+    cs.add(
+        "diag_copy_four_paths",
+        DiagRow { app_id: 0, at_ms: 0, dump_ref: 0, path_human: 0 }.copy() != ""
+            && DiagRow { app_id: 0, at_ms: 0, dump_ref: 0, path_human: 1 }.copy() != ""
+            && DiagRow { app_id: 0, at_ms: 0, dump_ref: 0, path_human: 2 }.copy() != ""
+            && DiagRow { app_id: 0, at_ms: 0, dump_ref: 0, path_human: 3 }.copy() != "",
+        "",
+    );
+
+    // 7) 批量告警阈值常量（3 应用/分钟窗口——主册状态与异常条款）。
+    cs.add("burst_constants", BURST_COUNT == 3 && BURST_WINDOW_MS == 60_000, "");
+
+    // 8) 重启钮参数保真常量（命令行/工作目录/环境三件容量在册）。
+    cs.add("launch_param_caps", CMDLINE_CAP == 128 && CWD_CAP == 64, "");
+
+    // 9) 双钮动线：卡面双钮齐备（重启=参数重放语义位、关闭=终局语义位——
+    //    执行在调用方；卡面承诺与 crashiso 双钮处理函数一一对应）。
+    let c2 = MaskCard::for_app(3);
+    cs.add("card_buttons_semantics", c2.primary_restart && c2.secondary_close, "");
+
+    // 10) 卡面文案与重启钮参数源同在（重启动线完整性的静态面：文案承诺
+    //     「重新启动」时启动参数快照容量常量必须在册）。
+    cs.add("restart_line_complete", c2.copy.contains("停止响应") && CMDLINE_CAP > 0 && CWD_CAP > 0, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

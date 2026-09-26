@@ -200,3 +200,29 @@ export class BatchFontScanner {
 export function scanFontSync(input: ScanInput): FontCheckResult & { monospace: boolean; complete: boolean } {
   return { ...scanFont(input), monospace: false, complete: true };
 }
+
+// ---------- F159 扫描预算判定（3500 字 <100ms 线——实测口径的机械出口） ----------
+
+/** 主册设计细节：「扫描走 SIMD（F054 族，3500 字 <100ms）」——预算判定函数。 */
+export const SCAN_BUDGET_MS = 100;
+export const SCAN_BUDGET_CHARS = 3500;
+
+export interface ScanBudgetVerdict {
+  ok: boolean;
+  /** 折算到 3500 字标准的等效耗时（超长字符集归一化——不同输入可比）。 */
+  normalizedMs: number;
+  detail: string;
+}
+
+export function scanBudgetCheck(elapsedMs: number, charsetSize: number): ScanBudgetVerdict {
+  if (charsetSize <= 0) return { ok: true, normalizedMs: 0, detail: "空字符集——无需判定" };
+  const normalizedMs = (elapsedMs / charsetSize) * SCAN_BUDGET_CHARS;
+  const ok = normalizedMs <= SCAN_BUDGET_MS;
+  return {
+    ok,
+    normalizedMs,
+    detail: ok
+      ? `${charsetSize} 字耗时 ${elapsedMs.toFixed(1)}ms，折算 3500 字 ${normalizedMs.toFixed(1)}ms ≤ ${SCAN_BUDGET_MS}ms 预算`
+      : `${charsetSize} 字耗时 ${elapsedMs.toFixed(1)}ms，折算 3500 字 ${normalizedMs.toFixed(1)}ms 超预算——建议分批后台扫（BatchFontScanner）`,
+  };
+}

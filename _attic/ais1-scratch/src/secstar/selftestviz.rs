@@ -113,6 +113,10 @@ pub struct SelftestViz {
     executed: [usize; MILESTONE_N],
     /// 各里程碑通过项数。
     passed: [usize; MILESTONE_N],
+    /// 项级身份位图（位 k=第 k 项已执行——开发态文字全输出的数据面）。
+    item_done: [u32; MILESTONE_N],
+    /// 项级通过位图（位 k=第 k 项 PASS）。
+    item_pass: [u32; MILESTONE_N],
     /// 套件是否收尾（SuiteDone 到过）。
     done: [bool; MILESTONE_N],
     /// 图标状态。
@@ -143,6 +147,8 @@ impl SelftestViz {
             expected: [SUITE_MEM_ITEMS, SUITE_PROC_ITEMS, SUITE_STORE_ITEMS, SUITE_INPUT_ITEMS],
             executed: [0; MILESTONE_N],
             passed: [0; MILESTONE_N],
+            item_done: [0; MILESTONE_N],
+            item_pass: [0; MILESTONE_N],
             done: [false; MILESTONE_N],
             icons: [IconState::Pending; MILESTONE_N],
             fail_reason: 0,
@@ -169,6 +175,8 @@ impl SelftestViz {
                 let i = m as usize;
                 self.executed[i] += 1;
                 self.passed[i] += 1;
+                self.item_done[i] |= 1 << (item % 32);
+                self.item_pass[i] |= 1 << (item % 32);
                 // 依赖链前序全绿才点亮（点亮顺序=依赖链）。
                 if self.passed[i] == self.expected[i] && self.predecessors_lit(i) {
                     self.icons[i] = IconState::Lighting(ms);
@@ -179,6 +187,7 @@ impl SelftestViz {
                 self.push_log(LogLine { ms, milestone: m as u8, item, passed: false, reason });
                 let i = m as usize;
                 self.executed[i] += 1;
+                self.item_done[i] |= 1 << (item % 32);
                 // 失败响应 ≤120ms：即刻进红闪首帧（120ms 预算内）。
                 self.icons[i] = IconState::Flashing(ms, 0);
                 self.fail_reason = reason;
@@ -259,6 +268,14 @@ impl SelftestViz {
 
     pub fn anim_gate_open(&self) -> bool {
         self.anim_gate_open
+    }
+
+    /// 项级身份访问器（深化层——开发态文字全输出的数据面）。
+    pub fn executed_at(&self, milestone_idx: usize, item: usize) -> bool {
+        self.item_done[milestone_idx] & (1 << (item % 32)) != 0
+    }
+    pub fn passed_at(&self, milestone_idx: usize, item: usize) -> bool {
+        self.item_pass[milestone_idx] & (1 << (item % 32)) != 0
     }
 
     /// 进度环绑定真实进度（已完成项/总项——不骗人条款）。
@@ -461,6 +478,237 @@ pub fn run_selftestviz_checks() -> CheckSet {
     let not_yet = v6.icon_state(Milestone::Memory) != IconState::Lit;
     v6.tick(lit0 + LIGHT_ANIM_MS);
     cs.add("light_anim_150ms", not_yet && v6.icon_state(Milestone::Memory) == IconState::Lit, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 深化层（批次二）：kinfo 套件名册 · 开发态全量文字导出 · F053 时间线
+// 节点 · 进度环几何 —— 主册【设计细节】参数级落地。
+// ---------------------------------------------------------------------------
+
+/// kinfo 套件单项名上限。
+pub const KINFO_ITEM_CAP: usize = 12;
+
+/// kinfo 三套件名册（主册「9/9、11/11、10/10 实测面」的项身份——可视化层
+/// 与文字版对拍的不只是计数，是同一份项清单）。名称面为 &'static str——
+/// const 求值友好（静态名册零拷贝零堆）。
+pub struct KinfoSuite {
+    pub milestone: Milestone,
+    pub names: &'static [&'static str],
+}
+
+impl KinfoSuite {
+    pub fn item_n(&self) -> usize {
+        self.names.len()
+    }
+    pub fn item_name(&self, i: usize) -> &'static [u8] {
+        self.names[i].as_bytes()
+    }
+}
+
+/// 内存套件 9 项（kinfo self-test 9/9 实测面项名——与文字版对拍的身份表）。
+pub static KINFO_MEM: KinfoSuite = KinfoSuite {
+    milestone: Milestone::Memory,
+    names: &["phys-map", "pmm-free", "heap-init", "guard-host", "page-tbl", "cow-ready", "huge-pool", "numa-topo", "wmap-ok"],
+};
+
+/// 进程套件 11 项（11/11 实测面）。
+pub static KINFO_PROC: KinfoSuite = KinfoSuite {
+    milestone: Milestone::Process,
+    names: &["sched-ready", "ctx-sw", "timer-cal", "ipc-cap", "sig-tbl", "clone-ok", "elf-load", "argv-pass", "fd-tbl", "exit-reap", "zombie-ok"],
+};
+
+/// 存储套件 10 项（10/10 实测面）。
+pub static KINFO_STORE: KinfoSuite = KinfoSuite {
+    milestone: Milestone::Storage,
+    names: &["blk-enum", "part-read", "gpt-ok", "ext4-mount", "journal-ok", "cache-warm", "hive-open", "atomic-w", "fsck-dry", "trim-ok"],
+};
+
+/// 三套件合计 = 30 项 + 输入探针（第四里程碑喂数源）。
+pub fn kinfo_total_items() -> usize {
+    KINFO_MEM.item_n() + KINFO_PROC.item_n() + KINFO_STORE.item_n()
+}
+
+/// 名册对拍：三套件项数与 SelftestViz 预期计数一致（9/11/10 对拍的身份面）。
+pub fn kinfo_registry_matches_expected() -> bool {
+    KINFO_MEM.item_n() == SUITE_MEM_ITEMS && KINFO_PROC.item_n() == SUITE_PROC_ITEMS && KINFO_STORE.item_n() == SUITE_STORE_ITEMS
+}
+
+/// F053 时间线节点：里程碑点亮时刻导出（依赖链点亮时刻=时间线节点——
+/// F053 启动甘特图消费）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TimelineNode {
+    pub milestone: Milestone,
+    /// 点亮动画起始时刻（ms）。
+    pub lit_start_ms: u64,
+    /// 转 Lit 时刻（= 起始 + 150ms——动画完成即节点闭合）。
+    pub lit_done_ms: u64,
+}
+
+/// 从可视化器导出已点亮的里程碑时间线节点（未点亮的里程碑不出节点）。
+pub fn export_timeline_nodes(v: &SelftestViz) -> ([Option<TimelineNode>; MILESTONE_N], usize) {
+    let mut nodes: [Option<TimelineNode>; MILESTONE_N] = [const { None }; MILESTONE_N];
+    let mut n = 0;
+    for i in 0..MILESTONE_N {
+        if let Some(t0) = v.lit_at(milestone_at(i)) {
+            nodes[n] = Some(TimelineNode { milestone: milestone_at(i), lit_start_ms: t0, lit_done_ms: t0 + LIGHT_ANIM_MS });
+            n += 1;
+        }
+    }
+    (nodes, n)
+}
+
+fn milestone_at(i: usize) -> Milestone {
+    match i {
+        0 => Milestone::Memory,
+        1 => Milestone::Process,
+        2 => Milestone::Storage,
+        _ => Milestone::Input,
+    }
+}
+
+/// 进度环几何（主册交互设计：进度环 64px 底部）。
+pub const PROGRESS_RING_PX: u32 = 64;
+/// 环底部边距（乙-4 表自检屏语义）。
+pub const PROGRESS_RING_BOTTOM_MARGIN_PX: u32 = 24;
+/// 中央星徽 96px。
+pub const CENTER_BADGE_PX: u32 = 96;
+
+/// 进度环帧映射：真实进度 ‰ → 环帧号（与真实自检进度绑定——不骗人条款
+/// 的几何面：环只消费 progress_permille，不跑独立时基）。
+pub fn ring_frame_from_progress(permille: u32, total_frames: usize) -> usize {
+    ((permille as usize * total_frames) / 1000).min(total_frames - 1)
+}
+
+/// 开发态文字全输出（D 键通道——F172/F174 联调）：把已执行项逐项铺进
+/// 定长缓冲（`<里程碑><项名> PASS/FAIL` 行式），返回写入长度。
+pub const DEV_TEXT_CAP: usize = 512;
+
+pub fn build_dev_text(v: &SelftestViz) -> ([u8; DEV_TEXT_CAP], usize) {
+    let mut buf = [0u8; DEV_TEXT_CAP];
+    let mut pos = 0usize;
+    let suites = [
+        (Milestone::Memory, &KINFO_MEM),
+        (Milestone::Process, &KINFO_PROC),
+        (Milestone::Storage, &KINFO_STORE),
+    ];
+    for (m, suite) in suites {
+        let i = m as usize;
+        for item in 0..suite.item_n() {
+            if v.executed_at(i, item) {
+                let name = suite.item_name(item);
+                let tag: &[u8] = if v.passed_at(i, item) { b" PASS" } else { b" FAIL" };
+                let tag2: &[u8] = match m {
+                    Milestone::Memory => b"[mem] ",
+                    Milestone::Process => b"[proc] ",
+                    _ => b"[stor] ",
+                };
+                if pos + name.len() + tag.len() + tag2.len() + 1 > DEV_TEXT_CAP {
+                    break; // 缓冲封口——诚实截断（不越界）
+                }
+                buf[pos..pos + tag2.len()].copy_from_slice(tag2);
+                pos += tag2.len();
+                buf[pos..pos + name.len()].copy_from_slice(name);
+                pos += name.len();
+                buf[pos..pos + tag.len()].copy_from_slice(tag);
+                pos += tag.len();
+                buf[pos] = b'\n';
+                pos += 1;
+            }
+        }
+    }
+    (buf, pos)
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_selftestviz_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F172-deep");
+
+    // 1) kinfo 名册与预期计数对拍（9/11/10——身份面一致）。
+    cs.add("kinfo_registry_matches", kinfo_registry_matches_expected() && kinfo_total_items() == 30, "");
+
+    // 2) 套件项名逐字可取（对拍身份——不只计数）。
+    cs.add(
+        "kinfo_item_identity",
+        KINFO_MEM.item_name(0) == b"phys-map" && KINFO_PROC.item_name(10) == b"zombie-ok" && KINFO_STORE.item_name(3) == b"ext4-mount",
+        "",
+    );
+
+    // 3) 名册项数与套件事件消费闭合（9 项喂满 → lit）。
+    let mut v = SelftestViz::new();
+    let mut ms = 0u64;
+    for item in 0..KINFO_MEM.item_n() {
+        ms += 10;
+        v.feed(SuiteEvent::ItemPassed(Milestone::Memory, item), ms);
+    }
+    ms += LIGHT_ANIM_MS;
+    v.tick(ms);
+    cs.add("kinfo_full_suite_lights", v.icon_state(Milestone::Memory) == IconState::Lit, "");
+
+    // 4) F053 时间线节点导出：点亮时刻 + 150ms 闭合、未亮里程碑零节点。
+    let (nodes, n) = export_timeline_nodes(&v);
+    let node_ok = nodes[0].map(|t| t.lit_done_ms == t.lit_start_ms + LIGHT_ANIM_MS).unwrap_or(false);
+    cs.add("timeline_nodes_export", n == 1 && node_ok, "");
+
+    // 5) 未点亮时导出零节点（诚实空——不伪造时间线）。
+    let (nodes0, n0) = export_timeline_nodes(&SelftestViz::new());
+    cs.add("timeline_empty_honest", n0 == 0 && nodes0[0].is_none(), "");
+
+    // 6) 进度环几何常量（64px 底部 + 中央星徽 96px——主册交互设计数值）。
+    cs.add(
+        "ring_geometry",
+        PROGRESS_RING_PX == 64 && PROGRESS_RING_BOTTOM_MARGIN_PX == 24 && CENTER_BADGE_PX == 96,
+        "",
+    );
+
+    // 7) 环帧绑定真实进度：0‰→帧0、500‰→半程帧、1000‰→末帧。
+    cs.add(
+        "ring_frame_binding",
+        ring_frame_from_progress(0, super::bootmenu::RING_FRAMES) == 0
+            && ring_frame_from_progress(500, 30) == 15
+            && ring_frame_from_progress(1000, 30) == 29,
+        "",
+    );
+
+    // 8) 开发态文字全输出：执行过的项逐行铺出（PASS 面）。
+    //    行式：`[mem] <项名> PASS\n` = 6+8+5+1 = 20 字节/行 × 9 行 = 180。
+    let (buf, len) = build_dev_text(&v);
+    let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+    // 行长随项名变化：[mem](6)+项名+PASS(5)+LF(1) 逐行求和——不硬编码常数。
+    let expect: usize = KINFO_MEM.names.iter().map(|n| 6 + n.len() + 5 + 1).sum();
+    cs.add(
+        "dev_text_full_output",
+        text.contains("[mem] phys-map PASS") && text.contains("[mem] guard-host PASS") && len == expect,
+        "",
+    );
+
+    // 9) 开发态文字不越界（缓冲封口诚实截断）。
+    let mut v9 = SelftestViz::new();
+    let mut ms9 = 0u64;
+    for m in [Milestone::Memory, Milestone::Process, Milestone::Storage] {
+        for item in 0..9 {
+            ms9 += 10;
+            v9.feed(SuiteEvent::ItemPassed(m, item), ms9);
+        }
+    }
+    let (_, len9) = build_dev_text(&v9);
+    cs.add("dev_text_bounded", len9 <= DEV_TEXT_CAP, "");
+
+    // 10) 未执行项不出行（文字输出=已执行面——不伪造结果）。
+    let (_, len10) = build_dev_text(&SelftestViz::new());
+    cs.add("dev_text_no_fabrication", len10 == 0, "");
+
+    // 11) 清屏协议与文字模式联动不残留（切换→清屏→干净）。
+    let mut v11 = SelftestViz::new();
+    v11.enable_dev_text();
+    let dirty = v11.screen_dirty();
+    v11.apply_clear_screen();
+    cs.add("dev_switch_clean", dirty && !v11.screen_dirty() && v11.dev_text_mode(), "");
+
+    // 12) 四里程碑里程碑数对账（MILESTONE_N=4——内存/进程/存储/输入）。
+    cs.add("milestone_count", MILESTONE_N == 4, "");
 
     cs
 }

@@ -296,6 +296,164 @@ pub fn run_signbadge_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：证书链验证模型 · 信任列表持久帧 · 任务栏悬停面 ——
+// 主册【设计细节】「验证复用 F024 证书库 / 角标位置=标题栏右侧系统按钮区
+// 左 4px / 任务栏悬停提示」落地。
+// ---------------------------------------------------------------------------
+
+/// 证书链深度上限（链验=根→中间→叶三级起步，更深链逐节验）。
+pub const CHAIN_MAX_DEPTH: usize = 8;
+
+/// 证书链验证模型（F024 消费面）：逐节校验——每节签名被上一节公钥覆盖，
+/// 根节须在信任锚表内；任一节坏 → 整链不通过（fail-closed 语义的链面）。
+pub struct ChainVerifier {
+    /// 信任锚（根指纹表——字节面指纹 8B）。
+    pub anchors: [[u8; 8]; 4],
+    pub anchor_n: usize,
+    /// 验证服务可用性（BadgeResolver.fail-closed 的上游——同源语义）。
+    pub service_ok: bool,
+}
+
+impl ChainVerifier {
+    pub const fn new() -> ChainVerifier {
+        ChainVerifier { anchors: [[0; 8]; 4], anchor_n: 0, service_ok: true }
+    }
+
+    pub fn add_anchor(&mut self, fingerprint: [u8; 8]) {
+        if self.anchor_n < 4 {
+            self.anchors[self.anchor_n] = fingerprint;
+            self.anchor_n += 1;
+        }
+    }
+
+    fn anchored(&self, root_fp: [u8; 8]) -> bool {
+        self.anchors[..self.anchor_n].iter().any(|a| *a == root_fp)
+    }
+
+    /// 链验证：`signatures_ok` 逐节签名结果（由底层密码面回填——本层只做
+    /// 链级裁决），`root_fp` 根指纹。
+    pub fn verify(&self, chain_len: usize, signatures_ok: bool, root_fp: [u8; 8]) -> SignState {
+        if !self.service_ok || chain_len == 0 || chain_len > CHAIN_MAX_DEPTH || !signatures_ok {
+            return SignState::Unsigned; // 服务坏/空链/超深/断签 → 未签（不猜）
+        }
+        if self.anchored(root_fp) {
+            SignState::ChainVerified
+        } else {
+            SignState::SelfSigned // 链完整但根不在锚表 → 自签语义
+        }
+    }
+}
+
+/// 信任列表持久帧（F037 信任列表跨重启——[0..4) "VXTL" · [4] 条数 ·
+/// [5..13]×16 app_id u32 LE 压缩到余量…定长 72B：4+1+16×4=69 → 对齐 72）。
+pub const TRUST_FRAME_LEN: usize = 72;
+pub const TRUST_FRAME_ENTRIES: usize = 16;
+
+pub fn encode_trust_list(ids: &[u32], out: &mut [u8; TRUST_FRAME_LEN]) -> bool {
+    if ids.len() > TRUST_FRAME_ENTRIES {
+        return false;
+    }
+    out[0] = b'V';
+    out[1] = b'X';
+    out[2] = b'T';
+    out[3] = b'L';
+    out[4] = ids.len() as u8;
+    for b in out[5..].iter_mut() {
+        *b = 0;
+    }
+    for (i, id) in ids.iter().enumerate() {
+        out[5 + i * 4..9 + i * 4].copy_from_slice(&id.to_le_bytes());
+    }
+    true
+}
+
+pub fn decode_trust_list(frame: &[u8; TRUST_FRAME_LEN]) -> Option<([u32; TRUST_FRAME_ENTRIES], usize)> {
+    if frame[0] != b'V' || frame[1] != b'X' || frame[2] != b'T' || frame[3] != b'L' || frame[4] as usize > TRUST_FRAME_ENTRIES {
+        return None;
+    }
+    let n = frame[4] as usize;
+    let mut ids = [0u32; TRUST_FRAME_ENTRIES];
+    for i in 0..n {
+        ids[i] = u32::from_le_bytes(frame[5 + i * 4..9 + i * 4].try_into().ok()?);
+    }
+    Some((ids, n))
+}
+
+/// 任务栏悬停面：任务栏图标同角标态（与标题栏角标一致——两处一致是信任面
+/// 的一致性纪律）。
+pub fn taskbar_hint_badge(badge: Badge) -> Badge {
+    badge // 同态直映——标题栏与任务栏永不分叉（一致性第十章）
+}
+
+/// 角标横向位置合成：标题栏右侧系统按钮区左 4px（乙-1 表语义——返回
+/// 相对系统按钮区左缘的偏移，负值向左）。
+pub const BADGE_X_FROM_SYSBUTTONS: i32 = -(BADGE_OFFSET_PX as i32);
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_signbadge_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F178-deep");
+
+    // 1) 链验证三态裁决：锚内根+全签名 OK → 链验。
+    let mut v = ChainVerifier::new();
+    v.add_anchor([0xAA; 8]);
+    cs.add("chain_verified_path", v.verify(3, true, [0xAA; 8]) == SignState::ChainVerified, "");
+
+    // 2) 链完整但根不在锚表 → 自签语义（诚实降级——不冒充链验）。
+    cs.add("chain_selfsigned_path", v.verify(3, true, [0xBB; 8]) == SignState::SelfSigned, "");
+
+    // 3) 断签 → 未签（fail-closed：链面任一节坏整链不通过）。
+    cs.add("chain_broken_unsigned", v.verify(3, false, [0xAA; 8]) == SignState::Unsigned, "");
+
+    // 4) 零链 → 未签；超深链 → 未签（8 上限——不猜不冒进）。
+    cs.add(
+        "chain_edge_unsigned",
+        v.verify(0, true, [0xAA; 8]) == SignState::Unsigned && v.verify(CHAIN_MAX_DEPTH + 1, true, [0xAA; 8]) == SignState::Unsigned,
+        "",
+    );
+
+    // 5) 服务坏 → 未签（与 BadgeResolver.fail-closed 同源——上游坏下游拒）。
+    let mut v2 = ChainVerifier::new();
+    v2.service_ok = false;
+    cs.add("chain_service_down", v2.verify(3, true, [0xAA; 8]) == SignState::Unsigned, "");
+
+    // 6) 信任列表持久帧 round-trip（跨重启——F037 面保真）。
+    let ids = [7u32, 13, 42];
+    let mut frame = [0u8; TRUST_FRAME_LEN];
+    let enc = encode_trust_list(&ids, &mut frame);
+    let (dec_ids, dec_n) = decode_trust_list(&frame).unwrap();
+    cs.add("trust_frame_roundtrip", enc && dec_n == 3 && dec_ids[0] == 7 && dec_ids[1] == 13 && dec_ids[2] == 42, "");
+
+    // 7) 信任帧超容诚实拒绝（16 上限）。
+    let too_many = [0u32; 17];
+    let mut f2 = [0u8; TRUST_FRAME_LEN];
+    cs.add("trust_frame_cap", !encode_trust_list(&too_many, &mut f2), "");
+
+    // 8) 信任帧接 BadgeResolver（持久→运行时链贯通）。
+    let (dec_ids2, dec_n2) = decode_trust_list(&frame).unwrap();
+    let mut resolver = BadgeResolver::new();
+    for i in 0..dec_n2 {
+        resolver.add_trusted(dec_ids2[i]);
+    }
+    cs.add("trust_frame_to_resolver", resolver.resolve(13, SignState::Unsigned) == Badge::DotGray, "");
+
+    // 9) 任务栏悬停与标题栏同态（一致性第十章——两处永不分叉）。
+    cs.add(
+        "taskbar_same_as_titlebar",
+        taskbar_hint_badge(Badge::ShieldYellow) == Badge::ShieldYellow && taskbar_hint_badge(Badge::None) == Badge::None,
+        "",
+    );
+
+    // 10) 角标横向位置（系统按钮区左 4px——乙-1 表语义负偏移）。
+    cs.add("badge_x_position", BADGE_X_FROM_SYSBUTTONS == -4 && BADGE_SIZE_PX == 12, "");
+
+    // 11) 链深上限常量（8——链级裁决的边界在册）。
+    cs.add("chain_depth_cap", CHAIN_MAX_DEPTH == 8, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

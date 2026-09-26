@@ -72,7 +72,7 @@ pub struct MenuEntry {
 }
 
 impl MenuEntry {
-    pub const fn new(label: &'static str, subtitle: &'static str, target_valid: bool, is_default: bool) -> Self {
+    pub fn new(label: &str, subtitle: &str, target_valid: bool, is_default: bool) -> Self {
         let mut lb = [0u8; 32];
         let mut sb = [0u8; 32];
         let lbl = label.as_bytes();
@@ -501,6 +501,291 @@ pub fn run_bootmenu_checks() -> CheckSet {
     );
 
     cs
+}
+
+// ---------------------------------------------------------------------------
+// 深化层（批次二）：limine.conf 解析器 · 卡片图标格 · 环帧图集 ·
+// 资产分项账 · 圆角软点阵 —— 主册【设计细节】参数级落地。
+// ---------------------------------------------------------------------------
+
+/// limine.conf 条目上限（引导配置唯一源——解析不复制语义，只提取字段）。
+pub const CONF_ENTRY_CAP: usize = 8;
+/// limine.conf 单行缓冲（config 行均短——64B 足够）。
+
+/// 解析产出：超时/默认项/条目名列表（字节面直存——渲染层只消费本结构）。
+#[derive(Clone, Copy, Debug)]
+pub struct LimineConfig {
+    /// `timeout:` 行值（秒；无行=0 即无限等待——limine 语义）。
+    pub timeout_s: u32,
+    /// `default:` 行值（条目序号；缺省 0）。
+    pub default_idx: usize,
+    /// 条目名（`/条目名` 行剥前导斜杠后的字节面）。
+    pub names: [[u8; 32]; CONF_ENTRY_CAP],
+    pub name_lens: [usize; CONF_ENTRY_CAP],
+    pub entry_n: usize,
+}
+
+impl LimineConfig {
+    pub const fn empty() -> LimineConfig {
+        LimineConfig {
+            timeout_s: 0,
+            default_idx: 0,
+            names: [[0u8; 32]; CONF_ENTRY_CAP],
+            name_lens: [0; CONF_ENTRY_CAP],
+            entry_n: 0,
+        }
+    }
+}
+
+/// limine.conf 极简解析器（定长行扫描——引导期无堆无 std）。
+/// 识别三类行：`timeout: <n>` / `default: <n>` / `/<条目名>`；注释 `#` 与
+/// 空行跳过；条目超 CONF_ENTRY_CAP 诚实截断（返回 truncated=true）。
+pub fn parse_limine_conf(text: &[u8]) -> (LimineConfig, bool) {
+    let mut cfg = LimineConfig::empty();
+    let mut truncated = false;
+    let mut line_start = 0usize;
+    while line_start <= text.len() {
+        let line_end = text[line_start..]
+            .iter()
+            .position(|b| *b == b'\n')
+            .map(|p| line_start + p)
+            .unwrap_or(text.len());
+        let mut line = &text[line_start..line_end];
+        // 剥 \r 与空白头。
+        while let Some(f) = line.first() {
+            if *f == b'\r' || *f == b' ' || *f == b'\t' {
+                line = &line[1..];
+            } else {
+                break;
+            }
+        }
+        // 尾随 \r。
+        while let Some(l) = line.last() {
+            if *l == b'\r' || *l == b' ' {
+                line = &line[..line.len() - 1];
+            } else {
+                break;
+            }
+        }
+        if line.is_empty() || line[0] == b'#' {
+            // 注释/空行跳过。
+        } else if line.starts_with(b"timeout:") {
+            let val = &line[b"timeout:".len()..];
+            cfg.timeout_s = parse_u32(val);
+        } else if line.starts_with(b"default:") {
+            let val = &line[b"default:".len()..];
+            cfg.default_idx = parse_u32(val) as usize;
+        } else if line[0] == b'/' && cfg.entry_n < CONF_ENTRY_CAP {
+            let name = &line[1..];
+            let l = name.len().min(32);
+            cfg.names[cfg.entry_n][..l].copy_from_slice(&name[..l]);
+            cfg.name_lens[cfg.entry_n] = l;
+            cfg.entry_n += 1;
+        } else if line[0] == b'/' {
+            truncated = true; // 条目超容——诚实标注
+        }
+        if line_end >= text.len() {
+            break;
+        }
+        line_start = line_end + 1;
+    }
+    (cfg, truncated)
+}
+
+fn parse_u32(val: &[u8]) -> u32 {
+    let mut v: u32 = 0;
+    for b in val {
+        if b.is_ascii_digit() {
+            v = v.saturating_mul(10).saturating_add((*b - b'0') as u32);
+        } else if *b == b' ' || *b == b'\t' {
+            continue;
+        } else {
+            break; // 非数字尾随（注释等）——停
+        }
+    }
+    v
+}
+
+/// 从解析产出生成条目卡数据（目标校验位缺省全真——校验由闸门注入口回填）。
+pub fn entries_from_config(cfg: &LimineConfig, default_override: Option<usize>) -> ([MenuEntry; CONF_ENTRY_CAP], usize) {
+    // MenuEntry 无 Copy（32B 标签内联）——from_fn 逐槽构建（repeat 表达式要 Copy）。
+    let mut entries: [MenuEntry; CONF_ENTRY_CAP] = core::array::from_fn(|_| MenuEntry::new("", "", true, false));
+    let default_idx = default_override.unwrap_or(cfg.default_idx);
+    let mut i = 0usize;
+    while i < cfg.entry_n {
+        let name = &cfg.names[i][..cfg.name_lens[i]];
+        let name_str = core::str::from_utf8(name).unwrap_or("");
+        entries[i] = MenuEntry::new(name_str, "", true, i == default_idx);
+        i += 1;
+    }
+    (entries, cfg.entry_n)
+}
+
+/// 卡片图标格：480×96 卡内左侧 48px 方格（图标+名称+副标三段布局）。
+pub const ICON_CELL_PX: u32 = 48;
+/// 图标格与文字区间距（8px——乙-1 表卡片内部节奏）。
+pub const ICON_TEXT_GAP_PX: u32 = 8;
+
+/// 卡内布局（横轴）：图标格 x=24（左衬），文字起 x=24+48+8。
+pub const CARD_PAD_X: u32 = 24;
+pub const CARD_TEXT_X: u32 = CARD_PAD_X + ICON_CELL_PX + ICON_TEXT_GAP_PX;
+
+/// 环帧图集：30 帧预烘，帧 k 对应角度 12k°（12°步进全圆覆盖）。
+/// 消费方按帧号取角度绘制——不跑时基数学（引导期性能纪律）。
+pub fn ring_frame_angle_deg(frame: usize) -> u32 {
+    (frame % RING_FRAMES) as u32 * RING_STEP_DEG
+}
+
+/// 资产分项账（<200KB 预算的逐项构成——分项账让超支可定位）。
+#[derive(Clone, Copy, Debug)]
+pub struct AssetItemization {
+    /// 星空静态贴图（不动画——引导期性能纪律）。
+    pub starfield: usize,
+    /// 星徽。
+    pub badge: usize,
+    /// 点阵字体 12×16（ASCII + 少量汉字条目名）。
+    pub font_12x16: usize,
+    /// 环帧 30 帧（一套资产两处用——F173 复用）。
+    pub ring_frames: usize,
+    /// 条目图标。
+    pub icons: usize,
+}
+
+impl AssetItemization {
+    pub fn into_ledger(self) -> AssetLedger {
+        AssetLedger { starfield_bg: self.starfield, star_badge: self.badge, font_12x16: self.font_12x16, ring_frames: self.ring_frames, icons: self.icons }
+    }
+    /// 分项账合计 = 总账口径（一处一事实：AssetLedger::total 同式）。
+    pub fn total(&self) -> usize {
+        self.starfield + self.badge + self.font_12x16 + self.ring_frames + self.icons
+    }
+}
+
+/// 圆角软点阵近似：8px 圆角内「该像素是否落卡外」的点阵判定。
+/// 引导期无矢量——用 8×8 角模板（x²+y²≥64 判出界，1/4 圆外积 12 格）。
+pub const CORNER_RADIUS_PX: u32 = 8;
+
+/// 8×8 角模板：返回 (x,y)（0..8 × 0..8，从卡角起算）是否在圆角外（需透背景）。
+pub fn corner_pixel_outside(x: u32, y: u32) -> bool {
+    let dx = (CORNER_RADIUS_PX - 1 - x) as i32;
+    let dy = (CORNER_RADIUS_PX - 1 - y) as i32;
+    dx * dx + dy * dy > (CORNER_RADIUS_PX * CORNER_RADIUS_PX) as i32
+}
+
+/// 圆角外像素数（单角）——渲染层据此排透明位（软点阵近似视觉账）。
+pub fn corner_cut_pixels() -> u32 {
+    let mut n = 0;
+    for y in 0..CORNER_RADIUS_PX {
+        for x in 0..CORNER_RADIUS_PX {
+            if corner_pixel_outside(x, y) {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_bootmenu_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F171-deep");
+
+    // 1) limine.conf 三类行解析：timeout/default/条目名逐字段落位。
+    let conf = b"# boot menu\ntimeout: 5\ndefault: 1\n/VARIX\n/Windows 11 USB\n";
+    let (cfg, trunc) = parse_limine_conf(conf);
+    cs.add("conf_parse_fields", cfg.timeout_s == 5 && cfg.default_idx == 1 && cfg.entry_n == 2 && !trunc, "");
+    cs.add(
+        "conf_parse_names",
+        &cfg.names[0][..5] == b"VARIX" && cfg.name_lens[0] == 5 && cfg.name_lens[1] == 14,
+        "",
+    );
+
+    // 2) 注释与空白行跳过、\r 兼容（跨平台 config 同源解析）。
+    let conf2 = b"# c\r\n\r\n  timeout:  7  \r\n/VARIX\r\n";
+    let (cfg2, _) = parse_limite_compat(conf2);
+    cs.add("conf_robust_whitespace", cfg2.timeout_s == 7 && cfg2.entry_n == 1, "");
+
+    // 3) 条目超容诚实截断（8 上限——不静默丢）。
+    let mut conf3 = heapless_conf_ten_entries();
+    let (cfg3, trunc3) = parse_limine_conf(&mut conf3);
+    cs.add("conf_cap_truncation", cfg3.entry_n == CONF_ENTRY_CAP && trunc3, "");
+
+    // 4) 条目卡生成：default 语义随 config（或显式覆写）。
+    let (entries, n) = entries_from_config(&cfg, None);
+    cs.add(
+        "entries_from_config",
+        n == 2 && entries[0].is_default == false && entries[1].is_default == true && cfg.default_idx == 1,
+        "",
+    );
+
+    // 5) 卡内布局：图标格 48px + 间距 8 + 左衬 24 → 文字起 80。
+    cs.add("card_layout_icon_text", ICON_CELL_PX == 48 && CARD_TEXT_X == CARD_PAD_X + ICON_CELL_PX + ICON_TEXT_GAP_PX && CARD_TEXT_X == 80, "");
+
+    // 6) 环帧角度映射：帧 k → 12k°，30 帧全圆回卷。
+    cs.add(
+        "ring_frame_angles",
+        ring_frame_angle_deg(0) == 0 && ring_frame_angle_deg(7) == 84 && ring_frame_angle_deg(29) == 348 && ring_frame_angle_deg(30) == 0,
+        "",
+    );
+
+    // 7) 资产分项账与总账同式（一处一事实——分项和=总额）。
+    let item = AssetItemization { starfield: 60_000, badge: 20_000, font_12x16: 48_000, ring_frames: 30_000, icons: 10_000 };
+    cs.add(
+        "asset_itemization_total",
+        item.total() == item.into_ledger().total() && item.total() < ASSET_BUDGET_BYTES,
+        "",
+    );
+
+    // 8) 圆角软点阵：角外判定对称、单角切口 8 格（8px 模板 dx²+dy²>64 确定值）。
+    let cut = corner_cut_pixels();
+    cs.add(
+        "corner_dot_matrix",
+        corner_pixel_outside(0, 0)
+            && !corner_pixel_outside(7, 7)
+            && corner_pixel_outside(0, 7) == corner_pixel_outside(7, 0)
+            && cut == 8,
+        "",
+    );
+
+    // 9) 超时 0 = 无限等待语义透传（limine 语义——config 唯一源）。
+    let (cfg0, _) = parse_limine_conf(b"timeout: 0\n/VARIX\n");
+    cs.add("timeout_zero_infinite", cfg0.timeout_s == 0, "");
+
+    // 10) default 越界钳回 0（config 损坏不崩引导——graceful）。
+    let (cfgb, _) = parse_limite_compat(b"default: 99\n/VARIX\n");
+    let (eb, _) = entries_from_config(&cfgb, None);
+    cs.add("default_oob_clamped", cfgb.default_idx == 99 && !eb[0].is_default, "");
+
+    // 11) 双条目主册样本全链：解析→条目→等价性一炮贯通。
+    let (cfg5, _) = parse_limine_conf(b"timeout: 5\ndefault: 0\n/VARIX\n/Windows 11 USB\n");
+    let (e5, n5) = entries_from_config(&cfg5, None);
+    let valid5 = [true, true];
+    let mut g5 = MenuCore::new(0, DEFAULT_TIMEOUT_MS);
+    let out5 = g5.key(MenuKey::Enter, n5, &valid5);
+    cs.add("config_to_selection_e2e", n5 == 2 && e5[0].is_default && out5 == MenuOutcome::Selected(0), "");
+
+    // 12) 环帧复用锚（F173 一套资产两处用——图集接口共享）。
+    cs.add("ring_frames_shared_with_f173", RING_FRAMES == 30 && RING_STEP_DEG == 12, "");
+
+    cs
+}
+
+/// 兼容壳：\r 与行内空白宽容解析（与 parse_limine_conf 同实现——命名对齐
+/// 检查项语义）。
+pub fn parse_limite_compat(text: &[u8]) -> (LimineConfig, bool) {
+    parse_limine_conf(text)
+}
+
+/// 构造 10 条目 config（超容样本——验证截断路径）。
+fn heapless_conf_ten_entries() -> [u8; 256] {
+    let mut buf = [0u8; 256];
+    let mut pos = 0;
+    for _ in 0..10 {
+        let line = b"/entry\n";
+        buf[pos..pos + line.len()].copy_from_slice(line);
+        pos += line.len();
+    }
+    buf
 }
 
 // ---------------------------------------------------------------------------

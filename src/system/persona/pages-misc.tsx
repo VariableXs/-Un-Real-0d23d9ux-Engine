@@ -18,7 +18,9 @@ import {
 import { runDomainVerdict, verdictChecklistJson, type DomainVerdict } from "./verdict";
 import { assembleContextMenu } from "./ime-menu-engine";
 import { taskbarGeometry, autoHideNext, REARRANGE_BUDGET_MS, type AutoHideState } from "./layout-engine";
-import { parseComboFromEvent, classifyConflict, exportKeymap, importKeymap, buildEvidenceDoc, evidenceDocComplete, effectiveSnapshot, type ScopedShortcut } from "./shortcut-engine";
+import { parseComboFromEvent, classifyConflict, exportKeymap, importKeymap, buildEvidenceDoc, evidenceDocComplete, type ScopedShortcut } from "./shortcut-engine";
+import { feedUsageFromRecentEngine, restorePointPathReverify } from "./integrations";
+import { loadTokenTable } from "./tokens";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -60,12 +62,39 @@ export function CtxMenuPage(): React.ReactNode {
         <Row label="模拟选择打点" sub={`使用计数打点在菜单项选择时刻（零额外开销）——弹出预算 ${POPUP_BUDGET_MS}ms`}>
           <PButton onClick={() => saveCtxMenuConfig(recordUsage(cfg, "open", Date.now()))}>点击「打开」+1</PButton>
         </Row>
+        <FeedUsageRow />
         <Row label="排序预览" sub={sorted.join(" → ")}>
           <span />
         </Row>
       </Card>
       <AssembledMenuPreviewCard />
     </div>
+  );
+}
+
+/**
+ * F072 计数直连演示（integrations 接线）：最近使用引擎数据灌入 + 两源对账——
+ * 自动排序与 F072 计数一致的机械保障（差异如实呈现，不静默合并）。
+ */
+function FeedUsageRow(): React.ReactNode {
+  const cfg = loadCtxMenuConfig();
+  const [feedMsg, setFeedMsg] = useState<string | null>(null);
+
+  function feed(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    const r = feedUsageFromRecentEngine(cfg.usage, [
+      { itemId: "open", count: 12, day: today },
+      { itemId: "open-with", count: 5, day: today },
+      { itemId: "bad-item", count: -3, day: today },
+    ], today);
+    saveCtxMenuConfig(cfg);
+    setFeedMsg(`灌入 ${r.accepted} 条 / 清洗拒绝 ${r.rejected} 条（${r.rejectedReasons.join("；") || "无"}）——F072 权威源覆盖同日计数`);
+  }
+
+  return (
+    <Row label="F072 计数直连" sub={feedMsg ?? "最近使用引擎（F072）就绪后一键灌入 90 天环形——自动排序与引擎计数同源"}>
+      <PButton onClick={feed}>模拟灌入</PButton>
+    </Row>
   );
 }
 
@@ -181,8 +210,7 @@ function TaskbarEngineCard(): React.ReactNode {
   const [state, setState] = useState<AutoHideState>("shown");
 
   function step(s: { y: number; dwell: number; focus: boolean; fullscreen: boolean }): void {
-    const next = autoHideNext({
-      state,
+    const next = autoHideNext(state, {
       cursorYFromBottom: s.y,
       dwellMs: s.dwell,
       focusPinned: s.focus,
@@ -432,7 +460,27 @@ export function VerdictPage(): React.ReactNode {
         <PButton onClick={downloadChecklist}>导出 JSON</PButton>
         <PButton disabled={!result} onClick={downloadEvidence}>{result ? (evidenceDocComplete(buildEvidenceDoc(result, ["执行于域总检页"])) ? "导出证据包" : "证据链不足——先修再导") : "导出证据包"}</PButton>
       </Row>
+      <DualPathRow />
     </div>
+  );
+}
+
+/** F121 双路保险实跑（integrations 接线）：直接回退 vs 还原点路径复测——分叉即回炉。 */
+function DualPathRow(): React.ReactNode {
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function run(): void {
+    const before = JSON.parse(JSON.stringify(loadTokenTable())) as { colors: Record<string, string> };
+    const restored = { ...before, colors: { ...before.colors } }; // 模拟直接回退（逐位拷贝 before）
+    const restorePoint = JSON.parse(JSON.stringify(before)) as typeof before; // F121 快照路径
+    const r = restorePointPathReverify(before, restored, restorePoint);
+    setMsg(r.detail);
+  }
+
+  return (
+    <Row label="双路保险复测（F121 联动）" sub={msg ?? "直接回退与还原点路径各测一遍、结论对拍——单路绿单路红 = 回退实现分叉，该项回炉"}>
+      <PButton kind="primary" onClick={run}>实跑双路</PButton>
+    </Row>
   );
 }
 

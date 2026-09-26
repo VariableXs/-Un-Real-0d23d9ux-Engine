@@ -57,10 +57,32 @@ mod ais1reds {
         reds("F185", &romount::run_romount_checks());
     }
     #[test]
+    fn dump_reds_deep() {
+        reds("F171d", &bootmenu::run_bootmenu_deep_checks());
+        reds("F172d", &selftestviz::run_selftestviz_deep_checks());
+        reds("F173d", &panicscreen::run_panicscreen_deep_checks());
+        reds("F174d", &diagsnap::run_diagsnap_deep_checks());
+        reds("F175d", &crashiso::run_crashiso_deep_checks());
+        reds("F176d", &memguard::run_memguard_deep_checks());
+        reds("F177d", &capenforce::run_capenforce_deep_checks());
+        reds("F178d", &signbadge::run_signbadge_deep_checks());
+        reds("F179d", &permaudit::run_permaudit_deep_checks());
+        reds("F180d", &pwrdrill::run_pwrdrill_deep_checks());
+        reds("F181d", &handoffchk::run_handoffchk_deep_checks());
+        reds("F182d", &duoclock::run_duoclock_deep_checks());
+        reds("F183d", &diskhealth::run_diskhealth_deep_checks());
+        reds("F184d", &hotplug::run_hotplug_deep_checks());
+        reds("F185d", &romount::run_romount_deep_checks());
+    }
+    #[test]
     fn domain_aggregate() {
         let set = run_secstar_checks();
         let (passed, failed) = set.tally();
         println!("SECSTAR-S1 aggregate: {passed} passed, {failed} failed");
         assert!(set.all_passed(), "域聚合存在红项：{passed}/{} 绿", passed + failed);
+        let deep = run_secstar_deep_checks();
+        let (dp, df) = deep.tally();
+        println!("SECSTAR-S1 deep aggregate: {dp} passed, {df} failed");
+        assert!(deep.all_passed(), "深化自检存在红项：{dp}/{} 绿", dp + df);
     }
 }

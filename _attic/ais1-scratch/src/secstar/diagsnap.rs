@@ -238,6 +238,10 @@ impl SnapshotStore {
         None
     }
 
+    /// 持久计数器对账口（跨重启恢复链：帧值 → 计数器 → 下一编号）。深化层。
+    pub fn counter(&self) -> u64 {
+        self.id_counter
+    }
     pub fn last_id(&self) -> Option<u64> {
         if self.len == 0 {
             return None;
@@ -524,6 +528,161 @@ pub fn run_diagsnap_checks() -> CheckSet {
     // 12) 栈摘要 16 帧截断诚实标注。
     let st = StackSummary { tid: 9, frames: [1; STACK_FRAMES], frame_n: STACK_FRAMES, truncated: true };
     cs.add("stack_summary_16_frames", st.frame_n == STACK_FRAMES && st.truncated, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 深化层（批次二）：配置指纹 · F127 子集打包帧 · 跨重启计数持久帧 ——
+// 主册【设计细节】「配置指纹 / 打包复用 F127 格式子集 / 快照编号跨重启
+// 延续」落地。
+// ---------------------------------------------------------------------------
+
+/// 配置指纹字节上限（指纹=配置面哈希——FNV-1a 32 位）。
+pub const FINGERPRINT_BYTES: usize = 64;
+/// 打包帧节区数（账本切片/日志尾段/栈摘要/配置指纹四节）。
+pub const PACKAGE_SECTIONS: usize = 4;
+/// 打包帧头长度（魔数+版本+节区长度表）。
+pub const PACKAGE_HEADER_LEN: usize = 24;
+/// 快照编号持久帧长度（跨重启延续——会话间可谈「#124」的数据面）。
+pub const COUNTER_FRAME_LEN: usize = 16;
+
+/// 配置指纹：配置字节面的 FNV-1a 哈希（脱敏三查不含配置值——指纹不泄内容）。
+pub fn config_fingerprint(config: &[u8]) -> u32 {
+    let mut h: u32 = 0x811C_9DC5;
+    for b in config.iter().take(FINGERPRINT_BYTES * 16) {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
+}
+
+/// 打包帧（F127 格式子集——四节区定长表 + 各节长度，消费侧按表取节）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PackageFrame {
+    /// 各节区字节数（0=该节缺席——缺席诚实标 0，不伪造）。
+    pub section_lens: [u32; PACKAGE_SECTIONS],
+    /// 配置指纹（第 4 节内容即指纹本身）。
+    pub fingerprint: u32,
+}
+
+/// 打包头序列化：[0..4) "VXSK" · [4] 版本 1 · [5] 节数 4 ·
+/// [8..24] 节区长度表 u32×4 LE。
+pub fn encode_package(pkg: &PackageFrame, out: &mut [u8; PACKAGE_HEADER_LEN]) {
+    out[0] = b'V';
+    out[1] = b'X';
+    out[2] = b'S';
+    out[3] = b'K';
+    out[4] = 1;
+    out[5] = PACKAGE_SECTIONS as u8;
+    out[6] = 0;
+    out[7] = 0;
+    for (i, l) in pkg.section_lens.iter().enumerate() {
+        out[8 + i * 4..12 + i * 4].copy_from_slice(&l.to_le_bytes());
+    }
+}
+
+/// 打包头解析（版本/魔数不符 → None——消费侧诚实拒收）。
+pub fn decode_package(hdr: &[u8; PACKAGE_HEADER_LEN]) -> Option<PackageFrame> {
+    if hdr[0] != b'V' || hdr[1] != b'X' || hdr[2] != b'S' || hdr[3] != b'K' || hdr[4] != 1 {
+        return None;
+    }
+    let mut lens = [0u32; PACKAGE_SECTIONS];
+    for i in 0..PACKAGE_SECTIONS {
+        lens[i] = u32::from_le_bytes(hdr[8 + i * 4..12 + i * 4].try_into().ok()?);
+    }
+    Some(PackageFrame { section_lens: lens, fingerprint: 0 })
+}
+
+/// 快照编号持久帧：[0..4) "VXSN" · [4..12] 最近编号 u64 LE · [12..16] 校验和。
+pub fn encode_counter(last_id: u64, out: &mut [u8; COUNTER_FRAME_LEN]) {
+    out[0] = b'V';
+    out[1] = b'X';
+    out[2] = b'S';
+    out[3] = b'N';
+    out[4..12].copy_from_slice(&last_id.to_le_bytes());
+    let mut h: u32 = 0x811C_9DC5;
+    for b in &out[..12] {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    out[12..16].copy_from_slice(&h.to_le_bytes());
+}
+
+pub fn decode_counter(frame: &[u8; COUNTER_FRAME_LEN]) -> Option<u64> {
+    if frame[0] != b'V' || frame[1] != b'X' || frame[2] != b'S' || frame[3] != b'N' {
+        return None;
+    }
+    let mut h: u32 = 0x811C_9DC5;
+    for b in &frame[..12] {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    if h != u32::from_le_bytes(frame[12..16].try_into().ok()?) {
+        return None;
+    }
+    Some(u64::from_le_bytes(frame[4..12].try_into().ok()?))
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_diagsnap_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F174-deep");
+
+    // 1) 配置指纹确定性：同配置同指纹、异配置异指纹。
+    let fp1 = config_fingerprint(b"theme=dark;lang=zh");
+    let fp2 = config_fingerprint(b"theme=dark;lang=zh");
+    let fp3 = config_fingerprint(b"theme=light;lang=zh");
+    cs.add("fingerprint_deterministic", fp1 == fp2 && fp1 != fp3, "");
+
+    // 2) 配置指纹对内容敏感（单字节差 → 指纹变——归因可查）。
+    cs.add("fingerprint_sensitivity", config_fingerprint(b"a") != config_fingerprint(b"b"), "");
+
+    // 3) 打包头 round-trip：四节区长度表逐项保真。
+    let pkg = PackageFrame { section_lens: [1_024, 4_096, 512, 8], fingerprint: fp1 };
+    let mut hdr = [0u8; PACKAGE_HEADER_LEN];
+    encode_package(&pkg, &mut hdr);
+    let dec = decode_package(&hdr);
+    cs.add("package_roundtrip", dec.map(|d| d.section_lens == pkg.section_lens).unwrap_or(false), "");
+
+    // 4) 打包头撕裂/版本错拒收。
+    let mut bad = hdr;
+    bad[4] = 9;
+    cs.add("package_version_rejected", decode_package(&bad).is_none(), "");
+
+    // 5) 节区数=4（账本切片/日志尾段/栈摘要/配置指纹——F127 子集面）。
+    cs.add("package_sections", PACKAGE_SECTIONS == 4 && hdr[5] == 4, "");
+
+    // 6) 快照编号持久帧 round-trip（跨重启延续——「#124」对谈面）。
+    let mut cf = [0u8; COUNTER_FRAME_LEN];
+    encode_counter(124, &mut cf);
+    cs.add("counter_frame_roundtrip", decode_counter(&cf) == Some(124), "");
+
+    // 7) 计数持久帧撕裂拒收（恢复面不读脏帧——宁可重计不编造）。
+    let mut torn = cf;
+    torn[5] ^= 0xFF;
+    cs.add("counter_torn_rejected", decode_counter(&torn).is_none(), "");
+
+    // 8) 计数持久帧接 restore_counter（恢复链贯通：帧→计数器→下一编号 125）。
+    let mut store = SnapshotStore::new();
+    if let Some(last) = decode_counter(&cf) {
+        store.restore_counter(last);
+    }
+    cs.add("counter_restore_chain", store.counter() == 124, "");
+
+    // 9) 节流窗口常量（10s 内合并——主册交互设计数值在位）。
+    cs.add("throttle_window_const", THROTTLE_WINDOW_MS == 10_000, "");
+
+    // 10) 磁盘紧张降级档位在册（20 → 5——「保留 5 份+提示」的容量面）。
+    let mut tight = SnapshotStore::new();
+    tight.set_disk_tight(true);
+    cs.add("disk_tight_cap", tight.cap() == STORE_CAP_TIGHT && STORE_CAP == 20 && STORE_CAP_TIGHT == 5, "");
+
+    // 11) 栈摘要容量（每线程 16 帧——主册设计细节硬值）。
+    cs.add("stack_frames_const", STACK_FRAMES == 16, "");
+
+    // 12) 热键常量（Ctrl+Alt+D——主册功能定义键位）。
+    cs.add("hotkey_const", HOTKEY_MOD_CTRL && HOTKEY_MOD_ALT && HOTKEY_KEY == b'D', "");
 
     cs
 }

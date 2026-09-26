@@ -394,6 +394,208 @@ pub fn run_handoffchk_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：三查探测引擎 · 面板渲染模型 · F039 共用入口 ——
+// 主册【状态与异常】「三查实现复用防自锁闸门既有逻辑」与【交互设计】
+// 「预检面板 400×240px：三行检查项（图标+名称+结果）」落地。
+// ---------------------------------------------------------------------------
+
+/// 目标探测输入（闸门注入口的实型——调用方从 ESP 卷面采集回填）。
+#[derive(Clone, Copy, Debug)]
+pub struct GateTarget {
+    /// WINESP 卷存在（引导链目标分区枚举结果）。
+    pub winesp_present: bool,
+    /// 引导文件登记哈希（F191 自查产物——8B 指纹）。
+    pub registered_hash: [u8; 8],
+    /// 引导文件实测哈希（读面算得）。
+    pub measured_hash: [u8; 8],
+    /// VARIX 引导项在 BootOrder 中（回路可回——固件枚举结果）。
+    pub varix_boot_entry: bool,
+}
+
+impl GateTarget {
+    /// 目标存在查（闸门条件一）。
+    pub fn check_target_exists(&self) -> CheckState {
+        if self.winesp_present {
+            CheckState::Green
+        } else {
+            CheckState::Red
+        }
+    }
+    /// 哈希可信查（闸门条件二：登记 vs 实测逐字节等值）。
+    pub fn check_hash_trusted(&self) -> CheckState {
+        if self.registered_hash == self.measured_hash {
+            CheckState::Green
+        } else {
+            CheckState::Red
+        }
+    }
+    /// 回路可回查（闸门条件三：VARIX 引导项完好）。
+    pub fn check_return_path(&self) -> CheckState {
+        if self.varix_boot_entry {
+            CheckState::Green
+        } else {
+            CheckState::Red
+        }
+    }
+    /// 三查一次跑全（GateProbe 的实型适配器——UX 不另造标准）。
+    pub fn probe_all(&self) -> [CheckState; 3] {
+        [self.check_target_exists(), self.check_hash_trusted(), self.check_return_path()]
+    }
+}
+
+/// GateProbe 实型适配器（真实探测引擎——替换自检用的 ScriptProbe 台架）。
+pub struct RealGateProbe {
+    pub target: GateTarget,
+    cost_ms: u64,
+}
+
+impl RealGateProbe {
+    pub const fn new(target: GateTarget, cost_ms: u64) -> RealGateProbe {
+        RealGateProbe { target, cost_ms }
+    }
+}
+
+impl GateProbe for RealGateProbe {
+    fn probe(&mut self, id: CheckId) -> (CheckState, u64) {
+        let state = match id {
+            CheckId::TargetExists => self.target.check_target_exists(),
+            CheckId::HashTrusted => self.target.check_hash_trusted(),
+            CheckId::ReturnPathOk => self.target.check_return_path(),
+        };
+        (state, self.cost_ms)
+    }
+}
+
+/// 面板渲染行（400×240 三行检查项的行模型——图标+名称+结果三段）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PanelRow {
+    pub id: CheckId,
+    pub state: CheckState,
+}
+
+impl PanelRow {
+    /// 结果图标语义（三态：绿勾/红叉/灰问号——fail-closed 异常态可见）。
+    pub fn icon(self) -> &'static str {
+        match self.state {
+            CheckState::Green => "ok",
+            CheckState::Red => "fail",
+            CheckState::Exception => "unknown",
+        }
+    }
+}
+
+/// 面板渲染模型（三行 + 面板几何——渲染层纯数据，不碰显存）。
+pub struct PanelRender {
+    pub rows: [PanelRow; 3],
+}
+
+impl PanelRender {
+    pub fn from_states(states: [CheckState; 3]) -> PanelRender {
+        PanelRender { rows: [PanelRow { id: CheckId::TargetExists, state: states[0] }, PanelRow { id: CheckId::HashTrusted, state: states[1] }, PanelRow { id: CheckId::ReturnPathOk, state: states[2] }] }
+    }
+    /// 全绿判定（渲染面与状态机同源——UX 不另造标准）。
+    pub fn all_green(&self) -> bool {
+        self.rows.iter().all(|r| r.state == CheckState::Green)
+    }
+}
+
+/// F039 游戏分流共用入口（一次检两处用——同引擎不同标签的实型入口）。
+/// 返回三查结果；调用方（F039）以同一结果驱动分流放行。
+pub fn game_shunt_precheck(target: &GateTarget) -> [CheckState; 3] {
+    target.probe_all()
+}
+
+/// 深化自检（检查项对账层——主册【交互设计】子句逐项实算）。
+#[inline(never)]
+pub fn run_handoffchk_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F181-deep");
+
+    // 1) 目标存在查：WINESP 在 → 绿、缺 → 红（闸门条件一引擎化）。
+    let good = GateTarget { winesp_present: true, registered_hash: [1; 8], measured_hash: [1; 8], varix_boot_entry: true };
+    let missing = GateTarget { winesp_present: false, ..good };
+    cs.add(
+        "engine_target_exists",
+        good.check_target_exists() == CheckState::Green && missing.check_target_exists() == CheckState::Red,
+        "",
+    );
+
+    // 2) 哈希可信查：登记==实测 → 绿；一字节差 → 红（逐字节等值引擎）。
+    let mut tampered = good;
+    tampered.measured_hash[3] ^= 0xFF;
+    cs.add(
+        "engine_hash_trusted",
+        good.check_hash_trusted() == CheckState::Green && tampered.check_hash_trusted() == CheckState::Red,
+        "",
+    );
+
+    // 3) 回路可回查：VARIX 项在 → 绿、丢 → 红（闸门条件三引擎化）。
+    let mut broken = good;
+    broken.varix_boot_entry = false;
+    cs.add(
+        "engine_return_path",
+        good.check_return_path() == CheckState::Green && broken.check_return_path() == CheckState::Red,
+        "",
+    );
+
+    // 4) RealGateProbe 注入适配：面板状态机吃实型引擎（UX 不另造标准贯通）。
+    let mut p = PrecheckPanel::new();
+    let mut probe = RealGateProbe::new(good, 100);
+    p.begin(0, &mut probe);
+    p.tick(0, 1);
+    p.tick(500, 1);
+    cs.add("real_probe_wired", p.flow == Flow::Proceed, "");
+
+    // 5) 实型引擎红态贯通：哈希坏 → 面板 Stopped（注入式与真实同路径）。
+    let mut p2 = PrecheckPanel::new();
+    let mut probe2 = RealGateProbe::new(tampered, 100);
+    p2.begin(0, &mut probe2);
+    p2.tick(0, 2);
+    cs.add("real_probe_red_stopped", p2.flow == Flow::Stopped && p2.states[1] == CheckState::Red, "");
+
+    // 6) 面板渲染行三态图标语义（绿勾/红叉/灰问号——异常态可见）。
+    let render = PanelRender::from_states([CheckState::Green, CheckState::Red, CheckState::Exception]);
+    cs.add(
+        "panel_row_icons",
+        render.rows[0].icon() == "ok" && render.rows[1].icon() == "fail" && render.rows[2].icon() == "unknown",
+        "",
+    );
+
+    // 7) 面板渲染全绿判定与状态机同源（两处一个标准——一致性）。
+    cs.add(
+        "panel_render_all_green",
+        PanelRender::from_states([CheckState::Green; 3]).all_green() && !PanelRender::from_states([CheckState::Green, CheckState::Red, CheckState::Green]).all_green(),
+        "",
+    );
+
+    // 8) 面板几何常量（400×240 三行——主册交互设计数值）。
+    cs.add("panel_geometry", PANEL_W == 400 && PANEL_H == 240 && PanelRender::from_states([CheckState::Green; 3]).rows.len() == 3, "");
+
+    // 9) F039 共用入口：同一引擎同结果（一次检两处用——不另造第二套标准）。
+    let via_shared = game_shunt_precheck(&good);
+    let via_engine = good.probe_all();
+    cs.add("f039_shared_entry", via_shared == via_engine && via_shared.iter().all(|s| *s == CheckState::Green), "");
+
+    // 10) F039 共用入口红态透传（分流面同样被闸门拦——闸门语义全域一致）。
+    cs.add("f039_shared_red_passthrough", game_shunt_precheck(&broken)[2] == CheckState::Red, "");
+
+    // 11) 三查文案白话序（检查项展示序=闸门条件序——面板行序对齐）。
+    cs.add(
+        "panel_row_order_matches_gate",
+        PanelRender::from_states([CheckState::Green; 3]).rows[0].id == CheckId::TargetExists
+            && PanelRender::from_states([CheckState::Green; 3]).rows[2].id == CheckId::ReturnPathOk,
+        "",
+    );
+
+    // 12) 探测耗时进预算（引擎成本回填——<1s 硬线对账面贯通）。
+    let mut p3 = PrecheckPanel::new();
+    let mut probe3 = RealGateProbe::new(good, 100);
+    p3.begin(0, &mut probe3);
+    cs.add("real_probe_cost_accounted", p3.proceed_latency_ok(), "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

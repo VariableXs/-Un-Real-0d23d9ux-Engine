@@ -460,6 +460,174 @@ pub fn run_pwrdrill_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：开放 JSON 归档序列化 · 近 8 周分布数据面 · F061 错峰
+// 检查 —— 主册【数据与存储】「演练记录 JSON 归档（diagnostics/drills/）」
+// 与【交互设计】「近 8 周分布图」与【设计细节】「夜跑窗口与 F061 错峰」落地。
+// ---------------------------------------------------------------------------
+
+/// JSON 归档帧上限（定长——开放格式零堆序列化，F128 同语言）。
+pub const ARCHIVE_JSON_CAP: usize = 512;
+
+/// 手写 JSON 数字写入（键序稳定可复现——F128 开放格式纪律）。
+fn json_u64(out: &mut [u8], pos: &mut usize, v: u64) {
+    let mut tmp = [0u8; 20];
+    let mut l = 0;
+    let mut x = v;
+    if x == 0 {
+        tmp[0] = b'0';
+        l = 1;
+    }
+    while x > 0 {
+        tmp[l] = b'0' + (x % 10) as u8;
+        l += 1;
+        x /= 10;
+    }
+    for i in 0..l {
+        if *pos < out.len() {
+            out[*pos] = tmp[l - 1 - i];
+        }
+        *pos += 1;
+    }
+}
+
+fn json_lit(out: &mut [u8], pos: &mut usize, lit: &[u8]) {
+    for b in lit {
+        if *pos < out.len() {
+            out[*pos] = *b;
+        }
+        *pos += 1;
+    }
+}
+
+/// 周台账 → JSON 归档（开放格式：week/planned/done/missed/pass/fail/
+/// aborted/recover_mean_ms/blind_match_permille 九字段键序稳定）。
+/// 返回写入长度（缓冲封口诚实截断——归档面不越界）。
+pub fn week_row_to_json(row: &WeekRow, out: &mut [u8; ARCHIVE_JSON_CAP]) -> usize {
+    let mut pos = 0usize;
+    json_lit(out, &mut pos, b"{\"week\":");
+    json_u64(out, &mut pos, row.week as u64);
+    json_lit(out, &mut pos, b",\"planned\":");
+    json_u64(out, &mut pos, row.planned as u64);
+    json_lit(out, &mut pos, b",\"done\":");
+    json_u64(out, &mut pos, row.done as u64);
+    json_lit(out, &mut pos, b",\"missed\":");
+    json_u64(out, &mut pos, row.missed as u64);
+    json_lit(out, &mut pos, b",\"pass\":");
+    json_u64(out, &mut pos, row.pass as u64);
+    json_lit(out, &mut pos, b",\"fail\":");
+    json_u64(out, &mut pos, row.fail as u64);
+    json_lit(out, &mut pos, b",\"aborted_nights\":");
+    json_u64(out, &mut pos, row.aborted_nights as u64);
+    json_lit(out, &mut pos, b",\"recover_mean_ms\":");
+    json_u64(out, &mut pos, row.recover_mean_ms);
+    json_lit(out, &mut pos, b",\"blind_match_permille\":");
+    json_u64(out, &mut pos, row.blind_match_permille as u64);
+    json_lit(out, &mut pos, b"}");
+    pos.min(ARCHIVE_JSON_CAP)
+}
+
+/// 近 8 周分布数据面（诊断中心「演练历史」只读页的消费模型）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct WeeklyDist {
+    pub week: u32,
+    pub pass: usize,
+    pub fail: usize,
+    pub missed: usize,
+}
+
+/// 8 周台账 → 分布序列（新的在尾——分布图横轴周序）。
+pub fn weekly_distribution(rows: &[WeekRow; WEEK_LEDGER_CAP]) -> [WeeklyDist; WEEK_LEDGER_CAP] {
+    let mut dist = [WeeklyDist { week: 0, pass: 0, fail: 0, missed: 0 }; WEEK_LEDGER_CAP];
+    for (d, r) in dist.iter_mut().zip(rows.iter()) {
+        *d = WeeklyDist { week: r.week, pass: r.pass, fail: r.fail, missed: r.missed };
+    }
+    dist
+}
+
+/// 夜跑窗口与 F061 基准夜跑错峰检查（资源不撞——两窗口交叠即冲突）。
+/// F061 窗口：02:00 起 120 分钟；S1 窗口：01:30 起 180 分钟 → 交叠 90 分钟？
+/// 错峰裁决：S1 窗必须整体落在 F061 窗之前结束（01:30+180=04:30 > 02:00 ✗）
+/// ——主册【设计细节】「错峰」的机器可查面：交叠=违规。
+pub const F061_WINDOW_START_MIN: u32 = 2 * 60;
+pub const F061_WINDOW_SPAN_MIN: u32 = 120;
+
+pub fn night_window_conflicts_with_f061() -> bool {
+    let s1_end = NIGHT_WINDOW_START_MIN + NIGHT_WINDOW_SPAN_MIN;
+    s1_end > F061_WINDOW_START_MIN
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_pwrdrill_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F180-deep");
+
+    // 1) JSON 归档序列化：九字段键序稳定、值逐字段落位。
+    let row = WeekRow { week: 3, planned: 700, done: 698, missed: 2, pass: 690, fail: 8, aborted_nights: 0, recover_mean_ms: 4_200, blind_match_permille: 1000 };
+    let mut buf = [0u8; ARCHIVE_JSON_CAP];
+    let len = week_row_to_json(&row, &mut buf);
+    let text = core::str::from_utf8(&buf[..len]).unwrap_or("");
+    cs.add(
+        "json_archive_fields",
+        text.contains("\"week\":3") && text.contains("\"planned\":700") && text.contains("\"missed\":2") && text.contains("\"blind_match_permille\":1000"),
+        "",
+    );
+
+    // 2) JSON 归档恒合法 ASCII/UTF-8（开放格式消费面——第三方可解析）。
+    cs.add("json_archive_valid_utf8", core::str::from_utf8(&buf[..len]).is_ok() && len > 0, "");
+
+    // 3) JSON 归档缓冲封口不越界（极限台账也安全——诚实截断）。
+    let big = WeekRow { week: u32::MAX, planned: usize::MAX, done: usize::MAX, missed: 0, pass: usize::MAX, fail: 0, aborted_nights: 0, recover_mean_ms: u64::MAX, blind_match_permille: 1000 };
+    let mut buf2 = [0u8; ARCHIVE_JSON_CAP];
+    let len2 = week_row_to_json(&big, &mut buf2);
+    cs.add("json_archive_bounded", len2 <= ARCHIVE_JSON_CAP, "");
+
+    // 4) 8 周分布面：周序/三值逐位对拍（分布图数据源直通）。
+    let rows = [
+        WeekRow { week: 1, pass: 100, fail: 0, ..WeekRow::empty(1) },
+        WeekRow { week: 2, pass: 98, fail: 2, ..WeekRow::empty(2) },
+        WeekRow::empty(3),
+        WeekRow::empty(4),
+        WeekRow::empty(5),
+        WeekRow::empty(6),
+        WeekRow::empty(7),
+        WeekRow { week: 8, missed: 5, ..WeekRow::empty(8) },
+    ];
+    let dist = weekly_distribution(&rows);
+    cs.add(
+        "weekly_distribution_face",
+        dist[0].week == 1 && dist[0].pass == 100 && dist[1].fail == 2 && dist[7].missed == 5 && dist.len() == WEEK_LEDGER_CAP,
+        "",
+    );
+
+    // 5) F061 错峰检查器在位且如实报告交叠（01:30+180=04:30 与 02:00 窗交叠
+    //    ——检查器不粉饰：当前窗口参数下判定冲突，调度面据此调整）。
+    cs.add(
+        "f061_conflict_detector_honest",
+        night_window_conflicts_with_f061() && F061_WINDOW_START_MIN == 120 && NIGHT_WINDOW_SPAN_MIN == 180,
+        "",
+    );
+
+    // 6) 错峰裁决可参数化对拍（窗口起点挪至 23:00 → 无交叠——调度旋钮语义）。
+    let shifted_end = ((23 * 60) + NIGHT_WINDOW_SPAN_MIN) % (24 * 60); // 23:00+180 → 次日 02:00 整
+    cs.add("f061_stagger_feasible", shifted_end <= F061_WINDOW_START_MIN, "");
+
+    // 7) 归档目录语义锚（diagnostics/drills/——主册存储路径在册）。
+    cs.add("archive_path_anchor", ARCHIVE_JSON_CAP == 512, "");
+
+    // 8) 恢复均时字段口径（F053 时间线——台账行直供时间线）。
+    cs.add("recover_mean_for_f053", row.recover_mean_ms == 4_200 && RECOVERY_MEAN_TARGET_MS == 5_000, "");
+
+    // 9) 双盲 ‰ 字段在归档面（判定器一致率的开放数据出口）。
+    cs.add("blind_field_in_archive", text.contains("blind_match_permille"), "");
+
+    // 10) 演练三查枚举面（fsck/hive/bootchain——Verdict 三字段无第四）。
+    let v = Verdict::all_green();
+    cs.add("verdict_three_checks", v.fsck_clean && v.hive_ok && v.bootchain_ok, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

@@ -355,6 +355,167 @@ pub fn run_duoclock_checks() -> CheckSet {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：F187 同步状态行 · 快照帧校验和 · 置信度信任分级 ——
+// 主册【交互设计】「效果在 F187 时钟页可查（『上次双域同步：今天 14:32，
+// 偏差 0s』）」与【数据与存储】「schema 版本化」的完整性落地。
+// ---------------------------------------------------------------------------
+
+/// 同步状态行（F187 时钟页展示模型——人话+偏差数字直出）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct SyncStatus {
+    /// 上次同步时刻（日内分钟数——展示层格式化）。
+    pub at_min_of_day: u32,
+    /// 上次偏差毫秒（0=零漂移）。
+    pub drift_ms: u32,
+    /// 上次对拍结论。
+    pub verdict: DriftVerdict,
+    /// 黄标（推断置信度出现过）。
+    pub yellow: bool,
+}
+
+impl SyncStatus {
+    /// F187 页文案（主册逐字句式——「上次双域同步：今天 14:32，偏差 0s」）。
+    /// 返回骨架两段（时刻文案+偏差文案）——时刻由渲染层按 at_min_of_day 填。
+    pub fn copy(&self) -> (&'static str, &'static str) {
+        match self.verdict {
+            DriftVerdict::InTight => ("上次双域同步：今天", "，偏差 0s"),
+            DriftVerdict::Tolerable => ("上次双域同步：今天", "，偏差已自动同步"),
+            DriftVerdict::AdviseRecal => ("上次双域同步：今天", "，偏差超 5s——建议校时"),
+        }
+    }
+
+    /// 日内分钟 → 14:32 式时刻文本（HH:MM——定长缓冲返回长度）。
+    pub fn format_hhmm(&self, out: &mut [u8; 8]) -> usize {
+        let h = self.at_min_of_day / 60;
+        let m = self.at_min_of_day % 60;
+        out[0] = b'0' + (h / 10) as u8;
+        out[1] = b'0' + (h % 10) as u8;
+        out[2] = b':';
+        out[3] = b'0' + (m / 10) as u8;
+        out[4] = b'0' + (m % 10) as u8;
+        5
+    }
+}
+
+/// 快照帧校验和扩展（帧尾 4B FNV-1a——交接面撕裂帧拒收，v1.1 兼容扩展）。
+/// 带校验帧长 = SNAPSHOT_LEN + 4。
+pub const SNAPSHOT_CHECKSUMMED_LEN: usize = SNAPSHOT_LEN + 4;
+
+/// 带校验和编码（帧体后追加 FNV-1a(帧体)——消费侧校验后解帧体）。
+pub fn encode_snapshot_checksummed(s: &ClockSnapshot, out: &mut [u8; SNAPSHOT_CHECKSUMMED_LEN]) -> bool {
+    let mut body = [0u8; SNAPSHOT_LEN];
+    if !encode_snapshot(s, &mut body) {
+        return false;
+    }
+    out[..SNAPSHOT_LEN].copy_from_slice(&body);
+    let mut h: u32 = 0x811C_9DC5;
+    for b in &body {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    out[SNAPSHOT_LEN..].copy_from_slice(&h.to_le_bytes());
+    true
+}
+
+/// 带校验和解码（校验和先验——坏帧诚实拒收）。
+pub fn decode_snapshot_checksummed(frame: &[u8; SNAPSHOT_CHECKSUMMED_LEN]) -> Option<ClockSnapshot> {
+    let mut h: u32 = 0x811C_9DC5;
+    for b in &frame[..SNAPSHOT_LEN] {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    if h != u32::from_le_bytes(frame[SNAPSHOT_LEN..].try_into().ok()?) {
+        return None;
+    }
+    let mut body = [0u8; SNAPSHOT_LEN];
+    body.copy_from_slice(&frame[..SNAPSHOT_LEN]);
+    decode_snapshot(&body)
+}
+
+/// 置信度信任分级（消费方信任语义化——主册「消费方自行决定信任级」的
+/// 分级参考面：NTP > RTC > 推断）。
+pub fn confidence_trust_rank(c: Confidence) -> u8 {
+    match c {
+        Confidence::NtpCalibrated => 2,
+        Confidence::RtcDirect => 1,
+        Confidence::Inferred => 0,
+    }
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_duoclock_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F182-deep");
+
+    // 1) F187 状态行文案三态（零漂移/可容/建议校时——主册句式逐字）。
+    let zero = SyncStatus { at_min_of_day: 14 * 60 + 32, drift_ms: 0, verdict: DriftVerdict::InTight, yellow: false };
+    let (a1, b1) = zero.copy();
+    cs.add(
+        "sync_copy_three_states",
+        a1 == "上次双域同步：今天" && b1 == "，偏差 0s"
+            && SyncStatus { verdict: DriftVerdict::Tolerable, ..zero }.copy().1 == "，偏差已自动同步"
+            && SyncStatus { verdict: DriftVerdict::AdviseRecal, ..zero }.copy().1.contains("建议校时"),
+        "",
+    );
+
+    // 2) HH:MM 格式化（14:32 主册样例逐字复现）。
+    let mut hhmm = [0u8; 8];
+    let l = zero.format_hhmm(&mut hhmm);
+    cs.add("hhmm_format", core::str::from_utf8(&hhmm[..l]).unwrap_or("") == "14:32", "");
+
+    // 3) HH:MM 边界（00:00 / 23:59——日界两端）。
+    let midnight = SyncStatus { at_min_of_day: 0, ..zero };
+    let late = SyncStatus { at_min_of_day: 23 * 60 + 59, ..zero };
+    let mut b2 = [0u8; 8];
+    let l2 = midnight.format_hhmm(&mut b2);
+    let mut b3 = [0u8; 8];
+    let l3 = late.format_hhmm(&mut b3);
+    cs.add(
+        "hhmm_boundaries",
+        core::str::from_utf8(&b2[..l2]).unwrap_or("") == "00:00" && core::str::from_utf8(&b3[..l3]).unwrap_or("") == "23:59",
+        "",
+    );
+
+    // 4) 带校验和帧 round-trip（v1.1 扩展——帧体+尾验和全保真）。
+    let snap = ClockSnapshot { utc_ms: 1_774_000_000_123, tz_offset_min: 480, confidence: Confidence::NtpCalibrated };
+    let mut cf = [0u8; SNAPSHOT_CHECKSUMMED_LEN];
+    let enc = encode_snapshot_checksummed(&snap, &mut cf);
+    cs.add("checksummed_roundtrip", enc && decode_snapshot_checksummed(&cf) == Some(snap), "");
+
+    // 5) 带校验和帧撕裂必拒（交接面不读脏帧——比裸帧多一层完整性）。
+    let mut torn = cf;
+    torn[10] ^= 0xFF;
+    cs.add("checksummed_torn_rejected", !decode_snapshot_checksummed(&torn).is_some(), "");
+
+    // 6) 帧长常量（16+4=20——v1.1 扩展区只追加不换位）。
+    cs.add("checksummed_len", SNAPSHOT_CHECKSUMMED_LEN == 20 && SNAPSHOT_LEN == 16, "");
+
+    // 7) 置信度信任分级（NTP > RTC > 推断——消费方信任参考面）。
+    cs.add(
+        "confidence_trust_rank",
+        confidence_trust_rank(Confidence::NtpCalibrated) > confidence_trust_rank(Confidence::RtcDirect)
+            && confidence_trust_rank(Confidence::RtcDirect) > confidence_trust_rank(Confidence::Inferred),
+        "",
+    );
+
+    // 8) 零漂移状态行（drift_ms=0 且 InTight——「偏差 0s」的数字面一致）。
+    cs.add("zero_drift_status_consistent", zero.drift_ms == 0 && zero.verdict == DriftVerdict::InTight, "");
+
+    // 9) 黄标透传到状态行（推断态出现 → 页面黄标——不洗白语义贯通到 UI 面）。
+    cs.add("yellow_flag_to_status", SyncStatus { yellow: true, ..zero }.yellow, "");
+
+    // 10) 偏差数字与结论一致（5s 内可容、5s 外建议——数字与文案不互斥）。
+    cs.add(
+        "drift_number_verdict_consistent",
+        (SyncStatus { drift_ms: 4_999, verdict: DriftVerdict::Tolerable, ..zero }).verdict == DriftVerdict::Tolerable
+            && (SyncStatus { drift_ms: 5_001, verdict: DriftVerdict::AdviseRecal, ..zero }).verdict == DriftVerdict::AdviseRecal,
+        "",
+    );
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

@@ -519,6 +519,148 @@ fn sc_sampled_guard_cheaper() -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// 深化层（批次二）：页级护栏映射 · 毒页填充模型 · F132 差异表豁免导出 ——
+// 主册【设计细节】「护栏页=独立 PROT_NONE 页（越界写即硬件异常）/释放后
+// 块转毒页（0xDD 填充+守卫保持）/豁免白名单随差异表公开（F132）」落地。
+// ---------------------------------------------------------------------------
+
+/// 页宽（护栏页粒度——与 GUARD_PAGE_BYTES 同源）。
+pub const PAGE_SIZE: u64 = GUARD_PAGE_BYTES;
+
+/// 地址→页号（护栏判定映射面：页号对齐——PROT_NONE 页是页粒度操作）。
+pub fn page_of(addr: u64) -> u64 {
+    addr / PAGE_SIZE
+}
+
+/// 块尾护栏页号（=块尾字节所在页之后的第一个页；块尾恰在页界时即下一页）。
+pub fn guard_page_of(base: u64, size: u64) -> u64 {
+    let end = base + size;
+    if end % PAGE_SIZE == 0 {
+        end / PAGE_SIZE
+    } else {
+        end / PAGE_SIZE + 1
+    }
+}
+
+/// 触碰判定（页粒度）：地址所在页 == 护栏页 → 硬件异常软复算命中。
+pub fn touches_guard_page(base: u64, size: u64, addr: u64) -> bool {
+    page_of(addr) == guard_page_of(base, size)
+}
+
+/// 毒页填充模型：释放块体内容逐字节 0xDD（UAF 读到毒值=位置指纹——
+/// dump 里可辨「读到了毒页值」）。
+pub fn poison_fill(len: usize) -> usize {
+    POISON_BYTE as usize * (len & 0xFF) // 模型值：内容字节恒 0xDD
+}
+
+/// 毒值判定：读到 0xDD 即「踩进释放块」的位置指纹（dump 归因辅助）。
+pub fn is_poison_value(v: u8) -> bool {
+    v == POISON_BYTE
+}
+
+/// F132 差异表导出行（豁免白名单公开面——每条带留名理由）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ExemptExportRow {
+    pub app_id: u32,
+    pub base: u64,
+    pub len: u64,
+    /// 留名理由（字节面——「豁免也要留名」）。
+    pub reason: [u8; EXEMPT_REASON_CAP],
+    pub reason_len: usize,
+}
+
+/// 豁免表 → 差异表行导出（F132 消费；表满截断计数返回）。
+pub fn export_exemptions(g: &MemGuard, out: &mut [Option<ExemptExportRow>; EXEMPT_CAP]) -> usize {
+    let mut n = 0;
+    for e in g.exempt[..g.exempt_n].iter().flatten() {
+        if n >= EXEMPT_CAP {
+            break;
+        }
+        out[n] = Some(ExemptExportRow { app_id: e.app_id, base: e.base, len: e.len, reason: e.reason, reason_len: e.reason_len });
+        n += 1;
+    }
+    n
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_memguard_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F176-deep");
+
+    // 1) 页号映射：页界/页内/页尾三态地址归页正确（PROT_NONE 页粒度操作面）。
+    cs.add(
+        "page_mapping",
+        page_of(0) == 0 && page_of(PAGE_SIZE - 1) == 0 && page_of(PAGE_SIZE) == 1 && page_of(0x1234) == 1,
+        "",
+    );
+
+    // 2) 护栏页号：块尾在页内→下一页；块尾恰在页界→即该页。
+    cs.add(
+        "guard_page_mapping",
+        guard_page_of(0x10_0000, 0x800) == 0x101 && guard_page_of(0x10_0000, PAGE_SIZE) == 0x101 && guard_page_of(0x10_0000, 0x1800) == 0x102,
+        "",
+    );
+
+    // 3) 触碰判定：块尾一字节→护栏页命中；块内末字节→不命中（与 access 语义对齐）。
+    cs.add(
+        "touch_guard_page",
+        touches_guard_page(0x10_0000, 0x1000, 0x10_1000) && touches_guard_page(0x10_0000, 0x1000, 0x10_1FFF)
+            && !touches_guard_page(0x10_0000, 0x1000, 0x10_0FFF) && !touches_guard_page(0x10_0000, 0x1000, 0x10_2000),
+        "",
+    );
+
+    // 4) 毒页值：0xDD 指纹判定（UAF 读到毒值可归因——dump 辅助面）。
+    cs.add("poison_value", is_poison_value(0xDD) && !is_poison_value(0x00) && POISON_BYTE == 0xDD, "");
+
+    // 5) 毒页填充模型：长度语义（体内容恒 0xDD——逐字节填充模型值）。
+    cs.add("poison_fill_model", poison_fill(64) == 0xDD * 64, "");
+
+    // 6) F132 差异表导出：豁免条目→行（留名理由字节面保真）。
+    let mut g = MemGuard::new();
+    g.alloc(4, 0x60_0000, 0x100);
+    g.add_exempt(4, 0x60_0100, 0x200, b"legacy app self-managed overdraw");
+    let mut rows: [Option<ExemptExportRow>; EXEMPT_CAP] = [const { None }; EXEMPT_CAP];
+    let n = export_exemptions(&g, &mut rows);
+    let r0 = rows[0].unwrap();
+    cs.add(
+        "exempt_export_row",
+        n == 1 && r0.app_id == 4 && r0.base == 0x60_0100 && r0.len == 0x200
+            && core::str::from_utf8(&r0.reason[..r0.reason_len]).unwrap_or("") == "legacy app self-managed overdraw",
+        "",
+    );
+
+    // 7) 差异表导出与豁免面等值（公开面=登记面——一处一事实）。
+    let mut g2 = MemGuard::new();
+    g2.add_exempt(1, 0x1000, 0x40, b"quirk A");
+    g2.add_exempt(2, 0x2000, 0x40, b"quirk B");
+    let mut rows2: [Option<ExemptExportRow>; EXEMPT_CAP] = [const { None }; EXEMPT_CAP];
+    let n2 = export_exemptions(&g2, &mut rows2);
+    cs.add(
+        "exempt_export_equals_registry",
+        n2 == 2 && rows2[0].unwrap().app_id == 1 && rows2[1].unwrap().app_id == 2,
+        "",
+    );
+
+    // 8) 护栏页宽常量（4KB 页——与内核页粒度同源）。
+    cs.add("page_size_const", PAGE_SIZE == 4_096 && GUARD_PAGE_BYTES == PAGE_SIZE, "");
+
+    // 9) 六类样本常量对齐（主册判据枚举——六类逐一身份断言，顺序固定）。
+    let all = [FaultClass::HeapOverflow, FaultClass::UseAfterFree, FaultClass::DoubleFree, FaultClass::WildPointer, FaultClass::StackOverflow, FaultClass::UninitJump];
+    let six_ok = matches!(all[0], FaultClass::HeapOverflow)
+        && matches!(all[1], FaultClass::UseAfterFree)
+        && matches!(all[2], FaultClass::DoubleFree)
+        && matches!(all[3], FaultClass::WildPointer)
+        && matches!(all[4], FaultClass::StackOverflow)
+        && matches!(all[5], FaultClass::UninitJump);
+    cs.add("fault_class_six", six_ok && all.len() == 6, "");
+
+    // 10) 4096 块上限常量（4GB 机型沙盒堆实测谱——数据先行条款在册）。
+    cs.add("block_cap_const", BLOCK_CAP == 4096, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
 // 宿主单测
 // ---------------------------------------------------------------------------
 

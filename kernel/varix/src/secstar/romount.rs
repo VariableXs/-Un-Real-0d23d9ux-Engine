@@ -91,6 +91,11 @@ impl ReadOnlyCause {
             None // 可写卷——无徽标
         }
     }
+
+    /// 元组适配（MountSource::mount_flags 的返回面直连——深化层接缝）。
+    pub fn classify_tuple(flags: (bool, bool, bool)) -> Option<ReadOnlyCause> {
+        Self::classify(flags.0, flags.1, flags.2)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +319,188 @@ pub fn run_romount_checks() -> CheckSet {
     b5.on_write_denied(0, ReadOnlyCause::PhysicalLock);
     b5.dismiss();
     cs.add("banner_manual_dismiss", !b5.visible, "");
+
+    cs
+}
+
+// ---------------------------------------------------------------------------
+// 深化层（批次二）：挂载信息源 trait · 「拷到 VARIX 区」动作队列 ·
+// 提示条替换语义 —— 主册【设计细节】「挂载信息存储栈既有（B-705 面）/
+// 一键复制到下载目录」落地。
+// ---------------------------------------------------------------------------
+
+/// 挂载信息源（B-705 注入口实型——卷管理栈实现本 trait，本层只消费）。
+pub trait MountSource {
+    /// 卷只读与否 + 原因三通道（ntfs_ro / fs_error / hw_write_protected）。
+    fn mount_flags(&self, drive: u8) -> (bool, bool, bool);
+    /// 卷是否可写（只读面快捷判定）。
+    fn writable(&self, drive: u8) -> bool {
+        let (ntfs, err, hw) = self.mount_flags(drive);
+        !(ntfs || err || hw)
+    }
+}
+
+/// 台架样本源（测试与真实卷栈同一 trait——一处一事实）。
+pub struct FakeMounts {
+    pub flags: [(u8, bool, bool, bool); 4],
+    pub n: usize,
+}
+
+impl FakeMounts {
+    pub const fn new() -> FakeMounts {
+        FakeMounts { flags: [(0, false, false, false); 4], n: 0 }
+    }
+    pub fn add(&mut self, drive: u8, ntfs: bool, err: bool, hw: bool) {
+        if self.n < 4 {
+            self.flags[self.n] = (drive, ntfs, err, hw);
+            self.n += 1;
+        }
+    }
+}
+
+impl MountSource for FakeMounts {
+    fn mount_flags(&self, drive: u8) -> (bool, bool, bool) {
+        for (d, ntfs, err, hw) in self.flags[..self.n].iter() {
+            if *d == drive {
+                return (*ntfs, *err, *hw);
+            }
+        }
+        (false, false, false)
+    }
+}
+
+/// 「拷到 VARIX 区」动作条目（被拒之后给台阶——一键动作的队列面：
+/// 源路径字面+目标锚，执行在调用方文件栈）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CopyFallbackJob {
+    pub drive: u8,
+    /// 源路径字节面（定长——被拒文件的卷上路径）。
+    pub src: [u8; 64],
+    pub src_len: usize,
+    /// 目标锚恒 = downloads（COPY_FALLBACK_TARGET）。
+    pub dst_is_downloads: bool,
+}
+
+impl CopyFallbackJob {
+    pub const SRC_CAP: usize = 64;
+
+    pub fn new(drive: u8, src: &[u8]) -> CopyFallbackJob {
+        let l = src.len().min(Self::SRC_CAP);
+        let mut buf = [0u8; Self::SRC_CAP];
+        buf[..l].copy_from_slice(&src[..l]);
+        CopyFallbackJob { drive, src: buf, src_len: l, dst_is_downloads: true }
+    }
+}
+
+/// 动作队列（定长——用户连点不堆积无限：8 上限后拒并提示）。
+pub const COPY_QUEUE_CAP: usize = 8;
+
+pub struct CopyQueue {
+    pub jobs: [Option<CopyFallbackJob>; COPY_QUEUE_CAP],
+    pub n: usize,
+    /// 满拒计数（诚实账——不静默丢）。
+    pub rejected_full: u32,
+}
+
+impl CopyQueue {
+    pub const fn new() -> CopyQueue {
+        CopyQueue { jobs: [const { None }; COPY_QUEUE_CAP], n: 0, rejected_full: 0 }
+    }
+
+    pub fn enqueue(&mut self, job: CopyFallbackJob) -> bool {
+        if self.n >= COPY_QUEUE_CAP {
+            self.rejected_full += 1;
+            return false;
+        }
+        self.jobs[self.n] = Some(job);
+        self.n += 1;
+        true
+    }
+
+    pub fn dequeue(&mut self) -> Option<CopyFallbackJob> {
+        if self.n == 0 {
+            return None;
+        }
+        let job = self.jobs[0];
+        for i in 1..COPY_QUEUE_CAP {
+            self.jobs[i - 1] = self.jobs[i];
+        }
+        self.jobs[COPY_QUEUE_CAP - 1] = None;
+        self.n -= 1;
+        job
+    }
+}
+
+/// 深化自检（检查项对账层——主册【设计细节】子句逐项实算）。
+#[inline(never)]
+pub fn run_romount_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F185-deep");
+
+    // 1) 挂载源 trait：NTFS 只读卷 → 策略型原因（B-705 注入口贯通）。
+    let mut mounts = FakeMounts::new();
+    mounts.add(b'W', true, false, false);
+    mounts.add(b'C', false, false, false);
+    cs.add(
+        "mount_source_policy",
+        ReadOnlyCause::classify_tuple(mounts.mount_flags(b'W')) == Some(ReadOnlyCause::PolicyNtfs),
+        "",
+    );
+
+    // 2) 可写卷经 trait 快捷判定（writable 语义位——不冤枉好卷贯通）。
+    cs.add("mount_source_writable", mounts.writable(b'C') && !mounts.writable(b'W'), "");
+
+    // 3) 未知卷 → 全假通道（trait 默认面——不编造原因贯通）。
+    cs.add("mount_source_unknown_honest", mounts.mount_flags(b'Z') == (false, false, false) && mounts.writable(b'Z'), "");
+
+    // 4) 「拷到 VARIX 区」动作条目：源路径+目标锚（被拒之后给台阶）。
+    let job = CopyFallbackJob::new(b'W', b"/doc/report.docx");
+    cs.add(
+        "copy_job_fields",
+        job.drive == b'W' && job.src_len == 16 && job.dst_is_downloads && core::str::from_utf8(&job.src[..job.src_len]).unwrap() == "/doc/report.docx",
+        "",
+    );
+
+    // 5) 动作队列进出序（FIFO——用户连点按序执行不乱序）。
+    let mut q = CopyQueue::new();
+    let j1 = CopyFallbackJob::new(b'W', b"/a.txt");
+    let j2 = CopyFallbackJob::new(b'W', b"/b.txt");
+    q.enqueue(j1);
+    q.enqueue(j2);
+    let d1 = q.dequeue().unwrap();
+    let d2 = q.dequeue().unwrap();
+    cs.add(
+        "copy_queue_fifo",
+        d1.src_len == 6 && core::str::from_utf8(&d1.src[..6]).unwrap() == "/a.txt" && d2.src_len == 6 && q.n == 0,
+        "",
+    );
+
+    // 6) 队列满诚实拒（8 上限+拒计数——不静默丢）。
+    let mut q2 = CopyQueue::new();
+    for _ in 0..10 {
+        q2.enqueue(CopyFallbackJob::new(b'W', b"/x"));
+    }
+    cs.add("copy_queue_cap", q2.n == COPY_QUEUE_CAP && q2.rejected_full == 2 && COPY_QUEUE_CAP == 8, "");
+
+    // 7) 空队列出队 None（不 panic 不编造）。
+    cs.add("copy_queue_empty_none", CopyQueue::new().dequeue().is_none(), "");
+
+    // 8) 源路径超长截断（64 字节封顶——定长纪律）。
+    let long = CopyFallbackJob::new(b'W', &[b'a'; 80]);
+    cs.add("copy_job_src_cap", long.src_len == CopyFallbackJob::SRC_CAP && long.src_len == 64, "");
+
+    // 9) 提示条替换语义（新拒替旧条——不堆叠成瀑布）。
+    let mut b = DropBanner::new();
+    b.on_write_denied(0, ReadOnlyCause::PolicyNtfs);
+    b.on_write_denied(1_000, ReadOnlyCause::PhysicalLock);
+    let (_, why, _) = b.copy();
+    cs.add("banner_replaces_not_stacks", b.visible && why.contains("物理"), "");
+
+    // 10) 帮助链与台阶钮并存（被拒界面两出路齐：了解为什么+马上能做什么）。
+    cs.add(
+        "two_ways_out",
+        b.help_link() == HELP_TARGET && b.copy_to_varix_target() == COPY_FALLBACK_TARGET,
+        "",
+    );
 
     cs
 }

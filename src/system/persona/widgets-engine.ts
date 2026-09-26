@@ -135,3 +135,42 @@ export function buildUpdateSchedule(config: WidgetConfig, rand: () => number = M
 export function nextDueAt(schedule: UpdateSchedule, lastRunAt: number): number {
   return lastRunAt + schedule.intervalMs;
 }
+
+// ---------- F163 状态与异常深化：断网降级 + 性能执法 ----------
+
+/** 天气数据保鲜窗（超龄 = 断网降级显示「数据截至 HH:MM」——主册【状态与异常】）。 */
+export const WEATHER_STALE_MS = 2 * 60 * 60 * 1000; // 2 小时（F101 缓存节律的两倍容许）
+
+export interface WeatherFreshness {
+  stale: boolean;
+  /** 降级显示文案（stale=true 时组件角标消费）。 */
+  label: string;
+  ageMs: number;
+}
+
+export function weatherFreshness(lastFetchAt: number | null, now: number): WeatherFreshness {
+  if (lastFetchAt === null) {
+    return { stale: true, label: "暂无数据——联网后自动更新", ageMs: Number.POSITIVE_INFINITY };
+  }
+  const ageMs = Math.max(0, now - lastFetchAt);
+  const stale = ageMs > WEATHER_STALE_MS;
+  return {
+    stale,
+    label: stale ? `数据截至 ${new Date(lastFetchAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "实时",
+    ageMs,
+  };
+}
+
+/** 性能保护执法（主册「全组件渲染超预算自动降透明帧率」的判定出口）。 */
+export interface PerfGuardDecision {
+  triggered: boolean;
+  /** 降透明系数（触发时 0.6——主册口径）。 */
+  factor: number;
+  detail: string;
+}
+
+export function perfGuardAction(totalRenderMs: number, budgetMs: number, perfGuardEnabled: boolean): PerfGuardDecision {
+  if (!perfGuardEnabled) return { triggered: false, factor: 1, detail: "性能保护关闭——按用户选择不干预（诚实呈现卡顿风险）" };
+  if (totalRenderMs <= budgetMs) return { triggered: false, factor: 1, detail: `渲染 ${totalRenderMs.toFixed(2)}ms ≤ 预算 ${budgetMs}ms——全速` };
+  return { triggered: true, factor: 0.6, detail: `渲染 ${totalRenderMs.toFixed(2)}ms 超预算 ${budgetMs}ms——自动降透明 ×0.6（保帧率不保花活）` };
+}
