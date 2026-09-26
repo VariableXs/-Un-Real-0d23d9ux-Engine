@@ -412,6 +412,14 @@ MAX_DOMAINS 288→320（「不够即扩」纪律，注释留痕）。
 0 失败（干净 HEAD + istar）；纯功能 8,889 行（对上限口径如实登记）。对账与
 缺陷账本见 `_attic/aiu4-f551-f600/`。
 
+**复验轮（第二会话）**：域表注册挂接（1e706f28）后的 HEAD 集成态首次全量
+认证——干净 worktree 全量跑出 5182/1，唯一红项为全域门 f475 定位到的
+`F521-shot-savedir FAIL 9/11`（U3 领地两条确定性契约违约，dangling commit
+溯源证实自 U3 首个提交即红）：`format_shot_name` 前缀未按 PREFIX_MAX 截断 +
+seq 1-9 误产零填充 `_02`，均按函数 doc 自钉契约最小手术修复（检查期望零改动）；
+同轮清除 robust.rs 域表 rebase 伤（U1 注释块下错挂的 secstar2 重复注册行，
+域表 350→349）。修复后全量 **5425 passed / 0 failed**：f475 全域门（含 istar
+注册行）绿、istar 域聚合 51 块绿、ustar3 307 + istar 155 单测绿。
 
 ## [Unreleased] — Varix STAR I · AI-S2 安全加固域·后段（F186-F200 十五项落地）
 

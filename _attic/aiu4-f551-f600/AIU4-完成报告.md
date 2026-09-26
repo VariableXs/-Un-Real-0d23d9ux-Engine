@@ -68,3 +68,41 @@ iregistry=F600 I 域收官登记
 2. 实机面验证（录屏/示波/长跑采集）按主册属装机阶段，本泳道交付判据载体。
 3. 行数余量（约 41,500 行）按分工书属宿主 UI 层 + 渲染层深化，待界面泳道
    接手时按各模块【设计要点】段展开。
+
+---
+
+## 六、复验轮（第二会话 · 2026-09-26 晚）：HEAD 集成态认证 + 跨队红项修复
+
+> 首会话的全库集成基于 `fda90911 + istar 直挂`；`1e706f28` 才将
+> `istar::run_istar_checks` 补挂进 robust.rs 域表——**注册后的 HEAD 集成态
+> 此前从未被全量验证过**。本会话在独立 worktree（`D:/2/aiu4-verify4`）
+> 补上这道认证，发现并修复两处跨队红项，全程未触碰任何并行在制品。
+
+### 6.1 认证发现（修复前 5182 passed / 1 failed）
+
+唯一红项为全域门 `robust::tests::f475_every_domain_reports`，定位到
+`F521-shot-savedir FAIL 9/11`（AI-U3 领地，两条确定性红检查）：
+
+- `same_minute_seq`：`format_shot_name` 对 seq 1-9 也产出两位零填充 `_02`，
+  违反函数 doc 自钉的「序号 `_N`」契约（检查期望 `_2` 正确，代码错）；
+- `name_capacity`：前缀未按 `PREFIX_MAX(32)` 截断，40 字节前缀产出 58 字节，
+  违反检查注释自钉的「最长组合 50 字节」契约（代码错）。
+
+**溯源**：`git fsck` 悬空提交逐个比对（含 U3 变基前全部版本）——
+`format_shot_name` 自 U3 首个提交起即为现态，红项自始存在；U3 报告
+「4422/4422 全绿」认证数字与该文件状态对不上，如实登记存疑。
+
+### 6.2 修复（最小手术，恢复自钉契约，检查期望零改动）
+
+| 文件 | 修法 |
+| --- | --- |
+| `ustar3/explorerx.rs` | 前缀循环 `.take(PREFIX_MAX)` 截断；seq<10 写一位、≥10 才 `put_2dig` |
+| `robust.rs` 域表 | 清 rebase 伤：U1 注释块下错挂的 secstar2 重复注册行删除（同域两行→一行）、注释与注册对位（uni1 仍恰一次）；域表声明容量 350→349 |
+
+### 6.3 复验结果
+
+同 worktree 全量 `cargo test -p varix --lib` 复跑（HEAD=7bded35e，262.81s）：
+**5425 passed / 0 failed**——全域门 `f475_every_domain_reports`（349 域，含
+istar 注册行）全绿、istar 域聚合 51 块全绿、F521 两红检查转绿、
+ustar3 307 + istar 155 单测全绿。本域 50 项在 HEAD 集成态下的全域门认证
+完成；证据日志按 gitignore 纪律磁盘留档（`_attic/aiu4-f551-f600/*.log`）。

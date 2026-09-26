@@ -1125,7 +1125,9 @@ fn put_2dig(out: &mut [u8], n: &mut usize, v: u8) {
 /// 永不重名单调性：时间前进则定宽字典序严格递增；同分钟序号区分。
 pub fn format_shot_name(t: &SampleTime, prefix: &[u8], seq: u8, out: &mut [u8]) -> usize {
     let mut n = 0usize;
-    for &b in prefix {
+    // 前缀按 PREFIX_MAX 截断（本域检查 11 契约：最长组合
+    // = PREFIX_MAX + 15 + 3 = 50 字节完整容纳）。
+    for &b in prefix.iter().take(PREFIX_MAX) {
         put_byte(out, &mut n, b);
     }
     let y = t.year;
@@ -1140,7 +1142,14 @@ pub fn format_shot_name(t: &SampleTime, prefix: &[u8], seq: u8, out: &mut [u8]) 
     put_2dig(out, &mut n, t.minute);
     if seq > 1 {
         put_byte(out, &mut n, b'_');
-        put_2dig(out, &mut n, seq);
+        // 序号 `_N`（seq≥2）按最小位数写：1-9 一位、10+ 两位零填充——
+        // 对 1-9 直接套两位零填充会产出 `_02`，违反本函数 doc 的 `_N`
+        // 契约（本域检查 6「同分钟序号去重」）。
+        if seq < 10 {
+            put_byte(out, &mut n, b'0' + seq);
+        } else {
+            put_2dig(out, &mut n, seq);
+        }
     }
     n
 }

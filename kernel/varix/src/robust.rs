@@ -1019,12 +1019,14 @@ pub fn isolate_driver_failures(outcomes: &[DriverLoadOutcome]) -> LoadSummary {
 /// result is consumed by the boot path and the QEMU headless assertions.
 pub fn run_kernel_checkup() -> KernelCheckup {
     let mut checkup = KernelCheckup::new();
-    // 函数指针表：350 个域自检入口，统一经表迭代注册。禁止改回直排
+    // 函数指针表：349 个域自检入口，统一经表迭代注册。禁止改回直排
     // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
-    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 350 ≈ 1085KB），
+    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 349 ≈ 1082KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 350] = [
+    // （350→349：AI-U4 复验轮清除 rebase 伤——U1 注释块下错挂的
+    // secstar2 重复注册行删除，同域两行归一行。）
+    let domains: [fn() -> CheckSet; 349] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1410,11 +1412,6 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 域聚合单行注册（同 S2/C2 容量纪律；域内逐模块红绿在
     // uni1::run_uni1_checks 的子行展开）。
     // ------------------------------------------------------------------
-        crate::secstar2::run_secstar2_checks,
-
-    // ------------------------------------------------------------------
-    // I 通用域·三分队（AI-U3 · F501~F550）：五十域直排注册（判据唯一源
-    // 逐域红绿；域内逐判据子行展开见 ustar3/ 各文件头注释）。
         crate::uni1::run_uni1_checks,
 
     // ------------------------------------------------------------------
