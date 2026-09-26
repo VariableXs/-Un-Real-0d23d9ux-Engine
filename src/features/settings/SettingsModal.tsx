@@ -9,7 +9,7 @@ import {
 import {
   Accessibility, AppWindow, ArrowLeft, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
   GitBranch, Globe, HardDriveDownload, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MonitorCog, MousePointer2, Network,
-  Palette, Play, Plug, Power, Puzzle, Rocket, Search, Shield, SlidersHorizontal, Sparkles, User, Volume2,
+  Palette, Paintbrush, Play, Plug, Power, Puzzle, Rocket, Search, Shield, SlidersHorizontal, Sparkles, User, Volume2,
   Wifi, Zap, type LucideIcon,
 } from "lucide-react";
 import { useI18n } from "../../i18n";
@@ -41,6 +41,7 @@ import { ExtensionsTab } from "./ExtensionsTab";
 import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
 import { SystemCenterTab } from "./SystemCenterTab";
 import { InputFeelTab } from "./InputFeelTab";
+import { MouseJ1Tab } from "./MouseJ1Tab";
 import { AmbienceTab } from "./AmbienceTab";
 import { WinFeelTab } from "./WinFeelTab";
 import { PerfTab } from "./PerfTab";
@@ -64,6 +65,7 @@ import { OpenToolsTab } from "./OpenToolsTab";
 import { SoundNotifyTab } from "./SoundNotifyTab";
 // AURORA-10000：AI-16~AI-20 批次，勿删（领域04 任务栏与开始菜单）
 import { AuroraD4Tab } from "./AuroraD4Tab";
+import { PersonaTab } from "./PersonaTab";
 // AURORA-10000：AI-01~AI-05 批次，勿删
 import { BootTheaterTab } from "./BootTheaterTab";
 import { BootchainHealthTab } from "./BootchainHealthTab";
@@ -119,6 +121,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   data: Lock,
   quality: ShieldCheck,
   aurora4: Layers,
+  persona: Paintbrush,
   about: Info,
   bootTheater: Rocket,
   bootchainHealth: HeartPulse,
@@ -234,6 +237,7 @@ export function SettingsModal(props: {
     { id: "profiles", label: t("pfTitle") },
     { id: "shortcuts", label: t("scTitle") },
     { id: "inputFeel", label: t("ifTitle") },
+    { id: "mouseJ1", label: t("mouseJ1Title") },
     { id: "ambience", label: t("amb18TabTitle") },
     { id: "winFeel", label: t("wfTabTitle") },
     { id: "perf", label: t("pfTabTitle") },
@@ -247,6 +251,8 @@ export function SettingsModal(props: {
     { id: "quality", label: t("q20TabTitle") },
     // AURORA-10000：AI-16~AI-20 批次，勿删
     { id: "aurora4", label: t("d4TabTitle") },
+    // Varix STAR I · AI-E1：E 个性化域（F151-F170）
+    { id: "persona", label: "个性化" },
     { id: "about", label: t("aboutVariable") },
     // AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场设置页）
     { id: "bootTheater", label: "启动剧场" },
@@ -965,6 +971,8 @@ export function SettingsModal(props: {
           {tab === "browsers" && <BrowsersTab />}
           {/* AI-06 输入手感组：U-58/U-59、V-61…V-70 全部面板 */}
           {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {/* J 鼠标域 AI-J1：F601-F620 全量面板 */}
+          {tab === "mouseJ1" && <MouseJ1Tab />}
           {tab === "ambience" && <AmbienceTab settings={props.settings} onPatch={props.onChange} />}
           {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
           {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}
@@ -1125,6 +1133,7 @@ export function SettingsModal(props: {
           {tab === "quality" && <QualityTab appVersion={aboutVersion} />}
           {/* AURORA-10000：AI-16~AI-20 批次，勿删 */}
           {tab === "aurora4" && <AuroraD4Tab />}
+          {tab === "persona" && <PersonaTab />}
           {tab === "data" && (
             <>
               <Field label={t("dataDir")}>

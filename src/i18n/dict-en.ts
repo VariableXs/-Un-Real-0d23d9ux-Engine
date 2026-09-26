@@ -1598,6 +1598,8 @@ export const en: Dict = {
   sysAccessHint: "High-contrast theme, full keyboard audit and global font scaling land with F-7; reduce motion and UI zoom are already in the General tab.",
   // ---- AI-06 input feel (U-58/U-59, V-61…V-70) ----
   ifTitle: "Input Feel",
+  // ---- J mouse domain AI-J1 (F601-F620) ----
+  mouseJ1Title: "Mouse",
   ifMouseTitle: "Mouse Panel",
   ifMouseHint: "Wheel lines and double-click speed apply inside the environment instantly; pointer speed and button swap need 'Sync to system' (with confirm & rollback).",
   ifMouseSpeed: "Pointer speed",

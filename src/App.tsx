@@ -32,6 +32,7 @@ import { Sidebar } from "./apps/write/folders/Sidebar";
 import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
+import { J1Runtime } from "./features/mouse/J1Runtime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
 import { OobeGate } from "./features/oobe/OobeWizard";
@@ -699,6 +700,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <KeycastOverlay settings={settings} />
             {/* AI-17 视觉语言组：Z-69 边缘热区 / Z-70 帮助中心 / U-57 首次导览 */}
             <VisionRuntime />
+            {/* J 鼠标域 AI-J1：F601-F620 指针/滚轮/手势运行时（F335 优先平面件挂此） */}
+            <J1Runtime />
             {settings && boot && (
               <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
             )}

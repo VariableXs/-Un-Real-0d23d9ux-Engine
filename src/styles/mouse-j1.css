@@ -1,0 +1,356 @@
+/*
+ * J 鼠标域 · AI-J1 设置面板样式（mouse-j1.css）。
+ * 全部色彩/圆角/字号走 F151 主题令牌（B-1104 零硬编码纪律）；
+ * 高密度纵深：组卡 > 行 > 控件三层，间距 4px 栅格。
+ */
+
+.j1-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vx-gap-lg, 14px);
+  padding: 2px 4px 16px;
+  color: var(--vx-text, #1b1b1b);
+}
+
+.j1-desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--vx-text-2, #5a5f6a);
+}
+
+.j1-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.j1-toolbar button {
+  padding: 4px 12px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.j1-toolbar button:hover {
+  background: var(--vx-surface-3, #f2f4f8);
+}
+
+.j1-toolbar-note {
+  font-size: 12px;
+  color: var(--vx-text-3, #8a8f9a);
+}
+
+/* ---------------- 组卡 ---------------- */
+
+.j1-group {
+  border: 1px solid var(--vx-border, #d8dbe2);
+  border-radius: var(--vx-radius-lg, 10px);
+  background: var(--vx-surface-1, rgba(255, 255, 255, 0.72));
+  backdrop-filter: blur(14px);
+  overflow: hidden;
+}
+
+.j1-group-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "h f"
+    "p p";
+  gap: 2px 8px;
+  padding: 10px 14px 8px;
+  background: linear-gradient(180deg, var(--vx-surface-3, rgba(0, 0, 0, 0.025)), transparent);
+  border-bottom: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.06));
+}
+
+.j1-group-head h4 {
+  grid-area: h;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.j1-fnum {
+  grid-area: f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vx-accent, #4f7cff);
+  background: color-mix(in srgb, var(--vx-accent, #4f7cff) 12%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  align-self: start;
+}
+
+.j1-group-head p {
+  grid-area: p;
+  margin: 0;
+  font-size: 12px;
+  color: var(--vx-text-2, #5a5f6a);
+}
+
+.j1-group-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------- 三件套行 ---------------- */
+
+.j1-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.045));
+}
+
+.j1-row:last-child {
+  border-bottom: none;
+}
+
+.j1-row:hover {
+  background: color-mix(in srgb, var(--vx-accent, #4f7cff) 4%, transparent);
+}
+
+.j1-row-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.j1-row-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.j1-row-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--vx-text-3, #8a8f9a);
+}
+
+.j1-row-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.j1-row-ctl select,
+.j1-row-ctl input[type="range"] {
+  accent-color: var(--vx-accent, #4f7cff);
+}
+
+.j1-row-ctl select {
+  padding: 4px 8px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12.5px;
+}
+
+.j1-row-ctl button {
+  padding: 4px 10px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.j1-row-ctl button:hover {
+  background: var(--vx-surface-3, #f2f4f8);
+}
+
+.j1-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.j1-num {
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  min-width: 52px;
+  text-align: right;
+}
+
+.j1-readonly {
+  font-size: 12px;
+  color: var(--vx-text-3, #8a8f9a);
+  max-width: 420px;
+}
+
+.j1-warning {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--vx-danger, #b3261e);
+  background: color-mix(in srgb, var(--vx-danger, #b3261e) 8%, transparent);
+}
+
+.j1-bad {
+  color: var(--vx-danger, #b3261e);
+  font-weight: 600;
+}
+
+/* ---------------- 开关 ---------------- */
+
+.j1-switch {
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--vx-border, #c9ccd4);
+  background: var(--vx-surface-3, #e8eaef);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background 140ms var(--vx-ease, ease-out), border-color 140ms var(--vx-ease, ease-out);
+}
+
+.j1-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vx-surface-2, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 140ms var(--vx-ease, ease-out);
+}
+
+.j1-switch--on {
+  background: var(--vx-accent, #4f7cff);
+  border-color: var(--vx-accent, #4f7cff);
+}
+
+.j1-switch--on .j1-switch-knob {
+  transform: translateX(18px);
+}
+
+.j1-switch:focus-visible {
+  outline: 2px solid var(--vx-accent, #4f7cff);
+  outline-offset: 2px;
+}
+
+/* ---------------- 贝塞尔编辑器与对拍表 ---------------- */
+
+.j1-bezier {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.j1-bezier-canvas {
+  border: 1px solid var(--vx-border, #c9ccd4);
+  border-radius: var(--vx-radius, 6px);
+  background: var(--vx-surface-2, #fff);
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+.j1-bezier-diag {
+  stroke: var(--vx-border, #c9ccd4);
+  stroke-dasharray: 4 4;
+}
+
+.j1-bezier-arm {
+  stroke: var(--vx-text-3, #8a8f9a);
+  stroke-width: 1;
+}
+
+.j1-bezier-curve {
+  stroke: var(--vx-accent, #4f7cff);
+  stroke-width: 2;
+  fill: none;
+}
+
+.j1-bezier-handle {
+  fill: var(--vx-surface-2, #fff);
+  stroke: var(--vx-accent, #4f7cff);
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.j1-bezier-handle:active {
+  cursor: grabbing;
+}
+
+.j1-gain-table {
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  max-height: 180px;
+  overflow: auto;
+  display: block;
+}
+
+.j1-gain-table th,
+.j1-gain-table td {
+  border: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.08));
+  padding: 2px 8px;
+  text-align: right;
+}
+
+.j1-gain-table th {
+  background: var(--vx-surface-3, #f2f4f8);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.j1-gain-table--mini td:first-child {
+  text-align: left;
+}
+
+/* ---------------- 衬底色板预览 ---------------- */
+
+.j1-swatch-row {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.j1-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--vx-radius, 6px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--vx-border-soft, rgba(0, 0, 0, 0.1));
+}
+
+/* ---------------- 运行时层（F335 优先平面件） ---------------- */
+
+.j1-autoscroll-anchor {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2147482999;
+  background: color-mix(in srgb, var(--vx-accent, #4f7cff) 30%, transparent);
+  border: 2px solid var(--vx-accent, #4f7cff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--vx-accent, #4f7cff) 25%, transparent);
+  animation: j1-anchor-in 140ms var(--vx-ease, ease-out);
+}
+
+@keyframes j1-anchor-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
