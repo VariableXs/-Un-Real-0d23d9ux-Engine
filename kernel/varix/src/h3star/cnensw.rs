@@ -467,3 +467,87 @@ mod deep2_tests {
         assert_eq!(s.produced.len(), 0, "控制键不产字符");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 中英切换边界词账（组合键切出的会话边界）
+// ---------------------------------------------------------------------------
+
+/// 中英切换边界词账（判据「中英文自动切换」的边界面）：模式切换时
+/// 已输入的组合串（未上屏的拼音）必须被显式处置——三种策略：清空
+/// （丢弃组合串）、上屏（按当前组合上屏原文）、透传（保留待切回）；
+/// 策略登记制（不猜用户想要哪种），每次切换留痕（切了什么、处置了
+/// 什么——异常显性化）。
+pub struct SwitchBoundaryLedger {
+    /// (时刻, 旧模式, 新模式, 策略, 处置字节数)。
+    pub events: Vec<(u64, char, char, &'static str, usize)>,
+}
+
+/// 三策略白名单（登记面外的策略名 = 缺陷——审计面钉死）。
+pub const BOUNDARY_POLICIES: [&str; 3] = ["清空", "上屏", "透传"];
+
+impl SwitchBoundaryLedger {
+    pub fn new() -> SwitchBoundaryLedger {
+        SwitchBoundaryLedger { events: Vec::new() }
+    }
+
+    /// 记一次切换处置（组合串长度入账——丢了多少字节可查）。
+    pub fn record(&mut self, at_ms: u64, old: char, new: char, policy: &'static str, pending_len: usize) {
+        self.events.push((at_ms, old, new, policy, pending_len));
+    }
+
+    /// 丢弃字节合计（「切换丢了多少输入」的诚实统计——只数清空策略）。
+    pub fn dropped_bytes(&self) -> usize {
+        self.events.iter().filter(|(_, _, _, p, _)| *p == "清空").map(|(_, _, _, _, l)| l).sum()
+    }
+
+    /// 策略白名单审计（所有事件的策略都在封闭集内）。
+    pub fn policies_legal(&self) -> bool {
+        self.events.iter().all(|(_, _, _, p, _)| BOUNDARY_POLICIES.contains(p))
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+}
+
+impl Default for SwitchBoundaryLedger {
+    fn default() -> SwitchBoundaryLedger {
+        SwitchBoundaryLedger::new()
+    }
+}
+
+/// 深化层三自检（切换边界账）。
+pub fn run_cnensw_deep3_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F318b-deep3");
+
+    // 1. 三策略登记留痕（丢弃字节统计只数清空策略）。
+    let mut lg = SwitchBoundaryLedger::new();
+    lg.record(0, '中', '英', "清空", 6);
+    lg.record(100, '英', '中', "上屏", 3);
+    lg.record(200, '中', '英', "透传", 2);
+    set.add(
+        "boundary strategies logged",
+        lg.len() == 3 && lg.dropped_bytes() == 6 && lg.policies_legal(),
+        "",
+    );
+
+    // 2. 零组合串切换照记（丢弃 0——不静默漏账）。
+    lg.record(300, '英', '中', "清空", 0);
+    set.add("zero pending still logged", lg.len() == 4 && lg.dropped_bytes() == 6, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn empty_ledger_zero_dropped() {
+        let lg = SwitchBoundaryLedger::new();
+        assert_eq!(lg.dropped_bytes(), 0);
+        assert!(lg.events.is_empty());
+        assert!(lg.policies_legal(), "零账策略审计平凡绿");
+    }
+}

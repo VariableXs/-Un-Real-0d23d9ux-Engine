@@ -639,3 +639,117 @@ mod deep_tests {
         assert!(tokenize("ABC").contains(&String::from("abc")));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 增量索引账（文件变更只重排受影响条目）
+// ---------------------------------------------------------------------------
+
+/// 增量索引账（判据「增量索引」的机制面）：文件变更（内容变化）→
+/// 只把该文件重新入队（其他已索引文件不动——增量语义）；重排完成
+/// 留痕；全量 verify_and_rebuild 是兜底不是日常（增量优先，兜底显性）。
+#[derive(Default)]
+pub struct IncrementalIndex {
+    /// (路径, 内容指纹, 已索引?)。
+    pub entries: Vec<(String, u64, bool)>,
+    pub reindexed: u64,
+}
+
+impl IncrementalIndex {
+    /// 指纹（FNV-1a——与域内校验口径同源）。
+    pub fn fingerprint(content: &str) -> u64 {
+        let mut h: u64 = 0xcbf29ce484222325;
+        for b in content.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+        h
+    }
+
+    /// 变更通知：指纹变 → 重新入队；指纹同 → 跳过（未变不重排——
+    /// 增量语义核心）。
+    pub fn notify_change(&mut self, path: &str, content: &str) -> bool {
+        let fp = Self::fingerprint(content);
+        match self.entries.iter_mut().find(|(p, _, _)| p == path) {
+            Some(slot) => {
+                if slot.1 == fp {
+                    return false;
+                }
+                slot.1 = fp;
+                slot.2 = false;
+                true
+            }
+            None => {
+                self.entries.push((String::from(path), fp, false));
+                true
+            }
+        }
+    }
+
+    /// 重排完成（入队 → 已索引）。
+    pub fn mark_done(&mut self, path: &str) -> bool {
+        match self.entries.iter_mut().find(|(p, _, _)| p == path) {
+            Some(slot) if !slot.2 => {
+                slot.2 = true;
+                self.reindexed += 1;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 待重排清单（增量工作面直出）。
+    pub fn pending(&self) -> Vec<&str> {
+        self.entries.iter().filter(|(_, _, done)| !done).map(|(p, _, _)| p.as_str()).collect()
+    }
+}
+
+/// 深化层三自检（增量索引）。
+pub fn run_fulltext_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F307b-deep3");
+
+    // 1. 首次通知 → 入队；内容未变 → 跳过（不重排——增量语义核心）。
+    let mut ix = IncrementalIndex::default();
+    let first = ix.notify_change("a.vx", "hello");
+    let same = ix.notify_change("a.vx", "hello");
+    set.add(
+        "unchanged content skipped",
+        first && !same && ix.pending().len() == 1,
+        "",
+    );
+
+    // 2. 内容变 → 重新入队 → mark_done 清待办。
+    let changed = ix.notify_change("a.vx", "hello world");
+    let done = ix.mark_done("a.vx");
+    set.add(
+        "changed requeues then done",
+        changed && done && ix.pending().is_empty() && ix.reindexed == 1,
+        "",
+    );
+
+    // 3. 多文件独立性：b 变更不影响 a 的已索引位。
+    let _ = ix.notify_change("b.vx", "world");
+    set.add("incremental isolation", ix.pending() == alloc::vec!["b.vx"], "");
+
+    // 4. 未登记路径 mark_done 拒绝（不虚报）。
+    set.add("unknown mark rejected", !ix.mark_done("幽灵.vx"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn fingerprint_deterministic() {
+        assert_eq!(IncrementalIndex::fingerprint("abc"), IncrementalIndex::fingerprint("abc"));
+        assert_ne!(IncrementalIndex::fingerprint("abc"), IncrementalIndex::fingerprint("abd"));
+    }
+
+    #[test]
+    fn new_file_always_enqueued() {
+        let mut ix = IncrementalIndex::default();
+        assert!(ix.notify_change("新文件.vx", "内容"));
+        assert_eq!(ix.pending(), alloc::vec!["新文件.vx"]);
+    }
+}

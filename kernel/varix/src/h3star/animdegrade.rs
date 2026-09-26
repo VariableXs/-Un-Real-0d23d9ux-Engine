@@ -2154,3 +2154,164 @@ mod deep8_tests {
         assert!(!HealthProbe::heartbeat(1000, 100), "账本溢出 = 心跳红");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层九 · 降级面板聚合视图 + 调速器事件流
+// ---------------------------------------------------------------------------
+
+/// 降级面板聚合视图（界面只读数据面——一处聚合不散拼）：当前模式 +
+/// 三源驻留占比 + 最近一次降级动作 + 健康心跳——渲染层消费此结构画
+/// 面板，不自算（一处一事实纪律）。
+pub struct PanelView {
+    pub current_mode: GovernorMode,
+    /// 驻留占比（来自 ModeDwellStats）。
+    pub dwell: Vec<(GovernorMode, u32)>,
+    pub last_action: &'static str,
+    pub heartbeat_ok: bool,
+}
+
+pub struct PanelAggregator;
+
+impl PanelAggregator {
+    /// 模式 → 层级映射（显式成文——改机制语义必炸对拍）。
+    fn tier_of(mode: GovernorMode) -> Tier {
+        match mode {
+            GovernorMode::Full => Tier::None,
+            GovernorMode::LowBatt => Tier::Complexity,
+            GovernorMode::Budget => Tier::Duration,
+            GovernorMode::FpsTier => Tier::Suggest,
+        }
+    }
+
+    /// 从模式账聚合出面板视图（纯读——不改任何状态）。
+    pub fn view(log: &[(u64, GovernorMode)], total_ms: u64, ledger_cap: usize) -> PanelView {
+        let current = log.last().map(|(_, m)| *m).unwrap_or(GovernorMode::Full);
+        let dwell: Vec<(GovernorMode, u32)> =
+            ModeDwellStats::aggregate(log, total_ms).into_iter().map(|(m, _, p)| (m, p)).collect();
+        let last_action = TierPolicyTable::action_for(Self::tier_of(current));
+        PanelView {
+            current_mode: current,
+            dwell,
+            last_action,
+            heartbeat_ok: HealthProbe::heartbeat(log.len(), ledger_cap),
+        }
+    }
+
+    /// 视图自证：占比合计 ≤1000‰（浮点不出门——全整数口径）。
+    pub fn dwell_sane(view: &PanelView) -> bool {
+        view.dwell.iter().map(|(_, p)| *p as u64).sum::<u64>() <= 1000
+    }
+}
+
+/// 调速器事件流（十三章日志语义的调速域面）：模式切换逐事件留痕
+/// (时刻, 旧模式, 新模式, 触发机制名)——可导出可回放；同模式重入
+/// 不记（切换才留痕——事件流不刷噪音）。
+pub struct ModeEventStream {
+    pub events: Vec<(u64, GovernorMode, GovernorMode, &'static str)>,
+    pub cap: usize,
+}
+
+impl ModeEventStream {
+    pub fn new(cap: usize) -> ModeEventStream {
+        ModeEventStream { events: Vec::new(), cap: cap.max(1) }
+    }
+
+    /// 记一次模式切换（同模式重入不记——噪音防线）。
+    pub fn observe(&mut self, at_ms: u64, old: GovernorMode, new: GovernorMode, via: &'static str) {
+        if old == new {
+            return;
+        }
+        self.events.push((at_ms, old, new, via));
+        if self.events.len() > self.cap {
+            self.events.remove(0);
+        }
+    }
+
+    /// 导出人话行（可查可回放——十三章总日志中心语义）。
+    pub fn export(&self) -> alloc::string::String {
+        self.events
+            .iter()
+            .map(|(t, o, n, v)| {
+                alloc::format!("{}ms: {:?} → {:?} ({})\n", t, o, n, v)
+            })
+            .collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+}
+
+/// 深化层九自检（面板视图 / 事件流）。
+pub fn run_animdegrade_deep9_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F331-333-deep9");
+
+    // 1. 面板视图：当前模式、驻留占比、动作文案、心跳四件齐（Budget
+    //    模式的动作文案是「F124 时长砍半」——策略表同源）。
+    let log = vec![
+        (0u64, GovernorMode::Full),
+        (700, GovernorMode::Budget),
+        (1000, GovernorMode::Budget),
+    ];
+    let view = PanelAggregator::view(&log, 1000, 100);
+    set.add(
+        "panel view four facts",
+        view.current_mode == GovernorMode::Budget
+            && view.last_action.contains("时长砍半")
+            && view.heartbeat_ok
+            && PanelAggregator::dwell_sane(&view),
+        "",
+    );
+
+    // 2. 占比合计 ≤1000‰（全整数口径不溢出）。
+    set.add("dwell sum bounded", PanelAggregator::dwell_sane(&view), "");
+
+    // 3. 事件流：切换留痕、同模式重入不记、环形封顶挤出最旧。
+    let mut es = ModeEventStream::new(3);
+    es.observe(0, GovernorMode::Full, GovernorMode::Full, "预算闸门");
+    es.observe(100, GovernorMode::Full, GovernorMode::Budget, "预算闸门");
+    es.observe(200, GovernorMode::Budget, GovernorMode::Budget, "帧率");
+    es.observe(300, GovernorMode::Budget, GovernorMode::Full, "恢复判定");
+    es.observe(400, GovernorMode::Full, GovernorMode::FpsTier, "帧率");
+    es.observe(500, GovernorMode::FpsTier, GovernorMode::Full, "恢复判定");
+    set.add(
+        "event stream switches only capped",
+        es.len() == 3 && es.events[0].0 == 300 && es.events[2].2 == GovernorMode::Full,
+        "",
+    );
+
+    // 4. 导出人话行（可回放）。
+    set.add("event export human", es.export().contains("→"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep9_tests {
+    use super::*;
+
+    #[test]
+    fn empty_log_view_defaults_full() {
+        let view = PanelAggregator::view(&[], 0, 100);
+        assert_eq!(view.current_mode, GovernorMode::Full);
+        assert!(view.dwell.is_empty());
+    }
+
+    #[test]
+    fn event_ring_evicts_oldest() {
+        let mut es = ModeEventStream::new(2);
+        es.observe(0, GovernorMode::Full, GovernorMode::Budget, "a");
+        es.observe(1, GovernorMode::Budget, GovernorMode::Full, "b");
+        es.observe(2, GovernorMode::Full, GovernorMode::Budget, "c");
+        assert_eq!(es.len(), 2);
+        assert_eq!(es.events[0].0, 1, "最旧被挤出环形");
+    }
+
+    #[test]
+    fn view_dwell_single_mode_thousand() {
+        let log = vec![(0u64, GovernorMode::Full)];
+        let view = PanelAggregator::view(&log, 4000, 100);
+        assert_eq!(view.dwell, vec![(GovernorMode::Full, 1000)]);
+    }
+}

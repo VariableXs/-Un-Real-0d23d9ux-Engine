@@ -401,3 +401,95 @@ mod deep2_tests {
         assert_eq!(d.apply(&["a", "a", "a"]), alloc::vec!["a"]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 高频词置顶权重（历史面板的常用优先）
+// ---------------------------------------------------------------------------
+
+/// 高频词置顶权重（历史面板「常用优先」的深化面）：逐词计数（重复
+/// 检索累计），排行按 计数降序 → 最近时间降序（全确定）；计数在
+/// remove/clear 时同步清理（不留幽灵权重）。
+#[derive(Default)]
+pub struct FreqBooster {
+    /// (词, 次数, 最近 ms)。
+    pub weights: Vec<(String, u32, u64)>,
+}
+
+impl FreqBooster {
+    pub fn bump(&mut self, word: &str, at_ms: u64) {
+        match self.weights.iter_mut().find(|(w, _, _)| w == word) {
+            Some((_, c, last)) => {
+                *c += 1;
+                *last = at_ms;
+            }
+            None => self.weights.push((String::from(word), 1, at_ms)),
+        }
+    }
+
+    pub fn weight_of(&self, word: &str) -> u32 {
+        self.weights.iter().find(|(w, _, _)| w == word).map(|(_, c, _)| *c).unwrap_or(0)
+    }
+
+    /// 排行（计数降序 → 最近降序 → 字典序——全确定）。
+    pub fn top(&self, n: usize) -> Vec<&str> {
+        let mut v: Vec<&(String, u32, u64)> = self.weights.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1).then(b.2.cmp(&a.2)).then(a.0.cmp(&b.0)));
+        v.into_iter().take(n).map(|(w, _, _)| w.as_str()).collect()
+    }
+
+    /// 词条移除时同步清权重（幽灵权重防线）。
+    pub fn purge(&mut self, word: &str) -> bool {
+        let before = self.weights.len();
+        self.weights.retain(|(w, _, _)| w != word);
+        self.weights.len() != before
+    }
+}
+
+/// 深化层三自检（高频权重）。
+pub fn run_srchhist_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F307-deep3");
+
+    // 1. 计数累计与排行（高频置顶）。
+    let mut fb = FreqBooster::default();
+    fb.bump("音量", 0);
+    fb.bump("音量", 10);
+    fb.bump("亮度", 20);
+    fb.bump("音量", 30);
+    set.add(
+        "freq counts and top",
+        fb.weight_of("音量") == 3 && fb.top(1) == alloc::vec!["音量"],
+        "",
+    );
+
+    // 2. 平局最近优先（同为一次 → 更新的在前）。
+    let mut fb2 = FreqBooster::default();
+    fb2.bump("甲", 0);
+    fb2.bump("乙", 100);
+    set.add("tie recent first", fb2.top(2).first() == Some(&"乙"), "");
+
+    // 3. purge 同步（不留幽灵权重）。
+    let purged = fb.purge("音量");
+    set.add("purge syncs weights", purged && fb.weight_of("音量") == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn unknown_weight_zero() {
+        let fb = FreqBooster::default();
+        assert_eq!(fb.weight_of("没见过"), 0);
+        assert!(fb.top(3).is_empty());
+    }
+
+    #[test]
+    fn bump_updates_recent_time() {
+        let mut fb = FreqBooster::default();
+        fb.bump("a", 0);
+        fb.bump("a", 500);
+        assert_eq!(fb.weights[0].2, 500, "最近时间随 bump 推进");
+    }
+}

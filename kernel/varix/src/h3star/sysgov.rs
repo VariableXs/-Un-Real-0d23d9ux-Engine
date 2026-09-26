@@ -3430,3 +3430,186 @@ mod deep8_tests {
         assert!(!b.adjudicate("没入队", &ConflictDetector::new(&[])), "未入队应用不收裁决");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层十 · 冲突自动重试 + 空间实测对比 + 卸载清单导出
+// ---------------------------------------------------------------------------
+
+/// 冲突自动重试（「先退出再试」的人话兑现面）：与排队中心联动——
+/// 冲突件回队并标记等退；应用退出后（注入运行账变化）自动续跑，
+/// 重试次数上限 3（超过转失败显性——不无限空转）。
+pub struct ConflictRetry {
+    /// (应用, 已重试次数)。
+    pub waiting: Vec<(String, u32)>,
+    pub max_retries: u32,
+    pub auto_resumed: u64,
+    pub gave_up: u64,
+}
+
+pub const CONFLICT_MAX_RETRIES: u32 = 3;
+
+impl ConflictRetry {
+    pub fn new() -> ConflictRetry {
+        ConflictRetry { waiting: Vec::new(), max_retries: CONFLICT_MAX_RETRIES, auto_resumed: 0, gave_up: 0 }
+    }
+
+    /// 冲突件入等退位（与排队中心解耦——这里只管等退语义）。
+    pub fn park(&mut self, app: &str) {
+        match self.waiting.iter_mut().find(|(a, _)| a == app) {
+            Some((_, n)) => *n += 1,
+            None => self.waiting.push((String::from(app), 1)),
+        }
+    }
+
+    /// 应用退出采样：等退位自动续跑（计数）；重试超限转放弃（显性）。
+    pub fn sample_exit(&mut self, app: &str, still_running: bool) -> Option<bool> {
+        if still_running {
+            return None;
+        }
+        let idx = self.waiting.iter().position(|(a, _)| a == app)?;
+        let (_, n) = self.waiting[idx];
+        if n > self.max_retries {
+            self.waiting.remove(idx);
+            self.gave_up += 1;
+            return Some(false);
+        }
+        self.waiting.remove(idx);
+        self.auto_resumed += 1;
+        Some(true)
+    }
+
+    pub fn waiting_len(&self) -> usize {
+        self.waiting.len()
+    }
+}
+
+impl Default for ConflictRetry {
+    fn default() -> ConflictRetry {
+        ConflictRetry::new()
+    }
+}
+
+/// 卸载前后磁盘空间实测对比（诚实面）：声明体积 vs 实测腾出——
+/// 误差 ≤5% 绿（与 SpaceLedger 同口径）；差异大 = 清理不彻底或声明
+/// 虚报，显性登记（不静默抹平）。
+pub struct SpaceCompare {
+    pub declared_mb: u64,
+    pub actual_mb: u64,
+}
+
+impl SpaceCompare {
+    pub fn within_five_percent(&self) -> bool {
+        if self.declared_mb == 0 {
+            return self.actual_mb == 0;
+        }
+        self.declared_mb.abs_diff(self.actual_mb) * 100 <= self.declared_mb * 5
+    }
+
+    /// 人话结论（三要素——差异时说清下一步）。
+    pub fn verdict(&self) -> String {
+        if self.within_five_percent() {
+            alloc::format!("实测腾出 {}MB，与预估一致", self.actual_mb)
+        } else {
+            alloc::format!(
+                "实测腾出 {}MB，与预估 {}MB 有差异——可能有残留文件，建议运行一次残留扫描",
+                self.actual_mb,
+                self.declared_mb
+            )
+        }
+    }
+}
+
+/// 卸载清单导出（十三章总日志中心的卸载域投影）：历史账 → 人话行
+/// （时间 + 应用 + 释放量）——可查可备份；空账导出诚实空串。
+pub struct ManifestExport;
+
+impl ManifestExport {
+    pub fn from_history(h: &UninstallHistory) -> alloc::string::String {
+        h.entries
+            .iter()
+            .map(|(t, a, m)| alloc::format!("{}ms 卸载 {}（腾出 {}MB）\n", t, a, m))
+            .collect()
+    }
+}
+
+/// 深化层十自检（自动重试 / 空间对比 / 清单导出）。
+pub fn run_sysgov_deep10_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep10");
+
+    // 1. 冲突自动重试：入等退 → 退出采样续跑；重试超限转放弃显性。
+    let mut cr = ConflictRetry::new();
+    cr.park("画板Pro");
+    let still = cr.sample_exit("画板Pro", true);
+    let resumed = cr.sample_exit("画板Pro", false);
+    set.add(
+        "conflict retry resumes on exit",
+        still.is_none() && resumed == Some(true) && cr.auto_resumed == 1
+            && cr.waiting_len() == 0,
+        "",
+    );
+
+    // 2. 重试超限转放弃（3 次后第 4 次退出采样 → 显性放弃）。
+    let mut cr2 = ConflictRetry::new();
+    cr2.park("小算盘");
+    cr2.park("小算盘");
+    cr2.park("小算盘");
+    cr2.park("小算盘");
+    let gave = cr2.sample_exit("小算盘", false);
+    set.add(
+        "retry limit gives up visibly",
+        gave == Some(false) && cr2.gave_up == 1 && cr2.auto_resumed == 0,
+        "",
+    );
+
+    // 3. 空间对比：±5% 内绿、差异显性人话（不静默抹平）。
+    let ok = SpaceCompare { declared_mb: 100, actual_mb: 97 };
+    let drift = SpaceCompare { declared_mb: 100, actual_mb: 60 };
+    set.add(
+        "space compare honest",
+        ok.within_five_percent() && !drift.within_five_percent()
+            && drift.verdict().contains("残留扫描"),
+        "",
+    );
+
+    // 4. 清单导出：人话行、空账诚实空。
+    let mut h = UninstallHistory::default();
+    h.record(100, "画板Pro", 97);
+    let manifest = ManifestExport::from_history(&h);
+    set.add(
+        "manifest export human",
+        manifest.contains("卸载 画板Pro") && manifest.contains("97MB"),
+        "",
+    );
+    set.add(
+        "empty manifest honest",
+        ManifestExport::from_history(&UninstallHistory::default()).is_empty(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn retry_constant_pinned() {
+        assert_eq!(CONFLICT_MAX_RETRIES, 3, "重试上限 3 钉死");
+    }
+
+    #[test]
+    fn space_zero_declared_zero_actual() {
+        let sc = SpaceCompare { declared_mb: 0, actual_mb: 0 };
+        assert!(sc.within_five_percent());
+    }
+
+    #[test]
+    fn park_dedup_counts_retries() {
+        let mut cr = ConflictRetry::new();
+        cr.park("A");
+        cr.park("A");
+        assert_eq!(cr.waiting_len(), 1, "同应用等退位合并计数");
+        assert_eq!(cr.waiting[0].1, 2);
+    }
+}

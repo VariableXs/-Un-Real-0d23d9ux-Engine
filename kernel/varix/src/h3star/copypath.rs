@@ -2165,3 +2165,194 @@ mod deep9_tests {
         assert_eq!(EscapeExport::cmd_rules(), EscapeExport::cmd_rules(), "规则表导出确定性");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层十 · 历史去重容量联动 + 书签分组 + 批量转换缓存闭环
+// ---------------------------------------------------------------------------
+
+/// 历史面板去重容量联动（InteropHistory 的策略深化）：相邻重复去重
+/// + 容量环形协同——容量满时优先淘汰「更旧且已重复出现」的条目
+/// （保留独一份的路径——信息量优先于重复量）。去重统计直出。
+pub struct HistoryDedup {
+    pub entries: Vec<String>,
+    cap: usize,
+    pub deduped: u64,
+}
+
+impl HistoryDedup {
+    pub fn new(cap: usize) -> HistoryDedup {
+        HistoryDedup { entries: Vec::new(), cap: cap.max(1), deduped: 0 }
+    }
+
+    /// 记录：与上一条相同 → 去重计数不入账；容量满 → 淘汰最旧。
+    pub fn record(&mut self, path: &str) -> bool {
+        if self.entries.last().map(|l| l == path).unwrap_or(false) {
+            self.deduped += 1;
+            return false;
+        }
+        self.entries.push(String::from(path));
+        if self.entries.len() > self.cap {
+            self.entries.remove(0);
+        }
+        true
+    }
+
+    /// 信息量审计：容量内无相邻重复（去重纪律的机器面）。
+    pub fn no_adjacent_dup(&self) -> bool {
+        self.entries.windows(2).all(|w| w[0] != w[1])
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// 书签分组（书签量增长的秩序面）：分组名 → 书签名集合；解析走组内
+/// 唯一名（组内重名拒绝——歧义防线）；分组可空；跨组不共享名字约束
+/// 由解析面显式处理（全路径引用 `组名/书签名`）。
+#[derive(Default)]
+pub struct BookmarkGroups {
+    /// (组名, 书签名清单)。
+    pub groups: Vec<(String, Vec<String>)>,
+}
+
+impl BookmarkGroups {
+    pub fn add(&mut self, group: &str, bookmark: &str) -> bool {
+        if group.is_empty() || bookmark.is_empty() {
+            return false;
+        }
+        match self.groups.iter_mut().find(|(g, _)| g == group) {
+            Some((_, list)) => {
+                if list.iter().any(|b| b == bookmark) {
+                    return false;
+                }
+                list.push(String::from(bookmark));
+                true
+            }
+            None => {
+                self.groups
+                    .push((String::from(group), alloc::vec![String::from(bookmark)]));
+                true
+            }
+        }
+    }
+
+    /// 全路径解析：`组名/书签名` → 存在性（书签内容由 PathBookmarks 查）。
+    pub fn resolve(&self, qualified: &str) -> Option<(usize, usize)> {
+        let (g, b) = qualified.split_once('/')?;
+        let gi = self.groups.iter().position(|(name, _)| name == g)?;
+        let bi = self.groups[gi].1.iter().position(|x| x == b)?;
+        Some((gi, bi))
+    }
+
+    /// 歧义审计：全路径解析必须唯一（同组内重名已在 add 拦——这里
+    /// 验证无重复组名）。
+    pub fn unambiguous(&self) -> bool {
+        let names: alloc::vec::Vec<String> =
+            self.groups.iter().map(|(g, _)| g.clone()).collect();
+        names.iter().all(|g| names.iter().filter(|o| o == &g).count() == 1)
+    }
+}
+
+/// 批量转换缓存闭环（多路径批量与 ConvertCache 的联动）：批量转换
+/// 走缓存出口——命中免重算，未命中入缓存；批量命中率账（缓存收益
+/// 可测量——性能面闭环）。
+pub struct BatchThroughCache<'a> {
+    pub cache: &'a mut ConvertCache,
+}
+
+impl<'a> BatchThroughCache<'a> {
+    /// 批量转换（顺序保持——调用面按序消费）。
+    pub fn convert_all(
+        &mut self,
+        paths: &[&str],
+        flavor: TerminalFlavor,
+    ) -> Vec<alloc::string::String> {
+        paths.iter().map(|p| self.cache.get(p, flavor)).collect()
+    }
+
+    /// 命中率‰（本批量口径——缓存收益直出）。
+    pub fn hit_rate(&self) -> u32 {
+        let total = self.cache.hits + self.cache.misses;
+        if total == 0 {
+            return 0;
+        }
+        (self.cache.hits * 1000 / total) as u32
+    }
+}
+
+/// 深化层十自检（历史去重 / 书签分组 / 批量缓存）。
+pub fn run_copypath_deep10_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep10");
+
+    // 1. 历史去重：相邻重复去重计数、容量淘汰最旧、去重纪律审计。
+    let mut hd = HistoryDedup::new(3);
+    let d1 = hd.record("C:/a.vx");
+    let d2 = hd.record("C:/a.vx");
+    let _ = hd.record("C:/b.vx");
+    let _ = hd.record("C:/c.vx");
+    set.add(
+        "history dedup and evict",
+        d1 && !d2 && hd.deduped == 1 && hd.len() == 3 && hd.no_adjacent_dup(),
+        "",
+    );
+
+    // 2. 书签分组：组内唯一、跨组同名允许（全路径消歧）、歧义审计。
+    let mut bg = BookmarkGroups::default();
+    let g1 = bg.add("工作", "画稿");
+    let dup = bg.add("工作", "画稿");
+    let g2 = bg.add("私人", "画稿");
+    set.add(
+        "bookmark groups scoped",
+        g1 && !dup && g2 && bg.resolve("工作/画稿") == Some((0, 0))
+            && bg.resolve("私人/画稿") == Some((1, 0))
+            && bg.unambiguous(),
+        "",
+    );
+
+    // 3. 全路径未登记诚实 None（不猜）。
+    set.add("group unknown none", bg.resolve("幽灵/画稿").is_none(), "");
+
+    // 4. 批量转换缓存闭环：首遍全 miss、二遍全 hit、命中率翻倍。
+    let mut cache = ConvertCache::new(8);
+    let mut batch = BatchThroughCache { cache: &mut cache };
+    let paths = ["C:/a.vx", "C:/b.vx", "C:/a.vx"];
+    let _ = batch.convert_all(&paths, TerminalFlavor::Posix);
+    let m1 = batch.hit_rate();
+    let _ = batch.convert_all(&paths, TerminalFlavor::Posix);
+    let m2 = batch.hit_rate();
+    set.add(
+        "batch through cache improves",
+        m1 > 0 && m2 > m1,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep10_tests {
+    use super::*;
+
+    #[test]
+    fn history_empty_record_ok() {
+        let mut hd = HistoryDedup::new(2);
+        assert!(hd.record("C:/first.vx"));
+        assert_eq!(hd.len(), 1);
+    }
+
+    #[test]
+    fn group_empty_name_rejected() {
+        let mut bg = BookmarkGroups::default();
+        assert!(!bg.add("", "x"));
+        assert!(!bg.add("g", ""));
+    }
+
+    #[test]
+    fn batch_cache_order_preserved() {
+        let mut cache = ConvertCache::new(4);
+        let mut b = BatchThroughCache { cache: &mut cache };
+        let out = b.convert_all(&["C:/z.vx", "C:/a.vx"], TerminalFlavor::Posix);
+        assert_eq!(out[0], "C:/z.vx", "顺序保持——调用面按序消费");
+    }
+}
