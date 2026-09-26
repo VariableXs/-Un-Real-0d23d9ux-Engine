@@ -33,6 +33,7 @@ import { SearchOverlay } from "./apps/write/search/SearchOverlay";
 import { KeymapOverlay, CommandHintBar, KeycastOverlay, useEscOverlayStack } from "./components/KeymapOverlays";
 import { VisionRuntime } from "./features/vision/VisionRuntime";
 import { J1Runtime } from "./features/mouse/J1Runtime";
+import { H4Runtime } from "./features/h4/H4Runtime";
 import { IpcTracePanel } from "./system/devtools/IpcTracePanel";
 import { installDemoModeExitHook, recoverDemoModeOnBoot } from "./system/tray/DemoMode";
 import { OobeGate } from "./features/oobe/OobeWizard";
@@ -702,6 +703,8 @@ function AppInner(props: { appType: AppEntryType }): React.ReactElement {
             <VisionRuntime />
             {/* J 鼠标域 AI-J1：F601-F620 指针/滚轮/手势运行时（F335 优先平面件挂此） */}
             <J1Runtime />
+            {/* H 基础通用域 AI-H4：F351-F400 运行时（开机徽标 F371 / 彩蛋 F399 / 滤镜单点 F387 / 阅读模式 F386） */}
+            <H4Runtime />
             {settings && boot && (
               <OobeGate settings={settings} onDone={patchSettings} dataDir={boot.dataDir} />
             )}
