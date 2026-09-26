@@ -25,6 +25,7 @@ import { CtxNavCard, ChordLabCard, ReportLabCard } from "./pages-lab";
 import { UsageRankCard, CheatSheetCard, CopyAuditCard, ShardRunnerCard } from "./pages-lab2";
 import { ErrorSurfaceCard, AssetPackageCard, WindowMetricsCard, PerfBudgetCard } from "./pages-lab3";
 import { StateBlocksCard, ExportFormatsCard, UxDictionaryCard } from "./pages-lab4";
+import { StateWiringCard, CrosscheckCard, SearchNavCard, AutosaveCard } from "./pages-lab5";
 import { Card, PageHeader, Row, Toggle, Segmented, PButton, Notice, useT, usePersonaSection } from "./ui";
 
 // ---------- F167 右键菜单 ----------
@@ -480,6 +481,10 @@ export function VerdictPage(): React.ReactNode {
       <StateBlocksCard />
       <ExportFormatsCard />
       <UxDictionaryCard />
+      <StateWiringCard />
+      <CrosscheckCard />
+      <SearchNavCard />
+      <AutosaveCard />
       <CopyAuditCard />
     </div>
   );
