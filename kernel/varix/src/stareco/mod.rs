@@ -46,6 +46,7 @@ pub mod a11yopen;
 pub mod apistab;
 pub mod brandkit;
 pub mod craftbadge;
+pub mod deep;
 pub mod devportal;
 pub mod difftable;
 pub mod ebase;
@@ -67,14 +68,14 @@ pub mod upstream;
 /// 域标识（CheckSet 聚合用）。
 pub const STARECO_DOMAIN: &str = "stareco-v2";
 
-/// 本域自检聚合：逐模块 `run_*_checks` 汇总（全量二十项 + ebase，
-/// 21 blocks）。
+/// 本域自检聚合：基础层 20 项 + ebase（21 blocks）+ 深化层 20 项
+/// （deep 1 block，其内部 20 子行展开）= 22 blocks。
 ///
 /// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`）——本聚合器
 /// 按「每模块一行」登记，永不超容；单模块自身超限时由该模块负责裁剪。
 pub fn run_stareco_checks() -> CheckSet {
     let mut set = CheckSet::new(STARECO_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 21] = [
+    let blocks: [(&'static str, CheckSet); 22] = [
         ("ebase", ebase::run_ebase_checks()),
         ("F131", upstream::run_upstream_checks()),
         ("F132", difftable::run_difftable_checks()),
@@ -96,6 +97,7 @@ pub fn run_stareco_checks() -> CheckSet {
         ("F148", governance::run_governance_checks()),
         ("F149", ecoreport::run_ecoreport_checks()),
         ("F150", ecogate::run_ecogate_checks()),
+        ("deep", deep::run_stareco_deep_checks()),
     ];
     for (tag, sub) in blocks {
         let passed = sub.all_passed() && !sub.truncated();

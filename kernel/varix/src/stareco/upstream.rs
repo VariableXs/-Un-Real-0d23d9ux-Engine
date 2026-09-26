@@ -212,6 +212,11 @@ impl UpstreamBook {
     pub fn len(&self) -> usize {
         self.count
     }
+
+    /// 只读条目视图（公开页数据源用——不泄漏内部存储）。
+    pub fn items_ref(&self) -> &[Option<UpstreamPr>] {
+        &self.items[..self.count]
+    }
 }
 
 // ---------------------------------------------------------------------------

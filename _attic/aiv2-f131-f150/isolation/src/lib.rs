@@ -59,6 +59,49 @@ pub mod stareco {
     pub mod ecoreport;
     #[path = "../../../../../kernel/varix/src/stareco/ecogate.rs"]
     pub mod ecogate;
+
+    pub mod deep {
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f131d.rs"]
+        pub mod f131d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f132d.rs"]
+        pub mod f132d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f133d.rs"]
+        pub mod f133d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f134d.rs"]
+        pub mod f134d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f135d.rs"]
+        pub mod f135d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f136d.rs"]
+        pub mod f136d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f137d.rs"]
+        pub mod f137d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f138d.rs"]
+        pub mod f138d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f139d.rs"]
+        pub mod f139d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f140d.rs"]
+        pub mod f140d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f141d.rs"]
+        pub mod f141d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f142d.rs"]
+        pub mod f142d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f143d.rs"]
+        pub mod f143d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f144d.rs"]
+        pub mod f144d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f145d.rs"]
+        pub mod f145d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f146d.rs"]
+        pub mod f146d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f147d.rs"]
+        pub mod f147d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f148d.rs"]
+        pub mod f148d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f149d.rs"]
+        pub mod f149d;
+        #[path = "../../../../../../kernel/varix/src/stareco/deep/f150d.rs"]
+        pub mod f150d;
+    }
 }
 
 #[cfg(test)]
@@ -92,13 +135,20 @@ mod diag {
         dump("governance", &crate::stareco::governance::run_governance_checks());
         dump("ecoreport", &crate::stareco::ecoreport::run_ecoreport_checks());
         dump("ecogate", &crate::stareco::ecogate::run_ecogate_checks());
+        dump("f133d", &crate::stareco::deep::f133d::run_f133_deep_checks());
+        dump("f136d", &crate::stareco::deep::f136d::run_f136_deep_checks());
+        dump("f137d", &crate::stareco::deep::f137d::run_f137_deep_checks());
+        dump("f138d", &crate::stareco::deep::f138d::run_f138_deep_checks());
+        dump("f146d", &crate::stareco::deep::f146d::run_f146_deep_checks());
+        dump("f148d", &crate::stareco::deep::f148d::run_f148_deep_checks());
     }
 
     /// 域聚合等价断言：舱内逐模块红绿拼出的聚合与真实 mod.rs 聚合
-    /// 口径一致（21 blocks 全绿才收工）。
+    /// 口径一致（22 blocks 全绿才收工——基础 21 + 深化 1）。
     #[test]
     fn domain_aggregate_all_green() {
-        let blocks: [(&str, crate::checks::CheckSet); 21] = [
+        let mut red = alloc::vec::Vec::new();
+        let base: [(&str, crate::checks::CheckSet); 21] = [
             ("ebase", crate::stareco::ebase::run_ebase_checks()),
             ("F131", crate::stareco::upstream::run_upstream_checks()),
             ("F132", crate::stareco::difftable::run_difftable_checks()),
@@ -121,8 +171,37 @@ mod diag {
             ("F149", crate::stareco::ecoreport::run_ecoreport_checks()),
             ("F150", crate::stareco::ecogate::run_ecogate_checks()),
         ];
-        let mut red = alloc::vec::Vec::new();
-        for (tag, sub) in blocks {
+        for (tag, sub) in base {
+            if !(sub.all_passed() && !sub.truncated()) {
+                red.push(tag);
+            }
+        }
+        let deep = crate::stareco::deep::f131d::run_f131_deep_checks();
+        let _ = deep;
+        // 深化层 20 模块逐个红绿
+        let deeps: [(&str, crate::checks::CheckSet); 20] = [
+            ("F131d", crate::stareco::deep::f131d::run_f131_deep_checks()),
+            ("F132d", crate::stareco::deep::f132d::run_f132_deep_checks()),
+            ("F133d", crate::stareco::deep::f133d::run_f133_deep_checks()),
+            ("F134d", crate::stareco::deep::f134d::run_f134_deep_checks()),
+            ("F135d", crate::stareco::deep::f135d::run_f135_deep_checks()),
+            ("F136d", crate::stareco::deep::f136d::run_f136_deep_checks()),
+            ("F137d", crate::stareco::deep::f137d::run_f137_deep_checks()),
+            ("F138d", crate::stareco::deep::f138d::run_f138_deep_checks()),
+            ("F139d", crate::stareco::deep::f139d::run_f139_deep_checks()),
+            ("F140d", crate::stareco::deep::f140d::run_f140_deep_checks()),
+            ("F141d", crate::stareco::deep::f141d::run_f141_deep_checks()),
+            ("F142d", crate::stareco::deep::f142d::run_f142_deep_checks()),
+            ("F143d", crate::stareco::deep::f143d::run_f143_deep_checks()),
+            ("F144d", crate::stareco::deep::f144d::run_f144_deep_checks()),
+            ("F145d", crate::stareco::deep::f145d::run_f145_deep_checks()),
+            ("F146d", crate::stareco::deep::f146d::run_f146_deep_checks()),
+            ("F147d", crate::stareco::deep::f147d::run_f147_deep_checks()),
+            ("F148d", crate::stareco::deep::f148d::run_f148_deep_checks()),
+            ("F149d", crate::stareco::deep::f149d::run_f149_deep_checks()),
+            ("F150d", crate::stareco::deep::f150d::run_f150_deep_checks()),
+        ];
+        for (tag, sub) in deeps {
             if !(sub.all_passed() && !sub.truncated()) {
                 red.push(tag);
             }

@@ -141,6 +141,11 @@ impl Walkthrough {
         self.all_done() && self.total_minutes() <= TOTAL_BUDGET_MIN
     }
 
+    /// 卡壳账只读视图（归档与回流清单用）。
+    pub fn stuck_view(&self) -> &[Option<(Step, StuckKind)>] {
+        &self.stuck[..self.stuck_count]
+    }
+
     /// 可比口径：外部志愿者 + 同流程代次。降级自测的数据不能跟外部
     /// 真人混算（判据「逐季不回退」的分母可比性）。
     pub fn comparable_with(&self, other: &Walkthrough) -> bool {

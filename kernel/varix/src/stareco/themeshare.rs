@@ -221,6 +221,11 @@ impl ThemeBoard {
     fn find_mut(&mut self, id: TraceId) -> Option<&mut ThemeListing> {
         self.items[..self.count].iter_mut().flatten().find(|it| it.id == id)
     }
+
+    /// 只读条目视图（审核队列/筛选/开放数据导出用）。
+    pub fn items_view(&self) -> &[Option<ThemeListing>] {
+        &self.items[..self.count]
+    }
 }
 
 // ---------------------------------------------------------------------------

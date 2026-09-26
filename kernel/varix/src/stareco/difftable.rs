@@ -214,6 +214,11 @@ impl DiffTable {
         self.entries[..self.count].iter().flatten().find(|e| e.id == id)
     }
 
+    /// 只读条目视图（季度刷新/星卡生成用——不泄漏内部存储）。
+    pub fn entries_view(&self) -> &[Option<DiffEntry>] {
+        &self.entries[..self.count]
+    }
+
     /// 星卡反向链接：给定账本判例键，列出影响该应用的未解决差异。
     pub fn impacts_of(&self, ledger_key: &str) -> Vec<&DiffEntry> {
         self.entries[..self.count]

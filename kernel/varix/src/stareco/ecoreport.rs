@@ -69,7 +69,7 @@ pub struct QuarterlyReport {
     pub metrics: Metrics,
     /// 故事条目（编号引用——真实可溯；最多 3 条）。
     pub story_refs: [u32; 3],
-    story_count: usize,
+    pub story_count: usize,
     /// 预告（下季内容——非空 = 模板完整）。
     pub forecast: &'static str,
     /// 数据源异常 → 指标标「数据待修」。

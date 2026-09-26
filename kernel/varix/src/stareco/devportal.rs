@@ -107,6 +107,11 @@ impl DevPortal {
         coverage_ppt(self.api_count, self.public_symbols)
     }
 
+    /// 各区页数只读视图（覆盖报告用）。
+    pub fn pages_view(&self) -> [usize; 5] {
+        self.pages_per_section
+    }
+
     /// 判据线：>90%。
     pub fn coverage_green(&self) -> bool {
         !coverage_is_beta(self.api_count, self.public_symbols.max(1)) || self.public_symbols == 0

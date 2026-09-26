@@ -85,6 +85,13 @@ pub struct TrackedReport {
     pub fix_fp: u64,
 }
 
+impl TrackedReport {
+    /// 当前五态（查询页数据源）。
+    pub fn state(&self) -> State5 {
+        self.track.state
+    }
+}
+
 pub struct FeedbackLoop {
     reports: [Option<TrackedReport>; 16],
     count: usize,
@@ -187,6 +194,11 @@ impl FeedbackLoop {
 
     pub fn len(&self) -> usize {
         self.count
+    }
+
+    /// 编号 → 在册报告只读视图（查询页数据源）。
+    pub fn report_view(&self, id: TraceId) -> Option<&TrackedReport> {
+        self.reports[..self.count].iter().flatten().find(|s| s.id == id)
     }
 }
 

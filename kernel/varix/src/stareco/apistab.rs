@@ -123,6 +123,9 @@ impl ApiRegistry {
     }
 
     pub fn register(&mut self, symbol: &'static str, stability: Stability, signature_fp: u64, day: u32) -> Result<(), &'static str> {
+        if self.entries[..self.count].iter().flatten().any(|e| e.symbol == symbol) {
+            return Err("重复符号：先移除再重新注册");
+        }
         if self.count >= 32 {
             return Err("registry full");
         }
