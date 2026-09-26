@@ -45,8 +45,6 @@ pub mod perfstar;
 /// 通知音量分级/蓝牙电量/设备接入通知/音量平衡/任务管理器置顶/时钟悬停
 /// 农历/批次六验收锚点，五十项判据实装层。
 pub mod ustar3;
-/// 农历/批次六验收锚点，五十项判据实装层（提交版见 origin/main ad1c2d2c）。
-pub mod ustar3;
 /// 应用兼容域深化（Varix STAR I start · A 域 F001~F020 · AI-C1 分工包）：
 /// 无感双击/静态 PE 全量/导入绑定加速/Wow64 门/Win32 窗口层/GDI/GDI+/通用
 /// 对话框/注册表虚拟化/文件系统重定向/环境变量/控制台子系统/.lnk/PE 资源/
@@ -62,7 +60,8 @@ pub mod compatstar;
 /// 音量 OSD/音频路由/网络状态/隐藏文件/快捷键注册表/减少动效/字号无障碍/
 /// 文本截断/窗口置顶/热角/指针精度，五十项判据实装层。
 // [AI-U2 临时屏蔽已解除：h1base.rs 已落位，AI-H1 批次在途逐模块补齐]
-pub mod h1star;
+// [AI-U4 临时屏蔽：h1star 模块文件未随注册行提交（AI-H1 批次在途）——H1 落位后恢复本行]
+// pub mod h1star;
 pub mod banner;
 pub mod bootopt;
 pub mod bootcfg;
@@ -611,11 +610,13 @@ pub mod star;
 /// 文件历史版本/通知分组/降级链/高负载保响应/指针直通/复制地址/命令行互通/
 /// 多选操作条/空格即看/预览统一/静音四档/磁盘检查/内存出路/卸载三步/默认
 /// 应用/自启动/焦点模式/触感谱，五十项判据实装层。
-pub mod h3star;
+// [AI-U4 临时屏蔽：h3star 模块文件未随注册行提交（AI-H3 批次在途）——H3 落位后恢复本行]
+// pub mod h3star;
 // Varix STAR I · 泳道四 I 通用域·四分队（AI-U4 · F551-F600）：五十项功能 + ibase 共享底盘。
 pub mod istar;
 // Varix STAR I · 泳道三 J 鼠标域·二分队（AI-J2 · F621-F640）：二十项功能 + 共享底盘。
-pub mod jstar2;
+// [AI-U4 临时屏蔽：jstar2 模块文件未随注册行提交（AI-J2 批次在途）——J2 落位后恢复本行]
+// pub mod jstar2;
 // Varix STAR I · 泳道三 H 域二分队（AI-H2 · F251-F300）：五十项功能 + 共享底盘。
 pub mod h2star;
 // Varix STAR I · 泳道四 D 生态开放域后段（AI-V2 · F131-F150）：二十项功能 + 共享底盘。

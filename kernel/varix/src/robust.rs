@@ -1019,18 +1019,12 @@ pub fn isolate_driver_failures(outcomes: &[DriverLoadOutcome]) -> LoadSummary {
 /// result is consumed by the boot path and the QEMU headless assertions.
 pub fn run_kernel_checkup() -> KernelCheckup {
     let mut checkup = KernelCheckup::new();
-    // 函数指针表：327 个域自检入口，统一经表迭代注册。禁止改回直排
+    // 函数指针表：350 个域自检入口，统一经表迭代注册。禁止改回直排
     // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
-    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 324 ≈ 1004KB），
+    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 350 ≈ 1085KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 327] = [
-    // 函数指针表：297 个域自检入口，统一经表迭代注册。禁止改回直排
-    // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
-    // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 297 ≈ 921KB），
-    // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
-    // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 348] = [
+    let domains: [fn() -> CheckSet; 349] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1358,7 +1352,8 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // S2 容量纪律；域内 hbase + 五十项逐模块红绿在
     // h3star::run_h3star_checks 的子行展开）。
     // ------------------------------------------------------------------
-        crate::h3star::run_h3star_checks,
+        // [AI-U4 临时屏蔽：h3star 模块文件未随注册行提交（AI-H3 批次在途）——H3 落位后恢复本行并回加计数]
+        // crate::h3star::run_h3star_checks,
 
     // ------------------------------------------------------------------
     // A 应用兼容域·前段（AI-C1 · F001~F020 · 主册 A-5 报告 G-A-01~G-A-20）。
@@ -1494,7 +1489,14 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // ——单聚合注册（同 U2 容量纪律：不占 domains 定长数组名额）；
     // 域内 20 项逐项红绿在 jstar2::run_jstar2_checks 的子行展开。
     // ------------------------------------------------------------------
-    checkup.register(crate::jstar2::run_jstar2_checks());
+    // [AI-U4 临时屏蔽：jstar2 模块文件未随注册行提交（AI-J2 批次在途）——J2 落位后恢复本行]
+    // checkup.register(crate::jstar2::run_jstar2_checks());
+    // ------------------------------------------------------------------
+    // I 通用域·四分队（AI-U4 · F551~F600 · 主册批次七/八）——单聚合注册
+    // （同 U2/J2 容量纪律：不占 domains 定长数组名额）；域内 50 项逐项
+    // 红绿在 istar::run_istar_checks 的子行展开。
+    // ------------------------------------------------------------------
+    checkup.register(crate::istar::run_istar_checks());
     checkup
 }
 
