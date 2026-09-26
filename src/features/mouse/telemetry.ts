@@ -164,6 +164,51 @@ export class J1Telemetry {
   get frustrationCount(): number {
     return this.frustrations.length;
   }
+
+  /** 时间轴回放（章十三「可回放的操作故事线」）：按间隔分幕。 */
+  replayTimeline(gapMs = 2500): ReplayTimeline {
+    return buildReplay(this.ring, this.frustrations, gapMs);
+  }
+}
+
+/* ------------------------------- 时间轴回放（v4 · 章十三） ------------------------------- */
+
+export interface ReplayScene {
+  /** 幕起始时间戳。 */
+  start: number;
+  end: number;
+  events: J1Event[];
+  frustrations: FrustrationSignal[];
+}
+
+export interface ReplayTimeline {
+  scenes: ReplayScene[];
+  total: number;
+}
+
+/**
+ * 分幕回放：事件按时间排序，间隔 > gapMs 切幕（一次连贯操作是一幕）；
+ * 挫败信号按时间归入所在幕（哪一步操作伴着挫败一目了然）。
+ * 纯函数（events/frustrations 不被改写）——测试与面板同源。
+ */
+export function buildReplay(events: J1Event[], frustrations: FrustrationSignal[], gapMs = 2500): ReplayTimeline {
+  const sorted = [...events].sort((a, b) => a.at - b.at);
+  const scenes: ReplayScene[] = [];
+  let cur: ReplayScene | null = null;
+  for (const e of sorted) {
+    if (!cur || e.at - cur.end > gapMs) {
+      cur = { start: e.at, end: e.at, events: [e], frustrations: [] };
+      scenes.push(cur);
+    } else {
+      cur.events.push(e);
+      cur.end = e.at;
+    }
+  }
+  for (const f of [...frustrations].sort((a, b) => a.at - b.at)) {
+    const host = scenes.find((s) => f.at >= s.start && f.at <= s.end + gapMs);
+    (host ?? scenes[scenes.length - 1])?.frustrations.push(f);
+  }
+  return { scenes, total: sorted.length };
 }
 
 /** J1 域唯一遥测实例（一处一事实；面板与 runtime 共用）。 */

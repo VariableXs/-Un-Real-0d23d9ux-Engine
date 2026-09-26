@@ -336,6 +336,7 @@ export function ContextMenuHost(): React.ReactElement | null {
     <div
       ref={ref}
       className={`ctx-menu ${fadingMenu === menu ? "fading" : ""}`}
+      data-wheel="menu"
       style={{ left: pos.x, top: pos.y }}
       role="menu"
       // Event-bubbling isolation: pointer events INSIDE the menu never reach

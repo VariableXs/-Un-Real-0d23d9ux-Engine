@@ -51,6 +51,12 @@ export interface GestureLibraryConfig {
   trailFadeMs: number;
   /** 自定义手势覆盖/追加：id → 定义。 */
   custom: Record<string, { name: string; dirs: Dir8[]; action: string }>;
+  /**
+   * 手势重绑定（F617「可自定义轨迹库」的深层：轨迹不变、换动作）：
+   * 手势 id → 动作覆盖。内置与自定义手势均可重绑；空/未登记 = 原动作
+   * （一处一事实：动作字符串合法性由派发侧未处理显性化兜底）。
+   */
+  bindings?: Record<string, string>;
 }
 
 export function gestureLibrary(cfg: GestureLibraryConfig): { id: string; name: string; dirs: Dir8[]; action: string; builtin: boolean }[] {
@@ -155,4 +161,56 @@ export function gestureSampleDirs(expect: Dir8[], angularJitterDeg = 18, rand: (
 /** 优先级登记说明（与 F215 右键菜单 / F615 侧键的矩阵——一处登记）。 */
 export function gesturePriorityNote(): string {
   return "优先级：右键手势仅在「有轨迹（≥2 步）」时接管右键；无轨迹松开=右键菜单（F215）兜底；侧键映射（F615）作用于 XButton1/2，与右键手势无按键交集。三处登记于 gesturePriorityNote / sideGesturePriorityMatrix / F215 审计表。";
+}
+
+/* ------------------------------- F617 手势重绑定（v4） ------------------------------- */
+
+/**
+ * 手势命中 → 实际派发动作（重绑定解析，单一出口）：
+ * bindings[id] 非空则覆盖原动作；轨迹与识别完全不受影响（轨迹库与动作库
+ * 解耦——「画法」是肌肉记忆不该因换动作而重学，「动作」才是可自定义面）。
+ */
+export function resolveGestureAction(
+  hit: { id: string; action: string },
+  cfg: GestureLibraryConfig,
+): string {
+  const bound = cfg.bindings?.[hit.id];
+  return bound && bound.trim() ? bound.trim() : hit.action;
+}
+
+/** 重绑定合法性：动作非空即可绑（未知动作走派发侧未处理显性化——诚实边界）。 */
+export function validateBinding(action: string): string[] {
+  const errs: string[] = [];
+  if (!action.trim()) errs.push("动作不能为空（清空绑定=还原原动作）");
+  return errs;
+}
+
+/** 某手势当前生效动作（面板展示与运行时同源）。 */
+export function effectiveGestureAction(id: string, cfg: GestureLibraryConfig): string {
+  const builtin = BUILTIN_GESTURES.find((g) => g.id === id);
+  const custom = cfg.custom[id];
+  const original = builtin?.action ?? custom?.action ?? "";
+  return resolveGestureAction({ id, action: original }, cfg);
+}
+
+/* ------------------------------- 墨迹平滑（v4 · F617 视觉品质） ------------------------------- */
+
+/**
+ * 轨迹点列 → 二次贝塞尔平滑路径（中点法）：折线拐角的棱角变为圆顺曲线，
+ * 墨迹从「工程线」到「手写笔意」。点数 <3 退化为折线；纯函数（渲染同源）。
+ */
+export function smoothPathD(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return "";
+  if (pts.length === 2) return `M ${pts[0]!.x} ${pts[0]!.y} L ${pts[1]!.x} ${pts[1]!.y}`;
+  const r2 = (v: number): number => Math.round(v * 100) / 100;
+  let d = `M ${r2(pts[0]!.x)} ${r2(pts[0]!.y)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i]!;
+    const n = pts[i + 1]!;
+    const mx = r2((p.x + n.x) / 2);
+    const my = r2((p.y + n.y) / 2);
+    d += ` Q ${r2(p.x)} ${r2(p.y)} ${mx} ${my}`;
+  }
+  const last = pts[pts.length - 1]!;
+  return `${d} L ${r2(last.x)} ${r2(last.y)}`;
 }

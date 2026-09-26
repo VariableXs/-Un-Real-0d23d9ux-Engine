@@ -40,6 +40,11 @@ import {
   DevicePackPanel,
   EvidencePanel,
   WiringPanel,
+  GestureBindingsPanel,
+  SideShortcutRecordPanel,
+  SeamPairPanel,
+  ReplayPanel,
+  TwelveChecksPanel,
 } from "./MouseJ1Panels";
 import "../../styles/mouse-j1.css";
 
@@ -59,8 +64,13 @@ function useSection<T extends Cfg>(section: J1Section): [T, (patch: Partial<T>) 
   return [value, set];
 }
 
-/** 分组容器（纵深层级：组标题 + F 号锚 + 说明 + 内容）。 */
-function Group(props: { title: string; f: string; desc: string; children: React.ReactNode }): React.ReactElement {
+/** 分组容器（纵深层级：组标题 + F 号锚 + 说明 + 内容）；q 非空时按关键词过滤（章十一可发现性）。 */
+function Group(props: { title: string; f: string; desc: string; kw?: string; q?: string; children: React.ReactNode }): React.ReactElement | null {
+  const q = (props.q ?? "").trim().toLowerCase();
+  if (q) {
+    const hay = `${props.title} ${props.f} ${props.desc} ${props.kw ?? ""}`.toLowerCase();
+    if (!hay.includes(q)) return null;
+  }
   return (
     <section className="j1-group">
       <header className="j1-group-head">
@@ -205,6 +215,8 @@ export function MouseJ1Tab(): React.ReactElement {
   const [pass, setPass] = useSection<{ enabled: boolean; exemptTypes: string[] }>("passthrough");
   const [lp, setLp] = useSection<{ scale: number; registry: Record<string, number> }>("longPress");
   const [ov, setOv] = useSection<{ outline: boolean; shadow: boolean; ring: boolean }>("overlay");
+  const [query, setQuery] = useState("");
+  const q = query;
   const [hasTiltHw] = useState<boolean>(() => {
     // 能力检测：PointerEvent with tiltX 支持探测（无硬件面板隐藏开关、只留说明）。
     try {
@@ -257,9 +269,17 @@ export function MouseJ1Tab(): React.ReactElement {
       <div className="j1-toolbar">
         <button type="button" onClick={resetAll}>恢复域默认</button>
         <span className="j1-toolbar-note">档案 {devices.profiles.length}/{DEVICE_PROFILE_CAP} · 旋钮 {LONG_PRESS_LABELS[String(lp.scale)] ?? "标准 1x"}</span>
+        <input
+          type="text"
+          className="j1x-input j1-toolbar-search"
+          placeholder="搜本页（如 滚轮 / 手势 / 护边 / F617）…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="鼠标页内检索"
+        />
       </div>
 
-      <Group title="指针速度曲线谱" f="F601" desc="加速不是开关二选一而是曲线族；「线性 1:1」与输入手感的关加速档是同一事实源。">
+      <Group q={q} title="指针速度曲线谱" f="F601" desc="加速不是开关二选一而是曲线族；「线性 1:1」与输入手感的关加速档是同一事实源。">
         <Row label="曲线族" hint="换曲线即时生效、试错零成本。">
           <select value={curve.id} onChange={(e) => setCurve({ id: e.target.value as CurveId })} aria-label="速度曲线">
             {CURVE_LIBRARY.map((c) => (
@@ -294,7 +314,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="慢速微调" f="F602" desc="按住修饰键指针立刻「听话变慢」——精确落点的确定性优先；修饰键占用已登记进快捷键冲突审计。">
+      <Group q={q} title="慢速微调" f="F602" desc="按住修饰键指针立刻「听话变慢」——精确落点的确定性优先；修饰键占用已登记进快捷键冲突审计。">
         <Row label="启用慢速微调" hint="默认开：不碰修饰键的人完全无感。">
           <Toggle on={slow.enabled} onChange={(v) => setSlow({ enabled: v })} label="启用慢速微调" />
         </Row>
@@ -314,7 +334,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </Row>
       </Group>
 
-      <Group title="滤波与手抖" f="F603 / F611" desc="抬笔滤波吃掉「松手前抖一下」（管线零延迟）；手抖过滤是无障碍件，默认关，只压高频不压意图。">
+      <Group q={q} title="滤波与手抖" f="F603 / F611" desc="抬笔滤波吃掉「松手前抖一下」（管线零延迟）；手抖过滤是无障碍件，默认关，只压高频不压意图。">
         <Row label="抬笔滤波" hint="按键抬起后 8ms 窗口内末位移按 50% 折算——快速移动完全无感。">
           <Toggle on={lift.enabled} onChange={(v) => setLift({ enabled: v })} label="抬笔滤波" />
         </Row>
@@ -344,7 +364,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="滚轮手感" f="F605 / F606 / F612 / F618" desc="逐档与平滑两派手感各有主场；应用覆盖优先于全局；穿透让阅读一路到底。">
+      <Group q={q} title="滚轮手感" f="F605 / F606 / F612 / F618" desc="逐档与平滑两派手感各有主场；应用覆盖优先于全局；穿透让阅读一路到底。">
         <Row label="全局刻度档" hint="「按应用默认」= 文档/代码逐档、浏览器/长列表平滑。">
           <select value={wheel.mode} onChange={(e) => setWheel({ mode: e.target.value as WheelMode })} aria-label="全局刻度档">
             {WHEEL_MODES.map((m) => (
@@ -386,7 +406,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="自动滚动" f="F604 / F609" desc="中键锚点滚长文档；拖文件到容器边缘它自己开始滚——油门在指针深入量。">
+      <Group q={q} title="自动滚动" f="F604 / F609" desc="中键锚点滚长文档；拖文件到容器边缘它自己开始滚——油门在指针深入量。">
         <Row label="中键自动滚动" hint="按一下、推一推、点一下退出（Windows 肌肉记忆）；默认开。">
           <Toggle on={auto.enabled} onChange={(v) => setAuto({ enabled: v })} label="中键自动滚动" />
         </Row>
@@ -412,7 +432,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="跨屏与落点" f="F607 / F613" desc="接缝护边 4px/200ms 防勾绊、四角 8px 秒达；每块屏记住指针最后落点（EDID 指纹为键，换线不乱）。">
+      <Group q={q} title="跨屏与落点" f="F607 / F613" desc="接缝护边 4px/200ms 防勾绊、四角 8px 秒达；每块屏记住指针最后落点（EDID 指纹为键，换线不乱）。">
         <Row label="接缝护边" hint={`穿越需在接缝 ${seamFull.edgePx}px 内停留 ${seamFull.dwellMs}ms；四角 ${seamFull.cornerPx}px 豁免（热角秒达）。`}>
           <Toggle on={seam.enabled} onChange={(v) => setSeam({ enabled: v })} label="接缝护边" />
         </Row>
@@ -429,9 +449,12 @@ export function MouseJ1Tab(): React.ReactElement {
         <SectionCard title="跨屏记忆点管理" f="F613">
           <ScreenMemoryPanel />
         </SectionCard>
+        <SectionCard title="屏对护边覆盖" f="F607">
+          <SeamPairPanel />
+        </SectionCard>
       </Group>
 
-      <Group title="磁吸与悬停" f="F608 / F610" desc="磁吸是「帮助对准」不是「抢走控制权」（默认关、判定零偏移）；悬停节奏两把旋钮，点击展开永远即时。">
+      <Group q={q} title="磁吸与悬停" f="F608 / F610" desc="磁吸是「帮助对准」不是「抢走控制权」（默认关、判定零偏移）；悬停节奏两把旋钮，点击展开永远即时。">
         <Row label="指针磁吸对齐" hint="接近小目标 12px 内视觉微移对齐；大目标（≥24px）不吸；关闭后零干预。">
           <Toggle on={magnet.enabled} onChange={(v) => setMagnet({ enabled: v })} label="指针磁吸对齐" />
         </Row>
@@ -458,7 +481,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </Row>
       </Group>
 
-      <Group title="设备与应用档案" f="F614 / F616" desc="每只鼠标各记一套手感（上限 10 台、超出淘汰最久未用）；同一只鼠标在不同应用里各有性格（增量切换防跳变）。">
+      <Group q={q} title="设备与应用档案" f="F614 / F616" desc="每只鼠标各记一套手感（上限 10 台、超出淘汰最久未用）；同一只鼠标在不同应用里各有性格（增量切换防跳变）。">
         {errs.length > 0 && (
           <p className="j1-warning" role="alert">档案校验发现问题：{errs.join("；")}</p>
         )}
@@ -506,7 +529,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="侧键与手势" f="F615 / F617" desc="侧键全局默认后退/前进、应用可覆盖；右键手势默认关——没画完就是右键菜单，菜单永远兜底。">
+      <Group q={q} title="侧键与手势" f="F615 / F617" desc="侧键全局默认后退/前进、应用可覆盖；右键手势默认关——没画完就是右键菜单，菜单永远兜底。">
         {FIVE_BUTTON_MAP.map((b) => (
           <Row key={b.button} label={b.name} hint={b.remappable ? "映射目标：系统动作 / 快捷键 / 启动应用。" : "主键不可重映射（系统语义）。"}>
             {b.remappable ? (
@@ -556,12 +579,18 @@ export function MouseJ1Tab(): React.ReactElement {
         <SectionCard title="自定义手势录制台" f="F617">
           <GesturePad />
         </SectionCard>
+        <SectionCard title="手势重绑定（画法不变换动作）" f="F617">
+          <GestureBindingsPanel />
+        </SectionCard>
+        <SectionCard title="侧键快捷键录制" f="F615">
+          <SideShortcutRecordPanel />
+        </SectionCard>
         <SectionCard title="侧键应用覆盖与冲突审计" f="F615">
           <SideKeyAppPanel />
         </SectionCard>
       </Group>
 
-      <Group title="长按与衬底" f="F619 / F620" desc="全系统长按统一旋钮（藏在进阶位——普通用户不该被问「长按多长」）；指针衬底让复杂壁纸上永远找得到箭头。">
+      <Group q={q} title="长按与衬底" f="F619 / F620" desc="全系统长按统一旋钮（藏在进阶位——普通用户不该被问「长按多长」）；指针衬底让复杂壁纸上永远找得到箭头。">
         <Row label="长按时长档" hint="触屏菜单 500ms / 磁贴 500ms / ClickLock 1100ms 统一跟随缩放；默认 1x = 现行值。">
           <select value={String(lp.scale)} onChange={(e) => setLp({ scale: Number(e.target.value) })} aria-label="长按时长档">
             {LONG_PRESS_SCALES.map((s) => (
@@ -610,12 +639,18 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
       </Group>
 
-      <Group title="遥测与证据" f="十三/十三·补 + MD3 附B" desc="体验日志还原每一次操作（狂点/死点自动标记，隐私红线：不记内容只记行为）；证据包把全部对拍表收敛成一份可归档 JSON。">
+      <Group q={q} title="遥测与证据" f="十三/十三·补 + MD3 附B" desc="体验日志还原每一次操作（狂点/死点自动标记，隐私红线：不记内容只记行为）；证据包把全部对拍表收敛成一份可归档 JSON。">
         <SectionCard title="体验日志" f="十三">
           <TelemetryPanel />
         </SectionCard>
         <SectionCard title="判据证据包" f="附B">
           <EvidencePanel />
+        </SectionCard>
+        <SectionCard title="时间轴回放（操作故事线）" f="十三">
+          <ReplayPanel />
+        </SectionCard>
+        <SectionCard title="十二查对账（F601-F620 × 通用十二查）" f="v4 对账">
+          <TwelveChecksPanel />
         </SectionCard>
         <SectionCard title="运行时接线审计" f="v3 接线">
           <WiringPanel />

@@ -21,7 +21,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createWindowRuntime } from "./windowRuntime";
-import { TRAIL_FADE_MS } from "./gestures";
+import { TRAIL_FADE_MS, smoothPathD } from "./gestures";
 import { composeOverlay } from "./overlay";
 import type { PointerOverlayConfig } from "./overlay";
 import { j1Store } from "./j1store";
@@ -67,8 +67,8 @@ function InkLayer(props: { pts: { x: number; y: number }[]; live?: boolean }): R
   if (props.pts.length < 2) return null;
   return (
     <svg aria-hidden className="j1-gesture-ink" style={{ position: "fixed", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 2147483001 }}>
-      <polyline
-        points={props.pts.map((p) => `${p.x},${p.y}`).join(" ")}
+      <path
+        d={smoothPathD(props.pts)}
         fill="none"
         stroke="var(--vx-ink, var(--vx-accent, #4f7cff))"
         strokeWidth={props.live ? 2 : 2.5}
@@ -77,6 +77,15 @@ function InkLayer(props: { pts: { x: number; y: number }[]; live?: boolean }): R
         opacity={props.live ? 0.45 : 0.9}
       />
     </svg>
+  );
+}
+
+/** F602 慢速微调 HUD（v4）：激活时跟指针的「精修」徽标——100ms 反馈红线。 */
+function SlowTuneHud(props: { x: number; y: number }): React.ReactElement {
+  return (
+    <div aria-hidden className="j1-slowtune-hud" style={{ left: props.x + 14, top: props.y + 18 }}>
+      精修
+    </div>
   );
 }
 
@@ -110,6 +119,7 @@ export function J1Runtime(): React.ReactElement | null {
   const [anchorUi, setAnchorUi] = useState<{ x: number; y: number } | null>(null);
   const [ink, setInk] = useState<{ x: number; y: number }[] | null>(null);
   const [liveInk, setLiveInk] = useState<{ x: number; y: number }[] | null>(null);
+  const [hud, setHud] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     // 作用域声明（F605/F616/F615 的真实挂点——全系统唯一直属桌面声明处）。
@@ -131,6 +141,7 @@ export function J1Runtime(): React.ReactElement | null {
           window.setTimeout(() => setInk(null), TRAIL_FADE_MS);
         },
         onLiveInk: setLiveInk,
+        onSlowTune: (active, x, y) => setHud(active ? { x, y } : null),
         onDeviceClone: (info) => {
           pushToast("info", "已为本机指针设备建档", info.evicted ? `档案达上限，淘汰最久未用：${info.evicted}` : "手感参数将跟随该设备记忆（F614）");
         },
@@ -151,12 +162,13 @@ export function J1Runtime(): React.ReactElement | null {
   }, []);
 
   const overlay = useOverlayStyle();
-  if (!replica && !anchorUi && !ink && !liveInk) return null;
+  if (!replica && !anchorUi && !ink && !liveInk && !hud) return null;
 
   return (
     <>
       {replica && overlay.active && <PointerReplica x={replica.x} y={replica.y} filter={overlay.cssFilter} shadow={overlay.boxShadow} />}
       {anchorUi && <AnchorMark x={anchorUi.x} y={anchorUi.y} />}
+      {hud && <SlowTuneHud x={hud.x} y={hud.y} />}
       {liveInk && <InkLayer pts={liveInk} live />}
       {!liveInk && ink && <InkLayer pts={ink} />}
     </>
@@ -177,6 +189,7 @@ export function J1AppWindowLayer(props: { appType: string }): React.ReactElement
   const [anchorUi, setAnchorUi] = useState<{ x: number; y: number } | null>(null);
   const [ink, setInk] = useState<{ x: number; y: number }[] | null>(null);
   const [liveInk, setLiveInk] = useState<{ x: number; y: number }[] | null>(null);
+  const [hud, setHud] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const id = APP_WINDOW_SCOPE[props.appType] ?? { scope: `app-${props.appType}`, klass: "document", label: props.appType };
@@ -195,6 +208,7 @@ export function J1AppWindowLayer(props: { appType: string }): React.ReactElement
           window.setTimeout(() => setInk(null), TRAIL_FADE_MS);
         },
         onLiveInk: setLiveInk,
+        onSlowTune: (active, x, y) => setHud(active ? { x, y } : null),
         onDeviceClone: (info) => {
           pushToast("info", "已为本机指针设备建档", info.evicted ? `档案达上限，淘汰最久未用：${info.evicted}` : undefined);
         },
@@ -210,10 +224,11 @@ export function J1AppWindowLayer(props: { appType: string }): React.ReactElement
     };
   }, [props.appType]);
 
-  if (!anchorUi && !ink && !liveInk) return null;
+  if (!anchorUi && !ink && !liveInk && !hud) return null;
   return (
     <>
       {anchorUi && <AnchorMark x={anchorUi.x} y={anchorUi.y} />}
+      {hud && <SlowTuneHud x={hud.x} y={hud.y} />}
       {liveInk && <InkLayer pts={liveInk} live />}
       {!liveInk && ink && <InkLayer pts={ink} />}
     </>

@@ -62,3 +62,19 @@ function describeTarget(el: Element): string {
   const label = el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "";
   return label ? `${el.tagName.toLowerCase()}「${label.slice(0, 16)}」` : el.tagName.toLowerCase();
 }
+
+/* ------------------------------- F608 视觉平滑（v4） ------------------------------- */
+
+/**
+ * 磁吸视觉偏移的渐近平滑：当前偏移向目标偏移按系数 k 渐近（每事件一步）。
+ * 「微滑不瞬移」的手感来自这里——判定零偏移铁律不受影响（只作用于视觉层）。
+ * 收敛到 <0.05px 时直接贴合目标（防无限小数拖尾）。
+ */
+export function lerpToward(cur: { x: number; y: number }, target: { x: number; y: number }, k = 0.35): { x: number; y: number } {
+  const step = (c: number, t: number): number => {
+    const d = t - c;
+    if (Math.abs(d) < 0.05) return t;
+    return Math.round((c + d * k) * 100) / 100;
+  };
+  return { x: step(cur.x, target.x), y: step(cur.y, target.y) };
+}

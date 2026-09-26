@@ -73,6 +73,8 @@ export class SeamGuard {
   constructor(
     private readonly monitors: () => MonitorInfo[],
     private readonly cfg: () => SeamGuardConfig,
+    /** 屏对覆盖解析（F607「按屏对记忆」判据的消费端，v4 接线）：返回 undefined=无覆盖走全局。 */
+    private readonly pairOverride?: (pairKey: string) => boolean | undefined,
   ) {}
 
   reset(): void {
@@ -97,6 +99,9 @@ export class SeamGuard {
       const next = monitorAt(monitors, nx, ny);
       if (!next || next.id === cur.id) continue;
       if (corner) return "pass"; // 四角豁免：秒达
+      // F607 屏对覆盖：该屏对显式关护边 = 直通（覆盖 > 全局，与 F605 同构）。
+      const pairOn = this.pairOverride?.(seamPairKey(cur.edidFingerprint, next.edidFingerprint)) ?? cfg.enabled;
+      if (!pairOn) return "pass";
       const key = `${cur.id}>${next.id}@${dx},${dy}`;
       if (this.key !== key) {
         this.key = key;

@@ -16,6 +16,7 @@ for f in src/features/mouse/j1store.ts src/features/mouse/curve.ts src/features/
   src/features/mouse/sideButtons.ts src/features/mouse/gestures.ts src/features/mouse/overlay.ts \
   src/features/mouse/inertia.ts src/features/mouse/gestureRecorder.ts src/features/mouse/pack.ts \
   src/features/mouse/telemetry.ts src/features/mouse/evidence.ts src/features/mouse/actions.ts \
+  src/features/mouse/shortcutRecorder.ts src/features/mouse/checklist.ts \
   src/features/mouse/windowRuntime.ts src/features/mouse/J1Runtime.tsx \
   src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/styles/mouse-j1.css; do
   n=$(filt < "$f"); printf "%6d  %s\n" "$n" "$f"; total=$((total+n))

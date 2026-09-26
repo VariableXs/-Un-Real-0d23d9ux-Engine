@@ -54,10 +54,11 @@ import {
   type AutoscrollConfig,
   type DragScrollConfig,
 } from "./autoscroll";
-import { GestureRecognizer, type GestureLibraryConfig } from "./gestures";
+import { GestureRecognizer, resolveGestureAction, type GestureLibraryConfig } from "./gestures";
 import { SeamGuard, ScreenMemory, type MonitorInfo, type SeamGuardConfig, type ScreenMemoryConfig } from "./screen";
 import { resolveSideButton, type SideButtonsConfig } from "./sideButtons";
 import { clampHoverDelay, clampTooltipDelay, HOVER_TOOLTIP_DEFAULT } from "./hoverTiming";
+import { lerpToward } from "./magnet";
 import { dispatchJ1Action } from "./actions";
 import { logInfo } from "../../lib/logger";
 
@@ -176,6 +177,8 @@ export interface WindowRuntimeCallbacks {
   onDeviceClone?: (info: { cloned: boolean; evicted?: string }) => void;
   /** 动作无人处理（面板/Toast 显性呈现钩子）。 */
   onActionUnhandled?: (action: string, source: "gesture" | "side") => void;
+  /** F602 慢速微调激活态（HUD 跟随指针——100ms 反馈红线，v4）。 */
+  onSlowTune?: (active: boolean, x: number, y: number) => void;
 }
 
 export interface WindowRuntime {
@@ -192,9 +195,32 @@ export function activeRuntimeSnapshot(): { entry: string; appScope: string; appC
   return [...activeRuntimes].map((r) => ({ ...r.info }));
 }
 
+/**
+ * 显示器清单安全获取（F607 屏对面板用）：Tauri availableMonitors → 降级单屏。
+ * 独立于运行时实例（面板在设置打开时即需清单，不依赖桌面壳挂载态）。
+ */
+export async function listMonitorsSafe(): Promise<MonitorInfo[]> {
+  try {
+    const win = await import("@tauri-apps/api/window");
+    const list = await win.availableMonitors();
+    if (Array.isArray(list) && list.length > 0) return list.map(tauriMonitorToInfo);
+  } catch {
+    /* 非 Tauri：单屏降级 */
+  }
+  return typeof window !== "undefined"
+    ? [{ id: "primary", x: 0, y: 0, width: window.innerWidth, height: window.innerHeight, edidFingerprint: `screen-${window.innerWidth}x${window.innerHeight}`, scale: window.devicePixelRatio || 1 }]
+    : [];
+}
+
 /* ------------------------------- 内核 ------------------------------- */
 
 export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntimeCallbacks = {}): WindowRuntime {
+  // 多屏状态独立于 st（SeamGuard 闭包引用它——避免 st 自引用推断环）。
+  const mstate = {
+    monitors: null as MonitorInfo[] | null,
+    scale: 1,
+    tauri: false,
+  };
   const st = {
     disposed: false,
     // 管线
@@ -207,16 +233,26 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     keys: { shiftKey: false, ctrlKey: false, altKey: false, caps: false },
     // 滚轮
     gain: new WheelGain(() => cfg<WheelGainConfig>("wheelGain", WHEEL_GAIN_DEFAULT)),
-    inertia: new WheelInertia(() => cfg<InertiaConfig>("wheelGain", INERTIA_DEFAULT)),
+    inertiaV: new WheelInertia(() => cfg<InertiaConfig>("wheelGain", INERTIA_DEFAULT)),
+    inertiaH: new WheelInertia(() => cfg<InertiaConfig>("wheelGain", INERTIA_DEFAULT)), // 横向通道（F606/F204 对称余韵，v4）
     momentumRaf: 0,
     momentumEl: null as Element | null,
-    // 跨屏
-    monitorsCache: null as MonitorInfo[] | null,
-    coordScale: 1,
-    usingTauriMonitors: false,
-    guard: new SeamGuard(() => st.monitorsCache ?? fallbackMonitors(), () => cfg<SeamGuardConfig>("seamGuard", SEAM_DEFAULT)),
+    momentumAxis: "y" as "y" | "x",
+    // 跨屏（几何在 mstate；本表只挂守卫与记忆）
+    guard: new SeamGuard(
+      () => mstate.monitors ?? fallbackMonitors(),
+      () => cfg<SeamGuardConfig>("seamGuard", SEAM_DEFAULT),
+      (pairKey) => {
+        // F607 屏对覆盖（v4 接线）：覆盖 > 全局（与 F605 同构）。
+        const pairs = (j1Store.get("seamGuard").pairs as Record<string, { enabled: boolean }> | undefined) ?? {};
+        return pairs[pairKey]?.enabled;
+      },
+    ),
     memory: new ScreenMemory(() => cfg<ScreenMemoryConfig>("screenMemory", MEMORY_DEFAULT)),
     memThrottleAt: 0,
+    // F608 磁吸视觉平滑状态 + F602 HUD 态（v4）。
+    magVis: { x: 0, y: 0 },
+    slowActive: false,
     // 手势
     recognizer: new GestureRecognizer(),
     gestureLive: false,
@@ -245,34 +281,34 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
   /* ---------- F607/F613 Tauri 多屏缓存刷新（异步，失败静默降级为单屏） ---------- */
   const refreshMonitors = async (): Promise<void> => {
     if (opts.monitorsSource) {
-      st.monitorsCache = opts.monitorsSource();
-      st.usingTauriMonitors = st.monitorsCache.length > 1;
-      st.coordScale = 1;
+      mstate.monitors = opts.monitorsSource();
+      mstate.tauri = mstate.monitors.length > 1;
+      mstate.scale = 1;
       return;
     }
     try {
       const win = await import("@tauri-apps/api/window");
-      const list = await win.getCurrentWindow().availableMonitors();
+      const list = await win.availableMonitors();
       if (Array.isArray(list) && list.length > 0) {
-        st.monitorsCache = list.map(tauriMonitorToInfo);
-        st.usingTauriMonitors = list.length > 1;
-        st.coordScale = dpr(); // 物理像素口径（与 Tauri Monitor 边界一致）
+        mstate.monitors = list.map(tauriMonitorToInfo);
+        mstate.tauri = list.length > 1;
+        mstate.scale = dpr(); // 物理像素口径（与 Tauri Monitor 边界一致）
         logInfo("mouse-j1", `多屏缓存刷新：${list.length} 块屏（护边/落点记忆坐标系=物理像素）`);
         return;
       }
     } catch {
       /* 非 Tauri 或查询失败：单屏降级（不报错刷屏——dev 常态） */
     }
-    st.monitorsCache = fallbackMonitors();
-    st.usingTauriMonitors = false;
-    st.coordScale = 1;
+    mstate.monitors = fallbackMonitors();
+    mstate.tauri = false;
+    mstate.scale = 1;
   };
   void refreshMonitors();
 
   /** 指针的虚拟桌面坐标（多屏物理像素 / 单屏窗口坐标——同一缓存内自洽）。 */
   const virtualPoint = (clientX: number, clientY: number): { x: number; y: number } => {
-    if (!st.usingTauriMonitors) return { x: clientX, y: clientY };
-    return toVirtualPoint(clientX, clientY, st.coordScale);
+    if (!mstate.tauri) return { x: clientX, y: clientY };
+    return toVirtualPoint(clientX, clientY, mstate.scale);
   };
 
   /* ---------- F616/F601 生效参数（设备档案×应用档案×全局曲线 合成） ---------- */
@@ -385,14 +421,15 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     if (st.dragActive && st.dragRaf === 0) st.dragRaf = requestAnimationFrame(dragStep);
   };
 
-  /* ---------- 惯性 rAF（F204 平滑档余韵） ---------- */
+  /* ---------- 惯性 rAF（F204 平滑档余韵；纵轴/横轴双通道 v4） ---------- */
 
   const momentumStep = (): void => {
     st.momentumRaf = 0;
     if (inertiaSuspension(st.anchor !== null) === "suspended" || !st.momentumEl) return;
-    const step = st.inertia.tick(performance.now());
+    const step = st.momentumAxis === "x" ? st.inertiaH.tick(performance.now()) : st.inertiaV.tick(performance.now());
     if (step !== 0) {
-      scrollElement(st.momentumEl, step, 0, "auto");
+      if (st.momentumAxis === "x") scrollElement(st.momentumEl, 0, step, "auto");
+      else scrollElement(st.momentumEl, step, 0, "auto");
       st.momentumRaf = requestAnimationFrame(momentumStep);
     }
   };
@@ -448,7 +485,7 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     const now = performance.now();
     if (now - st.memThrottleAt > 2000) {
       st.memThrottleAt = now;
-      const mons = st.monitorsCache ?? fallbackMonitors();
+      const mons = mstate.monitors ?? fallbackMonitors();
       const cur = mons.find((m) => vp.x >= m.x && vp.x <= m.x + m.width && vp.y >= m.y && vp.y <= m.y + m.height) ?? mons[0];
       if (cur) st.memory.remember(cur.edidFingerprint, vp.x, vp.y, mons);
     }
@@ -468,11 +505,19 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     const slowCfg = cfg<{ enabled: boolean; ratio: number; key: SlowTuneKey }>("slowTune", SLOW_DEFAULT);
     const slow = slowTuneGain(modifierActive(slowCfg.key), slowCfg);
     const applied = slow !== null ? { x: b.x * slow, y: b.y * slow } : applyCurve(b.x, b.y, effectiveCurve());
+    // F602 慢速微调 HUD（v4：激活态变化即回调——100ms 反馈红线）。
+    const slowActive = slow !== null;
+    if (slowActive !== st.slowActive) {
+      st.slowActive = slowActive;
+      cb.onSlowTune?.(slowActive, e.clientX, e.clientY);
+    } else if (slowActive) {
+      cb.onSlowTune?.(true, e.clientX, e.clientY); // 跟随指针
+    }
     st.vx += applied.x;
     st.vy += applied.y;
-    // F608 磁吸：视觉微移（真实判定零偏移——hit 检测仍用真实坐标）。
-    let mx = 0;
-    let my = 0;
+    // F608 磁吸：视觉微移 + 渐近平滑（v4——微滑不瞬移；真实判定零偏移不变）。
+    let tx = 0;
+    let ty = 0;
     if (magnetCfg.enabled) {
       const hit = document.elementFromPoint(e.clientX, e.clientY);
       if (hit && isMagnetizableLite(hit)) {
@@ -481,12 +526,13 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
         const dyc = r.top + r.height / 2 - e.clientY;
         const dist = Math.hypot(dxc, dyc);
         if (dist > 0 && dist <= Math.max(4, Math.min(32, magnetCfg.radiusPx || 12)) && r.width < 24 && r.height < 24) {
-          mx = Math.round(dxc * 0.4 * 10) / 10;
-          my = Math.round(dyc * 0.4 * 10) / 10;
+          tx = Math.round(dxc * 0.4 * 10) / 10;
+          ty = Math.round(dyc * 0.4 * 10) / 10;
         }
       }
     }
-    cb.onReplica?.({ x: st.vx + mx, y: st.vy + my });
+    st.magVis = lerpToward(st.magVis, { x: tx, y: ty }, 0.35);
+    cb.onReplica?.({ x: st.vx + st.magVis.x, y: st.vy + st.magVis.y });
   };
 
   /* ---------- 按下：建档 / 档案挂载 / 侧键 / 手势开始 / 中键锚标 ---------- */
@@ -562,7 +608,8 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
         e.preventDefault();
         e.stopPropagation();
         cb.onInk?.(pts); // 墨迹 120ms 淡出由渲染层执行
-        const action = hit.action;
+        // F617 重绑定解析（v4）：轨迹命中 → bindings 覆盖动作。
+        const action = resolveGestureAction(hit, gcfg);
         void dispatchJ1Action(action, "gesture", st.currentScope, { x: e.clientX, y: e.clientY }).then((r) => {
           if (!r.handled) cb.onActionUnhandled?.(action, "gesture");
         });
@@ -591,22 +638,31 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     if (!hit) return;
     const norm = normalizeWheelDelta({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, viewportHeight: window.innerHeight });
 
-    // F606 真实倾斜路径：纯横向事件按倾斜档语义横滚（能力自然生效，无需配置）。
+    // F606 真实倾斜路径：纯横向事件按倾斜档语义横滚 + 横向惯性余韵（v4 对称通道）。
     const tilt = tiltFromWheelEvent(e.deltaX, e.deltaY, cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT).colsPerNotch);
     if (tilt && cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT).enabled) {
       e.preventDefault();
       scrollElement(hit, 0, tilt.dir * tilt.cols * LINE_HEIGHT, "auto");
+      st.inertiaH.feed(tilt.cols, tilt.dir as 1 | -1, performance.now());
+      st.momentumEl = hit;
+      st.momentumAxis = "x";
+      if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
       j1Telemetry.log("wheel", "smooth", "tilt", e.clientX, e.clientY);
       return;
     }
 
-    // Shift+滚轮 → 倾斜等效（无倾斜轮设备的等效入口）。
+    // Shift+滚轮 → 倾斜等效（无倾斜轮设备的等效入口；同享横向惯性余韵）。
     if (e.shiftKey) {
       const tcfg = cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT);
       if (tcfg.enabled) {
         e.preventDefault();
         const dir = norm.deltaY >= 0 ? 1 : -1;
-        scrollElement(hit, 0, dir * Math.max(1, Math.min(12, tcfg.colsPerNotch || 3)) * LINE_HEIGHT, "auto");
+        const cols = Math.max(1, Math.min(12, tcfg.colsPerNotch || 3));
+        scrollElement(hit, 0, dir * cols * LINE_HEIGHT, "auto");
+        st.inertiaH.feed(cols, dir as 1 | -1, performance.now());
+        st.momentumEl = hit;
+        st.momentumAxis = "x";
+        if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
         j1Telemetry.log("wheel", "smooth", "tilt-equivalent", e.clientX, e.clientY);
         return;
       }
@@ -626,13 +682,14 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     e.preventDefault();
     scrollElement(target, sign * lines * LINE_HEIGHT, 0, "auto");
     j1Telemetry.log("wheel", "smooth", `${mode}${passthrough ? "+穿透" : ""}`, e.clientX, e.clientY);
-    // 平滑档：动量交惯性引擎（F204 余韵）。
+    // 平滑档：动量交惯性引擎（F204 余韵；纵轴通道）。
     if (smooth) {
-      st.inertia.feed(lines, sign as 1 | -1, performance.now());
+      st.inertiaV.feed(lines, sign as 1 | -1, performance.now());
       st.momentumEl = target;
+      st.momentumAxis = "y";
       if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
     } else {
-      st.inertia.reset();
+      st.inertiaV.reset();
     }
   };
 
@@ -642,20 +699,20 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     if (document.visibilityState === "visible") {
       void refreshMonitors();
       const mcfg = cfg<ScreenMemoryConfig>("screenMemory", MEMORY_DEFAULT);
-      if (mcfg.enabled && st.usingTauriMonitors) {
-        const mons = st.monitorsCache ?? fallbackMonitors();
-        const cur = mons.find((m) => (window.screenX * st.coordScale) >= m.x && (window.screenX * st.coordScale) <= m.x + m.width) ?? mons[0];
+      if (mcfg.enabled && mstate.tauri) {
+        const mons = mstate.monitors ?? fallbackMonitors();
+        const cur = mons.find((m) => (window.screenX * mstate.scale) >= m.x && (window.screenX * mstate.scale) <= m.x + m.width) ?? mons[0];
         if (cur) {
           const p = st.memory.restore(cur.edidFingerprint, mons);
           if (p) {
             // 物理像素 → 窗口逻辑坐标（副本层与积分器口径）。
-            st.vx = (p.x - window.screenX * st.coordScale) / st.coordScale;
-            st.vy = (p.y - window.screenY * st.coordScale) / st.coordScale;
+            st.vx = (p.x - window.screenX * mstate.scale) / mstate.scale;
+            st.vy = (p.y - window.screenY * mstate.scale) / mstate.scale;
           }
         }
       }
     } else if (st.lastX >= 0) {
-      const mons = st.monitorsCache ?? fallbackMonitors();
+      const mons = mstate.monitors ?? fallbackMonitors();
       const vp = virtualPoint(st.lastX, st.lastY);
       const cur = mons.find((m) => vp.x >= m.x && vp.x <= m.x + m.width && vp.y >= m.y && vp.y <= m.y + m.height) ?? mons[0];
       if (cur) st.memory.remember(cur.edidFingerprint, vp.x, vp.y, mons);
@@ -737,7 +794,7 @@ const SLOW_DEFAULT = { enabled: true, ratio: 0.1, key: "shift" as SlowTuneKey };
 const CURVE_DEFAULT: CurveConfig = { id: "classic", cp1x: 0.35, cp1y: 0.55, cp2x: 0.7, cp2y: 1.0, sens: 1 };
 const OVERLAY_DEFAULT: PointerOverlayLite = { outline: true, shadow: false, ring: false };
 const MAGNET_DEFAULT = { enabled: false, radiusPx: 12 };
-const GESTURE_DEFAULT: GestureLibraryConfig = { enabled: false, trailFadeMs: 120, custom: {} };
+const GESTURE_DEFAULT: GestureLibraryConfig = { enabled: false, trailFadeMs: 120, custom: {}, bindings: {} };
 const SIDE_DEFAULT: SideButtonsConfig = {
   global: { "3": { kind: "action", action: "nav-back" }, "4": { kind: "action", action: "nav-forward" } },
   apps: {},

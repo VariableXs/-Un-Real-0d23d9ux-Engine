@@ -600,3 +600,38 @@
   display: flex;
   gap: 8px;
 }
+
+/* ------------------------------- v4 增量 ------------------------------- */
+
+/* F602 慢速微调 HUD：激活时跟指针的「精修」徽标（优先平面内、零交互）。 */
+.j1-slowtune-hud {
+  position: fixed;
+  z-index: 2147483000;
+  pointer-events: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--vx-accent, #4f7cff) 82%, black);
+  color: var(--vx-pointer-core, #ffffff);
+  font-size: var(--fs-11, 11px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.25);
+}
+
+/* 本页检索框（工具条右侧，与恢复默认同排）。 */
+.j1-toolbar-search {
+  min-width: 200px;
+  margin-left: auto;
+}
+
+/* 十二查展开行（可点行的手型与 hover 反馈）。 */
+.j1x-details-btn {
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+}
+.j1x-details-btn:hover .j1x-mono {
+  text-decoration: underline;
+}

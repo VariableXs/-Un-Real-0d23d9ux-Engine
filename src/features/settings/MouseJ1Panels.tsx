@@ -25,6 +25,12 @@ import { askConfirm } from "../../components/Modal";
 import { autoscrollVelocity, AUTOSCROLL_PRESET } from "../mouse/autoscroll";
 import { activeRuntimeSnapshot } from "../mouse/windowRuntime";
 import { actionHandlerSnapshot, J1_ACTION_REGISTRY, findActionMeta } from "../mouse/actions";
+import { effectiveGestureAction } from "../mouse/gestures";
+import { ShortcutRecorder } from "../mouse/shortcutRecorder";
+import { setSideMapping, XBUTTON1, XBUTTON2 } from "../mouse/sideButtons";
+import { listMonitorsSafe } from "../mouse/windowRuntime";
+import { seamPairKey, setSeamPairOverride } from "../mouse/screen";
+import { twelveChecks, twelveChecksSummary } from "../mouse/evidence";
 
 /* ------------------------------- 通用小件 ------------------------------- */
 
@@ -735,6 +741,227 @@ export function EvidencePanel(): React.ReactElement {
       {audit && !audit.ok && (
         <p className="j1-warning" role="alert">自检失败项：{audit.failures.join("；")}</p>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------- v4 深化面板集 ------------------------------- */
+
+/** F617 手势重绑定（轨迹不变换动作——肌肉记忆不重学，动作才可自定义）。 */
+export function GestureBindingsPanel(): React.ReactElement {
+  const [, tick] = useState(0);
+  useEffect(() => j1Store.subscribe(() => tick((v) => v + 1)), []);
+  const gcfg = { ...(J1_DEFAULTS.gestures as unknown as GestureLibraryConfig), ...j1Store.get("gestures") } as GestureLibraryConfig;
+  const lib = gestureLibrary(gcfg);
+  const bind = (id: string, action: string): void => {
+    const bindings = { ...(gcfg.bindings ?? {}) };
+    if (action) bindings[id] = action;
+    else delete bindings[id];
+    j1Store.set("gestures", { bindings });
+  };
+  return (
+    <div className="j1x-stack">
+      <p className="j1x-hint">画法不动、动作随换（bindings 覆盖原动作）；清空绑定=还原原动作；未知动作派发时显性登记不静默。</p>
+      {lib.map((g) => {
+        const eff = effectiveGestureAction(g.id, gcfg);
+        const bound = (gcfg.bindings ?? {})[g.id];
+        return (
+          <div key={g.id} className="j1x-rowline">
+            <span className="j1x-mono">{g.dirs.join("→")}</span>
+            <span>{g.name}</span>
+            <select aria-label={`重绑定 ${g.name}`} value={bound ?? ""} onChange={(e) => bind(g.id, e.target.value)}>
+              <option value="">（原动作 {g.action}）</option>
+              {J1_ACTION_REGISTRY.filter((a) => a.action !== g.action).map((a) => (
+                <option key={`${a.via}-${a.action}`} value={a.action}>{a.name}（{a.action}）</option>
+              ))}
+            </select>
+            {bound && bound !== g.action && <span className="j1x-badge j1x-badge--on">已绑定 {findActionMeta(bound)?.name ?? bound}</span>}
+            {!bound && <span className="j1x-hint">→ {eff}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** F615 快捷键录制（按下你要的组合——手填字符串退役）。 */
+export function SideShortcutRecordPanel(): React.ReactElement {
+  const [, tick] = useState(0);
+  useEffect(() => j1Store.subscribe(() => tick((v) => v + 1)), []);
+  const recRef = useRef(new ShortcutRecorder());
+  const [recording, setRecording] = useState<number | null>(null);
+  const s = j1Store.get("sideButtons") as unknown as SideButtonsConfig;
+  const startRecord = (button: number): void => {
+    setRecording(button);
+    recRef.current.start([], (r) => {
+      setRecording(null);
+      if (!r) {
+        pushToast("info", "录制已取消（Esc）");
+        return;
+      }
+      if (r.conflicts.length > 0) {
+        pushToast("error", `组合 ${r.keys} 与已有声明冲突`, r.conflicts.join("；"));
+        return;
+      }
+      setSideMapping({ global: true }, button, { kind: "shortcut", keys: r.keys });
+      pushToast("success", `侧键 ${bLabel(button)} 已映射到 ${r.keys}`);
+      tick((v) => v + 1);
+    });
+  };
+  const bLabel = (b: number): string => (b === XBUTTON1 ? "1（后退键位）" : "2（前进键位）");
+  return (
+    <div className="j1x-stack">
+      <p className="j1x-hint">按「录制」后直接按下组合键（修饰键定序 Ctrl+Alt+Shift+Meta，Esc 取消）；冲突与 F244 注册行同源预检。</p>
+      {[XBUTTON1, XBUTTON2].map((b) => {
+        const cur = s.global?.[String(b)];
+        return (
+          <div key={b} className="j1x-rowline">
+            <span className="j1x-mono">XButton{b === XBUTTON1 ? "1" : "2"}</span>
+            <span className="j1x-badge">{cur?.kind === "shortcut" ? `快捷键 ${(cur as { keys: string }).keys}` : cur?.kind === "action" ? `动作 ${(cur as { action: string }).action}` : "未映射"}</span>
+            {recording === b ? (
+              <span className="j1x-badge j1x-badge--warn">录制中…按组合键或 Esc 取消</span>
+            ) : (
+              <MiniButton onClick={() => startRecord(b)}>录制快捷键</MiniButton>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** F607 屏对护边覆盖（按屏对独立开关——覆盖 > 全局）。 */
+export function SeamPairPanel(): React.ReactElement {
+  const [, tick] = useState(0);
+  useEffect(() => j1Store.subscribe(() => tick((v) => v + 1)), []);
+  const [monitors, setMonitors] = useState<Awaited<ReturnType<typeof listMonitorsSafe>>>([]);
+  useEffect(() => {
+    let alive = true;
+    void listMonitorsSafe().then((m) => {
+      if (alive) setMonitors(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const s = j1Store.get("seamGuard");
+  const pairs = (s.pairs as Record<string, { enabled: boolean }> | undefined) ?? {};
+  if (monitors.length <= 1) {
+    return <p className="j1x-empty">单屏环境——护边按全局开关工作；接上第二块屏后此处出现屏对清单（换线不乱：按 EDID 指纹配对）。</p>;
+  }
+  const combos: [string, string][] = [];
+  for (let i = 0; i < monitors.length; i++) {
+    for (let j = i + 1; j < monitors.length; j++) {
+      combos.push([monitors[i]!.edidFingerprint, monitors[j]!.edidFingerprint]);
+    }
+  }
+  return (
+    <div className="j1x-stack">
+      <p className="j1x-hint">每对相邻屏的护边可独立关/开（比如两块垂直对齐误差大的屏关掉护边）；「跟随全局」=删除覆盖。</p>
+      {combos.map(([a, b]) => {
+        const key = seamPairKey(a, b);
+        const cur = pairs[key]?.enabled;
+        return (
+          <div key={key} className="j1x-rowline">
+            <span className="j1x-mono">{a.split(":").pop() ?? a} ↔ {b.split(":").pop() ?? b}</span>
+            <select
+              aria-label={`屏对护边 ${key}`}
+              value={cur === undefined ? "" : cur ? "on" : "off"}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  const clean = { ...pairs };
+                  delete clean[key];
+                  j1Store.set("seamGuard", { pairs: clean });
+                } else {
+                  j1Store.set("seamGuard", { pairs: setSeamPairOverride(pairs, a, b, v === "on") });
+                }
+                tick((v2) => v2 + 1);
+              }}
+            >
+              <option value="">（跟随全局）</option>
+              <option value="on">护边开</option>
+              <option value="off">护边关（直通）</option>
+            </select>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 章十三 时间轴回放（操作故事线按幕步进——挫败信号归属到幕）。 */
+export function ReplayPanel(): React.ReactElement {
+  const [, tick] = useState(0);
+  useEffect(() => j1Store.subscribe(() => tick((v) => v + 1)), []);
+  const [idx, setIdx] = useState(0);
+  const tl = j1Telemetry.replayTimeline();
+  if (tl.scenes.length === 0) {
+    return <p className="j1x-empty">暂无可回放时间轴——操作桌面后回到这里（事件环形缓冲 500 条，隐私红线：只记行为不记内容）。</p>;
+  }
+  const i = Math.min(idx, tl.scenes.length - 1);
+  const scene = tl.scenes[i]!;
+  return (
+    <div className="j1x-stack">
+      <div className="j1x-inline">
+        <MiniButton onClick={() => setIdx((v) => Math.max(0, v - 1))}>上一幕</MiniButton>
+        <span className="j1x-hint">幕 {i + 1}/{tl.scenes.length} · {new Date(scene.start).toLocaleTimeString()} 起 {scene.events.length} 个事件{scene.frustrations.length > 0 ? ` · ${scene.frustrations.length} 条挫败信号` : ""}</span>
+        <MiniButton onClick={() => setIdx((v) => Math.min(tl.scenes.length - 1, v + 1))}>下一幕</MiniButton>
+      </div>
+      <div className="j1x-stack">
+        {scene.events.slice(-14).map((e, k) => (
+          <div key={`${e.at}-${k}`} className="j1x-rowline">
+            <span className="j1x-mono">{new Date(e.at).toLocaleTimeString()}</span>
+            <span className={e.verdict === "smooth" ? "j1x-badge" : e.verdict === "error" || e.verdict === "no-feedback" ? "j1x-badge j1x-badge--warn" : "j1x-badge"}>{e.kind}</span>
+            <span className="j1x-hint">{e.target} · {e.verdict}{e.durMs > 0 ? ` · ${e.durMs}ms` : ""} · 象限{e.zone}</span>
+          </div>
+        ))}
+        {scene.frustrations.map((f, k) => (
+          <div key={`f-${f.at}-${k}`} className="j1x-rowline">
+            <span className="j1x-badge j1x-badge--warn">⚠ {f.kind}</span>
+            <span className="j1x-hint">{f.detail}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 十二查对账表（F601-F620 × 通用十二查——机器可判者真执行，实机项如实 gated）。 */
+export function TwelveChecksPanel(): React.ReactElement {
+  const [open, setOpen] = useState<string | null>(null);
+  const audits = twelveChecks();
+  const summary = twelveChecksSummary();
+  const statusChip = (s: string): React.ReactElement => (
+    <span className={s === "pass" ? "j1x-badge j1x-badge--on" : s === "partial" ? "j1x-badge" : "j1x-badge j1x-badge--warn"}>
+      {s === "pass" ? "绿" : s === "partial" ? "半（实机待）" : "随闸门"}
+    </span>
+  );
+  return (
+    <div className="j1x-stack">
+      <p className="j1x-hint">
+        20 项 × 十二查：性能线探针全过 {summary.probePass}/{summary.items}；gated（实机日）{summary.gated} 条、partial（逻辑绿+实机待）{summary.partial} 条——数字不冒领，实机项等实机日。
+      </p>
+      {audits.map((a) => (
+        <div key={a.f} className="j1x-stack">
+          <button type="button" className="j1x-rowline j1x-details-btn" aria-expanded={open === a.f} onClick={() => setOpen(open === a.f ? null : a.f)}>
+            <span className="j1x-mono">{a.f}</span>
+            <span>{a.name}</span>
+            <span className={a.logicGreen ? "j1x-badge j1x-badge--on" : "j1x-badge j1x-badge--warn"}>{a.logicGreen ? "逻辑面收工" : "有未过探针"}</span>
+          </button>
+          {open === a.f && (
+            <div className="j1x-stack" style={{ paddingLeft: 18 }}>
+              {a.checks.map((c) => (
+                <div key={c.no} className="j1x-rowline">
+                  {statusChip(c.status)}
+                  <span className="j1x-mono">查{c.no}</span>
+                  <span className="j1x-hint">{c.name}：{c.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
