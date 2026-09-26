@@ -649,3 +649,26 @@
 2. **验证抓出真实现缺陷 6 处**（buddy merge 预判、clocklru 插入置位、edfq WFQ 退化为 FIFO、inflate zlib 头未剥离、inflate prev 行 off-by-one、dag 同任务多派），全部修复并以回归判例固化——判例账 = 缺陷账，零静默。
 3. **逐域计数** 63/37/25/30/35/30/26/31/30/25/31/37/30/43/35/34/45，无一触 MAX_CHECKS=64、零截断。
 4. **舱内外一致**：12 件与挂接域文件双侧逐字节 diff 一致；全量重门禁随闸门（§12.3/§13.3 口径）。
+
+## 批次五对账（机制总成·续九件 · 638/638 全绿收口）
+
+### 批次五新增检查项（+51 · 逐件登记）
+
+| 件 | 挂接域（+项数） | CheckSet 判例登记（名 = 语义） |
+| --- | --- | --- |
+| mech_bloom | F046（+6） | bloom_no_false_negative=零假阴性硬面 · bloom_fpr_near_theory=FPR 实测 vs (1-e^{-kn/m})^k 对拍 · cb_delete_removes=计数布隆删除生效 · cb_saturate_honest=计数器饱和 15 钳制不翻转 · cb_no_false_negative=计数布隆零假阴性 · bloom_density_bounded=位密度有界 |
+| mech_cfs | F047（+6） | cfs_fair_share=8:2:1 权重份额趋向 · cfs_nice_order=nice 低者先行 · cfs_starvation_free=新实体 vruntime 锚定不饿死 · cfs_min_vruntime_monotonic=基准单调不回退 · cfs_escape_guard=睡醒实体逃逸防护 · cfs_pick_deterministic=同 vruntime 确定序 |
+| mech_coalesce | F050（+5） | co_high_rate_saves=高速率 10:1 合并 · co_latency_cap=最老事件 ≤ MAX_LATENCY · co_window_grows=密集流窗口上探 · co_window_shrinks=稀疏流窗口回落 · co_full_batch_flush=批满即报不丢 |
+| mech_gov | F048（+6） | od_burst_to_max=80% 阈值一步满频 · od_down_slow=降频逐级节流 · od_mid_map=中载映射落表 · su_proportional=util 比例直映 · su_rate_limit=限频窗内 pending 压制 · su_cap_clamped=util 饱和钳制 |
+| mech_oom | F045（+6） | oom_biggest_hog=最大占用者优先 · oom_protected_skipped=-1000 豁免跳过 · oom_adj_bias=adj 偏置传导评分 · oom_pgtable_counted=页表页计账 · oom_cascade=连环处决至水位停 · oom_no_victim_honest=全员豁免诚实报错 |
+| mech_readahead | F044（+5） | ra_sequential_grows=顺序命中窗口翻倍 · ra_random_shrinks=随机访问降窗 · ra_window_capped=窗口 32 页封顶 · ra_hit_accounted=命中账与行为一致 · ra_async_overlap=预读与缺页解耦 |
+| mech_slab | F052（+7） | slab_roundtrip=申请释放指纹回环 · slab_inbounds_ok=恰好写满合法 · slab_overflow_caught=越界 1 字节金丝雀必检 · slab_double_free=双重释放检出 · slab_class_map=200→256 类正确 · slab_churn_stable=300 轮峰值零增长 · slab_exhaust_honest=耗尽诚实计数 |
+| mech_thermal | F048（+4） | th_debounce_enter=进入双样本确认 · th_debounce_exit=退出双样本+迟滞 · th_sticky_critical=Critical 粘滞仅复位可离 · th_cap_mapping=档位→频率封顶映射 |
+| mech_zram | F045（+6） | zr_roundtrip_text=文本页编解码回环 · zr_roundtrip_binary=二进制图样回环 · zr_zero_page=全零页高压缩 · zr_overlap_run=重叠匹配（off=1）语义 · zr_incompressible_raw=不可压直存诚实标志 · zr_saved_accounting=节省记账与 2:1 门槛 |
+
+### 批次五对账结论
+
+1. **638/638 全绿**：批次五 +51 项全部锚定主册判据的机制本体（LZ4 块格式、CFS vruntime、ondemand/schedutil、oom_badness、SLAB 金丝雀、热状态机迟滞），零无锚检查项；逐件计数 6/6/5/6/6/5/7/4/6，无一触 MAX_CHECKS=64、零截断。
+2. **验证抓出真实现缺陷 5 处**（zram 流尾匹配被拒、slab 顶层吞 Corrupt、gov 限频窗永不开、coalesce EWMA 定点单位错、gov 降频判例 off-by-one）+ 判例修正 4 处，全部修复并以回归判例固化——判例账 = 缺陷账，零静默（明细见完成报告 §14.2）。
+3. **舱内外一致**：59 文件双侧逐字节 cmp 一致；主 crate 全量门禁随闸门（§12.3/§13.3/§14.3 口径）。
+4. **累计口径**：纯功能 19,114 / 87,425 = 21.9%；检查项 638；单测 381。批次六（集成对接件）已登记于完成报告 §14.4 续作清单。

@@ -3,6 +3,14 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-K1 性能域·一支队（F041-F057 深化批次五「机制总成·续」· 隔离验证+检查项对账全绿收口）
+
+**kernel/varix/src/perfstar/ 九件机制本体新增**（2026-09-28，纯功能 16,535 → 19,114 = 21.9%）：
+
+- **九件新增**：mech_bloom（布隆+计数布隆，F046 合并窗成员判定零假阴性）/ mech_cfs（CFS 公平调度 vruntime 本体，F047）/ mech_coalesce（EWMA 自适应事件合批器，F050）/ mech_gov（ondemand+schedutil 双调频策略器，F048）/ mech_oom（badness OOM 选择器+连环处决，F045）/ mech_readahead（顺序预读窗口状态机，F044）/ mech_slab（七尺寸类 SLAB+金丝雀，F052）/ mech_thermal（四档热节流状态机，F197 联动）/ mech_zram（LZ4 块编解码+压缩页池，F045）。
+- **缺陷账**：验证抓出真实现缺陷 5 处全部闭合（zram 合法流尾被拒、slab 顶层吞 Corrupt、gov 限频窗永不开、coalesce EWMA 定点单位错、gov 判例 off-by-one）+ 判例修正 4 处，零静默。
+- **验证**：隔离舱 cargo test 381/381 全绿（+59）· CheckSet 638/638 全绿（+51）· 0 warning · 舱→主 crate 59 文件逐字节一致；主 crate 顺手收口 robust.rs 域表计数漂移（351→352），余 229 错误为他域在途（随闸门重跑全量门禁）。
+
 ## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次八 · 工单五件兑现 · 隔离验证+检查项对账）
 
 **src/features/u3/ 五台引擎新增**（2026-09-28，累计 28,053 → 28,739 = 61.8%）：
