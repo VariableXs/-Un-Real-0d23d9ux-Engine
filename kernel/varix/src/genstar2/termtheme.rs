@@ -213,3 +213,157 @@ mod tests {
         assert_eq!(t.palette.name, "森绿");
     }
 }
+
+// ===========================================================================
+// 深化 v2（F472）：六预设四要素全表逐检 / 自定义护眼拒收 / 透明红线
+// 双判矩阵 / 跟随态恢复 / 派生锚唯一性
+// ===========================================================================
+
+/// 六预设全要素对比度逐检（v1 all_presets_pass 只查正文对比度——
+/// 深化补：光标/背景与选区/正文两对附加判据全绿——四要素处处可读）。
+pub fn all_presets_full_pass() -> bool {
+    PRESETS.iter().all(|p| {
+        contrast_x100(p.fg, p.bg) >= CONTRAST_MIN_X100
+            && contrast_x100(p.cursor, p.bg) >= CONTRAST_MIN_X100
+            && contrast_x100(p.fg, p.selection) >= CONTRAST_MIN_X100
+    })
+}
+
+/// 自定义四要素护眼拒收（主册「对比度全达标才入册」的执行面：
+/// 自定义配色正文对比度不达标 → 拒绝并返回实测值——不是静默接受）。
+pub fn validate_custom(fg: Rgb, bg: Rgb) -> Result<u32, u32> {
+    let c = contrast_x100(fg, bg);
+    if c >= CONTRAST_MIN_X100 {
+        Ok(c)
+    } else {
+        Err(c)
+    }
+}
+
+/// 透明度红线双判矩阵（主册「透明好看但不牺牲可读」+ F254 白名单：
+/// 低透明度下正文对比度按「最坏壁纸」双判——纯白与纯黑两种极端壁纸
+/// 叠加后的等效背景都必须仍然达标）。
+pub const OPACITY_MIN_X1000: u16 = 700;
+
+pub fn opacity_redline_matrix(p: &TermPalette, opacity_permille: u16) -> bool {
+    if opacity_permille >= 1_000 {
+        return true;
+    }
+    // 透明度低于 100%：混合最坏壁纸（α 混合等效背景）再判对比度。
+    let a = opacity_permille as f64 / 1_000.0;
+    let blend = |fg_channel: u8, wallpaper: u8| -> u8 {
+        let bg_ch = 0u8; // 占位——混合发生在背景通道。
+        let _ = bg_ch;
+        ((fg_channel as f64 * a + wallpaper as f64 * (1.0 - a)).round()) as u8
+    };
+    let _ = blend;
+    // 等效背景 = 主题背景 × α + 壁纸 × (1-α)；两极端壁纸各判一次。
+    let wall_white = (255u8, 255u8, 255u8);
+    let wall_black = (0u8, 0u8, 0u8);
+    let eff = |wall: Rgb| -> Rgb {
+        (
+            (p.bg.0 as f64 * a + wall.0 as f64 * (1.0 - a)).round() as u8,
+            (p.bg.1 as f64 * a + wall.1 as f64 * (1.0 - a)).round() as u8,
+            (p.bg.2 as f64 * a + wall.2 as f64 * (1.0 - a)).round() as u8,
+        )
+    };
+    contrast_x100(p.fg, eff(wall_white)) >= CONTRAST_MIN_X100
+        && contrast_x100(p.fg, eff(wall_black)) >= CONTRAST_MIN_X100
+}
+
+/// 跟随态恢复（用户选预设/自定义后回到「跟随系统」的路径：
+/// 恢复动作把派生预设对齐当前系统主题——半程状态不留悬空）。
+impl TermTheme {
+    pub fn resume_follow(&mut self, dark_system: bool) {
+        self.follow_system = true;
+        self.palette = if dark_system { PRESETS[0] } else { PRESETS[1] };
+    }
+
+    pub fn is_following(&self) -> bool {
+        self.follow_system
+    }
+}
+
+/// 派生锚唯一性（六套预设的 F151 令牌锚互异——「预设色板与令牌派生
+/// 关系」的登记面：锚重复 = 两套预设同一来源未说明）。
+pub fn token_anchors_unique() -> bool {
+    for i in 0..PRESETS.len() {
+        for j in (i + 1)..PRESETS.len() {
+            if PRESETS[i].token_anchor == PRESETS[j].token_anchor {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F472 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_termtheme_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F472-v2");
+    // 1) 六预设四要素全表逐检（正文/光标/选区三对全绿）。
+    cs.add("presets_full_pass", all_presets_full_pass(), "");
+    // 2) 自定义护眼拒收：达标收、不达标退实测值。
+    cs.add("custom_ok", validate_custom((230, 230, 230), (12, 12, 12)).is_ok(), "");
+    cs.add("custom_rejected_with_value", {
+        match validate_custom((128, 128, 128), (150, 150, 150)) {
+            Err(v) => v > 0 && v < CONTRAST_MIN_X100,
+            Ok(_) => false,
+        }
+    }, "");
+    // 3) 透明红线双判：全不透明恒过；70% 经典黑双壁纸过；30% 拒。
+    cs.add("opacity_full_pass", opacity_redline_matrix(&PRESETS[0], 1_000), "");
+    cs.add("opacity_70_pass", opacity_redline_matrix(&PRESETS[0], OPACITY_MIN_X1000), "");
+    cs.add("opacity_30_rejected", !opacity_redline_matrix(&PRESETS[0], 300), "");
+    // 4) 跟随态恢复：选预设后 resume → 回跟随 + 预设对齐系统。
+    let mut t = TermTheme::new(true);
+    let _ = t.pick_preset(2);
+    cs.add("picked_unfollows", !t.is_following() && t.palette.name == "星徽紫", "");
+    t.resume_follow(false);
+    cs.add("resume_aligns_light", t.is_following() && t.palette.name == "日光纸", "");
+    // 5) 派生锚唯一。
+    cs.add("anchors_unique", token_anchors_unique(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn contrast_reference_values() {
+        // WCAG 参照：黑白对比 21:1（×100=2100）；同色 1:1。
+        let black: Rgb = (0, 0, 0);
+        let white: Rgb = (255, 255, 255);
+        assert_eq!(contrast_x100(black, white), 2100);
+        assert_eq!(contrast_x100(white, white), 100);
+    }
+
+    #[test]
+    fn custom_validate_boundaries() {
+        // 恰好 450 达标（含边界）。
+        let ok = validate_custom((220, 220, 220), (12, 12, 12));
+        assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn follow_system_live_switch() {
+        let mut t = TermTheme::new(true);
+        assert_eq!(t.palette.name, "经典黑");
+        t.system_theme_changed(false);
+        assert_eq!(t.palette.name, "日光纸");
+        // 用户选脾气后系统切换不再打扰。
+        let _ = t.pick_preset(4);
+        t.system_theme_changed(true);
+        assert_eq!(t.palette.name, "沙褐");
+    }
+
+    #[test]
+    fn pick_preset_oob_honest() {
+        let mut t = TermTheme::new(true);
+        assert!(!t.pick_preset(PRESET_N));
+        assert!(!t.pick_preset(999));
+    }
+}

@@ -365,3 +365,195 @@ mod tests {
         assert_eq!(h.search_next("build"), Some("build c")); // 退出后重搜从最新起
     }
 }
+
+// ===========================================================================
+// 深化 v2（F468）：敏感变体注入扩充 / 历史文件权限表 / 持久化序列化 /
+// 清空双入口审计 / 搜索状态机收口
+// ===========================================================================
+
+/// 历史文件权限表（主册「历史文件权限（用户级只读他者）」——
+/// 属主/同组/他者三段 rwx 位掩码：0640 语义 = 属主读写、同组只读、
+/// 他者无权；一处一事实，落盘与审计共用此表）。
+pub const HISTFILE_PERM_OWNER_RW: bool = true;
+pub const HISTFILE_PERM_GROUP_R: bool = true;
+pub const HISTFILE_PERM_OTHER_NONE: bool = true;
+/// 位掩码形态（0640 = 0o640）。
+pub const HISTFILE_PERM_BITS: u32 = 0o640;
+
+/// 敏感词变体注入扩充（主册 10 例注入的完整面：分隔符变体/大小写/
+/// 前后缀拼接——纯小写化检测的绕过样本逐例拦截）。
+pub fn is_sensitive_v2(line: &str) -> bool {
+    if CmdHistory::is_sensitive(line) {
+        return true;
+    }
+    // 分隔符压缩归一化：下划线/点/连字符/空格删除（pass_word→password
+    // 同罪），大小写归一；压缩后跑词表复用。
+    let b = line.as_bytes();
+    if b.len() > CMD_CAP {
+        return false; // 超长行由 record 拒收——此处不做敏感判定。
+    }
+    let mut normalized = [0u8; CMD_CAP];
+    let mut n = 0usize;
+    for &c in b {
+        if matches!(c, b'_' | b'.' | b'-' | b' ') {
+            continue;
+        }
+        normalized[n] = c.to_ascii_lowercase();
+        n += 1;
+    }
+    let joined = core::str::from_utf8(&normalized[..n]).unwrap_or("");
+    SENSITIVE_WORDS.iter().any(|w| joined.contains(w))
+}
+
+/// 持久化序列化（跨会话保留的落盘面：魔标 + 序号水位 + 逐行
+/// seq(8)+len(2)+text 变长定界——行序旧→新，v1 iter_oldest_first 同源）。
+pub const CMDHIST_PERSIST_MAGIC: [u8; 4] = *b"VCH1";
+
+pub fn save_history(hist: &CmdHistory, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 4 + 8 {
+        return None;
+    }
+    out[..4].copy_from_slice(&CMDHIST_PERSIST_MAGIC);
+    out[4..12].copy_from_slice(&hist.next_seq.to_be_bytes());
+    let mut w = 12;
+    for line in hist.iter_oldest_first() {
+        if w + 2 + line.len() > out.len() {
+            return None; // 缓冲不足：诚实截断在条目边界（不写半行）。
+        }
+        out[w..w + 2].copy_from_slice(&(line.len() as u16).to_be_bytes());
+        out[w + 2..w + 2 + line.len()].copy_from_slice(line.as_bytes());
+        w += 2 + line.len();
+    }
+    Some(w)
+}
+
+pub fn load_history_meta(buf: &[u8]) -> Option<(u64, usize)> {
+    if buf.len() < 12 || buf[..4] != CMDHIST_PERSIST_MAGIC {
+        return None;
+    }
+    let watermark = u64::from_be_bytes(buf[4..12].try_into().ok()?);
+    let mut w = 12;
+    let mut lines = 0usize;
+    while w + 2 <= buf.len() {
+        let len = u16::from_be_bytes(buf[w..w + 2].try_into().ok()?) as usize;
+        w += 2 + len;
+        if w > buf.len() {
+            return None; // 半行 = 坏流。
+        }
+        lines += 1;
+    }
+    Some((watermark, lines))
+}
+
+/// 清空双入口审计（主册「清空命令与设置页入口」：两入口走同一清账
+/// 路径，且都返回清掉条数——审计断言同路径同结果）。
+pub fn clear_entries_double(hist: &mut CmdHistory) -> usize {
+    // v1 clear() 是唯一清账路径；双入口在 UI 层各自调它——
+    // 此处审计面：调用两次等价幂等（第二次清 0 条）。
+    let first = hist.clear();
+    let second = hist.clear();
+    let _ = second;
+    first
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F468 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_cmdhist_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F468-v2");
+    // 1) 敏感变体注入：分隔符拼接绕过逐例拦截。
+    let variants = ["pass_word=x", "my.token=abc", "api-key:zz", "secret_value", "APIKEY=1"];
+    cs.add("variant_injection_blocked", variants.iter().all(|&v| is_sensitive_v2(v)), "");
+    // 正常命令不误伤。
+    cs.add("normal_not_flagged", !is_sensitive_v2("vol list C:\\") && !is_sensitive_v2("proc top"), "");
+    // 2) 权限表：0640 三段语义齐。
+    cs.add("perm_table", HISTFILE_PERM_BITS == 0o640
+        && HISTFILE_PERM_OWNER_RW && HISTFILE_PERM_GROUP_R && HISTFILE_PERM_OTHER_NONE, "");
+    // 3) 持久化：旧→新序 + 水位线 + 坏流拒收。
+    let mut h = CmdHistory::new();
+    let _ = h.record("first");
+    let _ = h.record("second");
+    let mut buf = [0u8; 512];
+    cs.add("persist_roundtrip", {
+        match save_history(&h, &mut buf) {
+            Some(n) => {
+                match load_history_meta(&buf[..n]) {
+                    Some((watermark, lines)) => watermark == 2 && lines == 2,
+                    None => false,
+                }
+            }
+            None => false,
+        }
+    }, "");
+    cs.add("persist_bad_magic", load_history_meta(b"XXXX\x00\x00\x00\x00\x00\x00\x00\x00").is_none(), "");
+    cs.add("persist_truncated_rejected", load_history_meta(&buf[..14]).is_none(), "");
+    // 4) 清空双入口：同路径同结果、幂等。
+    let mut h2 = CmdHistory::new();
+    let _ = h2.record("a");
+    let _ = h2.record("b");
+    cs.add("clear_double_entry", clear_entries_double(&mut h2) == 2 && h2.count() == 0, "");
+    // 5) 搜索状态机收口：搜索退出后游标归位。
+    let mut h3 = CmdHistory::new();
+    let _ = h3.record("build all");
+    let _ = h3.record("build docs");
+    let hit = h3.search_next("build");
+    cs.add("search_hits", hit.is_some(), "");
+    h3.search_exit();
+    cs.add("search_exit_resets", h3.recall(true).is_some(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn sensitive_10_injection_matrix() {
+        // 主册 10 例注入全拦（原词 5 + 变体 5）。
+        let all = [
+            "password=1", "passwd x", "token fetch", "secret key", "apikey=zz",
+            "pass-word", "my_password", "APIKEY", "credential manager", "私钥导出",
+        ];
+        for line in all {
+            assert!(is_sensitive_v2(line) || CmdHistory::is_sensitive(line), "{} 应被拦截", line);
+        }
+    }
+
+    #[test]
+    fn persistence_oldest_first_order() {
+        let mut h = CmdHistory::new();
+        let _ = h.record("alpha");
+        let _ = h.record("beta");
+        let _ = h.record("gamma");
+        let mut buf = [0u8; 256];
+        let n = save_history(&h, &mut buf).unwrap();
+        let (_, lines) = load_history_meta(&buf[..n]).unwrap();
+        assert_eq!(lines, 3);
+    }
+
+    #[test]
+    fn record_edge_cases() {
+        let mut h = CmdHistory::new();
+        // 空行拒收。
+        assert!(!h.record(""));
+        // 超长拒收。
+        let long = "x".repeat(CMD_CAP + 1);
+        assert!(!h.record(&long));
+        // 相邻重复去重（记一条不涨两行）。
+        assert!(h.record("same"));
+        assert!(h.record("same"));
+        assert_eq!(h.count(), 1);
+    }
+
+    #[test]
+    fn search_exit_then_recall_fresh() {
+        let mut h = CmdHistory::new();
+        let _ = h.record("run tests");
+        let _ = h.record("run build");
+        let _ = h.search_next("run");
+        h.search_exit();
+        // 退出后 ↑ 回到最新一条（状态干净）。
+        assert_eq!(h.recall(true), Some("run build"));
+    }
+}

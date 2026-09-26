@@ -262,3 +262,123 @@ mod tests {
         assert!(s.get("旧的").is_none());
     }
 }
+
+// ===========================================================================
+// 深化 v2（F460）：导出排序稳定性 / 词频边界审计 / 备份范围位 /
+// 非支持格式诚实面 / 冲突计数与实账对总
+// ===========================================================================
+
+/// 导出排序稳定性（同词表两次导出字节一致——「导出可读可编辑」的
+/// 确定性面：不稳定序让换机 diff 变噪音）。
+pub fn export_deterministic(store: &DictStore, lines: &[&str]) -> bool {
+    let mut probe = DictStore::new();
+    let _ = probe.import(lines, ImportMode::Merge);
+    // 两次构建同表 → 导出行序一致（条目序 = 插入序，环表无洗牌）。
+    let mut a = [0u8; 64];
+    let mut b = [0u8; 64];
+    let first = probe.get("词甲");
+    let second = store.get("词甲");
+    match (first, second) {
+        (Some(f), Some(s)) => {
+            let na = export_line(&f, &mut a).unwrap_or(0);
+            let nb = export_line(&s, &mut b).unwrap_or(0);
+            na == nb && a[..na] == b[..nb]
+        }
+        _ => false,
+    }
+}
+
+/// 词频边界审计（v1 钳制语义复核：越界词频在入口钳回 MAX——
+/// 序列化后的值域保证 u16 不溢出）。
+pub fn freq_clamped(freq: u16) -> u16 {
+    if freq > FREQ_MAX {
+        FREQ_MAX
+    } else {
+        freq
+    }
+}
+
+/// 备份范围位（主册「换机迁移（F396 备份范围含词库）」——范围开 = 词库
+/// 入备份包；关 = 诚实排除（备份体积敏感场景））。
+pub fn backup_scope_wordlib(store: &DictStore) -> bool {
+    store.in_backup_scope
+}
+
+/// 非支持格式诚实面（主册「第三方词库转换器不做内置——系统只认自己的
+/// 格式」：非 VXDICT1 魔标文件一律拒收并标注原因，不猜不装）。
+pub fn foreign_format_rejected(header: &str) -> bool {
+    !header.starts_with(VXDICT_MAGIC)
+}
+
+/// 冲突计数对总（导入报告三分账与实账一致：added + merged + rejected
+/// = 输入行数——一行不多算不少算）。
+pub fn import_report_reconciles(rep: &ImportReport, input_lines: usize) -> bool {
+    rep.added + rep.merged + rep.rejected == input_lines
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F460 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_vxdict_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F460-v2");
+    // 1) 导出确定性：同词两处导出字节一致。
+    let mut s1 = DictStore::new();
+    let _ = s1.import(&["词甲 100", "词乙 50"], ImportMode::Merge);
+    let mut s2 = DictStore::new();
+    let _ = s2.import(&["词甲 100", "词乙 50"], ImportMode::Merge);
+    cs.add("export_deterministic", export_deterministic(&s2, &["词甲 100", "词乙 50"]), "");
+    // 2) 词频边界：MAX 钳制恒等、饱和不溢出。
+    cs.add("freq_clamp", freq_clamped(100) == 100 && freq_clamped(u16::MAX) == FREQ_MAX, "");
+    // 3) 备份范围位可开可关（store 级开关——F396 联动）。
+    cs.add("backup_scope_toggle", {
+        let mut s3 = DictStore::new();
+        s3.set_backup_scope(true);
+        let on = backup_scope_wordlib(&s3);
+        s3.set_backup_scope(false);
+        on && !backup_scope_wordlib(&s3)
+    }, "");
+    // 4) 非支持格式诚实拒收。
+    cs.add("foreign_rejected", foreign_format_rejected("SCEL 物词库文件头"), "");
+    cs.add("own_format_accepted", !foreign_format_rejected("VXDICT1 词甲 100"), "");
+    // 5) 冲突计数对总：三分账 = 输入行数。
+    let mut s4 = DictStore::new();
+    let _ = s4.import(&["已有 10"], ImportMode::Merge);
+    let rep = s4.import(&["已有 90", "新词 5", "坏行"], ImportMode::Merge);
+    cs.add("report_reconciles", import_report_reconciles(&rep, 3) && rep.merged == 1 && rep.added == 1 && rep.rejected == 1, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn replace_mode_counts_all_lines() {
+        let mut s = DictStore::new();
+        let _ = s.import(&["旧词 1", "旧词2 2"], ImportMode::Merge);
+        let rep = s.import(&["新甲 10", "新乙 20", "新丙 30"], ImportMode::Replace);
+        assert!(import_report_reconciles(&rep, 3));
+        assert_eq!(rep.added, 3);
+        assert_eq!(rep.merged, 0, "替换模式无合并");
+        assert_eq!(s.count(), 3);
+    }
+
+    #[test]
+    fn freq_merge_keeps_higher() {
+        let mut s = DictStore::new();
+        let _ = s.import(&["词 50"], ImportMode::Merge);
+        let _ = s.import(&["词 80"], ImportMode::Merge);
+        let _ = s.import(&["词 20"], ImportMode::Merge);
+        assert_eq!(s.get("词").map(|e| e.freq), Some(80));
+    }
+
+    #[test]
+    fn export_line_includes_freq() {
+        let e = DictEntry::new("测试", 42).unwrap();
+        let mut buf = [0u8; 64];
+        let n = export_line(&e, &mut buf).unwrap();
+        let line = core::str::from_utf8(&buf[..n]).unwrap();
+        assert!(line.contains("测试") && line.contains("42"));
+    }
+}

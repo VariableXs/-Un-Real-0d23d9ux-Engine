@@ -167,3 +167,104 @@ mod tests {
         assert!(reconciliation(I_DOMAIN_TOTAL - DIFF_REGISTRY.len(), DIFF_REGISTRY.len()));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F475）：差异登记表三栏完整性全表逐检 / 对齐账自动化对总 /
+// 复审条款时间戳审计 / 公开同步可验证性
+// ===========================================================================
+
+/// 差异登记表全表逐检（v1 registry_complete 的深化版：三栏非空 + 理由
+/// 栏不含 TODO 式占位 + F 编号格式合法——全表逐条过，一条不合格即红）。
+pub fn registry_full_audit() -> bool {
+    DIFF_REGISTRY.iter().all(|e| {
+        entry_format_ok(e)
+            && !e.reason.contains("TODO")
+            && !e.reason.contains("待定")
+            && e.feature.starts_with('F')
+            && e.feature.len() == 4
+    })
+}
+
+/// 对齐账自动化对总（主册「对齐项计数与正文 200 项对账」：对齐项 =
+/// 200 − 差异条数；差异登记表新增一条 → 对齐账自动减一——两账同源）。
+pub fn aligned_count() -> usize {
+    I_DOMAIN_TOTAL - DIFF_REGISTRY.len()
+}
+
+pub fn reconciliation_v2() -> bool {
+    reconciliation(aligned_count(), DIFF_REGISTRY.len())
+}
+
+/// 复审条款时间戳审计（季度复审的到期-复审-清账三步语义深化：
+/// 到期未复审 → 红；复审后到期线推进；对齐契机清账）。
+impl ReviewClause {
+    /// 复审全链（到期→复审→再判）——语义化包装供审计直接引用。
+    pub fn review_cycle(&mut self, due_quarter: u32, next_quarter: u32) -> bool {
+        if !self.review_due(due_quarter) {
+            return false;
+        }
+        self.realign(due_quarter);
+        !self.review_due(due_quarter) && self.review_due(next_quarter)
+    }
+}
+
+/// 公开同步可验证性（主册「随设计案与开发者文档站同步公开」：published
+/// 位 + 理由栏含可检索关键词（非空泛话）——公开的不是口号是内容）。
+pub fn publish_content_verifiable() -> bool {
+    DIFF_REGISTRY.iter().all(|e| e.published && e.reason.len() >= 8)
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F475 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_idiffreg_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F475-v2");
+    // 1) 全表逐检：三栏齐 + 无占位 + F 编号格式。
+    cs.add("registry_full_audit", registry_full_audit(), "");
+    // 2) 对齐账自动化：196 + 4 = 200（一处一事实的自动化口径）。
+    cs.add("aligned_auto", aligned_count() == 196, "");
+    cs.add("reconciliation_v2", reconciliation_v2(), "");
+    // 3) 复审全链：到期→复审→到期线推进。
+    let mut rc = ReviewClause { last_reviewed_quarter: 0, realign_opportunities: 2 };
+    cs.add("review_cycle", rc.review_cycle(3, 4), "");
+    cs.add("opportunities_cleared", rc.realign_opportunities == 0, "");
+    // 4) 公开同步可验证。
+    cs.add("publish_verifiable", publish_content_verifiable(), "");
+    // 5) 主册四处显式差异全部在册（F378/F411/F464/F467）。
+    cs.add("four_explicit_diffs", DIFF_REGISTRY.iter().any(|e| e.feature == "F378")
+        && DIFF_REGISTRY.iter().any(|e| e.feature == "F411")
+        && DIFF_REGISTRY.iter().any(|e| e.feature == "F464")
+        && DIFF_REGISTRY.iter().any(|e| e.feature == "F467"), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn registry_entries_have_distinct_features() {
+        for i in 0..DIFF_REGISTRY.len() {
+            for j in (i + 1)..DIFF_REGISTRY.len() {
+                assert_ne!(DIFF_REGISTRY[i].feature, DIFF_REGISTRY[j].feature, "同一差异点不许重复登记");
+            }
+        }
+    }
+
+    #[test]
+    fn review_cycle_multi_quarter() {
+        let mut rc = ReviewClause { last_reviewed_quarter: 0, realign_opportunities: 0 };
+        assert!(rc.review_cycle(1, 2));
+        assert!(rc.review_cycle(2, 3));
+        // 同季度重复复审：不再到期（已复审过）。
+        assert!(!rc.review_due(2));
+    }
+
+    #[test]
+    fn aligned_math_never_negative() {
+        // 差异条数 ≤ 200 恒成立（登记表容量纪律）。
+        assert!(DIFF_REGISTRY.len() <= I_DOMAIN_TOTAL);
+        assert_eq!(aligned_count() + DIFF_REGISTRY.len(), I_DOMAIN_TOTAL);
+    }
+}

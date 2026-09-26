@@ -53,8 +53,9 @@ pub fn eval_expr(s: &str) -> Eval {
             return Eval::Unsupported;
         }
     }
-    let b: Vec<char> = s.chars().collect();
-    let mut p = Parser { c: &b, i: 0, depth: 0 };
+    // 白名单字符已保证纯 ASCII——直接借用字节切片（零分配，零堆纪律）。
+    let b = s.as_bytes();
+    let mut p = Parser { c: b, i: 0, depth: 0 };
     let v = match p.expr() {
         Some(v) => v,
         None => return Eval::Unsupported,
@@ -70,20 +71,20 @@ pub fn eval_expr(s: &str) -> Eval {
 }
 
 struct Parser<'a> {
-    c: &'a [char],
+    c: &'a [u8],
     i: usize,
     depth: usize,
 }
 
 impl<'a> Parser<'a> {
     fn peek(&self) -> Option<char> {
-        self.c.get(self.i).copied()
+        self.c.get(self.i).map(|&b| b as char)
     }
 
     fn expr(&mut self) -> Option<f64> {
         let mut v = self.term()?;
         while matches!(self.peek(), Some('+') | Some('-')) {
-            let op = self.c[self.i];
+            let op = self.c[self.i] as char;
             self.i += 1;
             let r = self.term()?;
             v = if op == '+' { v + r } else { v - r };
@@ -94,7 +95,7 @@ impl<'a> Parser<'a> {
     fn term(&mut self) -> Option<f64> {
         let mut v = self.pow()?;
         while matches!(self.peek(), Some('*') | Some('/')) {
-            let op = self.c[self.i];
+            let op = self.c[self.i] as char;
             self.i += 1;
             let r = self.pow()?;
             if op == '/' {
@@ -160,8 +161,11 @@ impl<'a> Parser<'a> {
                 if start == self.i {
                     return None;
                 }
-                let num: String = self.c[start..self.i].iter().collect();
-                let mut v: f64 = num.parse().ok()?;
+                // 数字解析走定长栈缓冲（EXPR_LEN_CAP ≤ 32 → 单数字 ≤ 32 字节）。
+                let mut num = [0u8; 32];
+                let n = self.i - start;
+                num[..n].copy_from_slice(&self.c[start..self.i]);
+                let mut v: f64 = core::str::from_utf8(&num[..n]).ok()?.parse().ok()?;
                 // 百分比后缀：50% = 0.5（主册：百分比支持）。
                 if self.peek() == Some('%') {
                     self.i += 1;

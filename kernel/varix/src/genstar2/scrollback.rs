@@ -199,11 +199,12 @@ pub fn run_scrollback_checks() -> CheckSet {
     // 2) 三态：滚离→回看；回看中来新输出→徽标；滚到底→恢复。
     s.scroll(1);
     cs.add("review_state", s.state == FollowState::Reviewing, "");
-    let reading_row = s.view_row(0).map(|r| r.to_string()); // 用户当前正在看的行（快照）
+    // 用户当前正在看的行（先断言后推进——零堆：直接比较 &str，不拷快照不持借用）。
+    cs.add("reading_row_before_push", s.view_row(0) == Some("line 1"), "");
     s.push("line 3");
     cs.add("badge_on_new_output", s.state == FollowState::BadgeNewOutput && s.unread() == 1, "");
     // 阅读不被打断：视口仍停在用户正在看的那一行。
-    cs.add("review_not_interrupted", reading_row.as_deref() == Some("line 1") && s.view_row(0) == reading_row.as_deref(), "");
+    cs.add("review_not_interrupted", s.view_row(0) == Some("line 1"), "");
     s.resume_follow();
     cs.add("resume_clears_badge", s.state == FollowState::Following && s.unread() == 0 && s.view_row(0) == Some("line 3"), "");
     // 3) 选择时暂停跟随。
@@ -330,6 +331,170 @@ mod tests {
 
     #[test]
     fn oversize_row_rejected() {
+        let mut s = Scrollback::new();
+        let long = "x".repeat(ROW_CAP + 1);
+        assert!(!s.push(&long));
+        assert_eq!(s.count(), 0);
+    }
+}
+
+// ===========================================================================
+// 深化 v2（F471）：徽标点击恢复路径 / 选择与徽标互斥 / 万行预算核算表 /
+// 回滚容量语义审计 / 视口越界守卫
+// ===========================================================================
+
+/// 万行滚动预算核算表（主册「万行回滚 60fps」的分解账：一次滚屏的
+/// 四段开销——账面合计必须 ≤16ms，实测对账走账本）。
+pub const SCROLL_BUDGET_STAGES: [(&str, u64); 4] = [
+    ("row-copy", 2),
+    ("wrap-layout", 6),
+    ("glyph-raster", 6),
+    ("blit", 2),
+];
+
+pub fn scroll_budget_sum() -> u64 {
+    SCROLL_BUDGET_STAGES.iter().map(|(_, ms)| *ms).sum()
+}
+
+/// 徽标点击恢复路径（主册「点击或滚到底恢复跟随」的显式路径：
+/// 点击徽标 = resume_follow——未读清账 + 滚底 + 状态回跟随）。
+pub fn badge_click_resume(s: &mut Scrollback) -> bool {
+    let had_badge = s.state == FollowState::BadgeNewOutput && s.unread() > 0;
+    s.resume_follow();
+    had_badge && s.state == FollowState::Following && s.unread() == 0
+}
+
+/// 选择与徽标互斥（主册「选择文本时暂停跟随」与「徽标」的关系定案：
+/// 选择期间徽标数字照常累计（不丢账）但视觉降级为静默点——选完
+/// 一次性呈现；此处审计账面语义：选择中新输出仍计数）。
+pub fn selection_keeps_unread(s: &mut Scrollback, new_lines: usize) -> bool {
+    s.set_selecting(true);
+    let before = s.unread();
+    for i in 0..new_lines {
+        let _ = s.push(&"x".repeat(1 + i % 5));
+    }
+    let kept = s.unread() >= before + new_lines as u32;
+    s.set_selecting(false);
+    kept
+}
+
+/// 最旧行读取（淘汰语义的观察窗：回滚环的 oldest 槽位内容）。
+impl Scrollback {
+    pub fn oldest_line(&self) -> Option<&str> {
+        if self.n == 0 {
+            return None;
+        }
+        let oldest = (self.head + SCROLLBACK_CAP - self.n) % SCROLLBACK_CAP;
+        self.ring[oldest].as_ref().map(|r| r.as_str())
+    }
+}
+
+/// 回滚容量语义审计（主册「缓冲溢出淘汰最旧」：第 CAP+1 行入账时
+/// 最旧行出账——总量恒 10000、内容窗口滑动；真实容量逐行验证）。
+pub fn eviction_oldest_ok(s: &mut Scrollback) -> bool {
+    // 恰好灌满：最后一句是 "final"。
+    for i in 0..SCROLLBACK_CAP {
+        let tag = if i == SCROLLBACK_CAP - 1 { "final" } else { "fill" };
+        let _ = s.push(tag);
+    }
+    let full_ok = s.count() == SCROLLBACK_CAP;
+    // 先断言灌满态（借用结束），再挤入第 10001 行。
+    let oldest_was_fill = full_ok && s.oldest_line() == Some("fill") && s.count() == SCROLLBACK_CAP;
+    let _ = s.push("overflow"); // 第 10001 行 → 最旧出账。
+    oldest_was_fill
+        && s.count() == SCROLLBACK_CAP
+        && s.oldest_line() == Some("fill") // 新窗口最旧 = 原第二行。
+        && s.view_row(0) == Some("overflow")
+}
+
+/// 视口越界守卫（回看中缓冲被淘汰顶掉视口：view_top 自动钳制到有效区——
+/// 不出现「视窗指向已淘汰行」的悬空态；真实容量灌满验证）。
+pub fn view_top_clamped_after_eviction(s: &mut Scrollback) -> bool {
+    // 灌满后回看到最旧（view_top=0），再挤一行：最旧淘汰、视口钳到有效区。
+    for i in 0..SCROLLBACK_CAP {
+        let _ = s.push("fill");
+    }
+    s.scroll(5); // 回看（离开底部）。
+    let _ = s.push("newest-line"); // 淘汰一行 + 徽标。
+    // 视口仍可读（不悬空）：clamp 后读到的行非空。
+    s.view_row(0).is_some()
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F471 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_scrollback_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F471-v2");
+    // 1) 预算分解账：四段和 = 16ms（不多不少——一处一事实）。
+    cs.add("budget_sum_exact", scroll_budget_sum() == SCROLL_BUDGET_MS, "");
+    cs.add("budget_perf_ok", Scrollback::scroll_perf_ok(16) && !Scrollback::scroll_perf_ok(17), "");
+    // 2) 徽标点击恢复路径：徽标态 → 点击 → 跟随 + 未读清账。
+    let mut s = Scrollback::new();
+    let _ = s.push("l1");
+    s.scroll(1);
+    let _ = s.push("l2");
+    cs.add("badge_state_ready", s.state == FollowState::BadgeNewOutput && s.unread() == 1, "");
+    cs.add("badge_click_resume", badge_click_resume(&mut s), "");
+    cs.add("resume_at_bottom", s.view_row(0) == Some("l2"), "");
+    // 3) 选择期未读账不丢。
+    let mut s2 = Scrollback::new();
+    let _ = s2.push("base");
+    cs.add("selection_keeps_unread", selection_keeps_unread(&mut s2, 3), "");
+    // 4) 淘汰最旧语义（cap 内小样本三行 → 挤一走一）。
+    let mut s3 = Scrollback::new();
+    cs.add("eviction_oldest", eviction_oldest_ok(&mut s3), "");
+    // 5) 视口越界守卫。
+    let mut s4 = Scrollback::new();
+    cs.add("viewport_clamped", view_top_clamped_after_eviction(&mut s4), "");
+    // 6) cls 语义：清视窗不清历史（v1 行为守护 + 徽标重置）。
+    let mut s5 = Scrollback::new();
+    let _ = s5.push("keep1");
+    let _ = s5.push("keep2");
+    let cleared = s5.cls();
+    cs.add("cls_returns_count", cleared == 2, "");
+    cs.add("cls_history_kept", s5.count() == 2 && s5.view_row(0) == Some("keep2"), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn badge_accumulates_then_clears() {
+        let mut s = Scrollback::new();
+        let _ = s.push("a");
+        s.scroll(1);
+        for i in 0..5 {
+            let _ = s.push(&format_num(i));
+        }
+        assert_eq!(s.unread(), 5);
+        s.resume_follow();
+        assert_eq!(s.unread(), 0);
+        assert_eq!(s.state, FollowState::Following);
+    }
+
+    fn format_num(i: usize) -> &'static str {
+        // 零堆小样本行名（测试用静态串）。
+        ["x1", "x2", "x3", "x4", "x5"][i % 5]
+    }
+
+    #[test]
+    fn scroll_down_to_bottom_restores() {
+        let mut s = Scrollback::new();
+        let _ = s.push("a");
+        let _ = s.push("b");
+        let _ = s.push("c");
+        s.scroll(2);
+        assert_eq!(s.state, FollowState::Reviewing);
+        s.scroll_down(2);
+        assert_eq!(s.state, FollowState::Following);
+        assert_eq!(s.view_row(0), Some("c"));
+    }
+
+    #[test]
+    fn oversize_row_honest_reject() {
         let mut s = Scrollback::new();
         let long = "x".repeat(ROW_CAP + 1);
         assert!(!s.push(&long));

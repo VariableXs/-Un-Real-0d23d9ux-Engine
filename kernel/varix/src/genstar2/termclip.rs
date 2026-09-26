@@ -236,3 +236,171 @@ mod tests {
         assert!(!pb.armed);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F466）：粘贴缓冲超时 / 选择区快照 / 引号规范化矩阵 / 审计账
+// ===========================================================================
+
+/// 确认缓冲超时（挂起 30s 未确认 → 自动作废——安全带不解到明天）。
+pub const BUFFER_TIMEOUT_MS: u64 = 30_000;
+
+/// 粘贴缓冲计时器（armed 起算；超时作废——浮层出路纪律同源）。
+pub struct BufferTimer {
+    armed_at: Option<u64>,
+}
+
+impl BufferTimer {
+    pub const fn new() -> Self {
+        BufferTimer { armed_at: None }
+    }
+
+    pub fn arm(&mut self, now_ms: u64) {
+        self.armed_at = Some(now_ms);
+    }
+
+    pub fn expired(&mut self, now_ms: u64) -> bool {
+        match self.armed_at {
+            Some(t) if now_ms.saturating_sub(t) >= BUFFER_TIMEOUT_MS => {
+                self.armed_at = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn disarm(&mut self) {
+        self.armed_at = None;
+    }
+}
+
+/// 选择区快照（选择即复制的一致性凭证：快照带序号——重复选择不重写同内容）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SelectionSnapshot {
+    pub seq: u64,
+    pub len: usize,
+    pub select_copies_enabled: bool,
+}
+
+pub fn selection_copies(prev: Option<SelectionSnapshot>, len: usize, enabled: bool, seq: u64) -> Option<SelectionSnapshot> {
+    if !enabled || len == 0 {
+        return None;
+    }
+    // 内容长度相同且序号相同 = 未变（不重复入剪贴板账）。
+    if let Some(p) = prev {
+        if p.len == len && p.seq == seq {
+            return None;
+        }
+    }
+    Some(SelectionSnapshot { seq, len, select_copies_enabled: enabled })
+}
+
+/// 引号规范化矩阵（三形态输入 → 规范路径——F336 互通的穷举面）。
+pub fn quote_normalized_ok(raw: &str, expect: &str) -> bool {
+    strip_quotes(raw) == expect
+}
+
+/// 粘贴审计账（最近 8 次：来源/行数/裁决——粘贴炸弹防御可回溯）。
+pub struct PasteAudit {
+    ring: [(u64, u8, bool); 8], // (时刻, 行数, 是否需确认)
+    head: usize,
+    n: usize,
+}
+
+impl PasteAudit {
+    pub const fn new() -> Self {
+        PasteAudit { ring: [(0, 0, false); 8], head: 0, n: 0 }
+    }
+
+    pub fn log(&mut self, at_ms: u64, lines: u8, needed_confirm: bool) {
+        self.ring[self.head] = (at_ms, lines, needed_confirm);
+        self.head = (self.head + 1) % 8;
+        self.n = (self.n + 1).min(8);
+    }
+
+    /// 粘贴炸弹特征（60s 内 ≥3 次多行粘贴——告警信号）。
+    pub fn bomb_pattern(&self, now_ms: u64, window_ms: u64) -> bool {
+        let mut multi = 0;
+        for i in 0..self.n {
+            let idx = (self.head + 8 - self.n + i) % 8;
+            let (at, lines, _) = self.ring[idx];
+            if now_ms.saturating_sub(at) <= window_ms && lines > 1 {
+                multi += 1;
+            }
+        }
+        multi >= 3
+    }
+}
+
+pub fn run_termclip_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F466-deep");
+    // 确认缓冲超时（30s 挂起自动作废——出路完整）。
+    cs.add("buffer_timeout", {
+        let mut t = BufferTimer::new();
+        t.arm(1_000);
+        !t.expired(1_000 + BUFFER_TIMEOUT_MS - 1) && t.expired(1_000 + BUFFER_TIMEOUT_MS)
+    }, "");
+    cs.add("buffer_disarm", {
+        let mut t = BufferTimer::new();
+        t.arm(0);
+        t.disarm();
+        !t.expired(BUFFER_TIMEOUT_MS + 1)
+    }, "");
+    // 选择即复制的一致性（未变不重写；关闭不出账；空选择不出账）。
+    cs.add("selection_dedup", {
+        let s1 = selection_copies(None, 42, true, 1);
+        let s2 = selection_copies(s1, 42, true, 1);
+        s1.is_some() && s2.is_none()
+    }, "");
+    cs.add("selection_disabled_none", selection_copies(None, 42, false, 1).is_none(), "");
+    cs.add("selection_empty_none", selection_copies(None, 0, true, 1).is_none(), "");
+    // 引号规范化矩阵（单双引号/无引号/混合——F336 互通穷举）。
+    cs.add("quote_matrix", quote_normalized_ok("\"C:\\a b\"", "C:\\a b")
+        && quote_normalized_ok("'C:\\a b'", "C:\\a b")
+        && quote_normalized_ok("C:\\plain", "C:\\plain")
+        && !quote_normalized_ok("\"mismatch'", "mismatch'"), "");
+    // 粘贴审计 + 炸弹特征（60s 三次多行 → 告警）。
+    cs.add("bomb_pattern_detected", {
+        let mut a = PasteAudit::new();
+        a.log(1_000, 5, true);
+        a.log(2_000, 9, true);
+        a.log(3_000, 2, true);
+        a.bomb_pattern(4_000, 60_000)
+    }, "");
+    cs.add("single_paste_ok", {
+        let mut a = PasteAudit::new();
+        a.log(1_000, 5, true);
+        !a.bomb_pattern(2_000, 60_000)
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn buffer_timeout_exact_boundary() {
+        let mut t = BufferTimer::new();
+        t.arm(0);
+        assert!(!t.expired(BUFFER_TIMEOUT_MS - 1));
+        assert!(t.expired(BUFFER_TIMEOUT_MS));
+    }
+
+    #[test]
+    fn selection_changes_when_content_changes() {
+        let s1 = selection_copies(None, 10, true, 1);
+        let s2 = selection_copies(s1, 20, true, 2);
+        assert!(s2.is_some());
+        assert_eq!(s2.unwrap().len, 20);
+    }
+
+    #[test]
+    fn audit_ring_wraps() {
+        let mut a = PasteAudit::new();
+        for i in 0..12u64 {
+            a.log(i * 1_000, 1, false);
+        }
+        assert_eq!(a.n, 8);
+        assert!(!a.bomb_pattern(13_000, 60_000));
+    }
+}

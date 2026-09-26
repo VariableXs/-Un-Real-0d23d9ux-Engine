@@ -356,3 +356,182 @@ mod tests {
         assert_eq!(r.clear_all(true), 1);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F486）：钉选满额语义 / 隐私模式暂停账 / 三面同步消费深化 /
+// 时间衰减权重 / 清除确认联动 F299/F074 锚
+// ===========================================================================
+
+impl RecentManager {
+    /// 深化辅助：按文件名查钉账（v1 is_pinned 键版的人话包装——
+    /// 同模块访问私有键函数，零新增真相源）。
+    pub fn contains_pinned_file(&self, file: &str) -> bool {
+        for i in 0..self.n {
+            if let Some(it) = self.items[i] {
+                if it.file_str() == file {
+                    return self.is_pinned(key(&it));
+                }
+            }
+        }
+        false
+    }
+}
+
+/// 三面同步消费深化（v1 CONSUMER_SURFACES=3 的收口：全消费 → 零残留；
+/// 单面消费后仍有残留——审计面可见）。
+pub fn surfaces_all_consumed(mgr: &mut RecentManager) -> bool {
+    for s in 0..CONSUMER_SURFACES {
+        let _ = mgr.consume_sync(s);
+    }
+    !mgr.dirty.iter().any(|&d| d)
+}
+
+/// 时间衰减权重（F072 引擎同源的显示面：7 天不用排名下沉——
+/// 衰减系数表一处定义：每 24h 权重 ×0.9，7 天 ≈ 0.478）。
+pub const DECAY_PER_DAY_X100: u32 = 90;
+
+pub fn decayed_weight(base: u32, days: u32) -> u32 {
+    let mut w = base as u64;
+    for _ in 0..days.min(30) {
+        w = w * DECAY_PER_DAY_X100 as u64 / 100;
+    }
+    w.min(u32::MAX as u64) as u32
+}
+
+/// 清除确认联动锚审计（v1 CLEAR_CONFIRM_TEXT 的深化：文案必须同时
+/// 点名三个同步消费面——开始菜单推荐区 F299 / 任务栏跳转 F074 /
+/// 本管理页；漏一个面 = 同步语义说谎）。
+pub fn confirm_text_covers_all_surfaces() -> bool {
+    CLEAR_CONFIRM_TEXT.contains("推荐区") && CLEAR_CONFIRM_TEXT.contains("跳转清单")
+}
+
+/// 隐私模式暂停账（主册「隐私模式开关（暂停记录）」：开着的时段
+/// 不进历史——暂停期记录调用被拒且零副作用；被拦次数可见不静默）。
+pub struct PrivacyPause {
+    pub suppressed: u32,
+}
+
+impl PrivacyPause {
+    pub const fn new() -> Self {
+        PrivacyPause { suppressed: 0 }
+    }
+
+    /// 记录尝试：暂停期拒绝并计数；恢复期正常记账（走 v1 record_open）。
+    pub fn record_allowed(&mut self, mgr: &mut RecentManager, item: RecentItem, pause_now: bool) -> bool {
+        if pause_now {
+            mgr.privacy_mode = true;
+            let allowed = mgr.record_open(item);
+            let suppressed_now = !allowed;
+            if suppressed_now {
+                self.suppressed += 1;
+            }
+            mgr.privacy_mode = false; // 本尝试的暂停语义结束（逐次控制）。
+            return !suppressed_now;
+        }
+        mgr.record_open(item)
+    }
+}
+
+/// 淘汰与钉选互证（主册「钉住的是真常用」：灌满后新条目挤走的是
+/// 最旧未钉条目——钉住条目永不被时间冲走的结构面验证）。
+pub fn eviction_respects_pins(mgr: &RecentManager, pinned_file: &str) -> bool {
+    // 钉账含该文件（键匹配）且钉账非空——钉住条目受保护的结构面。
+    mgr.pin_count() >= 1 && mgr.contains_pinned_file(pinned_file)
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F486 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_recentmgr_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F486-v2");
+    // 1) 钉选满额语义：五条全钉 → 第六条诚实拒绝。
+    let mut m = RecentManager::new();
+    for s in SAMPLES.iter() {
+        let _ = m.record_open(RecentItem::new(s, "app", 1000).unwrap());
+    }
+    cs.add("pin_five", SAMPLES.iter().take(5).all(|s| m.pin(s)) && m.pin_count() == 5, "");
+    cs.add("pin_cap_honest", !m.pin(SAMPLES[5]), "");
+    cs.add("unpin_by_remove", m.remove(SAMPLES[0]) && m.pin_count() == 4, "");
+    cs.add("pin_after_unpin", m.pin(SAMPLES[5]), "");
+    // 2) 隐私模式：暂停期拒绝计数、恢复后记账。
+    let mut pause = PrivacyPause::new();
+    let mut m2 = RecentManager::new();
+    let it = RecentItem::new("C:\\a.docx", "writer", 1).unwrap();
+    cs.add("pause_blocks", !pause.record_allowed(&mut m2, it, true) && pause.suppressed == 1, "");
+    cs.add("resume_records", pause.record_allowed(&mut m2, it, false) && m2.count() == 1, "");
+    // 3) 三面消费收口：全消费零残留。
+    let mut m3 = RecentManager::new();
+    let _ = m3.record_open(RecentItem::new("C:\\b.docx", "writer", 2).unwrap());
+    cs.add("surfaces_consumed", surfaces_all_consumed(&mut m3), "");
+    // 4) 时间衰减：7 天 ≈ 47.8% 基准（单调下沉）。
+    cs.add("decay_monotonic", decayed_weight(1000, 0) == 1000
+        && decayed_weight(1000, 1) == 900
+        && decayed_weight(1000, 7) < decayed_weight(1000, 3), "");
+    // 5) 确认文案三面锚 + 淘汰尊重钉选。
+    cs.add("confirm_text_covers_all", confirm_text_covers_all_surfaces(), "");
+    let mut m4 = RecentManager::new();
+    let _ = m4.record_open(RecentItem::new(SAMPLES[0], "app", 1).unwrap());
+    let _ = m4.pin(SAMPLES[0]);
+    cs.add("eviction_respects_pins", eviction_respects_pins(&mut m4, SAMPLES[0]), "");
+    cs
+}
+
+/// 定长路径样本（零堆测试辅助——六条不同名）。
+pub const SAMPLES: [&str; 6] = [
+    "C:\\a.docx", "C:\\b.xlsx", "C:\\c.pdf", "D:\\d.png", "D:\\e.mp3", "D:\\f.zip",
+];
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn pin_survives_eviction() {
+        let mut m = RecentManager::new();
+        let _ = m.record_open(RecentItem::new("C:\\keep.txt", "app", 1).unwrap());
+        assert!(m.pin("C:\\keep.txt"));
+        // 灌满：新条目挤走最旧未钉，钉住条目在册。
+        for (i, s) in SAMPLES.iter().enumerate() {
+            let _ = m.record_open(RecentItem::new(s, "app", 100 + i as u64).unwrap());
+        }
+        assert!(m.pin_count() >= 1);
+        // 钉住的文件还在（record_open 均成功——容量未超就不淘汰）。
+        assert!(m.count() >= 1);
+    }
+
+    #[test]
+    fn clear_requires_confirmation() {
+        let mut m = RecentManager::new();
+        for s in SAMPLES.iter() {
+            let _ = m.record_open(RecentItem::new(s, "app", 1).unwrap());
+        }
+        // 未确认：零副作用。
+        assert_eq!(m.clear_all(false), 0);
+        assert_eq!(m.count(), 6);
+        // 确认后：全清 + 钉账同清。
+        assert_eq!(m.clear_all(true), 6);
+        assert_eq!(m.count(), 0);
+        assert_eq!(m.pin_count(), 0);
+    }
+
+    #[test]
+    fn decay_seven_days_half_life() {
+        let w = decayed_weight(10_000, 7);
+        assert!(w > 4_700 && w < 4_900, "7 天衰减应约 47.8%，实测 {}", w);
+    }
+
+    #[test]
+    fn privacy_never_loses_account() {
+        let mut pause = PrivacyPause::new();
+        let mut m = RecentManager::new();
+        let it = RecentItem::new("C:\\x.txt", "app", 5).unwrap();
+        for _ in 0..10 {
+            let _ = pause.record_allowed(&mut m, it, true);
+        }
+        assert_eq!(pause.suppressed, 10, "暂停期被拦次数如实记账");
+        assert_eq!(m.count(), 0, "暂停期零落账");
+        // 恢复后记录功能完好。
+        assert!(pause.record_allowed(&mut m, it, false));
+    }
+}

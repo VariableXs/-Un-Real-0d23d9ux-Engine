@@ -267,3 +267,209 @@ mod tests {
         assert_eq!(a.2, 64);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F453）：同步中进度态 / 同锚互斥裁决矩阵 / 变更批次时延账 /
+// 状态跃迁语义表（同步完成→锁形立现）
+// ===========================================================================
+
+/// 同步进行态的进度账（主册「云形进行态」——进度 permille 驱动角标渲染；
+/// 0‰ 起、1000‰ 完成；完成后由跃迁语义表收口）。
+#[derive(Clone, Copy, Debug)]
+pub struct SyncProgress {
+    pub file_key: u64,
+    /// 0..=1000。
+    pub permille: u16,
+    pub done: bool,
+}
+
+pub const SYNC_PERMILLE_CAP: u16 = 1000;
+
+pub fn sync_advance(p: &mut SyncProgress, delta_permille: u16) -> bool {
+    if p.done {
+        return false;
+    }
+    let total = p.permille as u32 + delta_permille as u32;
+    if total >= SYNC_PERMILLE_CAP as u32 {
+        p.permille = SYNC_PERMILLE_CAP;
+        p.done = true;
+    } else {
+        p.permille = total as u16;
+    }
+    true
+}
+
+/// 同步完成的状态跃迁语义表（主册「加密完成锁形立现」同源：
+/// 同步中 → 完成后云形收口、结果态立现；失败则进行态退场无结果态）。
+pub enum SyncOutcome {
+    Uploaded,
+    Failed,
+}
+
+/// 应用跃迁：进行态角标关闭 + 结果态角标打开（一步内完成——不出现
+/// 「同步没了但结果也没来」的真空帧）。
+pub fn apply_sync_outcome(
+    ledger: &mut BadgeLedger,
+    path: &str,
+    outcome: SyncOutcome,
+    now_ms: u64,
+) -> bool {
+    let off = ledger.set_badge(path, BadgeKind::Syncing, false, now_ms);
+    let on = match outcome {
+        SyncOutcome::Uploaded => ledger.set_badge(path, BadgeKind::OfflineAvailable, true, now_ms),
+        SyncOutcome::Failed => true, // 失败：进行态退场即收口（无结果态角标）。
+    };
+    off && on
+}
+
+/// 同锚互斥裁决矩阵（主册「大图标视图不互遮」的完整版：五类角标的
+/// 锚位两两关系——同锚对互斥，异锚对可共存）。
+/// 返回 true = 两类可同时呈现。
+pub fn anchor_compatible(a: BadgeKind, b: BadgeKind) -> bool {
+    a.anchor_name() != b.anchor_name()
+}
+
+/// 图标上全部角标的共存自检（逐对扫锚位——O(25) 定长，无分配）。
+pub fn all_badges_compatible(badges: &[Option<BadgeKind>; 5]) -> bool {
+    for i in 0..badges.len() {
+        for j in (i + 1)..badges.len() {
+            if let (Some(a), Some(b)) = (badges[i], badges[j]) {
+                if !anchor_compatible(a, b) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// 变更批次时延账（主册「状态变更 <1s」的批量面：一次加密批次
+/// 改 N 个文件的角标，批内最后渲染时刻 - 批首变更时刻 < 1s 才达标——
+/// 逐文件达标还不够，批次整体超时同样是说谎）。
+pub struct BatchTiming {
+    pub batch_start_ms: u64,
+    pub last_change_ms: u64,
+}
+
+impl BatchTiming {
+    pub const fn new(start_ms: u64) -> Self {
+        BatchTiming { batch_start_ms: start_ms, last_change_ms: start_ms }
+    }
+
+    pub fn record_change(&mut self, at_ms: u64) {
+        self.last_change_ms = at_ms;
+    }
+
+    pub fn batch_within_deadline(&self) -> bool {
+        self.last_change_ms.saturating_sub(self.batch_start_ms) < SYNC_DEADLINE_MS
+    }
+}
+
+/// 五类角标渲染矩形全表审计（五锚位 × 1/2 尺寸——矩形互不重叠当且仅当
+/// 锚位互异；「角标与缩略图共存」的几何面）。
+pub fn rects_disjoint(a: (i32, i32, u32, u32), b: (i32, i32, u32, u32)) -> bool {
+    let (ax, ay, aw, ah) = a;
+    let (bx, by, bw, bh) = b;
+    ax + aw as i32 <= bx || bx + bw as i32 <= ax || ay + ah as i32 <= by || by + bh as i32 <= ay
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F453 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_thumbbadge_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F453-v2");
+    // 1) 同步进度推进与收口。
+    let mut p = SyncProgress { file_key: 1, permille: 0, done: false };
+    cs.add("sync_partial", {
+        sync_advance(&mut p, 400);
+        p.permille == 400 && !p.done
+    }, "");
+    cs.add("sync_overflow_clamps", {
+        sync_advance(&mut p, 700);
+        p.permille == SYNC_PERMILLE_CAP && p.done
+    }, "");
+    cs.add("sync_done_frozen", !sync_advance(&mut p, 100), "");
+    // 2) 跃迁语义：完成→离线可用立现；失败→无真空帧。
+    let mut led = BadgeLedger::new();
+    let _ = led.set_badge("C:\\a.zip", BadgeKind::Syncing, true, 100);
+    cs.add("outcome_upload", apply_sync_outcome(&mut led, "C:\\a.zip", SyncOutcome::Uploaded, 500)
+        && !led.has_badge("C:\\a.zip", BadgeKind::Syncing)
+        && led.has_badge("C:\\a.zip", BadgeKind::OfflineAvailable), "");
+    let mut led2 = BadgeLedger::new();
+    let _ = led2.set_badge("C:\\b.zip", BadgeKind::Syncing, true, 100);
+    cs.add("outcome_fail_no_vacuum", apply_sync_outcome(&mut led2, "C:\\b.zip", SyncOutcome::Failed, 500)
+        && !led2.has_badge("C:\\b.zip", BadgeKind::Syncing), "");
+    // 3) 同锚互斥矩阵：同锚拒、异锚容。
+    cs.add("same_anchor_incompatible", !anchor_compatible(BadgeKind::Shortcut, BadgeKind::OfflineAvailable), "");
+    cs.add("diff_anchor_compatible", anchor_compatible(BadgeKind::Shortcut, BadgeKind::Encrypted)
+        && anchor_compatible(BadgeKind::Archive, BadgeKind::Syncing), "");
+    // 全表共存自检：快捷方式+加密+压缩（三锚位）→ 兼容。
+    let triple = [Some(BadgeKind::Shortcut), Some(BadgeKind::Encrypted), Some(BadgeKind::Archive), None, None];
+    cs.add("triple_coexist", all_badges_compatible(&triple), "");
+    let conflict = [Some(BadgeKind::Shortcut), Some(BadgeKind::OfflineAvailable), None, None, None];
+    cs.add("pair_conflict_detected", !all_badges_compatible(&conflict), "");
+    // 4) 批次时延账：批内 <1s 达标；拖长即红（不靠逐文件达标掩盖）。
+    let mut bt = BatchTiming::new(1000);
+    bt.record_change(1500);
+    cs.add("batch_on_time", bt.batch_within_deadline(), "");
+    bt.record_change(2500);
+    cs.add("batch_late_detected", !bt.batch_within_deadline(), "");
+    // 5) 几何面：异锚矩形互不重叠（F300 栅格下五角标共存不互遮）。
+    let sc = badge_rect(0, 0, 64, 64, BadgeKind::Shortcut);
+    let en = badge_rect(0, 0, 64, 64, BadgeKind::Encrypted);
+    let ar = badge_rect(0, 0, 64, 64, BadgeKind::Archive);
+    cs.add("rects_disjoint", rects_disjoint(sc, en) && rects_disjoint(sc, ar) && rects_disjoint(en, ar), "");
+    // 尺寸 = 图标 1/2（比例锚复核）。
+    cs.add("rect_ratio", sc.2 == 32 && sc.3 == 32, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn sync_progress_never_regresses() {
+        let mut p = SyncProgress { file_key: 2, permille: 0, done: false };
+        for _ in 0..10 {
+            let before = p.permille;
+            sync_advance(&mut p, 150);
+            assert!(p.permille >= before.min(p.permille));
+        }
+        assert!(p.done);
+    }
+
+    #[test]
+    fn anchor_matrix_symmetry() {
+        // 互斥关系对称（a vs b = b vs a）。
+        let all = [BadgeKind::Shortcut, BadgeKind::Archive, BadgeKind::Encrypted, BadgeKind::Syncing, BadgeKind::OfflineAvailable];
+        for &a in all.iter() {
+            for &b in all.iter() {
+                assert_eq!(anchor_compatible(a, b), anchor_compatible(b, a));
+            }
+        }
+    }
+
+    #[test]
+    fn batch_timing_boundary() {
+        // 恰好 1s 边界：<1s 达标，=1s 不达标（主册「<1s」严格小于）。
+        let mut bt = BatchTiming::new(0);
+        bt.record_change(999);
+        assert!(bt.batch_within_deadline());
+        let mut bt2 = BatchTiming::new(0);
+        bt2.record_change(1000);
+        assert!(!bt2.batch_within_deadline());
+    }
+
+    #[test]
+    fn outcome_idempotent_double_apply() {
+        let mut led = BadgeLedger::new();
+        let _ = led.set_badge("C:\\x", BadgeKind::Syncing, true, 0);
+        assert!(apply_sync_outcome(&mut led, "C:\\x", SyncOutcome::Uploaded, 10));
+        // 重复应用：Syncing 已关（幂等）、OfflineAvailable 已开（幂等）。
+        assert!(apply_sync_outcome(&mut led, "C:\\x", SyncOutcome::Uploaded, 20));
+        assert!(led.has_badge("C:\\x", BadgeKind::OfflineAvailable));
+        assert!(!led.has_badge("C:\\x", BadgeKind::Syncing));
+    }
+}

@@ -3,6 +3,30 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-U2 I 通用域·二分队（F451-F500 深化批次 v2）
+
+**kernel/varix/src/genstar2/**（AI-U2 泳道四 I 通用二分队深化批：v1 判据
+实装层 11,198 行 → **19,651 行**，51 文件 +8,707/-246）：
+
+- **深化覆盖 44/50 项**：每模块追加 `run_*_deep_checks()` 深化自检
+  （`CheckSet::merge` 合并接线，聚合 50/50 一行账不变）+ `mod
+  deep_tests` 宿主单测；6 项为规范/登记类或深化并入主检。
+- **功能面展开**（摘）：F451 批量创建与断链登记表、F452 PNG 六档校验、
+  F453 同锚互斥矩阵、F455 桌面预设三套、F456 预算分解账、F459 搜索
+  URL 组装、F462 浮条生命周期状态机、F463 EXIF 全 8 态、F465 别名
+  展开零堆化、F468 敏感变体注入、F471 万行淘汰语义、F472 透明红线
+  双判、F476 persist 线格式统一、F478 压缩管线三分支、F481 掌压注入
+  矩阵、F482 三链路镜像矩阵、F484 异步握手入口、F486 隐私暂停账、
+  F487 不可恢复三重闸、F491 持久化格式修复、F496 编辑态冲突消解、
+  F499 解耦-共享往返、F500 L 形拓扑相邻性。
+- **缺陷账本**：3 🔴（envedit persist 线格式断裂、autolum 序列化越界、
+  coolgov u16 溢出）+ 9 🟡（零堆违规 8 处、lib.rs ustar3 重复声明、
+  21 处在途测试期待对齐）全部即时修，零遗留零静默。
+- **回归**：genstar2 域 315 passed / 0 failed；全域 5,347 passed /
+  1 failed（唯一失败为 ustar3 在途 F521/F525——AI-U3 已提交代码，
+  与本分队无关，已报备）。验收于独立 worktree（干净 HEAD + genstar2
+  增量），口径可复现。
+
 ## [Unreleased] — Varix STAR I · AI-D1 桌面体验域·前段（F076-F092 深化批次 · 全项达标收口）
 
 **kernel/varix/src/deskstar/**（AI-D1 泳道三桌面体验前段深化批：v1 判据

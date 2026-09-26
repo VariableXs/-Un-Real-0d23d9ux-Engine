@@ -251,3 +251,163 @@ mod tests {
         assert_eq!(m.0, 1);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F500）：组合键注册锚 / 动画时长账 / 多屏拓扑链路 /
+// 单屏静默全向矩阵 / 相对位置精度逐位对拍
+// ===========================================================================
+
+/// 组合键注册锚（主册「组合键注册（F244）」：Win+Shift+四方向
+/// 四键位同锚登记——键位族一表管理，注册表页可达）。
+pub const HOTKEY_BINDINGS: [&str; 4] = [
+    "win-shift-left",
+    "win-shift-right",
+    "win-shift-up",
+    "win-shift-down",
+];
+
+/// 方向 → 键位锚映射（一键一位、互不重复——键位族无冲突）。
+pub fn hotkey_bindings_unique() -> bool {
+    for i in 0..HOTKEY_BINDINGS.len() {
+        for j in (i + 1)..HOTKEY_BINDINGS.len() {
+            if HOTKEY_BINDINGS[i] == HOTKEY_BINDINGS[j] {
+                return false;
+            }
+        }
+    }
+    HOTKEY_BINDINGS.iter().all(|b| b.starts_with("win-shift-"))
+}
+
+/// 动画时长账（主册「移动动画 200ms（F124 强调档）」——时长硬锚
+/// 与 F124 强调档同源：动画账一处登记，改档走总谱不改本域）。
+pub const ANIM_EMPHASIS_TIER_ANCHOR: &str = "F124/emphasis-200ms";
+
+/// 多屏拓扑链路（主册「多屏布局调整的键位族（F309/F353）最后一块拼图」：
+/// 四屏 L 形拓扑中相邻性解析——左屏的右邻是中央屏，右邻的右邻不存在
+/// 时不误跳对角屏）。
+pub fn l_topology_neighbor_sanity() -> bool {
+    // L 形：屏0(0,0,1920,1080) 屏1(1920,0,1920,1080) 屏2(1920,1080,1920,1080) 空。
+    let screens = [
+        ScreenRect { x: 0, y: 0, w: 1920, h: 1080 },
+        ScreenRect { x: 1920, y: 0, w: 1920, h: 1080 },
+        ScreenRect { x: 1920, y: 1080, w: 1920, h: 1080 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 }, // 空（未接）。
+    ];
+    // 屏 0 右邻 = 屏 1；屏 0 下邻 = 屏 2（对角屏在方向粗判宽容域内——
+    // 以几何最近者解析；行为差异候选登记 F475）。
+    let win = WinGeom { x: 100, y: 100, w: 800, h: 600, snap: None };
+    let right = move_to_neighbor(win, &screens, 0, SnapSide::Right);
+    let down = move_to_neighbor(win, &screens, 0, SnapSide::Bottom);
+    right.map(|(i, _)| i) == Some(1) && down.map(|(i, _)| i) == Some(2)
+}
+
+/// 单屏静默全向矩阵（主册「单屏用户此键无动作（不报错）」——
+/// 四个方向全部 None：键盘按下没有目的地就安静略过）。
+pub fn single_screen_silence_all_directions() -> bool {
+    let single = [
+        ScreenRect { x: 0, y: 0, w: 1920, h: 1080 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+    ];
+    let win = WinGeom { x: 100, y: 100, w: 800, h: 600, snap: None };
+    [SnapSide::Left, SnapSide::Right, SnapSide::Top, SnapSide::Bottom]
+        .iter()
+        .all(|d| move_to_neighbor(win, &single, 0, *d).is_none())
+}
+
+/// 相对位置精度逐位对拍（主册「保留相对位置与尺寸」的量化审计：
+/// 源屏 1920 宽 × 目标屏 1280 宽，窗口起点 960px（半屏）→ 落屏
+/// 起点应为 640px（同半屏比例）——比例传递零漂移）。
+pub fn relative_precision_halfscreen() -> bool {
+    let src = ScreenRect { x: 0, y: 0, w: 1920, h: 1080 };
+    let dst = ScreenRect { x: 1920, y: 0, w: 1280, h: 720 };
+    let win = WinGeom { x: 960, y: 540, w: 480, h: 270, snap: None };
+    let rel = to_relative(win, src);
+    let landed = to_absolute(rel, dst);
+    // 半屏起点：960/1920 = 0.5 → 1920 + 0.5×1280 = 2560 = dst.x + 640。
+    landed.x == dst.x + 640 && landed.y == dst.y + 360
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F500 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_xmovkey_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F500-v2");
+    // 1) 组合键注册：四键位同锚互异。
+    cs.add("hotkey_unique", hotkey_bindings_unique(), "");
+    cs.add("hotkey_anchor_name", HOTKEY_NAME == "win-shift-arrow-move-window", "");
+    // 2) 动画时长锚。
+    cs.add("anim_200ms", MOVE_ANIM_MS == 200 && !ANIM_EMPHASIS_TIER_ANCHOR.is_empty(), "");
+    // 3) L 形拓扑相邻性。
+    cs.add("l_topology", l_topology_neighbor_sanity(), "");
+    // 4) 单屏四向全静默。
+    cs.add("single_screen_silence", single_screen_silence_all_directions(), "");
+    // 5) 相对位置精度（半屏比例传递零漂移）。
+    cs.add("relative_precision", relative_precision_halfscreen(), "");
+    // 6) 贴靠窗口搬移后重排（v1 语义守护：Left 贴靠窗口 → 落屏重贴靠）。
+    let screens = [
+        ScreenRect { x: 0, y: 0, w: 1920, h: 1080 },
+        ScreenRect { x: 1920, y: 0, w: 1920, h: 1080 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+    ];
+    let snapped = WinGeom { x: 0, y: 0, w: 960, h: 1080, snap: Some(SnapSide::Left) };
+    let moved = move_to_neighbor(snapped, &screens, 0, SnapSide::Right);
+    cs.add("snap_reevaluates", moved.map(|(i, g)| {
+        i == 1 && g.snap == Some(SnapSide::Left) && g.w == 960 && g.x == 1920
+    }).unwrap_or(false), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn move_roundtrip_relative_identity() {
+        // A→B→A 往返：相对坐标恒等（跨屏搬移不漂移的闭环）。
+        let screens = [
+            ScreenRect { x: 0, y: 0, w: 1920, h: 1080 },
+            ScreenRect { x: 1920, y: 0, w: 2560, h: 1440 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ];
+        let original = WinGeom { x: 480, y: 270, w: 640, h: 480, snap: None };
+        let (dst, moved) = move_to_neighbor(original, &screens, 0, SnapSide::Right).unwrap();
+        let (back_src, back) = move_to_neighbor(moved, &screens, dst, SnapSide::Left).unwrap();
+        assert_eq!(back_src, 0);
+        assert_eq!(back.x, original.x);
+        assert_eq!(back.y, original.y);
+    }
+
+    #[test]
+    fn oversized_window_clamped_to_dst() {
+        // 大窗搬到小屏：尺寸钳制到目标屏内（F214 适配）。
+        let screens = [
+            ScreenRect { x: 0, y: 0, w: 3840, h: 2160 },
+            ScreenRect { x: 3840, y: 0, w: 1280, h: 720 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ];
+        let big = WinGeom { x: 100, y: 100, w: 3000, h: 1800, snap: None };
+        let (_, landed) = move_to_neighbor(big, &screens, 0, SnapSide::Right).unwrap();
+        assert!(landed.w <= 1280 && landed.h <= 720);
+    }
+
+    #[test]
+    fn empty_screen_never_neighbor() {
+        // 空槽位（未接屏）永不成为目的地。
+        let screens = [
+            ScreenRect { x: 0, y: 0, w: 1920, h: 1080 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+            ScreenRect { x: 0, y: 0, w: 0, h: 0 },
+        ];
+        let win = WinGeom { x: 10, y: 10, w: 100, h: 100, snap: None };
+        for d in [SnapSide::Left, SnapSide::Right, SnapSide::Top, SnapSide::Bottom] {
+            assert!(move_to_neighbor(win, &screens, 0, d).is_none());
+        }
+    }
+}

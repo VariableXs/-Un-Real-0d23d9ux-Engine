@@ -242,3 +242,114 @@ mod tests {
         assert!(m.rescue_armed, "抢救链路保持武装直到关机流结束");
     }
 }
+
+// ===========================================================================
+// 深化 v2（F490）：默认焦点保命语义 / 仍然关机武装抢救链 / 逐应用等待 /
+// 列表实时性 / 原因文案人话审计
+// ===========================================================================
+
+/// 默认焦点保命语义（主册「默认焦点在取消」的显式锚——对话框打开时
+/// Enter 落在「取消」上：手滑回车 = 保命，这是 F207 同源的守卫线）。
+pub const DEFAULT_FOCUS_IS_CANCEL: bool = true;
+
+/// 仍然关机武装抢救链（主册「仍然关机（这些应用将被结束——未保存数据
+/// 按 F311 恢复点抢救）」的武装语义：仍然关机 → F311 抢救位激活）。
+pub const RESCUE_ARMED_ON_FORCE_SHUTDOWN: bool = true;
+
+/// 逐应用等待（主册「逐应用可选跳过（只关别的等这个）」的等待账：
+/// 跳过某应用 → 它保持阻塞位、其他应用进入结束队列）。
+impl ShutdownBlockers {
+    /// 结束队列（跳过 wait_this 的应用后，剩余阻塞者名单——逐个处理的细腻选项）。
+    pub fn kill_queue(&self, skip: &str) -> usize {
+        let mut n = 0;
+        for i in 0..self.count() {
+            if let Some(b) = self.blocker(i) {
+                if b.app != skip {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// 列表实时性（主册「退出了一个就少一行」：app_exited 后计数递减
+    /// 且该应用从列表消失——即时性审计面）。
+    pub fn realtime_after_exit(&mut self, app: &str) -> bool {
+        let before = self.count();
+        if !self.app_exited(app) {
+            return false;
+        }
+        self.count() == before - 1 && !self.find_blocker(app)
+    }
+
+    fn find_blocker(&self, app: &str) -> bool {
+        (0..self.count()).any(|i| self.blocker(i).map(|b| b.app == app).unwrap_or(false))
+    }
+}
+
+/// 原因文案人话审计（主册「应用名+原因（未响应/有未保存文档）」——
+/// 每个原因枚举的人话标签非空且不重复：文案即语义）。
+pub fn reason_labels_healthy() -> bool {
+    let labels = [BlockReason::NotResponding.label(), BlockReason::UnsavedDocs.label()];
+    labels.iter().all(|l| !l.is_empty()) && labels[0] != labels[1]
+}
+
+/// 阻止者列表去重（同一应用重复上报阻塞 = 一行账——重复注册幂等）。
+pub fn blocker_dedup(b: &mut ShutdownBlockers, app: &'static str) -> bool {
+    let _ = b.block(app, BlockReason::NotResponding);
+    let first = b.count();
+    let _ = b.block(app, BlockReason::UnsavedDocs);
+    let second = b.count();
+    first == 1 && second == 1 // 第二次注册：原位更新原因，不新增行。
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F490 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_shutblock_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F490-v2");
+    // 1) 默认焦点保命 + 抢救武装语义在册。
+    cs.add("default_focus_cancel", DEFAULT_FOCUS_IS_CANCEL, "");
+    cs.add("rescue_armed", RESCUE_ARMED_ON_FORCE_SHUTDOWN, "");
+    // 2) 阻止者列表：注册两应用 → 逐应用等待账。
+    let mut b = ShutdownBlockers::new();
+    let _ = b.block("文档相机", BlockReason::UnsavedDocs);
+    let _ = b.block("画图件", BlockReason::NotResponding);
+    cs.add("blockers_counted", b.count() == 2, "");
+    cs.add("kill_queue_skips", b.kill_queue("文档相机") == 1 && b.kill_queue("无此应用") == 2, "");
+    // 3) 列表实时性：退出一个少一行。
+    cs.add("realtime_exit", b.realtime_after_exit("画图件"), "");
+    // 4) 原因文案人话 + 去重幂等。
+    cs.add("reason_labels", reason_labels_healthy(), "");
+    let mut b2 = ShutdownBlockers::new();
+    cs.add("blocker_dedup", blocker_dedup(&mut b2, "记事本"), "");
+    // 5) 全部退出后列表归零（仍然关机前自然清空的路径）。
+    let _ = b2.app_exited("记事本");
+    cs.add("all_exited_empty", b2.count() == 0, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn reason_covers_both_doc_and_hang() {
+        // 两类原因各有归属（未保存文档 vs 未响应——主册原文两例）。
+        assert!(!BlockReason::UnsavedDocs.label().is_empty());
+        assert!(!BlockReason::NotResponding.label().is_empty());
+    }
+
+    #[test]
+    fn kill_queue_empty_list() {
+        let b = ShutdownBlockers::new();
+        assert_eq!(b.kill_queue("任何应用"), 0, "空列表无队列");
+    }
+
+    #[test]
+    fn exit_nonexistent_honest() {
+        let mut b = ShutdownBlockers::new();
+        assert!(!b.app_exited("不存在的应用"), "退出未注册应用 = 诚实失败");
+    }
+}

@@ -222,3 +222,108 @@ mod tests {
         assert!(a.disabled_states_documented());
     }
 }
+
+// ===========================================================================
+// 深化 v2（F474）：术语反例拦截 / 风险项审计 / 禁用态模板 / 覆盖率
+// 账目对总（三件套 × 全设置项扫描口径）
+// ===========================================================================
+
+/// 术语反例表（主册「同一概念全系统同名」的反例拦截：同一功能
+/// 不许两个名字——登记已知反例对，审计扫描命中即红）。
+pub const TERM_ANTI_PATTERNS: [(&str, &str); 4] = [
+    ("文件夹", "目录"),   // 二选一：全系统用「文件夹」。
+    ("回收站", "废纸篓"), // 全系统用「回收站」。
+    ("壁纸", "背景图"),   // 全系统用「壁纸」。
+    ("任务栏", "任务条"), // 全系统用「任务栏」。
+];
+
+/// 术语一致性扫描（label 命中反例对的第二称 → 违规；返回首个违规对）。
+pub fn term_consistency_ok(label: &str) -> bool {
+    !TERM_ANTI_PATTERNS.iter().any(|(_, bad)| label.contains(bad))
+}
+
+/// 风险项审计（主册「风险项说明带后果」：风险标注项必须给 risk_note
+/// 且非空——空风险说明 = 假装没风险，同罪）。
+pub fn risk_note_present(item: &SettingCopy) -> bool {
+    match item.risk_note {
+        Some(r) => !r.is_empty(),
+        None => false,
+    }
+}
+
+/// 禁用态说明模板（主册「此功能在省电模式下停用」句式：
+/// 「此功能在{场景}下停用」——禁用态说明必须含模板关键词）。
+pub fn disabled_template_ok(reason: &str) -> bool {
+    reason.contains("停用") || reason.contains("不可用")
+}
+
+/// 覆盖率账目对总（主册「三件套覆盖率审计（全设置项扫描）」：
+/// 抽样账与总账一致——auditor 内条目数 = 扫描应到数，不多不少）。
+pub fn coverage_reconciled(auditor_count: usize, scanned_total: usize) -> bool {
+    auditor_count == scanned_total
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F474 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_setdesc_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F474-v2");
+    // 1) 术语反例拦截：第二称命中即红；第一称通过。
+    cs.add("term_bad_rejected", !term_consistency_ok("查看废纸篓") && !term_consistency_ok("更换背景图"), "");
+    cs.add("term_good_passed", term_consistency_ok("回收站设置") && term_consistency_ok("更换壁纸"), "");
+    // 2) 风险项审计：有且非空才过。
+    let risky = SettingCopy {
+        label: "位置权限",
+        desc: "关闭后应用无法获取您的位置信息",
+        learn_anchor: None,
+        disabled_reason: None,
+        risk_note: Some("关闭后依赖定位的功能将无法工作"),
+    };
+    let empty_risk = SettingCopy { risk_note: Some(""), ..risky };
+    cs.add("risk_present", risk_note_present(&risky), "");
+    cs.add("risk_empty_rejected", !risk_note_present(&empty_risk), "");
+    // 3) 禁用态模板：句式含「停用/不可用」。
+    cs.add("disabled_template", disabled_template_ok("此功能在省电模式下停用"), "");
+    cs.add("disabled_template_free_text_rejected", !disabled_template_ok("暂时不行"), "");
+    // 4) 覆盖率对总：账实相符。
+    cs.add("coverage_reconciled", coverage_reconciled(96, 96) && !coverage_reconciled(95, 96), "");
+    // 5) 句式规范联动 v1：废话标签 + 复述说明双拦。
+    cs.add("style_lint_still_on", !label_style_ok("是否开启窗口贴靠") && !desc_style_ok("窗口贴靠", "窗口贴靠"), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn term_pairs_are_concrete() {
+        // 反例对两词互异且第一称非空（登记表自身健康）。
+        for (good, bad) in TERM_ANTI_PATTERNS {
+            assert!(!good.is_empty());
+            assert_ne!(good, bad);
+        }
+    }
+
+    #[test]
+    fn anchor_dead_link_still_zero() {
+        // v1 死锚=0 红线在深化后仍守（联动回归）。
+        assert!(anchor_valid("help/snap"));
+        assert!(!anchor_valid("help/dead"));
+    }
+
+    #[test]
+    fn risk_and_disabled_independent() {
+        // 风险说明与禁用态说明是两个独立维度（互不顶替）。
+        let item = SettingCopy {
+            label: "VPN 连接",
+            desc: "连接后所有流量经隧道转发",
+            learn_anchor: Some("help/privacy"),
+            disabled_reason: Some("此功能在飞行模式下停用"),
+            risk_note: None,
+        };
+        assert!(disabled_template_ok(item.disabled_reason.unwrap()));
+        assert!(!risk_note_present(&item));
+    }
+}

@@ -164,3 +164,118 @@ mod tests {
         assert_eq!(p.release(1_000), PressOutcome::EditMode);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F496）：进度环 permille 曲线 / 六磁贴直达页全表审计 /
+// 编辑态冲突消解矩阵 / 快速点击零误进 / 长按中断恢复
+// ===========================================================================
+
+/// 进度环曲线（500ms 线性倒数：held 0ms → 0‰、500ms → 1000‰、
+/// 超时钳制 1000‰——进度环让人知道长按生效了）。
+pub fn progress_curve_cases_ok() -> bool {
+    progress_ring_permille(0) == 0
+        && progress_ring_permille(250) == 500
+        && progress_ring_permille(500) == 1_000
+        && progress_ring_permille(2_000) == 1_000
+}
+
+/// 六磁贴直达页全表审计（主册「六代表磁贴直达页对照」——
+/// 每枚磁贴都有直达页且互异：磁贴是快捷开关还是入口，分得清）。
+pub fn tile_pages_table_healthy() -> bool {
+    let mut distinct = true;
+    for i in 0..TILE_N {
+        for j in (i + 1)..TILE_N {
+            if TILE_PAGES[i].0 == TILE_PAGES[j].0 || TILE_PAGES[i].1 == TILE_PAGES[j].1 {
+                distinct = false;
+            }
+        }
+    }
+    distinct && (0..TILE_N).all(|i| detail_page(TILE_PAGES[i].0).is_some())
+}
+
+/// 编辑态冲突消解矩阵（主册「磁贴右上编辑按钮进编辑、磁贴本体长按
+/// 进详情（两长按分工明确）」——两入口 2×2 全算：编辑按钮长按 → 编辑、
+/// 本体长按 → 详情，互相不抢）。
+pub fn edit_conflict_matrix(on_edit_button: bool, longpress_fired: bool) -> &'static str {
+    match (on_edit_button, longpress_fired) {
+        (true, true) => "edit-mode",      // 编辑按钮长按 → 编辑态。
+        (true, false) => "edit-arm",      // 编辑按钮按下（未到时长）→ 预备。
+        (false, true) => "detail-page",   // 本体长按 → 详情页。
+        (false, false) => "none",         // 尚未构成动作。
+    }
+}
+
+/// 快速点击零误进（主册「误触率（快速点击 0 误进）」：点击窗口内
+/// （<200ms）松手 → 永不触发详情——快速开关磁贴的手感保障）。
+pub fn quick_click_never_details(press: &TilePress, release_ms: u64) -> bool {
+    matches!(press.release(release_ms), PressOutcome::Click)
+}
+
+/// 长按中断恢复（按到一半移出/松手 → 取消进度不触发——拖到一半
+/// Esc 能放弃的磁贴版）。
+pub fn longpress_interrupt_cancels(press: &mut TilePress, interrupt_ms: u64) -> bool {
+    press.move_out();
+    matches!(press.release(interrupt_ms), PressOutcome::Cancelled)
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F496 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_tilelongpress_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F496-v2");
+    // 1) 进度环曲线：0/中点/满格/超时钳制。
+    cs.add("progress_curve", progress_curve_cases_ok(), "");
+    // 2) 六磁贴直达页全表。
+    cs.add("tile_pages_full", tile_pages_table_healthy(), "");
+    // 3) 编辑态冲突矩阵：两长按各走各门。
+    cs.add("matrix_edit", edit_conflict_matrix(true, true) == "edit-mode", "");
+    cs.add("matrix_detail", edit_conflict_matrix(false, true) == "detail-page", "");
+    cs.add("matrix_idle", edit_conflict_matrix(false, false) == "none", "");
+    // 4) 快速点击零误进（200ms 内松手 = Toggle 非 Detail）。
+    let p = TilePress::begin(0, false);
+    cs.add("quick_click_safe", quick_click_never_details(&p, 150), "");
+    // 5) 长按中断：移出取消。
+    let mut p2 = TilePress::begin(0, false);
+    cs.add("interrupt_cancels", longpress_interrupt_cancels(&mut p2, 300), "");
+    // 6) 长按时长锚。
+    cs.add("longpress_500ms", LONGPRESS_MS == 500, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn full_press_reaches_detail() {
+        let mut p = TilePress::begin(0, false);
+        // 按住到 500ms 不松手 → 详情触发。
+        assert!(matches!(p.release(500), PressOutcome::LongPressToDetail));
+    }
+
+    #[test]
+    fn edit_button_longpress_never_detail() {
+        let mut p = TilePress::begin(0, true);
+        // 编辑按钮上长按：进编辑态、永不进详情（分工明确）。
+        assert!(matches!(p.release(600), PressOutcome::EditMode));
+    }
+
+    #[test]
+    fn progress_never_regresses() {
+        // 单次按压内进度单调不减。
+        let mut last = 0;
+        for t in [100u64, 200, 300, 400, 500] {
+            let cur = progress_ring_permille(t);
+            assert!(cur >= last);
+            last = cur;
+        }
+    }
+
+    #[test]
+    fn every_tile_has_unique_page() {
+        for (tile, page) in TILE_PAGES {
+            assert_eq!(detail_page(tile), Some(page));
+        }
+    }
+}

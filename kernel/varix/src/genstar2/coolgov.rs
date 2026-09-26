@@ -139,3 +139,214 @@ mod tests {
         assert_eq!(g.visible_policy(), CoolingPolicy::Active);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F493）：风扇曲线模型 / 温度历史环 / 降档事件账 / 状态持久化
+// ===========================================================================
+
+/// 风扇曲线（温度 → 风扇占空比 ‰——主动策略 aggressive 曲线；
+/// 被动策略整体下移 30%——安静优先）。
+pub const FAN_CURVE: [(u8, u16); 5] = [
+    (50, 200),
+    (60, 350),
+    (70, 550),
+    (80, 800),
+    (90, 1_000),
+];
+
+pub fn fan_duty(temp_c: u8, policy: CoolingPolicy) -> u16 {
+    let mut duty = 1_000u16;
+    for (t, d) in FAN_CURVE {
+        if temp_c <= t {
+            duty = d;
+            break;
+        }
+    }
+    match policy {
+        CoolingPolicy::Active => duty,
+        CoolingPolicy::Passive => (duty as u32 * 700 / 1_000) as u16,
+        CoolingPolicy::Auto => duty, // Auto 的 effective 已裁决
+    }
+}
+
+/// 温度历史环（64 采样 × 1s = 近一分钟温度轨迹——「配合 F197 心里有数」）。
+pub struct TempHistory {
+    ring: [(u64, u8); 64],
+    head: usize,
+    n: usize,
+}
+
+impl TempHistory {
+    pub const fn new() -> Self {
+        TempHistory { ring: [(0, 0); 64], head: 0, n: 0 }
+    }
+
+    pub fn push(&mut self, at_ms: u64, temp_c: u8) {
+        self.ring[self.head] = (at_ms, temp_c);
+        self.head = (self.head + 1) % 64;
+        self.n = (self.n + 1).min(64);
+    }
+
+    /// 峰值（窗口内最高温——降档复盘用）。
+    pub fn peak(&self) -> u8 {
+        (0..self.n).filter_map(|i| Some(self.ring[i].1)).max().unwrap_or(0)
+    }
+
+    /// 均值 ×10（半度分辨率——读数对账用）。
+    pub fn mean_x10(&self) -> u16 {
+        if self.n == 0 {
+            return 0;
+        }
+        let sum: u32 = (0..self.n).map(|i| self.ring[i].1 as u32).sum();
+        (sum * 10 / self.n as u32) as u16
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 降档/升档事件账（自动档每次裁决变化记账——策略切换可追溯）。
+pub struct GovEventLog {
+    events: [(u64, bool); 16], // (时刻, 是否主动)
+    n: usize,
+    head: usize,
+}
+
+impl GovEventLog {
+    pub const fn new() -> Self {
+        GovEventLog { events: [(0, false); 16], n: 0, head: 0 }
+    }
+
+    pub fn log(&mut self, at_ms: u64, active: bool) {
+        self.events[self.head] = (at_ms, active);
+        self.head = (self.head + 1) % 16;
+        self.n = (self.n + 1).min(16);
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 抖动审计（60s 内升降档 ≥4 次 = 曲线抖动——回滞参数需复核的信号）。
+    pub fn flapping(&self, now_ms: u64, window_ms: u64) -> bool {
+        let mut flips = 0;
+        let mut last: Option<bool> = None;
+        for i in 0..self.n {
+            let idx = (self.head + 16 - self.n + i) % 16;
+            let (at, active) = self.events[idx];
+            if now_ms.saturating_sub(at) <= window_ms {
+                if let Some(l) = last {
+                    if l != active {
+                        flips += 1;
+                    }
+                }
+                last = Some(active);
+            }
+        }
+        flips >= 4
+    }
+}
+
+/// 状态持久化（策略选择——重启后保留）。
+pub const PERSIST_MAGIC: [u8; 4] = *b"VCG1";
+
+pub fn save_policy(p: CoolingPolicy, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 6 {
+        return None;
+    }
+    out[..4].copy_from_slice(&PERSIST_MAGIC);
+    out[4] = 1;
+    out[5] = p as u8;
+    Some(6)
+}
+
+pub fn load_policy(buf: &[u8]) -> Option<CoolingPolicy> {
+    if buf.len() < 6 || buf[..4] != PERSIST_MAGIC || buf[4] != 1 || buf[5] > 2 {
+        return None;
+    }
+    Some(match buf[5] {
+        0 => CoolingPolicy::Active,
+        1 => CoolingPolicy::Passive,
+        _ => CoolingPolicy::Auto,
+    })
+}
+
+pub fn run_coolgov_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F493-deep");
+    // 风扇曲线：90°C 顶格；被动档整体 -30%（安静优先）。
+    cs.add("fan_curve_active", fan_duty(95, CoolingPolicy::Active) == 1_000, "");
+    cs.add("fan_curve_passive", fan_duty(95, CoolingPolicy::Passive) == 700, "");
+    cs.add("fan_curve_mid", fan_duty(70, CoolingPolicy::Active) == 550, "");
+    // 温度历史：峰值/均值对账。
+    cs.add("temp_history_peak", {
+        let mut h = TempHistory::new();
+        for (i, t) in [68u8, 72, 85, 79].iter().enumerate() {
+            h.push(1_000 + i as u64, *t);
+        }
+        h.peak() == 85 && h.mean_x10() == 760 && h.count() == 4
+    }, "");
+    cs.add("temp_history_empty_honest", TempHistory::new().peak() == 0, "");
+    // 降档事件账 + 抖动审计（回滞防抖的可观测面）。
+    cs.add("event_log_flap_detected", {
+        let mut g = GovEventLog::new();
+        for i in 0..6u64 {
+            g.log(1_000 + i * 1_000, i % 2 == 0);
+        }
+        g.flapping(7_000, 10_000)
+    }, "");
+    cs.add("event_log_stable_ok", {
+        let mut g = GovEventLog::new();
+        for i in 0..5u64 {
+            g.log(1_000 + i * 1_000, true);
+        }
+        !g.flapping(6_000, 10_000)
+    }, "");
+    // 策略持久化 round-trip + 越界拒收。
+    cs.add("persist_roundtrip", {
+        let mut buf = [0u8; 8];
+        let n = save_policy(CoolingPolicy::Auto, &mut buf).unwrap();
+        load_policy(&buf[..n]) == Some(CoolingPolicy::Auto)
+    }, "");
+    cs.add("persist_bad_value", load_policy(&[b'V', b'C', b'G', b'1', 1, 7]).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn fan_curve_is_monotonic() {
+        let mut last = 0u16;
+        for (_, d) in FAN_CURVE {
+            assert!(d >= last);
+            last = d;
+        }
+    }
+
+    #[test]
+    fn passive_never_above_active() {
+        for t in 40..=95u8 {
+            assert!(fan_duty(t, CoolingPolicy::Passive) <= fan_duty(t, CoolingPolicy::Active));
+        }
+    }
+
+    #[test]
+    fn history_ring_wraps_at_64() {
+        let mut h = TempHistory::new();
+        for i in 0..70u64 {
+            h.push(i * 1_000, (i % 100) as u8);
+        }
+        assert_eq!(h.count(), 64);
+    }
+
+    #[test]
+    fn policy_roundtrip_all_three() {
+        let mut buf = [0u8; 8];
+        for p in [CoolingPolicy::Active, CoolingPolicy::Passive, CoolingPolicy::Auto] {
+            let n = save_policy(p, &mut buf).unwrap();
+            assert_eq!(load_policy(&buf[..n]), Some(p));
+        }
+    }
+}

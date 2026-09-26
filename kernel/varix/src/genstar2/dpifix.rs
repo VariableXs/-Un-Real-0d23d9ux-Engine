@@ -167,3 +167,192 @@ mod tests {
         assert!(DpiFix::redraw_verify(fixed, 150));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F498）：缩放变更事件流 / 记账持久化 / 批量修复队列 / 修复回滚
+// ===========================================================================
+
+/// 缩放变更事件（用户改缩放 → 全窗重评——主册「高分屏发糊时」的触发面）。
+#[derive(Clone, Copy, Debug)]
+pub struct ScaleEvent {
+    pub at_ms: u64,
+    pub new_scale_permille: u16,
+}
+
+/// 修复台账持久化（已提示名单/静音名单——「每个应用只烦你一次」跨重启）。
+pub struct FixMemoPersist {
+    prompted: [Option<u64>; 32],
+    silenced: [Option<u64>; 32],
+    n_prompted: usize,
+    n_silenced: usize,
+}
+
+pub const MEMO_MAGIC: [u8; 4] = *b"VFM1";
+
+impl FixMemoPersist {
+    pub const fn new() -> Self {
+        FixMemoPersist { prompted: [None; 32], silenced: [None; 32], n_prompted: 0, n_silenced: 0 }
+    }
+
+    pub fn mark_prompted(&mut self, app: &str) -> bool {
+        let k = app_key(app);
+        if Self::has(&self.prompted, self.n_prompted, k) {
+            return true;
+        }
+        if self.n_prompted >= 32 {
+            return false;
+        }
+        self.prompted[self.n_prompted] = Some(k);
+        self.n_prompted += 1;
+        true
+    }
+
+    pub fn silence(&mut self, app: &str) -> bool {
+        let k = app_key(app);
+        if Self::has(&self.silenced, self.n_silenced, k) {
+            return true;
+        }
+        if self.n_silenced >= 32 {
+            return false;
+        }
+        self.silenced[self.n_silenced] = Some(k);
+        self.n_silenced += 1;
+        true
+    }
+
+    pub fn is_silenced(&self, app: &str) -> bool {
+        Self::has(&self.silenced, self.n_silenced, app_key(app))
+    }
+
+    fn has(list: &[Option<u64>; 32], n: usize, k: u64) -> bool {
+        (0..n).any(|i| list[i] == Some(k))
+    }
+
+    /// 序列化（魔标+版本+两名单计数+逐键——跨重启一次性记账）。
+    pub fn save(&self, out: &mut [u8]) -> Option<usize> {
+        let need = 7 + (self.n_prompted + self.n_silenced) * 8;
+        if out.len() < need {
+            return None;
+        }
+        out[..4].copy_from_slice(&MEMO_MAGIC);
+        out[4] = 1;
+        out[5] = self.n_prompted as u8;
+        out[6] = self.n_silenced as u8;
+        let mut w = 7;
+        for i in 0..self.n_prompted {
+            out[w..w + 8].copy_from_slice(&self.prompted[i].unwrap().to_le_bytes());
+            w += 8;
+        }
+        for i in 0..self.n_silenced {
+            out[w..w + 8].copy_from_slice(&self.silenced[i].unwrap().to_le_bytes());
+            w += 8;
+        }
+        Some(w)
+    }
+
+    pub fn load(&mut self, buf: &[u8]) -> bool {
+        if buf.len() < 7 || buf[..4] != MEMO_MAGIC || buf[4] != 1 {
+            return false;
+        }
+        let np = buf[5] as usize;
+        let ns = buf[6] as usize;
+        if np > 32 || ns > 32 || buf.len() < 7 + (np + ns) * 8 {
+            return false;
+        }
+        let mut r = 7;
+        for i in 0..np {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&buf[r..r + 8]);
+            self.prompted[i] = Some(u64::from_le_bytes(b));
+            r += 8;
+        }
+        for i in 0..ns {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(&buf[r..r + 8]);
+            self.silenced[i] = Some(u64::from_le_bytes(b));
+            r += 8;
+        }
+        self.n_prompted = np;
+        self.n_silenced = ns;
+        true
+    }
+}
+
+/// 批量修复队列（多应用同时发糊 → 一次性提示批量修——不逐应用轰炸）。
+pub fn batch_fix_plan(apps: &[(&str, DpiAwareness, u16)]) -> usize {
+    apps.iter().filter(|(_, a, s)| blur_detected(*a, *s)).count()
+}
+
+/// 修复回滚（一键应用效果不好 → 回原感知态——「修不好也诚实」的退路）。
+pub fn rollback_fix(current: DpiAwareness, original: DpiAwareness) -> DpiAwareness {
+    original
+}
+
+pub fn run_dpifix_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F498-deep");
+    // 记账持久化 round-trip（跨重启一次性记账）。
+    let mut m = FixMemoPersist::new();
+    m.mark_prompted("app-a");
+    m.silence("app-b");
+    let mut buf = [0u8; 1024];
+    let n = m.save(&mut buf).unwrap();
+    let mut q = FixMemoPersist::new();
+    cs.add("memo_roundtrip", q.load(&buf[..n]) && q.is_silenced("app-b") && !q.is_silenced("app-a"), "");
+    let mut bad = buf;
+    bad[0] = b'X';
+    cs.add("memo_bad_magic", !FixMemoPersist::new().load(&bad[..n]), "");
+    // 批量修复队列（只数发糊应用——不轰炸不漏算）。
+    cs.add("batch_fix_count", batch_fix_plan(&[
+        ("a", DpiAwareness::Unaware, 150),
+        ("b", DpiAwareness::System, 200),
+        ("c", DpiAwareness::Unaware, 100),
+        ("d", DpiAwareness::Unaware, 200),
+    ]) == 2, "");
+    // 修复回滚（退路存在——修不好可回原态）。
+    cs.add("rollback", rollback_fix(DpiAwareness::PerMonitor, DpiAwareness::Unaware) == DpiAwareness::Unaware, "");
+    // 缩放事件模型（触发面：事件携带新缩放——全窗重评的输入）。
+    cs.add("scale_event", {
+        let e = ScaleEvent { at_ms: 1_000, new_scale_permille: 200 };
+        blur_detected(DpiAwareness::Unaware, e.new_scale_permille)
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn memo_survives_restart() {
+        let mut m = FixMemoPersist::new();
+        m.mark_prompted("legacy");
+        m.silence("legacy2");
+        let mut buf = [0u8; 1024];
+        let n = m.save(&mut buf).unwrap();
+        let mut q = FixMemoPersist::new();
+        assert!(q.load(&buf[..n]));
+        assert!(q.is_silenced("legacy2"));
+        assert!(!q.is_silenced("legacy")); // 提示过 ≠ 静音（还能再手动修）
+    }
+
+    #[test]
+    fn memo_cap_32_honest() {
+        let mut m = FixMemoPersist::new();
+        for i in 0..32 {
+            assert!(m.mark_prompted(&num(i)));
+        }
+        assert!(!m.mark_prompted("overflow"));
+    }
+
+    fn num(i: usize) -> String {
+        // 宿主测试链路专用（alloc 允许）。
+        let mut s = String::from("app");
+        s.push_str(&i.to_string());
+        s
+    }
+
+    #[test]
+    fn batch_never_counts_aware_apps() {
+        assert_eq!(batch_fix_plan(&[("x", DpiAwareness::PerMonitor, 300)]), 0);
+    }
+}

@@ -294,3 +294,207 @@ mod tests {
         assert!(!r.reset_default("C:\\k"));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F452）：内置库分类抽检表 / PNG 尺寸六档 / 同步残留审计 /
+// 元数据持久化与备份 / 批量恢复默认
+// ===========================================================================
+
+/// 内置库 12 分类抽检表（主册「内置图标库分类浏览」——每类名单 + 数量锚；
+/// 一处一事实：分类名与数量为常量表，UI 渲染与审计共用同一表）。
+pub const BUILTIN_CATEGORIES: [(&str, u16); BUILTIN_CATEGORY_N] = [
+    ("常规", 24),
+    ("文档", 18),
+    ("下载", 12),
+    ("图片", 16),
+    ("音乐", 14),
+    ("视频", 14),
+    ("项目", 20),
+    ("开发", 18),
+    ("共享", 10),
+    ("备份", 8),
+    ("加密", 8),
+    ("归档", 12),
+];
+
+/// 内置库图标总数（分类表求和——浏览页分页与加载预算的依据）。
+pub const BUILTIN_ICON_TOTAL: u16 = 174;
+
+/// PNG 转换的合法尺寸六档（ico 容器标准帧位——非档位尺寸拒绝并报建议档）。
+pub const PNG_VALID_SIZES: [u32; 6] = [256, 128, 64, 48, 32, 16];
+
+pub fn png_size_ok(w: u32, h: u32) -> bool {
+    w == h && PNG_VALID_SIZES.contains(&w)
+}
+
+/// 非法尺寸的人话修正建议（「512px → 建议 256px」——错误提示说怎么改对）。
+pub fn png_size_hint(w: u32, h: u32) -> Option<u32> {
+    if png_size_ok(w, h) {
+        return None;
+    }
+    if w.max(h) > 128 {
+        Some(256)
+    } else if w.max(h) > 32 {
+        Some(64)
+    } else {
+        Some(32)
+    }
+}
+
+/// 同步残留审计（主册「三处同步刷新」的收口面：任何一面失效位未消费
+/// 即视为挂旧图标——审计直接读 v1 失效位，不另立第二真相源）。
+pub fn pending_surfaces(reg: &IconRegistry) -> usize {
+    reg.invalidated.iter().filter(|&&b| b).count()
+}
+
+pub fn all_synced(reg: &IconRegistry) -> bool {
+    reg.invalidated.iter().all(|&b| !b)
+}
+
+/// 元数据持久化（图标指派表定长落盘 + F396 备份范围逐条含入）。
+/// 条目：key(8) + builtin_id(2) + custom(1) + backup(1) = 12 字节。
+pub const FICON_PERSIST_MAGIC: [u8; 4] = *b"VFI2";
+pub const FICON_PERSIST_ENTRY: usize = 12;
+
+pub fn save_assignments(reg: &IconRegistry, out: &mut [u8]) -> Option<usize> {
+    let n = reg.n;
+    if out.len() < 4 + n * FICON_PERSIST_ENTRY {
+        return None;
+    }
+    out[..4].copy_from_slice(&FICON_PERSIST_MAGIC);
+    let mut w = 4;
+    for i in 0..n {
+        let a = reg.assigns[i]?;
+        out[w..w + 8].copy_from_slice(&a.folder_key.to_be_bytes());
+        out[w + 8] = (a.builtin_id >> 8) as u8;
+        out[w + 9] = (a.builtin_id & 0xFF) as u8;
+        out[w + 10] = a.custom as u8;
+        out[w + 11] = a.in_backup_scope as u8;
+        w += FICON_PERSIST_ENTRY;
+    }
+    Some(w)
+}
+
+/// 导入校验（只验结构与档位：条数 ≤ 容量、builtin_id ≤ 分类数——
+/// 坏包拒收不入表；真实写入由调用方逐条 upsert）。
+pub fn validate_assignment_blob(buf: &[u8]) -> Option<usize> {
+    if buf.len() < 4 || buf[..4] != FICON_PERSIST_MAGIC || (buf.len() - 4) % FICON_PERSIST_ENTRY != 0 {
+        return None;
+    }
+    let n = (buf.len() - 4) / FICON_PERSIST_ENTRY;
+    if n > ASSIGN_CAP {
+        return None;
+    }
+    for i in 0..n {
+        let b = &buf[4 + i * FICON_PERSIST_ENTRY..4 + (i + 1) * FICON_PERSIST_ENTRY];
+        let builtin_id = ((b[8] as u16) << 8) | b[9] as u16;
+        if b[10] == 0 && (builtin_id as usize) >= BUILTIN_CATEGORY_N {
+            return None; // 非自定义条目的分类 id 越界 = 坏包。
+        }
+        if b[10] > 1 || b[11] > 1 {
+            return None; // 布尔位只认 0/1。
+        }
+    }
+    Some(n)
+}
+
+/// 批量恢复默认（一键全清 + 三面广播——主册「恢复默认永远一键可退」的
+/// 整库版：逐个 reset 是 N 次失效，整库清是一次失效全刷新）。
+pub struct BulkResetResult {
+    pub cleared: usize,
+}
+
+pub fn bulk_reset_all(reg: &mut IconRegistry) -> BulkResetResult {
+    let before = reg.n;
+    reg.assigns = [None; ASSIGN_CAP];
+    reg.n = 0;
+    reg.invalidated = [true; 3];
+    BulkResetResult { cleared: before }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F452 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_foldicon_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F452-v2");
+    // 1) 内置库 12 分类表完整（数量和 = 总数锚——一处一事实）。
+    let sum: u16 = BUILTIN_CATEGORIES.iter().map(|(_, n)| *n).sum();
+    cs.add("categories_complete", BUILTIN_CATEGORIES.len() == BUILTIN_CATEGORY_N && sum == BUILTIN_ICON_TOTAL, "");
+    // 2) PNG 尺寸六档合法 + 非档位给出修正建议。
+    cs.add("png_valid_sizes", PNG_VALID_SIZES.iter().all(|&s| png_size_ok(s, s)), "");
+    cs.add("png_reject_rect", !png_size_ok(100, 80) && !png_size_ok(512, 512), "");
+    cs.add("png_hint", png_size_hint(512, 512) == Some(256) && png_size_hint(64, 48).is_some(), "");
+    // 3) 同步残留审计：变更后三面挂旧 → 逐面消费 → 追平。
+    let mut reg = IconRegistry::new();
+    let _ = reg.set_builtin("C:\\work", 3);
+    cs.add("sync_pending", !all_synced(&reg) && pending_surfaces(&reg) == 3, "");
+    let _ = reg.consume_invalidate(Surface::Desktop);
+    let _ = reg.consume_invalidate(Surface::List);
+    cs.add("sync_partial", pending_surfaces(&reg) == 1, "");
+    let _ = reg.consume_invalidate(Surface::AddressBar);
+    cs.add("sync_done", all_synced(&reg), "");
+    // 4) 持久化 round-trip + 坏包拒收（越界分类 id）。
+    let mut buf = [0u8; 4 + FICON_PERSIST_ENTRY];
+    cs.add("persist_roundtrip", {
+        match save_assignments(&reg, &mut buf) {
+            Some(n2) => validate_assignment_blob(&buf[..n2]) == Some(1),
+            None => false,
+        }
+    }, "");
+    cs.add("persist_bad_magic", validate_assignment_blob(b"XXXX\x00\x00\x00\x00\x00\x00\x00\x00").is_none(), "");
+    // 越界分类 id（builtin_id=99 且非 custom）→ 坏包。
+    let mut bad = [0u8; 4 + FICON_PERSIST_ENTRY];
+    bad[..4].copy_from_slice(&FICON_PERSIST_MAGIC);
+    bad[12] = 0; // 条目内偏移 8 = builtin_id 高字节（bad[12] = buf 全局 12）
+    bad[13] = 99; // builtin_id = 99 ≥ 12 → 越界坏包
+    cs.add("persist_bad_id", validate_assignment_blob(&bad).is_none(), "");
+    // 5) 批量恢复默认：全清 + 三面广播。
+    let mut reg2 = IconRegistry::new();
+    let _ = reg2.set_builtin("C:\\a", 1);
+    let _ = reg2.set_custom("C:\\b", "png");
+    let r = bulk_reset_all(&mut reg2);
+    cs.add("bulk_reset", r.cleared == 2 && reg2.count() == 0 && pending_surfaces(&reg2) == 3, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn png_matrix_six_sizes() {
+        for &s in PNG_VALID_SIZES.iter() {
+            assert!(png_size_ok(s, s), "{}px 应在合法档位", s);
+        }
+        // 非方形一律拒绝（ico 帧为方形）。
+        assert!(!png_size_ok(256, 128));
+    }
+
+    #[test]
+    fn hint_ladder_by_size() {
+        // 建议档阶梯：>128 → 256；(32,128] → 64；其余 → 32。
+        assert_eq!(png_size_hint(512, 512), Some(256));
+        assert_eq!(png_size_hint(100, 100), Some(64));
+        assert_eq!(png_size_hint(24, 24), Some(32));
+        // 合法尺寸无建议。
+        assert_eq!(png_size_hint(48, 48), None);
+    }
+
+    #[test]
+    fn category_table_names_unique() {
+        for i in 0..BUILTIN_CATEGORIES.len() {
+            for j in (i + 1)..BUILTIN_CATEGORIES.len() {
+                assert_ne!(BUILTIN_CATEGORIES[i].0, BUILTIN_CATEGORIES[j].0);
+            }
+        }
+    }
+
+    #[test]
+    fn bulk_reset_then_lookup_empty() {
+        let mut reg = IconRegistry::new();
+        let _ = reg.set_builtin("C:\\keep", 5);
+        let _ = bulk_reset_all(&mut reg);
+        assert!(reg.lookup("C:\\keep").is_none());
+    }
+}

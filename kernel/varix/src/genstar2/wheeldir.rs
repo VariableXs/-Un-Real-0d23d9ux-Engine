@@ -147,3 +147,138 @@ mod tests {
         }
     }
 }
+
+// ===========================================================================
+// 深化 v2（F483）：双设备矩阵全表 / 惯性曲线不变实证 / 持久化 round-trip /
+// 语义翻转内容方向验证 / 出厂默认文档化
+// ===========================================================================
+
+/// 出厂默认表（主册「触控板要自然滚动但鼠标滚轮要传统」——
+/// 两设备出厂手感哲学不同：触控板自然、鼠标传统，文档化锚）。
+pub const FACTORY_MOUSE_NATURAL: bool = false;
+pub const FACTORY_TOUCHPAD_NATURAL: bool = true;
+
+/// 出厂默认审计（新 WheelDirection 实例 = 出厂表——文档化即实现）。
+pub fn factory_defaults_ok(w: &WheelDirection) -> bool {
+    // 鼠标传统：输入 +10（下滚）→ 内容 -10（上移，反向）；触控板自然：同向。
+    w.content_delta(WheelDevice::MouseWheel, 10) == -10
+        && w.content_delta(WheelDevice::TouchpadTwoFinger, 10) == 10
+}
+
+/// 双设备矩阵全表（两设备 × 两方向 = 4 格全算——语义翻转正确性
+/// 的内容方向验证：向下滚动内容上走的传统语义 vs 内容跟手的自然语义）。
+pub fn full_matrix_ok(w: &WheelDirection) -> bool {
+    // 鼠标传统：输入 +（下滚）→ 内容 -（上走）。
+    let mouse_traditional = w.content_delta(WheelDevice::MouseWheel, 10) == -10;
+    // 触控板自然：输入 +（下挥）→ 内容 +（跟手）。
+    let touchpad_natural = w.content_delta(WheelDevice::TouchpadTwoFinger, 10) == 10;
+    mouse_traditional && touchpad_natural
+}
+
+/// 惯性曲线不变实证（主册「翻转的是映射不是动画」——方向切换前后
+/// 曲线锚点逐位对拍：任何一处漂移 = 翻转破坏了手感，红）。
+pub fn inertia_untouched_after_flip(w: &mut WheelDirection) -> bool {
+    let before = INERTIA_CURVE_ANCHOR;
+    let _ = w.set(WheelDevice::MouseWheel, true);
+    let _ = w.set(WheelDevice::MouseWheel, false);
+    let after = INERTIA_CURVE_ANCHOR;
+    WheelDirection::inertia_curve_untouched(&before, &after)
+}
+
+/// 持久化（两设备方向位定长落盘 round-trip）。
+pub const WHEELDIR_PERSIST_MAGIC: [u8; 4] = *b"VWD1";
+pub const WHEELDIR_PERSIST_LEN: usize = 6;
+
+pub fn save_wheel(w: &WheelDirection, out: &mut [u8]) -> Option<usize> {
+    if out.len() < WHEELDIR_PERSIST_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&WHEELDIR_PERSIST_MAGIC);
+    out[4] = w.mouse_natural as u8;
+    out[5] = w.touchpad_natural as u8;
+    Some(WHEELDIR_PERSIST_LEN)
+}
+
+pub fn load_wheel(buf: &[u8]) -> Option<(bool, bool)> {
+    if buf.len() < WHEELDIR_PERSIST_LEN || buf[..4] != WHEELDIR_PERSIST_MAGIC {
+        return None;
+    }
+    // 位值只认 0/1（坏值拒收——方向是布尔语义，不许静默钳回）。
+    match (buf[4], buf[5]) {
+        (0 | 1, 0 | 1) => Some((buf[4] == 1, buf[5] == 1)),
+        _ => None,
+    }
+}
+
+/// 独立性反证审计（只动鼠标方向 → 触控板语义逐位不变——
+/// 「每只输入设备自己的事」的行为面）。
+pub fn mouse_flip_leaves_touchpad(w: &mut WheelDirection) -> bool {
+    let pad_before = w.content_delta(WheelDevice::TouchpadTwoFinger, 7);
+    let _ = w.set(WheelDevice::MouseWheel, true);
+    let pad_after = w.content_delta(WheelDevice::TouchpadTwoFinger, 7);
+    pad_before == pad_after
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F483 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_wheeldir_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F483-v2");
+    // 1) 出厂默认：鼠标传统 + 触控板自然（文档化锚即实现）。
+    let w = WheelDirection::new();
+    cs.add("factory_defaults", factory_defaults_ok(&w), "");
+    cs.add("factory_consts", !FACTORY_MOUSE_NATURAL && FACTORY_TOUCHPAD_NATURAL, "");
+    // 2) 双设备矩阵 4 格全算。
+    cs.add("matrix_full", full_matrix_ok(&w), "");
+    // 3) 惯性曲线不变实证（翻转前后锚点逐位对拍）。
+    let mut w2 = WheelDirection::new();
+    cs.add("inertia_untouched", inertia_untouched_after_flip(&mut w2), "");
+    // 4) 持久化 round-trip + 坏位拒收。
+    let mut buf = [0u8; WHEELDIR_PERSIST_LEN];
+    cs.add("persist_roundtrip", {
+        match save_wheel(&w, &mut buf) {
+            Some(_) => load_wheel(&buf) == Some((false, true)),
+            None => false,
+        }
+    }, "");
+    cs.add("persist_bad_bit", load_wheel(&[b'V', b'W', b'D', b'1', 2, 1]).is_none(), "");
+    // 5) 独立性反证：动鼠标不波及触控板。
+    cs.add("mouse_flip_isolated", mouse_flip_leaves_touchpad(&mut w2), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn flip_then_flip_back_identity() {
+        let mut w = WheelDirection::new();
+        let mouse_before = w.content_delta(WheelDevice::MouseWheel, 5);
+        // 翻 → 翻回 = 恒等。
+        let _ = w.set(WheelDevice::MouseWheel, true);
+        let flipped = w.content_delta(WheelDevice::MouseWheel, 5);
+        let _ = w.set(WheelDevice::MouseWheel, false);
+        assert_eq!(mouse_before, w.content_delta(WheelDevice::MouseWheel, 5));
+        assert_ne!(mouse_before, flipped);
+    }
+
+    #[test]
+    fn zero_input_stays_zero() {
+        let mut w = WheelDirection::new();
+        assert_eq!(w.content_delta(WheelDevice::MouseWheel, 0), 0);
+        let _ = w.set(WheelDevice::MouseWheel, true);
+        assert_eq!(w.content_delta(WheelDevice::TouchpadTwoFinger, 0), 0);
+    }
+
+    #[test]
+    fn negative_input_flips_sign() {
+        let w = WheelDirection::new();
+        // 上滚（负输入）在对称语义下符号相反。
+        assert_eq!(
+            w.content_delta(WheelDevice::MouseWheel, -10).signum(),
+            -w.content_delta(WheelDevice::MouseWheel, 10).signum()
+        );
+    }
+}

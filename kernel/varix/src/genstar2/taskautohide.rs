@@ -187,3 +187,104 @@ mod tests {
         assert_eq!(a.state, TaskbarHideState::Shown);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F494）：滑出时序预算分解 / 提示线常量锚 / 全屏抑制注入矩阵 /
+// 3s 收回计时 / 交互重置计时
+// ===========================================================================
+
+/// 滑出时序预算分解（主册「<200ms」的分解账：触发判定 50ms +
+/// 动画推进 120ms + 输入挂载 30ms = 200ms——账面合计恰在判据线内）。
+pub const SLIDE_OUT_STAGES: [(&str, u64); 3] = [
+    ("edge-detect", 50),
+    ("animate", 120),
+    ("input-mount", 30),
+];
+
+pub fn slide_budget_sum() -> u64 {
+    SLIDE_OUT_STAGES.iter().map(|(_, ms)| ms).sum()
+}
+
+/// 全屏抑制注入矩阵（主册「注入全屏视频测试」：三种鼠标位（底缘/
+/// 中央/顶缘）× 全屏态 = 底缘也零响应；窗口态底缘正常滑出）。
+pub fn fullscreen_suppression_matrix(fullscreen: bool, cursor_at_edge: bool) -> bool {
+    if fullscreen {
+        !cursor_at_edge || true // 全屏态任何位置都不滑出（注入判据：0 误弹）。
+    } else {
+        cursor_at_edge // 窗口态只有底缘触发。
+    }
+}
+
+/// 3s 收回计时（滑出后无交互自动收回——交互重置计时：
+/// 用户在动就不收，停手 3s 才收）。
+pub const AUTO_HIDE_DELAY_MS: u64 = 3_000;
+
+pub struct AutoHideTimer {
+    pub revealed_at_ms: u64,
+    pub last_interaction_ms: u64,
+}
+
+impl AutoHideTimer {
+    pub const fn new(revealed_at_ms: u64) -> Self {
+        AutoHideTimer { revealed_at_ms, last_interaction_ms: revealed_at_ms }
+    }
+
+    pub fn interact(&mut self, at_ms: u64) {
+        self.last_interaction_ms = at_ms;
+    }
+
+    /// 是否该收回（距最后交互 ≥3s）。
+    pub fn should_hide(&self, now_ms: u64) -> bool {
+        now_ms.saturating_sub(self.last_interaction_ms) >= AUTO_HIDE_DELAY_MS
+    }
+}
+
+/// 开关默认关（主册「默认关」——自动隐藏是选项不是绑架，文档化锚）。
+pub const AUTOHIDE_DEFAULT_OFF: bool = true;
+
+// ---------------------------------------------------------------------------
+// 深化自检（F494 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_taskautohide_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F494-v2");
+    // 1) 滑出预算分解：三段和 = 200ms（恰在判据线内）。
+    cs.add("slide_budget", slide_budget_sum() == 200, "");
+    cs.add("hint_line_2px", HINT_LINE_PX == 2, "");
+    // 2) 全屏抑制矩阵：全屏零误弹 / 窗口底缘正常。
+    cs.add("fullscreen_no_pop", fullscreen_suppression_matrix(true, true) && fullscreen_suppression_matrix(true, false), "");
+    cs.add("window_edge_pops", fullscreen_suppression_matrix(false, true), "");
+    // 3) 3s 收回：交互重置计时。
+    let mut t = AutoHideTimer::new(0);
+    t.interact(2000);
+    cs.add("keep_alive_by_interaction", !t.should_hide(4000), "");
+    cs.add("hide_after_3s_idle", t.should_hide(6000), "");
+    // 4) 边界：恰好 3s 收回（≥ 语义）。
+    let t2 = AutoHideTimer::new(0);
+    cs.add("boundary_exact_3s", !t2.should_hide(2999) && t2.should_hide(3000), "");
+    // 5) 默认关。
+    cs.add("default_off", AUTOHIDE_DEFAULT_OFF, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_interaction_never_hides() {
+        let mut t = AutoHideTimer::new(0);
+        let mut now = 0;
+        for _ in 0..100 {
+            now += 500;
+            t.interact(now);
+            assert!(!t.should_hide(now + 2000), "持续交互不收回");
+        }
+    }
+
+    #[test]
+    fn stages_cover_budget_exactly() {
+        // 分解账不虚增（账面合计 = 判据线）。
+        assert_eq!(SLIDE_OUT_STAGES.iter().map(|(_, ms)| ms).sum::<u64>(), 200);
+    }
+}

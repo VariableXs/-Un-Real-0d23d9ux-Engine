@@ -234,3 +234,253 @@ mod tests {
         assert!(t.large_icons());
     }
 }
+
+// ===========================================================================
+// 深化 v2（F454）：内容画像直方图 / 用户记忆优先级审计 / 模板定义表 /
+// 一次性判定穿透验证 / 与 F392 大小列兼容位
+// ===========================================================================
+
+/// 内容画像（扩展名直方图的定长版：四类计数 + 总数——判定输入的
+/// 结构化面，与 v1 decide_template 的 40% 主导线同一阈值语义）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ContentProfile {
+    pub images: u32,
+    pub audio: u32,
+    pub docs: u32,
+    pub others: u32,
+}
+
+impl ContentProfile {
+    pub fn total(&self) -> u32 {
+        self.images + self.audio + self.docs + self.others
+    }
+
+    pub fn record(&mut self, ext: &str) {
+        match classify_ext(ext) {
+            ContentClass::Image => self.images += 1,
+            ContentClass::Audio => self.audio += 1,
+            ContentClass::Doc => self.docs += 1,
+            ContentClass::Other => self.others += 1,
+        }
+    }
+
+    /// 主导类判定（与 v1 DOMINANCE_PERMILLE=400 同线：40% 含边界；
+    /// 并列取 images>audio>docs 确定性优先级——不吃浮点）。
+    pub fn dominant(&self) -> Option<ContentClass> {
+        let total = self.total();
+        if total == 0 {
+            return None;
+        }
+        // ×10000 避免除法：n*10000/total >= 4000 等价 n/total >= 40%。
+        let ok = |n: u32| n as u64 * 10_000 >= total as u64 * 4_000;
+        if ok(self.images) {
+            Some(ContentClass::Image)
+        } else if ok(self.audio) {
+            Some(ContentClass::Audio)
+        } else if ok(self.docs) {
+            Some(ContentClass::Doc)
+        } else {
+            None
+        }
+    }
+
+    /// 画像 → 模板（含「不构成主导 → Generic 不硬套」的 v1 语义）。
+    pub fn template(&self) -> FolderTemplate {
+        match self.dominant() {
+            Some(ContentClass::Image) => FolderTemplate::Pictures,
+            Some(ContentClass::Audio) => FolderTemplate::Music,
+            Some(ContentClass::Doc) => FolderTemplate::Documents,
+            None => FolderTemplate::Generic,
+            _ => FolderTemplate::Generic,
+        }
+    }
+}
+
+/// 模板定义表（四模板的完整视图配置——大图标/排序列一处定义，
+/// 与 v1 FolderTemplate::sort_columns 同值对齐）。
+pub const TEMPLATE_TABLE: [(FolderTemplate, bool, &'static str); 4] = [
+    (FolderTemplate::Pictures, true, "date-taken"),
+    (FolderTemplate::Music, false, "title,duration,artist"),
+    (FolderTemplate::Documents, false, "name,mdate,type,size"),
+    (FolderTemplate::Downloads, false, "date-group"),
+];
+
+/// F392 大小列兼容位（主册「模板与 F392 大小列兼容」：详情模板的列集
+/// 须含大小列；大图标/日期分组模板无列集红线）。
+pub fn template_size_column_ok(t: FolderTemplate) -> bool {
+    match t {
+        FolderTemplate::Documents => t.sort_columns().contains("size"),
+        FolderTemplate::Pictures | FolderTemplate::Music | FolderTemplate::Downloads | FolderTemplate::Generic => true,
+    }
+}
+
+/// 一次性判定审计（主册「模板判定只在新目录首次打开时跑一次」）。
+pub struct OnceDecideAudit {
+    pub decide_calls: u32,
+    pub frozen: bool,
+}
+
+/// 记忆化判定器（画像复用 v1 decide_template；同目录二次打开不再判定；
+/// 用户改过 → 引擎永久沉默——F219 记忆优先级）。
+pub struct MemoizedDecider {
+    memo: TemplateMemo,
+    pub audit: OnceDecideAudit,
+    current_t: Option<FolderTemplate>,
+    /// 上次判定的目录名（同目录重复 open 不再判定——一次性判定语义）。
+    last_dir: [u8; 32],
+    last_dir_n: usize,
+}
+
+impl MemoizedDecider {
+    pub const fn new() -> Self {
+        MemoizedDecider {
+            memo: TemplateMemo::new(),
+            audit: OnceDecideAudit { decide_calls: 0, frozen: false },
+            current_t: None,
+            last_dir: [0; 32],
+            last_dir_n: 0,
+        }
+    }
+
+    /// 首开判定 + 计数（冻结或同目录已判定 → 完全跳过判定器）。
+    pub fn open(&mut self, dir_name: &str, exts: &[&str]) -> FolderTemplate {
+        if self.audit.frozen {
+            return self.current();
+        }
+        // 同目录重复 open：一次性判定——不重复进判定器。
+        let b = dir_name.as_bytes();
+        if self.last_dir_n == b.len() && b.len() <= 32 && &self.last_dir[..self.last_dir_n] == b {
+            return self.current();
+        }
+        self.audit.decide_calls += 1;
+        let t = self.memo.first_open_decide(dir_name, exts);
+        self.current_t = Some(t);
+        if b.len() <= 32 {
+            self.last_dir[..b.len()].copy_from_slice(b);
+            self.last_dir_n = b.len();
+        }
+        t
+    }
+
+    /// 用户改视图 → 永久听用户（主册「一旦你改过就永远听你的」）。
+    pub fn user_touch(&mut self, t: FolderTemplate) {
+        self.memo.user_override(t);
+        self.audit.frozen = true;
+        self.current_t = Some(t);
+    }
+
+    pub fn current(&self) -> FolderTemplate {
+        self.current_t.unwrap_or(FolderTemplate::Generic)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F454 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_foldtmpl_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F454-v2");
+    // 1) 内容画像：40% 主导线（图片 5/10 → Pictures）。
+    let mut p = ContentProfile::default();
+    for _ in 0..5 {
+        p.record("jpg");
+    }
+    for _ in 0..5 {
+        p.record("txt");
+    }
+    cs.add("profile_dominant_image", p.dominant() == Some(ContentClass::Image) && p.template() == FolderTemplate::Pictures, "");
+    // 2) 不足 40% → Generic 不硬套（v1 同语义；每类 <40% 的真混合）。
+    let mut p2 = ContentProfile::default();
+    for _ in 0..3 {
+        p2.record("mp3");
+    }
+    for _ in 0..3 {
+        p2.record("jpg");
+    }
+    for _ in 0..3 {
+        p2.record("txt");
+    }
+    p2.record("xyz");
+    cs.add("profile_mixed_generic", p2.dominant().is_none() && p2.total() == 10 && p2.template() == FolderTemplate::Generic, "");
+    // 3) 下载目录名优先（目录名线先于内容线）。
+    cs.add("download_name_first", decide_template("下载", &["jpg", "jpg", "txt"]) == FolderTemplate::Downloads, "");
+    // 4) 模板定义表完整且与 v1 排序列同值。
+    cs.add("template_table_complete", TEMPLATE_TABLE.len() == 4
+        && TEMPLATE_TABLE.iter().all(|(t, li, cols)| t.large_icons() == *li && t.sort_columns() == *cols), "");
+    // 5) F392 大小列兼容位：Documents 列集含 size。
+    cs.add("size_column_compat", template_size_column_ok(FolderTemplate::Documents), "");
+    // 6) 一次性判定：首开判定一次；用户改后引擎沉默。
+    let mut m = MemoizedDecider::new();
+    let t1 = m.open("照片", &["jpg", "jpg", "png"]);
+    let _ = m.open("照片", &["mp3"]);
+    cs.add("once_decide", t1 == FolderTemplate::Pictures && m.audit.decide_calls == 1, "");
+    m.user_touch(FolderTemplate::Music);
+    let _ = m.open("照片", &["txt"]);
+    cs.add("user_freeze", m.current() == FolderTemplate::Music && m.audit.decide_calls == 1, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn profile_counts_all_classes() {
+        let mut p = ContentProfile::default();
+        p.record("png");
+        p.record("flac");
+        p.record("docx");
+        p.record("xyz");
+        assert_eq!((p.images, p.audio, p.docs, p.others), (1, 1, 1, 1));
+        assert_eq!(p.total(), 4);
+    }
+
+    #[test]
+    fn dominance_boundary_exact_40() {
+        // 恰好 40%（4/10）达标——主册「40% 主导线」含边界（v1 同线）。
+        let mut p = ContentProfile::default();
+        for _ in 0..4 {
+            p.record("mp3");
+        }
+        for _ in 0..6 {
+            p.record("xyz");
+        }
+        assert_eq!(p.dominant(), Some(ContentClass::Audio));
+        // 每类都 <40%（3/10 × 3 类 + 1 其他）→ None。
+        let mut q = ContentProfile::default();
+        for _ in 0..3 {
+            q.record("mp3");
+        }
+        for _ in 0..3 {
+            q.record("jpg");
+        }
+        for _ in 0..3 {
+            q.record("txt");
+        }
+        q.record("xyz");
+        assert_eq!(q.dominant(), None);
+    }
+
+    #[test]
+    fn memoized_decider_full_lifecycle() {
+        let mut m = MemoizedDecider::new();
+        let first = m.open("音乐收藏", &["mp3", "mp3", "flac"]);
+        assert_eq!(first, FolderTemplate::Music);
+        // 内容变化但未冻结：仍只判定一次（一次性判定）。
+        let _ = m.open("音乐收藏", &["jpg", "jpg", "jpg"]);
+        assert_eq!(m.audit.decide_calls, 1);
+        // 用户改过：永久听用户。
+        m.user_touch(FolderTemplate::Pictures);
+        let _ = m.open("音乐收藏", &["txt", "txt"]);
+        assert_eq!(m.current(), FolderTemplate::Pictures);
+        assert_eq!(m.audit.decide_calls, 1);
+    }
+
+    #[test]
+    fn empty_profile_honest() {
+        let p = ContentProfile::default();
+        assert_eq!(p.total(), 0);
+        assert!(p.dominant().is_none());
+        assert_eq!(p.template(), FolderTemplate::Generic);
+    }
+}

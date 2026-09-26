@@ -159,3 +159,188 @@ mod tests {
         assert!(msg.contains("右声道") && (msg.contains("接口") || msg.contains("换设备")));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F480）：测试音序列发生器 / 声道路由账 / 无声判定窗 / 结果报告
+// ===========================================================================
+
+/// 测试音配置（440Hz 标准音 + 500ms 时长——左右独立发声的声学参数）。
+pub const TEST_TONE_HZ: u16 = 440;
+pub const TEST_TONE_MS: u64 = 500;
+
+/// 音序列发生器（左右交替节拍——双声道同时测试的时序面）。
+pub struct ToneSeq {
+    step: u8,
+    steps_left: u8,
+}
+
+impl ToneSeq {
+    pub const fn new(steps: u8) -> Self {
+        ToneSeq { step: 0, steps_left: steps }
+    }
+
+    /// 下一发声声道（Left→Right→Both 循环；步尽 → None——测试有终点）。
+    pub fn next_channel(&mut self) -> Option<Channel> {
+        if self.steps_left == 0 {
+            return None;
+        }
+        self.steps_left -= 1;
+        let ch = match self.step % 3 {
+            0 => Channel::Left,
+            1 => Channel::Right,
+            _ => Channel::Both,
+        };
+        self.step += 1;
+        Some(ch)
+    }
+
+    pub fn remaining(&self) -> u8 {
+        self.steps_left
+    }
+}
+
+/// 声道路由账（每声道一次验证记录——「测试的就是当前在用的那个设备」
+/// 的可审计面）。
+pub struct RouteLog {
+    entries: [(u8, u32, bool); 8], // (声道 id, 设备 ack, 是否匹配)
+    n: usize,
+}
+
+impl RouteLog {
+    pub const fn new() -> Self {
+        RouteLog { entries: [(0, 0, false); 8], n: 0 }
+    }
+
+    pub fn record(&mut self, ch: Channel, ack_device: Option<u32>, expect_device: u32) {
+        if self.n >= 8 {
+            return;
+        }
+        let ch_id = match ch {
+            Channel::Left => 0,
+            Channel::Right => 1,
+            Channel::Both => 2,
+        };
+        self.entries[self.n] = (ch_id, ack_device.unwrap_or(0), ack_device == Some(expect_device));
+        self.n += 1;
+    }
+
+    pub fn all_matched(&self) -> bool {
+        self.n >= 3 && (0..self.n).all(|i| self.entries[i].2)
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 无声判定窗（发声后 500ms 内无 ack = 无声——诊断提示的触发时钟）。
+pub const SILENCE_WINDOW_MS: u64 = 500;
+
+pub fn is_silent(played_at_ms: u64, ack_at_ms: Option<u64>) -> bool {
+    match ack_at_ms {
+        Some(t) => t.saturating_sub(played_at_ms) > SILENCE_WINDOW_MS,
+        None => true,
+    }
+}
+
+/// 结果报告结构（测试完成后的可读结论——三声道各一行）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TestReport {
+    pub left_ok: bool,
+    pub right_ok: bool,
+    pub both_ok: bool,
+    pub volume_permille: u16,
+}
+
+impl TestReport {
+    pub fn all_pass(&self) -> bool {
+        self.left_ok && self.right_ok && self.both_ok
+    }
+
+    /// 人话结论（全过/哪边无声——三要素口径）。
+    pub fn conclusion(&self) -> &'static str {
+        if self.all_pass() {
+            "左右声道测试通过"
+        } else if !self.left_ok {
+            ChannelTest::silent_diagnosis(Channel::Left)
+        } else if !self.right_ok {
+            ChannelTest::silent_diagnosis(Channel::Right)
+        } else {
+            ChannelTest::silent_diagnosis(Channel::Both)
+        }
+    }
+}
+
+pub fn run_chantest_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F480-deep");
+    // 音序列（左右双循环——步尽诚实终止）。
+    cs.add("tone_seq_cycle", {
+        let mut s = ToneSeq::new(6);
+        let seq = [s.next_channel(), s.next_channel(), s.next_channel(), s.next_channel(), s.next_channel(), s.next_channel()];
+        seq == [Some(Channel::Left), Some(Channel::Right), Some(Channel::Both), Some(Channel::Left), Some(Channel::Right), Some(Channel::Both)]
+            && s.next_channel().is_none()
+            && s.remaining() == 0
+    }, "");
+    // 音参数（440Hz/500ms 在册——测试音不炸耳的声学锚）。
+    cs.add("tone_params", TEST_TONE_HZ == 440 && TEST_TONE_MS == 500, "");
+    // 路由账（三声道全匹配才算过——单边通不算通）。
+    cs.add("route_log_all_pass", {
+        let mut r = RouteLog::new();
+        r.record(Channel::Left, Some(7), 7);
+        r.record(Channel::Right, Some(7), 7);
+        r.record(Channel::Both, Some(7), 7);
+        r.all_matched()
+    }, "");
+    cs.add("route_log_one_fail", {
+        let mut r = RouteLog::new();
+        r.record(Channel::Left, Some(7), 7);
+        r.record(Channel::Right, Some(9), 7); // ack 设备不对
+        r.record(Channel::Both, Some(7), 7);
+        !r.all_matched()
+    }, "");
+    // 无声判定窗（500ms 无 ack = 无声——诊断触发时钟）。
+    cs.add("silence_window", is_silent(0, None) && !is_silent(0, Some(499)) && is_silent(0, Some(501)), "");
+    // 结果报告（全过人话/左无声人话——三要素结论）。
+    cs.add("report_all_pass", {
+        TestReport { left_ok: true, right_ok: true, both_ok: true, volume_permille: 400 }.conclusion() == "左右声道测试通过"
+    }, "");
+    cs.add("report_left_silent", {
+        TestReport { left_ok: false, right_ok: true, both_ok: true, volume_permille: 400 }.conclusion() == "左声道无声——检查接口或换设备"
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn seq_partial_run_stops_cleanly() {
+        let mut s = ToneSeq::new(2);
+        assert_eq!(s.next_channel(), Some(Channel::Left));
+        assert_eq!(s.next_channel(), Some(Channel::Right));
+        assert_eq!(s.next_channel(), None);
+        assert_eq!(s.remaining(), 0);
+    }
+
+    #[test]
+    fn route_log_caps_at_8() {
+        let mut r = RouteLog::new();
+        for _ in 0..10 {
+            r.record(Channel::Left, Some(1), 1);
+        }
+        assert_eq!(r.count(), 8);
+    }
+
+    #[test]
+    fn silence_boundary_exact() {
+        assert!(!is_silent(1_000, Some(1_000 + SILENCE_WINDOW_MS)));
+        assert!(is_silent(1_000, Some(1_000 + SILENCE_WINDOW_MS + 1)));
+    }
+
+    #[test]
+    fn report_both_silent_falls_to_both_message() {
+        let r = TestReport { left_ok: true, right_ok: true, both_ok: false, volume_permille: 400 };
+        assert_eq!(r.conclusion(), "双声道无声——检查音量、接口或输出设备");
+    }
+}

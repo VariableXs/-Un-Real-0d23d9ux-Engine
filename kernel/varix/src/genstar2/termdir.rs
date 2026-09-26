@@ -212,3 +212,180 @@ mod tests {
         assert!(!t.new_tab(DirPath::new("C:\\y").unwrap()));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F470）：目录合法性校验 / 标签目录账持久化 / 路径归一化
+// ===========================================================================
+
+/// 路径归一化（尾分隔符统一 + 重复分隔符合并——「开终端就在对的目录」
+/// 的前置卫生；零分配：返回归一化后的字节长，原位写回缓冲）。
+pub fn normalize_path(buf: &mut [u8], n: &mut usize) {
+    // 合并重复分隔符。
+    let mut w = 0;
+    for r in 0..*n {
+        let c = buf[r];
+        if c == b'\\' && w > 0 && buf[w - 1] == b'\\' {
+            continue;
+        }
+        buf[w] = c;
+        w += 1;
+    }
+    *n = w;
+    // 尾分隔符保留单个（目录语义）。
+    if *n > 1 && buf[*n - 1] == b'\\' && buf[*n - 2] == b'\\' {
+        *n -= 1;
+    }
+}
+
+/// 目录可达性校验（存在 + 非系统保留名——终端不 cd 进不该进的地方）。
+pub fn dir_entry_ok(path: &str, exists: bool) -> Result<(), &'static str> {
+    if path.is_empty() {
+        return Err("目录不能为空");
+    }
+    if path.len() > PATH_CAP {
+        return Err("路径过长");
+    }
+    const RESERVED: [&str; 6] = ["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"];
+    let last = path.rsplit(['\\', '/']).next().unwrap_or("");
+    for r in RESERVED {
+        if last.eq_ignore_ascii_case(r) {
+            return Err("系统保留名不可作目录");
+        }
+    }
+    if !exists {
+        return Err("目录不存在");
+    }
+    Ok(())
+}
+
+/// 标签目录账持久化（多标签各目录跨重启恢复——主册「多标签独立」的
+/// 持久化面；魔标+版本+逐标签路径）。
+pub const TABS_PERSIST_MAGIC: [u8; 4] = *b"VTD1";
+
+pub fn save_tabs(tabs: &[Option<DirPath>; TAB_CAP], tab_n: usize, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 6 + tab_n * (1 + PATH_CAP) {
+        return None;
+    }
+    out[..4].copy_from_slice(&TABS_PERSIST_MAGIC);
+    out[4] = 1;
+    out[5] = tab_n as u8;
+    let mut w = 6;
+    for i in 0..tab_n {
+        match &tabs[i] {
+            Some(d) => {
+                out[w] = d.n as u8;
+                out[w + 1..w + 1 + d.n].copy_from_slice(&d.buf[..d.n]);
+            }
+            None => out[w] = 0,
+        }
+        w += 1 + PATH_CAP;
+    }
+    Some(w)
+}
+
+pub fn load_tabs(buf: &[u8]) -> Option<([Option<DirPath>; TAB_CAP], usize)> {
+    if buf.len() < 6 || buf[..4] != TABS_PERSIST_MAGIC || buf[4] != 1 {
+        return None;
+    }
+    let tn = buf[5] as usize;
+    if tn > TAB_CAP || buf.len() < 6 + tn * (1 + PATH_CAP) {
+        return None;
+    }
+    let mut tabs = [None; TAB_CAP];
+    let mut r = 6;
+    for i in 0..tn {
+        let len = buf[r] as usize;
+        if len > PATH_CAP {
+            return None;
+        }
+        if len > 0 {
+            let mut d = DirPath { buf: [0; PATH_CAP], n: len };
+            d.buf[..len].copy_from_slice(&buf[r + 1..r + 1 + len]);
+            tabs[i] = Some(d);
+        }
+        r += 1 + PATH_CAP;
+    }
+    Some((tabs, tn))
+}
+
+pub fn run_termdir_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F470-deep");
+    // 路径归一化（重复分隔符合并——零分配原位写回）。
+    cs.add("normalize_dedup", {
+        let mut b = *b"C:\\\\work\\\\sub\\\\";
+        let mut n = 14;
+        normalize_path(&mut b, &mut n);
+        core::str::from_utf8(&b[..n]) == Ok("C:\\work\\sub\\")
+    }, "");
+    // 目录可达性校验（保留名拒绝——终端不 cd 进 CON）。
+    cs.add("reserved_name_rejected", dir_entry_ok("C:\\CON", true).is_err() && dir_entry_ok("C:\\nul", true).is_err(), "");
+    cs.add("missing_dir_rejected", dir_entry_ok("C:\\ghost", false).is_err(), "");
+    cs.add("valid_dir_ok", dir_entry_ok("C:\\work", true).is_ok(), "");
+    // 标签账持久化 round-trip（三标签两空——重启恢复各目录）。
+    cs.add("tabs_persist_roundtrip", {
+        let mut t = TermDirs::new();
+        t.new_tab(DirPath::new("C:\\a").unwrap());
+        t.new_tab(DirPath::new("D:\\b").unwrap());
+        t.new_tab(DirPath::new("E:\\c").unwrap());
+        let mut buf = [0u8; 1024];
+        let n = save_tabs(&t.tabs, t.tab_n, &mut buf).unwrap();
+        match load_tabs(&buf[..n]) {
+            Some((tabs, tn)) => {
+                tn == 3
+                    && tabs[0].as_ref().unwrap().as_str() == "C:\\a"
+                    && tabs[2].as_ref().unwrap().as_str() == "E:\\c"
+            }
+            None => false,
+        }
+    }, "");
+    cs.add("tabs_persist_bad_magic", load_tabs(b"XXXX\x01\x00").is_none(), "");
+    // 超长路径拒绝（目录合法性——PATH_CAP 红线；纯逻辑注入，零堆构造）。
+    cs.add("oversize_rejected", oversize_len_rejected(PATH_CAP + 1) && !oversize_len_rejected(PATH_CAP), "");
+    cs
+}
+
+/// 超长注入的纯逻辑面：长度红线判定与 `DirPath::new`/`dir_entry_ok` 的
+/// `len > PATH_CAP` 同源（一处一事实；不构造真实串——零堆纪律）。
+pub fn oversize_len_rejected(len: usize) -> bool {
+    len > PATH_CAP
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_keeps_single_trailing() {
+        let mut b = *b"C:\\root\\";
+        let mut n = 8;
+        normalize_path(&mut b, &mut n);
+        assert_eq!(&b[..n], b"C:\\root\\");
+    }
+
+    #[test]
+    fn normalize_shortens_double_trailing() {
+        let mut b = *b"C:\\root\\\\";
+        let mut n = 9;
+        normalize_path(&mut b, &mut n);
+        assert_eq!(&b[..n], b"C:\\root\\");
+    }
+
+    #[test]
+    fn reserved_names_case_insensitive() {
+        assert!(dir_entry_ok("C:\\con", true).is_err());
+        assert!(dir_entry_ok("C:\\Aux", true).is_err());
+        assert!(dir_entry_ok("C:\\console-app", true).is_ok()); // 非整名不误伤
+    }
+
+    #[test]
+    fn tabs_persist_empty_slot_survives() {
+        let mut t = TermDirs::new();
+        t.new_tab(DirPath::new("C:\\one").unwrap());
+        let mut buf = [0u8; 1024];
+        let n = save_tabs(&t.tabs, t.tab_n, &mut buf).unwrap();
+        let (tabs, tn) = load_tabs(&buf[..n]).unwrap();
+        assert_eq!(tn, 1);
+        assert!(tabs[0].is_some());
+        assert!(tabs[1].is_none());
+    }
+}

@@ -161,3 +161,128 @@ mod tests {
         assert!(b.attribution(99_999, Some("x")).is_none());
     }
 }
+
+// ===========================================================================
+// 深化 v2（F489）：两阶段时长账 / 归因抖动抑制 / 强断路径全链让路 /
+// 阶段文案表 / 正常路径零数字的账面复核
+// ===========================================================================
+
+/// 两阶段时长账（B-2902 对账深化：两阶段各自耗时可导出——
+/// 关机慢了知道慢在「保存」还是「结束应用」）。
+impl ShutdownBadge {
+    /// 阶段耗时（ms）：阶段 i 的持续时间（截至换阶段时刻）。
+    pub fn phase_duration(&self, now_ms: u64, stage: usize) -> u64 {
+        match stage {
+            0 => self.phase_enter_ms[1].saturating_sub(self.phase_enter_ms[0]),
+            1 => now_ms.saturating_sub(self.phase_enter_ms[1]),
+            _ => 0,
+        }
+    }
+
+    /// 全程耗时。
+    pub fn elapsed(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.started_ms)
+    }
+}
+
+/// 归因抖动抑制（主册「>10s 显示卡在哪」的稳定面：同一卡点反复
+/// 上报不闪烁——归因一经设定，除非卡点变更否则保持）。
+pub fn attribution_stable(b: &mut ShutdownBadge, now_ms: u64, app: Option<&'static str>) -> bool {
+    let first = b.attribution(now_ms, app);
+    let second = b.attribution(now_ms + 500, app);
+    match (first, second) {
+        (Some(a), Some(c)) => a == c,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// 强断路径全链让路（F318 红线：强断激活时归因永远 None、阶段推进
+/// 照常、账目不写——强断是最后一道闸，徽标层全让）。
+pub fn force_cut_yields_everywhere(b: &mut ShutdownBadge, now_ms: u64) -> bool {
+    b.force_cut_active = true;
+    let no_attr = b.attribution(now_ms + 60_000, Some("慢应用")).is_none();
+    let phase_ok = b.advance_phase(now_ms);
+    b.force_cut_active = false;
+    no_attr && phase_ok
+}
+
+/// 阶段文案表（主册「正在保存设置…/正在结束应用…」两阶段原文锚——
+/// 文案与枚举一一对应，一处一事实）。
+pub fn phase_labels_match() -> bool {
+    // v1 文案带省略号（「正在保存设置…」）——contains 语义守护关键词。
+    ShutPhase::SavingSettings.label().contains("正在保存设置")
+        && ShutPhase::EndingApps.label().contains("正在结束应用")
+}
+
+/// 正常路径零数字账面复核（shows_no_numbers + 归因未设 + 阈值内——
+/// 三条同时成立才是「安静利落」的正常关机）。
+pub fn normal_shutdown_quiet(b: &ShutdownBadge, now_ms: u64) -> bool {
+    b.shows_no_numbers()
+        && b.stuck_app.is_none()
+        && b.elapsed(now_ms) <= ATTRIBUTION_THRESHOLD_MS
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F489 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_shutbadge_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F489-v2");
+    // 1) 两阶段时长账：阶段 0 耗时 = 换阶段时刻差。
+    let mut b = ShutdownBadge::new(1000);
+    let _ = b.advance_phase(3000);
+    cs.add("phase0_duration", b.phase_duration(9000, 0) == 2000, "");
+    cs.add("phase1_duration", b.phase_duration(9000, 1) == 6000, "");
+    cs.add("elapsed_total", b.elapsed(9000) == 8000, "");
+    // 2) 归因抖动抑制：同卡点稳定呈现。
+    let mut b2 = ShutdownBadge::new(0);
+    cs.add("attribution_stable", attribution_stable(&mut b2, 15_000, Some("文档相机")), "");
+    // 3) 强断全链让路。
+    let mut b3 = ShutdownBadge::new(0);
+    cs.add("force_cut_yields", force_cut_yields_everywhere(&mut b3, 5_000), "");
+    // 4) 阶段文案表。
+    cs.add("phase_labels", phase_labels_match(), "");
+    // 5) 正常路径安静（8s 内无归因无数字）。
+    let b4 = ShutdownBadge::new(0);
+    cs.add("normal_quiet", normal_shutdown_quiet(&b4, 8_000), "");
+    cs.add("late_not_quiet", !normal_shutdown_quiet(&ShutdownBadge::new(0), 11_000), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn attribution_below_threshold_none() {
+        let mut b = ShutdownBadge::new(0);
+        assert!(b.attribution(9_999, Some("慢应用")).is_none(), "恰好阈值内不归因");
+        assert_eq!(b.attribution(10_001, Some("慢应用")), Some("慢应用"));
+    }
+
+    #[test]
+    fn advance_phase_idempotent_rejection() {
+        let mut b = ShutdownBadge::new(0);
+        assert!(b.advance_phase(100));
+        assert!(!b.advance_phase(200), "两阶段制：无第三阶段");
+        assert!(!b.advance_phase(300));
+    }
+
+    #[test]
+    fn stuck_app_change_updates_attribution() {
+        let mut b = ShutdownBadge::new(0);
+        assert_eq!(b.attribution(20_000, Some("A 应用")), Some("A 应用"));
+        assert_eq!(b.attribution(25_000, Some("B 应用")), Some("B 应用"), "卡点变更如实更新");
+    }
+
+    #[test]
+    fn normal_path_never_shows_numbers() {
+        // 完整正常关机走查：全链零数字。
+        let mut b = ShutdownBadge::new(0);
+        assert!(b.shows_no_numbers());
+        let _ = b.advance_phase(2_000);
+        assert!(b.shows_no_numbers());
+        assert!(b.stuck_app.is_none());
+    }
+}

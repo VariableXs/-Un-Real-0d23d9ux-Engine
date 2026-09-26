@@ -218,3 +218,159 @@ mod tests {
         assert_eq!(g.judge(false), BannerVerdict::SilentAll);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F461）：逐应用静默规则 / 通知老化 / 聚焦历史窗 / 会话静默时段
+// ===========================================================================
+
+/// 逐应用静默规则表（主册「礼仪规则一眼能懂可关」的运行面：除了前台
+/// 礼仪，用户还可给指定应用配「永远静默/永远横幅」两条硬规则——规则
+/// 优先级：硬规则 > DND > 前台礼仪）。
+pub struct AppMuteRules {
+    /// 规则表（app 键 → 强制静默/强制横幅）。
+    rules: [Option<(u64, bool)>; 16],
+    n: usize,
+}
+
+fn app_key(name: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in name.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
+}
+
+impl AppMuteRules {
+    pub const fn new() -> Self {
+        AppMuteRules { rules: [None; 16], n: 0 }
+    }
+
+    /// 设规则（mute=true 永远静默 / false 永远横幅——覆盖用户的全局偏好）。
+    pub fn set_rule(&mut self, app: &str, mute: bool) -> bool {
+        let k = app_key(app);
+        for i in 0..self.n {
+            if let Some((kk, _)) = self.rules[i] {
+                if kk == k {
+                    self.rules[i] = Some((k, mute));
+                    return true;
+                }
+            }
+        }
+        if self.n >= 16 {
+            return false;
+        }
+        self.rules[self.n] = Some((k, mute));
+        self.n += 1;
+        true
+    }
+
+    pub fn rule_of(&self, app: &str) -> Option<bool> {
+        let k = app_key(app);
+        (0..self.n).filter_map(|i| self.rules[i]).find(|(kk, _)| *kk == k).map(|(_, m)| m)
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 通知老化（通知中心入库条目按龄归档——中心全记但不无限堆积）。
+pub const CENTER_AGING_MS: u64 = 24 * 60 * 60 * 1_000;
+
+pub fn center_entry_expired(created_ms: u64, now_ms: u64) -> bool {
+    now_ms.saturating_sub(created_ms) >= CENTER_AGING_MS
+}
+
+/// 聚焦历史窗（<200ms 快速切换不抖动判定——主册「聚焦判定 <200ms」的
+/// 去抖实现：新身份须稳定 200ms 才生效）。
+pub struct FocusDebounce {
+    pending: Option<&'static str>,
+    pending_since: u64,
+    pub stable: Option<&'static str>,
+}
+
+pub const DEBOUNCE_MS: u64 = 200;
+
+impl FocusDebounce {
+    pub const fn new() -> Self {
+        FocusDebounce { pending: None, pending_since: 0, stable: None }
+    }
+
+    /// 聚焦事件（去抖：未满 200ms 的候选不生效——身份切换 <200ms 判定的
+    /// 运行面语义：切换完成判定，而不是切换抢跑）。
+    pub fn on_focus(&mut self, app: Option<&'static str>, now_ms: u64) {
+        if self.pending != app {
+            self.pending = app;
+            self.pending_since = now_ms;
+        }
+    }
+
+    /// 时钟推进（候选满 200ms → 落位稳定身份）。
+    pub fn tick(&mut self, now_ms: u64) {
+        if let Some(p) = self.pending {
+            if now_ms.saturating_sub(self.pending_since) >= DEBOUNCE_MS {
+                self.stable = Some(p);
+                self.pending = None;
+            }
+        }
+    }
+}
+
+pub fn run_fgmute_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F461-deep");
+    // 硬规则：永远静默/永远横幅（优先级最高的用户意志）。
+    let mut r = AppMuteRules::new();
+    cs.add("rule_set", r.set_rule("spam-app", true) && r.rule_of("spam-app") == Some(true), "");
+    cs.add("rule_override", r.set_rule("spam-app", false) && r.rule_of("spam-app") == Some(false) && r.count() == 1, "");
+    cs.add("rule_unknown_none", r.rule_of("quiet-app").is_none(), "");
+    // 通知老化（24h 归档——中心全记但不无限堆积）。
+    cs.add("aging_24h", !center_entry_expired(0, CENTER_AGING_MS - 1) && center_entry_expired(0, CENTER_AGING_MS), "");
+    // 聚焦去抖（快速切换 <200ms 不抢跑；稳定后落位）。
+    let mut d = FocusDebounce::new();
+    d.on_focus(Some("a"), 0);
+    d.tick(100);
+    cs.add("debounce_holds", d.stable.is_none(), "");
+    d.tick(200);
+    cs.add("debounce_settles", d.stable == Some("a"), "");
+    d.on_focus(Some("b"), 300);
+    d.on_focus(Some("c"), 350); // 50ms 内再切——候选重置
+    d.tick(400);
+    cs.add("debounce_resets", d.stable == Some("a"), "");
+    d.tick(560);
+    cs.add("debounce_final", d.stable == Some("c"), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn rules_survive_resets() {
+        let mut r = AppMuteRules::new();
+        r.set_rule("x", true);
+        r.set_rule("y", false);
+        r.set_rule("x", false);
+        assert_eq!(r.rule_of("x"), Some(false));
+        assert_eq!(r.rule_of("y"), Some(false));
+        assert_eq!(r.count(), 2);
+    }
+
+    #[test]
+    fn debounce_matches_200ms_const() {
+        let mut d = FocusDebounce::new();
+        d.on_focus(Some("z"), 1_000);
+        assert!(d.stable.is_none());
+        d.tick(1_000 + DEBOUNCE_MS - 1);
+        assert!(d.stable.is_none());
+        d.tick(1_000 + DEBOUNCE_MS);
+        assert_eq!(d.stable, Some("z"));
+    }
+
+    #[test]
+    fn aging_boundary_is_exact() {
+        assert!(!center_entry_expired(5_000, 5_000 + CENTER_AGING_MS - 1));
+        assert!(center_entry_expired(5_000, 5_000 + CENTER_AGING_MS));
+    }
+}

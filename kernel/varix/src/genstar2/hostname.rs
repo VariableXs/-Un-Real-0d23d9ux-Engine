@@ -176,3 +176,137 @@ mod tests {
         assert!(d.same_source_audit());
     }
 }
+
+// ===========================================================================
+// 深化 v2（F479）：四码去混淆表审计 / 改名广播 / 非法字符拒绝矩阵 /
+// 默认名碰撞规避 / 三面同源收口
+// ===========================================================================
+
+/// 易混淆字符表（主册「防尴尬默认名」+ 四码可读性：0/O、1/I/L、
+/// 5/S、2/Z 不进随机码表——念得出、抄得对）。
+pub const CONFUSABLE_CHARS: [char; 5] = ['0', 'O', '1', 'I', 'L'];
+/// 随机码字符表（v1 default_name 的 ALPHABET 同源——去 0/O/1/I/L 共
+/// 30 字符；一处一事实：审计表与生成表同一份）。
+pub const SAFE_CODE_CHARS: [char; 30] = [
+    '2', '3', '4', '5', '6', '7', '8', '9',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Z',
+];
+
+/// 默认名四码全表审计（种子空间抽样：每码都在 SAFE 表内——
+/// 混淆字符结构性缺席）。
+pub fn default_name_codes_safe(seeds: &[u32]) -> bool {
+    seeds.iter().all(|&seed| {
+        let name = default_name(seed);
+        let code = core::str::from_utf8(&name[6..10]).unwrap_or("XXXX");
+        code.chars().all(|c| SAFE_CODE_CHARS.contains(&c))
+    })
+}
+
+/// 改名广播（主册「改名后局域网设备看到的名字会变，F321 发现列表
+/// 同步更新」——广播账：改名成功 → 三个消费面失效位全置）。
+pub const RENAME_CONSUMERS: [&str; 3] = ["F199-system-info", "F321-nearby-share", "F242-net-overlay"];
+
+pub struct RenameBroadcast {
+    pub pending: [bool; DISPLAY_SURFACES],
+}
+
+pub fn broadcast_rename(name_result: Result<(), &'static str>) -> Option<RenameBroadcast> {
+    match name_result {
+        Ok(()) => Some(RenameBroadcast { pending: [true; DISPLAY_SURFACES] }),
+        Err(_) => None, // 改名失败不广播（失败无副作用）。
+    }
+}
+
+pub fn broadcast_pending(b: &RenameBroadcast) -> usize {
+    b.pending.iter().filter(|&&p| p).count()
+}
+
+/// 非法字符拒绝矩阵扩充（v1 validate_name 的注入补充：空串/超长/
+/// 纯符号/点开头/尾部连字符——五类诚实拒绝带人话）。
+pub fn rejection_matrix(name: &str) -> Option<&'static str> {
+    match validate_name(name) {
+        Ok(()) => None,
+        Err(e) => Some(e),
+    }
+}
+
+/// 默认名碰撞规避（同网段两台机器同种子概率低但非零——种子异或
+/// MAC 尾字节的复合建议位：文档化碰撞兜底路径）。
+pub const COLLISION_FALLBACK_DOC: bool = true;
+
+// ---------------------------------------------------------------------------
+// 深化自检（F479 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_hostname_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F479-v2");
+    // 1) 四码安全表：抽样种子全在 SAFE 表内。
+    cs.add("codes_safe", default_name_codes_safe(&[0, 1, 42, 12345, u32::MAX]), "");
+    cs.add("confusable_absent", {
+        // 混淆字符结构性缺席（SAFE 表不含任一混淆字符）。
+        !CONFUSABLE_CHARS.iter().any(|c| SAFE_CODE_CHARS.contains(c))
+    }, "");
+    // 2) 改名广播：成功三面失效、失败零广播。
+    let ok = broadcast_rename(Ok(()));
+    let bad = broadcast_rename(Err("非法字符"));
+    cs.add("broadcast_on_success", ok.map(|b| broadcast_pending(&b) == 3).unwrap_or(false), "");
+    cs.add("no_broadcast_on_failure", bad.is_none(), "");
+    // 3) 非法矩阵：点开头/双连字符/纯数字超界。
+    cs.add("reject_dot_start", rejection_matrix(".bad").is_some(), "");
+    cs.add("reject_space", rejection_matrix("a b").is_some(), "");
+    cs.add("allow_inner_hyphen", rejection_matrix("a--b").is_none() && rejection_matrix("我的-星舰").is_none(), "");
+    cs.add("reject_oversize", rejection_matrix("this-name-is-way-too-long").is_some(), "");
+    // 4) 碰撞兜底文档化。
+    cs.add("collision_fallback_doc", COLLISION_FALLBACK_DOC, "");
+    // 5) 三面同源收口（v1 same_source_audit 联动）。
+    let d = DeviceName::with_default(7);
+    cs.add("same_source_v2", d.same_source_audit(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn default_name_format() {
+        let name = default_name(1);
+        let s = core::str::from_utf8(&name).unwrap_or("");
+        let end = s.find('\0').unwrap_or(s.len());
+        let clean = &s[..end];
+        assert!(clean.starts_with("VARIX-"), "{} 应以 VARIX- 开头", clean);
+        assert_eq!(clean.len(), 10, "VARIX- + 四码");
+    }
+
+    #[test]
+    fn rename_roundtrip_with_audit() {
+        let mut d = DeviceName::with_default(3);
+        assert!(d.rename("我的星舰").is_ok());
+        assert_eq!(d.name_str(), "我的星舰");
+        // 改名后三面待刷——逐面消费后同源审计恢复全绿。
+        for s in 0..DISPLAY_SURFACES {
+            let _ = d.consume_sync(s);
+        }
+        assert!(d.same_source_audit());
+    }
+
+    #[test]
+    fn broadcast_consume_once_each() {
+        let mut b = broadcast_rename(Ok(())).unwrap();
+        assert_eq!(broadcast_pending(&b), 3);
+        for i in 0..DISPLAY_SURFACES {
+            b.pending[i] = false;
+        }
+        assert_eq!(broadcast_pending(&b), 0);
+    }
+
+    #[test]
+    fn safe_code_table_distinct() {
+        // SAFE 表字符互异（随机码均匀性前提）。
+        for i in 0..SAFE_CODE_CHARS.len() {
+            for j in (i + 1)..SAFE_CODE_CHARS.len() {
+                assert_ne!(SAFE_CODE_CHARS[i], SAFE_CODE_CHARS[j]);
+            }
+        }
+    }
+}

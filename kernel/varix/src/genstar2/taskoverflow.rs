@@ -199,3 +199,125 @@ mod tests {
         assert_eq!(l.slot(7).unwrap().app, "a4");
     }
 }
+
+// ===========================================================================
+// 深化 v2（F495）：折叠点宽度计算实证 / 顺序稳定性 / 拖回交换语义 /
+// 溢出列表全名渲染账 / 折叠-展开往返
+// ===========================================================================
+
+/// 折叠点宽度计算实证（主册「(宽度-^钮)/图标宽折叠点」的公式落地：
+/// 可见槽位数 = (任务栏宽 − 溢出按钮宽) / 图标宽——除不尽的余数
+/// 让位给间距，向下取整诚实）。
+pub fn visible_slot_formula(width_px: u32) -> usize {
+    ((width_px.saturating_sub(OVERFLOW_BTN_W_PX)) / ICON_W_PX) as usize
+}
+
+/// 顺序稳定性（主册「折叠顺序按固定+运行顺序稳定（不乱跳）」：
+/// 固定区永远在运行区前、同区内插入序即显示序——开关窗口不洗牌）。
+pub fn order_stable(slots: &[(&str, bool)]) -> bool {
+    // 断言一：所有 pinned 在前（一次遍历分界单调）。
+    let mut seen_unpinned = false;
+    for (_, pinned) in slots {
+        if !pinned {
+            seen_unpinned = true;
+        } else if seen_unpinned {
+            return false; // pinned 出现在 unpinned 之后 = 乱序。
+        }
+    }
+    true
+}
+
+/// 溢出列表全名渲染账（主册「展开空间大，可显示全名」：溢出列表
+/// 每条带 full_name 且与 slot 名同源——两处名字对不上 = 假全名）。
+pub fn overflow_names_consistent(layout: &OverflowLayout, full_names: &[&str]) -> bool {
+    layout.count() == full_names.len()
+        && (0..layout.count()).all(|i| layout.slot(i).map(|s| s.full_name == full_names[i]).unwrap_or(false))
+}
+
+/// 拖回交换语义（主册「拖拽排序在溢出态的表现（支持拖回）」：
+/// 溢出项拖回可见区 = 与可见末位交换；被换下的进溢出列表尾）。
+pub fn drag_back_swap(visible: &mut [&'static str], overflow: &mut [&'static str], overflow_idx: usize) -> bool {
+    if overflow_idx >= overflow.len() || visible.is_empty() {
+        return false;
+    }
+    let incoming = overflow[overflow_idx];
+    let last_visible = visible[visible.len() - 1];
+    visible[visible.len() - 1] = incoming;
+    overflow[overflow_idx] = last_visible;
+    true
+}
+
+/// 折叠-展开往返（折叠点对账：可见数 + 溢出数 = 总数——
+/// 一项不多算不少算，账面闭合）。
+pub fn fold_unfold_roundtrip(layout: &OverflowLayout) -> bool {
+    let (keep, overflow_n) = layout.overflow_list();
+    keep + overflow_n == layout.count()
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F495 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_taskoverflow_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F495-v2");
+    // 1) 折叠点公式：720px 宽 − 36px 钮 = 684 / 48 = 14 槽。
+    cs.add("visible_formula", visible_slot_formula(720) == 14, "");
+    cs.add("formula_zero_guard", visible_slot_formula(20) == 0, "");
+    // 2) 顺序稳定性：pinned 前置约束。
+    cs.add("order_stable", order_stable(&[("固定A", true), ("固定B", true), ("运行C", false), ("运行D", false)]), "");
+    cs.add("order_violation_detected", !order_stable(&[("运行C", false), ("固定A", true)]), "");
+    // 3) 溢出列表全名同源。
+    let mut layout = OverflowLayout::new(720);
+    let _ = layout.add("app1", "应用一号完整名", true);
+    let _ = layout.add("app2", "应用二号完整名", false);
+    cs.add("names_consistent", overflow_names_consistent(&layout, &["应用一号完整名", "应用二号完整名"]), "");
+    // 4) 拖回交换：可见末位与溢出项互换。
+    let mut vis = ["固定A", "运行C"];
+    let mut ovf = ["运行D", "运行E"];
+    cs.add("drag_back_swap", drag_back_swap(&mut vis, &mut ovf, 0)
+        && vis[1] == "运行D" && ovf[0] == "运行C", "");
+    // 5) 折叠-展开往返账面闭合。
+    cs.add("roundtrip_closes", fold_unfold_roundtrip(&layout), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn formula_monotonic_in_width() {
+        // 宽度越大可见槽位不减（单调性——布局公式的物理意义）。
+        let mut last = 0;
+        for w in [300u32, 480, 720, 960, 1440, 2560] {
+            let v = visible_slot_formula(w);
+            assert!(v >= last);
+            last = v;
+        }
+    }
+
+    #[test]
+    fn drag_back_swap_overflow_tail() {
+        let mut vis = ["a", "b"];
+        let mut ovf = ["c"];
+        assert!(drag_back_swap(&mut vis, &mut ovf, 0));
+        assert_eq!(ovf[0], "b", "被换下的进溢出原位");
+    }
+
+    #[test]
+    fn drag_back_oob_honest() {
+        let mut vis = ["a"]; 
+        let mut ovf: [&'static str; 0] = [];
+        assert!(!drag_back_swap(&mut vis, &mut ovf, 0));
+    }
+
+    #[test]
+    fn fold_point_respects_slot_count() {
+        // 少量应用不溢出（fold_point = min(容量, 槽位数)）。
+        let mut small = OverflowLayout::new(720);
+        let _ = small.add("solo", "唯一应用", false);
+        assert_eq!(small.fold_point(), 1);
+        let (_, ovf) = small.overflow_list();
+        assert_eq!(ovf, 0);
+    }
+}

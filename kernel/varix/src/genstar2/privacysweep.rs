@@ -204,3 +204,150 @@ mod tests {
         assert!(TRACE_KINDS.iter().all(|&k| p.count(k) == 0));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F487）：四类清除逐类执行账 / 关机自动清模式 / 清除前条数
+// 预览对总 / 不可恢复确认三重闸 / 总开关语义
+// ===========================================================================
+
+/// 清除前条数预览对总（主册「将清除：搜索 23 条、文件 41 条…」——
+/// 预览总数 = 各勾选类之和：多算少算都是预览说谎）。
+pub fn preview_total(counts: [u32; 4], selected: [bool; 4]) -> u32 {
+    counts.iter().zip(selected.iter()).filter(|(_, &sel)| sel).map(|(&c, _)| c).sum()
+}
+
+/// 不可恢复确认三重闸（主册「清除不可恢复（确认框明说）」的执行闸：
+/// ① 勾选类非空 ② 不可恢复文案已展示 ③ 用户确认——三闸齐才执行）。
+pub struct SweepGate {
+    pub selection_nonempty: bool,
+    pub warning_shown: bool,
+    pub user_confirmed: bool,
+}
+
+impl SweepGate {
+    pub fn all_open(&self) -> bool {
+        self.selection_nonempty && self.warning_shown && self.user_confirmed
+    }
+}
+
+/// 关机自动清模式（主册「计划清除可选（每次关机自动清勾选类）」——
+/// 模式开启时关机钩子按勾选执行；重启后验证全空 = 勾选类计数归零）。
+pub struct ShutdownAutoSweep {
+    pub enabled: bool,
+    pub selected: [bool; 4],
+}
+
+impl ShutdownAutoSweep {
+    /// 关机钩子执行（返回各勾选类清除条数——未勾选类原样保留）。
+    pub fn on_shutdown(&self, counts: &mut [u32; 4], confirmed: bool) -> [u32; 4] {
+        let mut cleared = [0u32; 4];
+        if !self.enabled || !confirmed {
+            return cleared;
+        }
+        for i in 0..4 {
+            if self.selected[i] {
+                cleared[i] = counts[i];
+                counts[i] = 0;
+            }
+        }
+        cleared
+    }
+
+    /// 重启后验证：勾选类全空（主册「重启后验证全空」的机械判定）。
+    pub fn verify_after_reboot(&self, counts: [u32; 4]) -> bool {
+        (0..4).all(|i| !self.selected[i] || counts[i] == 0)
+    }
+}
+
+/// 总开关语义（主册「『全部清除』总开关」：全选 = 四类全勾；
+/// 总开关关 = 四类全不勾——一键语义与逐类勾选共存不冲突）。
+pub fn select_all_semantics(selected: &mut [bool; 4], on: bool) {
+    for s in selected.iter_mut() {
+        *s = on;
+    }
+}
+
+/// 清除执行账（勾选类清零、未勾选类不动——「只动该动的」审计面）。
+pub fn execute_sweep(counts: &mut [u32; 4], selected: [bool; 4], gate: &SweepGate) -> Option<[u32; 4]> {
+    if !gate.all_open() {
+        return None; // 闸门不齐：诚实拒绝执行。
+    }
+    let mut cleared = [0u32; 4];
+    for i in 0..4 {
+        if selected[i] {
+            cleared[i] = counts[i];
+            counts[i] = 0;
+        }
+    }
+    Some(cleared)
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F487 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_privacysweep_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F487-v2");
+    // 1) 预览对总：勾选类求和精确。
+    let counts = [23, 41, 7, 15];
+    let sel = [true, true, false, true];
+    cs.add("preview_total", preview_total(counts, sel) == 23 + 41 + 15, "");
+    cs.add("preview_none", preview_total(counts, [false; 4]) == 0, "");
+    // 2) 三重闸：缺一拒执行。
+    let gate_open = SweepGate { selection_nonempty: true, warning_shown: true, user_confirmed: true };
+    let gate_no_warn = SweepGate { warning_shown: false, ..gate_open };
+    let mut counts2 = counts;
+    cs.add("gate_all_open", execute_sweep(&mut counts2, sel, &gate_open) == Some([23, 41, 0, 15]), "");
+    cs.add("gate_missing_rejected", execute_sweep(&mut counts2, sel, &gate_no_warn).is_none(), "");
+    // 3) 执行账：勾选清零、未勾保留（gate_no_warn 尝试零副作用）。
+    cs.add("sweep_selective", counts2[0] == 0 && counts2[1] == 0 && counts2[2] == 7 && counts2[3] == 0, "");
+    // 4) 关机自动清：重启后勾选类全空。
+    let auto = ShutdownAutoSweep { enabled: true, selected: sel };
+    let mut counts3 = counts;
+    let _ = auto.on_shutdown(&mut counts3, true);
+    cs.add("auto_sweep_verify", auto.verify_after_reboot(counts3), "");
+    // 5) 总开关一键语义。
+    let mut s4 = [false; 4];
+    select_all_semantics(&mut s4, true);
+    cs.add("select_all_on", s4.iter().all(|&x| x), "");
+    select_all_semantics(&mut s4, false);
+    cs.add("select_all_off", s4.iter().all(|&x| !x), "");
+    cs.add("irreversible_text", IRREVERSIBLE_TEXT == "清除后不可恢复", "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn sweep_preserves_unselected() {
+        let mut counts = [10, 20, 30, 40];
+        let gate = SweepGate { selection_nonempty: true, warning_shown: true, user_confirmed: true };
+        let cleared = execute_sweep(&mut counts, [false, true, false, true], &gate).unwrap();
+        assert_eq!((cleared[1], cleared[3]), (20, 40));
+        assert_eq!((counts[0], counts[1], counts[2], counts[3]), (10, 0, 30, 0));
+    }
+
+    #[test]
+    fn auto_sweep_disabled_noop() {
+        let auto = ShutdownAutoSweep { enabled: false, selected: [true; 4] };
+        let mut counts = [5, 5, 5, 5];
+        let cleared = auto.on_shutdown(&mut counts, true);
+        assert_eq!(cleared, [0; 4]);
+        assert_eq!(counts, [5, 5, 5, 5]);
+    }
+
+    #[test]
+    fn preview_matches_execution() {
+        // 预览承诺与实际清除相等（预览不说谎的闭环）。
+        let counts = [3, 9, 27, 81];
+        let sel = [true, false, true, false];
+        let promised = preview_total(counts, sel);
+        let gate = SweepGate { selection_nonempty: true, warning_shown: true, user_confirmed: true };
+        let mut c2 = counts;
+        let cleared = execute_sweep(&mut c2, sel, &gate).unwrap();
+        let actual: u32 = cleared.iter().sum();
+        assert_eq!(promised, actual);
+    }
+}

@@ -68,7 +68,7 @@ pub const UNITS: [Unit; 18] = [
 ];
 
 /// 区域默认目标单位（F296 联动：区域设置注入）。
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RegionDefaults {
     /// 各族默认目标单位名（用户区域习惯制式）。
     pub length: &'static str,
@@ -227,5 +227,192 @@ mod tests {
     fn non_conversion_queries_degrade() {
         assert!(convert(5.0, "报告", "kg").is_none());
         assert!(card_text(1.0, "m", "kg").is_none());
+    }
+}
+
+// ===========================================================================
+// 深化 v2（F458）：复合表达式换算 / 双向换算自检 / 单位别名扩充 / 持久化
+// ===========================================================================
+
+/// 复合换算（链式：「5km in m in mi」类两跳——按序复合）。
+pub fn convert_chain(v: f64, hops: &[&str]) -> Option<f64> {
+    let mut val = v;
+    let mut i = 0;
+    while i + 1 < hops.len() {
+        val = convert(val, hops[i], hops[i + 1])?;
+        i += 1;
+    }
+    Some(val)
+}
+
+/// 双向换算自检（round-trip 精度守护：a→b→a 偏差 ≤1e-6 相对值）。
+pub fn roundtrip_ok(v: f64, a: &str, b: &str) -> bool {
+    match (convert(v, a, b), convert(v, a, b).and_then(|x| convert(x, b, a))) {
+        (Some(_), Some(back)) => (back - v).abs() <= v.abs() * 1e-6 + 1e-9,
+        _ => false,
+    }
+}
+
+/// 单位别名扩充（口语别名 → 册内单位名——「180 磅多重」的口语面）。
+pub fn alias_resolve(word: &str) -> Option<&'static str> {
+    const ALIASES: [(&str, &str); 10] = [
+        ("斤", "kg"), ("公斤", "kg"), ("千米", "km"), ("英里", "mi"),
+        ("厘米", "cm2fake"), ("加仑", "gal"), ("迈", "kmh"), ("码", "kg2fake"),
+        ("摄氏", "c"), ("华氏", "f"),
+    ];
+    // 仅映射册内单位（fake 后缀 = 口语存在但册内未收——诚实返回 None）。
+    ALIASES.iter().find(|(w, _)| *w == word).and_then(|(_, u)| {
+        if UNITS.iter().any(|unit| unit.names.contains(u)) {
+            Some(UNITS.iter().find(|unit| unit.names.contains(u)).unwrap().names[0])
+        } else {
+            None
+        }
+    })
+}
+
+/// 换算历史（最近 8 次查询——搜索框回看「刚才算过什么」）。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConvHistoryEntry {
+    pub value: f64,
+    pub from: &'static str,
+    pub to: &'static str,
+}
+
+pub struct ConvHistory {
+    ring: [Option<ConvHistoryEntry>; 8],
+    head: usize,
+    n: usize,
+}
+
+impl ConvHistory {
+    pub const fn new() -> Self {
+        ConvHistory { ring: [None; 8], head: 0, n: 0 }
+    }
+
+    pub fn push(&mut self, e: ConvHistoryEntry) {
+        self.ring[self.head] = Some(e);
+        self.head = (self.head + 1) % 8;
+        self.n = (self.n + 1).min(8);
+    }
+
+    pub fn latest(&self) -> Option<ConvHistoryEntry> {
+        if self.n == 0 {
+            return None;
+        }
+        let idx = (self.head + 8 - 1) % 8;
+        self.ring[idx]
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+/// 区域默认持久化（用户改过区域制式——跨重启记住）。
+pub const PERSIST_MAGIC: [u8; 4] = *b"VUC1";
+
+pub fn save_region(region: &RegionDefaults, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 4 + 3 * 8 {
+        return None;
+    }
+    out[..4].copy_from_slice(&PERSIST_MAGIC);
+    let mut w = 4;
+    for name in [region.length, region.weight, region.temperature] {
+        out[w..w + 8].copy_from_slice(&persist_name(name));
+        w += 8;
+    }
+    Some(w)
+}
+
+fn persist_name(name: &str) -> [u8; 8] {
+    let mut b = [0u8; 8];
+    for (i, c) in name.bytes().take(8).enumerate() {
+        b[i] = c;
+    }
+    b
+}
+
+fn load_name(b: &[u8]) -> Option<&'static str> {
+    let end = b.iter().position(|&c| c == 0).unwrap_or(8);
+    let s = core::str::from_utf8(&b[..end]).ok()?;
+    UNITS.iter().find(|u| u.names.contains(&s)).map(|u| u.names[0])
+}
+
+pub fn load_region(buf: &[u8]) -> Option<RegionDefaults> {
+    if buf.len() < 28 || buf[..4] != PERSIST_MAGIC {
+        return None;
+    }
+    Some(RegionDefaults {
+        length: load_name(&buf[4..12])?,
+        weight: load_name(&buf[12..20])?,
+        temperature: load_name(&buf[20..28])?,
+    })
+}
+
+pub fn run_unitconv_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F458-deep");
+    // 复合链式换算（km→m→mi 两跳与直连一致——复合不漂移）。
+    cs.add("chain_two_hop", (convert_chain(5.0, &["km", "m", "mi"]).unwrap() - convert(5.0, "km", "mi").unwrap()).abs() < 1e-9, "");
+    cs.add("chain_bad_hop_honest", convert_chain(5.0, &["km", "kg", "mi"]).is_none(), "");
+    // 双向 round-trip（六族各验一对——精度守护）。
+    cs.add("roundtrip_all_families", ["km", "lb", "c", "acre", "gal", "mph"].iter().all(|&u| roundtrip_ok(42.0, u, base_of(u))), "");
+    // 口语别名（册内映射、册外诚实 None）。
+    cs.add("alias_known", alias_resolve("公斤") == Some("kg"), "");
+    cs.add("alias_unknown_honest", alias_resolve("码").is_none(), "");
+    // 换算历史（最近 8 条、latest 命中）。
+    cs.add("history_latest", {
+        let mut h = ConvHistory::new();
+        h.push(ConvHistoryEntry { value: 1.0, from: "km", to: "mi" });
+        h.push(ConvHistoryEntry { value: 2.0, from: "lb", to: "kg" });
+        h.latest() == Some(ConvHistoryEntry { value: 2.0, from: "lb", to: "kg" }) && h.count() == 2
+    }, "");
+    cs.add("history_empty_honest", ConvHistory::new().latest().is_none(), "");
+    // 区域默认持久化 round-trip + 未知单位拒收。
+    cs.add("region_persist", {
+        let mut buf = [0u8; 32];
+        let n = save_region(&REGION_ZH, &mut buf).unwrap();
+        load_region(&buf[..n]) == Some(REGION_ZH)
+    }, "");
+    cs.add("region_persist_bad_unit", load_region(&[b'V', b'U', b'C', b'1', b'x', 0,0,0,0,0,0,0, b'k', b'g', 0,0,0,0,0,0, b'c', 0,0,0,0,0,0,0]).is_none(), "");
+    cs
+}
+
+fn base_of(unit: &str) -> &'static str {
+    let u = find_unit(unit).unwrap();
+    let family = u.family;
+    UNITS.iter().find(|x| x.family == family && x.is_base_target).unwrap().names[0]
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn roundtrip_temperature_exact() {
+        assert!(roundtrip_ok(36.6, "c", "f"));
+        assert!(roundtrip_ok(0.0, "c", "k"));
+    }
+
+    #[test]
+    fn chain_of_one_is_identity() {
+        assert_eq!(convert_chain(7.5, &["km"]), Some(7.5));
+    }
+
+    #[test]
+    fn history_ring_wraps() {
+        let mut h = ConvHistory::new();
+        for i in 0..12 {
+            h.push(ConvHistoryEntry { value: i as f64, from: "km", to: "mi" });
+        }
+        assert_eq!(h.count(), 8);
+        assert_eq!(h.latest().unwrap().value, 11.0);
+    }
+
+    #[test]
+    fn region_roundtrip_all_known_units() {
+        let mut buf = [0u8; 32];
+        let n = save_region(&REGION_ZH, &mut buf).unwrap();
+        let r = load_region(&buf[..n]).unwrap();
+        assert!(find_unit(r.length).is_some() && find_unit(r.weight).is_some() && find_unit(r.temperature).is_some());
     }
 }

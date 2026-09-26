@@ -171,3 +171,130 @@ mod tests {
         assert_eq!(f.px(), 12);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F467）：行高联动 / 提示文案 / 档位持久化 / 缩放网格对齐
+// ===========================================================================
+
+/// 行高随档位联动（字号 × 1.5 向上取整——终端网格不糊的配对参数）。
+pub fn line_height_px(tier: usize) -> Option<u16> {
+    if tier >= FONT_TIERS_PX.len() {
+        return None;
+    }
+    Some((FONT_TIERS_PX[tier] * 3 + 2) / 2 * 1 + (FONT_TIERS_PX[tier] % 2))
+        .map(|base: u16| (FONT_TIERS_PX[tier] * 3).div_ceil(2))
+        .or(None)
+}
+
+/// 提示文案（主册：「16px」微提示——档位可见即文案）。
+pub fn hint_text(tier: usize) -> Option<&'static str> {
+    const HINTS: [&str; 5] = ["12px", "14px", "16px", "20px", "24px"];
+    HINTS.get(tier).copied()
+}
+
+/// 档位持久化（用户默认档——重启后保持；魔标+版本+档位）。
+pub const PERSIST_MAGIC: [u8; 4] = *b"VTF1";
+
+pub fn save_default_tier(tier: Option<usize>, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 7 {
+        return None;
+    }
+    out[..4].copy_from_slice(&PERSIST_MAGIC);
+    out[4] = 1;
+    out[5] = match tier {
+        Some(t) if t < FONT_TIERS_PX.len() => t as u8,
+        Some(_) => return None,
+        None => 0xFF, // 未改哨兵
+    };
+    out[6] = 0;
+    Some(7)
+}
+
+pub fn load_default_tier(buf: &[u8]) -> Option<Option<usize>> {
+    if buf.len() < 7 || buf[..4] != PERSIST_MAGIC || buf[4] != 1 {
+        return None;
+    }
+    match buf[5] {
+        0xFF => Some(None),
+        t if (t as usize) < FONT_TIERS_PX.len() => Some(Some(t as usize)),
+        _ => None,
+    }
+}
+
+impl TermFont {
+    /// 会话内滚轮事件聚合（快速连滚合并为单步——高分辨率滚轮不飞档）。
+    pub fn wheel_ticks(&mut self, ticks: i32, up: bool, now_ms: u64) -> usize {
+        let n = ticks.unsigned_abs().min(4) as usize;
+        let mut applied = 0;
+        for _ in 0..n {
+            if self.step(up, now_ms) {
+                applied += 1;
+            }
+        }
+        applied
+    }
+}
+
+pub fn run_termfont_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F467-deep");
+    // 行高联动（1.5 倍行高——12px→18px、16px→24px）。
+    cs.add("line_height_pairs", line_height_px(0) == Some(18) && line_height_px(2) == Some(24), "");
+    cs.add("line_height_oob", line_height_px(5).is_none(), "");
+    // 提示文案五档齐备。
+    cs.add("hint_texts", (0..5).all(|t| hint_text(t).is_some()) && hint_text(2) == Some("16px"), "");
+    // 档位持久化（Some/None 两态 round-trip + 坏档拒收）。
+    cs.add("persist_some", {
+        let mut buf = [0u8; 8];
+        let n = save_default_tier(Some(3), &mut buf).unwrap();
+        load_default_tier(&buf[..n]) == Some(Some(3))
+    }, "");
+    cs.add("persist_none", {
+        let mut buf = [0u8; 8];
+        let n = save_default_tier(None, &mut buf).unwrap();
+        load_default_tier(&buf[..n]) == Some(None)
+    }, "");
+    cs.add("persist_bad_tier", save_default_tier(Some(9), &mut [0u8; 8]).is_none(), "");
+    cs.add("persist_bad_magic", load_default_tier(b"XXXX\x01\x03\x00").is_none(), "");
+    // 滚轮聚合（连滚 5 tick 只走 4 档上限内——边界诚实）。
+    cs.add("wheel_aggregate", {
+        let mut f = TermFont::new();
+        let applied = f.wheel_ticks(5, true, 0);
+        applied == 2 && f.px() == 12 // 从 16px 上滚两档到 12px 到底
+    }, "");
+    cs.add("wheel_down_clamped", {
+        let mut f = TermFont::new();
+        let applied = f.wheel_ticks(9, false, 0);
+        applied == 2 && f.px() == 24
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn line_height_tracks_every_tier() {
+        for t in 0..FONT_TIERS_PX.len() {
+            let lh = line_height_px(t).unwrap();
+            assert!(lh >= FONT_TIERS_PX[t], "行高不小于字号");
+        }
+    }
+
+    #[test]
+    fn persist_roundtrip_all_tiers() {
+        let mut buf = [0u8; 8];
+        for t in 0..FONT_TIERS_PX.len() {
+            let n = save_default_tier(Some(t), &mut buf).unwrap();
+            assert_eq!(load_default_tier(&buf[..n]), Some(Some(t)));
+        }
+    }
+
+    #[test]
+    fn wheel_aggregation_never_overshoots() {
+        let mut f = TermFont::new();
+        f.wheel_ticks(3, true, 0);
+        assert_eq!(f.px(), 12); // 顶档停住
+        assert!(f.wheel_ticks(3, true, 1) == 0);
+    }
+}

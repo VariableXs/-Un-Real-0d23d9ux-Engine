@@ -216,3 +216,180 @@ mod tests {
         assert!(ten_task_budget(48_000));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F473）：五步链路超时/中断处理 / 焦点栈完整退链 /
+// 十任务预算分解表 / 面包屑键盘路径
+// ===========================================================================
+
+/// 十任务预算分解表（主册「典型 10 设置任务计时记录」——每任务 5s
+/// 预算是分解账：搜索 1s + 达 1s + 改 1.5s + 验 1.5s；账面合计 = 预算）。
+pub const TASK_BUDGET_STAGES: [(&str, u64); 4] = [
+    ("search", 1_000),
+    ("navigate", 1_000),
+    ("modify", 1_500),
+    ("verify", 1_500),
+];
+
+pub fn task_budget_sum() -> u64 {
+    TASK_BUDGET_STAGES.iter().map(|(_, ms)| ms).sum()
+}
+
+/// 链路中断处理（五步键盘流的打断恢复：任意步骤按 Esc 逐层退——
+/// 搜索态退到空闲、结果态退到搜索、空闲态 Esc 无动作——永不悬空）。
+impl KbdFlow {
+    /// 当前层名（人话审计面：Esc 提示「正在退出 X」）。
+    pub fn level_name(&self) -> &'static str {
+        match self.level() {
+            1 => "空闲",
+            2 => "详情",
+            _ => "空闲",
+        }
+    }
+
+    /// Esc 退链守卫（对 v1 on_key 的收口审计：退到层 1 后再 Esc 不崩不怪）。
+    pub fn esc_at_root_safe(&mut self) -> bool {
+        while self.level() > 1 {
+            let _ = self.on_key(Key::Esc, 0);
+        }
+        // 根层再按 Esc：无动作且层不变（不悬空不崩——v1 返回 false）。
+        let before = self.level();
+        let accepted = self.on_key(Key::Esc, 0);
+        !accepted && self.level() == before
+    }
+
+    /// 焦点栈守卫（主册 F206 焦点回归链：层栈深度不超过 FOCUS_STACK_CAP）。
+    pub fn focus_stack_bounded(&self) -> bool {
+        self.level() <= FOCUS_STACK_CAP
+    }
+}
+
+/// 面包屑键盘路径（主册「每页面包屑键盘可达（Backspace 上层）」——
+/// 路径栈：Push 下层 / Backspace 上层 / 根层 Backspace 无动作）。
+pub struct BreadcrumbTrail {
+    trail: [&'static str; 8],
+    n: usize,
+}
+
+impl BreadcrumbTrail {
+    pub const fn new() -> Self {
+        BreadcrumbTrail { trail: ["", "", "", "", "", "", "", ""], n: 1 }
+    }
+
+    pub fn push(&mut self, page: &'static str) -> bool {
+        if self.n >= 8 || page.is_empty() {
+            return false;
+        }
+        self.trail[self.n] = page;
+        self.n += 1;
+        true
+    }
+
+    pub fn backspace_up(&mut self) -> bool {
+        if self.n <= 1 {
+            return false; // 根层不退（键盘路径终点清晰）。
+        }
+        self.trail[self.n - 1] = "";
+        self.n -= 1;
+        true
+    }
+
+    pub fn current(&self) -> &'static str {
+        self.trail[self.n - 1]
+    }
+
+    pub fn depth(&self) -> usize {
+        self.n
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F473 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_setkbd_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F473-v2");
+    // 1) 预算分解账：四段和 = 5s（一处一事实）。
+    cs.add("budget_sum_exact", task_budget_sum() == TASK_BUDGET_MS, "");
+    cs.add("ten_task_budget_v2", ten_task_budget(task_budget_sum() * 10 - 1), "");
+    // 2) Esc 逐层退：任意层退到根；根层再按无动作。
+    let mut f = KbdFlow::new();
+    let _ = f.on_key(Key::CtrlE, 0);
+    let _ = f.on_key(Key::Enter, 3);
+    cs.add("mid_flow_esc_safe", f.esc_at_root_safe() && f.level() == 1, "");
+    // 3) 焦点栈守卫 + 焦点回归链。
+    let mut f2 = KbdFlow::new();
+    let _ = f2.on_key(Key::CtrlE, 2);
+    let _ = f2.on_key(Key::Enter, 2);
+    let _ = f2.on_key(Key::Tab, 2);
+    cs.add("focus_stack_bounded", f2.focus_stack_bounded(), "");
+    cs.add("focus_back_after_esc", {
+        let _ = f2.on_key(Key::Esc, 2);
+        f2.focus_back_to_trigger()
+    }, "");
+    // 4) 面包屑键盘路径：下钻-上退-根层守卫。
+    let mut bc = BreadcrumbTrail::new();
+    cs.add("trail_root", bc.current() == "" && bc.depth() == 1, "");
+    cs.add("trail_push", bc.push("个性化") && bc.push("桌面图标"), "");
+    cs.add("trail_backspace", bc.backspace_up() && bc.current() == "个性化", "");
+    cs.add("trail_root_guard", bc.backspace_up() && bc.depth() == 1 && !bc.backspace_up(), "");
+    // 5) 层名审计（人话提示的面）。
+    let mut f3 = KbdFlow::new();
+    cs.add("level_name_idle", f3.level_name() == "空闲", "");
+    let _ = f3.on_key(Key::CtrlE, 0);
+    let _ = f3.on_key(Key::Enter, 1);
+    cs.add("level_name_detail", f3.level_name() == "详情", "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn full_five_step_keyboard_chain() {
+        // Ctrl+E → 输入（Enter）→ Tab → Esc 全链不碰鼠标。
+        let mut f = KbdFlow::new();
+        assert!(f.on_key(Key::CtrlE, 4));
+        assert!(f.on_key(Key::Char('p'), 4));
+        assert!(f.on_key(Key::Enter, 4));
+        assert!(f.on_key(Key::Tab, 4));
+        assert!(f.on_key(Key::Esc, 4));
+        assert_eq!(f.level(), 1);
+        assert!(f.focus_back_to_trigger());
+    }
+
+    #[test]
+    fn breadcrumb_full_walk() {
+        let mut bc = BreadcrumbTrail::new();
+        assert!(bc.push("系统"));
+        assert!(bc.push("电源"));
+        assert!(bc.push("电池"));
+        assert_eq!(bc.current(), "电池");
+        assert!(bc.backspace_up());
+        assert!(bc.backspace_up());
+        assert_eq!(bc.current(), "系统");
+        // 退到根：再退一次到 trail 底、根层守卫生效。
+        assert!(bc.backspace_up());
+        assert_eq!(bc.current(), "");
+        assert!(!bc.backspace_up());
+    }
+
+    #[test]
+    fn esc_interrupts_at_every_level() {
+        // 每一层打断都回到根（永无卡死层）。
+        for steps in 1..3 {
+            let mut f = KbdFlow::new();
+            let _ = f.on_key(Key::CtrlE, 1);
+            if steps > 1 {
+                let _ = f.on_key(Key::Enter, 1);
+            }
+            assert!(f.esc_at_root_safe());
+        }
+    }
+
+    #[test]
+    fn budget_table_no_gaps() {
+        assert_eq!(TASK_BUDGET_STAGES.iter().map(|(_, ms)| ms).sum::<u64>(), 5_000);
+    }
+}

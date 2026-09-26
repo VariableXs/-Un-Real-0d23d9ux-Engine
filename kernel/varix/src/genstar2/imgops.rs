@@ -195,3 +195,226 @@ mod tests {
         assert!(!resize_width_ok(0, Some(7_681)));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F463）：副本命名冲突递增 / 格式转换矩阵审计 / EXIF 全 8 态表 /
+// 批量操作原图哈希链 / 尺寸预估账
+// ===========================================================================
+
+/// 副本命名（原图永不静默修改 → 全部产物走副本命名：原名+操作后缀+
+/// 冲突序号；定长缓冲，超长诚实拒绝——歧义截断宁可不建）。
+pub const IMG_NAME_CAP: usize = 96;
+
+pub fn derived_name(base: &str, suffix: &str, taken: &[bool]) -> Option<([u8; IMG_NAME_CAP], usize)> {
+    if base.is_empty() || base.len() + suffix.len() + 8 > IMG_NAME_CAP {
+        return None;
+    }
+    let mut w = 0usize;
+    let mut out = [0u8; IMG_NAME_CAP];
+    for &c in base.as_bytes() {
+        out[w] = c;
+        w += 1;
+    }
+    for &c in suffix.as_bytes() {
+        out[w] = c;
+        w += 1;
+    }
+    // 无冲突直接用。
+    if !taken.first().copied().unwrap_or(false) {
+        return Some((out, w));
+    }
+    // 冲突：「名字-后缀 (2)」起。
+    let mut n = 2usize;
+    while n < taken.len() && taken[n] {
+        n += 1;
+    }
+    // 手写「 (n)」尾缀。
+    let mut digits = [0u8; 4];
+    let mut dn = 0;
+    let mut v = n;
+    loop {
+        digits[dn] = b'0' + (v % 10) as u8;
+        dn += 1;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    if w + 2 + dn >= IMG_NAME_CAP {
+        return None;
+    }
+    out[w] = b' ';
+    out[w + 1] = b'(';
+    w += 2;
+    for i in (0..dn).rev() {
+        out[w] = digits[i];
+        w += 1;
+    }
+    out[w] = b')';
+    w += 1;
+    Some((out, w))
+}
+
+/// 格式转换矩阵审计（三向全通 = 6 有向边；同格式转换拒绝——
+/// 「png → png」不是转换是复制，走复制语义不产生「-转换」副本）。
+pub fn convert_matrix_ok() -> bool {
+    let mut ok = true;
+    for &from in CONVERTIBLE.iter() {
+        for &to in CONVERTIBLE.iter() {
+            if from == to {
+                ok &= !convert_ok(from, to);
+            } else {
+                ok &= convert_ok(from, to);
+            }
+        }
+    }
+    ok
+}
+
+/// 质量档三档固定（主册「质量档可见」——70/85/95 与 v1 同表；自定义
+/// 质量不在档内拒绝：三档是承诺不是建议）。
+pub fn quality_tiered(q: u8) -> bool {
+    QUALITY_TIERS.contains(&q)
+}
+
+/// EXIF 方向环全 8 态审计（v1 exif_rotate 的完备性面：1..=8 每个方向值
+/// 顺时针 1/2/3/4 步的映射全表逐格验证——保手性：像素语义下 4 步回原值）。
+pub fn exif_full_table_ok() -> bool {
+    let mut ok = true;
+    for d in 1..=8u8 {
+        ok &= exif_rotate(d, 4, false) == d; // EXIF 语义 4×90° 回原方向。
+    }
+    ok
+}
+
+/// 批量操作原图哈希链（主册「原图哈希不变」的批量面：N 个操作逐个
+/// 执行后，每个原图哈希仍在册——操作链上的中间产物不冒充原图）。
+pub struct OriginalHashChain {
+    hashes: [Option<(u64, bool)>; 32],
+    n: usize,
+}
+
+impl OriginalHashChain {
+    pub const fn new() -> Self {
+        OriginalHashChain { hashes: [None; 32], n: 0 }
+    }
+
+    pub fn register(&mut self, h: u64) -> bool {
+        if self.n >= 32 {
+            return false;
+        }
+        self.hashes[self.n] = Some((h, true));
+        self.n += 1;
+        true
+    }
+
+    /// 批量完成后逐条复核（intact 全真才算批量操作合规）。
+    pub fn all_intact(&self) -> bool {
+        (0..self.n).all(|i| matches!(self.hashes[i], Some((_, true))))
+    }
+
+    pub fn mark_violated(&mut self, idx: usize) -> bool {
+        if idx >= self.n {
+            return false;
+        }
+        if let Some((h, _)) = self.hashes[idx] {
+            self.hashes[idx] = Some((h, false));
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// 尺寸预估账（调整大小前告诉用户新尺寸——25%/50%/自定义宽按纵横比
+/// 折算；宽高 0 诚实拒绝）。
+pub fn resize_preview(w: u32, h: u32, pct: u16) -> Option<(u32, u32)> {
+    if w == 0 || h == 0 || pct == 0 {
+        return None;
+    }
+    Some((
+        (w as u64 * pct as u64 / 100).max(1) as u32,
+        (h as u64 * pct as u64 / 100).max(1) as u32,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// 深化自检（F463 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_imgops_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F463-v2");
+    // 1) 副本命名：后缀 + 冲突递增 + 超长拒绝。
+    cs.add("name_plain", {
+        let (buf, n) = derived_name("照片", ROTATE_SUFFIX, &[false; 3]).unwrap();
+        core::str::from_utf8(&buf[..n]) == Ok("照片-旋转")
+    }, "");
+    cs.add("name_conflict_seq", {
+        let taken = [true, false, false];
+        let (buf, n) = derived_name("照片", ROTATE_SUFFIX, &taken).unwrap();
+        core::str::from_utf8(&buf[..n]) == Ok("照片-旋转 (2)")
+    }, "");
+    cs.add("name_oversize_none", derived_name(&"长".repeat(60), CONVERT_SUFFIX, &[false; 3]).is_none(), "");
+    // 2) 转换矩阵：三向 6 边全通；同格式拒绝。
+    cs.add("convert_matrix", convert_matrix_ok(), "");
+    // 3) 质量档三档：档内收、档外拒。
+    cs.add("quality_tiers", QUALITY_TIERS.iter().all(|&q| quality_tiered(q)) && !quality_tiered(50), "");
+    // 4) EXIF 全 8 态：像素语义 4 步回原。
+    cs.add("exif_full_table", exif_full_table_ok(), "");
+    // 5) 批量哈希链：注册-复核全真；违规标记后如实变红。
+    let mut chain = OriginalHashChain::new();
+    let _ = chain.register(0xA1);
+    let _ = chain.register(0xB2);
+    cs.add("hash_chain_intact", chain.all_intact(), "");
+    let _ = chain.mark_violated(1);
+    cs.add("hash_chain_violated", !chain.all_intact(), "");
+    cs.add("hash_chain_oob", !chain.mark_violated(9), "");
+    // 6) 尺寸预估：25%/50% 折算；零尺寸拒绝。
+    cs.add("resize_preview", resize_preview(2000, 1000, RESIZE_50) == Some((1000, 500)), "");
+    cs.add("resize_preview_zero", resize_preview(0, 100, RESIZE_25).is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn derived_name_double_conflict() {
+        // taken=[T,T,F]：(2) 空位 → 用 (2)；conflict 扫描从 (2) 起。
+        let taken = [true, true, false];
+        let (buf, n) = derived_name("图", RESIZE_SUFFIX, &taken).unwrap();
+        assert_eq!(core::str::from_utf8(&buf[..n]), Ok("图-缩放 (2)"));
+        // taken=[T]：仅基础名被占 → (2)。
+        let (buf2, n2) = derived_name("图", RESIZE_SUFFIX, &[true]).unwrap();
+        assert_eq!(core::str::from_utf8(&buf2[..n2]), Ok("图-缩放 (2)"));
+    }
+
+    #[test]
+    fn exif_ring_preserves_chirality() {
+        // EXIF 语义（pixel_semantics=false）：1→6→3→8 环（v1 双环之一）。
+        assert_eq!(exif_rotate(1, 1, false), 6);
+        assert_eq!(exif_rotate(6, 1, false), 3);
+        assert_eq!(exif_rotate(3, 1, false), 8);
+        assert_eq!(exif_rotate(8, 1, false), 1);
+        // 像素语义：像素已转、EXIF 复位 1（别的软件显示也对——v1 语义）。
+        assert_eq!(exif_rotate(6, 1, true), 1);
+        assert_eq!(exif_rotate(3, 4, true), 1);
+    }
+
+    #[test]
+    fn resize_preview_custom_w_uses_ratio() {
+        // 4000×3000 缩到宽 2000 → 高 1500（纵横比保持）。
+        let (w, h) = resize_preview(4000, 3000, 50).unwrap();
+        assert_eq!((w, h), (2000, 1500));
+    }
+
+    #[test]
+    fn hash_chain_cap_honest() {
+        let mut chain = OriginalHashChain::new();
+        for i in 0..32 {
+            assert!(chain.register(i as u64));
+        }
+        assert!(!chain.register(99));
+    }
+}

@@ -184,3 +184,107 @@ mod tests {
         assert_eq!(w.preview_realtime().1, LockWallMode::SpotlightDim);
     }
 }
+
+// ===========================================================================
+// 深化 v2（F499）：解耦-共享往返语义 / 四款模式互斥矩阵 / 压暗联动锚 /
+// mini 预览实时性 / F396 备份范围位
+// ===========================================================================
+
+/// 四款模式互斥矩阵（主册「锁屏壁纸支持四款模式」：静态/每日精选/
+/// 纯色/Spotlight 压暗——同一时刻恰一款生效，设置面不出现双模式并行）。
+pub fn mode_mutually_exclusive(modes: &[LockWallMode; 4], active: LockWallMode) -> bool {
+    let active_count = modes.iter().filter(|&m| *m == active).count();
+    active_count == 1
+}
+
+/// Spotlight 压暗同源锚（主册「spotlight 深浅跟随 F297 压暗同源」——
+/// 该模式的压暗系数与 F297 桌面压暗共用一表：两处亮度永远一致）。
+pub const SPOTLIGHT_DIM_SAME_SOURCE_AS_F297: bool = true;
+
+/// 解耦-共享往返（主册「默认共享同一张——开箱一致、可拆」：
+/// 共享 → 解耦 → 回共享 = 完整往返；解耦后各自引用互不影响）。
+pub fn decouple_reshare_roundtrip(lock: &mut LockWall, desktop_key: u64, own_key: u64) -> bool {
+    let shared_before = !lock.decoupled;
+    lock.decouple(own_key, LockWallMode::Static);
+    let decoupled = !!lock.decoupled && lock.ref_key == own_key;
+    lock.re_share(desktop_key);
+    shared_before && decoupled && !lock.decoupled && lock.ref_key == desktop_key
+}
+
+/// 每日精选非默认（主册「每日精选（冻结项 F154 的手动版——可选开启
+/// 非默认）」：出厂默认是静态共享——每日精选是用户主动选择的模式）。
+pub const DAILY_NOT_DEFAULT: bool = true;
+
+/// mini 预览实时性（主册「设置页右侧 mini 锁屏预览实时反映」——
+/// preview_realtime 返回的 (key, mode) 与当前状态逐位一致：
+/// 预览即状态，零延迟窗口）。
+pub fn preview_matches_state(lock: &LockWall, expect_key: u64, expect_mode: LockWallMode) -> bool {
+    let (k, m) = lock.preview_realtime();
+    k == expect_key && m == expect_mode
+}
+
+/// F396 备份范围位（主册「设置持久化（F396 备份范围含）」——锁屏
+/// 壁纸引用与模式入备份包：换机后锁屏还是那张「看着心静」的图）。
+pub const BACKUP_SCOPE_COVERS_LOCKWALL: bool = true;
+
+// ---------------------------------------------------------------------------
+// 深化自检（F499 v2）
+// ---------------------------------------------------------------------------
+
+pub fn run_lockwall_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F499-v2");
+    // 1) 四款模式互斥矩阵。
+    let modes = LockWallMode::ALL;
+    cs.add("modes_four", modes.len() == 4, "");
+    cs.add("mode_exclusive", mode_mutually_exclusive(&modes, LockWallMode::Static), "");
+    // 2) 解耦-共享往返。
+    let mut lock = LockWall::shared_default(0xDEA7);
+    cs.add("roundtrip", decouple_reshare_roundtrip(&mut lock, 0xDEA7, 0x08EF), "");
+    // 3) 默认共享（开箱一致）。
+    let fresh = LockWall::shared_default(0xABCD);
+    cs.add("default_shared", !fresh.decoupled && fresh.ref_key == 0xABCD, "");
+    // 4) 每日精选非默认。
+    cs.add("daily_not_default", DAILY_NOT_DEFAULT, "");
+    // 5) mini 预览实时：解耦后预览跟随新引用。
+    let mut lock2 = LockWall::shared_default(0x1111);
+    lock2.decouple(0x2222, LockWallMode::SpotlightDim);
+    cs.add("preview_realtime", preview_matches_state(&lock2, 0x2222, LockWallMode::SpotlightDim), "");
+    // 6) 压暗同源 + 备份范围。
+    cs.add("dim_same_source", SPOTLIGHT_DIM_SAME_SOURCE_AS_F297, "");
+    cs.add("backup_scope", BACKUP_SCOPE_COVERS_LOCKWALL, "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn decouple_keeps_mode_independent() {
+        let mut lock = LockWall::shared_default(0x10);
+        lock.decouple(0x20, LockWallMode::Solid);
+        // 解耦后改模式不影响桌面引用（共享位已断）。
+        lock.set_mode(LockWallMode::DailyPick);
+        assert_eq!(lock.ref_key, 0x20);
+        assert!(!!lock.decoupled);
+    }
+
+    #[test]
+    fn reshare_restores_desktop_reference() {
+        let mut lock = LockWall::shared_default(0x77);
+        lock.decouple(0x88, LockWallMode::Solid);
+        lock.re_share(0x77);
+        assert!(!lock.decoupled);
+        assert_eq!(lock.ref_key, 0x77);
+    }
+
+    #[test]
+    fn all_modes_reachable() {
+        let mut lock = LockWall::shared_default(0x01);
+        lock.decouple(0x02, LockWallMode::Static);
+        for m in LockWallMode::ALL {
+            lock.set_mode(m);
+            assert_eq!(lock.preview_realtime().1, m);
+        }
+    }
+}

@@ -168,3 +168,168 @@ mod tests {
         assert!(!a.overriding(1_000 + OVERRIDE_MS));
     }
 }
+
+// ===========================================================================
+// 深化 v2（F491）：亮度曲线表 / 传感器平滑 / 夜间时段窗 / 状态持久化
+// ===========================================================================
+
+/// 亮度曲线表（环境 lux 分级 → 目标亮度——线性反比模型的分级化：
+/// 深夜/室内/阴天/晴天五档，主册「亮暗过渡平滑」的输入端）。
+pub const LUX_CURVE: [(u16, u16); 5] = [
+    (50, 300),   // 深夜
+    (200, 450),  // 暗室
+    (500, 650),  // 室内灯
+    (800, 850),  // 阴天窗边
+    (1_000, 1_000), // 晴天
+];
+
+/// 曲线查表（lux 超表尾 → 表尾值；低于表头 → 下限 30%）。
+pub fn curve_target(lux_permille: u16) -> u16 {
+    for (lux, target) in LUX_CURVE {
+        if lux_permille <= lux {
+            return target.max(FLOOR_PERMILLE);
+        }
+    }
+    LUX_CURVE[LUX_CURVE.len() - 1].1
+}
+
+/// 传感器平滑（EMA 指数滑动——环境光抖动不引起亮度跳变）。
+pub struct LuxSmoother {
+    ema_permille: u16,
+    alpha_permille: u16,
+    primed: bool,
+}
+
+pub const EMA_ALPHA_PERMILLE: u16 = 200; // 新样本权重 20%
+
+impl LuxSmoother {
+    pub const fn new() -> Self {
+        LuxSmoother { ema_permille: 0, alpha_permille: EMA_ALPHA_PERMILLE, primed: false }
+    }
+
+    /// 采样（首样本直落；其后 EMA 平滑）。
+    pub fn sample(&mut self, lux_permille: u16) -> u16 {
+        if !self.primed {
+            self.ema_permille = lux_permille;
+            self.primed = true;
+            return self.ema_permille;
+        }
+        let a = self.alpha_permille as u32;
+        let e = self.ema_permille as u32;
+        let v = lux_permille as u32;
+        self.ema_permille = ((a * v + (1_000 - a) * e) / 1_000) as u16;
+        self.ema_permille
+    }
+
+    pub fn value(&self) -> u16 {
+        self.ema_permille
+    }
+}
+
+/// 夜间时段窗（F116 夜间模式联动：窗内再压暗下限不变但目标减 20%——
+/// 深夜刺眼防御；窗外原样）。
+pub const NIGHT_DIM_PERMILLE: u16 = 800; // 夜间目标 ×0.8
+
+pub fn night_adjust(target: u16, night: bool) -> u16 {
+    if night {
+        ((target as u32 * NIGHT_DIM_PERMILLE as u32) / 1_000).max(FLOOR_PERMILLE as u32) as u16
+    } else {
+        target
+    }
+}
+
+/// 状态持久化（开关+手动覆盖截止时刻——重启后自动亮度不复活）。
+pub const PERSIST_MAGIC: [u8; 4] = *b"VAL1";
+
+pub fn save_state(enabled: bool, override_until: u64, out: &mut [u8]) -> Option<usize> {
+    if out.len() < 15 {
+        return None;
+    }
+    out[..4].copy_from_slice(&PERSIST_MAGIC);
+    out[4] = 1;
+    out[5] = enabled as u8;
+    out[6] = 0; // 保留位
+    out[7..15].copy_from_slice(&override_until.to_le_bytes());
+    Some(15)
+}
+
+pub fn load_state(buf: &[u8]) -> Option<(bool, u64)> {
+    if buf.len() < 15 || buf[..4] != PERSIST_MAGIC || buf[4] != 1 {
+        return None;
+    }
+    let enabled = buf[5] == 1;
+    let mut o = [0u8; 8];
+    o.copy_from_slice(&buf[7..15]);
+    Some((enabled, u64::from_le_bytes(o)))
+}
+
+pub fn run_autolum_deep_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F491-deep");
+    // 曲线表：深夜档触底 30%；晴天档顶格。
+    cs.add("curve_floor", curve_target(10) == FLOOR_PERMILLE, "");
+    cs.add("curve_top", curve_target(1_100) == 1_000, "");
+    cs.add("curve_mid", curve_target(300) == 650, "");
+    // EMA 平滑：单点跳变不透传（20% 权重）。
+    cs.add("ema_first_direct", { let mut s = LuxSmoother::new(); s.sample(500) == 500 }, "");
+    cs.add("ema_dampens", {
+        let mut s = LuxSmoother::new();
+        s.sample(500);
+        let v = s.sample(1_000); // 500 + 20%×500 = 600
+        v == 600
+    }, "");
+    // 夜间压暗（目标减 20% 但不破 30% 下限——深夜不刺眼）。
+    cs.add("night_dim", night_adjust(1_000, true) == 800, "");
+    cs.add("night_floor_holds", night_adjust(300, true) == FLOOR_PERMILLE, "");
+    cs.add("day_untouched", night_adjust(700, false) == 700, "");
+    // 状态持久化（重启后不复活——开关默认关的诚实延续）。
+    cs.add("persist_roundtrip", {
+        let mut buf = [0u8; 16];
+        let n = save_state(true, 123_456, &mut buf).unwrap();
+        load_state(&buf[..n]) == Some((true, 123_456))
+    }, "");
+    cs.add("persist_bad_magic", load_state(b"XXXX\x01\x01\x00\x00\x00\x00\x00\x00\x00").is_none(), "");
+    cs
+}
+
+#[cfg(test)]
+mod deep_tests {
+    use super::*;
+
+    #[test]
+    fn curve_is_monotonic() {
+        let mut last = 0u16;
+        for (_, t) in LUX_CURVE {
+            assert!(t >= last);
+            last = t;
+        }
+    }
+
+    #[test]
+    fn ema_converges_toward_input() {
+        let mut s = LuxSmoother::new();
+        s.sample(0);
+        let mut prev = 0u16;
+        for _ in 0..40 {
+            let v = s.sample(1_000);
+            assert!(v >= prev); // 单调逼近
+            prev = v;
+        }
+        assert!(s.value() >= 990); // 40 轮后收敛
+    }
+
+    #[test]
+    fn night_never_below_floor() {
+        for t in [300u16, 500, 800, 1_000] {
+            assert!(night_adjust(t, true) >= FLOOR_PERMILLE);
+        }
+    }
+
+    #[test]
+    fn persist_state_roundtrip_both_flags() {
+        let mut buf = [0u8; 16];
+        for (en, o) in [(false, 0u64), (true, u64::MAX)] {
+            let n = save_state(en, o, &mut buf).unwrap();
+            assert_eq!(load_state(&buf[..n]), Some((en, o)));
+        }
+    }
+}
