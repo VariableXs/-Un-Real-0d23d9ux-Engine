@@ -724,3 +724,123 @@ mod deep_tests {
         assert_eq!(format_size(999), "999B");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 多选批量操作撤销链（十三章 undo 纪律的批量面）
+// ---------------------------------------------------------------------------
+
+/// 批量操作撤销链：多选操作条上的批量动作（删除/移动/重命名）整链
+/// 记账——撤销粒度 = 整条批量（一键全回，不是逐件回——批量是一个
+/// 用户意图）；redo 对称；新操作截断 redo 分支（标准 undo 语义）。
+pub struct BatchUndoChain {
+    /// undo 栈：(批量动作名, 影响件数, 逆操作载荷)。
+    undo: Vec<(&'static str, usize, String)>,
+    /// redo 栈（对称——undo 过的动作可重做）。
+    redo: Vec<(&'static str, usize, String)>,
+    pub undos: u64,
+    pub redos: u64,
+}
+
+impl BatchUndoChain {
+    pub fn new() -> BatchUndoChain {
+        BatchUndoChain { undo: Vec::new(), redo: Vec::new(), undos: 0, redos: 0 }
+    }
+
+    /// 记一笔批量动作（影响件数入账——撤销预告「将回退 N 件」）。
+    pub fn record(&mut self, action: &'static str, affected: usize, payload: &str) {
+        self.undo.push((action, affected, String::from(payload)));
+        self.redo.clear(); // 新动作截断 redo 分支。
+    }
+
+    /// 撤销整条批量：undo 栈顶 → redo 栈（对称——可重做）。
+    pub fn undo(&mut self) -> Option<(&'static str, usize)> {
+        let item = self.undo.pop()?;
+        self.undos += 1;
+        self.redo.push(item.clone());
+        Some((item.0, item.1))
+    }
+
+    /// 重做：redo 栈顶回 undo 栈。
+    pub fn redo(&mut self) -> Option<(&'static str, usize)> {
+        let item = self.redo.pop()?;
+        self.redos += 1;
+        self.undo.push(item.clone());
+        Some((item.0, item.1))
+    }
+
+    pub fn pending(&self) -> usize {
+        self.undo.len()
+    }
+}
+
+impl Default for BatchUndoChain {
+    fn default() -> BatchUndoChain {
+        BatchUndoChain::new()
+    }
+}
+
+/// 深化层二自检（批量撤销链）。
+pub fn run_multibar_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F338-340-deep2");
+
+    // 1. 记账→撤销整条（件数预告）→重做对称。
+    let mut ch = BatchUndoChain::new();
+    ch.record("批量删除", 5, "del:5ids");
+    let u = ch.undo();
+    set.add(
+        "undo whole batch with count",
+        u == Some(("批量删除", 5)) && ch.undos == 1,
+        "",
+    );
+    let r = ch.redo();
+    set.add("redo symmetric", r == Some(("批量删除", 5)) && ch.redos == 1, "");
+
+    // 2. 新动作截断 redo 分支（标准 undo 语义——不重放旧未来）。
+    ch.record("批量移动", 3, "move:3ids");
+    let r2 = ch.redo();
+    set.add("new action truncates redo", r2.is_none() && ch.pending() == 2, "");
+
+    // 3. 连续撤销逆序回退（栈语义）+ 往复后栈空（撤销↔重做守恒）。
+    ch.record("重命名", 2, "rn:2ids");
+    let u1 = ch.undo();
+    let u2 = ch.undo();
+    set.add(
+        "undo lifo order",
+        u1 == Some(("重命名", 2)) && u2 == Some(("批量移动", 3)),
+        "",
+    );
+    let r3 = ch.redo();
+    set.add("undo-redo cycle conserves", r3 == Some(("批量移动", 3)) && ch.pending() == 2, "");
+
+    // 4. 空链撤销拒绝（不虚报）。
+    let mut empty = BatchUndoChain::new();
+    set.add("empty chain no undo", empty.undo().is_none(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn zero_affected_recorded_still() {
+        let mut ch = BatchUndoChain::new();
+        ch.record("批量删除", 0, "del:none");
+        assert_eq!(ch.undo(), Some(("批量删除", 0)), "零件批量也入账（空选点删除=空操作可撤销）");
+    }
+
+    #[test]
+    fn redo_after_undo_after_redo() {
+        let mut ch = BatchUndoChain::new();
+        ch.record("x", 1, "p");
+        let _ = ch.undo();
+        let _ = ch.redo();
+        let _ = ch.undo();
+        assert_eq!(ch.pending(), 0, "撤销↔重做往复——最终停在撤销态（栈守恒）");
+        assert_eq!(ch.undos, 2, "两次撤销");
+        assert_eq!(ch.redos, 1, "一次重做");
+        assert_eq!(ch.undos, 2);
+        assert_eq!(ch.redos, 1);
+    }
+}

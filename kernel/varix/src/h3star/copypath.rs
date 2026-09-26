@@ -1805,3 +1805,223 @@ mod deep7_tests {
         assert!(bb.failures().is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层八 · 路径书签 + 环境快照导出 + 转换缓存
+// ---------------------------------------------------------------------------
+
+/// 路径书签（常用路径收藏——互通效率面）：登记 (书签名, 路径, 味)，
+/// 解析直出形制化串（省一次转换）；唯一名约束；删除可逆；快照可导出
+/// （十四章开放性——书签是用户数据，可迁移）。
+#[derive(Default)]
+pub struct PathBookmarks {
+    /// (书签名, 路径, 味)。
+    pub entries: Vec<(String, String, TerminalFlavor)>,
+}
+
+impl PathBookmarks {
+    /// 登记：唯一名 + 路径非空（两闸）。
+    pub fn add(&mut self, name: &str, path: &str, flavor: TerminalFlavor) -> bool {
+        if name.is_empty()
+            || path.is_empty()
+            || self.entries.iter().any(|(n, _, _)| n == name)
+        {
+            return false;
+        }
+        self.entries.push((String::from(name), String::from(path), flavor));
+        true
+    }
+
+    /// 解析：书签名 → 形制化串（引号+分隔符按登记味处理）。
+    pub fn resolve(&self, name: &str) -> Option<String> {
+        self.entries
+            .iter()
+            .find(|(n, _, _)| n == name)
+            .map(|(_, p, f)| quote_for(p, *f))
+    }
+
+    /// 删除（可逆——删了能重建）。
+    pub fn remove(&mut self, name: &str) -> bool {
+        let before = self.entries.len();
+        self.entries.retain(|(n, _, _)| n != name);
+        self.entries.len() != before
+    }
+
+    /// 导出人话行（name<TAB>flavor<TAB>path——用户可编辑可备份）。
+    pub fn export(&self) -> alloc::string::String {
+        let mut s = alloc::string::String::new();
+        for (n, p, f) in &self.entries {
+            let fl = match f {
+                TerminalFlavor::Cmd => "cmd",
+                TerminalFlavor::Posix => "posix",
+            };
+            s.push_str(&alloc::format!("{}\t{}\t{}\n", n, fl, p));
+        }
+        s
+    }
+}
+
+/// 环境快照导出（互通语境可迁移——`EnvExpander` 登记表的备份面）：
+/// 快照导出/导入与主账同构（key=value），导入只增不覆盖已有键
+/// （迁移合并不抹用户现值——数据安全纪律），冲突键留痕。
+pub struct EnvSnapshot;
+
+impl EnvSnapshot {
+    /// 导出（与 EnvExpander 登记表同构的 key=value 行）。
+    pub fn export(vars: &[(String, String)]) -> alloc::string::String {
+        let mut s = alloc::string::String::new();
+        for (k, v) in vars {
+            s.push_str(k);
+            s.push('=');
+            s.push_str(v);
+            s.push('\n');
+        }
+        s
+    }
+
+    /// 导入合并：新键入账、已有键跳过（不覆盖——现值神圣），冲突键
+    /// 清单返回（合并冲突显性化——用户可裁决）。
+    pub fn import_merge(
+        target: &mut EnvExpander,
+        text: &str,
+    ) -> (usize, Vec<String>) {
+        let mut added = 0usize;
+        let mut conflicts = Vec::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                if target.vars.iter().any(|(n, _)| n == k) {
+                    conflicts.push(String::from(k));
+                } else {
+                    target.register(k, v);
+                    added += 1;
+                }
+            }
+        }
+        (added, conflicts)
+    }
+}
+
+/// 转换缓存（同路径同味命中免重算——性能面）：(原串, 味) → 结果缓存，
+/// 命中率账（缓存命中免二次转换——测量可证）；容量环形。
+pub struct ConvertCache {
+    entries: Vec<(String, TerminalFlavor, String)>,
+    pub hits: u64,
+    pub misses: u64,
+    cap: usize,
+}
+
+impl ConvertCache {
+    pub fn new(cap: usize) -> ConvertCache {
+        ConvertCache { entries: Vec::new(), hits: 0, misses: 0, cap: cap.max(1) }
+    }
+
+    /// 取形制化串（命中走缓存；未命中转换后入缓存——单一出口）。
+    pub fn get(&mut self, path: &str, flavor: TerminalFlavor) -> String {
+        if let Some((_, _, out)) =
+            self.entries.iter().find(|(p, f, _)| p == path && *f == flavor)
+        {
+            self.hits += 1;
+            return out.clone();
+        }
+        self.misses += 1;
+        let out = quote_for(path, flavor);
+        self.entries.push((String::from(path), flavor, out.clone()));
+        if self.entries.len() > self.cap {
+            self.entries.remove(0);
+        }
+        out
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+/// 深化层八自检（书签 / 环境快照 / 转换缓存）。
+pub fn run_copypath_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep8");
+
+    // 1. 书签：两闸登记（重名/空路径拒）、解析出形制化串（无特殊
+    //    字符裸排——quote_for 语义）、可逆。
+    let mut bm = PathBookmarks::default();
+    let ok = bm.add("工作区", "C:/work/项目", TerminalFlavor::Posix);
+    let dup = bm.add("工作区", "C:/other", TerminalFlavor::Cmd);
+    let blank = bm.add("", "C:/x", TerminalFlavor::Cmd);
+    set.add(
+        "bookmark two gates",
+        ok && !dup && !blank && bm.resolve("工作区") == Some(alloc::string::String::from("C:/work/项目")),
+        "",
+    );
+    let _ = bm.remove("工作区");
+    let re = bm.add("工作区", "D:/新项目", TerminalFlavor::Cmd);
+    set.add(
+        "bookmark reversible",
+        re && bm.resolve("工作区") == Some(alloc::string::String::from("D:\\新项目")),
+        "",
+    );
+
+    // 2. 书签导出人话行（可编辑可备份）。
+    let text = bm.export();
+    set.add("bookmark export human", text.contains("工作区\tcmd\tD:/新项目"), "");
+
+    // 3. 环境快照：导出→合并导入只增不覆盖、冲突键留痕。
+    let mut env = EnvExpander::new();
+    env.register("HOME", "/home/varia");
+    let text = EnvSnapshot::export(&env.vars);
+    set.add("env snapshot export", text.contains("HOME=/home/varia"), "");
+    let (added, conflicts) =
+        EnvSnapshot::import_merge(&mut env, "HOME=/elsewhere\nUSERPROFILE=C:/Users/varia\n");
+    set.add(
+        "env merge adds without clobber",
+        added == 1 && conflicts == alloc::vec!["HOME"]
+            && env.expand_posix("$HOME") == "/home/varia",
+        "",
+    );
+
+    // 4. 转换缓存：二次同键命中（hits 计数）、容量环形、输出与直转
+    //    一致（缓存不改变语义）。
+    let mut cc = ConvertCache::new(2);
+    let a = cc.get("C:/a b/x.vx", TerminalFlavor::Posix);
+    let b = cc.get("C:/a b/x.vx", TerminalFlavor::Posix);
+    set.add(
+        "convert cache hit",
+        a == b && cc.hits == 1 && cc.misses == 1 && a == "'C:/a b/x.vx'",
+        "",
+    );
+    let _ = cc.get("C:/c.vx", TerminalFlavor::Cmd);
+    let _ = cc.get("C:/d.vx", TerminalFlavor::Cmd);
+    set.add("cache ring capped", cc.len() == 2, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn bookmark_unknown_none() {
+        let bm = PathBookmarks::default();
+        assert!(bm.resolve("没登记").is_none());
+    }
+
+    #[test]
+    fn env_import_garbage_lines_skipped() {
+        let mut env = EnvExpander::new();
+        let (added, conf) = EnvSnapshot::import_merge(&mut env, "没有等号\n\nK=V\n");
+        assert_eq!(added, 1, "无等号行跳过不崩——K=V 正常入账");
+        assert!(conf.is_empty());
+    }
+
+    #[test]
+    fn cache_different_flavor_misses() {
+        let mut cc = ConvertCache::new(4);
+        let _ = cc.get("C:/x", TerminalFlavor::Cmd);
+        let _ = cc.get("C:/x", TerminalFlavor::Posix);
+        assert_eq!(cc.misses, 2, "同路径异味是不同键——不误命中");
+    }
+}

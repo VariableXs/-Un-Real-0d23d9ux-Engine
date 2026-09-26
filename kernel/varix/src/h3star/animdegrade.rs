@@ -1874,3 +1874,148 @@ mod deep6_tests {
         assert!(guard);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层七 · 配置快照导出（十四章开放性：配置可备份可迁移）
+// ---------------------------------------------------------------------------
+
+/// 调速器配置快照（开放性纪律「配置可备份可编辑」的调速域落法）：
+/// 三机制的关键参数（阈值/判线/驻留/密度档）逐项快照为键值账——
+/// 导出格式人类可读（key=value 行），导入校验（键白名单 + 数值域），
+/// 非法键拒绝留痕（不猜不吞）。
+pub struct GovernorConfigSnapshot {
+    /// (键, 值)——键 = 参数唯一名。
+    pub entries: Vec<(&'static str, u64)>,
+}
+
+/// 配置键白名单（导入只认这里的键——未知键拒绝，防注入未知语义）。
+pub const CONFIG_KEYS: [&str; 6] = [
+    "compositor_budget_pct",
+    "fps_tier1",
+    "fps_tier_confirm_ms",
+    "battery_low_pct",
+    "recovery_hold_ms",
+    "bar_ttl_ms",
+];
+
+impl GovernorConfigSnapshot {
+    /// 当前配置快照（从主册常量采集——快照即参数真值的投影）。
+    pub fn capture() -> GovernorConfigSnapshot {
+        GovernorConfigSnapshot {
+            entries: alloc::vec![
+                ("compositor_budget_pct", COMPOSITOR_BUDGET_PCT),
+                ("fps_tier1", FPS_TIERS[0]),
+                ("fps_tier_confirm_ms", TIER_CONFIRM_MS),
+                ("battery_low_pct", BATTERY_LOW_PCT),
+                ("recovery_hold_ms", RECOVERY_HOLD_MS),
+                ("bar_ttl_ms", 30_000),
+            ],
+        }
+    }
+
+    /// 导出为人类可读行（key=value——用户能直接看懂、能编辑）。
+    pub fn export(&self) -> alloc::string::String {
+        let mut s = alloc::string::String::new();
+        for (k, v) in &self.entries {
+            s.push_str(k);
+            s.push('=');
+            s.push_str(&alloc::format!("{}", v));
+            s.push('\n');
+        }
+        s
+    }
+
+    /// 导入解析：逐行 key=value；键白名单外拒绝并留痕（键名/行号）。
+    /// 返回 (解析出的键值对, 被拒行清单)。
+    pub fn import(text: &str) -> (Vec<(&'static str, u64)>, Vec<alloc::string::String>) {
+        let mut out = Vec::new();
+        let mut rejected = Vec::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match line.split_once('=') {
+                Some((k, v)) if CONFIG_KEYS.contains(&k) => {
+                    match v.parse::<u64>() {
+                        Ok(n) => {
+                            let key = CONFIG_KEYS.iter().find(|c| **c == k).unwrap();
+                            out.push((*key, n));
+                        }
+                        Err(_) => rejected.push(alloc::format!("{}=非数值", k)),
+                    }
+                }
+                _ => rejected.push(alloc::string::String::from(line)),
+            }
+        }
+        (out, rejected)
+    }
+
+    /// round-trip 自证：导出 → 导入 → 键值对与原快照一致（可迁移的
+    /// 机器证明）。
+    pub fn round_trip(&self) -> bool {
+        let (parsed, rejected) = Self::import(&self.export());
+        rejected.is_empty() && parsed == self.entries
+    }
+}
+
+/// 深化层七自检（配置快照导出导入）。
+pub fn run_animdegrade_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep7");
+
+    // 1. 快照采集：六键全在（参数唯一源投影完整）。
+    let snap = GovernorConfigSnapshot::capture();
+    set.add(
+        "snapshot covers all keys",
+        snap.entries.len() == CONFIG_KEYS.len()
+            && snap.entries.iter().all(|(k, _)| CONFIG_KEYS.contains(k)),
+        "",
+    );
+
+    // 2. 导出人话可读（含判据常量锚点值）。
+    let text = snap.export();
+    set.add(
+        "export human readable",
+        text.contains("compositor_budget_pct=90") && text.contains("battery_low_pct=20"),
+        "",
+    );
+
+    // 3. round-trip：导出→导入键值一致（可迁移证明）。
+    set.add("config round trip", snap.round_trip(), "");
+
+    // 4. 导入防呆：未知键拒绝留痕、非数值拒绝、空行跳过。
+    let (_, rej) = GovernorConfigSnapshot::import("hacker_key=1\nfps_tier1=abc\n\nfps_tier1=45\n");
+    set.add(
+        "import rejects unknown and non-numeric",
+        rej.len() == 2 && rej[0] == "hacker_key=1" && rej[1].contains("非数值"),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn import_valid_subset() {
+        let (parsed, rej) = GovernorConfigSnapshot::import("fps_tier1=48\nbar_ttl_ms=25000\n");
+        assert!(rej.is_empty() && parsed.len() == 2);
+        assert_eq!(parsed[0], ("fps_tier1", 48));
+    }
+
+    #[test]
+    fn empty_import_empty_result() {
+        let (parsed, rej) = GovernorConfigSnapshot::import("");
+        assert!(parsed.is_empty() && rej.is_empty());
+    }
+
+    #[test]
+    fn snapshot_values_match_master_constants() {
+        let snap = GovernorConfigSnapshot::capture();
+        let get = |k: &str| snap.entries.iter().find(|(kk, _)| *kk == k).unwrap().1;
+        assert_eq!(get("fps_tier_confirm_ms"), TIER_CONFIRM_MS);
+        assert_eq!(get("recovery_hold_ms"), RECOVERY_HOLD_MS);
+    }
+}

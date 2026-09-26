@@ -3010,3 +3010,213 @@ mod deep7_tests {
         assert!(mv.by_volume().is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层八 · 卸载冲突检测 + 依赖断裂警告 + 批量卸载账
+// ---------------------------------------------------------------------------
+
+/// 卸载冲突检测（判据「冲突检测」面）：目标应用正在运行 → 卸载闸门
+/// 关闭并提示「先退出应用」（人话三要素：发生了什么/为什么/下一步）；
+/// 注入运行账（运行中应用清单）——注入式判据口径，宿主侧可复现。
+pub struct ConflictDetector {
+    /// 注入的运行中应用清单。
+    pub running: Vec<String>,
+}
+
+impl ConflictDetector {
+    pub fn new(running: &[&str]) -> ConflictDetector {
+        ConflictDetector { running: running.iter().map(|s| String::from(*s)).collect() }
+    }
+
+    /// 闸门：运行中 → 拒绝 + 人话提示；未运行 → 放行。
+    pub fn gate(&self, app: &str) -> (bool, Option<String>) {
+        if self.running.iter().any(|r| r == app) {
+            (
+                false,
+                Some(alloc::format!(
+                    "「{}」正在运行，暂时无法卸载——请先退出该应用再试",
+                    app
+                )),
+            )
+        } else {
+            (true, None)
+        }
+    }
+}
+
+/// 依赖断裂警告（「依赖检测」面）：被其他应用声明依赖的组件在卸载时
+/// 产生警告（不阻断——用户有权强制，但必须知情）。依赖图登记制，
+/// 警告留痕（哪些应用会受影响——影响面直出）。
+pub struct DependencyGraph {
+    /// (依赖方, 被依赖组件)。
+    pub edges: Vec<(String, String)>,
+}
+
+impl DependencyGraph {
+    pub fn new() -> DependencyGraph {
+        DependencyGraph { edges: Vec::new() }
+    }
+
+    pub fn register(&mut self, dependent: &str, component: &str) {
+        self.edges.push((String::from(dependent), String::from(component)));
+    }
+
+    /// 卸载组件的影响面：谁依赖它（空 = 无依赖，静默通过合理）。
+    pub fn dependents_of(&self, component: &str) -> Vec<&str> {
+        self.edges
+            .iter()
+            .filter(|(_, c)| c == component)
+            .map(|(d, _)| d.as_str())
+            .collect()
+    }
+
+    /// 警告文案（影响面 → 人话——知情卸载）。
+    pub fn warn_text(&self, component: &str) -> Option<String> {
+        let deps = self.dependents_of(component);
+        if deps.is_empty() {
+            return None;
+        }
+        Some(alloc::format!(
+            "「{}」被 {} 依赖，卸载后这些应用的相关功能将不可用",
+            component,
+            deps.join("、")
+        ))
+    }
+}
+
+impl Default for DependencyGraph {
+    fn default() -> DependencyGraph {
+        DependencyGraph::new()
+    }
+}
+
+/// 批量卸载账（多选批量操作的卸载面）：逐应用独立记账（冲突检查 →
+/// 排队 → 完成），单应用失败不阻塞批量（逐件裁决语义——与 F464 同
+/// 构），失败清单与完成清单分账直出。
+#[derive(Default)]
+pub struct BatchUninstallBook {
+    /// (应用, 状态)——状态：0 排队 / 1 完成 / 2 失败。
+    pub items: Vec<(String, u8)>,
+}
+
+/// 批量状态常量（排队/完成/失败）。
+pub const BATCH_QUEUED: u8 = 0;
+pub const BATCH_DONE: u8 = 1;
+pub const BATCH_FAILED: u8 = 2;
+
+impl BatchUninstallBook {
+    pub fn enqueue(&mut self, app: &str) -> bool {
+        if self.items.iter().any(|(a, _)| a == app) {
+            return false;
+        }
+        self.items.push((String::from(app), BATCH_QUEUED));
+        true
+    }
+
+    /// 逐件裁决：冲突检测 → 过了置完成 / 没过置失败（单件失败不碰
+    /// 他件——批量推进语义）。
+    pub fn adjudicate(&mut self, app: &str, conflict: &ConflictDetector) -> bool {
+        let (ok, _) = conflict.gate(app);
+        match self.items.iter_mut().find(|(a, _)| a == app) {
+            Some((_, st)) if *st == BATCH_QUEUED => {
+                *st = if ok { BATCH_DONE } else { BATCH_FAILED };
+                ok
+            }
+            _ => false,
+        }
+    }
+
+    pub fn done_list(&self) -> Vec<&str> {
+        self.items.iter().filter(|(_, s)| *s == BATCH_DONE).map(|(a, _)| a.as_str()).collect()
+    }
+
+    pub fn failed_list(&self) -> Vec<&str> {
+        self.items.iter().filter(|(_, s)| *s == BATCH_FAILED).map(|(a, _)| a.as_str()).collect()
+    }
+
+    /// 批量收尾判定：无排队残留（每件都有裁决）。
+    pub fn fully_adjudicated(&self) -> bool {
+        !self.items.is_empty() && self.items.iter().all(|(_, s)| *s != BATCH_QUEUED)
+    }
+}
+
+/// 深化层八自检（冲突 / 依赖 / 批量）。
+pub fn run_sysgov_deep8_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep8");
+
+    // 1. 冲突检测：运行中拒绝 + 人话提示含退出指引；未运行放行。
+    let cd = ConflictDetector::new(&["画板Pro"]);
+    let (blocked, hint) = cd.gate("画板Pro");
+    let (free, none) = cd.gate("小算盘");
+    set.add(
+        "conflict gate human hint",
+        !blocked && hint.map(|h| h.contains("先退出")).unwrap_or(false)
+            && free && none.is_none(),
+        "",
+    );
+
+    // 2. 依赖警告：影响面直出、无依赖静默（不吓唬人）。
+    let mut dg = DependencyGraph::new();
+    dg.register("图片查看器", "图像引擎");
+    dg.register("画板Pro", "图像引擎");
+    let warn = dg.warn_text("图像引擎");
+    let quiet = dg.warn_text("独立组件");
+    set.add(
+        "dependency warn surfaces affected",
+        warn.map(|w| w.contains("图片查看器") && w.contains("画板Pro")).unwrap_or(false)
+            && quiet.is_none(),
+        "",
+    );
+
+    // 3. 批量卸载：三件入队、逐件裁决（运行中的失败不阻塞他件）、
+    //    完成/失败分账、无排队残留。
+    let cd2 = ConflictDetector::new(&["画板Pro"]);
+    let mut b = BatchUninstallBook::default();
+    let _ = b.enqueue("画板Pro");
+    let dup = b.enqueue("画板Pro");
+    let _ = b.enqueue("小算盘");
+    let _ = b.enqueue("计算器");
+    let _ = b.adjudicate("画板Pro", &cd2);
+    let _ = b.adjudicate("小算盘", &cd2);
+    let _ = b.adjudicate("计算器", &cd2);
+    set.add(
+        "batch adjudication independent",
+        !dup && b.fully_adjudicated()
+            && b.done_list() == alloc::vec!["小算盘", "计算器"]
+            && b.failed_list() == alloc::vec!["画板Pro"],
+        "",
+    );
+
+    // 4. 未裁决件收尾判红（不静默漏件）。
+    let mut b2 = BatchUninstallBook::default();
+    let _ = b2.enqueue("A");
+    let _ = b2.enqueue("B");
+    let _ = b2.adjudicate("A", &ConflictDetector::new(&[]));
+    set.add("pending item blocks completion", !b2.fully_adjudicated(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep8_tests {
+    use super::*;
+
+    #[test]
+    fn conflict_empty_running_list_always_free() {
+        let cd = ConflictDetector::new(&[]);
+        let (ok, hint) = cd.gate("任何应用");
+        assert!(ok && hint.is_none());
+    }
+
+    #[test]
+    fn dependents_of_unknown_empty() {
+        let dg = DependencyGraph::new();
+        assert!(dg.dependents_of("无依赖件").is_empty());
+    }
+
+    #[test]
+    fn adjudicate_unknown_app_rejected() {
+        let mut b = BatchUninstallBook::default();
+        assert!(!b.adjudicate("没入队", &ConflictDetector::new(&[])), "未入队应用不收裁决");
+    }
+}

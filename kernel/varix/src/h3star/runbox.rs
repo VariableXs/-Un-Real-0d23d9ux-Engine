@@ -446,3 +446,147 @@ mod tests {
         assert!(!s.suggest_ready(200), "超过判线窗的旧输入不算就绪（新键入会刷新时间戳）");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · 建议排序核（别名/历史/补全三源合并——确定性）
+// ---------------------------------------------------------------------------
+
+/// 建议排序核（运行框输入建议的机器面）：三源建议合并——① 别名精确
+/// 命中（最高优先）；② 历史前缀命中（按使用次数）；③ 补全候选（字
+/// 典序稳定）。三源各打分后合并去重排序——同输入同序（确定性纪律）。
+pub struct SuggestRanker;
+
+/// 一条建议：(文本, 来源, 分数)。
+pub struct RankedSuggestion {
+    pub text: String,
+    pub source: &'static str,
+    pub score: i32,
+}
+
+impl SuggestRanker {
+    /// 打分：别名精确 +1000 / 别名前缀 +800 / 历史命中 +500+次数×10 /
+    /// 补全前缀 +300（字典序稳定）。
+    pub fn rank(
+        input: &str,
+        aliases: &[(String, String)],
+        history: &[(String, u32)],
+        catalog: &[&str],
+    ) -> Vec<RankedSuggestion> {
+        let mut out: Vec<RankedSuggestion> = Vec::new();
+        for (a, target) in aliases {
+            if a == input {
+                out.push(RankedSuggestion {
+                    text: String::from(target),
+                    source: "别名精确",
+                    score: 1000,
+                });
+            } else if a.starts_with(input) {
+                out.push(RankedSuggestion {
+                    text: String::from(target),
+                    source: "别名前缀",
+                    score: 800,
+                });
+            }
+        }
+        for (h, count) in history {
+            if h.starts_with(input) {
+                out.push(RankedSuggestion {
+                    text: String::from(h),
+                    source: "历史",
+                    score: 500 + (*count as i32) * 10,
+                });
+            }
+        }
+        for c in catalog {
+            if c.starts_with(input) {
+                out.push(RankedSuggestion {
+                    text: String::from(*c),
+                    source: "补全",
+                    score: 300,
+                });
+            }
+        }
+        // 同文本去重（保留最高分——多源命中取优）；排序：分数降序 →
+        // 文本字典序（全确定）。
+        out.sort_by(|a, b| b.score.cmp(&a.score).then(a.text.cmp(&b.text)));
+        out.dedup_by(|a, b| a.text == b.text);
+        out
+    }
+}
+
+/// 深化层二自检（建议排序核）。
+pub fn run_runbox_deep2_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F308-deep2");
+
+    // 布景：别名/历史/目录三源。
+    let aliases = vec![
+        (alloc::string::String::from("jsq"), alloc::string::String::from("计算器")),
+        (alloc::string::String::from("jsb"), alloc::string::String::from("记事本")),
+    ];
+    let history = vec![
+        (alloc::string::String::from("jsq 1+2"), 3),
+        (alloc::string::String::from("jsb 笔记"), 5),
+    ];
+    let catalog = ["jsq.exe", "jsb.exe"];
+
+    // 1. 别名精确最高位（+1000 分压历史与补全）。
+    let out = SuggestRanker::rank("jsq", &aliases, &history, &catalog);
+    set.add(
+        "exact alias ranks first",
+        out.first().map(|s| s.source == "别名精确" && s.text == "计算器").unwrap_or(false),
+        "",
+    );
+
+    // 2. 三源合并：同文本去重（多源命中取优）、分数降序——jsb 前缀
+    //    命中别名/历史/补全三条不同文本（各占一条）。
+    let out2 = SuggestRanker::rank("jsb", &aliases, &history, &catalog);
+    set.add(
+        "three sources merged deduped",
+        out2.len() == 3
+            && out2[0].text == "记事本"
+            && out2[0].score >= out2[1].score
+            && out2[1].score >= out2[2].score,
+        "",
+    );
+
+    // 3. 确定性：同输入两跑同序。
+    let again = SuggestRanker::rank("js", &aliases, &history, &catalog);
+    let again2 = SuggestRanker::rank("js", &aliases, &history, &catalog);
+    let texts: Vec<&str> = again.iter().map(|s| s.text.as_str()).collect();
+    let texts2: Vec<&str> = again2.iter().map(|s| s.text.as_str()).collect();
+    set.add("ranking deterministic", texts == texts2, "");
+
+    // 4. 无命中诚实空（不凑数）。
+    let none = SuggestRanker::rank("zzz", &aliases, &history, &catalog);
+    set.add("no match empty", none.is_empty(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn history_count_boosts_rank() {
+        let aliases = alloc::vec::Vec::new();
+        let lo = vec![(alloc::string::String::from("abc"), 1u32)];
+        let hi = vec![(alloc::string::String::from("abd"), 9u32)];
+        let out = SuggestRanker::rank("ab", &aliases, &lo, &[]);
+        let out2 = SuggestRanker::rank("ab", &aliases, &hi, &[]);
+        assert_eq!(out[0].score, 510);
+        assert_eq!(out2[0].score, 590, "历史次数×10 加权——常用优先");
+    }
+
+    #[test]
+    fn empty_input_prefix_matches_all_sources() {
+        let aliases = vec![(alloc::string::String::from("jsq"), alloc::string::String::from("计算器"))];
+        let history = vec![(alloc::string::String::from("jsq 1+2"), 1u32)];
+        let catalog = ["jsq.exe"];
+        // 空串前缀命中一切——排序核如实返回三源（弹不弹建议由调用面
+        // 决定，本核只保证不崩不丢）。
+        let out = SuggestRanker::rank("", &aliases, &history, &catalog);
+        assert_eq!(out.len(), 3);
+    }
+}

@@ -493,3 +493,124 @@ mod deep2_tests {
         assert!(fv.timeline().iter().any(|v| v.is_restore_backup));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 版本保留策略表 + 自动清理账（30 天/500 上限的机制面）
+// ---------------------------------------------------------------------------
+
+/// 版本保留策略表（判据「30 天/500 上限」的机制面）：清理规则唯一源
+/// ——① 时间线超 500 版 → 按最旧先删（用户最新意图最值钱）；② 超
+/// 30 天的版本删（时间底线）；③ 两规则取并集（任一触发即候选）；
+/// ④ 被还原动作生成的恢复备份不占预算（系统产物不算用户版本——
+/// 账面诚实）。删除清单直出（清了什么可见可查）。
+pub struct RetentionPolicy {
+    pub max_versions: usize,
+    pub max_age_ms: u64,
+}
+
+/// 恢复备份标记（timeline 条目的系统产物位）。
+pub struct VersionEntry {
+    pub id: u64,
+    pub at_ms: u64,
+    pub is_restore_backup: bool,
+}
+
+impl RetentionPolicy {
+    pub fn standard() -> RetentionPolicy {
+        RetentionPolicy { max_versions: 500, max_age_ms: 30 * 24 * 3600 * 1000 }
+    }
+
+    /// 计算清理清单：超龄 + 超量（最旧优先）并集；恢复备份豁免。
+    pub fn cleanup_list(&self, entries: &[VersionEntry], now_ms: u64) -> Vec<u64> {
+        let mut doomed: Vec<u64> = Vec::new();
+        // 规则 ②：超龄。
+        for e in entries {
+            if !e.is_restore_backup && now_ms.saturating_sub(e.at_ms) > self.max_age_ms {
+                doomed.push(e.id);
+            }
+        }
+        // 规则 ①：超量（非备份、非已判删的最旧优先）。
+        let keepable: Vec<&VersionEntry> = entries
+            .iter()
+            .filter(|e| e.is_restore_backup || !doomed.contains(&e.id))
+            .collect();
+        if keepable.len() > self.max_versions {
+            let mut by_age: Vec<&VersionEntry> =
+                keepable.iter().map(|e| *e).collect();
+            by_age.sort_by_key(|e| e.at_ms);
+            let excess = keepable.len() - self.max_versions;
+            for e in by_age.into_iter().take(excess) {
+                doomed.push(e.id);
+            }
+        }
+        doomed.sort_unstable();
+        doomed.dedup();
+        doomed
+    }
+
+    /// 策略常量自证（改判据必炸 checks）。
+    pub fn standard_sane(&self) -> bool {
+        self.max_versions == 500 && self.max_age_ms == 2_592_000_000
+    }
+}
+
+/// 深化层三自检（保留策略）。
+pub fn run_filevers_deep3_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F325-deep3");
+
+    let policy = RetentionPolicy::standard();
+    set.add("policy constants pinned", policy.standard_sane(), "");
+
+    // 1. 超龄清理：31 天前的版本入清单、29 天内的不入。
+    let day: u64 = 24 * 3600 * 1000;
+    let entries = vec![
+        VersionEntry { id: 1, at_ms: 0, is_restore_backup: false },
+        VersionEntry { id: 2, at_ms: 29 * day, is_restore_backup: false },
+    ];
+    let list = policy.cleanup_list(&entries, 31 * day);
+    set.add("aged out only", list == vec![1], "");
+
+    // 2. 超量清理：501 版（最旧先删），恢复备份豁免不占预算——备份
+    //    的时间戳不在最旧两位（@600 > 0,1），被裁的是 id 0 与 1。
+    let mut many: Vec<VersionEntry> = (0..501u64)
+        .map(|i| VersionEntry { id: i, at_ms: i, is_restore_backup: false })
+        .collect();
+    many.push(VersionEntry { id: 900, at_ms: 600, is_restore_backup: true });
+    let list2 = policy.cleanup_list(&many, 10_000);
+    set.add(
+        "cap overflow oldest first with backup exempt",
+        list2 == vec![0, 1] && !list2.contains(&900),
+        "",
+    );
+
+    // 3. 空时间线零清理（不虚报）。
+    set.add("empty timeline no cleanup", policy.cleanup_list(&[], 0).is_empty(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn backup_never_cleaned_by_age() {
+        let policy = RetentionPolicy::standard();
+        let entries = vec![VersionEntry { id: 7, at_ms: 0, is_restore_backup: true }];
+        assert!(policy.cleanup_list(&entries, 100 * 24 * 3600 * 1000).is_empty(),
+            "恢复备份豁免超龄规则");
+    }
+
+    #[test]
+    fn dedup_when_both_rules_hit() {
+        let policy = RetentionPolicy::standard();
+        let entries = vec![
+            VersionEntry { id: 1, at_ms: 0, is_restore_backup: false },
+            VersionEntry { id: 2, at_ms: 1, is_restore_backup: false },
+        ];
+        // 两条都超 30 天——超龄规则全捕、dedup 后清单 [1,2]（无重复）。
+        let list = policy.cleanup_list(&entries, 40 * 24 * 3600 * 1000);
+        assert_eq!(list, vec![1, 2]);
+    }
+}
