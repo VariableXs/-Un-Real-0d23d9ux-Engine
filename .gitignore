@@ -67,3 +67,6 @@ _attic/*.img
 # 需求5 整理抽屉：过程产物归 _attic/tidy（只移动未删除），体积大且不具功能，不入库
 _attic/tidy/
 _attic/varix-uefi.img
+
+# AI 分队隔离舱（#[path] 直挂真实文件的独立验证舱）构建产物不入库
+_attic/**/isolation/target/
