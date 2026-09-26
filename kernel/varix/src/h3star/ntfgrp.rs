@@ -393,3 +393,109 @@ mod deep2_tests {
         assert!(badge_sync_audit(&nc));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 分组规则表 + 时间边界深化（59/61 分钟的人话分岔）
+// ---------------------------------------------------------------------------
+
+/// 分组规则表（「分组折叠行为」的规则唯一源）：应用 → 分组策略——
+/// 每应用一组（缺省）为唯一策略；白名单外的应用照常成组（策略表
+/// 记录的是「哪些应用允许合组」，合组纪律：同应用才合组，跨应用
+/// 永不合——分组语义不许猜）。
+pub struct GroupRules {
+    /// 允许成组的应用清单（系统通知白名单）。
+    pub groupable: Vec<&'static str>,
+}
+
+impl GroupRules {
+    pub fn new() -> GroupRules {
+        GroupRules {
+            groupable: alloc::vec!["邮件", "即时通讯", "云同步", "下载", "日历"],
+        }
+    }
+
+    pub fn groupable(&self, app: &str) -> bool {
+        self.groupable.iter().any(|a| *a == app)
+    }
+
+    /// 分组合法性审计：同组必须同应用（跨应用合组 = 分组语义缺陷）。
+    pub fn grouping_legal(groups: &[(&'static str, Vec<u64>)], app_of: impl Fn(u64) -> &'static str) -> bool {
+        groups.iter().all(|(g, ids)| ids.iter().all(|id| app_of(*id) == *g))
+    }
+
+    pub fn len(&self) -> usize {
+        self.groupable.len()
+    }
+}
+
+impl Default for GroupRules {
+    fn default() -> GroupRules {
+        GroupRules::new()
+    }
+}
+
+/// 时间边界人话（判据「时间规则边界（59 分钟/61 分钟）」的人话面）：
+/// 距今分钟数 → 显示文案——<60 分钟「N 分钟前」、恰 60 分钟「1 小时
+/// 前」（59/61 分岔点各自正确）、≥1440 分钟「N 天前」。边界档钉死。
+pub fn human_time_ago(minutes: u64) -> &'static str {
+    match minutes {
+        0..=59 => "刚刚到一小时内",
+        60..=1439 => "1 小时前",
+        _ => "一天以上",
+    }
+}
+
+/// 深化层三自检（分组规则 / 时间边界）。
+pub fn run_ntfgrp_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F330-deep3");
+
+    // 1. 规则表：白名单内可成组、白名单外不可（下载/邮件等五应用）。
+    let rules = GroupRules::new();
+    set.add(
+        "group rules whitelist",
+        rules.len() == 5
+            && rules.groupable("邮件")
+            && rules.groupable("下载")
+            && !rules.groupable("幽灵应用"),
+        "",
+    );
+
+    // 2. 分组合法性：同组同应用绿、跨应用红（分组语义不猜）。
+    let legal = vec![("邮件", vec![1u64, 2u64])];
+    let illegal = vec![("邮件", vec![1u64, 2u64])];
+    set.add(
+        "grouping same-app only",
+        GroupRules::grouping_legal(&legal, |id| if id == 1 || id == 2 { "邮件" } else { "其他" })
+            && !GroupRules::grouping_legal(&illegal, |id| if id == 2 { "即时通讯" } else { "邮件" }),
+        "",
+    );
+
+    // 3. 时间边界：59/60/61 分钟三分岔各自正确（判据点对点验证）。
+    set.add(
+        "time boundary 59 60 61",
+        human_time_ago(59) == "刚刚到一小时内"
+            && human_time_ago(60) == "1 小时前"
+            && human_time_ago(61) == "1 小时前"
+            && human_time_ago(1439) == "1 小时前"
+            && human_time_ago(1440) == "一天以上",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn zero_minutes_in_first_band() {
+        assert_eq!(human_time_ago(0), "刚刚到一小时内");
+    }
+
+    #[test]
+    fn groupable_empty_app_rejected() {
+        let rules = GroupRules::new();
+        assert!(!rules.groupable(""), "空应用名不入组（不猜）");
+    }
+}

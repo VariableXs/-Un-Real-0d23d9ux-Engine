@@ -2792,3 +2792,221 @@ mod deep6_tests {
         assert!(!hv.fully_reclaimed(), "零蜂巢账不构成回收完整");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层七 · 确认输入校验 + 进度 ETA 账 + 多盘清理账
+// ---------------------------------------------------------------------------
+
+/// 卸载确认输入校验（破坏性操作二次确认的数据面）：确认框要求用户
+/// 手打应用名——打对了才放行（防手滑卸载同桌应用）。大小写敏感按
+/// 原文比对（名字就是名字——不猜近似）；空输入/错名拒绝且计数留痕
+/// （拒绝可见——异常显性化纪律）。
+pub struct ConfirmInputGate {
+    pub app: String,
+    pub rejections: u64,
+}
+
+impl ConfirmInputGate {
+    pub fn new(app: &str) -> ConfirmInputGate {
+        ConfirmInputGate { app: String::from(app), rejections: 0 }
+    }
+
+    /// 校验：精确匹配 → 放行；否则拒绝计数（含空输入）。
+    pub fn verify(&mut self, typed: &str) -> bool {
+        if typed == self.app {
+            true
+        } else {
+            self.rejections += 1;
+            false
+        }
+    }
+
+    /// 提示文案（错误说怎么改对——不只说错了）。
+    pub fn hint(&self) -> String {
+        alloc::format!("请输入应用名「{}」以确认卸载", self.app)
+    }
+}
+
+/// 进度 ETA 账（「慢要有诚实的进度」判据的卸载面）：逐阶段 (阶段,
+/// 预估 ms, 实测 ms) 记账——剩余时间 = 未完成阶段预估和；实测显著超
+/// 预估（>50%）→ 预估器失准事件留痕（下一轮向实测收敛）。
+#[derive(Default)]
+pub struct StageEtaBook {
+    /// (阶段, 预估 ms, 实测 ms)——实测 0 = 未完成。
+    pub stages: Vec<(&'static str, u64, u64)>,
+    pub drifts: u64,
+}
+
+impl StageEtaBook {
+    pub fn plan(stages: &[(&'static str, u64)]) -> StageEtaBook {
+        StageEtaBook { stages: stages.iter().map(|(n, e)| (*n, *e, 0)).collect(), drifts: 0 }
+    }
+
+    /// 完成一阶段（实测入账；超预估 50% 记漂移）。
+    pub fn complete(&mut self, stage: &str, actual_ms: u64) -> bool {
+        match self.stages.iter_mut().find(|(n, _, _)| *n == stage) {
+            Some((_, est, act)) if *act == 0 => {
+                *act = actual_ms;
+                if *est > 0 && actual_ms > *est + *est / 2 {
+                    self.drifts += 1;
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 剩余时间预估（未完成阶段的预估和——诚实进度条的数据源）。
+    pub fn remaining_ms(&self) -> u64 {
+        self.stages.iter().filter(|(_, _, a)| *a == 0).map(|(_, e, _)| e).sum()
+    }
+
+    /// 全部完成判定。
+    pub fn done(&self) -> bool {
+        !self.stages.is_empty() && self.stages.iter().all(|(_, _, a)| *a > 0)
+    }
+}
+
+/// 多盘清理账（应用跨盘安装的现实面）：逐盘 (盘符, 路径, 清理?) 独立
+/// 记账——单盘失败不阻塞他盘继续清（逐盘推进），失败的盘显性留痕
+/// （不静默跳过），全部盘处理完才算卸载执行页完成。
+#[derive(Default)]
+pub struct MultiVolumeCleanup {
+    /// (盘符, 路径, 已清?)。
+    pub items: Vec<(char, String, bool)>,
+    /// 失败留痕：(盘符, 路径)。
+    pub failed: Vec<(char, String)>,
+}
+
+impl MultiVolumeCleanup {
+    pub fn register(&mut self, vol: char, path: &str) {
+        self.items.push((vol, String::from(path), false));
+    }
+
+    /// 清一个盘位：成功置位；失败留痕（可重试——重试成功即翻转）。
+    pub fn clean(&mut self, vol: char, path: &str, ok: bool) {
+        match self.items.iter_mut().find(|(v, p, _)| *v == vol && p == path) {
+            Some(slot) => {
+                if ok {
+                    slot.2 = true;
+                } else {
+                    self.failed.push((vol, String::from(path)));
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// 重试翻转：先前失败的盘位清成功后从失败账摘除。
+    pub fn retry_success(&mut self, vol: char, path: &str) -> bool {
+        let before = self.failed.len();
+        self.failed.retain(|(v, p)| !(*v == vol && p == path));
+        match self.items.iter_mut().find(|(v, p, _)| *v == vol && p == path) {
+            Some(slot) => {
+                slot.2 = true;
+                self.failed.len() != before
+            }
+            None => false,
+        }
+    }
+
+    /// 执行页完成判定：全部盘位置位（失败清零——失败盘必须重试成功
+    /// 或显式豁免，不许静默遗漏）。
+    pub fn all_cleaned(&self) -> bool {
+        !self.items.is_empty() && self.items.iter().all(|(_, _, c)| *c) && self.failed.is_empty()
+    }
+
+    /// 逐盘视图（人话页数据源）。
+    pub fn by_volume(&self) -> Vec<(char, usize, usize)> {
+        let mut vols: Vec<(char, usize, usize)> = Vec::new();
+        for (v, _, c) in &self.items {
+            match vols.iter_mut().find(|(vv, _, _)| *vv == *v) {
+                Some((_, total, cleaned)) => {
+                    *total += 1;
+                    *cleaned += usize::from(*c);
+                }
+                None => vols.push((*v, 1, usize::from(*c))),
+            }
+        }
+        vols
+    }
+}
+
+/// 深化层七自检（确认门 / ETA / 多盘）。
+pub fn run_sysgov_deep7_checks() -> CheckSet {
+    use alloc::vec;
+    let mut set = CheckSet::new("F342-346-deep7");
+
+    // 1. 确认门：错名/空输入拒绝计数、精确匹配放行、提示文案指名。
+    let mut g = ConfirmInputGate::new("画板Pro");
+    let bad1 = g.verify("画板pro");
+    let bad2 = g.verify("");
+    let ok = g.verify("画板Pro");
+    set.add(
+        "confirm input gate",
+        !bad1 && !bad2 && ok && g.rejections == 2 && g.hint().contains("画板Pro"),
+        "",
+    );
+
+    // 2. ETA：三阶段计划 → 完成两阶段剩余=第三段预估；超预估 50% 记
+    //    漂移（预估失准显性化）；重复完成拒绝。
+    let mut eta = StageEtaBook::plan(&[("确认页", 500), ("执行页", 3000), ("完成页", 200)]);
+    let c1 = eta.complete("确认页", 480);
+    let c2 = eta.complete("执行页", 6000); // 超预估 100%——漂移。
+    let dup = eta.complete("确认页", 100);
+    set.add(
+        "eta accounting",
+        c1 && c2 && !dup && eta.remaining_ms() == 200 && eta.drifts == 1,
+        "",
+    );
+
+    // 3. ETA 完成判定：三段全清后 done 绿、剩余归零。
+    let _ = eta.complete("完成页", 190);
+    set.add("eta done", eta.done() && eta.remaining_ms() == 0, "");
+
+    // 4. 多盘清理：C/D 两盘逐盘清、单盘失败不阻塞他盘、重试翻转、
+    //    全清判定。
+    let mut mv = MultiVolumeCleanup::default();
+    mv.register('C', "Apps/画板Pro/main.vx");
+    mv.register('D', "Backup/画板Pro/lib.vxd");
+    mv.clean('C', "Apps/画板Pro/main.vx", true);
+    mv.clean('D', "Backup/画板Pro/lib.vxd", false);
+    set.add(
+        "multi-volume partial fail visible",
+        !mv.all_cleaned() && mv.failed.len() == 1,
+        "",
+    );
+    let retried = mv.retry_success('D', "Backup/画板Pro/lib.vxd");
+    set.add(
+        "multi-volume retry flips",
+        retried && mv.all_cleaned() && mv.by_volume() == vec![('C', 1, 1), ('D', 1, 1)],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn confirm_case_sensitive_by_design() {
+        let mut g = ConfirmInputGate::new("ABC");
+        assert!(!g.verify("abc"), "大小写敏感——名字不猜近似");
+        assert!(g.verify("ABC"));
+    }
+
+    #[test]
+    fn eta_unknown_stage_rejected() {
+        let mut eta = StageEtaBook::plan(&[("a", 100)]);
+        assert!(!eta.complete("幽灵阶段", 50), "未登记阶段不收账");
+    }
+
+    #[test]
+    fn multivolume_empty_not_clean() {
+        let mv = MultiVolumeCleanup::default();
+        assert!(!mv.all_cleaned(), "零盘位不构成清理完成");
+        assert!(mv.by_volume().is_empty());
+    }
+}

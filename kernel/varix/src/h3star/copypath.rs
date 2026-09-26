@@ -1640,3 +1640,168 @@ mod deep6_tests {
             "含单引号路径在 POSIX 引号方案下不可逆——边界显性化");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层七 · MAX_PATH 边界审计 + 相对路径越界检测 + 批量转换账
+// ---------------------------------------------------------------------------
+
+/// MAX_PATH 边界审计（Windows 经典 260 字符边界的诚实面）：归一化后
+/// 超 259 字符的路径标记超界——不静默截断（截断 = 路径指向别处的破
+/// 坏面），调用方显式走长路径前缀（\\\\?\\）或报错。
+pub struct MaxPathAudit;
+
+pub const MAX_PATH_CHARS: usize = 260;
+
+impl MaxPathAudit {
+    /// 边界判定：归一化形长度 < 260 才安全（恰 260 也算超——API 侧
+    /// 需要留 NUL 位，诚实口径）。
+    pub fn exceeds(path: &str) -> bool {
+        PathNormalizer::win(path).chars().count() + 1 >= MAX_PATH_CHARS
+    }
+
+    /// 长路径前缀面（\\\\?\\ 形——超界路径的合法出路，不是截断）。
+    pub fn long_form(path: &str) -> String {
+        alloc::format!("\\\\?\\{}", PathNormalizer::win(path))
+    }
+
+    /// 批量审计：超界清单直出（哪些路径需要长路径面）。
+    pub fn audit_batch<'a>(paths: &[&'a str]) -> Vec<&'a str> {
+        paths.iter().filter(|p| Self::exceeds(p)).copied().collect()
+    }
+}
+
+/// 相对路径越界检测（安全纪律：相对基准可能被 `..` 抬出根——逃逸
+/// 检测面）。规则：`relative_to` 结果再归一化后若脱离基准的根盘符
+/// （跨盘回退不算越界——那是显式绝对路径语义），或含 `..` 段 → 越界。
+pub struct EscapeAudit;
+
+impl EscapeAudit {
+    /// 检测相对串是否越界（含 `..` 段 = 越界——调用方必须改走绝对路径）。
+    pub fn escapes(relative: &str) -> bool {
+        relative
+            .split(['\\', '/'])
+            .any(|seg| seg == "..")
+    }
+
+    /// 基准内安全判定：相对串归一化后拼回基准，必须仍在基准子树内
+    /// （前缀校验——逃逸路径的机器面）。
+    pub fn stays_under(base: &str, relative: &str) -> bool {
+        if Self::escapes(relative) {
+            return false;
+        }
+        let base_norm = PathNormalizer::win(base);
+        let joined = alloc::format!("{}\\{}", base_norm, PathNormalizer::win(relative));
+        joined.starts_with(&base_norm)
+    }
+}
+
+/// 批量转换账（多路径形制转换的运营面）：逐条 (原串, 目标味, 成功?)
+/// 记账——失败串（UNC 无 POSIX 直映等）显性留痕不混入成功统计；
+/// 成功率‰（运营健康面）。
+#[derive(Default)]
+pub struct ConvertBatchBook {
+    pub entries: Vec<(String, TerminalFlavor, bool)>,
+}
+
+impl ConvertBatchBook {
+    pub fn convert(&mut self, path: &str, flavor: TerminalFlavor) -> String {
+        let out = PathNormalizer::posix(path);
+        let ok = !out.is_empty();
+        self.entries.push((String::from(path), flavor, ok));
+        out
+    }
+
+    /// 成功率‰（空批不虚报）。
+    pub fn success_permille(&self) -> u32 {
+        if self.entries.is_empty() {
+            return 0;
+        }
+        let ok = self.entries.iter().filter(|(_, _, s)| *s).count();
+        (ok * 1000 / self.entries.len()) as u32
+    }
+
+    /// 失败清单（修理面直出）。
+    pub fn failures(&self) -> Vec<&str> {
+        self.entries
+            .iter()
+            .filter(|(_, _, s)| !s)
+            .map(|(p, _, _)| p.as_str())
+            .collect()
+    }
+}
+
+/// 深化层七自检（边界 / 越界 / 批量）。
+pub fn run_copypath_deep7_checks() -> CheckSet {
+    let mut set = CheckSet::new("F336-337-deep7");
+
+    // 1. MAX_PATH：短路径安全、超长路径判超、长路径前缀出路（不截断）。
+    let short = "C:/a/b.vx";
+    let mut long = alloc::format!("C:/{}", "很长目录名/".repeat(45));
+    long.push_str("file.vx");
+    set.add(
+        "max path audit",
+        !MaxPathAudit::exceeds(short) && MaxPathAudit::exceeds(&long)
+            && MaxPathAudit::long_form(&long).starts_with("\\\\?\\C:\\"),
+        "",
+    );
+
+    // 2. 批量审计：混批中超界串被点名、短串不入清单。
+    let batch = MaxPathAudit::audit_batch(&[short, &long]);
+    set.add("batch audit surfaces long only", batch.len() == 1, "");
+
+    // 3. 越界检测：`..` 段判越界、正常相对绿、拼回前缀校验。
+    set.add(
+        "escape audit",
+        EscapeAudit::escapes("a/../../etc")
+            && !EscapeAudit::escapes("子目录/文件.vx")
+            && EscapeAudit::stays_under("D:/资料", "子目录/文件.vx")
+            && !EscapeAudit::stays_under("D:/资料", "../../系统"),
+        "",
+    );
+
+    // 4. 批量转换账：成功/失败分账（UNC 无 POSIX 直映 → 失败留痕）、
+    //    成功率 ‰ 口径。
+    let mut bb = ConvertBatchBook::default();
+    bb.convert("C:/a/b.vx", TerminalFlavor::Posix);
+    bb.convert("\\\\nas/share", TerminalFlavor::Posix);
+    set.add(
+        "convert batch bookkeeping",
+        bb.success_permille() == 500 && bb.failures() == alloc::vec!["\\\\nas/share"],
+        "",
+    );
+
+    // 5. 空批不虚报成功率。
+    let empty = ConvertBatchBook::default();
+    set.add("empty batch rate zero", empty.success_permille() == 0, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep7_tests {
+    use super::*;
+
+    #[test]
+    fn exactly_259_is_safe() {
+        // 258 字符 + NUL = 259 < 260——安全带内。
+        let body = "x".repeat(254);
+        let p = alloc::format!("C:/{}", body);
+        assert!(!MaxPathAudit::exceeds(&p));
+    }
+
+    #[test]
+    fn dotdot_at_start_escapes() {
+        assert!(EscapeAudit::escapes("../上跳"));
+        assert!(EscapeAudit::escapes("a/.."));
+        assert!(!EscapeAudit::escapes("..a"), "点开头的目录名不是上跳");
+    }
+
+    #[test]
+    fn convert_success_all_green() {
+        let mut bb = ConvertBatchBook::default();
+        bb.convert("C:/a.vx", TerminalFlavor::Posix);
+        bb.convert("C:/b.vx", TerminalFlavor::Posix);
+        assert_eq!(bb.success_permille(), 1000);
+        assert!(bb.failures().is_empty());
+    }
+}

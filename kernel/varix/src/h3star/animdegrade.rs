@@ -1078,7 +1078,7 @@ impl FrameCost {
 }
 
 /// 机制仲裁结果（哪个机制在当班——账面可查，不猜）。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum GovernorMode {
     /// 全效（无机制在班）。
     Full,
@@ -1713,5 +1713,164 @@ mod deep5_tests {
         mo.release();
         mo.engage();
         assert_eq!(mo.handovers, 2, "放手后再接手是新一次交接");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层六 · 全链端到端验证 + 采样密度自适应
+// ---------------------------------------------------------------------------
+
+/// 全链端到端验证（调速器的整车试验）：LoadGenerator 曲线逐点喂
+/// FrameGovernor，断言三件事——① 突发负载必触发降级响应（突变要被
+/// 看见）；② 常载健康负载全程不进降级（不误伤）；③ 任何时刻延迟守
+/// 卫成立（成本永不超基准——全链不变式）。
+pub struct EndToEndVerifier;
+
+impl EndToEndVerifier {
+    /// 跑一条负载曲线：返回 (峰值模式, 全程延迟守卫绿?)。
+    pub fn run(shape: LoadShape, points: usize, step_ms: u64) -> (GovernorMode, bool) {
+        let mut g = FrameGovernor::new(32);
+        let mut peak = GovernorMode::Full;
+        let mut guard = true;
+        for i in 0..points.max(1) {
+            let t = (i as u64) * step_ms.max(1);
+            let budget = LoadGenerator::sample(shape, t);
+            // 占用越高帧率越低（线性减半模型：40% 占用 → 60fps——40%
+            // 是健康负载，不能一枪打进一级判线）。
+            let fps = 80 - budget.min(160) / 2;
+            let m = g.sample(fps, budget, 90, true, t);
+            if !g.latency_guard() {
+                guard = false;
+            }
+            if m > peak {
+                peak = m;
+            }
+        }
+        (peak, guard)
+    }
+}
+
+/// 采样密度自适应（性能感知的采样面）：负载变化率大 → 加密采样
+/// （快变负载需要更细的观察粒度）；平稳 → 稀疏采样（省测量开销）。
+/// 密度档唯一源，切换留痕。
+pub struct SamplingDensity {
+    /// (变化率阈值 ‰/s, 采样间隔 ms)——变化率越高间隔越短。
+    pub table: [(u64, u64); 3],
+    pub interval_ms: u64,
+    pub switches: u64,
+}
+
+impl SamplingDensity {
+    pub fn new() -> SamplingDensity {
+        SamplingDensity {
+            table: [(300, 250), (100, 1000), (0, 2000)],
+            interval_ms: 2000,
+            switches: 0,
+        }
+    }
+
+    /// 喂变化率（‰/s）：命中首个「变化率 ≥ 阈值」档。
+    pub fn feed_rate(&mut self, permille_per_sec: u64) -> u64 {
+        let want = self
+            .table
+            .iter()
+            .find(|(th, _)| permille_per_sec >= *th)
+            .map(|(_, iv)| *iv)
+            .unwrap_or(2000);
+        if want != self.interval_ms {
+            self.interval_ms = want;
+            self.switches += 1;
+        }
+        self.interval_ms
+    }
+
+    /// 表自证：阈值降序、间隔升序（快变密采——策略不倒挂）。
+    pub fn monotonic(&self) -> bool {
+        self.table.windows(2).all(|w| w[0].0 > w[1].0 && w[0].1 < w[1].1)
+    }
+}
+
+impl Default for SamplingDensity {
+    fn default() -> SamplingDensity {
+        SamplingDensity::new()
+    }
+}
+
+/// 深化层六自检（端到端 / 采样密度）。
+pub fn run_animdegrade_deep6_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep6");
+
+    // 1. 突发负载：尖峰期必触发降级响应（突变被看见）+ 延迟守卫全程绿。
+    let (peak, guard) = EndToEndVerifier::run(
+        LoadShape::Burst { base: 30, spike: 99, spike_width_ms: 2000, interval_ms: 6000 },
+        60,
+        500,
+    );
+    set.add(
+        "burst triggers response with guard",
+        peak == GovernorMode::Budget && guard,
+        "",
+    );
+
+    // 2. 常载健康负载：全程不进降级（不误伤）+ 守卫绿。
+    let (peak2, guard2) = EndToEndVerifier::run(LoadShape::Steady(40), 40, 1000);
+    set.add(
+        "steady healthy never degrades",
+        peak2 == GovernorMode::Full && guard2,
+        "",
+    );
+
+    // 3. 突发负载延迟守卫全程绿（全链不变式的机器证明）。
+    let (_, guard3) = EndToEndVerifier::run(
+        LoadShape::Burst { base: 50, spike: 100, spike_width_ms: 1500, interval_ms: 4000 },
+        80,
+        250,
+    );
+    set.add("guard holds across bursts", guard3, "");
+
+    // 4. 采样密度：变化率大→密采、平稳→疏采（初始 2000 → 密 250 →
+    //    回疏 2000 = 两次切换）；表单调自证。
+    let mut sd = SamplingDensity::new();
+    let d1 = sd.feed_rate(500);
+    let d2 = sd.feed_rate(20);
+    set.add(
+        "sampling density adapts",
+        d1 == 250 && d2 == 2000 && sd.switches == 2 && sd.monotonic(),
+        "",
+    );
+
+    // 5. 密度档同值幂等（不变档不计数）。
+    let _ = sd.feed_rate(20);
+    set.add("density idempotent", sd.switches == 2, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep6_tests {
+    use super::*;
+
+    #[test]
+    fn e2e_sine_load_guarded() {
+        let (_, guard) = EndToEndVerifier::run(
+            LoadShape::Sine { period_ms: 8000, amplitude: 45, base: 50 },
+            100,
+            100,
+        );
+        assert!(guard, "正弦负载全周期延迟守卫成立");
+    }
+
+    #[test]
+    fn density_boundary_rates() {
+        let mut sd = SamplingDensity::new();
+        assert_eq!(sd.feed_rate(300), 250, "恰在阈值上取更快档（≥ 含边界）");
+        assert_eq!(sd.feed_rate(299), 1000);
+    }
+
+    #[test]
+    fn steady_zero_load_never_degrades() {
+        let (peak, guard) = EndToEndVerifier::run(LoadShape::Steady(0), 20, 1000);
+        assert_eq!(peak, GovernorMode::Full);
+        assert!(guard);
     }
 }

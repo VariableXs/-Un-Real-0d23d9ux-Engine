@@ -407,3 +407,161 @@ mod deep2_tests {
         assert!(a.all_within(), "恰 35s 在窗口期内");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 恢复条自动消退 + 清理完整性对账
+// ---------------------------------------------------------------------------
+
+/// 恢复条自动消退账（判据「恢复条触发与一键恢复」的生命周期面）：
+/// 恢复条出现后 30s 内用户未理 → 自动消退（不留常驻垃圾条）；期间
+/// 用户一键恢复 → 消费掉并留痕。出现-消退-消费三态全留痕（十三章
+/// 生命周期语义）。
+pub struct RecoveryBarLifecycle {
+    pub appeared_at: Option<u64>,
+    /// (出现时刻, 结局)——结局：0=自动消退 1=用户消费。
+    pub history: Vec<(u64, u8)>,
+    pub auto_fades: u64,
+    pub consumed: u64,
+}
+
+/// 恢复条驻留判线（30s 未理自动消退）。
+pub const BAR_TTL_MS: u64 = 30_000;
+
+impl RecoveryBarLifecycle {
+    pub fn new() -> RecoveryBarLifecycle {
+        RecoveryBarLifecycle { appeared_at: None, history: Vec::new(), auto_fades: 0, consumed: 0 }
+    }
+
+    pub fn appear(&mut self, at_ms: u64) {
+        self.appeared_at = Some(at_ms);
+    }
+
+    /// 采样：超 TTL 未理 → 自动消退（留痕）。
+    pub fn sample(&mut self, at_ms: u64) -> bool {
+        match self.appeared_at {
+            Some(t0) if at_ms.saturating_sub(t0) >= BAR_TTL_MS => {
+                self.appeared_at = None;
+                self.auto_fades += 1;
+                self.history.push((t0, 0));
+                false
+            }
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    /// 一键恢复消费（在驻留期内才有效）。
+    pub fn consume(&mut self, at_ms: u64) -> bool {
+        if self.sample(at_ms) {
+            self.appeared_at = None;
+            self.consumed += 1;
+            self.history.push((at_ms, 1));
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.appeared_at.is_some()
+    }
+}
+
+/// 清理完整性对账（判据「清理完整性」的机器面）：会话恢复数据在
+/// 「恢复消费」或「用户放弃」后必须从暂存区清除——逐条 (会话项,
+/// 已清?) 审计，残留项直出（暂存区垃圾 = 数据卫生缺陷）。
+#[derive(Default)]
+pub struct CleanupCompleteness {
+    pub items: Vec<(String, bool)>,
+}
+
+impl CleanupCompleteness {
+    pub fn mark_cleared(&mut self, item: &str) -> bool {
+        match self.items.iter_mut().find(|(n, _)| n == item) {
+            Some(slot) => {
+                slot.1 = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn leftovers(&self) -> Vec<&str> {
+        self.items.iter().filter(|(_, c)| !c).map(|(n, _)| n.as_str()).collect()
+    }
+
+    pub fn fully_cleaned(&self) -> bool {
+        !self.items.is_empty() && self.leftovers().is_empty()
+    }
+}
+
+/// 深化层三自检（恢复条生命周期 / 清理完整性）。
+pub fn run_sesrestore_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F311-deep3");
+
+    // 1. 生命周期：出现→驻留→超时自动消退（留痕）；未超时仍活跃。
+    let mut bar = RecoveryBarLifecycle::new();
+    let before = bar.sample(0);
+    bar.appear(0);
+    let mid = bar.sample(BAR_TTL_MS - 1);
+    let after = bar.sample(BAR_TTL_MS);
+    set.add(
+        "bar lifecycle auto fade",
+        !before && mid && !after && bar.auto_fades == 1 && bar.history.len() == 1,
+        "",
+    );
+
+    // 2. 消费路径：驻留期内一键恢复成功、超时后消费拒绝。
+    let mut bar2 = RecoveryBarLifecycle::new();
+    bar2.appear(100);
+    let consumed = bar2.consume(2000);
+    let late = bar2.consume(999_999);
+    set.add(
+        "bar consume in ttl only",
+        consumed && !late && bar2.consumed == 1,
+        "",
+    );
+
+    // 3. 清理完整性：恢复消费 → 暂存区三面全清（光标位/窗口几何/
+    //    草稿体）；残留项直出。
+    let mut cc = CleanupCompleteness::default();
+    cc.items = alloc::vec![
+        (String::from("光标位"), false),
+        (String::from("窗口几何"), false),
+        (String::from("草稿体"), false),
+    ];
+    set.add("leftovers surfaced", !cc.fully_cleaned() && cc.leftovers().len() == 3, "");
+    for (n, _) in cc.items.clone() {
+        let _ = cc.mark_cleared(&n);
+    }
+    set.add("fully cleaned after marks", cc.fully_cleaned(), "");
+
+    // 4. 未知项清理拒绝（不虚报）。
+    set.add("unknown item rejected", !cc.mark_cleared("幽灵项"), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn bar_no_appear_sample_false() {
+        let mut bar = RecoveryBarLifecycle::new();
+        bar.appear(0);
+        bar.consume(10);
+        assert!(!bar.sample(20), "无活跃条采样恒假");
+    }
+
+    #[test]
+    fn ttl_constant_is_thirty_seconds() {
+        assert_eq!(BAR_TTL_MS, 30_000, "恢复条 30s 驻留判线钉死");
+    }
+
+    #[test]
+    fn cleanup_empty_not_clean() {
+        let cc = CleanupCompleteness::default();
+        assert!(!cc.fully_cleaned(), "零项不构成清理完成");
+    }
+}
