@@ -411,3 +411,379 @@ mod deep_tests {
         assert!(hover_top3_consistent(u64::MAX, [u64::MAX, 0, 0]));
     }
 }
+
+// ===========================================================================
+// 深化 v7（F456）：卷健康审计 / 用量趋势环 / 安全弹出状态机 /
+// 双语六宫格对账 / 持久化通道 v7（W7P1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 阈值审计——F268 联动（黄 800‰/红 900‰）的不变量固化：红 > 黄 >
+//    0、双双不越千分位上限——阈值漂移在检查面现形。
+// 2. 用量趋势环——容量条只有瞬时值看不出「快满了」：定长环记用量采样，
+//    增长速率告警（预算内将满 = 提前提示，不是满了一脸懵）。
+// 3. 安全弹出状态机——设备区「接入即显」的另一端：弹出要走
+//    Mounted→Ejecting→Ejected 全程，失败有重试冷却（400ms——与
+//    F496 磁贴冷却同源量纲），重试计数诚实。
+// 4. 双语对账——v1 英文 pinned 表与 v2 中文表逐位对齐（同源双语：
+//    索引漂移 = 界面两处说不一样的话）。
+// 5. 持久化——六宫格选择掩码 + 设备标签落盘 v7 通道（W7P1 + FNV 尾）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 阈值审计（F268 联动不变量）
+// ---------------------------------------------------------------------------
+
+/// 阈值不变量：0 < 黄 < 红 ≤ 1000（一处一事实的检查面固化）。
+pub fn threshold_audit() -> bool {
+    WARN_PERMILLE > 0 && RED_PERMILLE > WARN_PERMILLE && RED_PERMILLE <= 1_000
+}
+
+/// 卷数据自洽（v1 used_permille 有钳制，这里把「used > total = 传感器
+/// 在说谎」显性化——不静默信）。
+pub fn volume_sane(used_mb: u64, total_mb: u64) -> bool {
+    used_mb <= total_mb
+}
+
+// ---------------------------------------------------------------------------
+// 用量趋势环（增长速率告警）
+// ---------------------------------------------------------------------------
+
+/// 趋势环容量（16 采样）。
+pub const VOLUME_TREND_CAP: usize = 16;
+/// 增长告警阈值（窗口内涨幅 ≥ 50‰ = 快满预警——预算面可调常量）。
+pub const GROWTH_ALERT_PERMILLE: u32 = 50;
+
+/// 用量趋势环：采样 + 窗口涨幅 + 告警。
+pub struct VolumeTrend {
+    ring: [u32; VOLUME_TREND_CAP], // used_permille 采样
+    head: usize,
+    n: usize,
+}
+
+impl VolumeTrend {
+    pub const fn new() -> Self {
+        VolumeTrend { ring: [0; VOLUME_TREND_CAP], head: 0, n: 0 }
+    }
+
+    pub fn push(&mut self, used_permille: u32) {
+        self.ring[self.head] = used_permille.min(1_000);
+        self.head = (self.head + 1) % VOLUME_TREND_CAP;
+        self.n = (self.n + 1).min(VOLUME_TREND_CAP);
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 窗口涨幅（最新 − 最旧；账面不足 2 采样诚实 0）。
+    pub fn growth_permille(&self) -> u32 {
+        if self.n < 2 {
+            return 0;
+        }
+        let oldest = (self.head + VOLUME_TREND_CAP - self.n) % VOLUME_TREND_CAP;
+        let newest = (self.head + VOLUME_TREND_CAP - 1) % VOLUME_TREND_CAP;
+        self.ring[newest].saturating_sub(self.ring[oldest])
+    }
+
+    /// 告警（窗口涨幅 ≥ 阈值；负增长不告警——清理是好事不吓人）。
+    pub fn growth_alert(&self) -> bool {
+        self.growth_permille() >= GROWTH_ALERT_PERMILLE
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 安全弹出状态机（Mounted → Ejecting → Ejected；失败重试有冷却）
+// ---------------------------------------------------------------------------
+
+/// 弹出重试冷却（ms——与 F496 磁贴触发冷却同源量纲）。
+pub const EJECT_RETRY_COOLDOWN_MS: u64 = 400;
+
+/// 弹出状态。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EjectState {
+    /// 已挂载（正常）。
+    Mounted,
+    /// 弹出中（句柄已关闭、缓冲冲刷中）。
+    Ejecting,
+    /// 已弹出（安全拔出——设备区行消失）。
+    Ejected,
+    /// 弹出失败（被占用——用户可重试，有冷却）。
+    Failed,
+}
+
+/// 安全弹出器。
+pub struct SafeEjector {
+    pub state: EjectState,
+    last_attempt_ms: Option<u64>,
+    pub retry_count: usize,
+}
+
+impl SafeEjector {
+    pub const fn new() -> Self {
+        SafeEjector { state: EjectState::Mounted, last_attempt_ms: None, retry_count: 0 }
+    }
+
+    /// 开始弹出（只有 Mounted 能发起——Ejecting 中重复请求不重复冲刷）。
+    pub fn begin(&mut self) -> bool {
+        if self.state != EjectState::Mounted {
+            return false;
+        }
+        self.state = EjectState::Ejecting;
+        true
+    }
+
+    /// 弹出失败（Ejecting 中才可能失败；记冷却锚）。
+    pub fn fail(&mut self, at_ms: u64) -> bool {
+        if self.state != EjectState::Ejecting {
+            return false;
+        }
+        self.state = EjectState::Failed;
+        self.last_attempt_ms = Some(at_ms);
+        self.retry_count += 1;
+        true
+    }
+
+    /// 重试（冷却未过拒绝——400ms 内狂点不重复冲刷；只从 Failed 发起）。
+    pub fn retry(&mut self, at_ms: u64) -> bool {
+        if self.state != EjectState::Failed {
+            return false;
+        }
+        if let Some(t) = self.last_attempt_ms {
+            if at_ms.saturating_sub(t) < EJECT_RETRY_COOLDOWN_MS {
+                return false;
+            }
+        }
+        self.state = EjectState::Ejecting;
+        true
+    }
+
+    /// 弹出完成（Ejecting → Ejected——单向：Ejected 后只能重新挂载，
+    /// 由调用方重建 SafeEjector——不假装「弹出了又还在」）。
+    pub fn complete(&mut self) -> bool {
+        if self.state != EjectState::Ejecting {
+            return false;
+        }
+        self.state = EjectState::Ejected;
+        true
+    }
+
+    /// 已安全弹出（设备区行消失的判据）。
+    pub fn safely_ejected(&self) -> bool {
+        self.state == EjectState::Ejected
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 双语六宫格对账（v1 英文表 × v2 中文表逐位对齐）
+// ---------------------------------------------------------------------------
+
+/// 双语对齐审计：两表等长且每对 (英, 中) 非空（同源双语——索引漂移
+/// = 界面两处说不一样的话，属缺陷）。
+pub fn pinned_bilingual_aligned() -> bool {
+    // v1 ThisPcPage::new() 的 pinned 表与 v2 PINNED_TABLE 逐位配对。
+    let page = ThisPcPage::new();
+    let en = page.pinned_folders();
+    en.len() == PINNED_TABLE.len()
+        && (0..PINNED_N).all(|i| !en[i].is_empty() && !PINNED_TABLE[i].is_empty())
+        // 语义锚：S: 共享必在两表同位（主册点名项）。
+        && en[3].starts_with("S:")
+        && PINNED_TABLE[3].starts_with("S:")
+}
+
+// ---------------------------------------------------------------------------
+// 持久化通道 v7（W7P1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7P 族）。
+pub const PCPAGE_V7_MAGIC: [u8; 4] = *b"W7P1";
+/// 长度：魔标(4) + 版本(1) + pinned 掩码(1) + 设备数(1) + 设备标签(4) +
+/// FNV(4) = 16。
+pub const PCPAGE_V7_LEN: usize = 16;
+pub const PCPAGE_V7_VERSION: u8 = 1;
+
+/// 序列化（pinned 掩码 bit i = 六宫格第 i 格用户置顶态；设备标签 4B）。
+pub fn save_page_v7(pinned_mask: u8, dev_tags: [u8; 4], out: &mut [u8]) -> Option<usize> {
+    if out.len() < PCPAGE_V7_LEN || pinned_mask >= (1u8 << PINNED_N) {
+        return None; // 高位脏 = 坏掩码拒收（六格之外不许有假格）
+    }
+    out[..4].copy_from_slice(&PCPAGE_V7_MAGIC);
+    out[4] = PCPAGE_V7_VERSION;
+    out[5] = pinned_mask;
+    out[6] = 0; // 保留
+    out[7] = 0; // 保留
+    out[8..12].copy_from_slice(&dev_tags);
+    let h = fnv1a(&out[..12]);
+    out[12] = (h & 0xff) as u8;
+    out[13] = ((h >> 8) & 0xff) as u8;
+    out[14] = ((h >> 16) & 0xff) as u8;
+    out[15] = ((h >> 24) & 0xff) as u8;
+    Some(PCPAGE_V7_LEN)
+}
+
+/// 反序列化（版本/掩码值域/保留位/FNV 四重守卫）。
+pub fn load_page_v7(buf: &[u8]) -> Option<(u8, [u8; 4])> {
+    if buf.len() < PCPAGE_V7_LEN || buf[..4] != PCPAGE_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != PCPAGE_V7_VERSION || buf[6] != 0 || buf[7] != 0 {
+        return None;
+    }
+    if buf[5] >= (1u8 << PINNED_N) {
+        return None;
+    }
+    let expect = fnv1a(&buf[..12]);
+    let got = buf[12] as u32
+        | ((buf[13] as u32) << 8)
+        | ((buf[14] as u32) << 16)
+        | ((buf[15] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let mut tags = [0u8; 4];
+    tags.copy_from_slice(&buf[8..12]);
+    Some((buf[5], tags))
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F456 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_pcpage_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F456-v7");
+    // 1) 阈值审计 + 卷自洽。
+    cs.add("threshold_audit", threshold_audit(), "");
+    cs.add("volume_sane", volume_sane(850, 1_000) && !volume_sane(1_100, 1_000), "");
+    cs.add("sane_permille_honest", {
+        // used > total 的卷：千分比钳 1000 但 sane 拒——两层各司其职。
+        let bad = Volume::new("BAD", 1_200, 1_000);
+        bad.used_permille() == 1_000 && !volume_sane(bad.used_mb, bad.total_mb)
+    }, "");
+    // 2) 趋势环：涨幅计算 + 告警 + 负增长不告警 + 环上限。
+    cs.add("trend_growth_alert", {
+        let mut t = VolumeTrend::new();
+        for v in [500u32, 520, 540, 560] {
+            t.push(v);
+        }
+        t.growth_permille() == 60 && t.growth_alert()
+    }, "");
+    cs.add("trend_shrink_no_alert", {
+        let mut t = VolumeTrend::new();
+        for v in [800u32, 600, 400] {
+            t.push(v);
+        }
+        !t.growth_alert() // 清理了空间——不吓人
+    }, "");
+    cs.add("trend_insufficient_honest", {
+        let mut t = VolumeTrend::new();
+        t.push(700);
+        t.growth_permille() == 0 && !t.growth_alert()
+    }, "");
+    cs.add("trend_ring_cap", {
+        let mut t = VolumeTrend::new();
+        for i in 0..(VOLUME_TREND_CAP * 2) {
+            t.push((i % 1_001) as u32);
+        }
+        t.count() == VOLUME_TREND_CAP
+    }, "");
+    cs.add("trend_clamped_input", {
+        let mut t = VolumeTrend::new();
+        t.push(2_000); // >1000‰ 钳制
+        t.growth_permille() == 0 && t.count() == 1
+    }, "");
+    // 3) 安全弹出：全链 + 重复请求不重复冲刷 + 冷却 + 单向门。
+    cs.add("eject_full_chain", {
+        let mut e = SafeEjector::new();
+        e.begin() && e.complete() && e.safely_ejected()
+    }, "");
+    cs.add("eject_double_begin_reject", {
+        let mut e = SafeEjector::new();
+        e.begin() && !e.begin() // Ejecting 中再 begin = false
+    }, "");
+    cs.add("eject_fail_then_cooldown", {
+        let mut e = SafeEjector::new();
+        let _ = e.begin();
+        let _ = e.fail(1_000);
+        !e.retry(1_200) // 200ms < 400ms 冷却——拒绝
+            && e.retry(1_401) // 401ms 后放行
+            && e.retry_count == 1
+    }, "");
+    cs.add("eject_state_transitions_strict", {
+        let mut e = SafeEjector::new();
+        !e.complete() // Mounted 直接 complete = false
+            && {
+                let mut e2 = SafeEjector::new();
+                let _ = e2.begin();
+                let _ = e2.fail(0);
+                !e2.complete() // Failed 直接 complete = false（必须先 retry）
+            }
+    }, "");
+    // 4) 双语六宫格对账。
+    cs.add("pinned_bilingual_aligned", pinned_bilingual_aligned(), "");
+    // 5) 持久化通道：round-trip + 掩码值域 + 篡改 + 保留位。
+    let mut buf = [0u8; PCPAGE_V7_LEN];
+    cs.add("persist_roundtrip", {
+        let n = save_page_v7(0b00_1010, [1, 2, 3, 4], &mut buf).unwrap_or(0);
+        load_page_v7(&buf[..n]) == Some((0b00_1010, [1, 2, 3, 4]))
+    }, "");
+    cs.add("persist_mask_over_range", save_page_v7(0b0100_0000, [0; 4], &mut buf).is_none(), "");
+    cs.add("persist_tamper", {
+        let n = save_page_v7(0b00_0011, [9, 9, 9, 9], &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[8] ^= 0x01;
+        load_page_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("persist_reserved_set", {
+        let mut bad = [0u8; PCPAGE_V7_LEN];
+        let _ = save_page_v7(0, [0; 4], &mut bad);
+        bad[6] = 1;
+        load_page_v7(&bad).is_none()
+    }, "");
+    // 6) 页打开预算回归锚（v2 分解账的 v7 复核）。
+    cs.add("budget_regression", budget_sum() == PAGE_OPEN_BUDGET_MS, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn trend_oldest_is_true_oldest_after_wrap() {
+        // 环回绕后「最旧」取自正确槽位（时间序不是索引序）。
+        let mut t = VolumeTrend::new();
+        for i in 0..VOLUME_TREND_CAP {
+            t.push(i as u32 * 10); // 0,10,...,150
+        }
+        t.push(1_000); // 挤掉最旧 0
+        // 窗口 = 10..1000 → 涨幅 990。
+        assert_eq!(t.growth_permille(), 990);
+    }
+
+    #[test]
+    fn ejector_retry_never_explodes() {
+        let mut e = SafeEjector::new();
+        let _ = e.begin();
+        let _ = e.fail(0);
+        // 冷却内狂点全部拒绝（计数诚实）。
+        let rejected = (0..10u64).filter(|&i| !e.retry(i * 30)).count();
+        assert_eq!(rejected, 10); // 0..270ms 全在冷却内
+        assert!(e.retry(EJECT_RETRY_COOLDOWN_MS + 1));
+    }
+
+    #[test]
+    fn persist_dev_tags_roundtrip() {
+        let mut buf = [0u8; PCPAGE_V7_LEN];
+        let n = save_page_v7(0, [7, 8, 9, 10], &mut buf).unwrap();
+        let (_, tags) = load_page_v7(&buf[..n]).unwrap();
+        assert_eq!(tags, [7, 8, 9, 10]);
+    }
+
+    #[test]
+    fn threshold_ladder_still_f268() {
+        // v1 判据回归：800/900 阶梯在 v7 检查面仍绿。
+        assert_eq!(bar_level(800), BarLevel::Warn);
+        assert_eq!(bar_level(900), BarLevel::Red);
+    }
+}

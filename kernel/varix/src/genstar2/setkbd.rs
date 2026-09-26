@@ -393,3 +393,510 @@ mod deep_tests {
         assert_eq!(TASK_BUDGET_STAGES.iter().map(|(_, ms)| ms).sum::<u64>(), 5_000);
     }
 }
+
+// ===========================================================================
+// 深化 v7（F473）：输入法组合守卫 / Enter 双击防抖 / 结果分页器 /
+// 快捷键账（重复抑制）/ 偏好持久化 v7（W7K1 + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. IME 组合守卫——中文输入法组合期**不能触发快捷键和误提交**（体验
+//   六章红线）：组合中 Enter=上屏、Esc=取消组合、Tab/方向键不劫持；
+//   组合外行为与 v1 五步链路一致。
+// 2. Enter 双击防抖——同一 Enter 在抑制窗内只生效一次（重复提交防线）。
+// 3. 结果分页器——16 项结果一屏放不下：分页钳制 + 页码诚实。
+// 4. 快捷键账——「快捷键是承诺」的审计面：每次记账 + 时钟单调守卫 +
+//   重复抑制窗内连按计数（rage-key 指纹——十三·补挫败信号）。
+// 5. 偏好持久化——v7 通道（W7K1 + FNV 尾）。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// IME 组合守卫（中文输入法组合期不触发快捷键/不误提交）
+// ---------------------------------------------------------------------------
+
+/// 组合守卫状态机。
+pub struct ImeGuard {
+    /// 组合中（候选窗开着）。
+    pub composing: bool,
+    /// 组合缓冲字符数（守卫不存内容——隐私红线：日志不记正文）。
+    pub comp_len: usize,
+    /// 组合缓冲上限。
+    pub comp_cap: usize,
+}
+
+/// 组合缓冲上限（超限拒绝继续吞字符——诚实边界）。
+pub const IME_COMP_CAP: usize = 32;
+
+impl ImeGuard {
+    pub const fn new() -> Self {
+        ImeGuard { composing: false, comp_len: 0, comp_cap: IME_COMP_CAP }
+    }
+
+    /// 开始组合。
+    pub fn begin(&mut self) {
+        self.composing = true;
+        self.comp_len = 0;
+    }
+
+    /// 组合中吞字符（超容拒绝——返回 false 让上层出「已满」提示）。
+    pub fn feed(&mut self) -> bool {
+        if !self.composing {
+            return false;
+        }
+        if self.comp_len >= self.comp_cap {
+            return false;
+        }
+        self.comp_len += 1;
+        true
+    }
+
+    /// 回删一格（组合缓冲空 = false——不越界）。
+    pub fn backspace(&mut self) -> bool {
+        if !self.composing || self.comp_len == 0 {
+            return false;
+        }
+        self.comp_len -= 1;
+        true
+    }
+
+    /// Enter：组合中 = 上屏（不是提交！——误提交红线），组合外 = 提交。
+    pub fn enter(&mut self) -> bool {
+        if self.composing {
+            self.composing = false;
+            self.comp_len = 0;
+            false // false = 「这不是提交」——五步链路的 Enter 不触发
+        } else {
+            true
+        }
+    }
+
+    /// Esc：组合中 = 取消组合；组合外 = 透传给五步链路（true=透传）。
+    pub fn esc(&mut self) -> bool {
+        if self.composing {
+            self.composing = false;
+            self.comp_len = 0;
+            false // 组合被取消，不透传
+        } else {
+            true
+        }
+    }
+
+    /// 组合中快捷键一律不劫持（Tab/CtrlE 等——组合期键全归 IME）。
+    pub fn shortcut_blocked(&self) -> bool {
+        self.composing
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Enter 双击防抖（重复提交防线）
+// ---------------------------------------------------------------------------
+
+/// 抑制窗（ms：同一 Enter 300ms 内只生效一次——双击不双份动作）。
+pub const ENTER_DEBOUNCE_MS: u64 = 300;
+
+pub struct EnterDebounce {
+    last_ms: Option<u64>,
+    /// 被抑制的重复 Enter 计数（rage-click 指纹——体验日志面）。
+    pub suppressed: usize,
+}
+
+impl EnterDebounce {
+    pub const fn new() -> Self {
+        EnterDebounce { last_ms: None, suppressed: 0 }
+    }
+
+    /// 裁决（返回 true = 放行；窗内重复 = 抑制并计数）。
+    pub fn accept(&mut self, at_ms: u64) -> bool {
+        match self.last_ms {
+            Some(t) if at_ms.saturating_sub(t) < ENTER_DEBOUNCE_MS => {
+                self.suppressed += 1;
+                false
+            }
+            _ => {
+                self.last_ms = Some(at_ms);
+                true
+            }
+        }
+    }
+
+    pub fn suppressed_count(&self) -> usize {
+        self.suppressed
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 结果分页器（16 项结果分页——钳制不越界）
+// ---------------------------------------------------------------------------
+
+/// 每页行数。
+pub const RESULTS_PER_PAGE: usize = 8;
+
+pub struct ResultPager {
+    total: usize,
+    page: usize,
+}
+
+impl ResultPager {
+    pub fn new(total: usize) -> Self {
+        let mut p = ResultPager { total, page: 0 };
+        p.clamp();
+        p
+    }
+
+    fn max_page(&self) -> usize {
+        if self.total == 0 {
+            0
+        } else {
+            (self.total - 1) / RESULTS_PER_PAGE
+        }
+    }
+
+    fn clamp(&mut self) {
+        self.page = self.page.min(self.max_page());
+    }
+
+    pub fn next(&mut self) -> bool {
+        if self.page >= self.max_page() {
+            return false;
+        }
+        self.page += 1;
+        true
+    }
+
+    pub fn prev(&mut self) -> bool {
+        if self.page == 0 {
+            return false;
+        }
+        self.page -= 1;
+        true
+    }
+
+    /// 当前页（页码, 本页行数）——尾页不足一页诚实显示。
+    pub fn window(&self) -> (usize, usize) {
+        let start = self.page * RESULTS_PER_PAGE;
+        let show = self.total.saturating_sub(start).min(RESULTS_PER_PAGE);
+        (self.page, show)
+    }
+
+    pub fn page_index(&self) -> usize {
+        self.page
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 快捷键账（记账 + 单调守卫 + 重复抑制计数）
+// ---------------------------------------------------------------------------
+
+/// 快捷键种类（审计键集——五步链路 + 面包屑）。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShortcutKey {
+    CtrlE,
+    Enter,
+    Tab,
+    Esc,
+    Backspace,
+    ArrowDown,
+}
+
+/// 账面容量。
+pub const SHORTCUT_LEDGER_CAP: usize = 16;
+/// 重复抑制窗（ms：同键连按 <200ms 计 rage 指纹——不拦动作只记账，
+/// 与 Enter 防抖分层：防抖管提交、账本管观察）。
+pub const RAGE_WINDOW_MS: u64 = 200;
+
+pub struct ShortcutLedger {
+    ring: [(u64, ShortcutKey); SHORTCUT_LEDGER_CAP],
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+    /// rage 指纹计数（同键 RAGE_WINDOW_MS 内连按 ≥3 次的事件数）。
+    pub rage_events: usize,
+    /// 账内同键连按游标（rage 判定用）。
+    same_key_streak: usize,
+}
+
+impl ShortcutLedger {
+    pub const fn new() -> Self {
+        ShortcutLedger {
+            ring: [(0, ShortcutKey::Esc); SHORTCUT_LEDGER_CAP],
+            head: 0,
+            n: 0,
+            out_of_order_rejected: 0,
+            rage_events: 0,
+            same_key_streak: 0,
+        }
+    }
+
+    pub fn push(&mut self, at_ms: u64, k: ShortcutKey) -> bool {
+        if self.n > 0 {
+            let last = (self.head + SHORTCUT_LEDGER_CAP - 1) % SHORTCUT_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+            if self.ring[last].1 == k && at_ms.saturating_sub(self.ring[last].0) <= RAGE_WINDOW_MS {
+                self.same_key_streak += 1;
+                if self.same_key_streak == 2 {
+                    // 第 3 次同键快按（streak 0→1→2）= 一次 rage 事件。
+                    self.rage_events += 1;
+                }
+            } else {
+                self.same_key_streak = 0;
+            }
+        }
+        self.ring[self.head] = (at_ms, k);
+        self.head = (self.head + 1) % SHORTCUT_LEDGER_CAP;
+        self.n = (self.n + 1).min(SHORTCUT_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 偏好持久化 v7（W7K1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7K 族）。
+pub const SETKBD_V7_MAGIC: [u8; 4] = *b"W7K1";
+/// 长度：魔标(4) + 版本(1) + 旗标(1) + 每页行数(1) + 保留(1) + FNV(4) = 12。
+pub const SETKBD_V7_LEN: usize = 12;
+pub const SETKBD_V7_VERSION: u8 = 1;
+/// 旗标位：bit0 = 开页即聚焦搜索（search-on-open）。
+const FLAG_SEARCH_ON_OPEN: u8 = 1 << 0;
+const FLAG_RESERVED: u8 = !0x01;
+
+/// 序列化（v7 独占通道）。
+pub fn save_prefs_v7(search_on_open: bool, per_page: u8, out: &mut [u8]) -> Option<usize> {
+    if out.len() < SETKBD_V7_LEN || per_page == 0 || per_page as usize > RESULT_CAP {
+        return None;
+    }
+    out[..4].copy_from_slice(&SETKBD_V7_MAGIC);
+    out[4] = SETKBD_V7_VERSION;
+    out[5] = if search_on_open { FLAG_SEARCH_ON_OPEN } else { 0 };
+    out[6] = per_page;
+    out[7] = 0;
+    let h = fnv1a(&out[..8]);
+    out[8] = (h & 0xff) as u8;
+    out[9] = ((h >> 8) & 0xff) as u8;
+    out[10] = ((h >> 16) & 0xff) as u8;
+    out[11] = ((h >> 24) & 0xff) as u8;
+    Some(SETKBD_V7_LEN)
+}
+
+/// 反序列化（版本/旗标保留位/per_page 值域/FNV 四重守卫）。
+pub fn load_prefs_v7(buf: &[u8]) -> Option<(bool, u8)> {
+    if buf.len() < SETKBD_V7_LEN || buf[..4] != SETKBD_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != SETKBD_V7_VERSION || buf[5] & FLAG_RESERVED != 0 || buf[7] != 0 {
+        return None;
+    }
+    let per_page = buf[6];
+    if per_page == 0 || per_page as usize > RESULT_CAP {
+        return None;
+    }
+    let expect = fnv1a(&buf[..8]);
+    let got = buf[8] as u32
+        | ((buf[9] as u32) << 8)
+        | ((buf[10] as u32) << 16)
+        | ((buf[11] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    Some((buf[5] & FLAG_SEARCH_ON_OPEN != 0, per_page))
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F473 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_setkbd_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F473-v7");
+    // 1) IME 守卫：组合期 Enter=上屏不提交、Esc=取消不透传、快捷键不劫持。
+    cs.add("ime_enter_commits_composition", {
+        let mut g = ImeGuard::new();
+        g.begin();
+        let _ = g.feed();
+        let _ = g.feed();
+        !g.enter() && !g.composing && g.comp_len == 0 // 上屏后组合清空且非提交
+    }, "");
+    cs.add("ime_enter_outside_is_submit", {
+        let mut g = ImeGuard::new();
+        g.enter() // 组合外 Enter = 真提交
+    }, "");
+    cs.add("ime_esc_cancels_no_passthrough", {
+        let mut g = ImeGuard::new();
+        g.begin();
+        let _ = g.feed();
+        !g.esc() && !g.composing
+    }, "");
+    cs.add("ime_shortcuts_blocked_while_composing", {
+        let mut g = ImeGuard::new();
+        g.begin();
+        g.shortcut_blocked() && { let _ = g.esc(); !g.shortcut_blocked() }
+    }, "");
+    cs.add("ime_backspace_bounds", {
+        let mut g = ImeGuard::new();
+        g.begin();
+        !g.backspace() && { let _ = g.feed(); g.backspace() } && !g.backspace()
+    }, "");
+    cs.add("ime_comp_cap_honest", {
+        let mut g = ImeGuard::new();
+        g.begin();
+        let fed = (0..IME_COMP_CAP + 5).filter(|_| g.feed()).count();
+        fed == IME_COMP_CAP // 超容拒绝（诚实边界，不静默丢）
+    }, "");
+    // 2) Enter 防抖：窗内抑制计数、窗外放行。
+    cs.add("enter_debounce_window", {
+        let mut d = EnterDebounce::new();
+        d.accept(1_000) && !d.accept(1_100) && d.suppressed_count() == 1
+            && d.accept(1_301) // 301ms 后放行
+    }, "");
+    // 3) 分页器：翻页钳制 + 尾页诚实 + 零结果。
+    cs.add("pager_clamp_and_tail", {
+        let mut p = ResultPager::new(16);
+        let _ = p.next();
+        !p.next() // 只有 2 页，第 2 页 next = false
+            && p.window() == (1, 8)
+            && {
+                let mut t = ResultPager::new(11);
+                let _ = t.next();
+                t.window() == (1, 3) // 尾页 3 行诚实
+            }
+    }, "");
+    cs.add("pager_zero_results", {
+        let mut p = ResultPager::new(0);
+        !p.next() && p.window() == (0, 0)
+    }, "");
+    cs.add("pager_prev_at_top", {
+        let mut p = ResultPager::new(16);
+        !p.prev() && p.page_index() == 0
+    }, "");
+    // 4) 快捷键账：单调守卫 + rage 指纹 + 环上限。
+    cs.add("shortcut_ledger_monotonic", {
+        let mut led = ShortcutLedger::new();
+        let _ = led.push(1_000, ShortcutKey::CtrlE);
+        !led.push(500, ShortcutKey::Esc) && led.out_of_order_rejected == 1
+    }, "");
+    cs.add("shortcut_rage_fingerprint", {
+        let mut led = ShortcutLedger::new();
+        let _ = led.push(1_000, ShortcutKey::Esc);
+        let _ = led.push(1_050, ShortcutKey::Esc);
+        let _ = led.push(1_100, ShortcutKey::Esc); // 200ms 内三连 = rage 一次
+        led.rage_events == 1 && {
+            let _ = led.push(5_000, ShortcutKey::Esc); // 冷却后重置
+            led.rage_events == 1
+        }
+    }, "");
+    cs.add("shortcut_ledger_ring_cap", {
+        let mut led = ShortcutLedger::new();
+        for i in 0..(SHORTCUT_LEDGER_CAP * 2) {
+            let _ = led.push(i as u64 * 1_000, ShortcutKey::Tab);
+        }
+        led.count() == SHORTCUT_LEDGER_CAP
+    }, "");
+    // 5) 偏好持久化：round-trip + 值域守卫 + 篡改拒收。
+    let mut buf = [0u8; SETKBD_V7_LEN];
+    cs.add("prefs_roundtrip", {
+        let n = save_prefs_v7(true, 8, &mut buf).unwrap_or(0);
+        load_prefs_v7(&buf[..n]) == Some((true, 8))
+    }, "");
+    cs.add("prefs_per_page_bounds", save_prefs_v7(true, 0, &mut buf).is_none()
+        && save_prefs_v7(true, RESULT_CAP as u8 + 1, &mut buf).is_none(), "");
+    cs.add("prefs_tamper", {
+        let n = save_prefs_v7(false, 8, &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[5] ^= 0x01; // 翻旗标位 → FNV 失配
+        load_prefs_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("prefs_reserved_set", {
+        let mut bad = [0u8; SETKBD_V7_LEN];
+        let _ = save_prefs_v7(false, 8, &mut bad);
+        bad[5] |= 0x02;
+        load_prefs_v7(&bad).is_none()
+    }, "");
+    // 6) 五步链路回归锚（v1 判据的 v7 复核——改 IME 层不许伤链路）。
+    cs.add("five_step_chain_regression", {
+        let mut g = ImeGuard::new();
+        let mut f = KbdFlow::new();
+        let _ = f.on_key(Key::CtrlE, 0);
+        // 组合外字符照常输入；组合期不触发链路。
+        g.begin();
+        let _ = g.feed();
+        let blocked = g.shortcut_blocked();
+        let _ = g.esc();
+        blocked && f.on_key(Key::Char('k'), 0) && f.on_key(Key::Enter, 3)
+            && f.level() == 2 && f.on_key(Key::Esc, 0) && f.focus_back_to_trigger()
+    }, "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn ime_flow_never_double_submits() {
+        // 打字 → 上屏 → 再 Enter 才是真提交（组合期 Enter 零提交）。
+        let mut g = ImeGuard::new();
+        let mut submits = 0;
+        g.begin();
+        for _ in 0..3 {
+            assert!(g.feed());
+        }
+        if g.enter() {
+            submits += 1; // 组合期 Enter 不计
+        }
+        if g.enter() {
+            submits += 1; // 组合外 Enter 计一次
+        }
+        assert_eq!(submits, 1);
+    }
+
+    #[test]
+    fn debounce_boundary_exact() {
+        let mut d = EnterDebounce::new();
+        assert!(d.accept(0));
+        assert!(!d.accept(ENTER_DEBOUNCE_MS - 1));
+        assert!(d.accept(ENTER_DEBOUNCE_MS));
+    }
+
+    #[test]
+    fn pager_full_walk() {
+        let mut p = ResultPager::new(20);
+        let mut pages = 1;
+        while p.next() {
+            pages += 1;
+        }
+        assert_eq!(pages, 3); // 20 / 8 = 3 页
+        let mut back = 0;
+        while p.prev() {
+            back += 1;
+        }
+        assert_eq!(back, 2);
+    }
+
+    #[test]
+    fn rage_never_counts_across_keys() {
+        let mut led = ShortcutLedger::new();
+        // 交替按不同键：不构成同键连按。
+        for i in 0..6 {
+            let k = if i % 2 == 0 { ShortcutKey::Esc } else { ShortcutKey::Tab };
+            assert!(led.push(1_000 + i as u64 * 50, k));
+        }
+        assert_eq!(led.rage_events, 0);
+    }
+
+    #[test]
+    fn prefs_all_flag_combos_roundtrip() {
+        let mut buf = [0u8; SETKBD_V7_LEN];
+        for &soo in &[true, false] {
+            let n = save_prefs_v7(soo, 4, &mut buf).unwrap();
+            assert_eq!(load_prefs_v7(&buf[..n]), Some((soo, 4)));
+        }
+    }
+}

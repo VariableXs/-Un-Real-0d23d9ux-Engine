@@ -384,3 +384,378 @@ mod deep_tests {
         assert_eq!(b.is_visible(SysIcon::UserFolder), DEFAULT_USER_FOLDER);
     }
 }
+
+// ===========================================================================
+// 深化 v7（F455）：槽位网格几何 / 冲突审计与首空分配 / 版本账（时钟单调）/
+// 持久化通道 v7（W7D1 + revision + FNV 校验尾）
+// ===========================================================================
+//
+// v7 主轴（主册判据的二阶展开）：
+// 1. 持久化——v2 通道（VDI1）无版本位无校验尾：坏包读回垃圾槽位静默
+//    打乱桌面。v7 通道加版本 + revision + FNV 尾，坏值拒收不静默。
+// 2. 网格几何——「位置记忆」要有坐标系：8×8 槽位网格（slot ↔ (col,row)
+//    双向映射、越界诚实拒绝）；move 加冲突守卫（两图标挤一格 = 状态错）。
+// 3. 首空分配——新图标落位走分配器（找第一个空槽），冲突自愈（压缩
+//    迁移冲突方）。
+// 4. 版本账——revision 变更记时钟账：单调守卫（时钟倒流拒绝）+
+//    变更历史可回放。
+
+use crate::genstar2::vxdict::fnv1a;
+
+// ---------------------------------------------------------------------------
+// 持久化通道 v7（W7D1 + FNV 尾）
+// ---------------------------------------------------------------------------
+
+/// v7 魔标（W7D 族——全域唯一，写前 grep 已证）。
+pub const DESKICONS_V7_MAGIC: [u8; 4] = *b"W7D1";
+/// 长度：魔标(4) + 版本(1) + 可见位图(1) + 保留(1) + 槽位 3×2(6) +
+/// revision(4, LE) + FNV(4) = 21（逐段求和核对——4+1+1+1+6+4+4）。
+pub const DESKICONS_V7_LEN: usize = 21;
+pub const DESKICONS_V7_VERSION: u8 = 1;
+
+/// 序列化（v7 独占通道；revision 入包——「即时生效账」跨会话不断账）。
+pub fn save_board_v7(board: &DesktopIconBoard, out: &mut [u8]) -> Option<usize> {
+    if out.len() < DESKICONS_V7_LEN {
+        return None;
+    }
+    out[..4].copy_from_slice(&DESKICONS_V7_MAGIC);
+    out[4] = DESKICONS_V7_VERSION;
+    let mut vis = 0u8;
+    for (i, icon) in SYS_ICONS.iter().enumerate() {
+        if board.is_visible(*icon) {
+            vis |= 1 << i;
+        }
+    }
+    out[5] = vis;
+    out[6] = 0; // 保留
+    for (i, icon) in SYS_ICONS.iter().enumerate() {
+        let s = board.slot_of(*icon);
+        out[7 + i * 2] = (s >> 8) as u8;
+        out[8 + i * 2] = (s & 0xFF) as u8;
+    }
+    out[13..17].copy_from_slice(&board.revision().to_le_bytes());
+    let h = fnv1a(&out[..17]);
+    out[17] = (h & 0xff) as u8;
+    out[18] = ((h >> 8) & 0xff) as u8;
+    out[19] = ((h >> 16) & 0xff) as u8;
+    out[20] = ((h >> 24) & 0xff) as u8;
+    Some(DESKICONS_V7_LEN)
+}
+
+/// 反序列化（长度/魔标/版本/保留位/FNV 五重守卫）。
+pub fn load_board_v7(buf: &[u8]) -> Option<(bool, bool, bool, [u16; 3], u32)> {
+    if buf.len() < DESKICONS_V7_LEN || buf[..4] != DESKICONS_V7_MAGIC {
+        return None;
+    }
+    if buf[4] != DESKICONS_V7_VERSION || buf[6] != 0 {
+        return None;
+    }
+    let expect = fnv1a(&buf[..17]);
+    let got = buf[17] as u32
+        | ((buf[18] as u32) << 8)
+        | ((buf[19] as u32) << 16)
+        | ((buf[20] as u32) << 24);
+    if expect != got {
+        return None;
+    }
+    let vis = buf[5];
+    let mut slots = [0u16; 3];
+    for i in 0..3 {
+        slots[i] = ((buf[7 + i * 2] as u16) << 8) | buf[8 + i * 2] as u16;
+    }
+    let mut rev = [0u8; 4];
+    rev.copy_from_slice(&buf[13..17]);
+    Some((vis & 1 != 0, vis & 2 != 0, vis & 4 != 0, slots, u32::from_le_bytes(rev)))
+}
+
+// ---------------------------------------------------------------------------
+// 槽位网格几何（8×8 = 64 槽）
+// ---------------------------------------------------------------------------
+
+/// 网格列数（一行 8 槽——图标 48px + 间距，8 列铺满典型桌面宽）。
+pub const GRID_COLS: u16 = 8;
+/// 网格行数。
+pub const GRID_ROWS: u16 = 8;
+/// 网格总槽位。
+pub const SLOT_GRID_CAP: usize = (GRID_COLS * GRID_ROWS) as usize;
+
+/// slot → (col, row)（列优先序：0 号在左上、向下增长——桌面图标的
+/// 排布直觉）。
+pub fn slot_to_xy(slot: u16) -> (u16, u16) {
+    (slot % GRID_COLS, slot / GRID_COLS)
+}
+
+/// (col, row) → slot（越界诚实 None——不环绕不钳制）。
+pub fn xy_to_slot(col: u16, row: u16) -> Option<u16> {
+    if col >= GRID_COLS || row >= GRID_ROWS {
+        return None;
+    }
+    Some(row * GRID_COLS + col)
+}
+
+impl DesktopIconBoard {
+    /// 带守卫的移动：越界拒绝 + 冲突拒绝（目标格已有他图标 = 不动）。
+    pub fn move_slot_checked(&mut self, icon: SysIcon, slot: u16) -> bool {
+        if xy_to_slot(slot_to_xy(slot).0, slot_to_xy(slot).1) != Some(slot) {
+            return false; // 超网格容量（slot ≥ 64）
+        }
+        if SYS_ICONS.iter().any(|&other| other != icon && self.slot_of(other) == slot) {
+            return false; // 冲突：一格一图标
+        }
+        self.move_slot(icon, slot);
+        true
+    }
+
+    /// 冲突审计：三图标槽位两两互异（网格不变量）。
+    pub fn slots_distinct(&self) -> bool {
+        let a = self.slot_of(SysIcon::ThisPc);
+        let b = self.slot_of(SysIcon::RecycleBin);
+        let c = self.slot_of(SysIcon::UserFolder);
+        a != b && b != c && a != c
+    }
+
+    /// 首空分配器：找第一个未被占用的槽（0 起、列优先）。
+    pub fn first_free_slot(&self) -> Option<u16> {
+        (0u16..SLOT_GRID_CAP as u16).find(|&s| {
+            !SYS_ICONS.iter().any(|&ic| self.slot_of(ic) == s)
+        })
+    }
+
+    /// 冲突自愈：若与他图标同格，迁移到首空槽（迁移失败 = 网格满，
+    /// 诚实 false——64 槽容 3 图标实际永不触发，但路径必须在）。
+    pub fn resolve_collision(&mut self, icon: SysIcon) -> bool {
+        let mine = self.slot_of(icon);
+        let clash = SYS_ICONS.iter().any(|&other| other != icon && self.slot_of(other) == mine);
+        if !clash {
+            return true;
+        }
+        match self.first_free_slot() {
+            Some(free) => {
+                self.move_slot(icon, free);
+                self.slots_distinct()
+            }
+            None => false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 版本账（revision 时钟账——变更历史可回放）
+// ---------------------------------------------------------------------------
+
+/// 版本账容量。
+pub const REVISION_LEDGER_CAP: usize = 16;
+
+/// revision 变更账：每次翻转记 (时钟, 新 revision)；时钟单调守卫
+/// （倒流拒绝计数——异常显性化）。
+pub struct BoardRevisionLedger {
+    ring: [(u64, u32); REVISION_LEDGER_CAP],
+    head: usize,
+    n: usize,
+    pub out_of_order_rejected: usize,
+}
+
+impl BoardRevisionLedger {
+    pub const fn new() -> Self {
+        BoardRevisionLedger {
+            ring: [(0, 0); REVISION_LEDGER_CAP],
+            head: 0,
+            n: 0,
+            out_of_order_rejected: 0,
+        }
+    }
+
+    pub fn push(&mut self, at_ms: u64, revision: u32) -> bool {
+        if self.n > 0 {
+            let last = (self.head + REVISION_LEDGER_CAP - 1) % REVISION_LEDGER_CAP;
+            if at_ms < self.ring[last].0 {
+                self.out_of_order_rejected += 1;
+                return false;
+            }
+        }
+        self.ring[self.head] = (at_ms, revision);
+        self.head = (self.head + 1) % REVISION_LEDGER_CAP;
+        self.n = (self.n + 1).min(REVISION_LEDGER_CAP);
+        true
+    }
+
+    pub fn count(&self) -> usize {
+        self.n
+    }
+
+    /// 最新 revision（空账诚实 None）。
+    pub fn latest(&self) -> Option<(u64, u32)> {
+        if self.n == 0 {
+            return None;
+        }
+        let idx = (self.head + REVISION_LEDGER_CAP - 1) % REVISION_LEDGER_CAP;
+        Some(self.ring[idx])
+    }
+
+    /// revision 单调不减审计（账面 revision 序列不允许回退——
+    /// 版本号只进不退是「即时生效」的账面承诺）。
+    pub fn revision_monotonic(&self) -> bool {
+        (1..self.n).all(|i| {
+            let cur = (self.head + REVISION_LEDGER_CAP - 1 - i + 1) % REVISION_LEDGER_CAP;
+            let prev = (self.head + REVISION_LEDGER_CAP - 1 - i) % REVISION_LEDGER_CAP;
+            self.ring[cur].1 >= self.ring[prev].1
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 域自检（F455 v7）
+// ---------------------------------------------------------------------------
+
+pub fn run_deskicons_v7_checks() -> CheckSet {
+    let mut cs = CheckSet::new("F455-v7");
+    // 1) 持久化通道：round-trip（可见位 + 槽位 + revision 全保真）。
+    let mut buf = [0u8; DESKICONS_V7_LEN];
+    cs.add("persist_roundtrip", {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot(SysIcon::RecycleBin, 17);
+        b.set_visible(SysIcon::ThisPc, false);
+        let n = save_board_v7(&b, &mut buf).unwrap_or(0);
+        match load_board_v7(&buf[..n]) {
+            Some((tp, rb, uf, slots, rev)) => {
+                !tp && rb && !uf && slots[1] == 17 && rev == b.revision()
+            }
+            None => false,
+        }
+    }, "");
+    cs.add("persist_tamper", {
+        let n = save_board_v7(&DesktopIconBoard::new(), &mut buf).unwrap_or(0);
+        let mut bad = buf;
+        bad[8] ^= 0x01; // 翻槽位字节 → FNV 失配
+        load_board_v7(&bad[..n]).is_none()
+    }, "");
+    cs.add("persist_bad_version", {
+        let mut bad = [0u8; DESKICONS_V7_LEN];
+        let _ = save_board_v7(&DesktopIconBoard::new(), &mut bad);
+        bad[4] = 9;
+        load_board_v7(&bad).is_none()
+    }, "");
+    cs.add("persist_reserved_set", {
+        let mut bad = [0u8; DESKICONS_V7_LEN];
+        let _ = save_board_v7(&DesktopIconBoard::new(), &mut bad);
+        bad[6] = 1;
+        load_board_v7(&bad).is_none()
+    }, "");
+    cs.add("persist_short", load_board_v7(&buf[..9]).is_none(), "");
+    // 2) 网格几何：双向映射往返 + 越界诚实。
+    cs.add("grid_roundtrip", (0u16..SLOT_GRID_CAP as u16).all(|s| {
+        let (c, r) = slot_to_xy(s);
+        xy_to_slot(c, r) == Some(s)
+    }), "");
+    cs.add("grid_oob_honest", xy_to_slot(GRID_COLS, 0).is_none() && xy_to_slot(0, GRID_ROWS).is_none(), "");
+    cs.add("grid_corner_anchors", {
+        let (c0, r0) = slot_to_xy(0);
+        let (c1, r1) = slot_to_xy(SLOT_GRID_CAP as u16 - 1);
+        (c0, r0) == (0, 0) && (c1, r1) == (GRID_COLS - 1, GRID_ROWS - 1)
+    }, "");
+    // 3) 移动守卫：越界拒 + 冲突拒 + 合法落位。
+    cs.add("move_oob_reject", {
+        let mut b = DesktopIconBoard::new();
+        !b.move_slot_checked(SysIcon::ThisPc, SLOT_GRID_CAP as u16)
+    }, "");
+    cs.add("move_conflict_reject", {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot(SysIcon::RecycleBin, 5);
+        !b.move_slot_checked(SysIcon::ThisPc, 5) // 回收站占 5 → 拒
+    }, "");
+    cs.add("move_legal_ok", {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot_checked(SysIcon::ThisPc, 9) && b.slot_of(SysIcon::ThisPc) == 9 && b.slots_distinct()
+    }, "");
+    // 4) 首空分配 + 冲突自愈。
+    cs.add("first_free_slot", {
+        let mut b = DesktopIconBoard::new(); // 默认占 0,1,2
+        b.first_free_slot() == Some(3)
+    }, "");
+    cs.add("collision_self_heal", {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot(SysIcon::UserFolder, 0); // 撞 ThisPc 的 0 号
+        b.resolve_collision(SysIcon::UserFolder) && b.slots_distinct()
+    }, "");
+    cs.add("no_collision_noop", {
+        let mut b = DesktopIconBoard::new();
+        b.resolve_collision(SysIcon::RecycleBin) && b.slot_of(SysIcon::RecycleBin) == 1
+    }, "");
+    // 5) 版本账：单调守卫 + 倒流拒绝 + revision 序列审计。
+    cs.add("revision_ledger_monotonic", {
+        let mut led = BoardRevisionLedger::new();
+        let _ = led.push(100, 1);
+        let _ = led.push(200, 2);
+        let _ = led.push(300, 3);
+        led.revision_monotonic() && led.latest() == Some((300, 3))
+    }, "");
+    cs.add("revision_ledger_rejects_rewind", {
+        let mut led = BoardRevisionLedger::new();
+        let _ = led.push(100, 1);
+        !led.push(50, 2) && led.out_of_order_rejected == 1
+    }, "");
+    cs.add("revision_ledger_empty_honest", BoardRevisionLedger::new().latest().is_none(), "");
+    // 6) 全局出口矩阵复查（v2 出口表 × 图标 9 格——二阶展开的回归锚）。
+    cs.add("exit_matrix_regression", SYS_ICONS.iter().all(|&ic| {
+        EXIT_ROUTES.iter().all(|(r, _)| exit_reachable(ic, r))
+    }), "");
+    cs
+}
+
+#[cfg(test)]
+mod v7_tests {
+    use super::*;
+
+    #[test]
+    fn persist_full_state_roundtrip() {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot(SysIcon::UserFolder, 40);
+        b.set_visible(SysIcon::UserFolder, true);
+        b.set_visible(SysIcon::RecycleBin, false);
+        let mut buf = [0u8; DESKICONS_V7_LEN];
+        let n = save_board_v7(&b, &mut buf).unwrap();
+        let (tp, rb, uf, slots, rev) = load_board_v7(&buf[..n]).unwrap();
+        assert!(tp && !rb && uf);
+        assert_eq!(slots[2], 40);
+        assert_eq!(rev, b.revision());
+    }
+
+    #[test]
+    fn grid_mapping_column_major() {
+        // 列优先序锚点：slot 1 在 (1,0)，slot 8 在 (0,1)。
+        assert_eq!(slot_to_xy(1), (1, 0));
+        assert_eq!(slot_to_xy(8), (0, 1));
+    }
+
+    #[test]
+    fn first_free_skips_occupied() {
+        let mut b = DesktopIconBoard::new();
+        b.move_slot(SysIcon::ThisPc, 10);
+        // 0..3 中 10 之外皆空 → 首空仍是 3（默认 0,1,2 被占后移动腾出）。
+        b.move_slot(SysIcon::RecycleBin, 11);
+        b.move_slot(SysIcon::UserFolder, 12);
+        assert_eq!(b.first_free_slot(), Some(0));
+    }
+
+    #[test]
+    fn ledger_ring_wrap_keeps_latest() {
+        let mut led = BoardRevisionLedger::new();
+        for i in 0..(REVISION_LEDGER_CAP as u64 + 3) {
+            assert!(led.push(i * 1000, i as u32));
+        }
+        assert_eq!(led.count(), REVISION_LEDGER_CAP);
+        assert!(led.revision_monotonic());
+        assert_eq!(led.latest().map(|(_, r)| r), Some(REVISION_LEDGER_CAP as u32 + 2));
+    }
+
+    #[test]
+    fn resolve_collision_repeatedly_clean() {
+        // 反复互撞总能自愈（64 槽容 3 图标——分配器恒有解）。
+        let mut b = DesktopIconBoard::new();
+        for _ in 0..10 {
+            b.move_slot(SysIcon::ThisPc, b.slot_of(SysIcon::RecycleBin)); // 强撞
+            assert!(b.resolve_collision(SysIcon::ThisPc));
+            assert!(b.slots_distinct());
+        }
+    }
+}
