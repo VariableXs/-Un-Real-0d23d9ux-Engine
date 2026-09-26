@@ -130,6 +130,11 @@ impl AirplaneMode {
         self.active && scan.iter().all(|(_, on)| !on)
     }
 
+    /// 断前状态只读视图（落盘/审计面用——dump_radio_state 的合法来源）。
+    pub fn pre_state(&self) -> Option<&RadioState> {
+        self.pre.as_ref()
+    }
+
     /// 关飞行模式：恢复断前各自状态（Wi-Fi 连回原热点、蓝牙回原配对）。
     pub fn disengage(&mut self) -> Option<RadioState> {
         self.active = false;
@@ -482,6 +487,9 @@ pub fn run_wakeresume_deep_checks() -> CheckSet {
     set.add("one breach reds all", !bad.all_within(2000, 10) && bad.worst() == Some(2100), "");
 
     // 3. 无线状态持久化：断前态落盘 → 重启读回（原热点+原配对逐项回）。
+    //    [落位收尾批修复：原检查用恒 None 的占位函数取断前态——dump 恒空、
+    //    本检查从未绿过（deep 层此前未接线故未暴露）；现从模式本体取
+    //    engage 时入账的断前态（合法来源），占位函数删除。]
     let mut am = super::wakeresume::AirplaneMode::new();
     am.engage(super::wakeresume::RadioState {
         wifi_on: true,
@@ -489,7 +497,7 @@ pub fn run_wakeresume_deep_checks() -> CheckSet {
         bt_on: true,
         bt_peer: String::from("耳机X"),
     });
-    let pre = load_radio_state_placeholder();
+    let pre = am.pre_state().cloned();
     let kv = dump_radio_state(&am, pre.as_ref());
     let back = load_radio_state(&kv);
     set.add(
@@ -518,10 +526,6 @@ pub fn run_wakeresume_deep_checks() -> CheckSet {
     set.add("reconnect empty no verdict", !ReconnectBook::new().all_reconnected(5000), "");
 
     set
-}
-
-fn load_radio_state_placeholder() -> Option<super::wakeresume::RadioState> {
-    None
 }
 
 #[cfg(test)]

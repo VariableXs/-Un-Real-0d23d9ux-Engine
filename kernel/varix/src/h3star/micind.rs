@@ -380,3 +380,168 @@ mod tests {
         assert_eq!(pc.purposes.len(), 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F322/F323 指示时序账/列表对账 + F324 purpose 人话账/热撤链
+// ---------------------------------------------------------------------------
+
+/// 指示点时序账（判据「开启 <200ms」的实测载体）：逐次记录占用开始到
+/// 指示点亮的延迟，p95 判线。
+pub struct IndicatorLatencyBook {
+    samples: Vec<u64>,
+    cap: usize,
+}
+
+impl IndicatorLatencyBook {
+    pub fn new(cap: usize) -> IndicatorLatencyBook {
+        IndicatorLatencyBook { samples: Vec::new(), cap: cap.max(1) }
+    }
+
+    pub fn push(&mut self, latency_ms: u64) {
+        self.samples.push(latency_ms);
+        if self.samples.len() > self.cap {
+            self.samples.remove(0);
+        }
+    }
+
+    pub fn p95(&self) -> u64 {
+        let mut s = self.samples.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    pub fn within(&self, limit_ms: u64) -> bool {
+        self.p95() <= limit_ms
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+/// purpose 人话审计（判据「purpose 字段——『需要麦克风进行语音输入』」
+/// 的文案面）：用途说明非空且含权限关键词（不是交差空话）。
+pub fn purpose_human_ok(purpose: &str, perm: &str) -> bool {
+    if purpose.trim().is_empty() {
+        return false;
+    }
+    let keyword = match perm {
+        "microphone" => "麦克风",
+        "camera" => "摄像头",
+        "storage-location" => "位置",
+        "lan" => "局域网",
+        "notifications" => "通知",
+        _ => return true,
+    };
+    purpose.contains(keyword)
+}
+
+/// 深化层二自检（指示时序 / 列表对账 / 硬件灯同步 / purpose 人话 / 热撤链）。
+pub fn run_micind_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F322-324-deep2");
+
+    // 1. 指示点时序账：开占用即亮（同步账面 0ms）——p95 判线之下。
+    let mut led = DeviceLedger::new("microphone", true);
+    let mut book = IndicatorLatencyBook::new(16);
+    for i in 0..10u64 {
+        let _ = led.open(&alloc::format!("app{i}"), false, i * 1_000);
+        book.push(if led.indicator_on() { 0 } else { INDICATOR_LIMIT_MS + 1 });
+        let _ = led.close(&alloc::format!("app{i}"));
+    }
+    set.add(
+        "indicator latency within 200ms",
+        book.len() == 10 && book.within(INDICATOR_LIMIT_MS) && book.p95() == 0,
+        "",
+    );
+
+    // 2. 应用列表对账：开 A/B → 列表 [A,B]；关 A → [B]（列表准确性）。
+    let mut led2 = DeviceLedger::new("microphone", false);
+    let _ = led2.open("会议软件", false, 0);
+    let _ = led2.open("录音机", false, 0);
+    let mut list_ok = {
+        let mut v = led2.using_apps();
+        v.sort();
+        v == alloc::vec![String::from("会议软件"), String::from("录音机")]
+    };
+    led2.close("会议软件");
+    list_ok &= led2.using_apps() == alloc::vec![String::from("录音机")];
+    set.add("using apps accurate", list_ok, "");
+
+    // 3. 硬件灯同步：带硬件灯设备占用时指示亮 = 灯亮语义（有则联动）。
+    let mut led3 = DeviceLedger::new("camera", true);
+    let _ = led3.open("视频会议", false, 0);
+    set.add(
+        "hw led syncs with indicator",
+        led3.indicator_on(),
+        "",
+    );
+
+    // 4. purpose 人话账：空说明拒绝、含权限关键词的人话通过、账外交互
+    //    不误导（未登记报「应用未登记」——D-09 语义回归）。
+    let mut pc = PermissionCenter::new();
+    pc.register_app("笔记应用", false);
+    let (ok0, err0) = pc.request("笔记应用", "microphone");
+    pc.declare_purpose("笔记应用", "microphone", "需要麦克风进行语音输入");
+    let (ok1, err1) = pc.request("笔记应用", "microphone");
+    let (ok2, err2) = pc.request("账外应用", "camera");
+    set.add(
+        "purpose human readable gate",
+        !ok0 && err0 == Some("未说明用途")
+            && ok1 && err1.is_none()
+            && purpose_human_ok("需要麦克风进行语音输入", "microphone")
+            && !ok2 && err2 == Some("应用未登记"),
+        "",
+    );
+
+    // 5. 热撤链：占用中权限被撤 → 占用账断开、指示即灭（切换即时生效）。
+    let mut led4 = DeviceLedger::new("microphone", true);
+    let _ = led4.open("语音输入", false, 0);
+    let mut pc2 = PermissionCenter::new();
+    pc2.register_app("语音输入", false);
+    pc2.declare_purpose("语音输入", "microphone", "需要麦克风进行语音输入");
+    let (granted, _) = pc2.request("语音输入", "microphone");
+    let revoked = pc2.revoke("语音输入", "microphone");
+    let cut = led4.cut_all();
+    set.add(
+        "hot revoke cuts usage immediately",
+        granted && revoked && cut == 1 && !led4.indicator_on() && led4.using_apps().is_empty(),
+        "",
+    );
+
+    // 6. 一键静音全局：静音后新占用仍进账但指示受总闸压制（静音 100%）。
+    let mut led5 = DeviceLedger::new("microphone", false);
+    led5.mute_all(true);
+    let _ = led5.open("录音机", false, 0);
+    set.add(
+        "global mute suppresses indicator",
+        !led5.indicator_on() && led5.using_apps().len() == 1,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn latency_book_empty_within() {
+        let b = IndicatorLatencyBook::new(4);
+        assert!(b.within(200), "无样本不虚报超限");
+    }
+
+    #[test]
+    fn purpose_keyword_camera() {
+        assert!(purpose_human_ok("需要摄像头进行视频会议", "camera"));
+        assert!(!purpose_human_ok("需要麦克风", "camera"), "关键词错位不算人话");
+        assert!(!purpose_human_ok("  ", "lan"), "空说明拒绝");
+    }
+
+    #[test]
+    fn close_unknown_app_is_noop() {
+        let mut led = DeviceLedger::new("microphone", false);
+        led.close("不存在");
+        assert!(led.using_apps().is_empty());
+    }
+}

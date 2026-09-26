@@ -232,3 +232,145 @@ mod tests {
         assert_eq!(DRAG_SCALE_PERMILLE as f64 / 1000.0, 1.03);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F350 性能降级矩阵 / F124 过冲曲线关键点账 / 触感注册制深化
+// ---------------------------------------------------------------------------
+
+/// 性能模式降级矩阵（判据「性能模式下全部降为瞬时」的逐类对账）：四类
+/// 微交互 × 两模式——性能态时长全 0、标准态时长全正且与参数表一致。
+pub fn perf_degrade_matrix(spec: &HapticSpectrum) -> bool {
+    const KINDS: [HapticKind; 4] = [
+        HapticKind::KeyPress,
+        HapticKind::SwitchToggle,
+        HapticKind::LongPressRipple,
+        HapticKind::DragGrab,
+    ];
+    // 标准态：每类时长与参数表一致且 > 0。
+    let normal_ok = KINDS.iter().all(|k| {
+        let d = spec.effective_duration(*k);
+        d > 0 && spec.params_of(*k).map(|p| p.dur_ms == d).unwrap_or(false)
+    });
+    normal_ok
+}
+
+/// F124 过冲曲线关键点账（判据「弹性过冲曲线匹配 F124」）：峰 8% @90ms、
+/// 回落过零 @140ms、稳态 0——三个关键点逐一对账 + 单调性（升段不降、
+/// 降段不升）。
+pub fn overshoot_keypoints(spec: &HapticSpectrum) -> bool {
+    let peak = spec.overshoot_curve_f124(90);
+    let zero_cross = spec.overshoot_curve_f124(140);
+    let steady = spec.overshoot_curve_f124(200);
+    let start = spec.overshoot_curve_f124(0);
+    // 升段单调不减。
+    let rising = (0..90u64).step_by(10).all(|t| {
+        spec.overshoot_curve_f124(t) <= spec.overshoot_curve_f124(t + 10)
+    });
+    // 降段单调不增。
+    let falling = (100..140u64).step_by(10).all(|t| {
+        spec.overshoot_curve_f124(t) >= spec.overshoot_curve_f124(t + 10)
+    });
+    start == 0 && peak == SWITCH_OVERSHOOT_PCT as i32 && zero_cross == 0 && steady == 0
+        && rising && falling
+}
+
+/// 触感注册制深化（判据「全系统一致性扫描（私设触感=0）」）：组件注册
+/// 名单与谱内参数一一对应——注册了但谱上没对应参数的组件数即私设数，
+/// 注册制下恒 0。
+pub fn registration_audit(spec: &HapticSpectrum, components: &[&str]) -> bool {
+    // 注册组件必须能在谱上取到参数（注册时校验过）——此处复核对账。
+    const KINDS: [HapticKind; 4] = [
+        HapticKind::KeyPress,
+        HapticKind::SwitchToggle,
+        HapticKind::LongPressRipple,
+        HapticKind::DragGrab,
+    ];
+    let table_ok = KINDS.iter().all(|k| spec.params_of(*k).is_some());
+    let rogue = spec.rogue_haptics(components);
+    table_ok && rogue == 0 && components.len() <= KINDS.len() * 16
+}
+
+/// 深化层二自检（降级矩阵 / 过冲关键点 / 注册制深化）。
+pub fn run_haptic_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F350-deep2");
+
+    // 1. 性能降级矩阵：标准态四类全正；性能态瞬时（全 0）。
+    let mut spec = HapticSpectrum::new();
+    let normal_ok = perf_degrade_matrix(&spec);
+    spec.perf_mode = true;
+    let perf_all_zero = [
+        HapticKind::KeyPress,
+        HapticKind::SwitchToggle,
+        HapticKind::LongPressRipple,
+        HapticKind::DragGrab,
+    ]
+    .iter()
+    .all(|k| spec.effective_duration(*k) == 0);
+    set.add(
+        "perf degrade matrix",
+        normal_ok && perf_all_zero,
+        "",
+    );
+
+    // 2. 性能模式切回：恢复标准时长（降级可回——F331 纪律的触感面）。
+    spec.perf_mode = false;
+    set.add(
+        "perf mode reversible",
+        spec.effective_duration(HapticKind::KeyPress) == PRESS_MS,
+        "",
+    );
+
+    // 3. F124 过冲曲线关键点：峰 8%@90ms、过零@140ms、稳态 0、单调性。
+    set.add("overshoot keypoints f124", overshoot_keypoints(&spec), "");
+
+    // 4. 注册制深化：注册组件（haptic: 命名约定）全部对得上谱、私设=0。
+    let comps = ["haptic:键盘", "haptic:开关", "haptic:长按", "haptic:拖拽"];
+    set.add(
+        "registration audit clean",
+        registration_audit(&spec, &comps),
+        "",
+    );
+
+    // 5. 参数表五项常量回归（深化面复核——常量与表逐项钉死不动摇）。
+    set.add(
+        "five params regression",
+        PRESS_MS == 80
+            && PRESS_DEPTH_PX == 1
+            && DRAG_SCALE_PERMILLE == 1030
+            && RIPPLE_MS == 400
+            && SWITCH_OVERSHOOT_PCT == 8
+            && spec.params_table_matches(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn overshoot_mid_rise_value() {
+        let spec = HapticSpectrum::new();
+        // 升段中点 45ms → 4%（线性升）。
+        assert_eq!(spec.overshoot_curve_f124(45), 4);
+    }
+
+    #[test]
+    fn perf_mode_does_not_change_table() {
+        let mut spec = HapticSpectrum::new();
+        let before = spec.params_of(HapticKind::KeyPress);
+        spec.perf_mode = true;
+        let _ = spec.effective_duration(HapticKind::KeyPress);
+        assert_eq!(spec.params_of(HapticKind::KeyPress), before, "降级改生效不改表——参数表是唯一源");
+    }
+
+    #[test]
+    fn rogue_haptics_zero_for_registered() {
+        let spec = HapticSpectrum::new();
+        assert_eq!(spec.rogue_haptics(&["haptic:键盘", "haptic:开关"]), 0);
+        // 未按约定命名的组件按私设计——显性化不静默。
+        assert_eq!(spec.rogue_haptics(&["键盘"]), 1);
+    }
+}

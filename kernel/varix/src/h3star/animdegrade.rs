@@ -677,3 +677,600 @@ mod deep_tests {
         assert_eq!(s.after, Some((1, 2, 3, 4)));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F332 三级动作执行账 + fps 实测窗 + F333 逐项应用账 + F331 分面跳过账
+// ---------------------------------------------------------------------------
+
+/// 三级动作执行账：每次层级变化记录「该级应落位的动作清单」，升级逐项
+/// 追加、降级逐项裁剪——逐级可回的结构证明（恢复到零级时清单必须为空）。
+pub struct TierActionLedger {
+    active: Vec<&'static str>,
+    /// 层级迁移历史（层级 + 生效动作数快照）。
+    pub transitions: Vec<(Tier, usize)>,
+}
+
+impl TierActionLedger {
+    /// 逐级动作清单（主册三级顺序的唯一源：先减复杂度、再砍时长、最后建议条）。
+    pub const TIER_ACTIONS: [&'static str; 3] =
+        ["阴影实时性降+透明合并", "F124 时长砍半", "性能模式建议条"];
+
+    pub fn new() -> TierActionLedger {
+        TierActionLedger { active: Vec::new(), transitions: Vec::new() }
+    }
+
+    fn tier_index(t: Tier) -> usize {
+        match t {
+            Tier::None => 0,
+            Tier::Complexity => 1,
+            Tier::Duration => 2,
+            Tier::Suggest => 3,
+        }
+    }
+
+    /// 应用层级（升级追加 / 降级裁剪），返回当前生效动作。
+    pub fn apply(&mut self, tier: Tier) -> &[&'static str] {
+        let want = Self::tier_index(tier);
+        while self.active.len() > want {
+            self.active.pop();
+        }
+        while self.active.len() < want {
+            let idx = self.active.len();
+            self.active.push(Self::TIER_ACTIONS[idx]);
+        }
+        self.transitions.push((tier, self.active.len()));
+        &self.active
+    }
+
+    pub fn active_actions(&self) -> &[&'static str] {
+        &self.active
+    }
+
+    /// 恢复完整性：零级时动作清单必须为空。
+    pub fn restored_clean(&self) -> bool {
+        self.active.is_empty()
+    }
+}
+
+impl Default for TierActionLedger {
+    fn default() -> TierActionLedger {
+        TierActionLedger::new()
+    }
+}
+
+/// fps 滑动实测窗（判据「降级期间 fps 提升实测记录」的数据面）：滑动
+/// 采样 + p95（hbase 最近邻同口径），降级前后对比直接出账。
+pub struct FpsWindow {
+    samples: Vec<u64>,
+    cap: usize,
+}
+
+impl FpsWindow {
+    pub fn new(cap: usize) -> FpsWindow {
+        FpsWindow { samples: Vec::new(), cap: cap.max(2) }
+    }
+
+    pub fn push(&mut self, fps: u64) {
+        self.samples.push(fps);
+        if self.samples.len() > self.cap {
+            self.samples.remove(0);
+        }
+    }
+
+    /// 窗内 p95（升序后最近邻 950‰）。
+    pub fn p95(&self) -> u64 {
+        let mut s = self.samples.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    /// 提升对账：当前窗 p95 相对基准提升 ≥ lift_fps。
+    pub fn improved_by(&self, before_p95: u64, lift_fps: u64) -> bool {
+        self.p95() >= before_p95.saturating_add(lift_fps)
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+/// F333 四项降级逐项应用账：逐项独立落位 + 用户拒亮度面（只动好看
+/// 不动好用，且尊重用户——拒了就跳过该项）。
+pub struct LowBattApplier {
+    applied: Vec<&'static str>,
+    pub brightness_declined: bool,
+}
+
+impl LowBattApplier {
+    pub const ITEMS: [&'static str; 4] =
+        ["透明转纯色", "动效时长砍半", "刷新率 80→60", "亮度建议-10%"];
+
+    pub fn new() -> LowBattApplier {
+        LowBattApplier { applied: Vec::new(), brightness_declined: false }
+    }
+
+    /// 进入省电态：逐项落位（拒亮度建议 → 三项 + 拒绝标记；每轮进入
+    /// 重新询问——上轮的拒绝标记复位）。
+    pub fn engage(&mut self, accept_brightness_hint: bool) -> usize {
+        self.applied.clear();
+        self.brightness_declined = false;
+        for (i, item) in Self::ITEMS.iter().enumerate() {
+            if i == 3 && !accept_brightness_hint {
+                self.brightness_declined = true;
+                continue;
+            }
+            self.applied.push(item);
+        }
+        self.applied.len()
+    }
+
+    /// 插电恢复：全部还原，返回是否有账可清（恢复完整性对账面）。
+    pub fn disengage(&mut self) -> bool {
+        let had = !self.applied.is_empty();
+        self.applied.clear();
+        had
+    }
+
+    pub fn applied_items(&self) -> &[&'static str] {
+        &self.applied
+    }
+}
+
+impl Default for LowBattApplier {
+    fn default() -> LowBattApplier {
+        LowBattApplier::new()
+    }
+}
+
+/// F331 分面跳过账：按动画面（窗口/菜单/浮层/弹窗）记跳过数——降级期
+/// 合成负载下降的账面直证；恢复回归时清零（动画自动回归无遗留）。
+pub struct SurfaceSkipLedger {
+    counts: Vec<(&'static str, u64)>,
+}
+
+impl SurfaceSkipLedger {
+    pub fn new() -> SurfaceSkipLedger {
+        SurfaceSkipLedger { counts: Vec::new() }
+    }
+
+    pub fn skip(&mut self, surface: &'static str) {
+        match self.counts.iter_mut().find(|(s, _)| *s == surface) {
+            Some((_, c)) => *c += 1,
+            None => self.counts.push((surface, 1)),
+        }
+    }
+
+    pub fn total(&self) -> u64 {
+        self.counts.iter().map(|(_, c)| *c).sum()
+    }
+
+    pub fn of(&self, surface: &str) -> u64 {
+        self.counts.iter().find(|(s, _)| *s == surface).map(|(_, c)| *c).unwrap_or(0)
+    }
+
+    /// 恢复回归：清零并返回清掉的总数（回归证据）。
+    pub fn reset(&mut self) -> u64 {
+        let t = self.total();
+        self.counts.clear();
+        t
+    }
+}
+
+impl Default for SurfaceSkipLedger {
+    fn default() -> SurfaceSkipLedger {
+        SurfaceSkipLedger::new()
+    }
+}
+
+/// F069 性能模式联动：三级建议条「一键切」的系统面——切档成功后帧率
+/// 自适应强制归零级（用户已手动接管，自适应让位），切换留账。
+pub struct PerfModeLink {
+    pub mode_switches: u64,
+    pub active_mode: &'static str,
+}
+
+impl PerfModeLink {
+    pub const MODES: [&'static str; 3] = ["均衡", "性能", "长续航"];
+
+    pub fn new() -> PerfModeLink {
+        PerfModeLink { mode_switches: 0, active_mode: "均衡" }
+    }
+
+    /// 切档（三档白名单外拒绝）→ 自适应器归零级。
+    pub fn switch_to(&mut self, mode: &str, adaptive: &mut FpsAdaptive) -> bool {
+        match mode {
+            "均衡" | "性能" | "长续航" => {}
+            _ => return false,
+        }
+        self.active_mode = if mode == "均衡" {
+            "均衡"
+        } else if mode == "性能" {
+            "性能"
+        } else {
+            "长续航"
+        };
+        self.mode_switches += 1;
+        adaptive.tier = Tier::None;
+        true
+    }
+}
+
+impl Default for PerfModeLink {
+    fn default() -> PerfModeLink {
+        PerfModeLink::new()
+    }
+}
+
+/// 深化层二自检（执行账 / 实测窗 / 逐项应用 / 分面账 / F069 联动）。
+pub fn run_animdegrade_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep2");
+
+    // 1. 三级动作执行账：升级逐项追加（0→1→2→3），动作清单与主册三级顺序一致。
+    let mut led = TierActionLedger::new();
+    let n1 = led.apply(Tier::Complexity).len();
+    let n2 = led.apply(Tier::Duration).len();
+    let a3 = led.apply(Tier::Suggest);
+    let third = (a3[0], a3[1], a3[2]); // 拷出（借用到此为止）。
+    set.add(
+        "tier actions escalate in order",
+        n1 == 1 && n2 == 2 && third.0 == TierActionLedger::TIER_ACTIONS[0]
+            && third.1 == TierActionLedger::TIER_ACTIONS[1]
+            && third.2 == TierActionLedger::TIER_ACTIONS[2],
+        "",
+    );
+
+    // 2. 降级裁剪：Suggest → Complexity 只剩一级动作；归零后清单空（逐级可回）。
+    let a4 = led.apply(Tier::Complexity);
+    set.add("tier actions prune on downgrade", a4.len() == 1, "");
+    let _ = led.apply(Tier::None);
+    set.add("tier actions clean at none", led.restored_clean(), "");
+
+    // 3. fps 实测窗：滑动封顶 + p95 + 提升对账。
+    let mut w = FpsWindow::new(8);
+    for f in [30u64, 32, 31, 33, 32, 34, 60, 62] {
+        w.push(f);
+    }
+    set.add(
+        "fps window p95 and improvement",
+        w.len() == 8 && w.p95() == 62 && w.improved_by(35, 20),
+        "",
+    );
+    set.add("fps window no false improvement", !w.improved_by(62, 1), "");
+
+    // 4. F333 逐项应用账：接受亮度 → 四项全落；拒亮度 → 三项 + 拒绝标记；
+    //    恢复清空（逐项对账面）。
+    let mut ap = LowBattApplier::new();
+    let n_all = ap.engage(true);
+    let n_skip = ap.engage(false);
+    let n_dis = ap.disengage();
+    set.add(
+        "lowbatt applier per-item",
+        n_all == 4 && n_skip == 3 && ap.brightness_declined && n_dis && ap.applied_items().is_empty(),
+        "",
+    );
+
+    // 5. F331 分面跳过账：分面计数 + 总账 + 恢复清零。
+    let mut sk = SurfaceSkipLedger::new();
+    sk.skip("窗口");
+    sk.skip("窗口");
+    sk.skip("浮层");
+    set.add(
+        "surface skip ledger",
+        sk.of("窗口") == 2 && sk.of("浮层") == 1 && sk.of("菜单") == 0 && sk.total() == 3,
+        "",
+    );
+    let cleared = sk.reset();
+    set.add("surface skip reset on recover", cleared == 3 && sk.total() == 0, "");
+
+    // 6. F069 联动：白名单外档位拒绝；合法切档 → 自适应归零级 + 留账。
+    let mut f = FpsAdaptive::new();
+    let _ = f.feed(38, 0);
+    let _ = f.feed(38, 2000); // 一级。
+    let mut link = PerfModeLink::new();
+    let bad = link.switch_to("极速", &mut f);
+    let ok = link.switch_to("性能", &mut f);
+    set.add(
+        "perf mode link gates and resets",
+        !bad && ok && link.mode_switches == 1 && link.active_mode == "性能" && f.tier == Tier::None,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn tier_ledger_transitions_recorded() {
+        let mut led = TierActionLedger::new();
+        let _ = led.apply(Tier::Duration);
+        let _ = led.apply(Tier::None);
+        assert_eq!(led.transitions.len(), 2);
+        assert_eq!(led.transitions[1], (Tier::None, 0));
+    }
+
+    #[test]
+    fn fps_window_empty_p95_zero() {
+        let w = FpsWindow::new(4);
+        assert_eq!(w.p95(), 0);
+    }
+
+    #[test]
+    fn lowbatt_reengage_after_decline_resets_flag() {
+        let mut ap = LowBattApplier::new();
+        let _ = ap.engage(false);
+        assert!(ap.brightness_declined);
+        let _ = ap.engage(true);
+        assert!(!ap.brightness_declined, "重新接受后拒绝标记应复位");
+    }
+
+    #[test]
+    fn surface_skip_unknown_surface_zero() {
+        let mut sk = SurfaceSkipLedger::new();
+        sk.skip("弹窗");
+        assert_eq!(sk.of("抽屉"), 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 统一调速器核 FrameGovernor：单一入口仲裁三机制 + 帧成本模型
+// ---------------------------------------------------------------------------
+//
+// 三机制并存时的优先级仲裁（主册语义推导，一处一事实）：
+//   1. F333 低电量（电池面）最优先——省电是硬约束，帧率自适应让位；
+//   2. F331 动画降级（合成器预算面）次之——预算爆了先跳动画；
+//   3. F332 帧率分级（持续掉帧面）兜底——前两者没接住的掉帧走分级。
+//   插电 + 预算余量足时全部让位于全效渲染。
+
+/// 帧成本模型：一帧动画的合成成本分量（单位：预算千分之‰——固定量纲，
+/// 与主册「合成器预算」同一账本）。降级动作逐项削减分量，削减量即
+/// 「响应延迟不增」的数值证据面。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FrameCost {
+    /// 阴影逐帧重绘成本。
+    pub shadow: u32,
+    /// 透明层逐层合成成本。
+    pub transparency: u32,
+    /// 模糊成本。
+    pub blur: u32,
+    /// 动画过程帧数成本（时长越长占帧越多）。
+    pub anim_frames: u32,
+}
+
+/// 全效档帧成本基准（参数表入册——降级档相对它削减）。
+pub const FRAME_COST_FULL: FrameCost = FrameCost { shadow: 120, transparency: 200, blur: 160, anim_frames: 320 };
+
+impl FrameCost {
+    /// 一级降级后的帧成本：阴影节流（÷4）、透明合并（÷2）、模糊封顶（÷2）、
+    /// 时长不变。
+    pub fn after_complexity(self) -> FrameCost {
+        FrameCost {
+            shadow: self.shadow / 4,
+            transparency: self.transparency / 2,
+            blur: self.blur / 2,
+            anim_frames: self.anim_frames,
+        }
+    }
+
+    /// 二级降级后的帧成本：过程帧数砍半（动画时长砍半的直接成本投影）。
+    pub fn after_duration(self) -> FrameCost {
+        let c = self.after_complexity();
+        FrameCost { anim_frames: c.anim_frames / 2, ..c }
+    }
+
+    /// 省电档（F333）帧成本：透明转纯色（透明项→0）、动效砍半、刷新率
+    /// 80→60Hz（每秒帧数 ×3/4，全分量等比降）。
+    pub fn after_lowbatt(self) -> FrameCost {
+        let halved = FrameCost { transparency: 0, anim_frames: self.anim_frames / 2, ..*&self };
+        FrameCost {
+            shadow: halved.shadow * 3 / 4,
+            transparency: halved.transparency * 3 / 4,
+            blur: halved.blur * 3 / 4,
+            anim_frames: halved.anim_frames * 3 / 4,
+        }
+    }
+
+    pub fn total(&self) -> u32 {
+        self.shadow + self.transparency + self.blur + self.anim_frames
+    }
+}
+
+/// 机制仲裁结果（哪个机制在当班——账面可查，不猜）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GovernorMode {
+    /// 全效（无机制在班）。
+    Full,
+    /// 低电量在班（F333——最高优先）。
+    LowBatt,
+    /// 预算降级在班（F331）。
+    Budget,
+    /// 帧率分级在班（F332——具体层级随 [`FpsAdaptive`]）。
+    FpsTier,
+}
+
+/// 统一调速器：单一采样入口 `sample()`，内部持有三机制并仲裁当班者。
+pub struct FrameGovernor {
+    pub anim: AnimDegrade,
+    pub fps: FpsAdaptive,
+    pub lowbatt: LowBattVisual,
+    /// 当班机制（每次采样刷新）。
+    pub mode: GovernorMode,
+    /// 当班帧成本（采样后按当班机制折算）。
+    pub cost: FrameCost,
+    /// 仲裁历史（环形账——模式切换留痕可回放）。
+    pub mode_log: Vec<(u64, GovernorMode)>,
+    cap: usize,
+}
+
+impl FrameGovernor {
+    pub fn new(cap: usize) -> FrameGovernor {
+        FrameGovernor {
+            anim: AnimDegrade::new(),
+            fps: FpsAdaptive::new(),
+            lowbatt: LowBattVisual::new(),
+            mode: GovernorMode::Full,
+            cost: FRAME_COST_FULL,
+            mode_log: Vec::new(),
+            cap: cap.max(1),
+        }
+    }
+
+    /// 单一采样入口：一拍喂全（帧率 / 预算占用 / 电量 / 是否插电 / 时刻），
+    /// 返回仲裁后的当班模式。优先级见模块注释。
+    pub fn sample(&mut self, fps: u64, budget_pct: u64, battery_pct: u64, on_ac: bool, now_ms: u64) -> GovernorMode {
+        let _ = self.lowbatt.feed(battery_pct, on_ac);
+        let _ = self.anim.feed_budget(budget_pct);
+        let tier = self.fps.feed(fps, now_ms);
+
+        let next = if self.lowbatt.active {
+            GovernorMode::LowBatt
+        } else if self.anim.degraded() {
+            GovernorMode::Budget
+        } else if tier != Tier::None {
+            GovernorMode::FpsTier
+        } else {
+            GovernorMode::Full
+        };
+
+        // 成本折算：当班机制决定降级链（低电量档最狠、预算档次之、分级档
+        // 按层级）。
+        self.cost = match next {
+            GovernorMode::Full => FRAME_COST_FULL,
+            GovernorMode::LowBatt => FRAME_COST_FULL.after_lowbatt(),
+            GovernorMode::Budget => FRAME_COST_FULL.after_complexity(),
+            GovernorMode::FpsTier => match tier {
+                Tier::Complexity => FRAME_COST_FULL.after_complexity(),
+                _ => FRAME_COST_FULL.after_duration(),
+            },
+        };
+
+        if next != self.mode {
+            self.mode = next;
+            self.mode_log.push((now_ms, next));
+            if self.mode_log.len() > self.cap {
+                self.mode_log.remove(0);
+            }
+        }
+        next
+    }
+
+    /// 响应延迟不增（数值直证面）：当班成本必须 ≤ 全效成本。
+    pub fn latency_guard(&self) -> bool {
+        self.cost.total() <= FRAME_COST_FULL.total()
+    }
+
+    pub fn mode_log(&self) -> &[(u64, GovernorMode)] {
+        &self.mode_log
+    }
+}
+
+/// 深化层三自检（统一调速器：仲裁优先级 / 成本模型 / 延迟守卫 / 模式账）。
+pub fn run_animdegrade_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F331-333-deep3");
+
+    // 1. 帧成本模型：一级降级档总成本 < 全效档（每项分量非增）。
+    let c1 = FRAME_COST_FULL.after_complexity();
+    set.add(
+        "complexity cost strictly lower",
+        c1.total() < FRAME_COST_FULL.total() && c1.shadow < FRAME_COST_FULL.shadow
+            && c1.transparency < FRAME_COST_FULL.transparency && c1.blur < FRAME_COST_FULL.blur,
+        "",
+    );
+
+    // 2. 二级再降：时长项砍半后总成本再降。
+    let c2 = FRAME_COST_FULL.after_duration();
+    set.add("duration cost lower still", c2.total() < c1.total() && c2.anim_frames < c1.anim_frames, "");
+
+    // 3. 省电档：透明归零 + 过程成本最低链。
+    let cb = FRAME_COST_FULL.after_lowbatt();
+    set.add(
+        "lowbatt cost floor",
+        cb.transparency == 0 && cb.total() < c2.total(),
+        "",
+    );
+
+    // 4. 仲裁优先级：低电量压过预算与分级。
+    let mut g = FrameGovernor::new(8);
+    let m = g.sample(38, 95, 15, false, 0); // 分级/预算/低电量条件同时满足。
+    set.add(
+        "priority lowbatt over others",
+        m == GovernorMode::LowBatt && g.cost.transparency == 0,
+        "",
+    );
+
+    // 5. 插电恢复 + 预算回落：低电量退出 → 预算降级接管（次优先）。
+    let m2 = g.sample(38, 95, 90, true, 2000);
+    set.add("budget takes over on ac", m2 == GovernorMode::Budget && g.latency_guard(), "");
+
+    // 6. 预算回落 → 分级接管（兜底）。
+    let m3 = g.sample(38, 60, 90, true, 4000);
+    set.add("fps tier fallback", m3 == GovernorMode::FpsTier, "");
+
+    // 7. 全恢复 → 全效档（成本回满）。逐级回升：30s 观察期一次升一级，
+    //    Duration→Complexity→None 需两轮观察。
+    let _ = g.sample(60, 60, 90, true, 4000 + RECOVERY_HOLD_MS); // 观察起算。
+    let _ = g.sample(60, 60, 90, true, 4000 + 2 * RECOVERY_HOLD_MS); // → Complexity。
+    let m4 = g.sample(60, 60, 90, true, 4000 + 3 * RECOVERY_HOLD_MS); // → None/Full。
+    set.add(
+        "full mode restores full cost",
+        m4 == GovernorMode::Full && g.cost == FRAME_COST_FULL && g.latency_guard(),
+        "",
+    );
+
+    // 8. 模式账：切换留痕环形封顶、时序单调。
+    set.add(
+        "mode log ring and order",
+        g.mode_log().len() <= 8
+            && g.mode_log().windows(2).all(|w| w[0].0 <= w[1].0)
+            && g.mode_log().iter().any(|(_, m)| *m == GovernorMode::LowBatt)
+            && g.mode_log().last().map(|(_, m)| *m) == Some(GovernorMode::Full),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn governor_latency_never_worse_across_cycle() {
+        let mut g = FrameGovernor::new(16);
+        // 全周期乱序采样：任何时刻延迟守卫都必须成立。
+        let script = [
+            (60u64, 40u64, 90u64, true),
+            (38, 95, 15, false),
+            (45, 88, 50, false),
+            (30, 99, 10, false),
+            (55, 70, 30, true),
+            (42, 92, 25, false),
+        ];
+        for (i, &(fps, bud, bat, ac)) in script.iter().enumerate() {
+            g.sample(fps, bud, bat, ac, (i * 2100) as u64);
+            assert!(g.latency_guard(), "t={} 当班成本超全效基准", i);
+        }
+    }
+
+    #[test]
+    fn cost_model_full_baseline_exact() {
+        assert_eq!(FRAME_COST_FULL.total(), 800);
+        assert_eq!(FRAME_COST_FULL.after_complexity().total(), 30 + 100 + 80 + 320);
+    }
+
+    #[test]
+    fn fps_tier_duration_mode_uses_duration_cost() {
+        let mut g = FrameGovernor::new(4);
+        // 直推到二级（Duration）：4s 连续低于 50 → 一级；再 4s 低于 45 → 二级。
+        let _ = g.sample(43, 60, 90, true, 0);
+        let _ = g.sample(43, 60, 90, true, 2000);
+        let m = g.sample(43, 60, 90, true, 4000);
+        let _ = g.sample(43, 60, 90, true, 6000);
+        let m2 = g.sample(43, 60, 90, true, 8000);
+        assert_eq!(m, GovernorMode::FpsTier);
+        assert_eq!(m2, GovernorMode::FpsTier);
+        assert_eq!(g.cost.anim_frames, FRAME_COST_FULL.anim_frames / 2, "二级时长项砍半");
+    }
+}

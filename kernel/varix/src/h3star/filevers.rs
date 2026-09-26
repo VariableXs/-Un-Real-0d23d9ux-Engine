@@ -326,3 +326,170 @@ mod tests {
         assert_eq!(SNAPSHOT_LIMIT_MS, 1000);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F325 增量快照账 / 还原备份账 / 压力清退账
+// ---------------------------------------------------------------------------
+
+/// 增量快照账（判据「文本类全量、大文件增量」的账面）：内容未变化的
+/// 保存跳过落版（增量语义——重复保存不刷版本墙），变化才落新序号。
+/// 返回 (生效序号, 是否真的落了版)。
+/// [落位收尾批修正：save() 返回值是快照延迟（记账面）而非序号——序号
+/// 一律从时间线末版取，两路同源。]
+pub fn save_incremental(fv: &mut FileVersions, content: &str, now_ms: u64) -> (u64, bool) {
+    let unchanged = fv
+        .timeline()
+        .last()
+        .map(|v| v.content == content)
+        .unwrap_or(false);
+    if unchanged {
+        let seq = fv.timeline().last().map(|v| v.seq).unwrap_or(0);
+        return (seq, false);
+    }
+    fv.save(content, now_ms);
+    let seq = fv.timeline().last().map(|v| v.seq).unwrap_or(0);
+    (seq, true)
+}
+
+/// 还原备份账（判据「还原前当前版自动先存一版——还原本身可撤销」的
+/// 对账面）：还原后时间线里必须有带 is_restore_backup 标记的备份版，
+/// 且 undo_restore 能回到还原前。
+pub struct RestoreBackupAudit;
+
+impl RestoreBackupAudit {
+    /// 还原后对账：备份版在时间线上 + undo 通路在位。
+    pub fn verify(fv: &mut FileVersions) -> bool {
+        let has_backup = fv.timeline().iter().any(|v| v.is_restore_backup);
+        has_backup && fv.undo_restore(0).is_some()
+    }
+}
+
+/// 压力清退账（「空间紧张时按 F267 纪律优先清旧版」的调度面）：水位
+/// 触发 → 清退到水位下；不紧张不动手。
+pub struct PressureCleaner {
+    /// 快照区预算（字节）。
+    pub budget_bytes: u64,
+    /// 触发水位（预算占比‰）。
+    pub trigger_permille: u64,
+}
+
+impl PressureCleaner {
+    pub fn new(budget_bytes: u64) -> PressureCleaner {
+        PressureCleaner { budget_bytes, trigger_permille: 900 }
+    }
+
+    /// 是否应清退（占用 ≥ 触发水位）。
+    pub fn should_clean(&self, used_bytes: u64) -> bool {
+        if self.budget_bytes == 0 {
+            return false;
+        }
+        used_bytes * 1000 >= self.budget_bytes.saturating_mul(self.trigger_permille)
+    }
+
+    /// 清退后的目标水位（清到预算 70% 以下再停——清到不紧张为止）。
+    pub fn target_bytes(&self) -> u64 {
+        self.budget_bytes * 700 / 1000
+    }
+}
+
+/// 深化层二自检（增量账 / 还原备份账 / 压力清退账）。
+pub fn run_filevers_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F325-deep2");
+
+    // 1. 增量快照：同内容连存不落版（序号不动）；变化才落新版。
+    let mut fv = FileVersions::new("报告.vxnote");
+    let (s1, saved1) = save_incremental(&mut fv, "第一稿", 1_000);
+    let (s2, saved2) = save_incremental(&mut fv, "第一稿", 2_000);
+    let (s3, saved3) = save_incremental(&mut fv, "第二稿", 3_000);
+    set.add(
+        "incremental skips unchanged",
+        saved1 && !saved2 && saved3 && s1 == s2 && s3 > s1 && fv.len() == 2,
+        "",
+    );
+
+    // 2. 还原备份账：还原前当前版自动备份（标记在账）+ 撤销通路在位。
+    let mut fv2 = FileVersions::new("稿件.vxnote");
+    let _ = fv2.save("初稿", 1_000);
+    let _ = fv2.save("改坏了的稿", 2_000);
+    let restored = fv2.restore(1, 3_000);
+    set.add(
+        "restore leaves undoable backup",
+        restored.is_some() && RestoreBackupAudit::verify(&mut fv2),
+        "",
+    );
+
+    // 3. 30 天边界：恰 30 天的版本保留（>= cutoff），31 天清退（保留最新兜底）。
+    //    （时钟单调——保存按时间正序落，回溯用例会被钳制。）
+    let day: u64 = 24 * 3600 * 1000;
+    let mut fv3 = FileVersions::new("账本.vxnote");
+    let _ = fv3.save("太旧的", 29 * day); // 相对 now=61d：32 天前 → 清退。
+    let _ = fv3.save("边界的", 31 * day); // 相对 now=61d：恰 30 天 → 保留。
+    let _ = fv3.save("最新的", 60 * day + 12_000);
+    let removed = fv3.cleanup(61 * day);
+    set.add(
+        "retention boundary exact 30d kept",
+        removed >= 1
+            && fv3.timeline().iter().any(|v| v.content == "边界的")
+            && fv3.timeline().iter().all(|v| v.content != "太旧的")
+            && fv3.timeline().iter().any(|v| v.content == "最新的"),
+        "",
+    );
+
+    // 4. 压力清退调度：水位之上才动手 + 目标水位逻辑。
+    let pc = PressureCleaner::new(1_000_000);
+    set.add(
+        "pressure gate and target",
+        !pc.should_clean(800_000)
+            && pc.should_clean(950_000)
+            && pc.should_clean(1_200_000)
+            && pc.target_bytes() == 700_000,
+        "",
+    );
+
+    // 5. 压力场景端到端：版本数超 500 上限 → cleanup 清到上限内。
+    //    （40 秒内的 40 个版本全在 30 天窗口内——时间清退不动它，走的是
+    //    500 上限路径；这才判得动 cleanup 的两个分支。）
+    let mut fv4 = FileVersions::new("热稿.vxnote");
+    let filler = "x".repeat(200);
+    for i in 0..510u64 {
+        let content = alloc::format!("版本{i}——{filler}");
+        let _ = fv4.save(&content, i * 1_000);
+    }
+    let before = fv4.len();
+    let _ = fv4.cleanup(510 * 1_000);
+    let after = fv4.len();
+    set.add(
+        "pressure cleanup reduces",
+        before == 510 && after <= 500 && after < before,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn incremental_on_empty_file_saves() {
+        let mut fv = FileVersions::new("空稿");
+        let (seq, saved) = save_incremental(&mut fv, "首存", 1_000);
+        assert!(saved && seq == 1, "首存落版 seq=1（got seq={seq} saved={saved}）");
+    }
+
+    #[test]
+    fn pressure_zero_budget_never_cleans() {
+        let pc = PressureCleaner::new(0);
+        assert!(!pc.should_clean(u64::MAX), "零预算结构面不做水位判断");
+    }
+
+    #[test]
+    fn restore_backup_marked_on_timeline() {
+        let mut fv = FileVersions::new("m");
+        let _ = fv.save("a", 1_000);
+        let _ = fv.save("b", 2_000);
+        let _ = fv.restore(1, 3_000);
+        assert!(fv.timeline().iter().any(|v| v.is_restore_backup));
+    }
+}

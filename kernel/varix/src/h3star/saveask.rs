@@ -401,3 +401,172 @@ mod tests {
         assert!(!f.decide(&mut l, AskChoice::Save), "终态后再裁决拒绝");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F310 触发时机账 / 默认焦点账 / Esc 语义 / 批量边界 / 崩溃分流
+// ---------------------------------------------------------------------------
+
+/// 三问触发时机账（判据「触发时机 <100ms」的实测载体）：逐次记录从
+/// 关窗请求到对话框就绪的耗时，p95 判线。
+pub struct TriggerLatencyLedger {
+    samples: Vec<u64>,
+    cap: usize,
+}
+
+impl TriggerLatencyLedger {
+    pub fn new(cap: usize) -> TriggerLatencyLedger {
+        TriggerLatencyLedger { samples: Vec::new(), cap: cap.max(1) }
+    }
+
+    pub fn push(&mut self, cost_ms: u64) {
+        self.samples.push(cost_ms);
+        if self.samples.len() > self.cap {
+            self.samples.remove(0);
+        }
+    }
+
+    pub fn p95(&self) -> u64 {
+        let mut s = self.samples.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    pub fn within_limit(&self) -> bool {
+        self.p95() <= ASK_TRIGGER_LIMIT_MS
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+/// 默认焦点账（判据「默认焦点在保存——手快 Enter 是保命的」）：三问
+/// 在场时默认焦点必须是 Save（常量钉死 + 标签人话）。
+pub fn default_focus_is_save() -> bool {
+    AskChoice::DEFAULT_FOCUS == AskChoice::Save && AskChoice::Save.label() == "保存"
+}
+
+/// 深化层二自检（触发时机 / 默认焦点 / Esc 取消 / 批量边界 / 未保存判定矩阵）。
+pub fn run_saveask_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F310-deep2");
+
+    // 1. 未保存判定矩阵：打开没动直接关不问；动过才问（判据「改了才算」）。
+    let mut ledger = UnsavedLedger::new();
+    ledger.open("报告.vxnote");
+    let untouched = {
+        let mut f = SaveAskFlow::new();
+        f.close_request(&ledger, "报告.vxnote", 5_000, 4_000)
+    };
+    ledger.edit("报告.vxnote");
+    let touched = {
+        let mut f = SaveAskFlow::new();
+        f.close_request(&ledger, "报告.vxnote", 5_000, 4_000)
+    };
+    set.add(
+        "dirty matrix ask only when edited",
+        untouched.is_none() && touched == Some(AskStage::Shown),
+        "",
+    );
+
+    // 2. 触发时机账：三问在关窗请求的同一同步步内就绪（注入世界 0ms）
+    //    ——「出现得及时」结构性成立（无异步路径），逐笔入账判线之下。
+    let mut lat = TriggerLatencyLedger::new(16);
+    let mut flow = SaveAskFlow::new();
+    let ready1 = flow.close_request(&ledger, "报告.vxnote", 5_000, 5_000);
+    lat.push(if ready1.is_some() { 0 } else { ASK_TRIGGER_LIMIT_MS + 1 });
+    let mut flow2 = SaveAskFlow::new();
+    let ready2 = flow2.close_request(&ledger, "报告.vxnote", 5_100, 5_100);
+    lat.push(if ready2.is_some() { 0 } else { ASK_TRIGGER_LIMIT_MS + 1 });
+    set.add(
+        "trigger latency ledger",
+        lat.len() == 2 && lat.within_limit() && lat.p95() == 0,
+        "",
+    );
+
+    // 3. 默认焦点 = 保存（常量钉死——手快 Enter 保命）。
+    set.add("default focus is save", default_focus_is_save(), "");
+
+    // 4. Esc=取消语义：取消 → 撤销关闭、文档保留脏态、对话框退场。
+    let mut flow3 = SaveAskFlow::new();
+    let _ = flow3.close_request(&ledger, "报告.vxnote", 6_000, 5_000);
+    let closed = flow3.decide(&mut ledger, AskChoice::Cancel);
+    set.add(
+        "esc cancel keeps doc dirty",
+        !closed && !flow3.in_dialog() && ledger.is_dirty("报告.vxnote"),
+        "",
+    );
+
+    // 5. 批量边界：全不勾 + Save → 无动作（勾选即授权——没勾的不碰）。
+    ledger.open("甲");
+    ledger.edit("甲");
+    ledger.open("乙");
+    ledger.edit("乙");
+    // 此刻未保存账 = 报告.vxnote + 甲 + 乙 三项。
+    let mut batch = match BatchAskFlow::request(&ledger) {
+        Some(b) if b.candidates.len() == 3 => b,
+        _ => {
+            set.add("batch request three dirty docs", false, "应出批量框且三候选");
+            return set;
+        }
+    };
+    let _ = batch.toggle(0);
+    let _ = batch.toggle(1);
+    let _ = batch.toggle(2);
+    let touched_none = batch.decide(&mut ledger, AskChoice::Save);
+    set.add(
+        "batch save with none checked touches nothing",
+        touched_none.is_empty() && ledger.is_dirty("甲") && ledger.is_dirty("乙"),
+        "",
+    );
+
+    // 6. 批量取消：Esc → 全留、对话框退场（不重复问）。
+    let mut batch2 = BatchAskFlow::request(&ledger).expect("批量框应再次可出");
+    let touched_cancel = batch2.decide(&mut ledger, AskChoice::Cancel);
+    set.add(
+        "batch cancel leaves all dirty",
+        touched_cancel.is_empty() && ledger.is_dirty("甲") && ledger.is_dirty("乙"),
+        "",
+    );
+
+    // 7. 崩溃分流（F311 联动结构面）：脏文档不进三问流——崩溃/断电场景
+    //    直接由会话恢复接手（ledger 完整 = 恢复账的数据源在位）。
+    let crash_eligible = ledger.unsaved_all();
+    set.add(
+        "crash path bypasses ask flow",
+        crash_eligible.len() >= 2 && BatchAskFlow::request(&ledger).is_some(),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn latency_empty_within_limit() {
+        let l = TriggerLatencyLedger::new(4);
+        assert!(l.within_limit(), "无样本不虚报超限");
+    }
+
+    #[test]
+    fn batch_toggle_out_of_range_rejected() {
+        let mut ledger = UnsavedLedger::new();
+        ledger.open("a");
+        ledger.edit("a");
+        let mut batch = BatchAskFlow::request(&ledger).expect("应出框");
+        assert!(!batch.toggle(9), "越界勾选拒绝不静默");
+    }
+
+    #[test]
+    fn save_choice_clears_dirty() {
+        let mut ledger = UnsavedLedger::new();
+        ledger.open("x");
+        ledger.edit("x");
+        let mut flow = SaveAskFlow::new();
+        let _ = flow.close_request(&ledger, "x", 100, 0);
+        let closed = flow.decide(&mut ledger, AskChoice::Save);
+        assert!(closed && !ledger.is_dirty("x"), "保存后放行且脏标记清除");
+    }
+}

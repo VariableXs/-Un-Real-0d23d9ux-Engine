@@ -75,14 +75,10 @@ use hbase::merge_sets;
 /// 域标识（CheckSet 聚合用）。
 pub const H3_DOMAIN: &str = "h3star-h3";
 
-/// 本域自检聚合：逐模块 `run_*_checks` 汇总（施工期随模块落地扩列，
-/// 全量 hbase + 五十项）。
-///
-/// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`），单模块超限
-/// 由该模块自身裁剪——聚合器如实报告每份 Set 的截断态。
-pub fn run_h3star_checks() -> CheckSet {
-    let mut set = CheckSet::new(H3_DOMAIN);
-    let blocks: [(&'static str, CheckSet); 51] = [
+/// 域块清单（hbase + 五十项，深化层经 `merge_sets` 并入）——聚合器与
+/// 对账/探针工具共用的唯一构造点（一处一事实）。
+pub fn h3star_blocks() -> Vec<(&'static str, CheckSet)> {
+    vec![
         ("hbase", hbase::run_hbase_checks()),
         ("F301", merge_sets(setsearch::run_setsearch_checks(), setsearch::run_setsearch_deep_checks())),
         ("F302", pagehier::run_pagehier_checks()),
@@ -93,49 +89,59 @@ pub fn run_h3star_checks() -> CheckSet {
         ("F307", srchhist::run_srchhist_checks()),
         ("F308", runbox::run_runbox_checks()),
         ("F309", winkeys::run_winkeys_checks()),
-        ("F312", merge_sets(pyfault::run_pyfault_checks(), pyfault::run_pyfault_deep_checks())),
-        ("F310", saveask::run_saveask_checks()),
-        ("F311", sesrestore::run_sesrestore_checks()),
+        ("F312", merge_sets(merge_sets(pyfault::run_pyfault_checks(), pyfault::run_pyfault_deep_checks()), pyfault::run_pyfault_deep2_checks())),
+        ("F310", merge_sets(saveask::run_saveask_checks(), saveask::run_saveask_deep2_checks())),
+        ("F311", merge_sets(sesrestore::run_sesrestore_checks(), sesrestore::run_sesrestore_deep2_checks())),
         ("F313", sympanel::run_sympanel_checks()),
-        ("F326", merge_sets(imecore::run_imecore_checks(), imecore::run_imecore_deep_checks())),
-        ("F327", cnensw::run_cnensw_checks()),
+        ("F326", merge_sets(merge_sets(imecore::run_imecore_checks(), imecore::run_imecore_deep_checks()), imecore::run_imecore_deep2_checks())),
+        ("F327", merge_sets(cnensw::run_cnensw_checks(), cnensw::run_cnensw_deep2_checks())),
         ("F328", shuangpin::run_shuangpin_checks()),
         ("F329", clipbig::run_clipbig_checks()),
         ("F347", keyrep::run_keyrep_checks()),
         ("F348", caretbold::run_caretbold_checks()),
-        ("F314", ocrtake::run_ocrtake_checks()),
+        ("F314", merge_sets(merge_sets(ocrtake::run_ocrtake_checks(), ocrtake::run_ocrtake_deep2_checks()), ocrtake::run_ocrtake_deep3_checks())),
         ("F315", draghover::run_draghover_checks()),
-        ("F316", idlelock::run_idlelock_checks()),
+        ("F316", merge_sets(idlelock::run_idlelock_checks(), idlelock::run_idlelock_deep2_checks())),
         ("F317", idlelock::run_ambience_checks()),
-        ("F318", pwbtn::run_pwbtn_checks()),
-        ("F319", wakeresume::run_wakeresume_checks()),
+        ("F318", merge_sets(pwbtn::run_pwbtn_checks(), pwbtn::run_pwbtn_deep2_checks())),
+        ("F319", merge_sets(wakeresume::run_wakeresume_checks(), wakeresume::run_wakeresume_deep_checks())),
         ("F320", wakeresume::run_airlane_checks()),
-        ("F321", merge_sets(nearshare::run_nearshare_checks(), nearshare::run_nearshare_deep_checks())),
-        ("F322", micind::run_micind_checks()),
+        ("F321", merge_sets(merge_sets(nearshare::run_nearshare_checks(), nearshare::run_nearshare_deep_checks()), nearshare::run_nearshare_deep2_checks())),
+        ("F322", merge_sets(micind::run_micind_checks(), micind::run_micind_deep2_checks())),
         ("F323", micind::run_micind_checks()),
         ("F324", micind::run_permctr_checks()),
-        ("F325", filevers::run_filevers_checks()),
-        ("F330", ntfgrp::run_ntfgrp_checks()),
-        ("F331", merge_sets(animdegrade::run_animdegrade_checks(), animdegrade::run_animdegrade_deep_checks())),
-        ("F332", animdegrade::run_fpsadapt_checks()),
+        ("F325", merge_sets(filevers::run_filevers_checks(), filevers::run_filevers_deep2_checks())),
+        ("F330", merge_sets(ntfgrp::run_ntfgrp_checks(), ntfgrp::run_ntfgrp_deep2_checks())),
+        ("F331", merge_sets(merge_sets(animdegrade::run_animdegrade_checks(), animdegrade::run_animdegrade_deep_checks()), animdegrade::run_animdegrade_deep2_checks())),
+        ("F332", merge_sets(animdegrade::run_fpsadapt_checks(), animdegrade::run_animdegrade_deep3_checks())),
         ("F333", animdegrade::run_lowbatt_checks()),
-        ("F334", loadresp::run_loadresp_checks()),
+        ("F334", merge_sets(loadresp::run_loadresp_checks(), loadresp::run_loadresp_deep2_checks())),
         ("F335", loadresp::run_ptrplane_checks()),
         ("F336", merge_sets(copypath::run_copypath_checks(), copypath::run_copypath_deep_checks())),
-        ("F337", copypath::run_cmdbg_checks()),
+        ("F337", merge_sets(merge_sets(copypath::run_cmdbg_checks(), copypath::run_cmdbg_deep2_checks()), copypath::run_copypath_deep3_checks())),
         ("F338", merge_sets(multibar::run_multibar_checks(), multibar::run_multibar_deep_checks())),
         ("F339", multibar::run_quicklook_checks()),
         ("F340", multibar::run_prevunify_checks()),
         ("F341", merge_sets(sndmode::run_sndmode_checks(), sndmode::run_sndmode_deep_checks())),
-        ("F342", merge_sets(sysgov::run_diskchk_checks(), sysgov::run_sysgov_deep_checks())),
+        ("F342", merge_sets(merge_sets(sysgov::run_diskchk_checks(), sysgov::run_sysgov_deep_checks()), sysgov::run_sysgov_deep2_checks())),
         ("F343", sysgov::run_memsosc_checks()),
-        ("F344", sysgov::run_appuninst_checks()),
+        ("F344", merge_sets(sysgov::run_appuninst_checks(), sysgov::run_sysgov_deep3_checks())),
         ("F345", sysgov::run_defapp_checks()),
         ("F346", sysgov::run_startup_checks()),
         ("F349", sndmode::run_focusmode_checks()),
-        ("F350", haptic::run_haptic_checks()),
-    ];
-    for (tag, sub) in blocks {
+        ("F350", merge_sets(haptic::run_haptic_checks(), haptic::run_haptic_deep2_checks())),
+        ("F312b", pyfault::run_pyfault_deep3_checks()),
+    ]
+}
+
+/// 本域自检聚合：逐模块 `run_*_checks` 汇总（施工期随模块落地扩列，
+/// 全量 hbase + 五十项）。
+///
+/// CheckSet 容量上限 64 条（`crate::checks::MAX_CHECKS`），单模块超限
+/// 由该模块自身裁剪——聚合器如实报告每份 Set 的截断态。
+pub fn run_h3star_checks() -> CheckSet {
+    let mut set = CheckSet::new(H3_DOMAIN);
+    for (tag, sub) in h3star_blocks() {
         let passed = sub.all_passed() && !sub.truncated();
         set.add(tag, passed, if passed { "" } else { "sub-checks red" });
     }

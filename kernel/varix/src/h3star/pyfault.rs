@@ -516,3 +516,367 @@ mod deep_tests {
         assert_eq!(normalize_query(&once), once);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F312 容错开关语义 / 三层用例表（各 5）/ 编辑距离边界 / 精确优先
+// ---------------------------------------------------------------------------
+
+/// 三层容错用例表（判据「三层容错用例各 5」的登记面）：全拼 5 + 首字母
+/// 5 + 容错 5——逐条期望（层, 条目），表即用例、跑表即验收。
+pub const CASE_TABLE: [(&'static str, &'static str, MatchLayer); 15] = [
+    // L1 全拼 5。
+    ("jisuanqi", "计算器", MatchLayer::PinyinFull),
+    ("jishiben", "记事本", MatchLayer::PinyinFull),
+    ("shezhizhongxin", "设置中心", MatchLayer::PinyinFull),
+    ("bizhi", "壁纸", MatchLayer::PinyinFull),
+    ("yinliang", "音量", MatchLayer::PinyinFull),
+    // L2 首字母 5。
+    ("jsq", "计算器", MatchLayer::PinyinInitial),
+    ("jsb", "记事本", MatchLayer::PinyinInitial),
+    ("szzx", "设置中心", MatchLayer::PinyinInitial),
+    ("bz", "壁纸", MatchLayer::PinyinInitial),
+    ("yl", "音量", MatchLayer::PinyinInitial),
+    // L3 容错 5（错 1-2 字仍命中，标注「您是不是要找」；用例必须非前缀——
+    // 前缀命中按 L1 结算，不是错字）。
+    ("jisuanqu", "计算器", MatchLayer::Tolerant),
+    ("jishibenx", "记事本", MatchLayer::Tolerant),
+    ("shezhizongxin", "设置中心", MatchLayer::Tolerant),
+    ("bizi", "壁纸", MatchLayer::Tolerant),
+    ("yinlung", "音量", MatchLayer::Tolerant),
+];
+
+/// 「您是不是要找」标注语（含原因——错字提示，非裸标注）。
+pub fn did_you_mean_text(name: &str) -> String {
+    alloc::format!("您是不是要找：{name}")
+}
+
+/// 精确优先审计：容错开时，精确层命中必须全部排在容错层之前
+/// （「首位结果永远是精确匹配，容错结果排后」的排序对账）。
+pub fn exact_ranks_before_tolerant(hits: &[PyHit]) -> bool {
+    let max_exact_rank = hits
+        .iter()
+        .filter(|h| h.layer != MatchLayer::Tolerant)
+        .map(|h| h.layer.rank())
+        .max();
+    let min_tol_pos = hits.iter().position(|h| h.layer == MatchLayer::Tolerant);
+    match (max_exact_rank, min_tol_pos) {
+        (Some(_), Some(pos)) => hits[..pos].iter().all(|h| h.layer != MatchLayer::Tolerant),
+        _ => true,
+    }
+}
+
+/// 深化层二自检（开关语义 / 用例表 / 距离边界 / 精确优先 / 标注语）。
+pub fn run_pyfault_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F312-deep2");
+    let items = demo_items();
+
+    // 1. 用例表 15 条逐条跑：容错开 → 期望条目以期望层命中。
+    let mut passed = 0usize;
+    for (q, expect_name, expect_layer) in CASE_TABLE.iter() {
+        let hits = search(&items, q, true);
+        let ok = hits
+            .iter()
+            .any(|h| h.name == *expect_name && h.layer == *expect_layer);
+        if ok {
+            passed += 1;
+        }
+    }
+    set.add("case table 15 of 15", passed == CASE_TABLE.len(), "");
+
+    // 2. 容错关闭开关：错字查询在关态下零容错命中（追求绝对精确的用户）。
+    let typo = "jisuanqu";
+    let off = search(&items, typo, false);
+    let on = search(&items, typo, true);
+    set.add(
+        "tolerance switch semantics",
+        off.iter().all(|h| h.layer != MatchLayer::Tolerant)
+            && on.iter().any(|h| h.layer == MatchLayer::Tolerant),
+        "",
+    );
+
+    // 3. 精确优先：全拼查询下精确层在前、容错层（若有）在后。
+    let hits = search(&items, "jisuanqi", true);
+    set.add("exact ranks before tolerant", exact_ranks_before_tolerant(&hits), "");
+
+    // 4. 「您是不是要找」标注：容错命中带标注 + 文案人话（含条目名）。
+    let tol = on.iter().find(|h| h.layer == MatchLayer::Tolerant);
+    set.add(
+        "did you mean annotated",
+        tol.map(|h| h.did_you_mean).unwrap_or(false)
+            && tol
+                .map(|h| did_you_mean_text(&h.name).contains("您是不是要找"))
+                .unwrap_or(false),
+        "",
+    );
+
+    // 5. 编辑距离边界：空串/同串/一删/经典三距。
+    set.add(
+        "edit distance boundaries",
+        edit_distance("", "abc") == 3
+            && edit_distance("bizhi", "bizhi") == 0
+            && edit_distance("bizhi", "bizi") == 1
+            && edit_distance("kitten", "sitting") == 3,
+        "",
+    );
+
+    // 6. 容错只放宽不误导：错字查询首结果不是垃圾条目（容错命中必为
+    //    距离最近的登记条目——本表内即期望条目）。
+    let first_ok = on.first().map(|h| CASE_TABLE.iter().any(|(q, n, _)| {
+        *q == typo && h.name == *n
+    }) || h.layer != MatchLayer::Tolerant);
+    set.add("tolerant never misleading", first_ok.unwrap_or(false), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn case_table_is_15_and_balanced() {
+        assert_eq!(CASE_TABLE.len(), 15);
+        let full = CASE_TABLE.iter().filter(|(_, _, l)| *l == MatchLayer::PinyinFull).count();
+        let init = CASE_TABLE.iter().filter(|(_, _, l)| *l == MatchLayer::PinyinInitial).count();
+        let tol = CASE_TABLE.iter().filter(|(_, _, l)| *l == MatchLayer::Tolerant).count();
+        assert_eq!((full, init, tol), (5, 5, 5), "三层各 5——判据登记面");
+    }
+
+    #[test]
+    fn tolerance_off_keeps_name_layers() {
+        let items = demo_items();
+        // 容错关 = 拼音面全停（模块语义）：拼音查询不再命中，但汉字精确面照常。
+        let off_pinyin = search(&items, "jisuanqi", false);
+        assert!(off_pinyin.is_empty(), "容错关：全拼查询不命中");
+        let off_name = search(&items, "计算器", false);
+        assert!(
+            off_name.iter().any(|h| h.layer == MatchLayer::NameExact),
+            "容错关：汉字精确面照常"
+        );
+        let off_typo = search(&items, "jisuanqu", false);
+        assert!(off_typo.iter().all(|h| h.layer != MatchLayer::Tolerant));
+    }
+
+    #[test]
+    fn did_you_mean_text_human() {
+        assert_eq!(did_you_mean_text("计算器"), "您是不是要找：计算器");
+    }
+
+    #[test]
+    fn exact_audit_passes_on_exact_only() {
+        let items = demo_items();
+        let hits = search(&items, "jsq", true);
+        assert!(exact_ranks_before_tolerant(&hits));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 全量模糊规则表（逐规则开关 + 查询变体展开）
+// ---------------------------------------------------------------------------
+//
+// 三层容错的本体数据面：方言混淆规则族（n↔l / 平翘舌 / 前后鼻音），
+// 每条规则可独立开关（容错配置不是总闸一个，是逐规则细粒度——追求
+// 绝对精确的用户可只关某族）。变体展开 = 查询串经启用规则逐位替换
+// 产出的等价集合（含原串），容错层用变体集打库。
+
+/// 一条模糊规则：错写音 → 正音 的双向对（如 n↔l、zh↔z）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FuzzyRule {
+    /// 规则名（审计面用）。
+    pub name: &'static str,
+    /// 对侧音（双向互换）。
+    pub a: &'static str,
+    pub b: &'static str,
+    /// 规则族（三层容错归属：1=音近层 / 2=方言层 / 3=拼写层）。
+    pub layer: u8,
+}
+
+/// 全量规则表（唯一源——增规则必炸 checks 计数）。
+pub const FUZZY_RULES: [FuzzyRule; 7] = [
+    FuzzyRule { name: "nl", a: "n", b: "l", layer: 2 },
+    FuzzyRule { name: "zhz", a: "zh", b: "z", layer: 2 },
+    FuzzyRule { name: "chc", a: "ch", b: "c", layer: 2 },
+    FuzzyRule { name: "shs", a: "sh", b: "s", layer: 2 },
+    FuzzyRule { name: "anang", a: "an", b: "ang", layer: 2 },
+    FuzzyRule { name: "eneng", a: "en", b: "eng", layer: 2 },
+    FuzzyRule { name: "ining", a: "in", b: "ing", layer: 2 },
+];
+
+/// 模糊规则开关组（默认全开——容错常态；逐规则可关）。
+pub struct FuzzySwitches {
+    enabled: Vec<&'static str>,
+}
+
+impl FuzzySwitches {
+    pub fn all_on() -> FuzzySwitches {
+        FuzzySwitches { enabled: FUZZY_RULES.iter().map(|r| r.name).collect() }
+    }
+
+    pub fn all_off() -> FuzzySwitches {
+        FuzzySwitches { enabled: Vec::new() }
+    }
+
+    /// 切某规则（未登记的规则名拒绝——白名单纪律）。
+    pub fn set(&mut self, name: &str, on: bool) -> bool {
+        if !FUZZY_RULES.iter().any(|r| r.name == name) {
+            return false;
+        }
+        if on {
+            if !self.enabled.contains(&name) {
+                self.enabled.push(match name {
+                    "nl" => "nl",
+                    "zhz" => "zhz",
+                    "chc" => "chc",
+                    "shs" => "shs",
+                    "anang" => "anang",
+                    "eneng" => "eneng",
+                    _ => "ining",
+                });
+            }
+        } else {
+            self.enabled.retain(|n| *n != name);
+        }
+        true
+    }
+
+    pub fn is_on(&self, name: &str) -> bool {
+        self.enabled.iter().any(|n| *n == name)
+    }
+
+    /// 查询变体展开：原串 + 经启用规则的位置替换产物（幂等去重——
+    /// 同变体只进一次；长度不等的替换允许——zh↔z 变长合法）。
+    pub fn variants_of(&self, query: &str) -> Vec<String> {
+        let mut out = alloc::vec![String::from(query)];
+        for r in FUZZY_RULES.iter().filter(|r| self.is_on(r.name)) {
+            for (x, y) in [(r.a, r.b), (r.b, r.a)] {
+                let mut i = 0;
+                while let Some(pos) = query[i..].find(x) {
+                    let abs = i + pos;
+                    let mut v = String::from(&query[..abs]);
+                    v.push_str(y);
+                    v.push_str(&query[abs + x.len()..]);
+                    if !out.contains(&v) {
+                        out.push(v);
+                    }
+                    i = abs + 1;
+                    if i >= query.len() {
+                        break;
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+/// 深化层三自检（规则表 / 开关 / 变体展开 / 与容错层联动）。
+pub fn run_pyfault_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F312-deep3");
+
+    // 1. 规则表：7 条全登记、三族归属齐全、双面对称。
+    set.add(
+        "rule table complete",
+        FUZZY_RULES.len() == 7
+            && FUZZY_RULES.iter().all(|r| r.layer >= 1 && r.layer <= 3 && !r.a.is_empty() && !r.b.is_empty()),
+        "",
+    );
+
+    // 2. 开关：全开默认、逐规则可关、白名单外拒绝。
+    let mut sw = FuzzySwitches::all_on();
+    set.add("default all on", FUZZY_RULES.iter().all(|r| sw.is_on(r.name)), "");
+    let _ = sw.set("nl", false);
+    set.add(
+        "per rule toggle",
+        !sw.is_on("nl") && sw.is_on("zhz") && !sw.set("幽灵规则", true),
+        "",
+    );
+
+    // 3. 变体展开：nan 经 nl 规则产 lan（含原串）；关规则后不再产。
+    let v_on = FuzzySwitches::all_on().variants_of("nan");
+    let v_off = sw.variants_of("nan");
+    set.add(
+        "variant expansion gated",
+        v_on.contains(&String::from("nan"))
+            && v_on.contains(&String::from("lan"))
+            && !v_off.contains(&String::from("lan")),
+        "",
+    );
+
+    // 4. 变长规则：zhang 经 zhz 产 zang、经 anang 产 zhang→(无自身) 但
+    //    zang→zhang 变长合法（展开集合含变长成员）。
+    let vz = FuzzySwitches::all_on().variants_of("zhang");
+    set.add(
+        "variable length variants",
+        vz.contains(&String::from("zang")) && vz.contains(&String::from("zhan")),
+        "",
+    );
+
+    // 5. 全关 = 容错禁用面（变体只剩原串——绝对精确模式）。
+    let v_none = FuzzySwitches::all_off().variants_of("nishi");
+    set.add("all off leaves original only", v_none.len() == 1 && v_none[0] == "nishi", "");
+
+    // 6. 与容错层联动（端到真断言）：误打 yingliang（in/ing 混淆）——
+    //    ining 开 → 变体集含 yinliang，「音量」存在全拼层（PinyinFull）
+    //    命中；ining 关 → 全部命中只能落编辑距离兜底层（Tolerant）。
+    //    规则展开的价值 = 命中层序提升，非凭空造命中。
+    let items = demo_items();
+    let mut sw2 = FuzzySwitches::all_on();
+    let v_on = sw2.variants_of("yingliang");
+    let layers_on: Vec<MatchLayer> = v_on
+        .iter()
+        .flat_map(|v| search(&items, v, true))
+        .filter(|h| h.name == "音量")
+        .map(|h| h.layer)
+        .collect();
+    let _ = sw2.set("ining", false);
+    let v_off = sw2.variants_of("yingliang");
+    let layers_off: Vec<MatchLayer> = v_off
+        .iter()
+        .flat_map(|v| search(&items, v, true))
+        .filter(|h| h.name == "音量")
+        .map(|h| h.layer)
+        .collect();
+    set.add(
+        "variants lift hit layer end to end",
+        v_on.contains(&String::from("yinliang"))
+            && layers_on.contains(&MatchLayer::PinyinFull)
+            && !v_off.contains(&String::from("yinliang"))
+            && !layers_off.is_empty()
+            && layers_off.iter().all(|l| *l == MatchLayer::Tolerant),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn toggle_round_trip() {
+        let mut sw = FuzzySwitches::all_on();
+        let _ = sw.set("ining", false);
+        assert!(!sw.is_on("ining"));
+        let _ = sw.set("ining", true);
+        assert!(sw.is_on("ining"));
+    }
+
+    #[test]
+    fn variants_deduped() {
+        let vs = FuzzySwitches::all_on().variants_of("an");
+        // an 全展开 = 原串 + anang 对称变体 ang + nl 规则的 al（三成员
+        // 精确集——多一条少一条都是展开器缺陷）。
+        assert_eq!(
+            vs,
+            alloc::vec![String::from("an"), String::from("al"), String::from("ang")],
+            "展开器产出必须精确可数（规则表序决定成员序：nl 先于 anang）"
+        );
+    }
+
+    #[test]
+    fn empty_query_single_variant() {
+        let vs = FuzzySwitches::all_on().variants_of("");
+        assert_eq!(vs, alloc::vec![String::from("")]);
+    }
+}

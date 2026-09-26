@@ -649,3 +649,170 @@ mod deep_tests {
         assert_eq!(punctuation_pair('（'), Some('）'));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F326 首候选命中率抽样账 / 排序确定性 / 三因子方向账
+// ---------------------------------------------------------------------------
+
+/// 首候选命中率抽样账（判据「首候选命中率抽样记录」的数据面）：逐次
+/// 记录首候选是否命中期望，出千分率——抽样可复现（同引擎同输入必同账）。
+pub struct FirstHitSampling {
+    total: u64,
+    hits: u64,
+    /// 抽样流水（输入, 首候选, 是否命中）——可回放。
+    pub trail: Vec<(String, String, bool)>,
+}
+
+impl FirstHitSampling {
+    pub fn new() -> FirstHitSampling {
+        FirstHitSampling { total: 0, hits: 0, trail: Vec::new() }
+    }
+
+    /// 记录一次抽样。
+    pub fn record(&mut self, input: &str, first: &str, expected: &str) {
+        let hit = first == expected;
+        self.total += 1;
+        if hit {
+            self.hits += 1;
+        }
+        self.trail.push((String::from(input), String::from(first), hit));
+    }
+
+    /// 命中率（‰）。
+    pub fn rate_permille(&self) -> u64 {
+        if self.total == 0 {
+            0
+        } else {
+            self.hits * 1000 / self.total
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.total as usize
+    }
+}
+
+impl Default for FirstHitSampling {
+    fn default() -> FirstHitSampling {
+        FirstHitSampling::new()
+    }
+}
+
+/// 排序确定性审计：同引擎同输入两次候选序列必须逐项相等（判据「排序
+/// 因子可复现——同输入同结果」的直接对账）。
+pub fn candidates_deterministic(engine: &ImeEngine, input: &str, rounds: usize) -> bool {
+    if rounds < 2 {
+        return true;
+    }
+    let first = engine.candidates(input);
+    (1..rounds).all(|_| engine.candidates(input) == first)
+}
+
+/// 深化层二自检（命中率抽样 / 确定性 / 用户历史升权 / 造词三次入库 / 上下文句界）。
+pub fn run_imecore_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F326-deep2");
+
+    // 1. 排序确定性：同输入多轮候选逐项相等。
+    let mut e = ImeEngine::new();
+    e.add_word("计算器", "jisuanqi", 100);
+    e.add_word("记事本", "jishiben", 90);
+    set.add(
+        "candidates deterministic",
+        candidates_deterministic(&e, "jisuanqi", 5)
+            && candidates_deterministic(&e, "jishiben", 3),
+        "",
+    );
+
+    // 2. 用户历史升权方向账：同频并列词，commit 后必反超（三因子之用户历史）。
+    //    （并列取字典序——「计算乙」U+4E59 < 「计算器」U+5668，先手为乙。）
+    let mut e2 = ImeEngine::new();
+    e2.add_word("计算器", "jisuanqi", 100);
+    e2.add_word("计算乙", "jisuanqi", 100);
+    let before_first = e2.first_candidate("jisuanqi");
+    let _ = e2.commit("计算器", "jisuanqi");
+    let after_first = e2.first_candidate("jisuanqi");
+    set.add(
+        "user history boost flips order",
+        before_first == Some(String::from("计算乙"))
+            && after_first == Some(String::from("计算器")),
+        "",
+    );
+
+    // 3. 造词三次入库：连选第三次自动成词（COIN 语义深化）。
+    let mut e3 = ImeEngine::new();
+    let coined_after_two = {
+        let _ = e3.commit("量子隧穿", "liangzisuishuan");
+        let _ = e3.commit("量子隧穿", "liangzisuishuan");
+        e3.candidates("liangzisuishuan").iter().any(|(t, _)| t == "量子隧穿")
+    };
+    let _ = e3.commit("量子隧穿", "liangzisuishuan");
+    let coined_after_three = e3
+        .candidates("liangzisuishuan")
+        .iter()
+        .any(|(t, _)| t == "量子隧穿");
+    set.add(
+        "coin on third commit",
+        !coined_after_two && coined_after_three && e3.coined_len() == 1,
+        "",
+    );
+
+    // 4. 上下文句界：句内上下文提升含上屏词的候选；句末清空后回到频序。
+    let mut e4 = ImeEngine::new();
+    e4.add_word("先", "xian", 100);
+    e4.add_word("西安", "xi'an", 100);
+    let base_first = e4.first_candidate("xian");
+    let _ = e4.commit("西", "xi");
+    let ctx_first = e4.first_candidate("xian");
+    e4.end_sentence();
+    let cleared_first = e4.first_candidate("xian");
+    set.add(
+        "context scoped to sentence",
+        base_first == Some(String::from("先"))
+            && ctx_first == Some(String::from("西安"))
+            && cleared_first == Some(String::from("先")),
+        "",
+    );
+
+    // 5. 首候选命中率抽样账：十连抽全对出 1000‰，错一次如实回落。
+    let mut s = FirstHitSampling::new();
+    for _ in 0..9 {
+        s.record("jisuanqi", "计算器", "计算器");
+    }
+    s.record("jisuanqi", "计算场", "计算器");
+    set.add(
+        "first hit sampling ledger",
+        s.len() == 10 && s.rate_permille() == 900 && s.trail.iter().filter(|(_, _, h)| *h).count() == 9,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn sampling_empty_rate_zero() {
+        let s = FirstHitSampling::new();
+        assert_eq!(s.rate_permille(), 0);
+    }
+
+    #[test]
+    fn coin_streak_other_word_does_not_interfere() {
+        let mut e = ImeEngine::new();
+        let _ = e.commit("量子隧穿", "liangzisuishuan");
+        let _ = e.commit("量子纠缠", "liangzijiuquan");
+        let _ = e.commit("量子隧穿", "liangzisuishuan");
+        // 各自计数独立——隧穿 2 次、纠缠 1 次，都未达三次。
+        assert_eq!(e.coined_len(), 0);
+    }
+
+    #[test]
+    fn determinism_holds_after_commits() {
+        let mut e = ImeEngine::new();
+        e.add_word("计算器", "jisuanqi", 100);
+        let _ = e.commit("计算器", "jisuanqi");
+        assert!(candidates_deterministic(&e, "jisuanqi", 4));
+    }
+}

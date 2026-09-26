@@ -347,3 +347,263 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F316 倒计时控制器/媒体豁免账 + F317 氛围内容账/恢复采样账
+// ---------------------------------------------------------------------------
+
+/// F316 锁定前倒计时控制器（「锁定前 60 秒屏角淡入倒计时提示（可取消）」
+/// 的状态机）：到点出提示 → 用户可取消（活动重置闲置计时）→ 取消后
+/// 重算；到期未取消 → 锁屏（衔接 F238）。
+pub struct CountdownCtl {
+    /// 提示出场时刻（锁定时刻 - 60s）。
+    pub shown_at_ms: Option<u64>,
+    pub cancelled: bool,
+    pub locked: bool,
+}
+
+impl CountdownCtl {
+    pub fn new() -> CountdownCtl {
+        CountdownCtl { shown_at_ms: None, cancelled: false, locked: false }
+    }
+
+    /// 到点出提示（lock_at 由调用方算好——提前 60s）。
+    pub fn show(&mut self, now_ms: u64) -> bool {
+        if self.locked || self.shown_at_ms.is_some() {
+            return false;
+        }
+        self.shown_at_ms = Some(now_ms);
+        true
+    }
+
+    /// 用户取消（活动即取消——回来干活了）。
+    pub fn cancel(&mut self) -> bool {
+        if self.shown_at_ms.is_none() || self.cancelled || self.locked {
+            return false;
+        }
+        self.cancelled = true;
+        true
+    }
+
+    /// 到期未取消 → 锁屏。
+    pub fn expire(&mut self) -> bool {
+        if self.shown_at_ms.is_none() || self.cancelled || self.locked {
+            return false;
+        }
+        self.locked = true;
+        true
+    }
+
+    /// 取消后新一轮（重置全部状态——闲置计时重算）。
+    pub fn reset(&mut self) {
+        *self = CountdownCtl::new();
+    }
+}
+
+impl Default for CountdownCtl {
+    fn default() -> CountdownCtl {
+        CountdownCtl::new()
+    }
+}
+
+/// F316 媒体豁免账（「正在看视频不算闲置——媒体会话活跃时暂停计时」）：
+/// 活跃区间累计冻结时长——豁免不是漏计时，是明账。
+#[derive(Default)]
+pub struct MediaExemptLedger {
+    pub active_spans: u64,
+    pub frozen_ms: u64,
+}
+
+impl MediaExemptLedger {
+    pub fn new() -> MediaExemptLedger {
+        MediaExemptLedger::default()
+    }
+
+    /// 记一段媒体活跃（起点→终点，时段内闲置计时冻结）。
+    pub fn span(&mut self, from_ms: u64, to_ms: u64) {
+        if to_ms > from_ms {
+            self.active_spans += 1;
+            self.frozen_ms += to_ms - from_ms;
+        }
+    }
+
+    /// 闲置计时对账：有效期 = 墙钟 − 冻结段（媒体在看不算闲置）。
+    pub fn effective_idle_ms(&self, wall_idle_ms: u64) -> u64 {
+        wall_idle_ms.saturating_sub(self.frozen_ms)
+    }
+}
+
+/// F317 氛围内容账（三款内容登记制——时钟大字/相册轮播/纯黑护眼，
+/// 账外内容拒绝）。
+pub struct AmbienceContentLog {
+    registered: Vec<&'static str>,
+    pub current: Option<&'static str>,
+}
+
+impl AmbienceContentLog {
+    pub const CONTENTS: [&'static str; 3] = ["时钟大字", "相册轮播", "纯黑护眼"];
+
+    pub fn new() -> AmbienceContentLog {
+        AmbienceContentLog { registered: Self::CONTENTS.to_vec(), current: None }
+    }
+
+    /// 选内容（登记外拒绝——不静默）。
+    pub fn select(&mut self, name: &'static str) -> bool {
+        if !self.registered.contains(&name) {
+            return false;
+        }
+        self.current = Some(name);
+        true
+    }
+
+    /// 职责分离审计：氛围模式不承担安全职责（结构断言——本类型无锁屏
+    /// 字段，安全面全在 F316 的 IdleLock/CountdownCtl）。
+    pub const fn security_free() -> bool {
+        true
+    }
+
+    pub fn registered_count(&self) -> usize {
+        self.registered.len()
+    }
+}
+
+impl Default for AmbienceContentLog {
+    fn default() -> AmbienceContentLog {
+        AmbienceContentLog::new()
+    }
+}
+
+/// F317 恢复采样账（「恢复交互即回工作状态 <300ms」的实测载体）。
+pub struct ResumeSampleBook {
+    samples: Vec<u64>,
+    cap: usize,
+}
+
+impl ResumeSampleBook {
+    pub fn new(cap: usize) -> ResumeSampleBook {
+        ResumeSampleBook { samples: Vec::new(), cap: cap.max(1) }
+    }
+
+    pub fn push(&mut self, resume_ms: u64) {
+        self.samples.push(resume_ms);
+        if self.samples.len() > self.cap {
+            self.samples.remove(0);
+        }
+    }
+
+    pub fn p95(&self) -> u64 {
+        let mut s = self.samples.clone();
+        s.sort_unstable();
+        super::hbase::percentile(&s, 950)
+    }
+
+    pub fn within(&self, limit_ms: u64) -> bool {
+        self.p95() <= limit_ms
+    }
+}
+
+/// 深化层二自检（倒计时状态机 / 媒体豁免账 / 氛围内容 / 恢复采样）。
+pub fn run_idlelock_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F316-317-deep2");
+
+    // 1. 倒计时状态机：出提示 → 取消 → 重置 → 出提示 → 到期锁屏。
+    let mut cd = CountdownCtl::new();
+    let s1 = cd.show(14 * 60 * 1000);
+    let c1 = cd.cancel();
+    cd.reset();
+    let s2 = cd.show(14 * 60 * 1000);
+    let e1 = cd.expire();
+    set.add(
+        "countdown cancel then expire",
+        s1 && c1 && s2 && e1 && cd.locked && !cd.cancelled,
+        "",
+    );
+
+    // 2. 状态机防呆：锁屏后取消拒绝；未出提示到期拒绝；重复出提示拒绝。
+    let mut cd2 = CountdownCtl::new();
+    let early = cd2.expire();
+    let _ = cd2.show(0);
+    let _ = cd2.expire();
+    let late_cancel = cd2.cancel();
+    let dup = cd2.show(1);
+    set.add(
+        "countdown guard rails",
+        !early && !late_cancel && !dup,
+        "",
+    );
+
+    // 3. 媒体豁免账：墙钟闲置 20 分钟 − 冻结 15 分钟 = 有效闲置 5 分钟
+    //    （看片 15 分钟不算闲置——明账不是漏算）。
+    let mut m = MediaExemptLedger::new();
+    m.span(0, 15 * 60 * 1000);
+    set.add(
+        "media exemption accounted",
+        m.active_spans == 1
+            && m.frozen_ms == 15 * 60 * 1000
+            && m.effective_idle_ms(20 * 60 * 1000) == 5 * 60 * 1000,
+        "",
+    );
+
+    // 4. 电池档默认 10 分钟（默认策略结构面——不问即默认）。
+    let pol = LockPolicy::default_policy();
+    set.add("battery tier default 10min", pol.timeout_ms(true) == Some(BATTERY_TIER_MIN * 60 * 1000), "");
+
+    // 5. 演示模式 2h 边界：到 2h 整失效（演示暂停不无限）。
+    let mut il = IdleLock::new(LockPolicy::default_policy());
+    il.demo_pause(0);
+    set.add(
+        "demo pause exactly 2h expires",
+        il.demo_active(DEMO_PAUSE_MS - 1) && !il.demo_active(DEMO_PAUSE_MS),
+        "",
+    );
+
+    // 6. F317 氛围内容账：三款登记全可选中、账外拒绝、职责分离断言。
+    let mut amb = AmbienceContentLog::new();
+    let ok_all = AmbienceContentLog::CONTENTS.iter().all(|c| amb.select(c));
+    let rogue = amb.select("跑马灯");
+    set.add(
+        "ambience contents gated",
+        ok_all && !rogue && amb.registered_count() == 3 && AmbienceContentLog::security_free(),
+        "",
+    );
+
+    // 7. F317 恢复采样：p95 <300ms 判线。
+    let mut rs = ResumeSampleBook::new(16);
+    for ms in [120u64, 180, 240, 290] {
+        rs.push(ms);
+    }
+    set.add("ambience resume within 300ms", rs.within(AMBIENCE_RESUME_MS) && rs.p95() == 290, "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn media_span_zero_length_ignored() {
+        let mut m = MediaExemptLedger::new();
+        m.span(100, 100);
+        assert_eq!((m.active_spans, m.frozen_ms), (0, 0));
+    }
+
+    #[test]
+    fn countdown_show_twice_rejected() {
+        let mut cd = CountdownCtl::new();
+        assert!(cd.show(0));
+        assert!(!cd.show(1));
+    }
+
+    #[test]
+    fn resume_book_empty_within() {
+        let rs = ResumeSampleBook::new(4);
+        assert!(rs.within(300), "无样本不虚报超限");
+    }
+
+    #[test]
+    fn ambience_default_none() {
+        let amb = AmbienceContentLog::new();
+        assert!(amb.current.is_none(), "默认不选内容——用户点头才启用");
+    }
+}

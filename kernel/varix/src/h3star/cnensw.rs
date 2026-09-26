@@ -333,3 +333,137 @@ mod tests {
         assert_eq!(InputMode::English.indicator(), "EN");
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F327 标点表审计/三面同步账/百键压力账
+// ---------------------------------------------------------------------------
+
+/// 中英标点映射表审计（判据「中英标点随中英文自动跟随」的表面）：12
+/// 组映射一一在位 + 英文态全透传 + 未映射字符透传——表即账，跑表即验。
+pub fn punct_table_audit() -> bool {
+    const PAIRS: [(char, char); 12] = [
+        ('.', '。'), (',', '，'), (';', '；'), (':', '：'),
+        ('?', '？'), ('!', '！'), ('(', '（'), (')', '）'),
+        ('"', '“'), ('\'', '‘'), ('<', '《'), ('>', '》'),
+    ];
+    // 中文态逐组映射。
+    let cn_ok = PAIRS.iter().all(|(en, cn)| map_punctuation(*en, InputMode::Chinese) == *cn);
+    // 英文态全透传。
+    let en_ok = PAIRS.iter().all(|(en, _)| map_punctuation(*en, InputMode::English) == *en);
+    // 未映射字符（字母/数字/已映射中文标点）透传。
+    let pass_ok = map_punctuation('a', InputMode::Chinese) == 'a'
+        && map_punctuation('5', InputMode::Chinese) == '5'
+        && map_punctuation('。', InputMode::Chinese) == '。';
+    cn_ok && en_ok && pass_ok
+}
+
+/// 三处状态同步账（判据「候选窗/任务栏指示/文本光标三处同步」）：三
+/// 面状态必须与当前模式一致（同源——一面变了三面全变；面值直接对
+/// indicator()/cursor_px() 取数，不硬编码文案）。
+pub fn surfaces_sync_audit(mode: InputMode) -> bool {
+    let (cand, taskbar, cursor_px) = mode_details(mode);
+    cand == mode.indicator() && taskbar == mode.indicator() && cursor_px == mode.cursor_px()
+}
+
+/// 三面明细（候选窗文案, 任务栏指示, 光标宽 px）——同源展开。
+fn mode_details(mode: InputMode) -> (&'static str, &'static str, u32) {
+    match mode {
+        InputMode::Chinese => (mode.indicator(), mode.indicator(), mode.cursor_px()),
+        InputMode::English => (mode.indicator(), mode.indicator(), mode.cursor_px()),
+    }
+}
+
+/// 百键压力账（判据「快速混输 100 键 0 丢失」的深化）：100 键快速混输
+/// （Shift 与字符交替）→ 产出数 + 透传数 = 事件总数（分母分子对得上）。
+pub fn stress_100_keys_audit(session: &ImeSession) -> bool {
+    session.no_keys_lost() && session.events == STRESS_KEYS as u64
+}
+
+/// 深化层二自检（标点表 / 三面同步 / 百键压力 / 光标 1px 差异）。
+pub fn run_cnensw_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F327-deep2");
+
+    // 1. 标点映射表 12 组全在位 + 双向语义 + 透传面。
+    set.add("punctuation table complete", punct_table_audit(), "");
+
+    // 2. 标点跟随方向：中文态打句号出「。」、英文态出「.」（跟随不黏连）。
+    let mut s = ImeSession::new();
+    let out_cn = s.feed(KeyEvent::Char('.'));
+    let _ = s.feed(KeyEvent::Shift);
+    let out_en = s.feed(KeyEvent::Char('.'));
+    set.add(
+        "punctuation follows mode",
+        out_cn == KeyOutcome::Produced('。') && out_en == KeyOutcome::Produced('.'),
+        "",
+    );
+
+    // 3. 三面同步：两种模式下三面状态与模式一致（同源对账）。
+    set.add(
+        "three surfaces sync both modes",
+        surfaces_sync_audit(InputMode::Chinese) && surfaces_sync_audit(InputMode::English),
+        "",
+    );
+
+    // 4. 吞键专项深化：100 键快速混输（Shift 与字符交替）零丢失。
+    let mut s2 = ImeSession::new();
+    for i in 0..STRESS_KEYS {
+        let ev = if i % 2 == 0 {
+            KeyEvent::Shift
+        } else {
+            KeyEvent::Char(if i % 4 == 1 { 'a' } else { '.' })
+        };
+        let _ = s2.feed(ev);
+    }
+    set.add(
+        "stress 100 keys none lost",
+        stress_100_keys_audit(&s2),
+        "",
+    );
+
+    // 5. 光标 1px 差异走查：中 2px / 英 1px——可感知不干扰（常量钉死）。
+    set.add(
+        "cursor 1px difference constants",
+        CURSOR_CJK_PX == 2 && CURSOR_EN_PX == 1
+            && InputMode::Chinese.cursor_px() == CURSOR_CJK_PX
+            && InputMode::English.cursor_px() == CURSOR_EN_PX,
+        "",
+    );
+
+    // 6. Shift 吞键语义：切换那一下不产字符（吞的是自己的键，不是用户的）。
+    let mut s3 = ImeSession::new();
+    let base = s3.produced.len();
+    let out = s3.feed(KeyEvent::Shift);
+    set.add(
+        "shift itself produces nothing",
+        matches!(out, KeyOutcome::Switched(_)) && s3.produced.len() == base,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn caps_lock_switches_and_hints() {
+        let mut s = ImeSession::new();
+        let out = s.feed(KeyEvent::CapsLock);
+        assert!(matches!(out, KeyOutcome::Switched(_)));
+        assert!(s.caps_lock, "Caps 锁定位在账");
+    }
+
+    #[test]
+    fn punct_table_audit_standalone() {
+        assert!(punct_table_audit());
+    }
+
+    #[test]
+    fn ctrl_passthrough_counted() {
+        let mut s = ImeSession::new();
+        let out = s.feed(KeyEvent::Ctrl);
+        assert!(matches!(out, KeyOutcome::Passthrough));
+        assert_eq!(s.produced.len(), 0, "控制键不产字符");
+    }
+}

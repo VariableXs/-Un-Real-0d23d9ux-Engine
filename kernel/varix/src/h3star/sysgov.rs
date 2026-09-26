@@ -395,6 +395,11 @@ impl StartupManager {
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
+
+    /// 只读清单视图（审计面用——BootGateAudit 等逐项核查需要遍历）。
+    pub fn items(&self) -> &[StartupItem] {
+        &self.items
+    }
 }
 
 impl Default for StartupManager {
@@ -1021,5 +1026,956 @@ mod deep_tests {
         let mut j = RepairJournal::new(0);
         j.record(RepairJournalEntry { at_ms: 0, auto: true, fixed: 0, lines: Vec::new() });
         assert_eq!(j.len(), 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F344 执行划勾账/保留分类/关联清理 + F343 升级账/OOM 协调 +
+// F345 旧应用提示/按应用查看 + F346 开机门审计
+// ---------------------------------------------------------------------------
+
+/// F344 执行页逐项划勾账（「进度+逐项清单实时划勾」判据载体）：逐项
+/// 完成标记幂等，全部划勾才允许进入完成页。
+pub struct UninstallProgress {
+    items: Vec<(&'static str, bool)>,
+}
+
+impl UninstallProgress {
+    pub fn new(items: &[&'static str]) -> UninstallProgress {
+        UninstallProgress { items: items.iter().map(|i| (*i, false)).collect() }
+    }
+
+    /// 划勾（幂等——重复划同一项不重复计数）。
+    pub fn tick(&mut self, item: &str) -> bool {
+        match self.items.iter_mut().find(|(n, _)| *n == item) {
+            Some((_, done)) => {
+                if *done {
+                    false
+                } else {
+                    *done = true;
+                    true
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// 进度（已完成, 总数）——执行页实时显示。
+    pub fn progress(&self) -> (usize, usize) {
+        (self.items.iter().filter(|(_, d)| *d).count(), self.items.len())
+    }
+
+    pub fn all_done(&self) -> bool {
+        self.items.iter().all(|(_, d)| *d)
+    }
+
+    /// 未完成项（完成页前置校验——有遗留就不放行）。
+    pub fn pending(&self) -> Vec<&'static str> {
+        self.items.iter().filter(|(_, d)| !d).map(|(n, _)| *n).collect()
+    }
+}
+
+/// 完成页处置（默认：用户文档保留、缓存清理、配置保留——「用户数据不
+/// 被误删」的红线落在默认值上；每类可改）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Disposition {
+    Keep,
+    Clean,
+}
+
+/// F344 完成页保留/清理分类账。
+pub struct KeepCleanClassify {
+    pub docs: Disposition,
+    pub caches: Disposition,
+    pub config: Disposition,
+}
+
+impl Default for KeepCleanClassify {
+    fn default() -> KeepCleanClassify {
+        KeepCleanClassify { docs: Disposition::Keep, caches: Disposition::Clean, config: Disposition::Keep }
+    }
+}
+
+impl KeepCleanClassify {
+    /// 逐类改判（每类可改——判据载体）。
+    pub fn override_kind(&mut self, kind: &str, d: Disposition) -> bool {
+        match kind {
+            "docs" => {
+                self.docs = d;
+                true
+            }
+            "caches" => {
+                self.caches = d;
+                true
+            }
+            "config" => {
+                self.config = d;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 完成页汇总（保留了什么/清理了什么——两份清单互斥完备）。
+    pub fn summary(&self) -> ([&'static str; 3], [&'static str; 3]) {
+        let per = |d: Disposition| match d {
+            Disposition::Keep => 0usize,
+            Disposition::Clean => 1usize,
+        };
+        let mut kept = ["", "", ""];
+        let mut cleaned = ["", "", ""];
+        for (idx, (name, disp)) in
+            [("用户文档", self.docs), ("缓存", self.caches), ("配置", self.config)]
+                .into_iter()
+                .enumerate()
+        {
+            if per(disp) == 0 {
+                kept[idx] = name;
+            } else {
+                cleaned[idx] = name;
+            }
+        }
+        (kept, cleaned)
+    }
+}
+
+/// F344 关联清理账：文件类型注册/自启动项/权限回收（F324 联动）三面
+/// 逐项留痕——「卸载会同时清理这些」的承诺对账面。
+#[derive(Default)]
+pub struct AssociationReclaim {
+    pub ftypes_removed: Vec<String>,
+    pub autostart_removed: bool,
+    pub perms_revoked: Vec<&'static str>,
+}
+
+impl AssociationReclaim {
+    pub fn remove_ftype(&mut self, ext: &str) {
+        if !self.ftypes_removed.iter().any(|x| x == ext) {
+            self.ftypes_removed.push(String::from(ext));
+        }
+    }
+
+    pub fn revoke_autostart(&mut self) {
+        self.autostart_removed = true;
+    }
+
+    pub fn revoke_perm(&mut self, perm: &'static str) {
+        if !self.perms_revoked.contains(&perm) {
+            self.perms_revoked.push(perm);
+        }
+    }
+
+    /// 关联清理完整性：三面全部回收（计划里有就都必须出现在账上）。
+    pub fn fully_reclaimed(&self, plan_ftypes: usize, plan_autostart: bool, plan_perms: usize) -> bool {
+        self.ftypes_removed.len() == plan_ftypes
+            && self.autostart_removed == plan_autostart
+            && self.perms_revoked.len() == plan_perms
+    }
+}
+
+/// F343 三级链升级账（用户面审计）：阶段迁移序列可回放 + 决策条一次性
+/// + 用户决定落账（不替用户做主——账上必须有用户的决定）。
+pub struct MemEscapeLog {
+    pub stages: Vec<MemStage>,
+    asked_once: bool,
+    pub decision: Option<bool>,
+}
+
+impl MemEscapeLog {
+    pub fn new() -> MemEscapeLog {
+        MemEscapeLog { stages: alloc::vec![MemStage::Normal], asked_once: false, decision: None }
+    }
+
+    /// 升级（只许逐级：Normal→Compress→Freeze→AskUser；乱序拒绝）。
+    pub fn escalate(&mut self, to: MemStage) -> bool {
+        let cur_rank = Self::rank(self.stages.last().copied());
+        let to_rank = Self::rank(Some(to));
+        if to_rank != cur_rank + 1 {
+            return false;
+        }
+        self.stages.push(to);
+        true
+    }
+
+    fn rank(s: Option<MemStage>) -> usize {
+        match s {
+            Some(MemStage::Normal) | None => 0,
+            Some(MemStage::Compress) => 1,
+            Some(MemStage::Freeze) => 2,
+            Some(MemStage::AskUser) => 3,
+        }
+    }
+
+    /// 弹决策条（一次性——同一次紧张期内重复弹被拒绝；恢复后再紧
+    /// 张经 reset 后可再弹）。
+    pub fn ask(&mut self) -> bool {
+        if self.asked_once {
+            return false;
+        }
+        self.asked_once = true;
+        true
+    }
+
+    /// 用户决定（Some(true)=关后台 / Some(false)=继续但可能变慢）。
+    pub fn decide(&mut self, close_background: bool) -> bool {
+        if !self.asked_once || self.decision.is_some() {
+            return false;
+        }
+        self.decision = Some(close_background);
+        true
+    }
+
+    /// 新一轮紧张（恢复后）——决策条资格复位。
+    pub fn reset_cycle(&mut self) {
+        self.asked_once = false;
+        self.decision = None;
+    }
+}
+
+impl Default for MemEscapeLog {
+    fn default() -> MemEscapeLog {
+        MemEscapeLog::new()
+    }
+}
+
+/// F343 OOM 前协调审计：协调前后应用侧分配失败率对账——协调必须让
+/// 失败率下降（「应用 OOM 前系统先协调」的账面直证）。
+pub struct OomCoordination {
+    pub fail_rate_before_ppm: u64,
+    pub fail_rate_after_ppm: u64,
+}
+
+impl OomCoordination {
+    pub fn record(before_ppm: u64, after_ppm: u64) -> OomCoordination {
+        OomCoordination { fail_rate_before_ppm: before_ppm, fail_rate_after_ppm: after_ppm }
+    }
+
+    pub fn coordinated(&self) -> bool {
+        self.fail_rate_after_ppm < self.fail_rate_before_ppm
+    }
+
+    /// 下降幅度（‰）。
+    pub fn reduction_permille(&self) -> u64 {
+        if self.fail_rate_before_ppm == 0 {
+            0
+        } else {
+            (self.fail_rate_before_ppm - self.fail_rate_after_ppm) * 1000 / self.fail_rate_before_ppm
+        }
+    }
+}
+
+/// F345 旧应用提示账：改默认时旧应用入队（「下次打开相关文件得到系统
+/// 级提示而非静默改道」）→ 提示一次即出队；首装（无旧默认）不提示。
+pub struct DefaultChangeNotice {
+    queue: Vec<(String, String)>,
+    pub notices_shown: u64,
+}
+
+impl DefaultChangeNotice {
+    pub fn new() -> DefaultChangeNotice {
+        DefaultChangeNotice { queue: Vec::new(), notices_shown: 0 }
+    }
+
+    /// 默认变更（old 为空 = 首装不提示——返回是否入队）。
+    pub fn changed(&mut self, kind: &str, old_app: &str) -> bool {
+        if old_app.is_empty() {
+            return false;
+        }
+        if !self.queue.iter().any(|(k, a)| k == kind && a == old_app) {
+            self.queue.push((String::from(kind), String::from(old_app)));
+        }
+        true
+    }
+
+    /// 旧应用下次打开相关文件 → 出队提示（一次即清——不反复打扰）。
+    pub fn take_next(&mut self) -> Option<(String, String)> {
+        if self.queue.is_empty() {
+            return None;
+        }
+        self.notices_shown += 1;
+        Some(self.queue.remove(0))
+    }
+
+    pub fn pending(&self) -> usize {
+        self.queue.len()
+    }
+}
+
+impl Default for DefaultChangeNotice {
+    fn default() -> DefaultChangeNotice {
+        DefaultChangeNotice::new()
+    }
+}
+
+/// F345 按应用查看：应用 → 声明默认权的类型集合；一键全收回（「某应
+/// 用声明了哪些类型的默认权，一键全收回」判据载体）。
+#[derive(Default)]
+pub struct AppClaimsView {
+    claims: Vec<(String, Vec<String>)>,
+}
+
+impl AppClaimsView {
+    pub fn claim(&mut self, app: &str, kind: &str) {
+        match self.claims.iter_mut().find(|(a, _)| a == app) {
+            Some((_, kinds)) => {
+                if !kinds.iter().any(|k| k == kind) {
+                    kinds.push(String::from(kind));
+                }
+            }
+            None => self.claims.push((String::from(app), vec![String::from(kind)])),
+        }
+    }
+
+    pub fn claims_of(&self, app: &str) -> &[String] {
+        self.claims.iter().find(|(a, _)| a == app).map(|(_, k)| k.as_slice()).unwrap_or(&[])
+    }
+
+    /// 一键全收回：返回收回的类型数（应用保留在列表但声明权清空）。
+    pub fn reclaim_all(&mut self, app: &str) -> usize {
+        match self.claims.iter_mut().find(|(a, _)| a == app) {
+            Some((_, kinds)) => {
+                let n = kinds.len();
+                kinds.clear();
+                n
+            }
+            None => 0,
+        }
+    }
+}
+
+/// F346 开机门审计（第三清单深化）：冷启动执行集只含「Boot 清单且已
+/// 启用」的项——禁用即时生效的结构证明（下轮冷启动验证的账面）。
+pub struct BootGateAudit;
+
+impl BootGateAudit {
+    /// 本次开机实际执行集（Boot + enabled 双条件——其余清单不参与开机）。
+    pub fn run_boot(items: &[StartupItem]) -> Vec<&StartupItem> {
+        items
+            .iter()
+            .filter(|it| it.enabled && matches!(it.list, StartupList::Boot))
+            .collect()
+    }
+
+    /// 三清单独立性：同一应用在三份清单中的条目互不干扰（各清单计数）。
+    pub fn list_counts(items: &[StartupItem]) -> (usize, usize, usize) {
+        (
+            items.iter().filter(|it| matches!(it.list, StartupList::Boot)).count(),
+            items.iter().filter(|it| matches!(it.list, StartupList::AfterLogin)).count(),
+            items.iter().filter(|it| matches!(it.list, StartupList::Scheduled)).count(),
+        )
+    }
+}
+
+/// 深化层二自检（F344 划勾/分类/关联 + F343 升级/OOM + F345 提示/声明权 + F346 开机门）。
+pub fn run_sysgov_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep2");
+
+    // 1. F344 执行页逐项划勾：幂等 + 全部划勾才放行 + 遗留可查。
+    let mut pr = UninstallProgress::new(&["清理注册", "删缓存", "回收权限"]);
+    let t1 = pr.tick("清理注册");
+    let t1b = pr.tick("清理注册");
+    let _ = pr.tick("删缓存");
+    set.add(
+        "uninstall progress ledger",
+        t1 && !t1b && pr.progress() == (2, 3) && !pr.all_done() && pr.pending() == vec!["回收权限"],
+        "",
+    );
+    let _ = pr.tick("回收权限");
+    set.add("uninstall progress gate", pr.all_done() && pr.pending().is_empty(), "");
+
+    // 2. F344 完成页分类：默认（文档保留/缓存清/配置保留）+ 逐类可改 + 两清单互斥。
+    let mut kc = KeepCleanClassify::default();
+    let (kept, cleaned) = kc.summary();
+    set.add(
+        "keep-clean defaults",
+        kept == ["用户文档", "", "配置"] && cleaned == ["", "缓存", ""],
+        "",
+    );
+    let _ = kc.override_kind("caches", Disposition::Keep);
+    let (kept2, cleaned2) = kc.summary();
+    set.add("keep-clean overridable", kept2[1] == "缓存" && cleaned2.iter().all(|s| s.is_empty()), "");
+    set.add("keep-clean unknown kind rejected", !kc.override_kind("磁盘", Disposition::Clean), "");
+
+    // 3. F344 关联清理：三面逐项留痕 + 完整性对账。
+    let mut ar = AssociationReclaim::default();
+    ar.remove_ftype(".vxn");
+    ar.remove_ftype(".vxn"); // 幂等。
+    ar.revoke_autostart();
+    ar.revoke_perm("麦克风");
+    ar.revoke_perm("摄像头");
+    set.add(
+        "association reclaim",
+        ar.ftypes_removed.len() == 1 && ar.autostart_removed && ar.perms_revoked.len() == 2
+            && ar.fully_reclaimed(1, true, 2),
+        "",
+    );
+    set.add("association reclaim incomplete caught", !ar.fully_reclaimed(2, true, 2), "");
+
+    // 4. F343 升级账：逐级推进合法、跳级拒绝。
+    let mut mlog = MemEscapeLog::new();
+    let jump = mlog.escalate(MemStage::Freeze);
+    let ok1 = mlog.escalate(MemStage::Compress);
+    let ok2 = mlog.escalate(MemStage::Freeze);
+    let ok3 = mlog.escalate(MemStage::AskUser);
+    set.add(
+        "mem escalation order enforced",
+        !jump && ok1 && ok2 && ok3 && mlog.stages.len() == 4,
+        "",
+    );
+
+    // 5. F343 决策条一次性：二次弹拒绝；决定落账一次；新一轮复位。
+    let ask1 = mlog.ask();
+    let ask2 = mlog.ask();
+    let d1 = mlog.decide(true);
+    let d2 = mlog.decide(false);
+    set.add(
+        "mem ask once + decision ledger",
+        ask1 && !ask2 && d1 && !d2 && mlog.decision == Some(true),
+        "",
+    );
+    mlog.reset_cycle();
+    set.add("mem cycle reset allows new ask", mlog.ask(), "");
+
+    // 6. F343 OOM 协调审计：失败率必须下降 + 下降幅度‰。
+    let oom = OomCoordination::record(4_000, 1_200);
+    set.add(
+        "oom coordination improves",
+        oom.coordinated() && oom.reduction_permille() == 700,
+        "",
+    );
+    let oom_bad = OomCoordination::record(1_000, 1_500);
+    set.add("oom regression caught", !oom_bad.coordinated(), "");
+
+    // 7. F345 旧应用提示：首装不提示、变更入队、提示一次出队。
+    let mut dn = DefaultChangeNotice::new();
+    let first = dn.changed("网页", "");
+    let change = dn.changed("网页", "旧浏览器");
+    let taken = dn.take_next();
+    let empty = dn.take_next();
+    set.add(
+        "default change notice",
+        !first && change && dn.notices_shown == 1
+            && taken == Some((String::from("网页"), String::from("旧浏览器")))
+            && empty.is_none()
+            && dn.pending() == 0,
+        "",
+    );
+
+    // 8. F345 按应用查看：声明权聚合 + 一键全收回（先取回收前账面再收回）。
+    let mut av = AppClaimsView::default();
+    av.claim("星编辑", "文本");
+    av.claim("星编辑", "图片");
+    av.claim("星编辑", "文本"); // 幂等。
+    let claims_before = av.claims_of("星编辑").len();
+    let n = av.reclaim_all("星编辑");
+    set.add(
+        "app claims view reclaim all",
+        claims_before == 2 && n == 2 && av.claims_of("星编辑").is_empty()
+            && av.reclaim_all("星编辑") == 0,
+        "",
+    );
+
+    // 9. F346 开机门：禁用即时生效（下轮冷启动不入执行集）。
+    let mut sm = StartupManager::new();
+    sm.install("云笔记", StartupList::Boot, 800);
+    sm.install("快速搜索", StartupList::AfterLogin, 300);
+    sm.install("周报任务", StartupList::Scheduled, 0);
+    let _ = sm.set_enabled("云笔记", StartupList::Boot, false);
+    let items = sm.items();
+    let run_set = BootGateAudit::run_boot(items);
+    set.add(
+        "boot gate excludes disabled",
+        run_set.is_empty() && BootGateAudit::list_counts(items) == (1, 1, 1),
+        "",
+    );
+    let _ = sm.set_enabled("云笔记", StartupList::Boot, true);
+    let run_set2 = BootGateAudit::run_boot(sm.items());
+    set.add(
+        "boot gate includes re-enabled",
+        run_set2.len() == 1 && run_set2[0].app == "云笔记",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn uninstall_progress_unknown_item_rejected() {
+        let mut pr = UninstallProgress::new(&["a"]);
+        assert!(!pr.tick("不存在"));
+    }
+
+    #[test]
+    fn mem_escalate_from_normal_to_ask_rejected() {
+        let mut m = MemEscapeLog::new();
+        assert!(!m.escalate(MemStage::AskUser), "跳过压缩/冻结直接询问不合法");
+    }
+
+    #[test]
+    fn mem_decide_before_ask_rejected() {
+        let mut m = MemEscapeLog::new();
+        assert!(!m.decide(true), "决策条未弹不可决定");
+    }
+
+    #[test]
+    fn claims_view_unknown_app_empty() {
+        let av = AppClaimsView::default();
+        assert!(av.claims_of("不存在").is_empty());
+    }
+
+    #[test]
+    fn keep_clean_config_override_clean() {
+        let mut kc = KeepCleanClassify::default();
+        assert!(kc.override_kind("config", Disposition::Clean));
+        let (_, cleaned) = kc.summary();
+        assert_eq!(cleaned, ["", "缓存", "配置"]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 注入全链彩排 + F345 声明权仲裁 + F342 忙时排队 + F346 冷启动重放
+// ---------------------------------------------------------------------------
+
+/// F344 注入测试应用全链彩排：清单 → 卸载计划 → 三步 → 关联清理 →
+/// 残留兜底 → 全链对账单（判据「三步清单与实际清理一致性（注入测试
+/// 应用）」的端到端载体）。对账五项全绿才算彩排通过：
+/// ① 清单-实际一致；② 文档默认保留；③ 权限回收（F324）；④ 自启动
+/// 关联回收（F346 联动）；⑤ 兜底扫描清零（清完再扫无残留）。
+pub struct UninstallRehearsal {
+    /// 注入的文件系统账（路径存在性——模拟真实盘面）。
+    pub disk: Vec<(String, bool)>,
+    /// 注入的自启动登记。
+    pub startup: StartupManager,
+    pub flow: UninstallFlow,
+    pub scanner: ResidueScanner,
+    /// 布景清单的应用名（彩排回读用——布景时存底）。
+    pub staged_app: String,
+    /// 布景清单的自启动项（关联回收面）。
+    staged_autostart: Option<(StartupList, String)>,
+    /// 彩排结论账（逐项留痕）。
+    pub report: Vec<(&'static str, bool)>,
+}
+
+impl UninstallRehearsal {
+    /// 布景：把清单声明的文件/缓存/文档写进注入盘面 + 自启动登记。
+    pub fn stage(m: &VxappManifest) -> UninstallRehearsal {
+        let mut disk: Vec<(String, bool)> = m
+            .files
+            .iter()
+            .chain(m.caches.iter())
+            .chain(m.user_docs.iter())
+            .map(|p| (p.clone(), true))
+            .collect();
+        for p in residue_paths_for(&m.app) {
+            disk.push((p, true));
+        }
+        let mut startup = StartupManager::new();
+        if let Some((list, name)) = &m.autostart {
+            startup.install(name, *list, 120);
+            let _ = startup.set_enabled(name, *list, true);
+        }
+        UninstallRehearsal {
+            flow: UninstallFlow::new(footprint_from_manifest(m)),
+            scanner: ResidueScanner::new(),
+            startup,
+            disk,
+            staged_app: m.app.clone(),
+            staged_autostart: m.autostart.clone(),
+            report: Vec::new(),
+        }
+    }
+
+    fn set_path(&mut self, path: &str, exists: bool) {
+        match self.disk.iter_mut().find(|(p, _)| p == path) {
+            Some(slot) => slot.1 = exists,
+            None => self.disk.push((String::from(path), exists)),
+        }
+    }
+
+    /// 走完全链：执行（保文档）→ 关联回收 → 兜底扫描 → 清残留 → 复扫
+    /// → 出对账单。
+    pub fn rehearse(&mut self) -> Vec<(&'static str, bool)> {
+        // 第二步：执行页（文档默认保留）。
+        self.flow.execute(true);
+        // 清单文件与缓存落账删除（文档保留——盘面上仍在）。
+        let mut to_delete: Vec<String> = self.flow.cleaned_regs.clone();
+        to_delete.extend(self.flow.cleaned_caches.iter().cloned());
+        for f in &to_delete {
+            self.set_path(f, false);
+        }
+        // 关联清理：自启动项禁用回收（F346 联动面）。
+        let mut autostart_reclaimed = true;
+        if let Some((list, name)) = &self.staged_autostart {
+            autostart_reclaimed = self.startup.set_enabled(name, *list, false);
+        }
+        // 兜底扫描：规则族展开后逐个盘面核查。
+        let app = self.staged_app.clone();
+        for p in residue_paths_for(&app) {
+            let exists = self.disk.iter().any(|(q, e)| *q == p && *e);
+            self.scanner.observe(&p, exists);
+        }
+        let hits = self.scanner.scan(&app);
+        // 完成页：命中即报可清 → 全清 → 复扫清零。
+        let _ = self.flow.finish(hits.len() as u64);
+        for p in &hits {
+            self.set_path(p, false);
+            self.scanner.observe(p, false);
+        }
+        let rescan = self.scanner.scan(&app);
+
+        self.report = alloc::vec![
+            ("manifest-vs-actual", self.flow.consistent()),
+            ("docs kept by default", {
+                let docs = &self.flow.kept_docs;
+                !docs.is_empty()
+                    && docs.iter().all(|d| self.disk.iter().any(|(q, e)| q == d && *e))
+            }),
+            ("perms revoked", self.flow.perms_revoked),
+            ("autostart reclaimed", autostart_reclaimed),
+            ("rescan zero residue", rescan.is_empty()),
+        ];
+        self.report.clone()
+    }
+
+    pub fn all_green(&self) -> bool {
+        !self.report.is_empty() && self.report.iter().all(|(_, ok)| *ok)
+    }
+}
+
+/// F345 声明权仲裁：安装不抢默认的执行面——新装应用声明默认权一律
+/// 进「待决」清单（矩阵零触碰），用户逐条点头才落位；拒绝即丢弃留痕。
+pub struct ClaimArbitration {
+    /// 待决声明 (类型, 应用)。
+    pending: Vec<(&'static str, String)>,
+    /// 用户裁决留痕：(类型, 应用, 接受?)。
+    pub ruled: Vec<(&'static str, String, bool)>,
+}
+
+impl ClaimArbitration {
+    pub fn new() -> ClaimArbitration {
+        ClaimArbitration { pending: Vec::new(), ruled: Vec::new() }
+    }
+
+    /// 安装面进来一条默认权声明：登记待决，矩阵不动。
+    pub fn install_claim(&mut self, kind: &'static str, app: &str) -> bool {
+        if self.pending.iter().any(|(k, a)| *k == kind && a == app) {
+            return false;
+        }
+        self.pending.push((kind, String::from(app)));
+        true
+    }
+
+    pub fn pending_len(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// 用户裁决：接受/拒绝 → 出待决 + 留痕；未登记的裁决拒绝。
+    /// 落位由调用方在裁决接受后写矩阵（仲裁面与矩阵面职责分离）。
+    pub fn rule(&mut self, kind: &str, app: &str, accept: bool) -> bool {
+        let before = self.pending.len();
+        self.pending.retain(|(k, a)| !(*k == kind && a == app));
+        if self.pending.len() == before {
+            return false;
+        }
+        self.ruled.push((kind_kludge(kind), String::from(app), accept));
+        true
+    }
+
+    pub fn pending(&self) -> &[(&'static str, String)] {
+        &self.pending
+    }
+}
+
+/// &'static 化辅助（裁决留痕只存静态串——账本零生命周期债；类型全集
+/// 与 DefaultApps 矩阵六类型对齐，未知类型不入账由 rule 的登记面挡住）。
+fn kind_kludge(kind: &str) -> &'static str {
+    match kind {
+        "网页" => "网页",
+        "文本" => "文本",
+        "图片" => "图片",
+        "音视频" => "音视频",
+        "压缩" => "压缩",
+        "终端" => "终端",
+        _ => "网页",
+    }
+}
+
+impl Default for ClaimArbitration {
+    fn default() -> ClaimArbitration {
+        ClaimArbitration::new()
+    }
+}
+
+/// F342 磁盘检查忙时排队：手动触发遇忙延后，空闲按 FIFO 出队执行；
+/// 报告走人话映射表（错误码 → 三要素人话——裸异常码不出门）。
+pub struct DiskBusyQueue {
+    queue: Vec<&'static str>,
+    pub busy: bool,
+    /// 已执行留痕（盘名 + 完成序）。
+    pub done: Vec<&'static str>,
+}
+
+/// 人话映射表：检查结论码 →（人话结论 / 原因 / 下一步）三要素。
+pub const DISK_VERBOSER: [(&str, &str, &str, &str); 4] = [
+    ("OK", "磁盘没有问题", "例行自检未发现异常", "无需操作"),
+    ("FIXED", "修好了几处小问题", "发现轻微损坏已自动修复", "可在日志中心查看明细"),
+    ("NEEDS_CHECK", "建议重启后深度检查", "有区块需要重启后才能修复", "点「重启检查」安排在下次开机"),
+    ("FAILING", "磁盘出现故障征兆", "多项检查连续失败", "立即备份数据并考虑更换磁盘"),
+];
+
+impl DiskBusyQueue {
+    pub fn new() -> DiskBusyQueue {
+        DiskBusyQueue { queue: Vec::new(), busy: false, done: Vec::new() }
+    }
+
+    /// 手动触发：忙 → 入队延后（同盘去重）；闲 → 立即执行。
+    pub fn request(&mut self, vol: &'static str) -> bool {
+        if self.busy {
+            if !self.queue.contains(&vol) {
+                self.queue.push(vol);
+            }
+            return false;
+        }
+        self.done.push(vol);
+        true
+    }
+
+    /// 忙转闲：按 FIFO 逐个出队执行（每次一个——避免再挤占）。
+    pub fn drain_one(&mut self) -> Option<&'static str> {
+        if self.busy || self.queue.is_empty() {
+            return None;
+        }
+        let vol = self.queue.remove(0);
+        self.done.push(vol);
+        Some(vol)
+    }
+
+    pub fn queued(&self) -> &[&'static str] {
+        &self.queue
+    }
+
+    /// 人话映射：码必须全部能在表内解释（裸码 = 缺陷）。
+    pub fn verbose(code: &str) -> Option<(&'static str, &'static str, &'static str)> {
+        DISK_VERBOSER
+            .iter()
+            .find(|(c, _, _, _)| *c == code)
+            .map(|(_, a, b, d)| (*a, *b, *d))
+    }
+}
+
+impl Default for DiskBusyQueue {
+    fn default() -> DiskBusyQueue {
+        DiskBusyQueue::new()
+    }
+}
+
+/// F346 冷启动重放 + 估算校准：禁用生效的判据载体——重放只执行
+/// 「Boot 清单且已启用」项；逐项校准（估算 vs 实测 ±20‰ 越界标注，
+/// 台账可见不静默）。
+pub struct BootReplay {
+    pub manager: StartupManager,
+    /// 实测账：(应用, 实测 ms)。
+    pub measured: Vec<(String, u64)>,
+    /// 校准结论：(应用, 估算, 实测, 误差‰, 越界?)。
+    pub calibration: Vec<(String, u64, u64, u64, bool)>,
+}
+
+impl BootReplay {
+    pub fn new(manager: StartupManager) -> BootReplay {
+        BootReplay { manager, measured: Vec::new(), calibration: Vec::new() }
+    }
+
+    /// 冷启动重放：返回本轮实际执行的应用序（禁用项零出现——禁用生效
+    /// 的直接证据）。
+    pub fn cold_start(&self) -> Vec<String> {
+        self.manager
+            .items()
+            .iter()
+            .filter(|i| i.list == StartupList::Boot && i.enabled)
+            .map(|i| i.app.clone())
+            .collect()
+    }
+
+    /// 记录实测并校准：误差 ≤20% 算准；越界项标注入账（下轮估算向
+    /// 实测收敛——影响估算准确性判据的改进面）。
+    pub fn calibrate(&mut self, app: &str, actual_ms: u64) -> bool {
+        self.measured.push((String::from(app), actual_ms));
+        let est = match self.manager.items().iter().find(|i| i.app == app) {
+            Some(i) => i.est_ms,
+            None => return false,
+        };
+        let err_permille = if est == 0 {
+            if actual_ms == 0 { 0 } else { u64::MAX }
+        } else {
+            est.abs_diff(actual_ms) * 1000 / est
+        };
+        let off = err_permille > 200;
+        self.calibration.push((String::from(app), est, actual_ms, err_permille, off));
+        off
+    }
+
+    /// 越界清单（校准未收敛项——台账可见）。
+    pub fn outliers(&self) -> Vec<&str> {
+        self.calibration
+            .iter()
+            .filter(|(_, _, _, _, off)| *off)
+            .map(|(a, _, _, _, _)| a.as_str())
+            .collect()
+    }
+}
+
+/// 深化层三自检（彩排 / 仲裁 / 排队 / 冷启动重放）。
+pub fn run_sysgov_deep3_checks() -> CheckSet {
+    let mut set = CheckSet::new("F342-346-deep3");
+
+    // 1. 全链彩排：注入带全部关联面的清单 → 五项对账全绿。
+    let m = VxappManifest {
+        app: String::from("画板Pro"),
+        files: alloc::vec![String::from("Apps/画板Pro/main.vx"), String::from("Apps/画板Pro/lib.vxd")],
+        file_types: alloc::vec![String::from(".vxd"), String::from(".vxp")],
+        autostart: Some((StartupList::Boot, String::from("画板Pro助手"))),
+        perms: alloc::vec!["麦克风", "相机"],
+        user_docs: alloc::vec![String::from("Docs/画板/我的画稿.vxp")],
+        caches: alloc::vec![String::from("Cache/画板Pro")],
+    };
+    let mut r = UninstallRehearsal::stage(&m);
+    let report = r.rehearse();
+    set.add("rehearsal five-point green", r.all_green() && report.len() == 5, "");
+
+    // 2. 彩排防呆：一致性不是空转——注入「执行漏项」必须红。
+    let mut r2 = UninstallRehearsal::stage(&m);
+    let _ = r2.rehearse();
+    let mut r3 = UninstallRehearsal::stage(&m);
+    r3.flow.cleaned_regs.pop(); // 破坏执行账 → 一致性红。
+    set.add("rehearsal catches drift", r2.flow.consistent() && !r3.flow.consistent(), "");
+
+    // 3. F345 仲裁：声明不落矩阵、待决可见、裁决留痕、重复声明拒绝。
+    let mut arb = ClaimArbitration::new();
+    let mut apps = DefaultApps::new();
+    let before = String::from(apps.get("网页").unwrap_or(""));
+    let _ = arb.install_claim("网页", "星澜浏览器");
+    let _ = arb.install_claim("网页", "星澜浏览器");
+    set.add(
+        "install claim never seizes default",
+        arb.pending_len() == 1 && apps.get("网页") == Some(before.as_str()),
+        "",
+    );
+    let ruled = arb.rule("网页", "星澜浏览器", true);
+    let _ = apps.set("网页", "星澜浏览器"); // 用户点头后才落位。
+    set.add(
+        "rule then apply",
+        ruled && arb.pending().is_empty() && apps.get("网页") == Some("星澜浏览器"),
+        "",
+    );
+    set.add("rule unknown rejected", !arb.rule("图片", "幽灵应用", false), "");
+
+    // 4. F342 忙时排队：忙入队延后、闲 FIFO 出队、人话映射表全覆盖。
+    let mut q = DiskBusyQueue::new();
+    q.busy = true;
+    let now = q.request("C:");
+    let _ = q.request("D:");
+    q.busy = false;
+    let first = q.drain_one();
+    let second = q.drain_one();
+    let none = q.drain_one();
+    set.add(
+        "disk busy queue fifo",
+        !now && first == Some("C:") && second == Some("D:") && none.is_none() && q.done.len() == 2,
+        "",
+    );
+    let all_mapped = DISK_VERBOSER.iter().all(|(c, _, _, _)| DiskBusyQueue::verbose(c).is_some());
+    let human = DiskBusyQueue::verbose("NEEDS_CHECK");
+    set.add(
+        "disk verbose table",
+        all_mapped && human.map(|(a, _, _)| a.contains("深度检查")).unwrap_or(false),
+        "",
+    );
+
+    // 5. F346 冷启动重放：禁用项零出现 + 拖累只含启用项。
+    let mut sm = StartupManager::new();
+    sm.install("云同步", StartupList::Boot, 400);
+    sm.install("剪贴板增强", StartupList::Boot, 90);
+    let _ = sm.set_enabled("云同步", StartupList::Boot, true);
+    // 剪贴板增强保持默认全关。
+    let rp = BootReplay::new(sm);
+    let ran = rp.cold_start();
+    set.add(
+        "cold start disabled never runs",
+        ran == alloc::vec![String::from("云同步")] && rp.manager.boot_impact_ms() == 400,
+        "",
+    );
+
+    // 6. 估算校准：±20% 内算准、越界标注（对账面非静默）。
+    let mut rp2 = BootReplay::new(StartupManager::new());
+    rp2.manager.install("即时通讯", StartupList::Boot, 500);
+    let _ = rp2.manager.set_enabled("即时通讯", StartupList::Boot, true);
+    let ok = rp2.calibrate("即时通讯", 550); // 10% 误差。
+    let off = rp2.calibrate("即时通讯", 900); // 80% 误差。
+    set.add(
+        "impact calibration bands",
+        !ok && off && rp2.outliers() == alloc::vec!["即时通讯"],
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn rehearsal_residue_rules_all_cleaned() {
+        let m = VxappManifest {
+            app: String::from("小算盘"),
+            files: alloc::vec![String::from("Apps/小算盘/a.vx")],
+            file_types: alloc::vec![],
+            autostart: None,
+            perms: alloc::vec![],
+            user_docs: alloc::vec![],
+            caches: alloc::vec![],
+        };
+        let mut r = UninstallRehearsal::stage(&m);
+        let _ = r.rehearse();
+        assert!(r.scanner.scan("小算盘").is_empty(), "规则族五路径全清");
+    }
+
+    #[test]
+    fn arbitration_duplicate_claim_rejected() {
+        let mut arb = ClaimArbitration::new();
+        assert!(arb.install_claim("文本", "编辑器X"));
+        assert!(!arb.install_claim("文本", "编辑器X"));
+        assert!(arb.rule("文本", "编辑器X", false));
+        assert!(!arb.rule("文本", "编辑器X", false), "已裁决的声明不能再裁");
+        assert_eq!(arb.ruled[0].2, false);
+    }
+
+    #[test]
+    fn disk_queue_ignores_duplicate_requests() {
+        let mut q = DiskBusyQueue::new();
+        q.busy = true;
+        assert!(!q.request("C:"));
+        assert!(!q.request("C:"), "同盘重复请求不重复入队");
+        assert_eq!(q.queued().len(), 1);
+    }
+
+    #[test]
+    fn boot_replay_order_follows_registration() {
+        let mut sm = StartupManager::new();
+        sm.install("A", StartupList::Boot, 10);
+        sm.install("B", StartupList::Boot, 20);
+        let _ = sm.set_enabled("A", StartupList::Boot, true);
+        let _ = sm.set_enabled("B", StartupList::Boot, true);
+        let rp = BootReplay::new(sm);
+        assert_eq!(rp.cold_start(), alloc::vec![String::from("A"), String::from("B")]);
+    }
+
+    #[test]
+    fn verbose_unknown_code_is_none() {
+        assert!(DiskBusyQueue::verbose("E_XXX").is_none(), "裸码必须无解释——逼着登记映射表");
     }
 }

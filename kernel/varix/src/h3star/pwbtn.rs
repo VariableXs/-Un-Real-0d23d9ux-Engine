@@ -297,3 +297,245 @@ mod tests {
         assert_eq!(t.evaluate(10_000), PressOutcome::Pending);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F318 三档×双场景执行矩阵账 / 软件路径优先链 / 长按中断账
+// ---------------------------------------------------------------------------
+
+/// 场景键名（矩阵账的格键——两场景人话名，唯一源）。
+fn scenario_key(s: Scenario) -> &'static str {
+    match s {
+        Scenario::PowerButton => "电源按钮",
+        Scenario::LidClose => "合盖",
+    }
+}
+
+/// F318 执行矩阵账：每次电源动作请求留账（场景×供电/动作），审计面
+/// 两查——场景×供电四格全覆盖 + 三档动作都被真实执行过（矩阵用例的
+/// 账面形态，可回放）。
+#[derive(Default)]
+pub struct ActionMatrixLog {
+    cells: Vec<(&'static str, bool)>,
+    actions: Vec<&'static str>,
+}
+
+impl ActionMatrixLog {
+    pub fn new() -> ActionMatrixLog {
+        ActionMatrixLog { cells: Vec::new(), actions: Vec::new() }
+    }
+
+    /// 记录一次按场景×供电的行为。
+    pub fn record_cell(&mut self, scenario: Scenario, on_battery: bool) {
+        let k = scenario_key(scenario);
+        if !self.cells.iter().any(|(a, b)| *a == k && *b == on_battery) {
+            self.cells.push((k, on_battery));
+        }
+    }
+
+    /// 记录一次动作结果。
+    pub fn record_action(&mut self, action: PowerAction) {
+        let k = action.label();
+        if !self.actions.iter().any(|a| *a == k) {
+            self.actions.push(k);
+        }
+    }
+
+    /// 场景×供电四格覆盖（电源键/合盖 × 电池/外接）。
+    pub fn cells_covered(&self) -> usize {
+        self.cells.len()
+    }
+
+    pub const CELLS_TOTAL: usize = 4;
+
+    /// 三档动作全覆盖（睡眠/关机/无动作都有实测）。
+    pub fn actions_covered(&self) -> usize {
+        self.actions.len()
+    }
+
+    pub fn all_covered(&self) -> bool {
+        self.cells.len() == Self::CELLS_TOTAL && self.actions.len() == PowerAction::ALL.len()
+    }
+}
+
+/// F318 软件路径优先链（「软件关机路径优先级验证（B-2902 判据引用）」
+/// 的结构面）：任何硬断之前必须先走软件关机账目——链上事件可回放，
+/// 硬断出现在软件尝试之前即缺陷。
+pub struct SoftwareFirstChain {
+    events: Vec<&'static str>,
+}
+
+impl SoftwareFirstChain {
+    pub const SOFTWARE_STEP: &'static str = "软件关机账目(B-2902)";
+    pub const HARD_STEP: &'static str = "硬件强断";
+
+    pub fn new() -> SoftwareFirstChain {
+        SoftwareFirstChain { events: Vec::new() }
+    }
+
+    /// 一次关机请求：先走软件账目；软件失败才降级硬断。
+    pub fn request_shutdown(&mut self, software_ok: bool) -> &'static str {
+        self.events.push(Self::SOFTWARE_STEP);
+        if software_ok {
+            Self::SOFTWARE_STEP
+        } else {
+            self.events.push(Self::HARD_STEP);
+            Self::HARD_STEP
+        }
+    }
+
+    /// 优先级断言：首事件必为软件路径。
+    pub fn software_attempted_first(&self) -> bool {
+        self.events.first() == Some(&Self::SOFTWARE_STEP)
+    }
+
+    /// 硬断纪律：出现硬断时软件路径必已在先。
+    pub fn hard_cut_only_after_software(&self) -> bool {
+        match self.events.iter().position(|e| *e == Self::HARD_STEP) {
+            None => true,
+            Some(0) => false,
+            Some(_) => self.events[0] == Self::SOFTWARE_STEP,
+        }
+    }
+
+    pub fn events(&self) -> &[&'static str] {
+        &self.events
+    }
+}
+
+impl Default for SoftwareFirstChain {
+    fn default() -> SoftwareFirstChain {
+        SoftwareFirstChain::new()
+    }
+}
+
+/// F318 长按中断账（对 PressTracker 的行为观察面）：4s 内松手=配置
+/// 动作（软件路径）、≥4s 持续按住=硬断（带警告语义留痕）——每次
+/// 评估结果落账可回放。
+#[derive(Default)]
+pub struct PressInterruptLedger {
+    pub configured_releases: u64,
+    pub hardcuts: u64,
+    pub warnings_shown: u64,
+}
+
+impl PressInterruptLedger {
+    pub fn new() -> PressInterruptLedger {
+        PressInterruptLedger::default()
+    }
+
+    /// 观察一次长按评估结果（Pending 不计——尚未成事实）。
+    pub fn observe(&mut self, outcome: PressOutcome) {
+        match outcome {
+            PressOutcome::ReleasedConfigured(_) => self.configured_releases += 1,
+            PressOutcome::HardCut => {
+                self.hardcuts += 1;
+                self.warnings_shown += 1;
+            }
+            PressOutcome::Pending => {}
+        }
+    }
+}
+
+/// 深化层二自检（执行矩阵 / 软件优先链 / 长按中断账）。
+pub fn run_pwbtn_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F318-deep2");
+
+    // 1. 三档×双场景执行矩阵：四格（场景×供电）+ 三档动作全覆盖。
+    let mut log = ActionMatrixLog::new();
+    for s in Scenario::ALL {
+        log.record_cell(s, false);
+        log.record_cell(s, true);
+    }
+    for a in PowerAction::ALL {
+        log.record_action(a);
+    }
+    log.record_cell(Scenario::PowerButton, false); // 重复格不重复计。
+    set.add(
+        "action matrix full coverage",
+        log.cells_covered() == ActionMatrixLog::CELLS_TOTAL
+            && log.actions_covered() == PowerAction::ALL.len()
+            && log.all_covered(),
+        "",
+    );
+
+    // 2. 软件路径优先：成功走软件即收口（无硬断）。
+    let mut c1 = SoftwareFirstChain::new();
+    let r1 = c1.request_shutdown(true);
+    set.add(
+        "software path succeeds first",
+        r1 == SoftwareFirstChain::SOFTWARE_STEP
+            && c1.software_attempted_first()
+            && c1.hard_cut_only_after_software()
+            && c1.events().len() == 1,
+        "",
+    );
+
+    // 3. 软件失败 → 硬断降级，且软件尝试必在先（优先级链断言）。
+    let mut c2 = SoftwareFirstChain::new();
+    let r2 = c2.request_shutdown(false);
+    set.add(
+        "hard cut only after software",
+        r2 == SoftwareFirstChain::HARD_STEP
+            && c2.software_attempted_first()
+            && c2.hard_cut_only_after_software()
+            && c2.events() == [SoftwareFirstChain::SOFTWARE_STEP, SoftwareFirstChain::HARD_STEP],
+        "",
+    );
+
+    // 4. 长按中断账：4s 内松手=配置动作、≥4s=硬断+警告、Pending 不计。
+    let mut t = PressTracker::new();
+    let mut led = PressInterruptLedger::new();
+    t.press(0);
+    let o1 = t.release(3_999, PowerAction::Sleep);
+    led.observe(o1);
+    let mut t2 = PressTracker::new();
+    t2.press(0);
+    let o2 = t2.evaluate(4_000);
+    led.observe(o2);
+    led.observe(PressOutcome::Pending);
+    set.add(
+        "press interrupt ledger",
+        led.configured_releases == 1 && led.hardcuts == 1 && led.warnings_shown == 1,
+        "",
+    );
+
+    // 5. 后果文案审查账：三档说明非空且互不相同（人话区分度——后果写得明白）。
+    let c0 = PowerAction::ALL[0].consequence();
+    let c1 = PowerAction::ALL[1].consequence();
+    let c2 = PowerAction::ALL[2].consequence();
+    set.add(
+        "consequence copy audited",
+        !c0.is_empty() && !c1.is_empty() && !c2.is_empty() && c0 != c1 && c1 != c2 && c0 != c2,
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn matrix_records_do_not_duplicate() {
+        let mut log = ActionMatrixLog::new();
+        log.record_cell(Scenario::LidClose, true);
+        log.record_cell(Scenario::LidClose, true);
+        assert_eq!(log.cells_covered(), 1);
+    }
+
+    #[test]
+    fn chain_empty_is_clean() {
+        let c = SoftwareFirstChain::new();
+        assert!(c.software_attempted_first() == false || c.events().is_empty());
+        assert!(c.hard_cut_only_after_software());
+    }
+
+    #[test]
+    fn ledger_pending_never_counts() {
+        let mut led = PressInterruptLedger::new();
+        led.observe(PressOutcome::Pending);
+        led.observe(PressOutcome::Pending);
+        assert_eq!(led.configured_releases + led.hardcuts, 0);
+    }
+}

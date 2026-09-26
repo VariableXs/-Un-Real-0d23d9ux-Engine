@@ -435,3 +435,517 @@ mod deep_tests {
         assert!(p.starts_with('"') && p.ends_with('"'));
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F337 命令词法/引号矩阵/选中即搜/工作目录一致性审计
+// ---------------------------------------------------------------------------
+
+/// F337 互通命令词法（地址栏/终端命令的唯一识别表）：
+/// - `vxsh` → 在此目录打开终端（F095）；
+/// - `open .` → 资源管理器打开当前目录；
+/// - `open <路径>` → 资源管理器打开指定目录；
+/// - 其余 → 未知（有相近建议，不白眼——F308 建议面同源）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ShellCmd {
+    OpenTerminalHere,
+    OpenExplorerHere,
+    OpenExplorer(String),
+    Unknown,
+}
+
+/// 命令词法解析（工作目录绑定由调用方持有——「开在哪就在哪」）。
+pub fn lex_shell_cmd(input: &str) -> ShellCmd {
+    let t = input.trim();
+    if t == "vxsh" {
+        return ShellCmd::OpenTerminalHere;
+    }
+    if t == "open ." {
+        return ShellCmd::OpenExplorerHere;
+    }
+    if let Some(rest) = t.strip_prefix("open ") {
+        let path = rest.trim();
+        if !path.is_empty() {
+            return ShellCmd::OpenExplorer(String::from(path));
+        }
+    }
+    ShellCmd::Unknown
+}
+
+/// F337 拖入终端引号矩阵·CMD 形：一律双引号包裹，内部双引号按 CMD
+/// 惯例翻倍（`a "b" c` → `"a ""b"" c"`）——空格/特殊字符全表防翻车。
+pub fn cmd_quote_matrix(raw: &str) -> String {
+    let mut out = String::from("\"");
+    for c in raw.chars() {
+        if c == '"' {
+            out.push('"');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
+/// F337 拖入终端引号矩阵·POSIX 形：单引号包裹，内部单引号按 shell
+/// 惯例转义为 `'\''`——$、反引号、分号在单引号内全部字面化。
+pub fn posix_quote_matrix(raw: &str) -> String {
+    let mut out = String::from("'");
+    for c in raw.chars() {
+        if c == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// 拖入插入的统一入口（按终端形制分派——含空格/特殊字符自适应）。
+pub fn drag_insert(flavor: crate::h3star::copypath::TerminalFlavor, raw: &str) -> String {
+    match flavor {
+        crate::h3star::copypath::TerminalFlavor::Cmd => cmd_quote_matrix(raw),
+        crate::h3star::copypath::TerminalFlavor::Posix => posix_quote_matrix(raw),
+    }
+}
+
+/// F337 选中即搜：选中文本 → 搜索参数编码（空格→%20、&→%26、+→%2B、
+/// #→%23、换行→%0A、%→%25；CJK 原样由浏览器处理——参数不翻车）。
+pub fn search_query_param(q: &str) -> String {
+    let mut out = String::new();
+    for c in q.chars() {
+        match c {
+            ' ' => out.push_str("%20"),
+            '&' => out.push_str("%26"),
+            '+' => out.push_str("%2B"),
+            '#' => out.push_str("%23"),
+            '\n' => out.push_str("%0A"),
+            '\r' => {}
+            '%' => out.push_str("%25"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// F337 工作目录一致性审计：每次互通动作后 explorer 目录与 terminal
+/// cwd 必须同账（「开在哪就在哪」的逐次对账——分歧即缺陷）。
+#[derive(Default)]
+pub struct WorkdirSyncAudit {
+    pairs: Vec<(&'static str, String, String)>,
+}
+
+impl WorkdirSyncAudit {
+    pub fn new() -> WorkdirSyncAudit {
+        WorkdirSyncAudit { pairs: Vec::new() }
+    }
+
+    /// 记录一次互通动作（入口名, explorer 目录, terminal cwd）。
+    pub fn record(&mut self, entry: &'static str, explorer_dir: &str, terminal_dir: &str) {
+        self.pairs.push((entry, String::from(explorer_dir), String::from(terminal_dir)));
+    }
+
+    /// 分歧行（explorer ≠ terminal 的动作——逐条可定位）。
+    pub fn diverged(&self) -> Vec<&(&'static str, String, String)> {
+        self.pairs.iter().filter(|(_, a, b)| a != b).collect()
+    }
+
+    pub fn all_synced(&self) -> bool {
+        self.diverged().is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+}
+
+/// 深化层二自检（命令词法 / 引号矩阵 / 搜索参数 / 工作目录审计）。
+pub fn run_cmdbg_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F337-deep2");
+
+    // 1. 命令词法四入口全对（vxsh / open . / open <path> / 未知）。
+    set.add(
+        "shell cmd lex four entries",
+        lex_shell_cmd("vxsh") == ShellCmd::OpenTerminalHere
+            && lex_shell_cmd("  vxsh  ") == ShellCmd::OpenTerminalHere
+            && lex_shell_cmd("open .") == ShellCmd::OpenExplorerHere
+            && lex_shell_cmd("open D:\\资料 报告") == ShellCmd::OpenExplorer(String::from("D:\\资料 报告"))
+            && lex_shell_cmd("hello") == ShellCmd::Unknown,
+        "",
+    );
+    set.add(
+        "open with empty path is unknown",
+        matches!(lex_shell_cmd("open   "), ShellCmd::Unknown),
+        "",
+    );
+
+    // 2. CMD 引号矩阵：空格包裹、内部双引号翻倍、$ 字面化（在双引号内
+    //    CMD 变量展开风险由调用侧 %x% 语义承担——此处保证包裹完整性）。
+    set.add(
+        "cmd quote matrix",
+        cmd_quote_matrix("D:/a b/c.txt") == "\"D:/a b/c.txt\""
+            && cmd_quote_matrix("he said \"hi\"") == "\"he said \"\"hi\"\"\""
+            && cmd_quote_matrix("plain") == "\"plain\"",
+        "",
+    );
+
+    // 3. POSIX 引号矩阵：单引号内 $/反引号字面化、内部单引号 '\'' 转义。
+    set.add(
+        "posix quote matrix",
+        posix_quote_matrix("/tmp/$HOME") == "'/tmp/$HOME'"
+            && posix_quote_matrix("it's") == "'it'\\''s'"
+            && posix_quote_matrix("a `b`") == "'a `b`'",
+        "",
+    );
+
+    // 4. 统一入口分派（两形制各走对路）。
+    set.add(
+        "drag insert dispatch",
+        drag_insert(crate::h3star::copypath::TerminalFlavor::Cmd, "a b")
+            == "\"a b\""
+            && drag_insert(crate::h3star::copypath::TerminalFlavor::Posix, "a b")
+                == "'a b'",
+        "",
+    );
+
+    // 5. 选中即搜参数编码：空格/与号/加号/井号/换行/百分号全表。
+    set.add(
+        "search query param encoding",
+        search_query_param("季度 预算&计划+Q1#1") == "季度%20预算%26计划%2BQ1%231"
+            && search_query_param("a\nb") == "a%0Ab"
+            && search_query_param("50%off") == "50%25off",
+        "",
+    );
+
+    // 6. 工作目录一致性审计：同账全绿；分歧逐条定位。
+    let mut wa = WorkdirSyncAudit::new();
+    wa.record("vxsh", "D:/报表", "D:/报表");
+    wa.record("open .", "D:/报表", "D:/报表");
+    set.add("workdir audit synced", wa.len() == 2 && wa.all_synced(), "");
+    wa.record("vxsh", "D:/报表", "C:/");
+    set.add(
+        "workdir audit catches divergence",
+        !wa.all_synced() && wa.diverged().len() == 1 && wa.diverged()[0].0 == "vxsh",
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod cmdbg_deep2_tests {
+    use super::*;
+
+    #[test]
+    fn lex_trims_and_rejects_prefix_lookalikes() {
+        assert_eq!(lex_shell_cmd("vxshell"), ShellCmd::Unknown, "前缀相似不算命中");
+        assert_eq!(lex_shell_cmd("opened"), ShellCmd::Unknown);
+    }
+
+    #[test]
+    fn cmd_matrix_empty_and_unicode() {
+        assert_eq!(cmd_quote_matrix(""), "\"\"");
+        assert_eq!(posix_quote_matrix("中文 路径"), "'中文 路径'");
+    }
+
+    #[test]
+    fn search_param_cjk_passthrough() {
+        assert_eq!(search_query_param("计算器"), "计算器");
+    }
+
+    #[test]
+    fn workdir_audit_empty_clean() {
+        let wa = WorkdirSyncAudit::new();
+        assert!(wa.is_empty() && wa.all_synced());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化层三 · 路径归一化核 + 逐味转义总表 + 互通事件账 + open . 语义核
+// ---------------------------------------------------------------------------
+
+/// 路径归一化器：任意写法 → 规范形（一处一事实——转换前先归一，杜绝
+/// 「D:/a/../b」这类半规范串在形制间漂移）。
+/// 规则：① 分隔符统一 `\`（POSIX 形制输出时再转 `/`）；② `.` 段删除；
+/// ③ `..` 段弹上一级（弹到根则停——越界不崩溃只钳制）；④ 盘符大写；
+/// ⑤ 重复分隔符合并；⑥ UNC（`\\server\share`）识别保留双前导。
+#[derive(Default)]
+pub struct PathNormalizer;
+
+impl PathNormalizer {
+    /// 归一化主入口（Windows 面：反斜杠规范形）。
+    pub fn win(input: &str) -> String {
+        if input.starts_with("\\\\") {
+            // UNC：保留 \\server\share 前缀，其余段照常过滤（点段消化、
+            // 重复分隔符合并——弹级语义对 UNC 首段保留不适用）。
+            let body: Vec<&str> = input[2..]
+                .split(['\\', '/'])
+                .filter(|s| !s.is_empty() && *s != ".")
+                .collect();
+            return alloc::format!("\\\\{}", body.join("\\"));
+        }
+        let mut segs: Vec<String> = Vec::new();
+        for (i, raw) in input.split(['\\', '/']).enumerate() {
+            let s = raw.trim();
+            if s.is_empty() || s == "." {
+                continue;
+            }
+            if i == 0 && s.len() == 2 && s.as_bytes()[1] == b':' {
+                segs.push(s[..1].to_ascii_uppercase() + ":");
+                continue;
+            }
+            if s == ".." {
+                // 弹上一级；弹穿盘根即停（不越界——钳制语义）。
+                if segs.len() > 1 {
+                    segs.pop();
+                }
+                continue;
+            }
+            segs.push(String::from(s));
+        }
+        segs.join("\\")
+    }
+
+    /// POSIX（Git-Bash/MSYS 形）：C:\a\b → /c/a/b；UNC 无直映——诚实
+    /// 拒绝（返回空串，调用方显式处理，不猜）。
+    pub fn posix(input: &str) -> String {
+        let w = Self::win(input);
+        if w.starts_with("\\\\") {
+            return String::new();
+        }
+        let mut parts = w.split('\\').filter(|s| !s.is_empty());
+        let drive = match parts.next() {
+            Some(d) if d.len() == 2 && d.ends_with(':') => d[..1].to_ascii_lowercase(),
+            _ => return alloc::format!("/{}", parts.collect::<Vec<_>>().join("/")),
+        };
+        let rest: Vec<&str> = parts.collect();
+        alloc::format!(
+            "/{}{}",
+            drive,
+            if rest.is_empty() { String::new() } else { alloc::format!("/{}", rest.join("/")) }
+        )
+    }
+
+    /// WSL 形：C:\a\b → /mnt/c/a/b（挂载点映射——/mnt/ 前缀唯一源）。
+    pub fn wsl(input: &str) -> String {
+        let p = Self::posix(input);
+        if p.is_empty() {
+            return p;
+        }
+        alloc::format!("/mnt{}", p)
+    }
+}
+
+/// 逐味转义总表（每味一列：空格 / & / % / $ / 反引号 / 引号 / 括号 /
+/// 中文——转义规则唯一源，改规则必炸 checks）。
+pub struct EscapeMatrix;
+
+impl EscapeMatrix {
+    /// 返回 (字符, CMD 形转义, POSIX 形转义) 三元组总表。
+    pub const TABLE: [(char, &'static str, &'static str); 7] = [
+        (' ', "\"\"", "\"\""),        // 空格：两味都靠引号包裹
+        ('&', "^&", "\\&"),
+        ('%', "%%", "%"),             // CMD 变量展开 → 翻倍；POSIX 无需
+        ('$', "%$", "\\$"),           // CMD 无 $ 语义（原样）；POSIX 转义
+        ('`', "`", "\\`"),            // 反引号：CMD 原样；POSIX 命令替换须转义
+        ('"', "\"\\\"\"\"", "\\\""),  // 引号：CMD 内部翻倍；POSIX 反斜杠
+        ('(', "^(", "\\("),
+    ];
+
+    /// 查表：某字符在某味的转义形（未登记字符原样——审计面可查空白区）。
+    pub fn escape_of(c: char, flavor: TerminalFlavor) -> Option<&'static str> {
+        Self::TABLE.iter().find(|(ch, _, _)| *ch == c).map(|(_, cmd, posix)| match flavor {
+            TerminalFlavor::Cmd => *cmd,
+            TerminalFlavor::Posix => *posix,
+        })
+    }
+
+    /// 总表自证：两味列数一致、无空串项（转义规则不许有「静默删除」）。
+    pub fn table_sane() -> bool {
+        Self::TABLE
+            .iter()
+            .all(|(_, cmd, posix)| !cmd.is_empty() && !posix.is_empty())
+    }
+}
+
+/// 互通事件账（十三章体验日志语义的互通面）：四入口（右键复制 / 终端
+/// 粘贴 / 拖入 / open .）逐事件记录 + 结论字段；粘贴语义校验失败自动
+/// 记 Error 结论（互通质量可回放可出改进清单）。
+pub struct InteropLedger {
+    events: Vec<(u64, &'static str, String, super::hbase::ExpVerdict)>,
+}
+
+impl InteropLedger {
+    pub fn new() -> InteropLedger {
+        InteropLedger { events: Vec::new() }
+    }
+
+    /// 记录一次互通动作：`entry` ∈ {右键复制, 终端粘贴, 拖入, open-dot}；
+    /// `payload` 为形制化后的路径或语义校验结果；`ok` 决定结论字段。
+    pub fn record(&mut self, at_ms: u64, entry: &'static str, payload: String, ok: bool) {
+        let v = if ok { super::hbase::ExpVerdict::Smooth } else { super::hbase::ExpVerdict::Error };
+        self.events.push((at_ms, entry, payload, v));
+    }
+
+    /// 四入口覆盖审计：账本里四类入口全出现过（缺一类 = 互通面没走全）。
+    pub fn four_entries_covered(&self) -> bool {
+        ["右键复制", "终端粘贴", "拖入", "open-dot"]
+            .iter()
+            .all(|e| self.events.iter().any(|(_, k, _, _)| k == e))
+    }
+
+    /// 错误事件清单（改进面直出——十三章「最挫败的操作」维度）。
+    pub fn errors(&self) -> Vec<&(u64, &'static str, String, super::hbase::ExpVerdict)> {
+        self.events.iter().filter(|(_, _, _, v)| *v != super::hbase::ExpVerdict::Smooth).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+}
+
+impl Default for InteropLedger {
+    fn default() -> InteropLedger {
+        InteropLedger::new()
+    }
+}
+
+/// `open .` 目录同步语义核：终端里 `open .` 必须打开终端当前工作目录
+/// 的资源管理器窗；账面记录 (终端会话 cwd, 打开的窗路径)，不同步 =
+/// 缺陷。同步判定：窗路径 == cwd 归一化形。
+pub struct OpenDotSemantics {
+    ledger: Vec<(String, String, bool)>,
+}
+
+impl OpenDotSemantics {
+    pub fn new() -> OpenDotSemantics {
+        OpenDotSemantics { ledger: Vec::new() }
+    }
+
+    /// 处理一次 `open .`：cwd → 窗路径，同步结论入账。
+    pub fn open_here(&mut self, cwd: &str, window_opened_at: &str) -> bool {
+        let want = PathNormalizer::win(cwd);
+        let got = PathNormalizer::win(window_opened_at);
+        let ok = want == got;
+        self.ledger.push((want, got, ok));
+        ok
+    }
+
+    /// 全程零失同步（任意一条红即整体红）。
+    pub fn all_synced(&self) -> bool {
+        !self.ledger.is_empty() && self.ledger.iter().all(|(_, _, ok)| *ok)
+    }
+
+    pub fn len(&self) -> usize {
+        self.ledger.len()
+    }
+}
+
+impl Default for OpenDotSemantics {
+    fn default() -> OpenDotSemantics {
+        OpenDotSemantics::new()
+    }
+}
+
+/// 深化层三自检（归一化 / WSL 映射 / 转义总表 / 事件账 / open .）。
+pub fn run_copypath_deep3_checks() -> CheckSet {
+
+    let mut set = CheckSet::new("F336-337-deep3");
+
+    // 1. 归一化：混合分隔符 + 点段 + 重复分隔符 + 盘符大小写。
+    set.add(
+        "normalize mixed separators and dots",
+        PathNormalizer::win("d:/工具\\my app\\./sub\\\\..\\bin") == "D:\\工具\\my app\\bin",
+        "",
+    );
+
+    // 2. `..` 弹穿盘根钳制（不越界不崩溃）。
+    set.add("dotdot clamps at root", PathNormalizer::win("C:\\..\\..\\x") == "C:\\x", "");
+
+    // 3. 盘符大写规范。
+    set.add("drive uppercased", PathNormalizer::win("c:/win/system32") == "C:\\win\\system32", "");
+
+    // 4. POSIX 与 WSL 映射：/c/... 与 /mnt/c/...；UNC 诚实拒绝。
+    set.add(
+        "posix and wsl mapping",
+        PathNormalizer::posix("C:\\a b\\文件") == "/c/a b/文件"
+            && PathNormalizer::wsl("C:\\a b\\文件") == "/mnt/c/a b/文件"
+            && PathNormalizer::posix("\\\\nas\\share").is_empty(),
+        "",
+    );
+
+    // 5. 转义总表：全表两味齐备 + 逐字符查表命中（% 与 $ 分味正确）。
+    set.add(
+        "escape matrix sane and lookup",
+        EscapeMatrix::table_sane()
+            && EscapeMatrix::escape_of('%', TerminalFlavor::Cmd) == Some("%%")
+            && EscapeMatrix::escape_of('%', TerminalFlavor::Posix) == Some("%")
+            && EscapeMatrix::escape_of('$', TerminalFlavor::Posix) == Some("\\$")
+            && EscapeMatrix::escape_of('x', TerminalFlavor::Cmd).is_none(),
+        "",
+    );
+
+    // 6. 互通事件账：四入口全走 + 错误事件可直出（改进面）。
+    let mut led = InteropLedger::new();
+    led.record(0, "右键复制", alloc::format!("\"C:\\a b\""), true);
+    led.record(10, "终端粘贴", alloc::format!("ok"), true);
+    led.record(20, "拖入", alloc::format!("/c/a\\ b"), true);
+    led.record(30, "open-dot", alloc::format!("cwd=window"), false);
+    set.add(
+        "interop ledger covers four entries",
+        led.four_entries_covered() && led.len() == 4 && led.errors().len() == 1,
+        "",
+    );
+
+    // 7. open . 同步：同步绿、漂移红（语义核对账面）。
+    let mut od = OpenDotSemantics::new();
+    let ok1 = od.open_here("D:\\相册", "D:\\相册");
+    let ok2 = od.open_here("D:\\相册", "D:\\下载");
+    set.add(
+        "open dot sync semantics",
+        ok1 && !ok2 && od.len() == 2 && !od.all_synced(),
+        "",
+    );
+    let mut od2 = OpenDotSemantics::new();
+    let _ = od2.open_here("D:\\相册", "D:/相册"); // 斜杠差被归一化抹平。
+    set.add("open dot slash agnostic", od2.all_synced(), "");
+
+    set
+}
+
+#[cfg(test)]
+mod deep3_tests {
+    use super::*;
+
+    #[test]
+    fn normalize_keeps_unc_prefix() {
+        let n = PathNormalizer::win("\\\\NAS\\share\\./a\\\\b");
+        assert!(n.starts_with("\\\\NAS\\share"), "UNC 双前导保留：{n}");
+        assert!(!n.contains("."));
+    }
+
+    #[test]
+    fn wsl_of_unc_is_empty() {
+        assert_eq!(PathNormalizer::wsl("\\\\nas\\share"), "", "UNC 无 WSL 直映——诚实拒绝");
+    }
+
+    #[test]
+    fn ledger_empty_not_covered() {
+        let led = InteropLedger::new();
+        assert!(!led.four_entries_covered(), "空账不得谎报覆盖");
+    }
+
+    #[test]
+    fn open_dot_empty_ledger_not_synced() {
+        let od = OpenDotSemantics::new();
+        assert!(!od.all_synced(), "零样本不构成全程同步证据");
+    }
+
+    #[test]
+    fn escape_quote_posix_form() {
+        assert_eq!(EscapeMatrix::escape_of('"', TerminalFlavor::Posix), Some("\\\""));
+    }
+}

@@ -254,3 +254,262 @@ mod tests {
         assert_eq!(all.len(), 5);
     }
 }
+
+// ---------------------------------------------------------------------------
+// 深化层二 · F334 五级仲裁器/过载回落账 + F335 1000Hz 连发采样账
+// ---------------------------------------------------------------------------
+
+/// 五级优先级仲裁器（判据「指针移动 > 窗口拖动 > 前台输入 > 前台渲染 >
+/// 后台一切」的调度面）：并发请求集 → 只授予最高级；后台在有任何前台
+/// 请求的轮次永不获授（纯后台轮次才轮到后台——「后台一切」让位的
+/// 结构证明，逐轮留账可回放）。
+pub struct PriorityArbiter {
+    /// 授予历史：(授予级, 该轮是否有前台在场)。
+    pub grants: Vec<(Prio, bool)>,
+    /// 前台在场轮次里后台被拒计数。
+    pub background_denied: u64,
+}
+
+impl PriorityArbiter {
+    pub fn new() -> PriorityArbiter {
+        PriorityArbiter { grants: Vec::new(), background_denied: 0 }
+    }
+
+    fn rank(p: &Prio) -> usize {
+        match p {
+            Prio::Pointer => 0,
+            Prio::WindowDrag => 1,
+            Prio::ForegroundInput => 2,
+            Prio::ForegroundRender => 3,
+            Prio::Background => 4,
+        }
+    }
+
+    /// 仲裁一轮：请求集里取最高级授予；纯后台轮次后台获授。
+    pub fn arbitrate(&mut self, requests: &[Prio]) -> Option<Prio> {
+        if requests.is_empty() {
+            return None;
+        }
+        let mut best: Option<(usize, Prio)> = None;
+        for r in requests {
+            let rk = Self::rank(r);
+            match best {
+                Some((brk, _)) if rk >= brk => {}
+                _ => best = Some((rk, *r)),
+            }
+        }
+        let (brk, bp) = best.expect("requests 非空");
+        let had_foreground = brk != 4;
+        if had_foreground {
+            self.background_denied +=
+                requests.iter().filter(|r| matches!(r, Prio::Background)).count() as u64;
+        }
+        self.grants.push((bp, had_foreground));
+        Some(bp)
+    }
+
+    /// 圣杯断言：凡有前台在场的轮次，后台零获授（纯后台轮不在此列）。
+    pub fn background_never_granted_under_foreground(&self) -> bool {
+        self.grants.iter().all(|(g, had_fg)| !had_fg || !matches!(g, Prio::Background))
+    }
+}
+
+impl Default for PriorityArbiter {
+    fn default() -> PriorityArbiter {
+        PriorityArbiter::new()
+    }
+}
+
+/// 过载回落账（判据「过载自愈——后台结束后延迟回落」的深化面）：饱和
+/// 段峰值 vs 结束后尾部账，回落幅度出千分率——回落必须有账可查。
+pub struct OverloadRecovery {
+    pub saturated_peak_ms: u64,
+    pub tail_peak_ms: u64,
+}
+
+impl OverloadRecovery {
+    /// 从延迟样本序列切账（饱和段 + 尾段各取最大）。
+    pub fn from_samples(saturated: &[u64], tail: &[u64]) -> OverloadRecovery {
+        OverloadRecovery {
+            saturated_peak_ms: saturated.iter().copied().max().unwrap_or(0),
+            tail_peak_ms: tail.iter().copied().max().unwrap_or(0),
+        }
+    }
+
+    pub fn recovered(&self) -> bool {
+        self.tail_peak_ms < self.saturated_peak_ms
+    }
+
+    /// 回落幅度（‰）。
+    pub fn drop_permille(&self) -> u64 {
+        if self.saturated_peak_ms == 0 {
+            0
+        } else {
+            self.saturated_peak_ms.saturating_sub(self.tail_peak_ms) * 1000
+                / self.saturated_peak_ms
+        }
+    }
+}
+
+/// F335 连发采样账：1000Hz 回报率下连续注入——逐样本入账零丢失
+/// （判据「1000Hz 采样不丢」的深化：批量注入后计数对账 + 时序单调）。
+pub struct PointerBurstAudit {
+    pub injected: u64,
+    pub last_ms: u64,
+    pub monotonic_violations: u64,
+}
+
+impl PointerBurstAudit {
+    pub fn new() -> PointerBurstAudit {
+        PointerBurstAudit { injected: 0, last_ms: 0, monotonic_violations: 0 }
+    }
+
+    /// 逐样本注入（时间回退计违规——不吞不盖）。
+    pub fn inject(&mut self, now_ms: u64) {
+        if now_ms < self.last_ms {
+            self.monotonic_violations += 1;
+        }
+        self.last_ms = self.last_ms.max(now_ms);
+        self.injected += 1;
+    }
+
+    /// 零丢失断言：注入数 = 平面账面样本数（PointerPlane 计数）。
+    pub fn zero_loss(&self, plane_total: u64) -> bool {
+        plane_total == self.injected && self.monotonic_violations == 0
+    }
+}
+
+impl Default for PointerBurstAudit {
+    fn default() -> PointerBurstAudit {
+        PointerBurstAudit::new()
+    }
+}
+
+/// 深化层二自检（五级仲裁 / 过载回落 / 1000Hz 连发）。
+pub fn run_loadresp_deep2_checks() -> CheckSet {
+    let mut set = CheckSet::new("F334-335-deep2");
+
+    // 1. 五级仲裁：并发集取最高级；指针在场时其余全让位。
+    let mut arb = PriorityArbiter::new();
+    let g1 = arb.arbitrate(&[
+        Prio::Background,
+        Prio::ForegroundInput,
+        Prio::Pointer,
+        Prio::WindowDrag,
+    ]);
+    set.add(
+        "arbiter grants pointer first",
+        g1 == Some(Prio::Pointer) && arb.grants.last() == Some(&(Prio::Pointer, true)),
+        "",
+    );
+
+    // 2. 后台让位账：前台在场轮次后台被拒计数如实（第 1 轮 + 第 2 轮各拒
+    //    一个后台请求）；纯后台轮次后台获授。
+    let g2 = arb.arbitrate(&[Prio::Background, Prio::ForegroundRender]);
+    let g3 = arb.arbitrate(&[Prio::Background]);
+    set.add(
+        "background yields and finally runs",
+        g2 == Some(Prio::ForegroundRender)
+            && g3 == Some(Prio::Background)
+            && arb.background_denied == 2
+            && arb.background_never_granted_under_foreground(),
+        "",
+    );
+
+    // 3. 五级逐一单独仲裁（顺序即主册圣杯序）。
+    let mut arb2 = PriorityArbiter::new();
+    let seq = [
+        Prio::Pointer,
+        Prio::WindowDrag,
+        Prio::ForegroundInput,
+        Prio::ForegroundRender,
+        Prio::Background,
+    ];
+    let granted_seq: Vec<Prio> = seq.iter().map(|p| arb2.arbitrate(&[*p]).expect("单请求必有授")).collect();
+    set.add(
+        "five levels granted in order",
+        granted_seq == seq && arb2.background_denied == 0,
+        "",
+    );
+
+    // 4. 过载回落账：饱和段峰值 90ms → 尾段 12ms，回落 866‰。
+    let ov = OverloadRecovery::from_samples(&[70, 90, 85], &[12, 10, 9]);
+    set.add(
+        "overload recovery ledger",
+        ov.recovered() && ov.saturated_peak_ms == 90 && ov.drop_permille() == 866,
+        "",
+    );
+    let ov_bad = OverloadRecovery::from_samples(&[50], &[60]);
+    set.add("no recovery caught", !ov_bad.recovered(), "");
+
+    // 5. 满载下点击响应判线（注入面回归）：调度器账 + 判线一致。
+    let mut sch = ForegroundScheduler::new();
+    sch.background_saturated = true;
+    let d1 = sch.foreground_request(1_000);
+    let d2 = sch.foreground_request(1_100);
+    set.add(
+        "foreground requests under load tracked",
+        sch.overboard_delays.len() >= 2 && sch.click_within_limit(d1.min(d2).min(99)),
+        "",
+    );
+
+    // 6. 1000Hz 连发采样：1000 样本逐笔入账 + 单调零违规 + 平面对账零丢。
+    let mut plane = PointerPlane::new();
+    let mut burst = PointerBurstAudit::new();
+    for i in 0..1_000u64 {
+        let now = i; // 1ms 间隔 = 1000Hz。
+        plane.inject_sample(now);
+        burst.inject(now);
+    }
+    set.add(
+        "pointer 1000hz burst zero loss",
+        burst.injected == 1_000
+            && burst.monotonic_violations == 0
+            && plane.sample_rate_intact()
+            && burst.zero_loss(1_000),
+        "",
+    );
+
+    // 7. 直通延迟判线（深化回归）：15ms 过 / 17ms 不过。
+    set.add(
+        "pointer latency line",
+        plane.latency_ok(15) && !plane.latency_ok(17),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod deep2_tests {
+    use super::*;
+
+    #[test]
+    fn arbiter_empty_requests_none() {
+        let mut a = PriorityArbiter::new();
+        assert!(a.arbitrate(&[]).is_none());
+    }
+
+    #[test]
+    fn recovery_zero_peak_is_neutral() {
+        let ov = OverloadRecovery::from_samples(&[], &[]);
+        assert!(!ov.recovered(), "空账不虚报回落");
+        assert_eq!(ov.drop_permille(), 0);
+    }
+
+    #[test]
+    fn burst_backwards_time_counted() {
+        let mut b = PointerBurstAudit::new();
+        b.inject(100);
+        b.inject(50);
+        assert_eq!(b.monotonic_violations, 1, "时间回退如实记违规");
+        assert_eq!(b.injected, 2, "违规样本不吞——照常入账");
+    }
+
+    #[test]
+    fn foreground_only_round_grants_input() {
+        let mut a = PriorityArbiter::new();
+        let g = a.arbitrate(&[Prio::ForegroundInput, Prio::ForegroundRender]);
+        assert_eq!(g, Some(Prio::ForegroundInput));
+    }
+}
