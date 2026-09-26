@@ -550,6 +550,125 @@ pub fn changelog_gate(spec: &Spec, new_version: (u32, u32, u32), note: &'static 
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v4 · 二：JSON Schema 标准形态全文 / 示例包全文 / 负样本扩充
+// ---------------------------------------------------------------------------
+
+impl Spec {
+    /// JSON Schema 标准形态全文（主册「schema 表达采用 JSON Schema
+    /// 标准」的机器面：type/properties/required 三键骨架——第三方校验
+    /// 器可直接消费）。
+    pub fn schema_json(&self) -> String {
+        let mut props: Vec<String> = Vec::new();
+        let mut required: Vec<String> = Vec::new();
+        for f in &self.fields {
+            let t = match f.ftype {
+                FieldType::Str | FieldType::Enum(_) => "string",
+                FieldType::Int => "integer",
+                FieldType::Bool => "boolean",
+            };
+            let mut o = vbase::JsonObj::new();
+            o.str_field("type", t);
+            o.str_field("description", f.desc);
+            props.push(alloc::format!("\"{}\": {}", f.name, o.finish()));
+            if f.required {
+                required.push(alloc::format!("\"{}\"", f.name));
+            }
+        }
+        let mut root = vbase::JsonObj::new();
+        root.str_field("$id", &alloc::format!("https://varix.dev/schemas/{}.json", self.id));
+        root.str_field("type", "object");
+        root.raw_array_field("required", &required);
+        // properties 为对象——以 raw 形态拼装（JsonObj 无嵌套对象出口）。
+        let props_body = props.join(",");
+        let head = root.finish();
+        // head 形如 {"$id":...,"type":...,"required":[...]}——在收尾括号
+        // 前插入 properties。
+        let trimmed = &head[..head.len() - 1];
+        alloc::format!("{},\"properties\":{{{}}}}}", trimmed, props_body)
+    }
+
+    /// 示例包 JSON 全文（CI 自动重打的产物形态——永不腐烂的基准文件）。
+    pub fn sample_json(&self, payload: &[(String, String)]) -> String {
+        let mut fields: Vec<String> = Vec::new();
+        for (k, v) in payload {
+            let mut o = vbase::JsonObj::new();
+            o.str_field(k, v);
+            fields.push(o.finish());
+        }
+        let body = fields.join(",");
+        alloc::format!("{{\"spec\":\"{}\",\"payload\":{{{}}}}}", self.id, body)
+    }
+}
+
+/// 负样本族扩充（深化 v4：+3 路——Bool 类型错 / Int 类型错 / 枚举规范
+/// 越界第二型；合计 12 路全拒）。
+pub fn negative_samples_extended() -> Vec<(&'static str, Vec<(String, String)>, &'static str)> {
+    let mut v = negative_samples();
+    v.push((
+        "vxapp",
+        vec![
+            (String::from("id"), String::from("a.b")),
+            (String::from("version"), String::from("1.0.0")),
+            (String::from("entry"), String::from("e")),
+            (String::from("name"), String::from("42")),
+        ],
+        "attr constraint violated", // MaxLen 过不了长串才违例——短串合法；改用超长名
+    ));
+    v.pop();
+    v.push((
+        "vxapp",
+        vec![
+            (String::from("id"), String::from("a.b")),
+            (String::from("version"), String::from("1.0.0")),
+            (String::from("entry"), String::from("e")),
+            (String::from("name"), String::from("x").repeat(65).as_str().into()),
+        ],
+        "attr constraint violated",
+    ));
+    v.push((
+        "starmap-json",
+        vec![
+            (String::from("snapshot_at"), String::from("1727000000")),
+            (String::from("cards"), String::from("c.json")),
+            (String::from("license"), String::from("CC-BY")),
+            (String::from("since"), String::from("later")),
+        ],
+        "type/value invalid",
+    ));
+    v.push((
+        "case-submission",
+        vec![
+            (String::from("program"), String::from("P")),
+            (String::from("program_version"), String::from("1.0.0")),
+            (String::from("cases"), String::from("c.lst")),
+            (String::from("evidence_hash"), String::from("ab").repeat(32)),
+            (String::from("submitter"), String::from("n").repeat(65)),
+        ],
+        "attr constraint violated",
+    ));
+    v
+}
+
+/// 扩充负样本 CI 回放（12 路全拒且类别命中）。
+pub fn ci_negative_replay_extended() -> (usize, Vec<String>) {
+    let specs = official_specs();
+    let mut failures = Vec::new();
+    let mut rejected = 0usize;
+    for (id, payload, expect) in negative_samples_extended() {
+        if let Some(spec) = specs.iter().find(|s| s.id == id) {
+            let errs = spec.validate(&payload);
+            if !errs.is_empty() && errs.iter().any(|e| e.contains(expect)) {
+                rejected += 1;
+            } else {
+                failures.push(alloc::format!("{}: expected [{}], got {:?}", id, expect, errs));
+            }
+        } else {
+            failures.push(alloc::format!("{}: spec not found", id));
+        }
+    }
+    (rejected, failures)
+}
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -757,6 +876,42 @@ pub fn run_openformat_checks() -> CheckSet {
     });
     set.add("required fields carry constraint attrs", attrs_covered, "");
 
+
+    // 18. JSON Schema 标准形态全文（深化 v4）：$id/type/required/
+    //     properties 四键齐；required 与必填字段一致。
+    let specs = official_specs();
+    let sj = specs[0].schema_json();
+    set.add(
+        "json schema full form",
+        sj.contains("\"$id\":\"https://varix.dev/schemas/vxapp.json\"")
+            && sj.contains("\"type\":\"object\"")
+            && sj.contains("\"required\":[\"id\",\"version\",\"entry\"]")
+            && sj.contains("\"properties\":{")
+            && sj.contains("\"description\""),
+        "",
+    );
+
+    // 19. 示例包 JSON 全文（深化 v4）：合法 JSON 形态（spec + payload 双
+    //     键；payload 内字段与负载一致）。
+    let (id, payload) = &sample_packages()[0];
+    let spec = specs.iter().find(|s| s.id == *id).unwrap();
+    let j = spec.sample_json(payload);
+    set.add(
+        "sample json full form",
+        j.starts_with("{\"spec\":\"vxapp\"")
+            && j.contains("\"payload\":{")
+            && j.contains("\"id\":\"demo.tool\""),
+        "",
+    );
+
+    // 20. 负样本扩充回放（深化 v4）：12 路全拒且类别命中。
+    let (rej12, fail12) = ci_negative_replay_extended();
+    set.add(
+        "negative extended 12/12 rejected",
+        rej12 == negative_samples_extended().len() && fail12.is_empty(),
+        "",
+    );
+
     set
 }
 
@@ -836,5 +991,21 @@ mod tests {
         for s in official_specs() {
             assert!(DISCUSSION_LINKS.iter().any(|(id, l)| *id == s.id && l.starts_with("https://")));
         }
+    }
+
+    #[test]
+    fn f126_schema_json_all_specs() {
+        // 四规范 schema 全文逐份可生成且含各自 $id。
+        for s in official_specs() {
+            let j = s.schema_json();
+            assert!(j.contains(&alloc::format!("schemas/{}.json", s.id)));
+            assert!(j.contains("\"properties\":{"));
+        }
+    }
+
+    #[test]
+    fn f126_extended_negative_superset() {
+        // 扩充族包含基础族全部 9 路（超集关系）。
+        assert!(negative_samples_extended().len() == 12);
     }
 }

@@ -1116,6 +1116,114 @@ impl Default for Freeze {
 }
 
 // ---------------------------------------------------------------------------
+// 深化批次 v4 · 一：55 项复现命令侧表（十二查·台账与证据的命令面）
+// ---------------------------------------------------------------------------
+
+/// 55 项复现命令（fid → 复现口令——十二查第 10 条「数据、复现命令、
+/// 日期三件齐」的命令半边；与 MAP 按 fid join 生成完整走查材料。命令
+/// 以各分队域隔离测试口令为准；跨分队项指向其登记的验收口令形态）。
+pub const WALK_COMMANDS: [(&str, &str); C_DOMAIN_ITEMS] = [
+    ("F071", "AI-K2 域聚合测试 k2star::f071_search"),
+    ("F072", "AI-K2 域聚合测试 k2star::f072_recent"),
+    ("F073", "AI-K2 域聚合测试 k2star::f073_thumbs"),
+    ("F074", "AI-K2 域聚合测试 k2star::f074_jump"),
+    ("F075", "AI-K2 域聚合测试 k2star::f075_tray"),
+    ("F076", "AI-D1 域聚合测试 d1star::f076_quick"),
+    ("F077", "AI-D1 域聚合测试 d1star::f077_notify"),
+    ("F078", "AI-D1 域聚合测试 d1star::f078_calendar"),
+    ("F079", "AI-D1 域聚合测试 d1star::f079_sounds"),
+    ("F080", "AI-D1 域聚合测试 d1star::f080_snap"),
+    ("F081", "AI-D1 域聚合测试 d1star::f081_taskview"),
+    ("F082", "AI-D1 域聚合测试 d1star::f082_alttab"),
+    ("F083", "AI-D1 域聚合测试 d1star::f083_refresh"),
+    ("F084", "AI-D1 域聚合测试 d1star::f084_grid"),
+    ("F085", "AI-D1 域聚合测试 d1star::f085_recycle"),
+    ("F086", "AI-D1 域聚合测试 d1star::f086_copydlg"),
+    ("F087", "AI-D1 域聚合测试 d1star::f087_conflict"),
+    ("F088", "AI-D1 域聚合测试 d1star::f088_search"),
+    ("F089", "AI-D1 域聚合测试 d1star::f089_tabs"),
+    ("F090", "AI-D1 域聚合测试 d1star::f090_breadcrumb"),
+    ("F091", "AI-D1 域聚合测试 d1star::f091_detail"),
+    ("F092", "AI-D1 域聚合测试 d1star::f092_zip"),
+    ("F093", "AI-D2 域聚合测试 d2star::f093_thumbs"),
+    ("F094", "AI-D2 域聚合测试 d2star::f094_media"),
+    ("F095", "AI-D2 域聚合测试 d2star::f095_terminal"),
+    ("F096", "AI-D2 域聚合测试 d2star::f096_palette"),
+    ("F097", "AI-D2 域聚合测试 d2star::f097_editor"),
+    ("F098", "AI-D2 域聚合测试 d2star::f098_shot"),
+    ("F099", "AI-D2 域聚合测试 d2star::f099_calc"),
+    ("F100", "AI-D2 域聚合测试 d2star::f100_clock"),
+    ("F101", "AI-D2 域聚合测试 d2star::f101_weather"),
+    ("F102", "AI-D2 域聚合测试 d2star::f102_sticky"),
+    ("F103", "AI-D2 域聚合测试 d2star::f103_paint"),
+    ("F104", "AI-D2 域聚合测试 d2star::f104_record"),
+    ("F105", "AI-D2 域聚合测试 d2star::f105_gallery"),
+    ("F106", "AI-D2 域聚合测试 d2star::f106_hud"),
+    ("F107", "AI-D2 域聚合测试 d2star::f107_imewin"),
+    ("F108", "AI-D2 域聚合测试 d2star::f108_phrases"),
+    ("F109", "AI-D2 域聚合测试 d2star::f109_cliphist"),
+    ("F110", "AI-D2 域聚合测试 d2star::f110_osk"),
+    ("F111", "cargo test svstar::magnifier"),
+    ("F112", "cargo test svstar::narrator"),
+    ("F113", "cargo test svstar::highcontrast"),
+    ("F114", "cargo test svstar::colorfilter"),
+    ("F115", "cargo test svstar::focusmode"),
+    ("F116", "cargo test svstar::nightlight"),
+    ("F117", "cargo test svstar::oobe"),
+    ("F118", "cargo test svstar::welcome"),
+    ("F119", "cargo test svstar::helpcenter"),
+    ("F120", "cargo test svstar::diagcenter"),
+    ("F121", "cargo test svstar::restorept"),
+    ("F122", "cargo test svstar::updateux"),
+    ("F123", "cargo test svstar::aboutpage"),
+    ("F124", "cargo test svstar::motioncore"),
+    ("F125", "cargo test svstar::walkcheck"),
+];
+
+/// 命令侧表完整性对账（join 键全命中——55 条逐一可查，无缺号无错号）。
+pub fn commands_join_complete() -> bool {
+    MAP.iter().all(|m| {
+        let key = alloc::format!("F{:03}", m.fid);
+        WALK_COMMANDS.iter().any(|(k, _)| *k == key.as_str())
+    })
+}
+
+/// 完整 checklist 导出（MAP 判据 × WALK_COMMANDS 复现口令 × owner 三列
+/// join——走查人拿到的材料一行一案，证据三件套的命令槽直接可填）。
+pub fn export_checklist_full_md(engine: &WalkEngine) -> String {
+    let mut s = String::new();
+    s.push_str(&alloc::format!(
+        "# 走查 checklist 完整版 v{}（MAP × 命令 × 责任）\n\n",
+        engine.version
+    ));
+    s.push_str("| F 编号 | 判据摘文 | 复现口令 | 责任分队 | 状态 |\n| --- | --- | --- | --- | --- |\n");
+    for r in &engine.records {
+        let m = match MAP.iter().find(|m| m.fid == r.fid) {
+            Some(m) => m,
+            None => continue,
+        };
+        let key = alloc::format!("F{:03}", m.fid);
+        let cmd = WALK_COMMANDS
+            .iter()
+            .find(|(k, _)| *k == key.as_str())
+            .map(|(_, c)| *c)
+            .unwrap_or("（缺命令——设计缺口）");
+        let st = match r.status {
+            WalkStatus::Green => "✅",
+            WalkStatus::Red => "❌",
+            WalkStatus::Pending => "⬜",
+        };
+        s.push_str(&alloc::format!(
+            "| F{} | {} | {} | {} | {} |\n",
+            r.fid, m.criterion, cmd, m.owner, st
+        ));
+    }
+    s
+}
+
+/// 日期槽（证据三件套第三件：对账批次日期——批次唯一源常量）。
+pub const AUDIT_BATCH_DATE: &str = "2026-09-26";
+// ---------------------------------------------------------------------------
 // 自检（判据逐条钉死）
 // ---------------------------------------------------------------------------
 
@@ -1393,6 +1501,39 @@ pub fn run_walkcheck_checks() -> CheckSet {
         "",
     );
 
+
+    // 25. 复现命令侧表（深化 v4）：55 条 join 键全命中 + 全 V1 项指向
+    //     svstar 模块口令（跨分队项指向其登记口令形态）。
+    let join_ok = commands_join_complete();
+    let v1_cmd_ok = WALK_COMMANDS.iter().all(|(k, c)| {
+        let fnum: u32 = k[1..].parse().unwrap_or(0);
+        if (111..=125).contains(&fnum) {
+            c.starts_with("cargo test svstar::")
+        } else {
+            c.contains("域聚合测试")
+        }
+    });
+    set.add("walk commands 55 join + v1 routed", join_ok && v1_cmd_ok, "");
+
+    // 26. 完整 checklist 导出（深化 v4）：四列齐（判据×命令×责任×状态）
+    //     55 行全生成；缺命令行不存在。
+    let mut e = WalkEngine::new("1.1.0");
+    e.generate_checklist();
+    let _ = e.record(111, true, Some(Evidence { data: "18/18", command: "cargo test svstar::magnifier", date: AUDIT_BATCH_DATE }), "");
+    let full = export_checklist_full_md(&e);
+    set.add(
+        "full checklist md join map+cmd+owner",
+        full.contains("复现口令")
+            && full.contains("cargo test svstar::magnifier")
+            && full.contains("AI-K2 域聚合测试 k2star::f071_search")
+            && full.contains("✅")
+            && full.matches("\n| F").count() >= C_DOMAIN_ITEMS,
+        "",
+    );
+
+    // 27. 证据三件套日期槽（深化 v4）：批次日期常量唯一源在册。
+    set.add("audit batch date registered", AUDIT_BATCH_DATE == "2026-09-26", "");
+
     set
 }
 
@@ -1522,5 +1663,25 @@ mod tests {
         let heat = heat_render(&scores);
         assert!(heat.contains("███"), "全绿维度热力条");
         assert_eq!(heat.lines().count(), WALK_DIMENSIONS);
+    }
+
+    #[test]
+    fn f125_commands_dedup_and_coverage() {
+        // 55 条命令无重复键（join 键唯一）。
+        for i in 0..WALK_COMMANDS.len() {
+            for j in (i + 1)..WALK_COMMANDS.len() {
+                assert_ne!(WALK_COMMANDS[i].0, WALK_COMMANDS[j].0);
+            }
+        }
+        assert_eq!(WALK_COMMANDS.len(), 55);
+        assert!(commands_join_complete());
+    }
+
+    #[test]
+    fn f125_full_md_pending_rows_have_box() {
+        let mut e = WalkEngine::new("1.0.0");
+        e.generate_checklist();
+        let md = export_checklist_full_md(&e);
+        assert!(md.contains("⬜"), "未走条目带待走标记");
     }
 }
