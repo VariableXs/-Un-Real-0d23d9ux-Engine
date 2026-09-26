@@ -3,6 +3,14 @@
 本文件记录面向用户与协作者的显著变更。批次级细节见 `project_memory.md`；
 架构与计划见 `docs/BLUEPRINT-1.0sno9u.vxe.md` 与 `docs/MASTER-PLAN-1.0sno9u.vxe.md`。
 
+## [Unreleased] — Varix STAR I · AI-U3 I 通用域·三分队（F501-F550 深化批次四 · 引擎群+实验室+隔离验证+检查项对账）
+
+- 十三新引擎（src/features/u3/engines/）：lumapick 壁纸亮度矩阵采样（5×5 截尾均值+滞后带防抖+4K DPR 精度）、gridlab 网格规划器（换档计划+Spearman 保持度+F084/F401 仲裁）、pinvault（PIN 冷却翻倍表状态机+蓝牙动态锁 RSSI 时间线）、guestbox 访客沙盒四轴记账、capguard 三路截图统一裁决+Z 序黑块合成、shredplan（粉碎计划/SSD 诚实分支/截图历史淘汰）、vxcrypt2 容器头序列化+临时视图无痕账本、findrepl（替换会话原子回滚+状态栏三处同源）、bannerpack（横幅堆叠布局+三义分流矩阵）、hotkeymap（Caps 600ms 分界+双格式同源速查卡+冲突审计）、sysdiag（诊断三要素+电量三处同源+接入三态）、explog 十三章体验日志（挫败指纹/脱敏闸门/环形缓冲）、walkcheck 十二查对账引擎；
+- 实验室三区挂入 U3Tab（U3Lab.tsx 引擎群总自检+十二查对账实况+体验日志实况）+ labels 双语词典（B-1104 零缺键）；
+- F550 对账增强：anchor 域表 11 域、聚合域排除编号分派、F550 显式声明；walkcheck F501-F550 覆盖不重不漏钉死；
+- 验证：U3 单测 178/178 全绿（v4 新增 82）、tsc 本域 0 错、worktree 隔离验证 178/178+tsc 0 错、缺陷账 D-31~D-36 全闭合；
+- 行数对账：累计 24,349/46,540 = 52.3%（tally 现算口径，_attic/aiu3-f501-f550/）。
+
 ## [Unreleased] — Varix STAR I · AI-V2 生态开放域·后段（F131-F150 深化批次二补登 + 批次三 · 隔离验证/检查项对账）
 
 **kernel/varix/src/stareco/deep/**（AI-V2 泳道四后段，2026-09-26；Variable

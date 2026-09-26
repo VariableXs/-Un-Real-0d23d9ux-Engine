@@ -100,9 +100,13 @@ export const FRONTEND_DOMAIN_CARRIER: Record<string, { module: string; carrier: 
 
 /* ------------------------------- 对账核心 ------------------------------- */
 
-/** F 编号 → 前端域映射（与内核 mod.rs 域表同源的分派——一处一事实）。 */
+/** F 编号 → 前端域映射（与内核 mod.rs 域表同源的分派——一处一事实）。
+ *  聚合域（anchor 自身 / v4-engines 引擎群）不参与编号分派——它们是对账面
+ *  不是功能承载面，混入会把 50 项全部错判到聚合域名下。 */
+const AGGREGATE_ANCHOR_DOMAINS = new Set(["anchor", "v4-engines"]);
 export const FNO_TO_FRONTEND_DOMAIN: Record<string, string> = {};
 for (const d of U3_ANCHOR_DOMAINS) {
+  if (AGGREGATE_ANCHOR_DOMAINS.has(d.domain)) continue;
   // fRange 形如 "F501-F503" / "F513·F514·F519·F520·F522·F523"
   const tokens = d.fRange.split(/[·,\s]+/);
   const nos: number[] = [];
@@ -162,7 +166,8 @@ export function reconcileF501F550(): ReconcileReport {
 
   const rows: ReconcileRow[] = MASTER_F501_F550.map((m) => {
     const kernelDomain = FNO_TO_KERNEL_DOMAIN[m.fno] ?? null;
-    const frontendDomain = FNO_TO_FRONTEND_DOMAIN[m.fno] ?? null;
+    // F550 自身为锚点域：编号分派排除聚合域后在此显式声明（自我指涉三面之一）
+    const frontendDomain = m.fno === "F550" ? "anchor" : (FNO_TO_FRONTEND_DOMAIN[m.fno] ?? null);
     const fe = frontendDomain ? frontendByDomain.get(frontendDomain) : undefined;
     // UI 承载：F550 = 对账面板自身；其余按域查承载声明
     const uiCarrier =

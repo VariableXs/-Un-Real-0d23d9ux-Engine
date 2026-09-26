@@ -179,5 +179,64 @@
 }
 .u3-shake { animation: u3-shake 120ms ease-in-out 2; }
 
+/* F542 ClickLock 全局态标记（html[data-u3-clicklock-*]）——抓起光环走 body 伪层 */
+html[data-u3-clicklock-grabbed] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147482800;
+  pointer-events: none;
+  cursor: grabbing;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--vx-accent, #4f8cff) 55%, transparent);
+  animation: u3-ring 1.4s ease-in-out infinite;
+}
+html[data-u3-clicklock-pending] body { cursor: progress; }
+
 /* 键盘可达性（F206）：面板内全部控件焦点环可见 */
 .u3-panel :focus-visible { outline: 2px solid var(--vx-accent, #4f8cff); outline-offset: 2px; border-radius: 4px; }
+
+/* ------- v4 引擎实验室（AI-U3 · U3Lab） ------- */
+
+.u3-lab-intro {
+  margin: 4px 0 10px;
+  color: var(--vx-text-dim, rgba(220, 224, 232, 0.72));
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.u3-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.u3-lab-engine {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--vx-surface-raised, rgba(255, 255, 255, 0.045));
+  border: 1px solid var(--vx-border-subtle, rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(8px);
+}
+
+.u3-lab-engine-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.u3-lab-engine-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--vx-text-strong, #e8ebf2);
+}
+
+.u3-lab-red {
+  color: var(--vx-danger, #ff6b6b);
+  font-size: 11.5px;
+  line-height: 1.4;
+}

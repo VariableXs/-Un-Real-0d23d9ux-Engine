@@ -4,12 +4,13 @@
  * 面板纪律（与 J1 同源）：
  * - 名称 + 一句话说明 + 调节控件三件套齐全（F474 同源）；
  * - 默认档 = 主册判据默认；全部改动即时生效（u3Store 订阅制广播）；
- * - 高密度纵深排布：九个分组区、五十项各就各位（F302 乙基线）；
+ * - 高密度纵深排布：九个分组区 + v4 引擎实验室区、五十项各就各位（F302 乙基线）；
  * - F550 组内嵌九域自检引擎的实时执行结果（锚点可执行性证据）。
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { u3Store, U3_DEFAULTS, type U3Section } from "../u3/u3store";
+import { U3LabSection, U3WalkCheckSection, U3ExpLogSection } from "../u3/U3Lab";
 import {
   GRID_DENSITY_PX, BRIGHTNESS_SAMPLES, pickIconTextColor, wrapIconLabel, iconTextLayers,
   effectiveGrid, resnapToGrid, type GridDensity,
@@ -114,6 +115,9 @@ export function U3Tab(): React.ReactElement {
       <WinKeysGroup />
       <SysDevGroup />
       <ClockAnchorGroup />
+      <U3LabSection />
+      <U3WalkCheckSection />
+      <U3ExpLogSection />
     </div>
   );
 }
