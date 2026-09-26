@@ -569,6 +569,10 @@ pub mod apower;
 pub mod perf;
 // Varix STAR I · 泳道一 B 域后段（AI-K2 · F058-F075）：十八项功能 + 共享底盘。
 pub mod star;
+// Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
+// 目录名 compatstar2：compatstar/ 留给 AI-C1（F001-F020），按
+// secstar → secstar2 先例顺延，两包互不重叠。
+pub mod compatstar2;
 // Varix STAR I · 泳道四 I 通用域·一分队（AI-U1 · F401-F450）：批次一八项（F401/F403/F404/F405/F407/F408/F416/F424）+ 共享底盘，批次二/三续建。
 pub mod uni1;
 #[path = "stability/stability.rs"]

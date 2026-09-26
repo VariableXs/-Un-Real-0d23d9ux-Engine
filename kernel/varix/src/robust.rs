@@ -1019,12 +1019,12 @@ pub fn isolate_driver_failures(outcomes: &[DriverLoadOutcome]) -> LoadSummary {
 /// result is consumed by the boot path and the QEMU headless assertions.
 pub fn run_kernel_checkup() -> KernelCheckup {
     let mut checkup = KernelCheckup::new();
-    // 函数指针表：274 个域自检入口，统一经表迭代注册。禁止改回直排
+    // 函数指针表：276 个域自检入口，统一经表迭代注册。禁止改回直排
     // `checkup.register(crate::xxx::run_xxx_checks())`——debug 模式下每个
     // 直排调用的返回值临时各占一个栈槽（CheckSet ≈ 3.1KB × 275 ≈ 852KB），
     // 叠加测试线程 ~1MB 栈即 STATUS_STACK_OVERFLOW。经表调用同一时刻
     // 仅一个 CheckSet 临时存活。
-    let domains: [fn() -> CheckSet; 275] = [
+    let domains: [fn() -> CheckSet; 276] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
@@ -1347,6 +1347,13 @@ pub fn run_kernel_checkup() -> KernelCheckup {
         crate::perfstar::dirtyrect::run_dirtyrect_checks,
         crate::perfstar::iotier::run_iotier_checks,
         crate::uni1::run_uni1_checks,
+
+    // ------------------------------------------------------------------
+    // A 应用兼容域·后段（AI-C2 · F021~F040 · 主册 G-A-21~G-A-40）。
+    // 域聚合单行注册（同 S2 容量纪律；域内逐模块红绿在
+    // compatstar2::run_compatstar2_checks 的子行展开）。
+    // ------------------------------------------------------------------
+        crate::compatstar2::run_compatstar2_checks,
     ];
     for f in domains {
         checkup.register(f());
