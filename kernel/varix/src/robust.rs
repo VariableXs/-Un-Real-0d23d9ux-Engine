@@ -1026,7 +1026,7 @@ pub fn run_kernel_checkup() -> KernelCheckup {
     // 仅一个 CheckSet 临时存活。
     // （350→349：AI-U4 复验轮清除 rebase 伤——U1 注释块下错挂的
     // secstar2 重复注册行删除，同域两行归一行。）
-    let domains: [fn() -> CheckSet; 349] = [
+    let domains: [fn() -> CheckSet; 350] = [
         crate::power::run_power_checks,
         crate::audio::run_audio_checks,
         crate::driver::run_driver_checks,
