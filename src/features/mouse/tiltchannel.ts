@@ -101,3 +101,57 @@ export function tiltZoomStepsPerSec(angleDeg: number): number {
   if (rate === 0) return 0;
   return Math.round((rate / TILT_RATE_MAX) * 12 * 10) / 10;
 }
+
+/* ------------------------------- 模拟量运行时通道（批次八接线件） ------------------------------- */
+
+/**
+ * 模拟量倾斜通道：连续角度输入 → 本帧横滚像素。
+ * 与 onWheel 档位路径的分工（一处一事实）：
+ * - 档位路径（deltaX ≥ 1 整档）：tiltFromWheelEvent 档语义；
+ * - 模拟量路径（deltaX 为亚档粒度——触控板/高端模拟倾斜轮）：
+ *   角度映射 → 一阶趋近平滑（80ms 时间常数，角度突变不瞬跳）→
+ *   松开后 tiltCoast 余韵衰减（与 F204 惯性同格律）。
+ */
+export class TiltAnalogChannel {
+  private vel = 0; // px/s（带符号）
+
+  /**
+   * 喂一帧模拟量角度。
+   * @param dtMs 距上帧毫秒（事件时间戳实测）
+   * @returns 本帧应滚像素（带符号；0 = 死区内）
+   */
+  feed(angleDeg: number, dtMs: number): number {
+    const target = tiltRate(angleDeg);
+    const k = Math.min(1, Math.max(1, dtMs) / 80);
+    this.vel += (target - this.vel) * k;
+    return this.framePx(dtMs);
+  }
+
+  /** 松开倾斜后的余韵帧（指数衰减到 <1px/s 归零——零静默漂移）。 */
+  coast(dtMs: number): number {
+    this.vel *= Math.exp(-Math.max(1, dtMs) / TILT_COAST_MS);
+    if (Math.abs(this.vel) < 1) this.vel = 0;
+    return this.framePx(dtMs);
+  }
+
+  private framePx(dtMs: number): number {
+    const px = (this.vel * Math.max(1, dtMs)) / 1000;
+    return Math.abs(px) < 0.01 ? 0 : Math.round(px * 100) / 100;
+  }
+
+  get velocityPxPerSec(): number {
+    return Math.round(this.vel * 10) / 10;
+  }
+
+  reset(): void {
+    this.vel = 0;
+  }
+}
+
+/**
+ * 亚档粒度判据：|deltaX| 在 (0, 0.9) 视为模拟量输入（整档 ≥1）。
+ * 阈值 0.9 而非 1——部分设备发 0.95 的量化档，归模拟侧（宁慢勿跳）。
+ */
+export function isAnalogTilt(deltaX: number): boolean {
+  return deltaX !== 0 && Math.abs(deltaX) < 0.9;
+}

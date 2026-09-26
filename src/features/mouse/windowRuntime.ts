@@ -61,6 +61,10 @@ import { SeamGuard, ScreenMemory, type MonitorInfo, type SeamGuardConfig, type S
 import { resolveSideButton, type SideButtonsConfig } from "./sideButtons";
 import { clampHoverDelay, clampTooltipDelay, HOVER_TOOLTIP_DEFAULT } from "./hoverTiming";
 import { dispatchJ1Action } from "./actions";
+import { resolveEdgeTarget, type EdgeContainer } from "./edgeramp";
+import { SeamCrossMachine, nearestVerticalSeam, verticalSeams } from "./seamcross";
+import { TiltAnalogChannel, arbiterTiltPress, isAnalogTilt } from "./tiltchannel";
+import { ChordRuntime, CHORD_WINDOW_MS, type ChordBinding, type SideKey } from "./chordengine";
 import { logInfo } from "../../lib/logger";
 
 /* ------------------------------- 配置读取 ------------------------------- */
@@ -270,6 +274,16 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     deviceManager: new DeviceProfileManager(),
     // F610 旋钮缓存（避免每次 store 广播全量重算）
     timingApplied: false,
+    // F606 v8 模拟量倾斜通道（亚档粒度输入的平滑与速率映射）
+    tiltAnalog: new TiltAnalogChannel(),
+    lastTiltAtMs: null as number | null,
+    // F607 v8 接缝状态机（粘滞/角落滞回——多屏时的贴缝手感层）
+    seam: new SeamCrossMachine(),
+    seamHomeSign: 0 as 0 | 1 | -1,
+    lastMoveAt: 0,
+    // F615 v8 侧键和弦运行时（单键消歧/和弦命中的裁决者）
+    chord: new ChordRuntime(() => (cfg<SideButtonsConfig & { chords?: ChordBinding[] }>("sideButtons", SIDE_DEFAULT).chords ?? [])),
+    chordTimer: 0,
   };
 
   const dpr = (): number => (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
@@ -405,6 +419,23 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
 
   /* ---------- F609 拖拽边缘自动滚 ---------- */
 
+  /**
+   * 指针到容器根之间的可滚元素栈（内→外；嵌套接力判据的原料）。
+   * 上限 8 层——超过即视为病态嵌套，按最内 8 层裁决。
+   */
+  const scrollablesUnderPointer = (limit: HTMLElement): { el: HTMLElement; depth: number }[] => {
+    const out: { el: HTMLElement; depth: number }[] = [];
+    let el = document.elementFromPoint(st.lastX, st.lastY) as HTMLElement | null;
+    let depth = 0;
+    while (el && depth < 8) {
+      if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) out.push({ el, depth });
+      if (el === limit) break;
+      el = el.parentElement;
+      depth++;
+    }
+    return out;
+  };
+
   const dragStep = (): void => {
     st.dragRaf = 0;
     const dcfg = cfg<DragScrollConfig>("dragScroll", DRAG_DEFAULT);
@@ -415,7 +446,25 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
       const d = edgeDepth(st.lastX, st.lastY, { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, dcfg.bandPx);
       const dy = edgeScrollSpeed(d.bottom, dcfg.bandPx) - edgeScrollSpeed(d.top, dcfg.bandPx);
       const dx = edgeScrollSpeed(d.right, dcfg.bandPx) - edgeScrollSpeed(d.left, dcfg.bandPx);
-      if (dx !== 0 || dy !== 0) c.scrollBy({ left: dx, top: dy });
+      if (dx === 0 && dy === 0) continue;
+      // F609 v8 嵌套接力：方向感知剩余量栈 → resolveEdgeTarget 裁决滚谁。
+      // 内层尽头 + 指针仍在边缘带 = 接力给外层（carried 记一次体验日志）。
+      const els = scrollablesUnderPointer(c);
+      let host: HTMLElement = c;
+      if (els.length > 0) {
+        const down = dy >= 0;
+        const vertical = Math.abs(dy) >= Math.abs(dx);
+        const stack: EdgeContainer[] = els.map(({ el }, i) => {
+          let remaining: number;
+          if (vertical) remaining = down ? el.scrollHeight - el.scrollTop - el.clientHeight : el.scrollTop;
+          else remaining = dx > 0 ? el.scrollWidth - el.scrollLeft - el.clientWidth : el.scrollLeft;
+          return { id: String(i), depth: els.length - i, remainingPx: Math.max(0, remaining) };
+        });
+        const resolved = resolveEdgeTarget(stack);
+        if (resolved.target) host = els[Number(resolved.target.id)]!.el;
+        if (resolved.carried) j1Telemetry.log("edge-scroll", "smooth", "嵌套接力", st.lastX, st.lastY);
+      }
+      host.scrollBy({ left: dx, top: dy });
     }
     st.dragRaf = requestAnimationFrame(dragStep);
   };
@@ -491,6 +540,37 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
       const mons = mstate.monitors ?? fallbackMonitors();
       const cur = mons.find((m) => vp.x >= m.x && vp.x <= m.x + m.width && vp.y >= m.y && vp.y <= m.y + m.height) ?? mons[0];
       if (cur) st.memory.remember(cur.edidFingerprint, vp.x, vp.y, mons);
+    }
+
+    // F607 v8 接缝状态机（粘滞/角落滞回）：多屏 + 粘滞档启用时生效——
+    // 贴缝横移按档位减速（Shift 豁免在状态机内），家侧参照系离缝失效即重登记。
+    const dtMove = st.lastMoveAt === 0 ? 16 : Math.max(1, now - st.lastMoveAt);
+    st.lastMoveAt = now;
+    const scfg = cfg<SeamGuardConfig & { stickiness?: "off" | "light" | "strong" }>("seamGuard", SEAM_DEFAULT);
+    if (scfg.enabled && (scfg.stickiness ?? "off") !== "off" && mstate.tauri) {
+      const mons = mstate.monitors ?? fallbackMonitors();
+      const near = nearestVerticalSeam(verticalSeams(mons), vp.x, vp.y);
+      if (near) {
+        const { seam, distX } = near;
+        if (Math.abs(distX) > 64) st.seamHomeSign = distX > 0 ? 1 : -1;
+        if (st.seamHomeSign !== 0) {
+          const frame = st.seam.frame({
+            alongPx: Math.max(0, vp.y - seam.y0),
+            seamLenPx: Math.max(1, seam.y1 - seam.y0),
+            depthPx: -distX * st.seamHomeSign,
+            speedPxMs: Math.abs(raw.dx) / dtMove,
+            shiftHeld: st.keys.shiftKey,
+            stickiness: scfg.stickiness ?? "off",
+          });
+          if (frame.vxScale < 1) raw.dx *= frame.vxScale;
+          if (frame.crossed || frame.vxScale < 1) {
+            j1Telemetry.log("seam-cross", "smooth", frame.reason, e.clientX, e.clientY);
+          }
+        }
+      } else {
+        st.seamHomeSign = 0;
+        st.seam.reset();
+      }
     }
 
     // 副本层需要时才跑管线（headless 零开销）。
@@ -573,16 +653,40 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
       j1Telemetry.log("profile-switch", "smooth", `app:${st.currentScope}`, e.clientX, e.clientY);
     }
 
-    // F615 侧键 → 动作路由中心（应用覆盖优先级在 resolveSideButton 内裁决）。
+    // F615 侧键 → 和弦运行时（v8）：无和弦配置走纯单键路径（零延迟税）；
+    // 配置了和弦则经 ChordRuntime 消歧——单键等 180ms 窗、和弦立即触发。
     if (e.button === 3 || e.button === 4) {
-      const scfg = cfg<SideButtonsConfig>("sideButtons", SIDE_DEFAULT);
-      const target = resolveSideButton(scfg, st.currentScope, e.button);
-      if (target) {
-        e.preventDefault();
-        const action = target.kind === "action" ? target.action : target.kind === "shortcut" ? `shortcut:${target.keys}` : `launch:${target.appId}`;
+      const scfg = cfg<SideButtonsConfig & { chords?: ChordBinding[] }>("sideButtons", SIDE_DEFAULT);
+      const chords = scfg.chords ?? [];
+      const resolveAction = (button: number): string | null => {
+        const target = resolveSideButton(scfg, st.currentScope, button);
+        if (!target) return null;
+        return target.kind === "action" ? target.action : target.kind === "shortcut" ? `shortcut:${target.keys}` : `launch:${target.appId}`;
+      };
+      const dispatch = (action: string): void => {
         void dispatchJ1Action(action, "side", st.currentScope, { x: e.clientX, y: e.clientY }).then((r) => {
           if (!r.handled) cb.onActionUnhandled?.(action, "side");
         });
+      };
+      if (chords.length === 0) {
+        const action = resolveAction(e.button);
+        if (action) {
+          e.preventDefault();
+          dispatch(action);
+        }
+      } else {
+        e.preventDefault(); // 消歧窗内吞掉浏览器默认导航（和弦键的单键意图待裁决）
+        const key: SideKey = e.button === 3 ? "back" : "forward";
+        const r = st.chord.feed({ key, kind: "down", atMs: performance.now() }, (k) => resolveAction(k === "back" ? 3 : 4));
+        const action = r.immediate ?? r.deferred;
+        if (action) dispatch(action);
+        else if (st.chord.pendingKey !== null && st.chordTimer === 0) {
+          st.chordTimer = window.setTimeout(() => {
+            st.chordTimer = 0;
+            const flushed = st.chord.flushSingle(performance.now());
+            if (flushed) dispatch(flushed);
+          }, CHORD_WINDOW_MS + 2);
+        }
       }
     }
 
@@ -593,13 +697,19 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
       st.gestureLive = true;
     }
 
-    // F604 中键锚标。
+    // F604 中键锚标 + F606 倾斜按压仲裁（v8 接线）：近期有倾斜轮事件
+    // （300ms 窗）时按压优先解释为缩放意图——先到先得判据的运行时落点。
     const acfg = cfg<AutoscrollConfig>("autoscroll", AUTO_DEFAULT);
     if (e.button === 1 && acfg.enabled) {
-      const container = scrollContainerAt(e.clientX, e.clientY);
-      if (container) {
-        e.preventDefault();
-        startAutoscroll(container, e.clientX, e.clientY);
+      const winner = arbiterTiltPress(performance.now(), st.lastTiltAtMs);
+      if (winner === "zoom") {
+        j1Telemetry.log("tilt-press", "smooth", "tilt-press→zoom 让位（锚标不抢）", e.clientX, e.clientY);
+      } else {
+        const container = scrollContainerAt(e.clientX, e.clientY);
+        if (container) {
+          e.preventDefault();
+          startAutoscroll(container, e.clientX, e.clientY);
+        }
       }
     }
   };
@@ -650,6 +760,26 @@ export function createWindowRuntime(opts: WindowRuntimeOptions, cb: WindowRuntim
     const hit = document.elementFromPoint(e.clientX, e.clientY);
     if (!hit) return;
     const norm = normalizeWheelDelta({ deltaX: e.deltaX, deltaY: e.deltaY, deltaMode: e.deltaMode, viewportHeight: window.innerHeight });
+
+    // F606 v8 模拟量倾斜通道：亚档粒度的连续横滚（触控板/模拟倾斜轮）——
+    // 角度映射 → 一阶趋近平滑；速率交既有横向惯性余韵（同一格律）。
+    if (cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT).enabled && isAnalogTilt(e.deltaX)) {
+      e.preventDefault();
+      const nowA = performance.now();
+      const dtA = st.lastTiltAtMs === null ? 16 : Math.min(120, nowA - st.lastTiltAtMs);
+      st.lastTiltAtMs = nowA;
+      const angle = Math.max(-30, Math.min(30, e.deltaX * 12)); // 12°/亚档，±30° 封顶
+      const px = st.tiltAnalog.feed(angle, dtA);
+      if (px !== 0) {
+        scrollElement(hit, px, 0, "auto");
+        st.inertiaH.feed(Math.abs(px) / LINE_HEIGHT, px >= 0 ? 1 : -1, nowA);
+        st.momentumEl = hit;
+        st.momentumAxis = "x";
+        if (st.momentumRaf === 0) st.momentumRaf = requestAnimationFrame(momentumStep);
+      }
+      j1Telemetry.log("wheel", "smooth", `tilt-analog(${st.tiltAnalog.velocityPxPerSec}px/s)`, e.clientX, e.clientY);
+      return;
+    }
 
     // F606 真实倾斜路径：纯横向事件按倾斜档语义横滚 + 横向惯性余韵（v4 对称通道）。
     const tilt = tiltFromWheelEvent(e.deltaX, e.deltaY, cfg<TiltWheelConfig>("tiltWheel", TILT_DEFAULT).colsPerNotch);

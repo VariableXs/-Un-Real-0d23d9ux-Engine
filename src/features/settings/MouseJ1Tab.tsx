@@ -48,6 +48,7 @@ import {
 } from "./MouseJ1Panels";
 import { V5Panels } from "./MouseJ1V5Panels";
 import { V7Panels } from "./MouseJ1V7Panels";
+import { V8Panels } from "./MouseJ1V8Panels";
 import "../../styles/mouse-j1.css";
 
 type Cfg = Record<string, unknown>;
@@ -656,6 +657,7 @@ export function MouseJ1Tab(): React.ReactElement {
         </SectionCard>
         <V5Panels />
         <V7Panels />
+        <V8Panels />
         <SectionCard title="运行时接线审计" f="v3 接线">
           <WiringPanel />
         </SectionCard>

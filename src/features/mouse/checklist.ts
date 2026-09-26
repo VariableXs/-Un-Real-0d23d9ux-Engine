@@ -97,7 +97,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
     placement: "A",
     navChain: ["设置中心", "鼠标", "滚轮手感"],
     probe: () => tiltCols(3) === 3 && tiltFromShiftWheel(120, 3).cols === 3 && tiltFromShiftWheel(120, 3).dir === 1,
-    ugly: "模拟量倾斜通道已就位（v7 tiltchannel：角度→速率线性映射+死区+动量余韵+按压仲裁），但真实倾斜硬件（模拟量 deltaX）的接入仍是离散键降级口径——通道的连续输入端等真机对拍（随闸门）。",
+    ugly: "模拟量通道已真接线（v8 isAnalogTilt 亚档判据→TiltAnalogChannel 一阶平滑→惯性余韵），但 12°/亚档 的角度映射系数是手感判断不是标定值——真机对拍（随闸门）才能定档。",
   },
   {
     f: "F607", name: "跨屏接缝手感", section: "seamGuard",
@@ -200,7 +200,7 @@ export const J1_ITEMS: J1ItemMeta[] = [
     placement: "A",
     navChain: ["设置中心", "鼠标", "滚轮手感"],
     probe: () => (J1_DEFAULTS.passthrough as { enabled: boolean }).enabled === true,
-    ugly: "嵌套滚动的接力判据引擎已就位（v7 edgeramp.resolveEdgeTarget：内层尽头接力外层+carried 标记），但 DOM 命中链到引擎栈的实时接线未通——运行时仍沿「第一个可滚祖先」，引擎消费端是面板演示（接线随下一批次）。",
+    ugly: "嵌套接力已真实接线（v8 dragStep：方向感知剩余量栈→resolveEdgeTarget 裁决→carried 记体验日志），但接力瞬间「内容突然换容器滚」的视觉连续性没有动画缓冲——外层接管是硬切（250ms 松手余韵只覆盖松手侧）。",
   },
   {
     f: "F619", name: "长按时长统一旋钮", section: "longPress",

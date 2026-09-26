@@ -158,3 +158,51 @@ export class SeamCrossMachine {
     };
   }
 }
+
+/* ------------------------------- 接缝定位（批次八接线件） ------------------------------- */
+
+/** 垂直接缝快照（两屏相邻边缘的公共段）。 */
+export interface VerticalSeam {
+  /** 缝的 x 坐标（虚拟桌面 px）。 */
+  x: number;
+  /** 缝的纵向范围 [y0, y1)。 */
+  y0: number;
+  y1: number;
+  /** 缝两侧的屏 id（左/右；诊断与对账用）。 */
+  leftId: string;
+  rightId: string;
+}
+
+/**
+ * 从显示器清单解算全部垂直接缝（公共边 = |xB - (xA+widthA)| ≤ 2px
+ * 且纵向有重叠）。纯函数——运行时每帧调用，面板拓扑图同源。
+ */
+export function verticalSeams(monitors: { id: string; x: number; y: number; width: number; height: number }[]): VerticalSeam[] {
+  const seams: VerticalSeam[] = [];
+  for (const a of monitors) {
+    for (const b of monitors) {
+      if (a.id >= b.id) continue; // 无序对去重
+      const gap = Math.abs(b.x - (a.x + a.width));
+      const gapR = Math.abs(a.x - (b.x + b.width));
+      const y0 = Math.max(a.y, b.y);
+      const y1 = Math.min(a.y + a.height, b.y + b.height);
+      if (gap <= 2 && y1 - y0 > 0) seams.push({ x: a.x + a.width, y0, y1, leftId: a.id, rightId: b.id });
+      else if (gapR <= 2 && y1 - y0 > 0) seams.push({ x: b.x + b.width, y0, y1, leftId: b.id, rightId: a.id });
+    }
+  }
+  return seams;
+}
+
+/**
+ * 指针最近的垂直接缝（|vy| 落在缝纵向范围内才算——缝外不相干）。
+ * 返回 null = 附近无缝（单屏常态）。
+ */
+export function nearestVerticalSeam(seams: VerticalSeam[], vx: number, vy: number): { seam: VerticalSeam; distX: number } | null {
+  let best: { seam: VerticalSeam; distX: number } | null = null;
+  for (const seam of seams) {
+    if (vy < seam.y0 || vy >= seam.y1) continue;
+    const distX = vx - seam.x;
+    if (!best || Math.abs(distX) < Math.abs(best.distX)) best = { seam, distX };
+  }
+  return best;
+}

@@ -28,6 +28,9 @@ import { shadowFromLift, REST_LIFT } from "./shadowcast";
 import { displayCapability, identityConfidence } from "./displayidentity";
 import { exportPack, verifyPack, migrateProfilePack } from "./profilesync";
 import { parseEdid, synthEdid } from "./edid";
+import { benchEngines, TREMOR_PHYSIOLOGIC } from "./filterbench";
+import { HOLD_CANCEL_RADIUS_PX, HoldArbiter } from "./longpress";
+import { matchChord, needsDisambiguation } from "./chordengine";
 
 /** v5 新引擎健康探针登记（探针真执行——数字不抄自注释）。 */
 export interface EngineProbe {
@@ -163,6 +166,54 @@ export function engineProbes(): EngineProbe[] {
       },
       detail: () => "导出→校验通过 · 迁移环正常",
     },
+    {
+      engine: "滤波基准台",
+      anchor: "F611 合成信号种子确定 + 双引擎推荐（平手判 8%）",
+      probe: () => {
+        const a = benchEngines(TREMOR_PHYSIOLOGIC, "light", 42);
+        const b = benchEngines(TREMOR_PHYSIOLOGIC, "light", 42);
+        return JSON.stringify(a) === JSON.stringify(b) && ["iir", "euro", "tie"].includes(a.recommend);
+      },
+      detail: () => {
+        const r = benchEngines(TREMOR_PHYSIOLOGIC, "light");
+        return `主频 ${r.measuredHz}Hz · 推荐 ${r.recommend}`;
+      },
+    },
+    {
+      engine: "长按仲裁",
+      anchor: "F619 最短先得 + 移动取消 + 进度环",
+      probe: () => {
+        const arb = new HoldArbiter();
+        arb.begin(
+          [
+            { id: "menu", durationMs: 500 },
+            { id: "drag", durationMs: 300 },
+          ],
+          1000,
+          0,
+          0,
+        );
+        const win = arb.tick(1300);
+        arb.move(HOLD_CANCEL_RADIUS_PX + 5, 0);
+        return win?.fired === "drag" && win.shortCircuited.includes("menu") && arb.finish().kind === "winner";
+      },
+      detail: () => "300ms 短声明胜出 · 长声明入短路账",
+    },
+    {
+      engine: "侧键和弦",
+      anchor: "F615 同时/顺序双形态匹配 + 单键消歧",
+      probe: () => {
+        const hit = matchChord(
+          [
+            { key: "back", kind: "down", atMs: 0 },
+            { key: "forward", kind: "down", atMs: 100 },
+          ],
+          [{ id: "c", keys: ["back", "forward"], kind: "simultaneous", action: "x" }],
+        );
+        return hit === "c" && needsDisambiguation("back", [{ id: "c", keys: ["back", "forward"], kind: "simultaneous", action: "x" }]);
+      },
+      detail: () => "重叠判据命中 · 消歧延迟在位",
+    },
   ];
 }
 
@@ -237,5 +288,11 @@ export const V5_NEW_ANCHORS: { f: string; anchor: string; carrier: string; state
   { f: "F618", anchor: "三层 specificity 规则引擎 + 临时开关自动过期 + 环形审计", carrier: "wheelrules.ts + 规则面板", state: "green" },
   { f: "F620", anchor: "投影物理光照（单参数三联）+ 地面反光明度差兜底 + 弱动效归零", carrier: "shadowcast.ts + 影子面板", state: "green" },
   { f: "F614", anchor: "档案包生命周期（导出回读/v1→v2 迁移/merge 冲突裁决）", carrier: "profilesync.ts + 档案包面板", state: "green" },
+  { f: "F609", anchor: "嵌套接力真实接线（方向感知剩余量栈→裁决→carried 日志）", carrier: "windowRuntime.dragStep + edgeramp.resolveEdgeTarget", state: "green" },
+  { f: "F606", anchor: "模拟量倾斜真接线（亚档判据→一阶平滑通道）+ 按压仲裁让位", carrier: "windowRuntime.onWheel/onDown + TiltAnalogChannel", state: "green" },
+  { f: "F607", anchor: "接缝状态机真接线（粘滞/角落滞回/家侧参照系）", carrier: "windowRuntime.onMove + SeamCrossMachine + verticalSeams", state: "green" },
+  { f: "F611", anchor: "滤波基准台（你的手适合哪个引擎——合成谱种子确定）", carrier: "filterbench.ts + 基准台面板", state: "green" },
+  { f: "F619", anchor: "长按仲裁器（最短先得/移动取消/进度环）", carrier: "longpress.ts + 仲裁台面板", state: "green" },
+  { f: "F615", anchor: "侧键和弦（双形态匹配/单键消歧/冲突显式化）", carrier: "chordengine.ts + windowRuntime.onDown + 和弦面板", state: "green" },
   { f: "全项", anchor: "4K 四档 DPI 走查 / 实机录屏", carrier: "随闸门（实机日集中产出）", state: "gated" },
 ];

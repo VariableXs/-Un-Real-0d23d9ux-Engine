@@ -21,6 +21,9 @@ export type J1EventKind =
   | "autoscroll-start"
   | "autoscroll-exit"
   | "seam-hold"
+  | "seam-cross"
+  | "edge-scroll"
+  | "tilt-press"
   | "magnet-snap"
   | "slow-tune"
   | "profile-switch";

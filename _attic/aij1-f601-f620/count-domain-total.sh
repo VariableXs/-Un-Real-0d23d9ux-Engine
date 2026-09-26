@@ -24,8 +24,9 @@ for f in src/features/mouse/j1store.ts src/features/mouse/curve.ts src/features/
   src/features/mouse/tiltchannel.ts src/features/mouse/seamcross.ts src/features/mouse/edgeramp.ts \
   src/features/mouse/wheelrules.ts src/features/mouse/shadowcast.ts src/features/mouse/displayidentity.ts \
   src/features/mouse/profilesync.ts \
+  src/features/mouse/filterbench.ts src/features/mouse/longpress.ts src/features/mouse/chordengine.ts \
   src/features/mouse/windowRuntime.ts src/features/mouse/J1Runtime.tsx \
-  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/features/settings/MouseJ1V5Panels.tsx src/features/settings/MouseJ1V7Panels.tsx src/styles/mouse-j1.css; do
+  src/features/settings/MouseJ1Tab.tsx src/features/settings/MouseJ1Panels.tsx src/features/settings/MouseJ1V5Panels.tsx src/features/settings/MouseJ1V7Panels.tsx src/features/settings/MouseJ1V8Panels.tsx src/styles/mouse-j1.css; do
   n=$(filt < "$f"); printf "%6d  %s\n" "$n" "$f"; total=$((total+n))
 done
 echo "------"; echo "J1 域功能文件现值合计: $total"
