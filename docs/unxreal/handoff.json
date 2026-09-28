@@ -1,20 +1,28 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "波01-M01（本轮会话）",
-  "last_session": "AI-01（CoRun 会话）",
-  "phase": "skeleton",
-  "next_batch": "UNX-A1-B13",
+  "updated_at": "波01-M01（AI-01 finalize 会话）",
+  "last_session": "AI-01（CoRun 会话：B01/B02 finalize 收口 + B03 起步 3 条深化）",
+  "phase": "deepen",
+  "next_batch": "UNX-A1-B03（续 17 条 F0044–F0060，收口后转 B13 骨架起步）",
   "domain_ledger_progress": {
     "A1": {
-      "finalized_batches": 0,
+      "finalized_batches": 2,
+      "finalized_list": ["UNX-A1-B01", "UNX-A1-B02"],
       "skeleton_batches": 12,
       "rows_locked": 71770,
       "rows_budget": 240000,
+      "rows_deepened_locked": 12520,
       "entries_skeleton": 240,
-      "entries_deepened": 3,
+      "entries_deepened": 43,
+      "entries_deepened_note": "43 = 样板 3（F0001/F0021/F0039）+ B01 新 19 + B02 新 18 + B03 在途 3；B03 批 17 条待续",
       "open_bugs": 0
     }
   },
+  "deepen_books": [
+    "docs/unxreal/deepen/A1-B01.md（19 条新深化，正文 10,551 字，5,620 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B02.md（18 条新深化，正文 9,799 字，6,000 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B03.md（3 条在途，正文 2,256 字，900 行锁定；批未收口）"
+  ],
   "waves": {
     "current": 1,
     "next_closeout": "波 01 末：镜像 v1.0 + 九步闭账"
@@ -26,7 +34,12 @@
   ],
   "open_risks": [
     { "id": "R-A1-001", "text": "F0151/F0152 写盘侧条目动工前须 AI-86 双人复核（引导设施红线）", "owner": "AI-86", "level": "P0" },
-    { "id": "R-A1-002", "text": "实机判据（引导 50/50、ktest 真机面）登记随闸门补测（双轨产线：开发期零 QEMU）", "owner": "AI-01", "level": "P2" }
+    { "id": "R-A1-002", "text": "实机判据（引导 50/50、ktest 真机面、DSDT 真机定位/iasl 覆盖率）登记随闸门补测（双轨产线：开发期零 QEMU）", "owner": "AI-01", "level": "P2" },
+    { "id": "R-A1-003", "text": "幽灵深化稿两件（A1-B03-B04/A1-B11-B12，条目名与台账冲突且含 QEMU 违纪内容）已隔离 _attic/unxreal_deepen_drafts/，禁删禁用，处置待 AI-86 复核", "owner": "AI-86", "level": "P1" }
   ],
-  "adr_log": ["ADR-UNX-001", "ADR-UNX-002", "ADR-UNX-003"]
+  "adr_log": ["ADR-UNX-001", "ADR-UNX-002", "ADR-UNX-003"],
+  "sync_notes": [
+    "总纲 §7.3 台账回填（B01/B02 翻[已深化]+深化字数回填、B03 批注 3 条在途、小结修订记录）已落盘，但该文件工作区另含其他会话未提交的 v2.0 深度扩展（约 +6,325 行，非本会话产物），本会话不越权代提交；待该会话收口或闭账会话联合提交。",
+    "本次 git 提交范围仅限 AI-01 自有产物：deepen/ 三册、goal.md、handoff.json、batches/UNX-A1-B03.md、统一协作总台账（仓库根 CoRun Varix STAR II · Unxreal.md）。"
+  ]
 }
