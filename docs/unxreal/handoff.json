@@ -1,9 +1,9 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "波01-M01（AI-01 finalize 会话）",
-  "last_session": "AI-01（CoRun 会话：B01/B02 finalize 收口 + B03 起步 3 条深化）",
-  "phase": "deepen",
-  "next_batch": "UNX-A1-B03（续 17 条 F0044–F0060，收口后转 B13 骨架起步）",
+  "updated_at": "波07-M01（AI-17 认领+骨架收口会话）",
+  "last_session": "AI-17（CoRun 会话：D2 域认领写锁 + B01–B15 骨架 300 条一次建入 + 总纲/根台账/handoff 四方落盘 + 断言链机械校验全绿）",
+  "phase": "skeleton-extend（D2 新扩表域骨架铺设完成，待深化；A1 另处于 deepen 在途，两会话并行不冲突）",
+  "next_batch": "UNX-D2-B01 起深化（B01–B15 骨架 300 条已收口；B16–B40 余量 155,900 行待 AI-17 后续会话按 §6.2 规则二续领）",
   "domain_ledger_progress": {
     "A1": {
       "finalized_batches": 2,
@@ -16,6 +16,18 @@
       "entries_deepened": 43,
       "entries_deepened_note": "43 = 样板 3（F0001/F0021/F0039）+ B01 新 19 + B02 新 18 + B03 在途 3；B03 批 17 条待续",
       "open_bugs": 0
+    },
+    "D2": {
+      "finalized_batches": 0,
+      "finalized_list": [],
+      "skeleton_batches": 15,
+      "rows_locked": 84100,
+      "rows_budget": 240000,
+      "rows_deepened_locked": 0,
+      "entries_skeleton": 300,
+      "entries_deepened": 0,
+      "entries_deepened_note": "B01–B15 骨架 300 条（F12801–F13100）一次建入（B01 DOS/NT headers、B02 节表映射、B03 BSS 补齐、B04 重定位/ASLR、B05 IAT 导入链、B06 导出表三表查找、B07 TLS 目录回调、B08 DataDirectory 越界校验、B09 映像布局校验器与装载完成态、B10 延迟加载描述符与 F 型收口、B11 进程创建链全段、B12 主线程栈与 guard page、B13 CreateThread/TEB 初始化、B14 TLS/FLS 槽族、B15 WOW64 装载分档）；深化自 B01 起；B16–B40 待领",
+      "open_bugs": 0
     }
   },
   "deepen_books": [
@@ -24,22 +36,29 @@
     "docs/unxreal/deepen/A1-B03.md（3 条在途，正文 2,256 字，900 行锁定；批未收口）"
   ],
   "waves": {
-    "current": 1,
-    "next_closeout": "波 01 末：镜像 v1.0 + 九步闭账"
+    "current": 7,
+    "next_closeout": "波 07 末：D2 骨架收口复核（校验脚本 scripts/unxreal_d2_skeleton_check.py 全绿为基线）+ A1-B03 深化由 AI-01 续接（并行不冲突）"
   },
   "cross_domain_freeze": [
     { "interface": "BootManifest", "frozen_at": "波01-Q3", "consumers": ["A2", "L1"] },
     { "interface": "内存图交接结构体（F0079）", "frozen_at": "待 A4 开工复核", "consumers": ["A4"] },
-    { "interface": "SMP 前置数据包（F0188）", "frozen_at": "待 A3 联签", "consumers": ["A3"] }
+    { "interface": "SMP 前置数据包（F0188）", "frozen_at": "待 A3 联签", "consumers": ["A3"] },
+    { "interface": "D2 装载完成态结构（UNX-D2-B09 骨架预留）", "frozen_at": "待 D2 深化开工冻结", "consumers": ["D2 下游（E 域调度/内存联动）"] },
+    { "interface": "D2 TEB 初始化布局（UNX-D2-B13 骨架预留）", "frozen_at": "待 D1（AI-16）SEH/TEB 接口联签", "consumers": ["D2", "D1"] },
+    { "interface": "D2 WOW64 分档判据（UNX-D2-B15 骨架预留）", "frozen_at": "待 compatstar 位数门（gate_machine）现状复核", "consumers": ["D2", "C 域位数兼容线"] }
   ],
   "open_risks": [
     { "id": "R-A1-001", "text": "F0151/F0152 写盘侧条目动工前须 AI-86 双人复核（引导设施红线）", "owner": "AI-86", "level": "P0" },
     { "id": "R-A1-002", "text": "实机判据（引导 50/50、ktest 真机面、DSDT 真机定位/iasl 覆盖率）登记随闸门补测（双轨产线：开发期零 QEMU）", "owner": "AI-01", "level": "P2" },
-    { "id": "R-A1-003", "text": "幽灵深化稿两件（A1-B03-B04/A1-B11-B12，条目名与台账冲突且含 QEMU 违纪内容）已隔离 _attic/unxreal_deepen_drafts/，禁删禁用，处置待 AI-86 复核", "owner": "AI-86", "level": "P1" }
+    { "id": "R-A1-003", "text": "幽灵深化稿两件（A1-B03-B04/A1-B11-B12，条目名与台账冲突且含 QEMU 违纪内容）已隔离 _attic/unxreal_deepen_drafts/，禁删禁用，处置待 AI-86 复核", "owner": "AI-86", "level": "P1" },
+    { "id": "R-D2-001", "text": "任务书示例条目批号（F12803/F12804/F12805）与 §2.1 区间恒等规则冲突，已按区间恒等归位 B01 并在总纲 §7.3-D2 注记纠偏；待 AI-86 或闭账会话追认", "owner": "AI-86", "level": "P2" },
+    { "id": "R-D2-002", "text": "D2 与现存 kernel/varix/src/proc/pe.rs（静态最小 PE 装载）及 compatstar 系（peblend/wow64/dblrun 位数门）为升级接管关系，深化期动工前须逐条核对接管边界，避免双实现漂移", "owner": "AI-17", "level": "P1" },
+    { "id": "R-D2-003", "text": "D2 B01–B15 骨架 300 条判据均为 L1/L2 级可复测锚点，真机/实机面判据按双轨产线登记随闸门补测；深化期每条须达 ≥300 字六要素方可翻[已深化]", "owner": "AI-17", "level": "P2" }
   ],
   "adr_log": ["ADR-UNX-001", "ADR-UNX-002", "ADR-UNX-003"],
   "sync_notes": [
     "总纲 §7.3 台账回填（B01/B02 翻[已深化]+深化字数回填、B03 批注 3 条在途、小结修订记录）已落盘，但该文件工作区另含其他会话未提交的 v2.0 深度扩展（约 +6,325 行，非本会话产物），本会话不越权代提交；待该会话收口或闭账会话联合提交。",
-    "本次 git 提交范围仅限 AI-01 自有产物：deepen/ 三册、goal.md、handoff.json、batches/UNX-A1-B03.md、统一协作总台账（仓库根 CoRun Varix STAR II · Unxreal.md）。"
+    "（历史记录·AI-01 波01）git 提交范围仅限 AI-01 自有产物：deepen/ 三册、goal.md、handoff.json、batches/UNX-A1-B03.md、统一协作总台账（仓库根 CoRun Varix STAR II · Unxreal.md）。",
+    "AI-17 波07-M01 提交范围仅限 AI-17 自有产物：batches/UNX-D2-B01..B15.md（15 件 300 条）、scripts/unxreal_d2_skeleton_check.py、总纲 §7.3-D2 扩表段、根统一协作总台账（§二/§三/§四/§五-8/§六 五处）、handoff.json 本文件。A1 deepen 在途修改、A5/B4/B5 未跟踪批次件均不纳入，不越权代提交。"
   ]
 }
