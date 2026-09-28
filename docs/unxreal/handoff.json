@@ -1,0 +1,32 @@
+{
+  "protocol": "Unxreal handoff v1（总册 §6.4）",
+  "updated_at": "波01-M01（本轮会话）",
+  "last_session": "AI-01（CoRun 会话）",
+  "phase": "skeleton",
+  "next_batch": "UNX-A1-B13",
+  "domain_ledger_progress": {
+    "A1": {
+      "finalized_batches": 0,
+      "skeleton_batches": 12,
+      "rows_locked": 71770,
+      "rows_budget": 240000,
+      "entries_skeleton": 240,
+      "entries_deepened": 3,
+      "open_bugs": 0
+    }
+  },
+  "waves": {
+    "current": 1,
+    "next_closeout": "波 01 末：镜像 v1.0 + 九步闭账"
+  },
+  "cross_domain_freeze": [
+    { "interface": "BootManifest", "frozen_at": "波01-Q3", "consumers": ["A2", "L1"] },
+    { "interface": "内存图交接结构体（F0079）", "frozen_at": "待 A4 开工复核", "consumers": ["A4"] },
+    { "interface": "SMP 前置数据包（F0188）", "frozen_at": "待 A3 联签", "consumers": ["A3"] }
+  ],
+  "open_risks": [
+    { "id": "R-A1-001", "text": "F0151/F0152 写盘侧条目动工前须 AI-86 双人复核（引导设施红线）", "owner": "AI-86", "level": "P0" },
+    { "id": "R-A1-002", "text": "实机判据（引导 50/50、ktest 真机面）登记随闸门补测（双轨产线：开发期零 QEMU）", "owner": "AI-01", "level": "P2" }
+  ],
+  "adr_log": ["ADR-UNX-001", "ADR-UNX-002", "ADR-UNX-003"]
+}
