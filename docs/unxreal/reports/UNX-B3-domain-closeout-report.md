@@ -118,7 +118,7 @@ root cause 留痕：首跑 33 败三步修复——①路径基准错层（`deep
 | 17 | 域账封账 F6397+域外交接五件清单 F6394 | ✓ 零新条目声明+移交兑现 |
 | 18 | git 提交 | ✓ 0556d06a（13 件 +1,944/−14，pathspec 零裹挟） |
 | 19 | 一次性脚本用后即删 | ✓ flip_b31_b40.py/_probe_handoff.py/_roll_handoff_b3.py |
-| 20 | git 推送 GitHub | ⚠️ 443 三连不可达（21103/21054ms 超时+Connection reset），欠账登记 133e99a0——C4 域 297ed604/B2 域 cafe311a/AI-15 8ec2a428 同判例，本地 main 领先待网络恢复补推 |
+| 20 | git 推送 GitHub | ⚠️ 六连不可达（21103/21054/21068/21110ms 超时+Connection reset ×2），欠账登记 133e99a0——C4 域 297ed604/B2 域 cafe311a/AI-15 8ec2a428/AI-16 bc1377a0 同判例；本地 main 领先 origin/main 7 提交待网络恢复补推（详见 §七） |
 
 ## 六、域移交（F6394 五件清单兑现）
 
@@ -132,4 +132,6 @@ root cause 留痕：首跑 33 败三步修复——①路径基准错层（`deep
 
 ## 七、欠账与补推登记
 
-- 提交 0556d06a（域收官工件 13 件）+ 133e99a0（欠账登记空提交）本地在库；github.com:443 三连不可达，按 C4/B2/AI-15 判例登记欠账，网络恢复后 `git push origin main` 补推清偿（补推成功后本节追加实证行）。
+- 本会话提交链：0556d06a（域收官工件 13 件）→ 133e99a0（欠账登记空提交）→ 2fc13a9c（本报告）；六次推送全部不可达（github.com:443 超时 ×4 + Connection reset ×2，21103–21110ms），按 C4/B2/AI-15/AI-16 判例登记欠账。
+- **本地 main 领先 origin/main（126bf9f2）共 7 提交**（`git rev-list origin/main..main --count` 实测）：872c37e9/7cf7a9b7/bc1377a0（AI-16 D1 三件）+ 0556d06a/133e99a0/2fc13a9c（本会话三件）+ e5605b87（AI-09 B4 一件）——并行会话共享待推队列，分支级 push 原子清偿。
+- 补推路径：网络恢复后 `git push origin main` 一次清偿；清偿验证双验：`git rev-list origin/main..main --count` 归零 + `git merge-base --is-ancestor <commit> origin/main`（M11 判例）。
