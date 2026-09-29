@@ -111,13 +111,22 @@ def main():
     for d in deleted:
         items.append({"path": d, "mode": "100644", "type": "blob", "sha": None})
 
-    tree = api("POST", "git/trees", {"base_tree": parent, "tree": items})
     local_tree = sh(["git", "rev-parse", f"{commit}^{{tree}}"]).strip()
-    if tree["sha"] != local_tree:
-        raise SystemExit(
-            f"API 建的树 {tree['sha'][:8]} 与本地树 {local_tree[:8]} 不一致 —— "
-            "推送内容与本地提交有偏差，拒绝继续（排查 items 的 mode/路径/删除项）"
-        )
+    if not items:
+        # 空提交（push 欠账登记判例 bc1377a0/133e99a0/ec97dda6）：diff 无文件，
+        # GitHub API 对空 tree 数组报 422 Invalid tree info——空提交树与父树
+        # 一致，直接沿用父树建 commit（sha 校验兜底）。
+        if local_tree != sh(["git", "rev-parse", f"{parent}^{{tree}}"]).strip():
+            raise SystemExit("diff 为空但树与父不一致 —— 非空提交，拒绝按空提交处理")
+        tree_sha = local_tree
+    else:
+        tree = api("POST", "git/trees", {"base_tree": parent, "tree": items})
+        if tree["sha"] != local_tree:
+            raise SystemExit(
+                f"API 建的树 {tree['sha'][:8]} 与本地树 {local_tree[:8]} 不一致 —— "
+                "推送内容与本地提交有偏差，拒绝继续（排查 items 的 mode/路径/删除项）"
+            )
+        tree_sha = tree["sha"]
     # 提交消息必须取**原始字节**：`git log --format=%B` 会多补一个尾换行，
     # 消息一变，commit sha 就再也对不上本地的了。
     raw = sh(["git", "cat-file", "commit", local], binary=True)
@@ -136,7 +145,7 @@ def main():
     # 兄弟纠正场景（GHPUSH_FORCE=1）下 remote 是内容相同的旁支提交，拿它当
     # 父会造出「父指错」的第三个兄弟提交，sha 永远对不上本地 —— 必须用 parent。
     new = api("POST", "git/commits", {
-        "message": msg, "tree": tree["sha"], "parents": [parent],
+        "message": msg, "tree": tree_sha, "parents": [parent],
         "author": author, "committer": committer,
     })
     if new["sha"] != local:
