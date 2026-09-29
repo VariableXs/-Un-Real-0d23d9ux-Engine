@@ -23,7 +23,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 HANDOFF = REPO / "docs" / "unxreal" / "handoff.json"
-ROOT_LEDGER = REPO / "CoRun Varix STAR II · Unxreal.md"
+ROOT_LEDGER = REPO / "CoRun Varix STAR II · Unxreal · 统一协作总台账.md"
 DEEPEN = REPO / "docs" / "unxreal" / "deepen"
 
 # 五满账域：域号 / 闭账锚 / phase 关键词 / 根台账 §三 段锚文本

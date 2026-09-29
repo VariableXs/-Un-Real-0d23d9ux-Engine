@@ -26,7 +26,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 DEEPEN = REPO / "docs" / "unxreal" / "deepen"
 HANDOFF = REPO / "docs" / "unxreal" / "handoff.json"
-ROOT_LEDGER = REPO / "CoRun Varix STAR II · Unxreal.md"
+ROOT_LEDGER = REPO / "CoRun Varix STAR II · Unxreal · 统一协作总台账.md"
 
 checks = []   # (group, name, ok, detail)
 
