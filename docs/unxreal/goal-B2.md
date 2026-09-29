@@ -36,6 +36,7 @@ AI-07 承包域 UNX-B2（ext 与只读 fs 生态：ext4/btrfs/squashfs，F4801�
 - 并行交错留痕：handoff.json 本轮以语义化增量更新落账（前一版本为波08-M11 AI-08 B3 域 B16–B30 收口，其全部记录保留于 B3 块/phase/next_batch/sync_notes）。
 
 ## 下一步 / 未闭环项
+- **push 欠账登记**：cafe311a（本轮 18 件）+ ada1f2cb（AI-08 B3）双提交在本地库，github.com:443 三连不可达（21063/21059/21093ms 超时，R-B2-002 同款网络故障，C4 域 297ed604 先例）——网络恢复后 `git push origin main` 补推即可，docs 落盘已完成不欠账；
 - B20–B30 深化 220 条（下轮对话继续，每对话 ≥300 项新功能口径不变；F5240∈B22/F5350∈B28 双锚 verbatim 承接，B22/B28 为落点批）；
 - B31–B40 批次（squashfs 段 + 域收官）按 §6.2 规则二续领；
 - 上游联签：B1/A4/B4 finalize 后回归对账（R-B2-001），集成回归随闸门补测（R-B2-002）；
