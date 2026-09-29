@@ -1,23 +1,38 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "波08-M02（AI-13 C3 域认领+扩表+B01–B15 全批深化收口会话）",
-  "last_session": "AI-13（CoRun 会话：C3 域 §7.3 全表 40 批认领扩表 + B01–B15 全批深化收口 300 条/75,800 行 + finalize 五步断言链逐批全过 + 行数守恒脚本实核零偏离 + B12 行数勘误留痕）",
-  "phase": "deepen（C3 B01–B15 深化收口完成、C3 B16–B40 待领；C5 B01–B15 深化收口完成、C5 B16–B40 待领；A1/B2 deepen 在途、D2 待深化，多会话并行不冲突）",
-  "next_batch": "多域并行：UNX-C3-B16 待领（AI-13 后续会话按 §6.2 规则二续领，25 批 500 条预算余 164,200 行）；UNX-C5-B16 待领（AI-15 后续会话续领，25 批 500 条预算余 165,720 行）；UNX-B2-B03 起深化（AI-07）",
+  "updated_at": "波08-M03（AI-01 A1 域 B03–B17 深化收口 + B13–B18 立批会话）",
+  "last_session": "AI-01（CoRun 会话：A1 域 300 条新深化收口——B03 续 17 + B04–B12 深化 180 + B13–B17 立批深化 100 + B18 起步 3；另立 B13–B18 骨架 120 条；finalize 五步断言链逐批全过；R-A1-004 三批立批头部虚记修正留痕；域累计 92,870/240,000）",
+  "phase": "deepen（A1 B01–B17 深化收口、B18 起步 3/20 待续 F0344；C3/C5/B3 B01–B15 收口完成；多域并行不冲突）",
+  "next_batch": "UNX-A1-B18 续 F0344 起 17 条（AI-01 下会话续接收口后转 B19）；其他域并行指针不变",
   "domain_ledger_progress": {
     "A1": {
-      "finalized_batches": 2,
+      "finalized_batches": 17,
       "finalized_list": [
         "UNX-A1-B01",
-        "UNX-A1-B02"
+        "UNX-A1-B02",
+        "UNX-A1-B03",
+        "UNX-A1-B04",
+        "UNX-A1-B05",
+        "UNX-A1-B06",
+        "UNX-A1-B07",
+        "UNX-A1-B08",
+        "UNX-A1-B09",
+        "UNX-A1-B10",
+        "UNX-A1-B11",
+        "UNX-A1-B12",
+        "UNX-A1-B13",
+        "UNX-A1-B14",
+        "UNX-A1-B15",
+        "UNX-A1-B16",
+        "UNX-A1-B17"
       ],
-      "skeleton_batches": 12,
-      "rows_locked": 71770,
+      "skeleton_batches": 1,
+      "rows_locked": 92870,
       "rows_budget": 240000,
-      "rows_deepened_locked": 12520,
-      "entries_skeleton": 240,
-      "entries_deepened": 43,
-      "entries_deepened_note": "43 = 样板 3（F0001/F0021/F0039）+ B01 新 19 + B02 新 18 + B03 在途 3；B03 批 17 条待续",
+      "rows_deepened_locked": 88890,
+      "entries_skeleton": 17,
+      "entries_deepened": 343,
+      "entries_deepened_note": "343 = 样板 3（F0001/F0021/F0039）+ B01 19 + B02 18 + B03 20 + B04–B12 180 + B13–B17 100 + B18 起步 3；B18 余 17 条（F0344–F0360）待续。深化正文 wc -m 合计 166,299 字（B01–B17 164,976 + B18 起步 1,323）。R-A1-004：批小计=逐条求和唯一真值，B13/B14/B15 立批头部虚记（5,000/4,900/5,120）已修正为 5,260/4,880/5,100 并重算累计链留痕",
       "open_bugs": 0
     },
     "D2": {
@@ -135,7 +150,6 @@
   "deepen_books": [
     "docs/unxreal/deepen/A1-B01.md（19 条新深化，正文 10,551 字，5,620 行锁定零偏离）",
     "docs/unxreal/deepen/A1-B02.md（18 条新深化，正文 9,799 字，6,000 行锁定零偏离）",
-    "docs/unxreal/deepen/A1-B03.md（3 条在途，正文 2,256 字，900 行锁定；批未收口）",
     "docs/unxreal/deepen/B2-B01.md（20 条新深化，正文 8,683 字，6,000 行锁定零偏离）",
     "docs/unxreal/deepen/B2-B02.md（20 条新深化，正文 7,518 字，6,000 行锁定零偏离）",
     "docs/unxreal/deepen/C5-B01.md（20 条新深化，F11201–F11220 版本表与判据主轴锚点，5,240 行锁定零偏离）",
@@ -182,7 +196,23 @@
     "docs/unxreal/deepen/C3-B12.md（20 条新深化，F9821–F9840 mem/timers/sched 深化与时序分档（含行数勘误留痕），5,040 行锁定零偏离）",
     "docs/unxreal/deepen/C3-B13.md（20 条新深化，F9841–F9860 映射器/日志分析器/失绿定位深化，5,200 行锁定零偏离）",
     "docs/unxreal/deepen/C3-B14.md（20 条新深化，F9861–F9880 全绿口径与基线快照制度，5,060 行锁定零偏离）",
-    "docs/unxreal/deepen/C3-B15.md（20 条新深化，F9881–F9900 演习参演与对接联调判据+域收口闸，5,040 行锁定零偏离）"
+    "docs/unxreal/deepen/C3-B15.md（20 条新深化，F9881–F9900 演习参演与对接联调判据+域收口闸，5,040 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B03.md（20 条深化收口，正文 14,195 字，5,500 行锁定零偏离——R-A1-004 修正后真值）",
+    "docs/unxreal/deepen/A1-B04.md（20 条新深化，正文 11,128 字，5,250 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B05.md（20 条新深化，正文 10,683 字，5,120 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B06.md（20 条新深化，正文 10,526 字，4,980 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B07.md（20 条新深化，正文 9,388 字，5,080 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B08.md（20 条新深化，正文 10,083 字，4,880 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B09.md（20 条新深化，正文 10,996 字，5,160 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B10.md（20 条新深化，正文 10,640 字，5,140 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B11.md（20 条新深化，正文 8,613 字，4,980 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B12.md（20 条新深化，正文 8,077 字，4,940 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B13.md（20 条新深化，正文 8,420 字，5,260 行锁定零偏离——R-A1-004 修正后真值）",
+    "docs/unxreal/deepen/A1-B14.md（20 条新深化，正文 8,535 字，4,880 行锁定零偏离——R-A1-004 修正后真值）",
+    "docs/unxreal/deepen/A1-B15.md（20 条新深化，正文 8,098 字，5,100 行锁定零偏离——R-A1-004 修正后真值）",
+    "docs/unxreal/deepen/A1-B16.md（20 条新深化，正文 7,539 字，5,200 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B17.md（20 条新深化，正文 7,705 字，5,000 行锁定零偏离）",
+    "docs/unxreal/deepen/A1-B18.md（3 条起步，正文 1,323 字，800 行锁定；批 3/20 待续 F0344 起）"
   ],
   "waves": {
     "current": 8,
@@ -353,6 +383,12 @@
       "text": "pty 战线依赖 C4 域挂点交付（F9723–F9726 四类挂点未冻结交付），BLOCKED 全量留账（F9728 留账率 100%）待交付释放；五态挂号状态机（F9787）跟踪，C4 交付冻结后须挂点就绪侦听（F9729）触发释放评估",
       "owner": "AI-14/AI-13",
       "level": "P1"
+    },
+    {
+      "id": "R-A1-004",
+      "text": "批小计=逐条求和唯一真值纪律（R-A1-004）：B01–B15 族历史估算虚记已全线修正（域累计真值链 62,650→92,870），后续新立批头部一律逐条求和后落账，AI-01 自守并随批留痕",
+      "owner": "AI-01",
+      "level": "P2"
     }
   ],
   "adr_log": [
