@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""UNX-D2 B01-B15 深化册断言链机械校验器（AI-17 会话 · finalize 五步 ①③⑤ 步）
-校验：15 册 × 20 条；每条六要素（判据行/定位/语义边界/依赖与嫁接源/风险与回退/正文）齐备；
+"""UNX-D2 B01-B30 深化册断言链机械校验器（AI-17 会话 · finalize 五步 ①③⑤ 步）
+校验：30 册 × 20 条；每条六要素（判据行/定位/语义边界/依赖与嫁接源/风险与回退/正文）齐备；
 状态全部 [已深化]；每条字数 >=300；行数分解之和 == 纯功能行数；批求和 == 批头登记；
-域累计 == 84,100；全域 ID F12801-F13100 无重复无空洞。
+域累计 == 167,700；全域 ID F12801-F13400 无重复无空洞。
 """
 import re, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -24,6 +24,21 @@ BATCHES = [
     ("D2-B13.md", "F13041", "F13060", 5700),
     ("D2-B14.md", "F13061", "F13080", 5320),
     ("D2-B15.md", "F13081", "F13100", 6000),
+    ("D2-B16.md", "F13101", "F13120", 5800),
+    ("D2-B17.md", "F13121", "F13140", 5700),
+    ("D2-B18.md", "F13141", "F13160", 5600),
+    ("D2-B19.md", "F13161", "F13180", 5500),
+    ("D2-B20.md", "F13181", "F13200", 5400),
+    ("D2-B21.md", "F13201", "F13220", 5300),
+    ("D2-B22.md", "F13221", "F13240", 5400),
+    ("D2-B23.md", "F13241", "F13260", 5500),
+    ("D2-B24.md", "F13261", "F13280", 5600),
+    ("D2-B25.md", "F13281", "F13300", 5700),
+    ("D2-B26.md", "F13301", "F13320", 5500),
+    ("D2-B27.md", "F13321", "F13340", 5400),
+    ("D2-B28.md", "F13341", "F13360", 5600),
+    ("D2-B29.md", "F13361", "F13380", 5800),
+    ("D2-B30.md", "F13381", "F13400", 5800),
 ]
 
 fails = []
@@ -108,18 +123,18 @@ for fname, first, last, claimed in BATCHES:
 
 # 全域
 all_ints = [int(i.split("F")[1]) for i in ids_seen]
-if len(set(ids_seen)) != 300:
+if len(set(ids_seen)) != 600:
     fails.append("全域 ID 存在重复")
-if all_ints != list(range(12801, 13101)):
-    fails.append("全域 ID 段 F12801-F13100 有空洞或乱序")
-if total != 84100:
-    fails.append(f"域累计 {total} != 84,100")
-if entry_total != 300:
-    fails.append(f"全域条目 {entry_total} != 300")
+if all_ints != list(range(12801, 13401)):
+    fails.append("全域 ID 段 F12801-F13400 有空洞或乱序")
+if total != 167700:
+    fails.append(f"域累计 {total} != 167,700")
+if entry_total != 600:
+    fails.append(f"全域条目 {entry_total} != 600")
 if char_short:
     fails.append(f"字数不足 300 的条目 {len(char_short)} 条: {char_short[:10]}")
 
-print(f"\n深化册总数: 15 | 条目: {entry_total} | 域累计: {total:,} / 240,000（深化不改域账）")
+print(f"\n深化册总数: 30 | 条目: {entry_total} | 域累计: {total:,} / 240,000（深化不改域账）")
 if fails:
     print("\n== 断言失败 ==")
     for x in fails:
