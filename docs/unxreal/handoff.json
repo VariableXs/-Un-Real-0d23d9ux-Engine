@@ -1,9 +1,9 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "波08-M03（AI-01 A1 域 B03–B17 深化收口 + B13–B18 立批会话）",
-  "last_session": "AI-01（CoRun 会话：A1 域 300 条新深化收口——B03 续 17 + B04–B12 深化 180 + B13–B17 立批深化 100 + B18 起步 3；另立 B13–B18 骨架 120 条；finalize 五步断言链逐批全过；R-A1-004 三批立批头部虚记修正留痕；域累计 92,870/240,000）",
-  "phase": "deepen（A1 B01–B17 深化收口、B18 起步 3/20 待续 F0344；C3/C5/B3 B01–B15 收口完成；多域并行不冲突）",
-  "next_batch": "UNX-A1-B18 续 F0344 起 17 条（AI-01 下会话续接收口后转 B19）；其他域并行指针不变",
+  "updated_at": "波08-M04（AI-12 C2 域 B01–B15 全批深化收口会话）",
+  "last_session": "AI-12（CoRun 会话：C2 域 UNX-C2 系统调用面 F8801–F9100 B01–B15 全批深化收口 300 条/66,870 行——B01–B05 表骨架（SyscallDesc/SYSCALLS/route_incoming 升级接管）与 open/brk/fork/身份语义档 + B06–B10 时间族/双拷贝探针/dup/epoll/inotify + B11–B12 信号挂点族与 EINTR 单点/IPC 挂点 + B13 错误矩阵正反双判据总装（30 号抽样·四通道边界值·三级审计）+ B14 glibc 消费清单逐号核（futex 本体转正 F9072）+ B15 LTP 可跑登记与号面冻结（冻结体系五件套）；finalize 断言链逐批全过；F9052/F9065 行数分解偏差收口前归零；深化正文 wc -m 合计 321,646 字）",
+  "phase": "deepen（A1 B01–B17 深化收口、B18 起步 3/20 待续 F0344；C3/C5/B3/C2 B01–B15 收口完成；多域并行不冲突）",
+  "next_batch": "UNX-A1-B18 续 F0344 起 17 条（AI-01 下会话续接收口后转 B19）；C2 B16–B40 待领（AI-12 下会话续领，F9101 起）；其他域并行指针不变",
   "domain_ledger_progress": {
     "A1": {
       "finalized_batches": 17,
@@ -145,6 +145,34 @@
       "entries_deepened": 300,
       "entries_deepened_note": "B01–B02 F 型地基 40 条（LTP 版本钉定/runtest 映射器/全绿账本骨架/豁免制度/verdict 协议/输出解析器，10,120 行）+ B03–B07 五战线纳账 100 条（syscalls/fs/mem/timers·sched/pty，24,820 行）+ B08–B10 制度批 60 条（回归基建/逐号可跑登记/跨域挂号，15,380 行）+ B11–B12 深化流水线 40 条（fs 翻绿五阶段/mem·timers·sched 双战线深化与时序分档，10,180 行）+ B13–B15 收口批 60 条（映射器·日志分析器·失绿定位三件套深化/全绿口径与基线快照制度/演习参演与对接联调判据，15,300 行）；finalize 五步断言链逐批全过；B12 勘误 F9821/F9830 各 300→330 留痕；B16–B40 待领（预算余 164,200 行）",
       "open_bugs": 0
+    },
+    "C2": {
+      "finalized_batches": 15,
+      "finalized_list": [
+        "UNX-C2-B01",
+        "UNX-C2-B02",
+        "UNX-C2-B03",
+        "UNX-C2-B04",
+        "UNX-C2-B05",
+        "UNX-C2-B06",
+        "UNX-C2-B07",
+        "UNX-C2-B08",
+        "UNX-C2-B09",
+        "UNX-C2-B10",
+        "UNX-C2-B11",
+        "UNX-C2-B12",
+        "UNX-C2-B13",
+        "UNX-C2-B14",
+        "UNX-C2-B15"
+      ],
+      "skeleton_batches": 0,
+      "rows_locked": 66870,
+      "rows_budget": 240000,
+      "rows_deepened_locked": 66870,
+      "entries_skeleton": 0,
+      "entries_deepened": 300,
+      "entries_deepened_note": "B01–B15 全批深化收口 300 条（F8801–F9100）：B01 syscall 分发表骨架与注册协议（SyscallDesc/SYSCALLS/route_incoming 升级接管）5,200 行 + B02 open 语义档与 O_ 标志位全集 5,010 行 + B03 brk 语义档与探顶行为 4,760 行 + B04 fork 语义档与 COW 继承 4,570 行 + B05 三身份模型与身份族 4,210 行 + B06 gettimeofday 时间族 4,200 行 + B07 参数拷贝探针总成（copy_from_user/copy_to_user）4,140 行 + B08 dup/dup2/dup3 语义档 4,540 行 + B09 epoll_create 族语义档 4,170 行 + B10 inotify_init 族语义档 4,340 行 + B11 信号挂点族 4,320 行 + B12 EINTR 单点深化与 IPC 挂点族 4,220 行 + B13 错误矩阵正反双判据总装（30 号抽样·四通道边界值·三级审计）4,310 行 + B14 glibc 消费清单逐号核（四列登记/meter 触号/busybox 探针/futex 本体转正 F9072）4,320 行 + B15 LTP 可跑登记与号面冻结（uname/getrusage/prlimit64 补位、冻结体系五件套、open_risks 移交包）4,560 行；finalize 断言链逐批全过；深化正文 wc -m 合计 321,646 字；B16–B40 待领（预算余 173,130 行）",
+      "open_bugs": 0
     }
   },
   "deepen_books": [
@@ -212,11 +240,26 @@
     "docs/unxreal/deepen/A1-B15.md（20 条新深化，正文 8,098 字，5,100 行锁定零偏离——R-A1-004 修正后真值）",
     "docs/unxreal/deepen/A1-B16.md（20 条新深化，正文 7,539 字，5,200 行锁定零偏离）",
     "docs/unxreal/deepen/A1-B17.md（20 条新深化，正文 7,705 字，5,000 行锁定零偏离）",
-    "docs/unxreal/deepen/A1-B18.md（3 条起步，正文 1,323 字，800 行锁定；批 3/20 待续 F0344 起）"
+    "docs/unxreal/deepen/A1-B18.md（3 条起步，正文 1,323 字，800 行锁定；批 3/20 待续 F0344 起）",
+    "docs/unxreal/deepen/C2-B01.md（20 条新深化，F8801–F8820 syscall 分发表骨架与注册协议（SyscallDesc/SYSCALLS/route_incoming 升级接管），5,200 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B02.md（20 条新深化，F8821–F8840 open 语义档与 O_ 标志位全集，5,010 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B03.md（20 条新深化，F8841–F8860 brk 语义档与探顶行为（glibc 探测关键），4,760 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B04.md（20 条新深化，F8861–F8880 fork 语义档与 COW 继承，4,570 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B05.md（20 条新深化，F8881–F8900 三身份模型与身份族语义档，4,210 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B06.md（20 条新深化，F8901–F8920 gettimeofday 时间族语义档，4,200 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B07.md（20 条新深化，F8921–F8940 参数拷贝探针总成（copy_from_user/copy_to_user），4,140 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B08.md（20 条新深化，F8941–F8960 dup/dup2/dup3 语义档，4,540 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B09.md（20 条新深化，F8961–F8980 epoll_create 族语义档，4,170 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B10.md（20 条新深化，F8981–F9000 inotify_init 族语义档，4,340 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B11.md（20 条新深化，F9001–F9020 信号挂点族，4,320 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B12.md（20 条新深化，F9021–F9040 EINTR 单点深化与 IPC 挂点族，4,220 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B13.md（20 条新深化，F9041–F9060 错误矩阵正反双判据总装（30 号抽样·三级审计），4,310 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B14.md（20 条新深化，F9061–F9080 glibc 消费清单逐号核（futex 本体转正 F9072），4,320 行锁定零偏离）",
+    "docs/unxreal/deepen/C2-B15.md（20 条新深化，F9081–F9100 LTP 可跑登记与号面冻结（冻结体系五件套+域收官断言），4,560 行锁定零偏离）"
   ],
   "waves": {
     "current": 8,
-    "next_closeout": "波 08 末：C3 B16–B40 待领（AI-13 后续会话续领，25 批 500 条）；C5 B16–B40 待领（AI-15 后续会话续领，25 批 500 条）；D2 骨架收口复核（校验脚本 scripts/unxreal_d2_skeleton_check.py 全绿为基线）+ A1-B03 深化由 AI-01 续接 + B2 深化由 AI-07 续接（并行不冲突）"
+    "next_closeout": "波 08 末：C3 B16–B40 待领（AI-13 后续会话续领，25 批 500 条）；C5 B16–B40 待领（AI-15 后续会话续领，25 批 500 条）；C2 B16–B40 待领（AI-12 后续会话续领，25 批 500 条，预算余 173,130 行）；D2 骨架收口复核（校验脚本 scripts/unxreal_d2_skeleton_check.py 全绿为基线）+ A1-B18 续深化由 AI-01 续接 + B2 深化由 AI-07 续接（并行不冲突）"
   },
   "cross_domain_freeze": [
     {
@@ -389,6 +432,24 @@
       "text": "批小计=逐条求和唯一真值纪律（R-A1-004）：B01–B15 族历史估算虚记已全线修正（域累计真值链 62,650→92,870），后续新立批头部一律逐条求和后落账，AI-01 自守并随批留痕",
       "owner": "AI-01",
       "level": "P2"
+    },
+    {
+      "id": "R-C2-001",
+      "text": "上游跨域依赖 C1 进程对象全量（AI-11）/A4 页表全量（AI-04）/B1 VFS 全量（AI-06）/A2 时钟基座精度（AI-02）均未 finalize，本域按冻结契约 Schema 先行消费（F9095 四域边界协议 red/amber 交付态全量移交，F9097 落账）；上游收口后须回归对账并联签",
+      "owner": "AI-12",
+      "level": "P1"
+    },
+    {
+      "id": "R-C2-002",
+      "text": "A3 SMP 并发投递扩测（F9012-R1）：信号三投递引擎与 WaitQueue 原语在多核争用面的判据依赖 A3 SMP 基座收口，登记随闸门补测",
+      "owner": "AI-12/AI-03",
+      "level": "P2"
+    },
+    {
+      "id": "R-C2-003",
+      "text": "实机面判据随闸门补测（双轨产线：开发期零 QEMU）：族待测项（F9083 HUGETLB/F9087 socket/F9088 IPC 本体落地前 LTP 待测档）、F9098 五族热点号 P99 ≤ Windows×1.5 闸门（QEMU 参考值已登记/真机待补双态显式）、B13 抽样四通道边界值注入面；汇总见 deepen/C2-B15.md F9097 移交包",
+      "owner": "AI-12",
+      "level": "P2"
     }
   ],
   "adr_log": [
@@ -403,6 +464,7 @@
     "AI-07 波08-M01 提交范围仅限 AI-07 自有产物：batches/UNX-B2-B01..B15.md（15 件 300 条）、deepen/B2-B01.md、deepen/B2-B02.md、goal-B2.md（新建）、总纲 §7.3-B2 扩表段+回填、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件。共享协调文件按统一台账 append-only 性质提交并登记背景；A5/B4/B5 等他会话未跟踪批次件与用户删除的旧报告（工作区 D 状态）均不纳入，不越权代提交。",
     "AI-15 波08-M01 提交范围仅限 AI-15 自有产物：batches/UNX-C5-B01..B15.md（15 件 300 条两行式）、deepen/C5-B01..B15.md（15 件六要素深化册）、总纲 §7.3-C5 扩表段+15 行回填（[骨架]→[已深化]）、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件（C5 块/deepen_books 15 册/waves/open_risks 三项/sync_notes）。共享协调文件按统一台账 append-only 性质提交并登记背景；他会话产物（A1/A2/A5/B2/B4/B5/D2 等）均不纳入，不越权代提交。",
     "AI-08 波08-M01 提交范围仅限 AI-08 自有产物：deepen/B3-B01..B15.md（15 件六要素深化册 300 条）、总纲 §7.3-B3 十五行回填（[骨架]→[已深化]+实计字数 244,772，diff 已核仅含本会话改动）、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件（B3 块/deepen_books 15 册/waves/open_risks 三项/sync_notes）。共享协调文件按统一台账 append-only 性质提交并登记背景；他会话产物（A1 deepen 在途/A5/B4/B5/D2 等、docs/START 用户删除态文件、docs/Varix v2.0 未跟踪件）均不纳入，不越权代提交。",
-    "AI-13 波08-M02 提交范围仅限 AI-13 自有产物：batches/UNX-C3-B01..B15.md（15 件 300 条两行式）、deepen/C3-B01..B15.md（15 件六要素深化册）、总纲 §7.3-C3 扩表段+15 行回填（[骨架]→[已深化]）+C3 小结 finalize 记录、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件（C3 块/deepen_books 15 册/waves/open_risks 三项/sync_notes）。共享协调文件按统一台账 append-only 性质提交并登记背景；他会话产物（A1/A2/A5/B2/B3/B4/B5/C5/D2 等）均不纳入，不越权代提交。"
+    "AI-13 波08-M02 提交范围仅限 AI-13 自有产物：batches/UNX-C3-B01..B15.md（15 件 300 条两行式）、deepen/C3-B01..B15.md（15 件六要素深化册）、总纲 §7.3-C3 扩表段+15 行回填（[骨架]→[已深化]）+C3 小结 finalize 记录、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件（C3 块/deepen_books 15 册/waves/open_risks 三项/sync_notes）。共享协调文件按统一台账 append-only 性质提交并登记背景；他会话产物（A1/A2/A5/B2/B3/B4/B5/C5/D2 等）均不纳入，不越权代提交。",
+    "AI-12 波08-M04 提交范围仅限 AI-12 自有产物：batches/UNX-C2-B01..B15.md（15 件 300 条两行式）、deepen/C2-B01..B15.md（15 件六要素深化册）、总纲 §7.3-C2 扩表段+15 行回填（[骨架]→[已深化]）+C2 小结 finalize 记录、根统一协作总台账（§二/§三/§四/§六 四处）、handoff.json 本文件（C2 块/deepen_books 15 册/waves/open_risks 三项/sync_notes）。共享协调文件按统一台账 append-only 性质提交并登记背景；他会话产物（A1/A2/A5/B2/B3/B4/B5/C3/C5/D2 等）均不纳入，不越权代提交。"
   ]
 }
