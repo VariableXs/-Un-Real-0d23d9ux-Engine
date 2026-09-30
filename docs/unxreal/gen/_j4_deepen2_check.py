@@ -63,7 +63,10 @@ c500 = [c for c in crits if 38701 <= int(c) <= 39200]
 check("五c 第二段判据 500 枚唯一自指", len(c500) == 500 and len(set(c500)) == 500, f"{len(c500)}")
 
 # 查六：主册第二段卷 500 条与 25 册一一对应零增删
-vol = mt.split("J4 域深化增补卷第二段", 1)[1] if "J4 域深化增补卷第二段" in mt else ""
+vol = ""
+if "## 增补卷 · AI-49 · 四 · J4 域深化增补卷第二段" in mt:
+    vol = mt.split("## 增补卷 · AI-49 · 四 · J4 域深化增补卷第二段", 1)[1]
+    vol = vol.split("\n## ", 1)[0]  # 截到下一个顶级卷
 vol_ids = [int(x) for x in re.findall(r"^### UNX-F(\d{5}) · ", vol, re.M)]
 check("六 主册卷 500 条一一对应零增删", vol_ids == list(range(38701, 39201)), f"{len(vol_ids)} 条")
 
