@@ -10,7 +10,7 @@ PARTS = [
     ("部A", "引导与内核地基", "知识层一：引导/中断/调度/内存/设施", ["A1", "A2", "A3", "A4", "A5"]),
     ("部B", "文件与存储栈", "知识层二：文件/NTFS/块/RAID", ["B1", "B2", "B3", "B4", "B5"]),
     ("部C", "人格与用户态生态", "知识层三：人格/系统调用/POSIX/IPC/生态", ["C1", "C2", "C3", "C4", "C5"]),
-    ("部D", "NT 语义域", "知识层四：NT 语义四域（本册现收 D1–D3）", ["D1", "D2", "D3"]),
+    ("部D", "NT 语义域", "知识层四：NT 语义域（本册现收 D1–D3+D5；D5 为 AI-13 承办 COM/OLE 基座段）", ["D1", "D2", "D3", "D5"]),
 ]
 DOMAINS = {
     "A1": ("引导与早年初始化", "AI-01"), "A2": ("中断与计时基座", "AI-02"), "A3": ("SMP 与调度", "AI-03"),
@@ -19,12 +19,14 @@ DOMAINS = {
     "B5": ("RAID/LVM/加密与数据安全", "AI-10"), "C1": ("ELF 装载与进程模型", "AI-11"), "C2": ("系统调用面域", "AI-12"),
     "C3": ("POSIX 认证与 LTP 验收", "AI-13"), "C4": ("IPC 与 Unix 语义", "AI-14"), "C5": ("用户态生态嫁接", "AI-15"),
     "D1": ("NT API 语义面（ntdll）", "AI-16"), "D2": ("PE 装载与进程线程语义", "AI-17"), "D3": ("注册表与 NT 对象命名空间", "AI-18"),
+    "D5": ("COM/OLE 基座", "AI-13"),
 }
 DOMAIN_NOTES = {
     "A1": "B01–B02 两批批册不在 batches/（深化册在 deepen/A1-B01、A1-B02，样板批次另见总纲 §5）——本册收录 B03–B40。",
     "A2": "域满账收官——F1598 域账封账+F1599 域闭账+F1600 收官标志条，B31–B40 收官段 200 条/64,920 行随批收口。",
     "A5": "B16 起批册为骨架单册体例（批内条目清单 + 批级守恒预核同册）。",
     "B3": "本域无独立批册——深化册即批册（单册体例），800 条见 deepen/B3-B01..B40，域满账封账 240,000 行；本汇编批面暂缺，待统一体例后增补。",
+    "D5": "AI-13 承办（Variable 波08 改派留痕原 AI-20）——本快照收录 B01–B18 十八批 360 条/108,000 行（B04–B18 为波08-M34 新收口 300 条；B19–B40 待领），深化正文在 deepen/D5-B01..B18。",
 }
 H1_A = re.compile(r"^#\s+(UNX-[A-P]\d-B\d+)\s*·\s*(.*)$")
 FRANGE = re.compile(r"（F(\d+)[–\-—]F?(\d+)\s*(?:·\s*(\d+)\s*条)?）\s*$")
@@ -219,14 +221,15 @@ def main():
             L.append("| [UNX-%s](#dom-%s) | %s | %s | %d（%s） | %d | F%04d–F%04d | %s | %d / %d |" % (
                 d, d, DOMAINS[d][0], "、".join(sorted(dd["ais"])) or DOMAINS[d][1],
                 len(dd["recs"]), bspan, dd["entries"], dd["fmin"], dd["fmax"], "{:,}".format(dd["rows"]), dd["deep"], dd["skel"]))
-    L.append("| **合计（17 域）** | — | — | **%d** | **%d** | — | **%s** | **%d / %d** |" % (len(recs), total_entries, "{:,}".format(total_rows), total_deep, total_skel))
+    total_domains = len([d for _, _, _, dl in PARTS for d in dl if d in dom or d == "B3"])
+    L.append("| **合计（%d 域）** | — | — | **%d** | **%d** | — | **%s** | **%d / %d** |" % (total_domains, len(recs), total_entries, "{:,}".format(total_rows), total_deep, total_skel))
     L.append("")
     L.append("**快照缺口与在途如实登记**：")
     L.append("")
     for d, dn in DOMAIN_NOTES.items():
         if d == "B3" or d in dom:
             L.append("- UNX-%s：%s" % (d, dn))
-    L.append("- 工程公理口径：80 域 × 800 条 = 64,000 条；本快照覆盖 17 域 %d 条，占公理总量 %.1f%%。其余 63 域批册未立，随认领与产出增补。" % (total_entries, total_entries / 64000.0 * 100))
+    L.append("- 工程公理口径：80 域 × 800 条 = 64,000 条；本快照覆盖 %d 域 %d 条，占公理总量 %.1f%%。其余 %d 域批册未立，随认领与产出增补。" % (total_domains, total_entries, total_entries / 64000.0 * 100, 80 - total_domains))
     L.append("- 并行工况声明：batches/ 为多会话并行产线，本快照生成后新落册批册将在下一版增补（以本页生成时点为准）。")
     L.append("")
     L.append("## 汇编地图")
