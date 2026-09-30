@@ -25,7 +25,7 @@ def check(body, lo, hi, nb, per=6000):
             assert int(m2.group(1)) == cur, "条目批号与所在批不一致"
             perb[cur] += int(m2.group(2))
     assert all(v == per for v in perb.values()), f"批批 {per}"
-    cr = re.findall(r"UNX-F(\d+)-J1", body)
+    cr = re.findall(r"^- 域/批：J2/B\d{2}｜纯功能行数：\d+｜(?:状态：\[骨架\]｜)?判据：UNX-F(\d+)-J1", body, re.M)
     assert len(cr) == hi - lo + 1 and len(set(cr)) == len(cr), "判据唯一"
 
 def main():
@@ -35,7 +35,7 @@ def main():
     check(b1, 36801, 37100, 15)   # 查1-5 一卷
     check(b2, 37101, 37600, 25)   # 查1-5 二卷
     # 查6：全域判据 800 枚唯一
-    cr = re.findall(r"UNX-F(\d+)-J1", b1 + b2)
+    cr = re.findall(r"^- 域/批：J2/B\d{2}｜纯功能行数：\d+｜(?:状态：\[骨架\]｜)?判据：UNX-F(\d+)-J1", b1 + b2, re.M)
     assert len(cr) == 800 and len(set(cr)) == 800, "全域判据 800 唯一"
     # 查7：五锚归位（一卷）
     for fid, bn in {36805: 1, 36850: 3, 36901: 6, 36965: 9, 37050: 13}.items():
