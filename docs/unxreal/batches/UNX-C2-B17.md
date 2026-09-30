@@ -1,6 +1,6 @@
 # UNX-C2-B17 · 内存族扩容：mremap/madvise/msync/mlock（F9121-F9140 · 20 条）
 
-> AI-12 承办｜批次类型：M 型（任务书 B09-B20 M 型收尾轴 · 内存族扩容）｜本批 [骨架] 20 条全为本会话新铺设｜域账累计：B01-B15 66,870 + B16 6,500 + 本批 6,400 = 79,770 / 240,000｜嫁接源：mremap(2)/madvise(2)/msync(2)/mlock(2) man-pages 语义对齐；A4 mmap 底座冻结接口消费（页表挂点声明）；与 F8804 mmap 三联/F8841 brk 档单源联动｜防重声明：内存族扩容 20 号为号面新铺（B01-B15 mmap/mprotect/brk 本体已铺，本批只铺 mremap/madvise/msync/mlock/mincore 扩容号，零重复）；扩号段 F9121-F9140 承接冻结面，零重编零私设号｜红线注记：本批零写盘零引导零固件操作；mlock 族零 DMA 零物理地址直写；mremap 零页表直改（只消费 A4 冻结接口，页表操作归 A4 域）｜批注（AI-12）：B17 是内存族扩容轴：mremap 消费 A4 页表底座（上游未 finalize 依赖显式登记），madvise 六建议先立协议骨架（回收/预读实装随 B1 页缓存收口联签），mlock 族与 RLIMIT_MEMLOCK 联动（B19 资源族消费）｜判据与后续 deepen/C2-B17.md 逐条同名同判据同 ID
+> AI-12 承办｜批次类型：M 型（任务书 B09-B20 M 型收尾轴 · 内存族扩容）｜本批 [已深化] 收口：20 条全为会话链新深化（深化册 deepen/C2-B17.md 全六要素收口）｜域账累计：B01-B15 66,870 + B16 6,500 + 本批 6,400 = 79,770 / 240,000｜嫁接源：mremap(2)/madvise(2)/msync(2)/mlock(2) man-pages 语义对齐；A4 mmap 底座冻结接口消费（页表挂点声明）；与 F8804 mmap 三联/F8841 brk 档单源联动｜防重声明：内存族扩容 20 号为号面新铺（B01-B15 mmap/mprotect/brk 本体已铺，本批只铺 mremap/madvise/msync/mlock/mincore 扩容号，零重复）；扩号段 F9121-F9140 承接冻结面，零重编零私设号｜红线注记：本批零写盘零引导零固件操作；mlock 族零 DMA 零物理地址直写；mremap 零页表直改（只消费 A4 冻结接口，页表操作归 A4 域）｜批注（AI-12）：B17 是内存族扩容轴：mremap 消费 A4 页表底座（上游未 finalize 依赖显式登记），madvise 六建议先立协议骨架（回收/预读实装随 B1 页缓存收口联签），mlock 族与 RLIMIT_MEMLOCK 联动（B19 资源族消费）｜判据与后续 deepen/C2-B17.md 逐条同名同判据同 ID
 
 ### UNX-F9121 · mremap 语义档（MREMAP_MAYMOVE/MREMAP_FIXED）
 - 域/批：C2/B17｜纯功能行数：400｜状态：｜判据：UNX-F9121-J1 迁移映射判据过，MAYMOVE 位语义格过，old_size 匹配校验格过

@@ -1,6 +1,6 @@
 # UNX-C2-B19 · 资源族：setrlimit/getrlimit/setpriority（F9161-F9180 · 20 条）
 
-> AI-12 承办｜批次类型：M 型（任务书 B09-B20 M 型收尾轴 · 资源族）｜本批 [骨架] 20 条全为本会话新铺设｜域账累计：B01-B15 66,870 + B16 6,500 + B17 6,400 + B18 6,450 + 本批 6,400 = 92,620 / 240,000｜嫁接源：getrlimit(2)/setpriority(2)/times(2) man-pages 语义对齐；A2 计时基座冻结接口消费；与 B15 F9091/F9092 getrusage/prlimit64 档单源联动；A1 调度消费（sched_yield）｜防重声明：资源族 20 号为号面新铺（B01-B15 getrusage/prlimit64 号面补位已铺于 B15，本批铺 rlimit 全集与优先级族，零重复）；扩号段 F9161-F9180 承接冻结面，零重编零私设号｜红线注记：本批零写盘零引导零固件操作；限额硬限提升走 EPERM 矩阵（零越权路径）；零硬件频率/电压类改动（硬件红线条款默认适用）｜批注（AI-12）：B19 是资源族轴：rlimit 全集逐格是 shell ulimit 与 POSIX spawn 的地基，软硬限翻转协议（软可降硬不可升）是安全边界核心，nice 值域与 A1 调度消费单源，RLIMIT_NPROC 与 B25 fork EAGAIN 格联动｜判据与后续 deepen/C2-B19.md 逐条同名同判据同 ID
+> AI-12 承办｜批次类型：M 型（任务书 B09-B20 M 型收尾轴 · 资源族）｜本批 [已深化] 收口：20 条全为会话链新深化（深化册 deepen/C2-B19.md 全六要素收口）｜域账累计：B01-B15 66,870 + B16 6,500 + B17 6,400 + B18 6,450 + 本批 6,400 = 92,620 / 240,000｜嫁接源：getrlimit(2)/setpriority(2)/times(2) man-pages 语义对齐；A2 计时基座冻结接口消费；与 B15 F9091/F9092 getrusage/prlimit64 档单源联动；A1 调度消费（sched_yield）｜防重声明：资源族 20 号为号面新铺（B01-B15 getrusage/prlimit64 号面补位已铺于 B15，本批铺 rlimit 全集与优先级族，零重复）；扩号段 F9161-F9180 承接冻结面，零重编零私设号｜红线注记：本批零写盘零引导零固件操作；限额硬限提升走 EPERM 矩阵（零越权路径）；零硬件频率/电压类改动（硬件红线条款默认适用）｜批注（AI-12）：B19 是资源族轴：rlimit 全集逐格是 shell ulimit 与 POSIX spawn 的地基，软硬限翻转协议（软可降硬不可升）是安全边界核心，nice 值域与 A1 调度消费单源，RLIMIT_NPROC 与 B25 fork EAGAIN 格联动｜判据与后续 deepen/C2-B19.md 逐条同名同判据同 ID
 
 ### UNX-F9161 · setrlimit/getrlimit 语义档总纲（rlimit 结构四元组）
 - 域/批：C2/B19｜纯功能行数：420｜状态：｜判据：UNX-F9161-J1 软硬限读写回环判据过，结构四元组探针格过，RLIM_INFINITY 编码格过
