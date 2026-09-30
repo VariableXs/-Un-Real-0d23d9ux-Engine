@@ -1,9 +1,9 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "2026-10-02T12:00:00",
-  "last_session": "AI-32 G2 域认领扩表：§7.3-G2 40 批全表一次建入，B01–B15 认领写锁；首产段 300 项新功能/90,000 行（batches/UNX-G2-B01..B15.md，F24801–F25100 连续唯一，批批 6,000 守恒）；Gallium 嫁接地基与 winsys×G1 联签三锚（Schema 先行+fake R-G2-001）/iris/crocus+llvmpipe/GL state tracker/RADV/NVK/lavapipe/piglit/VK-GL-CTS 账本/季度跟随与降级演练/首产段收口十五主题；生成器 scripts/unxreal_g2_skeleton_gen.py、校验器 scripts/unxreal_g2_skeleton_check.py 五查 ALL PASS；汇编册部G 域节纯追加（合计 1178 册/23560 条/7,128,240 行）；根台账 §三/§四 同步（波13-M01）",
+  "updated_at": "2026-10-02T03:20:00",
+  "last_session": "AI-38 H3 域认领扩表+首产段立账：§7.3-H3 四十行一次建入（[骨架]×15 AI-38 写锁+[未动]×25 待领）；批册 batches/UNX-H3-B01..B15.md 十五件 300 条/90,000 行落盘（F29601–F29900 连续唯一、判据 300 枚唯一）；生成器 scripts/unxreal_h3_gen.py + 校验器 scripts/unxreal_h3_skeleton_check.py 六查 ALL PASS exit=0；主汇编册《UNX-H3 首产段卷》300 项纯追加零删除；open_risks R-H3-001（上游 Schema 先行）/R-H3-002（真机随闸门）/R-H3-003（AI-95 合规会签前置）",
   "phase": "C2 域满账封账收官（800/800 条、240,000/240,000 行深化锁定；B01–B15 地基段+B16–B30 M/E/I 主体段+B31–B36 I 型联调后段+B37–B40 C 型收官段四段全收口；F9600 三断言登记实机随闸门补测；无待领批无待深化条，域移交就绪）；D5 域波段收口（波08-M37 AI-13：B01–B18 十八批 360 条/108,000/240,000，300 项新功能明令 300/300 达成；B19–B40 待领 440 条/132,000 行由 AI-13 续领）",
-  "next_batch": "G2 续领 B16–B40 待令（余 150,000 行，主题框架图见总纲 §7.3-G2 小结）；他域待领以根台账为准",
+  "next_batch": "H3 域 B16–B40 待领（余 150,000 行；B16–B20 轨道与 seek 深化/B21–B28 E 型错误矩阵/B29–B36 I 型联签与 DirectShow·MF 桥/B37–B40 片源库总账与域收官）；他域待领以根台账为准",
   "domain_ledger_progress": {
     "F5": {
       "finalized_batches": 0,
@@ -1343,6 +1343,47 @@
         "R-G3-001 AI-32 B24 冻结签前依赖链条目挂起态（§37.2 放行规则）",
         "R-G3-002 游戏样本帧率账真机判据（T1 基准机）随闸门补测（开发期零 QEMU）",
         "R-G3-003 波 13–14 排程对齐待 AI-98 确认"
+      ]
+    },
+    "H3": {
+      "finalized_batches": 0,
+      "skeleton_batches": 15,
+      "skeleton_list": [
+        "UNX-H3-B01",
+        "UNX-H3-B02",
+        "UNX-H3-B03",
+        "UNX-H3-B04",
+        "UNX-H3-B05",
+        "UNX-H3-B06",
+        "UNX-H3-B07",
+        "UNX-H3-B08",
+        "UNX-H3-B09",
+        "UNX-H3-B10",
+        "UNX-H3-B11",
+        "UNX-H3-B12",
+        "UNX-H3-B13",
+        "UNX-H3-B14",
+        "UNX-H3-B15"
+      ],
+      "domain_rows_locked": 90000,
+      "domain_rows_budget": 240000,
+      "criteria_axis": "H.264/HEVC/AV1 样本片源库回放全账（60 样本库工具链锚 B08，样本全账随 B35–B40）",
+      "upstream": [
+        "AI-36 音频桥接口⑩（B10 前联签冻结）",
+        "AI-32 texture import",
+        "AI-26 vxwm surface",
+        "AI-35 overlay/direct scanout（B24+）"
+      ],
+      "downstream": [
+        "AI-39 捕获面（本域为其上游）",
+        "AI-70 游戏过场视频",
+        "AI-69 办公域媒体收口",
+        "AI-88 回放性能对照"
+      ],
+      "open_risks": [
+        "R-H3-001 上游未收口面 Schema 先行+fake 对接",
+        "R-H3-002 真机判据随闸门补测（零 QEMU）",
+        "R-H3-003 FFmpeg 合规子集待 AI-95 会签"
       ]
     }
   },
