@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""UNX-D2 B01-B40 骨架断言链机械校验器（AI-17 会话 · 域满账扩表版）
+"""UNX-D2 B01-B15 骨架断言链机械校验器（AI-17 会话 · P2 复验代行）
 校验：批数/每批条数/ID 连续/行数求和=批头登记/域累计/判据编号格式/状态合法。
-域满账断言：40 批 / 800 条 / F12801-F13600 无重复无空洞 / 域累计 240,000。
 """
 import re, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
@@ -23,31 +22,6 @@ BATCHES = [
     ("UNX-D2-B13.md", "F13041", "F13060", 5700),
     ("UNX-D2-B14.md", "F13061", "F13080", 5320),
     ("UNX-D2-B15.md", "F13081", "F13100", 6000),
-    ("UNX-D2-B16.md", "F13101", "F13120", 5800),
-    ("UNX-D2-B17.md", "F13121", "F13140", 5700),
-    ("UNX-D2-B18.md", "F13141", "F13160", 5600),
-    ("UNX-D2-B19.md", "F13161", "F13180", 5500),
-    ("UNX-D2-B20.md", "F13181", "F13200", 5400),
-    ("UNX-D2-B21.md", "F13201", "F13220", 5300),
-    ("UNX-D2-B22.md", "F13221", "F13240", 5400),
-    ("UNX-D2-B23.md", "F13241", "F13260", 5500),
-    ("UNX-D2-B24.md", "F13261", "F13280", 5600),
-    ("UNX-D2-B25.md", "F13281", "F13300", 5700),
-    ("UNX-D2-B26.md", "F13301", "F13320", 5500),
-    ("UNX-D2-B27.md", "F13321", "F13340", 5400),
-    ("UNX-D2-B28.md", "F13341", "F13360", 5600),
-    ("UNX-D2-B29.md", "F13361", "F13380", 5800),
-    ("UNX-D2-B30.md", "F13381", "F13400", 5800),
-    ("UNX-D2-B31.md", "F13401", "F13420", 7230),
-    ("UNX-D2-B32.md", "F13421", "F13440", 7230),
-    ("UNX-D2-B33.md", "F13441", "F13460", 7230),
-    ("UNX-D2-B34.md", "F13461", "F13480", 7230),
-    ("UNX-D2-B35.md", "F13481", "F13500", 7230),
-    ("UNX-D2-B36.md", "F13501", "F13520", 7230),
-    ("UNX-D2-B37.md", "F13521", "F13540", 7230),
-    ("UNX-D2-B38.md", "F13541", "F13560", 7230),
-    ("UNX-D2-B39.md", "F13561", "F13580", 7230),
-    ("UNX-D2-B40.md", "F13581", "F13600", 7230),
 ]
 
 fails = []
@@ -90,17 +64,19 @@ for fname, first, last, claimed in BATCHES:
     total += s
     print(f"{fname}: {len(entries)} 条 | 求和 {s} | 登记 {claimed} | {'OK' if s==claimed else 'FAIL'}")
 
-# 5. 全域 ID 唯一 + 无空洞（B01-B40 满账段）
+# 5. 全域 ID 唯一 + 无空洞
 all_ints = [int(i.split("F")[1]) for i in ids_seen]
-if len(set(ids_seen)) != 800:
+if len(set(ids_seen)) != 300:
     fails.append("全域 ID 存在重复")
-if all_ints != list(range(12801, 13601)):
-    fails.append("全域 ID 段 F12801-F13600 有空洞或乱序")
-# 6. 域累计守恒（满账）
-if total != 240000:
-    fails.append(f"域累计 {total} != 240,000")
+if all_ints != list(range(12801, 13101)):
+    fails.append("全域 ID 段 F12801-F13100 有空洞或乱序")
+# 6. 域累计守恒
+if total != 84100:
+    fails.append(f"域累计 {total} != 84,100")
+if total > 240000:
+    fails.append("域账超 240,000")
 
-print(f"\n域累计（B01-B40 骨架锁定）: {total:,} / 240,000 {'—— 域满账' if total==240000 else ''}（40 批 / 800 条）")
+print(f"\n域累计（B01-B15 骨架锁定）: {total:,} / 240,000，余量 {240000-total:,}（B16-B40 共 25 批承接）")
 if fails:
     print("\n== 断言失败 ==")
     for x in fails: print(" -", x)

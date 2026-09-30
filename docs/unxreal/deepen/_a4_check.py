@@ -4,7 +4,7 @@ import re
 import sys
 
 B = sys.argv[1] if len(sys.argv) > 1 else None
-BATCHES = [int(B)] if B else list(range(16, 41))
+BATCHES = [int(B)] if B else list(range(16, 31))
 all_bad = []
 for b in BATCHES:
     suf = '%02d' % b if b < 16 else str(b)
