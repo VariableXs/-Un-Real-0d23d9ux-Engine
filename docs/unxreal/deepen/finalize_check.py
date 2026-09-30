@@ -107,8 +107,8 @@ pat = re.compile(r'UNX-F5(9\d\d)(?!\d)|UNX-F6([012]\d\d)(?!\d)')
 intruders = []
 for f in glob.glob(os.path.join('..', '..', '**', '*.md'), recursive=True):
     fn = os.path.basename(f)
-    if fn.startswith('B3-'):
-        continue
+    if fn.startswith(('B3-', 'UNX-B3')):
+        continue  # 本域深化册（B3-*.md）与本域闭账物（closeout/UNX-B3-*.md，波08-M20 归档）合法持有本域 ID
     if 'CoRun Varix STAR II' in f:
         continue  # 共享协作册（根台账 + 协作四件套）：全域认领登记层，本域认领合法在册
     try:
