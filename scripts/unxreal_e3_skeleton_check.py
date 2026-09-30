@@ -66,6 +66,8 @@ if total != 240000:
 
 # ⑥ 防重 grep 五范围：F17601–F17900 不得出现在其他域资产（kernel/docs/START/_attic/他域 deepen/总纲他域段）
 pat = re.compile(r"UNX-F(17[6-9]\d\d|18[0-3]\d\d|18400)")
+# 域界排除：UNX-F17600 属 E2 域界碑（AI-22 承办，E2 区间 F17541–F17600 终点），不在 E3 防重面
+pat_excl = {"UNX-F17600"}
 hit = []
 for root, exts in [
     (os.path.join(REPO, "kernel", "varix", "src"), (".rs", ".md", ".py", ".c", ".h", ".json", ".toml")),
@@ -83,7 +85,7 @@ for root, exts in [
                 t = open(p, encoding="utf-8", errors="ignore").read()
             except OSError:
                 continue
-            hit += [p + ":" + mm.group(0) for mm in pat.finditer(t)]
+            hit += [p + ":" + mm.group(0) for mm in pat.finditer(t) if mm.group(0) not in pat_excl]
 
 deepen = os.path.join(REPO, "docs", "unxreal", "deepen")
 for f in os.listdir(deepen):
@@ -91,7 +93,7 @@ for f in os.listdir(deepen):
         continue
     p = os.path.join(deepen, f)
     t = open(p, encoding="utf-8", errors="ignore").read()
-    hit += [p + ":" + mm.group(0) for mm in pat.finditer(t)]
+    hit += [p + ":" + mm.group(0) for mm in pat.finditer(t) if mm.group(0) not in pat_excl]
 
 zonggang = os.path.join(REPO, "docs", "Varix", "CoRun Varix STAR II · Unxreal",
                         "CoRun Varix STAR II · Unxreal · 总纲与施工书.md")
