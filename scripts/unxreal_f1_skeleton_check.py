@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UNX-F1 域骨架校验器（AI-26 · B01–B30 两轮 600 条）
+"""UNX-F1 域骨架校验器（AI-26 · B01–B40 三轮 800 条 · 域满账封账）
 五查：①ID 连续唯一 F20001–F20300；②每批 20 条；③批内行数求和=批头登记（域累计链逐批校验）；
 ④判据号与条目 ID 配对；⑤条目名/判据号全域唯一（防重）。
 exit 0 = 全绿；任何偏离 exit 1。
@@ -7,8 +7,8 @@ exit 0 = 全绿；任何偏离 exit 1。
 import re, sys, glob
 
 BATCH_DIR = "docs/unxreal/batches"
-ID_LO, ID_HI = 20001, 20600
-ROWS_PER_BATCH_HEADER = re.compile(r"域账累计：本批 ([\d,]+) / 240,000（B01.B\d{2} 骨架累计 ([\d,]+)）")
+ID_LO, ID_HI = 20001, 20800
+ROWS_PER_BATCH_HEADER = re.compile(r"域账累计：本批 ([\d,]+) / 240,000（B01.B\d{2} (?:骨架|域满账)累计 ([\d,]+)）")
 ENTRY = re.compile(r"^### UNX-F(\d{5}) · (.+)$")
 META = re.compile(r"纯功能行数：(\d+)｜状态：\[([^\]]+)\]｜判据：UNX-F(\d{5})-J1")
 
@@ -17,8 +17,8 @@ def fail(msg):
     sys.exit(1)
 
 files = sorted(glob.glob(f"{BATCH_DIR}/UNX-F1-B*.md"))
-if len(files) != 30:
-    fail(f"批册数 {len(files)} != 30")
+if len(files) != 40:
+    fail(f"批册数 {len(files)} != 40")
 
 all_names, all_jids = {}, {}
 prev_hi = ID_LO - 1
@@ -75,5 +75,5 @@ if prev_hi != ID_HI:
 print("UNX-F1 骨架校验器 · 五查全绿")
 for line in report:
     print(line)
-print(f"两轮 600 条 · 域账累计 {total_rows:,} / 240,000 · 待领 B31–B40（200 条 / 余 {240000-total_rows:,} 行）")
+print(f"三轮 800 条 · 域满账累计 {total_rows:,} / 240,000 · 封账（F20800 终钉）")
 sys.exit(0)
