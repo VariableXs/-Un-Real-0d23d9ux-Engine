@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""UNX-E4 增补卷校验器（AI-24 · 卷一 E01–E15 + 卷二 E16–E30 三十册）。
-① 15 册、每册 20 条 ② ID UNX-E4-E001–E600 连续零跳号唯一 ③ 批批 6,000 行、两卷 180,000
-④ 状态列「增补」 ⑤ 判据号与本条 ID 一致（防自指/错位） ⑥ 判据唯一性（600 枚零重复）
+"""UNX-E4 增补卷校验器（AI-24 · 卷一 E01–E15 + 卷二 E16–E30 + 卷三 E31–E45 四十五册）。
+① 15 册、每册 20 条 ② ID UNX-E4-E001–E900 连续零跳号唯一 ③ 批批 6,000 行、三卷 270,000
+④ 状态列「增补」 ⑤ 判据号与本条 ID 一致（防自指/错位） ⑥ 判据唯一性（900 枚零重复）
 全绿 exit=0。
 """
 import os, re, sys
 
 REPO = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
-NAMES = [f"E{i:02d}" for i in range(1, 31)]
+NAMES = [f"E{i:02d}" for i in range(1, 46)]
 
 errors = []
 grand_entries = grand_rows = 0
@@ -40,14 +40,14 @@ for idx, ename in enumerate(NAMES):
     grand_rows += rows_sum
     grand_entries += len(rows)
 
-if grand_entries != 600:
-    errors.append(f"总条目 {grand_entries} != 600")
-if grand_rows != 180000:
-    errors.append(f"全卷行数 {grand_rows} != 180,000")
+if grand_entries != 900:
+    errors.append(f"总条目 {grand_entries} != 900")
+if grand_rows != 270000:
+    errors.append(f"全卷行数 {grand_rows} != 270,000")
 
 if errors:
     print("FAIL:")
     for e in errors:
         print(" -", e)
     sys.exit(1)
-print(f"ALL PASS: 30 册 / 600 条 / UNX-E4-E001–E600 连续零跳号唯一 / 批批 6,000 / 两卷 180,000 行 / 状态「增补」/ 判据 600 枚唯一")
+print(f"ALL PASS: 45 册 / 900 条 / UNX-E4-E001–E900 连续零跳号唯一 / 批批 6,000 / 三卷 270,000 行 / 状态「增补」/ 判据 900 枚唯一")
