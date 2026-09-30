@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""UNX-B1 finalize 机械校验器（AI-06 · 波 08-M09 收口留痕 · B30 扩展版）
+"""UNX-B1 finalize 机械校验器（AI-06 · 波 08-M09 收口留痕 · B40 满账版）
 
 六项检查（对齐 finalize 五步断言链的字数与行数口径 + 骨架-深化守恒交叉轴）：
-  1. 册子齐备：deepen/B1-B01..B30.md 30 件存在；
-  2. 条目数：每册 20 条（### UNX-F4#### 标题），全域 600 条；
-  3. 判据 ID：UNX-F4001..F4600 每号恰出现一次（唯一且连续，自指 J1）；
+  1. 册子齐备：deepen/B1-B01..B40.md 40 件存在；
+  2. 条目数：每册 20 条（### UNX-F4#### 标题），全域 800 条；
+  3. 判据 ID：UNX-F4001..F4800 每号恰出现一次（唯一且连续，自指 J1）；
   4. 正文下限：每条 `- 正文：` 行内容 ≥300 字（awk 同口径：length($0)-5）；
-  5. 行数守恒：每册头部 `求和 X` 递推 `域累计 Y/240,000`，终值 163,080；
+  5. 行数守恒：每册头部 `求和 X` 递推 `域累计 Y/240,000`，终值 240,000（满账）；
   6. 骨架-深化守恒：每批骨架册 batches/UNX-B1-B%02d.md 与深化册逐条
      F ID 同名 + 纯功能行数逐条相等（双轴 diff=0），且深化逐条求和
      与册头 `求和` 声明一致（R-C1-001 批小计逐条求和唯一真值口径）。
@@ -23,8 +23,8 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
 BATCHES_DIR = os.path.join(REPO, "docs", "unxreal", "batches")
-N_BATCHES = 30
-FINAL_CUM = 163080
+N_BATCHES = 40
+FINAL_CUM = 240000
 
 viol = []
 entries_total = 0
@@ -131,7 +131,7 @@ for bname, s, c in sum_chain:
 if sum_chain and sum_chain[-1][2] != FINAL_CUM:
     viol.append("终值域累计 %d != %s" % (sum_chain[-1][2], format(FINAL_CUM, ",")))
 
-print("== UNX-B1 finalize 机械校验（B01-B30 扩展版）==")
+print("== UNX-B1 finalize 机械校验（B01-B40 满账版）==")
 print("册子: %d/%d | 条目: %d/%d | 行数递推终值: %s/%s" % (
     len(sum_chain), N_BATCHES, entries_total, N_BATCHES * 20,
     sum_chain[-1][2] if sum_chain else "N/A", format(FINAL_CUM, ",")))
@@ -140,5 +140,5 @@ if viol:
     for v in viol:
         print("  - " + v)
     sys.exit(1)
-print("全绿：六项检查通过（册齐备 30/条目 600/ID 连续唯一/正文 >=300 字零残留/行数递推守恒至 163,080/骨架-深化双轴守恒）")
+print("全绿：六项检查通过（册齐备 40/条目 800/ID 连续唯一/正文 >=300 字零残留/行数递推守恒至 240,000 满账/骨架-深化双轴守恒）")
 sys.exit(0)
