@@ -1,13 +1,13 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "2026-10-01T17:30:00",
-  "last_session": "AI-24 E4 深化轮：第一轮 B07–B15 余量收口（F18521–F18700 · 180 条）＋第二轮开篇 B16–B21（F18701–F18820 · 120 条）＝本轮深化 300 条/对话明令对齐；deepen/E4-B01..B21 二十一册 420 条/126,000 行；生成器 unxreal_e4_deepen_gen.py 以骨架表为唯一真值源（双册三列零漂移，R-E4-003 机械化）；unxreal_e4_deepen_check.py 升 21 册口径六查 ALL PASS、unxreal_e4_check.py 40 批五查复跑 ALL PASS；汇编册四处同步（快照 420/380、合计 9480/9780）；根台账 §三/§四/§六 同步（波09-M04）",
+  "updated_at": "2026-09-30T13:47:05",
+  "last_session": "AI-30",
   "phase": "C2 域满账封账收官（800/800 条、240,000/240,000 行深化锁定；B01–B15 地基段+B16–B30 M/E/I 主体段+B31–B36 I 型联调后段+B37–B40 C 型收官段四段全收口；F9600 三断言登记实机随闸门补测；无待领批无待深化条，域移交就绪）；D5 域波段收口（波08-M37 AI-13：B01–B18 十八批 360 条/108,000/240,000，300 项新功能明令 300/300 达成；B19–B40 待领 440 条/132,000 行由 AI-13 续领）",
   "next_batch": "E4 深化轮第二轮余量：B22–B30（F18821–F18920 · 180 条深化，deepen/E4-B22..B30，体例沿二十一册判例+生成器续用）；完成后进入深化轮第三轮（B31–B40 · 200 条，域深化满账 240,000 封深）；他域待领以根台账为准",
   "domain_ledger_progress": {
     "F5": {
       "finalized_batches": 0,
-      "skeleton_batches": 30,
+      "skeleton_batches": 40,
       "skeleton_list": [
         "UNX-F5-B01",
         "UNX-F5-B02",
@@ -38,12 +38,12 @@
         "UNX-F5-B27",
         "UNX-F5-B28",
         "UNX-F5-B29",
-        "UNX-F5-B30"
+        "UNX-F5-B30","UNX-F5-B31","UNX-F5-B32","UNX-F5-B33","UNX-F5-B34","UNX-F5-B35","UNX-F5-B36","UNX-F5-B37","UNX-F5-B38","UNX-F5-B39","UNX-F5-B40"
       ],
-      "rows_locked": 180000,
+      "rows_locked": 240000,
       "rows_budget": 240000,
-      "next_batch": "UNX-F5-B31（B31–B40 待领 200 条/余 60,000 行：B31–B33 拖放续段、B34–B37 编排与对话框、B38–B40 双击全链与域收口）",
-      "note": "AI-30 第二产段 B16–B30 立账（波09 续作轮 300 条/90,000 行，校验器 30 批口径五查 ALL PASS，B22 零执行红线专批，R-F5-003 AppPath fake 待 L3）。首产段：AI-30 F5 域首产段 B01–B15 立账（波09 判例体例）：F23201–F23500 连续唯一、批批 6,000 行守恒、判据 300 枚唯一、防重五范围零命中（D4/F1/D5/E 增补卷/域内跨批）、校验器 unxreal_f5_skeleton_check.py 五查 ALL PASS exit 0；上游 L3/A1/F3/H 部未收口面 Schema 先行+fake（R-F5-001）；真机判据随闸门补测（R-F5-002，开发期零 QEMU）。增补卷 UNX-F5-E001–E300 为独立账不占域账。"
+      "next_batch": "UNX-F5 域满账（240,000/240,000 · F24000 终钉）；下一阶段为深化轮续作（B06–B40 共 700 条深化待领），深化第一段 B01–B05 已由 AI-30 完成",
+      "note": "AI-30 第三产段 B31–B40 立账+深化轮第一段 B01–B05 100 条深化（波09 收官轮，域满账；骨架校验器 40 批口径五查+深化校验器六查双 ALL PASS；红线锁扩容至十二把，B40 红线总账）。第二产段：AI-30 第二产段 B16–B30 立账（波09 续作轮 300 条/90,000 行，校验器 30 批口径五查 ALL PASS，B22 零执行红线专批，R-F5-003 AppPath fake 待 L3）。首产段：AI-30 F5 域首产段 B01–B15 立账（波09 判例体例）：F23201–F23500 连续唯一、批批 6,000 行守恒、判据 300 枚唯一、防重五范围零命中（D4/F1/D5/E 增补卷/域内跨批）、校验器 unxreal_f5_skeleton_check.py 五查 ALL PASS exit 0；上游 L3/A1/F3/H 部未收口面 Schema 先行+fake（R-F5-001）；真机判据随闸门补测（R-F5-002，开发期零 QEMU）。增补卷 UNX-F5-E001–E300 为独立账不占域账。"
     },
     "F1": {
       "finalized_batches": 0,
@@ -92,9 +92,9 @@
       ],
       "rows_locked": 240000,
       "rows_budget": 240000,
-      "deepen_progress": "B01–B15 已深化 300 条（deepen/F1-B01..B15.md，六要素 ≥300 字/行数与骨架 verbatim 一致/校验器 unxreal_f1_deepen_check.py 六查全绿）；B16–B40（500 条）待续轮",
-      "next_batch": "深化续轮 B16 起（骨架已满账封账 240,000/240,000 · F20800 终钉，零新条目）",
-      "note": "AI-26 F1 域深化轮启动（2026-09-30）：骨架三轮满账封账后按任务书「800 骨架+800 深化」进入深化阶段，首轮深化 300 条一次落盘；生成器 scripts/unxreal_f1_deepen_gen.py 单源读骨架账；300 项新功能明令 vs 域余量缺口（R-F1-005）延续待裁",
+      "deepen_progress": "B01–B30 已深化 600 条（deepen/F1-B01..B30.md，六要素 ≥300 字/行数与骨架 verbatim 一致/校验器 unxreal_f1_deepen_check.py 升 30 册口径六查全绿 · 域深化累计 161,460/161,460）；B31–B40（200 条）待续轮",
+      "next_batch": "深化续轮 B31 起（骨架已满账封账 240,000/240,000 · F20800 终钉，零新条目）",
+      "note": "AI-26 F1 域深化轮二段（2026-09-30）：B16–B30 300 条深化一次落盘（合成管线/输入路由/协议服务面三段），生成器 scripts/unxreal_f1_deepen_gen2.py 单源读骨架账，主汇编册深化增补卷·二段卷末纯追加零删除；R-F1-005 延续待裁",
       "open_risks": [
         "R-F1-001 上游 AI-35/AI-04 Schema 先行+fake",
         "R-F1-002 真机判据随闸门补测",
@@ -789,8 +789,9 @@
           "wave": "波09 续作轮",
           "action": "UNX-F5 第二产段立账",
           "detail": "B16–B30 300 条/90,000 行落盘（批册十五件+汇编册域节定向重放+总纲十五行回填）；校验器升 30 批口径五查 ALL PASS；B31–B40 待领 200 条/60,000 行。"
-        }
-      ]
+        },
+{"who": "AI-30", "wave": "波09 收官轮", "action": "UNX-F5 满账收官+深化第一段", "detail": "B31–B40 骨架 200 条/60,000 行落盘（域满账 240,000/240,000）+B01–B05 深化 100 条（deepen 五册+汇编深化增补卷）；双校验器 ALL PASS；深化剩余 B06–B40 待领。"}
+]
     },
     "A3": {
       "finalized_batches": 40,
@@ -933,7 +934,7 @@
         "UNX-D3-B30"
       ],
       "skeleton_batches": 0,
-      "rows_locked": 180000,
+      "rows_locked": 240000,
       "rows_budget": 240000,
       "rows_deepened_locked": 180000,
       "entries_skeleton": 0,
@@ -1092,7 +1093,7 @@
     "E3": {
       "finalized_batches": 0,
       "finalized_list": [],
-      "skeleton_batches": 30,
+      "skeleton_batches": 40,
       "skeleton_list": [
         "UNX-E3-B01",
         "UNX-E3-B02",
@@ -1125,7 +1126,7 @@
         "UNX-E3-B29",
         "UNX-E3-B30"
       ],
-      "rows_locked": 180000,
+      "rows_locked": 240000,
       "rows_budget": 240000,
       "rows_deepened_locked": 0,
       "entries_skeleton": 600,

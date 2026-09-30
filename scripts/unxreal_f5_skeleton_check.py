@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""UNX-F5 域账机械校验器（AI-30 · 30 批口径）五查：
-①批册 30 册齐装、逐册 20 条 ②ID F23201–F23800 连续唯一 ③行数守恒批批 6,000/总 180,000
-④判据 J1 齐备 600/600 ⑤汇编册域节与批册一致（抽样 40）+ 防重（与 E 增补卷判据文本零重复）
+"""UNX-F5 域账机械校验器（AI-30 · 40 批满账口径）五查：
+①批册 40 册齐装、逐册 20 条 ②ID F23201–F24000 连续唯一 ③行数守恒批批 6,000/总 240,000
+④判据 J1 齐备 800/800 ⑤汇编册域节与批册一致（抽样 60）+ 防重（与 E 增补卷判据文本零重复）
 """
 import re, sys, glob, random
 
 BATCH_DIR = "docs/unxreal/batches"
 MD = "docs/Varix/CoRun Varix STAR II · Unxreal/CoRun Varix STAR II · Unxreal.md"
-N_BATCH, LO, HI = 30, 23201, 23800
+N_BATCH, LO, HI = 40, 23201, 24000
 fails = []
 
 def batch_of(fid):
@@ -54,7 +54,7 @@ for fid,t,c,j in tbl_rows + lst_rows:
 if sorted(merged) != list(range(LO, HI+1)):
     fails.append(f"汇编册域节 ID {len(merged)} != {HI-LO+1} 连续")
 random.seed(30)
-sample = sorted(set([LO, HI] + random.sample(range(LO, HI+1), 40)))
+sample = sorted(set([LO, HI] + random.sample(range(LO, HI+1), 58)))
 for fid in sample:
     if fid not in merged:
         fails.append(f"F{fid} 汇编缺失"); continue
