@@ -1,7 +1,7 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "2026-09-30T12:48:06",
-  "last_session": "AI-23 E3 域波 09 首轮立账（B01–B15 骨架 300 条 F17601–F17900/90,000 行一次立账；生成器 scripts/unxreal_e3gen/ + 校验器 unxreal_e3_skeleton_check.py 七项断言全绿 exit=0；总纲 §7.3-E3 四十行一次建入写锁 B01–B15 AI-23；汇编册扩 部E/E3 收录重生成 + HEAD 增补卷整块重放（R-PROC-002 判例登记）；B16–B40 待领 150,000 行；上游 AI-42 冻结契约 fake 对接 R-E3-001，真站判据随闸门补测 R-E3-002）",
+  "updated_at": "2026-09-30",
+  "last_session": "AI-22 E2 域波09 续领段（B08-B22 一次对话 300 项新功能深化收口 F16941-F17240/90,000 行；B01-B07 前会话在途册补派生批册+R-E2-001/R-E2-002 账实修正留痕；校验器 unxreal_e2_deepen_check.py 22 册全绿 exit=0；总纲 §7.3-E2 四十行一次建入 [已深化]×22 写锁；汇编册部E/E2 440 条入快照+在途稿保护 E4 SKIP 零触碰；B23-B40 待领 108,100 行）",
   "phase": "C2 域满账封账收官（800/800 条、240,000/240,000 行深化锁定；B01–B15 地基段+B16–B30 M/E/I 主体段+B31–B36 I 型联调后段+B37–B40 C 型收官段四段全收口；F9600 三断言登记实机随闸门补测；无待领批无待深化条，域移交就绪）；D5 域波段收口（波08-M37 AI-13：B01–B18 十八批 360 条/108,000/240,000，300 项新功能明令 300/300 达成；B19–B40 待领 440 条/132,000 行由 AI-13 续领）",
   "next_batch": "UNX-E4-B26（AI-24 续领：家族运行环境语义 B26–B30 → 卸载与 ARP B31–B35 → 样本账收口 B36–B40；他域待领以根台账为准）",
   "domain_ledger_progress": {
@@ -1048,6 +1048,26 @@
       ],
       "upstream_contracts": "AI-17 SEC_IMAGE（波07）/AI-18 hive API（波07）/AI-26 surface 提交与输入（波10前，Schema 先行 R-E1-001）/AI-19 消息对照表（滚动只增不删）；真机判据随闸门补测（R-E1-002）",
       "remaining": "B28–B40 待领（260 条，账余 78,000 行）：B28–B31 winecfg/prefix/bottle 段、B32–B36 conformance 收口与域收官段、B37–B40 域满账收官段"
+    },
+    "E2": {
+      "owner": "AI-22",
+      "id_range": "F16801-F17600",
+      "planned_batches": 40,
+      "entries": 440,
+      "finalized_batches": 22,
+      "rows": 131900,
+      "rows_total": 240000,
+      "books": {
+        "batches": 22,
+        "deepen": 22
+      },
+      "checker": "scripts/unxreal_e2_deepen_check.py (ALL GREEN exit=0)",
+      "frozen": [
+        "resolve_crt 四级裁决接口 (B03 -> E1/A4)",
+        "fd<->HANDLE 双账映射契约 (B19 -> D1)"
+      ],
+      "notes": "波09 续领段：B08-B22 本会话 300 条新深化一次收口；B01-B07 前会话在途深化册补派生批册（R-E2-001 批头虚记账实修正：B01/B03/B04=5,980、B07=5,960，逐条求和为唯一真值；R-E2-002 正文压线补强只增不改留痕）；真机判据随闸门补测；B23-B40 待领（stdio/locale/多字节/C++ ABI/异常展开段，余 108,100 行）",
+      "updated_at": "2026-09-30"
     }
   },
   "deepen_books": [
