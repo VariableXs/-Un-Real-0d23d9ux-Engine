@@ -56,7 +56,7 @@ if len(set(names)) != len(names): errors.append("duplicate entry names")
 
 # 6) compendium coverage
 comp = open(COMP, encoding="utf-8").read()
-m = re.search(r"## UNX-H3 首产段卷.*", comp, re.S)
+m = re.search(r"## UNX-H3 首产段卷.*?(?=\n## |\Z)", comp, re.S)
 if not m:
     errors.append("compendium H3 volume missing")
 else:
