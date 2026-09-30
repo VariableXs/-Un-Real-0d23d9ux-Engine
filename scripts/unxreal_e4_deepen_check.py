@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """UNX-E4 域深化校验器（深化轮第一轮 · AI-24）。
-检查 B01–B21 二十一册深化册 + 骨架账双册一致：
+检查 B01–B36 三十六册深化册 + 骨架账双册一致：
   ① 每册 20 条、六要素齐备（判据/定位/语义边界/依赖/风险/正文）
   ② 逐条正文 ≥300 字
-  ③ 批内 ID 连续且与 F 区间一致（B01 F18401 … B21 F18820）
-  ④ 逐批行数求和 = 6,000；域累计链 = 6,000×册数（21 册 = 126,000）
+  ③ 批内 ID 连续且与 F 区间一致（B01 F18401 … B36 F19120）
+  ④ 逐批行数求和 = 6,000；域累计链 = 6,000×册数（36 册 = 216,000）
   ⑤ 状态全部 [已深化]，判据号与本条 ID 一致（防自指/错位）
   ⑥ 双册一致：骨架账条目名/行数/判据与深化册 verbatim 一致
 全绿 exit=0。
@@ -14,7 +14,7 @@ import os, re, sys
 REPO = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
-BOOKS = list(range(1, 22))
+BOOKS = list(range(1, 37))
 SIX = ["定位", "语义边界", "依赖与嫁接源", "风险与回退", "正文"]
 
 errors = []

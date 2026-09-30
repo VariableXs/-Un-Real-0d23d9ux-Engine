@@ -8,14 +8,14 @@ import io, os, re, sys
 REPO = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
-TARGET = list(range(7, 22))          # B07..B21
-TOTAL_BOOKS = 21
+TARGET = list(range(22, 37))         # B22..B36（第二轮余量 B22–B30 180 条 + 第三轮开篇 B31–B36 120 条 = 300 条）
+TOTAL_BOOKS = 40
 
 def read(p):
     return io.open(p, encoding="utf-8").read().replace("\r\n", "\n")
 
 # 域累计深化进度（册序）：B01..B06 已 120 条/36,000 行；本会话续 300 条/90,000 行
-done_entries = 6 * 20
+done_entries = 21 * 20
 
 for bno in TARGET:
     skel = read(os.path.join(BATCH, f"UNX-E4-B{bno:02d}.md"))
