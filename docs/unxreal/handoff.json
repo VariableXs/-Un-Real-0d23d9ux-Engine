@@ -1,9 +1,9 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "2026-10-02T03:30:00",
-  "last_session": "AI-34 G4 域认领扩表：总纲 §7.3-G4 全表 40 批一次建入 + B01–B15 首产段骨架 300 项新功能（batches/UNX-G4-B01..B15.md · F26401–F26700 连续唯一 · 90,000/240,000=37.5% · 生成器 _g4_firstprod.py 五断言 ALL PASS）；任务书示例锚 F26401/F26500 原位、F26600/F26700 按 §2.1 区间恒等归位（语义锚 B10/B14 末条承载位）；汇编册增补卷纯追加；根台账 §三/§四同步；并行 AI-33（G3）同期施工零覆盖；open_risks R-G4-001/002/003 登记",
+  "updated_at": "2026-09-30T18:30:00",
+  "last_session": "AI-48 · UNX-J3 加密服务域认领扩表 + B01–B15 首产段骨架 300 条立账（F37601–F37900 · 90,000 行 · 五断言 ALL PASS · 五范围防重零撞号 · 主汇编册纯追加 47,802→52,105 行）",
   "phase": "C2 域满账封账收官（800/800 条、240,000/240,000 行深化锁定；B01–B15 地基段+B16–B30 M/E/I 主体段+B31–B36 I 型联调后段+B37–B40 C 型收官段四段全收口；F9600 三断言登记实机随闸门补测；无待领批无待深化条，域移交就绪）；D5 域波段收口（波08-M37 AI-13：B01–B18 十八批 360 条/108,000/240,000，300 项新功能明令 300/300 达成；B19–B40 待领 440 条/132,000 行由 AI-13 续领）",
-  "next_batch": "H3 域 B16–B40 待领（余 150,000 行；B16–B20 轨道与 seek 深化/B21–B28 E 型错误矩阵/B29–B36 I 型联签与 DirectShow·MF 桥/B37–B40 片源库总账与域收官）；他域待领以根台账为准",
+  "next_batch": "J3 域 B16–B40 待领（余 150,000 行；B16–B20 M 型机制续段/B21–B28 E 型边界五件套/B29–B36 I 型联签/B37–B40 C 型收官与向量总账复跑）；他域待领以根台账为准",
   "domain_ledger_progress": {
     "F5": {
       "finalized_batches": 0,
@@ -1419,6 +1419,142 @@
         "R-G4-002",
         "R-G4-003"
       ]
+    },
+    "I1": {
+      "finalized_batches": 0,
+      "skeleton_batches": 15,
+      "skeleton_list": [
+        "UNX-I1-B01",
+        "UNX-I1-B02",
+        "UNX-I1-B03",
+        "UNX-I1-B04",
+        "UNX-I1-B05",
+        "UNX-I1-B06",
+        "UNX-I1-B07",
+        "UNX-I1-B08",
+        "UNX-I1-B09",
+        "UNX-I1-B10",
+        "UNX-I1-B11",
+        "UNX-I1-B12",
+        "UNX-I1-B13",
+        "UNX-I1-B14",
+        "UNX-I1-B15"
+      ],
+      "rows_locked": 90000,
+      "domain_budget": 240000,
+      "owner": "AI-41",
+      "note": "首产段 B01–B15 骨架 300 条立账（F32001–F32300 连续唯一 · 判据 300 枚唯一 · 生成器 scripts/unxreal_i1_gen.py 五断言 ALL PASS · 校验器六查 ALL PASS）；B16–B40 待领（余 150,000 行）；open_risks R-I1-001..005"
+    },
+    "I2": {
+      "finalized_batches": 0,
+      "skeleton_batches": 15,
+      "skeleton_list": [
+        "UNX-I2-B01",
+        "UNX-I2-B02",
+        "UNX-I2-B03",
+        "UNX-I2-B04",
+        "UNX-I2-B05",
+        "UNX-I2-B06",
+        "UNX-I2-B07",
+        "UNX-I2-B08",
+        "UNX-I2-B09",
+        "UNX-I2-B10",
+        "UNX-I2-B11",
+        "UNX-I2-B12",
+        "UNX-I2-B13",
+        "UNX-I2-B14",
+        "UNX-I2-B15"
+      ],
+      "pending_batches": [
+        "UNX-I2-B16",
+        "UNX-I2-B17",
+        "UNX-I2-B18",
+        "UNX-I2-B19",
+        "UNX-I2-B20",
+        "UNX-I2-B21",
+        "UNX-I2-B22",
+        "UNX-I2-B23",
+        "UNX-I2-B24",
+        "UNX-I2-B25",
+        "UNX-I2-B26",
+        "UNX-I2-B27",
+        "UNX-I2-B28",
+        "UNX-I2-B29",
+        "UNX-I2-B30",
+        "UNX-I2-B31",
+        "UNX-I2-B32",
+        "UNX-I2-B33",
+        "UNX-I2-B34",
+        "UNX-I2-B35",
+        "UNX-I2-B36",
+        "UNX-I2-B37",
+        "UNX-I2-B38",
+        "UNX-I2-B39",
+        "UNX-I2-B40"
+      ],
+      "lines": {
+        "skeleton": 90000,
+        "finalized": 0,
+        "budget": 240000
+      },
+      "owner": "AI-42",
+      "note": "波16 开工首产段立账（F32801–F33100），判据主轴 BSD↔winsock 对照与 overlapped IO；B16–B40 待领"
+    },
+    "J3": {
+      "finalized_batches": 0,
+      "skeleton_batches": 15,
+      "skeleton_list": [
+        "UNX-J3-B01",
+        "UNX-J3-B02",
+        "UNX-J3-B03",
+        "UNX-J3-B04",
+        "UNX-J3-B05",
+        "UNX-J3-B06",
+        "UNX-J3-B07",
+        "UNX-J3-B08",
+        "UNX-J3-B09",
+        "UNX-J3-B10",
+        "UNX-J3-B11",
+        "UNX-J3-B12",
+        "UNX-J3-B13",
+        "UNX-J3-B14",
+        "UNX-J3-B15"
+      ],
+      "pending_batches": [
+        "UNX-J3-B16",
+        "UNX-J3-B17",
+        "UNX-J3-B18",
+        "UNX-J3-B19",
+        "UNX-J3-B20",
+        "UNX-J3-B21",
+        "UNX-J3-B22",
+        "UNX-J3-B23",
+        "UNX-J3-B24",
+        "UNX-J3-B25",
+        "UNX-J3-B26",
+        "UNX-J3-B27",
+        "UNX-J3-B28",
+        "UNX-J3-B29",
+        "UNX-J3-B30",
+        "UNX-J3-B31",
+        "UNX-J3-B32",
+        "UNX-J3-B33",
+        "UNX-J3-B34",
+        "UNX-J3-B35",
+        "UNX-J3-B36",
+        "UNX-J3-B37",
+        "UNX-J3-B38",
+        "UNX-J3-B39",
+        "UNX-J3-B40"
+      ],
+      "ids": "F37601–F37900（首产段）/ F37901–F38400（待领）",
+      "rows": "90,000 / 240,000（15 批 × 6,000 守恒，生成器 _j3_firstprod.py 五断言 ALL PASS）",
+      "criteria": "300 枚唯一（UNX-F376xx/377xx/378xx/379xx-J1）",
+      "owner": "AI-48",
+      "wave": "波 18",
+      "anchor_note": "任务书五示例锚：F37605 B01 原位；F37652→B03/F37710→B06/F37788→B10/F37850→B13 承载位（§2.1 区间恒等，承 C2/D2/G4 判例）",
+      "red_lines": "密码专条四条（向量红线/禁自造密码/熵红线/密钥生命周期四环）；乱序侧信道显式不覆盖；rand() 进安全用途=P0；无引导/硬件红线触发条目",
+      "next": "B16–B40 待领（M 型机制续段 B16–B20 → E 型边界 B21–B28 → I 型联签 B29–B36 → C 型收官 B37–B40，余 150,000 行）"
     }
   },
   "deepen_books": [
@@ -2502,6 +2638,48 @@
       "id": "R-B4-005",
       "text": "收官轮真机随闸门四件（soak 7×24 F7099/回归真机档 F7139/主轴真机子集 F7159/运维手册真机页 F7179）随闸门补测（双轨产线：QEMU 账与真机账分账禁混报，R-B4-004 判例口径）",
       "owner": "AI-09",
+      "level": "P2"
+    },
+    {
+      "id": "R-I2-001",
+      "text": "上游 AI-12（C2 分发表冻结接口）/AI-37（H2 事件惯例）/AI-21（wine 转发面）/AI-14（C4 挂载点）未收口面 Schema 先行+fake 对接，波 17 Q3 前完成实签",
+      "owner": "AI-42",
+      "level": "P2"
+    },
+    {
+      "id": "R-I2-002",
+      "text": "真机/双机对照判据随闸门补测：winsock 侧真相须 Windows 基准机实测，查不到行为标待验证排队 O1 禁凭记忆（防幻觉红线），开发期零 QEMU 零实机写",
+      "owner": "AI-42",
+      "level": "P2"
+    },
+    {
+      "id": "R-I2-003",
+      "text": "双表生命周期竞争（fd 表×winsock 句柄表关闭竞态）为 E 型批 B21–B28 主攻面：引用计数单点裁决+弱引用提升+A5 锁层次登记已在地基批落位，finalize 前注入 ×100 专项",
+      "owner": "AI-42",
+      "level": "P2"
+    },
+    {
+      "id": "R-J3-001",
+      "text": "上游 AI-47（J2）DPAPI 需求面联签窗口未开：KDF 310,000 迭代档与 AES-GCM 包裹消费按 Schema 先行+fake 收口，联签后全量对账",
+      "owner": "AI-48",
+      "level": "P1"
+    },
+    {
+      "id": "R-J3-002",
+      "text": "上游 AI-04（A4）锁页 PmLockAlloc 与克隆 OnClone 钩子 Schema 先行+fake：实机日等价验证，fake↔实机偏差即回炉",
+      "owner": "AI-48",
+      "level": "P1"
+    },
+    {
+      "id": "R-J3-003",
+      "text": "下游 J4 CSPRNG 消费联签与 L3/K5 包·驱动签名消费为远期冻结预告（B01 开工包登记兑现），实装在消费域波次",
+      "owner": "AI-48",
+      "level": "P2"
+    },
+    {
+      "id": "R-J3-004",
+      "text": "真机/双机对照判据随闸门补测（openssl 吞吐基线 ×0.8·×0.9、锁页行为、CNG 向量真源复验），双轨产线开发期零 QEMU 零实机写",
+      "owner": "AI-48",
       "level": "P2"
     }
   ],
