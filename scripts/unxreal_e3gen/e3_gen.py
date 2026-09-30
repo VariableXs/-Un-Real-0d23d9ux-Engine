@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UNX-E3 域批册生成器（AI-23 · B01–B15 · 300 条骨架）
+"""UNX-E3 域批册生成器（AI-23 · B01–B30 · 600 条骨架）
 - 数据源：e3_data_p1/p2/p3（每批 20 条：FID、条目名、行数、判据）
 - 配平：每批纯功能行数求和机械配平至恰 6,000（单条钳位 200–400，AI-19/D4 判例口径）
 - 输出：docs/unxreal/batches/UNX-E3-B01..B15.md（骨架态批册）
@@ -14,6 +14,9 @@ sys.path.insert(0, HERE)
 import e3_data_p1 as p1
 import e3_data_p2 as p2
 import e3_data_p3 as p3
+import e3_data_p4 as p4
+import e3_data_p5 as p5
+import e3_data_p6 as p6
 
 LO, HI, TARGET = 200, 400, 6000
 
@@ -37,6 +40,10 @@ def rebalance(rows, bname):
         else:
             for i, r in enumerate(movable):
                 add = base + (1 if i < rem else 0)
+                if sign > 0:
+                    add = min(add, HI - r[2])
+                else:
+                    add = min(add, r[2] - LO)
                 r[2] += sign * add
         delta = TARGET - sum(r[2] for r in rows)
         guard += 1
@@ -60,21 +67,21 @@ HEADER_TMPL = (
 
 def gen():
     all_rows = []
-    for bkey, title, theme, rows in (p1.BATCHES_PART1 + p2.BATCHES_PART2 + p3.BATCHES_PART3):
-        rows = rebalance(rows, bkey)
+    for bkey, title, theme, rows in (p1.BATCHES_PART1 + p2.BATCHES_PART2 + p3.BATCHES_PART3 + p4.BATCHES_PART4 + p5.BATCHES_PART5 + p6.BATCHES_PART6):
+        rows = rebalance(sorted(rows, key=lambda r: r[0]), bkey)
         all_rows.append((bkey, title, theme, rows))
 
     # 全域一致性
     ids = [r[0] for _, _, _, rows in all_rows for r in rows]
-    assert ids == list(range(17601, 17901)), "ID not contiguous"
-    assert len(set(ids)) == 300
+    assert ids == list(range(17601, 18201)), "ID not contiguous"
+    assert len(set(ids)) == 600
     jids = []
     for _, _, _, rows in all_rows:
         for r in rows:
             jid = "UNX-F%d-J1" % r[0]
             assert r[3].startswith(jid), "judge id mismatch: %s" % r[0]
             jids.append(jid)
-    assert len(set(jids)) == 300, "judge ids not unique"
+    assert len(set(jids)) == 600, "judge ids not unique"
 
     os.makedirs(OUT, exist_ok=True)
     total = 0
@@ -94,8 +101,8 @@ def gen():
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("\n".join(L) + "\n")
         print("%s: 20 items, rows=%d, cum=%d" % (bkey, sum(r[2] for r in rows), cum))
-    assert total == 90000
-    print("ALL OK: 15 batches, 300 items, total rows = %d (domain 90,000/240,000)" % total)
+    assert total == 180000
+    print("ALL OK: 30 batches, 600 items, total rows = %d (domain 180,000/240,000)" % total)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""UNX-E3 骨架立账机械校验器（AI-23 · B01–B15 · 300 条）
-断言链：①批册 15 件、条数 20/批 ②ID F17601–F17900 连续唯一 ③批批求和恰 6,000、域 90,000
+"""UNX-E3 骨架立账机械校验器（AI-23 · B01–B30 · 600 条）
+断言链：①批册 30 件、条数 20/批 ②ID F17601–F18200 连续唯一 ③批批求和恰 6,000、域 180,000
 ④行数 200–400 ⑤判据号唯一且与条目 ID 一一对应 ⑥防重 grep 五范围零撞号 ⑦批头区间与实际一致
 exit 0 = 全绿
 """
@@ -16,8 +16,8 @@ HEAD = re.compile(r"^### UNX-F(\d+) · (.+)$")
 META = re.compile(r"^- 域/批：E3/B\d{2}｜纯功能行数：(\d+)｜状态：\[骨架\]｜判据：(UNX-F\d+-J1) ")
 
 books = sorted(f for f in os.listdir(BATCH) if f.startswith("UNX-E3-B") and f.endswith(".md"))
-if len(books) != 15:
-    fails.append("book-count=%d != 15" % len(books))
+if len(books) != 30:
+    fails.append("book-count=%d != 30" % len(books))
 
 all_ids, all_jids, total = [], [], 0
 for fn in books:
@@ -57,15 +57,15 @@ for fn in books:
     all_jids += jids
     total += s
 
-if all_ids != list(range(17601, 17901)):
-    fails.append("global ID not contiguous F17601–F17900 (n=%d)" % len(all_ids))
-if len(set(all_jids)) != 300:
+if all_ids != list(range(17601, 18201)):
+    fails.append("global ID not contiguous F17601–F18200 (n=%d)" % len(all_ids))
+if len(set(all_jids)) != 600:
     fails.append("global judge ids not unique: %d" % len(set(all_jids)))
-if total != 90000:
-    fails.append("domain rows %d != 90000" % total)
+if total != 180000:
+    fails.append("domain rows %d != 180000" % total)
 
 # ⑥ 防重 grep 五范围：F17601–F17900 不得出现在其他域资产（kernel/docs/START/_attic/他域 deepen/总纲他域段）
-pat = re.compile(r"UNX-F17[6-8]\d\d|UNX-F17900")
+pat = re.compile(r"UNX-F(17[6-9]|18[0-2])\d\d")
 hit = []
 for root, exts in [
     (os.path.join(REPO, "kernel", "varix", "src"), (".rs", ".md", ".py", ".c", ".h", ".json", ".toml")),
