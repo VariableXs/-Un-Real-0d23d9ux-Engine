@@ -1,9 +1,0 @@
-AI-H2 深化批次五 · 验证输出（隔离副本 _attic/aih2-verify）
-日期：2026-09-27
-
-## 域内测试 cargo test h2star --lib
-test result: ok. 216 passed; 0 failed; 0 ignored; 0 measured; 5078 filtered out; finished in 4.53s
-
-
-## 全量回归 cargo test --lib -- --skip genstar2 --skip robust
-test result: ok. 5124 passed; 0 failed; 0 ignored; 0 measured; 170 filtered out

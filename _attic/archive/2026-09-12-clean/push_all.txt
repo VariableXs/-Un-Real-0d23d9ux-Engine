@@ -1,5 +1,0 @@
-exit=0
-protocol=https
-host=github.com
-username=VariableXs
-password=<hidden>
