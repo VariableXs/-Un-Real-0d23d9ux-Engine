@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """UNX-E2 域深化校验器（波09 续领段 · AI-22）。
-检查 B01–B22 二十二册深化册 + 骨架账双册一致（B08–B22 为本会话 300 条续领段）：
+检查 B01–B37 三十七册深化册 + 骨架账双册一致（B08–B22 为本会话 300 条续领段）：
   ① 每册 20 条、六要素齐备（判据/定位/语义边界/依赖/风险/正文）
   ② 逐条正文 ≥300 字
   ③ 批内 ID 连续且与 F 区间一致（B01 F16801 … B22 F17240）
@@ -13,7 +13,7 @@ import os, re, sys
 REPO = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
-BOOKS = list(range(1, 23))
+BOOKS = list(range(1, 38))
 SIX = ["定位", "语义边界", "依赖与嫁接源", "风险与回退", "正文"]
 
 errors, warns = [], []
@@ -93,13 +93,13 @@ def check_book(bno):
 for b in BOOKS:
     check_book(b)
 
-if grand_entries != 440:
-    errors.append(f"域总条数 {grand_entries} != 440")
+if grand_entries != 740:
+    errors.append(f"域总条数 {grand_entries} != 740")
 # R-E2-001 账实修正后真值：B01/B03/B04=5,980、B07=5,960、余 18 批=6,000 → 131,900
-if grand_rows != 131900:
-    errors.append(f"域累计 {grand_rows} != 131900（R-E2-001 真值口径）")
+if grand_rows != 221900:
+    errors.append(f"域累计 {grand_rows} != 221900（R-E2-001 真值口径 + 续作轮二 15×6,000）")
 
-print(f"E2 deepen check: books=22 entries={grand_entries} rows={grand_rows}")
+print(f"E2 deepen check: books=37 entries={grand_entries} rows={grand_rows}")
 if errors:
     print("FAIL", len(errors))
     for e in errors[:40]:
