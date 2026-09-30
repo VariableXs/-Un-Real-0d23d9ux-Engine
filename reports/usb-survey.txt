@@ -1,0 +1,230 @@
+﻿
+FullName                                                                                                         Length
+--------                                                                                                         ------
+Y:\EFI                                                                                                                 
+Y:\kernel                                                                                                              
+Y:\System Volume Information                                                                                           
+Y:\boot                                                                                                                
+Y:\$RECYCLE.BIN                                                                                                        
+Y:\limine-bios.sys                                                                                               330888
+Y:\limine.conf                                                                                                   1797  
+Y:\initrd.img                                                                                                    1232  
+Y:\ESP-MANIFEST.json                                                                                             1103  
+Y:\limine.conf.bak                                                                                               546   
+Y:\boot-select.json                                                                                              216   
+Y:\wallpaper.rgb565                                                                                              184...
+Y:\limine.conf.bak-20260926-014411                                                                               669   
+Y:\limine.conf.bak-20260926-020439                                                                               1284  
+Y:\EFI\BOOT                                                                                                            
+Y:\EFI\Microsoft                                                                                                       
+Y:\EFI\BOOT\BOOTX64.EFI                                                                                          376832
+Y:\EFI\Microsoft\Boot                                                                                                  
+Y:\EFI\Microsoft\Recovery                                                                                              
+Y:\EFI\Microsoft\Boot\bg-BG                                                                                            
+Y:\EFI\Microsoft\Boot\CIPolicies                                                                                       
+Y:\EFI\Microsoft\Boot\cs-CZ                                                                                            
+Y:\EFI\Microsoft\Boot\da-DK                                                                                            
+Y:\EFI\Microsoft\Boot\de-DE                                                                                            
+Y:\EFI\Microsoft\Boot\el-GR                                                                                            
+Y:\EFI\Microsoft\Boot\en-GB                                                                                            
+Y:\EFI\Microsoft\Boot\en-US                                                                                            
+Y:\EFI\Microsoft\Boot\es-ES                                                                                            
+Y:\EFI\Microsoft\Boot\es-MX                                                                                            
+Y:\EFI\Microsoft\Boot\et-EE                                                                                            
+Y:\EFI\Microsoft\Boot\fi-FI                                                                                            
+Y:\EFI\Microsoft\Boot\fr-CA                                                                                            
+Y:\EFI\Microsoft\Boot\fr-FR                                                                                            
+Y:\EFI\Microsoft\Boot\hr-HR                                                                                            
+Y:\EFI\Microsoft\Boot\hu-HU                                                                                            
+Y:\EFI\Microsoft\Boot\it-IT                                                                                            
+Y:\EFI\Microsoft\Boot\ja-JP                                                                                            
+Y:\EFI\Microsoft\Boot\ko-KR                                                                                            
+Y:\EFI\Microsoft\Boot\lt-LT                                                                                            
+Y:\EFI\Microsoft\Boot\lv-LV                                                                                            
+Y:\EFI\Microsoft\Boot\nb-NO                                                                                            
+Y:\EFI\Microsoft\Boot\nl-NL                                                                                            
+Y:\EFI\Microsoft\Boot\pl-PL                                                                                            
+Y:\EFI\Microsoft\Boot\pt-BR                                                                                            
+Y:\EFI\Microsoft\Boot\pt-PT                                                                                            
+Y:\EFI\Microsoft\Boot\qps-ploc                                                                                         
+Y:\EFI\Microsoft\Boot\qps-plocm                                                                                        
+Y:\EFI\Microsoft\Boot\ro-RO                                                                                            
+Y:\EFI\Microsoft\Boot\ru-RU                                                                                            
+Y:\EFI\Microsoft\Boot\sk-SK                                                                                            
+Y:\EFI\Microsoft\Boot\sl-SI                                                                                            
+Y:\EFI\Microsoft\Boot\sr-Latn-RS                                                                                       
+Y:\EFI\Microsoft\Boot\sv-SE                                                                                            
+Y:\EFI\Microsoft\Boot\tr-TR                                                                                            
+Y:\EFI\Microsoft\Boot\uk-UA                                                                                            
+Y:\EFI\Microsoft\Boot\zh-CN                                                                                            
+Y:\EFI\Microsoft\Boot\zh-TW                                                                                            
+Y:\EFI\Microsoft\Boot\Fonts                                                                                            
+Y:\EFI\Microsoft\Boot\Resources                                                                                        
+Y:\EFI\Microsoft\Boot\boot.stl                                                                                   11030 
+Y:\EFI\Microsoft\Boot\kd_02_19a2.dll                                                                             71056 
+Y:\EFI\Microsoft\Boot\kd_02_1af4.dll                                                                             62864 
+Y:\EFI\Microsoft\Boot\kd_02_1d0f.dll                                                                             83328 
+Y:\EFI\Microsoft\Boot\kd_02_8086.dll                                                                             361872
+Y:\EFI\Microsoft\Boot\kd_07_1415.dll                                                                             58784 
+Y:\EFI\Microsoft\Boot\kd_0C_8086.dll                                                                             87440 
+Y:\EFI\Microsoft\Boot\SecureBootRecovery.efi                                                                     173512
+Y:\EFI\Microsoft\Boot\winsipolicy.p7b                                                                            10341 
+Y:\EFI\Microsoft\Boot\boot.pnd.stl                                                                               11733 
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TM.blf                                           73728 
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TM.blf.cnpf                                      4096  
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TMContainer00000000000000000001.regtrans-ms      561152
+Y:\EFI\Microsoft\Boot\BOOTSTAT.DAT                                                                               65536 
+Y:\EFI\Microsoft\Boot\BCD                                                                                        32768 
+Y:\EFI\Microsoft\Boot\BCD.LOG                                                                                    32768 
+Y:\EFI\Microsoft\Boot\BCD.LOG1                                                                                   0     
+Y:\EFI\Microsoft\Boot\BCD.LOG2                                                                                   0     
+Y:\EFI\Microsoft\Boot\bootmgfw.efi                                                                               300...
+Y:\EFI\Microsoft\Boot\bootmgr.efi                                                                                299...
+Y:\EFI\Microsoft\Boot\kdnet_uart16550.dll                                                                        58776 
+Y:\EFI\Microsoft\Boot\kdstub.dll                                                                                 87448 
+Y:\EFI\Microsoft\Boot\kd_02_10df.dll                                                                             71072 
+Y:\EFI\Microsoft\Boot\kd_02_10ec.dll                                                                             562592
+Y:\EFI\Microsoft\Boot\kd_02_1137.dll                                                                             71064 
+Y:\EFI\Microsoft\Boot\kd_02_1414.dll                                                                             99752 
+Y:\EFI\Microsoft\Boot\kd_02_14e4.dll                                                                             284048
+Y:\EFI\Microsoft\Boot\kd_02_15ad.dll                                                                             58792 
+Y:\EFI\Microsoft\Boot\kd_02_15b3.dll                                                                             91552 
+Y:\EFI\Microsoft\Boot\kd_02_1969.dll                                                                             83328 
+Y:\EFI\Microsoft\Boot\memtest.efi                                                                                261...
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TMContainer00000000000000000001.regtrans-ms.cnpf 4096  
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TMContainer00000000000000000002.regtrans-ms      561152
+Y:\EFI\Microsoft\Boot\BCD{11796f13-b5ce-11f1-ab88-c4c6e62c8a4c}.TMContainer00000000000000000002.regtrans-ms.cnpf 4096  
+Y:\EFI\Microsoft\Boot\bg-BG\bootmgfw.efi.mui                                                                     94624 
+Y:\EFI\Microsoft\Boot\bg-BG\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\CIPolicies\Active                                                                                
+Y:\EFI\Microsoft\Boot\CIPolicies\Active\{5DAC656C-21AD-4A02-AB49-649917162E70}.cip                               10564 
+Y:\EFI\Microsoft\Boot\CIPolicies\Active\{82443e1e-8a39-4b4a-96a8-f40ddc00b9f3}.cip                               32508 
+Y:\EFI\Microsoft\Boot\CIPolicies\Active\{CDD5CB55-DB68-4D71-AA38-3DF2B6473A52}.cip                               10972 
+Y:\EFI\Microsoft\Boot\cs-CZ\bootmgfw.efi.mui                                                                     93600 
+Y:\EFI\Microsoft\Boot\cs-CZ\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\cs-CZ\memtest.efi.mui                                                                      46496 
+Y:\EFI\Microsoft\Boot\da-DK\bootmgfw.efi.mui                                                                     92616 
+Y:\EFI\Microsoft\Boot\da-DK\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\da-DK\memtest.efi.mui                                                                      46496 
+Y:\EFI\Microsoft\Boot\de-DE\bootmgfw.efi.mui                                                                     97224 
+Y:\EFI\Microsoft\Boot\de-DE\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\de-DE\memtest.efi.mui                                                                      47008 
+Y:\EFI\Microsoft\Boot\el-GR\bootmgfw.efi.mui                                                                     97736 
+Y:\EFI\Microsoft\Boot\el-GR\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\el-GR\memtest.efi.mui                                                                      47520 
+Y:\EFI\Microsoft\Boot\en-GB\bootmgfw.efi.mui                                                                     90032 
+Y:\EFI\Microsoft\Boot\en-GB\bootmgr.efi.mui                                                                      90024 
+Y:\EFI\Microsoft\Boot\en-US\bootmgfw.efi.mui                                                                     90056 
+Y:\EFI\Microsoft\Boot\en-US\bootmgr.efi.mui                                                                      90024 
+Y:\EFI\Microsoft\Boot\en-US\memtest.efi.mui                                                                      45984 
+Y:\EFI\Microsoft\Boot\es-ES\bootmgfw.efi.mui                                                                     94624 
+Y:\EFI\Microsoft\Boot\es-ES\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\es-ES\memtest.efi.mui                                                                      47024 
+Y:\EFI\Microsoft\Boot\es-MX\bootmgfw.efi.mui                                                                     94624 
+Y:\EFI\Microsoft\Boot\es-MX\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\et-EE\bootmgfw.efi.mui                                                                     91040 
+Y:\EFI\Microsoft\Boot\et-EE\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\fi-FI\bootmgfw.efi.mui                                                                     93600 
+Y:\EFI\Microsoft\Boot\fi-FI\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\fi-FI\memtest.efi.mui                                                                      46512 
+Y:\EFI\Microsoft\Boot\fr-CA\bootmgfw.efi.mui                                                                     97184 
+Y:\EFI\Microsoft\Boot\fr-CA\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\fr-FR\bootmgfw.efi.mui                                                                     96672 
+Y:\EFI\Microsoft\Boot\fr-FR\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\fr-FR\memtest.efi.mui                                                                      47024 
+Y:\EFI\Microsoft\Boot\hr-HR\bootmgfw.efi.mui                                                                     93600 
+Y:\EFI\Microsoft\Boot\hr-HR\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\hu-HU\bootmgfw.efi.mui                                                                     96712 
+Y:\EFI\Microsoft\Boot\hu-HU\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\hu-HU\memtest.efi.mui                                                                      47008 
+Y:\EFI\Microsoft\Boot\it-IT\bootmgfw.efi.mui                                                                     94112 
+Y:\EFI\Microsoft\Boot\it-IT\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\it-IT\memtest.efi.mui                                                                      46384 
+Y:\EFI\Microsoft\Boot\ja-JP\bootmgfw.efi.mui                                                                     81312 
+Y:\EFI\Microsoft\Boot\ja-JP\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\ja-JP\memtest.efi.mui                                                                      43824 
+Y:\EFI\Microsoft\Boot\ko-KR\bootmgfw.efi.mui                                                                     80800 
+Y:\EFI\Microsoft\Boot\ko-KR\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\ko-KR\memtest.efi.mui                                                                      43952 
+Y:\EFI\Microsoft\Boot\lt-LT\bootmgfw.efi.mui                                                                     92576 
+Y:\EFI\Microsoft\Boot\lt-LT\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\lv-LV\bootmgfw.efi.mui                                                                     92064 
+Y:\EFI\Microsoft\Boot\lv-LV\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\nb-NO\bootmgfw.efi.mui                                                                     92064 
+Y:\EFI\Microsoft\Boot\nb-NO\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\nb-NO\memtest.efi.mui                                                                      46512 
+Y:\EFI\Microsoft\Boot\nl-NL\bootmgfw.efi.mui                                                                     94664 
+Y:\EFI\Microsoft\Boot\nl-NL\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\nl-NL\memtest.efi.mui                                                                      46496 
+Y:\EFI\Microsoft\Boot\pl-PL\bootmgfw.efi.mui                                                                     95688 
+Y:\EFI\Microsoft\Boot\pl-PL\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\pl-PL\memtest.efi.mui                                                                      47008 
+Y:\EFI\Microsoft\Boot\pt-BR\bootmgfw.efi.mui                                                                     93600 
+Y:\EFI\Microsoft\Boot\pt-BR\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\pt-BR\memtest.efi.mui                                                                      46400 
+Y:\EFI\Microsoft\Boot\pt-PT\bootmgfw.efi.mui                                                                     94112 
+Y:\EFI\Microsoft\Boot\pt-PT\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\pt-PT\memtest.efi.mui                                                                      46912 
+Y:\EFI\Microsoft\Boot\qps-ploc\memtest.efi.mui                                                                   55104 
+Y:\EFI\Microsoft\Boot\qps-plocm\memtest.efi.mui                                                                  54704 
+Y:\EFI\Microsoft\Boot\ro-RO\bootmgfw.efi.mui                                                                     93088 
+Y:\EFI\Microsoft\Boot\ro-RO\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\ru-RU\bootmgfw.efi.mui                                                                     94112 
+Y:\EFI\Microsoft\Boot\ru-RU\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\ru-RU\memtest.efi.mui                                                                      45872 
+Y:\EFI\Microsoft\Boot\sk-SK\bootmgfw.efi.mui                                                                     94112 
+Y:\EFI\Microsoft\Boot\sk-SK\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\sl-SI\bootmgfw.efi.mui                                                                     93128 
+Y:\EFI\Microsoft\Boot\sl-SI\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\sr-Latn-RS\bootmgfw.efi.mui                                                                94112 
+Y:\EFI\Microsoft\Boot\sr-Latn-RS\bootmgr.efi.mui                                                                 90016 
+Y:\EFI\Microsoft\Boot\sv-SE\bootmgfw.efi.mui                                                                     93088 
+Y:\EFI\Microsoft\Boot\sv-SE\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\sv-SE\memtest.efi.mui                                                                      45888 
+Y:\EFI\Microsoft\Boot\tr-TR\bootmgfw.efi.mui                                                                     92576 
+Y:\EFI\Microsoft\Boot\tr-TR\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\tr-TR\memtest.efi.mui                                                                      46496 
+Y:\EFI\Microsoft\Boot\uk-UA\bootmgfw.efi.mui                                                                     93640 
+Y:\EFI\Microsoft\Boot\uk-UA\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\zh-CN\bootmgfw.efi.mui                                                                     76192 
+Y:\EFI\Microsoft\Boot\zh-CN\bootmgr.efi.mui                                                                      90016 
+Y:\EFI\Microsoft\Boot\zh-CN\memtest.efi.mui                                                                      43424 
+Y:\EFI\Microsoft\Boot\zh-TW\bootmgfw.efi.mui                                                                     76704 
+Y:\EFI\Microsoft\Boot\zh-TW\bootmgr.efi.mui                                                                      90056 
+Y:\EFI\Microsoft\Boot\zh-TW\memtest.efi.mui                                                                      43424 
+Y:\EFI\Microsoft\Boot\Fonts\segmono_boot.ttf                                                                     45876 
+Y:\EFI\Microsoft\Boot\Fonts\segoen_slboot.ttf                                                                    102708
+Y:\EFI\Microsoft\Boot\Fonts\segoe_slboot.ttf                                                                     103024
+Y:\EFI\Microsoft\Boot\Fonts\chs_boot.ttf                                                                         369...
+Y:\EFI\Microsoft\Boot\Fonts\cht_boot.ttf                                                                         387...
+Y:\EFI\Microsoft\Boot\Fonts\jpn_boot.ttf                                                                         198...
+Y:\EFI\Microsoft\Boot\Fonts\kor_boot.ttf                                                                         237...
+Y:\EFI\Microsoft\Boot\Fonts\malgunn_boot.ttf                                                                     199428
+Y:\EFI\Microsoft\Boot\Fonts\malgun_boot.ttf                                                                      201948
+Y:\EFI\Microsoft\Boot\Fonts\meiryon_boot.ttf                                                                     174172
+Y:\EFI\Microsoft\Boot\Fonts\meiryo_boot.ttf                                                                      176000
+Y:\EFI\Microsoft\Boot\Fonts\msjhn_boot.ttf                                                                       199160
+Y:\EFI\Microsoft\Boot\Fonts\msjh_boot.ttf                                                                        201336
+Y:\EFI\Microsoft\Boot\Fonts\msyhn_boot.ttf                                                                       187936
+Y:\EFI\Microsoft\Boot\Fonts\msyh_boot.ttf                                                                        189924
+Y:\EFI\Microsoft\Boot\Fonts\wgl4_boot.ttf                                                                        50120 
+Y:\EFI\Microsoft\Boot\Resources\en-US                                                                                  
+Y:\EFI\Microsoft\Boot\Resources\zh-CN                                                                                  
+Y:\EFI\Microsoft\Boot\Resources\bootres.dll                                                                      169392
+Y:\EFI\Microsoft\Boot\Resources\en-US\bootres.dll.mui                                                            13632 
+Y:\EFI\Microsoft\Boot\Resources\zh-CN\bootres.dll.mui                                                            3072  
+Y:\EFI\Microsoft\Recovery\BCD                                                                                    16384 
+Y:\EFI\Microsoft\Recovery\BCD.LOG                                                                                16384 
+Y:\EFI\Microsoft\Recovery\BCD.LOG1                                                                               0     
+Y:\EFI\Microsoft\Recovery\BCD.LOG2                                                                               0     
+Y:\kernel\varix                                                                                                  473...
+Y:\kernel\varix.bak-20260926-014411                                                                              469...
+Y:\kernel\varix.bak-20260926-020439                                                                              473...
+Y:\System Volume Information\EDP                                                                                       
+Y:\System Volume Information\WPSettings.dat                                                                      12    
+Y:\System Volume Information\IndexerVolumeGuid                                                                   76    
+Y:\System Volume Information\EDP\Recovery                                                                              
+Y:\boot\wallpaper.rgb565                                                                                         184...
+Y:\$RECYCLE.BIN\desktop.ini                                                                                      129   
+
+

@@ -1,0 +1,2023 @@
+//! L3 shell — 第三方软件启动器（M7）：
+//! - 登记任意第三方 Windows 软件（exe/lnk/bat/cmd），登记表仅存本机 <dataDir>/apps.json
+//! - 便携性三级：portable(🟢 完全便携，位于数据目录内随 Variable 走) /
+//!   standalone(🟡 半便携，自包含单文件但绑定本机路径) / shortcut(🔴 仅快捷方式，安装型)
+//! - 启动 = 独立 OS 进程（DETACHED spawn），与 Variable 无 WebView 关系；
+//!   预装四软件与之平级，本模块不给任何软件特权
+//! - 零网络 / 零遥测：一切数据仅本机读写
+
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::error::{AppError, CmdResult};
+use crate::state::AppState;
+
+pub const GRADE_PORTABLE: &str = "portable";
+pub const GRADE_STANDALONE: &str = "standalone";
+pub const GRADE_SHORTCUT: &str = "shortcut";
+
+/// 任务46 · 通道缺省值（serde default：旧登记文件平滑升级为 native-only）。
+fn default_channel() -> String {
+    crate::shell::shared_apps::CHANNEL_NATIVE.to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ThirdApp {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    /// portable | standalone | shortcut
+    pub grade: String,
+    pub added_at: u64,
+    pub last_launch: Option<u64>,
+    /// 批次B：自定义图标（data URL，.ico/.png ≤512KB；None = 默认占位图标）
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// 批次E（规格 5.9.4 深度检测）：.lnk 登记项解析出的目标 exe 绝对路径
+    /// （exe/bat/cmd 直接登记时为 None）。运行态匹配与便携化都以此为准。
+    #[serde(default)]
+    pub target: Option<String>,
+    /// 批次B-3（M1 执行档，BLUEPRINT 3.3）：隔离执行档。serde default 使
+    /// apps.json v1（无 profile 字段）平滑升级为 v2——旧文件可读可写。
+    #[serde(default)]
+    pub profile: crate::exec::PortableProfile,
+    /// 批次W-2 DPI 例外清单：不响应 WM_DPICHANGED 的应用登记 true
+    /// （嵌入时按主屏渲染不转发 DPI 变更，如实标注轻微模糊）。
+    #[serde(default)]
+    pub dpi_fix: bool,
+    /// 批次C-6：兼容分级探测结果（tier + 证据 + 用户覆盖）。
+    #[serde(default)]
+    pub compat: crate::shell::compat_probe::CompatInfo,
+    /// 任务46 · 通道标记（总案 137：wine | engine | native-only）。
+    /// serde default 使 v2 登记表平滑升级（旧文件缺省 native-only）。
+    #[serde(default = "default_channel")]
+    pub channel: String,
+    /// 任务46 · wine 通道分级（ok|partial|blocked；空=未证实 → 导出时派生 partial）。
+    #[serde(default)]
+    pub wine_tier: String,
+}
+
+// ---------- 登记表持久化 ----------
+
+fn registry_path(st: &AppState) -> PathBuf {
+    st.data_dir.join("apps.json")
+}
+
+pub(crate) fn load_registry(st: &AppState) -> Vec<ThirdApp> {
+    let Ok(bytes) = fs::read(registry_path(st)) else {
+        return Vec::new();
+    };
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
+/// 批次C：登记表快照（appman 运行检测用）。
+pub fn registry_snapshot(st: &AppState) -> Vec<ThirdApp> {
+    load_registry(st)
+}
+
+pub(crate) fn save_registry(st: &AppState, apps: &[ThirdApp]) -> CmdResult<()> {
+    let bytes = serde_json::to_vec_pretty(apps)
+        .map_err(|e| AppError::io(format!("序列化登记表失败 / Serialize registry failed: {e}")))?;
+    crate::fsutil::atomic_write(registry_path(st), bytes)
+        .map_err(|e| AppError::io(format!("写入登记表失败 / Write registry failed: {e}")))?;
+    Ok(())
+}
+
+pub fn now_ms_pub() -> u64 {
+    now_ms()
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn new_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("tp-{nanos:x}-{c:x}")
+}
+
+// ---------- 便携性分级 ----------
+
+fn norm(p: &Path) -> String {
+    p.to_string_lossy().replace('/', "\\").to_lowercase()
+}
+
+/// 自动分级（用户可在管理器中覆盖）：
+/// - 数据目录内 → 🟢 portable（随 Variable / U 盘整体迁移）
+/// - Program Files / Windows 目录 → 🔴 shortcut（安装型，依赖系统注册表等）
+/// - 其他位置 → 🟡 standalone（自包含但绑定本机路径）
+pub fn detect_grade(path: &Path, data_dir: &Path) -> &'static str {
+    let s = norm(path);
+    let d = norm(data_dir);
+    if !d.is_empty() {
+        let inside = s.starts_with(&d)
+            && (s.len() == d.len() || s.as_bytes().get(d.len()) == Some(&b'\\'));
+        if inside {
+            return GRADE_PORTABLE;
+        }
+    }
+    if s.contains("\\program files\\")
+        || s.contains("\\program files (x86)\\")
+        || s.contains("\\windows\\")
+    {
+        return GRADE_SHORTCUT;
+    }
+    GRADE_STANDALONE
+}
+
+fn valid_grade(g: &str) -> bool {
+    matches!(g, GRADE_PORTABLE | GRADE_STANDALONE | GRADE_SHORTCUT)
+}
+
+fn valid_target(p: &Path) -> bool {
+    p.is_file()
+        && p.extension()
+            .map(|e| {
+                let e = e.to_string_lossy().to_lowercase();
+                matches!(e.as_str(), "exe" | "lnk" | "bat" | "cmd")
+            })
+            .unwrap_or(false)
+}
+
+// ---------- 批次E：.lnk 解析（规格 5.9.1/5.9.4） ----------
+
+/// 解析 .lnk 快捷方式的目标路径（COM IShellLinkW；失败如实返回 None）。
+/// 仅本机 COM 调用，零网络。
+#[cfg(windows)]
+pub fn resolve_lnk(path: &Path) -> Option<PathBuf> {
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
+        IPersistFile, STGM_READ,
+    };
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    use windows::Win32::Storage::FileSystem::GetFullPathNameW;
+
+    let wide: Vec<u16> = path.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect();
+    // COM 初始化失败时仍尝试调用（可能已被初始化）
+    let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let need_uninit = hr.is_ok();
+    let result = (|| -> Option<PathBuf> {
+        unsafe {
+            let link: IShellLinkW =
+                CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+            // Load 需要 IPersistFile
+            let persist: IPersistFile = link.cast().ok()?;
+            persist.Load(PCWSTR(wide.as_ptr()), STGM_READ).ok()?;
+            let mut buf = [0u16; 1024];
+            let mut find = windows::Win32::Storage::FileSystem::WIN32_FIND_DATAW::default();
+            let flags = 0u32;
+            link.GetPath(&mut buf, &mut find, flags).ok()?;
+            let end = buf.iter().position(|&c| c == 0).unwrap_or(0);
+            let raw = String::from_utf16_lossy(&buf[..end]);
+            if raw.is_empty() {
+                return None;
+            }
+            // 展开相对路径（GetPath 可能返回相对路径）
+            let raw_wide: Vec<u16> = raw.encode_utf16().chain([0]).collect();
+            let mut out = [0u16; 1024];
+            let n = GetFullPathNameW(PCWSTR(raw_wide.as_ptr()), Some(&mut out), None);
+            if n == 0 {
+                return Some(PathBuf::from(raw));
+            }
+            let end = out.iter().position(|&c| c == 0).unwrap_or(n as usize);
+            let full = String::from_utf16_lossy(&out[..end]);
+            (!full.is_empty()).then(|| PathBuf::from(full))
+        }
+    })();
+    if need_uninit {
+        unsafe { CoUninitialize() };
+    }
+    result
+}
+
+#[cfg(not(windows))]
+pub fn resolve_lnk(_path: &Path) -> Option<PathBuf> {
+    None
+}
+
+// ---------- 命令 ----------
+
+/// 登记第三方软件（同路径重复添加 → 幂等返回已有项）。
+#[tauri::command(async)]
+pub fn tp_add(
+    st: tauri::State<AppState>,
+    path: String,
+    name: Option<String>,
+    grade: Option<String>,
+) -> CmdResult<ThirdApp> {
+    add_app_inner(&st, &path, name, grade)
+}
+
+/// tp_add 核心（收件箱自动登记共用）：校验 → 幂等去重 → 构造（128px 图标随登记提取）→ 落盘。
+fn add_app_inner(st: &AppState, path: &str, name: Option<String>, grade: Option<String>) -> CmdResult<ThirdApp> {
+    let p = PathBuf::from(path);
+    if !valid_target(&p) {
+        return Err(AppError::validation(
+            "目标必须是存在的 .exe / .lnk / .bat / .cmd 文件 / Target must be an existing .exe / .lnk / .bat / .cmd file",
+        ));
+    }
+    let mut apps = load_registry(st);
+    if let Some(existing) = apps.iter().find(|a| norm(Path::new(&a.path)) == norm(&p)) {
+        return Ok(existing.clone());
+    }
+    let display = name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| {
+            p.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "App".into())
+        });
+    let g = match grade.as_deref() {
+        Some(g) if valid_grade(g) => g.to_string(),
+        _ => detect_grade(&p, &st.data_dir).to_string(),
+    };
+    // 批次E（规格 5.9.4）：.lnk 登记时即解析目标 exe（运行检测/便携化以此为准）
+    let target = if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) {
+        resolve_lnk(&p).map(|t| t.to_string_lossy().to_string())
+    } else {
+        None
+    };
+    let app = ThirdApp {
+        id: new_id(),
+        name: display,
+        path: path.to_string(),
+        grade: g,
+        added_at: now_ms(),
+        last_launch: None,
+        // 实机反馈（图标清晰度）：登记即提取 128px 高清图标，桌面不再显示占位字形
+        icon: auto_icon_hd(&p),
+        target,
+        profile: Default::default(),
+        dpi_fix: false,
+        compat: Default::default(),
+    
+        channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+        wine_tier: String::new(),
+        };
+    apps.push(app.clone());
+    save_registry(st, &apps)?;
+    Ok(app)
+}
+
+#[tauri::command(async)]
+pub fn tp_list(st: tauri::State<AppState>) -> CmdResult<Vec<ThirdApp>> {
+    let mut apps = load_registry(&st);
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(apps)
+}
+
+#[tauri::command(async)]
+pub fn tp_remove(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
+    let mut apps = load_registry(&st);
+    let before = apps.len();
+    apps.retain(|a| a.id != id);
+    if apps.len() == before {
+        return Err(AppError::not_found(format!("未找到登记项 / Not found: {id}")));
+    }
+    save_registry(&st, &apps)
+}
+
+/// 批次C（规格 5.6.2）：移除登记并彻底删除文件。
+/// 护栏：仅数据目录内的文件允许删除（防误删系统软件）；删除失败（如软件
+/// 正在运行、文件被锁）则报错并保留登记，用户关闭软件后可重试。
+#[tauri::command(async)]
+pub fn tp_purge(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
+    tp_purge_inner(&st, &id)
+}
+
+fn tp_purge_inner(st: &AppState, id: &str) -> CmdResult<()> {
+    let mut apps = load_registry(st);
+    let Some(pos) = apps.iter().position(|a| a.id == id) else {
+        return Err(AppError::not_found(format!("未找到登记项 / Not found: {id}")));
+    };
+    let app = apps[pos].clone();
+    let p = PathBuf::from(&app.path);
+    if p.is_file() {
+        if !norm(&p).starts_with(&norm(&st.data_dir)) {
+            return Err(AppError::validation(
+                "仅数据目录内的便携软件可彻底删除文件；其余请使用「移除登记」/ Only files inside the data directory can be purged; use \"Unregister\" otherwise",
+            ));
+        }
+        fs::remove_file(&p).map_err(|e| {
+            AppError::io(format!(
+                "删除文件失败（软件可能正在运行）/ Delete failed (app may be running): {e}"
+            ))
+        })?;
+        // 顺带清理删空的直接父目录（仍限数据目录内，绝不触碰数据目录本身）
+        if let Some(parent) = p.parent() {
+            if parent != st.data_dir && norm(parent).starts_with(&norm(&st.data_dir)) {
+                let _ = fs::remove_dir(parent);
+            }
+        }
+    }
+    apps.remove(pos);
+    save_registry(st, &apps)
+}
+
+/// 修改便携性分级（用户覆盖自动判定）。
+#[tauri::command(async)]
+pub fn tp_set_grade(st: tauri::State<AppState>, id: String, grade: String) -> CmdResult<ThirdApp> {
+    if !valid_grade(&grade) {
+        return Err(AppError::validation(format!("无效分级 / Invalid grade: {grade}")));
+    }
+    let mut apps = load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.grade = grade;
+    let out = app.clone();
+    save_registry(&st, &apps)?;
+    Ok(out)
+}
+
+/// 批次W-2：登记/取消 DPI 例外（不响应 DPI 消息的应用，按主屏渲染）。
+#[tauri::command(async)]
+pub fn tp_set_dpi_fix(st: tauri::State<AppState>, id: String, dpi_fix: bool) -> CmdResult<ThirdApp> {
+    let mut apps = load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.dpi_fix = dpi_fix;
+    let out = app.clone();
+    save_registry(&st, &apps)?;
+    Ok(out)
+}
+
+#[tauri::command(async)]
+pub fn tp_rename(st: tauri::State<AppState>, id: String, name: String) -> CmdResult<ThirdApp> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::validation("名称不能为空 / Name cannot be empty"));
+    }
+    let mut apps = load_registry(&st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.name = trimmed.to_string();
+    let out = app.clone();
+    save_registry(&st, &apps)?;
+    Ok(out)
+}
+
+/// 启动核心（embed_launch 复用）：返回新启动进程的根 pid
+/// （embed 按子进程树匹配窗口用；取不到 pid 不影响启动本身，返回 None）。
+pub(crate) fn tp_launch_inner(
+    st: &tauri::State<'_, AppState>,
+    app: &tauri::AppHandle,
+    id: String,
+    arg: Option<&str>,
+) -> CmdResult<Option<u32>> {
+    let mut apps = load_registry(st);
+    let app_item = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?
+        .clone();
+    let p = PathBuf::from(&app_item.path);
+    if !p.is_file() {
+        return Err(AppError::not_found(
+            "目标文件不存在，可能已被移动或卸载 / Target missing (moved or uninstalled?)",
+        ));
+    }
+    let root_pid = if p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+        .unwrap_or(false)
+    {
+        // .lnk 经 Shell 直接解析启动（不经 cmd 拼接），并取回目标进程 pid。
+        // 如实边界（BLUEPRINT 14.2）：ShellExecute 通道无法注入环境变量，
+        // .lnk 登记项不经过执行档重定向——残留扫描兜底告警。
+        #[cfg(windows)]
+        {
+            shell_launch_lnk(&p).map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))?
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = &app_item;
+            None
+        }
+    } else {
+        // 批次B-4（M1）：受管进程一律经执行档启动（环境重定向进容器）。
+        // 失败如实降级旧通道（MASTER-PLAN M1 回滚策略），并写入日志。
+        let profile = crate::exec::ExecProfile::from(
+            (app_item.id.as_str(), app_item.profile.clone()),
+        );
+        if profile.is_empty() {
+            // Principle 1: an unprofiled app is opened by Windows itself.
+            // This preserves file associations, AppX/URI handling and the
+            // user's normal Shell verb semantics.  Profiled tools still use
+            // CreateProcess so their environment can be redirected safely.
+            crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?
+                .process_id
+        } else {
+            // B-27：arg = 文件关联「打开方式」的目标文件路径，作为单个参数
+            // 原样传给目标程序（不经 shell 拼接；空 = 普通启动）。
+            let args: Vec<String> = arg.map(|a| vec![a.to_string()]).unwrap_or_default();
+            match crate::exec::spawn_profiled(&st.data_dir, &profile, &p, &args) {
+                Ok(pid) => pid,
+                Err(profile_err) => {
+                    crate::state::append_log(
+                        &st.logs_dir,
+                        &format!("[exec] profile spawn failed for {} ({}), falling back to ShellExecute: {profile_err}", app_item.id, app_item.name),
+                    );
+                    crate::shell::compat::shell_execute_path(&p, Some("open"), None, p.parent(), None)?
+                        .process_id
+                }
+            }
+        }
+    };
+
+    // 撤销桌面置顶，让第三方窗口浮于桌面之上（回到桌面自动恢复，见 lib.rs）
+    {
+        use tauri::Manager;
+        if let Some(desktop) = app.get_webview_window("desktop") {
+            let _ = desktop.set_always_on_top(false);
+        }
+    }
+    crate::shell::applog::log(
+        "launch",
+        format!("tp_launch {}: {} root_pid={root_pid:?}（{} 通道）", app_item.id, app_item.name,
+            if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) { "lnk/shell" } else { "exe" }),
+    );
+
+    if let Some(slot) = apps.iter_mut().find(|a| a.id == id) {
+        slot.last_launch = Some(now_ms());
+    }
+    save_registry(st, &apps)?;
+    Ok(root_pid)
+}
+
+/// 启动：独立 OS 进程（DETACHED），更新 last_launch。
+/// 批次0：桌面窗口默认置顶覆盖（规格 10.1），启动第三方软件时暂时撤销置顶，
+/// 让其窗口浮于桌面之上（规格 10.3）；用户回到桌面时由 on_window_event 自动恢复。
+#[tauri::command(async)]
+pub fn tp_launch(
+    st: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+    id: String,
+) -> CmdResult<()> {
+    tp_launch_inner(&st, &app, id, None).map(|_| ())
+}
+
+/// 直接启动用户登记的 exe（参数列表方式，不经 shell 拼接）；返回新进程 pid。
+#[cfg(windows)]
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
+    use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    let child = cmd
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()?;
+    // 第十轮大检查：受管进程绑生命周期 Job（AI-2 §2.3「一软件一 Job；
+    // KILL_ON_JOB_CLOSE」）。宿主以任何方式退出时整棵进程树随之终止，
+    // 不再向宿主泄漏孤儿进程。绑定失败开放：进程照常运行，仅失去绑定。
+    if !crate::shell::isolation::bind_lifecycle(&child) {
+        eprintln!(
+            "[spawn] lifecycle job binding failed for pid {} (process runs unbound)",
+            child.id()
+        );
+    }
+    Ok(Some(child.id()))
+}
+
+#[cfg(not(windows))]
+pub(crate) fn spawn_detached(cmd: &mut std::process::Command) -> std::io::Result<Option<u32>> {
+    cmd.spawn().map(|c| Some(c.id()))
+}
+
+/// .lnk 经 ShellExecuteExW 启动（无 cmd 中间壳），取回目标进程 pid
+/// （启动器型软件如 Wallpaper Engine 的子进程窗口匹配依赖此 pid）。
+#[cfg(windows)]
+fn shell_launch_lnk(lnk: &Path) -> std::io::Result<Option<u32>> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Threading::GetProcessId;
+    use windows::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file: Vec<u16> = lnk.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect();
+    let dir: Vec<u16> = lnk
+        .parent()
+        .map(|d| d.as_os_str().to_string_lossy().encode_utf16().collect())
+        .unwrap_or_default();
+    let mut info = SHELLEXECUTEINFOW::default();
+    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
+    info.fMask = SEE_MASK_NOASYNC | SEE_MASK_NOCLOSEPROCESS;
+    info.lpFile = PCWSTR(file.as_ptr());
+    info.lpDirectory = if dir.is_empty() {
+        PCWSTR::null()
+    } else {
+        PCWSTR(dir.as_ptr())
+    };
+    info.nShow = SW_SHOWNORMAL.0;
+    let ok = unsafe { ShellExecuteExW(&mut info) }.is_ok();
+    if !ok {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "ShellExecuteExW failed",
+        ));
+    }
+    let pid = if info.hProcess.is_invalid() {
+        0
+    } else {
+        unsafe {
+            let id = GetProcessId(info.hProcess);
+            let _ = windows::Win32::Foundation::CloseHandle(info.hProcess);
+            id
+        }
+    };
+    Ok((pid != 0).then_some(pid))
+}
+
+/// 以管理员身份启动（ShellExecuteW lpVerb="runas"，无 shell 拼接；UAC 弹窗
+/// 由系统展示，用户取消 → 如实报错）。
+#[cfg(windows)]
+fn shell_launch_elevated(exe: &Path) -> std::io::Result<()> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let file: Vec<u16> = exe.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect();
+    let dir: Vec<u16> = exe
+        .parent()
+        .map(|d| d.as_os_str().to_string_lossy().encode_utf16().chain([0]).collect())
+        .unwrap_or_else(|| vec![0]);
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    // SE_ERR_CANCELLED / ERROR_CANCELED = 用户在 UAC 取消
+    const SE_ERR_CANCELLED: i32 = 11;
+    const ERROR_CANCELED: i32 = 1223;
+    let h = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR(dir.as_ptr()),
+            SW_SHOWNORMAL,
+        )
+    };
+    let code = h.0 as i32;
+    if code <= 32 {
+        return Err(std::io::Error::from_raw_os_error(if code == SE_ERR_CANCELLED {
+            ERROR_CANCELED
+        } else {
+            2
+        }));
+    }
+    Ok(())
+}
+
+// ---------- 批次B：自定义图标 / 管理员运行 ----------
+
+const ICON_MAX_BYTES: u64 = 512 * 1024;
+
+/// 手写 base64（RFC 4648 标准 alphabet，含 padding）。零新依赖。
+pub(crate) fn b64_encode(data: &[u8]) -> String {
+    const TBL: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TBL[(n >> 18) as usize & 63] as char);
+        out.push(TBL[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { TBL[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TBL[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// 读取 .ico/.png → data URL（仅本机文件读取，零网络）。
+fn encode_icon(path: &str) -> Result<String, AppError> {
+    let p = PathBuf::from(path);
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let mime = match ext.as_str() {
+        "ico" => "image/x-icon",
+        "png" => "image/png",
+        _ => {
+            return Err(AppError::validation(
+                "仅支持 .ico / .png 图标文件 / Only .ico / .png icons are supported",
+            ))
+        }
+    };
+    let meta = fs::metadata(&p)
+        .map_err(|_| AppError::not_found("图标文件不存在 / Icon file not found"))?;
+    if !meta.is_file() || meta.len() > ICON_MAX_BYTES {
+        return Err(AppError::validation(
+            "图标必须是 ≤512KB 的文件 / Icon must be a file ≤512KB",
+        ));
+    }
+    let bytes = fs::read(&p)
+        .map_err(|e| AppError::io(format!("读取图标失败 / Read icon failed: {e}")))?;
+    Ok(format!("data:{mime};base64,{}", b64_encode(&bytes)))
+}
+
+/// 更换第三方软件图标（None/空串 = 恢复默认占位图标）。
+#[tauri::command(async)]
+pub fn tp_set_icon(
+    st: tauri::State<AppState>,
+    id: String,
+    icon_path: Option<String>,
+) -> CmdResult<ThirdApp> {
+    set_icon_inner(&st, &id, icon_path)
+}
+
+fn set_icon_inner(st: &AppState, id: &str, icon_path: Option<String>) -> CmdResult<ThirdApp> {
+    let icon = match icon_path {
+        None => None,
+        Some(p) if p.trim().is_empty() => None,
+        Some(p) => Some(encode_icon(&p)?),
+    };
+    let mut apps = load_registry(st);
+    let app = apps
+        .iter_mut()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    app.icon = icon;
+    let out = app.clone();
+    save_registry(st, &apps)?;
+    Ok(out)
+}
+
+// ---------- 批次E（规格 5.9.2）：扫描开始菜单快捷方式 ----------
+
+/// 扫描候选（未登记项）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpScanCandidate {
+    /// 快捷方式显示名（去 .lnk）
+    pub name: String,
+    /// .lnk 路径
+    pub lnk: String,
+    /// 解析出的目标 exe（已校验存在）
+    pub target: String,
+}
+
+const SCAN_SKIP_PAT: &[&str] = &["uninstall", "unins", "setup", "更新", "升级", "卸载", "help", "readme", "eula"];
+
+/// 递归收集 .lnk（深度限制，跳过明显非软件项）。
+#[cfg(windows)]
+fn collect_lnks(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
+    if depth > 6 || out.len() > 512 {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for item in rd.flatten() {
+        let p = item.path();
+        if p.is_dir() {
+            collect_lnks(&p, depth + 1, out);
+        } else if p.extension().map(|e| e.to_string_lossy().to_lowercase() == "lnk").unwrap_or(false) {
+            out.push(p);
+        }
+    }
+}
+
+/// 扫描开始菜单（系统 + 用户两处）里的软件快捷方式，解析出目标 exe。
+/// 已登记的项（按目标路径去重）不返回，前端无需再过滤。
+#[tauri::command(async)]
+pub fn tp_scan_start_menu(st: tauri::State<AppState>) -> CmdResult<Vec<TpScanCandidate>> {
+    let mut lnk_dirs = Vec::new();
+    if let Ok(pd) = std::env::var("ProgramData") {
+        lnk_dirs.push(PathBuf::from(pd).join(r"Microsoft\Windows\Start Menu\Programs"));
+    }
+    if let Ok(ad) = std::env::var("APPDATA") {
+        lnk_dirs.push(PathBuf::from(ad).join(r"Microsoft\Windows\Start Menu\Programs"));
+    }
+    let mut lnks = Vec::new();
+    for d in &lnk_dirs {
+        if d.is_dir() {
+            collect_lnks(d, 0, &mut lnks);
+        }
+    }
+    // 已登记目标（去重用）
+    let registered: Vec<String> = load_registry(&st)
+        .iter()
+        .filter_map(|a| a.target.clone().or_else(|| Some(a.path.clone())))
+        .map(|p| norm(Path::new(&p)))
+        .collect();
+
+    let mut seen: Vec<String> = registered;
+    let mut out = Vec::new();
+    for lnk in lnks {
+        let name = lnk
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let low = name.to_lowercase();
+        if SCAN_SKIP_PAT.iter().any(|k| low.contains(k)) {
+            continue;
+        }
+        let Some(target) = resolve_lnk(&lnk) else { continue };
+        if !target.is_file() {
+            continue;
+        }
+        if !target
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        // 目标在 Windows 目录 → 多为帮助/运行库，跳过
+        if norm(&target).contains("\\windows\\") {
+            continue;
+        }
+        let key = norm(&target);
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+        out.push(TpScanCandidate {
+            name,
+            lnk: lnk.to_string_lossy().to_string(),
+            target: target.to_string_lossy().to_string(),
+        });
+    }
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
+// ---------- 批次F：任意软件文件夹智能扫描（拖入文件夹自动登记） ----------
+
+/// 文件夹扫描候选（recommended = 疑似主程序，可自动登记）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpFolderCandidate {
+    /// 显示名：优先版本资源 FileDescription（任意语言软件的本地化名称），
+    /// 缺失时回退 exe 文件名。
+    pub name: String,
+    /// exe 绝对路径
+    pub path: String,
+    /// 文件字节数
+    pub size: u64,
+    /// 打分（越高越可能是主程序；越低越可能是辅助组件）
+    pub score: i32,
+    /// 是否推荐自动登记（过滤卸载器/更新器/崩溃报告器等辅助进程后）
+    pub recommended: bool,
+}
+
+/// 文件夹扫描报告（isFolder=false = 拖入的是普通文件，前端应静默忽略）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpFolderScanReport {
+    pub is_folder: bool,
+    pub candidates: Vec<TpFolderCandidate>,
+}
+
+/// 否决词（文件名包含即排除：卸载/安装/更新/崩溃上报/提权/服务等辅助进程）。
+/// 与 SCAN_SKIP_PAT 同源思路，但按「拖入文件夹自动登记」的误登记代价单独调校。
+const EXE_VETO: &[&str] = &[
+    "uninstall", "unins", "setup", "install", "update", "updater", "upgrade",
+    "downgrade", "crashpad", "crashreport", "crash_handler", "reporter", "error",
+    "feedback", "helper", "webview", "loader", "stub", "repair", "diag",
+    "diagnose", "elevate", "elevation", "console", "cli", "daemon", "service",
+    "agent", "watchdog", "cleaner", "killer", "fixer", "uninst", "卸载", "更新",
+    "升级", "修复", "安装",
+];
+
+/// 软性降权词（疑似工具组件而非主程序，仅减分不否决）。
+const EXE_SOFT_MINUS: &[&str] = &[
+    "tool", "util", "browser", "patch", "mux", "convert", "ffmpeg", "test",
+    "demo", "sample", "helper_", "mini", "lite",
+];
+
+/// 推荐阈值：达到即自动登记（单 exe 文件夹不受阈值约束，恒推荐）。
+const EXE_RECOMMEND_THRESHOLD: i32 = 30;
+
+/// 名称归一（去分隔符，小写）——「MyApp v2」与「myappv2」视为同名。
+fn norm_name(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// 候选打分（纯逻辑，可单测）：
+/// - 否决词命中 → i32::MIN（绝不推荐）
+/// - +40 文件名 ≈ 文件夹名（完全一致）；+25 互为前缀（WeChat / WeChatApp）
+/// - +20 有版本资源 FileDescription（正经软件都有）
+/// - +12 根目录；+6 两层以内
+/// - +min(体积/512KB, 12)（主程序通常更大）
+/// - 软性降权词 −8
+pub fn exe_candidate_score(file_stem: &str, folder_name: &str, depth: u32, has_desc: bool, size: u64) -> i32 {
+    let low = file_stem.to_lowercase();
+    if EXE_VETO.iter().any(|v| low.contains(v)) {
+        return i32::MIN;
+    }
+    let mut score = 0i32;
+    let fs = norm_name(file_stem);
+    let fdir = norm_name(folder_name);
+    if !fs.is_empty() && !fdir.is_empty() {
+        if fs == fdir {
+            score += 40;
+        } else if fdir.starts_with(&fs) || fs.starts_with(&fdir) {
+            score += 25;
+        }
+    }
+    if has_desc {
+        score += 20;
+    }
+    if depth == 0 {
+        score += 12;
+    } else if depth <= 2 {
+        score += 6;
+    }
+    score += (size / (512 * 1024)).min(12) as i32;
+    if EXE_SOFT_MINUS.iter().any(|v| low.contains(v)) {
+        score -= 8;
+    }
+    score
+}
+
+/// 扫描护栏：深度 ≤4、目录条目 ≤4000、候选 exe ≤128（大目录诚实截断，不卡 UI）。
+const FOLDER_SCAN_MAX_DEPTH: u32 = 4;
+const FOLDER_SCAN_MAX_ENTRIES: usize = 4000;
+const FOLDER_SCAN_MAX_EXES: usize = 128;
+
+/// 递归收集 .exe（跳过 reparse point 防符号链接环；读失败静默跳过）。
+fn collect_exes(dir: &Path, depth: u32, out: &mut Vec<(PathBuf, u64, u32)>, budget: &mut usize) {
+    if depth > FOLDER_SCAN_MAX_DEPTH || out.len() >= FOLDER_SCAN_MAX_EXES || *budget == 0 {
+        return;
+    }
+    let Ok(rd) = fs::read_dir(dir) else { return };
+    for item in rd.flatten() {
+        if *budget == 0 || out.len() >= FOLDER_SCAN_MAX_EXES {
+            return;
+        }
+        let Ok(ft) = item.file_type() else { continue };
+        let path = item.path();
+        if ft.is_dir() {
+            // reparse point（junction/符号链接）不深入，防环
+            if item.metadata().map(|m| is_reparse(&m)).unwrap_or(false) {
+                continue;
+            }
+            *budget -= 1;
+            collect_exes(&path, depth + 1, out, budget);
+        } else if ft.is_file()
+            && path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+                .unwrap_or(false)
+        {
+            let size = item.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push((path, size, depth));
+        }
+    }
+}
+
+/// FILE_ATTRIBUTE_REPARSE_POINT（Windows；非 Windows 恒 false）。
+#[cfg(windows)]
+fn is_reparse(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_attributes() & 0x400 != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse(_meta: &std::fs::Metadata) -> bool {
+    false
+}
+
+/// 读取版本资源 FileDescription（任意语言的本地化软件名）。
+/// 仅本机 version.dll 查询，零网络；无版本资源如实返回 None。
+#[cfg(windows)]
+fn file_description(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+    };
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    unsafe {
+        let len = GetFileVersionInfoSizeW(PCWSTR(wide.as_ptr()), None);
+        if len == 0 {
+            return None; // 无版本资源
+        }
+        let mut buf = vec![0u8; len as usize];
+        if GetFileVersionInfoW(PCWSTR(wide.as_ptr()), 0, len, buf.as_mut_ptr() as *mut core::ffi::c_void).is_err() {
+            return None;
+        }
+        let sub: Vec<u16> = "\\VarFileInfo\\FileDescription"
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let mut ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut chars: u32 = 0;
+        if !VerQueryValueW(
+            buf.as_ptr() as *const core::ffi::c_void,
+            PCWSTR(sub.as_ptr()),
+            &mut ptr,
+            &mut chars,
+        )
+        .as_bool()
+            || ptr.is_null()
+            || chars == 0
+        {
+            return None;
+        }
+        // chars 含结尾 NUL；逐字符截到首个 NUL，防越界读脏字节
+        let slice = std::slice::from_raw_parts(ptr as *const u16, chars as usize);
+        let end = slice.iter().position(|&c| c == 0).unwrap_or(slice.len());
+        let s = String::from_utf16_lossy(&slice[..end]).trim().to_string();
+        (!s.is_empty()).then_some(s)
+    }
+}
+
+#[cfg(not(windows))]
+fn file_description(_path: &Path) -> Option<String> {
+    None
+}
+
+/// 文件夹内候选 exe 评分收集（拖入登记与软件收件箱子文件夹共用）：
+/// 已登记路径去重、否决词过滤、按主程序可能性排序、推荐判定（达标或唯一合法 exe）。
+fn folder_candidates(p: &Path, registered: &[String]) -> Vec<TpFolderCandidate> {
+    let folder_name = p
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut exes: Vec<(PathBuf, u64, u32)> = Vec::new();
+    let mut budget = FOLDER_SCAN_MAX_ENTRIES;
+    collect_exes(p, 0, &mut exes, &mut budget);
+
+    let mut out: Vec<TpFolderCandidate> = Vec::new();
+    for (ep, size, depth) in exes {
+        if registered.contains(&norm(&ep)) {
+            continue;
+        }
+        let stem = ep
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let desc = file_description(&ep);
+        let score = exe_candidate_score(&stem, &folder_name, depth, desc.is_some(), size);
+        if score == i32::MIN {
+            continue; // 否决词：卸载器/更新器/辅助进程
+        }
+        out.push(TpFolderCandidate {
+            name: desc.unwrap_or(stem),
+            path: ep.to_string_lossy().to_string(),
+            size,
+            score,
+            recommended: false, // 下方统一判定（依赖总数）
+        });
+    }
+    // 推荐判定：达标 or 全文件夹唯一的合法 exe
+    let single = out.len() == 1;
+    for c in out.iter_mut() {
+        c.recommended = single || c.score >= EXE_RECOMMEND_THRESHOLD;
+    }
+    out.sort_by(|a, b| b.score.cmp(&a.score).then(a.path.cmp(&b.path)));
+    out
+}
+
+/// 扫描任意软件文件夹：找出全部 .exe，按主程序可能性排序。
+/// - 显示名优先 FileDescription（什么语言的软件就叫它自己的名字）
+/// - 已登记路径自动去重；普通文件（非目录）is_folder=false，前端静默忽略
+/// - 单 exe 文件夹恒推荐（用户拖文件夹就是想登记它）
+#[tauri::command(async)]
+pub fn tp_scan_folder(st: tauri::State<AppState>, path: String) -> CmdResult<TpFolderScanReport> {
+    let p = PathBuf::from(&path);
+    if !p.is_dir() {
+        // 非目录（用户拖入的是普通文件）→ 如实标注，前端无动作
+        return Ok(TpFolderScanReport { is_folder: false, candidates: Vec::new() });
+    }
+    let registered: Vec<String> = load_registry(&st)
+        .iter()
+        .map(|a| norm(Path::new(&a.path)))
+        .collect();
+    Ok(TpFolderScanReport { is_folder: true, candidates: folder_candidates(&p, &registered) })
+}
+
+// ---------- 批次F：软件收件箱（专属文件夹，环境启动自动登记） ----------
+
+/// 收件箱单次导入上限（图标逐个提取有成本，防启动卡顿；超量下次启动继续收）。
+const INBOX_IMPORT_MAX: usize = 32;
+
+/// 收件箱导入结果（path = 收件箱绝对路径，供前端「打开文件夹」入口）。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TpInboxImportResult {
+    pub added: usize,
+    pub path: String,
+}
+
+/// 收件箱目录决策（纯逻辑 + 可写探测，可单测）：
+/// 优先 <程序目录>\SoftwareInbox——用户打开环境所在文件夹即见，直观可放；
+/// 程序目录不可写（如安装到 Program Files）→ 回退 <数据目录>\SoftwareInbox。
+/// 探测即建：候选位置不存在时 create_dir_all 试建（成功 = 可写，同时文件夹就此可见）。
+fn inbox_dir_with(exe_dir: Option<&Path>, data_dir: &Path) -> PathBuf {
+    if let Some(dir) = exe_dir {
+        let candidate = dir.join("SoftwareInbox");
+        if candidate.exists() || fs::create_dir_all(&candidate).is_ok() {
+            return candidate;
+        }
+    }
+    data_dir.join("SoftwareInbox")
+}
+
+/// 软件收件箱目录：环境（程序）文件夹优先，回退数据目录。
+pub fn inbox_dir(st: &AppState) -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    inbox_dir_with(exe_dir.as_deref(), &st.data_dir)
+}
+
+/// 软件收件箱自动导入：
+/// - 顶层直接放置的 .exe → 显式意图，恒登记（否决词护栏保留——卸载器不是「软件」）
+/// - 顶层子文件夹 → 与拖入登记同一套智能扫描，只登记推荐主程序
+/// - 显示名优先 FileDescription（任意语言）；128px Windows 图标随登记提取
+/// - 已登记路径幂等跳过；单条失败不中断批次
+#[tauri::command(async)]
+pub fn tp_inbox_import(st: tauri::State<AppState>) -> CmdResult<TpInboxImportResult> {
+    let inbox = inbox_dir(&st);
+    tp_inbox_import_inner(&st, &inbox)
+}
+
+/// inbox 参数注入（命令层用 inbox_dir 决策；测试直接指定临时目录隔离）。
+fn tp_inbox_import_inner(st: &AppState, inbox: &Path) -> CmdResult<TpInboxImportResult> {
+    fs::create_dir_all(inbox).map_err(|e| {
+        AppError::io(format!("创建软件收件箱失败 / Cannot create software inbox: {e}"))
+    })?;
+    let path_out = inbox.to_string_lossy().to_string();
+    let registered: Vec<String> = load_registry(st)
+        .iter()
+        .map(|a| norm(Path::new(&a.path)))
+        .collect();
+
+    let mut picks: Vec<(PathBuf, String)> = Vec::new();
+    let Ok(rd) = fs::read_dir(&inbox) else {
+        return Ok(TpInboxImportResult { added: 0, path: path_out });
+    };
+    for item in rd.flatten() {
+        if picks.len() >= INBOX_IMPORT_MAX {
+            break; // 诚实截断：超量下次启动继续收
+        }
+        let Ok(ft) = item.file_type() else { continue };
+        let path = item.path();
+        if ft.is_file() {
+            // 直接放置的 exe：用户显式意图（什么语言、什么名字都行）
+            let is_exe = path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+                .unwrap_or(false);
+            if !is_exe || registered.contains(&norm(&path)) {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let low = stem.to_lowercase();
+            if EXE_VETO.iter().any(|v| low.contains(v)) {
+                continue; // 卸载器/更新器即使手动放入也不登记（防桌面脏污）
+            }
+            let name = file_description(&path).unwrap_or(stem);
+            picks.push((path, name));
+        } else if ft.is_dir() {
+            // 子文件夹：智能扫描（过滤辅助进程，只取推荐主程序）
+            if item.metadata().map(|m| is_reparse(&m)).unwrap_or(false) {
+                continue; // reparse point（junction/符号链接）不深入，防环
+            }
+            for c in folder_candidates(&path, &registered) {
+                if picks.len() >= INBOX_IMPORT_MAX {
+                    break;
+                }
+                if c.recommended {
+                    picks.push((PathBuf::from(&c.path), c.name));
+                }
+            }
+        }
+    }
+
+    let mut added = 0usize;
+    for (p, name) in picks {
+        // add_app_inner 自带幂等去重与路径校验；单条失败（目标被移动/锁定）不中断
+        if add_app_inner(st, &p.to_string_lossy(), Some(name), None).is_ok() {
+            added += 1;
+        }
+    }
+    Ok(TpInboxImportResult { added, path: path_out })
+}
+
+// ---------- 批次E（规格 5.9.3）：便携化 ----------
+
+/// 把已登记的 standalone/shortcut 软件整目录复制进数据目录（Apps/<目录名>），
+/// 登记项转为 🟢 portable 并指向副本 exe。复制失败如实报错、登记不变。
+#[tauri::command(async)]
+pub fn tp_portableize(st: tauri::State<AppState>, id: String) -> CmdResult<ThirdApp> {
+    portableize_inner(&st, &id)
+}
+
+fn portableize_inner(st: &AppState, id: &str) -> CmdResult<ThirdApp> {
+    let mut apps = load_registry(st);
+    let Some(pos) = apps.iter().position(|a| a.id == id) else {
+        return Err(AppError::not_found(format!("未找到登记项 / Not found: {id}")));
+    };
+    let app = apps[pos].clone();
+    if app.grade == GRADE_PORTABLE {
+        return Err(AppError::validation(
+            "已是便携软件 / Already portable",
+        ));
+    }
+    // 以解析目标为准（.lnk → target；exe → 自身）
+    let exe = PathBuf::from(app.target.clone().unwrap_or_else(|| app.path.clone()));
+    if !exe.is_file() {
+        return Err(AppError::not_found(
+            "目标 exe 不存在（快捷方式失效？）/ Target exe missing",
+        ));
+    }
+    let Some(src_dir) = exe.parent().map(Path::to_path_buf) else {
+        return Err(AppError::validation("无法确定安装目录 / Cannot determine install dir"));
+    };
+    // 护栏：已在数据目录内 → 本来就是 portable；数据目录本身绝不能是复制源
+    let src_n = norm(&src_dir);
+    let data_n = norm(&st.data_dir);
+    if !data_n.is_empty() && (src_n == data_n || src_n.starts_with(&format!("{data_n}\\"))) {
+        return Err(AppError::validation(
+            "目标已在数据目录内 / Target is already inside the data directory",
+        ));
+    }
+    // 复制整个安装目录（ portable 判定按目录自包含；跨盘/锁定文件如实报错）
+    let dir_name = src_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "App".into());
+    let apps_root = st.data_dir.join("Apps");
+    fs::create_dir_all(&apps_root)?;
+    let mut dest = apps_root.join(&dir_name);
+    let mut i = 0u32;
+    while dest.exists() {
+        i += 1;
+        dest = apps_root.join(format!("{dir_name}-{i}"));
+    }
+    crate::shell::recycle::copy_recursive_pub(&src_dir, &dest)
+        .map_err(|e| AppError::io(format!("复制安装目录失败（软件可能正在运行）/ Copy failed: {e}")))?;
+    let new_exe = dest.join(exe.file_name().unwrap_or_default());
+    if !new_exe.is_file() {
+        let _ = fs::remove_dir_all(&dest);
+        return Err(AppError::io("复制后未找到 exe / Copy incomplete"));
+    }
+    let slot = &mut apps[pos];
+    slot.path = new_exe.to_string_lossy().to_string();
+    slot.grade = GRADE_PORTABLE.into();
+    slot.target = None;
+    let out = slot.clone();
+    save_registry(st, &apps)?;
+    Ok(out)
+}
+
+/// 读取图标为 data URL（前端用：文件架等 UI 层图标；不落盘）。
+/// 实机反馈二轮：仍有应用（.lnk 解析不出 exe 目标 / 图标挂在 lnk 自身 /
+/// UWP 等）落到绿色占位图 —— 加 Explorer 同款兜底
+/// SHCreateItemFromParsingName + IShellItemImageFactory::GetImage(64px)，
+/// 对任意 shell 项（lnk/exe/文件夹/UWP 快捷方式）都能取到与资源管理器
+/// 一致的图标。链路：exe 内嵌提取 → shell 项 GetImage → .ico/.png 文件。
+#[tauri::command(async)]
+pub fn icon_dataurl(path: String) -> CmdResult<String> {
+    let p = PathBuf::from(&path);
+    let is_lnk = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+        .unwrap_or(false);
+    // 批次E-17：.lnk 先解析目标（快捷方式的图标通常在目标 exe 里）
+    let resolved = if is_lnk {
+        resolve_lnk(&p).unwrap_or_else(|| p.clone())
+    } else {
+        p.clone()
+    };
+    let is_exe = resolved
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "exe")
+        .unwrap_or(false);
+    if is_exe {
+        if let Ok(url) = exe_icon_dataurl(&resolved) {
+            return Ok(url);
+        }
+    }
+    // 兜底 1：shell 项图标（与资源管理器显示一致；lnk 用原路径，图标位置才准确）
+    if is_lnk {
+        if let Ok(url) = shell_item_icon_dataurl(&p) {
+            return Ok(url);
+        }
+    }
+    if let Ok(url) = shell_item_icon_dataurl(&resolved) {
+        return Ok(url);
+    }
+    // 兜底 2：独立的 .ico/.png 图标文件
+    encode_icon(resolved.to_string_lossy().as_ref())
+}
+
+/// 批次B-27：256px Jumbo 图标提取（SHIL_JUMBO 等效：IShellItemImageFactory
+/// GetImage(256) + SIIGBF_BIGGERSIZEOK，资源管理器大图标同源）→ PNG data URL。
+/// 调用方（前端）负责缓存 data URL（localStorage），此处只读不落盘。
+#[tauri::command(async)]
+pub fn icon_jumbo_dataurl(path: String) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let p = PathBuf::from(&path);
+        let (w, h, rgba) = extract_shell_item_image_rgba_sized(&p, 256)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(AppError::validation(
+            "仅 Windows 支持 Jumbo 图标提取 / Windows only",
+        ))
+    }
+}
+
+/// 实机反馈（图标清晰度）：128px 高清图标提取（桌面图标显示上限 94px ×
+/// 常见 1.5x DPI ≈ 141 物理像素，128px 源已覆盖全部常用档位；256px Jumbo
+/// 的 data URL 太重不落注册表）。链路：.ico/.png 原样读盘 → lnk 原路径
+/// GetImage(128)（图标可能挂在 lnk 自身）→ 解析目标后 GetImage(128)。
+/// 失败返回 None（调用方保持占位图标，诚实降级）。
+fn auto_icon_hd(path: &Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        let is_lnk = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+            .unwrap_or(false);
+        let resolved = if is_lnk {
+            resolve_lnk(path).unwrap_or_else(|| path.to_path_buf())
+        } else {
+            path.to_path_buf()
+        };
+        // 独立图标文件（.ico/.png）原样读盘：浏览器自选最佳尺寸，无损
+        let ext = resolved
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if matches!(ext.as_str(), "ico" | "png") {
+            if let Ok(url) = encode_icon(resolved.to_string_lossy().as_ref()) {
+                return Some(url);
+            }
+        }
+        let to_url = |p: &Path| -> Option<String> {
+            let (w, h, rgba) = extract_shell_item_image_rgba_sized(p, 128).ok()?;
+            Some(format!(
+                "data:image/png;base64,{}",
+                b64_encode(&encode_png(w, h, &rgba))
+            ))
+        };
+        if is_lnk {
+            if let Some(url) = to_url(path) {
+                return Some(url);
+            }
+        }
+        to_url(&resolved)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        None
+    }
+}
+
+/// 实机反馈（图标清晰度）：128px 高清图标 → data URL（货架换图标等 UI 入口）。
+#[tauri::command]
+pub async fn icon_dataurl_hd(path: String) -> CmdResult<String> {
+    let p = PathBuf::from(&path);
+    auto_icon_hd(&p).ok_or_else(|| {
+        AppError::not_found("未能提取高清图标 / failed to extract HD icon")
+    })
+}
+
+/// 实机反馈（图标清晰度）：存量登记项高清图标补齐 —— 图标为空（历史登记 /
+/// auto_icon_hd 失败）的应用按 id 批量提取 128px 图标并持久化，返回补齐数。
+/// 前端分批调用（每批 ≤8 个，GetImage 每项数十毫秒，避免单次命令过长）。
+#[tauri::command(async)]
+pub fn tp_ensure_icons(st: tauri::State<AppState>, ids: Vec<String>) -> CmdResult<usize> {
+    let mut apps = load_registry(&st);
+    let mut changed = 0usize;
+    let mut dirty = false;
+    for a in apps.iter_mut() {
+        if !ids.is_empty() && !ids.contains(&a.id) {
+            continue;
+        }
+        if a.icon.is_some() {
+            continue;
+        }
+        let p = PathBuf::from(&a.path);
+        if !p.is_file() {
+            continue; // 目标已被移动/卸载：如实跳过，不伪造
+        }
+        if let Some(url) = auto_icon_hd(&p) {
+            a.icon = Some(url);
+            changed += 1;
+            dirty = true;
+        }
+    }
+    if dirty {
+        save_registry(&st, &apps)?;
+    }
+    Ok(changed)
+}
+
+/// Explorer 同款兜底：IShellItemImageFactory::GetImage → 32bpp RGBA。
+/// 仅 Windows 有真实行为；其余平台诚实报错（与 exe_icon_dataurl 同策略）。
+fn shell_item_icon_dataurl(path: &Path) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let (w, h, rgba) = extract_shell_item_image_rgba(path)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err(AppError::validation(
+            "仅 Windows 支持 shell 项图标提取 / Windows only",
+        ))
+    }
+}
+
+/// exe 内嵌图标 → PNG data URL。链路：SHGetFileInfoW(HICON) → GetIconInfo
+/// → GetDIBits(32bpp BGRA) → 手写 PNG 编码（stored deflate，零新依赖）。
+/// 仅 Windows 有真实行为；其余平台诚实报错（与 hardware.rs 同策略）。
+fn exe_icon_dataurl(exe: &Path) -> CmdResult<String> {
+    #[cfg(windows)]
+    {
+        let (w, h, rgba) = extract_icon_rgba(exe)?;
+        Ok(format!(
+            "data:image/png;base64,{}",
+            b64_encode(&encode_png(w, h, &rgba))
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = exe;
+        Err(AppError::validation(
+            "仅 Windows 支持 exe 图标提取 / Windows only",
+        ))
+    }
+}
+
+// ---------- Windows：HICON → 32bpp RGBA ----------
+
+#[cfg(windows)]
+fn extract_icon_rgba(exe: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
+    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+
+    let wide: Vec<u16> = exe.as_os_str().encode_wide().chain(Some(0)).collect();
+    unsafe {
+        let mut sfi = SHFILEINFOW::default();
+        let ok = SHGetFileInfoW(
+            PCWSTR(wide.as_ptr()),
+            FILE_ATTRIBUTE_NORMAL,
+            Some(&mut sfi),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        );
+        if ok == 0 || sfi.hIcon.is_invalid() {
+            return Err(AppError::not_found(
+                "未能从 exe 提取图标 / no icon in exe",
+            ));
+        }
+        let result = (|| -> Result<(u32, u32, Vec<u8>), AppError> {
+            let mut info = ICONINFO::default();
+            GetIconInfo(sfi.hIcon, &mut info)
+                .map_err(|e| AppError::io(format!("GetIconInfo 失败 / failed: {e}")))?;
+            let hbm = info.hbmColor;
+            let out = hbitmap_to_rgba(hbm);
+            let _ = DeleteObject(hbm);
+            let _ = DeleteObject(info.hbmMask);
+            out
+        })();
+        let _ = DestroyIcon(sfi.hIcon);
+        result
+    }
+}
+
+/// HBITMAP（32bpp BGRA）→ (w, h, RGBA)。旧式无 alpha 图标（alpha 全 0）→ 视为不透明。
+#[cfg(windows)]
+fn hbitmap_to_rgba(
+    hbm: windows::Win32::Graphics::Gdi::HBITMAP,
+) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, GetDIBits, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS,
+    };
+    if hbm.is_invalid() {
+        return Err(AppError::not_found("图标无彩色位图 / icon has no color bitmap"));
+    }
+    let hdc = unsafe { CreateCompatibleDC(None) };
+    let mut bmi = BITMAPINFO::default();
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    // 首次调用仅取尺寸（lpvBits=None）
+    if unsafe { GetDIBits(hdc, hbm, 0, 0, None, &mut bmi, DIB_RGB_COLORS) } == 0 {
+        let _ = unsafe { DeleteDC(hdc) };
+        return Err(AppError::io("GetDIBits(尺寸) 失败 / size query failed".to_string()));
+    }
+    let w = bmi.bmiHeader.biWidth.max(0) as u32;
+    let h = bmi.bmiHeader.biHeight.unsigned_abs().max(1);
+    // top-down + 32bpp，保证行序与 alpha 语义确定
+    bmi.bmiHeader.biHeight = -(h as i32);
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB.0;
+    let mut buf = vec![0u8; w as usize * h as usize * 4];
+    let got = unsafe {
+        GetDIBits(
+            hdc,
+            hbm,
+            0,
+            h,
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        )
+    };
+    let _ = unsafe { DeleteDC(hdc) };
+    if got == 0 {
+        return Err(AppError::io("GetDIBits(像素) 失败 / pixel read failed".to_string()));
+    }
+    // BGRA → RGBA；旧式无 alpha 图标（alpha 全 0）→ 视为不透明
+    let mut any_alpha = false;
+    for px in buf.chunks_exact_mut(4) {
+        px.swap(0, 2);
+        if px[3] != 0 {
+            any_alpha = true;
+        }
+    }
+    if !any_alpha {
+        for px in buf.chunks_exact_mut(4) {
+            px[3] = 255;
+        }
+    }
+    Ok((w, h, buf))
+}
+
+/// Explorer 同款图标提取：SHCreateItemFromParsingName →
+/// IShellItemImageFactory::GetImage(64px, RESIZETOFIT)。对 .lnk / .exe /
+/// 文件夹 / UWP 快捷方式等任意 shell 项都能取到资源管理器所显示的图标。
+#[cfg(windows)]
+fn extract_shell_item_image_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), AppError> {
+    extract_shell_item_image_rgba_sized(path, 64)
+}
+
+/// 指定边长的 shell 项图标提取（64 = 既有兜底；256 = B-27 Jumbo）。
+#[cfg(windows)]
+fn extract_shell_item_image_rgba_sized(path: &Path, size: i32) -> Result<(u32, u32, Vec<u8>), AppError> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::SIZE;
+    use windows::Win32::UI::Shell::{SHCreateItemFromParsingName, IShellItemImageFactory, SIIGBF_BIGGERSIZEOK, SIIGBF_RESIZETOFIT};
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    unsafe {
+        let factory: IShellItemImageFactory =
+            SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None)
+                .map_err(|e| AppError::not_found(format!("SHCreateItem 失败 / failed: {e}")))?;
+        let hbm = factory
+            .GetImage(SIZE { cx: size, cy: size }, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK)
+            .map_err(|e| AppError::not_found(format!("GetImage 失败 / failed: {e}")))?;
+        let out = hbitmap_to_rgba(hbm);
+        let _ = windows::Win32::Graphics::Gdi::DeleteObject(hbm);
+        out
+    }
+}
+
+// ---------- 手写 PNG 编码（零依赖）：CRC32 + stored deflate + Adler32 ----------
+
+#[cfg(windows)]
+fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    fn crc32(data: &[u8]) -> u32 {
+        let mut table = [0u32; 256];
+        for (i, t) in table.iter_mut().enumerate() {
+            let mut c = i as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+            }
+            *t = c;
+        }
+        let mut c = 0xFFFF_FFFFu32;
+        for &b in data {
+            c = table[((c ^ b as u32) & 0xFF) as usize] ^ (c >> 8);
+        }
+        c ^ 0xFFFF_FFFF
+    }
+    fn adler32(data: &[u8]) -> u32 {
+        let (mut a, mut b) = (1u32, 0u32);
+        for &byte in data {
+            a = (a + byte as u32) % 65521;
+            b = (b + a) % 65521;
+        }
+        (b << 16) | a
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+        out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        out.extend_from_slice(kind);
+        out.extend_from_slice(data);
+        let mut crc_input = Vec::with_capacity(4 + data.len());
+        crc_input.extend_from_slice(kind);
+        crc_input.extend_from_slice(data);
+        out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+    }
+
+    // 每行前置 filter 字节 0（None）
+    let stride = width as usize * 4;
+    let mut raw = Vec::with_capacity(height as usize * (stride + 1));
+    for y in 0..height as usize {
+        raw.push(0u8);
+        raw.extend_from_slice(&rgba[y * stride..(y + 1) * stride]);
+    }
+    // zlib 容器 + stored deflate 块（无压缩，合法流，解码端零感知）
+    let mut idat = vec![0x78u8, 0x01];
+    if raw.is_empty() {
+        idat.extend_from_slice(&[0x01, 0x00, 0x00, 0xFF, 0xFF]);
+    }
+    let mut iter = raw.chunks(65535).peekable();
+    while let Some(part) = iter.next() {
+        let last = iter.peek().is_none();
+        idat.push(if last { 1 } else { 0 });
+        idat.extend_from_slice(&(part.len() as u16).to_le_bytes());
+        idat.extend_from_slice(&(!(part.len() as u16)).to_le_bytes());
+        idat.extend_from_slice(part);
+    }
+    idat.extend_from_slice(&adler32(&raw).to_be_bytes());
+
+    let mut out = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut ihdr = Vec::with_capacity(13);
+    ihdr.extend_from_slice(&width.to_be_bytes());
+    ihdr.extend_from_slice(&height.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8bit RGBA，无隔行
+    chunk(&mut out, b"IHDR", &ihdr);
+    chunk(&mut out, b"IDAT", &idat);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+/// 以管理员身份运行（ShellExecuteW runas，弹 UAC）。
+/// .lnk 不支持 RunAs（诚实报错）；用户取消 UAC → 报错提示。
+#[tauri::command(async)]
+pub fn tp_launch_admin(st: tauri::State<AppState>, id: String) -> CmdResult<()> {
+    let apps = load_registry(&st);
+    let app_item = apps
+        .iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| AppError::not_found(format!("未找到登记项 / Not found: {id}")))?;
+    let p = PathBuf::from(&app_item.path);
+    if !p.is_file() {
+        return Err(AppError::not_found(
+            "目标文件不存在，可能已被移动或卸载 / Target missing (moved or uninstalled?)",
+        ));
+    }
+    if p.extension()
+        .map(|e| e.to_string_lossy().to_lowercase() == "lnk")
+        .unwrap_or(false)
+    {
+        return Err(AppError::validation(
+            "快捷方式不支持管理员运行，请选择其目标 exe / Shortcuts cannot run elevated; pick the target .exe",
+        ));
+    }
+    #[cfg(windows)]
+    {
+        shell_launch_elevated(Path::new(&app_item.path))
+            .map_err(|e| AppError::io(format!("启动失败 / Launch failed: {e}")))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = &app_item;
+        Err(AppError::validation(
+            "当前平台不支持管理员运行 / Elevated launch unsupported on this platform",
+        ))
+    }
+}
+
+// ---------- 测试 ----------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn png_encoder_produces_valid_signature_and_chunks() {
+        // 2x1 纯色 RGBA → PNG：签名/IHDR/IDAT/IEND 结构自洽，尺寸写入 IHDR
+        let png = encode_png(2, 1, &[255, 0, 0, 255, 0, 128, 255, 255]);
+        assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        // IHDR 长度恒 13
+        assert_eq!(&png[8..12], b"\x00\x00\x00\x0d");
+        assert_eq!(&png[12..16], b"IHDR");
+        assert_eq!(&png[16..20], &2u32.to_be_bytes());
+        assert_eq!(&png[20..24], &1u32.to_be_bytes());
+        // 尾部 IEND
+        assert_eq!(&png[png.len() - 8..png.len() - 4], b"IEND");
+    }
+
+    #[test]
+    fn grade_detection_three_tiers() {
+        let data = Path::new("C:\\Users\\t\\AppData\\Roaming\\com.variable.app");
+        // 🟢 数据目录内（含 Apps 子目录）
+        assert_eq!(
+            detect_grade(&data.join("Apps\\Foo\\foo.exe"), data),
+            GRADE_PORTABLE
+        );
+        assert_eq!(detect_grade(&data.join("tool.exe"), data), GRADE_PORTABLE);
+        // 数据目录同级目录不算内部
+        assert_eq!(
+            detect_grade(&Path::new("C:\\Users\\t\\AppData\\Roaming\\com.variable.app2\\a.exe"), data),
+            GRADE_STANDALONE
+        );
+        // 🔴 安装目录
+        assert_eq!(
+            detect_grade(Path::new("C:\\Program Files\\SomeApp\\app.exe"), data),
+            GRADE_SHORTCUT
+        );
+        assert_eq!(
+            detect_grade(Path::new("C:\\Program Files (x86)\\Legacy\\l.exe"), data),
+            GRADE_SHORTCUT
+        );
+        // 🟡 其他位置
+        assert_eq!(
+            detect_grade(Path::new("D:\\Tools\\myapp.exe"), data),
+            GRADE_STANDALONE
+        );
+    }
+
+    #[test]
+    fn third_app_dpi_fix_defaults_false_for_v2_json() {
+        // 批次W-2：apps.json v2 无 dpiFix 字段 → 平滑升级，缺省 false
+        let json = r#"{"id":"a","name":"A","path":"C:/a.exe","grade":"standalone","addedAt":1,"lastLaunch":null,"icon":null,"target":null}"#;
+        let app: ThirdApp = serde_json::from_str(json).unwrap();
+        assert!(!app.dpi_fix);
+        let with_fix = r#"{"id":"a","name":"A","path":"C:/a.exe","grade":"standalone","addedAt":1,"lastLaunch":null,"icon":null,"target":null,"dpiFix":true}"#;
+        let app: ThirdApp = serde_json::from_str(with_fix).unwrap();
+        assert!(app.dpi_fix);
+    }
+
+    #[test]
+    fn registry_roundtrip_and_idempotent_add() {
+        let tmp = std::env::temp_dir().join(format!("variable-launcher-test-{}", std::process::id()));
+        // 造一个真实存在的假 exe（is_file 校验需要）
+        let exe = tmp.join("demo.exe");
+        fs::create_dir_all(&tmp).unwrap();
+        fs::write(&exe, b"MZ").unwrap();
+
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let mut apps = load_registry(&st);
+        assert!(apps.is_empty());
+
+        let app = ThirdApp {
+            id: new_id(),
+            name: "Demo".into(),
+            path: exe.to_string_lossy().to_string(),
+            grade: detect_grade(&exe, &st.data_dir).to_string(),
+            added_at: now_ms(),
+            last_launch: None,
+            icon: None,
+            target: None,
+            profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
+        };
+        apps.push(app.clone());
+        save_registry(&st, &apps).unwrap();
+
+        let loaded = load_registry(&st);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, app.id);
+        assert_eq!(loaded[0].grade, GRADE_PORTABLE); // 在数据目录内 → 🟢
+        assert!(loaded[0].last_launch.is_none());
+
+        // 清理
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn b64_encode_rfc4648_vectors() {
+        assert_eq!(b64_encode(b""), "");
+        assert_eq!(b64_encode(b"f"), "Zg==");
+        assert_eq!(b64_encode(b"fo"), "Zm8=");
+        assert_eq!(b64_encode(b"foo"), "Zm9v");
+        assert_eq!(b64_encode(b"foob"), "Zm9vYg==");
+        assert_eq!(b64_encode(b"fooba"), "Zm9vYmE=");
+        assert_eq!(b64_encode(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn tp_purge_guards_and_roundtrip() {
+        let tmp = std::env::temp_dir().join(format!("variable-purge-test-{}", std::process::id()));
+        fs::create_dir_all(&tmp).unwrap();
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+
+        // 🟢 数据目录内 → 允许彻底删除
+        let inner_exe = st.data_dir.join("Apps").join("portable.exe");
+        fs::create_dir_all(inner_exe.parent().unwrap()).unwrap();
+        fs::write(&inner_exe, b"MZ").unwrap();
+        let mut apps = load_registry(&st);
+        apps.push(ThirdApp {
+            id: "p1".into(),
+            name: "Portable".into(),
+            path: inner_exe.to_string_lossy().to_string(),
+            grade: GRADE_PORTABLE.into(),
+            added_at: now_ms(),
+            last_launch: None,
+            icon: None,
+            target: None,
+            profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
+        });
+        save_registry(&st, &apps).unwrap();
+        tp_purge_inner(&st, "p1").unwrap();
+        assert!(!inner_exe.exists(), "文件应被删除");
+        assert!(load_registry(&st).is_empty(), "登记应被移除");
+        // 删空的 Apps 父目录被顺带清理
+        assert!(!inner_exe.parent().unwrap().exists(), "空父目录应被清理");
+        assert!(st.data_dir.exists(), "数据目录本身绝不能被触碰");
+
+        // 🟡 数据目录外 → 拒绝删除文件
+        let outer = std::env::temp_dir().join("variable-purge-outer.exe");
+        fs::write(&outer, b"MZ").unwrap();
+        let mut apps = load_registry(&st);
+        apps.push(ThirdApp {
+            id: "p2".into(),
+            name: "Outer".into(),
+            path: outer.to_string_lossy().to_string(),
+            grade: GRADE_STANDALONE.into(),
+            added_at: now_ms(),
+            last_launch: None,
+            icon: None,
+            target: None,
+            profile: Default::default(),
+            dpi_fix: false,
+            compat: Default::default(),
+            channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+            wine_tier: String::new(),
+        });
+        save_registry(&st, &apps).unwrap();
+        assert!(tp_purge_inner(&st, "p2").is_err(), "数据目录外应拒绝");
+        assert!(outer.exists(), "外部文件不应被删除");
+        assert!(load_registry(&st).len() == 1, "失败时登记应保留");
+
+        // 未知 id → not_found
+        assert!(tp_purge_inner(&st, "nope").is_err());
+
+        let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_file(&outer);
+    }
+
+    #[test]
+    fn set_icon_roundtrip_and_clear() {
+        let tmp = std::env::temp_dir().join(format!("variable-icon-test-{}", std::process::id()));
+        fs::create_dir_all(&tmp).unwrap();
+        let exe = tmp.join("demo.exe");
+        fs::write(&exe, b"MZ").unwrap();
+        // 最小 PNG 头（1x1 灰度 PNG 文件签名 + 数据不重要，仅验证编码链路）
+        let png = tmp.join("icon.png");
+        let png_bytes: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02, 0x03,
+        ];
+        fs::write(&png, png_bytes).unwrap();
+
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let id = {
+            let mut apps = load_registry(&st);
+            let app = ThirdApp {
+                id: new_id(),
+                name: "Demo".into(),
+                path: exe.to_string_lossy().to_string(),
+                grade: GRADE_PORTABLE.into(),
+                added_at: now_ms(),
+                last_launch: None,
+                icon: None,
+                target: None,
+                dpi_fix: false,
+                profile: Default::default(),
+                compat: Default::default(),
+                channel: crate::shell::shared_apps::CHANNEL_NATIVE.to_string(),
+                wine_tier: String::new(),
+            };
+            apps.push(app.clone());
+            save_registry(&st, &apps).unwrap();
+            app.id
+        };
+
+        // 设置 → data URL 正确
+        let out = set_icon_inner(&st, &id, Some(png.to_string_lossy().to_string())).unwrap();
+        assert!(out.icon.unwrap_or_default().starts_with("data:image/png;base64,"));
+
+        // 非法扩展 → 校验错误
+        let bad = tmp.join("icon.gif");
+        fs::write(&bad, b"GIF").unwrap();
+        assert!(set_icon_inner(&st, &id, Some(bad.to_string_lossy().to_string())).is_err());
+
+        // 清除（空串 → None）
+        let out = set_icon_inner(&st, &id, Some(String::new())).unwrap();
+        assert!(out.icon.is_none());
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    // ---------- 批次F：文件夹智能扫描 ----------
+
+    #[test]
+    fn exe_score_vetoes_helpers_and_updaters() {
+        // 卸载器/更新器/崩溃上报/辅助进程 → 一票否决
+        for stem in [
+            "unins000", "Uninstall", "setup", "Installer", "Update", "updater",
+            "crashpad_handler", "elevate", "uninst", "卸载工具", "修复",
+        ] {
+            assert_eq!(exe_candidate_score(stem, "AnyApp", 0, true, 30_000_000), i32::MIN, "{stem} 应被否决");
+        }
+    }
+
+    #[test]
+    fn exe_score_ranks_main_program_above_helpers() {
+        // 主程序：文件夹同名 + 版本描述 + 根目录 + 大体积
+        let main = exe_candidate_score("PotPlayer", "PotPlayer", 0, true, 40_000_000);
+        // 变体名（互为前缀）
+        let variant = exe_candidate_score("WeChatApp", "WeChat", 0, true, 20_000_000);
+        // 深层小体积辅助组件（无版本描述）
+        let helper = exe_candidate_score("ffmpeg-mux", "obs-studio", 2, false, 900_000);
+        assert!(main > helper, "主程序 {main} 应高于辅助组件 {helper}");
+        assert!(variant > helper);
+        assert!(main >= EXE_RECOMMEND_THRESHOLD, "典型主程序应达推荐线（{main}）");
+        assert!(helper < EXE_RECOMMEND_THRESHOLD, "辅助组件不应被推荐（{helper}）");
+        // 软性降权词确实降权
+        let plain = exe_candidate_score("obs", "obs-studio", 2, true, 200_000_000);
+        let tool = exe_candidate_score("obs-tool", "obs-studio", 2, true, 200_000_000);
+        assert!(tool < plain, "软性降权词应减分");
+    }
+
+    #[test]
+    fn exe_score_normalizes_separators_for_name_match() {
+        // 「My App v2」文件夹 vs「myappv2」exe → 归一后同名 +40
+        let a = exe_candidate_score("myappv2", "My App v2", 0, false, 0);
+        let b = exe_candidate_score("totally-different", "My App v2", 0, false, 0);
+        assert!(a > b);
+        assert!(a >= 40, "归一同名应拿到 +40（{a}）");
+    }
+
+    #[test]
+    fn folder_scan_collects_exes_with_depth_and_caps() {
+        let tmp = std::env::temp_dir().join(format!("variable-scan-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        // 结构：root/App.exe（depth0）、root/bin/core.exe（depth1）、
+        // root/a/b/c/d/deep.exe（depth4，仍收录）、root/a/b/c/d/e/toodeep.exe（depth5，不收录）
+        fs::create_dir_all(tmp.join("bin")).unwrap();
+        fs::create_dir_all(tmp.join("a/b/c/d/e")).unwrap();
+        fs::write(tmp.join("App.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("bin").join("core.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("readme.txt"), b"no").unwrap();
+        fs::write(tmp.join("a/b/c/d").join("deep.exe"), b"MZ").unwrap();
+        fs::write(tmp.join("a/b/c/d/e").join("toodeep.exe"), b"MZ").unwrap();
+
+        let mut out = Vec::new();
+        let mut budget = FOLDER_SCAN_MAX_ENTRIES;
+        collect_exes(&tmp, 0, &mut out, &mut budget);
+        let names: Vec<&str> = out.iter().map(|(p, _, _)| p.file_name().unwrap().to_str().unwrap()).collect();
+        assert!(names.contains(&"App.exe"));
+        assert!(names.contains(&"core.exe"));
+        assert!(names.contains(&"deep.exe"), "depth 4 边界应收录");
+        assert!(!names.contains(&"toodeep.exe"), "depth 5 超限不收录");
+        assert!(!names.contains(&"readme.txt"), "非 exe 不收录");
+        // 深度值正确（App.exe = 0，core.exe = 1）
+        let (_, _, d0) = out.iter().find(|(p, _, _)| p.ends_with("App.exe")).unwrap();
+        let (_, _, d1) = out.iter().find(|(p, _, _)| p.ends_with("core.exe")).unwrap();
+        assert_eq!(*d0, 0);
+        assert_eq!(*d1, 1);
+
+        // 候选上限护栏：128 封顶
+        let many = std::env::temp_dir().join(format!("variable-scan-many-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&many);
+        fs::create_dir_all(&many).unwrap();
+        for i in 0..200 {
+            fs::write(many.join(format!("f{i:03}.exe")), b"MZ").unwrap();
+        }
+        let mut out2 = Vec::new();
+        let mut budget2 = FOLDER_SCAN_MAX_ENTRIES;
+        collect_exes(&many, 0, &mut out2, &mut budget2);
+        assert_eq!(out2.len(), FOLDER_SCAN_MAX_EXES, "候选数应封顶 128");
+
+        let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_dir_all(&many);
+    }
+
+    // ---------- 批次F：软件收件箱 ----------
+
+    #[test]
+    fn inbox_dir_prefers_program_dir_and_falls_back() {
+        let tmp = std::env::temp_dir().join(format!("variable-inboxdir-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let data = tmp.join("data");
+        fs::create_dir_all(&data).unwrap();
+
+        // exe 目录可写 → 环境文件夹优先（探测即建）
+        let exe_dir = tmp.join("env");
+        fs::create_dir_all(&exe_dir).unwrap();
+        let p = inbox_dir_with(Some(&exe_dir), &data);
+        assert_eq!(p, exe_dir.join("SoftwareInbox"));
+        assert!(p.exists(), "探测即建：文件夹应已可见");
+
+        // 已存在的收件箱 → 直接复用（不重建）
+        let p2 = inbox_dir_with(Some(&exe_dir), &data);
+        assert_eq!(p2, p);
+
+        // 无 exe 目录（探测失败场景）→ 回退数据目录
+        let p3 = inbox_dir_with(None, &data);
+        assert_eq!(p3, data.join("SoftwareInbox"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inbox_import_registers_direct_exes_and_folder_mains_only() {
+        let tmp = std::env::temp_dir().join(format!("variable-inbox-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let inbox = tmp.join("inbox"); // 注入：测试隔离（命令层用 inbox_dir 决策）
+        // 收件箱内容：直接放 1 个 exe（任意语言名）+ 1 个软件子文件夹（主程序+卸载器）+
+        // 1 个非 exe 文件 + 1 个含否决词的直接 exe
+        fs::create_dir_all(inbox.join("PotPlayer")).unwrap();
+        fs::write(inbox.join("任意名字.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("PotPlayer").join("PotPlayer.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("PotPlayer").join("unins000.exe"), b"MZ").unwrap();
+        fs::write(inbox.join("readme.txt"), b"no").unwrap();
+        fs::write(inbox.join("setup.exe"), b"MZ").unwrap();
+
+        let r = tp_inbox_import_inner(&st, &inbox).unwrap();
+        assert_eq!(r.added, 2, "直接 exe + 子文件夹主程序，共 2 个");
+        assert!(r.path.ends_with("inbox"));
+
+        let apps = load_registry(&st);
+        let paths: Vec<&str> = apps.iter().map(|a| a.path.as_str()).collect();
+        assert!(paths.iter().any(|p| p.ends_with("任意名字.exe")), "直接放置的 exe 应登记（任意语言名）");
+        assert!(paths.iter().any(|p| p.ends_with("PotPlayer.exe")), "子文件夹主程序应登记");
+        assert!(!paths.iter().any(|p| p.contains("unins000")), "卸载器不应登记");
+        assert!(!paths.iter().any(|p| p.ends_with("setup.exe")), "否决词直接放置也不登记");
+        assert!(!paths.iter().any(|p| p.ends_with("readme.txt")), "非 exe 不登记");
+        // 显示名：无版本资源 → 文件名兜底
+        assert!(apps.iter().any(|a| a.name == "任意名字"));
+
+        // 幂等：第二次导入 → 0（已登记路径去重）
+        let r2 = tp_inbox_import_inner(&st, &inbox).unwrap();
+        assert_eq!(r2.added, 0);
+
+        // 收件箱目录不存在时自动创建并返回 0
+        let _ = fs::remove_dir_all(&inbox);
+        let r3 = tp_inbox_import_inner(&st, &inbox).unwrap();
+        assert_eq!(r3.added, 0);
+        assert!(inbox.exists(), "收件箱应被自动创建");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn inbox_import_respects_cap() {
+        let tmp = std::env::temp_dir().join(format!("variable-inbox-cap-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let st = AppState::bootstrap_dirs_at(tmp.clone()).unwrap();
+        let inbox = tmp.join("inbox");
+        fs::create_dir_all(&inbox).unwrap();
+        for i in 0..(INBOX_IMPORT_MAX + 10) {
+            fs::write(inbox.join(format!("app{i:03}.exe")), b"MZ").unwrap();
+        }
+        let r = tp_inbox_import_inner(&st, &inbox).unwrap();
+        assert_eq!(r.added, INBOX_IMPORT_MAX, "单次导入应封顶");
+        // 补量：删掉已登记的，第二次启动继续收余下的
+        let apps = load_registry(&st);
+        assert_eq!(apps.len(), INBOX_IMPORT_MAX);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+}
+

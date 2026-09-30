@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VARIX 双域系统 · 新增 UI 设计稿 v1.0</title>
+<style>
+/* ============================================================
+   VARIX 双域系统 · 新增 UI 设计稿
+   设计语言：沿用 Variable deep-space 暗色主题
+   令牌先行：本文件 :root 即《动效曲线统一表》+ 色彩令牌的实现基线
+   ============================================================ */
+:root{
+  /* ---- 色彩令牌（deep-space，全部对白字对比度 ≥4.5:1）---- */
+  --bg-deep:#0b0e14; --bg-panel:#12161f; --bg-card:#181d29; --bg-card-hover:#1e2432;
+  --stroke-1:#242b3a; --stroke-2:#2e3850;
+  --text-hi:#e8ecf4; --text-mid:#a8b3c7; --text-low:#6b7690;
+  --accent:#4f8cff; --accent-hover:#6ba1ff; --accent-dim:rgba(79,140,255,.14);
+  --ok:#3ecf8e; --warn:#f5b345; --err:#f16a5d; --wine:#b07aff; --engine:#4fc3ff;
+  /* ---- 动效统一表（专项 L2，全系统唯一来源）----
+     spring 4% 过冲语义：cubic-bezier(0.34, 1.3, 0.64, 1)
+     reduce-motion：全部时长 → 0ms，仅保留透明度切换 1ms */
+  --ease-spring:cubic-bezier(0.34,1.3,0.64,1);
+  --ease-out:cubic-bezier(0.16,1,0.3,1);
+  --ease-inout:cubic-bezier(0.65,0,0.35,1);
+  --dur-1:120ms;  /* 微反馈：拨杆/勾/按压        */
+  --dur-2:200ms;  /* 控件进出：toast/徽标/tooltip */
+  --dur-3:300ms;  /* 卡片/菜单/向导页切换        */
+  --dur-4:450ms;  /* 窗口开关/贴靠              */
+  --dur-5:800ms;  /* 启动仪式/引导页大动画      */
+  --r-1:6px; --r-2:10px; --r-3:14px; --r-4:20px;
+  --focus:0 0 0 2px var(--bg-deep),0 0 0 4px var(--accent);
+  --space:4px;
+}
+@media (prefers-reduced-motion:reduce){ *{animation-duration:1ms!important;transition-duration:1ms!important} }
+
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg-deep);color:var(--text-hi);font-family:"Segoe UI Variable","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;font-size:15px;line-height:1.6;padding:48px 24px 96px}
+.wrap{max-width:1240px;margin:0 auto}
+
+/* ---- 文稿框架 ---- */
+.doc-head h1{font-size:30px;font-weight:600;letter-spacing:.5px}
+.doc-head p{color:var(--text-mid);margin-top:8px;max-width:760px}
+.doc-head .meta{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}
+.chip{font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid var(--stroke-1);color:var(--text-mid);background:var(--bg-panel)}
+.sec{margin-top:72px}
+.sec-no{font-size:12px;color:var(--accent);letter-spacing:2px;font-weight:600}
+.sec h2{font-size:22px;font-weight:600;margin:6px 0 8px}
+.sec>p{color:var(--text-mid);max-width:820px;margin-bottom:24px}
+.note{display:flex;gap:10px;margin-top:16px;font-size:13px;color:var(--text-mid)}
+.note b{color:var(--text-hi)}
+.note::before{content:"◆";color:var(--accent);font-size:10px;line-height:22px}
+.spec{margin-top:20px;border:1px solid var(--stroke-1);border-radius:var(--r-2);background:var(--bg-panel);overflow:hidden}
+.spec table{width:100%;border-collapse:collapse;font-size:13px}
+.spec th{text-align:left;padding:10px 16px;color:var(--text-low);font-weight:600;background:var(--bg-card);border-bottom:1px solid var(--stroke-1)}
+.spec td{padding:10px 16px;border-bottom:1px solid var(--stroke-1);color:var(--text-mid)}
+.spec td:first-child{color:var(--text-hi);font-weight:500;white-space:nowrap}
+.spec tr:last-child td{border-bottom:none}
+.spec code{font-family:"Cascadia Code",Consolas,monospace;font-size:12px;color:var(--accent-hover);background:var(--accent-dim);padding:1px 6px;border-radius:4px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;border:1px solid rgba(255,255,255,.15)}
+
+/* ---- 展示台：模拟目标分辨率 ---- */
+.stage{background:#05070b;border:1px solid var(--stroke-1);border-radius:var(--r-3);padding:28px;margin-top:20px;overflow-x:auto}
+.stage-label{font-size:12px;color:var(--text-low);margin-bottom:14px;letter-spacing:1px}
+.frame{position:relative;margin:0 auto;border-radius:8px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+
+/* ============================================================
+   ① 引导选择页（内核 GOP 直画 · 1920×1080 缩放展示）
+   约束：纯色块+位图字体质感，无渐变滥用、无圆角阴影依赖
+   ============================================================ */
+.boot{width:960px;height:540px;background:#000410;color:#e8ecf4;font-family:Consolas,"Microsoft YaHei",monospace;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.boot::before{content:"";position:absolute;inset:0;background:
+  radial-gradient(ellipse 900px 400px at 50% -10%,rgba(79,140,255,.10),transparent 60%)}
+.boot .logo{width:44px;height:44px;border:3px solid #4f8cff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#4f8cff;margin-bottom:10px}
+.boot .title{font-size:15px;letter-spacing:6px;color:#a8b3c7;margin-bottom:44px}
+.boot .opts{display:flex;flex-direction:column;gap:14px;width:520px}
+.boot .opt{height:58px;border:1px solid #243048;display:flex;align-items:center;padding:0 22px;gap:16px;font-size:16px;letter-spacing:1px;position:relative;background:#081020}
+.boot .opt .k{width:26px;height:26px;border:1px solid #3a4a6a;display:flex;align-items:center;justify-content:center;font-size:12px;color:#6b7690;flex:none}
+.boot .opt.sel{border-color:#4f8cff;background:#0d1a33;color:#fff}
+.boot .opt.sel::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#4f8cff}
+.boot .opt.sel .k{border-color:#4f8cff;color:#4f8cff}
+.boot .opt .sub{margin-left:auto;font-size:11px;color:#4a5670;letter-spacing:0}
+.boot .opt.sel .sub{color:#7ea6e8}
+.boot .cd{width:520px;margin-top:36px}
+.boot .cd .row{display:flex;justify-content:space-between;font-size:11px;color:#6b7690;margin-bottom:8px;letter-spacing:1px}
+.boot .bar{height:4px;background:#14203a;position:relative;overflow:hidden}
+.boot .bar i{position:absolute;inset:0;background:#4f8cff;transform-origin:left;animation:cd 5s linear infinite}
+@keyframes cd{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.boot .hint{position:absolute;bottom:22px;font-size:11px;color:#3d4a66;letter-spacing:2px}
+
+/* ============================================================
+   ② 引擎占位卡 + 冷启动分阶段叙事（复用 embed 占位卡语言）
+   ============================================================ */
+.ph-wrap{width:960px;height:420px;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;gap:60px;padding:20px}
+.ph-card{width:320px;background:var(--bg-card);border:1px solid var(--stroke-1);border-radius:var(--r-3);padding:26px 24px;animation:pop .5s var(--ease-spring)}
+@keyframes pop{from{opacity:0;transform:scale(.92) translateY(8px)}to{opacity:1;transform:none}}
+.ph-ico{width:52px;height:52px;border-radius:var(--r-2);background:linear-gradient(135deg,rgba(79,195,255,.22),rgba(79,140,255,.10));border:1px solid rgba(79,195,255,.3);display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px;position:relative}
+.ph-ico::after{content:"";position:absolute;inset:-5px;border-radius:14px;border:2px solid transparent;border-top-color:var(--engine);animation:spin 1.2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ph-card h4{font-size:16px;font-weight:600}
+.ph-card .app{font-size:13px;color:var(--text-mid);margin:2px 0 18px}
+.ph-steps{display:flex;flex-direction:column;gap:12px}
+.ph-step{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--text-low)}
+.ph-step .dot{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--stroke-2);flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:transparent}
+.ph-step.done{color:var(--text-mid)}
+.ph-step.done .dot{border-color:var(--ok);background:rgba(62,207,142,.12);color:var(--ok)}
+.ph-step.doing{color:var(--text-hi)}
+.ph-step.doing .dot{border-color:var(--engine);color:var(--engine);animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{50%{opacity:.4}}
+.ph-meta{margin-top:18px;padding-top:16px;border-top:1px solid var(--stroke-1);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-low)}
+.ph-meta .link{color:var(--accent);cursor:pointer;text-decoration:none}
+.ph-meta .link:hover{color:var(--accent-hover);text-decoration:underline}
+.ph-pbar{height:3px;background:var(--stroke-1);border-radius:2px;margin-top:14px;overflow:hidden}
+.ph-pbar i{display:block;height:100%;width:62%;background:linear-gradient(90deg,var(--accent),var(--engine));border-radius:2px;animation:breath 2s ease-in-out infinite}
+@keyframes breath{50%{opacity:.55}}
+
+/* ============================================================
+   ③ 首次运行向导 · 能力选择页（A2）
+   ============================================================ */
+.wiz{width:960px;height:560px;background:var(--bg-deep);display:flex;flex-direction:column}
+.wiz-head{padding:30px 44px 0}
+.wiz-dots{display:flex;gap:8px;align-items:center}
+.wiz-dots i{width:24px;height:4px;border-radius:2px;background:var(--stroke-2)}
+.wiz-dots i.on{background:var(--accent)}
+.wiz-head h3{font-size:22px;font-weight:600;margin-top:18px}
+.wiz-head p{font-size:13.5px;color:var(--text-mid);margin-top:4px}
+.wiz-body{flex:1;display:flex;gap:16px;padding:26px 44px}
+.chan{flex:1;background:var(--bg-card);border:1px solid var(--stroke-1);border-radius:var(--r-3);padding:22px 20px;display:flex;flex-direction:column;gap:10px;cursor:pointer;transition:all var(--dur-2) var(--ease-spring);position:relative}
+.chan:hover{background:var(--bg-card-hover);transform:translateY(-3px)}
+.chan.rec{border-color:var(--accent);background:linear-gradient(180deg,var(--accent-dim),var(--bg-card) 45%)}
+.chan.rec::after{content:"推荐 · 已按你的电脑预选";position:absolute;top:-9px;right:14px;font-size:11px;background:var(--accent);color:#fff;padding:2px 10px;border-radius:99px}
+.chan .tag{font-size:11px;font-weight:600;letter-spacing:1px}
+.chan.t-wine .tag{color:var(--wine)} .chan.t-engine .tag{color:var(--engine)} .chan.t-win .tag{color:var(--warn)}
+.chan h5{font-size:16px;font-weight:600}
+.chan p{font-size:12.5px;color:var(--text-mid);flex:1}
+.chan .ill{height:72px;border-radius:var(--r-2);border:1px solid var(--stroke-1);margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--text-low);background:var(--bg-panel)}
+.chan .ill b{font-size:20px}
+.wiz-foot{display:flex;justify-content:space-between;align-items:center;padding:0 44px 26px;font-size:13px;color:var(--text-low)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 22px;border-radius:var(--r-1);font-size:14px;font-weight:500;border:1px solid var(--stroke-2);background:var(--bg-card);color:var(--text-hi);cursor:pointer;transition:all var(--dur-1) var(--ease-out);font-family:inherit}
+.btn:hover{background:var(--bg-card-hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-hover)}
+.btn:active{transform:scale(.97)}
+.btn:focus-visible{box-shadow:var(--focus);outline:none}
+.btn.danger{border-color:rgba(241,106,93,.5);color:var(--err)}
+
+/* ============================================================
+   ④ 设置页 · 引导行为组（.w11-* 风格 · 1080×720 缩放）
+   ============================================================ */
+.set{width:920px;height:612px;background:var(--bg-deep);display:flex;border:1px solid var(--stroke-1);border-radius:var(--r-2);overflow:hidden}
+.set-nav{width:216px;background:var(--bg-panel);border-right:1px solid var(--stroke-1);padding:20px 10px;display:flex;flex-direction:column;gap:2px}
+.set-nav .crumb{font-size:12px;color:var(--text-low);padding:0 12px 14px}
+.set-nav a{font-size:13.5px;color:var(--text-mid);text-decoration:none;padding:0 12px;height:36px;display:flex;align-items:center;gap:10px;border-radius:var(--r-1)}
+.set-nav a:hover{background:var(--bg-card)}
+.set-nav a.on{background:var(--accent-dim);color:var(--text-hi);position:relative}
+.set-nav a.on::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent)}
+.set-main{flex:1;padding:28px 36px;overflow:auto}
+.set-main h3{font-size:20px;font-weight:600}
+.set-main .desc{font-size:13px;color:var(--text-mid);margin:4px 0 22px}
+.row-item{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 16px;border-radius:var(--r-2);background:var(--bg-card);border:1px solid var(--stroke-1);margin-bottom:10px;min-height:68px}
+.row-item .l b{font-size:14px;font-weight:500;display:block}
+.row-item .l span{font-size:12px;color:var(--text-low)}
+.seg{display:flex;background:var(--bg-panel);border:1px solid var(--stroke-1);border-radius:var(--r-1);padding:3px;gap:2px}
+.seg button{height:28px;padding:0 14px;font-size:12.5px;border:none;background:transparent;color:var(--text-mid);border-radius:5px;cursor:pointer;font-family:inherit;transition:all var(--dur-1) var(--ease-out)}
+.seg button.on{background:var(--accent);color:#fff}
+.seg button:not(.on):hover{color:var(--text-hi)}
+.seg button:focus-visible{box-shadow:var(--focus);outline:none}
+.sw2{width:44px;height:22px;border-radius:99px;background:var(--stroke-2);position:relative;cursor:pointer;transition:background var(--dur-2) var(--ease-out);flex:none;border:none}
+.sw2::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform var(--dur-2) var(--ease-spring)}
+.sw2.on{background:var(--accent)}
+.sw2.on::after{transform:translateX(22px)}
+.sw2:focus-visible{box-shadow:var(--focus);outline:none}
+.select{height:34px;background:var(--bg-panel);border:1px solid var(--stroke-1);border-radius:var(--r-1);color:var(--text-hi);padding:0 10px;font-size:13px;font-family:inherit}
+.badge3{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 9px;border-radius:99px}
+.badge3.ok{color:var(--ok);background:rgba(62,207,142,.12)}
+.badge3.eng{color:var(--engine);background:rgba(79,195,255,.12)}
+.badge3.win{color:var(--warn);background:rgba(245,179,69,.12)}
+
+/* 通道徽标 G1 */
+.winmock{width:340px;background:var(--bg-card);border:1px solid var(--stroke-1);border-radius:var(--r-2);overflow:hidden}
+.winmock .tb{height:34px;background:var(--bg-panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:12px;color:var(--text-mid)}
+.winmock .dots{display:flex;gap:5px;margin-left:auto}
+.winmock .dots i{width:10px;height:10px;border-radius:50%}
+.winmock .body{height:120px;display:flex;align-items:center;justify-content:center;color:var(--text-low);font-size:12px;background:
+  repeating-linear-gradient(45deg,transparent 0 12px,rgba(255,255,255,.015) 12px 24px)}
+.chbadge{font-size:10px;height:16px;padding:0 6px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;letter-spacing:.5px}
+.chbadge.native{background:rgba(79,140,255,.15);color:#8fb4ff}
+.chbadge.wine{background:rgba(176,122,255,.15);color:#c9a4ff}
+.chbadge.engine{background:rgba(79,195,255,.15);color:#7dd4ff}
+.hover-tip{font-size:11.5px;color:var(--text-low);margin-top:8px}
+
+/* toast 四级 */
+.toasts{display:flex;flex-direction:column;gap:12px;width:380px}
+.toast{display:flex;gap:12px;align-items:flex-start;background:var(--bg-card);border:1px solid var(--stroke-1);border-radius:var(--r-2);padding:13px 16px;animation:slide .35s var(--ease-spring)}
+@keyframes slide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.toast .ic{width:20px;height:20px;border-radius:6px;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px}
+.toast b{font-size:13px;font-weight:600;display:block}
+.toast p{font-size:12px;color:var(--text-mid);margin-top:2px}
+.toast .lv{margin-left:auto;font-size:10px;color:var(--text-low);flex:none;padding-top:3px}
+.t4-0{opacity:.75;border-style:dashed}
+.t4-1 .ic{background:rgba(79,140,255,.15);color:var(--accent)}
+.t4-2{border-left:3px solid var(--warn)}
+.t4-2 .ic{background:rgba(245,179,69,.15);color:var(--warn)}
+.t4-3{border-left:3px solid var(--err)}
+.t4-3 .ic{background:rgba(241,106,93,.15);color:var(--err)}
+
+/* 错误三段式卡 C1 */
+.errcard{width:420px;background:var(--bg-card);border:1px solid rgba(241,106,93,.4);border-radius:var(--r-3);padding:22px 24px}
+.errcard .head{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600}
+.errcard .head .ic{width:26px;height:26px;border-radius:8px;background:rgba(241,106,93,.15);color:var(--err);display:flex;align-items:center;justify-content:center;font-size:13px}
+.errcard .why{font-size:13px;color:var(--text-mid);margin:12px 0 16px}
+.errcard .acts{display:flex;gap:10px}
+.errcard details{margin-top:16px;font-size:11.5px;color:var(--text-low)}
+.errcard summary{cursor:pointer}
+.errcard code{color:var(--text-mid)}
+
+/* 庆祝动效（A4）帧 */
+.celebrate{width:420px;height:230px;background:var(--bg-deep);border:1px solid var(--stroke-1);border-radius:var(--r-3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;position:relative;overflow:hidden}
+.celebrate::before,.celebrate::after{content:"";position:absolute;width:150%;height:150%;border:1px solid rgba(79,140,255,.18);border-radius:50%;animation:ring 2.4s var(--ease-out) infinite}
+.celebrate::after{animation-delay:1.2s;border-color:rgba(62,207,142,.18)}
+@keyframes ring{from{transform:scale(.3);opacity:1}to{transform:scale(1);opacity:0}}
+.celebrate .big{font-size:40px;animation:pop .6s var(--ease-spring)}
+.celebrate h5{font-size:17px;font-weight:600}
+.celebrate p{font-size:12.5px;color:var(--text-mid)}
+
+.foot{margin-top:96px;padding-top:24px;border-top:1px solid var(--stroke-1);color:var(--text-low);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="doc-head">
+  <h1>VARIX 双域系统 · 新增 UI 设计稿</h1>
+  <p>覆盖总案中「需要新设计」的全部关键界面。视觉语言沿用 Variable deep-space 暗色主题与 spring 4% 过冲动效；既有界面（桌面/任务栏/开始菜单/窗口）不在本稿范围——它们按「行为等价」原样复用，不做重设计。</p>
+  <div class="meta">
+    <span class="chip">v1.0 · 2026-09-16</span>
+    <span class="chip">暗色 · 对比度 ≥4.5:1</span>
+    <span class="chip">reduce-motion 全量降级</span>
+    <span class="chip">焦点环 2px+2px</span>
+    <span class="chip">i18n 三语预留</span>
+  </div>
+</div>
+
+<!-- ═══════════ 0 动效令牌 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 00</div>
+  <h2>动效曲线统一表（专项 L2 · 全系统唯一来源）</h2>
+  <p>任何界面禁止硬编码时长/缓动，一律引用下表令牌。spring 曲线带 4% 过冲，延续既有手感。</p>
+  <div class="spec"><table>
+    <tr><th>令牌</th><th>值</th><th>用途</th><th>reduce-motion 替代</th></tr>
+    <tr><td>--dur-1</td><td><code>120ms · ease-out</code></td><td>微反馈：拨杆、勾、按压、悬停</td><td>1ms 透明度切换</td></tr>
+    <tr><td>--dur-2</td><td><code>200ms · spring(4%)</code></td><td>toast / 徽标 / tooltip 进出</td><td>直接显隐</td></tr>
+    <tr><td>--dur-3</td><td><code>300ms · spring(4%)</code></td><td>卡片、菜单、向导页切换</td><td>直接切换</td></tr>
+    <tr><td>--dur-4</td><td><code>450ms · spring(4%)</code></td><td>窗口开关、贴靠、占位卡弹出</td><td>直接切换</td></tr>
+    <tr><td>--dur-5</td><td><code>800ms · ease-inout</code></td><td>启动仪式、引导页大动画</td><td>静态首帧直达</td></tr>
+    <tr><td>呼吸态</td><td><code>2s · ease-inout · 50%透明度55%</code></td><td>进度条呼吸、下载进度</td><td>恒定不透明</td></tr>
+  </table></div>
+  <div class="spec"><table>
+    <tr><th colspan="4">核心色彩令牌（deep-space，已验对比度）</th></tr>
+    <tr><td><span class="sw" style="background:#0b0e14"></span>--bg-deep</td><td>桌面底</td><td><span class="sw" style="background:#4f8cff"></span>--accent</td><td>主操作 / 选中（对深底 5.9:1）</td></tr>
+    <tr><td><span class="sw" style="background:#181d29"></span>--bg-card</td><td>卡片/行项</td><td><span class="sw" style="background:#b07aff"></span>--wine</td><td>Wine 通道标识</td></tr>
+    <tr><td><span class="sw" style="background:#e8ecf4"></span>--text-hi</td><td>主文本（16.8:1）</td><td><span class="sw" style="background:#4fc3ff"></span>--engine</td><td>引擎通道标识</td></tr>
+    <tr><td><span class="sw" style="background:#a8b3c7"></span>--text-mid</td><td>次文本（7.2:1）</td><td><span class="sw" style="background:#3ecf8e"></span>--ok</td><td>成功 / 已完成</td></tr>
+    <tr><td><span class="sw" style="background:#6b7690"></span>--text-low</td><td>辅助（4.6:1，仅 ≥14px）</td><td><span class="sw" style="background:#f16a5d"></span>--err</td><td>错误（永不单独表意，配图标+文案）</td></tr>
+  </table></div>
+</section>
+
+<!-- ═══════════ ① 引导选择页 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 01 · 阶段 0</div>
+  <h2>引导选择页（内核 GOP 直画）</h2>
+  <p>VARIX 画的第一个界面。约束：仅纯色矩形 + 位图字体（16×16 中文子集），无阴影无半透明滥用，与 Variable 色板同源（黑底 #000410 / 主色 #4f8cff）。四态状态机：countdown → 任意键 → manual → confirmed → executing。</p>
+  <div class="stage">
+    <div class="stage-label">目标 1920×1080，此处 50% 缩放展示</div>
+    <div class="frame"><div class="boot">
+      <div class="logo">V</div>
+      <div class="title">VARIX 双域系统</div>
+      <div class="opts">
+        <div class="opt sel"><span class="k">1</span>进入 Variable<span class="sub">默认 · 5 秒后自动进入</span></div>
+        <div class="opt"><span class="k">2</span>启动纯 Windows<span class="sub">重启进入 Windows 镜像</span></div>
+        <div class="opt"><span class="k">3</span>上次使用的系统<span class="sub">Variable</span></div>
+      </div>
+      <div class="cd">
+        <div class="row"><span>倒计时</span><span>↑↓ 选择 · Enter 确认 · 按任意键暂停</span></div>
+        <div class="bar"><i></i></div>
+      </div>
+      <div class="hint">5 秒无操作自动进入默认项</div>
+    </div></div>
+  </div>
+  <div class="note"><b>规格</b>：选项行高 58px（1080p 下 116px 实际）、间距 14px；选中态=左侧 3px 主色条 + 边框转主色 + 底色 #0d1a33；倒计时条高 4px、线性匀速（不弹簧）；配置损坏时右上角绘「配置已重置」静态角标；首插机器底部多一行迷你教程提示，看过即记（KV）。</div>
+</section>
+
+<!-- ═══════════ ② 占位卡 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 02 · 阶段 6</div>
+  <h2>引擎占位卡 + 冷启动分阶段叙事（专项 E2）</h2>
+  <p>冷启动 20-40s 不允许无限转圈——拆成命名阶段逐段推进，每步一个动词一句话，测试者看一眼能说出"现在卡在哪一步"。</p>
+  <div class="stage">
+    <div class="stage-label">占位卡居中于桌面 · 320×auto · spring 300ms 弹入</div>
+    <div class="frame"><div class="ph-wrap">
+      <div class="ph-card">
+        <div class="ph-ico">🎮</div>
+        <h4>正在准备软件</h4>
+        <div class="app">Steam · 经隐形 Windows 引擎启动</div>
+        <div class="ph-steps">
+          <div class="ph-step done"><span class="dot">✓</span>挂载 Windows 镜像</div>
+          <div class="ph-step done"><span class="dot">✓</span>启动引擎</div>
+          <div class="ph-step doing"><span class="dot">•</span>等待引擎就绪…</div>
+          <div class="ph-step"><span class="dot">4</span>打开 Steam</div>
+        </div>
+        <div class="ph-pbar"><i></i></div>
+        <div class="ph-meta"><span>预计还需 12 秒</span><a class="link">取消</a></div>
+      </div>
+      <div style="max-width:280px;color:var(--text-low);font-size:13px;line-height:1.9">
+        <b style="color:var(--text-hi)">状态机五态</b><br>
+        closed → 拉起中 → 就绪 → 休眠 →（异常三路）<br><br>
+        异常路径（强拔盘 / VM 崩溃 / 就绪后拔盘）撤卡并给三段式错误卡，<b style="color:var(--text-hi)">零僵尸卡</b>。重复点击不双开（幂等）。
+      </div>
+    </div></div>
+  </div>
+  <div class="note"><b>规格</b>：图标外圈 1.2s 旋转描边表示"进行中"；已完成 ✓ 用 --ok；当前步呼吸闪烁 1.4s；预计时间如实公示（首次拉起显示"首次约 20-40 秒，之后秒级恢复"）。取消在就绪前任意时刻可用，撤卡 200ms spring。</div>
+</section>
+
+<!-- ═══════════ ③ 首次运行向导 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 03 · 专项 A</div>
+  <h2>首次运行向导 · 五步之「能力选择页」（A2）</h2>
+  <p>三通道"一图一说明"：不通技术的用户 30 秒内说出三者区别。推荐项按机型能力探测预选，跳过向导 = 零白名单（默认拒绝不放宽）。</p>
+  <div class="stage">
+    <div class="stage-label">960×560 全屏向导 · 步骤 2/5</div>
+    <div class="frame"><div class="wiz">
+      <div class="wiz-head">
+        <div class="wiz-dots"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+        <h3>你的软件要怎么跑？</h3>
+        <p>三种方式可以随时在「设置 → 软件通道」里改，先选一个顺手的开始。</p>
+      </div>
+      <div class="wiz-body">
+        <div class="chan t-wine rec">
+          <div class="ill">📄 <b>＋</b> 🧮 <b>＋</b> 🖌<span>Windows 完全不开机</span></div>
+          <span class="tag">WINE 兼容层</span>
+          <h5>直接运行，最快</h5>
+          <p>办公与工具类软件直接在 Variable 里打开，不启动 Windows。隔离最彻底，速度最快。</p>
+        </div>
+        <div class="chan t-engine">
+          <div class="ill">🪟 <b>→</b> 🖼<span>后台藏一个 Windows 帮忙</span></div>
+          <span class="tag">隐形引擎</span>
+          <h5>兼容最好，稍慢</h5>
+          <p>后台悄悄启动一个 Windows 只帮你跑这个软件，画面实时传回。第一次等 20-40 秒。</p>
+        </div>
+        <div class="chan t-win">
+          <div class="ill">🔄 <b>⏻</b><span>重启进入真 Windows</span></div>
+          <span class="tag">纯 WINDOWS</span>
+          <h5>性能拉满，重启</h5>
+          <p>游戏和带反作弊的软件走这里：重启一次进入完整 Windows，和平时一模一样。</p>
+        </div>
+      </div>
+      <div class="wiz-foot"><span>随时可按 Esc 跳过，稍后在设置里配置</span><span><button class="btn">上一步</button>&nbsp;<button class="btn primary">下一步</button></span></div>
+    </div></div>
+  </div>
+  <div class="note"><b>五步结构</b>：① 欢迎 → <b>② 能力选择（本页）</b> → ③ 白名单初始配置（单页 ≤3 次点击，每项一句"为什么推荐"）→ ④ 首个软件时刻（成功后庆祝动效）→ ⑤ 完成。断电重进从断点续走；庆祝动效 ≤1.5s（下图）。</div>
+  <div class="stage">
+    <div class="stage-label">A4 首个软件时刻 · 庆祝动效帧</div>
+    <div class="frame"><div class="celebrate">
+      <div class="big">🎉</div>
+      <h5>第一个软件跑起来了</h5>
+      <p>你已学会基本操作 · 用时 3 分 42 秒</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ═══════════ ④ 设置页四组 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 04 · 阶段 7</div>
+  <h2>设置页新增四组（沿用 .w11-* 外壳契约）</h2>
+  <p>窗口 1080×720 / 导航 300px / 行高 68px 既有规格不变，仅新增 tab 内容。全部走 settings://changed 总线，改动双向同步 &lt;1s。下图以「引导行为」组为例。</p>
+  <div class="stage">
+    <div class="stage-label">设置窗 1080×720 · 85% 缩放</div>
+    <div class="frame"><div class="set">
+      <div class="set-nav">
+        <div class="crumb">设置</div>
+        <a href="#">🪟 系统</a>
+        <a href="#" class="on">⏻ 引导行为</a>
+        <a href="#">📦 软件通道</a>
+        <a href="#">🛡 白名单与审计</a>
+        <a href="#">⚡ 性能档位</a>
+        <a href="#">🔧 引擎</a>
+      </div>
+      <div class="set-main">
+        <h3>引导行为</h3>
+        <div class="desc">控制开机第一个画面的行为。改动立即生效，写入共享分区供两系统读取。</div>
+        <div class="row-item">
+          <div class="l"><b>默认启动项</b><span>倒计时结束后自动进入的系统</span></div>
+          <div class="seg"><button>Variable</button><button>纯 Windows</button><button class="on">上次使用</button></div>
+        </div>
+        <div class="row-item">
+          <div class="l"><b>倒计时</b><span>期间按任意键暂停并进入手动态</span></div>
+          <select class="select"><option>5 秒（默认）</option><option>3 秒</option><option>10 秒</option><option>不限时</option></select>
+        </div>
+        <div class="row-item">
+          <div class="l"><b>显示引导菜单</b><span>关闭后静默进入默认项，按住 F8 仍可呼出</span></div>
+          <button class="sw2 on" aria-label="显示引导菜单"></button>
+        </div>
+        <div class="row-item">
+          <div class="l"><b>记忆上次使用的系统</b><span>每次进入时写回引导配置</span></div>
+          <button class="sw2 on" aria-label="记忆上次系统"></button>
+        </div>
+      </div>
+    </div></div>
+  </div>
+  <div class="spec"><table>
+    <tr><th>组</th><th>核心控件</th><th>联动</th></tr>
+    <tr><td>软件通道</td><td>每 app 一行：图标+名称+下拉（Wine / 引擎 / 仅 Windows）+ 默认建议角标</td><td>反作弊游戏自动锁"仅 Windows"并解释原因</td></tr>
+    <tr><td>白名单与审计</td><td>目录规则列表（增删改查）+ 审计时间线（虚拟列表，万条流畅）+ JSON/CSV 导出</td><td>删除规则 <1s 内核侧生效，变更自身也留痕</td></tr>
+    <tr><td>性能档位</td><td>三段选择：省电 / 均衡 / 性能</td><td>一处切换，ramcache 尺寸 + CPU 配额 + 引擎画质三处热联动</td></tr>
+    <tr><td>引擎</td><td>开关（默认关）/ 自动休眠阈值 / 画质三档 / 资源配额</td><td>关引擎时在跑应用走「提示→保存→关闭」优雅路径</td></tr>
+  </table></div>
+</section>
+
+<!-- ═══════════ ⑤ 徽标/toast/错误卡 ═══════════ -->
+<section class="sec">
+  <div class="sec-no">SECTION 05 · 专项 G / D / C</div>
+  <h2>信任与反馈三件套</h2>
+  <div class="stage">
+    <div class="stage-label">左：G1 通道徽标（标题栏 ≤16px 高） · 右：D2 toast 四级递进</div>
+    <div class="frame" style="display:flex;gap:48px;padding:40px;justify-content:center;flex-wrap:wrap;background:var(--bg-deep)">
+      <div>
+        <div class="winmock">
+          <div class="tb"><span>记事本</span><span class="chbadge wine">WINE</span><span class="dots"><i style="background:#f5b345"></i><i style="background:#3ecf8e"></i><i style="background:#f16a5d"></i></span></div>
+          <div class="body">窗口内容区</div>
+        </div>
+        <div class="hover-tip">原生 → <span class="chbadge native">VARIABLE</span>&nbsp;&nbsp;引擎 → <span class="chbadge engine">ENGINE</span>（hover 显示一行解释）</div>
+      </div>
+      <div class="toasts">
+        <div class="toast t4-0"><div class="ic" style="background:var(--bg-panel)">·</div><div><b>已静默记录</b><p>外置盘已挂载（白名单外，未读取）</p></div><span class="lv">L0 静默</span></div>
+        <div class="toast t4-1"><div class="ic">i</div><div><b>ramcache 预热中 62%</b><p>完成后不再提示</p></div><span class="lv">L1 角标</span></div>
+        <div class="toast t4-2"><div class="ic">!</div><div><b>内存水位偏高</b><p>已裁剪缓存，无需操作</p></div><span class="lv">L2 条</span></div>
+        <div class="toast t4-3"><div class="ic">✕</div><div><b>引擎意外退出</b><p>软件已保存草稿 · 点击查看恢复选项</p></div><span class="lv">L3 toast</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-label">C1 三段式错误卡（发生了什么 / 可能原因 / 现在能做什么）· 错误码折叠给排障者</div>
+    <div class="frame" style="display:flex;justify-content:center;padding:36px;background:var(--bg-deep)">
+      <div class="errcard">
+        <div class="head"><span class="ic">✕</span>软件没能启动</div>
+        <div class="why">这个软件需要的东西「隐形引擎」目前没开。你的数据没有丢失。</div>
+        <div class="acts"><button class="btn primary">打开引擎并重试</button><button class="btn">换用 Wine 通道</button><button class="btn">稍后再说</button></div>
+        <details><summary>技术详情（供排障）</summary><code>ENGINE_NOT_READY · orchestration:state=closed · session=2026-09-16T23:04</code></details>
+      </div>
+    </div>
+  </div>
+  <div class="note"><b>体验红线落地</b>：零裸错误码（错误码只出现在折叠区）· 零无限转圈（所有长任务有阶段文案+预计剩余）· 零静默失败（每个错误至少一个"现在能做什么"按钮）。toast 同类 5 秒内合并计数，顶边不遮挡任务栏热区。</div>
+</section>
+
+<div class="foot">
+  <span>VARIX 双域系统 · 新增 UI 设计稿 v1.0 · UI Designer</span>
+  <span>交付状态：可开发 · 所有数值为令牌引用或精确像素 · 验收对照《总案》六维视觉维 + png_probe 度量</span>
+</div>
+</div>
+</body>
+</html>

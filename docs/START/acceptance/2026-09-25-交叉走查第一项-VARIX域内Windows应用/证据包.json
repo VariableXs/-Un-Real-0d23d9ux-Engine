@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-25",
+  "item": "交叉走查第一项 · VARIX 域内 Windows 应用（notepad-classic）",
+  "source": [
+    "fixtures"
+  ],
+  "screenshots": [],
+  "judgements": {
+    "B-1001": {
+      "verdict": "RED",
+      "evidence": []
+    },
+    "B-1002": {
+      "verdict": "RED",
+      "evidence": []
+    },
+    "B-1003": {
+      "verdict": "RED",
+      "evidence": []
+    },
+    "rating": {
+      "verdict": "RED",
+      "evidence": []
+    },
+    "window": {
+      "verdict": "RED",
+      "evidence": []
+    },
+    "teardown": {
+      "verdict": "RED",
+      "evidence": []
+    }
+  },
+  "summary": "GREEN 0/6；RED 项：['B-1001', 'B-1002', 'B-1003', 'rating', 'window', 'teardown']"
+}

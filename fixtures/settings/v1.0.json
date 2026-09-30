@@ -1,0 +1,23 @@
+{
+  "//": "AI-20 M-81 设置漂移测试基线：v1.0 时代匿名化快照（早期 OOBE 后的典型键集；只含当时存在的键，全部字符串值）",
+  "language": "zh",
+  "theme": "deep-space",
+  "perfMode": "high",
+  "showStatusBar": "1",
+  "editorWidthPct": "64",
+  "editorAlign": "center",
+  "fontFamily": "\"Segoe UI\", \"Microsoft YaHei UI\", system-ui, sans-serif",
+  "fontSize": "16",
+  "lineHeight": "1.75",
+  "autosaveDelayMs": "1200",
+  "uiZoom": "1",
+  "nightLight": "0",
+  "reduceMotion": "0",
+  "safeMode": "0",
+  "soundVolume": "0.5",
+  "soundMuted": "0",
+  "bgTier": "0",
+  "wizardDone": "1",
+  "customBg": "{\"type\":\"nebula\",\"color\":\"#0a1226\",\"blur\":6,\"brightness\":0.9}",
+  "mindDefaults": "{\"gridEnabled\":true,\"snapEnabled\":true,\"wasdSpeed\":520}"
+}

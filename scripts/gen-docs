@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# AURORA-1000 步骤 0020 · 文档即代码脚本
+# 扫描 kernel 源码，重新生成 docs/CHECKSET.md 的域登记表骨架。
+# 人工列（结果/时间）重置为「待填」——正式结果以 CI 与 ktest 日志为准。
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+TARGET="docs/CHECKSET.md"
+
+{
+    echo "# CHECKSET 登记表（步骤 0019，由 scripts/gen-docs 生成）"
+    echo
+    echo "| 域 | 源 | 命令 | 期望 | 结果(PASS/FAIL) | 时间 |"
+    echo "|---|---|---|---|---|---|"
+    grep -rh "pub fn run_[a-z0-9_]*_checks() -> CheckSet" kernel/varix/src --include='*.rs' \
+        | sed -E 's|pub fn run_([a-z0-9_]+)_checks\(\) -> CheckSet.*|\1|' | sort -u \
+        | grep -E '^[a-z0-9_]+$' \
+        | while read -r dom; do
+            printf '| %s | kernel/varix/src | `cargo ktest %s::` | 全 PASS | 待填 | 待填 |\n' "$dom" "$dom"
+        done
+} > "$TARGET"
+
+echo "OK: 重新生成 $TARGET"

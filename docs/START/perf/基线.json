@@ -1,0 +1,25 @@
+{
+  "milestone": "M1 (W1 显示与图形地基, 步骤 0249~0272)",
+  "date": "2026-09-11",
+  "toolchain": "rustc 1.97.1 (kernel/rust-toolchain.toml 冻结)",
+  "budgets": {
+    "compose_frame_micros": 16666,
+    "compose_frame_target": "60fps 软渲染",
+    "key_to_event_micros": 1000,
+    "event_pump_throughput_eps": 10000,
+    "audio_end_to_end_ms": 20,
+    "window_create_ms": 10,
+    "taskbar_interact_ms": 8,
+    "wallpaper_switch_ms": 100
+  },
+  "measured_host_suite": {
+    "command": "cargo ktest",
+    "result": "all passed",
+    "integration_entry": "aurora::integration::run_w1_integration_checks (W1-I01..W1-I07)"
+  },
+  "notes": [
+    "合成预算以 ComposeProfile.last_micros 判定（perf_budget_ok），主机侧用 16000µs 采样帧验证。",
+    "输入延迟以 input::latency_ok(800, 1000) 验证 < 1ms。",
+    "QEMU/真机侧实测（步骤 0253/0256）待环境具备后补充。"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "https://variable-os.dev/portable-config/1.0",
+  "updated": "2026-09-07T00:00:00+00:00",
+  "hotkeys": [
+    { "id": "show-desktop", "keys": "Win+D", "action": "toggle-desktop" },
+    { "id": "task-switch", "keys": "Alt+Tab", "action": "task-switch" },
+    { "id": "snap-left", "keys": "Win+Left", "action": "snap-left" },
+    { "id": "open-settings", "keys": "Win+,", "action": "open-portable-settings" }
+  ]
+}

@@ -1,0 +1,57 @@
+limine: Loading executable `boot():/kernel/varix`...
+limine: Loading module `boot():/boot-select.json`...
+[ INFO] cmdline: desktop=1
+[ INFO] boot-select: entry=varix
+[ INFO] cpu: AMD fam15 mod107 step1 @2500MHz
+[ INFO] acpi: rev 0 tables 4 cpus 1 ioapics 1
+[ INFO] smbios: QEMU Standard PC (i440FX + PIIX, 1996) / SeaBIOS rel-1.17.0-0-gb52ca86e094d-prebuilt.qemu.org
+[ INFO] memmap: 17 entries, 519565312 usable
+[ INFO] kaslr: seeded=true pool=0x1e2c1eb7e7fa74a0
+[ INFO] gdt: 7 entries loaded
+[ INFO] tss: TR=0x28
+[ INFO] idt-stubs: mapping Tightened
+[ INFO] idt-stubs: 256 x 16B at 0xffffffff8043a000
+[ INFO] idt: 256/256 vectors live
+[ WARN] msr: refused access to 0x4ff (not allow-listed)
+[ INFO] msr: allow-list armed (probe 0x4ff refused=true)
+[ INFO] pic: all 16 lines masked, delivery handed to APIC
+[ INFO] lapic: mode=Mmio id=0 base=0xfee00000 lvt=5
+[ INFO] ioapic: id=0 gsi_base=0 pins=24
+[ INFO] apic: mode=Mmio ioapics=1 gsis=24
+[ INFO] tsc: 2500000000 Hz via Measured (invariant=true)
+[ INFO] clock: source=tsc tick=1000Hz
+[ INFO] smp: 1 core(s) online (bsp apic 0)
+[ INFO] sync: spin-locks ready, pi-mutex ready, nesting<= 3, irq-off budget 20000 ns
+[ INFO] isa: none xcr0=0x2 avx_pending=true
+[ INFO] irq self-test: 9/9 pass
+[ INFO] cpu: cores=1 vectors=256 apic=Mmio ioapic=1 gsi=24 clk=tsc self-test 9/9
+[ INFO] mem::boot: 126847 usable frames, 2 reserved ranges
+[ INFO] pmm: 126591 frames managed, 126591 free (494 MiB), bitmap+buddy armed
+[ INFO] heap: slab 256 KiB, 64 blocks free, 9 classes, leak-tracker armed (waste=0B)
+[ INFO] memory self-test: 10/10 pass
+[ INFO] mem: 126591 frames (494 MiB) 126591 free, watermarks 8388608/16777216/33554432, self-test 10/10
+[ INFO] pf: MapZero resolved @ 0xffffffff80a00000
+[ INFO] pf: GrowStack resolved @ 0xffffffff80a10000
+[ INFO] pf: COW resolved @ 0xffffffff80a20000
+[ INFO] pf: COW resolved @ 0xffffffff80a21000
+[ INFO] pf: selftest 4/4 (MapZero/GrowStack/COW/guard-host)
+[ INFO] scheduler self-test: 9/9 pass
+[ INFO] sched: 2 threads, policy=rr energy=balanced latency budget 2000us, self-test 9/9
+[ INFO] process self-test: 11/11 pass
+[ INFO] proc: 1 process(es), init=true self-test 11/11
+[ INFO] storage self-test: 10/10 pass
+[ INFO] storage: 1 devices, 4 mounts (2 writable), self-test 10/10
+[ INFO] input self-test: 9/9 pass
+[ INFO] input: path=ps2 plane=host combos=3 conflicts=0 self-test 9/9
+[ INFO] display self-test: 10/10 pass
+[ INFO] display: gpu=soft path=minimal displays=1 fps=0 self-test 10/10
+[ INFO] network self-test: 15/15 pass
+[ INFO] net: 1 nic(s) 1 up, dhcp=init self-test 15/15
+[ INFO] security self-test: 15/15 pass
+[ INFO] security: nx=true telemetry=off keys=0 audit=0 self-test 15/15
+[ INFO] integrity: unverified image=7731296B sha256=df7fad8c
+[ INFO] bootopt: default=varix timeout=5s
+[ INFO] self-test: 13/13 pass
+[ INFO] interrupts enabled — system live
+[ INFO] aurora: desktop demo painted
+[ INFO] boot complete — halting

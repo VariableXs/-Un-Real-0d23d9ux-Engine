@@ -1,0 +1,33 @@
+{
+  "volume": "## 增补卷 · AI-49 · 四 · J4 域深化增补卷第二段（B16–B40 · 500 条深化 · 深化轮 800 条满账收官）",
+  "books": [
+    "deepen/J4-B16.md",
+    "deepen/J4-B17.md",
+    "deepen/J4-B18.md",
+    "deepen/J4-B19.md",
+    "deepen/J4-B20.md",
+    "deepen/J4-B21.md",
+    "deepen/J4-B22.md",
+    "deepen/J4-B23.md",
+    "deepen/J4-B24.md",
+    "deepen/J4-B25.md",
+    "deepen/J4-B26.md",
+    "deepen/J4-B27.md",
+    "deepen/J4-B28.md",
+    "deepen/J4-B29.md",
+    "deepen/J4-B30.md",
+    "deepen/J4-B31.md",
+    "deepen/J4-B32.md",
+    "deepen/J4-B33.md",
+    "deepen/J4-B34.md",
+    "deepen/J4-B35.md",
+    "deepen/J4-B36.md",
+    "deepen/J4-B37.md",
+    "deepen/J4-B38.md",
+    "deepen/J4-B39.md",
+    "deepen/J4-B40.md"
+  ],
+  "entries": 500,
+  "rows": 150000,
+  "min_body": 1495
+}

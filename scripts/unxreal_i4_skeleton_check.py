@@ -10,10 +10,6 @@ MAIN = os.path.join(ROOT, "docs", "Varix", "CoRun Varix STAR II · Unxreal", "Co
 
 def main():
     t = open(MAIN, encoding="utf-8").read()
-    # 详述册整合卷（骨架账之后的追加附录）不计入骨架八查——骨架账与详述账分立校验
-    cut = t.find("增补卷 · AI-44 · 波17 I4 域 800 项新功能详述册")
-    if cut != -1:
-        t = t[:cut]
     fails = []
     # 查1：800 条、ID 连续唯一
     ids = sorted(set(int(x) for x in re.findall(r"### UNX-F(34\d{3}|35\d{3}) ·", t) if 34401 <= int(x) <= 35200))

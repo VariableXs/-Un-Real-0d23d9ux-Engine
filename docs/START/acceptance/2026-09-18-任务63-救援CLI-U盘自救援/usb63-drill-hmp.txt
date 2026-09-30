@@ -1,0 +1,10 @@
+i[K[Din[K[D[Dinf[K[D[D[Dinfo[K[D[D[D[Dinfo [K[D[D[D[D[Dinfo b[K[D[D[D[D[D[Dinfo bl[K[D[D[D[D[D[D[Dinfo blo[K[D[D[D[D[D[D[D[Dinfo bloc[K[D[D[D[D[D[D[D[D[Dinfo block[K
+ide2-cd0 (#block188): d:\2\14\-Un-Real-0d23d9ux-Engine-main\varix-qemu.iso (raw, read-only)
+    Attached to:      /machine/unattached/device[15]
+    Removable device: not locked, tray closed
+    Cache mode:       writeback
+
+nv1 (#block337): \\.\E: (raw, read-only)
+    Attached to:      /machine/peripheral-anon/device[0]
+    Cache mode:       writeback
+(qemu) 

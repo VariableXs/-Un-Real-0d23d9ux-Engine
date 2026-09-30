@@ -1,0 +1,1375 @@
+{
+ "generated": "2026-09-24T20:18:12",
+ "overrides": {
+  "_attic/usb-unplug-drill.py": {
+   "class": "danger",
+   "note": "物理拔盘演练，需真机在场，禁入 full 队列"
+  },
+  "portable/engine/hardening/run_all.py": {
+   "class": "selftest",
+   "note": "WP-103 四板斧自检（selftest 子命令）"
+  }
+ },
+ "scripts": {
+  "_attic/accept-bandcheck.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/accept-deploy-plan.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/accept-drives.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/accept-ioctl-diag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/accept-usb-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai1-deploy-smoke.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai1-lastboot-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai1-s0-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-basemother-mock.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-death-forensics.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-debug-msapi2.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-debug-mspage.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-deploy-progress.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-disk-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-disk1-partitions.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-fetch-hasleo.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-fetch-w11-iso.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-fido-geturl.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-hasleo-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-lock-diag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-parse-w11-iso.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-ps1-syntax-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-s111-perf.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-s31-mock-drill.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-steam-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-verify-iso.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-vol-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-vol-inventory.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-finalize-launch.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-finalize-launch3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-launch.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-launch2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-marker-fix.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-monitor3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-monitor4.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-postverify.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-preflight.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-w1-write-diag.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai2-x-readonly-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-add-leak-test.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-fix-ushell-typos.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-fix-winsurf-tests.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-patch-s207-alive.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-patch-s207-cmd.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-patch-s207-filesopens.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-png-diff.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ai4-precise-stage.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-mem-note.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-mem-note2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-mem.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-mem2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-memory.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/append-memory2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-addvarix-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-cleanup-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-enum-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-fix2-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-fix2-parse-check.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-fix3-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-fix4-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bcd-parse-check.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bios-load-sweep.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/bl-fix-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/boot-diag1.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/boot-diag2-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/boot-diag3-0xc000007b.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/check_tasks_56_59.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/cleanup-final.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/dbg_run.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/deploy-usb.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/diag-readonly-boot.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/diag-readonly-esp-content.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/diag-readonly-esp-direct.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/diag-readonly-usb-layout.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/disk-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/display-probe-drive.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/esp-deploy-switch.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/esp-dump-ro.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/esp-hash-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/esp-win-boot-provision.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/esp-win-boot-verify.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fetch-stable-qemu.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix65.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix65b.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix65c.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix70.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix_backslash.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix_probe_stack.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fix_quota_tests.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/fs23-powercut-loop.sh": {
+   "class": "qemu",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "_attic/gpt-readonly-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/hiberboot-off.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/hmp_cmd.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/hmp_probe16.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/hmp_xp.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/hmp_xp_45.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/input-probe-drive.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/kern-update-usb-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/kv-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/list-disks.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/list-guids.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/list-parts.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/list-volumes.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/milestone-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/mkexfat.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/model-query.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/mvol-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p-wave1.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p27-28-shell-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p37-patch.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p37-tests.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p41-p48-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p41-ring3.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p41-winapi.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p42-45-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p47-engine-agent.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p47-qemu-validate.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p58-pull-chain-drill.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/p60-machine-matrix.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/panic-forensics.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch-forensic-dump.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch-lazy-erdp.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch-scan-rerun.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch-xhci-bssdma-v2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch-xhci-bssdma-v3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_fix3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_injection_ps1.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_nvme.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_nvme2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_nvme3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_nvme4.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_nvme5.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_quota.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_shm_stack.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_shmsrv.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/patch_task20.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/plan-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/post-verify.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/probe-deep.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/probe-physdrive.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/probe-status.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ps1-syntax-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/pt-walk-forensics.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-bootcfg-walk.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-gdb-probe.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-kbd-smoke.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-mon-probe.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-pte-probe.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-realprofile-smoke.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-s207-suite-walkthrough.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-shell-walkthrough.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-step-probe.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-uefi-disk-test.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-uefi-iso-test.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-ushell-visual-walkthrough.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-winsurf-walkthrough.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-x2apic-test.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-xapic-control.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/qemu-xhci-walkthrough.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/quota-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/readonly-disk0-parts.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/readonly-health-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/readonly-machine-profile.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/repro-1080p-winprobe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/rm-letter-L-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/rm-letter-L.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/ro_health_check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-deploy-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-deploy-now.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-deploy.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-esp-conf-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-injection-selftest.py": {
+   "class": "selftest",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-nvram-watch.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run-repro.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/run_ps.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/shmvfs-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/splat-exp.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/stack-walk.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t1-env-survey.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t11-variable-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t6-extract-frames.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t6-find-wallpaper.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t7-boot-diagnosis.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t7-t8-qemu-campaign.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/t8-realboot-log.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/uac-diag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/uefi-vhd-build-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/unplug-drill-p10.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/update-acceptance.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/update-acceptance2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/update-acceptance3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/update-acceptance4.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/update_memory_5659.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/usb-observe-run.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/usb-unplug-drill.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vault-demo.py": {
+   "class": "demo",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/verify-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/verify-letter-L.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/verify-storage-gate.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/verify2-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/verify3-elevated.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vhd-mount-diag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vol-check.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-audit-probe.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-autostart-diag.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-bcdraw.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag-0xed-v4.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag-0xed-v5.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag-bootloop.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag-bootloop2.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag-bootloop3.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag2-run.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-diag3-run.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-elev-diag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-elev-test.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-enum-bootvars.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-exp-boot2001.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-exp-run.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-0xed-v2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-0xed-v3.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-0xed-v6.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-0xed.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-boot2001.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-fix-usbboot.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-forensic.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-full-audit-run.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-full-audit2.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-gpt-diff.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-gpt-repair.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-hiberfix.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-ldmdiag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-mountcheck.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-postlogin.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-profdir.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-runkeys.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-sacdiag.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-shared-cfg.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-stability.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-stability2.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-stability3.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-stability4.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-usb-fw-entry-v2.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-usb-fw-entry.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-usbwin-autostart.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-vcruntime.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-verify-deploy.py": {
+   "class": "danger",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-verify-limine.py": {
+   "class": "probe",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-w2trace.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-wincrash-run.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/vx-wincrash.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/xp-forensic.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "_attic/xp2-forensic.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/acceptance-gate.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/audit-status.sh": {
+   "class": "probe",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/bench.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/bootstrap.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/chaos-drill.sh": {
+   "class": "qemu",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/compare-golden.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/config-consistency.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/domain-gate.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/double-confirm.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/gen-numbers.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/make-initfs.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/make-iso-qemu.py": {
+   "class": "qemu",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/make-iso.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/panic-drill.sh": {
+   "class": "qemu",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/perf-gate-usb.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/run-qemu.sh": {
+   "class": "qemu",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/run-tests.py": {
+   "class": "oneshot",
+   "runtime": "python",
+   "scanned": true
+  },
+  "scripts/sanitizer.sh": {
+   "class": "oneshot",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/supply-chain-check.sh": {
+   "class": "probe",
+   "runtime": "bash",
+   "scanned": true
+  },
+  "scripts/verify.sh": {
+   "class": "probe",
+   "runtime": "bash",
+   "scanned": true
+  }
+ }
+}

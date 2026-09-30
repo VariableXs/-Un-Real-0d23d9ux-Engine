@@ -1,0 +1,12 @@
+[package]
+name = "ca-app"
+version = "0.1.0"
+edition = "2021"
+description = "Code Analysis 壳A 骨架：路径参数入口（W1 交付 core；壳A 完整窗口体系属后续波次）"
+
+[[bin]]
+name = "CodeAnalysis"
+path = "src/main.rs"
+
+[dependencies]
+ca-core = { path = "../core" }

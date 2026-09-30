@@ -1,0 +1,76 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/check-*.log
+build-log.txt
+npm-*.log
+*.log
+*.local
+.DS_Store
+
+# tooling artifacts
+.mimosa/
+src-tauri/.mimosa/
+archive-*/
+
+# editor/tool artifacts
+docs/Typora_Hook_Log.txt
+launcher/target/
+kernel/target/
+kernel/userspace/*/target/
+user/*/target/
+
+# QEMU / 引导验收产物
+varix.iso
+qemu-serial*.log
+qscreen*.ppm
+qscreen*.png
+qfinal.ppm
+qfinal.png
+tools/limine/
+build/
+
+# QEMU 便携安装（本地真机验收用，不入库）
+qemu/
+
+# 调试截图不入库（归档于 archive/tools-screenshots/）
+tools/*.png
+tools/*.jpg
+code-analysis/target/
+
+# Python 字节码缓存（非功能性产物，不入库）
+__pycache__/
+*.pyc
+
+# 智能体工作区元数据（本地记忆/日志，非项目功能产物，不入库）
+.workbuddy/
+
+# 构建产物：便携目录（build-windows.bat portable 生成，不入库）
+dist-portable/
+bs-mon.sock
+
+varix.img
+varix.iso
+varix-qemu.iso
+*.ppm
+bs-*.png
+qs-*.log
+qemu-bs.*
+bs-mon.sock
+
+# 测试盘镜像与调试残留（均可由脚本重建，不入库）
+nvme0.img
+kernel/nvme-test.img
+kernel/shared-exfat.img
+_attic/*.img
+
+# 需求5 整理抽屉：过程产物归 _attic/tidy（只移动未删除），体积大且不具功能，不入库
+_attic/tidy/
+_attic/varix-uefi.img
+
+# AI 分队隔离舱（#[path] 直挂真实文件的独立验证舱）构建产物不入库
+_attic/**/isolation/target/
+
+# rust build artifacts
+**/target/
+_attic/xp-mon.sock

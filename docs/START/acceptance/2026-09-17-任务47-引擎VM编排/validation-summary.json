@@ -1,0 +1,60 @@
+{
+  "task": 47,
+  "passed": 10,
+  "total": 10,
+  "checks": [
+    {
+      "name": "\u72b6\u6001\u673a: \u975e\u6cd5\u8f6c\u79fb\u88ab\u663e\u5f0f\u62d2\u7edd",
+      "ok": true,
+      "detail": "\u975e\u6cd5\u72b6\u6001\u8f6c\u79fb: Launching -> Hibernated \u88ab\u62d2\u7edd"
+    },
+    {
+      "name": "\u72b6\u6001\u673a: \u5408\u6cd5\u4e94\u6001\u94fe\u5168\u901a\u8fc7",
+      "ok": true,
+      "detail": "\u672b\u6001=Ready"
+    },
+    {
+      "name": "\u5dee\u5206\u76d8\u6302\u8f7d: base+overlay \u5efa\u76d8",
+      "ok": true,
+      "detail": "Formatting 'D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\_attic\\p47-diff.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=536870912 backing_file=D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\_attic\\p47-base.img backing_fmt=raw lazy_refcounts=off refcount_bits=16"
+    },
+    {
+      "name": "VM \u62c9\u8d77: \u5f15\u5bfc\u81f3 boot complete",
+      "ok": true,
+      "detail": "94.5s"
+    },
+    {
+      "name": "\u5c31\u7eea\u63a2\u9488: 47631 \u5fc3\u8df3 READY",
+      "ok": true,
+      "detail": "\u6001=Ready"
+    },
+    {
+      "name": "\u62c9\u8d77\u5e42\u7b49: \u91cd\u590d\u89e6\u53d1\u4e0d\u53cc\u5f00",
+      "ok": true,
+      "detail": "qemu pid=39240"
+    },
+    {
+      "name": "\u4fdd\u6d3b: \u5c31\u7eea\u6001\u5fc3\u8df3\u8f6e\u8be2\u7a33\u5b9a",
+      "ok": true,
+      "detail": "\u8fde\u7eed3\u6b21\u63a2\u9488"
+    },
+    {
+      "name": "\u5fc3\u8df3\u8d85\u65f6+\u91cd\u542f: \u5d29\u574f->\u8d85\u65f6->\u91cd\u542f->Ready",
+      "ok": true,
+      "detail": "dead=True timeout=True recovered=True"
+    },
+    {
+      "name": "\u4f11\u7720/\u6062\u590d x10 \u5185\u5bb9\u4e00\u81f4",
+      "ok": true,
+      "detail": "\u5168\u90e810\u8f6e\u4e00\u81f4, \u672bseq=9"
+    },
+    {
+      "name": "\u51b7\u542f\u52a8\u8017\u65f6\u57fa\u7ebf(QEMU\u6a21\u5f0f)",
+      "ok": true,
+      "detail": "213.8s\uff08\u4e3b\u673a+ISO\u5f15\u5bfc\uff1b\u975e\u771f\u5b9eWindows\u5f15\u64ce\uff09"
+    }
+  ],
+  "cold_start_qemu_s": 213.8,
+  "hyperv_target_s": "20-40s\uff08\u58f0\u660e\uff0c\u975e\u672c\u73af\u5883\u5b9e\u6d4b\uff09",
+  "monitor_port": 14561
+}

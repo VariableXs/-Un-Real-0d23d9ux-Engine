@@ -1,0 +1,26 @@
+[package]
+name = "codeanalysis"
+version = "0.1.0"
+edition = "2021"
+description = "AI-09 · 壳C VARIX 用户态骨架（C13~C15）：appfw 注册清单 + VFS 读写桥 + 键位事件循环"
+license = "MIT"
+
+# 位于 kernel/ 工作区目录树内，自带空 workspace 防止被误认为成员。
+[workspace]
+
+[lib]
+name = "codeanalysis"
+path = "src/lib.rs"
+
+[[bin]]
+name = "codeanalysis-entry"
+path = "src/bin/entry.rs"
+
+[dependencies]
+varix-std = { path = "../varix-std" }
+
+# entry.elf 以 x86_64-unknown-none 构建时需要 panic=abort（无 unwinder）。
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

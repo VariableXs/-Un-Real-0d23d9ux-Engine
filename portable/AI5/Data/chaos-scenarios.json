@@ -1,0 +1,209 @@
+{
+  "version": "1.0.0",
+  "generatedBy": "AI-5 交付核",
+  "generatedAt": "2026-09-07",
+  "source": "主计划 11.2 混沌工程 + 扩充 15 防崩分级 + 扩充 21 十种必测场景",
+  "legend": {
+    "auto": "脚本可自动执行并留证据（Chaos-Inject.ps1 -Action Run -Scenario <id>）",
+    "manual": "必须人工/物理操作，脚本只产出步骤卡与证据目录，绝不代为执行",
+    "watchdogLevels": { "L1": "应用崩：仅关该 Job，弹「已恢复」", "L2": "Worker 崩：Core 3s 重启", "L3": "Shell 崩：Core 守护 5s 重启", "L4": "系统崩：差分盘丢弃，回滚上一 Checkpoint" }
+  },
+  "evidenceRoot": "Data/Tests",
+  "scenarios": [
+    {
+      "id": "S01",
+      "name": "大软件安装中拔盘",
+      "planRef": "21.1-1",
+      "level": "L4",
+      "automatable": "manual",
+      "dangerous": false,
+      "inject": "在 Blender 安装包写入 Data\\Apps 的过程中物理拔出 U 盘（或 DiskPart offline 该磁盘）",
+      "steps": [
+        "记录当前 User.vhdx 的 SHA256 与大小",
+        "启动一个 >2GB 的安装写入（Blender / VS 均可），等待写入进行中",
+        "拔盘或在宿主执行 DiskPart: select disk N / offline",
+        "重新插盘，检查 Base.vhdx 是否完好、User.vhdx 差分是否被丢弃"
+      ],
+      "expect": "母盘 Base.vhdx 哈希不变；未完成的子盘写入被丢弃；系统提示重装而不是 corrupt",
+      "evidence": ["Data/Tests/S01-before.json", "Data/Tests/S01-after.json", "Data/Tests/S01.mp4"]
+    },
+    {
+      "id": "S02",
+      "name": "宿主蓝屏后子盘未保存",
+      "planRef": "21.1-2",
+      "level": "L4",
+      "automatable": "manual",
+      "dangerous": true,
+      "inject": "宿主侧触发蓝屏（仅允许在专用测试机上用 NotMyFault 一类工具，禁止在生产机执行）",
+      "steps": [
+        "确认虚拟机以「不可变差分」方式挂载，母盘只读",
+        "在测试宿主上触发 BSOD",
+        "重启后启动虚拟机，观察是否自动丢弃脏差分并回滚"
+      ],
+      "expect": "下次启动自动丢弃未保存差分，母盘不 corrupt，无需手工修复",
+      "evidence": ["Data/Tests/S02-vmstart.log", "Data/Tests/S02.mp4"]
+    },
+    {
+      "id": "S03",
+      "name": "虚拟机内删除 C 盘",
+      "planRef": "21.1-3 / 4.1",
+      "level": "L4",
+      "automatable": "manual",
+      "dangerous": true,
+      "inject": "在虚拟机内对 C: 执行删除（只允许在差分虚拟机内，禁止在宿主）",
+      "steps": [
+        "确认 Base.vhdx 以只读/不可变方式挂载",
+        "虚拟机内执行 del C:\\ 或 rmdir /s /q C:\\Users",
+        "关闭虚拟机并选择「丢弃」，再次启动"
+      ],
+      "expect": "宿主零影响；差分丢弃后系统完好还原；宿主 C 盘文件数与哈希不变",
+      "evidence": ["Data/Tests/S03-host-before.json", "Data/Tests/S03-host-after.json"]
+    },
+    {
+      "id": "S04",
+      "name": "宿主中毒穿透验证",
+      "planRef": "21.1-4 / 4.5",
+      "level": "L1",
+      "automatable": "manual",
+      "dangerous": true,
+      "inject": "使用 EICAR 测试文件（合法无害）置于宿主桌面，验证不能穿透到虚拟系统",
+      "steps": [
+        "在宿主放 EICAR 测试文件，确认宿主 Defender 报毒",
+        "在便携系统内扫描 Data 与 C:，确认无该样本",
+        "检查三桥（剪贴板/拖放/共享）是否为关闭状态"
+      ],
+      "expect": "NAT + 三桥全关，样本不出现在便携系统内；Data\\Exchange 是唯一受控通道且强制扫描",
+      "evidence": ["Data/Tests/S04-scan.log"]
+    },
+    {
+      "id": "S05",
+      "name": "U盘空间不足",
+      "planRef": "21.1-5 / 9.3",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "写入临时文件把 Data 分区可用空间压到阈值以下（脚本用完即删）",
+      "steps": [
+        "记录当前可用空间",
+        "创建填充文件把剩余空间压到 <5GB",
+        "运行 Chaos-Inject.ps1 -Action Run -Scenario S05 触发监测",
+        "删除填充文件并执行 Optimize-VHD"
+      ],
+      "expect": "剩余 <5GB 时触发清理向导提示；Optimize-VHD 后回收空间；脚本自动清理填充文件",
+      "evidence": ["Data/Tests/S05-space.json"]
+    },
+    {
+      "id": "S06",
+      "name": "反作弊游戏检测虚拟机",
+      "planRef": "21.1-6 / 11.1",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "检测虚拟机特征（VBox/Hyper-V 驱动、DMI 信息），不启动真实游戏",
+      "steps": [
+        "采集 Win32_ComputerSystem / Win32_PnPEntity 中的虚拟化特征",
+        "对照矩阵中 aMode=warn 的条目（英雄联盟/无畏契约/CS2/PUBG/永劫无间/穿越火线/WeGame）",
+        "输出「应切 B 模式」提示清单"
+      ],
+      "expect": "识别到虚拟化特征时给出明确 B 模式提示；矩阵中反作弊条目标记一致",
+      "evidence": ["Data/Tests/S06-vmfeatures.json"]
+    },
+    {
+      "id": "S07",
+      "name": "驱动不兼容回退",
+      "planRef": "21.1-7 / 6.3",
+      "level": "L4",
+      "automatable": "manual",
+      "dangerous": true,
+      "inject": "在虚拟系统内安装一个已知不兼容驱动（或人为禁用关键驱动）后重启",
+      "steps": [
+        "记录当前驱动清单 pnputil /enum-drivers",
+        "进入安全模式：bcdedit /set {current} safeboot minimal",
+        "Dism /Image:C:\\ /Remove-Driver /Driver:oemN.inf",
+        "恢复 bcdedit /deletevalue {current} safeboot 并重启"
+      ],
+      "expect": "安全模式可进；驱动可回退；重启后回到正常桌面",
+      "evidence": ["Data/Tests/S07-drivers-before.txt", "Data/Tests/S07-drivers-after.txt"]
+    },
+    {
+      "id": "S08",
+      "name": "BitLocker 忘密码",
+      "planRef": "21.1-8 / 10.1",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "只校验恢复密钥可用性，不真正锁死任何分区",
+      "steps": [
+        "检查 Data\\Security\\BitLocker-Recovery.txt 是否存在且为 48 位分组格式",
+        "manage-bde -protectors -get <盘符> 列出保护器",
+        "确认已关闭 autounlock（拔盘即锁）"
+      ],
+      "expect": "恢复密钥存在且格式正确；autounlock 关闭；提示密钥必须离线另存",
+      "evidence": ["Data/Tests/S08-bitlocker.json"]
+    },
+    {
+      "id": "S09",
+      "name": "4K 对齐检查",
+      "planRef": "21.1-9 / 29.4",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "读取分区起始偏移，校验是否为 4096 的整数倍",
+      "steps": [
+        "Get-Partition | Select DiskNumber, PartitionNumber, Offset",
+        "判断 Offset % 4096 -eq 0",
+        "对 U 盘与 VHDX 内分区分别校验"
+      ],
+      "expect": "全部分区 Offset 为 4096 倍数；否则给出重建提示（4K 未对齐会让 4K 随机掉约 50%）",
+      "evidence": ["Data/Tests/S09-alignment.json"]
+    },
+    {
+      "id": "S10",
+      "name": "多宿主切换 PnP 时间",
+      "planRef": "21.1-10 / 1.3",
+      "level": "L1",
+      "automatable": "manual",
+      "dangerous": false,
+      "inject": "在 5 台不同电脑上分别启动一次，记录即插即用与首屏时间",
+      "steps": [
+        "在每台机器记录：插盘到出现启动项、启动到桌面、首次打开大软件的时间",
+        "写入 Data/Tests/S10-hosts.csv（机器名/CPU/接口/时间）",
+        "校验 PnP 时间 < 60s、系统 < 12s"
+      ],
+      "expect": "5 台机 A/B 双模式各启动一次成功；PnP < 60s；系统 12s；软件 6s",
+      "evidence": ["Data/Tests/S10-hosts.csv", "Data/Tests/S10-*.mp4"]
+    },
+    {
+      "id": "S11",
+      "name": "进程被杀（看门狗 L1/L2 模拟）",
+      "planRef": "15.1 / 11.2",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "只杀本脚本自己启动的一次性子进程，绝不触碰用户已运行的进程",
+      "steps": [
+        "启动一个自带 PID 标记的一次性 powershell 子进程",
+        "记录启动时刻，Stop-Process 杀掉它",
+        "测量「发现死亡 → 记录恢复」耗时，对照 3s 看门狗阈值"
+      ],
+      "expect": "死亡被及时发现（<3s），记录恢复事件，不影响其他进程；这是模拟，不是注入真实应用",
+      "evidence": ["Data/Tests/S11-watchdog.json"]
+    },
+    {
+      "id": "S12",
+      "name": "0x80000003 断点异常捕获",
+      "planRef": "11.2 / 15.2",
+      "level": "L1",
+      "automatable": "auto",
+      "dangerous": false,
+      "inject": "用 .NET Debugger.Break() 在一次性子进程内触发 0x80000003，验证只留记录不弹系统错误框",
+      "steps": [
+        "启动一次性子进程执行 [System.Diagnostics.Debugger]::Break()",
+        "捕获退出码（预期 0x80000003 / -2147483645 一类）",
+        "写 dump 记录并确认没有系统级错误对话框阻塞"
+      ],
+      "expect": "异常被捕获并记录，进程直接结束；不出现 Windows 错误报告弹窗阻塞桌面",
+      "evidence": ["Data/Tests/S12-break.json"]
+    }
+  ]
+}

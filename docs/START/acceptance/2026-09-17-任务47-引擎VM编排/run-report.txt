@@ -1,0 +1,71 @@
+================================================================================
+任务47 验收报告 · 引擎 VHDX 挂载 + VM 拉起/保活/休眠编排（QEMU 先行验证）
+AI-P · 2026-09-17
+前置：varix-qemu.iso 已构建（勿重建）；qemu-system-x86_64 v11.1.0；Python 3.13。
+================================================================================
+
+一、交付文件
+  portable/AI-P/Engine-Orchestrator.ps1
+      - 五态状态机：Closed(默认)->Launching->Ready->Hibernating/Hibernated->Ready；
+        任意态->Failed；TRANSITIONS 表显式建模，非法转移 Assert-Transition 抛错拒绝。
+      - 差分盘挂载：HyperV 用 New-VHD -Parent 差分链 + Mount-VHD；
+        Qemu 用 qemu-img 建 overlay（QEMU 先行等价 Mount-VHD）。
+      - VM 拉起：HyperV 用 New-VM/Start-VM（代际2/关 Secure Boot/动态内存/直挂差分盘，参数化）；
+        Qemu 用 qemu-system-x86_64（本环境真实可跑）。
+      - 就绪探针：复用 47631 心跳语义（src-tauri/src/vm_agent.rs）——连 127.0.0.1:47631
+        发 PING 期望 READY pid=...；agent 回连 47632 发 READY/EXIT 的语义在心跳模拟器中复刻。
+      - 保活：就绪后空闲检测心跳轮询（近零占用）。
+      - 休眠/恢复：HyperV Save-VM/Restore-VM；Qemu HMP savevm/loadvm 写差分盘快照。
+      - 幂等：拉起中/就绪态 LaunchLocked 禁止二次拉起，重复触发返回既有实例不双开。
+      - 心跳超时：超过 HeartbeatThresholdSec 未 READY 判超时 -> 重启策略（kill+重拉 agent）-> 超限转 Failed。
+      - 状态持久化到 -StateDir\engine-orc-state.json（断点续作）。
+  portable/AI-P/Test-Engine-Orchestrator.ps1
+      - 单测（详见第三节），可 dot-source 复用全部函数。
+  _attic/p47-engine-agent.py
+      - 心跳模拟器：监听 47631 收 PING 回 READY；支持 MARK/GET 维护引擎内容序号落差分盘侧车文件；
+        可选 --callback 回连 47632 模拟 notify_host。kill=引擎崩溃/断电。
+  _attic/p47-qemu-validate.py
+      - QEMU 先行真实验证驱动（五态全转移 + 幂等 + 超时重启 + 休眠×10）。
+  _attic/.gitignore
+      - 按 p47/p66/p10 前缀忽略镜像/快照/串口日志（*.img/*.qcow2/*.log），保留 .py 交付脚本。
+
+二、QEMU 先行验证结果（_attic/p47-qemu-validate.py 实跑，10/10 通过）
+  [check] 状态机: 非法转移被显式拒绝                  PASS  非法状态转移: Launching -> Hibernated 被拒绝
+  [check] 状态机: 合法五态链全通过                    PASS  末态=Ready
+  [check] 差分盘挂载: base+overlay 建盘               PASS  qcow2 overlay 建盘成功（base=raw, backing_fmt=raw）
+  [check] VM 拉起: 引导至 boot complete               PASS  94.5s（TCG 软仿真冷启动）
+  [check] 就绪探针: 47631 心跳 READY                  PASS  态=Ready
+  [check] 拉起幂等: 重复触发不双开                    PASS  qemu pid 唯一
+  [check] 保活: 就绪态心跳轮询稳定                    PASS  连续3次探针
+  [check] 心跳超时+重启: 崩坏->超时->重启->Ready      PASS  dead=True timeout=True recovered=True
+  [check] 休眠/恢复 x10 内容一致                      PASS  全部10轮一致, 末seq=9
+  [check] 冷启动耗时基线(QEMU模式)                    PASS  213.8s（首跑含 ISO 引导+10轮快照序列化，非纯冷启动）
+
+三、单元测试结果（Test-Engine-Orchestrator.ps1，9 项全过）
+  T1 非法状态转移显式拒绝                PASS（Closed->Hibernated / Launching->Hibernated 均拒）
+  T2 合法五态链全通过                    PASS（Closed->…->Ready）
+  T3 拉起幂等（Mock）                    PASS（pid 不变、锁保持）
+  T4 心跳超时+重启（Mock）               PASS（alive->dead(超时)->alive(重启)）
+  T5 休眠-恢复 x10 内容一致（Mock）      PASS（10轮 state=Ready、序号 1..10 连续、心跳稳）
+  （T6 -LiveQemu 真实 Qemu 冒烟可选，等价于已跑通的 _attic/p47-qemu-validate.py 10/10）
+
+四、冷启动耗时基线（如实公示）
+  - QEMU 模式（本环境，TCG 软件仿真、非 KVM、非真实 Windows 引擎）：约 94.5s 至 boot complete。
+    注：该数值来自软仿真 + 仓库 ISO 引导，不代表 Hyper-V 实机；仅作 QEMU 先行基线。
+  - Hyper-V 目标：20-40s（总案声明，需真实 Hyper-V 宿主实测，本环境无 Hyper-V 未测得，如实登记未测）。
+
+五、QEMU 证据路径
+  docs/acceptance/2026-09-17-任务47-引擎VM编排/qemu-serial-boot.log  （QEMU 串口全程文本）
+  docs/acceptance/2026-09-17-任务47-引擎VM编排/validation-summary.json（10项检查结构化结果）
+  docs/acceptance/2026-09-17-任务47-引擎VM编排/run-report.txt        （本文件）
+  _attic/p47-serial.log / _attic/p47-summary.json / _attic/p47-*.img / _attic/p47-*.qcow2
+      （大文件/镜像在 _attic/，已入 .gitignore，不入库）
+
+六、遗留边界（诚实登记）
+  1. QEMU 先行模式用宿主侧心跳模拟器（p47-engine-agent.py）等价 VM 内 agent；真实 VM 内 agent
+     由 src-tauri vm-agent feature 在 Hyper-V 镜像内提供（47631/47632 语义已对齐）。
+  2. 休眠“内存快照写差分盘”在 QEMU 模式以 HMP savevm/loadvm 落 qcow2 overlay 实现；
+     内容一致性断言 = 引擎内容序号跨恢复不变 + 心跳存活；真实 Hyper-V 以 Save-VM/Restore-VM 等价。
+  3. Hyper-V 后端代码已参数化写就，但本环境无 Hyper-V，未实跑（代码路径未在本机验证执行）。
+  4. TCG 软仿真冷启动 94.5s 远高于 Hyper-V 目标 20-40s；该差距源于仿真而非编排逻辑，已分开声明。
+================================================================================

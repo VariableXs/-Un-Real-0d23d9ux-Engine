@@ -1,0 +1,31 @@
+== T1 PlanOnly 1024GB 布局 ==
+  PASS  退出码 0
+  PASS  布局含 ESP
+  PASS  布局含 VARIX_SYS
+  PASS  布局含 WIN_ENGINE
+  PASS  布局含 SHARED
+  PASS  布局含 SNAPSHOT
+  PASS  含 exFAT 分区
+== T2 小盘拒绝 ==
+  PASS  退出码非 0
+  PASS  报错含越界/余量语义
+== T3 SNAPSHOT 余量不足拒绝 ==
+  PASS  退出码非 0
+  PASS  报错含余量不足
+== T4/T5/T6/T7 契约用例（临时目录）==
+  PASS  初始化退出码 0
+  PASS  产出 apps.json
+  PASS  产出 boot-select.json
+  PASS  产出 whitelist\whitelist.json
+  PASS  产出 handoff
+  PASS  重跑退出码 0
+  PASS  幂等：重跑文件哈希不变
+  PASS  幂等：无 .corrupt 残留
+  PASS  损坏重建退出码 0
+  PASS  留证 .corrupt 文件存在
+  PASS  重建后可解析
+  PASS  ValidateOnly 通过
+  PASS  负向 schema 拒绝
+  PASS  报错含 channel 语义
+
+AI-P 自测：25 项全部通过

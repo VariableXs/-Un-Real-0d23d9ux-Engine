@@ -1,0 +1,24 @@
+{
+  "schema": "https://variable-os.dev/plugin-market/1.0",
+  "updated": "2026-09-07T00:00:00+00:00",
+  "plugins": [
+    {
+      "id": "com.variable.wallpaper",
+      "version": "2.1.0",
+      "entry": "wallpaper.dll",
+      "permissions": ["spawn", "overlay"],
+      "publisher": "VariableXs Team",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "signature": "PLACEHOLDER-REPLACE-WITH-SIGNER-THUMBPRINT"
+    },
+    {
+      "id": "com.variable.ai-assist",
+      "version": "0.9.0",
+      "entry": "ai.dll",
+      "permissions": ["network"],
+      "publisher": "VariableXs Community",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "signature": "PLACEHOLDER-REPLACE-WITH-SIGNER-THUMBPRINT"
+    }
+  ]
+}

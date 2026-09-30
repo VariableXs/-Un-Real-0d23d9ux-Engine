@@ -1,0 +1,342 @@
+/* ============================================================
+ * A-1 Design Tokens — 单一事实源（docs/DESIGN.md 同步文档）
+ * 原则：语义层 → 亮度层（dark 默认 / light / high-contrast）；
+ * 色彩走 OKLCH 保证感知一致；字阶/间距/圆角/阴影/动效全部收编为 token。
+ * 迁移：现有硬编码样式逐模块替换；audit.cjs 裸值检测进 CI。
+ * ============================================================ */
+
+:root {
+  /* ---- 字阶：12/13/15/17/20/24/32（1.25 比例）---- */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-17: 17px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+
+  /* ---- 间距：4px 基数 8 档 ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* ---- 圆角：窗口 16 / 卡片 12 / 控件 8 / 小件 4 ---- */
+  --r-window: 16px;
+  --r-card: 12px;
+  --r-control: 8px;
+  --r-chip: 4px;
+
+  /* ---- 阴影 elevation 0-5（贴合壁纸层，非纯黑）---- */
+  --elev-0: none;
+  --elev-1: 0 1px 3px oklch(0.15 0.02 260 / 0.18);
+  --elev-2: 0 2px 8px oklch(0.15 0.02 260 / 0.22);
+  --elev-3: 0 6px 18px oklch(0.15 0.02 260 / 0.28);
+  --elev-4: 0 12px 32px oklch(0.15 0.02 260 / 0.34);
+  --elev-5: 0 24px 64px oklch(0.15 0.02 260 / 0.40);
+
+  /* ---- 动效：曲线 + 六档时长（红绿灯 170/200ms 等既有数值收编）----
+   * M-75 动效时长缩放：--dur-scale 全局乘入六档（0.5x/1x 三档封顶；
+   * reduceMotion 优先级最高、不受缩放影响；只影响时长不影响缓动曲线；
+   * 与 M-40 高刷系数为乘法叠加（高刷系数在前端 JS 层另行乘算）。 */
+  --ease-standard: cubic-bezier(0.2, 0, 0.1, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0.05, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-scale: 1;
+  --dur-1: calc(80ms * var(--dur-scale));
+  --dur-2: calc(120ms * var(--dur-scale));
+  --dur-3: calc(170ms * var(--dur-scale));
+  --dur-4: calc(200ms * var(--dur-scale));
+  --dur-5: calc(240ms * var(--dur-scale));
+  --dur-6: calc(320ms * var(--dur-scale));
+
+  /* ---- 声音（A-4）：全局开关，值 0-1 ---- */
+  --sound-volume: 0.5;
+
+  /* ---- AI-18 M-71：悬停延迟三档（fast 200 / std 400 / slow 600ms；默认 std = 现状）----
+   * 悬停浮层（tooltip / 任务栏预览 / 跳转列表等）统一引用 --hover-delay。 */
+  --hover-delay-fast: 200ms;
+  --hover-delay-std: 400ms;
+  --hover-delay-slow: 600ms;
+  --hover-delay: var(--hover-delay-std);
+
+  /* ---- AI-20 M-88：全局 Tooltip 规范令牌（样式/延迟/后缀格式三统一）----
+   * 延迟引用 M-71 --hover-delay（禁各处自定 transition-delay）；
+   * 快捷键后缀圆括号式由 tooltip.ts tooltipLabel() 生成。 */
+  --tooltip-bg: oklch(0.22 0.02 262 / 0.94);
+  --tooltip-fg: oklch(0.94 0.01 262);
+  --tooltip-maxw: 280px;
+  --tooltip-pad: 6px 10px;
+  --tooltip-r: 6px;
+  --tooltip-fs: var(--fs-12);
+  --tooltip-border: 1px solid oklch(0.70 0.02 262 / 0.18);
+
+  /* ---- AI-18 V-78：全局 UI 图标尺寸档位（16/20/24px；20 = 现状；与文字缩放解耦）---- */
+  --icon-size: 20px;
+
+  /* ============================================================
+   * AI-17 视觉语言组交付段（U-07 Tokens 2.0 / Z-02 / Z-05 / U-08 / Z-67）
+   * ============================================================ */
+
+  /* ---- U-07 遮罩浓度三档（弹层/抽屉/全屏幕帘）---- */
+  --overlay-1: oklch(0.10 0.02 262 / 0.32);
+  --overlay-2: oklch(0.10 0.02 262 / 0.52);
+  --overlay-3: oklch(0.10 0.02 262 / 0.72);
+  /* U-07 噪声纹理参数（U-08 材质用，单文件内联 SVG feTurbulence） */
+  --texture-grain: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCI+PGZpbHRlciBpZD0ibiI+PGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9IjAuOCIgbnVtT2N0YXZlcz0iMiIvPjwvZmlsdGVyPjxyZWN0IHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCIgZmlsdGVyPSJ1cmwoI24pIiBvcGFjaXR5PSIwLjAzIi8+PC9zdmc+");
+
+  /* ---- Z-02 Fluent 控件规格（--ctl-*：尺寸/命中区全部令牌化）----
+   * 命令栏按钮 32×32、对话框按钮 min-w 120 / h 32、输入框 h 32、
+   * 菜单项 h 36、复选框 20×20、触控命中区 ≥44、分隔线 1px。 */
+  --ctl-btn: 32px;
+  --ctl-btn-minw: 120px;
+  --ctl-input: 32px;
+  --ctl-menu-item: 36px;
+  --ctl-checkbox: 20px;
+  --ctl-touch: 44px;
+  --ctl-divider: 1px;
+  --ctl-pad-btn: 4px;
+
+  /* ---- Z-05 焦点环与选择态规范（仅键盘 :focus-visible 显示）---- */
+  --focus-ring: 0 0 0 2px var(--bg-canvas), 0 0 0 4px var(--accent);
+  --focus-ring-inset: inset 0 0 0 2px var(--accent);
+  --sel-bar: 3px solid var(--accent);
+
+  /* ---- U-09 光影语义：全局光源左上 45°，hover 抬升 / active 下压 ---- */
+  --elev-hover: var(--elev-1);
+  --elev-drag: var(--elev-3);
+
+  /* ---- Z-67 动效速度档（0.5×/1×/1.5×，reduce-motion 优先级更高）---- */
+  --motion-speed: 1;
+
+  /* ---- 语义层（dark 默认；亮度层覆盖）---- */
+  --bg-canvas: oklch(0.14 0.02 262);
+  --bg-surface: oklch(0.18 0.025 262 / 0.72);
+  --bg-raised: oklch(0.20 0.025 262 / 0.92);
+  --text-primary: oklch(0.90 0.02 262);
+  --text-secondary: oklch(0.65 0.03 262);
+  --accent: oklch(0.68 0.09 262);
+  --accent-soft: oklch(0.68 0.09 262 / 0.16);
+  --success: oklch(0.78 0.12 160);
+  --warn: oklch(0.82 0.13 85);
+  --danger: oklch(0.68 0.15 25);
+  --stroke: oklch(0.70 0.02 262 / 0.14);
+}
+
+/* ---- light 亮度层 ---- */
+[data-theme="paper"],
+[data-theme="light"] {
+  --bg-canvas: oklch(0.93 0.02 90);
+  --bg-surface: oklch(0.97 0.015 90 / 0.86);
+  --bg-raised: oklch(0.98 0.01 90 / 0.94);
+  --text-primary: oklch(0.28 0.02 90);
+  --text-secondary: oklch(0.52 0.03 90);
+  --accent: oklch(0.52 0.08 75);
+  --accent-soft: oklch(0.52 0.08 75 / 0.14);
+  --stroke: oklch(0.35 0.02 90 / 0.18);
+  /* AI-20 M-88：tooltip 亮度层覆盖 */
+  --tooltip-bg: oklch(0.30 0.02 90 / 0.96);
+  --tooltip-fg: oklch(0.97 0.01 90);
+  --tooltip-border: 1px solid oklch(0.30 0.02 90 / 0.4);
+}
+
+/* ---- high-contrast 亮度层（F-7.1）---- */
+[data-theme="high-contrast"] {
+  --bg-canvas: oklch(0 0 0);
+  --bg-surface: oklch(0 0 0 / 0.94);
+  --bg-raised: oklch(0 0 0);
+  --text-primary: oklch(1 0 0);
+  --text-secondary: oklch(0.85 0 0);
+  --accent: oklch(0.87 0.16 95);
+  --accent-soft: oklch(0.87 0.16 95 / 0.22);
+  --success: oklch(0.82 0.2 150);
+  --warn: oklch(0.85 0.16 90);
+  --danger: oklch(0.66 0.21 25);
+  --stroke: oklch(0.65 0 0);
+  /* AI-20 M-88：HC tooltip 纯黑白 + 2px 描边 */
+  --tooltip-bg: oklch(0 0 0);
+  --tooltip-fg: oklch(1 0 0);
+  --tooltip-border: 2px solid oklch(1 0 0);
+}
+
+/* ---- 语义层 → 既有变量映射（兼容期；迁移完成后移除）---- */
+:root {
+  --bg: var(--bg-canvas);
+  --panel: var(--bg-surface);
+  --panel-solid: var(--bg-raised);
+  --text: var(--text-primary);
+  --text-dim: var(--text-secondary);
+  --border: var(--stroke);
+  --radius: var(--r-control);
+  --ok: var(--success);
+}
+
+/* ---- reduceMotion / 低档位：全部动效降级为 80ms 淡入淡出（A-2.3）---- */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: var(--dur-1) !important;
+  transition-duration: var(--dur-1) !important;
+}
+
+/* ---- Z-67 动效速度档：乘以全部 --dur-*（reduce-motion 规则更靠后优先，此处天然被覆盖）---- */
+[data-motion-speed="0.5"] {
+  --dur-1: 40ms;
+  --dur-2: 60ms;
+  --dur-3: 85ms;
+  --dur-4: 100ms;
+  --dur-5: 120ms;
+  --dur-6: 160ms;
+}
+[data-motion-speed="1.5"] {
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 255ms;
+  --dur-4: 300ms;
+  --dur-5: 360ms;
+  --dur-6: 480ms;
+}
+
+/* ---- U-08/Z-05 high-contrast 降级：阴影替换为 2px 对比描边、frosted 全降级 ---- */
+[data-theme="high-contrast"] {
+  --elev-1: 0 0 0 2px var(--stroke);
+  --elev-2: 0 0 0 2px var(--stroke);
+  --elev-3: 0 0 0 2px var(--stroke);
+  --elev-4: 0 0 0 2px var(--stroke);
+  --elev-5: 0 0 0 2px var(--stroke);
+  --elev-hover: 0 0 0 2px var(--accent);
+  --elev-drag: 0 0 0 2px var(--accent);
+  --texture-grain: none;
+}
+
+/* ============================================================
+ * AI-18 氛围与个性化组 · 档位层（V-74/75/76/77/78、M-71、M-67）
+ * 全部「默认档 = 现状」：档位属性缺省时本段零生效。
+ * ============================================================ */
+
+/* ---- V-74 界面密度：紧凑档（间距 -20%、列表行高 -15%；仍满足 44px 触控红线）---- */
+[data-density="compact"] {
+  --sp-1: 4px;   /* 4px 基格不动（亚像素抖动无意义，保持最小档） */
+  --sp-2: 7px;
+  --sp-3: 10px;
+  --sp-4: 13px;
+  --sp-5: 19px;
+  --sp-6: 26px;
+  --sp-7: 38px;
+  --sp-8: 51px;
+  --ctl-menu-item: 31px; /* 36 → -15% */
+}
+
+/* ---- V-75 几何风格三档：小圆角 4px / 直角 0px（直角档阴影同步收细）---- */
+[data-radius="small"] {
+  --r-window: 8px;
+  --r-card: 6px;
+  --r-control: 4px;
+  --r-chip: 2px;
+}
+[data-radius="sharp"] {
+  --r-window: 0px;
+  --r-card: 0px;
+  --r-control: 0px;
+  --r-chip: 0px;
+  --elev-1: 0 1px 2px oklch(0.15 0.02 260 / 0.14);
+  --elev-2: 0 1px 5px oklch(0.15 0.02 260 / 0.18);
+  --elev-3: 0 4px 12px oklch(0.15 0.02 260 / 0.24);
+  --elev-4: 0 8px 22px oklch(0.15 0.02 260 / 0.28);
+  --elev-5: 0 14px 44px oklch(0.15 0.02 260 / 0.34);
+}
+
+/* ---- V-76 界面字体偏好：--ui-font 注入（缺省 = 现状字体栈；CJK 回退链恒在）---- */
+:root {
+  --ui-font: "";
+}
+
+/* ---- V-77 焦点环三样式（system = 现状 Z-05 双线；HC 下强制最强可见样式）---- */
+[data-focus-ring="box"] :focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px !important;
+  box-shadow: none !important;
+}
+[data-focus-ring="underline"] :focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-bottom: 2px solid var(--accent) !important;
+}
+[data-theme="high-contrast"] :focus-visible {
+  /* HC 铁律：任何焦点环档位下强制最强可见（V-77 红线） */
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 1px !important;
+}
+
+/* ---- M-67 桌面纯净模式：三层（图标/任务栏/横幅）隐藏，200ms 淡出（JS 加类）---- */
+.pure-mode-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 200ms var(--ease-standard) !important;
+}
+
+/* ---- V-78 全局 UI 图标尺寸档位（20 = 现状；与文字缩放解耦）---- */
+:root {
+  --icon-ui: 20px;
+}
+[data-icon-tier="16"] {
+  --icon-ui: 16px;
+}
+[data-icon-tier="24"] {
+  --icon-ui: 24px;
+}
+
+
+/* ============================================================
+ * AURORA-10000：AI-11~AI-15 批次，勿删（领域03 桌面设计·桌面与图标）
+ * 族0066 设计令牌扩展（F01626~F01650）——车道运行时覆写同名变量即生效。
+ * ============================================================ */
+:root {
+  --w2-elev-6: 0 32px 96px oklch(0.15 0.02 260 / 0.48);      /* F01627 海拔 6 */
+  --w2-blur-1: 8px;                                          /* F01628 模糊族 */
+  --w2-blur-2: 16px;
+  --w2-blur-3: 28px;
+  --w2-glass: oklch(1 0 0 / 0.06);                           /* F01629 玻璃材质 */
+  --w2-glow: 0 0 12px oklch(0.68 0.09 262 / 0.35);           /* F01630 辉光强度 */
+  --w2-stroke: 1px;                                          /* F01631 描边宽度 */
+  --w2-divider: 1px solid oklch(1 0 0 / 0.07);               /* F01632 分割线 */
+  --w2-row-h: 40px;                                          /* F01633 表格行高 */
+  --w2-control-h: 32px;                                      /* F01634 控件高度 */
+  --w2-optical: 0px;                                         /* F01635 光学补偿 */
+  --w2-body-contrast: 1;                                     /* F01636 文本对比 */
+  --w2-disabled-alpha: 0.4;                                  /* F01637 禁用透明 */
+  --w2-hover-lift: 1px;                                      /* F01638 hover 抬升 */
+  --w2-press-shift: 1px;                                     /* F01639 按压位移 */
+  --w2-focus-ring: 0 0 0 2px var(--accent);                  /* F01640 焦点环 */
+  --w2-scrollbar: 10px;                                      /* F01641 滚动条尺寸 */
+  --w2-tooltip-bg: var(--bg-raised);                         /* F01642 tooltip */
+  --w2-menu-shadow: var(--elev-3);                           /* F01643 菜单阴影 */
+  --w2-selection: oklch(0.68 0.09 262 / 0.35);               /* F01715 选择色 */
+  --w2-warm-deep: oklch(0.56 0.08 55);                       /* UNREAL-X AI-03 族0023 色温档 2700K */
+  --w2-warm: oklch(0.62 0.08 70);                            /* UNREAL-X AI-03 族0023 色温档 3800K */
+  --w2-neutral: oklch(0.65 0.06 180);                        /* UNREAL-X AI-03 族0023 色温档 5000K */
+  --w2-day: oklch(0.68 0.06 250);                            /* UNREAL-X AI-03 族0023 色温档 6500K */
+  --w2-lh: 1.6;                                              /* F01704 行高 */
+  --w2-theme-dur: 240ms;                                     /* F01674 明暗过渡 */
+  --w2-font-ui: inherit;                                     /* F01788 全局字体 */
+  --w2-font-mono: "Cascadia Mono", Consolas, monospace;      /* F01789 等宽字体 */
+  --w2-tracking: 0em;                                        /* F01791 字距微调 */
+}
+
+/* ============================================================
+ * UNREAL-X AI-02：电源状态剧场（族0011~0020 · X00251~X00500）氛围令牌。
+ * 环境光五档（0 全亮 = 现状 → 4 全暗），关机/唤醒仪式 veil 层引用；
+ * 只增不改：其余 AI 批次令牌不受影响。
+ * ============================================================ */
+:root {
+  --px2-veil-l0: oklch(1 0 0 / 0);        /* X00261/X00286 全亮（现状） */
+  --px2-veil-l1: oklch(0.15 0.02 260 / 0.12);
+  --px2-veil-l2: oklch(0.15 0.02 260 / 0.28);
+  --px2-veil-l3: oklch(0.15 0.02 260 / 0.48);
+  --px2-veil-l4: oklch(0.15 0.02 260 / 0.72);
+  --px2-veil-dur: var(--dur-6);           /* reduce-motion 走既有降级链 */
+}

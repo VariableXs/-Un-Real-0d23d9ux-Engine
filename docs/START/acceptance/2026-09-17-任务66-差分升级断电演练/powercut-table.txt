@@ -1,0 +1,17 @@
+任务66 差分升级断电中途演练 ×10 零变砖 —— 逐轮记录
+日期 2026-09-17  AI-P
+
+| 轮 | 断电时机 | 实际死于 | Base哈希不变 | 版本号(一致) | apps.json完好 | 恢复动作 | 下一轮零变砖 |
+|---|---|---|---|---|---|---|---|
+| 1 | STAGING | STAGING | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 2 | STAGED | STAGED | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 3 | COMMIT_SWAP | COMMIT_SWAP | True | 1.0(True) | True | 回滚至 Base 快照（文件/版本还原） | True |
+| 4 | STAGING | STAGING | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 5 | STAGED | STAGED | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 6 | COMMIT_SWAP | COMMIT_SWAP | True | 1.0(True) | True | 回滚至 Base 快照（文件/版本还原） | True |
+| 7 | STAGING | STAGING | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 8 | STAGED | STAGED | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+| 9 | COMMIT_SWAP | COMMIT_SWAP | True | 1.0(True) | True | 回滚至 Base 快照（文件/版本还原） | True |
+| 10 | STAGING | STAGING | True | 1.0(True) | True | 丢弃 .staging，Base 未动（一致） | True |
+
+结论：10/10 轮全过；Base 哈希不变=True；10/10 零变砖=True
