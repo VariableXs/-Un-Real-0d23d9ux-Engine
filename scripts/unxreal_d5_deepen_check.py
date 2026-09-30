@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """UNX-D5 域深化校验器（波08-M34 · AI-13）。
-检查 B01–B33 三十三册深化册 + 骨架账双册一致（B19–B33 为波08-M38 收官轮，引擎稿采纳）：
+检查 B01–B40 四十册满账深化册 + 骨架账双册一致（B19–B33 为波08-M38 收官轮，引擎稿采纳）：
   ① 每册 20 条、六要素齐备（判据/定位/语义边界/依赖/风险/正文）
   ② 逐条正文 ≥300 字
   ③ 批内 ID 连续且与 F 区间一致（B01 F15201 … B18 F15560）
@@ -13,7 +13,7 @@ import os, re, sys
 REPO = r"D:\2\14\-Un-Real-0d23d9ux-Engine-main"
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
-BOOKS = list(range(1, 34))
+BOOKS = list(range(1, 41))
 SIX = ["定位", "语义边界", "依赖与嫁接源", "风险与回退", "正文"]
 
 errors, warns = [], []
@@ -81,10 +81,10 @@ def check_book(bno):
 for bno in BOOKS:
     check_book(bno)
 
-if grand_entries != 660:
-    errors.append(f"全域条目 {grand_entries} != 660")
-if grand_rows != 198000:
-    errors.append(f"全域行数 {grand_rows} != 198,000")
+if grand_entries != 800:
+    errors.append(f"全域条目 {grand_entries} != 800")
+if grand_rows != 240000:
+    errors.append(f"全域行数 {grand_rows} != 240,000")
 
 print("=== UNX-D5 deepen check (B01–B33) ===")
 print(f"books={len(BOOKS)}  entries={grand_entries}  rows_locked={grand_rows:,}/240,000  batch=6,000x{len(BOOKS)}")
