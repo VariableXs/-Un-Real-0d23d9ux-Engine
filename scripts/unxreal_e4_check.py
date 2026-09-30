@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """UNX-E4 域机械校验器（AI-24 · 波 09 轮）
-五查：① 25 批批册在位；② 每批 20 条；③ 条目 ID 连续唯一 F18401–F18900；
-④ 批内行数求和=6,000（批头域账累计链自洽）；⑤ 域账累计 150,000/240,000。
+五查：① 40 批批册在位；② 每批 20 条；③ 条目 ID 连续唯一 F18401–F19200；
+④ 批内行数求和=6,000（批头域账累计链自洽）；⑤ 域账累计 240,000/240,000 满账封账口径（波 09 续作轮升账）。
 exit 0 = ALL PASS。
 """
 import re, sys, os
 
 BATCH_DIR = os.path.join(os.path.dirname(__file__), '..', 'docs', 'unxreal', 'batches')
-LO, HI = 18401, 18900
-BATCHES = [f'UNX-E4-B{b:02d}' for b in range(1, 26)]
+LO, HI = 18401, 19200
+BATCHES = [f'UNX-E4-B{b:02d}' for b in range(1, 41)]
 
 def main():
     errors = []
@@ -45,11 +45,11 @@ def main():
         expected = set(range(LO, HI + 1))
         gap = sorted(expected - seen)
         errors.append(f'ID 连续唯一失败: 重复={dup[:10]} 缺失={gap[:10]} 总数={len(all_ids)}')
-    if cumulative != 150000:
-        errors.append(f'域账累计 {cumulative} != 150000')
+    if cumulative != 240000:
+        errors.append(f'域账累计 {cumulative} != 240000')
     if errors:
         print('FAIL:'); [print(' -', e) for e in errors]; sys.exit(1)
-    print(f'ALL PASS: 25 批 / 500 条 / ID F18401–F18900 连续唯一 / 批批 6,000 / 域账 150,000/240,000')
+    print(f'ALL PASS: 40 批 / 800 条 / ID F18401–F19200 连续唯一 / 批批 6,000 / 域账 {cumulative:,}/240,000 满账封账口径')
 
 if __name__ == '__main__':
     main()
