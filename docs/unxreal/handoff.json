@@ -918,7 +918,7 @@
    "open_bugs": 0
   },
   "D5": {
-   "finalized_batches": 18,
+   "finalized_batches": 33,
    "finalized_list": [
     "UNX-D5-B01",
     "UNX-D5-B02",
@@ -937,15 +937,30 @@
     "UNX-D5-B15",
     "UNX-D5-B16",
     "UNX-D5-B17",
-    "UNX-D5-B18"
+    "UNX-D5-B18",
+    "UNX-D5-B19",
+    "UNX-D5-B20",
+    "UNX-D5-B21",
+    "UNX-D5-B22",
+    "UNX-D5-B23",
+    "UNX-D5-B24",
+    "UNX-D5-B25",
+    "UNX-D5-B26",
+    "UNX-D5-B27",
+    "UNX-D5-B28",
+    "UNX-D5-B29",
+    "UNX-D5-B30",
+    "UNX-D5-B31",
+    "UNX-D5-B32",
+    "UNX-D5-B33"
    ],
    "skeleton_batches": 0,
-   "rows_locked": 108000,
+   "rows_locked": 198000,
    "rows_budget": 240000,
-   "rows_deepened_locked": 108000,
+   "rows_deepened_locked": 198000,
    "entries_skeleton": 0,
-   "entries_deepened": 360,
-   "entries_deepened_note": "B01–B03 F 型地基 60 条（M25 在途，M37 补强收口：R-D5-004 十六条正文补强 ≥300+R-D5-003 批小计虚记 5,900→6,000 内配平）+ B04–B18 M 型机制十五批 300 条（M37 本会话新增：B04 聚合/B05 QI/B06 生命周期/B07 HRESULT/B08 线程/B09 套间/B10 封送/B11 类工厂/B12 数据面/B13 自动化/B14 连接点·持久化/B15 存储·传输/B16 Moniker/B17 拖放/B18 ActiveX·波段总聚合）；正文合计 126,756 字逐条 ≥300；校验器 scripts/unxreal_d5_deepen_check.py 六查全绿 exit=0；骨架账 18 件 batches/ 判据单源派生"
+   "entries_deepened": 660,
+   "entries_deepened_note": "B01–B03 F 型地基 60 条（M25 在途，M37 补强收口）+ B04–B18 M 型机制十五批 300 条（M37 AI-13 收口）+ B19–B33 收官轮十五批 300 条（AI-20 续领 F15561–F15860：B19 剪贴板·IDataObject/B20 枚举·通知/B21 拖放协议/B22 连接点事件/B23 持久化族/B24 结构化存储/B25 任务内存/B26 错误信息链/B27 类型库消费/B28 自注册/B29 生命周期服务与 GIT/B30 ROT 全量/B31 D3 联签/B32 D4 泵联签/B33 总聚合收官；批累计各 6,000 行锁定，域累计 198,000/240,000；引擎册代生成 deepen/_d5gen_engine.py+五数据模块，独立复验器全绿：15 批×20 条 ID 连续、90000 行精确、批册覆盖完整）；B34–B40 待领"
   }
  },
  "deepen_books": [
