@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""UNX-F1 域深化校验器（AI-26 · 深化 B01–B30 · 600 条）。
-检查 deepen/F1-B01..B30.md 三十册：
+"""UNX-F1 域深化校验器（AI-26 · 深化 B01–B40 · 800 条）。
+检查 deepen/F1-B01..B40.md 四十册：
   ① 每册 20 条、六要素齐备（判据/定位/语义边界/依赖与嫁接源/风险与回退/正文）
   ② 逐条正文 ≥300 字（单行计量，与 D5 口径一致）
-  ③ 批内 ID 连续且与骨架账区间一致（B01 F20001 … B30 F20581–F20600）
+  ③ 批内 ID 连续且与骨架账区间一致（B01 F20001 … B40 F20781–F20800）
   ④ 逐批行数求和 = 骨架账同批求和（深化零改行数）；域累计 = 骨架 161,460
   ⑤ 状态全部 [已深化]，判据号 UNX-F{id}-J1 与本条 ID 自指一致
   ⑥ 双册一致：骨架账条目名与深化册 verbatim 一致
@@ -13,7 +13,7 @@ import os, re, sys, glob
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEEPEN = os.path.join(REPO, "docs", "unxreal", "deepen")
 BATCH = os.path.join(REPO, "docs", "unxreal", "batches")
-BOOKS = range(1, 31)
+BOOKS = range(1, 41)
 SIX = ["定位", "语义边界", "依赖与嫁接源", "风险与回退"]  # 正文由专用正则查存在性与 ≥300 字
 
 errors = []
@@ -77,14 +77,14 @@ def check_book(bno):
 for b in BOOKS:
     check_book(b)
 
-if grand_entries != 600:
-    errors.append(f"总条数 {grand_entries} != 600")
-if grand_rows != 161460:
-    errors.append(f"域深化累计 {grand_rows} != 骨架 B01–B30 161,460")
+if grand_entries != 800:
+    errors.append(f"总条数 {grand_entries} != 800")
+if grand_rows != 240000:
+    errors.append(f"域深化累计 {grand_rows} != 骨架满账 240,000")
 
 if errors:
     print("FAIL:")
     for e in errors[:40]:
         print(" -", e)
     sys.exit(1)
-print(f"OK · 30 册 · {grand_entries} 条深化 · 正文全部 ≥300 字 · 行数与骨架账逐条一致 · 域深化累计 {grand_rows:,}/161,460")
+print(f"OK · 40 册 · {grand_entries} 条深化 · 正文全部 ≥300 字 · 行数与骨架账逐条一致 · 域深化累计 {grand_rows:,}/240,000")
