@@ -82,10 +82,15 @@ def gen_batch(no, entries):
             f"与真实 Windows 行为对照：与 {topic} 对应契约语义对照（预期值注来源）。"
             f"语义边界再申：{bound}依赖与嫁接：依赖 {dep}；嫁接源：{src}。"
             f"风险与回退：{topic}面竞态与坏输入双险常驻——机检注入矩阵护栏常驻，违约必红、可回退可重放；账行带批次号与时戳双键可追溯，演练临时态收口前清零（零残留断言），域账累计链不受本条影响。"
-            f"判据 UNX-F{fid}-J1 的复测方式：{topic}核与注入检出双通道复测（正向 10/10、注入检出 10/10）通过，结果对表留痕。\n"
+            f"判据 UNX-F{fid}-J1 的复测方式：{topic}核与注入检出双通道复测（正向 10/10、注入检出 10/10）通过，结果对表留痕。"
+            + (f"判据二 UNX-F{fid}-J2 的复测方式：错误码单一性矩阵复测（二十类坏输入逐一断言返回码与登记表逐字一致）通过，结果对表留痕。" if e.get("j2") else "") + "\n"
         )
         book.append(f"### UNX-F{fid} · {t}\n")
-        book.append(f"- 域/批：D5/B{no}｜判据：UNX-F{fid}-J1 {judg}｜纯功能行数：{fmt_rows(rows[i], i)}｜状态：[已深化]\n")
+        jline = f"- 域/批：D5/B{no}｜判据：UNX-F{fid}-J1 {judg}"
+        if e.get("j2"):
+            jline += f"｜判据二 UNX-F{fid}-J2 {e['j2']}"
+        jline += f"｜纯功能行数：{fmt_rows(rows[i], i)}｜状态：[已深化]\n"
+        book.append(jline)
         book.append(f"- **定位**：{pos}本条为本批「{title}」段{topic}面主条目，与邻条分层不重。\n")
         book.append(f"- **语义边界**：只立{topic}面语义与判据；扩展面归后续批深化，不在此条越界。{bound}\n")
         book.append(f"- **依赖与嫁接源**：依赖 {dep}；嫁接源：{src}。\n")
@@ -105,7 +110,10 @@ def gen_batch(no, entries):
     for i, e in enumerate(entries["items"]):
         fid = ids[i]
         sk.append(f"### UNX-F{fid} · {e['t']}\n")
-        sk.append(f"- 域/批：D5/B{no}｜纯功能行数：{rows[i]}｜状态：[已深化]｜判据：UNX-F{fid}-J1 {e['j']}\n")
+        jsk = f"UNX-F{fid}-J1 {e['j']}"
+        if e.get("j2"):
+            jsk += f"｜判据二 UNX-F{fid}-J2 {e['j2']}"
+        sk.append(f"- 域/批：D5/B{no}｜纯功能行数：{rows[i]}｜状态：[已深化]｜判据：{jsk}\n")
     skel_path = os.path.join(BATCH_DIR, f"UNX-D5-B{no}.md")
     with open(skel_path, "w", encoding="utf-8") as f:
         f.write("\n".join(sk))
