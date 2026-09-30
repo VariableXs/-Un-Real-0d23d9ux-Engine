@@ -39,6 +39,16 @@ BATCHES = [
     ("D2-B28.md", "F13341", "F13360", 5600),
     ("D2-B29.md", "F13361", "F13380", 5800),
     ("D2-B30.md", "F13381", "F13400", 5800),
+    ("D2-B31.md", "F13401", "F13420", 7230),
+    ("D2-B32.md", "F13421", "F13440", 7230),
+    ("D2-B33.md", "F13441", "F13460", 7230),
+    ("D2-B34.md", "F13461", "F13480", 7230),
+    ("D2-B35.md", "F13481", "F13500", 7230),
+    ("D2-B36.md", "F13501", "F13520", 7230),
+    ("D2-B37.md", "F13521", "F13540", 7230),
+    ("D2-B38.md", "F13541", "F13560", 7230),
+    ("D2-B39.md", "F13561", "F13580", 7230),
+    ("D2-B40.md", "F13581", "F13600", 7230),
 ]
 
 fails = []
@@ -123,18 +133,18 @@ for fname, first, last, claimed in BATCHES:
 
 # 全域
 all_ints = [int(i.split("F")[1]) for i in ids_seen]
-if len(set(ids_seen)) != 600:
+if len(set(ids_seen)) != 800:
     fails.append("全域 ID 存在重复")
-if all_ints != list(range(12801, 13401)):
+if all_ints != list(range(12801, 13601)):
     fails.append("全域 ID 段 F12801-F13400 有空洞或乱序")
-if total != 167700:
+if total != 240000:
     fails.append(f"域累计 {total} != 167,700")
-if entry_total != 600:
-    fails.append(f"全域条目 {entry_total} != 600")
+if entry_total != 800:
+    fails.append(f"全域条目 {entry_total} != 800")
 if char_short:
     fails.append(f"字数不足 300 的条目 {len(char_short)} 条: {char_short[:10]}")
 
-print(f"\n深化册总数: 30 | 条目: {entry_total} | 域累计: {total:,} / 240,000（深化不改域账）")
+print(f"\n深化册总数: 40 | 条目: {entry_total} | 域累计: {total:,} / 240,000（深化不改域账）")
 if fails:
     print("\n== 断言失败 ==")
     for x in fails:
