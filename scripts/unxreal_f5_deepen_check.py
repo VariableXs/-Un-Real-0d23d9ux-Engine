@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UNX-F5 深化册机械校验器（AI-30 · B01–B20 口径）六查：
+"""UNX-F5 深化册机械校验器（AI-30 · B01–B40 满账口径）六查：
 ①六要素齐备（定位/语义边界/依赖/风险/正文/判据自指）②正文 ≥300 字
 ③ID 连续唯一 ④行数与骨架账 verbatim 一致 ⑤判据自指（J1 原文一致）
 ⑥双册条目名 verbatim 一致（深化零改条目名）
@@ -8,7 +8,7 @@ import re, sys, glob
 
 DEEP = "docs/unxreal/deepen"
 BAT = "docs/unxreal/batches"
-BIDS = ["B%02d" % i for i in range(1, 21)]
+BIDS = ["B%02d" % i for i in range(1, 41)]
 fails = []
 
 ids, deep_cache = [], {}
@@ -37,9 +37,9 @@ for bid in BIDS:
         if title != br[1]: fails.append(f"F{fid} 条目名与骨架不一致")
         if p != int(br[2]): fails.append(f"F{fid} 行数 {p} != 骨架 {br[2]}")
         if judge.strip() != br[3].strip(): fails.append(f"F{fid} 判据与骨架不一致")
-if ids != list(range(23201, 23601)):
-    fails.append(f"ID 非 F23201–F23600 连续唯一（实得 {len(ids)}）")
+if ids != list(range(23201, 24001)):
+    fails.append(f"ID 非 F23201–F24000 连续唯一（实得 {len(ids)}）")
 
 if fails:
     print("FAIL", len(fails)); [print(" -", f) for f in fails[:20]]; sys.exit(1)
-print(f"unxreal_f5_deepen_check: 六查 ALL PASS exit 0（20 册/{len(ids)} 条深化/行数 verbatim/判据自指 400/正文 300 字全过）")
+print(f"unxreal_f5_deepen_check: 六查 ALL PASS exit 0（40 册满账/{len(ids)} 条深化/行数 verbatim/判据自指 800/正文 300 字全过）")
