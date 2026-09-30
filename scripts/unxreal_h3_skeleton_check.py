@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""UNX-H3 首产段校验器（AI-38）——六查：
+"""UNX-H3 全域校验器（AI-38）——六查（B01-B40 全域 800 条版）：
 1) 批册 15 件在位且批批 20 条；2) ID 连续唯一 F29601–F29900；
 3) 批内行数求和 = 6,000 且在 120–600 区间；4) 判据号唯一且与 ID 一一对应（UNX-F####-J1…）；
 5) 条目名/判据在域内零重复；6) 主汇编册 H3 卷收录 300 条且 ID 集合与批册一致。
@@ -15,7 +15,8 @@ meta_re = re.compile(r"^- 域/批：H3/(B\d{2})｜纯功能行数：(\d+)｜状�
 
 errors = []
 entries = []  # (fid, name, batch, rows, criterion)
-for n in range(1, 16):
+NB = 40  # 全域 40 批（B01-B40 · 800 条 · 240,000 行）
+for n in range(1, NB+1):
     path = os.path.join(BATCH_DIR, f"UNX-H3-B{n:02d}.md")
     if not os.path.exists(path):
         errors.append(f"missing batch file B{n:02d}"); continue
@@ -35,7 +36,7 @@ for n in range(1, 16):
 
 # 2) continuity & uniqueness
 ids = sorted(e[0] for e in entries)
-if ids != list(range(29601, 29901)):
+if ids != list(range(29601, 30401)):
     errors.append(f"ID set broken: n={len(ids)}, min={min(ids) if ids else '-'}, max={max(ids) if ids else '-'}")
 
 # 3) per-batch sum
@@ -43,11 +44,12 @@ from collections import defaultdict
 bsum = defaultdict(int)
 for fid, name, batch, rows, crit in entries:
     bsum[batch] += rows
-for n in range(1, 16):
+NB = 40  # 全域 40 批（B01-B40 · 800 条 · 240,000 行）
+for n in range(1, NB+1):
     if bsum.get(f"B{n:02d}", 0) != 6000:
         errors.append(f"B{n:02d}: sum {bsum.get(f'B{n:02d}')}")
-if sum(bsum.values()) != 90000:
-    errors.append(f"domain first-prod sum {sum(bsum.values())} != 90000")
+if sum(bsum.values()) != 240000:
+    errors.append(f"domain sum {sum(bsum.values())} != 240000")
 
 # 4/5) uniqueness of criteria and names
 crits = [e[4] for e in entries]; names = [e[1] for e in entries]
@@ -61,13 +63,15 @@ if not m:
     errors.append("compendium H3 volume missing")
 else:
     vol = m.group(0)
-    vol_ids = sorted(int(x) for x in re.findall(r"\| UNX-F(\d{5}) \|", vol))
+    m2 = re.search(r"## UNX-H3 续产段卷.*?(?=\n## |\Z)", comp, re.S)
+    vol2 = m2.group(0) if m2 else ""
+    vol_ids = sorted(int(x) for x in re.findall(r"\| UNX-F(\d{5}) \|", vol)) + sorted(int(x) for x in re.findall(r"\| UNX-F(\d{5}) \|", vol2))
     if vol_ids != ids:
         errors.append(f"compendium ids mismatch: {len(vol_ids)} vs {len(ids)}")
-    if "UNX-H3-B15" not in vol:
-        errors.append("compendium missing B15 section")
+    if "### B40" not in vol2:
+        errors.append("compendium missing B40 section")
 
 if errors:
     print("FAIL:"); [print(" -", e) for e in errors]; sys.exit(1)
-print(f"UNX-H3 skeleton check: 15 batches / {len(entries)} entries / {sum(bsum.values())} rows / IDs F29601-F29900 continuous / criteria & names unique / compendium volume aligned — ALL PASS")
+print(f"UNX-H3 skeleton check: {NB} batches / {len(entries)} entries / {sum(bsum.values())} rows / IDs F29601-F30400 continuous / criteria & names unique / compendium volumes aligned — ALL PASS")
 sys.exit(0)
