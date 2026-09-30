@@ -1,2 +1,0 @@
-pathgit=D:\C^2 Courage (Un)Real Variable\Git\cmd\git.exe
-rhttps120=False

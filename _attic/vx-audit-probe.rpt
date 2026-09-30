@@ -1,8 +1,0 @@
-ISO-ATTACHED=False
-VOLUMES: V:SNAPSHOT | C:Windows-SSD | D: | S:SHARED | X:WIN_ENGINE
-USB DISK 1
-part#1 paths=[Y:\,\\?\Volume{636786cb-e967-49f6-b0df-7608909d1f11}\]
-part#2 paths=[\\?\Volume{402b696c-7a95-4283-99c3-9fa06fd8c84d}\]
-part#3 paths=[X:\,\\?\Volume{b76d4dcf-0c7c-4de0-88bb-bfeec7f0e76e}\]
-part#4 paths=[S:\,\\?\Volume{7701c3d4-2e4b-4f2f-81c3-3ebd6a97a896}\]
-part#5 paths=[V:\,\\?\Volume{13aa4423-d7dd-4019-8265-2bc75012c1c0}\]

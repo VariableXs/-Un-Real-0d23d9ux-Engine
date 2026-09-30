@@ -1,0 +1,18 @@
+{
+  "book": "D:\\2\\14\\-Un-Real-0d23d9ux-Engine-main\\docs\\Varix\\CoRun Varix STAR II · Unxreal\\AI-96 · 覆盖率统计官 · 500项新功能增补册续卷（B16–B40 · GOV96-301–GOV96-800）.md",
+  "rows": 500,
+  "total_lines": 150000,
+  "sha256": "3a61598ab3b6ac7fee53e0fd3fecedaa133172365e009fc683452be4306d9bdb",
+  "asserts": {
+    "A1_id_continuous_unique": true,
+    "A2_judge_one_to_one": true,
+    "A3_batch_conservation": true,
+    "A4_main_block_aware_no_conflict": true,
+    "A5_f_series_untouched": true,
+    "A6_no_true_dup_theme_cross_book": true,
+    "A7_kernel_anchor_100": true,
+    "A8_constitution_present": true,
+    "A9_main_book_overlap_zero": true
+  },
+  "all_pass": true
+}

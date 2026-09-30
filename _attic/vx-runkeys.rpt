@@ -1,6 +1,0 @@
-=== runkeys ===
-X: mounted
-default template run = ('VariableDesktop', '"C:\\Variable\\Variable.exe"')
-using run entry: VariableDesktop = "C:\Variable\Variable.exe"
-defaultuser0: Run[VariableDesktop] -> "C:\Variable\Variable.exe" (verify ok=True)
-=== runkeys done ===
