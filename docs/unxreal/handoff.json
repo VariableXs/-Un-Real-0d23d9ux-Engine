@@ -1106,7 +1106,7 @@
       "entries_deepened_note": "域满账封账：M25 轮 300+M37 轮 60（B01–B18，正文 126,756 字）+M38 采纳轮 300（B19–B33，203,422 字）+M40 收官轮 140（B34–B40，89,959 字）——全域 800 条正文 420,138 字逐条 ≥300；F15998 域账封账 240,000 恒等+F15999 闭账恒等式+F16000 收官标志条（账满/验全/经沉）；B38 四类资产 SHA-256 快照哈希链；B39 移交包七件双签留白待消费域；校验器 scripts/unxreal_d5_deepen_check.py 40 册满账版六查全绿 exit=0；域无待领批，300 项明令域内三轮 740 实做、收官轮差额 160 待 Variable 裁定"
     },
     "E3": {
-      "finalized_batches": 35,
+      "finalized_batches": 40,
       "finalized_list": [
         "E3-B01",
         "E3-B02",
@@ -1142,7 +1142,7 @@
         "E3-B32",
         "E3-B33",
         "E3-B34",
-        "E3-B35"
+        "E3-B35", "E3-B36", "E3-B37", "E3-B38", "E3-B39", "E3-B40"
       ],
       "skeleton_batches": 40,
       "skeleton_list": [
@@ -1191,8 +1191,8 @@
       "rows_budget": 240000,
       "rows_deepened_locked": 0,
       "entries_skeleton": 800,
-      "entries_deepened": 700,
-      "entries_deepened_note": "700 = M03 100（B01–B05）+ M04 300（B06–B20）+ M05 300（B21–B35）；B36–B40 深化回填（100 条）随续作窗口收尾",
+      "entries_deepened": 800,
+      "entries_deepened_note": "800/800 域深化收官 = M03 100 + M04 300 + M05 300 + M06 100（B36–B40）；另有增补卷一 UNX-E3-S001–S200（supp/UNX-E3-SUPP-S001-S200.md，独立账 60,000 行不占域账）",
       "deepened_list": [
         "E3-B01",
         "E3-B02",
@@ -1228,7 +1228,7 @@
         "E3-B32",
         "E3-B33",
         "E3-B34",
-        "E3-B35"
+        "E3-B35", "E3-B36", "E3-B37", "E3-B38", "E3-B39", "E3-B40"
       ]
     },
     "UNX-E1": {
