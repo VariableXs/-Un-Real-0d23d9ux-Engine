@@ -1,7 +1,7 @@
 {
   "protocol": "Unxreal handoff v1（总册 §6.4）",
-  "updated_at": "2026-10-02T03:20:00",
-  "last_session": "AI-38 H3 域认领扩表+首产段立账：§7.3-H3 四十行一次建入（[骨架]×15 AI-38 写锁+[未动]×25 待领）；批册 batches/UNX-H3-B01..B15.md 十五件 300 条/90,000 行落盘（F29601–F29900 连续唯一、判据 300 枚唯一）；生成器 scripts/unxreal_h3_gen.py + 校验器 scripts/unxreal_h3_skeleton_check.py 六查 ALL PASS exit=0；主汇编册《UNX-H3 首产段卷》300 项纯追加零删除；open_risks R-H3-001（上游 Schema 先行）/R-H3-002（真机随闸门）/R-H3-003（AI-95 合规会签前置）",
+  "updated_at": "2026-10-02T03:30:00",
+  "last_session": "AI-34 G4 域认领扩表：总纲 §7.3-G4 全表 40 批一次建入 + B01–B15 首产段骨架 300 项新功能（batches/UNX-G4-B01..B15.md · F26401–F26700 连续唯一 · 90,000/240,000=37.5% · 生成器 _g4_firstprod.py 五断言 ALL PASS）；任务书示例锚 F26401/F26500 原位、F26600/F26700 按 §2.1 区间恒等归位（语义锚 B10/B14 末条承载位）；汇编册增补卷纯追加；根台账 §三/§四同步；并行 AI-33（G3）同期施工零覆盖；open_risks R-G4-001/002/003 登记",
   "phase": "C2 域满账封账收官（800/800 条、240,000/240,000 行深化锁定；B01–B15 地基段+B16–B30 M/E/I 主体段+B31–B36 I 型联调后段+B37–B40 C 型收官段四段全收口；F9600 三断言登记实机随闸门补测；无待领批无待深化条，域移交就绪）；D5 域波段收口（波08-M37 AI-13：B01–B18 十八批 360 条/108,000/240,000，300 项新功能明令 300/300 达成；B19–B40 待领 440 条/132,000 行由 AI-13 续领）",
   "next_batch": "H3 域 B16–B40 待领（余 150,000 行；B16–B20 轨道与 seek 深化/B21–B28 E 型错误矩阵/B29–B36 I 型联签与 DirectShow·MF 桥/B37–B40 片源库总账与域收官）；他域待领以根台账为准",
   "domain_ledger_progress": {
@@ -1384,6 +1384,40 @@
         "R-H3-001 上游未收口面 Schema 先行+fake 对接",
         "R-H3-002 真机判据随闸门补测（零 QEMU）",
         "R-H3-003 FFmpeg 合规子集待 AI-95 会签"
+      ]
+    },
+    "UNX-G4": {
+      "owner": "AI-34",
+      "wave": "波 15",
+      "phase": "skeleton",
+      "finalized_batches": 0,
+      "skeleton_batches": 15,
+      "rows_budget": {
+        "total": 240000,
+        "locked": 90000,
+        "remaining": 150000
+      },
+      "next_batch": "UNX-G4-B16（E 型错误路径段起卷 · 待领）",
+      "anchors": {
+        "F26401": "B01",
+        "F26500": "B05",
+        "F26600": "B10（语义承载位·§2.1 恒等归位）",
+        "F26700": "B14（语义承载位·§2.1 恒等归位）"
+      },
+      "upstream": [
+        "AI-32（接口⑨·Schema 先行+fake·B24 冻结签前置）"
+      ],
+      "peer": [
+        "AI-33（DXGI 共享面联签·hack 账基础设施共享）"
+      ],
+      "downstream": [
+        "AI-70（N5 收口消费样本账）"
+      ],
+      "baseline": "vkd3d-proton 波14 基线版钉定（波内禁升，升级全量重跑）",
+      "open_risks": [
+        "R-G4-001",
+        "R-G4-002",
+        "R-G4-003"
       ]
     }
   },
