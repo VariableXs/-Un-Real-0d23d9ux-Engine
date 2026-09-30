@@ -39,7 +39,8 @@ for b in BATCHES:
         cid = f"UNX-F{fid}-J1"
         crit_ids.append(cid)
         if ln is None:
-            plug_row = (fid, title, crit)
+            plug_title = title if title else crit.split('：')[0]
+            plug_row = (fid, plug_title, crit)
             continue
         rows.append((fid, title, ln, crit)); batch_sum += ln
     ANCHOR_IDS = {35221, 35268, 35310, 35400, 35520}
