@@ -11,13 +11,16 @@ WT = os.path.join(ROOT, "_attic", "_ai110_push_wt")
 REPO = "VariableXs/-Un-Real-0d23d9ux-Engine"
 API = f"https://api.github.com/repos/{REPO}"
 REL_BOOKLET = "docs/Varix/CoRun Varix STAR II · Unxreal/AI-110 · 内核工程链增补线 · 300项新功能增补册（B01–B15 · A110-001–A110-300）.md"
+REL_DETAIL = "docs/Varix/CoRun Varix STAR II · Unxreal/AI-110 · 内核工程链增补线 · 300项新功能定制详述册（A110-001–A110-300 · 每条300字）.md"
 FILES = [
     REL_BOOKLET,
+    REL_DETAIL,
     "_ai110_gen.py",
     "_ai110_append.py",
     "_ai110_push.py",
-]
-MSG = ("unxreal(k110): AI-110 内核工程链增补线 300项新功能增补册（B01-B15 · A110-001-A110-300 · 15批×20条×6,000行=90,000行 · 增补卷独立账不占域账）——全量内核锚定（引导链/Limine 模块通道/中断 SMP/内存 fb 戒律/存储探针红线/NVMe·AHCI·xHCI·exFAT/last_boot 闭环/ushell/调度 Wine/断电安全/日志中心/测试门禁/安全红线收口）；生成器 _ai110_gen.py 七断言 ALL PASS（300条连续唯一/判据一一对应/批守恒15×6,000/15收官印/A110-300终钉/状态列统一增补/防重grep主册零撞号）；主汇编册 AI-110 登记块已纯追加落主册本地卷（追加前 sha256 495e9b62…，追加后 192acab3…，他会话 AI-108 后续追加共存如实登记）；主册 100MB+ 超 blobs 上限沿 AI-71/81/86/90/98/108 先例欠账登记不入 pathspec；AI-97 缺陷账本仅冻结对接位不代写（R-100-004 尊重条款），他 AI 域账零触碰。")
+] + [f"_ai110_deep/{n}" for n in
+     [f"B{i:02d}.md" for i in range(1, 16)] + ["supplements.md"]]
+MSG = ("unxreal(k110): AI-110 300项新功能定制详述册落件（A110-001-A110-300 · 每条≥300字定制深化 · 功能定位/定制详述/完成与验收/落地与回归口径逐条定制 · 12.9万字 · 300/300达标min=300avg=382 · 防重零撞号）——主汇编册纯追加登记（详述前sha333a3a2d后b2ed2b10，他会话追加共存如实登记）；主册超100MB沿AI-71/81/86/90/98/108先例欠账登记不入pathspec；随附增补册/生成器/追加器/推送器/15批深化底稿；他AI域账零触碰。前案 commit 0a21c6f。")
 
 def sh(args, cwd=ROOT, check=True):
     r = subprocess.run(args, cwd=cwd, capture_output=True)
@@ -42,6 +45,7 @@ def remote_head():
         return json.load(r)["object"]["sha"]
 
 def build(remote_sha):
+    sh(["git", "fetch", "--quiet", "origin", "main"], check=False)
     if os.path.exists(WT):
         sh(["git", "worktree", "remove", "--force", WT])
     sh(["git", "worktree", "add", "--detach", WT, remote_sha])
