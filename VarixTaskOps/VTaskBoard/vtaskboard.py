@@ -97,6 +97,100 @@ def _cover_to(im, tw, th):
         im = im.crop((l, t, l + tw, t + th))
     return im
 
+def _mp4_dims(path):
+    """读 MP4/MOV 显示尺寸（递归下钻 moov/trak 找 tkhd 的 16.16 定点宽高）。
+    取所有轨道中宽高最大者：音频轨的 tkhd 宽高为 0，必须跳过，否则取到 0 或错值。
+    不依赖 ffprobe/外部进程；解析失败返回 None。"""
+    try:
+        with open(path, "rb") as f:
+            d = f.read()
+    except OSError:
+        return None
+    stack = [(0, len(d))]
+    best = None
+    while stack:
+        start, end = stack.pop()
+        i = start
+        while i + 8 <= end:
+            # box 声明长度可能超出实际文件（截断/分片下载的 mdat 很常见）：
+            # 此时停止下钻但保留已解析出的尺寸，绝不因尾部越界丢掉前面的真值。
+            if i + 4 > end:
+                return best
+            sz = int.from_bytes(d[i:i + 4], "big")
+            typ = d[i + 4:i + 8]
+            hs = 8
+            if sz == 1:
+                if i + 16 > end:
+                    return best
+                sz = int.from_bytes(d[i + 8:i + 16], "big")
+                hs = 16
+            elif sz == 0:
+                sz = end - i
+            if sz < hs:
+                return best
+            if typ == b"tkhd":
+                ver = d[i + hs]
+                off = i + hs + (4 if ver == 0 else 8) + 4 + 4 + 4 + 4 + 4 + 8 + 2 + 2 + 2 + 2 + 36
+                if off + 8 <= min(i + sz, end):
+                    w = int.from_bytes(d[off:off + 4], "big") >> 16
+                    h = int.from_bytes(d[off + 4:off + 8], "big") >> 16
+                    if w > 0 and h > 0 and (best is None or w * h > best[0] * best[1]):
+                        best = (w, h)
+                if i + sz > end:
+                    return best            # 本 box 被截断，后续无意义
+            elif typ in (b"moov", b"trak", b"mdia", b"minf", b"stbl", b"edts", b"udta"):
+                if i + hs > end:
+                    return best
+                stack.append((i + hs, min(i + sz, end)))
+                if i + sz > end:
+                    return best
+            i += sz
+    return best
+
+def _we_url_safe(fn):
+    """WE 素材文件名含中文全角冒号「：」、尾随空格等 URL 不安全字符，
+    直接拼接会被客户端/代理规范化导致 404。映射为 pid 级安全名（幂等、可逆）。
+
+    规则：<we原名> -> /we/<pid>/_f<base64url(utf-8 原名)>
+    服务端按同一规则解码回真实路径，故无需改动磁盘文件。"""
+    import base64
+    b = base64.urlsafe_b64encode(fn.encode("utf-8")).decode("ascii").rstrip("=")
+    return "_f" + b
+
+def _img_size(path):
+    """读图片首帧尺寸（GIF 不触发全帧解码；jpg 直接读头）。失败返回 None。"""
+    if not _PIL:
+        return None
+    try:
+        with _PImage.open(path) as im:
+            return im.size
+    except (OSError, ValueError):
+        return None
+
+def _we_native_video(pdir, min_w=1280):
+    """项目目录内的真视频素材（部分 scene 项目附带原生动画）。
+    仅当分辨率 >= min_w 才采用：低分辨率真视频不如 GIF 可动，且会被拉伸得更丑。"""
+    try:
+        names = os.listdir(pdir)
+    except OSError:
+        return None
+    for fn in sorted(names):
+        if not fn.lower().endswith((".mp4", ".webm", ".mov", ".m4v")):
+            continue
+        fp = os.path.join(pdir, fn)
+        try:
+            if os.path.getsize(fp) < 512 * 1024:      # 太小必是占位/损坏
+                continue
+        except OSError:
+            continue
+        if fn.lower().endswith((".webm", ".mov", ".m4v")):
+            # 非 mp4 容器无法用 tkhd 解析，信任文件大小（WE 原生 webm 均 ≥ 数 MB）
+            return fn.replace("\\", "/")
+        dims = _mp4_dims(fp)
+        if dims and dims[0] >= min_w:
+            return fn.replace("\\", "/")
+    return None
+
 def _wehd_item(pid, pdir):
     """官方 preview.jpg（600~1024 方形小图）→ HD 增强版（按显示区宽高比 cover 预裁切
     + 一次性缩放到显示物理尺寸 + 轻锐化）。
@@ -156,22 +250,45 @@ def we_wallpapers():
         if typ == "video":
             fn = meta.get("file") or ""
             if os.path.isfile(os.path.join(pdir, fn)):
+                _d = _mp4_dims(os.path.join(pdir, fn)) if fn.lower().endswith(".mp4") else None
                 items.append({"id": pid, "name": title, "type": "video",
-                              "url": "/we/%s/%s" % (pid, fn.replace("\\", "/")), "preview": preview})
+                              "url": "/we/%s/%s" % (pid, _we_url_safe(fn)), "preview": preview,
+                              "native": True,
+                              "res": ("%dx%d" % _d) if _d else None,
+                              "mb": round(os.path.getsize(os.path.join(pdir, fn)) / 1048576.0, 1)})
         elif typ == "web":
             fn = meta.get("file") or ""
             if os.path.isfile(os.path.join(pdir, fn)):
                 items.append({"id": pid, "name": title, "type": "web",
-                              "url": "/we/%s/%s" % (pid, fn.replace("\\", "/")), "preview": preview})
+                              "url": "/we/%s/%s" % (pid, _we_url_safe(fn)), "preview": preview})
         elif typ == "scene":
-            # scene 壁纸：preview.gif 本身是官方生成的动态预览，可直接动起来；
-            # 仅 jpg 的项目标注「场景预览」静态呈现（scene.pkg 需 WE 运行时，无法原生渲染）
+            # scene 壁纸素材优先级（2026-10-03 画质终判）：
+            #   1) 项目目录内的真视频 mp4/webm —— 部分 scene 项目其实附带原生动画
+            #      （实测 2560x1440 / 1920x1080），拿它放全屏是真分辨率，与 WE 原生一致；
+            #   2) preview.gif —— 官方动态预览，但仅 160~224px，放全屏要放大 8~12 倍，
+            #      必然块状马赛克（用户实机截图证实）。仅当项目无真视频时才用；
+            #   3) preview.jpg —— 600~1024 方形静图，走 _wehd_item 输出 HD 版。
+            native = _we_native_video(pdir)
             has_jpg = os.path.isfile(os.path.join(pdir, "preview.jpg"))
             has_gif = os.path.isfile(os.path.join(pdir, "preview.gif"))
-            if has_gif:
+            if native:
+                dims = _mp4_dims(os.path.join(pdir, native))
+                items.append({"id": pid, "name": title, "type": "video",
+                              "url": "/we/%s/%s" % (pid, _we_url_safe(native)),
+                              "preview": ("/we/%s/preview.jpg" % pid) if has_jpg else None,
+                              "native": True,
+                              "res": ("%dx%d" % dims) if dims else None,
+                              "mb": round(os.path.getsize(os.path.join(pdir, native)) / 1048576.0, 1)})
+            elif has_gif:
+                # GIF 素材分辨率极低（官方预览图，实测 160~224px），全屏需放大 8~12 倍，
+                # 必然块状马赛克 —— 这是素材物理上限，服务端任何处理都补不出细节。
+                # 显式标注 upscale 倍数，让用户知情选择，不假装它是高清素材。
+                gsz = _img_size(os.path.join(pdir, "preview.gif"))
+                up = round(_display_px()[0] / gsz[0], 1) if gsz and gsz[0] else 0
                 items.append({"id": pid, "name": title, "type": "gif",
                               "url": "/we/%s/preview.gif" % pid,
-                              "preview": "/we/%s/preview.jpg" % pid if has_jpg else "/we/%s/preview.gif" % pid})
+                              "preview": "/we/%s/preview.jpg" % pid if has_jpg else "/we/%s/preview.gif" % pid,
+                              "res": ("%dx%d" % gsz) if gsz else None, "upscale": up or None})
             elif has_jpg:
                 # scene 壁纸收敛（2026-10-03 终判）：实时取帧所有 GDI/DWM 路线全灭——
                 # 屏幕抓取必混入遮挡窗口（旧探针抓到抽屉芯片=满屏巨大按钮事故），
@@ -179,10 +296,13 @@ def we_wallpapers():
                 # WGC/csc 在本环境不可达。板内呈现=官方预览的 HD 增强版（Lanczos 放大到
                 # 原生屏宽+锐化）；原生分辨率真动画走芯片上的「🖥 桌面」按钮（WE 真渲染）。
                 hd = _wehd_item(pid, pdir)
+                ssz = _img_size(os.path.join(pdir, "preview.jpg"))   # 复用同一读取器
+                up = round(_display_px()[0] / ssz[0], 1) if ssz and ssz[0] else 0
                 items.append({"id": pid, "name": title, "type": "live",
                               "url": hd or "/we/%s/preview.jpg" % pid,
                               "fallback": "/we/%s/preview.jpg" % pid,
-                              "preview": "/we/%s/preview.jpg" % pid})
+                              "preview": "/we/%s/preview.jpg" % pid,
+                              "res": ("%dx%d" % ssz) if ssz else None, "upscale": up or None})
     _WE_CACHE["t"] = time.time()
     _WE_CACHE["items"] = items
     return items
@@ -1084,6 +1204,16 @@ class H(BaseHTTPRequestHandler):
             rel = urllib.parse.unquote(p0[len("/we/"):])
             if not root or not rel or ".." in rel:
                 self.send_response(404); self.end_headers(); return
+            # _f<base64url> 安全名还原为真实素材名（见 _we_url_safe）
+            if "/" in rel:
+                head, _, tail = rel.rpartition("/")
+                if tail.startswith("_f"):
+                    try:
+                        import base64 as _b64
+                        tail = _b64.urlsafe_b64decode(tail[2:] + "=" * (-len(tail[2:]) % 4)).decode("utf-8")
+                        rel = head + "/" + tail.replace("\\", "/")
+                    except (ValueError, UnicodeDecodeError):
+                        pass
             fp = os.path.normpath(os.path.join(root, rel))
             if not fp.startswith(os.path.normpath(root)) or not os.path.isfile(fp):
                 self.send_response(404); self.end_headers(); return

@@ -119,6 +119,14 @@ body.t-aurora .hudgrid{grid-template-areas:"heat ring" "heat pipe" "books worker
 .ambchip:hover{transform:translateY(-1px);color:var(--fg)}
 .ambchip.on{border-color:var(--hgold,#d4b270);color:var(--hgold,#d4b270);box-shadow:0 0 12px color-mix(in srgb,var(--hgold,#d4b270) 30%,transparent)}
 .ambchip.sys{font-size:10.5px;opacity:.85}
+/* 画质标注：原生分辨率=金色徽标（可信高清）；需放大=灰色斜体（素材受限预警） */
+.ambchip .qh{margin-left:6px;font-size:9px;font-weight:700;letter-spacing:.04em;
+  color:var(--hgold,#d4b270);opacity:.9;vertical-align:1px}
+.ambchip .qu{margin-left:6px;font-size:9px;font-style:italic;letter-spacing:.02em;
+  color:var(--dim);opacity:.72;vertical-align:1px}
+.ambchip.on .qu{color:var(--fg);opacity:.9}
+.rotpos{font-size:9.5px;letter-spacing:.1em;color:var(--dim);opacity:.8;align-self:center;
+  font-variant-numeric:tabular-nums}
 .wslider{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.16em;color:var(--faint);
   background:rgba(20,22,28,.6);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
 .wslider input{width:84px;accent-color:var(--hgold,#d4b270);cursor:pointer}
@@ -1688,11 +1696,90 @@ const AMB=(()=>{
       window.__wallRGB=[r/n,gg/n,b/n];applyAdaptive();
     }catch(e){}
   }
+  /* ══ 壁纸轮播 ══════════════════════════════════════════════════
+     就绪门控是关键：视频不等 canplay 就切下一张必然黑屏（首帧未解码）。
+     静图等 load，视频等 canplay + 再给一帧渲染余量，然后才起算停留时长。 */
+  const _ROT={timer:null,ready:null,gen:0};
+  function _rotStop(){
+    _ROT.gen++;                       /* 作废在途的就绪回调，避免切完后旧定时器复活 */
+    if(_ROT.timer){clearTimeout(_ROT.timer);_ROT.timer=null}
+    _ROT.ready=null;
+  }
+  /* 轮播候选列表。超大视频（默认 >120MB）自动跳过：轮播切换会瞬时拉起整份大文件，
+     841MB 级的 WE 原生视频在 10~60s 间隔下必然把加载管道堵死，反而什么都看不了。
+     它们仍可手动点选（用户明确要看），只是不参与自动轮播。 */
+  const ROT_SKIP_MB = 120;
+  function _rotList(){
+    return (walls||[]).filter(w=>{
+      if(!w||!w.url)return false;
+      if(w.type==='video'&&w.mb>ROT_SKIP_MB)return false;
+      return true;
+    });
+  }
+  function _rotNext(){
+    const list=_rotList();
+    if(list.length<2)return null;
+    const cur=list.findIndex(w=>w.url===wallSel);
+    if(cur<0){
+      /* 当前壁纸被跳过（如超大视频）或不在列表：定位到它在完整列表中的位置，
+         从「它之后的第一个可轮播项」继续，避免永远停在 list[0] 原地踏步。 */
+      const all=(walls||[]).filter(w=>w&&w.url);
+      const i=all.findIndex(w=>w.url===wallSel);
+      for(let k=1;k<=all.length;k++){
+        const c=all[(i+k+all.length)%all.length];
+        if(c&&c.url&&!(c.type==='video'&&c.mb>ROT_SKIP_MB))return c;
+      }
+      return list[0];
+    }
+    return list[(cur+1)%list.length];
+  }
+  /* 当前张渲染就绪后调用：到点切下一张 */
+  function _rotArm(){
+    const s=S();
+    if(s.rot===false||!_rotList().length){_rotStop();return}
+    const sec=Math.max(10,+s.rotSec||60)*1000;
+    _ROT.timer=setTimeout(()=>{
+      _ROT.timer=null;
+      const nx=_rotNext();
+      if(nx)setWall(nx,true);          /* silent：不写状态，避免轮播把用户选择覆盖掉 */
+      _rotArm();                        /* 递归续期；setWall 内部会重置 gen */
+    },sec);
+  }
+  /* 由 setWall 在元素就绪时调用：起算本张停留时长 */
+  function _rotReady(gen,el,kind){
+    if(gen!==_ROT.gen)return;           /* 已被更新的 setWall 作废 */
+    if(S().rot===false)return;
+    const wait=()=>{ if(gen!==_ROT.gen)return; _rotArm() };
+    if(kind==='video'){
+      /* canplay 后再等 rAF 两帧，确保首帧已上屏，避免黑屏切入 */
+      const go=()=>requestAnimationFrame(()=>requestAnimationFrame(wait));
+      if(el.readyState>=3)go();else el.addEventListener('canplay',go,{once:true});
+    }else if(kind==='web'){
+      el.addEventListener('load',wait,{once:true});
+      setTimeout(wait,1500);            /* 兜底：iframe load 不可靠 */
+    }else{
+      if(el.complete&&el.naturalWidth)wait();
+      else{el.addEventListener('load',wait,{once:true});setTimeout(wait,1500)}
+    }
+  }
+  /* 切换壁纸：唯一入口，负责清理旧定时器 + 建立新定时器 */
+  /* 壁纸芯片的画质标注：真分辨率 + 需放大倍数。
+     用户要能一眼分清「原生4K直出」与「160px 预览放大12倍」——后者必然糊，
+     属于素材物理上限，不是本软件的渲染缺陷，必须显性告知而不是假装高清。 */
+  function wallResTag(w){
+    const mb=w.mb?(w.mb>=1024?(w.mb/1024).toFixed(1)+'GB':Math.round(w.mb)+'MB'):'';
+    if(w.native)return `<b class="qh" title="原生素材直出${w.mb?' · '+mb:''}">${w.res||'原生'}${mb?' · '+mb:''}</b>`;
+    if(w.upscale)return `<i class="qu" title="素材仅 ${w.res}，全屏需放大 ${w.upscale} 倍 —— 素材分辨率不足，非渲染问题">${w.upscale}×</i>`;
+    return mb?`<i class="qu" title="文件体积 ${mb}">${mb}</i>`:'';
+  }
   function setWall(w,silent){
+    _rotStop();const gen=_ROT.gen;
     const box=$('#gwall');box.innerHTML='';box.style.display=w?'block':'none';
     document.body.classList.toggle('wallon',!!w);wallSel=w?w.url:null;wallURL=w?w.url:null;
     wallNAME=w?(w.name||''):null;applySkin();
-    if(!w){window.__wallRGB=null;if(!silent)save({wall:null});syncWallChips();applyAdaptive();return}
+    if(!w){window.__wallRGB=null;if(!silent)save({wall:null});syncWallChips();applyAdaptive();
+      /* 无壁纸时也续期：轮播到点后 _rotNext 会取第一张，实现「开启即自动开始」 */
+      _rotArm();return}
     if(w.type==='video'){
       /* 单视频 loop 循环（双缓冲会同时拉两份大文件，802MB×2 直接堵死加载管道=卡+后续全失败） */
       box.innerHTML='';
@@ -1712,11 +1799,11 @@ const AMB=(()=>{
         if(!v.paused&&v.readyState>=2)sampleWallColor(v);
       },1500);
       box.appendChild(v);kick(v);
-      wallURL=w.url;applyAdaptive()}
+      wallURL=w.url;applyAdaptive();_rotReady(gen,v,'video')}
     else if(w.type==='web'){const fr=document.createElement('iframe');
       fr.src=w.url;fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none';
       fr.setAttribute('scrolling','no');box.appendChild(fr);
-      wallURL=w.url;applyAdaptive()}
+      wallURL=w.url;applyAdaptive();_rotReady(gen,fr,'web')}
     else if(w.type==='live'){
       /* WE 场景：板内先出静态高质预览；若服务端取帧可用（WGC 等）会自动升级为实时流。
          桌面真渲染经芯片上的 🖥 按钮显式触发（15 分钟自动还原），不随选壁纸自动切桌面 */
@@ -1729,7 +1816,7 @@ const AMB=(()=>{
       const lv=setInterval(()=>{if(fell||!document.body.contains(im)){clearInterval(lv);return}
         sampleWallColor(im)},4000);
       box.appendChild(im);
-      wallURL=w.url;applyAdaptive()}
+      wallURL=w.url;applyAdaptive();_rotReady(gen,im,'img')}
     else{
       /* 静图/gif：全幅 cover 满屏（无边带无黑边），服务端已按显示区比例预裁切到目标尺寸，
          浏览器端退化为等比映射，不再二次插值 */
@@ -1737,7 +1824,7 @@ const AMB=(()=>{
       wallStyle(im);
       im.addEventListener('load',()=>sampleWallColor(im));
       box.appendChild(im);
-      wallURL=w.url;applyAdaptive()}
+      wallURL=w.url;applyAdaptive();_rotReady(gen,im,'img')}
     if(!silent)save({wall:w.url});syncWallChips();
   }
   function setVar(k,v,saveKey){hud().style.setProperty(k,v);if(saveKey)save({[saveKey]:v})}
@@ -1762,7 +1849,12 @@ const AMB=(()=>{
     walls=walls.concat(we);
     bar.innerHTML=`
       <div class="ambrow"><span class="ambchip sys" data-w="">无壁纸</span>
-        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('')}</div>
+        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.res?' · 素材 '+w.res:''}${w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('')}</div>
+      <div class="ambrow">
+        <span class="ambchip sys" id="amb-rot">▶▶ 轮播</span>
+        <span class="wslider">每<input type="range" id="amb-rotsec" min="10" max="600" step="10"><span id="amb-rotsecv">60</span>s</span>
+        <span id="amb-rotpos" class="rotpos"></span>
+      </div>
       <div class="ambrow"><span class="ambchip sys" id="amb-fxt">天气粒子</span></div>
       <div class="ambrow">
         <span class="wslider">亮<input type="range" id="amb-wb" min="0.3" max="1.6" step="0.02"></span>
@@ -1797,6 +1889,27 @@ const AMB=(()=>{
       applyWallFx()};
     ['amb-wb','amb-ws','amb-wbl'].forEach(id=>$('#'+id).addEventListener('input',upd));
     const ft=$('#amb-fxt');
+    /* ── 轮播控制 ── */
+    const rb=$('#amb-rot'),rs=$('#amb-rotsec'),rsv=$('#amb-rotsecv'),rp=$('#amb-rotpos');
+    const syncRotUI=()=>{
+      const s=S(),on=s.rot!==false;
+      rb.classList.toggle('on',on);
+      rb.textContent=(on?'⏸ 暂停轮播':'▶▶ 轮播');
+      rs.value=s.rotSec??60;rsv.textContent=rs.value;
+      const list=_rotList(),i=list.findIndex(x=>x.url===wallSel);
+      rp.textContent=list.length>1?(i>=0?`${i+1}/${list.length}`:`0/${list.length}`):'';
+    };
+    rb.addEventListener('click',()=>{
+      const on=!(S().rot!==false);save({rot:on});
+      if(on){const w=walls.find(x=>x.url===wallSel);if(w)setWall(w,true);else _rotArm()}
+      else _rotStop();
+      syncRotUI();
+    });
+    rs.addEventListener('input',()=>{rsv.textContent=rs.value;save({rotSec:+rs.value});_rotArm()});
+    $('#gwall').appendChild(document.createComment('rot'));
+    window._syncRotUI=syncRotUI;
+    const _origSync=syncWallChips;
+    syncWallChips=function(){_origSync();syncRotUI()};
     ft.classList.toggle('on',S().fx!==false);
     ft.addEventListener('click',()=>{const on=!(S().fx!==false);save({fx:on});
       document.body.classList.toggle('fx-off',!on);ft.classList.toggle('on',on)});
@@ -1804,6 +1917,9 @@ const AMB=(()=>{
     $('#gearbtn').addEventListener('click',()=>dr.classList.toggle('on'));
     $('#dclose').addEventListener('click',()=>dr.classList.remove('on'));
     applyState();
+    /* 启动即生效：applyState 已按持久化状态设好当前壁纸，这里补起轮播定时器。
+       放在最后是为了确保 walls 已就绪、syncRotUI 已定义。 */
+    if(typeof syncRotUI==='function'){syncRotUI();_rotArm()}
   }
   return {build,
           accent:()=>THEMES.find(x=>x.id===cur)?.rgb.slice(5,-1)||'212,178,112',
