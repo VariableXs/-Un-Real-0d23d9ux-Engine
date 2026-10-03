@@ -1,0 +1,38 @@
+# ── 测试产物与归档区（可重建，不入库）────────────────────────────
+# _attic = 测试软件/测试截图归档区（126 个文件 43MB：探测脚本、对比截图、
+# 损坏备份）。保留在本地磁盘，不进版本库。
+VarixTaskOps/VTaskBoard/_attic/
+VarixTaskOps/VTaskBoard/_tex/
+VarixTaskOps/VTaskBoard/_wehd/
+VarixTaskOps/VTaskBoard/_probe*.py
+VarixTaskOps/VTaskBoard/_probe*.js
+VarixTaskOps/VTaskBoard/_cmp_*
+VarixTaskOps/VTaskBoard/_shot_*
+VarixTaskOps/VTaskBoard/_lv_*
+VarixTaskOps/VTaskBoard/_va_*
+VarixTaskOps/VTaskBoard/_srv_ready
+
+# ── 构建产物 ──────────────────────────────────────────────────────
+VarixTaskOps/VTaskBoard/build/
+VarixTaskOps/VTaskBoard/dist/
+VarixTaskOps/VTaskBoard/*.spec
+__pycache__/
+*.pyc
+
+# ── 运行时临时文件 ────────────────────────────────────────────────
+*.lock
+chromiumerrorsentinel.lock
+Typora_Hook_Log.txt
+
+# ── 大体积本地数据 ────────────────────────────────────────────────
+# taskboard.md 35MB 为本地任务台账，随用随改，不适合入库。
+VarixTaskOps/VTaskBoard/taskboard.md
+
+# ── 用户本地壁纸与素材 ────────────────────────────────────────────
+# 壁纸/贴图/素材为用户本地资产（含 WE 创意工坊派生图），不入库。
+VarixTaskOps/VTaskBoard/wallpapers/
+VarixTaskOps/VTaskBoard/assets/
+VarixTaskOps/VTaskBoard/*.png
+VarixTaskOps/VTaskBoard/*.jpg
+VarixTaskOps/VTaskBoard/*.ico
+VarixTaskOps/VTaskBoard/*.txt
