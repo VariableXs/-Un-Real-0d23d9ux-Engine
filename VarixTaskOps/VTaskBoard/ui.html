@@ -131,10 +131,33 @@ body.t-aurora .hudgrid{grid-template-areas:"heat ring" "heat pipe" "books worker
   background:rgba(20,22,28,.6);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:999px;padding:5px 12px}
 .wslider input{width:84px;accent-color:var(--hgold,#d4b270);cursor:pointer}
 #gwall{position:fixed;inset:0;z-index:0;display:none;pointer-events:none;overflow:hidden}
-#gwall img,#gwall video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* ══ 壁纸渲染链：零重采样规格 ═══════════════════════════════════════
+   浏览器把壁纸元素栅格化到 devicePixelRatio 倍的物理像素。本机 1920x1080@125%
+   即 CSS 1536x864 -> 物理 1920x1080。壁纸元素宽高恒等于视口，浏览器按cover
+   把整幅母版映射上去；若母版比例与视口不同，必然发生一次重采样。
+   故由 JS 按视口实际物理像素比向服务端索取对应比例的母版（?r=WxH），
+   服务端 cover 预裁到同比例 —— 浏览器端就退化为 1:1 映射，不再二次插值。
+
+   image-rendering 必须显式写 auto：默认继承下部分主题会把它带到
+   pixelated/nearest（MC 皮肤为像素贴图专门设了 pixelated，若被壁纸继承
+   会让 4K 母版出现严重马赛克）。这里显式钉死 auto 覆盖继承。
+   will-change:transform 提示浏览器该层会被合成，避免走「先降级再放大」路径。*/
+#gwall img,#gwall video{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;image-rendering:auto;will-change:transform;backface-visibility:hidden}
 /* 同上：默认不挂 filter，保住壁纸原生缩放质量；仅在调节光影时启用（见 .fx） */
 #gwall img.fx,#gwall video.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
 body.wallon{background:transparent}
+/* 首屏骨架：4K 母版有2~7MB，首屏加载实测 4~7s。这段时间若只留空白，
+   用户会以为软件卡死。用壁纸主色的低频呼吸渐变占位，明确"正在加载"。
+   一旦真壁纸元素挂上即由 JS 移除（见 setWall），不残留、不遮挡。 */
+#gwall-skel{position:absolute;inset:0;z-index:-1;
+  background:
+    radial-gradient(120% 90% at 30% 20%,rgba(212,178,112,.10),transparent 60%),
+    radial-gradient(100% 80% at 75% 80%,rgba(90,130,190,.10),transparent 62%),
+    linear-gradient(160deg,#0d1014,#141a22 55%,#0b0e12);
+  animation:gwallbreathe 2.6s ease-in-out infinite}
+@keyframes gwallbreathe{0%,100%{opacity:.72}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){#gwall-skel{animation:none}}
 #gfx{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
 body.fx-off #gfx{display:none}
 .hpanel{position:relative;background:linear-gradient(180deg,rgba(35,38,48,.72),rgba(32,34,42,.55));
@@ -578,7 +601,7 @@ body.sk-moon #statsbtn:hover::after{right:-19px}
 <div class="aiborder"></div>
 <div class="aichip"><span class="dot"></span><span>AI 施工中</span><span id="aiworkers">—</span></div>
 
-<div id="gwall"></div>
+<div id="gwall"><div id="gwall-skel" aria-hidden="true"></div></div>
 <canvas id="gfx"></canvas>
 <header>
   <div class="logo">VTB</div>
@@ -1668,13 +1691,80 @@ const AMB=(()=>{
     root.style.setProperty('--glassB',`rgba(${Math.round(mix(r)*.72)},${Math.round(mix(g)*.72)},${Math.round(mix(b)*.75)},.90)`);
     root.style.setProperty('--glassLine',`rgba(${lift(r)},${lift(g)},${lift(b)},.28)`);
   }
-  /* 壁纸元素统一规格：满幅 cover + 仅在需要时挂 fx 类（filter 会破坏原生缩放质量）。
-     尺寸适应由 object-fit:cover 负责 —— 任意窗口/屏幕比例都满屏无黑边不变形。*/
+  /* 壁纸元素统一规格：满幅cover + 仅在需要时挂 fx 类（filter 会破坏原生缩放质量）。
+     尺寸适应分两层：
+       1) CSS object-fit:cover 负责「不满屏/不变形」——任意窗口比例都满幅无黑边；
+       2) 母版比例由 wallUrl() 按视口物理像素比向服务端索取，保证 cover 退化为 1:1。
+     image-rendering 在 CSS 里钉死 auto（MC 皮肤的 pixelated 不能污染壁纸）。 */
   function wallStyle(el){
-    el.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover';
+    el.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;image-rendering:auto';
     el.classList.toggle('fx',_wallFxOn());
     return el;
   }
+  /* 视口物理像素（CSS 尺寸 x devicePixelRatio）。壁纸实际占据的物理像素就是这个值，
+     服务端按它决定母版比例与超采样系数。 */
+  function viewPhys(){
+    const dpr=window.devicePixelRatio||1;
+    return [Math.max(1,Math.round(innerWidth*dpr)),Math.max(1,Math.round(innerHeight*dpr))];
+  }
+  /* ══ 母版就绪升级（pending -> 4K）══════════════════════════════
+     4K 母版由服务端后台生成（AI 超分要数十秒到数分钟），列表 API 绝不等待。
+     前端策略：先回退原素材顶上（不黑屏、不假装 4K），再后台轮询；
+     一旦母版文件出现（HEAD 200）就重拉列表拿到真元信息，无缝换成 4K 重挂。
+     用 HEAD 探测避免为了"看一眼"而下载几十 MB。 */
+  const _PEND={};
+  function _pendWatch(w){
+    if(!w||!w.pending||!w.url||_PEND[w.url])return;
+    const key=setInterval(()=>{
+      fetch(w.url,{method:'HEAD',cache:'no-store'}).then(r=>r.ok).catch(()=>false)
+        .then(ok=>{
+          if(!ok)return;                        /* 还没生成好，继续等 */
+          clearInterval(key);delete _PEND[w.url];
+          refreshWalls().then(()=>{
+            const nw=walls.find(x=>x&&x.url===w.url);
+            if(nw&&!nw.pending&&wallSel===w.url)setWall(nw,true);  /* 无缝升级 4K */
+          });
+        });
+    },4000);
+    _PEND[w.url]=key;
+  }
+  /* 静图母版 URL：带上当前视口物理尺寸，让服务端按同比例出图（比例一致 -> 1:1 映射）。
+     宽度取**视口物理宽向上取整到 4 的倍数**（H.264 要求偶数，取 4 兼容更多编码器）。
+     之前固定 3200 会与默认 3840 母版错配：白白让服务端重算一张 6400x3600
+     （实测 43s）却只按 3200 宽用，比例还是被浏览器二次裁切。宽度对齐母版才是
+     真正的 1:1 —— 键天然命中已缓存母版，零重算、零等待。
+     比例与已缓存母版差异 <=6% 时直接复用现键，避免拖窗口时反复重建。 */
+  /* 缓存的只是「视口比例」这一项，不是整个 URL —— 早期版本缓存了完整 URL，
+     结果切到下一张壁纸时会把上一张的 /m4k/xxx 地址原样返回（张冠李戴），
+     表现为部分壁纸 404 或挂错图。比例不变就复用同一个 ?r= 值。 */
+  const _M4K_AR={q:null};
+  function wallUrl(u){
+    if(!u||!u.startsWith('/m4k/'))return u;
+    const [vw,vh]=viewPhys();
+    const W0=Math.max(4,Math.ceil(vw/4)*4);
+    const H0=Math.max(4,Math.ceil(W0*vh/vw/4)*4);
+    if(_M4K_AR.q){
+      const p=_M4K_AR.q.split('x');
+      const ow=+p[0],oh=+p[1];
+      if(ow&&oh&&Math.abs(ow/oh-(vw/vh))<=0.06)return u+'?r='+_M4K_AR.q;
+    }
+    _M4K_AR.q=W0+'x'+H0;
+    return u+'?r='+_M4K_AR.q;
+  }
+  /* 视口比例变化超阈值时重建当前壁纸的母版（拖窗口/跨屏 DPI 变化时触发）。
+     去抖 400ms，避免拖动过程中连续触发服务端重算。 */
+  let _rszT=null;
+  addEventListener('resize',()=>{
+    if(!_M4K_AR.q)return;
+    const [vw,vh]=viewPhys();
+    const p=_M4K_AR.q.split('x');const ow=+p[0],oh=+p[1];
+    if(ow&&oh&&Math.abs(ow/oh-(vw/vh))<=0.06)return;
+    clearTimeout(_rszT);
+    _rszT=setTimeout(()=>{
+      const w=walls&&walls.find(x=>x&&x.url===wallSel);
+      if(w)setWall(w,true);          /* 重挂 -> 按新比例取母版 */
+    },400);
+  });
   /* 光影三参数是否偏离恒等值。恒等 => 不挂 filter，让壁纸走浏览器原生 1:1 栅格化 */
   function _wallFxOn(){
     const s=S();
@@ -1763,64 +1853,139 @@ const AMB=(()=>{
     }
   }
   /* 切换壁纸：唯一入口，负责清理旧定时器 + 建立新定时器 */
-  /* 壁纸芯片的画质标注：真分辨率 + 需放大倍数。
-     用户要能一眼分清「原生4K直出」与「160px 预览放大12倍」——后者必然糊，
-     属于素材物理上限，不是本软件的渲染缺陷，必须显性告知而不是假装高清。 */
+  /* 壁纸芯片的画质标注：母版分辨率 + 来源（AI 超分/插值/原生）。
+     必须让用户能一眼分清三件事：
+       · master  —— 最终上屏的母版分辨率（本机 3840x2160 = 2x超采样）
+       · sr      —— 该母版由 Real-ESRGAN AI 超分合成（低像素素材的救命通道）
+       · res/up  —— 原始素材的真实尺寸与放大倍数（素材本身的物理上限）
+     绝不把插值产物标成高清，也绝不把 AI 超分说成原生 —— 如实标注是信任的基础。 */
   function wallResTag(w){
     const mb=w.mb?(w.mb>=1024?(w.mb/1024).toFixed(1)+'GB':Math.round(w.mb)+'MB'):'';
-    if(w.native)return `<b class="qh" title="原生素材直出${w.mb?' · '+mb:''}">${w.res||'原生'}${mb?' · '+mb:''}</b>`;
-    if(w.upscale)return `<i class="qu" title="素材仅 ${w.res}，全屏需放大 ${w.upscale} 倍 —— 素材分辨率不足，非渲染问题">${w.upscale}×</i>`;
-    return mb?`<i class="qu" title="文件体积 ${mb}">${mb}</i>`:'';
+    const mst=w.master?('母版 '+w.master):'';
+    /* 生成中：显式告知"正在算"，并说明当前先用原素材顶替。
+       绝不让用户以为这就是最终画质 —— 那属于隐瞒。 */
+    if(w.pending)
+      return `<i class="qu" title="4K 母版正在后台生成（AI 超分需数十秒~数分钟）。期间先用原素材顶替，不黑屏；就绪后自动升级">⏳ 4K 生成中…</i>`;
+    if(w.sr)
+      return `<b class="qh" title="${esc(mst)}${mb?' · '+mb:''} · 原素材仅 ${w.srcRes||w.res||'低分辨率'}（放大 ${w.upscale||'?'}×），母版由 Real-ESRGAN AI 超分合成">AI超分 ${mst}${mb?' · '+mb:''}</b>`;
+    /* 视频重编码母版：源片码率极低（实测最低 1864kb/s，块效应比 28.8）时，
+       用高码率重编码把宏块痕迹抹平。母版尺寸 = min(源, 4K上限) —— **禁止上采样**：
+       把 2560x1440 拉到 3840x2160 只会造出插值伪高频、并让每像素分到的码率
+       减半，实测比原生直出更糊。所以这里如实显示母版的真实尺寸。 */
+    if(w.v4k)
+      return `<b class="qh" title="源 ${w.srcRes||w.res||'?'}${w.srcRes?'（码率偏低，块效应明显）':''} → 高码率重编码母版 ${w.res||''}（NVENC cq14，保留细节并消除源块效应）${mb?' · '+mb:''}。母版不做上采样：把低分辨率源拉大只会得到插值伪高频，不如原生尺寸直出${w.srcRes&&/^3840/.test(w.srcRes)?'，本例源已是 4K':''}">${/^3840/.test(w.res||'')?'4K重编码':'高码率重编码'} ${w.res||''}${mb?' · '+mb:''}</b>`;
+    /* 原生源（scene.pkg 内嵌纹理/动画）：这是 WE 在 Windows 上真正播放的素材，
+       分辨率就是作者放的原生值 —— 比商店页缩略图强一个量级。 */
+    if(w.origin==='tex')
+      return `<b class="qh" title="素材取自 scene.pkg 内嵌的原生${w.type==='video'?'动画':'纹理'} ${w.srcRes||''}，即 Wallpaper Engine 在 Windows 桌面播放的原始素材（非商店缩略图）${mb?' · '+mb:''}">原生源 ${w.srcRes||''}${mb?' · '+mb:''}</b>`;
+    if(w.native)
+      return `<b class="qh" title="原生素材直出${w.res?' · '+w.res:''}${mb?' · '+mb:''}">${w.res||'原生'}${mb?' · '+mb:''}</b>`;
+    if(w.upscale)
+      return `<i class="qu" title="${esc(mst)} · 原素材 ${w.res||'?'}，需放大 ${w.upscale} 倍">${w.upscale}×</i>`;
+    return mst?`<i class="qu" title="${esc(mst)}">${w.master}</i>`:(mb?`<i class="qu" title="文件体积 ${mb}">${mb}</i>`:'');
   }
   function setWall(w,silent){
     _rotStop();const gen=_ROT.gen;
-    const box=$('#gwall');box.innerHTML='';box.style.display=w?'block':'none';
+    /* 清空时保留骨架节点：真壁纸 2~7MB，首屏有几秒空窗，需要它占位。
+       无壁纸（w 为null）时连骨架一起清掉 —— 空桌面不该显示加载动画。 */
+    const box=$('#gwall'),skel=$('#gwall-skel');
+    box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
+    box.style.display=w?'block':'none';
+    if(!w&&skel)skel.remove();
     document.body.classList.toggle('wallon',!!w);wallSel=w?w.url:null;wallURL=w?w.url:null;
     wallNAME=w?(w.name||''):null;applySkin();
     if(!w){window.__wallRGB=null;if(!silent)save({wall:null});syncWallChips();applyAdaptive();
       /* 无壁纸时也续期：轮播到点后 _rotNext 会取第一张，实现「开启即自动开始」 */
       _rotArm();return}
+    const SRC=wallUrl(w.url);          /* 母版 URL（按视口物理比例带 ?r=） */
     if(w.type==='video'){
       /* 单视频 loop 循环（双缓冲会同时拉两份大文件，802MB×2 直接堵死加载管道=卡+后续全失败） */
-      box.innerHTML='';
+      box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
+      /* fallback 指向 .gif 时必须用 <img>：<video> 不解GIF，readyState 恒为 0
+         —— 表现为"点了壁纸但什么都没出来"。母版 MP4 就绪后 _pendWatch 会无缝换上。 */
+      const fbImg=w.fallback&&/\.gif($|\?)/i.test(w.fallback);
+      if(fbImg&&!/\.mp4($|\?)/i.test(SRC)){
+        const im=document.createElement('img');
+        im.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
+        wallStyle(im);
+        let fell=false;
+        im.addEventListener('error',()=>{if(fell)return;fell=true;
+          im.src=w.fallback;if(w.pending)_pendWatch(w);
+          setTimeout(()=>sampleWallColor(im),400)});
+        box.appendChild(im);
+        wallURL=SRC;applyAdaptive();_rotReady(gen,im,'img');
+        if(w.pending)_pendWatch(w);
+        if(!silent)save({wall:w.url});syncWallChips();
+        return}
       const v=document.createElement('video');
-      v.src=w.url;v.muted=true;v.playsInline=true;v.setAttribute('muted','');
+      /* 4K 母版 MP4（GIF 超分/ 视频重编码产物）也要走 wallUrl 换比例；原生大视频直接用原 URL */
+      v.src=SRC;v.muted=true;v.playsInline=true;v.setAttribute('muted','');
+      /* preload='auto' 是「壁纸能一直播下去」的关键：
+         默认 'metadata' 只拉文件头就停，readyState 到 4 也不再预缓冲，
+         播完当前缓冲就卡住。实测 802MB 的 249s 视频只缓冲 15.8s 就停 ——
+         加上 auto 后浏览器会持续填充缓冲，循环播放不再中断。
+         配合服务端 +faststart（moov 前置），起播也不必等整个文件。 */
+      v.preload='auto';
       if(w.preview)v.poster=w.preview;   /* 大视频加载期显示预览图，防黑屏 */
       v.autoplay=true;v.loop=true;v.controls=false;v.disablePictureInPicture=true;
       wallStyle(v);
       const kick=el=>{const p=el.play();if(p)p.catch(()=>{})};
+      /* 母版未就绪（后台超分生成中，URL 404）-> 回退原素材顶上，绝不留黑屏。
+         fallback 若是 GIF 必须换成 <img>：<video> 不解 GIF，readyState 恒为 0，
+         表现为"点了壁纸什么都没有"。母版就绪后 _pendWatch 会无缝换成 4K MP4。 */
+      let fell=false;
+      v.addEventListener('error',()=>{
+        if(fell||!w.fallback)return;fell=true;
+        if(/\.gif($|\?)/i.test(w.fallback)){
+          const im=document.createElement('img');
+          im.src=w.fallback;wallStyle(im);
+          v.replaceWith(im);
+          im.addEventListener('load',()=>sampleWallColor(im));
+          return;
+        }
+        v.src=wallUrl(w.fallback);kick(v);
+      });
+      if(w.pending&&w.fallback)_pendWatch(w);
       v.addEventListener('canplay',()=>{kick(v);sampleWallColor(v)});
-      const vis=()=>{document.hidden?v.pause():kick(v)};
+      const vis=()=>{if(!document.body.contains(v)){document.removeEventListener('visibilitychange',vis);return}
+        document.hidden?v.pause():kick(v)};
       document.addEventListener('visibilitychange',vis);
-      /* 看门狗：非人为暂停即拉起 */
+      /* 看门狗：非人为暂停即拉起；缓冲耗尽时回退到已缓冲头部重播。
+         大视频（实测 802MB / 249s）只缓冲 15.8s 就停是常态，靠 preload=auto
+         +服务端 faststart + 高码率母版（体积小几倍）三重保障，这里是兜底。*/
       const wd=setInterval(()=>{
         if(!document.body.contains(v)){clearInterval(wd);return}
         if(!document.hidden&&v.readyState>=2&&v.paused)kick(v);
         if(!v.paused&&v.readyState>=2)sampleWallColor(v);
+        /* 播放头越过缓冲尾 -> 拉回缓冲起点，避免停在最后一帧不动 */
+        if(v.buffered.length&&v.currentTime>v.buffered.end(v.buffered.length-1)-0.35){
+          try{v.currentTime=Math.max(0,v.buffered.start(0))}catch(e){}
+        }
       },1500);
       box.appendChild(v);kick(v);
-      wallURL=w.url;applyAdaptive();_rotReady(gen,v,'video')}
+      wallURL=SRC;applyAdaptive();_rotReady(gen,v,'video')}
     else if(w.type==='web'){const fr=document.createElement('iframe');
       fr.src=w.url;fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none';
       fr.setAttribute('scrolling','no');box.appendChild(fr);
       wallURL=w.url;applyAdaptive();_rotReady(gen,fr,'web')}
     else if(w.type==='live'){
-      /* WE 场景：板内先出静态高质预览；若服务端取帧可用（WGC 等）会自动升级为实时流。
-         桌面真渲染经芯片上的 🖥 按钮显式触发（15 分钟自动还原），不随选壁纸自动切桌面 */
+      /* WE 场景 / 本地静图的 4K 母版：服务端已按视口物理比例 cover 预裁 + AI 超分，
+         浏览器端cover 退化为 1:1 映射。若母版取不到（404/生成中）则回退官方 preview。 */
       const im=document.createElement('img');
-      im.src=w.url+(w.url.includes('?')?'&':'?')+'t='+Date.now();
+      im.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
       wallStyle(im);
       let fell=false;
       im.addEventListener('error',()=>{if(fell)return;fell=true;
         im.src=w.fallback||w.preview||'';if(im.src)setTimeout(()=>sampleWallColor(im),400)});
+      if(w.pending)_pendWatch(w);
       const lv=setInterval(()=>{if(fell||!document.body.contains(im)){clearInterval(lv);return}
         sampleWallColor(im)},4000);
       box.appendChild(im);
-      wallURL=w.url;applyAdaptive();_rotReady(gen,im,'img')}
+      wallURL=SRC;applyAdaptive();_rotReady(gen,im,'img')}
     else{
       /* 静图/gif：全幅 cover 满屏（无边带无黑边），服务端已按显示区比例预裁切到目标尺寸，
          浏览器端退化为等比映射，不再二次插值 */
-      const im=document.createElement('img');im.src=w.url;
+      const im=document.createElement('img');im.src=SRC;
       wallStyle(im);
       im.addEventListener('load',()=>sampleWallColor(im));
       box.appendChild(im);
@@ -1841,6 +2006,34 @@ const AMB=(()=>{
   function syncWallChips(){
     [...$('#ambbar').querySelectorAll('.ambchip[data-w]')].forEach(c=>c.classList.toggle('on',(c.dataset.w||null)===(wallSel||null)));
   }
+  /* 重拉壁纸列表（母版后台生成完成后调用）。只重绘壁纸芯片行 ——
+     不碰光影滑杆/轮播控件的值与事件，避免打断用户正在拖的滑块。
+     URL 是同一字符串（/m4k/<key>），所以 wallSel 无需变更，当前壁纸不闪断。 */
+  async function refreshWalls(){
+    let loc=[],we=[];
+    try{loc=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){}
+    try{we=(await (await fetch('/api/we/list')).json()).items||[]}catch(e){}
+    const prev=walls||[];
+    walls=loc.concat(we);
+    const row=$('#ambbar .ambrow');
+    if(!row)return;
+    row.innerHTML=`<span class="ambchip sys" data-w="">无壁纸</span>`+
+      walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${w.v4k?' · 高码率重编码母版（源 '+(w.srcRes||w.res||'?')+' → '+w.res+'，NVENC cq14；保真重编码，不创造源里没有的细节）':''}${!w.sr&&!w.v4k&&w.res?' · 素材 '+w.res+' 原生直出':''}${!w.sr&&!w.v4k&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}${w.pending?' · 4K 母版生成中（先用原素材顶替，就绪后自动升级）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('');
+    row.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
+      const w=walls.find(x=>x.url===c.dataset.w)||null;
+      if(w&&w.type==='live'&&window._LVON===w.id){window._LVON=null;lv(false)}
+      else if(w&&w.type==='live'){window._LVON=w.id;lv(true)}
+      else{window._LVON=null;lv(false)}
+      setWall(w)}));
+    row.querySelectorAll('.amblive[data-live]').forEach(c=>c.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      fetch('/api/we/preview?id='+encodeURIComponent(c.dataset.live),{method:'POST'})
+        .then(r=>r.json()).then(r=>toast(r.ok?'🖥 桌面已切到该场景，15 分钟后自动还原':'桌面预览失败（Wallpaper Engine 未运行？）')).catch(()=>{})}));
+    /* 仍在等待的项继续挂观察（重绘后旧 observer 已随 _PEND 保留） */
+    walls.filter(w=>w.pending).forEach(_pendWatch);
+    syncWallChips();
+  }
+  const lv=on=>fetch('/api/we/liveview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}).catch(()=>{});
   async function build(){
     const bar=$('#ambbar');
     try{walls=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){walls=[]}
@@ -1849,7 +2042,7 @@ const AMB=(()=>{
     walls=walls.concat(we);
     bar.innerHTML=`
       <div class="ambrow"><span class="ambchip sys" data-w="">无壁纸</span>
-        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.res?' · 素材 '+w.res:''}${w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('')}</div>
+        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${!w.sr&&w.res?' · 素材 '+w.res:''}${!w.sr&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('')}</div>
       <div class="ambrow">
         <span class="ambchip sys" id="amb-rot">▶▶ 轮播</span>
         <span class="wslider">每<input type="range" id="amb-rotsec" min="10" max="600" step="10"><span id="amb-rotsecv">60</span>s</span>
@@ -1868,7 +2061,6 @@ const AMB=(()=>{
     bar.insertAdjacentHTML('afterbegin','<div class="dsec">桌面壁纸 · 4K 图 / 循环视频（放入 wallpapers 文件夹）</div>');
     bar.insertAdjacentHTML('beforeend','<div class="dsec">光影调整 · 亮度 / 饱和 / 虚化</div>');
     window._LVON=null;
-    const lv=on=>{fetch('/api/we/liveview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}).catch(()=>{})};
     bar.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
       const w=walls.find(x=>x.url===c.dataset.w)||null;
       if(w&&w.type==='live'&&window._LVON===w.id){window._LVON=null;lv(false)}

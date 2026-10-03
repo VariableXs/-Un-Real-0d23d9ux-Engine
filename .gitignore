@@ -19,6 +19,21 @@ VarixTaskOps/VTaskBoard/*.spec
 __pycache__/
 *.pyc
 
+# ── 壁纸 4K 母版缓存（可再生，体积巨大，禁止入库）──────────────────
+# _m4k 580MB + _wetexture 167MB + _exehome 718MB。
+# 全部是 Real-ESRGAN 超分与 NVENC 重编码的**产物**，删掉会自动重算。
+VarixTaskOps/VTaskBoard/_m4k/
+VarixTaskOps/VTaskBoard/_wetexture/
+VarixTaskOps/VTaskBoard/_exehome/
+# 母版原子写中途产物（进程被杀会残留 .part）
+*.part
+# Real-ESRGAN 引擎与模型（51MB，外部依赖，可由脚本重建）
+VarixTaskOps/VTaskBoard/_sr/
+# ffmpeg 二进制（15MB，由 VTaskBoard.spec 收集进包）
+VarixTaskOps/VTaskBoard/ffmpeg/
+# exe 本体由 PyInstaller 从 spec 构建
+*.exe
+
 # ── 运行时临时文件 ────────────────────────────────────────────────
 *.lock
 chromiumerrorsentinel.lock
