@@ -92,6 +92,12 @@ src/test/
 **/*_probe.js
 scripts/
 tools/
+# 2026-10-04：tools/ 是为排除一次性探针/构建脚本而设的全局规则，
+# 但 VarixAutoPilot2/tools/open_port.py 是**交付功能的一部分**
+#（用户靠它一键开 9222 端口），属源码保护红线里的"源码只增不减"，必须入库。
+# 例外必须写在**这一层**：子目录的 ! 规则无法复活被目录级规则忽略的路径。
+!VarixAutoPilot2/tools/
+!VarixAutoPilot2/tools/open_port.py
 
 # ── 构建产物（可再生，禁止入库）────────────────────────────────────
 # 2026-10-04：源码入库后 target/ 会产生巨量中间产物，必须排除。

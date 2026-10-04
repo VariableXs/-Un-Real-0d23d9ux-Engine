@@ -13,3 +13,12 @@ shots/
 tools/probe*.mjs
 tools/shoot.mjs
 tools/probe*.py
+
+#★ 例外：open_port.py 是功能代码，不是测试脚本 ★
+# 仓库根 .gitignore 第 94 行有 `tools/`，会把整个 tools 目录忽略掉。
+# 但 `open_port.py` 是**交付的一部分**——用户靠它一键开端口，
+# 属于源码保护红线里说的"源码只增不减"，绝不能丢。
+# gitignore 里 `!` 不能复活被上级目录规则忽略的路径，
+# 所以在**根 .gitignore** 侧加例外（见根仓库 .gitignore 的 tools/ 段）。
+# 这里只做本目录的兜底，真正生效的是根目录那条。
+!tools/open_port.py

@@ -27,9 +27,12 @@
 
 ## 二、启动
 
-### 前置：WorkBuddy 必须开调试端口（只做一次）
+### 前置：WorkBuddy 必须开调试端口
 
-桌面 `WorkBuddy.lnk` → 右键 → 属性 → **目标**栏，末尾加一个空格再加：
+**不用手动改快捷方式** —— 桌面 `VarixAutoPilot 开端口.bat` 一键搞定
+（它是幂等的：端口已开就什么都不做，没开才给你指引）。
+
+也可以手动：桌面 `WorkBuddy.lnk` → 右键 → 属性 → **目标**栏，末尾加一个空格再加：
 
 ```
 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
@@ -37,13 +40,51 @@
 
 验证：`curl http://127.0.0.1:9222/json/version` 返回 JSON 即成功。
 
+> **关键前提**：调试端口**只在进程启动那一刻决定**。已经跑着的 WorkBuddy
+> 不会因为新参数而开启端口——必须先彻底退出（关窗口 + 托盘退出）再重开。
+
 > 已在运行的实例**不会**因新参数重启——必须先彻底退出（关窗口 + 托盘退出）。
 
-### 启动控制台
+### 三种启动方式
+
+| 桌面文件 | 作用 |
+|---|---|
+| **VarixAutoPilot 一键启动.bat** | 日常用这个。端口已开就直接拉起应用 |
+| **VarixAutoPilot 开端口.bat** | 单独开端口（带修复指引） |
+| **VarixAutoPilot 启动.bat** | 只拉起应用 |
+
+目录内对应：`一键启动.bat` / `开端口.bat`（ASCII 别名 `open-port.bat`）/ `启动.bat`
+应用本体：`VarixAutoPilot.exe`（3.85MB，在本目录根下）
+
+### ★ 为什么端口必须"重启"才能开 ★
+
+Chrome / Electron 的调试端口**只在进程启动那一刻决定**。
+已经跑着的 WorkBuddy，**做任何操作都不会让端口出现**——必须先完全退出，再用带参数的方式启动。
+
+脚本 `tools/open_port.py` 做的就是这件事，且刻意做了三件保守的事：
+
+1. **默认绝不杀进程**。杀 WorkBuddy = 中断你正在跑的对话。
+   默认只打印指引并给出命令，要动手必须显式加 `--kill`。
+2. **目标校验最早做**。带 `--kill` 时先确认目标确实是 `WorkBuddy.exe`，
+   否则直接拒绝——早先校验放在"要不要杀"之后，导致传非 WorkBuddy 路径时
+   根本走不到校验，等于形同虚设。
+3. **不改任何宿主文件**：不碰你的桌面快捷方式、不碰 `user-data-dir`、不碰任何配置。
+   端口只绑 `127.0.0.1`，不对外暴露。
+
+命令行用法（在 `VarixAutoPilot2/` 下）：
 
 ```
-src-tauri/target/release/varix-autopilot.exe
+# 只看状态与指引（安全，不动进程）
+python tools/open_port.py
+
+# 确认无要紧的活之后，让它关掉 WorkBuddy 并带端口重启
+python tools/open_port.py --kill
+
+# 端口被占时换端口
+python tools/open_port.py --port 9333
 ```
+
+启动应用：`VarixAutoPilot.exe`
 
 **无浏览器、无 Node、无 python**。Tauri 2 + WebView2，双击即开。
 
