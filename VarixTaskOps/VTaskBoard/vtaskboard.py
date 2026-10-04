@@ -2961,8 +2961,27 @@ class H(BaseHTTPRequestHandler):
         return self._json({"ok": True, "task": {k: v for k, v in t.items() if not k.startswith("_")}})
 
 def open_window():
-    """只用独立 App 窗口（Edge --app）打开，不开浏览器标签"""
-    url = f"http://127.0.0.1:{PORT}"
+    """只用独立 App 窗口（Edge --app）打开，不开浏览器标签。
+
+    ★2026-10-04 修掉的真bug：启动就占满 Windows 全屏★
+    旧参数是 `--window-size=1500,940 --start-fullscreen` —— 这两个
+    **自相矛盾**：`--start-fullscreen` 会把窗口直接顶成全屏，
+    `--window-size` 被完全无视。用户投诉「不要占到我的windows 全屏」，
+    窗口枚举证实主屏1536x864 上确实有个 1550x830 的窗口铺满。
+    根因就是这个从未被质疑过的 `--start-fullscreen`。
+    现在：只给尺寸、不给全屏，并按主屏 85% 自适应（小屏不溢出）。
+    """
+    url = f"http://127.0.0.1:%d" % PORT
+    # 按主屏 85% 自适应，并夹在 [900,1500]x[600,940]
+    sw, sh = 1920, 1080
+    try:
+        if _u32:
+            sw = _u32.GetSystemMetrics(0) or sw
+            sh = _u32.GetSystemMetrics(1) or sh
+    except (AttributeError, OSError):
+        pass
+    ww = max(900, min(1500, int(sw * 0.85)))
+    wh = max(600, min(940, int(sh * 0.85)))
     cands = [
         os.path.expandvars(r"%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"),
         os.path.expandvars(r"%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"),
@@ -2970,10 +2989,18 @@ def open_window():
     ]
     for exe in cands:
         if os.path.exists(exe):
-            subprocess.Popen([exe, f"--app={url}", "--window-size=1500,940", "--start-fullscreen",
+            # ★绝不传 --start-fullscreen / --kiosk★
+            subprocess.Popen([exe, "--app=" + url,
+                              "--window-size=%d,%d" % (ww, wh),
+                              "--window-position=40,40",
                               "--disable-features=Translate"])
             return
-    webbrowser.open(url)  # 兜底
+    # 兜底：也绝不让系统默认浏览器以全屏/最大化接管用户桌面。
+    # 失败就静默 —— 弹不出窗口远好过糊一脸全屏，服务端本身不依赖窗口。
+    try:
+        webbrowser.open(url, new=2, autoraise=True)
+    except Exception:
+        pass
 
 def main():
     if not os.path.exists(MD_PATH):

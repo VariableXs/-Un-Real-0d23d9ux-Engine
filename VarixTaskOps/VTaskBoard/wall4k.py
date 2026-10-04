@@ -36,6 +36,7 @@ WE 官方 preview.gif 仅 160~224px却是唯一带动画的素材。走Pillow �
 服务端按同一套 cover 逻辑生成对应比例母版，避免浏览器二次裁切重采样。
 """
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -684,15 +685,25 @@ def _ffprobe_like(src):
                 if a.isdigit() and b.isdigit():
                     out["w"], out["h"] = int(a), int(b)
                     break
-            for tok in body.split():
-                if tok.replace(".", "").isdigit() and "." in tok:
-                    try:
-                        f = float(tok)
-                        if 1.0 <= f <= 480.0:
-                            out["fps"] = f
-                            break
-                    except ValueError:
-                        pass
+            # 帧率：ffmpeg 输出形如 `60 fps, 60 tbr, ...` 或 `29.97 fps, 29.97 tbr`。
+            # ★2026-10-04 修掉的真bug★
+            # 旧实现是「含小数点的纯数字 token」——于是 `60 fps` 被判不是帧率，
+            # fps 保持 0.0。后果是全链路的：
+            #   1. build_master_video 的 `src_fps > VQ_FPS_CAP` 恒为假
+            #      -> **fps=30 滤镜永远不加**，4K60 母版原样输出；
+            #   2. video_needs_master 的解码闸门拿到 fps=0 直接跳过
+            #      -> 4K60 永不被判超限。
+            # 实测证据（本轮抓到的）：重转 7 项，产物全部仍是 60fps，
+            # 「帧率已封顶」7/7 FAIL、「双路解码达标」7/7 FAIL。
+            # 正确判据：必须**紧跟 fps 单位**，否则「60 tbr」也会被误取。
+            m = re.search(r"(\d+(?:\.\d+)?)\s+fps\b", body)
+            if m:
+                try:
+                    f = float(m.group(1))
+                    if 1.0 <= f <= 480.0:
+                        out["fps"] = f
+                except ValueError:
+                    pass
     return out
 
 
