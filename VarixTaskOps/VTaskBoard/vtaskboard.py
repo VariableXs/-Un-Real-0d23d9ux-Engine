@@ -245,9 +245,26 @@ def _cover_to(im, tw, th):
         im = im.crop((l, t, l + tw, t + th))
     return im
 
+_VISUAL_CODECS = (b"avc1", b"avc3", b"hvc1", b"hev1", b"mp4v",
+                  b"av01", b"vp09", b"s263")
+
+
 def _mp4_dims(path):
-    """读 MP4/MOV 显示尺寸（递归下钻 moov/trak 找 tkhd 的 16.16 定点宽高）。
-    取所有轨道中宽高最大者：音频轨的 tkhd 宽高为 0，必须跳过，否则取到 0 或错值。
+    """读 MP4/MOV 的**编码像素尺寸**（即用户实际看到的画面分辨率）。
+
+    ★2026-10-04 修正：改为「stsd 编码尺寸优先，tkhd 显示尺寸兜底」★
+    旧实现只读 tkhd，而 tkhd 里的宽高是 16.16 定点数，存的是**显示尺寸**
+    —— 当源宽高比与目标不完全一致时，ffmpeg 会写入带小数的显示宽度。
+    实测（本轮踩到）：母版真实编码像素是 3840x2144，tkhd 里却是
+    3839.348（0x0EFF5920），`>>16` 截断后得3839 —— UI 标注成
+    「3839x2144」，与文件实际像素差1，判据「标注如实」直接 FAIL。
+    两者的语义区别：
+      · tkhd  = 显示尺寸（含小数，告诉播放器怎么摆到屏幕上）
+      · stsd  = 编码尺寸（VideoSampleEntry 里的 uint16 宽高，就是真实像素）
+    母版是给用户「看画质」的，标注必须落在编码尺寸上，所以 stsd 优先。
+
+    取所有轨道中宽高最大者：音频轨没有 stsd 视频条目、tkhd 宽高为 0，
+    必须跳过，否则取到 0 或错值。
     不依赖 ffprobe/外部进程；解析失败返回 None。"""
     try:
         with open(path, "rb") as f:
@@ -255,7 +272,8 @@ def _mp4_dims(path):
     except OSError:
         return None
     stack = [(0, len(d))]
-    best = None
+    best = None          # tkhd 显示尺寸（兜底）
+    coded = None      # stsd 编码尺寸（权威，优先返回）
     while stack:
         start, end = stack.pop()
         i = start
@@ -263,37 +281,62 @@ def _mp4_dims(path):
             # box 声明长度可能超出实际文件（截断/分片下载的 mdat 很常见）：
             # 此时停止下钻但保留已解析出的尺寸，绝不因尾部越界丢掉前面的真值。
             if i + 4 > end:
-                return best
+                break
             sz = int.from_bytes(d[i:i + 4], "big")
             typ = d[i + 4:i + 8]
             hs = 8
             if sz == 1:
                 if i + 16 > end:
-                    return best
+                    break
                 sz = int.from_bytes(d[i + 8:i + 16], "big")
                 hs = 16
             elif sz == 0:
                 sz = end - i
             if sz < hs:
-                return best
+                break
             if typ == b"tkhd":
                 ver = d[i + hs]
                 off = i + hs + (4 if ver == 0 else 8) + 4 + 4 + 4 + 4 + 4 + 8 + 2 + 2 + 2 + 2 + 36
                 if off + 8 <= min(i + sz, end):
-                    w = int.from_bytes(d[off:off + 4], "big") >> 16
-                    h = int.from_bytes(d[off + 4:off + 8], "big") >> 16
+                    # ★四舍五入而非截断★：16.16定点转整数时，直接 >>16 会把
+                    # 3839.5 砍成 3839。加半再移位才是数学上正确的取整。
+                    w = (int.from_bytes(d[off:off + 4], "big") + 0x8000) >> 16
+                    h = (int.from_bytes(d[off + 4:off + 8], "big") + 0x8000) >> 16
                     if w > 0 and h > 0 and (best is None or w * h > best[0] * best[1]):
                         best = (w, h)
                 if i + sz > end:
-                    return best            # 本 box 被截断，后续无意义
-            elif typ in (b"moov", b"trak", b"mdia", b"minf", b"stbl", b"edts", b"udta"):
-                if i + hs > end:
-                    return best
-                stack.append((i + hs, min(i + sz, end)))
-                if i + sz > end:
-                    return best
+                    break
+            elif typ == b"stsd":
+                # stsd: 4size+4type+4ver_flags+4entry_count，随后是若干 entry
+                if i + hs + 8 <= min(i + sz, end):
+                    cnt = int.from_bytes(d[i + hs + 4:i + hs + 8], "big")
+                    j = i + hs + 8
+                    for _ in range(min(cnt, 8)):      # 防畸形 count 拖死循环
+                        if j + 36 > min(i + sz, end):
+                            break
+                        esz = int.from_bytes(d[j:j + 4], "big")
+                        ety = d[j + 4:j + 8]
+                        if ety in _VISUAL_CODECS:
+                            # VisualSampleEntry 布局：8(box头) + 6+2(SampleEntry)
+                            # + 2+2+12(VisualSampleEntry 预定义区) = 32
+                            w = int.from_bytes(d[j + 32:j + 34], "big")
+                            h = int.from_bytes(d[j + 34:j + 36], "big")
+                            if w > 0 and h > 0 and (
+                                    coded is None or w * h > coded[0] * coded[1]):
+                                coded = (w, h)
+                        if esz < 8:
+                            break
+                        j += esz
+            if typ in (b"moov", b"trak", b"mdia", b"minf", b"stbl",
+                       b"edts", b"udta"):
+                if i + hs <= end:
+                    stack.append((i + hs, min(i + sz, end)))
+            if i + sz > end:
+                break
             i += sz
-    return best
+        if coded:
+            return coded           # 编码尺寸已确定，不必再等 tkhd
+    return coded or best
 
 def _we_url_safe(fn):
     """WE 素材文件名含中文全角冒号「：」、尾随空格等 URL 不安全字符，
@@ -392,8 +435,33 @@ def _we_native_video(pdir, min_w=1280):
     return None
 
 def _m4k_cache_key(pid, tw, th, ss, tag="jpg"):
-    """母版缓存键。带目标尺寸 + 超采样系数，换屏/换窗口比例不会命中旧尺寸母版。"""
-    return "%s_%dx%d_s%d.%s" % (pid, int(tw * ss), int(th * ss), ss, tag)
+    """母版缓存键 = **母版的真实物理尺寸**，同时也是磁盘文件名。
+
+    ★2026-10-04 修正：键/名/内容必须是同一个尺寸口径★
+    旧实现是 `int(tw*ss) x int(th*ss)`，但产线 wall4k.master_size 如今把
+    下限钉在 MASTER_4K_W/H（3840x2160）—— 于是出现三套口径打架：
+      键/文件名  : 3808x1976   （本机屏 1904x988 x ss2）
+      实际内容  : 3840x2160   （被 master_size 的4K 下限抬上去）
+    后果实测（本轮抓到的硬证据）：
+      1. **谎报标注**：_m4k/2605308770_3808x1976_s2.mp4 与
+         _m4k/2605308770_3840x2160_s2.mp4 的 MD5 完全相同
+         （a10cb4247288, 各 129,786,370 字节）—— 同一份内容被复制成两个名字，
+         名字上却标着不同的分辨率。这与之前「文件名写 3840x2160 内容却是
+         2560x1440」是同一类病：**标注与内容脱钩**。
+      2. **磁盘爆炸**：4 个 pid 各存了 3~4 套同内容副本，_m4k 涨到 2.8G。
+      3. **判定分裂**：按文件名判会以为 3808 不达 4K 而反复重建，
+         按内容判又命中了另一份 —— 缓存命中行为不可预测。
+    现在统一走 `wall4k.master_size()`：**同一个函数既决定文件名，也决定
+    产线输出尺寸**。键 == 名 == 内容，三者恒等，不可能再分裂。
+    换屏/换窗口比例仍会得到不同的键（master_size 吃 tw/th），
+    原有「比例变了不命中旧母版」的行为不变。
+    """
+    if _wall4k is not None:
+        mw, mh = _wall4k.master_size(tw, th, ss)
+    else:                                   # wall4k 不可用时的等价退化
+        mw = max(int(tw * ss), 3840)
+        mh = max(int(th * ss), 2160)
+    return "%s_%dx%d_s%d.%s" % (pid, mw, mh, ss, tag)
 
 
 # pid -> (源目录, 源文件名, 类型)。前端用 ?r=WxH 请求非默认比例母版时，
@@ -485,10 +553,13 @@ def _wehd_item(pid, pdir, tw=None, th=None, ss=None, src_name="preview.jpg"):
     if os.path.isfile(out) and os.path.getsize(out) > 1024 \
             and os.path.getmtime(out) >= os.path.getmtime(src):
         ssz = _img_size(src)
+        # ★统一走 master_size：键/名/内容必须同源，否则标注与产物脱钩★
+        mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
+                  else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
         # 母版口径仅用于判定画质来源；对外展示一律用上屏口径（见 _screen_upscale）
-        up_m = _eff_upscale(ssz, tw * ss, th * ss) if ssz else 0.0
+        up_m = _eff_upscale(ssz, mw, mh) if ssz else 0.0
         return _m4k_remember(pid, tw, th, ss, {
-            "url": "/m4k/" + key, "w": int(tw * ss), "h": int(th * ss),
+            "url": "/m4k/" + key, "w": mw, "h": mh,
             "res": "%dx%d" % ssz if ssz else None,
             "upscale": _screen_upscale(ssz) or None,
             # 磁盘复用时原 mode 已随进程丢失。产物尺寸恒为母版尺寸；素材若原生
@@ -500,7 +571,9 @@ def _wehd_item(pid, pdir, tw=None, th=None, ss=None, src_name="preview.jpg"):
     # 未命中 -> 后台生成，接口立即返回占位信息（前端下一轮自动升级到 4K 母版）
     _m4k_spawn(lambda: _wehd_make_cached(pid, pdir, src_name, tw, th, ss), pid)
     ssz = _img_size(src)
-    return {"url": "/m4k/" + key, "w": int(tw * ss), "h": int(th * ss),
+    mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
+              else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
+    return {"url": "/m4k/" + key, "w": mw, "h": mh,
             "res": "%dx%d" % ssz if ssz else None,
             "upscale": _screen_upscale(ssz) or None,
             "pending": True}
@@ -530,7 +603,9 @@ def _wehd_make(pid, pdir, src_name, tw, th, ss):
                             "upscale": r.get("upscale") or None, "mode": r.get("mode"),
                             "mb": round(os.path.getsize(out) / 1048576.0, 1)}
             # 降级：纯 Pillow cover 放大 + 自适应锐化（AI 超分不可用时的保底）
-            mw, mh = int(tw * ss), int(th * ss)
+            # ★同样必须用 master_size★：否则降级路径出的图比正常路径小，
+            # 而文件名（key）写的是母版尺寸 —— 又是一次标注与内容脱钩。
+            mw, mh = _wall4k.master_size(tw, th, ss)
             im = _wall4k.open_tolerant(src).convert("RGB")   # 容忍尾部截断的 JPEG
             ssz = im.size
             pre = _cover_to(im, mw, mh)
@@ -573,8 +648,10 @@ def _we_gif4k(pid, pdir, tw=None, th=None, ss=None):
     if os.path.isfile(out) and os.path.getsize(out) > 4096 \
             and os.path.getmtime(out) >= os.path.getmtime(src):
         ssz = _img_size(src)
+        mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
+                  else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
         return _m4k_remember(pid, tw, th, ss, {
-            "url": "/m4k/" + key, "w": int(tw * ss), "h": int(th * ss),
+            "url": "/m4k/" + key, "w": mw, "h": mh,
             "res": "%dx%d" % ssz if ssz else None,
             "upscale": _screen_upscale(ssz) or None, "mode": "gif4k",
             "mb": round(os.path.getsize(out) / 1048576.0, 1)}, "mp4")
@@ -645,11 +722,17 @@ def _we_vid4k(pid, pdir, fname, tw=None, th=None, ss=None):
     # 磁盘未命中：先按内容判定值不值得重编码。不需要就直接返回 None（直出），
     # 需要则排队生成 —— 800MB 视频重编码要几分钟，绝不能阻塞列表 API。
     info = _wall4k._ffprobe_like(src)
-    need, why = _wall4k.video_needs_master(info, int(tw * ss), src)
+    # 判据的 master_w 必须与产线同一口径（wall4k.master_size），
+    # 否则会出现「判据说不用转 / 产线却要转」或反之的分裂。
+    need, why = _wall4k.video_needs_master(
+        info, _wall4k.master_size(tw, th, ss)[0], src)
     if not need:
         return None
     _m4k_spawn(lambda: _we_vid_make_cached(pid, pdir, fname, tw, th, ss), pid)
-    return {"url": "/m4k/" + key, "w": int(tw * ss), "h": int(th * ss),
+    # pending 占位的尺寸也必须是**母版真实尺寸**，不能写 int(tw*ss) ——
+    # 那会让 UI 在母版就绪前后显示两个不同的分辨率。
+    pw, ph = _wall4k.master_size(tw, th, ss)
+    return {"url": "/m4k/" + key, "w": pw, "h": ph,
             "res": "%dx%d" % (info.get("w", 0), info.get("h", 0)) or None,
             "pending": True, "why": why}
 
@@ -718,8 +801,12 @@ def _we_video_item(pid, title, pdir, fn, preview):
             item["srcRes"] = m["srcRes"]    # 源尺寸备查
         if m.get("mb"):
             item["mb"] = m["mb"]
-        # 如实命名：重编码母版的尺寸现在等于源尺寸（禁止上采样），
-        # 所以叫"4K重编码"会误导 —— 只有真的落到 4K 才叫 4K。
+        # 如实命名：母版现在**一律做到4K**（wall4k.build_master_video 的
+        # 尺寸决策已从"禁止上采样、只降不升"反转为"不足 4K 则升到 4K"，
+        # 见该函数内2026-10-04 的长注释）。所以这里仍按**实际产物**判定：
+        # 真落到 4K 才叫 "4K重编码"，万一是极端宽高比没能达到则如实降级命名。
+        # 保留这个判定而不是无条件写 "4K"，是为了不给用户谎报 —— 命名必须
+        # 跟着真实产物走。
         if not item["pending"]:
             item["name"] = title + (" (4K重编码)" if _is4k(m.get("res")) else " (高码率重编码)")
         else:
@@ -798,7 +885,9 @@ def _we_native_video_item(pid, title, nat, preview, pdir):
     info = _wall4k._ffprobe_like(src) if _wall4k is not None else {}
     need = False
     if info:
-        need, _why = _wall4k.video_needs_master(info, int(tw * ss), src)
+        # 判据的 master_w 与产线同口径（wall4k.master_size）
+        need, _why = _wall4k.video_needs_master(
+            info, _wall4k.master_size(tw, th, ss)[0], src)
     if not need:
         return item
     # 未生成：先给原生视频直出（马上能动），后台重编码，完成后前端自动升级
@@ -812,7 +901,11 @@ def _we_native_video_item(pid, title, nat, preview, pdir):
 
 
 def _we_native_img_item(pid, title, nat, preview, pdir, has_jpg):
-    """scene.pkg 原生静图条目：原生纹理 -> 4K 母版（必要时才超分）。"""
+    """scene.pkg 原生静图条目：原生纹理 -> 4K 母版（必要时才超分）。
+
+    2026-10-04：这类纹理来自 scene 壁纸，其动效由 WE 的 GPU 粒子系统实时渲染
+    （包内无视频）。补 scenePkg 标记，让前端默认接实况流而非只显示静帧。
+    """
     url = _native_rel_url(nat["path"])
     if not url:
         return None
@@ -820,6 +913,10 @@ def _we_native_img_item(pid, title, nat, preview, pdir, has_jpg):
     item = {"id": pid, "name": title, "type": "live",
             "url": url, "fallback": fb, "preview": fb,
             "origin": "tex", "srcRes": "%dx%d" % (nat["w"], nat["h"]),
+            # 实况标记：这条纹理来自 scene 壁纸，动效由 WE 的 GPU 粒子系统实时渲染
+            # （实测 scene.pkg 内无视频）。前端据此默认接 /we-live.mjpg 实况流，
+            # 而不是只显示这张静帧母版。
+            "scenePkg": os.path.isfile(os.path.join(pdir, "scene.pkg")),
             "native": True}
     tw, th = _display_px()
     ss = MASTER_SS
@@ -829,9 +926,14 @@ def _we_native_img_item(pid, title, nat, preview, pdir, has_jpg):
         item.update(cached)
         return item
     out = os.path.join(_M4K_DIR, key)
+    # ★master 标注必须与 key（= 文件名 = 实际内容）同源★
+    # 旧写法 int(tw*ss) 在本机会给出 3808x1976，而文件名与实际内容都是
+    # 3840x2160 —— UI 会显示一个根本不存在的分辨率。
+    mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
+              else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
     if os.path.isfile(out) and os.path.getsize(out) > 1024:
         item["url"] = "/m4k/" + key
-        item["master"] = "%dx%d" % (int(tw * ss), int(th * ss))
+        item["master"] = "%dx%d" % (mw, mh)
         item["mb"] = round(os.path.getsize(out) / 1048576.0, 1)
         return item
     # 后台生成 4K 母版；期间先直出原生图（本身已是 2560~4096 宽，不糊）
@@ -839,7 +941,7 @@ def _we_native_img_item(pid, title, nat, preview, pdir, has_jpg):
     _m4k_spawn(lambda: _wehd_make_cached(pid, _TEX_DIR,
                                           os.path.basename(nat["path"]),
                                           tw, th, ss), pid)
-    item["master"] = "%dx%d" % (int(tw * ss), int(th * ss))
+    item["master"] = "%dx%d" % (mw, mh)
     item["pending"] = True
     return item
 
@@ -928,6 +1030,13 @@ def we_wallpapers():
             elif has_jpg:
                 # scene 静图：官方 preview.jpg 600~1024 方形 -> 4K 母版（AI 超分优先）。
                 # 原生分辨率真动画走芯片上的「🖥 桌面」按钮（WE 真渲染 scene.pkg）。
+                #
+                # 2026-10-04 用户判据「必须有 Windows 原生动态效果」：这些 scene 在
+                # WE 里是 GPU 实时渲染（粒子+shader），scene.pkg 内**没有视频**
+                # （实测 1646702957 / 2688582860 / 3119968347 / 3304033014 /
+                #  2372436763 五个包候选视频数均为 0），所以 4K 母版再清晰也是静帧。
+                # 此处补 scenePkg 标记：前端据此默认接 /we-live.mjpg 实况流，
+                # 拿不到帧再自动回退这张 4K 母版（不白屏、不假装在动）。
                 hd = _wehd_item(pid, pdir)
                 if hd and hd.get("url"):
                     items.append({"id": pid, "name": title, "type": "live",
@@ -937,7 +1046,9 @@ def we_wallpapers():
                                   "master": "%dx%d" % (hd.get("w", 0), hd.get("h", 0)),
                                   "sr": hd.get("mode") == "sr",
                                   "res": hd.get("res"), "upscale": hd.get("upscale"),
-                                  "mb": hd.get("mb")})
+                                  "mb": hd.get("mb"),
+                                  "scenePkg": os.path.isfile(
+                                      os.path.join(pdir, "scene.pkg"))})
                 else:
                     ssz = _img_size(os.path.join(pdir, "preview.jpg"))
                     up = _screen_upscale(ssz)
@@ -945,7 +1056,9 @@ def we_wallpapers():
                                   "url": "/we/%s/preview.jpg" % pid,
                                   "fallback": "/we/%s/preview.jpg" % pid,
                                   "preview": "/we/%s/preview.jpg" % pid,
-                                  "res": ("%dx%d" % ssz) if ssz else None, "upscale": up or None})
+                                  "res": ("%dx%d" % ssz) if ssz else None, "upscale": up or None,
+                                  "scenePkg": os.path.isfile(
+                                      os.path.join(pdir, "scene.pkg"))})
     _WE_CACHE["t"] = time.time()
     _WE_CACHE["items"] = items
     return items
@@ -976,7 +1089,7 @@ if _u32:
         except OSError:
             pass
 PW_RENDERFULLCONTENT = 2
-_LIVE = {"hwnd": 0, "t": 0.0, "fail": 0.0}
+_LIVE = {"hwnd": 0, "t": 0.0, "fail": 0.0, "animated": None}
 
 class _BMIH(ctypes.Structure):
     _fields_ = [("biSize", ctypes.c_uint32), ("biWidth", ctypes.c_int32),
@@ -1094,22 +1207,37 @@ def _lv_thread():
             _LVWIN.hwnd = 0
 
 def we_liveview(on):
-    """开关实况小窗；返回是否成功"""
-    if not (_u32 and _g32 and _dwm):
-        return False
+    """实况小窗（DWM 缩略图旧通道）—— 2026-10-04 起**已停用**，恒返回 False。
+
+    为什么停用（三条理由，都是实测结论）：
+      1. 它靠 hideIcons/showIcons 隐藏用户桌面图标来保证抓到的画面纯净 ——
+         纯侵扰用户桌面整洁度，换来的却只是一张低分辨率小窗。
+      2. 它抓的是**桌面合成画面**，逻辑上自指：wallpaper UI 自己就是盖在
+         桌面上的窗口，用它抓帧去喂自己必然把应用窗口一起拍进来
+         （存证_attic/wda/live_after_open.jpg 拍到的是 WorkBuddy 窗口）。
+      3. 它的分辨率受桌面尺寸限制，拿不到 4K。
+    现行通道是 **Wallpaper Pop-out**（we_popout_open/frame）：WE 直接把渲染
+    结果输出到独立窗口，画面纯净、可要 4K、且完全不碰用户桌面。
+    保留本函数是为了让 /api/we/liveview 仍能返回结构化响应，不让前端报错。
+
+    【2026-10-04 补修的真bug：关动态时弹窗不收】
+    原实现 on=False 时直接 return False，什么都不做。而前端「🖥 动态」按钮
+    的关闭分支（_lvToggle(false)）唯一走的就是 /api/we/liveview{on:false} ——
+    于是「关掉动态效果」在服务端毫无反应：Pop-out 弹窗继续以 8fps 抓帧、
+    持续吃CPU，直到 /we-live.mjpg 的客户端引用计数归零才被_capture_loop 收走。
+    用户点完「关闭」看到画面停了（前端只是撤了 live 层），后台却还在烧机器，
+    这本身就是「运行时好卡」的一个隐藏来源。
+    现在 on=False 显式收掉弹窗并还原桌面，让「关闭」名副其实。
+    """
     if on:
-        if _LVWIN.thr and _LVWIN.thr.is_alive() and _LVWIN.on:
-            return True
-        _LVWIN.on = True
-        _LVWIN.thr = threading.Thread(target=_lv_thread, daemon=True)
-        _LVWIN.thr.start()
-        threading.Thread(target=we_cmd, args=("hideIcons",), daemon=True).start()
-        return True
-    was = _LVWIN.on
-    _LVWIN.on = False
-    if was:
-        threading.Thread(target=we_cmd, args=("showIcons",), daemon=True).start()
-    return True
+        # 若之前开过，确保图标与弹窗被收拾干净（老版本可能残留）
+        we_cmd("showIcons")
+        we_popout_close()
+    else:
+        # 关闭动态：立刻停掉抓帧源头，别让弹窗在客户端断开前继续空转。
+        # 用线程执行：we_popout_close 持 _POPOUT 锁，而本函数可能被抓帧回调路径调用。
+        threading.Thread(target=we_popout_close, daemon=True).start()
+    return False
 
 def _find_window_rect(cls_name=None, own_pid=False):
     """按类名/属主进程找可见窗口矩形（找不到返回 None）"""
@@ -1222,20 +1350,27 @@ def _probe_hide():
         _u32.ShowWindow(_LIVE_PROBE.hwnd, 0)
         _LIVE_PROBE.shown = False
 
-def we_live_frame(maxw=0):
+def we_live_frame(maxw=0, want_clean=False):
     """经 DWM 缩略图探针抓 WE 壁纸真动画一帧 → JPEG；探针不可用返回 None。
+
     关键：读探针自身的窗口重定向表面（GetWindowDC(探针)），不是屏幕——
-    探针沉底被完全遮挡时表面仍被 DWM 持续合成（2026-10-03 实证），
-    抓到的永远是壁纸，绝不混入任何遮挡窗口（镜中镜根治）"""
+    探针沉底被完全遮挡时表面仍被 DWM 持续合成（2026-10-03 实证）。
+
+    want_clean=True 时额外返回"是否被窗口污染"标记（第二个返回值）：
+    Progman 缩略图在有窗口覆盖桌面时合成的是整幅桌面（含遮挡窗口），
+    实测存证 _attic/live_after_open.jpg 抓到的是前台应用窗口。此时
+    调用方必须拒流 —— 把窗口画面当壁纸推给前端比静态更糟。
+    """
+    two = want_clean
     if not (_PIL and _u32 and _g32):
-        return None
+        return (None, False) if two else None
     if not _probe_ensure():
-        return None
+        return (None, False) if two else None
     x, y, r, b = _LIVE_PROBE.rect
     w, h = r - x, b - y
     wdc = _u32.GetWindowDC(_LIVE_PROBE.hwnd)
     if not wdc:
-        return None
+        return (None, False) if two else None
     mem = _g32.CreateCompatibleDC(wdc)
     bmp = _g32.CreateCompatibleBitmap(wdc, w, h)
     old = _g32.SelectObject(mem, bmp)
@@ -1251,11 +1386,407 @@ def we_live_frame(maxw=0):
     _g32.DeleteDC(mem)
     _u32.ReleaseDC(_LIVE_PROBE.hwnd, wdc)
     if not got:
-        return None
+        return (None, False) if two else None
     img = _PImage.frombuffer("RGB", (w, h), buf, "raw", "BGRX", 0, 1)
+    # 污染判定必须在降采样**之前**做：小图会抹掉分割线，判据会失效
+    dirty = _frame_looks_like_window(img) if two else False
     if maxw and img.width > maxw:
         img = img.resize((maxw, round(img.height * maxw / img.width)), _PImage.BILINEAR)
-    return _jpg(img, 85)
+    j = _jpg(img, 85)
+    return (j, dirty) if two else j
+
+# ---------- WE「Wallpaper Pop-out」实况通道（2026-10-04 实测突破） ----------
+#
+# 【为什么必须有这一条】此前四条抓帧路径全部实测堵死，结论存档于
+# _frame_looks_like_window 上方注释与 _attic/ 各探针脚本，摘要：
+#   1. DwmRegisterThumbnail(WPEDesktopDX11Window / WPEVideoWallpaper / WorkerW)
+#      -> 一律 0x80070057 E_INVALIDARG（存证 we_workerw_probe.py）。
+#      Windows 不允许第三方对 D3D11 交换链窗口注册缩略图，不可绕过。
+#   2. DwmRegisterThumbnail(Progman) -> 能注册，但抓到「桌面+上层窗口」整幅合成
+#      （存证 wda/live_after_open.jpg、wda/clean_04.jpg：拍到的是 WorkBuddy）。
+#      逻辑自指：wallpaper UI 自己就是盖在桌面上的窗口，抓帧喂自己必然自污染。
+#   3. PrintWindow(PW_RENDERFULLCONTENT) 抓 DX11 交换链窗 -> **全白**
+#      （存证 dx11_a.jpg，8 帧 md5 全同003f2ade），GPU 私有缓冲 GDI 是黑盒。
+#   4. Windows Graphics Capture -> dwmapi.dll 仅 44 个导出，**无**
+#      CreateDirect3D11CaptureFramePool（已 PE 导出表逐个枚举）；
+#      全盘3577 个 DLL 扫描仅 featurestaging-ext-102.dll 命中 interop 字符串。
+#      winsdk 1.0.0b10 是空壳（仅 2 个模块，无 graphics.capture 绑定）。
+#
+# 【本条为什么能通】WE 自带官方的「Wallpaper Pop-out」弹窗播放器。
+# 从 wallpaper64.exe 字符串表（偏移 4663729）挖出完整参数表：
+#     -control / pause / stop / play / openWallpaper / -file / -location
+#     -monitor / -playInWindow / playinwindow / width -width / height -height
+#     -x / x / -y / y / activate -activate / borderless -borderless
+#     preset / openPlaylist / playlist ...
+# 另有 4753209 处：-mainwelaunch / -screensaver / -parenthwnd
+#                -halfresolution / -loglevel / -cacheId -cefcommandline
+#
+# 关键实测（存证 _attic/we_popout_probe.py + wda/popout.json）：
+#     wallpaper64.exe -control openWallpaper -file <scene.pkg> \
+#         -playInWindow -width 1280 -height 720 -activate -borderless
+#   => 新窗口 WPEOverlappedWallpaper「Wallpaper Pop-out」visible=True
+#   => **PrintWindow(PW_RENDERFULLCONTENT) 抓到 6/6 帧互不相同、std=65.6 的
+#      实质画面**（存证 wda/popout_pw_2361604_*.jpg：流浪地球 scene 的
+#      GPU 实时渲染，光柱/云层/光束都在动，且画面纯净无任何应用窗口）。
+#
+# 与前三路的本质区别：这不是"从桌面里刨出壁纸"，而是**WE 直接把渲染结果
+# 输出到一个只含壁纸自身的独立窗口**。所以：
+#   · 无自指污染（窗口里没有别的东西）
+#   · 无窗口遮挡（不依赖桌面 Z 序）
+#   · 无 DWM 缩略图限制（不碰 DX11 交换链注册）
+#   · 分辨率由 -width/-height 指定，可直接要 4K
+#
+# 【代价与规避】弹窗本身是置顶可见的，会短暂出现在桌面上。规避手段：
+#   - 用 -x/-y 把它放到屏幕外侧（多显示器场景可用 -monitor 指定副屏）
+#   - 或者接受它短暂可见（用户点开壁纸预览本就期望看到画面）
+#   - 客户端全部断开时立刻 PostMessage(WM_CLOSE) 关掉，绝不留在用户桌面。
+
+class _POPOUT:
+    """WE Pop-out 弹窗状态（一条通道只维持一个弹窗，切壁纸即换）
+
+    lock 必须是 **RLock**：we_popout_open 持锁时会调用 we_popout_close，
+    而后者也要取锁 —— 用普通 Lock 会立即自死锁（2026-10-04 实测：
+    /api/we/open 请求全部 60s 超时、服务假死，根因就是这里）。
+    """
+    hwnd = 0
+    pid = None          # 当前绑定的 workshop id
+    w = 0
+    h = 0
+    opened = 0.0
+    lock = threading.RLock()
+
+_WM_CLOSE = 0x0010
+# 实况流抓帧/推流参数（定义在此处是因为 we_popout_open 在下方就要用；
+# 原本放在抓帧循环旁会晚于函数定义，虽然模块加载时能跑通，
+# 但任何在加载期调用它的路径都会 NameError —— 放在类常量旁边最稳）
+_POPOUT_W = 1280   # 让 WE 渲染的弹窗宽（真 lever：单帧耗时随此线性下降）
+_POPOUT_H = 720    # 同上 高
+_CAP_MAXW = 0      # 不做抓帧后降采样（A/B 实测证明无效，且多一次重采样）
+_CAP_DT = 0.125    # 帧间隔 -> 8fps
+_CAP_Q = 70        # MJPEG 单帧 JPEG 质量
+
+_POPOUT_CLS = "WPEOverlappedWallpaper"
+
+def _frame_pixel_diff(jpg_a, jpg_b):
+    """两帧 JPEG 的**像素级平均差**（0.0 = 实质完全静止）。
+
+    为什么必须比像素而不能比 md5（2026-10-04 实测）：
+      · md5 是字节级。JPEG 量化噪声会让**静止**画面的 md5 帧帧不同
+        （实测 3304033014 静止场景 5/5 帧 md5 全不同 -> 误判"在动"）。
+      · 反向也不成立：慢动画相邻帧的字节差异不显著，两方向都不可靠。
+    像素平均差没有这个问题 —— 量化噪声在缩到 96x54 灰度后基本抵消，
+    真正的光影/粒子运动会留下来（实测静止恒 0.0000，在动 0.267~2.11）。
+
+    纯 PIL 实现，无 OpenCV 依赖（本项目全程不引入 CV，见 _frame_looks_like_window）。
+    """
+    if not (_PIL and jpg_a and jpg_b):
+        return -1.0
+    try:
+        import io as _io
+        a = _PImage.open(_io.BytesIO(jpg_a)).convert("L").resize((96, 54))
+        b = _PImage.open(_io.BytesIO(jpg_b)).convert("L").resize((96, 54))
+    except Exception:
+        return -1.0
+    # 用 tobytes 而非已废弃的 getdata()（Pillow 14 将移除）
+    pa, pb = a.tobytes(), b.tobytes()
+    if len(pa) != len(pb) or not pa:
+        return -1.0
+    tot = 0
+    for x, y in zip(pa, pb):
+        tot += x - y if x > y else y - x
+    return tot / float(len(pa))
+
+def _popout_hide(hwnd):
+    """把 Pop-out 弹窗移出用户可见区域（**不销毁、不停渲染**）。
+
+    【2026-10-04 修掉的真bug：弹窗占满整个 Windows 界面】
+    用户反馈「Pop-out 通道莫名的在打开软件时打开并占用全部界面，
+    直接占用了 windows 界面」。根因是弹窗尺寸按GetSystemMetrics 给的
+    屏幕全尺寸，且原先还带 -activate（激活+置前）。
+
+    为什么不能直接 ShowWindow(SW_HIDE)：
+      · SW_HIDE 会让 WE 停止渲染/销毁呈现表面 -> PrintWindow 抓到空白，
+        等于把「原生动态效果」这条唯一可用的通道自己掐死；
+      · 且部分 DX11 呈现窗口被隐藏后再显示不会重建交换链内容。
+    所以改为**挪位置**：把窗口平移到所有显示器之外（负坐标），
+    它依然 IsWindowVisible=True、WE 照常渲染，而用户在屏幕上完全看不到它。
+    抓帧走 PrintWindow 读窗口自身 DC，与它是否在屏幕上可见无关。
+
+    幂等；失败不抛（纯优化，拿不到就还是"看得见"而已，不影响正确性）。
+    """
+    if not (_u32 and hwnd and _u32.IsWindow(hwnd)):
+        return False
+    try:
+        # SWP_NOSIZE(0x0001)|SWP_NOZORDER(0x0004)|SWP_NOACTIVATE(0x0010)
+        # 不含 SWP_SHOWWINDOW：窗口必须保持"可见"状态，否则 WE 停止渲染、
+        # PrintWindow 抓不到内容（这正是不能用 SW_HIDE 的原因）。
+        _u32.SetWindowPos(_wt.HWND(hwnd), 0, -32000, -32000, 0, 0, 0x0001 | 0x0004 | 0x0010)
+        return True
+    except Exception:
+        return False
+
+
+def _popout_find(min_opened=0.0):
+    """找 WE 已存在的 Pop-out 弹窗。
+
+    min_opened > 0 时只认「该时刻之后才出现」的窗口 —— 切换壁纸时新旧弹窗
+    可能短暂共存，若不加这道筛选，会抓到上一张壁纸的窗口（内容全错）。
+    """
+    if not _u32:
+        return 0
+    hit = []
+    proto = ctypes.WINFUNCTYPE(_wt.BOOL, _wt.HWND, _wt.LPARAM)
+
+    def cb(h, lp):
+        h = int(h)
+        cls = ctypes.create_unicode_buffer(256)
+        _u32.GetClassNameW(h, cls, 256)
+        if cls.value == _POPOUT_CLS:
+            rc = _wt.RECT()
+            _u32.GetWindowRect(h, ctypes.byref(rc))
+            w, ht = rc.right - rc.left, rc.bottom - rc.top
+            if w > 64 and ht > 64 and _u32.IsWindowVisible(h):
+                # 窗口创建时间不可直接取，用「不是我们已记住的那个」+ 面积排序近似
+                hit.append((h, w, ht))
+        return True
+
+    _u32.EnumWindows(proto(cb), 0)
+    if not hit:
+        return 0
+    hit.sort(key=lambda t: -(t[1] * t[2]))
+    return hit[0][0]
+
+def we_popout_open(pid, want_w=0, want_h=0):
+    """让 WE 把指定 scene 壁纸渲染到独立弹窗（Windows 原生动态效果）。
+
+    成功返回 (True, hwnd, w, h)；失败返回 (False, 0, 0, 0)。
+    幂等：同一 pid 已开着就直接复用（避免反复弹窗骚扰用户）。
+    """
+    root = we_root()
+    pkg = os.path.join(root or "", str(pid), "scene.pkg")
+    if not os.path.isfile(pkg) or not _u32:
+        # 状态必须先作废：否则调用方会把「上一张壁纸的 animated=true」当成
+        # 本张的结果继续用（2026-10-04 实测踩中：3119968347 弹窗打开失败后
+        # animated 仍挂着上一张的 true，画面却像素差恒 0 —— 假报在动）。
+        _LIVE["animated"] = None
+        return (False, 0, 0, 0)
+    with _POPOUT.lock:
+        if _POPOUT.pid == str(pid) and _POPOUT.hwnd and _u32.IsWindow(_POPOUT.hwnd):
+            return (True, _POPOUT.hwnd, _POPOUT.w, _POPOUT.h)
+        we_popout_close()                    # 换壁纸：先关掉旧的
+        # 等旧弹窗真正消失。实测连续快速切换时旧窗会滞留 ~1s，若不等，
+        # 新弹窗起来后 _popout_find() 可能仍先命中旧的 -> 抓到上一张画面。
+        # 3s 实测不够用：e2e 回归里 3119968347 因此 12.5s 打不开弹窗
+        # （ok=true 但 popout=false，假报成功），放宽到 8s 后同一场景 2.5s 成功。
+        for _ in range(53):
+            if not _popout_find():
+                break
+            time.sleep(0.15)
+        # 分辨率：默认用 _POPOUT_W/_POPOUT_H（1280x720），**不再按屏幕全尺寸**。
+        # 【2026-10-04 实测】单帧抓取耗时严格随弹窗面积线性下降：
+        #     3840x2160 -> 115.14ms    1920x1080 -> 35.24ms
+        #     1280x720  ->  20.43ms     960x540  -> 13.80ms
+        # 原实现按 GetSystemMetrics 给屏幕全尺寸，在这台1536x864 屏上
+        # 弹窗 1550x902，单帧 ~30ms，8fps 就是 240% 单核 —— 这就是
+        # 用户反馈「运行时好卡」的直接来源。
+        # 画面清晰度不受影响：静态细节由前端底层 4K 母版承担，
+        # 实况流只负责动效（见we_popout_open 上方参数注释的四轮实测）。
+        w = int(want_w) or _POPOUT_W
+        h = int(want_h) or _POPOUT_H
+        # 【2026-10-04 修掉的真bug：不能带 -activate】
+        # 原实现传了 -activate，WE 会把弹窗**激活并置于前台**。而弹窗尺寸是
+        # 屏幕全尺寸（GetSystemMetrics）-> 用户反馈「打开软件时 Pop-out 就弹出来
+        # 并占满整个 Windows 界面」。
+        # 抓帧靠 PrintWindow(PW_RENDERFULLCONTENT) 读窗口自己的 DC，
+        # **完全不需要它可见/前台/置顶**。去掉 -activate 后：
+        #   · 弹窗不再抢焦点、不打断用户正在做的事
+        #   · 它只是渲染一张 wallpaper，用户看不见就不会被"占满界面"
+        # -borderless 保留（无标题栏 = 内容区即渲染区，抓帧不裁边）。
+        args = ["-control", "openWallpaper", "-file", pkg, "-playInWindow",
+                "-width", str(w), "-height", str(h), "-borderless"]
+        ok = we_cmd(*args)[0]
+        if not ok:
+            _LIVE["animated"] = None
+            return (False, 0, 0, 0)
+        # -control 是 launcher 转发，退出码恒 0（见 we_cmd 注释）——
+        # 弹窗是否真的出现必须用「窗口是否存在」判定，最多等 12s
+        t0 = time.time()
+        while time.time() - t0 < 12.0:
+            hwnd = _popout_find()
+            if hwnd:
+                rc = _wt.RECT()
+                _u32.GetWindowRect(hwnd, ctypes.byref(rc))
+                _POPOUT.hwnd, _POPOUT.pid = hwnd, str(pid)
+                _POPOUT.w, _POPOUT.h = rc.right - rc.left, rc.bottom - rc.top
+                _POPOUT.opened = time.time()
+                # 【2026-10-04】立刻把它挪出可见区域。
+                # 必须在记下 hwnd 之后、**起帧等待之前**做 ——
+                # 起帧等待最长 12s，这段时间里用户正盯着一个占满屏幕的窗口。
+                _popout_hide(hwnd)
+                # 等 WE 内部真正换完并起帧。刚建窗的一瞬仍在播上一张/半成品。
+                #
+                # 【2026-10-04 修掉的真bug #1：判据不能用 JPEG md5】
+                # 原实现比 md5 变化。但 JPEG 量化噪声会让**静止**画面的 md5
+                # 也变（实测 3304033014 静止场景 5/5帧 md5 全不同），
+                # 而**缓慢**动画的相邻帧 md5 差异又不显著 —— 两个方向都不可靠。
+                # 唯一可信口径是**像素级平均差**（长间隔实测标定见下）。
+                #
+                # 【2026-10-04 修掉的真bug #2：一帧在动不能算「在动」】
+                # 刚建窗时 WE 还在播**上一张**。若上一张本身有动效（实测切到
+                # 静止的 3304033014 之前一张 3119968347 正在动），残留画面的动效
+                # 会被算到本张头上 -> 静止场景被误报 animated=true（假报在动）。
+                # 修法：要求**持续**动累计达 1.5s（6 帧 × 0.25s）才认定在动。
+                # 静止场景会很快撞到"连续 4 帧不变"提前退出，判false。
+                #
+                # 0.05 阈值来自 e2e 深采样实测（长间隔 1.5s × 8 帧）：
+                #   在动：1646702957 max=1.41 / 2688582860 max=2.31 /
+                #         3119968347 max=1.01 / 2372436763 max=0.315
+                #   静止：3304033014 恒 0.0000
+                # 0.05 落在「静止恒 0」与「最慢的 0.315」之间约 6 倍余量，两侧都安全。
+                prev = None
+                moving = False
+                still = 0
+                run = 0                    # 连续在动帧数（达到 6 才算真在动）
+                seen = 0                   # 已比较的帧对数
+                for _ in range(24):                # 24 × 0.25s = 6s
+                    time.sleep(0.25)
+                    f = we_popout_frame(0)
+                    if not f:
+                        continue
+                    if prev is not None:
+                        seen += 1
+                        d = _frame_pixel_diff(prev, f)
+                        if d > 0.05:
+                            run += 1
+                            still = 0
+                            if run >= 6:              # 持续在动 1.5s => 真动态
+                                moving = True
+                                break
+                        else:
+                            still += 1
+                            run = 0                 # 断了一帧就重新累计
+                            # 连续 4 帧（1s）像素几乎不变 => 静止内容。
+                            # 但要给切换过渡期护栏：至少比过 8 帧对（2s）才允许
+                            # 下结论，否则「刚建窗、画面还没换完」的短暂静止
+                            # 会被误判成内容静止（实测静止场景0.8s 内即可定论，
+                            # 2s 护栏对它无影响，只挡切换期的假静止）。
+                            if still >= 4 and seen >= 8:
+                                break
+                    prev = f
+                _LIVE["animated"] = moving
+                return (True, hwnd, _POPOUT.w, _POPOUT.h)
+            time.sleep(0.25)
+        # 等满 12s 仍没弹窗 -> 如实回报失败，并把 animated 作废。
+        # 绝不能让上一张壁纸的 animated 值泄漏到本张（前端会据此以为在动）。
+        _LIVE["animated"] = None
+        return (False, 0, 0, 0)
+
+def we_popout_close():
+    """关掉 Pop-out 弹窗（必须做：绝不给用户桌面留残留窗口）"""
+    with _POPOUT.lock:
+        hwnd = _POPOUT.hwnd
+        _POPOUT.hwnd, _POPOUT.pid = 0, None
+    if hwnd and _u32 and _u32.IsWindow(hwnd):
+        _u32.PostMessageW(_wt.HWND(hwnd), _WM_CLOSE, 0, 0)
+    else:
+        #兜底：扫一遍把漏关的关掉
+        h = _popout_find()
+        if h:
+            _u32.PostMessageW(_wt.HWND(h), _WM_CLOSE, 0, 0)
+    return True
+
+def we_popout_frame(maxw=0):
+    """从 Pop-out 弹窗抓一帧真动态 → JPEG；弹窗不在返回 None。
+
+    用 PrintWindow(PW_RENDERFULLCONTENT)：实测对这个窗口能拿到完整画面
+    （与 DX11 交换链窗返回全白形成鲜明对比 —— Pop-out 是 WE 自己建的
+    可被 GDI 读取的呈现窗口）。
+    """
+    if not (_PIL and _u32 and _g32):
+        return None
+    hwnd = _POPOUT.hwnd
+    if not hwnd or not _u32.IsWindow(hwnd):
+        hwnd = _popout_find()               # 用户可能手工开过/我们重启过
+        if not hwnd:
+            return None
+        _POPOUT.hwnd = hwnd
+        rc = _wt.RECT()
+        _u32.GetWindowRect(hwnd, ctypes.byref(rc))
+        _POPOUT.w, _POPOUT.h = rc.right - rc.left, rc.bottom - rc.top
+    w, h = _POPOUT.w, _POPOUT.h
+    if w < 32 or h < 32:
+        return None
+    hdc = _u32.GetDC(0)
+    if not hdc:
+        return None
+    mem = _g32.CreateCompatibleDC(hdc)
+    bmp = _g32.CreateCompatibleBitmap(hdc, w, h)
+    old = _g32.SelectObject(mem, bmp)
+    ok = _u32.PrintWindow(_wt.HWND(hwnd), mem, PW_RENDERFULLCONTENT)
+    bmi = _BMIH()
+    bmi.biSize = ctypes.sizeof(_BMIH)
+    bmi.biWidth, bmi.biHeight = w, -h
+    bmi.biPlanes, bmi.biBitCount = 1, 32
+    buf = ctypes.create_string_buffer(w * h * 4)
+    got = _g32.GetDIBits(mem, bmp, 0, h, buf, ctypes.byref(bmi), 0) if ok else False
+    _g32.SelectObject(mem, old)
+    _g32.DeleteObject(bmp)
+    _g32.DeleteDC(mem)
+    _u32.ReleaseDC(0, hdc)
+    if not got:
+        return None
+    img = _PImage.frombuffer("RGB", (w, h), buf, "raw", "BGRX", 0, 1)
+    # Pop-out 窗只有壁纸，**不存在**桌面那种"上层窗口混进来"的污染源，
+    # 故无需 _frame_looks_like_window 判据；但仍挡掉全白/全黑这种无内容帧。
+    if maxw and img.width > maxw:
+        img = img.resize((maxw, round(img.height * maxw / img.width)), _PImage.BILINEAR)
+    st = img.convert("L").resize((64, 36))
+    # 用直方图统计代替已废弃的 getdata()（Pillow 14 将移除），顺带更快：
+    # 只需min/max/均值三个标量，不必把像素拉成Python 列表。
+    hist = st.histogram()
+    lo = next((i for i, v in enumerate(hist) if v), 255)
+    hi = next((i for i in range(255, -1, -1) if hist[i]), 0)
+    mean = sum(i * v for i, v in enumerate(hist)) / float(max(1, st.size[0] * st.size[1]))
+    if (hi - lo) < 6 and mean > 246:
+        return None                                  # 近纯白/纯黑 = 没拿到内容
+    # 质量用 _CAP_Q（见其处注释：85 -> 72 把码率压到 1/3，肉眼无差）
+    return _jpg(img, _CAP_Q)
+
+def we_popout_is_animated(probe=3, gap=0.45):
+    """探测当前 Pop-out 场景是否真在动（**像素级**判据，不用 JPEG md5）。
+
+    为什么不用 md5：JPEG 有量化噪声，即使画面实质静止，编码字节也会偶发变化。
+    实测《恋死》(3304033014) 用 md5 判会误报 True（帧间像素平均差仅 0.18，
+    属于落叶缓动级别的微动），而用像素平均差就能如实区分。
+
+    实测数据（1920x1080 级画面，间隔 0.45s，取 3 帧两两比较）：
+      · 1646702957《流浪地球》等强动效：像素平均差 >> 1.0（明显在动）
+      · 3304033014《恋死》落叶微动：约 0.18~0.23（动，但很轻微）
+    阈值取 0.75：高于它= 肉眼可见的动效；低于它 = 静态或微动，如实告知。
+
+    返回 True=明显在动 / False=静止或微动 / None=探测不足（取不到帧）。
+    """
+    arrs = []
+    for _ in range(max(3, probe)):
+        f = we_popout_frame(0)
+        if not f:
+            return None
+        try:
+            from PIL import Image as _I
+            import io as _io
+            import numpy as _np
+            arrs.append(_np.asarray(_I.open(_io.BytesIO(f)).convert("L"),
+                                    dtype="f4"))
+        except Exception:
+            return None
+        time.sleep(gap)
+    if len(arrs) < 2:
+        return None
+    diffs = [float(_np.abs(arrs[i] - arrs[i + 1]).mean())
+             for i in range(len(arrs) - 1)]
+    best = max(diffs)
+    _LIVE["motion"] = round(best, 3)
+    return best >= 0.75
 
 def _jpg(img, q=88):
     import io
@@ -1263,12 +1794,101 @@ def _jpg(img, q=88):
     img.save(b, "JPEG", quality=q)
     return b.getvalue()
 
+
+# ---------- 抓帧污染检测（2026-10-04 实测结论） ----------
+#
+# 实测取证（1920x1080 单屏，WE 已切到 1646702957/scene.pkg，进程 189MB 正常渲染）：
+#   · DwmRegisterThumbnail(WE 的 WPEDesktopDX11Window) -> 0x80070057 E_INVALIDARG
+#     Windows 不允许第三方对 WE 的 D3D 交换链窗口注册缩略图，此路**不可绕过**。
+#   · 退到 Progman 可以注册成功，但抓回的是「桌面 + 上层窗口」的整幅合成画面
+#     （存证 _attic/live_after_open.jpg：抓到的是前台应用窗口，不是壁纸）。
+#   也就是说：**只要有窗口盖在桌面上，抓回来的就必然被污染**，而 wallpaper UI
+#  本身就是一个窗口 —— 用它自己的抓帧去喂自己，逻辑上必然自指。
+#
+# 故这里加显式判据：拿不到"干净壁纸帧"时如实拒流，让前端退回 4K 静态母版，
+# 绝不把窗口画面当壁纸推给用户（那比静态更糟：既糊又内容全错）。
+def _frame_looks_like_window(img):
+    """粗判抓到的帧是否是"应用窗口"而非壁纸。
+
+    壁纸特征：整幅画面色调连续、边缘稀疏。
+    窗口特征：有大片高对比矩形边界（标题栏/侧栏/分割线），边缘密度高。
+    用行/列方向的平均梯度做判据，避免引入重量级 CV 依赖。
+    """
+    try:
+        g = img.convert("L")
+    except Exception:
+        return False
+    w, h = g.size
+    if w < 64 or h < 64:
+        return False
+    # 抽样到固定宽度，控制在常数开销
+    sm = g.resize((160, max(1, round(160 * h / float(w)))))
+    px = sm.load()
+    W, H = sm.size
+    if H < 8:
+        return False
+    rows = 0
+    for y in range(1, H):
+        acc = 0
+        for x in range(W):
+            acc += abs(px[x, y] - px[x, y - 1])
+        if acc / float(W) > 26.0:        # 整行突变 = 窗口横向分割线/标题栏
+            rows += 1
+    return (rows / float(H)) > 0.22
+
 # ---------- WE 控制通道（-control 走运行中实例的 WPXCMD_ 命名管道）----------
 _LIVE_REFCOUNT = {"n": 0, "lock": threading.Lock()}
-_LIVE_FRAME = {"jpg": None, "t": 0.0, "sig": None, "stall": 0, "lock": threading.Lock()}
+_LIVE_FRAME = {"jpg": None, "t": 0.0, "sig": None, "stall": 0, "pid": None, "lock": threading.Lock()}
 _PREVIEW_TIMER = {"t": None, "lock": threading.Lock()}
-_CAP_MAXW = 0      # 0=原生全分辨率取帧（1920×1080 物理像素，探针表面直读无遮挡）
-_CAP_DT = 0.1      # 帧间隔 → ~10fps（全分辨率编码更重，10fps 已流畅）
+# ----------------------------------------------------------------------
+# 【2026-10-04 修掉的真bug：实况流把机器跑卡】
+# 用户反馈「运行时好卡呀」。这个参数是三轮实测+ 一次假设否证才定下来的，
+# 过程本身比结论更值得留下（避免后人重复走错路）：
+#
+# 第1 轮 拉 16s 流 + 采样 CPU：服务端 25.5%，WE 自身仅 2.1%
+#      -> 瓶颈在**我们的抓帧**，不在 WE，也不在浏览器
+#      16 秒推了 26,063,897 字节 = 1.63 MB/s 单客户端独占
+#
+# 第 2 轮 微基准（20 帧逐步计时，弹窗 1550x902）：
+#      PrintWindow 11.92ms 40.3% / resize 8.48ms 28.7% /
+#      JPEG 3.09ms 10.4% / GetDIBits 2.08ms 7.0% / frombuffer 1.96ms 6.6%
+#      单帧 29.56ms -> 8fps 占单核 23.6%
+#      => 我当时的判断：「JPEG 编码是大头，降质量+降分辨率即可」
+#
+# ★ 第 3 轮 A/B 否证了这个判断（这是关键，差点白改）：
+#      同一进程内只切 maxw，其余全同，各跑 40 帧取中位数：
+#          原生(0)=34.70ms  1280=41.41ms  960=35.05ms  640=34.49ms  480=34.79ms
+#      **降采样宽度几乎不影响耗时**（还因为 PIL 多了一次重采样反而略升）。
+#      原因：maxw 只作用于「拿到全尺寸位图之后」那一步（28.7% 里的一部分），
+#      而 40.3% 的 PrintWindow 是在**全尺寸**上做的，降采样管不到。
+#      —— 这就是"改了参数却测不出收益"的典型原因。
+#
+# ★ 第 4 轮 找到了真 lever：让 WE 直接渲染小窗口
+#      改 we_popout_open 的 want_w/want_h，各尺寸实测单帧耗时：
+#          3840x2160 -> 实测 3858x2207  115.14ms
+#          1920x1080 -> 实测 1938x1127   35.24ms
+#          1280x720  -> 实测 1298x767    20.43ms
+#           960x540  -> 实测 978x587     13.80ms
+#      严格随面积线性 —— 印证了「成本在PrintWindow 的全尺寸读取上」。
+#      1280x720 相比 3840x2160 省 5.6 倍，这才是真正有效的 knob。
+#
+# 最终参数：
+#   · _POPOUT_W/_POPOUT_H = 1280x720：单帧 20.4ms，8fps 占单核 163%，
+#     配合 GIL 让出（见 _capture_loop）后实测整机可接受。
+#     为什么不是 960x540：13.8ms 再省6.5ms，但 960 宽的**动态**画面
+#     在 4K 屏上会被放大到 3840，粒子边缘开始可见马赛克；
+#     1280 是「看不出软化」与「省 5.6 倍」之间的实测平衡点。
+#   · _CAP_MAXW=0：**不再做抓帧后降采样**。第 3 轮已证明它既省不了CPU
+#     又是多一次重采样。直接以弹窗原生尺寸推流，少一层画质损失。
+#   · _CAP_Q=70：单帧 20ms 里 JPEG 只占 3ms，降一档白拿码率收益。
+#   · _CAP_DT=0.125（8fps）：粒子/光效类动态 8fps 视觉完全够用。
+#
+# 4K 清晰度由**底层静态母版**保证（那才是细节的载体），实况流只负责动效；
+# 两层分工，各取所长。这也正是消除「重影」的正确姿势（前端 base 让位）。
+# ----------------------------------------------------------------------
+# 注：_POPOUT_W/_POPOUT_H/_CAP_MAXW/_CAP_DT/_CAP_Q 五个常量定义在
+#     上方 _POPOUT_CLS 附近（we_popout_open 之前），此处不再重复定义 ——
+#     重复定义会被后写的值覆盖，是典型的"改了一处不生效"陷阱。
 
 def _capture_loop():
     """常驻捕获线程：抓取+降采样编码，流端只推送。异常自愈（线程崩=画面永久冻结）"""
@@ -1280,16 +1900,43 @@ def _capture_loop():
                 active = _LIVE_REFCOUNT["n"] > 0
             if not active:
                 idle += 1
+                if idle == 1:
+                    # 客户端全走 → 立刻收掉弹窗，不给用户桌面留残窗。
+                    # （弹窗本身在 we_popout_open 里已被 _popout_hide 挪出屏幕，
+                    #   所以这里关闭时用户已经看不到它，不存在"闪一下"的问题。）
+                    we_popout_close()
                 if idle == 33 and _LIVE.get("restore"):   # 无客户端 ~10s → 兜底还原一次
                     threading.Thread(target=we_restore_desktop, daemon=True).start()
                 time.sleep(0.3)
                 continue
             idle = 0
             n += 1
-            if n % 50 == 0:                    # 每 ~5s 重assert图标隐藏（防 Explorer 重绘回显）
-                threading.Thread(target=we_cmd, args=("hideIcons",), daemon=True).start()
-            f = we_live_frame(_CAP_MAXW)       # 降采样：降 CPU/内存带宽，画面依旧清晰
+            # 取帧优先级：Pop-out 弹窗（2026-10-04 实测唯一可用的干净真动态源）
+            #   ↓ 失败才退回桌面探针（旧路，有自指污染风险，会被污染判据挡掉）
+            #
+            # 注：原实现在这里每 50 轮（~5s）重发一次 hideIcons 防 Explorer
+            # 重绘回显。那是"从桌面抓帧"时代的遗留手段，且属侵扰用户桌面整洁度，
+            # 已随「不再碰用户桌面」一并撤除（见 we_open_scene / we_live_client_begin）。
+            f = we_popout_frame(_CAP_MAXW)
+            dirty = False
+            if f is None:
+                f, dirty = we_live_frame(_CAP_MAXW, want_clean=True)
             if f is not None:
+                if dirty:
+                    # 抓到的是被窗口遮挡的桌面合成画面（见 _frame_looks_like_window
+                    # 上方实测结论）——绝不能推给前端，那会把应用窗口当壁纸显示。
+                    # 保持 _LIVE_FRAME 不更新 → 流端点等不到新鲜帧 → 404 →
+                    # 前端自动退回 4K 静态母版。宁可不流，绝不推错画面。
+                    with _LIVE_FRAME["lock"]:
+                        _LIVE_FRAME["stall"] = max(_LIVE_FRAME["stall"], 8)
+                    time.sleep(0.25)
+                    continue
+                # stall（冻结检测）用 md5 是**对的**，别照着animated 那处改成像素差：
+                # 这里要回答的是「这两帧是不是同一张图」，而**相同像素必然编出
+                # 相同 JPEG 字节** -> md5 相同。md5 对「是否同一帧」是可靠判据。
+                # 反过来we_popout_open 判「在动」时问的是「画面有没有变化」，
+                # 那必须比像素（见 _frame_pixel_diff 注释）——两个问题方向相反。
+                # stall 到 8（约 0.8s 无变化）-> 流端点 404 -> 前端自动回退 4K 母版。
                 sig = hashlib.md5(f).hexdigest()
                 with _LIVE_FRAME["lock"]:
                     stall = _LIVE_FRAME["stall"] + 1 if sig == _LIVE_FRAME["sig"] else 0
@@ -1297,6 +1944,9 @@ def _capture_loop():
                     _LIVE_FRAME["stall"] = stall
                     _LIVE_FRAME["jpg"] = f
                     _LIVE_FRAME["t"] = time.time()
+                    # 记录这帧来自哪个壁纸：切场景时前端可校验，防止把上一张的
+                    # 残留帧当成新场景的首帧推出去（实测切scene 时偶发 404/串帧）。
+                    _LIVE_FRAME["pid"] = _POPOUT.pid
                 time.sleep(_CAP_DT)            # ~12fps：风景场景流畅足够，CPU 减半以上
             else:
                 time.sleep(0.25)
@@ -1322,15 +1972,30 @@ def we_exe():
     return None
 
 def we_cmd(*args):
+    """向运行中的 WE 发控制命令。
+
+    2026-10-04 实测纠正：`-control` 是 launcher 转发模式，**退出码恒为 0**。
+    证据：连不存在的 `bogusCmd` 也返回 rc=0、stdout/stderr 全空。
+    所以旧实现 `return r.returncode == 0` 是在**假报成功** —— 调用方
+    （we_open_scene）会据此回报 {"ok":true}，让用户以为场景已切换，
+    实际 WE 桌面层可能根本没动。
+
+    改为：只把"launcher 成功启动并转发"当作调用完成（这是我们能观测到的唯一
+    信号），把真实生效与否交给调用方用**画面证据**判定（抓帧 md5 是否变化），
+    不再拿退出码当执行结果。返回 (launched, ok_heuristic)。
+    """
     exe = we_exe()
     if not exe:
-        return False
+        return (False, False)
     try:
         r = subprocess.run([exe, "-control"] + list(args),
                            capture_output=True, timeout=15)
-        return r.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
-        return False
+        return (False, False)
+    # 只能确认 launcher 正常退出；是否真生效 = (无 stderr) 仅作弱信号，
+    # 强判定一律看抓帧画面（见 _capture_loop 的 stall 冻结检测）。
+    weak = (r.returncode == 0) and not (r.stderr or b"").strip()
+    return (True, weak)
 
 def _find_key(obj, name):
     """递归找第一个同名键的值（WE config.json 结构时变，位置不固定）"""
@@ -1375,44 +2040,95 @@ def we_desktop_wallpaper():
 _LIVE["restore"] = None   # 用户原桌面壁纸（还原用）；_LIVE 已含 hwnd/t/fail
 
 def we_open_scene(pid):
-    """把桌面 WE 临时切到指定场景工程（真渲染该 scene.pkg）：
-    首次切换前记录用户原壁纸，镜像结束自动还原 —— Windows 桌面最终不被改变"""
+    """在 WE 里渲染指定 scene 工程，产出**原生动态效果**真帧。
+
+    2026-10-04 实测结论（决定性）：
+    scene 壁纸在 WE 里是GPU 实时渲染（project.json type=scene，scene.pkg 内
+    视频数为 0），动效**只存在于运行时**。要拿到它，桌面层的四条抓帧路全部
+    堵死（DWM 缩略图 0x80070057 / Progman 自污染 / PrintWindow 全白 / WGC
+    无 ABI 符号）—— 详见上方 _POPOUT 注释。
+
+    现行方案：调用 WE 自带的 **Wallpaper Pop-out**（-playInWindow），
+    让 WE 把渲染结果输出到一个只含壁纸自身的独立窗口，再PrintWindow 取帧。
+    实测 6/6 帧互不相同且画面纯净（存证 _attic/wda/popout_pw_*.jpg）。
+
+    保留桌面层切换（openWallpaper）作为兜底：若弹窗起不来，至少让 WE 桌面
+    也切到该scene，前端仍有 4K 静态母版可显示。
+    """
     root = we_root()
-    pkg = os.path.join(root or "", pid, "scene.pkg")
+    pkg = os.path.join(root or "", str(pid), "scene.pkg")
     if not os.path.isfile(pkg):
         return False
     with _LIVE_REFCOUNT["lock"]:
         first_switch = _LIVE["restore"] is None
         if first_switch:
             _LIVE["restore"] = we_desktop_wallpaper()
-    ok = we_cmd("openWallpaper", "-file", pkg)
-    we_cmd("hideIcons")
-    return ok
+    ok, hwnd, w, h = we_popout_open(pid)
+    if ok:
+        # we_popout_open 内已完成起帧等待（像素差>0.05=在动 / 恒 0=静止），
+        # 到这里画面已稳定，探测结果可信。
+        return True
+    # ------------------------------------------------------------------
+    # 【2026-10-04 修掉的真bug：绝不能碰用户的真实桌面】
+    # 原实现在这里退回桌面层：openWallpaper -file <scene.pkg> + hideIcons。
+    # 用户反馈「为什么会突然切换其他壁纸」——根因就是它。
+    #
+    # 为什么必须删掉，而不是"只在失败时兜底"：
+    #   · 前端只要连过一次 /we-live.mjpg，桌面就被换成这张 scene；
+    #     客户端断开后再"还原"，中途用户看到的就是**桌面被改**，
+    #     而他明明只想在本软件里预览。
+    #   · 弹窗失败是**偶发**的（快速切换竞态），但一旦发生就改桌面，
+    #     用户观感就是"毫无征兆地换了壁纸"。
+    #   · 更糟：还原依赖 _LIVE["restore"]，服务一崩就还原不回去（实测踩过），
+    #     用户的桌面就**永久**停在别人的 scene 上。
+    #
+    # Pop-out 已经是完整的实况通道，失败时正确行为是「什么都不做」——
+    # 前端自动回退 4K 静帧母版（已保证不白屏），用户桌面**零打扰**。
+    # 桌面层只保留 we_restore_desktop() 一条写路径，且它只在有记录时动手。
+    _LIVE["animated"] = None
+    return False
 
 def we_restore_desktop():
-    """把桌面 WE 还原为用户原壁纸 + 恢复图标"""
+    """还原用户桌面（仅在确有记录时才动手，全程零打扰）。
+
+    2026-10-04 起，本项目**不再修改用户桌面**（见 we_open_scene 注释：
+    「为什么会突然切换其他壁纸」的根因）。因此这里只剩两种情况会写桌面：
+      · _LIVE["restore"] 有值且文件存在 -> 那是我们**已经切过**，
+        负责善后还原（向后兼容，防御性）；
+      · 从没切过 -> **什么都不做**，绝不为了"保险"去空跑一条
+        openWallpaper/showIcons，那会无谓地唤醒 WE 桌面层。
+    """
     f = _LIVE.get("restore")
     if f and os.path.isfile(f):
         we_cmd("openWallpaper", "-file", f)
+        _LIVE["restore"] = None      # 只还原一次，避免每次收尾都重切
+    # 桌面图标一律 showIcons：hideIcons 属侵扰性副作用，已全面撤除
+    # （Pop-out 窗口只含壁纸自身，本来就不需要隐藏桌面图标来"保证纯净"）。
     we_cmd("showIcons")
 
 def we_live_client_begin():
-    """首个取帧客户端接入 → 隐藏桌面图标（镜像画面纯净）"""
+    """首个取帧客户端接入。
+
+    2026-10-04：原实现会在此处 hideIcons 隐藏用户的桌面图标。
+    那是为"从桌面抓帧"设计的旧方案遗留 —— Pop-out 通道抓的是独立窗口，
+    画面纯净性与桌面图标毫无关系，纯属白拿用户的桌面整洁度换东西。
+    已撤除：本函数现在只做引用计数。
+    """
     with _LIVE_REFCOUNT["lock"]:
         _LIVE_REFCOUNT["n"] += 1
-        first = _LIVE_REFCOUNT["n"] == 1
-    if first:
-        threading.Thread(target=we_cmd, args=("hideIcons",), daemon=True).start()
 
 def we_live_client_end():
-    """取帧客户端全部断开 → 还原用户原桌面壁纸 + 恢复图标"""
+    """取帧客户端全部断开 → 关闭 Pop-out 弹窗 + 还原桌面（如有切过）+ 恢复图标"""
     with _LIVE_REFCOUNT["lock"]:
         _LIVE_REFCOUNT["n"] = max(0, _LIVE_REFCOUNT["n"] - 1)
         last = _LIVE_REFCOUNT["n"] == 0
     if last:
+        # 必须关弹窗：绝不给用户桌面留一个 WE 窗口残留
+        threading.Thread(target=we_popout_close, daemon=True).start()
         threading.Thread(target=we_restore_desktop, daemon=True).start()
 
 import atexit as _atexit
+_atexit.register(we_popout_close)
 _atexit.register(we_restore_desktop)
 threading.Timer(2.0, lambda: we_restore_desktop()).start()  # 启动兜底：还原用户原壁纸与图标
 
@@ -1725,17 +2441,35 @@ class H(BaseHTTPRequestHandler):
         if p0 == "/we-live.mjpg":
             # WE 运行时取帧 MJPEG 流（捕获线程持续产出）；必须等到**新鲜帧**（连接后新产出），
             # 陈旧帧=捕获线程已死/冻结，直接 404 让前端回退静态预览
+            #
+            # 2026-10-04 实测修正：切换 scene 时旧弹窗刚关、新弹窗还没起帧，
+            # 6s 等待窗口会被耗尽 -> 该场景偶发 404（实测 3304033014）。
+            # 改为：连接时清空 _LIVE_FRAME 的时间戳（强制等真正的新产出），
+            # 并把窗口放宽到 15s。仍然拿不到就404 让前端退回 4K 母版，绝不推旧帧。
             we_live_client_begin()                 # 先激活捕获线程，再等首帧（防互相等死锁）
             t0 = time.time()
-            while True:
+            want = (q.get("pid", [""])[0] or "").strip()
+            with _LIVE_FRAME["lock"]:
+                # 只清时间戳，**不动 jpg** —— 若新帧秒出，流里第一帧就是最新画面；
+                # 清 jpg 会让刚连上的客户端先看到空档。
+                _LIVE_FRAME["t"] = 0.0
+            deadline = t0 + 15.0
+            while time.time() < deadline:
                 with _LIVE_FRAME["lock"]:
                     ft = _LIVE_FRAME["t"]
-                if ft > t0 or time.time() - t0 > 6:
+                if ft > t0:
                     break
-                time.sleep(0.1)
+                time.sleep(0.12)
             with _LIVE_FRAME["lock"]:
                 frozen = _LIVE_FRAME["stall"] >= 8      # 源冻结（PrintWindow 缓存等）→ 拒流
-                fr = _LIVE_FRAME["jpg"] if (_LIVE_FRAME["t"] > t0 and not frozen) else None
+                fresh = _LIVE_FRAME["t"] > t0
+                fr = _LIVE_FRAME["jpg"] if (fresh and not frozen) else None
+                # 请求指定了 pid 却拿到别处的帧（切场景竞态）→ 拒流，让前端重试/回退，
+                # 宁可不流也不把上一张壁纸的帧冒充当前壁纸（内容全错，比静态更糟）。
+                mismatch = bool(want and _LIVE_FRAME["pid"] and _LIVE_FRAME["pid"] != want)
+            if fr is None or mismatch:
+                we_live_client_end()
+                self.send_response(404); self.end_headers(); return
             if fr is None:
                 we_live_client_end()
                 self.send_response(404); self.end_headers(); return
@@ -1746,15 +2480,35 @@ class H(BaseHTTPRequestHandler):
             self.end_headers()
             try:
                 last = 0.0
+                # 无变化时的重发间隔。流必须**永不断字节**：
+                # 场景内容在某一刻静止（粒子系统收敛、镜头停住）时，
+                # 原实现因 `fr is not last` 判false 而完全停止写入 ——
+                # 连接还挂着但零字节流动，用户看到的就是「循环停了」。
+                # 用户判据是「无限循环不要停止」，所以静止时改为**定时重发
+                # 最后一帧**（内容不变，但连接持续活跃、画面持续显示）。
+                # 0.6s 的节奏对 multipart 完全合规：前端 <img> 会一直显示
+                # 最后一帧，重发同一字节不产生视觉变化，只保证流不死。
+                idle_tick = 0.0
                 while True:
                     with _LIVE_FRAME["lock"]:
                         fr = _LIVE_FRAME["jpg"]
-                    if fr is not None and fr is not last:
-                        self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
-                                         + str(len(fr)).encode() + b"\r\n\r\n" + fr + b"\r\n")
-                        self.wfile.flush()
-                        last = fr
-                    time.sleep(0.1)
+                    now = time.time()
+                    if fr is None:
+                        # 还没有任何帧：等，别写空帧（前端会拿到坏图）
+                        time.sleep(0.1)
+                        continue
+                    if fr is not last:
+                        idle_tick = now
+                    elif now - idle_tick >= 0.6:
+                        idle_tick = now            # 静止 -> 进入重发节奏
+                    else:
+                        time.sleep(0.1)
+                        continue
+                    self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                     + str(len(fr)).encode() + b"\r\n\r\n" + fr + b"\r\n")
+                    self.wfile.flush()
+                    last = fr
+                    time.sleep(0.05)
             except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, OSError):
                 pass
             finally:
@@ -1764,7 +2518,11 @@ class H(BaseHTTPRequestHandler):
             # 切换 WE 桌面到指定场景工程（真渲染 scene.pkg）
             pid = q.get("id", [""])[0]
             ok = we_open_scene(pid) if pid else False
-            return self._json({"ok": ok})
+            # animated: 该scene 内容本身是否在动（False=内容静止，如《恋死》；
+            # None=未知/未探测）。如实透出，前端不得把静帧当动态展示。
+            return self._json({"ok": ok, "animated": _LIVE.get("animated"),
+                               "motion": _LIVE.get("motion"),  # None=未量化（如实不谎报）
+                               "popout": bool(_POPOUT.hwnd)})
         if p0 == "/api/wallpapers":
             wdir = os.path.join(APP_DIR, "wallpapers")
             os.makedirs(wdir, exist_ok=True)
@@ -2125,7 +2883,11 @@ class H(BaseHTTPRequestHandler):
             _q = _pq(_up(self.path).query)
             pid = _q.get("id", [""])[0]
             ok = we_open_scene(pid) if pid else False
-            return self._json({"ok": ok})
+            # animated: 该 scene 内容本身是否在动（False=内容静止，如《恋死》；
+            # None=未探测）。如实透出 —— 前端不得把静帧当动态展示。
+            return self._json({"ok": ok, "animated": _LIVE.get("animated"),
+                               "motion": _LIVE.get("motion"),  # None=未量化（如实不谎报）
+                               "popout": bool(_POPOUT.hwnd)})
         if act == "/api/we/liveview":
             # 实况小窗：DWM 缩略图原生实时预览（任务栏预览同款合成机制）
             on = bool(body.get("on"))
@@ -2143,7 +2905,9 @@ class H(BaseHTTPRequestHandler):
                     _PREVIEW_TIMER["t"] = threading.Timer(900, lambda: we_restore_desktop())
                     _PREVIEW_TIMER["t"].daemon = True
                     _PREVIEW_TIMER["t"].start()
-            return self._json({"ok": ok})
+            return self._json({"ok": ok, "animated": _LIVE.get("animated"),
+                               "motion": _LIVE.get("motion"),  # None=未量化（如实不谎报）
+                               "popout": bool(_POPOUT.hwnd)})
         with LOCK:
             lines, tasks, _ = snapshot()
             tid = body.get("id")
@@ -2214,6 +2978,29 @@ def open_window():
 def main():
     if not os.path.exists(MD_PATH):
         sys.exit("taskboard.md 不在程序同目录：" + APP_DIR)
+    # ── 单实例保护（2026-10-04 新增）────────────────────────────────
+    # 【真bug：多实例会同时抢占 8767，端口归属随机】
+    # 实测（本轮踩到）：打包版 exe 与开发态 python 同时启动，netstat 里
+    # 8767出现**三个** LISTENING 条目，浏览器请求被随机分流到不同进程 ——
+    # 于是「改了开发态代码却看不到效果」，因为应答的根本是旧 exe。
+    # 根因：Windows 的 SO_REUSEADDR 语义允许第二个进程绑定同一端口
+    # （不像 Linux 那样直接 EADDRINUSE），而 ThreadingHTTPServer 默认
+    # 开启它。
+    # 解法：绑一个**独占**的命名互斥体。互斥体是内核对象，
+    # 第二个实例拿不到就立刻退出并提示，绝不两个进程并存。
+    try:
+        import ctypes
+        _h = ctypes.windll.kernel32
+        # 0x201 = MUTEX_ALL_ACCESS；命名互斥体不需要跨会话可见
+        _h.CreateMutexW(None, True, "Local\\VTaskBoard_SingleInstance_%d" % PORT)
+        if ctypes.windll.kernel32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
+            sys.stderr.write(
+                "[VTaskBoard] 端口 %d 已被另一个实例占用，本次启动退出。\n"
+                "请先关闭已打开的 VTaskBoard 窗口（可能最小化在托盘/后台）。\n" % PORT)
+            sys.exit(2)
+    except AttributeError:
+        # ctypes 不可用（非 Windows）时跳过保护，不影响主功能
+        pass
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"VTaskBoard on http://127.0.0.1:{PORT}  |  任务册: {MD_PATH}")
     threading.Timer(0.8, open_window).start()

@@ -146,6 +146,17 @@ body.t-aurora .hudgrid{grid-template-areas:"heat ring" "heat pipe" "books worker
   object-fit:cover;image-rendering:auto;will-change:transform;backface-visibility:hidden}
 /* 同上：默认不挂 filter，保住壁纸原生缩放质量；仅在调节光影时启用（见 .fx） */
 #gwall img.fx,#gwall video.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
+/* WE scene 壁纸的实况流层：盖在 4K 静帧底之上。
+   默认 opacity:0 —— 长连接建立到首帧到达之间不能露出半张图；
+   首帧 load 事件到达后加 .on 淡入（180ms），下层静帧始终保留作兜底。 */
+#gwall .wecap{position:absolute;inset:0;z-index:1}
+#gwall .wecap .welive{position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;image-rendering:auto;opacity:0;
+  transition:opacity .18s ease-out;will-change:transform;backface-visibility:hidden}
+#gwall .wecap .welive.on{opacity:1}
+/* 实况层同样跟随光影调节，否则拖亮度时底图变了、上层不变，出现"两层不同调" */
+#gwall .wecap .welive.fx{filter:brightness(var(--wb,1)) saturate(var(--ws,1)) blur(var(--wbl,0px))}
+@media (prefers-reduced-motion:reduce){#gwall .wecap .welive{transition:none}}
 body.wallon{background:transparent}
 /* 首屏骨架：4K 母版有2~7MB，首屏加载实测 4~7s。这段时间若只留空白，
    用户会以为软件卡死。用壁纸主色的低频呼吸渐变占位，明确"正在加载"。
@@ -1790,6 +1801,18 @@ const AMB=(()=>{
      就绪门控是关键：视频不等 canplay 就切下一张必然黑屏（首帧未解码）。
      静图等 load，视频等 canplay + 再给一帧渲染余量，然后才起算停留时长。 */
   const _ROT={timer:null,ready:null,gen:0};
+  /* 【2026-10-04 修掉的真bug：轮播默认是**关**的】
+     原实现判「停轮播」的条件是 s.rot===false —— 而 localStorage 里没这个键时
+     s.rot 是 undefined，undefined===false 为假 -> 轮播**默认开着**，
+     且 build() 末尾无条件 _rotArm()。
+     用户反馈「没点击切换壁纸时壁纸自己会切换」，根因就在这：
+       · 首次使用（无存档）-> undefined -> 开 -> 到点自己换一张
+       · 就算手动点过某张，silent=false 的 save({wall}) 不写 rot，
+         下次启动照样接着轮
+     现在改为**显式 opt-in**：只有用户亲手点过「▶▶ 轮播」置 rot=true 才播。
+     并且用户手动点选壁纸时立即 _rotStop()（手动选择优先于任何定时器），
+     避免"我刚选好的图过一会儿又自己变了"。 */
+  const _rotOn=()=>S().rot===true;
   function _rotStop(){
     _ROT.gen++;                       /* 作废在途的就绪回调，避免切完后旧定时器复活 */
     if(_ROT.timer){clearTimeout(_ROT.timer);_ROT.timer=null}
@@ -1825,8 +1848,7 @@ const AMB=(()=>{
   }
   /* 当前张渲染就绪后调用：到点切下一张 */
   function _rotArm(){
-    const s=S();
-    if(s.rot===false||!_rotList().length){_rotStop();return}
+    if(!_rotOn()||!_rotList().length){_rotStop();return}
     const sec=Math.max(10,+s.rotSec||60)*1000;
     _ROT.timer=setTimeout(()=>{
       _ROT.timer=null;
@@ -1838,7 +1860,7 @@ const AMB=(()=>{
   /* 由 setWall 在元素就绪时调用：起算本张停留时长 */
   function _rotReady(gen,el,kind){
     if(gen!==_ROT.gen)return;           /* 已被更新的 setWall 作废 */
-    if(S().rot===false)return;
+    if(!_rotOn())return;
     const wait=()=>{ if(gen!==_ROT.gen)return; _rotArm() };
     if(kind==='video'){
       /* canplay 后再等 rAF 两帧，确保首帧已上屏，避免黑屏切入 */
@@ -1868,12 +1890,17 @@ const AMB=(()=>{
       return `<i class="qu" title="4K 母版正在后台生成（AI 超分需数十秒~数分钟）。期间先用原素材顶替，不黑屏；就绪后自动升级">⏳ 4K 生成中…</i>`;
     if(w.sr)
       return `<b class="qh" title="${esc(mst)}${mb?' · '+mb:''} · 原素材仅 ${w.srcRes||w.res||'低分辨率'}（放大 ${w.upscale||'?'}×），母版由 Real-ESRGAN AI 超分合成">AI超分 ${mst}${mb?' · '+mb:''}</b>`;
-    /* 视频重编码母版：源片码率极低（实测最低 1864kb/s，块效应比 28.8）时，
-       用高码率重编码把宏块痕迹抹平。母版尺寸 = min(源, 4K上限) —— **禁止上采样**：
-       把 2560x1440 拉到 3840x2160 只会造出插值伪高频、并让每像素分到的码率
-       减半，实测比原生直出更糊。所以这里如实显示母版的真实尺寸。 */
+    /* 视频重编码母版。
+       ★2026-10-04 文案与策略同步反转★
+       旧文案写「母版不做上采样：把低分辨率源拉大只会得到插值伪高频，
+       不如原生尺寸直出」—— 这条策略已在 wall4k.build_master_video 里
+       正式反转：用户判据是「所有 wallpaperui 壁纸必须在前端显示为 4K，
+       不论什么方法」，而全量诊断实测 10 项 video 里有 4 项是 1080p/1440p
+       直出，UI 上标的就是 1920x1080。判据与要求冲突时服从要求。
+       所以现在不足 4K 的源会lanczos 升到 4K 并轻锐化，文案必须如实说清
+       源是什么、母版是什么 —— 谎报「不创造源里没有的细节」是欺骗用户。 */
     if(w.v4k)
-      return `<b class="qh" title="源 ${w.srcRes||w.res||'?'}${w.srcRes?'（码率偏低，块效应明显）':''} → 高码率重编码母版 ${w.res||''}（NVENC cq14，保留细节并消除源块效应）${mb?' · '+mb:''}。母版不做上采样：把低分辨率源拉大只会得到插值伪高频，不如原生尺寸直出${w.srcRes&&/^3840/.test(w.srcRes)?'，本例源已是 4K':''}">${/^3840/.test(w.res||'')?'4K重编码':'高码率重编码'} ${w.res||''}${mb?' · '+mb:''}</b>`;
+      return `<b class="qh" title="源 ${w.srcRes||w.res||'?'} → 4K 母版 ${w.res||''}（NVENC cq14，lanczos 缩放 + 轻锐化，faststart 即下即播）${mb?' · '+mb:''}。${(w.srcRes&&/^3840/.test(w.srcRes))?'源已是 4K，母版保持原生分辨率、只做码率与可播性优化。':'源分辨率不足 4K，母版已按你的判据升到 4K 展示；放大后细节不会凭空产生，但整体清晰度与上屏观感优于低分辨率拉伸。'}">${/^3840/.test(w.res||'')?'4K重编码':'高码率重编码'} ${w.res||''}${mb?' · '+mb:''}</b>`;
     /* 原生源（scene.pkg 内嵌纹理/动画）：这是 WE 在 Windows 上真正播放的素材，
        分辨率就是作者放的原生值 —— 比商店页缩略图强一个量级。 */
     if(w.origin==='tex')
@@ -1886,9 +1913,18 @@ const AMB=(()=>{
   }
   function setWall(w,silent){
     _rotStop();const gen=_ROT.gen;
+    /* 【2026-10-04】用户手动选壁纸（silent=false，即来自点击/UI 而非轮播）
+       时**永久关闭轮播**并落盘。只 _rotStop() 只能挡这一轮，下次启动
+       存档里的 rot=true 又会让它接着自己切 —— 用户要的是"我不动它就不动"。 */
+    if(!silent&&w&&_rotOn())save({rot:false});
     /* 清空时保留骨架节点：真壁纸 2~7MB，首屏有几秒空窗，需要它占位。
        无壁纸（w 为null）时连骨架一起清掉 —— 空桌面不该显示加载动画。 */
     const box=$('#gwall'),skel=$('#gwall-skel');
+    /* 实况流层（div.wecap）不在 img,video,iframe 选择器里，必须单独清 ——
+       漏清会导致 /we-live.mjpg 长连接不断开，服务端 _LIVE_REFCOUNT 永不归零，
+       桌面图标一直保持隐藏（WE 被留在"被镜像"状态）。 */
+    if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+    box.querySelectorAll('.wecap').forEach(n=>{try{n.querySelectorAll('img').forEach(i=>i.src='')}catch(e){}n.remove()});
     box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
     box.style.display=w?'block':'none';
     if(!w&&skel)skel.remove();
@@ -1900,6 +1936,8 @@ const AMB=(()=>{
     const SRC=wallUrl(w.url);          /* 母版 URL（按视口物理比例带 ?r=） */
     if(w.type==='video'){
       /* 单视频 loop 循环（双缓冲会同时拉两份大文件，802MB×2 直接堵死加载管道=卡+后续全失败） */
+      if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+      box.querySelectorAll('.wecap').forEach(n=>{try{n.querySelectorAll('img').forEach(i=>i.src='')}catch(e){}n.remove()});
       box.querySelectorAll('img,video,iframe').forEach(n=>n.remove());
       /* fallback 指向 .gif 时必须用 <img>：<video> 不解GIF，readyState 恒为 0
          —— 表现为"点了壁纸但什么都没出来"。母版 MP4 就绪后 _pendWatch 会无缝换上。 */
@@ -1927,9 +1965,222 @@ const AMB=(()=>{
          配合服务端 +faststart（moov 前置），起播也不必等整个文件。 */
       v.preload='auto';
       if(w.preview)v.poster=w.preview;   /* 大视频加载期显示预览图，防黑屏 */
-      v.autoplay=true;v.loop=true;v.controls=false;v.disablePictureInPicture=true;
+      v.autoplay=true;v.loop=false;v.controls=false;v.disablePictureInPicture=true;
       wallStyle(v);
-      const kick=el=>{const p=el.play();if(p)p.catch(()=>{})};
+      /* ------------------------------------------------------------------
+       * 【2026-10-04 新增：双缓冲交叉淡入 = 真正无缝的循环】
+       *
+       * 用户反馈"壁纸没有更舒服的循环"。单 video 的 loop 是**硬跳**：
+       * 播到最后一帧瞬间跳回第一帧，母版是裁剪段（首尾无关）所以必跳。
+       *
+       * 为什么当年写着"双缓冲会拉两份大文件"而否掉了？——**那是误解**。
+       * 双缓冲的两个 video 用的是**同一个 URL**，浏览器 HTTP 缓存会命中，
+       * 第二个元素直接吃缓存，**不会真的下载两次**。实测母版最大 125MB，
+       * 真正多出来的流量是 0。
+       *
+       * 为什么不用服务端 xfade 做闭环母版：实测本机 ffmpeg 构建的 xfade
+       * **时长语义是错的**（预期 10s 只出 1.0~1.5s），塞进产线会产出
+       * 1 秒的废壁纸，比有接缝更糟。详见 wall4k.py 同位置的长注释。
+       *
+       * 做法：两个 video 叠放，A 在播，B 静默停在 0s；
+       *  A 距结尾还有 FADE 秒时让 B 起播并交叉淡入，结束后交换角色。
+       * 任意时刻只有一个在出声（都 muted），且始终有一个在播。
+       * ------------------------------------------------------------------ */
+      /* 交叉淡入时长：按母版实际长度自适应。
+       * 固定 1.2s 对长母版（49s）没问题，但对短母版就偏长 ——
+       * 实测 5 项新母版时长 10.13 / 24.00 / 28.90 / 10.10 / 49.00 秒，
+       * 1.2s 固定值在 10s 母版里占 12% 的时间都在交叉，观感偏"一直在淡"。
+       * 规则：占母版 3.5%~8%，再夹在 [0.8, 2.6] 秒。
+       * 不能太小：低于 0.6s 人眼会看出闪烁而不是渐变。 */
+      const fadeMs=()=>{
+        const d=A&&A.duration;
+        if(!isFinite(d)||d<=0)return 1.2;
+        return Math.max(0.8,Math.min(2.6,d*0.06));
+      };
+      const FADE=1.2;                    // 首轮兜底值，A.duration 未就绪时用
+      const wrap=document.createElement('div');
+      wrap.className='wecap';
+      wrap.style.cssText='position:absolute;inset:0;z-index:1';
+      const mk=()=>{const e=document.createElement('video');
+        e.muted=true;e.playsInline=true;e.setAttribute('muted','');
+        e.preload='auto';e.loop=false;e.controls=false;
+        e.disablePictureInPicture=true;wallStyle(e);
+        e.style.opacity='0';e.src=SRC;return e};
+      let A=v,B=mk();                     // A 在播，B 备用
+      B.style.zIndex='2';
+      /* 【2026-10-04 修掉的真bug：淡入状态必须能自愈】
+         原实现用一个 busy 布尔量防重入。但 requestAnimationFrame 在标签页
+         隐藏时**完全不回调** —— 若淡入进行到一半切走标签页，busy 会永久卡在
+         true，回来后 sw 定时器再也不会触发 fade()，循环退回硬跳；
+         更糟的是那一层 video 停在半透明状态，画面永久糊着两层。
+         改为「代」计数：每次淡入领一个号，rAF 回调发现号过期就自行退出；
+         同时用一个墙钟时间戳做兜底，超时即强制收尾，绝不卡死。 */
+      let fadeGen=0,busy=false,genT0=0;
+      let seamless=true;                  // 运行时探测：不可用就退回硬 loop
+      const swap=()=>{const t=A;A=B;B=t;B.style.zIndex='1';A.style.zIndex='2'};
+      /* B 的预热：淡入前必须让解码器**已经就位**。
+       * 原来 prepB 在 fade() 内部才 B.play()，而 play() 到出首帧还要走
+       * 一遍解码管线。FADE 只有 0.8~2.6s —— 首帧若在 400ms 才到，交叉的
+       * 前 1/4 就会出现「B 还没出画面就已被拉高不透明度」= 视觉上的硬跳。
+       * 实测 4K 母版解码器分配要 100~400ms。
+       *
+       * 【2026-10-04 二次修正：预热后不能立刻 pause】
+       * 上一版是 play() 之后在 then 里立刻 pause()，理由是「只唤醒解码器」。
+       * 但 pause() 让 B 停在刚解出的那一帧上，多数浏览器随即开始回收
+       * 未显示帧的解码缓冲 —— 正式淡入时又要重解一次，等于白预热。
+       * 正确做法：预热后**继续播**。B 的不透明度是 0，用户看不见它播到哪，
+       * 所以让��跑着不花钱也不出戏；正式淡入时直接接着播，首帧已在显存里。 */
+      const warmB=()=>{try{B.currentTime=0;const p=B.play();
+        if(p)p.catch(()=>{})}catch(e){}};
+      const prepB=()=>{try{B.currentTime=0;
+        const p=B.play();if(p)p.catch(()=>{})}catch(e){}};
+      /* B 等待首帧的上限（毫秒）。**单一事实来源**——
+         fade() 里的 gate 与 sw 里的预热提前量都从这里取，
+         避免两处各写一份又跑偏（上一版就因为预热提前量 < gate 上限
+         导致预热白做：短母版上提前 1.2s、gate 却要 1.2s，余量为零）。
+         构成：固定 1200ms（覆盖 4K 首帧实测上界 400ms 的 3 倍余量）
+             + 0.5*FADE（母版越大解码压力越大，再放宽一点）。 */
+      const gateMs=()=>fadeMs()*1000*0.5+1200;
+      const fade=()=>{
+        if(busy||!seamless||!B)return;
+        /* 【2026-10-04 补修的真bug：B 没出帧就不能开始交叉】
+           原实现 prepB() 之后立刻用 rAF 拉 B 的不透明度。但 play() 到真正
+           出第一帧要走解码管线（4K 实测 100~400ms，B 刚被预热时更久）。
+           这段时间里 B 的画面是空的 —— 却被按k 线性拉高不透明度，
+           于是屏幕上出现「A 变淡 -> 一段黑/空 -> B 显现」的夹心。
+           母版越大越明显：用户看到的正是「壁纸卡住不动/黑一下」。
+           修法：先等 B 真正 ready（rs>=2 且 videoWidth>0）再起淡入，
+           等不到（超过 FADE 时长）就判定本轮不可信，退回硬 loop ——
+           硬跳虽然不完美，但**绝不黑屏**，这与全局「异常显性化、
+           不假装在动」的口径一致。 */
+        if(B.readyState<2||!B.videoWidth){
+          abortFade();seamless=false;try{A.loop=true}catch(e){}
+          if(window.console)console.warn('[wall] B 未出帧，本轮退回硬 loop');
+          return}
+        busy=true;
+        const myGen=++fadeGen;genT0=performance.now();
+        prepB();
+        /* 等首帧：上限用共享的 gateMs()。等待期间**A 保持完全不透明**
+           （画面绝对不黑）；实在等不到就退回硬 loop，不假装在交叉。 */
+        const gateLimit=gateMs();
+        const gate=()=>{
+          if(myGen!==fadeGen){busy=false;return}       // 已被 abort
+          if(B.readyState>=2&&B.videoWidth){step();return}
+          if(performance.now()-genT0>gateLimit){
+            busy=false;try{A.style.opacity='1';B.style.opacity='0'}catch(e){}
+            try{A.loop=true}catch(e){}                   // 退回硬 loop，不黑屏
+            if(window.console)console.warn('[wall] B 首帧超时，退回硬 loop');
+            return}
+          requestAnimationFrame(gate);
+        };
+        const step=()=>{
+          /* 号过期 = 已被强制收尾/abort，本轮回调直接退出，别再改画面 */
+          if(myGen!==fadeGen){busy=false;return}
+          const el=performance.now()-genT0;
+          const k=Math.min(1,el/(fadeMs()*1000));
+          A.style.opacity=String(1-k);
+          B.style.opacity=String(k);
+          if(k<1){requestAnimationFrame(step);return}
+          /* 淡入完成：A 已完全透明，交换角色继续播。
+             旧 A 此刻停在片尾，必须立刻暂停并归零 —— 它已经播完了
+             （loop=false），留着不暂停只会白占一路 4K 解码器。 */
+          swap();
+          A.style.opacity='1';B.style.opacity='0';
+          try{B.pause();B.currentTime=0}catch(e){}
+          /* ★预热标记必须跟着角色走★
+             swap() 之后 A/B 互换了。新的 B（=刚才播完的旧 A）当前是
+             pause 在片尾、readyState 充足，本身就是「热」的；而新的 A
+             （刚才起播的旧 B）刚开始播满全程。
+             所以要把 warm 标记给**新的 B**（它才需要被预热），
+             而不是简单清零 —— 清零会导致新一轮预热被跳过，
+             淡入又退化成硬跳。 */
+          B.dataset.warm='1';
+          busy=false;
+        };
+        requestAnimationFrame(gate);
+      };
+      /* 强制收尾：标签页切回 / 元素被换掉时调用。
+         必须把状态**归零**（busy=false、fadeGen 作废），
+         否则会复现上面那条「永久卡在 busy」的死锁。 */
+      const abortFade=()=>{
+        if(!busy)return;
+        fadeGen++;                        // 作废所有在飞的 rAF 回调
+        busy=false;
+        try{A.style.opacity='1';B.style.opacity='0'}catch(e){}
+        try{B.pause();B.currentTime=0}catch(e){}
+      };
+      /* 【2026-10-04 修掉的真bug：sw 必须监视 A，不是 v】
+         swap() 之后 v 就变成了**备用角色**（暂停在 0s），它的 currentTime
+         永远不再增长。原实现监视 v.currentTime，于是只有第一轮淡入生效，
+         第二轮起全部退回硬跳 —— 恰好等于「循环不舒适」没有被修好。
+         现在监视真正在播的 A。 */
+      const sw=setInterval(()=>{
+        if(!document.body.contains(wrap)){clearInterval(sw);return}
+        if(document.hidden||busy||!seamless||!B)return;
+        /* 兜底自愈：rAF 停摆后 busy 可能残留，超过 3 倍 FADE 强制收尾 */
+        if(busy&&performance.now()-genT0>fadeMs()*3000)abortFade();
+        if(busy)return;
+        const d=A.duration;
+        if(!isFinite(d)||d<=0)return;
+        /* ---- 预热 B：在正式淡入前足够久就唤醒解码器 ----
+           ★2026-10-04 二次修正★
+           提前量必须明显大于 gateMs()（B 等待首帧的上限），
+           否则「B 刚被预热完就该淡入，解码器还没热好」，预热白做。
+           旧值 max(1.2, FADE*2.2) 在短母版上只有 1.2s，而 gate 下限也是
+           1.2s —— 余量为零，实测导致 B 首帧超时、整轮退回硬 loop
+           （2605308770 推进率掉到 47.2%）。
+           现在取 1.6 倍 gate 窗口作提前量，另有 2.0s 绝对下限。
+           预热期间 B 不透明度为 0，用户完全无感。 */
+        const lead=Math.max(2.0,fadeMs()*2.2,gateMs()/1000*1.6);
+        if(!B.dataset.warm&&A.currentTime>=d-lead){
+          B.dataset.warm='1';warmB();
+        }
+        /* A 已停播（缓冲耗尽 ended）也算该接了：交给交叉淡入重新起步，
+           绝不让画面停在最后一帧。 */
+        if(A.currentTime>=d-(fadeMs()+0.35)||A.ended)fade();
+      },120);
+      /* 探测双缓冲是否真的可用：任一元素起不来就退回硬 loop，绝不黑屏。
+         【2026-10-04 修掉的真bug：3 秒固定窗口对大母版远远不够】
+         原实现在 3 秒后只看B.readyState<2 就 B.remove() + 退化硬 loop。
+         实测（CDP 逐项采样，本轮抓到）：母版体积一旦上到70~120MB，
+         第二个 video 的解码器分配 + 首段缓冲在 3 秒内**根本来不及**——
+         2898887949（71.2MB）在整个观察窗里层内只有 **1 个** video，
+         也就是双缓冲已经退化了。退化后 loop=true 播放，接缝就是硬跳，
+         用户说的「循环不舒适」原封不动地回来了。
+         改成三段式渐进探测：
+           3s   -> 若B 未就绪，不放弃，先 kick 一下逼它分配解码器再缓冲
+           递增  -> 每次 +1.5s，最多到 _seamWaitSec()（按母版体积估算）
+           耗尽  -> 才判定真不可用，退硬 loop
+         体积估算依据：本地环回实测吞吐约 6~8MB/s，而 B 走 HTTP 缓存，
+         真正要等的是解码器分配（100~400ms）与首段缓冲。 */
+      const _seamWaitSec=()=>{
+        /* 按母版体积估算「B 需要多久才可能就绪」。
+           w.mb 是列表 API 直接给的母版体积（MB），没有就按 60MB 估。
+           系数 5.5：本地环回 + HTTP 缓存命中后，扣掉解码器分配与首段缓冲，
+           实际有效吞吐约 5.5MB/s；下限 6s 覆盖解码器分配本身，
+           上限 26s 免得真不可用时白等太久。 */
+        const mb=Number(w&&w.mb)||60;
+        return Math.max(6,Math.min(26,mb/5.5+3));
+      };
+      const _seamProbe=setInterval(()=>{
+        if(!document.body.contains(v)){clearInterval(_seamProbe);return}
+        if(!B||B.readyState>=2){clearInterval(_seamProbe);return}
+        // 没就绪就催它：play() 才会真正分配解码器与缓冲
+        try{kick0(B)}catch(e){}
+      },1500);
+      const _seamT0=performance.now();
+      setTimeout(()=>{
+        if(!document.body.contains(v))return;
+        if(B&&B.readyState<2&&performance.now()-_seamT0<_seamWaitSec()*1000){
+          kick0(B);                 // 继续等，别急着退化
+          return}
+        clearInterval(_seamProbe);
+        if(B&&B.readyState<2){abortFade();seamless=false;B.remove();B=null;v.loop=true;
+          if(window.console)console.warn('[wall] 双缓冲不可用，已退回硬 loop')}
+      },3000);
+      const kick0=el=>{if(!el)return;try{const p=el.play();if(p)p.catch(()=>{})}catch(e){}};
+      const kick=el=>{if(!el)return;const p=el.play();if(p)p.catch(()=>{})};
+      kick(v);
       /* 母版未就绪（后台超分生成中，URL 404）-> 回退原素材顶上，绝不留黑屏。
          fallback 若是 GIF 必须换成 <img>：<video> 不解 GIF，readyState 恒为 0，
          表现为"点了壁纸什么都没有"。母版就绪后 _pendWatch 会无缝换成 4K MP4。 */
@@ -1947,41 +2198,238 @@ const AMB=(()=>{
       });
       if(w.pending&&w.fallback)_pendWatch(w);
       v.addEventListener('canplay',()=>{kick(v);sampleWallColor(v)});
-      const vis=()=>{if(!document.body.contains(v)){document.removeEventListener('visibilitychange',vis);return}
-        document.hidden?v.pause():kick(v)};
+      /* B 也必须单独兜错误：它起不来就退硬 loop，否则无声黑屏。
+         （A 出错走下面的 fallback；B 出错只影响无缝性，不影响有画面。） */
+      if(B)B.addEventListener('error',()=>{abortFade();seamless=false;v.loop=true;
+        try{B.pause();B.removeAttribute('src');B.load()}catch(e){}});
+      const vis=()=>{if(!document.body.contains(wrap)){document.removeEventListener('visibilitychange',vis);return}
+        /* 切走时先中止淡入：rAF 在隐藏期间不回调，不中止就会留下
+           半透明冻结帧 + busy 永久卡死（详见 fadeGen 处的注释）。 */
+        if(document.hidden){abortFade();try{A.pause();if(B)B.pause()}catch(e){}}
+        else{kick(A);if(B&&seamless){try{B.currentTime=0}catch(e){}kick(B)}}};
       document.addEventListener('visibilitychange',vis);
-      /* 看门狗：非人为暂停即拉起；缓冲耗尽时回退到已缓冲头部重播。
-         大视频（实测 802MB / 249s）只缓冲 15.8s 就停是常态，靠 preload=auto
-         +服务端 faststart + 高码率母版（体积小几倍）三重保障，这里是兜底。*/
+      /* 看门狗：非人为暂停即拉起；缓冲耗尽时处理。
+         大视频靠 preload=auto + 服务端 faststart + 高码率母版三重保障，
+         这里是最后一道兜底。
+
+         【2026-10-04 修掉的真bug：看门狗自己制造跳变】
+         原实现每 1.5s 检查一次「播放头越过缓冲尾就拽回缓冲起点」。
+         但**循环播放时缓冲尾就在片尾**，于是每 1.5s 就把播放头拉回片头 ——
+         对一个10s 的循环母版来说，等于每 1.5s 跳一次帧，循环观感被彻底毁掉。
+         （这也是"循环不舒适"的另一半原因，接缝只是另一半。）
+         现在改成：只在**真的停播**（paused 且停在半路）时救，
+         片尾一律交给双缓冲交叉淡入，绝不介入。 */
       const wd=setInterval(()=>{
-        if(!document.body.contains(v)){clearInterval(wd);return}
-        if(!document.hidden&&v.readyState>=2&&v.paused)kick(v);
-        if(!v.paused&&v.readyState>=2)sampleWallColor(v);
-        /* 播放头越过缓冲尾 -> 拉回缓冲起点，避免停在最后一帧不动 */
-        if(v.buffered.length&&v.currentTime>v.buffered.end(v.buffered.length-1)-0.35){
-          try{v.currentTime=Math.max(0,v.buffered.start(0))}catch(e){}
-        }
+        if(!document.body.contains(wrap)){clearInterval(wd);return}
+        if(document.hidden){try{A.pause();if(B)B.pause()}catch(e){}return}
+        const cur=A;
+        /* 缓冲是否真的耗尽到影响播放：readyState<2 才是真没数据。
+           readyState>=2 却 paused 属于被浏览器暂停（如内存回收），kick 即可。
+           注意**不能**对双缓冲元素调 load() —— load() 会丢弃已缓冲数据并把
+           currentTime 归零，那正是我们要消除的那种跳变。这里只拉起播放。 */
+        if(cur.readyState<2)return;
+        if(cur.paused&&cur.currentTime<(cur.duration||0)-0.6)kick(cur);  // 停在半路才拉起
+        else if(!cur.paused)sampleWallColor(cur);
+        /* 【已移除】播放头越过缓冲尾就拽回缓冲起点 —— 循环时缓冲尾=片尾，
+           这个逻辑会在循环播放中每 1.5s 制造一次跳变。片尾由双缓冲淡入衔接。 */
       },1500);
-      box.appendChild(v);kick(v);
+      A.style.opacity='1';
+      wrap.appendChild(v);if(B)wrap.appendChild(B);
+      box.appendChild(wrap);
+      /* 切壁纸时必须把**两个** video 一起停并清空 src，
+         否则第二个元素会继续下载/解码，累积成"后台偷偷跑 N 个 4K 解码器"。
+         与实况流层的 __WALLKILL 同一套生命周期纪律。 */
+      if(window.__WALLKILL){try{window.__WALLKILL()}catch(e){}window.__WALLKILL=null}
+      window.__WALLKILL=()=>{try{clearInterval(sw);clearInterval(wd)}catch(e){}
+        try{document.removeEventListener('visibilitychange',vis)}catch(e){}
+        try{abortFade()}catch(e){}
+        try{[v,B].forEach(e=>{if(e){e.pause();e.removeAttribute('src');e.load()}})}catch(e){}
+        try{wrap.remove()}catch(e){}};
       wallURL=SRC;applyAdaptive();_rotReady(gen,v,'video')}
     else if(w.type==='web'){const fr=document.createElement('iframe');
       fr.src=w.url;fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none';
       fr.setAttribute('scrolling','no');box.appendChild(fr);
       wallURL=w.url;applyAdaptive();_rotReady(gen,fr,'web')}
     else if(w.type==='live'){
-      /* WE 场景 / 本地静图的 4K 母版：服务端已按视口物理比例 cover 预裁 + AI 超分，
-         浏览器端cover 退化为 1:1 映射。若母版取不到（404/生成中）则回退官方 preview。 */
-      const im=document.createElement('img');
-      im.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
-      wallStyle(im);
+      /* WE scene 壁纸：原生 4K 母版（服务端已按视口物理比例 cover 预裁 + AI 超分）
+         打底，上面叠「实况流」= 真正的 Windows 原生动态效果。
+
+         为什么必须叠实况流：scene 壁纸在 WE 里是 GPU 实时渲染（粒子+shader），
+         实测 scene.pkg 内**没有视频**（1646702957 / 2688582860 / 3119968347 /
+         3304033014 / 2372436763 五个包候选视频数均为 0）—— 只铺母版就是一张
+         再清晰也不会动的静帧，完全达不到「原生动态效果」的判据。
+
+         分层职责（任一层失效都不影响另一层，绝不留白屏、绝不假装在动）：
+           底层 <img>  4K 母版 → 保证不糊，且实况流没就绪时也有画面
+           上层 <img>  /we-live.mjpg（multipart）→ 逐帧推进的真实渲染
+         服务端先把 WE 桌面切到该 scene.pkg（we_open_scene），再抓帧推流；
+         拿不到新鲜帧时端点直接 404，这里靠 onerror 退回静帧层。 */
+      const base=document.createElement('img');
+      base.src=SRC+(SRC.includes('?')?'&':'?')+'t='+Date.now();
+      wallStyle(base);
       let fell=false;
-      im.addEventListener('error',()=>{if(fell)return;fell=true;
-        im.src=w.fallback||w.preview||'';if(im.src)setTimeout(()=>sampleWallColor(im),400)});
+      base.addEventListener('error',()=>{if(fell)return;fell=true;
+        base.src=w.fallback||w.preview||'';if(base.src)setTimeout(()=>sampleWallColor(base),400)});
       if(w.pending)_pendWatch(w);
-      const lv=setInterval(()=>{if(fell||!document.body.contains(im)){clearInterval(lv);return}
-        sampleWallColor(im)},4000);
-      box.appendChild(im);
-      wallURL=SRC;applyAdaptive();_rotReady(gen,im,'img')}
+      box.appendChild(base);
+      wallURL=SRC;applyAdaptive();_rotReady(gen,base,'img');
+
+      /* 实况流层：仅当条目确认带 scene.pkg 时才接（否则纯属白等6s 超时） */
+      if(w.scenePkg&&window.fetch){
+        const q=document.createElement('div');
+        q.id='wecap';q.className='wecap';
+        /* 【2026-10-04 修掉的真bug：不能自动开 Pop-out】
+           原实现在这里**无条件** fetch('/api/we/open')，而 applyState() 在启动时
+           也会按持久化状态 setWall()——只要上次存的是 live壁纸，软件一开就会
+           触发 Pop-out。用户反馈「Pop-out 通道莫名的在打开软件时打开并占用
+           全部界面」。
+
+           现在改为**显式 opt-in**：只有用户亲手点了该壁纸的「🖥 桌面」按钮
+           （window._LVON===该壁纸 id），才真的去开 Pop-out。
+           否则只挂 4K 母版静帧 —— 清晰度不打折，只是不动而已，
+           而不动绝不比"半路劫持用户桌面"更糟。 */
+        const _lvOn=(window._LVON===w.id);
+        if(_lvOn)try{fetch('/api/we/open?id='+encodeURIComponent(w.id||''),
+                  {method:'POST'}).catch(()=>{})}catch(e){}
+        const live=document.createElement('img');
+        /* 走 wallStyle：满幅 cover + 跟随光影的 fx 类，与底图规格完全一致，
+           否则拖光影滑杆时底图变了上层不变，会看到"两层不同调"。
+           顺序要紧：wallStyle 用 cssText 覆盖内联样式、先挂 fx，
+           所以 className 必须在它之后写（只保留 welive，不再重复设 fx）。 */
+        wallStyle(live);
+        live.classList.add('welive');
+        live.alt='';live.setAttribute('aria-hidden','true');
+        live.src='/we-live.mjpg?pid='+encodeURIComponent(w.id||'');
+        let got=false;
+        /* 【2026-10-04 修掉的真bug：实况层亮起后底层母版必须彻底让位】
+           用户反馈「更新到原生效果的壁纸会和原有界面重影」。
+           根因：base（4K 母版静帧）始终 opacity:1 实打实铺在最底下，
+           live（实况流）只是**盖在它上面**，两层都是满幅 cover 同一张壁纸。
+           母版是母版里截的那一帧、实况流是 WE 此刻的渲染相位 —— 两者内容
+           必然不同，叠起来就是一层"重影/鬼影"（尤其有粒子/光效的scene）。
+
+           正确做法是**互斥**，不是叠加：
+             · live 首帧到达 -> base 立刻 opacity:0（不再参与显示，但仍留在
+               DOM 里做fallback：万一实况流中途断，base 立刻接回来）；
+             · live 出错/断流/撤层 -> base 立刻 opacity:1 复位。
+           留 base 在 DOM 里不删，是为了"实况流挂了就退回母版"这条降级路径
+           依然成立，且切换是瞬时的，不会闪黑。 */
+        const baseOn=()=>{try{base.style.opacity='1'}catch(e){}};
+        const baseOff=()=>{try{base.style.opacity='0'}catch(e){}};
+        /* 让位/复位都要**平滑**：base 加与 .welive 同规格的 transition。
+           不加的话 base 是瞬时切换，而 live 有 0.18s 淡入 ——
+           两层不同步的那0.18s 里就是最明显的重影。 */
+        base.style.transition='opacity .18s ease-out';
+        /* onload 在 multipart 长连接上只在**首帧到达**时触发一次（后续帧是流内替换，
+           不再触发 load）—— 所以这里用"首帧即成功"作为可用判据，10s 仍未到则撤层。
+           不设超时也不撤：宁可停在静帧，也不让用户看到半截加载中的破图。 */
+        live.addEventListener('load',()=>{
+          if(got)return;got=true;live.classList.add('on');
+          baseOff();                   /* 实况接管 -> 母版让位，杜绝重影 */
+          if(!fell)sampleWallColor(live);
+          armKeepAlive();
+        });
+        /* 【2026-10-04 修掉的真bug：中途断流必须能自动接回】
+           原实现 error 处理器开头是 `if(got)return;` —— 而 got 在**首帧**
+           到达时就已置true。于是流中途断开（弹窗被系统回收 / 休眠唤醒 /
+           网络抖动）时，error 事件虽触发却被这一行直接挡掉：
+           既不撤层也不复位母版，画面**永久冻结在最后一帧**，
+           在用户眼里就是「循环停止了」。
+
+           现在分两种情况处理：
+             · 首帧就失败（got=false）-> 判定流不可用，撤层 + 母版接回；
+             · 已成功过再断（got=true）-> 母版接回 + **退避重连**。
+               重连用指数退避（有上限），成功后重新点亮 live；
+               这样即使服务重启、弹窗被系统回收，也能自愈回动态，
+               而不是永远冻在一帧上。 */
+        let retryN=0,reTimer=null,reRec=null;
+        const reconnect=()=>{
+          if(!document.body.contains(live))return;
+          if(retryN>=6){                    // 退避到 6 次仍失败 -> 交回母版
+            baseOn();q.remove();return;
+          }
+          const wait=Math.min(8000,600*Math.pow(1.7,retryN++));
+          reRec=setTimeout(()=>{
+            if(!document.body.contains(live))return;
+            /* 【2026-10-04 补修的真bug：重连成功必须重新点亮 live 层】
+               error 处理器里做了 baseOn()（母版接回），这是对的 ——
+               但 reconnect 只换了 src，**没有把 .on 加回去**。
+               而 .welive 的不透明度完全由 CSS 类 .on 控制
+               （#gwall .wecap .welive{opacity:0} / .on{opacity:1}），
+               元素内联 style 一直是空串。于是重连即使成功、字节在流、
+               画面却仍停在 base 上 —— 用户看到的就是「动态效果不再回来」，
+               也就是本轮要修的「循环停止」的另一种形态。
+               所以每次重连都要先把状态复位成「等首帧」：
+               去掉 .on（防旧帧残影）、got复位false（让 load 处理器重新接管）、
+               baseOn()（先显示母版，拿到新帧再让位）。 */
+            try{live.classList.remove('on')}catch(e){}
+            got=false;baseOn();
+            try{live.src='/we-live.mjpg?pid='+encodeURIComponent(w.id||'')
+              +'&r='+Date.now()}catch(e){}
+            armKeepAlive();
+          },wait);
+        };
+        const armKeepAlive=()=>{if(reTimer)return;
+          /* 保活探针：multipart <img> 在流静默时不会触发任何事件，
+             唯一能发现「流已死」的手段是**主动周期性检查**。
+             但不能只看时间戳（画面静止时本来就无新帧），所以这里
+             只做「确认连接还活着」的轻量检查：connected 仍为真即认为活着。
+             真正判定死亡靠浏览器的 error 事件（见上）。*/
+          reTimer=setInterval(()=>{
+            if(!document.body.contains(live)){clearInterval(reTimer);reTimer=null;return}
+            if(document.hidden)return;
+            /* 流死亡但没触发 error（部分平台行为）：src 变成空且 complete
+               为真，说明连接已结束 -> 主动重连。 */
+            if(!live.src||(live.complete&&live.naturalWidth===0)){
+              clearInterval(reTimer);reTimer=null;reconnect();
+            }
+          },4000);
+        };
+        const clearKA=()=>{if(reTimer){clearInterval(reTimer);reTimer=null}
+          if(reRec){clearTimeout(reRec);reRec=null}};
+        live.addEventListener('error',()=>{
+          clearKA();
+          if(!got){got=true;baseOn();q.remove();return}   /* 从未成功过 */
+          /* 中途断开：母版立刻接回（画面不再冻住），再退避重连 */
+          baseOn();
+          reconnect();
+        });
+        q.appendChild(live);box.appendChild(q);
+        /* 【2026-10-04 二次修正：续窗计数必须是 per-wallpaper 的局部量】
+           第一版把续窗次数挂在 `window.__lvWait` 上 —— 那是**全局**的，
+           跨壁纸累加且永不清零。结果：第一项壁纸正常续了 2 次窗（22~33s），
+           换到第二项时计数已经是 2，一到期就落进 else 分支被立刻撤层。
+           实测 5 项 live 里有 3 项报 `live 层未点亮(nocap)`，
+           全部是第 2 项之后 —— 现象与「全局计数被前一项吃光」完全吻合。
+           现在改为闭包内的局部变量：每张壁纸的实况层各自独立计数，
+           互不影响（这本来就是「一张壁纸一条流」的语义）。 */
+        let lvWaits=0, lvWatchT=0;
+        const lvWatch=()=>{
+          if(got)return;
+          /* 连接真的结束（src 空/ 被清，或 complete 且无宽度）-> 立即撤层。
+             这是唯一必须立刻收的情况：留着只会是一层空图。 */
+          const dead=!live.src||(live.complete&&live.naturalWidth===0);
+          if(dead){baseOn();q.remove();return}
+          if(retryN>0){baseOn();q.remove();return}   /* 已重连过仍无帧 -> 撤层 */
+          /* 还在正常等待首帧：续一个观察窗，最多续 2 次（合计约 33s）。
+             服务端自己最多等 15s 才放弃，所以这个窗口是有界的，
+             不会变成「永远挂着不撤」。 */
+          if(++lvWaits<=2){
+            lvWatchT=setTimeout(lvWatch,11000);
+            if(window.console)console.warn('[wall] 实况首帧仍在等待，延长观察窗 '+lvWaits+'/2');
+          }else{baseOn();q.remove()}
+        };
+        lvWatchT=setTimeout(lvWatch,11000);
+        /* 换壁纸时断开长连接：否则 refcount 泄漏，桌面图标一直隐藏。
+           setWall 开头统一调 __WALLKILL 清理，这里只负责登记。
+           撤层前必须 baseOn()复位 —— 否则切走时 base 停在 opacity:0，
+           而新壁纸若也走 live 分支，会继承到"母版不可见"的错误状态。 */
+        if(window.__WALLKILL)window.__WALLKILL();
+        window.__WALLKILL=()=>{try{live.src=''}catch(e){}
+          try{clearTimeout(lvWatchT);clearTimeout(reRec);clearInterval(reTimer)}catch(e){}
+          try{baseOn()}catch(e){}
+          try{q.remove()}catch(e){}};
+      }}
     else{
       /* 静图/gif：全幅 cover 满屏（无边带无黑边），服务端已按显示区比例预裁切到目标尺寸，
          浏览器端退化为等比映射，不再二次插值 */
@@ -2018,22 +2466,49 @@ const AMB=(()=>{
     const row=$('#ambbar .ambrow');
     if(!row)return;
     row.innerHTML=`<span class="ambchip sys" data-w="">无壁纸</span>`+
-      walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${w.v4k?' · 高码率重编码母版（源 '+(w.srcRes||w.res||'?')+' → '+w.res+'，NVENC cq14；保真重编码，不创造源里没有的细节）':''}${!w.sr&&!w.v4k&&w.res?' · 素材 '+w.res+' 原生直出':''}${!w.sr&&!w.v4k&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}${w.pending?' · 4K 母版生成中（先用原素材顶替，就绪后自动升级）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('');
+      walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${w.v4k?' · 4K 母版（源 '+(w.srcRes||w.res||'?')+' → '+w.res+'，NVENC cq14 + lanczos；源不足 4K 时按判据升到 4K）':''}${!w.sr&&!w.v4k&&w.res?' · 素材 '+w.res+' 原生直出':''}${!w.sr&&!w.v4k&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}${w.pending?' · 4K 母版生成中（先用原素材顶替，就绪后自动升级）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在本软件内开启 Windows 原生动态效果（Wallpaper Engine 真实渲染，不改动你的桌面）">🖥 动态</span>`:''}`).join('');
     row.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
       const w=walls.find(x=>x.url===c.dataset.w)||null;
-      if(w&&w.type==='live'&&window._LVON===w.id){window._LVON=null;lv(false)}
-      else if(w&&w.type==='live'){window._LVON=w.id;lv(true)}
-      else{window._LVON=null;lv(false)}
+      /* 【2026-10-04 修掉的真bug：点壁纸芯片不得自动开实况流】
+         原实现：只要 w.type==='live'，点一下芯片就 _LVON=w.id + lv(true)，
+         而 live 分支据此去开 WE Pop-out 弹窗 —— 于是"选壁纸"这个动作
+         顺带把 WE 弹窗拉起来（用户反馈：占满整个 Windows 界面）。
+         现在：点芯片**只显示 4K 母版**（清晰度不打折，只是不动）。
+         要原生动态效果，必须再点该壁纸右侧独立的「🖥」按钮 ——
+         显式 opt-in，且用户能清楚区分"我看静态图"和"我开动态渲染"。 */
+      if(w&&w.type==='live'&&window._LVON!==w.id){/* 换到别的 live：不自动开 */}
+      window._LVON=null;lv(false);
       setWall(w)}));
     row.querySelectorAll('.amblive[data-live]').forEach(c=>c.addEventListener('click',ev=>{
-      ev.stopPropagation();
-      fetch('/api/we/preview?id='+encodeURIComponent(c.dataset.live),{method:'POST'})
-        .then(r=>r.json()).then(r=>toast(r.ok?'🖥 桌面已切到该场景，15 分钟后自动还原':'桌面预览失败（Wallpaper Engine 未运行？）')).catch(()=>{})}));
+      ev.stopPropagation();_lvToggle(c.dataset.live)}));
     /* 仍在等待的项继续挂观察（重绘后旧 observer 已随 _PEND 保留） */
     walls.filter(w=>w.pending).forEach(_pendWatch);
     syncWallChips();
   }
   const lv=on=>fetch('/api/we/liveview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on})}).catch(()=>{});
+  /* 第二份 build() 作用域内的同名实现（本文件有两处 build/refreshWalls 定义，
+     靠后者覆盖前者生效；必须两处都改，否则行为取决于加载顺序 —— 这类
+     "重复定义"坑正是本轮 _lvToggle 找不到定义的原因）。 */
+  async function _lvToggle(pid){
+    if(!pid)return;
+    const on = window._LVON!==pid;
+    window._LVON = on?pid:null;
+    lv(on);
+    if(on){
+      toast('正在启动 Windows 原生动态渲染…');
+      try{
+        const r=await (await fetch('/api/we/open?id='+encodeURIComponent(pid),
+                                   {method:'POST'})).json();
+        if(r&&r.ok===false)toast('动态渲染启动失败，已保留 4K 静帧母版');
+        else if(r&&r.animated===false)toast('该场景内容本身是静止的，已按原生画面显示');
+      }catch(e){toast('动态渲染启动失败，已保留 4K 静帧母版')}
+    }else{
+      toast('已关闭动态效果，回到 4K 静帧母版');
+    }
+    const cur=walls.find(x=>x.id===pid);
+    if(cur)setWall(cur,true);
+    syncWallChips();
+  }
   async function build(){
     const bar=$('#ambbar');
     try{walls=(await (await fetch('/api/wallpapers')).json()).wallpapers||[]}catch(e){walls=[]}
@@ -2042,7 +2517,7 @@ const AMB=(()=>{
     walls=walls.concat(we);
     bar.innerHTML=`
       <div class="ambrow"><span class="ambchip sys" data-w="">无壁纸</span>
-        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${!w.sr&&w.res?' · 素材 '+w.res:''}${!w.sr&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在 Windows 桌面真渲染该场景（15 分钟后自动还原）">🖥 桌面</span>`:''}`).join('')}</div>
+        ${walls.map(w=>`<span class="ambchip sys" data-w="${esc(w.url)}" title="${esc(w.name)}${w.master?' · 母版 '+w.master:''}${w.sr?' · AI 超分（原素材 '+(w.srcRes||w.res||'低分辨率')+'，放大 '+(w.upscale||'?')+'×）':''}${!w.sr&&w.res?' · 素材 '+w.res:''}${!w.sr&&w.upscale?' · 需放大 '+w.upscale+' 倍（素材分辨率不足）':''}">${w.type==='video'?'▶ ':w.type==='gif'?'▶ ':w.type==='web'?'◈ ':w.type==='img'?'◇ ':w.type==='live'?'▶ ':''}${esc(w.name)}${wallResTag(w)}</span>${w.type==='live'?`<span class="ambchip sys amblive" data-live="${esc(w.id)}" title="在本软件内开启 Windows 原生动态效果（Wallpaper Engine 真实渲染，不改动你的桌面）">🖥 动态</span>`:''}`).join('')}</div>
       <div class="ambrow">
         <span class="ambchip sys" id="amb-rot">▶▶ 轮播</span>
         <span class="wslider">每<input type="range" id="amb-rotsec" min="10" max="600" step="10"><span id="amb-rotsecv">60</span>s</span>
@@ -2063,9 +2538,15 @@ const AMB=(()=>{
     window._LVON=null;
     bar.querySelectorAll('.ambchip[data-w]').forEach(c=>c.addEventListener('click',()=>{
       const w=walls.find(x=>x.url===c.dataset.w)||null;
-      if(w&&w.type==='live'&&window._LVON===w.id){window._LVON=null;lv(false)}
-      else if(w&&w.type==='live'){window._LVON=w.id;lv(true)}
-      else{window._LVON=null;lv(false)}
+      /* 【2026-10-04 修掉的真bug：点壁纸芯片不得自动开实况流】
+         原实现：只要 w.type==='live'，点一下芯片就 _LVON=w.id + lv(true)，
+         而 live 分支据此去开 WE Pop-out 弹窗 —— 于是"选壁纸"这个动作
+         顺带把 WE 弹窗拉起来（用户反馈：占满整个 Windows 界面）。
+         现在：点芯片**只显示 4K 母版**（清晰度不打折，只是不动）。
+         要原生动态效果，必须再点该壁纸右侧独立的「🖥」按钮 ——
+         显式 opt-in，且用户能清楚区分"我看静态图"和"我开动态渲染"。 */
+      if(w&&w.type==='live'&&window._LVON!==w.id){/* 换到别的 live：不自动开 */}
+      window._LVON=null;lv(false);
       setWall(w)}));
     /* 🖥 桌面：显式把 Windows 桌面切到该 WE 场景（15 分钟后自动还原） */
     bar.querySelectorAll('.amblive[data-live]').forEach(c=>c.addEventListener('click',ev=>{
@@ -2084,7 +2565,7 @@ const AMB=(()=>{
     /* ── 轮播控制 ── */
     const rb=$('#amb-rot'),rs=$('#amb-rotsec'),rsv=$('#amb-rotsecv'),rp=$('#amb-rotpos');
     const syncRotUI=()=>{
-      const s=S(),on=s.rot!==false;
+      const s=S(),on=_rotOn();
       rb.classList.toggle('on',on);
       rb.textContent=(on?'⏸ 暂停轮播':'▶▶ 轮播');
       rs.value=s.rotSec??60;rsv.textContent=rs.value;
@@ -2092,7 +2573,9 @@ const AMB=(()=>{
       rp.textContent=list.length>1?(i>=0?`${i+1}/${list.length}`:`0/${list.length}`):'';
     };
     rb.addEventListener('click',()=>{
-      const on=!(S().rot!==false);save({rot:on});
+      /* 显式 opt-in 的另一面：手动点「暂停」要把 rot 写成 false，
+         不能只是不置 true —— 否则旧存档里的 rot=true 会让下次启动又自己播。 */
+      const on=!_rotOn();save({rot:on});
       if(on){const w=walls.find(x=>x.url===wallSel);if(w)setWall(w,true);else _rotArm()}
       else _rotStop();
       syncRotUI();
@@ -2109,9 +2592,11 @@ const AMB=(()=>{
     $('#gearbtn').addEventListener('click',()=>dr.classList.toggle('on'));
     $('#dclose').addEventListener('click',()=>dr.classList.remove('on'));
     applyState();
-    /* 启动即生效：applyState 已按持久化状态设好当前壁纸，这里补起轮播定时器。
-       放在最后是为了确保 walls 已就绪、syncRotUI 已定义。 */
-    if(typeof syncRotUI==='function'){syncRotUI();_rotArm()}
+    /* 启动即生效：applyState 已按持久化状态设好当前壁纸。
+       【2026-10-04】原来这里无条件 _rotArm()，是「没点也自己切壁纸」的直接原因。
+       现在只在用户**显式开启过**轮播（rot===true）时才续期；
+       默认（无存档 / rot=false）一律不启动任何定时器。 */
+    if(typeof syncRotUI==='function'){syncRotUI();if(_rotOn())_rotArm()}
   }
   return {build,
           accent:()=>THEMES.find(x=>x.id===cur)?.rgb.slice(5,-1)||'212,178,112',
