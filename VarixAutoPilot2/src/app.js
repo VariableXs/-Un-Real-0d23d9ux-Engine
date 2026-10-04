@@ -233,47 +233,90 @@ function render(s) {
 
   $('conv-count').textContent = s.convs.length + ' 个';
   const box = $('convs');
-  box.innerHTML = '';
+  // ★ 增量更新，不要整块重建 ★
+  // 早先每次轮询都 `innerHTML = ''` 再全量重建，实测两个副作用：
+  //   1. 用户悬停看 title 的那一刻，卡片被换掉 ⇒ tooltip 闪掉
+  //   2. 列表滚动位置跳回顶部（重建后浏览器重排）
+  // 1.5 秒一次轮询 ⇒ 这不是偶发，是必然。
+  // 正解：按 key（conv_id，无则退回 index）复用节点，只更新变化的字段。
+  const seen = new Map();   // key -> {el, sig}
   if (!s.convs.length) {
     box.innerHTML = '<div class="empty">没有读到对话。确认 WorkBuddy 已启动且开着对话窗口。</div>';
     return;
   }
+  let prev = null;          // 用于把选中的卡片插到正确顺序
   for (const c of s.convs) {
-    const d = document.createElement('div');
-    d.className = 'conv' + (c.selected ? ' sel' : '');
+    const key = c.conv_id || 'idx' + c.index;
+    const sig = [c.title, c.rel_time, c.model, c.cwd, c.selected].join('\u0001');
+    let rec = seen.get(key);
 
-    const t = document.createElement('div');
-    t.className = 't';
-    t.textContent = c.title;
-    if (c.selected) {
-      const g = document.createElement('span');
-      g.className = 'tag now';
-      g.textContent = '当前';
-      t.append(' ');
-      t.append(g);
+    if (!rec) {
+      rec = { el: buildConvCard(c), sig: '' };
+      seen.set(key, rec);
     }
-    d.append(t);
-
-    const rt = document.createElement('div');
-    rt.className = 'rt';
-    rt.textContent = c.rel_time || '';
-    d.append(rt);
-
-    const m = document.createElement('div');
-    m.className = 'meta';
-    const model = c.model
-      ? `<b>模型</b>${esc(c.model)}`
-      : `<b>模型</b><span class="tag">侧栏不显示 · 点开可读</span>`;
-    const dir = c.cwd
-      ? `<b>目录</b><span class="dir" title="${esc(c.cwd)}">${esc(shortPath(c.cwd))}</span>`
-      : `<b>目录</b><span class="tag bad">${esc(c.cwd_confidence)}</span>`;
-    m.innerHTML = `<span>${model}</span><span>${dir}</span>`;
-    d.append(m);
-
-    box.append(d);
+    if (rec.sig !== sig) {
+      updateConvCard(rec.el, c);
+      rec.sig = sig;
+    }
+    // 按数据顺序插入（append 已有节点等于移动，天然去重）
+    if (prev) prev.after(rec.el); else box.prepend(rec.el);
+    prev = rec.el;
+  }
+  // 移除已消失的对话
+  for (const child of [...box.children]) {
+    if (![...seen.values()].some((r) => r.el === child)) child.remove();
   }
 }
 
+/** 造一张对话卡片（结构只建一次，后续只改文本）。 */
+function buildConvCard(c) {
+  const d = document.createElement('div');
+  d.className = 'conv';
+
+  const t = document.createElement('div');
+  t.className = 't';
+  const txt = document.createElement('span');
+  txt.className = 'txt';
+  t.append(txt);
+  const tag = document.createElement('span');
+  tag.className = 'tag now';
+  tag.textContent = '当前';
+  tag.hidden = true;
+  t.append(tag);
+
+  const rt = document.createElement('div');
+  rt.className = 'rt';
+
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const s1 = document.createElement('span');   // 模型行
+  const s2 = document.createElement('span');   // 目录行
+  // ★ 必须 append，否则 meta 是空的 ★
+  // 重写增量更新时漏了这两行，实测表现：卡片只有标题，
+  // 「模型 / 目录」两行整个不见了——而静默无错。
+  meta.append(s1, s2);
+
+  d.append(t, rt, meta);
+  d._parts = { t, txt, tag, rt, meta, s1, s2 };
+  return d;
+}
+
+/** 更新卡片内容。只碰变化，不重建节点。 */
+function updateConvCard(d, c) {
+  const p = d._parts;
+  d.className = 'conv' + (c.selected ? ' sel' : '');
+  if (p.txt.textContent !== c.title) p.txt.textContent = c.title;
+  p.t.title = c.title;                 // 完整值挂 tooltip
+  p.tag.hidden = !c.selected;
+  if (p.rt.textContent !== (c.rel_time || '')) p.rt.textContent = c.rel_time || '';
+
+  p.s1.innerHTML = c.model
+    ? `<b>模型</b>${esc(c.model)}`
+    : `<b>模型</b><span class="tag">侧栏不显示 · 点开可读</span>`;
+  p.s2.innerHTML = c.cwd
+    ? `<b>目录</b><span class="dir" title="${esc(c.cwd)}">${esc(shortPath(c.cwd))}</span>`
+    : `<b>目录</b><span class="tag bad">${esc(c.cwd_confidence)}</span>`;
+}
 // ─────────────────────────── 模板 ───────────────────────────
 const collect = () => ({
   tpl: $('tpl').value,

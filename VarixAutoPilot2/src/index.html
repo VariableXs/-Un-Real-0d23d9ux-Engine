@@ -179,6 +179,7 @@ header {
 .stat .v {
   font: 600 var(--fs-sm)/1.2 var(--mono); color: var(--fg);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26ch;
+  min-width: 0;                 /* 同理：flex 子项默认不收缩 */
 }
 .stat .v.path { color: var(--accent); }
 
@@ -236,16 +237,40 @@ main { position: relative; z-index: 1; flex: 1 1 auto; display: grid;
   width: 3px; background: var(--scene);
   box-shadow: 0 0 var(--sp-12) var(--scene);
 }
+/* 标题列：★ 必须 min-width:0 ★
+   `.conv` 是 grid，标题在第 1 列、时间在第 2 列（auto）。
+   grid 项默认 `min-width:auto`，内容比轨道宽时会**撑破轨道**，
+   于是 `text-overflow:ellipsis` 永远不触发——文字被硬切断，
+   没有任何"还有更多"的提示（实测：`...emit_` 后直接消失）。
+   `min-width:0` 允许它收缩到内容以下，省略号才生效。
+   同理 `.conv .meta` 里的路径也要，否则长路径会顶破卡片。 */
 .conv .t {
   font-size: var(--fs-sm); font-weight: 500; color: var(--fg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;                 /* ★ 关键：允许收缩，省略号才生效 ★ */
+  /* 用 flex 承载「当前」标签；ellipsis 只作用在文本节点上 */
+  display: flex; align-items: baseline; gap: var(--sp-6);
+}
+/*★ flex:1 是真正让省略号生效的那一步 ★
+  实测（Playwright 量盒）：.t 有 477px，但 .txt 只有 264px——
+  因为 flex 子项默认 flex:0 1 auto，按**内容宽度**收缩，
+  于是 .txt 自身「不溢出」，text-overflow 自然不触发，
+  文字被 .t 的 overflow:hidden 硬切断（父级切子级，不出省略号）。
+  flex:1 让 .txt 撑满剩余空间 ⇒ 内容超出 .txt 自己 ⇒ 省略号生效。 */
+.conv .t .txt {
+  flex: 1 1 auto;min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .conv.sel .t { color: #fff; }
+/* 「当前」标签不能被压掉 */
+.conv .t .tag { flex: 0 0 auto; }
 .conv .rt { font: var(--fs-xs)/1 var(--mono); color: var(--fg-3); white-space: nowrap; }
 .conv .meta {
   grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sp-1);
   font: var(--fs-xs)/1.45 var(--mono); color: var(--fg-2);
+  min-width: 0;                 /* 同理：长路径不顶破卡片 */
 }
+.conv .meta > span { min-width: 0; }
 .conv .meta b { color: var(--fg-3); font-weight: 400; margin-right: var(--sp-4); }
 .conv .meta .dir { color: var(--accent-2); word-break: break-all; }
 .tag {
@@ -253,6 +278,12 @@ main { position: relative; z-index: 1; flex: 1 1 auto; display: grid;
   font: var(--fs-xs)/1.7 var(--mono);
   border: 1px solid var(--line-hi); color: var(--fg-2);
 }
+/* ★ hidden 属性必须在这里被显式尊重 ★
+   坑（实测踩到）：`.tag { display:inline-block }` 会**覆盖** HTML `hidden`
+   属性的 UA 默认样式（`display:none`）——因为作者样式优先级高于 UA 样式。
+   于是 JS 里 `tag.hidden = true` 完全无效，7 张卡片全亮「当前」标签。
+   凡是打算用 `hidden` 控制显隐的元素，其 CSS 里都必须带 `[hidden]` 规则。 */
+[hidden] { display: none !important; }
 .tag.now { color: var(--scene); border-color: color-mix(in srgb, var(--scene) 45%, transparent); }
 .tag.bad { color: var(--warn); border-color: rgba(232,163,61,.35); }
 

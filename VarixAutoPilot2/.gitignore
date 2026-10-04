@@ -24,3 +24,4 @@ tools/probe*.py
 !tools/open_port.py
 src-tauri/examples/live_check.rs
 src-tauri/examples/live_who.rs
+tools/shoot_window.py
