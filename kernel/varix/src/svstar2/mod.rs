@@ -41,6 +41,7 @@
 //! | [`vea01`] | F0001 虚拟显卡探测仲裁器 | VE 册 #VE-F0001 |
 //! | [`vea02`] | F0002 图形上下文生命周期管理器 | VE 册 #VE-F0002 |
 //! | [`vea03`] | F0003 围栏与同步原语集 | VE 册 #VE-F0003 |
+//! | [`vea04`] | F0004 命令缓冲环形分配器 | VE 册 #VE-F0004 |
 
 pub mod vea01_arbitrate;
 pub mod vea01_engine;
@@ -50,6 +51,8 @@ pub mod vea01_virtfeat;
 pub mod vea02_ctx;
 pub mod vea03_checks;
 pub mod vea03_sync;
+pub mod vea04_checks;
+pub mod vea04_ring;
 
 pub use vea01_index::{ProbeReport, effective_renderer, run_a01};
 
@@ -65,10 +68,11 @@ pub const VEA_DOMAIN: &str = "svstar2-ve";
 pub fn run_svstar2_checks() -> CheckSet {
     let mut set = CheckSet::new(VEA_DOMAIN);
     // (标签, 子集) —— 逐项加行，施工一项加一项
-    let blocks: [(&'static str, CheckSet); 3] = [
+    let blocks: [(&'static str, CheckSet); 4] = [
         ("VE-F0001", vea01_index::run_vea01_checks()),
         ("VE-F0002", vea02_ctx::run_vea02_checks()),
         ("VE-F0003", vea03_checks::run_vea03_checks()),
+        ("VE-F0004", vea04_checks::run_vea04_checks()),
     ];
     for (tag, sub) in blocks.iter() {
         let passed = sub.all_passed() && !sub.truncated();
