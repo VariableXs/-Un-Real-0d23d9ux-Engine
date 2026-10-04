@@ -16,8 +16,27 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ── 后端调用：Tauri 或 mock ───────────────────────────────
-const IS_TAURI = typeof window.__TAURI_INTERNALS__ !== 'undefined';
+// ── 后端调用：Tauri 全局 or mock ────────────────────────────
+// ★ 为什么用 window.__TAURI__ 而不是 import('/__TAURI__/core.js')★
+// Tauri 2 默认不把 API 打进全局，文档给的是动态 import
+// `/__TAURI__/core.js`。但那条路实测失败：
+//   「取不到 Tauri invoke 模块：Failed to fetch dynamically imported
+//     module: http://tauri.localhost/__TAURI__/core.js」
+// 原因：CSP 的 `script-src 'self'` 拦住了这个非相对路径的模块请求。
+//
+// 两条可行路线，本项目选第一条：
+//   A. tauri.conf.json 设 `app.withGlobalTauri: true`
+//      → API 注入 window.__TAURI__，**无需任何 import**，也不受 CSP 约束。
+//      代价：多注入几 KB（可忽略）。★ 这是本项目采用的方式★
+//   B. 放开 CSP 再动态 import
+//      → 要写 `script-src 'self' http://tauri.localhost`，
+//      等于把 CSP 的防护面开大，不划算。
+//
+// ★ 教训★：报"Failed to fetch dynamically imported module"时，
+//   先怀疑 CSP，别急着换写法。用全局注入是更省事也更安全的路。
+const IS_TAURI =
+  typeof window.__TAURI_INTERNALS__ !== 'undefined' ||
+  typeof window.__TAURI__ !== 'undefined';
 
 const MOCK = {
   version: '5.6.2',
@@ -89,15 +108,33 @@ const api = IS_TAURI
       },
     };
 
-// Tauri 的 invoke 是动态加载的（Tauri 2 不再把它打进全局），
-// 所以上面用条件表达式里的 import 无法在顶层 await 之前完成——
-// 这里改为在模块顶层用动态 import 赋值。
+// 取 Tauri invoke。
+//
+// ★★ 这里绝不能用「顶层 await import()」★★
+// 早先写成 `const core = await import('/__TAURI__/core.js')` 放在模块顶层，
+// 结果整个 GUI 停在「连接中…」，五个统计位全是「–」。
+// 原因：**顶层 await 一旦被拒绝，整个模块执行中断**，
+// 于是后面的 init()、tick() 全都不跑——而界面看起来"正常"（HTML 是静态的），
+// 极具欺骗性。
+//
+// 现在改为读 window.__TAURI__（由 withGlobalTauri 注入），
+// 失败时把原因记下来并抛出，由 renderErr 展示，绝不静默。
+let coreErr = null;
+function getCore() {
+  const g = window.__TAURI__;
+  if (g && g.core && g.core.invoke) return g.core;
+  // 兼容另一种注入形态：把 invoke 直接挂在 __TAURI__ 上
+  if (g && typeof g.invoke === 'function') return g;
+  coreErr = coreErr || 'window.__TAURI__ 未注入。'
+    + '请确认 tauri.conf.json 里 app.withGlobalTauri = true，并已重新构建。';
+  throw new Error(coreErr);
+}
+
 if (IS_TAURI) {
-  const core = await import('/__TAURI__/core.js');
-  api.probe = () => core.invoke('probe');
-  api.preview = (tpl, vars) => core.invoke('preview', { tpl, vars });
+  api.probe = () => getCore().invoke('probe');
+  api.preview = (tpl, vars) => getCore().invoke('preview', { tpl, vars });
   api.send = (tpl, vars, dryRun, openNew) =>
-    core.invoke('send', { tpl, vars, dryRun, openNew });
+    getCore().invoke('send', { tpl, vars, dryRun, openNew });
 }
 
 
@@ -312,8 +349,35 @@ async function doSend(real) {
 // ─────────────────────────── 启动 ───────────────────────────
 (async function init() {
   $('tpl').value = DEFAULT_TPL;
-  await doPreview();
+  // ★ 每一段都独立 try：早先 `await doPreview()` 一抛错，
+  //  后面的 tick() 就不执行，界面永远停在初始态却看起来"正常"。
+  //  这是"异常零静默"在启动链上的落实。
+  try {
+    await doPreview();
+  } catch (e) {
+    renderErr(e);
+  }
   tick();
+
+  // ★ 自检兜底：8 秒后若仍显示「连接中…」，把原因摊到界面上。
+  //   目的：宁可吵一点，也不要"看着正常其实没在跑"。
+  setTimeout(() => {
+    if (S.snap) return;                       // 已连上，不管
+    const d = $('s-dot');
+    if (d.classList.contains('ok')) return;    // 已连接，不管
+    const msg = $('s-msg');
+    if (msg.textContent === '连接中…') {
+      conn('err', '未连上 WorkBuddy');
+      const h = $('hint');
+      h.className = 'note';
+      h.innerHTML =
+        `<span class="e-what">8 秒内没有取得任何快照</span>` +
+        `<span class="e-why">${esc(coreErr || '可能是 9222 端口未开、或 WorkBuddy 未带调试参数启动')}</span>` +
+        `<span class="e-next">先双击桌面的「VarixAutoPilot 开端口.bat」，再重新启动本程序。</span>`;
+      setScene('alarm');
+    }
+  }, 8000);
+
   // 模板改动 300ms 防抖后自动预览（不打断输入）
   let t = 0;
   $('tpl').addEventListener('input', () => {
