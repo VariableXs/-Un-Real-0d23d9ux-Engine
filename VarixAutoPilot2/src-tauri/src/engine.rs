@@ -156,7 +156,7 @@ impl std::fmt::Display for EngineError {
 /// - 若拿它做备份再写回 ⇒把提示固化成真实文字，**污染用户输入框**
 ///
 /// 正解：克隆一份 DOM，删掉 [data-slate-placeholder] 及其内容，再数长度。
-const EDITOR_CHARS_JS: &str = r#"(() => {
+pub const EDITOR_CHARS_JS: &str = r#"(() => {
   const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
   if (!e) return -1;
   const c = e.cloneNode(true);

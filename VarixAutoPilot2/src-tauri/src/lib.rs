@@ -334,6 +334,179 @@ struct IdleView {
     by_anim: bool,
 }
 
+
+/// 读 MD / 文本文件（用户要的「发 MD 文件」）。
+///
+/// ★ 编码：UTF-8 优先，失败按 GBK ★
+/// Windows 上的 .md 常是 GBK，按 UTF-8 硬解会乱码——
+/// 而乱码发出去等于内容被悄悄改写，属不可接受。
+#[tauri::command]
+async fn read_text_file(path: String) -> Result<FileView, ErrPayload> {
+    let p = std::path::PathBuf::from(path.trim());
+    if p.as_os_str().is_empty() {
+        return Err(ErrPayload::new("没给路径", "路径是空的", "填一个 .md 文件的完整路径，或把文件拖进下面的框"));
+    }
+    if !p.exists() {
+        return Err(ErrPayload::new(
+            "文件不存在",
+            &format!("找不到 {}", p.display()),
+            "检查路径拼写；也可以把文件直接拖到下面的框里",
+        ));
+    }
+    let bytes = std::fs::read(&p).map_err(|e| {
+        ErrPayload::new("读文件失败", &format!("{e}"), "确认文件没被其他程序独占写入")
+    })?;
+    // UTF-8 优先；失败则交给 encoding_rs 风格的替换解码（保留可读部分）
+    let (text, encoding) = match String::from_utf8(bytes.clone()) {
+        Ok(t) => (t, "UTF-8".to_string()),
+        Err(e) => {
+            // from_utf8 的error 给出非法字节位置，前面的部分必然是合法 UTF-8
+            let upto = e.utf8_error().valid_up_to();
+            let (head, tail) = bytes.split_at(upto);
+            let mut s = String::from_utf8_lossy(head).to_string();
+            s.push_str(&String::from_utf8_lossy(tail));
+            (s, format!("混合编码（{} 字节处非 UTF-8，已按替换符处理）", upto))
+        }
+    };
+    let chars = text.chars().count();
+    let preview: String = text.lines().take(8).collect::<Vec<_>>().join("\n").chars().take(400).collect();
+    Ok(FileView {
+        path: p.display().to_string(),
+        name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        text,
+        chars,
+        bytes: bytes.len(),
+        encoding,
+        preview,
+    })
+}
+
+/// 文件内容视图。
+#[derive(serde::Serialize)]
+struct FileView {
+    path: String,
+    name: String,
+    text: String,
+    chars: usize,
+    bytes: usize,
+    encoding: String,
+    preview: String,
+}
+
+/// 探测 WorkBuddy 真实可用的斜杠命令/技能。
+///
+/// ★★ 绝不凭空列技能名 ★★
+/// 用户点一个不存在的技能只会得到「未知命令」，那是编造。
+/// 做法：输入 `/` → 抓真实弹出的补全面板 → **立刻清空输入框**。
+///
+/// 安全约定：
+/// 1. 输入框有内容时**拒绝探测**（不能弄乱用户写的东西）
+/// 2. 无论成败都清掉那个斜杠（`cleaned=false` 时界面必须显式提示）
+#[tauri::command]
+async fn probe_skills(state: State<'_, AppState>) -> Result<SkillsView, ErrPayload> {
+    let cdp = ensure_cdp(&state).await?;
+    let before = cdp
+        .eval(engine::EDITOR_CHARS_JS)
+        .await
+        .ok()
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if before > 0 {
+        return Err(ErrPayload::new(
+            "输入框里有内容，先清空再探测",
+            &format!("当前有 {before} 个字"),
+            "探测要往输入框打一个斜杠，不能动你写的东西。清空后点「探测技能」",
+        ));
+    }
+    // 填斜杠失败 → 转成 ErrPayload（anyhow 不能自动转）
+    if let Err(e) = cdp.eval(
+        r#"(() => {
+      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+      if (!e) return 0;
+      e.focus();
+      const s = window.getSelection(); const r = document.createRange();
+      r.selectNodeContents(e); s.removeAllRanges(); s.addRange(r);
+      document.execCommand('insertText', false, '/');
+      return 1;
+    })()"#,
+    ).await {
+        return Err(ErrPayload::new(
+            "打不进斜杠",
+            &format!("{e:#}"),
+            "WorkBuddy 界面可能不在前台，切到它的窗口再试",
+        ));
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+
+    // ★ 用 match 而非 ? ★：探测失败也要走「清空」路径，
+    //   若用 ? 提前返回，斜杠就留在用户输入框里了。
+    let v = match cdp
+        .eval(
+            r#"(() => {
+      const vis = (e) => e && e.getBoundingClientRect().width > 0;
+      const out = { items: [] };
+      const sels = ['[role="listbox"]','[role="menu"]','[class*="popover"]',
+        '[class*="dropdown"]','[class*="autocomplete"]','[class*="command-list"]',
+        '[class*="slash"]','[class*="suggest"]','[class*="menu"]'];
+      const seen = new Set();
+      for (const sel of sels) {
+        for (const p of document.querySelectorAll(sel)) {
+          if (!vis(p)) continue;
+          for (const it of p.querySelectorAll('[role="option"],li,button,div')) {
+            if (!vis(it)) continue;
+            const t = (it.innerText || '').trim().replace(/\s+/g, ' ');
+            if (!t || t.length > 60) continue;
+            const has = Array.from(it.children).some(c => vis(c) && (c.innerText||'').trim().length > 0);
+            if (has) continue;
+            if (seen.has(t)) continue;
+            seen.add(t);
+            out.items.push(t);
+          }
+        }
+      }
+      return out;
+    })()"#,
+        )
+        .await
+    {
+        Ok(v) => v,
+        Err(_) => serde_json::Value::Null,
+    };
+
+    // ★ 无论成败都必须清掉那个斜杠 ★
+    let _ = engine::clear_editor(&cdp).await;
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+    let items: Vec<String> = v
+        .get("items")
+        .and_then(|x| x.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let after = cdp
+        .eval(engine::EDITOR_CHARS_JS)
+        .await
+        .ok()
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+    Ok(SkillsView {
+        items,
+        cleaned: after == 0,
+    })
+}
+
+/// 技能清单视图。
+#[derive(serde::Serialize)]
+struct SkillsView {
+    items: Vec<String>,
+    /// 探测后输入框是否已清干净（false = 有残留，界面必须提示）
+    cleaned: bool,
+}
+
 #[tauri::command]
 async fn probe(state: State<'_, AppState>) -> Result<Snapshot, ErrPayload> {
     let cache = cache_arc(&state)?;
@@ -584,7 +757,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check])
+        .invoke_handler(tauri::generate_handler![probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check, read_text_file, probe_skills])
         .run(tauri::generate_context!())
         .expect("启动失败");
 }

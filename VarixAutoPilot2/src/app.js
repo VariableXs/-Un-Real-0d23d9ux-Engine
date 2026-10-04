@@ -57,6 +57,7 @@ const MOCK = {
     { index: 6, conv_id: 'ffeeddcc', title: '自动化任务领取与验收', rel_time: '1小时前', model: '', selected: false, cwd: '', cwd_confidence: '未查到该 session' },
   ],
   cwd_histogram: [],
+  queue: [],
 };
 
 /** 前端本地模板渲染（仅 mock 模式用；真实模式由 Rust 渲染）。 */
@@ -88,6 +89,55 @@ const api = IS_TAURI
   : {
       probe: async () => MOCK,
       preview: async (tpl, vars) => localRender(tpl, vars),
+      // ── 队列 / 循环 / 内容来源（mock 也要能用，否则改样式时看不到新面板）──
+      enqueue: async (text, convId, round) => {
+        const r = localRender('{{x}}', {});
+        MOCK.queue.push({
+          id: MOCK.queue.length + 1,
+          preview: text.slice(0, 60) + (text.length > 60 ? '…' : ''),
+          text, conv_id: convId || '', round: round || 0,
+          state: 'pending', evidence: '', err: '', enqueued_at: '',
+        });
+        return { items: MOCK.queue, id: MOCK.queue.length };
+      },
+      queueView: async () => ({ items: MOCK.queue, id: 0 }),
+      queueCancel: async (id) => {
+        const it = MOCK.queue.find((q) => q.id === id && q.state === 'pending');
+        if (it) it.state = 'canceled';
+        else {
+          const e = new Error('这条已在发送中');
+          e.what = '这条取消不了'; e.why = '内容已写入输入框'; e.next = '等这轮落地再取消下一条';
+          throw e;
+        }
+        return { items: MOCK.queue, id };
+      },
+      queueClear: async () => {
+        MOCK.queue = MOCK.queue.filter((q) => q.state === 'pending' || q.state === 'sending');
+        return { items: MOCK.queue, id: 0 };
+      },
+      loopStart: async (texts, convId, rounds) => {
+        // 模拟：把首轮与后续轮灌进队列
+        MOCK.queue = [];
+        for (let i = 0; i < Math.min(rounds === 0 ? 3 : rounds, 6); i++) {
+          const t = texts[Math.min(i, texts.length - 1)];
+          MOCK.queue.push({
+            id: i + 1, preview: t.slice(0, 60), text: t, conv_id: convId || '',
+            round: i + 1, state: 'pending', evidence: '', err: '', enqueued_at: '',
+          });
+        }
+        return { items: MOCK.queue, id: 0 };
+      },
+      loopStop: async () => ({ items: MOCK.queue, id: 0 }),
+      idleCheck: async () => ({ idle: true, reason: 'mock', by_btn: true, by_stop_btn: true, by_anim: true }),
+      readTextFile: async (path) => {
+        const e = new Error('mock 不读文件');
+        e.what = '这是浏览器预览模式'; e.why = '读文件要后端'; e.next = '启动 VarixAutoPilot.exe 才有';
+        throw e;
+      },
+      probeSkills: async () => {
+        // ★ mock 的技能名是「示例」，界面必须显示为 mock，不能冒充真实清单 ★
+        return { items: ['/示例技能A  这是演示数据', '/示例技能B  非真实清单'], cleaned: true };
+      },
       send: async (tpl, vars, dryRun) => {
         const r = localRender(tpl, vars);
         if (r.missing.length) {
@@ -122,16 +172,58 @@ const api = IS_TAURI
 let coreErr = null;
 function getCore() {
   const g = window.__TAURI__;
-  if (g && g.core && g.core.invoke) return g.core;
-  // 兼容另一种注入形态：把 invoke 直接挂在 __TAURI__ 上
-  if (g && typeof g.invoke === 'function') return g;
-  coreErr = coreErr || 'window.__TAURI__ 未注入。'
-    + '请确认 tauri.conf.json 里 app.withGlobalTauri = true，并已重新构建。';
-  throw new Error(coreErr);
+  const inv = (g && g.core && g.core.invoke) || (g && typeof g.invoke === 'function' ? g.invoke : null);
+  if (!inv) {
+    coreErr = coreErr || 'window.__TAURI__ 未注入。'
+      + '请确认 tauri.conf.json 里 app.withGlobalTauri = true，并已重新构建。';
+    throw new Error(coreErr);
+  }
+  // ★★ 命令名映射：camelCase → snake_case ★★
+  // Tauri 的 invoke **不做命名风格转换**：前端写 queueView、
+  // 后端注册的是 queue_view，运行时直接报
+  // 「Command queueView not found」（实测踩过，界面只显示这一句红字）。
+  //
+  // 为什么在这里统一转换、而不把前端改成 snake_case：
+  // 前端是 JS，camelCase 是本分；后端是 Rust，snake_case 也是本分。
+  // 让一层适配去做翻译，两边都保持各自惯例——
+  // 而且这层表是**白名单**，新增命令漏写会立刻报错（可发现），
+  // 比静默失败好。
+  const SNAKE = {
+    enqueue: 'enqueue',
+    queueView: 'queue_view',
+    queueCancel: 'queue_cancel',
+    queueClear: 'queue_clear',
+    loopStart: 'loop_start',
+    loopStop: 'loop_stop',
+    idleCheck: 'idle_check',
+    readTextFile: 'read_text_file',
+    probeSkills: 'probe_skills',
+    probe: 'probe', preview: 'preview', send: 'send', busy: 'busy',
+  };
+  return { invoke: (cmd, args) => {
+    const real = SNAKE[cmd];
+    if (!real) {
+      coreErr = coreErr || ('未知命令 ' + cmd
+        + '——它不在 SNAKE 映射表里。改了后端命令名就要同步这张表。');
+      throw new Error(coreErr);
+    }
+    return inv(real, args);
+  } };
 }
 
 if (IS_TAURI) {
   api.probe = () => getCore().invoke('probe');
+  api.enqueue = (text, convId, round) =>
+    getCore().invoke('enqueue', { text, convId, round });
+  api.queueView = () => getCore().invoke('queueView');
+  api.queueCancel = (id) => getCore().invoke('queueCancel', { id });
+  api.queueClear = () => getCore().invoke('queueClear');
+  api.loopStart = (texts, convId, rounds, trigger, intervalS, idleTimeoutS) =>
+    getCore().invoke('loopStart', { texts, convId, rounds, trigger, intervalS, idleTimeoutS });
+  api.loopStop = () => getCore().invoke('loopStop');
+  api.idleCheck = () => getCore().invoke('idleCheck');
+  api.readTextFile = (path) => getCore().invoke('readTextFile', { path });
+  api.probeSkills = () => getCore().invoke('probeSkills');
   api.preview = (tpl, vars) => getCore().invoke('preview', { tpl, vars });
   api.send = (tpl, vars, dryRun, openNew) =>
     getCore().invoke('send', { tpl, vars, dryRun, openNew });
@@ -252,6 +344,7 @@ function render(s) {
 
     if (!rec) {
       rec = { el: buildConvCard(c), sig: '' };
+      rec.el.dataset.cid = c.conv_id || '';
       seen.set(key, rec);
     }
     if (rec.sig !== sig) {
@@ -296,8 +389,18 @@ function buildConvCard(c) {
   // 「模型 / 目录」两行整个不见了——而静默无错。
   meta.append(s1, s2);
 
-  d.append(t, rt, meta);
+  // 点选标记（Variable 要的「选任意对话发布」）
+  const pick = document.createElement('div');
+  pick.className = 'pick';
+  pick.textContent = '✓';
+  pick.title = '点这张卡片 = 之后的发送/循环都发到这个对话';
+
+  d.append(t, rt, meta, pick);
   d._parts = { t, txt, tag, rt, meta, s1, s2 };
+  // ★ 整卡可点 ★：点卡片 = 选中该对话（发送走选中项）
+  d.addEventListener('click', () => {
+    window.pickConv && window.pickConv(d.dataset.cid || '', d._parts.txt.textContent);
+  });
   return d;
 }
 
@@ -389,6 +492,20 @@ async function doSend(real) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// 共享契约（供 loop_ui.js 使用）
+//
+// ★ 为什么要显式挂 window ★
+// app.js 与 loop_ui.js 是两个 ES module，**模块作用域互不可见**。
+// 而 queue/循环/内容来源这些功能的 UI 逻辑体量不小，塞进app.js 会让
+// 它超过 700 行、难维护；拆成独立文件又需要共享 api/$/esc。
+//
+// 显式挂 window 的好处：**共享面是白名单式的**——
+// 只有列在这里的才对外可见，其余仍是模块私有。
+// 另起一个 shared.js 反而多一次 import，且 Circular 依赖更难查。
+// ═══════════════════════════════════════════════════════════════════
+window.VAP = { api, $, esc, renderErr, setScene, conn };
+
 // ─────────────────────────── 启动 ───────────────────────────
 (async function init() {
   $('tpl').value = DEFAULT_TPL;
@@ -401,6 +518,9 @@ async function doSend(real) {
     renderErr(e);
   }
   tick();
+  // ★ 走 window 取 ★：refreshQueue 在 loop_ui.js 里，
+  //   两个 ES module 作用域互不可见（这正是本轮踩的坑）
+  window.VAPUI && window.VAPUI.refreshQueue();
 
   // ★ 自检兜底：8 秒后若仍显示「连接中…」，把原因摊到界面上。
   //   目的：宁可吵一点，也不要"看着正常其实没在跑"。

@@ -35,7 +35,26 @@ function findDead(s) {
   for (const m of s.matchAll(/(?:^|\n)const\s+([A-Za-z_$][\w$]*)\s*=\s*function\b/g)) names.add(m[1]);
 
   const dead = [];
+  // ★ HTML 里的 onclick="fn()" 也是调用点 ★
+  // 漏了它会把所有按钮回调误判成死函数（本轮 8 个全是误报）。
+  const fsx = require('fs');
+  const pthx = require('path');
+  const dir = pthx.dirname(path);
+  let inHtml = new Set();
+  try {
+    const html = fsx
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.html'))
+      .map((f) => fsx.readFileSync(pthx.join(dir, f), 'utf8'))
+      .join('\n');
+    inHtml = new Set(
+      [...html.matchAll(/onclick="?\s*([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1])
+    );
+  } catch {
+    /* 读不到 HTML 就退化成只看 JS 内部（可能误报，但不会漏报真死代码） */
+  }
   for (const name of names) {
+    if (inHtml.has(name)) continue;          // 被 onclick 调用 ⇒ 活的
     const esc = name.replace(/\$/g, '\\$');
     // 全文出现次数 <= 1 ⇒ 只有定义，没人调用。
     // （名字若出现在字符串/注释里会多算 1 → 保守不报）

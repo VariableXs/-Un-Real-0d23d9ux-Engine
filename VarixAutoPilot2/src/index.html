@@ -365,6 +365,104 @@ button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; col
 }
 
 /* ═══ 空态 ═══ */
+
+/* ═══ 待发队列 / 循环 / 内容来源 ═══ */
+.chip {
+  display: inline-block; padding: 0 var(--sp-8); border-radius: 99px;
+  font: var(--fs-xs)/1.8 var(--mono);
+  background: var(--panel-2); border: 1px solid var(--line-hi); color: var(--fg-2);
+}
+.chip.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.chip.busy { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+button.mini {
+  padding: 0 var(--sp-8); font-size: var(--fs-xs); line-height: 1.9;
+  border-radius: var(--r-sm);
+}
+button.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent); color: var(--warn); }
+button.warn:hover:not(:disabled) { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+.qlist {
+  flex: 0 0 auto; max-height: clamp(90px, 15vh, 168px); overflow-y: auto;
+  border-bottom: 1px solid var(--line); background: rgba(8,11,16,.5);
+}
+.qi {
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto auto;
+  gap: var(--sp-6) var(--sp-8); align-items: center;
+  padding: var(--sp-6) var(--sp-16);
+  border-bottom: 1px solid rgba(30,42,56,.5);
+  font-size: var(--fs-xs);
+}
+.qi:last-child { border-bottom: none; }
+.qi .rd {
+  font: var(--fs-xs)/1 var(--mono); color: var(--fg-3);
+  min-width: calc(26 * var(--kpx)); text-align: right;
+}
+.qi .pv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qi .st { font: var(--fs-xs)/1 var(--mono); padding: 0 var(--sp-6); border-radius: 99px; }
+.qi .st.pending { color: var(--warn); }
+.qi .st.sending { color: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+.qi .st.done { color: var(--ok); }
+.qi .st.failed { color: var(--err); }
+.qi .st.canceled { color: var(--fg-3); }
+.qi .x {
+  background: none; border: none; color: var(--fg-3); cursor: pointer;
+  padding: 0 var(--sp-4); font-size: var(--fs-sm); line-height: 1;
+}
+.qi .x:hover { color: var(--err); }
+
+.loopbox, .srcbox {
+  flex: 0 0 auto; padding: var(--sp-12) var(--sp-16);
+  display: flex; flex-direction: column; gap: var(--sp-10);
+  border-bottom: 1px solid var(--line); background: rgba(10,14,20,.45);
+}
+.lrow { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lrow > label { margin: 0; }
+.lcol { display: flex; align-items: baseline; gap: var(--sp-8); }
+.tabs { display: inline-flex; gap: 0; border: 1px solid var(--line-hi); border-radius: var(--r-sm); overflow: hidden; }
+.tab {
+  padding: 0 var(--sp-10); border: none; border-radius: 0;
+  font-size: var(--fs-xs); line-height: 2; background: var(--panel);
+  color: var(--fg-2);
+}
+.tab.on { background: var(--accent); color: #05080d; font-weight: 600; }
+.looptxt { min-height: calc(66 * var(--kpx)); font-size: var(--fs-xs); }
+.hint-inline { font-size: var(--fs-xs); color: var(--fg-3); }
+select {
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: var(--sp-6) var(--sp-8); font: var(--fs-xs)/1.6 var(--mono);
+}
+select:focus { outline: none; border-color: var(--accent); }
+input[type=number] {
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: var(--sp-6); font: var(--fs-xs)/1.6 var(--mono);
+}
+input[type=number]:focus { outline: none; border-color: var(--accent); }
+/* ★ 尺寸必须给足 ★
+   早先写成 style="width:calc(9 * var(--kpx))"，而 --kpx 在 1920 视口下
+   正好 = 1px ⇒ 只有 9px 宽，数字被完全挤没（截图里是空块）。
+   改用 ch/em 基准：随字号缩放但有可读的最小值。 */
+.num { width: calc(9 * var(--fs-sm)); min-width: calc(56 * var(--kpx)); text-align: right; }
+.sel { width: calc(34 * var(--fs-sm)); min-width: calc(180 * var(--kpx)); }
+.sel.wide { width: calc(40 * var(--fs-sm)); }
+/* select 在部分 Windows 主题下会用系统配色盖掉 background，
+   所以显式设置 color-scheme，让滚动条/下拉与暗色一致 */
+select { color-scheme: dark; }
+select option { background: var(--panel); color: var(--fg); }
+
+/* 卡片可点选（Variable 明确要的功能） */
+.conv { cursor: pointer; }
+.conv.picked { outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -3px; }
+.conv .pick {
+  position: absolute; right: var(--sp-8); top: 50%; transform: translateY(-50%);
+  width: calc(18 * var(--kpx)); height: calc(18 * var(--kpx));
+  border-radius: 50%; border: 1px solid var(--line-hi);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-xs); color: transparent; background: var(--bg-deep);
+}
+.conv.picked .pick { border-color: var(--accent); color: var(--accent); }
+
 .empty { padding: var(--sp-40) var(--sp-20); text-align: center;
          color: var(--fg-3); font-size: var(--fs-sm); }
 </style>
@@ -420,6 +518,7 @@ button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; col
         <label class="sw"><input type="checkbox" id="o-dry" checked>只填不发（干跑）</label>
         <span class="grow"></span>
         <button onclick="doPreview()">预览</button>
+        <button onclick="enqueueOne()">加入待发</button>
         <button class="primary" id="b-fill" onclick="doSend(false)">填入</button>
         <button class="go" id="b-send" onclick="doSend(true)">填入并发送</button>
       </div>
@@ -427,6 +526,103 @@ button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; col
     </div>
     <label style="padding:0 var(--sp-16) var(--sp-6);margin:0">渲染预览</label>
     <div class="preview" id="preview"></div>
+    <!-- ═══ 待发队列 ═══ -->
+    <div class="bar">
+      <span>待发队列</span>
+      <span class="grow"></span>
+      <span id="q-sum" class="chip"></span>
+      <button class="mini" onclick="refreshQueue()">刷新</button>
+      <button class="mini" onclick="clearQueue()">清已完成</button>
+    </div>
+    <div class="qlist" id="qlist">
+      <div class="empty">队列为空。点「加入待发」把内容排进来，或在下面设循环。</div>
+    </div>
+
+    <!-- ═══ 循环发布 ═══ -->
+    <div class="bar">
+      <span>循环发布</span>
+      <span class="grow"></span>
+      <span id="loop-state" class="chip"></span>
+    </div>
+    <div class="loopbox">
+      <!-- 首轮 / 后续轮：分别可编辑（Variable 明确要的功能） -->
+      <div class="lrow">
+        <div class="lcol">
+          <label>首轮内容</label>
+          <div class="tabs">
+            <button class="tab on" data-lt="first" onclick="switchLoopTab('first')">首轮</button>
+            <button class="tab" data-lt="rest" onclick="switchLoopTab('rest')">后续每轮</button>
+          </div>
+        </div>
+      </div>
+      <textarea id="loop-text" class="looptxt" rows="3" placeholder="循环要发的内容。&#10;首轮与后续轮可分别填写（后续轮会反复使用）"></textarea>
+
+      <div class="lrow">
+        <label>轮数</label>
+        <div class="row">
+          <input type="number" id="lp-rounds" class="num" min="0" max="99999" value="3"
+                 title="0 或勾选「无限」">
+          <label class="sw"><input type="checkbox" id="lp-inf">无限</label>
+          <span class="hint-inline">1 ～ 99999，或勾「无限」</span>
+        </div>
+      </div>
+
+      <div class="lrow">
+        <label>下一轮何时发</label>
+        <div class="row">
+          <select id="lp-trigger" class="sel">
+            <option value="idle">检测生成完毕（等空闲）</option>
+            <option value="interval">固定间隔</option>
+            <option value="hybrid">两者兼顾</option>
+          </select>
+          <input type="number" id="lp-interval" class="num" min="1" max="86400" value="30"
+                 title="间隔秒">
+          <span class="hint-inline">秒</span>
+        </div>
+      </div>
+
+      <div class="lrow">
+        <label>发给</label>
+        <div class="row">
+          <select id="lp-conv" class="sel wide">
+            <option value="">当前选中的对话</option>
+          </select>
+          <span class="hint-inline">点左侧卡片切换选中项</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="primary" onclick="startLoop()">开始循环</button>
+        <button class="warn" onclick="stopLoop()">停止</button>
+        <span class="hint-inline" id="loop-note"></span>
+      </div>
+    </div>
+
+    <!-- ═══ 内容来源 ═══ -->
+    <div class="bar"><span>内容来源</span></div>
+    <div class="srcbox">
+      <div class="lrow">
+        <label>MD / 文本文件</label>
+        <div class="row">
+          <input type="text" id="md-path" class="grow"
+                 placeholder="D:\...\提示词.md（也可以把文件拖到下面）">
+          <button onclick="readMd()">读取</button>
+        </div>
+        <div id="md-info" class="note"></div>
+      </div>
+      <div class="lrow">
+        <label>技能（斜杠命令）</label>
+        <div class="row">
+          <button onclick="probeSkills()">探测可用技能</button>
+          <select id="skill-pick" class="grow">
+            <option value="">— 先探测 —</option>
+          </select>
+          <button onclick="appendSkill()">插入到内容</button>
+        </div>
+        <div id="skill-info" class="note"></div>
+      </div>
+    </div>
+
     <div class="bar"><span>日志</span></div>
     <div class="scroll" id="logwrap" style="flex:0 0 clamp(110px,16vh,190px)">
       <div id="log"></div>
@@ -435,5 +631,6 @@ button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; col
 </main>
 
 <script type="module" src="./app.js"></script>
+<script type="module" src="./loop_ui.js"></script>
 </body>
 </html>
