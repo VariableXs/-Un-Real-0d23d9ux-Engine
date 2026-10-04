@@ -22,3 +22,5 @@ tools/probe*.py
 # 所以在**根 .gitignore** 侧加例外（见根仓库 .gitignore 的 tools/ 段）。
 # 这里只做本目录的兜底，真正生效的是根目录那条。
 !tools/open_port.py
+src-tauri/examples/live_check.rs
+src-tauri/examples/live_who.rs

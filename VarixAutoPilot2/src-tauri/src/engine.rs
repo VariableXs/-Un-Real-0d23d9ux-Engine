@@ -19,7 +19,8 @@
 //!    下一轮接手的人会以为那是对方写的。
 
 use anyhow::{anyhow, bail, Result};
-use serde_json::json;
+use serde_json::{json, Value};
+use log;
 use std::time::{Duration, Instant};
 
 use crate::cdp::Cdp;
@@ -65,6 +66,14 @@ impl std::fmt::Display for EngineError {
         }
     }
 }
+
+/// 读输入框当前内容（干跑前备份用）。
+/// 与 fill_prompt 里的选择器保持一致——两处必须同源，
+/// 否则备份到的是另一个框，还原就还原错了地方。
+const READ_EDITOR_JS: &str = r#"(() => {
+  const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+  return e ? (e.innerText || '').trim() : '';
+})()"#;
 
 /// 查忙闲。
 pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
@@ -297,14 +306,51 @@ pub async fn run_flow(
         new_conversation(cdp).await?;
     }
 
+    // ★★ 干跑必须还原输入框 ★★
+    // 实测踩到：干跑把编辑器从「今天帮你做些什么？」的 25 字符占位
+    // 换成了探针文本 14 字符 —— 干跑本该"什么都不留下"。
+    // 真实场景更糟：用户手打了半句话还没发，干跑会直接吃掉它。
+    //
+    // 做法：填入前把原内容存下来（连同"是不是占位提示"一起判），
+    // 干跑完原样写回。占位提示本身就等同于"空"，写回它没有副作用。
+    let backup = if dry_run {
+        Some(cdp.eval(READ_EDITOR_JS).await.unwrap_or(Value::String(String::new())))
+    } else {
+        None
+    };
+
     let n = fill_prompt(cdp, text).await?;
 
     if dry_run {
+        // 还原：干跑的语义是"预览"，不是"留在那儿"
+        if let Some(prev) = &backup {
+            let s = prev.as_str().unwrap_or("");
+            if !s.is_empty() {
+                // 用 execCommand 插入能保留 Slate 的 undo 栈，
+                // 纯 textContent 赋值会破坏编辑器内部状态。
+                let restore = format!(
+                    r#"(() => {{
+                      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+                      if (!e) return 0;
+                      e.focus();
+                      const sel = window.getSelection();
+                      const r = document.createRange();
+                      r.selectNodeContents(e);
+                      sel.removeAllRanges(); sel.addRange(r);
+                      document.execCommand('insertText', false, {t});
+                      return (e.innerText||'').trim().length;
+                    }})()"#,
+                    t = serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
+                );
+                let restored = cdp.eval(&restore).await.unwrap_or(Value::Null);
+                log::info!("干跑已还原输入框：{} 字符", restored.as_i64().unwrap_or(-1));
+            }
+        }
         return Ok(FlowResult {
             ok: true,
             dry_run: true,
             chars: n,
-            evidence: "内容已就位，未发送".to_string(),
+            evidence: format!("已预览 {n} 字符并还原输入框，未发送"),
             busy_reason: String::new(),
         });
     }

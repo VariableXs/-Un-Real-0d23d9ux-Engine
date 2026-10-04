@@ -14,10 +14,13 @@
 //! - **异常零静默**：每个错误都带「发生了什么 / 为什么 / 下一步怎么办」三要素，
 //!   前端直接展示，不让异常裸奔到 UI。
 
-mod cdp;
-mod collect;
-mod engine;
-mod template;
+// ★ pub 而非私有★：examples/ 下的集成实测（live_probe.rs）要用到它们。
+// Rust的 module 私有性是"crate 内可见"，但 example 是**独立 crate**，
+// 私有模块对它不可见⇒ 不改 pub 的话 examples/ 根本编不过。
+pub mod cdp;
+pub mod collect;
+pub mod engine;
+pub mod template;
 
 use std::sync::Arc;
 use std::sync::Mutex;
