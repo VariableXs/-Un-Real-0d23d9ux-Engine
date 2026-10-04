@@ -1,0 +1,2130 @@
+import { useEffect, useState } from "react";
+import { open, save } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import {
+  FolderOpen, Download, Trash2, RotateCcw, HardDrive, ShieldCheck, Lock, Unlock, Plus, Monitor,
+} from "lucide-react";
+// Windows 11 设置外壳（.w11-*）：导航图标（与上面一行不重名，避免重复导入）
+import {
+  Accessibility, AppWindow, ArrowLeft, Boxes, ChevronDown, Circle, Clock, Code, Eye, FileText, Gauge,
+  GitBranch, Globe, HardDriveDownload, HeartPulse, Info, Keyboard, Layers, LayoutTemplate, MonitorCog, MousePointer2, Network,
+  Palette, Paintbrush, Play, Plug, Power, Puzzle, Rocket, Search, Shield, SlidersHorizontal, Sparkles, User, Volume2,
+  Wifi, Zap, type LucideIcon,
+} from "lucide-react";
+import { useI18n } from "../../i18n";
+import type { Lang } from "../../i18n/dictionaries";
+import {
+  errMessage, ipc,
+  type AuditFinding, type FileCheck, type InstallReport, type InstallSession, type PackProgress,
+  type ProfileDryRun, type ProfileTemplateDto,
+  type ResidueEntry, type ThirdApp, type UsbStatus,
+  type VaultItem, type VaultStatus, type WpEngineItem, type WpMonitor,
+} from "../../lib/ipc";
+import { DEFAULT_SETTINGS, type CustomBg, type MindDefaults, type Settings, type ThemeId } from "../../lib/settings";
+import { KeymapExtras } from "./KeymapExtras";
+import { formatBytes, clamp } from "../../lib/format";
+import { pushToast, uiStore, useUi } from "../../state/uiStore";
+import { askConfirm } from "../../components/Modal";
+import { Modal } from "../../components/Modal";
+import { StorageRecoveryTab } from "./StorageRecoveryTab";
+import { BrowsersTab } from "./BrowsersTab";
+import { EnvsTab } from "./EnvsTab";
+import { CodeDeployCard } from "./CodeDeployCard";
+import { ToolchainsCard } from "./ToolchainsCard";
+import { EcoTab } from "./EcoTab";
+import { NetworkTab } from "./NetworkTab";
+import { SecurityTab } from "./SecurityTab";
+import { WhitelistManagerTab } from "../security/WhitelistManagerTab";
+import { AuditViewerTab } from "../security/AuditViewerTab";
+import { ExtensionsTab } from "./ExtensionsTab";
+import { SnapshotManager, VwmTabsToggle, WatchdogToggle } from "./SnapshotManager";
+import { SystemCenterTab } from "./SystemCenterTab";
+import { InputFeelTab } from "./InputFeelTab";
+import { MouseJ1Tab } from "./MouseJ1Tab";
+import { U3Tab } from "./U3Tab";
+import { U1Tab } from "./U1Tab";
+import { H4Tab } from "./H4Tab";
+import { DesktopD2Tab } from "./DesktopD2Tab";
+import { AmbienceTab } from "./AmbienceTab";
+import { WinFeelTab } from "./WinFeelTab";
+import { PerfTab } from "./PerfTab";
+import { FilesTab } from "./FilesTab";
+// AI-20 质量门禁与收官组：M-79 看板页 / V-93 搬家入口 / V-99 依赖声明 / V-100 毕业页
+import { QualityTab } from "./QualityTab";
+import { DependencyHonesty } from "./about/DependencyHonesty";
+import { GraduationEntry } from "./about/GraduationWall";
+import { PrefsImportEntry } from "../../features/onboarding/PrefsWizard";
+import type { SysSection } from "./SystemCenterTab";
+import type { BackupInfo, BootstrapInfo } from "../../lib/types";
+import { wallpaperUsesMedia } from "../../system/wallpaper/WallpaperLayer";
+import { toAssetUrl } from "../../features/background/CosmicBackground";
+import { SHORTCUT_ACTIONS, findConflicts, normalizeAccel } from "../../lib/shortcuts";
+import { TASKBAR_MENU_REGISTRY, loadMenuOverride, saveMenuOverride, clearMenuOverride, type TaskbarMenuOverride } from "../../system/desktop/taskbarMenu";
+import { sanitizeClockZones } from "../../system/taskbar/clockcard";
+import { CompatTab } from "../../system/compat/CompatTab";
+import { OpenHubTab } from "./OpenHubTab";
+import { A11yTab } from "./A11yTab";
+import { OpenToolsTab } from "./OpenToolsTab";
+import { SoundNotifyTab } from "./SoundNotifyTab";
+// AURORA-10000：AI-16~AI-20 批次，勿删（领域04 任务栏与开始菜单）
+import { AuroraD4Tab } from "./AuroraD4Tab";
+import { PersonaTab } from "./PersonaTab";
+// AURORA-10000：AI-01~AI-05 批次，勿删
+import { BootTheaterTab } from "./BootTheaterTab";
+import { BootchainHealthTab } from "./BootchainHealthTab";
+// UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
+import { PowerTheaterTab } from "./PowerTheaterTab";
+import { DualBootTab } from "./DualBootTab";
+import { EngineTab } from "./EngineTab";
+
+const IMG_FILTERS = [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }];
+const VID_FILTERS = [{ name: "Videos", extensions: ["mp4", "webm", "ogv", "mov", "m4v"] }];
+/** Ten-tier starfield labels (spec chapter 4) — zh / en picked at render. */
+const TIER_LABELS: readonly string[] = [
+  "冰蓝静谧", "心跳脉动", "双层视差", "独立闪烁", "漫画网点",
+  "四角星芒", "景深色散", "极光流淌", "真实散射", "终极光影",
+];
+const TIER_LABELS_EN: readonly string[] = [
+  "Ice Static", "Global Pulse", "Dual Parallax", "Indep. Twinkle", "Screentone",
+  "4-Point Flare", "Bokeh & Dispersion", "Aurora Flow", "Real Scattering", "Light Master",
+];
+const FONT_STACKS = [
+  { label: "Segoe UI / 微软雅黑", value: `"Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif` },
+  { label: "Serif (Georgia)", value: `Georgia, "Times New Roman", serif` },
+  { label: "Mono (Consolas)", value: `Consolas, "Courier New", monospace` },
+];
+
+/**
+ * Windows 11 设置外壳：每页导航图标。
+ * 未登记的页回落到 Circle（保持视觉一致，不会因为漏配而缺图标）。
+ */
+const TAB_ICONS: Record<string, LucideIcon> = {
+  appearance: Palette,
+  editor: FileText,
+  mindmap: GitBranch,
+  general: SlidersHorizontal,
+  envs: Globe,
+  browsers: AppWindow,
+  code: Code,
+  eco: Puzzle,
+  net: Wifi,
+  security: Shield,
+  profiles: Play,
+  shortcuts: Keyboard,
+  inputFeel: MousePointer2,
+  ambience: Sparkles,
+  winFeel: LayoutTemplate,
+  perf: Gauge,
+  openhub: Plug,
+  sndnotify: Volume2,
+  vision: Eye,
+  a11y: Accessibility,
+  storage: HardDrive,
+  files: FolderOpen,
+  data: Lock,
+  quality: ShieldCheck,
+  aurora4: Layers,
+  persona: Paintbrush,
+  about: Info,
+  bootTheater: Rocket,
+  bootchainHealth: HeartPulse,
+  powerTheater: Zap,
+  dualboot: HardDriveDownload,
+  engine: MonitorCog,
+  "sys-display": Monitor,
+  "sys-sound": Volume2,
+  "sys-net": Network,
+  "sys-account": User,
+  "sys-time": Clock,
+  "sys-apps": Boxes,
+  "sys-power": Power,
+  "sys-access": Accessibility,
+};
+
+/** 取导航图标（未登记 → Circle 圆点）。 */
+function tabIcon(id: string): LucideIcon {
+  return TAB_ICONS[id] ?? Circle;
+}
+
+export function SettingsModal(props: {
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+  bootstrap: BootstrapInfo | null;
+}): React.ReactElement | null {
+  const { t, lang, setLang } = useI18n();
+  const isOpen = useUi((s) => s.settingsOpen);
+  const tab = useUi((s) => s.settingsTab);
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [usb, setUsb] = useState<UsbStatus | null>(null);
+  const [usbProgress, setUsbProgress] = useState<PackProgress | null>(null);
+  const [usbBad, setUsbBad] = useState<FileCheck[] | null>(null);
+  // 批次E-6：多显示器 / 批次E-7：保险箱与自检 / U 盘向导
+  const [monitors, setMonitors] = useState<WpMonitor[] | null>(null);
+  // 批次E-12：Wallpaper Engine 壁纸项目列表（null = 未扫描）
+  const [wpEngine, setWpEngine] = useState<WpEngineItem[] | null>(null);
+  const [vault, setVault] = useState<VaultStatus | null>(null);
+  const [vaultItems, setVaultItems] = useState<VaultItem[]>([]);
+  const [vaultPw, setVaultPw] = useState("");
+  const [vaultPw2, setVaultPw2] = useState("");
+  const [audit, setAudit] = useState<AuditFinding[] | null>(null);
+  const [usbWizardDir, setUsbWizardDir] = useState<string | null>(null); // null=关闭, ""=待选择, 非空=打包中/校验
+  const [wizardVerify, setWizardVerify] = useState<FileCheck[] | null>(null);
+  const s = props.settings;
+  // L-2：当前自动档位（只读展示；手动选择 bgTier≥1 时自动档被抑制）
+  const [autoTierLabel, setAutoTierLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    import("../../system/perf/autoTier").then(({ detectAutoTier }) => {
+      const r = detectAutoTier(s.safeMode);
+      setAutoTierLabel(`${r.tier}（${r.reason}）`);
+    }).catch(() => setAutoTierLabel(null));
+  }, [isOpen, s.safeMode]);
+
+  useEffect(() => {
+    if (isOpen && tab === "data") {
+      void ipc.listBackups().then(setBackups).catch(() => setBackups([]));
+      void ipc.usbStatus().then(setUsb).catch(() => setUsb(null));
+      void reloadVault();
+    }
+    if (isOpen && tab === "appearance") {
+      void ipc.wpMonitors().then(setMonitors).catch(() => setMonitors([]));
+    }
+  }, [isOpen, tab]);
+
+  // M8：打包进度事件（真实文件计数，非时间线）
+  useEffect(() => {
+    const un = listen<PackProgress>("usb://progress", (e) => {
+      setUsbProgress(e.payload.phase === "done" ? null : e.payload);
+    });
+    return () => {
+      void un.then((f) => f()).catch(() => {});
+    };
+  }, []);
+
+  // ---- 批次E（规格 4.7）快捷键自定义：编辑态（accel 文本）+ 冲突检测 + 导入/导出 ----
+  // 注意：所有 hooks 必须在 `if (!isOpen) return null` 之前声明（React #310）。
+  const [bindDraft, setBindDraft] = useState<Record<string, string> | null>(null);
+  // 批次E-8：关于页版本号（tauri.conf.json version，惰性读取）
+  const [aboutVersion, setAboutVersion] = useState<string>("?");
+  useEffect(() => {
+    if (tab !== "about" || aboutVersion !== "?") return;
+    void getVersion().then(setAboutVersion).catch(() => {});
+  }, [tab, aboutVersion]);
+  const binds = bindDraft ?? (s.shortcutBinds ?? {});
+  // Win11 标题栏：搜索框过滤导航项 + 窗口按钮切换「全屏 / 窗口」
+  // （Win11 设置默认即为最大化全屏；此处的最大化按钮即「还原为上屏窗口」）
+  const [navQuery, setNavQuery] = useState("");
+  const [w11Max, setW11Max] = useState(true);
+
+  if (!isOpen) return null;
+
+  const set = <K extends keyof Settings>(key: K, value: Settings[K]) => props.onChange({ [key]: value } as Partial<Settings>);
+  const setBg = (patch: Partial<CustomBg>) => props.onChange({ customBg: { ...s.customBg, ...patch } });
+  const setMind = (patch: Partial<MindDefaults>) => props.onChange({ mindDefaults: { ...s.mindDefaults, ...patch } });
+
+  // F-1：顶层两域 —— 「Variable 引擎」（应用级 + 生态扩展）与「环境系统」（系统级八节）
+  const engineTabs: { id: string; label: string }[] = [
+    { id: "appearance", label: t("appearance") },
+    { id: "editor", label: t("editorTab") },
+    { id: "mindmap", label: t("mindmapTab") },
+    { id: "general", label: t("general") },
+    { id: "envs", label: t("evTitle") },
+    { id: "browsers", label: t("brTitle") },
+    { id: "code", label: t("cdTitle") },
+    { id: "eco", label: t("ecoTitle") },
+    { id: "net", label: t("ntTitle") },
+    { id: "security", label: t("secTitle") },
+    { id: "whitelist", label: t("wlTitle") },
+    { id: "vfaudit", label: t("avTitle") },
+    { id: "profiles", label: t("pfTitle") },
+    { id: "shortcuts", label: t("scTitle") },
+    { id: "inputFeel", label: t("ifTitle") },
+    { id: "mouseJ1", label: t("mouseJ1Title") },
+    { id: "u3", label: t("u3TabTitle") },
+    { id: "u1", label: t("u1TabTitle") },
+    { id: "h4tools", label: "效率与工具" },
+    // C 桌面体验域·后段 AI-D2：F093-F110 全量面板
+    { id: "desktopD2", label: "桌面体验" },
+    { id: "ambience", label: t("amb18TabTitle") },
+    { id: "winFeel", label: t("wfTabTitle") },
+    { id: "perf", label: t("pfTabTitle") },
+    { id: "openhub", label: t("ohTitle") },
+    { id: "sndnotify", label: t("snTabTitle") },
+    { id: "vision", label: t("vtTabTitle") },
+    { id: "a11y", label: t("a19TabTitle") },
+    { id: "storage", label: t("stTitle") },
+    { id: "files", label: t("filesTab") },
+    { id: "data", label: t("data") },
+    { id: "quality", label: t("q20TabTitle") },
+    // AURORA-10000：AI-16~AI-20 批次，勿删
+    { id: "aurora4", label: t("d4TabTitle") },
+    // Varix STAR I · AI-E1：E 个性化域（F151-F170）
+    { id: "persona", label: "个性化" },
+    { id: "about", label: t("aboutVariable") },
+    // AURORA-10000：AI-01~AI-05 批次，勿删（启动与品牌剧场设置页）
+    { id: "bootTheater", label: "启动剧场" },
+    // UNREAL-X AI-01：启动可靠与恢复（族0001~0010），勿删
+    { id: "bootchainHealth", label: "启动健康" },
+    // UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删
+    { id: "powerTheater", label: "电源剧场" },
+    // 阶段6/7：双域系统（任务 53/57/61UI/64UI），勿删
+    { id: "dualboot", label: "双域系统" },
+    { id: "engine", label: "引擎通道" },
+  ];
+  const sysTabs: { id: string; label: string }[] = [
+    { id: "sys-display", label: t("sysDispTitle") },
+    { id: "sys-sound", label: t("sysSound") },
+    { id: "sys-net", label: t("sysNet") },
+    { id: "sys-account", label: t("sysAccount") },
+    { id: "sys-time", label: t("sysTime") },
+    { id: "sys-apps", label: t("sysApps") },
+    { id: "sys-power", label: t("sysPower") },
+    { id: "sys-access", label: t("sysAccess") },
+  ];
+
+  // Win11 标题栏搜索：仅按名称过滤导航（查询为空时与原列表逐项相等，行为不变）
+  const navQ = navQuery.trim().toLowerCase();
+  const visEngineTabs = navQ ? engineTabs.filter((tb) => tb.label.toLowerCase().includes(navQ)) : engineTabs;
+  const visSysTabs = navQ ? sysTabs.filter((tb) => tb.label.toLowerCase().includes(navQ)) : sysTabs;
+  const homeTabId = engineTabs[0]?.id ?? "appearance";
+  const curTabLabel = [...engineTabs, ...sysTabs].find((tb) => tb.id === tab)?.label ?? t("settings");
+  // Win11 面包屑第一级 = 所属类别（引擎域 / 系统域），点它回首页
+  const curGroupLabel = sysTabs.some((tb) => tb.id === tab) ? t("sysGroup") : t("w11AccountName");
+  const navItem = (tb: { id: string; label: string }) => {
+    const Icon = tabIcon(tb.id);
+    return (
+      <button key={tb.id} type="button" className={`w11-navitem${tab === tb.id ? " on" : ""}`} onClick={() => uiStore.setState({ settingsTab: tb.id })}>
+        <Icon size={16} aria-hidden />
+        <span className="w11-lbl">{tb.label}</span>
+      </button>
+    );
+  };
+  const fullBinds = SHORTCUT_ACTIONS.map((a) => ({ action: a.id, accel: binds[a.id] ?? a.accel }));
+  const conflicts = findConflicts(fullBinds);
+  const invalidBinds = fullBinds.filter((b) => normalizeAccel(b.accel) === null).map((b) => b.action);
+
+  const applyBinds = (next: Record<string, string>): void => {
+    setBindDraft(null);
+    set("shortcutBinds", next);
+  };
+
+  async function pickBackground(kind: "image" | "video"): Promise<void> {
+    const p = await open({ multiple: false, filters: kind === "image" ? IMG_FILTERS : VID_FILTERS });
+    if (typeof p !== "string") return;
+    // Reference the ORIGINAL path (validated); user can relocate on failure.
+    const check = await ipc.checkPaths([p]).catch(() => []);
+    if (!check[0]?.exists) {
+      pushToast("error", lang !== "en" ? "文件不可读" : "File not readable");
+      return;
+    }
+    setBg(kind === "image" ? { type: "image", imagePath: p } : { type: "video", videoPath: p, playVideo: true });
+  }
+
+  // ---- M8 U 盘便携：打包向导（选目标 → 打包 → 校验） ----
+
+  async function packToUsb(): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    const ok = await askConfirm({
+      title: t("usbPack"),
+      body: t("usbPackConfirmBody", { dir }),
+    });
+    if (!ok) return;
+    // 批次E-7：向导化 —— 选定目标后内联展示打包进度，完成后自动进入校验步骤
+    setUsbBad(null);
+    setWizardVerify(null);
+    setUsbWizardDir(dir);
+    try {
+      await ipc.usbPack(dir);
+      setUsbProgress(null);
+      pushToast("success", t("usbPackDone"), dir);
+      void ipc.usbStatus().then(setUsb).catch(() => {});
+      // 打包完成 → 自动校验
+      try {
+        const checks = await ipc.usbVerify(dir);
+        setWizardVerify(checks);
+        if (checks.every((c) => c.ok)) pushToast("success", t("usbVerifyOk"), dir);
+      } catch {
+        setWizardVerify(null);
+      }
+    } catch (e) {
+      setUsbProgress(null);
+      setUsbWizardDir(null);
+      pushToast("error", t("usbPack"), errMessage(e).message);
+    }
+  }
+
+  async function verifyUsbBundle(): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    try {
+      const checks = await ipc.usbVerify(dir);
+      const bad = checks.filter((c) => !c.ok);
+      setUsbBad(bad.length ? bad : []);
+      if (bad.length === 0) pushToast("success", t("usbVerifyOk"), dir);
+    } catch (e) {
+      pushToast("error", t("usbVerify"), errMessage(e).message);
+    }
+  }
+
+  const usbPhaseLabel = (p: PackProgress): string => {
+    if (p.phase === "copy") return t("usbPhaseCopy", { done: p.done, total: p.total });
+    if (p.phase === "exe") return t("usbPhaseExe");
+    if (p.phase === "manifest") return t("usbPhaseManifest");
+    return t("usbPhaseCollect");
+  };
+
+  // ---- 批次E-7：隐私保险箱 ----
+
+  async function reloadVault(): Promise<void> {
+    try {
+      const st = await ipc.vaultStatus();
+      setVault(st);
+      setVaultItems(st.unlocked ? await ipc.vaultList() : []);
+    } catch {
+      setVault(null);
+    }
+  }
+
+  async function initVault(): Promise<void> {
+    if (vaultPw.length < 4) return void pushToast("error", t("vaultTitle"), t("vaultPwShort"));
+    if (vaultPw !== vaultPw2) return void pushToast("error", t("vaultTitle"), t("vaultPwMismatch"));
+    try {
+      await ipc.vaultInit(vaultPw);
+      setVaultPw(""); setVaultPw2("");
+      pushToast("success", t("vaultTitle"), t("vaultInitOk"));
+      await reloadVault();
+    } catch (e) {
+      pushToast("error", t("vaultTitle"), errMessage(e).message);
+    }
+  }
+
+  async function unlockVault(): Promise<void> {
+    try {
+      await ipc.vaultUnlock(vaultPw);
+      setVaultPw("");
+      pushToast("success", t("vaultTitle"), t("vaultUnlockOk"));
+      await reloadVault();
+    } catch (e) {
+      pushToast("error", t("vaultTitle"), errMessage(e).message);
+    }
+  }
+
+  async function importToVault(): Promise<void> {
+    const p = await open({ multiple: false });
+    if (typeof p !== "string") return;
+    try {
+      await ipc.vaultImport(p, false);
+      pushToast("success", t("vaultImport"), p);
+      await reloadVault();
+    } catch (e) {
+      pushToast("error", t("vaultImport"), errMessage(e).message);
+    }
+  }
+
+  async function exportFromVault(name: string): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    try {
+      const dest = await ipc.vaultExport(name, dir);
+      pushToast("success", t("vaultExport"), dest);
+    } catch (e) {
+      pushToast("error", t("vaultExport"), errMessage(e).message);
+    }
+  }
+
+  async function destroyFromVault(name: string): Promise<void> {
+    const ok = await askConfirm({ title: t("vaultDestroy"), body: name, danger: true, okLabel: t("vaultDestroy") });
+    if (!ok) return;
+    try {
+      await ipc.vaultDestroy(name);
+      pushToast("success", t("vaultDestroy"), name);
+      await reloadVault();
+    } catch (e) {
+      pushToast("error", t("vaultDestroy"), errMessage(e).message);
+    }
+  }
+
+  async function runAudit(): Promise<void> {
+    setBusy(true);
+    try {
+      setAudit(await ipc.privacyAudit());
+    } catch (e) {
+      pushToast("error", t("privacyAudit"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ---- 批次E-12：Wallpaper Engine 壁纸导入 ----
+
+  async function scanWpEngine(root: string): Promise<void> {
+    try {
+      setWpEngine(await ipc.wpEngineScan(root));
+    } catch (e) {
+      pushToast("error", t("wpEngineTitle"), errMessage(e).message);
+    }
+  }
+
+  async function scanWpEnginePick(): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    await scanWpEngine(dir);
+  }
+
+  // ---- 批次E-6：多显示器壁纸 + 每日缓存目录 ----
+
+  async function pickPoolDir(): Promise<void> {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir !== "string") return;
+    set("wallpaperPoolDir", dir);
+    if (!s.wallpaperDaily) set("wallpaperDaily", true);
+  }
+
+  async function setMonitorWallpaper(m: WpMonitor): Promise<void> {
+    const p = await open({ multiple: false, filters: IMG_FILTERS });
+    if (typeof p !== "string") return;
+    try {
+      await ipc.wpSetMonitor(m.id, p);
+      pushToast("success", t("wpMonitorSet"), p);
+    } catch (e) {
+      pushToast("error", t("wpMonitorSet"), errMessage(e).message);
+    }
+  }
+
+  async function applyAllMonitors(): Promise<void> {
+    if (!s.customBg.imagePath) return void pushToast("info", t("wpMonitorAll"), t("wpNeedImage"));
+    try {
+      await ipc.wpSetMonitor("", s.customBg.imagePath);
+      pushToast("success", t("wpMonitorAll"), s.customBg.imagePath);
+    } catch (e) {
+      pushToast("error", t("wpMonitorAll"), errMessage(e).message);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={() => uiStore.setState({ settingsOpen: false })}
+      title={t("settings")}
+      width={1080}
+      variant={`modal-w11${w11Max ? " modal-w11-max" : ""}`}
+    >
+      {/* U-41 RTL 试点面板①：设置中心（rtlPilot 开启时 dir=rtl 正确渲染） */}
+      <div className="settings-layout w11-shell" dir={s.rtlPilot ? "rtl" : "ltr"} data-testid="settings-modal">
+        {/* Win11 标题栏（实测 48px：返回 32 + 名称 12px + 居中搜索 515×34 + 窗口按钮 46×32） */}
+        <div className="w11-titlebar">
+          <button
+            type="button"
+            className="w11-back"
+            aria-label={t("back")}
+            data-tip={t("back")}
+            onClick={() => {
+              // Win11 返回语义：非首页 → 回首页；首页 → 收起面板
+              if (tab !== homeTabId) uiStore.setState({ settingsTab: homeTabId });
+              else uiStore.setState({ settingsOpen: false });
+            }}
+          >
+            <ArrowLeft size={16} aria-hidden />
+          </button>
+          <span className="w11-apptitle">{t("w11SetTitle")}</span>
+          <div className="w11-search">
+            <Search size={14} aria-hidden />
+            <input
+              type="text"
+              value={navQuery}
+              placeholder={t("w11SearchSet")}
+              aria-label={t("w11SearchSet")}
+              onChange={(e) => setNavQuery(e.target.value)}
+            />
+          </div>
+          <div className="w11-caption">
+            <button
+              type="button" className="w11-cap" aria-label={t("minimize")} data-tip={t("minimize")}
+              onClick={() => uiStore.setState({ settingsOpen: false })}
+            >
+              <span className="w11-glyph w11-glyph-min" aria-hidden />
+            </button>
+            <button
+              type="button" className="w11-cap"
+              aria-label={w11Max ? t("restore") : t("maximize")}
+              data-tip={w11Max ? t("restore") : t("maximize")}
+              onClick={() => setW11Max((v) => !v)}
+            >
+              <span className={`w11-glyph ${w11Max ? "w11-glyph-restore" : "w11-glyph-max"}`} aria-hidden />
+            </button>
+            <button
+              type="button" className="w11-cap w11-cap-close" aria-label={t("close")} data-tip={t("close")}
+              onClick={() => uiStore.setState({ settingsOpen: false })}
+            >
+              <span className="w11-glyph w11-glyph-close" aria-hidden />
+            </button>
+          </div>
+        </div>
+        <div className="w11-main">
+          <nav className="settings-nav w11-nav" aria-label={t("settings")}>
+            {/* Win11 导航顶部账户卡 */}
+            <div className="w11-account">
+              <span className="w11-avatar">V</span>
+              <span className="w11-who">
+                <b>{t("w11AccountName")}</b>
+                <span>{t("w11AccountDesc")}</span>
+              </span>
+            </div>
+            {visEngineTabs.map(navItem)}
+            {visSysTabs.length > 0 && <div className="nav-group w11-navgroup">{t("sysGroup")}</div>}
+            {visSysTabs.map(navItem)}
+            {visEngineTabs.length === 0 && visSysTabs.length === 0 && (
+              <div className="w11-navempty">{t("noResults")}</div>
+            )}
+          </nav>
+          {/* W11 分页容器：外观页走 .w11-card 版式，其余页由 .w11-legacy 桥接既有 .field 版式 */}
+          <div className="settings-body w11-page" data-autoscroll="">
+            <div className="w11-content">
+              {/* Win11 面包屑页头：上一级可点回首页，当前页为白色 */}
+              <nav className="w11-crumb" aria-label={t("settings")}>
+                <button
+                  type="button"
+                  className="w11-crumb-lv"
+                  onClick={() => uiStore.setState({ settingsTab: homeTabId })}
+                >
+                  {curGroupLabel}
+                </button>
+                <span className="w11-crumb-sep" aria-hidden>›</span>
+                <span className="w11-crumb-cur">{curTabLabel}</span>
+              </nav>
+              {tab === "appearance" && (
+                <>
+
+              <W11Card title={t("w11CardWallpaper")}>
+                <W11Row title={t("wallpaperMode")}>
+                  <W11Select value={s.wallpaperMode} onChange={(v) => set("wallpaperMode", v as Settings["wallpaperMode"])}>
+                    <option value="gravity">{t("wpGravity")}</option>
+                    <option value="solid">{t("wpSolid")}</option>
+                    <option value="image">{t("wpImage")}</option>
+                    <option value="living">{t("wpLiving")}</option>
+                    <option value="video">{t("wpVideo")}</option>
+                    <option value="hybrid">{t("wpHybrid")}</option>
+                    <option value="web">{t("wpWeb")}</option>
+                    <option value="shader">{t("wpShader")}</option>
+                  </W11Select>
+                </W11Row>
+                <W11Row title={t("iconSize")}>
+                  <W11Select value={String(s.iconSize)} onChange={(v) => set("iconSize", Number(v) as Settings["iconSize"])}>
+                    <option value="32">{t("iconSmall")} · 32</option>
+                    <option value="48">{t("iconMedium")} · 48</option>
+                    <option value="64">{t("iconLarge")} · 64</option>
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardTaskbar")}>
+                {/* 批次D（规格 4.3.5）：窗口控制按钮位置 */}
+                <W11Row title={t("winControls")} sub={t("winControlsHint")}>
+                  <W11Select wide value={s.winControls} onChange={(v) => set("winControls", v as Settings["winControls"])}>
+                    <option value="mac">{t("winControlsMac")}</option>
+                    <option value="windows">{t("winControlsWin")}</option>
+                  </W11Select>
+                </W11Row>
+                {/* 批次E（规格 4.4）：任务栏停靠位置四向 */}
+                <W11Row title={t("taskbarPos")}>
+                  <W11Select value={s.taskbarPos} onChange={(v) => set("taskbarPos", v as Settings["taskbarPos"])}>
+                    <option value="bottom">{t("tbPosBottom")}</option>
+                    <option value="left">{t("tbPosLeft")}</option>
+                    <option value="right">{t("tbPosRight")}</option>
+                    <option value="top">{t("tbPosTop")}</option>
+                  </W11Select>
+                </W11Row>
+                {/* AI-03 V-18：运行指示样式三选（dot=默认现状；即时生效零重启） */}
+                <W11Row title={t("setRunIndicator")}>
+                  <W11Select value={s.runIndicator} onChange={(v) => set("runIndicator", v as Settings["runIndicator"])}>
+                    <option value="dot">{t("runIndDot")}</option>
+                    <option value="underline">{t("runIndUnderline")}</option>
+                    <option value="capsule">{t("runIndCapsule")}</option>
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardPersonalize")}>
+                <W11Row title={t("theme")}>
+                  <W11Select value={s.theme} onChange={(v) => set("theme", v as ThemeId)}>
+                    <option value="deep-space">{t("themeDeepSpace")}</option>
+                    <option value="paper">{t("themePaper")}</option>
+                    <option value="minimal-black">{t("themeMinimalBlack")}</option>
+                    <option value="high-contrast">{t("themeHighContrast")}</option>
+                    <option value="custom">{t("themeCustom")}</option>
+                  </W11Select>
+                </W11Row>
+                {/* AI-03 M-16：媒体呼吸（默认关；幅度 2% / 周期 4s 写死） */}
+                <W11Row title={t("setMediaBreath")} sub={t("setMediaBreathHint")}>
+                  <W11Switch checked={s.mediaBreath} onChange={(v) => set("mediaBreath", v)} />
+                </W11Row>
+              </W11Card>
+              {/* AI-03 M-12：时钟多时区（IANA，≤3；非法名保存时如实过滤） */}
+              <Ai03ClockZones win11 set={set} zones={s.clockZones} />
+              {/* AI-03 M-15：任务栏空区右键菜单编辑 */}
+              <Ai03BlankMenu win11 />
+              {(s.theme === "custom" || wallpaperUsesMedia(s.wallpaperMode)) && (
+                <W11Card title={t("w11CardBackground")}>
+                  <W11Row title={t("backgroundType")}>
+                    <W11Select value={s.customBg.type} onChange={(v) => setBg({ type: v as CustomBg["type"] })}>
+                      <option value="nebula">{t("themeDeepSpace")}</option>
+                      <option value="color">{t("bgPureColor")}</option>
+                      <option value="gradient">{t("bgGradient")}</option>
+                      <option value="image">{t("bgImage")}</option>
+                      <option value="video">{t("bgVideo")}</option>
+                    </W11Select>
+                  </W11Row>
+                  {(s.customBg.type === "image" || s.customBg.type === "video") && (
+                    <W11Row title={s.customBg.type === "image" ? t("bgImage") : t("bgVideo")}>
+                      <input className="w11-input flex-1" readOnly value={s.customBg.type === "image" ? s.customBg.imagePath : s.customBg.videoPath} />
+                      <button type="button" className="w11-btn" onClick={() => void pickBackground(s.customBg.type === "image" ? "image" : "video")}>{t("chooseFile")}</button>
+                    </W11Row>
+                  )}
+                  {s.customBg.type === "color" && (
+                    <W11Row title={t("bgPureColor")}>
+                      <input type="color" value={s.customBg.color} onChange={(e) => setBg({ color: e.target.value })} />
+                    </W11Row>
+                  )}
+                  {s.customBg.type === "gradient" && (
+                    <W11Row title={`${t("bgGradient")} A → B`}>
+                      <input type="color" value={s.customBg.gradientFrom} onChange={(e) => setBg({ gradientFrom: e.target.value })} />
+                      <input type="color" value={s.customBg.gradientTo} onChange={(e) => setBg({ gradientTo: e.target.value })} />
+                    </W11Row>
+                  )}
+                  <W11Slider title={t("brightness")} min={20} max={140} value={Math.round(s.customBg.brightness * 100)} suffix="%" onChange={(v) => setBg({ brightness: v / 100 })} />
+                  <W11Slider title={t("blur")} min={0} max={24} value={s.customBg.blur} suffix="px" onChange={(v) => setBg({ blur: v })} />
+                  <W11Slider title={t("vignette")} min={0} max={100} value={Math.round(s.customBg.vignette * 100)} suffix="%" onChange={(v) => setBg({ vignette: v / 100 })} />
+                  <W11Slider title={t("saturation")} min={0} max={200} value={Math.round(s.customBg.saturation * 100)} suffix="%" onChange={(v) => setBg({ saturation: v / 100 })} />
+                  <W11Slider title={t("maskOpacity")} min={0} max={90} value={Math.round(s.customBg.maskOpacity * 100)} suffix="%" onChange={(v) => setBg({ maskOpacity: v / 100 })} />
+                  <W11Slider title={t("dynamicStrength")} min={0} max={100} value={Math.round(s.customBg.dynamicStrength * 100)} suffix="%" onChange={(v) => setBg({ dynamicStrength: v / 100 })} />
+                  <W11Slider title={t("parallaxStrength")} min={0} max={100} value={Math.round(s.customBg.parallaxStrength * 100)} suffix="%" onChange={(v) => setBg({ parallaxStrength: v / 100 })} />
+                  {s.customBg.type === "video" && (
+                    <W11Row title={t("playVideoBg")}>
+                      <W11Switch checked={s.customBg.playVideo} disabled={s.safeMode} onChange={(v) => setBg({ playVideo: v })} />
+                    </W11Row>
+                  )}
+                </W11Card>
+              )}
+              {/* 批次E-6：每日自动换（本地缓存池，零网络） */}
+              <W11Card title={t("wpDaily")} desc={t("wpDailyHint")}>
+                <W11Row title={t("wpDaily")}>
+                  <W11Switch checked={s.wallpaperDaily} onChange={(v) => set("wallpaperDaily", v)} />
+                </W11Row>
+                <W11Row title={t("wpPoolDir")}>
+                  <input className="w11-input flex-1" readOnly value={s.wallpaperPoolDir} placeholder={t("wpPoolDir")} />
+                  <button type="button" className="w11-btn" onClick={() => void pickPoolDir()}>
+                    <FolderOpen size={13} /> {t("chooseFile")}
+                  </button>
+                </W11Row>
+              </W11Card>
+              {/* 批次E-6：多显示器独立壁纸（IDesktopWallpaper，对 Variable 之外的真实桌面生效） */}
+              {monitors !== null && monitors.length > 1 && (
+                <W11Card title={t("wpMonitors")} desc={t("wpMonitorHint")}>
+                  {monitors.map((m) => (
+                    <W11Row key={m.id} title={m.primary ? t("wpMonitorPrimary") : t("wpMonitorN")} sub={`${m.width}×${m.height}`}>
+                      <button type="button" className="w11-btn" onClick={() => void setMonitorWallpaper(m)}>
+                        {t("wpMonitorSet")}
+                      </button>
+                    </W11Row>
+                  ))}
+                  <div className="w11-cardbody">
+                    <button type="button" className="w11-btn" onClick={() => void applyAllMonitors()}>
+                      {t("wpMonitorAll")}
+                    </button>
+                  </div>
+                </W11Card>
+              )}
+              {/* 批次E-12：Wallpaper Engine 壁纸导入（本机 Steam 创意工坊/项目，零网络） */}
+              <W11Card title={t("wpEngineTitle")} desc={t("wpEngineDesc")}>
+                <div className="w11-cardbody">
+                  <div className="row gap8 wrap">
+                    <button type="button" className="w11-btn" onClick={() => void scanWpEngine("")}>
+                      <FolderOpen size={13} /> {t("wpEngineScan")}
+                    </button>
+                    <button type="button" className="w11-btn" onClick={() => void scanWpEnginePick()}>
+                      {t("wpEnginePickDir")}
+                    </button>
+                  </div>
+                  {wpEngine !== null && wpEngine.length === 0 && (
+                    <span className="dim small">{t("wpEngineEmpty")}</span>
+                  )}
+                  {wpEngine !== null && wpEngine.length > 0 && (
+                    <div className="wp-engine-list">
+                    {wpEngine.map((it) => (
+                      <button
+                        key={`${it.source}-${it.id}`}
+                        type="button"
+                        className="wp-engine-item"
+                        title={it.supported ? t("wpEngineImported") : t("wpEngineLocal")}
+                        onClick={() => {
+                          // 批次E-15：video/image 内嵌导入；web 内嵌 iframe 渲染；
+                          // scene 着色器型 → WebGL 本地渲染（实机反馈：全本地、不靠 WE 本体）；
+                          // 其余（application/合成 scene）→ 预览图静态壁纸，绝不报错黑屏
+                          if (it.kind === "web" && it.supported && it.file) {
+                            props.onChange({
+                              wallpaperMode: "web",
+                              customBg: { ...s.customBg, htmlPath: it.file },
+                            });
+                            pushToast("success", t("wpEngineImported"), it.title);
+                            return;
+                          }
+                          if (it.kind === "scene" && it.supported && it.file) {
+                            props.onChange({
+                              wallpaperMode: "shader",
+                              customBg: {
+                                ...s.customBg,
+                                shaderPath: it.file,
+                                imagePath: it.preview ?? "",
+                              },
+                            });
+                            pushToast("success", t("wpEngineImported"), `${it.title} · ${t("wpEngineShaderLocal")}`);
+                            return;
+                          }
+                          if (!it.supported || !it.file) {
+                            // application/合成 scene：无法在引擎内直接渲染，
+                            // 全部在本地打开 —— 用项目预览图作为活化壁纸（粒子 + 缓动，
+                            // 实机反馈：动态壁纸导入后变静态的根因修复）；preview.gif
+                            // 由后端优先返回，动图预览天然保留动态。
+                            if (it.preview) {
+                              props.onChange({
+                                wallpaperMode: "living",
+                                customBg: { ...s.customBg, type: "image", imagePath: it.preview },
+                              });
+                              pushToast("info", t("wpEngineLocal"), it.title);
+                            } else {
+                              pushToast("error", it.title, t("wpEngineNoPreview"));
+                            }
+                            return;
+                          }
+                          const isVideo = it.kind === "video";
+                          props.onChange({
+                            // WE image 型也走 living：静态图活化（光尘 + Ken Burns）
+                            wallpaperMode: isVideo ? "video" : "living",
+                            customBg: isVideo
+                              ? { ...s.customBg, type: "video", videoPath: it.file, playVideo: true }
+                              : { ...s.customBg, type: "image", imagePath: it.file },
+                          });
+                          pushToast("success", t("wpEngineImported"), it.title);
+                        }}
+                      >
+                        {it.preview ? (
+                          <img src={toAssetUrl(it.preview)} alt="" className="wp-engine-thumb" draggable={false} />
+                        ) : (
+                          <span className="wp-engine-thumb wp-engine-thumb-empty" aria-hidden />
+                        )}
+                        <span className="wp-engine-meta">
+                          <span className="wp-engine-name ellipsis">{it.title}</span>
+                          <span className="dim small">
+                            {it.kind}
+                            {it.supported ? "" : ` · ${t("wpEngineLocal")}`}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  )}
+                </div>
+              </W11Card>
+              <W11Card title={t("w11CardPerf")}>
+                {/* 批次E-6：Win+Tab 多窗口切换器（可选） */}
+                <W11Row title={t("winTabTitle")} sub={t("winTabHint")}>
+                  <W11Switch checked={s.winTabSwitcher} onChange={(v) => set("winTabSwitcher", v)} />
+                </W11Row>
+                <W11Row title={t("perfMode")}>
+                  <W11Select value={s.perfMode} onChange={(v) => set("perfMode", v as Settings["perfMode"])}>
+                    <option value="high">{t("perfHigh")}</option>
+                    <option value="balanced">{t("perfBalanced")}</option>
+                    <option value="eco">{t("perfEco")}</option>
+                    <option value="static">{t("perfStatic")}</option>
+                    <option value="auto">{t("perfAuto")}</option>
+                  </W11Select>
+                </W11Row>
+                <W11Row title={t("bgTier")} sub={s.bgTier === 0 ? `${t("autoTierNow")}: ${autoTierLabel ?? "…"}` : undefined}>
+                  <W11Select value={String(s.bgTier)} onChange={(v) => set("bgTier", Number(v))}>
+                    <option value="0">{t("bgTierAuto")}</option>
+                    {TIER_LABELS.map((_, i) => (
+                      <option key={i + 1} value={i + 1}>L{i + 1} · {(lang !== "en" ? TIER_LABELS : TIER_LABELS_EN)[i]}</option>
+                    ))}
+                  </W11Select>
+                </W11Row>
+              </W11Card>
+              <W11Card title={t("w11CardTools")}>
+                <div className="w11-cardbody">
+                  {/* 批次W-4：布局快照管理（列表/保存/恢复/重命名/删除/导出导入） */}
+                  <SnapshotManager />
+                  {/* 批次W-5：标签页化开关（可选开启） */}
+                  <VwmTabsToggle />
+                  {/* D-3：全域软件接管看门狗（策略/开关） */}
+                  <WatchdogToggle />
+                </div>
+              </W11Card>
+            </>
+          )}
+          {/* 未迁移页桥接：以下 30 个 tab 沿用既有 .field 版式，由 .w11-legacy 统一改造为 Win11 卡片行 */}
+          {tab !== "appearance" && (
+            <div className="w11-legacy">
+          {tab === "editor" && (
+            <>
+              <Slider label={t("editorWidth")} min={58} max={72} value={s.editorWidthPct} suffix="%" onChange={(v) => set("editorWidthPct", v)} />
+              <Field label={t("alignEditor")}>
+                <select value={s.editorAlign} onChange={(e) => set("editorAlign", e.target.value as Settings["editorAlign"])}>
+                  <option value="center">{t("posCenter")}</option>
+                  <option value="left">{t("posLeft")}</option>
+                  <option value="right">{t("posRight")}</option>
+                </select>
+              </Field>
+              <Field label={t("fontFamily")}>
+                <select value={s.fontFamily} onChange={(e) => set("fontFamily", e.target.value)}>
+                  {FONT_STACKS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </Field>
+              <Slider label={t("baseFontSize")} min={12} max={26} value={s.fontSize} suffix="px" onChange={(v) => set("fontSize", v)} />
+              <Slider label={t("lineHeight")} min={130} max={240} value={Math.round(s.lineHeight * 100)} suffix="%" onChange={(v) => set("lineHeight", v / 100)} />
+              <Slider label={t("autosaveDelay")} min={300} max={3000} step={100} value={s.autosaveDelayMs} suffix="ms" onChange={(v) => set("autosaveDelayMs", v)} />
+              <Check label={t("statusBar")} checked={s.showStatusBar} onChange={(v) => set("showStatusBar", v)} />
+            </>
+          )}
+
+          {tab === "mindmap" && (
+            <>
+              <Check label={t("gridDefault")} checked={s.mindDefaults.gridEnabled} onChange={(v) => setMind({ gridEnabled: v })} />
+              <Field label={t("gridMode")}>
+                <select value={s.mindDefaults.gridMode} onChange={(e) => setMind({ gridMode: e.target.value as import("../../lib/settings").GridMode })}>
+                  <option value="grid">{lang !== "en" ? "方格" : "Grid"}</option>
+                  <option value="dot">{lang !== "en" ? "点阵" : "Dots"}</option>
+                  <option value="iso">{lang !== "en" ? "等距" : "Isometric"}</option>
+                  <option value="none">{lang !== "en" ? "无" : "None"}</option>
+                </select>
+              </Field>
+              <Field label={`${t("gridMode")} · ${t("color")}`}>
+                <div className="row gap8">
+                  <input type="color" value={s.mindDefaults.gridColor} onChange={(e) => setMind({ gridColor: e.target.value })} />
+                  <input
+                    type="range" min={4} max={60} value={Math.round(s.mindDefaults.gridOpacity * 100)}
+                    onChange={(e) => setMind({ gridOpacity: Number(e.target.value) / 100 })}
+                  />
+                  <span className="dim small">{Math.round(s.mindDefaults.gridOpacity * 100)}%</span>
+                </div>
+              </Field>
+              <Check label={lang !== "en" ? "智能对齐辅助线" : "Smart alignment guides"} checked={s.mindDefaults.guidesEnabled} onChange={(v) => setMind({ guidesEnabled: v })} />
+              <Check label={t("snapDefault")} checked={s.mindDefaults.snapEnabled} onChange={(v) => setMind({ snapEnabled: v })} />
+              <Field label={t("defaultShape")}>
+                <select value={s.mindDefaults.defaultShape} onChange={(e) => setMind({ defaultShape: e.target.value as MindDefaults["defaultShape"] })}>
+                  {(["rect", "rounded", "circle", "triangle", "diamond", "pentagon", "hexagon", "heptagon"] as const).map((sh) => (
+                    <option key={sh} value={sh}>{t(`shape${sh.charAt(0).toUpperCase()}${sh.slice(1)}`)}</option>
+                  ))}
+                </select>
+              </Field>
+              <Slider label={t("resizeSensitivity")} min={4} max={24} value={s.mindDefaults.resizeSensitivity} suffix="px" onChange={(v) => setMind({ resizeSensitivity: v })} />
+              <Field label={t("edgeStyleDefault")}>
+                <select value={s.mindDefaults.edgeStyle} onChange={(e) => setMind({ edgeStyle: e.target.value as MindDefaults["edgeStyle"] })}>
+                  <option value="solid">{t("lsSolid")}</option>
+                  <option value="dashed">{t("lsDashed")}</option>
+                  <option value="dotted">{t("lsDotted")}</option>
+                </select>
+              </Field>
+              <Check label={t("edgeAnimDefault")} checked={s.mindDefaults.edgeAnim} onChange={(v) => setMind({ edgeAnim: v })} />
+              <Slider label={t("wasdSpeed")} min={200} max={1200} step={40} value={s.mindDefaults.wasdSpeed} suffix="px/s" onChange={(v) => setMind({ wasdSpeed: v })} />
+            </>
+          )}
+
+          {tab === "general" && (
+            <>
+              <Field label={t("language")}>
+                <select value={lang} onChange={(e) => { const v = e.target.value as Lang; setLang(v); }}>
+                  <option value="zh">简体中文</option>
+                  <option value="zh-TW">繁體中文</option>
+                  <option value="en">English</option>
+                </select>
+              </Field>
+              <Field label={t("bootAnim")}>
+                <select value={s.bootAnim} onChange={(e) => set("bootAnim", e.target.value as Settings["bootAnim"])}>
+                  <option value="full">{t("bootAnimFull")}</option>
+                  <option value="simple">{t("bootAnimSimple")}</option>
+                  <option value="none">{t("bootAnimNone")}</option>
+                </select>
+              </Field>
+              <p className="dim small" style={{ margin: "-6px 0 0" }}>{t("bootAnimHint")}</p>
+              <Check label={t("reduceMotion")} checked={s.reduceMotion} onChange={(v) => set("reduceMotion", v)} />
+              <Check label={t("safeMode")} checked={s.safeMode} onChange={(v) => set("safeMode", v)} />
+              <Slider label={t("uiZoom")} min={80} max={150} value={Math.round(s.uiZoom * 100)} suffix="%" onChange={(v) => set("uiZoom", v / 100)} />
+              <hr />
+              {/* A-4 声音设计：全局静音 + 音量（6 音合成，勿扰自动静音） */}
+              <Check label={t("soundMutedLabel")} checked={s.soundMuted} onChange={(v) => set("soundMuted", v)} />
+              <Slider label={t("soundVolumeLabel")} min={0} max={100} value={Math.round(s.soundVolume * 100)} suffix="%" onChange={(v) => set("soundVolume", v / 100)} />
+              <hr />
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() =>
+                  void askConfirm({ title: t("resetUiSettings"), body: t("resetUiConfirm"), danger: false }).then(async (ok) => {
+                    if (!ok) return;
+                    try {
+                      await ipc.resetUiSettings();
+                      props.onChange(structuredClone(DEFAULT_SETTINGS));
+                      pushToast("success", t("resetUiSettings"));
+                    } catch (e) {
+                      pushToast("error", t("resetUiSettings"), errMessage(e).message);
+                    }
+                  })
+                }
+              >
+                <RotateCcw size={13} /> {t("resetUiSettings")}
+              </button>
+            </>
+          )}
+
+          {/* 批次E（规格 4.7）：快捷键自定义 + 冲突检测 + 导入/导出 */}
+          {tab === "envs" && <EnvsTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "browsers" && <BrowsersTab />}
+          {/* AI-06 输入手感组：U-58/U-59、V-61…V-70 全部面板 */}
+          {tab === "inputFeel" && <InputFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {/* J 鼠标域 AI-J1：F601-F620 全量面板 */}
+          {tab === "mouseJ1" && <MouseJ1Tab />}
+          {/* I 通用域 AI-U3：F501-F550 全量面板 */}
+          {tab === "u3" && <U3Tab />}
+          {tab === "u1" && <U1Tab />}
+          {/* H 基础通用域 AI-H4：F351-F400 全量面板（创作者工具/效率件/系统状态/控件秩序） */}
+          {tab === "h4tools" && <H4Tab />}
+          {/* C 桌面体验域·后段 AI-D2：F093-F110 全量面板 */}
+          {tab === "desktopD2" && <DesktopD2Tab />}
+          {tab === "ambience" && <AmbienceTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-01 窗口手感组：Z-36…Z-42、M-01…M-09 面板 */}
+          {tab === "winFeel" && <WinFeelTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-12 兼容纵深组：Z-15…Z-21、M-37…M-45 面板 */}
+          {tab === "compat" && <CompatTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-13 性能与长跑组：Z-58/Z-59/Z-60/Z-61/Z-62 + M-46/M-48/N-35/M-53 面板 */}
+          {tab === "perf" && <PerfTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-14 开放接口组：U-37/38/39、Z-50…Z-56、N-27…N-30 面板 */}
+          {tab === "openhub" && <OpenHubTab />}
+          {/* AI-19 无障碍与本地化组：U-40/U-41、M-73…M-78 面板 */}
+          {tab === "a11y" && <A11yTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AI-15 开放工具组：M-55…M-63、V-81…V-90 面板 */}
+          {tab === "opentools" && <OpenToolsTab />}
+          {/* AI-16 启动与声音通知组：U-05/U-06/U-51/U-52、Z-43…Z-49、N-32 面板 */}
+          {tab === "sndnotify" && <SoundNotifyTab settings={props.settings} onPatch={props.onChange} />}
+          {/* AURORA-10000：AI-01~AI-05 批次，勿删（领域01 启动与品牌剧场 F00001~F00625 设置页） */}
+          {tab === "bootTheater" && <BootTheaterTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "bootchainHealth" && <BootchainHealthTab settings={props.settings} onPatch={props.onChange} />}
+          {/* UNREAL-X AI-02：电源状态剧场（族0011~0020），勿删 */}
+          {tab === "powerTheater" && <PowerTheaterTab settings={props.settings} onPatch={props.onChange} />}
+          {/* 阶段6/7：双域系统四组 UI（任务 57）+ 引擎组（任务 53/61UI/64UI），勿删 */}
+          {tab === "dualboot" && <DualBootTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "engine" && <EngineTab settings={props.settings} onPatch={props.onChange} />}
+          {tab === "files" && <FilesTab />}
+          {tab === "eco" && <EcoTab />}
+          {tab === "net" && <NetworkTab />}
+          {tab === "security" && <SecurityTab />}
+          {tab === "whitelist" && <WhitelistManagerTab />}
+          {tab === "vfaudit" && <AuditViewerTab />}
+          {tab === "exts" && <ExtensionsTab />}
+          {tab === "code" && (
+            <>
+              <CodeDeployCard />
+              <ToolchainsCard />
+            </>
+          )}
+          {tab === "profiles" && <ProfilesTab />}
+          {tab === "shortcuts" && (
+            <>
+              <p className="dim small">{t("scHint")}</p>
+              <div className="sc-list">
+                {SHORTCUT_ACTIONS.map((a) => {
+                  const value = binds[a.id] ?? a.accel;
+                  const bad = invalidBinds.includes(a.id) || conflicts.has(value);
+                  const label =
+                    a.labelKey === "scActLaunchN"
+                      ? t("scActLaunchN", { n: a.id.replace("launch", "") })
+                      : t(a.labelKey);
+                  return (
+                    <div key={a.id} className={`sc-row${bad ? " bad" : ""}`}>
+                      <span className="sc-label">{label}</span>
+                      <input
+                        type="text"
+                        className="sc-input"
+                        value={value}
+                        spellCheck={false}
+                        title={t("scInputHint")}
+                        onChange={(e) => {
+                          // 编辑态：以原始 accel 形式保存到草稿（如 ctrl+shift+k）
+                          setBindDraft({ ...binds, [a.id]: e.target.value.toLowerCase().replace(/\s+/g, "") });
+                        }}
+                      />
+                      {bad && <span className="sc-err">{conflicts.has(value) ? t("scConflict") : t("scInvalid")}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="row gap8 wrap" style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={conflicts.size > 0 || invalidBinds.length > 0}
+                  onClick={() => {
+                    // 归一化后应用（非法项已被禁用保存拦截）
+                    const next: Record<string, string> = {};
+                    for (const [k, v] of Object.entries(binds)) {
+                      const norm = normalizeAccel(v);
+                      if (norm) next[k] = norm;
+                    }
+                    applyBinds(next);
+                    pushToast("success", t("scTitle"), t("scApplied"));
+                  }}
+                >
+                  {t("scApply")}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    applyBinds({});
+                    pushToast("success", t("scTitle"), t("scReset"));
+                  }}
+                >
+                  {t("scResetDefaults")}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    void save({ defaultPath: "variable-shortcuts.json", filters: [{ name: "JSON", extensions: ["json"] }] })
+                      .then((p) => {
+                        if (typeof p !== "string") return;
+                        return ipc
+                          .writeTextFile(p, JSON.stringify(binds, null, 2))
+                          .then(() => pushToast("success", t("scExportOk"), p));
+                      })
+                      .catch((e) => pushToast("error", t("scTitle"), errMessage(e).message));
+                  }}
+                >
+                  {t("scExport")}
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    void open({ multiple: false, filters: [{ name: "JSON", extensions: ["json"] }] })
+                      .then(async (p) => {
+                        if (typeof p !== "string") return;
+                        const text = await ipc.readTextFile(p);
+                        const parsed = JSON.parse(text) as Record<string, string>;
+                        const next: Record<string, string> = {};
+                        for (const [k, v] of Object.entries(parsed)) {
+                          if (SHORTCUT_ACTIONS.some((a) => a.id === k)) {
+                            const norm = normalizeAccel(v);
+                            if (norm) next[k] = norm;
+                          }
+                        }
+                        const trial = findConflicts(
+                          SHORTCUT_ACTIONS.map((a) => ({ action: a.id, accel: next[a.id] ?? a.accel })),
+                        );
+                        if (trial.size > 0) {
+                          pushToast("error", t("scImportConflict"), [...trial].join(", "));
+                          return;
+                        }
+                        applyBinds(next);
+                        pushToast("success", t("scImportOk"), p);
+                      })
+                      .catch((e) => pushToast("error", t("scTitle"), errMessage(e).message));
+                  }}
+                >
+                  {t("scImport")}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* AI-05 键位纪律组扩展：Z-14 方案 / M-28 统计 / M-30 侧键 / M-31 启动槽 / M-33 回显 / M-35 滚轮 / M-36 预览 / V-94 体检 */}
+          {tab === "shortcuts" && (
+            <KeymapExtras settings={props.settings} onChange={props.onChange} binds={binds} applyBinds={applyBinds} />
+          )}
+
+          {tab === "storage" && <StorageRecoveryTab />}
+          {/* F-1 环境系统八节（sys-display…sys-access） */}
+          {tab.startsWith("sys-") && (
+            <SystemCenterTab section={tab as SysSection} settings={props.settings} onChange={props.onChange} />
+          )}
+          {/* AI-20 M-79：质量与诊断（错误聚合看板 + IPC 追踪说明） */}
+          {tab === "quality" && <QualityTab appVersion={aboutVersion} />}
+          {/* AURORA-10000：AI-16~AI-20 批次，勿删 */}
+          {tab === "aurora4" && <AuroraD4Tab />}
+          {tab === "persona" && <PersonaTab />}
+          {tab === "data" && (
+            <>
+              <Field label={t("dataDir")}>
+                <code className="path-code">{props.bootstrap?.dataDir ?? "…"}</code>
+              </Field>
+              <div className="row gap8">
+                <button type="button" className="btn ghost" onClick={() => void ipc.openPath(props.bootstrap?.dataDir ?? "").catch((e) => pushToast("error", t("openDataDir"), errMessage(e).message))}>
+                  <FolderOpen size={13} /> {t("openDataDir")}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await ipc.createBackup("manual");
+                      pushToast("success", t("backupOk"));
+                      setBackups(await ipc.listBackups());
+                    } catch (e) {
+                      pushToast("error", t("backupsTitle"), errMessage(e).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {t("createBackupNow")}
+                </button>
+              </div>
+              <h4>{t("backupsTitle")}</h4>
+              <div className="backup-list">
+                {backups.length === 0 && <p className="dim small">—</p>}
+                {backups.map((b) => (
+                  <div key={b.id} className={`backup-row ${b.status !== "ok" ? "missing" : ""}`}>
+                    <span className="ellipsis" title={b.fileName}>{b.fileName}</span>
+                    <span className="dim small">{formatBytes(b.size)}</span>
+                    <span className="flex-1" />
+                    {b.status !== "ok" ? (
+                      <span className="dim small">{t("backupMissing")}</span>
+                    ) : (
+                      <>
+                        <button type="button" className="icon-btn tiny" data-tip={t("export")} aria-label={t("export")}
+                          onClick={async () => {
+                            const p = await save({ defaultPath: b.fileName, filters: [{ name: "SQLite backup", extensions: ["db"] }] });
+                            if (typeof p !== "string") return;
+                            await ipc.exportBackup(b.fileName, p).then(() => pushToast("success", t("exportedOk"), p)).catch((e) => pushToast("error", t("export"), errMessage(e).message));
+                          }}
+                        ><Download size={13} /></button>
+                        <button type="button" className="icon-btn tiny" data-tip={t("restoreBackupAction")} aria-label={t("restoreBackupAction")}
+                          onClick={() =>
+                            void askConfirm({ title: t("restoreBackupAction"), body: t("restoreBackupConfirm"), danger: true }).then(async (ok) => {
+                              if (!ok) return;
+                              await ipc.restoreBackup(b.fileName)
+                                .then(() => pushToast("success", t("restoredRestart")))
+                                .catch((e) => pushToast("error", t("restoreBackupAction"), errMessage(e).message));
+                            })
+                          }
+                        ><RotateCcw size={13} /></button>
+                        <button type="button" className="icon-btn tiny danger-hover" data-tip={t("deleteBackupAction")} aria-label={t("deleteBackupAction")}
+                          onClick={() =>
+                            void askConfirm({ title: t("deleteBackupAction"), body: b.fileName, danger: true }).then(async (ok) => {
+                              if (!ok) return;
+                              await ipc.deleteBackup(b.fileName).then(async () => setBackups(await ipc.listBackups())).catch((e) => pushToast("error", t("deleteBackupAction"), errMessage(e).message));
+                            })
+                          }
+                        ><Trash2 size={13} /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <h4>{t("usbTitle")}</h4>
+              <p className="dim small">{usb ? (usb.portable ? t("usbModePortable") : t("usbModeLocal")) : "…"}</p>
+              <div className="row gap8">
+                <button type="button" className="btn ghost" disabled={!!usbProgress} onClick={() => void packToUsb()}>
+                  <HardDrive size={13} /> {t("usbPack")}
+                </button>
+                <button type="button" className="btn ghost" disabled={!!usbProgress} onClick={() => void verifyUsbBundle()}>
+                  <ShieldCheck size={13} /> {t("usbVerify")}
+                </button>
+              </div>
+              {usbProgress && (
+                <div className="usb-progress">
+                  <div className="usb-progress-bar">
+                    <span
+                      style={{
+                        width: `${usbProgress.total > 0 ? Math.min(100, Math.round((usbProgress.done / usbProgress.total) * 100)) : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="dim small">{usbPhaseLabel(usbProgress)}</p>
+                </div>
+              )}
+              {usbBad && usbBad.length === 0 && <p className="dim small">{t("usbVerifyOk")}</p>}
+              {usbBad && usbBad.length > 0 && (
+                <div className="usb-bad">
+                  <p className="small">{t("usbVerifyBad", { n: usbBad.length })}</p>
+                  {usbBad.slice(0, 8).map((c) => (
+                    <p key={c.path} className="dim small ellipsis" title={c.path}>
+                      {c.path} — {c.actual === "MISSING" ? t("usbFileMissing") : `${c.actual.slice(0, 12)}…`}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {/* 批次E-7：打包向导第 3 步 —— 打包完成后的自动校验结果 */}
+              {usbWizardDir && wizardVerify !== null && (
+                <div className="usb-bad">
+                  <p className="small">{t("usbWizardVerifyTitle", { dir: usbWizardDir })}</p>
+                  {wizardVerify.length === 0 || wizardVerify.every((c) => c.ok) ? (
+                    <p className="dim small">{t("usbVerifyOk")}（{wizardVerify.length}）</p>
+                  ) : (
+                    wizardVerify.filter((c) => !c.ok).slice(0, 8).map((c) => (
+                      <p key={c.path} className="dim small ellipsis" title={c.path}>
+                        {c.path} — {c.actual === "MISSING" ? t("usbFileMissing") : `${c.actual.slice(0, 12)}…`}
+                      </p>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* 批次E-7：隐私保险箱（AES-256-GCM；密钥仅驻留内存） */}
+              <h4>{t("vaultTitle")}</h4>
+              <p className="dim small">{t("vaultHint")}</p>
+              {vault === null ? (
+                <p className="dim small">…</p>
+              ) : !vault.initialized ? (
+                <>
+                  <p className="dim small">{t("vaultNotInit")}</p>
+                  <div className="row gap8 wrap">
+                    <input
+                      type="password" className="text-input" style={{ width: 160 }}
+                      placeholder={t("vaultNewPw")} value={vaultPw}
+                      onChange={(e) => setVaultPw(e.target.value)}
+                    />
+                    <input
+                      type="password" className="text-input" style={{ width: 160 }}
+                      placeholder={t("vaultNewPw2")} value={vaultPw2}
+                      onChange={(e) => setVaultPw2(e.target.value)}
+                    />
+                    <button type="button" className="btn primary" onClick={() => void initVault()}>
+                      <Lock size={13} /> {t("vaultInit")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="row gap8 wrap">
+                    <span className="dim small">
+                      {vault.unlocked
+                        ? t("vaultStateUnlocked", { n: vault.count, size: formatBytes(vault.bytes) })
+                        : t("vaultStateLocked", { n: vault.count })}
+                    </span>
+                    {vault.unlocked ? (
+                      <>
+                        <button type="button" className="btn ghost" onClick={() => void ipc.vaultLock().then(reloadVault).catch(() => {})}>
+                          <Lock size={13} /> {t("vaultLock")}
+                        </button>
+                        <button type="button" className="btn ghost" onClick={() => void importToVault()}>
+                          <Plus size={13} /> {t("vaultImport")}
+                        </button>
+                      </>
+                    ) : (
+                      <div className="row gap8">
+                        <input
+                          type="password" className="text-input" style={{ width: 160 }}
+                          placeholder={t("vaultPwInput")} value={vaultPw}
+                          onChange={(e) => setVaultPw(e.target.value)}
+                        />
+                        <button type="button" className="btn primary" onClick={() => void unlockVault()}>
+                          <Unlock size={13} /> {t("vaultUnlock")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {vault.unlocked && (
+                    <div className="backup-list">
+                      {vaultItems.length === 0 && <p className="dim small">—</p>}
+                      {vaultItems.map((it) => (
+                        <div key={it.name} className="backup-row">
+                          <span className="ellipsis" title={it.name}>{it.name}</span>
+                          <span className="dim small">{formatBytes(it.size)}</span>
+                          <span className="flex-1" />
+                          <button type="button" className="icon-btn tiny" data-tip={t("vaultExport")} aria-label={t("vaultExport")}
+                            onClick={() => void exportFromVault(it.name)}><Download size={13} /></button>
+                          <button type="button" className="icon-btn tiny danger-hover" data-tip={t("vaultDestroy")} aria-label={t("vaultDestroy")}
+                            onClick={() => void destroyFromVault(it.name)}><Trash2 size={13} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* 批次E-7：隐私自检报告 */}
+              <h4>{t("privacyAudit")}</h4>
+              <div className="row gap8">
+                <button type="button" className="btn ghost" disabled={busy} onClick={() => void runAudit()}>
+                  <ShieldCheck size={13} /> {t("privacyAuditRun")}
+                </button>
+              </div>
+              {audit !== null && (
+                <div className="audit-list">
+                  {audit.map((f) => (
+                    <p key={f.id} className={`small audit-row ${f.level}`}>
+                      {f.level === "pass" ? "✓" : "⚠"} {f.detail}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <p className="dim small offline-note">{t("offlineNote")} · v{props.bootstrap?.version ?? "?"} · schema v{props.bootstrap?.schemaVersion ?? "?"}{props.bootstrap?.portable ? " · portable" : ""}</p>
+            </>
+          )}
+
+          {/* 批次E-8：关于页 —— 版本信息 + 隐私承诺 */}
+          {tab === "about" && (
+            <>
+              <h4>{t("aboutVariable")}</h4>
+              <p className="dim small" style={{ whiteSpace: "pre-line" }}>{t("aboutBody")}</p>
+              <div className="backup-list" style={{ marginTop: 12 }}>
+                <div className="backup-row">
+                  <span className="dim small">{t("version")}</span>
+                  <span className="flex-1" />
+                  <span className="small">v{aboutVersion}</span>
+                </div>
+                <div className="backup-row">
+                  <span className="dim small">Tauri / React</span>
+                  <span className="flex-1" />
+                  <span className="small">2.x / 18</span>
+                </div>
+                <div className="backup-row">
+                  <span className="dim small">Schema</span>
+                  <span className="flex-1" />
+                  <span className="small">v{props.bootstrap?.schemaVersion ?? "?"}{props.bootstrap?.portable ? " · portable" : ""}</span>
+                </div>
+              </div>
+              <p className="dim small offline-note" style={{ marginTop: 12 }}>{t("offlineNote")}</p>
+
+              {/* D-5：接管边界诚实清单（做不到的事，与 README 21.5 同源） */}
+              <h4 style={{ marginTop: 16 }}>{t("bndTitle")}</h4>
+              <ul className="backup-list" style={{ flexDirection: "column", gap: 6 }}>
+                {(["bnd1", "bnd2", "bnd3", "bnd4", "bnd5"] as const).map((k) => (
+                  <li key={k} className="small" style={{ display: "flex", gap: 8 }}>
+                    <span aria-hidden>·</span>
+                    <span className="dim" style={{ whiteSpace: "pre-line" }}>{t(k)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="dim small" style={{ marginTop: 8 }}>{t("bndNote")}</p>
+
+              {/* AI-20 V-99：依赖诚实声明页 v2 —— 外部依赖节（检测当前状态） */}
+              <div style={{ marginTop: 8 }}>
+                <DependencyHonesty />
+              </div>
+
+              {/* AI-20 V-93 / V-100：偏好搬家入口 + 毕业页入口 */}
+              <div className="row gap8" style={{ marginTop: 12 }}>
+                <PrefsImportEntry settings={props.settings} onPatch={props.onChange} />
+                <GraduationEntry settings={props.settings} />
+              </div>
+            </>
+          )}
+              </div>
+            )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ==================== Windows 11 设置外壳组件（.w11-* 命名空间） ====================
+ * 仅用于已迁移到 Win11 版式的设置页（样板阶段：外观页）。
+ * 与既有 Field / Slider / Check 并存，改这套不会碰到未迁移页。
+ */
+
+/** Win11 卡片（分组容器）。 */
+function W11Card(props: { title: string; desc?: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <section className="w11-card">
+      <div className="w11-cardhead">
+        <h3>{props.title}</h3>
+        {props.desc && <p>{props.desc}</p>}
+      </div>
+      {props.children}
+    </section>
+  );
+}
+
+/** Win11 设置行：左文案（标题 + 副标题）/ 右控件。 */
+function W11Row(props: {
+  title: string;
+  sub?: string;
+  stack?: boolean;
+  children?: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <div className={`w11-row${props.stack ? " w11-row-stack" : ""}`}>
+      <span className="w11-rowtext">
+        <span className="w11-rowtitle">{props.title}</span>
+        {props.sub !== undefined && <span className="w11-rowsub">{props.sub}</span>}
+      </span>
+      {props.children !== undefined && <span className="w11-rowctl">{props.children}</span>}
+    </div>
+  );
+}
+
+/** Win11 下拉选择：原生 select + 自绘 chevron（保留原生键盘/无障碍行为）。 */
+function W11Select(props: {
+  value: string;
+  wide?: boolean;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <span className={`w11-select${props.wide ? " w11-select-wide" : ""}`}>
+      <select value={props.value} onChange={(e) => props.onChange(e.target.value)}>{props.children}</select>
+      <ChevronDown className="w11-chev" aria-hidden />
+    </span>
+  );
+}
+
+/** Win11 开关（40×20，圆点 12；hover 变宽、active 更宽）。 */
+function W11Switch(props: { checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      className="w11-switch"
+      aria-checked={props.checked}
+      disabled={props.disabled}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="knob" />
+    </button>
+  );
+}
+
+/** Win11 滑块行（与原 Slider 行为等价：值经 clamp 收敛到 [min,max]）。 */
+function W11Slider(props: {
+  title: string; min: number; max: number; step?: number; value: number; suffix?: string;
+  onChange: (v: number) => void;
+}): React.ReactElement {
+  const v = clamp(props.value, props.min, props.max);
+  return (
+    <W11Row title={props.title} sub={`${v}${props.suffix ?? ""}`}>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step ?? 1}
+        value={v}
+        style={sliderFillStyle(v, props.min, props.max)}
+        onChange={(e) => props.onChange(Number(e.target.value))}
+      />
+    </W11Row>
+  );
+}
+
+function Field(props: { label: string; children: React.ReactNode }): React.ReactElement {
+  return (
+    <label className="field">
+      <span className="field-label">{props.label}</span>
+      {props.children}
+    </label>
+  );
+}
+
+/**
+ * 滑块「已填充比例」变量：按 20px 圆点半径补偿端点，使强调色进度正好停在圆点中心。
+ * 仅在 .w11-shell 内生效（win11-settings.css 读取 --w11-fill），其它场景零影响。
+ */
+function sliderFillStyle(value: number, min: number, max: number): React.CSSProperties {
+  const pct = max > min ? ((clamp(value, min, max) - min) / (max - min)) * 100 : 0;
+  return { "--w11-fill": `calc(${pct.toFixed(3)}% + ${(10 - pct * 0.2).toFixed(2)}px)` } as React.CSSProperties;
+}
+
+function Slider(props: { label: string; min: number; max: number; step?: number; value: number; suffix?: string; onChange: (v: number) => void }): React.ReactElement {
+  return (
+    <Field label={`${props.label}: ${props.value}${props.suffix ?? ""}`}>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step ?? 1}
+        value={clamp(props.value, props.min, props.max)}
+        style={sliderFillStyle(props.value, props.min, props.max)}
+        onChange={(e) => props.onChange(Number(e.target.value))}
+      />
+    </Field>
+  );
+}
+
+function Check(props: { label: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }): React.ReactElement {
+  return (
+    <label className={`check-line ${props.disabled ? "disabled" : ""}`}>
+      <input type="checkbox" checked={props.checked} disabled={props.disabled} onChange={(e) => props.onChange(e.target.checked)} />
+      {props.label}
+    </label>
+  );
+}
+
+/** AI-03 M-12：时钟多时区编辑（≤3 个 IANA 名；非法名保存时如实过滤，零网络）。 */
+function Ai03ClockZones(props: { zones: string[]; win11?: boolean; set: <K extends keyof Settings>(key: K, value: Settings[K]) => void }): React.ReactElement {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const full = props.zones.length >= 3;
+  const add = (): void => {
+    const next = sanitizeClockZones([...props.zones, draft.trim()]);
+    if (next.length === props.zones.length) {
+      pushToast("error", t("setClockZones"), t("scInvalid"));
+      return;
+    }
+    props.set("clockZones", next);
+    setDraft("");
+  };
+  const body = (
+    <>
+      <div className="row gap8 wrap">
+        {props.zones.map((z) => (
+          <span key={z} className="row gap4 chip">
+            {z}
+            <button
+              type="button" className="icon-btn tiny" aria-label={`× ${z}`}
+              onClick={() => props.set("clockZones", props.zones.filter((x) => x !== z))}
+            >×</button>
+          </span>
+        ))}
+        {props.zones.length === 0 && <span className="dim small">{t("tbClockNoZones")}</span>}
+      </div>
+      <div className="row gap8">
+        <input
+          className={props.win11 ? "w11-input flex-1" : "text-input flex-1"}
+          value={draft}
+          placeholder="Asia/Shanghai"
+          disabled={full}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) add(); }}
+        />
+        <button type="button" className={props.win11 ? "w11-btn" : "btn ghost"} disabled={full || !draft.trim()} onClick={add}>
+          {t("setClockZoneAdd")}
+        </button>
+      </div>
+    </>
+  );
+  if (props.win11) {
+    return (
+      <W11Card title={t("setClockZones")} desc={t("setClockZonesHint")}>
+        <div className="w11-cardbody">{body}</div>
+      </W11Card>
+    );
+  }
+  return (
+    <Field label={t("setClockZones")}>
+      <div className="col gap4">
+        {body}
+        <span className="dim small">{t("setClockZonesHint")}</span>
+      </div>
+    </Field>
+  );
+}
+
+/** AI-03 M-15：任务栏空区右键菜单编辑（仅注册表内安全项；覆盖持久化 localStorage）。 */
+function Ai03BlankMenu(props: { win11?: boolean }): React.ReactElement {
+  const { t } = useI18n();
+  const [menuOverride, setMenuOverride] = useState<TaskbarMenuOverride>(() => loadMenuOverride());
+  const order = menuOverride.order;
+  const rows = TASKBAR_MENU_REGISTRY.map((entry) => {
+    const visible = !menuOverride.hidden.includes(entry.id);
+    const first = order[0] === entry.id;
+    const last = order[order.length - 1] === entry.id;
+    const toggle = (v: boolean): void => {
+      const hidden = menuOverride.hidden.filter((x) => x !== entry.id);
+      const next = v
+        ? { order: [...order, entry.id], hidden }
+        : { order: order.filter((x) => x !== entry.id), hidden: [...hidden, entry.id] };
+      const nv: TaskbarMenuOverride = { ...next };
+      saveMenuOverride(nv);
+      setMenuOverride(nv);
+    };
+    /** delta = -1 上移 / +1 下移；越界静默（与原分支判断等价）。 */
+    const move = (delta: number): void => {
+      const nextOrder = [...order];
+      const i = nextOrder.indexOf(entry.id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= nextOrder.length) return;
+      const cur = nextOrder[i]!;
+      nextOrder[i] = nextOrder[j]!;
+      nextOrder[j] = cur;
+      const nv = { ...menuOverride, order: nextOrder };
+      saveMenuOverride(nv);
+      setMenuOverride(nv);
+    };
+    if (props.win11) {
+      return (
+        <W11Row key={entry.id} title={t(entry.labelKey)}>
+          <W11Switch checked={visible} onChange={toggle} />
+          <span className="row gap4">
+            <button type="button" className="icon-btn tiny" aria-label="↑" disabled={first || !visible} onClick={() => move(-1)}>↑</button>
+            <button type="button" className="icon-btn tiny" aria-label="↓" disabled={last || !visible} onClick={() => move(1)}>↓</button>
+          </span>
+        </W11Row>
+      );
+    }
+    return (
+      <div key={entry.id} className="row gap8" style={{ alignItems: "center" }}>
+        <Check label={t(entry.labelKey)} checked={visible} onChange={toggle} />
+        {visible && (
+          <span className="row gap4">
+            <button type="button" className="icon-btn tiny" aria-label="↑" disabled={first} onClick={() => move(-1)}>↑</button>
+            <button type="button" className="icon-btn tiny" aria-label="↓" disabled={last} onClick={() => move(1)}>↓</button>
+          </span>
+        )}
+      </div>
+    );
+  });
+  const reset = (
+    <button
+      type="button"
+      className={props.win11 ? "w11-btn" : "btn ghost"}
+      onClick={() => {
+        clearMenuOverride();
+        setMenuOverride(loadMenuOverride());
+      }}
+    >
+      {t("tbMenuReset")}
+    </button>
+  );
+  if (props.win11) {
+    return (
+      <W11Card title={t("tbMenuTitle")} desc={t("tbMenuHint")}>
+        {rows}
+        <div className="w11-cardbody">{reset}</div>
+      </W11Card>
+    );
+  }
+  return (
+    <Field label={t("tbMenuTitle")}>
+      <div className="col gap4">
+        <span className="dim small">{t("tbMenuHint")}</span>
+        {rows}
+        {reset}
+      </div>
+    </Field>
+  );
+}
+
+/**
+ * 批次B-5/B-6（M1 执行档）：模板套用 / 重定向表编辑 / 干跑验证 / 残留扫描。
+ * 自包含数据加载（仅本标签激活时挂载），不触碰 SettingsModal 的 hook 顺序敏感区。
+ */
+type VarRow = { k: string; v: string };
+
+function ProfilesTab(): React.ReactElement {
+  const { t } = useI18n();
+  const [apps, setApps] = useState<ThirdApp[]>([]);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<ProfileTemplateDto[]>([]);
+  const [tplId, setTplId] = useState("");
+  const [redirect, setRedirect] = useState<VarRow[]>([]);
+  const [envSet, setEnvSet] = useState<VarRow[]>([]);
+  const [sensitive, setSensitive] = useState(false);
+  const [dry, setDry] = useState<ProfileDryRun | null>(null);
+  const [residue, setResidue] = useState<ResidueEntry[] | null>(null);
+  const [residueIgnored, setResidueIgnored] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const list = await ipc.tpList();
+        setApps(list);
+      } catch (e) {
+        pushToast("error", t("pfTitle"), errMessage(e).message);
+      }
+      try {
+        setTemplates(await ipc.profileTemplates());
+      } catch {
+        /* 模板加载失败不阻断（旧后端兼容） */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sel = apps.find((a) => a.id === selId) ?? null;
+
+  function selectApp(a: ThirdApp): void {
+    setSelId(a.id);
+    setDirty(false);
+    setDry(null);
+    setRedirect(Object.entries(a.profile.envRedirect).map(([k, v]) => ({ k, v })));
+    setEnvSet(Object.entries(a.profile.envSet).map(([k, v]) => ({ k, v })));
+    setSensitive(a.profile.sensitive);
+    // 模板识别：重定向表逐项一致才算套用了该模板
+    const match = templates.find(
+      (tpl) =>
+        Object.keys(tpl.envRedirect).length === Object.keys(a.profile.envRedirect).length &&
+        Object.entries(tpl.envRedirect).every(([k, v]) => a.profile.envRedirect[k] === v),
+    );
+    setTplId(match?.id ?? "");
+  }
+
+  function editRows(rows: VarRow[], setRows: (r: VarRow[]) => void, index: number, patch: Partial<VarRow>): void {
+    setRows(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDirty(true);
+  }
+
+  async function saveProfile(): Promise<void> {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const toMap = (rows: VarRow[]) =>
+        Object.fromEntries(rows.filter((r) => r.k.trim() !== "").map((r) => [r.k.trim(), r.v]));
+      const updated = await ipc.profileSet(sel.id, toMap(redirect), toMap(envSet), sensitive);
+      setApps((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+      setDirty(false);
+      pushToast("success", t("pfSaved"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyTemplate(): Promise<void> {
+    if (!sel || !tplId) return;
+    setBusy(true);
+    try {
+      const updated = await ipc.profileApply(sel.id, tplId);
+      setApps((cur) => cur.map((a) => (a.id === updated.id ? updated : a)));
+      selectApp(updated);
+      pushToast("success", t("pfApplied"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dryrun(): Promise<void> {
+    if (!sel) return;
+    try {
+      setDry(await ipc.profileDryrun(sel.id));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    }
+  }
+
+  // E-1：默认值推断——通用重定向建议回填编辑表（不自动保存，用户确认后点保存）
+  async function inferProfile(): Promise<void> {
+    if (!sel) return;
+    try {
+      const inf = await ipc.profileInfer(sel.id);
+      setRedirect(Object.entries(inf.envRedirect).map(([k, v]) => ({ k, v })));
+      setDirty(true);
+      pushToast("info", t("pfTitle"), inf.note);
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    }
+  }
+
+  // E-1：安装模式执行档
+  const [instSessions, setInstSessions] = useState<InstallSession[]>([]);
+  const [instReport, setInstReport] = useState<InstallReport | null>(null);
+  const [instEntry, setInstEntry] = useState<string>("");
+  const [instName, setInstName] = useState<string>("");
+  const [installerPath, setInstallerPath] = useState<string>("");
+
+  async function pickInstaller(): Promise<void> {
+    const file = await open({ multiple: false, filters: [{ name: "Installer", extensions: ["exe", "msi", "bat", "cmd"] }] });
+    if (typeof file === "string") setInstallerPath(file);
+  }
+
+  async function launchInstaller(): Promise<void> {
+    if (!installerPath.trim()) return;
+    setBusy(true);
+    try {
+      await ipc.installModeLaunch(installerPath.trim(), instName.trim() || null);
+      setInstSessions(await ipc.installList());
+      pushToast("success", t("pfInstLaunched"));
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function analyzeInstall(id: string): Promise<void> {
+    setBusy(true);
+    try {
+      const rep = await ipc.installAnalyze(id);
+      setInstReport(rep);
+      setInstEntry(rep.exeCandidates[0] ?? "");
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitInstall(id: string): Promise<void> {
+    if (!instName.trim()) { pushToast("error", t("pfInstTitle"), t("pfInstNameNeeded")); return; }
+    setBusy(true);
+    try {
+      const app = await ipc.installCommit(id, instName.trim(), instEntry || null);
+      setApps((cur) => (cur.some((a) => a.id === app.id) ? cur : [...cur, app]));
+      setInstSessions(await ipc.installList());
+      setInstReport(null);
+      pushToast("success", t("pfInstCommitted").replace("{n}", app.name));
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discardInstall(id: string): Promise<void> {
+    const ok = await askConfirm({ title: t("pfInstTitle"), body: t("pfInstDiscardConfirm") });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await ipc.installDiscard(id);
+      setInstSessions(await ipc.installList());
+      setInstReport(null);
+    } catch (e) {
+      pushToast("error", t("pfInstTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void ipc.installList().then(setInstSessions).catch(() => { /* 旧后端兼容 */ });
+  }, []);
+
+  async function scanResidue(): Promise<void> {
+    setBusy(true);
+    try {
+      setResidue(await ipc.residueScan());
+      setResidueIgnored([]);
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // E-2：逐条处理——清理 / 加入白名单 / 本次忽略
+  async function resolveResidue(path: string): Promise<void> {
+    const ok = await askConfirm({ title: t("pfResidueClean1"), body: t("pfResidueCleanConfirm"), danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await ipc.residueResolve(path);
+      setResidue((cur) => (cur ? cur.filter((r) => r.path !== path) : cur));
+      pushToast("success", t("pfResidueCleaned"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function whitelistResidue(path: string): Promise<void> {
+    setBusy(true);
+    try {
+      await ipc.residueWhitelistAdd(path);
+      setResidue((cur) => (cur ? cur.filter((r) => r.path !== path) : cur));
+      pushToast("success", t("pfResidueWhitelisted"));
+    } catch (e) {
+      pushToast("error", t("pfTitle"), errMessage(e).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const varTable = (rows: VarRow[], setRows: (r: VarRow[]) => void, ariaLabel: string) => (
+    <div className="backup-list">
+      {rows.map((r, i) => (
+        <div key={i} className="backup-row" style={{ gap: 6 }}>
+          <input
+            className="small"
+            style={{ width: "38%" }}
+            aria-label={`${ariaLabel} ${t("pfKey")}`}
+            value={r.k}
+            onChange={(e) => editRows(rows, setRows, i, { k: e.target.value })}
+          />
+          <input
+            className="small flex-1"
+            aria-label={`${ariaLabel} ${t("pfValue")}`}
+            value={r.v}
+            onChange={(e) => editRows(rows, setRows, i, { v: e.target.value })}
+          />
+          <button
+            type="button"
+            className="icon-btn tiny danger-hover"
+            aria-label={t("pfKey") + " ✕"}
+            onClick={() => {
+              setRows(rows.filter((_, j) => j !== i));
+              setDirty(true);
+            }}
+          >✕</button>
+        </div>
+      ))}
+      <div className="row gap8" style={{ marginTop: 6 }}>
+        <button type="button" className="btn ghost" onClick={() => { setRows([...rows, { k: "", v: "" }]); setDirty(true); }}>
+          + {t("pfAddVar")}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      <h4>{t("pfTitle")}</h4>
+      <p className="dim small">{t("pfHint")}</p>
+      <div className="row gap8" style={{ alignItems: "flex-start" }}>
+        <div className="backup-list" style={{ width: 240, flexShrink: 0 }}>
+          {apps.length === 0 && <p className="dim small">{t("pfNoApps")}</p>}
+          {apps.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`backup-row ${a.id === selId ? "on" : ""}`}
+              style={{ textAlign: "left", cursor: "pointer" }}
+              onClick={() => selectApp(a)}
+            >
+              <span className="ellipsis">{a.icon ? <img src={a.icon} width={14} height={14} alt="" style={{ verticalAlign: -2, marginRight: 6 }} /> : null}{a.name}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" style={{ minWidth: 0 }}>
+          {!sel && <p className="dim small">{t("pfSelectApp")}</p>}
+          {sel && (
+            <>
+              {sel.path.toLowerCase().endsWith(".lnk") && <p className="dim small">⚠ {t("pfLnkNote")}</p>}
+              <Field label={t("pfTemplate")}>
+                <div className="row gap8">
+                  <select value={tplId} onChange={(e) => setTplId(e.target.value)} style={{ minWidth: 0, flex: 1 }}>
+                    <option value="">{t("pfTemplateCustom")}</option>
+                    {templates.map((tpl) => (
+                      <option key={tpl.id} value={tpl.id}>{tpl.name}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn ghost" disabled={busy || !tplId} onClick={() => void applyTemplate()}>
+                    {t("pfApply")}
+                  </button>
+                </div>
+              </Field>
+              <Check label={t("pfSensitive")} checked={sensitive} onChange={(v) => { setSensitive(v); setDirty(true); }} />
+              <h4>{t("pfRedirect")}</h4>
+              {varTable(redirect, setRedirect, t("pfRedirect"))}
+              <h4>{t("pfEnvSet")}</h4>
+              {varTable(envSet, setEnvSet, t("pfEnvSet"))}
+              <div className="row gap8" style={{ marginTop: 10 }}>
+                <button type="button" className="btn primary" disabled={busy || !dirty} onClick={() => void saveProfile()}>
+                  {t("pfSave")}
+                </button>
+                <button type="button" className="btn ghost" disabled={busy} onClick={() => void inferProfile()}>
+                  {t("pfInfer")}
+                </button>
+                <button type="button" className="btn ghost" disabled={busy} onClick={() => void dryrun()}>
+                  {t("pfDryrun")}
+                </button>
+              </div>
+              {dry && (
+                <div className="backup-list" style={{ marginTop: 10 }}>
+                  <p className="dim small">{t("pfDryrunTitle")}</p>
+                  {Object.entries(dry.envRedirect).map(([k, v]) => (
+                    <div key={k} className="backup-row">
+                      <code className="small">{k}</code>
+                      <span className="flex-1" />
+                      <code className="small dim">{v}</code>
+                    </div>
+                  ))}
+                  {Object.keys(dry.envRedirect).length === 0 && <p className="dim small">—</p>}
+                </div>
+              )}
+            </>
+          )}
+          {/* E-1：安装模式执行档——安装器落点重定向暂存区 → 落点分析 → 归位容器 */}
+          <h4 style={{ marginTop: 14 }}>{t("pfInstTitle")}</h4>
+          <p className="dim small">{t("pfInstHint")}</p>
+          <div className="row gap8">
+            <button type="button" className="btn ghost" onClick={() => void pickInstaller()}>…</button>
+            <input
+              className="small flex-1"
+              placeholder={t("pfInstPathPh")}
+              value={installerPath}
+              onChange={(e) => setInstallerPath(e.target.value)}
+            />
+            <input
+              className="small"
+              style={{ width: 130 }}
+              placeholder={t("pfInstNamePh")}
+              value={instName}
+              onChange={(e) => setInstName(e.target.value)}
+            />
+            <button type="button" className="btn primary" disabled={busy || !installerPath.trim()} onClick={() => void launchInstaller()}>
+              {t("pfInstLaunch")}
+            </button>
+          </div>
+          {instSessions.length > 0 && (
+            <div className="backup-list" style={{ marginTop: 8 }}>
+              {instSessions.map((s) => (
+                <div key={s.id} className="backup-row" style={{ gap: 6 }}>
+                  <span className="ellipsis small" title={s.exe}>{s.name}</span>
+                  <span className="flex-1" />
+                  <button type="button" className="btn ghost tiny" disabled={busy} onClick={() => void analyzeInstall(s.id)}>
+                    {t("pfInstAnalyze")}
+                  </button>
+                  <button type="button" className="btn ghost tiny" disabled={busy || !instReport || instReport.id !== s.id} onClick={() => void commitInstall(s.id)}>
+                    {t("pfInstCommit")}
+                  </button>
+                  <button type="button" className="btn ghost tiny danger-hover" disabled={busy} onClick={() => void discardInstall(s.id)}>
+                    {t("pfInstDiscard")}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {instReport && (
+            instReport.empty ? (
+              <p className="dim small" style={{ marginTop: 8 }}>{t("pfInstEmpty")}</p>
+            ) : (
+              <div className="backup-list" style={{ marginTop: 8 }}>
+                {instReport.areas.map((a) => (
+                  <div key={a.area} className="backup-row">
+                    <code className="small">{a.area}</code>
+                    <span className="flex-1" />
+                    <span className="dim small">{a.files} · {formatBytes(a.bytes)}</span>
+                  </div>
+                ))}
+                {instReport.exeCandidates.length > 0 && (
+                  <div className="row gap8" style={{ marginTop: 6 }}>
+                    <span className="dim small">{t("pfInstEntry")}</span>
+                    <select value={instEntry} onChange={(e) => setInstEntry(e.target.value)} style={{ minWidth: 0, flex: 1 }}>
+                      {instReport.exeCandidates.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+          <h4 style={{ marginTop: 14 }}>{t("pfResidueScan")}</h4>
+          <div className="row gap8">
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => void scanResidue()}>
+              <ShieldCheck size={13} /> {t("pfResidueScan")}
+            </button>
+          </div>
+          {residue !== null && (
+            residue.length === 0 ? (
+              <p className="dim small" style={{ marginTop: 8 }}>{t("pfResidueClean")}</p>
+            ) : (
+              <>
+                <p className="dim small" style={{ marginTop: 8 }}>{t("pfResidueFound").replace("{n}", String(residue.length))}</p>
+                <div className="backup-list">
+                  {residue.filter((r) => !residueIgnored.includes(r.path)).map((r) => (
+                    <div key={r.path} className="backup-row">
+                      <span className="ellipsis small" title={r.path}>{r.path}</span>
+                      <span className="dim small">{formatBytes(r.size)}</span>
+                      <button type="button" className="icon-btn tiny danger-hover" aria-label={t("pfResidueClean")} onClick={() => void resolveResidue(r.path)}>✕</button>
+                      <button type="button" className="icon-btn tiny" aria-label={t("pfResidueWhitelist")} onClick={() => void whitelistResidue(r.path)}>✓</button>
+                      <button type="button" className="icon-btn tiny" aria-label={t("pfResidueIgnore")} onClick={() => setResidueIgnored((cur) => [...cur, r.path])}>—</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

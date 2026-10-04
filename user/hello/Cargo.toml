@@ -1,0 +1,17 @@
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2021"
+
+# 任务14 · 用户态 hello：独立 crate，与内核零链接（总案步骤5 验收口径）。
+# 裸 ELF：入口 _start（0x400000），栈由内核在进入 ring3 前映射好。
+# ABI：rax=号，rdi/rsi/rdx=参；内核号表 SYS_WRITE=2 / SYS_EXIT=0。
+
+[[bin]]
+name = "hello"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+strip = true

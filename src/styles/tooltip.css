@@ -1,0 +1,65 @@
+/* ============================================================
+ * AI-20 质量门禁与收官组 — M-88 全局 Tooltip 规范（tooltip.css）
+ *
+ * 三统一：样式令牌化（--tooltip-*）、延迟统一引用 M-71 --hover-delay、
+ * 快捷键后缀圆括号式（tooltip.ts tooltipLabel 生成，如「复制 (Ctrl+C)」）。
+ * 用法：任意元素加 data-tip="文本" 即获得规范 tooltip；
+ * 超长文本由 tooltip.ts truncateTooltip 截断，完整内容放 data-tip-full。
+ * ============================================================ */
+
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  max-width: var(--tooltip-maxw);
+  padding: var(--tooltip-pad);
+  border-radius: var(--tooltip-r);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  border: var(--tooltip-border);
+  font-size: var(--tooltip-fs);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 9000;
+  box-shadow: var(--elev-2);
+  /* M-88：延迟统一引用 M-71 悬停延迟档（禁各处自定） */
+  transition:
+    opacity calc(var(--dur-2) * var(--motion-speed, 1)) var(--ease-standard) var(--hover-delay),
+    visibility 0s linear var(--hover-delay);
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* 超长内容：截断显示 + 完整内容（data-tip-full）第二行展开 */
+[data-tip][data-tip-full]:hover::after,
+[data-tip][data-tip-full]:focus-visible::after {
+  content: attr(data-tip-full);
+  white-space: normal;
+  width: max-content;
+  max-width: var(--tooltip-maxw);
+}
+
+/* HC 主题：阴影已由 tokens 降级为描边，无额外处理 */
+
+/* reduce-motion：只保留淡入，无位移 */
+[data-reduce-motion="true"] [data-tip]::after {
+  transform: translateX(-50%);
+  transition:
+    opacity var(--dur-1) linear var(--hover-delay),
+    visibility 0s linear var(--hover-delay);
+}

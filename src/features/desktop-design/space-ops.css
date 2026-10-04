@@ -1,0 +1,90 @@
+/* UNREAL-X-15000 · AI-06 空间管理面板样式（族0051~0060）。全部引用令牌，禁裸值（audit 口径）。 */
+
+.so-launcher {
+  position: fixed;
+  left: var(--sp-2);
+  bottom: calc(var(--taskbar-h, 48px) + var(--sp-2));
+  z-index: var(--z-overlay, 900);
+  display: grid;
+  place-items: center;
+  width: var(--ctl-touch);
+  height: var(--ctl-touch);
+  border-radius: var(--radius, 8px);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  transition: box-shadow var(--dur-2, 120ms) var(--ease-standard, ease);
+}
+.so-launcher:hover { box-shadow: var(--elev-hover); color: var(--text-primary); }
+.so-launcher--on { color: var(--accent); }
+.so-launcher:focus-visible { outline: var(--focus-ring); }
+
+.so-panel {
+  position: fixed;
+  left: var(--sp-2);
+  bottom: calc(var(--taskbar-h, 48px) + var(--ctl-touch, 44px) + var(--sp-3));
+  z-index: var(--z-overlay, 900);
+  width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border-radius: var(--r-card, 12px);
+  background: var(--bg-raised);
+  box-shadow: var(--elev-4);
+  border: 1px solid var(--border);
+}
+
+.so-head { display: flex; align-items: center; gap: var(--sp-1); color: var(--text-primary); }
+.so-title { font-size: var(--fs-13); font-weight: 600; }
+.so-group { display: flex; flex-direction: column; gap: var(--sp-1); }
+.so-group h5 { margin: 0; font-size: var(--fs-12); color: var(--text-secondary); }
+.so-hint { margin: 0; font-size: var(--fs-12); line-height: var(--w2-lh, 1.6); color: var(--text-secondary); }
+
+.so-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.so-chip {
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-12);
+  border-radius: var(--radius, 8px);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.so-chip:hover { color: var(--text-primary); }
+.so-chip--on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.so-chip:focus-visible { outline: var(--focus-ring); }
+
+.so-minimap {
+  position: relative;
+  width: 180px;
+  height: 104px;
+  border-radius: var(--radius, 8px);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.so-mm-cell {
+  position: absolute;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+
+.so-slider-row { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-secondary); }
+.so-slider-row input { flex: 1; }
+.so-tier { font-size: var(--fs-12); color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.so-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+/* 高对比主题：材质降级为纯色 + 对比描边（HC 红线）。 */
+[data-theme="high-contrast"] .so-panel,
+[data-theme="high-contrast"] .so-launcher { background: var(--panel-solid, var(--bg-canvas)); box-shadow: none; }

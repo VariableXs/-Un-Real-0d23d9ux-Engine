@@ -1,0 +1,105 @@
+import type { Lang } from "../i18n/dictionaries";
+
+/**
+ * 全局快捷键表（批次E，规格 4.7）：
+ * 与 src-tauri/src/shell/winman.rs default_binds() 保持一致。
+ * 自定义只存增量（settings.shortcutBinds），整表 = 默认 + 覆盖。
+ *
+ * 注意：Win11 系统保留 Win+E / Win+D / Win+M / Win+N / Win+数字 / Win+方向键，
+ * RegisterHotKey 全部失败（"被系统或其他软件占用"）。默认表一律使用
+ * ctrl+alt+* 组合；super+* 仍允许用户在设置页自定义（占用时诚实降级）。
+ */
+
+export interface ShortcutAction {
+  id: string;
+  /** 词典 key（scAct*） */
+  labelKey: string;
+  accel: string;
+  group: "system" | "panel" | "window" | "launch";
+}
+
+export const SHORTCUT_ACTIONS: ShortcutAction[] = [
+  { id: "explorer", labelKey: "scActExplorer", accel: "ctrl+alt+e", group: "system" },
+  // F-1：设置中心呼出（Win+I 被系统保留 → ctrl+alt+i 降级口径）
+  { id: "settingsCenter", labelKey: "scActSettings", accel: "ctrl+alt+i", group: "system" },
+  // F-2：剪贴板历史呼出（Win+V 被系统保留 → ctrl+alt+v 降级口径）
+  { id: "clipboardHistory", labelKey: "scActClipboard", accel: "ctrl+alt+v", group: "panel" },
+  { id: "wintab", labelKey: "scActWintab", accel: "super+tab", group: "system" },
+  { id: "explorerCtrl", labelKey: "scActExplorerCtrl", accel: "ctrl+e", group: "system" },
+  { id: "showDesktop", labelKey: "scActShowDesktop", accel: "ctrl+alt+d", group: "window" },
+  { id: "toggleHide", labelKey: "scActToggleHide", accel: "ctrl+shift+d", group: "window" },
+  { id: "minimizeAll", labelKey: "scActMinimizeAll", accel: "ctrl+alt+m", group: "window" },
+  { id: "snapLeft", labelKey: "scActSnapLeft", accel: "ctrl+alt+left", group: "window" },
+  { id: "snapRight", labelKey: "scActSnapRight", accel: "ctrl+alt+right", group: "window" },
+  { id: "snapUp", labelKey: "scActSnapUp", accel: "ctrl+alt+up", group: "window" },
+  { id: "snapDown", labelKey: "scActSnapDown", accel: "ctrl+alt+down", group: "window" },
+  { id: "notifyCenter", labelKey: "scActNotify", accel: "ctrl+alt+n", group: "panel" },
+  { id: "quickBluetooth", labelKey: "scActQuickBt", accel: "ctrl+alt+b", group: "panel" },
+  { id: "quickAudio", labelKey: "scActQuickAudio", accel: "ctrl+alt+k", group: "panel" },
+  { id: "dnd", labelKey: "scActDnd", accel: "ctrl+shift+m", group: "panel" },
+  // AI-08 Z-28：运行对话框（Win+R 被系统保留 → ctrl+alt+r 降级口径）
+  { id: "runDialog", labelKey: "scActRunDialog", accel: "ctrl+alt+r", group: "system" },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: `launch${i + 1}`,
+    labelKey: "scActLaunchN",
+    accel: `ctrl+alt+${i + 1}`,
+    group: "launch" as const,
+  })),
+];
+
+const MODIFIERS = new Set(["ctrl", "alt", "super", "shift"]);
+// N-17：键集扩展至全部单字母（改键自由度），另补 esc/backquote（三方占用表引用）
+const KNOWN_KEYS = new Set([
+  ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(97 + i)), // a-z
+  "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+  "left", "right", "up", "down", "tab", "esc", "`",
+  "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+  "home", "end", "pageup", "pagedown", "insert", "delete",
+  "/", // U-58 键盘全景速查浮层（Ctrl+/，前端层快捷键，非系统注册）
+  "f", ",", // U-58 覆盖审计：ctrl+shift+f 搜索 / ctrl+, 设置（同为前端层快捷键）
+]);
+
+/** accel 归一化：小写、修饰键去重排序（ctrl/alt/shift/super 顺序）、键尾。非法返回 null。 */
+export function normalizeAccel(raw: string): string | null {
+  const parts = raw
+    .trim()
+    .toLowerCase()
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 1) return null;
+  const key = parts[parts.length - 1] as string;
+  const mods = parts.slice(0, -1);
+  if (!KNOWN_KEYS.has(key)) return null;
+  if (mods.some((m) => !MODIFIERS.has(m))) return null;
+  if (new Set(mods).size !== mods.length) return null;
+  if (mods.length === 0 && !key.startsWith("f") && key !== "delete") return null; // 裸键只允许 F 键
+  const order = ["ctrl", "alt", "shift", "super"].filter((m) => mods.includes(m));
+  return [...order, key].join("+");
+}
+
+/** accel 显示形式（zh/en）。 */
+export function prettyAccel(accel: string, lang: Lang): string {
+  const superLabel = lang !== "en" ? "Win" : "Win";
+  return accel
+    .split("+")
+    .map((p) =>
+      p === "super" ? superLabel : p === "ctrl" ? "Ctrl" : p === "alt" ? "Alt" : p === "shift" ? "Shift" : p.length === 1 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1),
+    )
+    .join(" + ");
+}
+
+/** 整表（默认 + settings 覆盖）→ 发往后端的 binds。 */
+export function effectiveBinds(overrides: Record<string, string>): { action: string; accel: string }[] {
+  return SHORTCUT_ACTIONS.map((a) => ({
+    action: a.id,
+    accel: overrides[a.id] ?? a.accel,
+  }));
+}
+
+/** 冲突检测：同一 accel 绑定到多个 action。返回冲突 accel 集合。 */
+export function findConflicts(binds: { action: string; accel: string }[]): Set<string> {
+  const seen = new Map<string, number>();
+  for (const b of binds) seen.set(b.accel, (seen.get(b.accel) ?? 0) + 1);
+  return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([accel]) => accel));
+}

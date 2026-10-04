@@ -1,0 +1,245 @@
+/* ============================================================
+ * AI-17 · U-11 微交互精修（Micro-interaction Polish）
+ * 六类控件（按钮/开关/滑杆/标签页/复选框/下拉）× 四态
+ * （rest→hover→press→disabled）统一动效矩阵：
+ *   位移幅度 ≤ 2px、缩放 ≤ 1.06、时长走 --dur-*、曲线走 --ease-*。
+ * 「事件感」反馈：危险操作按下红色内闪一次 150ms + error 音（sounds.ts）。
+ * Z-05 焦点环：仅键盘（:focus-visible）显示，token 化。
+ * ============================================================ */
+
+/* ---- U-11 控件四态矩阵 ---- */
+.mi-ctl {
+  transition: transform var(--dur-2) var(--ease-standard),
+    background-color var(--dur-2) var(--ease-standard),
+    color var(--dur-2) var(--ease-standard),
+    border-color var(--dur-2) var(--ease-standard),
+    opacity var(--dur-2) var(--ease-standard);
+}
+.mi-ctl:hover:not(:disabled) { transform: translateY(-1px); }
+.mi-ctl:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+.mi-ctl:disabled { opacity: 0.4; cursor: default; }
+
+/* 扩展先例（win-dot hover 1.15 / press 0.9）：图标点类 */
+.mi-dot { transition: transform var(--dur-2) var(--ease-spring); }
+.mi-dot:hover { transform: scale(1.06); }
+.mi-dot:active { transform: scale(0.94); }
+
+/* ---- 危险操作「事件感」：4px 红色内闪 150ms（配合 error 音效）---- */
+@keyframes mi-danger-flash {
+  0% { box-shadow: inset 0 0 0 4px var(--danger); }
+  100% { box-shadow: inset 0 0 0 0 transparent; }
+}
+.mi-danger-press {
+  animation: mi-danger-flash 150ms var(--ease-emphasized) 1;
+}
+
+/* ---- Z-05 焦点环与选择态规范（全局收编）----
+ * 仅键盘操作显示（:focus-visible）；鼠标点击不显示，与系统一致。 */
+:focus { outline: none; }
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-control);
+}
+/* 已有自身阴影的元素（按钮组等）用内环变体 */
+.focus-inset:focus-visible {
+  box-shadow: var(--focus-ring-inset);
+}
+/* 焦点环永不双重显示：嵌套焦点容器内层用内环 */
+:focus-visible :focus-visible {
+  box-shadow: var(--focus-ring-inset);
+}
+
+/* hover = 背景升一档；禁用 = 40% 透明度（六类控件共用语义） */
+.mi-hover-rise:hover:not(:disabled) { background: var(--accent-soft); }
+.mi-disabled { opacity: 0.4; pointer-events: none; }
+
+/* ---- Z-65 拖动清晰度（Drag Clarity）----
+ * 拖动中：关闭亚克力采样与阴影重算；松手后一帧内恢复（body class 由 dragClarity.ts 控制）。 */
+body.dragging-clarity .mat-frosted {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body.dragging-clarity * {
+  box-shadow: none !important;
+  transition: none !important;
+}
+
+/* ---- Z-67 滚动一致性（Scroll Consistency）：滚动参数统一令牌 ---- */
+.scroll-consistent {
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+}
+.scroll-consistent::-webkit-scrollbar { width: 10px; height: 10px; }
+.scroll-consistent::-webkit-scrollbar-thumb {
+  background: var(--stroke);
+  border-radius: var(--r-control);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scroll-consistent::-webkit-scrollbar-thumb:hover { background-color: var(--text-secondary); }
+
+/* ---- Z-68 主题交叉淡入（Theme Cross-Fade）----
+ * 双层 170ms 交叉淡入；壁纸层不参与（.theme-fade-wall exempt）。 */
+.theme-fade-root {
+  animation: theme-cross-in var(--dur-3) var(--ease-standard) 1;
+}
+@keyframes theme-cross-in {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* ---- Z-66 图标占位骨架：同 keyline 中性灰剪影，杜绝“先空后闪” ---- */
+.icon-placeholder {
+  background: var(--accent-soft);
+  border-radius: var(--r-chip);
+  animation: icon-fade-in var(--dur-3) var(--ease-standard) 1;
+}
+@keyframes icon-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- U-55 空状态设计系统：三要素（单色线性插画 + 现状描述 + 主行动）---- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--text-secondary);
+  min-height: 160px;
+}
+.empty-state-art {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.empty-state-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border: 1.5px solid var(--accent-soft);
+  border-radius: 50%;
+  background: var(--accent-soft);
+}
+.empty-state-title {
+  font-size: var(--fs-15);
+  color: var(--text-primary);
+}
+.empty-state-desc {
+  font-size: var(--fs-13);
+  max-width: 320px;
+}
+.empty-state-action {
+  margin-top: var(--sp-1);
+  min-width: var(--ctl-btn-minw);
+  height: var(--ctl-btn);
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-control);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* ---- U-12 响应式档位（data-layout-tier 由 breakpoints.ts 驱动）---- */
+[data-layout-tier="compact"] .empty-state { min-height: 120px; padding: var(--sp-4) var(--sp-2); }
+[data-layout-tier="wide"] .empty-state { min-height: 200px; }
+
+/* 大字模式：全局字号升档、点击目标 ≥48px（U-12 投影/TV 场景） */
+[data-ui-scale="large"] {
+  font-size: var(--fs-17);
+}
+[data-ui-scale="large"] button,
+[data-ui-scale="large"] .mi-ctl {
+  min-height: 48px;
+}
+
+/* ---- Z-70 帮助中心浮层 ---- */
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+.help-panel {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border-radius: var(--r-window);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-4);
+}
+.help-search {
+  height: var(--ctl-input);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-control);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+}
+.help-topic {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+.help-topic:hover { background: var(--accent-soft); }
+.help-topic-title { font-size: var(--fs-15); color: var(--text-primary); }
+.help-topic-body { font-size: var(--fs-13); color: var(--text-secondary); white-space: pre-wrap; }
+
+/* ---- U-57 引导体系：spotlight 遮罩 + 三行说明 ---- */
+.spotlight-mask {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-3);
+  z-index: 9500;
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+.spotlight-hole {
+  position: fixed;
+  border-radius: var(--r-control);
+  box-shadow: 0 0 0 9999px var(--overlay-3);
+  outline: 2px solid var(--accent);
+  z-index: 9501;
+  transition: all var(--dur-3) var(--ease-standard);
+}
+.spotlight-card {
+  position: fixed;
+  z-index: 9502;
+  width: 300px;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--elev-3);
+  font-size: var(--fs-13);
+}
+.coach-bubble {
+  position: fixed;
+  z-index: 9400;
+  max-width: 280px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  font-size: var(--fs-13);
+  color: var(--text-primary);
+  box-shadow: var(--elev-2);
+}
+
+/* ---- 危险操作焦点变体（U-11 事件感）---- */
+.danger-armed:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--danger);
+}

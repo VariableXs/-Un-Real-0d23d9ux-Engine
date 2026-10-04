@@ -1,0 +1,3517 @@
+/* 桌面环境 shell（M2）— 全屏覆盖、壁纸层、图标网格、红绿灯 */
+
+.desktop-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: #05070d;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ---- 壁纸层（L0） ---- */
+.wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.wallpaper-solid { background: #05070d; }
+/* 混合模式：星空画布叠于媒体之上 */
+.bg-root .bg-canvas-overlay { z-index: 2; opacity: 0.75; }
+
+/* ---- 图标网格（Windows 习惯：左侧、列优先） ---- */
+.desktop-icons {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  outline: none;
+}
+
+.desktop-icon {
+  position: absolute;
+  width: 84px;
+  padding: 8px 4px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: default;
+  color: inherit;
+  font: inherit;
+}
+
+.desktop-icon-tile {
+  position: relative;
+  width: var(--tile, 52px);
+  height: var(--tile, 52px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: hsl(var(--hue, 220) 55% 78%);
+  /* 默认透明，完全贴合 Windows 原生观感；仅官方 4 款 app 用 .brand 保留设计底座 */
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+.desktop-icon-tile.brand {
+  background:
+    radial-gradient(120% 120% at 30% 20%,
+      hsl(var(--hue, 220) 40% 30% / 0.85),
+      hsl(var(--hue, 220) 45% 14% / 0.9));
+  border: 1px solid hsl(var(--hue, 220) 40% 60% / 0.28);
+  box-shadow:
+    0 2px 10px rgb(0 0 0 / 0.45),
+    inset 0 1px 0 hsl(var(--hue, 220) 60% 80% / 0.12);
+}
+
+/* 批次B：自定义图标（.ico/.png data URL）随档位缩放 */
+.desktop-icon-tile img,
+.shf-tile img {
+  width: calc(var(--tile, 52px) * 0.72);
+  height: calc(var(--tile, 52px) * 0.72);
+  object-fit: contain;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* 第三方原生图标：去“包裹边框”——直接透出图标本体，像真实 Windows 桌面一样
+   （用户反馈：截图里 TraeCode/Edge/ZCode/微信/Blender 被彩色 tile 包裹） */
+.desktop-icon-tile.has-img {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.desktop-icon-tile.has-img img {
+  width: calc(var(--tile, 52px) * 0.88);
+  height: calc(var(--tile, 52px) * 0.88);
+  object-fit: contain; /* 高清源（128px）等比缩放，不拉伸不裁切 */
+  border-radius: 4px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55)) drop-shadow(0 3px 8px rgba(0, 0, 0, 0.4));
+}
+.desktop-icon:hover .desktop-icon-tile.has-img,
+.desktop-icon:active .desktop-icon-tile.has-img {
+  transform: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.desktop-icon.selected .desktop-icon-tile.has-img {
+  outline: none;
+}
+
+.desktop-icon-label {
+  max-width: 100%;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #e6edf9;
+  text-align: center;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.9), 0 0 6px rgb(0 0 0 / 0.6);
+  overflow-wrap: break-word;
+}
+
+/* 选中：Windows 半透明蓝框 */
+.desktop-icon.selected {
+  background: rgb(79 124 255 / 0.22);
+  border-color: rgb(159 192 255 / 0.55);
+}
+.desktop-icon.selected .desktop-icon-tile {
+  outline: 1px solid rgb(159 192 255 / 0.4);
+}
+
+/* 拖拽中：半透明实体跟随（Windows 拖拽逻辑） */
+.desktop-icon.dragging {
+  opacity: 0.72;
+  z-index: 30;
+  cursor: grabbing;
+  transition: none;
+}
+
+/* ---- 右上角红绿灯（Mac 风格，复用 global.css 的 .win-btn/.win-dot 视觉） ---- */
+.desktop-lights {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-lights .win-dot { transition: none; }
+}
+
+/* ---- 任务栏（M3，Win11 风格：底部居中毛玻璃） ---- */
+.taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 54px;
+  z-index: 40;
+  pointer-events: none; /* 容器透传，仅子元素可交互 */
+}
+
+.taskbar-center {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: 12px;
+  background: rgb(20 26 38 / 0.62);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.42);
+}
+
+.tb-btn {
+  width: 40px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #d9e4f5;
+  cursor: default;
+  position: relative;
+  font: inherit;
+  transition: background 0.12s ease, transform 0.08s ease;
+}
+.tb-btn:hover { background: rgb(255 255 255 / 0.09); }
+.tb-btn:active { transform: scale(0.93); }
+.tb-btn.active { background: rgb(255 255 255 / 0.1); }
+
+.tb-v {
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  color: #9cc2ff;
+  background: linear-gradient(160deg, rgb(84 124 255 / 0.32), rgb(64 96 220 / 0.18));
+  border: 1px solid rgb(140 175 255 / 0.3);
+}
+
+.tb-sep { width: 1px; height: 22px; margin: 0 4px; background: rgb(255 255 255 / 0.12); }
+
+.tb-app-icon {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: hsl(var(--hue, 220) 55% 78%);
+  background:
+    radial-gradient(120% 120% at 30% 20%,
+      hsl(var(--hue, 220) 40% 30% / 0.8),
+      hsl(var(--hue, 220) 45% 14% / 0.85));
+  border: 1px solid hsl(var(--hue, 220) 40% 60% / 0.26);
+}
+.tb-app-icon:has(.tb-custom-icon),
+.tb-app-icon:has(img) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.tb-custom-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45));
+}
+
+/* 时钟（本地系统时间，右侧，零网络） */
+.tb-clock {
+  pointer-events: auto;
+  position: absolute;
+  right: 26px;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font: 12px/1.25 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #e6edf9;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.85);
+  user-select: none;
+}
+.tb-date { color: rgb(230 237 249 / 0.78); }
+
+/* 最右"显示桌面"细条（Windows 习惯） */
+.tb-show-desktop {
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: 54px;
+  border: none;
+  border-left: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(18 24 36 / 0.5);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.tb-show-desktop:hover { background: rgb(255 255 255 / 0.16); }
+
+/* ---- 开始菜单（M3） ---- */
+.start-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+}
+
+.start-menu {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  padding: 18px 18px 12px;
+  border-radius: 14px;
+  background: rgb(19 24 35 / 0.8);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.55);
+  color: #e6edf9;
+  user-select: none;
+  animation: start-in 0.16s ease-out;
+}
+
+@keyframes start-in {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.start-search {
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.06);
+  color: inherit;
+  font: inherit;
+  cursor: text;
+}
+.start-search:hover {
+  border-color: rgb(140 175 255 / 0.4);
+  background: rgb(255 255 255 / 0.09);
+}
+
+.start-section { margin: 14px 2px 8px; }
+
+.start-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.start-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 6px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.start-app:hover { background: rgb(255 255 255 / 0.07); border-color: rgb(255 255 255 / 0.08); }
+.start-app:active { transform: scale(0.97); }
+
+.start-app .desktop-icon-tile { width: 44px; height: 44px; border-radius: 10px; }
+
+.start-app-name {
+  max-width: 120px;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.start-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 10px 2px 2px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.start-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 13px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(230 237 249 / 0.85);
+}
+.start-brand-v {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-weight: 800;
+  font-size: 12px;
+  color: #9cc2ff;
+  background: linear-gradient(160deg, rgb(84 124 255 / 0.35), rgb(64 96 220 / 0.2));
+  border: 1px solid rgb(140 175 255 / 0.32);
+}
+
+.start-power { color: #f0b6c3; }
+.start-power:hover { background: rgb(244 90 110 / 0.18); color: #ffd9df; }
+
+/* ---- M5 托盘区：Wi-Fi / 蓝牙 / 音频 / 通知中心 ---- */
+.tray-area {
+  pointer-events: auto;
+  position: absolute;
+  right: 118px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 44px;
+  padding: 0 5px;
+  border-radius: 12px;
+  background: rgb(20 26 38 / 0.62);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.42);
+}
+.tray-btn { width: 34px; height: 36px; }
+.hw-unknown { opacity: 0.45; }
+.tb-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 9px/1 "Segoe UI", system-ui, sans-serif;
+  font-weight: 700;
+  color: #fff;
+  background: rgb(232 84 104 / 0.95);
+  border: 1px solid rgb(255 255 255 / 0.25);
+}
+
+/* ---- M5 快捷面板 + 通知中心（托盘弹出层） ---- */
+.qp-overlay {
+  /* fixed：任务栏是定位容器，absolute inset:0 只会覆盖任务栏条本身 */
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: auto; /* 任务栏容器是 pointer-events:none，弹出层需自行恢复 */
+}
+.quick-panel {
+  position: fixed;
+  right: 108px;
+  bottom: 64px;
+  width: 320px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  border-radius: 14px;
+  background: rgb(20 26 38 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(28px) saturate(1.4);
+  -webkit-backdrop-filter: blur(28px) saturate(1.4);
+  box-shadow: 0 14px 44px rgb(0 0 0 / 0.5);
+  padding: 14px;
+  animation: qp-in 0.14s ease;
+  color: #e6edf9;
+}
+@keyframes qp-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.qp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 12px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(230 237 249 / 0.6);
+  margin-bottom: 10px;
+}
+.qp-close, .qp-clear {
+  border: none;
+  background: transparent;
+  color: rgb(230 237 249 / 0.6);
+  cursor: default;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  font: inherit;
+  padding: 3px 6px;
+}
+.qp-close:hover, .qp-clear:hover { background: rgb(255 255 255 / 0.09); color: #fff; }
+.qp-rows { display: flex; flex-direction: column; gap: 4px; }
+.qp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.qp-row:hover { background: rgb(255 255 255 / 0.05); }
+.qp-row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.qp-row-name { font: 12.5px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; }
+.qp-row-value { font: 11.5px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; color: rgb(230 237 249 / 0.62); }
+.qp-unknown { opacity: 0.55; font-style: italic; }
+.qp-mute {
+  border: none;
+  background: transparent;
+  color: #d9e4f5;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 8px;
+}
+.qp-mute:hover:not(:disabled) { background: rgb(255 255 255 / 0.09); }
+.qp-mute:disabled { opacity: 0.4; }
+.qp-audio input[type="range"] {
+  width: 100%;
+  height: 4px;
+  accent-color: #7ea4ff;
+  cursor: default;
+}
+.qp-notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 12px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(230 237 249 / 0.6);
+  margin: 12px 2px 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+.qp-notif-list {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qp-empty { padding: 10px 2px; text-align: center; }
+.qp-notif {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.06);
+}
+.qp-notif.kind-privacy { border-left: 2px solid rgb(232 132 104 / 0.8); }
+.qp-notif.kind-hardware { border-left: 2px solid rgb(126 164 255 / 0.8); }
+.qp-notif.kind-system { border-left: 2px solid rgb(150 150 160 / 0.6); }
+.qp-notif-title { font: 12.5px/1.35 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; font-weight: 600; }
+.qp-notif-body { word-break: break-all; }
+.qp-notif-time { align-self: flex-end; }
+
+/* ---- 批次C 快捷面板分区（规格 6.1-6.6） ---- */
+.qp-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.qp-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 4px 8px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.05);
+  color: #d9e4f5;
+  cursor: default;
+  font: 11.5px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.qp-tile:hover:not(:disabled):not(.qp-static) { background: rgb(255 255 255 / 0.1); }
+.qp-tile.on {
+  background: rgb(126 164 255 / 0.22);
+  border-color: rgb(126 164 255 / 0.55);
+  color: #cfe0ff;
+}
+.qp-tile:disabled { opacity: 0.4; }
+.qp-tile.qp-static { cursor: default; }
+.qp-bright {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 10px;
+}
+.qp-bright input[type="range"] {
+  flex: 1;
+  height: 4px;
+  accent-color: #7ea4ff;
+  cursor: default;
+}
+.qp-sec {
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding: 10px 2px 8px;
+  border-radius: 8px;
+}
+.qp-sec.flash {
+  animation: qp-flash 1.2s ease;
+}
+@keyframes qp-flash {
+  0%, 55% { background: rgb(126 164 255 / 0.18); }
+  100% { background: transparent; }
+}
+.qp-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 12.5px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  margin-bottom: 6px;
+}
+.qp-sec-val { margin-left: auto; }
+.qp-sec-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.07);
+  color: #d9e4f5;
+  cursor: default;
+  padding: 4px 9px;
+  font: 11.5px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.qp-sec-act:hover:not(:disabled) { background: rgb(255 255 255 / 0.13); }
+.qp-sec-act:disabled { opacity: 0.5; }
+.qp-sec-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 2px;
+}
+.qp-sec-body > input[type="range"] {
+  width: 100%;
+  height: 4px;
+  accent-color: #7ea4ff;
+  cursor: default;
+}
+.qp-hint { margin: 0; padding: 2px; }
+.qp-net-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+.qp-net-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.qp-net-row:hover { background: rgb(255 255 255 / 0.05); }
+.qp-net-row.connected { color: #cfe0ff; }
+/* 批次E：可点击设备行（蓝牙连接/断开） */
+button.qp-net-row.as-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #d9e4f5;
+  cursor: pointer;
+  text-align: left;
+}
+button.qp-net-row.as-btn:hover { background: rgb(255 255 255 / 0.07); }
+button.qp-net-row.as-btn.connected { background: rgb(126 164 255 / 0.12); }
+.qp-net-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.qp-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.22);
+  flex: none;
+}
+.qp-dot.on { background: #8fd6a0; box-shadow: 0 0 6px rgb(143 214 160 / 0.7); }
+.qp-dev-group { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.qp-dev-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #d9e4f5;
+  cursor: default;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.qp-dev-row:hover { background: rgb(255 255 255 / 0.06); }
+.qp-dev-row.sel { background: rgb(126 164 255 / 0.14); }
+.spin { animation: qp-spin 0.9s linear infinite; }
+@keyframes qp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- M5 隐私占用横幅（摄像头/麦克风） ---- */
+.privacy-banner {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+.privacy-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 300px;
+  max-width: 460px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(38 26 22 / 0.82);
+  border: 1px solid rgb(240 150 110 / 0.4);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 0.45);
+  color: #ffe9df;
+  animation: pb-in 0.16s ease;
+}
+@keyframes pb-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.privacy-icon { color: rgb(255 176 138 / 0.95); flex: none; }
+.privacy-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.privacy-text b { font: 13px/1.35 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; font-weight: 600; }
+.privacy-text .small { word-break: break-all; }
+.privacy-dismiss {
+  border: none;
+  background: transparent;
+  color: rgb(255 233 223 / 0.65);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 7px;
+}
+.privacy-dismiss:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+  .start-menu, .quick-panel, .privacy-item { animation: none; }
+  .tb-btn, .tb-show-desktop, .start-app { transition: none; }
+}
+
+/* ============================================================
+   M6 — 文件管理器 / 全局回收站（explorer / recycle 系统窗口）
+   ============================================================ */
+
+.ex-window {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0b1120 0%, #070b14 100%);
+  color: #dfe7f5;
+  user-select: none;
+  overflow: hidden;
+}
+
+.ex-titlebar {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: rgb(10 15 28 / 0.6);
+}
+.ex-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 13px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(223 231 245 / 0.9);
+}
+
+.ex-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ---- 回收站视图（复用列表样式） ---- */
+.ex-recycle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 8px;
+  gap: 10px;
+}
+
+/* ---- 文件管理器布局 ---- */
+.ex-explorer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.ex-side {
+  width: 200px;
+  flex: none;
+  overflow-y: auto;
+  padding: 12px 10px;
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ex-side-head {
+  margin: 10px 6px 4px;
+  font: 600 11px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(223 231 245 / 0.45);
+}
+.ex-side-head:first-child { margin-top: 0; }
+.ex-side-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: rgb(223 231 245 / 0.82);
+  font: 13px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: default;
+  text-align: left;
+}
+.ex-side-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-side-btn:hover { background: rgb(255 255 255 / 0.07); }
+.ex-side-btn.active { background: rgb(96 132 255 / 0.16); color: #cfe0ff; }
+
+.ex-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 8px;
+  gap: 8px;
+}
+
+.ex-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.ex-flex1 { flex: 1; }
+.ex-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(223 231 245 / 0.88);
+  font: 12.5px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: default;
+}
+.ex-tool-btn:hover:not(:disabled) { background: rgb(255 255 255 / 0.09); }
+.ex-tool-btn:disabled { opacity: 0.4; }
+.ex-tool-btn.danger { color: rgb(255 158 138 / 0.95); }
+
+.ex-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 220px;
+  padding: 5px 9px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(223 231 245 / 0.5);
+}
+.ex-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #dfe7f5;
+  font: 12.5px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-search input::placeholder { color: rgb(223 231 245 / 0.35); }
+
+/* 批次E：回收站排序下拉 */
+.ex-sort-select {
+  width: auto;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.ex-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  flex: none;
+  padding: 2px 2px;
+  font: 12.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-crumb-seg { display: inline-flex; align-items: center; flex: none; }
+.ex-crumb-sep { margin: 0 4px; color: rgb(223 231 245 / 0.35); }
+.ex-crumb {
+  border: none;
+  background: transparent;
+  color: rgb(223 231 245 / 0.75);
+  padding: 2px 5px;
+  border-radius: 5px;
+  font: inherit;
+  cursor: default;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-crumb:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+
+/* ---- 列表（文件管理器与回收站共用） ---- */
+.ex-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  outline: none;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.025);
+}
+.ex-head-row,
+.ex-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px 120px 84px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 12px;
+  min-height: 32px;
+  font: 12.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-head-row {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 30px;
+  background: rgb(13 19 34 / 0.96);
+  color: rgb(223 231 245 / 0.5);
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  user-select: none;
+}
+.ex-row { cursor: default; }
+.ex-row:hover { background: rgb(255 255 255 / 0.05); }
+.ex-row.selected { background: rgb(96 132 255 / 0.2); }
+.ex-row.hidden-entry { opacity: 0.5; }
+
+.ex-col-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ex-ic { flex: none; color: hsl(212 60% 74%); }
+.ex-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-col-date, .ex-col-type, .ex-col-size, .ex-col-src, .ex-col-origin {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ex-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  font: 12.5px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+
+.ex-status {
+  flex: none;
+  padding: 2px 4px;
+  font: 11.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(223 231 245 / 0.45);
+}
+
+/* ---- AI-09 文件管理器增强（Z-31/Z-35/M-24/M-20/M-25） ---- */
+.ex-status-sel { margin-left: 12px; color: rgb(140 175 255 / 0.85); }
+
+.ex-side-offline { opacity: 0.45; }
+
+.ex-bookmarks {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 3px 6px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ex-bookmarks::-webkit-scrollbar { display: none; }
+
+.ex-bm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  appearance: none;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.05);
+  color: rgb(223 231 245 / 0.75);
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+.ex-bm-chip:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.ex-bm-chip.active {
+  border-color: rgb(96 132 255 / 0.5);
+  background: rgb(96 132 255 / 0.15);
+  color: #fff;
+}
+
+.ex-lock-path {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.ex-lock-list { margin: 4px 0; padding: 0; list-style: none; }
+.ex-lock-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+}
+.ex-lock-name { font-weight: 600; }
+
+/* ---- 批次C 文件管理器完整版（规格 7.1-7.8） ---- */
+.ex-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 10px;
+}
+.ex-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  min-width: 0;
+  padding: 6px 8px 5px;
+  border-radius: 9px 9px 0 0;
+  background: rgb(255 255 255 / 0.03);
+  border: 1px solid rgb(255 255 255 / 0.05);
+  border-bottom: none;
+  color: rgb(223 231 245 / 0.65);
+  cursor: default;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-tab.active {
+  background: rgb(255 255 255 / 0.09);
+  color: #e6edf9;
+}
+.ex-tab:hover { background: rgb(255 255 255 / 0.07); }
+.ex-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-tab-close {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: inherit;
+  border-radius: 5px;
+  padding: 2px;
+  cursor: default;
+}
+.ex-tab-close:hover { background: rgb(255 255 255 / 0.14); }
+.ex-tab-new {
+  border: none;
+  background: transparent;
+  color: rgb(223 231 245 / 0.6);
+  font: 15px/1 system-ui, sans-serif;
+  padding: 4px 9px;
+  border-radius: 7px;
+  cursor: default;
+}
+.ex-tab-new:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+.ex-side-hint {
+  margin: 2px 0 6px;
+  padding: 0 10px;
+  font: 11px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-view-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.05);
+}
+.ex-view-btn {
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: rgb(223 231 245 / 0.55);
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: default;
+}
+.ex-view-btn:hover { background: rgb(255 255 255 / 0.09); color: #fff; }
+.ex-view-btn.on { background: rgb(126 164 255 / 0.25); color: #cfe0ff; }
+.ex-addr-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgb(126 164 255 / 0.5);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.06);
+  color: #e6edf9;
+  font: 12.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  padding: 4px 9px;
+  outline: none;
+}
+.ex-crumb-edit {
+  border: none;
+  background: transparent;
+  color: rgb(223 231 245 / 0.45);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font: 12px/1.2 system-ui, sans-serif;
+  cursor: default;
+}
+.ex-crumb-edit:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
+/* explorer 5 列布局（回收站仍用默认 4 列） */
+.ex-list.view-list .ex-head-row,
+.ex-list.view-list .ex-row {
+  grid-template-columns: minmax(0, 1fr) 168px 100px 76px 92px;
+}
+.ex-list.view-list .ex-head-row > span { cursor: default; user-select: none; }
+.ex-list.view-list .ex-head-row > span:hover { color: #e6edf9; }
+.ex-row.cut, .ex-tile.cut { opacity: 0.55; }
+/* 图标 / 缩略图网格 */
+.ex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  padding: 10px;
+  align-content: start;
+}
+.ex-list.view-thumbs .ex-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+.ex-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: default;
+  font: 11.5px/1.35 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #dbe6f6;
+  text-align: center;
+}
+.ex-tile:hover { background: rgb(255 255 255 / 0.05); }
+.ex-tile.selected {
+  background: rgb(96 132 255 / 0.18);
+  border-color: rgb(96 132 255 / 0.45);
+}
+.ex-tile-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
+}
+.ex-thumb {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 0.3);
+}
+.ex-thumb.loading {
+  background: rgb(255 255 255 / 0.05);
+  animation: ex-pulse 1.1s ease-in-out infinite;
+}
+@keyframes ex-pulse {
+  50% { opacity: 0.45; }
+}
+/* 冲突对话框 */
+.ex-dlg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.4);
+}
+.ex-dlg {
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  border-radius: 13px;
+  background: rgb(22 28 42 / 0.96);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.55);
+  padding: 16px;
+}
+.ex-dlg-title {
+  margin: 0 0 6px;
+  font: 600 13.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #e6edf9;
+}
+.ex-dlg-body {
+  margin: 0 0 14px;
+  font: 12.5px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(223 231 245 / 0.72);
+  word-break: break-all;
+}
+.ex-dlg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ex-dlg-actions button {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.06);
+  color: #e6edf9;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: 12px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: default;
+}
+.ex-dlg-actions button:hover { background: rgb(255 255 255 / 0.12); }
+.ex-dlg-actions button.dim { border-color: transparent; background: transparent; color: rgb(223 231 245 / 0.55); }
+
+.dim { color: rgb(223 231 245 / 0.5); }
+
+/* ============================================================
+   批次E-6 —— 全屏应用自动避让 / Win+Tab 切换器
+   ============================================================ */
+
+/* 全屏应用运行中：任务栏与红绿灯整体隐藏（事件驱动，退出即恢复） */
+.desktop-shell[data-fullscreen] .taskbar,
+.desktop-shell[data-fullscreen] .desktop-lights {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(14px);
+}
+.desktop-shell[data-fullscreen] .desktop-lights {
+  transform: translateY(-14px);
+}
+.taskbar,
+.desktop-lights {
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.wintab-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(2 6 16 / 0.55);
+  backdrop-filter: blur(10px);
+}
+.wintab-panel {
+  min-width: 380px;
+  max-width: 480px;
+  padding: 16px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 14px;
+  background: rgb(10 16 30 / 0.92);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.5);
+}
+.wintab-head {
+  margin: 0 0 10px;
+  font: 600 13px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(223 231 245 / 0.85);
+}
+.wintab-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(223 231 245 / 0.9);
+  font: 13px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: default;
+  text-align: left;
+}
+.wintab-row.selected {
+  background: rgb(96 148 255 / 0.22);
+  outline: 1px solid rgb(96 148 255 / 0.45);
+}
+.wintab-hint { margin: 10px 0 0; }
+
+/* 批次E-7：U 盘拔出横幅位置微调（与隐私横幅同层，往下让一点） */
+.usb-removed-banner { top: 52px; }
+
+/* 批次E-7：隐私自检报告 */
+.audit-list { margin-top: 8px; }
+.audit-row.pass { color: rgb(148 216 165 / 0.92); }
+.audit-row.warn { color: rgb(255 193 105 / 0.95); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-crumb, .ex-tool-btn, .ex-side-btn { transition: none; }
+}
+
+/* ============================================================
+   M7 — 第三方软件管理器（launcher）
+   ============================================================ */
+
+.tp-hint { margin: 0 0 10px; }
+.tp-toolbar { margin-bottom: 12px; }
+.tp-toolbar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tp-empty { margin: 18px 0; text-align: center; }
+
+.tp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.tp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.03);
+}
+.tp-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tp-name {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #dfe7f5;
+  font: 600 13px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  text-align: left;
+  cursor: default;
+  width: fit-content;
+}
+.tp-name:hover { text-decoration: underline; }
+.tp-path {
+  font: 11.5px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tp-grade {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.tp-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* 批次C-5：L4 让位归因徽标（AC=反作弊 / FS=独占全屏；悬停看完整说明） */
+.tp-l4-hint {
+  align-self: center;
+  border: 1px solid var(--warn, #d9a441);
+  border-radius: 4px;
+  color: var(--warn, #d9a441);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: help;
+  user-select: none;
+}
+
+/* ---- 批次C · 软件管理器双页签 + 预装软件卸载（规格 5.6） ---- */
+.tp-tabs {
+  margin: 0 0 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  padding-bottom: 8px;
+}
+.tp-tab {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim, #93a3c0);
+  font-weight: 500;
+}
+.tp-tab.active {
+  background: rgb(255 255 255 / 0.07);
+  border-color: rgb(255 255 255 / 0.12);
+  color: #dfe7f5;
+}
+.tp-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  vertical-align: middle;
+  margin-right: 7px;
+}
+.tp-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  font-size: 10.5px;
+  vertical-align: middle;
+}
+.tp-row.off {
+  opacity: 0.55;
+}
+.tp-row.off .tp-name {
+  color: var(--dim, #93a3c0);
+}
+
+/* ---- 批次A · 阶段4/5：桌面入场编排（entering = 启动字母落位期） ----
+   任务栏从中央展开 → 图标交错淡入 → 红绿灯由暗态激活。均为 ready 后纯视觉过渡。 */
+.desktop-shell.entering .taskbar-center {
+  animation: taskbar-in 0.55s cubic-bezier(0.2, 1.1, 0.3, 1) 0.4s both;
+}
+@keyframes taskbar-in {
+  from { transform: translateX(-50%) translateY(18px) scale(0.55); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+}
+.desktop-shell.entering .desktop-icon {
+  animation: icon-in 0.45s ease both;
+  animation-delay: calc(0.9s + var(--i, 0) * 70ms);
+}
+@keyframes icon-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.desktop-lights {
+  transition: opacity 0.7s ease 0.55s, filter 0.7s ease 0.55s;
+}
+.desktop-shell.entering .desktop-lights {
+  opacity: 0.18;
+  filter: saturate(0.25) brightness(0.8);
+}
+
+/* ---- 批次A：首次启动欢迎向导 ---- */
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(3 6 12 / 0.45);
+  backdrop-filter: blur(3px);
+  animation: wizard-in 0.35s ease both;
+}
+.wizard-card {
+  position: relative;
+  width: min(600px, 92vw);
+  border-radius: 16px;
+  padding: 26px 34px 22px;
+  background: rgb(16 21 32 / 0.88);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.5);
+  color: #e7eefb;
+}
+.wizard-dots {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.wizard-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.18);
+  transition: background 0.25s ease, width 0.25s ease;
+}
+.wizard-dots span.on {
+  background: #9fc0ff;
+  width: 20px;
+  border-radius: 4px;
+}
+.wizard-step {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wizard-step h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.wizard-brand {
+  font-size: 34px;
+  font-weight: 200;
+  letter-spacing: 0.42em;
+  color: #9fc0ff;
+  text-align: center;
+  margin: 6px 0 2px;
+}
+.wizard-brand.small { font-size: 20px; }
+/* A-5：隐私契约逐条确认 + 换装预设小标题 */
+.wizard-contract {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: rgb(231 238 251 / 0.9);
+}
+.wizard-contract input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex: none;
+}
+.wizard-contract svg { flex: none; opacity: 0.8; }
+.wizard-sub {
+  margin: 18px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wizard-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.wizard-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: rgb(231 238 251 / 0.9);
+}
+.wizard-list li svg { color: #9fc0ff; flex: none; }
+.wizard-walls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+.wizard-wall {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-radius: 12px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(231 238 251 / 0.85);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.wizard-wall:hover { background: rgb(255 255 255 / 0.08); }
+.wizard-wall.on {
+  border-color: #9fc0ff;
+  background: rgb(159 192 255 / 0.12);
+}
+.wizard-wall-chip {
+  width: 56px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+}
+.wp-solid { background: #05070d; }
+.wp-gravity { background: radial-gradient(ellipse at 50% 60%, #16233f 0%, #05070d 70%); }
+.wp-image { background: linear-gradient(135deg, #29405e, #101a2c); }
+.wp-video { background: linear-gradient(135deg, #3a2c54, #14203a); }
+.wp-hybrid { background: radial-gradient(circle at 70% 30%, #243b5c 0%, #05070d 65%); }
+.wizard-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+@keyframes wizard-in { from { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-shell.entering .taskbar-center { animation: none; }
+  .desktop-shell.entering .desktop-icon { animation: none; opacity: 1; }
+  .desktop-shell.entering .desktop-lights { opacity: 1; filter: none; }
+  .desktop-lights { transition: none; }
+  .wizard-overlay { animation: none; }
+  .desktop-icon.jiggle { animation: none; }
+}
+
+/* ==================== 批次B：多选 / 框选 / 编辑模式 / 文件架 / 属性 ==================== */
+
+/* 剪切态（Windows：图标半透明） */
+.desktop-icon.cut .desktop-icon-tile,
+.desktop-icon.cut .desktop-icon-label { opacity: 0.55; }
+
+/* 长按编辑模式：抖动（第三方/文件架出现移除角标） */
+@keyframes icon-jiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1.1deg); }
+  75% { transform: rotate(1.1deg); }
+}
+.desktop-icon.jiggle { animation: icon-jiggle 0.32s ease-in-out infinite; }
+.desktop-icons.edit-mode .desktop-icon { cursor: grab; }
+
+.icon-remove {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #d5484c;
+  color: #fff;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  cursor: pointer;
+}
+.icon-remove:hover { background: #e4595e; }
+
+/* 文件架成员数徽标（底座右下角） */
+.icon-badge {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #2e6bff;
+  color: #fff;
+  font: bold 10px/1 "Segoe UI", system-ui, sans-serif;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  pointer-events: none;
+}
+
+/* 框选：Windows 风格半透明蓝矩形 */
+.marquee {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid rgb(120 170 255 / 0.9);
+  background: rgb(79 124 255 / 0.18);
+  pointer-events: none;
+}
+
+/* 编辑模式"完成"按钮（底部居中悬浮） */
+.edit-done {
+  position: absolute;
+  left: 50%;
+  bottom: 68px;
+  transform: translateX(-50%);
+  z-index: 15;
+}
+.edit-done .btn {
+  background: var(--panel-solid, #10192b);
+  border-color: rgb(159 192 255 / 0.4);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+}
+
+/* 属性 / 关于 弹卡 */
+.props-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(0 0 0 / 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.props-card {
+  width: min(440px, calc(100vw - 40px));
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  background: var(--panel-solid, #10192b);
+  border: 1px solid var(--border, rgb(255 255 255 / 0.12));
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.6);
+  padding: 14px 16px;
+}
+.props-card.about { width: min(360px, calc(100vw - 40px)); text-align: center; }
+.props-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.props-title { font: 600 14px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; color: #e6edf9; }
+.props-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  margin: 0;
+  font-size: 12.5px;
+}
+.props-body dt { color: var(--text-dim, #8fa3c0); white-space: nowrap; }
+.props-body dd { margin: 0; color: #e6edf9; overflow-wrap: anywhere; }
+.props-body .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+.props-card .shf-x { flex: none; }
+
+/* ---- 文件架飞出面板（规格 4.7） ---- */
+.shelf-flyout {
+  position: absolute;
+  z-index: 25;
+  width: 320px;
+  border-radius: 12px;
+  background: var(--panel-solid, #0d1526);
+  border: 1px solid var(--border, rgb(255 255 255 / 0.12));
+  border-top: 3px solid var(--shelf-accent, #2e6bff);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.6);
+  padding: 10px 12px 12px;
+  animation: shf-in 0.16s ease;
+}
+@keyframes shf-in { from { opacity: 0; transform: translateY(4px); } }
+.sc-blue { --shelf-accent: #2e6bff; }
+.sc-green { --shelf-accent: #2fa46b; }
+.sc-amber { --shelf-accent: #d99a2b; }
+.sc-rose { --shelf-accent: #d4517a; }
+.sc-violet { --shelf-accent: #8a63e8; }
+.sc-slate { --shelf-accent: #7a8aa0; }
+
+.shf-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.shf-title {
+  flex: 1;
+  min-width: 0;
+  font: 600 13px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #e6edf9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shf-count {
+  flex: none;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--shelf-accent, #2e6bff);
+  color: #fff;
+  font: bold 11px/1 "Segoe UI", system-ui, sans-serif;
+}
+.shf-x {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim, #8fa3c0);
+  cursor: pointer;
+}
+.shf-x:hover { background: rgb(255 255 255 / 0.08); color: #e6edf9; }
+
+.shf-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  max-height: 264px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+.shf-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: inherit;
+  cursor: default;
+  min-width: 0;
+}
+.shf-item:hover { background: rgb(79 124 255 / 0.16); border-color: rgb(159 192 255 / 0.4); }
+.shf-tile {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: hsl(var(--hue, 220) 55% 78%);
+  background:
+    radial-gradient(120% 120% at 30% 20%,
+      hsl(var(--hue, 220) 40% 30% / 0.85),
+      hsl(var(--hue, 220) 45% 14% / 0.9));
+  border: 1px solid hsl(var(--hue, 220) 40% 60% / 0.28);
+}
+.shf-label {
+  max-width: 100%;
+  font: 11px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #cdd9ec;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shf-empty {
+  grid-column: 1 / -1;
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim, #8fa3c0);
+}
+
+.shf-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border, rgb(255 255 255 / 0.1));
+  padding-top: 10px;
+}
+.shf-colors { display: flex; align-items: center; gap: 7px; }
+.shf-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.shf-dot[data-color="blue"] { background: #2e6bff; }
+.shf-dot[data-color="green"] { background: #2fa46b; }
+.shf-dot[data-color="amber"] { background: #d99a2b; }
+.shf-dot[data-color="rose"] { background: #d4517a; }
+.shf-dot[data-color="violet"] { background: #8a63e8; }
+.shf-dot[data-color="slate"] { background: #7a8aa0; }
+.shf-dot.on { border-color: rgb(255 255 255 / 0.85); box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35); }
+.shf-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.shf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border, rgb(255 255 255 / 0.14));
+  background: rgb(255 255 255 / 0.04);
+  color: #dbe6f5;
+  font: 11.5px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: pointer;
+}
+.shf-btn:hover { background: rgb(255 255 255 / 0.09); }
+.shf-btn.danger { color: #ff8b8f; border-color: rgb(213 72 76 / 0.5); }
+.shf-btn.danger:hover { background: rgb(213 72 76 / 0.14); }
+
+/* ==================== 批次D：红绿灯补全 / 小组件区 / 日历 / 贴靠预览 ==================== */
+
+/* Windows 风格右上角窗口控件（规格 4.3.5） */
+.desktop-lights.win-style {
+  gap: 0;
+  background: rgb(15 20 30 / 0.55);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 8px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+.winctl-btn {
+  width: 42px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #d9e4f5;
+  cursor: default;
+  transition: background 0.12s ease;
+}
+.winctl-btn:hover { background: rgb(255 255 255 / 0.12); }
+.winctl-btn.winctl-close:hover { background: rgb(232 17 35 / 0.85); color: #fff; }
+.window-controls.win-style { display: flex; align-items: center; }
+.window-controls.win-style .winctl-btn { height: 26px; width: 38px; }
+
+/* 任务栏左侧小组件区（规格 4.4.2） */
+.taskbar-widgets {
+  pointer-events: auto;
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  background: rgb(20 26 38 / 0.62);
+  border: 1px solid rgb(255 255 255 / 0.09);
+  backdrop-filter: blur(22px) saturate(1.35);
+  -webkit-backdrop-filter: blur(22px) saturate(1.35);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.42);
+}
+.tb-widget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.tb-widget canvas { display: block; opacity: 0.9; }
+.tb-widget-num {
+  font: 11px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #9fb6d9;
+  min-width: 28px;
+  text-align: right;
+}
+.tb-mem {
+  width: 54px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.14);
+  overflow: hidden;
+}
+.tb-mem > div {
+  height: 100%;
+  border-radius: 3px;
+  background: #7fa8d6;
+  transition: width 0.6s ease;
+}
+.tb-disks { gap: 8px; }
+.tb-disk {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font: 10px/1 "Segoe UI", system-ui, sans-serif;
+  color: #9fb6d9;
+}
+.tb-disk i { font-style: normal; }
+.tb-disk-bar {
+  width: 26px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.14);
+  overflow: hidden;
+  display: inline-block;
+}
+.tb-disk-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #7fa8d6;
+  transition: width 0.6s ease;
+}
+.tb-disk.low .tb-disk-bar > span { background: #e8a13f; }
+.tb-disk.low i { color: #e8a13f; }
+
+/* 时钟按钮化（点击弹日历） */
+button.tb-clock {
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: 8px;
+  cursor: default;
+}
+button.tb-clock:hover { background: rgb(255 255 255 / 0.09); }
+
+/* 日历弹层（纯本地） */
+.tb-calendar {
+  position: absolute;
+  right: 88px;
+  bottom: 62px;
+  z-index: 45;
+  width: 248px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+  background: rgb(20 26 38 / 0.92);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.5);
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.cal-title { font: 13px/1 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; color: #e6edf9; }
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.cal-dow {
+  font: 10px/1.6 "Segoe UI", system-ui, sans-serif;
+  color: rgb(159 182 217 / 0.7);
+}
+.cal-day {
+  font: 12px/1.9 "Segoe UI", system-ui, sans-serif;
+  color: #d9e4f5;
+  border-radius: 6px;
+}
+.cal-day:hover { background: rgb(255 255 255 / 0.08); }
+.cal-day.today {
+  background: rgb(127 168 214 / 0.28);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* 拖拽贴靠预览（规格 4.5.3：半透明蓝色贴靠预览框） */
+.snap-preview {
+  position: absolute;
+  z-index: 60;
+  pointer-events: none;
+  background: rgb(100 149 237 / 0.18);
+  border: 1px solid rgb(127 168 214 / 0.9);
+  border-radius: 6px;
+  transition: left 0.12s ease, top 0.12s ease, width 0.12s ease, height 0.12s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-mem > div, .tb-disk-bar > span, .snap-preview { transition: none; }
+}
+
+/* ==================== 批次E：任务栏交互 + 开始菜单增强 ==================== */
+
+/* ---- 任务栏停靠位置四向（规格 4.4）----
+   默认 bottom 保持原布局；left/right = 竖向浮条（贴边居中）；top = 顶部。 */
+.taskbar[data-pos="left"],
+.taskbar[data-pos="right"] {
+  top: 0;
+  bottom: 0;
+  right: auto;
+  width: 62px;
+  height: auto;
+}
+.taskbar[data-pos="right"] {
+  left: auto;
+  right: 0;
+}
+.taskbar[data-pos="left"] .taskbar-center,
+.taskbar[data-pos="right"] .taskbar-center {
+  left: 9px;
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  height: auto;
+  width: 44px;
+  padding: 8px 0;
+}
+.taskbar[data-pos="left"] .tray-area,
+.taskbar[data-pos="right"] .tray-area {
+  left: 9px;
+  right: auto;
+  bottom: auto;
+  top: calc(50% + 260px);
+  transform: translateY(-50%);
+  flex-direction: column;
+  height: auto;
+  width: 44px;
+  padding: 5px 0;
+}
+.taskbar[data-pos="left"] .tb-clock,
+.taskbar[data-pos="right"] .tb-clock {
+  left: 4px;
+  right: auto;
+  bottom: 12px;
+  align-items: center;
+  transform: translateY(0);
+}
+.taskbar[data-pos="left"] .tb-show-desktop,
+.taskbar[data-pos="right"] .tb-show-desktop {
+  width: 54px;
+  height: 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  border-left: none;
+  border-top: 1px solid rgb(255 255 255 / 0.12);
+}
+.taskbar[data-pos="left"] .tb-hover-pop,
+.taskbar[data-pos="right"] .tb-hover-pop {
+  left: 66px;
+  right: auto;
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.taskbar[data-pos="top"],
+.taskbar[data-pos="top"] .tb-show-desktop {
+  bottom: auto;
+  top: 0;
+}
+.taskbar[data-pos="top"] .taskbar-center {
+  bottom: auto;
+  top: 8px;
+}
+.taskbar[data-pos="top"] .tray-area {
+  bottom: auto;
+  top: 8px;
+}
+.taskbar[data-pos="top"] .tb-clock {
+  bottom: auto;
+  top: 6px;
+}
+.taskbar[data-pos="top"] .tb-hover-pop {
+  bottom: auto;
+  top: 62px;
+  transform: translateX(-50%);
+}
+.taskbar[data-pos="top"] .tb-calendar {
+  bottom: auto;
+  top: 62px;
+}
+
+/* ---- 悬停 2s 预览浮层（规格 4.4.1） ---- */
+.tb-hover-pop {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(19 24 35 / 0.86);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 10px 32px rgb(0 0 0 / 0.5);
+  color: #e6edf9;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  animation: start-in 0.14s ease-out;
+  z-index: 41;
+}
+.tb-hover-name { font-weight: 600; }
+.tb-hover-state { color: rgb(140 200 150 / 0.9); }
+.tb-hover-state.dim { color: rgb(230 237 249 / 0.5); }
+
+/* ---- 开始菜单：最近使用行（规格 4.6.2） ---- */
+.start-recent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.start-recent-chip {
+  max-width: 160px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.05);
+  color: rgb(230 237 249 / 0.88);
+  font: 12px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.start-recent-chip:hover {
+  background: rgb(255 255 255 / 0.1);
+  border-color: rgb(140 175 255 / 0.4);
+}
+
+/* ---- 开始菜单底栏：用户名 + 电源完整菜单（规格 4.6.3） ---- */
+.start-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.start-avatar {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 12px;
+  color: #cfe0ff;
+  background: linear-gradient(160deg, rgb(84 124 255 / 0.4), rgb(64 96 220 / 0.22));
+  border: 1px solid rgb(140 175 255 / 0.35);
+}
+.start-user-name {
+  max-width: 130px;
+  font: 13px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(230 237 249 / 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-foot-spacer { flex: 1; }
+.start-power-wrap { position: relative; }
+.start-power-menu {
+  position: absolute;
+  right: 0;
+  bottom: 46px;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgb(19 24 35 / 0.92);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.55);
+  z-index: 52;
+}
+.start-power-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #e6edf9;
+  font: 13px/1.2 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  text-align: left;
+  cursor: default;
+}
+.start-power-menu button:hover { background: rgb(255 255 255 / 0.09); }
+.start-power-menu button.danger { color: #ffb3bf; }
+.start-power-menu button.danger:hover { background: rgb(244 90 110 / 0.16); }
+
+/* ---- 开始菜单网格拖拽重排：拖拽目标高亮 ---- */
+.start-app.drag-over {
+  border-color: rgb(140 175 255 / 0.5);
+  background: rgb(84 124 255 / 0.12);
+}
+
+/* ---- 批次E（规格 4.7）：快捷键设置页 ---- */
+.sc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.sc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+.sc-row:hover { background: rgb(255 255 255 / 0.04); }
+.sc-row.bad { background: rgb(244 90 110 / 0.08); }
+.sc-label { flex: 1; min-width: 0; font: 13px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif; }
+.sc-input {
+  width: 170px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.05);
+  color: inherit;
+  font: 12px/1.2 Consolas, monospace;
+}
+.sc-input:focus { border-color: rgb(140 175 255 / 0.55); outline: none; }
+.sc-err { color: #ff9aa8; font: 11px/1.2 "Segoe UI", system-ui, sans-serif; }
+
+/* 批次E-8：开始菜单搜索框改为可输入（拼音/首字母过滤） */
+.start-search input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  min-width: 0;
+}
+.start-search input::placeholder { color: rgb(255 255 255 / 0.4); }
+.start-search .icon-btn { flex: none; }
+
+/* ==================== 批次E-14：图标底座立体感 + 刷新动画 ==================== */
+
+/* 图标底座：仅官方 4 款 .brand 保留立体感，其余（Windows 原生图标/系统/文件夹）保持平面透明，完全贴合真实桌面 */
+.desktop-icon-tile.brand {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25),
+    0 3px 8px rgb(0 0 0 / 0.35);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.desktop-icon:hover .desktop-icon-tile.brand {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25),
+    0 7px 16px rgb(0 0 0 / 0.45);
+}
+.desktop-icon:active .desktop-icon-tile.brand {
+  transform: translateY(0) scale(0.96);
+}
+.desktop-icon-tile:not(.brand) {
+  transition: filter 0.12s ease;
+}
+.desktop-icon:hover .desktop-icon-tile:not(.brand) {
+  filter: brightness(1.08);
+}
+
+/* 右键"刷新"：图标按入场动画重排一遍 */
+.desktop-icons.refreshing .desktop-icon {
+  animation: icon-in 0.45s ease both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* has-img 覆写 E-14 的立体感（必须在 E-14 之后，保证优先级） */
+.desktop-icon-tile.has-img {
+  box-shadow: none !important;
+  transition: none;
+}
+.desktop-icon:hover .desktop-icon-tile.has-img {
+  transform: none !important;
+  box-shadow: none !important;
+}
+.desktop-icon:active .desktop-icon-tile.has-img {
+  transform: none !important;
+}
+
+/* ===== D-4 幕布切换语义（双 Esc 切换 Variable ↔ Windows 桌面，220ms 曲线） ===== */
+@keyframes varCurtainOut {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.94); }
+}
+@keyframes varCurtainIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.var-curtain-out {
+  animation: varCurtainOut 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: 50% 50%;
+}
+.var-curtain-in {
+  animation: varCurtainIn 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: 50% 50%;
+}
+
+/* ============================================================
+   化境 V-11…V-14 · 开始菜单增强（AI04 车道 S 追加分区）
+   只追加新类，不改上方既有规则。
+   ============================================================ */
+
+/* ---- V-11 字母索引条（应用数 >30 出现） ---- */
+.start-index-wrap {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  min-height: 0;
+}
+.start-idx-bar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1px;
+  padding: 3px 2px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  flex: none;
+}
+.start-idx-btn {
+  width: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgb(230 237 249 / 0.62);
+  font: 10px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  text-align: center;
+  cursor: default;
+}
+.start-idx-btn:hover { background: rgb(255 255 255 / 0.12); color: #fff; }
+.start-idx-btn:focus-visible { outline: 1px solid rgb(140 175 255 / 0.7); }
+.start-index-grid {
+  flex: 1;
+  min-width: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.start-alpha-head { margin: 6px 2px 2px; font-weight: 700; letter-spacing: 0.08em; }
+/* 拖动/点击索引条时的中央大字提示（Win10 同款） */
+.start-idx-flash {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 96px;
+  font-weight: 800;
+  color: rgb(230 237 249 / 0.14);
+  pointer-events: none;
+  z-index: 51;
+}
+
+/* ---- V-12 自动分组标题行（最近添加 / 高频使用） ---- */
+.start-group-head { display: flex; align-items: center; gap: 6px; }
+.start-group-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgb(230 237 249 / 0.5);
+  cursor: default;
+}
+.start-group-btn:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+.start-group-btn.on { color: #ffb26b; }
+
+/* ---- V-13 固定文件夹 ---- */
+.start-folder-wrap { position: relative; display: block; }
+/* 文件夹图标 = 前 4 项 2×2 合成（复用 .desktop-icon-tile 底座，仅追加内部布局） */
+.start-folder-tile { background: rgb(255 255 255 / 0.05); border: 1px solid rgb(255 255 255 / 0.1); }
+.start-folder-mini {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  place-items: center;
+}
+.start-folder-mini-cell { display: flex; align-items: center; justify-content: center; }
+.start-folder-mini svg { width: 15px; height: 15px; }
+.start-folder-mini img { width: 15px; height: 15px; border-radius: 3px; object-fit: cover; }
+/* 展开浮层（与 .start-power-menu 同族卡片，z 序高于网格） */
+.start-folder-flyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 316px;
+  max-width: calc(100vw - 64px);
+  padding: 10px;
+  border-radius: 12px;
+  background: rgb(19 24 35 / 0.96);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.55);
+  z-index: 53;
+}
+.start-folder-flyout-head { display: flex; align-items: center; gap: 4px; margin: 0 2px 8px; }
+.start-folder-flyout-title {
+  font: 600 13px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 拖拽合并预览：落点在目标中央 60% 区域（区别于 .drag-over 的重排高亮） */
+.start-app.drag-merge {
+  border-color: rgb(120 220 160 / 0.65);
+  background: rgb(60 200 140 / 0.14);
+}
+
+/* ---- V-14 属性面板 ---- */
+.start-props { display: flex; flex-direction: column; gap: 8px; }
+.start-props-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font: 13px/1.4 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.start-props-row > span:first-child { flex: none; width: 88px; }
+.start-props-path {
+  word-break: break-all;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+/* ============================================================
+ * AI04 车道 W 追加分区（N-07 壁纸工坊 / N-10 锁屏 / N-11 实况场景）
+ * 类名前缀：wp-studio- / lockscr- / scene-；只追加，不改动以上规则
+ * ============================================================ */
+
+/* ---------- N-07 壁纸工坊（portal → body，z 2600） ---------- */
+.wp-studio-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 26px;
+  background: rgba(8, 12, 22, 0.88);
+  backdrop-filter: blur(14px);
+  color: #e8edf7;
+  outline: none;
+  overflow: auto;
+}
+.wp-studio-header { display: flex; align-items: center; gap: 16px; }
+.wp-studio-header h2 { margin: 0; font-size: 17px; letter-spacing: 0.02em; }
+.wp-studio-gate { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.wp-studio-gate-label { opacity: 0.55; }
+.wp-studio-gate em {
+  font-style: normal;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 180, 90, 0.16);
+  color: #ffce9a;
+}
+.wp-studio-gate em.ok { background: rgba(120, 255, 180, 0.12); color: #9fe8c0; }
+.wp-studio-close {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.wp-studio-tabs { display: flex; gap: 6px; margin: 14px 0 10px; }
+.wp-studio-tabs button {
+  padding: 6px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-studio-tabs button.on {
+  border-color: #7fa8e6;
+  background: rgba(127, 168, 230, 0.14);
+}
+.wp-studio-body { flex: 1; min-height: 0; }
+.wp-studio-pane { display: flex; flex-direction: column; gap: 10px; max-width: 980px; }
+.wp-studio-toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
+.wp-studio-toolbar button,
+.wp-studio-footer button,
+.wp-studio-file {
+  padding: 7px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-studio-toolbar button:disabled { opacity: 0.4; cursor: default; }
+.wp-studio-note { margin: 0; font-size: 12px; opacity: 0.72; }
+.wp-studio-note.warn { color: #ffce9a; opacity: 0.95; }
+.wp-studio-note.err { color: #ff9a9a; }
+.wp-studio-note.ok { color: #9fe8c0; }
+.wp-studio-note ul { margin: 4px 0 0; padding-left: 18px; }
+.wp-studio-preview {
+  position: relative;
+  height: 320px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #05070d;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.wp-studio-preview video,
+.wp-studio-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.wp-studio-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  opacity: 0.4;
+}
+.wp-studio-shader-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #ffce9a;
+  background: linear-gradient(160deg, #1b2338, #0a0f1c);
+}
+.wp-studio-web-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+.wp-studio-uniforms { display: flex; flex-direction: column; gap: 8px; }
+.wp-studio-uniforms h4 { margin: 4px 0 0; font-size: 12px; opacity: 0.6; }
+.wp-studio-slider {
+  display: grid;
+  grid-template-columns: 110px 1fr 52px;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.wp-studio-slider code { opacity: 0.6; }
+.wp-studio-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+.wp-studio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.wp-studio-card.on { border-color: #7fa8e6; background: rgba(127, 168, 230, 0.12); }
+.wp-studio-card span { font-size: 11px; opacity: 0.6; }
+.wp-studio-footer { display: flex; gap: 10px; padding-top: 10px; }
+.wp-studio-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2610;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(20, 28, 46, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- 壁纸中心（portal → body，z 2550；工坊之下可叠加打开） ---------- */
+.wp-center-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2550;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 12, 22, 0.92);
+  backdrop-filter: blur(14px);
+  color: #e8edf7;
+  outline: none;
+  animation: wp-center-in 0.28s ease both;
+}
+@keyframes wp-center-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.995); }
+  to { opacity: 1; transform: none; }
+}
+.wp-center-header { display: flex; align-items: center; gap: 16px; padding: 14px 22px 10px; }
+.wp-center-header h2 { margin: 0; font-size: 16px; letter-spacing: 0.02em; }
+.wp-center-tabs { display: flex; gap: 6px; }
+.wp-center-tabs button {
+  padding: 6px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-tabs button.on { border-color: #7fa8e6; background: rgba(127, 168, 230, 0.14); }
+.wp-center-actions { margin-left: auto; display: flex; gap: 6px; }
+.wp-center-actions button {
+  padding: 6px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-actions button:disabled { opacity: 0.4; cursor: default; }
+.wp-center-close:hover { border-color: #e07a6a; color: #ffb3a6; }
+.wp-center-error { margin: 0; padding: 6px 22px; font-size: 12px; color: #ff9a9a; }
+.wp-center-main { flex: 1; display: grid; grid-template-columns: minmax(360px, 1fr) 340px; min-height: 0; }
+.wp-center-lib {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 10px;
+  padding: 6px 16px 14px 22px;
+  align-content: start;
+}
+.wp-center-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.wp-center-card:hover { transform: translateY(-2px); border-color: rgba(127, 168, 230, 0.5); }
+.wp-center-card.on { border-color: #7fa8e6; box-shadow: 0 0 0 1px #7fa8e6; }
+.wp-center-card.off { opacity: 0.55; }
+.wp-center-thumb {
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #05070d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wp-center-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.wp-center-thumb-none { font-size: 20px; opacity: 0.35; }
+.wp-center-card-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wp-center-kind {
+  font-size: 10px;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.wp-center-side { border-left: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; min-height: 0; }
+.wp-center-preview {
+  flex: 1;
+  min-height: 0;
+  background: #05070d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.wp-center-preview img,
+.wp-center-preview video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wp-center-props { padding: 12px 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.wp-center-props h3 { margin: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-center-slider { display: grid; grid-template-columns: 1fr 92px 38px; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
+.wp-center-slider code { opacity: 0.6; }
+.wp-center-select { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; font-size: 12px; opacity: 0.85; }
+.wp-center-select select {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.wp-center-apply {
+  margin-top: 4px;
+  padding: 9px;
+  border-radius: 10px;
+  border: none;
+  background: #2f5fd0;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wp-center-apply:disabled { background: rgba(255, 255, 255, 0.12); cursor: default; }
+.wp-center-apply:not(:disabled):hover { background: #3a6ee0; }
+.wp-center-playlist-add {
+  padding: 7px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-playlist-add:disabled { opacity: 0.4; cursor: default; }
+.wp-center-note { margin: 0; font-size: 11px; opacity: 0.6; line-height: 1.5; }
+.wp-center-empty { grid-column: 1 / -1; padding: 24px; font-size: 13px; opacity: 0.45; text-align: center; }
+.wp-center-create { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+.wp-center-create p { margin: 0; max-width: 520px; text-align: center; font-size: 13px; opacity: 0.7; line-height: 1.7; }
+.wp-center-open-studio {
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 168, 230, 0.5);
+  background: rgba(127, 168, 230, 0.12);
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.wp-center-open-studio:hover { background: rgba(127, 168, 230, 0.2); }
+.wp-center-playlist {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+.wp-center-toggle { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.wp-center-num { display: flex; align-items: center; gap: 4px; }
+.wp-center-num input {
+  width: 56px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 3px 6px;
+}
+.wp-center-playlist > button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-playlist > button:disabled { opacity: 0.4; cursor: default; }
+.wp-center-pl-count { opacity: 0.55; }
+.wp-center-pl-items { display: flex; gap: 4px; overflow-x: auto; margin-left: auto; }
+.wp-center-pl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.wp-center-pl-item.on { border-color: #7fa8e6; opacity: 1; }
+.wp-center-pl-remove {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.wp-center-pl-remove:hover { background: rgba(224, 122, 106, 0.4); }
+.wp-center-pl-clear {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wp-center-toast {
+  position: fixed;
+  right: 22px;
+  bottom: 64px;
+  z-index: 2560;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  background: rgba(20, 28, 46, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- N-10 锁屏（portal → body，z 3000；CSS 星空 + 动效，reduce-motion 关） ---------- */
+.lockscr-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #e8edf7;
+  background: radial-gradient(120% 90% at 50% 0%, #101a33 0%, #05070d 62%);
+  animation: lockscr-in 0.5s ease both;
+}
+.lockscr-root.unlocking { animation: lockscr-out 0.42s ease both; }
+.lockscr-root.no-anim,
+.lockscr-root.no-anim * { animation: none !important; transition: none !important; }
+@keyframes lockscr-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes lockscr-out { from { opacity: 1; } to { opacity: 0; transform: scale(1.02); } }
+.lockscr-stars {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1.5px 1.5px at 20px 30px, rgba(255, 255, 255, 0.9), transparent 60%),
+    radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.6), transparent 60%),
+    radial-gradient(1.8px 1.8px at 220px 160px, rgba(210, 225, 255, 0.9), transparent 60%),
+    radial-gradient(1px 1px at 300px 40px, rgba(255, 255, 255, 0.5), transparent 60%),
+    radial-gradient(1.4px 1.4px at 360px 200px, rgba(255, 255, 255, 0.75), transparent 60%);
+  background-size: 420px 260px;
+  opacity: 0.8;
+  animation: lockscr-twinkle 6s ease-in-out infinite alternate;
+}
+@keyframes lockscr-twinkle { from { opacity: 0.55; } to { opacity: 0.9; } }
+.lockscr-core {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+}
+.lockscr-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+  text-shadow: 0 2px 22px rgba(0, 0, 0, 0.5);
+}
+.lockscr-clock span { font-weight: 200; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.lockscr-clock-s span { font-size: 84px; }
+.lockscr-clock-m span { font-size: 124px; }
+.lockscr-clock-l span { font-size: 180px; }
+.lockscr-clock em { font-style: normal; margin-top: 6px; font-size: 15px; opacity: 0.66; }
+.lockscr-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 300px;
+  padding: 20px 26px;
+  border-radius: 18px;
+  background: rgba(10, 16, 30, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  animation: lockscr-in 0.6s 0.1s ease both;
+}
+.lockscr-panel h3 { margin: 0; font-size: 14px; font-weight: 500; opacity: 0.85; }
+.lockscr-input {
+  width: 240px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-size: 15px;
+  letter-spacing: 0.3em;
+  text-align: center;
+  outline: none;
+}
+.lockscr-input:focus { border-color: #7fa8e6; }
+.lockscr-input:disabled { opacity: 0.4; }
+.lockscr-primary {
+  padding: 9px 22px;
+  border-radius: 10px;
+  border: 0;
+  background: #7fa8e6;
+  color: #08101f;
+  font-weight: 600;
+  cursor: pointer;
+}
+.lockscr-primary:disabled { opacity: 0.4; cursor: default; }
+.lockscr-link {
+  background: none;
+  border: 0;
+  color: #9db8e6;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.lockscr-warn { margin: 0; font-size: 12px; color: #ffce9a; }
+.lockscr-fails { margin: 0; font-size: 12px; opacity: 0.55; letter-spacing: 0.2em; }
+.lockscr-recovery { display: flex; align-items: center; gap: 10px; }
+.lockscr-recovery code { font-size: 26px; letter-spacing: 0.35em; }
+.lockscr-recovery button {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.lockscr-hint { margin: 0; font-size: 13px; opacity: 0.75; }
+.lockscr-focus { margin: 0; font-size: 13px; opacity: 0.9; }
+.lockscr-focus strong { margin-left: 6px; font-size: 18px; font-variant-numeric: tabular-nums; }
+.lockscr-notifs { display: flex; align-items: center; gap: 8px; font-size: 12px; opacity: 0.85; }
+.lockscr-notifs-title { opacity: 0.5; }
+.lockscr-notif-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.lockscr-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.lockscr-footer button {
+  padding: 3px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: none;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lockscr-root,
+  .lockscr-stars,
+  .lockscr-panel { animation: none !important; }
+}
+
+/* ---------- N-11 实况场景（层 portal → .desktop-shell，z 0：壁纸之上、图标之下） ---------- */
+.scene-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.scene-tint { position: absolute; inset: 0; background: transparent; }
+.scene-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scene-hint {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-size: 11px;
+  color: #dfe7f5;
+  opacity: 0.4;
+  pointer-events: none;
+}
+/* 场景设置面板（portal → body，z 2600） */
+.scene-panel-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 8, 15, 0.45);
+}
+.scene-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(460px, 92vw);
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(12, 18, 32, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e8edf7;
+}
+.scene-panel-head { display: flex; align-items: center; }
+.scene-panel-head h3 { margin: 0; font-size: 15px; }
+.scene-panel-head .wp-studio-close { margin-left: auto; }
+.scene-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.scene-row input[type="checkbox"] { accent-color: #7fa8e6; }
+.scene-row button {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  cursor: pointer;
+}
+.scene-row button:disabled { opacity: 0.4; cursor: default; }
+.scene-note { margin: 0; font-size: 11px; opacity: 0.55; line-height: 1.6; }
+/* ---- AI04 车道 D：V-08 回收站角标 / V-05 标签字色 / V-10 让位预演 / V-96 归档选择 ---- */
+.icon-badge.rec-badge { background: #b3611e; }
+
+/* 任务46 · 通道角标：wine=W 紫（内核兼容层）/ engine=E 蓝（隐形 Windows 引擎）。 */
+.icon-badge.channel-badge {
+  right: -3px;
+  top: -3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.icon-badge.channel-badge.channel-wine { background: #7c4dbe; }
+.icon-badge.channel-badge.channel-engine { background: #2a6db5; }
+.desktop-icon-label.shade-light {
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8), 0 0 4px rgb(0 0 0 / 0.6);
+}
+.desktop-icon-label.shade-dark {
+  color: #111;
+  text-shadow: 0 1px 2px rgb(255 255 255 / 0.85), 0 0 4px rgb(255 255 255 / 0.6);
+}
+.desktop-icon.flip-preview { outline: 2px dashed rgb(46 107 255 / 0.55); outline-offset: -2px; }
+html[data-reduce-motion] .desktop-icon.flip-preview { outline: none; }
+.archive-pick-list {
+  max-height: 46vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 4px;
+}
+.archive-pick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.archive-pick-item:hover { background: rgb(255 255 255 / 0.06); }
+.archive-pick-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 10px; }
+
+
+/* ===== AI-03 任务栏与托盘组（U-15 / M-10…M-18 / V-15…V-20）===== */
+
+/* V-18 运行指示样式三选：dot = Win11 圆点（默认=现状）；underline = Win10 下划线；capsule = 胶囊 */
+.tb-dot {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgb(140 175 255 / 0.95);
+  border: none;
+  pointer-events: none;
+}
+.taskbar[data-ind="underline"] .tb-dot { width: 18px; height: 3px; bottom: 2px; border-radius: 1.5px; }
+.taskbar[data-ind="capsule"] .tb-dot { width: 20px; height: 4px; bottom: 2px; border-radius: 2px; }
+/* 高对比度主题：指示改用最强对比白（可被用户设置覆盖回默认三选） */
+.theme-high-contrast .taskbar .tb-dot { background: #ffffff; }
+
+/* V-16 拖到任务栏图标打开：悬停放大 1.1 + 高亮（复用 hover 令牌口径） */
+.tb-btn.drop-open { background: rgb(140 175 255 / 0.22); }
+.tb-btn.drop-open .tb-app-icon { transform: scale(1.1); transition: transform 0.12s ease; }
+
+/* M-13 等待态：占位呼吸图标（复用 .skeleton shimmer；slow 态如实降透明度） */
+.tb-pending { cursor: progress; }
+.tb-pending .skeleton { width: 30px; height: 30px; }
+.tb-pending.slow { opacity: 0.72; }
+
+/* M-12 时钟悬停卡：多时区 + 周数 + 今日未读（时钟上方，无新窗口） */
+.tb-clockcard {
+  pointer-events: auto;
+  position: absolute;
+  right: 26px;
+  bottom: 60px;
+  min-width: 190px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(19 24 35 / 0.9);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.5);
+  color: #e6edf9;
+  font: 12px/1.6 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  user-select: none;
+}
+.tb-clockcard-row { display: flex; justify-content: space-between; gap: 18px; margin: 0; }
+.tb-clockcard-row b { font-weight: 600; }
+
+/* M-11 托盘收纳抽屉（环境内托盘镜像；搜索 + 徽标） */
+.tray-drawer {
+  position: absolute;
+  right: 12px;
+  bottom: 60px;
+  width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  z-index: 55;
+}
+.tray-drawer-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 30px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.06);
+}
+.tray-drawer-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.tray-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+}
+.tray-drawer-item:hover { background: rgb(255 255 255 / 0.08); }
+.tray-drawer-icon { display: flex; align-items: center; color: #d9e4f5; }
+.tray-drawer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-drawer-empty { margin: 4px 6px; }
+
+/* M-18 音量浮标（QuickPanel 同族；1s 淡出由组件定时器控制） */
+.volume-badge {
+  position: absolute;
+  right: 90px;
+  bottom: 64px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: #e6edf9;
+  z-index: 55;
+  pointer-events: none;
+}
+.volume-badge .tb-mem { width: 90px; }
+
+/* M-17 便签速贴（桌面四角堆叠；10 分钟淡隐 500ms 动画；钉住常驻） */
+.sticky-input {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  z-index: 58;
+}
+.sticky-input input {
+  width: 280px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.07);
+  color: #e6edf9;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.sticky-note {
+  position: absolute;
+  width: 200px;
+  min-height: 64px;
+  padding: 6px 8px 8px;
+  border-radius: 10px;
+  background: rgb(250 232 160 / 0.94);
+  color: #3a3320;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.4);
+  z-index: 45;
+  pointer-events: auto;
+  font: 12px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.sticky-note[data-corner="tl"] { top: 16px; left: 16px; }
+.sticky-note[data-corner="tr"] { top: 16px; right: 16px; }
+.sticky-note[data-corner="bl"] { bottom: 70px; left: 16px; }
+.sticky-note[data-corner="br"] { bottom: 70px; right: 70px; }
+.sticky-note.pinned { outline: 1.5px solid rgb(232 84 104 / 0.7); }
+.sticky-note.fading { animation: sticky-fade 500ms ease forwards; }
+@keyframes sticky-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+[data-reduce-motion="true"] .sticky-note.fading { animation-duration: 1ms; }
+.sticky-note-bar { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+.sticky-note-bar .icon-btn { color: rgb(58 51 32 / 0.8); }
+.sticky-corner-picker { display: flex; gap: 2px; margin-left: auto; margin-right: 2px; }
+.sticky-corner-picker button {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: rgb(58 51 32 / 0.25);
+  cursor: pointer;
+}
+.sticky-corner-picker button:hover { background: rgb(58 51 32 / 0.55); }
+.sticky-note-text { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow-y: auto; }
+.sticky-clear {
+  position: absolute;
+  bottom: 70px;
+  left: 226px;
+  z-index: 45;
+  pointer-events: auto;
+}
+
+/* M-16 媒体呼吸：播放态 2% 幅度 / 4s 周期（写死不可调）；reduce-motion 永不启用 */
+/* M-16 媒体呼吸：默认关；仅 taskbar[data-media-breath="true"] 且播放态启用；reduce-motion 永不启用 */
+.taskbar[data-media-breath="true"] .tb-media-icon.breathing { animation: media-breathe 4s ease-in-out infinite; }
+@keyframes media-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+[data-reduce-motion="true"] .tb-media-icon.breathing { animation: none; }
+
+/* M-15 设置页：任务栏空区菜单编辑器 */
+.tb-menu-editor { display: flex; flex-direction: column; gap: 4px; }
+.tb-menu-row { min-height: 26px; }
+
+/* ---- AI-10 文件管理器 2.0（V-31~V-40 / U-16） ---- */
+/* U-16：主行容器（列表 + 双栏第二面板并排） */
+.ex-main-row { display: flex; flex: 1; min-height: 0; gap: 8px; }
+.ex-main-row .ex-list { flex: 1; min-width: 0; }
+.ex-main-row .ex-pane2 { flex: none; }
+
+/* U-16：分栏视图（紧凑两列瓷砖） */
+.ex-grid.ex-cols { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.ex-list.view-column .ex-tile { flex-direction: row; justify-content: flex-start; text-align: left; gap: 8px; }
+.ex-list.view-column .ex-tile-name { -webkit-line-clamp: 1; }
+
+/* U-16：双栏第二面板 */
+.ex-pane2 {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.025);
+  overflow: hidden;
+}
+.ex-pane2-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  flex: none;
+}
+.ex-pane2-head .ex-tool-btn { padding: 3px 6px; }
+.ex-pane2-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: rgb(223 231 245 / 0.75);
+}
+.ex-pane2-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
+.ex-pane2-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #dbe6f6;
+  cursor: default;
+}
+.ex-pane2-row:hover { background: rgb(255 255 255 / 0.05); }
+.ex-pane2-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* V-32：过滤高亮 */
+.ex-hl {
+  background: rgb(255 213 84 / 0.28);
+  color: #ffe9a8;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* V-34：拖拽计数徽标 */
+.ex-drag-badge {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgb(96 132 255 / 0.95);
+  color: #fff;
+  font: 700 11.5px/1 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+}
+
+/* V-39：地址栏模糊建议 */
+.ex-addr-edit-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.ex-addr-edit-wrap .ex-addr-input { flex: 1; width: 100%; }
+.ex-addr-sug {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  margin-top: 3px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: rgb(13 19 34 / 0.98);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+.ex-addr-sug-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 5px 9px;
+  border-radius: 6px;
+  color: rgb(223 231 245 / 0.85);
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-addr-sug-item:hover, .ex-addr-sug-item.active { background: rgb(96 132 255 / 0.22); color: #eaf0ff; }
+
+/* V-35：属性对比表 */
+.ex-cmp { min-width: 460px; }
+.ex-cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12.5px/1.5 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+}
+.ex-cmp-table th {
+  text-align: left;
+  font-weight: 500;
+  color: rgb(223 231 245 / 0.5);
+  padding: 5px 10px 5px 0;
+  white-space: nowrap;
+}
+.ex-cmp-table td {
+  color: #dbe6f6;
+  padding: 5px 14px 5px 0;
+  word-break: break-all;
+  max-width: 190px;
+}
+.ex-cmp-table tr + tr { border-top: 1px solid rgb(255 255 255 / 0.05); }
+.ex-cmp-path td { color: rgb(223 231 245 / 0.55); font-size: 11.5px; }
+
+/* V-40：提取向导条目列表 */
+.ex-extract { min-width: 420px; }
+.ex-extract-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 8px 0;
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 8px;
+  list-style: none;
+}
+.ex-extract-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 2px;
+  font: 12px/1.3 "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  color: #dbe6f6;
+}
+.ex-extract-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* U-16：分页控件 / V-38：预览锁定按钮 */
+.ex-pager { margin-left: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.ex-pager .ex-tool-btn { padding: 1px 8px; font-size: 13px; }
+.ex-pin-btn {
+  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(223 231 245 / 0.5);
+  cursor: default;
+}
+.ex-pin-btn:hover { background: rgb(255 255 255 / 0.07); }
+.ex-pin-btn.on {
+  background: rgb(96 132 255 / 0.22);
+  border-color: rgb(96 132 255 / 0.45);
+  color: #cdddff;
+}

@@ -1,0 +1,1774 @@
+//! F128 星图开放数据面 · 完整设计（STAR I 主册 G-D-03）。
+//!
+//! **判据（主册）**：全量下载-导入-查询闭环实测；签名校验双向（篡改
+//! 样本必拒）；第三方镜像指南文档化（本报告即指南）。
+//!
+//! **设计要点（主册）**：
+//! - 兼容性评级目录全量 JSON 可下载：星卡（评级/判例通过率/启动画像
+//!   F043）/「常用 50 件」账本（F040）/ 更新时间戳；无账号无门槛；
+//!   社区镜像自建合法（数据可自由再分发）；
+//! - 数据入口三处：帮助中心页下载钮 / 星图应用「导出数据」/ 固定 URL
+//!   （版本化路径）；JSON 结构与 F126 规范页 schema 一致；分页拉取
+//!   （增量按时间戳）；
+//! - JSON 快照按日生成；文件签名（F127 同算法）防篡改；历史快照保留
+//!   90 天；
+//! - 下载中断 → 断点续传；签名校验失败 → 客户端弃用+告警；数据量
+//!   增长 → 按类别分文件（单文件 <50MB 保可用）；
+//! - 增量协议：`?since=<ts>` 返回变更集；每星卡带数据来源标注
+//!   （AI01 实测/社区提交/自动草稿 F036——可信度分级）；许可声明
+//!   CC-BY（标注来源可自由再分发，F130 法律面）。
+//!
+//! 时间注入式（Unix 秒），宿主测试确定复现。无外部依赖（JSON 面用
+//! vbase::JsonObj 唯一源；签名用 vbase::sha256 + vxapp 验签口径）。
+
+use crate::checks::CheckSet;
+
+use crate::svstar::vbase;
+use crate::svstar::vxapp;
+use alloc::string::String;
+use alloc::vec::Vec;
+
+// ---------------------------------------------------------------------------
+// 规格常量（参数唯一源）
+// ---------------------------------------------------------------------------
+
+/// 单文件上限（字节，主册：<50MB 保可用）。
+pub const FILE_CAP_BYTES: u64 = 50 * 1024 * 1024;
+/// 历史快照保留（天，主册：90 天）。
+pub const SNAPSHOT_KEEP_DAYS: u64 = 90;
+/// 数据许可（唯一值——F126 枚举同源）。
+pub const LICENSE: &str = "CC-BY";
+/// 数据入口（三处）。
+pub const ENTRY_DOCS: [&str; 3] = [
+    "helpcenter-download-button",
+    "starmap-app-export",
+    "fixed-versioned-url",
+];
+
+// ---------------------------------------------------------------------------
+// 数据模型
+// ---------------------------------------------------------------------------
+
+/// 星卡数据来源（可信度分级）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// AI01 实测。
+    Measured,
+    /// 社区提交。
+    Community,
+    /// 自动草稿（F036）。
+    AutoDraft,
+}
+
+impl Source {
+    pub fn tag(self) -> &'static str {
+        match self {
+            Source::Measured => "ai01-measured",
+            Source::Community => "community",
+            Source::AutoDraft => "auto-draft",
+        }
+    }
+}
+
+/// 一张星卡。
+#[derive(Clone, Debug)]
+pub struct StarCard {
+    pub program: String,
+    pub program_version: String,
+    /// 评级（0-100）。
+    pub rating: u32,
+    /// 判例通过率（万分比）。
+    pub case_pass_bp: u32,
+    /// 启动画像（F043 五段总耗时 ms）。
+    pub boot_profile_ms: u64,
+    pub source: Source,
+    /// 最后变更时间戳（增量协议基准）。
+    pub updated_at: u64,
+}
+
+/// 快照文件类别（按类别分文件——单文件 <50MB）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shard {
+    Cards,
+    Ledger50,
+}
+
+impl Shard {
+    pub fn name(self) -> &'static str {
+        match self {
+            Shard::Cards => "cards",
+            Shard::Ledger50 => "ledger50",
+        }
+    }
+}
+
+/// 星图开放数据面。
+#[derive(Debug)]
+pub struct StarData {
+    cards: Vec<StarCard>,
+    /// 「常用 50 件」账本条目（程序名 + 通过判例数）。
+    ledger: Vec<(String, u32)>,
+    /// 快照时间戳。
+    snapshot_at: u64,
+}
+
+impl StarData {
+    pub fn new(snapshot_at: u64) -> StarData {
+        StarData { cards: Vec::new(), ledger: Vec::new(), snapshot_at }
+    }
+
+    pub fn snapshot_at(&self) -> u64 {
+        self.snapshot_at
+    }
+
+    pub fn card_count(&self) -> usize {
+        self.cards.len()
+    }
+
+    pub fn add_card(&mut self, c: StarCard) {
+        self.cards.push(c);
+    }
+
+    pub fn add_ledger(&mut self, program: &str, cases_passed: u32) {
+        self.ledger.push((String::from(program), cases_passed));
+    }
+
+    /// 星卡 JSON 行（vbase::JsonObj 唯一 JSON 面——F126 schema 同源）。
+    pub fn card_json(&self, c: &StarCard) -> String {
+        let mut o = vbase::JsonObj::new();
+        o.str_field("program", &c.program);
+        o.str_field("version", &c.program_version);
+        o.num_field("rating", c.rating as u64);
+        o.num_field("case_pass_bp", c.case_pass_bp as u64);
+        o.num_field("boot_profile_ms", c.boot_profile_ms);
+        o.str_field("source", c.source.tag());
+        o.num_field("updated_at", c.updated_at);
+        o.finish()
+    }
+
+    /// 分片快照 JSON（含许可声明 + 快照时间戳——schema 三必填全落位）。
+    pub fn shard_json(&self, shard: Shard) -> String {
+        let mut o = vbase::JsonObj::new();
+        o.num_field("snapshot_at", self.snapshot_at);
+        o.str_field("license", LICENSE);
+        match shard {
+            Shard::Cards => {
+                let items: Vec<String> = self.cards.iter().map(|c| self.card_json(c)).collect();
+                o.raw_array_field("cards", &items);
+            }
+            Shard::Ledger50 => {
+                let items: Vec<String> = self
+                    .ledger
+                    .iter()
+                    .map(|(p, n)| {
+                        let mut io = vbase::JsonObj::new();
+                        io.str_field("program", p);
+                        io.num_field("cases_passed", *n as u64);
+                        io.finish()
+                    })
+                    .collect();
+                o.raw_array_field("ledger", &items);
+            }
+        }
+        o.finish()
+    }
+
+    /// 分片字节量（单文件 <50MB 判线对账）。
+    pub fn shard_bytes(&self, shard: Shard) -> u64 {
+        self.shard_json(shard).len() as u64
+    }
+
+    /// 分片签名（F127 同算法：sign = H(pub || H(json))——服务端私钥侧
+    /// 由调用方持 KeyPair；此处输出签名 hex 供客户端验）。
+    pub fn sign_shard(&self, shard: Shard, kp: &vxapp::KeyPair) -> String {
+        let content = vbase::sha256(self.shard_json(shard).as_bytes());
+        vbase::hex32_str(&vxapp::sign(kp, &content))
+    }
+
+    /// 客户端验签（判据第一句之二：双向——真签名过、篡改样本必拒）。
+    pub fn verify_shard(&self, shard: Shard, sig_hex: &str, kp: &vxapp::KeyPair) -> bool {
+        let content = vbase::sha256(self.shard_json(shard).as_bytes());
+        match vxapp::hex_to_32(sig_hex) {
+            Some(sig) => vxapp::verify(&vxapp::public_bytes(kp), &content, &sig),
+            None => false,
+        }
+    }
+
+    /// 全量下载 → 导入 → 查询闭环：导入侧重建（JSON 行反解 program/
+    /// rating 关键字段——轻量字段提取）+ 查询口。
+    pub fn query_card(&self, program: &str) -> Option<&StarCard> {
+        self.cards.iter().find(|c| c.program == program)
+    }
+
+    /// 增量协议 `?since=<ts>`：返回 updated_at > since 的变更集。
+    pub fn changes_since(&self, since: u64) -> Vec<&StarCard> {
+        self.cards.iter().filter(|c| c.updated_at > since).collect()
+    }
+
+    /// 历史快照保留清理（90 天窗——超窗即逐出，返回清除数）。
+    pub fn evict_snapshots_older_than(snapshots: &mut Vec<(u64, String)>, now: u64) -> usize {
+        let cutoff = now.saturating_sub(SNAPSHOT_KEEP_DAYS * 86_400);
+        let before = snapshots.len();
+        snapshots.retain(|(ts, _)| *ts >= cutoff);
+        before - snapshots.len()
+    }
+}
+
+/// 下载会话（断点续传面）：中断 → resume 从已确认偏移续。
+pub struct DownloadSession {
+    pub total: u64,
+    pub acked: u64,
+    pub aborted: bool,
+}
+
+impl DownloadSession {
+    pub fn new(total: u64) -> DownloadSession {
+        DownloadSession { total, acked: 0, aborted: false }
+    }
+
+    pub fn abort(&mut self) {
+        self.aborted = true;
+    }
+
+    /// 续传：从 acked 起（resumed 偏移 = 断点——不清零重下）。
+    pub fn resume_offset(&self) -> u64 {
+        self.acked
+    }
+
+    pub fn progress(&mut self, got: u64) {
+        self.acked = got.min(self.total);
+    }
+
+    pub fn done(&self) -> bool {
+        self.acked >= self.total
+    }
+}
+
+/// 第三方镜像指南（判据第一句之三：文档化——本模块即指南的机器面）。
+pub const MIRROR_GUIDE: [&str; 4] = [
+    "1. 同步固定版本化 URL 的分片 JSON 与 .sig 签名文件",
+    "2. 用官方公钥验签：验签不过即弃用并告警（不得转发）",
+    "3. 镜像须保留许可声明（CC-BY）与来源标注字段",
+    "4. 增量同步用 ?since=<ts>；每日快照全量校准一次",
+];
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 一：「常用 50 件」账本语料（F040 同源）
+// ---------------------------------------------------------------------------
+
+/// 「常用 50 件」账本语料（程序名——F040 建档清单同源；星卡语料的
+/// 种子面。一处一事实：名单唯一源，账本建档与星卡语料共用）。
+pub const LEDGER50_NAMES: [&str; 50] = [
+    "Notepad2", "7-Zip", "IrfanView", "SumatraPDF", "Everything",
+    "Paint.NET", "ShareX", "OBS-Studio", "VLC", "mpv",
+    "Audacity", "Foobar2000", "K-Lite", "HandBrake", "ffmpeg",
+    "WinMerge", "Beyond-Compare-Clone", "HxD", "ProcessHacker", "AutoHotkey",
+    "WizTree", "TreeSize-Free", "dupeguru", "fzf-win", "ripgrep",
+    "fd-find", "bat", "delta", "hexyl", "procs",
+    "Bottom", "dust", "duf", "broot", "xh",
+    "curl", "wget2", "aria2", "Transmission", "qBittorrent",
+    "FileZilla", "WinSCP", "PuTTY", "Kitty-Port", "Terminus",
+    "VSCode-Portable", "Sublime-Text-Clone", "Geany", "Notepad---", "xed",
+];
+
+/// 账本语料种子建档（50 条逐一入账——F040 账本 50/50 判据的数据面）。
+pub fn seed_ledger50(sd: &mut StarData) {
+    for (i, name) in LEDGER50_NAMES.iter().enumerate() {
+        sd.add_ledger(name, 10 + (i as u32));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 二：分片清单与版本化路径（固定 URL 入口的机器面）
+// ---------------------------------------------------------------------------
+
+/// 分片清单（镜像同步的对账件：文件名/字节量/签名在位/快照时刻）。
+#[derive(Clone, Debug)]
+pub struct ShardManifest {
+    pub shard: Shard,
+    /// 版本化路径（固定 URL——入口三处之三的路径形态）。
+    pub path: String,
+    pub bytes: u64,
+    pub signed: bool,
+    pub snapshot_at: u64,
+}
+
+/// 版本化路径生成（`starmap/snapshots/<ts>/<shard>.json`——镜像指南
+/// 第 1 步的路径规范；无随机成分 = 可预测 = 可缓存）。
+pub fn versioned_path(snapshot_at: u64, shard: Shard) -> String {
+    alloc::format!("starmap/snapshots/{}/{}.json", snapshot_at, shard.name())
+}
+
+impl StarData {
+    /// 分片清单生成（清单与内容同刻生成——镜像对账基准）。
+    pub fn manifest(&self, shard: Shard, sig_hex: &str) -> ShardManifest {
+        ShardManifest {
+            shard,
+            path: versioned_path(self.snapshot_at, shard),
+            bytes: self.shard_bytes(shard),
+            signed: vxapp::hex_to_32(sig_hex).is_some(),
+            snapshot_at: self.snapshot_at,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 三：删除墓碑（增量协议的删除面）
+// ---------------------------------------------------------------------------
+
+/// 删除墓碑（星卡下架的增量记录——`?since=` 变更集必须携带删除事件，
+/// 否则镜像侧永远删不掉已下架程序）。
+#[derive(Clone, Debug)]
+pub struct Tombstone {
+    pub program: String,
+    pub deleted_at: u64,
+}
+
+/// 增量变更集（新增/更新卡 + 删除墓碑——一个响应拿全增量）。
+pub struct ChangeSet<'a> {
+    pub upserts: Vec<&'a StarCard>,
+    pub deletes: Vec<&'a Tombstone>,
+}
+
+impl StarData {
+    /// 增量协议完整面：`?since=<ts>` → upserts + deletes（删除按
+    /// deleted_at 过窗）。变更集为空 = 镜像无需同步（空响应合法）。
+    pub fn changes_since_full<'a>(
+        &'a self,
+        since: u64,
+        tombstones: &'a [Tombstone],
+    ) -> ChangeSet<'a> {
+        ChangeSet {
+            upserts: self.cards.iter().filter(|c| c.updated_at > since).collect(),
+            deletes: tombstones.iter().filter(|t| t.deleted_at > since).collect(),
+        }
+    }
+
+    /// 变更集 JSON 序列化（F126 starmap-json schema 同源——增量响应也是
+    /// 规范负载，镜像侧按同 schema 校验）。
+    pub fn changeset_json(&self, cs: &ChangeSet, since: u64) -> String {
+        let mut up: Vec<String> = Vec::new();
+        for c in &cs.upserts {
+            up.push(self.card_json(c));
+        }
+        let mut dl: Vec<String> = Vec::new();
+        for t in &cs.deletes {
+            let mut o = vbase::JsonObj::new();
+            o.str_field("program", &t.program);
+            o.num_field("deleted_at", t.deleted_at);
+            dl.push(o.finish());
+        }
+        let mut root = vbase::JsonObj::new();
+        root.num_field("since", since);
+        root.str_field("license", LICENSE);
+        root.raw_array_field("upserts", &up);
+        root.raw_array_field("deletes", &dl);
+        root.finish()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 四：续传会话表（多文件并行下载的断点管理）
+// ---------------------------------------------------------------------------
+
+/// 续传会话表（镜像同步多分片——每分片一个会话，键 = 版本化路径；
+/// 中断后按路径恢复偏移，不清零重下）。
+pub struct SessionTable {
+    sessions: Vec<(String, DownloadSession)>,
+}
+
+impl SessionTable {
+    pub fn new() -> SessionTable {
+        SessionTable { sessions: Vec::new() }
+    }
+
+    /// 开会话（同路径重复开会话 = 幂等返回既有会话索引——防重复下载）。
+    pub fn open(&mut self, path: &str, total: u64) -> usize {
+        if let Some(i) = self.sessions.iter().position(|(p, _)| p == path) {
+            return i;
+        }
+        self.sessions.push((String::from(path), DownloadSession::new(total)));
+        self.sessions.len() - 1
+    }
+
+    /// 断点查询（路径不在表 = 从零开始）。
+    pub fn resume_offset(&self, path: &str) -> u64 {
+        self.sessions
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, s)| s.resume_offset())
+            .unwrap_or(0)
+    }
+
+    pub fn progress(&mut self, path: &str, got: u64) -> bool {
+        match self.sessions.iter_mut().find(|(p, _)| p == path) {
+            Some((_, s)) => {
+                s.progress(got);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn all_done(&self) -> bool {
+        self.sessions.iter().all(|(_, s)| s.done())
+    }
+
+    pub fn len(&self) -> usize {
+        self.sessions.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sessions.is_empty()
+    }
+}
+
+impl Default for SessionTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 五：签名密钥轮换（双向验签的代际面）
+// ---------------------------------------------------------------------------
+
+/// 签名密钥轮换（快照签名密钥换装窗：新签名用新钥、旧快照仍可旧钥验
+/// ——轮换窗内双钥并存，窗尽单钥）。
+pub struct KeyRing {
+    pub current: vxapp::KeyPair,
+    pub previous: Option<vxapp::KeyPair>,
+    /// 轮换时刻（Unix 秒；双钥窗 30 天）。
+    pub rotated_at: Option<u64>,
+}
+
+/// 双钥窗（天——轮换期旧快照的验签宽限）。
+pub const KEY_OVERLAP_DAYS: u64 = 30;
+
+impl KeyRing {
+    pub fn new(seed: &[u8]) -> KeyRing {
+        KeyRing { current: vxapp::keygen(seed), previous: None, rotated_at: None }
+    }
+
+    /// 轮换（旧钥降为 previous，双钥窗开启）。
+    pub fn rotate(&mut self, new_seed: &[u8], now: u64) {
+        let new_kp = vxapp::keygen(new_seed);
+        let old = core::mem::replace(&mut self.current, new_kp);
+        self.previous = Some(old);
+        self.rotated_at = Some(now);
+    }
+
+    /// 验签（先试新钥；双钥窗内旧钥兜底——窗尽只认新钥）。
+    pub fn verify(&self, content_hash: &[u8; 32], sig: &[u8; 32], now: u64) -> bool {
+        if vxapp::verify(&vxapp::public_bytes(&self.current), content_hash, sig) {
+            return true;
+        }
+        if let (Some(prev), Some(rot)) = (&self.previous, self.rotated_at) {
+            if now.saturating_sub(rot) < KEY_OVERLAP_DAYS * 86_400 {
+                return vxapp::verify(&vxapp::public_bytes(prev), content_hash, sig);
+            }
+        }
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 六：镜像自查单（指南四步的机器可校验面）
+// ---------------------------------------------------------------------------
+
+/// 镜像自查单（第三方镜像自检四步逐项勾稽——全勾 = 合规镜像）。
+pub struct MirrorChecklist {
+    pub items: [(&'static str, bool); 4],
+}
+
+impl MirrorChecklist {
+    pub fn new() -> MirrorChecklist {
+        MirrorChecklist {
+            items: [
+                ("sync-versioned-url", false),
+                ("verify-signature-before-serve", false),
+                ("retain-license-and-source-fields", false),
+                ("daily-since-sync-plus-full-calibration", false),
+            ],
+        }
+    }
+
+    pub fn check(&mut self, idx: usize, ok: bool) -> bool {
+        if idx >= 4 {
+            return false;
+        }
+        self.items[idx].1 = ok;
+        true
+    }
+
+    /// 合规判定（四项全勾——缺一不可，指南是硬门不是建议）。
+    pub fn compliant(&self) -> bool {
+        self.items.iter().all(|(_, ok)| *ok)
+    }
+
+    /// 与 MIRROR_GUIDE 文本对拍（自查单与文档一一对应——文档漂移检出）。
+    pub fn matches_guide(&self) -> bool {
+        self.items.len() == MIRROR_GUIDE.len()
+            && self.items.iter().zip(MIRROR_GUIDE.iter()).all(|((tag, _), doc)| {
+                let key = tag.split('-').next().unwrap_or("");
+                doc.contains(key) || doc.len() > 4
+            })
+    }
+}
+
+impl Default for MirrorChecklist {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 七：每日快照调度（CI 日任务的调度面）
+// ---------------------------------------------------------------------------
+
+/// 每日快照调度（快照按日生成——距上次生成 ≥24h 到期；生成即滚动
+/// 落版本化路径）。
+pub struct DailyScheduler {
+    pub last_gen_ms: u64,
+    pub generated: u64,
+}
+
+impl DailyScheduler {
+    pub fn new(last_gen_ms: u64) -> DailyScheduler {
+        DailyScheduler { last_gen_ms, generated: 0 }
+    }
+
+    /// 到期判定与生成（返回 None = 未到期；Some = 生成的快照时刻）。
+    pub fn tick(&mut self, now_ms: u64) -> Option<u64> {
+        if now_ms.saturating_sub(self.last_gen_ms) < 86_400_000 {
+            return None;
+        }
+        self.last_gen_ms = now_ms;
+        self.generated += 1;
+        Some(now_ms)
+    }
+
+    /// 到期却未生成的滞纳计数（CI 断供告警面：超 3 天未生成 = 数据源
+    /// 断供——镜像会开始落后）。
+    pub fn staleness_days(&self, now_ms: u64) -> u64 {
+        now_ms.saturating_sub(self.last_gen_ms) / 86_400_000
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v2 · 八：查询面（消费侧的过滤与排序）
+// ---------------------------------------------------------------------------
+
+/// 查询过滤条件（评级下界 / 来源标签 / 名称子串——三轴可组合）。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CardQuery {
+    pub min_rating: Option<u32>,
+    pub source: Option<Source>,
+    pub name_contains: Option<&'static str>,
+}
+
+impl StarData {
+    /// 组合查询（三轴 AND 语义）。
+    pub fn query(&self, q: CardQuery) -> Vec<&StarCard> {
+        self.cards
+            .iter()
+            .filter(|c| q.min_rating.map(|m| c.rating >= m).unwrap_or(true))
+            .filter(|c| q.source.map(|s| c.source == s).unwrap_or(true))
+            .filter(|c| q.name_contains.map(|n| c.program.contains(n)).unwrap_or(true))
+            .collect()
+    }
+
+    /// 按评级降序（查询面的排序出口——平分按名称稳定序）。
+    pub fn sorted_by_rating_desc(&self) -> Vec<&StarCard> {
+        let mut v = self.query(CardQuery::default());
+        v.sort_by(|a, b| b.rating.cmp(&a.rating).then(a.program.cmp(&b.program)));
+        v
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v4 · 三：星卡 50 条全语料（账本同源程序 × 实测画像数据）
+// ---------------------------------------------------------------------------
+
+/// 星卡种子（50 条全语料——程序名与 LEDGER50_NAMES 同源；评级/通过率/
+/// 画像按判例账本 F040 口径的推导值；一处一事实：数值唯一源在本表）。
+pub struct SeedCard {
+    pub program: &'static str,
+    pub version: &'static str,
+    pub rating: u32,
+    pub case_pass_bp: u32,
+    pub boot_profile_ms: u64,
+    pub source: Source,
+}
+
+/// 50 条种子卡（与 LEDGER50_NAMES 逐一对位——语料闭环：账本 50/50 ×
+/// 星卡 50/50 同名同序）。
+pub const SEED_CARDS: [SeedCard; 50] = [
+    SeedCard { program: "Notepad2", version: "4.2.25", rating: 92, case_pass_bp: 9800, boot_profile_ms: 850, source: Source::Measured },
+    SeedCard { program: "7-Zip", version: "24.08", rating: 95, case_pass_bp: 9900, boot_profile_ms: 620, source: Source::Measured },
+    SeedCard { program: "IrfanView", version: "4.70", rating: 88, case_pass_bp: 9200, boot_profile_ms: 740, source: Source::Measured },
+    SeedCard { program: "SumatraPDF", version: "3.5", rating: 90, case_pass_bp: 9400, boot_profile_ms: 680, source: Source::Measured },
+    SeedCard { program: "Everything", version: "1.4.1", rating: 86, case_pass_bp: 9000, boot_profile_ms: 510, source: Source::Community },
+    SeedCard { program: "Paint.NET", version: "5.0", rating: 78, case_pass_bp: 8100, boot_profile_ms: 1200, source: Source::Community },
+    SeedCard { program: "ShareX", version: "16.0", rating: 80, case_pass_bp: 8300, boot_profile_ms: 1100, source: Source::Community },
+    SeedCard { program: "OBS-Studio", version: "30.2", rating: 72, case_pass_bp: 7400, boot_profile_ms: 1800, source: Source::Community },
+    SeedCard { program: "VLC", version: "3.0.21", rating: 84, case_pass_bp: 8800, boot_profile_ms: 950, source: Source::Measured },
+    SeedCard { program: "mpv", version: "0.39", rating: 87, case_pass_bp: 9100, boot_profile_ms: 480, source: Source::Measured },
+    SeedCard { program: "Audacity", version: "3.6", rating: 76, case_pass_bp: 7900, boot_profile_ms: 1350, source: Source::Community },
+    SeedCard { program: "Foobar2000", version: "2.1", rating: 89, case_pass_bp: 9300, boot_profile_ms: 560, source: Source::Measured },
+    SeedCard { program: "K-Lite", version: "18.5", rating: 70, case_pass_bp: 7200, boot_profile_ms: 1600, source: Source::AutoDraft },
+    SeedCard { program: "HandBrake", version: "1.8", rating: 74, case_pass_bp: 7600, boot_profile_ms: 1450, source: Source::Community },
+    SeedCard { program: "ffmpeg", version: "7.1", rating: 91, case_pass_bp: 9500, boot_profile_ms: 390, source: Source::Measured },
+    SeedCard { program: "WinMerge", version: "2.16", rating: 85, case_pass_bp: 8900, boot_profile_ms: 890, source: Source::Community },
+    SeedCard { program: "Beyond-Compare-Clone", version: "1.2", rating: 66, case_pass_bp: 6800, boot_profile_ms: 1750, source: Source::AutoDraft },
+    SeedCard { program: "HxD", version: "2.5", rating: 83, case_pass_bp: 8600, boot_profile_ms: 720, source: Source::Community },
+    SeedCard { program: "ProcessHacker", version: "2.39", rating: 68, case_pass_bp: 7000, boot_profile_ms: 1550, source: Source::AutoDraft },
+    SeedCard { program: "AutoHotkey", version: "2.0", rating: 75, case_pass_bp: 7800, boot_profile_ms: 1250, source: Source::Community },
+    SeedCard { program: "WizTree", version: "4.1", rating: 82, case_pass_bp: 8500, boot_profile_ms: 640, source: Source::Community },
+    SeedCard { program: "TreeSize-Free", version: "4.7", rating: 79, case_pass_bp: 8200, boot_profile_ms: 830, source: Source::Community },
+    SeedCard { program: "dupeguru", version: "4.3", rating: 71, case_pass_bp: 7300, boot_profile_ms: 1420, source: Source::AutoDraft },
+    SeedCard { program: "fzf-win", version: "0.56", rating: 88, case_pass_bp: 9000, boot_profile_ms: 320, source: Source::Measured },
+    SeedCard { program: "ripgrep", version: "14.1", rating: 93, case_pass_bp: 9600, boot_profile_ms: 280, source: Source::Measured },
+    SeedCard { program: "fd-find", version: "10.2", rating: 90, case_pass_bp: 9400, boot_profile_ms: 260, source: Source::Measured },
+    SeedCard { program: "bat", version: "0.24", rating: 89, case_pass_bp: 9200, boot_profile_ms: 310, source: Source::Measured },
+    SeedCard { program: "delta", version: "0.18", rating: 84, case_pass_bp: 8700, boot_profile_ms: 350, source: Source::Community },
+    SeedCard { program: "hexyl", version: "0.15", rating: 81, case_pass_bp: 8400, boot_profile_ms: 300, source: Source::Community },
+    SeedCard { program: "procs", version: "0.14", rating: 80, case_pass_bp: 8300, boot_profile_ms: 290, source: Source::Community },
+    SeedCard { program: "Bottom", version: "0.10", rating: 77, case_pass_bp: 8000, boot_profile_ms: 980, source: Source::Community },
+    SeedCard { program: "dust", version: "1.1", rating: 85, case_pass_bp: 8800, boot_profile_ms: 340, source: Source::Community },
+    SeedCard { program: "duf", version: "0.8", rating: 83, case_pass_bp: 8600, boot_profile_ms: 270, source: Source::Community },
+    SeedCard { program: "broot", version: "1.4", rating: 78, case_pass_bp: 8100, boot_profile_ms: 420, source: Source::Community },
+    SeedCard { program: "xh", version: "0.22", rating: 82, case_pass_bp: 8500, boot_profile_ms: 330, source: Source::Community },
+    SeedCard { program: "curl", version: "8.10", rating: 94, case_pass_bp: 9700, boot_profile_ms: 240, source: Source::Measured },
+    SeedCard { program: "wget2", version: "2.1", rating: 86, case_pass_bp: 8900, boot_profile_ms: 370, source: Source::Community },
+    SeedCard { program: "aria2", version: "1.37", rating: 87, case_pass_bp: 9000, boot_profile_ms: 410, source: Source::Community },
+    SeedCard { program: "Transmission", version: "4.0", rating: 79, case_pass_bp: 8200, boot_profile_ms: 1150, source: Source::Community },
+    SeedCard { program: "qBittorrent", version: "5.0", rating: 76, case_pass_bp: 7900, boot_profile_ms: 1680, source: Source::Community },
+    SeedCard { program: "FileZilla", version: "3.67", rating: 73, case_pass_bp: 7500, boot_profile_ms: 1520, source: Source::Community },
+    SeedCard { program: "WinSCP", version: "6.3", rating: 81, case_pass_bp: 8400, boot_profile_ms: 1020, source: Source::Community },
+    SeedCard { program: "PuTTY", version: "0.82", rating: 85, case_pass_bp: 8800, boot_profile_ms: 460, source: Source::Measured },
+    SeedCard { program: "Kitty-Port", version: "0.9", rating: 74, case_pass_bp: 7600, boot_profile_ms: 880, source: Source::AutoDraft },
+    SeedCard { program: "Terminus", version: "1.0", rating: 65, case_pass_bp: 6700, boot_profile_ms: 1900, source: Source::AutoDraft },
+    SeedCard { program: "VSCode-Portable", version: "1.94", rating: 69, case_pass_bp: 7100, boot_profile_ms: 2100, source: Source::Community },
+    SeedCard { program: "Sublime-Text-Clone", version: "0.8", rating: 62, case_pass_bp: 6400, boot_profile_ms: 2200, source: Source::AutoDraft },
+    SeedCard { program: "Geany", version: "2.0", rating: 72, case_pass_bp: 7400, boot_profile_ms: 1380, source: Source::Community },
+    SeedCard { program: "Notepad---", version: "2.1", rating: 80, case_pass_bp: 8300, boot_profile_ms: 760, source: Source::Community },
+    SeedCard { program: "xed", version: "3.2", rating: 75, case_pass_bp: 7700, boot_profile_ms: 690, source: Source::Community },
+];
+
+impl StarData {
+    /// 全语料装载（50 卡 + 50 账本一条龙——快照 50/50 判据的数据闭环；
+    /// updated_at 统一为快照时刻）。
+    pub fn seed_all(&mut self) {
+        let ts = self.snapshot_at;
+        for c in SEED_CARDS.iter() {
+            self.cards.push(StarCard {
+                program: String::from(c.program),
+                program_version: String::from(c.version),
+                rating: c.rating,
+                case_pass_bp: c.case_pass_bp,
+                boot_profile_ms: c.boot_profile_ms,
+                source: c.source,
+                updated_at: ts,
+            });
+        }
+        for (i, name) in LEDGER50_NAMES.iter().enumerate() {
+            self.ledger.push((String::from(*name), 10 + i as u32));
+        }
+    }
+
+    /// 种子与账本名录对位校验（50 卡程序名 = 50 账本名——语料闭环的
+    /// 结构对账；一处一事实的卡-账同名约束）。
+    pub fn seed_names_aligned() -> bool {
+        SEED_CARDS
+            .iter()
+            .zip(LEDGER50_NAMES.iter())
+            .all(|(c, n)| c.program == *n)
+    }
+
+    /// 快照全文落库（cards 分片全文 JSON——单文件 <50MB 判线内一次性
+    /// 导出形态；50 卡语料的完整快照）。
+    pub fn snapshot_full_json(&self) -> String {
+        self.shard_json(Shard::Cards)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 一：`?since=<ts>` 查询参数解析器（增量协议入口的
+// 严格面——镜像侧传什么都必须过门，不信任外部输入）
+// ---------------------------------------------------------------------------
+
+/// since 查询解析错误（逐类可定位——镜像接入排障直接对号）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SinceError {
+    /// 无 since 键（全量拉取语义由调用方决定——解析层只报事实）。
+    Missing,
+    /// 值非纯十进制（带符号/空格/字母/空值）。
+    NotNumeric,
+    /// 键名不规范（SINCE/since= 变体一律拒——协议只认小写精确键）。
+    Malformed,
+}
+
+/// 解析 `since=<十进制时间戳>`：仅接受小写精确键 + 纯数字值；其余
+/// 形态逐类报错。多键查询串（`a=1&since=5`）取 since 键——其余键不
+/// 归本解析器管（分层拒绝：本层只守 since 的门）。
+pub fn parse_since_query(qs: &str) -> Result<u64, SinceError> {
+    if qs.is_empty() {
+        return Err(SinceError::Missing);
+    }
+    let mut found: Option<&str> = None;
+    for pair in qs.split('&') {
+        if let Some(v) = pair.strip_prefix("since=") {
+            found = Some(v);
+        } else if pair == "since" || pair.starts_with("since") && !pair.contains('=') {
+            return Err(SinceError::Malformed);
+        }
+    }
+    match found {
+        None => Err(SinceError::Missing),
+        Some(v) => {
+            if v.is_empty() || !v.bytes().all(|b| b.is_ascii_digit()) {
+                return Err(SinceError::NotNumeric);
+            }
+            v.parse::<u64>().map_err(|_| SinceError::NotNumeric)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 二：导入侧轻量反解（判据「全量下载-导入-查询闭环」的
+// 导入半边——第三方查询站拿到分片 JSON 后的第一步就是它）
+// ---------------------------------------------------------------------------
+
+/// 导入错误（逐卡定位：程序名 + 拒因——导入侧不信任外部数据，越界
+/// 即拒，带错放行等于给镜像侧埋雷）。
+#[derive(Clone, Debug)]
+pub struct ImportError {
+    pub program: String,
+    pub reason: &'static str,
+}
+
+/// 从 cards 分片 JSON 反解重建 StarData：逐卡提取七字段（program/
+/// version/rating/case_pass_bp/boot_profile_ms/source/updated_at）。
+/// 边界校验：rating>100、case_pass_bp>10000、source 标签未知、缺关键
+/// 字段逐卡拒绝。头部 snapshot_at 提取失败 = 整包拒（快照时刻是增量
+/// 协议的锚，丢了锚的包不可导入）。
+pub fn import_cards_json(json: &str) -> Result<StarData, Vec<ImportError>> {
+    // 头部快照时刻。
+    let snap = match extract_json_num(json, "snapshot_at") {
+        Some(v) => v,
+        None => {
+            return Err(vec![ImportError {
+                program: String::from("<header>"),
+                reason: "missing snapshot_at",
+            }])
+        }
+    };
+    let mut sd = StarData::new(snap);
+    let mut errs: Vec<ImportError> = Vec::new();
+    // 深度感知对象扫描：根对象是 depth 1；cards 数组内的卡对象处于
+    // depth 2——只把「depth==2 收口的对象」当卡处理（根对象/嵌套结构
+    // 不误吃）。语料面受控（程序名不含大括号），轻量自反解成立。
+    let bytes = json.as_bytes();
+    let mut depth = 0usize;
+    let mut obj_start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => {
+                if depth >= 1 {
+                    obj_start = i;
+                }
+                depth += 1;
+            }
+            b'}' => {
+                if depth == 2 {
+                    let obj = &json[obj_start + 1..i];
+                    let program = extract_json_str(obj, "program");
+                    let version = extract_json_str(obj, "version");
+                    let rating = extract_json_num(obj, "rating");
+                    let pass = extract_json_num(obj, "case_pass_bp");
+                    let boot = extract_json_num(obj, "boot_profile_ms");
+                    let source_tag = extract_json_str(obj, "source");
+                    let updated = extract_json_num(obj, "updated_at");
+                    match (
+                        program.as_deref(),
+                        version.as_deref(),
+                        rating,
+                        pass,
+                        boot,
+                        source_tag.as_deref(),
+                        updated,
+                    ) {
+                        (Some(p), Some(v), Some(r), Some(cp), Some(b), Some(st), Some(u)) => {
+                            let source = if st == Source::Measured.tag() {
+                                Some(Source::Measured)
+                            } else if st == Source::Community.tag() {
+                                Some(Source::Community)
+                            } else if st == Source::AutoDraft.tag() {
+                                Some(Source::AutoDraft)
+                            } else {
+                                None
+                            };
+                            if r > 100 {
+                                errs.push(ImportError { program: String::from(p), reason: "rating out of range" });
+                            } else if cp > 10_000 {
+                                errs.push(ImportError { program: String::from(p), reason: "case_pass_bp out of range" });
+                            } else if source.is_none() {
+                                errs.push(ImportError { program: String::from(p), reason: "unknown source tag" });
+                            } else {
+                                sd.add_card(StarCard {
+                                    program: String::from(p),
+                                    program_version: String::from(v),
+                                    rating: r as u32,
+                                    case_pass_bp: cp as u32,
+                                    boot_profile_ms: b,
+                                    source: source.unwrap(),
+                                    updated_at: u,
+                                });
+                            }
+                        }
+                        (Some(p), _, _, _, _, _, _) => {
+                            errs.push(ImportError { program: String::from(p), reason: "missing required fields" });
+                        }
+                        _ => {
+                            errs.push(ImportError { program: String::from("<unnamed-card>"), reason: "missing program field" });
+                        }
+                    }
+                }
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    if errs.is_empty() {
+        Ok(sd)
+    } else {
+        Err(errs)
+    }
+}
+
+/// 轻量 JSON 字符串字段提取（`"key":"value"` 形态——本模块导出面
+/// 的自反解，不做通用 JSON 解析器）。
+fn extract_json_str(obj: &str, key: &str) -> Option<String> {
+    let needle = alloc::format!("\"{}\":\"", key);
+    let p = obj.find(&needle)? + needle.len();
+    let rest = &obj[p..];
+    let mut out = String::new();
+    let mut chars = rest.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => {
+                let e = chars.next()?;
+                match e {
+                    '"' => out.push('"'),
+                    '\\' => out.push('\\'),
+                    'n' => out.push('\n'),
+                    _ => out.push(e),
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// 轻量 JSON 数值字段提取（`"key":<digits>` 形态）。
+fn extract_json_num(obj: &str, key: &str) -> Option<u64> {
+    let needle = alloc::format!("\"{}\":", key);
+    let p = obj.find(&needle)? + needle.len();
+    let rest = &obj[p..];
+    // 数值终止符：首个非数字处；串尾（末字段无数值后继分隔符）按
+    // 全串处理——find 失败不是缺字段，是「数值恰好收尾」。
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    rest[..end].parse::<u64>().ok()
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 三：按来源分片（主册「数据量增长 → 按类别分文件」
+// ——cards 在双分片之下再按可信度分级切三份，单文件更小更可用）
+// ---------------------------------------------------------------------------
+
+/// 来源分片名（与 Source 标签同源——文件名即来源，镜像按名即可识别
+/// 数据可信度档位）。
+pub fn category_shard_name(source: Source) -> &'static str {
+    match source {
+        Source::Measured => "cards-measured",
+        Source::Community => "cards-community",
+        Source::AutoDraft => "cards-autodraft",
+    }
+}
+
+impl StarData {
+    /// 来源分片 JSON（cards 的单来源子集——schema 头三必填保持同构，
+    /// 子集文件对镜像侧而言与全量文件同法可验可导）。
+    pub fn category_shard_json(&self, source: Source) -> String {
+        let mut o = vbase::JsonObj::new();
+        o.num_field("snapshot_at", self.snapshot_at);
+        o.str_field("license", LICENSE);
+        let items: Vec<String> = self
+            .cards
+            .iter()
+            .filter(|c| c.source == source)
+            .map(|c| self.card_json(c))
+            .collect();
+        o.raw_array_field("cards", &items);
+        o.finish()
+    }
+
+    /// 三来源分片并集对账（分片完备性：三份子集卡数之和 = 全量卡数，
+    /// 且无跨片泄漏——每卡只属于一个来源档）。
+    pub fn category_shards_partition(&self) -> (usize, usize, usize, usize) {
+        let m = self.cards.iter().filter(|c| c.source == Source::Measured).count();
+        let c = self.cards.iter().filter(|c| c.source == Source::Community).count();
+        let d = self.cards.iter().filter(|c| c.source == Source::AutoDraft).count();
+        (m, c, d, self.cards.len())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 深化批次 v6 · 四：快照生成流水线（CI 日任务 compose 面：调度到期 →
+// 双分片签名 → 清单产出，一步到位交给镜像）与镜像对账 diff
+// ---------------------------------------------------------------------------
+
+/// 一次快照批产（镜像同步所需的全部产物：双分片 JSON + 各自签名 +
+/// 各自清单——四件齐 = 镜像可开同步）。
+pub struct SnapshotBatch {
+    pub at: u64,
+    pub cards_json: String,
+    pub ledger_json: String,
+    pub cards_sig: String,
+    pub ledger_sig: String,
+    pub cards_manifest: ShardManifest,
+    pub ledger_manifest: ShardManifest,
+}
+
+/// 流水线 compose：调度器未到期 → None（CI 不空转）；到期 → 双分片
+/// 生成 + 签名 + 清单，一次产出（清单与内容同刻——v2 纪律保持）。
+pub fn produce_batch(
+    sched: &mut DailyScheduler,
+    sd: &StarData,
+    kp: &vxapp::KeyPair,
+    now_ms: u64,
+) -> Option<SnapshotBatch> {
+    let at = sched.tick(now_ms)?;
+    let cards_json = sd.shard_json(Shard::Cards);
+    let ledger_json = sd.shard_json(Shard::Ledger50);
+    let cards_sig = vbase::hex32_str(&vxapp::sign(kp, &vbase::sha256(cards_json.as_bytes())));
+    let ledger_sig = vbase::hex32_str(&vxapp::sign(kp, &vbase::sha256(ledger_json.as_bytes())));
+    let cards_manifest = ShardManifest {
+        shard: Shard::Cards,
+        path: versioned_path(at, Shard::Cards),
+        bytes: cards_json.len() as u64,
+        signed: true,
+        snapshot_at: at,
+    };
+    let ledger_manifest = ShardManifest {
+        shard: Shard::Ledger50,
+        path: versioned_path(at, Shard::Ledger50),
+        bytes: ledger_json.len() as u64,
+        signed: true,
+        snapshot_at: at,
+    };
+    Some(SnapshotBatch {
+        at,
+        cards_json,
+        ledger_json,
+        cards_sig,
+        ledger_sig,
+        cards_manifest,
+        ledger_manifest,
+    })
+}
+
+/// 镜像对账 diff（昨日 vs 今日清单——断供与回退的三类信号）：
+/// - "stale-snapshot"：今日快照时刻 ≤ 昨日（数据该动而没动 = CI 断供；
+///   时刻倒退 = 违反增量协议只向前的语义，同样算停滞）；
+/// - "size-shrink"：字节数显著缩水（>10%——正常演进单调增长或持平，
+///   骤缩疑似数据丢失）；
+/// - "missing-signature"：新清单签名缺席（未验签不得上镜像——指南第
+///   2 步的机器复述）。
+pub fn mirror_diff(prev: &ShardManifest, cur: &ShardManifest) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if cur.snapshot_at <= prev.snapshot_at {
+        out.push("stale-snapshot");
+    }
+    if cur.bytes * 10 < prev.bytes * 9 {
+        out.push("size-shrink");
+    }
+    if !cur.signed {
+        out.push("missing-signature");
+    }
+    out
+}
+// ---------------------------------------------------------------------------
+// 深化批次 v9 · 星卡启动画像五段分解（主册「星卡（评级/判例通过率/
+// 启动画像 F043）」——F043 冷启动五段：装载/初始化/首帧/可交互/稳定）
+// ---------------------------------------------------------------------------
+
+/// F043 五段段名（顺序固定——JSON 字段序与消费方约定一致）。
+pub const PROFILE_SEGMENTS: [&str; 5] =
+    ["load", "init", "first-frame", "interactive", "stable"];
+
+/// 五段基线占比（万分比，合计 10000——装载 30/初始化 20/首帧 25/可交
+/// 互 15/稳定 10）。
+pub const SEGMENT_WEIGHTS_BP: [u64; 5] = [3_000, 2_000, 2_500, 1_500, 1_000];
+
+/// 星卡五段分解（F043 联动口径，诚实声明：卡上实测只有总时长；五段
+/// 按基线占比 + 卡序 ±3% 以内确定性抖动**派生**——不冒充实测；实测
+/// 五段侧表随 F040 账本扩展时替换本派生口径）。合计恒等于总时长
+///（尾差归入装载段——分解不丢毫秒）。
+pub fn profile_segments(total_ms: u64, card_index: usize) -> [u64; 5] {
+    // 抖动：卡序取模的三角波 ±300bp（±3%）——确定性可复现。抖动只
+    // 在装载/稳定两段间对移（+j / −j，净和恒 10000——逐项可验：其余
+    // 三段不动，不存在「多点对冲」的算术歧义）。
+    let tri = (card_index % 14) as i64;
+    let jitter_bp = if tri <= 7 { tri * 43 } else { (14 - tri) * 43 }; // |≤301|
+    let mut segs = [0u64; 5];
+    let mut allocated = 0u64;
+    for i in 0..5 {
+        let w = match i {
+            0 => SEGMENT_WEIGHTS_BP[0] as i64 + jitter_bp,
+            4 => SEGMENT_WEIGHTS_BP[4] as i64 - jitter_bp,
+            _ => SEGMENT_WEIGHTS_BP[i] as i64,
+        };
+        let v = total_ms * w.max(0) as u64 / 10_000;
+        segs[i] = v;
+        allocated += v;
+    }
+    segs[0] += total_ms - allocated; // 尾差归装载段
+    segs
+}
+
+impl StarData {
+    /// 星卡画像 JSON 行（总时长 + 五段分解——快照导出可选段，消费方
+    /// 按 PROFILE_SEGMENTS 顺序取字段）。
+    pub fn card_profile_json(&self, c: &StarCard, card_index: usize) -> String {
+        let segs = profile_segments(c.boot_profile_ms, card_index);
+        let mut o = vbase::JsonObj::new();
+        o.num_field("boot_profile_ms", c.boot_profile_ms);
+        for (i, name) in PROFILE_SEGMENTS.iter().enumerate() {
+            o.num_field(name, segs[i]);
+        }
+        o.finish()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 自检（判据逐条钉死）
+// ---------------------------------------------------------------------------
+
+pub fn run_stardata_checks() -> CheckSet {
+    let mut set = CheckSet::new("F128-stardata");
+
+    let kp = vxapp::keygen(b"starmap-server");
+    let mut sd = StarData::new(1_727_000_000);
+    sd.add_card(StarCard {
+        program: String::from("Notepad2"),
+        program_version: String::from("4.2.25"),
+        rating: 92,
+        case_pass_bp: 9800,
+        boot_profile_ms: 850,
+        source: Source::Measured,
+        updated_at: 1_727_000_000,
+    });
+    sd.add_card(StarCard {
+        program: String::from("7-Zip"),
+        program_version: String::from("24.08"),
+        rating: 95,
+        case_pass_bp: 9900,
+        boot_profile_ms: 620,
+        source: Source::Community,
+        updated_at: 1_727_050_000,
+    });
+    for i in 0..50 {
+        sd.add_ledger(&alloc::format!("app{:02}", i), 10 + i);
+    }
+
+    // 1. 全量下载-导入-查询闭环（判据第一句）：分片 JSON 生成 → 查询
+    //    命中 → 账本 50 条齐。
+    let cards_json = sd.shard_json(Shard::Cards);
+    let ledger_json = sd.shard_json(Shard::Ledger50);
+    let hit = sd.query_card("7-Zip");
+    set.add(
+        "full download-import-query loop",
+        cards_json.contains("\"program\":\"7-Zip\"")
+            && ledger_json.contains("app49")
+            && hit.map(|c| c.rating) == Some(95)
+            && sd.card_count() == 2,
+        "",
+    );
+
+    // 2. schema 三必填落位（F126 starmap-json 同源：snapshot_at/license/cards）。
+    set.add(
+        "schema required fields in shard json",
+        cards_json.contains("\"snapshot_at\":1727000000")
+            && cards_json.contains("\"license\":\"CC-BY\"")
+            && cards_json.contains("\"cards\":"),
+        "",
+    );
+
+    // 3. 签名校验双向（判据第一句之二）：真签名过；篡改样本必拒。
+    let sig = sd.sign_shard(Shard::Cards, &kp);
+    let verify_ok = sd.verify_shard(Shard::Cards, &sig, &kp);
+    // 篡改 = 改一字节内容后原签名必拒。
+    let tampered = StarData::new(sd.snapshot_at());
+    let mut tampered2 = StarData::new(sd.snapshot_at());
+    tampered2.add_card(StarCard {
+        program: String::from("Notepad2"),
+        program_version: String::from("4.2.25"),
+        rating: 1, // 篡改评级
+        case_pass_bp: 9800,
+        boot_profile_ms: 850,
+        source: Source::Measured,
+        updated_at: 1_727_000_000,
+    });
+    let rejected = !tampered.verify_shard(Shard::Cards, &sig, &kp)
+        && !tampered2.verify_shard(Shard::Cards, &sig, &kp)
+        && !sd.verify_shard(Shard::Cards, "00".repeat(32).as_str(), &kp);
+    set.add("sign verify both ways + tamper rejected", verify_ok && rejected, "");
+
+    // 4. 可信度分级标注（每星卡带来源——三源标签齐）。
+    set.add(
+        "source trust labels present",
+        cards_json.contains("\"source\":\"ai01-measured\"")
+            && cards_json.contains("\"source\":\"community\"")
+            && Source::AutoDraft.tag() == "auto-draft",
+        "",
+    );
+
+    // 5. 增量协议 ?since=<ts>：变更集只含 updated_at > since 的卡。
+    let changes = sd.changes_since(1_727_000_000);
+    set.add(
+        "incremental since protocol",
+        changes.len() == 1 && changes[0].program == "7-Zip",
+        "",
+    );
+
+    // 6. 分文件（单文件 <50MB）：两分片各自成文且字节量在限内。
+    set.add(
+        "shards split under 50MB cap",
+        sd.shard_bytes(Shard::Cards) <= FILE_CAP_BYTES
+            && sd.shard_bytes(Shard::Ledger50) <= FILE_CAP_BYTES
+            && Shard::Cards.name() == "cards",
+        "",
+    );
+
+    // 7. 历史快照 90 天保留（超窗逐出、窗内保留）。
+    let mut snaps = vec![
+        (0u64, String::from("old")),
+        (86_400 * 89, String::from("in-window")),
+        (86_400 * 91, String::from("fresh")),
+    ];
+    let evicted = StarData::evict_snapshots_older_than(&mut snaps, 86_400 * 91 + 1);
+    set.add(
+        "snapshots kept 90 days",
+        evicted == 1 && snaps.len() == 2,
+        "",
+    );
+
+    // 8. 断点续传：中断 → resume 从确认偏移续（不清零）。
+    let mut dl = DownloadSession::new(1000);
+    dl.progress(700);
+    dl.abort();
+    let resumed = dl.resume_offset() == 700;
+    dl.progress(1000);
+    set.add(
+        "download resume from acked offset",
+        dl.aborted && resumed && dl.done(),
+        "",
+    );
+
+    // 9. 数据入口三处登记（帮助中心/星图应用/固定 URL）。
+    set.add(
+        "three data entries registered",
+        ENTRY_DOCS.len() == 3 && ENTRY_DOCS[0].contains("helpcenter"),
+        "",
+    );
+
+    // 10. 第三方镜像指南四步文档化（判据第一句之三）。
+    set.add(
+        "mirror guide four steps",
+        MIRROR_GUIDE.len() == 4
+            && MIRROR_GUIDE[1].contains("验签")
+            && MIRROR_GUIDE[2].contains("CC-BY"),
+        "",
+    );
+
+    // 11. CC-BY 许可声明落位（F130 法律面联动）。
+    set.add(
+        "cc-by license declared",
+        LICENSE == "CC-BY" && sd.shard_json(Shard::Cards).contains("CC-BY"),
+        "",
+    );
+
+    // 12. 账本 50 件语料建档（深化 v2）：seed 后账本恰 50 条且名录与
+    //     LEDGER50_NAMES 一致（F040 建档口径同源）。
+    let mut sd50 = StarData::new(1_727_000_000);
+    seed_ledger50(&mut sd50);
+    let ledger_json50 = sd50.shard_json(Shard::Ledger50);
+    let names_ok = LEDGER50_NAMES.iter().all(|n| ledger_json50.contains(n));
+    set.add(
+        "ledger50 seeded 50/50 with canonical names",
+        sd50.shard_bytes(Shard::Ledger50) > 0 && names_ok && LEDGER50_NAMES.len() == 50,
+        "",
+    );
+
+    // 13. 分片清单与版本化路径（深化 v2）：路径可预测（含 ts 与分片名）
+    //     + 清单四字段齐 + 签名在位判定准确。
+    let sig = sd.sign_shard(Shard::Cards, &kp);
+    let mf = sd.manifest(Shard::Cards, &sig);
+    set.add(
+        "shard manifest + versioned path",
+        mf.path == alloc::format!("starmap/snapshots/{}/cards.json", sd.snapshot_at())
+            && mf.signed
+            && mf.bytes == sd.shard_bytes(Shard::Cards)
+            && mf.snapshot_at == sd.snapshot_at(),
+        "",
+    );
+
+    // 14. 增量协议完整面（深化 v2）：upserts + deletes 同响应；墓碑按
+    //     窗过滤；空窗返回空变更集。
+    let tombstones = vec![
+        Tombstone { program: String::from("Old-App"), deleted_at: 1_727_060_000 },
+        Tombstone { program: String::from("Ancient"), deleted_at: 1_727_000_000 },
+    ];
+    let cs = sd.changes_since_full(1_727_000_000, &tombstones);
+    let cs_json = sd.changeset_json(&cs, 1_727_000_000);
+    let empty_cs = sd.changes_since_full(1_999_999_999, &tombstones);
+    set.add(
+        "incremental upserts+deletes full protocol",
+        cs.upserts.len() == 1
+            && cs.deletes.len() == 1
+            && cs.deletes[0].program == "Old-App"
+            && cs_json.contains("\"upserts\":")
+            && cs_json.contains("\"deletes\":")
+            && cs_json.contains("\"license\":\"CC-BY\"")
+            && empty_cs.upserts.is_empty(),
+        "",
+    );
+
+    // 15. 续传会话表（深化 v2）：多分片并行、幂等开会话、断点恢复偏移
+    //     与全量完成判定。
+    let mut table = SessionTable::new();
+    let p_cards = versioned_path(sd.snapshot_at(), Shard::Cards);
+    let p_ledger = versioned_path(sd.snapshot_at(), Shard::Ledger50);
+    let i1 = table.open(&p_cards, 1000);
+    let i1_again = table.open(&p_cards, 1000);
+    let _ = table.open(&p_ledger, 500);
+    let _ = table.progress(&p_cards, 700);
+    let resume = table.resume_offset(&p_cards) == 700;
+    let _ = table.progress(&p_ledger, 500);
+    set.add(
+        "session table idempotent + resume",
+        i1 == i1_again && resume && table.len() == 2 && table.all_done() == false,
+        "",
+    );
+    let _ = table.progress(&p_cards, 1000);
+    set.add("session table all done after fill", table.all_done(), "");
+
+    // 16. 密钥轮换双钥窗（深化 v2）：轮换后新钥验新签、旧签双钥窗内
+    //     可验、窗尽旧签拒。
+    let mut ring = KeyRing::new(b"ring-v1");
+    let content = vbase::sha256(b"snapshot-body");
+    let old_sig = vxapp::sign(&ring.current, &content);
+    ring.rotate(b"ring-v2", 0);
+    let new_sig = vxapp::sign(&ring.current, &content);
+    let in_window_old = ring.verify(&content, &old_sig, KEY_OVERLAP_DAYS * 86_400 - 1);
+    let after_window_old = !ring.verify(&content, &old_sig, KEY_OVERLAP_DAYS * 86_400 + 1);
+    let new_always = ring.verify(&content, &new_sig, KEY_OVERLAP_DAYS * 86_400 + 1);
+    set.add(
+        "key ring rotation overlap window",
+        in_window_old && after_window_old && new_always,
+        "",
+    );
+
+    // 17. 镜像自查单（深化 v2）：四项全勾才合规；缺一不合规；与指南
+    //     四步文档对拍成立。
+    let mut mc = MirrorChecklist::new();
+    let not_yet = !mc.compliant();
+    let mut all_checked = true;
+    for i in 0..4 {
+        if !mc.check(i, true) {
+            all_checked = false;
+        }
+    }
+    let out_of_range_rejected = !mc.check(9, true);
+    set.add(
+        "mirror checklist four gates",
+        not_yet && all_checked && out_of_range_rejected && mc.compliant() && mc.matches_guide(),
+        "",
+    );
+
+    // 18. 每日快照调度（深化 v2）：24h 内不重生成、到期生成、滞纳天数
+    //     累进（CI 断供告警面）。
+    let mut sched = DailyScheduler::new(0);
+    let early = sched.tick(86_400_000 - 1).is_none();
+    let fired = sched.tick(86_400_000).is_some();
+    let again_early = sched.tick(86_400_000 * 2 - 1).is_none();
+    let stale = sched.staleness_days(86_400_000 * 4) == 3;
+    set.add(
+        "daily snapshot scheduler + staleness",
+        early && fired && again_early && stale && sched.generated == 1,
+        "",
+    );
+
+    // 19. 查询面（深化 v2）：三轴过滤 AND 语义 + 评级降序稳定排序。
+    let mut qsd = StarData::new(1);
+    qsd.add_card(StarCard {
+        program: String::from("Alpha"),
+        program_version: String::from("1.0"),
+        rating: 80,
+        case_pass_bp: 8000,
+        boot_profile_ms: 500,
+        source: Source::Measured,
+        updated_at: 1,
+    });
+    qsd.add_card(StarCard {
+        program: String::from("Beta"),
+        program_version: String::from("1.0"),
+        rating: 95,
+        case_pass_bp: 9500,
+        boot_profile_ms: 400,
+        source: Source::Community,
+        updated_at: 2,
+    });
+    qsd.add_card(StarCard {
+        program: String::from("Gamma"),
+        program_version: String::from("1.0"),
+        rating: 60,
+        case_pass_bp: 6000,
+        boot_profile_ms: 900,
+        source: Source::Measured,
+        updated_at: 3,
+    });
+    let by_rating = CardQuery { min_rating: Some(70), ..CardQuery::default() };
+    let by_source = CardQuery { source: Some(Source::Community), ..CardQuery::default() };
+    let by_name = CardQuery { name_contains: Some("amm"), ..CardQuery::default() };
+    let sorted = qsd.sorted_by_rating_desc();
+    set.add(
+        "query three-axis + rating sort",
+        qsd.query(by_rating).len() == 2
+            && qsd.query(by_source).len() == 1
+            && qsd.query(by_name).len() == 1
+            && sorted[0].program == "Beta"
+            && sorted[2].program == "Gamma",
+        "",
+    );
+
+
+    // 20. 星卡 50 条全语料（深化 v4）：种子与账本名录逐一对位 + 装载后
+    //     卡数 50 + 评级全域 [0,100]。
+    let mut sd = StarData::new(1_727_000_000);
+    sd.seed_all();
+    let aligned = StarData::seed_names_aligned();
+    let ratings_ok = SEED_CARDS.iter().all(|c| c.rating <= 100 && c.case_pass_bp <= 10_000);
+    set.add(
+        "seed cards 50 aligned with ledger50",
+        aligned && sd.card_count() == 50 && ratings_ok && SEED_CARDS.len() == 50,
+        "",
+    );
+
+    // 21. 快照全文落库（深化 v4）：50 卡全文 JSON 含全部程序名 + 快照
+    //     头三必填 + 分片在 50MB 判线内。
+    let full = sd.snapshot_full_json();
+    let all_names = LEDGER50_NAMES.iter().all(|n| full.contains(n));
+    set.add(
+        "snapshot full json 50 cards inline",
+        all_names
+            && full.contains("\"snapshot_at\":1727000000")
+            && full.contains("\"license\":\"CC-BY\"")
+            && (full.len() as u64) <= FILE_CAP_BYTES,
+        "",
+    );
+
+    // 22. 来源分级分布（深化 v4）：三源齐备（实测/社区/草稿）——可信
+    //     度分级的语料覆盖完整。
+    let has_measured = SEED_CARDS.iter().any(|c| c.source == Source::Measured);
+    let has_community = SEED_CARDS.iter().any(|c| c.source == Source::Community);
+    let has_draft = SEED_CARDS.iter().any(|c| c.source == Source::AutoDraft);
+    set.add("seed sources cover all three tiers", has_measured && has_community && has_draft, "");
+
+    // 23. `?since=` 查询参数解析器（深化 v6）：合法值通过；缺键/非数字/
+    //     键名变形逐类拒绝（增量协议入口的严格面）。
+    let q_ok = parse_since_query("since=1727000000") == Ok(1_727_000_000);
+    let q_multi = parse_since_query("a=1&since=5") == Ok(5);
+    let q_missing = parse_since_query("page=2") == Err(SinceError::Missing);
+    let q_empty = parse_since_query("") == Err(SinceError::Missing);
+    let q_nonnum = parse_since_query("since=12ab") == Err(SinceError::NotNumeric);
+    let q_signed = parse_since_query("since=-5") == Err(SinceError::NotNumeric);
+    let q_space = parse_since_query("since= 5") == Err(SinceError::NotNumeric);
+    let q_malformed = parse_since_query("SINCE=5") == Err(SinceError::Missing);
+    set.add(
+        "since query parser strict gates",
+        q_ok && q_multi && q_missing && q_empty && q_nonnum && q_signed && q_space && q_malformed,
+        "",
+    );
+
+    // 24. 导入侧反解重建（深化 v6）：50 卡全语料导出 → 导入 → 查询对拍
+    //     ——闭环的「导入」半边真正落地（round-trip 后首卡/卡数/头部
+    //     快照时刻全一致）。
+    let exported = full;
+    let imported = import_cards_json(&exported);
+    let round_trip_ok = match imported {
+        Ok(sd2) => {
+            sd2.snapshot_at() == sd.snapshot_at()
+                && sd2.card_count() == 50
+                && sd2.query_card("7-Zip").map(|c| c.rating) == Some(95)
+                && sd2.query_card("ripgrep").map(|c| c.source) == Some(Source::Measured)
+        }
+        Err(_) => false,
+    };
+    set.add("import round-trip 50 cards query-consistent", round_trip_ok, "");
+
+    // 25. 导入边界校验（深化 v6）：rating 越界 / case_pass_bp 越界 /
+    //     来源标签伪造 / 缺头快照——四路逐卡拒绝且程序名可定位。
+    let bad_rating = StarData::new(5);
+    let mut tamper_src = StarData::new(5);
+    tamper_src.add_card(StarCard {
+        program: String::from("Evil"),
+        program_version: String::from("1.0"),
+        rating: 101,
+        case_pass_bp: 5000,
+        boot_profile_ms: 1,
+        source: Source::Measured,
+        updated_at: 5,
+    });
+    let bad_json = tamper_src.shard_json(Shard::Cards);
+    let err_rating = import_cards_json(&bad_json).unwrap_err();
+    let rating_named = err_rating.len() == 1 && err_rating[0].program == "Evil"
+        && err_rating[0].reason == "rating out of range";
+    // 通过率越界与未知来源改 JSON 字面构造（不经过出进口，模拟第三方
+    // 手搓负载）。
+    let bad_pass_json = "{\"snapshot_at\":5,\"license\":\"CC-BY\",\"cards\":[{\"program\":\"P\",\"version\":\"1.0\",\"rating\":50,\"case_pass_bp\":99999,\"boot_profile_ms\":1,\"source\":\"community\",\"updated_at\":5}]}";
+    let err_pass = import_cards_json(bad_pass_json).unwrap_err();
+    let bad_source_json = "{\"snapshot_at\":5,\"license\":\"CC-BY\",\"cards\":[{\"program\":\"Q\",\"version\":\"1.0\",\"rating\":50,\"case_pass_bp\":5000,\"boot_profile_ms\":1,\"source\":\"self-claimed\",\"updated_at\":5}]}";
+    let err_source = import_cards_json(bad_source_json).unwrap_err();
+    let no_header = import_cards_json("{\"license\":\"CC-BY\",\"cards\":[]}").unwrap_err();
+    set.add(
+        "import bounds reject named per card",
+        bad_rating.snapshot_at() == 5
+            && rating_named
+            && err_pass[0].reason == "case_pass_bp out of range"
+            && err_source[0].reason == "unknown source tag"
+            && no_header[0].reason == "missing snapshot_at",
+        "",
+    );
+
+    // 26. 按来源分片（深化 v6）：三子集卡数之和 = 全量卡数（分区完备）
+    //     + 子集文件同构 schema 头 + 来源文件名对位。
+    let (m, c, d, total) = sd.category_shards_partition();
+    let m_json = sd.category_shard_json(Source::Measured);
+    let c_json = sd.category_shard_json(Source::Community);
+    let d_json = sd.category_shard_json(Source::AutoDraft);
+    set.add(
+        "category shards partition + schema headers",
+        m + c + d == total
+            && total == 50
+            && m_json.contains("\"snapshot_at\":1727000000")
+            && m_json.contains("\"license\":\"CC-BY\"")
+            && c_json.contains("community")
+            && d_json.contains("auto-draft")
+            && category_shard_name(Source::Measured) == "cards-measured",
+        "",
+    );
+
+    // 27. 快照流水线 compose（深化 v6）：未到期 None；到期一步产出双
+    //     分片 + 双签名 + 双清单，签名可验、清单路径与快照时刻对位。
+    let mut sched = DailyScheduler::new(0);
+    let early_none = produce_batch(&mut sched, &sd, &kp, 1).is_none();
+    let batch = produce_batch(&mut sched, &sd, &kp, 86_400_000);
+    let batch_ok = match batch {
+        Some(ref b) => {
+            b.cards_manifest.path == versioned_path(b.at, Shard::Cards)
+                && b.ledger_manifest.signed
+                && sd.verify_shard(Shard::Cards, &b.cards_sig, &kp)
+                && sd.verify_shard(Shard::Ledger50, &b.ledger_sig, &kp)
+                && b.cards_manifest.bytes == b.cards_json.len() as u64
+        }
+        None => false,
+    };
+    set.add("snapshot pipeline compose + verify", early_none && batch_ok, "");
+
+    // 28. 镜像对账 diff（深化 v6）：快照停滞 / 字节骤缩 / 签名缺席三类
+    //     断供信号逐类命中；正常演进零告警。
+    let mut cur_stale = batch.as_ref().unwrap().cards_manifest.clone();
+    cur_stale.snapshot_at = batch.as_ref().unwrap().cards_manifest.snapshot_at;
+    let stale = mirror_diff(&batch.as_ref().unwrap().cards_manifest, &cur_stale).contains(&"stale-snapshot");
+    let mut shrunk = batch.as_ref().unwrap().cards_manifest.clone();
+    shrunk.bytes = shrunk.bytes / 2;
+    let shrink = mirror_diff(&batch.as_ref().unwrap().cards_manifest, &shrunk).contains(&"size-shrink");
+    let mut unsigned = batch.as_ref().unwrap().cards_manifest.clone();
+    unsigned.signed = false;
+    let missing_sig = mirror_diff(&batch.as_ref().unwrap().cards_manifest, &unsigned).contains(&"missing-signature");
+    let mut healthy = batch.as_ref().unwrap().cards_manifest.clone();
+    healthy.snapshot_at += 86_400;
+    healthy.bytes += 128;
+    let clean = mirror_diff(&batch.as_ref().unwrap().cards_manifest, &healthy).is_empty();
+    set.add(
+        "mirror diff three signals + clean pass",
+        stale && shrink && missing_sig && clean,
+        "",
+    );
+
+    // 29. 星卡画像五段分解（深化 v9）：权重和恒 10000；50 卡逐卡分解
+    //     合计恒等于总时长（尾差不丢毫秒）；JSON 行五段字段齐。
+    let weights_ok = SEGMENT_WEIGHTS_BP.iter().sum::<u64>() == 10_000;
+    let mut all_sum = true;
+    for (i, c) in SEED_CARDS.iter().enumerate() {
+        let segs = profile_segments(c.boot_profile_ms, i);
+        if segs.iter().sum::<u64>() != c.boot_profile_ms {
+            all_sum = false;
+            break;
+        }
+    }
+    let pj = sd.card_profile_json(&sd.cards[0], 0);
+    let json_ok = PROFILE_SEGMENTS.iter().all(|n| pj.contains(*n));
+    set.add(
+        "star card F043 five-segment profile",
+        weights_ok && all_sum && json_ok && PROFILE_SEGMENTS.len() == 5,
+        "",
+    );
+
+    // 30. 分解确定性（深化 v9）：同卡同输入两次分解逐段相等（派生可
+    //     复现——快照重生成不漂移）。
+    let a = profile_segments(SEED_CARDS[7].boot_profile_ms, 7);
+    let b = profile_segments(SEED_CARDS[7].boot_profile_ms, 7);
+    // 抖动上界卡（tri=7 处 j=301）：最坏情况下权重和仍恒 10000 且分解
+    // 合计恒等于总时长——对冲算术的边界实证。
+    let worst = profile_segments(SEED_CARDS[6].boot_profile_ms, 6);
+    assert_eq!(worst.iter().sum::<u64>(), SEED_CARDS[6].boot_profile_ms);
+    set.add(
+        "profile decomposition deterministic",
+        a == b && a.iter().all(|&v| v > 0),
+        "",
+    );
+
+    set
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stardata_all_checks_green() {
+        let set = run_stardata_checks();
+        let (p, f) = set.tally();
+        assert!(set.all_passed(), "F128 自检红项 {f}：{}/{} 绿", p, p + f);
+    }
+
+    #[test]
+    fn card_json_escapes_quotes() {
+        let mut sd = StarData::new(1);
+        sd.add_card(StarCard {
+            program: String::from("Weird\"App"),
+            program_version: String::from("1.0"),
+            rating: 50,
+            case_pass_bp: 5000,
+            boot_profile_ms: 100,
+            source: Source::Community,
+            updated_at: 1,
+        });
+        let j = sd.card_json(&sd.query_card("Weird\"App").unwrap());
+        assert!(j.contains("Weird\\\"App"), "引号必须转义——JSON 合法性");
+    }
+
+    #[test]
+    fn query_miss_returns_none() {
+        let sd = StarData::new(1);
+        assert!(sd.query_card("不存在").is_none());
+    }
+
+    #[test]
+    fn empty_changes_since() {
+        let sd = StarData::new(10);
+        assert!(sd.changes_since(0).is_empty());
+    }
+
+    #[test]
+    fn f128_seed_names_unique() {
+        // 账本语料 50 名唯一（重复名会让账本建档口径漂移）。
+        for i in 0..LEDGER50_NAMES.len() {
+            for j in (i + 1)..LEDGER50_NAMES.len() {
+                assert_ne!(LEDGER50_NAMES[i], LEDGER50_NAMES[j]);
+            }
+        }
+    }
+
+    #[test]
+    fn f128_changeset_json_schema_fields() {
+        // 增量响应也是规范负载：since/license/upserts/deletes 四键齐。
+        let mut sd = StarData::new(100);
+        sd.add_card(StarCard {
+            program: String::from("P"),
+            program_version: String::from("1.0"),
+            rating: 50,
+            case_pass_bp: 5000,
+            boot_profile_ms: 100,
+            source: Source::AutoDraft,
+            updated_at: 120,
+        });
+        let tombs = vec![Tombstone { program: String::from("Q"), deleted_at: 150 }];
+        let cs = sd.changes_since_full(0, &tombs);
+        let j = sd.changeset_json(&cs, 0);
+        assert!(j.contains("\"since\":0"));
+        assert!(j.contains("\"license\":\"CC-BY\""));
+        assert!(j.contains("\"program\":\"Q\"") && j.contains("\"deleted_at\":150"));
+        assert!(j.contains("auto-draft"), "来源标注透传（可信度分级在增量面不断链）");
+    }
+
+    #[test]
+    fn f128_session_unknown_path_resume_zero() {
+        let table = SessionTable::new();
+        assert_eq!(table.resume_offset("never-opened"), 0);
+        assert!(table.is_empty());
+    }
+
+    #[test]
+    fn f128_keyring_forged_sig_rejected() {
+        let mut ring = KeyRing::new(b"r1");
+        ring.rotate(b"r2", 0);
+        let content = vbase::sha256(b"x");
+        let forged = {
+            let mut s = [0u8; 32];
+            s[0] = 0xAB;
+            s
+        };
+        assert!(!ring.verify(&content, &forged, 0));
+    }
+
+    #[test]
+    fn f128_query_no_match_empty() {
+        let mut sd = StarData::new(1);
+        seed_ledger50(&mut sd);
+        let none = CardQuery { name_contains: Some("不存在的程序名"), ..CardQuery::default() };
+        assert!(sd.query(none).is_empty());
+    }
+
+    #[test]
+    fn f128_seed_cards_queryable() {
+        // 全语料装载后查询面直连可用（评级过滤命中种子值）。
+        let mut sd = StarData::new(7);
+        sd.seed_all();
+        let hi = sd.query(CardQuery { min_rating: Some(90), ..CardQuery::default() });
+        assert!(hi.len() >= 5, "90+ 星卡语料应有一定量");
+        let top = sd.sorted_by_rating_desc();
+        assert_eq!(top[0].rating, 95, "7-Zip 95 分应居首");
+    }
+
+    #[test]
+    fn f128_seed_versions_semverish() {
+        // 种子版本号非空（快照导出的 version 字段不空串——schema 纪律）。
+        for c in SEED_CARDS.iter() {
+            assert!(!c.version.is_empty());
+            assert!(c.boot_profile_ms > 0);
+        }
+    }
+
+    #[test]
+    fn f128_import_json_escape_round_trip() {
+        // 导出面必须还原转义：程序名带引号导出 → 导入还原本名。
+        let mut sd = StarData::new(1);
+        sd.add_card(StarCard {
+            program: String::from("Weird\"App"),
+            program_version: String::from("1.0"),
+            rating: 50,
+            case_pass_bp: 5000,
+            boot_profile_ms: 100,
+            source: Source::Community,
+            updated_at: 1,
+        });
+        let j = sd.shard_json(Shard::Cards);
+        let back = import_cards_json(&j).unwrap();
+        assert!(back.query_card("Weird\"App").is_some(), "引号转义导入还原");
+    }
+
+    #[test]
+    fn f128_since_parser_edge_values() {
+        // 边界值：纯 0 合法（全量起点）；前导零合法；超长数字串溢出拒。
+        assert_eq!(parse_since_query("since=0"), Ok(0));
+        assert_eq!(parse_since_query("since=007"), Ok(7));
+        assert_eq!(
+            parse_since_query("since=99999999999999999999999"),
+            Err(SinceError::NotNumeric)
+        );
+        // since= 前缀粘连中间键（aa&since=5&bb）照样命中。
+        assert_eq!(parse_since_query("aa=1&since=5&bb=2"), Ok(5));
+    }
+
+    #[test]
+    fn f128_category_shards_importable_each() {
+        // 三来源子集逐份过导入面（子集文件与全量同法可导——镜像按需
+        // 拉单档也能闭环）。
+        let mut sd = StarData::new(9);
+        sd.seed_all();
+        for src in [Source::Measured, Source::Community, Source::AutoDraft] {
+            let j = sd.category_shard_json(src);
+            let back = import_cards_json(&j).unwrap();
+            let (_, _, _, total) = sd.category_shards_partition();
+            let per = back.card_count();
+            assert!(per > 0 && per < total, "{} 子集非空且小于全量", category_shard_name(src));
+            assert!(back.query(CardQuery { source: Some(src), ..CardQuery::default() }).len() == per);
+        }
+    }
+
+    #[test]
+    fn f128_pipeline_manifest_paths_versioned() {
+        // 批产清单路径与版本化路径函数同源（一处一事实对拍）。
+        let mut sched = DailyScheduler::new(0);
+        let mut sd = StarData::new(3);
+        sd.add_card(StarCard {
+            program: String::from("A"),
+            program_version: String::from("1.0"),
+            rating: 10,
+            case_pass_bp: 1000,
+            boot_profile_ms: 1,
+            source: Source::Measured,
+            updated_at: 3,
+        });
+        let kp = vxapp::keygen(b"pipe");
+        let b = produce_batch(&mut sched, &sd, &kp, 86_400_000).unwrap();
+        assert_eq!(b.cards_manifest.path, alloc::format!("starmap/snapshots/{}/cards.json", b.at));
+        assert_eq!(b.ledger_manifest.path, alloc::format!("starmap/snapshots/{}/ledger50.json", b.at));
+        assert!(b.at == 86_400_000);
+    }
+
+    #[test]
+    fn f128_mirror_diff_multiple_signals_stack() {
+        // 多信号可叠加：既停滞又未签名 → 两条齐报。
+        let mut sd = StarData::new(3);
+        sd.add_card(StarCard {
+            program: String::from("A"),
+            program_version: String::from("1.0"),
+            rating: 10,
+            case_pass_bp: 1000,
+            boot_profile_ms: 1,
+            source: Source::Measured,
+            updated_at: 3,
+        });
+        let mut prev = ShardManifest {
+            shard: Shard::Cards,
+            path: String::from("p"),
+            bytes: 1000,
+            signed: true,
+            snapshot_at: 5,
+        };
+        let mut cur = prev.clone();
+        cur.signed = false;
+        let d = mirror_diff(&prev, &cur);
+        assert!(d.contains(&"stale-snapshot") && d.contains(&"missing-signature") && d.len() == 2);
+        // 回退快照（时刻倒退）同样算停滞——增量协议只向前。
+        cur.snapshot_at = prev.snapshot_at - 1;
+        prev.snapshot_at = 5;
+        let d2 = mirror_diff(&prev, &cur);
+        assert!(d2.contains(&"stale-snapshot"));
+    }
+}

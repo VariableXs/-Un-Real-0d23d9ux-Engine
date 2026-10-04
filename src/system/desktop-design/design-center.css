@@ -1,0 +1,238 @@
+/* AURORA-10000 · AI-11~AI-15 车道 · 设计中心/剧场/仪式卡样式。
+ * 全部取值走既有语义令牌（--bg-*/--text-*/--accent/--r-*/--elev-*/--dur-*），
+ * 不新增裸色值/裸时长（audit.cjs 红线）。 */
+
+.w2-center-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: oklch(0.1 0.02 262 / 0.55);
+  backdrop-filter: blur(var(--w2-blur-1, 8px));
+  display: grid;
+  place-items: center;
+}
+
+.w2-center {
+  width: min(1080px, 94vw);
+  height: min(720px, 90vh);
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: auto 1fr;
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle, oklch(1 0 0 / 0.08));
+  border-radius: var(--r-window);
+  box-shadow: var(--elev-5);
+  overflow: hidden;
+}
+
+.w2-center-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: var(--w2-divider, 1px solid oklch(1 0 0 / 0.06));
+  background: var(--bg-surface);
+}
+
+.w2-center-head h2 {
+  font-size: var(--fs-17);
+  margin: 0;
+}
+
+.w2-center-head .w2-lane-note {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+}
+
+.w2-center-head .w2-head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.w2-center-nav {
+  overflow: auto;
+  padding: var(--sp-3);
+  border-right: var(--w2-divider, 1px solid oklch(1 0 0 / 0.06));
+  background: var(--bg-surface);
+}
+
+.w2-nav-group {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+  margin: var(--sp-3) 0 var(--sp-1);
+}
+
+.w2-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-2);
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  min-height: 32px;
+  transition: background var(--dur-2, 150ms) var(--ease-standard, ease);
+}
+
+.w2-nav-item:hover { background: var(--accent-soft); }
+.w2-nav-item[aria-current="true"] { background: var(--accent-soft); box-shadow: inset var(--w2-focus-inset, 3px 0 0 var(--accent)); }
+.w2-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.w2-nav-item .w2-count { margin-left: auto; font-size: var(--fs-12); color: var(--text-secondary); }
+
+.w2-center-body {
+  overflow: auto;
+  padding: var(--sp-4);
+}
+
+.w2-family-title { font-size: var(--fs-20); margin: 0 0 var(--sp-1); }
+.w2-family-range { font-size: var(--fs-12); color: var(--text-secondary); margin-bottom: var(--sp-3); }
+
+.w2-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  margin-bottom: var(--sp-2);
+  background: var(--bg-surface);
+  border: 1px solid transparent;
+  transition: border-color var(--dur-2, 150ms) var(--ease-standard, ease), transform var(--dur-2, 150ms) var(--ease-standard, ease);
+}
+
+.w2-entry:hover { transform: translateY(calc(var(--w2-hover-lift, 0px) * -1)); }
+.w2-entry[data-active="true"] { border-color: var(--accent); }
+
+.w2-entry-id {
+  font-size: var(--fs-12);
+  color: var(--text-secondary);
+  min-width: 52px;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.w2-entry-main { flex: 1; min-width: 0; }
+.w2-entry-kind { font-size: var(--fs-12); color: var(--text-secondary); margin-left: var(--sp-2); }
+.w2-entry-note { font-size: var(--fs-12); color: var(--text-secondary); margin-top: var(--sp-1); }
+
+.w2-entry .w2-btn { flex-shrink: 0; }
+
+.w2-btn {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  border-radius: var(--r-control);
+  padding: 4px var(--sp-3);
+  min-height: 28px;
+  cursor: pointer;
+  font-size: var(--fs-13);
+  transition: background var(--dur-2, 150ms) var(--ease-standard, ease);
+}
+
+.w2-btn:hover { background: var(--accent-soft); }
+.w2-btn[aria-pressed="true"] { background: var(--accent); color: var(--bg-raised); }
+.w2-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.w2-btn-ghost { border-color: transparent; color: var(--text-secondary); }
+
+/* 图标风格预览网格（族0051/0053 实时预览） */
+.w2-icon-preview {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--bg-canvas);
+  margin-bottom: var(--sp-3);
+}
+
+.w2-icon-cell {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-chip);
+  background: var(--bg-surface);
+  color: var(--accent);
+}
+
+/* 令牌调试（F01646） */
+.w2-token-debug {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3);
+  border-radius: var(--r-card);
+  background: var(--bg-surface);
+}
+
+.w2-token-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.w2-token-row input {
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  border: 1px solid oklch(1 0 0 / 0.12);
+  border-radius: var(--r-control);
+  padding: 4px var(--sp-2);
+  min-height: 28px;
+}
+.w2-token-row input:focus-visible { outline: 2px solid var(--accent); }
+
+/* 剧场 overlay */
+.w2-theater {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  color: var(--text-primary);
+}
+
+.w2-theater-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.w2-theater-enter, .w2-theater-close {
+  position: relative;
+  z-index: 1;
+  border: 1px solid oklch(1 0 0 / 0.3);
+  background: oklch(0 0 0 / 0.35);
+  color: oklch(0.95 0.01 260);
+  border-radius: var(--r-control);
+  padding: var(--sp-2) var(--sp-4);
+  cursor: pointer;
+  min-height: 32px;
+}
+.w2-theater-close { position: absolute; top: var(--sp-4); right: var(--sp-4); }
+.w2-theater-enter:focus-visible, .w2-theater-close:focus-visible { outline: 2px solid var(--accent); }
+
+/* 仪式卡 */
+.w2-ritual {
+  position: fixed;
+  top: 18vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2150;
+  min-width: 320px;
+  max-width: 480px;
+  padding: var(--sp-5);
+  border-radius: var(--r-card);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  box-shadow: var(--elev-4);
+}
+
+.w2-ritual-celebrate { border: 1px solid var(--accent); }
+.w2-ritual-text { margin: 0; font-size: var(--fs-17); line-height: var(--w2-lh, 1.6); }
+.w2-ritual-id { margin: var(--sp-2) 0 0; font-size: var(--fs-12); color: var(--text-secondary); }
+.w2-ritual-close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--sp-1);
+  border-radius: var(--r-chip);
+}
+.w2-ritual-close:focus-visible { outline: 2px solid var(--accent); }

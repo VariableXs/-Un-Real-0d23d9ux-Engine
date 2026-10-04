@@ -1,0 +1,21 @@
+/* AURORA-10000：AI-16~AI-20 批次，勿删（领域04 任务栏与开始菜单 设置面板样式）。
+   全部颜色/圆角/动效走 design tokens。 */
+.d4-tab { display: flex; flex-direction: column; gap: 12px; }
+.d4-toolbar { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--corner-3, 8px); background: var(--surface-2, rgba(255, 255, 255, 0.04)); }
+.d4-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.d4-actions button { transition: opacity var(--dur-2, 150ms) ease; }
+.d4-actions button.on { outline: 2px solid var(--accent, #4cc2ff); }
+.d4-family { display: flex; flex-direction: column; gap: 4px; }
+.d4-family-title { margin: 8px 0 2px; font-size: 14px; font-weight: 600; }
+.d4-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.d4-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 4px 10px; border-radius: var(--corner-2, 4px); transition: background var(--dur-2, 150ms) ease; }
+.d4-row:hover { background: var(--hover-overlay, rgba(255, 255, 255, 0.06)); }
+.d4-item-label { min-width: 0; }
+.d4-switch { position: relative; width: 44px; height: 20px; border-radius: 10px; border: 1px solid var(--border-1, rgba(255, 255, 255, 0.2)); background: var(--surface-3, rgba(255, 255, 255, 0.08)); cursor: pointer; flex: none; }
+.d4-switch .d4-knob { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-1, #fff); transition: transform var(--dur-2, 150ms) ease; }
+.d4-switch.on { background: var(--accent, #4cc2ff); border-color: transparent; }
+.d4-switch.on .d4-knob { transform: translateX(24px); background: var(--on-accent, #000); }
+.d4-switch:disabled { opacity: 0.5; cursor: not-allowed; }
+.d4-num, .d4-text { width: 90px; padding: 2px 6px; border-radius: var(--corner-2, 4px); border: 1px solid var(--border-1, rgba(255, 255, 255, 0.2)); background: var(--surface-1, transparent); color: inherit; }
+.d4-text { width: auto; }
+.d4-switch:focus-visible, .d4-actions button:focus-visible { outline: 2px solid var(--accent, #4cc2ff); outline-offset: 1px; }
