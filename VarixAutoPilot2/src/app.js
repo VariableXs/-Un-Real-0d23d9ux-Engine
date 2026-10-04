@@ -91,7 +91,7 @@ const api = IS_TAURI
       preview: async (tpl, vars) => localRender(tpl, vars),
       // ── 队列 / 循环 / 内容来源（mock 也要能用，否则改样式时看不到新面板）──
       enqueue: async (text, convId, round) => {
-        const r = localRender('{{x}}', {});
+        const r = { text: text, chars: text.length, missing: [] };
         MOCK.queue.push({
           id: MOCK.queue.length + 1,
           preview: text.slice(0, 60) + (text.length > 60 ? '…' : ''),

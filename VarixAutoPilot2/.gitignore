@@ -16,6 +16,7 @@ tools/probe*.py
 # ★ idle_probe.py / send_selftest.py 是长期工具不是探针，须入库 ★
 !tools/idle_probe.py
 !tools/send_selftest.py
+!tools/skills_probe.py
 
 #★ 例外：open_port.py 是功能代码，不是测试脚本 ★
 # 仓库根 .gitignore 第 94 行有 `tools/`，会把整个 tools 目录忽略掉。

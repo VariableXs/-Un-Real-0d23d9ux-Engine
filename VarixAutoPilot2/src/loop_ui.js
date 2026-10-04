@@ -51,21 +51,53 @@ window.VAPUI = VAPUI;
 // 这类错 build 与 node --check 都发现不了，只有真点一下才暴露。
 Object.assign(window, VAPUI);
 
+// ═══ 取「本轮要发什么」═══
+// 三个来源，按用户勾选/填写状态决定：
+//   ① 勾了「用自由文本」→ 直接用那段字（绕过模板与占位符）
+//   ② 循环框有内容 → 用它（首轮/后续轮按当前标签）
+//   ③ 否则 → 用主模板渲染
+// ★ 统一在这里取，循环与单发共用，不会出现两套判断 ★
+async function pickContent() {
+  if ($('o-free').checked) {
+    const t = $('free-text').value;
+    if (!t.trim()) {
+      const e = new Error('勾了用自由文本，但框是空的');
+      e.what = '自由文本框是空的'; e.why = '勾了「用这段自由文本」但没写内容';
+      e.next = '写点内容，或取消那个勾选';
+      throw e;
+    }
+    return { text: t, chars: t.length, missing: [], 源: '自由文本' };
+  }
+  const lt = loopTexts();
+  if (lt.length) {
+    const t = Q.curTab === 'first' ? lt[0] : lt[1];
+    return { text: t, chars: t.length, missing: [], 源: Q.curTab === 'first' ? '首轮' : '后续每轮' };
+  }
+  const tpl = $('tpl').value;
+  const r = await api.preview(tpl, { '任务': $('v-task').value, '上下文': $('v-ctx').value });
+  return { text: r.text, chars: r.chars, missing: r.missing, 源: '模板' };
+}
+
 // ── 入队一条 ──────────────────────────────────────────────
 async function enqueueOne() {
   try {
-    const tpl = $('tpl').value;
-    const r = await api.preview(tpl, { '任务': $('v-task').value, '上下文': $('v-ctx').value });
-    if (r.missing.length) {
-      return renderErr({
-        what: `还有 ${r.missing.length} 个占位符没填，暂不入队`,
-        why: r.missing.map((k) => `{{${k}}}`).join('、'),
-        next: '未填的会原样保留，发出去对方会看到一堆 {{}}。填好或删掉再入队',
-      });
-    }
+    const r = await pickContent();
+    // ★ 允许带未填占位符入队 ★
+    // 早先在这里硬拦，未填 {{任务}} 时队列永远是空的——
+    // 而模板的既定语义就是「未填的原样保留」，那不该拦住入队，
+    // 只该**提示**。拦下来反而让人以为功能坏了。
     const v = await api.enqueue(r.text, Q.picked, 0);
     renderQueue(v.items);
-    setHint(`已入队 · ${r.chars} 字符 · 对方空闲时会自动发`, 'ok');
+    if (r.missing.length) {
+      setHint(
+        `已入队 · ${r.chars} 字符（来自${r.源}；${r.missing.length} 个占位符没填：`
+        + r.missing.map((k) => `{{${k}}}`).join('、')
+        + '，会原样发出去）',
+        'warn'
+      );
+    } else {
+      setHint(`已入队 · ${r.chars} 字符（来自${r.源}）· 对方空闲时会自动发`, 'ok');
+    }
   } catch (e) {
     renderErr(e);
   }
@@ -158,15 +190,20 @@ function loopTexts() {
 }
 
 async function startLoop() {
+  // ★ 内容来源与单发统一走 pickContent ★
+  // 早先只看 loopTexts()，于是「用自由文本」或「用主模板」时循环框是空的 ⇒
+  // 直接报「循环没内容」。而用户明明已经填了内容——这属于「明明做了却报没做」。
+  const p0 = await pickContent();
   const texts = loopTexts();
-  if (!texts.length) {
+  const rounds_ = texts.length ? texts : [p0.text];
+  if (!rounds_[0] || !rounds_[0].trim()) {
     return setHint('循环没内容：先在上面的框里写点东西', 'err');
   }
   const inf = $('lp-inf').checked;
   const rounds = inf ? 0 : Math.max(1, Math.min(99999, parseInt($('lp-rounds').value, 10) || 1));
   try {
     const v = await api.loopStart(
-      texts,
+      rounds_,
       Q.picked,
       rounds,
       $('lp-trigger').value,
@@ -177,9 +214,10 @@ async function startLoop() {
     Q.loopRunning = true;
     $('loop-state').textContent = inf ? '运行中 · 无限' : '运行中 · ' + rounds + ' 轮';
     $('loop-state').className = 'chip on';
-    $('loop-note').textContent = inf
+    $('loop-note').textContent = (inf
       ? '无限循环：会一直发下去，停止请点「停止」'
-      : '共 ' + rounds + ' 轮（首轮 + 后续 ' + (rounds - 1) + ' 轮）';
+      : '共 ' + rounds + ' 轮（首轮 + 后续 ' + (rounds - 1) + ' 轮）')
+      + ' · 内容来自' + p0.源;
     setHint(inf ? '无限循环已开始' : '循环已开始，共 ' + rounds + ' 轮', 'ok');
   } catch (e) {
     renderErr(e);
@@ -268,6 +306,10 @@ function appendSkill() {
 // ── 统一提示（与主流程同一套三要素样式）─────────────────
 function setHint(text, kind) {
   const h = $('hint');
-  h.className = 'note' + (kind === 'err' ? '' : kind === 'ok' ? ' ok' : '');
+  // ★ 三态：ok / warn / err ★
+  // warn 用于「做成了但有瑕疵」（如带未填占位符入队），
+  // 与 err（做不成）区分开，用户一眼能分清是哪种情况。
+  h.className = 'note'
+    + (kind === 'err' ? '' : kind === 'ok' ? ' ok' : kind === 'warn' ? ' warn' : '');
   h.textContent = text;
 }

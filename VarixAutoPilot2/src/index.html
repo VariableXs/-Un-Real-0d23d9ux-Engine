@@ -381,10 +381,14 @@ button.mini {
 button.warn { border-color: color-mix(in srgb, var(--warn) 50%, transparent); color: var(--warn); }
 button.warn:hover:not(:disabled) { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 
+/* 队列是 Variable 明确要看的东西 ⇒ 放在显眼位置、给足高度 */
 .qlist {
-  flex: 0 0 auto; max-height: clamp(90px, 15vh, 168px); overflow-y: auto;
-  border-bottom: 1px solid var(--line); background: rgba(8,11,16,.5);
+  flex: 0 0 auto; max-height: clamp(120px, 20vh, 220px); overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+  /* 底色比别处稍亮，让它从日志/表单里「浮」出来 */
+  background: linear-gradient(180deg, rgba(24,34,46,.55), rgba(10,14,20,.4));
 }
+.qlist:has(.qi) { box-shadow: inset 2px 0 0 var(--accent); }
 .qi {
   display: grid; grid-template-columns: auto minmax(0,1fr) auto auto;
   gap: var(--sp-6) var(--sp-8); align-items: center;
@@ -463,6 +467,7 @@ select option { background: var(--panel); color: var(--fg); }
 }
 .conv.picked .pick { border-color: var(--accent); color: var(--accent); }
 
+.note.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
 .empty { padding: var(--sp-40) var(--sp-20); text-align: center;
          color: var(--fg-3); font-size: var(--fs-sm); }
 </style>
@@ -602,6 +607,13 @@ select option { background: var(--panel); color: var(--fg); }
     <div class="bar"><span>内容来源</span></div>
     <div class="srcbox">
       <div class="lrow">
+        <label>自由文本（直接发这段字）</label>
+        <textarea id="free-text" rows="3" placeholder="直接写任意文字，绕过模板，入队/发送都用它。&#10;留空则用上面的模板"></textarea>
+        <div class="row">
+          <label class="sw"><input type="checkbox" id="o-free">用这段自由文本（不走模板）</label>
+        </div>
+      </div>
+      <div class="lrow">
         <label>MD / 文本文件</label>
         <div class="row">
           <input type="text" id="md-path" class="grow"
@@ -624,7 +636,7 @@ select option { background: var(--panel); color: var(--fg); }
     </div>
 
     <div class="bar"><span>日志</span></div>
-    <div class="scroll" id="logwrap" style="flex:0 0 clamp(110px,16vh,190px)">
+    <div class="scroll" id="logwrap" style="flex:0 0 clamp(84px,11vh,140px)">
       <div id="log"></div>
     </div>
   </div>

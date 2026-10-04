@@ -405,6 +405,7 @@ struct FileView {
 #[tauri::command]
 async fn probe_skills(state: State<'_, AppState>) -> Result<SkillsView, ErrPayload> {
     let cdp = ensure_cdp(&state).await?;
+    // 安全闸：输入框有内容就不动（探测要切视图，不能弄乱用户写的东西）
     let before = cdp
         .eval(engine::EDITOR_CHARS_JS)
         .await
@@ -415,88 +416,121 @@ async fn probe_skills(state: State<'_, AppState>) -> Result<SkillsView, ErrPaylo
         return Err(ErrPayload::new(
             "输入框里有内容，先清空再探测",
             &format!("当前有 {before} 个字"),
-            "探测要往输入框打一个斜杠，不能动你写的东西。清空后点「探测技能」",
+            "探测要切到技能页抓清单，不能动你写的东西。清空后点「探测可用技能」",
         ));
     }
-    // 填斜杠失败 → 转成 ErrPayload（anyhow 不能自动转）
-    if let Err(e) = cdp.eval(
-        r#"(() => {
-      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-      if (!e) return 0;
-      e.focus();
-      const s = window.getSelection(); const r = document.createRange();
-      r.selectNodeContents(e); s.removeAllRanges(); s.addRange(r);
-      document.execCommand('insertText', false, '/');
-      return 1;
-    })()"#,
-    ).await {
-        return Err(ErrPayload::new(
-            "打不进斜杠",
-            &format!("{e:#}"),
-            "WorkBuddy 界面可能不在前台，切到它的窗口再试",
-        ));
-    }
-    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    // 记下当前标签，抓完切回
+    let origin = current_tab(&cdp).await;
+    let skills = read_skill_cards(&cdp).await;
 
-    // ★ 用 match 而非 ? ★：探测失败也要走「清空」路径，
-    //   若用 ? 提前返回，斜杠就留在用户输入框里了。
-    let v = match cdp
+    // ★ 无论成败都还原视图 ★
+    if current_tab(&cdp).await != origin {
+        click_tab(&cdp, "助理").await;
+    }
+    // 还原必须**确认就绪**——只click 不够，
+    // 实测：点了之后编辑器要等一会儿才挂载。
+    let _ = engine::ensure_assist_page(&cdp).await;
+
+    Ok(SkillsView {
+        items: skills,
+        cleaned: cdp
+            .eval(engine::EDITOR_CHARS_JS)
+            .await
+            .ok()
+            .and_then(|v| v.as_i64())
+            .map(|n| n == 0)
+            .unwrap_or(false),
+    })
+}
+
+/// 当前侧栏标签（空 = 未知）。
+///
+/// ★★ 判据必须用「输入框在不在」，不能用 active class ★★
+/// 实测：「助理」tab 的 class **本来就没有** 
+/// （只有「专家·技能·连接器」等带 ），
+/// 所以拿 active 当判据会得出「当前不在助理页」的错误结论，
+/// 进而做出多余的切页动作。
+///
+/// 正解：直接问「编辑器与发送键在不在」——那是填入真正需要的条件。
+async fn current_tab(cdp: &Cdp) -> String {
+    cdp.eval(
+        r#"(() => {
+      const ed = !!document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+      const btn = document.querySelectorAll('button.cr-send-button').length;
+      if (ed && btn > 0) return '助理';
+      const a = Array.from(document.querySelectorAll('.conversation-list-tab-button'))
+        .filter(b => /active/.test(String(b.className)));
+      return a.length ? (a[0].innerText || '').trim() : '未知';
+    })()"#,
+    )
+    .await
+    .ok()
+    .and_then(|v| v.as_str().map(|x| x.to_string()))
+    .unwrap_or_default()
+}
+
+/// 点侧栏标签（必须用精确 class，见 skills_probe.py 的注释）。
+async fn click_tab(cdp: &Cdp, label: &str) -> bool {
+    // ★★ 用占位符再替换，不要在 raw string 里嵌转义，也不要用 format! 的 {{ }} ★★
+    // 踩过的坑（编译全绿、运行必错）：
+    //   - `String::from("""")` —— 三引号不是合法 Rust 字符串，编译竟过了
+    //   - `r#"() => {{ ... }}"#` 配format! —— 双花括号被当转义吃成单花括号，
+    //     写出的 JS 是 `() => { ... }` 缺一层，语法坏
+    // 现在这个写法两边都干净：JS 里没有需要转义的字符，占位符用普通文本。
+    let js = r#"(() => {
+      const want = __LABEL__;
+      for (const b of document.querySelectorAll('.conversation-list-tab-button')) {
+        if ((b.innerText || '').trim() === want) { b.click(); return true; }
+      }
+      return false;
+    })()"#
+    .replace("__LABEL__", &serde_json::to_string(label).unwrap_or_default());
+    cdp.eval(&js).await.ok().and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+/// 读技能卡片（实测 class：`ec-card-role` = 技能名，`ec-card-tag` = 标签）。
+///
+/// ★ 为什么不用斜杠命令 ★
+/// 实测输入  后补全面板**根本不弹**（页面上只多一个斜杠本身）。
+/// WorkBuddy 5.6.2 的技能入口是侧栏「专家·技能·连接器」页，
+/// 卡片 class 是 。走斜杠是错的路。
+async fn read_skill_cards(cdp: &Cdp) -> Vec<String> {
+    if !click_tab(cdp, "专家·技能·连接器").await {
+        log::warn!("找不到「专家·技能·连接器」标签");
+        return Vec::new();
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    let v = cdp
         .eval(
             r#"(() => {
-      const vis = (e) => e && e.getBoundingClientRect().width > 0;
-      const out = { items: [] };
-      const sels = ['[role="listbox"]','[role="menu"]','[class*="popover"]',
-        '[class*="dropdown"]','[class*="autocomplete"]','[class*="command-list"]',
-        '[class*="slash"]','[class*="suggest"]','[class*="menu"]'];
-      const seen = new Set();
-      for (const sel of sels) {
-        for (const p of document.querySelectorAll(sel)) {
-          if (!vis(p)) continue;
-          for (const it of p.querySelectorAll('[role="option"],li,button,div')) {
-            if (!vis(it)) continue;
-            const t = (it.innerText || '').trim().replace(/\s+/g, ' ');
-            if (!t || t.length > 60) continue;
-            const has = Array.from(it.children).some(c => vis(c) && (c.innerText||'').trim().length > 0);
-            if (has) continue;
-            if (seen.has(t)) continue;
-            seen.add(t);
-            out.items.push(t);
-          }
-        }
+      const vis = (e) => {
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && getComputedStyle(e).opacity !== '0';
+      };
+      const out = [];
+      for (const e of document.querySelectorAll('div,span,a,button,li')) {
+        if (!vis(e)) continue;
+        let own = '';
+        for (const n of e.childNodes) if (n.nodeType === 3) own += n.textContent;
+        own = own.trim().replace(/\s+/g, ' ');
+        if (!own || own.length > 60) continue;
+        if (/ec-card-role/.test(String(e.className || ''))) out.push(own);
       }
-      return out;
+      return Array.from(new Set(out));
     })()"#,
         )
-        .await
-    {
-        Ok(v) => v,
-        Err(_) => serde_json::Value::Null,
-    };
-
-    // ★ 无论成败都必须清掉那个斜杠 ★
-    let _ = engine::clear_editor(&cdp).await;
-    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-
-    let items: Vec<String> = v
-        .get("items")
-        .and_then(|x| x.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str())
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default();
-    let after = cdp
-        .eval(engine::EDITOR_CHARS_JS)
-        .await
-        .ok()
-        .and_then(|v| v.as_i64())
-        .unwrap_or(-1);
-    Ok(SkillsView {
-        items,
-        cleaned: after == 0,
-    })
+        .await;
+    // ★ v 是 Result<Value>，先 .ok() 拿 Value ★
+    // 早先直接 `v.and_then(...)` 把 Result 当 Value 用，编译就报错——
+    // 但同一段里还有一行「孤立的 v.and_then(...).unwrap_or(0);」
+    // 那行是写for 循环时漏接返回值的残留，看着像调试代码。
+    // 两行一起删，只留真正返回数组的那条。
+    v.ok()
+        .and_then(|x| x.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|x| x.as_str().map(String::from))
+        .collect()
 }
 
 /// 技能清单视图。

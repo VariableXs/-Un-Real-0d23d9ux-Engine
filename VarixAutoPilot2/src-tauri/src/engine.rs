@@ -165,6 +165,75 @@ pub const EDITOR_CHARS_JS: &str = r#"(() => {
 })"#;
 
 /// 查忙闲。
+
+/// ★ 保证在「助理」页且输入框可用 ★
+///
+/// ★★ 为什么必须有这个守卫 ★★
+/// 实测：WorkBuddy 的侧栏有7 个标签（助理 / 项目 / 专家·技能·连接器 /
+/// 定时任务 / 资料库 / 更多），**只有「助理」页有输入框**。
+/// 在「专家」页时实测：编辑器 0 个、发送键 0 个、
+/// placeholder 0 个 —— 此时执行 fill_prompt 会**静默失败**
+///（eval 返回 0 或null，不抛错，看起来像填了但没反应）。
+///
+/// 而 skill 探测会切到专家页 —— 如果用户探测完不切回来，
+/// 后续所有填入/发送都会静默失效。所以这一步是必需的。
+pub async fn ensure_assist_page(cdp: &Cdp) -> Result<()> {
+    let v = cdp
+        .eval(
+            r#"(() => {
+      const active = Array.from(document.querySelectorAll('.conversation-list-tab-button'))
+        .filter(b => /active/.test(String(b.className)))
+        .map(b => (b.innerText || '').trim());
+      return {
+        tab: active.length ? active[0] : '',
+        hasEditor: !!document.querySelector('div[data-slate-editor=\"true\"][contenteditable=\"true\"]'),
+        hasSend: document.querySelectorAll('button.cr-send-button').length > 0,
+      };
+    })()"#,
+        )
+        .await?;
+    let tab = v.get("tab").and_then(|x| x.as_str()).unwrap_or("");
+    let has_editor = v.get("hasEditor").and_then(|x| x.as_bool()).unwrap_or(false);
+    let has_send = v.get("hasSend").and_then(|x| x.as_bool()).unwrap_or(false);
+    if has_editor && has_send {
+        return Ok(());
+    }
+    // 切回「助理」
+    log::warn!("当前标签 {tab}（输入框就绪={has_editor}）→ 切回「助理」");
+    cdp.eval(
+        r#"(() => {
+      for (const b of document.querySelectorAll('.conversation-list-tab-button')) {
+        if ((b.innerText || '').trim() === '助理') { b.click(); return true; }
+      }
+      return false;
+    })()"#,
+    )
+    .await?;
+    // 轮询等就绪（切页是异步渲染，编辑器要等一会儿才挂载）
+    for i in 0..14 {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let ok = cdp
+            .eval(
+                r#"(() => {
+          const e = document.querySelector('div[data-slate-editor=\"true\"][contenteditable=\"true\"]');
+          const b = document.querySelectorAll('button.cr-send-button').length;
+          return !!(e && b > 0);
+        })()"#,
+            )
+            .await
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if ok {
+            return Ok(());
+        }
+        if i == 13 {
+            bail!("切回「助理」页后输入框仍未就绪：可能 WorkBuddy 界面结构变了，或当前处于其它状态");
+        }
+    }
+    Ok(())
+}
+
 pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
     let v = cdp
         .eval(
@@ -380,6 +449,8 @@ pub async fn send_only(cdp: &Cdp, text: &str, conv_id: &str) -> Result<String> {
     if text.trim().is_empty() {
         bail!("待发内容为空：拒绝发送");
     }
+    // ★ 必须在助理页，否则填入会静默失败（实测：专家页无输入框）★
+    ensure_assist_page(cdp).await?;
     // 忙时一个字都不写进输入框（坑 6）
     let v = idle_verdict(cdp).await?;
     if !v.idle {
@@ -462,6 +533,9 @@ pub async fn run_flow(
         )));
     }
     let _chars = text.chars().count();
+
+    // ★ 必须在助理页，否则填入会静默失败 ★
+    ensure_assist_page(cdp).await?;
 
     // ★ 忙时在动手之前退出（坑 6）★
     // 干跑不做此限制——干跑的意义就是忙碌时也能预演填入效果。
