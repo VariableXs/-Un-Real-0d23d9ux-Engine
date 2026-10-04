@@ -375,7 +375,37 @@ def cmd_done(tid, worker, result):
         out["ok"] = False
     # 交活完成 ⇒ 释放施工锁（全局锁留着，让同一 worker 继续领下一单）
     active_clear()
+    # 4) 自动产出下一轮交接提示词（下一对话直接 @_next_prompt.md 即可）
+    #
+    # 为什么在这里做：交接内容必须反映「刚交完这单之后」的队列状态，
+    # 由 --done 触发才能保证时机正确。独立跑 emit_next_prompt.py 也行，
+    # 但那时状态可能已经变了。
+    out["交接"] = emit_next_prompt()
     return out
+
+
+def emit_next_prompt(task_id=None):
+    """调用同目录的 emit_next_prompt.py 产出 _next_prompt.md。
+
+    独立成文件是为了让「产出内容」与「领单/回写」两条逻辑线解耦，
+    那边改判据、这边改循环，互不牵动。
+    """
+    import subprocess
+    script = os.path.join(HERE, "emit_next_prompt.py")
+    if not os.path.exists(script):
+        return "未运行（emit_next_prompt.py 不存在）"
+    cmd = [sys.executable, script]
+    if task_id:
+        cmd += ["--task", task_id]
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    except subprocess.TimeoutExpired:
+        return "未产出（生成器超时 180s）"
+    if p.returncode != 0:
+        # 失败要能看出原因，但不打断主流程（交活本身已成功）
+        detail = (p.stdout or p.stderr or "").strip().replace("\n", " ")
+        return "未产出（生成器退出码 %d）：%s" % (p.returncode, detail[:200])
+    return "已产出 _next_prompt.md（%s）" % (p.stdout or "").strip()[:80]
 
 
 def cmd_block(tid, reason):
@@ -548,6 +578,9 @@ def main():
     ap.add_argument("--next", action="store_true", help="只报下一单是什么（不领）")
     ap.add_argument("--lock-status", action="store_true", help="看锁状态")
     ap.add_argument("--lock-release", action="store_true", help="强释全部锁（人工介入）")
+    ap.add_argument("--emit-prompt", action="store_true",
+                    help="生成下一轮交接提示词到 _next_prompt.md")
+    ap.add_argument("--task", metavar="ID", help="配合 --emit-prompt 指定单号")
     ap.add_argument("--cancel", action="store_true")
     a = ap.parse_args()
 
@@ -570,6 +603,8 @@ def main():
         p(cmd_replay()); return
     if a.next:
         p(cmd_next()); return
+    if a.emit_prompt:
+        p({"ok": True, "结果": emit_next_prompt(a.task)}); return
     if a.lock_status:
         p(lock_status()); return
     if a.lock_release:
