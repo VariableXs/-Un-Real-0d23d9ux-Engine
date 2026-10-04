@@ -236,7 +236,14 @@ fn page_probe_js() -> String {
   const ed = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
   let edChars = -1, edVisible = false;
   if (ed) {
-    edChars = txt(ed).length;
+    // ★★ 必须排除 placeholder ★★
+    // 实测：Slate 的 placeholder（「今天帮你做些什么？…」）是**真实子元素**，
+    // 所以 innerText 与 textContent **都**会把它算进去（实测均为 25）。
+    // 正解：克隆 DOM → 删掉 [data-slate-placeholder] → 再数。
+    // 详见 engine.rs 的 EDITOR_CHARS_JS 注释（含完整 DOM 结构）。
+    const clone = ed.cloneNode(true);
+    clone.querySelectorAll('[data-slate-placeholder]').forEach(n => n.remove());
+    edChars = (clone.textContent || '').trim().length;
     const r = ed.getBoundingClientRect();
     edVisible = r.width > 40 && r.height > 18;
   }

@@ -67,13 +67,33 @@ impl std::fmt::Display for EngineError {
     }
 }
 
-/// 读输入框当前内容（干跑前备份用）。
-/// 与 fill_prompt 里的选择器保持一致——两处必须同源，
-/// 否则备份到的是另一个框，还原就还原错了地方。
-const READ_EDITOR_JS: &str = r#"(() => {
+/// ★ 编辑器真实字数★
+///
+/// ★★ 为什么不能用 innerText / textContent ★★
+/// Slate 的空输入框在 DOM 里长这样（实测 innerHTML 逐字比对）：
+///   <span data-slate-leaf="true">
+///     <br>
+///     <span data-slate-placeholder="true" contenteditable="false" ...>
+///       今天帮你做些什么？@添加上下文，/调用技能与指令
+///     </span>
+///   </span>
+/// 关键：placeholder 是**真实存在的子元素**，
+/// 所以 innerText 与 textContent **都会把提示文字算进去**（实测都是 25）。
+///
+/// 后果很严重（都实测踩过）：
+/// - 空输入框被算成 25 字 ⇒「填入是否成功」回读校验恒不准
+/// - 「编辑器已清空」判据永不成立 ⇒ **误报发送失败**（就是用户说的
+///   「发送功能无法运行」）
+/// - 若拿它做备份再写回 ⇒把提示固化成真实文字，**污染用户输入框**
+///
+/// 正解：克隆一份 DOM，删掉 [data-slate-placeholder] 及其内容，再数长度。
+const EDITOR_CHARS_JS: &str = r#"(() => {
   const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-  return e ? (e.innerText || '').trim() : '';
-})()"#;
+  if (!e) return -1;
+  const c = e.cloneNode(true);
+  c.querySelectorAll('[data-slate-placeholder]').forEach(n => n.remove());
+  return (c.textContent || '').trim().length;
+})"#;
 
 /// 查忙闲。
 pub async fn busy_state(cdp: &Cdp) -> Result<Busy> {
@@ -192,14 +212,7 @@ async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
     tokio::time::sleep(Duration::from_millis(400)).await;
 
     // 回读校验：静默失败必须暴露
-    let got = cdp
-        .eval(
-            r#"(() => {
-              const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-              return e ? (e.innerText||'').trim().length : -1;
-            })()"#,
-        )
-        .await?;
+    let got = cdp.eval(EDITOR_CHARS_JS).await?;
     let n = got.as_i64().unwrap_or(-1);
     let expect = std::cmp::min(50, text.chars().count() as i64);
     if n < expect {
@@ -245,7 +258,13 @@ async fn click_send(cdp: &Cdp, probe_text: &str, timeout: Duration) -> Result<(b
             .eval(&format!(
                 r#"(() => {{
                   const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-                  const editorChars = e ? (e.innerText||'').trim().length : -1;
+                  // ★ 排除 placeholder 的真实字数 ★（理由见 EDITOR_CHARS_JS）
+                  const editorChars = (() => {{
+                    if (!e) return -1;
+                    const c = e.cloneNode(true);
+                    c.querySelectorAll('[data-slate-placeholder]').forEach(n => n.remove());
+                    return (c.textContent || '').trim().length;
+                  }})();
                   let inStream = false;
                   const nd = {needle:?};
                   if (nd) {{
@@ -313,38 +332,40 @@ pub async fn run_flow(
     //
     // 做法：填入前把原内容存下来（连同"是不是占位提示"一起判），
     // 干跑完原样写回。占位提示本身就等同于"空"，写回它没有副作用。
-    let backup = if dry_run {
-        Some(cdp.eval(READ_EDITOR_JS).await.unwrap_or(Value::String(String::new())))
-    } else {
-        None
-    };
-
     let n = fill_prompt(cdp, text).await?;
 
     if dry_run {
-        // 还原：干跑的语义是"预览"，不是"留在那儿"
-        if let Some(prev) = &backup {
-            let s = prev.as_str().unwrap_or("");
-            if !s.is_empty() {
-                // 用 execCommand 插入能保留 Slate 的 undo 栈，
-                // 纯 textContent 赋值会破坏编辑器内部状态。
-                let restore = format!(
-                    r#"(() => {{
-                      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
-                      if (!e) return 0;
-                      e.focus();
-                      const sel = window.getSelection();
-                      const r = document.createRange();
-                      r.selectNodeContents(e);
-                      sel.removeAllRanges(); sel.addRange(r);
-                      document.execCommand('insertText', false, {t});
-                      return (e.innerText||'').trim().length;
-                    }})()"#,
-                    t = serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
-                );
-                let restored = cdp.eval(&restore).await.unwrap_or(Value::Null);
-                log::info!("干跑已还原输入框：{} 字符", restored.as_i64().unwrap_or(-1));
-            }
+        // ★ 还原必须「只删不插」★
+        //
+        // 踩过的坑（实测）：早先备份 innerText 再原样写回，
+        // 结果把占位提示「今天帮你做些什么？@ 添加上下文，/调用技能与指令」
+        // 变成了**真实输入文字**（25 → 51 字符，两份叠在一起）。
+        //
+        // 根因：Slate 编辑器空着时，`innerText` 会把 **placeholder 文本**读出来。
+        // 它不是用户输入，是渲染层的假内容。
+        // 于是"备份-写回"把假内容固化成真内容——**污染了用户的输入框**。
+        //
+        // 正解：空输入框 → 一律 **清空**（execCommand('delete')），
+        // 绝不 insertText回占位提示。清空后 placeholder 会自动回来，
+        // 且那仍然是假内容，零污染。
+        let restore = r#"(() => {
+          const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+          if (!e) return 0;
+          e.focus();
+          const sel = window.getSelection();
+          const r = document.createRange();
+          r.selectNodeContents(e);
+          sel.removeAllRanges(); sel.addRange(r);
+          document.execCommand('delete');   // ★ 只删，不插 ★
+          return (e.innerText || '').trim().length;
+        })()"#;
+        let restored = cdp.eval(restore).await.unwrap_or(Value::Null);
+        // ★ 校验清空确实生效：静默失败必须暴露（SOUL：异常零静默）
+        let left = restored.as_i64().unwrap_or(-1);
+        if left > 0 {
+            log::warn!("干跑清空后仍剩 {left} 字符（占位提示不算字数，若>0 说明有残留）");
+        } else {
+            log::info!("干跑已清空输入框（还原为占位态）");
         }
         return Ok(FlowResult {
             ok: true,
