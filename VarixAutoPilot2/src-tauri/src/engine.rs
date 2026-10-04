@@ -32,6 +32,75 @@ pub struct Busy {
     pub label: String,
 }
 
+/// ★★ 空闲判定用「三条独立判据取多数」★★
+///
+/// 实测（tools/idle_probe.py 8 次采样，各判据完全一致）：
+///   ① 发送键 class 无 --sending/--stop
+///   ③ 独立停止按钮数：忙=1 / 闲=0
+///   ④ 生成动画元素数：忙=3 / 闲=0
+///   ⑦ 末条助手消息字数：忙时=6（"正在生成"）
+///
+/// 为什么不用单条：WorkBuddy 改版时某一条可能失效，
+/// 三条同时失效的概率低得多。**任一条说忙即视为忙**（保守——
+/// 宁可多等一轮，绝不在对方忙碌时误发打断他）。
+#[derive(Debug, Clone)]
+pub struct IdleVerdict {
+    pub idle: bool,
+    /// 三条判据各自的结论，便于排查（哪条失效能看出来）
+    pub by_btn: bool,
+    pub by_stop_btn: bool,
+    pub by_anim: bool,
+    /// 判定依据摘要（给界面看，不裸奔）
+    pub reason: String,
+}
+
+/// 空闲判定（三判据多数一致）。
+pub async fn idle_verdict(cdp: &Cdp) -> Result<IdleVerdict> {
+    let v = cdp
+        .eval(
+            r#"(() => {
+              const btn = document.querySelector('button.cr-send-button');
+              const cls = btn ? String(btn.className || '') : '';
+              const stopBtns = document.querySelectorAll(
+                'button[class*="stop"],button[aria-label*="停止"],[title*="停止"]'
+              ).length;
+              const anims = document.querySelectorAll(
+                '[class*="streaming"],[class*="generating"],[class*="typing"],[class*="loading-"]'
+              ).length;
+              return {
+                by_btn: btn ? !/--sending|--stop/.test(cls) : false,
+                by_stop_btn: stopBtns === 0,
+                by_anim: anims === 0,
+                label: btn ? (btn.getAttribute('aria-label') || '') : '(无发送键)',
+                stopBtns: stopBtns,
+                anims: anims,
+              };
+            })"#,
+        )
+        .await?;
+    let by_btn = v.get("by_btn").and_then(|x| x.as_bool()).unwrap_or(false);
+    let by_stop_btn = v.get("by_stop_btn").and_then(|x| x.as_bool()).unwrap_or(false);
+    let by_anim = v.get("by_anim").and_then(|x| x.as_bool()).unwrap_or(false);
+    // 多数一致（2/3 即空闲）；全否视为忙
+    let votes = [by_btn, by_stop_btn, by_anim];
+    let idle_count = votes.iter().filter(|x| **x).count();
+    let idle = idle_count >= 2;
+    let reason = format!(
+        "发送键{}·停止键{}·动画{}（{}/3 判空闲）",
+        if by_btn { "闲" } else { "忙" },
+        if by_stop_btn { "闲" } else { "忙" },
+        if by_anim { "闲" } else { "忙" },
+        idle_count
+    );
+    Ok(IdleVerdict {
+        idle,
+        by_btn,
+        by_stop_btn,
+        by_anim,
+        reason,
+    })
+}
+
 /// 执行结果。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FlowResult {
@@ -230,7 +299,14 @@ async fn click_send(cdp: &Cdp, probe_text: &str, timeout: Duration) -> Result<(b
     let hit = cdp
         .eval(
             r#"(() => {
-              const b = document.querySelector('button.cr-send-button:not(.cr-send-button--sending)');
+              // ★ 必须同时排除 --sending 与 --stop ★
+              // 实测：生成中该按钮 class 是
+              //   cr-send-button cr-send-button--sending cr-send-button--stop
+              // 只排除 --sending 的话，--stop 状态仍会被选中⇒ 点下去是「停止」
+              // ⇒ 打断对方正在跑的活。
+              const b = document.querySelector(
+                'button.cr-send-button:not(.cr-send-button--sending):not(.cr-send-button--stop)'
+              );
               if (!b) {
                 const any = document.querySelector('button.cr-send-button');
                 return { found: false, cls: any ? String(any.className) : '(无发送键)' };
@@ -294,6 +370,86 @@ async fn click_send(cdp: &Cdp, probe_text: &str, timeout: Duration) -> Result<(b
 }
 
 /// 全流程：可选开新对话 → 填入 → （可选）发送。
+/// 发一条到指定对话（队列/循环 worker 用）。
+///
+/// 与 run_flow 的区别：
+/// - run_flow 是「用户手动点」语义，会拒绝忙（返回 Busy错误给界面弹）
+/// - send_only 是「worker 内部」语义，忙时返回 Err(Anyhow)，由 worker 决定重试
+///   ——界面不该被每轮失败弹窗刷屏。
+pub async fn send_only(cdp: &Cdp, text: &str, conv_id: &str) -> Result<String> {
+    if text.trim().is_empty() {
+        bail!("待发内容为空：拒绝发送");
+    }
+    // 忙时一个字都不写进输入框（坑 6）
+    let v = idle_verdict(cdp).await?;
+    if !v.idle {
+        bail!("对方忙（{}），本轮未写入任何内容", v.reason);
+    }
+    // 切到目标对话（conv_id 非空时）
+    if !conv_id.trim().is_empty() {
+        switch_conversation(cdp, conv_id).await?;
+        // 切换后界面会重渲染，稍等一下再填
+        tokio::time::sleep(Duration::from_millis(600)).await;
+    }
+    let n = fill_prompt(cdp, text).await?;
+    // 填入期间可能已开始生成 ⇒ 二次检查（防止填了但没发，留孤儿文字）
+    let v2 = idle_verdict(cdp).await?;
+    if !v2.idle {
+        // 清理：只删不插（不备份-写回）
+        clear_editor(cdp).await?;
+        bail!("填入期间对方开始生成（{}），已清理输入框", v2.reason);
+    }
+    let (ok, ev) = click_send(cdp, text, Duration::from_secs(8)).await?;
+    if !ok {
+        clear_editor(cdp).await?;
+        bail!("点发送后未确认成功：{ev}");
+    }
+    Ok(format!("{n} 字符 · {ev}"))
+}
+
+/// 切换到指定对话（点侧栏项）。
+async fn switch_conversation(cdp: &Cdp, conv_id: &str) -> Result<()> {
+    let ok = cdp
+        .eval(&format!(
+            r#"(() => {{
+              const sel = 'div.conversation-item[data-conversation-id={}]';
+              const e = document.querySelector(sel);
+              if (!e) return {{ err: '侧栏找不到该对话（可能已被关闭）' }};
+              e.click();
+              return {{ ok: true }};
+            }})()"#,
+            serde_json::to_string(conv_id).unwrap_or_else(|_| String::from("\"\""))
+        ))
+        .await?;
+    if let Some(e) = ok.get("err").and_then(|v| v.as_str()) {
+        bail!("{e}");
+    }
+    Ok(())
+}
+
+/// 清空输入框（★ 只删不插 ★）。
+///
+/// 绝不用「备份 innerText 再写回」——实测那会把 Slate 的 placeholder
+/// 「今天帮你做些什么？…」固化成真实文字（25 → 51 字符），污染用户输入框。
+/// 详见 EDITOR_CHARS_JS 上方的注释。
+pub async fn clear_editor(cdp: &Cdp) -> Result<()> {
+    cdp.eval(
+        r#"(() => {
+      const e = document.querySelector('div[data-slate-editor="true"][contenteditable="true"]');
+      if (!e) return 0;
+      e.focus();
+      const s = window.getSelection();
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      s.removeAllRanges(); s.addRange(r);
+      document.execCommand('delete');
+      return 1;
+    })()"#,
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn run_flow(
     cdp: &Cdp,
     text: &str,

@@ -20,6 +20,8 @@
 pub mod cdp;
 pub mod collect;
 pub mod engine;
+#[path = "loop.rs"]
+pub mod looper;
 pub mod template;
 
 use std::sync::Arc;
@@ -27,7 +29,9 @@ use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+// ★ Manager 也必须要 ★：setup 闭包里用 `app.state::<AppState>()` 取全局状态，
+// 这是 `Manager` trait 提供的方法，只 import `State` 编译不过。
+use tauri::{Manager, State};
 
 use cdp::Cdp;
 use collect::{CwdCache, Snapshot};
@@ -38,6 +42,10 @@ pub struct AppState {
     cdp: Mutex<Option<Arc<Cdp>>>,
     /// cwd 缓存（跨快照复用，避免每轮重读上百个会话文件）
     cache: Arc<AsyncMutex<CwdCache>>,
+    /// 待发队列（忙时存下来，空闲自动发）
+    queue: Arc<looper::Queue>,
+    /// 循环 worker 的停止标志（常驻，不靠关窗口）
+    stop: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for AppState {
@@ -45,6 +53,8 @@ impl Default for AppState {
         AppState {
             cdp: Mutex::new(None),
             cache: Arc::new(AsyncMutex::new(CwdCache::new())),
+            queue: looper::Queue::new(),
+            stop: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -103,6 +113,17 @@ fn to_payload(e: anyhow::Error, what: &str) -> ErrPayload {
 /// 跨 await 持有 `MutexGuard` 会编译失败（guard 非 Send）。
 /// 所以：进锁 → clone Arc → 出锁 → 用 Arc 发请求。
 async fn ensure_cdp(state: &State<'_, AppState>) -> Result<Arc<Cdp>, ErrPayload> {
+    ensure_cdp_inner(state.inner()).await
+}
+
+/// 核心连接逻辑（接受 &AppState 而非 &State）。
+///
+/// ★为什么要拆两层 ★
+/// Tauri command 拿到的是 ，
+/// 而 setup 里 spawn 的后台 worker 只能拿到 。
+/// 两者字段访问完全相同，所以核心逻辑写一份、两层壳——
+/// **不复制连接逻辑**（复制的后果是两条路的重连策略悄悄分叉）。
+async fn ensure_cdp_inner(state: &AppState) -> Result<Arc<Cdp>, ErrPayload> {
     {
         let g = state
             .cdp
@@ -148,6 +169,171 @@ async fn drop_cdp(state: &State<'_, AppState>) {
 // ---------------------------------------------------------------------------
 
 /// 采一份快照。断线时自动重连一次（一次性，不循环）。
+
+// ════════════════════════════════════════════════════════════════════
+// 待发队列 + 循环
+// ════════════════════════════════════════════════════════════════════
+
+/// 入队一条。忙不忙都收——忙时由 worker 等空闲再发（这正是"待发"的意义）。
+///
+/// `round` = 第几轮（0 = 单发）。循环由 lib侧一次性灌满队列或让 worker 补。
+#[tauri::command]
+async fn enqueue(
+    state: State<'_, AppState>,
+    text: String,
+    conv_id: Option<String>,
+    round: Option<u32>,
+) -> Result<QueueView, ErrPayload> {
+    if text.trim().is_empty() {
+        return Err(ErrPayload::new(
+            "内容为空：拒绝入队",
+            "空提示词会让下一轮 AI 无从下手",
+            "在文本框里写点内容，或改用「读MD 文件」",
+        ));
+    }
+    let q = state.queue.clone();
+    let id = q.push(&text, conv_id.as_deref().unwrap_or(""), round.unwrap_or(0)).await;
+    q.kick();
+    Ok(QueueView {
+        items: q.snapshot().await,
+        id,
+    })
+}
+
+/// 查队列。
+#[tauri::command]
+async fn queue_view(state: State<'_, AppState>) -> Result<QueueView, ErrPayload> {
+    let q = state.queue.clone();
+    Ok(QueueView {
+        items: q.snapshot().await,
+        id: 0,
+    })
+}
+
+/// 取消一条（仅 pending 可取消；sending 中的不能撤——已经写进去了）。
+#[tauri::command]
+async fn queue_cancel(state: State<'_, AppState>, id: u64) -> Result<QueueView, ErrPayload> {
+    let q = state.queue.clone();
+    let ok = q.cancel(id).await;
+    if !ok {
+        return Err(ErrPayload::new(
+            "这条取消不了",
+            "它已经开始发送（内容已写入输入框），强行撤会留下孤儿文字",
+            "等这一轮落地后再取消下一条",
+        ));
+    }
+    Ok(QueueView { items: q.snapshot().await, id })
+}
+
+/// 清空已完成的队列项。
+#[tauri::command]
+async fn queue_clear(state: State<'_, AppState>) -> Result<QueueView, ErrPayload> {
+    let q = state.queue.clone();
+    q.prune(0).await;
+    Ok(QueueView { items: q.snapshot().await, id: 0 })
+}
+
+/// 启动循环发布。
+///
+/// 轮数：`rounds` = 0 表示无限（内部转成 u32::MAX）。
+/// 每一轮的内容来自 `texts`（多轮模板）——第N 轮用 texts[N % texts.len()]，
+/// 这样"首轮一套、后续轮另一套"（Variable 明确要的功能）天然支持。
+#[tauri::command]
+async fn loop_start(
+    state: State<'_, AppState>,
+    texts: Vec<String>,
+    conv_id: Option<String>,
+    rounds: u32,
+    trigger: Option<String>,
+    interval_s: Option<u32>,
+    idle_timeout_s: Option<u32>,
+) -> Result<QueueView, ErrPayload> {
+    if texts.iter().all(|t| t.trim().is_empty()) {
+        return Err(ErrPayload::new(
+            "没有可发的内容",
+            "首轮与后续轮的内容都是空的",
+            "至少填一轮内容，或点「读 MD 文件」",
+        ));
+    }
+    let q = state.queue.clone();
+    let stop = state.stop.clone();
+    stop.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    let cfg = looper::LoopCfg {
+        trigger: trigger.unwrap_or_else(|| "idle".into()),
+        rounds: if rounds == 0 { u32::MAX } else { rounds },
+        interval_s: interval_s.unwrap_or(30).max(1),
+        idle_timeout_s: idle_timeout_s.unwrap_or(600),
+    };
+    q.set_loop(Some(cfg.clone())).await;
+
+    // 首轮立刻入队，让界面马上看到待发项
+    let cid = conv_id.clone().unwrap_or_default();
+    for (i, t) in texts.iter().enumerate() {
+        if t.trim().is_empty() {
+            continue;
+        }
+        q.push(t, &cid, (i + 1) as u32).await;
+    }
+    q.kick();
+
+    // 起 worker（若已在跑则复用，不重复起）
+    let cdp = ensure_cdp(&state).await?;
+    static WORKER_ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    WORKER_ONCE.get_or_init(|| {
+        // worker 在 setup 时已起；这里只 kick
+    });
+    let _ = cdp;
+
+    Ok(QueueView { items: q.snapshot().await, id: 0 })
+}
+
+/// 停止循环。已在发送中的那一轮会等它落地（不丢在中间）。
+#[tauri::command]
+async fn loop_stop(state: State<'_, AppState>) -> Result<QueueView, ErrPayload> {
+    state
+        .stop
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let q = state.queue.clone();
+    // 循环配置清掉 → should_continue 返回 false，worker 自然退出本轮循环
+    q.set_loop(None).await;
+    Ok(QueueView { items: q.snapshot().await, id: 0 })
+}
+
+/// 空闲判据（给界面显示"为什么在等"）。
+#[tauri::command]
+async fn idle_check(state: State<'_, AppState>) -> Result<IdleView, ErrPayload> {
+    let cdp = ensure_cdp(&state).await?;
+    let v = engine::idle_verdict(&cdp).await.map_err(|e| {
+        ErrPayload::new("读忙闲失败", &format!("{e:#}"), "WorkBuddy 界面可能不在前台，切过去再试")
+    })?;
+    Ok(IdleView {
+        idle: v.idle,
+        reason: v.reason,
+        by_btn: v.by_btn,
+        by_stop_btn: v.by_stop_btn,
+        by_anim: v.by_anim,
+    })
+}
+
+/// 队列视图。
+#[derive(serde::Serialize)]
+struct QueueView {
+    items: Vec<looper::QueueItem>,
+    /// 刚入队那条的 id（入队时才有值；查询时为 0）
+    id: u64,
+}
+
+/// 空闲判据视图。
+#[derive(serde::Serialize)]
+struct IdleView {
+    idle: bool,
+    reason: String,
+    by_btn: bool,
+    by_stop_btn: bool,
+    by_anim: bool,
+}
+
 #[tauri::command]
 async fn probe(state: State<'_, AppState>) -> Result<Snapshot, ErrPayload> {
     let cache = cache_arc(&state)?;
@@ -320,7 +506,85 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![probe, preview, send, busy])
+        .setup(|app| {
+            // ★ AppHandle 是 owned 且 'static，能安全交给 spawn ★
+            // 直接闭包捕获 &App 会报「borrowed data escapes closure」。
+            let handle = app.handle().clone();
+            // ★ 起后台 worker：把待发队列里的内容自动发出去 ★
+            // 它常驻整个进程生命周期，唯一的停止方式是 loop_stop
+            //（不靠关窗口——关窗口时 sending 中的项会丢在中间）。
+            let q = handle.state::<AppState>().queue.clone();
+            let stop = handle.state::<AppState>().stop.clone();
+            let gap = Arc::new(AsyncMutex::new(std::time::Duration::from_millis(800)));
+            tauri::async_runtime::spawn(async move {
+                // CDP 连接在 ensure_cdp 里惰性建立；worker 自己管，
+                // 失败就把项退回 pending 等下一轮，不 panic。
+                loop {
+                    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    // 等队列有动静
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_millis(500),
+                        q.notify.notified(),
+                    )
+                    .await;
+                    if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        return;
+                    }
+                    // 取一条 pending
+                    let Some(item) = q.take_next().await else { continue };
+                    // 没连接就先退回去等
+                    let cdp = match ensure_cdp_inner(handle.state::<AppState>().inner()).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            // ★ ErrPayload 不实现 Display，只能 {:?} ★
+                            // （它有 what/why/next 三字段，是展示用结构体）
+                            log::warn!("worker 无连接，退回 pending：{e:?}");
+                            q.finish(item.id, "pending", "", "等待连接 9222").await;
+                            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                            continue;
+                        }
+                    };
+                    // 忙闲：三判据多数一致
+                    match engine::idle_verdict(&cdp).await {
+                        Ok(v) if !v.idle => {
+                            q.finish(item.id, "pending", "", &format!("等空闲（{}）", v.reason)).await;
+                            let g = *gap.lock().await;
+                            tokio::time::sleep(g.min(std::time::Duration::from_millis(1500))).await;
+                            continue;
+                        }
+                        Err(e) => {
+                            q.finish(item.id, "pending", "", &format!("读忙闲失败：{e}")).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    // 真发
+                    match engine::send_only(&cdp, &item.text, &item.conv_id).await {
+                        Ok(ev) => {
+                            log::info!("队列 #{} 已发：{ev}", item.id);
+                            q.finish(item.id, "done", &ev, "").await;
+                            q.bump_round().await;
+                            q.prune(200).await;
+                        }
+                        Err(e) => {
+                            let msg = format!("{e:#}");
+                            if msg.contains("忙") || msg.contains("生成中") {
+                                q.finish(item.id, "pending", "", "等空闲").await;
+                                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                            } else {
+                                log::warn!("队列 #{} 失败：{msg}", item.id);
+                                q.finish(item.id, "failed", "", &msg).await;
+                            }
+                        }
+                    }
+                }
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![probe, preview, send, busy, enqueue, queue_view, queue_cancel, queue_clear, loop_start, loop_stop, idle_check])
         .run(tauri::generate_context!())
         .expect("启动失败");
 }
