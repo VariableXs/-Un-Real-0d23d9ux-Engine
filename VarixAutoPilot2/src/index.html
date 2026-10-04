@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VarixAutoPilot · 对话自动化控制台</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   VarixAutoPilot · 4K 视觉层
+
+   视觉语言取自 D:\2\14\UI\与你相恋到生命尽头（日式动画官网），
+   但**配色与质感按工具属性重做**——那个站是氛围优先的宣传页，
+   这里是常驻使用的工程工具，要的是"高密度 + 可读 + 有质感"。
+
+   移植的三条核心手法：
+   ① **vw 流式变量体系**（--sp-*）—— 4K 的正确做法不是像素翻倍，
+      而是让版式随视口等比生长。1920 与 3840 下比例一致。
+   ② **灰度噪点纹理 + mix-blend** —— 制造质感，不靠颜色堆砌。
+   ③ **SVG mask 抠图 + 双层背景** —— 深度与层次。
+
+   四场景调性（见 body[data-scene]）：
+   空闲=冷调呼吸 / 忙=琥珀扫描 / 告警=红脉动 / 发送=白闪涟漪
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ══ 4K 流式体系：★ 关键修正 ★
+     早先用 `min(Xvw, Ypx)`，实测在 3840×2160 下整页只有 1080p 大小
+     （截图证据：右侧大片空白、header 仅 59px）——
+     原因很直接：**上限 px 成了天花板**。vw 算到 82px，被 16px 的 min 夹死。
+     来源站那套 `min()` 是为 1920 基准的网页设计的，
+     直接抄到「要在 4K 上放大」的桌面应用上就是错的。
+
+     正解：**以 1920×1080 为基准的等比缩放**，不设上限：
+       val(Npx) = N × (100vw / 1920) ，并用 clamp 夹住下限，
+       防止超宽屏下无限放大导致布局散架。
+     这样 1920 → 1×，2560 → 1.33×，3840 → 2×，版式严格等比。 */
+  /* 缩放因子。★ 为什么不用 clamp()★
+     实测 clamp(1, calc(100vw/1920), 2.6) 嵌在 calc() 里被部分解析路径
+     判为无效，导致 var(--sp-16) 整条声明作废（header padding 实测 0px）。
+     正解：clamp 的三个参数**直接写表达式**，不套 calc()——规范允许，
+     且各引擎都能解。同时把 max 提到 3.0，覆盖 4K（2×）与 5K（2.5×）。 */
+  /* ★ 必须是「带 px 单位的比例值」★
+     踩过的坑：早先写 `--kmax: clamp(1, 100vw/1920, 3)`（无单位），
+     于是 `calc(12 * var(--kpx))` 算出的是**无单位数 12**，
+     赋给 width 时浏览器把它当百分比倍数处理 → 实测得到 1920px。
+     结果整页所有间距全部作废（header padding 实测 0px），
+     而规则解析又是「成功」的 —— 这种「解析成功但值全错」最难查。
+
+     正解：--kpx 是一个 **px 值**（1920视口下 = 1px，3840 下 = 2px），
+     `calc(12 * var(--kpx))` 就得到 12px / 24px，符合直觉。 */
+  --kpx: clamp(1px, 100vw / 1920, 3px);
+
+  /* 间距：8px 栅格，全部随 --kmax 等比 */
+  --sp-1:  calc(1 * var(--kpx));
+  --sp-2:  calc(2 * var(--kpx));
+  --sp-4:  calc(4 * var(--kpx));
+  --sp-6:  calc(6 * var(--kpx));
+  --sp-8:  calc(8 * var(--kpx));
+  --sp-10: calc(10 * var(--kpx));
+  --sp-12: calc(12 * var(--kpx));
+  --sp-14: calc(14 * var(--kpx));
+  --sp-16: calc(16 * var(--kpx));
+  --sp-20: calc(20 * var(--kpx));
+  --sp-24: calc(24 * var(--kpx));
+  --sp-32: calc(32 * var(--kpx));
+  --sp-40: calc(40 * var(--kpx));
+  --sp-48: calc(48 * var(--kpx));
+
+  /* 字号：4K 下必须放大，否则 15px 在 27" 屏上物理上只有 7.8pt，看不清 */
+  --fs-xs:  calc(12 * var(--kpx));
+  --fs-sm:  calc(14 * var(--kpx));
+  --fs-md:  calc(16 * var(--kpx));
+  --fs-lg:  calc(20 * var(--kpx));
+  --fs-xl:  calc(26 * var(--kpx));
+  --fs-2xl: calc(34 * var(--kpx));
+
+  --r-sm: calc(6 * var(--kpx));
+  --r-md: calc(10 * var(--kpx));
+  --r-lg: calc(16 * var(--kpx));
+
+  /* ── 色板：冷调仪器风 ───────────────────────────────────────── */
+  --bg:        #070a10;
+  --bg-deep:   #04060a;
+  --panel:     #0d1219;
+  --panel-2:   #131a24;
+  --line:      #1e2a38;
+  --line-hi:   #2b3b4d;
+  --fg:        #dce6f2;
+  --fg-2:      #8a9bb0;
+  --fg-3:      #55677d;
+
+  --accent:    #5b9cff;
+  --accent-2:  #7c5cff;
+  --ok:        #3ecf8e;
+  --warn:      #e8a33d;
+  --err:       #ff5c5c;
+  --idle:      #4a5a6e;
+
+  --scene:      var(--accent);
+  --scene-glow: rgba(91, 156, 255, .16);
+
+  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --sans: -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --serif: "Cormorant Infant", "Songti SC", Georgia, serif;
+}
+
+/* ═══ 场景调性 ═══ */
+body[data-scene="idle"]    { --scene: var(--accent); --scene-glow: rgba(91,156,255,.16); }
+body[data-scene="busy"]    { --scene: var(--warn);   --scene-glow: rgba(232,163,61,.20); }
+body[data-scene="alarm"]   { --scene: var(--err);    --scene-glow: rgba(255,92,92,.22); }
+body[data-scene="sent"]    { --scene: var(--ok);     --scene-glow: rgba(62,207,142,.24); }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--fs-sm)/1.55 var(--sans);
+  display: flex; flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══ 背景层：灰度噪点纹理 + 场景光晕（来源站手法 ②） ═══ */
+#bg-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+
+/* 噪点：用 SVG feTurbulence 生成，零外部资源、可离线、体积 0 */
+#bg-layer::before {
+  content: ''; position: absolute; inset: -20%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.42'/%3E%3C/svg%3E");
+  filter: grayscale(1) blur(.5px);
+  opacity: .05;
+  mix-blend-mode: overlay;
+}
+/* 场景光晕：呼吸动画（GPU 合成，4K 下只动 opacity） */
+#bg-layer::after {
+  content: ''; position: absolute;
+  width: 70vmax; height: 70vmax; left: 50%; top: 42%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, var(--scene-glow) 0%, transparent 62%);
+  animation: breathe 7s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: .55; }
+  50%      { opacity: 1; }
+}
+/* 忙：加扫描线（来源站手法的工程化转译） */
+body[data-scene="busy"] #bg-layer { background-image:
+  repeating-linear-gradient(0deg, transparent 0 3px, rgba(232,163,61,.05) 3px 4px);
+  animation: scan 1.1s linear infinite;
+}
+@keyframes scan { to { background-position: 0 44px; } }
+
+/* ═══ 顶栏 ═══ */
+header {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: var(--sp-20);
+  padding: var(--sp-12) var(--sp-20);
+  background: linear-gradient(180deg, rgba(19,26,36,.94), rgba(13,18,25,.82));
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(var(--sp-10));
+  flex: 0 0 auto;
+}
+.brand { display: flex; align-items: center; gap: var(--sp-10); }
+.brand svg { width: var(--sp-24); height: var(--sp-24); }
+/* 品牌字用衬线，制造质感（来源站 --font-en 的转译） */
+.brand h1 {
+  font: 600 var(--fs-md)/1 var(--serif);
+  letter-spacing: .06em; color: var(--fg);
+}
+.brand h1 em { font-style: normal; color: var(--scene); }
+
+.stats { display: flex; gap: var(--sp-16); flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.stat .k {
+  font-size: var(--fs-xs); color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: .12em;
+}
+.stat .v {
+  font: 600 var(--fs-sm)/1.2 var(--mono); color: var(--fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26ch;
+}
+.stat .v.path { color: var(--accent); }
+
+.conn { margin-left: auto; display: flex; align-items: center; gap: var(--sp-8);
+        font-size: var(--fs-xs); color: var(--fg-2); white-space: nowrap; }
+.dot { width: var(--sp-8); height: var(--sp-8); border-radius: 50%;
+       box-shadow: 0 0 0 3px color-mix(in srgb, var(--scene) 22%, transparent); }
+.dot.ok { background: var(--ok); animation: pulse 2.4s ease-in-out infinite; }
+.dot.err { background: var(--err); }
+.dot.idle { background: var(--idle); }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.45 } }
+
+/* ═══ 主区 ═══ */
+main { position: relative; z-index: 1; flex: 1 1 auto; display: grid;
+       grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); min-height: 0; }
+.col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.col.left { border-right: 1px solid var(--line); }
+
+.bar {
+  display: flex; align-items: center; gap: var(--sp-10);
+  padding: var(--sp-8) var(--sp-16);
+  font-size: var(--fs-xs); color: var(--fg-3);
+  text-transform: uppercase; letter-spacing: .14em;
+  background: rgba(10,14,20,.6);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.bar .grow { flex: 1; }
+.scroll { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+
+/* 滚动条：细、低调、不抢戏 */
+.scroll::-webkit-scrollbar { width: var(--sp-8); }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line-hi); border-radius: 99px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-thumb:hover { background: var(--fg-3); background-clip: content-box; }
+
+/* ═══ 对话卡片 ═══ */
+.conv {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0,1fr) auto;
+  gap: var(--sp-2) var(--sp-10);
+  padding: var(--sp-10) var(--sp-16);
+  border-bottom: 1px solid rgba(30,42,56,.6);
+  cursor: default;
+  transition: background .18s ease;
+}
+.conv:hover { background: rgba(19,26,36,.55); }
+.conv.sel { background: rgba(91,156,255,.07); }
+/* 选中态：左侧强调条（来源站"当前贴图"隐喻的工程化转译） */
+.conv.sel::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; background: var(--scene);
+  box-shadow: 0 0 var(--sp-12) var(--scene);
+}
+.conv .t {
+  font-size: var(--fs-sm); font-weight: 500; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conv.sel .t { color: #fff; }
+.conv .rt { font: var(--fs-xs)/1 var(--mono); color: var(--fg-3); white-space: nowrap; }
+.conv .meta {
+  grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sp-1);
+  font: var(--fs-xs)/1.45 var(--mono); color: var(--fg-2);
+}
+.conv .meta b { color: var(--fg-3); font-weight: 400; margin-right: var(--sp-4); }
+.conv .meta .dir { color: var(--accent-2); word-break: break-all; }
+.tag {
+  display: inline-block; padding: 0 var(--sp-6); border-radius: 99px;
+  font: var(--fs-xs)/1.7 var(--mono);
+  border: 1px solid var(--line-hi); color: var(--fg-2);
+}
+.tag.now { color: var(--scene); border-color: color-mix(in srgb, var(--scene) 45%, transparent); }
+.tag.bad { color: var(--warn); border-color: rgba(232,163,61,.35); }
+
+/* ═══ 表单 ═══ */
+.form { padding: var(--sp-16); display: flex; flex-direction: column;
+        gap: var(--sp-12); flex: 0 0 auto; }
+label { display: block; font-size: var(--fs-xs); color: var(--fg-3);
+        text-transform: uppercase; letter-spacing: .1em; margin-bottom: var(--sp-4); }
+input[type=text], textarea {
+  width: 100%; padding: var(--sp-8) var(--sp-10);
+  background: var(--bg-deep); color: var(--fg);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font: var(--fs-sm)/1.5 var(--mono); resize: vertical;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+input:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(91,156,255,.14);
+}
+textarea.tpl { min-height: clamp(120px, 18vh, 220px); }
+.row { display: flex; align-items: center; gap: var(--sp-10); flex-wrap: wrap; }
+.row .grow { flex: 1; }
+.sw { display: inline-flex; align-items: center; gap: var(--sp-6);
+      font-size: var(--fs-xs); color: var(--fg-2); cursor: pointer; user-select: none; }
+.sw input { accent-color: var(--accent); width: var(--sp-14); height: var(--sp-14); cursor: pointer; }
+
+button {
+  padding: var(--sp-8) var(--sp-16);
+  background: var(--panel-2); color: var(--fg);
+  border: 1px solid var(--line-hi); border-radius: var(--r-sm);
+  font: 500 var(--fs-sm)/1 var(--sans); cursor: pointer;
+  transition: all .16s cubic-bezier(.4,0,.2,1);
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent);
+                              transform: translateY(-1px); }
+button:active:not(:disabled) { transform: translateY(0); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #05080d; font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #7db0ff; border-color: #7db0ff; color: #05080d; }
+button.go { background: var(--ok); border-color: var(--ok); color: #04120a; font-weight: 600; }
+button.go:hover:not(:disabled) { background: #5ce0a8; border-color: #5ce0a8; color: #04120a; }
+
+/* 提示区：统一三要素错误呈现（发生了什么/为什么/怎么办） */
+.note { font-size: var(--fs-xs); line-height: 1.6; color: var(--fg-3); }
+.note .e-what { color: var(--err); font-weight: 600; display: block; }
+.note .e-why { color: var(--fg-2); display: block; margin-top: var(--sp-1); }
+.note .e-next { color: var(--accent); display: block; margin-top: var(--sp-1); }
+.note.ok { color: var(--ok); }
+.note.busy .e-what { color: var(--warn); }
+
+.preview {
+  margin: 0 var(--sp-16) var(--sp-12);
+  padding: var(--sp-12);
+  background: var(--bg-deep); border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font: var(--fs-xs)/1.65 var(--mono); color: var(--fg-2);
+  white-space: pre-wrap; overflow-y: auto;
+  flex: 1 1 auto; min-height: clamp(80px, 14vh, 200px);
+}
+.ph { color: var(--warn); background: rgba(232,163,61,.14);
+      padding: 0 3px; border-radius: 3px; }
+
+#log { padding: var(--sp-8) var(--sp-16); font: var(--fs-xs)/1.7 var(--mono); }
+#log div { white-space: pre-wrap; word-break: break-word; }
+#log .OK { color: var(--ok); } #log .ERR { color: var(--err); }
+#log .WARN { color: var(--warn); } #log .INFO { color: var(--accent); }
+
+/* ═══ 发送瞬间：白闪 + 涟漪（一次性动画） ═══ */
+#flash {
+  position: fixed; inset: 0; z-index: 99; pointer-events: none;
+  background: radial-gradient(circle at 70% 70%, rgba(62,207,142,.5), transparent 60%);
+  opacity: 0;
+}
+#flash.go { animation: flash .6s cubic-bezier(.2,.8,.3,1); }
+@keyframes flash {
+  0%   { opacity: 0; transform: scale(.85); }
+  25%  { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
+/* ═══ 空态 ═══ */
+.empty { padding: var(--sp-40) var(--sp-20); text-align: center;
+         color: var(--fg-3); font-size: var(--fs-sm); }
+</style>
+</head>
+<body data-scene="idle">
+<div id="bg-layer"></div>
+<div id="flash"></div>
+
+<header>
+  <div class="brand">
+    <!-- 品牌标记：外环+指针（环形缓冲）· 与应用图标同一套几何 -->
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="var(--scene)" stroke-width="2" opacity=".35"/>
+      <path d="M12 3a9 9 0 0 1 6.4 15.4" stroke="var(--scene)" stroke-width="2"
+            stroke-linecap="round"/>
+      <circle cx="12" cy="12" r="2.4" fill="var(--scene)"/>
+    </svg>
+    <h1>Varix<em>AutoPilot</em></h1>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="k">对话</span><span class="v" id="s-conv">–</span></div>
+    <div class="stat"><span class="k">模型</span><span class="v" id="s-model">–</span></div>
+    <div class="stat"><span class="k">工作目录</span><span class="v path" id="s-cwd">–</span></div>
+    <div class="stat"><span class="k">状态</span><span class="v" id="s-send">–</span></div>
+    <div class="stat"><span class="k">版本</span><span class="v" id="s-ver">–</span></div>
+  </div>
+  <div class="conn"><span class="dot idle" id="s-dot"></span><span id="s-msg">连接中…</span></div>
+</header>
+
+<main>
+  <!-- 左：对话列表 -->
+  <div class="col left">
+    <div class="bar"><span>对话列表</span><span class="grow"></span><span id="conv-count"></span></div>
+    <div class="scroll" id="convs"></div>
+  </div>
+
+  <!-- 右：提示词与执行 -->
+  <div class="col">
+    <div class="bar"><span>提示词与执行</span></div>
+    <div class="form">
+      <div>
+        <label>变量 · 模板里的 {{键}} 会被替换</label>
+        <input type="text" id="v-task" placeholder="任务，例：VE-F0005 · 显存预算仲裁器">
+        <div style="height:var(--sp-8)"></div>
+        <textarea id="v-ctx" rows="2" placeholder="上下文，例：册/域/行数目标/前置/落点/门禁命令"></textarea>
+      </div>
+      <div>
+        <label>模板 · 支持任意 {{键}}；{{时间}} 由系统自动注入</label>
+        <textarea id="tpl" class="tpl"></textarea>
+      </div>
+      <div class="row">
+        <label class="sw"><input type="checkbox" id="o-new" checked>先开新对话</label>
+        <label class="sw"><input type="checkbox" id="o-dry" checked>只填不发（干跑）</label>
+        <span class="grow"></span>
+        <button onclick="doPreview()">预览</button>
+        <button class="primary" id="b-fill" onclick="doSend(false)">填入</button>
+        <button class="go" id="b-send" onclick="doSend(true)">填入并发送</button>
+      </div>
+      <div class="note" id="hint"></div>
+    </div>
+    <label style="padding:0 var(--sp-16) var(--sp-6);margin:0">渲染预览</label>
+    <div class="preview" id="preview"></div>
+    <div class="bar"><span>日志</span></div>
+    <div class="scroll" id="logwrap" style="flex:0 0 clamp(110px,16vh,190px)">
+      <div id="log"></div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

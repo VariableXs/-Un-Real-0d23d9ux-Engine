@@ -1,0 +1,7 @@
+# 构建产物（几十MB，不入库）
+src-tauri/target/
+# 运行期产物
+shots/
+tools/probe*.mjs
+tools/shoot.mjs
+src-tauri/gen/
