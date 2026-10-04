@@ -11,22 +11,53 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # 运行期资源根目录。PyInstaller 3.x+ 用 sys._MEIPASS（旧的 _MEIPASS2 早已移除，
 # 沿用它会让 onefile 包内所有静态资源都定位失败）。开发态=脚本目录。
+#
+# 【2026-10-04 修掉的真缺陷：APP_DIR 回退判据用错了，导致读到 exe 同级的陈旧文件】
+# 原判据：`_MEIPASS` 下没有 wallpapers 目录 -> 认定是 onedir，回退到 exe 同级。
+# 问题一：判据**不成立**。onefile 包内本来就有 wallpapers；若因任何原因
+#   （资源版本旧、收集遗漏、路径含中文被截断）恰好没收集到，就会误判成 onedir。
+# 问题二（实测踩到）：exe 同级目录里**确实有** wallpapers —— 那是程序运行时
+#   自己创建的（_m4k / _wehd / _wetexture 等缓存目录的同级）。
+#   于是回退总是「成功」，APP_DIR 永远落到 exe 同级，
+#   而那里躺着一份几个月前的 ui.html（实测 dist/ui.html 是 10-03 的旧版，
+#   服务端返回它 -> 用户看到的界面是没有修复的旧版，而 exe 里明明是新的）。
+#   这类「打包成功、界面却是旧的」最难查：exe 内嵌资源核验全绿。
+# 正确判据：**直接看 _MEIPASS 本身是否有效**（它是 onefile 的运行时目录，
+#   由 bootloader 注入、必然存在），而不是靠某个业务子目录去猜布局。
 APP_DIR = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
-if getattr(sys, "frozen", False) and not os.path.isdir(os.path.join(APP_DIR, "wallpapers")):
-    # onedir 布局：静态资源在 exe 同级或 _internal 下
+if getattr(sys, "frozen", False) and not getattr(sys, "_MEIPASS", None):
+    # 没有 _MEIPASS -> 才是 onedir 布局：资源在 exe 同级或 _internal 下
     for _alt in (os.path.dirname(sys.executable),
                  os.path.join(os.path.dirname(sys.executable), "_internal")):
         if os.path.isdir(os.path.join(_alt, "wallpapers")):
             APP_DIR = _alt
             break
+# ---------- 任务库定位（2026-10-04 修的真缺陷）----------
+# ★ 为什么必须持久目录优先 ★
+# PyInstaller onefile 运行时把包内文件解包到 %TEMP%\_MEIxxxxx\，进程退出即销毁。
+# 旧写法把 APP_DIR（即 _MEIPASS）排第一，于是：
+#   1) 读的是打包时冻结的旧副本，AI 在仓库里改的真 taskboard.md 根本读不到；
+#   2) write_back 写进临时目录，关窗即退出，所有"已完成"状态全部蒸发。
+# 正确顺序：exe 同级 / exe 上级（持久、可 git 管理）→ 最后才退回包内副本。
+_EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else None
+_MD_CANDIDATES = []
+if _EXE_DIR:
+    _MD_CANDIDATES.append(os.path.join(_EXE_DIR, "taskboard.md"))
+_MD_CANDIDATES.append(os.path.join(os.path.dirname(APP_DIR), "taskboard.md"))
+_MD_CANDIDATES.append(os.path.join(APP_DIR, "taskboard.md"))
+
 MD_PATH = None
-for _cand in (os.path.join(APP_DIR, "taskboard.md"),
-              os.path.join(os.path.dirname(APP_DIR), "taskboard.md")):
+for _cand in _MD_CANDIDATES:
     if os.path.exists(_cand):
         MD_PATH = _cand
         break
 if MD_PATH is None:
-    MD_PATH = os.path.join(APP_DIR, "taskboard.md")
+    MD_PATH = _MD_CANDIDATES[0]
+# 开发态兜底：脚本在 VTaskBoard/ 下，md 也在同目录
+if not os.path.exists(MD_PATH):
+    _local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "taskboard.md")
+    if os.path.exists(_local):
+        MD_PATH = _local
 PORT = 8767
 LOCK = threading.Lock()
 
@@ -476,6 +507,56 @@ def _m4k_register(pid, pdir, fname, kind):
         _M4K_SRC[pid] = (pdir, fname, kind)
 
 
+def _m4k_cache_valid(path, tw, th, ss):
+    """磁盘母版缓存**是否真的达标**（不只是「文件在不在」）。
+
+    【2026-10-04 新增，修「跨版本遗留缓存谎报 4K」的根】
+    本项目已两次踩中「文件名/标注与内容不符」，这次藏在**磁盘缓存**里：
+    键名按 wall4k.master_size() 命名（永远是 4K 口径），而**旧版本产线**
+    在「4K 不足就升到 4K」这条规则之前，产物不足 4K 时**也用同一个命名**。
+    于是 dist/_m4k/3799672625_3840x2160_s2.mp4 文件名写着 4K，
+    内容实测只有 1934x1080（9,464,085 字节），接口照样当 4K 母版下发。
+
+    打包版用 `exe 同级/_m4k`（必须持久可写，见 _CACHE_BASE 注释），
+    意味着**上一版 exe 留下的缓存会被新版继承**。只判「文件存在 + 比源新」
+    就会把这些陈旧产物照单全收。
+
+    规则：实测内容尺寸**不得小于**该母版应有的尺寸（容忍 2px 舍入）。
+    读不出尺寸（文件损坏/格式异常）也判不合格 —— 宁可不复用。
+    只读文件头不解码，代价可忽略。
+    """
+    if not os.path.isfile(path):
+        return False
+    try:
+        if path.lower().endswith(".mp4"):
+            aw, ah = _mp4_dims(path)
+        elif path.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+            aw, ah = _img_size(path)
+        else:
+            aw, ah = _img_size(path)
+    except (OSError, ValueError, IndexError):
+        return False
+    if not aw or not ah:
+        return False
+    mw = (_wall4k.master_size(tw, th, ss)[0] if _wall4k is not None
+          else max(int(tw * ss), 3840))
+    # ★只用「宽度」做硬判据，且不看绝对高度★
+    #
+    # 为什么高度不能对标2160：master_size() 恒返回 (3840, 2160)，
+    # 但母版是按**素材自身宽高比**等比放大到宽 3840 的，高必然不是 2160：
+    #     3840x2144（源 1934x1080，比例 1.7907）
+    #     3840x2128（源 1920x1080 之外的其他比例）
+    # 这些都是**正确**的母版。若按「高也必须 >=2160」判，会把它们全判成不合格
+    # -> 每次列目录都触发一次昂贵的重算（实测 3840x2144/3840x2128 全被误杀）。
+    #
+    # 高度只做**自洽性**校验：不能是 0/1 这类坏值，且宽高比要合理
+    #（0.3~3.5 之间），足以挡住「截断/损坏/内容完全不对」的产物，
+    # 同时绝不误伤等比缩放的正确母版。
+    if not (0.3 <= (aw / float(ah)) <= 3.5):
+        return False
+    return aw >= mw - 2
+
+
 def _m4k_lookup(pid):
     with _M4K_SRC_LOCK:
         return _M4K_SRC.get(pid)
@@ -550,8 +631,22 @@ def _wehd_item(pid, pdir, tw=None, th=None, ss=None, src_name="preview.jpg"):
     out = os.path.join(_M4K_DIR, key)
 
     # 已有文件且比源新 -> 直接复用（进程重启后不再重算）
+    #
+    # 【2026-10-04 补修的真bug：复用前必须校验「内容真的是母版尺寸」】
+    # 原判据只有「文件存在 + 比源新」，**从不看内容实际多大**。
+    # 于是「文件名写 3840x2160、内容其实是 1934x1080」的旧产物会被照单全收——
+    # 因为键名是按 master_size() 命名的，而**旧版本产线不足 4K 时也用同一个命名**。
+    # 实测踩中：打包版的 dist/_m4k/3799672625_3840x2160_s2.mp4 只有
+    # 9,464,085 字节、实测 1934x1080（是「4K 不足就升到 4K」之前的旧产物），
+    # 而接口照样把它当 4K 母版下发，UI 标注 res=1934x1080 却挂着 4K 的 url。
+    # 这与本项目已踩过两次的「文件名与内容不符」是同一类缺陷，
+    # 只不过这次藏在了**跨版本遗留的磁盘缓存**里。
+    #
+    # 修法：复用前实测内容尺寸，不足母版尺寸就当没命中（走后台重算）。
+    # 代价是每次冷启动多读一次文件头（只读 moov，不解码，可忽略）。
     if os.path.isfile(out) and os.path.getsize(out) > 1024 \
-            and os.path.getmtime(out) >= os.path.getmtime(src):
+            and os.path.getmtime(out) >= os.path.getmtime(src) \
+            and _m4k_cache_valid(out, tw, th, ss):
         ssz = _img_size(src)
         # ★统一走 master_size：键/名/内容必须同源，否则标注与产物脱钩★
         mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
@@ -646,7 +741,8 @@ def _we_gif4k(pid, pdir, tw=None, th=None, ss=None):
         return cached
     out = os.path.join(_M4K_DIR, key)
     if os.path.isfile(out) and os.path.getsize(out) > 4096 \
-            and os.path.getmtime(out) >= os.path.getmtime(src):
+            and os.path.getmtime(out) >= os.path.getmtime(src) \
+            and _m4k_cache_valid(out, tw, th, ss):
         ssz = _img_size(src)
         mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
                   else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
@@ -715,7 +811,8 @@ def _we_vid4k(pid, pdir, fname, tw=None, th=None, ss=None):
         return cached
     out = os.path.join(_M4K_DIR, key)
     fresh = (os.path.isfile(out) and os.path.getsize(out) > 4096
-             and os.path.getmtime(out) >= os.path.getmtime(src))
+             and os.path.getmtime(out) >= os.path.getmtime(src)
+             and _m4k_cache_valid(out, tw, th, ss))
     if fresh:
         return _m4k_remember(pid, tw, th, ss, _vid_meta(
             pid, key, out, fname, mode="cache"), "mp4")
@@ -867,7 +964,8 @@ def _we_native_video_item(pid, title, nat, preview, pdir):
     if cached and cached.get("url"):
         item.update(cached)
         return item
-    if os.path.isfile(out) and os.path.getsize(out) > 4096:
+    if os.path.isfile(out) and os.path.getsize(out) > 4096 \
+            and _m4k_cache_valid(out, tw, th, ss):
         item["url"] = "/m4k/" + key
         item["mb"] = round(os.path.getsize(out) / 1048576.0, 1)
         try:
@@ -931,7 +1029,8 @@ def _we_native_img_item(pid, title, nat, preview, pdir, has_jpg):
     # 3840x2160 —— UI 会显示一个根本不存在的分辨率。
     mw, mh = (_wall4k.master_size(tw, th, ss) if _wall4k is not None
               else (max(int(tw * ss), 3840), max(int(th * ss), 2160)))
-    if os.path.isfile(out) and os.path.getsize(out) > 1024:
+    if os.path.isfile(out) and os.path.getsize(out) > 1024 \
+            and _m4k_cache_valid(out, tw, th, ss):
         item["url"] = "/m4k/" + key
         item["master"] = "%dx%d" % (mw, mh)
         item["mb"] = round(os.path.getsize(out) / 1048576.0, 1)
@@ -1230,9 +1329,20 @@ def we_liveview(on):
     现在 on=False 显式收掉弹窗并还原桌面，让「关闭」名副其实。
     """
     if on:
-        # 若之前开过，确保图标与弹窗被收拾干净（老版本可能残留）
+        # ★on=True 只表达意图，绝不在这里清理★
+        # 原实现 `we_cmd("showIcons"); we_popout_close()` —— 职责越界。
+        # 前端 `_lvToggle` 的真实顺序是「先 POST /api/we/liveview{on:true}，
+        # 再 POST /api/we/open」。两条 POST 落在服务端的**不同线程**
+        # （ThreadingHTTPServer），谁先执行到弹窗操作完全不确定。
+        # 一旦 liveview{on:true} 排在 /open 之后（随机），
+        # 这个 we_popout_close() 就会把**刚开好的弹窗当场杀掉**，
+        # 而 /api/we/open 已经回了 ok=true（前端以为成功），
+        # 随后 /we-live.mjpg 等满 15s 拿不到帧 -> 404 -> 前端撤层 = nocap。
+        # 症状分布极具指向性：5 项 live 里「第1 项 + 最后一项正常，
+        # 中间 3 项全 nocap」—— 失败项恰好夹在成功项之间。
+        # 若是能力不足，那会是**稳定失败**；只有竞态才有夹心分布。
+        # 「显式关闭」是 on=False 的职责，不该由 on=True 顺手做掉。
         we_cmd("showIcons")
-        we_popout_close()
     else:
         # 关闭动态：立刻停掉抓帧源头，别让弹窗在客户端断开前继续空转。
         # 用线程执行：we_popout_close 持 _POPOUT 锁，而本函数可能被抓帧回调路径调用。
@@ -1890,6 +2000,64 @@ _PREVIEW_TIMER = {"t": None, "lock": threading.Lock()}
 #     上方 _POPOUT_CLS 附近（we_popout_open 之前），此处不再重复定义 ——
 #     重复定义会被后写的值覆盖，是典型的"改了一处不生效"陷阱。
 
+# 空闲宽限期：客户端全断开后**先等这么久**再收弹窗。
+# 【2026-10-04 实测修掉的真竞态】
+# 原实现 `if idle == 1: we_popout_close()` —— 引用计数一归零就立刻关窗。
+# 但真实使用序列是：前端流被浏览器/判据读完 -> 引用计数归零 -> **紧接着**
+# 用户(或前端)就发下一个 /api/we/open 换场景。实测 e2e_live_toggle 的
+# 「换场景」项就是这样失败的：
+#     open -> {"ok": false, "popout": false}
+#     第1~8 轮流全部 HTTPError 404
+# 即：弹窗被上一项的收尾动作当场杀掉，新场景**根本没开起来**，
+# 后面所有重试都只是在对一个不存在的弹窗探流。
+# 这个竞态的隐蔽之处：T4（首场景出流）是 PASS 的，失败只出现在「换场景」，
+# 看起来像第二个场景坏了，实际是第一个场景的清理动作打到了第二个场景。
+# 修法：给一个宽限期，期间若有新意图（开过新窗）就不关。
+_POPOUT_IDLE_GRACE = 1.5
+_POPOUT_IDLE_SINCE = [0.0]   # 用列表做可变状态（模块级不需要 global）
+# 「开窗占用」计数：we_open_scene 正在做起帧探测时 >0。
+# 语义 = 「有人正在把弹窗开起来」，语义上独立于「有人在看流」（_LIVE_REFCOUNT）。
+_OPENING = 0
+
+
+def _popout_idle_close():
+    """引用计数归零后的延迟关窗。返回 True 表示本次真的关了。
+
+    两道复核缺一不可：
+      复核一：宽限期内引用计数又起来了 -> 有人要用 -> 不关
+      复核二：宽限期内**开过新窗**（_POPOUT.opened 比宽限期起点新）
+              -> 那是新意图，不是残留 -> 不关
+    只做复核一会漏掉「开窗后客户端还没连上」这段窗口：
+    那时计数合法地为 0，若只看计数就会把刚开的窗误当残留杀掉
+    （实测中招：3/5 项live 全报nocap就是这个形态）。
+    """
+    now = time.time()
+    # ★开窗探测中 -> 绝不关★
+    # we_open_scene 的起帧探测最长 12s，期间客户端计数合法地为 0
+    # （前端是先 /open 再连流）。此时若按「无人看流」关窗，
+    # 会把正在开起来的弹窗杀掉 —— 症状是 /api/we/open 返回 ok=true，
+    # 但随后所有探流 404（日志 frame_pid=None、stall 累到 400+）。
+    if _OPENING > 0:
+        _POPOUT_IDLE_SINCE[0] = 0.0       # 复位宽限期，别让开窗结束后立刻被关
+        return False
+    if _POPOUT_IDLE_SINCE[0] == 0.0:
+        _POPOUT_IDLE_SINCE[0] = now          # 首次见到空闲，记起点
+        return False
+    if now - _POPOUT_IDLE_SINCE[0] < _POPOUT_IDLE_GRACE:
+        return False                          # 还在宽限期内
+    with _POPOUT.lock:
+        with _LIVE_REFCOUNT["lock"]:
+            if _LIVE_REFCOUNT["n"] > 0:
+                _POPOUT_IDLE_SINCE[0] = 0.0
+                return False                  # 又有人连上了
+        if _POPOUT.hwnd and _POPOUT.opened > _POPOUT_IDLE_SINCE[0]:
+            _POPOUT_IDLE_SINCE[0] = 0.0
+            return False                      # 期间开过新窗 = 新意图
+    _POPOUT_IDLE_SINCE[0] = 0.0
+    we_popout_close()
+    return True
+
+
 def _capture_loop():
     """常驻捕获线程：抓取+降采样编码，流端只推送。异常自愈（线程崩=画面永久冻结）"""
     n = 0
@@ -1900,11 +2068,13 @@ def _capture_loop():
                 active = _LIVE_REFCOUNT["n"] > 0
             if not active:
                 idle += 1
-                if idle == 1:
-                    # 客户端全走 → 立刻收掉弹窗，不给用户桌面留残窗。
-                    # （弹窗本身在 we_popout_open 里已被 _popout_hide 挪出屏幕，
-                    #   所以这里关闭时用户已经看不到它，不存在"闪一下"的问题。）
-                    we_popout_close()
+                # ★每轮空闲都调，不能只在 idle==1 调★
+                # 触发条件由 idle>=1 表达，真正「关」的时刻由
+                # _popout_idle_close 内部的时间戳裁决。
+                # 只在 idle==1 调一次等于宽限期形同虚设 —— 那一轮它只是
+                # 记下起点，之后再没人来问，弹窗就永远关不掉
+                # （实测症状：客户端全断开 6s 后弹窗仍在）。
+                _popout_idle_close()
                 if idle == 33 and _LIVE.get("restore"):   # 无客户端 ~10s → 兜底还原一次
                     threading.Thread(target=we_restore_desktop, daemon=True).start()
                 time.sleep(0.3)
@@ -2059,11 +2229,45 @@ def we_open_scene(pid):
     pkg = os.path.join(root or "", str(pid), "scene.pkg")
     if not os.path.isfile(pkg):
         return False
-    with _LIVE_REFCOUNT["lock"]:
-        first_switch = _LIVE["restore"] is None
-        if first_switch:
-            _LIVE["restore"] = we_desktop_wallpaper()
-    ok, hwnd, w, h = we_popout_open(pid)
+    # ★开窗期间必须「占住」弹窗★（2026-10-04 实测修掉的真竞态）
+    # we_popout_open 内部要做最长12s 的起帧探测（连续 6 帧像素变化才认定在动）。
+    # 这段时间里**没有任何流客户端**（前端是先 /open 再连 /we-live.mjpg），
+    # 于是 _LIVE_REFCOUNT 合法地为 0 —— _capture_loop 的空闲逻辑会在这 12s 内
+    # 把刚开的弹窗当成「残留」关掉。
+    # 症状极具迷惑性：/api/we/open 返回 ok=true（那一瞬间窗还在），
+    # 但随后 6 轮探流全部 404，服务端日志显示
+    #   frame_pid=None（弹窗已被关，_POPOUT.pid 被置 None）
+    #   stall 一路累到 400+（抓不到帧）
+    # 看起来像「新场景完全打不开」，实际是「开窗探测把自己的窗关了」。
+    # 修法：开窗期间持有一把独立的「开窗占用」，空闲关闭器见到它就不关。
+    # 用独立计数而非借用客户端计数：客户端计数语义是「有人在看流」，
+    # 借用会污染 we_live_client_end 的归零判断。
+    global _OPENING
+    _OPENING += 1
+    try:
+        with _LIVE_REFCOUNT["lock"]:
+            first_switch = _LIVE["restore"] is None
+            if first_switch:
+                _LIVE["restore"] = we_desktop_wallpaper()
+        ok, hwnd, w, h = we_popout_open(pid)
+        # 【2026-10-04 实测补修：紧接上一个场景后首次开窗必失败，重试一次就好】
+        # 复现序列：开 A -> 抓流 -> 断开 -> **立刻**开 B
+        #   open B -> {"ok": false, "popout": false}
+        # 而**单独再开一次 B**（隔了几秒）就立刻 ok=true。
+        # 判定：不是 B 不可用，而是「上一个弹窗刚被 WM_CLOSE 关掉」到
+        # 「WE 接受新的 -playInWindow」之间存在一个资源未释放的窗口。
+        # 修法：失败后等一小会儿再试一次。这不是"放宽判据"，
+        # 是对外部进程状态未就绪的**自愈**——第一次失败如实重试，
+        # 两次都失败才认定为真失败（并照旧降级到 4K 母版）。
+        if not ok:
+            print("[we-open] 首次开窗失败(%s)，0.8s 后重试一次（WE 资源未释放窗口）" % pid,
+                  flush=True)
+            time.sleep(0.8)
+            ok, hwnd, w, h = we_popout_open(pid)
+    finally:
+        # 必须 finally 释放：起帧探测抛异常时也不能让弹窗永久被「占住」
+        # （那会让它永远关不掉 —— 宁可偶尔多留，也绝不能漏释放）。
+        _OPENING = max(0, _OPENING - 1)
     if ok:
         # we_popout_open 内已完成起帧等待（像素差>0.05=在动 / 恒 0=静止），
         # 到这里画面已稳定，探测结果可信。
@@ -2123,8 +2327,14 @@ def we_live_client_end():
         _LIVE_REFCOUNT["n"] = max(0, _LIVE_REFCOUNT["n"] - 1)
         last = _LIVE_REFCOUNT["n"] == 0
     if last:
-        # 必须关弹窗：绝不给用户桌面留一个 WE 窗口残留
-        threading.Thread(target=we_popout_close, daemon=True).start()
+        # ★这里也必须走宽限期，不能直接 we_popout_close★
+        # 原实现直接起线程关窗，而「读完流 -> 换下一个场景」是**紧挨着**的：
+        # 客户端读完 -> 引用计数归零 -> 本函数把弹窗关掉 -> 紧接着到达的
+        # /api/we/open 于是 ok=false（实测 e2e「换场景」8 轮全 404）。
+        # 只在 _capture_loop 里加宽限**不够** —— 那条路是轮询驱动（~0.3s 一轮），
+        # 而这里是**事件驱动**的断开瞬间，必然早于轮询命中，两条路都要堵。
+        # _popout_idle_close 只置位起点并按时间戳裁决，不阻塞调用方。
+        _popout_idle_close()
         threading.Thread(target=we_restore_desktop, daemon=True).start()
 
 import atexit as _atexit
@@ -2457,7 +2667,16 @@ class H(BaseHTTPRequestHandler):
             while time.time() < deadline:
                 with _LIVE_FRAME["lock"]:
                     ft = _LIVE_FRAME["t"]
-                if ft > t0:
+                    fp = _LIVE_FRAME["pid"]
+                # ★等待条件必须同时满足「帧新鲜」与「pid 匹配」★
+                # 原实现只等 ft > t0就break，于是刚连上的客户端可能拿到
+                # **上一张壁纸**的帧（切场景时抓帧循环还没追上），
+                # 随后被下面的 mismatch 判定拒流 404。
+                # 实测症状：换场景后第1 轮拿到 6 帧 diff=0.000（全是上一张的
+                # 残留帧），第 2 轮起永远 404 —— 看起来像「新场景完全打不开」，
+                # 实际是等待条件太宽、又太严：宽到会拿错帧，严到把对的帧也拒了。
+                # 正确做法：等到「有**属于本场景**的新帧」为止。
+                if ft > t0 and (not want or fp == want):
                     break
                 time.sleep(0.12)
             with _LIVE_FRAME["lock"]:
@@ -2468,9 +2687,12 @@ class H(BaseHTTPRequestHandler):
                 # 宁可不流也不把上一张壁纸的帧冒充当前壁纸（内容全错，比静态更糟）。
                 mismatch = bool(want and _LIVE_FRAME["pid"] and _LIVE_FRAME["pid"] != want)
             if fr is None or mismatch:
-                we_live_client_end()
-                self.send_response(404); self.end_headers(); return
-            if fr is None:
+                # 【异常显性化】拒流必须留下可查的原因，否则前端只看到 404，
+                # 排障时完全无从下手（实测为此耗掉大量时间猜前端/竞态）。
+                # 这里把三个关键量一并输出到 stdout，前端日志与本处可对照。
+                print("[we-live] 拒流 pid=%s want=%s frame_pid=%s fresh=%s stall=%s"
+                      % (want or "-", want or "-", _LIVE_FRAME["pid"],
+                         fresh, _LIVE_FRAME["stall"]), flush=True)
                 we_live_client_end()
                 self.send_response(404); self.end_headers(); return
             # begin 已在等帧前调用，此处不再重复计数
@@ -3015,23 +3237,93 @@ def main():
     # 开启它。
     # 解法：绑一个**独占**的命名互斥体。互斥体是内核对象，
     # 第二个实例拿不到就立刻退出并提示，绝不两个进程并存。
+    #
+    # 【2026-10-04 二次修正：三个真实漏洞】
+    #  ① CreateMutexW 的返回值（句柄）被丢弃，只看了 GetLastError。
+    #     GetLastError 会被**后续任意 API 调用**清零，判据不可靠；
+    #     真正该看的是句柄是否为 NULL。
+    #  ② 打包版用 runw.exe（无控制台），sys.stderr.write 写出去没人看，
+    #     用户只看到「双击没反应」。异常必须**显性呈现**：改用 MessageBox。
+    #  ③ 端口绑定本身也可能失败（互斥体被别的程序占用等），
+    #     原代码没有 try，异常会抛到 PyInstaller 的裸 traceback —— 在无控制台下
+    #     同样等于静默。现在统一捕获、MessageBox 提示、显式退出。
+    def _fatal(title, msg):
+        """【异常显性化】无控制台环境下也必须让用户看见原因与下一步。
+
+        ★但绝不能因此挂死★ MessageBox 是模态阻塞的：无人值守场景
+        （自动化判据、打包版冒烟、计划任务）会永远卡在这里 ——
+        实测第二个实例被弹窗挡住，进程不退出、端口也不释放。
+        修法：弹窗**异步**触发（不等待返回），主线程留一个上限时间后
+        强制 sys.exit。用户在 GUI 场景仍能看到提示框（它由独立的
+        弹窗线程托管，进程退出前会一闪而过，但足以被看见）；
+        无人值守场景则安静退出，不挂死。
+        """
+        try:
+            import ctypes as _ct
+            import threading as _th
+            _th.Thread(target=lambda: _ct.windll.user32.MessageBoxW(
+                None, msg, title, 0x10), daemon=True).start()
+        except Exception:
+            # MessageBox 也失败（极端环境）-> 退回 stderr，仍不静默
+            try:
+                sys.stderr.write("[VTaskBoard][FATAL] " + title + "\n" + msg + "\n")
+                sys.stderr.flush()
+            except Exception:
+                pass
+        # 给弹窗线程一点显示时间，到点必退，绝不无限等待
+        for _ in range(15):
+            time.sleep(0.1)
+        sys.exit(2)
+
     try:
         import ctypes
         _h = ctypes.windll.kernel32
         # 0x201 = MUTEX_ALL_ACCESS；命名互斥体不需要跨会话可见
-        _h.CreateMutexW(None, True, "Local\\VTaskBoard_SingleInstance_%d" % PORT)
-        if ctypes.windll.kernel32.GetLastError() == 183:   # ERROR_ALREADY_EXISTS
-            sys.stderr.write(
-                "[VTaskBoard] 端口 %d 已被另一个实例占用，本次启动退出。\n"
-                "请先关闭已打开的 VTaskBoard 窗口（可能最小化在托盘/后台）。\n" % PORT)
-            sys.exit(2)
-    except AttributeError:
+        _mtx = _h.CreateMutexW(None, True, "Local\\VTaskBoard_SingleInstance_%d" % PORT)
+        if not _mtx:
+            _fatal("VTaskBoard 启动失败",
+                   "无法创建单实例互斥体（Windows 错误 %d）。\n\n"
+                   "请重试；若反复出现，请重启后再试。" % ctypes.get_last_error())
+        if ctypes.get_last_error() == 183:   # ERROR_ALREADY_EXISTS
+            _fatal("VTaskBoard 已在运行",
+                   "端口 %d 已被另一个 VTaskBoard 实例占用，本次启动退出。\n\n"
+                   "下一步：关闭已打开的 VTaskBoard 窗口"
+                   "（可能最小化在托盘/后台），再重新打开。\n"
+                   "若确认没有其他实例，可重启系统后重试。" % PORT)
+    except ImportError:
         # ctypes 不可用（非 Windows）时跳过保护，不影响主功能
         pass
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
+
+    # ---- 显式独占绑定：allow_reuse_address=False 让 Windows 真正报端口占用 ----
+    class _Srv(ThreadingHTTPServer):
+        # 【2026-10-04 修正】ThreadingHTTPServer 默认 allow_reuse_address=True，
+        # 而 Windows 的 SO_REUSEADDR 语义允许**第二个进程绑定同一端口**
+        # （不像 Linux 直接 EADDRINUSE）。这正是「8767 出现多个 LISTENING、
+        # 请求被随机分流」的真根因 —— 光靠命名互斥体还不够，
+        # 任何非本程序的进程（乃至另一个 Python）都可能抢占。
+        allow_reuse_address = False
+        daemon_threads = True
+
+    try:
+        srv = _Srv(("127.0.0.1", PORT), H)
+    except OSError as e:
+        _fatal("VTaskBoard 启动失败",
+               "端口 %d 无法绑定：%s\n\n"
+               "下一步：关闭占用该端口的程序后重试。\n"
+               "排查命令：netstat -ano | findstr :%d"
+               % (PORT, e, PORT))
     print(f"VTaskBoard on http://127.0.0.1:{PORT}  |  任务册: {MD_PATH}")
     threading.Timer(0.8, open_window).start()
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # 正常退出也要释放端口与互斥体，否则下次启动会被自己挡住
+        try:
+            srv.server_close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

@@ -632,6 +632,11 @@ pub mod secstar2;
 pub mod secstar;
 // Varix STAR I · 泳道四 D 服务守护域·前段（AI-V1 · F111-F130）：二十项功能 + 共享底盘。
 pub mod svstar;
+// Varix STAR II · VE 图形引擎册（F0001~F6400）用户态服务落位。
+// 位置铁律：VE 册铁律 6「全部功能针对 VARIX Rust 内核编写；VE 全部活在用户态
+// 服务」——"用户态服务"指不在内核态特权上下文运行，非"用前端语言写"。
+// 本仓内核树为 no_std Rust，JS 必须靠运行时执行，故 VE 全册落地为 Rust。
+pub mod svstar2;
 // Varix STAR I · 泳道二 A 应用兼容域·后段（AI-C2 · F021-F040）：二十项功能。
 // 目录名 compatstar2：compatstar/ 已被 AI-C1（F001-F020，在途）占用，按
 // secstar → secstar2 先例顺延，两包互不重叠。
