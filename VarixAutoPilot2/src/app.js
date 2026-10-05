@@ -513,6 +513,44 @@ async function doSend(real) {
         f.classList.add('go');
         setTimeout(() => setScene('idle'), 1400);
       }
+    } else if (r.err?.busy && real) {
+      // ★★ 忙时自动降级为入队，不让用户失败 ★★
+      // 按钮叫「填入并发送」，那就该保证发出去。
+      // 忙时唯一的正确做法是排队——「加入待发」能排，
+      // 凭什么点了「填入并发送」反而失败、还要用户自己换个按钮？
+      try {
+        const c2 = collect();
+        const pv = await api.preview(c2.tpl, c2.vars);
+        // ★ 对话 id 从当前快照里取（collect() 里没有这个字段）★
+        let cid = '';
+        try {
+          const sel = (S.snap && S.snap.convs || []).find((c) => c.selected);
+          cid = (sel && sel.conv_id) || '';
+        } catch (_e) { /* 取不到就留空，后端会回退到当前会话 */ }
+        const q = await api.enqueue(pv.text, cid, 0);
+        h.className = 'note ok';
+        h.textContent =
+          `已排队 · ${pv.chars} 字符 · 对方正在生成中，生成完会自动发` +
+          (pv.missing && pv.missing.length
+            ? `（${pv.missing.length} 个占位符没填，会原样发出去）`
+            : '');
+        // 队列面板同步刷新（它在 loop_ui.js 里）
+        if (window.VAPUI && typeof window.VAPUI.renderQueue === 'function') {
+          window.VAPUI.renderQueue(q.items);
+        }
+        if (window.VAPUI && typeof window.VAPUI.refreshQueue === 'function') {
+          window.VAPUI.refreshQueue();
+        }
+        setScene('busy');
+      } catch (e2) {
+        // 降级也失败（如 enqueue 后端不可用）⇒ 说清两层原因
+        __why('doSend-降级入队', e2);
+        h.className = 'note busy';
+        h.innerHTML =
+          `<span class="e-what">对方正在生成中，且自动排队也失败了</span>` +
+          `<span class="e-why">${esc(r.err.why || '')}；排队失败：${esc(e2 && e2.message ? e2.message : String(e2))}</span>` +
+          `<span class="e-next">先点「加入待发」把内容排进去，等它空闲后自动发。</span>`;
+      }
     } else {
       h.className = 'note' + (r.err?.busy ? ' busy' : '');
       h.innerHTML = r.err
