@@ -606,10 +606,10 @@ select option { background: var(--panel); color: var(--fg); }
         <label class="sw"><input type="checkbox" id="o-new">先开新对话</label>
         <label class="sw"><input type="checkbox" id="o-dry">只填不发（干跑）</label>
         <span class="grow"></span>
-        <button onclick="doPreview()">预览</button>
-        <button onclick="enqueueOne()">加入待发</button>
-        <button class="primary" id="b-fill" onclick="doSend(false)">填入</button>
-        <button class="go" id="b-send" onclick="doSend(true)">填入并发送</button>
+        <button id="b-preview">预览</button>
+        <button id="b-enqueue">加入待发</button>
+        <button class="primary" id="b-fill">填入</button>
+        <button class="go" id="b-send">填入并发送</button>
         <!-- ★ 干跑醒目条 ★
              「只填不发」勾着时，队列里的东西**永远不会被真发出去**——
              而界面上原来只是一行小字，勾了很容易忘。
@@ -628,8 +628,8 @@ select option { background: var(--panel); color: var(--fg); }
       <span>待发队列</span>
       <span class="grow"></span>
       <span id="q-sum" class="chip"></span>
-      <button class="mini" onclick="refreshQueue()">刷新</button>
-      <button class="mini" onclick="clearQueue()">清已完成</button>
+      <button id="b-q-refresh" class="mini">刷新</button>
+      <button id="b-q-clear" class="mini">清已完成</button>
     </div>
     <div class="qlist" id="qlist">
       <div class="empty">队列为空。点「加入待发」把内容排进来，或在下面设循环。</div>
@@ -647,8 +647,8 @@ select option { background: var(--panel); color: var(--fg); }
         <div class="lcol">
           <label>首轮内容</label>
           <div class="tabs">
-            <button class="tab on" data-lt="first" onclick="switchLoopTab('first')">首轮</button>
-            <button class="tab" data-lt="rest" onclick="switchLoopTab('rest')">后续每轮</button>
+            <button id="b-tab-first" class="tab on" data-lt="first">首轮</button>
+            <button id="b-tab-rest" class="tab" data-lt="rest">后续每轮</button>
           </div>
         </div>
       </div>
@@ -689,8 +689,8 @@ select option { background: var(--panel); color: var(--fg); }
       </div>
 
       <div class="row">
-        <button class="primary" onclick="startLoop()">开始循环</button>
-        <button class="warn" onclick="stopLoop()">停止</button>
+        <button id="b-loop-start" class="primary">开始循环</button>
+        <button id="b-loop-stop" class="warn">停止</button>
         <span class="hint-inline" id="loop-note"></span>
       </div>
     </div>
@@ -714,18 +714,18 @@ select option { background: var(--panel); color: var(--fg); }
         <div class="row">
           <input type="text" id="md-path" class="grow"
                  placeholder="D:\...\提示词.md（也可以把文件拖到下面）">
-          <button onclick="readMd()">读取</button>
+          <button id="b-md-read">读取</button>
         </div>
         <div id="md-info" class="note"></div>
       </div>
       <div class="lrow">
         <label>技能（斜杠命令）</label>
         <div class="row">
-          <button onclick="probeSkills()">探测可用技能</button>
+          <button id="b-probe-skills">探测可用技能</button>
           <select id="skill-pick" class="grow">
             <option value="">— 先探测 —</option>
           </select>
-          <button onclick="appendSkill()">插入到内容</button>
+          <button id="b-skill-append">插入到内容</button>
         </div>
         <div id="skill-info" class="note"></div>
       </div>
@@ -973,6 +973,47 @@ select option { background: var(--panel); color: var(--fg); }
   if (window.__VAP_CLICK_PROOF_ARMED__) {
     setTimeout(() => window.__VAP_CLICK_PROOF__(), 3000);
   }
+</script>
+<!-- ══════════════════════════════════════════════════════════════
+     ★ 点击落点日志（排障用，永久保留）★
+     把「点击有没有进 WebView」「落在哪个元素上」写进后端日志。
+     这样「点了没反应」就从猜测变成读日志。
+     ══════════════════════════════════════════════════════════════ -->
+<script>
+  (function () {
+    function report(msg) {
+      try {
+        const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+        if (c && c.invoke) c.invoke('diag', { msg: msg });
+      } catch (e) { /* 排障通道失败不影响界面 */ }
+    }
+    function tag(el) {
+      if (!el || !el.tagName) return '(无元素)';
+      let s = el.tagName.toLowerCase();
+      if (el.id) s += '#' + el.id;
+      const t = (el.innerText || el.textContent || '').trim().slice(0, 18);
+      return t ? s + '「' + t + '」' : s;
+    }
+    // 捕获阶段：先于元素自己的 handler
+    document.addEventListener(
+      'click',
+      function (e) {
+        const el = e.target;
+        report('点击 ·落点=' + tag(el)
+          + ' · 坐标=' + Math.round(e.clientX) + ',' + Math.round(e.clientY)
+          + ' · onclick=' + (typeof el.onclick === 'function' ? '有' : (el.getAttribute('onclick') || '无')));
+      },
+      true
+    );
+    // 指针按下也记一条：能区分「只移动没按下」与「按下了」
+    document.addEventListener(
+      'pointerdown',
+      function (e) { report('按下 · 落点=' + tag(e.target)); },
+      true
+    );
+    window.__VAP_CLICK_LOG__ = true;
+    report('点击日志已就绪');
+  })();
 </script>
 <script type="module" src="./app.js"></script>
 <script type="module" src="./loop_ui.js"></script>

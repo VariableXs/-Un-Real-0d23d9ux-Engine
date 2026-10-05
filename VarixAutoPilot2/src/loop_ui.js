@@ -57,6 +57,25 @@ function pickConv(convId, title) {
 // 就必须挂到 window。统一挂一份VAPUI，避免散落多个全局。
 // ★ 教训（这轮踩的）：跨模块调用若只挂一半，
 //   页面会报 "xxx is not defined"，而 build 与 node --check 全绿 ★
+  // ★ 把异常写进后端日志（排障唯一可见的地方）★
+  // 没有它，失败只显示在界面 hint 区 ⇒ 表现为「点了没反应」，
+  // 排障者看不到原因。这条通道本项目已因此栽过一次。
+  const __why = (where, e) => {
+    try {
+      const w = window.VAP && window.VAP.api && window.VAP.api.diag;
+      if (!w) return;
+      const parts = [
+        where + ' 失败',
+        'msg=' + (e && e.message ? e.message : String(e)),
+        'what=' + (e && e.what ? e.what : '-'),
+        'why=' + (e && e.why ? e.why : '-'),
+        'next=' + (e && e.next ? e.next : '-'),
+        'at=' + (e && e.stack && e.stack.split('\n')[1] ? String(e.stack).split('\n')[1].trim() : '-'),
+      ];
+      w(parts.join(' | ')).catch(() => {});
+    } catch (_x) { /* 排障通道失败不影响主流程 */ }
+  };
+
 const VAPUI = {
   pickConv, enqueueOne, renderQueue, refreshQueue, clearQueue,
   switchLoopTab, loopTexts, startLoop, stopLoop, readMd, probeSkills, appendSkill,
@@ -68,6 +87,57 @@ window.VAPUI = VAPUI;
 // 实测症状：VAPUI 有 12 个键，但点击报 "startLoop is not defined"。
 // 这类错 build 与 node --check 都发现不了，只有真点一下才暴露。
 Object.assign(window, VAPUI);
+
+// ══════════════════════════════════════════════════════════════
+// ★★ 用 addEventListener 绑定，绝不用内联 onclick ★★
+//
+// 实测根因（本轮确诊，勿回退）：
+//点击日志显示 `onclick=enqueueOne()` 确实绑在按钮上、
+//  落点也确实命中按钮，但 onclick 里的代码**一次都没执行**。
+// 原因：内联 onclick 在**全局作用域**求值，而 app.js / loop_ui.js
+//       都是 `type="module"` —— 模块函数不在全局链上，
+//       于是 `enqueueOne` 被解析成 undefined，调用即抛。
+// 表现：静默失败，用户只看到「点了没反应」。
+//
+// 早先 `check_scope.mjs` 量到"裸全局 = function"是**加载完的快照**，
+//  且那条路是直接调 window.enqueueOne()（绕开 onclick）——它能通，
+//  恰好证明问题**只在内联 onclick 这条路上**。
+//
+// 修法：模块内直接 addEventListener，闭包捕获函数引用，
+//  不依赖全局作用域，也符合严格 CSP。
+const __BIND = [
+  ['b-enqueue', () => enqueueOne()],
+  ['b-q-refresh', () => refreshQueue()],
+  ['b-q-clear', () => clearQueue()],
+  ['b-loop-start', () => startLoop()],
+  ['b-loop-stop', () => stopLoop()],
+  ['b-md-read', () => readMd()],
+  ['b-probe-skills', () => probeSkills()],
+  ['b-skill-append', () => appendSkill()],
+  ['b-tab-first', () => switchLoopTab('first')],
+  ['b-tab-rest', () => switchLoopTab('rest')],
+];
+for (const [id, fn] of __BIND) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', fn);
+  else console.warn('[bind] 找不到 #' + id);
+}
+// 报告绑定结果——排障时一眼看出有没有绑上
+try {
+  const ok = __BIND.filter(([id]) => !!document.getElementById(id)).length;
+  window.VAP.api.diag(`按钮绑定 ${ok}/${__BIND.length}`).catch(() => {});
+
+
+// 首轮 / 后续每轮两个标签：它们用 data-lt + onclick，
+// 同样改成 addEventListener（理由见上方 __BIND 注释）。
+(function __bindTabs() {
+  for (const t of document.querySelectorAll('[data-lt]')) {
+    const which = t.getAttribute('data-lt');
+    t.addEventListener('click', () => switchLoopTab(which));
+  }
+})();
+} catch (_e) { /* 排障通道失败不影响界面 */ }
+
 
 // ═══ 取「本轮要发什么」═══
 // 三个来源，按用户勾选/填写状态决定：
@@ -117,6 +187,7 @@ async function enqueueOne() {
       setHint(`已入队 · ${r.chars} 字符（来自${r.源}）· 对方空闲时会自动发`, 'ok');
     }
   } catch (e) {
+    __why('enqueueOne', e);
     window.VAP.renderErr(e);
   }
 }
@@ -172,6 +243,7 @@ async function refreshQueue() {
     const v = await window.VAP.api.queueView();
     renderQueue(v.items);
   } catch (e) {
+    __why('loop_ui', e);
     window.VAP.renderErr(e);
   }
 }
@@ -181,6 +253,7 @@ async function clearQueue() {
     const v = await window.VAP.api.queueClear();
     renderQueue(v.items);
   } catch (e) {
+    __why('loop_ui', e);
     window.VAP.renderErr(e);
   }
 }
@@ -238,6 +311,7 @@ async function startLoop() {
       + ' · 内容来自' + p0.源;
     setHint(inf ? '无限循环已开始' : '循环已开始，共 ' + rounds + ' 轮', 'ok');
   } catch (e) {
+    __why('loop_ui', e);
     window.VAP.renderErr(e);
   }
 }
@@ -252,6 +326,7 @@ async function stopLoop() {
     window.VAP.$('loop-note').textContent = '队列里未发的项仍保留，可继续或清空';
     setHint('循环已停。未发的项还在队列里', 'ok');
   } catch (e) {
+    __why('loop_ui', e);
     window.VAP.renderErr(e);
   }
 }
@@ -270,6 +345,7 @@ async function readMd() {
     window.VAP.$('loop-text').value = Q.loopTexts[Q.curTab];
     setHint(`已读入 ${f.name}（${f.chars} 字符）。若下面框里已有内容，我没覆盖它`, 'ok');
   } catch (e) {
+    __why('loop_ui', e);
     window.VAP.renderErr(e);
   }
 }

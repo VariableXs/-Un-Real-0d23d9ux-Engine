@@ -484,6 +484,7 @@ async function doPreview() {
         (collect().dryRun ? '干跑模式（只填不发）' : '将真发送');
     }
   } catch (e) {
+    __why('app', e);
     renderErr(e);
   }
 }
@@ -522,6 +523,7 @@ async function doSend(real) {
       if (r.err?.busy) setScene('busy');
     }
   } catch (e) {
+    __why('app', e);
     renderErr(e);
   } finally {
     S.busy = false;
@@ -543,6 +545,40 @@ async function doSend(real) {
 // 另起一个 shared.js 反而多一次 import，且 Circular 依赖更难查。
 // ═══════════════════════════════════════════════════════════════════
 window.VAP = { api, $, esc, renderErr, setScene, conn };
+
+// app.js 侧三个按钮同样改成 addEventListener（理由见 loop_ui 的 __BIND 注释）。
+(function __bindApp() {
+  const pairs = [
+    ['b-preview', () => window.VAP.api && doPreview()],
+    ['b-fill', () => doSend(false)],
+    ['b-send', () => doSend(true)],
+  ];
+  for (const [id, fn] of pairs) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', fn);
+  }
+})();
+
+
+  // ★ 把异常写进后端日志（排障唯一可见的地方）★
+  // 没有它，失败只显示在界面 hint 区 ⇒ 表现为「点了没反应」，
+  // 排障者看不到原因。这条通道本项目已因此栽过一次。
+  const __why = (where, e) => {
+    try {
+      const w = window.VAP && window.VAP.api && window.VAP.api.diag;
+      if (!w) return;
+      const parts = [
+        where + ' 失败',
+        'msg=' + (e && e.message ? e.message : String(e)),
+        'what=' + (e && e.what ? e.what : '-'),
+        'why=' + (e && e.why ? e.why : '-'),
+        'next=' + (e && e.next ? e.next : '-'),
+        'at=' + (e && e.stack && e.stack.split('\n')[1] ? String(e.stack).split('\n')[1].trim() : '-'),
+      ];
+      w(parts.join(' | ')).catch(() => {});
+    } catch (_x) { /* 排障通道失败不影响主流程 */ }
+  };
+
 
 // ════════════════════════════════════════════════════════════════
 // ★★★ 必须把自己的函数挂到裸全局 ★★★
@@ -621,6 +657,7 @@ try {
   try {
     await doPreview();
   } catch (e) {
+    __why('app', e);
     renderErr(e);
   }
   tick();
