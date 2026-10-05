@@ -872,6 +872,61 @@ select option { background: var(--panel); color: var(--fg); }
     await log('循环自测: 终态 ' + JSON.stringify(snap()));
   };
 
+  // ══════════════════════════════════════════════════════════════
+  // ★ 真机点击验证（走与用户点击完全相同的代码路径）★
+  //
+  // 用途：证明「真机上按钮 onclick 到底通不通」。
+  // 做法：页面自己在启动后调 window.enqueueOne()——
+  //       与用户点击同一个函数、同一个 Tauri invoke。
+  //
+  // ★ 与用户手动点开的唯一区别：没有经过鼠标命中测试 ★
+  // 所以它能证明「函数+后端」通不通，
+  // 但**不能**证明「外部鼠标注入能触发 onclick」（那个已确诊无效）。
+  //
+  // ⚠ 必须恢复现场：上一轮自测勾了 o-free 没还原，
+  //   导致用户此后每次点「加入待发」都失败。教训已记。
+  // ══════════════════════════════════════════════════════════════
+  window.__VAP_CLICK_PROOF__ = async function () {
+    const c = window.__TAURI__ && (window.__TAURI__.core || window.__TAURI__);
+    const diag = (m) => (c ? c.invoke('diag', { msg: m }).catch(() => {}) : null);
+    const snap = () => ({
+      队列: document.querySelectorAll('#qlist .qi').length,
+      qsum: (document.getElementById('q-sum') || {}).textContent || '',
+      hint: ((document.getElementById('hint') || {}).textContent || '').slice(0, 60),
+    });
+    // 跑前快照（用于恢复）
+    const before = {
+      oFree: document.getElementById('o-free')?.checked,
+      freeText: document.getElementById('free-text')?.value || '',
+      oDry: document.getElementById('o-dry')?.checked,
+    };
+    try {
+      const s0 = snap();
+      await diag('点击验证: 起点 ' + JSON.stringify(s0));
+      if (typeof window.enqueueOne !== 'function') {
+        await diag('点击验证: ★ enqueueOne 不存在');
+        return;
+      }
+      await window.enqueueOne();          // ★ 与用户点击同一个函数 ★
+      await new Promise((r) => setTimeout(r, 900));
+      const s1 = snap();
+      await diag('点击验证: 结果 ' + JSON.stringify(s1));
+      await diag('点击验证: ' + (s1.队列 > s0.队列 ? '★ 入队成功 ★' : '★ 队列未增加 ★'));
+    } catch (e) {
+      await diag('点击验证异常: ' + e);
+    } finally {
+      // ★ 无条件恢复现场 ★
+      const f = document.getElementById('o-free');
+      const t = document.getElementById('free-text');
+      const d = document.getElementById('o-dry');
+      if (f) f.checked = before.oFree;
+      if (t) t.value = before.freeText;
+      if (d) d.checked = before.oDry;
+      if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
+      await diag('点击验证: 已恢复现场');
+    }
+  };
+
   // 启动后等界面就绪，再做自测
   //
   // ★ 默认不跑 ★
@@ -907,6 +962,16 @@ select option { background: var(--panel); color: var(--fg); }
       await diag('自测: enqueueOne 不存在');
     }
   }, 6500);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // ★ 点击验证自跑：不需要用户点、不需要外部鼠标 ★
+  // 外部合成点击对 WebView2 无效（已确诊），
+  // 所以「让工具点一下看反应」这个验证方式本身不成立。
+  // 这里用页面自己调 onclick —— 走的是与用户点击相同的函数。
+  // ══════════════════════════════════════════════════════════════
+  if (window.__VAP_CLICK_PROOF_ARMED__) {
+    setTimeout(() => window.__VAP_CLICK_PROOF__(), 3000);
   }
 </script>
 <script type="module" src="./app.js"></script>

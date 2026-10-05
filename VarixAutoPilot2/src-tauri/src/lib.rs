@@ -883,6 +883,16 @@ pub fn run() {
                 logx!("自测已武装（VARIAP_AUTOPILOT_SELFTEST=1）");
             }
 
+            // ★ 点击验证武装 ★
+            // 设 VARIAP_AUTOPILOT_CLICKPROOF=1 时，启动后自动跑一次
+            // 「调用自己的 onclick 入队」验证——不需要任何外部鼠标。
+            if std::env::var("VARIAP_AUTOPILOT_CLICKPROOF").is_ok() {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.eval("window.__VAP_CLICK_PROOF_ARMED__ = true;");
+                }
+                logx!("点击验证已武装（VARIAP_AUTOPILOT_CLICKPROOF=1）");
+            }
+
             if let Ok(p) = std::env::var("VARIAP_AUTOPILOT_DEBUG") {
                 if let Ok(port) = p.parse::<u16>() {
                     if let Some(w) = app.get_webview_window("main") {
