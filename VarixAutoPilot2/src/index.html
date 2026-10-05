@@ -521,6 +521,39 @@ select option { background: var(--panel); color: var(--fg); }
 .note.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
 .empty { padding: var(--sp-40) var(--sp-20); text-align: center;
          color: var(--fg-3); font-size: var(--fs-sm); }
+
+/* ══════════════════════════════════════════════════════════════
+   内容来源指示器 + 干跑醒目条
+   ★ 要解决的问题：早先这些信息只在出错时以一行小字出现，
+   极易被忽略 ⇒「点了没反应」。现在常驻显示。★
+   ══════════════════════════════════════════════════════════════ */
+.src-note {
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(127, 127, 127, .08);
+  border-left: 3px solid rgba(127, 127, 127, .35);
+  min-height: 20px;
+}
+.src-note .ok { color: #9aa4b2; }
+.src-note .bad {
+  color: #ff9a6c;
+  font-weight: 600;
+}
+.dry-note {
+  margin: 8px 0 0;
+  padding: 8px 11px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: rgba(255, 170, 60, .12);
+  border: 1px solid rgba(255, 170, 60, .42);
+  color: #ffc98a;
+}
+.dry-note b { color: #ffb457; }
+.dry-note u { text-decoration: underline; text-underline-offset: 2px; }
 </style>
 </head>
 <body data-scene="idle">
@@ -570,13 +603,21 @@ select option { background: var(--panel); color: var(--fg); }
         <textarea id="tpl" class="tpl"></textarea>
       </div>
       <div class="row">
-        <label class="sw"><input type="checkbox" id="o-new" checked>先开新对话</label>
-        <label class="sw"><input type="checkbox" id="o-dry" checked>只填不发（干跑）</label>
+        <label class="sw"><input type="checkbox" id="o-new">先开新对话</label>
+        <label class="sw"><input type="checkbox" id="o-dry">只填不发（干跑）</label>
         <span class="grow"></span>
         <button onclick="doPreview()">预览</button>
         <button onclick="enqueueOne()">加入待发</button>
         <button class="primary" id="b-fill" onclick="doSend(false)">填入</button>
         <button class="go" id="b-send" onclick="doSend(true)">填入并发送</button>
+        <!-- ★ 干跑醒目条 ★
+             「只填不发」勾着时，队列里的东西**永远不会被真发出去**——
+             而界面上原来只是一行小字，勾了很容易忘。
+             这里做成醒目的条，勾着就出现。 -->
+        <div id="dry-note" class="dry-note" hidden>
+          <b>干跑模式开着</b>：内容只会填进输入框，<u>不会真发</u>。
+          要真发请取消上面「只填不发（干跑）」的勾选，再点「填入并发送」。
+        </div>
       </div>
       <div class="note" id="hint"></div>
     </div>
@@ -662,6 +703,10 @@ select option { background: var(--panel); color: var(--fg); }
         <textarea id="free-text" rows="3" placeholder="直接写任意文字，绕过模板，入队/发送都用它。&#10;留空则用上面的模板"></textarea>
         <div class="row">
           <label class="sw"><input type="checkbox" id="o-free">用这段自由文本（不走模板）</label>
+        <!-- ★ 内容来源指示：勾了什么、会不会入不了队，一眼看见 ★
+             早先只有「出错时在 hint 区显示一行」，太容易被忽略，
+             表现就是「点了没反应」。这里常驻显示状态。 -->
+        <div id="src-note" class="src-note"></div>
         </div>
       </div>
       <div class="lrow">
@@ -807,11 +852,23 @@ select option { background: var(--panel); color: var(--fg); }
       }
     }
 
-    // ⑤ 收尾：停止循环，避免继续占用
+    // ⑤ 收尾：停止循环 + **恢复现场**
     if (typeof window.stopLoop === 'function') {
       await window.stopLoop();
       await log('循环自测: 已停止');
     }
+    // ★★★ 恢复现场 ★★★
+    // 实测事故（Variable 截图）：自测勾了 o-free 并写了文本，
+    // 退出前没恢复 ⇒ 勾选留在界面上而文本框是空的
+    // ⇒ 此后每次点「加入待发」都抛「自由文本框是空的」
+    // ⇒ **队列永远是 0 条**，表现为「点了没反应」。
+    // 而它只 hint 区显示一行小字，极易被忽略。
+    //
+    // 所以：自测**绝不留下任何状态**。跑前快照，跑后逐项还原。
+    if (cb) cb.checked = false;
+    if (ft) ft.value = '';
+    if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
+    await log('循环自测: 已恢复现场（取消 o-free、清空自由文本）');
     await log('循环自测: 终态 ' + JSON.stringify(snap()));
   };
 

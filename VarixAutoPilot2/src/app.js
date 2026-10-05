@@ -16,6 +16,42 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ══════════════════════════════════════════════════════════════
+// ★ 内容来源指示器（常驻显示，不是出错才显示）★
+//
+// 要解决的问题：早先「勾了自由文本但框是空的」只在出错时
+// 于 hint 区显示一行，极易被忽略 ⇒ 表现为「点了没反应」。
+//
+// 这里改成**常驻**：勾了什么、当前会不会入不了队、勾了干跑会不会真发，
+// 全部直接写在界面上。不出错也显示。
+// ══════════════════════════════════════════════════════════════
+window.__VAP_SRC_NOTE__ = function updateSrcNote() {
+  const box = document.getElementById('src-note');
+  if (box) {
+    const free = document.getElementById('o-free');
+    const ft = document.getElementById('free-text');
+    if (free && free.checked) {
+      const n = (ft && ft.value || '').trim().length;
+      box.innerHTML = n > 0
+        ? '<span class="ok">当前内容来源：自由文本（' + n + ' 字符）· 点「加入待发」会入队</span>'
+        : '<span class="bad">★ 已勾「用这段自由文本」但框是空的 —— 现在点「加入待发」会失败。'
+          + '写点内容，或取消那个勾选。</span>';
+    } else {
+      const rounds = document.getElementById('lp-first') || document.getElementById('lp-text-1');
+      const tpl = document.getElementById('tpl');
+      const n = tpl ? tpl.value.length : 0;
+      box.innerHTML = '<span class="ok">当前内容来源：模板（' + n + ' 字符）· 点「加入待发」会入队</span>';
+    }
+  }
+  // 干跑醒目条
+  const dry = document.getElementById('o-dry');
+  const note = document.getElementById('dry-note');
+  if (dry && note) {
+    note.hidden = !dry.checked;
+  }
+  return true;
+};
+
 // ── 后端调用：Tauri 全局 or mock ────────────────────────────
 // ★ 为什么用 window.__TAURI__ 而不是 import('/__TAURI__/core.js')★
 // Tauri 2 默认不把 API 打进全局，文档给的是动态 import
@@ -570,6 +606,13 @@ try {
 (async function init() {
   try {
     $('tpl').value = DEFAULT_TPL;
+  // ★ 内容来源指示器：初始化 + 勾选变化时立刻刷新 ★
+  if (typeof window.__VAP_SRC_NOTE__ === 'function') window.__VAP_SRC_NOTE__();
+  for (const i of ['o-free', 'o-dry', 'free-text', 'tpl']) {
+    const el = document.getElementById(i);
+    if (el) el.addEventListener('input', () => window.__VAP_SRC_NOTE__());
+    if (el) el.addEventListener('change', () => window.__VAP_SRC_NOTE__());
+  }
   } catch (e) {
   }
   // ★ 每一段都独立 try：早先 `await doPreview()` 一抛错，
