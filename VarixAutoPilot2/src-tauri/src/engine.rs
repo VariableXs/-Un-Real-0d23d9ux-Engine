@@ -283,8 +283,50 @@ async fn new_conversation(cdp: &Cdp) -> Result<()> {
 }
 
 /// 把文本填进输入框。
+///
+/// ★★ 忙时必须先等 ★★
+/// 实测：WorkBuddy 生成中时，Slate 编辑器**不接受** `Input.insertText`，
+/// 甚至可能被临时卸载 ⇒ 回读拿到 -1 ⇒ 报「回读校验失败」。
+/// 根因不是「界面没就绪」，而是**没等空闲**——
+/// 明明有 `idle_verdict`，此前这里压根没调用它。
 async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
-    // 可见性判定：页面内自己算（坑 1）
+    // ① 忙闲闸门：等空闲（最多 20 秒）
+    //
+    // 为何必须等：发送键在忙时的语义是「停止」，
+    // 此时点它会打断用户正在跑的活——所以这里既等、又绝不代劳停止。
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut waited = 0u64;
+        loop {
+            match idle_verdict(cdp).await {
+                Ok(v) if v.idle => break,
+                Ok(v) => {
+                    if std::time::Instant::now() >= deadline {
+                        bail!(
+                            "对方正在生成中，等了 {waited} 秒还没空闲。                             填入已取消（**没有打断它**）。                             等它生成完再点，或改用「加入待发」——                             队列会在空闲时自动发。"
+                        );
+                    }
+                    if waited % 5 == 0 {
+                        log::info!("[fill] 等空闲：{}", v.reason);
+                    }
+                    waited += 2;
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                }
+                Err(e) => {
+                    if std::time::Instant::now() >= deadline {
+                        bail!("读忙闲状态失败，等了 {waited} 秒：{e}");
+                    }
+                    waited += 2;
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                }
+            }
+        }
+        if waited > 0 {
+            log::info!("[fill]等到空闲（等了 {} 秒）", waited);
+        }
+    }
+
+    // ② 可见性判定：页面内自己算（坑 1）
     let vis = cdp
         .eval(
             r#"(() => {
@@ -297,7 +339,48 @@ async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
         .await?;
     let found = vis.get("found").and_then(|v| v.as_bool()).unwrap_or(false);
     if !found {
-        bail!("找不到输入框（div[data-slate-editor]）");
+        // ★ 把「编辑器为什么不在」说清楚 ★
+        // 实测两种根因完全不同：
+        //   (a) 对话还没打开 / 页面在加载
+        //   (b) 忙时 Slate 临时卸载编辑器
+        // 不分清就会一律报「界面没就绪」，把责任推给用户。
+        let why = cdp
+            .eval(
+                r#"(() => {
+                  const btn = document.querySelector('button.cr-send-button');
+                  const cls = btn ? String(btn.className || '') : '';
+                  return {
+                    busy: /--sending|--stop/.test(cls),
+                    has_send: !!btn,
+                    body: (document.body ? document.body.innerText.length : 0),
+                    url: location.href.slice(-40),
+                  };
+                })()"#,
+            )
+            .await
+            .unwrap_or(serde_json::Value::Null);
+        let busy = why.get("busy").and_then(|v| v.as_bool()).unwrap_or(false);
+        let has_send = why.get("has_send").and_then(|v| v.as_bool()).unwrap_or(false);
+        let body = why.get("body").and_then(|v| v.as_i64()).unwrap_or(0);
+        if busy {
+            bail!(
+                "找不到输入框——但页面**正忙**（发送键是「停止」）。\
+                 对方还在生成，编辑器暂不可用。\n\
+                 等它生成完再点，或用「加入待发」让队列在空闲时自动发。"
+            );
+        }
+        if !has_send || body < 50 {
+            bail!(
+                "找不到输入框（div[data-slate-editor]），而且页面内容极少（{body} 字）。\
+                 多半是这个对话**还没打开**，或WorkBuddy 还在启动。\n\
+                 先在 WorkBuddy 里打开一个能输入的对话，再回来点。"
+            );
+        }
+        bail!(
+            "找不到输入框（div[data-slate-editor]）。\n\
+             页面有内容（{body} 字）且不忙，说明编辑器换了实现\
+             （WorkBuddy 升级过）。需要更新这个选择器。"
+        );
     }
     let ok = vis.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     if !ok {
@@ -354,9 +437,23 @@ async fn fill_prompt(cdp: &Cdp, text: &str) -> Result<usize> {
     let n = got.as_i64().unwrap_or(-1);
     let expect = std::cmp::min(50, text.chars().count() as i64);
     if n < expect {
+        // ★ 补上「当时忙不忙」——这是本次实测最关键的信息 ★
+        let v2 = idle_verdict(cdp).await.ok();
+        let busy_s = match &v2 {
+            Some(v) if !v.idle => format!("（当时仍在**生成中**：{}）", v.reason),
+            Some(v) => format!("（当时**空闲**：{}）", v.reason),
+            None => "（读不到忙闲状态）".to_string(),
+        };
+        if n < 0 {
+            bail!(
+                "填入后读不到编辑器内容（实得 {n}），{busy_s}\n\
+                 写入可能没生效。WorkBuddy 升级换了编辑器实现时也会这样。"
+            );
+        }
         bail!(
-            "回读校验失败：期望 ≥{expect} 字符，实得 {n}。\
-             界面可能没就绪，或编辑器换了实现。"
+            "回读校验失败：期望 ≥{expect} 字符，实得 {n}。{busy_s}\n\
+             写入被截断或部分生效。可能是超长文本、含特殊字符，\
+             或编辑器对 insertText 有长度限制。"
         );
     }
     Ok(n.max(0) as usize)
